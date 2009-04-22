@@ -2170,7 +2170,11 @@ padvance(const char **path, const char *name)
 	if (*path == NULL)
 		return NULL;
 	start = *path;
+#ifdef __MINGW32__
+	for (p = start; *p && *p != ';' && *p != '%'; p++);
+#else
 	for (p = start; *p && *p != ':' && *p != '%'; p++);
+#endif
 	len = p - start + strlen(name) + 2;     /* "2" is for '/' and '\0' */
 	while (stackblocksize() < len)
 		growstackblock();
@@ -2184,9 +2188,17 @@ padvance(const char **path, const char *name)
 	pathopt = NULL;
 	if (*p == '%') {
 		pathopt = ++p;
+#ifdef __MINGW32__
+		while (*p && *p != ';') p++;
+#else
 		while (*p && *p != ':') p++;
+#endif
 	}
+#ifdef __MINGW32__
+	if (*p == ';')
+#else
 	if (*p == ':')
+#endif
 		*path = p + 1;
 	else
 		*path = NULL;
