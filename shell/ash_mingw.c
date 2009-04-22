@@ -781,3 +781,115 @@ misc_recv(int fd)
 	/* stackbase... */
 	guard_recv1(fd, -1);
 }
+
+/* * * * * fork entries * * * * */
+struct forkpoint {
+	const char *name;
+	void (*func)(union node *,int);
+};
+
+/* entry names should not be too long */
+struct forkpoint forkpoints[] = {
+	{ NULL, NULL },
+};
+
+/* * * * * fork emulation * * * * */
+static int
+forkshell_init(struct forkshell *fs)
+{
+	static char argv2[32];
+	static const char *argv[4] = { NULL, "sh", argv2, NULL };
+	int p[2];
+
+	if (_pipe(p, 0, 0) < 0)
+		ash_msg_and_raise_error("Unable to create pipe");
+
+	/*
+	 * Do not use C file handle here because MinGW port
+	 * uses a custom execvp version, which will not reconstruct
+	 * filehandle table correctly (for msvcrt to read)
+	 */
+	sprintf(argv2, "subash%lx:%s", _get_osfhandle(p[0]), fs->fp);
+
+	argv[0] = CONFIG_BUSYBOX_EXEC_PATH;
+	fs->cmd.argv = argv;
+	fs->fd = p[1];
+	return 0;
+}
+
+static void
+forkshell_transfer(struct forkshell *fs)
+{
+	tblentry_send(fs->fd);
+	vartab_send(fs->fd);
+	localvars_send(fs->fd);
+	optlist_send(fs->fd);
+	misc_send(fs->fd);
+
+	guard_send(fs->fd, SER_FORK);
+	node_send(fs->fd, fs->n);
+	int_send(fs->fd, fs->flags);
+}
+
+static void
+forkshell_transfer_done(struct forkshell *fs)
+{
+	guard_send(fs->fd, SER_DONE);
+	close(fs->fd);
+}
+
+static void
+forkshell_cleanup(struct forkshell *fs)
+{
+}
+
+static int
+forkshell(const char *fp, union node *n, int flags)
+{
+	struct forkshell fs;
+	int status;
+	memset(&fs, 0, sizeof(fs));
+	fs.fp = fp;
+	fs.n = n;
+	fs.flags = flags;
+	forkshell_init(&fs);
+	if (start_command(&fs.cmd))
+		ash_msg_and_raise_error("unable to spawn shell");
+	forkshell_transfer(&fs);
+	forkshell_transfer_done(&fs);
+	forkshell_cleanup(&fs);
+	set_exitstatus(finish_command(&fs.cmd), fs.cmd.argv, &status);
+	return status;
+}
+
+static void
+subshell_run()
+{
+	struct forkpoint *fp;
+	int fd = subash_fd;
+	union node *n;
+	int flags;
+
+	if (fd == -1)
+		return;
+
+	for (fp = forkpoints;fp->name && strcmp(fp->name, subash_entry);fp ++);
+
+	if (!fp->name)
+		die("ASH_SHELL_ENTRY invalid");
+
+	tblentry_recv(fd);
+	vartab_recv(fd);
+	localvars_recv(fd);
+	optlist_recv(fd);
+	misc_recv(fd);
+
+	guard_recv1(fd, SER_FORK);
+	n = node_recv(fd);
+	flags = int_recv(fd);
+	guard_recv1(fd, SER_DONE);
+
+	fp->func(n, flags);
+
+	die("subshell ended unexpectedly");
+}
