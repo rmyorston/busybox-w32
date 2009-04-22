@@ -8738,7 +8738,11 @@ preadbuffer(void)
 		more--;
 		c = *q;
 
+#ifdef __MINGW32__
+		if (!c || c == '\r')
+#else
 		if (!c)
+#endif
 			memmove(q, q + 1, more);
 		else {
 			q++;
