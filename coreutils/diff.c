@@ -208,7 +208,9 @@ static int readhash(FILE * f)
 		for (i = 0;;) {
 			switch (t = getc(f)) {
 			case '\t':
+#ifndef __MINGW32__
 			case '\r':
+#endif
 			case '\v':
 			case '\f':
 			case ' ':
@@ -226,6 +228,9 @@ static int readhash(FILE * f)
 				if (i == 0)
 					return 0;
 				/* FALLTHROUGH */
+#ifdef __MINGW32__
+			case '\r':
+#endif
 			case '\n':
 				break;
 			}
