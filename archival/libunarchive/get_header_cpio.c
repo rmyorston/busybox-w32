@@ -143,7 +143,9 @@ char get_header_cpio(archive_handle_t *archive_handle)
 		/* Found the file with data in */
 		pending_hardlinks = nlink;
 	}
+#ifndef __MINGW32__
 	file_header->device = makedev(major, minor);
+#endif
 
 	if (archive_handle->filter(archive_handle) == EXIT_SUCCESS) {
 		archive_handle->action_data(archive_handle);
