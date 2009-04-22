@@ -814,10 +814,20 @@ evalsubshell_fp(union node *n, int flags)
 	redirect(n->nredir.redirect, 0);
 	evaltreenr(n->nredir.n, flags);
 }
+
+static void
+evalpipe_fp(union node *n,int flags)
+{
+	trace_printf("ash: subshell: %s\n",__PRETTY_FUNCTION__);
+	INT_ON;
+	evaltreenr(n, flags);
+}
+
 /* entry names should not be too long */
 struct forkpoint forkpoints[] = {
 	{ "evalbackcmd", evalbackcmd_fp },
 	{ "evalsubshell", evalsubshell_fp },
+	{ "evalpipe", evalpipe_fp },
 	{ NULL, NULL },
 };
 
@@ -1157,4 +1167,56 @@ updatepwd(const char *dir)
 		STUNPUTC(new);
 	*new = 0;
 	return stackblock();
+}
+
+static void
+evalpipe(union node *n, int flags)
+{
+	struct forkshell fs;
+	struct nodelist *lp;
+	int pipelen;
+	int prevfd;
+	int pip[2];
+
+	TRACE(("evalpipe(0x%lx) called\n", (long)n));
+	pipelen = 0;
+	for (lp = n->npipe.cmdlist; lp; lp = lp->next)
+		pipelen++;
+	flags |= EV_EXIT;
+	INT_OFF;
+	prevfd = -1;
+	for (lp = n->npipe.cmdlist; lp; lp = lp->next) {
+		prehash(lp->n);
+		pip[1] = -1;
+		if (lp->next) {
+			if (_pipe(pip, 0, O_NOINHERIT) < 0) {
+				close(prevfd);
+				ash_msg_and_raise_error("pipe call failed");
+			}
+		}
+		if (prevfd != -1)
+			forkshell_cleanup(&fs);
+		memset(&fs, 0, sizeof(fs));
+		fs.fp = "evalpipe";
+		fs.flags = flags;
+		fs.n = lp->n;
+		if (prevfd > 0)
+			fs.cmd.in = prevfd;
+		if (pip[1] > 1)
+			fs.cmd.out = pip[1];
+		forkshell_init(&fs);
+		if (start_command(&fs.cmd))
+			ash_msg_and_raise_error("unable to spawn shell");
+		forkshell_transfer(&fs);
+		forkshell_transfer_done(&fs);
+		if (prevfd >= 0)
+			close(prevfd);
+		prevfd = pip[0];
+		if (pip[1] >= 0)
+			close(pip[1]);
+	}
+	if (n->npipe.backgnd == 0) {
+		set_exitstatus(finish_command(&fs.cmd), fs.cmd.argv, NULL); /* the last command in pipe */
+	}
+	INT_ON;
 }
