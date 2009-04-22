@@ -1,0 +1,783 @@
+extern void trace_printf(const char *format, ...);
+extern void trace_argv_printf(const char **argv, const char *format, ...);
+
+#define SER_TBLENTRY  -100
+#define SER_VARTAB    -102
+#define SER_LOCALVARS -103
+#define SER_OPTLIST   -104
+#define SER_FORK      -105
+#define SER_DONE      -106
+#define SER_MISC      -107
+
+/* * * * * serialization routines * * * * */
+static void node_send(int fd, union node *n);
+static union node *node_recv(int fd);
+
+#define SERDES_DEBUG 0
+
+static inline void
+ser_read(int fd, void *buf, size_t len)
+{
+	if (xread(fd, buf, len) != len)
+		die("Corrupted");
+}
+
+static void
+str_send(int fd, const char *s)
+{
+	int size = s ? strlen(s)+1 : -1;
+	if (SERDES_DEBUG) fprintf(stderr," --> String(%d:%d %s)", size, s ? (int)(unsigned char)*s : 0,s ? s+1 : 0);
+	write(fd, &size, sizeof(int));
+	if (s)
+		write(fd, s, size);
+}
+
+static char*
+str_recv(int fd)
+{
+	int size;
+	char *s;
+	ser_read(fd, &size, sizeof(int));
+	if (size == -1)
+		s = NULL;
+	else {
+		s = ckmalloc(size);
+		ser_read(fd, s, size);
+	}
+	if (SERDES_DEBUG) fprintf(stderr," <-- String(%d:%s)", size, s);
+	return s;
+}
+
+static void
+int_send(int fd, int n)
+{
+	write(fd, &n, sizeof(int));
+	if (SERDES_DEBUG) fprintf(stderr," --> Int(%d)", n);
+}
+
+static int
+int_recv(int fd)
+{
+	int n;
+	ser_read(fd, &n, sizeof(int));
+	if (SERDES_DEBUG) fprintf(stderr," <-- Int(%d)", n);
+	return n;
+}
+
+static void
+guard_send(int fd, int n)
+{
+	write(fd, &n, sizeof(int));
+	if (SERDES_DEBUG) fprintf(stderr,"\n--> Guard(%d)\n", n);
+}
+
+static void
+guard_recv1(int fd, int n1)
+{
+	int n;
+	ser_read(fd, &n, sizeof(int));
+	if (SERDES_DEBUG) fprintf(stderr,"\n<-- Guard1(%d,%d)\n", n, n1);
+	if (n != n1)
+		die("Corrupted");
+}
+
+static int
+guard_recv2(int fd, int n1, int n2)
+{
+	int n;
+	ser_read(fd, &n, sizeof(int));
+	if (SERDES_DEBUG) fprintf(stderr,"\n<-- Guard2(%d,%d,%d)\n", n, n1,n2);
+	if (n != n1 && n != n2)
+		die("Corrupted");
+	return n;
+}
+
+static void
+buf_send(int fd, void *buf, int size)
+{
+	write(fd, buf, size);
+	if (SERDES_DEBUG) fprintf(stderr," --> Buf(%d) ", size);
+}
+
+static void
+buf_recv(int fd, void *buf, int size)
+{
+	ser_read(fd, buf, size);
+	if (SERDES_DEBUG) fprintf(stderr," <-- Buf(%d) ", size);
+}
+
+static void
+nodelist_send(int fd, struct nodelist *nl)
+{
+	int id;
+	for (id = 0;nl;nl = nl->next) {
+		guard_send(fd, id++);
+		node_send(fd, nl->n);
+	}
+	guard_send(fd, -1);
+}
+
+static struct nodelist *
+nodelist_recv(int fd)
+{
+	int id = 0;
+	struct nodelist *head = NULL, *tail = NULL;
+	union node *n;
+	do {
+		if (guard_recv2(fd, id++, -1) == -1)
+			break;
+		n = node_recv(fd);
+		if (tail) {
+			tail->next = ckmalloc(sizeof(struct nodelist));
+			tail->next->next = NULL;
+			tail->next->n = n;
+			tail = tail->next;
+		} else {
+			head = tail = ckmalloc(sizeof(struct nodelist));
+			tail->next = NULL;
+			tail->n = n;
+		}
+	} while (1);
+	return head;
+}
+
+static void
+node_send(int fd, union node *n)
+{
+	int type = n ? n->type : -2;
+	int size;
+
+	int_send(fd, type);
+	if (!n)
+		return;
+
+	switch (type) {
+		case NCMD:
+			size = sizeof(struct ncmd);
+			break;
+		case NPIPE:
+			size = sizeof(struct npipe);
+			break;
+		case NREDIR:
+		case NBACKGND:
+		case NSUBSHELL:
+			size = sizeof(struct nredir);
+			break;
+		case NAND:
+		case NOR:
+		case NSEMI:
+		case NWHILE:
+		case NUNTIL:
+			size = sizeof(struct nbinary);
+			break;
+		case NIF:
+			size = sizeof(struct nif);
+			break;
+		case NFOR:
+			size = sizeof(struct nfor);
+			break;
+		case NCASE:
+			size = sizeof(struct ncase);
+			break;
+		case NCLIST:
+			size = sizeof(struct nclist);
+			break;
+		case NDEFUN:
+		case NARG:
+			size = sizeof(struct narg);
+			break;
+		case NTO:
+		case NCLOBBER:
+		case NFROM:
+		case NFROMTO:
+		case NAPPEND:
+			size = sizeof(struct nfile);
+			break;
+		case NTOFD:
+		case NFROMFD:
+			size = sizeof(struct ndup);
+			break;
+		case NXHERE:
+		case NHERE:
+			size = sizeof(struct nhere);
+			break;
+		case NNOT:
+			size = sizeof(struct nnot);
+			break;
+		default:
+			die("Unknown construct type");
+	}
+	int_send(fd, size);
+
+	switch (type) {
+		case NCMD:
+			node_send(fd, n->ncmd.assign);
+			node_send(fd, n->ncmd.args);
+			node_send(fd, n->ncmd.redirect);
+			break;
+
+		case NPIPE:
+			int_send(fd, n->npipe.backgnd);
+			nodelist_send(fd, n->npipe.cmdlist);
+			break;
+
+		case NREDIR:
+		case NBACKGND:
+		case NSUBSHELL:
+			node_send(fd, n->nredir.n);
+			node_send(fd, n->nredir.redirect);
+			break;
+
+		case NAND:
+		case NOR:
+		case NSEMI:
+		case NWHILE:
+		case NUNTIL:
+			node_send(fd, n->nbinary.ch1);
+			node_send(fd, n->nbinary.ch2);
+			break;
+
+		case NIF:
+			node_send(fd, n->nif.test);
+			node_send(fd, n->nif.ifpart);
+			node_send(fd, n->nif.elsepart);
+			break;
+
+		case NFOR:
+			node_send(fd, n->nfor.args);
+			node_send(fd, n->nfor.body);
+			str_send(fd, n->nfor.var);
+			break;
+
+		case NCASE:
+			node_send(fd, n->ncase.expr);
+			node_send(fd, n->ncase.cases);
+			break;
+
+		case NCLIST:
+			node_send(fd, n->nclist.next);
+			node_send(fd, n->nclist.pattern);
+			node_send(fd, n->nclist.body);
+			break;
+
+		case NDEFUN:
+		case NARG:
+			node_send(fd, n->narg.next);
+			str_send(fd, n->narg.text);
+			nodelist_send(fd, n->narg.backquote);
+			break;
+
+		case NTO:
+		case NCLOBBER:
+		case NFROM:
+		case NFROMTO:
+		case NAPPEND:
+			node_send(fd, n->nfile.next);
+			int_send(fd, n->nfile.fd);
+			node_send(fd, n->nfile.fname);
+			//str_send(fd, n->nfile.expfname);
+			break;
+
+		case NTOFD:
+		case NFROMFD:
+			node_send(fd, n->ndup.next);
+			int_send(fd, n->ndup.fd);
+			int_send(fd, n->ndup.dupfd);
+			node_send(fd, n->ndup.vname);
+			break;
+
+		case NXHERE:
+		case NHERE:
+			node_send(fd, n->nhere.next);
+			int_send(fd, n->nhere.fd);
+			node_send(fd, n->nhere.doc);
+			break;
+
+		case NNOT:
+			node_send(fd, n->nnot.com);
+			break;
+
+		default:
+			die("Unknown construct type");
+	}
+	guard_send(fd, -1);
+}
+
+static union node*
+node_recv(int fd)
+{
+	int type;
+	int size;
+	union node *n;
+
+	type = int_recv(fd);
+	if (type == -2)
+		return NULL;
+	size = int_recv(fd);
+	n = ckmalloc(size);
+	n->type = type;
+
+	switch (type) {
+		case NCMD:
+			n->ncmd.assign = node_recv(fd);
+			n->ncmd.args = node_recv(fd);
+			n->ncmd.redirect = node_recv(fd);
+			break;
+
+		case NPIPE:
+			n->npipe.backgnd = int_recv(fd);
+			n->npipe.cmdlist = nodelist_recv(fd);
+			break;
+
+		case NREDIR:
+		case NBACKGND:
+		case NSUBSHELL:
+			n->nredir.n = node_recv(fd);
+			n->nredir.redirect = node_recv(fd);
+			break;
+
+		case NAND:
+		case NOR:
+		case NSEMI:
+		case NWHILE:
+		case NUNTIL:
+			n->nbinary.ch1 = node_recv(fd);
+			n->nbinary.ch2 = node_recv(fd);
+			break;
+
+		case NIF:
+			n->nif.test = node_recv(fd);
+			n->nif.ifpart = node_recv(fd);
+			n->nif.elsepart = node_recv(fd);
+			break;
+
+		case NFOR:
+			n->nfor.args = node_recv(fd);
+			n->nfor.body = node_recv(fd);
+			n->nfor.var = str_recv(fd);
+			break;
+
+		case NCASE:
+			n->ncase.expr = node_recv(fd);
+			n->ncase.cases = node_recv(fd);
+			break;
+
+		case NCLIST:
+			n->nclist.next = node_recv(fd);
+			n->nclist.pattern = node_recv(fd);
+			n->nclist.body = node_recv(fd);
+			break;
+
+		case NDEFUN:
+		case NARG:
+			n->narg.next = node_recv(fd);
+			n->narg.text = str_recv(fd);
+			n->narg.backquote = nodelist_recv(fd);
+			break;
+
+		case NTO:
+		case NCLOBBER:
+		case NFROM:
+		case NFROMTO:
+		case NAPPEND:
+			n->nfile.next = node_recv(fd);
+			n->nfile.fd = int_recv(fd);
+			n->nfile.fname = node_recv(fd);
+			//n->nfile.expfname = str_recv(fd);
+			break;
+
+		case NTOFD:
+		case NFROMFD:
+			n->ndup.next = node_recv(fd);
+			n->ndup.fd = int_recv(fd);
+			n->ndup.dupfd = int_recv(fd);
+			n->ndup.vname = node_recv(fd);
+			break;
+
+		case NXHERE:
+		case NHERE:
+			n->nhere.next = node_recv(fd);
+			n->nhere.fd = int_recv(fd);
+			n->nhere.doc = node_recv(fd);
+			break;
+
+		case NNOT:
+			n->nnot.com = node_recv(fd);
+			break;
+
+		default:
+			die("Unknown construct type");
+	}
+
+	guard_recv1(fd, -1);
+	return n;
+}
+
+static void
+funcnode_send(int fd, struct funcnode *n)
+{
+	int_send(fd, n->count);
+	node_send(fd, &n->n);
+	guard_send(fd, -1);
+}
+
+static struct funcnode*
+funcnode_recv(int fd)
+{
+	struct funcnode *fn;
+	union node *n;
+
+	fn = ckmalloc(sizeof(struct funcnode));
+	fn->count = int_recv(fd);
+	n = node_recv(fd);
+	memcpy(&fn->n, n, sizeof(union node));
+	free(n);
+	guard_recv1(fd, -1);
+	return fn;
+}
+
+static void
+tblentry_send(int fd)
+{
+	int i, id = 0;
+	struct tblentry *e;
+	int size;
+
+	guard_send(fd, SER_TBLENTRY);
+	for (i = 0;i < CMDTABLESIZE;i ++) {
+		for (e = cmdtable[i];e;e = e->next) {
+			guard_send(fd, id++);
+			int_send(fd, i);
+			size = sizeof(struct tblentry) - ARB + strlen(e->cmdname) + 1;
+			int_send(fd, size);
+			buf_send(fd, e, size);
+			switch (e->cmdtype) {
+				case CMDUNKNOWN:
+				case CMDNORMAL:
+					break;
+
+				case CMDBUILTIN:
+					int_send(fd, e->param.cmd - builtintab);
+					break;
+
+				case CMDFUNCTION:
+					funcnode_send(fd, e->param.func);
+					break;
+			}
+		}
+	}
+	guard_send(fd, -1);
+}
+
+static void
+tblentry_recv(int fd)
+{
+	int i = 0;
+	int size;
+	struct tblentry *e;
+	int id = 0;
+
+	guard_recv1(fd, SER_TBLENTRY);
+
+	do {
+		if (guard_recv2(fd, id++, -1) == -1)
+			break;
+		i = int_recv(fd);
+		size = int_recv(fd);
+		e = ckmalloc(size);
+		buf_recv(fd, e, size);
+		switch (e->cmdtype) {
+			case CMDUNKNOWN:
+			case CMDNORMAL:
+				break;
+
+			case CMDBUILTIN:
+				e->param.cmd = &builtintab[int_recv(fd)];
+				break;
+
+			case CMDFUNCTION:
+				e->param.func = funcnode_recv(fd);
+				break;
+		}
+		e->next = cmdtable[i];
+		cmdtable[i] = e;
+	} while (1);
+}
+
+static void
+var_send(int fd, struct var *v)
+{
+	int_send(fd, v->flags);
+	str_send(fd, v->text);
+}
+
+static struct var*
+var_recv(int fd)
+{
+	struct var *v = ckmalloc(sizeof(struct var));
+	memset(v, 0, sizeof(struct var));
+	v->flags = int_recv(fd);
+	v->text = str_recv(fd);
+	return v;
+}
+
+static void
+vartab_send(int fd)
+{
+	int i;
+	struct var *v;
+	int id = 0;
+
+	guard_send(fd, SER_VARTAB);
+	for (i = 0;i < VTABSIZE;i++)
+		for (v = vartab[i];v;v = v->next) {
+			guard_send(fd, id++);
+			int_send(fd, i);
+			var_send(fd, v);
+		}
+	guard_send(fd, -1);
+}
+
+static void
+vartab_recv(int fd)
+{
+	int i;
+	struct var *v;
+	int id = 0;
+
+	guard_recv1(fd, SER_VARTAB);
+	do {
+		if (guard_recv2(fd, id++, -1) == -1)
+			break;
+		i = int_recv(fd);
+		v = var_recv(fd);
+		v->next = vartab[i];
+		vartab[i] = v;
+	} while (1);
+}
+
+static void
+localvar_send(int fd, struct localvar *lv)
+{
+	var_send(fd,lv->vp);
+	int_send(fd, lv->flags);
+	str_send(fd, lv->text);
+}
+
+static struct localvar*
+localvar_recv(int fd)
+{
+	int i;
+	struct var *v;
+	struct localvar *lv;
+	lv = ckmalloc(sizeof(struct localvar));
+	memset(lv, 0, sizeof(struct localvar));
+	lv->vp = var_recv(fd);
+	for (i = 0, v = vartab[0];i < VTABSIZE;v = v && v->next ? v->next : vartab[i++])
+		if (v && !strcmp(v->text, lv->vp->text)) {
+			free((char*)lv->vp->text);
+			free(lv->vp);
+			lv->vp = v;
+			break;
+		}
+
+	if (i == VTABSIZE) {
+		struct var **vp;
+		vp = hashvar(lv->vp->text);
+		*vp = lv->vp;
+		lv->vp->next = *vp;
+	}
+
+	lv->flags = int_recv(fd);
+	lv->text = str_recv(fd);
+	return lv;
+}
+
+static void
+localvars_send(int fd)
+{
+	struct localvar *lv;
+	int id = 0;
+
+	guard_send(fd, SER_LOCALVARS);
+	for (lv = localvars;lv;lv = lv->next) {
+		guard_send(fd, id++);
+		localvar_send(fd, lv);
+	}
+	guard_send(fd, -1);
+}
+
+static void
+localvars_recv(int fd)
+{
+	struct localvar *lv;
+	int id = 0;
+
+	guard_recv1(fd, SER_LOCALVARS);
+	do {
+		if (guard_recv2(fd, id++, -1) == -1)
+			break;
+		lv = localvar_recv(fd);
+		lv->next = localvars;
+		localvars = lv;
+	} while (1);
+}
+
+static void
+optlist_send(int fd)
+{
+	guard_send(fd, SER_OPTLIST);
+	buf_send(fd, optlist, sizeof(optlist));
+	guard_send(fd, -1);
+}
+
+static void
+optlist_recv(int fd)
+{
+	guard_recv1(fd, SER_OPTLIST);
+	buf_recv(fd, optlist, sizeof(optlist));
+	guard_recv1(fd, -1);
+}
+
+static void
+sig_send(int fd)
+{
+	int i;
+	for (i = 0;i < NSIG;i++) {
+		guard_send(fd, i);
+		/* str_send(fd, trap[i]); */
+		int_send(fd, sigmode[i]);
+		int_send(fd, gotsig[i]);
+	}
+	guard_send(fd, -1);
+}
+
+static void
+sig_recv(int fd)
+{
+	int i;
+	for (i = 0;i < NSIG;i++) {
+		guard_recv1(fd, i);
+		/* trap[i] = str_recv(fd); */
+		sigmode[i] = int_recv(fd);
+		gotsig[i] = int_recv(fd);
+	}
+	guard_recv1(fd, -1);
+}
+
+static void
+redir_send(int fd)
+{
+	int i;
+	struct redirtab *rd;
+	for (rd = redirlist, i = 0;rd;rd = rd->next) {
+		guard_send(fd, i++);
+		buf_send(fd, rd->renamed, 10*sizeof(int));
+		int_send(fd, rd->nullredirs);
+	}
+	guard_send(fd, -1);
+	int_send(fd, nullredirs);
+	int_send(fd, preverrout_fd);
+	guard_send(fd, -1);
+}
+
+static void
+redir_recv(int fd)
+{
+	int i = 0;
+	struct redirtab *rd = NULL;
+	while (1) {
+		if (guard_recv2(fd, i++, -1) == -1)
+			break;
+		if (rd) {
+			rd->next = ckmalloc(sizeof(struct redirtab));
+			rd = rd->next;
+		} else
+			redirlist = rd = ckmalloc(sizeof(struct redirtab));
+		rd->next = NULL;
+		buf_recv(fd, rd->renamed, 10*sizeof(int));
+		rd->nullredirs = int_recv(fd);
+	}
+	nullredirs = int_recv(fd);
+	preverrout_fd = int_recv(fd);
+	guard_recv1(fd, -1);
+}
+
+static void
+shparam_send(int fd)
+{
+	int i;
+	int_send(fd, shellparam.nparam);
+#if ENABLE_ASH_GETOPTS
+	int_send(fd, shellparam.optind);
+	int_send(fd, shellparam.optoff);
+#endif
+	for (i = 0;i < shellparam.nparam;i ++) {
+		guard_send(fd, i);
+		str_send(fd, shellparam.p[i]);
+	}
+	guard_send(fd, -1);
+}
+
+static void
+shparam_recv(int fd)
+{
+	int i;
+	shellparam.nparam = int_recv(fd);
+	shellparam.malloc = 1;
+#if ENABLE_ASH_GETOPTS
+	shellparam.optind = int_recv(fd);
+	shellparam.optoff = int_recv(fd);
+#endif
+	if (shellparam.nparam) {
+		shellparam.p = ckmalloc((shellparam.nparam+1)*sizeof(char *));
+		for (i = 0;i < shellparam.nparam;i ++) {
+			guard_recv1(fd, i);
+			shellparam.p[i] = str_recv(fd);
+		}
+		shellparam.p[i] = NULL;
+	} else
+		shellparam.p = NULL;
+	guard_recv1(fd, -1);
+}
+
+static void
+misc_send(int fd)
+{
+	guard_send(fd, SER_MISC);
+	int_send(fd, rootpid); /* used in varvalue */
+	/* backgndpid ($!) is unsupported */
+	int_send(fd, shlvl + 1);
+	int_send(fd, exitstatus);
+	int_send(fd, startlinno);
+	str_send(fd, commandname);
+	str_send(fd, arg0);
+	str_send(fd, curdir == nullstr ? NULL : curdir);
+	str_send(fd, physdir == nullstr ? NULL : physdir);
+	sig_send(fd);
+	redir_send(fd);
+	shparam_send(fd);
+	/* stackbase... */
+	guard_send(fd, -1);
+}
+
+static void
+misc_recv(int fd)
+{
+	guard_recv1(fd, SER_MISC);
+	rootpid = int_recv(fd); /* used in varvalue */
+	shlvl = int_recv(fd);
+	exitstatus = int_recv(fd);
+	startlinno = int_recv(fd);
+	commandname = str_recv(fd);
+	arg0 = str_recv(fd);
+	curdir = str_recv(fd);
+	if (!curdir) curdir = nullstr;
+	physdir = str_recv(fd);
+	if (!physdir) physdir = nullstr;
+	sig_recv(fd);
+	redir_recv(fd);
+	shparam_recv(fd);
+	/* stackbase... */
+	guard_recv1(fd, -1);
+}
