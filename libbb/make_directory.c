@@ -34,6 +34,18 @@ int bb_make_directory (char *path, long mode, int flags)
 	char c;
 	struct stat st;
 
+#ifdef __MINGW32__
+	/*
+	 * If you are in root directory of a drive
+	 * you cannot just mkdir "."
+	 *
+	 * This is caused by unzip.c:unzip_create_leading_dirs()
+	 * where dirname() may return "."
+	 */
+	if (!strcmp(path, "."))
+		return 0;
+#endif
+
 	mask = umask(0);
 	if (mode == -1) {
 		umask(mask);
