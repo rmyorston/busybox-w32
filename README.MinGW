@@ -1,0 +1,34 @@
+Known issues
+============
+
+ - yeah this is based on a very old busybox version: 1.6.1
+ - lots of unsupported stuff may break your build, try scripts/defconfig.mingw32
+ - busybox output will be always Unix-style slash with regard to pathnames.
+   it may accept Windows backslash, I don't think it's worth supporting
+   backslash output. You can always use "tr" to do that, or write another
+   applet yourself
+ - User/group-related stuff won't work
+ - Hardlinks (does Windows have it?) and softlinks generally do not work
+ - No fancy terminal output
+ - No fancy input too (i.e. no vi)
+ - ash port is ongoing, but my aim is mostly for scripting
+
+Building
+========
+
+I'm cross building it. If you have MinGW cross compiler installed, just do
+
+make CROSS_COMPILE=mingw32- menuconfig
+make CROSS_COMPILE=mingw32-
+
+the output does not have ".exe", you need to rename it yourself.
+
+Attempts to make it build natively on Windows are appreciated. You can start with
+porting kconfig ;-)
+
+Internals
+=========
+
+The Win32 compatibility layer was from Git. You could look back in history to see
+the set of files. This project was initially known as "GitBox", an attempt to make
+Git usable on Windows without MSYS. That's why there are lots of Git stuff in.
