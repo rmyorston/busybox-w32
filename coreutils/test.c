@@ -563,6 +563,7 @@ static int test_eaccess(char *path, int mode)
 	if (stat(path, &st) < 0)
 		return -1;
 
+#ifndef __MINGW32__
 	if (euid == 0) {
 		/* Root can read or write any file. */
 		if (mode != X_OK)
@@ -578,6 +579,9 @@ static int test_eaccess(char *path, int mode)
 		mode <<= 6;
 	else if (is_a_group_member(st.st_gid))
 		mode <<= 3;
+#else
+	mode <<= 6; /* owner */
+#endif
 
 	if (st.st_mode & mode)
 		return 0;
