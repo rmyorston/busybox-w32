@@ -33,7 +33,9 @@ int bb_echo(char **argv)
 		eflag = '\\',
 		nflag = 1,  /* 1 -- print '\n' */
 	};
-	++argv;
+	arg = *++argv;
+	if (!arg)
+		goto newline_ret;
 #else
 	const char *p;
 	char nflag = 1;
@@ -107,9 +109,7 @@ int bb_echo(char **argv)
 		putchar(' ');
 	}
 
-#if ENABLE_FEATURE_FANCY_ECHO
  newline_ret:
-#endif
 	if (nflag) {
 		putchar('\n');
 	}
