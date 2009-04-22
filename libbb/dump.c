@@ -17,6 +17,7 @@
 enum _vflag bb_dump_vflag = FIRST;
 FS *bb_dump_fshead;				/* head of format strings */
 static FU *endfu;
+#define _argv static_argv
 static char **_argv;
 static off_t savaddress;	/* saved address/offset in stream */
 static off_t eaddress;	/* end address */
