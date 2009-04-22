@@ -4755,6 +4755,30 @@ openredirect(union node *redir)
 	char *fname;
 	int f;
 
+#ifdef __MINGW32__
+	switch (redir->nfile.type) {
+		case NFROM:
+			if (!strcmp(redir->nfile.expfname, "/dev/null"))
+				return open("nul",O_RDWR);
+			if (!strncmp(redir->nfile.expfname, "/dev/", 5)) {
+				ash_msg("Unhandled device %s\n", redir->nfile.expfname);
+				return -1;
+			}
+			break;
+
+		case NFROMTO:
+		case NTO:
+		case NCLOBBER:
+		case NAPPEND:
+			if (!strcmp(redir->nfile.expfname, "/dev/null"))
+				return open("nul",O_RDWR);
+			if (!strncmp(redir->nfile.expfname, "/dev/", 5)) {
+				ash_msg("Unhandled device %s\n", redir->nfile.expfname);
+				return -1;
+			}
+			break;
+	}
+#endif
 	switch (redir->nfile.type) {
 	case NFROM:
 		fname = redir->nfile.expfname;
