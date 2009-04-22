@@ -38,7 +38,12 @@ const char bb_path_nologin_file[] = "/etc/nologin";
 const char bb_path_securetty_file[] = "/etc/securetty";
 const char bb_path_motd_file[] = "/etc/motd";
 const char bb_default_login_shell[] = LIBBB_DEFAULT_LOGIN_SHELL;
+#ifdef __MINGW32__
+/* this one is only used in diff and ash at the moment */
+const char bb_dev_null[] = "nul";
+#else
 const char bb_dev_null[] = "/dev/null";
+#endif
 
 const int const_int_0;
 const int const_int_1 = 1;
