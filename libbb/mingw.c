@@ -117,6 +117,14 @@ static int err_win_to_posix(DWORD winerr)
 	return error;
 }
 
+/*
+ * emulate msvcrt file handle table
+ */
+#define MAX_FD 256
+#define WX_APPEND 0x20
+#define WX_OPEN 0x01
+static int fd_table[MAX_FD];
+
 #undef open
 int mingw_open (const char *filename, int oflags, ...)
 {
@@ -134,7 +142,39 @@ int mingw_open (const char *filename, int oflags, ...)
 		if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY))
 			errno = EISDIR;
 	}
+	if (fd >= 0) {
+		fd_table[fd] = WX_OPEN;
+		if (oflags & O_APPEND)
+			fd_table[fd] |= WX_APPEND;
+	}
 	return fd;
+}
+
+#undef close
+int mingw_close (int fd)
+{
+	int ret = close(fd);
+	if (!ret)
+		fd_table[fd] = 0;
+	return ret;
+}
+
+#undef dup
+int mingw_dup (int fd)
+{
+	int ret = dup(fd);
+	if (ret != -1)
+		fd_table[ret] = fd_table[fd];
+	return ret;
+}
+
+#undef dup2
+int mingw_dup2 (int fd, int fdto)
+{
+	int ret = dup2(fd, fdto);
+	if (ret != -1)
+		fd_table[fdto] = fd_table[fd];
+	return ret;
 }
 
 static inline time_t filetime_to_time_t(const FILETIME *ft)
@@ -649,6 +689,7 @@ static pid_t mingw_spawnve(const char *cmd, const char **argv, char **env,
 	struct strbuf envblk, args;
 	unsigned flags;
 	BOOL ret;
+	int i, fd_end;
 
 	/* Determine whether or not we are associated to a console */
 	HANDLE cons = CreateFile("CONOUT$", GENERIC_WRITE,
@@ -681,6 +722,23 @@ static pid_t mingw_spawnve(const char *cmd, const char **argv, char **env,
 	si.hStdInput = (HANDLE) _get_osfhandle(0);
 	si.hStdOutput = (HANDLE) _get_osfhandle(1);
 	si.hStdError = (HANDLE) _get_osfhandle(2);
+
+	for (i = fd_end = 0;i < MAX_FD;i++)
+		if (fd_table[i] & WX_APPEND && fd_end <= i)
+			fd_end = i+1;
+	if (fd_end > 0) {
+		char *attr;
+		HANDLE *handle;
+		si.cbReserved2 = sizeof(unsigned) + (sizeof(char)+sizeof(HANDLE))*fd_end;
+		si.lpReserved2 = xmalloc(si.cbReserved2);
+		*((unsigned*)si.lpReserved2) = fd_end;
+		attr = (char*)((unsigned*)si.lpReserved2+1);
+		handle = (HANDLE*)(attr+fd_end);
+		for (i = 0;i < fd_end;i++,handle++,attr++) {
+			*attr = fd_table[i];
+			*handle = fd_table[i] & WX_OPEN ? (HANDLE)_get_osfhandle(i) : INVALID_HANDLE_VALUE;
+		}
+	}
 
 	/* concatenate argv, quoting args as we go */
 	strbuf_init(&args, 0);
@@ -723,6 +781,8 @@ static pid_t mingw_spawnve(const char *cmd, const char **argv, char **env,
 	ret = CreateProcess(cmd, args.buf, NULL, NULL, TRUE, flags,
 		env ? envblk.buf : NULL, NULL, &si, &pi);
 
+	if (si.lpReserved2)
+		free(si.lpReserved2);
 	if (env)
 		strbuf_release(&envblk);
 	strbuf_release(&args);

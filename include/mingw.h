@@ -141,6 +141,15 @@ int link(const char *oldpath, const char *newpath);
 int mingw_open (const char *filename, int oflags, ...);
 #define open mingw_open
 
+int mingw_close (int fd);
+#define close mingw_close
+
+int mingw_dup (int fd);
+#define dup mingw_dup
+
+int mingw_dup2 (int fd, int fdto);
+#define dup2 mingw_dup2
+
 char *mingw_getcwd(char *pointer, int len);
 #define getcwd mingw_getcwd
 
