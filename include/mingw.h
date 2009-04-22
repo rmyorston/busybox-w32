@@ -10,12 +10,13 @@ typedef int pid_t;
 #define S_IFLNK    0120000 /* Symbolic link */
 #define S_ISLNK(x) (((x) & S_IFMT) == S_IFLNK)
 #define S_ISSOCK(x) 0
-#define S_IRGRP 0
-#define S_IWGRP 0
-#define S_IXGRP 0
-#define S_ISGID 0
-#define S_IROTH 0
-#define S_IXOTH 0
+
+#define S_IRGRP (S_IRUSR >> 3)
+#define S_IWGRP (S_IWUSR >> 3)
+#define S_IXGRP (S_IXUSR >> 3)
+#define S_IROTH (S_IRGRP >> 3)
+#define S_IWOTH (S_IWGRP >> 3)
+#define S_IXOTH (S_IXGRP >> 3)
 
 #define WIFEXITED(x) ((unsigned)(x) < 259)	/* STILL_ACTIVE */
 #define WEXITSTATUS(x) ((x) & 0xff)
@@ -112,7 +113,7 @@ static inline int mingw_unlink(const char *pathname)
 static inline int waitpid(pid_t pid, unsigned *status, unsigned options)
 {
 	if (options == 0)
-		return _cwait(status, pid, 0);
+		return _cwait((int*)status, pid, 0);
 	errno = EINVAL;
 	return -1;
 }
@@ -192,7 +193,7 @@ int mingw_utime(const char *file_name, const struct utimbuf *times);
 #define utime mingw_utime
 
 pid_t mingw_spawnvpe(const char *cmd, const char **argv, char **env);
-void mingw_execvp(const char *cmd, char *const *argv);
+int mingw_execvp(const char *cmd, char *const *argv);
 #define execvp mingw_execvp
 
 static inline unsigned int git_ntohl(unsigned int x)

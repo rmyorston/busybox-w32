@@ -886,7 +886,7 @@ static void mingw_execve(const char *cmd, char *const *argv, char *const *env)
 	}
 }
 
-void mingw_execvp(const char *cmd, char *const *argv)
+int mingw_execvp(const char *cmd, char *const *argv)
 {
 	char **path = get_path_split();
 	char *prog = path_lookup(cmd, path, 0);
@@ -898,6 +898,7 @@ void mingw_execvp(const char *cmd, char *const *argv)
 		errno = ENOENT;
 
 	free_path_split(path);
+	return -1;
 }
 
 char **copy_environ()
@@ -1216,3 +1217,33 @@ int link(const char *oldpath, const char *newpath)
 	}
 	return 0;
 }
+
+char *strsep(char **stringp, const char *delim)
+{
+	char *s, *old_stringp;
+	if (!*stringp)
+		return NULL;
+	old_stringp = s = *stringp;
+	while (*s) {
+		if (strchr(delim, *s)) {
+			*s = '\0';
+			*stringp = s+1;
+			return old_stringp;
+		}
+		s++;
+	}
+	*stringp = NULL;
+	return old_stringp;
+}
+char *realpath(const char *path, char *resolved_path)
+{
+	return strcpy(resolved_path, path);
+}
+char *strptime(const char *s, const char *format, struct tm *tm)
+{
+	return NULL;
+}
+void gitunsetenv(const char *env)
+{
+}
+
