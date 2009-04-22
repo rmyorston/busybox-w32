@@ -4,6 +4,8 @@
 #
 # Licensed under the GPL v2, see the file LICENSE in this tarball.
 
+ifndef CONFIG_MINGW32
 lib-y := uidgid_get.o
+endif
 
 lib-$(CONFIG_USE_BB_PWD_GRP) += pwd_grp.o
