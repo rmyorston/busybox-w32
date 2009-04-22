@@ -618,8 +618,15 @@ static char *path_lookup(const char *cmd, char **path, int exe_only)
 	int len = strlen(cmd);
 	int isexe = len >= 4 && !strcasecmp(cmd+len-4, ".exe");
 
-	if (strchr(cmd, '/') || strchr(cmd, '\\'))
+	if (strchr(cmd, '/') || strchr(cmd, '\\')) {
+		if (!isexe) {
+			char path[MAX_PATH];
+			sprintf(path, "%s.exe", cmd);
+			if (!access(path, F_OK))
+				return xstrdup(path);
+		}
 		prog = xstrdup(cmd);
+	}
 
 	while (!prog && *path)
 		prog = lookup_prog(*path++, cmd, isexe, exe_only);
