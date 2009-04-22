@@ -32,6 +32,13 @@ char *find_execable(const char *filename)
 		n = strchr(p, ':');
 		if (n)
 			*n++ = '\0';
+#ifdef __MINGW32__
+		else {
+			n = strchr(p, ';');
+			if (n)
+				*n++ = '\0';
+		}
+#endif
 		if (*p != '\0') { /* it's not a PATH="foo::bar" situation */
 			p = concat_path_file(p, filename);
 			if (execable_file(p)) {
