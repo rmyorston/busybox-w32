@@ -673,6 +673,10 @@ int main(int argc, char **argv)
 	s = strrchr(applet_name, '/');
 	if (s)
 		applet_name = s + 1;
+#ifdef __MINGW32__
+	else if ((s = strrchr(applet_name, '\\')))
+		applet_name = s + 1;
+#endif
 
 	parse_config_file(); /* ...maybe, if FEATURE_SUID_CONFIG */
 
