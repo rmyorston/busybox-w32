@@ -11,6 +11,10 @@
  */
 #include "libbb.h"
 
+#ifdef __MINGW32__
+#define NAME_MAX 256
+#endif
+
 static const struct suffix_mult split_suffices[] = {
 #if ENABLE_FEATURE_SPLIT_FANCY
 	{ "b", 512 },
