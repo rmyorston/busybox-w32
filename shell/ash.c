@@ -8453,6 +8453,10 @@ evalcommand(union node *cmd, int flags)
 	/* Execute the command. */
 	switch (cmdentry.cmdtype) {
 	default:
+#ifdef __MINGW32__
+		shellspawn((const char**)argv, path, cmdentry.u.index, varlist.list);
+		break;
+#else
 		/* Fork off a child process if necessary. */
 		if (!(flags & EV_EXIT) || trap[0]) {
 			INT_OFF;
@@ -8467,6 +8471,7 @@ evalcommand(union node *cmd, int flags)
 		listsetvar(varlist.list, VEXPORT|VSTACK);
 		shellexec(argv, path, cmdentry.u.index);
 		/* NOTREACHED */
+#endif
 
 	case CMDBUILTIN:
 		cmdenviron = varlist.list;

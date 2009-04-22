@@ -893,3 +893,151 @@ subshell_run()
 
 	die("subshell ended unexpectedly");
 }
+
+static int
+tryspawn(const char *cmd, const char **argv, const char * const*envp)
+{
+	struct child_process cp;
+
+	memset(&cp, 0, sizeof(cp));
+
+	cp.env = envp;
+#if ENABLE_FEATURE_SH_STANDALONE
+	if (strchr(cmd, '/') == NULL) {
+		const struct bb_applet *a;
+
+		a = find_applet_by_name(cmd);
+		if (a) {
+			const char **new_argv;
+			const char **argp;
+			int retval;
+
+			for (argp = argv;*argp;argp++);
+			new_argv = xmalloc(sizeof(const char *)*(argp - argv + 2));
+			new_argv[0] = CONFIG_BUSYBOX_EXEC_PATH;
+			memcpy(&new_argv[1], &argv[0], (argp - argv + 1)*sizeof(const char*));
+			cp.argv = new_argv;
+			trace_argv_printf(new_argv, "git-box: applet:");
+			retval = set_exitstatus(run_command(&cp), new_argv, NULL);
+			free(new_argv);
+			return retval;
+		}
+	}
+#endif
+
+	/* FIXME
+	 * Need to copy vartab atab cmdtable localvars to the subshell
+	 */
+	cp.argv = argv;
+	trace_argv_printf(argv, "git-box: spawn:");
+	return set_exitstatus(run_command(&cp), argv, NULL);
+}
+
+static const char * const*
+shellspawn_getenv(const struct strlist *newvars)
+{
+	struct var **vpp;
+	struct var *vp;
+	const struct strlist *vlp;
+	char **ep;
+	int mask;
+	int on = VEXPORT;
+	int off = VUNSET;
+
+	STARTSTACKSTR(ep);
+	vpp = vartab;
+	mask = on | off;
+	do {
+		for (vp = *vpp; vp; vp = vp->next) {
+			if ((vp->flags & mask) == on) {
+				if (ep == stackstrend())
+					ep = growstackstr();
+				for (vlp = newvars;vlp;vlp = vlp->next)
+					if (varequal(vlp->text, vp->text))
+						break;
+				if (!vlp)
+					*ep++ = (char *) vp->text;
+			}
+		}
+	} while (++vpp < vartab + VTABSIZE);
+	for (vlp = newvars;vlp;vlp = vlp->next) {
+		if (ep == stackstrend())
+			ep = growstackstr();
+		*ep++ = vlp->text;
+	}
+	if (ep == stackstrend())
+		ep = growstackstr();
+	*ep++ = NULL;
+	return grabstackstr(ep);
+}
+
+static int
+shellspawn(const char **argv, const char *path, int idx, struct strlist *varlist)
+{
+	char *cmdname;
+	int e;
+	const char* const* envp;
+
+	/*clearredir(1);*/
+	/*listsetvar(varlist.list, VEXPORT|VSTACK);*/
+	/*envp = listvars(VEXPORT, VUNSET, 0);*/
+	envp = shellspawn_getenv(varlist);
+	if (strchr(argv[0], '/')
+#if ENABLE_FEATURE_SH_STANDALONE
+	 || find_applet_by_name(argv[0])
+#endif
+	) {
+		e = tryspawn(argv[0], argv, envp);
+	} else {
+		e = ENOENT;
+		while ((cmdname = padvance(&path, argv[0])) != NULL) {
+			if (--idx < 0 && pathopt == NULL) {
+				e = tryspawn(cmdname, argv, envp);
+				if (e != -1) break;
+			}
+			stunalloc(cmdname);
+		}
+	}
+
+	if (e == -1) {
+		e = errno;
+		switch (e) {
+		case EACCES:
+			exitstatus = 126;
+			break;
+		case ENOENT:
+			exitstatus = 127;
+			break;
+		default:
+			exitstatus = 2;
+			break;
+		}
+		ash_msg_and_raise(EXEXEC, "%s: %s", argv[0], errmsg(e, "not found"));
+	}
+	return e;
+}
+
+static int set_exitstatus(int val, const char **argv,int *out)
+{
+	if (!out)
+		out = &exitstatus;
+	switch (val) {
+		case -ERR_RUN_COMMAND_WAITPID_WRONG_PID:
+			if (argv)
+				ash_msg_and_raise_error("%s: Waitpid on wrong PID",argv[0]);
+			else
+				ash_msg_and_raise_error("Waitpid on wrong PID");
+			break;
+
+		case -ERR_RUN_COMMAND_WAITPID_SIGNAL:
+		case -ERR_RUN_COMMAND_WAITPID_NOEXIT:
+			*out = -val + 128;
+			return 0;
+
+		default:
+			*out = -val;
+			return 0;
+	}
+	return -1;
+}
+
