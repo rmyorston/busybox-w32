@@ -22,8 +22,9 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "cache.h"
-#include "quote.h"
+#include "libbb.h"
+#include "strbuf.h"
+#include "git.h"
 
 /* Get a trace file descriptor from GIT_TRACE env variable. */
 static int get_trace_fd(int *need_close)

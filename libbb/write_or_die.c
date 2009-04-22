@@ -1,4 +1,5 @@
-#include "cache.h"
+#include "libbb.h"
+#include "git.h"
 
 /*
  * Some cases use stdio, but want to flush after the write

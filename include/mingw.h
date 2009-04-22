@@ -1,12 +1,25 @@
 #include <winsock2.h>
+#include <fnmatch.h>
 
 /*
  * things that are not available in header files
  */
 
+typedef int gid_t;
+typedef int uid_t;
 typedef int pid_t;
 #define hstrerror strerror
 
+#define S_ISUID 04000
+#define S_ISGID 02000
+#define S_ISVTX 01000
+#ifndef S_IRWXU
+#define S_IRWXU (S_IRUSR | S_IWUSR | S_IXUSR)
+#endif
+#define S_IRWXG (S_IRWXU >> 3)
+#define S_IRWXO (S_IRWXG >> 3)
+
+#define S_IFSOCK 0140000
 #define S_IFLNK    0120000 /* Symbolic link */
 #define S_ISLNK(x) (((x) & S_IFMT) == S_IFLNK)
 #define S_ISSOCK(x) 0
@@ -134,6 +147,7 @@ struct passwd *getpwuid(int uid);
 int setitimer(int type, struct itimerval *in, struct itimerval *out);
 int sigaction(int sig, struct sigaction *in, struct sigaction *out);
 int link(const char *oldpath, const char *newpath);
+time_t tm_to_time_t(const struct tm *tm);
 
 /*
  * replacements of existing functions
@@ -237,7 +251,7 @@ char **env_setenv(char **env, const char *name);
 /*
  * A replacement of main() that ensures that argv[0] has a path
  */
-
+/*
 #define main(c,v) dummy_decl_mingw_main(); \
 static int mingw_main(); \
 int main(int argc, const char **argv) \
@@ -246,3 +260,4 @@ int main(int argc, const char **argv) \
 	return mingw_main(argc, argv); \
 } \
 static int mingw_main(c,v)
+*/

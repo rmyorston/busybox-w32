@@ -1,5 +1,7 @@
-#include "cache.h"
+#include "libbb.h"
+#include "strbuf.h"
 #include "quote.h"
+#include "git.h"
 
 int quote_path_fully = 1;
 

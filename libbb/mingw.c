@@ -1,6 +1,6 @@
-#include "../git-compat-util.h"
+#include "libbb.h"
 #include "win32.h"
-#include "../strbuf.h"
+#include "strbuf.h"
 #include "run-command.h"
 
 unsigned int _CRT_fmode = _O_BINARY;
@@ -1277,7 +1277,6 @@ char *strptime(const char *s, const char *format, struct tm *tm)
 {
 	return NULL;
 }
-void gitunsetenv(const char *env)
+void unsetenv(const char *env)
 {
 }
-

@@ -1,5 +1,6 @@
-#include "cache.h"
-#include "refs.h"
+#include "libbb.h"
+#include "strbuf.h"
+#include "git.h"
 
 int prefixcmp(const char *str, const char *prefix)
 {
@@ -357,20 +358,4 @@ int strbuf_read_file(struct strbuf *sb, const char *path, size_t hint)
 		return -1;
 
 	return len;
-}
-
-int strbuf_branchname(struct strbuf *sb, const char *name)
-{
-	int len = strlen(name);
-	if (interpret_branch_name(name, sb) == len)
-		return 0;
-	strbuf_add(sb, name, len);
-	return len;
-}
-
-int strbuf_check_branch_ref(struct strbuf *sb, const char *name)
-{
-	strbuf_branchname(sb, name);
-	strbuf_splice(sb, 0, 0, "refs/heads/", 11);
-	return check_ref_format(sb->buf);
 }
