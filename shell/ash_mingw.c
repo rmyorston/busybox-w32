@@ -804,9 +804,20 @@ evalbackcmd_fp(union node *n, int flags)
 	eflag = 0;
 	evaltree(n, EV_EXIT); /* actually evaltreenr... */
 }
+
+static void
+evalsubshell_fp(union node *n, int flags)
+{
+	trace_printf("ash: subshell: %s\n",__PRETTY_FUNCTION__);
+	INT_ON;
+	expredir(n->nredir.redirect);
+	redirect(n->nredir.redirect, 0);
+	evaltreenr(n->nredir.n, flags);
+}
 /* entry names should not be too long */
 struct forkpoint forkpoints[] = {
 	{ "evalbackcmd", evalbackcmd_fp },
+	{ "evalsubshell", evalsubshell_fp },
 	{ NULL, NULL },
 };
 

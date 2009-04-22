@@ -7766,13 +7766,21 @@ evalcase(union node *n, int flags)
 static void
 evalsubshell(union node *n, int flags)
 {
+#ifndef __MINGW32__
 	struct job *jp;
+#endif
 	int backgnd = (n->type == NBACKGND);
 	int status;
 
 	expredir(n->nredir.redirect);
-	if (!backgnd && flags & EV_EXIT && !trap[0])
-		goto nofork;
+	if (!backgnd && flags & EV_EXIT && !trap[0]) {
+		redirect(n->nredir.redirect, 0);
+		evaltreenr(n->nredir.n, flags);
+	} else {
+#ifdef __MINGW32__
+	status = forkshell("evalsubshell", n, backgnd ? (flags | EV_EXIT | EV_TESTED) : (flags | EV_EXIT));
+	}
+#else
 	INT_OFF;
 	jp = makejob(n, 1);
 	if (forkshell(jp, n, backgnd) == 0) {
@@ -7780,14 +7788,15 @@ evalsubshell(union node *n, int flags)
 		flags |= EV_EXIT;
 		if (backgnd)
 			flags &=~ EV_TESTED;
- nofork:
 		redirect(n->nredir.redirect, 0);
 		evaltreenr(n->nredir.n, flags);
 		/* never returns */
 	}
+	}
 	status = 0;
 	if (! backgnd)
 		status = waitforjob(jp);
+#endif
 	exitstatus = status;
 	INT_ON;
 }
