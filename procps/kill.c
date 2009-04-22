@@ -24,6 +24,7 @@
  * This is needed to avoid collision with kill -9 ... syntax
  */
 
+#ifndef __MINGW32__
 int kill_main(int argc, char **argv);
 int kill_main(int argc, char **argv)
 {
@@ -183,3 +184,4 @@ do_it_now:
 	}
 	return errors;
 }
+#endif
