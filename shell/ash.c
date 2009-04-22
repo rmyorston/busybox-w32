@@ -5365,6 +5365,9 @@ struct backcmd {                /* result of evalbackcmd */
 	int fd;                 /* file descriptor to read from */
 	char *buf;              /* buffer */
 	int nleft;              /* number of chars in buffer */
+#ifdef __MINGW32__
+	struct forkshell fs;
+#endif
 	struct job *jp;         /* job structure for command */
 };
 
@@ -12808,11 +12811,22 @@ procargs(int argc, char **argv)
 	int i;
 	const char *xminusc;
 	char **xargv;
+	long int subash_handle;
 
 	xargv = argv;
 	arg0 = xargv[0];
 	if (argc > 0)
 		xargv++;
+#ifdef __MINGW32__
+	if (*xargv && !strncmp(*xargv,"subash",6)) {
+		if (sscanf(*xargv+6,"%lx:%s",&subash_handle,subash_entry) == 2) {
+			xargv++;
+			subash_fd = _open_osfhandle(subash_handle, O_NOINHERIT);
+		}
+		else
+			subash_fd = -1;
+	}
+#endif
 	for (i = 0; i < NOPTS; i++)
 		optlist[i] = 2;
 	argptr = xargv;
@@ -12898,6 +12912,10 @@ reset(void)
 #if PROFILE
 static short profile_buf[16384];
 extern int etext();
+#endif
+
+#ifdef __MINGW32__
+#include "ash_mingw.c"
 #endif
 
 /*
@@ -13014,6 +13032,9 @@ int ash_main(int argc, char **argv)
 		}
 #endif
  state4: /* XXX ??? - why isn't this before the "if" statement */
+#ifdef __MINGW32__
+		subshell_run();
+#endif
 		cmdloop(1);
 	}
 #if PROFILE
