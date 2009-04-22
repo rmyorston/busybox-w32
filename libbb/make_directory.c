@@ -30,7 +30,7 @@ int bb_make_directory (char *path, long mode, int flags)
 {
 	mode_t mask;
 	const char *fail_msg;
-	char *s = path;
+	char *s = path,*s2;
 	char c;
 	struct stat st;
 
@@ -51,11 +51,12 @@ int bb_make_directory (char *path, long mode, int flags)
 			/* Bypass leading non-'/'s and then subsequent '/'s. */
 			while (*s) {
 				if (*s == '/') {
+					s2 = s;
+					c = *s2;	/* Save the current char */
+					*s2 = 0;	/* and replace it with nul. */
 					do {
 						++s;
 					} while (*s == '/');
-					c = *s;		/* Save the current char */
-					*s = 0;		/* and replace it with nul. */
 					break;
 				}
 				++s;
@@ -94,7 +95,7 @@ int bb_make_directory (char *path, long mode, int flags)
 		}
 
 		/* Remove any inserted nul from the path (recursive mode). */
-		*s = c;
+		*s2 = c;
 
 	} while (1);
 
