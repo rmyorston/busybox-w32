@@ -5384,7 +5384,11 @@ evalbackcmd(union node *n, struct backcmd *result)
 	result->fd = -1;
 	result->buf = NULL;
 	result->nleft = 0;
+#ifdef __MINGW32__
+	memset(&result->fs, 0, sizeof(result->fs));
+#else
 	result->jp = NULL;
+#endif
 	if (n == NULL) {
 		goto out;
 	}
@@ -5393,6 +5397,19 @@ evalbackcmd(union node *n, struct backcmd *result)
 	herefd = -1;
 
 	{
+#ifdef __MINGW32__
+		result->fs.fp = "evalbackcmd";
+		result->fs.n = n;
+		result->fs.flags = EV_EXIT;
+		result->fs.cmd.no_stdin = 1;
+		result->fs.cmd.out = -1;
+		forkshell_init(&result->fs);
+		if (start_command(&result->fs.cmd))
+			ash_msg_and_raise_error("unable to spawn shell");
+		forkshell_transfer(&result->fs);
+		forkshell_transfer_done(&result->fs);
+		result->fd = result->fs.cmd.out;
+#else
 		int pip[2];
 		struct job *jp;
 
@@ -5414,6 +5431,7 @@ evalbackcmd(union node *n, struct backcmd *result)
 		close(pip[1]);
 		result->fd = pip[0];
 		result->jp = jp;
+#endif
 	}
 	herefd = saveherefd;
  out:
@@ -5462,10 +5480,15 @@ expbackq(union node *cmd, int quoted, int quotes)
 
 	if (in.buf)
 		free(in.buf);
+#ifdef __MINGW32__
+	set_exitstatus(finish_command(&in.fs.cmd), in.fs.cmd.argv, &back_exitstatus);
+	forkshell_cleanup(&in.fs);
+#else
 	if (in.fd >= 0) {
 		close(in.fd);
 		back_exitstatus = waitforjob(in.jp);
 	}
+#endif
 	INT_ON;
 
 	/* Eat all trailing newlines */

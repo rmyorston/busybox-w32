@@ -788,8 +788,25 @@ struct forkpoint {
 	void (*func)(union node *,int);
 };
 
+static void
+evalbackcmd_fp(union node *n, int flags)
+{
+	trace_printf("ash: subshell: %s\n",__PRETTY_FUNCTION__);
+	FORCE_INT_ON;
+	/*
+	close(pip[0]);
+	if (pip[1] != 1) {
+		close(1);
+		copyfd(pip[1], 1);
+		close(pip[1]);
+	}
+	*/
+	eflag = 0;
+	evaltree(n, EV_EXIT); /* actually evaltreenr... */
+}
 /* entry names should not be too long */
 struct forkpoint forkpoints[] = {
+	{ "evalbackcmd", evalbackcmd_fp },
 	{ NULL, NULL },
 };
 
