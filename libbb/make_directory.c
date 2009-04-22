@@ -60,6 +60,14 @@ int bb_make_directory (char *path, long mode, int flags)
 		c = 0;
 
 		if (flags & FILEUTILS_RECUR) {	/* Get the parent. */
+#ifdef __MINGW32__
+			/* skip drive letter and initial slashes */
+			if (s == path && *s && s[1] == ':') {
+				s += 2;
+				while (*s == '/')
+					s++;
+			}
+#endif
 			/* Bypass leading non-'/'s and then subsequent '/'s. */
 			while (*s) {
 				if (*s == '/') {
