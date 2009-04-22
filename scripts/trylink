@@ -10,6 +10,7 @@ try() {
     && { rm busybox_ld.err; exit 0; }
 }
 
+try "-lws2_32" "$@"
 try "" "$@"
 try "-lm" "$@"
 try "-lcrypt" "$@"
