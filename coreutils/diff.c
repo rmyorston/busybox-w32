@@ -1174,6 +1174,7 @@ int diff_main(int argc, char **argv)
 	char *U_opt;
 	char *f1, *f2;
 	llist_t *L_arg = NULL;
+	int flags = 0;
 
 	/* exactly 2 params; collect multiple -L <label> */
 	opt_complementary = "=2:L::";
@@ -1207,11 +1208,21 @@ int diff_main(int argc, char **argv)
 	if (LONE_DASH(f1)) {
 		fstat(STDIN_FILENO, &stb1);
 		gotstdin = 1;
+#ifdef __MINGW32__
+	} else if ( !strncmp( f1, "/dev/null", 10 ) ) {
+		flags |= D_EMPTY1;
+		stb1.st_mode = S_IFREG;
+#endif
 	} else
 		xstat(f1, &stb1);
 	if (LONE_DASH(f2)) {
 		fstat(STDIN_FILENO, &stb2);
 		gotstdin = 1;
+#ifdef __MINGW32__
+	} else if ( !strncmp( f2, "/dev/null", 10 ) ) {
+		flags |= D_EMPTY2;
+		stb2.st_mode = S_IFREG;
+#endif
 	} else
 		xstat(f2, &stb2);
 	if (gotstdin && (S_ISDIR(stb1.st_mode) || S_ISDIR(stb2.st_mode)))
@@ -1236,7 +1247,7 @@ int diff_main(int argc, char **argv)
  * This can be fixed (volunteers?) */
 		if (!S_ISREG(stb1.st_mode) || !S_ISREG(stb2.st_mode))
 			bb_error_msg_and_die("can't diff non-seekable stream");
-		print_status(diffreg(f1, f2, 0), f1, f2, NULL);
+		print_status(diffreg(f1, f2, flags), f1, f2, NULL);
 	}
 	return status;
 }
