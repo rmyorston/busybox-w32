@@ -584,7 +584,11 @@ static int list_single(struct dnode *dn)
 			column += printf("%7ld ", (long) dn->dstat.st_ino);
 			break;
 		case LIST_BLOCKS:
+#ifdef __MINGW32__
+			column += printf("%4"OFF_FMT"d ", 0);
+#else
 			column += printf("%4"OFF_FMT"d ", (off_t) dn->dstat.st_blocks >> 1);
+#endif
 			break;
 		case LIST_MODEBITS:
 			column += printf("%-10s ", (char *) bb_mode_string(dn->dstat.st_mode));
