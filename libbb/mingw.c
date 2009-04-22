@@ -251,8 +251,10 @@ int mingw_utime (const char *file_name, const struct utimbuf *times)
 	if ((fh = open(file_name, O_RDWR | O_BINARY)) < 0)
 		return -1;
 
-	time_t_to_filetime(times->modtime, &mft);
-	time_t_to_filetime(times->actime, &aft);
+	if (times) {
+		time_t_to_filetime(times->modtime, &mft);
+		time_t_to_filetime(times->actime, &aft);
+	}
 	if (!SetFileTime((HANDLE)_get_osfhandle(fh), NULL, &aft, &mft)) {
 		errno = EINVAL;
 		rc = -1;
