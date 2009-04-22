@@ -1,6 +1,7 @@
 #include "../git-compat-util.h"
 #include "win32.h"
 #include "../strbuf.h"
+#include "run-command.h"
 
 unsigned int _CRT_fmode = _O_BINARY;
 
@@ -803,6 +804,26 @@ static pid_t mingw_spawnve(const char *cmd, const char **argv, char **env,
 	return (pid_t)pi.hProcess;
 }
 
+static int spawn_gitbox_shell(struct child_process *cp, const char *cmd, const char **argv)
+{
+	int argc = 0;
+	const char **argv2;
+	int ret;
+
+	while (argv[argc]) argc++;
+	argv2 = xmalloc(sizeof(*argv) * (argc+3));
+	argv2[0] = CONFIG_BUSYBOX_EXEC_PATH;
+	argv2[1] = "sh";
+	argv2[2] = cmd;
+	memcpy(&argv2[3], &argv[1], sizeof(*argv)*argc);
+
+	memset(cp, 0, sizeof(*cp));
+	cp->argv = argv2;
+	ret = start_command(cp);
+	free(argv2);
+	return ret;
+}
+
 pid_t mingw_spawnvpe(const char *cmd, const char **argv, char **env)
 {
 	pid_t pid;
@@ -816,6 +837,10 @@ pid_t mingw_spawnvpe(const char *cmd, const char **argv, char **env)
 	else {
 		const char *interpr = parse_interpreter(prog);
 
+		if (interpr && !strcmp(interpr, "sh")) {
+			struct child_process cp;
+			return spawn_gitbox_shell(&cp, prog, argv) ? -1 : cp.pid;
+		}
 		if (interpr) {
 			const char *argv0 = argv[0];
 			char *iprog = path_lookup(interpr, path, 1);
@@ -849,7 +874,16 @@ static int try_shell_exec(const char *cmd, char *const *argv, char **env)
 		return 0;
 	path = get_path_split();
 	prog = path_lookup(interpr, path, 1);
-	if (prog) {
+	if (!prog) {
+		free_path_split(path);
+		return 0;
+	}
+	/* prefer gitbox for shell */
+	if (!strcmp(interpr, "sh")) {
+		struct child_process cp;
+		return spawn_gitbox_shell(&cp, prog, argv) ? 1 : WEXITSTATUS(finish_command(&cp));
+	}
+	else {
 		int argc = 0;
 		const char **argv2;
 		while (argv[argc]) argc++;
