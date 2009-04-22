@@ -655,6 +655,9 @@ int *const bb_errno __attribute__ ((section (".data")));
 int main(int argc, char **argv)
 {
 	const char *s;
+#ifdef __MINGW32__
+	int len;
+#endif
 
 #ifdef __GLIBC__
 	(*(int **)&bb_errno) = __errno_location();
@@ -676,6 +679,9 @@ int main(int argc, char **argv)
 #ifdef __MINGW32__
 	else if ((s = strrchr(applet_name, '\\')))
 		applet_name = s + 1;
+	len = strlen(applet_name);
+	if (len > 4 && !strcmp(applet_name+len-4, ".exe"))
+		argv[0][applet_name-argv[0]+len-4] = '\0';
 #endif
 
 	parse_config_file(); /* ...maybe, if FEATURE_SUID_CONFIG */
