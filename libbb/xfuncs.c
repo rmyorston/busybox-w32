@@ -452,9 +452,9 @@ char *xasprintf(const char *format, ...)
 {
 	va_list p;
 	int r;
-	char *string_ptr;
+	char *string_ptr = xmalloc(1024);
 
-#if 1
+#if 0
 	// GNU extension
 	va_start(p, format);
 	r = vasprintf(&string_ptr, format, p);
@@ -462,26 +462,30 @@ char *xasprintf(const char *format, ...)
 #else
 	// Bloat for systems that haven't got the GNU extension.
 	va_start(p, format);
-	r = vsnprintf(NULL, 0, format, p);
+	r = vsnprintf(string_ptr, 1024, format, p);
 	va_end(p);
-	string_ptr = xmalloc(r+1);
-	va_start(p, format);
-	r = vsnprintf(string_ptr, r+1, format, p);
-	va_end(p);
+	if (r > 0) {
+		free(string_ptr);
+		r += 2;
+		string_ptr = xmalloc(r);
+		va_start(p, format);
+		r = vsnprintf(string_ptr, r, format, p);
+		va_end(p);
+	}
 #endif
 
 	if (r < 0) bb_error_msg_and_die(bb_msg_memory_exhausted);
 	return string_ptr;
 }
 
-#if 0 /* If we will ever meet a libc which hasn't [f]dprintf... */
+#ifdef __MINGW32__ /* If we will ever meet a libc which hasn't [f]dprintf... */
 int fdprintf(int fd, const char *format, ...)
 {
 	va_list p;
 	int r;
-	char *string_ptr;
+	char *string_ptr = xmalloc(1024);
 
-#if 1
+#if 0
 	// GNU extension
 	va_start(p, format);
 	r = vasprintf(&string_ptr, format, p);
@@ -489,12 +493,16 @@ int fdprintf(int fd, const char *format, ...)
 #else
 	// Bloat for systems that haven't got the GNU extension.
 	va_start(p, format);
-	r = vsnprintf(NULL, 0, format, p);
+	r = vsnprintf(string_ptr, 1024, format, p);
 	va_end(p);
-	string_ptr = xmalloc(r+1);
-	va_start(p, format);
-	r = vsnprintf(string_ptr, r+1, format, p);
-	va_end(p);
+	if (r > 0) {
+		free(string_ptr);
+		r += 2;
+		string_ptr = xmalloc(r);
+		va_start(p, format);
+		r = vsnprintf(string_ptr, r, format, p);
+		va_end(p);
+	}
 #endif
 
 	if (r >= 0) {
