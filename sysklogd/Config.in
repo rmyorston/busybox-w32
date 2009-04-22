@@ -4,6 +4,7 @@
 #
 
 menu "System Logging Utilities"
+	depends on !MINGW32
 
 config SYSLOGD
 	bool "syslogd"

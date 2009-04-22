@@ -4,6 +4,7 @@
 #
 
 menu "Linux Ext2 FS Progs"
+	depends on !MINGW32
 
 config CHATTR
 	bool "chattr"

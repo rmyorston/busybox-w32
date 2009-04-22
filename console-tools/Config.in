@@ -4,6 +4,7 @@
 #
 
 menu "Console Utilities"
+	depends on !MINGW32
 
 config CHVT
 	bool "chvt"

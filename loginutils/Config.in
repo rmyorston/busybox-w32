@@ -4,6 +4,7 @@
 #
 
 menu "Login/Password Management Utilities"
+	depends on !MINGW32
 
 config FEATURE_SHADOWPASSWDS
 	bool "Support for shadow passwords"

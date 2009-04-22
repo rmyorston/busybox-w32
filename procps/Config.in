@@ -4,6 +4,7 @@
 #
 
 menu "Process Utilities"
+	depends on !MINGW32
 
 config FREE
 	bool "free"

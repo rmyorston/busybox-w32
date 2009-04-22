@@ -4,6 +4,7 @@
 #
 
 menu "Miscellaneous Utilities"
+	depends on !MINGW32
 
 config ADJTIMEX
 	bool "adjtimex"

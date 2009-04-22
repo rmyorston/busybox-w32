@@ -4,6 +4,7 @@
 #
 
 menu "Linux System Utilities"
+	depends on !MINGW32
 
 config DMESG
 	bool "dmesg"

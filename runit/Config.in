@@ -4,6 +4,7 @@
 #
 
 menu "Runit Utilities"
+	depends on !MINGW32
 
 config RUNSV
 	bool "runsv"

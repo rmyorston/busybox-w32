@@ -4,6 +4,7 @@
 #
 
 menu "Init Utilities"
+	depends on !MINGW32
 
 config INIT
 	bool "init"

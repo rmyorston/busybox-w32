@@ -4,6 +4,7 @@
 #
 
 menu "ipsvd utilities"
+	depends on !MINGW32
 
 config TCPSVD
 	bool "tcpsvd"

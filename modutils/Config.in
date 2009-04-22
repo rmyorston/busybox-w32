@@ -4,6 +4,7 @@
 #
 
 menu "Linux Module Utilities"
+	depends on !MINGW32
 
 config INSMOD
 	bool "insmod"
