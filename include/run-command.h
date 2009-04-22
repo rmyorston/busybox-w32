@@ -13,6 +13,9 @@ enum {
 #define IS_RUN_COMMAND_ERR(x) (-(x) >= ERR_RUN_COMMAND_FORK)
 
 struct child_process {
+#ifdef __MINGW32__
+	const char *cmd; /* in case the command is not argv[0] */
+#endif
 	const char **argv;
 	pid_t pid;
 	/*

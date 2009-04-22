@@ -812,12 +812,12 @@ static int spawn_gitbox_shell(struct child_process *cp, const char *cmd, const c
 
 	while (argv[argc]) argc++;
 	argv2 = xmalloc(sizeof(*argv) * (argc+3));
-	argv2[0] = CONFIG_BUSYBOX_EXEC_PATH;
-	argv2[1] = "sh";
-	argv2[2] = cmd;
-	memcpy(&argv2[3], &argv[1], sizeof(*argv)*argc);
+	argv2[0] = "sh";
+	argv2[1] = cmd;
+	memcpy(&argv2[2], &argv[1], sizeof(*argv)*argc);
 
 	memset(cp, 0, sizeof(*cp));
+	cp->cmd = CONFIG_BUSYBOX_EXEC_PATH;
 	cp->argv = argv2;
 	ret = start_command(cp);
 	free(argv2);

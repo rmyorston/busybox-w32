@@ -849,7 +849,7 @@ static int
 forkshell_init(struct forkshell *fs)
 {
 	static char argv2[32];
-	static const char *argv[4] = { NULL, "sh", argv2, NULL };
+	static const char *argv[4] = { "sh", argv2, NULL };
 	int p[2];
 
 	if (_pipe(p, 0, 0) < 0)
@@ -862,7 +862,7 @@ forkshell_init(struct forkshell *fs)
 	 */
 	sprintf(argv2, "subash%lx:%s", _get_osfhandle(p[0]), fs->fp);
 
-	argv[0] = CONFIG_BUSYBOX_EXEC_PATH;
+	fs->cmd.cmd = CONFIG_BUSYBOX_EXEC_PATH;
 	fs->cmd.argv = argv;
 	fs->fd = p[1];
 	return 0;
@@ -959,18 +959,12 @@ tryspawn(const char *cmd, const char **argv, const char * const*envp)
 
 		a = find_applet_by_name(cmd);
 		if (a) {
-			const char **new_argv;
-			const char **argp;
 			int retval;
 
-			for (argp = argv;*argp;argp++);
-			new_argv = xmalloc(sizeof(const char *)*(argp - argv + 2));
-			new_argv[0] = CONFIG_BUSYBOX_EXEC_PATH;
-			memcpy(&new_argv[1], &argv[0], (argp - argv + 1)*sizeof(const char*));
-			cp.argv = new_argv;
-			trace_argv_printf(new_argv, "git-box: applet:");
-			retval = set_exitstatus(run_command(&cp), new_argv, NULL);
-			free(new_argv);
+			cp.cmd = CONFIG_BUSYBOX_EXEC_PATH;
+			cp.argv = argv;
+			trace_argv_printf(argv, "git-box: applet:");
+			retval = set_exitstatus(run_command(&cp), argv, NULL);
 			return retval;
 		}
 	}
@@ -979,6 +973,7 @@ tryspawn(const char *cmd, const char **argv, const char * const*envp)
 	/* FIXME
 	 * Need to copy vartab atab cmdtable localvars to the subshell
 	 */
+	cp.cmd = cmd;
 	cp.argv = argv;
 	trace_argv_printf(argv, "git-box: spawn:");
 	return set_exitstatus(run_command(&cp), argv, NULL);

@@ -174,7 +174,7 @@ int start_command(struct child_process *cmd)
 	}
 #endif
 
-	cmd->pid = mingw_spawnvpe(cmd->argv[0], cmd->argv, env);
+	cmd->pid = mingw_spawnvpe(cmd->cmd ? cmd->cmd : cmd->argv[0], cmd->argv, env);
 
 	if (cmd->env)
 		free_environ(env);
