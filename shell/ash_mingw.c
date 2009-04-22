@@ -823,11 +823,24 @@ evalpipe_fp(union node *n,int flags)
 	evaltreenr(n, flags);
 }
 
+static void
+openhere_fp(union node *redir, int flags)
+{
+	trace_printf("ash: subshell: %s\n",__PRETTY_FUNCTION__);
+	if (redir->type == NHERE) {
+		size_t len = strlen(redir->nhere.doc->narg.text);
+		full_write(1, redir->nhere.doc->narg.text, len);
+	} else
+		expandhere(redir->nhere.doc, 1);
+	_exit(0);
+}
+
 /* entry names should not be too long */
 struct forkpoint forkpoints[] = {
 	{ "evalbackcmd", evalbackcmd_fp },
 	{ "evalsubshell", evalsubshell_fp },
 	{ "evalpipe", evalpipe_fp },
+	{ "openhere", openhere_fp },
 	{ NULL, NULL },
 };
 
@@ -1219,4 +1232,34 @@ evalpipe(union node *n, int flags)
 		set_exitstatus(finish_command(&fs.cmd), fs.cmd.argv, NULL); /* the last command in pipe */
 	}
 	INT_ON;
+}
+
+static int
+openhere(union node *redir)
+{
+	struct forkshell fs;
+
+	if (redir->type == NHERE) {
+		size_t len = strlen(redir->nhere.doc->narg.text);
+		if (len <= PIPESIZE) {
+			int pip[2];
+			if (_pipe(pip, 0, 0) < 0)
+				ash_msg_and_raise_error("pipe call failed");
+			full_write(pip[1], redir->nhere.doc->narg.text, len);
+			close(pip[1]);
+			return pip[0];
+		}
+	}
+	memset(&fs, 0, sizeof(fs));
+	fs.fp = "openhere";
+	fs.flags = 0;
+	fs.n = redir;
+	fs.cmd.no_stdin = 1;
+	fs.cmd.out = -1;
+	forkshell_init(&fs);
+	if (start_command(&fs.cmd))
+		ash_msg_and_raise_error("unable to spawn shell");
+	forkshell_transfer(&fs);
+	forkshell_transfer_done(&fs);
+	return fs.cmd.out;
 }
