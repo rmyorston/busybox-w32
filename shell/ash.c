@@ -29,6 +29,9 @@
  * rewrote arith (see notes to this), added locale support,
  * rewrote dynamic variables.
  *
+ * Modified by Nguyễn Thái Ngọc Duy <pclouds@gmail.com> (c) 2007-2009
+ * to be able to use on MS Windows platform.
+ *
  */
 
 /*
@@ -50,22 +53,52 @@
 #define JOBS 0
 #endif
 
+#ifndef __MINGW32__
 #if DEBUG
 #define _GNU_SOURCE
 #endif
-#include "busybox.h" /* for struct bb_applet */
 #include <paths.h>
+#endif
 #include <setjmp.h>
 #include <fnmatch.h>
+#include "busybox.h" /* for struct bb_applet */
 #if JOBS || ENABLE_ASH_READ_NCHARS
 #include <termios.h>
 #endif
+#ifndef __MINGW32__
 extern char **environ;
+#endif
 
 #if defined(__uClinux__)
 #error "Do not even bother, ash will not run on uClinux"
 #endif
 
+#ifdef __MINGW32__
+#include "run-command.h"
+#include "ash_mingw.h"
+#include <malloc.h>
+static const char * updatepwd(const char *dir);
+static int openhere(union node *redir);
+static int
+waitcmd(int argc, char **argv)
+{
+	return 0;
+}
+static int
+ulimitcmd(int argc, char **argv)
+{
+	return 0;
+}
+static int stoppedjobs()
+{
+	return 0;
+}
+static int
+timescmd(int ac, char **av)
+{
+	return 0;
+}
+#endif
 
 /* ============ Misc helpers */
 
@@ -233,13 +266,17 @@ static void
 raise_interrupt(void)
 {
 	int i;
+#ifndef __MINGW32__
 	sigset_t mask;
+#endif
 
 	intpending = 0;
 	/* Signal is not automatically re-enabled after it is raised,
 	 * do it ourself */
+#ifndef __MINGW32__
 	sigemptyset(&mask);
 	sigprocmask(SIG_SETMASK, &mask, 0);
+#endif
 	/* pendingsig = 0; - now done in onsig() */
 
 	i = EXSIG;
@@ -306,6 +343,7 @@ force_int_on(void)
 	} while (0)
 /* EXSIG is turned off by evalbltin(). */
 
+#ifndef __MINGW32__
 /*
  * Ignore a signal. Only one usage site - in forkchild()
  */
@@ -336,6 +374,7 @@ onsig(int signo)
 	}
 }
 
+#endif
 
 /* ============ Stdout/stderr output */
 
@@ -698,8 +737,10 @@ static void
 opentrace(void)
 {
 	char s[100];
+#ifndef __MINGW32__
 #ifdef O_APPEND
 	int flags;
+#endif
 #endif
 
 	if (debug != 1) {
@@ -723,12 +764,14 @@ opentrace(void)
 			return;
 		}
 	}
+#ifndef __MINGW32__
 #ifdef O_APPEND
 	flags = fcntl(fileno(tracefile), F_GETFL, 0);
 	if (flags >= 0)
 		fcntl(fileno(tracefile), F_SETFL, flags | O_APPEND);
 #endif
 	setlinebuf(tracefile);
+#endif
 	fputs("\nTracing started.\n", tracefile);
 }
 
@@ -1835,8 +1878,10 @@ initvar(void)
 #if ENABLE_FEATURE_EDITING && ENABLE_FEATURE_EDITING_FANCY_PROMPT
 	vps1.text = "PS1=\\w \\$ ";
 #else
+#ifndef __MINGW32__
 	if (!geteuid())
 		vps1.text = "PS1=# ";
+#endif
 #endif
 	vp = varinit;
 	end = vp + sizeof(varinit) / sizeof(varinit[0]);
@@ -2244,6 +2289,7 @@ cdopt(void)
  * Update curdir (the name of the current directory) in response to a
  * cd command.
  */
+#ifndef __MINGW32__
 static const char *
 updatepwd(const char *dir)
 {
@@ -2301,6 +2347,7 @@ updatepwd(const char *dir)
 	*new = 0;
 	return stackblock();
 }
+#endif
 
 /*
  * Find out what the current directory is. If we already know the current
@@ -3147,9 +3194,11 @@ static int job_warning;         /* user was warned about stopped jobs */
 static int jobctl;              /* true if doing job control */
 #endif
 
+#ifndef __MINGW32__
 static struct job *makejob(union node *, int);
 static int forkshell(struct job *, union node *, int);
 static int waitforjob(struct job *);
+#endif
 
 #if ! JOBS
 #define setjobctl(on)   /* do nothing */
@@ -3167,7 +3216,9 @@ setsignal(int signo)
 {
 	int action;
 	char *t, tsig;
+#ifndef __MINGW32__
 	struct sigaction act;
+#endif
 
 	t = trap[signo];
 	if (t == NULL)
@@ -3182,10 +3233,12 @@ setsignal(int signo)
 			if (iflag || minusc || sflag == 0)
 				action = S_CATCH;
 			break;
+#ifndef __MINGW32__
 		case SIGQUIT:
 #if DEBUG
 			if (debug)
 				break;
+#endif
 #endif
 			/* FALLTHROUGH */
 		case SIGTERM:
@@ -3204,6 +3257,7 @@ setsignal(int signo)
 
 	t = &sigmode[signo - 1];
 	tsig = *t;
+#ifndef __MINGW32__
 	if (tsig == 0) {
 		/*
 		 * current setting unknown
@@ -3243,6 +3297,7 @@ setsignal(int signo)
 	act.sa_flags = 0;
 	sigfillset(&act.sa_mask);
 	sigaction(signo, &act, 0);
+#endif
 }
 
 /* mode flags for set_curjob */
@@ -3259,6 +3314,8 @@ setsignal(int signo)
 static int initialpgrp;
 static int ttyfd = -1;
 #endif
+
+#ifndef __MINGW32__
 /* array of jobs */
 static struct job *jobtab;
 /* size of array */
@@ -3315,8 +3372,9 @@ set_curjob(struct job *jp, unsigned mode)
 		break;
 	}
 }
+#endif
 
-#if JOBS || DEBUG
+#if JOBS || (DEBUG && !defined(__MINGW32__))
 static int
 jobno(const struct job *jp)
 {
@@ -3324,6 +3382,7 @@ jobno(const struct job *jp)
 }
 #endif
 
+#ifndef __MINGW32__
 /*
  * Convert a job name to a job structure.
  */
@@ -3427,6 +3486,7 @@ freejob(struct job *jp)
 	set_curjob(jp, CUR_DELETE);
 	INT_ON;
 }
+#endif
 
 #if JOBS
 static void
@@ -3600,6 +3660,7 @@ fg_bgcmd(int argc, char **argv)
 }
 #endif
 
+#ifndef __MINGW32__
 static int
 sprint_status(char *s, int status, int sigonly)
 {
@@ -3768,6 +3829,7 @@ dowait(int block, struct job *job)
 	}
 	return pid;
 }
+#endif
 
 #if JOBS
 static void
@@ -3885,6 +3947,7 @@ showjobs(FILE *out, int mode)
 }
 #endif /* JOBS */
 
+#ifndef __MINGW32__
 static int
 getstatus(struct job *job)
 {
@@ -4058,6 +4121,7 @@ makejob(union node *node, int nprocs)
 				jobno(jp)));
 	return jp;
 }
+#endif
 
 #if JOBS
 /*
@@ -4341,6 +4405,7 @@ commandtext(union node *n)
 }
 #endif /* JOBS */
 
+#ifndef __MINGW32__
 /*
  * Fork off a subshell.  If we are doing job control, give the subshell its
  * own process group.  Jp is a job structure that the job is to be added to.
@@ -4376,6 +4441,7 @@ clear_traps(void)
 		}
 	}
 }
+
 /* lives far away from here, needed for forkchild */
 static void closescript(void);
 static void
@@ -4554,6 +4620,7 @@ stoppedjobs(void)
  out:
 	return retval;
 }
+#endif
 
 
 /* ============ redir.c
@@ -4632,6 +4699,7 @@ noclobberopen(const char *fname)
  * the pipe without forking.
  */
 /* openhere needs this forward reference */
+#ifndef __MINGW32__
 static void expandhere(union node *arg, int fd);
 static int
 openhere(union node *redir)
@@ -4667,6 +4735,7 @@ openhere(union node *redir)
 	close(pip[1]);
 	return pip[0];
 }
+#endif
 
 static int
 openredirect(union node *redir)
@@ -5171,7 +5240,9 @@ exptilde(char *startp, char *p, int flag)
 {
 	char c;
 	char *name;
+#ifndef __MINGW32__
 	struct passwd *pw;
+#endif
 	const char *home;
 	int quotes = flag & (EXP_FULL | EXP_CASE);
 	int startloc;
@@ -5198,10 +5269,14 @@ exptilde(char *startp, char *p, int flag)
 	if (*name == '\0') {
 		home = lookupvar(homestr);
 	} else {
+#ifdef __MINGW32__
+		goto lose;
+#else
 		pw = getpwnam(name);
 		if (pw == NULL)
 			goto lose;
 		home = pw->pw_dir;
+#endif
 	}
 	if (!home || !*home)
 		goto lose;
@@ -7668,6 +7743,7 @@ expredir(union node *n)
  * of the shell, which make the last process in a pipeline the parent
  * of all the rest.)
  */
+#ifndef __MINGW32__
 static void
 evalpipe(union node *n, int flags)
 {
@@ -7721,6 +7797,7 @@ evalpipe(union node *n, int flags)
 	}
 	INT_ON;
 }
+#endif
 
 /*
  * Controls whether the shell is interactive or not.
@@ -7734,7 +7811,9 @@ setinteractive(int on)
 		return;
 	is_interactive = on;
 	setsignal(SIGINT);
+#ifndef __MINGW32__
 	setsignal(SIGQUIT);
+#endif
 	setsignal(SIGTERM);
 #if !ENABLE_FEATURE_SH_EXTRA_QUIET
 	if (is_interactive > 1) {
@@ -8157,7 +8236,9 @@ evalcommand(union node *cmd, int flags)
 	int argc;
 	const struct strlist *sp;
 	struct cmdentry cmdentry;
+#ifndef __MINGW32__
 	struct job *jp;
+#endif
 	char *lastarg;
 	const char *path;
 	int spclbltin;
@@ -8554,6 +8635,7 @@ preadfd(void)
 	nr = safe_read(parsefile->fd, buf, BUFSIZ - 1);
 #endif
 
+#ifndef __MINGW32__
 	if (nr < 0) {
 		if (parsefile->fd == 0 && errno == EWOULDBLOCK) {
 			int flags = fcntl(0, F_GETFL, 0);
@@ -8566,6 +8648,7 @@ preadfd(void)
 			}
 		}
 	}
+#endif
 	return nr;
 }
 
@@ -8806,6 +8889,7 @@ popallfiles(void)
 		popfile();
 }
 
+#ifndef __MINGW32__
 /*
  * Close the file(s) that the shell is reading commands from.  Called
  * after a fork is done.
@@ -8819,6 +8903,7 @@ closescript(void)
 		parsefile->fd = 0;
 	}
 }
+#endif
 
 /*
  * Like setinputfile, but takes an open file descriptor.  Call this with
@@ -8827,7 +8912,9 @@ closescript(void)
 static void
 setinputfd(int fd, int push)
 {
+#ifndef __MINGW32__
 	fcntl(fd, F_SETFD, FD_CLOEXEC);
+#endif
 	if (push) {
 		pushfile();
 		parsefile->buf = 0;
@@ -11361,6 +11448,7 @@ unsetcmd(int argc, char **argv)
 
 /*      setmode.c      */
 
+#ifndef __MINGW32__
 #include <sys/times.h>
 
 static const unsigned char timescmd_str[] = {
@@ -11393,6 +11481,7 @@ timescmd(int ac, char **av)
 
 	return 0;
 }
+#endif
 
 #if ENABLE_ASH_MATH_SUPPORT
 static arith_t
@@ -11708,6 +11797,7 @@ umaskcmd(int argc, char **argv)
 	return 0;
 }
 
+#ifndef __MINGW32__
 /*
  * ulimit builtin
  *
@@ -11889,6 +11979,7 @@ ulimitcmd(int argc, char **argv)
 	}
 	return 0;
 }
+#endif
 
 
 /* ============ Math support */
@@ -12583,14 +12674,18 @@ init(void)
 	basepf.nextc = basepf.buf = basebuf;
 
 	/* from trap.c: */
+#ifndef __MINGW32__
 	signal(SIGCHLD, SIG_DFL);
+#endif
 
 	/* from var.c: */
 	{
 		char **envp;
+#ifndef __MINGW32__
 		char ppid[sizeof(int)*3 + 1];
 		const char *p;
 		struct stat st1, st2;
+#endif
 
 		initvar();
 		for (envp = environ; envp && *envp; envp++) {
@@ -12599,6 +12694,9 @@ init(void)
 			}
 		}
 
+#ifdef __MINGW32__
+		setpwd(NULL, 0);
+#else
 		snprintf(ppid, sizeof(ppid), "%u", (unsigned) getppid());
 		setvar("PPID", ppid, 0);
 
@@ -12608,6 +12706,7 @@ init(void)
 			 || st1.st_dev != st2.st_dev || st1.st_ino != st2.st_ino)
 				p = '\0';
 		setpwd(p, 0);
+#endif
 	}
 }
 
@@ -12801,7 +12900,7 @@ int ash_main(int argc, char **argv)
  state2:
 	state = 3;
 	if (
-#ifndef linux
+#if !defined(linux) && !defined(__MINGW32__)
 	 getuid() == geteuid() && getgid() == getegid() &&
 #endif
 	 iflag
@@ -12841,12 +12940,14 @@ int ash_main(int argc, char **argv)
 	/* NOTREACHED */
 }
 
+#if 0
 #if DEBUG
 const char *applet_name = "debug stuff usage";
 int main(int argc, char **argv)
 {
 	return ash_main(argc, argv);
 }
+#endif
 #endif
 
 
