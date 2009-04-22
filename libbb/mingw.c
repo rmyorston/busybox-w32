@@ -150,6 +150,14 @@ int mingw_open (const char *filename, int oflags, ...)
 	return fd;
 }
 
+#undef fopen
+FILE *mingw_fopen (const char *filename, const char *mode)
+{
+	if (!strcmp(filename, "/dev/null"))
+		filename = "nul";
+	return fopen(filename, mode);
+}
+
 #undef close
 int mingw_close (int fd)
 {

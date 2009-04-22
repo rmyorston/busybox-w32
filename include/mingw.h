@@ -141,6 +141,9 @@ int link(const char *oldpath, const char *newpath);
 int mingw_open (const char *filename, int oflags, ...);
 #define open mingw_open
 
+FILE* mingw_fopen (const char *filename, const char *mode);
+#define fopen mingw_fopen
+
 int mingw_close (int fd);
 #define close mingw_close
 
