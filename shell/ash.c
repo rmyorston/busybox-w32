@@ -4844,6 +4844,18 @@ openredirect(union node *redir)
 static int
 copyfd(int from, int to)
 {
+#ifdef __MINGW32__
+	char* fds = ckmalloc(to);
+	int i,fd;
+	memset(fds,0,to);
+	while ((fd = dup(from)) < to && fd >= 0)
+		fds[fd] = 1;
+	for (i = 0;i < to;i ++)
+		if (fds[i])
+			close(i);
+	free(fds);
+	return fd;
+#else
 	int newfd;
 
 	newfd = fcntl(from, F_DUPFD, to);
@@ -4853,6 +4865,7 @@ copyfd(int from, int to)
 		ash_msg_and_raise_error("%d: %m", from);
 	}
 	return newfd;
+#endif
 }
 
 static void
@@ -4920,7 +4933,11 @@ redirect(union node *redir, int flags)
 		if (fd == newfd)
 			continue;
 		if (sv && *(p = &sv->renamed[fd]) == EMPTY) {
+#ifdef __MINGW32__
+			i = copyfd(fd, 10);
+#else
 			i = fcntl(fd, F_DUPFD, 10);
+#endif
 
 			if (i == -1) {
 				i = errno;
