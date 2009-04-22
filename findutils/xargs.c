@@ -410,7 +410,8 @@ int xargs_main(int argc, char **argv)
 	orig_arg_max = ARG_MAX;
 	if (orig_arg_max == -1)
 		orig_arg_max = LONG_MAX;
-	orig_arg_max -= 2048;   /* POSIX.2 requires subtracting 2048 */
+	if (orig_arg_max > 2048)
+		orig_arg_max -= 2048;   /* POSIX.2 requires subtracting 2048 */
 
 	if (opt & OPT_UPTO_SIZE) {
 		n_max_chars = xatoul_range(max_chars, 1, orig_arg_max);
