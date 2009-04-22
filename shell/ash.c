@@ -11265,13 +11265,33 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 #endif
 			if (errno != ENOENT && errno != ENOTDIR)
 				e = errno;
+#ifdef __MINGW32__
+			if (!strchr(name, '.')) {
+				int len = strlen(fullname);
+				fullname = stalloc(strlen(fullname) + 5);
+				memcpy(fullname+len, ".exe", 5);
+				stunalloc(fullname);
+				while (stat(fullname, &statb) < 0) {
+#ifdef SYSV
+					if (errno == EINTR)
+						continue;
+#endif
+					if (errno != ENOENT && errno != ENOTDIR)
+						e = errno;
+
+					goto loop;
+				}
+
+				break;
+			}
+#endif
 			goto loop;
 		}
 		e = EACCES;     /* if we fail, this will be the error */
 		if (!S_ISREG(statb.st_mode))
 			continue;
 		if (pathopt) {          /* this is a %func directory */
-			stalloc(strlen(fullname) + 1);
+			fullname = stalloc(strlen(fullname) + 1);
 			readcmdfile(fullname);
 			cmdp = cmdlookup(name, 0);
 			if (cmdp == NULL || cmdp->cmdtype != CMDFUNCTION)
