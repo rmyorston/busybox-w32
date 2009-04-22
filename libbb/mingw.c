@@ -427,9 +427,9 @@ char *mingw_getcwd(char *pointer, int len)
 	char *ret = getcwd(pointer, len);
 	if (!ret)
 		return ret;
-	for (i = 0; pointer[i]; i++)
-		if (pointer[i] == '\\')
-			pointer[i] = '/';
+	for (i = 0; ret[i]; i++)
+		if (ret[i] == '\\')
+			ret[i] = '/';
 	return ret;
 }
 
