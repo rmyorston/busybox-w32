@@ -248,6 +248,7 @@ char **copy_environ(void);
 void free_environ(char **env);
 char **env_setenv(char **env, const char *name);
 
+const char *get_busybox_exec_path();
 /*
  * A replacement of main() that ensures that argv[0] has a path
  */

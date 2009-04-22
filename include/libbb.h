@@ -60,6 +60,8 @@
 #include "autoconf.h"
 #ifdef __MINGW32__
 #include "mingw.h"
+#undef CONFIG_BUSYBOX_EXEC_PATH
+#define CONFIG_BUSYBOX_EXEC_PATH get_busybox_exec_path()
 #endif
 
 #include "pwd_.h"

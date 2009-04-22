@@ -1280,3 +1280,12 @@ char *strptime(const char *s, const char *format, struct tm *tm)
 void unsetenv(const char *env)
 {
 }
+
+const char *get_busybox_exec_path()
+{
+	static char path[PATH_MAX] = "";
+
+	if (!*path)
+		GetModuleFileName(NULL, path, PATH_MAX);
+	return path;
+}
