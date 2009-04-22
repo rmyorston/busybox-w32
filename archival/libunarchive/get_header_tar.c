@@ -136,11 +136,13 @@ char get_header_tar(archive_handle_t *archive_handle)
 
 	/* getOctal trashes subsequent field, therefore we call it
 	 * on fields in reverse order */
+#ifndef __MINGW32__
 	if (tar.devmajor[0]) {
 		unsigned minor = GET_OCTAL(tar.devminor);
 		unsigned major = GET_OCTAL(tar.devmajor);
 		file_header->device = makedev(major, minor);
 	}
+#endif
 	file_header->link_name = NULL;
 	if (!linkname && parse_names && tar.linkname[0]) {
 		/* we trash magic[0] here, it's ok */

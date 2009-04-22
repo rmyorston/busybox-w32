@@ -8,7 +8,9 @@
  */
 
 #include "libbb.h"
+#if ENABLE_FEATURE_SYSLOG
 #include <syslog.h>
+#endif
 
 smallint logmode = LOGMODE_STDIO;
 const char *msg_eol = "\n";
@@ -34,6 +36,7 @@ void bb_verror_msg(const char *s, va_list p, const char* strerr)
 					s[0] ? ": " : "",
 					strerr, msg_eol);
 	}
+#if ENABLE_FEATURE_SYSLOG
 	if (ENABLE_FEATURE_SYSLOG && (logmode & LOGMODE_SYSLOG)) {
 		if (!strerr)
 			vsyslog(LOG_ERR, s, p2);
@@ -47,5 +50,6 @@ void bb_verror_msg(const char *s, va_list p, const char* strerr)
 			free(msg);
 		}
 	}
+#endif
 	va_end(p2);
 }

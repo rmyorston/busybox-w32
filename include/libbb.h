@@ -17,8 +17,10 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#ifndef __MINGW32__
 #include <mntent.h>
 #include <netdb.h>
+#endif
 #include <setjmp.h>
 #include <signal.h>
 #include <stdio.h>
@@ -27,15 +29,19 @@
 #include <stddef.h>
 #include <string.h>
 #include <strings.h>
+#ifndef __MINGW32__
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
 #include <sys/statfs.h>
+#endif
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#ifndef __MINGW32__
 #include <sys/wait.h>
 #include <termios.h>
+#endif
 #include <time.h>
 #include <unistd.h>
 #include <utime.h>
@@ -51,8 +57,15 @@
 #define setlocale(x,y) ((void)0)
 #endif
 
+#include "autoconf.h"
+#ifdef __MINGW32__
+#include "mingw.h"
+#endif
+
 #include "pwd_.h"
+#ifndef __MINGW32__
 #include "grp_.h"
+#endif
 /* ifdef it out, because it may include <shadow.h> */
 /* and we may not even _have_ <shadow.h>! */
 #if ENABLE_FEATURE_SHADOWPASSWDS
@@ -276,7 +289,9 @@ off_t fdlength(int fd);
 int xsocket(int domain, int type, int protocol);
 void xbind(int sockfd, struct sockaddr *my_addr, socklen_t addrlen);
 void xlisten(int s, int backlog);
+#ifndef __MINGW32__
 void xconnect(int s, const struct sockaddr *s_addr, socklen_t addrlen);
+#endif
 ssize_t xsendto(int s, const  void *buf, size_t len, const struct sockaddr *to,
 				socklen_t tolen);
 int setsockopt_reuseaddr(int fd);
@@ -371,7 +386,6 @@ ssize_t recv_from_to(int fd, void *buf, size_t len, int flags,
 
 
 extern char *xstrdup(const char *s);
-extern char *xstrndup(const char *s, int n);
 extern char *safe_strncpy(char *dst, const char *src, size_t size);
 extern char *xasprintf(const char *format, ...) __attribute__ ((format (printf, 1, 2)));
 // gcc-4.1.1 still isn't good enough at optimizing it
@@ -395,16 +409,15 @@ extern void *xrealloc(void *old, size_t size);
 
 extern ssize_t safe_read(int fd, void *buf, size_t count);
 extern ssize_t full_read(int fd, void *buf, size_t count);
-extern void xread(int fd, void *buf, size_t count);
 extern unsigned char xread_char(int fd);
 extern char *reads(int fd, char *buf, size_t count);
 extern ssize_t read_close(int fd, void *buf, size_t count);
 extern ssize_t open_read_close(const char *filename, void *buf, size_t count);
 extern void *xmalloc_open_read_close(const char *filename, size_t *sizep);
 
+#define safe_write(fd, buf, count) bb_safe_write(fd, buf, count)
 extern ssize_t safe_write(int fd, const void *buf, size_t count);
 extern ssize_t full_write(int fd, const void *buf, size_t count);
-extern void xwrite(int fd, const void *buf, size_t count);
 
 /* Reads and prints to stdout till eof, then closes FILE. Exits on error: */
 extern void xprint_and_close_file(FILE *file);
@@ -429,7 +442,11 @@ extern FILE *fopen_or_warn_stdin(const char *filename);
 extern char* str_tolower(char *str);
 
 char *utoa(unsigned n);
+#ifdef __MINGW32__
+#define itoa bb_itoa
+#else
 char *itoa(int n);
+#endif
 /* Returns a pointer past the formatted number, does NOT null-terminate */
 char *utoa_to_buf(unsigned n, char *buf, unsigned buflen);
 char *itoa_to_buf(int n, char *buf, unsigned buflen);
@@ -476,8 +493,10 @@ void parse_chown_usergroup_or_die(struct bb_uidgid_t *u, char *user_group);
 char *bb_getpwuid(char *name, long uid, int bufsize);
 char *bb_getgrgid(char *group, long gid, int bufsize);
 /* versions which cache results (useful for ps, ls etc) */
+#ifndef __MINGW32__
 const char* get_cached_username(uid_t uid);
 const char* get_cached_groupname(gid_t gid);
+#endif
 void clear_username_cache(void);
 /* internally usernames are saved in fixed-sized char[] buffers */
 enum { USERNAME_MAX_SIZE = 16 - sizeof(int) };
@@ -704,11 +723,13 @@ extern void run_applet_and_exit(const char *name, char **argv);
 extern void run_current_applet_and_exit(char **argv) ATTRIBUTE_NORETURN;
 #endif
 
+#ifndef __MINGW32__
 extern int match_fstype(const struct mntent *mt, const char *fstypes);
 extern struct mntent *find_mount_point(const char *name, const char *table);
 extern void erase_mtab(const char * name);
 extern unsigned int tty_baud_to_value(speed_t speed);
 extern speed_t tty_value_to_baud(unsigned int value);
+#endif
 extern void bb_warn_ignoring_args(int n);
 
 extern int get_linux_version_code(void);
@@ -744,8 +765,10 @@ char *bb_simplify_path(const char *path);
 
 #define FAIL_DELAY 3
 extern void bb_do_delay(int seconds);
+#ifndef __MINGW32__
 extern void change_identity(const struct passwd *pw);
 extern const char *change_identity_e2str(const struct passwd *pw);
+#endif
 extern void run_shell(const char *shell, int loginshell, const char *command, const char **additional_args);
 #if ENABLE_SELINUX
 extern void renew_current_security_context(void);
@@ -756,10 +779,14 @@ extern void setfscreatecon_or_die(security_context_t scontext);
 #endif
 extern void selinux_or_die(void);
 extern int restricted_shell(const char *shell);
+#ifndef __MINGW32__
 extern void setup_environment(const char *shell, int loginshell, int changeenv, const struct passwd *pw);
 extern int correct_password(const struct passwd *pw);
+#endif
 extern char *pw_encrypt(const char *clear, const char *salt);
+#ifndef __MINGW32__
 extern int obscure(const char *old, const char *newval, const struct passwd *pwdp);
+#endif
 extern int index_in_str_array(const char * const string_array[], const char *key);
 extern int index_in_substr_array(const char * const string_array[], const char *key);
 extern void print_login_issue(const char *issue_file, const char *tty);
@@ -769,8 +796,10 @@ extern void crypt_make_salt(char *p, int cnt);
 
 int get_terminal_width_height(const int fd, int *width, int *height);
 
+#ifndef __MINGW32__
 char *is_in_ino_dev_hashtable(const struct stat *statbuf);
 void add_to_ino_dev_hashtable(const struct stat *statbuf, const char *name);
+#endif
 void reset_ino_dev_hashtable(void);
 #ifdef __GLIBC__
 /* At least glibc has horrendously large inline for this, so wrap it */

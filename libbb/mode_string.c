@@ -13,6 +13,7 @@
 
 
 #include <assert.h>
+#ifndef __MINGW32__
 #include <sys/stat.h>
 
 #include "libbb.h"
@@ -29,6 +30,7 @@
  || ( S_IFDIR != 0040000 ) || ( S_IFCHR != 0020000 ) \
  || ( S_IFIFO != 0010000 )
 #warning mode type bitflag value assumption(s) violated! falling back to larger version
+#endif
 
 #if (S_IRWXU | S_IRWXG | S_IRWXO | S_ISUID | S_ISGID | S_ISVTX) == 07777
 #undef mode_t
@@ -91,6 +93,7 @@ static const char type_chars[16] = "?pc?d?b?-?l?s???";
 /*                                  0123456789abcdef */
 static const char mode_chars[7] = "rwxSTst";
 
+#define mode_t unsigned short
 const char *bb_mode_string(mode_t mode)
 {
 	static char buf[12];

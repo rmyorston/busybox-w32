@@ -448,10 +448,12 @@ static int filstat(char *nm, enum token mode)
 	}
 	if (mode == FILGZ)
 		return s.st_size > 0L;
+#ifndef __MINGW32__
 	if (mode == FILUID)
 		return s.st_uid == geteuid();
 	if (mode == FILGID)
 		return s.st_gid == getegid();
+#endif
 	return 1; /* NOTREACHED */
 }
 
@@ -536,7 +538,9 @@ static int equalf(const char *f1, const char *f2)
 static int test_eaccess(char *path, int mode)
 {
 	struct stat st;
+#ifndef __MINGW32__
 	unsigned int euid = geteuid();
+#endif
 
 	if (stat(path, &st) < 0)
 		return -1;
@@ -563,6 +567,7 @@ static int test_eaccess(char *path, int mode)
 	return -1;
 }
 
+#ifndef __MINGW32__
 static void initialize_group_array(void)
 {
 	ngroups = getgroups(0, NULL);
@@ -599,6 +604,7 @@ static int is_a_group_member(gid_t gid)
 
 	return 0;
 }
+#endif
 
 
 /* applet entry point */

@@ -22,9 +22,11 @@ int which_main(int argc, char **argv)
 		bb_show_usage();
 	}
 
+#ifndef __MINGW32__
 	if (!getenv("PATH")) {
 		setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin", 1);
 	}
+#endif
 
 	while (--argc > 0) {
 		argv++;

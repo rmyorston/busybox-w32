@@ -83,12 +83,14 @@ int copy_file(const char *source, const char *dest, int flags)
 			return -1;
 		}
 	} else {
+#ifndef __MINGW32__
 		if (source_stat.st_dev == dest_stat.st_dev
 		 && source_stat.st_ino == dest_stat.st_ino
 		) {
 			bb_error_msg("'%s' and '%s' are the same file", source, dest);
 			return -1;
 		}
+#endif
 		dest_exists = 1;
 	}
 
@@ -178,6 +180,7 @@ int copy_file(const char *source, const char *dest, int flags)
 		// Hmm... maybe
 		// if (DEREF && MAKE_SOFTLINK) source = realpath(source) ?
 		// (but realpath returns NULL on dangling symlinks...)
+#ifndef __MINGW32__
 		lf = (flags & FILEUTILS_MAKE_SOFTLINK) ? symlink : link;
 		if (lf(source, dest) < 0) {
 			ovr = ask_and_unlink(dest, flags);
@@ -188,6 +191,7 @@ int copy_file(const char *source, const char *dest, int flags)
 				return -1;
 			}
 		}
+#endif
 		return 0;
 
 	} else if (S_ISREG(source_stat.st_mode)
@@ -196,6 +200,7 @@ int copy_file(const char *source, const char *dest, int flags)
 	) {
 		int src_fd;
 		int dst_fd;
+#ifndef __MINGW32__
 		if (ENABLE_FEATURE_PRESERVE_HARDLINKS) {
 			char *link_name;
 
@@ -216,6 +221,7 @@ int copy_file(const char *source, const char *dest, int flags)
 			}
 			add_to_ino_dev_hashtable(&source_stat, dest);
 		}
+#endif
 
 		src_fd = open_or_warn(source, O_RDONLY);
 		if (src_fd < 0) {
@@ -274,6 +280,7 @@ int copy_file(const char *source, const char *dest, int flags)
 			status = -1;
 		}
 
+#ifndef __MINGW32__
 	} else if (S_ISBLK(source_stat.st_mode) || S_ISCHR(source_stat.st_mode)
 	 || S_ISSOCK(source_stat.st_mode) || S_ISFIFO(source_stat.st_mode)
 	 || S_ISLNK(source_stat.st_mode)
@@ -312,6 +319,7 @@ int copy_file(const char *source, const char *dest, int flags)
 				return -1;
 			}
 		}
+#endif
 	} else {
 		bb_error_msg("internal error: unrecognized file type");
 		return -1;
@@ -319,6 +327,7 @@ int copy_file(const char *source, const char *dest, int flags)
 
  preserve_status:
 
+#ifndef __MINGW32__
 	if (flags & FILEUTILS_PRESERVE_STATUS
 	/* Cannot happen: */
 	/* && !(flags & (FILEUTILS_MAKE_SOFTLINK|FILEUTILS_MAKE_HARDLINK)) */
@@ -336,6 +345,7 @@ int copy_file(const char *source, const char *dest, int flags)
 		if (chmod(dest, source_stat.st_mode) < 0)
 			bb_perror_msg("cannot preserve %s of '%s'", "permissions", dest);
 	}
+#endif
 
 	return status;
 }

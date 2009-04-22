@@ -140,9 +140,11 @@ static void parse_config_file(void)
 
 	assert(!suid_config); /* Should be set to NULL by bss init. */
 
+#ifndef __MINGW32__
 	ruid = getuid();
 	if (ruid == 0) /* run by root - don't need to even read config file */
 		return;
+#endif
 
 	if ((stat(config_file, &st) != 0)       /* No config file? */
 	 || !S_ISREG(st.st_mode)                /* Not a regular file? */
@@ -281,6 +283,7 @@ static void parse_config_file(void)
 				/* We can't use get_ug_id here since it would exit()
 				 * if a uid or gid was not found.  Oh well... */
 				sct->m_uid = bb_strtoul(s, NULL, 10);
+#ifndef __MINGW32__
 				if (errno) {
 					struct passwd *pwd = getpwnam(s);
 					if (!pwd) {
@@ -288,8 +291,10 @@ static void parse_config_file(void)
 					}
 					sct->m_uid = pwd->pw_uid;
 				}
+#endif
 
 				sct->m_gid = bb_strtoul(e, NULL, 10);
+#ifndef __MINGW32__
 				if (errno) {
 					struct group *grp;
 					grp = getgrnam(e);
@@ -298,6 +303,7 @@ static void parse_config_file(void)
 					}
 					sct->m_gid = grp->gr_gid;
 				}
+#endif
 			}
 			continue;
 		}

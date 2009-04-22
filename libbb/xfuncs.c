@@ -158,6 +158,7 @@ void xunlink(const char *pathname)
 		bb_perror_msg_and_die("can't remove file '%s'", pathname);
 }
 
+#ifndef __MINGW32__
 // Turn on nonblocking I/O on a fd
 int ndelay_on(int fd)
 {
@@ -168,6 +169,7 @@ int ndelay_off(int fd)
 {
 	return fcntl(fd, F_SETFL, fcntl(fd,F_GETFL,0) & ~O_NONBLOCK);
 }
+#endif
 
 // "Renumber" opened fd
 void xmove_fd(int from, int to)
@@ -224,6 +226,7 @@ void xfflush_stdout(void)
 	}
 }
 
+#ifndef __MINGW32__
 void sig_block(int sig)
 {
 	sigset_t ss;
@@ -264,6 +267,7 @@ void sig_pause(void)
 	sigemptyset(&ss);
 	sigsuspend(&ss);
 }
+#endif
 
 
 void xsetenv(const char *key, const char *value)
@@ -387,6 +391,7 @@ char *bin2hex(char *p, const char *cp, int count)
 	return p;
 }
 
+#ifndef __MINGW32__
 // Die with an error message if we can't set gid.  (Because resource limits may
 // limit this user to a given number of processes, and if that fills up the
 // setgid() will fail and we'll _still_be_root_, which is bad.)
@@ -440,7 +445,7 @@ off_t fdlength(int fd)
 
 	return pos + 1;
 }
-
+#endif
 // Die with an error message if we can't malloc() enough space and do an
 // sprintf() into that space.
 char *xasprintf(const char *format, ...)
@@ -612,6 +617,7 @@ void selinux_or_die(void)
 
 /* It is perfectly ok to pass in a NULL for either width or for
  * height, in which case that value will not be set.  */
+#ifndef __MINGW32__
 int get_terminal_width_height(const int fd, int *width, int *height)
 {
 	struct winsize win = { 0, 0, 0, 0 };
@@ -639,3 +645,4 @@ int get_terminal_width_height(const int fd, int *width, int *height)
 
 	return ret;
 }
+#endif

@@ -91,6 +91,11 @@
 
 /* ---- Endian Detection ------------------------------------ */
 
+#if defined __MINGW32__
+# define BB_BIG_ENDIAN 0
+# define BB_LITTLE_ENDIAN 1
+# define __BIG_ENDIAN__ 0
+#else
 #if (defined __digital__ && defined __unix__)
 # include <sex.h>
 # define __BIG_ENDIAN__ (BYTE_ORDER == BIG_ENDIAN)
@@ -110,6 +115,7 @@
 # define BB_BIG_ENDIAN 0
 # define BB_LITTLE_ENDIAN 1
 #endif
+#endif
 
 #if BB_BIG_ENDIAN
 #define SWAP_BE16(x) (x)
@@ -128,10 +134,14 @@
 #endif
 
 /* ---- Networking ------------------------------------------ */
+#ifdef __MINGW32__
+# include <winsock2.h>
+#else
 #ifndef __APPLE__
 # include <arpa/inet.h>
 #else
 # include <netinet/in.h>
+#endif
 #endif
 
 #ifndef __socklen_t_defined
@@ -237,7 +247,7 @@ typedef unsigned smalluint;
 #define fdprintf dprintf
 #endif
 
-#if defined(__dietlibc__)
+#if defined(__dietlibc__) || defined(__MINGW32__)
 static ATTRIBUTE_ALWAYS_INLINE char* strchrnul(const char *s, char c)
 {
 	while (*s && *s != c) ++s;
@@ -253,7 +263,7 @@ static ATTRIBUTE_ALWAYS_INLINE char* strchrnul(const char *s, char c)
 
 /* THIS SHOULD BE CLEANED OUT OF THE TREE ENTIRELY */
 /* FIXME: fix tar.c! */
-#ifndef FNM_LEADING_DIR
+#if !defined(FNM_LEADING_DIR) && !defined(__MINGW32__)
 #define FNM_LEADING_DIR 0
 #endif
 

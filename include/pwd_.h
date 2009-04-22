@@ -23,7 +23,9 @@
 
 #if !ENABLE_USE_BB_PWD_GRP
 
+#ifndef __MINGW32__
 #include <pwd.h>
+#endif
 
 #else
 

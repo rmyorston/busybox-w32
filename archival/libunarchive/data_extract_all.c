@@ -91,6 +91,7 @@ void data_extract_all(archive_handle_t *archive_handle)
 					file_header->link_name);
 			}
 			break;
+#ifndef __MINGW32__
 		case S_IFSOCK:
 		case S_IFBLK:
 		case S_IFCHR:
@@ -102,14 +103,17 @@ void data_extract_all(archive_handle_t *archive_handle)
 				bb_perror_msg("cannot create node %s", file_header->name);
 			}
 			break;
+#endif
 		default:
 			bb_error_msg_and_die("unrecognized file type");
 		}
 	}
 
+#ifndef __MINGW32__
 	if (!(archive_handle->flags & ARCHIVE_NOPRESERVE_OWN)) {
 		lchown(file_header->name, file_header->uid, file_header->gid);
 	}
+#endif
 	/* uclibc has no lchmod, glibc is even stranger -
 	 * it has lchmod which seems to do nothing!
 	 * so we use chmod... */

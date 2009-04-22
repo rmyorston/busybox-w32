@@ -546,6 +546,10 @@ static struct dnode **list_dir(const char *path)
 static time_t current_time_t;
 #endif
 
+#ifdef __MINGW32__
+#define minor(x) 0
+#define major(x) 0
+#endif
 static int list_single(struct dnode *dn)
 {
 	int i, column = 0;

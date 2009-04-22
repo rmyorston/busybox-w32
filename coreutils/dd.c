@@ -72,6 +72,9 @@ static bool write_and_stats(int fd, const void *buf, size_t len, size_t obs,
 int dd_main(int argc, char **argv);
 int dd_main(int argc, char **argv)
 {
+#ifdef __MINGW32__
+#undef NOERROR /* found in winerror.h */
+#endif
 	enum {
 		SYNC_FLAG    = 1 << 0,
 		NOERROR      = 1 << 1,
@@ -111,6 +114,7 @@ int dd_main(int argc, char **argv)
 
 	memset(&G, 0, sizeof(G)); /* because of NOEXEC */
 
+#ifndef __MINGW32__
 	if (ENABLE_FEATURE_DD_SIGNAL_HANDLING) {
 		struct sigaction sa;
 
@@ -120,6 +124,7 @@ int dd_main(int argc, char **argv)
 		sigemptyset(&sa.sa_mask);
 		sigaction(SIGUSR1, &sa, 0);
 	}
+#endif
 
 	for (n = 1; n < argc; n++) {
 		smalluint key_len;

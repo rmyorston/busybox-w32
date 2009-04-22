@@ -43,6 +43,7 @@ const char bb_dev_null[] = "/dev/null";
 const int const_int_0;
 const int const_int_1 = 1;
 
+#ifndef __MINGW32__
 #include <utmp.h>
 /* This is usually something like "/var/adm/wtmp" or "/var/log/wtmp" */
 const char bb_path_wtmp_file[] =
@@ -52,6 +53,7 @@ _PATH_WTMP;
 WTMP_FILE;
 #else
 # error unknown path to wtmp file
+#endif
 #endif
 
 char bb_common_bufsiz1[(BUFSIZ > 256*sizeof(void*) ? BUFSIZ : 256*sizeof(void*)) + 1];
