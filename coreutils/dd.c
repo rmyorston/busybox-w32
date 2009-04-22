@@ -109,6 +109,7 @@ int dd_main(int argc, char **argv)
 	ssize_t n, w;
 	off_t seek = 0, skip = 0, count = OFF_T_MAX;
 	int ifd, ofd;
+	int devzero = 0;
 	const char *infile = NULL, *outfile = NULL;
 	char *ibuf, *obuf;
 
@@ -211,7 +212,13 @@ int dd_main(int argc, char **argv)
 		obuf = xmalloc(obs);
 	}
 	if (infile != NULL)
-		ifd = xopen(infile, O_RDONLY);
+		if (!strcmp(infile, "/dev/zero")) {
+			flags |= NOERROR;
+			devzero = 1;
+			ifd = -1;
+		}
+		else
+			ifd = xopen(infile, O_RDONLY);
 	else {
 		ifd = STDIN_FILENO;
 		infile = bb_msg_standard_input;
@@ -262,7 +269,8 @@ int dd_main(int argc, char **argv)
 		if (n < 0) {
 			if (flags & NOERROR) {
 				n = ibs;
-				bb_perror_msg("%s", infile);
+				if (!devzero)
+					bb_perror_msg("%s", infile);
 			} else
 				goto die_infile;
 		}
@@ -302,7 +310,7 @@ int dd_main(int argc, char **argv)
 		if (w > 0)
 			G.out_part++;
 	}
-	if (close(ifd) < 0) {
+	if (!devzero && close(ifd) < 0) {
 die_infile:
 		bb_perror_msg_and_die("%s", infile);
 	}
