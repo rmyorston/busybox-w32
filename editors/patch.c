@@ -58,6 +58,13 @@ static char *extract_filename(char *line, int patch_level)
 	temp = strchr(filename_start_ptr, '\t');
 	if (temp) *temp = 0;
 
+	if (patch_level == -1) {
+		temp = strrchr(filename_start_ptr, '/');
+		if (temp)
+			filename_start_ptr = temp + 1;
+		return xstrdup(filename_start_ptr);
+	}
+
 	/* skip over (patch_level) number of leading directories */
 	for (i = 0; i < patch_level; i++) {
 		temp = strchr(filename_start_ptr, '/');
