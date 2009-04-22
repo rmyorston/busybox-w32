@@ -121,6 +121,10 @@ int patch_main(int argc, char **argv)
 
 		/* Extract the filename used before the patch was generated */
 		original_filename = extract_filename(patch_line, patch_level);
+#ifdef __MINGW32__
+		if (!strcmp(original_filename, "/dev/null"))
+			original_filename = "nul";
+#endif
 		free(patch_line);
 
 		patch_line = xmalloc_fgets(patch_file);
