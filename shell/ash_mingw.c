@@ -845,6 +845,8 @@ struct forkpoint forkpoints[] = {
 };
 
 /* * * * * fork emulation * * * * */
+static const char * const*
+shellspawn_getenv(const struct strlist *newvars);
 static int
 forkshell_init(struct forkshell *fs)
 {
@@ -862,6 +864,7 @@ forkshell_init(struct forkshell *fs)
 	 */
 	sprintf(argv2, "subash%lx:%s", _get_osfhandle(p[0]), fs->fp);
 
+	fs->cmd.env = shellspawn_getenv(NULL);
 	fs->cmd.cmd = CONFIG_BUSYBOX_EXEC_PATH;
 	fs->cmd.argv = argv;
 	fs->fd = p[1];
