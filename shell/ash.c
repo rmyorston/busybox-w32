@@ -6621,6 +6621,7 @@ struct tblentry {
 static struct tblentry *cmdtable[CMDTABLESIZE];
 static int builtinloc = -1;             /* index in path of %builtin, or -1 */
 
+#ifndef __MINGW32__
 static void
 tryexec(char *cmd, char **argv, char **envp)
 {
@@ -6725,6 +6726,7 @@ shellexec(char **argv, const char *path, int idx)
 	ash_msg_and_raise(EXEXEC, "%s: %s", argv[0], errmsg(e, "not found"));
 	/* NOTREACHED */
 }
+#endif
 
 static void
 printentry(struct tblentry *cmdp)
@@ -8144,10 +8146,19 @@ static int
 execcmd(int argc, char **argv)
 {
 	if (argc > 1) {
+#ifdef __MINGW32__
+		int ret;
+#endif
 		iflag = 0;              /* exit on error */
 		mflag = 0;
 		optschanged();
+#ifdef __MINGW32__
+		ret = shellspawn(argv + 1, pathval(), 0, NULL);
+		if (ret != -1)
+			exit(exitstatus);
+#else
 		shellexec(argv + 1, pathval(), 0);
+#endif
 	}
 	return 0;
 }
