@@ -22,7 +22,6 @@ lib-y += setup_environment.o
 lib-y += speed_table.o
 lib-y += vfork_daemon_rexec.o
 lib-y += vinfo_msg.o
-lib-y += xconnect.o
 lib-y += xgethostbyname.o
 endif
 
@@ -99,6 +98,7 @@ lib-y += wfopen_input.o
 lib-y += xatonum.o
 lib-y += xfuncs.o
 lib-y += xgetcwd.o
+lib-y += xconnect.o
 lib-y += xreadlink.o
 
 # conditionally compiled objects:

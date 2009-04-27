@@ -997,16 +997,24 @@ char **env_setenv(char **env, const char *name)
 	return env;
 }
 
+void winsock_init()
+{
+	static int init = 0;
+	if (!init) {
+		WSADATA wsa;
+		if (WSAStartup(MAKEWORD(2,2), &wsa))
+		die("unable to initialize winsock subsystem, error %d",
+			WSAGetLastError());
+		atexit((void(*)(void)) WSACleanup);
+		init = 1;
+	}
+}
+
 /* this is the first function to call into WS_32; initialize it */
 #undef gethostbyname
 struct hostent *mingw_gethostbyname(const char *host)
 {
-	WSADATA wsa;
-
-	if (WSAStartup(MAKEWORD(2,2), &wsa))
-		die("unable to initialize winsock subsystem, error %d",
-			WSAGetLastError());
-	atexit((void(*)(void)) WSACleanup);
+	winsock_init();
 	return gethostbyname(host);
 }
 

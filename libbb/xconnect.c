@@ -6,7 +6,14 @@
  *
  */
 
+#ifdef __MINGW32__
+#define WINVER 0x0501
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#undef s_addr
+#else
 #include <netinet/in.h>
+#endif
 #include "libbb.h"
 
 int setsockopt_reuseaddr(int fd)
@@ -162,6 +169,7 @@ USE_FEATURE_IPV6(sa_family_t af,)
 	 * for each possible socket type (tcp,udp,raw...): */
 	hint.ai_socktype = SOCK_STREAM;
 	hint.ai_flags = ai_flags & ~DIE_ON_ERROR;
+	winsock_init();
 	rc = getaddrinfo(host, NULL, &hint, &result);
 	if (rc || !result) {
 		bb_error_msg("bad address '%s'", org_host);
