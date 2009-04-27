@@ -23,6 +23,10 @@ struct host_info {
 	char *user;
 };
 
+#ifdef __MINGW32__
+#define REPLACE_STDIO
+#include "strbuf_file.h"
+#endif
 static void parse_url(char *url, struct host_info *h);
 static FILE *open_socket(len_and_sockaddr *lsa);
 static char *gethdr(char *buf, size_t bufsiz, FILE *fp, int *istrunc);
@@ -233,8 +237,14 @@ int wget_main(int argc, char **argv)
 	 * and we want to connect to only one IP... */
 	lsa = xhost2sockaddr(server.host, server.port);
 	if (!(opt & WGET_OPT_QUIET)) {
+#ifdef __MINGW32__
+		/* we have macro conflict here */
+		winansi_fprintf(stderr, "Connecting to %s (%s)\n", server.host,
+				xmalloc_sockaddr2dotted(&lsa->sa, lsa->len));
+#else
 		fprintf(stderr, "Connecting to %s (%s)\n", server.host,
 				xmalloc_sockaddr2dotted(&lsa->sa, lsa->len));
+#endif
 		/* We leak result of xmalloc_sockaddr2dotted */
 	}
 
@@ -656,6 +666,36 @@ static int ftpcmd(const char *s1, const char *s2, FILE *fp, char *buf)
 /* Stuff below is from BSD rcp util.c, as added to openshh.
  * Original copyright notice is retained at the end of this file.
  */
+
+#ifdef __MINGW32__
+
+/* from include/mingw.h */
+#define fprintf(...) winansi_fprintf(__VA_ARGS__)
+
+/* Source: uclibc */
+# define timeradd(a, b, result)						      \
+  do {									      \
+    (result)->tv_sec = (a)->tv_sec + (b)->tv_sec;			      \
+    (result)->tv_usec = (a)->tv_usec + (b)->tv_usec;			      \
+    if ((result)->tv_usec >= 1000000)					      \
+      {									      \
+	++(result)->tv_sec;						      \
+	(result)->tv_usec -= 1000000;					      \
+      }									      \
+  } while (0)
+# define timersub(a, b, result)						      \
+  do {									      \
+    (result)->tv_sec = (a)->tv_sec - (b)->tv_sec;			      \
+    (result)->tv_usec = (a)->tv_usec - (b)->tv_usec;			      \
+    if ((result)->tv_usec < 0) {					      \
+      --(result)->tv_sec;						      \
+      (result)->tv_usec += 1000000;					      \
+    }									      \
+  } while (0)
+
+
+#endif
+
 static int
 getttywidth(void)
 {

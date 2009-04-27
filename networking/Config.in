@@ -4,7 +4,6 @@
 #
 
 menu "Networking Utilities"
-	depends on !MINGW32
 
 config FEATURE_IPV6
 	bool "Enable IPv6 support"
