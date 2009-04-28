@@ -625,7 +625,16 @@ void selinux_or_die(void)
 
 /* It is perfectly ok to pass in a NULL for either width or for
  * height, in which case that value will not be set.  */
-#ifndef __MINGW32__
+#ifdef __MINGW32__
+int get_terminal_width_height(const int fd, int *width, int *height)
+{
+	/* FIXME: support for Windows console */
+	if (width)
+		*width = 80;
+	if (height)
+		*height = 25;
+}
+#else
 int get_terminal_width_height(const int fd, int *width, int *height)
 {
 	struct winsize win = { 0, 0, 0, 0 };
