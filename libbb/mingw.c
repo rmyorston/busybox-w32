@@ -203,11 +203,15 @@ static int do_lstat(const char *file_name, struct stat *buf)
 	WIN32_FILE_ATTRIBUTE_DATA fdata;
 
 	if (!(errno = get_file_attr(file_name, &fdata))) {
+		int len = strlen(file_name);
+
 		buf->st_ino = 0;
 		buf->st_gid = 0;
 		buf->st_uid = 0;
 		buf->st_nlink = 1;
 		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
+		if (len > 4 && !strcmp(file_name+len-4, ".exe"))
+			buf->st_mode |= S_IEXEC;
 		buf->st_size = fdata.nFileSizeLow |
 			(((off_t)fdata.nFileSizeHigh)<<32);
 		buf->st_dev = buf->st_rdev = 0; /* not used by Git */
