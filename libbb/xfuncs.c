@@ -626,13 +626,23 @@ void selinux_or_die(void)
 /* It is perfectly ok to pass in a NULL for either width or for
  * height, in which case that value will not be set.  */
 #ifdef __MINGW32__
+#include <windows.h>
 int get_terminal_width_height(const int fd, int *width, int *height)
 {
-	/* FIXME: support for Windows console */
+	HANDLE console;
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
+
+	console = GetStdHandle(STD_OUTPUT_HANDLE);
+	if (console == INVALID_HANDLE_VALUE || !console)
+		return -1;
+
+	GetConsoleScreenBufferInfo(console, &sbi);
+
 	if (width)
-		*width = 80;
+		*width = sbi.srWindow.Right - sbi.srWindow.Left;
 	if (height)
-		*height = 25;
+		*height = sbi.srWindow.Bottom - sbi.srWindow.Top;
+	return 0;
 }
 #else
 int get_terminal_width_height(const int fd, int *width, int *height)
