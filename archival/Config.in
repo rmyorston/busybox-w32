@@ -71,6 +71,7 @@ config CPIO
 config DPKG
 	bool "dpkg"
 	default n
+	depends on !MINGW32
 	help
 	  dpkg is a medium-level tool to install, build, remove and manage Debian packages.
 
@@ -130,6 +131,7 @@ config RPM2CPIO
 config RPM
 	bool "rpm"
 	default n
+	depends on !MINGW32
 	help
 	  Mini RPM applet - queries and extracts RPM packages.
 

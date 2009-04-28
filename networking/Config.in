@@ -8,6 +8,7 @@ menu "Networking Utilities"
 config FEATURE_IPV6
 	bool "Enable IPv6 support"
 	default n
+	depends on !MINGW32
 	help
 	  Enable IPv6 support in busybox.
 	  This adds IPv6 support in the networking applets.
@@ -23,12 +24,14 @@ config VERBOSE_RESOLUTION_ERRORS
 config ARP
 	bool "arp"
 	default n
+	depends on !MINGW32
 	help
 	  Manipulate the system ARP cache.
 
 config ARPING
 	bool "arping"
 	default n
+	depends on !MINGW32
 	help
 	  Ping hosts by ARP packets.
 
@@ -41,6 +44,7 @@ config DNSD
 config ETHER_WAKE
 	bool "ether-wake"
 	default n
+	depends on !MINGW32
 	help
 	  Send a magic packet to wake up sleeping machines.
 
@@ -165,6 +169,7 @@ config FEATURE_HTTPD_ENCODE_URL_STR
 config IFCONFIG
 	bool "ifconfig"
 	default n
+	depends on !MINGW32
 	help
 	  Ifconfig is used to configure the kernel-resident network interfaces.
 
@@ -212,6 +217,7 @@ config FEATURE_IFCONFIG_BROADCAST_PLUS
 config IFUPDOWN
 	bool "ifupdown"
 	default n
+	depends on !MINGW32
 	help
 	  Activate or deactivate the specified interfaces.  This applet makes
 	  use of either "ifconfig" and "route" or the "ip" command to actually
@@ -354,6 +360,7 @@ config FEATURE_INETD_RPC
 config IP
 	bool "ip"
 	default n
+	depends on !MINGW32
 	help
 	  The "ip" applet is a TCP/IP interface configuration and routing
 	  utility.  You generally don't need "ip" to use busybox with
@@ -458,6 +465,7 @@ config FEATURE_IPCALC_LONG_OPTIONS
 config NAMEIF
 	bool "nameif"
 	default n
+	depends on !MINGW32
 	select FEATURE_SYSLOG
 	help
 	  nameif is used to rename network interface by its MAC address.
@@ -496,6 +504,7 @@ config NC_EXTRA
 config NETSTAT
 	bool "netstat"
 	default n
+	depends on !MINGW32
 	help
 	  netstat prints information about the Linux networking subsystem.
 
@@ -516,6 +525,7 @@ config NSLOOKUP
 config PING
 	bool "ping"
 	default n
+	depends on !MINGW32
 	help
 	  ping uses the ICMP protocol's mandatory ECHO_REQUEST datagram to
 	  elicit an ICMP ECHO_RESPONSE from a host or gateway.
@@ -538,6 +548,7 @@ config FEATURE_FANCY_PING
 config ROUTE
 	bool "route"
 	default n
+	depends on !MINGW32
 	help
 	  Route displays or manipulates the kernel's IP routing tables.
 
@@ -660,6 +671,7 @@ config DEBUG_TFTP
 config TRACEROUTE
 	bool "traceroute"
 	default n
+	depends on !MINGW32
 	help
 	  Utility to trace the route of IP packets
 
@@ -691,6 +703,7 @@ source networking/udhcp/Config.in
 config VCONFIG
 	bool "vconfig"
 	default n
+	depends on !MINGW32
 	help
 	  Creates, removes, and configures VLAN interfaces
 
@@ -725,6 +738,7 @@ config FEATURE_WGET_LONG_OPTIONS
 config ZCIP
 	bool "zcip"
 	default n
+	depends on !MINGW32
 	select FEATURE_SYSLOG
 	help
 	  ZCIP provides ZeroConf IPv4 address selection, according to RFC 3927.

@@ -16,6 +16,7 @@ config FEATURE_SH_IS_ASH
 	select ASH
 	bool "ash"
 
+if !MINGW32
 config FEATURE_SH_IS_HUSH
 	select HUSH
 	bool "hush"
@@ -27,6 +28,7 @@ config FEATURE_SH_IS_LASH
 config FEATURE_SH_IS_MSH
 	select MSH
 	bool "msh"
+endif
 
 config FEATURE_SH_IS_NONE
 	bool "none"
@@ -50,7 +52,7 @@ comment "Ash Shell Options"
 config ASH_JOB_CONTROL
 	bool "Job control"
 	default y
-	depends on ASH
+	depends on ASH && !MINGW32
 	help
 	  Enable job control in the ash shell.
 
@@ -129,7 +131,7 @@ config ASH_CMDCMD
 config ASH_MAIL
 	bool "Check for new mail on interactive shells"
 	default y
-	depends on ASH
+	depends on ASH && !MINGW32
 	help
 	  Enable "check for new mail" in the ash shell.
 
@@ -163,6 +165,7 @@ config ASH_EXPAND_PRMT
 config HUSH
 	bool "hush"
 	default n
+	depends on !MINGW32
 	select TRUE
 	select FALSE
 	select TEST
@@ -228,6 +231,7 @@ config HUSH_LOOPS
 config LASH
 	bool "lash"
 	default n
+	depends on !MINGW32
 	select TRUE
 	select FALSE
 	select TEST
@@ -243,6 +247,7 @@ config LASH
 config MSH
 	bool "msh"
 	default n
+	depends on !MINGW32
 	select TRUE
 	select FALSE
 	select TEST
@@ -300,6 +305,7 @@ config FEATURE_SH_STANDALONE
 config CTTYHACK
 	bool "cttyhack"
 	default n
+	depends on !MINGW32
 	help
 	  One common problem reported on the mailing list is "can't access tty;
 	  job control turned off" error message which typically appears when

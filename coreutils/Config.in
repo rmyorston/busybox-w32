@@ -36,18 +36,21 @@ config CATV
 config CHGRP
 	bool "chgrp"
 	default n
+	depends on !MINGW32
 	help
 	  chgrp is used to change the group ownership of files.
 
 config CHMOD
 	bool "chmod"
 	default n
+	depends on !MINGW32
 	help
 	  chmod is used to change the access permission of files.
 
 config CHOWN
 	bool "chown"
 	default n
+	depends on !MINGW32
 	help
 	  chown is used to change the user and/or group ownership
 	  of files.
@@ -55,6 +58,7 @@ config CHOWN
 config CHROOT
 	bool "chroot"
 	default n
+	depends on !MINGW32
 	help
 	  chroot is used to change the root directory and run a command.
 	  The default command is `/bin/sh'.
@@ -138,6 +142,7 @@ config FEATURE_DD_IBS_OBS
 config DF
 	bool "df"
 	default n
+	depends on !MINGW32
 	help
 	  df reports the amount of disk space used and available
 	  on filesystems.
@@ -284,6 +289,7 @@ config FEATURE_FANCY_HEAD
 config HOSTID
 	bool "hostid"
 	default n
+	depends on !MINGW32
 	help
 	  hostid prints the numeric identifier (in hexadecimal) for
 	  the current host.
@@ -291,6 +297,7 @@ config HOSTID
 config ID
 	bool "id"
 	default n
+	depends on !MINGW32
 	help
 	  id displays the current user and group ID names.
 
@@ -322,6 +329,7 @@ config LN
 config LOGNAME
 	bool "logname"
 	default n
+	depends on !MINGW32
 	help
 	  logname is used to print the current user's login name.
 
@@ -413,6 +421,7 @@ config FEATURE_MKDIR_LONG_OPTIONS
 config MKFIFO
 	bool "mkfifo"
 	default n
+	depends on !MINGW32
 	help
 	  mkfifo is used to create FIFOs (named pipes).
 	  The `mknod' program can also create FIFOs.
@@ -420,6 +429,7 @@ config MKFIFO
 config MKNOD
 	bool "mknod"
 	default n
+	depends on !MINGW32
 	help
 	  mknod is used to create FIFOs or block/character special
 	  files with the specified names.
@@ -440,12 +450,14 @@ config FEATURE_MV_LONG_OPTIONS
 config NICE
 	bool "nice"
 	default n
+	depends on !MINGW32
 	help
 	  nice runs a program with modified scheduling priority.
 
 config NOHUP
 	bool "nohup"
 	default n
+	depends on !MINGW32
 	help
 	  run a command immune to hangups, with output to a non-tty.
 
@@ -569,6 +581,7 @@ config FEATURE_STAT_FORMAT
 config STTY
 	bool "stty"
 	default n
+	depends on !MINGW32
 	help
 	  stty is used to change and print terminal line settings.
 
@@ -581,6 +594,7 @@ config SUM
 config SYNC
 	bool "sync"
 	default n
+	depends on !MINGW32
 	help
 	  sync is used to flush filesystem buffers.
 
@@ -670,6 +684,7 @@ config TRUE
 config TTY
 	bool "tty"
 	default n
+	depends on !MINGW32
 	help
 	  tty is used to print the name of the current terminal to
 	  standard output.
@@ -729,6 +744,7 @@ config FEATURE_WC_LARGE
 config WHO
 	bool "who"
 	default n
+	depends on !MINGW32
 	select FEATURE_UTMP
 	help
 	  who is used to show who is logged on.
@@ -736,6 +752,7 @@ config WHO
 config WHOAMI
 	bool "whoami"
 	default n
+	depends on !MINGW32
 	help
 	  whoami is used to print the username of the current
 	  user id (same as id -un).
@@ -753,7 +770,7 @@ comment "Common options for cp and mv"
 config FEATURE_PRESERVE_HARDLINKS
 	bool "Preserve hard links"
 	default n
-	depends on CP || MV
+	depends on (CP || MV) && !MINGW32
 	help
 	  Allow cp and mv to preserve hard links.
 

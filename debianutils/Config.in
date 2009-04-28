@@ -34,6 +34,7 @@ config FEATURE_READLINK_FOLLOW
 config RUN_PARTS
 	bool "run-parts"
 	default n
+	depends on !MINGW32
 	help
 	  run-parts is a utility designed to run all the scripts in a directory.
 
@@ -65,6 +66,7 @@ config FEATURE_RUN_PARTS_FANCY
 config START_STOP_DAEMON
 	bool "start-stop-daemon"
 	default y
+	depends on !MINGW32
 	help
 	  start-stop-daemon is used to control the creation and
 	  termination of system-level processes, usually the ones
