@@ -191,6 +191,9 @@ int mingw_getpagesize(void);
 #define getpagesize mingw_getpagesize
 #endif
 
+int mingw_isatty(int fd);
+#define isatty(fd) mingw_isatty(fd)
+
 /* Use mingw_lstat() instead of lstat()/stat() and
  * mingw_fstat() instead of fstat() on Windows.
  */

@@ -26,6 +26,15 @@ config MD5_SIZE_VS_SPEED
 	  2                   3.0                5088
 	  3 (smallest)        5.1                4912
 
+config FEATURE_CYGWIN_TTY
+	bool "Support Cygwin tty"
+	default n
+	depends on MINGW32
+	help
+	  Try to sneak in Cygwin shared structure to determine if
+	  a file handle is Cygwin tty, useful if you want to use
+	  a Cygwin-based terminal emulator.
+
 config FEATURE_EDITING
 	bool "Command line editing"
 	default n

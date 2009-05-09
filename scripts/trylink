@@ -11,6 +11,7 @@ try() {
 }
 
 try "-lws2_32" "$@"
+try "-lws2_32 -lntdll" "$@"
 try "" "$@"
 try "-lm" "$@"
 try "-lcrypt" "$@"
