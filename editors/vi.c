@@ -151,6 +151,9 @@ static char *modifying_cmds;            // cmds that modify text[]
 static char *last_search_pattern;	// last pattern from a '/' or '?' search
 #endif
 
+#ifdef __MINGW32__
+#include "cygwin_termios.h"
+#endif
 /* Moving biggest data to malloced space... */
 struct globals {
 	/* many references - keep near the top of globals */
@@ -2164,6 +2167,27 @@ static void catch_sig(int sig)
 }
 #endif /* FEATURE_VI_USE_SIGNALS */
 
+#ifdef __MINGW32__
+static int mysleep(int hund)	// sleep for 'h' 1/100 seconds
+{
+	HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+
+	fflush(stdout);
+
+	/* In case of cygwin, it's a named pipe and won't work with WaitForSingleObject */
+	if (is_cygwin_tty(0) || !h) {
+		if (hund)
+			Sleep(hund*10);
+		return 0;
+	}
+	else {
+		DWORD ret;
+
+		ret = WaitForSingleObject(h, hund*10);
+		return ret != WAIT_TIMEOUT;
+	}
+}
+#else
 static int mysleep(int hund)	// sleep for 'h' 1/100 seconds
 {
 	fd_set rfds;
@@ -2178,6 +2202,7 @@ static int mysleep(int hund)	// sleep for 'h' 1/100 seconds
 	select(1, &rfds, NULL, NULL, &tv);
 	return FD_ISSET(0, &rfds);
 }
+#endif
 
 #define readbuffer bb_common_bufsiz1
 
