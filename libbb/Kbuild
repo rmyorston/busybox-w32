@@ -138,6 +138,7 @@ lib-$(CONFIG_MINGW32) += setenv.o
 lib-$(CONFIG_MINGW32) += strbuf.o
 lib-$(CONFIG_MINGW32) += strbuf_file.o
 lib-$(CONFIG_MINGW32) += strlcpy.o
+lib-$(CONFIG_MINGW32) += termios.o
 lib-$(CONFIG_MINGW32) += trace.o
 lib-$(CONFIG_MINGW32) += usage.o
 lib-$(CONFIG_MINGW32) += winansi.o

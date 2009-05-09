@@ -59,27 +59,12 @@
 #define ENABLE_FEATURE_GETUSERNAME_AND_HOMEDIR \
 (ENABLE_FEATURE_USERNAME_COMPLETION || ENABLE_FEATURE_EDITING_FANCY_PROMPT)
 
+#ifdef __MINGW32__
+#include "cygwin_termios.h"
+#define safe_read(fd,buf,size) wincon_read(fd,buf,size)
+#endif
 
 static line_input_t *state;
-
-#ifdef __MINGW32__
-struct termios {
-	int c_lflag;
-	int c_cc[3];
-};
-#define safe_read(fd,buf,n) wincon_read(fd,buf,n)
-/* True value does not matter because it's emulated */
-#define ICANON	1
-#define ECHO	2
-#define ECHONL	4
-#define ISIG	8
-
-#define VMIN    0
-#define VTIME   1
-#define VINTR   2
-
-static int wincon_read(int fd, char *buf, int size);
-#endif
 
 static struct termios initial_settings, new_settings;
 
@@ -1227,13 +1212,10 @@ static void parse_prompt(const char *prmt_ptr)
 }
 #endif
 
-#ifdef __MINGW32__
-#define setTermSettings(fd, argp)
-#define getTermSettings(fd, argp) ((struct termios *)argp)->c_lflag = ECHO;
-#else
 #define setTermSettings(fd, argp) tcsetattr(fd, TCSANOW, argp)
 #define getTermSettings(fd, argp) tcgetattr(fd, argp);
 
+#ifndef __MINGW32__
 static sighandler_t previous_SIGWINCH_handler;
 #endif
 
@@ -1769,46 +1751,6 @@ line_input_t *new_line_input_t(int flags)
 	n->flags = flags;
 	return n;
 }
-
-#ifdef __MINGW32__
-#include <windef.h>
-#include <wincon.h>
-#include "strbuf.h"
-
-#undef safe_read
-static int wincon_read(int fd, char *buf, int size)
-{
-	static struct strbuf input = STRBUF_INIT;
-	HANDLE cin = GetStdHandle(STD_INPUT_HANDLE);
-	static int initialized = 0;
-
-	if (fd != 0)
-		die("wincon_read is for stdin only");
-	if (cin == INVALID_HANDLE_VALUE)
-		return safe_read(fd, buf, size);
-	if (!initialized) {
-		SetConsoleMode(cin, ENABLE_ECHO_INPUT);
-		initialized = 1;
-	}
-	while (input.len < size) {
-		INPUT_RECORD record;
-		DWORD nevent = 0, nevent_out;
-		int ch;
-
-		if (!ReadConsoleInput(cin, &record, 1, &nevent_out))
-			return -1;
-		if (record.EventType != KEY_EVENT || !record.Event.KeyEvent.bKeyDown)
-			continue;
-		ch = record.Event.KeyEvent.uChar.AsciiChar;
-		/* Ctrl-X is handled by ReadConsoleInput, Alt-X is not needed anyway */
-		strbuf_addch(&input, ch);
-	}
-	memcpy(buf, input.buf, size);
-	memcpy(input.buf, input.buf+size, input.len-size+1);
-	strbuf_setlen(&input, input.len-size);
-	return size;
-}
-#endif
 
 #else
 
