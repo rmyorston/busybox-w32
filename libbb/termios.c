@@ -226,10 +226,8 @@ static int get_wincon_width_height(const int fd, int *width, int *height)
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
 	console = GetStdHandle(STD_OUTPUT_HANDLE);
-	if (console == INVALID_HANDLE_VALUE || !console)
+	if (console == INVALID_HANDLE_VALUE || !console || !GetConsoleScreenBufferInfo(console, &sbi))
 		return -1;
-
-	GetConsoleScreenBufferInfo(console, &sbi);
 
 	if (width)
 		*width = sbi.srWindow.Right - sbi.srWindow.Left;
