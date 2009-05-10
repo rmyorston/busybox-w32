@@ -1,3 +1,5 @@
+#include "git.h"
+
 extern void trace_printf(const char *format, ...);
 extern void trace_argv_printf(const char **argv, const char *format, ...);
 
@@ -18,7 +20,7 @@ static union node *node_recv(int fd);
 static inline void
 ser_read(int fd, void *buf, size_t len)
 {
-	if (xread(fd, buf, len) != len)
+	if (_xread(fd, buf, len) != len)
 		die("Corrupted");
 }
 

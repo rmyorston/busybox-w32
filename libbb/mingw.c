@@ -2,6 +2,7 @@
 #include "win32.h"
 #include "strbuf.h"
 #include "run-command.h"
+#include "git.h"
 
 unsigned int _CRT_fmode = _O_BINARY;
 
@@ -131,13 +132,15 @@ int mingw_open (const char *filename, int oflags, ...)
 {
 	va_list args;
 	unsigned mode;
+	int fd;
+
 	va_start(args, oflags);
 	mode = va_arg(args, int);
 	va_end(args);
 
 	if (!strcmp(filename, "/dev/null"))
 		filename = "nul";
-	int fd = open(filename, oflags, mode);
+	fd = open(filename, oflags, mode);
 	if (fd < 0 && (oflags & O_CREAT) && errno == EACCES) {
 		DWORD attrs = GetFileAttributes(filename);
 		if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY))

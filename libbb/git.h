@@ -1,4 +1,7 @@
 ssize_t write_in_full(int fd, const void *buf, size_t count);
+void *xcalloc(size_t nmemb, size_t size);
+ssize_t _xwrite(int fd, const void *buf, size_t len);
+ssize_t _xread(int fd, void *buf, size_t len);
 
 #define alloc_nr(x) (((x)+16)*3/2)
 
@@ -19,3 +22,5 @@ static inline int is_absolute_path(const char *path)
 }
 
 #define NORETURN ATTRIBUTE_NORETURN
+#define die bb_error_msg_and_die
+#define error(...) fprintf(stderr, __VA_ARGS__)

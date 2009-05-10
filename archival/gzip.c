@@ -1589,6 +1589,9 @@ static void compress_block(ct_data * ltree, ct_data * dtree)
  * trees or store, and output the encoded block to the zip file. This function
  * returns the total compressed length for the file so far.
  */
+#ifdef __MINGW32__
+#define eof eof_
+#endif
 static ulg flush_block(char *buf, ulg stored_len, int eof)
 {
 	ulg opt_lenb, static_lenb;      /* opt_len and static_len in bytes */
@@ -1672,6 +1675,9 @@ static ulg flush_block(char *buf, ulg stored_len, int eof)
 
 	return G2.compressed_len >> 3;
 }
+#ifdef __MINGW32__
+#undef eof
+#endif
 
 
 /* ===========================================================================

@@ -260,7 +260,7 @@ int wincon_read(int fd, char *buf, int size)
 	static int initialized = 0;
 
 	if (fd != 0)
-		die("wincon_read is for stdin only");
+		bb_error_msg_and_die("wincon_read is for stdin only");
 	if (cin == INVALID_HANDLE_VALUE || is_cygwin_tty(fd))
 		return safe_read(fd, buf, size);
 	if (!initialized) {

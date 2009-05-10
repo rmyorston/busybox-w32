@@ -410,6 +410,7 @@ extern void *xzalloc(size_t size);
 extern void *xrealloc(void *old, size_t size);
 
 extern ssize_t safe_read(int fd, void *buf, size_t count);
+extern void xread(int fd, void *buf, size_t count);
 extern ssize_t full_read(int fd, void *buf, size_t count);
 extern unsigned char xread_char(int fd);
 extern char *reads(int fd, char *buf, size_t count);
@@ -419,6 +420,7 @@ extern void *xmalloc_open_read_close(const char *filename, size_t *sizep);
 
 #define safe_write(fd, buf, count) bb_safe_write(fd, buf, count)
 extern ssize_t safe_write(int fd, const void *buf, size_t count);
+extern void xwrite(int fd, const void *buf, size_t count);
 extern ssize_t full_write(int fd, const void *buf, size_t count);
 
 /* Reads and prints to stdout till eof, then closes FILE. Exits on error: */
@@ -442,6 +444,7 @@ extern FILE *fopen_or_warn_stdin(const char *filename);
 
 /* Convert each alpha char in str to lower-case */
 extern char* str_tolower(char *str);
+extern char* xstrndup(const char *s, int n);
 
 char *utoa(unsigned n);
 #ifdef __MINGW32__

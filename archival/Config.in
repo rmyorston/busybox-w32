@@ -154,7 +154,7 @@ config FEATURE_TAR_CREATE
 config FEATURE_TAR_BZIP2
 	bool "Enable -j option to handle .tar.bz2 files"
 	default n
-	depends on TAR
+	depends on TAR && !MINGW32 # open_transformer.c
 	help
 	  If you enable this option you'll be able to extract
 	  archives compressed with bzip2.
@@ -162,7 +162,7 @@ config FEATURE_TAR_BZIP2
 config FEATURE_TAR_LZMA
 	bool "Enable -a option to handle .tar.lzma files"
 	default n
-	depends on TAR
+	depends on TAR && !MINGW32 # open_transformer.c
 	help
 	  If you enable this option you'll be able to extract
 	  archives compressed with lzma.
@@ -178,7 +178,7 @@ config FEATURE_TAR_FROM
 config FEATURE_TAR_GZIP
 	bool "Enable -z option"
 	default y
-	depends on TAR
+	depends on TAR && !MINGW32 # open_transformer.c
 	help
 	  If you enable this option tar will be able to call gzip,
 	  when creating or extracting tar gziped archives.
@@ -186,7 +186,7 @@ config FEATURE_TAR_GZIP
 config FEATURE_TAR_COMPRESS
 	bool "Enable -Z option"
 	default n
-	depends on TAR
+	depends on TAR && !MINGW32 # open_transformer.c
 	help
 	  If you enable this option tar will be able to call uncompress,
 	  when extracting .tar.Z archives.
@@ -271,7 +271,7 @@ comment "Common options for dpkg and dpkg_deb"
 config FEATURE_DEB_TAR_GZ
 	bool "gzip debian packages (normal)"
 	default y if DPKG || DPKG_DEB
-	depends on DPKG || DPKG_DEB
+	depends on (DPKG || DPKG_DEB) && !MINGW32 # open_transformer.c
 	help
 	  This is the default compression method inside the debian ar file.
 
@@ -280,7 +280,7 @@ config FEATURE_DEB_TAR_GZ
 config FEATURE_DEB_TAR_BZ2
 	bool "bzip2 debian packages"
 	default n
-	depends on DPKG || DPKG_DEB
+	depends on (DPKG || DPKG_DEB) && !MINGW32 # open_transformer.c
 	help
 	  This allows dpkg and dpkg-deb to extract deb's that are compressed internally
 	  with bzip2 instead of gzip.
@@ -291,7 +291,7 @@ config FEATURE_DEB_TAR_BZ2
 config FEATURE_DEB_TAR_LZMA
 	bool "lzma debian packages"
 	default n
-	depends on DPKG || DPKG_DEB
+	depends on (DPKG || DPKG_DEB) && !MINGW32 # open_transformer.c
 	help
 	  This allows dpkg and dpkg-deb to extract deb's that are compressed
 	  internally with lzma instead of gzip.

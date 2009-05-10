@@ -1,13 +1,42 @@
 #include "libbb.h"
 #include "git.h"
 
+#define die bb_error_msg_and_die
+
+/*
+ * xwrite() is the same a write(), but it automatically restarts write()
+ * operations with a recoverable error (EAGAIN and EINTR). xwrite() DOES NOT
+ * GUARANTEE that "len" bytes is written even if the operation is successful.
+ */
+ssize_t _xwrite(int fd, const void *buf, size_t len)
+{
+	ssize_t nr;
+	while (1) {
+		nr = write(fd, buf, len);
+		if ((nr < 0) && (errno == EAGAIN || errno == EINTR))
+			continue;
+		return nr;
+	}
+}
+
+ssize_t _xread(int fd, void *buf, size_t len)
+{
+	ssize_t nr;
+	while (1) {
+		nr = read(fd, buf, len);
+		if ((nr < 0) && (errno == EAGAIN || errno == EINTR))
+			continue;
+		return nr;
+	}
+}
+
 ssize_t write_in_full(int fd, const void *buf, size_t count)
 {
 	const char *p = buf;
 	ssize_t total = 0;
 
 	while (count > 0) {
-		ssize_t written = xwrite(fd, p, count);
+		ssize_t written = _xwrite(fd, p, count);
 		if (written < 0)
 			return -1;
 		if (!written) {

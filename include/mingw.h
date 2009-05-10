@@ -83,8 +83,10 @@ static inline int symlink(const char *oldpath, const char *newpath)
 { errno = ENOSYS; return -1; }
 static inline int fchmod(int fildes, mode_t mode)
 { errno = ENOSYS; return -1; }
+/*
 static inline int fork(void)
 { errno = ENOSYS; return -1; }
+*/
 static inline unsigned int alarm(unsigned int seconds)
 { return 0; }
 static inline int fsync(int fd)
@@ -93,7 +95,7 @@ static inline int getppid(void)
 { return 1; }
 static inline void sync(void)
 {}
-static inline int getuid()
+static inline int getuid(void)
 { return 1; }
 static inline struct passwd *getpwnam(const char *name)
 { return NULL; }
@@ -148,6 +150,13 @@ int setitimer(int type, struct itimerval *in, struct itimerval *out);
 int sigaction(int sig, struct sigaction *in, struct sigaction *out);
 int link(const char *oldpath, const char *newpath);
 time_t tm_to_time_t(const struct tm *tm);
+char *strsep(char **stringp, const char *delim);
+char *strptime(const char *s, const char *format, struct tm *tm);
+void unsetenv(const char *env);
+char *realpath(const char *path, char *resolved_path);
+int fdprintf(int fd, const char *format, ...);
+int setenv(const char *name, const char *value, int replace);
+size_t strlcpy(char *dest, const char *src, size_t size);
 
 /*
  * replacements of existing functions
@@ -251,7 +260,7 @@ char **copy_environ(void);
 void free_environ(char **env);
 char **env_setenv(char **env, const char *name);
 
-const char *get_busybox_exec_path();
+const char *get_busybox_exec_path(void);
 /*
  * A replacement of main() that ensures that argv[0] has a path
  */

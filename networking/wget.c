@@ -670,6 +670,7 @@ static int ftpcmd(const char *s1, const char *s2, FILE *fp, char *buf)
 #ifdef __MINGW32__
 
 /* from include/mingw.h */
+#undef fprintf /* winansi.c */
 #define fprintf(...) winansi_fprintf(__VA_ARGS__)
 
 /* Source: uclibc */

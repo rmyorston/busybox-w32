@@ -2,15 +2,6 @@
 #include "strbuf.h"
 #include "git.h"
 
-int prefixcmp(const char *str, const char *prefix)
-{
-	for (; ; str++, prefix++)
-		if (!*prefix)
-			return 0;
-		else if (*str != *prefix)
-			return (unsigned char)*prefix - (unsigned char)*str;
-}
-
 /*
  * Used as the default ->buf value, so that people can always assume
  * buf is non NULL and ->buf is NUL terminated even for a freshly
@@ -275,7 +266,7 @@ ssize_t strbuf_read(struct strbuf *sb, int fd, size_t hint)
 	for (;;) {
 		ssize_t cnt;
 
-		cnt = xread(fd, sb->buf + sb->len, sb->alloc - sb->len - 1);
+		cnt = _xread(fd, sb->buf + sb->len, sb->alloc - sb->len - 1);
 		if (cnt < 0) {
 			if (oldalloc == 0)
 				strbuf_release(sb);

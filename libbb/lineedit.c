@@ -170,7 +170,7 @@ static void input_backward(unsigned num)
 	if (cmdedit_x >= num) {
 		cmdedit_x -= num;
 		if (num <= 4) {
-			printf("\b\b\b\b" + (4-num));
+			printf("%s", "\b\b\b\b" + (4-num)); /* "%s" to stop mingw warning */
 			return;
 		}
 		printf("\033[%uD", num);
