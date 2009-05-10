@@ -169,6 +169,8 @@ static int cygwin_tcgetattr(int fd, struct termios *t)
 {
 	int tty = fd_to_tty(fd);
 	struct shared_info *si = get_shared_info();
+	if (tty < 0 || !si)
+		return -1;
 	*t = si->tty.ttys[tty].tty_min.ti;
 	return 0;
 }
@@ -177,11 +179,9 @@ static int cygwin_tcgetattr(int fd, struct termios *t)
 static int cygwin_tcsetattr(int fd, int mode, const struct termios *t)
 {
 	int tty = fd_to_tty(fd);
-	struct shared_info *si;
-
-	if (tty < 0)
+	struct shared_info *si = get_shared_info();
+	if (tty < 0 || !si)
 		return -1;
-	si = get_shared_info();
 	si->tty.ttys[tty].tty_min.ti = *t;
 	return 0;
 }
