@@ -276,7 +276,11 @@ int sendmail_main(int argc UNUSED_PARAM, char **argv)
 
 	// connection helper ordered? ->
 	if (opts & OPT_H) {
-		const char *args[] = { "sh", "-c", opt_connect, NULL };
+		const char *args[4];
+		args[0] = "sh";
+		args[1] = "-c";
+		args[2] = opt_connect;
+		args[3] = NULL;
 		// plug it in
 		launch_helper(args);
 		// Now:

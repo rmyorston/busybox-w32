@@ -133,7 +133,9 @@ int crontab_main(int argc UNUSED_PARAM, char **argv)
 
 	case OPT_l: /* List */
 		{
-			char *args[2] = { pas->pw_name, NULL };
+			char *args[2];
+			args[0]	= pas->pw_name;
+			args[1] = NULL;
 			return bb_cat(args);
 			/* list exits,
 			 * the rest go play with cron update file */

@@ -802,7 +802,11 @@ int ps_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 
 		{
 			int sz = terminal_width - len;
+#if ENABLE_USE_PORTABLE_CODE
+			char *buf = alloca(sz + 1);
+#else
 			char buf[sz + 1];
+#endif
 			read_cmdline(buf, sz, p->pid, p->comm);
 			puts(buf);
 		}

@@ -1128,7 +1128,9 @@ static void syntax_error_unterm_str(unsigned lineno UNUSED_PARAM, const char *s)
 
 static void syntax_error_unterm_ch(unsigned lineno, char ch)
 {
-	char msg[2] = { ch, '\0' };
+	char msg[2];
+	msg[0] = ch;
+	msg[1] = 0;
 	syntax_error_unterm_str(lineno, msg);
 }
 
