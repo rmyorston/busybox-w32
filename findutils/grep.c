@@ -90,6 +90,14 @@ enum {
 #define PRINT_FILES_WITHOUT_MATCHES (option_mask32 & OPT_L)
 #define NUL_DELIMITED               (option_mask32 & OPT_z)
 
+#if ENABLE_PLATFORM_MINGW32
+# define RE_TRANSLATE_TYPE unsigned char*
+# undef ENABLE_EXTRA_COMPAT
+# define ENABLE_EXTRA_COMPAT 0
+# undef IF_EXTRA_COMPAT
+# define IF_EXTRA_COMPAT(x)
+#endif
+
 struct globals {
 	int max_matches;
 #if !ENABLE_EXTRA_COMPAT
