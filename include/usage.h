@@ -2783,6 +2783,9 @@
      "\n	-s	Set serial line to SPEED" \
      "\n	-X	Disable special meaning of NUL and Ctrl-X from stdin" \
 
+#define mingw_trivial_usage ""
+#define mingw_full_usage ""
+
 #define mkdir_trivial_usage \
        "[OPTIONS] DIRECTORY..."
 #define mkdir_full_usage "\n\n" \
