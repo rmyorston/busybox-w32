@@ -103,6 +103,10 @@ enum {
 static const char null_str[] ALIGN1 = "";
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+#define safe_read(fd,buf,size) wincon_read(fd,buf,size)
+#endif
+
 /* We try to minimize both static and stack usage. */
 struct lineedit_statics {
 	line_input_t *state;
