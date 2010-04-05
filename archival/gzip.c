@@ -1577,7 +1577,7 @@ static void compress_block(ct_data * ltree, ct_data * dtree)
  * trees or store, and output the encoded block to the zip file. This function
  * returns the total compressed length for the file so far.
  */
-static ulg flush_block(char *buf, ulg stored_len, int eof)
+static ulg flush_block(char *buf, ulg stored_len, int eof_)
 {
 	ulg opt_lenb, static_lenb;      /* opt_len and static_len in bytes */
 	int max_blindex;                /* index of last bit length code of non zero freq */
@@ -1615,7 +1615,7 @@ static ulg flush_block(char *buf, ulg stored_len, int eof)
 	 * and if the zip file can be seeked (to rewrite the local header),
 	 * the whole file is transformed into a stored file:
 	 */
-	if (stored_len <= opt_lenb && eof && G2.compressed_len == 0L && seekable()) {
+	if (stored_len <= opt_lenb && eof_ && G2.compressed_len == 0L && seekable()) {
 		/* Since LIT_BUFSIZE <= 2*WSIZE, the input data must be there: */
 		if (buf == NULL)
 			bb_error_msg("block vanished");
@@ -1631,18 +1631,18 @@ static ulg flush_block(char *buf, ulg stored_len, int eof)
 		 * successful. If LIT_BUFSIZE <= WSIZE, it is never too late to
 		 * transform a block into a stored block.
 		 */
-		send_bits((STORED_BLOCK << 1) + eof, 3);	/* send block type */
+		send_bits((STORED_BLOCK << 1) + eof_, 3);	/* send block type */
 		G2.compressed_len = (G2.compressed_len + 3 + 7) & ~7L;
 		G2.compressed_len += (stored_len + 4) << 3;
 
 		copy_block(buf, (unsigned) stored_len, 1);	/* with header */
 
 	} else if (static_lenb == opt_lenb) {
-		send_bits((STATIC_TREES << 1) + eof, 3);
+		send_bits((STATIC_TREES << 1) + eof_, 3);
 		compress_block((ct_data *) G2.static_ltree, (ct_data *) G2.static_dtree);
 		G2.compressed_len += 3 + G2.static_len;
 	} else {
-		send_bits((DYN_TREES << 1) + eof, 3);
+		send_bits((DYN_TREES << 1) + eof_, 3);
 		send_all_trees(G2.l_desc.max_code + 1, G2.d_desc.max_code + 1,
 					   max_blindex + 1);
 		compress_block((ct_data *) G2.dyn_ltree, (ct_data *) G2.dyn_dtree);
@@ -1651,12 +1651,12 @@ static ulg flush_block(char *buf, ulg stored_len, int eof)
 	Assert(G2.compressed_len == G1.bits_sent, "bad compressed size");
 	init_block();
 
-	if (eof) {
+	if (eof_) {
 		bi_windup();
 		G2.compressed_len += 7;	/* align on byte boundary */
 	}
 	Tracev((stderr, "\ncomprlen %lu(%lu) ", G2.compressed_len >> 3,
-			G2.compressed_len - 7 * eof));
+			G2.compressed_len - 7 * eof_));
 
 	return G2.compressed_len >> 3;
 }
