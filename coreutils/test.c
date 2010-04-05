@@ -599,6 +599,24 @@ static int filstat(char *nm, enum token mode)
 		return 0;
 	}
 
+#if ENABLE_PLATFORM_MINGW32
+	if (mode == FILEX) {
+		int len = strlen(nm), ret;
+		char *exepath;
+		if (len >= 4 && !strcmp(nm+len-4,".exe"))
+			exepath = nm;
+		else {
+			exepath = malloc(len+5);
+			memcpy(exepath, nm, len);
+			memcpy(exepath+len, ".exe", 5);
+		}
+		ret = stat(exepath, &s);
+		if (exepath != nm)
+			free(exepath);
+		return ret >= 0;
+	}
+#endif
+
 	if (stat(nm, &s) != 0)
 		return 0;
 	if (mode == FILEXIST)
