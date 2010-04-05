@@ -84,6 +84,13 @@ typedef long long llong;
 # define LDBL_DIG DBL_DIG
 #endif
 
+#ifdef __MINGW32__
+/* symbol conflict */
+#define CHAR SIZE_CHAR
+#define SHORT SIZE_SHORT
+#define LONG SIZE_LONG
+#define INT SIZE_INT
+#endif
 enum size_spec {
 	NO_SIZE,
 	CHAR,
