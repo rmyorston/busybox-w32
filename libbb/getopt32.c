@@ -534,7 +534,7 @@ getopt32(char **argv, const char *applet_opts, ...)
 	 * run_nofork_applet_prime() does this, but we might end up here
 	 * also via gunzip_main() -> gzip_main(). Play safe.
 	 */
-#ifdef __GLIBC__
+#if defined(__GLIBC__) || ENABLE_PLATFORM_MINGW32
 	optind = 0;
 #else /* BSD style */
 	optind = 1;
