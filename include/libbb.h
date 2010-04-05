@@ -75,6 +75,11 @@
 # include <arpa/inet.h>
 #elif defined __APPLE__
 # include <netinet/in.h>
+#elif ENABLE_PLATFORM_MINGW32
+# define WINVER 0x0501
+# include <winsock2.h>
+# include <ws2tcpip.h>
+# undef s_addr
 #else
 # include <arpa/inet.h>
 # if !defined(__socklen_t_defined) && !defined(_SOCKLEN_T_DECLARED)
@@ -90,7 +95,9 @@
 
 /* Some libc's forget to declare these, do it ourself */
 
+#if !ENABLE_PLATFORM_MINGW32
 extern char **environ;
+#endif
 #if defined(__GLIBC__) && __GLIBC__ < 2
 int vdprintf(int d, const char *format, va_list ap);
 #endif
@@ -128,6 +135,10 @@ int sysinfo(struct sysinfo* info);
 # define BUFSIZ 4096
 #endif
 
+/* Can't use ENABLE_PLATFORM_MINGW32 because it's also called by host compiler */
+#if ENABLE_PLATFORM_MINGW32
+# include "mingw.h"
+#endif
 
 /* Make all declarations hidden (-fvisibility flag only affects definitions) */
 /* (don't include system headers after this until corresponding pop!) */
@@ -470,6 +481,7 @@ void xlisten(int s, int backlog) FAST_FUNC;
 void xconnect(int s, const struct sockaddr *s_addr, socklen_t addrlen) FAST_FUNC;
 ssize_t xsendto(int s, const void *buf, size_t len, const struct sockaddr *to,
 				socklen_t tolen) FAST_FUNC;
+#if !ENABLE_PLATFORM_MINGW32
 /* SO_REUSEADDR allows a server to rebind to an address that is already
  * "in use" by old connections to e.g. previous server instance which is
  * killed or crashed. Without it bind will fail until all such connections
@@ -582,6 +594,7 @@ ssize_t recv_from_to(int fd, void *buf, size_t len, int flags,
 		struct sockaddr *from,
 		struct sockaddr *to,
 		socklen_t sa_size) FAST_FUNC;
+#endif
 
 
 char *xstrdup(const char *s) FAST_FUNC RETURNS_MALLOC;
@@ -720,6 +733,9 @@ char *safe_getdomainname(void) FAST_FUNC;
 char* str_tolower(char *str) FAST_FUNC;
 
 char *utoa(unsigned n) FAST_FUNC;
+#if ENABLE_PLATFORM_MINGW32
+# define itoa bb_itoa
+#endif
 char *itoa(int n) FAST_FUNC;
 /* Returns a pointer past the formatted number, does NOT null-terminate */
 char *utoa_to_buf(unsigned n, char *buf, unsigned buflen) FAST_FUNC;
