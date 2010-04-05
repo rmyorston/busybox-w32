@@ -29,6 +29,7 @@ config MD5_SIZE_VS_SPEED
 config FEATURE_FAST_TOP
 	bool "Faster /proc scanning code (+100 bytes)"
 	default n
+	depends on !PLATFORM_MINGW32
 	help
 	  This option makes top (and ps) ~20% faster (or 20% less CPU hungry),
 	  but code size is slightly bigger.
@@ -36,10 +37,20 @@ config FEATURE_FAST_TOP
 config FEATURE_ETC_NETWORKS
 	bool "Support for /etc/networks"
 	default n
+	depends on !PLATFORM_MINGW32
 	help
 	  Enable support for network names in /etc/networks. This is
 	  a rarely used feature which allows you to use names
 	  instead of IP/mask pairs in route command.
+
+config FEATURE_CYGWIN_TTY
+	bool "Support Cygwin tty"
+	default n
+	depends on PLATFORM_MINGW32
+	help
+	  Try to sneak in Cygwin shared structure to determine if
+	  a file handle is Cygwin tty, useful if you want to use
+	  a Cygwin-based terminal emulator.
 
 config FEATURE_EDITING
 	bool "Command line editing"
@@ -151,6 +162,7 @@ config FEATURE_COPYBUF_KB
 config MONOTONIC_SYSCALL
 	bool "Use clock_gettime(CLOCK_MONOTONIC) syscall"
 	default y
+	depends on !PLATFORM_MINGW32
 	help
 	  Use clock_gettime(CLOCK_MONOTONIC) syscall for measuring
 	  time intervals (time, ping, traceroute etc need this).
@@ -169,6 +181,7 @@ config IOCTL_HEX2STR_ERROR
 config FEATURE_HWIB
 	bool "Support infiniband HW"
 	default y
+	depends on !PLATFORM_MINGW32
 	help
 	  Support for printing infiniband addresses in
 	  network applets.
