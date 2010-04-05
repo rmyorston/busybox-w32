@@ -7,8 +7,14 @@
 #ifndef	BB_PLATFORM_H
 #define BB_PLATFORM_H 1
 
-#if defined(__MINGW32__) && !ENABLE_PLATFORM_MINGW32
-# error "You must select target platform MS Windows, or it won't build"
+#if ENABLE_PLATFORM_MINGW32
+# if !defined(__MINGW32__) /* HOSTCC is called */
+#  undef ENABLE_PLATFORM_MINGW32
+# endif
+#else
+# if defined(__MINGW32__)
+#  error "You must select target platform MS Windows, or it won't build"
+# endif
 #endif
 
 /* Assume all these functions exist by default.  Platforms where it is not
@@ -143,7 +149,7 @@
 
 /* Make all declarations hidden (-fvisibility flag only affects definitions) */
 /* (don't include system headers after this until corresponding pop!) */
-#if __GNUC_PREREQ(4,1)
+#if __GNUC_PREREQ(4,1) && !ENABLE_PLATFORM_MINGW32
 # define PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN _Pragma("GCC visibility push(hidden)")
 # define POP_SAVED_FUNCTION_VISIBILITY              _Pragma("GCC visibility pop")
 #else
@@ -233,7 +239,8 @@ typedef uint32_t bb__aliased_uint32_t FIX_ALIASING;
 /* ---- Compiler dependent settings ------------------------- */
 
 #if (defined __digital__ && defined __unix__) \
- || defined __APPLE__ || defined __FreeBSD__
+ || defined __APPLE__ || defined __FreeBSD__ \
+ || ENABLE_PLATFORM_MINGW32
 # undef HAVE_MNTENT_H
 # undef HAVE_SYS_STATFS_H
 #else
@@ -350,6 +357,16 @@ typedef unsigned smalluint;
 # undef HAVE_STRCHRNUL
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+# undef  HAVE_FDPRINTF
+# undef  HAVE_MKDTEMP
+# undef  HAVE_SETBIT
+# undef  HAVE_STRCASESTR
+# undef  HAVE_STRCHRNUL
+# undef  HAVE_STRSIGNAL
+# undef  HAVE_VASPRINTF
+#endif
+
 #if defined(__WATCOMC__)
 # undef HAVE_FDPRINTF
 # undef HAVE_MEMRCHR
@@ -401,6 +418,9 @@ extern char *strchrnul(const char *s, int c) FAST_FUNC;
 #endif
 
 #ifndef HAVE_VASPRINTF
+# if ENABLE_PLATFORM_MINGW32
+#  include <stdarg.h>
+# endif
 extern int vasprintf(char **string_ptr, const char *format, va_list p) FAST_FUNC;
 #endif
 
