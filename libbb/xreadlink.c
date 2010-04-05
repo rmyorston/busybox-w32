@@ -59,7 +59,7 @@ char* FAST_FUNC xmalloc_follow_symlinks(const char *path)
 		linkpath = xmalloc_readlink(buf);
 		if (!linkpath) {
 			/* not a symlink, or doesn't exist */
-			if (errno == EINVAL || errno == ENOENT)
+			if (errno == EINVAL || errno == ENOENT || (ENABLE_PLATFORM_MINGW32 && errno == ENOSYS))
 				return buf;
 			goto free_buf_ret_null;
 		}
