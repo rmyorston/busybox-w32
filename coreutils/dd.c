@@ -168,6 +168,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	};
 	int exitcode = EXIT_FAILURE;
+	int devzero = 0;
 	size_t ibs = 512, obs = 512;
 	ssize_t n, w;
 	char *ibuf, *obuf;
@@ -285,7 +286,12 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	if (infile != NULL)
-		xmove_fd(xopen(infile, O_RDONLY), ifd);
+		if (ENABLE_PLATFORM_MINGW32 && !strcmp(infile, "/dev/zero")) {
+			flags |= FLAG_NOERROR;
+			devzero = 1;
+		}
+		else
+			xmove_fd(xopen(infile, O_RDONLY), ifd);
 	else {
 		infile = bb_msg_standard_input;
 	}
@@ -312,7 +318,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 	} else {
 		outfile = bb_msg_standard_output;
 	}
-	if (skip) {
+	if (skip && !devzero) {
 		if (lseek(ifd, skip * ibs, SEEK_CUR) < 0) {
 			while (skip-- > 0) {
 				n = safe_read(ifd, ibuf, ibs);
@@ -329,7 +335,12 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	while (!(flags & FLAG_COUNT) || (G.in_full + G.in_part != count)) {
-		n = safe_read(ifd, ibuf, ibs);
+		if (devzero) {
+			memset(ibuf, 0, ibs);
+			n = ibs;
+		}
+		else
+			n = safe_read(ifd, ibuf, ibs);
 		if (n == 0)
 			break;
 		if (n < 0) {
@@ -383,7 +394,8 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 		if (w < 0) goto out_status;
 		if (w > 0) G.out_part++;
 	}
-	if (close(ifd) < 0) {
+
+	if (!devzero && close(ifd) < 0) {
  die_infile:
 		bb_simple_perror_msg_and_die(infile);
 	}
