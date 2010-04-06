@@ -18,7 +18,7 @@ int FAST_FUNC execable_file(const char *name)
 	struct stat s;
 	if (ENABLE_PLATFORM_MINGW32) {
 		int len = strlen(name);
-		return len >= 4 && !strcasecmp(name+len-4, ".exe") &&
+		return len > 4 && !strcasecmp(name+len-4, ".exe") &&
 			!stat(name, &s) && S_ISREG(s.st_mode);
 	}
 	return (!access(name, X_OK) && !stat(name, &s) && S_ISREG(s.st_mode));
@@ -59,8 +59,7 @@ char* FAST_FUNC find_execable(const char *filename, char **PATHp)
 				else {
 					char *np = xmalloc(len+4+1);
 					memcpy(np, p, len);
-					memcpy(np+len, ".exe", 4);
-					np[len+4] = '0';
+					memcpy(np+len, ".exe", 5);
 					if (execable_file(np)) {
 						*PATHp = n;
 						return np;
