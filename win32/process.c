@@ -29,104 +29,6 @@ next_path_sep(const char *path)
 	return strchr(has_dos_drive_prefix(path) ? path+2 : path, ':');
 }
 
-/*
- * Splits the PATH into parts.
- */
-static char **
-get_path_split(void)
-{
-	char *p, **path, *envpath = getenv("PATH");
-	int i, n = 0;
-
-	if (!envpath || !*envpath)
-		return NULL;
-
-	envpath = xstrdup(envpath);
-	p = envpath;
-	while (p) {
-		char *dir = p;
-		p = strchr(p, ';');
-		if (p) *p++ = '\0';
-		if (*dir) {	/* not earlier, catches series of ; */
-			++n;
-		}
-	}
-	if (!n)
-		return NULL;
-
-	path = xmalloc((n+1)*sizeof(char*));
-	p = envpath;
-	i = 0;
-	do {
-		if (*p)
-			path[i++] = xstrdup(p);
-		p = p+strlen(p)+1;
-	} while (i < n);
-	path[i] = NULL;
-
-	free(envpath);
-
-	return path;
-}
-
-static void
-free_path_split(char **path)
-{
-	if (path) {
-		char **p = path;
-
-		while (*p)
-			free(*p++);
-		free(path);
-	}
-}
-
-/*
- * exe_only means that we only want to detect .exe files, but not scripts
- * (which do not have an extension)
- */
-static char *
-lookup_prog(const char *dir, const char *cmd, int isexe, int exe_only)
-{
-	char path[MAX_PATH];
-	snprintf(path, sizeof(path), "%s/%s.exe", dir, cmd);
-
-	if (!isexe && access(path, F_OK) == 0)
-		return xstrdup(path);
-	path[strlen(path)-4] = '\0';
-	if ((!exe_only || isexe) && access(path, F_OK) == 0)
-		if (!(GetFileAttributes(path) & FILE_ATTRIBUTE_DIRECTORY))
-			return xstrdup(path);
-	return NULL;
-}
-
-/*
- * Determines the absolute path of cmd using the the split path in path.
- * If cmd contains a slash or backslash, no lookup is performed.
- */
-static char *
-path_lookup(const char *cmd, char **path, int exe_only)
-{
-	char *prog = NULL;
-	int len = strlen(cmd);
-	int isexe = len >= 4 && !strcasecmp(cmd+len-4, ".exe");
-
-	if (strchr(cmd, '/') || strchr(cmd, '\\')) {
-		if (!isexe) {
-			char path_exe[MAX_PATH];
-			sprintf(path_exe, "%s.exe", cmd);
-			if (!access(path_exe, F_OK))
-				return xstrdup(path_exe);
-		}
-		prog = xstrdup(cmd);
-	}
-
-	while (!prog && *path)
-		prog = lookup_prog(*path++, cmd, isexe, exe_only);
-
-	return prog;
-}
-
 static const char *
 parse_interpreter(const char *cmd)
 {
@@ -274,15 +176,15 @@ mingw_spawn_applet(int mode,
 }
 
 static pid_t
-mingw_spawn_interpreter(int mode, const char *prog, const char *const *argv, char **path, const char *const *envp)
+mingw_spawn_interpreter(int mode, const char *prog, const char *const *argv, const char *const *envp)
 {
+	int ret;
 	const char *interpr = parse_interpreter(prog);
 
 	if (!interpr)
 		return spawnveq(mode, prog, argv, envp);
 
 	if (ENABLE_FEATURE_PREFER_APPLETS && !strcmp(interpr, "sh")) {
-		int ret;
 		const char **new_argv;
 		int argc = 0;
 
@@ -293,19 +195,20 @@ mingw_spawn_interpreter(int mode, const char *prog, const char *const *argv, cha
 		new_argv[0] = prog; /* pass absolute path */
 		ret = mingw_spawn_applet(mode, "sh", new_argv, envp, 0);
 		free(new_argv);
-		return ret;
 	}
 	else {
-		int ret;
-		char *iprog = path_lookup(interpr, path, 1);
-		if (!iprog) {
+		char *path = xstrdup(getenv("PATH"));
+		char *tmp = path;
+		char *iprog = find_execable(interpr, &tmp);
+		free(path);
+		if (!prog) {
 			errno = ENOENT;
 			return -1;
 		}
 		ret = spawnveq(mode, iprog, argv, envp);
 		free(iprog);
-		return ret;
 	}
+	return ret;
 }
 
 pid_t
@@ -315,22 +218,28 @@ mingw_spawn_1(int mode, const char *cmd, const char *const *argv, const char *co
 
 	if (ENABLE_FEATURE_PREFER_APPLETS &&
 	    find_applet_by_name(cmd) >= 0)
-		return mingw_spawn_applet(mode, cmd, argv++, envp, 0);
+		return mingw_spawn_applet(mode, cmd, argv++, envp);
+	else if (is_absolute_path(cmd))
+		return mingw_spawn_interpreter(mode, cmd, argv, envp);
 	else {
-		char **path = get_path_split();
-		char *prog = path_lookup(cmd, path, 0);
+		char *tmp, *path = getenv("PATH");
+		char *prog;
 
-		if (prog) {
-			ret = mingw_spawn_interpreter(mode, prog, argv, path, envp);
-			free(prog);
-			free_path_split(path);
-			return ret;
-		}
-		else {
+		if (!path) {
 			errno = ENOENT;
-			free_path_split(path);
 			return -1;
 		}
+
+		/* exists_execable() does not return new file name */
+		tmp = path = xstrdup(path);
+		prog = find_execable(cmd, &tmp);
+		free(path);
+		if (!prog) {
+			errno = ENOENT;
+			return -1;
+		}
+		ret = mingw_spawn_interpreter(mode, prog, argv, envp);
+		free(prog);
 	}
 	return ret;
 }
@@ -344,8 +253,7 @@ mingw_spawn(char **argv)
 int
 mingw_execvp(const char *cmd, const char *const *argv)
 {
-	int ret = (int)mingw_spawn_1(P_WAIT, cmd, argv,
-				     (const char *const *)environ);
+	int ret = (int)mingw_spawn_1(P_WAIT, cmd, argv, (const char *const *)environ);
 	if (ret != -1)
 		exit(ret);
 	return ret;
@@ -359,12 +267,9 @@ mingw_execve(const char *cmd, const char *const *argv, const char *const *envp)
 
 	if (ENABLE_FEATURE_PREFER_APPLETS &&
 	    find_applet_by_name(cmd) >= 0)
-		ret = mingw_spawn_applet(mode, cmd, argv++, envp, 0);
-	else {
-		char **path = get_path_split();
-		ret = mingw_spawn_interpreter(mode, cmd, argv, path, envp);
-		free_path_split(path);
-	}
+		ret = mingw_spawn_applet(mode, cmd, argv++, envp);
+	else
+		ret = mingw_spawn_interpreter(mode, cmd, argv, envp);
 	if (ret != -1)
 		exit(ret);
 	return ret;
