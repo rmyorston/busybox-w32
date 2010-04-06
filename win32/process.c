@@ -9,6 +9,26 @@ int waitpid(pid_t pid, int *status, unsigned options)
 	return -1;
 }
 
+const char *
+next_path_sep(const char *path)
+{
+	static const char *from = NULL, *to;
+	static int has_semicolon;
+	int len = strlen(path);
+
+	if (!from || !(path >= from && path+len <= to)) {
+		from = path;
+		to = from+len;
+		has_semicolon = strchr(path, ';') != NULL;
+	}
+
+	/* Semicolons take precedence, it's Windows PATH */
+	if (has_semicolon)
+		return strchr(path, ';');
+	/* PATH=C:, not really a separator */
+	return strchr(has_dos_drive_prefix(path) ? path+2 : path, ':');
+}
+
 /*
  * Splits the PATH into parts.
  */

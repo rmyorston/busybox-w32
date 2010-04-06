@@ -343,6 +343,9 @@ pid_t mingw_spawn_1(int mode, const char *cmd, const char *const *argv, const ch
 #define execve mingw_execve
 #define execv mingw_execv
 
+const char * next_path_sep(const char *path);
+#define has_dos_drive_prefix(path) (isalpha(*(path)) && (path)[1] == ':')
+#define is_absolute_path(path) ((path)[0] == '/' || has_dos_drive_prefix(path))
 
 /*
  * helpers
