@@ -321,7 +321,7 @@ NOIMPL(vfork,void);
  * utime.h
  */
 int mingw_utime(const char *file_name, const struct utimbuf *times);
-NOIMPL(utimes,const char *filename UNUSED_PARAM, const struct timeval times[2] UNUSED_PARAM);
+int utimes(const char *file_name, const struct timeval times[2]);
 
 #define utime mingw_utime
 

@@ -310,6 +310,47 @@ int mingw_utime (const char *file_name, const struct utimbuf *times)
 		time_t_to_filetime(times->modtime, &mft);
 		time_t_to_filetime(times->actime, &aft);
 	}
+	else {
+		SYSTEMTIME st;
+		GetSystemTime(&st);
+		SystemTimeToFileTime(&st, &aft);
+		mft = aft;
+	}
+	if (!SetFileTime((HANDLE)_get_osfhandle(fh), NULL, &aft, &mft)) {
+		errno = EINVAL;
+		rc = -1;
+	} else
+		rc = 0;
+	close(fh);
+	return rc;
+}
+
+static inline void timeval_to_filetime(const struct timeval tv, FILETIME *ft)
+{
+	long long winTime = ((tv.tv_sec * 1000000LL) + tv.tv_usec) * 10LL + 116444736000000000LL;
+	ft->dwLowDateTime = winTime;
+	ft->dwHighDateTime = winTime >> 32;
+}
+
+int utimes(const char *file_name, const struct timeval times[2])
+{
+	FILETIME mft, aft;
+	int fh, rc;
+
+	/* must have write permission */
+	if ((fh = open(file_name, O_RDWR | O_BINARY)) < 0)
+		return -1;
+
+	if (times) {
+		timeval_to_filetime(times[0], &aft);
+		timeval_to_filetime(times[1], &mft);
+	}
+	else {
+		SYSTEMTIME st;
+		GetSystemTime(&st);
+		SystemTimeToFileTime(&st, &aft);
+		mft = aft;
+	}
 	if (!SetFileTime((HANDLE)_get_osfhandle(fh), NULL, &aft, &mft)) {
 		errno = EINVAL;
 		rc = -1;
