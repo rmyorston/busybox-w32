@@ -81,7 +81,7 @@ config FEATURE_START_STOP_DAEMON_LONG_OPTIONS
 config WHICH
 	bool "which"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  which is used to find programs in your PATH and
 	  print out their pathnames.
