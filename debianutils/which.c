@@ -36,10 +36,20 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 	do {
 #if ENABLE_DESKTOP
 /* Much bloat just to support -a */
-		if (strchr(*argv, '/')) {
+		if (strchr(*argv, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(*argv, '\\'))) {
 			if (execable_file(*argv)) {
 				puts(*argv);
 				continue;
+			}
+			else if (ENABLE_PLATFORM_MINGW32) {
+				char path[PATH_MAX];
+				int len = strlen(*argv);
+				memcpy(path, *argv, len);
+				memcpy(path+len, ".exe", 5);
+				if (execable_file(path)) {
+					puts(path);
+					continue;
+				}
 			}
 			status = EXIT_FAILURE;
 		} else {
@@ -66,10 +76,20 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 		}
 #else
 /* Just ignoring -a */
-		if (strchr(*argv, '/')) {
+		if (strchr(*argv, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(*argv, '\\'))) {
 			if (execable_file(*argv)) {
 				puts(*argv);
 				continue;
+			}
+			else if (ENABLE_PLATFORM_MINGW32) {
+				char path[PATH_MAX];
+				int len = strlen(*argv);
+				memcpy(path, *argv, len);
+				memcpy(path+len, ".exe", 5);
+				if (execable_file(path)) {
+					puts(path);
+					continue;
+				}
 			}
 		} else {
 			char *path2 = xstrdup(path);
