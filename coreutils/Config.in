@@ -380,7 +380,7 @@ config LENGTH
 config LN
 	bool "ln"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  ln is used to create hard or soft links between files.
 
