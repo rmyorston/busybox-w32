@@ -4818,7 +4818,7 @@ static void
 forkparent(struct job *jp, union node *n, int mode, pid_t pid)
 {
 	TRACE(("In parent shell: child = %d\n", pid));
-	if (!jp) {
+	if (!jp && !ENABLE_PLATFORM_MINGW32) { /* FIXME not quite understand this */
 		while (jobless && dowait(DOWAIT_NONBLOCK, NULL) > 0)
 			continue;
 		jobless++;
