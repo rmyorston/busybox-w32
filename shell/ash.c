@@ -9573,7 +9573,7 @@ preadbuffer(void)
 		more--;
 
 		c = *q;
-		if (c == '\0') {
+		if (c == '\0' || (ENABLE_PLATFORM_MINGW32 && c == '\r')) {
 			memmove(q, q + 1, more);
 		} else {
 			q++;
