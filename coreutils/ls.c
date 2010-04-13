@@ -795,6 +795,7 @@ static void showfiles(struct dnode **dn, unsigned nfiles)
 }
 
 
+#if !ENABLE_PLATFORM_MINGW32
 #if ENABLE_DESKTOP
 /* http://www.opengroup.org/onlinepubs/9699919799/utilities/ls.html
  * If any of the -l, -n, -s options is specified, each list
@@ -823,6 +824,7 @@ static off_t calculate_blocks(struct dnode **dn)
 	return blocks >> 1;
 }
 #endif
+#endif
 
 
 static struct dnode **list_dir(const char *, unsigned *);
@@ -848,9 +850,11 @@ static void showdirs(struct dnode **dn, int first)
 			printf("%s:\n", (*dn)->fullname);
 		}
 		subdnp = list_dir((*dn)->fullname, &nfiles);
+#if !ENABLE_PLATFORM_MINGW32
 #if ENABLE_DESKTOP
 		if ((all_fmt & STYLE_MASK) == STYLE_LONG)
 			printf("total %"OFF_FMT"u\n", calculate_blocks(subdnp));
+#endif
 #endif
 		if (nfiles > 0) {
 			/* list all files at this level */
