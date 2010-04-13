@@ -13418,6 +13418,30 @@ tblentry_copy(struct tblentry *tep)
 	*newp = NULL;
 	return start;
 }
+
+static void
+cmdtable_size(struct tblentry **cmdtablep)
+{
+	int i;
+	nodeptrsize += CMDTABLESIZE;
+	funcblocksize += sizeof(struct tblentry *)*CMDTABLESIZE;
+	for (i = 0; i < CMDTABLESIZE; i++)
+		tblentry_size(cmdtablep[i]);
+}
+
+static struct tblentry **
+cmdtable_copy(struct tblentry **cmdtablep)
+{
+	struct tblentry **new = funcblock;
+	int i;
+
+	funcblock = (char *) funcblock + sizeof(struct tblentry *)*CMDTABLESIZE;
+	for (i = 0; i < CMDTABLESIZE; i++) {
+		new[i] = tblentry_copy(cmdtablep[i]);
+		SAVE_PTR(new[i]);
+	}
+	return new;
+}
 /*-
  * Copyright (c) 1989, 1991, 1993, 1994
  *      The Regents of the University of California.  All rights reserved.
