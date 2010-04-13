@@ -774,7 +774,7 @@ static void
 opentrace(void)
 {
 	char s[100];
-#ifdef O_APPEND
+#if defined(O_APPEND) && !ENABLE_PLATFORM_MINGW32
 	int flags;
 #endif
 
@@ -799,7 +799,7 @@ opentrace(void)
 			return;
 		}
 	}
-#ifdef O_APPEND
+#if defined(O_APPEND) && !ENABLE_PLATFORM_MINGW32
 	flags = fcntl(fileno(tracefile), F_GETFL);
 	if (flags >= 0)
 		fcntl(fileno(tracefile), F_SETFL, flags | O_APPEND);
