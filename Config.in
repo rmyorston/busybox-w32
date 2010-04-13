@@ -609,6 +609,11 @@ config DEBUG_PESSIMIZE
 	  in a much bigger executable that more closely matches the source
 	  code.
 
+config PLATFORM_MINGW32_TEST
+       bool "Enable test app"
+       default n
+       depends on PLATFORM_MINGW32
+
 config WERROR
 	bool "Abort compilation on any warning"
 	default n
