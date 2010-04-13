@@ -13509,6 +13509,63 @@ redirtab_copy(struct redirtab *rdtp)
 	*vpp = NULL;
 	return start;
 }
+
+#undef shellparam
+#undef redirlist
+#undef varinit
+#undef vartab
+static void
+globals_var_size(struct globals_var *gvp)
+{
+	int i;
+
+	funcblocksize += sizeof(struct globals_var);
+	argv_size(gvp->shellparam.p);
+	redirtab_size(gvp->redirlist);
+	for (i = 0; i < VTABSIZE; i++)
+		var_size(gvp->vartab[i]);
+	for (i = 0; i < ARRAY_SIZE(varinit_data); i++)
+		var_size(gvp->varinit+i);
+	nodeptrsize += 2 + VTABSIZE; /* gvp->redirlist, gvp->shellparam.p, vartab  */
+}
+
+#undef g_nullredirs
+#undef preverrout_fd
+static struct globals_var *
+globals_var_copy(struct globals_var *gvp)
+{
+	int i;
+	struct globals_var *new;
+
+	new = funcblock;
+	funcblock = (char *) funcblock + sizeof(struct globals_var);
+
+	/* shparam */
+	memcpy(&new->shellparam, &gvp->shellparam, sizeof(struct shparam));
+	new->shellparam.malloced = 0;
+	new->shellparam.p = argv_copy(gvp->shellparam.p);
+	SAVE_PTR(new->shellparam.p);
+
+	new->redirlist = redirtab_copy(gvp->redirlist);
+	SAVE_PTR(new->redirlist);
+
+	new->g_nullredirs = gvp->g_nullredirs;
+	new->preverrout_fd = gvp->preverrout_fd;
+	for (i = 0; i < VTABSIZE; i++) {
+		new->vartab[i] = var_copy(gvp->vartab[i]);
+		SAVE_PTR(new->vartab[i]);
+	}
+
+	/* Can't use var_copy because varinit is already allocated */
+	for (i = 0; i < ARRAY_SIZE(varinit_data); i++) {
+		new->varinit[i].next = NULL;
+		new->varinit[i].text = nodeckstrdup(gvp->varinit[i].text);
+		SAVE_PTR(new->varinit[i].text);
+		new->varinit[i].flags = gvp->varinit[i].flags;
+		new->varinit[i].func = gvp->varinit[i].func;
+	}
+	return new;
+}
 /*-
  * Copyright (c) 1989, 1991, 1993, 1994
  *      The Regents of the University of California.  All rights reserved.
