@@ -7300,7 +7300,7 @@ shellexec(char **argv, const char *path, int idx)
 
 	clearredir(/*drop:*/ 1);
 	envp = listvars(VEXPORT, VUNSET, 0);
-	if (strchr(argv[0], '/') != NULL
+	if ((strchr(argv[0], '/') || (ENABLE_PLATFORM_MINGW32 && strchr(argv[0], '\\')))
 #if ENABLE_FEATURE_SH_STANDALONE
 	 || (applet_no = find_applet_by_name(argv[0])) >= 0
 #endif
@@ -12000,7 +12000,7 @@ find_dot_file(char *name)
 	struct stat statb;
 
 	/* don't try this for absolute or relative paths */
-	if (strchr(name, '/'))
+	if (strchr(name, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(name, '\\')))
 		return name;
 
 	/* IIRC standards do not say whether . is to be searched.
@@ -12103,10 +12103,11 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	struct stat statb;
 	int e;
 	int updatetbl;
+	IF_PLATFORM_MINGW32(int len);
 	struct builtincmd *bcmd;
 
 	/* If name contains a slash, don't use PATH or hash table */
-	if (strchr(name, '/') != NULL) {
+	if (strchr(name, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(name, '\\'))) {
 		entry->u.index = -1;
 		if (act & DO_ABS) {
 			while (stat(name, &statb) < 0) {
