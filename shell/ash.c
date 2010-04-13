@@ -5126,6 +5126,18 @@ copyfd(int from, int to)
 		/*if (from != to)*/
 			newfd = dup2(from, to);
 	} else {
+		if (ENABLE_PLATFORM_MINGW32) {
+			char* fds = ckmalloc(to);
+			int i,fd;
+			memset(fds,0,to);
+			while ((fd = dup(from)) < to && fd >= 0)
+				fds[fd] = 1;
+			for (i = 0;i < to;i ++)
+				if (fds[i])
+					close(i);
+			free(fds);
+			return fd;
+		}
 		newfd = fcntl(from, F_DUPFD, to);
 	}
 	if (newfd < 0) {
