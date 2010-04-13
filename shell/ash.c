@@ -5092,11 +5092,39 @@ noclobberopen(const char *fname)
  */
 /* openhere needs this forward reference */
 static void expandhere(union node *arg, int fd);
+#if ENABLE_PLATFORM_MINGW32
+static void
+forkshell_openhere(struct forkshell *fs)
+{
+	union node *redir = fs->n;
+	int pip[2];
+
+	pip[0] = fs->fd[0];
+	pip[1] = fs->fd[1];
+
+	TRACE(("ash: subshell: %s\n",__PRETTY_FUNCTION__));
+
+	close(pip[0]);
+	ignoresig(SIGINT);  //signal(SIGINT, SIG_IGN);
+	ignoresig(SIGQUIT); //signal(SIGQUIT, SIG_IGN);
+	ignoresig(SIGHUP);  //signal(SIGHUP, SIG_IGN);
+	ignoresig(SIGTSTP); //signal(SIGTSTP, SIG_IGN);
+	signal(SIGPIPE, SIG_DFL);
+	if (redir->type == NHERE) {
+		size_t len = strlen(redir->nhere.doc->narg.text);
+		full_write(pip[1], redir->nhere.doc->narg.text, len);
+	} else /* NXHERE */
+		expandhere(redir->nhere.doc, pip[1]);
+	_exit(EXIT_SUCCESS);
+}
+#endif
+
 static int
 openhere(union node *redir)
 {
 	int pip[2];
 	size_t len = 0;
+	IF_PLATFORM_MINGW32(struct forkshell fs);
 
 	if (pipe(pip) < 0)
 		ash_msg_and_raise_error("pipe call failed");
@@ -5107,6 +5135,16 @@ openhere(union node *redir)
 			goto out;
 		}
 	}
+#if ENABLE_PLATFORM_MINGW32
+	memset(&fs, 0, sizeof(fs));
+	fs.fp = forkshell_openhere;
+	fs.flags = 0;
+	fs.n = redir;
+	fs.fd[0] = pip[0];
+	fs.fd[1] = pip[1];
+	if (spawn_forkshell(NULL, &fs, FORK_NOJOB) < 0)
+		ash_msg_and_raise_error("unable to spawn shell");
+#endif
 	if (forkshell((struct job *)NULL, (union node *)NULL, FORK_NOJOB) == 0) {
 		/* child */
 		close(pip[0]);
@@ -13176,6 +13214,7 @@ extern int etext();
 
 #if ENABLE_PLATFORM_MINGW32
 static const forkpoint_fn forkpoints[] = {
+	forkshell_openhere,
 	NULL
 };
 
