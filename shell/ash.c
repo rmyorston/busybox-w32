@@ -13443,6 +13443,40 @@ cmdtable_copy(struct tblentry **cmdtablep)
 	}
 	return new;
 }
+
+/*
+ * char **
+ */
+static void
+argv_size(char **p)
+{
+	while (p && *p) {
+		funcblocksize += sizeof(char *);
+		funcstringsize += strlen(*p)+1;
+		nodeptrsize++;
+		p++;
+	}
+	funcblocksize += sizeof(char *);
+}
+
+static char **
+argv_copy(char **p)
+{
+	char **new, **start = funcblock;
+
+	while (p && *p) {
+		new = funcblock;
+		funcblock = (char *) funcblock + sizeof(char *);
+		*new = nodeckstrdup(*p);
+		SAVE_PTR(*new);
+		p++;
+		new++;
+	}
+	new = funcblock;
+	funcblock = (char *) funcblock + sizeof(char *);
+	*new = NULL;
+	return start;
+}
 /*-
  * Copyright (c) 1989, 1991, 1993, 1994
  *      The Regents of the University of California.  All rights reserved.
