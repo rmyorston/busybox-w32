@@ -81,6 +81,38 @@
 # error "Do not even bother, ash will not run on NOMMU machine"
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+struct forkshell;
+union node;
+struct strlist;
+struct job;
+
+typedef void (*forkpoint_fn)(struct forkshell *fs);
+struct forkshell {
+	/* filled by forkshell_copy() */
+	struct globals_var *gvp;
+	struct globals_misc *gmp;
+	struct tblentry **cmdtable;
+	struct localvar *localvars;
+	/* struct alias **atab; */
+	/* struct parsefile *g_parsefile; */
+	int fpid;
+	HANDLE hMapFile;
+	void *old_base;
+	int nodeptr_offset;
+	int size;
+
+	forkpoint_fn fp;
+	/* optional data, used by forkpoint_fn */
+	int flags;
+	int fd[10];
+	union node *n;
+	char **argv;
+	char *string;
+	struct strlist *strlist;
+	pid_t pid;
+};
+#endif
 
 /* ============ Hash table sizes. Configurable. */
 
@@ -13599,6 +13631,49 @@ globals_misc_copy(struct globals_misc *p)
 	new->physdir = p->physdir != p->nullstr ? nodeckstrdup(p->physdir) : new->nullstr;
 	new->arg0 = nodeckstrdup(p->arg0);
 	SAVE_PTR4(new->minusc, new->curdir, new->physdir, new->arg0);
+	return new;
+}
+
+static void
+forkshell_size(struct forkshell *fs)
+{
+	funcblocksize += sizeof(struct forkshell);
+	globals_var_size(fs->gvp);
+	globals_misc_size(fs->gmp);
+	cmdtable_size(fs->cmdtable);
+	localvar_size(fs->localvars);
+	/* optlist_transfer(sending, fd); */
+	/* misc_transfer(sending, fd); */
+
+	calcsize(fs->n);
+	argv_size(fs->argv);
+	funcstringsize += (fs->string ? strlen(fs->string) : 0) + 1;
+	strlist_size(fs->strlist);
+
+	nodeptrsize += 8; /* gvp, gmp, cmdtable, localvars, n, argv, string, strlist */
+}
+
+static struct forkshell *
+forkshell_copy(struct forkshell *fs)
+{
+	struct forkshell *new;
+
+	new = funcblock;
+	funcblock = (char *) funcblock + sizeof(struct forkshell);
+
+	memcpy(new, fs, sizeof(struct forkshell)); /* non-pointer stuff */
+	new->gvp = globals_var_copy(fs->gvp);
+	new->gmp = globals_misc_copy(fs->gmp);
+	new->cmdtable = cmdtable_copy(fs->cmdtable);
+	new->localvars = localvar_copy(fs->localvars);
+	SAVE_PTR4(new->gvp, new->gmp, new->cmdtable, new->localvars);
+
+	/* new->fs will be reconstructed from new->fpid */
+	new->n = copynode(fs->n);
+	new->argv = argv_copy(fs->argv);
+	new->string = nodeckstrdup(fs->string);
+	new->strlist = strlist_copy(fs->strlist);
+	SAVE_PTR4(new->n, new->argv, new->string, new->strlist);
 	return new;
 }
 /*-
