@@ -157,8 +157,7 @@ pid_t
 mingw_spawn_applet(int mode,
 		   const char *applet,
 		   const char *const *argv,
-		   const char *const *envp,
-		   int transfer_fd)
+		   const char *const *envp)
 {
 	char **env = copy_environ(envp);
 	char path[MAX_PATH+20];
@@ -166,10 +165,6 @@ mingw_spawn_applet(int mode,
 
 	sprintf(path, "BUSYBOX_APPLET_NAME=%s", applet);
 	env = env_setenv(env, path);
-	if (transfer_fd) {
-		sprintf(path, "BUSYBOX_ASH_TRANSFER=%x", (int)_get_osfhandle(transfer_fd));
-		env = env_setenv(env, path);
-	}
 	ret = spawnveq(mode, get_busybox_exec_path(), argv, (const char *const *)env);
 	free_environ(env);
 	return ret;
@@ -193,7 +188,7 @@ mingw_spawn_interpreter(int mode, const char *prog, const char *const *argv, con
 		new_argv = malloc(sizeof(*argv)*(argc+2));
 		memcpy(new_argv+1, argv, sizeof(*argv)*(argc+1));
 		new_argv[0] = prog; /* pass absolute path */
-		ret = mingw_spawn_applet(mode, "sh", new_argv, envp, 0);
+		ret = mingw_spawn_applet(mode, "sh", new_argv, envp);
 		free(new_argv);
 	}
 	else {
