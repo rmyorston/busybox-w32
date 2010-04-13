@@ -2274,7 +2274,9 @@ path_advance(const char **path, const char *name)
 		continue;
 #endif
 	len = p - start + strlen(name) + 2;     /* "2" is for '/' and '\0' */
-	while (stackblocksize() < len)
+
+	/* preserve space for .exe too */
+	while (stackblocksize() < (ENABLE_PLATFORM_MINGW32 ? len+4 : len))
 		growstackblock();
 	q = stackblock();
 	if (p != start) {
