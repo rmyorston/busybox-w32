@@ -5923,6 +5923,7 @@ struct backcmd {                /* result of evalbackcmd */
 	int fd;                 /* file descriptor to read from */
 	int nleft;              /* number of chars in buffer */
 	char *buf;              /* buffer */
+	IF_PLATFORM_MINGW32(struct forkshell fs);
 	struct job *jp;         /* job structure for command */
 };
 
@@ -5931,6 +5932,25 @@ static uint8_t back_exitstatus; /* exit status of backquoted command */
 #define EV_EXIT 01              /* exit after evaluating tree */
 static void evaltree(union node *, int);
 
+#if ENABLE_PLATFORM_MINGW32
+static void
+forkshell_evalbackcmd(struct forkshell *fs)
+{
+	union node *n = fs->n;
+	int pip[2] = {fs->fd[0], fs->fd[1]};
+
+	FORCE_INT_ON;
+	close(pip[0]);
+	if (pip[1] != 1) {
+		/*close(1);*/
+		copyfd(pip[1], 1 | COPYFD_EXACT);
+		close(pip[1]);
+	}
+	eflag = 0;
+	evaltree(n, EV_EXIT); /* actually evaltreenr... */
+	/* NOTREACHED */
+}
+#endif
 static void FAST_FUNC
 evalbackcmd(union node *n, struct backcmd *result)
 {
@@ -5939,6 +5959,7 @@ evalbackcmd(union node *n, struct backcmd *result)
 	result->fd = -1;
 	result->buf = NULL;
 	result->nleft = 0;
+	IF_PLATFORM_MINGW32(memset(&result->fs, 0, sizeof(result->fs)));
 	result->jp = NULL;
 	if (n == NULL)
 		goto out;
@@ -5953,6 +5974,14 @@ evalbackcmd(union node *n, struct backcmd *result)
 		if (pipe(pip) < 0)
 			ash_msg_and_raise_error("pipe call failed");
 		jp = makejob(/*n,*/ 1);
+#if ENABLE_PLATFORM_MINGW32
+		result->fs.fp = forkshell_evalbackcmd;
+		result->fs.n = n;
+		result->fs.fd[0] = pip[0];
+		result->fs.fd[1] = pip[1];
+		if (spawn_forkshell(jp, &result->fs, FORK_NOJOB) < 0)
+			ash_msg_and_raise_error("unable to spawn shell");
+#endif
 		if (forkshell(jp, n, FORK_NOJOB) == 0) {
 			FORCE_INT_ON;
 			close(pip[0]);
@@ -13215,6 +13244,7 @@ extern int etext();
 #if ENABLE_PLATFORM_MINGW32
 static const forkpoint_fn forkpoints[] = {
 	forkshell_openhere,
+	forkshell_evalbackcmd,
 	NULL
 };
 
