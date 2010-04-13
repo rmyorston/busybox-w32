@@ -8012,6 +8012,10 @@ static int funcblocksize;       /* size of structures in function */
 static int funcstringsize;      /* size of strings in node */
 static void *funcblock;         /* block to allocate function from */
 static char *funcstring;        /* block to allocate strings from */
+#if ENABLE_PLATFORM_MINGW32
+static int nodeptrsize;
+static int *nodeptr;
+#endif
 
 /* flags in argument to evaltree */
 #define EV_EXIT    01           /* exit after evaluating tree */
@@ -8057,6 +8061,7 @@ sizenodelist(struct nodelist *lp)
 {
 	while (lp) {
 		funcblocksize += SHELL_ALIGN(sizeof(struct nodelist));
+		IF_PLATFORM_MINGW32(nodeptrsize += 2);
 		calcsize(lp->n);
 		lp = lp->next;
 	}
@@ -8073,15 +8078,18 @@ calcsize(union node *n)
 		calcsize(n->ncmd.redirect);
 		calcsize(n->ncmd.args);
 		calcsize(n->ncmd.assign);
+		IF_PLATFORM_MINGW32(nodeptrsize += 3);
 		break;
 	case NPIPE:
 		sizenodelist(n->npipe.cmdlist);
+		IF_PLATFORM_MINGW32(nodeptrsize++);
 		break;
 	case NREDIR:
 	case NBACKGND:
 	case NSUBSHELL:
 		calcsize(n->nredir.redirect);
 		calcsize(n->nredir.n);
+		IF_PLATFORM_MINGW32(nodeptrsize += 2);
 		break;
 	case NAND:
 	case NOR:
@@ -8090,31 +8098,37 @@ calcsize(union node *n)
 	case NUNTIL:
 		calcsize(n->nbinary.ch2);
 		calcsize(n->nbinary.ch1);
+		IF_PLATFORM_MINGW32(nodeptrsize += 2);
 		break;
 	case NIF:
 		calcsize(n->nif.elsepart);
 		calcsize(n->nif.ifpart);
 		calcsize(n->nif.test);
+		IF_PLATFORM_MINGW32(nodeptrsize += 3);
 		break;
 	case NFOR:
 		funcstringsize += strlen(n->nfor.var) + 1;
 		calcsize(n->nfor.body);
 		calcsize(n->nfor.args);
+		IF_PLATFORM_MINGW32(nodeptrsize += 3);
 		break;
 	case NCASE:
 		calcsize(n->ncase.cases);
 		calcsize(n->ncase.expr);
+		IF_PLATFORM_MINGW32(nodeptrsize += 2);
 		break;
 	case NCLIST:
 		calcsize(n->nclist.body);
 		calcsize(n->nclist.pattern);
 		calcsize(n->nclist.next);
+		IF_PLATFORM_MINGW32(nodeptrsize += 3);
 		break;
 	case NDEFUN:
 	case NARG:
 		sizenodelist(n->narg.backquote);
 		funcstringsize += strlen(n->narg.text) + 1;
 		calcsize(n->narg.next);
+		IF_PLATFORM_MINGW32(nodeptrsize += 3);
 		break;
 	case NTO:
 #if ENABLE_ASH_BASH_COMPAT
@@ -8126,19 +8140,23 @@ calcsize(union node *n)
 	case NAPPEND:
 		calcsize(n->nfile.fname);
 		calcsize(n->nfile.next);
+		IF_PLATFORM_MINGW32(nodeptrsize += 2);
 		break;
 	case NTOFD:
 	case NFROMFD:
 		calcsize(n->ndup.vname);
 		calcsize(n->ndup.next);
+		IF_PLATFORM_MINGW32(nodeptrsize += 2);
 	break;
 	case NHERE:
 	case NXHERE:
 		calcsize(n->nhere.doc);
 		calcsize(n->nhere.next);
+		IF_PLATFORM_MINGW32(nodeptrsize += 2);
 		break;
 	case NNOT:
 		calcsize(n->nnot.com);
+		IF_PLATFORM_MINGW32(nodeptrsize++);
 		break;
 	};
 }
@@ -8157,6 +8175,18 @@ nodeckstrdup(const char *s)
 
 static union node *copynode(union node *);
 
+#if ENABLE_PLATFORM_MINGW32
+# define SAVE_PTR(dst) {if (nodeptr) *nodeptr++ = (int)&(dst);}
+# define SAVE_PTR2(dst1,dst2) {if (nodeptr) { *nodeptr++ = (int)&(dst1);*nodeptr++ = (int)&(dst2);}}
+# define SAVE_PTR3(dst1,dst2,dst3) {if (nodeptr) { *nodeptr++ = (int)&(dst1);*nodeptr++ = (int)&(dst2);*nodeptr++ = (int)&(dst3);}}
+# define SAVE_PTR4(dst1,dst2,dst3,dst4) {if (nodeptr) { *nodeptr++ = (int)&(dst1);*nodeptr++ = (int)&(dst2);*nodeptr++ = (int)&(dst3);*nodeptr++ = (int)&(dst4);}}
+#else
+# define SAVE_PTR(dst)
+# define SAVE_PTR2(dst,dst2)
+# define SAVE_PTR3(dst,dst2,dst3)
+# define SAVE_PTR4(dst,dst2,dst3,dst4)
+#endif
+
 static struct nodelist *
 copynodelist(struct nodelist *lp)
 {
@@ -8168,6 +8198,7 @@ copynodelist(struct nodelist *lp)
 		*lpp = funcblock;
 		funcblock = (char *) funcblock + SHELL_ALIGN(sizeof(struct nodelist));
 		(*lpp)->n = copynode(lp->n);
+		SAVE_PTR2((*lpp)->n, (*lpp)->next);
 		lp = lp->next;
 		lpp = &(*lpp)->next;
 	}
@@ -8190,16 +8221,19 @@ copynode(union node *n)
 		new->ncmd.redirect = copynode(n->ncmd.redirect);
 		new->ncmd.args = copynode(n->ncmd.args);
 		new->ncmd.assign = copynode(n->ncmd.assign);
+		SAVE_PTR3(new->ncmd.redirect,new->ncmd.args, new->ncmd.assign);
 		break;
 	case NPIPE:
 		new->npipe.cmdlist = copynodelist(n->npipe.cmdlist);
 		new->npipe.pipe_backgnd = n->npipe.pipe_backgnd;
+		SAVE_PTR(new->npipe.cmdlist);
 		break;
 	case NREDIR:
 	case NBACKGND:
 	case NSUBSHELL:
 		new->nredir.redirect = copynode(n->nredir.redirect);
 		new->nredir.n = copynode(n->nredir.n);
+		SAVE_PTR2(new->nredir.redirect,new->nredir.n);
 		break;
 	case NAND:
 	case NOR:
@@ -8208,31 +8242,37 @@ copynode(union node *n)
 	case NUNTIL:
 		new->nbinary.ch2 = copynode(n->nbinary.ch2);
 		new->nbinary.ch1 = copynode(n->nbinary.ch1);
+		SAVE_PTR2(new->nbinary.ch1,new->nbinary.ch2);
 		break;
 	case NIF:
 		new->nif.elsepart = copynode(n->nif.elsepart);
 		new->nif.ifpart = copynode(n->nif.ifpart);
 		new->nif.test = copynode(n->nif.test);
+		SAVE_PTR3(new->nif.elsepart,new->nif.ifpart,new->nif.test);
 		break;
 	case NFOR:
 		new->nfor.var = nodeckstrdup(n->nfor.var);
 		new->nfor.body = copynode(n->nfor.body);
 		new->nfor.args = copynode(n->nfor.args);
+		SAVE_PTR3(new->nfor.var,new->nfor.body,new->nfor.args);
 		break;
 	case NCASE:
 		new->ncase.cases = copynode(n->ncase.cases);
 		new->ncase.expr = copynode(n->ncase.expr);
+		SAVE_PTR2(new->ncase.cases,new->ncase.expr);
 		break;
 	case NCLIST:
 		new->nclist.body = copynode(n->nclist.body);
 		new->nclist.pattern = copynode(n->nclist.pattern);
 		new->nclist.next = copynode(n->nclist.next);
+		SAVE_PTR3(new->nclist.body,new->nclist.pattern,new->nclist.next);
 		break;
 	case NDEFUN:
 	case NARG:
 		new->narg.backquote = copynodelist(n->narg.backquote);
 		new->narg.text = nodeckstrdup(n->narg.text);
 		new->narg.next = copynode(n->narg.next);
+		SAVE_PTR3(new->narg.backquote,new->narg.text,new->narg.next);
 		break;
 	case NTO:
 #if ENABLE_ASH_BASH_COMPAT
@@ -8245,6 +8285,7 @@ copynode(union node *n)
 		new->nfile.fname = copynode(n->nfile.fname);
 		new->nfile.fd = n->nfile.fd;
 		new->nfile.next = copynode(n->nfile.next);
+		SAVE_PTR2(new->nfile.fname,new->nfile.next);
 		break;
 	case NTOFD:
 	case NFROMFD:
@@ -8252,15 +8293,18 @@ copynode(union node *n)
 		new->ndup.dupfd = n->ndup.dupfd;
 		new->ndup.fd = n->ndup.fd;
 		new->ndup.next = copynode(n->ndup.next);
+		SAVE_PTR2(new->ndup.vname,new->ndup.next);
 		break;
 	case NHERE:
 	case NXHERE:
 		new->nhere.doc = copynode(n->nhere.doc);
 		new->nhere.fd = n->nhere.fd;
 		new->nhere.next = copynode(n->nhere.next);
+		SAVE_PTR2(new->nhere.doc,new->nhere.next);
 		break;
 	case NNOT:
 		new->nnot.com = copynode(n->nnot.com);
+		SAVE_PTR(new->nnot.com);
 		break;
 	};
 	new->type = n->type;
@@ -8283,6 +8327,7 @@ copyfunc(union node *n)
 	f = ckmalloc(blocksize + funcstringsize);
 	funcblock = (char *) f + offsetof(struct funcnode, n);
 	funcstring = (char *) f + blocksize;
+	IF_PLATFORM_MINGW32(nodeptr = NULL);
 	copynode(n);
 	f->count = 0;
 	return f;
