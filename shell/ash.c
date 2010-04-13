@@ -13317,6 +13317,24 @@ name(type *vp) \
 	return start; \
 }
 
+/*
+ * struct var
+ */
+SLIST_SIZE_BEGIN(var_size,struct var)
+funcstringsize += strlen(p->text) + 1;
+nodeptrsize++; /* p->text */
+SLIST_SIZE_END()
+
+SLIST_COPY_BEGIN(var_copy,struct var)
+(*vpp)->text = nodeckstrdup(vp->text);
+(*vpp)->flags = vp->flags;
+/*
+ * The only place that can set struct var#func is varinit[],
+ * which will be fixed by forkshell_init()
+ */
+(*vpp)->func = NULL;
+SAVE_PTR((*vpp)->text);
+SLIST_COPY_END()
 /*-
  * Copyright (c) 1989, 1991, 1993, 1994
  *      The Regents of the University of California.  All rights reserved.
