@@ -8144,10 +8144,12 @@ calcsize(union node *n)
 }
 
 static char *
-nodeckstrdup(char *s)
+nodeckstrdup(const char *s)
 {
 	char *rtn = funcstring;
 
+	if (!s)
+		return NULL;
 	strcpy(funcstring, s);
 	funcstring += strlen(s) + 1;
 	return rtn;
