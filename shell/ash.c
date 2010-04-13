@@ -2392,6 +2392,98 @@ cdopt(void)
 static const char *
 updatepwd(const char *dir)
 {
+#if ENABLE_PLATFORM_MINGW32
+	/*
+	 * Due to Windows drive notion, getting pwd is a completely
+	 * different thing. Handle it in a separate routine
+	 */
+
+	char *new;
+	char *p;
+	char *cdcomppath;
+	const char *lim;
+	/*
+	 * There are four cases
+	 *  absdrive +  abspath: c:/path
+	 *  absdrive + !abspath: c:path
+	 * !absdrive +  abspath: /path
+	 * !absdrive + !abspath: path
+	 *
+	 * Damn DOS!
+	 * c:path behaviour is "undefined"
+	 * To properly handle this case, I have to keep track of cwd
+	 * of every drive, which is too painful to do.
+	 * So when c:path is given, I assume it's c:${curdir}path
+	 * with ${curdir} comes from the current drive
+	 */
+	int absdrive = *dir && dir[1] == ':';
+	int abspath = absdrive ? dir[2] == '/' : *dir == '/';
+	char *drive;
+
+	cdcomppath = ststrdup(dir);
+	STARTSTACKSTR(new);
+	if (!absdrive && curdir == nullstr)
+		return 0;
+	if (!abspath) {
+		if (curdir == nullstr)
+			return 0;
+		new = stack_putstr(curdir, new);
+	}
+	new = makestrspace(strlen(dir) + 2, new);
+
+	drive = stackblock();
+	if (absdrive) {
+		*drive = *dir;
+		cdcomppath += 2;
+		dir += 2;
+	} else {
+		*drive = *curdir;
+	}
+	drive[1] = ':'; /* in case of absolute drive+path */
+
+	if (abspath)
+		new = drive + 2;
+	lim = drive + 3;
+	if (!abspath) {
+		if (new[-1] != '/')
+			USTPUTC('/', new);
+		if (new > lim && *lim == '/')
+			lim++;
+	} else {
+		USTPUTC('/', new);
+		cdcomppath ++;
+		if (dir[1] == '/' && dir[2] != '/') {
+			USTPUTC('/', new);
+			cdcomppath++;
+			lim++;
+		}
+	}
+	p = strtok(cdcomppath, "/");
+	while (p) {
+		switch (*p) {
+		case '.':
+			if (p[1] == '.' && p[2] == '\0') {
+				while (new > lim) {
+					STUNPUTC(new);
+					if (new[-1] == '/')
+						break;
+				}
+				break;
+			}
+			if (p[1] == '\0')
+				break;
+			/* fall through */
+		default:
+			new = stack_putstr(p, new);
+			USTPUTC('/', new);
+		}
+		p = strtok(0, "/");
+	}
+	if (new > lim)
+		STUNPUTC(new);
+	*new = 0;
+	return stackblock();
+#else
 	char *new;
 	char *p;
 	char *cdcomppath;
@@ -2445,6 +2537,7 @@ updatepwd(const char *dir)
 		STUNPUTC(new);
 	*new = 0;
 	return stackblock();
+#endif
 }
 
 /*
