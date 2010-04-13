@@ -112,6 +112,7 @@ struct forkshell {
 	struct strlist *strlist;
 	pid_t pid;
 };
+static int spawn_forkshell(struct job *jp, struct forkshell *fs, int mode);
 #endif
 
 /* ============ Hash table sizes. Configurable. */
@@ -13318,6 +13319,29 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	exitshell();
 	/* NOTREACHED */
+}
+
+/* FIXME: should consider running forkparent() and forkchild() */
+static int
+spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
+{
+	const char *argv[] = { "sh", "--forkshell", NULL, NULL };
+	char buf[16];
+
+	struct forkshell *new;
+	new = forkshell_prepare(fs);
+	sprintf(buf, "%x", (unsigned int)new->hMapFile);
+	argv[2] = buf;
+	fs->pid = mingw_spawn_applet(P_NOWAIT, "sh", argv,
+				     (const char *const *)environ);
+	CloseHandle(new->hMapFile);
+	UnmapViewOfFile(new);
+	if (fs->pid == -1) {
+		free(jp);
+		return -1;
+	}
+	forkparent(jp, fs->node, mode, fs->pid);
+	return fs->pid;
 }
 
 /*
