@@ -3715,7 +3715,7 @@ setjobctl(int on)
 				if (--fd < 0)
 					goto out;
 		}
-		fd = fcntl(fd, F_DUPFD, 10);
+		fd = copyfd(fd, 10);
 		if (ofd >= 0)
 			close(ofd);
 		if (fd < 0)
@@ -5270,7 +5270,7 @@ redirect(union node *redir, int flags)
 #endif
 		if (need_to_remember(sv, fd)) {
 			/* Copy old descriptor */
-			i = fcntl(fd, F_DUPFD, 10);
+			i = copyfd(fd, 10);
 /* You'd expect copy to be CLOEXECed. Currently these extra "saved" fds
  * are closed in popredir() in the child, preventing them from leaking
  * into child. (popredir() also cleans up the mess in case of failures)
