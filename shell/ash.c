@@ -3889,6 +3889,53 @@ sprint_status(char *s, int status, int sigonly)
 	return col;
 }
 
+#if ENABLE_PLATFORM_MINGW32
+/*
+ * Windows does not know about parent-child relationship
+ * They don't support waitpid(-1)
+ */
+static pid_t
+waitpid_child(int *status)
+{
+	HANDLE *pidlist, *pidp;
+	int pid_nr = 0;
+	pid_t pid;
+	DWORD win_status, idx;
+	struct job *jb;
+
+	#define LOOP(stmt) \
+	for (jb = curjob; jb; jb = jb->prev_job) { \
+		struct procstat *ps, *psend; \
+		if (jb->state == JOBDONE) \
+			continue; \
+		ps = jb->ps; \
+		psend = ps + jb->nprocs; \
+		while (ps < psend) { \
+			if (ps->ps_pid != -1) { \
+				stmt; \
+			} \
+			ps++; \
+		} \
+	}
+
+	LOOP(pid_nr++);
+	pidp = pidlist = ckmalloc(sizeof(*pidlist)*pid_nr);
+	LOOP(*pidp++ = (HANDLE)ps->ps_pid);
+	#undef LOOP
+
+	idx = WaitForMultipleObjects(pid_nr, pidlist, FALSE, INFINITE);
+	if (idx >= pid_nr) {
+		free(pidlist);
+		return -1;
+	}
+	GetExitCodeProcess(pidlist[idx], &win_status);
+	pid = (int)pidlist[idx];
+	free(pidlist);
+	*status = (int)win_status;
+	return pid;
+}
+#endif
+
 static int
 dowait(int wait_flags, struct job *job)
 {
@@ -3905,7 +3952,11 @@ dowait(int wait_flags, struct job *job)
 	 * NB: _not_ safe_waitpid, we need to detect EINTR */
 	if (doing_jobctl)
 		wait_flags |= WUNTRACED;
+#if ENABLE_PLATFORM_MINGW32
+	pid = waitpid_child(&status);
+#else
 	pid = waitpid(-1, &status, wait_flags);
+#endif
 	TRACE(("wait returns pid=%d, status=0x%x, errno=%d(%s)\n",
 				pid, status, errno, strerror(errno)));
 	if (pid <= 0)
@@ -3928,6 +3979,8 @@ dowait(int wait_flags, struct job *job)
 					jobno(jp), pid, ps->ps_status, status));
 				ps->ps_status = status;
 				thisjob = jp;
+				if (ENABLE_PLATFORM_MINGW32)
+					ps->ps_pid = -1;
 			}
 			if (ps->ps_status == -1)
 				state = JOBRUNNING;
