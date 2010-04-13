@@ -13477,6 +13477,39 @@ argv_copy(char **p)
 	*new = NULL;
 	return start;
 }
+
+/*
+ * struct redirtab
+ */
+static void
+redirtab_size(struct redirtab *rdtp)
+{
+	while (rdtp) {
+		funcblocksize += sizeof(*rdtp)+sizeof(rdtp->two_fd[0])*rdtp->pair_count;
+		rdtp = rdtp->next;
+		nodeptrsize++; /* rdtp->next */
+	}
+}
+
+static struct redirtab *
+redirtab_copy(struct redirtab *rdtp)
+{
+	struct redirtab *start;
+	struct redirtab **vpp;
+
+	vpp = &start;
+	while (rdtp) {
+		int size = sizeof(*rdtp)+sizeof(rdtp->two_fd[0])*rdtp->pair_count;
+		*vpp = funcblock;
+		funcblock = (char *) funcblock + size;
+		memcpy(*vpp, rdtp, size);
+		SAVE_PTR((*vpp)->next);
+		rdtp = rdtp->next;
+		vpp = &(*vpp)->next;
+	}
+	*vpp = NULL;
+	return start;
+}
 /*-
  * Copyright (c) 1989, 1991, 1993, 1994
  *      The Regents of the University of California.  All rights reserved.
