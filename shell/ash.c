@@ -43,7 +43,9 @@
 #endif
 
 #include "busybox.h" /* for applet_names */
+#ifndef __MINGW32__
 #include <paths.h>
+#endif
 #include <setjmp.h>
 #include <fnmatch.h>
 
@@ -12465,6 +12467,8 @@ unsetcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 
 /*      setmode.c      */
 
+#if !ENABLE_PLATFORM_MINGW32
+
 #include <sys/times.h>
 
 static const unsigned char timescmd_str[] ALIGN1 = {
@@ -12497,6 +12501,13 @@ timescmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 
 	return 0;
 }
+#else
+static int FAST_FUNC
+timescmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+{
+	return 0;
+}
+#endif
 
 #if ENABLE_SH_MATH_SUPPORT
 /*
