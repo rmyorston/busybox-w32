@@ -16,6 +16,14 @@
  * Licensed under the GPL v2 or later, see the file LICENSE in this tarball.
  */
 #include "libbb.h"
+
+#if ENABLE_PLATFORM_MINGW32
+int FAST_FUNC shell_builtin_ulimit(char **argv)
+{
+	return 1;
+}
+#else
+
 #include "builtin_ulimit.h"
 
 
@@ -226,3 +234,4 @@ int FAST_FUNC shell_builtin_ulimit(char **argv)
 
 	return 0;
 }
+#endif
