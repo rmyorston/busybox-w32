@@ -2527,7 +2527,7 @@ cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	}
 	if (!dest)
 		dest = nullstr;
-	if (*dest == '/')
+	if (is_absolute_path(dest))
 		goto step7;
 	if (*dest == '.') {
 		c = dest[1];
@@ -12213,7 +12213,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			}
 		}
 		/* if rehash, don't redo absolute path names */
-		if (fullname[0] == '/' && idx <= prev) {
+		if (is_absolute_path(fullname) && idx <= prev) {
 			if (idx < prev)
 				continue;
 			TRACE(("searchexec \"%s\": no change\n", name));
