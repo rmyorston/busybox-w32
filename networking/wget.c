@@ -579,6 +579,7 @@ int wget_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	INIT_G();
+	IF_WIN32_NET(init_winsock();)
 
 #if ENABLE_FEATURE_WGET_LONG_OPTIONS
 	applet_long_options = wget_longopts;
