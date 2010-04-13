@@ -13334,6 +13334,22 @@ SLIST_COPY_BEGIN(var_copy,struct var)
 (*vpp)->func = NULL;
 SAVE_PTR((*vpp)->text);
 SLIST_COPY_END()
+
+/*
+ * struct localvar
+ */
+SLIST_SIZE_BEGIN(localvar_size,struct localvar)
+var_size(p->vp);
+funcstringsize += strlen(p->text) + 1;
+nodeptrsize += 2; /* p->vp, p->text */
+SLIST_SIZE_END()
+
+SLIST_COPY_BEGIN(localvar_copy,struct localvar)
+(*vpp)->text = nodeckstrdup(vp->text);
+(*vpp)->flags = vp->flags;
+(*vpp)->vp = var_copy(vp->vp);
+SAVE_PTR2((*vpp)->vp, (*vpp)->text);
+SLIST_COPY_END()
 /*-
  * Copyright (c) 1989, 1991, 1993, 1994
  *      The Regents of the University of California.  All rights reserved.
