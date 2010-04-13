@@ -612,7 +612,12 @@ static NOINLINE unsigned list_single(const struct dnode *dn)
 	if (all_fmt & LIST_INO)
 		column += printf("%7llu ", (long long) dn->dstat.st_ino);
 	if (all_fmt & LIST_BLOCKS)
+#if ENABLE_PLATFORM_MINGW32
+		/* MinGW does not have st_blocks */
+		column += printf("%4"OFF_FMT"u ", (off_t)0);
+#else
 		column += printf("%4"OFF_FMT"u ", (off_t) (dn->dstat.st_blocks >> 1));
+#endif
 	if (all_fmt & LIST_MODEBITS)
 		column += printf("%-10s ", (char *) bb_mode_string(dn->dstat.st_mode));
 	if (all_fmt & LIST_NLINKS)
