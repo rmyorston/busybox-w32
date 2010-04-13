@@ -9423,6 +9423,20 @@ bltincmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	 * as POSIX mandates */
 	return back_exitstatus;
 }
+
+#if ENABLE_PLATFORM_MINGW32
+static void
+forkshell_shellexec(struct forkshell *fs)
+{
+	int idx = fs->fd[0];
+	struct strlist *varlist = fs->strlist;
+	char **argv = fs->argv;
+	char *path = fs->string;
+
+	listsetvar(varlist, VEXPORT|VSTACK);
+	shellexec(argv, path, idx);
+}
+#endif
 static void
 evalcommand(union node *cmd, int flags)
 {
@@ -9598,6 +9612,26 @@ evalcommand(union node *cmd, int flags)
 			break;
 		}
 	}
+#endif
+#if ENABLE_PLATFORM_MINGW32
+		if (!(flags & EV_EXIT) || trap[0]) {
+			struct forkshell fs;
+
+			memset(&fs, 0, sizeof(fs));
+			fs.fp = forkshell_shellexec;
+			fs.argv = argv;
+			fs.string = (char*)path;
+			fs.fd[0] = cmdentry.u.index;
+			fs.strlist = varlist.list;
+			jp = makejob(/*cmd,*/ 1);
+			if (spawn_forkshell(jp, &fs, FORK_FG) < 0)
+				ash_msg_and_raise_error("unable to spawn shell");
+			exitstatus = waitforjob(jp);
+			INT_ON;
+			TRACE(("forked child exited with %d\n", exitstatus));
+			break;
+		}
+		/* goes through to shellexec() */
 #endif
 		/* Fork off a child process if necessary. */
 		if (!(flags & EV_EXIT) || trap[0]) {
@@ -13309,6 +13343,7 @@ static const forkpoint_fn forkpoints[] = {
 	forkshell_evalbackcmd,
 	forkshell_evalsubshell,
 	forkshell_evalpipe,
+	forkshell_shellexec,
 	NULL
 };
 
