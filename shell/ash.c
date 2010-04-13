@@ -13280,6 +13280,41 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	/* NOTREACHED */
 }
 
+/*
+ * forkshell_prepare() and friends
+ */
+#define SLIST_SIZE_BEGIN(name,type) \
+static void \
+name(type *p) \
+{ \
+	while (p) { \
+		funcblock = (char *) funcblock + sizeof(type);
+		/* do something here with p */
+#define SLIST_SIZE_END() \
+		nodeptrsize++; \
+		p = p->next; \
+	} \
+}
+
+#define SLIST_COPY_BEGIN(name,type) \
+static type * \
+name(type *vp) \
+{ \
+	type *start; \
+	type **vpp; \
+	vpp = &start; \
+	while (vp) { \
+		*vpp = funcblock; \
+		funcblock = (char *) funcblock + sizeof(type);
+		/* do something here with vpp and vp */
+#define SLIST_COPY_END() \
+		SAVE_PTR((*vpp)->next); \
+		vp = vp->next; \
+		vpp = &(*vpp)->next; \
+	} \
+	*vpp = NULL; \
+	return start; \
+}
 
 /*-
  * Copyright (c) 1989, 1991, 1993, 1994
