@@ -8894,9 +8894,35 @@ expredir(union node *n)
  * of the shell, which make the last process in a pipeline the parent
  * of all the rest.)
  */
+#if ENABLE_PLATFORM_MINGW32
+static void
+forkshell_evalpipe(struct forkshell *fs)
+{
+	union node *n = fs->n;
+	int flags = fs->flags;
+	int prevfd = fs->fd[2];
+	int pip[2] = {fs->fd[0], fs->fd[1]};
+
+	TRACE(("ash: subshell: %s\n",__PRETTY_FUNCTION__));
+	INT_ON;
+	if (pip[1] >= 0) {
+		close(pip[0]);
+	}
+	if (prevfd > 0) {
+		dup2(prevfd, 0);
+		close(prevfd);
+	}
+	if (pip[1] > 1) {
+		dup2(pip[1], 1);
+		close(pip[1]);
+	}
+	evaltreenr(n, flags);
+}
+#endif
 static void
 evalpipe(union node *n, int flags)
 {
+	IF_PLATFORM_MINGW32(struct forkshell fs);
 	struct job *jp;
 	struct nodelist *lp;
 	int pipelen;
@@ -8920,6 +8946,17 @@ evalpipe(union node *n, int flags)
 				ash_msg_and_raise_error("pipe call failed");
 			}
 		}
+#if ENABLE_PLATFORM_MINGW32
+		memset(&fs, 0, sizeof(fs));
+		fs.fp = forkshell_evalpipe;
+		fs.flags = flags;
+		fs.n = lp->n;
+		fs.fd[0] = pip[0];
+		fs.fd[1] = pip[1];
+		fs.fd[2] = prevfd;
+		if (spawn_forkshell(jp, &fs, n->npipe.pipe_backgnd) < 0)
+			ash_msg_and_raise_error("unable to spawn shell");
+#endif
 		if (forkshell(jp, lp->n, n->npipe.pipe_backgnd) == 0) {
 			INT_ON;
 			if (pip[1] >= 0) {
@@ -13272,6 +13309,7 @@ static const forkpoint_fn forkpoints[] = {
 	forkshell_openhere,
 	forkshell_evalbackcmd,
 	forkshell_evalsubshell,
+	forkshell_evalpipe,
 	NULL
 };
 
