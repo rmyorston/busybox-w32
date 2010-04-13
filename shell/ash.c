@@ -4054,6 +4054,9 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 	int retval;
 	struct job *jp;
 
+	if (ENABLE_PLATFORM_MINGW32)
+		return 0;
+
 	if (pending_sig)
 		raise_exception(EXSIG);
 
