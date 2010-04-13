@@ -25,7 +25,7 @@ static unsigned copy_lines(FILE *src_stream, FILE *dst_stream, unsigned lines_co
 {
 	while (src_stream && lines_count) {
 		char *line;
-		line = xmalloc_fgets(src_stream);
+		line = xmalloc_fgetline(src_stream);
 		if (line == NULL) {
 			break;
 		}
@@ -180,7 +180,7 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 		printf("patching file %s\n", new_filename);
 
 		/* Handle all hunks for this file */
-		patch_line = xmalloc_fgets(patch_file);
+		patch_line = xmalloc_fgetline(patch_file);
 		while (patch_line) {
 			unsigned count;
 			unsigned src_beg_line;
@@ -221,7 +221,7 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 
 			while (1) {
 				free(patch_line);
-				patch_line = xmalloc_fgets(patch_file);
+				patch_line = xmalloc_fgetline(patch_file);
 				if (patch_line == NULL)
 					break; /* EOF */
 				if (!*patch_line) {
@@ -239,7 +239,7 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 					if (src_cur_line == src_last_line)
 						break;
 					if (src_stream) {
-						src_line = xmalloc_fgets(src_stream);
+						src_line = xmalloc_fgetline(src_stream);
 						if (src_line) {
 							int diff = strcmp(src_line, patch_line + 1);
 							src_cur_line++;
