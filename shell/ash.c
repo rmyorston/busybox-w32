@@ -5626,6 +5626,8 @@ exptilde(char *startp, char *p, int flags)
 	if (*name == '\0') {
 		home = lookupvar(homestr);
 	} else {
+		if (ENABLE_PLATFORM_MINGW32)
+			goto lose;
 		pw = getpwnam(name);
 		if (pw == NULL)
 			goto lose;
