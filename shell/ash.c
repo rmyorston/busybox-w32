@@ -13350,6 +13350,19 @@ SLIST_COPY_BEGIN(localvar_copy,struct localvar)
 (*vpp)->vp = var_copy(vp->vp);
 SAVE_PTR2((*vpp)->vp, (*vpp)->text);
 SLIST_COPY_END()
+
+/*
+ * struct strlist
+ */
+SLIST_SIZE_BEGIN(strlist_size,struct strlist)
+funcstringsize += strlen(p->text) + 1;
+nodeptrsize++; /* p->text */
+SLIST_SIZE_END()
+
+SLIST_COPY_BEGIN(strlist_copy,struct strlist)
+(*vpp)->text = nodeckstrdup(vp->text);
+SAVE_PTR((*vpp)->text);
+SLIST_COPY_END()
 /*-
  * Copyright (c) 1989, 1991, 1993, 1994
  *      The Regents of the University of California.  All rights reserved.
