@@ -771,7 +771,7 @@ int fcntl(int fd UNUSED_PARAM, int cmd, ...)
 	 */
 	if (cmd == F_GETFD || cmd == F_SETFD || cmd == F_GETFL)
 		return 0;
-	errno = EINVAL;
+	errno = ENOSYS;
 	return -1;
 }
 
