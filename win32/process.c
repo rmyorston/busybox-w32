@@ -267,7 +267,14 @@ mingw_execve(const char *cmd, const char *const *argv, const char *const *envp)
 
 	if (ENABLE_FEATURE_PREFER_APPLETS &&
 	    find_applet_by_name(cmd) >= 0)
-		ret = mingw_spawn_applet(mode, cmd, argv++, envp);
+		ret = mingw_spawn_applet(mode, cmd, argv, envp);
+	/*
+	 * execve(bb_busybox_exec_path, argv, envp) won't work
+	 * because argv[0] will be replaced to bb_busybox_exec_path
+	 * by MSVC runtime
+	 */
+	else if (argv && cmd != argv[0] && cmd == bb_busybox_exec_path)
+		ret = mingw_spawn_applet(mode, argv[0], argv, envp);
 	else
 		ret = mingw_spawn_interpreter(mode, cmd, argv, envp);
 	if (ret != -1)
