@@ -13179,6 +13179,7 @@ static const forkpoint_fn forkpoints[] = {
 };
 
 static struct forkshell* forkshell_prepare(struct forkshell *fs);
+static void forkshell_init(const char *idstr);
 #endif
 
 /*
@@ -13248,6 +13249,15 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 
 	init();
 	setstackmark(&smark);
+
+#if ENABLE_PLATFORM_MINGW32
+	if (argc == 3 && !strcmp(argv[1], "--forkshell")) {
+		forkshell_init(argv[2]);
+
+		/* NOTREACHED */
+		bb_error_msg_and_die("subshell ended unexpectedly");
+	}
+#endif
 	procargs(argv);
 
 #if ENABLE_FEATURE_EDITING_SAVEHISTORY
@@ -13770,6 +13780,64 @@ forkshell_prepare(struct forkshell *fs)
 	new->hMapFile = h;
 	return new;
 }
+
+#undef exception_handler
+#undef trap
+#undef trap_ptr
+static void
+forkshell_init(const char *idstr)
+{
+	struct forkshell *fs;
+	int map_handle;
+	HANDLE h;
+	struct globals_var **gvpp;
+	struct globals_misc **gmpp;
+	int i;
+
+	if (sscanf(idstr, "%x", &map_handle) != 1)
+		bb_error_msg_and_die("invalid forkshell ID");
+
+	h = (HANDLE)map_handle;
+	fs = (struct forkshell *)MapViewOfFile(h, FILE_MAP_WRITE, 0,0, 0);
+	if (!fs)
+		bb_error_msg_and_die("Invalid forkshell memory");
+
+	/* pointer fixup */
+	nodeptr = (int*)((char*)fs + fs->nodeptr_offset);
+	while (*nodeptr) {
+		int *ptr = (int*)((char*)fs + (*nodeptr - (int)fs->old_base));
+		if (*ptr)
+			*ptr -= ((int)fs->old_base - (int)fs);
+		nodeptr++;
+	}
+	/* Now fix up stuff that can't be transferred */
+	fs->fp = forkpoints[fs->fpid];
+	for (i = 0; i < ARRAY_SIZE(varinit_data); i++)
+		fs->gvp->varinit[i].func = varinit_data[i].func;
+	for (i = 0; i < CMDTABLESIZE; i++) {
+		struct tblentry *e = fs->cmdtable[i];
+		while (e) {
+			if (e->cmdtype == CMDBUILTIN)
+				e->param.cmd = builtintab + (int)e->param.cmd;
+			e = e->next;
+		}
+	}
+	fs->gmp->exception_handler = ash_ptr_to_globals_misc->exception_handler;
+	for (i = 0; i < NSIG; i++)
+		fs->gmp->trap[i] = ash_ptr_to_globals_misc->trap[i];
+	fs->gmp->trap_ptr = ash_ptr_to_globals_misc->trap_ptr;
+
+	/* Switch global variables */
+	gvpp = (struct globals_var **)&ash_ptr_to_globals_var;
+	*gvpp = fs->gvp;
+	gmpp = (struct globals_misc **)&ash_ptr_to_globals_misc;
+	*gmpp = fs->gmp;
+	localvars = fs->localvars;
+	cmdtable = fs->cmdtable;
+
+	fs->fp(fs);
+}
+
 /*-
  * Copyright (c) 1989, 1991, 1993, 1994
  *      The Regents of the University of California.  All rights reserved.
