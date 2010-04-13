@@ -113,6 +113,8 @@ int setitimer(int type, struct itimerval *in, struct itimerval *out);
 int sigaction(int sig, struct sigaction *in, struct sigaction *out);
 sighandler_t mingw_signal(int sig, sighandler_t handler);
 NOIMPL(sigfillset,int *mask UNUSED_PARAM);
+NOIMPL(FAST_FUNC sigprocmask_allsigs, int how UNUSED_PARAM);
+NOIMPL(FAST_FUNC sigaction_set,int signo UNUSED_PARAM, const struct sigaction *sa UNUSED_PARAM);
 
 #define signal mingw_signal
 /*
@@ -144,6 +146,7 @@ int winansi_fprintf(FILE *stream, const char *format, ...) __attribute__((format
 #define WEXITSTATUS(x) ((x) & 0xff)
 #define WIFSIGNALED(x) ((unsigned)(x) > 259)
 #define WTERMSIG(x) ((x) & 0x7f)
+#define WCOREDUMP(x) 0
 
 int clearenv(void);
 char *mingw_getenv(const char *name);
@@ -254,6 +257,7 @@ int setitimer(int type, struct itimerval *in, struct itimerval *out);
  * sys/wait.h
  */
 #define WNOHANG 1
+#define WUNTRACED 2
 int waitpid(pid_t pid, int *status, unsigned options);
 
 /*
