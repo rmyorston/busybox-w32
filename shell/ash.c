@@ -13364,6 +13364,61 @@ SLIST_COPY_BEGIN(strlist_copy,struct strlist)
 (*vpp)->text = nodeckstrdup(vp->text);
 SAVE_PTR((*vpp)->text);
 SLIST_COPY_END()
+
+/*
+ * struct tblentry
+ */
+static void
+tblentry_size(struct tblentry *tep)
+{
+	while (tep) {
+		funcblocksize += sizeof(struct tblentry) + strlen(tep->cmdname) + 1;
+		/* CMDBUILTIN, e->param.cmd needs no pointer relocation */
+		if (tep->cmdtype == CMDFUNCTION) {
+			funcblocksize += offsetof(struct funcnode, n);
+			calcsize(&tep->param.func->n);
+			nodeptrsize++; /* tep->param.func */
+		}
+		nodeptrsize++;	/* tep->next */
+		tep = tep->next;
+	}
+}
+
+static struct tblentry *
+tblentry_copy(struct tblentry *tep)
+{
+	struct tblentry *start;
+	struct tblentry **newp;
+	int size;
+
+	newp = &start;
+	while (tep) {
+		*newp = funcblock;
+		size = sizeof(struct tblentry) + strlen(tep->cmdname) + 1;
+
+		funcblock = (char *) funcblock + size;
+		memcpy(*newp, tep, size);
+		switch (tep->cmdtype) {
+		case CMDBUILTIN:
+			/* No pointer saving, this field must be fixed by forkshell_init() */
+			(*newp)->param.cmd = (const struct builtincmd *)(tep->param.cmd - builtintab);
+			break;
+		case CMDFUNCTION:
+			(*newp)->param.func = funcblock;
+			funcblock = (char *) funcblock + offsetof(struct funcnode, n);
+			copynode(&tep->param.func->n);
+			SAVE_PTR((*newp)->param.func);
+			break;
+		default:
+			break;
+		}
+		SAVE_PTR((*newp)->next);
+		tep = tep->next;
+		newp = &(*newp)->next;
+	}
+	*newp = NULL;
+	return start;
+}
 /*-
  * Copyright (c) 1989, 1991, 1993, 1994
  *      The Regents of the University of California.  All rights reserved.
