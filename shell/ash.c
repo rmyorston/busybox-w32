@@ -2261,8 +2261,18 @@ path_advance(const char **path, const char *name)
 	if (*path == NULL)
 		return NULL;
 	start = *path;
+#if ENABLE_PLATFORM_MINGW32
+	p = next_path_sep(start);
+	q = strchr(start, '%');
+	if ((p && q && q < p) || (!p && q))
+		p = q;
+	if (!p)
+		for (p = start; *p; p++)
+			continue;
+#else
 	for (p = start; *p && *p != ':' && *p != '%'; p++)
 		continue;
+#endif
 	len = p - start + strlen(name) + 2;     /* "2" is for '/' and '\0' */
 	while (stackblocksize() < len)
 		growstackblock();
