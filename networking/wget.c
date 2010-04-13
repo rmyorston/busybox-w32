@@ -8,6 +8,11 @@
  */
 #include "libbb.h"
 
+#ifdef __MINGW32__
+#define REPLACE_STDIO
+#include "strbuf_file.h"
+#endif
+
 struct host_info {
 	// May be used if we ever will want to free() all xstrdup()s...
 	/* char *allocated; */
@@ -652,7 +657,12 @@ int wget_main(int argc UNUSED_PARAM, char **argv)
 	lsa = xhost2sockaddr(server.host, server.port);
 	if (!(opt & WGET_OPT_QUIET)) {
 		char *s = xmalloc_sockaddr2dotted(&lsa->u.sa);
+#ifdef __MINGW32__
+		/* we have macro conflict here */
+		winansi_fprintf(stderr, "Connecting to %s (%s)\n", server.host, s);
+#else
 		fprintf(stderr, "Connecting to %s (%s)\n", server.host, s);
+#endif
 		free(s);
 	}
  establish_session:
