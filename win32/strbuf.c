@@ -90,6 +90,22 @@ void strbuf_tolower(struct strbuf *sb)
 		sb->buf[i] = tolower(sb->buf[i]);
 }
 
+void *xcalloc(size_t nmemb, size_t size)
+{
+	void *ret = calloc(nmemb, size);
+	if (!ret && (!nmemb || !size))
+		ret = calloc(1, 1);
+	if (!ret) {
+		ret = calloc(nmemb, size);
+		if (!ret && (!nmemb || !size))
+			ret = calloc(1, 1);
+		if (!ret)
+			die("Out of memory, calloc failed");
+	}
+	return ret;
+}
+
+
 struct strbuf **strbuf_split(const struct strbuf *sb, int delim)
 {
 	int alloc = 2, pos = 0;
@@ -266,7 +282,7 @@ ssize_t strbuf_read(struct strbuf *sb, int fd, size_t hint)
 	for (;;) {
 		ssize_t cnt;
 
-		cnt = _xread(fd, sb->buf + sb->len, sb->alloc - sb->len - 1);
+		cnt = read(fd, sb->buf + sb->len, sb->alloc - sb->len - 1);
 		if (cnt < 0) {
 			if (oldalloc == 0)
 				strbuf_release(sb);
