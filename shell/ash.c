@@ -112,6 +112,8 @@ struct forkshell {
 	struct strlist *strlist;
 	pid_t pid;
 };
+static void sticky_free(void *p);
+#define free(p) sticky_free(p)
 static int spawn_forkshell(struct job *jp, struct forkshell *fs, int mode);
 #endif
 
@@ -13784,6 +13786,7 @@ forkshell_prepare(struct forkshell *fs)
 #undef exception_handler
 #undef trap
 #undef trap_ptr
+static void *sticky_mem_start, *sticky_mem_end;
 static void
 forkshell_init(const char *idstr)
 {
@@ -13802,6 +13805,9 @@ forkshell_init(const char *idstr)
 	if (!fs)
 		bb_error_msg_and_die("Invalid forkshell memory");
 
+	/* this memory can't be freed */
+	sticky_mem_start = fs;
+	sticky_mem_end = (char *) fs + fs->size;
 	/* pointer fixup */
 	nodeptr = (int*)((char*)fs + fs->nodeptr_offset);
 	while (*nodeptr) {
@@ -13836,6 +13842,15 @@ forkshell_init(const char *idstr)
 	cmdtable = fs->cmdtable;
 
 	fs->fp(fs);
+}
+
+#undef free
+static void
+sticky_free(void *base)
+{
+	if (base >= sticky_mem_start && base < sticky_mem_end)
+		return;
+	free(base);
 }
 
 /*-
