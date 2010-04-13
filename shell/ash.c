@@ -8782,9 +8782,26 @@ evalcase(union node *n, int flags)
 /*
  * Kick off a subshell to evaluate a tree.
  */
+#if ENABLE_PLATFORM_MINGW32
+static void
+forkshell_evalsubshell(struct forkshell *fs)
+{
+	union node *n = fs->n;
+	int flags = fs->flags;
+
+	TRACE(("ash: subshell: %s\n",__PRETTY_FUNCTION__));
+	INT_ON;
+	flags |= EV_EXIT;
+	expredir(n->nredir.redirect);
+	redirect(n->nredir.redirect, 0);
+	evaltreenr(n->nredir.n, flags);
+	/* never returns */
+}
+#endif
 static void
 evalsubshell(union node *n, int flags)
 {
+	IF_PLATFORM_MINGW32(struct forkshell fs);
 	struct job *jp;
 	int backgnd = (n->type == NBACKGND);
 	int status;
@@ -8794,6 +8811,14 @@ evalsubshell(union node *n, int flags)
 		goto nofork;
 	INT_OFF;
 	jp = makejob(/*n,*/ 1);
+#if ENABLE_PLATFORM_MINGW32
+	memset(&fs, 0, sizeof(fs));
+	fs.fp = forkshell_evalsubshell;
+	fs.n = n;
+	fs.flags = flags;
+	if (spawn_forkshell(jp, &fs, backgnd) < 0)
+		ash_msg_and_raise_error("unable to spawn shell");
+#endif
 	if (forkshell(jp, n, backgnd) == 0) {
 		INT_ON;
 		flags |= EV_EXIT;
@@ -13245,6 +13270,7 @@ extern int etext();
 static const forkpoint_fn forkpoints[] = {
 	forkshell_openhere,
 	forkshell_evalbackcmd,
+	forkshell_evalsubshell,
 	NULL
 };
 
