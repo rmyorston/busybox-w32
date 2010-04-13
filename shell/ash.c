@@ -94,6 +94,7 @@
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
+#define XXX //fprintf(stderr,"%08x:%s:%s:%d\n", (int)getpid(),  __PRETTY_FUNCTION__, __FILE__, __LINE__);
 struct forkshell;
 union node;
 struct strlist;
