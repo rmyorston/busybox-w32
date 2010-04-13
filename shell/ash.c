@@ -13567,6 +13567,40 @@ globals_var_copy(struct globals_var *gvp)
 	}
 	return new;
 }
+
+#undef minusc
+#undef curdir
+#undef physdir
+#undef arg0
+#undef nullstr
+static void
+globals_misc_size(struct globals_misc *p)
+{
+	funcblocksize += sizeof(struct globals_misc);
+	funcstringsize += p->minusc ? strlen(p->minusc) + 1 : 1;
+	if (p->curdir != p->nullstr)
+		funcstringsize += strlen(p->curdir) + 1;
+	if (p->physdir != p->nullstr)
+		funcstringsize += strlen(p->physdir) + 1;
+	funcstringsize += strlen(p->arg0) + 1;
+	nodeptrsize += 4;	/* minusc, curdir, physdir, arg0 */
+}
+
+static struct globals_misc *
+globals_misc_copy(struct globals_misc *p)
+{
+	struct globals_misc *new = funcblock;
+
+	funcblock = (char *) funcblock + sizeof(struct globals_misc);
+	memcpy(new, p, sizeof(struct globals_misc));
+
+	new->minusc = nodeckstrdup(p->minusc);
+	new->curdir = p->curdir != p->nullstr ? nodeckstrdup(p->curdir) : new->nullstr;
+	new->physdir = p->physdir != p->nullstr ? nodeckstrdup(p->physdir) : new->nullstr;
+	new->arg0 = nodeckstrdup(p->arg0);
+	SAVE_PTR4(new->minusc, new->curdir, new->physdir, new->arg0);
+	return new;
+}
 /*-
  * Copyright (c) 1989, 1991, 1993, 1994
  *      The Regents of the University of California.  All rights reserved.
