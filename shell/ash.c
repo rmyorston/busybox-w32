@@ -13171,6 +13171,14 @@ static short profile_buf[16384];
 extern int etext();
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+static const forkpoint_fn forkpoints[] = {
+	NULL
+};
+
+static struct forkshell* forkshell_prepare(struct forkshell *fs);
+#endif
+
 /*
  * Main routine.  We initialize things, parse the arguments, execute
  * profiles if we're a login shell, and then call cmdloop to execute
@@ -13314,6 +13322,16 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 
 /*
  * forkshell_prepare() and friends
+ *
+ * The sequence is as follows:
+ * - funcblocksize, funcstringsize, nodeptrsize are initialized
+ * - forkshell_size(fs) is called to calculate the exact memory needed
+ * - a new struct is allocated
+ * - funcblock, funcstring, nodeptr are initialized from the new block
+ * - forkshell_copy(fs) is called to copy recursively everything over
+ *   it will record all pointers along the way, to nodeptr
+ *
+ * When this memory is mapped elsewhere, pointer fixup will be needed
  */
 #define SLIST_SIZE_BEGIN(name,type) \
 static void \
@@ -13673,6 +13691,58 @@ forkshell_copy(struct forkshell *fs)
 	new->string = nodeckstrdup(fs->string);
 	new->strlist = strlist_copy(fs->strlist);
 	SAVE_PTR4(new->n, new->argv, new->string, new->strlist);
+	return new;
+}
+
+static struct forkshell *
+forkshell_prepare(struct forkshell *fs)
+{
+	struct forkshell *new;
+	int size, fp, nodeptr_offset;
+	HANDLE h;
+	SECURITY_ATTRIBUTES sa;
+
+	for (fp = 0; forkpoints[fp] && forkpoints[fp] != fs->fp; fp++)
+		;
+
+	if (!forkpoints[fp])
+		bb_error_msg_and_die("invalid forkpoint %08x", (int)fs->fp);
+	fs->fpid = fp;
+
+	/* Calculate size of "new" */
+	fs->gvp = ash_ptr_to_globals_var;
+	fs->gmp = ash_ptr_to_globals_misc;
+	fs->cmdtable = cmdtable;
+	fs->localvars = localvars;
+
+	nodeptrsize = 1;	/* NULL terminated */
+	funcblocksize = 0;
+	funcstringsize = 0;
+	forkshell_size(fs);
+	size = funcblocksize + funcstringsize + nodeptrsize*sizeof(int);
+
+	/* Allocate, initialize pointers */
+	memset(&sa, 0, sizeof(sa));
+	sa.nLength = sizeof(sa);
+	sa.lpSecurityDescriptor = NULL;
+	sa.bInheritHandle = TRUE;
+	h = CreateFileMapping(INVALID_HANDLE_VALUE, &sa, PAGE_READWRITE, 0, size, NULL);
+	new = (struct forkshell *)MapViewOfFile(h, FILE_MAP_WRITE, 0,0, 0);
+	/* new = ckmalloc(size); */
+	funcblock = new;
+	funcstring = (char *) funcblock + funcblocksize;
+	nodeptr = (int*)((char *) funcstring + funcstringsize);
+	nodeptr_offset = (int) nodeptr - (int) new;
+
+	/* Now pack them all */
+	forkshell_copy(fs);
+
+	/* Finish it up */
+	*nodeptr = 0;
+	new->size = size;
+	new->nodeptr_offset = nodeptr_offset;
+	new->old_base = new;
+	new->hMapFile = h;
 	return new;
 }
 /*-
