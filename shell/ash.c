@@ -3301,6 +3301,8 @@ setsignal(int signo)
 	char cur_act, new_act;
 	struct sigaction act;
 
+	if (ENABLE_PLATFORM_MINGW32)
+		return;
 	t = trap[signo];
 	new_act = S_DFL;
 	if (t != NULL) { /* trap for this sig is set */
