@@ -13249,7 +13249,8 @@ init(void)
 			}
 		}
 
-		setvar("PPID", utoa(getppid()), 0);
+		if (!ENABLE_PLATFORM_MINGW32)
+			setvar("PPID", utoa(getppid()), 0);
 
 		p = lookupvar("PWD");
 		if (p)
