@@ -17,6 +17,18 @@
  */
 
 /*
+ * MinGW notes
+ *
+ * - Environment variables from Windows will all be turned to uppercase.
+ * - PATH accepts both ; and : as separator, but can't be mixed
+ * - command without ".exe" is still understood as executable (option to turn off?)
+ * - both / and \ are supported in PATH. Usually you must use /
+ * - trap/job does not work
+ * - /dev/null is supported for redirection
+ * - no $PPID
+ */
+
+/*
  * The following should be set to reflect the type of system you have:
  *      JOBS -> 1 if you have Berkeley job control, 0 otherwise.
  *      define SYSV if you are running under System V.
