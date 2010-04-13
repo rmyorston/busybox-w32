@@ -13216,6 +13216,33 @@ init(void)
 		struct stat st1, st2;
 
 		initvar();
+
+#if ENABLE_PLATFORM_MINGW32
+		/*
+		 * case insensitive env names from Windows world
+		 *
+		 * Some standard env names such as PATH is named Path and so on
+		 * ash itself is case sensitive, so "Path" will confuse it, as
+		 * MSVC getenv() is case insensitive.
+		 *
+		 * We may end up having both Path and PATH. Then Path will be chosen
+		 * because it appears first.
+		 */
+		for (envp = environ; envp && *envp; envp++)
+			if (!strncasecmp(*envp, "PATH=", 5) &&
+			    strncmp(*envp, "PATH=", 5))
+				break;
+		if (envp && *envp) {
+			char *start, *end;
+			for (envp = environ; envp && *envp; envp++) {
+				end = strchr(*envp, '=');
+				if (!end)
+					continue;
+				for (start = *envp;start < end;start++)
+					*start = toupper(*start);
+			}
+		}
+#endif
 		for (envp = environ; envp && *envp; envp++) {
 			if (strchr(*envp, '=')) {
 				setvareq(*envp, VEXPORT|VTEXTFIXED);
