@@ -12362,6 +12362,25 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			TRACE(("searchexec \"%s\": no change\n", name));
 			goto success;
 		}
+#if ENABLE_PLATFORM_MINGW32
+		len = strlen(fullname);
+		if (len > 4 &&
+		    !strcasecmp(fullname+len-4, ".exe") &&
+		    stat(fullname, &statb) < 0) {
+			if (errno != ENOENT && errno != ENOTDIR)
+				e = errno;
+			goto loop;
+		}
+
+		/* path_advance() has reserved space for .exe */
+		memcpy(fullname+len, ".exe", 5);
+		if (stat(fullname, &statb) < 0) {
+			if (errno != ENOENT && errno != ENOTDIR)
+				e = errno;
+			goto loop;
+		}
+		fullname[len] = '\0';
+#else
 		while (stat(fullname, &statb) < 0) {
 #ifdef SYSV
 			if (errno == EINTR)
@@ -12371,6 +12390,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 				e = errno;
 			goto loop;
 		}
+#endif
 		e = EACCES;     /* if we fail, this will be the error */
 		if (!S_ISREG(statb.st_mode))
 			continue;
