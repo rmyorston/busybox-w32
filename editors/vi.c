@@ -23,6 +23,10 @@
 
 #include "libbb.h"
 
+#ifdef __MINGW32__
+#include "cygwin_termios.h"
+#endif
+
 /* the CRASHME code is unmaintained, and doesn't currently build */
 #define ENABLE_FEATURE_VI_CRASHME 0
 
@@ -2200,6 +2204,27 @@ static void catch_sig(int sig)
 }
 #endif /* FEATURE_VI_USE_SIGNALS */
 
+#ifdef __MINGW32__
+static int mysleep(int hund)	// sleep for 'h' 1/100 seconds
+{
+	HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+
+	fflush(stdout);
+
+	/* In case of cygwin, it's a named pipe and won't work with WaitForSingleObject */
+	if (is_cygwin_tty(0) || !h) {
+		if (hund)
+			Sleep(hund*10);
+		return 0;
+	}
+	else {
+		DWORD ret;
+
+		ret = WaitForSingleObject(h, hund*10);
+		return ret != WAIT_TIMEOUT;
+	}
+}
+#else
 static int mysleep(int hund)	// sleep for 'hund' 1/100 seconds or stdin ready
 {
 	struct pollfd pfd[1];
@@ -2208,6 +2233,8 @@ static int mysleep(int hund)	// sleep for 'hund' 1/100 seconds or stdin ready
 	pfd[0].events = POLLIN;
 	return safe_poll(pfd, 1, hund*10) > 0;
 }
+#endif
+
 
 //----- IO Routines --------------------------------------------
 static int readit(void) // read (maybe cursor) key from stdin

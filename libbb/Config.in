@@ -55,6 +55,7 @@ config FEATURE_CYGWIN_TTY
 config FEATURE_EDITING
 	bool "Command line editing"
 	default n
+	depends on FEATURE_CYGWIN_TTY
 	help
 	  Enable line editing (mainly for shell command line).
 
