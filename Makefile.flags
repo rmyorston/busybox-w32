@@ -97,7 +97,12 @@ CFLAGS += $(strip $(subst ",,$(CONFIG_EXTRA_CFLAGS)))
 #"))
 endif
 
+ifeq ($(CONFIG_PLATFORM_MINGW32),y)
+CFLAGS += -Iwin32
+EXEEXT = .exe
+else
 LDLIBS += m crypt
+endif
 
 ifeq ($(CONFIG_PAM),y)
 LDLIBS += pam pam_misc
