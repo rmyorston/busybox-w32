@@ -18,6 +18,9 @@ choice
 config PLATFORM_POSIX
 	bool "POSIX"
 
+config PLATFORM_MINGW32
+	bool "MS Windows (MinGW port)"
+
 endchoice
 
 menu "Busybox Settings"
