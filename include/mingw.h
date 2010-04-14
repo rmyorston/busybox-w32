@@ -121,6 +121,10 @@ NOIMPL(sigfillset,int *mask UNUSED_PARAM);
 #define fseeko(f,o,w) fseek(f,o,w)
 
 int fdprintf(int fd, const char *format, ...);
+FILE* mingw_fopen(const char *filename, const char *mode);
+int mingw_rename(const char*, const char*);
+#define fopen mingw_fopen
+#define rename mingw_rename
 
 /*
  * ANSI emulation wrappers
@@ -216,8 +220,18 @@ NOIMPL(fchmod,int fildes UNUSED_PARAM, mode_t mode UNUSED_PARAM);
 NOIMPL(fchown,int fd UNUSED_PARAM, uid_t uid UNUSED_PARAM, gid_t gid UNUSED_PARAM);
 int mingw_mkdir(const char *path, int mode);
 
+/* Use mingw_lstat() instead of lstat()/stat() and
+ * mingw_fstat() instead of fstat() on Windows.
+ */
+int mingw_lstat(const char *file_name, struct stat *buf);
+int mingw_fstat(int fd, struct stat *buf);
+
 #define mkdir mingw_mkdir
-#define lstat stat
+#define stat(x,y) mingw_lstat(x,y)
+#define lseek _lseeki64
+#define fstat mingw_fstat
+#define lstat mingw_lstat
+#define _stati64 mingw_lstat
 
 /*
  * sys/sysmacros.h
@@ -258,6 +272,7 @@ IMPL(alarm,unsigned int,0,unsigned int seconds UNUSED_PARAM);
 NOIMPL(chown,const char *path UNUSED_PARAM, uid_t uid UNUSED_PARAM, gid_t gid UNUSED_PARAM);
 NOIMPL(chroot,const char *root UNUSED_PARAM);
 int mingw_dup (int fd);
+int mingw_dup2 (int fd, int fdto);
 char *mingw_getcwd(char *pointer, int len);
 
 
@@ -281,6 +296,7 @@ IMPL(fsync,int,0,int fd UNUSED_PARAM);
 NOIMPL(kill,pid_t pid UNUSED_PARAM, int sig UNUSED_PARAM);
 int link(const char *oldpath, const char *newpath);
 NOIMPL(mknod,const char *name UNUSED_PARAM, mode_t mode UNUSED_PARAM, dev_t device UNUSED_PARAM);
+int mingw_open (const char *filename, int oflags, ...);
 int pipe(int filedes[2]);
 NOIMPL(readlink,const char *path UNUSED_PARAM, char *buf UNUSED_PARAM, size_t bufsiz UNUSED_PARAM);
 NOIMPL(setgid,gid_t gid UNUSED_PARAM);
@@ -293,8 +309,10 @@ int mingw_unlink(const char *pathname);
 NOIMPL(vfork,void);
 
 //#define dup mingw_dup
+#define dup2 mingw_dup2
 #define getcwd mingw_getcwd
 #define lchown(a,b,c) chown(a,b,c)
+#define open mingw_open
 #define unlink mingw_unlink
 
 /*
