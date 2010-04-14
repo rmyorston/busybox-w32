@@ -218,7 +218,7 @@ config UPTIME
 config WATCH
 	bool "watch"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  watch is used to execute a program periodically, showing
 	  output to the screen.
