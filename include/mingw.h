@@ -121,7 +121,9 @@ NOIMPL(sigfillset,int *mask UNUSED_PARAM);
 
 int fdprintf(int fd, const char *format, ...);
 FILE* mingw_fopen(const char *filename, const char *mode);
+int mingw_rename(const char*, const char*);
 #define fopen mingw_fopen
+#define rename mingw_rename
 
 /*
  * ANSI emulation wrappers
