@@ -141,7 +141,7 @@ IMPL(unsetenv,void,,const char *env UNUSED_PARAM);
 /*
  * string.h
  */
-IMPL(strsep,char *,NULL,char **stringp UNUSED_PARAM, const char *delim UNUSED_PARAM);
+char *strsep(char **stringp, const char *delim);
 
 /*
  * sys/ioctl.h

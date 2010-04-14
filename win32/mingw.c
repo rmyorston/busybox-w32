@@ -348,3 +348,21 @@ int link(const char *oldpath, const char *newpath)
 	}
 	return 0;
 }
+
+char *strsep(char **stringp, const char *delim)
+{
+	char *s, *old_stringp;
+	if (!*stringp)
+		return NULL;
+	old_stringp = s = *stringp;
+	while (*s) {
+		if (strchr(delim, *s)) {
+			*s = '\0';
+			*stringp = s+1;
+			return old_stringp;
+		}
+		s++;
+	}
+	*stringp = NULL;
+	return old_stringp;
+}
