@@ -254,7 +254,7 @@ IMPL(getegid,int,1,void);
 IMPL(geteuid,int,1,void);
 NOIMPL(getsid,pid_t pid UNUSED_PARAM);
 IMPL(getuid,int,1,void);
-NOIMPL(fcntl,int fd UNUSED_PARAM, int cmd UNUSED_PARAM, ...);
+int fcntl(int fd, int cmd, ...);
 #define fork() -1
 IMPL(fsync,int,0,int fd UNUSED_PARAM);
 NOIMPL(kill,pid_t pid UNUSED_PARAM, int sig UNUSED_PARAM);
