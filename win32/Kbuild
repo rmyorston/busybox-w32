@@ -4,10 +4,14 @@
 
 lib-y:=
 
+lib-$(CONFIG_PLATFORM_MINGW32_TEST) = test.o
 lib-$(CONFIG_PLATFORM_MINGW32) += env.o
 lib-$(CONFIG_PLATFORM_MINGW32) += fnmatch.o
 lib-$(CONFIG_PLATFORM_MINGW32) += mingw.o
 lib-$(CONFIG_PLATFORM_MINGW32) += process.o
 lib-$(CONFIG_PLATFORM_MINGW32) += regex.o
-lib-$(CONFIG_PLATFORM_MINGW32) += spawn.o
+lib-$(CONFIG_WIN32_NET) += socket.o
+lib-$(CONFIG_PLATFORM_MINGW32) += strbuf.o
+lib-$(CONFIG_PLATFORM_MINGW32) += strbuf_file.o
+lib-$(CONFIG_PLATFORM_MINGW32) += termios.o
 lib-$(CONFIG_PLATFORM_MINGW32) += winansi.o
