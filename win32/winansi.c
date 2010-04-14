@@ -279,7 +279,7 @@ int winansi_fputs(const char *str, FILE *stream)
 {
 	int rv;
 
-	if (!isatty(fileno(stream)))
+	if (!isatty(fileno(stream)) || is_cygwin_tty(fileno(stream)))
 		return fputs(str, stream);
 
 	init();
@@ -302,7 +302,7 @@ static int winansi_vfprintf(FILE *stream, const char *format, va_list list)
 	char *buf = small_buf;
 	va_list cp;
 
-	if (!isatty(fileno(stream)))
+	if (!isatty(fileno(stream)) || is_cygwin_tty(fileno(stream)))
 		goto abort;
 
 	init();
