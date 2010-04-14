@@ -366,3 +366,9 @@ char *strsep(char **stringp, const char *delim)
 	*stringp = NULL;
 	return old_stringp;
 }
+
+char *realpath(const char *path, char *resolved_path)
+{
+	/* FIXME: need normalization */
+	return strcpy(resolved_path, path);
+}
