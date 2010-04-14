@@ -109,9 +109,12 @@ struct sigaction {
 #define sigemptyset(x) (void)0
 #define SA_RESTART 0
 
-NOIMPL(sigaction,int sig UNUSED_PARAM, struct sigaction *in UNUSED_PARAM, struct sigaction *out UNUSED_PARAM);
+int setitimer(int type, struct itimerval *in, struct itimerval *out);
+int sigaction(int sig, struct sigaction *in, struct sigaction *out);
+sighandler_t mingw_signal(int sig, sighandler_t handler);
 NOIMPL(sigfillset,int *mask UNUSED_PARAM);
 
+#define signal mingw_signal
 /*
  * stdio.h
  */
