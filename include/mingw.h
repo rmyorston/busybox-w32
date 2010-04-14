@@ -266,10 +266,12 @@ NOIMPL(setuid,uid_t gid UNUSED_PARAM);
 unsigned int sleep(unsigned int seconds);
 NOIMPL(symlink,const char *oldpath UNUSED_PARAM, const char *newpath UNUSED_PARAM);
 static inline void sync(void) {}
+int mingw_unlink(const char *pathname);
 NOIMPL(vfork,void);
 
 #define getcwd mingw_getcwd
 #define lchown(a,b,c) chown(a,b,c)
+#define unlink mingw_unlink
 
 /*
  * utime.h
