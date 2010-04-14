@@ -9,14 +9,14 @@ menu "Debian Utilities"
 config MKTEMP
 	bool "mktemp"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  mktemp is used to create unique temporary files
 
 config PIPE_PROGRESS
 	bool "pipe_progress"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  Display a dot to indicate pipe activity.
 
