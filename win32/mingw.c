@@ -381,3 +381,9 @@ const char *get_busybox_exec_path(void)
 		GetModuleFileName(NULL, path, PATH_MAX);
 	return path;
 }
+
+#undef mkdir
+int mingw_mkdir(const char *path, int mode UNUSED_PARAM)
+{
+	return mkdir(path);
+}
