@@ -1,0 +1,7 @@
+# Makefile for busybox
+#
+# Licensed under the GPL v2, see the file LICENSE in this tarball.
+
+lib-y:=
+
+lib-$(CONFIG_PLATFORM_MINGW32) += fnmatch.o
