@@ -120,6 +120,8 @@ NOIMPL(sigfillset,int *mask UNUSED_PARAM);
 #define fseeko(f,o,w) fseek(f,o,w)
 
 int fdprintf(int fd, const char *format, ...);
+FILE* mingw_fopen(const char *filename, const char *mode);
+#define fopen mingw_fopen
 
 /*
  * ANSI emulation wrappers
@@ -269,6 +271,7 @@ IMPL(fsync,int,0,int fd UNUSED_PARAM);
 NOIMPL(kill,pid_t pid UNUSED_PARAM, int sig UNUSED_PARAM);
 int link(const char *oldpath, const char *newpath);
 NOIMPL(mknod,const char *name UNUSED_PARAM, mode_t mode UNUSED_PARAM, dev_t device UNUSED_PARAM);
+int mingw_open (const char *filename, int oflags, ...);
 int pipe(int filedes[2]);
 NOIMPL(readlink,const char *path UNUSED_PARAM, char *buf UNUSED_PARAM, size_t bufsiz UNUSED_PARAM);
 NOIMPL(setgid,gid_t gid UNUSED_PARAM);
@@ -282,6 +285,7 @@ NOIMPL(vfork,void);
 
 #define getcwd mingw_getcwd
 #define lchown(a,b,c) chown(a,b,c)
+#define open mingw_open
 #define unlink mingw_unlink
 
 /*
