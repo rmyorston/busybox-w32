@@ -32,7 +32,7 @@ config FEATURE_SEAMLESS_Z
 config AR
 	bool "ar"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  ar is an archival utility program used to create, modify, and
 	  extract contents from archives. An archive is a single file holding
@@ -73,7 +73,7 @@ config FEATURE_AR_CREATE
 config BUNZIP2
 	bool "bunzip2"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  bunzip2 is a compression utility using the Burrows-Wheeler block
 	  sorting text compression algorithm, and Huffman coding. Compression
@@ -87,7 +87,7 @@ config BUNZIP2
 config BZIP2
 	bool "bzip2"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  bzip2 is a compression utility using the Burrows-Wheeler block
 	  sorting text compression algorithm, and Huffman coding. Compression
@@ -166,7 +166,7 @@ config FEATURE_DPKG_DEB_EXTRACT_ONLY
 config GUNZIP
 	bool "gunzip"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  gunzip is used to decompress archives created by gzip.
 	  You can use the `-t' option to test the integrity of
@@ -175,7 +175,7 @@ config GUNZIP
 config GZIP
 	bool "gzip"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  gzip is used to compress files.
 	  It's probably the most widely used UNIX compression program.
@@ -288,6 +288,7 @@ config FEATURE_TAR_UNAME_GNAME
 	bool "Enable use of user and group names"
 	default n
 	depends on TAR
+	depends on !PLATFORM_MINGW32
 	help
 	  Enables use of user and group names in tar. This affects contents
 	  listings (-t) and preserving permissions when unpacking (-p).
@@ -312,7 +313,7 @@ config FEATURE_TAR_SELINUX
 config UNCOMPRESS
 	bool "uncompress"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  uncompress is used to decompress archives created by compress.
 	  Not much used anymore, replaced by gzip/gunzip.
@@ -320,7 +321,7 @@ config UNCOMPRESS
 config UNLZMA
 	bool "unlzma"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  unlzma is a compression utility using the Lempel-Ziv-Markov chain
 	  compression algorithm, and range coding. Compression
@@ -344,7 +345,7 @@ config FEATURE_LZMA_FAST
 config UNZIP
 	bool "unzip"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  unzip will list or extract files from a ZIP archive,
 	  commonly found on DOS/WIN systems. The default behavior
