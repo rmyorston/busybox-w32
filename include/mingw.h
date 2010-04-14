@@ -129,7 +129,7 @@ int fdprintf(int fd, const char *format, ...);
 
 NOIMPL(clearenv,void);
 IMPL(mingw_getenv,char*,NULL,const char *name UNUSED_PARAM);
-NOIMPL(mkstemp,char *template UNUSED_PARAM);
+int mkstemp(char *template);
 IMPL(realpath,char *,NULL,const char *path UNUSED_PARAM, char *resolved_path UNUSED_PARAM);
 NOIMPL(setenv,const char *name UNUSED_PARAM, const char *value UNUSED_PARAM, int replace UNUSED_PARAM);
 IMPL(unsetenv,void,,const char *env UNUSED_PARAM);
