@@ -42,6 +42,7 @@ config FEATURE_FIND_PERM
 	bool "Enable -perm: permissions matching"
 	default y
 	depends on FIND
+	depends on !PLATFORM_MINGW32
 	help
 	  Enable searching based on file permissions.
 
@@ -57,6 +58,7 @@ config FEATURE_FIND_XDEV
 	bool "Enable -xdev: 'stay in filesystem'"
 	default y
 	depends on FIND
+	depends on !PLATFORM_MINGW32
 	help
 	  This option allows find to restrict searches to a single filesystem.
 
@@ -79,6 +81,7 @@ config FEATURE_FIND_INUM
 	bool "Enable -inum: inode number matching"
 	default y
 	depends on FIND
+	depends on !PLATFORM_MINGW32
 	help
 	  Support the 'find -inum' option for searching by inode number.
 
@@ -86,6 +89,7 @@ config FEATURE_FIND_EXEC
 	bool "Enable -exec: execute commands"
 	default y
 	depends on FIND
+	depends on !PLATFORM_MINGW32
 	help
 	  Support the 'find -exec' option for executing commands based upon
 	  the files matched.
@@ -94,6 +98,7 @@ config FEATURE_FIND_USER
 	bool "Enable -user: username/uid matching"
 	default y
 	depends on FIND
+	depends on !PLATFORM_MINGW32
 	help
 	  Support the 'find -user' option for searching by username or uid.
 
@@ -101,6 +106,7 @@ config FEATURE_FIND_GROUP
 	bool "Enable -group: group/gid matching"
 	default y
 	depends on FIND
+	depends on !PLATFORM_MINGW32
 	help
 	  Support the 'find -group' option for searching by group name or gid.
 
@@ -176,6 +182,7 @@ config FEATURE_FIND_LINKS
 	bool "Enable -links: link count matching"
 	default n
 	depends on FIND
+	depends on !PLATFORM_MINGW32
 	help
 	  Support the 'find -links' option for matching number of links.
 
