@@ -372,3 +372,12 @@ char *realpath(const char *path, char *resolved_path)
 	/* FIXME: need normalization */
 	return strcpy(resolved_path, path);
 }
+
+const char *get_busybox_exec_path(void)
+{
+	static char path[PATH_MAX] = "";
+
+	if (!*path)
+		GetModuleFileName(NULL, path, PATH_MAX);
+	return path;
+}
