@@ -463,6 +463,19 @@ struct tm *localtime_r(const time_t *timep, struct tm *result)
 	return result;
 }
 
+#undef getcwd
+char *mingw_getcwd(char *pointer, int len)
+{
+	int i;
+	char *ret = getcwd(pointer, len);
+	if (!ret)
+		return ret;
+	for (i = 0; ret[i]; i++)
+		if (ret[i] == '\\')
+			ret[i] = '/';
+	return ret;
+}
+
 struct passwd *getpwuid(int uid)
 {
 	static char user_name[100];
