@@ -55,3 +55,10 @@ int gettimeofday(struct timeval *tv, void *tz)
 	tv->tv_usec = st.wMilliseconds*1000;
 	return 0;
 }
+
+int pipe(int filedes[2])
+{
+	if (_pipe(filedes, PIPE_BUF, 0) < 0)
+		return -1;
+	return 0;
+}

@@ -256,7 +256,7 @@ IMPL(fsync,int,0,int fd UNUSED_PARAM);
 NOIMPL(kill,pid_t pid UNUSED_PARAM, int sig UNUSED_PARAM);
 NOIMPL(link,const char *oldpath UNUSED_PARAM, const char *newpath UNUSED_PARAM);
 NOIMPL(mknod,const char *name UNUSED_PARAM, mode_t mode UNUSED_PARAM, dev_t device UNUSED_PARAM);
-NOIMPL(pipe,int filedes[2] UNUSED_PARAM);
+int pipe(int filedes[2]);
 NOIMPL(readlink,const char *path UNUSED_PARAM, char *buf UNUSED_PARAM, size_t bufsiz UNUSED_PARAM);
 NOIMPL(setgid,gid_t gid UNUSED_PARAM);
 NOIMPL(setsid,void);
