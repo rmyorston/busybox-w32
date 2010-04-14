@@ -481,6 +481,7 @@ libs-y		:= \
 		sysklogd/ \
 		util-linux/ \
 		util-linux/volume_id/ \
+		win32/ \
 
 endif # KBUILD_EXTMOD
 
