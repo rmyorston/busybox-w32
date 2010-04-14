@@ -219,7 +219,7 @@ int setitimer(int type, struct itimerval *in, struct itimerval *out);
  * sys/wait.h
  */
 #define WNOHANG 1
-NOIMPL(waitpid,pid_t pid UNUSED_PARAM, int *status UNUSED_PARAM, unsigned options UNUSED_PARAM);
+int waitpid(pid_t pid, int *status, unsigned options);
 
 /*
  * time.h
