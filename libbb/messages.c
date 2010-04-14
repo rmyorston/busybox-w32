@@ -44,7 +44,11 @@ const char bb_path_group_file[] ALIGN1 = "/etc/group";
 const char bb_path_gshadow_file[] ALIGN1 = "/etc/gshadow";
 const char bb_path_motd_file[] ALIGN1 = "/etc/motd";
 const char bb_dev_null[] ALIGN1 = "/dev/null";
+#if ENABLE_PLATFORM_MINGW32
+/* bb_busybox_exec_path is redefined to get_busybox_exec_path() in libbb.h */
+#else
 const char bb_busybox_exec_path[] ALIGN1 = CONFIG_BUSYBOX_EXEC_PATH;
+#endif
 const char bb_default_login_shell[] ALIGN1 = LIBBB_DEFAULT_LOGIN_SHELL;
 /* util-linux manpage says /sbin:/bin:/usr/sbin:/usr/bin,
  * but I want to save a few bytes here. Check libbb.h before changing! */

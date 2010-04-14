@@ -1562,7 +1562,11 @@ extern const char bb_path_group_file[];
 extern const char bb_path_motd_file[];
 extern const char bb_path_wtmp_file[];
 extern const char bb_dev_null[];
+#if ENABLE_PLATFORM_MINGW32
+#define bb_busybox_exec_path get_busybox_exec_path()
+#else
 extern const char bb_busybox_exec_path[];
+#endif
 /* util-linux manpage says /sbin:/bin:/usr/sbin:/usr/bin,
  * but I want to save a few bytes here */
 extern const char bb_PATH_root_path[]; /* "PATH=/sbin:/usr/sbin:/bin:/usr/bin" */
