@@ -470,3 +470,11 @@ int fcntl(int fd UNUSED_PARAM, int cmd, ...)
 	errno = EINVAL;
 	return -1;
 }
+
+#undef unlink
+int mingw_unlink(const char *pathname)
+{
+	/* read-only files cannot be removed */
+	chmod(pathname, 0666);
+	return unlink(pathname);
+}
