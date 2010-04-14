@@ -207,8 +207,18 @@ NOIMPL(fchmod,int fildes UNUSED_PARAM, mode_t mode UNUSED_PARAM);
 NOIMPL(fchown,int fd UNUSED_PARAM, uid_t uid UNUSED_PARAM, gid_t gid UNUSED_PARAM);
 int mingw_mkdir(const char *path, int mode);
 
+/* Use mingw_lstat() instead of lstat()/stat() and
+ * mingw_fstat() instead of fstat() on Windows.
+ */
+int mingw_lstat(const char *file_name, struct stat *buf);
+int mingw_fstat(int fd, struct stat *buf);
+
 #define mkdir mingw_mkdir
-#define lstat stat
+#define stat(x,y) mingw_lstat(x,y)
+#define lseek _lseeki64
+#define fstat mingw_fstat
+#define lstat mingw_lstat
+#define _stati64 mingw_lstat
 
 /*
  * sys/sysmacros.h
