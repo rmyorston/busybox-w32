@@ -4,6 +4,7 @@
 
 lib-y:=
 
+lib-$(CONFIG_PLATFORM_MINGW32) += env.o
 lib-$(CONFIG_PLATFORM_MINGW32) += fnmatch.o
 lib-$(CONFIG_PLATFORM_MINGW32) += mingw.o
 lib-$(CONFIG_PLATFORM_MINGW32) += process.o

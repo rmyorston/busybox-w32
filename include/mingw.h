@@ -129,12 +129,12 @@ int fdprintf(int fd, const char *format, ...);
 #define WIFSIGNALED(x) ((unsigned)(x) > 259)
 #define WTERMSIG(x) ((x) & 0x7f)
 
-NOIMPL(clearenv,void);
-IMPL(mingw_getenv,char*,NULL,const char *name UNUSED_PARAM);
+int clearenv(void);
+char *mingw_getenv(const char *name);
 int mkstemp(char *template);
 char *realpath(const char *path, char *resolved_path);
-NOIMPL(setenv,const char *name UNUSED_PARAM, const char *value UNUSED_PARAM, int replace UNUSED_PARAM);
-IMPL(unsetenv,void,,const char *env UNUSED_PARAM);
+int setenv(const char *name, const char *value, int replace);
+void unsetenv(const char *env);
 
 #define getenv mingw_getenv
 /*
