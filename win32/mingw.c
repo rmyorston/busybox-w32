@@ -115,6 +115,40 @@ static int err_win_to_posix(DWORD winerr)
 	return error;
 }
 
+#undef open
+int mingw_open (const char *filename, int oflags, ...)
+{
+	va_list args;
+	unsigned mode;
+	int fd;
+
+	va_start(args, oflags);
+	mode = va_arg(args, int);
+	va_end(args);
+
+	if (oflags & O_NONBLOCK) {
+		errno = ENOSYS;
+		return -1;
+	}
+	if (!strcmp(filename, "/dev/null"))
+		filename = "nul";
+	fd = open(filename, oflags, mode);
+	if (fd < 0 && (oflags & O_CREAT) && errno == EACCES) {
+		DWORD attrs = GetFileAttributes(filename);
+		if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY))
+			errno = EISDIR;
+	}
+	return fd;
+}
+
+#undef fopen
+FILE *mingw_fopen (const char *filename, const char *mode)
+{
+	if (!strcmp(filename, "/dev/null"))
+		filename = "nul";
+	return fopen(filename, mode);
+}
+
 unsigned int sleep (unsigned int seconds)
 {
 	Sleep(seconds*1000);
