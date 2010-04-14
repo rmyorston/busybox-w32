@@ -9,6 +9,17 @@ config HAVE_DOT_CONFIG
 	bool
 	default y
 
+choice
+	prompt "Target platform"
+	default PLATFORM_POSIX
+	help
+	  Target platform you are building busybox for
+
+config PLATFORM_POSIX
+	bool "POSIX"
+
+endchoice
+
 menu "Busybox Settings"
 
 menu "General Configuration"
