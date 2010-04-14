@@ -311,6 +311,7 @@ AFLAGS_MODULE   = $(MODFLAGS)
 LDFLAGS_MODULE  = -r
 CFLAGS_KERNEL	=
 AFLAGS_KERNEL	=
+EXEEXT		=
 
 
 # Use LINUXINCLUDE when you must reference the include/ directory.
@@ -516,7 +517,7 @@ endif
 # command line.
 # This allow a user to issue only 'make' to build a kernel including modules
 # Defaults busybox but it is usually overridden in the arch makefile
-all: busybox doc
+all: busybox$(EXEEXT) doc
 
 -include $(srctree)/arch/$(ARCH)/Makefile
 
@@ -699,16 +700,16 @@ debug_kallsyms: .tmp_map$(last_kallsyms)
 endif # ifdef CONFIG_KALLSYMS
 
 # busybox image - including updated kernel symbols
-busybox_unstripped: $(busybox-all) FORCE
+busybox_unstripped$(EXEEXT): $(busybox-all) FORCE
 	$(call if_changed_rule,busybox__)
 	$(Q)rm -f .old_version
 
-busybox: busybox_unstripped
+busybox$(EXEEXT): busybox_unstripped$(EXEEXT)
 ifeq ($(SKIP_STRIP),y)
 	$(Q)cp $< $@
 else
 	$(Q)$(STRIP) -s --remove-section=.note --remove-section=.comment \
-		busybox_unstripped -o $@
+		busybox_unstripped$(EXEEXT) -o $@
 # strip is confused by PIE executable and does not set exec bits
 	$(Q)chmod a+x $@
 endif
@@ -944,7 +945,7 @@ endif # CONFIG_MODULES
 
 # Directories & files removed with 'make clean'
 CLEAN_DIRS  += $(MODVERDIR) _install 0_lib
-CLEAN_FILES +=	busybox busybox_unstripped* busybox.links \
+CLEAN_FILES +=	busybox$(EXEEXT) busybox_unstripped* busybox.links \
                 System.map .kernelrelease \
                 .tmp_kallsyms* .tmp_version .tmp_busybox* .tmp_System.map
 
