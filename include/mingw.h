@@ -221,7 +221,7 @@ NOIMPL(waitpid,pid_t pid UNUSED_PARAM, int *status UNUSED_PARAM, unsigned option
 /*
  * time.h
  */
-IMPL(gmtime_r,struct tm *,NULL,const time_t *timep UNUSED_PARAM, struct tm *result UNUSED_PARAM);
+struct tm *gmtime_r(const time_t *timep, struct tm *result);
 IMPL(localtime_r,struct tm *,NULL,const time_t *timep UNUSED_PARAM, struct tm *result UNUSED_PARAM);
 IMPL(strptime,char*,NULL,const char *s UNUSED_PARAM, const char *format UNUSED_PARAM, struct tm *tm UNUSED_PARAM);
 
