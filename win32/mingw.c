@@ -648,6 +648,18 @@ sighandler_t mingw_signal(int sig, sighandler_t handler)
 	return old;
 }
 
+static size_t strlcpy(char *dest, const char *src, size_t size)
+{
+	size_t ret = strlen(src);
+
+	if (size) {
+		size_t len = (ret >= size) ? size - 1 : ret;
+		memcpy(dest, src, len);
+		dest[len] = '\0';
+	}
+	return ret;
+}
+
 int link(const char *oldpath, const char *newpath)
 {
 	typedef BOOL WINAPI (*T)(const char*, const char*, LPSECURITY_ATTRIBUTES);
