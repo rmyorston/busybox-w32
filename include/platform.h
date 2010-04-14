@@ -7,6 +7,10 @@
 #ifndef	BB_PLATFORM_H
 #define BB_PLATFORM_H 1
 
+#if defined(__MINGW32__) && !ENABLE_PLATFORM_MINGW32
+# error "You must select target platform MS Windows, or it won't build"
+#endif
+
 /* Assume all these functions exist by default.  Platforms where it is not
  * true will #undef them below.
  */
