@@ -293,6 +293,7 @@ IMPL(getuid,int,1,void);
 int fcntl(int fd, int cmd, ...);
 #define fork() -1
 IMPL(fsync,int,0,int fd UNUSED_PARAM);
+int mingw_isatty(int fd);
 NOIMPL(kill,pid_t pid UNUSED_PARAM, int sig UNUSED_PARAM);
 int link(const char *oldpath, const char *newpath);
 NOIMPL(mknod,const char *name UNUSED_PARAM, mode_t mode UNUSED_PARAM, dev_t device UNUSED_PARAM);
@@ -311,6 +312,7 @@ NOIMPL(vfork,void);
 //#define dup mingw_dup
 #define dup2 mingw_dup2
 #define getcwd mingw_getcwd
+#define isatty(fd) mingw_isatty(fd)
 #define lchown(a,b,c) chown(a,b,c)
 #define open mingw_open
 #define unlink mingw_unlink
