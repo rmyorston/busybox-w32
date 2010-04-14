@@ -61,7 +61,7 @@ typedef unsigned long nfds_t;
 #define POLLIN 1
 #define POLLHUP 2
 
-NOIMPL(poll,struct pollfd *ufds UNUSED_PARAM, unsigned int nfds UNUSED_PARAM, int timeout UNUSED_PARAM);
+int poll(struct pollfd *ufds, unsigned int nfds, int timeout);
 
 /*
  * pwd.h
