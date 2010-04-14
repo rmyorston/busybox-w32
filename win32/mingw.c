@@ -476,6 +476,40 @@ char *mingw_getcwd(char *pointer, int len)
 	return ret;
 }
 
+#undef rename
+int mingw_rename(const char *pold, const char *pnew)
+{
+	DWORD attrs;
+
+	/*
+	 * Try native rename() first to get errno right.
+	 * It is based on MoveFile(), which cannot overwrite existing files.
+	 */
+	if (!rename(pold, pnew))
+		return 0;
+	if (errno != EEXIST)
+		return -1;
+	if (MoveFileEx(pold, pnew, MOVEFILE_REPLACE_EXISTING))
+		return 0;
+	/* TODO: translate more errors */
+	if (GetLastError() == ERROR_ACCESS_DENIED &&
+	    (attrs = GetFileAttributes(pnew)) != INVALID_FILE_ATTRIBUTES) {
+		if (attrs & FILE_ATTRIBUTE_DIRECTORY) {
+			errno = EISDIR;
+			return -1;
+		}
+		if ((attrs & FILE_ATTRIBUTE_READONLY) &&
+		    SetFileAttributes(pnew, attrs & ~FILE_ATTRIBUTE_READONLY)) {
+			if (MoveFileEx(pold, pnew, MOVEFILE_REPLACE_EXISTING))
+				return 0;
+			/* revert file attributes on failure */
+			SetFileAttributes(pnew, attrs);
+		}
+	}
+	errno = EACCES;
+	return -1;
+}
+
 struct passwd *getpwuid(int uid)
 {
 	static char user_name[100];
