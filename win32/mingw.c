@@ -387,3 +387,17 @@ int mingw_mkdir(const char *path, int mode UNUSED_PARAM)
 {
 	return mkdir(path);
 }
+
+int fcntl(int fd UNUSED_PARAM, int cmd, ...)
+{
+	/*
+	 * F_GETFL needs to be dealt at higher level
+	 * Usually it does not matter if the call is
+	 *   fcntl(fd, F_SETFL, fcntl(fd, F_GETFD) | something)
+	 * because F_SETFL is not supported
+	 */
+	if (cmd == F_GETFD || cmd == F_SETFD || cmd == F_GETFL)
+		return 0;
+	errno = ENOSYS;
+	return -1;
+}
