@@ -258,6 +258,7 @@ IMPL(strptime,char*,NULL,const char *s UNUSED_PARAM, const char *format UNUSED_P
 IMPL(alarm,unsigned int,0,unsigned int seconds UNUSED_PARAM);
 NOIMPL(chown,const char *path UNUSED_PARAM, uid_t uid UNUSED_PARAM, gid_t gid UNUSED_PARAM);
 NOIMPL(chroot,const char *root UNUSED_PARAM);
+int mingw_dup2 (int fd, int fdto);
 char *mingw_getcwd(char *pointer, int len);
 
 
@@ -293,6 +294,7 @@ static inline void sync(void) {}
 int mingw_unlink(const char *pathname);
 NOIMPL(vfork,void);
 
+#define dup2 mingw_dup2
 #define getcwd mingw_getcwd
 #define lchown(a,b,c) chown(a,b,c)
 #define open mingw_open

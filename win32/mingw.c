@@ -149,6 +149,13 @@ FILE *mingw_fopen (const char *filename, const char *mode)
 	return fopen(filename, mode);
 }
 
+#undef dup2
+int mingw_dup2 (int fd, int fdto)
+{
+	int ret = dup2(fd, fdto);
+	return ret != -1 ? fdto : -1;
+}
+
 static inline time_t filetime_to_time_t(const FILETIME *ft)
 {
 	long long winTime = ((long long)ft->dwHighDateTime << 32) + ft->dwLowDateTime;
