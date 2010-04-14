@@ -101,6 +101,9 @@ ifeq ($(CONFIG_PLATFORM_MINGW32),y)
 # These defintions are not strictly needed, but they help shut up fnmatch.c warnings
 CFLAGS += -Iwin32 -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0
 EXEEXT = .exe
+ifeq ($(CONFIG_WIN32_NET),y)
+LDLIBS += ws2_32
+endif
 else
 LDLIBS += m crypt
 endif
