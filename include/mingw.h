@@ -156,6 +156,15 @@ NOIMPL(ioctl,int fd UNUSED_PARAM, int code UNUSED_PARAM,...);
  */
 #define hstrerror strerror
 
+#ifdef CONFIG_WIN32_NET
+struct hostent *mingw_gethostbyname(const char *host);
+int mingw_socket(int domain, int type, int protocol);
+int mingw_connect(int sockfd, struct sockaddr *sa, size_t sz);
+
+# define gethostbyname mingw_gethostbyname
+# define socket mingw_socket
+# define connect mingw_connect
+#else
 NOIMPL(mingw_socket,int domain UNUSED_PARAM, int type UNUSED_PARAM, int protocol UNUSED_PARAM);
 NOIMPL(mingw_sendto,SOCKET s UNUSED_PARAM, const char *buf UNUSED_PARAM, int len UNUSED_PARAM, int flags UNUSED_PARAM, const struct sockaddr *sa UNUSED_PARAM, int salen UNUSED_PARAM);
 NOIMPL(mingw_listen,SOCKET s UNUSED_PARAM,int backlog UNUSED_PARAM);
@@ -166,6 +175,7 @@ NOIMPL(mingw_bind,SOCKET s UNUSED_PARAM,const struct sockaddr* sa UNUSED_PARAM,i
 #define sendto mingw_sendto
 #define listen mingw_listen
 #define bind mingw_bind
+#endif
 
 /*
  * sys/stat.h
@@ -226,7 +236,7 @@ int waitpid(pid_t pid, int *status, unsigned options);
  */
 struct tm *gmtime_r(const time_t *timep, struct tm *result);
 struct tm *localtime_r(const time_t *timep, struct tm *result);
-IMPL(strptime,char*,NULL,const char *s UNUSED_PARAM, const char *format UNUSED_PARAM, struct tm *tm UNUSED_PARAM);
+char *strptime(const char *s, const char *format, struct tm *tm);
 
 /*
  * unistd.h
@@ -268,10 +278,13 @@ NOIMPL(setuid,uid_t gid UNUSED_PARAM);
 unsigned int sleep(unsigned int seconds);
 NOIMPL(symlink,const char *oldpath UNUSED_PARAM, const char *newpath UNUSED_PARAM);
 static inline void sync(void) {}
+int mingw_unlink(const char *pathname);
 NOIMPL(vfork,void);
 
+//#define dup mingw_dup
 #define getcwd mingw_getcwd
 #define lchown(a,b,c) chown(a,b,c)
+#define unlink mingw_unlink
 
 /*
  * utime.h
@@ -286,7 +299,19 @@ NOIMPL(utimes,const char *filename UNUSED_PARAM, const struct timeval times[2] U
  */
 #define has_dos_drive_prefix(path) (isalpha(*(path)) && (path)[1] == ':')
 #define is_dir_sep(c) ((c) == '/' || (c) == '\\')
+#define PATH_SEP ';'
 #define PRIuMAX "I64u"
+
+pid_t mingw_spawn(char **argv);
+int mingw_execv(const char *cmd, const char *const *argv);
+int mingw_execvp(const char *cmd, const char *const *argv);
+int mingw_execve(const char *cmd, const char *const *argv, const char *const *envp);
+pid_t mingw_spawn_applet(int mode, const char *applet, const char *const *argv, const char *const *envp, int transfer_fd);
+pid_t mingw_spawn_1(int mode, const char *cmd, const char *const *argv, const char *const *envp);
+#define execvp mingw_execvp
+#define execve mingw_execve
+#define execv mingw_execv
+
 
 /*
  * helpers
