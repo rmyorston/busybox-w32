@@ -1,0 +1,38 @@
+Status
+======
+
+I would consider this port experimental. Things may work, or may not.
+Things may never work because of huge differences between Linux and
+Windows. Or things may work in future, if you report the faults to
+busybox@busybox.net, especially with patches.
+
+pclouds@gmail.com
+15/04/2010
+
+Building
+========
+
+You need MinGW compiler and a POSIX environment (so that "make
+menuconfig" works).  I cross compile from Linux, but MSYS or Cygwin
+should be OK.
+
+In order to compile the WinGW port you need to:
+
+Start with "make menuconfig":
+
+ - Select target platform as "MS Windows"
+ - If you cross compile, set
+   Busybox Settings -> Build Options -> Cross Compiler Prefix
+ - Select whatever applets/features you like
+
+Do "make"
+
+Attempts to make it work with MS Visual Studio are appreciated. You
+can start with porting kconfig ;-)
+
+Limitation
+==========
+
+ - Use forward slashes. Backslash support is very limited.
+ - Do not do wild things with Windows drive notation, like archiving a
+   whole drive. If you want it, tell us, preferably with patches.
