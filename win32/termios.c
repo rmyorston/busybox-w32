@@ -33,11 +33,6 @@ NTSTATUS NTAPI	NtQueryObject (HANDLE, OBJECT_INFORMATION_CLASS, VOID *, ULONG, U
 
 /* Cygwin's shared_info */
 
-struct winsize {
-	unsigned short ws_row, ws_col;
-	unsigned short ws_xpixel, ws_ypixel;
-};
-
 struct tty_min {
 	pid_t sid;	/* Session ID of tty */
 	struct status_flags {
