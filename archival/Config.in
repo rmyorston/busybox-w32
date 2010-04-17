@@ -32,6 +32,7 @@ config FEATURE_SEAMLESS_Z
 config AR
 	bool "ar"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  ar is an archival utility program used to create, modify, and
 	  extract contents from archives. An archive is a single file holding
@@ -72,6 +73,7 @@ config FEATURE_AR_CREATE
 config BUNZIP2
 	bool "bunzip2"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  bunzip2 is a compression utility using the Burrows-Wheeler block
 	  sorting text compression algorithm, and Huffman coding. Compression
@@ -85,6 +87,7 @@ config BUNZIP2
 config BZIP2
 	bool "bzip2"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  bzip2 is a compression utility using the Burrows-Wheeler block
 	  sorting text compression algorithm, and Huffman coding. Compression
@@ -98,6 +101,7 @@ config BZIP2
 config CPIO
 	bool "cpio"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  cpio is an archival utility program used to create, modify, and
 	  extract contents from archives.
@@ -127,6 +131,7 @@ config FEATURE_CPIO_P
 config DPKG
 	bool "dpkg"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SEAMLESS_GZ
 	help
 	  dpkg is a medium-level tool to install, build, remove and manage
@@ -138,6 +143,7 @@ config DPKG
 config DPKG_DEB
 	bool "dpkg_deb"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SEAMLESS_GZ
 	help
 	  dpkg-deb unpacks and provides information about Debian archives.
@@ -160,6 +166,7 @@ config FEATURE_DPKG_DEB_EXTRACT_ONLY
 config GUNZIP
 	bool "gunzip"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  gunzip is used to decompress archives created by gzip.
 	  You can use the `-t' option to test the integrity of
@@ -168,6 +175,7 @@ config GUNZIP
 config GZIP
 	bool "gzip"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  gzip is used to compress files.
 	  It's probably the most widely used UNIX compression program.
@@ -182,6 +190,7 @@ config FEATURE_GZIP_LONG_OPTIONS
 config LZOP
 	bool "lzop"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Lzop compression/decompresion.
 
@@ -197,18 +206,21 @@ config LZOP_COMPR_HIGH
 config RPM2CPIO
 	bool "rpm2cpio"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Converts an RPM file into a CPIO archive.
 
 config RPM
 	bool "rpm"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Mini RPM applet - queries and extracts RPM packages.
 
 config TAR
 	bool "tar"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  tar is an archiving program. It's commonly used with gzip to
 	  create compressed archives. It's probably the most widely used
@@ -300,6 +312,7 @@ config FEATURE_TAR_SELINUX
 config UNCOMPRESS
 	bool "uncompress"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  uncompress is used to decompress archives created by compress.
 	  Not much used anymore, replaced by gzip/gunzip.
@@ -307,6 +320,7 @@ config UNCOMPRESS
 config UNLZMA
 	bool "unlzma"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  unlzma is a compression utility using the Lempel-Ziv-Markov chain
 	  compression algorithm, and range coding. Compression
@@ -330,6 +344,7 @@ config FEATURE_LZMA_FAST
 config UNZIP
 	bool "unzip"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  unzip will list or extract files from a ZIP archive,
 	  commonly found on DOS/WIN systems. The default behavior

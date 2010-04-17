@@ -8,6 +8,7 @@ menu "Linux Module Utilities"
 config MODPROBE_SMALL
 	bool "Simplified modutils"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Simplified modutils.
 
@@ -56,6 +57,7 @@ config INSMOD
 	bool "insmod"
 	default n
 	depends on !MODPROBE_SMALL
+	depends on PLATFORM_POSIX
 	help
 	  insmod is used to load specified modules in the running kernel.
 
@@ -63,6 +65,7 @@ config RMMOD
 	bool "rmmod"
 	default n
 	depends on !MODPROBE_SMALL
+	depends on PLATFORM_POSIX
 	help
 	  rmmod is used to unload specified modules from the kernel.
 
@@ -70,6 +73,7 @@ config LSMOD
 	bool "lsmod"
 	default n
 	depends on !MODPROBE_SMALL
+	depends on PLATFORM_POSIX
 	help
 	  lsmod is used to display a list of loaded modules.
 
@@ -86,6 +90,7 @@ config MODPROBE
 	bool "modprobe"
 	default n
 	depends on !MODPROBE_SMALL
+	depends on PLATFORM_POSIX
 	help
 	  Handle the loading of modules, and their dependencies on a high
 	  level.
@@ -105,6 +110,7 @@ config DEPMOD
 	bool "depmod"
 	default n
 	depends on !MODPROBE_SMALL
+	depends on PLATFORM_POSIX
 	help
 	  depmod generates modules.dep (and potentially modules.alias
 	  and modules.symbols) that contain dependency information

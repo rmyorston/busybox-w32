@@ -4,22 +4,26 @@
 #
 
 menu "Debian Utilities"
+	depends on PLATFORM_POSIX
 
 config MKTEMP
 	bool "mktemp"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  mktemp is used to create unique temporary files
 
 config PIPE_PROGRESS
 	bool "pipe_progress"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Display a dot to indicate pipe activity.
 
 config RUN_PARTS
 	bool "run-parts"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  run-parts is a utility designed to run all the scripts in a directory.
 
@@ -51,6 +55,7 @@ config FEATURE_RUN_PARTS_FANCY
 config START_STOP_DAEMON
 	bool "start-stop-daemon"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  start-stop-daemon is used to control the creation and
 	  termination of system-level processes, usually the ones
@@ -76,6 +81,7 @@ config FEATURE_START_STOP_DAEMON_LONG_OPTIONS
 config WHICH
 	bool "which"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  which is used to find programs in your PATH and
 	  print out their pathnames.

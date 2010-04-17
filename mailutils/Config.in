@@ -3,6 +3,7 @@ menu "Mail Utilities"
 config MAKEMIME
 	bool "makemime"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Create MIME-formatted messages.
 
@@ -16,6 +17,7 @@ config FEATURE_MIME_CHARSET
 config POPMAILDIR
 	bool "popmaildir"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Simple yet powerful POP3 mail popper. Delivers content
 	  of remote mailboxes to local Maildir.
@@ -33,6 +35,7 @@ config FEATURE_POPMAILDIR_DELIVERY
 config REFORMIME
 	bool "reformime"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Parse MIME-formatted messages.
 
@@ -47,6 +50,7 @@ config FEATURE_REFORMIME_COMPAT
 config SENDMAIL
 	bool "sendmail"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Barebones sendmail.
 

@@ -8,6 +8,7 @@ menu "Linux Ext2 FS Progs"
 config CHATTR
 	bool "chattr"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  chattr changes the file attributes on a second extended file system.
 
@@ -23,6 +24,7 @@ config CHATTR
 config FSCK
 	bool "fsck"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  fsck is used to check and optionally repair one or more filesystems.
 	  In actuality, fsck is simply a front-end for the various file system
@@ -31,6 +33,7 @@ config FSCK
 config LSATTR
 	bool "lsattr"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  lsattr lists the file attributes on a second extended file system.
 

@@ -8,6 +8,7 @@ menu "Miscellaneous Utilities"
 config ADJTIMEX
 	bool "adjtimex"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Adjtimex reads and optionally sets adjustment parameters for
 	  the Linux clock adjustment algorithm.
@@ -15,6 +16,7 @@ config ADJTIMEX
 config BBCONFIG
 	bool "bbconfig"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  The bbconfig applet will print the config file with which
 	  busybox was built.
@@ -22,6 +24,7 @@ config BBCONFIG
 config BEEP
 	bool "beep"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  The beep applets beeps in a given freq/Hz.
 
@@ -44,6 +47,7 @@ config FEATURE_BEEP_LENGTH_MS
 config CHAT
 	bool "chat"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Simple chat utility.
 
@@ -111,6 +115,7 @@ config FEATURE_CHAT_CLR_ABORT
 config CHRT
 	bool "chrt"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  manipulate real-time attributes of a process.
 	  This requires sched_{g,s}etparam support in your libc.
@@ -118,6 +123,7 @@ config CHRT
 config CROND
 	bool "crond"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SUID
 	select FEATURE_SYSLOG
 	help
@@ -153,6 +159,7 @@ config FEATURE_CROND_DIR
 config CRONTAB
 	bool "crontab"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SUID
 	help
 	  Crontab manipulates the crontab for a particular user. Only
@@ -163,6 +170,7 @@ config CRONTAB
 config DC
 	bool "dc"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Dc is a reverse-polish desk calculator which supports unlimited
 	  precision arithmetic.
@@ -178,6 +186,7 @@ config FEATURE_DC_LIBM
 config DEVFSD
 	bool "devfsd (obsolete)"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SYSLOG
 	help
 	  This is deprecated and should NOT be used anymore.
@@ -221,6 +230,7 @@ config DEVFSD_VERBOSE
 config FEATURE_DEVFS
 	bool "Use devfs names for all devices (obsolete)"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  This is obsolete and should NOT be used anymore.
 	  Use linux >= 2.6 (optionally with hotplug) and mdev instead!
@@ -233,6 +243,7 @@ config FEATURE_DEVFS
 config DEVMEM
 	bool "devmem"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  devmem is a small program that reads and writes from physical
 	  memory using /dev/mem.
@@ -240,6 +251,7 @@ config DEVMEM
 config EJECT
 	bool "eject"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Used to eject cdroms. (defaults to /dev/cdrom)
 
@@ -254,6 +266,7 @@ config FEATURE_EJECT_SCSI
 config FBSPLASH
 	bool "fbsplash"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Shows splash image and progress bar on framebuffer device.
 	  Can be used during boot phase of an embedded device. ~2kb.
@@ -275,6 +288,7 @@ config FBSPLASH
 config FLASHCP
 	bool "flashcp"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  The flashcp binary, inspired by mtd-utils as of git head 5eceb74f7.
 	  This utility is used to copy images into a MTD device.
@@ -282,6 +296,7 @@ config FLASHCP
 config FLASH_LOCK
 	bool "flash_lock"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  The flash_lock binary from mtd-utils as of git head 5ec0c10d0. This
 	  utility locks part or all of the flash device.
@@ -289,6 +304,7 @@ config FLASH_LOCK
 config FLASH_UNLOCK
 	bool "flash_unlock"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  The flash_unlock binary from mtd-utils as of git head 5ec0c10d0. This
 	  utility unlocks part or all of the flash device.
@@ -296,6 +312,7 @@ config FLASH_UNLOCK
 config FLASH_ERASEALL
 	bool "flash_eraseall"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  The flash_eraseall binary from mtd-utils as of git head c4c6a59eb.
 	  This utility is used to erase the whole MTD device.
@@ -303,6 +320,7 @@ config FLASH_ERASEALL
 config IONICE
 	bool "ionice"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Set/set program io scheduling class and priority
 	  Requires kernel >= 2.6.13
@@ -310,6 +328,7 @@ config IONICE
 config INOTIFYD
 	bool "inotifyd"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Simple inotify daemon. Reports filesystem changes. Requires
 	  kernel >= 2.6.13
@@ -318,6 +337,7 @@ config LAST
 	bool "last"
 	default n
 	depends on FEATURE_WTMP
+	depends on PLATFORM_POSIX
 	help
 	  'last' displays a list of the last users that logged into the system.
 
@@ -342,6 +362,7 @@ endchoice
 config LESS
 	bool "less"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  'less' is a pager, meaning that it displays text files. It possesses
 	  a wide array of features, and is an improvement over 'more'.
@@ -408,6 +429,7 @@ config FEATURE_LESS_LINENUMS
 config HDPARM
 	bool "hdparm"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Get/Set hard drive parameters. Primarily intended for ATA
 	  drives. Adds about 13k (or around 30k if you enable the
@@ -466,6 +488,7 @@ config FEATURE_HDPARM_HDIO_GETSET_DMA
 config MAKEDEVS
 	bool "makedevs"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  'makedevs' is a utility used to create a batch of devices with
 	  one command.
@@ -498,24 +521,28 @@ endchoice
 config MAN
 	bool "man"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Format and display manual pages.
 
 config MICROCOM
 	bool "microcom"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  The poor man's minicom utility for chatting with serial port devices.
 
 config MOUNTPOINT
 	bool "mountpoint"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  mountpoint checks if the directory is a mountpoint.
 
 config MT
 	bool "mt"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  mt is used to control tape devices. You can use the mt utility
 	  to advance or rewind a tape past a specified number of archive
@@ -524,6 +551,7 @@ config MT
 config RAIDAUTORUN
 	bool "raidautorun"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  raidautorun tells the kernel md driver to
 	  search and start RAID arrays.
@@ -548,6 +576,7 @@ config READAHEAD
 config RUNLEVEL
 	bool "runlevel"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  find the current and previous system runlevel.
 
@@ -557,18 +586,21 @@ config RUNLEVEL
 config RX
 	bool "rx"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Receive files using the Xmodem protocol.
 
 config SETSID
 	bool "setsid"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  setsid runs a program in a new session
 
 config STRINGS
 	bool "strings"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  strings prints the printable character sequences for each file
 	  specified.
@@ -576,6 +608,7 @@ config STRINGS
 config TASKSET
 	bool "taskset"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Retrieve or set a processes's CPU affinity.
 	  This requires sched_{g,s}etaffinity support in your libc.
@@ -592,6 +625,7 @@ config FEATURE_TASKSET_FANCY
 config TIME
 	bool "time"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  The time command runs the specified program with the given arguments.
 	  When the command finishes, time writes a message to standard output
@@ -600,6 +634,7 @@ config TIME
 config TIMEOUT
 	bool "timeout"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Runs a program and watches it. If it does not terminate in
 	  specified number of seconds, it is sent a signal.
@@ -607,6 +642,7 @@ config TIMEOUT
 config TTYSIZE
 	bool "ttysize"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  A replacement for "stty size". Unlike stty, can report only width,
 	  only height, or both, in any order. It also does not complain on
@@ -616,18 +652,21 @@ config TTYSIZE
 config VOLNAME
 	bool "volname"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Prints a CD-ROM volume name.
 
 config WALL
 	bool "wall"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Write a message to all users that are logged in.
 
 config WATCHDOG
 	bool "watchdog"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  The watchdog utility is used with hardware or software watchdog
 	  device drivers. It opens the specified watchdog device special file

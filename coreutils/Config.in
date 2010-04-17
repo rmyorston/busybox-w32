@@ -8,6 +8,7 @@ menu "Coreutils"
 config BASENAME
 	bool "basename"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  basename is used to strip the directory and suffix from filenames,
 	  leaving just the filename itself. Enable this option if you wish
@@ -16,12 +17,14 @@ config BASENAME
 config CAL
 	bool "cal"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  cal is used to display a monthly calender.
 
 config CAT
 	bool "cat"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  cat is used to concatenate files and print them to the standard
 	  output. Enable this option if you wish to enable the 'cat' utility.
@@ -29,6 +32,7 @@ config CAT
 config CATV
 	bool "catv"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Display nonprinting characters as escape sequences (like some
 	  implementations' cat -v option).
@@ -36,18 +40,21 @@ config CATV
 config CHGRP
 	bool "chgrp"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  chgrp is used to change the group ownership of files.
 
 config CHMOD
 	bool "chmod"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  chmod is used to change the access permission of files.
 
 config CHOWN
 	bool "chown"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  chown is used to change the user and/or group ownership
 	  of files.
@@ -62,6 +69,7 @@ config FEATURE_CHOWN_LONG_OPTIONS
 config CHROOT
 	bool "chroot"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  chroot is used to change the root directory and run a command.
 	  The default command is `/bin/sh'.
@@ -69,12 +77,14 @@ config CHROOT
 config CKSUM
 	bool "cksum"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  cksum is used to calculate the CRC32 checksum of a file.
 
 config COMM
 	bool "comm"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  comm is used to compare two files line by line and return
 	  a three-column output.
@@ -82,6 +92,7 @@ config COMM
 config CP
 	bool "cp"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  cp is used to copy files and directories.
 
@@ -96,6 +107,7 @@ config FEATURE_CP_LONG_OPTIONS
 config CUT
 	bool "cut"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  cut is used to print selected parts of lines from
 	  each file to stdout.
@@ -103,6 +115,7 @@ config CUT
 config DATE
 	bool "date"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  date is used to set the system date or display the
 	  current time in the given format.
@@ -134,6 +147,7 @@ config FEATURE_DATE_COMPAT
 config DD
 	bool "dd"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  dd copies a file (from standard input to standard output,
 	  by default) using specific input and output blocksizes,
@@ -172,6 +186,7 @@ config FEATURE_DD_IBS_OBS
 config DF
 	bool "df"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  df reports the amount of disk space used and available
 	  on filesystems.
@@ -190,6 +205,7 @@ config FEATURE_DF_FANCY
 config DIRNAME
 	bool "dirname"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  dirname is used to strip a non-directory suffix from
 	  a file name.
@@ -197,6 +213,7 @@ config DIRNAME
 config DOS2UNIX
 	bool "dos2unix/unix2dos"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  dos2unix is used to convert a text file from DOS format to
 	  UNIX format, and vice versa.
@@ -212,6 +229,7 @@ config UNIX2DOS
 config DU
 	bool "du (default blocksize of 512 bytes)"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  du is used to report the amount of disk space used
 	  for specified files.
@@ -226,6 +244,7 @@ config FEATURE_DU_DEFAULT_BLOCKSIZE_1K
 config ECHO
 	bool "echo (basic SuSv3 version taking no options)"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  echo is used to print a specified string to stdout.
 
@@ -240,6 +259,7 @@ config FEATURE_FANCY_ECHO
 config ENV
 	bool "env"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  env is used to set an environment variable and run
 	  a command; without options it displays the current
@@ -255,6 +275,7 @@ config FEATURE_ENV_LONG_OPTIONS
 config EXPAND
 	bool "expand"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  By default, convert all tabs to spaces.
 
@@ -268,6 +289,7 @@ config FEATURE_EXPAND_LONG_OPTIONS
 config EXPR
 	bool "expr"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  expr is used to calculate numbers and print the result
 	  to standard output.
@@ -284,24 +306,28 @@ config EXPR_MATH_SUPPORT_64
 config FALSE
 	bool "false"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  false returns an exit code of FALSE (1).
 
 config FOLD
 	bool "fold"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Wrap text to fit a specific width.
 
 config FSYNC
 	bool "fsync"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  fsync is used to flush file-related cached blocks to disk.
 
 config HEAD
 	bool "head"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  head is used to print the first specified number of lines
 	  from files.
@@ -316,6 +342,7 @@ config FEATURE_FANCY_HEAD
 config HOSTID
 	bool "hostid"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  hostid prints the numeric identifier (in hexadecimal) for
 	  the current host.
@@ -323,12 +350,14 @@ config HOSTID
 config ID
 	bool "id"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  id displays the current user and group ID names.
 
 config INSTALL
 	bool "install"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Copy files and set attributes.
 
@@ -342,24 +371,28 @@ config FEATURE_INSTALL_LONG_OPTIONS
 config LENGTH
 	bool "length"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  length is used to print out the length of a specified string.
 
 config LN
 	bool "ln"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  ln is used to create hard or soft links between files.
 
 config LOGNAME
 	bool "logname"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  logname is used to print the current user's login name.
 
 config LS
 	bool "ls"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  ls is used to list the contents of directories.
 
@@ -426,12 +459,14 @@ config FEATURE_LS_COLOR_IS_DEFAULT
 config MD5SUM
 	bool "md5sum"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  md5sum is used to print or check MD5 checksums.
 
 config MKDIR
 	bool "mkdir"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  mkdir is used to create directories with the specified names.
 
@@ -445,6 +480,7 @@ config FEATURE_MKDIR_LONG_OPTIONS
 config MKFIFO
 	bool "mkfifo"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  mkfifo is used to create FIFOs (named pipes).
 	  The `mknod' program can also create FIFOs.
@@ -452,6 +488,7 @@ config MKFIFO
 config MKNOD
 	bool "mknod"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  mknod is used to create FIFOs or block/character special
 	  files with the specified names.
@@ -459,6 +496,7 @@ config MKNOD
 config MV
 	bool "mv"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  mv is used to move or rename files or directories.
 
@@ -472,30 +510,35 @@ config FEATURE_MV_LONG_OPTIONS
 config NICE
 	bool "nice"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  nice runs a program with modified scheduling priority.
 
 config NOHUP
 	bool "nohup"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  run a command immune to hangups, with output to a non-tty.
 
 config OD
 	bool "od"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  od is used to dump binary files in octal and other formats.
 
 config PRINTENV
 	bool "printenv"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  printenv is used to print all or part of environment.
 
 config PRINTF
 	bool "printf"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  printf is used to format and print specified strings.
 	  It's similar to `echo' except it has more options.
@@ -503,12 +546,14 @@ config PRINTF
 config PWD
 	bool "pwd"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  pwd is used to print the current directory.
 
 config READLINK
 	bool "readlink"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  This program reads a symbolic link and returns the name
 	  of the file it points to
@@ -523,6 +568,7 @@ config FEATURE_READLINK_FOLLOW
 config REALPATH
 	bool "realpath"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Return the canonicalized absolute pathname.
 	  This isn't provided by GNU shellutils, but where else does it belong.
@@ -530,12 +576,14 @@ config REALPATH
 config RM
 	bool "rm"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  rm is used to remove files or directories.
 
 config RMDIR
 	bool "rmdir"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  rmdir is used to remove empty directories.
 
@@ -550,30 +598,35 @@ config FEATURE_RMDIR_LONG_OPTIONS
 config SEQ
 	bool "seq"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  print a sequence of numbers
 
 config SHA1SUM
 	bool "sha1sum"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Compute and check SHA1 message digest
 
 config SHA256SUM
 	bool "sha256sum"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Compute and check SHA256 message digest
 
 config SHA512SUM
 	bool "sha512sum"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Compute and check SHA512 message digest
 
 config SLEEP
 	bool "sleep"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  sleep is used to pause for a specified number of seconds.
 	  It comes in 3 versions:
@@ -602,6 +655,7 @@ config FEATURE_FLOAT_SLEEP
 config SORT
 	bool "sort"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  sort is used to sort lines of text in specified files.
 
@@ -620,6 +674,7 @@ config FEATURE_SORT_BIG
 config SPLIT
 	bool "split"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  split a file into pieces.
 
@@ -635,6 +690,7 @@ config FEATURE_SPLIT_FANCY
 config STAT
 	bool "stat"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  display file or filesystem status.
 
@@ -650,30 +706,35 @@ config FEATURE_STAT_FORMAT
 config STTY
 	bool "stty"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  stty is used to change and print terminal line settings.
 
 config SUM
 	bool "sum"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  checksum and count the blocks in a file
 
 config SYNC
 	bool "sync"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  sync is used to flush filesystem buffers.
 
 config TAC
 	bool "tac"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  tac is used to concatenate and print files in reverse.
 
 config TAIL
 	bool "tail"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  tail is used to print the last specified number of lines
 	  from files.
@@ -693,6 +754,7 @@ config FEATURE_FANCY_TAIL
 config TEE
 	bool "tee"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  tee is used to read from standard input and write
 	  to standard output and files.
@@ -707,6 +769,7 @@ config FEATURE_TEE_USE_BLOCK_IO
 config TEST
 	bool "test"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  test is used to check file types and compare values,
 	  returning an appropriate exit code. The bash shell
@@ -722,6 +785,7 @@ config FEATURE_TEST_64
 config TOUCH
 	bool "touch"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  touch is used to create or change the access and/or
 	  modification timestamp of specified files.
@@ -729,6 +793,7 @@ config TOUCH
 config TR
 	bool "tr"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  tr is used to squeeze, and/or delete characters from standard
 	  input, writing to standard output.
@@ -755,12 +820,14 @@ config FEATURE_TR_EQUIV
 config TRUE
 	bool "true"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  true returns an exit code of TRUE (0).
 
 config TTY
 	bool "tty"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  tty is used to print the name of the current terminal to
 	  standard output.
@@ -768,12 +835,14 @@ config TTY
 config UNAME
 	bool "uname"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  uname is used to print system information.
 
 config UNEXPAND
 	bool "unexpand"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  By default, convert only leading sequences of blanks to tabs.
 
@@ -787,30 +856,35 @@ config FEATURE_UNEXPAND_LONG_OPTIONS
 config UNIQ
 	bool "uniq"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  uniq is used to remove duplicate lines from a sorted file.
 
 config USLEEP
 	bool "usleep"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  usleep is used to pause for a specified number of microseconds.
 
 config UUDECODE
 	bool "uudecode"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  uudecode is used to decode a uuencoded file.
 
 config UUENCODE
 	bool "uuencode"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  uuencode is used to uuencode a file.
 
 config WC
 	bool "wc"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  wc is used to print the number of bytes, words, and lines,
 	  in specified files.
@@ -826,12 +900,14 @@ config WHO
 	bool "who"
 	default n
 	depends on FEATURE_UTMP
+	depends on PLATFORM_POSIX
 	help
 	  who is used to show who is logged on.
 
 config WHOAMI
 	bool "whoami"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  whoami is used to print the username of the current
 	  user id (same as id -un).
@@ -839,6 +915,7 @@ config WHOAMI
 config YES
 	bool "yes"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  yes is used to repeatedly output a specific string, or
 	  the default string `y'.

@@ -8,6 +8,7 @@ menu "Process Utilities"
 config FREE
 	bool "free"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  free displays the total amount of free and used physical and swap
 	  memory in the system, as well as the buffers used by the kernel.
@@ -16,6 +17,7 @@ config FREE
 config FUSER
 	bool "fuser"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  fuser lists all PIDs (Process IDs) that currently have a given
 	  file open. fuser can also list all PIDs that have a given network
@@ -24,6 +26,7 @@ config FUSER
 config KILL
 	bool "kill"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  The command kill sends the specified signal to the specified
 	  process or process group. If no signal is specified, the TERM
@@ -46,18 +49,21 @@ config KILLALL5
 config NMETER
 	bool "nmeter"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Prints selected system stats continuously, one line per update.
 
 config PGREP
 	bool "pgrep"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Look for processes by name.
 
 config PIDOF
 	bool "pidof"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Pidof finds the process id's (pids) of the named programs. It prints
 	  those id's on the standard output.
@@ -81,12 +87,14 @@ config FEATURE_PIDOF_OMIT
 config PKILL
 	bool "pkill"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Send signals to processes by name.
 
 config PS
 	bool "ps"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  ps gives a snapshot of the current processes.
 
@@ -124,6 +132,7 @@ config FEATURE_PS_UNUSUAL_SYSTEMS
 config RENICE
 	bool "renice"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Renice alters the scheduling priority of one or more running
 	  processes.
@@ -131,12 +140,14 @@ config RENICE
 config BB_SYSCTL
 	bool "sysctl"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Configure kernel parameters at runtime.
 
 config TOP
 	bool "top"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  The top program provides a dynamic real-time view of a running
 	  system.
@@ -198,6 +209,7 @@ config FEATURE_SHOW_THREADS
 config UPTIME
 	bool "uptime"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  uptime gives a one line display of the current time, how long
 	  the system has been running, how many users are currently logged
@@ -206,6 +218,7 @@ config UPTIME
 config WATCH
 	bool "watch"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  watch is used to execute a program periodically, showing
 	  output to the screen.

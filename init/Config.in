@@ -8,6 +8,7 @@ menu "Init Utilities"
 config INIT
 	bool "init"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SYSLOG
 	help
 	  init is the first program run when the system boots.
@@ -90,6 +91,7 @@ config FEATURE_INITRD
 config HALT
 	bool "poweroff, halt, and reboot"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Stop all processes and either halt, reboot, or power off the system.
 
@@ -116,6 +118,7 @@ config TELINIT_PATH
 config MESG
 	bool "mesg"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Mesg controls access to your terminal by others. It is typically
 	  used to allow or disallow other users to write to your terminal

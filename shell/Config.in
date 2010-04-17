@@ -38,6 +38,7 @@ config ASH
 	bool "ash"
 	default n
 	depends on !NOMMU
+	depends on PLATFORM_POSIX
 	help
 	  Tha 'ash' shell adds about 60k in the default configuration and is
 	  the most complete and most pedantically correct shell included with
@@ -140,6 +141,7 @@ config ASH_EXPAND_PRMT
 config HUSH
 	bool "hush"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  hush is a small shell (22k). It handles the normal flow control
 	  constructs such as if/then/elif/else/fi, for/in/do/done, while loops,
@@ -246,6 +248,7 @@ config HUSH_RANDOM_SUPPORT
 config LASH
 	bool "lash (deprecated: aliased to hush)"
 	default n
+	depends on PLATFORM_POSIX
 	select HUSH
 	help
 	  lash is deprecated and will be removed, please migrate to hush.
@@ -253,6 +256,7 @@ config LASH
 config MSH
 	bool "msh (deprecated: please use hush)"
 	default n
+	depends on PLATFORM_POSIX
 	select HUSH
 	help
 	  msh is deprecated and will be removed, please migrate to hush.
@@ -342,6 +346,7 @@ config FEATURE_SH_NOFORK
 config CTTYHACK
 	bool "cttyhack"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  One common problem reported on the mailing list is "can't access tty;
 	  job control turned off" error message which typically appears when

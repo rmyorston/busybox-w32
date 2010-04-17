@@ -8,6 +8,7 @@ menu "Editors"
 config AWK
 	bool "awk"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Awk is used as a pattern scanning and processing language. This is
 	  the BusyBox implementation of that programming language.
@@ -23,6 +24,7 @@ config FEATURE_AWK_LIBM
 config CMP
 	bool "cmp"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  cmp is used to compare two files and returns the result
 	  to standard output.
@@ -30,6 +32,7 @@ config CMP
 config DIFF
 	bool "diff"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  diff compares two files or directories and outputs the
 	  differences between them in a form that can be given to
@@ -53,6 +56,7 @@ config FEATURE_DIFF_DIR
 config ED
 	bool "ed"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  The original 1970's Unix text editor, from the days of teletypes.
 	  Small, simple, evil. Part of SUSv3. If you're not already using
@@ -61,12 +65,14 @@ config ED
 config PATCH
 	bool "patch"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Apply a unified diff formatted patch.
 
 config SED
 	bool "sed"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  sed is used to perform text transformations on a file
 	  or input from a pipeline.
@@ -74,6 +80,7 @@ config SED
 config VI
 	bool "vi"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  'vi' is a text editor. More specifically, it is the One True
 	  text editor <grin>. It does, however, have a rather steep

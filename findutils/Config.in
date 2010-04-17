@@ -8,6 +8,7 @@ menu "Finding Utilities"
 config FIND
 	bool "find"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  find is used to search your system to find specified files.
 
@@ -181,6 +182,7 @@ config FEATURE_FIND_LINKS
 config GREP
 	bool "grep"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  grep is used to search files for a specified pattern.
 
@@ -214,6 +216,7 @@ config FEATURE_GREP_CONTEXT
 config XARGS
 	bool "xargs"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  xargs is used to execute a specified command for
 	  every item from standard input.

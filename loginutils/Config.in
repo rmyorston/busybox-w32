@@ -8,6 +8,7 @@ menu "Login/Password Management Utilities"
 config FEATURE_SHADOWPASSWDS
 	bool "Support for shadow passwords"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Build support for shadow password in /etc/shadow. This file is only
 	  readable by root and thus the encrypted passwords are no longer
@@ -16,6 +17,7 @@ config FEATURE_SHADOWPASSWDS
 config USE_BB_PWD_GRP
 	bool "Use internal password and group functions rather than system functions"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  If you leave this disabled, busybox will use the system's password
 	  and group functions. And if you are using the GNU C library
@@ -60,6 +62,7 @@ config USE_BB_SHADOW
 config USE_BB_CRYPT
 	bool "Use internal crypt functions"
 	default y
+	depends on PLATFORM_POSIX
 	help
 	  Busybox has internal DES and MD5 crypt functions.
 	  They produce results which are identical to corresponding
@@ -94,6 +97,7 @@ config USE_BB_CRYPT_SHA
 config ADDGROUP
 	bool "addgroup"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Utility for creating a new group account.
 
@@ -116,6 +120,7 @@ config FEATURE_ADDUSER_TO_GROUP
 config DELGROUP
 	bool "delgroup"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Utility for deleting a group account.
 
@@ -142,6 +147,7 @@ config FEATURE_CHECK_NAMES
 config ADDUSER
 	bool "adduser"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Utility for creating a new user account.
 
@@ -171,12 +177,14 @@ config LAST_SYSTEM_ID
 config DELUSER
 	bool "deluser"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Utility for deleting a user account.
 
 config GETTY
 	bool "getty"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SYSLOG
 	help
 	  getty lets you log in on a tty, it is normally invoked by init.
@@ -184,6 +192,7 @@ config GETTY
 config LOGIN
 	bool "login"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SUID
 	select FEATURE_SYSLOG
 	help
@@ -227,6 +236,7 @@ config FEATURE_SECURETTY
 config PASSWD
 	bool "passwd"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SUID
 	select FEATURE_SYSLOG
 	help
@@ -248,6 +258,7 @@ config FEATURE_PASSWD_WEAK_CHECK
 config CRYPTPW
 	bool "cryptpw"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Encrypts the given password with the crypt(3) libc function
 	  using the given salt. Debian has this utility under mkpasswd
@@ -256,6 +267,7 @@ config CRYPTPW
 config CHPASSWD
 	bool "chpasswd"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Reads a file of user name and password pairs from standard input
 	  and uses this information to update a group of existing users.
@@ -263,6 +275,7 @@ config CHPASSWD
 config SU
 	bool "su"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SUID
 	select FEATURE_SYSLOG
 	help
@@ -285,6 +298,7 @@ config FEATURE_SU_CHECKS_SHELLS
 config SULOGIN
 	bool "sulogin"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SYSLOG
 	help
 	  sulogin is invoked when the system goes into single user
@@ -293,6 +307,7 @@ config SULOGIN
 config VLOCK
 	bool "vlock"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SUID
 	help
 	  Build the "vlock" applet which allows you to lock (virtual) terminals.

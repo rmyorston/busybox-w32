@@ -8,6 +8,7 @@ menu "Networking Utilities"
 config FEATURE_IPV6
 	bool "Enable IPv6 support"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Enable IPv6 support in busybox.
 	  This adds IPv6 support in the networking applets.
@@ -15,6 +16,7 @@ config FEATURE_IPV6
 config FEATURE_UNIX_LOCAL
 	bool "Enable Unix domain socket support (usually not needed)"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Enable Unix domain socket support in all busybox networking
 	  applets.  Address of the form local:/path/to/unix/socket
@@ -41,6 +43,7 @@ config FEATURE_PREFER_IPV4_ADDRESS
 config VERBOSE_RESOLUTION_ERRORS
 	bool "Verbose resolution errors"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Enable if you are not satisfied with simplistic
 	  "can't resolve 'hostname.com'" and want to know more.
@@ -49,18 +52,21 @@ config VERBOSE_RESOLUTION_ERRORS
 config ARP
 	bool "arp"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Manipulate the system ARP cache.
 
 config ARPING
 	bool "arping"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Ping hosts by ARP packets.
 
 config BRCTL
 	bool "brctl"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Manage ethernet bridges.
 	  Supports addbr/delbr and addif/delif.
@@ -87,18 +93,21 @@ config FEATURE_BRCTL_SHOW
 config DNSD
 	bool "dnsd"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Small and static DNS server daemon.
 
 config ETHER_WAKE
 	bool "ether-wake"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Send a magic packet to wake up sleeping machines.
 
 config FAKEIDENTD
 	bool "fakeidentd"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SYSLOG
 	help
 	  fakeidentd listens on the ident port and returns a predefined
@@ -107,6 +116,7 @@ config FAKEIDENTD
 config FTPD
 	bool "ftpd"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  simple FTP daemon. You have to run it via inetd.
 
@@ -131,12 +141,14 @@ config FEATURE_FTPD_ACCEPT_BROKEN_LIST
 config FTPGET
 	bool "ftpget"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Retrieve a remote file via FTP.
 
 config FTPPUT
 	bool "ftpput"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Store a remote file via FTP.
 
@@ -150,12 +162,14 @@ config FEATURE_FTPGETPUT_LONG_OPTIONS
 config HOSTNAME
 	bool "hostname"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Show or set the system's host name.
 
 config HTTPD
 	bool "httpd"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Serve web pages via an HTTP server.
 
@@ -267,6 +281,7 @@ config FEATURE_HTTPD_PROXY
 config IFCONFIG
 	bool "ifconfig"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Ifconfig is used to configure the kernel-resident network interfaces.
 
@@ -314,6 +329,7 @@ config FEATURE_IFCONFIG_BROADCAST_PLUS
 config IFENSLAVE
 	bool "ifenslave"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Userspace application to bind several interfaces
 	  to a logical interface (use with kernel bonding driver).
@@ -321,12 +337,14 @@ config IFENSLAVE
 config IFPLUGD
 	bool "ifplugd"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Network interface plug detection daemon.
 
 config IFUPDOWN
 	bool "ifupdown"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Activate or deactivate the specified interfaces. This applet makes
 	  use of either "ifconfig" and "route" or the "ip" command to actually
@@ -431,6 +449,7 @@ config FEATURE_IFUPDOWN_EXTERNAL_DHCP
 config INETD
 	bool "inetd"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SYSLOG
 	help
 	  Internet superserver daemon
@@ -481,6 +500,7 @@ config FEATURE_INETD_RPC
 config IP
 	bool "ip"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  The "ip" applet is a TCP/IP interface configuration and routing
 	  utility. You generally don't need "ip" to use busybox with
@@ -550,30 +570,36 @@ config IPADDR
 	bool
 	default y
 	depends on FEATURE_IP_SHORT_FORMS && FEATURE_IP_ADDRESS
+	depends on PLATFORM_POSIX
 
 config IPLINK
 	bool
 	default y
 	depends on FEATURE_IP_SHORT_FORMS && FEATURE_IP_LINK
+	depends on PLATFORM_POSIX
 
 config IPROUTE
 	bool
 	default y
 	depends on FEATURE_IP_SHORT_FORMS && FEATURE_IP_ROUTE
+	depends on PLATFORM_POSIX
 
 config IPTUNNEL
 	bool
 	default y
 	depends on FEATURE_IP_SHORT_FORMS && FEATURE_IP_TUNNEL
+	depends on PLATFORM_POSIX
 
 config IPRULE
 	bool
 	default y
 	depends on FEATURE_IP_SHORT_FORMS && FEATURE_IP_RULE
+	depends on PLATFORM_POSIX
 
 config IPCALC
 	bool "ipcalc"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  ipcalc takes an IP address and netmask and calculates the
 	  resulting broadcast, network, and host range.
@@ -596,6 +622,7 @@ config FEATURE_IPCALC_LONG_OPTIONS
 config NAMEIF
 	bool "nameif"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SYSLOG
 	help
 	  nameif is used to rename network interface by its MAC address.
@@ -624,6 +651,7 @@ config FEATURE_NAMEIF_EXTENDED
 config NC
 	bool "nc"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  A simple Unix utility which reads and writes data across network
 	  connections.
@@ -647,6 +675,7 @@ config NC_EXTRA
 config NETSTAT
 	bool "netstat"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  netstat prints information about the Linux networking subsystem.
 
@@ -669,12 +698,14 @@ config FEATURE_NETSTAT_PRG
 config NSLOOKUP
 	bool "nslookup"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  nslookup is a tool to query Internet name servers.
 
 config NTPD
 	bool "ntpd"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  The NTP client/server daemon.
 
@@ -689,6 +720,7 @@ config FEATURE_NTPD_SERVER
 config PING
 	bool "ping"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  ping uses the ICMP protocol's mandatory ECHO_REQUEST datagram to
 	  elicit an ICMP ECHO_RESPONSE from a host or gateway.
@@ -711,18 +743,21 @@ config FEATURE_FANCY_PING
 config PSCAN
 	bool "pscan"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Simple network port scanner.
 
 config ROUTE
 	bool "route"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Route displays or manipulates the kernel's IP routing tables.
 
 config SLATTACH
 	bool "slattach"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  slattach is a small utility to attach network interfaces to serial
 	  lines.
@@ -740,6 +775,7 @@ config SLATTACH
 config TCPSVD
 	bool "tcpsvd"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  tcpsvd listens on a TCP port and runs a program for each new
 	  connection.
@@ -747,6 +783,7 @@ config TCPSVD
 config TELNET
 	bool "telnet"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Telnet is an interface to the TELNET protocol, but is also commonly
 	  used to test other simple protocols.
@@ -773,6 +810,7 @@ config FEATURE_TELNET_AUTOLOGIN
 config TELNETD
 	bool "telnetd"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SYSLOG
 	help
 	  A daemon for the TELNET protocol, allowing you to log onto the host
@@ -844,6 +882,7 @@ config FEATURE_TELNETD_INETD_WAIT
 config TFTP
 	bool "tftp"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  This enables the Trivial File Transfer Protocol client program. TFTP
 	  is usually used for simple, small transfers such as a root image
@@ -852,6 +891,7 @@ config TFTP
 config TFTPD
 	bool "tftpd"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  This enables the Trivial File Transfer Protocol server program.
 	  It expects that stdin is a datagram socket and a packet
@@ -906,6 +946,7 @@ config TFTP_DEBUG
 config TRACEROUTE
 	bool "traceroute"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Utility to trace the route of IP packets.
 
@@ -942,6 +983,7 @@ config FEATURE_TRACEROUTE_USE_ICMP
 config TUNCTL
 	bool "tunctl"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  tunctl creates or deletes tun devices.
 
@@ -967,6 +1009,7 @@ config IFUPDOWN_UDHCPC_CMD_OPTIONS
 config UDPSVD
 	bool "udpsvd"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  udpsvd listens on an UDP port and runs a program for each new
 	  connection.
@@ -974,12 +1017,14 @@ config UDPSVD
 config VCONFIG
 	bool "vconfig"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  Creates, removes, and configures VLAN interfaces
 
 config WGET
 	bool "wget"
 	default n
+	depends on PLATFORM_POSIX
 	help
 	  wget is a utility for non-interactive download of files from HTTP,
 	  HTTPS, and FTP servers.
@@ -1008,6 +1053,7 @@ config FEATURE_WGET_LONG_OPTIONS
 config ZCIP
 	bool "zcip"
 	default n
+	depends on PLATFORM_POSIX
 	select FEATURE_SYSLOG
 	help
 	  ZCIP provides ZeroConf IPv4 address selection, according to RFC 3927.

@@ -4,6 +4,7 @@
 #
 
 menu "Console Utilities"
+	depends on PLATFORM_POSIX
 
 config CHVT
 	bool "chvt"
