@@ -782,3 +782,9 @@ int mingw_unlink(const char *pathname)
 	chmod(pathname, 0666);
 	return unlink(pathname);
 }
+
+int ioctl(int fd, int code, ...)
+{
+	errno = ENOSYS;
+	return -1;
+}
