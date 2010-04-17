@@ -166,6 +166,7 @@ char *strsep(char **stringp, const char *delim);
  */
 
 #define TIOCGWINSZ 0x5413
+int ioctl(int fd, int code, ...);
 
 NOIMPL(ioctl,int fd UNUSED_PARAM, int code UNUSED_PARAM,...);
 
