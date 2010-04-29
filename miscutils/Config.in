@@ -16,7 +16,7 @@ config ADJTIMEX
 config BBCONFIG
 	bool "bbconfig"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  The bbconfig applet will print the config file with which
 	  busybox was built.
@@ -24,7 +24,7 @@ config BBCONFIG
 config BEEP
 	bool "beep"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  The beep applets beeps in a given freq/Hz.
 
@@ -170,7 +170,7 @@ config CRONTAB
 config DC
 	bool "dc"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  Dc is a reverse-polish desk calculator which supports unlimited
 	  precision arithmetic.
@@ -362,7 +362,7 @@ endchoice
 config LESS
 	bool "less"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  'less' is a pager, meaning that it displays text files. It possesses
 	  a wide array of features, and is an improvement over 'more'.
@@ -521,7 +521,7 @@ endchoice
 config MAN
 	bool "man"
 	default n
-	depends on PLATFORM_POSIX
+	depends on PLATFORM_POSIX || PLATFORM_MINGW32
 	help
 	  Format and display manual pages.
 
