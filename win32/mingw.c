@@ -783,8 +783,7 @@ int mingw_unlink(const char *pathname)
 	return unlink(pathname);
 }
 
-int ioctl(int fd, int code, ...)
+char *strptime(const char *s, const char *format, struct tm *tm)
 {
-	errno = ENOSYS;
-	return -1;
+	return NULL;
 }
