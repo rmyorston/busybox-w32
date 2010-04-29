@@ -230,9 +230,10 @@ static int get_wincon_width_height(const int fd, int *width, int *height)
 	return 0;
 }
 
+
+#if ENABLE_FEATURE_CYGWIN_TTY
 int FAST_FUNC get_terminal_width_height(int fd, unsigned *width, unsigned *height)
 {
-#if ENABLE_FEATURE_CYGWIN_TTY
 	int tty = fd_to_tty(fd);
 	struct shared_info *si = get_shared_info();
 
@@ -243,9 +244,9 @@ int FAST_FUNC get_terminal_width_height(int fd, unsigned *width, unsigned *heigh
 			*height = si->tty.ttys[tty].tty_min.winsize.ws_row;
 		return 0;
 	}
-#endif
 	return get_wincon_width_height(fd, width, height);
 }
+#endif
 
 int wincon_read(int fd, char *buf, int size)
 {
