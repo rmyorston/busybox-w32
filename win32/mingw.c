@@ -770,3 +770,8 @@ int mingw_unlink(const char *pathname)
 	chmod(pathname, 0666);
 	return unlink(pathname);
 }
+
+char *strptime(const char *s, const char *format, struct tm *tm)
+{
+	return NULL;
+}

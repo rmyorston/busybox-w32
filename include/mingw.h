@@ -250,7 +250,7 @@ int waitpid(pid_t pid, int *status, unsigned options);
  */
 struct tm *gmtime_r(const time_t *timep, struct tm *result);
 struct tm *localtime_r(const time_t *timep, struct tm *result);
-IMPL(strptime,char*,NULL,const char *s UNUSED_PARAM, const char *format UNUSED_PARAM, struct tm *tm UNUSED_PARAM);
+char *strptime(const char *s, const char *format, struct tm *tm);
 
 /*
  * unistd.h
