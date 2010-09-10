@@ -41,7 +41,9 @@ static void convert(char *fn, int conv_type)
 		temp_fn = xasprintf("%sXXXXXX", resolved_fn);
 		i = mkstemp(temp_fn);
 		if (i == -1
+#if !ENABLE_PLATFORM_MINGW32
 		 || fchmod(i, st.st_mode) == -1
+#endif
 		) {
 			bb_simple_perror_msg_and_die(temp_fn);
 		}
