@@ -1781,6 +1781,7 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 
 	INIT_S();
 
+#if !ENABLE_PLATFORM_MINGW32
 	if (tcgetattr(STDIN_FILENO, &initial_settings) < 0
 	 || !(initial_settings.c_lflag & ECHO)
 	) {
@@ -1794,6 +1795,7 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 		DEINIT_S();
 		return len;
 	}
+#endif
 
 	init_unicode();
 
