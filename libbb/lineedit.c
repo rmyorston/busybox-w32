@@ -564,7 +564,11 @@ static int path_parse(char ***p, int flags)
 	tmp = (char*)pth;
 	npth = 1; /* path component count */
 	while (1) {
+#if ENABLE_PLATFORM_MINGW32
+		tmp = next_path_sep(tmp);
+#else
 		tmp = strchr(tmp, ':');
+#endif
 		if (!tmp)
 			break;
 		if (*++tmp == '\0')
@@ -576,7 +580,11 @@ static int path_parse(char ***p, int flags)
 	res[0] = tmp = xstrdup(pth);
 	npth = 1;
 	while (1) {
+#if ENABLE_PLATFORM_MINGW32
+		tmp = next_path_sep(tmp);
+#else
 		tmp = strchr(tmp, ':');
+#endif
 		if (!tmp)
 			break;
 		*tmp++ = '\0'; /* ':' -> '\0' */
