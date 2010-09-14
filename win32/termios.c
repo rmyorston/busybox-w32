@@ -30,11 +30,18 @@ int64_t FAST_FUNC read_key(int fd, char *buf, int timeout UNUSED_PARAM)
 		if (record.EventType != KEY_EVENT || !record.Event.KeyEvent.bKeyDown)
 			continue;
 		if (!record.Event.KeyEvent.uChar.AsciiChar) {
+			DWORD state = record.Event.KeyEvent.dwControlKeyState;
 			switch (record.Event.KeyEvent.wVirtualKeyCode) {
 			case VK_UP: return KEYCODE_UP;
 			case VK_DOWN: return KEYCODE_DOWN;
-			case VK_RIGHT: return KEYCODE_RIGHT;
-			case VK_LEFT: return KEYCODE_LEFT;
+			case VK_RIGHT:
+				if (state & (RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED))
+					return KEYCODE_CTRL_RIGHT;
+				return KEYCODE_RIGHT;
+			case VK_LEFT:
+				if (state & (RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED))
+					return KEYCODE_CTRL_LEFT;
+				return KEYCODE_LEFT;
 			case VK_HOME: return KEYCODE_HOME;
 			case VK_END: return KEYCODE_END;
 			case VK_CAPITAL:
