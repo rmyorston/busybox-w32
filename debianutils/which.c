@@ -50,6 +50,11 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 					puts(path);
 					continue;
 				}
+				memcpy(path+len, ".com", 5);
+				if (execable_file(path)) {
+					puts(path);
+					continue;
+				}
 			}
 			status = EXIT_FAILURE;
 		} else {
@@ -86,6 +91,11 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 				int len = strlen(*argv);
 				memcpy(path, *argv, len);
 				memcpy(path+len, ".exe", 5);
+				if (execable_file(path)) {
+					puts(path);
+					continue;
+				}
+				memcpy(path+len, ".com", 5);
 				if (execable_file(path)) {
 					puts(path);
 					continue;
