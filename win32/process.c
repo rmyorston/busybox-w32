@@ -38,7 +38,9 @@ parse_interpreter(const char *cmd)
 
 	/* don't even try a .exe */
 	n = strlen(cmd);
-	if (n >= 4 && !strcasecmp(cmd+n-4, ".exe"))
+	if (n >= 4 &&
+	    (!strcasecmp(cmd+n-4, ".exe") ||
+	     !strcasecmp(cmd+n-4, ".com")))
 		return NULL;
 
 	fd = open(cmd, O_RDONLY);

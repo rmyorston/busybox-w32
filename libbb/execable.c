@@ -18,8 +18,11 @@ int FAST_FUNC execable_file(const char *name)
 	struct stat s;
 	if (ENABLE_PLATFORM_MINGW32) {
 		int len = strlen(name);
-		return len > 4 && !strcasecmp(name+len-4, ".exe") &&
-			!stat(name, &s) && S_ISREG(s.st_mode);
+		return len > 4 &&
+			(!strcasecmp(name+len-4, ".exe") ||
+			 !strcasecmp(name+len-4, ".com")) &&
+			!stat(name, &s) &&
+			S_ISREG(s.st_mode);
 	}
 	return (!access(name, X_OK) && !stat(name, &s) && S_ISREG(s.st_mode));
 }
@@ -43,7 +46,7 @@ char* FAST_FUNC find_execable(const char *filename, char **PATHp)
 
 	p = *PATHp;
 	while (p) {
-		n = next_path_sep(p);
+		n = (char*)next_path_sep(p);
 		if (n)
 			*n++ = '\0';
 		if (*p != '\0') { /* it's not a PATH="foo::bar" situation */
@@ -54,12 +57,19 @@ char* FAST_FUNC find_execable(const char *filename, char **PATHp)
 			}
 			if (ENABLE_PLATFORM_MINGW32) {
 				int len = strlen(p);
-				if (len > 4 && !strcasecmp(p+len-4, ".exe"))
+				if (len > 4 &&
+				    (!strcasecmp(p+len-4, ".exe") ||
+				     !strcasecmp(p+len-4, ".com")))
 					; /* nothing, already tested by find_execable() */
 				else {
 					char *np = xmalloc(len+4+1);
 					memcpy(np, p, len);
 					memcpy(np+len, ".exe", 5);
+					if (execable_file(np)) {
+						*PATHp = n;
+						return np;
+					}
+					memcpy(np+len, ".com", 5);
 					if (execable_file(np)) {
 						*PATHp = n;
 						return np;
