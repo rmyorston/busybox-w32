@@ -235,6 +235,10 @@ int mingw_fstat(int fd, struct stat *buf);
 /*
  * sys/time.h
  */
+struct timespec {
+	time_t tv_sec;
+	long int tv_nsec;
+};
 struct itimerval {
 	struct timeval it_value, it_interval;
 };
