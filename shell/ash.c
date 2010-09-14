@@ -13652,19 +13652,19 @@ name(type *vp) \
  * struct var
  */
 SLIST_SIZE_BEGIN(var_size,struct var)
-funcstringsize += strlen(p->text) + 1;
+funcstringsize += strlen(p->var_text) + 1;
 nodeptrsize++; /* p->text */
 SLIST_SIZE_END()
 
 SLIST_COPY_BEGIN(var_copy,struct var)
-(*vpp)->text = nodeckstrdup(vp->text);
+(*vpp)->var_text = nodeckstrdup(vp->var_text);
 (*vpp)->flags = vp->flags;
 /*
  * The only place that can set struct var#func is varinit[],
  * which will be fixed by forkshell_init()
  */
-(*vpp)->func = NULL;
-SAVE_PTR((*vpp)->text);
+(*vpp)->var_func = NULL;
+SAVE_PTR((*vpp)->var_text);
 SLIST_COPY_END()
 
 /*
@@ -13891,10 +13891,10 @@ globals_var_copy(struct globals_var *gvp)
 	/* Can't use var_copy because varinit is already allocated */
 	for (i = 0; i < ARRAY_SIZE(varinit_data); i++) {
 		new->varinit[i].next = NULL;
-		new->varinit[i].text = nodeckstrdup(gvp->varinit[i].text);
-		SAVE_PTR(new->varinit[i].text);
+		new->varinit[i].var_text = nodeckstrdup(gvp->varinit[i].var_text);
+		SAVE_PTR(new->varinit[i].var_text);
 		new->varinit[i].flags = gvp->varinit[i].flags;
-		new->varinit[i].func = gvp->varinit[i].func;
+		new->varinit[i].var_func = gvp->varinit[i].var_func;
 	}
 	return new;
 }
@@ -14064,7 +14064,7 @@ forkshell_init(const char *idstr)
 	/* Now fix up stuff that can't be transferred */
 	fs->fp = forkpoints[fs->fpid];
 	for (i = 0; i < ARRAY_SIZE(varinit_data); i++)
-		fs->gvp->varinit[i].func = varinit_data[i].func;
+		fs->gvp->varinit[i].var_func = varinit_data[i].var_func;
 	for (i = 0; i < CMDTABLESIZE; i++) {
 		struct tblentry *e = fs->cmdtable[i];
 		while (e) {
