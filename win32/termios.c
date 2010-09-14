@@ -12,25 +12,29 @@ int tcgetattr(int fd UNUSED_PARAM, struct termios *t UNUSED_PARAM)
 
 int64_t FAST_FUNC read_key(int fd, char *buf, int timeout UNUSED_PARAM)
 {
-	static int initialized = 0;
 	HANDLE cin = GetStdHandle(STD_INPUT_HANDLE);
 	INPUT_RECORD record;
-	DWORD nevent_out;
+	DWORD nevent_out, mode;
+	int ret = -1;
 
 	if (fd != 0)
 		bb_error_msg_and_die("read_key only works on stdin");
 	if (cin == INVALID_HANDLE_VALUE)
 		return -1;
-	if (!initialized) {
-		SetConsoleMode(cin, ENABLE_ECHO_INPUT);
-		initialized = 1;
-	}
+	GetConsoleMode(cin, &mode);
+	SetConsoleMode(cin, 0);
 
 	while (1) {
 		if (!ReadConsoleInput(cin, &record, 1, &nevent_out))
-			return -1;
+			goto done;
 		if (record.EventType != KEY_EVENT || !record.Event.KeyEvent.bKeyDown)
 			continue;
-		return record.Event.KeyEvent.uChar.AsciiChar;
+		if (!record.Event.KeyEvent.uChar.AsciiChar)
+			continue;
+		ret = record.Event.KeyEvent.uChar.AsciiChar;
+		break;
 	}
+ done:
+	SetConsoleMode(cin, mode);
+	return ret;
 }
