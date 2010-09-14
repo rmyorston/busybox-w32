@@ -75,6 +75,7 @@ const char* FAST_FUNC get_cached_groupname(gid_t gid)
 	return get_cached(&groupname, gid, gid2group_utoa);
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 
 #define PROCPS_BUFSIZE 1024
 
@@ -551,6 +552,8 @@ procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags)
 
 	return sp;
 }
+
+#endif	/* ENABLE_PLATFORM_MINGW32 */
 
 void FAST_FUNC read_cmdline(char *buf, int col, unsigned pid, const char *comm)
 {
