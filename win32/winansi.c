@@ -91,6 +91,24 @@ static void erase_in_line(void)
 		NULL);
 }
 
+static void erase_till_end_of_screen(void)
+{
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
+	COORD pos;
+
+	if (!console)
+		return;
+
+	GetConsoleScreenBufferInfo(console, &sbi);
+	FillConsoleOutputCharacterA(console, ' ',
+		sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition,
+		NULL);
+
+	pos.X = 0;
+	for (pos.Y = sbi.dwCursorPosition.Y+1; pos.Y < sbi.dwSize.Y; pos.Y++)
+		FillConsoleOutputCharacterA(console, ' ', sbi.dwSize.X,
+					    pos, NULL);
+}
 
 static const char *set_attr(const char *str)
 {
@@ -229,6 +247,9 @@ static const char *set_attr(const char *str)
 		} while (*(str-1) == ';');
 
 		set_console_attr();
+		break;
+	case 'J':
+		erase_till_end_of_screen();
 		break;
 	case 'K':
 		erase_in_line();
