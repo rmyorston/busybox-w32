@@ -32,6 +32,7 @@ int64_t FAST_FUNC read_key(int fd, char *buf, int timeout UNUSED_PARAM)
 		if (!record.Event.KeyEvent.uChar.AsciiChar) {
 			DWORD state = record.Event.KeyEvent.dwControlKeyState;
 			switch (record.Event.KeyEvent.wVirtualKeyCode) {
+			case VK_DELETE: return KEYCODE_DELETE;
 			case VK_UP: return KEYCODE_UP;
 			case VK_DOWN: return KEYCODE_DOWN;
 			case VK_RIGHT:
