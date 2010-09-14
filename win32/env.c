@@ -115,5 +115,14 @@ void unsetenv(const char *env)
 
 int clearenv(void)
 {
-	bb_error_msg_and_die("clearenv() is not supported");
+	char **env = environ;
+	if (!env)
+		return 0;
+	while (*env) {
+		free(*env);
+		env++;
+	}
+	free(env);
+	environ = NULL;
+	return 0;
 }
