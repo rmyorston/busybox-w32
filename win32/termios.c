@@ -33,6 +33,7 @@ int64_t FAST_FUNC read_key(int fd, char *buf, int timeout UNUSED_PARAM)
 			DWORD state = record.Event.KeyEvent.dwControlKeyState;
 			switch (record.Event.KeyEvent.wVirtualKeyCode) {
 			case VK_DELETE: return KEYCODE_DELETE;
+			case VK_INSERT: return KEYCODE_INSERT;
 			case VK_UP: return KEYCODE_UP;
 			case VK_DOWN: return KEYCODE_DOWN;
 			case VK_RIGHT:
@@ -45,6 +46,8 @@ int64_t FAST_FUNC read_key(int fd, char *buf, int timeout UNUSED_PARAM)
 				return KEYCODE_LEFT;
 			case VK_HOME: return KEYCODE_HOME;
 			case VK_END: return KEYCODE_END;
+			case VK_PRIOR: return KEYCODE_PAGEUP;
+			case VK_NEXT: return KEYCODE_PAGEDOWN;
 			case VK_CAPITAL:
 			case VK_SHIFT:
 			case VK_CONTROL:
