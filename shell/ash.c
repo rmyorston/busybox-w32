@@ -168,9 +168,7 @@ enum { NOPTS = ARRAY_SIZE(optletters_optnames) };
 
 /* ============ Misc data */
 
-static const char homestr[] ALIGN1 = "HOME";
-static const char snlfmt[] ALIGN1 = "%s\n";
-static const char msg_illnum[] ALIGN1 = "Illegal number: %s";
+#define msg_illnum "Illegal number: %s"
 
 /*
  * We enclose jmp_buf in a structure so that we can declare pointers to
@@ -2674,7 +2672,7 @@ cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	flags = cdopt();
 	dest = *argptr;
 	if (!dest)
-		dest = bltinlookup(homestr);
+		dest = bltinlookup("HOME");
 	else if (LONE_DASH(dest)) {
 		dest = bltinlookup("OLDPWD");
 		flags |= CD_PRINT;
@@ -2721,7 +2719,7 @@ cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	/* NOTREACHED */
  out:
 	if (flags & CD_PRINT)
-		out1fmt(snlfmt, curdir);
+		out1fmt("%s\n", curdir);
 	return 0;
 }
 
@@ -2737,7 +2735,7 @@ pwdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 			setpwd(dir, 0);
 		dir = physdir;
 	}
-	out1fmt(snlfmt, dir);
+	out1fmt("%s\n", dir);
 	return 0;
 }
 
@@ -5915,7 +5913,7 @@ exptilde(char *startp, char *p, int flags)
  done:
 	*p = '\0';
 	if (*name == '\0') {
-		home = lookupvar(homestr);
+		home = lookupvar("HOME");
 	} else {
 		if (ENABLE_PLATFORM_MINGW32)
 			goto lose;
@@ -10322,7 +10320,7 @@ chkmail(void)
 		}
 		if (!mail_var_path_changed && statb.st_mtime != *mtp) {
 			fprintf(
-				stderr, snlfmt,
+				stderr, "%s\n",
 				pathopt ? pathopt : "you have mail"
 			);
 		}
