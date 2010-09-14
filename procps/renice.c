@@ -4,7 +4,7 @@
  *
  * Copyright (C) 2005  Manuel Novoa III  <mjn3@codepoet.org>
  *
- * Licensed under the GPL v2 or later, see the file LICENSE in this tarball.
+ * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 
 /* Notes:
@@ -91,7 +91,7 @@ int renice_main(int argc UNUSED_PARAM, char **argv)
 		} else {
 			who = bb_strtou(arg, NULL, 10);
 			if (errno) {
-				bb_error_msg("bad value: %s", arg);
+				bb_error_msg("invalid number '%s'", arg);
 				goto HAD_ERROR;
 			}
 		}

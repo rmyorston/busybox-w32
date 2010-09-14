@@ -13,7 +13,7 @@
  * Copyright (c) 1997-2005 Herbert Xu <herbert@gondor.apana.org.au>
  * was re-ported from NetBSD and debianized.
  *
- * Licensed under the GPL v2 or later, see the file LICENSE in this tarball.
+ * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 
 /*
@@ -5204,9 +5204,13 @@ noclobberopen(const char *fname)
 	 * revealed that it was a regular file, and the file has not been
 	 * replaced, return the file descriptor.
 	 */
-	if (fstat(fd, &finfo2) == 0 && !S_ISREG(finfo2.st_mode)
-	 && finfo.st_dev == finfo2.st_dev && finfo.st_ino == finfo2.st_ino)
+	if (fstat(fd, &finfo2) == 0
+	 && !S_ISREG(finfo2.st_mode)
+	 && finfo.st_dev == finfo2.st_dev
+	 && finfo.st_ino == finfo2.st_ino
+	) {
 		return fd;
+	}
 
 	/* The file has been replaced.  badness. */
 	close(fd);
@@ -11611,10 +11615,9 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 					if (dqvarnest > 0) {
 						dqvarnest--;
 					}
-					USTPUTC(CTLENDVAR, out);
-				} else {
-					USTPUTC(c, out);
+					c = CTLENDVAR;
 				}
+				USTPUTC(c, out);
 				break;
 #if ENABLE_SH_MATH_SUPPORT
 			case CLP:       /* '(' in arithmetic */
@@ -11623,25 +11626,23 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 				break;
 			case CRP:       /* ')' in arithmetic */
 				if (parenlevel > 0) {
-					USTPUTC(c, out);
-					--parenlevel;
+					parenlevel--;
 				} else {
 					if (pgetc() == ')') {
 						if (--arinest == 0) {
-							USTPUTC(CTLENDARI, out);
 							syntax = prevsyntax;
 							dblquote = (syntax == DQSYNTAX);
-						} else
-							USTPUTC(')', out);
+							c = CTLENDARI;
+						}
 					} else {
 						/*
 						 * unbalanced parens
 						 * (don't 2nd guess - no error)
 						 */
 						pungetc();
-						USTPUTC(')', out);
 					}
 				}
+				USTPUTC(c, out);
 				break;
 #endif
 			case CBQUOTE:   /* '`' */

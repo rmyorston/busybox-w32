@@ -4,7 +4,7 @@
  *
  * Busybox'ed (2009) by Vladimir Dronnikov <dronnikov@gmail.com>
  *
- * Licensed under GPLv2, see file LICENSE in this tarball for details.
+ * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 #include "libbb.h"
 #include <linux/fs.h>
@@ -168,9 +168,9 @@ int mkfs_reiser_main(int argc UNUSED_PARAM, char **argv)
 
 	// check the device is a block device
 	fd = xopen(argv[0], O_WRONLY | O_EXCL);
-	fstat(fd, &st);
+	xfstat(fd, &st, argv[0]);
 	if (!S_ISBLK(st.st_mode) && !(option_mask32 & OPT_f))
-		bb_error_msg_and_die("not a block device");
+		bb_error_msg_and_die("%s: not a block device", argv[0]);
 
 	// check if it is mounted
 	// N.B. what if we format a file? find_mount_point will return false negative since

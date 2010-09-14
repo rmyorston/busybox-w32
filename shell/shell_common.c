@@ -14,7 +14,7 @@
  * Copyright (c) 2010 Denys Vlasenko
  * Split from ash.c
  *
- * Licensed under the GPL v2 or later, see the file LICENSE in this tarball.
+ * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 #include "libbb.h"
 #include "shell_common.h"
@@ -429,7 +429,7 @@ shell_builtin_ulimit(char **argv)
 						else
 							val = bb_strtoull(val_str, NULL, 10);
 						if (errno) {
-							bb_error_msg("bad number");
+							bb_error_msg("invalid number '%s'", val_str);
 							return EXIT_FAILURE;
 						}
 						val <<= l->factor_shift;

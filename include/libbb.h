@@ -3,9 +3,9 @@
  * Busybox main internal header file
  *
  * Based in part on code from sash, Copyright (c) 1999 by David I. Bell
- * Permission has been granted to redistribute this code under the GPL.
+ * Permission has been granted to redistribute this code under GPL.
  *
- * Licensed under the GPL version 2, see the file LICENSE in this tarball.
+ * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 #ifndef LIBBB_H
 #define LIBBB_H 1
@@ -422,12 +422,14 @@ void bb_unsetenv(const char *key) FAST_FUNC;
 void bb_unsetenv_and_free(char *key) FAST_FUNC;
 void xunlink(const char *pathname) FAST_FUNC;
 void xstat(const char *pathname, struct stat *buf) FAST_FUNC;
+void xfstat(int fd, struct stat *buf, const char *errmsg) FAST_FUNC;
 int xopen(const char *pathname, int flags) FAST_FUNC;
 int xopen_nonblocking(const char *pathname) FAST_FUNC;
 int xopen3(const char *pathname, int flags, int mode) FAST_FUNC;
 int open_or_warn(const char *pathname, int flags) FAST_FUNC;
 int open3_or_warn(const char *pathname, int flags, int mode) FAST_FUNC;
 int open_or_warn_stdin(const char *pathname) FAST_FUNC;
+int xopen_stdin(const char *pathname) FAST_FUNC;
 void xrename(const char *oldpath, const char *newpath) FAST_FUNC;
 int rename_or_warn(const char *oldpath, const char *newpath) FAST_FUNC;
 off_t xlseek(int fd, off_t offset, int whence) FAST_FUNC;
@@ -1402,6 +1404,29 @@ enum { COMM_LEN = TASK_COMM_LEN };
 enum { COMM_LEN = 16 };
 # endif
 #endif
+
+struct smaprec {
+	unsigned long mapped_rw;
+	unsigned long mapped_ro;
+	unsigned long shared_clean;
+	unsigned long shared_dirty;
+	unsigned long private_clean;
+	unsigned long private_dirty;
+	unsigned long stack;
+	unsigned long smap_pss, smap_swap;
+	unsigned long smap_size;
+	unsigned long smap_start;
+	char smap_mode[5];
+	char *smap_name;
+};
+
+#if !ENABLE_PMAP
+#define procps_read_smaps(pid, total, cb, data) \
+	procps_read_smaps(pid, total)
+#endif
+int FAST_FUNC procps_read_smaps(pid_t pid, struct smaprec *total,
+		      void (*cb)(struct smaprec *, void *), void *data);
+
 typedef struct procps_status_t {
 	DIR *dir;
 	IF_FEATURE_SHOW_THREADS(DIR *task_dir;)
@@ -1430,13 +1455,7 @@ typedef struct procps_status_t {
 #endif
 	unsigned tty_major,tty_minor;
 #if ENABLE_FEATURE_TOPMEM
-	unsigned long mapped_rw;
-	unsigned long mapped_ro;
-	unsigned long shared_clean;
-	unsigned long shared_dirty;
-	unsigned long private_clean;
-	unsigned long private_dirty;
-	unsigned long stack;
+	struct smaprec smaps;
 #endif
 	char state[4];
 	/* basename of executable in exec(2), read from /proc/N/stat

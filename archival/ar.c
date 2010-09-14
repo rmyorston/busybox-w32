@@ -6,7 +6,7 @@
  *
  * Based in part on BusyBox tar, Debian dpkg-deb and GNU ar.
  *
- * Licensed under GPLv2 or later, see file LICENSE in this tarball for details.
+ * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  *
  * Archive creation support:
  * Copyright (C) 2010 Nokia Corporation. All rights reserved.
@@ -123,8 +123,7 @@ static int write_ar_archive(archive_handle_t *handle)
 	struct stat st;
 	archive_handle_t *out_handle;
 
-	if (fstat(handle->src_fd, &st) == -1)
-		bb_simple_perror_msg_and_die(handle->ar__name);
+	xfstat(handle->src_fd, &st, handle->ar__name);
 
 	/* if archive exists, create a new handle for output.
 	 * we create it in place of the old one.

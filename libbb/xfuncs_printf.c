@@ -6,7 +6,7 @@
  * Copyright (C) 2006 Rob Landley
  * Copyright (C) 2006 Denys Vlasenko
  *
- * Licensed under GPL version 2, see file LICENSE in this tarball for details.
+ * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 
 /* We need to have separate xfuncs.c and xfuncs_printf.c because
@@ -448,6 +448,16 @@ void FAST_FUNC xstat(const char *name, struct stat *stat_buf)
 {
 	if (stat(name, stat_buf))
 		bb_perror_msg_and_die("can't stat '%s'", name);
+}
+
+void FAST_FUNC xfstat(int fd, struct stat *stat_buf, const char *errmsg)
+{
+	/* errmsg is usually a file name, but not always:
+	 * xfstat may be called in a spot where file name is no longer
+	 * available, and caller may give e.g. "can't stat input file" string.
+	 */
+	if (fstat(fd, stat_buf))
+		bb_simple_perror_msg_and_die(errmsg);
 }
 
 // selinux_or_die() - die if SELinux is disabled.

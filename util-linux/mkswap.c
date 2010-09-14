@@ -3,7 +3,7 @@
  *
  * Copyright 2006 Rob Landley <rob@landley.net>
  *
- * Licensed under GPL version 2, see file LICENSE in this tarball for details.
+ * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 #include "libbb.h"
 
@@ -15,8 +15,7 @@ static void mkswap_selinux_setcontext(int fd, const char *path)
 	if (!is_selinux_enabled())
 		return;
 
-	if (fstat(fd, &stbuf) < 0)
-		bb_perror_msg_and_die("fstat failed");
+	xfstat(fd, &stbuf, argv[0]);
 	if (S_ISREG(stbuf.st_mode)) {
 		security_context_t newcon;
 		security_context_t oldcon = NULL;
@@ -102,7 +101,15 @@ int mkswap_main(int argc UNUSED_PARAM, char **argv)
 	printf("Setting up swapspace version 1, size = %"OFF_FMT"u bytes\n", len);
 	mkswap_selinux_setcontext(fd, argv[0]);
 
-	/* Make a header. hdr is zero-filled so far... */
+	/* hdr is zero-filled so far. Clear the first kbyte, or else
+	 * mkswap-ing former FAT partition does NOT erase its signature.
+	 *
+	 * util-linux-ng 2.17.2 claims to erase it only if it does not see
+	 * a partition table and is not run on whole disk. -f forces it.
+	 */
+	xwrite(fd, hdr, 1024);
+
+	/* Fill the header. */
 	hdr->version = 1;
 	hdr->last_page = (uoff_t)len / pagesize;
 
@@ -123,7 +130,6 @@ int mkswap_main(int argc UNUSED_PARAM, char **argv)
 
 	/* Write the header.  Sync to disk because some kernel versions check
 	 * signature on disk (not in cache) during swapon. */
-	xlseek(fd, 1024, SEEK_SET);
 	xwrite(fd, hdr, NWORDS * 4);
 	xlseek(fd, pagesize - 10, SEEK_SET);
 	xwrite(fd, SWAPSPACE2, 10);

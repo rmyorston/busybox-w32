@@ -15,12 +15,12 @@
  *  Copyright (c) 1999 by David I. Bell
  *  Permission is granted to use, distribute, or modify this source,
  *  provided that this copyright notice remains intact.
- *  Permission to distribute sash derived code under the GPL has been granted.
+ *  Permission to distribute sash derived code under GPL has been granted.
  *
  * Based in part on the tar implementation from busybox-0.28
  *  Copyright (C) 1995 Bruce Perens
  *
- * Licensed under GPLv2 or later, see file LICENSE in this tarball for details.
+ * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 
 #include <fnmatch.h>
@@ -572,8 +572,7 @@ static NOINLINE int writeTarFile(int tar_fd, int verboseFlag,
 
 	/* Store the stat info for the tarball's file, so
 	 * can avoid including the tarball into itself....  */
-	if (fstat(tbInfo.tarFd, &tbInfo.tarFileStatBuf) < 0)
-		bb_perror_msg_and_die("can't stat tar file");
+	xfstat(tbInfo.tarFd, &tbInfo.tarFileStatBuf, "can't stat tar file");
 
 #if ENABLE_FEATURE_SEAMLESS_GZ || ENABLE_FEATURE_SEAMLESS_BZ2
 	if (gzip)

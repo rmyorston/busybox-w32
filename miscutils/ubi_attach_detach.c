@@ -1,6 +1,6 @@
 /* Ported to busybox from mtd-utils.
  *
- * Licensed under GPLv2, see file LICENSE in this tarball for details.
+ * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 
 //applet:IF_UBIATTACH(APPLET_ODDNAME(ubiattach, ubi_attach_detach, _BB_DIR_USR_SBIN, _BB_SUID_DROP, ubiattach))
@@ -63,9 +63,9 @@ int ubi_attach_detach_main(int argc UNUSED_PARAM, char **argv)
 	ubi_ctrl = argv[optind];
 
 	fd = xopen(ubi_ctrl, O_RDWR);
-	//fstat(fd, &st);
+	//xfstat(fd, &st, ubi_ctrl);
 	//if (!S_ISCHR(st.st_mode))
-	//	bb_error_msg_and_die("'%s' is not a char device", ubi_ctrl);
+	//	bb_error_msg_and_die("%s: not a char device", ubi_ctrl);
 
 	if (do_attach) {
 		if (!(opts & OPTION_M))

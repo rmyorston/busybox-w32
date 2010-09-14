@@ -11,7 +11,7 @@
  * Modified to be able to add or delete users, groups and users to/from groups
  * by Tito Ragusa <farmatito@tiscali.it>
  *
- * Licensed under GPLv2, see file LICENSE in this tarball for details.
+ * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 #include "libbb.h"
 
@@ -133,7 +133,7 @@ int FAST_FUNC update_passwd(const char *filename,
 	goto close_old_fp;
 
  created:
-	if (!fstat(old_fd, &sb)) {
+	if (fstat(old_fd, &sb) == 0) {
 		fchmod(new_fd, sb.st_mode & 0777); /* ignore errors */
 		fchown(new_fd, sb.st_uid, sb.st_gid);
 	}

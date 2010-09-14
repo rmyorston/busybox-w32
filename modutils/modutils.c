@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2008 by Timo Teras <timo.teras@iki.fi>
  *
- * Licensed under GPLv2 or later, see file LICENSE in this tarball for details.
+ * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 #include "modutils.h"
 
@@ -71,8 +71,12 @@ char* FAST_FUNC parse_cmdline_module_options(char **argv)
 	optlen = 0;
 	while (*++argv) {
 		options = xrealloc(options, optlen + 2 + strlen(*argv) + 2);
-		/* Spaces handled by "" pairs, but no way of escaping quotes */
-		optlen += sprintf(options + optlen, (strchr(*argv, ' ') ? "\"%s\" " : "%s "), *argv);
+		/* Older versions were enclosing space-containing *argv in "",
+		 * but both modprobe and insmod from module-init-tools 3.11.1
+		 * don't do this anymore. (As to extra trailing space,
+		 * insmod adds it but modprobe does not. We do in both cases)
+		 */
+		optlen += sprintf(options + optlen, "%s ", *argv);
 	}
 	return options;
 }

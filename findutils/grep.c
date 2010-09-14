@@ -5,7 +5,7 @@
  * Copyright (C) 1999,2000,2001 by Lineo, inc. and Mark Whitley
  * Copyright (C) 1999,2000,2001 by Mark Whitley <markw@codepoet.org>
  *
- * Licensed under the GPL v2 or later, see the file LICENSE in this tarball.
+ * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 /* BB_AUDIT SUSv3 defects - unsupported option -x "match whole line only". */
 /* BB_AUDIT GNU defects - always acts as -a.  */
@@ -469,15 +469,19 @@ static int grep_file(FILE *file)
 						if (found)
 							print_line(gl->pattern, strlen(gl->pattern), linenum, ':');
 					} else while (1) {
+						unsigned start = gl->matched_range.rm_so;
 						unsigned end = gl->matched_range.rm_eo;
+						unsigned len = end - start;
 						char old = line[end];
 						line[end] = '\0';
-						print_line(line + gl->matched_range.rm_so,
-								end - gl->matched_range.rm_so,
-								linenum, ':');
+						/* Empty match is not printed: try "echo test | grep -o ''" */
+						if (len != 0)
+							print_line(line + start, len, linenum, ':');
 						if (old == '\0')
 							break;
 						line[end] = old;
+						if (len == 0)
+							end++;
 #if !ENABLE_EXTRA_COMPAT
 						if (regexec(&gl->compiled_regex, line + end,
 								1, &gl->matched_range, REG_NOTBOL) != 0)

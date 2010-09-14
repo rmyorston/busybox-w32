@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Copyright 2005 by Rob Landley <rob@landley.net>
-# Licensed under GPL v2, see file LICENSE for details.
+# Licensed under GPLv2, see file LICENSE in this source tree.
 
 # AUDIT:
 
@@ -98,5 +98,9 @@ testing "grep -o does not loop forever" \
 	'grep -o "[^/]*$"' \
 	"test\n" \
 	"" "/var/test\n"
+testing "grep -o does not loop forever on zero-length match" \
+	'grep -o "" | head -n1' \
+	"" \
+	"" "test\n"
 
 exit $FAILCOUNT

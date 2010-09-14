@@ -1,6 +1,6 @@
 #!/bin/sh
 # Copyright 2008 by Denys Vlasenko
-# Licensed under GPL v2, see file LICENSE for details.
+# Licensed under GPLv2, see file LICENSE in this source tree.
 
 . ./testing.sh
 
@@ -33,6 +33,16 @@ testing "mdev add /block/sda" \
 	ls -ln mdev.testdir/dev | $FILTER_LS" \
 "\
 brw-rw---- 1 0 0 8,0 sda
+" \
+	"" ""
+SKIP=
+
+# continuing to use directory structure from prev test
+optional STATIC FEATURE_MDEV_CONF FEATURE_LS_TIMESTAMPS FEATURE_LS_USERNAME
+testing "mdev deletes /block/sda" \
+	"env - PATH=$PATH ACTION=remove DEVPATH=/block/sda chroot mdev.testdir /mdev 2>&1;
+	ls -ln mdev.testdir/dev | $FILTER_LS" \
+"\
 " \
 	"" ""
 SKIP=

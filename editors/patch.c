@@ -12,7 +12,6 @@
  * TODO:
  * -b backup
  * -l treat all whitespace as a single space
- * -N ignore already applied
  * -d chdir first
  * -D define wrap #ifdef and #ifndef around changes
  * -o outfile output here instead of in place
@@ -244,14 +243,12 @@ struct globals {
 } while (0)
 
 
-//bbox had: "p:i:RN"
 #define FLAG_STR "Rup:i:Nx"
 /* FLAG_REVERSE must be == 1! Code uses this fact. */
 #define FLAG_REVERSE (1 << 0)
 #define FLAG_u       (1 << 1)
 #define FLAG_PATHLEN (1 << 2)
 #define FLAG_INPUT   (1 << 3)
-// -N: not supported yet
 #define FLAG_IGNORE  (1 << 4)
 //non-standard:
 #define FLAG_DEBUG   (1 << 5)
@@ -314,6 +311,10 @@ static int apply_one_hunk(void)
 {
 	struct double_list *plist, *buf = NULL, *check;
 	int matcheof = 0, reverse = option_mask32 & FLAG_REVERSE, backwarn = 0;
+	/* Do we try "dummy" revert to check whether
+	 * to silently skip this hunk? Used to implement -N.
+	 */
+	int dummy_revert = 0;
 
 	// Break doubly linked list so we can use singly linked traversal function.
 	TT.current_hunk->prev->next = NULL;
@@ -343,9 +344,14 @@ static int apply_one_hunk(void)
 		while (plist && *plist->data == "+-"[reverse]) {
 			if (data && !strcmp(data, plist->data+1)) {
 				if (!backwarn) {
+					backwarn++;
+					if (option_mask32 & FLAG_IGNORE) {
+						dummy_revert = 1;
+						reverse ^= 1;
+						continue;
+					}
 					fdprintf(2,"Possibly reversed hunk %d at %ld\n",
 						TT.hunknum, TT.linenum);
-					backwarn++;
 				}
 			}
 			plist = plist->next;
@@ -409,7 +415,7 @@ static int apply_one_hunk(void)
 	}
 out:
 	// We have a match.  Emit changed data.
-	TT.state = "-+"[reverse];
+	TT.state = "-+"[reverse ^ dummy_revert];
 	llist_free(TT.current_hunk, do_line);
 	TT.current_hunk = NULL;
 	TT.state = 1;
@@ -441,10 +447,21 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 	INIT_TT();
 
 	opts = getopt32(argv, FLAG_STR, &opt_p, &opt_i);
+	argv += optind;
 	reverse = opts & FLAG_REVERSE;
 	TT.prefix = (opts & FLAG_PATHLEN) ? xatoi(opt_p) : 0; // can be negative!
-	if (opts & FLAG_INPUT) TT.filepatch = xopen(opt_i, O_RDONLY);
 	TT.filein = TT.fileout = -1;
+	if (opts & FLAG_INPUT) {
+		TT.filepatch = xopen_stdin(opt_i);
+	} else {
+		if (argv[0] && argv[1]) {
+			TT.filepatch = xopen_stdin(argv[1]);
+		}
+	}
+	if (argv[0]) {
+		oldname = xstrdup(argv[0]);
+		newname = xstrdup(argv[0]);
+	}
 
 	// Loop through the lines in the patch
 	for(;;) {
@@ -492,18 +509,20 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 				state = 1;
 			}
 
-			free(*name);
 			finish_oldfile();
 
-			// Trim date from end of filename (if any).  We don't care.
-			for (s = patchline+4; *s && *s!='\t'; s++)
-				if (*s=='\\' && s[1]) s++;
-			i = atoi(s);
-			if (i>1900 && i<=1970)
-				*name = xstrdup("/dev/null");
-			else {
-				*s = 0;
-				*name = xstrdup(patchline+4);
+			if (!argv[0]) {
+				free(*name);
+				// Trim date from end of filename (if any).  We don't care.
+				for (s = patchline+4; *s && *s!='\t'; s++)
+					if (*s=='\\' && s[1]) s++;
+				i = atoi(s);
+				if (i>1900 && i<=1970)
+					*name = xstrdup("/dev/null");
+				else {
+					*s = 0;
+					*name = xstrdup(patchline+4);
+				}
 			}
 
 			// We defer actually opening the file because svn produces broken

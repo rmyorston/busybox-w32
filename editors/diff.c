@@ -10,7 +10,7 @@
  * Agency (DARPA) and Air Force Research Laboratory, Air Force
  * Materiel Command, USAF, under agreement number F39502-99-1-0512.
  *
- * Licensed under GPLv2 or later, see file LICENSE in this tarball for details.
+ * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 
 /*
@@ -479,7 +479,7 @@ start:
 	for (; suff < nlen[0] - pref && suff < nlen[1] - pref &&
 	       nfile[0][nlen[0] - suff].value == nfile[1][nlen[1] - suff].value;
 	       suff++);
-	/* Arrays are pruned by the suffix and prefix lenght,
+	/* Arrays are pruned by the suffix and prefix length,
 	 * the result being sorted and stored in sfile[fileno],
 	 * and their sizes are stored in slen[fileno]
 	 */

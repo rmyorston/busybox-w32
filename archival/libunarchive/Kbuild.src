@@ -2,7 +2,7 @@
 #
 # Copyright (C) 1999-2004 by Erik Andersen <andersen@codepoet.org>
 #
-# Licensed under the GPL v2 or later, see the file LICENSE in this tarball.
+# Licensed under GPLv2 or later, see file LICENSE in this source tree.
 
 lib-y:=
 
@@ -54,6 +54,7 @@ lib-$(CONFIG_FEATURE_SEAMLESS_BZ2)      += open_transformer.o decompress_bunzip2
 lib-$(CONFIG_FEATURE_SEAMLESS_LZMA)     += open_transformer.o decompress_unlzma.o get_header_tar_lzma.o
 lib-$(CONFIG_FEATURE_SEAMLESS_XZ)       += open_transformer.o decompress_unxz.o
 lib-$(CONFIG_FEATURE_COMPRESS_USAGE)    += decompress_bunzip2.o
+lib-$(CONFIG_FEATURE_COMPRESS_BBCONFIG) += decompress_bunzip2.o
 lib-$(CONFIG_FEATURE_TAR_TO_COMMAND)    += data_extract_to_command.o
 
 ifneq ($(lib-y),)
