@@ -98,7 +98,7 @@ config FEATURE_USERNAME_COMPLETION
 
 config FEATURE_EDITING_FANCY_PROMPT
 	bool "Fancy shell prompts"
-	default n
+	default y
 	depends on FEATURE_EDITING
 	help
 	  Setting this option allows for prompts to use things like \w and
@@ -153,6 +153,7 @@ config FEATURE_COPYBUF_KB
 config MONOTONIC_SYSCALL
 	bool "Use clock_gettime(CLOCK_MONOTONIC) syscall"
 	default n
+	depends on PLATFORM_LINUX
 	help
 	  Use clock_gettime(CLOCK_MONOTONIC) syscall for measuring
 	  time intervals (time, ping, traceroute etc need this).

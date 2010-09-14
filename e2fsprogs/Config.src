@@ -33,6 +33,7 @@ config FSCK
 config LSATTR
 	bool "lsattr"
 	default y
+	depends on PLATFORM_LINUX
 	help
 	  lsattr lists the file attributes on a second extended file system.
 
@@ -45,7 +46,7 @@ config LSATTR
 
 config TUNE2FS
 	bool "tune2fs"
-	default y
+	default n  # off: it is too limited compared to upstream version
 	help
 	  tune2fs allows the system administrator to adjust various tunable
 	  filesystem parameters on Linux ext2/ext3 filesystems.

@@ -592,7 +592,6 @@ filter_datapoints(peer_t *p)
 			p->filter_offset, x,
 			p->filter_dispersion,
 			p->filter_jitter);
-
 }
 
 static void
@@ -2061,7 +2060,6 @@ int ntpd_main(int argc UNUSED_PARAM, char **argv)
 static double
 direct_freq(double fp_offset)
 {
-
 #ifdef KERNEL_PLL
 	/*
 	 * If the kernel is enabled, we need the residual offset to

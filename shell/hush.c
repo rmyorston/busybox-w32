@@ -224,6 +224,20 @@
 //config:	  This instructs hush to print commands before execution.
 //config:	  Adds ~300 bytes.
 //config:
+//config:config LASH
+//config:	bool "lash (deprecated: aliased to hush)"
+//config:	default n
+//config:	select HUSH
+//config:	help
+//config:	  lash is deprecated and will be removed, please migrate to hush.
+//config:
+//config:config MSH
+//config:	bool "msh (deprecated: aliased to hush)"
+//config:	default n
+//config:	select HUSH
+//config:	help
+//config:	  msh is deprecated and will be removed, please migrate to hush.
+//config:
 
 //usage:#define hush_trivial_usage NOUSAGE_STR
 //usage:#define hush_full_usage ""
@@ -4094,8 +4108,6 @@ static void insert_bg_job(struct pipe *pi)
 
 	if (G_interactive_fd)
 		printf("[%d] %d %s\n", job->jobid, job->cmds[0].pid, job->cmdtext);
-	/* Last command's pid goes to $! */
-	G.last_bg_pid = job->cmds[job->num_cmds - 1].pid;
 	G.last_jobid = job->jobid;
 }
 
@@ -4506,7 +4518,6 @@ static NOINLINE int run_pipe(struct pipe *pi)
 #ifdef CMD_SINGLEWORD_NOGLOB_COND
 		else if (command->cmd_type == CMD_SINGLEWORD_NOGLOB_COND) {
 			argv_expanded = expand_strvec_to_strvec_singleword_noglob_cond(argv + command->assignment_cnt);
-
 		}
 #endif
 		else {
@@ -5062,6 +5073,8 @@ static int run_list(struct pipe *pi)
 				if (G.run_list_level == 1)
 					insert_bg_job(pi);
 #endif
+				/* Last command's pid goes to $! */
+				G.last_bg_pid = pi->cmds[pi->num_cmds - 1].pid;
 				G.last_exitcode = rcode = EXIT_SUCCESS;
 				debug_printf_exec(": cmd&: exitcode EXIT_SUCCESS\n");
 			} else {

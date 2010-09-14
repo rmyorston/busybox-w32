@@ -94,7 +94,7 @@ int dos2unix_main(int argc UNUSED_PARAM, char **argv)
 	do {
 		/* might be convert(NULL) if there is no filename given */
 		convert(*argv, conv_type);
-	} while (*++argv);
+	} while (*argv && *++argv);
 
 	return 0;
 }
