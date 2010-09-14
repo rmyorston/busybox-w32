@@ -602,17 +602,22 @@ static int filstat(char *nm, enum token mode)
 #if ENABLE_PLATFORM_MINGW32
 	if (mode == FILEX) {
 		int len = strlen(nm), ret;
-		char *exepath;
-		if (len >= 4 && !strcmp(nm+len-4,".exe"))
-			exepath = nm;
+		if (len >= 4 &&
+		    (!strcmp(nm+len-4,".exe") ||
+		     !strcmp(nm+len-4,".com")))
+			ret = stat(nm, &s);
 		else {
+			char *exepath;
 			exepath = malloc(len+5);
 			memcpy(exepath, nm, len);
 			memcpy(exepath+len, ".exe", 5);
-		}
-		ret = stat(exepath, &s);
-		if (exepath != nm)
+			ret = stat(exepath, &s);
+			if (ret < 0) {
+				memcpy(exepath+len, ".exe", 5);
+				ret = stat(exepath, &s);
+			}
 			free(exepath);
+		}
 		return ret >= 0;
 	}
 #endif
