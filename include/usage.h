@@ -154,18 +154,15 @@
      "\n	-r	Repetitions" \
      "\n	-n	Start new tone" \
 
-#define fbsplash_trivial_usage \
-       "-s IMGFILE [-c] [-d DEV] [-i INIFILE] [-f CMD]"
-#define fbsplash_full_usage "\n\n" \
-       "Options:" \
-     "\n	-s	Image" \
-     "\n	-c	Hide cursor" \
-     "\n	-d	Framebuffer device (default /dev/fb0)" \
-     "\n	-i	Config file (var=value):" \
-     "\n			BAR_LEFT,BAR_TOP,BAR_WIDTH,BAR_HEIGHT" \
-     "\n			BAR_R,BAR_G,BAR_B" \
-     "\n	-f	Control pipe (else exit after drawing image)" \
-     "\n			commands: 'NN' (% for progress bar) or 'exit'" \
+#define bootchartd_trivial_usage \
+       "start [PROG ARGS]|stop|init"
+#define bootchartd_full_usage "\n\n" \
+       "Create /var/log/bootchart.tgz with boot chart data\n" \
+     "\nOptions:" \
+     "\nstart: start background logging; with PROG, run PROG, then kill logging with USR1" \
+     "\nstop: send USR1 to all bootchartd processes" \
+     "\ninit: start background logging; stop when getty/xdm is seen (for init scripts)" \
+     "\nUnder PID 1: as init, then exec $bootchart_init, /init, /sbin/init" \
 
 #define brctl_trivial_usage \
        "COMMAND [BRIDGE [INTERFACE]]"
@@ -504,9 +501,9 @@
        "Clear screen"
 
 #define cmp_trivial_usage \
-       "[-l] [-s] FILE1 [FILE2" IF_DESKTOP(" [SKIP1 [SKIP2]") "]]"
+       "[-l] [-s] FILE1 [FILE2" IF_DESKTOP(" [SKIP1 [SKIP2]]") "]"
 #define cmp_full_usage "\n\n" \
-       "Compares FILE1 vs stdin if FILE2 is not specified\n" \
+       "Compare FILE1 with FILE2 (or stdin)\n" \
      "\nOptions:" \
      "\n	-l	Write the byte numbers (decimal) and values (octal)" \
      "\n		for all differing bytes" \
@@ -515,7 +512,7 @@
 #define comm_trivial_usage \
        "[-123] FILE1 FILE2"
 #define comm_full_usage "\n\n" \
-       "Compare FILE1 to FILE2, or to stdin if - is specified\n" \
+       "Compare FILE1 with FILE2\n" \
      "\nOptions:" \
      "\n	-1	Suppress lines unique to FILE1" \
      "\n	-2	Suppress lines unique to FILE2" \
@@ -652,8 +649,16 @@
      "\n	-S SALT" \
 	) \
 
-#define cttyhack_trivial_usage NOUSAGE_STR
-#define cttyhack_full_usage ""
+#define cttyhack_trivial_usage \
+       "PROG ARGS"
+#define cttyhack_full_usage "\n\n" \
+       "Give PROG a controlling tty if possible." \
+     "\nExample for /etc/inittab (for busybox init):" \
+     "\n	::respawn:/bin/cttyhack /bin/sh" \
+     "\nGiving controlling tty to shell running with PID 1:" \
+     "\n	$ exec cttyhack sh" \
+     "\nStarting interactive shell from boot shell script:" \
+     "\n	setsid cttyhack sh" \
 
 #define cut_trivial_usage \
        "[OPTIONS] [FILE]..."
@@ -1174,6 +1179,19 @@
        "$ echo $?\n" \
        "1\n"
 
+#define fbsplash_trivial_usage \
+       "-s IMGFILE [-c] [-d DEV] [-i INIFILE] [-f CMD]"
+#define fbsplash_full_usage "\n\n" \
+       "Options:" \
+     "\n	-s	Image" \
+     "\n	-c	Hide cursor" \
+     "\n	-d	Framebuffer device (default /dev/fb0)" \
+     "\n	-i	Config file (var=value):" \
+     "\n			BAR_LEFT,BAR_TOP,BAR_WIDTH,BAR_HEIGHT" \
+     "\n			BAR_R,BAR_G,BAR_B" \
+     "\n	-f	Control pipe (else exit after drawing image)" \
+     "\n			commands: 'NN' (% for progress bar) or 'exit'" \
+
 #define fbset_trivial_usage \
        "[OPTIONS] [MODE]"
 #define fbset_full_usage "\n\n" \
@@ -1531,8 +1549,7 @@
      "\n	-H HOST		Log HOST into the utmp file as the hostname" \
 
 #define grep_trivial_usage \
-       "[-HhnlLoqvsri" \
-	IF_DESKTOP("w") \
+       "[-HhnlLoqvsriw" \
        "F" \
 	IF_FEATURE_GREP_EGREP_ALIAS("E") \
 	IF_EXTRA_COMPAT("z") \
@@ -1554,9 +1571,7 @@
      "\n	-s	Suppress open and read errors" \
      "\n	-r	Recurse" \
      "\n	-i	Ignore case" \
-	IF_DESKTOP( \
      "\n	-w	Match whole words only" \
-	) \
      "\n	-F	PATTERN is a literal (not regexp)" \
 	IF_FEATURE_GREP_EGREP_ALIAS( \
      "\n	-E	PATTERN is an extended regexp" \
@@ -3741,6 +3756,18 @@
      "\n		for customizable files, or the user section," \
      "\n		if it has changed" \
 
+#define rfkill_trivial_usage \
+       "COMMAND [INDEX|TYPE]"
+#define rfkill_full_usage "\n\n" \
+       "Enable/disable wireless devices\n" \
+       "\nCommands:" \
+     "\n	list [INDEX|TYPE]	List current state" \
+     "\n	block INDEX|TYPE	Disable device" \
+     "\n	unblock INDEX|TYPE	Enable device" \
+     "\n" \
+     "\n	TYPE: all, wlan(wifi), bluetooth, uwb(ultrawideband)," \
+     "\n		wimax, wwan, gps, fm" \
+
 #define rm_trivial_usage \
        "[OPTIONS] FILE..."
 #define rm_full_usage "\n\n" \
@@ -3791,13 +3818,13 @@
      "\n	-A inet" IF_FEATURE_IPV6("{6}") "	Select address family" \
 
 #define rpm_trivial_usage \
-       "-i -q[ildc]p PACKAGE.rpm"
+       "-i PACKAGE.rpm; rpm -qp[ildc] PACKAGE.rpm"
 #define rpm_full_usage "\n\n" \
        "Manipulate RPM packages\n" \
-     "\nOptions:" \
+     "\nCommands:" \
      "\n	-i	Install package" \
-     "\n	-q	Query package" \
-     "\n	-p	Query uninstalled package" \
+     "\n	-qp	Query package" \
+     "\nOptions:" \
      "\n	-i	Show information" \
      "\n	-l	List contents" \
      "\n	-d	List documents" \

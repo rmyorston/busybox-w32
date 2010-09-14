@@ -257,6 +257,7 @@ struct globals_misc {
 
 	/* indicates specified signal received */
 	uint8_t gotsig[NSIG - 1]; /* offset by 1: "signal" 0 is meaningless */
+	uint8_t may_have_traps; /* 0: definitely no traps are set, 1: some traps may be set */
 	char *trap[NSIG];
 	char **trap_ptr;        /* used only by "trap hack" */
 
@@ -285,6 +286,7 @@ extern struct globals_misc *const ash_ptr_to_globals_misc;
 #define optlist     (G_misc.optlist    )
 #define sigmode     (G_misc.sigmode    )
 #define gotsig      (G_misc.gotsig     )
+#define may_have_traps    (G_misc.may_have_traps   )
 #define trap        (G_misc.trap       )
 #define trap_ptr    (G_misc.trap_ptr   )
 #define random_gen  (G_misc.random_gen )
@@ -382,7 +384,7 @@ raise_interrupt(void)
 	/* Signal is not automatically unmasked after it is raised,
 	 * do it ourself - unmask all signals */
 	sigprocmask_allsigs(SIG_UNBLOCK);
-	/* pending_sig = 0; - now done in onsig() */
+	/* pending_sig = 0; - now done in signal_handler() */
 
 	ex_type = EXSIG;
 	if (gotsig[SIGINT - 1] && !trap[SIGINT]) {
@@ -2743,9 +2745,7 @@ pwdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 /* ============ ... */
 
 
-#define IBUFSIZ COMMON_BUFSIZE
-/* buffer for top level input file */
-#define basebuf bb_common_bufsiz1
+#define IBUFSIZ (ENABLE_FEATURE_EDITING ? CONFIG_FEATURE_EDITING_MAX_LEN : 1024)
 
 /* Syntax classes */
 #define CWORD     0             /* character is nothing special */
@@ -3424,10 +3424,10 @@ ignoresig(int signo)
 }
 
 /*
- * Signal handler. Only one usage site - in setsignal()
+ * Only one usage site - in setsignal()
  */
 static void
-onsig(int signo)
+signal_handler(int signo)
 {
 	gotsig[signo - 1] = 1;
 
@@ -3524,7 +3524,7 @@ setsignal(int signo)
 	act.sa_handler = SIG_DFL;
 	switch (new_act) {
 	case S_CATCH:
-		act.sa_handler = onsig;
+		act.sa_handler = signal_handler;
 		act.sa_flags = 0; /* matters only if !DFL and !IGN */
 		sigfillset(&act.sa_mask); /* ditto */
 		break;
@@ -4083,9 +4083,9 @@ dowait(int wait_flags, struct job *job)
 }
 
 static int
-blocking_wait_with_raise_on_sig(struct job *job)
+blocking_wait_with_raise_on_sig(void)
 {
-	pid_t pid = dowait(DOWAIT_BLOCK, job);
+	pid_t pid = dowait(DOWAIT_BLOCK, NULL);
 	if (pid <= 0 && pending_sig)
 		raise_exception(EXSIG);
 	return pid;
@@ -4281,14 +4281,21 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 				jp->waited = 1;
 				jp = jp->prev_job;
 			}
+			blocking_wait_with_raise_on_sig();
 	/* man bash:
 	 * "When bash is waiting for an asynchronous command via
 	 * the wait builtin, the reception of a signal for which a trap
 	 * has been set will cause the wait builtin to return immediately
 	 * with an exit status greater than 128, immediately after which
 	 * the trap is executed."
-	 * Do we do it that way? */
-			blocking_wait_with_raise_on_sig(NULL);
+	 *
+	 * blocking_wait_with_raise_on_sig raises signal handlers
+	 * if it gets no pid (pid < 0). However,
+	 * if child sends us a signal *and immediately exits*,
+	 * blocking_wait_with_raise_on_sig gets pid > 0
+	 * and does not handle pending_sig. Check this case: */
+			if (pending_sig)
+				raise_exception(EXSIG);
 		}
 	}
 
@@ -4308,7 +4315,7 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 			job = getjob(*argv, 0);
 		/* loop until process terminated or stopped */
 		while (job->state == JOBRUNNING)
-			blocking_wait_with_raise_on_sig(NULL);
+			blocking_wait_with_raise_on_sig();
 		job->waited = 1;
 		retval = getstatus(job);
  repeat: ;
@@ -5715,7 +5722,11 @@ rmescapes(char *str, int flag)
 		size_t fulllen = len + strlen(p) + 1;
 
 		if (flag & RMESCAPE_GROW) {
+			int strloc = str - (char *)stackblock();
 			r = makestrspace(fulllen, expdest);
+			/* p and str may be invalidated by makestrspace */
+			str = (char *)stackblock() + strloc;
+			p = str + len;
 		} else if (flag & RMESCAPE_HEAP) {
 			r = ckmalloc(fulllen);
 		} else {
@@ -8819,7 +8830,7 @@ evalsubshell(union node *n, int flags)
 	int status;
 
 	expredir(n->nredir.redirect);
-	if (!backgnd && flags & EV_EXIT && !trap[0])
+	if (!backgnd && (flags & EV_EXIT) && !may_have_traps)
 		goto nofork;
 	INT_OFF;
 	jp = makejob(/*n,*/ 1);
@@ -8832,10 +8843,11 @@ evalsubshell(union node *n, int flags)
 		ash_msg_and_raise_error("unable to spawn shell");
 #endif
 	if (forkshell(jp, n, backgnd) == 0) {
+		/* child */
 		INT_ON;
 		flags |= EV_EXIT;
 		if (backgnd)
-			flags &=~ EV_TESTED;
+			flags &= ~EV_TESTED;
  nofork:
 		redirect(n->nredir.redirect, 0);
 		evaltreenr(n->nredir.n, flags);
@@ -9365,7 +9377,9 @@ static const struct builtincmd builtintab[] = {
 	{ BUILTIN_SPEC_REG      "return"  , returncmd  },
 	{ BUILTIN_SPEC_REG      "set"     , setcmd     },
 	{ BUILTIN_SPEC_REG      "shift"   , shiftcmd   },
+#if ENABLE_ASH_BASH_COMPAT
 	{ BUILTIN_SPEC_REG      "source"  , dotcmd     },
+#endif
 #if ENABLE_ASH_BUILTIN_TEST
 	{ BUILTIN_REGULAR       "test"    , testcmd    },
 #endif
@@ -9646,16 +9660,19 @@ evalcommand(union node *cmd, int flags)
 		/* goes through to shellexec() */
 #endif
 		/* Fork off a child process if necessary. */
-		if (!(flags & EV_EXIT) || trap[0]) {
+		if (!(flags & EV_EXIT) || may_have_traps) {
 			INT_OFF;
 			jp = makejob(/*cmd,*/ 1);
 			if (forkshell(jp, cmd, FORK_FG) != 0) {
+				/* parent */
 				exitstatus = waitforjob(jp);
 				INT_ON;
 				TRACE(("forked child exited with %d\n", exitstatus));
 				break;
 			}
+			/* child */
 			FORCE_INT_ON;
+			/* fall through to exec'ing external program */
 		}
 		listsetvar(varlist.list, VEXPORT|VSTACK);
 		shellexec(argv, path, cmdentry.u.index);
@@ -9900,12 +9917,12 @@ preadfd(void)
 #if ENABLE_FEATURE_EDITING
  retry:
 	if (!iflag || g_parsefile->fd != STDIN_FILENO)
-		nr = nonblock_safe_read(g_parsefile->fd, buf, BUFSIZ - 1);
+		nr = nonblock_safe_read(g_parsefile->fd, buf, IBUFSIZ - 1);
 	else {
 #if ENABLE_FEATURE_TAB_COMPLETION
 		line_input_state->path_lookup = pathval();
 #endif
-		nr = read_line_input(cmdedit_prompt, buf, BUFSIZ, line_input_state);
+		nr = read_line_input(cmdedit_prompt, buf, IBUFSIZ, line_input_state);
 		if (nr == 0) {
 			/* Ctrl+C pressed */
 			if (trap[SIGINT]) {
@@ -9922,7 +9939,7 @@ preadfd(void)
 		}
 	}
 #else
-	nr = nonblock_safe_read(g_parsefile->fd, buf, BUFSIZ - 1);
+	nr = nonblock_safe_read(g_parsefile->fd, buf, IBUFSIZ - 1);
 #endif
 
 #if 0
@@ -12484,36 +12501,43 @@ find_dot_file(char *name)
 static int FAST_FUNC
 dotcmd(int argc, char **argv)
 {
+	char *fullname;
 	struct strlist *sp;
 	volatile struct shparam saveparam;
-	int status = 0;
 
 	for (sp = cmdenviron; sp; sp = sp->next)
 		setvareq(ckstrdup(sp->text), VSTRFIXED | VTEXTFIXED);
 
-	if (argv[1]) {        /* That's what SVR2 does */
-		char *fullname = find_dot_file(argv[1]);
-		argv += 2;
-		argc -= 2;
-		if (argc) { /* argc > 0, argv[0] != NULL */
-			saveparam = shellparam;
-			shellparam.malloced = 0;
-			shellparam.nparam = argc;
-			shellparam.p = argv;
-		};
-
-		setinputfile(fullname, INPUT_PUSH_FILE);
-		commandname = fullname;
-		cmdloop(0);
-		popfile();
-
-		if (argc) {
-			freeparam(&shellparam);
-			shellparam = saveparam;
-		};
-		status = exitstatus;
+	if (!argv[1]) {
+		/* bash says: "bash: .: filename argument required" */
+		return 2; /* bash compat */
 	}
-	return status;
+
+	/* "false; . empty_file; echo $?" should print 0, not 1: */
+	exitstatus = 0;
+
+	fullname = find_dot_file(argv[1]);
+
+	argv += 2;
+	argc -= 2;
+	if (argc) { /* argc > 0, argv[0] != NULL */
+		saveparam = shellparam;
+		shellparam.malloced = 0;
+		shellparam.nparam = argc;
+		shellparam.p = argv;
+	};
+
+	setinputfile(fullname, INPUT_PUSH_FILE);
+	commandname = fullname;
+	cmdloop(0);
+	popfile();
+
+	if (argc) {
+		freeparam(&shellparam);
+		shellparam = saveparam;
+	};
+
+	return exitstatus;
 }
 
 static int FAST_FUNC
@@ -12824,6 +12848,8 @@ trapcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 				action = ckstrdup(action);
 		}
 		free(trap[signo]);
+		if (action)
+			may_have_traps = 1;
 		trap[signo] = action;
 		if (signo != 0)
 			setsignal(signo);
@@ -13219,7 +13245,8 @@ static void
 init(void)
 {
 	/* from input.c: */
-	basepf.next_to_pgetc = basepf.buf = basebuf;
+	/* we will never free this */
+	basepf.next_to_pgetc = basepf.buf = ckmalloc(IBUFSIZ);
 
 	/* from trap.c: */
 	signal(SIGCHLD, SIG_DFL);

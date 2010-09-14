@@ -19,15 +19,49 @@
  * (C) 2006 Jac Goudsmit added -o option
  */
 
+//kbuild:lib-$(CONFIG_GREP) += grep.o
+//config:
+//config:config GREP
+//config:	bool "grep"
+//config:	default n
+//config:	help
+//config:	  grep is used to search files for a specified pattern.
+//config:
+//config:config FEATURE_GREP_EGREP_ALIAS
+//config:	bool "Enable extended regular expressions (egrep & grep -E)"
+//config:	default y
+//config:	depends on GREP
+//config:	help
+//config:	  Enabled support for extended regular expressions. Extended
+//config:	  regular expressions allow for alternation (foo|bar), grouping,
+//config:	  and various repetition operators.
+//config:
+//config:config FEATURE_GREP_FGREP_ALIAS
+//config:	bool "Alias fgrep to grep -F"
+//config:	default y
+//config:	depends on GREP
+//config:	help
+//config:	  fgrep sees the search pattern as a normal string rather than
+//config:	  regular expressions.
+//config:	  grep -F always works, this just creates the fgrep alias.
+//config:
+//config:config FEATURE_GREP_CONTEXT
+//config:	bool "Enable before and after context flags (-A, -B and -C)"
+//config:	default y
+//config:	depends on GREP
+//config:	help
+//config:	  Print the specified number of leading (-B) and/or trailing (-A)
+//config:	  context surrounding our matching lines.
+//config:	  Print the specified number of context lines (-C).
+
 #include "libbb.h"
 #include "xregex.h"
 
 /* options */
 #define OPTSTR_GREP \
-	"lnqvscFiHhe:f:Lorm:" \
+	"lnqvscFiHhe:f:Lorm:w" \
 	IF_FEATURE_GREP_CONTEXT("A:B:C:") \
 	IF_FEATURE_GREP_EGREP_ALIAS("E") \
-	IF_DESKTOP("w") \
 	IF_EXTRA_COMPAT("z") \
 	"aI"
 
@@ -51,11 +85,11 @@ enum {
 	OPTBIT_o, /* show only matching parts of lines */
 	OPTBIT_r, /* recurse dirs */
 	OPTBIT_m, /* -m MAX_MATCHES */
+	OPTBIT_w, /* -w whole word match */
 	IF_FEATURE_GREP_CONTEXT(    OPTBIT_A ,) /* -A NUM: after-match context */
 	IF_FEATURE_GREP_CONTEXT(    OPTBIT_B ,) /* -B NUM: before-match context */
 	IF_FEATURE_GREP_CONTEXT(    OPTBIT_C ,) /* -C NUM: -A and -B combined */
 	IF_FEATURE_GREP_EGREP_ALIAS(OPTBIT_E ,) /* extended regexp */
-	IF_DESKTOP(                 OPTBIT_w ,) /* whole word match */
 	IF_EXTRA_COMPAT(            OPTBIT_z ,) /* input is NUL terminated */
 	OPT_l = 1 << OPTBIT_l,
 	OPT_n = 1 << OPTBIT_n,
@@ -73,11 +107,11 @@ enum {
 	OPT_o = 1 << OPTBIT_o,
 	OPT_r = 1 << OPTBIT_r,
 	OPT_m = 1 << OPTBIT_m,
+	OPT_w = 1 << OPTBIT_w,
 	OPT_A = IF_FEATURE_GREP_CONTEXT(    (1 << OPTBIT_A)) + 0,
 	OPT_B = IF_FEATURE_GREP_CONTEXT(    (1 << OPTBIT_B)) + 0,
 	OPT_C = IF_FEATURE_GREP_CONTEXT(    (1 << OPTBIT_C)) + 0,
 	OPT_E = IF_FEATURE_GREP_EGREP_ALIAS((1 << OPTBIT_E)) + 0,
-	OPT_w = IF_DESKTOP(                 (1 << OPTBIT_w)) + 0,
 	OPT_z = IF_EXTRA_COMPAT(            (1 << OPTBIT_z)) + 0,
 };
 
@@ -263,7 +297,10 @@ static int grep_file(FILE *file)
 		while (pattern_ptr) {
 			gl = (grep_list_data_t *)pattern_ptr->data;
 			if (FGREP_FLAG) {
-				found |= (strstr(line, gl->pattern) != NULL);
+				found |= (((option_mask32 & OPT_i)
+					? strcasestr(line, gl->pattern)
+					: strstr(line, gl->pattern)
+					) != NULL);
 			} else {
 				if (!(gl->flg_mem_alocated_compiled & COMPILED)) {
 					gl->flg_mem_alocated_compiled |= COMPILED;

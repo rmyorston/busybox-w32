@@ -42,14 +42,10 @@
 #include "libbb.h"
 #include "unicode.h"
 
-/* FIXME: obsolete CONFIG item? */
-#define ENABLE_FEATURE_NONPRINTABLE_INVERSE_PUT 0
-
 #ifdef TEST
 # define ENABLE_FEATURE_EDITING 0
 # define ENABLE_FEATURE_TAB_COMPLETION 0
 # define ENABLE_FEATURE_USERNAME_COMPLETION 0
-# define ENABLE_FEATURE_NONPRINTABLE_INVERSE_PUT 0
 #endif
 
 
@@ -66,9 +62,13 @@
 #endif
 
 
+#define SEQ_CLEAR_TILL_END_OF_SCREEN "\033[J"
+//#define SEQ_CLEAR_TILL_END_OF_LINE   "\033[K"
+
+
 #undef CHAR_T
 #if ENABLE_UNICODE_SUPPORT
-# define BB_NUL L'\0'
+# define BB_NUL ((wchar_t)0)
 # define CHAR_T wchar_t
 static bool BB_isspace(CHAR_T c) { return ((unsigned)c < 256 && isspace(c)); }
 # if ENABLE_FEATURE_EDITING_VI
@@ -90,6 +90,14 @@ static bool BB_ispunct(CHAR_T c) { return ((unsigned)c < 256 && ispunct(c)); }
 # define BB_isalnum(c) isalnum(c)
 # define BB_ispunct(c) ispunct(c)
 #endif
+
+
+# if ENABLE_UNICODE_PRESERVE_BROKEN
+#  define unicode_mark_raw_byte(wc)   ((wc) | 0x20000000)
+#  define unicode_is_raw_byte(wc)     ((wc) & 0x20000000)
+# else
+#  define unicode_is_raw_byte(wc)     0
+# endif
 
 
 enum {
@@ -208,42 +216,107 @@ static size_t load_string(const char *src, int maxsize)
 	ssize_t len = mbstowcs(command_ps, src, maxsize - 1);
 	if (len < 0)
 		len = 0;
-	command_ps[len] = L'\0';
+	command_ps[len] = 0;
 	return len;
 }
-static size_t save_string(char *dst, int maxsize)
+static unsigned save_string(char *dst, unsigned maxsize)
 {
+# if !ENABLE_UNICODE_PRESERVE_BROKEN
 	ssize_t len = wcstombs(dst, command_ps, maxsize - 1);
 	if (len < 0)
 		len = 0;
 	dst[len] = '\0';
 	return len;
+# else
+	unsigned dstpos = 0;
+	unsigned srcpos = 0;
+
+	maxsize--;
+	while (dstpos < maxsize) {
+		wchar_t wc;
+		int n = srcpos;
+		while ((wc = command_ps[srcpos]) != 0
+		    && !unicode_is_raw_byte(wc)
+		) {
+			srcpos++;
+		}
+		command_ps[srcpos] = 0;
+		n = wcstombs(dst + dstpos, command_ps + n, maxsize - dstpos);
+		if (n < 0) /* should not happen */
+			break;
+		dstpos += n;
+		if (wc == 0) /* usually is */
+			break;
+		/* We do have invalid byte here! */
+		command_ps[srcpos] = wc; /* restore it */
+		srcpos++;
+		if (dstpos == maxsize)
+			break;
+		dst[dstpos++] = (char) wc;
+	}
+	dst[dstpos] = '\0';
+	return dstpos;
+# endif
 }
 /* I thought just fputwc(c, stdout) would work. But no... */
 static void BB_PUTCHAR(wchar_t c)
 {
 	char buf[MB_CUR_MAX + 1];
 	mbstate_t mbst = { 0 };
-	ssize_t len = wcrtomb(buf, c, &mbst);
+	ssize_t len;
 
+	len = wcrtomb(buf, c, &mbst);
 	if (len > 0) {
 		buf[len] = '\0';
 		fputs(buf, stdout);
 	}
 }
-#else
+# if ENABLE_UNICODE_COMBINING_WCHARS || ENABLE_UNICODE_WIDE_WCHARS
+static wchar_t adjust_width_and_validate_wc(unsigned *width_adj, wchar_t wc)
+# else
+static wchar_t adjust_width_and_validate_wc(wchar_t wc)
+#  define adjust_width_and_validate_wc(width_adj, wc) \
+	((*(width_adj))++, adjust_width_and_validate_wc(wc))
+# endif
+{
+	int w = 1;
+
+	if (unicode_status == UNICODE_ON) {
+		if (wc > CONFIG_LAST_SUPPORTED_WCHAR) {
+			/* note: also true for unicode_is_raw_byte(wc) */
+			goto subst;
+		}
+		w = wcwidth(wc);
+		if ((ENABLE_UNICODE_COMBINING_WCHARS && w < 0)
+		 || (!ENABLE_UNICODE_COMBINING_WCHARS && w <= 0)
+		 || (!ENABLE_UNICODE_WIDE_WCHARS && w > 1)
+		) {
+ subst:
+			w = 1;
+			wc = CONFIG_SUBST_WCHAR;
+		}
+	}
+
+# if ENABLE_UNICODE_COMBINING_WCHARS || ENABLE_UNICODE_WIDE_WCHARS
+	*width_adj += w;
+#endif
+	return wc;
+}
+#else /* !UNICODE */
 static size_t load_string(const char *src, int maxsize)
 {
 	safe_strncpy(command_ps, src, maxsize);
 	return strlen(command_ps);
 }
 # if ENABLE_FEATURE_TAB_COMPLETION
-static void save_string(char *dst, int maxsize)
+static void save_string(char *dst, unsigned maxsize)
 {
 	safe_strncpy(dst, command_ps, maxsize);
 }
 # endif
 # define BB_PUTCHAR(c) bb_putchar(c)
+/* Should never be called: */
+int adjust_width_and_validate_wc(unsigned *width_adj, int wc);
 #endif
 
 
@@ -251,38 +324,35 @@ static void save_string(char *dst, int maxsize)
  * Advance cursor on screen. If we reached right margin, scroll text up
  * and remove terminal margin effect by printing 'next_char' */
 #define HACK_FOR_WRONG_WIDTH 1
-#if HACK_FOR_WRONG_WIDTH
-static void cmdedit_set_out_char(void)
-#define cmdedit_set_out_char(next_char) cmdedit_set_out_char()
-#else
-static void cmdedit_set_out_char(int next_char)
-#endif
+static void put_cur_glyph_and_inc_cursor(void)
 {
 	CHAR_T c = command_ps[cursor];
+	unsigned width = 0;
+	int ofs_to_right;
 
 	if (c == BB_NUL) {
 		/* erase character after end of input string */
 		c = ' ';
+	} else {
+		/* advance cursor only if we aren't at the end yet */
+		cursor++;
+		if (unicode_status == UNICODE_ON) {
+			IF_UNICODE_WIDE_WCHARS(width = cmdedit_x;)
+			c = adjust_width_and_validate_wc(&cmdedit_x, c);
+			IF_UNICODE_WIDE_WCHARS(width = cmdedit_x - width;)
+		} else {
+			cmdedit_x++;
+		}
 	}
-#if ENABLE_FEATURE_NONPRINTABLE_INVERSE_PUT
-	/* Display non-printable characters in reverse */
-	if (!BB_isprint(c)) {
-		if (c >= 128)
-			c -= 128;
-		if (c < ' ')
-			c += '@';
-		if (c == 127)
-			c = '?';
-		printf("\033[7m%c\033[0m", c);
-	} else
-#endif
-	{
+
+	ofs_to_right = cmdedit_x - cmdedit_termw;
+	if (!ENABLE_UNICODE_WIDE_WCHARS || ofs_to_right <= 0) {
+		/* c fits on this line */
 		BB_PUTCHAR(c);
 	}
-	if (++cmdedit_x >= cmdedit_termw) {
-		/* terminal is scrolled down */
-		cmdedit_y++;
-		cmdedit_x = 0;
+
+	if (ofs_to_right >= 0) {
+		/* we go to the next line */
 #if HACK_FOR_WRONG_WIDTH
 		/* This works better if our idea of term width is wrong
 		 * and it is actually wider (often happens on serial lines).
@@ -293,36 +363,42 @@ static void cmdedit_set_out_char(int next_char)
 		 * this will break things: there will be one extra empty line */
 		puts("\r"); /* + implicit '\n' */
 #else
-		/* Works ok only if cmdedit_termw is correct */
-		/* destroy "(auto)margin" */
-		bb_putchar(next_char);
+		/* VT-10x terminals don't wrap cursor to next line when last char
+		 * on the line is printed - cursor stays "over" this char.
+		 * Need to print _next_ char too (first one to appear on next line)
+		 * to make cursor move down to next line.
+		 */
+		/* Works ok only if cmdedit_termw is correct. */
+		c = command_ps[cursor];
+		if (c == BB_NUL)
+			c = ' ';
+		BB_PUTCHAR(c);
 		bb_putchar('\b');
 #endif
+		cmdedit_y++;
+		if (!ENABLE_UNICODE_WIDE_WCHARS || ofs_to_right == 0) {
+			width = 0;
+		} else { /* ofs_to_right > 0 */
+			/* wide char c didn't fit on prev line */
+			BB_PUTCHAR(c);
+		}
+		cmdedit_x = width;
 	}
-// Huh? What if command_ps[cursor] == BB_NUL (we are at the end already?)
-	cursor++;
 }
 
 /* Move to end of line (by printing all chars till the end) */
-static void input_end(void)
+static void put_till_end_and_adv_cursor(void)
 {
 	while (cursor < command_len)
-		cmdedit_set_out_char(' ');
+		put_cur_glyph_and_inc_cursor();
 }
 
 /* Go to the next line */
 static void goto_new_line(void)
 {
-	input_end();
-	if (cmdedit_x)
+	put_till_end_and_adv_cursor();
+	if (cmdedit_x != 0)
 		bb_putchar('\n');
-}
-
-
-static void out1str(const char *s)
-{
-	if (s)
-		fputs(s, stdout);
 }
 
 static void beep(void)
@@ -330,17 +406,39 @@ static void beep(void)
 	bb_putchar('\007');
 }
 
+static void put_prompt(void)
+{
+	unsigned w;
+
+	fputs(cmdedit_prompt, stdout);
+	fflush_all();
+	cursor = 0;
+	w = cmdedit_termw; /* read volatile var once */
+	cmdedit_y = cmdedit_prmt_len / w; /* new quasireal y */
+	cmdedit_x = cmdedit_prmt_len % w;
+}
+
 /* Move back one character */
 /* (optimized for slow terminals) */
 static void input_backward(unsigned num)
 {
-	int count_y;
-
 	if (num > cursor)
 		num = cursor;
-	if (!num)
+	if (num == 0)
 		return;
 	cursor -= num;
+
+	if ((ENABLE_UNICODE_COMBINING_WCHARS || ENABLE_UNICODE_WIDE_WCHARS)
+	 && unicode_status == UNICODE_ON
+	) {
+		/* correct NUM to be equal to _screen_ width */
+		int n = num;
+		num = 0;
+		while (--n >= 0)
+			adjust_width_and_validate_wc(&num, command_ps[cursor + n]);
+		if (num == 0)
+			return;
+	}
 
 	if (cmdedit_x >= num) {
 		cmdedit_x -= num;
@@ -361,38 +459,61 @@ static void input_backward(unsigned num)
 	}
 
 	/* Need to go one or more lines up */
-	num -= cmdedit_x;
-	{
-		unsigned w = cmdedit_termw; /* volatile var */
-		count_y = 1 + (num / w);
-		cmdedit_y -= count_y;
-		cmdedit_x = w * count_y - num;
+	if (ENABLE_UNICODE_WIDE_WCHARS) {
+		/* With wide chars, it is hard to "backtrack"
+		 * and reliably figure out where to put cursor.
+		 * Example (<> is a wide char; # is an ordinary char, _ cursor):
+		 * |prompt: <><> |
+		 * |<><><><><><> |
+		 * |_            |
+		 * and user presses left arrow. num = 1, cmdedit_x = 0,
+		 * We need to go up one line, and then - how do we know that
+		 * we need to go *10* positions to the right? Because
+		 * |prompt: <>#<>|
+		 * |<><><>#<><><>|
+		 * |_            |
+		 * in this situation we need to go *11* positions to the right.
+		 *
+		 * A simpler thing to do is to redraw everything from the start
+		 * up to new cursor position (which is already known):
+		 */
+		unsigned sv_cursor;
+		/* go to 1st column; go up to first line */
+		printf("\r" "\033[%uA", cmdedit_y);
+		cmdedit_y = 0;
+		sv_cursor = cursor;
+		put_prompt(); /* sets cursor to 0 */
+		while (cursor < sv_cursor)
+			put_cur_glyph_and_inc_cursor();
+	} else {
+		int lines_up;
+		unsigned width;
+		/* num = chars to go back from the beginning of current line: */
+		num -= cmdedit_x;
+		width = cmdedit_termw; /* read volatile var once */
+		/* num=1...w: one line up, w+1...2w: two, etc: */
+		lines_up = 1 + (num - 1) / width;
+		cmdedit_x = (width * cmdedit_y - num) % width;
+		cmdedit_y -= lines_up;
+		/* go to 1st column; go up */
+		printf("\r" "\033[%uA", lines_up);
+		/* go to correct column.
+		 * xterm, konsole, Linux VT interpret 0 as 1 below! wow.
+		 * need to *make sure* we skip it if cmdedit_x == 0 */
+		if (cmdedit_x)
+			printf("\033[%uC", cmdedit_x);
 	}
-	/* go to 1st column; go up; go to correct column */
-	printf("\r" "\033[%dA" "\033[%dC", count_y, cmdedit_x);
-}
-
-static void put_prompt(void)
-{
-	unsigned w;
-
-	out1str(cmdedit_prompt);
-	fflush_all();
-	cursor = 0;
-	w = cmdedit_termw; /* read volatile var once */
-	cmdedit_y = cmdedit_prmt_len / w; /* new quasireal y */
-	cmdedit_x = cmdedit_prmt_len % w;
 }
 
 /* draw prompt, editor line, and clear tail */
 static void redraw(int y, int back_cursor)
 {
-	if (y > 0)  /* up to start y */
+	if (y > 0) /* up y lines */
 		printf("\033[%uA", y);
 	bb_putchar('\r');
 	put_prompt();
-	input_end();      /* rewrite */
-	printf("\033[J"); /* erase after cursor */
+	put_till_end_and_adv_cursor();
+	printf(SEQ_CLEAR_TILL_END_OF_SCREEN);
 	input_backward(back_cursor);
 }
 
@@ -426,8 +547,9 @@ static void input_delete(int save)
 			 * simplified into (command_len - j) */
 			(command_len - j) * sizeof(command_ps[0]));
 	command_len--;
-	input_end();                    /* rewrite new line */
-	cmdedit_set_out_char(' ');      /* erase char */
+	put_till_end_and_adv_cursor();
+	/* Last char is still visible, erase it (and more) */
+	printf(SEQ_CLEAR_TILL_END_OF_SCREEN);
 	input_backward(cursor - j);     /* back to old pos cursor */
 }
 
@@ -445,7 +567,7 @@ static void put(void)
 			(command_len - cursor + 1) * sizeof(command_ps[0]));
 	memcpy(command_ps + cursor, delbuf, j * sizeof(command_ps[0]));
 	command_len += j;
-	input_end();                    /* rewrite new line */
+	put_till_end_and_adv_cursor();
 	input_backward(cursor - ocursor - j + 1); /* at end of new text */
 }
 #endif
@@ -463,7 +585,7 @@ static void input_backspace(void)
 static void input_forward(void)
 {
 	if (cursor < command_len)
-		cmdedit_set_out_char(command_ps[cursor + 1]);
+		put_cur_glyph_and_inc_cursor();
 }
 
 #if ENABLE_FEATURE_TAB_COMPLETION
@@ -721,21 +843,13 @@ static NOINLINE int find_match(char *matchBuf, int *len_with_quotes)
 	}
 
 	/* mask \+symbol and convert '\t' to ' ' */
-	for (i = j = 0; matchBuf[i]; i++, j++)
+	for (i = j = 0; matchBuf[i]; i++, j++) {
 		if (matchBuf[i] == '\\') {
 			collapse_pos(j, j + 1);
 			int_buf[j] |= QUOT;
 			i++;
-#if ENABLE_FEATURE_NONPRINTABLE_INVERSE_PUT
-			if (matchBuf[i] == '\t')  /* algorithm equivalent */
-				int_buf[j] = ' ' | QUOT;
-#endif
 		}
-#if ENABLE_FEATURE_NONPRINTABLE_INVERSE_PUT
-		else if (matchBuf[i] == '\t')
-			int_buf[j] = ' ';
-#endif
-
+	}
 	/* mask "symbols" or 'symbols' */
 	c2 = 0;
 	for (i = 0; int_buf[i]; i++) {
@@ -1509,7 +1623,7 @@ static void ask_terminal(void)
 	pfd.events = POLLIN;
 	if (safe_poll(&pfd, 1, 0) == 0) {
 		S.sent_ESC_br6n = 1;
-		out1str("\033" "[6n");
+		fputs("\033" "[6n", stdout);
 		fflush_all(); /* make terminal see it ASAP! */
 	}
 }
@@ -1727,13 +1841,11 @@ static int lineedit_read_key(char *read_key_buffer)
  pushback:
 				/* Invalid sequence. Save all "bad bytes" except first */
 				read_key_ungets(read_key_buffer, unicode_buf + 1, unicode_idx - 1);
-				/*
-				 * ic = unicode_buf[0] sounds even better, but currently
-				 * this does not work: wchar_t[] -> char[] conversion
-				 * when lineedit finishes mangles such "raw bytes"
-				 * (by misinterpreting them as unicode chars):
-				 */
+# if !ENABLE_UNICODE_PRESERVE_BROKEN
 				ic = CONFIG_SUBST_WCHAR;
+# else
+				ic = unicode_mark_raw_byte(unicode_buf[0]);
+# endif
 			} else {
 				/* Valid unicode char, return its code */
 				ic = wc;
@@ -1925,7 +2037,7 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 		case CTRL('E'):
 		vi_case('$'|VI_CMDMODE_BIT:)
 			/* Control-e -- End of line */
-			input_end();
+			put_till_end_and_adv_cursor();
 			break;
 		case CTRL('F'):
 		vi_case('l'|VI_CMDMODE_BIT:)
@@ -1954,12 +2066,12 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 			/* Control-k -- clear to end of line */
 			command_ps[cursor] = BB_NUL;
 			command_len = cursor;
-			printf("\033[J");
+			printf(SEQ_CLEAR_TILL_END_OF_SCREEN);
 			break;
 		case CTRL('L'):
 		vi_case(CTRL('L')|VI_CMDMODE_BIT:)
 			/* Control-l -- clear screen */
-			printf("\033[H");
+			printf("\033[H"); /* cursor to top,left */
 			redraw(0, command_len - cursor);
 			break;
 #if MAX_HISTORY > 0
@@ -2010,7 +2122,7 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 			vi_cmdmode = 0;
 			break;
 		case 'A'|VI_CMDMODE_BIT:
-			input_end();
+			put_till_end_and_adv_cursor();
 			vi_cmdmode = 0;
 			break;
 		case 'x'|VI_CMDMODE_BIT:
@@ -2170,7 +2282,7 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 			input_backward(cursor);
 			break;
 		case KEYCODE_END:
-			input_end();
+			put_till_end_and_adv_cursor();
 			break;
 
 		default:
@@ -2230,7 +2342,7 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 				/* We are at the end, append */
 				command_ps[cursor] = ic;
 				command_ps[cursor + 1] = BB_NUL;
-				cmdedit_set_out_char(' ');
+				put_cur_glyph_and_inc_cursor();
 				if (unicode_bidi_isrtl(ic))
 					input_backward(1);
 			} else {
@@ -2243,8 +2355,7 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 				/* is right-to-left char, or neutral one (e.g. comma) was just added to rtl text? */
 				if (!isrtl_str())
 					sc++; /* no */
-				/* rewrite from cursor */
-				input_end();
+				put_till_end_and_adv_cursor();
 				/* to prev x pos + 1 */
 				input_backward(cursor - sc);
 			}
@@ -2345,9 +2456,6 @@ int main(int argc, char **argv)
 		"% ";
 #endif
 
-#if ENABLE_FEATURE_NONPRINTABLE_INVERSE_PUT
-	setlocale(LC_ALL, "");
-#endif
 	while (1) {
 		int l;
 		l = read_line_input(prompt, buff);

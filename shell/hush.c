@@ -39,25 +39,28 @@
  *
  * POSIX syntax not implemented:
  *      aliases
- *      <(list) and >(list) Process Substitution
  *      Tilde Expansion
  *
- * Bash stuff (optionally enabled):
- *      &> and >& redirection of stdout+stderr
- *      Brace Expansion
- *      reserved words: [[ ]] function select
- *      substrings ${var:1:5}
+ * Bash compat TODO:
+ *      redirection of stdout+stderr: &> and >&
+ *      brace expansion: one/{two,three,four}
+ *      reserved words: function select
+ *      advanced test: [[ ]]
+ *      substrings: ${var:1:5}
+ *      process substitution: <(list) and >(list)
+ *      =~: regex operator
  *      let EXPR [EXPR...]
  *        Each EXPR is an arithmetic expression (ARITHMETIC EVALUATION)
  *        If the last arg evaluates to 0, let returns 1; 0 otherwise.
  *        NB: let `echo 'a=a + 1'` - error (IOW: multi-word expansion is used)
  *      ((EXPR))
  *        The EXPR is evaluated according to ARITHMETIC EVALUATION.
- *        This is exactly equivalent to let "expression".
+ *        This is exactly equivalent to let "EXPR".
+ *      $[EXPR]: synonym for $((EXPR))
  *
  * TODOs:
  *      grep for "TODO" and fix (some of them are easy)
- *      special variables (done: PWD)
+ *      special variables (done: PWD, PPID, RANDOM)
  *      follow IFS rules more precisely, including update semantics
  *      export builtin should be special, its arguments are assignments
  *          and therefore expansion of them should be "one-word" expansion:
@@ -673,6 +676,9 @@ static const struct built_in_command bltins1[] = {
 #endif
 	BLTIN("set"      , builtin_set     , "Set/unset positional parameters"),
 	BLTIN("shift"    , builtin_shift   , "Shift positional parameters"),
+#if ENABLE_HUSH_BASH_COMPAT
+	BLTIN("source"   , builtin_source  , "Run commands in a file"),
+#endif
 	BLTIN("trap"     , builtin_trap    , "Trap signals"),
 	BLTIN("type"     , builtin_type    , "Show command type"),
 	BLTIN("ulimit"   , shell_builtin_ulimit  , "Control resource limits"),
@@ -6232,10 +6238,15 @@ static struct pipe *parse_stream(char **pstring,
 		is_special = "{}<>;&|()#'" /* special outside of "str" */
 				"\\$\"" IF_HUSH_TICK("`"); /* always special */
 		/* Are { and } special here? */
-		if (ctx.command->argv /* word [word]{... */
-		 || dest.length /* word{... */
-		 || dest.o_quoted /* ""{... */
-		 || (next != ';' && next != ')' && !strchr(G.ifs, next)) /* {word */
+		if (ctx.command->argv /* word [word]{... - non-special */
+		 || dest.length       /* word{... - non-special */
+		 || dest.o_quoted     /* ""{... - non-special */
+		 || (next != ';'            /* }; - special */
+		    && next != ')'          /* }) - special */
+		    && next != '&'          /* }& and }&& ... - special */
+		    && next != '|'          /* }|| ... - special */
+		    && !strchr(G.ifs, next) /* {word - non-special */
+		    )
 		) {
 			/* They are not special, skip "{}" */
 			is_special += 2;
@@ -7859,21 +7870,26 @@ static int FAST_FUNC builtin_shift(char **argv)
 
 static int FAST_FUNC builtin_source(char **argv)
 {
-	char *arg_path;
+	char *arg_path, *filename;
 	FILE *input;
 	save_arg_t sv;
 #if ENABLE_HUSH_FUNCTIONS
 	smallint sv_flg;
 #endif
 
-	if (*++argv == NULL)
-		return EXIT_FAILURE;
-
-	if (strchr(*argv, '/') == NULL && (arg_path = find_in_path(*argv)) != NULL) {
-		input = fopen_for_read(arg_path);
-		free(arg_path);
-	} else
-		input = fopen_or_warn(*argv, "r");
+	arg_path = NULL;
+	filename = *++argv;
+	if (!filename) {
+		/* bash says: "bash: .: filename argument required" */
+		return 2; /* bash compat */
+	}
+	if (!strchr(filename, '/')) {
+		arg_path = find_in_path(filename);
+		if (arg_path)
+			filename = arg_path;
+	}
+	input = fopen_or_warn(filename, "r");
+	free(arg_path);
 	if (!input) {
 		/* bb_perror_msg("%s", *argv); - done by fopen_or_warn */
 		return EXIT_FAILURE;

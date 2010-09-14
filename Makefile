@@ -378,6 +378,11 @@ ifneq ($(KBUILD_SRC),)
 	    $(srctree) $(objtree) $(VERSION) $(PATCHLEVEL)
 endif
 
+# This target generates Kbuild's and Config.in's from *.c files
+PHONY += gen_build_files
+gen_build_files:
+	$(Q)$(srctree)/scripts/gen_build_files.sh $(srctree) $(objtree)
+
 # To make sure we do not include .config for any of the *config targets
 # catch them early, and hand them over to scripts/kconfig/Makefile
 # It is allowed to specify more targets when calling make, including
@@ -429,7 +434,7 @@ ifeq ($(config-targets),1)
 -include $(srctree)/arch/$(ARCH)/Makefile
 export KBUILD_DEFCONFIG
 
-config %config: scripts_basic outputmakefile FORCE
+config %config: scripts_basic outputmakefile gen_build_files FORCE
 	$(Q)mkdir -p include
 	$(Q)$(MAKE) $(build)=scripts/kconfig $@
 	$(Q)$(MAKE) -C $(srctree) KBUILD_SRC= .kernelrelease
@@ -444,7 +449,7 @@ ifeq ($(KBUILD_EXTMOD),)
 # Carefully list dependencies so we do not try to build scripts twice
 # in parrallel
 PHONY += scripts
-scripts: scripts_basic include/config/MARKER
+scripts: gen_build_files scripts_basic include/config/MARKER
 	$(Q)$(MAKE) $(build)=$(@)
 
 scripts_basic: include/autoconf.h
@@ -998,6 +1003,8 @@ $(mrproper-dirs):
 mrproper: clean archmrproper $(mrproper-dirs)
 	$(call cmd,rmdirs)
 	$(call cmd,rmfiles)
+	@find -name Config.src | sed 's/.src$/.in/' | xargs -r rm -f
+	@find -name Kbuild.src | sed 's/.src$//' | xargs -r rm -f
 
 # distclean
 #
