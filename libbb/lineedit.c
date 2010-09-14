@@ -1,6 +1,6 @@
 /* vi: set sw=4 ts=4: */
 /*
- * Termios command line History and Editing.
+ * Command line editing.
  *
  * Copyright (c) 1986-2003 may safely be consumed by a BSD or GPL license.
  * Written by:   Vladimir Oleynik <dzo@simtreas.ru>
@@ -99,7 +99,6 @@ static bool BB_ispunct(CHAR_T c) { return ((unsigned)c < 256 && ispunct(c)); }
 
 
 enum {
-	/* We use int16_t for positions, need to limit line len */
 	MAX_LINELEN = CONFIG_FEATURE_EDITING_MAX_LEN < 0x7ff0
 	              ? CONFIG_FEATURE_EDITING_MAX_LEN
 	              : 0x7ff0
@@ -151,14 +150,6 @@ struct lineedit_statics {
 #if ENABLE_FEATURE_EDITING_ASK_TERMINAL
 	smallint sent_ESC_br6n;
 #endif
-
-	/* Formerly these were big buffers on stack: */
-#if ENABLE_FEATURE_TAB_COMPLETION
-	char exe_n_cwd_tab_completion__dirbuf[MAX_LINELEN];
-	char input_tab__matchBuf[MAX_LINELEN];
-	int16_t find_match__int_buf[MAX_LINELEN + 1]; /* need to have 9 bits at least */
-	int16_t find_match__pos_buf[MAX_LINELEN + 1];
-#endif
 };
 
 /* See lineedit_ptr_hack.c */
@@ -195,7 +186,7 @@ static void deinit_S(void)
 {
 #if ENABLE_FEATURE_EDITING_FANCY_PROMPT
 	/* This one is allocated only if FANCY_PROMPT is on
-	 * (otherwise it points to verbatim prompt (NOT malloced) */
+	 * (otherwise it points to verbatim prompt (NOT malloced)) */
 	free((char*)cmdedit_prompt);
 #endif
 #if ENABLE_USERNAME_OR_HOMEDIR
@@ -214,7 +205,7 @@ static size_t load_string(const char *src, int maxsize)
 	ssize_t len = mbstowcs(command_ps, src, maxsize - 1);
 	if (len < 0)
 		len = 0;
-	command_ps[len] = 0;
+	command_ps[len] = BB_NUL;
 	return len;
 }
 static unsigned save_string(char *dst, unsigned maxsize)
@@ -233,18 +224,21 @@ static unsigned save_string(char *dst, unsigned maxsize)
 	while (dstpos < maxsize) {
 		wchar_t wc;
 		int n = srcpos;
-		while ((wc = command_ps[srcpos]) != 0
+
+		/* Convert up to 1st invalid byte (or up to end) */
+		while ((wc = command_ps[srcpos]) != BB_NUL
 		    && !unicode_is_raw_byte(wc)
 		) {
 			srcpos++;
 		}
-		command_ps[srcpos] = 0;
+		command_ps[srcpos] = BB_NUL;
 		n = wcstombs(dst + dstpos, command_ps + n, maxsize - dstpos);
 		if (n < 0) /* should not happen */
 			break;
 		dstpos += n;
-		if (wc == 0) /* usually is */
+		if (wc == BB_NUL) /* usually is */
 			break;
+
 		/* We do have invalid byte here! */
 		command_ps[srcpos] = wc; /* restore it */
 		srcpos++;
@@ -606,55 +600,62 @@ static void add_match(char *matched)
 }
 
 #if ENABLE_FEATURE_USERNAME_COMPLETION
-static void username_tab_completion(char *ud, char *with_shash_flg)
+/* Replace "~user/..." with "/homedir/...".
+ * The parameter is malloced, free it or return it
+ * unchanged if no user is matched.
+ */
+static char *username_path_completion(char *ud)
 {
 	struct passwd *entry;
-	int userlen;
+	char *tilde_name = ud;
+	char *home = NULL;
 
-	ud++;                           /* ~user/... to user/... */
+	ud++; /* skip ~ */
+	if (*ud == '/') {       /* "~/..." */
+		home = home_pwd_buf;
+	} else {
+		/* "~user/..." */
+		ud = strchr(ud, '/');
+		*ud = '\0';           /* "~user" */
+		entry = getpwnam(tilde_name + 1);
+		*ud = '/';            /* restore "~user/..." */
+		if (entry)
+			home = entry->pw_dir;
+	}
+	if (home) {
+		ud = concat_path_file(home, ud);
+		free(tilde_name);
+		tilde_name = ud;
+	}
+	return tilde_name;
+}
+
+/* ~use<tab> - find all users with this prefix.
+ * Return the length of the prefix used for matching.
+ */
+static NOINLINE unsigned complete_username(const char *ud)
+{
+	/* Using _r function to avoid pulling in static buffers */
+	char line_buff[256];
+	struct passwd pwd;
+	struct passwd *result;
+	unsigned userlen;
+
+	ud++; /* skip ~ */
 	userlen = strlen(ud);
 
-	if (with_shash_flg) {           /* "~/..." or "~user/..." */
-		char *sav_ud = ud - 1;
-		char *home = NULL;
-
-		if (*ud == '/') {       /* "~/..."     */
-			home = home_pwd_buf;
-		} else {
-			/* "~user/..." */
-			char *temp;
-			temp = strchr(ud, '/');
-			*temp = '\0';           /* ~user\0 */
-			entry = getpwnam(ud);
-			*temp = '/';            /* restore ~user/... */
-			ud = temp;
-			if (entry)
-				home = entry->pw_dir;
+	setpwent();
+	while (!getpwent_r(&pwd, line_buff, sizeof(line_buff), &result)) {
+		/* Null usernames should result in all users as possible completions. */
+		if (/*!userlen || */ strncmp(ud, pwd.pw_name, userlen) == 0) {
+			add_match(xasprintf("~%s/", pwd.pw_name));
 		}
-		if (home) {
-			if ((userlen + strlen(home) + 1) < MAX_LINELEN) {
-				/* /home/user/... */
-				sprintf(sav_ud, "%s%s", home, ud);
-			}
-		}
-	} else {
-		/* "~[^/]*" */
-		/* Using _r function to avoid pulling in static buffers */
-		char line_buff[256];
-		struct passwd pwd;
-		struct passwd *result;
-
-		setpwent();
-		while (!getpwent_r(&pwd, line_buff, sizeof(line_buff), &result)) {
-			/* Null usernames should result in all users as possible completions. */
-			if (/*!userlen || */ strncmp(ud, pwd.pw_name, userlen) == 0) {
-				add_match(xasprintf("~%s/", pwd.pw_name));
-			}
-		}
-		endpwent();
 	}
+	endpwent();
+
+	return 1 + userlen;
 }
-#endif  /* FEATURE_COMMAND_USERNAME_COMPLETION */
+#endif  /* FEATURE_USERNAME_COMPLETION */
 
 enum {
 	FIND_EXE_ONLY = 0,
@@ -662,22 +663,19 @@ enum {
 	FIND_FILE_ONLY = 2,
 };
 
-static int path_parse(char ***p, int flags)
+static int path_parse(char ***p)
 {
 	int npth;
 	const char *pth;
 	char *tmp;
 	char **res;
 
-	/* if not setenv PATH variable, to search cur dir "." */
-	if (flags != FIND_EXE_ONLY)
-		return 1;
-
 	if (state->flags & WITH_PATH_LOOKUP)
 		pth = state->path_lookup;
 	else
 		pth = getenv("PATH");
-	/* PATH=<empty> or PATH=:<empty> */
+
+	/* PATH="" or PATH=":"? */
 	if (!pth || !pth[0] || LONE_CHAR(pth, ':'))
 		return 1;
 
@@ -691,12 +689,13 @@ static int path_parse(char ***p, int flags)
 #endif
 		if (!tmp)
 			break;
-		if (*++tmp == '\0')
+		tmp++;
+		if (*tmp == '\0')
 			break;  /* :<empty> */
 		npth++;
 	}
 
-	res = xmalloc(npth * sizeof(char*));
+	*p = res = xmalloc(npth * sizeof(res[0]));
 	res[0] = tmp = xstrdup(pth);
 	npth = 1;
 	while (1) {
@@ -712,235 +711,241 @@ static int path_parse(char ***p, int flags)
 			break; /* :<empty> */
 		res[npth++] = tmp;
 	}
-	*p = res;
 	return npth;
 }
 
-static void exe_n_cwd_tab_completion(char *command, int type)
+/* Complete command, directory or file name.
+ * Return the length of the prefix used for matching.
+ */
+static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 {
-	DIR *dir;
-	struct dirent *next;
-	struct stat st;
 	char *path1[1];
 	char **paths = path1;
 	int npaths;
 	int i;
-	char *found;
-	char *pfind = strrchr(command, '/');
-/*	char dirbuf[MAX_LINELEN]; */
-#define dirbuf (S.exe_n_cwd_tab_completion__dirbuf)
+	unsigned pf_len;
+	const char *pfind;
+	char *dirbuf = NULL;
 
 	npaths = 1;
 	path1[0] = (char*)".";
 
-	if (pfind == NULL) {
-		/* no dir, if flags==EXE_ONLY - get paths, else "." */
-		npaths = path_parse(&paths, type);
+	pfind = strrchr(command, '/');
+	if (!pfind) {
+		if (type == FIND_EXE_ONLY)
+			npaths = path_parse(&paths);
 		pfind = command;
 	} else {
-		/* dirbuf = ".../.../.../" */
-		safe_strncpy(dirbuf, command, (pfind - command) + 2);
-#if ENABLE_FEATURE_USERNAME_COMPLETION
-		if (dirbuf[0] == '~')   /* ~/... or ~user/... */
-			username_tab_completion(dirbuf, dirbuf);
-#endif
-		paths[0] = dirbuf;
 		/* point to 'l' in "..../last_component" */
 		pfind++;
+		/* dirbuf = ".../.../.../" */
+		dirbuf = xstrndup(command, pfind - command);
+#if ENABLE_FEATURE_USERNAME_COMPLETION
+		if (dirbuf[0] == '~')   /* ~/... or ~user/... */
+			dirbuf = username_path_completion(dirbuf);
+#endif
+		path1[0] = dirbuf;
 	}
+	pf_len = strlen(pfind);
 
 	for (i = 0; i < npaths; i++) {
+		DIR *dir;
+		struct dirent *next;
+		struct stat st;
+		char *found;
+
 		dir = opendir(paths[i]);
 		if (!dir)
 			continue; /* don't print an error */
 
 		while ((next = readdir(dir)) != NULL) {
-			int len1;
-			const char *str_found = next->d_name;
+			unsigned len;
+			const char *name_found = next->d_name;
 
-			/* matched? */
-			if (strncmp(str_found, pfind, strlen(pfind)))
+			/* .../<tab>: bash 3.2.0 shows dotfiles, but not . and .. */
+			if (!pfind[0] && DOT_OR_DOTDOT(name_found))
 				continue;
-			/* not see .name without .match */
-			if (*str_found == '.' && *pfind == '\0') {
-				if (NOT_LONE_CHAR(paths[i], '/') || str_found[1])
-					continue;
-				str_found = ""; /* only "/" */
-			}
-			found = concat_path_file(paths[i], str_found);
-			/* hmm, remove in progress? */
+			/* match? */
+			if (strncmp(name_found, pfind, pf_len) != 0)
+				continue; /* no */
+
+			found = concat_path_file(paths[i], name_found);
 			/* NB: stat() first so that we see is it a directory;
 			 * but if that fails, use lstat() so that
 			 * we still match dangling links */
 			if (stat(found, &st) && lstat(found, &st))
-				goto cont;
-			/* find with dirs? */
-			if (paths[i] != dirbuf)
-				strcpy(found, next->d_name); /* only name */
+				goto cont; /* hmm, remove in progress? */
 
-			len1 = strlen(found);
-			found = xrealloc(found, len1 + 2);
-			found[len1] = '\0';
-			found[len1+1] = '\0';
+			/* Save only name */
+			len = strlen(name_found);
+			found = xrealloc(found, len + 2); /* +2: for slash and NUL */
+			strcpy(found, name_found);
 
 			if (S_ISDIR(st.st_mode)) {
-				/* name is a directory */
-				if (found[len1-1] != '/') {
-					found[len1] = '/';
-				}
+				/* name is a directory, add slash */
+				found[len] = '/';
+				found[len + 1] = '\0';
 			} else {
-				/* not put found file if search only dirs for cd */
+				/* skip files if looking for dirs only (example: cd) */
 				if (type == FIND_DIR_ONLY)
 					goto cont;
 			}
-			/* Add it to the list */
+			/* add it to the list */
 			add_match(found);
 			continue;
  cont:
 			free(found);
 		}
 		closedir(dir);
-	}
+	} /* for every path */
+
 	if (paths != path1) {
 		free(paths[0]); /* allocated memory is only in first member */
 		free(paths);
 	}
-#undef dirbuf
+	free(dirbuf);
+
+	return pf_len;
 }
 
+/* build_match_prefix:
+ * On entry, match_buf contains everything up to cursor at the moment <tab>
+ * was pressed. This function looks at it, figures out what part of it
+ * constitutes the command/file/directory prefix to use for completion,
+ * and rewrites match_buf to contain only that part.
+ */
+#define dbg_bmp 0
+/* Helpers: */
 /* QUOT is used on elements of int_buf[], which are bytes,
  * not Unicode chars. Therefore it works correctly even in Unicode mode.
  */
 #define QUOT (UCHAR_MAX+1)
-
-#define int_buf (S.find_match__int_buf)
-#define pos_buf (S.find_match__pos_buf)
-/* is must be <= in */
-static void collapse_pos(int is, int in)
+static void remove_chunk(int16_t *int_buf, int beg, int end)
 {
-	memmove(int_buf+is, int_buf+in, (MAX_LINELEN+1-in)*sizeof(int_buf[0]));
-	memmove(pos_buf+is, pos_buf+in, (MAX_LINELEN+1-in)*sizeof(pos_buf[0]));
+	/* beg must be <= end */
+	if (beg == end)
+		return;
+
+	while ((int_buf[beg] = int_buf[end]) != 0)
+		beg++, end++;
+
+	if (dbg_bmp) {
+		int i;
+		for (i = 0; int_buf[i]; i++)
+			bb_putchar((unsigned char)int_buf[i]);
+		bb_putchar('\n');
+	}
 }
-static NOINLINE int find_match(char *matchBuf, int *len_with_quotes)
+/* Caller ensures that match_buf points to a malloced buffer
+ * big enough to hold strlen(match_buf)*2 + 2
+ */
+static NOINLINE int build_match_prefix(char *match_buf)
 {
 	int i, j;
 	int command_mode;
-	int c, c2;
-/*	Were local, but it uses too much stack */
-/*	int16_t int_buf[MAX_LINELEN + 1]; */
-/*	int16_t pos_buf[MAX_LINELEN + 1]; */
+	int16_t *int_buf = (int16_t*)match_buf;
 
-	/* set to integer dimension characters and own positions */
-	for (i = 0;; i++) {
-		int_buf[i] = (unsigned char)matchBuf[i];
-		if (int_buf[i] == 0) {
-			pos_buf[i] = -1; /* end-fo-line indicator */
-			break;
+	if (dbg_bmp) printf("\n%s\n", match_buf);
+
+	/* Copy in reverse order, since they overlap */
+	i = strlen(match_buf);
+	do {
+		int_buf[i] = (unsigned char)match_buf[i];
+		i--;
+	} while (i >= 0);
+
+	/* Mark every \c as "quoted c" */
+	for (i = 0; int_buf[i]; i++) {
+		if (int_buf[i] == '\\') {
+			remove_chunk(int_buf, i, i + 1);
+			int_buf[i] |= QUOT;
 		}
-		pos_buf[i] = i;
 	}
-
-	/* mask \+symbol and convert '\t' to ' ' */
-	for (i = j = 0; matchBuf[i]; i++, j++) {
-		if (matchBuf[i] == '\\') {
-			collapse_pos(j, j + 1);
-			int_buf[j] |= QUOT;
+	/* Quote-mark "chars" and 'chars', drop delimiters */
+	{
+		int in_quote = 0;
+		i = 0;
+		while (int_buf[i]) {
+			int cur = int_buf[i];
+			if (!cur)
+				break;
+			if (cur == '\'' || cur == '"') {
+				if (!in_quote || (cur == in_quote)) {
+					in_quote ^= cur;
+					remove_chunk(int_buf, i, i + 1);
+					continue;
+				}
+			}
+			if (in_quote)
+				int_buf[i] = cur | QUOT;
 			i++;
 		}
 	}
-	/* mask "symbols" or 'symbols' */
-	c2 = 0;
-	for (i = 0; int_buf[i]; i++) {
-		c = int_buf[i];
-		if (c == '\'' || c == '"') {
-			if (c2 == 0)
-				c2 = c;
-			else {
-				if (c == c2)
-					c2 = 0;
-				else
-					int_buf[i] |= QUOT;
-			}
-		} else if (c2 != 0 && c != '$')
-			int_buf[i] |= QUOT;
-	}
 
-	/* skip commands with arguments if line has commands delimiters */
-	/* ';' ';;' '&' '|' '&&' '||' but `>&' `<&' `>|' */
+	/* Remove everything up to command delimiters:
+	 * ';' ';;' '&' '|' '&&' '||',
+	 * but careful with '>&' '<&' '>|'
+	 */
 	for (i = 0; int_buf[i]; i++) {
-		c = int_buf[i];
-		c2 = int_buf[i + 1];
-		j = i ? int_buf[i - 1] : -1;
-		command_mode = 0;
-		if (c == ';' || c == '&' || c == '|') {
-			command_mode = 1 + (c == c2);
-			if (c == '&') {
-				if (j == '>' || j == '<')
-					command_mode = 0;
-			} else if (c == '|' && j == '>')
-				command_mode = 0;
-		}
-		if (command_mode) {
-			collapse_pos(0, i + command_mode);
-			i = -1;  /* hack incremet */
+		int cur = int_buf[i];
+		if (cur == ';' || cur == '&' || cur == '|') {
+			int prev = i ? int_buf[i - 1] : 0;
+			if (cur == '&' && (prev == '>' || prev == '<')) {
+				continue;
+			} else if (cur == '|' && prev == '>') {
+				continue;
+			}
+			remove_chunk(int_buf, 0, i + 1 + (cur == int_buf[i + 1]));
+			i = -1;  /* back to square 1 */
 		}
 	}
-	/* collapse `command...` */
+	/* Remove all `cmd` */
 	for (i = 0; int_buf[i]; i++) {
 		if (int_buf[i] == '`') {
-			for (j = i + 1; int_buf[j]; j++)
+			for (j = i + 1; int_buf[j]; j++) {
 				if (int_buf[j] == '`') {
-					collapse_pos(i, j + 1);
-					j = 0;
-					break;
+					/* `cmd` should count as a word:
+					 * `cmd` c<tab> should search for files c*,
+					 * not commands c*. Therefore we don't drop
+					 * `cmd` entirely, we replace it with single `.
+					 */
+					remove_chunk(int_buf, i, j);
+					goto next;
 				}
-			if (j) {
-				/* not found closing ` - command mode, collapse all previous */
-				collapse_pos(0, i + 1);
-				break;
-			} else
-				i--;  /* hack incremet */
+			}
+			/* No closing ` - command mode, remove all up to ` */
+			remove_chunk(int_buf, 0, i + 1);
+			break;
+ next: ;
 		}
 	}
 
-	/* collapse (command...(command...)...) or {command...{command...}...} */
-	c = 0;  /* "recursive" level */
-	c2 = 0;
+	/* Remove "cmd (" and "cmd {"
+	 * Example: "if { c<tab>"
+	 * In this example, c should be matched as command pfx.
+	 */
 	for (i = 0; int_buf[i]; i++) {
 		if (int_buf[i] == '(' || int_buf[i] == '{') {
-			if (int_buf[i] == '(')
-				c++;
-			else
-				c2++;
-			collapse_pos(0, i + 1);
-			i = -1;  /* hack incremet */
-		}
-	}
-	for (i = 0; pos_buf[i] >= 0 && (c > 0 || c2 > 0); i++) {
-		if ((int_buf[i] == ')' && c > 0) || (int_buf[i] == '}' && c2 > 0)) {
-			if (int_buf[i] == ')')
-				c--;
-			else
-				c2--;
-			collapse_pos(0, i + 1);
-			i = -1;  /* hack incremet */
+			remove_chunk(int_buf, 0, i + 1);
+			i = -1;  /* back to square 1 */
 		}
 	}
 
-	/* skip first not quote space */
+	/* Remove leading unquoted spaces */
 	for (i = 0; int_buf[i]; i++)
 		if (int_buf[i] != ' ')
 			break;
-	if (i)
-		collapse_pos(0, i);
+	remove_chunk(int_buf, 0, i);
 
-	/* set find mode for completion */
+	/* Determine completion mode */
 	command_mode = FIND_EXE_ONLY;
 	for (i = 0; int_buf[i]; i++) {
 		if (int_buf[i] == ' ' || int_buf[i] == '<' || int_buf[i] == '>') {
-			if (int_buf[i] == ' ' && command_mode == FIND_EXE_ONLY
-			 && matchBuf[pos_buf[0]] == 'c'
-			 && matchBuf[pos_buf[1]] == 'd'
+			if (int_buf[i] == ' '
+			 && command_mode == FIND_EXE_ONLY
+			 && (char)int_buf[0] == 'c'
+			 && (char)int_buf[1] == 'd'
+			 && i == 2 /* -> int_buf[2] == ' ' */
 			) {
 				command_mode = FIND_DIR_ONLY;
 			} else {
@@ -949,44 +954,32 @@ static NOINLINE int find_match(char *matchBuf, int *len_with_quotes)
 			}
 		}
 	}
-	for (i = 0; int_buf[i]; i++)
-		/* "strlen" */;
-	/* find last word */
+	if (dbg_bmp) printf("command_mode(0:exe/1:dir/2:file):%d\n", command_mode);
+
+	/* Remove everything except last word */
+	for (i = 0; int_buf[i]; i++) /* quasi-strlen(int_buf) */
+		continue;
 	for (--i; i >= 0; i--) {
-		c = int_buf[i];
-		if (c == ' ' || c == '<' || c == '>' || c == '|' || c == '&') {
-			collapse_pos(0, i + 1);
+		int cur = int_buf[i];
+		if (cur == ' ' || cur == '<' || cur == '>' || cur == '|' || cur == '&') {
+			remove_chunk(int_buf, 0, i + 1);
 			break;
 		}
 	}
-	/* skip first not quoted '\'' or '"' */
-	for (i = 0; int_buf[i] == '\'' || int_buf[i] == '"'; i++)
-		/*skip*/;
-	/* collapse quote or unquote // or /~ */
-	while ((int_buf[i] & ~QUOT) == '/'
-	 && ((int_buf[i+1] & ~QUOT) == '/' || (int_buf[i+1] & ~QUOT) == '~')
-	) {
-		i++;
-	}
 
-	/* set only match and destroy quotes */
-	j = 0;
-	for (c = 0; pos_buf[i] >= 0; i++) {
-		matchBuf[c++] = matchBuf[pos_buf[i]];
-		j = pos_buf[i] + 1;
-	}
-	matchBuf[c] = '\0';
-	/* old length matchBuf with quotes symbols */
-	*len_with_quotes = j ? j - pos_buf[0] : 0;
+	/* Convert back to string of _chars_ */
+	i = 0;
+	while ((match_buf[i] = int_buf[i]) != '\0')
+		i++;
+
+	if (dbg_bmp) printf("final match_buf:'%s'\n", match_buf);
 
 	return command_mode;
 }
-#undef int_buf
-#undef pos_buf
 
 /*
- * display by column (original idea from ls applet,
- * very optimized by me :)
+ * Display by column (original idea from ls applet,
+ * very optimized by me [Vladimir] :)
  */
 static void showfiles(void)
 {
@@ -1043,156 +1036,173 @@ static char *add_quote_for_spec_chars(char *found)
 }
 
 /* Do TAB completion */
-static void input_tab(smallint *lastWasTab)
+static NOINLINE void input_tab(smallint *lastWasTab)
 {
+	char *chosen_match;
+	char *match_buf;
+	size_t len_found;
+	/* Length of string used for matching */
+	unsigned match_pfx_len = match_pfx_len;
+	int find_type;
+#if ENABLE_UNICODE_SUPPORT
+	/* cursor pos in command converted to multibyte form */
+	int cursor_mb;
+#endif
 	if (!(state->flags & TAB_COMPLETION))
 		return;
 
-	if (!*lastWasTab) {
-		char *tmp, *tmp1;
-		size_t len_found;
-/*		char matchBuf[MAX_LINELEN]; */
-#define matchBuf (S.input_tab__matchBuf)
-		int find_type;
-		int recalc_pos;
-#if ENABLE_UNICODE_SUPPORT
-		/* cursor pos in command converted to multibyte form */
-		int cursor_mb;
-#endif
-
-		*lastWasTab = TRUE;             /* flop trigger */
-
-		/* Make a local copy of the string --
-		 * up to the position of the cursor */
-		save_string(matchBuf, cursor + 1);
-#if ENABLE_UNICODE_SUPPORT
-		cursor_mb = strlen(matchBuf);
-#endif
-		tmp = matchBuf;
-
-		find_type = find_match(matchBuf, &recalc_pos);
-
-		/* Free up any memory already allocated */
-		free_tab_completion_data();
-
-#if ENABLE_FEATURE_USERNAME_COMPLETION
-		/* If the word starts with `~' and there is no slash in the word,
-		 * then try completing this word as a username. */
-		if (state->flags & USERNAME_COMPLETION)
-			if (matchBuf[0] == '~' && strchr(matchBuf, '/') == NULL)
-				username_tab_completion(matchBuf, NULL);
-#endif
-		/* Try to match any executable in our path and everything
-		 * in the current working directory */
-		if (!matches)
-			exe_n_cwd_tab_completion(matchBuf, find_type);
-		/* Sort, then remove any duplicates found */
-		if (matches) {
-			unsigned i;
-			int n = 0;
-			qsort_string_vector(matches, num_matches);
-			for (i = 0; i < num_matches - 1; ++i) {
-				if (matches[i] && matches[i+1]) { /* paranoia */
-					if (strcmp(matches[i], matches[i+1]) == 0) {
-						free(matches[i]);
-						matches[i] = NULL; /* paranoia */
-					} else {
-						matches[n++] = matches[i];
-					}
-				}
-			}
-			matches[n] = matches[i];
-			num_matches = n + 1;
-		}
-		/* Did we find exactly one match? */
-		if (!matches || num_matches > 1) { /* no */
-			beep();
-			if (!matches)
-				return;         /* not found */
-			/* find minimal match */
-			tmp1 = xstrdup(matches[0]);
-			for (tmp = tmp1; *tmp; tmp++) {
-				for (len_found = 1; len_found < num_matches; len_found++) {
-					if (matches[len_found][tmp - tmp1] != *tmp) {
-						*tmp = '\0';
-						break;
-					}
-				}
-			}
-			if (*tmp1 == '\0') {        /* have unique */
-				free(tmp1);
-				return;
-			}
-			tmp = add_quote_for_spec_chars(tmp1);
-			free(tmp1);
-		} else {                        /* one match */
-			tmp = add_quote_for_spec_chars(matches[0]);
-			/* for next completion current found */
-			*lastWasTab = FALSE;
-
-			len_found = strlen(tmp);
-			if (tmp[len_found-1] != '/') {
-				tmp[len_found] = ' ';
-				tmp[len_found+1] = '\0';
-			}
-		}
-
-		len_found = strlen(tmp);
-#if !ENABLE_UNICODE_SUPPORT
-		/* have space to place the match? */
-		/* The result consists of three parts with these lengths: */
-		/* (cursor - recalc_pos) + len_found + (command_len - cursor) */
-		/* it simplifies into: */
-		if ((int)(len_found + command_len - recalc_pos) < S.maxsize) {
-			/* save tail */
-			strcpy(matchBuf, command_ps + cursor);
-			/* add match and tail */
-			sprintf(&command_ps[cursor - recalc_pos], "%s%s", tmp, matchBuf);
-			command_len = strlen(command_ps);
-			/* new pos */
-			recalc_pos = cursor - recalc_pos + len_found;
-			/* write out the matched command */
-			redraw(cmdedit_y, command_len - recalc_pos);
-		}
-#else
-		{
-			char command[MAX_LINELEN];
-			int len = save_string(command, sizeof(command));
-			/* have space to place the match? */
-			/* (cursor_mb - recalc_pos) + len_found + (len - cursor_mb) */
-			if ((int)(len_found + len - recalc_pos) < MAX_LINELEN) {
-				/* save tail */
-				strcpy(matchBuf, command + cursor_mb);
-				/* where do we want to have cursor after all? */
-				strcpy(&command[cursor_mb - recalc_pos], tmp);
-				len = load_string(command, S.maxsize);
-				/* add match and tail */
-				sprintf(&command[cursor_mb - recalc_pos], "%s%s", tmp, matchBuf);
-				command_len = load_string(command, S.maxsize);
-				/* write out the matched command */
-				redraw(cmdedit_y, command_len - len);
-			}
-		}
-#endif
-		free(tmp);
-#undef matchBuf
-	} else {
-		/* Ok -- the last char was a TAB.  Since they
-		 * just hit TAB again, print a list of all the
-		 * available choices... */
-		if (matches && num_matches > 0) {
-			/* changed by goto_new_line() */
+	if (*lastWasTab) {
+		/* The last char was a TAB too.
+		 * Print a list of all the available choices.
+		 */
+		if (num_matches > 0) {
+			/* cursor will be changed by goto_new_line() */
 			int sav_cursor = cursor;
-
-			/* Go to the next line */
 			goto_new_line();
 			showfiles();
 			redraw(0, command_len - sav_cursor);
 		}
+		return;
 	}
+
+	*lastWasTab = 1;
+	chosen_match = NULL;
+
+	/* Make a local copy of the string up to the position of the cursor.
+	 * build_match_prefix will expand it into int16_t's, need to allocate
+	 * twice as much as the string_len+1.
+	 * (we then also (ab)use this extra space later - see (**))
+	 */
+	match_buf = xmalloc(MAX_LINELEN * sizeof(int16_t));
+#if !ENABLE_UNICODE_SUPPORT
+	save_string(match_buf, cursor + 1); /* +1 for NUL */
+#else
+	{
+		CHAR_T wc = command_ps[cursor];
+		command_ps[cursor] = BB_NUL;
+		save_string(match_buf, MAX_LINELEN);
+		command_ps[cursor] = wc;
+		cursor_mb = strlen(match_buf);
+	}
+#endif
+	find_type = build_match_prefix(match_buf);
+
+	/* Free up any memory already allocated */
+	free_tab_completion_data();
+
+#if ENABLE_FEATURE_USERNAME_COMPLETION
+	/* If the word starts with `~' and there is no slash in the word,
+	 * then try completing this word as a username. */
+	if (state->flags & USERNAME_COMPLETION)
+		if (match_buf[0] == '~' && strchr(match_buf, '/') == NULL)
+			match_pfx_len = complete_username(match_buf);
+#endif
+	/* Try to match a command in $PATH, or a directory, or a file */
+	if (!matches)
+		match_pfx_len = complete_cmd_dir_file(match_buf, find_type);
+	/* Remove duplicates */
+	if (matches) {
+		unsigned i;
+		unsigned n = 0;
+		qsort_string_vector(matches, num_matches);
+		for (i = 0; i < num_matches - 1; ++i) {
+			//if (matches[i] && matches[i+1]) { /* paranoia */
+				if (strcmp(matches[i], matches[i+1]) == 0) {
+					free(matches[i]);
+					//matches[i] = NULL; /* paranoia */
+				} else {
+					matches[n++] = matches[i];
+				}
+			//}
+		}
+		matches[n++] = matches[i];
+		num_matches = n;
+	}
+	/* Did we find exactly one match? */
+	if (num_matches != 1) { /* no */
+		char *cp;
+		beep();
+		if (!matches)
+			goto ret; /* no matches at all */
+		/* Find common prefix */
+		chosen_match = xstrdup(matches[0]);
+		for (cp = chosen_match; *cp; cp++) {
+			unsigned n;
+			for (n = 1; n < num_matches; n++) {
+				if (matches[n][cp - chosen_match] != *cp) {
+					goto stop;
+				}
+			}
+		}
+ stop:
+		if (cp == chosen_match) { /* have unique prefix? */
+			goto ret; /* no */
+		}
+		*cp = '\0';
+		cp = add_quote_for_spec_chars(chosen_match);
+		free(chosen_match);
+		chosen_match = cp;
+		len_found = strlen(chosen_match);
+	} else {                        /* exactly one match */
+		/* Next <tab> is not a double-tab */
+		*lastWasTab = 0;
+
+		chosen_match = add_quote_for_spec_chars(matches[0]);
+		len_found = strlen(chosen_match);
+		if (chosen_match[len_found-1] != '/') {
+			chosen_match[len_found] = ' ';
+			chosen_match[++len_found] = '\0';
+		}
+	}
+
+#if !ENABLE_UNICODE_SUPPORT
+	/* Have space to place the match? */
+	/* The result consists of three parts with these lengths: */
+	/* cursor + (len_found - match_pfx_len) + (command_len - cursor) */
+	/* it simplifies into: */
+	if ((int)(len_found - match_pfx_len + command_len) < S.maxsize) {
+		int pos;
+		/* save tail */
+		strcpy(match_buf, &command_ps[cursor]);
+		/* add match and tail */
+		sprintf(&command_ps[cursor], "%s%s", chosen_match + match_pfx_len, match_buf);
+		command_len = strlen(command_ps);
+		/* new pos */
+		pos = cursor + len_found - match_pfx_len;
+		/* write out the matched command */
+		redraw(cmdedit_y, command_len - pos);
+	}
+#else
+	{
+		/* Use 2nd half of match_buf as scratch space - see (**) */
+		char *command = match_buf + MAX_LINELEN;
+		int len = save_string(command, MAX_LINELEN);
+		/* Have space to place the match? */
+		/* cursor_mb + (len_found - match_pfx_len) + (len - cursor_mb) */
+		if ((int)(len_found - match_pfx_len + len) < MAX_LINELEN) {
+			int pos;
+			/* save tail */
+			strcpy(match_buf, &command[cursor_mb]);
+			/* where do we want to have cursor after all? */
+			strcpy(&command[cursor_mb], chosen_match + match_pfx_len);
+			len = load_string(command, S.maxsize);
+			/* add match and tail */
+			sprintf(&command[cursor_mb], "%s%s", chosen_match + match_pfx_len, match_buf);
+			command_len = load_string(command, S.maxsize);
+			/* write out the matched command */
+			/* paranoia: load_string can return 0 on conv error,
+			 * prevent passing pos = (0 - 12) to redraw */
+			pos = command_len - len;
+			redraw(cmdedit_y, pos >= 0 ? pos : 0);
+		}
+	}
+#endif
+ ret:
+	free(chosen_match);
+	free(match_buf);
 }
 
-#endif  /* FEATURE_COMMAND_TAB_COMPLETION */
+#endif  /* FEATURE_TAB_COMPLETION */
 
 
 line_input_t* FAST_FUNC new_line_input_t(int flags)
@@ -1892,7 +1902,7 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 {
 	int len;
 #if ENABLE_FEATURE_TAB_COMPLETION
-	smallint lastWasTab = FALSE;
+	smallint lastWasTab = 0;
 #endif
 	smallint break_out = 0;
 #if ENABLE_FEATURE_EDITING_VI
@@ -2169,7 +2179,7 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 
 			ic = lineedit_read_key(read_key_buffer);
 			if (errno) /* error */
-				goto prepare_to_die;
+				goto return_error_indicator;
 			if (ic == ic_raw) { /* "cc", "dd" */
 				input_backward(cursor);
 				goto clear_to_eol;
@@ -2233,7 +2243,7 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 //FIXME: unicode case?
 			ic = lineedit_read_key(read_key_buffer);
 			if (errno) /* error */
-				goto prepare_to_die;
+				goto return_error_indicator;
 			if (ic < ' ' || ic > 255) {
 				beep();
 			} else {
@@ -2305,9 +2315,9 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 				 * or exit if len=0 and no chars to delete */
 				if (command_len == 0) {
 					errno = 0;
-#if ENABLE_FEATURE_EDITING_VI
- prepare_to_die:
-#endif
+
+		case -1: /* error (e.g. EIO when tty is destroyed) */
+ IF_FEATURE_EDITING_VI(return_error_indicator:)
 					break_out = command_len = -1;
 					break;
 				}
@@ -2317,7 +2327,7 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 //			/* Control-V -- force insert of next char */
 //			if (c == CTRL('V')) {
 //				if (safe_read(STDIN_FILENO, &c, 1) < 1)
-//					goto prepare_to_die;
+//					goto return_error_indicator;
 //				if (c == 0) {
 //					beep();
 //					break;
@@ -2370,7 +2380,7 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 
 #if ENABLE_FEATURE_TAB_COMPLETION
 		if (ic_raw != '\t')
-			lastWasTab = FALSE;
+			lastWasTab = 0;
 #endif
 	} /* while (1) */
 
@@ -2464,7 +2474,7 @@ int main(int argc, char **argv)
 		l = read_line_input(prompt, buff);
 		if (l <= 0 || buff[l-1] != '\n')
 			break;
-		buff[l-1] = 0;
+		buff[l-1] = '\0';
 		printf("*** read_line_input() returned line =%s=\n", buff);
 	}
 	printf("*** read_line_input() detect ^D\n");

@@ -55,16 +55,19 @@ rm -rf input_* test.tar 2>/dev/null
 chmod 741 input_hard1
 ln input_hard1 input_hard2
 mkdir input_dir
-chmod 550 input_dir
 ln input_hard1 input_dir
 ln input_hard2 input_dir
-tar cf test.tar input_*
+chmod 550 input_dir
+# On some filesystems, input_dir/input_hard2 is returned by readdir
+# BEFORE input_dir/input_hard1! Thats why we cant just "tar cf ... input_*":
+tar cf test.tar input_dir/input_hard* input_hard*
 tar tvf test.tar | sed "s/.*[0-9] input/input/"
+chmod 770 input_dir
+rm -rf input_*
 tar xf test.tar 2>&1
 echo Ok: $?
-ls -l . input_dir/* | grep input_ | sed "s/\\(^[^ ]*\\) .* input/\\1 input/"
+ls -l . input_dir/* | grep "input.*hard" | sed "s/\\(^[^ ]*\\) .* input/\\1 input/"
 ' "\
-input_dir/
 input_dir/input_hard1
 input_dir/input_hard2 -> input_dir/input_hard1
 input_hard1 -> input_dir/input_hard1
@@ -72,7 +75,6 @@ input_hard2 -> input_dir/input_hard1
 Ok: 0
 -rwxr----x input_dir/input_hard1
 -rwxr----x input_dir/input_hard2
-dr-xr-x--- input_dir
 -rwxr----x input_hard1
 -rwxr----x input_hard2
 " \
@@ -86,16 +88,17 @@ rm -rf input_* test.tar 2>/dev/null
 chmod 741 input_file
 ln -s input_file input_soft
 mkdir input_dir
-chmod 550 input_dir
 ln input_file input_dir
 ln input_soft input_dir
-tar cf test.tar input_*
+chmod 550 input_dir
+tar cf test.tar input_dir/* input_[fs]*
 tar tvf test.tar | sed "s/.*[0-9] input/input/" | sort
+chmod 770 input_dir
+rm -rf input_*
 tar xf test.tar 2>&1
 echo Ok: $?
-ls -l . input_dir/* | grep input_ | sed "s/\\(^[^ ]*\\) .* input/\\1 input/"
+ls -l . input_dir/* | grep "input_[fs]" | sed "s/\\(^[^ ]*\\) .* input/\\1 input/"
 ' "\
-input_dir/
 input_dir/input_file
 input_dir/input_soft -> input_file
 input_file -> input_dir/input_file
@@ -103,7 +106,6 @@ input_soft -> input_dir/input_soft
 Ok: 0
 -rwxr----x input_dir/input_file
 lrwxrwxrwx input_file
-dr-xr-x--- input_dir
 -rwxr----x input_file
 lrwxrwxrwx input_file
 " \
@@ -124,6 +126,34 @@ Ok
 " \
 "Ok\n" ""
 SKIP=
+
+test x"$SKIP_KNOWN_BUGS" = x"" && {
+# Needs to be run under non-root for meaningful test
+optional FEATURE_TAR_CREATE
+testing "tar writing into read-only dir" '\
+rm -rf input_* test.tar 2>/dev/null
+mkdir input_dir
+>input_dir/input_file
+chmod 550 input_dir
+tar cf test.tar input_dir
+tar tvf test.tar | sed "s/.*[0-9] input/input/"
+chmod 770 input_dir
+rm -rf input_*
+tar xf test.tar 2>&1
+echo Ok: $?
+ls -l input_dir/* . | grep input_ | sed "s/\\(^[^ ]*\\) .* input/\\1 input/"
+chmod 770 input_dir
+' "\
+input_dir/
+input_dir/input_file
+Ok: 0
+-rw-r--r-- input_dir/input_file
+dr-xr-x--- input_dir
+" \
+"" ""
+SKIP=
+}
+
 
 cd .. && rm -rf tar.tempdir || exit 1
 
