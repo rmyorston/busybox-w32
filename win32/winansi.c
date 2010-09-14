@@ -278,6 +278,13 @@ static const char *set_attr(const char *str)
 	case 'H':
 		if (!len)
 			move_cursor(0, 0);
+		else {
+			int row = strtol(str, (char **)&str, 10);
+			if (*str == ';') {
+				int col = strtol(str+1, (char **)&str, 10);
+				move_cursor(col, row);
+			}
+		}
 		break;
 	case 'J':
 		erase_till_end_of_screen();
