@@ -82,6 +82,9 @@ void TOY_llist_free(void *list, void (*freeit)(void *data))
 		if (list==pop) break;
 	}
 }
+//Override bbox's names
+#define llist_pop TOY_llist_pop
+#define llist_free TOY_llist_free
 
 // Add an entry to the end off a doubly linked list
 static
@@ -227,7 +230,8 @@ struct globals {
 	long prefix;
 
 	struct double_list *current_hunk;
-	long oldline, oldlen, newline, newlen, linenum;
+	long oldline, oldlen, newline, newlen;
+	long linenum;
 	int context, state, filein, fileout, filepatch, hunknum;
 	char *tempname;
 
@@ -241,14 +245,16 @@ struct globals {
 
 
 //bbox had: "p:i:RN"
-#define FLAG_STR "Rup:i:x"
+#define FLAG_STR "Rup:i:Nx"
 /* FLAG_REVERSE must be == 1! Code uses this fact. */
 #define FLAG_REVERSE (1 << 0)
 #define FLAG_u       (1 << 1)
 #define FLAG_PATHLEN (1 << 2)
 #define FLAG_INPUT   (1 << 3)
+// -N: not supported yet
+#define FLAG_IGNORE  (1 << 4)
 //non-standard:
-#define FLAG_DEBUG   (1 << 4)
+#define FLAG_DEBUG   (1 << 5)
 
 // Dispose of a line of input, either by writing it out or discarding it.
 
@@ -291,7 +297,7 @@ static void fail_hunk(void)
 	// this file and advance to next file.
 
 	TT.state = 2;
-	TOY_llist_free(TT.current_hunk, do_line);
+	llist_free(TT.current_hunk, do_line);
 	TT.current_hunk = NULL;
 	delete_tempfile(TT.filein, TT.fileout, &TT.tempname);
 	TT.state = 0;
@@ -377,7 +383,7 @@ static int apply_one_hunk(void)
 					fdprintf(2, "NOT: %s\n", plist->data);
 
 				TT.state = 3;
-				check = TOY_llist_pop(&buf);
+				check = llist_pop(&buf);
 				check->prev->next = buf;
 				buf->prev = check->prev;
 				do_line(check);
@@ -404,13 +410,13 @@ static int apply_one_hunk(void)
 out:
 	// We have a match.  Emit changed data.
 	TT.state = "-+"[reverse];
-	TOY_llist_free(TT.current_hunk, do_line);
+	llist_free(TT.current_hunk, do_line);
 	TT.current_hunk = NULL;
 	TT.state = 1;
 done:
 	if (buf) {
 		buf->prev->next = NULL;
-		TOY_llist_free(buf, do_line);
+		llist_free(buf, do_line);
 	}
 
 	return TT.state;
@@ -505,14 +511,19 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 			// way the patch man page says, so you have to read the first hunk
 			// and _guess_.
 
-		// Start a new hunk?
+		// Start a new hunk?  Usually @@ -oldline,oldlen +newline,newlen @@
+		// but a missing ,value means the value is 1.
 		} else if (state == 1 && !strncmp("@@ -", patchline, 4)) {
 			int i;
+			char *s = patchline+4;
 
-			i = sscanf(patchline+4, "%ld,%ld +%ld,%ld", &TT.oldline,
-						&TT.oldlen, &TT.newline, &TT.newlen);
-			if (i != 4)
-				bb_error_msg_and_die("corrupt hunk %d at %ld", TT.hunknum, TT.linenum);
+			// Read oldline[,oldlen] +newline[,newlen]
+
+			TT.oldlen = TT.newlen = 1;
+			TT.oldline = strtol(s, &s, 10);
+			if (*s == ',') TT.oldlen=strtol(s+1, &s, 10);
+			TT.newline = strtol(s+2, &s, 10);
+			if (*s == ',') TT.newlen = strtol(s+1, &s, 10);
 
 			TT.context = 0;
 			state = 2;
@@ -520,7 +531,7 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 			// If this is the first hunk, open the file.
 			if (TT.filein == -1) {
 				int oldsum, newsum, del = 0;
-				char *s, *name;
+				char *name;
 
  				oldsum = TT.oldline + TT.oldlen;
 				newsum = TT.newline + TT.newlen;
