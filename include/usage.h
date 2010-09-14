@@ -123,6 +123,8 @@
 #define lash_full_usage ""
 #define msh_trivial_usage NOUSAGE_STR
 #define msh_full_usage ""
+#define bash_trivial_usage NOUSAGE_STR
+#define bash_full_usage ""
 
 #define awk_trivial_usage \
        "[OPTIONS] [AWK_PROGRAM] [FILE]..."
@@ -1472,9 +1474,9 @@
      "\n	-m	Find processes which use same fs as FILEs" \
      "\n	-4	Search only IPv4 space" \
      "\n	-6	Search only IPv6 space" \
-     "\n	-s	Silent: just exit with 0 if any processes are found" \
-     "\n	-k	Kill found processes (otherwise display PIDs)" \
-     "\n	-SIGNAL	Signal to send (default: TERM)" \
+     "\n	-s	Don't display PIDs" \
+     "\n	-k	Kill found processes" \
+     "\n	-SIGNAL	Signal to send (default: KILL)" \
 
 #define getenforce_trivial_usage NOUSAGE_STR
 #define getenforce_full_usage ""
@@ -3572,11 +3574,11 @@
 #if ENABLE_DESKTOP
 
 #define ps_trivial_usage \
-       ""
+       "[-o COL1,COL2=HEADER]" IF_FEATURE_SHOW_THREADS(" [-T]")
 #define ps_full_usage "\n\n" \
-       "Report process status\n" \
+       "Show list of processes\n" \
      "\nOptions:" \
-     "\n	-o col1,col2=header	Select columns for display" \
+     "\n	-o COL1,COL2=HEADER	Select columns for display" \
 	IF_FEATURE_SHOW_THREADS( \
      "\n	-T			Show threads" \
 	)
@@ -3592,7 +3594,7 @@
 #define ps_trivial_usage \
        ""
 #define ps_full_usage "\n\n" \
-       "Report process status\n" \
+       "Show list of processes\n" \
 	USAGE_PS \
 	IF_SELINUX( \
      "\n	-Z	Show selinux context" \

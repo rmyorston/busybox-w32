@@ -37,31 +37,33 @@
  * handle the recursion implicit in the various substitutions, especially
  * across continuation lines.
  *
- * POSIX syntax not implemented:
- *      aliases
- *      Tilde Expansion
- *
- * Bash compat TODO:
- *      redirection of stdout+stderr: &> and >&
- *      brace expansion: one/{two,three,four}
- *      reserved words: function select
- *      advanced test: [[ ]]
- *      substrings: ${var:1:5}
- *      process substitution: <(list) and >(list)
- *      =~: regex operator
- *      let EXPR [EXPR...]
- *        Each EXPR is an arithmetic expression (ARITHMETIC EVALUATION)
- *        If the last arg evaluates to 0, let returns 1; 0 otherwise.
- *        NB: let `echo 'a=a + 1'` - error (IOW: multi-word expansion is used)
- *      ((EXPR))
- *        The EXPR is evaluated according to ARITHMETIC EVALUATION.
- *        This is exactly equivalent to let "EXPR".
- *      $[EXPR]: synonym for $((EXPR))
- *
  * TODOs:
  *      grep for "TODO" and fix (some of them are easy)
  *      special variables (done: PWD, PPID, RANDOM)
+ *      tilde expansion
+ *      aliases
  *      follow IFS rules more precisely, including update semantics
+ *      builtins mandated by standards we don't support:
+ *          [un]alias, command, fc, getopts, newgrp, readonly, times
+ *      make complex ${var%...} constructs support optional
+ *      make here documents optional
+ *
+ * Bash compat TODO:
+ *      redirection of stdout+stderr: &> and >&
+ *      subst operator: ${var/[/]expr/expr}
+ *      brace expansion: one/{two,three,four}
+ *      reserved words: function select
+ *      advanced test: [[ ]]
+ *      process substitution: <(list) and >(list)
+ *      =~: regex operator
+ *      let EXPR [EXPR...]
+ *          Each EXPR is an arithmetic expression (ARITHMETIC EVALUATION)
+ *          If the last arg evaluates to 0, let returns 1; 0 otherwise.
+ *          NB: let `echo 'a=a + 1'` - error (IOW: multi-word expansion is used)
+ *      ((EXPR))
+ *          The EXPR is evaluated according to ARITHMETIC EVALUATION.
+ *          This is exactly equivalent to let "EXPR".
+ *      $[EXPR]: synonym for $((EXPR))
  *      export builtin should be special, its arguments are assignments
  *          and therefore expansion of them should be "one-word" expansion:
  *              $ export i=`echo 'a  b'` # export has one arg: "i=a  b"
@@ -170,6 +172,7 @@
 #define debug_printf_env(...)    do {} while (0)
 #define debug_printf_jobs(...)   do {} while (0)
 #define debug_printf_expand(...) do {} while (0)
+#define debug_printf_varexp(...) do {} while (0)
 #define debug_printf_glob(...)   do {} while (0)
 #define debug_printf_list(...)   do {} while (0)
 #define debug_printf_subst(...)  do {} while (0)
@@ -177,9 +180,13 @@
 
 #define ERR_PTR ((void*)(long)1)
 
-#define JOB_STATUS_FORMAT "[%d] %-22s %.40s\n"
+#define JOB_STATUS_FORMAT    "[%d] %-22s %.40s\n"
 
-#define SPECIAL_VAR_SYMBOL 3
+#define _SPECIAL_VARS_STR     "_*@$!?#"
+#define SPECIAL_VARS_STR     ("_*@$!?#" + 1)
+#define NUMERIC_SPECVARS_STR ("_*@$!?#" + 3)
+
+#define SPECIAL_VAR_SYMBOL   3
 
 struct variable;
 
@@ -742,6 +749,10 @@ static const struct built_in_command bltins2[] = {
 # define DEBUG_EXPAND 0
 #endif
 
+#ifndef debug_printf_varexp
+# define debug_printf_varexp(...) (indent(), fprintf(stderr, __VA_ARGS__))
+#endif
+
 #ifndef debug_printf_glob
 # define debug_printf_glob(...) (indent(), fprintf(stderr, __VA_ARGS__))
 # define DEBUG_GLOB 1
@@ -803,10 +814,10 @@ static void xxfree(void *ptr)
 	fdprintf(2, "free %p\n", ptr);
 	free(ptr);
 }
-#define xmalloc(s)     xxmalloc(__LINE__, s)
-#define xrealloc(p, s) xxrealloc(__LINE__, p, s)
-#define xstrdup(s)     xxstrdup(__LINE__, s)
-#define free(p)        xxfree(p)
+# define xmalloc(s)     xxmalloc(__LINE__, s)
+# define xrealloc(p, s) xxrealloc(__LINE__, p, s)
+# define xstrdup(s)     xxstrdup(__LINE__, s)
+# define free(p)        xxfree(p)
 #endif
 
 
@@ -1150,9 +1161,9 @@ static void SIGCHLD_handler(int sig UNUSED_PARAM)
 #if ENABLE_HUSH_JOB
 
 /* After [v]fork, in child: do not restore tty pgrp on xfunc death */
-#define disable_restore_tty_pgrp_on_exit() (die_sleep = 0)
+# define disable_restore_tty_pgrp_on_exit() (die_sleep = 0)
 /* After [v]fork, in parent: restore tty pgrp on xfunc death */
-#define enable_restore_tty_pgrp_on_exit()  (die_sleep = -1)
+# define enable_restore_tty_pgrp_on_exit()  (die_sleep = -1)
 
 /* Restores tty foreground process group, and exits.
  * May be called as signal handler for fatal signal
@@ -1178,8 +1189,8 @@ static void sigexit(int sig)
 }
 #else
 
-#define disable_restore_tty_pgrp_on_exit() ((void)0)
-#define enable_restore_tty_pgrp_on_exit()  ((void)0)
+# define disable_restore_tty_pgrp_on_exit() ((void)0)
+# define enable_restore_tty_pgrp_on_exit()  ((void)0)
 
 #endif
 
@@ -1511,8 +1522,8 @@ static void unset_vars(char **strings)
 }
 
 #if ENABLE_SH_MATH_SUPPORT
-#define is_name(c)      ((c) == '_' || isalpha((unsigned char)(c)))
-#define is_in_name(c)   ((c) == '_' || isalnum((unsigned char)(c)))
+# define is_name(c)      ((c) == '_' || isalpha((unsigned char)(c)))
+# define is_in_name(c)   ((c) == '_' || isalnum((unsigned char)(c)))
 static char* FAST_FUNC endofname(const char *name)
 {
 	char *p;
@@ -1596,10 +1607,11 @@ static struct variable *set_vars_and_save_old(char **strings)
  */
 static int FAST_FUNC static_get(struct in_str *i)
 {
-	int ch = *i->p++;
-	if (ch != '\0')
+	int ch = *i->p;
+	if (ch != '\0') {
+		i->p++;
 		return ch;
-	i->p--;
+	}
 	return EOF;
 }
 
@@ -1651,7 +1663,7 @@ static void get_user_input(struct in_str *i)
 	const char *prompt_str;
 
 	prompt_str = setup_prompt_string(i->promptmode);
-#if ENABLE_FEATURE_EDITING
+# if ENABLE_FEATURE_EDITING
 	/* Enable command line editing only while a command line
 	 * is actually being read */
 	do {
@@ -1667,7 +1679,7 @@ static void get_user_input(struct in_str *i)
 		G.user_input_buf[0] = EOF; /* yes, it will be truncated, it's ok */
 		G.user_input_buf[1] = '\0';
 	}
-#else
+# else
 	do {
 		G.flag_SIGINT = 0;
 		fputs(prompt_str, stdout);
@@ -1677,7 +1689,7 @@ static void get_user_input(struct in_str *i)
 //do we need check_and_run_traps(0)? (maybe only if stdin)
 	} while (G.flag_SIGINT);
 	i->eof_flag = (r == EOF);
-#endif
+# endif
 	i->p = G.user_input_buf;
 }
 
@@ -1816,11 +1828,12 @@ static void o_addblock(o_string *o, const char *str, int len)
 	o->data[o->length] = '\0';
 }
 
-#if !BB_MMU
 static void o_addstr(o_string *o, const char *str)
 {
 	o_addblock(o, str, strlen(str));
 }
+
+#if !BB_MMU
 static void nommu_addchr(o_string *o, int ch)
 {
 	if (o)
@@ -2209,7 +2222,7 @@ static int o_glob(o_string *o, int n)
 	return n;
 }
 
-#else
+#else /* !HUSH_BRACE_EXP */
 
 /* Helper */
 static int glob_needed(const char *s)
@@ -2286,7 +2299,7 @@ static int o_glob(o_string *o, int n)
 	return n;
 }
 
-#endif
+#endif /* !HUSH_BRACE_EXP */
 
 /* If o->o_glob == 1, glob the string so far remembered.
  * Otherwise, just finish current list[] and start new */
@@ -2404,6 +2417,23 @@ static char *expand_pseudo_dquoted(const char *str)
 	return exp_str;
 }
 
+#if ENABLE_SH_MATH_SUPPORT
+static arith_t expand_and_evaluate_arith(const char *arg, int *errcode_p)
+{
+	arith_eval_hooks_t hooks;
+	arith_t res;
+	char *exp_str;
+
+	hooks.lookupvar = get_local_var_value;
+	hooks.setvar = set_local_var_from_halves;
+	hooks.endofname = endofname;
+	exp_str = expand_pseudo_dquoted(arg);
+	res = arith(exp_str ? exp_str : arg, errcode_p, &hooks);
+	free(exp_str);
+	return res;
+}
+#endif
+
 /* Expand all variable references in given string, adding words to list[]
  * at n, n+1,... positions. Return updated n (so that list[n] is next one
  * to be filled). This routine is extremely tricky: has to deal with
@@ -2428,7 +2458,7 @@ static NOINLINE int expand_vars_to_list(o_string *output, int n, char *arg, char
 	while ((p = strchr(arg, SPECIAL_VAR_SYMBOL)) != NULL) {
 		char first_ch;
 		int i;
-		char *dyn_val = NULL;
+		char *to_be_freed = NULL;
 		const char *val = NULL;
 #if ENABLE_HUSH_TICK
 		o_string subst_result = NULL_O_STRING;
@@ -2449,21 +2479,6 @@ static NOINLINE int expand_vars_to_list(o_string *output, int n, char *arg, char
 
 		switch (first_ch & 0x7f) {
 		/* Highest bit in first_ch indicates that var is double-quoted */
-		case '$': /* pid */
-			val = utoa(G.root_pid);
-			break;
-		case '!': /* bg pid */
-			val = G.last_bg_pid ? utoa(G.last_bg_pid) : (char*)"";
-			break;
-		case '?': /* exitcode */
-			val = utoa(G.last_exitcode);
-			break;
-		case '#': /* argc */
-			if (arg[1] != SPECIAL_VAR_SYMBOL)
-				/* actually, it's a ${#var} */
-				goto case_default;
-			val = utoa(G.global_argc ? G.global_argc-1 : 0);
-			break;
 		case '*':
 		case '@':
 			i = 1;
@@ -2523,27 +2538,19 @@ static NOINLINE int expand_vars_to_list(o_string *output, int n, char *arg, char
 			 * and $IFS-splitted */
 			debug_printf_subst("SUBST '%s' first_ch %x\n", arg, first_ch);
 			G.last_exitcode = process_command_subs(&subst_result, arg);
-			debug_printf_subst("SUBST RES '%s'\n", subst_result.data);
+			debug_printf_subst("SUBST RES:%d '%s'\n", G.last_exitcode, subst_result.data);
 			val = subst_result.data;
 			goto store_val;
 #endif
 #if ENABLE_SH_MATH_SUPPORT
 		case '+': { /* <SPECIAL_VAR_SYMBOL>+cmd<SPECIAL_VAR_SYMBOL> */
-			arith_eval_hooks_t hooks;
 			arith_t res;
 			int errcode;
-			char *exp_str;
 
 			arg++; /* skip '+' */
 			*p = '\0'; /* replace trailing <SPECIAL_VAR_SYMBOL> */
 			debug_printf_subst("ARITH '%s' first_ch %x\n", arg, first_ch);
-
-			exp_str = expand_pseudo_dquoted(arg);
-			hooks.lookupvar = get_local_var_value;
-			hooks.setvar = set_local_var_from_halves;
-			hooks.endofname = endofname;
-			res = arith(exp_str ? exp_str : arg, &errcode, &hooks);
-			free(exp_str);
+			res = expand_and_evaluate_arith(arg, &errcode);
 
 			if (errcode < 0) {
 				const char *msg = "error in arithmetic";
@@ -2566,88 +2573,194 @@ static NOINLINE int expand_vars_to_list(o_string *output, int n, char *arg, char
 			break;
 		}
 #endif
-		default: /* <SPECIAL_VAR_SYMBOL>varname<SPECIAL_VAR_SYMBOL> */
-		case_default: {
-			bool exp_len = false;
-			bool exp_null = false;
-			char *var = arg;
+		default: { /* <SPECIAL_VAR_SYMBOL>varname<SPECIAL_VAR_SYMBOL> */
+			char *var;
+			char first_char;
+			char exp_op;
 			char exp_save = exp_save; /* for compiler */
-			char exp_op = exp_op; /* for compiler */
+			char *exp_saveptr; /* points to expansion operator */
 			char *exp_word = exp_word; /* for compiler */
-			size_t exp_off = 0;
 
+			var = arg;
 			*p = '\0';
-			arg[0] = first_ch & 0x7f;
+			exp_saveptr = arg[1] ? strchr("%#:-=+?", arg[1]) : NULL;
+			first_char = arg[0] = first_ch & 0x7f;
+			exp_op = 0;
 
-			/* prepare for expansions */
-			if (var[0] == '#') {
+			if (first_char == '#' && arg[1] && !exp_saveptr) {
 				/* handle length expansion ${#var} */
-				exp_len = true;
-				++var;
+				var++;
+				exp_op = 'L';
 			} else {
 				/* maybe handle parameter expansion */
-				exp_off = strcspn(var, ":-=+?%#");
-				if (!var[exp_off])
-					exp_off = 0;
-				if (exp_off) {
-					exp_save = var[exp_off];
-					exp_null = exp_save == ':';
-					exp_word = var + exp_off;
-					if (exp_null)
-						++exp_word;
-					exp_op = *exp_word++;
-					var[exp_off] = '\0';
+				if (exp_saveptr /* if 2nd char is one of expansion operators */
+				 && strchr(NUMERIC_SPECVARS_STR, first_char) /* 1st char is special variable */
+				) {
+					/* ${?:0}, ${#[:]%0} etc */
+					exp_saveptr = var + 1;
+				} else {
+					/* ${?}, ${var}, ${var:0}, ${var[:]%0} etc */
+					exp_saveptr = var+1 + strcspn(var+1, "%#:-=+?");
 				}
+				exp_op = exp_save = *exp_saveptr;
+				if (exp_op) {
+					exp_word = exp_saveptr + 1;
+					if (exp_op == ':') {
+						exp_op = *exp_word++;
+						if (ENABLE_HUSH_BASH_COMPAT
+						 && (exp_op == '\0' || !strchr("%#:-=+?"+3, exp_op))
+						) {
+							/* oops... it's ${var:N[:M]}, not ${var:?xxx} or some such */
+							exp_op = ':';
+							exp_word--;
+						}
+					}
+					*exp_saveptr = '\0';
+				} /* else: it's not an expansion op, but bare ${var} */
 			}
 
 			/* lookup the variable in question */
 			if (isdigit(var[0])) {
-				/* handle_dollar() should have vetted var for us */
+				/* parse_dollar() should have vetted var for us */
 				i = xatoi_u(var);
 				if (i < G.global_argc)
 					val = G.global_argv[i];
 				/* else val remains NULL: $N with too big N */
-			} else
-				val = get_local_var_value(var);
+			} else {
+				switch (var[0]) {
+				case '$': /* pid */
+					val = utoa(G.root_pid);
+					break;
+				case '!': /* bg pid */
+					val = G.last_bg_pid ? utoa(G.last_bg_pid) : (char*)"";
+					break;
+				case '?': /* exitcode */
+					val = utoa(G.last_exitcode);
+					break;
+				case '#': /* argc */
+					val = utoa(G.global_argc ? G.global_argc-1 : 0);
+					break;
+				default:
+					val = get_local_var_value(var);
+				}
+			}
 
 			/* handle any expansions */
-			if (exp_len) {
-				debug_printf_expand("expand: length of '%s' = ", val);
+			if (exp_op == 'L') {
+				debug_printf_expand("expand: length(%s)=", val);
 				val = utoa(val ? strlen(val) : 0);
 				debug_printf_expand("%s\n", val);
-			} else if (exp_off) {
+			} else if (exp_op) {
 				if (exp_op == '%' || exp_op == '#') {
+	/* Standard-mandated substring removal ops:
+	 * ${parameter%word} - remove smallest suffix pattern
+	 * ${parameter%%word} - remove largest suffix pattern
+	 * ${parameter#word} - remove smallest prefix pattern
+	 * ${parameter##word} - remove largest prefix pattern
+	 *
+	 * Word is expanded to produce a glob pattern.
+	 * Then var's value is matched to it and matching part removed.
+	 */
 					if (val) {
-						/* we need to do a pattern match */
 						bool match_at_left;
 						char *loc;
 						scan_t scan = pick_scan(exp_op, *exp_word, &match_at_left);
 						if (exp_op == *exp_word)	/* ## or %% */
-							++exp_word;
-						val = dyn_val = xstrdup(val);
-						loc = scan(dyn_val, exp_word, match_at_left);
-						if (match_at_left) /* # or ## */
-							val = loc;
-						else if (loc) /* % or %% and match was found */
-							*loc = '\0';
+							exp_word++;
+						val = to_be_freed = xstrdup(val);
+						{
+							char *exp_exp_word = expand_pseudo_dquoted(exp_word);
+							if (exp_exp_word)
+								exp_word = exp_exp_word;
+							loc = scan(to_be_freed, exp_word, match_at_left);
+							//bb_error_msg("op:%c str:'%s' pat:'%s' res:'%s'",
+							//		exp_op, to_be_freed, exp_word, loc);
+							free(exp_exp_word);
+						}
+						if (loc) { /* match was found */
+							if (match_at_left) /* # or ## */
+								val = loc;
+							else /* % or %% */
+								*loc = '\0';
+						}
 					}
-				} else {
-					/* we need to do an expansion */
-					int exp_test = (!val || (exp_null && !val[0]));
+				} else if (exp_op == ':') {
+#if ENABLE_HUSH_BASH_COMPAT
+	/* It's ${var:N[:M]} bashism.
+	 * Note that in encoded form it has TWO parts:
+	 * var:N<SPECIAL_VAR_SYMBOL>M<SPECIAL_VAR_SYMBOL>
+	 */
+					arith_t beg, len;
+					int errcode = 0;
+
+					beg = expand_and_evaluate_arith(exp_word, &errcode);
+					debug_printf_varexp("beg:'%s'=%lld\n", exp_word, (long long)beg);
+					*p++ = SPECIAL_VAR_SYMBOL;
+					exp_word = p;
+					p = strchr(p, SPECIAL_VAR_SYMBOL);
+					*p = '\0';
+					len = expand_and_evaluate_arith(exp_word, &errcode);
+					debug_printf_varexp("len:'%s'=%lld\n", exp_word, (long long)len);
+
+					if (errcode >= 0 && len >= 0) { /* bash compat: len < 0 is illegal */
+						if (beg < 0) /* bash compat */
+							beg = 0;
+						debug_printf_varexp("from val:'%s'\n", val);
+						if (len == 0 || !val || beg >= strlen(val))
+							val = "";
+						else {
+							/* Paranoia. What if user entered 9999999999999
+							 * which fits in arith_t but not int? */
+							if (len >= INT_MAX)
+								len = INT_MAX;
+							val = to_be_freed = xstrndup(val + beg, len);
+						}
+						debug_printf_varexp("val:'%s'\n", val);
+					} else
+#endif
+					{
+						die_if_script("malformed ${%s:...}", var);
+						val = "";
+					}
+				} else { /* one of "-=+?" */
+	/* Standard-mandated substitution ops:
+	 * ${var?word} - indicate error if unset
+	 *      If var is unset, word (or a message indicating it is unset
+	 *      if word is null) is written to standard error
+	 *      and the shell exits with a non-zero exit status.
+	 *      Otherwise, the value of var is substituted.
+	 * ${var-word} - use default value
+	 *      If var is unset, word is substituted.
+	 * ${var=word} - assign and use default value
+	 *      If var is unset, word is assigned to var.
+	 *      In all cases, final value of var is substituted.
+	 * ${var+word} - use alternative value
+	 *      If var is unset, null is substituted.
+	 *      Otherwise, word is substituted.
+	 *
+	 * Word is subjected to tilde expansion, parameter expansion,
+	 * command substitution, and arithmetic expansion.
+	 * If word is not needed, it is not expanded.
+	 *
+	 * Colon forms (${var:-word}, ${var:=word} etc) do the same,
+	 * but also treat null var as if it is unset.
+	 */
+					int use_word = (!val || ((exp_save == ':') && !val[0]));
 					if (exp_op == '+')
-						exp_test = !exp_test;
+						use_word = !use_word;
 					debug_printf_expand("expand: op:%c (null:%s) test:%i\n", exp_op,
-						exp_null ? "true" : "false", exp_test);
-					if (exp_test) {
+						(exp_save == ':') ? "true" : "false", use_word);
+					if (use_word) {
+						to_be_freed = expand_pseudo_dquoted(exp_word);
+						if (to_be_freed)
+							exp_word = to_be_freed;
 						if (exp_op == '?') {
-//TODO: how interactive bash aborts expansion mid-command?
-							/* ${var?[error_msg_if_unset]} */
-							/* ${var:?[error_msg_if_unset_or_null]} */
 							/* mimic bash message */
 							die_if_script("%s: %s",
 								var,
 								exp_word[0] ? exp_word : "parameter null or not set"
 							);
+//TODO: how interactive bash aborts expansion mid-command?
 						} else {
 							val = exp_word;
 						}
@@ -2664,10 +2777,10 @@ static NOINLINE int expand_vars_to_list(o_string *output, int n, char *arg, char
 							}
 						}
 					}
-				}
+				} /* one of "-=+?" */
 
-				var[exp_off] = exp_save;
-			}
+				*exp_saveptr = exp_save;
+			} /* if (exp_op) */
 
 			arg[0] = first_ch;
 #if ENABLE_HUSH_TICK
@@ -2692,7 +2805,7 @@ static NOINLINE int expand_vars_to_list(o_string *output, int n, char *arg, char
 		if (val) {
 			o_addQstr(output, val, strlen(val));
 		}
-		free(dyn_val);
+		free(to_be_freed);
 		/* Do the check to avoid writing to a const string */
 		if (*p != SPECIAL_VAR_SYMBOL)
 			*p = SPECIAL_VAR_SYMBOL;
@@ -2921,7 +3034,7 @@ static void re_execute_shell(char ***to_free, const char *s,
 		char *g_argv0, char **g_argv,
 		char **builtin_argv)
 {
-#define NOMMU_HACK_FMT ("-$%x:%x:%x:%x:%x:%llx" IF_HUSH_LOOPS(":%x"))
+# define NOMMU_HACK_FMT ("-$%x:%x:%x:%x:%x:%llx" IF_HUSH_LOOPS(":%x"))
 	/* delims + 2 * (number of bytes in printed hex numbers) */
 	char param_buf[sizeof(NOMMU_HACK_FMT) + 2 * (sizeof(int)*6 + sizeof(long long)*1)];
 	char *heredoc_argv[4];
@@ -2966,7 +3079,7 @@ static void re_execute_shell(char ***to_free, const char *s,
 			, empty_trap_mask
 			IF_HUSH_LOOPS(, G.depth_of_loop)
 			);
-#undef NOMMU_HACK_FMT
+# undef NOMMU_HACK_FMT
 	/* 1:hush 2:-$<pid>:<pid>:<exitcode>:<etc...> <vars...> <funcs...>
 	 * 3:-c 4:<cmd> 5:<arg0> <argN...> 6:NULL
 	 */
@@ -4117,9 +4230,9 @@ static NOINLINE int run_pipe(struct pipe *pi)
 
 		if (argv[command->assignment_cnt] == NULL) {
 			/* Assignments, but no command */
-			/* Ensure redirects take effect. Try "a=t >file" */
+			/* Ensure redirects take effect (that is, create files).
+			 * Try "a=t >file": */
 			rcode = setup_redirects(command, squirrel);
-//FIXME: "false; q=`false`; echo $?" should print 1
 			restore_redirects(squirrel);
 			/* Set shell variables */
 			while (*argv) {
@@ -4129,6 +4242,11 @@ static NOINLINE int run_pipe(struct pipe *pi)
 				set_local_var(p, /*exp:*/ 0, /*lvl:*/ 0, /*ro:*/ 0);
 				argv++;
 			}
+			/* Redirect error sets $? to 1. Othervise,
+			 * if evaluating assignment value set $?, retain it.
+			 * Try "false; q=`exit 2`; echo $?" - should print 2: */
+			if (rcode == 0)
+				rcode = G.last_exitcode;
 			/* Do we need to flag set_local_var() errors?
 			 * "assignment to readonly var" and "putenv error"
 			 */
@@ -4186,7 +4304,7 @@ static NOINLINE int run_pipe(struct pipe *pi)
 				old_vars = set_vars_and_save_old(new_env);
 				if (!funcp) {
 					debug_printf_exec(": builtin '%s' '%s'...\n",
-						x->cmd, argv_expanded[1]);
+						x->b_cmd, argv_expanded[1]);
 					rcode = x->b_function(argv_expanded) & 0xff;
 					fflush_all();
 				}
@@ -4430,11 +4548,11 @@ static void debug_print_tree(struct pipe *pi, int lvl)
 				fprintf(stderr, " group %s: (argv=%p)%s%s\n",
 						CMDTYPE[command->cmd_type],
 						argv
-#if !BB_MMU
+# if !BB_MMU
 						, " group_as_string:", command->group_as_string
-#else
+# else
 						, "", ""
-#endif
+# endif
 				);
 				debug_print_tree(command->group, lvl+1);
 				prn++;
@@ -5680,7 +5798,9 @@ static int parse_group(o_string *dest, struct parse_context *ctx,
 	}
 
 	{
-#if !BB_MMU
+#if BB_MMU
+# define as_string NULL
+#else
 		char *as_string = NULL;
 #endif
 		pipe_list = parse_stream(&as_string, input, endch);
@@ -5691,9 +5811,8 @@ static int parse_group(o_string *dest, struct parse_context *ctx,
 		/* empty ()/{} or parse error? */
 		if (!pipe_list || pipe_list == ERR_PTR) {
 			/* parse_stream already emitted error msg */
-#if !BB_MMU
-			free(as_string);
-#endif
+			if (!BB_MMU)
+				free(as_string);
 			debug_printf_parse("parse_group return 1: "
 				"parse_stream returned %p\n", pipe_list);
 			return 1;
@@ -5705,6 +5824,7 @@ static int parse_group(o_string *dest, struct parse_context *ctx,
 		debug_printf_parse("end of group, remembering as:'%s'\n",
 				command->group_as_string);
 #endif
+#undef as_string
 	}
 	debug_printf_parse("parse_group return 0\n");
 	return 0;
@@ -5801,29 +5921,44 @@ static void add_till_backquote(o_string *dest, struct in_str *input)
  * echo $(echo '(TEST)' BEST)           (TEST) BEST
  * echo $(echo 'TEST)' BEST)            TEST) BEST
  * echo $(echo \(\(TEST\) BEST)         ((TEST) BEST
+ *
+ * Also adapted to eat ${var%...} and $((...)) constructs, since ... part
+ * can contain arbitrary constructs, just like $(cmd).
+ * In bash compat mode, it needs to also be able to stop on '}' or ':'
+ * for ${var:N[:M]} parsing.
  */
-static void add_till_closing_paren(o_string *dest, struct in_str *input, bool dbl)
+#define DOUBLE_CLOSE_CHAR_FLAG 0x80
+static int add_till_closing_bracket(o_string *dest, struct in_str *input, unsigned end_ch)
 {
-	int count = 0;
+	int ch;
+	char dbl = end_ch & DOUBLE_CLOSE_CHAR_FLAG;
+#if ENABLE_HUSH_BASH_COMPAT
+	char end_char2 = end_ch >> 8;
+#endif
+	end_ch &= (DOUBLE_CLOSE_CHAR_FLAG - 1);
+
 	while (1) {
-		int ch = i_getch(input);
+		ch = i_getch(input);
 		if (ch == EOF) {
-			syntax_error_unterm_ch(')');
+			syntax_error_unterm_ch(end_ch);
 			/*xfunc_die(); - redundant */
 		}
-		if (ch == '(')
-			count++;
-		if (ch == ')') {
-			if (--count < 0) {
-				if (!dbl)
-					break;
-				if (i_peek(input) == ')') {
-					i_getch(input);
-					break;
-				}
+		if (ch == end_ch  IF_HUSH_BASH_COMPAT( || ch == end_char2)) {
+			if (!dbl)
+				break;
+			/* we look for closing )) of $((EXPR)) */
+			if (i_peek(input) == end_ch) {
+				i_getch(input); /* eat second ')' */
+				break;
 			}
 		}
 		o_addchr(dest, ch);
+		if (ch == '(' || ch == '{') {
+			ch = (ch == '(' ? ')' : '}');
+			add_till_closing_bracket(dest, input, ch);
+			o_addchr(dest, ch);
+			continue;
+		}
 		if (ch == '\'') {
 			add_till_single_quote(dest, input);
 			o_addchr(dest, ch);
@@ -5831,6 +5966,11 @@ static void add_till_closing_paren(o_string *dest, struct in_str *input, bool db
 		}
 		if (ch == '"') {
 			add_till_double_quote(dest, input);
+			o_addchr(dest, ch);
+			continue;
+		}
+		if (ch == '`') {
+			add_till_backquote(dest, input);
 			o_addchr(dest, ch);
 			continue;
 		}
@@ -5845,22 +5985,24 @@ static void add_till_closing_paren(o_string *dest, struct in_str *input, bool db
 			continue;
 		}
 	}
+	return ch;
 }
 #endif /* ENABLE_HUSH_TICK || ENABLE_SH_MATH_SUPPORT */
 
 /* Return code: 0 for OK, 1 for syntax error */
 #if BB_MMU
-#define handle_dollar(as_string, dest, input) \
-	handle_dollar(dest, input)
+#define parse_dollar(as_string, dest, input) \
+	parse_dollar(dest, input)
+#define as_string NULL
 #endif
-static int handle_dollar(o_string *as_string,
+static int parse_dollar(o_string *as_string,
 		o_string *dest,
 		struct in_str *input)
 {
 	int ch = i_peek(input);  /* first character after the $ */
 	unsigned char quote_mask = dest->o_escape ? 0x80 : 0;
 
-	debug_printf_parse("handle_dollar entered: ch='%c'\n", ch);
+	debug_printf_parse("parse_dollar entered: ch='%c'\n", ch);
 	if (isalpha(ch)) {
 		ch = i_getch(input);
 		nommu_addchr(as_string, ch);
@@ -5894,92 +6036,91 @@ static int handle_dollar(o_string *as_string,
 	case '@': /* args */
 		goto make_one_char_var;
 	case '{': {
-		bool first_char, all_digits;
-		int expansion;
-
-		ch = i_getch(input);
-		nommu_addchr(as_string, ch);
 		o_addchr(dest, SPECIAL_VAR_SYMBOL);
 
-		/* TODO: maybe someone will try to escape the '}' */
-		expansion = 0;
-		first_char = true;
-		all_digits = false;
+		ch = i_getch(input); /* eat '{' */
+		nommu_addchr(as_string, ch);
+
+		ch = i_getch(input); /* first char after '{' */
+		nommu_addchr(as_string, ch);
+		/* It should be ${?}, or ${#var},
+		 * or even ${?+subst} - operator acting on a special variable,
+		 * or the beginning of variable name.
+		 */
+		if (!strchr(_SPECIAL_VARS_STR, ch) && !isalnum(ch)) { /* not one of those */
+ bad_dollar_syntax:
+			syntax_error_unterm_str("${name}");
+			debug_printf_parse("parse_dollar return 1: unterminated ${name}\n");
+			return 1;
+		}
+		ch |= quote_mask;
+
+		/* It's possible to just call add_till_closing_bracket() at this point.
+		 * However, this regresses some of our testsuite cases
+		 * which check invalid constructs like ${%}.
+		 * Oh well... let's check that the var name part is fine... */
+
 		while (1) {
+			unsigned pos;
+
+			o_addchr(dest, ch);
+			debug_printf_parse(": '%c'\n", ch);
+
 			ch = i_getch(input);
 			nommu_addchr(as_string, ch);
-			if (ch == '}') {
+			if (ch == '}')
 				break;
-			}
 
-			if (first_char) {
-				if (ch == '#') {
-					/* ${#var}: length of var contents */
-					goto char_ok;
-				}
-				if (isdigit(ch)) {
-					all_digits = true;
-					goto char_ok;
-				}
-				/* They're being verbose and doing ${?} */
-				if (i_peek(input) == '}' && strchr("$!?#*@_", ch))
-					goto char_ok;
-			}
-
-			if (expansion < 2
-			 && (  (all_digits && !isdigit(ch))
-			    || (!all_digits && !isalnum(ch) && ch != '_')
-			    )
-			) {
+			if (!isalnum(ch) && ch != '_') {
+				unsigned end_ch;
+				unsigned char last_ch;
 				/* handle parameter expansions
 				 * http://www.opengroup.org/onlinepubs/009695399/utilities/xcu_chap02.html#tag_02_06_02
 				 */
-				if (first_char)
-					goto case_default;
-				switch (ch) {
-				case ':': /* null modifier */
-					if (expansion == 0) {
-						debug_printf_parse(": null modifier\n");
-						++expansion;
-						break;
-					}
-					goto case_default;
-				case '#': /* remove prefix */
-				case '%': /* remove suffix */
-					if (expansion == 0) {
-						debug_printf_parse(": remove suffix/prefix\n");
-						expansion = 2;
-						break;
-					}
-					goto case_default;
-				case '-': /* default value */
-				case '=': /* assign default */
-				case '+': /* alternative */
-				case '?': /* error indicate */
-					debug_printf_parse(": parameter expansion\n");
-					expansion = 2;
-					break;
-				default:
-				case_default:
-					syntax_error_unterm_str("${name}");
-					debug_printf_parse("handle_dollar return 1: unterminated ${name}\n");
-					return 1;
+				if (!strchr("%#:-=+?", ch)) /* ${var<bad_char>... */
+					goto bad_dollar_syntax;
+				o_addchr(dest, ch);
+
+				/* Eat everything until closing '}' (or ':') */
+				end_ch = '}';
+				if (ENABLE_HUSH_BASH_COMPAT
+				 && ch == ':'
+				 && !strchr("%#:-=+?"+3, i_peek(input))
+				) {
+					/* It's ${var:N[:M]} thing */
+					end_ch = '}' * 0x100 + ':';
 				}
+ again:
+				if (!BB_MMU)
+					pos = dest->length;
+				last_ch = add_till_closing_bracket(dest, input, end_ch);
+				if (as_string) {
+					o_addstr(as_string, dest->data + pos);
+					o_addchr(as_string, last_ch);
+				}
+
+				if (ENABLE_HUSH_BASH_COMPAT && (end_ch & 0xff00)) {
+					/* close the first block: */
+					o_addchr(dest, SPECIAL_VAR_SYMBOL);
+					/* while parsing N from ${var:N[:M]}... */
+					if ((end_ch & 0xff) == last_ch) {
+						/* ...got ':' - parse the rest */
+						end_ch = '}';
+						goto again;
+					}
+					/* ...got '}', not ':' - it's ${var:N}! emulate :999999999 */
+					o_addstr(dest, "999999999");
+				}
+				break;
 			}
- char_ok:
-			debug_printf_parse(": '%c'\n", ch);
-			o_addchr(dest, ch | quote_mask);
-			quote_mask = 0;
-			first_char = false;
-		} /* while (1) */
+		}
 		o_addchr(dest, SPECIAL_VAR_SYMBOL);
 		break;
 	}
 #if ENABLE_SH_MATH_SUPPORT || ENABLE_HUSH_TICK
 	case '(': {
-# if !BB_MMU
-		int pos;
-# endif
+		unsigned pos;
+
 		ch = i_getch(input);
 		nommu_addchr(as_string, ch);
 # if ENABLE_SH_MATH_SUPPORT
@@ -5988,17 +6129,14 @@ static int handle_dollar(o_string *as_string,
 			nommu_addchr(as_string, ch);
 			o_addchr(dest, SPECIAL_VAR_SYMBOL);
 			o_addchr(dest, /*quote_mask |*/ '+');
-#  if !BB_MMU
-			pos = dest->length;
-#  endif
-			add_till_closing_paren(dest, input, true);
-#  if !BB_MMU
+			if (!BB_MMU)
+				pos = dest->length;
+			add_till_closing_bracket(dest, input, ')' | DOUBLE_CLOSE_CHAR_FLAG);
 			if (as_string) {
 				o_addstr(as_string, dest->data + pos);
 				o_addchr(as_string, ')');
 				o_addchr(as_string, ')');
 			}
-#  endif
 			o_addchr(dest, SPECIAL_VAR_SYMBOL);
 			break;
 		}
@@ -6006,16 +6144,13 @@ static int handle_dollar(o_string *as_string,
 # if ENABLE_HUSH_TICK
 		o_addchr(dest, SPECIAL_VAR_SYMBOL);
 		o_addchr(dest, quote_mask | '`');
-#  if !BB_MMU
-		pos = dest->length;
-#  endif
-		add_till_closing_paren(dest, input, false);
-#  if !BB_MMU
+		if (!BB_MMU)
+			pos = dest->length;
+		add_till_closing_bracket(dest, input, ')');
 		if (as_string) {
 			o_addstr(as_string, dest->data + pos);
 			o_addchr(as_string, ')');
 		}
-#  endif
 		o_addchr(dest, SPECIAL_VAR_SYMBOL);
 # endif
 		break;
@@ -6038,13 +6173,15 @@ static int handle_dollar(o_string *as_string,
 	default:
 		o_addQchr(dest, '$');
 	}
-	debug_printf_parse("handle_dollar return 0\n");
+	debug_printf_parse("parse_dollar return 0\n");
 	return 0;
+#undef as_string
 }
 
 #if BB_MMU
 #define parse_stream_dquoted(as_string, dest, input, dquote_end) \
 	parse_stream_dquoted(dest, input, dquote_end)
+#define as_string NULL
 #endif
 static int parse_stream_dquoted(o_string *as_string,
 		o_string *dest,
@@ -6099,16 +6236,16 @@ static int parse_stream_dquoted(o_string *as_string,
 		goto again;
 	}
 	if (ch == '$') {
-		if (handle_dollar(as_string, dest, input) != 0) {
+		if (parse_dollar(as_string, dest, input) != 0) {
 			debug_printf_parse("parse_stream_dquoted return 1: "
-					"handle_dollar returned non-0\n");
+					"parse_dollar returned non-0\n");
 			return 1;
 		}
 		goto again;
 	}
 #if ENABLE_HUSH_TICK
 	if (ch == '`') {
-		//int pos = dest->length;
+		//unsigned pos = dest->length;
 		o_addchr(dest, SPECIAL_VAR_SYMBOL);
 		o_addchr(dest, 0x80 | '`');
 		add_till_backquote(dest, input);
@@ -6126,6 +6263,7 @@ static int parse_stream_dquoted(o_string *as_string,
 		dest->o_assignment = DEFINITELY_ASSIGNMENT;
 	}
 	goto again;
+#undef as_string
 }
 
 /*
@@ -6463,9 +6601,9 @@ static struct pipe *parse_stream(char **pstring,
 #endif
 			break;
 		case '$':
-			if (handle_dollar(&ctx.as_string, &dest, input) != 0) {
+			if (parse_dollar(&ctx.as_string, &dest, input) != 0) {
 				debug_printf_parse("parse_stream parse error: "
-					"handle_dollar returned non-0\n");
+					"parse_dollar returned non-0\n");
 				goto parse_error;
 			}
 			break;
@@ -6491,19 +6629,16 @@ static struct pipe *parse_stream(char **pstring,
 			break;
 #if ENABLE_HUSH_TICK
 		case '`': {
-#if !BB_MMU
-			int pos;
-#endif
+			unsigned pos;
+
 			o_addchr(&dest, SPECIAL_VAR_SYMBOL);
 			o_addchr(&dest, '`');
-#if !BB_MMU
 			pos = dest.length;
-#endif
 			add_till_backquote(&dest, input);
-#if !BB_MMU
+# if !BB_MMU
 			o_addstr(&ctx.as_string, dest.data + pos);
 			o_addchr(&ctx.as_string, '`');
-#endif
+# endif
 			o_addchr(&dest, SPECIAL_VAR_SYMBOL);
 			//debug_printf_subst("SUBST RES3 '%s'\n", dest.data + pos);
 			break;
@@ -6814,7 +6949,7 @@ int hush_main(int argc, char **argv)
 	struct variable *cur_var;
 
 	INIT_G();
-	if (EXIT_SUCCESS) /* if EXIT_SUCCESS == 0, is already done */
+	if (EXIT_SUCCESS) /* if EXIT_SUCCESS == 0, it is already done */
 		G.last_exitcode = EXIT_SUCCESS;
 #if !BB_MMU
 	G.argv0_for_re_execing = argv[0];
@@ -6954,7 +7089,7 @@ int hush_main(int argc, char **argv)
 				/* -c 'script' (no params): prevent empty $0 */
 				G.global_argv--; /* points to argv[i] of 'script' */
 				G.global_argv[0] = argv[0];
-				G.global_argc--;
+				G.global_argc++;
 			} /* else -c 'script' ARG0 [ARG1...]: $0 is ARG0 */
 			init_sigmasks();
 			parse_and_run_string(optarg);
@@ -7258,11 +7393,20 @@ static int FAST_FUNC builtin_printf(char **argv)
 }
 #endif
 
+static char **skip_dash_dash(char **argv)
+{
+	argv++;
+	if (argv[0] && argv[0][0] == '-' && argv[0][1] == '-' && argv[0][2] == '\0')
+		argv++;
+	return argv;
+}
+
 static int FAST_FUNC builtin_eval(char **argv)
 {
 	int rcode = EXIT_SUCCESS;
 
-	if (*++argv) {
+	argv = skip_dash_dash(argv);
+	if (*argv) {
 		char *str = expand_strvec_to_string(argv);
 		/* bash:
 		 * eval "echo Hi; done" ("done" is syntax error):
@@ -7277,7 +7421,10 @@ static int FAST_FUNC builtin_eval(char **argv)
 
 static int FAST_FUNC builtin_cd(char **argv)
 {
-	const char *newdir = argv[1];
+	const char *newdir;
+
+	argv = skip_dash_dash(argv);
+	newdir = argv[0];
 	if (newdir == NULL) {
 		/* bash does nothing (exitcode 0) if HOME is ""; if it's unset,
 		 * bash says "bash: cd: HOME not set" and does nothing
@@ -7301,7 +7448,8 @@ static int FAST_FUNC builtin_cd(char **argv)
 
 static int FAST_FUNC builtin_exec(char **argv)
 {
-	if (*++argv == NULL)
+	argv = skip_dash_dash(argv);
+	if (argv[0] == NULL)
 		return EXIT_SUCCESS; /* bash does this */
 
 	/* Careful: we can end up here after [v]fork. Do not restore
@@ -7334,12 +7482,13 @@ static int FAST_FUNC builtin_exit(char **argv)
 	 */
 
 	/* note: EXIT trap is run by hush_exit */
-	if (*++argv == NULL)
+	argv = skip_dash_dash(argv);
+	if (argv[0] == NULL)
 		hush_exit(G.last_exitcode);
 	/* mimic bash: exit 123abc == exit 255 + error msg */
 	xfunc_error_retval = 255;
 	/* bash: exit -2 == exit 254, no error msg */
-	hush_exit(xatoi(*argv) & 0xff);
+	hush_exit(xatoi(argv[0]) & 0xff);
 }
 
 static void print_escaped(const char *s)
@@ -7668,7 +7817,7 @@ static int FAST_FUNC builtin_help(char **argv UNUSED_PARAM)
 		"------------------\n");
 	for (x = bltins1; x != &bltins1[ARRAY_SIZE(bltins1)]; x++) {
 		if (x->b_descr)
-			printf("%s\t%s\n", x->b_cmd, x->b_descr);
+			printf("%-10s%s\n", x->b_cmd, x->b_descr);
 	}
 	bb_putchar('\n');
 	return EXIT_SUCCESS;
@@ -7851,8 +8000,9 @@ static int FAST_FUNC builtin_set(char **argv)
 static int FAST_FUNC builtin_shift(char **argv)
 {
 	int n = 1;
-	if (argv[1]) {
-		n = atoi(argv[1]);
+	argv = skip_dash_dash(argv);
+	if (argv[0]) {
+		n = atoi(argv[0]);
 	}
 	if (n >= 0 && n < G.global_argc) {
 		if (G.global_args_malloced) {
@@ -7877,12 +8027,13 @@ static int FAST_FUNC builtin_source(char **argv)
 	smallint sv_flg;
 #endif
 
-	arg_path = NULL;
-	filename = *++argv;
+	argv = skip_dash_dash(argv);
+	filename = argv[0];
 	if (!filename) {
 		/* bash says: "bash: .: filename argument required" */
 		return 2; /* bash compat */
 	}
+	arg_path = NULL;
 	if (!strchr(filename, '/')) {
 		arg_path = find_in_path(filename);
 		if (arg_path)
@@ -7920,11 +8071,12 @@ static int FAST_FUNC builtin_umask(char **argv)
 	mode_t mask;
 
 	mask = umask(0);
-	if (argv[1]) {
+	argv = skip_dash_dash(argv);
+	if (argv[0]) {
 		mode_t old_mask = mask;
 
 		mask ^= 0777;
-		rc = bb_parse_mode(argv[1], &mask);
+		rc = bb_parse_mode(argv[0], &mask);
 		mask ^= 0777;
 		if (rc == 0) {
 			mask = old_mask;
@@ -7932,7 +8084,7 @@ static int FAST_FUNC builtin_umask(char **argv)
 			 * bash: umask: 'q': invalid symbolic mode operator
 			 * bash: umask: 999: octal number out of range
 			 */
-			bb_error_msg("%s: '%s' invalid mode", argv[0], argv[1]);
+			bb_error_msg("%s: invalid mode '%s'", "umask", argv[0]);
 		}
 	} else {
 		rc = 1;
@@ -7988,7 +8140,8 @@ static int FAST_FUNC builtin_wait(char **argv)
 	int ret = EXIT_SUCCESS;
 	int status, sig;
 
-	if (*++argv == NULL) {
+	argv = skip_dash_dash(argv);
+	if (argv[0] == NULL) {
 		/* Don't care about wait results */
 		/* Note 1: must wait until there are no more children */
 		/* Note 2: must be interruptible */
