@@ -1,9 +1,9 @@
 /* vi: set sw=4 ts=4: */
 /*
-   Copyright 2006, Bernhard Reutner-Fischer
-
-   Licensed under the GPL v2 or later, see the file LICENSE in this tarball.
-*/
+ *  Copyright 2006, Bernhard Reutner-Fischer
+ *
+ * Licensed under the GPL v2 or later, see the file LICENSE in this tarball.
+ */
 #ifndef	BB_PLATFORM_H
 #define BB_PLATFORM_H 1
 
@@ -162,9 +162,8 @@
 
 #if defined(__digital__) && defined(__unix__)
 # include <sex.h>
-# define __BIG_ENDIAN__ (BYTE_ORDER == BIG_ENDIAN)
-# define __BYTE_ORDER BYTE_ORDER
-#elif defined __FreeBSD__
+#elif defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) \
+   || defined(__APPLE__)
 # include <sys/resource.h>	/* rlimit */
 # include <machine/endian.h>
 # define bswap_64 __bswap64
@@ -178,24 +177,30 @@
 # define bswap_16(x) ((((x) & 0xFF00) >> 8) | (((x) & 0xFF) << 8))
 # define bswap_32(x) ((bswap_16(((x) & 0xFFFF0000L) >> 16)) | (bswap_16((x) & 0xFFFFL) << 16))
 # define bswap_64(x) ((bswap_32(((x) & 0xFFFFFFFF00000000LL) >> 32)) | (bswap_32((x) & 0xFFFFFFFFLL) << 32))
-#elif !defined __APPLE__ && !defined __OpenBSD__
+#else
 # include <byteswap.h>
 # include <endian.h>
 #endif
 
-#if defined(__BIG_ENDIAN__) && __BIG_ENDIAN__
+#if defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN
 # define BB_BIG_ENDIAN 1
 # define BB_LITTLE_ENDIAN 0
-#elif defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN
-# define BB_BIG_ENDIAN 1
-# define BB_LITTLE_ENDIAN 0
+#elif defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN
+# define BB_BIG_ENDIAN 0
+# define BB_LITTLE_ENDIAN 1
 #elif defined(_BYTE_ORDER) && _BYTE_ORDER == _BIG_ENDIAN
 # define BB_BIG_ENDIAN 1
 # define BB_LITTLE_ENDIAN 0
-#elif (defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN) || defined(__386__)
+#elif defined(_BYTE_ORDER) && _BYTE_ORDER == _LITTLE_ENDIAN
 # define BB_BIG_ENDIAN 0
 # define BB_LITTLE_ENDIAN 1
-#elif defined(_BYTE_ORDER) && _BYTE_ORDER == _LITTLE_ENDIAN
+#elif defined(BYTE_ORDER) && BYTE_ORDER == BIG_ENDIAN
+# define BB_BIG_ENDIAN 1
+# define BB_LITTLE_ENDIAN 0
+#elif defined(BYTE_ORDER) && BYTE_ORDER == LITTLE_ENDIAN
+# define BB_BIG_ENDIAN 0
+# define BB_LITTLE_ENDIAN 1
+#elif defined(__386__)
 # define BB_BIG_ENDIAN 0
 # define BB_LITTLE_ENDIAN 1
 #else
@@ -253,7 +258,8 @@ typedef uint32_t bb__aliased_uint32_t FIX_ALIASING;
 /* ---- Compiler dependent settings ------------------------- */
 
 #if (defined __digital__ && defined __unix__) \
- || defined __APPLE__ || defined __FreeBSD__ || defined __OpenBSD__ \
+ || defined __APPLE__ \
+ || defined __FreeBSD__ || defined __OpenBSD__ || defined __NetBSD__ \
  || ENABLE_PLATFORM_MINGW32
 # undef HAVE_MNTENT_H
 # undef HAVE_SYS_STATFS_H
