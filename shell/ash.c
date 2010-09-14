@@ -12674,7 +12674,9 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 		}
 #if ENABLE_PLATFORM_MINGW32
 		len = strlen(fullname);
-		if (len > 4 && !strcasecmp(fullname+len-4, ".exe")) {
+		if (len > 4 &&
+		    (!strcasecmp(fullname+len-4, ".exe") ||
+		     !strcasecmp(fullname+len-4, ".com"))) {
 			if (stat(fullname, &statb) < 0) {
 				if (errno != ENOENT && errno != ENOTDIR)
 					e = errno;
@@ -12687,7 +12689,12 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			if (stat(fullname, &statb) < 0) {
 				if (errno != ENOENT && errno != ENOTDIR)
 					e = errno;
-				goto loop;
+				memcpy(fullname+len, ".com", 5);
+				if (stat(fullname, &statb) < 0) {
+					if (errno != ENOENT && errno != ENOTDIR)
+						e = errno;
+					goto loop;
+				}
 			}
 			fullname[len] = '\0';
 		}
