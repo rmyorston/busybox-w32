@@ -2989,9 +2989,7 @@ INSERT
      "\n	-d	Verbose" \
      "\n	-n	Do not daemonize" \
      "\n	-q	Quit after clock is set" \
-/* -N exists for mostly compat reasons, thus not essential to inform */ \
-/* the user that it exists: user may use nice as well */ \
-/*   "\n	-N	Run at high priority" */ \
+     "\n	-N	Run at high priority" \
      "\n	-w	Do not set time (only query peers), implies -n" \
      "\n	-l	Run as server on port 123" \
      "\n	-S PROG	Run PROG after stepping time, stratum change, and every 11 mins" \
@@ -4467,8 +4465,13 @@ INSERT
 #define tune2fs_full_usage "\n\n" \
        "Adjust filesystem options on ext[23] filesystems"
 
+#if defined CONFIG_UDHCP_DEBUG && CONFIG_UDHCP_DEBUG >= 1
+# define IF_UDHCP_VERBOSE(...) __VA_ARGS__
+#else
+# define IF_UDHCP_VERBOSE(...)
+#endif
 #define udhcpc_trivial_usage \
-       "[-fbnqvoCR] [-i IFACE] [-r IP] [-s PROG] [-p PIDFILE]\n" \
+       "[-fbnq"IF_UDHCP_VERBOSE("v")"oCR] [-i IFACE] [-r IP] [-s PROG] [-p PIDFILE]\n" \
        "	[-H HOSTNAME] [-c CID] [-V VENDOR] [-O DHCP_OPT]..." IF_FEATURE_UDHCP_PORT(" [-P N]")
 #define udhcpc_full_usage "\n" \
 	IF_LONG_OPTS( \
@@ -4501,6 +4504,9 @@ INSERT
      "\n	-V,--vendorclass VENDOR	Vendor identifier (default 'udhcp VERSION')" \
      "\n	-c,--clientid CLIENTID	Client identifier (default own MAC)" \
      "\n	-C,--clientid-none	Don't send client identifier" \
+	IF_UDHCP_VERBOSE( \
+     "\n	-v			Verbose" \
+	) \
 	) \
 	IF_NOT_LONG_OPTS( \
      "\n	-i IFACE	Interface to use (default eth0)" \
@@ -4532,7 +4538,10 @@ INSERT
      "\n	-V VENDOR	Vendor identifier (default 'udhcp VERSION')" \
      "\n	-c CLIENTID	Client identifier (default own MAC)" \
      "\n	-C		Don't send client identifier" \
-	)
+	IF_UDHCP_VERBOSE( \
+     "\n	-v		Verbose" \
+	) \
+	) \
 
 #define udhcpd_trivial_usage \
        "[-fS]" IF_FEATURE_UDHCP_PORT(" [-P N]") " [configfile]" \
@@ -4768,10 +4777,12 @@ INSERT
 	IF_FEATURE_WGET_LONG_OPTIONS( \
        "[-c|--continue] [-s|--spider] [-q|--quiet] [-O|--output-document FILE]\n" \
        "	[--header 'header: value'] [-Y|--proxy on/off] [-P DIR]\n" \
-       "	[--no-check-certificate] [-U|--user-agent AGENT] URL" \
+       "	[--no-check-certificate] [-U|--user-agent AGENT]" \
+			IF_FEATURE_WGET_TIMEOUT("[-T SEC] ") " URL" \
 	) \
 	IF_NOT_FEATURE_WGET_LONG_OPTIONS( \
-       "[-csq] [-O FILE] [-Y on/off] [-P DIR] [-U AGENT] URL" \
+       "[-csq] [-O FILE] [-Y on/off] [-P DIR] [-U AGENT]" \
+			IF_FEATURE_WGET_TIMEOUT("[-T SEC] ") " URL" \
 	)
 #define wget_full_usage "\n\n" \
        "Retrieve files via HTTP or FTP\n" \
@@ -4779,7 +4790,10 @@ INSERT
      "\n	-s	Spider mode - only check file existence" \
      "\n	-c	Continue retrieval of aborted transfer" \
      "\n	-q	Quiet" \
-     "\n	-P	Set directory prefix to DIR" \
+     "\n	-P DIR	Save to DIR (default .)" \
+	IF_FEATURE_WGET_TIMEOUT( \
+     "\n	-T SEC	Network read timeout is SEC seconds" \
+	) \
      "\n	-O FILE	Save to FILE ('-' for stdout)" \
      "\n	-U STR	Use STR for User-Agent header" \
      "\n	-Y	Use proxy ('on' or 'off')" \
