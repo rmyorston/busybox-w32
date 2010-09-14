@@ -122,6 +122,18 @@ static void move_cursor_back(int n)
 	SetConsoleCursorPosition(console, sbi.dwCursorPosition);
 }
 
+static void move_cursor(int x, int y)
+{
+	COORD pos;
+
+	if (!console)
+		return;
+
+	pos.X = x;
+	pos.Y = y;
+	SetConsoleCursorPosition(console, pos);
+}
+
 static const char *set_attr(const char *str)
 {
 	const char *func;
@@ -262,6 +274,10 @@ static const char *set_attr(const char *str)
 		break;
 	case 'D':
 		move_cursor_back(strtol(str, (char **)&str, 10));
+		break;
+	case 'H':
+		if (!len)
+			move_cursor(0, 0);
 		break;
 	case 'J':
 		erase_till_end_of_screen();
