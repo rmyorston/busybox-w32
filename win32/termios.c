@@ -29,8 +29,24 @@ int64_t FAST_FUNC read_key(int fd, char *buf, int timeout UNUSED_PARAM)
 			goto done;
 		if (record.EventType != KEY_EVENT || !record.Event.KeyEvent.bKeyDown)
 			continue;
-		if (!record.Event.KeyEvent.uChar.AsciiChar)
+		if (!record.Event.KeyEvent.uChar.AsciiChar) {
+			switch (record.Event.KeyEvent.wVirtualKeyCode) {
+			case VK_UP: return KEYCODE_UP;
+			case VK_DOWN: return KEYCODE_DOWN;
+			case VK_RIGHT: return KEYCODE_RIGHT;
+			case VK_LEFT: return KEYCODE_LEFT;
+			case VK_HOME: return KEYCODE_HOME;
+			case VK_END: return KEYCODE_END;
+			case VK_CAPITAL:
+			case VK_SHIFT:
+			case VK_CONTROL:
+			case VK_MENU:
+				break;
+			default:
+				return -1;
+			}
 			continue;
+		}
 		ret = record.Event.KeyEvent.uChar.AsciiChar;
 		break;
 	}
