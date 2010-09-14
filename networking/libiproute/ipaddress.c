@@ -54,6 +54,8 @@ static void print_link_flags(unsigned flags, unsigned mdown)
 		"MULTICAST\0""NOARP\0""UP\0""LOWER_UP\0";
 
 	bb_putchar('<');
+	if (flags & IFF_UP && !(flags & IFF_RUNNING))
+		printf("NO-CARRIER,");
 	flags &= ~IFF_RUNNING;
 #if 0
 	_PF(ALLMULTI);
@@ -162,6 +164,13 @@ static NOINLINE int print_linkinfo(const struct nlmsghdr *n)
 		printf("master %s ", ll_idx_n2a(*(int*)RTA_DATA(tb[IFLA_MASTER]), b1));
 	}
 #endif
+	if (tb[IFLA_OPERSTATE]) {
+		static const char operstate_labels[] ALIGN1 =
+			"UNKNOWN\0""NOTPRESENT\0""DOWN\0""LOWERLAYERDOWN\0"
+			"TESTING\0""DORMANT\0""UP\0";
+		printf("state %s ", nth_string(operstate_labels,
+					*(uint8_t *)RTA_DATA(tb[IFLA_OPERSTATE])));
+	}
 	if (G_filter.showqueue)
 		print_queuelen((char*)RTA_DATA(tb[IFLA_IFNAME]));
 
@@ -433,16 +442,14 @@ int ipaddr_list_or_flush(char **argv, int flush)
 	}
 
 	while (*argv) {
-		const int option_num = index_in_strings(option, *argv);
-		switch (option_num) {
-			case 0: /* to */
+		const smalluint key = index_in_strings(option, *argv);
+		if (key == 0) { /* to */
 				NEXT_ARG();
 				get_prefix(&G_filter.pfx, *argv, G_filter.family);
 				if (G_filter.family == AF_UNSPEC) {
 					G_filter.family = G_filter.pfx.family;
 				}
-				break;
-			case 1: { /* scope */
+		} else if (key == 1) { /* scope */
 				uint32_t scope = 0;
 				NEXT_ARG();
 				G_filter.scopemask = -1;
@@ -454,22 +461,17 @@ int ipaddr_list_or_flush(char **argv, int flush)
 					G_filter.scopemask = 0;
 				}
 				G_filter.scope = scope;
-				break;
-			}
-			case 2: /* up */
+		} else if (key == 2) { /* up */
 				G_filter.up = 1;
-				break;
-			case 3: /* label */
+		} else if (key == 3) { /* label */
 				NEXT_ARG();
 				G_filter.label = *argv;
-				break;
-			case 4: /* dev */
+		} else {
+			if (key == 4) /* dev */
 				NEXT_ARG();
-			default:
-				if (filter_dev) {
-					duparg2("dev", *argv);
-				}
-				filter_dev = *argv;
+			if (filter_dev)
+				duparg2("dev", *argv);
+			filter_dev = *argv;
 		}
 		argv++;
 	}
@@ -622,99 +624,85 @@ static int ipaddr_modify(int cmd, char **argv)
 	req.ifa.ifa_family = preferred_family;
 
 	while (*argv) {
-		const int option_num = index_in_strings(option, *argv);
-		switch (option_num) {
-			case 0: /* peer */
-			case 1: /* remote */
-				NEXT_ARG();
+		const smalluint arg = index_in_strings(option, *argv);
+		if (arg <= 1) { /* peer, remote */
+			NEXT_ARG();
 
-				if (peer_len) {
-					duparg("peer", *argv);
-				}
-				get_prefix(&peer, *argv, req.ifa.ifa_family);
-				peer_len = peer.bytelen;
-				if (req.ifa.ifa_family == AF_UNSPEC) {
-					req.ifa.ifa_family = peer.family;
-				}
-				addattr_l(&req.n, sizeof(req), IFA_ADDRESS, &peer.data, peer.bytelen);
-				req.ifa.ifa_prefixlen = peer.bitlen;
-				break;
-			case 2: /* broadcast */
-			case 3: /* brd */
-			{
-				inet_prefix addr;
-				NEXT_ARG();
-				if (brd_len) {
-					duparg("broadcast", *argv);
-				}
-				if (LONE_CHAR(*argv, '+')) {
-					brd_len = -1;
-				} else if (LONE_DASH(*argv)) {
-					brd_len = -2;
-				} else {
-					get_addr(&addr, *argv, req.ifa.ifa_family);
-					if (req.ifa.ifa_family == AF_UNSPEC)
-						req.ifa.ifa_family = addr.family;
-					addattr_l(&req.n, sizeof(req), IFA_BROADCAST, &addr.data, addr.bytelen);
-					brd_len = addr.bytelen;
-				}
-				break;
+			if (peer_len) {
+				duparg("peer", *argv);
 			}
-			case 4: /* anycast */
-			{
-				inet_prefix addr;
-				NEXT_ARG();
-				if (any_len) {
-					duparg("anycast", *argv);
-				}
+			get_prefix(&peer, *argv, req.ifa.ifa_family);
+			peer_len = peer.bytelen;
+			if (req.ifa.ifa_family == AF_UNSPEC) {
+				req.ifa.ifa_family = peer.family;
+			}
+			addattr_l(&req.n, sizeof(req), IFA_ADDRESS, &peer.data, peer.bytelen);
+			req.ifa.ifa_prefixlen = peer.bitlen;
+		} else if (arg <= 3) { /* broadcast, brd */
+			inet_prefix addr;
+			NEXT_ARG();
+			if (brd_len) {
+				duparg("broadcast", *argv);
+			}
+			if (LONE_CHAR(*argv, '+')) {
+				brd_len = -1;
+			} else if (LONE_DASH(*argv)) {
+				brd_len = -2;
+			} else {
 				get_addr(&addr, *argv, req.ifa.ifa_family);
-				if (req.ifa.ifa_family == AF_UNSPEC) {
+				if (req.ifa.ifa_family == AF_UNSPEC)
 					req.ifa.ifa_family = addr.family;
-				}
-				addattr_l(&req.n, sizeof(req), IFA_ANYCAST, &addr.data, addr.bytelen);
-				any_len = addr.bytelen;
-				break;
+				addattr_l(&req.n, sizeof(req), IFA_BROADCAST, &addr.data, addr.bytelen);
+				brd_len = addr.bytelen;
 			}
-			case 5: /* scope */
-			{
-				uint32_t scope = 0;
-				NEXT_ARG();
-				if (rtnl_rtscope_a2n(&scope, *argv)) {
-					invarg(*argv, "scope");
-				}
-				req.ifa.ifa_scope = scope;
-				scoped = 1;
-				break;
+		} else if (arg == 4) { /* anycast */
+			inet_prefix addr;
+			NEXT_ARG();
+			if (any_len) {
+				duparg("anycast", *argv);
 			}
-			case 6: /* dev */
+			get_addr(&addr, *argv, req.ifa.ifa_family);
+			if (req.ifa.ifa_family == AF_UNSPEC) {
+				req.ifa.ifa_family = addr.family;
+			}
+			addattr_l(&req.n, sizeof(req), IFA_ANYCAST, &addr.data, addr.bytelen);
+			any_len = addr.bytelen;
+		} else if (arg == 5) { /* scope */
+			uint32_t scope = 0;
+			NEXT_ARG();
+			if (rtnl_rtscope_a2n(&scope, *argv)) {
+				invarg(*argv, "scope");
+			}
+			req.ifa.ifa_scope = scope;
+			scoped = 1;
+		} else if (arg == 6) { /* dev */
+			NEXT_ARG();
+			d = *argv;
+		} else if (arg == 7) { /* label */
+			NEXT_ARG();
+			l = *argv;
+			addattr_l(&req.n, sizeof(req), IFA_LABEL, l, strlen(l)+1);
+		} else {
+			if (arg == 8) /* local */
 				NEXT_ARG();
-				d = *argv;
-				break;
-			case 7: /* label */
-				NEXT_ARG();
-				l = *argv;
-				addattr_l(&req.n, sizeof(req), IFA_LABEL, l, strlen(l)+1);
-				break;
-			case 8:	/* local */
-				NEXT_ARG();
-			default:
-				if (local_len) {
-					duparg2("local", *argv);
-				}
-				get_prefix(&lcl, *argv, req.ifa.ifa_family);
-				if (req.ifa.ifa_family == AF_UNSPEC) {
-					req.ifa.ifa_family = lcl.family;
-				}
-				addattr_l(&req.n, sizeof(req), IFA_LOCAL, &lcl.data, lcl.bytelen);
-				local_len = lcl.bytelen;
+			if (local_len) {
+				duparg2("local", *argv);
+			}
+			get_prefix(&lcl, *argv, req.ifa.ifa_family);
+			if (req.ifa.ifa_family == AF_UNSPEC) {
+				req.ifa.ifa_family = lcl.family;
+			}
+			addattr_l(&req.n, sizeof(req), IFA_LOCAL, &lcl.data, lcl.bytelen);
+			local_len = lcl.bytelen;
 		}
 		argv++;
 	}
 
-	if (d == NULL) {
-		bb_error_msg(bb_msg_requires_arg, "\"dev\"");
-		return -1;
-	}
+	// d cannot be null here, NEXT_ARG() of "dev" ensures that
+	//if (d == NULL) {
+	//	bb_error_msg(bb_msg_requires_arg, "\"dev\"");
+	//	return -1;
+	//}
 	if (l && strncmp(d, l, strlen(d)) != 0) {
 		bb_error_msg_and_die("\"dev\" (%s) must match \"label\" (%s)", d, l);
 	}
@@ -764,21 +752,15 @@ int do_ipaddr(char **argv)
 {
 	static const char commands[] ALIGN1 =
 		"add\0""delete\0""list\0""show\0""lst\0""flush\0";
-
-	int command_num = 2; /* default command is list */
-
+	smalluint cmd = 2;
 	if (*argv) {
-		command_num = index_in_substrings(commands, *argv);
-		if (command_num < 0 || command_num > 5)
-			bb_error_msg_and_die("unknown command %s", *argv);
+		cmd = index_in_substrings(commands, *argv);
+		if (cmd > 5)
+			bb_error_msg_and_die(bb_msg_invalid_arg, *argv, applet_name);
 		argv++;
+		if (cmd <= 1)
+			return ipaddr_modify((cmd == 0) ? RTM_NEWADDR : RTM_DELADDR, argv);
 	}
-	if (command_num == 0) /* add */
-		return ipaddr_modify(RTM_NEWADDR, argv);
-	if (command_num == 1) /* delete */
-		return ipaddr_modify(RTM_DELADDR, argv);
-	if (command_num == 5) /* flush */
-		return ipaddr_list_or_flush(argv, 1);
 	/* 2 == list, 3 == show, 4 == lst */
-	return ipaddr_list_or_flush(argv, 0);
+	return ipaddr_list_or_flush(argv, cmd == 5);
 }

@@ -167,20 +167,16 @@ uint16_t FAST_FUNC udhcp_checksum(void *addr, int count)
 
 /* Construct a ip/udp header for a packet, send packet */
 int FAST_FUNC udhcp_send_raw_packet(struct dhcp_packet *dhcp_pkt,
-		uint32_t source_ip, int source_port,
-		uint32_t dest_ip, int dest_port, const uint8_t *dest_arp,
+		uint32_t source_nip, int source_port,
+		uint32_t dest_nip, int dest_port, const uint8_t *dest_arp,
 		int ifindex)
 {
-	struct sockaddr_ll dest;
+	struct sockaddr_ll dest_sll;
 	struct ip_udp_dhcp_packet packet;
+	unsigned padding;
 	int fd;
 	int result = -1;
 	const char *msg;
-
-	enum {
-		IP_UPD_DHCP_SIZE = sizeof(struct ip_udp_dhcp_packet) - CONFIG_UDHCPC_SLACK_FOR_BUGGY_SERVERS,
-		UPD_DHCP_SIZE    = IP_UPD_DHCP_SIZE - offsetof(struct ip_udp_dhcp_packet, udp),
-	};
 
 	fd = socket(PF_PACKET, SOCK_DGRAM, htons(ETH_P_IP));
 	if (fd < 0) {
@@ -188,48 +184,55 @@ int FAST_FUNC udhcp_send_raw_packet(struct dhcp_packet *dhcp_pkt,
 		goto ret_msg;
 	}
 
-	memset(&dest, 0, sizeof(dest));
-	memset(&packet, 0, sizeof(packet));
+	memset(&dest_sll, 0, sizeof(dest_sll));
+	memset(&packet, 0, offsetof(struct ip_udp_dhcp_packet, data));
 	packet.data = *dhcp_pkt; /* struct copy */
 
-	dest.sll_family = AF_PACKET;
-	dest.sll_protocol = htons(ETH_P_IP);
-	dest.sll_ifindex = ifindex;
-	dest.sll_halen = 6;
-	memcpy(dest.sll_addr, dest_arp, 6);
-	if (bind(fd, (struct sockaddr *)&dest, sizeof(dest)) < 0) {
+	dest_sll.sll_family = AF_PACKET;
+	dest_sll.sll_protocol = htons(ETH_P_IP);
+	dest_sll.sll_ifindex = ifindex;
+	dest_sll.sll_halen = 6;
+	memcpy(dest_sll.sll_addr, dest_arp, 6);
+
+	if (bind(fd, (struct sockaddr *)&dest_sll, sizeof(dest_sll)) < 0) {
 		msg = "bind(%s)";
 		goto ret_close;
 	}
 
+	/* We were sending full-sized DHCP packets (zero padded),
+	 * but some badly configured servers were seen dropping them.
+	 * Apparently they drop all DHCP packets >576 *ethernet* octets big,
+	 * whereas they may only drop packets >576 *IP* octets big
+	 * (which for typical Ethernet II means 590 octets: 6+6+2 + 576).
+	 *
+	 * In order to work with those buggy servers,
+	 * we truncate packets after end option byte.
+	 */
+	padding = DHCP_OPTIONS_BUFSIZE - 1 - udhcp_end_option(packet.data.options);
+
 	packet.ip.protocol = IPPROTO_UDP;
-	packet.ip.saddr = source_ip;
-	packet.ip.daddr = dest_ip;
+	packet.ip.saddr = source_nip;
+	packet.ip.daddr = dest_nip;
 	packet.udp.source = htons(source_port);
 	packet.udp.dest = htons(dest_port);
 	/* size, excluding IP header: */
-	packet.udp.len = htons(UPD_DHCP_SIZE);
+	packet.udp.len = htons(UPD_DHCP_SIZE - padding);
 	/* for UDP checksumming, ip.len is set to UDP packet len */
 	packet.ip.tot_len = packet.udp.len;
-	packet.udp.check = udhcp_checksum(&packet, IP_UPD_DHCP_SIZE);
+	packet.udp.check = udhcp_checksum(&packet, IP_UPD_DHCP_SIZE - padding);
 	/* but for sending, it is set to IP packet len */
-	packet.ip.tot_len = htons(IP_UPD_DHCP_SIZE);
+	packet.ip.tot_len = htons(IP_UPD_DHCP_SIZE - padding);
 	packet.ip.ihl = sizeof(packet.ip) >> 2;
 	packet.ip.version = IPVERSION;
 	packet.ip.ttl = IPDEFTTL;
 	packet.ip.check = udhcp_checksum(&packet.ip, sizeof(packet.ip));
 
-	/* Currently we send full-sized DHCP packets (zero padded).
-	 * If you need to change this: last byte of the packet is
-	 * packet.data.options[udhcp_end_option(packet.data.options)]
-	 */
 	udhcp_dump_packet(dhcp_pkt);
-	result = sendto(fd, &packet, IP_UPD_DHCP_SIZE, 0,
-				(struct sockaddr *) &dest, sizeof(dest));
+	result = sendto(fd, &packet, IP_UPD_DHCP_SIZE - padding, /*flags:*/ 0,
+			(struct sockaddr *) &dest_sll, sizeof(dest_sll));
 	msg = "sendto";
  ret_close:
 	close(fd);
-	/* FIXME: and if result >= 0 but != IP_UPD_DHCP_SIZE? */
 	if (result < 0) {
  ret_msg:
 		bb_perror_msg(msg, "PACKET");
@@ -239,17 +242,14 @@ int FAST_FUNC udhcp_send_raw_packet(struct dhcp_packet *dhcp_pkt,
 
 /* Let the kernel do all the work for packet generation */
 int FAST_FUNC udhcp_send_kernel_packet(struct dhcp_packet *dhcp_pkt,
-		uint32_t source_ip, int source_port,
-		uint32_t dest_ip, int dest_port)
+		uint32_t source_nip, int source_port,
+		uint32_t dest_nip, int dest_port)
 {
 	struct sockaddr_in client;
+	unsigned padding;
 	int fd;
 	int result = -1;
 	const char *msg;
-
-	enum {
-		DHCP_SIZE = sizeof(struct dhcp_packet) - CONFIG_UDHCPC_SLACK_FOR_BUGGY_SERVERS,
-	};
 
 	fd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (fd < 0) {
@@ -261,7 +261,7 @@ int FAST_FUNC udhcp_send_kernel_packet(struct dhcp_packet *dhcp_pkt,
 	memset(&client, 0, sizeof(client));
 	client.sin_family = AF_INET;
 	client.sin_port = htons(source_port);
-	client.sin_addr.s_addr = source_ip;
+	client.sin_addr.s_addr = source_nip;
 	if (bind(fd, (struct sockaddr *)&client, sizeof(client)) == -1) {
 		msg = "bind(%s)";
 		goto ret_close;
@@ -270,19 +270,19 @@ int FAST_FUNC udhcp_send_kernel_packet(struct dhcp_packet *dhcp_pkt,
 	memset(&client, 0, sizeof(client));
 	client.sin_family = AF_INET;
 	client.sin_port = htons(dest_port);
-	client.sin_addr.s_addr = dest_ip;
+	client.sin_addr.s_addr = dest_nip;
 	if (connect(fd, (struct sockaddr *)&client, sizeof(client)) == -1) {
 		msg = "connect";
 		goto ret_close;
 	}
 
-	/* Currently we send full-sized DHCP packets (see above) */
 	udhcp_dump_packet(dhcp_pkt);
-	result = safe_write(fd, dhcp_pkt, DHCP_SIZE);
+
+	padding = DHCP_OPTIONS_BUFSIZE - 1 - udhcp_end_option(dhcp_pkt->options);
+	result = safe_write(fd, dhcp_pkt, DHCP_SIZE - padding);
 	msg = "write";
  ret_close:
 	close(fd);
-	/* FIXME: and if result >= 0 but != DHCP_SIZE? */
 	if (result < 0) {
  ret_msg:
 		bb_perror_msg(msg, "UDP");

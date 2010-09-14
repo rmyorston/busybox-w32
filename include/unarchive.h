@@ -143,19 +143,24 @@ typedef struct inflate_unzip_result {
 } inflate_unzip_result;
 
 IF_DESKTOP(long long) int inflate_unzip(inflate_unzip_result *res, off_t compr_size, int src_fd, int dst_fd) FAST_FUNC;
+/* xz unpacker takes .xz stream from offset 0 */
+IF_DESKTOP(long long) int unpack_xz_stream(int src_fd, int dst_fd) FAST_FUNC;
 /* lzma unpacker takes .lzma stream from offset 0 */
 IF_DESKTOP(long long) int unpack_lzma_stream(int src_fd, int dst_fd) FAST_FUNC;
 /* the rest wants 2 first bytes already skipped by the caller */
 IF_DESKTOP(long long) int unpack_bz2_stream(int src_fd, int dst_fd) FAST_FUNC;
 IF_DESKTOP(long long) int unpack_gz_stream(int src_fd, int dst_fd) FAST_FUNC;
 IF_DESKTOP(long long) int unpack_gz_stream_with_info(int src_fd, int dst_fd, unpack_info_t *info) FAST_FUNC;
-IF_DESKTOP(long long) int unpack_Z_stream(int fd_in, int fd_out) FAST_FUNC;
+IF_DESKTOP(long long) int unpack_Z_stream(int src_fd, int dst_fd) FAST_FUNC;
 /* wrapper which checks first two bytes to be "BZ" */
 IF_DESKTOP(long long) int unpack_bz2_stream_prime(int src_fd, int dst_fd) FAST_FUNC;
 
+char* append_ext(char *filename, const char *expected_ext) FAST_FUNC;
 int bbunpack(char **argv,
-	     char* (*make_new_name)(char *filename),
-	     IF_DESKTOP(long long) int (*unpacker)(unpack_info_t *info)) FAST_FUNC;
+	    IF_DESKTOP(long long) int FAST_FUNC (*unpacker)(unpack_info_t *info),
+	    char* FAST_FUNC (*make_new_name)(char *filename, const char *expected_ext),
+	    const char *expected_ext
+) FAST_FUNC;
 
 #if BB_MMU
 void open_transformer(int fd,

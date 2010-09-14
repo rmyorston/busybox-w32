@@ -171,9 +171,9 @@ static int do_set(char **argv)
 	char *newname = NULL;
 	int htype, halen;
 	static const char keywords[] ALIGN1 =
-		"up\0""down\0""name\0""mtu\0""multicast\0"
+		"up\0""down\0""name\0""mtu\0""qlen\0""multicast\0"
 		"arp\0""address\0""dev\0";
-	enum { ARG_up = 0, ARG_down, ARG_name, ARG_mtu, ARG_multicast,
+	enum { ARG_up = 0, ARG_down, ARG_name, ARG_mtu, ARG_qlen, ARG_multicast,
 		ARG_arp, ARG_addr, ARG_dev };
 	static const char str_on_off[] ALIGN1 = "on\0""off\0";
 	enum { PARM_on = 0, PARM_off };
@@ -186,56 +186,53 @@ static int do_set(char **argv)
 		if (key == ARG_up) {
 			mask |= IFF_UP;
 			flags |= IFF_UP;
-		}
-		if (key == ARG_down) {
+		} else if (key == ARG_down) {
 			mask |= IFF_UP;
 			flags &= ~IFF_UP;
-		}
-		if (key == ARG_name) {
+		} else if (key == ARG_name) {
 			NEXT_ARG();
 			newname = *argv;
-		}
-		if (key == ARG_mtu) {
+		} else if (key == ARG_mtu) {
 			NEXT_ARG();
 			if (mtu != -1)
 				duparg("mtu", *argv);
 			mtu = get_unsigned(*argv, "mtu");
-		}
-		if (key == ARG_multicast) {
-			int param;
+		} else if (key == ARG_qlen) {
 			NEXT_ARG();
-			mask |= IFF_MULTICAST;
-			param = index_in_strings(str_on_off, *argv);
-			if (param < 0)
-				die_must_be_on_off("multicast");
-			if (param == PARM_on)
-				flags |= IFF_MULTICAST;
-			else
-				flags &= ~IFF_MULTICAST;
-		}
-		if (key == ARG_arp) {
-			int param;
-			NEXT_ARG();
-			mask |= IFF_NOARP;
-			param = index_in_strings(str_on_off, *argv);
-			if (param < 0)
-				die_must_be_on_off("arp");
-			if (param == PARM_on)
-				flags &= ~IFF_NOARP;
-			else
-				flags |= IFF_NOARP;
-		}
-		if (key == ARG_addr) {
+			if (qlen != -1)
+				duparg("qlen", *argv);
+			qlen = get_unsigned(*argv, "qlen");
+		} else if (key == ARG_addr) {
 			NEXT_ARG();
 			newaddr = *argv;
-		}
-		if (key >= ARG_dev) {
+		} else if (key >= ARG_dev) {
 			if (key == ARG_dev) {
 				NEXT_ARG();
 			}
 			if (dev)
 				duparg2("dev", *argv);
 			dev = *argv;
+		} else {
+			int param;
+			NEXT_ARG();
+			param = index_in_strings(str_on_off, *argv);
+			if (key == ARG_multicast) {
+				if (param < 0)
+					die_must_be_on_off("multicast");
+				mask |= IFF_MULTICAST;
+				if (param == PARM_on)
+					flags |= IFF_MULTICAST;
+				else
+					flags &= ~IFF_MULTICAST;
+			} else if (key == ARG_arp) {
+				if (param < 0)
+					die_must_be_on_off("arp");
+				mask |= IFF_NOARP;
+				if (param == PARM_on)
+					flags &= ~IFF_NOARP;
+				else
+					flags |= IFF_NOARP;
+			}
 		}
 		argv++;
 	}
@@ -248,9 +245,11 @@ static int do_set(char **argv)
 		halen = get_address(dev, &htype);
 		if (newaddr) {
 			parse_address(dev, htype, halen, newaddr, &ifr0);
+			set_address(&ifr0, 0);
 		}
 		if (newbrd) {
 			parse_address(dev, htype, halen, newbrd, &ifr1);
+			set_address(&ifr1, 1);
 		}
 	}
 
@@ -264,14 +263,6 @@ static int do_set(char **argv)
 	if (mtu != -1) {
 		set_mtu(dev, mtu);
 	}
-	if (newaddr || newbrd) {
-		if (newbrd) {
-			set_address(&ifr1, 1);
-		}
-		if (newaddr) {
-			set_address(&ifr0, 0);
-		}
-	}
 	if (mask)
 		do_chflags(dev, flags, mask);
 	return 0;
@@ -283,20 +274,108 @@ static int ipaddr_list_link(char **argv)
 	return ipaddr_list_or_flush(argv, 0);
 }
 
+#ifndef NLMSG_TAIL
+#define NLMSG_TAIL(nmsg) \
+	((struct rtattr *) (((void *) (nmsg)) + NLMSG_ALIGN((nmsg)->nlmsg_len)))
+#endif
+/* Return value becomes exitcode. It's okay to not return at all */
+static int do_change(char **argv, const unsigned rtm)
+{
+	static const char keywords[] ALIGN1 =
+		"link\0""name\0""type\0""dev\0";
+	enum {
+		ARG_link,
+		ARG_name,
+		ARG_type,
+		ARG_dev,
+	};
+	struct rtnl_handle rth;
+	struct {
+		struct nlmsghdr		n;
+		struct ifinfomsg	i;
+		char			buf[1024];
+	} req;
+	smalluint arg;
+	char *name_str = NULL, *link_str = NULL, *type_str = NULL, *dev_str = NULL;
+
+	memset(&req, 0, sizeof(req));
+
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST;
+	req.n.nlmsg_type = rtm;
+	req.i.ifi_family = preferred_family;
+	if (rtm == RTM_NEWLINK)
+		req.n.nlmsg_flags |= NLM_F_CREATE|NLM_F_EXCL;
+
+	while (*argv) {
+		arg = index_in_substrings(keywords, *argv);
+		if (arg == ARG_link) {
+			NEXT_ARG();
+			link_str = *argv;
+		} else if (arg == ARG_name) {
+			NEXT_ARG();
+			name_str = *argv;
+		} else if (arg == ARG_type) {
+			NEXT_ARG();
+			type_str = *argv;
+		} else {
+			if (arg == ARG_dev) {
+				if (dev_str)
+					duparg(*argv, "dev");
+				NEXT_ARG();
+			}
+			dev_str = *argv;
+		}
+		argv++;
+	}
+	xrtnl_open(&rth);
+	ll_init_map(&rth);
+	if (type_str) {
+		struct rtattr *linkinfo = NLMSG_TAIL(&req.n);
+
+		addattr_l(&req.n, sizeof(req), IFLA_LINKINFO, NULL, 0);
+		addattr_l(&req.n, sizeof(req), IFLA_INFO_KIND, type_str,
+				strlen(type_str));
+		linkinfo->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)linkinfo;
+	}
+	if (rtm != RTM_NEWLINK) {
+		if (!dev_str)
+			return 1; /* Need a device to delete */
+		req.i.ifi_index = xll_name_to_index(dev_str);
+	} else {
+		if (!name_str)
+			name_str = dev_str;
+		if (link_str) {
+			int idx = xll_name_to_index(link_str);
+			addattr_l(&req.n, sizeof(req), IFLA_LINK, &idx, 4);
+		}
+	}
+	if (name_str) {
+		const size_t name_len = strlen(name_str) + 1;
+		if (name_len < 2 || name_len > IFNAMSIZ)
+			invarg(name_str, "name");
+		addattr_l(&req.n, sizeof(req), IFLA_IFNAME, name_str, name_len);
+	}
+	if (rtnl_talk(&rth, &req.n, 0, 0, NULL, NULL, NULL) < 0)
+		return 2;
+	return 0;
+}
+
 /* Return value becomes exitcode. It's okay to not return at all */
 int do_iplink(char **argv)
 {
 	static const char keywords[] ALIGN1 =
-		"set\0""show\0""lst\0""list\0";
-	int key;
-	if (!*argv)
-		return ipaddr_list_link(argv);
-	key = index_in_substrings(keywords, *argv);
-	if (key < 0)
-		bb_error_msg_and_die(bb_msg_invalid_arg, *argv, applet_name);
-	argv++;
-	if (key == 0) /* set */
-		return do_set(argv);
+		"add\0""delete\0""set\0""show\0""lst\0""list\0";
+	if (*argv) {
+		smalluint key = index_in_substrings(keywords, *argv);
+		if (key > 5) /* invalid argument */
+			bb_error_msg_and_die(bb_msg_invalid_arg, *argv, applet_name);
+		argv++;
+		if (key <= 1) /* add/delete */
+			return do_change(argv, key ? RTM_DELLINK : RTM_NEWLINK);
+		else if (key == 2) /* set */
+			return do_set(argv);
+	}
 	/* show, lst, list */
 	return ipaddr_list_link(argv);
 }

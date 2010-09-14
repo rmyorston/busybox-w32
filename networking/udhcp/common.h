@@ -57,10 +57,20 @@ struct ip_udp_dhcp_packet {
 	struct dhcp_packet data;
 } PACKED;
 
+struct udp_dhcp_packet {
+	struct udphdr udp;
+	struct dhcp_packet data;
+} PACKED;
+
+enum {
+	IP_UPD_DHCP_SIZE = sizeof(struct ip_udp_dhcp_packet) - CONFIG_UDHCPC_SLACK_FOR_BUGGY_SERVERS,
+	UPD_DHCP_SIZE    = sizeof(struct udp_dhcp_packet) - CONFIG_UDHCPC_SLACK_FOR_BUGGY_SERVERS,
+	DHCP_SIZE        = sizeof(struct dhcp_packet) - CONFIG_UDHCPC_SLACK_FOR_BUGGY_SERVERS,
+};
+
 /* Let's see whether compiler understood us right */
 struct BUG_bad_sizeof_struct_ip_udp_dhcp_packet {
-	char BUG_bad_sizeof_struct_ip_udp_dhcp_packet
-		[(sizeof(struct ip_udp_dhcp_packet) != 576 + CONFIG_UDHCPC_SLACK_FOR_BUGGY_SERVERS) ? -1 : 1];
+	char c[IP_UPD_DHCP_SIZE == 576 ? 1 : -1];
 };
 
 
@@ -270,13 +280,13 @@ void udhcp_init_header(struct dhcp_packet *packet, char type) FAST_FUNC;
 int udhcp_recv_kernel_packet(struct dhcp_packet *packet, int fd) FAST_FUNC;
 
 int udhcp_send_raw_packet(struct dhcp_packet *dhcp_pkt,
-		uint32_t source_ip, int source_port,
-		uint32_t dest_ip, int dest_port, const uint8_t *dest_arp,
+		uint32_t source_nip, int source_port,
+		uint32_t dest_nip, int dest_port, const uint8_t *dest_arp,
 		int ifindex) FAST_FUNC;
 
 int udhcp_send_kernel_packet(struct dhcp_packet *dhcp_pkt,
-		uint32_t source_ip, int source_port,
-		uint32_t dest_ip, int dest_port) FAST_FUNC;
+		uint32_t source_nip, int source_port,
+		uint32_t dest_nip, int dest_port) FAST_FUNC;
 
 void udhcp_sp_setup(void) FAST_FUNC;
 int udhcp_sp_fd_set(fd_set *rfds, int extra_fd) FAST_FUNC;
