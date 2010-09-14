@@ -24,7 +24,7 @@ struct kbentry {
 #define MAX_NR_KEYMAPS  256
 
 int loadkmap_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
-int loadkmap_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+int loadkmap_main(int argc UNUSED_PARAM, char **argv)
 {
 	struct kbentry ke;
 	int i, j, fd;
@@ -32,6 +32,11 @@ int loadkmap_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 /*	const char *tty_name = CURRENT_TTY; */
 	RESERVE_CONFIG_BUFFER(flags, MAX_NR_KEYMAPS);
 
+	/* When user accidentally runs "loadkmap FILE"
+	 * instead of "loadkmap <FILE", we end up waiting for input from tty.
+	 * Let's prevent it: */
+	if (argv[1])
+		bb_show_usage();
 /* bb_warn_ignoring_args(argv[1]); */
 	fd = get_console_fd_or_die();
 /* or maybe:

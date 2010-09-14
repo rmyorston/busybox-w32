@@ -51,6 +51,47 @@
  *    and does not support -Ins
  * -D FMT is a bbox extension for _input_ conversion of -d DATE
  */
+
+//kbuild:lib-$(CONFIG_DATE) += date.o
+
+//config:config DATE
+//config:	bool "date"
+//config:	default y
+//config:	help
+//config:	  date is used to set the system date or display the
+//config:	  current time in the given format.
+//config:
+//config:config FEATURE_DATE_ISOFMT
+//config:	bool "Enable ISO date format output (-I)"
+//config:	default y
+//config:	depends on DATE
+//config:	help
+//config:	  Enable option (-I) to output an ISO-8601 compliant
+//config:	  date/time string.
+//config:
+//config:config FEATURE_DATE_NANO
+//config:	bool "Support %[num]N nanosecond format specifier"
+//config:	default n
+//config:	depends on DATE
+//config:	help
+//config:	  Support %[num]N format specifier. Adds ~250 bytes of code.
+//config:
+//config:config FEATURE_DATE_COMPAT
+//config:	bool "Support weird 'date MMDDhhmm[[YY]YY][.ss]' format"
+//config:	default y
+//config:	depends on DATE
+//config:	help
+//config:	  System time can be set by 'date -s DATE' and simply 'date DATE',
+//config:	  but formats of DATE string are different. 'date DATE' accepts
+//config:	  a rather weird MMDDhhmm[[YY]YY][.ss] format with completely
+//config:	  unnatural placement of year between minutes and seconds.
+//config:	  date -s (and other commands like touch -d) use more sensible
+//config:	  formats (for one, ISO format YYYY-MM-DD hh:mm:ss.ssssss).
+//config:
+//config:	  With this option off, 'date DATE' is 'date -s DATE' support
+//config:	  the same format. With it on, 'date DATE' additionally supports
+//config:	  MMDDhhmm[[YY]YY][.ss] format.
+
 #include "libbb.h"
 
 enum {
@@ -84,9 +125,9 @@ static const char date_longopts[] ALIGN1 =
 int date_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int date_main(int argc UNUSED_PARAM, char **argv)
 {
+	struct timespec ts;
 	struct tm tm_time;
 	char buf_fmt_dt2str[64];
-	time_t tm;
 	unsigned opt;
 	int ifmt = -1;
 	char *date_str;
@@ -161,11 +202,22 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 	if (opt & OPT_REFERENCE) {
 		struct stat statbuf;
 		xstat(filename, &statbuf);
-		tm = statbuf.st_mtime;
+		ts.tv_sec = statbuf.st_mtime;
+#if ENABLE_FEATURE_DATE_NANO
+# if defined __GLIBC__ && !defined __UCLIBC__
+		ts.tv_nsec = statbuf.st_mtim.tv_nsec;
+# else
+		ts.tv_nsec = statbuf.st_mtimensec;
+# endif
+#endif
 	} else {
-		time(&tm);
+#if ENABLE_FEATURE_DATE_NANO
+		clock_gettime(CLOCK_REALTIME, &ts);
+#else
+		time(&ts.tv_nsec);
+#endif
 	}
-	localtime_r(&tm, &tm_time);
+	localtime_r(&ts.tv_sec, &tm_time);
 
 	/* If date string is given, update tm_time, and maybe set date */
 	if (date_str != NULL) {
@@ -184,12 +236,12 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 
 		/* Correct any day of week and day of year etc. fields */
 		tm_time.tm_isdst = -1;	/* Be sure to recheck dst */
-		tm = validate_tm_time(date_str, &tm_time);
+		ts.tv_sec = validate_tm_time(date_str, &tm_time);
 
 		maybe_set_utc(opt);
 
 		/* if setting time, set it */
-		if ((opt & OPT_SET) && stime(&tm) < 0) {
+		if ((opt & OPT_SET) && stime(&ts.tv_sec) < 0) {
 			bb_perror_msg("can't set date");
 		}
 	}
@@ -222,6 +274,46 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 			fmt_dt2str = (char*)"%a %b %e %H:%M:%S %Z %Y";
 		}
 	}
+#if ENABLE_FEATURE_DATE_NANO
+	else {
+		/* User-specified fmt_dt2str */
+		/* Search for and process "%N" */
+		char *p = fmt_dt2str;
+		while ((p = strchr(p, '%')) != NULL) {
+			int n, m;
+			unsigned pres, scale;
+
+			p++;
+			if (*p == '%') {
+				p++;
+				continue;
+			}
+			n = strspn(p, "0123456789");
+			if (p[n] != 'N') {
+				p += n;
+				continue;
+			}
+			/* We have "%[nnn]N" */
+			p[-1] = '\0';
+			p[n] = '\0';
+			scale = 1;
+			pres = 9;
+			if (n) {
+				pres = xatoi_u(p);
+				if (pres == 0)
+					pres = 9;
+				m = 9 - pres;
+				while (--m >= 0)
+					scale *= 10;
+			}
+
+			m = p - fmt_dt2str;
+			p += n + 1;
+			fmt_dt2str = xasprintf("%s%0*u%s", fmt_dt2str, pres, (unsigned)ts.tv_nsec / scale, p);
+			p = fmt_dt2str + m;
+		}
+	}
+#endif
 
 #define date_buf bb_common_bufsiz1
 	if (*fmt_dt2str == '\0') {

@@ -103,11 +103,11 @@ struct globals {
 }; //FIX_ALIASING; - large code growth
 enum { LINE_BUF_SIZE = COMMON_BUFSIZE - offsetof(struct globals, line_buf) };
 #define G (*(struct globals*)&bb_common_bufsiz1)
-#define INIT_G() do { \
-	struct G_sizecheck { \
-		char G_sizecheck[sizeof(G) > COMMON_BUFSIZE ? -1 : 1]; \
-	}; \
-} while (0)
+struct BUG_bad_size {
+	char BUG_G_too_big[sizeof(G) <= COMMON_BUFSIZE ? 1 : -1];
+	char BUG_line_buf_too_small[LINE_BUF_SIZE > 80 ? 1 : -1];
+};
+#define INIT_G() do { } while (0)
 #define top              (G.top               )
 #define ntop             (G.ntop              )
 #define sort_field       (G.sort_field        )
@@ -696,111 +696,70 @@ static int topmem_sort(char *a, char *b)
 	return inverted ? -n : n;
 }
 
-/* Cut "NNNN" out of "    NNNN kb" */
-static char *grab_number(char *str, const char *match, unsigned sz)
-{
-	if (strncmp(str, match, sz) == 0) {
-		str = skip_whitespace(str + sz);
-		(skip_non_whitespace(str))[0] = '\0';
-		return xstrdup(str);
-	}
-	return NULL;
-}
-
 /* display header info (meminfo / loadavg) */
 static void display_topmem_header(int scr_width, int *lines_rem_p)
 {
-	char linebuf[128];
+	enum {
+		TOTAL = 0, MFREE, BUF, CACHE,
+		SWAPTOTAL, SWAPFREE, DIRTY,
+		MWRITE, ANON, MAP, SLAB,
+		NUM_FIELDS
+	};
+	static const char match[NUM_FIELDS][12] = {
+		"\x09" "MemTotal:",  // TOTAL
+		"\x08" "MemFree:",   // MFREE
+		"\x08" "Buffers:",   // BUF
+		"\x07" "Cached:",    // CACHE
+		"\x0a" "SwapTotal:", // SWAPTOTAL
+		"\x09" "SwapFree:",  // SWAPFREE
+		"\x06" "Dirty:",     // DIRTY
+		"\x0a" "Writeback:", // MWRITE
+		"\x0a" "AnonPages:", // ANON
+		"\x07" "Mapped:",    // MAP
+		"\x05" "Slab:",      // SLAB
+	};
+	char meminfo_buf[4 * 1024];
+	const char *Z[NUM_FIELDS];
 	unsigned i;
-	FILE *fp;
-	union {
-		struct {
-			/*  1 */ char *total;
-			/*  2 */ char *mfree;
-			/*  3 */ char *buf;
-			/*  4 */ char *cache;
-			/*  5 */ char *swaptotal;
-			/*  6 */ char *swapfree;
-			/*  7 */ char *dirty;
-			/*  8 */ char *mwrite;
-			/*  9 */ char *anon;
-			/* 10 */ char *map;
-			/* 11 */ char *slab;
-		} u;
-		char *str[11];
-	} Z;
-#define total     Z.u.total
-#define mfree     Z.u.mfree
-#define buf       Z.u.buf
-#define cache     Z.u.cache
-#define swaptotal Z.u.swaptotal
-#define swapfree  Z.u.swapfree
-#define dirty     Z.u.dirty
-#define mwrite    Z.u.mwrite
-#define anon      Z.u.anon
-#define map       Z.u.map
-#define slab      Z.u.slab
-#define str       Z.str
+	int sz;
 
-	memset(&Z, 0, sizeof(Z));
+	for (i = 0; i < NUM_FIELDS; i++)
+		Z[i] = "?";
 
 	/* read memory info */
-	fp = xfopen_for_read("meminfo");
-	while (fgets(linebuf, sizeof(linebuf), fp)) {
-		char *p;
-
-#define SCAN(match, name) \
-		p = grab_number(linebuf, match, sizeof(match)-1); \
-		if (p) { name = p; continue; }
-
-		SCAN("MemTotal:", total);
-		SCAN("MemFree:", mfree);
-		SCAN("Buffers:", buf);
-		SCAN("Cached:", cache);
-		SCAN("SwapTotal:", swaptotal);
-		SCAN("SwapFree:", swapfree);
-		SCAN("Dirty:", dirty);
-		SCAN("Writeback:", mwrite);
-		SCAN("AnonPages:", anon);
-		SCAN("Mapped:", map);
-		SCAN("Slab:", slab);
-#undef SCAN
+	sz = open_read_close("meminfo", meminfo_buf, sizeof(meminfo_buf) - 1);
+	if (sz >= 0) {
+		char *p = meminfo_buf;
+		meminfo_buf[sz] = '\0';
+		/* Note that fields always appear in the match[] order */
+		for (i = 0; i < NUM_FIELDS; i++) {
+			char *found = strstr(p, match[i] + 1);
+			if (found) {
+				/* Cut "NNNN" out of "    NNNN kb" */
+				char *s = skip_whitespace(found + match[i][0]);
+				p = skip_non_whitespace(s);
+				*p++ = '\0';
+				Z[i] = s;
+			}
+		}
 	}
-	fclose(fp);
 
-#define S(s) (s ? s : "0")
-	snprintf(linebuf, sizeof(linebuf),
+	snprintf(line_buf, LINE_BUF_SIZE,
 		"Mem total:%s anon:%s map:%s free:%s",
-		S(total), S(anon), S(map), S(mfree));
-	printf(OPT_BATCH_MODE ? "%.*s\n" : "\033[H\033[J%.*s\n", scr_width, linebuf);
+		Z[TOTAL], Z[ANON], Z[MAP], Z[MFREE]);
+	printf(OPT_BATCH_MODE ? "%.*s\n" : "\033[H\033[J%.*s\n", scr_width, line_buf);
 
-	snprintf(linebuf, sizeof(linebuf),
+	snprintf(line_buf, LINE_BUF_SIZE,
 		" slab:%s buf:%s cache:%s dirty:%s write:%s",
-		S(slab), S(buf), S(cache), S(dirty), S(mwrite));
-	printf("%.*s\n", scr_width, linebuf);
+		Z[SLAB], Z[BUF], Z[CACHE], Z[DIRTY], Z[MWRITE]);
+	printf("%.*s\n", scr_width, line_buf);
 
-	snprintf(linebuf, sizeof(linebuf),
+	snprintf(line_buf, LINE_BUF_SIZE,
 		"Swap total:%s free:%s", // TODO: % used?
-		S(swaptotal), S(swapfree));
-	printf("%.*s\n", scr_width, linebuf);
+		Z[SWAPTOTAL], Z[SWAPFREE]);
+	printf("%.*s\n", scr_width, line_buf);
 
 	(*lines_rem_p) -= 3;
-#undef S
-
-	for (i = 0; i < ARRAY_SIZE(str); i++)
-		free(str[i]);
-#undef total
-#undef free
-#undef buf
-#undef cache
-#undef swaptotal
-#undef swapfree
-#undef dirty
-#undef write
-#undef anon
-#undef map
-#undef slab
-#undef str
 }
 
 static void ulltoa6_and_space(unsigned long long ul, char buf[6])

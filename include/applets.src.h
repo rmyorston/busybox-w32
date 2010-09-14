@@ -4,11 +4,6 @@
  *
  * If you write a new applet, you need to add an entry to this list to make
  * busybox aware of it.
- *
- * It is CRUCIAL that this listing be kept in ascii order, otherwise the binary
- * search lookup contributed by Gaute B Strokkenes stops working. If you value
- * your kneecaps, you'll be sure to *make sure* that any changes made to this
- * file result in the listing remaining in ascii order. You have been warned.
  */
 
 /*
@@ -36,16 +31,16 @@ s     - suid type:
 # define APPLET_NOFORK(name,main,l,s,name2)  name main##_main name2
 
 #elif defined(MAKE_USAGE) && ENABLE_FEATURE_VERBOSE_USAGE
-# define APPLET(name,l,s)                    name##_trivial_usage name##_full_usage "\0"
-# define APPLET_ODDNAME(name,main,l,s,name2) name2##_trivial_usage name2##_full_usage "\0"
-# define APPLET_NOEXEC(name,main,l,s,name2)  name2##_trivial_usage name2##_full_usage "\0"
-# define APPLET_NOFORK(name,main,l,s,name2)  name2##_trivial_usage name2##_full_usage "\0"
+# define APPLET(name,l,s)                    MAKE_USAGE(#name, name##_trivial_usage name##_full_usage)
+# define APPLET_ODDNAME(name,main,l,s,name2) MAKE_USAGE(#name, name2##_trivial_usage name2##_full_usage)
+# define APPLET_NOEXEC(name,main,l,s,name2)  MAKE_USAGE(#name, name2##_trivial_usage name2##_full_usage)
+# define APPLET_NOFORK(name,main,l,s,name2)  MAKE_USAGE(#name, name2##_trivial_usage name2##_full_usage)
 
 #elif defined(MAKE_USAGE) && !ENABLE_FEATURE_VERBOSE_USAGE
-# define APPLET(name,l,s)                    name##_trivial_usage "\0"
-# define APPLET_ODDNAME(name,main,l,s,name2) name2##_trivial_usage "\0"
-# define APPLET_NOEXEC(name,main,l,s,name2)  name2##_trivial_usage "\0"
-# define APPLET_NOFORK(name,main,l,s,name2)  name2##_trivial_usage "\0"
+# define APPLET(name,l,s)                    MAKE_USAGE(#name, name##_trivial_usage)
+# define APPLET_ODDNAME(name,main,l,s,name2) MAKE_USAGE(#name, name2##_trivial_usage)
+# define APPLET_NOEXEC(name,main,l,s,name2)  MAKE_USAGE(#name, name2##_trivial_usage)
+# define APPLET_NOFORK(name,main,l,s,name2)  MAKE_USAGE(#name, name2##_trivial_usage)
 
 #elif defined(MAKE_LINKS)
 # define APPLET(name,l,c)                    LINK l name
@@ -67,6 +62,7 @@ s     - suid type:
 #endif
 
 
+INSERT
 IF_TEST(APPLET_NOFORK([,  test, _BB_DIR_USR_BIN, _BB_SUID_DROP, test))
 IF_TEST(APPLET_NOFORK([[, test, _BB_DIR_USR_BIN, _BB_SUID_DROP, test))
 IF_ACPID(APPLET(acpid, _BB_DIR_SBIN, _BB_SUID_DROP))
@@ -87,8 +83,6 @@ IF_BEEP(APPLET(beep, _BB_DIR_USR_BIN, _BB_SUID_DROP))
 IF_BLKID(APPLET(blkid, _BB_DIR_SBIN, _BB_SUID_DROP))
 IF_BOOTCHARTD(APPLET(bootchartd, _BB_DIR_SBIN, _BB_SUID_DROP))
 IF_BRCTL(APPLET(brctl, _BB_DIR_USR_SBIN, _BB_SUID_DROP))
-IF_BUNZIP2(APPLET(bunzip2, _BB_DIR_USR_BIN, _BB_SUID_DROP))
-IF_BUNZIP2(APPLET_ODDNAME(bzcat, bunzip2, _BB_DIR_USR_BIN, _BB_SUID_DROP, bzcat))
 IF_BZIP2(APPLET(bzip2, _BB_DIR_USR_BIN, _BB_SUID_DROP))
 IF_CAL(APPLET(cal, _BB_DIR_USR_BIN, _BB_SUID_DROP))
 IF_CAT(APPLET_NOFORK(cat, cat, _BB_DIR_BIN, _BB_SUID_DROP, cat))
