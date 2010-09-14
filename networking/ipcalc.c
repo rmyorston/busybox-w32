@@ -11,11 +11,9 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this tarball for details.
  */
-
-#include <sys/socket.h>
-#include <arpa/inet.h>
-
 #include "libbb.h"
+/* After libbb.h, because on some systems it needs other includes */
+#include <arpa/inet.h>
 
 #define CLASS_A_NETMASK	ntohl(0xFF000000)
 #define CLASS_B_NETMASK	ntohl(0xFFFF0000)

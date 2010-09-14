@@ -101,6 +101,137 @@
 # define PIPE_BUF 4096  /* amount of buffering in a pipe */
 #endif
 
+//applet:IF_HUSH(APPLET(hush, _BB_DIR_BIN, _BB_SUID_DROP))
+//applet:IF_MSH(APPLET(msh, _BB_DIR_BIN, _BB_SUID_DROP))
+//applet:IF_LASH(APPLET(lash, _BB_DIR_BIN, _BB_SUID_DROP))
+//applet:IF_FEATURE_SH_IS_HUSH(APPLET_ODDNAME(sh, hush, _BB_DIR_BIN, _BB_SUID_DROP, sh))
+//applet:IF_FEATURE_BASH_IS_HUSH(APPLET_ODDNAME(bash, hush, _BB_DIR_BIN, _BB_SUID_DROP, bash))
+
+//kbuild:lib-$(CONFIG_HUSH) += hush.o match.o shell_common.o
+//kbuild:lib-$(CONFIG_HUSH_RANDOM_SUPPORT) += random.o
+
+//config:config HUSH
+//config:	bool "hush"
+//config:	default y
+//config:	help
+//config:	  hush is a small shell (22k). It handles the normal flow control
+//config:	  constructs such as if/then/elif/else/fi, for/in/do/done, while loops,
+//config:	  case/esac. Redirections, here documents, $((arithmetic))
+//config:	  and functions are supported.
+//config:
+//config:	  It will compile and work on no-mmu systems.
+//config:
+//config:	  It does not handle select, aliases, brace expansion,
+//config:	  tilde expansion, &>file and >&file redirection of stdout+stderr.
+//config:
+//config:config HUSH_BASH_COMPAT
+//config:	bool "bash-compatible extensions"
+//config:	default y
+//config:	depends on HUSH
+//config:	help
+//config:	  Enable bash-compatible extensions.
+//config:
+//config:config HUSH_HELP
+//config:	bool "help builtin"
+//config:	default y
+//config:	depends on HUSH
+//config:	help
+//config:	  Enable help builtin in hush. Code size + ~1 kbyte.
+//config:
+//config:config HUSH_INTERACTIVE
+//config:	bool "Interactive mode"
+//config:	default y
+//config:	depends on HUSH
+//config:	help
+//config:	  Enable interactive mode (prompt and command editing).
+//config:	  Without this, hush simply reads and executes commands
+//config:	  from stdin just like a shell script from a file.
+//config:	  No prompt, no PS1/PS2 magic shell variables.
+//config:
+//config:config HUSH_JOB
+//config:	bool "Job control"
+//config:	default y
+//config:	depends on HUSH_INTERACTIVE
+//config:	help
+//config:	  Enable job control: Ctrl-Z backgrounds, Ctrl-C interrupts current
+//config:	  command (not entire shell), fg/bg builtins work. Without this option,
+//config:	  "cmd &" still works by simply spawning a process and immediately
+//config:	  prompting for next command (or executing next command in a script),
+//config:	  but no separate process group is formed.
+//config:
+//config:config HUSH_TICK
+//config:	bool "Process substitution"
+//config:	default y
+//config:	depends on HUSH
+//config:	help
+//config:	  Enable process substitution `command` and $(command) in hush.
+//config:
+//config:config HUSH_IF
+//config:	bool "Support if/then/elif/else/fi"
+//config:	default y
+//config:	depends on HUSH
+//config:	help
+//config:	  Enable if/then/elif/else/fi in hush.
+//config:
+//config:config HUSH_LOOPS
+//config:	bool "Support for, while and until loops"
+//config:	default y
+//config:	depends on HUSH
+//config:	help
+//config:	  Enable for, while and until loops in hush.
+//config:
+//config:config HUSH_CASE
+//config:	bool "Support case ... esac statement"
+//config:	default y
+//config:	depends on HUSH
+//config:	help
+//config:	  Enable case ... esac statement in hush. +400 bytes.
+//config:
+//config:config HUSH_FUNCTIONS
+//config:	bool "Support funcname() { commands; } syntax"
+//config:	default y
+//config:	depends on HUSH
+//config:	help
+//config:	  Enable support for shell functions in hush. +800 bytes.
+//config:
+//config:config HUSH_LOCAL
+//config:	bool "Support local builtin"
+//config:	default y
+//config:	depends on HUSH_FUNCTIONS
+//config:	help
+//config:	  Enable support for local variables in functions.
+//config:
+//config:config HUSH_RANDOM_SUPPORT
+//config:	bool "Pseudorandom generator and $RANDOM variable"
+//config:	default y
+//config:	depends on HUSH
+//config:	help
+//config:	  Enable pseudorandom generator and dynamic variable "$RANDOM".
+//config:	  Each read of "$RANDOM" will generate a new pseudorandom value.
+//config:
+//config:config HUSH_EXPORT_N
+//config:	bool "Support 'export -n' option"
+//config:	default y
+//config:	depends on HUSH
+//config:	help
+//config:	  export -n unexports variables. It is a bash extension.
+//config:
+//config:config HUSH_MODE_X
+//config:	bool "Support 'hush -x' option and 'set -x' command"
+//config:	default y
+//config:	depends on HUSH
+//config:	help
+//config:	  This instructs hush to print commands before execution.
+//config:	  Adds ~300 bytes.
+//config:
+
+//usage:#define hush_trivial_usage NOUSAGE_STR
+//usage:#define hush_full_usage ""
+//usage:#define lash_trivial_usage NOUSAGE_STR
+//usage:#define lash_full_usage ""
+//usage:#define msh_trivial_usage NOUSAGE_STR
+//usage:#define msh_full_usage ""
+
 
 /* Build knobs */
 #define LEAK_HUNTING 0
@@ -117,6 +248,10 @@
  * and therefore waitpid will return the same result as last time)
  */
 #define ENABLE_HUSH_FAST 0
+/* TODO: implement simplified code for users which do not need ${var%...} ops
+ * So far ${var%...} ops are always enabled:
+ */
+#define ENABLE_HUSH_DOLLAR_OPS 1
 
 
 #if BUILD_AS_NOMMU
@@ -128,9 +263,7 @@
 # define USE_FOR_MMU(...)
 #endif
 
-#define SKIP_definitions 1
-#include "applet_tables.h"
-#undef SKIP_definitions
+#include "NUM_APPLETS.h"
 #if NUM_APPLETS == 1
 /* STANDALONE does not make sense, and won't compile */
 # undef CONFIG_FEATURE_SH_STANDALONE
@@ -529,7 +662,13 @@ struct globals {
 	 */
 	smallint flag_return_in_progress;
 #endif
-	smallint fake_mode;
+	smallint n_mode;
+#if ENABLE_HUSH_MODE_X
+	smallint x_mode;
+# define G_x_mode (G.x_mode)
+#else
+# define G_x_mode 0
+#endif
 	smallint exiting; /* used to prevent EXIT trap recursion */
 	/* These four support $?, $#, and $1 */
 	smalluint last_exitcode;
@@ -550,6 +689,7 @@ struct globals {
 	const char *cwd;
 	struct variable *top_var; /* = &G.shell_ver (set in main()) */
 	struct variable shell_ver;
+	char **expanded_assignments;
 #if ENABLE_HUSH_FUNCTIONS
 	struct function *top_func;
 # if ENABLE_HUSH_LOCAL
@@ -1217,7 +1357,7 @@ static void hush_exit(int exitcode)
 
 static int check_and_run_traps(int sig)
 {
-	static const struct timespec zero_timespec = { 0, 0 };
+	static const struct timespec zero_timespec;
 	smalluint save_rcode;
 	int last_sig = 0;
 
@@ -1321,9 +1461,23 @@ static struct variable *get_local_var(const char *name)
 
 static const char* FAST_FUNC get_local_var_value(const char *name)
 {
-	struct variable **pp = get_ptr_to_local_var(name);
-	if (pp)
-		return strchr((*pp)->varstr, '=') + 1;
+	struct variable **vpp;
+
+	if (G.expanded_assignments) {
+		char **cpp = G.expanded_assignments;
+		int len = strlen(name);
+		while (*cpp) {
+			char *cp = *cpp;
+			if (strncmp(cp, name, len) == 0 && cp[len] == '=')
+				return cp + len + 1;
+			cpp++;
+		}
+	}
+
+	vpp = get_ptr_to_local_var(name);
+	if (vpp)
+		return strchr((*vpp)->varstr, '=') + 1;
+
 	if (strcmp(name, "PPID") == 0)
 		return utoa(G.root_ppid);
 	// bash compat: UID? EUID?
@@ -2683,7 +2837,7 @@ static NOINLINE int expand_vars_to_list(o_string *output, int n, char *arg, char
 						}
 					}
 				} else if (exp_op == ':') {
-#if ENABLE_HUSH_BASH_COMPAT
+#if ENABLE_HUSH_BASH_COMPAT && ENABLE_SH_MATH_SUPPORT
 	/* It's ${var:N[:M]} bashism.
 	 * Note that in encoded form it has TWO parts:
 	 * var:N<SPECIAL_VAR_SYMBOL>M<SPECIAL_VAR_SYMBOL>
@@ -2952,11 +3106,14 @@ static char* expand_strvec_to_string(char **argv)
 static char **expand_assignments(char **argv, int count)
 {
 	int i;
-	char **p = NULL;
+	char **p;
+
+	G.expanded_assignments = p = NULL;
 	/* Expand assignments into one string each */
 	for (i = 0; i < count; i++) {
-		p = add_string_to_strings(p, expand_string_to_string(argv[i]));
+		G.expanded_assignments = p = add_string_to_strings(p, expand_string_to_string(argv[i]));
 	}
+	G.expanded_assignments = NULL;
 	return p;
 }
 
@@ -3210,15 +3367,11 @@ static void setup_heredoc(struct redir_struct *redir)
 #if !BB_MMU
 	to_free = NULL;
 #endif
-	pid = vfork();
-	if (pid < 0)
-		bb_perror_msg_and_die("vfork");
+	pid = xvfork();
 	if (pid == 0) {
 		/* child */
 		disable_restore_tty_pgrp_on_exit();
-		pid = BB_MMU ? fork() : vfork();
-		if (pid < 0)
-			bb_perror_msg_and_die(BB_MMU ? "fork" : "vfork");
+		pid = BB_MMU ? xfork() : xvfork();
 		if (pid != 0)
 			_exit(0);
 		/* grandchild */
@@ -3694,6 +3847,35 @@ static void execvp_or_die(char **argv)
 	_exit(127); /* bash compat */
 }
 
+#if ENABLE_HUSH_MODE_X
+static void dump_cmd_in_x_mode(char **argv)
+{
+	if (G_x_mode && argv) {
+		/* We want to output the line in one write op */
+		char *buf, *p;
+		int len;
+		int n;
+
+		len = 3;
+		n = 0;
+		while (argv[n])
+			len += strlen(argv[n++]) + 1;
+		buf = xmalloc(len);
+		buf[0] = '+';
+		p = buf + 1;
+		n = 0;
+		while (argv[n])
+			p += sprintf(p, " %s", argv[n++]);
+		*p++ = '\n';
+		*p = '\0';
+		fputs(buf, stderr);
+		free(buf);
+	}
+}
+#else
+# define dump_cmd_in_x_mode(argv) ((void)0)
+#endif
+
 #if BB_MMU
 #define pseudo_exec_argv(nommu_save, argv, assignment_cnt, argv_expanded) \
 	pseudo_exec_argv(argv, assignment_cnt, argv_expanded)
@@ -3715,11 +3897,18 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 {
 	char **new_env;
 
-	/* Case when we are here: ... | var=val | ... */
-	if (!argv[assignment_cnt])
-		_exit(EXIT_SUCCESS);
-
 	new_env = expand_assignments(argv, assignment_cnt);
+	dump_cmd_in_x_mode(new_env);
+
+	if (!argv[assignment_cnt]) {
+		/* Case when we are here: ... | var=val | ...
+		 * (note that we do not exit early, i.e., do not optimize out
+		 * expand_assignments(): think about ... | var=`sleep 1` | ...
+		 */
+		free_strings(new_env);
+		_exit(EXIT_SUCCESS);
+	}
+
 #if BB_MMU
 	set_vars_and_save_old(new_env);
 	free(new_env); /* optional */
@@ -3729,6 +3918,7 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 	nommu_save->new_env = new_env;
 	nommu_save->old_vars = set_vars_and_save_old(new_env);
 #endif
+
 	if (argv_expanded) {
 		argv = argv_expanded;
 	} else {
@@ -3737,6 +3927,7 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 		nommu_save->argv = argv;
 #endif
 	}
+	dump_cmd_in_x_mode(argv);
 
 #if ENABLE_FEATURE_SH_STANDALONE || BB_MMU
 	if (strchr(argv[0], '/') != NULL)
@@ -4144,15 +4335,36 @@ static int checkjobs_and_fg_shell(struct pipe* fg_pipe)
  * backgrounded: cmd &     { list } &
  * subshell:     ( list ) [&]
  */
+#if !ENABLE_HUSH_MODE_X
+#define redirect_and_varexp_helper(new_env_p, old_vars_p, command, squirrel, char argv_expanded) \
+	redirect_and_varexp_helper(new_env_p, old_vars_p, command, squirrel)
+#endif
+static int redirect_and_varexp_helper(char ***new_env_p, struct variable **old_vars_p, struct command *command, int squirrel[3], char **argv_expanded)
+{
+	/* setup_redirects acts on file descriptors, not FILEs.
+	 * This is perfect for work that comes after exec().
+	 * Is it really safe for inline use?  Experimentally,
+	 * things seem to work. */
+	int rcode = setup_redirects(command, squirrel);
+	if (rcode == 0) {
+		char **new_env = expand_assignments(command->argv, command->assignment_cnt);
+		*new_env_p = new_env;
+		dump_cmd_in_x_mode(new_env);
+		dump_cmd_in_x_mode(argv_expanded);
+		if (old_vars_p)
+			*old_vars_p = set_vars_and_save_old(new_env);
+	}
+	return rcode;
+}
 static NOINLINE int run_pipe(struct pipe *pi)
 {
 	static const char *const null_ptr = NULL;
-	int i;
-	int nextin;
+
+	int cmd_no;
+	int next_infd;
 	struct command *command;
 	char **argv_expanded;
 	char **argv;
-	char *p;
 	/* it is not always needed, but we aim to smaller code */
 	int squirrel[] = { -1, -1, -1 };
 	int rcode;
@@ -4162,7 +4374,7 @@ static NOINLINE int run_pipe(struct pipe *pi)
 
 	IF_HUSH_JOB(pi->pgrp = -1;)
 	pi->stopped_cmds = 0;
-	command = &(pi->cmds[0]);
+	command = &pi->cmds[0];
 	argv_expanded = NULL;
 
 	if (pi->num_cmds != 1
@@ -4229,29 +4441,59 @@ static NOINLINE int run_pipe(struct pipe *pi)
 		if (argv[command->assignment_cnt] == NULL) {
 			/* Assignments, but no command */
 			/* Ensure redirects take effect (that is, create files).
-			 * Try "a=t >file": */
-			rcode = setup_redirects(command, squirrel);
-			restore_redirects(squirrel);
+			 * Try "a=t >file" */
+#if 0 /* A few cases in testsuite fail with this code. FIXME */
+			rcode = redirect_and_varexp_helper(&new_env, /*old_vars:*/ NULL, command, squirrel, /*argv_expanded:*/ NULL);
 			/* Set shell variables */
-			while (*argv) {
-				p = expand_string_to_string(*argv);
-				debug_printf_exec("set shell var:'%s'->'%s'\n",
-						*argv, p);
-				set_local_var(p, /*exp:*/ 0, /*lvl:*/ 0, /*ro:*/ 0);
-				argv++;
+			if (new_env) {
+				argv = new_env;
+				while (*argv) {
+					set_local_var(*argv, /*exp:*/ 0, /*lvl:*/ 0, /*ro:*/ 0);
+					/* Do we need to flag set_local_var() errors?
+					 * "assignment to readonly var" and "putenv error"
+					 */
+					argv++;
+				}
 			}
-			/* Redirect error sets $? to 1. Othervise,
+			/* Redirect error sets $? to 1. Otherwise,
 			 * if evaluating assignment value set $?, retain it.
 			 * Try "false; q=`exit 2`; echo $?" - should print 2: */
 			if (rcode == 0)
 				rcode = G.last_exitcode;
-			/* Do we need to flag set_local_var() errors?
-			 * "assignment to readonly var" and "putenv error"
-			 */
+			/* Exit, _skipping_ variable restoring code: */
+			goto clean_up_and_ret0;
+
+#else /* Older, bigger, but more correct code */
+
+			rcode = setup_redirects(command, squirrel);
+			restore_redirects(squirrel);
+			/* Set shell variables */
+			if (G_x_mode)
+				bb_putchar_stderr('+');
+			while (*argv) {
+				char *p = expand_string_to_string(*argv);
+				if (G_x_mode)
+					fprintf(stderr, " %s", p);
+				debug_printf_exec("set shell var:'%s'->'%s'\n",
+						*argv, p);
+				set_local_var(p, /*exp:*/ 0, /*lvl:*/ 0, /*ro:*/ 0);
+				/* Do we need to flag set_local_var() errors?
+				 * "assignment to readonly var" and "putenv error"
+				 */
+				argv++;
+			}
+			if (G_x_mode)
+				bb_putchar_stderr('\n');
+			/* Redirect error sets $? to 1. Otherwise,
+			 * if evaluating assignment value set $?, retain it.
+			 * Try "false; q=`exit 2`; echo $?" - should print 2: */
+			if (rcode == 0)
+				rcode = G.last_exitcode;
 			IF_HAS_KEYWORDS(if (pi->pi_inverted) rcode = !rcode;)
 			debug_leave();
 			debug_printf_exec("run_pipe: return %d\n", rcode);
 			return rcode;
+#endif
 		}
 
 		/* Expand the rest into (possibly) many strings each */
@@ -4292,14 +4534,8 @@ static NOINLINE int run_pipe(struct pipe *pi)
 					goto clean_up_and_ret1;
 				}
 			}
-			/* setup_redirects acts on file descriptors, not FILEs.
-			 * This is perfect for work that comes after exec().
-			 * Is it really safe for inline use?  Experimentally,
-			 * things seem to work. */
-			rcode = setup_redirects(command, squirrel);
+			rcode = redirect_and_varexp_helper(&new_env, &old_vars, command, squirrel, argv_expanded);
 			if (rcode == 0) {
-				new_env = expand_assignments(argv, command->assignment_cnt);
-				old_vars = set_vars_and_save_old(new_env);
 				if (!funcp) {
 					debug_printf_exec(": builtin '%s' '%s'...\n",
 						x->b_cmd, argv_expanded[1]);
@@ -4322,12 +4558,11 @@ static NOINLINE int run_pipe(struct pipe *pi)
 				}
 #endif
 			}
-#if ENABLE_FEATURE_SH_STANDALONE
  clean_up_and_ret:
-#endif
-			restore_redirects(squirrel);
 			unset_vars(new_env);
 			add_vars(old_vars);
+/* clean_up_and_ret0: */
+			restore_redirects(squirrel);
  clean_up_and_ret1:
 			free(argv_expanded);
 			IF_HAS_KEYWORDS(if (pi->pi_inverted) rcode = !rcode;)
@@ -4336,20 +4571,18 @@ static NOINLINE int run_pipe(struct pipe *pi)
 			return rcode;
 		}
 
-#if ENABLE_FEATURE_SH_STANDALONE
-		i = find_applet_by_name(argv_expanded[0]);
-		if (i >= 0 && APPLET_IS_NOFORK(i)) {
-			rcode = setup_redirects(command, squirrel);
-			if (rcode == 0) {
-				new_env = expand_assignments(argv, command->assignment_cnt);
-				old_vars = set_vars_and_save_old(new_env);
-				debug_printf_exec(": run_nofork_applet '%s' '%s'...\n",
-					argv_expanded[0], argv_expanded[1]);
-				rcode = run_nofork_applet(i, argv_expanded);
+		if (ENABLE_FEATURE_SH_STANDALONE) {
+			int n = find_applet_by_name(argv_expanded[0]);
+			if (n >= 0 && APPLET_IS_NOFORK(n)) {
+				rcode = redirect_and_varexp_helper(&new_env, &old_vars, command, squirrel, argv_expanded);
+				if (rcode == 0) {
+					debug_printf_exec(": run_nofork_applet '%s' '%s'...\n",
+						argv_expanded[0], argv_expanded[1]);
+					rcode = run_nofork_applet(n, argv_expanded);
+				}
+				goto clean_up_and_ret;
 			}
-			goto clean_up_and_ret;
 		}
-#endif
 		/* It is neither builtin nor applet. We must fork. */
 	}
 
@@ -4360,9 +4593,10 @@ static NOINLINE int run_pipe(struct pipe *pi)
 
 	/* Going to fork a child per each pipe member */
 	pi->alive_cmds = 0;
-	nextin = 0;
+	next_infd = 0;
 
-	for (i = 0; i < pi->num_cmds; i++) {
+	cmd_no = 0;
+	while (cmd_no < pi->num_cmds) {
 		struct fd_pair pipefds;
 #if !BB_MMU
 		volatile nommu_save_t nommu_save;
@@ -4371,7 +4605,8 @@ static NOINLINE int run_pipe(struct pipe *pi)
 		nommu_save.argv = NULL;
 		nommu_save.argv_from_re_execing = NULL;
 #endif
-		command = &(pi->cmds[i]);
+		command = &pi->cmds[cmd_no];
+		cmd_no++;
 		if (command->argv) {
 			debug_printf_exec(": pipe member '%s' '%s'...\n",
 					command->argv[0], command->argv[1]);
@@ -4382,7 +4617,7 @@ static NOINLINE int run_pipe(struct pipe *pi)
 		/* pipes are inserted between pairs of commands */
 		pipefds.rd = 0;
 		pipefds.wr = 1;
-		if ((i + 1) < pi->num_cmds)
+		if (cmd_no < pi->num_cmds)
 			xpiped_pair(pipefds);
 
 		command->pid = BB_MMU ? fork() : vfork();
@@ -4415,7 +4650,7 @@ static NOINLINE int run_pipe(struct pipe *pi)
 				if (open(bb_dev_null, O_RDONLY))
 					xopen("/", O_RDONLY);
 			} else {
-				xmove_fd(nextin, 0);
+				xmove_fd(next_infd, 0);
 			}
 			xmove_fd(pipefds.wr, 1);
 			if (pipefds.rd > 1)
@@ -4452,7 +4687,7 @@ static NOINLINE int run_pipe(struct pipe *pi)
 		argv_expanded = NULL;
 		if (command->pid < 0) { /* [v]fork failed */
 			/* Clearly indicate, was it fork or vfork */
-			bb_perror_msg(BB_MMU ? "fork" : "vfork");
+			bb_perror_msg(BB_MMU ? "vfork"+1 : "vfork");
 		} else {
 			pi->alive_cmds++;
 #if ENABLE_HUSH_JOB
@@ -4462,12 +4697,12 @@ static NOINLINE int run_pipe(struct pipe *pi)
 #endif
 		}
 
-		if (i)
-			close(nextin);
-		if ((i + 1) < pi->num_cmds)
+		if (cmd_no > 1)
+			close(next_infd);
+		if (cmd_no < pi->num_cmds)
 			close(pipefds.wr);
 		/* Pass read (output) pipe end to next iteration */
-		nextin = pipefds.rd;
+		next_infd = pipefds.rd;
 	}
 
 	if (!pi->alive_cmds) {
@@ -4899,7 +5134,7 @@ static int run_and_free_list(struct pipe *pi)
 {
 	int rcode = 0;
 	debug_printf_exec("run_and_free_list entered\n");
-	if (!G.fake_mode) {
+	if (!G.n_mode) {
 		debug_printf_exec(": run_list: 1st pipe with %d cmds\n", pi->num_cmds);
 		rcode = run_list(pi);
 	}
@@ -5588,10 +5823,7 @@ static FILE *generate_stream_from_string(const char *s, pid_t *pid_p)
 # endif
 
 	xpipe(channel);
-	pid = BB_MMU ? fork() : vfork();
-	if (pid < 0)
-		bb_perror_msg_and_die(BB_MMU ? "fork" : "vfork");
-
+	pid = BB_MMU ? xfork() : xvfork();
 	if (pid == 0) { /* child */
 		disable_restore_tty_pgrp_on_exit();
 		/* Process substitution is not considered to be usual
@@ -5829,7 +6061,7 @@ static int parse_group(o_string *dest, struct parse_context *ctx,
 	/* command remains "open", available for possible redirects */
 }
 
-#if ENABLE_HUSH_TICK || ENABLE_SH_MATH_SUPPORT
+#if ENABLE_HUSH_TICK || ENABLE_SH_MATH_SUPPORT || ENABLE_HUSH_DOLLAR_OPS
 /* Subroutines for copying $(...) and `...` things */
 static void add_till_backquote(o_string *dest, struct in_str *input);
 /* '...' */
@@ -5930,9 +6162,9 @@ static int add_till_closing_bracket(o_string *dest, struct in_str *input, unsign
 {
 	int ch;
 	char dbl = end_ch & DOUBLE_CLOSE_CHAR_FLAG;
-#if ENABLE_HUSH_BASH_COMPAT
+# if ENABLE_HUSH_BASH_COMPAT
 	char end_char2 = end_ch >> 8;
-#endif
+# endif
 	end_ch &= (DOUBLE_CLOSE_CHAR_FLAG - 1);
 
 	while (1) {
@@ -5985,7 +6217,7 @@ static int add_till_closing_bracket(o_string *dest, struct in_str *input, unsign
 	}
 	return ch;
 }
-#endif /* ENABLE_HUSH_TICK || ENABLE_SH_MATH_SUPPORT */
+#endif /* ENABLE_HUSH_TICK || ENABLE_SH_MATH_SUPPORT || ENABLE_HUSH_DOLLAR_OPS */
 
 /* Return code: 0 for OK, 1 for syntax error */
 #if BB_MMU
@@ -6091,7 +6323,11 @@ static int parse_dollar(o_string *as_string,
  again:
 				if (!BB_MMU)
 					pos = dest->length;
+#if ENABLE_HUSH_DOLLAR_OPS
 				last_ch = add_till_closing_bracket(dest, input, end_ch);
+#else
+#error Simple code to only allow ${var} is not implemented
+#endif
 				if (as_string) {
 					o_addstr(as_string, dest->data + pos);
 					o_addchr(as_string, last_ch);
@@ -6924,8 +7160,8 @@ static int set_mode(const char cstate, const char mode)
 {
 	int state = (cstate == '-' ? 1 : 0);
 	switch (mode) {
-		case 'n': G.fake_mode = state; break;
-		case 'x': /*G.debug_mode = state;*/ break;
+		case 'n': G.n_mode = state; break;
+		case 'x': IF_HUSH_MODE_X(G_x_mode = state;) break;
 		default:  return EXIT_FAILURE;
 	}
 	return EXIT_SUCCESS;
@@ -7154,7 +7390,7 @@ int hush_main(int argc, char **argv)
 #endif
 		case 'n':
 		case 'x':
-			if (!set_mode('-', opt))
+			if (set_mode('-', opt) == 0) /* no error */
 				break;
 		default:
 #ifndef BB_VER

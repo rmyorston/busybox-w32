@@ -61,11 +61,11 @@
 static const char usage_messages[] ALIGN1 = UNPACKED_USAGE;
 #else
 # define usage_messages 0
-#endif /* SHOW_USAGE */
+#endif
 
 #if ENABLE_FEATURE_COMPRESS_USAGE
 
-static const char packed_usage[] = { PACKED_USAGE };
+static const char packed_usage[] ALIGN1 = { PACKED_USAGE };
 # include "unarchive.h"
 static const char *unpack_usage_messages(void)
 {
@@ -195,7 +195,11 @@ void lbb_prepare(const char *applet
 #if ENABLE_FEATURE_INDIVIDUAL
 	/* Redundant for busybox (run_applet_and_exit covers that case)
 	 * but needed for "individual applet" mode */
-	if (argv[1] && !argv[2] && strcmp(argv[1], "--help") == 0) {
+	if (argv[1]
+	 && !argv[2]
+	 && strcmp(argv[1], "--help") == 0
+	 && strncmp(applet, "busybox", 7) != 0
+	) {
 		/* Special case. POSIX says "test --help"
 		 * should be no different from e.g. "test --foo".  */
 		if (!ENABLE_TEST || strcmp(applet_name, "test") != 0)

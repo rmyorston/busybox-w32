@@ -119,12 +119,6 @@ INSERT
 #define sh_full_usage ""
 #define ash_trivial_usage NOUSAGE_STR
 #define ash_full_usage ""
-#define hush_trivial_usage NOUSAGE_STR
-#define hush_full_usage ""
-#define lash_trivial_usage NOUSAGE_STR
-#define lash_full_usage ""
-#define msh_trivial_usage NOUSAGE_STR
-#define msh_full_usage ""
 #define bash_trivial_usage NOUSAGE_STR
 #define bash_full_usage ""
 
@@ -162,16 +156,6 @@ INSERT
        ""
 #define blkid_full_usage "\n\n" \
        "Print UUIDs of all filesystems"
-
-#define bootchartd_trivial_usage \
-       "start [PROG ARGS]|stop|init"
-#define bootchartd_full_usage "\n\n" \
-       "Create /var/log/bootchart.tgz with boot chart data\n" \
-     "\nOptions:" \
-     "\nstart: start background logging; with PROG, run PROG, then kill logging with USR1" \
-     "\nstop: send USR1 to all bootchartd processes" \
-     "\ninit: start background logging; stop when getty/xdm is seen (for init scripts)" \
-     "\nUnder PID 1: as init, then exec $bootchart_init, /init, /sbin/init" \
 
 #define brctl_trivial_usage \
        "COMMAND [BRIDGE [INTERFACE]]"
@@ -444,7 +428,7 @@ INSERT
        "	[-/ DIR] [-n NICE] [-m BYTES] [-d BYTES] [-o N]\n" \
        "	[-p N] [-f BYTES] [-c BYTES] PROG ARGS"
 #define chpst_full_usage "\n\n" \
-       "Change the process state and run PROG\n" \
+       "Change the process state, run PROG\n" \
      "\nOptions:" \
      "\n	-u USER[:GRP]	Set uid and gid" \
      "\n	-U USER[:GRP]	Set $UID and $GID in environment" \
@@ -467,17 +451,17 @@ INSERT
 #define setuidgid_trivial_usage \
        "USER PROG ARGS"
 #define setuidgid_full_usage "\n\n" \
-       "Set uid and gid to USER's uid and gid, removing all supplementary\n" \
-       "groups and run PROG"
+       "Set uid and gid to USER's uid and gid, drop supplementary group ids,\n" \
+       "run PROG"
 #define envuidgid_trivial_usage \
        "USER PROG ARGS"
 #define envuidgid_full_usage "\n\n" \
-       "Set $UID to USER's uid and $GID to USER's gid and run PROG"
+       "Set $UID to USER's uid and $GID to USER's gid, run PROG"
 #define envdir_trivial_usage \
        "DIR PROG ARGS"
 #define envdir_full_usage "\n\n" \
        "Set various environment variables as specified by files\n" \
-       "in the directory dir and run PROG"
+       "in the directory DIR, run PROG"
 #define softlimit_trivial_usage \
        "[-a BYTES] [-m BYTES] [-d BYTES] [-s BYTES] [-l BYTES]\n" \
        "	[-f BYTES] [-c BYTES] [-r BYTES] [-o N] [-p N] [-t N]\n" \
@@ -548,23 +532,48 @@ INSERT
 #define bbconfig_trivial_usage \
        ""
 #define bbconfig_full_usage "\n\n" \
-       "Print the config file which built busybox"
+       "Print the config file used by busybox build"
 
 #define chrt_trivial_usage \
        "[OPTIONS] [PRIO] [PID | PROG ARGS]"
 #define chrt_full_usage "\n\n" \
-       "Manipulate real-time attributes of a process\n" \
+       "Change scheduling priority and class for a process\n" \
      "\nOptions:" \
      "\n	-p	Operate on PID" \
-     "\n	-r	Set SCHED_RR scheduling" \
-     "\n	-f	Set SCHED_FIFO scheduling" \
-     "\n	-o	Set SCHED_OTHER scheduling" \
-     "\n	-m	Show min and max priorities" \
+     "\n	-r	Set SCHED_RR class" \
+     "\n	-f	Set SCHED_FIFO class" \
+     "\n	-o	Set SCHED_OTHER class" \
+     "\n	-m	Show min/max priorities" \
 
 #define chrt_example_usage \
        "$ chrt -r 4 sleep 900; x=$!\n" \
        "$ chrt -f -p 3 $x\n" \
        "You need CAP_SYS_NICE privileges to set scheduling attributes of a process"
+
+#define nice_trivial_usage \
+       "[-n ADJUST] [PROG ARGS]"
+#define nice_full_usage "\n\n" \
+       "Change scheduling priority, run PROG\n" \
+     "\nOptions:" \
+     "\n	-n ADJUST	Adjust priority by ADJUST" \
+
+#define renice_trivial_usage \
+       "{{-n INCREMENT} | PRIORITY} [[-p | -g | -u] ID...]"
+#define renice_full_usage "\n\n" \
+       "Change scheduling priority for a running process\n" \
+     "\nOptions:" \
+     "\n	-n	Adjust current nice value (smaller is faster)" \
+     "\n	-p	Process id(s) (default)" \
+     "\n	-g	Process group id(s)" \
+     "\n	-u	Process user name(s) and/or id(s)" \
+
+#define ionice_trivial_usage \
+	"[-c 1-3] [-n 0-7] [-p PID] [PROG]"
+#define ionice_full_usage "\n\n" \
+       "Change I/O priority and class\n" \
+     "\nOptions:" \
+     "\n	-c	Class. 1:realtime 2:best-effort 3:idle" \
+     "\n	-n	Priority" \
 
 #define cp_trivial_usage \
        "[OPTIONS] SOURCE DEST"
@@ -1309,7 +1318,7 @@ INSERT
 #define flock_trivial_usage \
        "[-sxun] FD|{FILE [-c] PROG ARGS}"
 #define flock_full_usage "\n\n" \
-       "[Un]lock file descriptor, or lock FILE and run PROG\n" \
+       "[Un]lock file descriptor, or lock FILE, run PROG\n" \
      "\nOptions:" \
      "\n	-s	Shared lock" \
      "\n	-x	Exclusive lock (default)" \
@@ -2047,14 +2056,6 @@ INSERT
 	IF_SELINUX( \
      "\n	-Z	Set security context" \
 	)
-
-#define ionice_trivial_usage \
-	"[-c 1-3] [-n 0-7] [-p PID] [PROG]"
-#define ionice_full_usage "\n\n" \
-       "Change I/O scheduling class and priority\n" \
-     "\nOptions:" \
-     "\n	-c	Class. 1:realtime 2:best-effort 3:idle" \
-     "\n	-n	Priority" \
 
 /* would need to make the " | " optional depending on more than one selected: */
 #define ip_trivial_usage \
@@ -2954,84 +2955,6 @@ INSERT
        " or\n" \
        "$ nameif -c /etc/my_mactab_file\n" \
 
-#if !ENABLE_DESKTOP
-
-#if ENABLE_NC_SERVER || ENABLE_NC_EXTRA
-#define NC_OPTIONS_STR "\n\nOptions:"
-#else
-#define NC_OPTIONS_STR
-#endif
-
-#define nc_trivial_usage \
-	IF_NC_EXTRA("[-iN] [-wN] ")IF_NC_SERVER("[-l] [-p PORT] ") \
-       "["IF_NC_EXTRA("-f FILENAME|")"IPADDR PORT]"IF_NC_EXTRA(" [-e PROG]")
-#define nc_full_usage "\n\n" \
-       "Open a pipe to IP:port" IF_NC_EXTRA(" or file") \
-	NC_OPTIONS_STR \
-	IF_NC_EXTRA( \
-     "\n	-e PROG	Run PROG after connect" \
-     "\n	-i SEC	Delay interval for lines sent" \
-     "\n	-w SEC	Timeout for connect" \
-     "\n	-f FILE	Use file (ala /dev/ttyS0) instead of network" \
-	) \
-	IF_NC_SERVER( \
-     "\n	-l	Listen mode, for inbound connects" \
-	IF_NC_EXTRA( \
-     "\n		(use -l twice with -e for persistent server)") \
-     "\n	-p PORT	Local port" \
-	)
-
-#define nc_notes_usage "" \
-	IF_NC_EXTRA( \
-       "To use netcat as a terminal emulator on a serial port:\n\n" \
-       "$ stty 115200 -F /dev/ttyS0\n" \
-       "$ stty raw -echo -ctlecho && nc -f /dev/ttyS0\n" \
-	)
-
-#define nc_example_usage \
-       "$ nc foobar.somedomain.com 25\n" \
-       "220 foobar ESMTP Exim 3.12 #1 Sat, 15 Apr 2000 00:03:02 -0600\n" \
-       "help\n" \
-       "214-Commands supported:\n" \
-       "214-    HELO EHLO MAIL RCPT DATA AUTH\n" \
-       "214     NOOP QUIT RSET HELP\n" \
-       "quit\n" \
-       "221 foobar closing connection\n"
-
-#else /* DESKTOP nc - much more compatible with nc 1.10 */
-
-#define nc_trivial_usage \
-       "[OPTIONS] HOST PORT  - connect" \
-	IF_NC_SERVER("\n" \
-       "nc [OPTIONS] -l -p PORT [HOST] [PORT]  - listen")
-#define nc_full_usage "\n\n" \
-       "Options:" \
-     "\n	-e PROG		Run PROG after connect (must be last)" \
-	IF_NC_SERVER( \
-     "\n	-l		Listen mode, for inbound connects" \
-	) \
-     "\n	-n		Don't do DNS resolution" \
-     "\n	-s ADDR		Local address" \
-     "\n	-p PORT		Local port" \
-     "\n	-u		UDP mode" \
-     "\n	-v		Verbose" \
-     "\n	-w SEC		Timeout for connects and final net reads" \
-	IF_NC_EXTRA( \
-     "\n	-i SEC		Delay interval for lines sent" /* ", ports scanned" */ \
-     "\n	-o FILE		Hex dump traffic" \
-     "\n	-z		Zero-I/O mode (scanning)" \
-	) \
-/*   "\n	-r		Randomize local and remote ports" */
-/*   "\n	-g gateway	Source-routing hop point[s], up to 8" */
-/*   "\n	-G num		Source-routing pointer: 4, 8, 12, ..." */
-/*   "\nport numbers can be individual or ranges: lo-hi [inclusive]" */
-
-/* -e PROG can take ARGS too: "nc ... -e ls -l", but we don't document it
- * in help text: nc 1.10 does not allow that. We don't want to entice
- * users to use this incompatibility */
-
-#endif
-
 #define netstat_trivial_usage \
        "[-laentuwxr"IF_FEATURE_NETSTAT_WIDE("W")IF_FEATURE_NETSTAT_PRG("p")"]"
 #define netstat_full_usage "\n\n" \
@@ -3052,13 +2975,6 @@ INSERT
 	IF_FEATURE_NETSTAT_PRG( \
      "\n	-p	Display PID/Program name for sockets" \
 	)
-
-#define nice_trivial_usage \
-       "[-n ADJUST] [PROG ARGS]"
-#define nice_full_usage "\n\n" \
-       "Run PROG with modified scheduling priority\n" \
-     "\nOptions:" \
-     "\n	-n ADJUST	Adjust priority by ADJUST" \
 
 #define nmeter_trivial_usage \
        "format_string"
@@ -3512,16 +3428,6 @@ INSERT
      "\n			Must be the last option" \
      "\n" \
      "\nOther options are silently ignored" \
-
-#define renice_trivial_usage \
-       "{{-n INCREMENT} | PRIORITY} [[-p | -g | -u] ID...]"
-#define renice_full_usage "\n\n" \
-       "Change priority of running processes\n" \
-     "\nOptions:" \
-     "\n	-n	Adjust current nice value (smaller is faster)" \
-     "\n	-p	Process id(s) (default)" \
-     "\n	-g	Process group id(s)" \
-     "\n	-u	Process user name(s) and/or id(s)" \
 
 #define scriptreplay_trivial_usage \
        "timingfile [typescript [divisor]]"
@@ -4272,54 +4178,6 @@ INSERT
 	"[FILE]..."
 #define tac_full_usage "\n\n" \
 	"Concatenate FILEs and print them in reverse"
-
-#define tar_trivial_usage \
-       "-[" IF_FEATURE_TAR_CREATE("c") "xt" IF_FEATURE_SEAMLESS_GZ("z") \
-	IF_FEATURE_SEAMLESS_BZ2("j") IF_FEATURE_SEAMLESS_LZMA("a") \
-	IF_FEATURE_SEAMLESS_Z("Z") IF_FEATURE_TAR_NOPRESERVE_TIME("m") "vO] " \
-	IF_FEATURE_TAR_FROM("[-X FILE] ") \
-       "[-f TARFILE] [-C DIR] [FILE]..."
-#define tar_full_usage "\n\n" \
-	IF_FEATURE_TAR_CREATE("Create, extract, ") \
-	IF_NOT_FEATURE_TAR_CREATE("Extract ") \
-       "or list files from a tar file\n" \
-     "\nOptions:" \
-	IF_FEATURE_TAR_CREATE( \
-     "\n	c	Create" \
-	) \
-     "\n	x	Extract" \
-     "\n	t	List" \
-     "\nArchive format selection:" \
-	IF_FEATURE_SEAMLESS_GZ( \
-     "\n	z	Filter the archive through gzip" \
-	) \
-	IF_FEATURE_SEAMLESS_BZ2( \
-     "\n	j	Filter the archive through bzip2" \
-	) \
-	IF_FEATURE_SEAMLESS_LZMA( \
-     "\n	a	Filter the archive through lzma" \
-	) \
-	IF_FEATURE_SEAMLESS_Z( \
-     "\n	Z	Filter the archive through compress" \
-	) \
-	IF_FEATURE_TAR_NOPRESERVE_TIME( \
-     "\n	m	Do not restore mtime" \
-	) \
-     "\nFile selection:" \
-     "\n	f	Name of TARFILE or \"-\" for stdin" \
-     "\n	O	Extract to stdout" \
-	IF_FEATURE_TAR_FROM( \
-	IF_FEATURE_TAR_LONG_OPTIONS( \
-     "\n	exclude	File to exclude" \
-	) \
-     "\n	X	File with names to exclude" \
-	) \
-     "\n	C	Change to DIR before operation" \
-     "\n	v	Verbose" \
-
-#define tar_example_usage \
-       "$ zcat /tmp/tarball.tar.gz | tar -xf -\n" \
-       "$ tar -cf /tmp/tarball.tar /usr/local\n"
 
 #define taskset_trivial_usage \
        "[-p] [MASK] [PID | PROG ARGS]"

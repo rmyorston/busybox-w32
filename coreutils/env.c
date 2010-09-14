@@ -76,11 +76,8 @@ int env_main(int argc UNUSED_PARAM, char **argv)
 		++argv;
 	}
 
-	if (*argv) {
-		BB_EXECVP(*argv, argv);
-		/* SUSv3-mandated exit codes. */
-		xfunc_error_retval = (errno == ENOENT) ? 127 : 126;
-		bb_simple_perror_msg_and_die(*argv);
+	if (argv[0]) {
+		BB_EXECVP_or_die(argv);
 	}
 
 	if (environ) { /* clearenv() may set environ == NULL! */

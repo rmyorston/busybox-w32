@@ -1,5 +1,5 @@
 VERSION = 1
-PATCHLEVEL = 17
+PATCHLEVEL = 18
 SUBLEVEL = 0
 EXTRAVERSION = .git
 NAME = Unnamed
@@ -361,7 +361,7 @@ scripts/basic/%: scripts_basic ;
 
 # This target generates Kbuild's and Config.in's from *.c files
 PHONY += gen_build_files
-gen_build_files:
+gen_build_files: $(wildcard $(srctree)/*/*.c) $(wildcard $(srctree)/*/*/*.c)
 	$(Q)$(srctree)/scripts/gen_build_files.sh $(srctree) $(objtree)
 
 # bbox: we have helpers in applets/
@@ -511,8 +511,10 @@ include $(srctree)/Makefile.flags
 # with it and forgot to run make oldconfig.
 # If kconfig.d is missing then we are probarly in a cleaned tree so
 # we execute the config step to be sure to catch updated Kconfig files
-include/autoconf.h: .kconfig.d .config
+include/autoconf.h: .kconfig.d .config $(wildcard $(srctree)/*/*.c) $(wildcard $(srctree)/*/*/*.c) | gen_build_files
 	$(Q)$(MAKE) -f $(srctree)/Makefile silentoldconfig
+
+include/usage.h: gen_build_files
 
 else
 # Dummy target needed, because used as prerequisite

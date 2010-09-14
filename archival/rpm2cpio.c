@@ -75,7 +75,7 @@ int rpm2cpio_main(int argc UNUSED_PARAM, char **argv)
 		} magic;
 		IF_DESKTOP(long long) int FAST_FUNC (*unpack)(int src_fd, int dst_fd);
 
-		xread(rpm_fd, magic.b16, sizeof(magic.b16));
+		xread(rpm_fd, magic.b16, sizeof(magic.b16[0]));
 		if (magic.b16[0] == GZIP_MAGIC) {
 			unpack = unpack_gz_stream;
 		} else
@@ -87,13 +87,11 @@ int rpm2cpio_main(int argc UNUSED_PARAM, char **argv)
 		if (ENABLE_FEATURE_SEAMLESS_XZ
 		 && magic.b16[0] == XZ_MAGIC1
 		) {
-			/* .xz signature: 0xfd, '7', 'z', 'X', 'Z', 0x00 */
-			/* More info at: http://tukaani.org/xz/xz-file-format.txt */
-			xread(rpm_fd, magic.b32, sizeof(magic.b32));
+			xread(rpm_fd, magic.b32, sizeof(magic.b32[0]));
 			if (magic.b32[0] != XZ_MAGIC2)
 				goto no_magic;
-			/* unpack_xz_stream wants fd at position 0 */
-			xlseek(rpm_fd, -6, SEEK_CUR);
+			/* unpack_xz_stream wants fd at position 6, no need to seek */
+			//xlseek(rpm_fd, -6, SEEK_CUR);
 			unpack = unpack_xz_stream;
 		} else {
  no_magic:

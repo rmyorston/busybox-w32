@@ -2,7 +2,49 @@
 /*
  * Licensed under GPLv2 or later, see file LICENSE in this tarball for details.
  */
+
+//config:config BOOTCHARTD
+//config:	bool "bootchartd"
+//config:	default y
+//config:	help
+//config:	  bootchartd is commonly used to profile the boot process
+//config:	  for the purpose of speeding it up. In this case, it is started
+//config:	  by the kernel as the init process. This is configured by adding
+//config:	  the init=/sbin/bootchartd option to the kernel command line.
+//config:
+//config:	  It can also be used to monitor the resource usage of a specific
+//config:	  application or the running system in general. In this case,
+//config:	  bootchartd is started interactively by running bootchartd start
+//config:	  and stopped using bootchartd stop.
+//config:
+//config:config FEATURE_BOOTCHARTD_BLOATED_HEADER
+//config:	bool "Compatible, bloated header"
+//config:	default y
+//config:	depends on BOOTCHARTD
+//config:	help
+//config:	  Create extended header file compatible with "big" bootchartd.
+//config:	  "Big" bootchartd is a shell script and it dumps some
+//config:	  "convenient" info int the header, such as:
+//config:	    title = Boot chart for `hostname` (`date`)
+//config:	    system.uname = `uname -srvm`
+//config:	    system.release = `cat /etc/DISTRO-release`
+//config:	    system.cpu = `grep '^model name' /proc/cpuinfo | head -1` ($cpucount)
+//config:	    system.kernel.options = `cat /proc/cmdline`
+//config:	  This data is not mandatory for bootchart graph generation,
+//config:	  and is considered bloat. Nevertheless, this option
+//config:	  makes bootchartd applet to dump a subset of it.
+//config:
+//config:config FEATURE_BOOTCHARTD_CONFIG_FILE
+//config:	bool "Support bootchartd.conf"
+//config:	default y
+//config:	depends on BOOTCHARTD
+//config:	help
+//config:	  Enable reading and parsing of $PWD/bootchartd.conf
+//config:	  and /etc/bootchartd.conf files.
+
 #include "libbb.h"
+/* After libbb.h, since it needs sys/types.h on some systems */
+#include <sys/utsname.h>
 #include <sys/mount.h>
 #ifndef MS_SILENT
 # define MS_SILENT      (1 << 15)
@@ -19,14 +61,15 @@
 #define DO_SIGNAL_SYNC 1
 
 
-//Not supported: $PWD/bootchartd.conf and /etc/bootchartd.conf
-
+//$PWD/bootchartd.conf and /etc/bootchartd.conf:
+//supported options:
+//# Sampling period (in seconds)
+//SAMPLE_PERIOD=0.2
+//
+//not yet supported:
 //# tmpfs size
 //# (32 MB should suffice for ~20 minutes worth of log data, but YMMV)
 //TMPFS_SIZE=32m
-//
-//# Sampling period (in seconds)
-//SAMPLE_PERIOD=0.2
 //
 //# Whether to enable and store BSD process accounting information.  The
 //# kernel needs to be configured to enable v3 accounting
@@ -113,7 +156,7 @@ static int dump_procs(FILE *fp, int look_for_login_process)
 				continue;
 			p++;
 			strchrnul(p, ')')[0] = '\0';
-			/* If is gdm, kdm or a getty? */
+			/* Is it gdm, kdm or a getty? */
 			if (((p[0] == 'g' || p[0] == 'k' || p[0] == 'x') && p[1] == 'd' && p[2] == 'm')
 			 || strstr(p, "getty")
 			) {
@@ -126,7 +169,7 @@ static int dump_procs(FILE *fp, int look_for_login_process)
 	return found_login_process;
 }
 
-static char *make_tempdir(const char *prog)
+static char *make_tempdir(void)
 {
 	char template[] = "/tmp/bootchart.XXXXXX";
 	char *tempdir = xstrdup(mkdtemp(template));
@@ -151,18 +194,10 @@ static char *make_tempdir(const char *prog)
 	} else {
 		xchdir(tempdir);
 	}
-	{
-		FILE *header_fp = xfopen("header", "w");
-		if (prog)
-			fprintf(header_fp, "profile.process = %s\n", prog);
-		fputs("version = "BC_VERSION_STR"\n", header_fp);
-		fclose(header_fp);
-	}
-
 	return tempdir;
 }
 
-static void do_logging(void)
+static void do_logging(unsigned sample_period_us)
 {
 	//# Enable process accounting if configured
 	//if [ "$PROCESS_ACCOUNTING" = "yes" ]; then
@@ -175,7 +210,7 @@ static void do_logging(void)
 	//FILE *proc_netdev = xfopen("proc_netdev.log", "w");
 	FILE *proc_ps = xfopen("proc_ps.log", "w");
 	int look_for_login_process = (getppid() == 1);
-	unsigned count = 60*1000*1000 / (200*1000); /* ~1 minute */
+	unsigned count = 60*1000*1000 / sample_period_us; /* ~1 minute */
 
 	while (--count && !bb_got_signal) {
 		char *p;
@@ -200,31 +235,65 @@ static void do_logging(void)
 			/* dump_procs saw a getty or {g,k,x}dm
 			 * stop logging in 2 seconds:
 			 */
-			if (count > 2*1000*1000 / (200*1000))
-				count = 2*1000*1000 / (200*1000);
+			if (count > 2*1000*1000 / sample_period_us)
+				count = 2*1000*1000 / sample_period_us;
 		}
 		fflush_all();
  wait_more:
-		usleep(200*1000);
+		usleep(sample_period_us);
 	}
 
 	// [ -e kernel_pacct ] && accton off
 }
 
-static void finalize(char *tempdir)
+static void finalize(char *tempdir, const char *prog)
 {
 	//# Stop process accounting if configured
 	//local pacct=
 	//[ -e kernel_pacct ] && pacct=kernel_pacct
 
-	//(
-	//	echo "version = $VERSION"
-	//	echo "title = Boot chart for $( hostname | sed q ) ($( date ))"
-	//	echo "system.uname = $( uname -srvm | sed q )"
-	//	echo "system.release = $( sed q /etc/SuSE-release )"
-	//	echo "system.cpu = $( grep '^model name' /proc/cpuinfo | sed q ) ($cpucount)"
-	//	echo "system.kernel.options = $( sed q /proc/cmdline )"
-	//) >> header
+	FILE *header_fp = xfopen("header", "w");
+
+	if (prog)
+		fprintf(header_fp, "profile.process = %s\n", prog);
+
+	fputs("version = "BC_VERSION_STR"\n", header_fp);
+	if (ENABLE_FEATURE_BOOTCHARTD_BLOATED_HEADER) {
+		char *hostname;
+		char *kcmdline;
+		time_t t;
+		struct tm tm_time;
+		/* x2 for possible localized weekday/month names */
+		char date_buf[sizeof("Mon Jun 21 05:29:03 CEST 2010") * 2];
+		struct utsname unamebuf;
+
+		hostname = safe_gethostname();
+		time(&t);
+		localtime_r(&t, &tm_time);
+		strftime(date_buf, sizeof(date_buf), "%a %b %e %H:%M:%S %Z %Y", &tm_time);
+		fprintf(header_fp, "title = Boot chart for %s (%s)\n", hostname, date_buf);
+		if (ENABLE_FEATURE_CLEAN_UP)
+			free(hostname);
+
+		uname(&unamebuf); /* never fails */
+		/* same as uname -srvm */
+		fprintf(header_fp, "system.uname = %s %s %s %s\n",
+				unamebuf.sysname,
+				unamebuf.release,
+				unamebuf.version,
+				unamebuf.machine
+		);
+
+		//system.release = `cat /etc/DISTRO-release`
+		//system.cpu = `grep '^model name' /proc/cpuinfo | head -1` ($cpucount)
+
+		kcmdline = xmalloc_open_read_close("/proc/cmdline", NULL);
+		/* kcmdline includes trailing "\n" */
+		fprintf(header_fp, "system.kernel.options = %s", kcmdline);
+		if (ENABLE_FEATURE_CLEAN_UP)
+			free(kcmdline);
+	}
+	fclose(header_fp);
 
 	/* Package log files */
 	system("tar -zcf /var/log/bootchart.tgz header *.log"); // + $pacct
@@ -243,19 +312,20 @@ static void finalize(char *tempdir)
 	 */
 }
 
-/* Usage:
- * bootchartd start [PROG ARGS]: start logging in background, USR1 stops it.
- *	With PROG, runs PROG, then kills background logging.
- * bootchartd stop: same as "killall -USR1 bootchartd"
- * bootchartd init: start logging in background
- *	Stop when getty/gdm is seen (if AUTO_STOP_LOGGER = yes).
- *	Meant to be used from init scripts.
- * bootchartd (pid==1): as init, but then execs $bootchart_init, /init, /sbin/init
- *	Meant to be used as kernel's init process.
- */
+//usage:#define bootchartd_trivial_usage
+//usage:       "start [PROG ARGS]|stop|init"
+//usage:#define bootchartd_full_usage "\n\n"
+//usage:       "Create /var/log/bootchart.tgz with boot chart data\n"
+//usage:     "\nOptions:"
+//usage:     "\nstart: start background logging; with PROG, run PROG, then kill logging with USR1"
+//usage:     "\nstop: send USR1 to all bootchartd processes"
+//usage:     "\ninit: start background logging; stop when getty/xdm is seen (for init scripts)"
+//usage:     "\nUnder PID 1: as init, then exec $bootchart_init, /init, /sbin/init"
+
 int bootchartd_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int bootchartd_main(int argc UNUSED_PARAM, char **argv)
 {
+	unsigned sample_period_us;
 	pid_t parent_pid, logger_pid;
 	smallint cmd;
 	enum {
@@ -287,7 +357,25 @@ int bootchartd_main(int argc UNUSED_PARAM, char **argv)
 		cmd = CMD_PID1;
 	}
 
-	/* Here we are in START or INIT state. Create logger child: */
+	/* Here we are in START, INIT or CMD_PID1 state */
+
+	/* Read config file: */
+	sample_period_us = 200 * 1000;
+	if (ENABLE_FEATURE_BOOTCHARTD_CONFIG_FILE) {
+		char* token[2];
+		parser_t *parser = config_open2("/etc/bootchartd.conf" + 5, fopen_for_read);
+		if (!parser)
+			parser = config_open2("/etc/bootchartd.conf", fopen_for_read);
+		while (config_read(parser, token, 2, 0, "#=", PARSE_NORMAL & ~PARSE_COLLAPSE)) {
+			if (strcmp(token[0], "SAMPLE_PERIOD") == 0 && token[1])
+				sample_period_us = atof(token[1]) * 1000000;
+		}
+		config_close(parser);
+	}
+	if ((int)sample_period_us <= 0)
+		sample_period_us = 1; /* prevent division by 0 */
+
+	/* Create logger child: */
 	logger_pid = fork_or_rexec(argv);
 
 	if (logger_pid == 0) { /* child */
@@ -312,9 +400,9 @@ int bootchartd_main(int argc UNUSED_PARAM, char **argv)
 		if (cmd == CMD_PID1 && !getenv("PATH"))
 			putenv((char*)bb_PATH_root_path);
 
-		tempdir = make_tempdir(cmd == CMD_START ? argv[2] : NULL);
-		do_logging();
-		finalize(tempdir);
+		tempdir = make_tempdir();
+		do_logging(sample_period_us);
+		finalize(tempdir, cmd == CMD_START ? argv[2] : NULL);
 		return EXIT_SUCCESS;
 	}
 
@@ -335,17 +423,15 @@ int bootchartd_main(int argc UNUSED_PARAM, char **argv)
 			execl(bootchart_init, bootchart_init, NULL);
 		execl("/init", "init", NULL);
 		execl("/sbin/init", "init", NULL);
-		bb_perror_msg_and_die("can't exec '%s'", "/sbin/init");
+		bb_perror_msg_and_die("can't execute '%s'", "/sbin/init");
 	}
 
 	if (cmd == CMD_START && argv[2]) { /* "start PROG ARGS" */
-		pid_t pid = vfork();
-		if (pid < 0)
-			bb_perror_msg_and_die("vfork");
+		pid_t pid = xvfork();
 		if (pid == 0) { /* child */
 			argv += 2;
 			execvp(argv[0], argv);
-			bb_perror_msg_and_die("can't exec '%s'", argv[0]);
+			bb_perror_msg_and_die("can't execute '%s'", argv[0]);
 		}
 		/* parent */
 		waitpid(pid, NULL, 0);

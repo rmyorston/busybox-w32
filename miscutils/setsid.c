@@ -44,6 +44,6 @@ int setsid_main(int argc UNUSED_PARAM, char **argv)
 		setsid();
 	}
 
-	BB_EXECVP(argv[1], argv + 1);
-	bb_simple_perror_msg_and_die(argv[1]);
+	argv++;
+	BB_EXECVP_or_die(argv);
 }

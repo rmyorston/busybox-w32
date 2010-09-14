@@ -64,9 +64,7 @@
 # define CLEAR_RANDOM_T(rnd) ((void)0)
 #endif
 
-#define SKIP_definitions 1
-#include "applet_tables.h"
-#undef SKIP_definitions
+#include "NUM_APPLETS.h"
 #if NUM_APPLETS == 1
 /* STANDALONE does not make sense, and won't compile */
 # undef CONFIG_FEATURE_SH_STANDALONE
@@ -5216,7 +5214,7 @@ openredirect(union node *redir)
 		break;
 	case NFROMTO:
 		fname = redir->nfile.expfname;
-		f = open(fname, O_RDWR|O_CREAT|O_TRUNC, 0666);
+		f = open(fname, O_RDWR|O_CREAT, 0666);
 		if (f < 0)
 			goto ecreate;
 		break;
@@ -6507,8 +6505,7 @@ subevalvar(char *p, char *str, int strloc, int subtype,
 	char *startp;
 	char *loc;
 	char *rmesc, *rmescend;
-	IF_ASH_BASH_COMPAT(char *repl = NULL;)
-	IF_ASH_BASH_COMPAT(char null = '\0';)
+	IF_ASH_BASH_COMPAT(const char *repl = NULL;)
 	IF_ASH_BASH_COMPAT(int pos, len, orig_len;)
 	int saveherefd = herefd;
 	int amount, workloc, resetloc;
@@ -6629,7 +6626,7 @@ subevalvar(char *p, char *str, int strloc, int subtype,
 		if (!repl) {
 			repl = parse_sub_pattern(str, varflags & VSQUOTE);
 			if (!repl)
-				repl = &null;
+				repl = nullstr;
 		}
 
 		/* If there's no pattern to match, return the expansion unmolested */
@@ -6680,8 +6677,12 @@ subevalvar(char *p, char *str, int strloc, int subtype,
 				idx = loc;
 			}
 
-			for (loc = repl; *loc; loc++) {
+			for (loc = (char*)repl; *loc; loc++) {
 				char *restart_detect = stackblock();
+				if (quotes && *loc == '\\') {
+					STPUTC(CTLESC, expdest);
+					len++;
+				}
 				STPUTC(*loc, expdest);
 				if (stackblock() != restart_detect)
 					goto restart;
@@ -6691,6 +6692,10 @@ subevalvar(char *p, char *str, int strloc, int subtype,
 			if (subtype == VSREPLACE) {
 				while (*idx) {
 					char *restart_detect = stackblock();
+					if (quotes && *idx == '\\') {
+						STPUTC(CTLESC, expdest);
+						len++;
+					}
 					STPUTC(*idx, expdest);
 					if (stackblock() != restart_detect)
 						goto restart;
@@ -6704,11 +6709,10 @@ subevalvar(char *p, char *str, int strloc, int subtype,
 		/* We've put the replaced text into a buffer at workloc, now
 		 * move it to the right place and adjust the stack.
 		 */
-		startp = stackblock() + startloc;
 		STPUTC('\0', expdest);
-		memmove(startp, stackblock() + workloc, len);
-		startp[len++] = '\0';
-		amount = expdest - ((char *)stackblock() + startloc + len - 1);
+		startp = (char *)stackblock() + startloc;
+		memmove(startp, (char *)stackblock() + workloc, len + 1);
+		amount = expdest - (startp + len);
 		STADJUST(-amount, expdest);
 		return startp;
 	}
@@ -7008,7 +7012,7 @@ evalvar(char *p, int flags, struct strlist *var_str_list)
 		 */
 		STPUTC('\0', expdest);
 		patloc = expdest - (char *)stackblock();
-		if (0 == subevalvar(p, /* str: */ NULL, patloc, subtype,
+		if (NULL == subevalvar(p, /* str: */ NULL, patloc, subtype,
 				startloc, varflags,
 //TODO: | EXP_REDIR too? All other such places do it too
 				/* quotes: */ flags & (EXP_FULL | EXP_CASE),
@@ -7171,13 +7175,11 @@ addfname(const char *name)
 	exparg.lastp = &sp->next;
 }
 
-static char *expdir;
-
 /*
  * Do metacharacter (i.e. *, ?, [...]) expansion.
  */
 static void
-expmeta(char *enddir, char *name)
+expmeta(char *expdir, char *enddir, char *name)
 {
 	char *p;
 	const char *cp;
@@ -7276,7 +7278,7 @@ expmeta(char *enddir, char *name)
 				for (p = enddir, cp = dp->d_name; (*p++ = *cp++) != '\0';)
 					continue;
 				p[-1] = '/';
-				expmeta(p, endname);
+				expmeta(expdir, p, endname);
 			}
 		}
 	}
@@ -7358,6 +7360,7 @@ expandmeta(struct strlist *str /*, int flag*/)
 	/* TODO - EXP_REDIR */
 
 	while (str) {
+		char *expdir;
 		struct strlist **savelastp;
 		struct strlist *sp;
 		char *p;
@@ -7374,8 +7377,7 @@ expandmeta(struct strlist *str /*, int flag*/)
 			int i = strlen(str->text);
 			expdir = ckmalloc(i < 2048 ? 2048 : i); /* XXX */
 		}
-
-		expmeta(expdir, p);
+		expmeta(expdir, expdir, p);
 		free(expdir);
 		if (p != str->text)
 			free(p);
@@ -9547,19 +9549,15 @@ evalcommand(union node *cmd, int flags)
 	/* Print the command if xflag is set. */
 	if (xflag) {
 		int n;
-		const char *p = " %s";
+		const char *p = " %s" + 1;
 
-		p++;
 		fdprintf(preverrout_fd, p, expandstr(ps4val()));
-
 		sp = varlist.list;
 		for (n = 0; n < 2; n++) {
 			while (sp) {
 				fdprintf(preverrout_fd, p, sp->text);
 				sp = sp->next;
-				if (*p == '%') {
-					p--;
-				}
+				p = " %s";
 			}
 			sp = arglist.list;
 		}

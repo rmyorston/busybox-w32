@@ -337,6 +337,11 @@ void FAST_FUNC bb_unsetenv(const char *var)
 	free(tp);
 }
 
+void FAST_FUNC bb_unsetenv_and_free(char *var)
+{
+	bb_unsetenv(var);
+	free(var);
+}
 
 // Die with an error message if we can't set gid.  (Because resource limits may
 // limit this user to a given number of processes, and if that fills up the
@@ -598,3 +603,14 @@ void FAST_FUNC generate_uuid(uint8_t *buf)
 	/* variant = 10x */
 	buf[4 + 2 + 2] = (buf[4 + 2 + 2] & 0x3f) | 0x80;
 }
+
+#if BB_MMU
+pid_t FAST_FUNC xfork(void)
+{
+	pid_t pid;
+	pid = fork();
+	if (pid < 0) /* wtf? */
+		bb_perror_msg_and_die("vfork"+1);
+	return pid;
+}
+#endif

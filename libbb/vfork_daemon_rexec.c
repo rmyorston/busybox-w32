@@ -70,40 +70,6 @@ pid_t FAST_FUNC xspawn(char **argv)
 	return pid;
 }
 
-pid_t FAST_FUNC safe_waitpid(pid_t pid, int *wstat, int options)
-{
-	pid_t r;
-
-	do
-		r = waitpid(pid, wstat, options);
-	while ((r == -1) && (errno == EINTR));
-	return r;
-}
-
-pid_t FAST_FUNC wait_any_nohang(int *wstat)
-{
-	return safe_waitpid(-1, wstat, WNOHANG);
-}
-
-// Wait for the specified child PID to exit, returning child's error return.
-int FAST_FUNC wait4pid(pid_t pid)
-{
-	int status;
-
-	if (pid <= 0) {
-		/*errno = ECHILD; -- wrong. */
-		/* we expect errno to be already set from failed [v]fork/exec */
-		return -1;
-	}
-	if (safe_waitpid(pid, &status, 0) == -1)
-		return -1;
-	if (WIFEXITED(status))
-		return WEXITSTATUS(status);
-	if (WIFSIGNALED(status))
-		return WTERMSIG(status) + 0x180;
-	return 0;
-}
-
 #if ENABLE_FEATURE_PREFER_APPLETS
 void FAST_FUNC save_nofork_data(struct nofork_save_area *save)
 {
@@ -252,7 +218,7 @@ void FAST_FUNC re_exec(char **argv)
 	 * "we have (already) re-execed, don't do it again" flag */
 	argv[0][0] |= 0x80;
 	execv(bb_busybox_exec_path, argv);
-	bb_perror_msg_and_die("exec %s", bb_busybox_exec_path);
+	bb_perror_msg_and_die("can't execute '%s'", bb_busybox_exec_path);
 }
 
 pid_t FAST_FUNC fork_or_rexec(char **argv)
@@ -261,26 +227,12 @@ pid_t FAST_FUNC fork_or_rexec(char **argv)
 	/* Maybe we are already re-execed and come here again? */
 	if (re_execed)
 		return 0;
-	pid = vfork();
-	if (pid < 0) /* wtf? */
-		bb_perror_msg_and_die("vfork");
+	pid = xvfork();
 	if (pid) /* parent */
 		return pid;
 	/* child - re-exec ourself */
 	re_exec(argv);
 }
-#else
-/* Dance around (void)...*/
-#undef fork_or_rexec
-pid_t FAST_FUNC fork_or_rexec(void)
-{
-	pid_t pid;
-	pid = fork();
-	if (pid < 0) /* wtf? */
-		bb_perror_msg_and_die("fork");
-	return pid;
-}
-#define fork_or_rexec(argv) fork_or_rexec()
 #endif
 
 /* Due to a #define in libbb.h on MMU systems we actually have 1 argument -

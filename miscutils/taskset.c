@@ -129,9 +129,8 @@ int taskset_main(int argc UNUSED_PARAM, char **argv)
 	if (sched_setaffinity(pid, sizeof(mask), &mask))
 		bb_perror_msg_and_die("can't %cet pid %d's affinity", 's', pid);
 
-	if (!*argv) /* "-p <aff> <pid> [...ignored...]" */
+	if (!argv[0]) /* "-p <aff> <pid> [...ignored...]" */
 		goto print_aff; /* print new affinity and exit */
 
-	BB_EXECVP(*argv, argv);
-	bb_simple_perror_msg_and_die(*argv);
+	BB_EXECVP_or_die(argv);
 }

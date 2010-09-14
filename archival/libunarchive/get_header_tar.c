@@ -118,34 +118,10 @@ static char *get_selinux_sctx_from_pax_hdr(archive_handle_t *archive_handle, uns
 }
 #endif
 
-void BUG_tar_header_size(void);
 char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 {
 	file_header_t *file_header = archive_handle->file_header;
-	struct {
-		/* ustar header, Posix 1003.1 */
-		char name[100];     /*   0-99 */
-		char mode[8];       /* 100-107 */
-		char uid[8];        /* 108-115 */
-		char gid[8];        /* 116-123 */
-		char size[12];      /* 124-135 */
-		char mtime[12];     /* 136-147 */
-		char chksum[8];     /* 148-155 */
-		char typeflag;      /* 156-156 */
-		char linkname[100]; /* 157-256 */
-		/* POSIX:   "ustar" NUL "00" */
-		/* GNU tar: "ustar  " NUL */
-		/* Normally it's defined as magic[6] followed by
-		 * version[2], but we put them together to simplify code
-		 */
-		char magic[8];      /* 257-264 */
-		char uname[32];     /* 265-296 */
-		char gname[32];     /* 297-328 */
-		char devmajor[8];   /* 329-336 */
-		char devminor[8];   /* 337-344 */
-		char prefix[155];   /* 345-499 */
-		char padding[12];   /* 500-512 */
-	} tar;
+	struct tar_header_t tar;
 	char *cp;
 	int i, sum_u, sum;
 #if ENABLE_FEATURE_TAR_OLDSUN_COMPATIBILITY
@@ -161,9 +137,6 @@ char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 # define p_longname 0
 # define p_linkname 0
 #endif
-
-	if (sizeof(tar) != 512)
-		BUG_tar_header_size();
 
 #if ENABLE_FEATURE_TAR_GNU_EXTENSIONS || ENABLE_FEATURE_TAR_SELINUX
  again:
@@ -223,25 +196,31 @@ char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 	) {
 #if ENABLE_FEATURE_TAR_AUTODETECT
 		char FAST_FUNC (*get_header_ptr)(archive_handle_t *);
+		uint16_t magic2;
 
  autodetect:
+		magic2 = *(uint16_t*)tar.name;
 		/* tar gz/bz autodetect: check for gz/bz2 magic.
 		 * If we see the magic, and it is the very first block,
 		 * we can switch to get_header_tar_gz/bz2/lzma().
 		 * Needs seekable fd. I wish recv(MSG_PEEK) works
 		 * on any fd... */
-#if ENABLE_FEATURE_SEAMLESS_GZ
-		if (tar.name[0] == 0x1f && tar.name[1] == (char)0x8b) { /* gzip */
+# if ENABLE_FEATURE_SEAMLESS_GZ
+		if (magic2 == GZIP_MAGIC) {
 			get_header_ptr = get_header_tar_gz;
 		} else
-#endif
-#if ENABLE_FEATURE_SEAMLESS_BZ2
-		if (tar.name[0] == 'B' && tar.name[1] == 'Z'
+# endif
+# if ENABLE_FEATURE_SEAMLESS_BZ2
+		if (magic2 == BZIP2_MAGIC
 		 && tar.name[2] == 'h' && isdigit(tar.name[3])
 		) { /* bzip2 */
 			get_header_ptr = get_header_tar_bz2;
 		} else
-#endif
+# endif
+# if ENABLE_FEATURE_SEAMLESS_XZ
+		//TODO: if (magic2 == XZ_MAGIC1)...
+		//else
+# endif
 			goto err;
 		/* Two different causes for lseek() != 0:
 		 * unseekable fd (would like to support that too, but...),
@@ -460,9 +439,11 @@ char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 		/* (like GNU tar 1.15.1: verbose mode outputs "dir/dir/") */
 		if (cp)
 			*cp = '\0';
-		//archive_handle->ah_flags |= ARCHIVE_EXTRACT_QUIET; // why??
 		archive_handle->action_data(archive_handle);
-		llist_add_to(&(archive_handle->passed), file_header->name);
+		if (archive_handle->accept || archive_handle->reject)
+			llist_add_to(&archive_handle->passed, file_header->name);
+		else /* Caller isn't interested in list of unpacked files */
+			free(file_header->name);
 	} else {
 		data_skip(archive_handle);
 		free(file_header->name);
@@ -470,7 +451,8 @@ char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 	archive_handle->offset += file_header->size;
 
 	free(file_header->link_target);
-	/* Do not free(file_header->name)! (why?) */
+	/* Do not free(file_header->name)!
+	 * It might be inserted in archive_handle->passed - see above */
 #if ENABLE_FEATURE_TAR_UNAME_GNAME
 	free(file_header->tar__uname);
 	free(file_header->tar__gname);

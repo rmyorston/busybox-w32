@@ -9,19 +9,29 @@
 
 #include "libbb.h"
 
-/* Used by NOFORK applets (e.g. cat) - must not use xmalloc */
-
+/* Used by NOFORK applets (e.g. cat) - must not use xmalloc.
+ * size < 0 means "ignore write errors", used by tar --to-command
+ * size = 0 means "copy till EOF"
+ */
 static off_t bb_full_fd_action(int src_fd, int dst_fd, off_t size)
 {
 	int status = -1;
 	off_t total = 0;
+	bool continue_on_write_error = 0;
 #if CONFIG_FEATURE_COPYBUF_KB <= 4
 	char buffer[CONFIG_FEATURE_COPYBUF_KB * 1024];
 	enum { buffer_size = sizeof(buffer) };
 #else
 	char *buffer;
 	int buffer_size;
+#endif
 
+	if (size < 0) {
+		size = -size;
+		continue_on_write_error = 1;
+	}
+
+#if CONFIG_FEATURE_COPYBUF_KB > 4
 	if (size > 0 && size <= 4 * 1024)
 		goto use_small_buf;
 	/* We want page-aligned buffer, just in case kernel is clever
@@ -63,8 +73,11 @@ static off_t bb_full_fd_action(int src_fd, int dst_fd, off_t size)
 		if (dst_fd >= 0) {
 			ssize_t wr = full_write(dst_fd, buffer, rd);
 			if (wr < rd) {
-				bb_perror_msg(bb_msg_write_error);
-				break;
+				if (!continue_on_write_error) {
+					bb_perror_msg(bb_msg_write_error);
+					break;
+				}
+				dst_fd = -1;
 			}
 		}
 		total += rd;
@@ -108,7 +121,7 @@ off_t FAST_FUNC bb_copyfd_size(int fd1, int fd2, off_t size)
 void FAST_FUNC bb_copyfd_exact_size(int fd1, int fd2, off_t size)
 {
 	off_t sz = bb_copyfd_size(fd1, fd2, size);
-	if (sz == size)
+	if (sz == (size >= 0 ? size : -size))
 		return;
 	if (sz != -1)
 		bb_error_msg_and_die("short read");

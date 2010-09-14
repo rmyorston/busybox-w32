@@ -85,8 +85,7 @@ static void undo_xsetenv(void)
 	char **pp = env_cur = &env_var[0];
 	while (*pp) {
 		char *var = *pp;
-		bb_unsetenv(var);
-		free(var);
+		bb_unsetenv_and_free(var);
 		*pp++ = NULL;
 	}
 }
@@ -502,10 +501,10 @@ int tcpudpsvd_main(int argc UNUSED_PARAM, char **argv)
 #ifdef SSLSVD
 	strcpy(id, utoa(pid));
 	ssl_io(0, argv);
+	bb_perror_msg_and_die("can't execute '%s'", argv[0]);
 #else
-	BB_EXECVP(argv[0], argv);
+	BB_EXECVP_or_die(argv);
 #endif
-	bb_perror_msg_and_die("exec '%s'", argv[0]);
 }
 
 /*

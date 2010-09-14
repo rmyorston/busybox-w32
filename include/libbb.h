@@ -419,6 +419,7 @@ void xchdir(const char *path) FAST_FUNC;
 void xchroot(const char *path) FAST_FUNC;
 void xsetenv(const char *key, const char *value) FAST_FUNC;
 void bb_unsetenv(const char *key) FAST_FUNC;
+void bb_unsetenv_and_free(char *key) FAST_FUNC;
 void xunlink(const char *pathname) FAST_FUNC;
 void xstat(const char *pathname, struct stat *buf) FAST_FUNC;
 int xopen(const char *pathname, int flags) FAST_FUNC;
@@ -854,6 +855,20 @@ int bb_execvp(const char *file, char *const argv[]) FAST_FUNC;
 #define BB_EXECVP(prog,cmd)     execvp(prog,cmd)
 #define BB_EXECLP(prog,cmd,...) execlp(prog,cmd, __VA_ARGS__)
 #endif
+int BB_EXECVP_or_die(char **argv) NORETURN FAST_FUNC;
+
+/* xvfork() can't be a _function_, return after vfork mangles stack
+ * in the parent. It must be a macro. */
+#define xvfork() \
+({ \
+	pid_t bb__xvfork_pid = vfork(); \
+	if (bb__xvfork_pid < 0) \
+		bb_perror_msg_and_die("vfork"); \
+	bb__xvfork_pid; \
+})
+#if BB_MMU
+pid_t xfork(void) FAST_FUNC;
+#endif
 
 /* NOMMU friendy fork+exec: */
 pid_t spawn(char **argv) FAST_FUNC;
@@ -900,7 +915,7 @@ int run_nofork_applet_prime(struct nofork_save_area *old, int applet_no, char **
  * Both of the above will redirect fd 0,1,2 to /dev/null and drop ctty
  * (will do setsid()).
  *
- * fork_or_rexec(argv) = bare-bones "fork" on MMU,
+ * fork_or_rexec(argv) = bare-bones fork on MMU,
  *      "vfork + re-exec ourself" on NOMMU. No fd redirection, no setsid().
  *      On MMU ignores argv.
  *
@@ -916,19 +931,19 @@ enum {
 	DAEMON_ONLY_SANITIZE = 8, /* internal use */
 };
 #if BB_MMU
-  pid_t fork_or_rexec(void) FAST_FUNC;
   enum { re_execed = 0 };
-# define fork_or_rexec(argv)                fork_or_rexec()
+# define fork_or_rexec(argv)                xfork()
 # define bb_daemonize_or_rexec(flags, argv) bb_daemonize_or_rexec(flags)
 # define bb_daemonize(flags)                bb_daemonize_or_rexec(flags, bogus)
 #else
+  extern bool re_execed;
   void re_exec(char **argv) NORETURN FAST_FUNC;
   pid_t fork_or_rexec(char **argv) FAST_FUNC;
-  extern bool re_execed;
   int  BUG_fork_is_unavailable_on_nommu(void) FAST_FUNC;
   int  BUG_daemon_is_unavailable_on_nommu(void) FAST_FUNC;
   void BUG_bb_daemonize_is_unavailable_on_nommu(void) FAST_FUNC;
 # define fork()          BUG_fork_is_unavailable_on_nommu()
+# define xfork()         BUG_fork_is_unavailable_on_nommu()
 # define daemon(a,b)     BUG_daemon_is_unavailable_on_nommu()
 # define bb_daemonize(a) BUG_bb_daemonize_is_unavailable_on_nommu()
 #endif
@@ -1141,6 +1156,7 @@ typedef struct parser_t {
 } parser_t;
 parser_t* config_open(const char *filename) FAST_FUNC;
 parser_t* config_open2(const char *filename, FILE* FAST_FUNC (*fopen_func)(const char *path)) FAST_FUNC;
+/* delims[0] is a comment char (use '\0' to disable), the rest are token delimiters */
 int config_read(parser_t *parser, char **tokens, unsigned flags, const char *delims) FAST_FUNC;
 #define config_read(parser, tokens, max, min, str, flags) \
 	config_read(parser, tokens, ((flags) | (((min) & 0xFF) << 8) | ((max) & 0xFF)), str)
@@ -1171,7 +1187,6 @@ char *bb_simplify_abs_path_inplace(char *path) FAST_FUNC;
 extern void bb_do_delay(int seconds) FAST_FUNC;
 extern void change_identity(const struct passwd *pw) FAST_FUNC;
 extern void run_shell(const char *shell, int loginshell, const char *command, const char **additional_args) NORETURN FAST_FUNC;
-extern void run_shell(const char *shell, int loginshell, const char *command, const char **additional_args) FAST_FUNC;
 #if ENABLE_SELINUX
 extern void renew_current_security_context(void) FAST_FUNC;
 extern void set_current_security_context(security_context_t sid) FAST_FUNC;
@@ -1611,12 +1626,12 @@ extern struct globals *const ptr_to_globals;
  * use bb_default_login_shell and following defines.
  * If you change LIBBB_DEFAULT_LOGIN_SHELL,
  * don't forget to change increment constant. */
-#define LIBBB_DEFAULT_LOGIN_SHELL      "-/bin/sh"
+#define LIBBB_DEFAULT_LOGIN_SHELL  "-/bin/sh"
 extern const char bb_default_login_shell[];
 /* "/bin/sh" */
-#define DEFAULT_SHELL     (bb_default_login_shell+1)
+#define DEFAULT_SHELL              (bb_default_login_shell+1)
 /* "sh" */
-#define DEFAULT_SHELL_SHORT_NAME     (bb_default_login_shell+6)
+#define DEFAULT_SHELL_SHORT_NAME   (bb_default_login_shell+6)
 
 #if ENABLE_FEATURE_DEVFS
 # define CURRENT_VC "/dev/vc/0"
@@ -1625,18 +1640,18 @@ extern const char bb_default_login_shell[];
 # define VC_3 "/dev/vc/3"
 # define VC_4 "/dev/vc/4"
 # define VC_5 "/dev/vc/5"
-#if defined(__sh__) || defined(__H8300H__) || defined(__H8300S__)
+# if defined(__sh__) || defined(__H8300H__) || defined(__H8300S__)
 /* Yes, this sucks, but both SH (including sh64) and H8 have a SCI(F) for their
    respective serial ports .. as such, we can't use the common device paths for
    these. -- PFM */
 #  define SC_0 "/dev/ttsc/0"
 #  define SC_1 "/dev/ttsc/1"
 #  define SC_FORMAT "/dev/ttsc/%d"
-#else
+# else
 #  define SC_0 "/dev/tts/0"
 #  define SC_1 "/dev/tts/1"
 #  define SC_FORMAT "/dev/tts/%d"
-#endif
+# endif
 # define VC_FORMAT "/dev/vc/%d"
 # define LOOP_FORMAT "/dev/loop/%d"
 # define LOOP_NAMESIZE (sizeof("/dev/loop/") + sizeof(int)*3 + 1)
@@ -1649,15 +1664,15 @@ extern const char bb_default_login_shell[];
 # define VC_3 "/dev/tty3"
 # define VC_4 "/dev/tty4"
 # define VC_5 "/dev/tty5"
-#if defined(__sh__) || defined(__H8300H__) || defined(__H8300S__)
+# if defined(__sh__) || defined(__H8300H__) || defined(__H8300S__)
 #  define SC_0 "/dev/ttySC0"
 #  define SC_1 "/dev/ttySC1"
 #  define SC_FORMAT "/dev/ttySC%d"
-#else
+# else
 #  define SC_0 "/dev/ttyS0"
 #  define SC_1 "/dev/ttyS1"
 #  define SC_FORMAT "/dev/ttyS%d"
-#endif
+# endif
 # define VC_FORMAT "/dev/tty%d"
 # define LOOP_FORMAT "/dev/loop%d"
 # define LOOP_NAMESIZE (sizeof("/dev/loop") + sizeof(int)*3 + 1)

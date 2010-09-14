@@ -48,37 +48,6 @@
 
 #if ENABLE_FEATURE_TAR_CREATE
 
-/* Tar file constants  */
-
-#define TAR_BLOCK_SIZE		512
-
-/* POSIX tar Header Block, from POSIX 1003.1-1990  */
-#define NAME_SIZE      100
-#define NAME_SIZE_STR "100"
-typedef struct TarHeader {       /* byte offset */
-	char name[NAME_SIZE];     /*   0-99 */
-	char mode[8];             /* 100-107 */
-	char uid[8];              /* 108-115 */
-	char gid[8];              /* 116-123 */
-	char size[12];            /* 124-135 */
-	char mtime[12];           /* 136-147 */
-	char chksum[8];           /* 148-155 */
-	char typeflag;            /* 156-156 */
-	char linkname[NAME_SIZE]; /* 157-256 */
-	/* POSIX:   "ustar" NUL "00" */
-	/* GNU tar: "ustar  " NUL */
-	/* Normally it's defined as magic[6] followed by
-	 * version[2], but we put them together to save code.
-	 */
-	char magic[8];            /* 257-264 */
-	char uname[32];           /* 265-296 */
-	char gname[32];           /* 297-328 */
-	char devmajor[8];         /* 329-336 */
-	char devminor[8];         /* 337-344 */
-	char prefix[155];         /* 345-499 */
-	char padding[12];         /* 500-512 (pad to exactly TAR_BLOCK_SIZE) */
-} TarHeader;
-
 /*
 ** writeTarFile(), writeFileToTarball(), and writeTarHeader() are
 ** the only functions that deal with the HardLinkInfo structure.
@@ -193,7 +162,7 @@ static void putOctal(char *cp, int len, off_t value)
 }
 #define PUT_OCTAL(a, b) putOctal((a), sizeof(a), (b))
 
-static void chksum_and_xwrite(int fd, struct TarHeader* hp)
+static void chksum_and_xwrite(int fd, struct tar_header_t* hp)
 {
 	/* POSIX says that checksum is done on unsigned bytes
 	 * (Sun and HP-UX gets it wrong... more details in
@@ -235,7 +204,7 @@ static void writeLongname(int fd, int type, const char *name, int dir)
 		"00000000000",
 		"00000000000",
 	};
-	struct TarHeader header;
+	struct tar_header_t header;
 	int size;
 
 	dir = !!dir; /* normalize: 0/1 */
@@ -262,16 +231,12 @@ static void writeLongname(int fd, int type, const char *name, int dir)
 #endif
 
 /* Write out a tar header for the specified file/directory/whatever */
-void BUG_tar_header_size(void);
 static int writeTarHeader(struct TarBallInfo *tbInfo,
 		const char *header_name, const char *fileName, struct stat *statbuf)
 {
-	struct TarHeader header;
+	struct tar_header_t header;
 
-	if (sizeof(header) != 512)
-		BUG_tar_header_size();
-
-	memset(&header, 0, sizeof(struct TarHeader));
+	memset(&header, 0, sizeof(header));
 
 	strncpy(header.name, header_name, sizeof(header.name));
 
@@ -549,9 +514,7 @@ static void NOINLINE vfork_compressor(int tar_fd, int gzip)
 	(void) &zip_exec;
 # endif
 
-	gzipPid = vfork();
-	if (gzipPid < 0)
-		bb_perror_msg_and_die("vfork");
+	gzipPid = xvfork();
 
 	if (gzipPid == 0) {
 		/* child */
@@ -738,6 +701,68 @@ static void handle_SIGCHLD(int status)
 }
 #endif
 
+//usage:#define tar_trivial_usage
+//usage:       "-[" IF_FEATURE_TAR_CREATE("c") "xt" IF_FEATURE_SEAMLESS_GZ("z")
+//usage:	IF_FEATURE_SEAMLESS_BZ2("j") IF_FEATURE_SEAMLESS_LZMA("a")
+//usage:	IF_FEATURE_SEAMLESS_Z("Z") IF_FEATURE_TAR_NOPRESERVE_TIME("m") "vO] "
+//usage:	IF_FEATURE_TAR_FROM("[-X FILE] ")
+//usage:       "[-f TARFILE] [-C DIR] [FILE]..."
+//usage:#define tar_full_usage "\n\n"
+//usage:	IF_FEATURE_TAR_CREATE("Create, extract, ")
+//usage:	IF_NOT_FEATURE_TAR_CREATE("Extract ")
+//usage:	"or list files from a tar file\n"
+//usage:     "\nOperation:"
+//usage:	IF_FEATURE_TAR_CREATE(
+//usage:     "\n	c	Create"
+//usage:	)
+//usage:     "\n	x	Extract"
+//usage:     "\n	t	List"
+//usage:     "\nOptions:"
+//usage:     "\n	f	Name of TARFILE ('-' for stdin/out)"
+//usage:     "\n	C	Change to DIR before operation"
+//usage:     "\n	v	Verbose"
+//usage:	IF_FEATURE_SEAMLESS_GZ(
+//usage:     "\n	z	(De)compress using gzip"
+//usage:	)
+//usage:	IF_FEATURE_SEAMLESS_BZ2(
+//usage:     "\n	j	(De)compress using bzip2"
+//usage:	)
+//usage:	IF_FEATURE_SEAMLESS_LZMA(
+//usage:     "\n	a	(De)compress using lzma"
+//usage:	)
+//usage:	IF_FEATURE_SEAMLESS_Z(
+//usage:     "\n	Z	(De)compress using compress"
+//usage:	)
+//usage:     "\n	O	Extract to stdout"
+//usage:	IF_FEATURE_TAR_CREATE(
+//usage:     "\n	h	Follow symlinks"
+//usage:	)
+//usage:	IF_FEATURE_TAR_NOPRESERVE_TIME(
+//usage:     "\n	m	Don't restore mtime"
+//usage:	)
+//usage:	IF_FEATURE_TAR_FROM(
+//usage:	IF_FEATURE_TAR_LONG_OPTIONS(
+//usage:     "\n	exclude	File to exclude"
+//usage:	)
+//usage:     "\n	X	File with names to exclude"
+//usage:     "\n	T	File with names to include"
+//usage:	)
+//usage:
+//usage:#define tar_example_usage
+//usage:       "$ zcat /tmp/tarball.tar.gz | tar -xf -\n"
+//usage:       "$ tar -cf /tmp/tarball.tar /usr/local\n"
+
+// Supported but aren't in --help:
+//	o	no-same-owner
+//	p	same-permissions
+//	k	keep-old
+//	numeric-owner
+//	no-same-permissions
+//	overwrite
+//IF_FEATURE_TAR_TO_COMMAND(
+//	to-command
+//)
+
 enum {
 	OPTBIT_KEEP_OLD = 8,
 	IF_FEATURE_TAR_CREATE(   OPTBIT_CREATE      ,)
@@ -750,6 +775,7 @@ enum {
 	IF_FEATURE_SEAMLESS_Z(   OPTBIT_COMPRESS    ,) // 16th bit
 	IF_FEATURE_TAR_NOPRESERVE_TIME(OPTBIT_NOPRESERVE_TIME,)
 #if ENABLE_FEATURE_TAR_LONG_OPTIONS
+	IF_FEATURE_TAR_TO_COMMAND(OPTBIT_2COMMAND   ,)
 	OPTBIT_NUMERIC_OWNER,
 	OPTBIT_NOPRESERVE_PERM,
 	OPTBIT_OVERWRITE,
@@ -772,6 +798,7 @@ enum {
 	OPT_GZIP         = IF_FEATURE_SEAMLESS_GZ(  (1 << OPTBIT_GZIP        )) + 0, // z
 	OPT_COMPRESS     = IF_FEATURE_SEAMLESS_Z(   (1 << OPTBIT_COMPRESS    )) + 0, // Z
 	OPT_NOPRESERVE_TIME = IF_FEATURE_TAR_NOPRESERVE_TIME((1 << OPTBIT_NOPRESERVE_TIME)) + 0, // m
+	OPT_2COMMAND        = IF_FEATURE_TAR_TO_COMMAND(  (1 << OPTBIT_2COMMAND       )) + 0, // to-command
 	OPT_NUMERIC_OWNER   = IF_FEATURE_TAR_LONG_OPTIONS((1 << OPTBIT_NUMERIC_OWNER  )) + 0, // numeric-owner
 	OPT_NOPRESERVE_PERM = IF_FEATURE_TAR_LONG_OPTIONS((1 << OPTBIT_NOPRESERVE_PERM)) + 0, // no-same-permissions
 	OPT_OVERWRITE       = IF_FEATURE_TAR_LONG_OPTIONS((1 << OPTBIT_OVERWRITE      )) + 0, // overwrite
@@ -812,6 +839,9 @@ static const char tar_longopts[] ALIGN1 =
 # endif
 # if ENABLE_FEATURE_TAR_NOPRESERVE_TIME
 	"touch\0"               No_argument       "m"
+# endif
+# if ENABLE_FEATURE_TAR_TO_COMMAND
+	"to-command\0"		Required_argument "\xfb"
 # endif
 	/* use numeric uid/gid from tar header, not textual */
 	"numeric-owner\0"       No_argument       "\xfc"
@@ -904,6 +934,7 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 		, &tar_filename // -f filename
 		IF_FEATURE_TAR_FROM(, &(tar_handle->accept)) // T
 		IF_FEATURE_TAR_FROM(, &(tar_handle->reject)) // X
+		IF_FEATURE_TAR_TO_COMMAND(, &(tar_handle->tar__to_command)) // --to-command
 #if ENABLE_FEATURE_TAR_LONG_OPTIONS && ENABLE_FEATURE_TAR_FROM
 		, &excludes // --exclude
 #endif
@@ -921,6 +952,12 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 
 	if (opt & OPT_2STDOUT)
 		tar_handle->action_data = data_extract_to_stdout;
+
+	if (opt & OPT_2COMMAND) {
+		putenv((char*)"TAR_FILETYPE=f");
+		signal(SIGPIPE, SIG_IGN);
+		tar_handle->action_data = data_extract_to_command;
+	}
 
 	if (opt & OPT_KEEP_OLD)
 		tar_handle->ah_flags &= ~ARCHIVE_UNLINK_OLD;
