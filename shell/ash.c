@@ -17,6 +17,18 @@
  */
 
 /*
+ * MinGW notes
+ *
+ * - Environment variables from Windows will all be turned to uppercase.
+ * - PATH accepts both ; and : as separator, but can't be mixed
+ * - command without ".exe" is still understood as executable (option to turn off?)
+ * - both / and \ are supported in PATH. Usually you must use /
+ * - trap/job does not work
+ * - /dev/null is supported for redirection
+ * - no $PPID
+ */
+
+/*
  * The following should be set to reflect the type of system you have:
  *      JOBS -> 1 if you have Berkeley job control, 0 otherwise.
  *      define SYSV if you are running under System V.
@@ -81,6 +93,41 @@
 # error "Do not even bother, ash will not run on NOMMU machine"
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+struct forkshell;
+union node;
+struct strlist;
+struct job;
+
+typedef void (*forkpoint_fn)(struct forkshell *fs);
+struct forkshell {
+	/* filled by forkshell_copy() */
+	struct globals_var *gvp;
+	struct globals_misc *gmp;
+	struct tblentry **cmdtable;
+	struct localvar *localvars;
+	/* struct alias **atab; */
+	/* struct parsefile *g_parsefile; */
+	int fpid;
+	HANDLE hMapFile;
+	void *old_base;
+	int nodeptr_offset;
+	int size;
+
+	forkpoint_fn fp;
+	/* optional data, used by forkpoint_fn */
+	int flags;
+	int fd[10];
+	union node *n;
+	char **argv;
+	char *string;
+	struct strlist *strlist;
+	pid_t pid;
+};
+static void sticky_free(void *p);
+#define free(p) sticky_free(p)
+static int spawn_forkshell(struct job *jp, struct forkshell *fs, int mode);
+#endif
 
 /* ============ Hash table sizes. Configurable. */
 
@@ -774,7 +821,7 @@ static void
 opentrace(void)
 {
 	char s[100];
-#ifdef O_APPEND
+#if defined(O_APPEND) && !ENABLE_PLATFORM_MINGW32
 	int flags;
 #endif
 
@@ -799,7 +846,7 @@ opentrace(void)
 			return;
 		}
 	}
-#ifdef O_APPEND
+#if defined(O_APPEND) && !ENABLE_PLATFORM_MINGW32
 	flags = fcntl(fileno(tracefile), F_GETFL);
 	if (flags >= 0)
 		fcntl(fileno(tracefile), F_SETFL, flags | O_APPEND);
@@ -2261,10 +2308,22 @@ path_advance(const char **path, const char *name)
 	if (*path == NULL)
 		return NULL;
 	start = *path;
+#if ENABLE_PLATFORM_MINGW32
+	p = next_path_sep(start);
+	q = strchr(start, '%');
+	if ((p && q && q < p) || (!p && q))
+		p = q;
+	if (!p)
+		for (p = start; *p; p++)
+			continue;
+#else
 	for (p = start; *p && *p != ':' && *p != '%'; p++)
 		continue;
+#endif
 	len = p - start + strlen(name) + 2;     /* "2" is for '/' and '\0' */
-	while (stackblocksize() < len)
+
+	/* preserve space for .exe too */
+	while (stackblocksize() < (ENABLE_PLATFORM_MINGW32 ? len+4 : len))
 		growstackblock();
 	q = stackblock();
 	if (p != start) {
@@ -2380,6 +2439,98 @@ cdopt(void)
 static const char *
 updatepwd(const char *dir)
 {
+#if ENABLE_PLATFORM_MINGW32
+	/*
+	 * Due to Windows drive notion, getting pwd is a completely
+	 * different thing. Handle it in a separate routine
+	 */
+
+	char *new;
+	char *p;
+	char *cdcomppath;
+	const char *lim;
+	/*
+	 * There are four cases
+	 *  absdrive +  abspath: c:/path
+	 *  absdrive + !abspath: c:path
+	 * !absdrive +  abspath: /path
+	 * !absdrive + !abspath: path
+	 *
+	 * Damn DOS!
+	 * c:path behaviour is "undefined"
+	 * To properly handle this case, I have to keep track of cwd
+	 * of every drive, which is too painful to do.
+	 * So when c:path is given, I assume it's c:${curdir}path
+	 * with ${curdir} comes from the current drive
+	 */
+	int absdrive = *dir && dir[1] == ':';
+	int abspath = absdrive ? dir[2] == '/' : *dir == '/';
+	char *drive;
+
+	cdcomppath = ststrdup(dir);
+	STARTSTACKSTR(new);
+	if (!absdrive && curdir == nullstr)
+		return 0;
+	if (!abspath) {
+		if (curdir == nullstr)
+			return 0;
+		new = stack_putstr(curdir, new);
+	}
+	new = makestrspace(strlen(dir) + 2, new);
+
+	drive = stackblock();
+	if (absdrive) {
+		*drive = *dir;
+		cdcomppath += 2;
+		dir += 2;
+	} else {
+		*drive = *curdir;
+	}
+	drive[1] = ':'; /* in case of absolute drive+path */
+
+	if (abspath)
+		new = drive + 2;
+	lim = drive + 3;
+	if (!abspath) {
+		if (new[-1] != '/')
+			USTPUTC('/', new);
+		if (new > lim && *lim == '/')
+			lim++;
+	} else {
+		USTPUTC('/', new);
+		cdcomppath ++;
+		if (dir[1] == '/' && dir[2] != '/') {
+			USTPUTC('/', new);
+			cdcomppath++;
+			lim++;
+		}
+	}
+	p = strtok(cdcomppath, "/");
+	while (p) {
+		switch (*p) {
+		case '.':
+			if (p[1] == '.' && p[2] == '\0') {
+				while (new > lim) {
+					STUNPUTC(new);
+					if (new[-1] == '/')
+						break;
+				}
+				break;
+			}
+			if (p[1] == '\0')
+				break;
+			/* fall through */
+		default:
+			new = stack_putstr(p, new);
+			USTPUTC('/', new);
+		}
+		p = strtok(0, "/");
+	}
+	if (new > lim)
+		STUNPUTC(new);
+	*new = 0;
+	return stackblock();
+#else
 	char *new;
 	char *p;
 	char *cdcomppath;
@@ -2433,6 +2584,7 @@ updatepwd(const char *dir)
 		STUNPUTC(new);
 	*new = 0;
 	return stackblock();
+#endif
 }
 
 /*
@@ -2527,7 +2679,7 @@ cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	}
 	if (!dest)
 		dest = nullstr;
-	if (*dest == '/')
+	if (is_absolute_path(dest))
 		goto step7;
 	if (*dest == '.') {
 		c = dest[1];
@@ -3301,6 +3453,8 @@ setsignal(int signo)
 	char cur_act, new_act;
 	struct sigaction act;
 
+	if (ENABLE_PLATFORM_MINGW32)
+		return;
 	t = trap[signo];
 	new_act = S_DFL;
 	if (t != NULL) { /* trap for this sig is set */
@@ -3608,7 +3762,7 @@ setjobctl(int on)
 				if (--fd < 0)
 					goto out;
 		}
-		fd = fcntl(fd, F_DUPFD, 10);
+		fd = copyfd(fd, 10);
 		if (ofd >= 0)
 			close(ofd);
 		if (fd < 0)
@@ -3782,6 +3936,53 @@ sprint_status(char *s, int status, int sigonly)
 	return col;
 }
 
+#if ENABLE_PLATFORM_MINGW32
+/*
+ * Windows does not know about parent-child relationship
+ * They don't support waitpid(-1)
+ */
+static pid_t
+waitpid_child(int *status)
+{
+	HANDLE *pidlist, *pidp;
+	int pid_nr = 0;
+	pid_t pid;
+	DWORD win_status, idx;
+	struct job *jb;
+
+	#define LOOP(stmt) \
+	for (jb = curjob; jb; jb = jb->prev_job) { \
+		struct procstat *ps, *psend; \
+		if (jb->state == JOBDONE) \
+			continue; \
+		ps = jb->ps; \
+		psend = ps + jb->nprocs; \
+		while (ps < psend) { \
+			if (ps->ps_pid != -1) { \
+				stmt; \
+			} \
+			ps++; \
+		} \
+	}
+
+	LOOP(pid_nr++);
+	pidp = pidlist = ckmalloc(sizeof(*pidlist)*pid_nr);
+	LOOP(*pidp++ = (HANDLE)ps->ps_pid);
+	#undef LOOP
+
+	idx = WaitForMultipleObjects(pid_nr, pidlist, FALSE, INFINITE);
+	if (idx >= pid_nr) {
+		free(pidlist);
+		return -1;
+	}
+	GetExitCodeProcess(pidlist[idx], &win_status);
+	pid = (int)pidlist[idx];
+	free(pidlist);
+	*status = (int)win_status;
+	return pid;
+}
+#endif
+
 static int
 dowait(int wait_flags, struct job *job)
 {
@@ -3798,7 +3999,11 @@ dowait(int wait_flags, struct job *job)
 	 * NB: _not_ safe_waitpid, we need to detect EINTR */
 	if (doing_jobctl)
 		wait_flags |= WUNTRACED;
+#if ENABLE_PLATFORM_MINGW32
+	pid = waitpid_child(&status);
+#else
 	pid = waitpid(-1, &status, wait_flags);
+#endif
 	TRACE(("wait returns pid=%d, status=0x%x, errno=%d(%s)\n",
 				pid, status, errno, strerror(errno)));
 	if (pid <= 0)
@@ -3821,6 +4026,8 @@ dowait(int wait_flags, struct job *job)
 					jobno(jp), pid, ps->ps_status, status));
 				ps->ps_status = status;
 				thisjob = jp;
+				if (ENABLE_PLATFORM_MINGW32)
+					ps->ps_pid = -1;
 			}
 			if (ps->ps_status == -1)
 				state = JOBRUNNING;
@@ -4051,6 +4258,9 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 	struct job *job;
 	int retval;
 	struct job *jp;
+
+	if (ENABLE_PLATFORM_MINGW32)
+		return 0;
 
 	if (pending_sig)
 		raise_exception(EXSIG);
@@ -4655,7 +4865,7 @@ static void
 forkparent(struct job *jp, union node *n, int mode, pid_t pid)
 {
 	TRACE(("In parent shell: child = %d\n", pid));
-	if (!jp) {
+	if (!jp && !ENABLE_PLATFORM_MINGW32) { /* FIXME not quite understand this */
 		while (jobless && dowait(DOWAIT_NONBLOCK, NULL) > 0)
 			continue;
 		jobless++;
@@ -4695,6 +4905,9 @@ forkshell(struct job *jp, union node *n, int mode)
 	int pid;
 
 	TRACE(("forkshell(%%%d, %p, %d) called\n", jobno(jp), n, mode));
+	if (ENABLE_PLATFORM_MINGW32)
+		return -1;
+
 	pid = fork();
 	if (pid < 0) {
 		TRACE(("Fork failed, errno=%d", errno));
@@ -4891,11 +5104,39 @@ noclobberopen(const char *fname)
  */
 /* openhere needs this forward reference */
 static void expandhere(union node *arg, int fd);
+#if ENABLE_PLATFORM_MINGW32
+static void
+forkshell_openhere(struct forkshell *fs)
+{
+	union node *redir = fs->n;
+	int pip[2];
+
+	pip[0] = fs->fd[0];
+	pip[1] = fs->fd[1];
+
+	TRACE(("ash: subshell: %s\n",__PRETTY_FUNCTION__));
+
+	close(pip[0]);
+	ignoresig(SIGINT);  //signal(SIGINT, SIG_IGN);
+	ignoresig(SIGQUIT); //signal(SIGQUIT, SIG_IGN);
+	ignoresig(SIGHUP);  //signal(SIGHUP, SIG_IGN);
+	ignoresig(SIGTSTP); //signal(SIGTSTP, SIG_IGN);
+	signal(SIGPIPE, SIG_DFL);
+	if (redir->type == NHERE) {
+		size_t len = strlen(redir->nhere.doc->narg.text);
+		full_write(pip[1], redir->nhere.doc->narg.text, len);
+	} else /* NXHERE */
+		expandhere(redir->nhere.doc, pip[1]);
+	_exit(EXIT_SUCCESS);
+}
+#endif
+
 static int
 openhere(union node *redir)
 {
 	int pip[2];
 	size_t len = 0;
+	IF_PLATFORM_MINGW32(struct forkshell fs);
 
 	if (pipe(pip) < 0)
 		ash_msg_and_raise_error("pipe call failed");
@@ -4906,6 +5147,16 @@ openhere(union node *redir)
 			goto out;
 		}
 	}
+#if ENABLE_PLATFORM_MINGW32
+	memset(&fs, 0, sizeof(fs));
+	fs.fp = forkshell_openhere;
+	fs.flags = 0;
+	fs.n = redir;
+	fs.fd[0] = pip[0];
+	fs.fd[1] = pip[1];
+	if (spawn_forkshell(NULL, &fs, FORK_NOJOB) < 0)
+		ash_msg_and_raise_error("unable to spawn shell");
+#endif
 	if (forkshell((struct job *)NULL, (union node *)NULL, FORK_NOJOB) == 0) {
 		/* child */
 		close(pip[0]);
@@ -4931,6 +5182,31 @@ openredirect(union node *redir)
 	char *fname;
 	int f;
 
+#if ENABLE_PLATFORM_MINGW32
+	/* Support for /dev/null */
+	switch (redir->nfile.type) {
+		case NFROM:
+			if (!strcmp(redir->nfile.expfname, "/dev/null"))
+				return open("nul",O_RDWR);
+			if (!strncmp(redir->nfile.expfname, "/dev/", 5)) {
+				ash_msg("Unhandled device %s\n", redir->nfile.expfname);
+				return -1;
+			}
+			break;
+
+		case NFROMTO:
+		case NTO:
+		case NCLOBBER:
+		case NAPPEND:
+			if (!strcmp(redir->nfile.expfname, "/dev/null"))
+				return open("nul",O_RDWR);
+			if (!strncmp(redir->nfile.expfname, "/dev/", 5)) {
+				ash_msg("Unhandled device %s\n", redir->nfile.expfname);
+				return -1;
+			}
+			break;
+	}
+#endif
 	switch (redir->nfile.type) {
 	case NFROM:
 		fname = redir->nfile.expfname;
@@ -5013,6 +5289,18 @@ copyfd(int from, int to)
 		/*if (from != to)*/
 			newfd = dup2(from, to);
 	} else {
+		if (ENABLE_PLATFORM_MINGW32) {
+			char* fds = ckmalloc(to);
+			int i,fd;
+			memset(fds,0,to);
+			while ((fd = dup(from)) < to && fd >= 0)
+				fds[fd] = 1;
+			for (i = 0;i < to;i ++)
+				if (fds[i])
+					close(i);
+			free(fds);
+			return fd;
+		}
 		newfd = fcntl(from, F_DUPFD, to);
 	}
 	if (newfd < 0) {
@@ -5157,7 +5445,7 @@ redirect(union node *redir, int flags)
 #endif
 		if (need_to_remember(sv, fd)) {
 			/* Copy old descriptor */
-			i = fcntl(fd, F_DUPFD, 10);
+			i = copyfd(fd, 10);
 /* You'd expect copy to be CLOEXECed. Currently these extra "saved" fds
  * are closed in popredir() in the child, preventing them from leaking
  * into child. (popredir() also cleans up the mess in case of failures)
@@ -5618,6 +5906,8 @@ exptilde(char *startp, char *p, int flags)
 	if (*name == '\0') {
 		home = lookupvar(homestr);
 	} else {
+		if (ENABLE_PLATFORM_MINGW32)
+			goto lose;
 		pw = getpwnam(name);
 		if (pw == NULL)
 			goto lose;
@@ -5645,6 +5935,7 @@ struct backcmd {                /* result of evalbackcmd */
 	int fd;                 /* file descriptor to read from */
 	int nleft;              /* number of chars in buffer */
 	char *buf;              /* buffer */
+	IF_PLATFORM_MINGW32(struct forkshell fs);
 	struct job *jp;         /* job structure for command */
 };
 
@@ -5653,6 +5944,25 @@ static uint8_t back_exitstatus; /* exit status of backquoted command */
 #define EV_EXIT 01              /* exit after evaluating tree */
 static void evaltree(union node *, int);
 
+#if ENABLE_PLATFORM_MINGW32
+static void
+forkshell_evalbackcmd(struct forkshell *fs)
+{
+	union node *n = fs->n;
+	int pip[2] = {fs->fd[0], fs->fd[1]};
+
+	FORCE_INT_ON;
+	close(pip[0]);
+	if (pip[1] != 1) {
+		/*close(1);*/
+		copyfd(pip[1], 1 | COPYFD_EXACT);
+		close(pip[1]);
+	}
+	eflag = 0;
+	evaltree(n, EV_EXIT); /* actually evaltreenr... */
+	/* NOTREACHED */
+}
+#endif
 static void FAST_FUNC
 evalbackcmd(union node *n, struct backcmd *result)
 {
@@ -5661,6 +5971,7 @@ evalbackcmd(union node *n, struct backcmd *result)
 	result->fd = -1;
 	result->buf = NULL;
 	result->nleft = 0;
+	IF_PLATFORM_MINGW32(memset(&result->fs, 0, sizeof(result->fs)));
 	result->jp = NULL;
 	if (n == NULL)
 		goto out;
@@ -5675,6 +5986,14 @@ evalbackcmd(union node *n, struct backcmd *result)
 		if (pipe(pip) < 0)
 			ash_msg_and_raise_error("pipe call failed");
 		jp = makejob(/*n,*/ 1);
+#if ENABLE_PLATFORM_MINGW32
+		result->fs.fp = forkshell_evalbackcmd;
+		result->fs.n = n;
+		result->fs.fd[0] = pip[0];
+		result->fs.fd[1] = pip[1];
+		if (spawn_forkshell(jp, &result->fs, FORK_NOJOB) < 0)
+			ash_msg_and_raise_error("unable to spawn shell");
+#endif
 		if (forkshell(jp, n, FORK_NOJOB) == 0) {
 			FORCE_INT_ON;
 			close(pip[0]);
@@ -7290,7 +7609,7 @@ shellexec(char **argv, const char *path, int idx)
 
 	clearredir(/*drop:*/ 1);
 	envp = listvars(VEXPORT, VUNSET, 0);
-	if (strchr(argv[0], '/') != NULL
+	if ((strchr(argv[0], '/') || (ENABLE_PLATFORM_MINGW32 && strchr(argv[0], '\\')))
 #if ENABLE_FEATURE_SH_STANDALONE
 	 || (applet_no = find_applet_by_name(argv[0])) >= 0
 #endif
@@ -7807,6 +8126,10 @@ static int funcblocksize;       /* size of structures in function */
 static int funcstringsize;      /* size of strings in node */
 static void *funcblock;         /* block to allocate function from */
 static char *funcstring;        /* block to allocate strings from */
+#if ENABLE_PLATFORM_MINGW32
+static int nodeptrsize;
+static int *nodeptr;
+#endif
 
 /* flags in argument to evaltree */
 #define EV_EXIT    01           /* exit after evaluating tree */
@@ -7852,6 +8175,7 @@ sizenodelist(struct nodelist *lp)
 {
 	while (lp) {
 		funcblocksize += SHELL_ALIGN(sizeof(struct nodelist));
+		IF_PLATFORM_MINGW32(nodeptrsize += 2);
 		calcsize(lp->n);
 		lp = lp->next;
 	}
@@ -7868,15 +8192,18 @@ calcsize(union node *n)
 		calcsize(n->ncmd.redirect);
 		calcsize(n->ncmd.args);
 		calcsize(n->ncmd.assign);
+		IF_PLATFORM_MINGW32(nodeptrsize += 3);
 		break;
 	case NPIPE:
 		sizenodelist(n->npipe.cmdlist);
+		IF_PLATFORM_MINGW32(nodeptrsize++);
 		break;
 	case NREDIR:
 	case NBACKGND:
 	case NSUBSHELL:
 		calcsize(n->nredir.redirect);
 		calcsize(n->nredir.n);
+		IF_PLATFORM_MINGW32(nodeptrsize += 2);
 		break;
 	case NAND:
 	case NOR:
@@ -7885,31 +8212,37 @@ calcsize(union node *n)
 	case NUNTIL:
 		calcsize(n->nbinary.ch2);
 		calcsize(n->nbinary.ch1);
+		IF_PLATFORM_MINGW32(nodeptrsize += 2);
 		break;
 	case NIF:
 		calcsize(n->nif.elsepart);
 		calcsize(n->nif.ifpart);
 		calcsize(n->nif.test);
+		IF_PLATFORM_MINGW32(nodeptrsize += 3);
 		break;
 	case NFOR:
 		funcstringsize += strlen(n->nfor.var) + 1;
 		calcsize(n->nfor.body);
 		calcsize(n->nfor.args);
+		IF_PLATFORM_MINGW32(nodeptrsize += 3);
 		break;
 	case NCASE:
 		calcsize(n->ncase.cases);
 		calcsize(n->ncase.expr);
+		IF_PLATFORM_MINGW32(nodeptrsize += 2);
 		break;
 	case NCLIST:
 		calcsize(n->nclist.body);
 		calcsize(n->nclist.pattern);
 		calcsize(n->nclist.next);
+		IF_PLATFORM_MINGW32(nodeptrsize += 3);
 		break;
 	case NDEFUN:
 	case NARG:
 		sizenodelist(n->narg.backquote);
 		funcstringsize += strlen(n->narg.text) + 1;
 		calcsize(n->narg.next);
+		IF_PLATFORM_MINGW32(nodeptrsize += 3);
 		break;
 	case NTO:
 #if ENABLE_ASH_BASH_COMPAT
@@ -7921,34 +8254,52 @@ calcsize(union node *n)
 	case NAPPEND:
 		calcsize(n->nfile.fname);
 		calcsize(n->nfile.next);
+		IF_PLATFORM_MINGW32(nodeptrsize += 2);
 		break;
 	case NTOFD:
 	case NFROMFD:
 		calcsize(n->ndup.vname);
 		calcsize(n->ndup.next);
+		IF_PLATFORM_MINGW32(nodeptrsize += 2);
 	break;
 	case NHERE:
 	case NXHERE:
 		calcsize(n->nhere.doc);
 		calcsize(n->nhere.next);
+		IF_PLATFORM_MINGW32(nodeptrsize += 2);
 		break;
 	case NNOT:
 		calcsize(n->nnot.com);
+		IF_PLATFORM_MINGW32(nodeptrsize++);
 		break;
 	};
 }
 
 static char *
-nodeckstrdup(char *s)
+nodeckstrdup(const char *s)
 {
 	char *rtn = funcstring;
 
+	if (!s)
+		return NULL;
 	strcpy(funcstring, s);
 	funcstring += strlen(s) + 1;
 	return rtn;
 }
 
 static union node *copynode(union node *);
+
+#if ENABLE_PLATFORM_MINGW32
+# define SAVE_PTR(dst) {if (nodeptr) *nodeptr++ = (int)&(dst);}
+# define SAVE_PTR2(dst1,dst2) {if (nodeptr) { *nodeptr++ = (int)&(dst1);*nodeptr++ = (int)&(dst2);}}
+# define SAVE_PTR3(dst1,dst2,dst3) {if (nodeptr) { *nodeptr++ = (int)&(dst1);*nodeptr++ = (int)&(dst2);*nodeptr++ = (int)&(dst3);}}
+# define SAVE_PTR4(dst1,dst2,dst3,dst4) {if (nodeptr) { *nodeptr++ = (int)&(dst1);*nodeptr++ = (int)&(dst2);*nodeptr++ = (int)&(dst3);*nodeptr++ = (int)&(dst4);}}
+#else
+# define SAVE_PTR(dst)
+# define SAVE_PTR2(dst,dst2)
+# define SAVE_PTR3(dst,dst2,dst3)
+# define SAVE_PTR4(dst,dst2,dst3,dst4)
+#endif
 
 static struct nodelist *
 copynodelist(struct nodelist *lp)
@@ -7961,6 +8312,7 @@ copynodelist(struct nodelist *lp)
 		*lpp = funcblock;
 		funcblock = (char *) funcblock + SHELL_ALIGN(sizeof(struct nodelist));
 		(*lpp)->n = copynode(lp->n);
+		SAVE_PTR2((*lpp)->n, (*lpp)->next);
 		lp = lp->next;
 		lpp = &(*lpp)->next;
 	}
@@ -7983,16 +8335,19 @@ copynode(union node *n)
 		new->ncmd.redirect = copynode(n->ncmd.redirect);
 		new->ncmd.args = copynode(n->ncmd.args);
 		new->ncmd.assign = copynode(n->ncmd.assign);
+		SAVE_PTR3(new->ncmd.redirect,new->ncmd.args, new->ncmd.assign);
 		break;
 	case NPIPE:
 		new->npipe.cmdlist = copynodelist(n->npipe.cmdlist);
 		new->npipe.pipe_backgnd = n->npipe.pipe_backgnd;
+		SAVE_PTR(new->npipe.cmdlist);
 		break;
 	case NREDIR:
 	case NBACKGND:
 	case NSUBSHELL:
 		new->nredir.redirect = copynode(n->nredir.redirect);
 		new->nredir.n = copynode(n->nredir.n);
+		SAVE_PTR2(new->nredir.redirect,new->nredir.n);
 		break;
 	case NAND:
 	case NOR:
@@ -8001,31 +8356,37 @@ copynode(union node *n)
 	case NUNTIL:
 		new->nbinary.ch2 = copynode(n->nbinary.ch2);
 		new->nbinary.ch1 = copynode(n->nbinary.ch1);
+		SAVE_PTR2(new->nbinary.ch1,new->nbinary.ch2);
 		break;
 	case NIF:
 		new->nif.elsepart = copynode(n->nif.elsepart);
 		new->nif.ifpart = copynode(n->nif.ifpart);
 		new->nif.test = copynode(n->nif.test);
+		SAVE_PTR3(new->nif.elsepart,new->nif.ifpart,new->nif.test);
 		break;
 	case NFOR:
 		new->nfor.var = nodeckstrdup(n->nfor.var);
 		new->nfor.body = copynode(n->nfor.body);
 		new->nfor.args = copynode(n->nfor.args);
+		SAVE_PTR3(new->nfor.var,new->nfor.body,new->nfor.args);
 		break;
 	case NCASE:
 		new->ncase.cases = copynode(n->ncase.cases);
 		new->ncase.expr = copynode(n->ncase.expr);
+		SAVE_PTR2(new->ncase.cases,new->ncase.expr);
 		break;
 	case NCLIST:
 		new->nclist.body = copynode(n->nclist.body);
 		new->nclist.pattern = copynode(n->nclist.pattern);
 		new->nclist.next = copynode(n->nclist.next);
+		SAVE_PTR3(new->nclist.body,new->nclist.pattern,new->nclist.next);
 		break;
 	case NDEFUN:
 	case NARG:
 		new->narg.backquote = copynodelist(n->narg.backquote);
 		new->narg.text = nodeckstrdup(n->narg.text);
 		new->narg.next = copynode(n->narg.next);
+		SAVE_PTR3(new->narg.backquote,new->narg.text,new->narg.next);
 		break;
 	case NTO:
 #if ENABLE_ASH_BASH_COMPAT
@@ -8038,6 +8399,7 @@ copynode(union node *n)
 		new->nfile.fname = copynode(n->nfile.fname);
 		new->nfile.fd = n->nfile.fd;
 		new->nfile.next = copynode(n->nfile.next);
+		SAVE_PTR2(new->nfile.fname,new->nfile.next);
 		break;
 	case NTOFD:
 	case NFROMFD:
@@ -8045,15 +8407,18 @@ copynode(union node *n)
 		new->ndup.dupfd = n->ndup.dupfd;
 		new->ndup.fd = n->ndup.fd;
 		new->ndup.next = copynode(n->ndup.next);
+		SAVE_PTR2(new->ndup.vname,new->ndup.next);
 		break;
 	case NHERE:
 	case NXHERE:
 		new->nhere.doc = copynode(n->nhere.doc);
 		new->nhere.fd = n->nhere.fd;
 		new->nhere.next = copynode(n->nhere.next);
+		SAVE_PTR2(new->nhere.doc,new->nhere.next);
 		break;
 	case NNOT:
 		new->nnot.com = copynode(n->nnot.com);
+		SAVE_PTR(new->nnot.com);
 		break;
 	};
 	new->type = n->type;
@@ -8076,6 +8441,7 @@ copyfunc(union node *n)
 	f = ckmalloc(blocksize + funcstringsize);
 	funcblock = (char *) f + offsetof(struct funcnode, n);
 	funcstring = (char *) f + blocksize;
+	IF_PLATFORM_MINGW32(nodeptr = NULL);
 	copynode(n);
 	f->count = 0;
 	return f;
@@ -8428,9 +8794,26 @@ evalcase(union node *n, int flags)
 /*
  * Kick off a subshell to evaluate a tree.
  */
+#if ENABLE_PLATFORM_MINGW32
+static void
+forkshell_evalsubshell(struct forkshell *fs)
+{
+	union node *n = fs->n;
+	int flags = fs->flags;
+
+	TRACE(("ash: subshell: %s\n",__PRETTY_FUNCTION__));
+	INT_ON;
+	flags |= EV_EXIT;
+	expredir(n->nredir.redirect);
+	redirect(n->nredir.redirect, 0);
+	evaltreenr(n->nredir.n, flags);
+	/* never returns */
+}
+#endif
 static void
 evalsubshell(union node *n, int flags)
 {
+	IF_PLATFORM_MINGW32(struct forkshell fs);
 	struct job *jp;
 	int backgnd = (n->type == NBACKGND);
 	int status;
@@ -8440,6 +8823,14 @@ evalsubshell(union node *n, int flags)
 		goto nofork;
 	INT_OFF;
 	jp = makejob(/*n,*/ 1);
+#if ENABLE_PLATFORM_MINGW32
+	memset(&fs, 0, sizeof(fs));
+	fs.fp = forkshell_evalsubshell;
+	fs.n = n;
+	fs.flags = flags;
+	if (spawn_forkshell(jp, &fs, backgnd) < 0)
+		ash_msg_and_raise_error("unable to spawn shell");
+#endif
 	if (forkshell(jp, n, backgnd) == 0) {
 		INT_ON;
 		flags |= EV_EXIT;
@@ -8515,9 +8906,35 @@ expredir(union node *n)
  * of the shell, which make the last process in a pipeline the parent
  * of all the rest.)
  */
+#if ENABLE_PLATFORM_MINGW32
+static void
+forkshell_evalpipe(struct forkshell *fs)
+{
+	union node *n = fs->n;
+	int flags = fs->flags;
+	int prevfd = fs->fd[2];
+	int pip[2] = {fs->fd[0], fs->fd[1]};
+
+	TRACE(("ash: subshell: %s\n",__PRETTY_FUNCTION__));
+	INT_ON;
+	if (pip[1] >= 0) {
+		close(pip[0]);
+	}
+	if (prevfd > 0) {
+		dup2(prevfd, 0);
+		close(prevfd);
+	}
+	if (pip[1] > 1) {
+		dup2(pip[1], 1);
+		close(pip[1]);
+	}
+	evaltreenr(n, flags);
+}
+#endif
 static void
 evalpipe(union node *n, int flags)
 {
+	IF_PLATFORM_MINGW32(struct forkshell fs);
 	struct job *jp;
 	struct nodelist *lp;
 	int pipelen;
@@ -8541,6 +8958,17 @@ evalpipe(union node *n, int flags)
 				ash_msg_and_raise_error("pipe call failed");
 			}
 		}
+#if ENABLE_PLATFORM_MINGW32
+		memset(&fs, 0, sizeof(fs));
+		fs.fp = forkshell_evalpipe;
+		fs.flags = flags;
+		fs.n = lp->n;
+		fs.fd[0] = pip[0];
+		fs.fd[1] = pip[1];
+		fs.fd[2] = prevfd;
+		if (spawn_forkshell(jp, &fs, n->npipe.pipe_backgnd) < 0)
+			ash_msg_and_raise_error("unable to spawn shell");
+#endif
 		if (forkshell(jp, lp->n, n->npipe.pipe_backgnd) == 0) {
 			INT_ON;
 			if (pip[1] >= 0) {
@@ -9007,6 +9435,20 @@ bltincmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	 * as POSIX mandates */
 	return back_exitstatus;
 }
+
+#if ENABLE_PLATFORM_MINGW32
+static void
+forkshell_shellexec(struct forkshell *fs)
+{
+	int idx = fs->fd[0];
+	struct strlist *varlist = fs->strlist;
+	char **argv = fs->argv;
+	char *path = fs->string;
+
+	listsetvar(varlist, VEXPORT|VSTACK);
+	shellexec(argv, path, idx);
+}
+#endif
 static void
 evalcommand(union node *cmd, int flags)
 {
@@ -9182,6 +9624,26 @@ evalcommand(union node *cmd, int flags)
 			break;
 		}
 	}
+#endif
+#if ENABLE_PLATFORM_MINGW32
+		if (!(flags & EV_EXIT) || trap[0]) {
+			struct forkshell fs;
+
+			memset(&fs, 0, sizeof(fs));
+			fs.fp = forkshell_shellexec;
+			fs.argv = argv;
+			fs.string = (char*)path;
+			fs.fd[0] = cmdentry.u.index;
+			fs.strlist = varlist.list;
+			jp = makejob(/*cmd,*/ 1);
+			if (spawn_forkshell(jp, &fs, FORK_FG) < 0)
+				ash_msg_and_raise_error("unable to spawn shell");
+			exitstatus = waitforjob(jp);
+			INT_ON;
+			TRACE(("forked child exited with %d\n", exitstatus));
+			break;
+		}
+		/* goes through to shellexec() */
 #endif
 		/* Fork off a child process if necessary. */
 		if (!(flags & EV_EXIT) || trap[0]) {
@@ -9563,7 +10025,7 @@ preadbuffer(void)
 		more--;
 
 		c = *q;
-		if (c == '\0') {
+		if (c == '\0' || (ENABLE_PLATFORM_MINGW32 && c == '\r')) {
 			memmove(q, q + 1, more);
 		} else {
 			q++;
@@ -11990,7 +12452,7 @@ find_dot_file(char *name)
 	struct stat statb;
 
 	/* don't try this for absolute or relative paths */
-	if (strchr(name, '/'))
+	if (strchr(name, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(name, '\\')))
 		return name;
 
 	/* IIRC standards do not say whether . is to be searched.
@@ -12093,10 +12555,11 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	struct stat statb;
 	int e;
 	int updatetbl;
+	IF_PLATFORM_MINGW32(int len);
 	struct builtincmd *bcmd;
 
 	/* If name contains a slash, don't use PATH or hash table */
-	if (strchr(name, '/') != NULL) {
+	if (strchr(name, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(name, '\\'))) {
 		entry->u.index = -1;
 		if (act & DO_ABS) {
 			while (stat(name, &statb) < 0) {
@@ -12203,12 +12666,39 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			}
 		}
 		/* if rehash, don't redo absolute path names */
-		if (fullname[0] == '/' && idx <= prev) {
+		if (is_absolute_path(fullname) && idx <= prev) {
 			if (idx < prev)
 				continue;
 			TRACE(("searchexec \"%s\": no change\n", name));
 			goto success;
 		}
+#if ENABLE_PLATFORM_MINGW32
+		len = strlen(fullname);
+		if (len > 4 &&
+		    (!strcasecmp(fullname+len-4, ".exe") ||
+		     !strcasecmp(fullname+len-4, ".com"))) {
+			if (stat(fullname, &statb) < 0) {
+				if (errno != ENOENT && errno != ENOTDIR)
+					e = errno;
+				goto loop;
+			}
+		}
+		else {
+			/* path_advance() has reserved space for .exe */
+			memcpy(fullname+len, ".exe", 5);
+			if (stat(fullname, &statb) < 0) {
+				if (errno != ENOENT && errno != ENOTDIR)
+					e = errno;
+				memcpy(fullname+len, ".com", 5);
+				if (stat(fullname, &statb) < 0) {
+					if (errno != ENOENT && errno != ENOTDIR)
+						e = errno;
+					goto loop;
+				}
+			}
+			fullname[len] = '\0';
+		}
+#else
 		while (stat(fullname, &statb) < 0) {
 #ifdef SYSV
 			if (errno == EINTR)
@@ -12218,6 +12708,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 				e = errno;
 			goto loop;
 		}
+#endif
 		e = EACCES;     /* if we fail, this will be the error */
 		if (!S_ISREG(statb.st_mode))
 			continue;
@@ -12744,13 +13235,41 @@ init(void)
 		struct stat st1, st2;
 
 		initvar();
+
+#if ENABLE_PLATFORM_MINGW32
+		/*
+		 * case insensitive env names from Windows world
+		 *
+		 * Some standard env names such as PATH is named Path and so on
+		 * ash itself is case sensitive, so "Path" will confuse it, as
+		 * MSVC getenv() is case insensitive.
+		 *
+		 * We may end up having both Path and PATH. Then Path will be chosen
+		 * because it appears first.
+		 */
+		for (envp = environ; envp && *envp; envp++)
+			if (!strncasecmp(*envp, "PATH=", 5) &&
+			    strncmp(*envp, "PATH=", 5))
+				break;
+		if (envp && *envp) {
+			char *start, *end;
+			for (envp = environ; envp && *envp; envp++) {
+				end = strchr(*envp, '=');
+				if (!end)
+					continue;
+				for (start = *envp;start < end;start++)
+					*start = toupper(*start);
+			}
+		}
+#endif
 		for (envp = environ; envp && *envp; envp++) {
 			if (strchr(*envp, '=')) {
 				setvareq(*envp, VEXPORT|VTEXTFIXED);
 			}
 		}
 
-		setvar("PPID", utoa(getppid()), 0);
+		if (!ENABLE_PLATFORM_MINGW32)
+			setvar("PPID", utoa(getppid()), 0);
 
 		p = lookupvar("PWD");
 		if (p)
@@ -12866,6 +13385,20 @@ static short profile_buf[16384];
 extern int etext();
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+static const forkpoint_fn forkpoints[] = {
+	forkshell_openhere,
+	forkshell_evalbackcmd,
+	forkshell_evalsubshell,
+	forkshell_evalpipe,
+	forkshell_shellexec,
+	NULL
+};
+
+static struct forkshell* forkshell_prepare(struct forkshell *fs);
+static void forkshell_init(const char *idstr);
+#endif
+
 /*
  * Main routine.  We initialize things, parse the arguments, execute
  * profiles if we're a login shell, and then call cmdloop to execute
@@ -12933,6 +13466,15 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 
 	init();
 	setstackmark(&smark);
+
+#if ENABLE_PLATFORM_MINGW32
+	if (argc == 3 && !strcmp(argv[1], "--forkshell")) {
+		forkshell_init(argv[2]);
+
+		/* NOTREACHED */
+		bb_error_msg_and_die("subshell ended unexpectedly");
+	}
+#endif
 	procargs(argv);
 
 #if ENABLE_FEATURE_EDITING_SAVEHISTORY
@@ -13007,6 +13549,524 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	/* NOTREACHED */
 }
 
+/* FIXME: should consider running forkparent() and forkchild() */
+static int
+spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
+{
+	const char *argv[] = { "sh", "--forkshell", NULL, NULL };
+	char buf[16];
+
+	struct forkshell *new;
+	new = forkshell_prepare(fs);
+	sprintf(buf, "%x", (unsigned int)new->hMapFile);
+	argv[2] = buf;
+	fs->pid = mingw_spawn_applet(P_NOWAIT, "sh", argv,
+				     (const char *const *)environ);
+	CloseHandle(new->hMapFile);
+	UnmapViewOfFile(new);
+	if (fs->pid == -1) {
+		free(jp);
+		return -1;
+	}
+	forkparent(jp, fs->node, mode, fs->pid);
+	return fs->pid;
+}
+
+/*
+ * forkshell_prepare() and friends
+ *
+ * The sequence is as follows:
+ * - funcblocksize, funcstringsize, nodeptrsize are initialized
+ * - forkshell_size(fs) is called to calculate the exact memory needed
+ * - a new struct is allocated
+ * - funcblock, funcstring, nodeptr are initialized from the new block
+ * - forkshell_copy(fs) is called to copy recursively everything over
+ *   it will record all pointers along the way, to nodeptr
+ *
+ * When this memory is mapped elsewhere, pointer fixup will be needed
+ */
+#define SLIST_SIZE_BEGIN(name,type) \
+static void \
+name(type *p) \
+{ \
+	while (p) { \
+		funcblocksize += sizeof(type);
+		/* do something here with p */
+#define SLIST_SIZE_END() \
+		nodeptrsize++; \
+		p = p->next; \
+	} \
+}
+
+#define SLIST_COPY_BEGIN(name,type) \
+static type * \
+name(type *vp) \
+{ \
+	type *start; \
+	type **vpp; \
+	vpp = &start; \
+	while (vp) { \
+		*vpp = funcblock; \
+		funcblock = (char *) funcblock + sizeof(type);
+		/* do something here with vpp and vp */
+#define SLIST_COPY_END() \
+		SAVE_PTR((*vpp)->next); \
+		vp = vp->next; \
+		vpp = &(*vpp)->next; \
+	} \
+	*vpp = NULL; \
+	return start; \
+}
+
+/*
+ * struct var
+ */
+SLIST_SIZE_BEGIN(var_size,struct var)
+funcstringsize += strlen(p->text) + 1;
+nodeptrsize++; /* p->text */
+SLIST_SIZE_END()
+
+SLIST_COPY_BEGIN(var_copy,struct var)
+(*vpp)->text = nodeckstrdup(vp->text);
+(*vpp)->flags = vp->flags;
+/*
+ * The only place that can set struct var#func is varinit[],
+ * which will be fixed by forkshell_init()
+ */
+(*vpp)->func = NULL;
+SAVE_PTR((*vpp)->text);
+SLIST_COPY_END()
+
+/*
+ * struct localvar
+ */
+SLIST_SIZE_BEGIN(localvar_size,struct localvar)
+var_size(p->vp);
+funcstringsize += strlen(p->text) + 1;
+nodeptrsize += 2; /* p->vp, p->text */
+SLIST_SIZE_END()
+
+SLIST_COPY_BEGIN(localvar_copy,struct localvar)
+(*vpp)->text = nodeckstrdup(vp->text);
+(*vpp)->flags = vp->flags;
+(*vpp)->vp = var_copy(vp->vp);
+SAVE_PTR2((*vpp)->vp, (*vpp)->text);
+SLIST_COPY_END()
+
+/*
+ * struct strlist
+ */
+SLIST_SIZE_BEGIN(strlist_size,struct strlist)
+funcstringsize += strlen(p->text) + 1;
+nodeptrsize++; /* p->text */
+SLIST_SIZE_END()
+
+SLIST_COPY_BEGIN(strlist_copy,struct strlist)
+(*vpp)->text = nodeckstrdup(vp->text);
+SAVE_PTR((*vpp)->text);
+SLIST_COPY_END()
+
+/*
+ * struct tblentry
+ */
+static void
+tblentry_size(struct tblentry *tep)
+{
+	while (tep) {
+		funcblocksize += sizeof(struct tblentry) + strlen(tep->cmdname) + 1;
+		/* CMDBUILTIN, e->param.cmd needs no pointer relocation */
+		if (tep->cmdtype == CMDFUNCTION) {
+			funcblocksize += offsetof(struct funcnode, n);
+			calcsize(&tep->param.func->n);
+			nodeptrsize++; /* tep->param.func */
+		}
+		nodeptrsize++;	/* tep->next */
+		tep = tep->next;
+	}
+}
+
+static struct tblentry *
+tblentry_copy(struct tblentry *tep)
+{
+	struct tblentry *start;
+	struct tblentry **newp;
+	int size;
+
+	newp = &start;
+	while (tep) {
+		*newp = funcblock;
+		size = sizeof(struct tblentry) + strlen(tep->cmdname) + 1;
+
+		funcblock = (char *) funcblock + size;
+		memcpy(*newp, tep, size);
+		switch (tep->cmdtype) {
+		case CMDBUILTIN:
+			/* No pointer saving, this field must be fixed by forkshell_init() */
+			(*newp)->param.cmd = (const struct builtincmd *)(tep->param.cmd - builtintab);
+			break;
+		case CMDFUNCTION:
+			(*newp)->param.func = funcblock;
+			funcblock = (char *) funcblock + offsetof(struct funcnode, n);
+			copynode(&tep->param.func->n);
+			SAVE_PTR((*newp)->param.func);
+			break;
+		default:
+			break;
+		}
+		SAVE_PTR((*newp)->next);
+		tep = tep->next;
+		newp = &(*newp)->next;
+	}
+	*newp = NULL;
+	return start;
+}
+
+static void
+cmdtable_size(struct tblentry **cmdtablep)
+{
+	int i;
+	nodeptrsize += CMDTABLESIZE;
+	funcblocksize += sizeof(struct tblentry *)*CMDTABLESIZE;
+	for (i = 0; i < CMDTABLESIZE; i++)
+		tblentry_size(cmdtablep[i]);
+}
+
+static struct tblentry **
+cmdtable_copy(struct tblentry **cmdtablep)
+{
+	struct tblentry **new = funcblock;
+	int i;
+
+	funcblock = (char *) funcblock + sizeof(struct tblentry *)*CMDTABLESIZE;
+	for (i = 0; i < CMDTABLESIZE; i++) {
+		new[i] = tblentry_copy(cmdtablep[i]);
+		SAVE_PTR(new[i]);
+	}
+	return new;
+}
+
+/*
+ * char **
+ */
+static void
+argv_size(char **p)
+{
+	while (p && *p) {
+		funcblocksize += sizeof(char *);
+		funcstringsize += strlen(*p)+1;
+		nodeptrsize++;
+		p++;
+	}
+	funcblocksize += sizeof(char *);
+}
+
+static char **
+argv_copy(char **p)
+{
+	char **new, **start = funcblock;
+
+	while (p && *p) {
+		new = funcblock;
+		funcblock = (char *) funcblock + sizeof(char *);
+		*new = nodeckstrdup(*p);
+		SAVE_PTR(*new);
+		p++;
+		new++;
+	}
+	new = funcblock;
+	funcblock = (char *) funcblock + sizeof(char *);
+	*new = NULL;
+	return start;
+}
+
+/*
+ * struct redirtab
+ */
+static void
+redirtab_size(struct redirtab *rdtp)
+{
+	while (rdtp) {
+		funcblocksize += sizeof(*rdtp)+sizeof(rdtp->two_fd[0])*rdtp->pair_count;
+		rdtp = rdtp->next;
+		nodeptrsize++; /* rdtp->next */
+	}
+}
+
+static struct redirtab *
+redirtab_copy(struct redirtab *rdtp)
+{
+	struct redirtab *start;
+	struct redirtab **vpp;
+
+	vpp = &start;
+	while (rdtp) {
+		int size = sizeof(*rdtp)+sizeof(rdtp->two_fd[0])*rdtp->pair_count;
+		*vpp = funcblock;
+		funcblock = (char *) funcblock + size;
+		memcpy(*vpp, rdtp, size);
+		SAVE_PTR((*vpp)->next);
+		rdtp = rdtp->next;
+		vpp = &(*vpp)->next;
+	}
+	*vpp = NULL;
+	return start;
+}
+
+#undef shellparam
+#undef redirlist
+#undef varinit
+#undef vartab
+static void
+globals_var_size(struct globals_var *gvp)
+{
+	int i;
+
+	funcblocksize += sizeof(struct globals_var);
+	argv_size(gvp->shellparam.p);
+	redirtab_size(gvp->redirlist);
+	for (i = 0; i < VTABSIZE; i++)
+		var_size(gvp->vartab[i]);
+	for (i = 0; i < ARRAY_SIZE(varinit_data); i++)
+		var_size(gvp->varinit+i);
+	nodeptrsize += 2 + VTABSIZE; /* gvp->redirlist, gvp->shellparam.p, vartab  */
+}
+
+#undef g_nullredirs
+#undef preverrout_fd
+static struct globals_var *
+globals_var_copy(struct globals_var *gvp)
+{
+	int i;
+	struct globals_var *new;
+
+	new = funcblock;
+	funcblock = (char *) funcblock + sizeof(struct globals_var);
+
+	/* shparam */
+	memcpy(&new->shellparam, &gvp->shellparam, sizeof(struct shparam));
+	new->shellparam.malloced = 0;
+	new->shellparam.p = argv_copy(gvp->shellparam.p);
+	SAVE_PTR(new->shellparam.p);
+
+	new->redirlist = redirtab_copy(gvp->redirlist);
+	SAVE_PTR(new->redirlist);
+
+	new->g_nullredirs = gvp->g_nullredirs;
+	new->preverrout_fd = gvp->preverrout_fd;
+	for (i = 0; i < VTABSIZE; i++) {
+		new->vartab[i] = var_copy(gvp->vartab[i]);
+		SAVE_PTR(new->vartab[i]);
+	}
+
+	/* Can't use var_copy because varinit is already allocated */
+	for (i = 0; i < ARRAY_SIZE(varinit_data); i++) {
+		new->varinit[i].next = NULL;
+		new->varinit[i].text = nodeckstrdup(gvp->varinit[i].text);
+		SAVE_PTR(new->varinit[i].text);
+		new->varinit[i].flags = gvp->varinit[i].flags;
+		new->varinit[i].func = gvp->varinit[i].func;
+	}
+	return new;
+}
+
+#undef minusc
+#undef curdir
+#undef physdir
+#undef arg0
+#undef nullstr
+static void
+globals_misc_size(struct globals_misc *p)
+{
+	funcblocksize += sizeof(struct globals_misc);
+	funcstringsize += p->minusc ? strlen(p->minusc) + 1 : 1;
+	if (p->curdir != p->nullstr)
+		funcstringsize += strlen(p->curdir) + 1;
+	if (p->physdir != p->nullstr)
+		funcstringsize += strlen(p->physdir) + 1;
+	funcstringsize += strlen(p->arg0) + 1;
+	nodeptrsize += 4;	/* minusc, curdir, physdir, arg0 */
+}
+
+static struct globals_misc *
+globals_misc_copy(struct globals_misc *p)
+{
+	struct globals_misc *new = funcblock;
+
+	funcblock = (char *) funcblock + sizeof(struct globals_misc);
+	memcpy(new, p, sizeof(struct globals_misc));
+
+	new->minusc = nodeckstrdup(p->minusc);
+	new->curdir = p->curdir != p->nullstr ? nodeckstrdup(p->curdir) : new->nullstr;
+	new->physdir = p->physdir != p->nullstr ? nodeckstrdup(p->physdir) : new->nullstr;
+	new->arg0 = nodeckstrdup(p->arg0);
+	SAVE_PTR4(new->minusc, new->curdir, new->physdir, new->arg0);
+	return new;
+}
+
+static void
+forkshell_size(struct forkshell *fs)
+{
+	funcblocksize += sizeof(struct forkshell);
+	globals_var_size(fs->gvp);
+	globals_misc_size(fs->gmp);
+	cmdtable_size(fs->cmdtable);
+	localvar_size(fs->localvars);
+	/* optlist_transfer(sending, fd); */
+	/* misc_transfer(sending, fd); */
+
+	calcsize(fs->n);
+	argv_size(fs->argv);
+	funcstringsize += (fs->string ? strlen(fs->string) : 0) + 1;
+	strlist_size(fs->strlist);
+
+	nodeptrsize += 8; /* gvp, gmp, cmdtable, localvars, n, argv, string, strlist */
+}
+
+static struct forkshell *
+forkshell_copy(struct forkshell *fs)
+{
+	struct forkshell *new;
+
+	new = funcblock;
+	funcblock = (char *) funcblock + sizeof(struct forkshell);
+
+	memcpy(new, fs, sizeof(struct forkshell)); /* non-pointer stuff */
+	new->gvp = globals_var_copy(fs->gvp);
+	new->gmp = globals_misc_copy(fs->gmp);
+	new->cmdtable = cmdtable_copy(fs->cmdtable);
+	new->localvars = localvar_copy(fs->localvars);
+	SAVE_PTR4(new->gvp, new->gmp, new->cmdtable, new->localvars);
+
+	/* new->fs will be reconstructed from new->fpid */
+	new->n = copynode(fs->n);
+	new->argv = argv_copy(fs->argv);
+	new->string = nodeckstrdup(fs->string);
+	new->strlist = strlist_copy(fs->strlist);
+	SAVE_PTR4(new->n, new->argv, new->string, new->strlist);
+	return new;
+}
+
+static struct forkshell *
+forkshell_prepare(struct forkshell *fs)
+{
+	struct forkshell *new;
+	int size, fp, nodeptr_offset;
+	HANDLE h;
+	SECURITY_ATTRIBUTES sa;
+
+	for (fp = 0; forkpoints[fp] && forkpoints[fp] != fs->fp; fp++)
+		;
+
+	if (!forkpoints[fp])
+		bb_error_msg_and_die("invalid forkpoint %08x", (int)fs->fp);
+	fs->fpid = fp;
+
+	/* Calculate size of "new" */
+	fs->gvp = ash_ptr_to_globals_var;
+	fs->gmp = ash_ptr_to_globals_misc;
+	fs->cmdtable = cmdtable;
+	fs->localvars = localvars;
+
+	nodeptrsize = 1;	/* NULL terminated */
+	funcblocksize = 0;
+	funcstringsize = 0;
+	forkshell_size(fs);
+	size = funcblocksize + funcstringsize + nodeptrsize*sizeof(int);
+
+	/* Allocate, initialize pointers */
+	memset(&sa, 0, sizeof(sa));
+	sa.nLength = sizeof(sa);
+	sa.lpSecurityDescriptor = NULL;
+	sa.bInheritHandle = TRUE;
+	h = CreateFileMapping(INVALID_HANDLE_VALUE, &sa, PAGE_READWRITE, 0, size, NULL);
+	new = (struct forkshell *)MapViewOfFile(h, FILE_MAP_WRITE, 0,0, 0);
+	/* new = ckmalloc(size); */
+	funcblock = new;
+	funcstring = (char *) funcblock + funcblocksize;
+	nodeptr = (int*)((char *) funcstring + funcstringsize);
+	nodeptr_offset = (int) nodeptr - (int) new;
+
+	/* Now pack them all */
+	forkshell_copy(fs);
+
+	/* Finish it up */
+	*nodeptr = 0;
+	new->size = size;
+	new->nodeptr_offset = nodeptr_offset;
+	new->old_base = new;
+	new->hMapFile = h;
+	return new;
+}
+
+#undef exception_handler
+#undef trap
+#undef trap_ptr
+static void *sticky_mem_start, *sticky_mem_end;
+static void
+forkshell_init(const char *idstr)
+{
+	struct forkshell *fs;
+	int map_handle;
+	HANDLE h;
+	struct globals_var **gvpp;
+	struct globals_misc **gmpp;
+	int i;
+
+	if (sscanf(idstr, "%x", &map_handle) != 1)
+		bb_error_msg_and_die("invalid forkshell ID");
+
+	h = (HANDLE)map_handle;
+	fs = (struct forkshell *)MapViewOfFile(h, FILE_MAP_WRITE, 0,0, 0);
+	if (!fs)
+		bb_error_msg_and_die("Invalid forkshell memory");
+
+	/* this memory can't be freed */
+	sticky_mem_start = fs;
+	sticky_mem_end = (char *) fs + fs->size;
+	/* pointer fixup */
+	nodeptr = (int*)((char*)fs + fs->nodeptr_offset);
+	while (*nodeptr) {
+		int *ptr = (int*)((char*)fs + (*nodeptr - (int)fs->old_base));
+		if (*ptr)
+			*ptr -= ((int)fs->old_base - (int)fs);
+		nodeptr++;
+	}
+	/* Now fix up stuff that can't be transferred */
+	fs->fp = forkpoints[fs->fpid];
+	for (i = 0; i < ARRAY_SIZE(varinit_data); i++)
+		fs->gvp->varinit[i].func = varinit_data[i].func;
+	for (i = 0; i < CMDTABLESIZE; i++) {
+		struct tblentry *e = fs->cmdtable[i];
+		while (e) {
+			if (e->cmdtype == CMDBUILTIN)
+				e->param.cmd = builtintab + (int)e->param.cmd;
+			e = e->next;
+		}
+	}
+	fs->gmp->exception_handler = ash_ptr_to_globals_misc->exception_handler;
+	for (i = 0; i < NSIG; i++)
+		fs->gmp->trap[i] = ash_ptr_to_globals_misc->trap[i];
+	fs->gmp->trap_ptr = ash_ptr_to_globals_misc->trap_ptr;
+
+	/* Switch global variables */
+	gvpp = (struct globals_var **)&ash_ptr_to_globals_var;
+	*gvpp = fs->gvp;
+	gmpp = (struct globals_misc **)&ash_ptr_to_globals_misc;
+	*gmpp = fs->gmp;
+	localvars = fs->localvars;
+	cmdtable = fs->cmdtable;
+
+	fs->fp(fs);
+}
+
+#undef free
+static void
+sticky_free(void *base)
+{
+	if (base >= sticky_mem_start && base < sticky_mem_end)
+		return;
+	free(base);
+}
 
 /*-
  * Copyright (c) 1989, 1991, 1993, 1994
