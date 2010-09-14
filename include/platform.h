@@ -379,6 +379,7 @@ typedef unsigned smalluint;
 
 #if ENABLE_PLATFORM_MINGW32
 # undef  HAVE_FDPRINTF
+# undef  HAVE_MEMRCHR
 # undef  HAVE_MKDTEMP
 # undef  HAVE_SETBIT
 # undef  HAVE_STRCASESTR
@@ -413,6 +414,7 @@ extern int fdprintf(int fd, const char *format, ...);
 #endif
 
 #ifndef HAVE_MEMRCHR
+#include <stddef.h>
 extern void *memrchr(const void *s, int c, size_t n) FAST_FUNC;
 #endif
 
