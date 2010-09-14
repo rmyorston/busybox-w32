@@ -50,8 +50,6 @@ int64_t FAST_FUNC read_key(int fd, char *buf, int timeout UNUSED_PARAM)
 			case VK_CONTROL:
 			case VK_MENU:
 				break;
-			default:
-				return -1;
 			}
 			continue;
 		}
