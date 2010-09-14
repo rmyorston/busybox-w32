@@ -93,6 +93,9 @@
 //config:	  MMDDhhmm[[YY]YY][.ss] format.
 
 #include "libbb.h"
+#if ENABLE_FEATURE_DATE_NANO
+# include <sys/syscall.h>
+#endif
 
 enum {
 	OPT_RFC2822   = (1 << 0), /* R */
@@ -204,17 +207,15 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 		xstat(filename, &statbuf);
 		ts.tv_sec = statbuf.st_mtime;
 #if ENABLE_FEATURE_DATE_NANO
-# if defined __GLIBC__ && !defined __UCLIBC__
 		ts.tv_nsec = statbuf.st_mtim.tv_nsec;
-# else
-		ts.tv_nsec = statbuf.st_mtimensec;
-# endif
 #endif
 	} else {
 #if ENABLE_FEATURE_DATE_NANO
-		clock_gettime(CLOCK_REALTIME, &ts);
+		/* libc has incredibly messy way of doing this,
+		 * typically requiring -lrt. We just skip all this mess */
+		syscall(__NR_clock_gettime, CLOCK_REALTIME, &ts);
 #else
-		time(&ts.tv_nsec);
+		time(&ts.tv_sec);
 #endif
 	}
 	localtime_r(&ts.tv_sec, &tm_time);
