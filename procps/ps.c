@@ -25,6 +25,8 @@ enum { MAX_WIDTH = 2*1024 };
 #if ENABLE_SELINUX
 #define SELINUX_O_PREFIX "label,"
 #define DEFAULT_O_STR    (SELINUX_O_PREFIX "pid,user" IF_FEATURE_PS_TIME(",time") ",args")
+#elif ENABLE_PLATFORM_MINGW32
+#define DEFAULT_O_STR    ("pid,comm")
 #else
 #define DEFAULT_O_STR    ("pid,user" IF_FEATURE_PS_TIME(",time") ",args")
 #endif
@@ -301,13 +303,19 @@ static void func_pcpu(char *buf, int size, const procps_status_t *ps)
 
 static const ps_out_t out_spec[] = {
 // Mandated by POSIX:
+#if !ENABLE_PLATFORM_MINGW32
 	{ 8                  , "user"  ,"USER"   ,func_user  ,PSSCAN_UIDGID  },
 	{ 8                  , "group" ,"GROUP"  ,func_group ,PSSCAN_UIDGID  },
+#endif
 	{ 16                 , "comm"  ,"COMMAND",func_comm  ,PSSCAN_COMM    },
+#if !ENABLE_PLATFORM_MINGW32
 	{ MAX_WIDTH          , "args"  ,"COMMAND",func_args  ,PSSCAN_COMM    },
+#endif
 	{ 5                  , "pid"   ,"PID"    ,func_pid   ,PSSCAN_PID     },
+#if !ENABLE_PLATFORM_MINGW32
 	{ 5                  , "ppid"  ,"PPID"   ,func_ppid  ,PSSCAN_PPID    },
 	{ 5                  , "pgid"  ,"PGID"   ,func_pgid  ,PSSCAN_PGID    },
+#endif
 #if ENABLE_FEATURE_PS_TIME
 	{ sizeof("ELAPSED")-1, "etime" ,"ELAPSED",func_etime ,PSSCAN_START_TIME },
 #endif
@@ -320,10 +328,12 @@ static const ps_out_t out_spec[] = {
 #if ENABLE_FEATURE_PS_TIME
 	{ 6                  , "time"  ,"TIME"   ,func_time  ,PSSCAN_STIME | PSSCAN_UTIME },
 #endif
+#if !ENABLE_PLATFORM_MINGW32
 	{ 6                  , "tty"   ,"TT"     ,func_tty   ,PSSCAN_TTY     },
 	{ 4                  , "vsz"   ,"VSZ"    ,func_vsz   ,PSSCAN_VSZ     },
 // Not mandated by POSIX, but useful:
 	{ 4                  , "rss"   ,"RSS"    ,func_rss   ,PSSCAN_RSS     },
+#endif
 #if ENABLE_SELINUX
 	{ 35                 , "label" ,"LABEL"  ,func_label ,PSSCAN_CONTEXT },
 #endif
