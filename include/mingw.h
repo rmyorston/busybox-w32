@@ -346,3 +346,4 @@ void free_environ(char **env);
 char **env_setenv(char **env, const char *name);
 
 const char *get_busybox_exec_path(void);
+void init_winsock(void);
