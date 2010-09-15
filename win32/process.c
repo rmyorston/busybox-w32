@@ -317,3 +317,20 @@ procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags)
 	strncpy(sp->comm, pe.szExeFile, COMM_LEN);
 	return sp;
 }
+
+int kill(pid_t pid, int sig)
+{
+	HANDLE h;
+
+	if (sig != SIGTERM) {
+		bb_error_msg("kill only supports SIGTERM");
+		errno = ENOSYS;
+		return -1;
+	}
+	h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+	if (h == NULL)
+		return -1;
+	if (TerminateProcess(h, 0) == 0)
+		return -1;
+	return 0;
+}
