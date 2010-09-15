@@ -845,8 +845,8 @@ CONFIG_FEATURE_MIME_CHARSET=""
 # CONFIG_SMEMCAP is not set
 # CONFIG_FREE is not set
 # CONFIG_FUSER is not set
-# CONFIG_KILL is not set
-# CONFIG_KILLALL is not set
+CONFIG_KILL=y
+CONFIG_KILLALL=y
 # CONFIG_KILLALL5 is not set
 # CONFIG_NMETER is not set
 # CONFIG_PGREP is not set
