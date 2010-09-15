@@ -174,7 +174,11 @@ NOIMPL(ioctl,int fd UNUSED_PARAM, int code UNUSED_PARAM,...);
  */
 #define hstrerror strerror
 
-NOIMPL(mingw_socket,int domain UNUSED_PARAM, int type UNUSED_PARAM, int protocol UNUSED_PARAM);
+#ifdef CONFIG_WIN32_NET
+int mingw_socket(int domain, int type, int protocol);
+
+# define socket mingw_socket
+#endif
 NOIMPL(mingw_sendto,SOCKET s UNUSED_PARAM, const char *buf UNUSED_PARAM, int len UNUSED_PARAM, int flags UNUSED_PARAM, const struct sockaddr *sa UNUSED_PARAM, int salen UNUSED_PARAM);
 NOIMPL(mingw_listen,SOCKET s UNUSED_PARAM,int backlog UNUSED_PARAM);
 NOIMPL(mingw_bind,SOCKET s UNUSED_PARAM,const struct sockaddr* sa UNUSED_PARAM,int salen UNUSED_PARAM);
