@@ -100,6 +100,7 @@ lib-y += wfopen.o
 lib-y += wfopen_input.o
 lib-y += write.o
 lib-y += xatonum.o
+lib-y += xconnect.o
 lib-y += xfunc_die.o
 lib-y += xfuncs.o
 lib-y += xfuncs_printf.o
@@ -118,7 +119,6 @@ lib-$(CONFIG_PLATFORM_POSIX) += read_key.o
 lib-$(CONFIG_PLATFORM_POSIX) += safe_gethostname.o
 lib-$(CONFIG_PLATFORM_POSIX) += signals.o
 lib-$(CONFIG_PLATFORM_POSIX) += udp_io.o
-lib-$(CONFIG_PLATFORM_POSIX) += xconnect.o
 lib-$(CONFIG_PLATFORM_POSIX) += xgethostbyname.o
 
 lib-$(CONFIG_FEATURE_UTMP) += utmp.o

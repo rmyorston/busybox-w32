@@ -49,6 +49,19 @@ static inline void endgrent(void) {}
 #define NAME_MAX 255
 #define MAXSYMLINKS 20
 
+/*
+ * netdb.h
+ */
+
+typedef int sa_family_t;
+
+/*
+ * linux/un.h
+ */
+struct sockaddr_un {
+	sa_family_t sun_family;
+	char sun_path[1]; /* to make compiler happy, don't bother */
+};
 
 /*
  * poll.h
