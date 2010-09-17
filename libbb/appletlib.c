@@ -827,9 +827,13 @@ int main(int argc UNUSED_PARAM, char **argv)
 			unsetenv("BUSYBOX_APPLET_NAME");
 		}
 		else {
-			int len = strlen(applet_name);
-			if (len > 4 && !strcmp(applet_name+len-4, ".exe"))
-				argv[0][applet_name-argv[0]+len-4] = '\0';
+			int i, len = strlen(applet_name);
+			if (len > 4 && !strcmp(applet_name+len-4, ".exe")) {
+				len -= 4;
+				argv[0][applet_name-argv[0]+len] = '\0';
+			}
+			for (i = 0; i < len; i++)
+				argv[0][applet_name-argv[0]+i] = tolower(applet_name[i]);
 		}
 	}
 	applet_name = bb_basename(applet_name);
