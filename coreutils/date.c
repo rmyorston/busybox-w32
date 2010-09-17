@@ -336,7 +336,7 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 		}
 #if ENABLE_PLATFORM_MINGW32
 		if (strstr(fmt_dt2str, "%e"))
-			bb_error_msg_and_die("%e is not supported by Windows strftime");
+			bb_error_msg_and_die("%%e is not supported by Windows strftime");
 #endif
 		/* Generate output string */
 		strftime(date_buf, sizeof(date_buf), fmt_dt2str, &tm_time);
