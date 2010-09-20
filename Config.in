@@ -27,6 +27,10 @@ config WIN32_NET
 	bool "Support networking"
 	default n
 	depends on PLATFORM_MINGW32
+	help
+	  Enable network applets. Some other applets can also be
+	  enabled because they use htonl/htons, which are provided
+	  by ws2_32.dll
 
 menu "Busybox Settings"
 
