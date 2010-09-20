@@ -4,6 +4,12 @@
 
 ** code page issue
 
+* archival
+
+** unlzma < foo.lzma does not work
+
+unlzma < foo.lzma | bar does work though
+
 * ash
 
 ** ^C, ^D do not work
