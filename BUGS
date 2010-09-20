@@ -1,0 +1,15 @@
+-*- mode: org; mode: auto-fill -*-
+
+* general
+
+** code page issue
+
+* ash
+
+** ^C, ^D do not work
+
+^Z can be used while ^D does not work
+
+** $HOME not set
+
+$HOMEPATH should probably be used
