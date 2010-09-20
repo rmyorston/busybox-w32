@@ -127,6 +127,8 @@ int FAST_FUNC bbunpack(char **argv,
 				if (new_name == filename)
 					filename[strlen(filename)] = '.';
 			}
+			if (ENABLE_PLATFORM_MINGW32)
+				xclose(STDIN_FILENO);
 			xunlink(del);
 
 #if 0 /* Currently buggy - wrong name: "a.gz: 261% - replaced with a.gz" */
