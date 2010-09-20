@@ -579,6 +579,7 @@ int wget_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	INIT_G();
+	IF_WIN32_NET(init_winsock();)
 
 #if ENABLE_FEATURE_WGET_LONG_OPTIONS
 	applet_long_options = wget_longopts;
@@ -736,6 +737,8 @@ int wget_main(int argc UNUSED_PARAM, char **argv)
 		{ /* If "Connection:" is needed, document why */
 			fprintf(sfp, /* "Connection: close\r\n" */ "\r\n");
 		}
+
+		fflush(sfp);
 
 		/*
 		 * Retrieve HTTP response line and check for "200" status code.

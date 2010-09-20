@@ -15,6 +15,7 @@ typedef int pid_t;
  */
 static inline unsigned int git_ntohl(unsigned int x) { return (unsigned int)ntohl(x); }
 #define ntohl git_ntohl
+int inet_aton(const char *cp, struct in_addr *inp);
 
 /*
  * fcntl.h
@@ -48,6 +49,19 @@ static inline void endgrent(void) {}
 #define NAME_MAX 255
 #define MAXSYMLINKS 20
 
+/*
+ * netdb.h
+ */
+
+typedef int sa_family_t;
+
+/*
+ * linux/un.h
+ */
+struct sockaddr_un {
+	sa_family_t sun_family;
+	char sun_path[1]; /* to make compiler happy, don't bother */
+};
 
 /*
  * poll.h
@@ -173,7 +187,13 @@ NOIMPL(ioctl,int fd UNUSED_PARAM, int code UNUSED_PARAM,...);
  */
 #define hstrerror strerror
 
-NOIMPL(mingw_socket,int domain UNUSED_PARAM, int type UNUSED_PARAM, int protocol UNUSED_PARAM);
+#ifdef CONFIG_WIN32_NET
+int mingw_socket(int domain, int type, int protocol);
+int mingw_connect(int sockfd, struct sockaddr *sa, size_t sz);
+
+# define socket mingw_socket
+# define connect mingw_connect
+#endif
 NOIMPL(mingw_sendto,SOCKET s UNUSED_PARAM, const char *buf UNUSED_PARAM, int len UNUSED_PARAM, int flags UNUSED_PARAM, const struct sockaddr *sa UNUSED_PARAM, int salen UNUSED_PARAM);
 NOIMPL(mingw_listen,SOCKET s UNUSED_PARAM,int backlog UNUSED_PARAM);
 NOIMPL(mingw_bind,SOCKET s UNUSED_PARAM,const struct sockaddr* sa UNUSED_PARAM,int salen UNUSED_PARAM);
@@ -349,3 +369,4 @@ void free_environ(char **env);
 char **env_setenv(char **env, const char *name);
 
 const char *get_busybox_exec_path(void);
+void init_winsock(void);

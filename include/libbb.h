@@ -484,7 +484,6 @@ void xlisten(int s, int backlog) FAST_FUNC;
 void xconnect(int s, const struct sockaddr *s_addr, socklen_t addrlen) FAST_FUNC;
 ssize_t xsendto(int s, const void *buf, size_t len, const struct sockaddr *to,
 				socklen_t tolen) FAST_FUNC;
-#if !ENABLE_PLATFORM_MINGW32
 /* SO_REUSEADDR allows a server to rebind to an address that is already
  * "in use" by old connections to e.g. previous server instance which is
  * killed or crashed. Without it bind will fail until all such connections
@@ -597,7 +596,6 @@ ssize_t recv_from_to(int fd, void *buf, size_t len, int flags,
 		struct sockaddr *from,
 		struct sockaddr *to,
 		socklen_t sa_size) FAST_FUNC;
-#endif
 
 
 char *xstrdup(const char *s) FAST_FUNC RETURNS_MALLOC;
