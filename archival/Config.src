@@ -190,6 +190,7 @@ config FEATURE_GZIP_LONG_OPTIONS
 config LZOP
 	bool "lzop"
 	default y
+	depends on PLATFORM_POSIX || WIN32_NET
 	help
 	  Lzop compression/decompresion.
 
