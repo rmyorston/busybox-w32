@@ -1915,6 +1915,7 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 	INIT_S();
 
 #if ENABLE_PLATFORM_MINGW32
+	memset(initial_settings.c_cc, sizeof(initial_settings.c_cc), 0);
 	if (!isatty(0) || !isatty(1)) {
 #else
 	if (tcgetattr(STDIN_FILENO, &initial_settings) < 0
