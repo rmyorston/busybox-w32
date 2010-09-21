@@ -512,18 +512,21 @@ config SEQ
 config SHA1SUM
 	bool "sha1sum"
 	default y
+	depends on PLATFORM_POSIX || WIN32_NET
 	help
 	  Compute and check SHA1 message digest
 
 config SHA256SUM
 	bool "sha256sum"
 	default y
+	depends on PLATFORM_POSIX || WIN32_NET
 	help
 	  Compute and check SHA256 message digest
 
 config SHA512SUM
 	bool "sha512sum"
 	default y
+	depends on PLATFORM_POSIX || WIN32_NET
 	help
 	  Compute and check SHA512 message digest
 
