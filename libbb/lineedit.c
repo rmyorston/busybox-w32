@@ -1914,10 +1914,13 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 
 	INIT_S();
 
-#if !ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32
+	if (!isatty(0) || !isatty(1)) {
+#else
 	if (tcgetattr(STDIN_FILENO, &initial_settings) < 0
 	 || !(initial_settings.c_lflag & ECHO)
 	) {
+#endif
 		/* Happens when e.g. stty -echo was run before */
 		parse_and_put_prompt(prompt);
 		/* fflush_all(); - done by parse_and_put_prompt */
@@ -1928,7 +1931,6 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 		DEINIT_S();
 		return len;
 	}
-#endif
 
 	init_unicode();
 
