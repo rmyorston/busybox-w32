@@ -4079,6 +4079,8 @@ waitpid_child(int *status)
 	}
 
 	LOOP(pid_nr++);
+	if (!pid_nr)
+		return -1;
 	pidp = pidlist = ckmalloc(sizeof(*pidlist)*pid_nr);
 	LOOP(*pidp++ = (HANDLE)ps->ps_pid);
 	#undef LOOP
