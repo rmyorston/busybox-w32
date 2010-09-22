@@ -31,6 +31,12 @@ int64_t FAST_FUNC read_key(int fd, char *buf, int timeout UNUSED_PARAM)
 			continue;
 		if (!record.Event.KeyEvent.uChar.AsciiChar) {
 			DWORD state = record.Event.KeyEvent.dwControlKeyState;
+
+			if (state & (RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED) &&
+			    (record.Event.KeyEvent.wVirtualKeyCode >= 'A' &&
+			     record.Event.KeyEvent.wVirtualKeyCode <= 'Z'))
+				return record.Event.KeyEvent.wVirtualKeyCode & ~0x40;
+
 			switch (record.Event.KeyEvent.wVirtualKeyCode) {
 			case VK_DELETE: return KEYCODE_DELETE;
 			case VK_INSERT: return KEYCODE_INSERT;
