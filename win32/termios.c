@@ -10,7 +10,7 @@ int tcgetattr(int fd UNUSED_PARAM, struct termios *t UNUSED_PARAM)
 	return -1;
 }
 
-int64_t FAST_FUNC read_key(int fd, char *buf, int timeout UNUSED_PARAM)
+int64_t FAST_FUNC read_key(int fd, char *buf, int timeout)
 {
 	HANDLE cin = GetStdHandle(STD_INPUT_HANDLE);
 	INPUT_RECORD record;
@@ -24,6 +24,10 @@ int64_t FAST_FUNC read_key(int fd, char *buf, int timeout UNUSED_PARAM)
 	GetConsoleMode(cin, &mode);
 	SetConsoleMode(cin, 0);
 
+	if (timeout > 0) {
+		if (WaitForSingleObject(cin, timeout) != WAIT_OBJECT_0)
+			goto done;
+	}
 	while (1) {
 		if (!ReadConsoleInput(cin, &record, 1, &nevent_out))
 			goto done;

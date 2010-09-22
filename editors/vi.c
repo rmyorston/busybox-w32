@@ -2211,11 +2211,20 @@ static void catch_sig(int sig)
 
 static int mysleep(int hund)	// sleep for 'hund' 1/100 seconds or stdin ready
 {
+#if ENABLE_PLATFORM_MINGW32
+	HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+	DWORD ret;
+
+	fflush(stdout);
+	ret = WaitForSingleObject(h, hund*10);
+	return ret != WAIT_TIMEOUT;
+#else
 	struct pollfd pfd[1];
 
 	pfd[0].fd = STDIN_FILENO;
 	pfd[0].events = POLLIN;
 	return safe_poll(pfd, 1, hund*10) > 0;
+#endif
 }
 
 //----- IO Routines --------------------------------------------
