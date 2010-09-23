@@ -4050,6 +4050,18 @@ sprint_status(char *s, int status, int sigonly)
 }
 
 #if ENABLE_PLATFORM_MINGW32
+
+HANDLE hSIGINT;		/* Ctrl-C is pressed */
+
+static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
+{
+	if (dwCtrlType == CTRL_C_EVENT || dwCtrlType == CTRL_BREAK_EVENT) {
+		SetEvent(hSIGINT);
+		return TRUE;
+	}
+	return FALSE;
+}
+
 /*
  * Windows does not know about parent-child relationship
  * They don't support waitpid(-1)
@@ -4081,7 +4093,9 @@ waitpid_child(int *status)
 	LOOP(pid_nr++);
 	if (!pid_nr)
 		return -1;
+	pid_nr++;
 	pidp = pidlist = ckmalloc(sizeof(*pidlist)*pid_nr);
+	*pidp++ = hSIGINT;
 	LOOP(*pidp++ = (HANDLE)ps->ps_pid);
 	#undef LOOP
 
@@ -4089,6 +4103,15 @@ waitpid_child(int *status)
 	if (idx >= pid_nr) {
 		free(pidlist);
 		return -1;
+	}
+	if (!idx) { 		/* hSIGINT */
+		int i;
+		ResetEvent(hSIGINT);
+		for (i = 1; i < pid_nr; i++)
+			TerminateProcess(pidlist[i], 1);
+		free(pidlist);
+		*status = 260;	/* terminated by a signal */
+		return pidlist[1];
 	}
 	GetExitCodeProcess(pidlist[idx], &win_status);
 	pid = (int)pidlist[idx];
@@ -13593,6 +13616,8 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	setstackmark(&smark);
 
 #if ENABLE_PLATFORM_MINGW32
+	hSIGINT = CreateEvent(NULL, TRUE, FALSE, NULL);
+	SetConsoleCtrlHandler(ctrl_handler, TRUE);
 	if (argc == 3 && !strcmp(argv[1], "--forkshell")) {
 		forkshell_init(argv[2]);
 
