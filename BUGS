@@ -16,6 +16,9 @@ unlzma < foo.lzma | bar does work though
 
 ^Z can be used while ^D does not work
 
+^C sometimes does not work (Ctrl-Break always works though).
+This may have something to do with read_key()?
+
 ** $HOME not set
 
 $HOMEPATH should probably be used
