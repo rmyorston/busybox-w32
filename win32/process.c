@@ -1,4 +1,5 @@
 #include "libbb.h"
+#include <tlhelp32.h>
 
 int waitpid(pid_t pid, int *status, unsigned options)
 {
@@ -283,4 +284,53 @@ int
 mingw_execv(const char *cmd, const char *const *argv)
 {
 	return mingw_execve(cmd, argv, (const char *const *)environ);
+}
+
+/* POSIX version in libbb/procps.c */
+procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags)
+{
+	PROCESSENTRY32 pe;
+
+	pe.dwSize = sizeof(pe);
+	if (!sp) {
+		sp = xzalloc(sizeof(struct procps_status_t));
+		sp->snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+		if (sp->snapshot == INVALID_HANDLE_VALUE) {
+			free(sp);
+			return NULL;
+		}
+		if (!Process32First(sp->snapshot, &pe)) {
+			CloseHandle(sp->snapshot);
+			free(sp);
+			return NULL;
+		}
+	}
+	else {
+		if (!Process32Next(sp->snapshot, &pe)) {
+			CloseHandle(sp->snapshot);
+			free(sp);
+			return NULL;
+		}
+	}
+
+	sp->pid = pe.th32ProcessID;
+	strncpy(sp->comm, pe.szExeFile, COMM_LEN);
+	return sp;
+}
+
+int kill(pid_t pid, int sig)
+{
+	HANDLE h;
+
+	if (sig != SIGTERM) {
+		bb_error_msg("kill only supports SIGTERM");
+		errno = ENOSYS;
+		return -1;
+	}
+	h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+	if (h == NULL)
+		return -1;
+	if (TerminateProcess(h, 0) == 0)
+		return -1;
+	return 0;
 }
