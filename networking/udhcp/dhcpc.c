@@ -346,31 +346,28 @@ static ALWAYS_INLINE uint32_t random_xid(void)
 /* Initialize the packet with the proper defaults */
 static void init_packet(struct dhcp_packet *packet, char type)
 {
+	/* Fill in: op, htype, hlen, cookie fields; message type option: */
 	udhcp_init_header(packet, type);
+
+	packet->xid = random_xid();
+
 	memcpy(packet->chaddr, client_config.client_mac, 6);
 	if (client_config.clientid)
 		udhcp_add_binary_option(packet, client_config.clientid);
-	if (client_config.hostname)
-		udhcp_add_binary_option(packet, client_config.hostname);
-	if (client_config.fqdn)
-		udhcp_add_binary_option(packet, client_config.fqdn);
-	if (type != DHCPDECLINE
-	 && type != DHCPRELEASE
-	 && client_config.vendorclass
-	) {
-		udhcp_add_binary_option(packet, client_config.vendorclass);
-	}
 }
 
 static void add_client_options(struct dhcp_packet *packet)
 {
+	uint8_t c;
+	int i, end, len;
+
+	udhcp_add_simple_option(packet, DHCP_MAX_SIZE, htons(IP_UDP_DHCP_SIZE));
+
 	/* Add a "param req" option with the list of options we'd like to have
 	 * from stubborn DHCP servers. Pull the data from the struct in common.c.
 	 * No bounds checking because it goes towards the head of the packet. */
-	uint8_t c;
-	int end = udhcp_end_option(packet->options);
-	int i, len = 0;
-
+	end = udhcp_end_option(packet->options);
+	len = 0;
 	for (i = 0; (c = dhcp_optflags[i].code) != 0; i++) {
 		if ((   (dhcp_optflags[i].flags & OPTION_REQ)
 		     && !client_config.no_default_options
@@ -386,6 +383,13 @@ static void add_client_options(struct dhcp_packet *packet)
 		packet->options[end + OPT_LEN] = len;
 		packet->options[end + OPT_DATA + len] = DHCP_END;
 	}
+
+	if (client_config.vendorclass)
+		udhcp_add_binary_option(packet, client_config.vendorclass);
+	if (client_config.hostname)
+		udhcp_add_binary_option(packet, client_config.hostname);
+	if (client_config.fqdn)
+		udhcp_add_binary_option(packet, client_config.fqdn);
 
 	/* Add -x options if any */
 	{
@@ -428,17 +432,25 @@ static int raw_bcast_from_client_config_ifindex(struct dhcp_packet *packet)
 }
 
 /* Broadcast a DHCP discover packet to the network, with an optionally requested IP */
-static int send_discover(uint32_t xid, uint32_t requested)
+/* NOINLINE: limit stack usage in caller */
+static NOINLINE int send_discover(uint32_t xid, uint32_t requested)
 {
 	struct dhcp_packet packet;
 
+	/* Fill in: op, htype, hlen, cookie, chaddr fields,
+	 * random xid field (we override it below),
+	 * client-id option (unless -C), message type option:
+	 */
 	init_packet(&packet, DHCPDISCOVER);
+
 	packet.xid = xid;
 	if (requested)
 		udhcp_add_simple_option(&packet, DHCP_REQUESTED_IP, requested);
-	/* Explicitly saying that we want RFC-compliant packets helps
-	 * some buggy DHCP servers to NOT send bigger packets */
-	udhcp_add_simple_option(&packet, DHCP_MAX_SIZE, htons(576));
+
+	/* Add options: maxsize,
+	 * optionally: hostname, fqdn, vendorclass,
+	 * "param req" option according to -O, options specified with -x
+	 */
 	add_client_options(&packet);
 
 	bb_info_msg("Sending discover...");
@@ -449,15 +461,39 @@ static int send_discover(uint32_t xid, uint32_t requested)
 /* RFC 2131 3.1 paragraph 3:
  * "The client _broadcasts_ a DHCPREQUEST message..."
  */
-static int send_select(uint32_t xid, uint32_t server, uint32_t requested)
+/* NOINLINE: limit stack usage in caller */
+static NOINLINE int send_select(uint32_t xid, uint32_t server, uint32_t requested)
 {
 	struct dhcp_packet packet;
 	struct in_addr addr;
 
+/*
+ * RFC 2131 4.3.2 DHCPREQUEST message
+ * ...
+ * If the DHCPREQUEST message contains a 'server identifier'
+ * option, the message is in response to a DHCPOFFER message.
+ * Otherwise, the message is a request to verify or extend an
+ * existing lease. If the client uses a 'client identifier'
+ * in a DHCPREQUEST message, it MUST use that same 'client identifier'
+ * in all subsequent messages. If the client included a list
+ * of requested parameters in a DHCPDISCOVER message, it MUST
+ * include that list in all subsequent messages.
+ */
+	/* Fill in: op, htype, hlen, cookie, chaddr fields,
+	 * random xid field (we override it below),
+	 * client-id option (unless -C), message type option:
+	 */
 	init_packet(&packet, DHCPREQUEST);
+
 	packet.xid = xid;
 	udhcp_add_simple_option(&packet, DHCP_REQUESTED_IP, requested);
+
 	udhcp_add_simple_option(&packet, DHCP_SERVER_ID, server);
+
+	/* Add options: maxsize,
+	 * optionally: hostname, fqdn, vendorclass,
+	 * "param req" option according to -O, and options specified with -x
+	 */
 	add_client_options(&packet);
 
 	addr.s_addr = requested;
@@ -466,13 +502,38 @@ static int send_select(uint32_t xid, uint32_t server, uint32_t requested)
 }
 
 /* Unicast or broadcast a DHCP renew message */
-static int send_renew(uint32_t xid, uint32_t server, uint32_t ciaddr)
+/* NOINLINE: limit stack usage in caller */
+static NOINLINE int send_renew(uint32_t xid, uint32_t server, uint32_t ciaddr)
 {
 	struct dhcp_packet packet;
 
+/*
+ * RFC 2131 4.3.2 DHCPREQUEST message
+ * ...
+ * DHCPREQUEST generated during RENEWING state:
+ *
+ * 'server identifier' MUST NOT be filled in, 'requested IP address'
+ * option MUST NOT be filled in, 'ciaddr' MUST be filled in with
+ * client's IP address. In this situation, the client is completely
+ * configured, and is trying to extend its lease. This message will
+ * be unicast, so no relay agents will be involved in its
+ * transmission.  Because 'giaddr' is therefore not filled in, the
+ * DHCP server will trust the value in 'ciaddr', and use it when
+ * replying to the client.
+ */
+	/* Fill in: op, htype, hlen, cookie, chaddr fields,
+	 * random xid field (we override it below),
+	 * client-id option (unless -C), message type option:
+	 */
 	init_packet(&packet, DHCPREQUEST);
+
 	packet.xid = xid;
 	packet.ciaddr = ciaddr;
+
+	/* Add options: maxsize,
+	 * optionally: hostname, fqdn, vendorclass,
+	 * "param req" option according to -O, and options specified with -x
+	 */
 	add_client_options(&packet);
 
 	bb_info_msg("Sending renew...");
@@ -485,13 +546,25 @@ static int send_renew(uint32_t xid, uint32_t server, uint32_t ciaddr)
 
 #if ENABLE_FEATURE_UDHCPC_ARPING
 /* Broadcast a DHCP decline message */
-static int send_decline(uint32_t xid, uint32_t server, uint32_t requested)
+/* NOINLINE: limit stack usage in caller */
+static NOINLINE int send_decline(uint32_t xid, uint32_t server, uint32_t requested)
 {
 	struct dhcp_packet packet;
 
+	/* Fill in: op, htype, hlen, cookie, chaddr, random xid fields,
+	 * client-id option (unless -C), message type option:
+	 */
 	init_packet(&packet, DHCPDECLINE);
+
+	/* RFC 2131 says DHCPDECLINE's xid is randomly selected by client,
+	 * but in case the server is buggy and wants DHCPDECLINE's xid
+	 * to match the xid which started entire handshake,
+	 * we use the same xid we used in initial DHCPDISCOVER:
+	 */
 	packet.xid = xid;
+	/* DHCPDECLINE uses "requested ip", not ciaddr, to store offered IP */
 	udhcp_add_simple_option(&packet, DHCP_REQUESTED_IP, requested);
+
 	udhcp_add_simple_option(&packet, DHCP_SERVER_ID, server);
 
 	bb_info_msg("Sending decline...");
@@ -504,8 +577,12 @@ static int send_release(uint32_t server, uint32_t ciaddr)
 {
 	struct dhcp_packet packet;
 
+	/* Fill in: op, htype, hlen, cookie, chaddr, random xid fields,
+	 * client-id option (unless -C), message type option:
+	 */
 	init_packet(&packet, DHCPRELEASE);
-	packet.xid = random_xid();
+
+	/* DHCPRELEASE uses ciaddr, not "requested ip", to store IP being released */
 	packet.ciaddr = ciaddr;
 
 	udhcp_add_simple_option(&packet, DHCP_SERVER_ID, server);
@@ -515,6 +592,7 @@ static int send_release(uint32_t server, uint32_t ciaddr)
 }
 
 /* Returns -1 on errors that are fatal for the socket, -2 for those that aren't */
+/* NOINLINE: limit stack usage in caller */
 static NOINLINE int udhcp_recv_raw_packet(struct dhcp_packet *dhcp_pkt, int fd)
 {
 	int bytes;
@@ -765,12 +843,97 @@ static void client_background(void)
 }
 #endif
 
+//usage:#if defined CONFIG_UDHCP_DEBUG && CONFIG_UDHCP_DEBUG >= 1
+//usage:# define IF_UDHCP_VERBOSE(...) __VA_ARGS__
+//usage:#else
+//usage:# define IF_UDHCP_VERBOSE(...)
+//usage:#endif
+//usage:#define udhcpc_trivial_usage
+//usage:       "[-fbnq"IF_UDHCP_VERBOSE("v")"oCR] [-i IFACE] [-r IP] [-s PROG] [-p PIDFILE]\n"
+//usage:       "	[-H HOSTNAME] [-V VENDOR] [-x OPT:VAL]... [-O OPT]..." IF_FEATURE_UDHCP_PORT(" [-P N]")
+//usage:#define udhcpc_full_usage "\n"
+//usage:	IF_LONG_OPTS(
+//usage:     "\n	-i,--interface IFACE	Interface to use (default eth0)"
+//usage:     "\n	-p,--pidfile FILE	Create pidfile"
+//usage:     "\n	-s,--script PROG	Run PROG at DHCP events (default "CONFIG_UDHCPC_DEFAULT_SCRIPT")"
+//usage:     "\n	-t,--retries N		Send up to N discover packets"
+//usage:     "\n	-T,--timeout N		Pause between packets (default 3 seconds)"
+//usage:     "\n	-A,--tryagain N		Wait N seconds after failure (default 20)"
+//usage:     "\n	-f,--foreground		Run in foreground"
+//usage:	USE_FOR_MMU(
+//usage:     "\n	-b,--background		Background if lease is not obtained"
+//usage:	)
+//usage:     "\n	-n,--now		Exit if lease is not obtained"
+//usage:     "\n	-q,--quit		Exit after obtaining lease"
+//usage:     "\n	-R,--release		Release IP on exit"
+//usage:     "\n	-S,--syslog		Log to syslog too"
+//usage:	IF_FEATURE_UDHCP_PORT(
+//usage:     "\n	-P,--client-port N	Use port N (default 68)"
+//usage:	)
+//usage:	IF_FEATURE_UDHCPC_ARPING(
+//usage:     "\n	-a,--arping		Use arping to validate offered address"
+//usage:	)
+//usage:     "\n	-O,--request-option OPT	Request option OPT from server (cumulative)"
+//usage:     "\n	-o,--no-default-options	Don't request any options (unless -O is given)"
+//usage:     "\n	-r,--request IP		Request this IP address"
+//usage:     "\n	-x OPT:VAL		Include option OPT in sent packets (cumulative)"
+//usage:     "\n				Examples of string, numeric, and hex byte opts:"
+//usage:     "\n				-x hostname:bbox - option 12"
+//usage:     "\n				-x lease:3600 - option 51 (lease time)"
+//usage:     "\n				-x 0x3d:0100BEEFC0FFEE - option 61 (client id)"
+//usage:     "\n	-F,--fqdn NAME		Ask server to update DNS mapping for NAME"
+//usage:     "\n	-H,-h,--hostname NAME	Send NAME as client hostname (default none)"
+//usage:     "\n	-V,--vendorclass VENDOR	Vendor identifier (default 'udhcp VERSION')"
+//usage:     "\n	-C,--clientid-none	Don't send MAC as client identifier"
+//usage:	IF_UDHCP_VERBOSE(
+//usage:     "\n	-v			Verbose"
+//usage:	)
+//usage:	)
+//usage:	IF_NOT_LONG_OPTS(
+//usage:     "\n	-i IFACE	Interface to use (default eth0)"
+//usage:     "\n	-p FILE		Create pidfile"
+//usage:     "\n	-s PROG		Run PROG at DHCP events (default "CONFIG_UDHCPC_DEFAULT_SCRIPT")"
+//usage:     "\n	-t N		Send up to N discover packets"
+//usage:     "\n	-T N		Pause between packets (default 3 seconds)"
+//usage:     "\n	-A N		Wait N seconds (default 20) after failure"
+//usage:     "\n	-f		Run in foreground"
+//usage:	USE_FOR_MMU(
+//usage:     "\n	-b		Background if lease is not obtained"
+//usage:	)
+//usage:     "\n	-n		Exit if lease is not obtained"
+//usage:     "\n	-q		Exit after obtaining lease"
+//usage:     "\n	-R		Release IP on exit"
+//usage:     "\n	-S		Log to syslog too"
+//usage:	IF_FEATURE_UDHCP_PORT(
+//usage:     "\n	-P N		Use port N (default 68)"
+//usage:	)
+//usage:	IF_FEATURE_UDHCPC_ARPING(
+//usage:     "\n	-a		Use arping to validate offered address"
+//usage:	)
+//usage:     "\n	-O OPT		Request option OPT from server (cumulative)"
+//usage:     "\n	-o		Don't request any options (unless -O is given)"
+//usage:     "\n	-r IP		Request this IP address"
+//usage:     "\n	-x OPT:VAL	Include option OPT in sent packets (cumulative)"
+//usage:     "\n			Examples of string, numeric, and hex byte opts:"
+//usage:     "\n			-x hostname:bbox - option 12"
+//usage:     "\n			-x lease:3600 - option 51 (lease time)"
+//usage:     "\n			-x 0x3d:0100BEEFC0FFEE - option 61 (client id)"
+//usage:     "\n	-F NAME		Ask server to update DNS mapping for NAME"
+//usage:     "\n	-H,-h NAME	Send NAME as client hostname (default none)"
+//usage:     "\n	-V VENDOR	Vendor identifier (default 'udhcp VERSION')"
+//usage:     "\n	-C		Don't send MAC as client identifier"
+//usage:	IF_UDHCP_VERBOSE(
+//usage:     "\n	-v		Verbose"
+//usage:	)
+//usage:	)
+
 int udhcpc_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 {
 	uint8_t *temp, *message;
-	const char *str_c, *str_V, *str_h, *str_F, *str_r;
+	const char *str_V, *str_h, *str_F, *str_r;
 	IF_FEATURE_UDHCP_PORT(char *str_P;)
+	void *clientid_mac_ptr;
 	llist_t *list_O = NULL;
 	llist_t *list_x = NULL;
 	int tryagain_timeout = 20;
@@ -792,7 +955,6 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 
 #if ENABLE_LONG_OPTS
 	static const char udhcpc_longopts[] ALIGN1 =
-		"clientid\0"       Required_argument "c"
 		"clientid-none\0"  No_argument       "C"
 		"vendorclass\0"    Required_argument "V"
 		"hostname\0"       Required_argument "H"
@@ -818,29 +980,28 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 		;
 #endif
 	enum {
-		OPT_c = 1 << 0,
-		OPT_C = 1 << 1,
-		OPT_V = 1 << 2,
-		OPT_H = 1 << 3,
-		OPT_h = 1 << 4,
-		OPT_F = 1 << 5,
-		OPT_i = 1 << 6,
-		OPT_n = 1 << 7,
-		OPT_p = 1 << 8,
-		OPT_q = 1 << 9,
-		OPT_R = 1 << 10,
-		OPT_r = 1 << 11,
-		OPT_s = 1 << 12,
-		OPT_T = 1 << 13,
-		OPT_t = 1 << 14,
-		OPT_S = 1 << 15,
-		OPT_A = 1 << 16,
-		OPT_O = 1 << 17,
-		OPT_o = 1 << 18,
-		OPT_x = 1 << 19,
-		OPT_f = 1 << 20,
+		OPT_C = 1 << 0,
+		OPT_V = 1 << 1,
+		OPT_H = 1 << 2,
+		OPT_h = 1 << 3,
+		OPT_F = 1 << 4,
+		OPT_i = 1 << 5,
+		OPT_n = 1 << 6,
+		OPT_p = 1 << 7,
+		OPT_q = 1 << 8,
+		OPT_R = 1 << 9,
+		OPT_r = 1 << 10,
+		OPT_s = 1 << 11,
+		OPT_T = 1 << 12,
+		OPT_t = 1 << 13,
+		OPT_S = 1 << 14,
+		OPT_A = 1 << 15,
+		OPT_O = 1 << 16,
+		OPT_o = 1 << 17,
+		OPT_x = 1 << 18,
+		OPT_f = 1 << 19,
 /* The rest has variable bit positions, need to be clever */
-		OPTBIT_f = 20,
+		OPTBIT_f = 19,
 		USE_FOR_MMU(             OPTBIT_b,)
 		IF_FEATURE_UDHCPC_ARPING(OPTBIT_a,)
 		IF_FEATURE_UDHCP_PORT(   OPTBIT_P,)
@@ -849,7 +1010,7 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 		IF_FEATURE_UDHCP_PORT(   OPT_P = 1 << OPTBIT_P,)
 	};
 
-	/* Default options. */
+	/* Default options */
 	IF_FEATURE_UDHCP_PORT(SERVER_PORT = 67;)
 	IF_FEATURE_UDHCP_PORT(CLIENT_PORT = 68;)
 	client_config.interface = "eth0";
@@ -857,19 +1018,19 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 	str_V = "udhcp "BB_VER;
 
 	/* Parse command line */
-	/* Cc: mutually exclusive; O,x: list; -T,-t,-A take numeric param */
-	opt_complementary = "c--C:C--c:O::x::T+:t+:A+"
+	/* O,x: list; -T,-t,-A take numeric param */
+	opt_complementary = "O::x::T+:t+:A+"
 #if defined CONFIG_UDHCP_DEBUG && CONFIG_UDHCP_DEBUG >= 1
 		":vv"
 #endif
 		;
 	IF_LONG_OPTS(applet_long_options = udhcpc_longopts;)
-	opt = getopt32(argv, "c:CV:H:h:F:i:np:qRr:s:T:t:SA:O:ox:f"
+	opt = getopt32(argv, "CV:H:h:F:i:np:qRr:s:T:t:SA:O:ox:f"
 		USE_FOR_MMU("b")
 		IF_FEATURE_UDHCPC_ARPING("a")
 		IF_FEATURE_UDHCP_PORT("P:")
 		"v"
-		, &str_c, &str_V, &str_h, &str_h, &str_F
+		, &str_V, &str_h, &str_h, &str_F
 		, &client_config.interface, &client_config.pidfile, &str_r /* i,p */
 		, &client_config.script /* s */
 		, &discover_timeout, &discover_retries, &tryagain_timeout /* T,t,A */
@@ -931,13 +1092,13 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 		return 1;
 	}
 
-	if (opt & OPT_c) {
-		client_config.clientid = alloc_dhcp_option(DHCP_CLIENT_ID, str_c, 0);
-	} else if (!(opt & OPT_C)) {
-		/* not set and not suppressed, set the default client ID */
+	clientid_mac_ptr = NULL;
+	if (!(opt & OPT_C) && !udhcp_find_option(client_config.options, DHCP_CLIENT_ID)) {
+		/* not suppressed and not set, set the default client ID */
 		client_config.clientid = alloc_dhcp_option(DHCP_CLIENT_ID, "", 7);
 		client_config.clientid[OPT_DATA] = 1; /* type: ethernet */
-		memcpy(client_config.clientid + OPT_DATA+1, client_config.client_mac, 6);
+		clientid_mac_ptr = client_config.clientid + OPT_DATA+1;
+		memcpy(clientid_mac_ptr, client_config.client_mac, 6);
 	}
 	if (str_V[0] != '\0')
 		client_config.vendorclass = alloc_dhcp_option(DHCP_VENDOR, str_V, 0);
@@ -1015,6 +1176,21 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 		 * resend discover/renew/whatever
 		 */
 		if (retval == 0) {
+			/* When running on a bridge, the ifindex may have changed
+			 * (e.g. if member interfaces were added/removed
+			 * or if the status of the bridge changed).
+			 * Refresh ifindex and client_mac:
+			 */
+			if (udhcp_read_interface(client_config.interface,
+					&client_config.ifindex,
+					NULL,
+					client_config.client_mac)
+			) {
+				return 1; /* iface is gone? */
+			}
+			if (clientid_mac_ptr)
+				memcpy(clientid_mac_ptr, client_config.client_mac, 6);
+
 			/* We will restart the wait in any case */
 			already_waited_sec = 0;
 
@@ -1174,7 +1350,7 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 
 		/* Ignore packets that aren't for us */
 		if (packet.hlen != 6
-		 || memcmp(packet.chaddr, client_config.client_mac, 6)
+		 || memcmp(packet.chaddr, client_config.client_mac, 6) != 0
 		) {
 //FIXME: need to also check that last 10 bytes are zero
 			log1("chaddr does not match, ignoring packet"); // log2?
@@ -1194,13 +1370,13 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 		/* TODO: why we don't just fetch server's IP from IP header? */
 				temp = udhcp_get_option(&packet, DHCP_SERVER_ID);
 				if (!temp) {
-					bb_error_msg("no server ID in message");
+					bb_error_msg("no server ID, ignoring packet");
 					continue;
 					/* still selecting - this server looks bad */
 				}
 				/* it IS unaligned sometimes, don't "optimize" */
 				move_from_unaligned32(server_addr, temp);
-				xid = packet.xid;
+				/*xid = packet.xid; - already is */
 				requested_ip = packet.yiaddr;
 
 				/* enter requesting state */
