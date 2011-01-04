@@ -17,9 +17,13 @@
 /* If you comment out one of these below, it will be #defined later
  * to perform debug printfs to stderr: */
 #define debug_printf_walker(...)  do {} while (0)
+#define debug_printf_eval(...)  do {} while (0)
 
 #ifndef debug_printf_walker
 # define debug_printf_walker(...) (fprintf(stderr, __VA_ARGS__))
+#endif
+#ifndef debug_printf_eval
+# define debug_printf_eval(...) (fprintf(stderr, __VA_ARGS__))
 #endif
 
 
@@ -700,14 +704,27 @@ static ALWAYS_INLINE int isalnum_(int c)
 
 static double my_strtod(char **pp)
 {
+	char *cp = *pp;
 #if ENABLE_DESKTOP
-	if ((*pp)[0] == '0'
-	 && ((((*pp)[1] | 0x20) == 'x') || isdigit((*pp)[1]))
-	) {
-		return strtoull(*pp, pp, 0);
+	if (cp[0] == '0') {
+		/* Might be hex or octal integer: 0x123abc or 07777 */
+		char c = (cp[1] | 0x20);
+		if (c == 'x' || isdigit(cp[1])) {
+			unsigned long long ull = strtoull(cp, pp, 0);
+			if (c == 'x')
+				return ull;
+			c = **pp;
+			if (!isdigit(c) && c != '.')
+				return ull;
+			/* else: it may be a floating number. Examples:
+			 * 009.123 (*pp points to '9')
+			 * 000.123 (*pp points to '.')
+			 * fall through to strtod.
+			 */
+		}
 	}
 #endif
-	return strtod(*pp, pp);
+	return strtod(cp, pp);
 }
 
 /* -------- working with variables (set/get/copy/etc) -------- */
@@ -817,17 +834,21 @@ static double getvar_i(var *v)
 		v->number = 0;
 		s = v->string;
 		if (s && *s) {
+			debug_printf_eval("getvar_i: '%s'->", s);
 			v->number = my_strtod(&s);
+			debug_printf_eval("%f (s:'%s')\n", v->number, s);
 			if (v->type & VF_USER) {
 				s = skip_spaces(s);
 				if (*s != '\0')
 					v->type &= ~VF_USER;
 			}
 		} else {
+			debug_printf_eval("getvar_i: '%s'->zero\n", s);
 			v->type &= ~VF_USER;
 		}
 		v->type |= VF_CACHED;
 	}
+	debug_printf_eval("getvar_i: %f\n", v->number);
 	return v->number;
 }
 
@@ -849,6 +870,7 @@ static var *copyvar(var *dest, const var *src)
 	if (dest != src) {
 		clrvar(dest);
 		dest->type |= (src->type & ~(VF_DONTTOUCH | VF_FSTR));
+		debug_printf_eval("copyvar: number:%f string:'%s'\n", src->number, src->string);
 		dest->number = src->number;
 		if (src->string)
 			dest->string = xstrdup(src->string);
@@ -965,7 +987,6 @@ static uint32_t next_token(uint32_t expected)
 	const char *tl;
 	uint32_t tc;
 	const uint32_t *ti;
-	int l;
 
 	if (t_rollback) {
 		t_rollback = FALSE;
@@ -1031,7 +1052,7 @@ static uint32_t next_token(uint32_t expected)
 			char *pp = p;
 			t_double = my_strtod(&pp);
 			p = pp;
-			if (*pp == '.')
+			if (*p == '.')
 				syntax_error(EMSG_UNEXP_TOKEN);
 			tc = TC_NUMBER;
 
@@ -1041,52 +1062,51 @@ static uint32_t next_token(uint32_t expected)
 			tc = 0x00000001;
 			ti = tokeninfo;
 			while (*tl) {
-				l = *tl++;
-				if (l == NTCC) {
+				int l = (unsigned char) *tl++;
+				if (l == (unsigned char) NTCC) {
 					tc <<= 1;
 					continue;
 				}
-				/* if token class is expected, token
-				 * matches and it's not a longer word,
-				 * then this is what we are looking for
+				/* if token class is expected,
+				 * token matches,
+				 * and it's not a longer word,
 				 */
 				if ((tc & (expected | TC_WORD | TC_NEWLINE))
-				 && *tl == *p && strncmp(p, tl, l) == 0
+				 && strncmp(p, tl, l) == 0
 				 && !((tc & TC_WORD) && isalnum_(p[l]))
 				) {
+					/* then this is what we are looking for */
 					t_info = *ti;
 					p += l;
-					break;
+					goto token_found;
 				}
 				ti++;
 				tl += l;
 			}
+			/* not a known token */
 
-			if (!*tl) {
-				/* it's a name (var/array/function),
-				 * otherwise it's something wrong
-				 */
-				if (!isalnum_(*p))
-					syntax_error(EMSG_UNEXP_TOKEN);
-
-				t_string = --p;
-				while (isalnum_(*++p)) {
-					p[-1] = *p;
-				}
-				p[-1] = '\0';
-				tc = TC_VARIABLE;
-				/* also consume whitespace between functionname and bracket */
-				if (!(expected & TC_VARIABLE) || (expected & TC_ARRAY))
-					p = skip_spaces(p);
-				if (*p == '(') {
-					tc = TC_FUNCTION;
-				} else {
-					if (*p == '[') {
-						p++;
-						tc = TC_ARRAY;
-					}
+			/* is it a name? (var/array/function) */
+			if (!isalnum_(*p))
+				syntax_error(EMSG_UNEXP_TOKEN); /* no */
+			/* yes */
+			t_string = --p;
+			while (isalnum_(*++p)) {
+				p[-1] = *p;
+			}
+			p[-1] = '\0';
+			tc = TC_VARIABLE;
+			/* also consume whitespace between functionname and bracket */
+			if (!(expected & TC_VARIABLE) || (expected & TC_ARRAY))
+				p = skip_spaces(p);
+			if (*p == '(') {
+				tc = TC_FUNCTION;
+			} else {
+				if (*p == '[') {
+					p++;
+					tc = TC_ARRAY;
 				}
 			}
+ token_found: ;
 		}
 		g_pos = p;
 
@@ -1164,6 +1184,7 @@ static node *parse_expr(uint32_t iexp)
 	xtc = TC_OPERAND | TC_UOPPRE | TC_REGEXP | iexp;
 
 	while (!((tc = next_token(xtc)) & iexp)) {
+
 		if (glptr && (t_info == (OC_COMPARE | VV | P(39) | 2))) {
 			/* input redirection (<) attached to glptr node */
 			cn = glptr->l.n = new_node(OC_CONCAT | SS | P(37));
@@ -1500,10 +1521,10 @@ static node *mk_splitter(const char *s, tsplitter *spl)
 		regfree(re);
 		regfree(ire); // TODO: nuke ire, use re+1?
 	}
-	if (strlen(s) > 1) {
+	if (s[0] && s[1]) { /* strlen(s) > 1 */
 		mk_re_node(s, n, re);
 	} else {
-		n->info = (uint32_t) *s;
+		n->info = (uint32_t) s[0];
 	}
 
 	return n;
@@ -1560,24 +1581,22 @@ static void fsrealloc(int size)
 	if (size >= maxfields) {
 		i = maxfields;
 		maxfields = size + 16;
-		Fields = xrealloc(Fields, maxfields * sizeof(var));
+		Fields = xrealloc(Fields, maxfields * sizeof(Fields[0]));
 		for (; i < maxfields; i++) {
 			Fields[i].type = VF_SPECIAL;
 			Fields[i].string = NULL;
 		}
 	}
-
-	if (size < nfields) {
-		for (i = size; i < nfields; i++) {
-			clrvar(Fields + i);
-		}
+	/* if size < nfields, clear extra field variables */
+	for (i = size; i < nfields; i++) {
+		clrvar(Fields + i);
 	}
 	nfields = size;
 }
 
 static int awk_split(const char *s, node *spl, char **slist)
 {
-	int l, n = 0;
+	int l, n;
 	char c[4];
 	char *s1;
 	regmatch_t pmatch[2]; // TODO: why [2]? [1] is enough...
@@ -1591,6 +1610,7 @@ static int awk_split(const char *s, node *spl, char **slist)
 	if (*getvar_s(intvar[RS]) == '\0')
 		c[2] = '\n';
 
+	n = 0;
 	if ((spl->info & OPCLSMASK) == OC_REGEXP) {  /* regex split */
 		if (!*s)
 			return n; /* "": zero fields */
@@ -1636,7 +1656,7 @@ static int awk_split(const char *s, node *spl, char **slist)
 		}
 		if (*s1)
 			n++;
-		while ((s1 = strpbrk(s1, c))) {
+		while ((s1 = strpbrk(s1, c)) != NULL) {
 			*s1++ = '\0';
 			n++;
 		}
@@ -2347,18 +2367,25 @@ static var *evaluate(node *op, var *res)
 		opn = (opinfo & OPNMASK);
 		g_lineno = op->lineno;
 		op1 = op->l.n;
+		debug_printf_eval("opinfo:%08x opn:%08x XC:%x\n", opinfo, opn, XC(opinfo & OPCLSMASK));
 
 		/* execute inevitable things */
 		if (opinfo & OF_RES1)
 			L.v = evaluate(op1, v1);
 		if (opinfo & OF_RES2)
 			R.v = evaluate(op->r.n, v1+1);
-		if (opinfo & OF_STR1)
+		if (opinfo & OF_STR1) {
 			L.s = getvar_s(L.v);
-		if (opinfo & OF_STR2)
+			debug_printf_eval("L.s:'%s'\n", L.s);
+		}
+		if (opinfo & OF_STR2) {
 			R.s = getvar_s(R.v);
-		if (opinfo & OF_NUM1)
+			debug_printf_eval("R.s:'%s'\n", R.s);
+		}
+		if (opinfo & OF_NUM1) {
 			L_d = getvar_i(L.v);
+			debug_printf_eval("L_d:%f\n", L_d);
+		}
 
 		switch (XC(opinfo & OPCLSMASK)) {
 
@@ -2526,6 +2553,7 @@ static var *evaluate(node *op, var *res)
 			break;
 
 		case XC( OC_MOVE ):
+			debug_printf_eval("MOVE\n");
 			/* if source is a temporary string, jusk relink it to dest */
 //Disabled: if R.v is numeric but happens to have cached R.v->string,
 //then L.v ends up being a string, which is wrong
@@ -2777,6 +2805,7 @@ static var *evaluate(node *op, var *res)
 		case XC( OC_BINARY ):
 		case XC( OC_REPLACE ): {
 			double R_d = getvar_i(R.v);
+			debug_printf_eval("BINARY/REPLACE: R_d:%f opn:%c\n", R_d, opn);
 			switch (opn) {
 			case '+':
 				L_d += R_d;
@@ -2805,6 +2834,7 @@ static var *evaluate(node *op, var *res)
 				L_d -= (int)(L_d / R_d) * R_d;
 				break;
 			}
+			debug_printf_eval("BINARY/REPLACE result:%f\n", L_d);
 			res = setvar_i(((opinfo & OPCLSMASK) == OC_BINARY) ? res : L.v, L_d);
 			break;
 		}

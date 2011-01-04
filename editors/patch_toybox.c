@@ -522,7 +522,7 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 				int oldsum, newsum, del = 0;
 				char *s, *name;
 
- 				oldsum = TT.oldline + TT.oldlen;
+				oldsum = TT.oldline + TT.oldlen;
 				newsum = TT.newline + TT.newlen;
 
 				name = reverse ? oldname : newname;
@@ -559,7 +559,7 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 							xmkpath(name, -1);
 							*s = '/';
 						}
-						TT.filein = xopen3(name, O_CREAT|O_EXCL|O_RDWR, 0666);
+						TT.filein = xopen(name, O_CREAT|O_EXCL|O_RDWR);
 					} else {
 						printf("patching file %s\n", name);
 						TT.filein = xopen(name, O_RDWR);

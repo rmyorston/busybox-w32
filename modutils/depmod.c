@@ -8,6 +8,13 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 
+//applet:IF_DEPMOD(APPLET(depmod, _BB_DIR_SBIN, _BB_SUID_DROP))
+
+//usage:#if !ENABLE_MODPROBE_SMALL
+//usage:#define depmod_trivial_usage NOUSAGE_STR
+//usage:#define depmod_full_usage ""
+//usage:#endif
+
 #include "libbb.h"
 #include "modutils.h"
 #include <sys/utsname.h> /* uname() */
@@ -144,6 +151,8 @@ static void xfreopen_write(const char *file, FILE *f)
  *		Print to stdout all the symbols each module depends on
  *		and the module's file name which provides that symbol.
  *	-r	No-op
+ *	-u	No-op
+ *	-q	No-op
  *
  * So far we only support: [-rn] [-b BASE] [VERSION] [MODFILES]...
  * -aAeF are accepted but ignored. -vC are not accepted.
@@ -155,7 +164,10 @@ enum {
 	//OPT_e = (1 << 3), /* with -F, print unresolved symbols */
 	//OPT_F = (1 << 4), /* System.map that contains the symbols */
 	OPT_n = (1 << 5), /* dry-run, print to stdout only */
-	OPT_r = (1 << 6)  /* Compat dummy. Linux Makefile uses it */
+	OPT_r = (1 << 6), /* Compat dummy. Linux Makefile uses it */
+	OPT_u = (1 << 7), /* -u,--unresolved-error: ignored */
+	OPT_q = (1 << 8), /* -q,--quiet: ignored */
+	OPT_C = (1 << 9), /* -C,--config etc_modules_conf: ignored */
 };
 
 int depmod_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -167,7 +179,7 @@ int depmod_main(int argc UNUSED_PARAM, char **argv)
 	struct utsname uts;
 	int tmp;
 
-	getopt32(argv, "aAb:eF:nr", &moddir_base, NULL);
+	getopt32(argv, "aAb:eF:nruqC:", &moddir_base, NULL, NULL);
 	argv += optind;
 
 	/* goto modules location */

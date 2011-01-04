@@ -116,16 +116,15 @@ void FAST_FUNC encode_base64(char *fname, const char *text, const char *eol)
 		SRC_BUF_SIZE = 45,  /* This *MUST* be a multiple of 3 */
 		DST_BUF_SIZE = 4 * ((SRC_BUF_SIZE + 2) / 3),
 	};
-
 #define src_buf text
+	char src[SRC_BUF_SIZE];
 	FILE *fp = fp;
 	ssize_t len = len;
 	char dst_buf[DST_BUF_SIZE + 1];
 
 	if (fname) {
 		fp = (NOT_LONE_DASH(fname)) ? xfopen_for_read(fname) : (FILE *)text;
-		src_buf = bb_common_bufsiz1;
-	// N.B. strlen(NULL) segfaults!
+		src_buf = src;
 	} else if (text) {
 		// though we do not call uuencode(NULL, NULL) explicitly
 		// still we do not want to break things suddenly
@@ -160,73 +159,6 @@ void FAST_FUNC encode_base64(char *fname, const char *text, const char *eol)
 		fclose(fp);
 #undef src_buf
 }
-
-void FAST_FUNC decode_base64(FILE *src_stream, FILE *dst_stream)
-{
-	int term_count = 1;
-
-	while (1) {
-		char translated[4];
-		int count = 0;
-
-		while (count < 4) {
-			char *table_ptr;
-			int ch;
-
-			/* Get next _valid_ character.
-			 * global vector bb_uuenc_tbl_base64[] contains this string:
-			 * "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=\n"
-			 */
-			do {
-				ch = fgetc(src_stream);
-				if (ch == EOF) {
-					bb_error_msg_and_die(bb_msg_read_error);
-				}
-				// - means end of MIME section
-				if ('-' == ch) {
-					// push it back
-					ungetc(ch, src_stream);
-					return;
-				}
-				table_ptr = strchr(bb_uuenc_tbl_base64, ch);
-			} while (table_ptr == NULL);
-
-			/* Convert encoded character to decimal */
-			ch = table_ptr - bb_uuenc_tbl_base64;
-
-			if (*table_ptr == '=') {
-				if (term_count == 0) {
-					translated[count] = '\0';
-					break;
-				}
-				term_count++;
-			} else if (*table_ptr == '\n') {
-				/* Check for terminating line */
-				if (term_count == 5) {
-					return;
-				}
-				term_count = 1;
-				continue;
-			} else {
-				translated[count] = ch;
-				count++;
-				term_count = 0;
-			}
-		}
-
-		/* Merge 6 bit chars to 8 bit */
-		if (count > 1) {
-			fputc(translated[0] << 2 | translated[1] >> 4, dst_stream);
-		}
-		if (count > 2) {
-			fputc(translated[1] << 4 | translated[2] >> 2, dst_stream);
-		}
-		if (count > 3) {
-			fputc(translated[2] << 6 | translated[3], dst_stream);
-		}
-	}
-}
-
 
 /*
  * get username and password from a file descriptor

@@ -30,11 +30,29 @@
 
 #include "libbb.h"
 
-#define rotl32(x,n) (((x) << (n)) | ((x) >> (32 - (n))))
-#define rotr32(x,n) (((x) >> (n)) | ((x) << (32 - (n))))
-/* for sha512: */
-#define rotr64(x,n) (((x) >> (n)) | ((x) << (64 - (n))))
+/* gcc 4.2.1 optimizes rotr64 better with inline than with macro
+ * (for rotX32, there is no difference). Why? My guess is that
+ * macro requires clever common subexpression elimination heuristics
+ * in gcc, while inline basically forces it to happen.
+ */
+//#define rotl32(x,n) (((x) << (n)) | ((x) >> (32 - (n))))
+static ALWAYS_INLINE uint32_t rotl32(uint32_t x, unsigned n)
+{
+	return (x << n) | (x >> (32 - n));
+}
+//#define rotr32(x,n) (((x) >> (n)) | ((x) << (32 - (n))))
+static ALWAYS_INLINE uint32_t rotr32(uint32_t x, unsigned n)
+{
+	return (x >> n) | (x << (32 - n));
+}
+/* rotr64 in needed for sha512 only: */
+//#define rotr64(x,n) (((x) >> (n)) | ((x) << (64 - (n))))
+static ALWAYS_INLINE uint64_t rotr64(uint64_t x, unsigned n)
+{
+	return (x >> n) | (x << (64 - n));
+}
 #if BB_LITTLE_ENDIAN
+/* ALWAYS_INLINE below would hurt code size, using plain inline: */
 static inline uint64_t hton64(uint64_t v)
 {
 	return (((uint64_t)htonl(v)) << 32) | htonl(v >> 32);
@@ -43,14 +61,6 @@ static inline uint64_t hton64(uint64_t v)
 #define hton64(v) (v)
 #endif
 #define ntoh64(v) hton64(v)
-
-/* To check alignment gcc has an appropriate operator.  Other
-   compilers don't.  */
-#if defined(__GNUC__) && __GNUC__ >= 2
-# define UNALIGNED_P(p,type) (((uintptr_t) p) % __alignof__(type) != 0)
-#else
-# define UNALIGNED_P(p,type) (((uintptr_t) p) % sizeof(type) != 0)
-#endif
 
 
 /* Some arch headers have conflicting defines */
@@ -65,11 +75,8 @@ static void FAST_FUNC sha1_process_block64(sha1_ctx_t *ctx)
 	uint32_t W[80], a, b, c, d, e;
 	const uint32_t *words = (uint32_t*) ctx->wbuffer;
 
-	for (t = 0; t < 16; ++t) {
-		W[t] = ntohl(*words);
-		words++;
-	}
-
+	for (t = 0; t < 16; ++t)
+		W[t] = ntohl(words[t]);
 	for (/*t = 16*/; t < 80; ++t) {
 		uint32_t T = W[t - 3] ^ W[t - 8] ^ W[t - 14] ^ W[t - 16];
 		W[t] = rotl32(T, 1);
@@ -190,11 +197,8 @@ static void FAST_FUNC sha256_process_block64(sha256_ctx_t *ctx)
 #define R1(x) (rotr32(x, 17) ^ rotr32(x, 19) ^ (x >> 10))
 
 	/* Compute the message schedule according to FIPS 180-2:6.2.2 step 2.  */
-	for (t = 0; t < 16; ++t) {
-		W[t] = ntohl(*words);
-		words++;
-	}
-
+	for (t = 0; t < 16; ++t)
+		W[t] = ntohl(words[t]);
 	for (/*t = 16*/; t < 64; ++t)
 		W[t] = R1(W[t - 2]) + W[t - 7] + R0(W[t - 15]) + W[t - 16];
 
@@ -269,10 +273,8 @@ static void FAST_FUNC sha512_process_block128(sha512_ctx_t *ctx)
 #define R1(x) (rotr64(x, 19) ^ rotr64(x, 61) ^ (x >> 6))
 
 	/* Compute the message schedule according to FIPS 180-2:6.3.2 step 2.  */
-	for (t = 0; t < 16; ++t) {
-		W[t] = ntoh64(*words);
-		words++;
-	}
+	for (t = 0; t < 16; ++t)
+		W[t] = ntoh64(words[t]);
 	for (/*t = 16*/; t < 80; ++t)
 		W[t] = R1(W[t - 2]) + W[t - 7] + R0(W[t - 15]) + W[t - 16];
 
@@ -327,7 +329,9 @@ static const uint32_t init256[] = {
 	0x510e527f,
 	0x9b05688c,
 	0x1f83d9ab,
-	0x5be0cd19
+	0x5be0cd19,
+	0,
+	0,
 };
 static const uint32_t init512_lo[] = {
 	0xf3bcc908,
@@ -337,7 +341,9 @@ static const uint32_t init512_lo[] = {
 	0xade682d1,
 	0x2b3e6c1f,
 	0xfb41bd6b,
-	0x137e2179
+	0x137e2179,
+	0,
+	0,
 };
 
 /* Initialize structure containing state of computation.
@@ -345,7 +351,7 @@ static const uint32_t init512_lo[] = {
 void FAST_FUNC sha256_begin(sha256_ctx_t *ctx)
 {
 	memcpy(ctx->hash, init256, sizeof(init256));
-	ctx->total64 = 0;
+	/*ctx->total64 = 0; - done by extending init256 with two 32-bit zeros */
 	ctx->process_block = sha256_process_block64;
 }
 
@@ -354,36 +360,61 @@ void FAST_FUNC sha256_begin(sha256_ctx_t *ctx)
 void FAST_FUNC sha512_begin(sha512_ctx_t *ctx)
 {
 	int i;
-	for (i = 0; i < 8; i++)
+	/* Two extra iterations zero out ctx->total64[] */
+	for (i = 0; i < 8+2; i++)
 		ctx->hash[i] = ((uint64_t)(init256[i]) << 32) + init512_lo[i];
-	ctx->total64[0] = ctx->total64[1] = 0;
+	/*ctx->total64[0] = ctx->total64[1] = 0; - already done */
 }
 
 
 /* Used also for sha256 */
-void FAST_FUNC sha1_hash(const void *buffer, size_t len, sha1_ctx_t *ctx)
+void FAST_FUNC sha1_hash(sha1_ctx_t *ctx, const void *buffer, size_t len)
 {
-	unsigned in_buf = ctx->total64 & 63;
-	unsigned add = 64 - in_buf;
+	unsigned bufpos = ctx->total64 & 63;
+	unsigned remaining;
 
 	ctx->total64 += len;
+#if 0
+	remaining = 64 - bufpos;
 
-	while (len >= add) {	/* transfer whole blocks while possible  */
-		memcpy(ctx->wbuffer + in_buf, buffer, add);
-		buffer = (const char *)buffer + add;
-		len -= add;
-		add = 64;
-		in_buf = 0;
+	/* Hash whole blocks */
+	while (len >= remaining) {
+		memcpy(ctx->wbuffer + bufpos, buffer, remaining);
+		buffer = (const char *)buffer + remaining;
+		len -= remaining;
+		remaining = 64;
+		bufpos = 0;
 		ctx->process_block(ctx);
 	}
 
-	memcpy(ctx->wbuffer + in_buf, buffer, len);
+	/* Save last, partial blosk */
+	memcpy(ctx->wbuffer + bufpos, buffer, len);
+#else
+	/* Tiny bit smaller code */
+	while (1) {
+		remaining = 64 - bufpos;
+		if (remaining > len)
+			remaining = len;
+		/* Copy data into aligned buffer */
+		memcpy(ctx->wbuffer + bufpos, buffer, remaining);
+		len -= remaining;
+		buffer = (const char *)buffer + remaining;
+		bufpos += remaining;
+		/* clever way to do "if (bufpos != 64) break; ... ; bufpos = 0;" */
+		bufpos -= 64;
+		if (bufpos != 0)
+			break;
+		/* Buffer is filled up, process it */
+		ctx->process_block(ctx);
+		/*bufpos = 0; - already is */
+	}
+#endif
 }
 
-void FAST_FUNC sha512_hash(const void *buffer, size_t len, sha512_ctx_t *ctx)
+void FAST_FUNC sha512_hash(sha512_ctx_t *ctx, const void *buffer, size_t len)
 {
-	unsigned in_buf = ctx->total64[0] & 127;
-	unsigned add = 128 - in_buf;
+	unsigned bufpos = ctx->total64[0] & 127;
+	unsigned remaining;
 
 	/* First increment the byte count.  FIPS 180-2 specifies the possible
 	   length of the file up to 2^128 _bits_.
@@ -391,36 +422,57 @@ void FAST_FUNC sha512_hash(const void *buffer, size_t len, sha512_ctx_t *ctx)
 	ctx->total64[0] += len;
 	if (ctx->total64[0] < len)
 		ctx->total64[1]++;
+#if 0
+	remaining = 128 - bufpos;
 
-	while (len >= add) {	/* transfer whole blocks while possible  */
-		memcpy(ctx->wbuffer + in_buf, buffer, add);
-		buffer = (const char *)buffer + add;
-		len -= add;
-		add = 128;
-		in_buf = 0;
+	/* Hash whole blocks */
+	while (len >= remaining) {
+		memcpy(ctx->wbuffer + bufpos, buffer, remaining);
+		buffer = (const char *)buffer + remaining;
+		len -= remaining;
+		remaining = 128;
+		bufpos = 0;
 		sha512_process_block128(ctx);
 	}
 
-	memcpy(ctx->wbuffer + in_buf, buffer, len);
+	/* Save last, partial blosk */
+	memcpy(ctx->wbuffer + bufpos, buffer, len);
+#else
+	while (1) {
+		remaining = 128 - bufpos;
+		if (remaining > len)
+			remaining = len;
+		/* Copy data into aligned buffer */
+		memcpy(ctx->wbuffer + bufpos, buffer, remaining);
+		len -= remaining;
+		buffer = (const char *)buffer + remaining;
+		bufpos += remaining;
+		/* clever way to do "if (bufpos != 128) break; ... ; bufpos = 0;" */
+		bufpos -= 128;
+		if (bufpos != 0)
+			break;
+		/* Buffer is filled up, process it */
+		sha512_process_block128(ctx);
+		/*bufpos = 0; - already is */
+	}
+#endif
 }
 
 
 /* Used also for sha256 */
-void FAST_FUNC sha1_end(void *resbuf, sha1_ctx_t *ctx)
+void FAST_FUNC sha1_end(sha1_ctx_t *ctx, void *resbuf)
 {
-	unsigned pad, in_buf;
+	unsigned bufpos = ctx->total64 & 63;
 
-	in_buf = ctx->total64 & 63;
 	/* Pad the buffer to the next 64-byte boundary with 0x80,0,0,0... */
-	ctx->wbuffer[in_buf++] = 0x80;
+	ctx->wbuffer[bufpos++] = 0x80;
 
 	/* This loop iterates either once or twice, no more, no less */
 	while (1) {
-		pad = 64 - in_buf;
-		memset(ctx->wbuffer + in_buf, 0, pad);
-		in_buf = 0;
+		unsigned remaining = 64 - bufpos;
+		memset(ctx->wbuffer + bufpos, 0, remaining);
 		/* Do we have enough space for the length count? */
-		if (pad >= 8) {
+		if (remaining >= 8) {
 			/* Store the 64-bit counter of bits in the buffer in BE format */
 			uint64_t t = ctx->total64 << 3;
 			t = hton64(t);
@@ -428,35 +480,32 @@ void FAST_FUNC sha1_end(void *resbuf, sha1_ctx_t *ctx)
 			*(uint64_t *) (&ctx->wbuffer[64 - 8]) = t;
 		}
 		ctx->process_block(ctx);
-		if (pad >= 8)
+		if (remaining >= 8)
 			break;
+		bufpos = 0;
 	}
 
-	in_buf = (ctx->process_block == sha1_process_block64) ? 5 : 8;
+	bufpos = (ctx->process_block == sha1_process_block64) ? 5 : 8;
 	/* This way we do not impose alignment constraints on resbuf: */
 	if (BB_LITTLE_ENDIAN) {
 		unsigned i;
-		for (i = 0; i < in_buf; ++i)
+		for (i = 0; i < bufpos; ++i)
 			ctx->hash[i] = htonl(ctx->hash[i]);
 	}
-	memcpy(resbuf, ctx->hash, sizeof(ctx->hash[0]) * in_buf);
+	memcpy(resbuf, ctx->hash, sizeof(ctx->hash[0]) * bufpos);
 }
 
-void FAST_FUNC sha512_end(void *resbuf, sha512_ctx_t *ctx)
+void FAST_FUNC sha512_end(sha512_ctx_t *ctx, void *resbuf)
 {
-	unsigned pad, in_buf;
+	unsigned bufpos = ctx->total64[0] & 127;
 
-	in_buf = ctx->total64[0] & 127;
-	/* Pad the buffer to the next 128-byte boundary with 0x80,0,0,0...
-	 * (FIPS 180-2:5.1.2)
-	 */
-	ctx->wbuffer[in_buf++] = 0x80;
+	/* Pad the buffer to the next 128-byte boundary with 0x80,0,0,0... */
+	ctx->wbuffer[bufpos++] = 0x80;
 
 	while (1) {
-		pad = 128 - in_buf;
-		memset(ctx->wbuffer + in_buf, 0, pad);
-		in_buf = 0;
-		if (pad >= 16) {
+		unsigned remaining = 128 - bufpos;
+		memset(ctx->wbuffer + bufpos, 0, remaining);
+		if (remaining >= 16) {
 			/* Store the 128-bit counter of bits in the buffer in BE format */
 			uint64_t t;
 			t = ctx->total64[0] << 3;
@@ -467,8 +516,9 @@ void FAST_FUNC sha512_end(void *resbuf, sha512_ctx_t *ctx)
 			*(uint64_t *) (&ctx->wbuffer[128 - 16]) = t;
 		}
 		sha512_process_block128(ctx);
-		if (pad >= 16)
+		if (remaining >= 16)
 			break;
+		bufpos = 0;
 	}
 
 	if (BB_LITTLE_ENDIAN) {

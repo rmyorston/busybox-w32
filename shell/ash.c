@@ -5766,25 +5766,17 @@ redirectsafe(union node *redir, int flags)
 static arith_t
 ash_arith(const char *s)
 {
-	arith_eval_hooks_t math_hooks;
+	arith_state_t math_state;
 	arith_t result;
-	int errcode = 0;
 
-	math_hooks.lookupvar = lookupvar;
-	math_hooks.setvar    = setvar2;
-	//math_hooks.endofname = endofname;
+	math_state.lookupvar = lookupvar;
+	math_state.setvar    = setvar2;
+	//math_state.endofname = endofname;
 
 	INT_OFF;
-	result = arith(s, &errcode, &math_hooks);
-	if (errcode < 0) {
-		if (errcode == -3)
-			ash_msg_and_raise_error("exponent less than 0");
-		if (errcode == -2)
-			ash_msg_and_raise_error("divide by zero");
-		if (errcode == -5)
-			ash_msg_and_raise_error("expression recursion loop detected");
-		raise_error_syntax(s);
-	}
+	result = arith(&math_state, s);
+	if (math_state.errmsg)
+		ash_msg_and_raise_error(math_state.errmsg);
 	INT_ON;
 
 	return result;
@@ -5848,7 +5840,7 @@ cvtnum(arith_t num)
 	int len;
 
 	expdest = makestrspace(32, expdest);
-	len = fmtstr(expdest, 32, arith_t_fmt, num);
+	len = fmtstr(expdest, 32, ARITH_FMT, num);
 	STADJUST(len, expdest);
 	return len;
 }
@@ -8624,7 +8616,7 @@ static int evalstring(char *s, int mask);
 
 /* Called to execute a trap.
  * Single callsite - at the end of evaltree().
- * If we return non-zero, exaltree raises EXEXIT exception.
+ * If we return non-zero, evaltree raises EXEXIT exception.
  *
  * Perhaps we should avoid entering new trap handlers
  * while we are executing a trap handler. [is it a TODO?]
@@ -8814,11 +8806,15 @@ evaltree(union node *n, int flags)
 
  out:
 	exception_handler = savehandler;
+
  out1:
+	/* Order of checks below is important:
+	 * signal handlers trigger before exit caused by "set -e".
+	 */
+	if (pending_sig && dotrap())
+		goto exexit;
 	if (checkexit & exitstatus)
 		evalskip |= SKIPEVAL;
-	else if (pending_sig && dotrap())
-		goto exexit;
 
 	if (flags & EV_EXIT) {
  exexit:
@@ -9212,7 +9208,7 @@ poplocalvars(void)
 	while ((lvp = localvars) != NULL) {
 		localvars = lvp->next;
 		vp = lvp->vp;
-		TRACE(("poplocalvar %s\n", vp ? vp->text : "-"));
+		TRACE(("poplocalvar %s\n", vp ? vp->var_text : "-"));
 		if (vp == NULL) {       /* $- saved */
 			memcpy(optlist, lvp->text, sizeof(optlist));
 			free((char*)lvp->text);
@@ -13383,7 +13379,7 @@ init(void)
 	/* bash re-enables SIGHUP which is SIG_IGNed on entry.
 	 * Try: "trap '' HUP; bash; echo RET" and type "kill -HUP $$"
 	 */
-        signal(SIGHUP, SIG_DFL);
+	signal(SIGHUP, SIG_DFL);
 
 	/* from var.c: */
 	{
@@ -13598,10 +13594,12 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		if (e == EXERROR)
 			exitstatus = 2;
 		s = state;
-		if (e == EXEXIT || s == 0 || iflag == 0 || shlvl)
+		if (e == EXEXIT || s == 0 || iflag == 0 || shlvl) {
 			exitshell();
-		if (e == EXINT)
+		}
+		if (e == EXINT) {
 			outcslow('\n', stderr);
+		}
 
 		popstackmark(&smark);
 		FORCE_INT_ON; /* enable interrupts */
@@ -13705,6 +13703,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		_mcleanup();
 	}
 #endif
+	TRACE(("End of main reached\n"));
 	exitshell();
 	/* NOTREACHED */
 }

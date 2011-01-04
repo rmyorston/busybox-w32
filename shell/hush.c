@@ -8,6 +8,8 @@
  * Copyright (C) 2000,2001  Larry Doolittle <larry@doolittle.boa.org>
  * Copyright (C) 2008,2009  Denys Vlasenko <vda.linux@googlemail.com>
  *
+ * Licensed under GPLv2 or later, see file LICENSE in this source tree.
+ *
  * Credits:
  *      The parser routines proper are all original material, first
  *      written Dec 2000 and Jan 2001 by Larry Doolittle.  The
@@ -50,7 +52,6 @@
  *
  * Bash compat TODO:
  *      redirection of stdout+stderr: &> and >&
- *      brace expansion: one/{two,three,four}
  *      reserved words: function select
  *      advanced test: [[ ]]
  *      process substitution: <(list) and >(list)
@@ -63,7 +64,9 @@
  *          The EXPR is evaluated according to ARITHMETIC EVALUATION.
  *          This is exactly equivalent to let "EXPR".
  *      $[EXPR]: synonym for $((EXPR))
- *      export builtin should be special, its arguments are assignments
+ *
+ * Won't do:
+ *      In bash, export builtin is special, its arguments are assignments
  *          and therefore expansion of them should be "one-word" expansion:
  *              $ export i=`echo 'a  b'` # export has one arg: "i=a  b"
  *          compare with:
@@ -77,8 +80,6 @@
  *              aaa  bbb
  *              $ "export" i=`echo 'aaa  bbb'`; echo "$i"
  *              aaa
- *
- * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 #include "busybox.h"  /* for APPLET_IS_NOFORK/NOEXEC */
 #include <malloc.h>   /* for malloc_trim */
@@ -119,8 +120,8 @@
 //config:
 //config:	  It will compile and work on no-mmu systems.
 //config:
-//config:	  It does not handle select, aliases, brace expansion,
-//config:	  tilde expansion, &>file and >&file redirection of stdout+stderr.
+//config:	  It does not handle select, aliases, tilde expansion,
+//config:	  &>file and >&file redirection of stdout+stderr.
 //config:
 //config:config HUSH_BASH_COMPAT
 //config:	bool "bash-compatible extensions"
@@ -128,6 +129,13 @@
 //config:	depends on HUSH
 //config:	help
 //config:	  Enable bash-compatible extensions.
+//config:
+//config:config HUSH_BRACE_EXPANSION
+//config:	bool "Brace expansion"
+//config:	default y
+//config:	depends on HUSH_BASH_COMPAT
+//config:	help
+//config:	  Enable {abc,def} extension.
 //config:
 //config:config HUSH_HELP
 //config:	bool "help builtin"
@@ -391,18 +399,10 @@ enum {
 	RES_SNTX
 };
 
-enum {
-	EXP_FLAG_GLOB = 0x200,
-	EXP_FLAG_ESC_GLOB_CHARS = 0x100,
-	EXP_FLAG_SINGLEWORD = 0x80, /* must be 0x80 */
-};
-
 typedef struct o_string {
 	char *data;
 	int length; /* position where data is appended */
 	int maxlen;
-	/* Protect newly added chars against globbing
-	 * (by prepending \ to *, ?, [, \) */
 	int o_expflags;
 	/* At least some part of the string was inside '' or "",
 	 * possibly empty one: word"", wo''rd etc. */
@@ -411,10 +411,18 @@ typedef struct o_string {
 	smallint o_assignment; /* 0:maybe, 1:yes, 2:no */
 } o_string;
 enum {
-	MAYBE_ASSIGNMENT = 0,
+	EXP_FLAG_SINGLEWORD     = 0x80, /* must be 0x80 */
+	EXP_FLAG_GLOB           = 0x2,
+	/* Protect newly added chars against globbing
+	 * by prepending \ to *, ?, [, \ */
+	EXP_FLAG_ESC_GLOB_CHARS = 0x1,
+};
+enum {
+	MAYBE_ASSIGNMENT      = 0,
 	DEFINITELY_ASSIGNMENT = 1,
-	NOT_ASSIGNMENT = 2,
-	WORD_IS_KEYWORD = 3, /* not assigment, but next word may be: "if v=xyz cmd;" */
+	NOT_ASSIGNMENT        = 2,
+	/* Not an assigment, but next word may be: "if v=xyz cmd;" */
+	WORD_IS_KEYWORD       = 3,
 };
 /* Used for initialization: o_string foo = NULL_O_STRING; */
 #define NULL_O_STRING { NULL }
@@ -707,8 +715,7 @@ struct globals {
 #endif
 	const char *ifs;
 	const char *cwd;
-	struct variable *top_var; /* = &G.shell_ver (set in main()) */
-	struct variable shell_ver;
+	struct variable *top_var;
 	char **expanded_assignments;
 #if ENABLE_HUSH_FUNCTIONS
 	struct function *top_func;
@@ -2001,26 +2008,8 @@ static void o_addstr_with_NUL(o_string *o, const char *str)
 	o_addblock(o, str, strlen(str) + 1);
 }
 
-static void o_addblock_duplicate_backslash(o_string *o, const char *str, int len)
-{
-	while (len) {
-		len--;
-		o_addchr(o, *str);
-		if (*str++ == '\\') {
-			/* \z -> \\\z; \<eol> -> \\<eol> */
-			o_addchr(o, '\\');
-			if (len) {
-				len--;
-				o_addchr(o, '\\');
-				o_addchr(o, *str++);
-			}
-		}
-	}
-}
-
-#undef HUSH_BRACE_EXP
 /*
- * HUSH_BRACE_EXP code needs corresponding quoting on variable expansion side.
+ * HUSH_BRACE_EXPANSION code needs corresponding quoting on variable expansion side.
  * Currently, "v='{q,w}'; echo $v" erroneously expands braces in $v.
  * Apparently, on unquoted $v bash still does globbing
  * ("v='*.txt'; echo $v" prints all .txt files),
@@ -2030,7 +2019,7 @@ static void o_addblock_duplicate_backslash(o_string *o, const char *str, int len
  * We have only second one.
  */
 
-#ifdef HUSH_BRACE_EXP
+#if ENABLE_HUSH_BRACE_EXPANSION
 # define MAYBE_BRACES "{}"
 #else
 # define MAYBE_BRACES ""
@@ -2198,7 +2187,7 @@ static int o_get_last_ptr(o_string *o, int n)
 	return ((int)(uintptr_t)list[n-1]) + string_start;
 }
 
-#ifdef HUSH_BRACE_EXP
+#if ENABLE_HUSH_BRACE_EXPANSION
 /* There in a GNU extension, GLOB_BRACE, but it is not usable:
  * first, it processes even {a} (no commas), second,
  * I didn't manage to make it return strings when they don't match
@@ -2394,7 +2383,7 @@ static int perform_glob(o_string *o, int n)
 	return n;
 }
 
-#else /* !HUSH_BRACE_EXP */
+#else /* !HUSH_BRACE_EXPANSION */
 
 /* Helper */
 static int glob_needed(const char *s)
@@ -2471,7 +2460,7 @@ static int perform_glob(o_string *o, int n)
 	return n;
 }
 
-#endif /* !HUSH_BRACE_EXP */
+#endif /* !HUSH_BRACE_EXPANSION */
 
 /* If o->o_expflags & EXP_FLAG_GLOB, glob the string so far remembered.
  * Otherwise, just finish current list[] and start new */
@@ -4388,6 +4377,37 @@ static int process_command_subs(o_string *dest, const char *s);
  * followed by strings themselves.
  * Caller can deallocate entire list by single free(list). */
 
+/* A horde of its helpers come first: */
+
+static void o_addblock_duplicate_backslash(o_string *o, const char *str, int len)
+{
+	while (--len >= 0) {
+		char c = *str++;
+
+#if ENABLE_HUSH_BRACE_EXPANSION
+		if (c == '{' || c == '}') {
+			/* { -> \{, } -> \} */
+			o_addchr(o, '\\');
+			/* And now we want to add { or } and continue:
+			 *  o_addchr(o, c);
+			 *  continue;
+			 * luckily, just falling throught achieves this.
+			 */
+		}
+#endif
+		o_addchr(o, c);
+		if (c == '\\') {
+			/* \z -> \\\z; \<eol> -> \\<eol> */
+			o_addchr(o, '\\');
+			if (len) {
+				len--;
+				o_addchr(o, '\\');
+				o_addchr(o, *str++);
+			}
+		}
+	}
+}
+
 /* Store given string, finalizing the word and starting new one whenever
  * we encounter IFS char(s). This is used for expanding variable values.
  * End-of-string does NOT finalize word: think about 'echo -$VAR-' */
@@ -4396,9 +4416,9 @@ static int expand_on_ifs(o_string *output, int n, const char *str)
 	while (1) {
 		int word_len = strcspn(str, G.ifs);
 		if (word_len) {
-			if (!(output->o_expflags & EXP_FLAG_GLOB))
+			if (!(output->o_expflags & EXP_FLAG_GLOB)) {
 				o_addblock(output, str, word_len);
-			else {
+			} else {
 				/* Protect backslashes against globbing up :)
 				 * Example: "v='\*'; echo b$v" prints "b\*"
 				 * (and does not try to glob on "*")
@@ -4461,18 +4481,22 @@ static char *encode_then_expand_string(const char *str, int process_bkslash, int
 }
 
 #if ENABLE_SH_MATH_SUPPORT
-static arith_t expand_and_evaluate_arith(const char *arg, int *errcode_p)
+static arith_t expand_and_evaluate_arith(const char *arg, const char **errmsg_p)
 {
-	arith_eval_hooks_t hooks;
+	arith_state_t math_state;
 	arith_t res;
 	char *exp_str;
 
-	hooks.lookupvar = get_local_var_value;
-	hooks.setvar = set_local_var_from_halves;
-	//hooks.endofname = endofname;
+	math_state.lookupvar = get_local_var_value;
+	math_state.setvar = set_local_var_from_halves;
+	//math_state.endofname = endofname;
 	exp_str = encode_then_expand_string(arg, /*process_bkslash:*/ 1, /*unbackslash:*/ 1);
-	res = arith(exp_str ? exp_str : arg, errcode_p, &hooks);
+	res = arith(&math_state, exp_str ? exp_str : arg);
 	free(exp_str);
+	if (errmsg_p)
+		*errmsg_p = math_state.errmsg;
+	if (math_state.errmsg)
+		die_if_script(math_state.errmsg);
 	return res;
 }
 #endif
@@ -4713,24 +4737,28 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 			 * var:N<SPECIAL_VAR_SYMBOL>M<SPECIAL_VAR_SYMBOL>
 			 */
 			arith_t beg, len;
-			int errcode = 0;
+			const char *errmsg;
 
-			beg = expand_and_evaluate_arith(exp_word, &errcode);
+			beg = expand_and_evaluate_arith(exp_word, &errmsg);
+			if (errmsg)
+				goto arith_err;
 			debug_printf_varexp("beg:'%s'=%lld\n", exp_word, (long long)beg);
 			*p++ = SPECIAL_VAR_SYMBOL;
 			exp_word = p;
 			p = strchr(p, SPECIAL_VAR_SYMBOL);
 			*p = '\0';
-			len = expand_and_evaluate_arith(exp_word, &errcode);
+			len = expand_and_evaluate_arith(exp_word, &errmsg);
+			if (errmsg)
+				goto arith_err;
 			debug_printf_varexp("len:'%s'=%lld\n", exp_word, (long long)len);
-
-			if (errcode >= 0 && len >= 0) { /* bash compat: len < 0 is illegal */
+			if (len >= 0) { /* bash compat: len < 0 is illegal */
 				if (beg < 0) /* bash compat */
 					beg = 0;
 				debug_printf_varexp("from val:'%s'\n", val);
-				if (len == 0 || !val || beg >= strlen(val))
-					val = "";
-				else {
+				if (len == 0 || !val || beg >= strlen(val)) {
+ arith_err:
+					val = NULL;
+				} else {
 					/* Paranoia. What if user entered 9999999999999
 					 * which fits in arith_t but not int? */
 					if (len >= INT_MAX)
@@ -4742,7 +4770,7 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 #endif
 			{
 				die_if_script("malformed ${%s:...}", var);
-				val = "";
+				val = NULL;
 			}
 		} else { /* one of "-=+?" */
 			/* Standard-mandated substitution ops:
@@ -4925,30 +4953,13 @@ static NOINLINE int expand_vars_to_list(o_string *output, int n, char *arg)
 #if ENABLE_SH_MATH_SUPPORT
 		case '+': { /* <SPECIAL_VAR_SYMBOL>+cmd<SPECIAL_VAR_SYMBOL> */
 			arith_t res;
-			int errcode;
 
 			arg++; /* skip '+' */
 			*p = '\0'; /* replace trailing <SPECIAL_VAR_SYMBOL> */
 			debug_printf_subst("ARITH '%s' first_ch %x\n", arg, first_ch);
-			res = expand_and_evaluate_arith(arg, &errcode);
-
-			if (errcode < 0) {
-				const char *msg = "error in arithmetic";
-				switch (errcode) {
-				case -3:
-					msg = "exponent less than 0";
-					break;
-				case -2:
-					msg = "divide by 0";
-					break;
-				case -5:
-					msg = "expression recursion loop detected";
-					break;
-				}
-				die_if_script(msg);
-			}
-			debug_printf_subst("ARITH RES '"arith_t_fmt"'\n", res);
-			sprintf(arith_buf, arith_t_fmt, res);
+			res = expand_and_evaluate_arith(arg, NULL);
+			debug_printf_subst("ARITH RES '"ARITH_FMT"'\n", res);
+			sprintf(arith_buf, ARITH_FMT, res);
 			val = arith_buf;
 			break;
 		}
@@ -7346,6 +7357,7 @@ int hush_main(int argc, char **argv)
 	unsigned builtin_argc;
 	char **e;
 	struct variable *cur_var;
+	struct variable shell_ver;
 
 	INIT_G();
 	if (EXIT_SUCCESS) /* if EXIT_SUCCESS == 0, it is already done */
@@ -7354,12 +7366,13 @@ int hush_main(int argc, char **argv)
 	G.argv0_for_re_execing = argv[0];
 #endif
 	/* Deal with HUSH_VERSION */
-	G.shell_ver.flg_export = 1;
-	G.shell_ver.flg_read_only = 1;
+	memset(&shell_ver, 0, sizeof(shell_ver));
+	shell_ver.flg_export = 1;
+	shell_ver.flg_read_only = 1;
 	/* Code which handles ${var<op>...} needs writable values for all variables,
 	 * therefore we xstrdup: */
-	G.shell_ver.varstr = xstrdup(hush_version_str),
-	G.top_var = &G.shell_ver;
+	shell_ver.varstr = xstrdup(hush_version_str),
+	G.top_var = &shell_ver;
 	/* Create shell local variables from the values
 	 * currently living in the environment */
 	debug_printf_env("unsetenv '%s'\n", "HUSH_VERSION");
@@ -7378,8 +7391,8 @@ int hush_main(int argc, char **argv)
 		e++;
 	}
 	/* (Re)insert HUSH_VERSION into env (AFTER we scanned the env!) */
-	debug_printf_env("putenv '%s'\n", G.shell_ver.varstr);
-	putenv(G.shell_ver.varstr);
+	debug_printf_env("putenv '%s'\n", shell_ver.varstr);
+	putenv(shell_ver.varstr);
 
 	/* Export PWD */
 	set_pwd_var(/*exp:*/ 1);
