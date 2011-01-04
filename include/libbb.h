@@ -335,6 +335,7 @@ extern void bb_copyfd_exact_size(int fd1, int fd2, off_t size) FAST_FUNC;
 /* this helper yells "short read!" if param is not -1 */
 extern void complain_copyfd_and_die(off_t sz) NORETURN FAST_FUNC;
 extern char bb_process_escape_sequence(const char **ptr) FAST_FUNC;
+char* strcpy_and_process_escape_sequences(char *dst, const char *src) FAST_FUNC;
 /* xxxx_strip version can modify its parameter:
  * "/"        -> "/"
  * "abc"      -> "abc"
@@ -759,7 +760,7 @@ char *itoa(int n) FAST_FUNC;
 char *utoa_to_buf(unsigned n, char *buf, unsigned buflen) FAST_FUNC;
 char *itoa_to_buf(int n, char *buf, unsigned buflen) FAST_FUNC;
 /* Intelligent formatters of bignums */
-void smart_ulltoa4(unsigned long long ul, char buf[5], const char *scale) FAST_FUNC;
+void smart_ulltoa4(unsigned long long ul, char buf[4], const char *scale) FAST_FUNC;
 void smart_ulltoa5(unsigned long long ul, char buf[5], const char *scale) FAST_FUNC;
 /* If block_size == 0, display size without fractional part,
  * else display (size * block_size) with one decimal digit.
@@ -1559,8 +1560,10 @@ void sha512_begin(sha512_ctx_t *ctx) FAST_FUNC;
 void sha512_hash(sha512_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
 void sha512_end(sha512_ctx_t *ctx, void *resbuf) FAST_FUNC;
 
-
+extern uint32_t *global_crc32_table;
 uint32_t *crc32_filltable(uint32_t *tbl256, int endian) FAST_FUNC;
+uint32_t crc32_block_endian1(uint32_t val, const void *buf, unsigned len, uint32_t *crc_table) FAST_FUNC;
+uint32_t crc32_block_endian0(uint32_t val, const void *buf, unsigned len, uint32_t *crc_table) FAST_FUNC;
 
 typedef struct masks_labels_t {
 	const char *labels;
@@ -1688,46 +1691,27 @@ extern const char bb_default_login_shell[];
 # define VC_4 "/dev/tty4"
 # define VC_5 "/dev/tty5"
 # define VC_FORMAT "/dev/tty%d"
-#elif ENABLE_FEATURE_DEVFS /* from now on, assume Linux naming */
+#elif ENABLE_FEATURE_DEVFS
+/*Linux, obsolete devfs names */
 # define CURRENT_VC "/dev/vc/0"
 # define VC_1 "/dev/vc/1"
 # define VC_2 "/dev/vc/2"
 # define VC_3 "/dev/vc/3"
 # define VC_4 "/dev/vc/4"
 # define VC_5 "/dev/vc/5"
-# if defined(__sh__) || defined(__H8300H__) || defined(__H8300S__)
-/* Yes, this sucks, but both SH (including sh64) and H8 have a SCI(F) for their
-   respective serial ports .. as such, we can't use the common device paths for
-   these. -- PFM */
-#  define SC_0 "/dev/ttsc/0"
-#  define SC_1 "/dev/ttsc/1"
-#  define SC_FORMAT "/dev/ttsc/%d"
-# else
-#  define SC_0 "/dev/tts/0"
-#  define SC_1 "/dev/tts/1"
-#  define SC_FORMAT "/dev/tts/%d"
-# endif
 # define VC_FORMAT "/dev/vc/%d"
 # define LOOP_FORMAT "/dev/loop/%d"
 # define LOOP_NAMESIZE (sizeof("/dev/loop/") + sizeof(int)*3 + 1)
 # define LOOP_NAME "/dev/loop/"
 # define FB_0 "/dev/fb/0"
 #else
+/*Linux, normal names */
 # define CURRENT_VC "/dev/tty0"
 # define VC_1 "/dev/tty1"
 # define VC_2 "/dev/tty2"
 # define VC_3 "/dev/tty3"
 # define VC_4 "/dev/tty4"
 # define VC_5 "/dev/tty5"
-# if defined(__sh__) || defined(__H8300H__) || defined(__H8300S__)
-#  define SC_0 "/dev/ttySC0"
-#  define SC_1 "/dev/ttySC1"
-#  define SC_FORMAT "/dev/ttySC%d"
-# else
-#  define SC_0 "/dev/ttyS0"
-#  define SC_1 "/dev/ttyS1"
-#  define SC_FORMAT "/dev/ttyS%d"
-# endif
 # define VC_FORMAT "/dev/tty%d"
 # define LOOP_FORMAT "/dev/loop%d"
 # define LOOP_NAMESIZE (sizeof("/dev/loop") + sizeof(int)*3 + 1)

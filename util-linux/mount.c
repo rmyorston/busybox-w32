@@ -332,7 +332,7 @@ static void append_mount_options(char **oldopts, const char *newopts)
 }
 
 // Use the mount_options list to parse options into flags.
-// Also return list of unrecognized options if unrecognized != NULL
+// Also update list of unrecognized options if unrecognized != NULL
 static long parse_mount_options(char *options, char **unrecognized)
 {
 	long flags = MS_SILENT;
@@ -348,25 +348,35 @@ static long parse_mount_options(char *options, char **unrecognized)
 // FIXME: use hasmntopt()
 		// Find this option in mount_options
 		for (i = 0; i < ARRAY_SIZE(mount_options); i++) {
-			if (!strcasecmp(option_str, options)) {
+			if (strcasecmp(option_str, options) == 0) {
 				long fl = mount_options[i];
-				if (fl < 0) flags &= fl;
-				else flags |= fl;
-				break;
+				if (fl < 0)
+					flags &= fl;
+				else
+					flags |= fl;
+				goto found;
 			}
 			option_str += strlen(option_str) + 1;
 		}
-		// If unrecognized not NULL, append unrecognized mount options
-		if (unrecognized && i == ARRAY_SIZE(mount_options)) {
+		// We did not recognize this option.
+		// If "unrecognized" is not NULL, append option there.
+		// Note that we should not append *empty* option -
+		// in this case we want to pass NULL, not "", to "data"
+		// parameter of mount(2) syscall.
+		// This is crucial for filesystems that don't accept
+		// any arbitrary mount options, like cgroup fs:
+		// "mount -t cgroup none /mnt"
+		if (options[0] && unrecognized) {
 			// Add it to strflags, to pass on to kernel
-			i = *unrecognized ? strlen(*unrecognized) : 0;
-			*unrecognized = xrealloc(*unrecognized, i + strlen(options) + 2);
+			char *p = *unrecognized;
+			unsigned len = p ? strlen(p) : 0;
+			*unrecognized = p = xrealloc(p, len + strlen(options) + 2);
 
 			// Comma separated if it's not the first one
-			if (i) (*unrecognized)[i++] = ',';
-			strcpy((*unrecognized)+i, options);
+			if (len) p[len++] = ',';
+			strcpy(p + len, options);
 		}
-
+ found:
 		if (!comma)
 			break;
 		// Advance to next option
@@ -775,78 +785,52 @@ static char *nfs_strerror(int status)
 
 static bool_t xdr_fhandle(XDR *xdrs, fhandle objp)
 {
-	if (!xdr_opaque(xdrs, objp, FHSIZE))
-		 return FALSE;
-	return TRUE;
+	return xdr_opaque(xdrs, objp, FHSIZE);
 }
 
 static bool_t xdr_fhstatus(XDR *xdrs, fhstatus *objp)
 {
 	if (!xdr_u_int(xdrs, &objp->fhs_status))
 		 return FALSE;
-	switch (objp->fhs_status) {
-	case 0:
-		if (!xdr_fhandle(xdrs, objp->fhstatus_u.fhs_fhandle))
-			 return FALSE;
-		break;
-	default:
-		break;
-	}
+	if (objp->fhs_status == 0)
+		return xdr_fhandle(xdrs, objp->fhstatus_u.fhs_fhandle);
 	return TRUE;
 }
 
 static bool_t xdr_dirpath(XDR *xdrs, dirpath *objp)
 {
-	if (!xdr_string(xdrs, objp, MNTPATHLEN))
-		 return FALSE;
-	return TRUE;
+	return xdr_string(xdrs, objp, MNTPATHLEN);
 }
 
 static bool_t xdr_fhandle3(XDR *xdrs, fhandle3 *objp)
 {
-	if (!xdr_bytes(xdrs, (char **)&objp->fhandle3_val,
-				(unsigned int *) &objp->fhandle3_len,
-				FHSIZE3)
-	) {
-		 return FALSE;
-	}
-	return TRUE;
+	return xdr_bytes(xdrs, (char **)&objp->fhandle3_val,
+			   (unsigned int *) &objp->fhandle3_len,
+			   FHSIZE3);
 }
 
 static bool_t xdr_mountres3_ok(XDR *xdrs, mountres3_ok *objp)
 {
 	if (!xdr_fhandle3(xdrs, &objp->fhandle))
 		return FALSE;
-	if (!xdr_array(xdrs, &(objp->auth_flavours.auth_flavours_val),
-				&(objp->auth_flavours.auth_flavours_len),
-				~0,
-				sizeof(int),
-				(xdrproc_t) xdr_int)
-	) {
-		return FALSE;
-	}
-	return TRUE;
+	return xdr_array(xdrs, &(objp->auth_flavours.auth_flavours_val),
+			   &(objp->auth_flavours.auth_flavours_len),
+			   ~0,
+			   sizeof(int),
+			   (xdrproc_t) xdr_int);
 }
 
 static bool_t xdr_mountstat3(XDR *xdrs, mountstat3 *objp)
 {
-	if (!xdr_enum(xdrs, (enum_t *) objp))
-		 return FALSE;
-	return TRUE;
+	return xdr_enum(xdrs, (enum_t *) objp);
 }
 
 static bool_t xdr_mountres3(XDR *xdrs, mountres3 *objp)
 {
 	if (!xdr_mountstat3(xdrs, &objp->fhs_status))
 		return FALSE;
-	switch (objp->fhs_status) {
-	case MNT_OK:
-		if (!xdr_mountres3_ok(xdrs, &objp->mountres3_u.mountinfo))
-			 return FALSE;
-		break;
-	default:
-		break;
-	}
+	if (objp->fhs_status == MNT_OK)
+		return xdr_mountres3_ok(xdrs, &objp->mountres3_u.mountinfo);
 	return TRUE;
 }
 

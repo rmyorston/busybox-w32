@@ -39,9 +39,6 @@
 # define MS_RELATIME    (1 << 21)
 #endif
 #include "libbb.h"
-#ifndef PATH_MAX
-# define PATH_MAX (4*1024)
-#endif
 
 
 #if defined(__dietlibc__)
@@ -73,7 +70,7 @@ int umount_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int umount_main(int argc UNUSED_PARAM, char **argv)
 {
 	int doForce;
-	char *const buf = xmalloc(PATH_MAX * 2 + 128); /* to save stack */
+	char *const buf = xmalloc(4096); /* reducing stack usage */
 	struct mntent me;
 	FILE *fp;
 	char *fstype = NULL;
@@ -104,7 +101,7 @@ int umount_main(int argc UNUSED_PARAM, char **argv)
 		if (opt & OPT_ALL)
 			bb_error_msg_and_die("can't open '%s'", bb_path_mtab_file);
 	} else {
-		while (getmntent_r(fp, &me, buf, PATH_MAX * 2 + 128)) {
+		while (getmntent_r(fp, &me, buf, 4096)) {
 			/* Match fstype if passed */
 			if (!match_fstype(&me, fstype))
 				continue;

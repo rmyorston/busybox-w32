@@ -2695,18 +2695,6 @@ INSERT
        "ras3 reset retension rewind rewoffline seek setblk setdensity\n" \
        "setpart tell unload unlock weof wset" \
 
-#define mv_trivial_usage \
-       "[-fi] SOURCE DEST\n" \
-       "or: mv [-fi] SOURCE... DIRECTORY"
-#define mv_full_usage "\n\n" \
-       "Rename SOURCE to DEST, or move SOURCE(s) to DIRECTORY\n" \
-     "\nOptions:" \
-     "\n	-f	Don't prompt before overwriting" \
-     "\n	-i	Interactive, prompt before overwrite" \
-
-#define mv_example_usage \
-       "$ mv /tmp/foo /bin/bar\n"
-
 #define nameif_trivial_usage \
        "[-s] [-c FILE] [{IFNAME MACADDR}]"
 #define nameif_full_usage "\n\n" \
@@ -2720,27 +2708,6 @@ INSERT
        "$ nameif -s dmz0 00:A0:C9:8C:F6:3F\n" \
        " or\n" \
        "$ nameif -c /etc/my_mactab_file\n" \
-
-#define netstat_trivial_usage \
-       "[-laentuwxr"IF_FEATURE_NETSTAT_WIDE("W")IF_FEATURE_NETSTAT_PRG("p")"]"
-#define netstat_full_usage "\n\n" \
-       "Display networking information\n" \
-     "\nOptions:" \
-     "\n	-l	Display listening server sockets" \
-     "\n	-a	Display all sockets (default: connected)" \
-     "\n	-e	Display other/more information" \
-     "\n	-n	Don't resolve names" \
-     "\n	-t	Tcp sockets" \
-     "\n	-u	Udp sockets" \
-     "\n	-w	Raw sockets" \
-     "\n	-x	Unix sockets" \
-     "\n	-r	Display routing table" \
-	IF_FEATURE_NETSTAT_WIDE( \
-     "\n	-W	Display with no column truncation" \
-	) \
-	IF_FEATURE_NETSTAT_PRG( \
-     "\n	-p	Display PID/Program name for sockets" \
-	)
 
 #define nmeter_trivial_usage \
        "format_string"
