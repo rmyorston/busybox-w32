@@ -2449,10 +2449,19 @@ path_advance(const char **path, const char *name)
 	pathopt = NULL;
 	if (*p == '%') {
 		pathopt = ++p;
+#if ENABLE_PLATFORM_MINGW32
+		p = next_path_sep(start);
+
+		/* *p != ':' and '*' would suffice */
+		if (!p)
+			p = pathopt - 1;
+#else
 		while (*p && *p != ':')
 			p++;
+#endif
 	}
-	if (*p == ':')
+	if (*p == ':' ||
+	    (ENABLE_PLATFORM_MINGW32 && *p == ';'))
 		*path = p + 1;
 	else
 		*path = NULL;
