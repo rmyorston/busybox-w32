@@ -53,9 +53,9 @@ lib-y += last_char_is.o
 lib-y += lineedit.o lineedit_ptr_hack.o
 lib-y += llist.o
 lib-y += make_directory.o
-# Alternative (disabled) implementation
+lib-y += hash_md5_sha.o
+# Alternative (disabled) MD5 implementation
 #lib-y += hash_md5prime.o
-lib-y += hash_sha.o
 lib-y += messages.o
 lib-y += mode_string.o
 lib-y += obscure.o
