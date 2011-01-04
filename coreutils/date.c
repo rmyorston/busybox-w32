@@ -250,6 +250,10 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 		ts.tv_sec = statbuf.st_mtime;
 #if ENABLE_FEATURE_DATE_NANO
 		ts.tv_nsec = statbuf.st_mtim.tv_nsec;
+		/* Some toolchains use .st_mtimensec instead of st_mtim.tv_nsec.
+		 * If you need #define _SVID_SOURCE 1 to enable st_mtim.tv_nsec,
+		 * drop a mail to project mailing list please
+		 */
 #endif
 	} else {
 #if ENABLE_FEATURE_DATE_NANO
@@ -278,7 +282,9 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 		}
 
 		/* Correct any day of week and day of year etc. fields */
-		tm_time.tm_isdst = -1;	/* Be sure to recheck dst */
+		/* Be sure to recheck dst (but not if date is time_t format) */
+		if (date_str[0] != '@')
+			tm_time.tm_isdst = -1;
 		ts.tv_sec = validate_tm_time(date_str, &tm_time);
 
 		maybe_set_utc(opt);

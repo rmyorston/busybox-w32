@@ -82,7 +82,11 @@
  *              aaa
  */
 #include "busybox.h"  /* for APPLET_IS_NOFORK/NOEXEC */
-#include <malloc.h>   /* for malloc_trim */
+#if !(defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) \
+	|| defined(__APPLE__) \
+    )
+# include <malloc.h>   /* for malloc_trim */
+#endif
 #include <glob.h>
 /* #include <dmalloc.h> */
 #if ENABLE_HUSH_CASE
@@ -245,9 +249,15 @@
 //config:	  msh is deprecated and will be removed, please migrate to hush.
 //config:
 
-//usage:#define hush_trivial_usage NOUSAGE_STR
+/* -i (interactive) and -s (read stdin) are also accepted,
+ * but currently do nothing, therefore aren't shown in help.
+ * NOMMU-specific options are not meant to be used by users,
+ * therefore we don't show them either.
+ */
+//usage:#define hush_trivial_usage
+//usage:       "[-nx] [-c SCRIPT]"
 //usage:#define hush_full_usage ""
-//usage:#define msh_trivial_usage NOUSAGE_STR
+//usage:#define msh_trivial_usage hush_trivial_usage
 //usage:#define msh_full_usage ""
 //usage:#define sh_trivial_usage NOUSAGE_STR
 //usage:#define sh_full_usage ""
@@ -507,6 +517,7 @@ struct command {
 # define CMD_FUNCDEF 3
 #endif
 
+	smalluint cmd_exitcode;
 	/* if non-NULL, this "command" is { list }, ( list ), or a compound statement */
 	struct pipe *group;
 #if !BB_MMU
@@ -541,7 +552,6 @@ struct command {
 /* Is there anything in this command at all? */
 #define IS_NULL_CMD(cmd) \
 	(!(cmd)->group && !(cmd)->argv && !(cmd)->redirects)
-
 
 struct pipe {
 	struct pipe *next;
@@ -637,6 +647,53 @@ struct function {
 #endif
 
 
+/* set -/+o OPT support. (TODO: make it optional)
+ * bash supports the following opts:
+ * allexport       off
+ * braceexpand     on
+ * emacs           on
+ * errexit         off
+ * errtrace        off
+ * functrace       off
+ * hashall         on
+ * histexpand      off
+ * history         on
+ * ignoreeof       off
+ * interactive-comments    on
+ * keyword         off
+ * monitor         on
+ * noclobber       off
+ * noexec          off
+ * noglob          off
+ * nolog           off
+ * notify          off
+ * nounset         off
+ * onecmd          off
+ * physical        off
+ * pipefail        off
+ * posix           off
+ * privileged      off
+ * verbose         off
+ * vi              off
+ * xtrace          off
+ */
+static const char o_opt_strings[] ALIGN1 =
+	"pipefail\0"
+	"noexec\0"
+#if ENABLE_HUSH_MODE_X
+	"xtrace\0"
+#endif
+	;
+enum {
+	OPT_O_PIPEFAIL,
+	OPT_O_NOEXEC,
+#if ENABLE_HUSH_MODE_X
+	OPT_O_XTRACE,
+#endif
+	NUM_OPT_O
+};
+
+
 /* "Globals" within this file */
 /* Sorted roughly by size (smaller offsets == smaller code) */
 struct globals {
@@ -679,6 +736,12 @@ struct globals {
 #else
 # define G_saved_tty_pgrp 0
 #endif
+	char o_opt[NUM_OPT_O];
+#if ENABLE_HUSH_MODE_X
+# define G_x_mode (G.o_opt[OPT_O_XTRACE])
+#else
+# define G_x_mode 0
+#endif
 	smallint flag_SIGINT;
 #if ENABLE_HUSH_LOOPS
 	smallint flag_break_continue;
@@ -689,13 +752,6 @@ struct globals {
 	 * 1: return is invoked, skip all till end of func
 	 */
 	smallint flag_return_in_progress;
-#endif
-	smallint n_mode;
-#if ENABLE_HUSH_MODE_X
-	smallint x_mode;
-# define G_x_mode (G.x_mode)
-#else
-# define G_x_mode 0
 #endif
 	smallint exiting; /* used to prevent EXIT trap recursion */
 	/* These four support $?, $#, and $1 */
@@ -875,7 +931,7 @@ static const struct built_in_command bltins2[] = {
  */
 #if HUSH_DEBUG
 /* prevent disasters with G.debug_indent < 0 */
-# define indent() fprintf(stderr, "%*s", (G.debug_indent * 2) & 0xff, "")
+# define indent() fdprintf(2, "%*s", (G.debug_indent * 2) & 0xff, "")
 # define debug_enter() (G.debug_indent++)
 # define debug_leave() (G.debug_indent--)
 #else
@@ -885,56 +941,56 @@ static const struct built_in_command bltins2[] = {
 #endif
 
 #ifndef debug_printf
-# define debug_printf(...) (indent(), fprintf(stderr, __VA_ARGS__))
+# define debug_printf(...) (indent(), fdprintf(2, __VA_ARGS__))
 #endif
 
 #ifndef debug_printf_parse
-# define debug_printf_parse(...) (indent(), fprintf(stderr, __VA_ARGS__))
+# define debug_printf_parse(...) (indent(), fdprintf(2, __VA_ARGS__))
 #endif
 
 #ifndef debug_printf_exec
-#define debug_printf_exec(...) (indent(), fprintf(stderr, __VA_ARGS__))
+#define debug_printf_exec(...) (indent(), fdprintf(2, __VA_ARGS__))
 #endif
 
 #ifndef debug_printf_env
-# define debug_printf_env(...) (indent(), fprintf(stderr, __VA_ARGS__))
+# define debug_printf_env(...) (indent(), fdprintf(2, __VA_ARGS__))
 #endif
 
 #ifndef debug_printf_jobs
-# define debug_printf_jobs(...) (indent(), fprintf(stderr, __VA_ARGS__))
+# define debug_printf_jobs(...) (indent(), fdprintf(2, __VA_ARGS__))
 # define DEBUG_JOBS 1
 #else
 # define DEBUG_JOBS 0
 #endif
 
 #ifndef debug_printf_expand
-# define debug_printf_expand(...) (indent(), fprintf(stderr, __VA_ARGS__))
+# define debug_printf_expand(...) (indent(), fdprintf(2, __VA_ARGS__))
 # define DEBUG_EXPAND 1
 #else
 # define DEBUG_EXPAND 0
 #endif
 
 #ifndef debug_printf_varexp
-# define debug_printf_varexp(...) (indent(), fprintf(stderr, __VA_ARGS__))
+# define debug_printf_varexp(...) (indent(), fdprintf(2, __VA_ARGS__))
 #endif
 
 #ifndef debug_printf_glob
-# define debug_printf_glob(...) (indent(), fprintf(stderr, __VA_ARGS__))
+# define debug_printf_glob(...) (indent(), fdprintf(2, __VA_ARGS__))
 # define DEBUG_GLOB 1
 #else
 # define DEBUG_GLOB 0
 #endif
 
 #ifndef debug_printf_list
-# define debug_printf_list(...) (indent(), fprintf(stderr, __VA_ARGS__))
+# define debug_printf_list(...) (indent(), fdprintf(2, __VA_ARGS__))
 #endif
 
 #ifndef debug_printf_subst
-# define debug_printf_subst(...) (indent(), fprintf(stderr, __VA_ARGS__))
+# define debug_printf_subst(...) (indent(), fdprintf(2, __VA_ARGS__))
 #endif
 
 #ifndef debug_printf_clean
-# define debug_printf_clean(...) (indent(), fprintf(stderr, __VA_ARGS__))
+# define debug_printf_clean(...) (indent(), fdprintf(2, __VA_ARGS__))
 # define DEBUG_CLEAN 1
 #else
 # define DEBUG_CLEAN 0
@@ -944,9 +1000,9 @@ static const struct built_in_command bltins2[] = {
 static void debug_print_strings(const char *prefix, char **vv)
 {
 	indent();
-	fprintf(stderr, "%s:\n", prefix);
+	fdprintf(2, "%s:\n", prefix);
 	while (*vv)
-		fprintf(stderr, " '%s'\n", *vv++);
+		fdprintf(2, " '%s'\n", *vv++);
 }
 #else
 # define debug_print_strings(prefix, vv) ((void)0)
@@ -1377,6 +1433,22 @@ static void hush_exit(int exitcode)
 		 * in the handler */
 		builtin_eval(argv);
 	}
+
+#if ENABLE_FEATURE_CLEAN_UP
+	{
+		struct variable *cur_var;
+		if (G.cwd != bb_msg_unknown)
+			free((char*)G.cwd);
+		cur_var = G.top_var;
+		while (cur_var) {
+			struct variable *tmp = cur_var;
+			if (!cur_var->max_len)
+				free(cur_var->varstr);
+			cur_var = cur_var->next;
+			free(tmp);
+		}
+	}
+#endif
 
 #if ENABLE_HUSH_JOB
 	fflush_all();
@@ -2120,22 +2192,22 @@ static void debug_print_list(const char *prefix, o_string *o, int n)
 	int i = 0;
 
 	indent();
-	fprintf(stderr, "%s: list:%p n:%d string_start:%d length:%d maxlen:%d glob:%d quoted:%d escape:%d\n",
+	fdprintf(2, "%s: list:%p n:%d string_start:%d length:%d maxlen:%d glob:%d quoted:%d escape:%d\n",
 			prefix, list, n, string_start, o->length, o->maxlen,
 			!!(o->o_expflags & EXP_FLAG_GLOB),
 			o->has_quoted_part,
 			!!(o->o_expflags & EXP_FLAG_ESC_GLOB_CHARS));
 	while (i < n) {
 		indent();
-		fprintf(stderr, " list[%d]=%d '%s' %p\n", i, (int)list[i],
-				o->data + (int)list[i] + string_start,
-				o->data + (int)list[i] + string_start);
+		fdprintf(2, " list[%d]=%d '%s' %p\n", i, (int)(uintptr_t)list[i],
+				o->data + (int)(uintptr_t)list[i] + string_start,
+				o->data + (int)(uintptr_t)list[i] + string_start);
 		i++;
 	}
 	if (n) {
-		const char *p = o->data + (int)list[n - 1] + string_start;
+		const char *p = o->data + (int)(uintptr_t)list[n - 1] + string_start;
 		indent();
-		fprintf(stderr, " total_sz:%ld\n", (long)((p + strlen(p) + 1) - o->data));
+		fdprintf(2, " total_sz:%ld\n", (long)((p + strlen(p) + 1) - o->data));
 	}
 }
 #else
@@ -2582,6 +2654,94 @@ static void free_pipe_list(struct pipe *pi)
 
 
 /*** Parsing routines ***/
+
+#ifndef debug_print_tree
+static void debug_print_tree(struct pipe *pi, int lvl)
+{
+	static const char *const PIPE[] = {
+		[PIPE_SEQ] = "SEQ",
+		[PIPE_AND] = "AND",
+		[PIPE_OR ] = "OR" ,
+		[PIPE_BG ] = "BG" ,
+	};
+	static const char *RES[] = {
+		[RES_NONE ] = "NONE" ,
+# if ENABLE_HUSH_IF
+		[RES_IF   ] = "IF"   ,
+		[RES_THEN ] = "THEN" ,
+		[RES_ELIF ] = "ELIF" ,
+		[RES_ELSE ] = "ELSE" ,
+		[RES_FI   ] = "FI"   ,
+# endif
+# if ENABLE_HUSH_LOOPS
+		[RES_FOR  ] = "FOR"  ,
+		[RES_WHILE] = "WHILE",
+		[RES_UNTIL] = "UNTIL",
+		[RES_DO   ] = "DO"   ,
+		[RES_DONE ] = "DONE" ,
+# endif
+# if ENABLE_HUSH_LOOPS || ENABLE_HUSH_CASE
+		[RES_IN   ] = "IN"   ,
+# endif
+# if ENABLE_HUSH_CASE
+		[RES_CASE ] = "CASE" ,
+		[RES_CASE_IN ] = "CASE_IN" ,
+		[RES_MATCH] = "MATCH",
+		[RES_CASE_BODY] = "CASE_BODY",
+		[RES_ESAC ] = "ESAC" ,
+# endif
+		[RES_XXXX ] = "XXXX" ,
+		[RES_SNTX ] = "SNTX" ,
+	};
+	static const char *const CMDTYPE[] = {
+		"{}",
+		"()",
+		"[noglob]",
+# if ENABLE_HUSH_FUNCTIONS
+		"func()",
+# endif
+	};
+
+	int pin, prn;
+
+	pin = 0;
+	while (pi) {
+		fdprintf(2, "%*spipe %d res_word=%s followup=%d %s\n", lvl*2, "",
+				pin, RES[pi->res_word], pi->followup, PIPE[pi->followup]);
+		prn = 0;
+		while (prn < pi->num_cmds) {
+			struct command *command = &pi->cmds[prn];
+			char **argv = command->argv;
+
+			fdprintf(2, "%*s cmd %d assignment_cnt:%d",
+					lvl*2, "", prn,
+					command->assignment_cnt);
+			if (command->group) {
+				fdprintf(2, " group %s: (argv=%p)%s%s\n",
+						CMDTYPE[command->cmd_type],
+						argv
+# if !BB_MMU
+						, " group_as_string:", command->group_as_string
+# else
+						, "", ""
+# endif
+				);
+				debug_print_tree(command->group, lvl+1);
+				prn++;
+				continue;
+			}
+			if (argv) while (*argv) {
+				fdprintf(2, " '%s'", *argv);
+				argv++;
+			}
+			fdprintf(2, "\n");
+			prn++;
+		}
+		pi = pi->next;
+		pin++;
+	}
+}
+#endif /* debug_print_tree */
 
 static struct pipe *new_pipe(void)
 {
@@ -3972,15 +4132,16 @@ static struct pipe *parse_stream(char **pstring,
 				goto parse_error;
 			}
 			if (ch == '\n') {
-#if ENABLE_HUSH_CASE
-				/* "case ... in <newline> word) ..." -
-				 * newlines are ignored (but ';' wouldn't be) */
-				if (ctx.command->argv == NULL
-				 && ctx.ctx_res_w == RES_MATCH
+				/* Is this a case when newline is simply ignored?
+				 * Some examples:
+				 * "cmd | <newline> cmd ..."
+				 * "case ... in <newline> word) ..."
+				 */
+				if (IS_NULL_CMD(ctx.command)
+				 && dest.length == 0 && !dest.has_quoted_part
 				) {
 					continue;
 				}
-#endif
 				/* Treat newline as a command separator. */
 				done_pipe(&ctx, PIPE_SEQ);
 				debug_printf_parse("heredoc_cnt:%d\n", heredoc_cnt);
@@ -4112,6 +4273,31 @@ static struct pipe *parse_stream(char **pstring,
 			if (parse_redirect(&ctx, redir_fd, redir_style, input))
 				goto parse_error;
 			continue; /* back to top of while (1) */
+		case '#':
+			if (dest.length == 0 && !dest.has_quoted_part) {
+				/* skip "#comment" */
+				while (1) {
+					ch = i_peek(input);
+					if (ch == EOF || ch == '\n')
+						break;
+					i_getch(input);
+					/* note: we do not add it to &ctx.as_string */
+				}
+				nommu_addchr(&ctx.as_string, '\n');
+				continue; /* back to top of while (1) */
+			}
+			break;
+		case '\\':
+			if (next == '\n') {
+				/* It's "\<newline>" */
+#if !BB_MMU
+				/* Remove trailing '\' from ctx.as_string */
+				ctx.as_string.data[--ctx.as_string.length] = '\0';
+#endif
+				ch = i_getch(input); /* eat it */
+				continue; /* back to top of while (1) */
+			}
+			break;
 		}
 
 		if (dest.o_assignment == MAYBE_ASSIGNMENT
@@ -4126,19 +4312,8 @@ static struct pipe *parse_stream(char **pstring,
 		/* Note: nommu_addchr(&ctx.as_string, ch) is already done */
 
 		switch (ch) {
-		case '#':
-			if (dest.length == 0) {
-				while (1) {
-					ch = i_peek(input);
-					if (ch == EOF || ch == '\n')
-						break;
-					i_getch(input);
-					/* note: we do not add it to &ctx.as_string */
-				}
-				nommu_addchr(&ctx.as_string, '\n');
-			} else {
-				o_addQchr(&dest, ch);
-			}
+		case '#': /* non-comment #: "echo a#b" etc */
+			o_addQchr(&dest, ch);
 			break;
 		case '\\':
 			if (next == EOF) {
@@ -4146,21 +4321,14 @@ static struct pipe *parse_stream(char **pstring,
 				xfunc_die();
 			}
 			ch = i_getch(input);
-			if (ch != '\n') {
-				o_addchr(&dest, '\\');
-				/*nommu_addchr(&ctx.as_string, '\\'); - already done */
-				o_addchr(&dest, ch);
-				nommu_addchr(&ctx.as_string, ch);
-				/* Example: echo Hello \2>file
-				 * we need to know that word 2 is quoted */
-				dest.has_quoted_part = 1;
-			}
-#if !BB_MMU
-			else {
-				/* It's "\<newline>". Remove trailing '\' from ctx.as_string */
-				ctx.as_string.data[--ctx.as_string.length] = '\0';
-			}
-#endif
+			/* note: ch != '\n' (that case does not reach this place) */
+			o_addchr(&dest, '\\');
+			/*nommu_addchr(&ctx.as_string, '\\'); - already done */
+			o_addchr(&dest, ch);
+			nommu_addchr(&ctx.as_string, ch);
+			/* Example: echo Hello \2>file
+			 * we need to know that word 2 is quoted */
+			dest.has_quoted_part = 1;
 			break;
 		case '$':
 			if (parse_dollar(&ctx.as_string, &dest, input, /*quote_mask:*/ 0) != 0) {
@@ -4366,7 +4534,9 @@ static struct pipe *parse_stream(char **pstring,
 	expand_string_to_string(str)
 #endif
 static char *expand_string_to_string(const char *str, int do_unbackslash);
+#if ENABLE_HUSH_TICK
 static int process_command_subs(o_string *dest, const char *s);
+#endif
 
 /* expand_strvec_to_strvec() takes a list of strings, expands
  * all variable references within and returns a pointer to
@@ -6309,48 +6479,57 @@ static int checkjobs(struct pipe *fg_pipe)
 #endif
 		/* Were we asked to wait for fg pipe? */
 		if (fg_pipe) {
-			for (i = 0; i < fg_pipe->num_cmds; i++) {
+			i = fg_pipe->num_cmds;
+			while (--i >= 0) {
 				debug_printf_jobs("check pid %d\n", fg_pipe->cmds[i].pid);
 				if (fg_pipe->cmds[i].pid != childpid)
 					continue;
 				if (dead) {
+					int ex;
 					fg_pipe->cmds[i].pid = 0;
 					fg_pipe->alive_cmds--;
-					if (i == fg_pipe->num_cmds - 1) {
-						/* last process gives overall exitstatus */
-						rcode = WEXITSTATUS(status);
-						/* bash prints killer signal's name for *last*
-						 * process in pipe (prints just newline for SIGINT).
-						 * Mimic this. Example: "sleep 5" + (^\ or kill -QUIT)
-						 */
-						if (WIFSIGNALED(status)) {
-							int sig = WTERMSIG(status);
+					ex = WEXITSTATUS(status);
+					/* bash prints killer signal's name for *last*
+					 * process in pipe (prints just newline for SIGINT).
+					 * Mimic this. Example: "sleep 5" + (^\ or kill -QUIT)
+					 */
+					if (WIFSIGNALED(status)) {
+						int sig = WTERMSIG(status);
+						if (i == fg_pipe->num_cmds-1)
 							printf("%s\n", sig == SIGINT ? "" : get_signame(sig));
-							/* TODO: MIPS has 128 sigs (1..128), what if sig==128 here?
-							 * Maybe we need to use sig | 128? */
-							rcode = sig + 128;
-						}
-						IF_HAS_KEYWORDS(if (fg_pipe->pi_inverted) rcode = !rcode;)
+						/* TODO: MIPS has 128 sigs (1..128), what if sig==128 here?
+						 * Maybe we need to use sig | 128? */
+						ex = sig + 128;
 					}
+					fg_pipe->cmds[i].cmd_exitcode = ex;
 				} else {
 					fg_pipe->cmds[i].is_stopped = 1;
 					fg_pipe->stopped_cmds++;
 				}
 				debug_printf_jobs("fg_pipe: alive_cmds %d stopped_cmds %d\n",
 						fg_pipe->alive_cmds, fg_pipe->stopped_cmds);
-				if (fg_pipe->alive_cmds - fg_pipe->stopped_cmds <= 0) {
+				if (fg_pipe->alive_cmds == fg_pipe->stopped_cmds) {
 					/* All processes in fg pipe have exited or stopped */
+					i = fg_pipe->num_cmds;
+					while (--i >= 0) {
+						rcode = fg_pipe->cmds[i].cmd_exitcode;
+						/* usually last process gives overall exitstatus,
+						 * but with "set -o pipefail", last *failed* process does */
+						if (G.o_opt[OPT_O_PIPEFAIL] == 0 || rcode != 0)
+							break;
+					}
+					IF_HAS_KEYWORDS(if (fg_pipe->pi_inverted) rcode = !rcode;)
 /* Note: *non-interactive* bash does not continue if all processes in fg pipe
  * are stopped. Testcase: "cat | cat" in a script (not on command line!)
  * and "killall -STOP cat" */
 					if (G_interactive_fd) {
 #if ENABLE_HUSH_JOB
-						if (fg_pipe->alive_cmds)
+						if (fg_pipe->alive_cmds != 0)
 							insert_bg_job(fg_pipe);
 #endif
 						return rcode;
 					}
-					if (!fg_pipe->alive_cmds)
+					if (fg_pipe->alive_cmds == 0)
 						return rcode;
 				}
 				/* There are still running processes in the fg pipe */
@@ -6436,7 +6615,7 @@ static int checkjobs_and_fg_shell(struct pipe *fg_pipe)
  * subshell:     ( list ) [&]
  */
 #if !ENABLE_HUSH_MODE_X
-#define redirect_and_varexp_helper(new_env_p, old_vars_p, command, squirrel, char argv_expanded) \
+#define redirect_and_varexp_helper(new_env_p, old_vars_p, command, squirrel, argv_expanded) \
 	redirect_and_varexp_helper(new_env_p, old_vars_p, command, squirrel)
 #endif
 static int redirect_and_varexp_helper(char ***new_env_p,
@@ -6821,94 +7000,6 @@ static NOINLINE int run_pipe(struct pipe *pi)
 	return -1;
 }
 
-#ifndef debug_print_tree
-static void debug_print_tree(struct pipe *pi, int lvl)
-{
-	static const char *const PIPE[] = {
-		[PIPE_SEQ] = "SEQ",
-		[PIPE_AND] = "AND",
-		[PIPE_OR ] = "OR" ,
-		[PIPE_BG ] = "BG" ,
-	};
-	static const char *RES[] = {
-		[RES_NONE ] = "NONE" ,
-# if ENABLE_HUSH_IF
-		[RES_IF   ] = "IF"   ,
-		[RES_THEN ] = "THEN" ,
-		[RES_ELIF ] = "ELIF" ,
-		[RES_ELSE ] = "ELSE" ,
-		[RES_FI   ] = "FI"   ,
-# endif
-# if ENABLE_HUSH_LOOPS
-		[RES_FOR  ] = "FOR"  ,
-		[RES_WHILE] = "WHILE",
-		[RES_UNTIL] = "UNTIL",
-		[RES_DO   ] = "DO"   ,
-		[RES_DONE ] = "DONE" ,
-# endif
-# if ENABLE_HUSH_LOOPS || ENABLE_HUSH_CASE
-		[RES_IN   ] = "IN"   ,
-# endif
-# if ENABLE_HUSH_CASE
-		[RES_CASE ] = "CASE" ,
-		[RES_CASE_IN ] = "CASE_IN" ,
-		[RES_MATCH] = "MATCH",
-		[RES_CASE_BODY] = "CASE_BODY",
-		[RES_ESAC ] = "ESAC" ,
-# endif
-		[RES_XXXX ] = "XXXX" ,
-		[RES_SNTX ] = "SNTX" ,
-	};
-	static const char *const CMDTYPE[] = {
-		"{}",
-		"()",
-		"[noglob]",
-# if ENABLE_HUSH_FUNCTIONS
-		"func()",
-# endif
-	};
-
-	int pin, prn;
-
-	pin = 0;
-	while (pi) {
-		fprintf(stderr, "%*spipe %d res_word=%s followup=%d %s\n", lvl*2, "",
-				pin, RES[pi->res_word], pi->followup, PIPE[pi->followup]);
-		prn = 0;
-		while (prn < pi->num_cmds) {
-			struct command *command = &pi->cmds[prn];
-			char **argv = command->argv;
-
-			fprintf(stderr, "%*s cmd %d assignment_cnt:%d",
-					lvl*2, "", prn,
-					command->assignment_cnt);
-			if (command->group) {
-				fprintf(stderr, " group %s: (argv=%p)%s%s\n",
-						CMDTYPE[command->cmd_type],
-						argv
-# if !BB_MMU
-						, " group_as_string:", command->group_as_string
-# else
-						, "", ""
-# endif
-				);
-				debug_print_tree(command->group, lvl+1);
-				prn++;
-				continue;
-			}
-			if (argv) while (*argv) {
-				fprintf(stderr, " '%s'", *argv);
-				argv++;
-			}
-			fprintf(stderr, "\n");
-			prn++;
-		}
-		pi = pi->next;
-		pin++;
-	}
-}
-#endif /* debug_print_tree */
-
 /* NB: called by pseudo_exec, and therefore must not modify any
  * global data until exec/_exit (we can be a child after vfork!) */
 static int run_list(struct pipe *pi)
@@ -6938,27 +7029,30 @@ static int run_list(struct pipe *pi)
 
 #if ENABLE_HUSH_LOOPS
 	/* Check syntax for "for" */
-	for (struct pipe *cpipe = pi; cpipe; cpipe = cpipe->next) {
-		if (cpipe->res_word != RES_FOR && cpipe->res_word != RES_IN)
-			continue;
-		/* current word is FOR or IN (BOLD in comments below) */
-		if (cpipe->next == NULL) {
-			syntax_error("malformed for");
-			debug_leave();
-			debug_printf_exec("run_list lvl %d return 1\n", G.run_list_level);
-			return 1;
-		}
-		/* "FOR v; do ..." and "for v IN a b; do..." are ok */
-		if (cpipe->next->res_word == RES_DO)
-			continue;
-		/* next word is not "do". It must be "in" then ("FOR v in ...") */
-		if (cpipe->res_word == RES_IN /* "for v IN a b; not_do..."? */
-		 || cpipe->next->res_word != RES_IN /* FOR v not_do_and_not_in..."? */
-		) {
-			syntax_error("malformed for");
-			debug_leave();
-			debug_printf_exec("run_list lvl %d return 1\n", G.run_list_level);
-			return 1;
+	{
+		struct pipe *cpipe;
+		for (cpipe = pi; cpipe; cpipe = cpipe->next) {
+			if (cpipe->res_word != RES_FOR && cpipe->res_word != RES_IN)
+				continue;
+			/* current word is FOR or IN (BOLD in comments below) */
+			if (cpipe->next == NULL) {
+				syntax_error("malformed for");
+				debug_leave();
+				debug_printf_exec("run_list lvl %d return 1\n", G.run_list_level);
+				return 1;
+			}
+			/* "FOR v; do ..." and "for v IN a b; do..." are ok */
+			if (cpipe->next->res_word == RES_DO)
+				continue;
+			/* next word is not "do". It must be "in" then ("FOR v in ...") */
+			if (cpipe->res_word == RES_IN /* "for v IN a b; not_do..."? */
+			 || cpipe->next->res_word != RES_IN /* FOR v not_do_and_not_in..."? */
+			) {
+				syntax_error("malformed for");
+				debug_leave();
+				debug_printf_exec("run_list lvl %d return 1\n", G.run_list_level);
+				return 1;
+			}
 		}
 	}
 #endif
@@ -7241,7 +7335,7 @@ static int run_and_free_list(struct pipe *pi)
 {
 	int rcode = 0;
 	debug_printf_exec("run_and_free_list entered\n");
-	if (!G.n_mode) {
+	if (!G.o_opt[OPT_O_NOEXEC]) {
 		debug_printf_exec(": run_list: 1st pipe with %d cmds\n", pi->num_cmds);
 		rcode = run_list(pi);
 	}
@@ -7339,13 +7433,41 @@ static void set_fatal_handlers(void)
 }
 #endif
 
-static int set_mode(const char cstate, const char mode)
+static int set_mode(int state, char mode, const char *o_opt)
 {
-	int state = (cstate == '-' ? 1 : 0);
+	int idx;
 	switch (mode) {
-		case 'n': G.n_mode = state; break;
-		case 'x': IF_HUSH_MODE_X(G_x_mode = state;) break;
-		default:  return EXIT_FAILURE;
+	case 'n':
+		G.o_opt[OPT_O_NOEXEC] = state;
+		break;
+	case 'x':
+		IF_HUSH_MODE_X(G_x_mode = state;)
+		break;
+	case 'o':
+		if (!o_opt) {
+			/* "set -+o" without parameter.
+			 * in bash, set -o produces this output:
+			 *  pipefail        off
+			 * and set +o:
+			 *  set +o pipefail
+			 * We always use the second form.
+			 */
+			const char *p = o_opt_strings;
+			idx = 0;
+			while (*p) {
+				printf("set %co %s\n", (G.o_opt[idx] ? '-' : '+'), p);
+				idx++;
+				p += strlen(p) + 1;
+			}
+			break;
+		}
+		idx = index_in_strings(o_opt_strings, o_opt);
+		if (idx >= 0) {
+			G.o_opt[idx] = state;
+			break;
+		}
+	default:
+		return EXIT_FAILURE;
 	}
 	return EXIT_SUCCESS;
 }
@@ -7357,7 +7479,7 @@ int hush_main(int argc, char **argv)
 	unsigned builtin_argc;
 	char **e;
 	struct variable *cur_var;
-	struct variable shell_ver;
+	struct variable *shell_ver;
 
 	INIT_G();
 	if (EXIT_SUCCESS) /* if EXIT_SUCCESS == 0, it is already done */
@@ -7366,17 +7488,17 @@ int hush_main(int argc, char **argv)
 	G.argv0_for_re_execing = argv[0];
 #endif
 	/* Deal with HUSH_VERSION */
-	memset(&shell_ver, 0, sizeof(shell_ver));
-	shell_ver.flg_export = 1;
-	shell_ver.flg_read_only = 1;
+	shell_ver = xzalloc(sizeof(*shell_ver));
+	shell_ver->flg_export = 1;
+	shell_ver->flg_read_only = 1;
 	/* Code which handles ${var<op>...} needs writable values for all variables,
 	 * therefore we xstrdup: */
-	shell_ver.varstr = xstrdup(hush_version_str),
-	G.top_var = &shell_ver;
+	shell_ver->varstr = xstrdup(hush_version_str);
 	/* Create shell local variables from the values
 	 * currently living in the environment */
 	debug_printf_env("unsetenv '%s'\n", "HUSH_VERSION");
 	unsetenv("HUSH_VERSION"); /* in case it exists in initial env */
+	G.top_var = shell_ver;
 	cur_var = G.top_var;
 	e = environ;
 	if (e) while (*e) {
@@ -7391,8 +7513,8 @@ int hush_main(int argc, char **argv)
 		e++;
 	}
 	/* (Re)insert HUSH_VERSION into env (AFTER we scanned the env!) */
-	debug_printf_env("putenv '%s'\n", shell_ver.varstr);
-	putenv(shell_ver.varstr);
+	debug_printf_env("putenv '%s'\n", shell_ver->varstr);
+	putenv(shell_ver->varstr);
 
 	/* Export PWD */
 	set_pwd_var(/*exp:*/ 1);
@@ -7585,7 +7707,7 @@ int hush_main(int argc, char **argv)
 #endif
 		case 'n':
 		case 'x':
-			if (set_mode('-', opt) == 0) /* no error */
+			if (set_mode(1, opt, NULL) == 0) /* no error */
 				break;
 		default:
 #ifndef BB_VER
@@ -7752,18 +7874,6 @@ int hush_main(int argc, char **argv)
 	parse_and_run_file(stdin);
 
  final_return:
-#if ENABLE_FEATURE_CLEAN_UP
-	if (G.cwd != bb_msg_unknown)
-		free((char*)G.cwd);
-	cur_var = G.top_var->next;
-	while (cur_var) {
-		struct variable *tmp = cur_var;
-		if (!cur_var->max_len)
-			free(cur_var->varstr);
-		cur_var = cur_var->next;
-		free(tmp);
-	}
-#endif
 	hush_exit(G.last_exitcode);
 }
 
@@ -8375,15 +8485,18 @@ static int FAST_FUNC builtin_set(char **argv)
 	}
 
 	do {
-		if (!strcmp(arg, "--")) {
+		if (strcmp(arg, "--") == 0) {
 			++argv;
 			goto set_argv;
 		}
 		if (arg[0] != '+' && arg[0] != '-')
 			break;
-		for (n = 1; arg[n]; ++n)
-			if (set_mode(arg[0], arg[n]))
+		for (n = 1; arg[n]; ++n) {
+			if (set_mode((arg[0] == '-'), arg[n], argv[1]))
 				goto error;
+			if (arg[n] == 'o' && argv[1])
+				argv++;
+		}
 	} while ((arg = *++argv) != NULL);
 	/* Now argv[0] is 1st argument */
 

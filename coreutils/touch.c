@@ -19,6 +19,35 @@
 
 #include "libbb.h"
 
+//config:config TOUCH
+//config:	bool "touch"
+//config:	default y
+//config:	help
+//config:	  touch is used to create or change the access and/or
+//config:	  modification timestamp of specified files.
+
+//applet:IF_TOUCH(APPLET_NOFORK(touch, touch, _BB_DIR_BIN, _BB_SUID_DROP, touch))
+
+//kbuild:lib-$(CONFIG_TOUCH) += touch.o
+
+//usage:#define touch_trivial_usage
+//usage:       "[-c]" IF_DESKTOP(" [-d DATE] [-r FILE]") " FILE [FILE]..."
+//usage:#define touch_full_usage "\n\n"
+//usage:       "Update the last-modified date on the given FILE[s]\n"
+//usage:     "\nOptions:"
+//usage:     "\n	-c	Don't create files"
+//usage:	IF_DESKTOP(
+//usage:     "\n	-d DT	Date/time to use"
+//usage:     "\n	-r FILE	Use FILE's date/time"
+//usage:	)
+//usage:
+//usage:#define touch_example_usage
+//usage:       "$ ls -l /tmp/foo\n"
+//usage:       "/bin/ls: /tmp/foo: No such file or directory\n"
+//usage:       "$ touch /tmp/foo\n"
+//usage:       "$ ls -l /tmp/foo\n"
+//usage:       "-rw-rw-r--    1 andersen andersen        0 Apr 15 01:11 /tmp/foo\n"
+
 /* This is a NOFORK applet. Be very careful! */
 
 /* coreutils implements:
@@ -91,9 +120,10 @@ int touch_main(int argc UNUSED_PARAM, char **argv)
 		struct tm tm_time;
 		time_t t;
 
-		//time(&t);
-		//localtime_r(&t, &tm_time);
-		memset(&tm_time, 0, sizeof(tm_time));
+		//memset(&tm_time, 0, sizeof(tm_time));
+		/* Better than memset: makes "HH:MM" dates meaningful */
+		time(&t);
+		localtime_r(&t, &tm_time);
 		parse_datestr(date_str, &tm_time);
 
 		/* Correct any day of week and day of year etc. fields */

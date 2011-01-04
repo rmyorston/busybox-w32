@@ -1,14 +1,12 @@
 /* vi: set sw=4 ts=4: */
 /*
- * utils.c
- *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  *
- * Authors:	Alexey Kuznetsov, <kuznet@ms2.inr.ac.ru>
+ * Authors: Alexey Kuznetsov, <kuznet@ms2.inr.ac.ru>
  *
  * Changes:
  *
- * Rani Assaf <rani@magic.metawire.com> 980929:	resolve addresses
+ * Rani Assaf <rani@magic.metawire.com> 980929: resolve addresses
  */
 
 #include "libbb.h"

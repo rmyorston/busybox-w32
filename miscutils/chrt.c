@@ -53,23 +53,25 @@ int chrt_main(int argc UNUSED_PARAM, char **argv)
 	const char *current_new;
 	int policy = SCHED_RR;
 
-	/* at least 1 arg; only one policy accepted */
-	opt_complementary = "-1:r--fo:f--ro:r--fo";
+	/* only one policy accepted */
+	opt_complementary = "r--fo:f--ro:o--rf";
 	opt = getopt32(argv, "+mprfo");
+	if (opt & OPT_m) { /* print min/max and exit */
+		show_min_max(SCHED_FIFO);
+		show_min_max(SCHED_RR);
+		show_min_max(SCHED_OTHER);
+		fflush_stdout_and_exit(EXIT_SUCCESS);
+	}
 	if (opt & OPT_r)
 		policy = SCHED_RR;
 	if (opt & OPT_f)
 		policy = SCHED_FIFO;
 	if (opt & OPT_o)
 		policy = SCHED_OTHER;
-	if (opt & OPT_m) { /* print min/max */
-		show_min_max(SCHED_FIFO);
-		show_min_max(SCHED_RR);
-		show_min_max(SCHED_OTHER);
-		fflush_stdout_and_exit(EXIT_SUCCESS);
-	}
 
 	argv += optind;
+	if (!argv[0])
+		bb_show_usage();
 	if (opt & OPT_p) {
 		pid_str = *argv++;
 		if (*argv) { /* "-p <priority> <pid> [...]" */
@@ -90,13 +92,13 @@ int chrt_main(int argc UNUSED_PARAM, char **argv)
  print_rt_info:
 		pol = sched_getscheduler(pid);
 		if (pol < 0)
-			bb_perror_msg_and_die("can't %cet pid %d's policy", 'g', pid);
+			bb_perror_msg_and_die("can't %cet pid %d's policy", 'g', (int)pid);
 		printf("pid %d's %s scheduling policy: %s\n",
 				pid, current_new, policies[pol].name);
 		if (sched_getparam(pid, &sp))
-			bb_perror_msg_and_die("can't get pid %d's attributes", pid);
+			bb_perror_msg_and_die("can't get pid %d's attributes", (int)pid);
 		printf("pid %d's %s scheduling priority: %d\n",
-				pid, current_new, sp.sched_priority);
+				(int)pid, current_new, sp.sched_priority);
 		if (!*argv) {
 			/* Either it was just "-p <pid>",
 			 * or it was "-p <priority> <pid>" and we came here
@@ -115,7 +117,7 @@ int chrt_main(int argc UNUSED_PARAM, char **argv)
 	sp.sched_priority = xstrtou_range(priority, 0, policy != SCHED_OTHER ? 1 : 0, 99);
 
 	if (sched_setscheduler(pid, policy, &sp) < 0)
-		bb_perror_msg_and_die("can't %cet pid %d's policy", 's', pid);
+		bb_perror_msg_and_die("can't %cet pid %d's policy", 's', (int)pid);
 
 	if (!argv[0]) /* "-p <priority> <pid> [...]" */
 		goto print_rt_info;

@@ -94,8 +94,10 @@ static bool BB_ispunct(CHAR_T c) { return ((unsigned)c < 256 && ispunct(c)); }
 #endif
 
 
-#define SEQ_CLEAR_TILL_END_OF_SCREEN "\033[J"
-//#define SEQ_CLEAR_TILL_END_OF_LINE   "\033[K"
+#define ESC "\033"
+
+#define SEQ_CLEAR_TILL_END_OF_SCREEN  ESC"[J"
+//#define SEQ_CLEAR_TILL_END_OF_LINE  ESC"[K"
 
 
 enum {
@@ -446,7 +448,7 @@ static void input_backward(unsigned num)
 			} while (--num);
 			return;
 		}
-		printf("\033[%uD", num);
+		printf(ESC"[%uD", num);
 		return;
 	}
 
@@ -471,7 +473,7 @@ static void input_backward(unsigned num)
 		 */
 		unsigned sv_cursor;
 		/* go to 1st column; go up to first line */
-		printf("\r" "\033[%uA", cmdedit_y);
+		printf("\r" ESC"[%uA", cmdedit_y);
 		cmdedit_y = 0;
 		sv_cursor = cursor;
 		put_prompt(); /* sets cursor to 0 */
@@ -488,12 +490,12 @@ static void input_backward(unsigned num)
 		cmdedit_x = (width * cmdedit_y - num) % width;
 		cmdedit_y -= lines_up;
 		/* go to 1st column; go up */
-		printf("\r" "\033[%uA", lines_up);
+		printf("\r" ESC"[%uA", lines_up);
 		/* go to correct column.
 		 * xterm, konsole, Linux VT interpret 0 as 1 below! wow.
 		 * need to *make sure* we skip it if cmdedit_x == 0 */
 		if (cmdedit_x)
-			printf("\033[%uC", cmdedit_x);
+			printf(ESC"[%uC", cmdedit_x);
 	}
 }
 
@@ -501,7 +503,7 @@ static void input_backward(unsigned num)
 static void redraw(int y, int back_cursor)
 {
 	if (y > 0) /* up y lines */
-		printf("\033[%uA", y);
+		printf(ESC"[%uA", y);
 	bb_putchar('\r');
 	put_prompt();
 	put_till_end_and_adv_cursor();
@@ -582,6 +584,12 @@ static void input_forward(void)
 
 #if ENABLE_FEATURE_TAB_COMPLETION
 
+//FIXME:
+//needs to be more clever: currently it thinks that "foo\ b<TAB>
+//matches the file named "foo bar", which is untrue.
+//Also, perhaps "foo b<TAB> needs to complete to "foo bar" <cursor>,
+//not "foo bar <cursor>...
+
 static void free_tab_completion_data(void)
 {
 	if (matches) {
@@ -599,7 +607,7 @@ static void add_match(char *matched)
 	num_matches++;
 }
 
-#if ENABLE_FEATURE_USERNAME_COMPLETION
+# if ENABLE_FEATURE_USERNAME_COMPLETION
 /* Replace "~user/..." with "/homedir/...".
  * The parameter is malloced, free it or return it
  * unchanged if no user is matched.
@@ -655,7 +663,7 @@ static NOINLINE unsigned complete_username(const char *ud)
 
 	return 1 + userlen;
 }
-#endif  /* FEATURE_USERNAME_COMPLETION */
+# endif  /* FEATURE_USERNAME_COMPLETION */
 
 enum {
 	FIND_EXE_ONLY = 0,
@@ -740,10 +748,10 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 		pfind++;
 		/* dirbuf = ".../.../.../" */
 		dirbuf = xstrndup(command, pfind - command);
-#if ENABLE_FEATURE_USERNAME_COMPLETION
+# if ENABLE_FEATURE_USERNAME_COMPLETION
 		if (dirbuf[0] == '~')   /* ~/... or ~user/... */
 			dirbuf = username_path_completion(dirbuf);
-#endif
+# endif
 		path1[0] = dirbuf;
 	}
 	pf_len = strlen(pfind);
@@ -1021,13 +1029,18 @@ static void showfiles(void)
 	}
 }
 
-static char *add_quote_for_spec_chars(char *found)
+static const char *is_special_char(char c)
+{
+	return strchr(" `\"#$%^&*()=+{}[]:;'|\\<>", c);
+}
+
+static char *quote_special_chars(char *found)
 {
 	int l = 0;
 	char *s = xzalloc((strlen(found) + 1) * 2);
 
 	while (*found) {
-		if (strchr(" `\"#$%^&*()=+{}[]:;'|\\<>", *found))
+		if (is_special_char(*found))
 			s[l++] = '\\';
 		s[l++] = *found++;
 	}
@@ -1044,10 +1057,10 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 	/* Length of string used for matching */
 	unsigned match_pfx_len = match_pfx_len;
 	int find_type;
-#if ENABLE_UNICODE_SUPPORT
+# if ENABLE_UNICODE_SUPPORT
 	/* cursor pos in command converted to multibyte form */
 	int cursor_mb;
-#endif
+# endif
 	if (!(state->flags & TAB_COMPLETION))
 		return;
 
@@ -1074,9 +1087,9 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 	 * (we then also (ab)use this extra space later - see (**))
 	 */
 	match_buf = xmalloc(MAX_LINELEN * sizeof(int16_t));
-#if !ENABLE_UNICODE_SUPPORT
+# if !ENABLE_UNICODE_SUPPORT
 	save_string(match_buf, cursor + 1); /* +1 for NUL */
-#else
+# else
 	{
 		CHAR_T wc = command_ps[cursor];
 		command_ps[cursor] = BB_NUL;
@@ -1084,26 +1097,37 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 		command_ps[cursor] = wc;
 		cursor_mb = strlen(match_buf);
 	}
-#endif
+# endif
 	find_type = build_match_prefix(match_buf);
 
 	/* Free up any memory already allocated */
 	free_tab_completion_data();
 
-#if ENABLE_FEATURE_USERNAME_COMPLETION
-	/* If the word starts with `~' and there is no slash in the word,
+# if ENABLE_FEATURE_USERNAME_COMPLETION
+	/* If the word starts with ~ and there is no slash in the word,
 	 * then try completing this word as a username. */
 	if (state->flags & USERNAME_COMPLETION)
 		if (match_buf[0] == '~' && strchr(match_buf, '/') == NULL)
 			match_pfx_len = complete_username(match_buf);
-#endif
-	/* Try to match a command in $PATH, or a directory, or a file */
+# endif
+	/* If complete_username() did not match,
+	 * try to match a command in $PATH, or a directory, or a file */
 	if (!matches)
 		match_pfx_len = complete_cmd_dir_file(match_buf, find_type);
+
+	/* Account for backslashes which will be inserted
+	 * by quote_special_chars() later */
+	{
+		const char *e = match_buf + strlen(match_buf);
+		const char *s = e - match_pfx_len;
+		while (s < e)
+			if (is_special_char(*s++))
+				match_pfx_len++;
+	}
+
 	/* Remove duplicates */
 	if (matches) {
-		unsigned i;
-		unsigned n = 0;
+		unsigned i, n = 0;
 		qsort_string_vector(matches, num_matches);
 		for (i = 0; i < num_matches - 1; ++i) {
 			//if (matches[i] && matches[i+1]) { /* paranoia */
@@ -1118,6 +1142,7 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 		matches[n++] = matches[i];
 		num_matches = n;
 	}
+
 	/* Did we find exactly one match? */
 	if (num_matches != 1) { /* no */
 		char *cp;
@@ -1139,7 +1164,7 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 			goto ret; /* no */
 		}
 		*cp = '\0';
-		cp = add_quote_for_spec_chars(chosen_match);
+		cp = quote_special_chars(chosen_match);
 		free(chosen_match);
 		chosen_match = cp;
 		len_found = strlen(chosen_match);
@@ -1147,7 +1172,7 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 		/* Next <tab> is not a double-tab */
 		*lastWasTab = 0;
 
-		chosen_match = add_quote_for_spec_chars(matches[0]);
+		chosen_match = quote_special_chars(matches[0]);
 		len_found = strlen(chosen_match);
 		if (chosen_match[len_found-1] != '/') {
 			chosen_match[len_found] = ' ';
@@ -1155,7 +1180,7 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 		}
 	}
 
-#if !ENABLE_UNICODE_SUPPORT
+# if !ENABLE_UNICODE_SUPPORT
 	/* Have space to place the match? */
 	/* The result consists of three parts with these lengths: */
 	/* cursor + (len_found - match_pfx_len) + (command_len - cursor) */
@@ -1172,7 +1197,7 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 		/* write out the matched command */
 		redraw(cmdedit_y, command_len - pos);
 	}
-#else
+# else
 	{
 		/* Use 2nd half of match_buf as scratch space - see (**) */
 		char *command = match_buf + MAX_LINELEN;
@@ -1196,7 +1221,7 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 			redraw(cmdedit_y, pos >= 0 ? pos : 0);
 		}
 	}
-#endif
+# endif
  ret:
 	free(chosen_match);
 	free(match_buf);
@@ -1342,7 +1367,7 @@ static void save_history(char *str)
 	int fd;
 	int len, len2;
 
-	fd = open(state->hist_file, O_WRONLY | O_CREAT | O_APPEND, 0666);
+	fd = open(state->hist_file, O_WRONLY | O_CREAT | O_APPEND, 0600);
 	if (fd < 0)
 		return;
 	xlseek(fd, 0, SEEK_END); /* paranoia */
@@ -1357,10 +1382,8 @@ static void save_history(char *str)
 	/* did we write so much that history file needs trimming? */
 	state->cnt_history_in_file++;
 	if (state->cnt_history_in_file > MAX_HISTORY * 4) {
-		FILE *fp;
 		char *new_name;
 		line_input_t *st_temp;
-		int i;
 
 		/* we may have concurrently written entries from others.
 		 * load them */
@@ -1370,8 +1393,12 @@ static void save_history(char *str)
 
 		/* write out temp file and replace hist_file atomically */
 		new_name = xasprintf("%s.%u.new", state->hist_file, (int) getpid());
-		fp = fopen_for_write(new_name);
-		if (fp) {
+		fd = open(state->hist_file, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+		if (fd >= 0) {
+			FILE *fp;
+			int i;
+
+			fp = xfdopen_for_write(fd);
 			for (i = 0; i < st_temp->cnt_history; i++)
 				fprintf(fp, "%s\n", st_temp->history[i]);
 			fclose(fp);
@@ -1634,7 +1661,7 @@ static void ask_terminal(void)
 	pfd.events = POLLIN;
 	if (safe_poll(&pfd, 1, 0) == 0) {
 		S.sent_ESC_br6n = 1;
-		fputs("\033" "[6n", stdout);
+		fputs(ESC"[6n", stdout);
 		fflush_all(); /* make terminal see it ASAP! */
 	}
 }
@@ -2089,7 +2116,7 @@ int FAST_FUNC read_line_input(const char *prompt, char *command, int maxsize, li
 		case CTRL('L'):
 		vi_case(CTRL('L')|VI_CMDMODE_BIT:)
 			/* Control-l -- clear screen */
-			printf("\033[H"); /* cursor to top,left */
+			printf(ESC"[H"); /* cursor to top,left */
 			redraw(0, command_len - cursor);
 			break;
 #if MAX_HISTORY > 0

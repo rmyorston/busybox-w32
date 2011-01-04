@@ -10,6 +10,20 @@
 #include "libbb.h"
 #include <linux/kd.h>
 
+
+struct globals {
+	int kbmode;
+	struct termios tio, tio0;
+};
+#define G (*ptr_to_globals)
+#define kbmode (G.kbmode)
+#define tio    (G.tio)
+#define tio0   (G.tio0)
+#define INIT_G() do { \
+	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
+} while (0)
+
+
 // set raw tty mode
 // also used by microcom
 // libbb candidates?
@@ -20,52 +34,27 @@ static void xget1(struct termios *t, struct termios *oldt)
 	cfmakeraw(t);
 }
 
-static void xset1(struct termios *tio)
+static void xset1(struct termios *t)
 {
-	int ret = tcsetattr(STDIN_FILENO, TCSAFLUSH, tio);
+	int ret = tcsetattr(STDIN_FILENO, TCSAFLUSH, t);
 	if (ret) {
 		bb_perror_msg("can't tcsetattr for stdin");
 	}
-}
-
-/*
- * GLOBALS
- */
-struct globals {
-	int kbmode;
-	struct termios tio, tio0;
-};
-#define G (*ptr_to_globals)
-#define kbmode	(G.kbmode)
-#define tio	(G.tio)
-#define tio0	(G.tio0)
-#define INIT_G() do { \
-	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
-} while (0)
-
-
-static void signal_handler(int signo)
-{
-	// restore keyboard and console settings
-	xset1(&tio0);
-	xioctl(STDIN_FILENO, KDSKBMODE, (void *)(ptrdiff_t)kbmode);
-	// alarmed? -> exit 0
-	exit(SIGALRM == signo);
 }
 
 int showkey_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int showkey_main(int argc UNUSED_PARAM, char **argv)
 {
 	enum {
-		OPT_a = (1<<0),	// display the decimal/octal/hex values of the keys
-		OPT_k = (1<<1),	// display only the interpreted keycodes (default)
-		OPT_s = (1<<2),	// display only the raw scan-codes
+		OPT_a = (1<<0), // display the decimal/octal/hex values of the keys
+		OPT_k = (1<<1), // display only the interpreted keycodes (default)
+		OPT_s = (1<<2), // display only the raw scan-codes
 	};
+
+	INIT_G();
 
 	// FIXME: aks are all mutually exclusive
 	getopt32(argv, "aks");
-
-	INIT_G();
 
 	// get keyboard settings
 	xioctl(STDIN_FILENO, KDGKBMODE, &kbmode);
@@ -73,9 +62,10 @@ int showkey_main(int argc UNUSED_PARAM, char **argv)
 		kbmode == K_RAW ? "RAW" :
 			(kbmode == K_XLATE ? "XLATE" :
 				(kbmode == K_MEDIUMRAW ? "MEDIUMRAW" :
-					(kbmode == K_UNICODE ? "UNICODE" : "?UNKNOWN?")))
-		, (option_mask32 & OPT_a) ? "when CTRL+D pressed" : "10s after last keypress"
+					(kbmode == K_UNICODE ? "UNICODE" : "UNKNOWN")))
+		, (option_mask32 & OPT_a) ? "on EOF (ctrl-D)" : "10s after last keypress"
 	);
+
 	// prepare for raw mode
 	xget1(&tio, &tio0);
 	// put stdin in raw mode
@@ -83,34 +73,37 @@ int showkey_main(int argc UNUSED_PARAM, char **argv)
 
 	if (option_mask32 & OPT_a) {
 		unsigned char c;
+
 		// just read stdin char by char
-		while (1 == safe_read(STDIN_FILENO, &c, 1)) {
+		while (1 == read(STDIN_FILENO, &c, 1)) {
 			printf("%3u 0%03o 0x%02x\r\n", c, c, c);
 			if (04 /*CTRL-D*/ == c)
 				break;
 		}
 	} else {
-		// we should exit on any signal
-		bb_signals(BB_FATAL_SIGS, signal_handler);
 		// set raw keyboard mode
 		xioctl(STDIN_FILENO, KDSKBMODE, (void *)(ptrdiff_t)((option_mask32 & OPT_k) ? K_MEDIUMRAW : K_RAW));
 
+		// we should exit on any signal; signals should interrupt read
+		bb_signals_recursive_norestart(BB_FATAL_SIGS, record_signo);
+
 		// read and show scancodes
-		while (1) {
+		while (!bb_got_signal) {
 			char buf[18];
 			int i, n;
+
 			// setup 10s watchdog
 			alarm(10);
 			// read scancodes
 			n = read(STDIN_FILENO, buf, sizeof(buf));
 			i = 0;
 			while (i < n) {
-				char c = buf[i];
-				// show raw scancodes ordered? ->
 				if (option_mask32 & OPT_s) {
+					// show raw scancodes
 					printf("0x%02x ", buf[i++]);
-				// show interpreted scancodes (default) ? ->
 				} else {
+					// show interpreted scancodes (default)
+					char c = buf[i];
 					int kc;
 					if (i+2 < n
 					 && (c & 0x7f) == 0
@@ -130,9 +123,9 @@ int showkey_main(int argc UNUSED_PARAM, char **argv)
 		}
 	}
 
-	// cleanup
-	signal_handler(SIGALRM);
+	// restore keyboard and console settings
+	xset1(&tio0);
+	xioctl(STDIN_FILENO, KDSKBMODE, (void *)(ptrdiff_t)kbmode);
 
-	// should never be here!
 	return EXIT_SUCCESS;
 }

@@ -592,35 +592,6 @@ INSERT
      "\n	-i	Prompt before overwrite" \
      "\n	-l,-s	Create (sym)links" \
 
-#define cpio_trivial_usage \
-       "[-dmvu] [-F FILE]" IF_FEATURE_CPIO_O(" [-H newc]") \
-       " [-ti"IF_FEATURE_CPIO_O("o")"]" IF_FEATURE_CPIO_P(" [-p DIR]")
-#define cpio_full_usage "\n\n" \
-       "Extract or list files from a cpio archive" \
-	IF_FEATURE_CPIO_O(", or" \
-     "\ncreate an archive" IF_FEATURE_CPIO_P(" (-o) or copy files (-p)") \
-		" using file list on stdin" \
-	) \
-     "\n" \
-     "\nMain operation mode:" \
-     "\n	-t	List" \
-     "\n	-i	Extract" \
-	IF_FEATURE_CPIO_O( \
-     "\n	-o	Create (requires -H newc)" \
-	) \
-	IF_FEATURE_CPIO_P( \
-     "\n	-p DIR	Copy files to DIR" \
-	) \
-     "\nOptions:" \
-     "\n	-d	Make leading directories" \
-     "\n	-m	Preserve mtime" \
-     "\n	-v	Verbose" \
-     "\n	-u	Overwrite" \
-     "\n	-F FILE	Input (-t,-i,-p) or output (-o) file" \
-	IF_FEATURE_CPIO_O( \
-     "\n	-H newc	Archive format" \
-	) \
-
 #define crond_trivial_usage \
        "-fbS -l N " IF_FEATURE_CROND_D("-d N ") "-L LOGFILE -c DIR"
 #define crond_full_usage "\n\n" \
@@ -1577,8 +1548,8 @@ INSERT
      "\n	-c		One-byte character display" \
      "\n	-C		Canonical hex+ASCII, 16 bytes per line" \
      "\n	-d		Two-byte decimal display" \
-     "\n	-e FORMAT STRING" \
-     "\n	-f FORMAT FILE" \
+     "\n	-e FORMAT_STRING" \
+     "\n	-f FORMAT_FILE" \
      "\n	-n LENGTH	Interpret only LENGTH bytes of input" \
      "\n	-o		Two-byte octal display" \
      "\n	-s OFFSET	Skip OFFSET bytes" \
@@ -2044,9 +2015,6 @@ INSERT
 #define linux64_trivial_usage NOUSAGE_STR
 #define linux64_full_usage ""
 
-#define linuxrc_trivial_usage NOUSAGE_STR
-#define linuxrc_full_usage ""
-
 #define setarch_trivial_usage \
        "personality PROG ARGS"
 #define setarch_full_usage "\n\n" \
@@ -2175,67 +2143,6 @@ INSERT
      "\n	-m	Send mail on completion" \
      "\n	-h	Print banner page too" \
      "\n	-V	Verbose" \
-
-#define ls_trivial_usage \
-       "[-1Aa" IF_FEATURE_LS_TIMESTAMPS("c") "Cd" \
-	IF_FEATURE_LS_TIMESTAMPS("e") IF_FEATURE_LS_FILETYPES("F") "iln" \
-	IF_FEATURE_LS_FILETYPES("p") IF_FEATURE_LS_FOLLOWLINKS("L") \
-	IF_FEATURE_LS_RECURSIVE("R") IF_FEATURE_LS_SORTFILES("rS") "s" \
-	IF_FEATURE_AUTOWIDTH("T") IF_FEATURE_LS_TIMESTAMPS("tu") \
-	IF_FEATURE_LS_SORTFILES("v") IF_FEATURE_AUTOWIDTH("w") "x" \
-	IF_FEATURE_LS_SORTFILES("X") IF_FEATURE_HUMAN_READABLE("h") "k" \
-	IF_SELINUX("K") "] [FILE]..."
-#define ls_full_usage "\n\n" \
-       "List directory contents\n" \
-     "\nOptions:" \
-     "\n	-1	List in a single column" \
-     "\n	-A	Don't list . and .." \
-     "\n	-a	Don't hide entries starting with ." \
-     "\n	-C	List by columns" \
-	IF_FEATURE_LS_TIMESTAMPS( \
-     "\n	-c	With -l: sort by ctime") \
-	IF_FEATURE_LS_COLOR( \
-     "\n	--color[={always,never,auto}]	Control coloring") \
-     "\n	-d	List directory entries instead of contents" \
-	IF_FEATURE_LS_TIMESTAMPS( \
-     "\n	-e	List full date and time") \
-	IF_FEATURE_LS_FILETYPES( \
-     "\n	-F	Append indicator (one of */=@|) to entries") \
-     "\n	-i	List inode numbers" \
-     "\n	-l	Long listing format" \
-     "\n	-n	List numeric UIDs and GIDs instead of names" \
-	IF_FEATURE_LS_FILETYPES( \
-     "\n	-p	Append indicator (one of /=@|) to entries") \
-	IF_FEATURE_LS_FOLLOWLINKS( \
-     "\n	-L	List entries pointed to by symlinks") \
-	IF_FEATURE_LS_RECURSIVE( \
-     "\n	-R	Recurse") \
-	IF_FEATURE_LS_SORTFILES( \
-     "\n	-r	Sort in reverse order") \
-	IF_FEATURE_LS_SORTFILES( \
-     "\n	-S	Sort by file size") \
-     "\n	-s	List the size of each file, in blocks" \
-	IF_FEATURE_AUTOWIDTH( \
-     "\n	-T N	Assume tabstop every N columns") \
-	IF_FEATURE_LS_TIMESTAMPS( \
-     "\n	-t	With -l: sort by modification time") \
-	IF_FEATURE_LS_TIMESTAMPS( \
-     "\n	-u	With -l: sort by access time") \
-	IF_FEATURE_LS_SORTFILES( \
-     "\n	-v	Sort by version") \
-	IF_FEATURE_AUTOWIDTH( \
-     "\n	-w N	Assume the terminal is N columns wide") \
-     "\n	-x	List by lines" \
-	IF_FEATURE_LS_SORTFILES( \
-     "\n	-X	Sort by extension") \
-	IF_FEATURE_HUMAN_READABLE( \
-     "\n	-h	List sizes in human readable format (1K 243M 2G)") \
-	IF_SELINUX( \
-     "\n	-k	List security context") \
-	IF_SELINUX( \
-     "\n	-K	List security context in long format") \
-	IF_SELINUX( \
-     "\n	-Z	List security context and permission") \
 
 #define lsattr_trivial_usage \
        "[-Radlv] [FILE]..."
@@ -2709,31 +2616,6 @@ INSERT
        " or\n" \
        "$ nameif -c /etc/my_mactab_file\n" \
 
-#define nmeter_trivial_usage \
-       "format_string"
-#define nmeter_full_usage "\n\n" \
-       "Monitor system in real time\n\n" \
-       "Format specifiers:\n" \
-       " %Nc or %[cN]	Monitor CPU. N - bar size, default 10\n" \
-       "		(displays: S:system U:user N:niced D:iowait I:irq i:softirq)\n" \
-       " %[niface]	Monitor network interface 'iface'\n" \
-       " %m		Monitor allocated memory\n" \
-       " %[mf]		Monitor free memory\n" \
-       " %[mt]		Monitor total memory\n" \
-       " %s		Monitor allocated swap\n" \
-       " %f		Monitor number of used file descriptors\n" \
-       " %Ni		Monitor total/specific IRQ rate\n" \
-       " %x		Monitor context switch rate\n" \
-       " %p		Monitor forks\n" \
-       " %[pn]		Monitor # of processes\n" \
-       " %b		Monitor block io\n" \
-       " %Nt		Show time (with N decimal points)\n" \
-       " %Nd		Milliseconds between updates (default:1000)\n" \
-       " %r		Print <cr> instead of <lf> at EOL" \
-
-#define nmeter_example_usage \
-       "nmeter '%250d%t %20c int %i bio %b mem %m forks%p'"
-
 #define nohup_trivial_usage \
        "PROG ARGS"
 #define nohup_full_usage "\n\n" \
@@ -2820,29 +2702,6 @@ INSERT
      "\n	-m	Use MD5 encryption instead of DES" \
 	)
 
-#define patch_trivial_usage \
-       "[OPTIONS] [ORIGFILE [PATCHFILE]]"
-#define patch_full_usage "\n\n" \
-	IF_LONG_OPTS( \
-       "	-p,--strip N		Strip N leading components from file names" \
-     "\n	-i,--input DIFF		Read DIFF instead of stdin" \
-     "\n	-R,--reverse		Reverse patch" \
-     "\n	-N,--forward		Ignore already applied patches" \
-     "\n	--dry-run		Don't actually change files" \
-     "\n	-E,--remove-empty-files	Remove output files if they become empty" \
-	) \
-	IF_NOT_LONG_OPTS( \
-       "	-p N	Strip N leading components from file names" \
-     "\n	-i DIFF	Read DIFF instead of stdin" \
-     "\n	-R	Reverse patch" \
-     "\n	-N	Ignore already applied patches" \
-     "\n	-E	Remove output files if they become empty" \
-	)
-
-#define patch_example_usage \
-       "$ patch -p1 < example.diff\n" \
-       "$ patch -p0 -i example.diff"
-
 #define pgrep_trivial_usage \
        "[-flnovx] [-s SID|-P PPID|PATTERN]"
 #define pgrep_full_usage "\n\n" \
@@ -2884,61 +2743,6 @@ INSERT
        "$ pidof /bin/sh\n20351 5973 5950\n") \
 	IF_FEATURE_PIDOF_OMIT( \
        "$ pidof /bin/sh -o %PPID\n20351 5950")
-
-#if !ENABLE_FEATURE_FANCY_PING
-#define ping_trivial_usage \
-       "host"
-#define ping_full_usage "\n\n" \
-       "Send ICMP ECHO_REQUEST packets to network hosts"
-#define ping6_trivial_usage \
-       "host"
-#define ping6_full_usage "\n\n" \
-       "Send ICMP ECHO_REQUEST packets to network hosts"
-#else
-#define ping_trivial_usage \
-       "[OPTIONS] HOST"
-#define ping_full_usage "\n\n" \
-       "Send ICMP ECHO_REQUEST packets to network hosts\n" \
-     "\nOptions:" \
-     "\n	-4,-6		Force IP or IPv6 name resolution" \
-     "\n	-c CNT		Send only CNT pings" \
-     "\n	-s SIZE		Send SIZE data bytes in packets (default:56)" \
-     "\n	-I IFACE/IP	Use interface or IP address as source" \
-     "\n	-W SEC		Seconds to wait for the first response (default:10)" \
-     "\n			(after all -c CNT packets are sent)" \
-     "\n	-w SEC		Seconds until ping exits (default:infinite)" \
-     "\n			(can exit earlier with -c CNT)" \
-     "\n	-q		Quiet, only displays output at start" \
-     "\n			and when finished" \
-
-#define ping6_trivial_usage \
-       "[OPTIONS] HOST"
-#define ping6_full_usage "\n\n" \
-       "Send ICMP ECHO_REQUEST packets to network hosts\n" \
-     "\nOptions:" \
-     "\n	-c CNT		Send only CNT pings" \
-     "\n	-s SIZE		Send SIZE data bytes in packets (default:56)" \
-     "\n	-I IFACE/IP	Use interface or IP address as source" \
-     "\n	-q		Quiet, only displays output at start" \
-     "\n			and when finished" \
-
-#endif
-#define ping_example_usage \
-       "$ ping localhost\n" \
-       "PING slag (127.0.0.1): 56 data bytes\n" \
-       "64 bytes from 127.0.0.1: icmp_seq=0 ttl=255 time=20.1 ms\n" \
-       "\n" \
-       "--- debian ping statistics ---\n" \
-       "1 packets transmitted, 1 packets received, 0% packet loss\n" \
-       "round-trip min/avg/max = 20.1/20.1/20.1 ms\n"
-#define ping6_example_usage \
-       "$ ping6 ip6-localhost\n" \
-       "PING ip6-localhost (::1): 56 data bytes\n" \
-       "64 bytes from ::1: icmp6_seq=0 ttl=64 time=20.1 ms\n" \
-       "\n" \
-       "--- ip6-localhost ping statistics ---\n" \
-       "1 packets transmitted, 1 packets received, 0% packet loss\n" \
-       "round-trip min/avg/max = 20.1/20.1/20.1 ms\n"
 
 #define pipe_progress_trivial_usage NOUSAGE_STR
 #define pipe_progress_full_usage ""
@@ -3378,36 +3182,6 @@ INSERT
 #define selinuxenabled_trivial_usage NOUSAGE_STR
 #define selinuxenabled_full_usage ""
 
-#define sendmail_trivial_usage \
-       "[OPTIONS] [RECIPIENT_EMAIL]..."
-#define sendmail_full_usage "\n\n" \
-       "Read email from stdin and send it\n" \
-     "\nStandard options:" \
-     "\n	-t		Read additional recipients from message body" \
-     "\n	-f sender	Sender (required)" \
-     "\n	-o options	Various options. -oi implied, others are ignored" \
-     "\n	-i		-oi synonym. implied and ignored" \
-     "\n" \
-     "\nBusybox specific options:" \
-     "\n	-w seconds	Network timeout" \
-     "\n	-H 'PROG ARGS'	Run connection helper" \
-     "\n			Examples:" \
-     "\n			-H 'exec openssl s_client -quiet -tls1 -starttls smtp" \
-     "\n				-connect smtp.gmail.com:25' <email.txt" \
-     "\n				[4<username_and_passwd.txt | -au<username> -ap<password>]" \
-     "\n			-H 'exec openssl s_client -quiet -tls1" \
-     "\n				-connect smtp.gmail.com:465' <email.txt" \
-     "\n				[4<username_and_passwd.txt | -au<username> -ap<password>]" \
-     "\n	-S server[:port] Server" \
-     "\n	-au<username>	Username for AUTH LOGIN" \
-     "\n	-ap<password>	Password for AUTH LOGIN" \
-     "\n	-am<method>	Authentication method. Ignored. LOGIN is implied" \
-     "\n" \
-     "\nOther options are silently ignored; -oi -t is implied" \
-	IF_MAKEMIME( \
-     "\nUse makemime applet to create message with attachments" \
-	)
-
 #define seq_trivial_usage \
        "[-w] [-s SEP] [FIRST [INC]] LAST"
 #define seq_full_usage "\n\n" \
@@ -3750,15 +3524,6 @@ INSERT
      "\n	-g		Print in stty-readable form" \
      "\n	[SETTING]	See manpage" \
 
-#define su_trivial_usage \
-       "[OPTIONS] [-] [USERNAME]"
-#define su_full_usage "\n\n" \
-       "Change user id or become root\n" \
-     "\nOptions:" \
-     "\n	-p,-m	Preserve environment" \
-     "\n	-c CMD	Command to pass to 'sh -c'" \
-     "\n	-s SH	Shell to use instead of default shell" \
-
 #define sulogin_trivial_usage \
        "[-t N] [TTY]"
 #define sulogin_full_usage "\n\n" \
@@ -4085,22 +3850,6 @@ INSERT
        "Read the status of all processes from /proc each SECONDS\n" \
        "and display a screenful of them." \
 //TODO: add options and keyboard commands
-
-#define touch_trivial_usage \
-       "[-c] [-d DATE] [-r FILE] FILE [FILE]..."
-#define touch_full_usage "\n\n" \
-       "Update the last-modified date on the given FILE[s]\n" \
-     "\nOptions:" \
-     "\n	-c	Don't create files" \
-     "\n	-d DT	Date/time to use" \
-     "\n	-r FILE	Use FILE's date/time" \
-
-#define touch_example_usage \
-       "$ ls -l /tmp/foo\n" \
-       "/bin/ls: /tmp/foo: No such file or directory\n" \
-       "$ touch /tmp/foo\n" \
-       "$ ls -l /tmp/foo\n" \
-       "-rw-rw-r--    1 andersen andersen        0 Apr 15 01:11 /tmp/foo\n"
 
 #define tr_trivial_usage \
        "[-cds] STRING1 [STRING2]"

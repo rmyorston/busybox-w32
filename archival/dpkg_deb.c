@@ -5,13 +5,13 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 #include "libbb.h"
-#include "unarchive.h"
+#include "archive.h"
 
-#define DPKG_DEB_OPT_CONTENTS	1
-#define DPKG_DEB_OPT_CONTROL	2
-#define DPKG_DEB_OPT_FIELD	4
-#define DPKG_DEB_OPT_EXTRACT	8
-#define DPKG_DEB_OPT_EXTRACT_VERBOSE	16
+#define DPKG_DEB_OPT_CONTENTS         1
+#define DPKG_DEB_OPT_CONTROL          2
+#define DPKG_DEB_OPT_FIELD            4
+#define DPKG_DEB_OPT_EXTRACT          8
+#define DPKG_DEB_OPT_EXTRACT_VERBOSE 16
 
 int dpkg_deb_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int dpkg_deb_main(int argc, char **argv)

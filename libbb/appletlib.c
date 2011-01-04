@@ -28,7 +28,11 @@
  */
 #include "busybox.h"
 #include <assert.h>
-#include <malloc.h>
+#if !(defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) \
+        || defined(__APPLE__) \
+    )
+# include <malloc.h> /* for mallopt */
+#endif
 /* Try to pull in PAGE_SIZE */
 #ifdef __linux__
 # include <sys/user.h>
@@ -66,7 +70,7 @@ static const char usage_messages[] ALIGN1 = UNPACKED_USAGE;
 #if ENABLE_FEATURE_COMPRESS_USAGE
 
 static const char packed_usage[] ALIGN1 = { PACKED_USAGE };
-# include "unarchive.h"
+# include "archive.h"
 static const char *unpack_usage_messages(void)
 {
 	char *outbuf = NULL;
@@ -75,7 +79,7 @@ static const char *unpack_usage_messages(void)
 
 	i = start_bunzip(&bd,
 			/* src_fd: */ -1,
-			/* inbuf:  */ (void *)packed_usage,
+			/* inbuf:  */ packed_usage,
 			/* len:    */ sizeof(packed_usage));
 	/* read_bunzip can longjmp to start_bunzip, and ultimately
 	 * end up here with i != 0 on read data errors! Not trivial */
@@ -103,14 +107,13 @@ void FAST_FUNC bb_show_usage(void)
 	if (ENABLE_SHOW_USAGE) {
 #ifdef SINGLE_APPLET_STR
 		/* Imagine that this applet is "true". Dont suck in printf! */
-		const char *p;
-		const char *usage_string = p = unpack_usage_messages();
+		const char *usage_string = unpack_usage_messages();
 
-		if (*p == '\b') {
+		if (*usage_string == '\b') {
 			full_write2_str("No help available.\n\n");
 		} else {
 			full_write2_str("Usage: "SINGLE_APPLET_STR" ");
-			full_write2_str(p);
+			full_write2_str(usage_string);
 			full_write2_str("\n\n");
 		}
 		if (ENABLE_FEATURE_CLEAN_UP)
@@ -228,7 +231,7 @@ bool re_execed;
 
 IF_FEATURE_SUID(static uid_t ruid;)  /* real uid */
 
-#if ENABLE_FEATURE_SUID_CONFIG
+# if ENABLE_FEATURE_SUID_CONFIG
 
 /* applets[] is const, so we have to define this "override" structure */
 static struct BB_suid_config {
@@ -499,15 +502,15 @@ static void parse_config_file(void)
 		sct_head = sct;
 	}
 }
-#else
+# else
 static inline void parse_config_file(void)
 {
 	IF_FEATURE_SUID(ruid = getuid();)
 }
-#endif /* FEATURE_SUID_CONFIG */
+# endif /* FEATURE_SUID_CONFIG */
 
 
-#if ENABLE_FEATURE_SUID
+# if ENABLE_FEATURE_SUID
 static void check_suid(int applet_no)
 {
 	gid_t rgid;  /* real gid */
@@ -516,7 +519,7 @@ static void check_suid(int applet_no)
 		return; /* run by root - no need to check more */
 	rgid = getgid();
 
-#if ENABLE_FEATURE_SUID_CONFIG
+#  if ENABLE_FEATURE_SUID_CONFIG
 	if (suid_cfg_readable) {
 		uid_t uid;
 		struct BB_suid_config *sct;
@@ -559,7 +562,7 @@ static void check_suid(int applet_no)
 			bb_perror_msg_and_die("setresuid");
 		return;
 	}
-#if !ENABLE_FEATURE_SUID_CONFIG_QUIET
+#   if !ENABLE_FEATURE_SUID_CONFIG_QUIET
 	{
 		static bool onetime = 0;
 
@@ -568,9 +571,9 @@ static void check_suid(int applet_no)
 			fprintf(stderr, "Using fallback suid method\n");
 		}
 	}
-#endif
+#   endif
  check_need_suid:
-#endif
+#  endif
 	if (APPLET_SUID(applet_no) == _BB_SUID_REQUIRE) {
 		/* Real uid is not 0. If euid isn't 0 too, suid bit
 		 * is most probably not set on our executable */
@@ -581,24 +584,23 @@ static void check_suid(int applet_no)
 		xsetuid(ruid);
 	}
 }
-#else
-#define check_suid(x) ((void)0)
-#endif /* FEATURE_SUID */
+# else
+#  define check_suid(x) ((void)0)
+# endif /* FEATURE_SUID */
 
 
-#if ENABLE_FEATURE_INSTALLER
+# if ENABLE_FEATURE_INSTALLER
 static const char usr_bin [] ALIGN1 = "/usr/bin/";
 static const char usr_sbin[] ALIGN1 = "/usr/sbin/";
 static const char *const install_dir[] = {
 	&usr_bin [8], /* "/" */
 	&usr_bin [4], /* "/bin/" */
 	&usr_sbin[4]  /* "/sbin/" */
-# if !ENABLE_INSTALL_NO_USR
+#  if !ENABLE_INSTALL_NO_USR
 	,usr_bin
 	,usr_sbin
-# endif
+#  endif
 };
-
 
 /* create (sym)links for each applet */
 static void install_links(const char *busybox, int use_symbolic_links,
@@ -629,9 +631,9 @@ static void install_links(const char *busybox, int use_symbolic_links,
 		free(fpc);
 	}
 }
-#else
-# define install_links(x,y,z) ((void)0)
-#endif
+# else
+#  define install_links(x,y,z) ((void)0)
+# endif
 
 /* If we were called as "busybox..." */
 static int busybox_main(char **argv)
@@ -696,10 +698,10 @@ static int busybox_main(char **argv)
 		const char *a = applet_names;
 		dup2(1, 2);
 		while (*a) {
-#if ENABLE_FEATURE_INSTALLER
+# if ENABLE_FEATURE_INSTALLER
 			if (argv[1][6]) /* --list-path? */
 				full_write2_str(install_dir[APPLET_INSTALL_LOC(i)] + 1);
-#endif
+# endif
 			full_write2_str(a);
 			full_write2_str("\n");
 			i++;
@@ -772,7 +774,7 @@ void FAST_FUNC run_applet_and_exit(const char *name, char **argv)
 	int applet = find_applet_by_name(name);
 	if (applet >= 0)
 		run_applet_no_and_exit(applet, argv);
-	if (!strncmp(name, "busybox", 7))
+	if (strncmp(name, "busybox", 7) == 0)
 		exit(busybox_main(argv));
 }
 
@@ -804,14 +806,6 @@ int main(int argc UNUSED_PARAM, char **argv)
 	mallopt(M_MMAP_THRESHOLD, 8 * PAGE_SIZE - 256);
 #endif
 
-#if defined(SINGLE_APPLET_MAIN)
-	/* Only one applet is selected by the user! */
-	/* applet_names in this case is just "applet\0\0" */
-	lbb_prepare(applet_names IF_FEATURE_INDIVIDUAL(, argv));
-	return SINGLE_APPLET_MAIN(argc, argv);
-#else
-	lbb_prepare("busybox" IF_FEATURE_INDIVIDUAL(, argv));
-
 #if !BB_MMU
 	/* NOMMU re-exec trick sets high-order bit in first byte of name */
 	if (argv[0][0] & 0x80) {
@@ -819,6 +813,19 @@ int main(int argc UNUSED_PARAM, char **argv)
 		argv[0][0] &= 0x7f;
 	}
 #endif
+
+#if defined(SINGLE_APPLET_MAIN)
+	/* Only one applet is selected in .config */
+	if (argv[1] && strncmp(argv[0], "busybox", 7) == 0) {
+		/* "busybox <applet> <params>" should still work as expected */
+		argv++;
+	}
+	/* applet_names in this case is just "applet\0\0" */
+	lbb_prepare(applet_names IF_FEATURE_INDIVIDUAL(, argv));
+	return SINGLE_APPLET_MAIN(argc, argv);
+#else
+	lbb_prepare("busybox" IF_FEATURE_INDIVIDUAL(, argv));
+
 	applet_name = argv[0];
 	if (applet_name[0] == '-')
 		applet_name++;
