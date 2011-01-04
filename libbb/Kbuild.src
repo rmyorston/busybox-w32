@@ -53,7 +53,6 @@ lib-y += last_char_is.o
 lib-y += lineedit.o lineedit_ptr_hack.o
 lib-y += llist.o
 lib-y += make_directory.o
-lib-y += hash_md5.o
 # Alternative (disabled) implementation
 #lib-y += hash_md5prime.o
 lib-y += hash_sha.o
