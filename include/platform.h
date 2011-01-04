@@ -4,7 +4,7 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-#ifndef	BB_PLATFORM_H
+#ifndef BB_PLATFORM_H
 #define BB_PLATFORM_H 1
 
 #if ENABLE_PLATFORM_MINGW32

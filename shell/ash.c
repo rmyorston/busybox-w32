@@ -7978,7 +7978,7 @@ hashcd(void)
 		for (cmdp = *pp; cmdp; cmdp = cmdp->next) {
 			if (cmdp->cmdtype == CMDNORMAL
 			 || (cmdp->cmdtype == CMDBUILTIN
-			     &&	!IS_BUILTIN_REGULAR(cmdp->param.cmd)
+			     && !IS_BUILTIN_REGULAR(cmdp->param.cmd)
 			     && builtinloc > 0)
 			) {
 				cmdp->rehash = 1;
@@ -12825,7 +12825,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			}
 			if ((act & DO_NOFUNC)
 			 || !prefix(pathopt, "func")
-			) {	/* ignore unimplemented options */
+			) {     /* ignore unimplemented options */
 				continue;
 			}
 		}
