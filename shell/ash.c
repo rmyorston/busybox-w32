@@ -2566,6 +2566,7 @@ static const char *
 updatepwd(const char *dir)
 {
 #if ENABLE_PLATFORM_MINGW32
+#define is_path_sep(x) ((x) == '/' || (x) == '\\')
 	/*
 	 * Due to Windows drive notion, getting pwd is a completely
 	 * different thing. Handle it in a separate routine
@@ -2590,7 +2591,7 @@ updatepwd(const char *dir)
 	 * with ${curdir} comes from the current drive
 	 */
 	int absdrive = *dir && dir[1] == ':';
-	int abspath = absdrive ? dir[2] == '/' : *dir == '/';
+	int abspath = absdrive ? is_path_sep(dir[2]) : is_path_sep(*dir);
 	char *drive;
 
 	cdcomppath = ststrdup(dir);
@@ -2618,27 +2619,27 @@ updatepwd(const char *dir)
 		new = drive + 2;
 	lim = drive + 3;
 	if (!abspath) {
-		if (new[-1] != '/')
+		if (!is_path_sep(new[-1]))
 			USTPUTC('/', new);
-		if (new > lim && *lim == '/')
+		if (new > lim && is_path_sep(*lim))
 			lim++;
 	} else {
 		USTPUTC('/', new);
 		cdcomppath ++;
-		if (dir[1] == '/' && dir[2] != '/') {
+		if (is_path_sep(dir[1]) && !is_path_sep(dir[2])) {
 			USTPUTC('/', new);
 			cdcomppath++;
 			lim++;
 		}
 	}
-	p = strtok(cdcomppath, "/");
+	p = strtok(cdcomppath, "/\\");
 	while (p) {
 		switch (*p) {
 		case '.':
 			if (p[1] == '.' && p[2] == '\0') {
 				while (new > lim) {
 					STUNPUTC(new);
-					if (new[-1] == '/')
+					if (is_path_sep(new[-1]))
 						break;
 				}
 				break;
@@ -2650,7 +2651,7 @@ updatepwd(const char *dir)
 			new = stack_putstr(p, new);
 			USTPUTC('/', new);
 		}
-		p = strtok(0, "/");
+		p = strtok(0, "/\\");
 	}
 	if (new > lim)
 		STUNPUTC(new);
