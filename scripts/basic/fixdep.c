@@ -104,7 +104,9 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#ifndef __MINGW32__
 #include <sys/mman.h>
+#endif
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
@@ -112,7 +114,9 @@
 #include <stdio.h>
 #include <limits.h>
 #include <ctype.h>
+#ifndef __MINGW32__
 #include <arpa/inet.h>
+#endif
 
 /* bbox: not needed
 #define INT_CONF ntohl(0x434f4e46)
@@ -120,6 +124,31 @@
 #define INT_NFIG ntohl(0x4e464947)
 #define INT_FIG_ ntohl(0x4649475f)
 */
+
+#ifdef __MINGW32__
+#define UNUSED __attribute__ ((__unused__))
+
+/* Workaround specifically for fixdep */
+#define PROT_READ 0
+#define MAP_PRIVATE 0
+void *mmap(void *start UNUSED, size_t size, int prot UNUSED,
+	   int flags UNUSED, int fd, off_t offset UNUSED)
+{
+	void *p = malloc(size);
+	if (!p)
+		return NULL;
+	if (read(fd, p, size) != size) {
+		perror("fixdep: read config");
+		free(p);
+		return NULL;
+	}
+	return p;
+}
+void munmap(void *p, size_t size UNUSED)
+{
+	free(p);
+}
+#endif
 
 char *target;
 char *depfile;
