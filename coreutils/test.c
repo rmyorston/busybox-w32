@@ -620,6 +620,10 @@ static int filstat(char *nm, enum token mode)
 	}
 
 #if ENABLE_PLATFORM_MINGW32
+#undef R_OK
+#define R_OK S_IREAD
+#undef W_OK
+#define W_OK S_IWRITE
 	if (mode == FILEX) {
 		int len = strlen(nm), ret;
 		if (len >= 4 &&
