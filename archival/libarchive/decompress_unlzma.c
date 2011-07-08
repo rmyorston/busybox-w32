@@ -145,11 +145,17 @@ rc_bit_tree_decode(rc_t *rc, uint16_t *p, int num_levels, int *symbol)
 }
 
 
+#ifdef __WATCOMC__
+#pragma pack(1)
+#endif
 typedef struct {
 	uint8_t pos;
 	uint32_t dict_size;
 	uint64_t dst_size;
 } PACKED lzma_header_t;
+#ifdef __WATCOMC__
+#pragma pack()
+#endif
 
 
 /* #defines will force compiler to compute/optimize each one with each usage.

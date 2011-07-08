@@ -64,6 +64,9 @@ enum {
 
 #define ZIP_HEADER_LEN 26
 
+#ifdef __WATCOMC__
+#pragma pack(1)
+#endif
 typedef union {
 	uint8_t raw[ZIP_HEADER_LEN];
 	struct {
@@ -176,6 +179,9 @@ struct BUG_cde_header_must_be_16_bytes {
 	char BUG_cde_header_must_be_16_bytes[
 		sizeof(cde_header_t) == CDE_HEADER_LEN ? 1 : -1];
 };
+#ifdef __WATCOMC__
+#pragma pack()
+#endif
 
 #define FIX_ENDIANNESS_CDE(cde_header) do { \
 	(cde_header).formatted.cdf_offset = SWAP_LE32((cde_header).formatted.cdf_offset); \

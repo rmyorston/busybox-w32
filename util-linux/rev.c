@@ -21,8 +21,16 @@
 //usage:#define rev_full_usage "\n\n"
 //usage:	"Reverse lines of FILE"
 
+#ifdef __WATCOMC__
+#define strrev Watcom_strrev
+#endif
+
 #include "libbb.h"
 #include "unicode.h"
+
+#ifdef __WATCOMC__
+#undef strrev
+#endif
 
 #undef CHAR_T
 #if ENABLE_UNICODE_SUPPORT
