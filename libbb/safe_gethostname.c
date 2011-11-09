@@ -25,7 +25,9 @@
  */
 
 #include "libbb.h"
+#if defined(__linux__)
 #include <sys/utsname.h>
+#endif
 
 /*
  * On success return the current malloced and NUL terminated hostname.
@@ -35,6 +37,7 @@
  */
 char* FAST_FUNC safe_gethostname(void)
 {
+#if defined(__linux__)
 	struct utsname uts;
 
 	/* The length of the arrays in a struct utsname is unspecified;
@@ -49,6 +52,13 @@ char* FAST_FUNC safe_gethostname(void)
 	/* Uname can fail only if you pass a bad pointer to it. */
 	uname(&uts);
 	return xstrndup(!uts.nodename[0] ? "?" : uts.nodename, sizeof(uts.nodename));
+#else
+	/* We really don't care about people with host names wider than most screens */
+	char buf[256];
+	int r = gethostname(buf, sizeof(buf));
+	buf[sizeof(buf)-1] = '\0';
+	return xstrdup(r < 0 ? "?" : buf);
+#endif
 }
 
 /*
@@ -66,9 +76,12 @@ char* FAST_FUNC safe_getdomainname(void)
 	return xstrndup(!uts.domainname[0] ? "?" : uts.domainname, sizeof(uts.domainname));
 #else
 	/* We really don't care about people with domain names wider than most screens */
+	/*
 	char buf[256];
 	int r = getdomainname(buf, sizeof(buf));
 	buf[sizeof(buf)-1] = '\0';
 	return xstrdup(r < 0 ? "?" : buf);
+	*/
+	return xstrdup("?");
 #endif
 }
