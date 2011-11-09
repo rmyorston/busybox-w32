@@ -95,6 +95,8 @@ quote_arg(const char *arg)
 			}
 			if (*p == '"')
 				n += count*2 + 1;
+			else
+				n += count;
 			continue;
 		}
 		len++;
@@ -115,9 +117,9 @@ quote_arg(const char *arg)
 				count++;
 				*d++ = *arg++;
 			}
+			while (count-- > 0)
+				*d++ = '\\';
 			if (*arg == '"') {
-				while (count-- > 0)
-					*d++ = '\\';
 				*d++ = '\\';
 			}
 		}
