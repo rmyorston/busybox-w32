@@ -105,12 +105,15 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 			return -1;
 		}
 	} else {
+#if !ENABLE_PLATFORM_MINGW32
+        /* MinGW does not have inode, and does not use device */
 		if (source_stat.st_dev == dest_stat.st_dev
 		 && source_stat.st_ino == dest_stat.st_ino
 		) {
 			bb_error_msg("'%s' and '%s' are the same file", source, dest);
 			return -1;
 		}
+#endif
 		dest_exists = 1;
 	}
 
