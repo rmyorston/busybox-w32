@@ -327,7 +327,7 @@ NOIMPL(vfork,void);
 
 #define dup2 mingw_dup2
 #define getcwd mingw_getcwd
-#define lchown(a,b,c) chown(a,b,c)
+#define lchown chown
 #define open mingw_open
 #define unlink mingw_unlink
 
