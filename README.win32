@@ -16,16 +16,14 @@ You need MinGW compiler and a POSIX environment (so that "make
 menuconfig" works).  I cross compile from Linux, but MSYS or Cygwin
 should be OK.
 
-In order to compile the WinGW port you need to:
+To start, copy scripts/defconfig.mingw32 to .config. You can then
+customize your build (mostly disabling stuff because defconfig.mingw32
+is the biggest workable set).
 
-Start with "make menuconfig":
+For cross-compiling, run "make menuconfig" and set Busybox
+Settings -> Build Options -> Cross Compiler Prefix
 
- - Select target platform as "MS Windows"
- - If you cross compile, set
-   Busybox Settings -> Build Options -> Cross Compiler Prefix
- - Select whatever applets/features you like
-
-Do "make"
+Then just "make".
 
 Attempts to make it work with MS Visual Studio are appreciated. You
 can start with porting kconfig ;-)
