@@ -96,6 +96,7 @@ static void erase_till_end_of_screen(void)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 	COORD pos;
+	DWORD dummy;
 
 	if (!console)
 		return;
@@ -103,12 +104,12 @@ static void erase_till_end_of_screen(void)
 	GetConsoleScreenBufferInfo(console, &sbi);
 	FillConsoleOutputCharacterA(console, ' ',
 		sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition,
-		NULL);
+		&dummy);
 
 	pos.X = 0;
 	for (pos.Y = sbi.dwCursorPosition.Y+1; pos.Y < sbi.dwSize.Y; pos.Y++)
 		FillConsoleOutputCharacterA(console, ' ', sbi.dwSize.X,
-					    pos, NULL);
+					    pos, &dummy);
 }
 
 static void move_cursor_back(int n)
