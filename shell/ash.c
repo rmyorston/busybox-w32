@@ -13429,6 +13429,25 @@ init(void)
 			}
 		}
 
+#if ENABLE_PLATFORM_MINGW32
+		p = lookupvar("HOME");
+		if (!p) {
+			const char *hd, *hp;
+
+			hd = lookupvar("HOMEDRIVE");
+			hp = lookupvar("HOMEPATH");
+			if (hd && hp) {
+				char *s;
+
+				if ((s=malloc(strlen(hd) + strlen(hp) + 1)) != NULL) {
+					strcat(strcpy(s, hd), hp);
+					setvar("HOME", s, VEXPORT);
+					free(s);
+				}
+			}
+		}
+#endif
+
 		if (!ENABLE_PLATFORM_MINGW32)
 			setvar("PPID", utoa(getppid()), 0);
 
