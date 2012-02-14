@@ -4079,7 +4079,7 @@ static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
  * They don't support waitpid(-1)
  */
 static pid_t
-waitpid_child(int *status)
+waitpid_child(int *status, int wait_flags)
 {
 	HANDLE *pidlist, *pidp;
 	int pid_nr = 0;
@@ -4111,7 +4111,8 @@ waitpid_child(int *status)
 	LOOP(*pidp++ = (HANDLE)ps->ps_pid);
 	#undef LOOP
 
-	idx = WaitForMultipleObjects(pid_nr, pidlist, FALSE, INFINITE);
+	idx = WaitForMultipleObjects(pid_nr, pidlist, FALSE,
+				wait_flags|WNOHANG ? 0 : INFINITE);
 	if (idx >= pid_nr) {
 		free(pidlist);
 		return -1;
@@ -4150,7 +4151,7 @@ dowait(int wait_flags, struct job *job)
 	if (doing_jobctl)
 		wait_flags |= WUNTRACED;
 #if ENABLE_PLATFORM_MINGW32
-	pid = waitpid_child(&status);
+	pid = waitpid_child(&status, wait_flags);
 #else
 	pid = waitpid(-1, &status, wait_flags);
 #endif
