@@ -13425,6 +13425,13 @@ init(void)
 		}
 #endif
 		for (envp = environ; envp && *envp; envp++) {
+#if ENABLE_PLATFORM_MINGW32
+			char *s;
+
+			while ((s=strchr(*envp, '\\'))) {
+				*s = '/';
+			}
+#endif
 			if (strchr(*envp, '=')) {
 				setvareq(*envp, VEXPORT|VTEXTFIXED);
 			}
