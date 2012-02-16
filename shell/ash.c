@@ -6242,7 +6242,8 @@ expbackq(union node *cmd, int quoted, int quotes)
 
 	/* Eat all trailing newlines */
 	dest = expdest;
-	for (; dest > (char *)stackblock() && dest[-1] == '\n';)
+	for (; dest > (char *)stackblock() && (dest[-1] == '\n' ||
+			(ENABLE_PLATFORM_MINGW32 && dest[-1] == '\r'));)
 		STUNPUTC(dest);
 	expdest = dest;
 
