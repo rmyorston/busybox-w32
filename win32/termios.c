@@ -38,26 +38,34 @@ int64_t FAST_FUNC read_key(int fd, char *buf, int timeout)
 
 			if (state & (RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED) &&
 			    (record.Event.KeyEvent.wVirtualKeyCode >= 'A' &&
-			     record.Event.KeyEvent.wVirtualKeyCode <= 'Z'))
-				return record.Event.KeyEvent.wVirtualKeyCode & ~0x40;
+			     record.Event.KeyEvent.wVirtualKeyCode <= 'Z')) {
+				ret = record.Event.KeyEvent.wVirtualKeyCode & ~0x40;
+				break;
+			}
 
 			switch (record.Event.KeyEvent.wVirtualKeyCode) {
-			case VK_DELETE: return KEYCODE_DELETE;
-			case VK_INSERT: return KEYCODE_INSERT;
-			case VK_UP: return KEYCODE_UP;
-			case VK_DOWN: return KEYCODE_DOWN;
+			case VK_DELETE: ret = KEYCODE_DELETE; goto done;
+			case VK_INSERT: ret = KEYCODE_INSERT; goto done;
+			case VK_UP: ret = KEYCODE_UP; goto done;
+			case VK_DOWN: ret = KEYCODE_DOWN; goto done;
 			case VK_RIGHT:
-				if (state & (RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED))
-					return KEYCODE_CTRL_RIGHT;
-				return KEYCODE_RIGHT;
+				if (state & (RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED)) {
+					ret = KEYCODE_CTRL_RIGHT;
+					goto done;
+				}
+				ret = KEYCODE_RIGHT;
+				goto done;
 			case VK_LEFT:
-				if (state & (RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED))
-					return KEYCODE_CTRL_LEFT;
-				return KEYCODE_LEFT;
-			case VK_HOME: return KEYCODE_HOME;
-			case VK_END: return KEYCODE_END;
-			case VK_PRIOR: return KEYCODE_PAGEUP;
-			case VK_NEXT: return KEYCODE_PAGEDOWN;
+				if (state & (RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED)) {
+					ret = KEYCODE_CTRL_LEFT;
+					goto done;
+				}
+				ret = KEYCODE_LEFT;
+				goto done;
+			case VK_HOME: ret = KEYCODE_HOME; goto done;
+			case VK_END: ret = KEYCODE_END; goto done;
+			case VK_PRIOR: ret = KEYCODE_PAGEUP; goto done;
+			case VK_NEXT: ret = KEYCODE_PAGEDOWN; goto done;
 			case VK_CAPITAL:
 			case VK_SHIFT:
 			case VK_CONTROL:
