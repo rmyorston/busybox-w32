@@ -284,7 +284,7 @@ static const char *set_attr(const char *str)
 			int row = strtol(str, (char **)&str, 10);
 			if (*str == ';') {
 				int col = strtol(str+1, (char **)&str, 10);
-				move_cursor(col, row);
+				move_cursor(col-1, row-1);
 			}
 		}
 		break;
