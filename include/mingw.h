@@ -152,6 +152,8 @@ int winansi_fprintf(FILE *stream, const char *format, ...) __attribute__((format
 #define printf(...) winansi_printf(__VA_ARGS__)
 #define fprintf(...) winansi_fprintf(__VA_ARGS__)
 
+int winansi_get_terminal_width_height(struct winsize *win);
+
 /*
  * stdlib.h
  */
