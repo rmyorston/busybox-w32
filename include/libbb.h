@@ -50,6 +50,9 @@
 # include <selinux/flask.h>
 # include <selinux/av_permissions.h>
 #endif
+#if ENABLE_FEATURE_UTMP
+# include <utmp.h>
+#endif
 #if ENABLE_LOCALE_SUPPORT
 # include <locale.h>
 #else
@@ -67,6 +70,19 @@
  */
 #  include <shadow.h>
 # endif
+#endif
+/* Just in case libc doesn't define some of these... */
+#ifndef _PATH_PASSWD
+#define _PATH_PASSWD  "/etc/passwd"
+#endif
+#ifndef _PATH_GROUP
+#define _PATH_GROUP   "/etc/group"
+#endif
+#ifndef _PATH_SHADOW
+#define _PATH_SHADOW  "/etc/shadow"
+#endif
+#ifndef _PATH_GSHADOW
+#define _PATH_GSHADOW "/etc/gshadow"
 #endif
 #if defined __FreeBSD__ || defined __OpenBSD__
 # include <netinet/in.h>
@@ -90,6 +106,15 @@
 #  define socklen_t bb_socklen_t
    typedef unsigned socklen_t;
 # endif
+#endif
+#ifndef HAVE_CLEARENV
+# define clearenv() do { if (environ) environ[0] = NULL; } while (0)
+#endif
+#ifndef HAVE_FDATASYNC
+# define fdatasync fsync
+#endif
+#ifndef HAVE_XTABS
+# define XTABS TAB3
 #endif
 
 
@@ -348,9 +373,9 @@ extern char *bb_get_last_path_component_strip(char *path) FAST_FUNC;
 /* "abc/def/" -> "" and it never modifies 'path' */
 extern char *bb_get_last_path_component_nostrip(const char *path) FAST_FUNC;
 
-int ndelay_on(int fd) FAST_FUNC;
-int ndelay_off(int fd) FAST_FUNC;
-int close_on_exec_on(int fd) FAST_FUNC;
+void ndelay_on(int fd) FAST_FUNC;
+void ndelay_off(int fd) FAST_FUNC;
+void close_on_exec_on(int fd) FAST_FUNC;
 void xdup2(int, int) FAST_FUNC;
 void xmove_fd(int, int) FAST_FUNC;
 
@@ -674,6 +699,8 @@ extern char *xmalloc_reads(int fd, char *pfx, size_t *maxsz_p) FAST_FUNC;
 extern void *xmalloc_read(int fd, size_t *maxsz_p) FAST_FUNC RETURNS_MALLOC;
 /* Returns NULL if file can't be opened (default max size: INT_MAX - 4095) */
 extern void *xmalloc_open_read_close(const char *filename, size_t *maxsz_p) FAST_FUNC RETURNS_MALLOC;
+/* Never returns NULL */
+extern void *xmalloc_xopen_read_close(const char *filename, size_t *maxsz_p) FAST_FUNC RETURNS_MALLOC;
 /* Autodetects gzip/bzip2 formats. fd may be in the middle of the file! */
 #if ENABLE_FEATURE_SEAMLESS_LZMA \
  || ENABLE_FEATURE_SEAMLESS_BZ2 \
@@ -686,8 +713,6 @@ extern void setup_unzip_on_fd(int fd /*, int fail_if_not_detected*/) FAST_FUNC;
 /* Autodetects .gz etc */
 extern int open_zipped(const char *fname) FAST_FUNC;
 extern void *xmalloc_open_zipped_read_close(const char *fname, size_t *maxsz_p) FAST_FUNC RETURNS_MALLOC;
-/* Never returns NULL */
-extern void *xmalloc_xopen_read_close(const char *filename, size_t *maxsz_p) FAST_FUNC RETURNS_MALLOC;
 
 extern ssize_t safe_write(int fd, const void *buf, size_t count) FAST_FUNC;
 // NB: will return short write on error, not -1,
@@ -1211,6 +1236,12 @@ extern void selinux_preserve_fcontext(int fdesc) FAST_FUNC;
 #endif
 extern void selinux_or_die(void) FAST_FUNC;
 
+
+/* systemd support */
+#define SD_LISTEN_FDS_START 3
+int sd_listen_fds(void);
+
+
 /* setup_environment:
  * if chdir pw->pw_dir: ok: else if to_tmp == 1: goto /tmp else: goto / or die
  * if clear_env = 1: cd(pw->pw_dir), clear environment, then set
@@ -1291,7 +1322,7 @@ void add_to_ino_dev_hashtable(const struct stat *statbuf, const char *name) FAST
 void reset_ino_dev_hashtable(void) FAST_FUNC;
 #ifdef __GLIBC__
 /* At least glibc has horrendously large inline for this, so wrap it */
-unsigned long long bb_makedev(unsigned int major, unsigned int minor) FAST_FUNC;
+unsigned long long bb_makedev(unsigned major, unsigned minor) FAST_FUNC;
 #undef makedev
 #define makedev(a,b) bb_makedev(a,b)
 #endif
@@ -1628,10 +1659,10 @@ extern const char bb_busybox_exec_path[];
  * get the list of currently mounted filesystems */
 #define bb_path_mtab_file IF_FEATURE_MTAB_SUPPORT("/etc/mtab")IF_NOT_FEATURE_MTAB_SUPPORT("/proc/mounts")
 
-#define bb_path_passwd_file "/etc/passwd"
-#define bb_path_shadow_file "/etc/shadow"
-#define bb_path_gshadow_file "/etc/gshadow"
-#define bb_path_group_file "/etc/group"
+#define bb_path_passwd_file  _PATH_PASSWD
+#define bb_path_group_file   _PATH_GROUP
+#define bb_path_shadow_file  _PATH_SHADOW
+#define bb_path_gshadow_file _PATH_GSHADOW
 
 #define bb_path_motd_file "/etc/motd"
 

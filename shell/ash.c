@@ -86,9 +86,9 @@
 # error "Do not even bother, ash will not run on NOMMU machine"
 #endif
 
-//applet:IF_ASH(APPLET(ash, _BB_DIR_BIN, _BB_SUID_DROP))
-//applet:IF_FEATURE_SH_IS_ASH(APPLET_ODDNAME(sh, ash, _BB_DIR_BIN, _BB_SUID_DROP, sh))
-//applet:IF_FEATURE_BASH_IS_ASH(APPLET_ODDNAME(bash, ash, _BB_DIR_BIN, _BB_SUID_DROP, bash))
+//applet:IF_ASH(APPLET(ash, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_FEATURE_SH_IS_ASH(APPLET_ODDNAME(sh, ash, BB_DIR_BIN, BB_SUID_DROP, sh))
+//applet:IF_FEATURE_BASH_IS_ASH(APPLET_ODDNAME(bash, ash, BB_DIR_BIN, BB_SUID_DROP, bash))
 
 //kbuild:lib-$(CONFIG_ASH) += ash.o ash_ptr_hack.o shell_common.o
 //kbuild:lib-$(CONFIG_ASH_RANDOM_SUPPORT) += random.o
@@ -5195,6 +5195,8 @@ stoppedjobs(void)
  * Code for dealing with input/output redirection.
  */
 
+#undef EMPTY
+#undef CLOSED
 #define EMPTY -2                /* marks an unused slot in redirtab */
 #define CLOSED -3               /* marks a slot of previously-closed fd */
 

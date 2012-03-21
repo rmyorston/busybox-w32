@@ -8,7 +8,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 
-//applet:IF_LSMOD(APPLET(lsmod, _BB_DIR_SBIN, _BB_SUID_DROP))
+//applet:IF_LSMOD(APPLET(lsmod, BB_DIR_SBIN, BB_SUID_DROP))
 
 //usage:#if !ENABLE_MODPROBE_SMALL
 //usage:#define lsmod_trivial_usage
@@ -87,7 +87,8 @@ int lsmod_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 			// N.B. token[3] is either '-' (module is not used by others)
 			// or comma-separated list ended by comma
 			// so trimming the trailing char is just what we need!
-			token[3][strlen(token[3])-1] = '\0';
+			if (token[3][0])
+				token[3][strlen(token[3]) - 1] = '\0';
 # if ENABLE_UNICODE_SUPPORT
 			{
 				uni_stat_t uni_stat;

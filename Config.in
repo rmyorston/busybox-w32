@@ -307,17 +307,6 @@ config FEATURE_CLEAN_UP
 	  Don't enable this unless you have a really good reason to clean
 	  things up manually.
 
-config FEATURE_WTMP
-	bool "Support wtmp file"
-	default y
-	select FEATURE_UTMP
-	help
-	  The file /var/run/wtmp is used to track when users have logged into
-	  and logged out of the system.
-	  With this option on, certain applets (getty, login, telnetd etc)
-	  will append new entries there.
-	  "last" applet requires this option.
-
 config FEATURE_UTMP
 	bool "Support utmp file"
 	default y
@@ -326,6 +315,17 @@ config FEATURE_UTMP
 	  With this option on, certain applets (getty, login, telnetd etc)
 	  will create and delete entries there.
 	  "who" applet requires this option.
+
+config FEATURE_WTMP
+	bool "Support wtmp file"
+	default y
+	depends on FEATURE_UTMP
+	help
+	  The file /var/run/wtmp is used to track when users have logged into
+	  and logged out of the system.
+	  With this option on, certain applets (getty, login, telnetd etc)
+	  will append new entries there.
+	  "last" applet requires this option.
 
 config FEATURE_PIDFILE
 	bool "Support writing pidfiles"
@@ -351,10 +351,18 @@ config FEATURE_SUID
 	  symlinks pointing to each binary), and only set the suid bit on the
 	  one that needs it.
 
-	  The applets currently marked to need the suid bit are:
+	  The applets which require root rights (need suid bit or
+	  to be run by root) and will refuse to execute otherwise:
+	  crontab, login, passwd, su, vlock, wall.
 
-	  crontab, dnsd, findfs, ipcrm, ipcs, login, passwd, ping, su,
-	  traceroute, vlock.
+	  The applets which will use root rights if they have them
+	  (via suid bit, or because run by root), but would try to work
+	  without root right nevertheless:
+	  findfs, ping[6], traceroute[6], mount.
+
+	  Note that if you DONT select this option, but DO make busybox
+	  suid root, ALL applets will run under root, which is a huge
+	  security hole (think "cp /some/file /etc/passwd").
 
 config FEATURE_SUID_CONFIG
 	bool "Runtime SUID/SGID configuration via /etc/busybox.conf"

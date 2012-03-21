@@ -1394,23 +1394,6 @@ INSERT
 #define getsebool_full_usage "\n\n" \
        "	-a	Show all selinux booleans"
 
-#define getty_trivial_usage \
-       "[OPTIONS] BAUD_RATE TTY [TERMTYPE]"
-#define getty_full_usage "\n\n" \
-       "Open a tty, prompt for a login name, then invoke /bin/login\n" \
-     "\nOptions:" \
-     "\n	-h		Enable hardware (RTS/CTS) flow control" \
-     "\n	-i		Don't display /etc/issue before running login" \
-     "\n	-L		Local line, don't do carrier detect" \
-     "\n	-m		Get baud rate from modem's CONNECT status message" \
-     "\n	-w		Wait for a CR or LF before sending /etc/issue" \
-     "\n	-n		Don't prompt the user for a login name" \
-     "\n	-f ISSUE_FILE	Display ISSUE_FILE instead of /etc/issue" \
-     "\n	-l LOGIN	Invoke LOGIN instead of /bin/login" \
-     "\n	-t SEC		Terminate after SEC if no username is read" \
-     "\n	-I INITSTR	Send INITSTR before anything else" \
-     "\n	-H HOST		Log HOST into the utmp file as the hostname" \
-
 #define gunzip_trivial_usage \
        "[-cft] [FILE]..."
 #define gunzip_full_usage "\n\n" \
@@ -1611,25 +1594,6 @@ INSERT
      "\n	-m STRING	MD5 crypt STRING") \
      "\n	-e STRING	HTML encode STRING" \
      "\n	-d STRING	URL decode STRING" \
-
-#define hwclock_trivial_usage \
-	IF_FEATURE_HWCLOCK_LONG_OPTIONS( \
-       "[-r|--show] [-s|--hctosys] [-w|--systohc]" \
-       " [-l|--localtime] [-u|--utc]" \
-       " [-f FILE]" \
-	) \
-	IF_NOT_FEATURE_HWCLOCK_LONG_OPTIONS( \
-       "[-r] [-s] [-w] [-l] [-u] [-f FILE]" \
-	)
-#define hwclock_full_usage "\n\n" \
-       "Query and set hardware clock (RTC)\n" \
-     "\nOptions:" \
-     "\n	-r	Show hardware clock time" \
-     "\n	-s	Set system time from hardware clock" \
-     "\n	-w	Set hardware clock to system time" \
-     "\n	-u	Hardware clock is in UTC" \
-     "\n	-l	Hardware clock is in local time" \
-     "\n	-f FILE	Use specified device (e.g. /dev/rtc2)" \
 
 #define id_trivial_usage \
        "[OPTIONS] [USER]"
@@ -3555,13 +3519,6 @@ INSERT
        "pause, cont, hup, alarm, interrupt, quit, 1, 2, term, kill: send\n" \
        "STOP, CONT, HUP, ALRM, INT, QUIT, USR1, USR2, TERM, KILL signal to service" \
 
-#define svlogd_trivial_usage \
-       "[-ttv] [-r C] [-R CHARS] [-l MATCHLEN] [-b BUFLEN] DIR..."
-#define svlogd_full_usage "\n\n" \
-       "Continuously read log data from stdin, optionally\n" \
-       "filter log messages, and write the data to one or more automatically\n" \
-       "rotated logs" \
-
 #define swapoff_trivial_usage \
        "[-a] [DEVICE]"
 #define swapoff_full_usage "\n\n" \
@@ -3842,14 +3799,6 @@ INSERT
 #define timeout_full_usage "\n\n" \
        "Runs PROG. Sends SIG to it if it is not gone in SECS seconds.\n" \
        "Defaults: SECS: 10, SIG: TERM." \
-
-#define top_trivial_usage \
-       "[-b] [-nCOUNT] [-dSECONDS]" IF_FEATURE_TOPMEM(" [-m]")
-#define top_full_usage "\n\n" \
-       "Provide a view of process activity in real time.\n" \
-       "Read the status of all processes from /proc each SECONDS\n" \
-       "and display a screenful of them." \
-//TODO: add options and keyboard commands
 
 #define tr_trivial_usage \
        "[-cds] STRING1 [STRING2]"

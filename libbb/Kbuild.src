@@ -115,11 +115,12 @@ lib-$(CONFIG_PLATFORM_POSIX) += inet_common.o
 lib-$(CONFIG_PLATFORM_POSIX) += kernel_version.o
 lib-$(CONFIG_PLATFORM_POSIX) += login.o
 lib-$(CONFIG_PLATFORM_POSIX) += makedev.o
-lib-$(CONFIG_PLATFORM_POSIX) += match_fstype.o
 lib-$(CONFIG_PLATFORM_POSIX) += read_key.o
 lib-$(CONFIG_PLATFORM_POSIX) += signals.o
 lib-$(CONFIG_PLATFORM_POSIX) += udp_io.o
 lib-$(CONFIG_PLATFORM_POSIX) += xgethostbyname.o
+
+lib-$(CONFIG_PLATFORM_LINUX) += match_fstype.o
 
 lib-$(CONFIG_FEATURE_UTMP) += utmp.o
 

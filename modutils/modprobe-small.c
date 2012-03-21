@@ -8,11 +8,11 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 
-//applet:IF_MODPROBE_SMALL(APPLET(modprobe, _BB_DIR_SBIN, _BB_SUID_DROP))
-//applet:IF_MODPROBE_SMALL(APPLET_ODDNAME(depmod, modprobe, _BB_DIR_SBIN, _BB_SUID_DROP, modprobe))
-//applet:IF_MODPROBE_SMALL(APPLET_ODDNAME(insmod, modprobe, _BB_DIR_SBIN, _BB_SUID_DROP, modprobe))
-//applet:IF_MODPROBE_SMALL(APPLET_ODDNAME(lsmod, modprobe, _BB_DIR_SBIN, _BB_SUID_DROP, modprobe))
-//applet:IF_MODPROBE_SMALL(APPLET_ODDNAME(rmmod, modprobe, _BB_DIR_SBIN, _BB_SUID_DROP, modprobe))
+//applet:IF_MODPROBE_SMALL(APPLET(modprobe, BB_DIR_SBIN, BB_SUID_DROP))
+//applet:IF_MODPROBE_SMALL(APPLET_ODDNAME(depmod, modprobe, BB_DIR_SBIN, BB_SUID_DROP, modprobe))
+//applet:IF_MODPROBE_SMALL(APPLET_ODDNAME(insmod, modprobe, BB_DIR_SBIN, BB_SUID_DROP, modprobe))
+//applet:IF_MODPROBE_SMALL(APPLET_ODDNAME(lsmod, modprobe, BB_DIR_SBIN, BB_SUID_DROP, modprobe))
+//applet:IF_MODPROBE_SMALL(APPLET_ODDNAME(rmmod, modprobe, BB_DIR_SBIN, BB_SUID_DROP, modprobe))
 
 #include "libbb.h"
 /* After libbb.h, since it needs sys/types.h on some systems */
@@ -205,6 +205,7 @@ static void parse_module(module_info *info, const char *pathname)
 	/* Read (possibly compressed) module */
 	len = 64 * 1024 * 1024; /* 64 Mb at most */
 	module_image = xmalloc_open_zipped_read_close(pathname, &len);
+	/* module_image == NULL is ok here, find_keyword handles it */
 //TODO: optimize redundant module body reads
 
 	/* "alias1 symbol:sym1 alias2 symbol:sym2" */
@@ -844,13 +845,17 @@ int modprobe_main(int argc UNUSED_PARAM, char **argv)
 		void *map;
 
 		len = MAXINT(ssize_t);
-		map = xmalloc_xopen_read_close(*argv, &len);
+		map = xmalloc_open_zipped_read_close(*argv, &len);
+		if (!map)
+			bb_perror_msg_and_die("can't read '%s'", *argv);
 		if (init_module(map, len,
 			IF_FEATURE_MODPROBE_SMALL_OPTIONS_ON_CMDLINE(options ? options : "")
 			IF_NOT_FEATURE_MODPROBE_SMALL_OPTIONS_ON_CMDLINE("")
-				) != 0)
+			) != 0
+		) {
 			bb_error_msg_and_die("can't insert '%s': %s",
 					*argv, moderror(errno));
+		}
 		return 0;
 	}
 

@@ -19,9 +19,9 @@
  *
  * Sept 2008: Vineet Gupta <vineet.gupta@arc.com>
  * Added Support for reporting SMP Information
- * - CPU where Process was last seen running
+ * - CPU where process was last seen running
  *   (to see effect of sched_setaffinity() etc)
- * - CPU Time Split (idle/IO/wait etc) PER CPU
+ * - CPU time split (idle/IO/wait etc) per CPU
  *
  * Copyright (c) 1992 Branko Lankester
  * Copyright (c) 1992 Roger Binns
@@ -29,6 +29,25 @@
  * Copyright (C) 1992-1998 Michael K. Johnson
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
+ */
+/* How to snapshot /proc for debugging top problems:
+ * for f in /proc/[0-9]*""/stat; do
+ *         n=${f#/proc/}
+ *         n=${n%/stat}_stat
+ *         cp $f $n
+ * done
+ * cp /proc/stat /proc/meminfo /proc/loadavg .
+ * top -bn1 >top.out
+ *
+ * ...and how to run top on it on another machine:
+ * rm -rf proc; mkdir proc
+ * for f in [0-9]*_stat; do
+ *         p=${f%_stat}
+ *         mkdir -p proc/$p
+ *         cp $f proc/$p/stat
+ * done
+ * cp stat meminfo loadavg proc
+ * chroot . ./top -bn1 >top1.out
  */
 
 #include "libbb.h"
@@ -519,7 +538,7 @@ static NOINLINE void display_process_list(int lines_rem, int scr_width)
 
 	/* what info of the processes is shown */
 	printf(OPT_BATCH_MODE ? "%.*s" : "\033[7m%.*s\033[0m", scr_width,
-		"  PID  PPID USER     STAT   VSZ %MEM"
+		"  PID  PPID USER     STAT   VSZ %VSZ"
 		IF_FEATURE_TOP_SMP_PROCESS(" CPU")
 		IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE(" %CPU")
 		" COMMAND");
@@ -537,7 +556,7 @@ static NOINLINE void display_process_list(int lines_rem, int scr_width)
 # define FMT "%4u%%"
 #endif
 	/*
-	 * MEM% = s->vsz/MemTotal
+	 * %VSZ = s->vsz/MemTotal
 	 */
 	pmem_shift = BITS_PER_INT-11;
 	pmem_scale = UPSCALE*(1U<<(BITS_PER_INT-11)) / total_memory;
@@ -546,7 +565,7 @@ static NOINLINE void display_process_list(int lines_rem, int scr_width)
 		pmem_scale /= 4;
 		pmem_shift -= 2;
 	}
-	pmem_half = (1U << pmem_shift) / (ENABLE_FEATURE_TOP_DECIMALS? 20 : 2);
+	pmem_half = (1U << pmem_shift) / (ENABLE_FEATURE_TOP_DECIMALS ? 20 : 2);
 #if ENABLE_FEATURE_TOP_CPU_USAGE_PERCENTAGE
 	busy_jifs = cur_jif.busy - prev_jif.busy;
 	/* This happens if there were lots of short-lived processes
@@ -577,7 +596,7 @@ static NOINLINE void display_process_list(int lines_rem, int scr_width)
 		pcpu_scale /= 4;
 		pcpu_shift -= 2;
 	}
-	pcpu_half = (1U << pcpu_shift) / (ENABLE_FEATURE_TOP_DECIMALS? 20 : 2);
+	pcpu_half = (1U << pcpu_shift) / (ENABLE_FEATURE_TOP_DECIMALS ? 20 : 2);
 	/* printf(" pmem_scale=%u pcpu_scale=%u ", pmem_scale, pcpu_scale); */
 #endif
 
@@ -597,7 +616,7 @@ static NOINLINE void display_process_list(int lines_rem, int scr_width)
 			sprintf(vsz_str_buf, "%6ldm", s->vsz/1024);
 		else
 			sprintf(vsz_str_buf, "%7ld", s->vsz);
-		/* PID PPID USER STAT VSZ %MEM [%CPU] COMMAND */
+		/* PID PPID USER STAT VSZ %VSZ [%CPU] COMMAND */
 		col = snprintf(line_buf, scr_width,
 				"\n" "%5u%6u %-8.8s %s%s" FMT
 				IF_FEATURE_TOP_SMP_PROCESS(" %3d")
@@ -832,6 +851,35 @@ enum {
 		| PSSCAN_SMAPS
 		| PSSCAN_COMM,
 };
+
+//usage:#if ENABLE_FEATURE_SHOW_THREADS || ENABLE_FEATURE_TOP_SMP_CPU
+//usage:# define IF_SHOW_THREADS_OR_TOP_SMP(...) __VA_ARGS__
+//usage:#else
+//usage:# define IF_SHOW_THREADS_OR_TOP_SMP(...)
+//usage:#endif
+//usage:#define top_trivial_usage
+//usage:       "[-b] [-nCOUNT] [-dSECONDS]" IF_FEATURE_TOPMEM(" [-m]")
+//usage:#define top_full_usage "\n\n"
+//usage:       "Provide a view of process activity in real time."
+//usage:   "\n""Read the status of all processes from /proc each SECONDS"
+//usage:   "\n""and display a screenful of them."
+//usage:   "\n""Keys:"
+//usage:   "\n""	N/M"
+//usage:                IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE("/P")
+//usage:                IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE("/T")
+//usage:           ": " IF_FEATURE_TOPMEM("show CPU usage, ") "sort by pid/mem"
+//usage:                IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE("/cpu")
+//usage:                IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE("/time")
+//usage:	IF_FEATURE_TOPMEM(
+//usage:   "\n""	S: show memory, R: reverse memory sort"
+//usage:	)
+//usage:	IF_SHOW_THREADS_OR_TOP_SMP(
+//usage:   "\n""	"
+//usage:                IF_FEATURE_SHOW_THREADS("H: toggle threads")
+//usage:                IF_FEATURE_SHOW_THREADS(IF_FEATURE_TOP_SMP_CPU(", "))
+//usage:                IF_FEATURE_TOP_SMP_CPU("1: toggle SMP")
+//usage:	)
+//usage:   "\n""	Q,^C: exit"
 
 int top_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int top_main(int argc UNUSED_PARAM, char **argv)

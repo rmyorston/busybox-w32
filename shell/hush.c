@@ -105,10 +105,10 @@
 # define PIPE_BUF 4096  /* amount of buffering in a pipe */
 #endif
 
-//applet:IF_HUSH(APPLET(hush, _BB_DIR_BIN, _BB_SUID_DROP))
-//applet:IF_MSH(APPLET(msh, _BB_DIR_BIN, _BB_SUID_DROP))
-//applet:IF_FEATURE_SH_IS_HUSH(APPLET_ODDNAME(sh, hush, _BB_DIR_BIN, _BB_SUID_DROP, sh))
-//applet:IF_FEATURE_BASH_IS_HUSH(APPLET_ODDNAME(bash, hush, _BB_DIR_BIN, _BB_SUID_DROP, bash))
+//applet:IF_HUSH(APPLET(hush, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_MSH(APPLET(msh, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_FEATURE_SH_IS_HUSH(APPLET_ODDNAME(sh, hush, BB_DIR_BIN, BB_SUID_DROP, sh))
+//applet:IF_FEATURE_BASH_IS_HUSH(APPLET_ODDNAME(bash, hush, BB_DIR_BIN, BB_SUID_DROP, bash))
 
 //kbuild:lib-$(CONFIG_HUSH) += hush.o match.o shell_common.o
 //kbuild:lib-$(CONFIG_HUSH_RANDOM_SUPPORT) += random.o
@@ -445,7 +445,6 @@ typedef struct in_str {
 	char eof_flag; /* meaningless if ->p == NULL */
 	char peek_buf[2];
 #if ENABLE_HUSH_INTERACTIVE
-	smallint promptme;
 	smallint promptmode; /* 0: PS1, 1: PS2 */
 #endif
 	FILE *file;
@@ -1946,22 +1945,17 @@ static int FAST_FUNC file_get(struct in_str *i)
 		/* need to double check i->file because we might be doing something
 		 * more complicated by now, like sourcing or substituting. */
 #if ENABLE_HUSH_INTERACTIVE
-		if (G_interactive_fd && i->promptme && i->file == stdin) {
+		if (G_interactive_fd && i->file == stdin) {
 			do {
 				get_user_input(i);
 			} while (!*i->p); /* need non-empty line */
 			i->promptmode = 1; /* PS2 */
-			i->promptme = 0;
 			goto take_cached;
 		}
 #endif
 		do ch = fgetc(i->file); while (ch == '\0');
 	}
 	debug_printf("file_get: got '%c' %d\n", ch, ch);
-#if ENABLE_HUSH_INTERACTIVE
-	if (ch == '\n')
-		i->promptme = 1;
-#endif
 	return ch;
 }
 
@@ -1988,26 +1982,22 @@ static int FAST_FUNC file_peek(struct in_str *i)
 
 static void setup_file_in_str(struct in_str *i, FILE *f)
 {
+	memset(i, 0, sizeof(*i));
 	i->peek = file_peek;
 	i->get = file_get;
-#if ENABLE_HUSH_INTERACTIVE
-	i->promptme = 1;
-	i->promptmode = 0; /* PS1 */
-#endif
+	/* i->promptmode = 0; - PS1 (memset did it) */
 	i->file = f;
-	i->p = NULL;
+	/* i->p = NULL; */
 }
 
 static void setup_string_in_str(struct in_str *i, const char *s)
 {
+	memset(i, 0, sizeof(*i));
 	i->peek = static_peek;
 	i->get = static_get;
-#if ENABLE_HUSH_INTERACTIVE
-	i->promptme = 1;
-	i->promptmode = 0; /* PS1 */
-#endif
+	/* i->promptmode = 0; - PS1 (memset did it) */
 	i->p = s;
-	i->eof_flag = 0;
+	/* i->eof_flag = 0; */
 }
 
 
@@ -4031,9 +4021,6 @@ static struct pipe *parse_stream(char **pstring,
 
  reset: /* we come back here only on syntax errors in interactive shell */
 
-#if ENABLE_HUSH_INTERACTIVE
-	input->promptmode = 0; /* PS1 */
-#endif
 	if (MAYBE_ASSIGNMENT != 0)
 		dest.o_assignment = MAYBE_ASSIGNMENT;
 	initialize_context(&ctx);
@@ -4140,7 +4127,27 @@ static struct pipe *parse_stream(char **pstring,
 				if (IS_NULL_CMD(ctx.command)
 				 && dest.length == 0 && !dest.has_quoted_part
 				) {
-					continue;
+					/* This newline can be ignored. But...
+					 * Without check #1, interactive shell
+					 * ignores even bare <newline>,
+					 * and shows the continuation prompt:
+					 * ps1_prompt$ <enter>
+					 * ps2> _   <=== wrong, should be ps1
+					 * Without check #2, "cmd & <newline>"
+					 * is similarly mistreated.
+					 * (BTW, this makes "cmd & cmd"
+					 * and "cmd && cmd" non-orthogonal.
+					 * Really, ask yourself, why
+					 * "cmd && <newline>" doesn't start
+					 * cmd but waits for more input?
+					 * No reason...)
+					 */
+					struct pipe *pi = ctx.list_head;
+					if (pi->num_cmds != 0       /* check #1 */
+					 && pi->followup != PIPE_BG /* check #2 */
+					) {
+						continue;
+					}
 				}
 				/* Treat newline as a command separator. */
 				done_pipe(&ctx, PIPE_SEQ);
@@ -4519,7 +4526,6 @@ static struct pipe *parse_stream(char **pstring,
 		}
 		/* Discard cached input, force prompt */
 		input->p = NULL;
-		IF_HUSH_INTERACTIVE(input->promptme = 1;)
 		goto reset;
 	}
 }
@@ -5519,6 +5525,10 @@ static void parse_and_run_stream(struct in_str *inp, int end_trigger)
 	while (1) {
 		struct pipe *pipe_list;
 
+#if ENABLE_HUSH_INTERACTIVE
+		if (end_trigger == ';')
+			inp->promptmode = 0; /* PS1 */
+#endif
 		pipe_list = parse_stream(NULL, inp, end_trigger);
 		if (!pipe_list) { /* EOF */
 			if (empty)

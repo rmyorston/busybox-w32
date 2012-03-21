@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.19.0.git
-# Mon Feb 20 10:36:01 2012
+# Wed Mar 21 20:40:54 2012
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -42,8 +42,8 @@ CONFIG_LAST_SUPPORTED_WCHAR=0
 CONFIG_LONG_OPTS=y
 # CONFIG_FEATURE_DEVPTS is not set
 # CONFIG_FEATURE_CLEAN_UP is not set
-# CONFIG_FEATURE_WTMP is not set
 # CONFIG_FEATURE_UTMP is not set
+# CONFIG_FEATURE_WTMP is not set
 # CONFIG_FEATURE_PIDFILE is not set
 # CONFIG_FEATURE_SUID is not set
 # CONFIG_FEATURE_SUID_CONFIG is not set
@@ -92,6 +92,7 @@ CONFIG_PREFIX=""
 #
 # Busybox Library Tuning
 #
+# CONFIG_FEATURE_SYSTEMD is not set
 CONFIG_FEATURE_RTMINMAX=y
 CONFIG_PASSWORD_MINLEN=6
 CONFIG_MD5_SIZE_VS_SPEED=2

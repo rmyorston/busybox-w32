@@ -20,10 +20,14 @@
 /* Assume all these functions exist by default.  Platforms where it is not
  * true will #undef them below.
  */
+#define HAVE_CLEARENV 1
+#define HAVE_FDATASYNC 1
 #define HAVE_FDPRINTF 1
 #define HAVE_MEMRCHR 1
 #define HAVE_MKDTEMP 1
+#define HAVE_PTSNAME_R 1
 #define HAVE_SETBIT 1
+#define HAVE_SIGHANDLER_T 1
 #define HAVE_STRCASESTR 1
 #define HAVE_STRCHRNUL 1
 #define HAVE_STRSEP 1
@@ -235,14 +239,15 @@
 
 /* ---- Unaligned access ------------------------------------ */
 
+#include <stdint.h>
+typedef int      bb__aliased_int      FIX_ALIASING;
+typedef uint16_t bb__aliased_uint16_t FIX_ALIASING;
+typedef uint32_t bb__aliased_uint32_t FIX_ALIASING;
+
 /* NB: unaligned parameter should be a pointer, aligned one -
  * a lvalue. This makes it more likely to not swap them by mistake
  */
 #if defined(i386) || defined(__x86_64__) || defined(__powerpc__)
-# include <stdint.h>
-typedef int      bb__aliased_int      FIX_ALIASING;
-typedef uint16_t bb__aliased_uint16_t FIX_ALIASING;
-typedef uint32_t bb__aliased_uint32_t FIX_ALIASING;
 # define move_from_unaligned_int(v, intp) ((v) = *(bb__aliased_int*)(intp))
 # define move_from_unaligned16(v, u16p) ((v) = *(bb__aliased_uint16_t*)(u16p))
 # define move_from_unaligned32(v, u32p) ((v) = *(bb__aliased_uint32_t*)(u32p))
@@ -268,13 +273,19 @@ typedef uint32_t bb__aliased_uint32_t FIX_ALIASING;
 
 #if (defined __digital__ && defined __unix__) \
  || defined __APPLE__ \
- || defined __FreeBSD__ || defined __OpenBSD__ || defined __NetBSD__ \
- || ENABLE_PLATFORM_MINGW32
+ || defined __FreeBSD__ || defined __OpenBSD__ || defined __NetBSD__
+# undef HAVE_CLEARENV
+# undef HAVE_FDATASYNC
 # undef HAVE_MNTENT_H
+# undef HAVE_PTSNAME_R
 # undef HAVE_SYS_STATFS_H
+# undef HAVE_SIGHANDLER_T
+# undef HAVE_XTABS
+# undef HAVE_FDPRINTF
 #else
 # define HAVE_MNTENT_H 1
 # define HAVE_SYS_STATFS_H 1
+# define HAVE_XTABS 1
 #endif
 
 /*----- Kernel versioning ------------------------------------*/
@@ -378,14 +389,16 @@ typedef unsigned smalluint;
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
-# undef  HAVE_FDPRINTF
-# undef  HAVE_MEMRCHR
-# undef  HAVE_MKDTEMP
-# undef  HAVE_SETBIT
-# undef  HAVE_STRCASESTR
-# undef  HAVE_STRCHRNUL
-# undef  HAVE_STRSIGNAL
-# undef  HAVE_VASPRINTF
+# undef HAVE_FDPRINTF
+# undef HAVE_MEMRCHR
+# undef HAVE_MKDTEMP
+# undef HAVE_SETBIT
+# undef HAVE_STRCASESTR
+# undef HAVE_STRCHRNUL
+# undef HAVE_STRSIGNAL
+# undef HAVE_VASPRINTF
+# undef HAVE_MNTENT_H
+# undef HAVE_SYS_STATFS_H
 #endif
 
 #if defined(__WATCOMC__)
@@ -427,6 +440,10 @@ extern char *mkdtemp(char *template) FAST_FUNC;
 # define clrbit(a, b)  ((a)[(b) >> 3] &= ~(1 << ((b) & 7)))
 #endif
 
+#ifndef HAVE_SIGHANDLER_T
+typedef void (*sighandler_t)(int);
+#endif
+
 #ifndef HAVE_STRCASESTR
 extern char *strcasestr(const char *s, const char *pattern) FAST_FUNC;
 #endif
@@ -445,9 +462,7 @@ extern char *strsep(char **stringp, const char *delim) FAST_FUNC;
 #endif
 
 #ifndef HAVE_VASPRINTF
-# if ENABLE_PLATFORM_MINGW32
-#  include <stdarg.h>
-# endif
+# include <stdarg.h>
 extern int vasprintf(char **string_ptr, const char *format, va_list p) FAST_FUNC;
 #endif
 
