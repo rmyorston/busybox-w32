@@ -158,10 +158,9 @@
 //usage:       "[-fe] [-q N] [-R N] [CONFFILE]"
 //usage:#define inetd_full_usage "\n\n"
 //usage:       "Listen for network connections and launch programs\n"
-//usage:     "\nOptions:"
 //usage:     "\n	-f	Run in foreground"
 //usage:     "\n	-e	Log to stderr"
-//usage:     "\n	-q N    Socket listen queue (default: 128)"
+//usage:     "\n	-q N	Socket listen queue (default: 128)"
 //usage:     "\n	-R N	Pause services after N connects/min"
 //usage:     "\n		(default: 0 - disabled)"
 
@@ -171,8 +170,11 @@
 #include "libbb.h"
 
 #if ENABLE_FEATURE_INETD_RPC
-#include <rpc/rpc.h>
-#include <rpc/pmap_clnt.h>
+# if defined(__UCLIBC__) && ! defined(__UCLIBC_HAS_RPC__)
+#  error "You need to build uClibc with UCLIBC_HAS_RPC for NFS support"
+# endif
+# include <rpc/rpc.h>
+# include <rpc/pmap_clnt.h>
 #endif
 
 #if !BB_MMU

@@ -173,6 +173,30 @@ int sysinfo(struct sysinfo* info);
 # include "mingw.h"
 #endif
 
+/* Busybox does not use threads, we can speed up stdio. */
+#ifdef HAVE_UNLOCKED_STDIO
+# undef  getc
+# define getc(stream) getc_unlocked(stream)
+# undef  getchar
+# define getchar() getchar_unlocked()
+# undef  putc
+# define putc(c, stream) putc_unlocked(c, stream)
+# undef  putchar
+# define putchar(c) putchar_unlocked(c)
+# undef  fgetc
+# define fgetc(stream) getc_unlocked(stream)
+# undef  fputc
+# define fputc(c, stream) putc_unlocked(c, stream)
+#endif
+/* Above functions are required by POSIX.1-2008, below ones are extensions */
+#ifdef HAVE_UNLOCKED_LINE_OPS
+# undef  fgets
+# define fgets(s, n, stream) fgets_unlocked(s, n, stream)
+# undef  fputs
+# define fputs(s, stream) fputs_unlocked(s, stream)
+#endif
+
+
 /* Make all declarations hidden (-fvisibility flag only affects definitions) */
 /* (don't include system headers after this until corresponding pop!) */
 PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
@@ -743,8 +767,12 @@ extern void xclose(int fd) FAST_FUNC;
 /* Reads and prints to stdout till eof, then closes FILE. Exits on error: */
 extern void xprint_and_close_file(FILE *file) FAST_FUNC;
 
+/* Reads a line from a text file, up to a newline or NUL byte, inclusive.
+ * Returns malloc'ed char*. If end is NULL '\n' isn't considered
+ * end of line. If end isn't NULL, length of the chunk is stored in it.
+ * Returns NULL if EOF/error.
+ */
 extern char *bb_get_chunk_from_file(FILE *file, int *end) FAST_FUNC;
-extern char *bb_get_chunk_with_continuation(FILE *file, int *end, int *lineno) FAST_FUNC;
 /* Reads up to (and including) TERMINATING_STRING: */
 extern char *xmalloc_fgets_str(FILE *file, const char *terminating_string) FAST_FUNC RETURNS_MALLOC;
 /* Same, with limited max size, and returns the length (excluding NUL): */
@@ -1196,8 +1224,9 @@ enum {
 };
 typedef struct parser_t {
 	FILE *fp;
-	char *line;
 	char *data;
+	char *line, *nline;
+	size_t line_alloc, nline_alloc;
 	int lineno;
 } parser_t;
 parser_t* config_open(const char *filename) FAST_FUNC;
@@ -1560,13 +1589,6 @@ enum {
 	PSSCAN_NICE     = (1 << 20) * ENABLE_FEATURE_PS_ADDITIONAL_COLUMNS,
 	PSSCAN_RUIDGID  = (1 << 21) * ENABLE_FEATURE_PS_ADDITIONAL_COLUMNS,
 	PSSCAN_TASKS	= (1 << 22) * ENABLE_FEATURE_SHOW_THREADS,
-	/* These are all retrieved from proc/NN/stat in one go: */
-	PSSCAN_STAT     = PSSCAN_PPID | PSSCAN_PGID | PSSCAN_SID
-	/**/            | PSSCAN_COMM | PSSCAN_STATE
-	/**/            | PSSCAN_VSZ | PSSCAN_RSS
-	/**/            | PSSCAN_STIME | PSSCAN_UTIME | PSSCAN_START_TIME
-	/**/            | PSSCAN_TTY | PSSCAN_NICE
-	/**/            | PSSCAN_CPU
 };
 //procps_status_t* alloc_procps_scan(void) FAST_FUNC;
 void free_procps_scan(procps_status_t* sp) FAST_FUNC;

@@ -27,7 +27,6 @@
 //usage:       "[OPTIONS] IFACE SCRIPT"
 //usage:#define zcip_full_usage "\n\n"
 //usage:       "Manage a ZeroConf IPv4 link-local address\n"
-//usage:     "\nOptions:"
 //usage:     "\n	-f		Run in foreground"
 //usage:     "\n	-q		Quit after obtaining address"
 //usage:     "\n	-r 169.254.x.x	Request this address first"
@@ -36,14 +35,12 @@
 //usage:     "\nWith no -q, runs continuously monitoring for ARP conflicts,"
 //usage:     "\nexits only on I/O errors (link down etc)"
 
+#include "libbb.h"
 #include <netinet/ether.h>
-#include <net/ethernet.h>
 #include <net/if.h>
 #include <net/if_arp.h>
-#include <linux/if_packet.h>
 #include <linux/sockios.h>
 
-#include "libbb.h"
 #include <syslog.h>
 
 /* We don't need more than 32 bits of the counter */

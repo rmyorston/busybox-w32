@@ -25,14 +25,8 @@
 #include "dhcpd.h"
 #include "dhcpc.h"
 
-#include <asm/types.h>
-#if (defined(__GLIBC__) && __GLIBC__ >= 2 && __GLIBC_MINOR__ >= 1) || defined(_NEWLIB_VERSION)
-# include <netpacket/packet.h>
-# include <net/ethernet.h>
-#else
-# include <linux/if_packet.h>
-# include <linux/if_ether.h>
-#endif
+#include <netinet/if_ether.h>
+#include <netpacket/packet.h>
 #include <linux/filter.h>
 
 /* struct client_config_t client_config is in bb_common_bufsiz1 */
@@ -1134,8 +1128,11 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 		client_config.no_default_options = 1;
 	while (list_O) {
 		char *optstr = llist_pop(&list_O);
-		unsigned n = udhcp_option_idx(optstr);
-		n = dhcp_optflags[n].code;
+		unsigned n = bb_strtou(optstr, NULL, 0);
+		if (errno || n > 254) {
+			n = udhcp_option_idx(optstr);
+			n = dhcp_optflags[n].code;
+		}
 		client_config.opt_mask[n >> 3] |= 1 << (n & 7);
 	}
 	while (list_x) {

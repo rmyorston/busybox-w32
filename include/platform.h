@@ -349,8 +349,8 @@ typedef unsigned smalluint;
 
 /* ---- Who misses what? ------------------------------------ */
 
-/* Assume all these functions exist by default.  Platforms where it is not
- * true will #undef them below.
+/* Assume all these functions and header files exist by default.
+ * Platforms where it is not true will #undef them below.
  */
 #define HAVE_CLEARENV 1
 #define HAVE_FDATASYNC 1
@@ -365,10 +365,24 @@ typedef unsigned smalluint;
 #define HAVE_STRCHRNUL 1
 #define HAVE_STRSEP 1
 #define HAVE_STRSIGNAL 1
+#define HAVE_STRVERSCMP 1
 #define HAVE_VASPRINTF 1
-#define HAVE_MNTENT_H 1
-#define HAVE_SYS_STATFS_H 1
+#define HAVE_UNLOCKED_STDIO 1
+#define HAVE_UNLOCKED_LINE_OPS 1
+#define HAVE_GETLINE 1
 #define HAVE_XTABS 1
+#define HAVE_MNTENT_H 1
+#define HAVE_NET_ETHERNET_H 1
+#define HAVE_SYS_STATFS_H 1
+
+#if defined(__UCLIBC_MAJOR__)
+# if __UCLIBC_MAJOR__ == 0 \
+  && (   __UCLIBC_MINOR__ < 9 \
+     || (__UCLIBC_MINOR__ == 9 && __UCLIBC_SUBLEVEL__ < 31) \
+     )
+#  undef HAVE_STRVERSCMP
+# endif
+#endif
 
 #if defined(__dietlibc__)
 # undef HAVE_STRCHRNUL
@@ -383,13 +397,17 @@ typedef unsigned smalluint;
 # undef HAVE_STRCASESTR
 # undef HAVE_STRCHRNUL
 # undef HAVE_STRSIGNAL
+# undef HAVE_STRVERSCMP
 # undef HAVE_VASPRINTF
+# undef HAVE_UNLOCKED_STDIO
+# undef HAVE_UNLOCKED_LINE_OPS
 # undef HAVE_MNTENT_H
 # undef HAVE_SYS_STATFS_H
 #endif
 
 #if defined(__WATCOMC__)
 # undef HAVE_DPRINTF
+# undef HAVE_GETLINE
 # undef HAVE_MEMRCHR
 # undef HAVE_MKDTEMP
 # undef HAVE_SETBIT
@@ -398,28 +416,49 @@ typedef unsigned smalluint;
 # undef HAVE_STRCHRNUL
 # undef HAVE_STRSEP
 # undef HAVE_STRSIGNAL
+# undef HAVE_STRVERSCMP
 # undef HAVE_VASPRINTF
+# undef HAVE_UNLOCKED_STDIO
+# undef HAVE_UNLOCKED_LINE_OPS
+# undef HAVE_NET_ETHERNET_H
+#endif
+
+/* These BSD-derived OSes share many similarities */
+#if (defined __digital__ && defined __unix__) \
+ || defined __APPLE__ \
+ || defined __FreeBSD__ || defined __OpenBSD__ || defined __NetBSD__
+# undef HAVE_CLEARENV
+# undef HAVE_FDATASYNC
+# undef HAVE_GETLINE
+# undef HAVE_MNTENT_H
+# undef HAVE_PTSNAME_R
+# undef HAVE_SYS_STATFS_H
+# undef HAVE_SIGHANDLER_T
+# undef HAVE_STRVERSCMP
+# undef HAVE_XTABS
+# undef HAVE_DPRINTF
 #endif
 
 #if defined(__FreeBSD__)
 # undef HAVE_STRCHRNUL
 #endif
 
-#if (defined __digital__ && defined __unix__) \
- || defined __APPLE__ \
- || defined __FreeBSD__ || defined __OpenBSD__ || defined __NetBSD__
-# undef HAVE_CLEARENV
-# undef HAVE_FDATASYNC
-# undef HAVE_MNTENT_H
-# undef HAVE_PTSNAME_R
-# undef HAVE_SYS_STATFS_H
-# undef HAVE_SIGHANDLER_T
-# undef HAVE_XTABS
-# undef HAVE_DPRINTF
+#if defined(__NetBSD__)
+# define HAVE_GETLINE 1  /* Recent NetBSD versions have getline() */
 #endif
 
 #if defined(__digital__) && defined(__unix__)
 # undef HAVE_STPCPY
+#endif
+
+#if defined(ANDROID)
+# undef HAVE_DPRINTF
+# undef HAVE_GETLINE
+# undef HAVE_STPCPY
+# undef HAVE_STRCHRNUL
+# undef HAVE_STRVERSCMP
+# undef HAVE_UNLOCKED_LINE_OPS
+# undef HAVE_NET_ETHERNET_H
 #endif
 
 /*
@@ -473,6 +512,11 @@ extern char *strsep(char **stringp, const char *delim) FAST_FUNC;
 #ifndef HAVE_VASPRINTF
 # include <stdarg.h>
 extern int vasprintf(char **string_ptr, const char *format, va_list p) FAST_FUNC;
+#endif
+
+#ifndef HAVE_GETLINE
+#include <stdio.h> /* for FILE */
+extern ssize_t getline(char **lineptr, size_t *n, FILE *stream) FAST_FUNC;
 #endif
 
 #endif

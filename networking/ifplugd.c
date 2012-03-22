@@ -11,7 +11,6 @@
 //usage:       "[OPTIONS]"
 //usage:#define ifplugd_full_usage "\n\n"
 //usage:       "Network interface plug detection daemon\n"
-//usage:     "\nOptions:"
 //usage:     "\n	-n		Don't daemonize"
 //usage:     "\n	-s		Don't log to syslog"
 //usage:     "\n	-i IFACE	Interface"
@@ -38,7 +37,9 @@
 #include <linux/if.h>
 #include <linux/mii.h>
 #include <linux/ethtool.h>
-#include <net/ethernet.h>
+#ifdef HAVE_NET_ETHERNET_H
+# include <net/ethernet.h>
+#endif
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <linux/sockios.h>
