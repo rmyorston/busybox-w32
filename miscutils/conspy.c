@@ -17,7 +17,7 @@
 //config:config CONSPY
 //config:	bool "conspy"
 //config:	default n
-//config:	depends on PLATFORM_LINUX
+//config:	select PLATFORM_LINUX
 //config:	help
 //config:	  A text-mode VNC like program for Linux virtual terminals.
 //config:	  example:  conspy NUM      shared access to console num
@@ -316,10 +316,8 @@ static NOINLINE void start_shell_in_child(const char* tty_name)
 	int pid = xvfork();
 	if (pid == 0) {
 		struct termios termchild;
-		char *shell = getenv("SHELL");
+		const char *shell = get_shell_name();
 
-		if (!shell)
-			shell = (char *) DEFAULT_SHELL;
 		signal(SIGHUP, SIG_IGN);
 		// set tty as a controlling tty
 		setsid();

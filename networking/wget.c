@@ -8,6 +8,32 @@
  * Copyright (C) 2010 Bradley M. Kuhn <bkuhn@ebb.org>
  * Kuhn's copyrights are licensed GPLv2-or-later.  File as a whole remains GPLv2.
  */
+
+//usage:#define wget_trivial_usage
+//usage:	IF_FEATURE_WGET_LONG_OPTIONS(
+//usage:       "[-c|--continue] [-s|--spider] [-q|--quiet] [-O|--output-document FILE]\n"
+//usage:       "	[--header 'header: value'] [-Y|--proxy on/off] [-P DIR]\n"
+//usage:       "	[--no-check-certificate] [-U|--user-agent AGENT]"
+//usage:			IF_FEATURE_WGET_TIMEOUT(" [-T SEC]") " URL..."
+//usage:	)
+//usage:	IF_NOT_FEATURE_WGET_LONG_OPTIONS(
+//usage:       "[-csq] [-O FILE] [-Y on/off] [-P DIR] [-U AGENT]"
+//usage:			IF_FEATURE_WGET_TIMEOUT(" [-T SEC]") " URL..."
+//usage:	)
+//usage:#define wget_full_usage "\n\n"
+//usage:       "Retrieve files via HTTP or FTP\n"
+//usage:     "\nOptions:"
+//usage:     "\n	-s	Spider mode - only check file existence"
+//usage:     "\n	-c	Continue retrieval of aborted transfer"
+//usage:     "\n	-q	Quiet"
+//usage:     "\n	-P DIR	Save to DIR (default .)"
+//usage:	IF_FEATURE_WGET_TIMEOUT(
+//usage:     "\n	-T SEC	Network read timeout is SEC seconds"
+//usage:	)
+//usage:     "\n	-O FILE	Save to FILE ('-' for stdout)"
+//usage:     "\n	-U STR	Use STR for User-Agent header"
+//usage:     "\n	-Y	Use proxy ('on' or 'off')"
+
 #include "libbb.h"
 
 //#define log_io(...) bb_error_msg(__VA_ARGS__)
@@ -604,8 +630,14 @@ static void download_one_url(const char *url)
 		if (G.fname_out[0] == '/' || !G.fname_out[0])
 			G.fname_out = (char*)"index.html";
 		/* -P DIR is considered only if there was no -O FILE */
-		if (G.dir_prefix)
-			G.fname_out = fname_out_alloc = concat_path_file(G.dir_prefix, G.fname_out);
+		else {
+			if (G.dir_prefix)
+				G.fname_out = fname_out_alloc = concat_path_file(G.dir_prefix, G.fname_out);
+			else {
+				/* redirects may free target.path later, need to make a copy */
+				G.fname_out = fname_out_alloc = xstrdup(G.fname_out);
+			}
+		}
 	}
 #if ENABLE_FEATURE_WGET_STATUSBAR
 	G.curfile = bb_get_last_path_component_nostrip(G.fname_out);

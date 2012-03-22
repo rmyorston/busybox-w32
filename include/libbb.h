@@ -855,14 +855,14 @@ char* xuid2uname(uid_t uid) FAST_FUNC;
 char* xgid2group(gid_t gid) FAST_FUNC;
 char* uid2uname(uid_t uid) FAST_FUNC;
 char* gid2group(gid_t gid) FAST_FUNC;
-char* uid2uname_utoa(long uid) FAST_FUNC;
-char* gid2group_utoa(long gid) FAST_FUNC;
+char* uid2uname_utoa(uid_t uid) FAST_FUNC;
+char* gid2group_utoa(gid_t gid) FAST_FUNC;
 /* versions which cache results (useful for ps, ls etc) */
 const char* get_cached_username(uid_t uid) FAST_FUNC;
 const char* get_cached_groupname(gid_t gid) FAST_FUNC;
 void clear_username_cache(void) FAST_FUNC;
 /* internally usernames are saved in fixed-sized char[] buffers */
-enum { USERNAME_MAX_SIZE = 16 - sizeof(int) };
+enum { USERNAME_MAX_SIZE = 32 - sizeof(uid_t) };
 #if ENABLE_FEATURE_CHECK_NAMES
 void die_if_bad_username(const char* name) FAST_FUNC;
 #else
@@ -1214,10 +1214,17 @@ char *bb_simplify_path(const char *path) FAST_FUNC;
 /* Returns ptr to NUL */
 char *bb_simplify_abs_path_inplace(char *path) FAST_FUNC;
 
-#define FAIL_DELAY 3
+#define LOGIN_FAIL_DELAY 3
 extern void bb_do_delay(int seconds) FAST_FUNC;
 extern void change_identity(const struct passwd *pw) FAST_FUNC;
 extern void run_shell(const char *shell, int loginshell, const char *command, const char **additional_args) NORETURN FAST_FUNC;
+
+/* Returns $SHELL, getpwuid(getuid())->pw_shell, or DEFAULT_SHELL.
+ * Note that getpwuid result might need xstrdup'ing
+ * if there is a possibility of intervening getpwxxx() calls.
+ */
+const char *get_shell_name(void);
+
 #if ENABLE_SELINUX
 extern void renew_current_security_context(void) FAST_FUNC;
 extern void set_current_security_context(security_context_t sid) FAST_FUNC;

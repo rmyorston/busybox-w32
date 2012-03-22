@@ -56,6 +56,9 @@
 #include <fnmatch.h>
 #include <sys/times.h>
 
+#include "busybox.h" /* for applet_names */
+#include "unicode.h"
+
 #include "shell_common.h"
 #if ENABLE_SH_MATH_SUPPORT
 # include "math.h"
@@ -85,13 +88,6 @@
 #if !BB_MMU
 # error "Do not even bother, ash will not run on NOMMU machine"
 #endif
-
-//applet:IF_ASH(APPLET(ash, BB_DIR_BIN, BB_SUID_DROP))
-//applet:IF_FEATURE_SH_IS_ASH(APPLET_ODDNAME(sh, ash, BB_DIR_BIN, BB_SUID_DROP, sh))
-//applet:IF_FEATURE_BASH_IS_ASH(APPLET_ODDNAME(bash, ash, BB_DIR_BIN, BB_SUID_DROP, bash))
-
-//kbuild:lib-$(CONFIG_ASH) += ash.o ash_ptr_hack.o shell_common.o
-//kbuild:lib-$(CONFIG_ASH_RANDOM_SUPPORT) += random.o
 
 //config:config ASH
 //config:	bool "ash"
@@ -204,12 +200,12 @@
 //config:	  variable each time it is displayed.
 //config:
 
-//usage:#define ash_trivial_usage NOUSAGE_STR
-//usage:#define ash_full_usage ""
-//usage:#define sh_trivial_usage NOUSAGE_STR
-//usage:#define sh_full_usage ""
-//usage:#define bash_trivial_usage NOUSAGE_STR
-//usage:#define bash_full_usage ""
+//applet:IF_ASH(APPLET(ash, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_FEATURE_SH_IS_ASH(APPLET_ODDNAME(sh, ash, BB_DIR_BIN, BB_SUID_DROP, sh))
+//applet:IF_FEATURE_BASH_IS_ASH(APPLET_ODDNAME(bash, ash, BB_DIR_BIN, BB_SUID_DROP, bash))
+
+//kbuild:lib-$(CONFIG_ASH) += ash.o ash_ptr_hack.o shell_common.o
+//kbuild:lib-$(CONFIG_ASH_RANDOM_SUPPORT) += random.o
 
 #if ENABLE_PLATFORM_MINGW32
 struct forkshell;
@@ -3705,12 +3701,12 @@ set_curjob(struct job *jp, unsigned mode)
 
 	/* first remove from list */
 	jpp = curp = &curjob;
-	do {
+	while (1) {
 		jp1 = *jpp;
 		if (jp1 == jp)
 			break;
 		jpp = &jp1->prev_job;
-	} while (1);
+	}
 	*jpp = jp1->prev_job;
 
 	/* Then re-insert in correct position */
@@ -3726,14 +3722,14 @@ set_curjob(struct job *jp, unsigned mode)
 	case CUR_RUNNING:
 		/* newly created job or backgrounded job,
 		   put after all stopped jobs. */
-		do {
+		while (1) {
 			jp1 = *jpp;
 #if JOBS
 			if (!jp1 || jp1->state != JOBSTOPPED)
 #endif
 				break;
 			jpp = &jp1->prev_job;
-		} while (1);
+		}
 		/* FALLTHROUGH */
 #if JOBS
 	case CUR_STOPPED:
@@ -3906,7 +3902,7 @@ setjobctl(int on)
 			goto out;
 		/* fd is a tty at this point */
 		close_on_exec_on(fd);
-		do { /* while we are in the background */
+		while (1) { /* while we are in the background */
 			pgrp = tcgetpgrp(fd);
 			if (pgrp < 0) {
  out:
@@ -3917,7 +3913,7 @@ setjobctl(int on)
 			if (pgrp == getpgrp())
 				break;
 			killpg(0, SIGTTIN);
-		} while (1);
+		}
 		initialpgrp = pgrp;
 
 		setsignal(SIGTSTP);
@@ -6328,7 +6324,7 @@ expari(int quotes)
 	p = expdest - 1;
 	*p = '\0';
 	p--;
-	do {
+	while (1) {
 		int esc;
 
 		while ((unsigned char)*p != CTLARI) {
@@ -6346,7 +6342,7 @@ expari(int quotes)
 		}
 
 		p -= esc + 1;
-	} while (1);
+	}
 
 	begoff = p - start;
 
@@ -7754,8 +7750,6 @@ static int builtinloc = -1;     /* index in path of %builtin, or -1 */
 static void
 tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) char *cmd, char **argv, char **envp)
 {
-	int repeated = 0;
-
 #if ENABLE_FEATURE_SH_STANDALONE
 	if (applet_no >= 0) {
 		if (APPLET_IS_NOEXEC(applet_no)) {
@@ -7779,25 +7773,36 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) char *cmd, char **argv, char **
 #else
 	execve(cmd, argv, envp);
 #endif
-	if (repeated) {
+	if (cmd == (char*) bb_busybox_exec_path) {
+		/* We already visited ENOEXEC branch below, don't do it again */
+//TODO: try execve(initial_argv0_of_shell, argv, envp) before giving up?
 		free(argv);
 		return;
 	}
 	if (errno == ENOEXEC) {
+		/* Run "cmd" as a shell script:
+		 * http://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
+		 * "If the execve() function fails with ENOEXEC, the shell
+		 * shall execute a command equivalent to having a shell invoked
+		 * with the command name as its first operand,
+		 * with any remaining arguments passed to the new shell"
+		 *
+		 * That is, do not use $SHELL, user's shell, or /bin/sh;
+		 * just call ourselves.
+		 */
 		char **ap;
 		char **new;
 
 		for (ap = argv; *ap; ap++)
 			continue;
-		ap = new = ckmalloc((ap - argv + 2) * sizeof(ap[0]));
-		ap[1] = cmd;
-		ap[0] = cmd = (char *)DEFAULT_SHELL;
-		ap += 2;
-		argv++;
-		while ((*ap++ = *argv++) != NULL)
+		new = ckmalloc((ap - argv + 2) * sizeof(new[0]));
+		new[0] = (char*) "ash";
+		new[1] = cmd;
+		ap = new + 2;
+		while ((*ap++ = *++argv) != NULL)
 			continue;
+		cmd = (char*) bb_busybox_exec_path;
 		argv = new;
-		repeated++;
 		goto repeat;
 	}
 }
@@ -10126,6 +10131,11 @@ preadfd(void)
 # if ENABLE_FEATURE_TAB_COMPLETION
 		line_input_state->path_lookup = pathval();
 # endif
+		/* Unicode support should be activated even if LANG is set
+		 * _during_ shell execution, not only if it was set when
+		 * shell was started. Therefore, re-check LANG every time:
+		 */
+		reinit_unicode(lookupvar("LANG"));
 		nr = read_line_input(line_input_state, cmdedit_prompt, buf, IBUFSIZ, timeout);
 		if (nr == 0) {
 			/* Ctrl+C pressed */
@@ -10673,7 +10683,7 @@ options(int cmdline)
 					else if (*argptr == NULL)
 						setparam(argptr);
 				}
-				break;    /* "-" or  "--" terminates options */
+				break;    /* "-" or "--" terminates options */
 			}
 		}
 		/* first char was + or - */
@@ -10775,10 +10785,10 @@ setcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 
 	if (!argv[1])
 		return showvars(nullstr, 0, VUNSET);
+
 	INT_OFF;
-	retval = 1;
-	if (!options(0)) { /* if no parse error... */
-		retval = 0;
+	retval = options(/*cmdline:*/ 0);
+	if (retval == 0) { /* if no parse error... */
 		optschanged();
 		if (*argptr != NULL) {
 			setparam(argptr);
@@ -13525,13 +13535,31 @@ init(void)
 			setvar("PPID", utoa(getppid()), 0);
 
 		p = lookupvar("PWD");
-		if (p)
+		if (p) {
 			if (*p != '/' || stat(p, &st1) || stat(".", &st2)
-			 || st1.st_dev != st2.st_dev || st1.st_ino != st2.st_ino)
+			 || st1.st_dev != st2.st_dev || st1.st_ino != st2.st_ino
+			) {
 				p = '\0';
+			}
+		}
 		setpwd(p, 0);
 	}
 }
+
+
+//usage:#define ash_trivial_usage
+//usage:	"[-/+OPTIONS] [-/+o OPT]... [-c 'SCRIPT' [ARG0 [ARGS]] / FILE [ARGS]]"
+//usage:#define ash_full_usage "\n\n"
+//usage:	"Unix shell interpreter"
+
+//usage:#if ENABLE_FEATURE_SH_IS_ASH
+//usage:# define sh_trivial_usage ash_trivial_usage
+//usage:# define sh_full_usage    ash_full_usage
+//usage:#endif
+//usage:#if ENABLE_FEATURE_BASH_IS_ASH
+//usage:# define bash_trivial_usage ash_trivial_usage
+//usage:# define bash_full_usage    ash_full_usage
+//usage:#endif
 
 /*
  * Process the shell command line arguments.
@@ -13550,7 +13578,7 @@ procargs(char **argv)
 	for (i = 0; i < NOPTS; i++)
 		optlist[i] = 2;
 	argptr = xargv;
-	if (options(1)) {
+	if (options(/*cmdline:*/ 1)) {
 		/* it already printed err message */
 		raise_exception(EXERROR);
 	}

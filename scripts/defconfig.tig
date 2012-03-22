@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.19.0.git
-# Thu Mar 22 12:00:44 2012
+# Thu Mar 22 13:52:53 2012
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -431,6 +431,7 @@ CONFIG_FEATURE_KILL_DELAY=0
 # CONFIG_FEATURE_INITRD is not set
 CONFIG_INIT_TERMINAL_TYPE=""
 # CONFIG_MESG is not set
+# CONFIG_FEATURE_MESG_ENABLE_ONLY_GROUP is not set
 
 #
 # Login/Password Management Utilities
@@ -476,6 +477,10 @@ CONFIG_LAST_SYSTEM_ID=0
 # CONFIG_FSCK is not set
 # CONFIG_LSATTR is not set
 # CONFIG_TUNE2FS is not set
+
+#
+# Linux Module Utilities
+#
 # CONFIG_MODINFO is not set
 # CONFIG_MODPROBE_SMALL is not set
 # CONFIG_FEATURE_MODPROBE_SMALL_OPTIONS_ON_CMDLINE is not set
@@ -487,6 +492,10 @@ CONFIG_LAST_SYSTEM_ID=0
 # CONFIG_MODPROBE is not set
 # CONFIG_FEATURE_MODPROBE_BLACKLIST is not set
 # CONFIG_DEPMOD is not set
+
+#
+# Options common to multiple modutils
+#
 # CONFIG_FEATURE_2_4_MODULES is not set
 # CONFIG_FEATURE_INSMOD_TRY_MMAP is not set
 # CONFIG_FEATURE_INSMOD_VERSION_CHECKING is not set
@@ -693,6 +702,8 @@ CONFIG_STRINGS=y
 #
 # Networking Utilities
 #
+# CONFIG_NAMEIF is not set
+# CONFIG_FEATURE_NAMEIF_EXTENDED is not set
 # CONFIG_NBDCLIENT is not set
 # CONFIG_NC is not set
 # CONFIG_NC_SERVER is not set
@@ -701,6 +712,7 @@ CONFIG_STRINGS=y
 # CONFIG_PING is not set
 # CONFIG_PING6 is not set
 # CONFIG_FEATURE_FANCY_PING is not set
+# CONFIG_WHOIS is not set
 # CONFIG_FEATURE_IPV6 is not set
 # CONFIG_FEATURE_UNIX_LOCAL is not set
 # CONFIG_FEATURE_PREFER_IPV4_ADDRESS is not set
@@ -773,8 +785,6 @@ CONFIG_IFUPDOWN_IFSTATE_PATH=""
 # CONFIG_IPCALC is not set
 # CONFIG_FEATURE_IPCALC_FANCY is not set
 # CONFIG_FEATURE_IPCALC_LONG_OPTIONS is not set
-# CONFIG_NAMEIF is not set
-# CONFIG_FEATURE_NAMEIF_EXTENDED is not set
 # CONFIG_NETSTAT is not set
 # CONFIG_FEATURE_NETSTAT_WIDE is not set
 # CONFIG_FEATURE_NETSTAT_PRG is not set
@@ -855,6 +865,7 @@ CONFIG_FEATURE_MIME_CHARSET=""
 # CONFIG_PMAP is not set
 # CONFIG_POWERTOP is not set
 # CONFIG_PSTREE is not set
+# CONFIG_PWDX is not set
 # CONFIG_SMEMCAP is not set
 # CONFIG_FREE is not set
 # CONFIG_FUSER is not set

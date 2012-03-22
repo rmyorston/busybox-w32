@@ -106,6 +106,7 @@ enum {
 struct globals {
 	char **my_environ;
 	const char *startup_PATH;
+	char *shell;
 } FIX_ALIASING;
 #define G (*(struct globals*)&bb_common_bufsiz1)
 #define INIT_G() do { } while (0)
@@ -986,11 +987,10 @@ static int doit(char *str)
 
 		fflush_all();
 		child = vfork();
-		switch (child) {
-		case -1: /* failure */
+		if (child < 0) /* failure */
 			return 0;
-		case 0: /* child */
-			execle(DEFAULT_SHELL, DEFAULT_SHELL, "-c", str, (char *) NULL, G.my_environ);
+		if (child == 0) { /* child */
+			execle(G.shell, G.shell, "-c", str, (char *) NULL, G.my_environ);
 			_exit(127);
 		}
 		safe_waitpid(child, &status, 0);
@@ -1165,6 +1165,7 @@ int ifupdown_main(int argc UNUSED_PARAM, char **argv)
 	INIT_G();
 
 	G.startup_PATH = getenv("PATH");
+	G.shell = xstrdup(get_shell_name());
 
 	cmds = iface_down;
 	if (applet_name[2] == 'u') {
@@ -1220,13 +1221,13 @@ int ifupdown_main(int argc UNUSED_PARAM, char **argv)
 				/* ifup */
 				if (iface_state) {
 					bb_error_msg("interface %s already configured", iface);
-					continue;
+					goto next;
 				}
 			} else {
 				/* ifdown */
 				if (!iface_state) {
 					bb_error_msg("interface %s not configured", iface);
-					continue;
+					goto next;
 				}
 			}
 			llist_free(state_list, free);
@@ -1316,6 +1317,9 @@ int ifupdown_main(int argc UNUSED_PARAM, char **argv)
 			fclose(state_fp);
 			llist_free(state_list, free);
 		}
+ next:
+		free(iface);
+		free(liface);
 	}
 
 	return any_failures;

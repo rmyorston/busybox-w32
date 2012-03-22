@@ -1273,23 +1273,6 @@ INSERT
      "\n	-m	Show \"mode not cleared\" warnings" \
      "\n	-f	Force file system check" \
 
-#define ftpd_trivial_usage \
-       "[-wvS] [-t N] [-T N] [DIR]"
-#define ftpd_full_usage "\n\n" \
-       "Anonymous FTP server\n" \
-       "\n" \
-       "ftpd should be used as an inetd service.\n" \
-       "ftpd's line for inetd.conf:\n" \
-       "	21 stream tcp nowait root ftpd ftpd /files/to/serve\n" \
-       "It also can be ran from tcpsvd:\n" \
-       "	tcpsvd -vE 0.0.0.0 21 ftpd /files/to/serve\n" \
-     "\nOptions:" \
-     "\n	-w	Allow upload" \
-     "\n	-v	Log to stderr" \
-     "\n	-S	Log to syslog" \
-     "\n	-t,-T	Idle and absolute timeouts" \
-     "\n	DIR	Change root to this directory" \
-
 #define ftpget_trivial_usage \
        "[OPTIONS] HOST [LOCAL_FILE] REMOTE_FILE"
 #define ftpget_full_usage "\n\n" \
@@ -2499,7 +2482,7 @@ INSERT
      "\n	[r]slave	Convert [recursively] to a slave subtree" \
      "\n	[r]private	Convert [recursively] to a private subtree" \
      "\n	[un]bindable	Make mount point [un]able to be bind mounted" \
-     "\n	bind		Bind a file or directory to another location" \
+     "\n	[r]bind		Bind a file or directory [recursively] to another location" \
      "\n	move		Relocate an existing mount point" \
 	) \
      "\n	remount		Remount a mounted filesystem, changing flags" \
@@ -2545,20 +2528,6 @@ INSERT
        "fsf fsfm fsr fss load lock mkpart nop offline ras1 ras2\n" \
        "ras3 reset retension rewind rewoffline seek setblk setdensity\n" \
        "setpart tell unload unlock weof wset" \
-
-#define nameif_trivial_usage \
-       "[-s] [-c FILE] [{IFNAME MACADDR}]"
-#define nameif_full_usage "\n\n" \
-       "Rename network interface while it in the down state\n" \
-     "\nOptions:" \
-     "\n	-c FILE		Use configuration file (default: /etc/mactab)" \
-     "\n	-s		Use syslog (LOCAL0 facility)" \
-     "\n	IFNAME MACADDR	new_interface_name interface_mac_address" \
-
-#define nameif_example_usage \
-       "$ nameif -s dmz0 00:A0:C9:8C:F6:3F\n" \
-       " or\n" \
-       "$ nameif -c /etc/my_mactab_file\n" \
 
 #define nohup_trivial_usage \
        "PROG ARGS"
@@ -4097,31 +4066,6 @@ INSERT
      "\n	-F	Run in foreground" \
      "\n" \
      "\nUse 500ms to specify period in milliseconds" \
-
-#define wget_trivial_usage \
-	IF_FEATURE_WGET_LONG_OPTIONS( \
-       "[-c|--continue] [-s|--spider] [-q|--quiet] [-O|--output-document FILE]\n" \
-       "	[--header 'header: value'] [-Y|--proxy on/off] [-P DIR]\n" \
-       "	[--no-check-certificate] [-U|--user-agent AGENT]" \
-			IF_FEATURE_WGET_TIMEOUT("[-T SEC] ") " URL" \
-	) \
-	IF_NOT_FEATURE_WGET_LONG_OPTIONS( \
-       "[-csq] [-O FILE] [-Y on/off] [-P DIR] [-U AGENT]" \
-			IF_FEATURE_WGET_TIMEOUT("[-T SEC] ") " URL" \
-	)
-#define wget_full_usage "\n\n" \
-       "Retrieve files via HTTP or FTP\n" \
-     "\nOptions:" \
-     "\n	-s	Spider mode - only check file existence" \
-     "\n	-c	Continue retrieval of aborted transfer" \
-     "\n	-q	Quiet" \
-     "\n	-P DIR	Save to DIR (default .)" \
-	IF_FEATURE_WGET_TIMEOUT( \
-     "\n	-T SEC	Network read timeout is SEC seconds" \
-	) \
-     "\n	-O FILE	Save to FILE ('-' for stdout)" \
-     "\n	-U STR	Use STR for User-Agent header" \
-     "\n	-Y	Use proxy ('on' or 'off')" \
 
 #define which_trivial_usage \
        "[COMMAND]..."

@@ -1,6 +1,5 @@
 /* vi: set sw=4 ts=4: */
 /*
- * tiny-ls.c version 0.1.0: A minimalist 'ls'
  * Copyright (C) 1996 Brian Candler <B.Candler@pobox.com>
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
@@ -159,7 +158,7 @@ STYLE_MASK      = STYLE_SINGLE,
 
 /* which of the three times will be used */
 TIME_CHANGE     = (1 << 21) * ENABLE_FEATURE_LS_TIMESTAMPS,
-TIME_ACCESS     = (1 << 22) * ENABLE_FEATURE_LS_TIMESTAMPS,
+TIME_ACCESS     = (2 << 21) * ENABLE_FEATURE_LS_TIMESTAMPS,
 TIME_MASK       = (3 << 21) * ENABLE_FEATURE_LS_TIMESTAMPS,
 
 /* how will the files be sorted (CONFIG_FEATURE_LS_SORTFILES) */
@@ -189,10 +188,11 @@ LIST_LONG       = LIST_MODEBITS | LIST_NLINKS | LIST_ID_NAME | LIST_SIZE | \
 /*          Not fully compatible - we show not only '/' but other chars too */
 /* -SXvhTw  GNU options, busybox optionally supports */
 /*          -T TABWIDTH is ignored (we don't use tabs on output) */
-/* -K       SELinux mandated options, busybox optionally supports */
+/* -KZ      SELinux mandated options, busybox optionally supports */
+/*          (coreutils 8.4 has no -K, remove it?) */
 /* -e       I think we made this one up (looks similar to GNU --full-time) */
-/* Std opts we do not support: */
-/* -H       Follow the links on command line only */
+/* We already used up all 32 bits, if we need to add more, candidates for removal: */
+/* -K, -T, -e (add --full-time instead) */
 static const char ls_options[] ALIGN1 =
 	"Cadil1gnsxQAk"      /* 13 opts, total 13 */
 	IF_FEATURE_LS_TIMESTAMPS("cetu") /* 4, 17 */
@@ -203,7 +203,7 @@ static const char ls_options[] ALIGN1 =
 	IF_FEATURE_LS_FOLLOWLINKS("LH")  /* 2, 28 */
 	IF_FEATURE_HUMAN_READABLE("h")   /* 1, 29 */
 	IF_FEATURE_AUTOWIDTH("T:w:")     /* 2, 31 */
-	;
+	/* with --color, we use all 32 bits */;
 enum {
 	//OPT_C = (1 << 0),
 	//OPT_a = (1 << 1),
@@ -234,8 +234,8 @@ enum {
 	OPTBIT_Z, /* 25 */
 	OPTBIT_L = OPTBIT_K + 2 * ENABLE_SELINUX,
 	OPTBIT_H, /* 27 */
-	OPTBIT_h = OPTBIT_L + 1 * ENABLE_FEATURE_LS_FOLLOWLINKS,
-	OPTBIT_T = OPTBIT_h + 2 * ENABLE_FEATURE_HUMAN_READABLE,
+	OPTBIT_h = OPTBIT_L + 2 * ENABLE_FEATURE_LS_FOLLOWLINKS,
+	OPTBIT_T = OPTBIT_h + 1 * ENABLE_FEATURE_HUMAN_READABLE,
 	OPTBIT_w, /* 30 */
 	OPTBIT_color = OPTBIT_T + 2 * ENABLE_FEATURE_AUTOWIDTH,
 
@@ -268,13 +268,13 @@ static const uint32_t opt_flags[] = {
 	LIST_INO,                    /* i */
 	LIST_LONG | STYLE_LONG,      /* l */
 	STYLE_SINGLE,                /* 1 */
-	0,                           /* g (don't show owner) - handled via OPT_g */
-	LIST_ID_NUMERIC,             /* n */
+	LIST_LONG | STYLE_LONG,      /* g (don't show owner) - handled via OPT_g. assumes l */
+	LIST_ID_NUMERIC | LIST_LONG | STYLE_LONG, /* n (assumes l) */
 	LIST_BLOCKS,                 /* s */
 	DISP_ROWS | STYLE_COLUMNAR,  /* x */
 	0,                           /* Q (quote filename) - handled via OPT_Q */
 	DISP_HIDDEN,                 /* A */
-	ENABLE_SELINUX * LIST_CONTEXT, /* k (ignored if !SELINUX) */
+	ENABLE_SELINUX * (LIST_CONTEXT|STYLE_SINGLE), /* k (ignored if !SELINUX) */
 #if ENABLE_FEATURE_LS_TIMESTAMPS
 	TIME_CHANGE | (ENABLE_FEATURE_LS_SORTFILES * SORT_CTIME), /* c */
 	LIST_FULLTIME,               /* e */
@@ -295,8 +295,8 @@ static const uint32_t opt_flags[] = {
 	DISP_RECURSIVE,              /* R */
 #endif
 #if ENABLE_SELINUX
-	LIST_MODEBITS|LIST_NLINKS|LIST_CONTEXT|LIST_SIZE|LIST_DATE_TIME, /* K */
-	LIST_MODEBITS|LIST_ID_NAME|LIST_CONTEXT, /* Z */
+	LIST_MODEBITS|LIST_NLINKS|LIST_CONTEXT|LIST_SIZE|LIST_DATE_TIME|STYLE_SINGLE, /* K */
+	LIST_MODEBITS|LIST_ID_NAME|LIST_CONTEXT|STYLE_SINGLE, /* Z */
 #endif
 	(1U << 31)
 	/* options after Z are not processed through opt_flags */
@@ -682,19 +682,28 @@ static NOINLINE unsigned list_single(const struct dnode *dn)
 
 	if (all_fmt & LIST_INO)
 		column += printf("%7llu ", (long long) dn->dstat.st_ino);
+//TODO: -h should affect -s too:
 	if (all_fmt & LIST_BLOCKS)
 #if ENABLE_PLATFORM_MINGW32
 		/* MinGW does not have st_blocks */
-		column += printf("%4"OFF_FMT"u ", (off_t)0);
+		column += printf("%6"OFF_FMT"u ", (off_t)0);
 #else
-		column += printf("%4"OFF_FMT"u ", (off_t) (dn->dstat.st_blocks >> 1));
+		column += printf("%6"OFF_FMT"u ", (off_t) (dn->dstat.st_blocks >> 1));
 #endif
 	if (all_fmt & LIST_MODEBITS)
 		column += printf("%-10s ", (char *) bb_mode_string(dn->dstat.st_mode));
 	if (all_fmt & LIST_NLINKS)
 		column += printf("%4lu ", (long) dn->dstat.st_nlink);
+	if (all_fmt & LIST_ID_NUMERIC) {
+		if (option_mask32 & OPT_g)
+			column += printf("%-8u ", (int) dn->dstat.st_gid);
+		else
+			column += printf("%-8u %-8u ",
+					(int) dn->dstat.st_uid,
+					(int) dn->dstat.st_gid);
+	}
 #if ENABLE_FEATURE_LS_USERNAME
-	if (all_fmt & LIST_ID_NAME) {
+	else if (all_fmt & LIST_ID_NAME) {
 		if (option_mask32 & OPT_g) {
 			column += printf("%-8.8s ",
 				get_cached_groupname(dn->dstat.st_gid));
@@ -705,14 +714,6 @@ static NOINLINE unsigned list_single(const struct dnode *dn)
 		}
 	}
 #endif
-	if (all_fmt & LIST_ID_NUMERIC) {
-		if (option_mask32 & OPT_g)
-			column += printf("%-8u ", (int) dn->dstat.st_gid);
-		else
-			column += printf("%-8u %-8u ",
-					(int) dn->dstat.st_uid,
-					(int) dn->dstat.st_gid);
-	}
 	if (all_fmt & LIST_SIZE) {
 		if (S_ISBLK(dn->dstat.st_mode) || S_ISCHR(dn->dstat.st_mode)) {
 			column += printf("%4u, %3u ",
@@ -739,9 +740,12 @@ static NOINLINE unsigned list_single(const struct dnode *dn)
 			ttime = dn->dstat.st_ctime;
 		filetime = ctime(&ttime);
 		/* filetime's format: "Wed Jun 30 21:49:08 1993\n" */
-		if (all_fmt & LIST_FULLTIME)
+		if (all_fmt & LIST_FULLTIME) { /* -e */
+			/* Note: coreutils 8.4 ls --full-time prints:
+			 * 2009-07-13 17:49:27.000000000 +0200
+			 */
 			column += printf("%.24s ", filetime);
-		else { /* LIST_DATE_TIME */
+		} else { /* LIST_DATE_TIME */
 			/* current_time_t ~== time(NULL) */
 			time_t age = current_time_t - ttime;
 			printf("%.6s ", filetime + 4); /* "Jun 30" */
@@ -1049,7 +1053,8 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 
 	init_unicode();
 
-	all_fmt = ENABLE_FEATURE_LS_SORTFILES * SORT_NAME;
+	if (ENABLE_FEATURE_LS_SORTFILES)
+		all_fmt = SORT_NAME;
 
 #if ENABLE_FEATURE_AUTOWIDTH
 	/* obtain the terminal width */
@@ -1090,14 +1095,12 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 			if (flags & TIME_MASK)
 				all_fmt &= ~TIME_MASK;
 
-			if (flags & LIST_CONTEXT)
-				all_fmt |= STYLE_SINGLE;
 			all_fmt |= flags;
 		}
 	}
 
 #if ENABLE_FEATURE_LS_COLOR
-	/* find color bit value - last position for short getopt */
+	/* set show_color = 1/0 */
 	if (ENABLE_FEATURE_LS_COLOR_IS_DEFAULT && isatty(STDOUT_FILENO)) {
 		char *p = getenv("LS_COLORS");
 		/* LS_COLORS is unset, or (not empty && not "none") ? */
@@ -1130,11 +1133,8 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 		if (all_fmt & TIME_ACCESS)
 			all_fmt = (all_fmt & ~SORT_MASK) | SORT_ATIME;
 	}
-	if ((all_fmt & STYLE_MASK) != STYLE_LONG) /* only for long list */
+	if ((all_fmt & STYLE_MASK) != STYLE_LONG) /* not -l? */
 		all_fmt &= ~(LIST_ID_NUMERIC|LIST_ID_NAME|LIST_FULLTIME);
-	if (ENABLE_FEATURE_LS_USERNAME)
-		if ((all_fmt & STYLE_MASK) == STYLE_LONG && (all_fmt & LIST_ID_NUMERIC))
-			all_fmt &= ~LIST_ID_NAME; /* don't list names if numeric uid */
 
 	/* choose a display format if one was not already specified by an option */
 	if (!(all_fmt & STYLE_MASK))
@@ -1153,7 +1153,10 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 	do {
 		cur = my_stat(*argv, *argv,
 			/* follow links on command line unless -l, -s or -F: */
-			!((all_fmt & (STYLE_LONG|LIST_BLOCKS)) || (option_mask32 & OPT_F))
+			!((all_fmt & STYLE_MASK) == STYLE_LONG
+			  || (all_fmt & LIST_BLOCKS)
+			  || (option_mask32 & OPT_F)
+			)
 			/* ... or if -H: */
 			|| (option_mask32 & OPT_H)
 		);

@@ -397,17 +397,8 @@ static int FAST_FUNC writeFileToTarball(const char *fileName, struct stat *statb
 
 	DBG("writeFileToTarball('%s')", fileName);
 
-	/* Strip leading '/' (must be before memorizing hardlink's name) */
-	header_name = fileName;
-	while (header_name[0] == '/') {
-		static smallint warned;
-
-		if (!warned) {
-			bb_error_msg("removing leading '/' from member names");
-			warned = 1;
-		}
-		header_name++;
-	}
+	/* Strip leading '/' and such (must be before memorizing hardlink's name) */
+	header_name = strip_unsafe_prefix(fileName);
 
 	if (header_name[0] == '\0')
 		return TRUE;
@@ -981,6 +972,7 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 		putenv((char*)"TAR_FILETYPE=f");
 		signal(SIGPIPE, SIG_IGN);
 		tar_handle->action_data = data_extract_to_command;
+		IF_FEATURE_TAR_TO_COMMAND(tar_handle->tar__to_command_shell = xstrdup(get_shell_name());)
 	}
 
 	if (opt & OPT_KEEP_OLD)
