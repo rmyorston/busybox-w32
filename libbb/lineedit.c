@@ -204,65 +204,82 @@ static void deinit_S(void)
 #if ENABLE_UNICODE_SUPPORT
 static size_t load_string(const char *src, int maxsize)
 {
-	ssize_t len = mbstowcs(command_ps, src, maxsize - 1);
-	if (len < 0)
-		len = 0;
-	command_ps[len] = BB_NUL;
-	return len;
+	if (unicode_status == UNICODE_ON) {
+		ssize_t len = mbstowcs(command_ps, src, maxsize - 1);
+		if (len < 0)
+			len = 0;
+		command_ps[len] = BB_NUL;
+		return len;
+	} else {
+		unsigned i = 0;
+		while ((command_ps[i] = src[i]) != 0)
+			i++;
+		return i;
+	}
 }
 static unsigned save_string(char *dst, unsigned maxsize)
 {
+	if (unicode_status == UNICODE_ON) {
 # if !ENABLE_UNICODE_PRESERVE_BROKEN
-	ssize_t len = wcstombs(dst, command_ps, maxsize - 1);
-	if (len < 0)
-		len = 0;
-	dst[len] = '\0';
-	return len;
+		ssize_t len = wcstombs(dst, command_ps, maxsize - 1);
+		if (len < 0)
+			len = 0;
+		dst[len] = '\0';
+		return len;
 # else
-	unsigned dstpos = 0;
-	unsigned srcpos = 0;
+		unsigned dstpos = 0;
+		unsigned srcpos = 0;
 
-	maxsize--;
-	while (dstpos < maxsize) {
-		wchar_t wc;
-		int n = srcpos;
+		maxsize--;
+		while (dstpos < maxsize) {
+			wchar_t wc;
+			int n = srcpos;
 
-		/* Convert up to 1st invalid byte (or up to end) */
-		while ((wc = command_ps[srcpos]) != BB_NUL
-		    && !unicode_is_raw_byte(wc)
-		) {
+			/* Convert up to 1st invalid byte (or up to end) */
+			while ((wc = command_ps[srcpos]) != BB_NUL
+			    && !unicode_is_raw_byte(wc)
+			) {
+				srcpos++;
+			}
+			command_ps[srcpos] = BB_NUL;
+			n = wcstombs(dst + dstpos, command_ps + n, maxsize - dstpos);
+			if (n < 0) /* should not happen */
+				break;
+			dstpos += n;
+			if (wc == BB_NUL) /* usually is */
+				break;
+
+			/* We do have invalid byte here! */
+			command_ps[srcpos] = wc; /* restore it */
 			srcpos++;
+			if (dstpos == maxsize)
+				break;
+			dst[dstpos++] = (char) wc;
 		}
-		command_ps[srcpos] = BB_NUL;
-		n = wcstombs(dst + dstpos, command_ps + n, maxsize - dstpos);
-		if (n < 0) /* should not happen */
-			break;
-		dstpos += n;
-		if (wc == BB_NUL) /* usually is */
-			break;
-
-		/* We do have invalid byte here! */
-		command_ps[srcpos] = wc; /* restore it */
-		srcpos++;
-		if (dstpos == maxsize)
-			break;
-		dst[dstpos++] = (char) wc;
-	}
-	dst[dstpos] = '\0';
-	return dstpos;
+		dst[dstpos] = '\0';
+		return dstpos;
 # endif
+	} else {
+		unsigned i = 0;
+		while ((dst[i] = command_ps[i]) != 0)
+			i++;
+		return i;
+	}
 }
 /* I thought just fputwc(c, stdout) would work. But no... */
 static void BB_PUTCHAR(wchar_t c)
 {
-	char buf[MB_CUR_MAX + 1];
-	mbstate_t mbst = { 0 };
-	ssize_t len;
-
-	len = wcrtomb(buf, c, &mbst);
-	if (len > 0) {
-		buf[len] = '\0';
-		fputs(buf, stdout);
+	if (unicode_status == UNICODE_ON) {
+		char buf[MB_CUR_MAX + 1];
+		mbstate_t mbst = { 0 };
+		ssize_t len = wcrtomb(buf, c, &mbst);
+		if (len > 0) {
+			buf[len] = '\0';
+			fputs(buf, stdout);
+		}
+	} else {
+		/* In this case, c is always one byte */
+		putchar(c);
 	}
 }
 # if ENABLE_UNICODE_COMBINING_WCHARS || ENABLE_UNICODE_WIDE_WCHARS
@@ -1234,11 +1251,25 @@ line_input_t* FAST_FUNC new_line_input_t(int flags)
 {
 	line_input_t *n = xzalloc(sizeof(*n));
 	n->flags = flags;
+	n->max_history = MAX_HISTORY;
 	return n;
 }
 
 
 #if MAX_HISTORY > 0
+
+unsigned size_from_HISTFILESIZE(const char *hp)
+{
+	int size = MAX_HISTORY;
+	if (hp) {
+		size = atoi(hp);
+		if (size <= 0)
+			return 1;
+		if (size > MAX_HISTORY)
+			return MAX_HISTORY;
+	}
+	return size;
+}
 
 static void save_command_ps_at_cur_history(void)
 {
@@ -1330,7 +1361,7 @@ static void load_history(line_input_t *st_parm)
 			temp_h[idx] = line;
 			st_parm->cnt_history_in_file++;
 			idx++;
-			if (idx == MAX_HISTORY)
+			if (idx == st_parm->max_history)
 				idx = 0;
 		}
 		fclose(fp);
@@ -1339,18 +1370,18 @@ static void load_history(line_input_t *st_parm)
 		if (st_parm->cnt_history_in_file) {
 			while (temp_h[idx] == NULL) {
 				idx++;
-				if (idx == MAX_HISTORY)
+				if (idx == st_parm->max_history)
 					idx = 0;
 			}
 		}
 
 		/* copy temp_h[] to st_parm->history[] */
-		for (i = 0; i < MAX_HISTORY;) {
+		for (i = 0; i < st_parm->max_history;) {
 			line = temp_h[idx];
 			if (!line)
 				break;
 			idx++;
-			if (idx == MAX_HISTORY)
+			if (idx == st_parm->max_history)
 				idx = 0;
 			line_len = strlen(line);
 			if (line_len >= MAX_LINELEN)
@@ -1381,7 +1412,7 @@ static void save_history(char *str)
 
 	/* did we write so much that history file needs trimming? */
 	state->cnt_history_in_file++;
-	if (state->cnt_history_in_file > MAX_HISTORY * 4) {
+	if (state->cnt_history_in_file > state->max_history * 4) {
 		char *new_name;
 		line_input_t *st_temp;
 
@@ -1389,6 +1420,7 @@ static void save_history(char *str)
 		 * load them */
 		st_temp = new_line_input_t(state->flags);
 		st_temp->hist_file = state->hist_file;
+		st_temp->max_history = state->max_history;
 		load_history(st_temp);
 
 		/* write out temp file and replace hist_file atomically */
@@ -1427,20 +1459,20 @@ static void remember_in_history(char *str)
 	if (i && strcmp(state->history[i-1], str) == 0)
 		return;
 
-	free(state->history[MAX_HISTORY]); /* redundant, paranoia */
-	state->history[MAX_HISTORY] = NULL; /* redundant, paranoia */
+	free(state->history[state->max_history]); /* redundant, paranoia */
+	state->history[state->max_history] = NULL; /* redundant, paranoia */
 
 	/* If history[] is full, remove the oldest command */
-	/* we need to keep history[MAX_HISTORY] empty, hence >=, not > */
-	if (i >= MAX_HISTORY) {
+	/* we need to keep history[state->max_history] empty, hence >=, not > */
+	if (i >= state->max_history) {
 		free(state->history[0]);
-		for (i = 0; i < MAX_HISTORY-1; i++)
+		for (i = 0; i < state->max_history-1; i++)
 			state->history[i] = state->history[i+1];
-		/* i == MAX_HISTORY-1 */
+		/* i == state->max_history-1 */
 	}
-	/* i <= MAX_HISTORY-1 */
+	/* i <= state->max_history-1 */
 	state->history[i++] = xstrdup(str);
-	/* i <= MAX_HISTORY */
+	/* i <= state->max_history */
 	state->cur_history = i;
 	state->cnt_history = i;
 # if MAX_HISTORY > 0 && ENABLE_FEATURE_EDITING_SAVEHISTORY
@@ -1968,7 +2000,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 		maxsize = MAX_LINELEN;
 	S.maxsize = maxsize;
 
-	/* With null flags, no other fields are ever used */
+	/* With zero flags, no other fields are ever used */
 	state = st ? st : (line_input_t*) &const_int_0;
 #if MAX_HISTORY > 0
 # if ENABLE_FEATURE_EDITING_SAVEHISTORY
@@ -2020,7 +2052,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 #endif
 
 #if 0
-	for (i = 0; i <= MAX_HISTORY; i++)
+	for (i = 0; i <= state->max_history; i++)
 		bb_error_msg("history[%d]:'%s'", i, state->history[i]);
 	bb_error_msg("cur_history:%d cnt_history:%d", state->cur_history, state->cnt_history);
 #endif

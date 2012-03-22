@@ -21,6 +21,10 @@
  * The server changes directory to the location of the script and executes it
  * after setting QUERY_STRING and other environment variables.
  *
+ * If directory URL is given, no index.html is found and CGI support is enabled,
+ * cgi-bin/index.cgi will be run. Directory to list is ../$QUERY_STRING.
+ * See httpd_indexcgi.c for an example GCI code.
+ *
  * Doc:
  * "CGI Environment Variables": http://hoohoo.ncsa.uiuc.edu/cgi/env.html
  *
@@ -71,7 +75,7 @@
  *     D:2.3.4.        # deny from 2.3.4.0 - 2.3.4.255
  *     A:*             # (optional line added for clarity)
  *
- * If a sub directory contains a config file it is parsed and merged with
+ * If a sub directory contains config file, it is parsed and merged with
  * any existing settings as if it was appended to the original configuration.
  *
  * subdir paths are relative to the containing subdir and thus cannot
@@ -92,6 +96,32 @@
  *
  */
  /* TODO: use TCP_CORK, parse_config() */
+
+//usage:#define httpd_trivial_usage
+//usage:       "[-ifv[v]]"
+//usage:       " [-c CONFFILE]"
+//usage:       " [-p [IP:]PORT]"
+//usage:	IF_FEATURE_HTTPD_SETUID(" [-u USER[:GRP]]")
+//usage:	IF_FEATURE_HTTPD_BASIC_AUTH(" [-r REALM]")
+//usage:       " [-h HOME]\n"
+//usage:       "or httpd -d/-e" IF_FEATURE_HTTPD_AUTH_MD5("/-m") " STRING"
+//usage:#define httpd_full_usage "\n\n"
+//usage:       "Listen for incoming HTTP requests\n"
+//usage:     "\nOptions:"
+//usage:     "\n	-i		Inetd mode"
+//usage:     "\n	-f		Don't daemonize"
+//usage:     "\n	-v[v]		Verbose"
+//usage:     "\n	-p [IP:]PORT	Bind to IP:PORT (default *:80)"
+//usage:	IF_FEATURE_HTTPD_SETUID(
+//usage:     "\n	-u USER[:GRP]	Set uid/gid after binding to port")
+//usage:	IF_FEATURE_HTTPD_BASIC_AUTH(
+//usage:     "\n	-r REALM	Authentication Realm for Basic Authentication")
+//usage:     "\n	-h HOME		Home directory (default .)"
+//usage:     "\n	-c FILE		Configuration file (default {/etc,HOME}/httpd.conf)"
+//usage:	IF_FEATURE_HTTPD_AUTH_MD5(
+//usage:     "\n	-m STRING	MD5 crypt STRING")
+//usage:     "\n	-e STRING	HTML encode STRING"
+//usage:     "\n	-d STRING	URL decode STRING"
 
 #include "libbb.h"
 #if ENABLE_FEATURE_HTTPD_USE_SENDFILE
@@ -1065,6 +1095,7 @@ static void send_headers(int responseNum)
 static void send_headers_and_exit(int responseNum) NORETURN;
 static void send_headers_and_exit(int responseNum)
 {
+	IF_FEATURE_HTTPD_GZIP(content_gzip = 0;)
 	send_headers(responseNum);
 	log_and_exit();
 }

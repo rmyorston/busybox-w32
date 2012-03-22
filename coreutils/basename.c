@@ -28,6 +28,19 @@
 //config:	  leaving just the filename itself. Enable this option if you wish
 //config:	  to enable the 'basename' utility.
 
+//usage:#define basename_trivial_usage
+//usage:       "FILE [SUFFIX]"
+//usage:#define basename_full_usage "\n\n"
+//usage:       "Strip directory path and .SUFFIX from FILE\n"
+//usage:
+//usage:#define basename_example_usage
+//usage:       "$ basename /usr/local/bin/foo\n"
+//usage:       "foo\n"
+//usage:       "$ basename /usr/local/bin/\n"
+//usage:       "bin\n"
+//usage:       "$ basename /foo/bar.txt .txt\n"
+//usage:       "bar"
+
 #include "libbb.h"
 
 /* This is a NOFORK applet. Be very careful! */
@@ -37,6 +50,11 @@ int basename_main(int argc, char **argv)
 {
 	size_t m, n;
 	char *s;
+
+	if (argv[1] && strcmp(argv[1], "--") == 0) {
+		argv++;
+		argc--;
+	}
 
 	if ((unsigned)(argc-2) >= 2) {
 		bb_show_usage();

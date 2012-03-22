@@ -154,6 +154,17 @@
  *                      setuid()
  */
 
+//usage:#define inetd_trivial_usage
+//usage:       "[-fe] [-q N] [-R N] [CONFFILE]"
+//usage:#define inetd_full_usage "\n\n"
+//usage:       "Listen for network connections and launch programs\n"
+//usage:     "\nOptions:"
+//usage:     "\n	-f	Run in foreground"
+//usage:     "\n	-e	Log to stderr"
+//usage:     "\n	-q N    Socket listen queue (default: 128)"
+//usage:     "\n	-R N	Pause services after N connects/min"
+//usage:     "\n		(default: 0 - disabled)"
+
 #include <syslog.h>
 #include <sys/un.h>
 
@@ -501,7 +512,7 @@ static void prepare_socket_fd(servtab_t *sep)
 
 		/* zero out the port for all RPC services; let bind()
 		 * find one. */
-		set_nport(sep->se_lsa, 0);
+		set_nport(&sep->se_lsa->u.sa, 0);
 
 		/* for RPC services, attempt to use a reserved port
 		 * if they are going to be running as root. */
@@ -959,7 +970,7 @@ static void reread_config_file(int sig UNUSED_PARAM)
 			}
 			if (LONE_CHAR(sep->se_local_hostname, '*')) {
 				lsa = xzalloc_lsa(sep->se_family);
-				set_nport(lsa, port);
+				set_nport(&lsa->u.sa, port);
 			} else {
 				lsa = host_and_af2sockaddr(sep->se_local_hostname,
 						ntohs(port), sep->se_family);

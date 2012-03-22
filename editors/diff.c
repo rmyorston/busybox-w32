@@ -76,6 +76,28 @@
  * 6n words for files of length n.
  */
 
+//usage:#define diff_trivial_usage
+//usage:       "[-abBdiNqrTstw] [-L LABEL] [-S FILE] [-U LINES] FILE1 FILE2"
+//usage:#define diff_full_usage "\n\n"
+//usage:       "Compare files line by line and output the differences between them.\n"
+//usage:       "This implementation supports unified diffs only.\n"
+//usage:     "\nOptions:"
+//usage:     "\n	-a	Treat all files as text"
+//usage:     "\n	-b	Ignore changes in the amount of whitespace"
+//usage:     "\n	-B	Ignore changes whose lines are all blank"
+//usage:     "\n	-d	Try hard to find a smaller set of changes"
+//usage:     "\n	-i	Ignore case differences"
+//usage:     "\n	-L	Use LABEL instead of the filename in the unified header"
+//usage:     "\n	-N	Treat absent files as empty"
+//usage:     "\n	-q	Output only whether files differ"
+//usage:     "\n	-r	Recurse"
+//usage:     "\n	-S	Start with FILE when comparing directories"
+//usage:     "\n	-T	Make tabs line up by prefixing a tab when necessary"
+//usage:     "\n	-s	Report when two files are the same"
+//usage:     "\n	-t	Expand tabs to spaces in output"
+//usage:     "\n	-U	Output LINES lines of context"
+//usage:     "\n	-w	Ignore all whitespace"
+
 #include "libbb.h"
 
 #if 0
@@ -951,6 +973,31 @@ int diff_main(int argc UNUSED_PARAM, char **argv)
 	xfunc_error_retval = 1;
 	if (gotstdin && (S_ISDIR(stb[0].st_mode) || S_ISDIR(stb[1].st_mode)))
 		bb_error_msg_and_die("can't compare stdin to a directory");
+
+	/* Compare metadata to check if the files are the same physical file.
+	 *
+	 * Comment from diffutils source says:
+	 * POSIX says that two files are identical if st_ino and st_dev are
+	 * the same, but many file systems incorrectly assign the same (device,
+	 * inode) pair to two distinct files, including:
+	 * GNU/Linux NFS servers that export all local file systems as a
+	 * single NFS file system, if a local device number (st_dev) exceeds
+	 * 255, or if a local inode number (st_ino) exceeds 16777215.
+	 */
+	if (ENABLE_DESKTOP
+	 && stb[0].st_ino == stb[1].st_ino
+	 && stb[0].st_dev == stb[1].st_dev
+	 && stb[0].st_size == stb[1].st_size
+	 && stb[0].st_mtime == stb[1].st_mtime
+	 && stb[0].st_ctime == stb[1].st_ctime
+	 && stb[0].st_mode == stb[1].st_mode
+	 && stb[0].st_nlink == stb[1].st_nlink
+	 && stb[0].st_uid == stb[1].st_uid
+	 && stb[0].st_gid == stb[1].st_gid
+	) {
+		/* files are physically the same; no need to compare them */
+		return STATUS_SAME;
+	}
 
 	if (S_ISDIR(stb[0].st_mode) && S_ISDIR(stb[1].st_mode)) {
 #if ENABLE_FEATURE_DIFF_DIR

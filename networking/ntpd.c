@@ -27,6 +27,23 @@
  *                                                                     *
  ***********************************************************************
  */
+
+//usage:#define ntpd_trivial_usage
+//usage:	"[-dnqNw"IF_FEATURE_NTPD_SERVER("l")"] [-S PROG] [-p PEER]..."
+//usage:#define ntpd_full_usage "\n\n"
+//usage:       "NTP client/server\n"
+//usage:     "\nOptions:"
+//usage:     "\n	-d	Verbose"
+//usage:     "\n	-n	Do not daemonize"
+//usage:     "\n	-q	Quit after clock is set"
+//usage:     "\n	-N	Run at high priority"
+//usage:     "\n	-w	Do not set time (only query peers), implies -n"
+//usage:	IF_FEATURE_NTPD_SERVER(
+//usage:     "\n	-l	Run as server on port 123"
+//usage:	)
+//usage:     "\n	-S PROG	Run PROG after stepping time, stratum change, and every 11 mins"
+//usage:     "\n	-p PEER	Obtain time from PEER (may be repeated)"
+
 #include "libbb.h"
 #include <math.h>
 #include <netinet/ip.h> /* For IPTOS_LOWDELAY definition */
@@ -238,6 +255,8 @@ enum {
 	OPT_p = (1 << 5),
 	OPT_S = (1 << 6),
 	OPT_l = (1 << 7) * ENABLE_FEATURE_NTPD_SERVER,
+	/* We hijack some bits for other purposes */
+	OPT_qq = (1 << 8),
 };
 
 struct globals {
@@ -1930,15 +1949,18 @@ static NOINLINE void ntp_init(char **argv)
 		setpriority(PRIO_PROCESS, 0, -15);
 
 	/* If network is up, syncronization occurs in ~10 seconds.
-	 * We give "ntpd -q" a full minute to finish, then we exit.
+	 * We give "ntpd -q" 10 seconds to get first reply,
+	 * then another 50 seconds to finish syncing.
 	 *
 	 * I tested ntpd 4.2.6p1 and apparently it never exits
 	 * (will try forever), but it does not feel right.
 	 * The goal of -q is to act like ntpdate: set time
 	 * after a reasonably small period of polling, or fail.
 	 */
-	if (opts & OPT_q)
-		alarm(60);
+	if (opts & OPT_q) {
+		option_mask32 |= OPT_qq;
+		alarm(10);
+	}
 
 	bb_signals(0
 		| (1 << SIGTERM)
@@ -2065,6 +2087,15 @@ int ntpd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 		for (; nfds != 0 && j < i; j++) {
 			if (pfd[j].revents /* & (POLLIN|POLLERR)*/) {
+				/*
+				 * At init, alarm was set to 10 sec.
+				 * Now we did get a reply.
+				 * Increase timeout to 50 seconds to finish syncing.
+				 */
+				if (option_mask32 & OPT_qq) {
+					option_mask32 &= ~OPT_qq;
+					alarm(50);
+				}
 				nfds--;
 				recv_and_process_peer_pkt(idx2peer[j]);
 				gettime1900d(); /* sets G.cur_time */

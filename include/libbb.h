@@ -602,7 +602,7 @@ len_and_sockaddr* xhost_and_af2sockaddr(const char *host, int port, sa_family_t 
 /* Assign sin[6]_port member if the socket is an AF_INET[6] one,
  * otherwise no-op. Useful for ftp.
  * NB: does NOT do htons() internally, just direct assignment. */
-void set_nport(len_and_sockaddr *lsa, unsigned port) FAST_FUNC;
+void set_nport(struct sockaddr *sa, unsigned port) FAST_FUNC;
 /* Retrieve sin[6]_port or return -1 for non-INET[6] lsa's */
 int get_nport(const struct sockaddr *sa) FAST_FUNC;
 /* Reverse DNS. Returns NULL on failure. */
@@ -1389,8 +1389,9 @@ void read_key_ungets(char *buffer, const char *str, unsigned len) FAST_FUNC;
 
 #if ENABLE_FEATURE_EDITING
 /* It's NOT just ENABLEd or disabled. It's a number: */
-# ifdef CONFIG_FEATURE_EDITING_HISTORY
+# if defined CONFIG_FEATURE_EDITING_HISTORY && CONFIG_FEATURE_EDITING_HISTORY > 0
 #  define MAX_HISTORY (CONFIG_FEATURE_EDITING_HISTORY + 0)
+unsigned size_from_HISTFILESIZE(const char *hp);
 # else
 #  define MAX_HISTORY 0
 # endif
@@ -1400,6 +1401,7 @@ typedef struct line_input_t {
 # if MAX_HISTORY
 	int cnt_history;
 	int cur_history;
+	int max_history; /* must never be <= 0 */
 #  if ENABLE_FEATURE_EDITING_SAVEHISTORY
 	unsigned cnt_history_in_file;
 	const char *hist_file;

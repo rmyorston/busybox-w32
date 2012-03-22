@@ -3658,13 +3658,18 @@ setsignal(int signo)
 	switch (new_act) {
 	case S_CATCH:
 		act.sa_handler = signal_handler;
-		act.sa_flags = 0; /* matters only if !DFL and !IGN */
-		sigfillset(&act.sa_mask); /* ditto */
 		break;
 	case S_IGN:
 		act.sa_handler = SIG_IGN;
 		break;
 	}
+
+	/* flags and mask matter only if !DFL and !IGN, but we do it
+	 * for all cases for more deterministic behavior:
+	 */
+	act.sa_flags = 0;
+	sigfillset(&act.sa_mask);
+
 	sigaction_set(signo, &act);
 
 	*t = new_act;
@@ -13765,10 +13770,9 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_FEATURE_EDITING_SAVEHISTORY
 	if (iflag) {
 		const char *hp = lookupvar("HISTFILE");
-
-		if (hp == NULL) {
+		if (!hp) {
 			hp = lookupvar("HOME");
-			if (hp != NULL) {
+			if (hp) {
 				char *defhp = concat_path_file(hp, ".ash_history");
 				setvar("HISTFILE", defhp, 0);
 				free(defhp);
@@ -13817,6 +13821,10 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 			const char *hp = lookupvar("HISTFILE");
 			if (hp)
 				line_input_state->hist_file = hp;
+# if ENABLE_FEATURE_SH_HISTFILESIZE
+			hp = lookupvar("HISTFILESIZE");
+			line_input_state->max_history = size_from_HISTFILESIZE(hp);
+# endif
 		}
 #endif
  state4: /* XXX ??? - why isn't this before the "if" statement */

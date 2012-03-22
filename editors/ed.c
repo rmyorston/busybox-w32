@@ -7,6 +7,9 @@
  * The "ed" built-in command (much simplified)
  */
 
+//usage:#define ed_trivial_usage ""
+//usage:#define ed_full_usage ""
+
 #include "libbb.h"
 
 typedef struct LINE {
@@ -451,7 +454,7 @@ static void subCommand(const char *cmd, int num1, int num2)
 
 		/*
 		 * The new string is larger, so allocate a new line
-		 * structure and use that.  Link it in in place of
+		 * structure and use that.  Link it in place of
 		 * the old line structure.
 		 */
 		nlp = xmalloc(sizeof(LINE) + lp->len + deltaLen);

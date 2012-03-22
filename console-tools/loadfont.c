@@ -9,6 +9,27 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
+
+//usage:#define loadfont_trivial_usage
+//usage:       "< font"
+//usage:#define loadfont_full_usage "\n\n"
+//usage:       "Load a console font from stdin"
+/* //usage:     "\n	-C TTY	Affect TTY instead of /dev/tty" */
+//usage:
+//usage:#define loadfont_example_usage
+//usage:       "$ loadfont < /etc/i18n/fontname\n"
+//usage:
+//usage:#define setfont_trivial_usage
+//usage:       "FONT [-m MAPFILE] [-C TTY]"
+//usage:#define setfont_full_usage "\n\n"
+//usage:       "Load a console font\n"
+//usage:     "\nOptions:"
+//usage:     "\n	-m MAPFILE	Load console screen map"
+//usage:     "\n	-C TTY		Affect TTY instead of /dev/tty"
+//usage:
+//usage:#define setfont_example_usage
+//usage:       "$ setfont -m koi8-r /etc/i18n/fontname\n"
+
 #include "libbb.h"
 #include <sys/kd.h>
 

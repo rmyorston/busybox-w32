@@ -344,44 +344,6 @@ static char *gethdr(FILE *fp)
 	return hdrval;
 }
 
-#if ENABLE_FEATURE_WGET_LONG_OPTIONS
-static char *URL_escape(const char *str)
-{
-	/* URL encode, see RFC 2396 */
-	char *dst;
-	char *res = dst = xmalloc(strlen(str) * 3 + 1);
-	unsigned char c;
-
-	while (1) {
-		c = *str++;
-		if (c == '\0'
-		/* || strchr("!&'()*-.=_~", c) - more code */
-		 || c == '!'
-		 || c == '&'
-		 || c == '\''
-		 || c == '('
-		 || c == ')'
-		 || c == '*'
-		 || c == '-'
-		 || c == '.'
-		 || c == '='
-		 || c == '_'
-		 || c == '~'
-		 || (c >= '0' && c <= '9')
-		 || ((c|0x20) >= 'a' && (c|0x20) <= 'z')
-		) {
-			*dst++ = c;
-			if (c == '\0')
-				return res;
-		} else {
-			*dst++ = '%';
-			*dst++ = bb_hexdigits_upcase[c >> 4];
-			*dst++ = bb_hexdigits_upcase[c & 0xf];
-		}
-	}
-}
-#endif
-
 static FILE* prepare_ftp_session(FILE **dfpp, struct host_info *target, len_and_sockaddr *lsa)
 {
 	FILE *sfp;
@@ -445,7 +407,7 @@ static FILE* prepare_ftp_session(FILE **dfpp, struct host_info *target, len_and_
 	str = strrchr(G.wget_buf, ',');
 	if (!str) goto pasv_error;
 	port += xatou_range(str+1, 0, 255) * 256;
-	set_nport(lsa, htons(port));
+	set_nport(&lsa->u.sa, htons(port));
 
 	*dfpp = open_socket(lsa);
 
@@ -699,6 +661,12 @@ static void download_one_url(const char *url)
 
 #if ENABLE_FEATURE_WGET_AUTHENTICATION
 		if (target.user) {
+//TODO: URL-decode "user:password" string before base64-encoding:
+//wget http://test:my%20pass@example.com should send
+// Authorization: Basic dGVzdDpteSBwYXNz
+//which decodes to "test:my pass", instead of what we send now:
+// Authorization: Basic dGVzdDpteSUyMHBhc3M=
+//Can reuse decodeString() from httpd.c
 			fprintf(sfp, "Proxy-Authorization: Basic %s\r\n"+6,
 				base64enc(target.user));
 		}
@@ -716,15 +684,13 @@ static void download_one_url(const char *url)
 			fputs(G.extra_headers, sfp);
 
 		if (option_mask32 & WGET_OPT_POST_DATA) {
-			char *estr = URL_escape(G.post_data);
 			fprintf(sfp,
 				"Content-Type: application/x-www-form-urlencoded\r\n"
 				"Content-Length: %u\r\n"
 				"\r\n"
 				"%s",
-				(int) strlen(estr), estr
+				(int) strlen(G.post_data), G.post_data
 			);
-			free(estr);
 		} else
 #endif
 		{
