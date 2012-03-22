@@ -55,6 +55,7 @@ int FAST_FUNC xrtnl_wilddump_request(struct rtnl_handle *rth, int family, int ty
 	return rtnl_send(rth, (void*)&req, sizeof(req));
 }
 
+//TODO: pass rth->fd instead of full rth?
 int FAST_FUNC rtnl_send(struct rtnl_handle *rth, char *buf, int len)
 {
 	struct sockaddr_nl nladdr;
@@ -392,7 +393,7 @@ void FAST_FUNC parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, in
 		if (rta->rta_type <= max) {
 			tb[rta->rta_type] = rta;
 		}
-		rta = RTA_NEXT(rta,len);
+		rta = RTA_NEXT(rta, len);
 	}
 	if (len) {
 		bb_error_msg("deficit %d, rta_len=%d!", len, rta->rta_len);

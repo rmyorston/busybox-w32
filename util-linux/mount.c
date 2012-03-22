@@ -241,14 +241,14 @@ static const char mount_option_str[] =
 		"union\0"
 		"bind\0"
 		"move\0"
-		"shared\0"
-		"slave\0"
-		"private\0"
-		"unbindable\0"
-		"rshared\0"
-		"rslave\0"
-		"rprivate\0"
-		"runbindable\0"
+		"make-shared\0"
+		"make-slave\0"
+		"make-private\0"
+		"make-unbindable\0"
+		"make-rshared\0"
+		"make-rslave\0"
+		"make-rprivate\0"
+		"make-runbindable\0"
 	)
 
 	// Always understood.
@@ -1129,6 +1129,9 @@ static NOINLINE int nfsmount(struct mntent *mp, long vfsflags, char *filteropts)
 				continue;
 			case 20: // "addr" - ignore
 				continue;
+			case -1: // unknown
+				if (vfsflags & MS_REMOUNT)
+					continue;
 			}
 
 			val = xatoi_positive(opteq);

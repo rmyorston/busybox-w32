@@ -106,15 +106,15 @@ struct globals {
 //usage:#define getty_full_usage "\n\n"
 //usage:       "Open a tty, prompt for a login name, then invoke /bin/login\n"
 //usage:     "\nOptions:"
-//usage:     "\n	-h		Enable hardware (RTS/CTS) flow control"
-//usage:     "\n	-i		Don't display /etc/issue"
-//usage:     "\n	-L		Local line, set CLOCAL on it"
+//usage:     "\n	-h		Enable hardware RTS/CTS flow control"
+//usage:     "\n	-L		Set CLOCAL (ignore Carrier Detect state)"
 //usage:     "\n	-m		Get baud rate from modem's CONNECT status message"
+//usage:     "\n	-n		Don't prompt for login name"
 //usage:     "\n	-w		Wait for CR or LF before sending /etc/issue"
-//usage:     "\n	-n		Don't prompt for a login name"
+//usage:     "\n	-i		Don't display /etc/issue"
 //usage:     "\n	-f ISSUE_FILE	Display ISSUE_FILE instead of /etc/issue"
 //usage:     "\n	-l LOGIN	Invoke LOGIN instead of /bin/login"
-//usage:     "\n	-t SEC		Terminate after SEC if no username is read"
+//usage:     "\n	-t SEC		Terminate after SEC if no login name is read"
 //usage:     "\n	-I INITSTR	Send INITSTR before anything else"
 //usage:     "\n	-H HOST		Log HOST into the utmp file as the hostname"
 //usage:     "\n"
@@ -224,6 +224,12 @@ static void open_tty(void)
 	}
 }
 
+static void set_termios(void)
+{
+	if (tcsetattr_stdin_TCSANOW(&G.termios) < 0)
+		bb_perror_msg_and_die("tcsetattr");
+}
+
 /* We manipulate termios this way:
  * - first, we read existing termios settings
  * - termios_init modifies some parts and sets it
@@ -233,53 +239,128 @@ static void open_tty(void)
  */
 static void termios_init(int speed)
 {
-	/* Flush input and output queues, important for modems!
-	 * Users report losing previously queued output chars, and I hesitate
-	 * to use tcdrain here instead of tcflush - I imagine it can block.
-	 * Using small sleep instead.
+	/* Try to drain output buffer, with 5 sec timeout.
+	 * Added on request from users of ~600 baud serial interface
+	 * with biggish buffer on a 90MHz CPU.
+	 * They were losing hundreds of bytes of buffered output
+	 * on tcflush.
 	 */
-	usleep(100*1000); /* 0.1 sec */
+	signal_no_SA_RESTART_empty_mask(SIGALRM, record_signo);
+	alarm(5);
+	tcdrain(STDIN_FILENO);
+	alarm(0);
+	signal(SIGALRM, SIG_DFL); /* do not break -t TIMEOUT! */
+
+	/* Flush input and output queues, important for modems! */
 	tcflush(STDIN_FILENO, TCIOFLUSH);
 
 	/* Set speed if it wasn't specified as "0" on command line */
 	if (speed != B0)
 		cfsetspeed(&G.termios, speed);
 
-	/*
-	 * Initial termios settings: 8-bit characters, raw-mode, blocking i/o.
+	/* Initial termios settings: 8-bit characters, raw mode, blocking i/o.
 	 * Special characters are set after we have read the login name; all
-	 * reads will be done in raw mode anyway. Errors will be dealt with
-	 * later on.
+	 * reads will be done in raw mode anyway.
 	 */
-	G.termios.c_cflag = CS8 | HUPCL | CREAD;
-	if (option_mask32 & F_LOCAL)
+	/* Clear all bits except: */
+	G.termios.c_cflag &= (0
+		/* 2 stop bits (1 otherwise)
+		 * Enable parity bit (both on input and output)
+		 * Odd parity (else even)
+		 */
+		| CSTOPB | PARENB | PARODD
+#ifdef CMSPAR
+		| CMSPAR  /* mark or space parity */
+#endif
+		| CBAUD   /* (output) baud rate */
+#ifdef CBAUDEX
+		| CBAUDEX /* (output) baud rate */
+#endif
+#ifdef CIBAUD
+		| CIBAUD   /* input baud rate */
+#endif
+	);
+	/* Set: 8 bits; hang up (drop DTR) on last close; enable receive */
+	G.termios.c_cflag |= CS8 | HUPCL | CREAD;
+	if (option_mask32 & F_LOCAL) {
+		/* ignore Carrier Detect pin:
+		 * opens don't block when CD is low,
+		 * losing CD doesn't hang up processes whose ctty is this tty
+		 */
 		G.termios.c_cflag |= CLOCAL;
+	}
+#ifdef CRTSCTS
+	if (option_mask32 & F_RTSCTS)
+		G.termios.c_cflag |= CRTSCTS; /* flow control using RTS/CTS pins */
+#endif
 	G.termios.c_iflag = 0;
 	G.termios.c_lflag = 0;
+	/* non-raw output; add CR to each NL */
 	G.termios.c_oflag = OPOST | ONLCR;
-	G.termios.c_cc[VMIN] = 1;
-	G.termios.c_cc[VTIME] = 0;
+
+	G.termios.c_cc[VMIN] = 1; /* block reads if < 1 char is available */
+	G.termios.c_cc[VTIME] = 0; /* no timeout (reads block forever) */
 #ifdef __linux__
 	G.termios.c_line = 0;
 #endif
-#ifdef CRTSCTS
-	if (option_mask32 & F_RTSCTS)
-		G.termios.c_cflag |= CRTSCTS;
-#endif
 
-	tcsetattr_stdin_TCSANOW(&G.termios);
+	set_termios();
 
 	debug("term_io 2\n");
 }
 
 static void termios_final(void)
 {
-	/* General terminal-independent stuff */
-	G.termios.c_iflag |= IXON | IXOFF;    /* 2-way flow control */
+	/* software flow control on output (stop sending if XOFF is recvd);
+	 * and on input (send XOFF when buffer is full)
+	 */
+	G.termios.c_iflag |= IXON | IXOFF;
+	if (G.eol == '\r') {
+		G.termios.c_iflag |= ICRNL; /* map CR on input to NL */
+	}
+	/* Other bits in c_iflag:
+	 * IXANY   Any recvd char enables output (any char is also a XON)
+	 * INPCK   Enable parity check
+	 * IGNPAR  Ignore parity errors (drop bad bytes)
+	 * PARMRK  Mark parity errors with 0xff, 0x00 prefix
+	 *         (else bad byte is received as 0x00)
+	 * ISTRIP  Strip parity bit
+	 * IGNBRK  Ignore break condition
+	 * BRKINT  Send SIGINT on break - maybe set this?
+	 * INLCR   Map NL to CR
+	 * IGNCR   Ignore CR
+	 * ICRNL   Map CR to NL
+	 * IUCLC   Map uppercase to lowercase
+	 * IMAXBEL Echo BEL on input line too long
+	 * IUTF8   Appears to affect tty's idea of char widths,
+	 *         observed to improve backspacing through Unicode chars
+	 */
+
+	/* line buffered input (NL or EOL or EOF chars end a line);
+	 * recognize INT/QUIT/SUSP chars;
+	 * echo input chars;
+	 * echo BS-SP-BS on erase character;
+	 * echo kill char specially, not as ^c (ECHOKE controls how exactly);
+	 * erase all input via BS-SP-BS on kill char (else go to next line)
+	 */
 	G.termios.c_lflag |= ICANON | ISIG | ECHO | ECHOE | ECHOK | ECHOKE;
-	/* no longer in lflag: | ECHOCTL | ECHOPRT */
-	G.termios.c_oflag |= OPOST;
-	/* G.termios.c_cflag = 0; */
+	/* Other bits in c_lflag:
+	 * XCASE   Map uppercase to \lowercase [tried, doesn't work]
+	 * ECHONL  Echo NL even if ECHO is not set
+	 * ECHOCTL Echo ctrl chars as ^c (else don't echo) - maybe set this?
+	 * ECHOPRT On erase, echo erased chars
+	 *         [qwe<BS><BS><BS> input looks like "qwe\ewq/" on screen]
+	 * NOFLSH  Don't flush input buffer after interrupt or quit chars
+	 * IEXTEN  Enable extended functions (??)
+	 *         [glibc says it enables c_cc[LNEXT] "enter literal char"
+	 *         and c_cc[VDISCARD] "toggle discard buffered output" chars]
+	 * FLUSHO  Output being flushed (c_cc[VDISCARD] is in effect)
+	 * PENDIN  Retype pending input at next read or input char
+	 *         (c_cc[VREPRINT] is being processed)
+	 * TOSTOP  Send SIGTTOU for background output
+	 *         (why "stty sane" unsets this bit?)
+	 */
+
 	G.termios.c_cc[VINTR] = DEF_INTR;
 	G.termios.c_cc[VQUIT] = DEF_QUIT;
 	G.termios.c_cc[VEOF] = DEF_EOF;
@@ -290,24 +371,17 @@ static void termios_final(void)
 #ifdef VSWTCH
 	G.termios.c_cc[VSWTCH] = DEF_SWITCH;
 #endif
-
-	/* Account for special characters seen in input */
-	if (G.eol == '\r') {
-		G.termios.c_iflag |= ICRNL;   /* map CR in input to NL */
-		/* already done by termios_init */
-		/* G.termios.c_oflag |= ONLCR; map NL in output to CR-NL */
-	}
 	G.termios.c_cc[VKILL] = DEF_KILL;
+	/* Other control chars:
+	 * VEOL2
+	 * VERASE, VWERASE - (word) erase. we may set VERASE in get_logname
+	 * VREPRINT - reprint current input buffer
+	 * VLNEXT, VDISCARD, VSTATUS
+	 * VSUSP, VDSUSP - send (delayed) SIGTSTP
+	 * VSTART, VSTOP - chars used for IXON/IXOFF
+	 */
 
-#ifdef CRTSCTS
-	/* Optionally enable hardware flow control */
-	if (option_mask32 & F_RTSCTS)
-		G.termios.c_cflag |= CRTSCTS;
-#endif
-
-	/* Finally, make the new settings effective */
-	if (tcsetattr_stdin_TCSANOW(&G.termios) < 0)
-		bb_perror_msg_and_die("tcsetattr");
+	set_termios();
 }
 
 /* extract baud rate from modem status message */
@@ -330,12 +404,8 @@ static void auto_baud(void)
 	 * modem status messages is enabled.
 	 */
 
-	/*
-	 * Don't block if input queue is empty.
-	 * Errors will be dealt with later on.
-	 */
-	G.termios.c_cc[VMIN] = 0;       /* don't block if queue empty */
-	tcsetattr_stdin_TCSANOW(&G.termios);
+	G.termios.c_cc[VMIN] = 0; /* don't block reads (min read is 0 chars) */
+	set_termios();
 
 	/*
 	 * Wait for a while, then read everything the modem has said so far and
@@ -357,9 +427,9 @@ static void auto_baud(void)
 		}
 	}
 
-	/* Restore terminal settings. Errors will be dealt with later on */
+	/* Restore terminal settings */
 	G.termios.c_cc[VMIN] = 1; /* restore to value set by termios_init */
-	tcsetattr_stdin_TCSANOW(&G.termios);
+	set_termios();
 }
 
 /* get user name, establish parity, speed, erase, kill, eol;
@@ -538,6 +608,7 @@ int getty_main(int argc UNUSED_PARAM, char **argv)
 
 	/* Set the optional timer */
 	alarm(G.timeout); /* if 0, alarm is not set */
+//BUG: death by signal won't restore termios
 
 	/* Optionally wait for CR or LF before writing /etc/issue */
 	if (option_mask32 & F_WAITCRLF) {
@@ -565,7 +636,7 @@ int getty_main(int argc UNUSED_PARAM, char **argv)
 			/* We are here only if G.numspeed > 1 */
 			baud_index = (baud_index + 1) % G.numspeed;
 			cfsetspeed(&G.termios, G.speeds[baud_index]);
-			tcsetattr_stdin_TCSANOW(&G.termios);
+			set_termios();
 		}
 	}
 

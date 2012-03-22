@@ -657,7 +657,7 @@ static llist_t *append_file_list_to_list(llist_t *list)
 	llist_t *newlist = NULL;
 
 	while (list) {
-		src_stream = xfopen_for_read(llist_pop(&list));
+		src_stream = xfopen_stdin(llist_pop(&list));
 		while ((line = xmalloc_fgetline(src_stream)) != NULL) {
 			/* kill trailing '/' unless the string is just "/" */
 			char *cp = last_char_is(line, '/');
@@ -722,11 +722,16 @@ static void handle_SIGCHLD(int status)
 #endif
 
 //usage:#define tar_trivial_usage
-//usage:       "-[" IF_FEATURE_TAR_CREATE("c") "xt" IF_FEATURE_SEAMLESS_GZ("z")
-//usage:	IF_FEATURE_SEAMLESS_BZ2("j") IF_FEATURE_SEAMLESS_LZMA("a")
-//usage:	IF_FEATURE_SEAMLESS_Z("Z") IF_FEATURE_TAR_NOPRESERVE_TIME("m") "vO] "
-//usage:	IF_FEATURE_TAR_FROM("[-X FILE] ")
-//usage:       "[-f TARFILE] [-C DIR] [FILE]..."
+//usage:	"-[" IF_FEATURE_TAR_CREATE("c") "xt"
+//usage:	IF_FEATURE_SEAMLESS_Z("Z")
+//usage:	IF_FEATURE_SEAMLESS_GZ("z")
+//usage:	IF_FEATURE_SEAMLESS_BZ2("j")
+//usage:	IF_FEATURE_SEAMLESS_LZMA("a")
+//usage:	IF_FEATURE_TAR_CREATE("h")
+//usage:	IF_FEATURE_TAR_NOPRESERVE_TIME("m")
+//usage:	"vO] "
+//usage:	IF_FEATURE_TAR_FROM("[-X FILE] [-T FILE] ")
+//usage:	"[-f TARFILE] [-C DIR] [FILE]..."
 //usage:#define tar_full_usage "\n\n"
 //usage:	IF_FEATURE_TAR_CREATE("Create, extract, ")
 //usage:	IF_NOT_FEATURE_TAR_CREATE("Extract ")
@@ -741,6 +746,9 @@ static void handle_SIGCHLD(int status)
 //usage:     "\n	f	Name of TARFILE ('-' for stdin/out)"
 //usage:     "\n	C	Change to DIR before operation"
 //usage:     "\n	v	Verbose"
+//usage:	IF_FEATURE_SEAMLESS_Z(
+//usage:     "\n	Z	(De)compress using compress"
+//usage:	)
 //usage:	IF_FEATURE_SEAMLESS_GZ(
 //usage:     "\n	z	(De)compress using gzip"
 //usage:	)
@@ -749,9 +757,6 @@ static void handle_SIGCHLD(int status)
 //usage:	)
 //usage:	IF_FEATURE_SEAMLESS_LZMA(
 //usage:     "\n	a	(De)compress using lzma"
-//usage:	)
-//usage:	IF_FEATURE_SEAMLESS_Z(
-//usage:     "\n	Z	(De)compress using compress"
 //usage:	)
 //usage:     "\n	O	Extract to stdout"
 //usage:	IF_FEATURE_TAR_CREATE(
@@ -1057,8 +1062,10 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 			tar_handle->src_fd = tar_fd;
 			tar_handle->seek = seek_by_read;
 		} else {
-			if (ENABLE_FEATURE_TAR_AUTODETECT && flags == O_RDONLY) {
-				get_header_ptr = get_header_tar;
+			if (ENABLE_FEATURE_TAR_AUTODETECT
+			 && flags == O_RDONLY
+			 && get_header_ptr == get_header_tar
+			) {
 				tar_handle->src_fd = open_zipped(tar_filename);
 				if (tar_handle->src_fd < 0)
 					bb_perror_msg_and_die("can't open '%s'", tar_filename);

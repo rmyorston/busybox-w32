@@ -33,10 +33,12 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#ifndef major
+# include <sys/sysmacros.h>
+#endif
 #include <sys/wait.h>
 #include <termios.h>
 #include <time.h>
-#include <unistd.h>
 #include <sys/param.h>
 #ifdef HAVE_MNTENT_H
 # include <mntent.h>
@@ -875,6 +877,7 @@ void FAST_FUNC update_utmp(pid_t pid, int new_type, const char *tty_name, const 
 # define update_utmp(pid, new_type, tty_name, username, hostname) ((void)0)
 #endif
 
+
 int execable_file(const char *name) FAST_FUNC;
 char *find_execable(const char *filename, char **PATHp) FAST_FUNC;
 int exists_execable(const char *filename) FAST_FUNC;
@@ -883,14 +886,16 @@ int exists_execable(const char *filename) FAST_FUNC;
  * but it may exec busybox and call applet instead of searching PATH.
  */
 #if ENABLE_FEATURE_PREFER_APPLETS
-int bb_execvp(const char *file, char *const argv[]) FAST_FUNC;
-#define BB_EXECVP(prog,cmd) bb_execvp(prog,cmd)
+int BB_EXECVP(const char *file, char *const argv[]) FAST_FUNC;
 #define BB_EXECLP(prog,cmd,...) \
-	execlp((find_applet_by_name(prog) >= 0) ? CONFIG_BUSYBOX_EXEC_PATH : prog, \
-		cmd, __VA_ARGS__)
+	do { \
+		if (find_applet_by_name(prog) >= 0) \
+			execlp(bb_busybox_exec_path, cmd, __VA_ARGS__); \
+		execlp(prog, cmd, __VA_ARGS__); \
+	} while (0)
 #else
 #define BB_EXECVP(prog,cmd)     execvp(prog,cmd)
-#define BB_EXECLP(prog,cmd,...) execlp(prog,cmd, __VA_ARGS__)
+#define BB_EXECLP(prog,cmd,...) execlp(prog,cmd,__VA_ARGS__)
 #endif
 int BB_EXECVP_or_die(char **argv) NORETURN FAST_FUNC;
 
@@ -924,19 +929,8 @@ pid_t wait_any_nohang(int *wstat) FAST_FUNC;
 int wait4pid(pid_t pid) FAST_FUNC;
 /* Same as wait4pid(spawn(argv)), but with NOFORK/NOEXEC if configured: */
 int spawn_and_wait(char **argv) FAST_FUNC;
-struct nofork_save_area {
-	jmp_buf die_jmp;
-	const char *applet_name;
-	uint32_t option_mask32;
-	int die_sleep;
-	uint8_t xfunc_error_retval;
-	smallint saved;
-};
-void save_nofork_data(struct nofork_save_area *save) FAST_FUNC;
-void restore_nofork_data(struct nofork_save_area *save) FAST_FUNC;
 /* Does NOT check that applet is NOFORK, just blindly runs it */
 int run_nofork_applet(int applet_no, char **argv) FAST_FUNC;
-int run_nofork_applet_prime(struct nofork_save_area *old, int applet_no, char **argv) FAST_FUNC;
 
 /* Helpers for daemonization.
  *
@@ -1417,17 +1411,18 @@ enum {
 };
 line_input_t *new_line_input_t(int flags) FAST_FUNC;
 /* So far static: void free_line_input_t(line_input_t *n) FAST_FUNC; */
-/* maxsize must be >= 2.
+/*
+ * maxsize must be >= 2.
  * Returns:
  * -1 on read errors or EOF, or on bare Ctrl-D,
  * 0  on ctrl-C (the line entered is still returned in 'command'),
  * >0 length of input string, including terminating '\n'
  */
-int read_line_input(const char* prompt, char* command, int maxsize, line_input_t *state) FAST_FUNC;
+int read_line_input(line_input_t *st, const char *prompt, char *command, int maxsize, int timeout) FAST_FUNC;
 #else
 #define MAX_HISTORY 0
 int read_line_input(const char* prompt, char* command, int maxsize) FAST_FUNC;
-#define read_line_input(prompt, command, maxsize, state) \
+#define read_line_input(state, prompt, command, maxsize, timeout) \
 	read_line_input(prompt, command, maxsize)
 #endif
 
@@ -1608,16 +1603,24 @@ int print_flags_separated(const int *masks, const char *labels,
 int print_flags(const masks_labels_t *ml, int flags) FAST_FUNC;
 
 typedef struct bb_progress_t {
-	off_t lastsize;
-	unsigned lastupdate_sec;
+	unsigned last_size;
+	unsigned last_update_sec;
+	unsigned last_change_sec;
 	unsigned start_sec;
-	smallint inited;
+	const char *curfile;
 } bb_progress_t;
 
-void bb_progress_init(bb_progress_t *p) FAST_FUNC;
-void bb_progress_update(bb_progress_t *p, const char *curfile,
-			off_t beg_range, off_t transferred,
-			off_t totalsize) FAST_FUNC;
+#define is_bb_progress_inited(p) ((p)->curfile != NULL)
+#define bb_progress_free(p) do { \
+	if (ENABLE_UNICODE_SUPPORT) free((char*)((p)->curfile)); \
+	(p)->curfile = NULL; \
+} while (0)
+void bb_progress_init(bb_progress_t *p, const char *curfile) FAST_FUNC;
+void bb_progress_update(bb_progress_t *p,
+			uoff_t beg_range,
+			uoff_t transferred,
+			uoff_t totalsize) FAST_FUNC;
+
 
 extern const char *applet_name;
 

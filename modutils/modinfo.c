@@ -23,9 +23,9 @@
 
 
 enum {
-	OPT_TAGS = (1 << 6) - 1,
-	OPT_F = (1 << 6), /* field name */
-	OPT_0 = (1 << 7),  /* \0 as separator */
+	OPT_TAGS = (1 << 8) - 1,
+	OPT_F = (1 << 8), /* field name */
+	OPT_0 = (1 << 9),  /* \0 as separator */
 };
 
 struct modinfo_env {
@@ -44,7 +44,7 @@ static int display(const char *data, const char *pattern, int flag)
 }
 
 static void modinfo(const char *path, const char *version,
-			struct modinfo_env *env)
+			const struct modinfo_env *env)
 {
 	static const char *const shortcuts[] = {
 		"filename",
@@ -53,6 +53,8 @@ static void modinfo(const char *path, const char *version,
 		"license",
 		"vermagic",
 		"parm",
+		"firmware",
+		"depends",
 	};
 	size_t len;
 	int j, length;
@@ -80,11 +82,13 @@ static void modinfo(const char *path, const char *version,
 	if (field)
 		tags |= OPT_F;
 	for (j = 1; (1<<j) & (OPT_TAGS + OPT_F); j++) {
-		const char *pattern = field;
-		if ((1<<j) & OPT_TAGS)
-			pattern = shortcuts[j];
+		const char *pattern;
+
 		if (!((1<<j) & tags))
 			continue;
+		pattern = field;
+		if ((1<<j) & OPT_TAGS)
+			pattern = shortcuts[j];
 		length = strlen(pattern);
 		ptr = the_module;
 		while (1) {

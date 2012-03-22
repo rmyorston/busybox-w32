@@ -149,7 +149,6 @@ config FEATURE_INSTALLER
 config INSTALL_NO_USR
 	bool "Don't use /usr"
 	default n
-	depends on FEATURE_INSTALLER
 	help
 	  Disable use of /usr. busybox --install and "make install"
 	  will install applets only to /bin and /sbin,
@@ -490,7 +489,10 @@ config PIE
 	default n
 	depends on !STATIC
 	help
-	  (TODO: what is it and why/when is it useful?)
+	  Hardened code option. PIE binaries are loaded at a different
+	  address at each invocation. This has some overhead,
+	  particularly on x86-32 which is short on registers.
+
 	  Most people will leave this set to 'N'.
 
 config NOMMU
@@ -724,7 +726,6 @@ config INSTALL_APPLET_SCRIPT_WRAPPERS
 
 config INSTALL_APPLET_DONT
 	bool "not installed"
-	depends on FEATURE_INSTALLER || FEATURE_SH_STANDALONE || FEATURE_PREFER_APPLETS
 	help
 	  Do not install applet links. Useful when you plan to use
 	  busybox --install for installing links, or plan to use

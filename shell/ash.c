@@ -111,6 +111,13 @@
 //config:	help
 //config:	  Enable bash-compatible extensions.
 //config:
+//config:config ASH_IDLE_TIMEOUT
+//config:	bool "Idle timeout variable"
+//config:	default n
+//config:	depends on ASH
+//config:	help
+//config:	  Enables bash-like auto-logout after $TMOUT seconds of idle time.
+//config:
 //config:config ASH_JOB_CONTROL
 //config:	bool "Job control"
 //config:	default y
@@ -119,7 +126,7 @@
 //config:	  Enable job control in the ash shell.
 //config:
 //config:config ASH_ALIAS
-//config:	bool "alias support"
+//config:	bool "Alias support"
 //config:	default y
 //config:	depends on ASH
 //config:	help
@@ -130,28 +137,28 @@
 //config:	default y
 //config:	depends on ASH
 //config:	help
-//config:	  Enable getopts builtin in the ash shell.
+//config:	  Enable support for getopts builtin in ash.
 //config:
 //config:config ASH_BUILTIN_ECHO
 //config:	bool "Builtin version of 'echo'"
 //config:	default y
 //config:	depends on ASH
 //config:	help
-//config:	  Enable support for echo, builtin to ash.
+//config:	  Enable support for echo builtin in ash.
 //config:
 //config:config ASH_BUILTIN_PRINTF
 //config:	bool "Builtin version of 'printf'"
 //config:	default y
 //config:	depends on ASH
 //config:	help
-//config:	  Enable support for printf, builtin to ash.
+//config:	  Enable support for printf builtin in ash.
 //config:
 //config:config ASH_BUILTIN_TEST
 //config:	bool "Builtin version of 'test'"
 //config:	default y
 //config:	depends on ASH
 //config:	help
-//config:	  Enable support for test, builtin to ash.
+//config:	  Enable support for test builtin in ash.
 //config:
 //config:config ASH_CMDCMD
 //config:	bool "'command' command to override shell builtins"
@@ -167,7 +174,7 @@
 //config:	default n
 //config:	depends on ASH
 //config:	help
-//config:	  Enable "check for new mail" in the ash shell.
+//config:	  Enable "check for new mail" function in the ash shell.
 //config:
 //config:config ASH_OPTIMIZE_FOR_SIZE
 //config:	bool "Optimize for size instead of speed"
@@ -449,6 +456,9 @@ static const char *var_end(const char *var)
 
 
 /* ============ Interrupts / exceptions */
+
+static void exitshell(void) NORETURN;
+
 /*
  * These macros allow the user to suspend the handling of interrupt signals
  * over a period of time.  This is similar to SIGHOLD or to sigblock, but
@@ -1929,7 +1939,9 @@ change_lc_ctype(const char *value)
 #endif
 #if ENABLE_ASH_MAIL
 static void chkmail(void);
-static void changemail(const char *) FAST_FUNC;
+static void changemail(const char *var_value) FAST_FUNC;
+#else
+# define chkmail()  ((void)0)
 #endif
 static void changepath(const char *) FAST_FUNC;
 #if ENABLE_ASH_RANDOM_SUPPORT
@@ -3937,18 +3949,51 @@ setjobctl(int on)
 static int FAST_FUNC
 killcmd(int argc, char **argv)
 {
-	int i = 1;
 	if (argv[1] && strcmp(argv[1], "-l") != 0) {
+		int i = 1;
 		do {
 			if (argv[i][0] == '%') {
-				struct job *jp = getjob(argv[i], 0);
-				unsigned pid = jp->ps[0].ps_pid;
-				/* Enough space for ' -NNN<nul>' */
-				argv[i] = alloca(sizeof(int)*3 + 3);
-				/* kill_main has matching code to expect
-				 * leading space. Needed to not confuse
-				 * negative pids with "kill -SIGNAL_NO" syntax */
-				sprintf(argv[i], " -%u", pid);
+				/*
+				 * "kill %N" - job kill
+				 * Converting to pgrp / pid kill
+				 */
+				struct job *jp;
+				char *dst;
+				int j, n;
+
+				jp = getjob(argv[i], 0);
+				/*
+				 * In jobs started under job control, we signal
+				 * entire process group by kill -PGRP_ID.
+				 * This happens, f.e., in interactive shell.
+				 *
+				 * Otherwise, we signal each child via
+				 * kill PID1 PID2 PID3.
+				 * Testcases:
+				 * sh -c 'sleep 1|sleep 1 & kill %1'
+				 * sh -c 'true|sleep 2 & sleep 1; kill %1'
+				 * sh -c 'true|sleep 1 & sleep 2; kill %1'
+				 */
+				n = jp->nprocs; /* can't be 0 (I hope) */
+				if (jp->jobctl)
+					n = 1;
+				dst = alloca(n * sizeof(int)*4);
+				argv[i] = dst;
+				for (j = 0; j < n; j++) {
+					struct procstat *ps = &jp->ps[j];
+					/* Skip non-running and not-stopped members
+					 * (i.e. dead members) of the job
+					 */
+					if (ps->ps_status != -1 && !WIFSTOPPED(ps->ps_status))
+						continue;
+					/*
+					 * kill_main has matching code to expect
+					 * leading space. Needed to not confuse
+					 * negative pids with "kill -SIGNAL_NO" syntax
+					 */
+					dst += sprintf(dst, jp->jobctl ? " -%u" : " %u", (int)ps->ps_pid);
+				}
+				*dst = '\0';
 			}
 		} while (argv[++i]);
 	}
@@ -4046,6 +4091,7 @@ sprint_status(char *s, int status, int sigonly)
 #endif
 		}
 		st &= 0x7f;
+//TODO: use bbox's get_signame? strsignal adds ~600 bytes to text+rodata
 		col = fmtstr(s, 32, strsignal(st));
 		if (WCOREDUMP(status)) {
 			col += fmtstr(s + col, 16, " (core dumped)");
@@ -4462,8 +4508,9 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 					break;
 				job = job->prev_job;
 			}
-		} else
+		} else {
 			job = getjob(*argv, 0);
+		}
 		/* loop until process terminated or stopped */
 		while (job->state == JOBRUNNING)
 			blocking_wait_with_raise_on_sig();
@@ -4959,7 +5006,7 @@ forkchild(struct job *jp, union node *n, int mode)
 #if JOBS
 	/* do job control only in root shell */
 	doing_jobctl = 0;
-	if (mode != FORK_NOJOB && jp->jobctl && !oldlvl) {
+	if (mode != FORK_NOJOB && jp->jobctl && oldlvl == 0) {
 		pid_t pgrp;
 
 		if (jp->nprocs == 0)
@@ -4985,7 +5032,7 @@ forkchild(struct job *jp, union node *n, int mode)
 				ash_msg_and_raise_error("can't open '%s'", bb_dev_null);
 		}
 	}
-	if (!oldlvl) {
+	if (oldlvl == 0) {
 		if (iflag) { /* why if iflag only? */
 			setsignal(SIGINT);
 			setsignal(SIGTERM);
@@ -10065,10 +10112,21 @@ preadfd(void)
 	if (!iflag || g_parsefile->pf_fd != STDIN_FILENO)
 		nr = nonblock_safe_read(g_parsefile->pf_fd, buf, IBUFSIZ - 1);
 	else {
-#if ENABLE_FEATURE_TAB_COMPLETION
+		int timeout = -1;
+# if ENABLE_ASH_IDLE_TIMEOUT
+		if (iflag) {
+			const char *tmout_var = lookupvar("TMOUT");
+			if (tmout_var) {
+				timeout = atoi(tmout_var) * 1000;
+				if (timeout <= 0)
+					timeout = -1;
+			}
+		}
+# endif
+# if ENABLE_FEATURE_TAB_COMPLETION
 		line_input_state->path_lookup = pathval();
-#endif
-		nr = read_line_input(cmdedit_prompt, buf, IBUFSIZ, line_input_state);
+# endif
+		nr = read_line_input(line_input_state, cmdedit_prompt, buf, IBUFSIZ, timeout);
 		if (nr == 0) {
 			/* Ctrl+C pressed */
 			if (trap[SIGINT]) {
@@ -10079,17 +10137,24 @@ preadfd(void)
 			}
 			goto retry;
 		}
-		if (nr < 0 && errno == 0) {
-			/* Ctrl+D pressed */
-			nr = 0;
+		if (nr < 0) {
+			if (errno == 0) {
+				/* Ctrl+D pressed */
+				nr = 0;
+			}
+# if ENABLE_ASH_IDLE_TIMEOUT
+			else if (errno == EAGAIN && timeout > 0) {
+				printf("\007timed out waiting for input: auto-logout\n");
+				exitshell();
+			}
+# endif
 		}
 	}
 #else
 	nr = nonblock_safe_read(g_parsefile->pf_fd, buf, IBUFSIZ - 1);
 #endif
 
-#if 0
-/* nonblock_safe_read() handles this problem */
+#if 0 /* disabled: nonblock_safe_read() handles this problem */
 	if (nr < 0) {
 		if (parsefile->fd == 0 && errno == EWOULDBLOCK) {
 			int flags = fcntl(0, F_GETFL);
@@ -12574,9 +12639,7 @@ cmdloop(int top)
 		inter = 0;
 		if (iflag && top) {
 			inter++;
-#if ENABLE_ASH_MAIL
 			chkmail();
-#endif
 		}
 		n = parsecmd(inter);
 #if DEBUG
@@ -13346,7 +13409,6 @@ ulimitcmd(int argc UNUSED_PARAM, char **argv)
 /*
  * Called to exit the shell.
  */
-static void exitshell(void) NORETURN;
 static void
 exitshell(void)
 {

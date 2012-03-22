@@ -1418,6 +1418,7 @@ static void sigexit(int sig)
 static void hush_exit(int exitcode) NORETURN;
 static void hush_exit(int exitcode)
 {
+	fflush_all();
 	if (G.exiting <= 0 && G.traps && G.traps[0] && G.traps[0][0]) {
 		/* Prevent recursion:
 		 * trap "echo Hi; exit" EXIT; exit
@@ -1901,7 +1902,7 @@ static void get_user_input(struct in_str *i)
 		G.flag_SIGINT = 0;
 		/* buglet: SIGINT will not make new prompt to appear _at once_,
 		 * only after <Enter>. (^C will work) */
-		r = read_line_input(prompt_str, G.user_input_buf, CONFIG_FEATURE_EDITING_MAX_LEN-1, G.line_input_state);
+		r = read_line_input(G.line_input_state, prompt_str, G.user_input_buf, CONFIG_FEATURE_EDITING_MAX_LEN-1, /*timeout*/ -1);
 		/* catch *SIGINT* etc (^C is handled by read_line_input) */
 		check_and_run_traps(0);
 	} while (r == 0 || G.flag_SIGINT); /* repeat if ^C or SIGINT */
@@ -6105,10 +6106,13 @@ static void exec_builtin(char ***to_free,
 		char **argv)
 {
 #if BB_MMU
-	int rcode = x->b_function(argv);
+	int rcode;
+	fflush_all();
+	rcode = x->b_function(argv);
 	fflush_all();
 	_exit(rcode);
 #else
+	fflush_all();
 	/* On NOMMU, we must never block!
 	 * Example: { sleep 99 | read line; } & echo Ok
 	 */
@@ -6500,13 +6504,15 @@ static int checkjobs(struct pipe *fg_pipe)
 					fg_pipe->alive_cmds--;
 					ex = WEXITSTATUS(status);
 					/* bash prints killer signal's name for *last*
-					 * process in pipe (prints just newline for SIGINT).
+					 * process in pipe (prints just newline for SIGINT/SIGPIPE).
 					 * Mimic this. Example: "sleep 5" + (^\ or kill -QUIT)
 					 */
 					if (WIFSIGNALED(status)) {
 						int sig = WTERMSIG(status);
 						if (i == fg_pipe->num_cmds-1)
-							printf("%s\n", sig == SIGINT ? "" : get_signame(sig));
+							/* TODO: use strsignal() instead for bash compat? but that's bloat... */
+							printf("%s\n", sig == SIGINT || sig == SIGPIPE ? "" : get_signame(sig));
+						/* TODO: if (WCOREDUMP(status)) + " (core dumped)"; */
 						/* TODO: MIPS has 128 sigs (1..128), what if sig==128 here?
 						 * Maybe we need to use sig | 128? */
 						ex = sig + 128;
@@ -6615,7 +6621,7 @@ static int checkjobs_and_fg_shell(struct pipe *fg_pipe)
  * cmd ; ...   { list } ; ...
  * cmd && ...  { list } && ...
  * cmd || ...  { list } || ...
- * If it is, then we can run cmd as a builtin, NOFORK [do we do this?],
+ * If it is, then we can run cmd as a builtin, NOFORK,
  * or (if SH_STANDALONE) an applet, and we can run the { list }
  * with run_list. If it isn't one of these, we fork and exec cmd.
  *
@@ -6797,13 +6803,12 @@ static NOINLINE int run_pipe(struct pipe *pi)
 		}
 
 		/* Expand the rest into (possibly) many strings each */
-		if (0) {}
 #if ENABLE_HUSH_BASH_COMPAT
-		else if (command->cmd_type == CMD_SINGLEWORD_NOGLOB) {
+		if (command->cmd_type == CMD_SINGLEWORD_NOGLOB) {
 			argv_expanded = expand_strvec_to_strvec_singleword_noglob(argv + command->assignment_cnt);
-		}
+		} else
 #endif
-		else {
+		{
 			argv_expanded = expand_strvec_to_strvec(argv + command->assignment_cnt);
 		}
 
@@ -6833,6 +6838,7 @@ static NOINLINE int run_pipe(struct pipe *pi)
 				if (!funcp) {
 					debug_printf_exec(": builtin '%s' '%s'...\n",
 						x->b_cmd, argv_expanded[1]);
+					fflush_all();
 					rcode = x->b_function(argv_expanded) & 0xff;
 					fflush_all();
 				}
@@ -6865,7 +6871,7 @@ static NOINLINE int run_pipe(struct pipe *pi)
 			return rcode;
 		}
 
-		if (ENABLE_FEATURE_SH_STANDALONE) {
+		if (ENABLE_FEATURE_SH_NOFORK) {
 			int n = find_applet_by_name(argv_expanded[0]);
 			if (n >= 0 && APPLET_IS_NOFORK(n)) {
 				rcode = redirect_and_varexp_helper(&new_env, &old_vars, command, squirrel, argv_expanded);
@@ -7642,6 +7648,7 @@ int hush_main(int argc, char **argv)
 					G.global_argc -= builtin_argc; /* skip [BARGV...] "" */
 					G.global_argv += builtin_argc;
 					G.global_argv[-1] = NULL; /* replace "" */
+					fflush_all();
 					G.last_exitcode = x->b_function(argv + optind - 1);
 				}
 				goto final_return;

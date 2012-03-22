@@ -31,8 +31,8 @@ struct filter_t {
 	//int type; - read-only
 	//int typemask; - unused
 	//int tos, tosmask; - unused
-	int iif, iifmask;
-	int oif, oifmask;
+	int iif;
+	int oif;
 	//int realm, realmmask; - unused
 	//inet_prefix rprefsrc; - read-only
 	inet_prefix rvia;
@@ -82,7 +82,7 @@ static int FAST_FUNC print_route(const struct sockaddr_nl *who UNUSED_PARAM,
 {
 	struct rtmsg *r = NLMSG_DATA(n);
 	int len = n->nlmsg_len;
-	struct rtattr * tb[RTA_MAX+1];
+	struct rtattr *tb[RTA_MAX+1];
 	char abuf[256];
 	inet_prefix dst;
 	inet_prefix src;
@@ -159,7 +159,20 @@ static int FAST_FUNC print_route(const struct sockaddr_nl *who UNUSED_PARAM,
 	}
 
 	memset(tb, 0, sizeof(tb));
+	memset(&src, 0, sizeof(src));
+	memset(&dst, 0, sizeof(dst));
 	parse_rtattr(tb, RTA_MAX, RTM_RTA(r), len);
+
+	if (tb[RTA_SRC]) {
+		src.bitlen = r->rtm_src_len;
+		src.bytelen = (r->rtm_family == AF_INET6 ? 16 : 4);
+		memcpy(src.data, RTA_DATA(tb[RTA_SRC]), src.bytelen);
+	}
+	if (tb[RTA_DST]) {
+		dst.bitlen = r->rtm_dst_len;
+		dst.bytelen = (r->rtm_family == AF_INET6 ? 16 : 4);
+		memcpy(dst.data, RTA_DATA(tb[RTA_DST]), dst.bytelen);
+	}
 
 	if (G_filter.rdst.family
 	 && inet_addr_match(&dst, &G_filter.rdst, G_filter.rdst.bitlen)
@@ -182,23 +195,32 @@ static int FAST_FUNC print_route(const struct sockaddr_nl *who UNUSED_PARAM,
 	) {
 		return 0;
 	}
-	if (G_filter.flushb
-	 && r->rtm_family == AF_INET6
-	 && r->rtm_dst_len == 0
-	 && r->rtm_type == RTN_UNREACHABLE
-	 && tb[RTA_PRIORITY]
-	 && *(int*)RTA_DATA(tb[RTA_PRIORITY]) == -1
-	) {
-		return 0;
+	if (G_filter.oif != 0) {
+		if (!tb[RTA_OIF])
+			return 0;
+		if (G_filter.oif != *(int*)RTA_DATA(tb[RTA_OIF]))
+			return 0;
 	}
 
 	if (G_filter.flushb) {
 		struct nlmsghdr *fn;
+
+		/* We are creating route flush commands */
+
+		if (r->rtm_family == AF_INET6
+		 && r->rtm_dst_len == 0
+		 && r->rtm_type == RTN_UNREACHABLE
+		 && tb[RTA_PRIORITY]
+		 && *(int*)RTA_DATA(tb[RTA_PRIORITY]) == -1
+		) {
+			return 0;
+		}
+
 		if (NLMSG_ALIGN(G_filter.flushp) + n->nlmsg_len > G_filter.flushe) {
 			if (flush_update())
 				bb_error_msg_and_die("flush");
 		}
-		fn = (struct nlmsghdr*)(G_filter.flushb + NLMSG_ALIGN(G_filter.flushp));
+		fn = (void*)(G_filter.flushb + NLMSG_ALIGN(G_filter.flushp));
 		memcpy(fn, n, n->nlmsg_len);
 		fn->nlmsg_type = RTM_DELROUTE;
 		fn->nlmsg_flags = NLM_F_REQUEST;
@@ -207,6 +229,8 @@ static int FAST_FUNC print_route(const struct sockaddr_nl *who UNUSED_PARAM,
 		G_filter.flushed = 1;
 		return 0;
 	}
+
+	/* We are printing routes */
 
 	if (n->nlmsg_type == RTM_DELROUTE) {
 		printf("Deleted ");
@@ -257,9 +281,11 @@ static int FAST_FUNC print_route(const struct sockaddr_nl *who UNUSED_PARAM,
 					RTA_DATA(tb[RTA_GATEWAY]),
 					abuf, sizeof(abuf)));
 	}
-	if (tb[RTA_OIF] && G_filter.oifmask != -1) {
+	if (tb[RTA_OIF]) {
 		printf("dev %s ", ll_index_to_name(*(int*)RTA_DATA(tb[RTA_OIF])));
 	}
+
+	/* Todo: parse & show "proto kernel", "scope link" here */
 
 	if (tb[RTA_PREFSRC] && /*G_filter.rprefsrc.bitlen - always 0*/ 0 != host_len) {
 		/* Do not use format_host(). It is our local addr
@@ -292,7 +318,7 @@ static int FAST_FUNC print_route(const struct sockaddr_nl *who UNUSED_PARAM,
 				printf(" error %d", ci->rta_error);
 		}
 	}
-	if (tb[RTA_IIF] && G_filter.iifmask != -1) {
+	if (tb[RTA_IIF] && G_filter.iif == 0) {
 		printf(" iif %s", ll_index_to_name(*(int*)RTA_DATA(tb[RTA_IIF])));
 	}
 	bb_putchar('\n');
@@ -413,7 +439,8 @@ IF_FEATURE_IP_RULE(ARG_table,)
 				NEXT_ARG();
 			}
 			if ((**argv < '0' || **argv > '9')
-			 && rtnl_rtntype_a2n(&type, *argv) == 0) {
+			 && rtnl_rtntype_a2n(&type, *argv) == 0
+			) {
 				NEXT_ARG();
 				req.r.rtm_type = type;
 				ok |= type_ok;
@@ -662,12 +689,10 @@ static int iproute_list_or_flush(char **argv, int flush)
 		if (id) {
 			idx = xll_name_to_index(id);
 			G_filter.iif = idx;
-			G_filter.iifmask = -1;
 		}
 		if (od) {
 			idx = xll_name_to_index(od);
 			G_filter.oif = idx;
-			G_filter.oifmask = -1;
 		}
 	}
 
