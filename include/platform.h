@@ -125,7 +125,7 @@
 
 /* Make all declarations hidden (-fvisibility flag only affects definitions) */
 /* (don't include system headers after this until corresponding pop!) */
-#if __GNUC_PREREQ(4,1) && !ENABLE_PLATFORM_MINGW32
+#if __GNUC_PREREQ(4,1) && !defined(__CYGWIN__) && !ENABLE_PLATFORM_MINGW32
 # define PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN _Pragma("GCC visibility push(hidden)")
 # define POP_SAVED_FUNCTION_VISIBILITY              _Pragma("GCC visibility pop")
 #else
@@ -283,6 +283,7 @@ typedef unsigned smalluint;
 #if defined __GLIBC__ \
  || defined __UCLIBC__ \
  || defined __dietlibc__ \
+ || defined __BIONIC__ \
  || defined _NEWLIB_VERSION
 # include <features.h>
 #endif
@@ -344,6 +345,10 @@ typedef unsigned smalluint;
 # if !defined ADJ_TICK && defined MOD_CLKB
 #  define ADJ_TICK MOD_CLKB
 # endif
+#endif
+
+#if defined(__CYGWIN__)
+# define MAXSYMLINKS SYMLOOP_MAX
 #endif
 
 
@@ -421,6 +426,15 @@ typedef unsigned smalluint;
 # undef HAVE_UNLOCKED_STDIO
 # undef HAVE_UNLOCKED_LINE_OPS
 # undef HAVE_NET_ETHERNET_H
+#endif
+
+#if defined(__CYGWIN__)
+# undef HAVE_CLEARENV
+# undef HAVE_FDPRINTF
+# undef HAVE_MEMRCHR
+# undef HAVE_PTSNAME_R
+# undef HAVE_STRVERSCMP
+# undef HAVE_UNLOCKED_LINE_OPS
 #endif
 
 /* These BSD-derived OSes share many similarities */
@@ -515,7 +529,8 @@ extern int vasprintf(char **string_ptr, const char *format, va_list p) FAST_FUNC
 #endif
 
 #ifndef HAVE_GETLINE
-#include <stdio.h> /* for FILE */
+# include <stdio.h> /* for FILE */
+# include <sys/types.h> /* size_t */
 extern ssize_t getline(char **lineptr, size_t *n, FILE *stream) FAST_FUNC;
 #endif
 

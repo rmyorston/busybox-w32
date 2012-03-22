@@ -128,6 +128,15 @@ lib-$(CONFIG_FEATURE_MTAB_SUPPORT) += mtab.o
 lib-$(CONFIG_UNICODE_SUPPORT) += unicode.o
 lib-$(CONFIG_FEATURE_CHECK_NAMES) += die_if_bad_username.o
 
+lib-$(CONFIG_NC) += udp_io.o
+lib-$(CONFIG_DNSD) += udp_io.o
+lib-$(CONFIG_NTPD) += udp_io.o
+lib-$(CONFIG_TFTP) += udp_io.o
+lib-$(CONFIG_TFTPD) += udp_io.o
+lib-$(CONFIG_TCPSVD) += udp_io.o
+lib-$(CONFIG_UDPSVD) += udp_io.o
+lib-$(CONFIG_TRACEROUTE) += udp_io.o
+
 lib-$(CONFIG_LOSETUP) += loop.o
 lib-$(CONFIG_FEATURE_MOUNT_LOOP) += loop.o
 

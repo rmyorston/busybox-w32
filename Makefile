@@ -1,7 +1,7 @@
 VERSION = 1
 PATCHLEVEL = 19
 SUBLEVEL = 0
-EXTRAVERSION = .git
+EXTRAVERSION =
 NAME = Unnamed
 
 # *DOCUMENTATION*
@@ -1044,7 +1044,7 @@ rpm: FORCE
 # Brief documentation of the typical targets used
 # ---------------------------------------------------------------------------
 
-boards := $(wildcard $(srctree)/arch/$(ARCH)/configs/*_defconfig)
+boards := $(wildcard $(srctree)/configs/*_defconfig)
 boards := $(notdir $(boards))
 
 -include $(srctree)/Makefile.help
@@ -1132,15 +1132,6 @@ clean: $(clean-dirs)
 		\( -name '*.[oas]' -o -name '*.ko' -o -name '.*.cmd' \
 		-o -name '.*.d' -o -name '.*.tmp' -o -name '*.mod.c' \) \
 		-type f -print | xargs rm -f
-
-help:
-	@echo  '  Building external modules.'
-	@echo  '  Syntax: make -C path/to/kernel/src M=$$PWD target'
-	@echo  ''
-	@echo  '  modules         - default target, build the module(s)'
-	@echo  '  modules_install - install the module'
-	@echo  '  clean           - remove generated files in module directory only'
-	@echo  ''
 
 # Dummies...
 PHONY += prepare scripts

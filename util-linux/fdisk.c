@@ -2543,49 +2543,16 @@ new_partition(void)
 }
 
 static void
-write_table(void)
-{
-	int i;
-
-	if (LABEL_IS_DOS) {
-		for (i = 0; i < 3; i++)
-			if (ptes[i].changed)
-				ptes[3].changed = 1;
-		for (i = 3; i < g_partitions; i++) {
-			struct pte *pe = &ptes[i];
-
-			if (pe->changed) {
-				write_part_table_flag(pe->sectorbuffer);
-				write_sector(pe->offset_from_dev_start, pe->sectorbuffer);
-			}
-		}
-	}
-	else if (LABEL_IS_SGI) {
-		/* no test on change? the printf below might be mistaken */
-		sgi_write_table();
-	}
-	else if (LABEL_IS_SUN) {
-		int needw = 0;
-
-		for (i = 0; i < 8; i++)
-			if (ptes[i].changed)
-				needw = 1;
-		if (needw)
-			sun_write_table();
-	}
-
-	printf("The partition table has been altered!\n\n");
-	reread_partition_table(1);
-}
-
-static void
 reread_partition_table(int leave)
 {
 	int i;
 
 	printf("Calling ioctl() to re-read partition table\n");
 	sync();
-	/* sleep(2); Huh? */
+	/* Users with slow external USB disks on a 320MHz ARM system (year 2011)
+	 * report that sleep is needed, otherwise BLKRRPART may fail with -EIO:
+	 */
+	sleep(1);
 	i = ioctl_or_perror(dev_fd, BLKRRPART, NULL,
 			"WARNING: rereading partition table "
 			"failed, kernel still uses old table");
@@ -2602,6 +2569,40 @@ reread_partition_table(int leave)
 			close_dev_fd();
 		exit(i != 0);
 	}
+}
+
+static void
+write_table(void)
+{
+	int i;
+
+	if (LABEL_IS_DOS) {
+		for (i = 0; i < 3; i++)
+			if (ptes[i].changed)
+				ptes[3].changed = 1;
+		for (i = 3; i < g_partitions; i++) {
+			struct pte *pe = &ptes[i];
+			if (pe->changed) {
+				write_part_table_flag(pe->sectorbuffer);
+				write_sector(pe->offset_from_dev_start, pe->sectorbuffer);
+			}
+		}
+	}
+	else if (LABEL_IS_SGI) {
+		/* no test on change? the printf below might be mistaken */
+		sgi_write_table();
+	}
+	else if (LABEL_IS_SUN) {
+		for (i = 0; i < 8; i++) {
+			if (ptes[i].changed) {
+				sun_write_table();
+				break;
+			}
+		}
+	}
+
+	printf("The partition table has been altered.\n");
+	reread_partition_table(1);
 }
 #endif /* FEATURE_FDISK_WRITABLE */
 
@@ -3100,7 +3101,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 			verify();
 			break;
 		case 'w':
-			write_table();          /* does not return */
+			write_table();  /* does not return */
 			break;
 #if ENABLE_FEATURE_FDISK_ADVANCED
 		case 'x':
