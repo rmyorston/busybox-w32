@@ -27,12 +27,13 @@
  * FEATURE_INSTALLER or FEATURE_SUID will still link printf routines in. :(
  */
 #include "busybox.h"
-#include <assert.h>
+
 #if !(defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) \
         || defined(__APPLE__) \
     )
 # include <malloc.h> /* for mallopt */
 #endif
+
 /* Try to pull in PAGE_SIZE */
 #ifdef __linux__
 # include <sys/user.h>
@@ -40,13 +41,15 @@
 #ifdef __GNU__ /* Hurd */
 # include <mach/vm_param.h>
 #endif
+#ifndef PAGE_SIZE
+# define PAGE_SIZE (4*1024) /* guess */
+#endif
 
 
 /* Declare <applet>_main() */
 #define PROTOTYPES
 #include "applets.h"
 #undef PROTOTYPES
-
 
 /* Include generated applet names, pointers to <applet>_main, etc */
 #include "applet_tables.h"
@@ -58,8 +61,8 @@
 # define IF_FEATURE_INDIVIDUAL(...) __VA_ARGS__
 #endif
 
-
 #include "usage_compressed.h"
+
 
 #if ENABLE_SHOW_USAGE && !ENABLE_FEATURE_COMPRESS_USAGE
 static const char usage_messages[] ALIGN1 = UNPACKED_USAGE;
@@ -233,13 +236,12 @@ IF_FEATURE_SUID(static uid_t ruid;)  /* real uid */
 
 # if ENABLE_FEATURE_SUID_CONFIG
 
-/* applets[] is const, so we have to define this "override" structure */
-static struct BB_suid_config {
+static struct suid_config_t {
+	/* next ptr must be first: this struct needs to be llist-compatible */
+	struct suid_config_t *m_next;
+	struct bb_uidgid_t m_ugid;
 	int m_applet;
-	uid_t m_uid;
-	gid_t m_gid;
 	mode_t m_mode;
-	struct BB_suid_config *m_next;
 } *suid_config;
 
 static bool suid_cfg_readable;
@@ -248,13 +250,10 @@ static bool suid_cfg_readable;
 static int ingroup(uid_t u, gid_t g)
 {
 	struct group *grp = getgrgid(g);
-
 	if (grp) {
 		char **mem;
-
 		for (mem = grp->gr_mem; *mem; mem++) {
 			struct passwd *pwd = getpwnam(*mem);
-
 			if (pwd && (pwd->pw_uid == u))
 				return 1;
 		}
@@ -262,9 +261,7 @@ static int ingroup(uid_t u, gid_t g)
 	return 0;
 }
 
-/* This should probably be a libbb routine.  In that case,
- * I'd probably rename it to something like bb_trimmed_slice.
- */
+/* libbb candidate */
 static char *get_trimmed_slice(char *s, char *e)
 {
 	/* First, consider the value at e to be nul and back up until we
@@ -282,37 +279,18 @@ static char *get_trimmed_slice(char *s, char *e)
 	return skip_whitespace(s);
 }
 
-/* Don't depend on the tools to combine strings. */
-static const char config_file[] ALIGN1 = "/etc/busybox.conf";
-
-/* We don't supply a value for the nul, so an index adjustment is
- * necessary below.  Also, we use unsigned short here to save some
- * space even though these are really mode_t values. */
-static const unsigned short mode_mask[] ALIGN2 = {
-	/*  SST     sst                 xxx         --- */
-	S_ISUID,    S_ISUID|S_IXUSR,    S_IXUSR,    0,	/* user */
-	S_ISGID,    S_ISGID|S_IXGRP,    S_IXGRP,    0,	/* group */
-	0,          S_IXOTH,            S_IXOTH,    0	/* other */
-};
-
-#define parse_error(x)  do { errmsg = x; goto pe_label; } while (0)
-
 static void parse_config_file(void)
 {
-	struct BB_suid_config *sct_head;
-	struct BB_suid_config *sct;
+	/* Don't depend on the tools to combine strings. */
+	static const char config_file[] ALIGN1 = "/etc/busybox.conf";
+
+	struct suid_config_t *sct_head;
 	int applet_no;
 	FILE *f;
 	const char *errmsg;
-	char *s;
-	char *e;
-	int i;
 	unsigned lc;
 	smallint section;
-	char buffer[256];
 	struct stat st;
-
-	assert(!suid_config); /* Should be set to NULL by bss init. */
 
 	ruid = getuid();
 	if (ruid == 0) /* run by root - don't need to even read config file */
@@ -322,7 +300,7 @@ static void parse_config_file(void)
 	 || !S_ISREG(st.st_mode)                /* Not a regular file? */
 	 || (st.st_uid != 0)                    /* Not owned by root? */
 	 || (st.st_mode & (S_IWGRP | S_IWOTH))  /* Writable by non-root? */
-	 || !(f = fopen_for_read(config_file))      /* Cannot open? */
+	 || !(f = fopen_for_read(config_file))  /* Cannot open? */
 	) {
 		return;
 	}
@@ -332,18 +310,21 @@ static void parse_config_file(void)
 	section = lc = 0;
 
 	while (1) {
-		s = buffer;
+		char buffer[256];
+		char *s;
 
-		if (!fgets(s, sizeof(buffer), f)) { /* Are we done? */
-// why?
-			if (ferror(f)) {   /* Make sure it wasn't a read error. */
-				parse_error("reading");
-			}
+		if (!fgets(buffer, sizeof(buffer), f)) { /* Are we done? */
+			// Looks like bloat
+			//if (ferror(f)) {   /* Make sure it wasn't a read error. */
+			//	errmsg = "reading";
+			//	goto pe_label;
+			//}
 			fclose(f);
 			suid_config = sct_head;	/* Success, so set the pointer. */
 			return;
 		}
 
+		s = buffer;
 		lc++;					/* Got a (partial) line. */
 
 		/* If a line is too long for our buffer, we consider it an error.
@@ -355,7 +336,8 @@ static void parse_config_file(void)
 		 * we do err on the side of caution.  Besides, the line would be
 		 * too long if it did end with a newline. */
 		if (!strchr(s, '\n') && !feof(f)) {
-			parse_error("line too long");
+			errmsg = "line too long";
+			goto pe_label;
 		}
 
 		/* Trim leading and trailing whitespace, ignoring comments, and
@@ -371,12 +353,13 @@ static void parse_config_file(void)
 			/* Unlike the old code, we ignore leading and trailing
 			 * whitespace for the section name.  We also require that
 			 * there are no stray characters after the closing bracket. */
-			e = strchr(s, ']');
+			char *e = strchr(s, ']');
 			if (!e   /* Missing right bracket? */
 			 || e[1] /* Trailing characters? */
 			 || !*(s = get_trimmed_slice(s+1, e)) /* Missing name? */
 			) {
-				parse_error("section header");
+				errmsg = "section header";
+				goto pe_label;
 			}
 			/* Right now we only have one section so just check it.
 			 * If more sections are added in the future, please don't
@@ -401,12 +384,13 @@ static void parse_config_file(void)
 			 * where both key and value could contain inner whitespace. */
 
 			/* First get the key (an applet name in our case). */
-			e = strchr(s, '=');
+			char *e = strchr(s, '=');
 			if (e) {
 				s = get_trimmed_slice(s, e);
 			}
 			if (!e || !*s) {	/* Missing '=' or empty key. */
-				parse_error("keyword");
+				errmsg = "keyword";
+				goto pe_label;
 			}
 
 			/* Ok, we have an applet name.  Process the rhs if this
@@ -415,13 +399,16 @@ static void parse_config_file(void)
 			 * up when the busybox configuration is changed. */
 			applet_no = find_applet_by_name(s);
 			if (applet_no >= 0) {
+				unsigned i;
+				struct suid_config_t *sct;
+
 				/* Note: We currently don't check for duplicates!
 				 * The last config line for each applet will be the
 				 * one used since we insert at the head of the list.
 				 * I suppose this could be considered a feature. */
-				sct = xmalloc(sizeof(struct BB_suid_config));
+				sct = xzalloc(sizeof(*sct));
 				sct->m_applet = applet_no;
-				sct->m_mode = 0;
+				/*sct->m_mode = 0;*/
 				sct->m_next = sct_head;
 				sct_head = sct;
 
@@ -430,48 +417,41 @@ static void parse_config_file(void)
 				e = skip_whitespace(e+1);
 
 				for (i = 0; i < 3; i++) {
-					/* There are 4 chars + 1 nul for each of user/group/other. */
-					static const char mode_chars[] ALIGN1 = "Ssx-\0" "Ssx-\0" "Ttx-";
-
-					const char *q;
-					q = strchrnul(mode_chars + 5*i, *e++);
-					if (!*q) {
-						parse_error("mode");
+					/* There are 4 chars for each of user/group/other.
+					 * "x-xx" instead of "x-" are to make
+					 * "idx > 3" check catch invalid chars.
+					 */
+					static const char mode_chars[] ALIGN1 = "Ssx-" "Ssx-" "x-xx";
+					static const unsigned short mode_mask[] ALIGN2 = {
+						S_ISUID, S_ISUID|S_IXUSR, S_IXUSR, 0, /* Ssx- */
+						S_ISGID, S_ISGID|S_IXGRP, S_IXGRP, 0, /* Ssx- */
+						                          S_IXOTH, 0  /*   x- */
+					};
+					const char *q = strchrnul(mode_chars + 4*i, *e);
+					unsigned idx = q - (mode_chars + 4*i);
+					if (idx > 3) {
+						errmsg = "mode";
+						goto pe_label;
 					}
-					/* Adjust by -i to account for nul. */
-					sct->m_mode |= mode_mask[(q - mode_chars) - i];
+					sct->m_mode |= mode_mask[q - mode_chars];
+					e++;
 				}
 
 				/* Now get the user/group info. */
 
 				s = skip_whitespace(e);
-
-				/* Note: we require whitespace between the mode and the
-				 * user/group info. */
-				if ((s == e) || !(e = strchr(s, '.'))) {
-					parse_error("<uid>.<gid>");
-				}
-				*e++ = '\0';
-
-				/* We can't use get_ug_id here since it would exit()
-				 * if a uid or gid was not found.  Oh well... */
-				sct->m_uid = bb_strtoul(s, NULL, 10);
-				if (errno) {
-					struct passwd *pwd = getpwnam(s);
-					if (!pwd) {
-						parse_error("user");
+				/* Default is 0.0, else parse USER.GROUP: */
+				if (*s) {
+					/* We require whitespace between mode and USER.GROUP */
+					if ((s == e) || !(e = strchr(s, '.'))) {
+						errmsg = "uid.gid";
+						goto pe_label;
 					}
-					sct->m_uid = pwd->pw_uid;
-				}
-
-				sct->m_gid = bb_strtoul(e, NULL, 10);
-				if (errno) {
-					struct group *grp;
-					grp = getgrnam(e);
-					if (!grp) {
-						parse_error("group");
+					*e = ':'; /* get_uidgid needs USER:GROUP syntax */
+					if (get_uidgid(&sct->m_ugid, s, /*allow_numeric:*/ 1) == 0) {
+						errmsg = "unknown user/group";
+						goto pe_label;
 					}
-					sct->m_gid = grp->gr_gid;
 				}
 			}
 			continue;
@@ -485,22 +465,18 @@ static void parse_config_file(void)
 		 * We may want to simply ignore such lines in case they
 		 * are used in some future version of busybox. */
 		if (!section) {
-			parse_error("keyword outside section");
+			errmsg = "keyword outside section";
+			goto pe_label;
 		}
 
 	} /* while (1) */
 
  pe_label:
-	fprintf(stderr, "Parse error in %s, line %d: %s\n",
-			config_file, lc, errmsg);
-
 	fclose(f);
+	bb_error_msg("parse error in %s, line %u: %s", config_file, lc, errmsg);
+
 	/* Release any allocated memory before returning. */
-	while (sct_head) {
-		sct = sct_head->m_next;
-		free(sct_head);
-		sct_head = sct;
-	}
+	llist_free((llist_t*)sct_head, NULL);
 }
 # else
 static inline void parse_config_file(void)
@@ -522,7 +498,7 @@ static void check_suid(int applet_no)
 #  if ENABLE_FEATURE_SUID_CONFIG
 	if (suid_cfg_readable) {
 		uid_t uid;
-		struct BB_suid_config *sct;
+		struct suid_config_t *sct;
 		mode_t m;
 
 		for (sct = suid_config; sct; sct = sct->m_next) {
@@ -531,36 +507,40 @@ static void check_suid(int applet_no)
 		}
 		goto check_need_suid;
  found:
+		/* Is this user allowed to run this applet? */
 		m = sct->m_mode;
-		if (sct->m_uid == ruid)
+		if (sct->m_ugid.uid == ruid)
 			/* same uid */
 			m >>= 6;
-		else if ((sct->m_gid == rgid) || ingroup(ruid, sct->m_gid))
+		else if ((sct->m_ugid.gid == rgid) || ingroup(ruid, sct->m_ugid.gid))
 			/* same group / in group */
 			m >>= 3;
-
-		if (!(m & S_IXOTH))           /* is x bit not set ? */
-			bb_error_msg_and_die("you have no permission to run this applet!");
-
-		/* _both_ sgid and group_exec have to be set for setegid */
-		if ((sct->m_mode & (S_ISGID | S_IXGRP)) == (S_ISGID | S_IXGRP))
-			rgid = sct->m_gid;
-		/* else (no setegid) we will set egid = rgid */
+		if (!(m & S_IXOTH)) /* is x bit not set? */
+			bb_error_msg_and_die("you have no permission to run this applet");
 
 		/* We set effective AND saved ids. If saved-id is not set
-		 * like we do below, seteiud(0) can still later succeed! */
+		 * like we do below, seteuid(0) can still later succeed! */
+
+		/* Are we directed to change gid
+		 * (APPLET = *s* USER.GROUP or APPLET = *S* USER.GROUP)?
+		 */
+		if (sct->m_mode & S_ISGID)
+			rgid = sct->m_ugid.gid;
+		/* else: we will set egid = rgid, thus dropping sgid effect */
 		if (setresgid(-1, rgid, rgid))
 			bb_perror_msg_and_die("setresgid");
 
-		/* do we have to set effective uid? */
+		/* Are we directed to change uid
+		 * (APPLET = s** USER.GROUP or APPLET = S** USER.GROUP)?
+		 */
 		uid = ruid;
 		if (sct->m_mode & S_ISUID)
-			uid = sct->m_uid;
-		/* else (no seteuid) we will set euid = ruid */
-
+			uid = sct->m_ugid.uid;
+		/* else: we will set euid = ruid, thus dropping suid effect */
 		if (setresuid(-1, uid, uid))
 			bb_perror_msg_and_die("setresuid");
-		return;
+
+		goto ret;
 	}
 #   if !ENABLE_FEATURE_SUID_CONFIG_QUIET
 	{
@@ -568,7 +548,7 @@ static void check_suid(int applet_no)
 
 		if (!onetime) {
 			onetime = 1;
-			fprintf(stderr, "Using fallback suid method\n");
+			bb_error_msg("using fallback suid method");
 		}
 	}
 #   endif
@@ -583,6 +563,10 @@ static void check_suid(int applet_no)
 		xsetgid(rgid);  /* drop all privileges */
 		xsetuid(ruid);
 	}
+#  if ENABLE_FEATURE_SUID_CONFIG
+ ret: ;
+	llist_free((llist_t*)suid_config, NULL);
+#  endif
 }
 # else
 #  define check_suid(x) ((void)0)
@@ -799,9 +783,6 @@ int main(int argc UNUSED_PARAM, char **argv)
 #endif
 {
 	/* Tweak malloc for reduced memory consumption */
-#ifndef PAGE_SIZE
-# define PAGE_SIZE (4*1024) /* guess */
-#endif
 #ifdef M_TRIM_THRESHOLD
 	/* M_TRIM_THRESHOLD is the maximum amount of freed top-most memory
 	 * to keep before releasing to the OS

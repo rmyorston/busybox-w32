@@ -271,8 +271,9 @@ config UNICODE_PRESERVE_BROKEN
 	default n
 	depends on UNICODE_SUPPORT
 	help
-	  With this option on, invalid UTF-8 bytes are not substituted
-	  with the selected substitution character.
+	  With this option on, on line-editing input (such as used by shells)
+	  invalid UTF-8 bytes are not substituted with the selected
+	  substitution character.
 	  For example, this means that entering 'l', 's', ' ', 0xff, [Enter]
 	  at shell prompt will list file named 0xff (single char name
 	  with char value 255), not file named '?'.
@@ -365,14 +366,24 @@ config FEATURE_SUID
 
 config FEATURE_SUID_CONFIG
 	bool "Runtime SUID/SGID configuration via /etc/busybox.conf"
-	default y if FEATURE_SUID
+	default y
 	depends on FEATURE_SUID
 	help
 	  Allow the SUID / SGID state of an applet to be determined at runtime
 	  by checking /etc/busybox.conf. (This is sort of a poor man's sudo.)
 	  The format of this file is as follows:
 
-	  <applet> = [Ssx-][Ssx-][x-] (<username>|<uid>).(<groupname>|<gid>)
+	  APPLET = [Ssx-][Ssx-][x-] [USER.GROUP]
+
+	  s: USER or GROUP is allowed to execute APPLET.
+	     APPLET will run under USER or GROUP
+	     (reagardless of who's running it).
+	  S: USER or GROUP is NOT allowed to execute APPLET.
+	     APPLET will run under USER or GROUP.
+	     This option is not very sensical.
+	  x: USER/GROUP/others are allowed to execute APPLET.
+	     No UID/GID change will be done when it is run.
+	  -: USER/GROUP/others are not allowed to execute APPLET.
 
 	  An example might help:
 
@@ -382,7 +393,8 @@ config FEATURE_SUID_CONFIG
 	  su = ssx        # exactly the same
 
 	  mount = sx- root.disk # applet mount can be run by root and members
-	                        # of group disk and runs with euid=0
+	                        # of group disk (but not anyone else)
+	                        # and runs with euid=0 (egid is not changed)
 
 	  cp = --- # disable applet cp for everyone
 

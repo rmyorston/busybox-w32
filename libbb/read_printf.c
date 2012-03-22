@@ -55,32 +55,35 @@
  * which detects EAGAIN and uses poll() to wait on the fd.
  * Thankfully, poll() doesn't care about O_NONBLOCK flag.
  */
-ssize_t FAST_FUNC nonblock_safe_read(int fd, void *buf, size_t count)
+ssize_t FAST_FUNC nonblock_immune_read(int fd, void *buf, size_t count, int loop_on_EINTR)
 {
 	struct pollfd pfd[1];
 	ssize_t n;
 
 	while (1) {
-		n = safe_read(fd, buf, count);
+		n = loop_on_EINTR ? safe_read(fd, buf, count) : read(fd, buf, count);
 		if (n >= 0 || errno != EAGAIN)
 			return n;
 		/* fd is in O_NONBLOCK mode. Wait using poll and repeat */
 		pfd[0].fd = fd;
 		pfd[0].events = POLLIN;
-		safe_poll(pfd, 1, -1); /* note: this pulls in printf */
+		/* note: safe_poll pulls in printf */
+		loop_on_EINTR ? safe_poll(pfd, 1, -1) : poll(pfd, 1, -1);
 	}
 }
 
 // Reads one line a-la fgets (but doesn't save terminating '\n').
 // Reads byte-by-byte. Useful when it is important to not read ahead.
 // Bytes are appended to pfx (which must be malloced, or NULL).
-char* FAST_FUNC xmalloc_reads(int fd, char *buf, size_t *maxsz_p)
+char* FAST_FUNC xmalloc_reads(int fd, size_t *maxsz_p)
 {
 	char *p;
-	size_t sz = buf ? strlen(buf) : 0;
+	char *buf = NULL;
+	size_t sz = 0;
 	size_t maxsz = maxsz_p ? *maxsz_p : (INT_MAX - 4095);
 
 	goto jump_in;
+
 	while (sz < maxsz) {
 		if ((size_t)(p - buf) == sz) {
  jump_in:
@@ -88,8 +91,8 @@ char* FAST_FUNC xmalloc_reads(int fd, char *buf, size_t *maxsz_p)
 			p = buf + sz;
 			sz += 128;
 		}
-		/* nonblock_safe_read() because we are used by e.g. shells */
-		if (nonblock_safe_read(fd, p, 1) != 1) { /* EOF/error */
+		if (nonblock_immune_read(fd, p, 1, /*loop_on_EINTR:*/ 1) != 1) {
+			/* EOF/error */
 			if (p == buf) { /* we read nothing */
 				free(buf);
 				return NULL;

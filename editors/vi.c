@@ -536,7 +536,6 @@ static void edit_file(char *fn)
 #define cur_line edit_file__cur_line
 #endif
 	int c;
-	int size;
 #if ENABLE_FEATURE_VI_USE_SIGNALS
 	int sig;
 #endif
@@ -545,7 +544,6 @@ static void edit_file(char *fn)
 	rawmode();
 	rows = 24;
 	columns = 80;
-	size = 0;
 	IF_FEATURE_VI_ASK_TERMINAL(G.get_rowcol_error =) query_screen_dimensions();
 #if ENABLE_FEATURE_VI_ASK_TERMINAL
 	if (G.get_rowcol_error /* TODO? && no input on stdin */) {
@@ -1690,12 +1688,16 @@ static char *char_insert(char *p, char c) // insert the char c at 'p'
 			p = text_hole_delete(p, p);	// shrink buffer 1 char
 		}
 	} else {
+#if ENABLE_FEATURE_VI_SETOPTS
 		// insert a char into text[]
 		char *sp;		// "save p"
+#endif
 
 		if (c == 13)
 			c = '\n';	// translate \r to \n
+#if ENABLE_FEATURE_VI_SETOPTS
 		sp = p;			// remember addr of insert
+#endif
 		p += 1 + stupid_insert(p, c);	// insert the char
 #if ENABLE_FEATURE_VI_SETOPTS
 		if (showmatch && strchr(")]}", *sp) != NULL) {

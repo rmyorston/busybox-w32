@@ -20,6 +20,12 @@
 #include <netdb.h>
 #include <setjmp.h>
 #include <signal.h>
+#if defined __UCLIBC__ /* TODO: and glibc? */
+/* use inlined versions of these: */
+# define sigfillset(s)    __sigfillset(s)
+# define sigemptyset(s)   __sigemptyset(s)
+# define sigisemptyset(s) __sigisemptyset(s)
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -363,6 +369,7 @@ extern void bb_copyfd_exact_size(int fd1, int fd2, off_t size) FAST_FUNC;
 /* "short" copy can be detected by return value < size */
 /* this helper yells "short read!" if param is not -1 */
 extern void complain_copyfd_and_die(off_t sz) NORETURN FAST_FUNC;
+
 extern char bb_process_escape_sequence(const char **ptr) FAST_FUNC;
 char* strcpy_and_process_escape_sequences(char *dst, const char *src) FAST_FUNC;
 /* xxxx_strip version can modify its parameter:
@@ -371,9 +378,13 @@ char* strcpy_and_process_escape_sequences(char *dst, const char *src) FAST_FUNC;
  * "abc/def"  -> "def"
  * "abc/def/" -> "def" !!
  */
-extern char *bb_get_last_path_component_strip(char *path) FAST_FUNC;
+char *bb_get_last_path_component_strip(char *path) FAST_FUNC;
 /* "abc/def/" -> "" and it never modifies 'path' */
-extern char *bb_get_last_path_component_nostrip(const char *path) FAST_FUNC;
+char *bb_get_last_path_component_nostrip(const char *path) FAST_FUNC;
+/* Simpler version: does not special case "/" string */
+const char *bb_basename(const char *name) FAST_FUNC;
+/* NB: can violate const-ness (similarly to strchr) */
+char *last_char_is(const char *s, int c) FAST_FUNC;
 
 void ndelay_on(int fd) FAST_FUNC;
 void ndelay_off(int fd) FAST_FUNC;
@@ -685,7 +696,7 @@ void* xrealloc_vector_helper(void *vector, unsigned sizeof_and_shift, int idx) F
 
 
 extern ssize_t safe_read(int fd, void *buf, size_t count) FAST_FUNC;
-extern ssize_t nonblock_safe_read(int fd, void *buf, size_t count) FAST_FUNC;
+extern ssize_t nonblock_immune_read(int fd, void *buf, size_t count, int loop_on_EINTR) FAST_FUNC;
 // NB: will return short read on error, not -1,
 // if some data was read before error occurred
 extern ssize_t full_read(int fd, void *buf, size_t count) FAST_FUNC;
@@ -696,7 +707,7 @@ extern ssize_t open_read_close(const char *filename, void *buf, size_t maxsz) FA
 // Reads one line a-la fgets (but doesn't save terminating '\n').
 // Reads byte-by-byte. Useful when it is important to not read ahead.
 // Bytes are appended to pfx (which must be malloced, or NULL).
-extern char *xmalloc_reads(int fd, char *pfx, size_t *maxsz_p) FAST_FUNC;
+extern char *xmalloc_reads(int fd, size_t *maxsz_p) FAST_FUNC;
 /* Reads block up to *maxsz_p (default: INT_MAX - 4095) */
 extern void *xmalloc_read(int fd, size_t *maxsz_p) FAST_FUNC RETURNS_MALLOC;
 /* Returns NULL if file can't be opened (default max size: INT_MAX - 4095) */
@@ -997,9 +1008,13 @@ extern uint32_t option_mask32;
 extern uint32_t getopt32(char **argv, const char *applet_opts, ...) FAST_FUNC;
 
 
+/* Having next pointer as a first member allows easy creation
+ * of "llist-compatible" structs, and using llist_FOO functions
+ * on them.
+ */
 typedef struct llist_t {
-	char *data;
 	struct llist_t *link;
+	char *data;
 } llist_t;
 void llist_add_to(llist_t **old_head, void *data) FAST_FUNC;
 void llist_add_to_end(llist_t **list_head, void *data) FAST_FUNC;
@@ -1198,10 +1213,8 @@ void config_close(parser_t *parser) FAST_FUNC;
  * If path is NULL, it is assumed to be "/".
  * filename should not be NULL. */
 char *concat_path_file(const char *path, const char *filename) FAST_FUNC;
+/* Returns NULL on . and .. */
 char *concat_subpath_file(const char *path, const char *filename) FAST_FUNC;
-const char *bb_basename(const char *name) FAST_FUNC;
-/* NB: can violate const-ness (similarly to strchr) */
-char *last_char_is(const char *s, int c) FAST_FUNC;
 
 
 int bb_make_directory(char *path, long mode, int flags) FAST_FUNC;
@@ -1269,14 +1282,19 @@ extern int correct_password(const struct passwd *pw) FAST_FUNC;
 #endif
 extern char *pw_encrypt(const char *clear, const char *salt, int cleanup) FAST_FUNC;
 extern int obscure(const char *old, const char *newval, const struct passwd *pwdp) FAST_FUNC;
-/* rnd is additional random input. New one is returned.
+/*
+ * rnd is additional random input. New one is returned.
  * Useful if you call crypt_make_salt many times in a row:
  * rnd = crypt_make_salt(buf1, 4, 0);
  * rnd = crypt_make_salt(buf2, 4, rnd);
  * rnd = crypt_make_salt(buf3, 4, rnd);
  * (otherwise we risk having same salt generated)
  */
-extern int crypt_make_salt(char *p, int cnt, int rnd) FAST_FUNC;
+extern int crypt_make_salt(char *p, int cnt /*, int rnd*/) FAST_FUNC;
+/* "$N$" + sha_salt_16_bytes + NUL */
+#define MAX_PW_SALT_LEN (3 + 16 + 1)
+extern char* crypt_make_pw_salt(char p[MAX_PW_SALT_LEN], const char *algo) FAST_FUNC;
+
 
 /* Returns number of lines changed, or -1 on error */
 #if !(ENABLE_FEATURE_ADDUSER_TO_GROUP || ENABLE_FEATURE_DEL_USER_FROM_GROUP)

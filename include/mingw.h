@@ -209,6 +209,8 @@ NOIMPL(mingw_bind,SOCKET s UNUSED_PARAM,const struct sockaddr* sa UNUSED_PARAM,i
 /*
  * sys/stat.h
  */
+typedef int nlink_t;
+
 #define S_ISUID 04000
 #define S_ISGID 02000
 #define S_ISVTX 01000
