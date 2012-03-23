@@ -25,7 +25,7 @@
  */
 
 #include "libbb.h"
-#if defined(__linux__)
+#if !ENABLE_PLATFORM_MINGW32
 #include <sys/utsname.h>
 #endif
 
@@ -37,7 +37,7 @@
  */
 char* FAST_FUNC safe_gethostname(void)
 {
-#if defined(__linux__)
+#if !ENABLE_PLATFORM_MINGW32
 	struct utsname uts;
 
 	/* The length of the arrays in a struct utsname is unspecified;
@@ -69,19 +69,12 @@ char* FAST_FUNC safe_gethostname(void)
  */
 char* FAST_FUNC safe_getdomainname(void)
 {
-#if defined(__linux__)
+#if !ENABLE_PLATFORM_MINGW32
 /* The field domainname of struct utsname is Linux specific. */
 	struct utsname uts;
 	uname(&uts);
 	return xstrndup(!uts.domainname[0] ? "?" : uts.domainname, sizeof(uts.domainname));
 #else
-	/* We really don't care about people with domain names wider than most screens */
-	/*
-	char buf[256];
-	int r = getdomainname(buf, sizeof(buf));
-	buf[sizeof(buf)-1] = '\0';
-	return xstrdup(r < 0 ? "?" : buf);
-	*/
 	return xstrdup("?");
 #endif
 }
