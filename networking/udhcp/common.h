@@ -88,6 +88,7 @@ enum {
 	OPTION_S32,
 	OPTION_BIN,
 	OPTION_STATIC_ROUTES,
+	OPTION_6RD,
 #if ENABLE_FEATURE_UDHCP_RFC3397
 	OPTION_DNS_STRING,  /* RFC1035 compressed domain name list */
 	OPTION_SIP_SERVERS,
@@ -103,7 +104,7 @@ enum {
 /* DHCP option codes (partial list). See RFC 2132 and
  * http://www.iana.org/assignments/bootp-dhcp-parameters/
  * Commented out options are handled by common option machinery,
- * uncommented ones have spacial cases (grep for them to see).
+ * uncommented ones have special cases (grep for them to see).
  */
 #define DHCP_PADDING            0x00
 #define DHCP_SUBNET             0x01
@@ -248,6 +249,7 @@ struct option_set *udhcp_find_option(struct option_set *opt_list, uint8_t code) 
 /*** Logging ***/
 
 #if defined CONFIG_UDHCP_DEBUG && CONFIG_UDHCP_DEBUG >= 1
+# define IF_UDHCP_VERBOSE(...) __VA_ARGS__
 extern unsigned dhcp_verbose;
 # define log1(...) do { if (dhcp_verbose >= 1) bb_info_msg(__VA_ARGS__); } while (0)
 # if CONFIG_UDHCP_DEBUG >= 2
@@ -263,6 +265,7 @@ void udhcp_dump_packet(struct dhcp_packet *packet) FAST_FUNC;
 #  define log3(...) ((void)0)
 # endif
 #else
+# define IF_UDHCP_VERBOSE(...)
 # define udhcp_dump_packet(...) ((void)0)
 # define log1(...) ((void)0)
 # define log2(...) ((void)0)
@@ -276,8 +279,6 @@ void udhcp_dump_packet(struct dhcp_packet *packet) FAST_FUNC;
 int FAST_FUNC udhcp_str2nip(const char *str, void *arg);
 /* 2nd param is "struct option_set**" */
 int FAST_FUNC udhcp_str2optset(const char *str, void *arg);
-
-uint16_t udhcp_checksum(void *addr, int count) FAST_FUNC;
 
 void udhcp_init_header(struct dhcp_packet *packet, char type) FAST_FUNC;
 

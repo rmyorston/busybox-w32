@@ -12,6 +12,8 @@
 
 #include "libbb.h"
 
+#ifdef HAVE_MNTENT_H
+
 int FAST_FUNC match_fstype(const struct mntent *mt, const char *t_fstype)
 {
 	int match = 1;
@@ -40,3 +42,5 @@ int FAST_FUNC match_fstype(const struct mntent *mt, const char *t_fstype)
 
 	return !match;
 }
+
+#endif /* HAVE_MNTENT_H */

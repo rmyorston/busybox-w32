@@ -383,7 +383,7 @@ typedef unsigned smalluint;
 #if defined(__UCLIBC_MAJOR__)
 # if __UCLIBC_MAJOR__ == 0 \
   && (   __UCLIBC_MINOR__ < 9 \
-     || (__UCLIBC_MINOR__ == 9 && __UCLIBC_SUBLEVEL__ < 31) \
+     || (__UCLIBC_MINOR__ == 9 && __UCLIBC_SUBLEVEL__ < 32) \
      )
 #  undef HAVE_STRVERSCMP
 # endif
@@ -451,6 +451,8 @@ typedef unsigned smalluint;
 # undef HAVE_STRVERSCMP
 # undef HAVE_XTABS
 # undef HAVE_DPRINTF
+# undef HAVE_UNLOCKED_STDIO
+# undef HAVE_UNLOCKED_LINE_OPS
 #endif
 
 #if defined(__FreeBSD__)
@@ -465,7 +467,7 @@ typedef unsigned smalluint;
 # undef HAVE_STPCPY
 #endif
 
-#if defined(ANDROID)
+#if defined(ANDROID) || defined(__ANDROID__)
 # undef HAVE_DPRINTF
 # undef HAVE_GETLINE
 # undef HAVE_STPCPY

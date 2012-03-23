@@ -36,6 +36,9 @@ const struct dhcp_optflag dhcp_optflags[] = {
 	{ OPTION_STRING                           , 0x11 }, /* DHCP_ROOT_PATH     */
 	{ OPTION_U8                               , 0x17 }, /* DHCP_IP_TTL        */
 	{ OPTION_U16                              , 0x1a }, /* DHCP_MTU           */
+//TODO: why do we request DHCP_BROADCAST? Can't we assume that
+//in the unlikely case it is different from typical N.N.255.255,
+//server would let us know anyway?
 	{ OPTION_IP                   | OPTION_REQ, 0x1c }, /* DHCP_BROADCAST     */
 	{ OPTION_IP_PAIR | OPTION_LIST            , 0x21 }, /* DHCP_ROUTES        */
 	{ OPTION_STRING                           , 0x28 }, /* DHCP_NIS_DOMAIN    */
@@ -59,6 +62,7 @@ const struct dhcp_optflag dhcp_optflags[] = {
 	{ OPTION_U16                              , 0x84 }, /* DHCP_VLAN_ID       */
 	{ OPTION_U8                               , 0x85 }, /* DHCP_VLAN_PRIORITY */
 #endif
+	{ OPTION_6RD                              , 0xd4 }, /* DHCP_6RD           */
 	{ OPTION_STATIC_ROUTES                    , 0xf9 }, /* DHCP_MS_STATIC_ROUTES */
 	{ OPTION_STRING                           , 0xfc }, /* DHCP_WPAD          */
 
@@ -126,6 +130,7 @@ const char dhcp_option_strings[] ALIGN1 =
 	"vlanid" "\0"      /* DHCP_VLAN_ID        */
 	"vlanpriority" "\0"/* DHCP_VLAN_PRIORITY  */
 #endif
+	"ip6rd" "\0"       /* DHCP_6RD            */
 	"msstaticroutes""\0"/* DHCP_MS_STATIC_ROUTES */
 	"wpad" "\0"        /* DHCP_WPAD           */
 	;
@@ -154,6 +159,7 @@ const uint8_t dhcp_option_lengths[] ALIGN1 = {
 	[OPTION_S32] =     4,
 	/* Just like OPTION_STRING, we use minimum length here */
 	[OPTION_STATIC_ROUTES] = 5,
+	[OPTION_6RD] =    22,  /* ignored by udhcp_str2optset */
 };
 
 

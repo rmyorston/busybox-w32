@@ -13431,6 +13431,10 @@ exitshell(void)
 	char *p;
 	int status;
 
+#if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
+	save_history(line_input_state);
+#endif
+
 	status = exitstatus;
 	TRACE(("pid %d, exitshell(%d)\n", getpid(), status));
 	if (setjmp(loc.loc)) {
@@ -13816,7 +13820,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	if (sflag || minusc == NULL) {
-#if defined MAX_HISTORY && MAX_HISTORY > 0 && ENABLE_FEATURE_EDITING_SAVEHISTORY
+#if MAX_HISTORY > 0 && ENABLE_FEATURE_EDITING_SAVEHISTORY
 		if (iflag) {
 			const char *hp = lookupvar("HISTFILE");
 			if (hp)

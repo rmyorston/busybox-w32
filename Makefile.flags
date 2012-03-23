@@ -99,13 +99,18 @@ endif
 
 ifeq ($(CONFIG_PLATFORM_MINGW32),y)
 # These defintions are not strictly needed, but they help shut up fnmatch.c warnings
-CFLAGS += -Iwin32 -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0
+CFLAGS += -Iwin32 -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -fno-builtin-stpcpy
 EXEEXT = .exe
 ifeq ($(CONFIG_WIN32_NET),y)
 LDLIBS += ws2_32
 endif
 else
+ifneq ($(CONFIG_CROSS_COMPILER_PREFIX),"arm-linux-androideabi-")
 LDLIBS += m crypt
+else
+# Android libc has no crypt. TODO: make a generic CONFIG_LINK_WITH_CRYPT option?
+LDLIBS += m
+endif
 endif
 
 ifeq ($(CONFIG_PAM),y)

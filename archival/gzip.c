@@ -55,7 +55,7 @@ aa:      85.1% -- replaced with aa.gz
 //usage:       "-rw-rw-r--    1 andersen andersen   554058 Apr 14 17:49 /tmp/busybox.tar.gz\n"
 
 #include "libbb.h"
-#include "archive.h"
+#include "bb_archive.h"
 
 
 /* ===========================================================================
@@ -81,7 +81,15 @@ aa:      85.1% -- replaced with aa.gz
 
 /* ===========================================================================
  */
-#define SMALL_MEM
+#if   CONFIG_GZIP_FAST == 0
+# define SMALL_MEM
+#elif CONFIG_GZIP_FAST == 1
+# define MEDIUM_MEM
+#elif CONFIG_GZIP_FAST == 2
+# define BIG_MEM
+#else
+# error "Invalid CONFIG_GZIP_FAST value"
+#endif
 
 #ifndef INBUFSIZ
 #  ifdef SMALL_MEM

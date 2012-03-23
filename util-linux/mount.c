@@ -38,7 +38,7 @@
 //usage:	)
 //usage:     "\n	-r		Read-only mount"
 //usage:     "\n	-w		Read-write mount (default)"
-//usage:     "\n	-t FSTYPE	Filesystem type"
+//usage:     "\n	-t FSTYPE[,...]	Filesystem type(s)"
 //usage:     "\n	-O OPT		Mount only filesystems with option OPT (-a only)"
 //usage:     "\n-o OPT:"
 //usage:	IF_FEATURE_MOUNT_LOOP(
@@ -339,6 +339,7 @@ enum { GETMNTENT_BUFSIZE = COMMON_BUFSIZE - offsetof(struct globals, getmntent_b
 #endif
 #define fslist            (G.fslist           )
 #define getmntent_buf     (G.getmntent_buf    )
+#define INIT_G() do { } while (0)
 
 #if ENABLE_FEATURE_MTAB_SUPPORT
 /*
@@ -521,12 +522,13 @@ static llist_t *get_block_backed_filesystems(void)
 
 		while ((buf = xmalloc_fgetline(f)) != NULL) {
 			if (strncmp(buf, "nodev", 5) == 0 && isspace(buf[5]))
-				continue;
+				goto next;
 			fs = skip_whitespace(buf);
 			if (*fs == '#' || *fs == '*' || !*fs)
-				continue;
+				goto next;
 
 			llist_add_to_end(&list, xstrdup(fs));
+ next:
 			free(buf);
 		}
 		if (ENABLE_FEATURE_CLEAN_UP) fclose(f);
@@ -1809,7 +1811,7 @@ static int singlemount(struct mntent *mp, int ignore_busy)
 		if (ENABLE_FEATURE_MOUNT_LOOP && S_ISREG(st.st_mode)) {
 			loopFile = bb_simplify_path(mp->mnt_fsname);
 			mp->mnt_fsname = NULL; // will receive malloced loop dev name
-			if (set_loop(&mp->mnt_fsname, loopFile, 0) < 0) {
+			if (set_loop(&mp->mnt_fsname, loopFile, 0, /*ro:*/ 0) < 0) {
 				if (errno == EPERM || errno == EACCES)
 					bb_error_msg(bb_msg_perm_denied_are_you_root);
 				else
@@ -1825,7 +1827,16 @@ static int singlemount(struct mntent *mp, int ignore_busy)
 	// If we know the fstype (or don't need to), jump straight
 	// to the actual mount.
 	if (mp->mnt_type || (vfsflags & (MS_REMOUNT | MS_BIND | MS_MOVE))) {
-		rc = mount_it_now(mp, vfsflags, filteropts);
+		char *next;
+		for (;;) {
+			next = mp->mnt_type ? strchr(mp->mnt_type, ',') : NULL;
+			if (next)
+				*next = '\0';
+			rc = mount_it_now(mp, vfsflags, filteropts);
+			if (rc == 0 || !next)
+				break;
+			mp->mnt_type = next + 1;
+		}
 	} else {
 		// Loop through filesystem types until mount succeeds
 		// or we run out
@@ -1842,7 +1853,7 @@ static int singlemount(struct mntent *mp, int ignore_busy)
 		for (fl = fslist; fl; fl = fl->link) {
 			mp->mnt_type = fl->data;
 			rc = mount_it_now(mp, vfsflags, filteropts);
-			if (!rc)
+			if (rc == 0)
 				break;
 		}
 	}
@@ -1943,6 +1954,8 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 	IF_NOT_DESKTOP(const int nonroot = 0;)
 
 	IF_DESKTOP(int nonroot = ) sanitize_env_if_suid();
+
+	INIT_G();
 
 	// Parse long options, like --bind and --move.  Note that -o option
 	// and --option are synonymous.  Yes, this means --remount,rw works.
