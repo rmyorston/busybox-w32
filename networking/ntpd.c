@@ -107,12 +107,15 @@
 #define FREQ_TOLERANCE  0.000015 /* frequency tolerance (15 PPM) */
 #define BURSTPOLL       0       /* initial poll */
 #define MINPOLL         5       /* minimum poll interval. std ntpd uses 6 (6: 64 sec) */
-#define BIGPOLL         10      /* drop to lower poll at any trouble (10: 17 min) */
+/* If offset > discipline_jitter * POLLADJ_GATE, and poll interval is >= 2^BIGPOLL,
+ * then it is decreased _at once_. (If < 2^BIGPOLL, it will be decreased _eventually_).
+ */
+#define BIGPOLL         10      /* 2^10 sec ~= 17 min */
 #define MAXPOLL         12      /* maximum poll interval (12: 1.1h, 17: 36.4h). std ntpd uses 17 */
 /* Actively lower poll when we see such big offsets.
  * With STEP_THRESHOLD = 0.125, it means we try to sync more aggressively
- * if offset increases over 0.03 sec */
-#define POLLDOWN_OFFSET (STEP_THRESHOLD / 4)
+ * if offset increases over ~0.04 sec */
+#define POLLDOWN_OFFSET (STEP_THRESHOLD / 3)
 #define MINDISP         0.01    /* minimum dispersion (sec) */
 #define MAXDISP         16      /* maximum dispersion (sec) */
 #define MAXSTRAT        16      /* maximum stratum (infinity metric) */
@@ -124,17 +127,18 @@
 
 /* Poll-adjust threshold.
  * When we see that offset is small enough compared to discipline jitter,
- * we grow a counter: += MINPOLL. When it goes over POLLADJ_LIMIT,
+ * we grow a counter: += MINPOLL. When counter goes over POLLADJ_LIMIT,
  * we poll_exp++. If offset isn't small, counter -= poll_exp*2,
- * and when it goes below -POLLADJ_LIMIT, we poll_exp--
- * (bumped from 30 to 36 since otherwise I often see poll_exp going *2* steps down)
+ * and when it goes below -POLLADJ_LIMIT, we poll_exp--.
+ * (Bumped from 30 to 40 since otherwise I often see poll_exp going *2* steps down)
  */
-#define POLLADJ_LIMIT   36
-/* If offset < POLLADJ_GATE * discipline_jitter, then we can increase
+#define POLLADJ_LIMIT   40
+/* If offset < discipline_jitter * POLLADJ_GATE, then we decide to increase
  * poll interval (we think we can't improve timekeeping
  * by staying at smaller poll).
  */
 #define POLLADJ_GATE    4
+#define TIMECONST_HACK_GATE 2
 /* Compromise Allan intercept (sec). doc uses 1500, std ntpd uses 512 */
 #define ALLAN           512
 /* PLL loop gain */
@@ -208,8 +212,8 @@ typedef struct {
 } msg_t;
 
 typedef struct {
-	double d_recv_time;
 	double d_offset;
+	double d_recv_time;
 	double d_dispersion;
 } datapoint_t;
 
@@ -255,7 +259,7 @@ enum {
 	OPT_S = (1 << 6),
 	OPT_l = (1 << 7) * ENABLE_FEATURE_NTPD_SERVER,
 	/* We hijack some bits for other purposes */
-	OPT_qq = (1 << 8),
+	OPT_qq = (1 << 31),
 };
 
 struct globals {
@@ -276,11 +280,12 @@ struct globals {
 	unsigned verbose;
 	unsigned peer_cnt;
 	/* refid: 32-bit code identifying the particular server or reference clock
-	 *  in stratum 0 packets this is a four-character ASCII string,
-	 *  called the kiss code, used for debugging and monitoring
-	 *  in stratum 1 packets this is a four-character ASCII string
-	 *  assigned to the reference clock by IANA. Example: "GPS "
-	 *  in stratum 2+ packets, it's IPv4 address or 4 first bytes of MD5 hash of IPv6
+	 * in stratum 0 packets this is a four-character ASCII string,
+	 * called the kiss code, used for debugging and monitoring
+	 * in stratum 1 packets this is a four-character ASCII string
+	 * assigned to the reference clock by IANA. Example: "GPS "
+	 * in stratum 2+ packets, it's IPv4 address or 4 first bytes
+	 * of MD5 hash of IPv6
 	 */
 	uint32_t refid;
 	uint8_t  ntp_status;
@@ -289,27 +294,35 @@ struct globals {
 	 * mains-frequency clock incrementing at 60 Hz is 16 ms, even when the
 	 * system clock hardware representation is to the nanosecond.
 	 *
-	 * Delays, jitters of various kinds are clamper down to precision.
+	 * Delays, jitters of various kinds are clamped down to precision.
 	 *
 	 * If precision_sec is too large, discipline_jitter gets clamped to it
-	 * and if offset is much smaller than discipline_jitter, poll interval
-	 * grows even though we really can benefit from staying at smaller one,
-	 * collecting non-lagged datapoits and correcting the offset.
+	 * and if offset is smaller than discipline_jitter * POLLADJ_GATE, poll
+	 * interval grows even though we really can benefit from staying at
+	 * smaller one, collecting non-lagged datapoits and correcting offset.
 	 * (Lagged datapoits exist when poll_exp is large but we still have
 	 * systematic offset error - the time distance between datapoints
-	 * is significat and older datapoints have smaller offsets.
+	 * is significant and older datapoints have smaller offsets.
 	 * This makes our offset estimation a bit smaller than reality)
 	 * Due to this effect, setting G_precision_sec close to
 	 * STEP_THRESHOLD isn't such a good idea - offsets may grow
 	 * too big and we will step. I observed it with -6.
 	 *
-	 * OTOH, setting precision too small would result in futile attempts
-	 * to syncronize to the unachievable precision.
+	 * OTOH, setting precision_sec far too small would result in futile
+	 * attempts to syncronize to an unachievable precision.
 	 *
 	 * -6 is 1/64 sec, -7 is 1/128 sec and so on.
+	 * -8 is 1/256 ~= 0.003906 (worked well for me --vda)
+	 * -9 is 1/512 ~= 0.001953 (let's try this for some time)
 	 */
-#define G_precision_exp  -8
-#define G_precision_sec  (1.0 / (1 << (- G_precision_exp)))
+#define G_precision_exp  -9
+	/*
+	 * G_precision_exp is used only for construction outgoing packets.
+	 * It's ok to set G_precision_sec to a slightly different value
+	 * (One which is "nicer looking" in logs).
+	 * Exact value would be (1.0 / (1 << (- G_precision_exp))):
+	 */
+#define G_precision_sec  0.002
 	uint8_t  stratum;
 	/* Bool. After set to 1, never goes back to 0: */
 	smallint initial_poll_complete;
@@ -327,6 +340,10 @@ struct globals {
 	double   last_update_offset;    // c.last
 	double   last_update_recv_time; // s.t
 	double   discipline_jitter;     // c.jitter
+	/* Since we only compare it with ints, can simplify code
+	 * by not making this variable floating point:
+	 */
+	unsigned offset_to_jitter_ratio;
 	//double   cluster_offset;        // s.offset
 	//double   cluster_jitter;        // s.jitter
 #if !USING_KERNEL_PLL_LOOP
@@ -500,23 +517,34 @@ static void
 filter_datapoints(peer_t *p)
 {
 	int i, idx;
+	double sum, wavg;
+	datapoint_t *fdp;
+
+#if 0
+/* Simulations have shown that use of *averaged* offset for p->filter_offset
+ * is in fact worse than simply using last received one: with large poll intervals
+ * (>= 2048) averaging code uses offset values which are outdated by hours,
+ * and time/frequency correction goes totally wrong when fed essentially bogus offsets.
+ */
 	int got_newest;
-	double minoff, maxoff, wavg, sum, w;
+	double minoff, maxoff, w;
 	double x = x; /* for compiler */
 	double oldest_off = oldest_off;
 	double oldest_age = oldest_age;
 	double newest_off = newest_off;
 	double newest_age = newest_age;
 
-	minoff = maxoff = p->filter_datapoint[0].d_offset;
+	fdp = p->filter_datapoint;
+
+	minoff = maxoff = fdp[0].d_offset;
 	for (i = 1; i < NUM_DATAPOINTS; i++) {
-		if (minoff > p->filter_datapoint[i].d_offset)
-			minoff = p->filter_datapoint[i].d_offset;
-		if (maxoff < p->filter_datapoint[i].d_offset)
-			maxoff = p->filter_datapoint[i].d_offset;
+		if (minoff > fdp[i].d_offset)
+			minoff = fdp[i].d_offset;
+		if (maxoff < fdp[i].d_offset)
+			maxoff = fdp[i].d_offset;
 	}
 
-	idx = p->datapoint_idx; /* most recent datapoint */
+	idx = p->datapoint_idx; /* most recent datapoint's index */
 	/* Average offset:
 	 * Drop two outliers and take weighted average of the rest:
 	 * most_recent/2 + older1/4 + older2/8 ... + older5/32 + older6/32
@@ -538,24 +566,24 @@ filter_datapoints(peer_t *p)
 		VERB4 {
 			bb_error_msg("datapoint[%d]: off:%f disp:%f(%f) age:%f%s",
 				i,
-				p->filter_datapoint[idx].d_offset,
-				p->filter_datapoint[idx].d_dispersion, dispersion(&p->filter_datapoint[idx]),
-				G.cur_time - p->filter_datapoint[idx].d_recv_time,
-				(minoff == p->filter_datapoint[idx].d_offset || maxoff == p->filter_datapoint[idx].d_offset)
+				fdp[idx].d_offset,
+				fdp[idx].d_dispersion, dispersion(&fdp[idx]),
+				G.cur_time - fdp[idx].d_recv_time,
+				(minoff == fdp[idx].d_offset || maxoff == fdp[idx].d_offset)
 					? " (outlier by offset)" : ""
 			);
 		}
 
-		sum += dispersion(&p->filter_datapoint[idx]) / (2 << i);
+		sum += dispersion(&fdp[idx]) / (2 << i);
 
-		if (minoff == p->filter_datapoint[idx].d_offset) {
+		if (minoff == fdp[idx].d_offset) {
 			minoff -= 1; /* so that we don't match it ever again */
 		} else
-		if (maxoff == p->filter_datapoint[idx].d_offset) {
+		if (maxoff == fdp[idx].d_offset) {
 			maxoff += 1;
 		} else {
-			oldest_off = p->filter_datapoint[idx].d_offset;
-			oldest_age = G.cur_time - p->filter_datapoint[idx].d_recv_time;
+			oldest_off = fdp[idx].d_offset;
+			oldest_age = G.cur_time - fdp[idx].d_recv_time;
 			if (!got_newest) {
 				got_newest = 1;
 				newest_off = oldest_off;
@@ -588,6 +616,32 @@ filter_datapoints(peer_t *p)
 	}
 	p->filter_offset = wavg;
 
+#else
+
+	fdp = p->filter_datapoint;
+	idx = p->datapoint_idx; /* most recent datapoint's index */
+
+	/* filter_offset: simply use the most recent value */
+	p->filter_offset = fdp[idx].d_offset;
+
+	/*                     n-1
+	 *                     ---    dispersion(i)
+	 * filter_dispersion =  \     -------------
+	 *                      /       (i+1)
+	 *                     ---     2
+	 *                     i=0
+	 */
+	wavg = 0;
+	sum = 0;
+	for (i = 0; i < NUM_DATAPOINTS; i++) {
+		sum += dispersion(&fdp[idx]) / (2 << i);
+		wavg += fdp[idx].d_offset;
+		idx = (idx - 1) & (NUM_DATAPOINTS - 1);
+	}
+	wavg /= NUM_DATAPOINTS;
+	p->filter_dispersion = sum;
+#endif
+
 	/*                  +-----                 -----+ ^ 1/2
 	 *                  |       n-1                 |
 	 *                  |       ---                 |
@@ -601,13 +655,13 @@ filter_datapoints(peer_t *p)
 	 */
 	sum = 0;
 	for (i = 0; i < NUM_DATAPOINTS; i++) {
-		sum += SQUARE(wavg - p->filter_datapoint[i].d_offset);
+		sum += SQUARE(wavg - fdp[i].d_offset);
 	}
 	sum = SQRT(sum / NUM_DATAPOINTS);
 	p->filter_jitter = sum > G_precision_sec ? sum : G_precision_sec;
 
-	VERB3 bb_error_msg("filter offset:%f(corr:%e) disp:%f jitter:%f",
-			p->filter_offset, x,
+	VERB3 bb_error_msg("filter offset:%+f disp:%f jitter:%f",
+			p->filter_offset,
 			p->filter_dispersion,
 			p->filter_jitter);
 }
@@ -622,7 +676,11 @@ reset_peer_stats(peer_t *p, double offset)
 		if (small_ofs) {
 			p->filter_datapoint[i].d_recv_time += offset;
 			if (p->filter_datapoint[i].d_offset != 0) {
-				p->filter_datapoint[i].d_offset += offset;
+				p->filter_datapoint[i].d_offset -= offset;
+				//bb_error_msg("p->filter_datapoint[%d].d_offset %f -> %f",
+				//	i,
+				//	p->filter_datapoint[i].d_offset + offset,
+				//	p->filter_datapoint[i].d_offset);
 			}
 		} else {
 			p->filter_datapoint[i].d_recv_time  = G.cur_time;
@@ -719,6 +777,12 @@ send_query_to_peer(peer_t *p)
 		free(local_lsa);
 	}
 
+	/* Emit message _before_ attempted send. Think of a very short
+	 * roundtrip networks: we need to go back to recv loop ASAP,
+	 * to reduce delay. Printing messages after send works against that.
+	 */
+	VERB1 bb_error_msg("sending query to %s", p->p_dotted);
+
 	/*
 	 * Send out a random 64-bit number as our transmit time.  The NTP
 	 * server will copy said number into the originate field on the
@@ -746,7 +810,6 @@ send_query_to_peer(peer_t *p)
 	}
 
 	p->reachable_bits <<= 1;
-	VERB1 bb_error_msg("sent query to %s", p->p_dotted);
 	set_next(p, RESPONSE_INTERVAL);
 }
 
@@ -808,22 +871,24 @@ step_time(double offset)
 {
 	llist_t *item;
 	double dtime;
-	struct timeval tv;
-	char buf[80];
+	struct timeval tvc, tvn;
+	char buf[sizeof("yyyy-mm-dd hh:mm:ss") + /*paranoia:*/ 4];
 	time_t tval;
 
-	gettimeofday(&tv, NULL); /* never fails */
-	dtime = offset + tv.tv_sec;
-	dtime += 1.0e-6 * tv.tv_usec;
-	d_to_tv(dtime, &tv);
-
-	if (settimeofday(&tv, NULL) == -1)
+	gettimeofday(&tvc, NULL); /* never fails */
+	dtime = tvc.tv_sec + (1.0e-6 * tvc.tv_usec) + offset;
+	d_to_tv(dtime, &tvn);
+	if (settimeofday(&tvn, NULL) == -1)
 		bb_perror_msg_and_die("settimeofday");
 
-	tval = tv.tv_sec;
-	strftime(buf, sizeof(buf), "%a %b %e %H:%M:%S %Z %Y", localtime(&tval));
-
-	bb_error_msg("setting clock to %s (offset %fs)", buf, offset);
+	VERB2 {
+		tval = tvc.tv_sec;
+		strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", localtime(&tval));
+		bb_error_msg("current time is %s.%06u", buf, (unsigned)tvc.tv_usec);
+	}
+	tval = tvn.tv_sec;
+	strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", localtime(&tval));
+	bb_error_msg("setting time to %s.%06u (offset %+fs)", buf, (unsigned)tvn.tv_usec, offset);
 
 	/* Correct various fields which contain time-relative values: */
 
@@ -831,7 +896,7 @@ step_time(double offset)
 	for (item = G.ntp_peers; item != NULL; item = item->link) {
 		peer_t *pp = (peer_t *) item->data;
 		reset_peer_stats(pp, offset);
-		//bb_error_msg("offset:%f pp->next_action_time:%f -> %f",
+		//bb_error_msg("offset:%+f pp->next_action_time:%f -> %f",
 		//	offset, pp->next_action_time, pp->next_action_time + offset);
 		pp->next_action_time += offset;
 	}
@@ -1167,7 +1232,7 @@ select_and_cluster(void)
 	}
 	G.last_update_peer = p;
  keep_old:
-	VERB3 bb_error_msg("selected peer %s filter_offset:%f age:%f",
+	VERB3 bb_error_msg("selected peer %s filter_offset:%+f age:%f",
 			p->p_dotted,
 			p->filter_offset,
 			G.cur_time - p->lastpkt_recv_time
@@ -1258,7 +1323,7 @@ update_local_clock(peer_t *p)
 		switch (G.discipline_state) {
 		case STATE_SYNC:
 			/* The first outlyer: ignore it, switch to SPIK state */
-			VERB3 bb_error_msg("offset:%f - spike detected", offset);
+			VERB3 bb_error_msg("offset:%+f - spike detected", offset);
 			G.discipline_state = STATE_SPIK;
 			return -1; /* "decrease poll interval" */
 
@@ -1295,7 +1360,7 @@ update_local_clock(peer_t *p)
 		 * is always suppressed, even at the longer poll
 		 * intervals.
 		 */
-		VERB3 bb_error_msg("stepping time by %f; poll_exp=MINPOLL", offset);
+		VERB3 bb_error_msg("stepping time by %+f; poll_exp=MINPOLL", offset);
 		step_time(offset);
 		if (option_mask32 & OPT_q) {
 			/* We were only asked to set time once. Done. */
@@ -1314,12 +1379,13 @@ update_local_clock(peer_t *p)
 			return 1; /* "ok to increase poll interval" */
 		}
 #endif
-		set_new_values(STATE_SYNC, /*offset:*/ 0, recv_time);
+		abs_offset = offset = 0;
+		set_new_values(STATE_SYNC, offset, recv_time);
 
 	} else { /* abs_offset <= STEP_THRESHOLD */
 
 		if (G.poll_exp < MINPOLL && G.initial_poll_complete) {
-			VERB3 bb_error_msg("small offset:%f, disabling burst mode", offset);
+			VERB3 bb_error_msg("small offset:%+f, disabling burst mode", offset);
 			G.polladj_count = 0;
 			G.poll_exp = MINPOLL;
 		}
@@ -1328,9 +1394,8 @@ update_local_clock(peer_t *p)
 		 * weighted offset differences. Used by the poll adjust code.
 		 */
 		etemp = SQUARE(G.discipline_jitter);
-		dtemp = SQUARE(MAXD(fabs(offset - G.last_update_offset), G_precision_sec));
+		dtemp = SQUARE(offset - G.last_update_offset);
 		G.discipline_jitter = SQRT(etemp + (dtemp - etemp) / AVG);
-		VERB3 bb_error_msg("discipline jitter=%f", G.discipline_jitter);
 
 		switch (G.discipline_state) {
 		case STATE_NSET:
@@ -1407,6 +1472,10 @@ update_local_clock(peer_t *p)
 		}
 	}
 
+	if (G.discipline_jitter < G_precision_sec)
+		G.discipline_jitter = G_precision_sec;
+	G.offset_to_jitter_ratio = abs_offset / G.discipline_jitter;
+
 	G.reftime = G.cur_time;
 	G.ntp_status = p->lastpkt_status;
 	G.refid = p->lastpkt_refid;
@@ -1418,7 +1487,7 @@ update_local_clock(peer_t *p)
 
 	/* We are in STATE_SYNC now, but did not do adjtimex yet.
 	 * (Any other state does not reach this, they all return earlier)
-	 * By this time, freq_drift and G.last_update_offset are set
+	 * By this time, freq_drift and offset are set
 	 * to values suitable for adjtimex.
 	 */
 #if !USING_KERNEL_PLL_LOOP
@@ -1444,8 +1513,8 @@ update_local_clock(peer_t *p)
 		memset(&tmx, 0, sizeof(tmx));
 		if (adjtimex(&tmx) < 0)
 			bb_perror_msg_and_die("adjtimex");
-		VERB3 bb_error_msg("p adjtimex freq:%ld offset:%ld constant:%ld status:0x%x",
-				tmx.freq, tmx.offset, tmx.constant, tmx.status);
+		bb_error_msg("p adjtimex freq:%ld offset:%+ld status:0x%x tc:%ld",
+				tmx.freq, tmx.offset, tmx.status, tmx.constant);
 	}
 
 	memset(&tmx, 0, sizeof(tmx));
@@ -1457,40 +1526,42 @@ update_local_clock(peer_t *p)
 	tmx.modes = ADJ_FREQUENCY | ADJ_OFFSET;
 	/* 65536 is one ppm */
 	tmx.freq = G.discipline_freq_drift * 65536e6;
-	tmx.offset = G.last_update_offset * 1000000; /* usec */
 #endif
 	tmx.modes = ADJ_OFFSET | ADJ_STATUS | ADJ_TIMECONST;// | ADJ_MAXERROR | ADJ_ESTERROR;
-	tmx.offset = (G.last_update_offset * 1000000); /* usec */
-			/* + (G.last_update_offset < 0 ? -0.5 : 0.5) - too small to bother */
+	tmx.offset = (offset * 1000000); /* usec */
 	tmx.status = STA_PLL;
 	if (G.ntp_status & LI_PLUSSEC)
 		tmx.status |= STA_INS;
 	if (G.ntp_status & LI_MINUSSEC)
 		tmx.status |= STA_DEL;
+
 	tmx.constant = G.poll_exp - 4;
-	//tmx.esterror = (u_int32)(clock_jitter * 1e6);
-	//tmx.maxerror = (u_int32)((sys_rootdelay / 2 + sys_rootdisp) * 1e6);
+	/* EXPERIMENTAL.
+	 * The below if statement should be unnecessary, but...
+	 * It looks like Linux kernel's PLL is far too gentle in changing
+	 * tmx.freq in response to clock offset. Offset keeps growing
+	 * and eventually we fall back to smaller poll intervals.
+	 * We can make correction more agressive (about x2) by supplying
+	 * PLL time constant which is one less than the real one.
+	 * To be on a safe side, let's do it only if offset is significantly
+	 * larger than jitter.
+	 */
+	if (tmx.constant > 0 && G.offset_to_jitter_ratio >= TIMECONST_HACK_GATE)
+		tmx.constant--;
+
+	//tmx.esterror = (uint32_t)(clock_jitter * 1e6);
+	//tmx.maxerror = (uint32_t)((sys_rootdelay / 2 + sys_rootdisp) * 1e6);
 	rc = adjtimex(&tmx);
 	if (rc < 0)
 		bb_perror_msg_and_die("adjtimex");
 	/* NB: here kernel returns constant == G.poll_exp, not == G.poll_exp - 4.
 	 * Not sure why. Perhaps it is normal.
 	 */
-	VERB3 bb_error_msg("adjtimex:%d freq:%ld offset:%ld constant:%ld status:0x%x",
-				rc, tmx.freq, tmx.offset, tmx.constant, tmx.status);
-#if 0
-	VERB3 {
-		/* always gives the same output as above msg */
-		memset(&tmx, 0, sizeof(tmx));
-		if (adjtimex(&tmx) < 0)
-			bb_perror_msg_and_die("adjtimex");
-		VERB3 bb_error_msg("c adjtimex freq:%ld offset:%ld constant:%ld status:0x%x",
-				tmx.freq, tmx.offset, tmx.constant, tmx.status);
-	}
-#endif
+	VERB3 bb_error_msg("adjtimex:%d freq:%ld offset:%+ld status:0x%x",
+				rc, tmx.freq, tmx.offset, tmx.status);
 	G.kernel_freq_drift = tmx.freq / 65536;
-	VERB2 bb_error_msg("update peer:%s, offset:%f, clock drift:%ld ppm",
-			p->p_dotted, G.last_update_offset, G.kernel_freq_drift);
+	VERB2 bb_error_msg("update from:%s offset:%+f jitter:%f clock drift:%+.3fppm tc:%d",
+			p->p_dotted, offset, G.discipline_jitter, (double)tmx.freq / 65536, (int)tmx.constant);
 
 	return 1; /* "ok to increase poll interval" */
 }
@@ -1626,22 +1697,22 @@ recv_and_process_peer_pkt(peer_t *p)
 	if (!p->reachable_bits) {
 		/* 1st datapoint ever - replicate offset in every element */
 		int i;
-		for (i = 1; i < NUM_DATAPOINTS; i++) {
+		for (i = 0; i < NUM_DATAPOINTS; i++) {
 			p->filter_datapoint[i].d_offset = datapoint->d_offset;
 		}
 	}
 
 	p->reachable_bits |= 1;
 	if ((MAX_VERBOSE && G.verbose) || (option_mask32 & OPT_w)) {
-		bb_error_msg("reply from %s: reach 0x%02x offset %f delay %f status 0x%02x strat %d refid 0x%08x rootdelay %f",
+		bb_error_msg("reply from %s: offset:%+f delay:%f status:0x%02x strat:%d refid:0x%08x rootdelay:%f reach:0x%02x",
 			p->p_dotted,
-			p->reachable_bits,
 			datapoint->d_offset,
 			p->lastpkt_delay,
 			p->lastpkt_status,
 			p->lastpkt_stratum,
 			p->lastpkt_refid,
-			p->lastpkt_rootdelay
+			p->lastpkt_rootdelay,
+			p->reachable_bits
 			/* not shown: m_ppoll, m_precision_exp, m_rootdisp,
 			 * m_reftime, m_orgtime, m_rectime, m_xmttime
 			 */
@@ -1660,7 +1731,7 @@ recv_and_process_peer_pkt(peer_t *p)
 			 * drop poll interval one step down.
 			 */
 			if (fabs(q->filter_offset) >= POLLDOWN_OFFSET) {
-				VERB3 bb_error_msg("offset:%f > POLLDOWN_OFFSET", q->filter_offset);
+				VERB3 bb_error_msg("offset:%+f > POLLDOWN_OFFSET", q->filter_offset);
 				goto poll_down;
 			}
 		}
@@ -1674,14 +1745,7 @@ recv_and_process_peer_pkt(peer_t *p)
 		 * is increased, otherwise it is decreased. A bit of hysteresis
 		 * helps calm the dance. Works best using burst mode.
 		 */
-		VERB4 if (rc > 0) {
-			bb_error_msg("offset:%f POLLADJ_GATE*discipline_jitter:%f poll:%s",
-				q->filter_offset, POLLADJ_GATE * G.discipline_jitter,
-				fabs(q->filter_offset) < POLLADJ_GATE * G.discipline_jitter
-					? "grows" : "falls"
-			);
-		}
-		if (rc > 0 && fabs(q->filter_offset) < POLLADJ_GATE * G.discipline_jitter) {
+		if (rc > 0 && G.offset_to_jitter_ratio <= POLLADJ_GATE) {
 			/* was += G.poll_exp but it is a bit
 			 * too optimistic for my taste at high poll_exp's */
 			G.polladj_count += MINPOLL;
@@ -2060,8 +2124,23 @@ int ntpd_main(int argc UNUSED_PARAM, char **argv)
 		timeout++; /* (nextaction - G.cur_time) rounds down, compensating */
 
 		/* Here we may block */
-		VERB2 bb_error_msg("poll %us, sockets:%u, poll interval:%us", timeout, i, 1 << G.poll_exp);
+		VERB2 {
+			if (i > (ENABLE_FEATURE_NTPD_SERVER && G.listen_fd != -1)) {
+				/* We wait for at least one reply.
+				 * Poll for it, without wasting time for message.
+				 * Since replies often come under 1 second, this also
+				 * reduces clutter in logs.
+				 */
+				nfds = poll(pfd, i, 1000);
+				if (nfds != 0)
+					goto did_poll;
+				if (--timeout <= 0)
+					goto did_poll;
+			}
+			bb_error_msg("poll:%us sockets:%u interval:%us", timeout, i, 1 << G.poll_exp);
+		}
 		nfds = poll(pfd, i, timeout * 1000);
+ did_poll:
 		gettime1900d(); /* sets G.cur_time */
 		if (nfds <= 0) {
 			if (G.script_name && G.cur_time - G.last_script_run > 11*60) {

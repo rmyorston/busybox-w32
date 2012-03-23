@@ -8,23 +8,24 @@
  */
 
 //usage:#define blkid_trivial_usage
-//usage:       ""
+//usage:       "[BLOCKDEV]..."
 //usage:#define blkid_full_usage "\n\n"
 //usage:       "Print UUIDs of all filesystems"
 
 #include "libbb.h"
 #include "volume_id.h"
 
-//TODO: extend to take BLOCKDEV args, and show TYPE="fstype"
-
 int blkid_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int blkid_main(int argc UNUSED_PARAM, char **argv)
 {
+	int scan_devices = 1;
+
 	while (*++argv) {
 		/* Note: bogus device names don't cause any error messages */
 		add_to_uuid_cache(*argv);
+		scan_devices = 0;
 	}
 
-	display_uuid_cache();
+	display_uuid_cache(scan_devices);
 	return 0;
 }

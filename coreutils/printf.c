@@ -36,13 +36,12 @@
    David MacKenzie <djm@gnu.ai.mit.edu>
 */
 
-//   19990508 Busy Boxed! Dave Cinege
+/* 19990508 Busy Boxed! Dave Cinege */
 
 //usage:#define printf_trivial_usage
-//usage:       "FORMAT [ARGUMENT]..."
+//usage:       "FORMAT [ARG]..."
 //usage:#define printf_full_usage "\n\n"
-//usage:       "Format and print ARGUMENT(s) according to FORMAT,\n"
-//usage:       "where FORMAT controls the output exactly as in C printf"
+//usage:       "Format and print ARG(s) according to FORMAT (a-la C printf)"
 //usage:
 //usage:#define printf_example_usage
 //usage:       "$ printf \"Val=%d\\n\" 5\n"
@@ -132,13 +131,28 @@ static double my_xstrtod(const char *arg)
 	return result;
 }
 
+/* Handles %b */
 static void print_esc_string(const char *str)
 {
 	char c;
 	while ((c = *str) != '\0') {
 		str++;
-		if (c == '\\')
-			c = bb_process_escape_sequence(&str);
+		if (c == '\\') {
+			/* %b also accepts 4-digit octals of the form \0### */
+			if (*str == '0') {
+				if ((unsigned char)(str[1] - '0') < 8) {
+					/* 2nd char is 0..7: skip leading '0' */
+					str++;
+				}
+			}
+			{
+				/* optimization: don't force arg to be on-stack,
+				 * use another variable for that. */
+				const char *z = str;
+				c = bb_process_escape_sequence(&z);
+				str = z;
+			}
+		}
 		putchar(c);
 	}
 }

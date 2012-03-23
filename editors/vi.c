@@ -278,7 +278,6 @@ struct globals {
 	smallint cmd_mode;       // 0=command  1=insert 2=replace
 	int file_modified;       // buffer contents changed (counter, not flag!)
 	int last_file_modified;  // = -1;
-	int fn_start;            // index of first cmd line file name
 	int save_argc;           // how many file names on cmd line
 	int cmdcnt;              // repetition count
 	unsigned rows, columns;	 // the terminal screen is this size
@@ -363,7 +362,6 @@ struct globals {
 #define cmd_mode                (G.cmd_mode           )
 #define file_modified           (G.file_modified      )
 #define last_file_modified      (G.last_file_modified )
-#define fn_start                (G.fn_start           )
 #define save_argc               (G.save_argc          )
 #define cmdcnt                  (G.cmdcnt             )
 #define rows                    (G.rows               )
@@ -599,9 +597,10 @@ int vi_main(int argc, char **argv)
 	}
 
 	// The argv array can be used by the ":next"  and ":rewind" commands
-	// save optind.
-	fn_start = optind;	// remember first file name for :next and :rew
+	argv += optind;
+	argc -= optind;
 	save_argc = argc;
+	optind = 0;
 
 	//----- This is the main file handling loop --------------
 	while (1) {
@@ -1021,7 +1020,7 @@ static void colon(char *buf)
 	} else if (strncmp(cmd, "edit", i) == 0) {	// Edit a file
 		// don't edit, if the current file has been modified
 		if (file_modified && !useforce) {
-			status_line_bold("No write since last change (:edit! overrides)");
+			status_line_bold("No write since last change (:%s! overrides)", cmd);
 			goto ret;
 		}
 		if (args[0]) {
@@ -1040,13 +1039,13 @@ static void colon(char *buf)
 			goto ret;
 
 #if ENABLE_FEATURE_VI_YANKMARK
-		if (Ureg >= 0 && Ureg < 28 && reg[Ureg] != 0) {
+		if (Ureg >= 0 && Ureg < 28) {
 			free(reg[Ureg]);	//   free orig line reg- for 'U'
-			reg[Ureg]= 0;
+			reg[Ureg] = NULL;
 		}
-		if (YDreg >= 0 && YDreg < 28 && reg[YDreg] != 0) {
+		if (YDreg >= 0 && YDreg < 28) {
 			free(reg[YDreg]);	//   free default yank/delete register
-			reg[YDreg]= 0;
+			reg[YDreg] = NULL;
 		}
 #endif
 		// how many lines in text[]?
@@ -1111,11 +1110,12 @@ static void colon(char *buf)
 		Hit_Return();
 	} else if (strncmp(cmd, "quit", i) == 0 // quit
 	        || strncmp(cmd, "next", i) == 0 // edit next file
+	        || strncmp(cmd, "prev", i) == 0 // edit previous file
 	) {
 		int n;
 		if (useforce) {
-			// force end of argv list
 			if (*cmd == 'q') {
+				// force end of argv list
 				optind = save_argc;
 			}
 			editing = 0;
@@ -1123,8 +1123,7 @@ static void colon(char *buf)
 		}
 		// don't exit if the file been modified
 		if (file_modified) {
-			status_line_bold("No write since last change (:%s! overrides)",
-				 (*cmd == 'q' ? "quit" : "next"));
+			status_line_bold("No write since last change (:%s! overrides)", cmd);
 			goto ret;
 		}
 		// are there other file to edit
@@ -1136,6 +1135,14 @@ static void colon(char *buf)
 		if (*cmd == 'n' && n <= 0) {
 			status_line_bold("No more files to edit");
 			goto ret;
+		}
+		if (*cmd == 'p') {
+			// are there previous files to edit
+			if (optind < 1) {
+				status_line_bold("No previous files to edit");
+				goto ret;
+			}
+			optind -= 2;
 		}
 		editing = 0;
 	} else if (strncmp(cmd, "read", i) == 0) {	// read file into text[]
@@ -1172,10 +1179,10 @@ static void colon(char *buf)
 		}
 	} else if (strncmp(cmd, "rewind", i) == 0) {	// rewind cmd line args
 		if (file_modified && !useforce) {
-			status_line_bold("No write since last change (:rewind! overrides)");
+			status_line_bold("No write since last change (:%s! overrides)", cmd);
 		} else {
 			// reset the filenames to edit
-			optind = fn_start - 1;
+			optind = -1; /* start from 0th file */
 			editing = 0;
 		}
 #if ENABLE_FEATURE_VI_SET
@@ -1225,51 +1232,53 @@ static void colon(char *buf)
 #endif /* FEATURE_VI_SET */
 #if ENABLE_FEATURE_VI_SEARCH
 	} else if (cmd[0] == 's') {	// substitute a pattern with a replacement pattern
-		char *ls, *F, *R;
-		int gflag;
+		char *F, *R, *flags;
+		size_t len_F, len_R;
+		int gflag;		// global replace flag
 
 		// F points to the "find" pattern
 		// R points to the "replace" pattern
-		// replace the cmd line delimiters "/" with NULLs
-		gflag = 0;		// global replace flag
+		// replace the cmd line delimiters "/" with NULs
 		c = orig_buf[1];	// what is the delimiter
 		F = orig_buf + 2;	// start of "find"
 		R = strchr(F, c);	// middle delimiter
 		if (!R)
 			goto colon_s_fail;
+		len_F = R - F;
 		*R++ = '\0';	// terminate "find"
-		buf1 = strchr(R, c);
-		if (!buf1)
+		flags = strchr(R, c);
+		if (!flags)
 			goto colon_s_fail;
-		*buf1++ = '\0';	// terminate "replace"
-		if (*buf1 == 'g') {	// :s/foo/bar/g
-			buf1++;
-			gflag++;	// turn on gflag
-		}
+		len_R = flags - R;
+		*flags++ = '\0';	// terminate "replace"
+		gflag = *flags;
+
 		q = begin_line(q);
 		if (b < 0) {	// maybe :s/foo/bar/
-			q = begin_line(dot);	// start with cur line
-			b = count_lines(text, q);	// cur line number
+			q = begin_line(dot);      // start with cur line
+			b = count_lines(text, q); // cur line number
 		}
 		if (e < 0)
 			e = b;		// maybe :.s/foo/bar/
+
 		for (i = b; i <= e; i++) {	// so, :20,23 s \0 find \0 replace \0
-			ls = q;		// orig line start
+			char *ls = q;		// orig line start
+			char *found;
  vc4:
-			buf1 = char_search(q, F, FORWARD, LIMITED);	// search cur line only for "find"
-			if (buf1) {
+			found = char_search(q, F, FORWARD, LIMITED);	// search cur line only for "find"
+			if (found) {
 				uintptr_t bias;
 				// we found the "find" pattern - delete it
-				text_hole_delete(buf1, buf1 + strlen(F) - 1);
+				text_hole_delete(found, found + len_F - 1);
 				// inset the "replace" patern
-				bias = string_insert(buf1, R);	// insert the string
-				buf1 += bias;
+				bias = string_insert(found, R);	// insert the string
+				found += bias;
 				ls += bias;
 				/*q += bias; - recalculated anyway */
 				// check for "global"  :s/foo/bar/g
-				if (gflag == 1) {
-					if ((buf1 + strlen(R)) < end_line(ls)) {
-						q = buf1 + strlen(R);
+				if (gflag == 'g') {
+					if ((found + len_R) < end_line(ls)) {
+						q = found + len_R;
 						goto vc4;	// don't let q move past cur line
 					}
 				}
@@ -2073,6 +2082,14 @@ static uintptr_t text_hole_make(char *p, int size)	// at "p", make a 'size' byte
 		dot         += bias;
 		end         += bias;
 		p           += bias;
+#if ENABLE_FEATURE_VI_YANKMARK
+		{
+			int i;
+			for (i = 0; i < ARRAY_SIZE(mark); i++)
+				if (mark[i])
+					mark[i] += bias;
+		}
+#endif
 		text = new_text;
 	}
 	memmove(p + size, p, end - size - p);
@@ -2304,7 +2321,7 @@ static void rawmode(void)
 {
 	tcgetattr(0, &term_orig);
 	term_vi = term_orig;
-	term_vi.c_lflag &= (~ICANON & ~ECHO);	// leave ISIG ON- allow intr's
+	term_vi.c_lflag &= (~ICANON & ~ECHO);	// leave ISIG on - allow intr's
 	term_vi.c_iflag &= (~IXON & ~ICRNL);
 	term_vi.c_oflag &= (~ONLCR);
 	term_vi.c_cc[VMIN] = 1;
@@ -3314,7 +3331,7 @@ static void do_cmd(int c)
 		end_cmd_q();	// stop adding to q
 		break;
 	case 'U':			// U- Undo; replace current line with original version
-		if (reg[Ureg] != 0) {
+		if (reg[Ureg] != NULL) {
 			p = begin_line(dot);
 			q = end_line(dot);
 			p = text_hole_delete(p, q);	// delete cur line
@@ -3328,7 +3345,7 @@ static void do_cmd(int c)
 	case KEYCODE_END:		// Cursor Key End
 		for (;;) {
 			dot = end_line(dot);
-			if (--cmdcnt > 0)
+			if (--cmdcnt <= 0)
 				break;
 			dot_next();
 		}
@@ -3506,7 +3523,7 @@ static void do_cmd(int c)
 		 || strncmp(p, "q!", cnt) == 0   // delete lines
 		) {
 			if (file_modified && p[1] != '!') {
-				status_line_bold("No write since last change (:quit! overrides)");
+				status_line_bold("No write since last change (:%s! overrides)", p);
 			} else {
 				editing = 0;
 			}

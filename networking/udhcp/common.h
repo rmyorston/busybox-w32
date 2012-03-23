@@ -80,6 +80,9 @@ enum {
 	OPTION_IP = 1,
 	OPTION_IP_PAIR,
 	OPTION_STRING,
+	/* Opts of STRING_HOST type will be sanitized before they are passed
+	 * to udhcpc script's environment: */
+	OPTION_STRING_HOST,
 //	OPTION_BOOLEAN,
 	OPTION_U8,
 	OPTION_U16,
@@ -307,6 +310,9 @@ int arpping(uint32_t test_nip,
 		uint32_t from_ip,
 		uint8_t *from_mac,
 		const char *interface) FAST_FUNC;
+
+/* note: ip is a pointer to an IPv6 in network order, possibly misaliged */
+int sprint_nip6(char *dest, /*const char *pre,*/ const uint8_t *ip) FAST_FUNC;
 
 POP_SAVED_FUNCTION_VISIBILITY
 

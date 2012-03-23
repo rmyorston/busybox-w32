@@ -51,6 +51,20 @@
 #include <termios.h>
 #include <time.h>
 #include <sys/param.h>
+#include <pwd.h>
+#include <grp.h>
+#if ENABLE_FEATURE_SHADOWPASSWDS
+# if !ENABLE_USE_BB_SHADOW
+/* If using busybox's shadow implementation, do not include the shadow.h
+ * header as the toolchain may not provide it at all.
+ */
+#  include <shadow.h>
+# endif
+#endif
+#if defined(ANDROID) || defined(__ANDROID__)
+# define endpwent() ((void)0)
+# define endgrent() ((void)0)
+#endif
 #ifdef HAVE_MNTENT_H
 # include <mntent.h>
 #endif
@@ -79,16 +93,6 @@
 #endif
 #ifdef DMALLOC
 # include <dmalloc.h>
-#endif
-#include <pwd.h>
-#include <grp.h>
-#if ENABLE_FEATURE_SHADOWPASSWDS
-# if !ENABLE_USE_BB_SHADOW
-/* If using busybox's shadow implementation, do not include the shadow.h
- * header as the toolchain may not provide it at all.
- */
-#  include <shadow.h>
-# endif
 #endif
 /* Just in case libc doesn't define some of these... */
 #ifndef _PATH_PASSWD
@@ -224,7 +228,7 @@ PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 # if ULONG_MAX > 0xffffffff
 /* "long" is long enough on this system */
 typedef unsigned long uoff_t;
-#  define XATOOFF(a) xatoul_range(a, 0, LONG_MAX)
+#  define XATOOFF(a) xatoul_range((a), 0, LONG_MAX)
 /* usage: sz = BB_STRTOOFF(s, NULL, 10); if (errno || sz < 0) die(); */
 #  define BB_STRTOOFF bb_strtoul
 #  define STRTOOFF strtoul
@@ -233,7 +237,7 @@ typedef unsigned long uoff_t;
 # else
 /* "long" is too short, need "long long" */
 typedef unsigned long long uoff_t;
-#  define XATOOFF(a) xatoull_range(a, 0, LLONG_MAX)
+#  define XATOOFF(a) xatoull_range((a), 0, LLONG_MAX)
 #  define BB_STRTOOFF bb_strtoull
 #  define STRTOOFF strtoull
 #  define OFF_FMT "ll"
@@ -250,7 +254,7 @@ typedef unsigned long uoff_t;
 #  define OFF_FMT "l"
 # else
 typedef unsigned long uoff_t;
-#  define XATOOFF(a) xatoul_range(a, 0, LONG_MAX)
+#  define XATOOFF(a) xatoul_range((a), 0, LONG_MAX)
 #  define BB_STRTOOFF bb_strtoul
 #  define STRTOOFF strtol
 #  define OFF_FMT "l"
@@ -258,6 +262,12 @@ typedef unsigned long uoff_t;
 #endif
 /* scary. better ideas? (but do *test* them first!) */
 #define OFF_T_MAX  ((off_t)~((off_t)1 << (sizeof(off_t)*8-1)))
+/* Users report bionic to use 32-bit off_t even if LARGEFILE support is requested.
+ * We misdetected that. Don't let it build:
+ */
+struct BUG_off_t_size_is_misdetected {
+	char BUG_off_t_size_is_misdetected[sizeof(off_t) == sizeof(uoff_t) ? 1 : -1];
+};
 
 /* Some useful definitions */
 #undef FALSE
@@ -321,7 +331,7 @@ extern char *strrstr(const char *haystack, const char *needle) FAST_FUNC;
 
 //TODO: supply a pointer to char[11] buffer (avoid statics)?
 extern const char *bb_mode_string(mode_t mode) FAST_FUNC;
-extern int is_directory(const char *name, int followLinks, struct stat *statBuf) FAST_FUNC;
+extern int is_directory(const char *name, int followLinks) FAST_FUNC;
 enum {	/* DO NOT CHANGE THESE VALUES!  cp.c, mv.c, install.c depend on them. */
 	FILEUTILS_PRESERVE_STATUS = 1 << 0, /* -p */
 	FILEUTILS_DEREFERENCE     = 1 << 1, /* !-d */
@@ -571,12 +581,7 @@ enum {
  * and if kernel doesn't support it, fall back to IPv4.
  * This is useful if you plan to bind to resulting local lsa.
  */
-#if ENABLE_FEATURE_IPV6
 int xsocket_type(len_and_sockaddr **lsap, int af, int sock_type) FAST_FUNC;
-#else
-int xsocket_type(len_and_sockaddr **lsap, int sock_type) FAST_FUNC;
-#define xsocket_type(lsap, af, sock_type) xsocket_type((lsap), (sock_type))
-#endif
 int xsocket_stream(len_and_sockaddr **lsap) FAST_FUNC;
 /* Create server socket bound to bindaddr:port. bindaddr can be NULL,
  * numeric IP ("N.N.N.N") or numeric IPv6 address,
@@ -721,17 +726,23 @@ extern void *xmalloc_read(int fd, size_t *maxsz_p) FAST_FUNC RETURNS_MALLOC;
 extern void *xmalloc_open_read_close(const char *filename, size_t *maxsz_p) FAST_FUNC RETURNS_MALLOC;
 /* Never returns NULL */
 extern void *xmalloc_xopen_read_close(const char *filename, size_t *maxsz_p) FAST_FUNC RETURNS_MALLOC;
-/* Autodetects gzip/bzip2 formats. fd may be in the middle of the file! */
-#if ENABLE_FEATURE_SEAMLESS_LZMA \
+
+#define SEAMLESS_COMPRESSION (0 \
+ || ENABLE_FEATURE_SEAMLESS_XZ \
+ || ENABLE_FEATURE_SEAMLESS_LZMA \
  || ENABLE_FEATURE_SEAMLESS_BZ2 \
  || ENABLE_FEATURE_SEAMLESS_GZ \
- /* || ENABLE_FEATURE_SEAMLESS_Z */
-extern void setup_unzip_on_fd(int fd /*, int fail_if_not_detected*/) FAST_FUNC;
-#else
-# define setup_unzip_on_fd(...) ((void)0)
-#endif
+ || ENABLE_FEATURE_SEAMLESS_Z)
+
+#if SEAMLESS_COMPRESSION
+/* Autodetects gzip/bzip2 formats. fd may be in the middle of the file! */
+extern int setup_unzip_on_fd(int fd, int fail_if_not_detected) FAST_FUNC;
 /* Autodetects .gz etc */
 extern int open_zipped(const char *fname) FAST_FUNC;
+#else
+# define setup_unzip_on_fd(...) (0)
+# define open_zipped(fname)     open((fname), O_RDONLY);
+#endif
 extern void *xmalloc_open_zipped_read_close(const char *fname, size_t *maxsz_p) FAST_FUNC RETURNS_MALLOC;
 
 extern ssize_t safe_write(int fd, const void *buf, size_t count) FAST_FUNC;
@@ -982,6 +993,7 @@ enum {
 	DAEMON_DEVNULL_STDIO = 2,
 	DAEMON_CLOSE_EXTRA_FDS = 4,
 	DAEMON_ONLY_SANITIZE = 8, /* internal use */
+	DAEMON_DOUBLE_FORK = 16, /* double fork to avoid controlling tty */
 };
 #if BB_MMU
   enum { re_execed = 0 };
@@ -990,6 +1002,9 @@ enum {
 # define bb_daemonize(flags)                bb_daemonize_or_rexec(flags, bogus)
 #else
   extern bool re_execed;
+  /* Note: re_exec() and fork_or_rexec() do argv[0][0] |= 0x80 on NOMMU!
+   * _Parent_ needs to undo it if it doesn't want to have argv[0] mangled.
+   */
   void re_exec(char **argv) NORETURN FAST_FUNC;
   pid_t fork_or_rexec(char **argv) FAST_FUNC;
   int  BUG_fork_is_unavailable_on_nommu(void) FAST_FUNC;
@@ -1197,13 +1212,14 @@ enum {
 	PARSE_MIN_DIE   = 0x00100000, // die if < min tokens found
 	// keep a copy of current line
 	PARSE_KEEP_COPY = 0x00200000 * ENABLE_FEATURE_CROND_D,
-//	PARSE_ESCAPE    = 0x00400000, // process escape sequences in tokens
+	PARSE_EOL_COMMENTS = 0x00400000, // comments are recognized even if they aren't the first char
 	// NORMAL is:
 	// * remove leading and trailing delimiters and collapse
 	//   multiple delimiters into one
 	// * warn and continue if less than mintokens delimiters found
 	// * grab everything into last token
-	PARSE_NORMAL    = PARSE_COLLAPSE | PARSE_TRIM | PARSE_GREEDY,
+	// * comments are recognized even if they aren't the first char
+	PARSE_NORMAL    = PARSE_COLLAPSE | PARSE_TRIM | PARSE_GREEDY | PARSE_EOL_COMMENTS,
 };
 typedef struct parser_t {
 	FILE *fp;

@@ -108,6 +108,8 @@
 //config:	  Note that on Linux, init attempts to detect serial terminal and
 //config:	  sets TERM to "vt102" if one is found.
 
+#define DEBUG_SEGV_HANDLER 0
+
 #include "libbb.h"
 #include <syslog.h>
 #include <paths.h>
@@ -117,6 +119,15 @@
 # include <sys/sysinfo.h>
 #endif
 #include "reboot.h" /* reboot() constants */
+
+#if DEBUG_SEGV_HANDLER
+# undef _GNU_SOURCE
+# define _GNU_SOURCE 1
+# undef __USE_GNU
+# define __USE_GNU 1
+# include <execinfo.h>
+# include <sys/ucontext.h>
+#endif
 
 /* Used only for sanitizing purposes in set_sane_term() below. On systems where
  * the baud rate is stored in a separate field, we can safely disable them. */
@@ -523,15 +534,17 @@ static struct init_action *mark_terminated(pid_t pid)
 	struct init_action *a;
 
 	if (pid > 0) {
+		update_utmp(pid, DEAD_PROCESS,
+				/*tty_name:*/ NULL,
+				/*username:*/ NULL,
+				/*hostname:*/ NULL
+		);
 		for (a = init_action_list; a; a = a->next) {
 			if (a->pid == pid) {
 				a->pid = 0;
 				return a;
 			}
 		}
-		update_utmp(pid, DEAD_PROCESS, /*tty_name:*/ NULL,
-				/*username:*/ NULL,
-				/*hostname:*/ NULL);
 	}
 	return NULL;
 }
@@ -596,7 +609,7 @@ static void new_init_action(uint8_t action_type, const char *command, const char
 	 */
 	nextp = &init_action_list;
 	while ((a = *nextp) != NULL) {
-		/* Don't enter action if it's already in the list,
+		/* Don't enter action if it's already in the list.
 		 * This prevents losing running RESPAWNs.
 		 */
 		if (strcmp(a->command, command) == 0
@@ -608,14 +621,15 @@ static void new_init_action(uint8_t action_type, const char *command, const char
 			while (*nextp != NULL)
 				nextp = &(*nextp)->next;
 			a->next = NULL;
-			break;
+			goto append;
 		}
 		nextp = &a->next;
 	}
 
-	if (!a)
-		a = xzalloc(sizeof(*a));
+	a = xzalloc(sizeof(*a));
+
 	/* Append to the end of the list */
+ append:
 	*nextp = a;
 	a->action_type = action_type;
 	safe_strncpy(a->command, command, sizeof(a->command));
@@ -954,12 +968,52 @@ static int check_delayed_sigs(void)
 	}
 }
 
+#if DEBUG_SEGV_HANDLER
+static
+void handle_sigsegv(int sig, siginfo_t *info, void *ucontext)
+{
+	long ip;
+	ucontext_t *uc;
+
+	uc = ucontext;
+	ip = uc->uc_mcontext.gregs[REG_EIP];
+	fdprintf(2, "signal:%d address:0x%lx ip:0x%lx\n",
+			sig,
+			/* this is void*, but using %p would print "(null)"
+			 * even for ptrs which are not exactly 0, but, say, 0x123:
+			 */
+			(long)info->si_addr,
+			ip);
+	{
+		/* glibc extension */
+		void *array[50];
+		int size;
+		size = backtrace(array, 50);
+		backtrace_symbols_fd(array, size, 2);
+	}
+	for (;;) sleep(9999);
+}
+#endif
+
 int init_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int init_main(int argc UNUSED_PARAM, char **argv)
 {
 	if (argv[1] && strcmp(argv[1], "-q") == 0) {
 		return kill(1, SIGHUP);
 	}
+
+#if DEBUG_SEGV_HANDLER
+	{
+		struct sigaction sa;
+		memset(&sa, 0, sizeof(sa));
+		sa.sa_sigaction = handle_sigsegv;
+		sa.sa_flags = SA_SIGINFO;
+		sigaction(SIGSEGV, &sa, NULL);
+		sigaction(SIGILL, &sa, NULL);
+		sigaction(SIGFPE, &sa, NULL);
+		sigaction(SIGBUS, &sa, NULL);
+	}
+#endif
 
 	if (!DEBUG_INIT) {
 		/* Expect to be invoked as init with PID=1 or be invoked as linuxrc */

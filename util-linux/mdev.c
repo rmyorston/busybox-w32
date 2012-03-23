@@ -206,7 +206,8 @@ static void parse_next_rule(void)
 		char *tokens[4];
 		char *val;
 
-		if (!config_read(G.parser, tokens, 4, 3, "# \t", PARSE_NORMAL))
+		/* No PARSE_EOL_COMMENTS, because command may contain '#' chars */
+		if (!config_read(G.parser, tokens, 4, 3, "# \t", PARSE_NORMAL & ~PARSE_EOL_COMMENTS))
 			break;
 
 		/* Fields: [-]regex uid:gid mode [alias] [cmd] */
@@ -564,8 +565,12 @@ static void make_device(char *path, int delete)
 				chown(node_name, rule->ugid.uid, rule->ugid.gid);
 			}
 			if (ENABLE_FEATURE_MDEV_RENAME && alias) {
-				if (aliaslink == '>')
+				if (aliaslink == '>') {
+//TODO: on devtmpfs, device_name already exists and symlink() fails.
+//End result is that instead of symlink, we have two nodes.
+//What should be done?
 					symlink(node_name, device_name);
+				}
 			}
 		}
 
@@ -782,7 +787,7 @@ int mdev_main(int argc UNUSED_PARAM, char **argv)
 				int seqlen;
 				char seqbuf[sizeof(int)*3 + 2];
 
-				seqlen = open_read_close("mdev.seq", seqbuf, sizeof(seqbuf-1));
+				seqlen = open_read_close("mdev.seq", seqbuf, sizeof(seqbuf) - 1);
 				if (seqlen < 0) {
 					seq = NULL;
 					break;

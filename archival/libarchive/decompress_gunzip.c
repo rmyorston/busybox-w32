@@ -1034,22 +1034,22 @@ inflate_unzip_internal(STATE_PARAM int in, int out)
 /* For unzip */
 
 IF_DESKTOP(long long) int FAST_FUNC
-inflate_unzip(inflate_unzip_result *res, off_t compr_size, int in, int out)
+inflate_unzip(transformer_aux_data_t *aux, int in, int out)
 {
 	IF_DESKTOP(long long) int n;
 	DECLARE_STATE;
 
 	ALLOC_STATE;
 
-	to_read = compr_size;
+	to_read = aux->bytes_in;
 //	bytebuffer_max = 0x8000;
 	bytebuffer_offset = 4;
 	bytebuffer = xmalloc(bytebuffer_max);
 	n = inflate_unzip_internal(PASS_STATE in, out);
 	free(bytebuffer);
 
-	res->crc = gunzip_crc;
-	res->bytes_out = gunzip_bytes_out;
+	aux->crc32 = gunzip_crc;
+	aux->bytes_out = gunzip_bytes_out;
 	DEALLOC_STATE;
 	return n;
 }
@@ -1107,7 +1107,7 @@ static uint32_t buffer_read_le_u32(STATE_PARAM_ONLY)
 	return res;
 }
 
-static int check_header_gzip(STATE_PARAM unpack_info_t *info)
+static int check_header_gzip(STATE_PARAM transformer_aux_data_t *aux)
 {
 	union {
 		unsigned char raw[8];
@@ -1169,8 +1169,8 @@ static int check_header_gzip(STATE_PARAM unpack_info_t *info)
 		}
 	}
 
-	if (info)
-		info->mtime = SWAP_LE32(header.formatted.mtime);
+	if (aux)
+		aux->mtime = SWAP_LE32(header.formatted.mtime);
 
 	/* Read the header checksum */
 	if (header.formatted.flags & 0x02) {
@@ -1182,33 +1182,58 @@ static int check_header_gzip(STATE_PARAM unpack_info_t *info)
 }
 
 IF_DESKTOP(long long) int FAST_FUNC
-unpack_gz_stream_with_info(int in, int out, unpack_info_t *info)
+unpack_gz_stream(transformer_aux_data_t *aux, int src_fd, int dst_fd)
 {
 	uint32_t v32;
-	IF_DESKTOP(long long) int n;
+	IF_DESKTOP(long long) int total, n;
 	DECLARE_STATE;
 
-	n = 0;
+#if !ENABLE_FEATURE_SEAMLESS_Z
+	if (check_signature16(aux, src_fd, GZIP_MAGIC))
+		return -1;
+#else
+	if (aux && aux->check_signature) {
+		uint16_t magic2;
+
+		if (full_read(src_fd, &magic2, 2) != 2) {
+ bad_magic:
+			bb_error_msg("invalid magic");
+			return -1;
+		}
+		if (magic2 == COMPRESS_MAGIC) {
+			aux->check_signature = 0;
+			return unpack_Z_stream(aux, src_fd, dst_fd);
+		}
+		if (magic2 != GZIP_MAGIC)
+			goto bad_magic;
+	}
+#endif
+
+	total = 0;
 
 	ALLOC_STATE;
 	to_read = -1;
 //	bytebuffer_max = 0x8000;
 	bytebuffer = xmalloc(bytebuffer_max);
-	gunzip_src_fd = in;
+	gunzip_src_fd = src_fd;
 
  again:
-	if (!check_header_gzip(PASS_STATE info)) {
+	if (!check_header_gzip(PASS_STATE aux)) {
 		bb_error_msg("corrupted data");
-		n = -1;
+		total = -1;
 		goto ret;
 	}
-	n += inflate_unzip_internal(PASS_STATE in, out);
-	if (n < 0)
+
+	n = inflate_unzip_internal(PASS_STATE src_fd, dst_fd);
+	if (n < 0) {
+		total = -1;
 		goto ret;
+	}
+	total += n;
 
 	if (!top_up(PASS_STATE 8)) {
 		bb_error_msg("corrupted data");
-		n = -1;
+		total = -1;
 		goto ret;
 	}
 
@@ -1216,7 +1241,7 @@ unpack_gz_stream_with_info(int in, int out, unpack_info_t *info)
 	v32 = buffer_read_le_u32(PASS_STATE_ONLY);
 	if ((~gunzip_crc) != v32) {
 		bb_error_msg("crc error");
-		n = -1;
+		total = -1;
 		goto ret;
 	}
 
@@ -1224,7 +1249,7 @@ unpack_gz_stream_with_info(int in, int out, unpack_info_t *info)
 	v32 = buffer_read_le_u32(PASS_STATE_ONLY);
 	if ((uint32_t)gunzip_bytes_out != v32) {
 		bb_error_msg("incorrect length");
-		n = -1;
+		total = -1;
 	}
 
 	if (!top_up(PASS_STATE 2))
@@ -1242,11 +1267,5 @@ unpack_gz_stream_with_info(int in, int out, unpack_info_t *info)
  ret:
 	free(bytebuffer);
 	DEALLOC_STATE;
-	return n;
-}
-
-IF_DESKTOP(long long) int FAST_FUNC
-unpack_gz_stream(int in, int out)
-{
-	return unpack_gz_stream_with_info(in, out, NULL);
+	return total;
 }

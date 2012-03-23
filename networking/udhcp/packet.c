@@ -81,7 +81,6 @@ void FAST_FUNC udhcp_dump_packet(struct dhcp_packet *packet)
 int FAST_FUNC udhcp_recv_kernel_packet(struct dhcp_packet *packet, int fd)
 {
 	int bytes;
-	unsigned char *vendor;
 
 	memset(packet, 0, sizeof(*packet));
 	bytes = safe_read(fd, packet, sizeof(*packet));
@@ -90,41 +89,14 @@ int FAST_FUNC udhcp_recv_kernel_packet(struct dhcp_packet *packet, int fd)
 		return bytes; /* returns -1 */
 	}
 
-	if (packet->cookie != htonl(DHCP_MAGIC)) {
+	if (bytes < offsetof(struct dhcp_packet, options)
+	 || packet->cookie != htonl(DHCP_MAGIC)
+	) {
 		bb_info_msg("Packet with bad magic, ignoring");
 		return -2;
 	}
 	log1("Received a packet");
 	udhcp_dump_packet(packet);
-
-	if (packet->op == BOOTREQUEST) {
-		vendor = udhcp_get_option(packet, DHCP_VENDOR);
-		if (vendor) {
-#if 0
-			static const char broken_vendors[][8] = {
-				"MSFT 98",
-				""
-			};
-			int i;
-			for (i = 0; broken_vendors[i][0]; i++) {
-				if (vendor[OPT_LEN - OPT_DATA] == (uint8_t)strlen(broken_vendors[i])
-				 && strncmp((char*)vendor, broken_vendors[i], vendor[OPT_LEN - OPT_DATA]) == 0
-				) {
-					log1("Broken client (%s), forcing broadcast replies",
-						broken_vendors[i]);
-					packet->flags |= htons(BROADCAST_FLAG);
-				}
-			}
-#else
-			if (vendor[OPT_LEN - OPT_DATA] == (uint8_t)(sizeof("MSFT 98")-1)
-			 && memcmp(vendor, "MSFT 98", sizeof("MSFT 98")-1) == 0
-			) {
-				log1("Broken client (%s), forcing broadcast replies", "MSFT 98");
-				packet->flags |= htons(BROADCAST_FLAG);
-			}
-#endif
-		}
-	}
 
 	return bytes;
 }
@@ -210,7 +182,7 @@ int FAST_FUNC udhcp_send_kernel_packet(struct dhcp_packet *dhcp_pkt,
 		uint32_t source_nip, int source_port,
 		uint32_t dest_nip, int dest_port)
 {
-	struct sockaddr_in client;
+	struct sockaddr_in sa;
 	unsigned padding;
 	int fd;
 	int result = -1;
@@ -223,26 +195,25 @@ int FAST_FUNC udhcp_send_kernel_packet(struct dhcp_packet *dhcp_pkt,
 	}
 	setsockopt_reuseaddr(fd);
 
-	memset(&client, 0, sizeof(client));
-	client.sin_family = AF_INET;
-	client.sin_port = htons(source_port);
-	client.sin_addr.s_addr = source_nip;
-	if (bind(fd, (struct sockaddr *)&client, sizeof(client)) == -1) {
+	memset(&sa, 0, sizeof(sa));
+	sa.sin_family = AF_INET;
+	sa.sin_port = htons(source_port);
+	sa.sin_addr.s_addr = source_nip;
+	if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) == -1) {
 		msg = "bind(%s)";
 		goto ret_close;
 	}
 
-	memset(&client, 0, sizeof(client));
-	client.sin_family = AF_INET;
-	client.sin_port = htons(dest_port);
-	client.sin_addr.s_addr = dest_nip;
-	if (connect(fd, (struct sockaddr *)&client, sizeof(client)) == -1) {
+	memset(&sa, 0, sizeof(sa));
+	sa.sin_family = AF_INET;
+	sa.sin_port = htons(dest_port);
+	sa.sin_addr.s_addr = dest_nip;
+	if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) == -1) {
 		msg = "connect";
 		goto ret_close;
 	}
 
 	udhcp_dump_packet(dhcp_pkt);
-
 	padding = DHCP_OPTIONS_BUFSIZE - 1 - udhcp_end_option(dhcp_pkt->options);
 	result = safe_write(fd, dhcp_pkt, DHCP_SIZE - padding);
 	msg = "write";

@@ -7794,6 +7794,12 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) char *cmd, char **argv, char **
 		 *
 		 * That is, do not use $SHELL, user's shell, or /bin/sh;
 		 * just call ourselves.
+		 *
+		 * Note that bash reads ~80 chars of the file, and if it sees
+		 * a zero byte before it sees newline, it doesn't try to
+		 * interpret it, but fails with "cannot execute binary file"
+		 * message and exit code 126. For one, this prevents attempts
+		 * to interpret foreign ELF binaries as shell scripts.
 		 */
 		char **ap;
 		char **new;
@@ -7824,9 +7830,7 @@ shellexec(char **argv, const char *path, int idx)
 	int e;
 	char **envp;
 	int exerrno;
-#if ENABLE_FEATURE_SH_STANDALONE
-	int applet_no = -1;
-#endif
+	int applet_no = -1; /* used only by FEATURE_SH_STANDALONE */
 
 	clearredir(/*drop:*/ 1);
 	envp = listvars(VEXPORT, VUNSET, /*end:*/ NULL);
@@ -7836,8 +7840,16 @@ shellexec(char **argv, const char *path, int idx)
 #endif
 	) {
 		tryexec(IF_FEATURE_SH_STANDALONE(applet_no,) argv[0], argv, envp);
+		if (applet_no >= 0) {
+			/* We tried execing ourself, but it didn't work.
+			 * Maybe /proc/self/exe doesn't exist?
+			 * Try $PATH search.
+			 */
+			goto try_PATH;
+		}
 		e = errno;
 	} else {
+ try_PATH:
 		e = ENOENT;
 		while ((cmdname = path_advance(&path, argv[0])) != NULL) {
 			if (--idx < 0 && pathopt == NULL) {

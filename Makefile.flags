@@ -97,6 +97,13 @@ CFLAGS += $(strip $(subst ",,$(CONFIG_EXTRA_CFLAGS)))
 #"))
 endif
 
+# Note: both "" (string consisting of two quote chars) and empty string
+# are possible, and should be skipped below.
+ifneq ($(subst "",,$(CONFIG_SYSROOT)),)
+CFLAGS += --sysroot=$(CONFIG_SYSROOT)
+export SYSROOT=$(CONFIG_SYSROOT)
+endif
+
 ifeq ($(CONFIG_PLATFORM_MINGW32),y)
 # These defintions are not strictly needed, but they help shut up fnmatch.c warnings
 CFLAGS += -Iwin32 -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -fno-builtin-stpcpy
@@ -104,17 +111,25 @@ EXEEXT = .exe
 ifeq ($(CONFIG_WIN32_NET),y)
 LDLIBS += ws2_32
 endif
-else
-ifneq ($(CONFIG_CROSS_COMPILER_PREFIX),"arm-linux-androideabi-")
+endif
+
+# Android has no separate crypt library
+CRYPT_AVAILABLE := $(shell echo 'int main(void){return 0;}' | $(CC) $(CFLAGS) -lcrypt -o /dev/null -xc - >/dev/null 2>&1 && echo "y")
+ifeq ($(CRYPT_AVAILABLE),y)
 LDLIBS += m crypt
 else
-# Android libc has no crypt. TODO: make a generic CONFIG_LINK_WITH_CRYPT option?
 LDLIBS += m
-endif
 endif
 
 ifeq ($(CONFIG_PAM),y)
-LDLIBS += pam pam_misc
+# libpam uses libpthread, so for static builds busybox must be linked to
+# libpthread. On some platforms that requires an explicit -lpthread, so
+# it should be in LDLIBS. For non-static builds, scripts/trylink will
+# take care of removing -lpthread if possible. (Not bothering to check
+# CONFIG_STATIC because even in a non-static build it could be that the
+# only libpam available is libpam.a, so -lpthread could still be
+# needed.)
+LDLIBS += pam pam_misc pthread
 endif
 
 ifeq ($(CONFIG_SELINUX),y)
@@ -137,6 +152,16 @@ endif
 W_ELF2FLT = -elf2flt
 ifneq (,$(findstring $(W_ELF2FLT),$(LDFLAGS) $(CFLAGS_busybox)))
 SKIP_STRIP = y
+endif
+
+ifneq ($(CONFIG_EXTRA_LDFLAGS),)
+EXTRA_LDFLAGS += $(strip $(subst ",,$(CONFIG_EXTRA_LDFLAGS)))
+#"))
+endif
+
+ifneq ($(CONFIG_EXTRA_LDLIBS),)
+LDLIBS += $(strip $(subst ",,$(CONFIG_EXTRA_LDLIBS)))
+#"))
 endif
 
 # Busybox is a stack-fatty so make sure we increase default size

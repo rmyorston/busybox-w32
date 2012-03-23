@@ -29,9 +29,9 @@ const struct dhcp_optflag dhcp_optflags[] = {
 //	{ OPTION_IP | OPTION_LIST                 , 0x07 }, /* DHCP_LOG_SERVER    */
 //	{ OPTION_IP | OPTION_LIST                 , 0x08 }, /* DHCP_COOKIE_SERVER */
 	{ OPTION_IP | OPTION_LIST                 , 0x09 }, /* DHCP_LPR_SERVER    */
-	{ OPTION_STRING               | OPTION_REQ, 0x0c }, /* DHCP_HOST_NAME     */
+	{ OPTION_STRING_HOST          | OPTION_REQ, 0x0c }, /* DHCP_HOST_NAME     */
 	{ OPTION_U16                              , 0x0d }, /* DHCP_BOOT_SIZE     */
-	{ OPTION_STRING               | OPTION_REQ, 0x0f }, /* DHCP_DOMAIN_NAME   */
+	{ OPTION_STRING_HOST          | OPTION_REQ, 0x0f }, /* DHCP_DOMAIN_NAME   */
 	{ OPTION_IP                               , 0x10 }, /* DHCP_SWAP_SERVER   */
 	{ OPTION_STRING                           , 0x11 }, /* DHCP_ROOT_PATH     */
 	{ OPTION_U8                               , 0x17 }, /* DHCP_IP_TTL        */
@@ -41,7 +41,7 @@ const struct dhcp_optflag dhcp_optflags[] = {
 //server would let us know anyway?
 	{ OPTION_IP                   | OPTION_REQ, 0x1c }, /* DHCP_BROADCAST     */
 	{ OPTION_IP_PAIR | OPTION_LIST            , 0x21 }, /* DHCP_ROUTES        */
-	{ OPTION_STRING                           , 0x28 }, /* DHCP_NIS_DOMAIN    */
+	{ OPTION_STRING_HOST                      , 0x28 }, /* DHCP_NIS_DOMAIN    */
 	{ OPTION_IP | OPTION_LIST                 , 0x29 }, /* DHCP_NIS_SERVER    */
 	{ OPTION_IP | OPTION_LIST     | OPTION_REQ, 0x2a }, /* DHCP_NTP_SERVER    */
 	{ OPTION_IP | OPTION_LIST                 , 0x2c }, /* DHCP_WINS_SERVER   */
@@ -49,7 +49,7 @@ const struct dhcp_optflag dhcp_optflags[] = {
 	{ OPTION_IP                               , 0x36 }, /* DHCP_SERVER_ID     */
 	{ OPTION_STRING                           , 0x38 }, /* DHCP_ERR_MESSAGE   */
 //TODO: must be combined with 'sname' and 'file' handling:
-	{ OPTION_STRING                           , 0x42 }, /* DHCP_TFTP_SERVER_NAME */
+	{ OPTION_STRING_HOST                      , 0x42 }, /* DHCP_TFTP_SERVER_NAME */
 	{ OPTION_STRING                           , 0x43 }, /* DHCP_BOOT_FILE     */
 //TODO: not a string, but a set of LASCII strings:
 //	{ OPTION_STRING                           , 0x4D }, /* DHCP_USER_CLASS    */
@@ -57,13 +57,13 @@ const struct dhcp_optflag dhcp_optflags[] = {
 	{ OPTION_DNS_STRING | OPTION_LIST         , 0x77 }, /* DHCP_DOMAIN_SEARCH */
 	{ OPTION_SIP_SERVERS                      , 0x78 }, /* DHCP_SIP_SERVERS   */
 #endif
-	{ OPTION_STATIC_ROUTES                    , 0x79 }, /* DHCP_STATIC_ROUTES */
+	{ OPTION_STATIC_ROUTES | OPTION_LIST      , 0x79 }, /* DHCP_STATIC_ROUTES */
 #if ENABLE_FEATURE_UDHCP_8021Q
 	{ OPTION_U16                              , 0x84 }, /* DHCP_VLAN_ID       */
 	{ OPTION_U8                               , 0x85 }, /* DHCP_VLAN_PRIORITY */
 #endif
 	{ OPTION_6RD                              , 0xd4 }, /* DHCP_6RD           */
-	{ OPTION_STATIC_ROUTES                    , 0xf9 }, /* DHCP_MS_STATIC_ROUTES */
+	{ OPTION_STATIC_ROUTES | OPTION_LIST      , 0xf9 }, /* DHCP_MS_STATIC_ROUTES */
 	{ OPTION_STRING                           , 0xfc }, /* DHCP_WPAD          */
 
 	/* Options below have no match in dhcp_option_strings[],
@@ -123,8 +123,6 @@ const char dhcp_option_strings[] ALIGN1 =
 // is not handled yet by "string->option" conversion code:
 	"sipsrv" "\0"      /* DHCP_SIP_SERVERS    */
 #endif
-// doesn't work in udhcpd.conf since OPTION_STATIC_ROUTES
-// is not handled yet by "string->option" conversion code:
 	"staticroutes" "\0"/* DHCP_STATIC_ROUTES  */
 #if ENABLE_FEATURE_UDHCP_8021Q
 	"vlanid" "\0"      /* DHCP_VLAN_ID        */
@@ -148,6 +146,7 @@ const uint8_t dhcp_option_lengths[] ALIGN1 = {
 	[OPTION_IP_PAIR] = 8,
 //	[OPTION_BOOLEAN] = 1,
 	[OPTION_STRING] =  1,  /* ignored by udhcp_str2optset */
+	[OPTION_STRING_HOST] = 1,  /* ignored by udhcp_str2optset */
 #if ENABLE_FEATURE_UDHCP_RFC3397
 	[OPTION_DNS_STRING] = 1,  /* ignored by both udhcp_str2optset and xmalloc_optname_optval */
 	[OPTION_SIP_SERVERS] = 1,
@@ -337,7 +336,8 @@ int FAST_FUNC udhcp_str2nip(const char *str, void *arg)
 	lsa = host_and_af2sockaddr(str, 0, AF_INET);
 	if (!lsa)
 		return 0;
-	*(uint32_t*)arg = lsa->u.sin.sin_addr.s_addr;
+	/* arg maybe unaligned */
+	move_to_unaligned32((uint32_t*)arg, lsa->u.sin.sin_addr.s_addr);
 	free(lsa);
 	return 1;
 }
@@ -417,7 +417,9 @@ static NOINLINE void attach_option(
 			/* actually 255 is ok too, but adding a space can overlow it */
 
 			existing->data = xrealloc(existing->data, OPT_DATA + 1 + old_len + length);
-			if ((optflag->flags & OPTION_TYPE_MASK) == OPTION_STRING) {
+			if ((optflag->flags & OPTION_TYPE_MASK) == OPTION_STRING
+			 || (optflag->flags & OPTION_TYPE_MASK) == OPTION_STRING_HOST
+			) {
 				/* add space separator between STRING options in a list */
 				existing->data[OPT_DATA + old_len] = ' ';
 				old_len++;
@@ -434,13 +436,14 @@ static NOINLINE void attach_option(
 int FAST_FUNC udhcp_str2optset(const char *const_str, void *arg)
 {
 	struct option_set **opt_list = arg;
-	char *opt, *val, *endptr;
+	char *opt, *val;
 	char *str;
 	const struct dhcp_optflag *optflag;
 	struct dhcp_optflag bin_optflag;
 	unsigned optcode;
 	int retval, length;
-	char buffer[8] ALIGNED(4);
+	/* IP_PAIR needs 8 bytes, STATIC_ROUTES needs 9 max */
+	char buffer[9] ALIGNED(4);
 	uint16_t *result_u16 = (uint16_t *) buffer;
 	uint32_t *result_u32 = (uint32_t *) buffer;
 
@@ -481,6 +484,7 @@ int FAST_FUNC udhcp_str2optset(const char *const_str, void *arg)
 				retval = udhcp_str2nip(val, buffer + 4);
 			break;
 		case OPTION_STRING:
+		case OPTION_STRING_HOST:
 #if ENABLE_FEATURE_UDHCP_RFC3397
 		case OPTION_DNS_STRING:
 #endif
@@ -497,34 +501,53 @@ int FAST_FUNC udhcp_str2optset(const char *const_str, void *arg)
 //			break;
 //		}
 		case OPTION_U8:
-			buffer[0] = strtoul(val, &endptr, 0);
-			retval = (endptr[0] == '\0');
+			buffer[0] = bb_strtou32(val, NULL, 0);
+			retval = (errno == 0);
 			break;
 		/* htonX are macros in older libc's, using temp var
 		 * in code below for safety */
 		/* TODO: use bb_strtoX? */
 		case OPTION_U16: {
-			unsigned long tmp = strtoul(val, &endptr, 0);
+			uint32_t tmp = bb_strtou32(val, NULL, 0);
 			*result_u16 = htons(tmp);
-			retval = (endptr[0] == '\0' /*&& tmp < 0x10000*/);
+			retval = (errno == 0 /*&& tmp < 0x10000*/);
 			break;
 		}
 //		case OPTION_S16: {
-//			long tmp = strtol(val, &endptr, 0);
+//			long tmp = bb_strtoi32(val, NULL, 0);
 //			*result_u16 = htons(tmp);
-//			retval = (endptr[0] == '\0');
+//			retval = (errno == 0);
 //			break;
 //		}
 		case OPTION_U32: {
-			unsigned long tmp = strtoul(val, &endptr, 0);
+			uint32_t tmp = bb_strtou32(val, NULL, 0);
 			*result_u32 = htonl(tmp);
-			retval = (endptr[0] == '\0');
+			retval = (errno == 0);
 			break;
 		}
 		case OPTION_S32: {
-			long tmp = strtol(val, &endptr, 0);
+			int32_t tmp = bb_strtoi32(val, NULL, 0);
 			*result_u32 = htonl(tmp);
-			retval = (endptr[0] == '\0');
+			retval = (errno == 0);
+			break;
+		}
+		case OPTION_STATIC_ROUTES: {
+			/* Input: "a.b.c.d/m" */
+			/* Output: mask(1 byte),pfx(0-4 bytes),gw(4 bytes) */
+			unsigned mask;
+			char *slash = strchr(val, '/');
+			if (slash) {
+				*slash = '\0';
+				retval = udhcp_str2nip(val, buffer + 1);
+				buffer[0] = mask = bb_strtou(slash + 1, NULL, 10);
+				val = strtok(NULL, ", \t/-");
+				if (!val || mask > 32 || errno)
+					retval = 0;
+				if (retval) {
+					length = ((mask + 7) >> 3) + 5;
+					retval = udhcp_str2nip(val, buffer + (length - 4));
+				}
+			}
 			break;
 		}
 		case OPTION_BIN: /* handled in attach_option() */
@@ -535,7 +558,26 @@ int FAST_FUNC udhcp_str2optset(const char *const_str, void *arg)
 		}
 		if (retval)
 			attach_option(opt_list, optflag, opt, length);
-	} while (retval && optflag->flags & OPTION_LIST);
+	} while (retval && (optflag->flags & OPTION_LIST));
 
 	return retval;
+}
+
+/* note: ip is a pointer to an IPv6 in network order, possibly misaliged */
+int FAST_FUNC sprint_nip6(char *dest, /*const char *pre,*/ const uint8_t *ip)
+{
+	char hexstrbuf[16 * 2];
+	bin2hex(hexstrbuf, (void*)ip, 16);
+	return sprintf(dest, /* "%s" */
+		"%.4s:%.4s:%.4s:%.4s:%.4s:%.4s:%.4s:%.4s",
+		/* pre, */
+		hexstrbuf + 0 * 4,
+		hexstrbuf + 1 * 4,
+		hexstrbuf + 2 * 4,
+		hexstrbuf + 3 * 4,
+		hexstrbuf + 4 * 4,
+		hexstrbuf + 5 * 4,
+		hexstrbuf + 6 * 4,
+		hexstrbuf + 7 * 4
+	);
 }

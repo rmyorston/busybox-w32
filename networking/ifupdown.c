@@ -403,11 +403,11 @@ static int FAST_FUNC static_up6(struct interface_defn_t *ifd, execfn *exec)
 	result = execute("ip addr add %address%/%netmask% dev %iface%[[ label %label%]]", ifd, exec);
 	result += execute("ip link set[[ mtu %mtu%]][[ addr %hwaddress%]] %iface% up", ifd, exec);
 	/* Was: "[[ ip ....%gateway% ]]". Removed extra spaces w/o checking */
-	result += execute("[[ip route add ::/0 via %gateway%]]", ifd, exec);
+	result += execute("[[ip route add ::/0 via %gateway%]][[ prio %metric%]]", ifd, exec);
 # else
 	result = execute("ifconfig %iface%[[ media %media%]][[ hw %hwaddress%]][[ mtu %mtu%]] up", ifd, exec);
 	result += execute("ifconfig %iface% add %address%/%netmask%", ifd, exec);
-	result += execute("[[route -A inet6 add ::/0 gw %gateway%]]", ifd, exec);
+	result += execute("[[route -A inet6 add ::/0 gw %gateway%[[ metric %metric%]]]]", ifd, exec);
 # endif
 	return ((result == 3) ? 3 : 0);
 }
@@ -490,7 +490,7 @@ static int FAST_FUNC static_up(struct interface_defn_t *ifd, execfn *exec)
 	result = execute("ip addr add %address%/%bnmask%[[ broadcast %broadcast%]] "
 			"dev %iface%[[ peer %pointopoint%]][[ label %label%]]", ifd, exec);
 	result += execute("ip link set[[ mtu %mtu%]][[ addr %hwaddress%]] %iface% up", ifd, exec);
-	result += execute("[[ip route add default via %gateway% dev %iface%]]", ifd, exec);
+	result += execute("[[ip route add default via %gateway% dev %iface%[[ prio %metric%]]]]", ifd, exec);
 	return ((result == 3) ? 3 : 0);
 # else
 	/* ifconfig said to set iface up before it processes hw %hwaddress%,
@@ -500,7 +500,7 @@ static int FAST_FUNC static_up(struct interface_defn_t *ifd, execfn *exec)
 	result += execute("ifconfig %iface% %address% netmask %netmask%"
 				"[[ broadcast %broadcast%]][[ pointopoint %pointopoint%]] ",
 				ifd, exec);
-	result += execute("[[route add default gw %gateway% %iface%]]", ifd, exec);
+	result += execute("[[route add default gw %gateway%[[ metric %metric%]] %iface%]]", ifd, exec);
 	return ((result == 3) ? 3 : 0);
 # endif
 }
@@ -1311,9 +1311,9 @@ int ifupdown_main(int argc UNUSED_PARAM, char **argv)
 			llist_t *state_list = read_iface_state();
 			llist_t *iface_state = find_iface_state(state_list, iface);
 
-			if (cmds == iface_up) {
-				char * const newiface = xasprintf("%s=%s", iface, liface);
-				if (iface_state == NULL) {
+			if (cmds == iface_up && !any_failures) {
+				char *newiface = xasprintf("%s=%s", iface, liface);
+				if (!iface_state) {
 					llist_add_to_end(&state_list, newiface);
 				} else {
 					free(iface_state->data);
