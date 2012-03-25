@@ -69,12 +69,18 @@ char* FAST_FUNC safe_gethostname(void)
  */
 char* FAST_FUNC safe_getdomainname(void)
 {
-#if !ENABLE_PLATFORM_MINGW32
+#if defined(__linux__)
 /* The field domainname of struct utsname is Linux specific. */
 	struct utsname uts;
 	uname(&uts);
 	return xstrndup(!uts.domainname[0] ? "?" : uts.domainname, sizeof(uts.domainname));
-#else
+#elif ENABLE_PLATFORM_MINGW32
 	return xstrdup("?");
+#else
+	/* We really don't care about people with domain names wider than most screens */
+	char buf[256];
+	int r = getdomainname(buf, sizeof(buf));
+	buf[sizeof(buf)-1] = '\0';
+	return xstrdup(r < 0 ? "?" : buf);
 #endif
 }
