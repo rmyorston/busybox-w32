@@ -335,9 +335,7 @@ struct dnode {
 	time_t    dn_ctime;
 #endif
 	ino_t     dn_ino;
-#if !ENABLE_PLATFORM_MINGW32
 	blkcnt_t  dn_blocks;
-#endif
 	nlink_t   dn_nlink;
 	uid_t     dn_uid;
 	gid_t     dn_gid;
@@ -524,12 +522,7 @@ static NOINLINE unsigned display_single(const struct dnode *dn)
 		column += printf("%7llu ", (long long) dn->dn_ino);
 //TODO: -h should affect -s too:
 	if (G.all_fmt & LIST_BLOCKS)
-#if ENABLE_PLATFORM_MINGW32
-		/* MinGW does not have st_blocks */
-		column += printf("%6"OFF_FMT"u ", (off_t)0);
-#else
 		column += printf("%6"OFF_FMT"u ", (off_t) (dn->dn_blocks >> 1));
-#endif
 	if (G.all_fmt & LIST_MODEBITS)
 		column += printf("%-10s ", (char *) bb_mode_string(dn->dn_mode));
 	if (G.all_fmt & LIST_NLINKS)
@@ -763,6 +756,9 @@ static struct dnode *my_stat(const char *fullname, const char *name, int force_f
 	cur->dn_ino    = statbuf.st_ino   ;
 #if !ENABLE_PLATFORM_MINGW32
 	cur->dn_blocks = statbuf.st_blocks;
+#else
+	/* MinGW does not have st_blocks */
+	cur->dn_blocks = 0;
 #endif
 	cur->dn_nlink  = statbuf.st_nlink ;
 	cur->dn_uid    = statbuf.st_uid   ;
@@ -998,7 +994,7 @@ static struct dnode **scan_one_dir(const char *path, unsigned *nfiles_p)
 	return dnp;
 }
 
-#if ENABLE_DESKTOP && !ENABLE_PLATFORM_MINGW32
+#if ENABLE_DESKTOP
 /* http://www.opengroup.org/onlinepubs/9699919799/utilities/ls.html
  * If any of the -l, -n, -s options is specified, each list
  * of files within the directory shall be preceded by a
@@ -1040,7 +1036,7 @@ static void scan_and_display_dirs_recur(struct dnode **dn, int first)
 			printf("%s:\n", (*dn)->fullname);
 		}
 		subdnp = scan_one_dir((*dn)->fullname, &nfiles);
-#if ENABLE_DESKTOP && !ENABLE_PLATFORM_MINGW32
+#if ENABLE_DESKTOP
 		if ((G.all_fmt & STYLE_MASK) == STYLE_LONG)
 			printf("total %"OFF_FMT"u\n", calculate_blocks(subdnp));
 #endif
