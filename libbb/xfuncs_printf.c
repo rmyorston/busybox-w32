@@ -295,22 +295,8 @@ char* FAST_FUNC xasprintf(const char *format, ...)
 	char *string_ptr;
 
 	va_start(p, format);
-#if ENABLE_PLATFORM_MINGW32
-	string_ptr = xmalloc(1024);
-	r = vsnprintf(string_ptr, 1024, format, p);
-	va_end(p);
-	if (r > 0) {
-		free(string_ptr);
-		r += 2;
-		string_ptr = xmalloc(r);
-		va_start(p, format);
-		r = vsnprintf(string_ptr, r, format, p);
-		va_end(p);
-	}
-#else
 	r = vasprintf(&string_ptr, format, p);
 	va_end(p);
-#endif
 
 	if (r < 0)
 		bb_error_msg_and_die(bb_msg_memory_exhausted);

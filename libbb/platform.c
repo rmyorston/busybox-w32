@@ -51,21 +51,8 @@ int dprintf(int fd, const char *format, ...)
 	char *string_ptr;
 
 	va_start(p, format);
-	if (ENABLE_PLATFORM_MINGW32) {
-		string_ptr = xmalloc(1024);
-		r = vsnprintf(string_ptr, 1024, format, p);
-	}
-	else
-		r = vasprintf(&string_ptr, format, p);
+	r = vasprintf(&string_ptr, format, p);
 	va_end(p);
-	if (ENABLE_PLATFORM_MINGW32 && r > 0) {
-		free(string_ptr);
-		r += 2;
-		string_ptr = xmalloc(r);
-		va_start(p, format);
-		r = vsnprintf(string_ptr, r, format, p);
-		va_end(p);
-	}
 	if (r >= 0) {
 		r = full_write(fd, string_ptr, r);
 		free(string_ptr);

@@ -1,5 +1,17 @@
 #include <sys/utime.h>
 
+/*
+ * MS Windows has broken versions of snprintf/vsnprintf that return -1 if
+ * the string is too large for the buffer and don't null terminate the
+ * string if it fills the buffer.  However, if we're using a sufficiently
+ * modern version of MinGW and have an appropriate source code qualifier
+ * (such as _GNU_SOURCE) MinGW will use its own standards-compliant
+ * implementation.  Check for this.
+ */
+#if !defined(__USE_MINGW_ANSI_STDIO)
+#error "Must use MinGW stdio for snprintf/vsnprintf"
+#endif
+
 #define NOIMPL(name,...) static inline int name(__VA_ARGS__) { errno = ENOSYS; return -1; }
 #define IMPL(name,ret,retval,...) static inline ret name(__VA_ARGS__) { return retval; }
 
