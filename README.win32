@@ -4,10 +4,7 @@ Status
 I would consider this port experimental. Things may work, or may not.
 Things may never work because of huge differences between Linux and
 Windows. Or things may work in future, if you report the faults to
-busybox@busybox.net, especially with patches.
-
-pclouds@gmail.com
-15/04/2010
+https://github.com/rmyorston/busybox-w32, especially with patches.
 
 Building
 ========
@@ -16,11 +13,10 @@ You need MinGW compiler and a POSIX environment (so that "make
 menuconfig" works).  I cross compile from Linux, but MSYS or Cygwin
 should be OK.
 
-To start, copy scripts/defconfig.mingw32 to .config. You can then
-customize your build (mostly disabling stuff because defconfig.mingw32
-is the biggest workable set).
+To start, run "make mingw32_defconfig".  You can then customize your
+build with "make menuconfig".
 
-For cross-compiling, run "make menuconfig" and set Busybox
+In particular you may need to adjust the compiler by going to Busybox
 Settings -> Build Options -> Cross Compiler Prefix
 
 Then just "make".
