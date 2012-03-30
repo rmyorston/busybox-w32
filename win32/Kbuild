@@ -10,6 +10,7 @@ lib-$(CONFIG_PLATFORM_MINGW32) += mingw.o
 lib-$(CONFIG_PLATFORM_MINGW32) += process.o
 lib-$(CONFIG_PLATFORM_MINGW32) += regex.o
 lib-$(CONFIG_WIN32_NET) += net.o
+lib-$(CONFIG_PLATFORM_MINGW32) += poll.o
 lib-$(CONFIG_PLATFORM_MINGW32) += termios.o
 lib-$(CONFIG_PLATFORM_MINGW32) += uname.o
 lib-$(CONFIG_PLATFORM_MINGW32) += winansi.o

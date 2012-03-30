@@ -64,20 +64,6 @@ struct sockaddr_un {
 };
 
 /*
- * poll.h
- */
-struct pollfd {
-	int fd;           /* file descriptor */
-	short events;     /* requested events */
-	short revents;    /* returned events */
-};
-typedef unsigned long nfds_t;
-#define POLLIN 1
-#define POLLHUP 2
-
-int poll(struct pollfd *ufds, unsigned int nfds, int timeout);
-
-/*
  * pwd.h
  */
 struct passwd {
