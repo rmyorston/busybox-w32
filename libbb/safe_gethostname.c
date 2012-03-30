@@ -25,9 +25,7 @@
  */
 
 #include "libbb.h"
-#if !ENABLE_PLATFORM_MINGW32
 #include <sys/utsname.h>
-#endif
 
 /*
  * On success return the current malloced and NUL terminated hostname.
