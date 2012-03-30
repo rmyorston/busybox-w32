@@ -5,7 +5,7 @@
 int uname(struct utsname *name)
 {
 	const char *unk = "unknown";
-	OSVERSIONINFOEX os_info;
+	OSVERSIONINFO os_info;
 	SYSTEM_INFO sys_info;
 	DWORD len;
 
@@ -16,8 +16,8 @@ int uname(struct utsname *name)
 		strcpy(name->nodename, unk);
 	}
 
-	memset(&os_info, 0, sizeof(OSVERSIONINFOEX));
-	os_info.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+	memset(&os_info, 0, sizeof(OSVERSIONINFO));
+	os_info.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
 
 	strcpy(name->release, unk);
 	strcpy(name->version, unk);
