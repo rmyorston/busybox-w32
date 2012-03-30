@@ -148,13 +148,8 @@ int cp_main(int argc, char **argv)
 	last = argv[argc - 1];
 	/* If there are only two arguments and...  */
 	if (argc == 2) {
-#if ENABLE_PLATFORM_MINGW32
-        /* stat can't be aliased, and MinGW uses lstat anyway */
-		s_flags = cp_mv_stat2(*argv, &source_stat, lstat);
-#else
 		s_flags = cp_mv_stat2(*argv, &source_stat,
 				(flags & FILEUTILS_DEREFERENCE) ? stat : lstat);
-#endif
 		if (s_flags < 0)
 			return EXIT_FAILURE;
 		d_flags = cp_mv_stat(last, &dest_stat);

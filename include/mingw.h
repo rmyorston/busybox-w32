@@ -234,19 +234,20 @@ typedef int nlink_t;
 NOIMPL(fchmod,int fildes UNUSED_PARAM, mode_t mode UNUSED_PARAM);
 NOIMPL(fchown,int fd UNUSED_PARAM, uid_t uid UNUSED_PARAM, gid_t gid UNUSED_PARAM);
 int mingw_mkdir(const char *path, int mode);
+#define mkdir mingw_mkdir
 
-/* Use mingw_lstat() instead of lstat()/stat() and
+/* Use mingw_lstat()/mingw_stat() instead of lstat()/stat() and
  * mingw_fstat() instead of fstat() on Windows.
  */
-int mingw_lstat(const char *file_name, struct stat *buf);
-int mingw_fstat(int fd, struct stat *buf);
-
-#define mkdir mingw_mkdir
-#define stat(x,y) mingw_lstat(x,y)
+#define off_t off64_t
 #define lseek _lseeki64
+#define stat _stati64
+int mingw_lstat(const char *file_name, struct stat *buf);
+int mingw_stat(const char *file_name, struct stat *buf);
+int mingw_fstat(int fd, struct stat *buf);
 #define fstat mingw_fstat
 #define lstat mingw_lstat
-#define _stati64 mingw_lstat
+#define _stati64(x,y) mingw_stat(x,y)
 
 /*
  * sys/sysmacros.h

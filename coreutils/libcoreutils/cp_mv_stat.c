@@ -46,10 +46,5 @@ int FAST_FUNC cp_mv_stat2(const char *fn, struct stat *fn_stat, stat_func sf)
 
 int FAST_FUNC cp_mv_stat(const char *fn, struct stat *fn_stat)
 {
-#if ENABLE_PLATFORM_MINGW32
-	/* stat can't be aliased, and MinGW uses lstat anyway */
-	return cp_mv_stat2(fn, fn_stat, lstat);
-#else
 	return cp_mv_stat2(fn, fn_stat, stat);
-#endif
 }

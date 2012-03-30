@@ -85,12 +85,7 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 /* Inverse of cp -d ("cp without -d") */
 #define FLAGS_DEREF (flags & (FILEUTILS_DEREFERENCE + FILEUTILS_DEREFERENCE_L0))
 
-#if ENABLE_PLATFORM_MINGW32
-	/* stat can't be aliased, and MinGW uses lstat anyway */
-	if (lstat(source, &source_stat) < 0) {
-#else
 	if ((FLAGS_DEREF ? stat : lstat)(source, &source_stat) < 0) {
-#endif
 		/* This may be a dangling symlink.
 		 * Making [sym]links to dangling symlinks works, so... */
 		if (flags & (FILEUTILS_MAKE_SOFTLINK|FILEUTILS_MAKE_HARDLINK))

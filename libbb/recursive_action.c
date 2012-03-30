@@ -73,12 +73,7 @@ int FAST_FUNC recursive_action(const char *fileName,
 	if (depth == 0)
 		follow = ACTION_FOLLOWLINKS | ACTION_FOLLOWLINKS_L0;
 	follow &= flags;
-#if ENABLE_PLATFORM_MINGW32
-	/* stat can't be aliased, and MinGW uses lstat anyway */
-	status = lstat(fileName, &statbuf);
-#else
 	status = (follow ? stat : lstat)(fileName, &statbuf);
-#endif
 	if (status < 0) {
 #ifdef DEBUG_RECURS_ACTION
 		bb_error_msg("status=%d flags=%x", status, flags);

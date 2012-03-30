@@ -20,6 +20,7 @@ config PLATFORM_POSIX
 
 config PLATFORM_MINGW32
 	bool "MS Windows (MinGW port)"
+	select LFS
 
 endchoice
 

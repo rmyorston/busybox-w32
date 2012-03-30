@@ -130,7 +130,7 @@ int mingw_open (const char *filename, int oflags, ...)
 		errno = ENOSYS;
 		return -1;
 	}
-	if (!strcmp(filename, "/dev/null"))
+	if (filename && !strcmp(filename, "/dev/null"))
 		filename = "nul";
 	fd = open(filename, oflags, mode);
 	if (fd < 0 && (oflags & O_CREAT) && errno == EACCES) {
@@ -142,11 +142,11 @@ int mingw_open (const char *filename, int oflags, ...)
 }
 
 #undef fopen
-FILE *mingw_fopen (const char *filename, const char *mode)
+FILE *mingw_fopen (const char *filename, const char *otype)
 {
-	if (!strcmp(filename, "/dev/null"))
+	if (filename && !strcmp(filename, "/dev/null"))
 		filename = "nul";
-	return fopen(filename, mode);
+	return fopen(filename, otype);
 }
 
 #undef dup2
@@ -156,12 +156,20 @@ int mingw_dup2 (int fd, int fdto)
 	return ret != -1 ? fdto : -1;
 }
 
-static inline time_t filetime_to_time_t(const FILETIME *ft)
+/*
+ * The unit of FILETIME is 100-nanoseconds since January 1, 1601, UTC.
+ * Returns the 100-nanoseconds ("hekto nanoseconds") since the epoch.
+ */
+static inline long long filetime_to_hnsec(const FILETIME *ft)
 {
 	long long winTime = ((long long)ft->dwHighDateTime << 32) + ft->dwLowDateTime;
-	winTime -= 116444736000000000LL; /* Windows to Unix Epoch conversion */
-	winTime /= 10000000;		 /* Nano to seconds resolution */
-	return (time_t)winTime;
+	/* Windows to Unix Epoch conversion */
+	return winTime - 116444736000000000LL;
+}
+
+static inline time_t filetime_to_time_t(const FILETIME *ft)
+{
+	return (time_t)(filetime_to_hnsec(ft) / 10000000);
 }
 
 static inline int file_attr_to_st_mode (DWORD attr)
@@ -199,12 +207,16 @@ static inline int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fd
 /* We keep the do_lstat code in a separate function to avoid recursion.
  * When a path ends with a slash, the stat will fail with ENOENT. In
  * this case, we strip the trailing slashes and stat again.
+ *
+ * If follow is true then act like stat() and report on the link
+ * target. Otherwise report on the link itself.
  */
-static int do_lstat(const char *file_name, struct stat *buf)
+static int do_lstat(int follow, const char *file_name, struct stat *buf)
 {
+	int err;
 	WIN32_FILE_ATTRIBUTE_DATA fdata;
 
-	if (!(errno = get_file_attr(file_name, &fdata))) {
+	if (!(err = get_file_attr(file_name, &fdata))) {
 		int len = strlen(file_name);
 
 		buf->st_ino = 0;
@@ -220,8 +232,28 @@ static int do_lstat(const char *file_name, struct stat *buf)
 		buf->st_atime = filetime_to_time_t(&(fdata.ftLastAccessTime));
 		buf->st_mtime = filetime_to_time_t(&(fdata.ftLastWriteTime));
 		buf->st_ctime = filetime_to_time_t(&(fdata.ftCreationTime));
+		if (fdata.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+			WIN32_FIND_DATAA findbuf;
+			HANDLE handle = FindFirstFileA(file_name, &findbuf);
+			if (handle != INVALID_HANDLE_VALUE) {
+				if ((findbuf.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+						(findbuf.dwReserved0 == IO_REPARSE_TAG_SYMLINK)) {
+					if (follow) {
+						char buffer[MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
+						buf->st_size = readlink(file_name, buffer, MAXIMUM_REPARSE_DATA_BUFFER_SIZE);
+					} else {
+						buf->st_mode = S_IFLNK;
+					}
+					buf->st_mode |= S_IREAD;
+					if (!(findbuf.dwFileAttributes & FILE_ATTRIBUTE_READONLY))
+						buf->st_mode |= S_IWRITE;
+				}
+				FindClose(handle);
+			}
+		}
 		return 0;
 	}
+	errno = err;
 	return -1;
 }
 
@@ -231,12 +263,12 @@ static int do_lstat(const char *file_name, struct stat *buf)
  * complete. Note that Git stat()s are redirected to mingw_lstat()
  * too, since Windows doesn't really handle symlinks that well.
  */
-int mingw_lstat(const char *file_name, struct stat *buf)
+static int do_stat_internal(int follow, const char *file_name, struct stat *buf)
 {
 	int namelen;
 	static char alt_name[PATH_MAX];
 
-	if (!do_lstat(file_name, buf))
+	if (!do_lstat(follow, file_name, buf))
 		return 0;
 
 	/* if file_name ended in a '/', Windows returned ENOENT;
@@ -255,7 +287,16 @@ int mingw_lstat(const char *file_name, struct stat *buf)
 
 	memcpy(alt_name, file_name, namelen);
 	alt_name[namelen] = 0;
-	return do_lstat(alt_name, buf);
+	return do_lstat(follow, alt_name, buf);
+}
+
+int mingw_lstat(const char *file_name, struct stat *buf)
+{
+	return do_stat_internal(0, file_name, buf);
+}
+int mingw_stat(const char *file_name, struct stat *buf)
+{
+	return do_stat_internal(1, file_name, buf);
 }
 
 #undef fstat
@@ -374,43 +415,15 @@ int mkstemp(char *template)
 	return open(filename, O_RDWR | O_CREAT, 0600);
 }
 
-/*
- * This is like mktime, but without normalization of tm_wday and tm_yday.
- */
-static time_t tm_to_time_t(const struct tm *tm)
+int gettimeofday(struct timeval *tv, void *tz UNUSED_PARAM)
 {
-	static const int mdays[] = {
-	    0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334
-	};
-	int year = tm->tm_year - 70;
-	int month = tm->tm_mon;
-	int day = tm->tm_mday;
+	FILETIME ft;
+	long long hnsec;
 
-	if (year < 0 || year > 129) /* algo only works for 1970-2099 */
-		return -1;
-	if (month < 0 || month > 11) /* array bounds */
-		return -1;
-	if (month < 2 || (year + 2) % 4)
-		day--;
-	return (year * 365 + (year + 1) / 4 + mdays[month] + day) * 24*60*60UL +
-		tm->tm_hour * 60*60 + tm->tm_min * 60 + tm->tm_sec;
-}
-
-int gettimeofday(struct timeval *tv, void *tz)
-{
-	SYSTEMTIME st;
-	struct tm tm;
-	GetSystemTime(&st);
-	tm.tm_year = st.wYear-1900;
-	tm.tm_mon = st.wMonth-1;
-	tm.tm_mday = st.wDay;
-	tm.tm_hour = st.wHour;
-	tm.tm_min = st.wMinute;
-	tm.tm_sec = st.wSecond;
-	tv->tv_sec = tm_to_time_t(&tm);
-	if (tv->tv_sec < 0)
-		return -1;
-	tv->tv_usec = st.wMilliseconds*1000;
+	GetSystemTimeAsFileTime(&ft);
+	hnsec = filetime_to_hnsec(&ft);
+	tv->tv_sec = hnsec / 10000000;
+	tv->tv_usec = (hnsec % 10000000) / 10;
 	return 0;
 }
 
@@ -482,7 +495,7 @@ int mingw_rename(const char *pold, const char *pnew)
 	return -1;
 }
 
-struct passwd *getpwuid(int uid)
+struct passwd *getpwuid(int uid UNUSED_PARAM)
 {
 	static char user_name[100];
 	static struct passwd p;
@@ -622,7 +635,7 @@ sighandler_t mingw_signal(int sig, sighandler_t handler)
 
 int link(const char *oldpath, const char *newpath)
 {
-	typedef BOOL WINAPI (*T)(const char*, const char*, LPSECURITY_ATTRIBUTES);
+	typedef BOOL (WINAPI *T)(const char*, const char*, LPSECURITY_ATTRIBUTES);
 	static T create_hard_link = NULL;
 	if (!create_hard_link) {
 		create_hard_link = (T) GetProcAddress(
@@ -702,7 +715,7 @@ int mingw_unlink(const char *pathname)
 	return unlink(pathname);
 }
 
-char *strptime(const char *s, const char *format, struct tm *tm)
+char *strptime(const char *s UNUSED_PARAM, const char *format UNUSED_PARAM, struct tm *tm UNUSED_PARAM)
 {
 	return NULL;
 }
