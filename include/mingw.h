@@ -239,7 +239,9 @@ int mingw_mkdir(const char *path, int mode);
 /* Use mingw_lstat()/mingw_stat() instead of lstat()/stat() and
  * mingw_fstat() instead of fstat() on Windows.
  */
-#define off_t off64_t
+#if ENABLE_LFS
+# define off_t off64_t
+#endif
 #define lseek _lseeki64
 #define stat _stati64
 int mingw_lstat(const char *file_name, struct stat *buf);
