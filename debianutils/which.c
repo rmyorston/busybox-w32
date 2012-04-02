@@ -21,6 +21,29 @@
 
 #include "libbb.h"
 
+#if ENABLE_PLATFORM_MINGW32
+static char *win32_execable_file(const char *p)
+{
+	char *path;
+	int len = strlen(p) + 5;
+
+	if ( (path=malloc(len)) != NULL ) {
+		memcpy(path, p, len);
+		memcpy(path+len, ".exe", 5);
+		if (execable_file(path)) {
+			return path;
+		}
+		memcpy(path+len, ".com", 5);
+		if (execable_file(path)) {
+			return path;
+		}
+		free(path);
+	}
+
+	return NULL;
+}
+#endif
+
 int which_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int which_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -43,6 +66,14 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	do {
+#if ENABLE_FEATURE_SH_STANDALONE
+		if ( find_applet_by_name(*argv) >= 0 ) {
+			puts(*argv);
+			IF_DESKTOP(if ( !opt ))
+				continue;
+		}
+#endif
+
 #if ENABLE_DESKTOP
 /* Much bloat just to support -a */
 		if (strchr(*argv, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(*argv, '\\'))) {
@@ -50,20 +81,11 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 				puts(*argv);
 				continue;
 			}
-			else if (ENABLE_PLATFORM_MINGW32) {
-				char path[PATH_MAX];
-				int len = strlen(*argv);
-				memcpy(path, *argv, len);
-				memcpy(path+len, ".exe", 5);
-				if (execable_file(path)) {
-					puts(path);
-					continue;
-				}
-				memcpy(path+len, ".com", 5);
-				if (execable_file(path)) {
-					puts(path);
-					continue;
-				}
+			else if (ENABLE_PLATFORM_MINGW32 &&
+						(p=win32_execable_file(*argv)) != NULL) {
+				puts(p);
+				free(p);
+				continue;
 			}
 			status = EXIT_FAILURE;
 		} else {
@@ -95,20 +117,11 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 				puts(*argv);
 				continue;
 			}
-			else if (ENABLE_PLATFORM_MINGW32) {
-				char path[PATH_MAX];
-				int len = strlen(*argv);
-				memcpy(path, *argv, len);
-				memcpy(path+len, ".exe", 5);
-				if (execable_file(path)) {
-					puts(path);
-					continue;
-				}
-				memcpy(path+len, ".com", 5);
-				if (execable_file(path)) {
-					puts(path);
-					continue;
-				}
+			else if (ENABLE_PLATFORM_MINGW32 &&
+						(p=win32_execable_file(*argv)) != NULL) {
+				puts(p);
+				free(p);
+				continue;
 			}
 		} else {
 			char *path2 = xstrdup(path);
