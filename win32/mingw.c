@@ -693,18 +693,46 @@ int mingw_mkdir(const char *path, int mode UNUSED_PARAM)
 	return mkdir(path);
 }
 
-int fcntl(int fd UNUSED_PARAM, int cmd, ...)
+int fcntl(int fd, int cmd, ...)
 {
-	/*
-	 * F_GETFL needs to be dealt at higher level
-	 * Usually it does not matter if the call is
-	 *   fcntl(fd, F_SETFL, fcntl(fd, F_GETFD) | something)
-	 * because F_SETFL is not supported
-	 */
-	if (cmd == F_GETFD || cmd == F_SETFD || cmd == F_GETFL)
-		return 0;
-	errno = ENOSYS;
-	return -1;
+	va_list arg;
+	int result = -1;
+	char *fds;
+	int target, i, newfd;
+
+	va_start(arg, cmd);
+
+	switch (cmd) {
+	case F_GETFD:
+	case F_SETFD:
+	case F_GETFL:
+		/*
+		 * Our fake F_GETFL won't matter if the return value is used as
+		 *    fcntl(fd, F_SETFL, ret|something);
+		 * because F_SETFL isn't supported either.
+		 */
+		result = 0;
+		break;
+	case F_DUPFD:
+		target = va_arg(arg, int);
+		fds = xzalloc(target);
+		while ((newfd = dup(fd)) < target && newfd >= 0) {
+			fds[newfd] = 1;
+		}
+		for (i = 0; i < target; ++i) {
+			if (fds[i]) {
+				close(i);
+			}
+		}
+		free(fds);
+		result = newfd;
+	default:
+		errno = ENOSYS;
+		break;
+	}
+
+	va_end(arg);
+	return result;
 }
 
 #undef unlink

@@ -139,6 +139,8 @@ int mingw_rename(const char*, const char*);
 #define fopen mingw_fopen
 #define rename mingw_rename
 
+#define setlinebuf(fd) setvbuf(fd, (char *) NULL, _IOLBF, 0)
+
 /*
  * ANSI emulation wrappers
  */
