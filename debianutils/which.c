@@ -66,7 +66,7 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	do {
-#if ENABLE_FEATURE_SH_STANDALONE
+#if ENABLE_FEATURE_PREFER_APPLETS
 		if ( find_applet_by_name(*argv) >= 0 ) {
 			puts(*argv);
 			IF_DESKTOP(if ( !opt ))
@@ -81,12 +81,13 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 				puts(*argv);
 				continue;
 			}
-			else if (ENABLE_PLATFORM_MINGW32 &&
-						(p=win32_execable_file(*argv)) != NULL) {
+#if ENABLE_PLATFORM_MINGW32
+			else if ((p=win32_execable_file(*argv)) != NULL) {
 				puts(p);
 				free(p);
 				continue;
 			}
+#endif
 			status = EXIT_FAILURE;
 		} else {
 			char *path2 = xstrdup(path);
@@ -117,12 +118,13 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 				puts(*argv);
 				continue;
 			}
-			else if (ENABLE_PLATFORM_MINGW32 &&
-						(p=win32_execable_file(*argv)) != NULL) {
+#if ENABLE_PLATFORM_MINGW32
+			else if ((p=win32_execable_file(*argv)) != NULL) {
 				puts(p);
 				free(p);
 				continue;
 			}
+#endif
 		} else {
 			char *path2 = xstrdup(path);
 			char *tmp = path2;
