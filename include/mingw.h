@@ -348,7 +348,6 @@ int utimes(const char *file_name, const struct timeval times[2]);
 /*
  * MinGW specific
  */
-#define has_dos_drive_prefix(path) (isalpha(*(path)) && (path)[1] == ':')
 #define is_dir_sep(c) ((c) == '/' || (c) == '\\')
 #define PRIuMAX "I64u"
 

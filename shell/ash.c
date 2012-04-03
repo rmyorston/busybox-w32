@@ -85,6 +85,10 @@
 # define PIPE_BUF 4096           /* amount of buffering in a pipe */
 #endif
 
+#if !ENABLE_PLATFORM_MINGW32
+# define is_absolute_path(path) ((path)[0] == '/')
+#endif
+
 #if !BB_MMU
 # error "Do not even bother, ash will not run on NOMMU machine"
 #endif
@@ -9036,7 +9040,7 @@ forkshell_evalsubshell(struct forkshell *fs)
 static void
 evalsubshell(union node *n, int flags)
 {
-	IF_PLATFORM_MINGW32(struct forkshell fs);
+	IF_PLATFORM_MINGW32(struct forkshell fs;)
 	struct job *jp;
 	int backgnd = (n->type == NBACKGND);
 	int status;
@@ -9158,7 +9162,7 @@ forkshell_evalpipe(struct forkshell *fs)
 static void
 evalpipe(union node *n, int flags)
 {
-	IF_PLATFORM_MINGW32(struct forkshell fs);
+	IF_PLATFORM_MINGW32(struct forkshell fs;)
 	struct job *jp;
 	struct nodelist *lp;
 	int pipelen;
@@ -12821,7 +12825,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	struct stat statb;
 	int e;
 	int updatetbl;
-	IF_PLATFORM_MINGW32(int len);
+	IF_PLATFORM_MINGW32(int len;)
 	struct builtincmd *bcmd;
 
 	/* If name contains a slash, don't use PATH or hash table */
@@ -13860,6 +13864,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	/* NOTREACHED */
 }
 
+#if ENABLE_PLATFORM_MINGW32
 /* FIXME: should consider running forkparent() and forkchild() */
 static int
 spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
@@ -14378,6 +14383,7 @@ sticky_free(void *base)
 		return;
 	free(base);
 }
+#endif
 
 /*-
  * Copyright (c) 1989, 1991, 1993, 1994
