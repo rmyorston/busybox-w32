@@ -5664,7 +5664,7 @@ redirect(union node *redir, int flags)
 			/* Careful to not accidentally "save"
 			 * to the same fd as right side fd in N>&M */
 			int minfd = right_fd < 10 ? 10 : right_fd + 1;
-			i = copyfd(fd, minfd);
+			i = fcntl(fd, F_DUPFD, minfd);
 /* You'd expect copy to be CLOEXECed. Currently these extra "saved" fds
  * are closed in popredir() in the child, preventing them from leaking
  * into child. (popredir() also cleans up the mess in case of failures)
