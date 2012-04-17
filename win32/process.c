@@ -30,12 +30,17 @@ next_path_sep(const char *path)
 	return strchr(has_dos_drive_prefix(path) ? path+2 : path, ':');
 }
 
+#define MAX_OPT 10
+
 static const char *
-parse_interpreter(const char *cmd)
+parse_interpreter(const char *cmd, char ***opts, int *nopts)
 {
 	static char buf[100];
-	char *p, *opt;
+	char *p, *s, *t, *opt[MAX_OPT];
 	int n, fd;
+
+	*nopts = 0;
+	*opts = opt;
 
 	/* don't even try a .exe */
 	n = strlen(cmd);
@@ -58,13 +63,34 @@ parse_interpreter(const char *cmd)
 	p = strchr(buf, '\n');
 	if (!p)
 		return NULL;
-
 	*p = '\0';
+
+	/* remove trailing whitespace */
+	while ( isspace(*--p) ) {
+		*p = '\0';
+	}
+
 	if (!(p = strrchr(buf+2, '/')) && !(p = strrchr(buf+2, '\\')))
 		return NULL;
-	/* strip options */
-	if ((opt = strchr(p+1, ' ')))
-		*opt = '\0';
+
+	/* move to end of interpreter name */
+	for ( s=p; *s && !isspace(*s); ++s ) {
+	}
+
+	n = 0;
+	if ( *s != '\0' ) {
+		/* there are options */
+		*s++ = '\0';
+
+		while ( (t=strtok(s, " \t")) && n < MAX_OPT ) {
+			s = NULL;
+			opt[n++] = t;
+		}
+	}
+
+	*nopts = n;
+	*opts = opt;
+
 	return p+1;
 }
 
@@ -179,35 +205,43 @@ static pid_t
 mingw_spawn_interpreter(int mode, const char *prog, const char *const *argv, const char *const *envp)
 {
 	int ret;
-	const char *interpr = parse_interpreter(prog);
+	char **opts;
+	int nopts;
+	const char *interpr = parse_interpreter(prog, &opts, &nopts);
+	const char **new_argv;
+	int argc = 0;
 
 	if (!interpr)
 		return spawnveq(mode, prog, argv, envp);
 
-	if (ENABLE_FEATURE_PREFER_APPLETS && !strcmp(interpr, "sh")) {
-		const char **new_argv;
-		int argc = 0;
 
-		while (argv[argc])
-			argc++;
-		new_argv = malloc(sizeof(*argv)*(argc+2));
-		memcpy(new_argv+1, argv, sizeof(*argv)*(argc+1));
-		new_argv[0] = prog; /* pass absolute path */
-		ret = mingw_spawn_applet(mode, "sh", new_argv, envp);
-		free(new_argv);
+	while (argv[argc])
+		argc++;
+	new_argv = malloc(sizeof(*argv)*(argc+nopts+2));
+	memcpy(new_argv+1, opts, sizeof(*opts)*nopts);
+	memcpy(new_argv+nopts+2, argv+1, sizeof(*argv)*argc);
+	new_argv[nopts+1] = prog; /* pass absolute path */
+
+	if (ENABLE_FEATURE_PREFER_APPLETS && find_applet_by_name(interpr) >= 0) {
+		new_argv[0] = interpr;
+		ret = mingw_spawn_applet(mode, interpr, new_argv, envp);
 	}
 	else {
 		char *path = xstrdup(getenv("PATH"));
 		char *tmp = path;
 		char *iprog = find_execable(interpr, &tmp);
 		free(path);
-		if (!prog) {
+		if (!iprog) {
+			free(new_argv);
 			errno = ENOENT;
 			return -1;
 		}
-		ret = spawnveq(mode, iprog, argv, envp);
+		new_argv[0] = iprog;
+		ret = spawnveq(mode, iprog, new_argv, envp);
 		free(iprog);
 	}
+
+	free(new_argv);
 	return ret;
 }
 
