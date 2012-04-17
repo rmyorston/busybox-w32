@@ -21,7 +21,9 @@
  *
  * - Environment variables from Windows will all be turned to uppercase.
  * - PATH accepts both ; and : as separator, but can't be mixed
- * - command without ".exe" is still understood as executable (option to turn off?)
+ * - command without ".exe" extension is still understood as executable
+ * - shell scripts on the path are detected by the presence of '#!';
+ *   the path to the interpreter is ignored, PATH is searched to find it
  * - both / and \ are supported in PATH. Usually you must use /
  * - trap/job does not work
  * - /dev/null is supported for redirection
@@ -12951,7 +12953,16 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 				if (stat(fullname, &statb) < 0) {
 					if (errno != ENOENT && errno != ENOTDIR)
 						e = errno;
-					goto loop;
+					fullname[len] = '\0';
+					if (stat(fullname, &statb) < 0) {
+						if (errno != ENOENT && errno != ENOTDIR)
+							e = errno;
+						goto loop;
+					}
+					if (!execable_file(fullname)) {
+						e = ENOEXEC;
+						goto loop;
+					}
 				}
 			}
 			fullname[len] = '\0';

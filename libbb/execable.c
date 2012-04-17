@@ -16,15 +16,31 @@
 int FAST_FUNC execable_file(const char *name)
 {
 	struct stat s;
-	if (ENABLE_PLATFORM_MINGW32) {
-		int len = strlen(name);
-		return len > 4 &&
+#if ENABLE_PLATFORM_MINGW32
+	if (!stat(name, &s) && S_ISREG(s.st_mode)) {
+		int len, fd, n;
+		char buf[100];
+
+		if ((len=strlen(name)) > 4 &&
 			(!strcasecmp(name+len-4, ".exe") ||
-			 !strcasecmp(name+len-4, ".com")) &&
-			!stat(name, &s) &&
-			S_ISREG(s.st_mode);
+			 !strcasecmp(name+len-4, ".com"))) {
+			return 1;
+		}
+
+		fd = open(name, O_RDONLY);
+		if (fd < 0)
+			return 0;
+		n = read(fd, buf, sizeof(buf)-1);
+		close(fd);
+		if (n < 4)	/* at least '#!/x' and not error */
+			return 0;
+
+		return (buf[0] == '#' && buf[1] == '!');
 	}
+	return 0;
+#else
 	return (!access(name, X_OK) && !stat(name, &s) && S_ISREG(s.st_mode));
+#endif
 }
 
 /* search (*PATHp) for an executable file;
@@ -67,11 +83,13 @@ char* FAST_FUNC find_execable(const char *filename, char **PATHp)
 					memcpy(np+len, ".exe", 5);
 					if (execable_file(np)) {
 						*PATHp = n;
+						free(p);
 						return np;
 					}
 					memcpy(np+len, ".com", 5);
 					if (execable_file(np)) {
 						*PATHp = n;
+						free(p);
 						return np;
 					}
 				}
