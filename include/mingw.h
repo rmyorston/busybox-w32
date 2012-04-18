@@ -171,10 +171,6 @@ int setenv(const char *name, const char *value, int replace);
 void unsetenv(const char *env);
 
 #define getenv mingw_getenv
-/*
- * string.h
- */
-char *strsep(char **stringp, const char *delim);
 
 /*
  * sys/ioctl.h

@@ -401,6 +401,7 @@ typedef unsigned smalluint;
 # undef HAVE_STPCPY
 # undef HAVE_STRCASESTR
 # undef HAVE_STRCHRNUL
+# undef HAVE_STRSEP
 # undef HAVE_STRSIGNAL
 # undef HAVE_STRVERSCMP
 # undef HAVE_VASPRINTF
