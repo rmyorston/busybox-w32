@@ -360,7 +360,7 @@ int kill(pid_t pid, int sig)
 
 	if (sig != SIGTERM) {
 		bb_error_msg("kill only supports SIGTERM");
-		errno = ENOSYS;
+		errno = EINVAL;
 		return -1;
 	}
 	h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);

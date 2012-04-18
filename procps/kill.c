@@ -86,7 +86,6 @@ int kill_main(int argc, char **argv)
 		goto do_it_now;
 	}
 
-#if !ENABLE_PLATFORM_MINGW32
 	/* The -l option, which prints out signal names.
 	 * Intended usage in shell:
 	 * echo "Died of SIG`kill -l $?`"
@@ -152,7 +151,6 @@ int kill_main(int argc, char **argv)
 	}
 	arg = *++argv;
 	argc--;
-#endif	/* ENABLE_PLATFORM_MINGW32 */
 
  do_it_now:
 	pid = getpid();
