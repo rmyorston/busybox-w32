@@ -9866,7 +9866,7 @@ evalcommand(union node *cmd, int flags)
 			break;
 		}
 		/* goes through to shellexec() */
-#endif
+#else
 		if (!(flags & EV_EXIT) || may_have_traps) {
 			/* No, forking off a child is necessary */
 			INT_OFF;
@@ -9882,6 +9882,7 @@ evalcommand(union node *cmd, int flags)
 			FORCE_INT_ON;
 			/* fall through to exec'ing external program */
 		}
+#endif
 		listsetvar(varlist.list, VEXPORT|VSTACK);
 		shellexec(argv, path, cmdentry.u.index);
 		/* NOTREACHED */
