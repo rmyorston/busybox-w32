@@ -35,8 +35,8 @@ next_path_sep(const char *path)
 static const char *
 parse_interpreter(const char *cmd, char ***opts, int *nopts)
 {
-	static char buf[100];
-	char *p, *s, *t, *opt[MAX_OPT];
+	static char buf[100], *opt[MAX_OPT];
+	char *p, *s, *t;
 	int n, fd;
 
 	*nopts = 0;
@@ -70,11 +70,8 @@ parse_interpreter(const char *cmd, char ***opts, int *nopts)
 		*p = '\0';
 	}
 
-	if (!(p = strrchr(buf+2, '/')) && !(p = strrchr(buf+2, '\\')))
-		return NULL;
-
-	/* move to end of interpreter name */
-	for ( s=p; *s && !isspace(*s); ++s ) {
+	/* move to end of interpreter path (which may not contain spaces) */
+	for ( s=buf+2; *s && !isspace(*s); ++s ) {
 	}
 
 	n = 0;
@@ -87,6 +84,10 @@ parse_interpreter(const char *cmd, char ***opts, int *nopts)
 			opt[n++] = t;
 		}
 	}
+
+	/* find interpreter name */
+	if (!(p = strrchr(buf+2, '/')))
+		return NULL;
 
 	*nopts = n;
 	*opts = opt;
