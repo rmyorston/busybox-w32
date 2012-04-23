@@ -1,4 +1,5 @@
 #include "libbb.h"
+#include <userenv.h>
 
 unsigned int _CRT_fmode = _O_BINARY;
 
@@ -495,6 +496,33 @@ int mingw_rename(const char *pold, const char *pnew)
 	return -1;
 }
 
+static char *gethomedir(void)
+{
+	static char buf[PATH_MAX];
+	DWORD len = sizeof(buf);
+	HANDLE h;
+	char *s;
+
+	buf[0] = '\0';
+	if ( !OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &h) )
+		return buf;
+
+	if ( !GetUserProfileDirectory(h, buf, &len) ) {
+		CloseHandle(h);
+		return buf;
+	}
+
+	CloseHandle(h);
+
+	for ( s=buf; *s; ++s ) {
+		if ( *s == '\\' ) {
+			*s = '/';
+		}
+	}
+
+	return buf;
+}
+
 struct passwd *getpwuid(int uid UNUSED_PARAM)
 {
 	static char user_name[100];
@@ -505,7 +533,7 @@ struct passwd *getpwuid(int uid UNUSED_PARAM)
 		return NULL;
 	p.pw_name = user_name;
 	p.pw_gecos = "unknown";
-	p.pw_dir = NULL;
+	p.pw_dir = gethomedir();
 	return &p;
 }
 

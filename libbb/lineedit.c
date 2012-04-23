@@ -647,6 +647,7 @@ static char *username_path_completion(char *ud)
 	if (*ud == '/') {       /* "~/..." */
 		home = home_pwd_buf;
 	} else {
+#if !ENABLE_PLATFORM_MINGW32
 		/* "~user/..." */
 		ud = strchr(ud, '/');
 		*ud = '\0';           /* "~user" */
@@ -654,6 +655,7 @@ static char *username_path_completion(char *ud)
 		*ud = '/';            /* restore "~user/..." */
 		if (entry)
 			home = entry->pw_dir;
+#endif
 	}
 	if (home) {
 		ud = concat_path_file(home, ud);
@@ -668,15 +670,18 @@ static char *username_path_completion(char *ud)
  */
 static NOINLINE unsigned complete_username(const char *ud)
 {
+#if !ENABLE_PLATFORM_MINGW32
 	/* Using _r function to avoid pulling in static buffers */
 	char line_buff[256];
 	struct passwd pwd;
 	struct passwd *result;
+#endif
 	unsigned userlen;
 
 	ud++; /* skip ~ */
 	userlen = strlen(ud);
 
+#if !ENABLE_PLATFORM_MINGW32
 	setpwent();
 	while (!getpwent_r(&pwd, line_buff, sizeof(line_buff), &result)) {
 		/* Null usernames should result in all users as possible completions. */
@@ -685,6 +690,7 @@ static NOINLINE unsigned complete_username(const char *ud)
 		}
 	}
 	endpwent();
+#endif
 
 	return 1 + userlen;
 }
@@ -1824,7 +1830,11 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 					pbuf = cwd_buf;
 					l = strlen(home_pwd_buf);
 					if (l != 0
+#if !ENABLE_PLATFORM_MINGW32
 					 && strncmp(home_pwd_buf, cwd_buf, l) == 0
+#else
+					 && strncasecmp(home_pwd_buf, cwd_buf, l) == 0
+#endif
 					 && (cwd_buf[l]=='/' || cwd_buf[l]=='\0')
 					 && strlen(cwd_buf + l) < PATH_MAX
 					) {
