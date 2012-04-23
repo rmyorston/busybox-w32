@@ -324,6 +324,8 @@ typedef void (*hush_sighandler_t)(int);
 # define ENABLE_FEATURE_EDITING 0
 # undef ENABLE_FEATURE_EDITING_FANCY_PROMPT
 # define ENABLE_FEATURE_EDITING_FANCY_PROMPT 0
+# undef ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
+# define ENABLE_FEATURE_EDITING_SAVE_ON_EXIT 0
 #endif
 
 /* Do we support ANY keywords? */
@@ -524,7 +526,6 @@ typedef enum redir_type {
 struct command {
 	pid_t pid;                  /* 0 if exited */
 	int assignment_cnt;         /* how many argv[i] are assignments? */
-	smallint is_stopped;        /* is the command currently running? */
 	smallint cmd_type;          /* CMD_xxx */
 #define CMD_NORMAL   0
 #define CMD_SUBSHELL 1
@@ -6767,7 +6768,6 @@ static int checkjobs(struct pipe *fg_pipe)
 					}
 					fg_pipe->cmds[i].cmd_exitcode = ex;
 				} else {
-					fg_pipe->cmds[i].is_stopped = 1;
 					fg_pipe->stopped_cmds++;
 				}
 				debug_printf_jobs("fg_pipe: alive_cmds %d stopped_cmds %d\n",
@@ -6828,7 +6828,6 @@ static int checkjobs(struct pipe *fg_pipe)
 			}
 		} else {
 			/* child stopped */
-			pi->cmds[i].is_stopped = 1;
 			pi->stopped_cmds++;
 		}
 #endif
@@ -8596,7 +8595,6 @@ static int FAST_FUNC builtin_fg_bg(char **argv)
 	debug_printf_jobs("reviving %d procs, pgrp %d\n", pi->num_cmds, pi->pgrp);
 	for (i = 0; i < pi->num_cmds; i++) {
 		debug_printf_jobs("reviving pid %d\n", pi->cmds[i].pid);
-		pi->cmds[i].is_stopped = 0;
 	}
 	pi->stopped_cmds = 0;
 
