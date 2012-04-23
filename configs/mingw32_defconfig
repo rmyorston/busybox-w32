@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
-# Busybox version: 1.20.0.git
-# Sat Mar 31 15:38:08 2012
+# Busybox version: 1.20.0
+# Mon Apr 23 11:02:02 2012
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -877,6 +877,7 @@ CONFIG_FEATURE_MIME_CHARSET=""
 # Process Utilities
 #
 # CONFIG_IOSTAT is not set
+# CONFIG_LSOF is not set
 # CONFIG_MPSTAT is not set
 # CONFIG_NMETER is not set
 # CONFIG_PMAP is not set
