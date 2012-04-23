@@ -101,9 +101,11 @@ char **env_setenv(char **env, const char *name)
 		free(env[i]);
 		if (*eq)
 			env[i] = xstrdup(name);
-		else
+		else {
 			for (; env[i]; i++)
 				env[i] = env[i+1];
+			SetEnvironmentVariable(name, NULL);
+		}
 	}
 	return env;
 }
