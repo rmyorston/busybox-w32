@@ -35,7 +35,6 @@
  */
 char* FAST_FUNC safe_gethostname(void)
 {
-#if !ENABLE_PLATFORM_MINGW32
 	struct utsname uts;
 
 	/* The length of the arrays in a struct utsname is unspecified;
@@ -50,13 +49,6 @@ char* FAST_FUNC safe_gethostname(void)
 	/* Uname can fail only if you pass a bad pointer to it. */
 	uname(&uts);
 	return xstrndup(!uts.nodename[0] ? "?" : uts.nodename, sizeof(uts.nodename));
-#else
-	/* We really don't care about people with host names wider than most screens */
-	char buf[256];
-	int r = gethostname(buf, sizeof(buf));
-	buf[sizeof(buf)-1] = '\0';
-	return xstrdup(r < 0 ? "?" : buf);
-#endif
 }
 
 /*
@@ -72,8 +64,6 @@ char* FAST_FUNC safe_getdomainname(void)
 	struct utsname uts;
 	uname(&uts);
 	return xstrndup(!uts.domainname[0] ? "?" : uts.domainname, sizeof(uts.domainname));
-#elif ENABLE_PLATFORM_MINGW32
-	return xstrdup("?");
 #else
 	/* We really don't care about people with domain names wider than most screens */
 	char buf[256];
