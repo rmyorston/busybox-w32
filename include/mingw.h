@@ -82,6 +82,7 @@ struct passwd {
 	char *pw_name;
 	char *pw_gecos;
 	char *pw_dir;
+	char *pw_shell;
 	uid_t pw_uid;
 	gid_t pw_gid;
 };

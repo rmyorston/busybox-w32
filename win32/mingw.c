@@ -534,6 +534,7 @@ struct passwd *getpwuid(int uid UNUSED_PARAM)
 	p.pw_name = user_name;
 	p.pw_gecos = "unknown";
 	p.pw_dir = gethomedir();
+	p.pw_shell = NULL;
 	return &p;
 }
 

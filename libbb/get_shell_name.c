@@ -17,11 +17,9 @@ const char *get_shell_name(void)
 	if (shell && shell[0])
 		return shell;
 
-#if !ENABLE_PLATFORM_MINGW32
 	pw = getpwuid(getuid());
 	if (pw && pw->pw_shell && pw->pw_shell[0])
 		return pw->pw_shell;
-#endif
 
 	return DEFAULT_SHELL;
 }
