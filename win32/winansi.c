@@ -432,5 +432,5 @@ int winansi_get_terminal_width_height(struct winsize *win)
 		win->ws_col = sbi.srWindow.Right - sbi.srWindow.Left + 1;
 	}
 
-	return ret;
+	return ret ? 0 : -1;
 }

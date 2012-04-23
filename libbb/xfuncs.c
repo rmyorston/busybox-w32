@@ -262,11 +262,7 @@ int FAST_FUNC get_terminal_width_height(int fd, unsigned *width, unsigned *heigh
 	win.ws_col = 0;
 	/* I've seen ioctl returning 0, but row/col is (still?) 0.
 	 * We treat that as an error too.  */
-#if !ENABLE_PLATFORM_MINGW32
 	err = ioctl(fd, TIOCGWINSZ, &win) != 0 || win.ws_row == 0;
-#else
-	err = winansi_get_terminal_width_height(&win) == 0;
-#endif
 	if (height)
 		*height = wh_helper(win.ws_row, 24, "LINES", &err);
 	if (width)

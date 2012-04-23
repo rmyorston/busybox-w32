@@ -183,7 +183,7 @@ void unsetenv(const char *env);
 
 #define TIOCGWINSZ 0x5413
 
-NOIMPL(ioctl,int fd UNUSED_PARAM, int code UNUSED_PARAM,...);
+int ioctl(int fd, int code, ...);
 
 /*
  * sys/socket.h
