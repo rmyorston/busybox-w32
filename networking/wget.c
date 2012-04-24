@@ -886,7 +886,6 @@ int wget_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	INIT_G();
-	IF_WIN32_NET(init_winsock();)
 
 	IF_FEATURE_WGET_TIMEOUT(G.timeout_seconds = 900;)
 	G.proxy_flag = "on";   /* use proxies if env vars are set */

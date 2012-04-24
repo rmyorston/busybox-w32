@@ -187,6 +187,8 @@ void lbb_prepare(const char *applet
 	if (ENABLE_LOCALE_SUPPORT && getpid() != 1)
 		setlocale(LC_ALL, "");
 
+	IF_WIN32_NET(init_winsock();)
+
 #if ENABLE_FEATURE_INDIVIDUAL
 	/* Redundant for busybox (run_applet_and_exit covers that case)
 	 * but needed for "individual applet" mode */
