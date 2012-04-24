@@ -13508,6 +13508,8 @@ init(void)
 		 *
 		 * We may end up having both Path and PATH. Then Path will be chosen
 		 * because it appears first.
+		 *
+		 * Also, replace backslashes with forward slashes.
 		 */
 		for (envp = environ; envp && *envp; envp++)
 			if (!strncasecmp(*envp, "PATH=", 5) &&
@@ -13521,17 +13523,15 @@ init(void)
 					continue;
 				for (start = *envp;start < end;start++)
 					*start = toupper(*start);
+				for ( ++end; *end; ++end ) {
+					if ( *end == '\\' ) {
+						*end = '/';
+					}
+				}
 			}
 		}
 #endif
 		for (envp = environ; envp && *envp; envp++) {
-#if ENABLE_PLATFORM_MINGW32
-			char *s;
-
-			while ((s=strchr(*envp, '\\'))) {
-				*s = '/';
-			}
-#endif
 			if (strchr(*envp, '=')) {
 				setvareq(*envp, VEXPORT|VTEXTFIXED);
 			}
