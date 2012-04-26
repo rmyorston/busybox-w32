@@ -527,14 +527,18 @@ struct passwd *getpwuid(int uid UNUSED_PARAM)
 {
 	static char user_name[100];
 	static struct passwd p;
-
 	DWORD len = sizeof(user_name);
+
+	user_name[0] = '\0';
 	if (!GetUserName(user_name, &len))
 		return NULL;
 	p.pw_name = user_name;
 	p.pw_gecos = "unknown";
 	p.pw_dir = gethomedir();
 	p.pw_shell = NULL;
+	p.pw_uid = 1000;
+	p.pw_gid = 1000;
+
 	return &p;
 }
 

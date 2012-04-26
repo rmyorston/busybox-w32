@@ -13508,27 +13508,43 @@ init(void)
 		 *
 		 * We may end up having both Path and PATH. Then Path will be chosen
 		 * because it appears first.
-		 *
-		 * Also, replace backslashes with forward slashes.
 		 */
-		for (envp = environ; envp && *envp; envp++)
-			if (!strncasecmp(*envp, "PATH=", 5) &&
-			    strncmp(*envp, "PATH=", 5))
+		for (envp = environ; envp && *envp; envp++) {
+			if (strncasecmp(*envp, "PATH=", 5) == 0 &&
+			    strncmp(*envp, "PATH=", 5) != 0) {
 				break;
+			}
+		}
+
 		if (envp && *envp) {
+			/*
+			 * If we get here it's because the environment contains a path
+			 * variable called something other than PATH.  This suggests we
+			 * haven't been invoked from an earlier instance of BusyBox.
+			 */
 			char *start, *end;
+			struct passwd *pw;
+
 			for (envp = environ; envp && *envp; envp++) {
 				end = strchr(*envp, '=');
 				if (!end)
 					continue;
+
+				/* make all variable names uppercase */
 				for (start = *envp;start < end;start++)
 					*start = toupper(*start);
+
+				/* convert backslashes to forward slashes */
 				for ( ++end; *end; ++end ) {
 					if ( *end == '\\' ) {
 						*end = '/';
 					}
 				}
 			}
+
+			/* some initialisation normally performed at login */
+			pw = xgetpwuid(getuid());
+			setup_environment(pw->pw_shell, SETUP_ENV_CHANGEENV, pw);
 		}
 #endif
 		for (envp = environ; envp && *envp; envp++) {
@@ -13536,25 +13552,6 @@ init(void)
 				setvareq(*envp, VEXPORT|VTEXTFIXED);
 			}
 		}
-
-#if ENABLE_PLATFORM_MINGW32
-		p = lookupvar("HOME");
-		if (!p) {
-			const char *hd, *hp;
-
-			hd = lookupvar("HOMEDRIVE");
-			hp = lookupvar("HOMEPATH");
-			if (hd && hp) {
-				char *s;
-
-				if ((s=malloc(strlen(hd) + strlen(hp) + 1)) != NULL) {
-					strcat(strcpy(s, hd), hp);
-					setvar("HOME", s, VEXPORT);
-					free(s);
-				}
-			}
-		}
-#endif
 
 		if (!ENABLE_PLATFORM_MINGW32)
 			setvar("PPID", utoa(getppid()), 0);
