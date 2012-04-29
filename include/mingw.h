@@ -334,7 +334,6 @@ static inline void sync(void) {}
 NOIMPL(ttyname_r,int fd UNUSED_PARAM, char *buf UNUSED_PARAM, int sz UNUSED_PARAM);
 int mingw_unlink(const char *pathname);
 NOIMPL(vfork,void);
-NOIMPL(getdomainname, char *name UNUSED_PARAM, size_t len UNUSED_PARAM);
 
 #define dup2 mingw_dup2
 #define getcwd mingw_getcwd
