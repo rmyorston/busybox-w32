@@ -1096,11 +1096,9 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 	if (ENABLE_FEATURE_CLEAN_UP /* && tar_handle->src_fd != STDIN_FILENO */)
 		close(tar_handle->src_fd);
 
-#if !ENABLE_PLATFORM_MINGW32
 	if (SEAMLESS_COMPRESSION || OPT_COMPRESS) {
 		check_errors_in_children(0);
 		return bb_got_signal;
 	}
-#endif
 	return EXIT_SUCCESS;
 }
