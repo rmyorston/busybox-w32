@@ -342,7 +342,7 @@ int adjust_width_and_validate_wc(unsigned *width_adj, int wc);
 /* Put 'command_ps[cursor]', cursor++.
  * Advance cursor on screen. If we reached right margin, scroll text up
  * and remove terminal margin effect by printing 'next_char' */
-#define HACK_FOR_WRONG_WIDTH 1
+#define HACK_FOR_WRONG_WIDTH 1 && !ENABLE_PLATFORM_MINGW32
 static void put_cur_glyph_and_inc_cursor(void)
 {
 	CHAR_T c = command_ps[cursor];
