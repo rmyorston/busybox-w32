@@ -169,6 +169,9 @@ int winansi_get_terminal_width_height(struct winsize *win);
 #define WTERMSIG(x) ((x) & 0x7f)
 #define WCOREDUMP(x) 0
 
+int mingw_system(const char *cmd);
+#define system mingw_system
+
 int clearenv(void);
 char *mingw_getenv(const char *name);
 int mkstemp(char *template);
