@@ -57,6 +57,10 @@ parse_interpreter(const char *cmd, char ***opts, int *nopts)
 	if (n < 4)	/* at least '#!/x' and not error */
 		return NULL;
 
+	/*
+	 * See http://www.in-ulm.de/~mascheck/various/shebang/ for trivia
+	 * relating to '#!'.
+	 */
 	if (buf[0] != '#' || buf[1] != '!')
 		return NULL;
 	buf[n] = '\0';
@@ -70,8 +74,12 @@ parse_interpreter(const char *cmd, char ***opts, int *nopts)
 		*p = '\0';
 	}
 
+	/* skip whitespace after '#!' */
+	for ( s=buf+2; *s && isspace(*s); ++s ) {
+	}
+
 	/* move to end of interpreter path (which may not contain spaces) */
-	for ( s=buf+2; *s && !isspace(*s); ++s ) {
+	for ( ; *s && !isspace(*s); ++s ) {
 	}
 
 	n = 0;
