@@ -73,5 +73,5 @@ int mingw_system(const char *cmd)
 	CloseHandle(piProcInfo.hProcess);
 	CloseHandle(piProcInfo.hThread);
 
-	return WEXITSTATUS(ret);
+	return ret;
 }
