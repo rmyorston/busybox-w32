@@ -648,24 +648,16 @@ static int filstat(char *nm, enum token mode)
 #undef W_OK
 #define W_OK S_IWRITE
 	if (mode == FILEX) {
-		int len = strlen(nm), ret;
-		if (len >= 4 &&
-		    (!strcmp(nm+len-4,".exe") ||
-		     !strcmp(nm+len-4,".com")))
-			ret = stat(nm, &s);
-		else {
-			char *exepath;
-			exepath = malloc(len+5);
-			memcpy(exepath, nm, len);
-			memcpy(exepath+len, ".exe", 5);
-			ret = stat(exepath, &s);
-			if (ret < 0) {
-				memcpy(exepath+len, ".exe", 5);
-				ret = stat(exepath, &s);
-			}
-			free(exepath);
+		char *p;
+
+		if (execable_file(nm)) {
+			return 1;
 		}
-		return ret >= 0;
+		else if ((p=win32_execable_file(nm))) {
+			free(p);
+			return 1;
+		}
+		return 0;
 	}
 #endif
 

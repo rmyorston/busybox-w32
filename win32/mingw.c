@@ -830,3 +830,35 @@ int mingw_access(const char *name, int mode)
 
 	return -1;
 }
+
+/* check if path can be made into an executable by adding a suffix;
+ * return an allocated string containing the path if it can;
+ * return NULL if not.
+ *
+ * if path already has a suffix don't even bother trying
+ */
+char *win32_execable_file(const char *p)
+{
+	char *path;
+	int len = strlen(p);
+
+	if (len > 4 && (!strcasecmp(p+len-4, ".exe") ||
+					!strcasecmp(p+len-4, ".com"))) {
+		return NULL;
+	}
+
+	if ( (path=malloc(len+5)) != NULL ) {
+		memcpy(path, p, len);
+		memcpy(path+len, ".exe", 5);
+		if (execable_file(path)) {
+			return path;
+		}
+		memcpy(path+len, ".com", 5);
+		if (execable_file(path)) {
+			return path;
+		}
+		free(path);
+	}
+
+	return NULL;
+}

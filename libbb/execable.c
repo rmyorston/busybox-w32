@@ -35,6 +35,9 @@ int FAST_FUNC execable_file(const char *name)
 char* FAST_FUNC find_execable(const char *filename, char **PATHp)
 {
 	char *p, *n;
+#if ENABLE_PLATFORM_MINGW32
+	char *w;
+#endif
 
 	p = *PATHp;
 	while (p) {
@@ -47,29 +50,13 @@ char* FAST_FUNC find_execable(const char *filename, char **PATHp)
 				*PATHp = n;
 				return p;
 			}
-			if (ENABLE_PLATFORM_MINGW32) {
-				int len = strlen(p);
-				if (len > 4 &&
-				    (!strcasecmp(p+len-4, ".exe") ||
-				     !strcasecmp(p+len-4, ".com")))
-					; /* nothing, already tested by execable_file() */
-				else {
-					char *np = xmalloc(len+4+1);
-					memcpy(np, p, len);
-					memcpy(np+len, ".exe", 5);
-					if (execable_file(np)) {
-						*PATHp = n;
-						free(p);
-						return np;
-					}
-					memcpy(np+len, ".com", 5);
-					if (execable_file(np)) {
-						*PATHp = n;
-						free(p);
-						return np;
-					}
-				}
+#if ENABLE_PLATFORM_MINGW32
+			else if ((w=win32_execable_file(p))) {
+				*PATHp = n;
+				free(p);
+				return w;
 			}
+#endif
 			free(p);
 		}
 		p = n;
