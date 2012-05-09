@@ -225,7 +225,8 @@ static int do_lstat(int follow, const char *file_name, struct stat *buf)
 		buf->st_uid = 0;
 		buf->st_nlink = 1;
 		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
-		if (len > 4 && !strcmp(file_name+len-4, ".exe"))
+		if (len > 4 && (!strcasecmp(file_name+len-4, ".exe") ||
+						!strcasecmp(file_name+len-4, ".com")))
 			buf->st_mode |= S_IEXEC;
 		buf->st_size = fdata.nFileSizeLow |
 			(((off64_t)fdata.nFileSizeHigh)<<32);
@@ -761,4 +762,71 @@ int mingw_unlink(const char *pathname)
 char *strptime(const char *s UNUSED_PARAM, const char *format UNUSED_PARAM, struct tm *tm UNUSED_PARAM)
 {
 	return NULL;
+}
+
+#undef access
+int mingw_access(const char *name, int mode)
+{
+	int ret;
+	struct stat s;
+	int fd, n, offset, sig;
+	unsigned char buf[1024];
+
+	/* Windows can only handle test for existence, read or write */
+	if (mode == F_OK || (mode & ~X_OK)) {
+		ret = _access(name, mode & ~X_OK);
+		if (ret < 0 || !(mode & X_OK)) {
+			return ret;
+		}
+	}
+
+	if (!mingw_stat(name, &s) && S_ISREG(s.st_mode)) {
+
+		/* stat marks .exe and .com files as executable */
+		if ((s.st_mode&S_IEXEC)) {
+			return 0;
+		}
+
+		fd = open(name, O_RDONLY);
+		if (fd < 0)
+			return -1;
+		n = read(fd, buf, sizeof(buf)-1);
+		close(fd);
+		if (n < 4)	/* at least '#!/x' and not error */
+			return -1;
+
+		/* shell script */
+		if (buf[0] == '#' && buf[1] == '!') {
+			return 0;
+		}
+
+		/*
+		 * Poke about in file to see if it's a PE binary.  I've just copied
+		 * the magic from the file command.
+		 */
+		if (buf[0] == 'M' && buf[1] == 'Z') {
+			offset = (buf[0x19] << 8) + buf[0x18];
+			if (offset > 0x3f) {
+				offset = (buf[0x3f] << 24) + (buf[0x3e] << 16) +
+							(buf[0x3d] << 8) + buf[0x3c];
+				if (offset < sizeof(buf)-100) {
+					if (memcmp(buf+offset, "PE\0\0", 4) == 0) {
+						sig = (buf[offset+25] << 8) + buf[offset+24];
+						if (sig == 0x10b || sig == 0x20b) {
+							sig = (buf[offset+23] << 8) + buf[offset+22];
+							if ((sig & 0x2000) != 0) {
+								/* DLL */
+								return -1;
+							}
+							sig = buf[offset+92];
+							return !(sig == 1 || sig == 2 ||
+										sig == 3 || sig == 7);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return -1;
 }

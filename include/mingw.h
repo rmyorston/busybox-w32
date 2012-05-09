@@ -337,12 +337,16 @@ static inline void sync(void) {}
 NOIMPL(ttyname_r,int fd UNUSED_PARAM, char *buf UNUSED_PARAM, int sz UNUSED_PARAM);
 int mingw_unlink(const char *pathname);
 NOIMPL(vfork,void);
+int mingw_access(const char *name, int mode);
 
 #define dup2 mingw_dup2
 #define getcwd mingw_getcwd
 #define lchown chown
 #define open mingw_open
 #define unlink mingw_unlink
+
+#undef access
+#define access mingw_access
 
 /*
  * utime.h
