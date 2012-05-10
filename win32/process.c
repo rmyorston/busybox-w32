@@ -261,7 +261,7 @@ mingw_spawn_1(int mode, const char *cmd, const char *const *argv, const char *co
 
 	if (ENABLE_FEATURE_PREFER_APPLETS &&
 	    find_applet_by_name(cmd) >= 0)
-		return mingw_spawn_applet(mode, cmd, argv++, envp);
+		return mingw_spawn_applet(mode, cmd, argv, envp);
 	else if (is_absolute_path(cmd))
 		return mingw_spawn_interpreter(mode, cmd, argv, envp);
 	else {
@@ -290,7 +290,7 @@ mingw_spawn_1(int mode, const char *cmd, const char *const *argv, const char *co
 pid_t
 mingw_spawn(char **argv)
 {
-	return mingw_spawn_1(P_NOWAIT, argv[0], (const char *const *)(argv+1), (const char *const *)environ);
+	return mingw_spawn_1(P_NOWAIT, argv[0], (const char *const *)argv, (const char *const *)environ);
 }
 
 int
