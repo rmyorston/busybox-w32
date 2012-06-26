@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.21.0.git
-# Tue May  1 10:38:28 2012
+# Tue Jun 26 13:14:48 2012
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -694,7 +694,7 @@ CONFIG_DC=y
 # CONFIG_MAKEDEVS is not set
 # CONFIG_FEATURE_MAKEDEVS_LEAF is not set
 # CONFIG_FEATURE_MAKEDEVS_TABLE is not set
-# CONFIG_MAN is not set
+CONFIG_MAN=y
 # CONFIG_MICROCOM is not set
 # CONFIG_MOUNTPOINT is not set
 # CONFIG_MT is not set

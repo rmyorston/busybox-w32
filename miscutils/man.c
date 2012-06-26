@@ -204,7 +204,11 @@ int man_main(int argc UNUSED_PARAM, char **argv)
 				char *next_path;
 				char **path_element;
 
+#if ENABLE_PLATFORM_MINGW32
+				next_path = next_path_sep(path);
+#else
 				next_path = strchr(path, ':');
+#endif
 				if (next_path) {
 					*next_path = '\0';
 					if (next_path++ == path) /* "::"? */
