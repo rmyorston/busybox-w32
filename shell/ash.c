@@ -37,8 +37,9 @@
  *      define DEBUG=1 to compile in debugging ('set -o debug' to turn on)
  *      define DEBUG=2 to compile in and turn on debugging.
  *
- * When debugging is on, debugging info will be written to ./trace and
- * a quit signal will generate a core dump.
+ * When debugging is on (DEBUG is 1 and "set -o debug" was executed),
+ * debugging info will be written to ./trace and a quit signal
+ * will generate a core dump.
  */
 #define DEBUG 0
 /* Tweak debug output verbosity here */
@@ -1955,6 +1956,10 @@ static const struct {
 	const char *var_text;
 	void (*var_func)(const char *) FAST_FUNC;
 } varinit_data[] = {
+	/*
+	 * Note: VEXPORT would not work correctly here for NOFORK applets:
+	 * some environment strings may be constant.
+	 */
 	{ VSTRFIXED|VTEXTFIXED       , defifsvar   , NULL            },
 #if ENABLE_ASH_MAIL
 	{ VSTRFIXED|VTEXTFIXED|VUNSET, "MAIL"      , changemail      },
@@ -5401,14 +5406,15 @@ openredirect(union node *redir)
 	char *fname;
 	int f;
 
+	fname = redir->nfile.expfname;
 #if ENABLE_PLATFORM_MINGW32
 	/* Support for /dev/null */
 	switch (redir->nfile.type) {
 		case NFROM:
-			if (!strcmp(redir->nfile.expfname, "/dev/null"))
+			if (!strcmp(fname, "/dev/null"))
 				return open("nul",O_RDWR);
-			if (!strncmp(redir->nfile.expfname, "/dev/", 5)) {
-				ash_msg("Unhandled device %s\n", redir->nfile.expfname);
+			if (!strncmp(fname, "/dev/", 5)) {
+				ash_msg("Unhandled device %s\n", fname);
 				return -1;
 			}
 			break;
@@ -5417,10 +5423,10 @@ openredirect(union node *redir)
 		case NTO:
 		case NCLOBBER:
 		case NAPPEND:
-			if (!strcmp(redir->nfile.expfname, "/dev/null"))
+			if (!strcmp(fname, "/dev/null"))
 				return open("nul",O_RDWR);
-			if (!strncmp(redir->nfile.expfname, "/dev/", 5)) {
-				ash_msg("Unhandled device %s\n", redir->nfile.expfname);
+			if (!strncmp(fname, "/dev/", 5)) {
+				ash_msg("Unhandled device %s\n", fname);
 				return -1;
 			}
 			break;
@@ -5428,13 +5434,11 @@ openredirect(union node *redir)
 #endif
 	switch (redir->nfile.type) {
 	case NFROM:
-		fname = redir->nfile.expfname;
 		f = open(fname, O_RDONLY);
 		if (f < 0)
 			goto eopen;
 		break;
 	case NFROMTO:
-		fname = redir->nfile.expfname;
 		f = open(fname, O_RDWR|O_CREAT, 0666);
 		if (f < 0)
 			goto ecreate;
@@ -5445,7 +5449,6 @@ openredirect(union node *redir)
 #endif
 		/* Take care of noclobber mode. */
 		if (Cflag) {
-			fname = redir->nfile.expfname;
 			f = noclobberopen(fname);
 			if (f < 0)
 				goto ecreate;
@@ -5453,13 +5456,11 @@ openredirect(union node *redir)
 		}
 		/* FALLTHROUGH */
 	case NCLOBBER:
-		fname = redir->nfile.expfname;
 		f = open(fname, O_WRONLY|O_CREAT|O_TRUNC, 0666);
 		if (f < 0)
 			goto ecreate;
 		break;
 	case NAPPEND:
-		fname = redir->nfile.expfname;
 		f = open(fname, O_WRONLY|O_CREAT|O_APPEND, 0666);
 		if (f < 0)
 			goto ecreate;
@@ -6491,7 +6492,9 @@ argstr(char *p, int flags, struct strlist *var_str_list)
 			length++;
 			goto addquote;
 		case CTLVAR:
+			TRACE(("argstr: evalvar('%s')\n", p));
 			p = evalvar(p, flags, var_str_list);
+			TRACE(("argstr: evalvar:'%s'\n", (char *)stackblock()));
 			goto start;
 		case CTLBACKQ:
 			c = '\0';
@@ -7199,8 +7202,7 @@ evalvar(char *p, int flags, struct strlist *var_str_list)
 		patloc = expdest - (char *)stackblock();
 		if (NULL == subevalvar(p, /* varname: */ NULL, patloc, subtype,
 				startloc, varflags,
-//TODO: | EXP_REDIR too? All other such places do it too
-				/* quotes: */ flags & (EXP_FULL | EXP_CASE),
+				/* quotes: */ flags & (EXP_FULL | EXP_CASE | EXP_REDIR),
 				var_str_list)
 		) {
 			int amount = expdest - (
@@ -7602,6 +7604,7 @@ expandarg(union node *arg, struct arglist *arglist, int flag)
 	STARTSTACKSTR(expdest);
 	ifsfirst.next = NULL;
 	ifslastp = NULL;
+	TRACE(("expandarg: argstr('%s',flags:%x)\n", arg->narg.text, flag));
 	argstr(arg->narg.text, flag,
 			/* var_str_list: */ arglist ? arglist->list : NULL);
 	p = _STPUTC('\0', expdest);
@@ -7610,6 +7613,7 @@ expandarg(union node *arg, struct arglist *arglist, int flag)
 		return;                 /* here document expanded */
 	}
 	p = grabstackstr(p);
+	TRACE(("expandarg: p:'%s'\n", p));
 	exparg.lastp = &exparg.list;
 	/*
 	 * TODO - EXP_REDIR
@@ -7620,8 +7624,10 @@ expandarg(union node *arg, struct arglist *arglist, int flag)
 		exparg.lastp = &exparg.list;
 		expandmeta(exparg.list /*, flag*/);
 	} else {
-		if (flag & EXP_REDIR) /*XXX - for now, just remove escapes */
+		if (flag & EXP_REDIR) { /*XXX - for now, just remove escapes */
 			rmescapes(p, 0);
+			TRACE(("expandarg: rmescapes:'%s'\n", p));
+		}
 		sp = stzalloc(sizeof(*sp));
 		sp->text = p;
 		*exparg.lastp = sp;
@@ -9090,6 +9096,7 @@ expredir(union node *n)
 		case NCLOBBER:
 		case NAPPEND:
 			expandarg(redir->nfile.fname, &fn, EXP_TILDE | EXP_REDIR);
+			TRACE(("expredir expanded to '%s'\n", fn.list->text));
 #if ENABLE_ASH_BASH_COMPAT
  store_expfname:
 #endif
@@ -13343,6 +13350,10 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		}
 	}
 
+	/* "read -s" needs to save/restore termios, can't allow ^C
+	 * to jump out of it.
+	 */
+	INT_OFF;
 	r = shell_builtin_read(setvar2,
 		argptr,
 		bltinlookup("IFS"), /* can be NULL */
@@ -13352,6 +13363,7 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		opt_t,
 		opt_u
 	);
+	INT_ON;
 
 	if ((uintptr_t)r > 1)
 		ash_msg_and_raise_error(r);

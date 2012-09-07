@@ -301,7 +301,8 @@ typedef unsigned smalluint;
 #define fdprintf dprintf
 
 /* Useful for defeating gcc's alignment of "char message[]"-like data */
-#if 1 /* if needed: !defined(arch1) && !defined(arch2) */
+#if !defined(__s390__)
+    /* on s390[x], non-word-aligned data accesses require larger code */
 # define ALIGN1 __attribute__((aligned(1)))
 # define ALIGN2 __attribute__((aligned(2)))
 # define ALIGN4 __attribute__((aligned(4)))
@@ -349,6 +350,12 @@ typedef unsigned smalluint;
 
 #if defined(__CYGWIN__)
 # define MAXSYMLINKS SYMLOOP_MAX
+#endif
+
+#if defined(ANDROID) || defined(__ANDROID__)
+# define BB_ADDITIONAL_PATH ":/system/sbin:/system/bin:/system/xbin"
+# define SYS_ioprio_set __NR_ioprio_set
+# define SYS_ioprio_get __NR_ioprio_get
 #endif
 
 

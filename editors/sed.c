@@ -53,7 +53,9 @@
  * Todo:
  * - Create a wrapper around regex to make libc's regex conform with sed
  *
- * Reference http://www.opengroup.org/onlinepubs/007904975/utilities/sed.html
+ * Reference
+ * http://www.opengroup.org/onlinepubs/007904975/utilities/sed.html
+ * http://pubs.opengroup.org/onlinepubs/9699919799/utilities/sed.html
  */
 
 //usage:#define sed_trivial_usage
@@ -63,7 +65,7 @@
 //usage:       "	-e CMD	Add CMD to sed commands to be executed"
 //usage:     "\n	-f FILE	Add FILE contents to sed commands to be executed"
 //usage:     "\n	-i[SFX]	Edit files in-place (otherwise sends to stdout)"
-//usage:     "\n		Optionally backs files up, appending SFX"
+//usage:     "\n		Optionally back files up, appending SFX"
 //usage:     "\n	-n	Suppress automatic printing of pattern space"
 //usage:     "\n	-r	Use extended regex syntax"
 //usage:     "\n"
@@ -492,8 +494,10 @@ static const char *parse_cmd_args(sed_cmd_t *sed_cmd, const char *cmdstr)
 	}
 	/* handle edit cmds: (a)ppend, (i)nsert, and (c)hange */
 	else if (idx <= IDX_c) { /* a,i,c */
-		if ((sed_cmd->end_line || sed_cmd->end_match) && sed_cmd->cmd != 'c')
-			bb_error_msg_and_die("only a beginning address can be specified for edit commands");
+		if (idx < IDX_c) { /* a,i */
+			if (sed_cmd->end_line || sed_cmd->end_match)
+				bb_error_msg_and_die("command '%c' uses only one address", sed_cmd->cmd);
+		}
 		for (;;) {
 			if (*cmdstr == '\n' || *cmdstr == '\\') {
 				cmdstr++;
@@ -510,8 +514,10 @@ static const char *parse_cmd_args(sed_cmd_t *sed_cmd, const char *cmdstr)
 	}
 	/* handle file cmds: (r)ead */
 	else if (idx <= IDX_w) { /* r,w */
-		if (sed_cmd->end_line || sed_cmd->end_match)
-			bb_error_msg_and_die("command only uses one address");
+		if (idx < IDX_w) { /* r */
+			if (sed_cmd->end_line || sed_cmd->end_match)
+				bb_error_msg_and_die("command '%c' uses only one address", sed_cmd->cmd);
+		}
 		cmdstr += parse_file_cmd(/*sed_cmd,*/ cmdstr, &sed_cmd->string);
 		if (sed_cmd->cmd == 'w') {
 			sed_cmd->sw_file = xfopen_for_write(sed_cmd->string);
@@ -673,7 +679,7 @@ static void do_subst_w_backrefs(char *line, char *replace)
 
 	/* go through the replacement string */
 	for (i = 0; replace[i]; i++) {
-		/* if we find a backreference (\1, \2, etc.) print the backref'ed * text */
+		/* if we find a backreference (\1, \2, etc.) print the backref'ed text */
 		if (replace[i] == '\\') {
 			unsigned backref = replace[++i] - '0';
 			if (backref <= 9) {
@@ -707,8 +713,10 @@ static void do_subst_w_backrefs(char *line, char *replace)
 static int do_subst_command(sed_cmd_t *sed_cmd, char **line_p)
 {
 	char *line = *line_p;
-	int altered = 0;
 	unsigned match_count = 0;
+	bool altered = 0;
+	bool prev_match_empty = 1;
+	bool tried_at_eol = 0;
 	regex_t *current_regex;
 
 	current_regex = sed_cmd->sub_match;
@@ -735,50 +743,75 @@ static int do_subst_command(sed_cmd_t *sed_cmd, char **line_p)
 
 	/* Now loop through, substituting for matches */
 	do {
+		int start = G.regmatch[0].rm_so;
+		int end = G.regmatch[0].rm_eo;
 		int i;
-
-		/* Work around bug in glibc regexec, demonstrated by:
-		 * echo " a.b" | busybox sed 's [^ .]* x g'
-		 * The match_count check is so not to break
-		 * echo "hi" | busybox sed 's/^/!/g'
-		 */
-		if (!G.regmatch[0].rm_so && !G.regmatch[0].rm_eo && match_count) {
-			pipe_putc(*line++);
-			goto next;
-		}
 
 		match_count++;
 
 		/* If we aren't interested in this match, output old line to
-		   end of match and continue */
+		 * end of match and continue */
 		if (sed_cmd->which_match
 		 && (sed_cmd->which_match != match_count)
 		) {
-			for (i = 0; i < G.regmatch[0].rm_eo; i++)
+			for (i = 0; i < end; i++)
+				pipe_putc(*line++);
+			/* Null match? Print one more char */
+			if (start == end && *line)
 				pipe_putc(*line++);
 			goto next;
 		}
 
-		/* print everything before the match */
-		for (i = 0; i < G.regmatch[0].rm_so; i++)
+		/* Print everything before the match */
+		for (i = 0; i < start; i++)
 			pipe_putc(line[i]);
 
-		/* then print the substitution string */
-		do_subst_w_backrefs(line, sed_cmd->string);
+		/* Then print the substitution string,
+		 * unless we just matched empty string after non-empty one.
+		 * Example: string "cccd", pattern "c*", repl "R":
+		 * result is "RdR", not "RRdR": first match "ccc",
+		 * second is "" before "d", third is "" after "d".
+		 * Second match is NOT replaced!
+		 */
+		if (prev_match_empty || start != 0 || start != end) {
+			//dbg("%d %d %d", prev_match_empty, start, end);
+			dbg("inserting replacement at %d in '%s'", start, line);
+			do_subst_w_backrefs(line, sed_cmd->string);
+			/* Flag that something has changed */
+			altered = 1;
+		} else {
+			dbg("NOT inserting replacement at %d in '%s'", start, line);
+		}
 
-		/* advance past the match */
-		line += G.regmatch[0].rm_eo;
-		/* flag that something has changed */
-		altered++;
+		/* If matched string is empty (f.e. "c*" pattern),
+		 * copy verbatim one char after it before attempting more matches
+		 */
+		prev_match_empty = (start == end);
+		if (prev_match_empty) {
+			if (!line[end]) {
+				tried_at_eol = 1;
+			} else {
+				pipe_putc(line[end]);
+				end++;
+			}
+		}
+
+		/* Advance past the match */
+		dbg("line += %d", end);
+		line += end;
 
 		/* if we're not doing this globally, get out now */
 		if (sed_cmd->which_match != 0)
 			break;
  next:
-		if (*line == '\0')
-			break;
+		/* Exit if we are at EOL and already tried matching at it */
+		if (*line == '\0') {
+			if (tried_at_eol)
+				break;
+			tried_at_eol = 1;
+		}
 
-//maybe (G.regmatch[0].rm_eo ? REG_NOTBOL : 0) instead of unconditional REG_NOTBOL?
+//maybe (end ? REG_NOTBOL : 0) instead of unconditional REG_NOTBOL?
 	} while (regexec(current_regex, line, 10, G.regmatch, REG_NOTBOL) != REG_NOMATCH);
 
 	/* Copy rest of string into output pipeline */
@@ -1127,7 +1160,7 @@ static void process_files(void)
 		case 's':
 			if (!do_subst_command(sed_cmd, &pattern_space))
 				break;
-			dbg("do_subst_command succeeeded:'%s'", pattern_space);
+			dbg("do_subst_command succeeded:'%s'", pattern_space);
 			substituted |= 1;
 
 			/* handle p option */

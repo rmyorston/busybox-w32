@@ -696,12 +696,25 @@ static char nextchar(char **s)
 	pps = *s;
 	if (c == '\\')
 		c = bb_process_escape_sequence((const char**)s);
+	/* Example awk statement:
+	 * s = "abc\"def"
+	 * we must treat \" as "
+	 */
 	if (c == '\\' && *s == pps) { /* unrecognized \z? */
 		c = *(*s); /* yes, fetch z */
 		if (c)
 			(*s)++; /* advance unless z = NUL */
 	}
 	return c;
+}
+
+/* TODO: merge with strcpy_and_process_escape_sequences()?
+ */
+static void unescape_string_in_place(char *s1)
+{
+	char *s = s1;
+	while ((*s1 = nextchar(&s)) != '\0')
+		s1++;
 }
 
 static ALWAYS_INLINE int isalnum_(int c)
@@ -1799,6 +1812,18 @@ static void handle_special(var *v)
 		is_f0_split = FALSE;
 
 	} else if (v == intvar[FS]) {
+		/*
+		 * The POSIX-2008 standard says that changing FS should have no effect on the
+		 * current input line, but only on the next one. The language is:
+		 *
+		 * > Before the first reference to a field in the record is evaluated, the record
+		 * > shall be split into fields, according to the rules in Regular Expressions,
+		 * > using the value of FS that was current at the time the record was read.
+		 *
+		 * So, split up current line before assignment to FS:
+		 */
+		split_f0();
+
 		mk_splitter(getvar_s(v), &fsplitter);
 
 	} else if (v == intvar[RS]) {
@@ -2992,7 +3017,7 @@ static int awk_exit(int r)
  * otherwise return 0 */
 static int is_assignment(const char *expr)
 {
-	char *exprc, *val, *s, *s1;
+	char *exprc, *val;
 
 	if (!isalnum_(*expr) || (val = strchr(expr, '=')) == NULL) {
 		return FALSE;
@@ -3002,10 +3027,7 @@ static int is_assignment(const char *expr)
 	val = exprc + (val - expr);
 	*val++ = '\0';
 
-	s = s1 = val;
-	while ((*s1 = nextchar(&s)) != '\0')
-		s1++;
-
+	unescape_string_in_place(val);
 	setvar_u(newvar(exprc), val);
 	free(exprc);
 	return TRUE;
@@ -3118,8 +3140,10 @@ int awk_main(int argc, char **argv)
 	opt = getopt32(argv, "F:v:f:W:", &opt_F, &list_v, &list_f, NULL);
 	argv += optind;
 	argc -= optind;
-	if (opt & 0x1)
-		setvar_s(intvar[FS], opt_F); // -F
+	if (opt & 0x1) { /* -F */
+		unescape_string_in_place(opt_F);
+		setvar_s(intvar[FS], opt_F);
+	}
 	while (list_v) { /* -v */
 		if (!is_assignment(llist_pop(&list_v)))
 			bb_show_usage();
