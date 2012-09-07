@@ -31,7 +31,7 @@ int FAST_FUNC bb_make_directory(char *path, long mode, int flags)
 	mode_t cur_mask;
 	mode_t org_mask;
 	const char *fail_msg;
-	char *s, *s2;
+	char *s;
 	char c;
 	struct stat st;
 
@@ -45,21 +45,18 @@ int FAST_FUNC bb_make_directory(char *path, long mode, int flags)
 		c = '\0';
 
 		if (flags & FILEUTILS_RECUR) {  /* Get the parent */
-			/* skip drive letter and initial slashes */
+			/* skip drive letter */
 			if (ENABLE_PLATFORM_MINGW32 && s == path && *s && s[1] == ':') {
 				s += 2;
-				while (*s == '/')
-					s++;
 			}
 			/* Bypass leading non-'/'s and then subsequent '/'s */
 			while (*s) {
 				if (*s == '/') {
-					s2 = s;
-					c = *s2;	/* Save the current char */
-					*s2 = 0;	/* and replace it with nul. */
 					do {
 						++s;
 					} while (*s == '/');
+					c = *s; /* Save the current char */
+					*s = '\0'; /* and replace it with nul */
 					break;
 				}
 				++s;
@@ -124,7 +121,7 @@ int FAST_FUNC bb_make_directory(char *path, long mode, int flags)
 		}
 
 		/* Remove any inserted nul from the path (recursive mode) */
-		*s2 = c;
+		*s = c;
 	} /* while (1) */
 
 	flags = -1;
