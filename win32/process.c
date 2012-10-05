@@ -117,7 +117,7 @@ quote_arg(const char *arg)
 	const char *p = arg;
 	if (!*p) force_quotes = 1;
 	while (*p) {
-		if (isspace(*p) || *p == '*' || *p == '?' || *p == '{' || *p == '\'')
+		if (isspace(*p))
 			force_quotes = 1;
 		else if (*p == '"')
 			n++;
@@ -130,8 +130,6 @@ quote_arg(const char *arg)
 			}
 			if (*p == '"')
 				n += count*2 + 1;
-			else
-				n += count;
 			continue;
 		}
 		len++;
@@ -142,7 +140,8 @@ quote_arg(const char *arg)
 
 	/* insert \ where necessary */
 	d = q = xmalloc(len+n+3);
-	*d++ = '"';
+	if (force_quotes)
+		*d++ = '"';
 	while (*arg) {
 		if (*arg == '"')
 			*d++ = '\\';
@@ -152,15 +151,16 @@ quote_arg(const char *arg)
 				count++;
 				*d++ = *arg++;
 			}
-			while (count-- > 0)
-				*d++ = '\\';
 			if (*arg == '"') {
+				while (count-- > 0)
+					*d++ = '\\';
 				*d++ = '\\';
 			}
 		}
 		*d++ = *arg++;
 	}
-	*d++ = '"';
+	if (force_quotes)
+		*d++ = '"';
 	*d++ = 0;
 	return q;
 }
