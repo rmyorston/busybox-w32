@@ -78,9 +78,9 @@
 
 #include "libbb.h"
 
-#define OPT_FILESYS     (1 << 0)
-#define OPT_TERSE       (1 << 1)
-#define OPT_DEREFERENCE (1 << 2)
+#define OPT_TERSE       (1 << 0)
+#define OPT_DEREFERENCE (1 << 1)
+#define OPT_FILESYS     (1 << 2)
 #define OPT_SELINUX     (1 << 3)
 
 #if ENABLE_FEATURE_STAT_FORMAT
