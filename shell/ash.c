@@ -6691,7 +6691,8 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 	IF_ASH_BASH_COMPAT(const char *repl = NULL;)
 	IF_ASH_BASH_COMPAT(int pos, len, orig_len;)
 	int saveherefd = herefd;
-	int amount, workloc, resetloc;
+	int amount, resetloc;
+	IF_ASH_BASH_COMPAT(int workloc;)
 	int zero;
 	char *(*scan)(char*, char*, char*, char*, int, int);
 
@@ -6804,9 +6805,9 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 	rmescend--;
 	str = (char *)stackblock() + strloc;
 	preglob(str, varflags & VSQUOTE, 0);
-	workloc = expdest - (char *)stackblock();
 
 #if ENABLE_ASH_BASH_COMPAT
+	workloc = expdest - (char *)stackblock();
 	if (subtype == VSREPLACE || subtype == VSREPLACEALL) {
 		char *idx, *end;
 
@@ -9786,11 +9787,11 @@ evalcommand(union node *cmd, int flags)
 
 	/* Now locate the command. */
 	if (argc) {
-		const char *oldpath;
 		int cmd_flag = DO_ERR;
-
+#if ENABLE_ASH_CMDCMD
+		const char *oldpath = path + 5;
+#endif
 		path += 5;
-		oldpath = path;
 		for (;;) {
 			find_command(argv[0], &cmdentry, cmd_flag, path);
 			if (cmdentry.cmdtype == CMDUNKNOWN) {
@@ -13165,9 +13166,27 @@ exportcmd(int argc UNUSED_PARAM, char **argv)
 	char *name;
 	const char *p;
 	char **aptr;
-	int flag = argv[0][0] == 'r' ? VREADONLY : VEXPORT;
+	char opt;
+	int flag;
+	int flag_off;
 
-	if (nextopt("p") != 'p') {
+	/* "readonly" in bash accepts, but ignores -n.
+	 * We do the same: it saves a conditional in nextopt's param.
+	 */
+	flag_off = 0;
+	while ((opt = nextopt("np")) != '\0') {
+		if (opt == 'n')
+			flag_off = VEXPORT;
+	}
+	flag = VEXPORT;
+	if (argv[0][0] == 'r') {
+		flag = VREADONLY;
+		flag_off = 0; /* readonly ignores -n */
+	}
+	flag_off = ~flag_off;
+
+	/*if (opt_p_not_specified) - bash doesnt check this. Try "export -p NAME" */
+	{
 		aptr = argptr;
 		name = *aptr;
 		if (name) {
@@ -13178,15 +13197,19 @@ exportcmd(int argc UNUSED_PARAM, char **argv)
 				} else {
 					vp = *findvar(hashvar(name), name);
 					if (vp) {
-						vp->flags |= flag;
+						vp->flags = ((vp->flags | flag) & flag_off);
 						continue;
 					}
 				}
-				setvar(name, p, flag);
+				setvar(name, p, (flag & flag_off));
 			} while ((name = *++aptr) != NULL);
 			return 0;
 		}
 	}
+
+	/* No arguments. Show the list of exported or readonly vars.
+	 * -n is ignored.
+	 */
 	showvars(argv[0], flag, 0);
 	return 0;
 }
