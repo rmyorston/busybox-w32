@@ -294,6 +294,13 @@ static const char *set_attr(const char *str)
 	case 'K':
 		erase_in_line();
 		break;
+	case '?':
+		/* skip this to avoid ugliness when vi is shut down */
+		++str;
+		while (isdigit(*str))
+			++str;
+		func = str;
+		break;
 	default:
 		/* Unsupported code */
 		break;
