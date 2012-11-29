@@ -127,7 +127,11 @@ static unsigned long long du(const char *filename)
 		}
 	}
 
+#if !ENABLE_PLATFORM_MINGW32
 	sum = statbuf.st_blocks;
+#else
+	sum = (statbuf.st_size+511)/512;
+#endif
 
 	if (S_ISLNK(statbuf.st_mode)) {
 		if (G.slink_depth > G.du_depth) { /* -H or -L */
@@ -136,7 +140,11 @@ static unsigned long long du(const char *filename)
 				G.status = EXIT_FAILURE;
 				return 0;
 			}
+#if !ENABLE_PLATFORM_MINGW32
 			sum = statbuf.st_blocks;
+#else
+			sum = (statbuf.st_size+511)/512;
+#endif
 			if (G.slink_depth == 1) {
 				/* Convert -H to -L */
 				G.slink_depth = INT_MAX;
