@@ -81,11 +81,13 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 	smallint retval = 0;
 	smallint dest_exists = 0;
 	smallint ovr;
+	int status;
 
 /* Inverse of cp -d ("cp without -d") */
 #define FLAGS_DEREF (flags & (FILEUTILS_DEREFERENCE + FILEUTILS_DEREFERENCE_L0))
 
-	if ((FLAGS_DEREF ? stat : lstat)(source, &source_stat) < 0) {
+	status = FLAGS_DEREF ? stat(source, &source_stat) : lstat(source, &source_stat);
+	if (status < 0) {
 		/* This may be a dangling symlink.
 		 * Making [sym]links to dangling symlinks works, so... */
 		if (flags & (FILEUTILS_MAKE_SOFTLINK|FILEUTILS_MAKE_HARDLINK))

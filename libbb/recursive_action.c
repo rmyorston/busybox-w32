@@ -73,7 +73,7 @@ int FAST_FUNC recursive_action(const char *fileName,
 	if (depth == 0)
 		follow = ACTION_FOLLOWLINKS | ACTION_FOLLOWLINKS_L0;
 	follow &= flags;
-	status = (follow ? stat : lstat)(fileName, &statbuf);
+	status = follow ? stat(fileName, &statbuf) : lstat(fileName, &statbuf);
 	if (status < 0) {
 #ifdef DEBUG_RECURS_ACTION
 		bb_error_msg("status=%d flags=%x", status, flags);
