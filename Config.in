@@ -610,6 +610,17 @@ config LFS
 	  cp, mount, tar, and many others. If you want to access files larger
 	  than 2 Gigabytes, enable this option. Otherwise, leave it set to 'N'.
 
+config NOGLOB
+	bool "Turn off MSVCRT argument processing"
+	default y
+	depends on PLATFORM_MINGW32
+	help
+	  The Microsoft C Runtime handles the expansion of wildcards on the
+	  command line while the BusyBox shell does its own wildcard expansion.
+	  For best results when using the shell MSVCRT globbing should be
+	  turned off. If you want the BusyBox binary to handle wildcard
+	  expansion using the Microsoft C Runtime set this to 'N'.
+
 config CROSS_COMPILER_PREFIX
 	string "Cross Compiler prefix"
 	default ""

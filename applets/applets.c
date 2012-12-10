@@ -9,7 +9,7 @@
 #include "busybox.h"
 
 #if ENABLE_BUILD_LIBBUSYBOX
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_NOGLOB
 /* disable MSVCRT command line globbing */
 int _CRT_glob = 0;
 #endif
