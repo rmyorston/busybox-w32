@@ -9101,6 +9101,8 @@ expredir(union node *n)
 #if ENABLE_ASH_BASH_COMPAT
  store_expfname:
 #endif
+			if (redir->nfile.expfname)
+				stunalloc(redir->nfile.expfname);
 			redir->nfile.expfname = fn.list->text;
 			break;
 		case NFROMFD:

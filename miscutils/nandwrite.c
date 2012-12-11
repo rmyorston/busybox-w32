@@ -39,7 +39,7 @@
 //usage:	"[-o] [-b] [-s ADDR] [-f FILE] MTD_DEVICE"
 //usage:#define nanddump_full_usage "\n\n"
 //usage:	"Dump the specified MTD device\n"
-//usage:     "\n	-o	Omit oob data"
+//usage:     "\n	-o	Dump oob data"
 //usage:     "\n	-b	Omit bad block from the dump"
 //usage:     "\n	-s ADDR	Start address"
 //usage:     "\n	-l LEN	Length"
@@ -162,9 +162,9 @@ int nandwrite_main(int argc UNUSED_PARAM, char **argv)
 		tmp = next_good_eraseblock(fd, &meminfo, blockstart);
 		if (tmp != blockstart) {
 			/* bad block(s), advance mtdoffset */
-			if (IS_NANDDUMP & !(opts & OPT_b)) {
+			if (IS_NANDDUMP && !(opts & OPT_b)) {
 				int bad_len = MIN(tmp, end_addr) - mtdoffset;
-				dump_bad(&meminfo, bad_len, !(opts & OPT_o));
+				dump_bad(&meminfo, bad_len, opts & OPT_o);
 			}
 			mtdoffset = tmp;
 		}
@@ -182,9 +182,9 @@ int nandwrite_main(int argc UNUSED_PARAM, char **argv)
 			mtdoffset = next_good_eraseblock(fd, &meminfo, blockstart);
 			if (IS_NANDWRITE)
 				printf("Writing at 0x%08x\n", mtdoffset);
-			else if (mtdoffset > blockstart) {
+			else if (mtdoffset > blockstart && !(opts & OPT_b)) {
 				int bad_len = MIN(mtdoffset, limit) - blockstart;
-				dump_bad(&meminfo, bad_len, !(opts & OPT_o));
+				dump_bad(&meminfo, bad_len, opts & OPT_o);
 			}
 			if (mtdoffset >= limit)
 				break;
@@ -210,7 +210,7 @@ int nandwrite_main(int argc UNUSED_PARAM, char **argv)
 		}
 		xwrite(output_fd, filebuf, meminfo_writesize);
 
-		if (IS_NANDDUMP && !(opts & OPT_o)) {
+		if (IS_NANDDUMP && (opts & OPT_o)) {
 			/* Dump OOB data */
 			oob.start = mtdoffset;
 			xioctl(fd, MEMREADOOB, &oob);

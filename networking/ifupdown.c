@@ -49,9 +49,6 @@
 #include <fnmatch.h>
 
 #define MAX_OPT_DEPTH 10
-#define EUNBALBRACK 10001
-#define EUNDEFVAR   10002
-#define EUNBALPER   10000
 
 #if ENABLE_FEATURE_IFUPDOWN_MAPPING
 #define MAX_INTERFACE_LENGTH 10
@@ -233,7 +230,7 @@ static int count_netmask_bits(const char *dotted_quad)
 static char *parse(const char *command, struct interface_defn_t *ifd)
 {
 	size_t old_pos[MAX_OPT_DEPTH] = { 0 };
-	int okay[MAX_OPT_DEPTH] = { 1 };
+	smallint okay[MAX_OPT_DEPTH] = { 1 };
 	int opt_depth = 1;
 	char *result = NULL;
 
@@ -244,13 +241,10 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 			command++;
 			break;
 		case '\\':
-			if (command[1]) {
-				addstr(&result, command + 1, 1);
-				command += 2;
-			} else {
-				addstr(&result, command, 1);
+			if (command[1])
 				command++;
-			}
+			addstr(&result, command, 1);
+			command++;
 			break;
 		case '[':
 			if (command[1] == '[' && opt_depth < MAX_OPT_DEPTH) {
@@ -259,7 +253,7 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 				opt_depth++;
 				command += 2;
 			} else {
-				addstr(&result, "[", 1);
+				addstr(&result, command, 1);
 				command++;
 			}
 			break;
@@ -271,7 +265,7 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 				}
 				command += 2;
 			} else {
-				addstr(&result, "]", 1);
+				addstr(&result, command, 1);
 				command++;
 			}
 			break;
@@ -283,7 +277,7 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 				command++;
 				nextpercent = strchr(command, '%');
 				if (!nextpercent) {
-					errno = EUNBALPER;
+					/* Unterminated %var% */
 					free(result);
 					return NULL;
 				}
@@ -328,13 +322,13 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 	}
 
 	if (opt_depth > 1) {
-		errno = EUNBALBRACK;
+		/* Unbalanced bracket */
 		free(result);
 		return NULL;
 	}
 
 	if (!okay[0]) {
-		errno = EUNDEFVAR;
+		/* Undefined variable and we aren't in a bracket */
 		free(result);
 		return NULL;
 	}
