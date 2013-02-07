@@ -31,6 +31,11 @@ static ALWAYS_INLINE uint64_t rotr64(uint64_t x, unsigned n)
 	return (x >> n) | (x << (64 - n));
 }
 
+/* rotl64 only used for sha3 currently */
+static ALWAYS_INLINE uint64_t rotl64(uint64_t x, unsigned n)
+{
+	return (x << n) | (x >> (64 - n));
+}
 
 /* Feed data through a temporary buffer.
  * The internal buffer remembers previous data until it has 64
@@ -51,7 +56,7 @@ static void FAST_FUNC common64_hash(md5_ctx_t *ctx, const void *buffer, size_t l
 		len -= remaining;
 		buffer = (const char *)buffer + remaining;
 		bufpos += remaining;
-		/* clever way to do "if (bufpos != 64) break; ... ; bufpos = 0;" */
+		/* Clever way to do "if (bufpos != N) break; ... ; bufpos = 0;" */
 		bufpos -= 64;
 		if (bufpos != 0)
 			break;
@@ -185,10 +190,9 @@ static void FAST_FUNC md5_process_block64(md5_ctx_t *ctx)
 	int i;
 	uint32_t temp;
 
-# if BB_BIG_ENDIAN
-	for (i = 0; i < 16; i++)
-		words[i] = SWAP_LE32(words[i]);
-# endif
+	if (BB_BIG_ENDIAN)
+		for (i = 0; i < 16; i++)
+			words[i] = SWAP_LE32(words[i]);
 
 # if MD5_SMALL == 3
 	pc = C_array;
@@ -462,12 +466,13 @@ void FAST_FUNC md5_end(md5_ctx_t *ctx, void *resbuf)
 	common64_end(ctx, /*swap_needed:*/ BB_BIG_ENDIAN);
 
 	/* The MD5 result is in little endian byte order */
-#if BB_BIG_ENDIAN
-	ctx->hash[0] = SWAP_LE32(ctx->hash[0]);
-	ctx->hash[1] = SWAP_LE32(ctx->hash[1]);
-	ctx->hash[2] = SWAP_LE32(ctx->hash[2]);
-	ctx->hash[3] = SWAP_LE32(ctx->hash[3]);
-#endif
+	if (BB_BIG_ENDIAN) {
+		ctx->hash[0] = SWAP_LE32(ctx->hash[0]);
+		ctx->hash[1] = SWAP_LE32(ctx->hash[1]);
+		ctx->hash[2] = SWAP_LE32(ctx->hash[2]);
+		ctx->hash[3] = SWAP_LE32(ctx->hash[3]);
+	}
+
 	memcpy(resbuf, ctx->hash, sizeof(ctx->hash[0]) * 4);
 }
 
@@ -834,7 +839,7 @@ void FAST_FUNC sha512_hash(sha512_ctx_t *ctx, const void *buffer, size_t len)
 		len -= remaining;
 		buffer = (const char *)buffer + remaining;
 		bufpos += remaining;
-		/* clever way to do "if (bufpos != 128) break; ... ; bufpos = 0;" */
+		/* Clever way to do "if (bufpos != N) break; ... ; bufpos = 0;" */
 		bufpos -= 128;
 		if (bufpos != 0)
 			break;
@@ -895,4 +900,269 @@ void FAST_FUNC sha512_end(sha512_ctx_t *ctx, void *resbuf)
 			ctx->hash[i] = SWAP_BE64(ctx->hash[i]);
 	}
 	memcpy(resbuf, ctx->hash, sizeof(ctx->hash));
+}
+
+
+/*
+ * The Keccak sponge function, designed by Guido Bertoni, Joan Daemen,
+ * Michael Peeters and Gilles Van Assche. For more information, feedback or
+ * questions, please refer to our website: http://keccak.noekeon.org/
+ *
+ * Implementation by Ronny Van Keer,
+ * hereby denoted as "the implementer".
+ *
+ * To the extent possible under law, the implementer has waived all copyright
+ * and related or neighboring rights to the source code in this file.
+ * http://creativecommons.org/publicdomain/zero/1.0/
+ *
+ * Busybox modifications (C) Lauri Kasanen, under the GPLv2.
+ */
+
+#if CONFIG_SHA3_SMALL < 0
+# define SHA3_SMALL 0
+#elif CONFIG_SHA3_SMALL > 1
+# define SHA3_SMALL 1
+#else
+# define SHA3_SMALL CONFIG_SHA3_SMALL
+#endif
+
+enum {
+	SHA3_IBLK_BYTES = 72, /* 576 bits / 8 */
+};
+
+/*
+ * In the crypto literature this function is usually called Keccak-f().
+ */
+static void sha3_process_block72(uint64_t *state)
+{
+	enum { NROUNDS = 24 };
+
+	/* Elements should be 64-bit, but top half is always zero or 0x80000000.
+	 * We encode 63rd bits in a separate word below.
+	 * Same is true for 31th bits, which lets us use 16-bit table instead of 64-bit.
+	 * The speed penalty is lost in the noise.
+	 */
+	static const uint16_t IOTA_CONST[NROUNDS] = {
+		0x0001,
+		0x8082,
+		0x808a,
+		0x8000,
+		0x808b,
+		0x0001,
+		0x8081,
+		0x8009,
+		0x008a,
+		0x0088,
+		0x8009,
+		0x000a,
+		0x808b,
+		0x008b,
+		0x8089,
+		0x8003,
+		0x8002,
+		0x0080,
+		0x800a,
+		0x000a,
+		0x8081,
+		0x8080,
+		0x0001,
+		0x8008,
+	};
+	/* bit for CONST[0] is in msb: 0011 0011 0000 0111 1101 1101 */
+	const uint32_t IOTA_CONST_bit63 = (uint32_t)(0x3307dd00);
+	/* bit for CONST[0] is in msb: 0001 0110 0011 1000 0001 1011 */
+	const uint32_t IOTA_CONST_bit31 = (uint32_t)(0x16381b00);
+
+	static const uint8_t ROT_CONST[24] = {
+		1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14,
+		27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44,
+	};
+	static const uint8_t PI_LANE[24] = {
+		10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4,
+		15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1,
+	};
+	/*static const uint8_t MOD5[10] = { 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, };*/
+
+	unsigned x, y;
+	unsigned round;
+
+	if (BB_BIG_ENDIAN) {
+		for (x = 0; x < 25; x++) {
+			state[x] = SWAP_LE64(state[x]);
+		}
+	}
+
+	for (round = 0; round < NROUNDS; ++round) {
+		/* Theta */
+		{
+			uint64_t BC[10];
+			for (x = 0; x < 5; ++x) {
+				BC[x + 5] = BC[x] = state[x]
+					^ state[x + 5] ^ state[x + 10]
+					^ state[x + 15]	^ state[x + 20];
+			}
+			/* Using 2x5 vector above eliminates the need to use
+			 * BC[MOD5[x+N]] trick below to fetch BC[(x+N) % 5],
+			 * and the code is a bit _smaller_.
+			 */
+			for (x = 0; x < 5; ++x) {
+				uint64_t temp = BC[x + 4] ^ rotl64(BC[x + 1], 1);
+				state[x] ^= temp;
+				state[x + 5] ^= temp;
+				state[x + 10] ^= temp;
+				state[x + 15] ^= temp;
+				state[x + 20] ^= temp;
+			}
+		}
+
+		/* Rho Pi */
+		if (SHA3_SMALL) {
+			uint64_t t1 = state[1];
+			for (x = 0; x < 24; ++x) {
+				uint64_t t0 = state[PI_LANE[x]];
+				state[PI_LANE[x]] = rotl64(t1, ROT_CONST[x]);
+				t1 = t0;
+			}
+		} else {
+			/* Especially large benefit for 32-bit arch (75% faster):
+			 * 64-bit rotations by non-constant usually are SLOW on those.
+			 * We resort to unrolling here.
+			 * This optimizes out PI_LANE[] and ROT_CONST[],
+			 * but generates 300-500 more bytes of code.
+			 */
+			uint64_t t0;
+			uint64_t t1 = state[1];
+#define RhoPi_twice(x) \
+	t0 = state[PI_LANE[x  ]]; \
+	state[PI_LANE[x  ]] = rotl64(t1, ROT_CONST[x  ]); \
+	t1 = state[PI_LANE[x+1]]; \
+	state[PI_LANE[x+1]] = rotl64(t0, ROT_CONST[x+1]);
+			RhoPi_twice(0); RhoPi_twice(2);
+			RhoPi_twice(4); RhoPi_twice(6);
+			RhoPi_twice(8); RhoPi_twice(10);
+			RhoPi_twice(12); RhoPi_twice(14);
+			RhoPi_twice(16); RhoPi_twice(18);
+			RhoPi_twice(20); RhoPi_twice(22);
+#undef RhoPi_twice
+		}
+
+		/* Chi */
+		for (y = 0; y <= 20; y += 5) {
+			uint64_t BC0, BC1, BC2, BC3, BC4;
+			BC0 = state[y + 0];
+			BC1 = state[y + 1];
+			BC2 = state[y + 2];
+			state[y + 0] = BC0 ^ ((~BC1) & BC2);
+			BC3 = state[y + 3];
+			state[y + 1] = BC1 ^ ((~BC2) & BC3);
+			BC4 = state[y + 4];
+			state[y + 2] = BC2 ^ ((~BC3) & BC4);
+			state[y + 3] = BC3 ^ ((~BC4) & BC0);
+			state[y + 4] = BC4 ^ ((~BC0) & BC1);
+		}
+
+		/* Iota */
+		state[0] ^= IOTA_CONST[round]
+			| (uint32_t)((IOTA_CONST_bit31 << round) & 0x80000000)
+			| (uint64_t)((IOTA_CONST_bit63 << round) & 0x80000000) << 32;
+	}
+
+	if (BB_BIG_ENDIAN) {
+		for (x = 0; x < 25; x++) {
+			state[x] = SWAP_LE64(state[x]);
+		}
+	}
+}
+
+void FAST_FUNC sha3_begin(sha3_ctx_t *ctx)
+{
+	memset(ctx, 0, sizeof(*ctx));
+}
+
+void FAST_FUNC sha3_hash(sha3_ctx_t *ctx, const void *buffer, size_t len)
+{
+#if SHA3_SMALL
+	const uint8_t *data = buffer;
+	unsigned bufpos = ctx->bytes_queued;
+
+	while (1) {
+		unsigned remaining = SHA3_IBLK_BYTES - bufpos;
+		if (remaining > len)
+			remaining = len;
+		len -= remaining;
+		/* XOR data into buffer */
+		while (remaining != 0) {
+			uint8_t *buf = (uint8_t*)ctx->state;
+			buf[bufpos] ^= *data++;
+			bufpos++;
+			remaining--;
+		}
+		/* Clever way to do "if (bufpos != N) break; ... ; bufpos = 0;" */
+		bufpos -= SHA3_IBLK_BYTES;
+		if (bufpos != 0)
+			break;
+		/* Buffer is filled up, process it */
+		sha3_process_block72(ctx->state);
+		/*bufpos = 0; - already is */
+	}
+	ctx->bytes_queued = bufpos + SHA3_IBLK_BYTES;
+#else
+	/* +50 bytes code size, but a bit faster because of long-sized XORs */
+	const uint8_t *data = buffer;
+	unsigned bufpos = ctx->bytes_queued;
+
+	/* If already data in queue, continue queuing first */
+	while (len != 0 && bufpos != 0) {
+		uint8_t *buf = (uint8_t*)ctx->state;
+		buf[bufpos] ^= *data++;
+		len--;
+		bufpos++;
+		if (bufpos == SHA3_IBLK_BYTES) {
+			bufpos = 0;
+			goto do_block;
+		}
+	}
+
+	/* Absorb complete blocks */
+	while (len >= SHA3_IBLK_BYTES) {
+		/* XOR data onto beginning of state[].
+		 * We try to be efficient - operate one word at a time, not byte.
+		 * Careful wrt unaligned access: can't just use "*(long*)data"!
+		 */
+		unsigned count = SHA3_IBLK_BYTES / sizeof(long);
+		long *buf = (long*)ctx->state;
+		do {
+			long v;
+			move_from_unaligned_long(v, (long*)data);
+			*buf++ ^= v;
+			data += sizeof(long);
+		} while (--count);
+		len -= SHA3_IBLK_BYTES;
+ do_block:
+		sha3_process_block72(ctx->state);
+	}
+
+	/* Queue remaining data bytes */
+	while (len != 0) {
+		uint8_t *buf = (uint8_t*)ctx->state;
+		buf[bufpos] ^= *data++;
+		bufpos++;
+		len--;
+	}
+
+	ctx->bytes_queued = bufpos;
+#endif
+}
+
+void FAST_FUNC sha3_end(sha3_ctx_t *ctx, void *resbuf)
+{
+	/* Padding */
+	uint8_t *buf = (uint8_t*)ctx->state;
+	buf[ctx->bytes_queued]   ^= 1;
+	buf[SHA3_IBLK_BYTES - 1] ^= 0x80;
+
+	sha3_process_block72(ctx->state);
+
+	/* Output */
+	memcpy(resbuf, ctx->state, 64);
 }

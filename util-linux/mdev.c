@@ -429,6 +429,18 @@ static const struct rule *next_rule(void)
 
 #endif
 
+static void mkdir_recursive(char *name)
+{
+	/* if name has many levels ("dir1/dir2"),
+	 * bb_make_directory() will create dir1 according to umask,
+	 * not according to its "mode" parameter.
+	 * Since we run with umask=0, need to temporarily switch it.
+	 */
+	umask(022); /* "dir1" (if any) will be 0755 too */
+	bb_make_directory(name, 0755, FILEUTILS_RECUR);
+	umask(0);
+}
+
 /* Builds an alias path.
  * This function potentionally reallocates the alias parameter.
  * Only used for ENABLE_FEATURE_MDEV_RENAME
@@ -442,7 +454,7 @@ static char *build_alias(char *alias, const char *device_name)
 	dest = strrchr(alias, '/');
 	if (dest) { /* ">bar/[baz]" ? */
 		*dest = '\0'; /* mkdir bar */
-		bb_make_directory(alias, 0755, FILEUTILS_RECUR);
+		mkdir_recursive(alias);
 		*dest = '/';
 		if (dest[1] == '\0') { /* ">bar/" => ">bar/device_name" */
 			dest = alias;
@@ -641,7 +653,7 @@ static void make_device(char *device_name, char *path, int operation)
 			char *slash = strrchr(node_name, '/');
 			if (slash) {
 				*slash = '\0';
-				bb_make_directory(node_name, 0755, FILEUTILS_RECUR);
+				mkdir_recursive(node_name);
 				*slash = '/';
 			}
 			if (G.verbose)
@@ -649,6 +661,8 @@ static void make_device(char *device_name, char *path, int operation)
 			if (mknod(node_name, rule->mode | type, makedev(major, minor)) && errno != EEXIST)
 				bb_perror_msg("can't create '%s'", node_name);
 			if (ENABLE_FEATURE_MDEV_CONF) {
+				if (G.verbose)
+					bb_error_msg("chmod: %o chown: %u:%u", rule->mode, rule->ugid.uid, rule->ugid.gid);
 				chmod(node_name, rule->mode);
 				chown(node_name, rule->ugid.uid, rule->ugid.gid);
 			}
@@ -801,6 +815,7 @@ static void load_firmware(const char *firmware, const char *sysfs_path)
 		full_write(loading_fd, "-1", 2);
 
  out:
+	xchdir("/dev");
 	if (ENABLE_FEATURE_CLEAN_UP) {
 		close(firmware_fd);
 		close(loading_fd);
@@ -907,11 +922,13 @@ int mdev_main(int argc UNUSED_PARAM, char **argv)
 		}
 
 		{
-			int logfd = open("/dev/mdev.log", O_WRONLY | O_APPEND);
+			int logfd = open("mdev.log", O_WRONLY | O_APPEND);
 			if (logfd >= 0) {
 				xmove_fd(logfd, STDERR_FILENO);
 				G.verbose = 1;
-				bb_error_msg("seq: %s action: %s", seq, action);
+				if (seq)
+					applet_name = xasprintf("%s[%s]", applet_name, seq);
+				bb_error_msg("action: %s", action);
 			}
 		}
 

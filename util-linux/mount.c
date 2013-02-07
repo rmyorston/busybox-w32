@@ -36,6 +36,10 @@
 //usage:	IF_FEATURE_MTAB_SUPPORT(
 //usage:     "\n	-n		Don't update /etc/mtab"
 //usage:	)
+//usage:	IF_FEATURE_MOUNT_VERBOSE(
+//usage:     "\n	-v		Verbose"
+//usage:	)
+////usage:   "\n	-s		Sloppy (ignored)"
 //usage:     "\n	-r		Read-only mount"
 //usage:     "\n	-w		Read-write mount (default)"
 //usage:     "\n	-t FSTYPE[,...]	Filesystem type(s)"
@@ -224,7 +228,7 @@ static const int32_t mount_options[] = {
 		IF_DESKTOP(/* "user"  */ MOUNT_USERS,)
 		IF_DESKTOP(/* "users" */ MOUNT_USERS,)
 		/* "_netdev" */ 0,
-		IF_DESKTOP(/* "comment" */ 0,) /* systemd uses this in fstab */
+		IF_DESKTOP(/* "comment=" */ 0,) /* systemd uses this in fstab */
 	)
 
 	IF_FEATURE_MOUNT_FLAGS(
@@ -283,7 +287,7 @@ static const char mount_option_str[] =
 		IF_DESKTOP("user\0")
 		IF_DESKTOP("users\0")
 		"_netdev\0"
-		IF_DESKTOP("comment\0") /* systemd uses this in fstab */
+		IF_DESKTOP("comment=\0") /* systemd uses this in fstab */
 	)
 	IF_FEATURE_MOUNT_FLAGS(
 		// vfs flags
@@ -475,10 +479,13 @@ static unsigned long parse_mount_options(char *options, char **unrecognized)
 // FIXME: use hasmntopt()
 		// Find this option in mount_options
 		for (i = 0; i < ARRAY_SIZE(mount_options); i++) {
-			/* We support "option=" match for "comment=" thingy */
 			unsigned opt_len = strlen(option_str);
+
 			if (strncasecmp(option_str, options, opt_len) == 0
-			 && (options[opt_len] == '\0' || options[opt_len] == '=')
+			 && (options[opt_len] == '\0'
+			    /* or is it "comment=" thingy in fstab? */
+			    IF_FEATURE_MOUNT_FSTAB(IF_DESKTOP( || option_str[opt_len-1] == '=' ))
+			    )
 			) {
 				unsigned long fl = mount_options[i];
 				if (fl & BB_MS_INVERTED_VALUE)
@@ -927,7 +934,7 @@ static bool_t xdr_fhandle(XDR *xdrs, fhandle objp)
 static bool_t xdr_fhstatus(XDR *xdrs, fhstatus *objp)
 {
 	if (!xdr_u_int(xdrs, &objp->fhs_status))
-		 return FALSE;
+		return FALSE;
 	if (objp->fhs_status == 0)
 		return xdr_fhandle(xdrs, objp->fhstatus_u.fhs_fhandle);
 	return TRUE;
@@ -941,8 +948,8 @@ static bool_t xdr_dirpath(XDR *xdrs, dirpath *objp)
 static bool_t xdr_fhandle3(XDR *xdrs, fhandle3 *objp)
 {
 	return xdr_bytes(xdrs, (char **)&objp->fhandle3_val,
-			   (unsigned int *) &objp->fhandle3_len,
-			   FHSIZE3);
+			(unsigned int *) &objp->fhandle3_len,
+			FHSIZE3);
 }
 
 static bool_t xdr_mountres3_ok(XDR *xdrs, mountres3_ok *objp)
@@ -950,10 +957,10 @@ static bool_t xdr_mountres3_ok(XDR *xdrs, mountres3_ok *objp)
 	if (!xdr_fhandle3(xdrs, &objp->fhandle))
 		return FALSE;
 	return xdr_array(xdrs, &(objp->auth_flavours.auth_flavours_val),
-			   &(objp->auth_flavours.auth_flavours_len),
-			   ~0,
-			   sizeof(int),
-			   (xdrproc_t) xdr_int);
+			&(objp->auth_flavours.auth_flavours_len),
+			~0,
+			sizeof(int),
+			(xdrproc_t) xdr_int);
 }
 
 static bool_t xdr_mountstat3(XDR *xdrs, mountstat3 *objp)
@@ -1522,19 +1529,19 @@ static NOINLINE int nfsmount(struct mntent *mp, unsigned long vfsflags, char *fi
 		switch (pm_mnt.pm_prot) {
 		case IPPROTO_UDP:
 			mclient = clntudp_create(&mount_server_addr,
-						 pm_mnt.pm_prog,
-						 pm_mnt.pm_vers,
-						 retry_timeout,
-						 &msock);
+						pm_mnt.pm_prog,
+						pm_mnt.pm_vers,
+						retry_timeout,
+						&msock);
 			if (mclient)
 				break;
 			mount_server_addr.sin_port = htons(pm_mnt.pm_port);
 			msock = RPC_ANYSOCK;
 		case IPPROTO_TCP:
 			mclient = clnttcp_create(&mount_server_addr,
-						 pm_mnt.pm_prog,
-						 pm_mnt.pm_vers,
-						 &msock, 0, 0);
+						pm_mnt.pm_prog,
+						pm_mnt.pm_vers,
+						&msock, 0, 0);
 			break;
 		default:
 			mclient = NULL;
@@ -1555,18 +1562,18 @@ static NOINLINE int nfsmount(struct mntent *mp, unsigned long vfsflags, char *fi
 
 			if (pm_mnt.pm_vers == 3)
 				clnt_stat = clnt_call(mclient, MOUNTPROC3_MNT,
-					      (xdrproc_t) xdr_dirpath,
-					      (caddr_t) &pathname,
-					      (xdrproc_t) xdr_mountres3,
-					      (caddr_t) &status,
-					      total_timeout);
+						(xdrproc_t) xdr_dirpath,
+						(caddr_t) &pathname,
+						(xdrproc_t) xdr_mountres3,
+						(caddr_t) &status,
+						total_timeout);
 			else
 				clnt_stat = clnt_call(mclient, MOUNTPROC_MNT,
-					      (xdrproc_t) xdr_dirpath,
-					      (caddr_t) &pathname,
-					      (xdrproc_t) xdr_fhstatus,
-					      (caddr_t) &status,
-					      total_timeout);
+						(xdrproc_t) xdr_dirpath,
+						(caddr_t) &pathname,
+						(xdrproc_t) xdr_fhstatus,
+						(caddr_t) &status,
+						total_timeout);
 
 			if (clnt_stat == RPC_SUCCESS)
 				goto prepare_kernel_data; /* we're done */
@@ -1817,17 +1824,44 @@ static int singlemount(struct mntent *mp, int ignore_busy)
 	) {
 		int len;
 		char c;
+		char *hostname, *share;
+		char *dotted, *ip;
 		len_and_sockaddr *lsa;
-		char *hostname, *dotted, *ip;
+
+		// Parse mp->mnt_fsname of the form "//hostname/share[/dir1/dir2]"
 
 		hostname = mp->mnt_fsname + 2;
 		len = strcspn(hostname, "/\\");
-		if (len == 0 || hostname[len] == '\0')
+		share = hostname + len + 1;
+		if (len == 0          // 3rd char is a [back]slash (IOW: empty hostname)
+		 || share[-1] == '\0' // no [back]slash after hostname
+		 || share[0] == '\0'  // empty share name
+		) {
 			goto report_error;
-		c = hostname[len];
-		hostname[len] = '\0';
+		}
+		c = share[-1];
+		share[-1] = '\0';
+		len = strcspn(share, "/\\");
+
+		// "unc=\\hostname\share" option is mandatory
+		// after CIFS option parsing was rewritten in Linux 3.4.
+		// Must use backslashes.
+		// If /dir1/dir2 is present, also add "prefixpath=dir1/dir2"
+		{
+			char *unc = xasprintf(
+				share[len] != '\0'  /* "/dir1/dir2" exists? */
+					? "unc=\\\\%s\\%.*s,prefixpath=%s"
+					: "unc=\\\\%s\\%.*s",
+				hostname,
+				len, share,
+				share + len + 1  /* "dir1/dir2" */
+			);
+			parse_mount_options(unc, &filteropts);
+			if (ENABLE_FEATURE_CLEAN_UP) free(unc);
+		}
+
 		lsa = host2sockaddr(hostname, 0);
-		hostname[len] = c;
+		share[-1] = c;
 		if (!lsa)
 			goto report_error;
 
@@ -1839,8 +1873,6 @@ static int singlemount(struct mntent *mp, int ignore_busy)
 		parse_mount_options(ip, &filteropts);
 		if (ENABLE_FEATURE_CLEAN_UP) free(ip);
 
-		// "-o mand" is required [why?]
-		vfsflags |= MS_MANDLOCK;
 		mp->mnt_type = (char*)"cifs";
 		rc = mount_it_now(mp, vfsflags, filteropts);
 

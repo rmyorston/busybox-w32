@@ -409,7 +409,7 @@ static NOINLINE void INET6_setroute(int action, char **args)
 				bb_error_msg_and_die("resolving %s", args_m1);
 			}
 			memcpy(&rt.rtmsg_gateway, sa6.sin6_addr.s6_addr,
-				   sizeof(struct in6_addr));
+					sizeof(struct in6_addr));
 			rt.rtmsg_flags |= RTF_GATEWAY;
 			continue;
 		}
@@ -435,7 +435,7 @@ static NOINLINE void INET6_setroute(int action, char **args)
 		struct ifreq ifr;
 		memset(&ifr, 0, sizeof(ifr));
 		strncpy_IFNAMSIZ(ifr.ifr_name, devname);
-		xioctl(skfd, SIOGIFINDEX, &ifr);
+		xioctl(skfd, SIOCGIFINDEX, &ifr);
 		rt.rtmsg_ifindex = ifr.ifr_ifindex;
 	}
 
@@ -498,17 +498,17 @@ void FAST_FUNC bb_displayroutes(int noresolve, int netstatfmt)
 	FILE *fp = xfopen_for_read("/proc/net/route");
 
 	printf("Kernel IP routing table\n"
-	       "Destination     Gateway         Genmask         Flags %s Iface\n",
+		"Destination     Gateway         Genmask         Flags %s Iface\n",
 			netstatfmt ? "  MSS Window  irtt" : "Metric Ref    Use");
 
 	if (fscanf(fp, "%*[^\n]\n") < 0) { /* Skip the first line. */
-		goto ERROR;		   /* Empty or missing line, or read error. */
+		goto ERROR;                /* Empty or missing line, or read error. */
 	}
 	while (1) {
 		int r;
 		r = fscanf(fp, "%63s%lx%lx%X%d%d%d%lx%d%d%d\n",
-				   devname, &d, &g, &flgs, &ref, &use, &metric, &m,
-				   &mtu, &win, &ir);
+				devname, &d, &g, &flgs, &ref, &use, &metric, &m,
+				&mtu, &win, &ir);
 		if (r != 11) {
 			if ((r < 0) && feof(fp)) { /* EOF with no (nonspace) chars read. */
 				break;
@@ -567,8 +567,8 @@ static void INET6_displayroutes(void)
 	FILE *fp = xfopen_for_read("/proc/net/ipv6_route");
 
 	printf("Kernel IPv6 routing table\n%-44s%-40s"
-			  "Flags Metric Ref    Use Iface\n",
-			  "Destination", "Next Hop");
+			"Flags Metric Ref    Use Iface\n",
+			"Destination", "Next Hop");
 
 	while (1) {
 		int r;
@@ -618,8 +618,8 @@ static void INET6_displayroutes(void)
 					  (struct sockaddr *) &snaddr6.sin6_addr);
 			snaddr6.sin6_family = AF_INET6;
 			naddr6 = INET6_rresolve((struct sockaddr_in6 *) &snaddr6,
-						   0x0fff /* Apparently, upstream never resolves. */
-						   );
+						0x0fff /* Apparently, upstream never resolves. */
+						);
 
 			if (!r) {			/* 1st pass */
 				snprintf(addr6, sizeof(addr6), "%s/%d", naddr6, prefix_len);

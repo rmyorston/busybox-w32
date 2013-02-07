@@ -3737,7 +3737,8 @@ set_curjob(struct job *jp, unsigned mode)
 		break;
 	case CUR_RUNNING:
 		/* newly created job or backgrounded job,
-		   put after all stopped jobs. */
+		 * put after all stopped jobs.
+		 */
 		while (1) {
 			jp1 = *jpp;
 #if JOBS
@@ -9101,8 +9102,17 @@ expredir(union node *n)
 #if ENABLE_ASH_BASH_COMPAT
  store_expfname:
 #endif
+#if 0
+// By the design of stack allocator, the loop of this kind:
+//	while true; do while true; do break; done </dev/null; done
+// will look like a memory leak: ash plans to free expfname's
+// of "/dev/null" as soon as it finishes running the loop
+// (in this case, never).
+// This "fix" is wrong:
 			if (redir->nfile.expfname)
 				stunalloc(redir->nfile.expfname);
+// It results in corrupted state of stacked allocations.
+#endif
 			redir->nfile.expfname = fn.list->text;
 			break;
 		case NFROMFD:
@@ -12138,8 +12148,9 @@ parsebackq: {
 	INT_ON;
 	if (oldstyle) {
 		/* We must read until the closing backquote, giving special
-		   treatment to some slashes, and then push the string and
-		   reread it as input, interpreting it normally.  */
+		 * treatment to some slashes, and then push the string and
+		 * reread it as input, interpreting it normally.
+		 */
 		char *pout;
 		size_t psavelen;
 		char *pstr;

@@ -1532,7 +1532,7 @@ struct smaprec {
 	procps_read_smaps(pid, total)
 #endif
 int FAST_FUNC procps_read_smaps(pid_t pid, struct smaprec *total,
-		      void (*cb)(struct smaprec *, void *), void *data);
+		void (*cb)(struct smaprec *, void *), void *data);
 
 typedef struct procps_status_t {
 	DIR *dir;
@@ -1655,8 +1655,12 @@ typedef struct sha512_ctx_t {
 	uint64_t hash[8];
 	uint8_t wbuffer[128]; /* always correctly aligned for uint64_t */
 } sha512_ctx_t;
+typedef struct sha3_ctx_t {
+	uint64_t state[25];
+	unsigned bytes_queued;
+} sha3_ctx_t;
 void md5_begin(md5_ctx_t *ctx) FAST_FUNC;
-void md5_hash(md5_ctx_t *ctx, const void *data, size_t length) FAST_FUNC;
+void md5_hash(md5_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
 void md5_end(md5_ctx_t *ctx, void *resbuf) FAST_FUNC;
 void sha1_begin(sha1_ctx_t *ctx) FAST_FUNC;
 #define sha1_hash md5_hash
@@ -1667,6 +1671,9 @@ void sha256_begin(sha256_ctx_t *ctx) FAST_FUNC;
 void sha512_begin(sha512_ctx_t *ctx) FAST_FUNC;
 void sha512_hash(sha512_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
 void sha512_end(sha512_ctx_t *ctx, void *resbuf) FAST_FUNC;
+void sha3_begin(sha3_ctx_t *ctx) FAST_FUNC;
+void sha3_hash(sha3_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
+void sha3_end(sha3_ctx_t *ctx, void *resbuf) FAST_FUNC;
 
 extern uint32_t *global_crc32_table;
 uint32_t *crc32_filltable(uint32_t *tbl256, int endian) FAST_FUNC;

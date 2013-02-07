@@ -1851,10 +1851,10 @@ recv_and_process_client_pkt(void /*int fd*/)
 
 	/* Build a reply packet */
 	memset(&msg, 0, sizeof(msg));
-	msg.m_status = G.stratum < MAXSTRAT ? G.ntp_status : LI_ALARM;
+	msg.m_status = G.stratum < MAXSTRAT ? (G.ntp_status & LI_MASK) : LI_ALARM;
 	msg.m_status |= (query_status & VERSION_MASK);
 	msg.m_status |= ((query_status & MODE_MASK) == MODE_CLIENT) ?
-			 MODE_SERVER : MODE_SYM_PAS;
+			MODE_SERVER : MODE_SYM_PAS;
 	msg.m_stratum = G.stratum;
 	msg.m_ppoll = G.poll_exp;
 	msg.m_precision_exp = G_precision_exp;
@@ -2080,6 +2080,8 @@ int ntpd_main(int argc UNUSED_PARAM, char **argv)
 	 */
 	cnt = G.peer_cnt * (INITIAL_SAMPLES + 1);
 
+	write_pidfile(CONFIG_PID_FILE_PATH "/ntpd.pid");
+
 	while (!bb_got_signal) {
 		llist_t *item;
 		unsigned i, j;
@@ -2195,6 +2197,7 @@ int ntpd_main(int argc UNUSED_PARAM, char **argv)
 		}
 	} /* while (!bb_got_signal) */
 
+	remove_pidfile(CONFIG_PID_FILE_PATH "/ntpd.pid");
 	kill_myself_with_sig(bb_got_signal);
 }
 
@@ -2325,14 +2328,13 @@ set_freq(double freq) /* frequency update */
 			if (pps_enable) {
 				if (!(pll_status & STA_PPSTIME))
 					report_event(EVNT_KERN,
-					    NULL, "PPS enabled");
+						NULL, "PPS enabled");
 				ntv.status |= STA_PPSTIME | STA_PPSFREQ;
 			} else {
 				if (pll_status & STA_PPSTIME)
 					report_event(EVNT_KERN,
-					    NULL, "PPS disabled");
-				ntv.status &= ~(STA_PPSTIME |
-				    STA_PPSFREQ);
+						NULL, "PPS disabled");
+				ntv.status &= ~(STA_PPSTIME | STA_PPSFREQ);
 			}
 			if (sys_leap == LEAP_ADDSECOND)
 				ntv.status |= STA_INS;
@@ -2348,7 +2350,7 @@ set_freq(double freq) /* frequency update */
 		if (ntp_adjtime(&ntv) == TIME_ERROR) {
 			if (!(ntv.status & STA_PPSSIGNAL))
 				report_event(EVNT_KERN, NULL,
-				    "PPS no signal");
+						"PPS no signal");
 		}
 		pll_status = ntv.status;
 #ifdef STA_NANO

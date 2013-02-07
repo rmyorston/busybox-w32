@@ -129,30 +129,14 @@ void volume_id_set_label_string(struct volume_id *id, const uint8_t *buf, size_t
 
 void volume_id_set_label_unicode16(struct volume_id *id, const uint8_t *buf, enum endian endianess, size_t count)
 {
-	 volume_id_set_unicode16(id->label, sizeof(id->label), buf, endianess, count);
+	volume_id_set_unicode16(id->label, sizeof(id->label), buf, endianess, count);
 }
 
 void volume_id_set_uuid(struct volume_id *id, const uint8_t *buf, enum uuid_format format)
 {
 	unsigned i;
-	unsigned count = 0;
+	unsigned count = (format == UUID_DCE_STRING ? VOLUME_ID_UUID_SIZE : 4 << format);
 
-	switch (format) {
-	case UUID_DOS:
-		count = 4;
-		break;
-	case UUID_NTFS:
-	case UUID_HFS:
-		count = 8;
-		break;
-	case UUID_DCE:
-		count = 16;
-		break;
-	case UUID_DCE_STRING:
-		/* 36 is ok, id->uuid has one extra byte for NUL */
-		count = VOLUME_ID_UUID_SIZE;
-		break;
-	}
 //	memcpy(id->uuid_raw, buf, count);
 //	id->uuid_raw_len = count;
 
@@ -172,11 +156,6 @@ set:
 		sprintf(id->uuid, "%02X%02X%02X%02X%02X%02X%02X%02X",
 			buf[7], buf[6], buf[5], buf[4],
 			buf[3], buf[2], buf[1], buf[0]);
-		break;
-	case UUID_HFS:
-		sprintf(id->uuid, "%02X%02X%02X%02X%02X%02X%02X%02X",
-			buf[0], buf[1], buf[2], buf[3],
-			buf[4], buf[5], buf[6], buf[7]);
 		break;
 	case UUID_DCE:
 		sprintf(id->uuid,

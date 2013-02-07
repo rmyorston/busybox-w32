@@ -294,7 +294,7 @@ static void get_jiffy_counts(void)
 	 * they are used to calculate per process CPU% */
 	prev_jif = cur_jif;
 	if (read_cpu_jiffy(fp, &cur_jif) < 4)
-		bb_error_msg_and_die("can't read /proc/stat");
+		bb_error_msg_and_die("can't read '%s'", "/proc/stat");
 
 #if !ENABLE_FEATURE_TOP_SMP_CPU
 	fclose(fp);
@@ -995,7 +995,7 @@ static unsigned handle_input(unsigned scan_mask, unsigned interval)
 		}
 # if ENABLE_FEATURE_SHOW_THREADS
 		if (c == 'h'
-		 IF_FEATURE_TOPMEM(&& scan_mask != TOPMEM_MASK)
+		IF_FEATURE_TOPMEM(&& scan_mask != TOPMEM_MASK)
 		) {
 			scan_mask ^= PSSCAN_TASKS;
 			continue;
