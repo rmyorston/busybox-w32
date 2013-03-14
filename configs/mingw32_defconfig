@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
-# Busybox version: 1.22.0-TIG-1005-gb604585
-# Thu Feb  7 14:27:33 2013
+# Busybox version: 1.22.0.git
+# Thu Mar 14 10:41:31 2013
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -64,7 +64,7 @@ CONFIG_BUSYBOX_EXEC_PATH=""
 # CONFIG_BUILD_LIBBUSYBOX is not set
 # CONFIG_FEATURE_INDIVIDUAL is not set
 # CONFIG_FEATURE_SHARED_BUSYBOX is not set
-# CONFIG_LFS is not set
+CONFIG_LFS=y
 CONFIG_NOGLOB=y
 CONFIG_CROSS_COMPILER_PREFIX="i686-pc-mingw32-"
 CONFIG_SYSROOT=""
