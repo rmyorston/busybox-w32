@@ -441,6 +441,9 @@ static void trace_vprintf(const char *fmt, va_list va);
 /* ============ Utility functions */
 #define xbarrier() do { __asm__ __volatile__ ("": : :"memory"); } while (0)
 
+#define is_name(c)      ((c) == '_' || isalpha((unsigned char)(c)))
+#define is_in_name(c)   ((c) == '_' || isalnum((unsigned char)(c)))
+
 static int isdigit_str9(const char *str)
 {
 	int maxlen = 9 + 1; /* max 9 digits: 999999999 */
@@ -2061,27 +2064,6 @@ getoptsreset(const char *value)
 {
 	shellparam.optind = number(value);
 	shellparam.optoff = -1;
-}
-#endif
-
-/* math.h has these, otherwise define our private copies */
-#if !ENABLE_SH_MATH_SUPPORT
-#define is_name(c)      ((c) == '_' || isalpha((unsigned char)(c)))
-#define is_in_name(c)   ((c) == '_' || isalnum((unsigned char)(c)))
-/*
- * Return the pointer to the first char which is not part of a legal variable name
- * (a letter or underscore followed by letters, underscores, and digits).
- */
-static const char*
-endofname(const char *name)
-{
-	if (!is_name(*name))
-		return name;
-	while (*++name) {
-		if (!is_in_name(*name))
-			break;
-	}
-	return name;
 }
 #endif
 
@@ -12774,6 +12756,9 @@ dotcmd(int argc, char **argv)
 	/* "false; . empty_file; echo $?" should print 0, not 1: */
 	exitstatus = 0;
 
+	/* This aborts if file isn't found, which is POSIXly correct.
+	 * bash returns exitcode 1 instead.
+	 */
 	fullname = find_dot_file(argv[1]);
 
 	argv += 2;
@@ -12785,6 +12770,9 @@ dotcmd(int argc, char **argv)
 		shellparam.p = argv;
 	};
 
+	/* This aborts if file can't be opened, which is POSIXly correct.
+	 * bash returns exitcode 1 instead.
+	 */
 	setinputfile(fullname, INPUT_PUSH_FILE);
 	commandname = fullname;
 	cmdloop(0);
@@ -13832,27 +13820,21 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	procargs(argv);
 
-#if ENABLE_FEATURE_EDITING_SAVEHISTORY
-	if (iflag) {
-		const char *hp = lookupvar("HISTFILE");
-		if (!hp) {
-			hp = lookupvar("HOME");
-			if (hp) {
-				char *defhp = concat_path_file(hp, ".ash_history");
-				setvar("HISTFILE", defhp, 0);
-				free(defhp);
-			}
-		}
-	}
-#endif
 	if (argv[0] && argv[0][0] == '-')
 		isloginsh = 1;
 	if (isloginsh) {
+		const char *hp;
+
 		state = 1;
 		read_profile("/etc/profile");
  state1:
 		state = 2;
-		read_profile(".profile");
+		hp = lookupvar("HOME");
+		if (hp) {
+			hp = concat_path_file(hp, ".profile");
+			read_profile(hp);
+			free((char*)hp);
+		}
 	}
  state2:
 	state = 3;
@@ -13884,6 +13866,15 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 #if MAX_HISTORY > 0 && ENABLE_FEATURE_EDITING_SAVEHISTORY
 		if (iflag) {
 			const char *hp = lookupvar("HISTFILE");
+			if (!hp) {
+				hp = lookupvar("HOME");
+				if (hp) {
+					hp = concat_path_file(hp, ".ash_history");
+					setvar("HISTFILE", hp, 0);
+					free((char*)hp);
+					hp = lookupvar("HISTFILE");
+				}
+			}
 			if (hp)
 				line_input_state->hist_file = hp;
 # if ENABLE_FEATURE_SH_HISTFILESIZE

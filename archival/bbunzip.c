@@ -7,13 +7,16 @@
 #include "libbb.h"
 #include "bb_archive.h"
 
+/* Note: must be kept in sync with archival/lzop.c */
 enum {
 	OPT_STDOUT     = 1 << 0,
 	OPT_FORCE      = 1 << 1,
 	/* only some decompressors: */
 	OPT_VERBOSE    = 1 << 2,
-	OPT_DECOMPRESS = 1 << 3,
-	OPT_TEST       = 1 << 4,
+	OPT_QUIET      = 1 << 3,
+	OPT_DECOMPRESS = 1 << 4,
+	OPT_TEST       = 1 << 5,
+	SEAMLESS_MAGIC = (1 << 31) * SEAMLESS_COMPRESSION,
 };
 
 static
@@ -39,7 +42,7 @@ int FAST_FUNC bbunpack(char **argv,
 )
 {
 	struct stat stat_buf;
-	IF_DESKTOP(long long) int status;
+	IF_DESKTOP(long long) int status = 0;
 	char *filename, *new_name;
 	smallint exitcode = 0;
 	transformer_aux_data_t aux;
@@ -54,13 +57,27 @@ int FAST_FUNC bbunpack(char **argv,
 
 		/* Open src */
 		if (filename) {
-			if (stat(filename, &stat_buf) != 0) {
-				bb_simple_perror_msg(filename);
+			if (!(option_mask32 & SEAMLESS_MAGIC)) {
+				if (stat(filename, &stat_buf) != 0) {
+ err_name:
+					bb_simple_perror_msg(filename);
  err:
-				exitcode = 1;
-				goto free_name;
+					exitcode = 1;
+					goto free_name;
+				}
+				if (open_to_or_warn(STDIN_FILENO, filename, O_RDONLY, 0))
+					goto err;
+			} else {
+				/* "clever zcat" with FILE */
+				int fd = open_zipped(filename);
+				if (fd < 0)
+					goto err_name;
+				xmove_fd(fd, STDIN_FILENO);
 			}
-			if (open_to_or_warn(STDIN_FILENO, filename, O_RDONLY, 0))
+		} else
+		if (option_mask32 & SEAMLESS_MAGIC) {
+			/* "clever zcat" on stdin */
+			if (setup_unzip_on_fd(STDIN_FILENO, /*fail_if_not_detected*/ 0))
 				goto err;
 		}
 
@@ -68,7 +85,7 @@ int FAST_FUNC bbunpack(char **argv,
 		if (option_mask32 & (OPT_STDOUT|OPT_TEST)) {
 			if (option_mask32 & OPT_TEST)
 				if (open_to_or_warn(STDOUT_FILENO, bb_dev_null, O_WRONLY, 0))
-					goto err;
+					xfunc_die();
 			filename = NULL;
 		}
 
@@ -93,16 +110,22 @@ int FAST_FUNC bbunpack(char **argv,
 		}
 
 		/* Check that the input is sane */
-		if (isatty(STDIN_FILENO) && (option_mask32 & OPT_FORCE) == 0) {
+		if (!(option_mask32 & OPT_FORCE) && isatty(STDIN_FILENO)) {
 			bb_error_msg_and_die("compressed data not read from terminal, "
 					"use -f to force it");
 		}
 
-		init_transformer_aux_data(&aux);
-		aux.check_signature = 1;
-		status = unpacker(&aux);
-		if (status < 0)
-			exitcode = 1;
+		if (!(option_mask32 & SEAMLESS_MAGIC)) {
+			init_transformer_aux_data(&aux);
+			aux.check_signature = 1;
+			status = unpacker(&aux);
+			if (status < 0)
+				exitcode = 1;
+		} else {
+			if (bb_copyfd_eof(STDIN_FILENO, STDOUT_FILENO) < 0)
+				/* Disk full, tty closed, etc. No point in continuing */
+				xfunc_die();
+		}
 
 		if (!(option_mask32 & OPT_STDOUT))
 			xclose(STDOUT_FILENO); /* with error check! */
@@ -243,7 +266,7 @@ int uncompress_main(int argc UNUSED_PARAM, char **argv)
 //usage:       "-rw-rw-r--    1 andersen andersen  1761280 Apr 14 17:47 /tmp/BusyBox-0.43.tar\n"
 //usage:
 //usage:#define zcat_trivial_usage
-//usage:       "FILE"
+//usage:       "[FILE]..."
 //usage:#define zcat_full_usage "\n\n"
 //usage:       "Decompress to stdout"
 
@@ -294,11 +317,15 @@ IF_DESKTOP(long long) int FAST_FUNC unpack_gunzip(transformer_aux_data_t *aux)
 int gunzip_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int gunzip_main(int argc UNUSED_PARAM, char **argv)
 {
-	getopt32(argv, "cfvdtn");
+	getopt32(argv, "cfvqdtn");
 	argv += optind;
-	/* if called as zcat */
+
+	/* If called as zcat...
+	 * Normally, "zcat" is just "gunzip -c".
+	 * But if seamless magic is enabled, then we are much more clever.
+	 */
 	if (applet_name[1] == 'c')
-		option_mask32 |= OPT_STDOUT;
+		option_mask32 |= OPT_STDOUT | SEAMLESS_MAGIC;
 
 	return bbunpack(argv, unpack_gunzip, make_new_name_gunzip, /*unused:*/ NULL);
 }
@@ -318,7 +345,7 @@ int gunzip_main(int argc UNUSED_PARAM, char **argv)
 //usage:     "\n	-c	Write to stdout"
 //usage:     "\n	-f	Force"
 //usage:#define bzcat_trivial_usage
-//usage:       "FILE"
+//usage:       "[FILE]..."
 //usage:#define bzcat_full_usage "\n\n"
 //usage:       "Decompress to stdout"
 //applet:IF_BUNZIP2(APPLET(bunzip2, BB_DIR_USR_BIN, BB_SUID_DROP))
@@ -332,7 +359,7 @@ IF_DESKTOP(long long) int FAST_FUNC unpack_bunzip2(transformer_aux_data_t *aux)
 int bunzip2_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int bunzip2_main(int argc UNUSED_PARAM, char **argv)
 {
-	getopt32(argv, "cfvdt");
+	getopt32(argv, "cfvqdt");
 	argv += optind;
 	if (applet_name[2] == 'c') /* bzcat */
 		option_mask32 |= OPT_STDOUT;
@@ -367,7 +394,7 @@ int bunzip2_main(int argc UNUSED_PARAM, char **argv)
 //usage:     "\n	-f	Force"
 //usage:
 //usage:#define lzcat_trivial_usage
-//usage:       "FILE"
+//usage:       "[FILE]..."
 //usage:#define lzcat_full_usage "\n\n"
 //usage:       "Decompress to stdout"
 //usage:
@@ -387,7 +414,7 @@ int bunzip2_main(int argc UNUSED_PARAM, char **argv)
 //usage:     "\n	-f	Force"
 //usage:
 //usage:#define xzcat_trivial_usage
-//usage:       "FILE"
+//usage:       "[FILE]..."
 //usage:#define xzcat_full_usage "\n\n"
 //usage:       "Decompress to stdout"
 
@@ -400,7 +427,7 @@ IF_DESKTOP(long long) int FAST_FUNC unpack_unlzma(transformer_aux_data_t *aux)
 int unlzma_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int unlzma_main(int argc UNUSED_PARAM, char **argv)
 {
-	IF_LZMA(int opts =) getopt32(argv, "cfvdt");
+	IF_LZMA(int opts =) getopt32(argv, "cfvqdt");
 # if ENABLE_LZMA
 	/* lzma without -d or -t? */
 	if (applet_name[2] == 'm' && !(opts & (OPT_DECOMPRESS|OPT_TEST)))
@@ -425,7 +452,7 @@ IF_DESKTOP(long long) int FAST_FUNC unpack_unxz(transformer_aux_data_t *aux)
 int unxz_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int unxz_main(int argc UNUSED_PARAM, char **argv)
 {
-	IF_XZ(int opts =) getopt32(argv, "cfvdt");
+	IF_XZ(int opts =) getopt32(argv, "cfvqdt");
 # if ENABLE_XZ
 	/* xz without -d or -t? */
 	if (applet_name[2] == '\0' && !(opts & (OPT_DECOMPRESS|OPT_TEST)))
