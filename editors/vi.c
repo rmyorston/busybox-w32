@@ -2532,6 +2532,9 @@ static int file_insert(const char *fn, char *p, int update_ro_status)
 		status_line_bold_errno(fn);
 		goto fi0;
 	}
+#if ENABLE_PLATFORM_MINGW32
+	_setmode(fd, _O_TEXT);
+#endif
 	size = (statbuf.st_size < INT_MAX ? (int)statbuf.st_size : INT_MAX);
 	p += text_hole_make(p, size);
 	cnt = safe_read(fd, p, size);
@@ -2540,8 +2543,25 @@ static int file_insert(const char *fn, char *p, int update_ro_status)
 		p = text_hole_delete(p, p + size - 1);	// un-do buffer insert
 	} else if (cnt < size) {
 		// There was a partial read, shrink unused space text[]
+#if ENABLE_PLATFORM_MINGW32
+		int i, newline;
+
+		newline = 0;
+		for ( i=0; i<cnt; ++i ) {
+			if ( p[i] == '\n' ) {
+				++newline;
+			}
+		}
+#endif
 		p = text_hole_delete(p + cnt, p + size - 1);	// un-do buffer insert
+#if ENABLE_PLATFORM_MINGW32
+		// on WIN32 a partial read might just mean CRs have been removed
+		if ( cnt+newline != size ) {
+			status_line_bold("can't read '%s'", fn);
+		}
+#else
 		status_line_bold("can't read '%s'", fn);
+#endif
 	}
 	if (cnt >= size)
 		file_modified++;
@@ -2564,6 +2584,9 @@ static int file_insert(const char *fn, char *p, int update_ro_status)
 static int file_write(char *fn, char *first, char *last)
 {
 	int fd, cnt, charcnt;
+#if ENABLE_PLATFORM_MINGW32
+	int i, newline;
+#endif
 
 	if (fn == 0) {
 		status_line_bold("No current filename");
@@ -2577,8 +2600,23 @@ static int file_write(char *fn, char *first, char *last)
 	if (fd < 0)
 		return -1;
 	cnt = last - first + 1;
+#if ENABLE_PLATFORM_MINGW32
+	/* write file in text mode; this makes it bigger so adjust
+	 * the truncation to match
+	 */
+	_setmode(fd, _O_TEXT);
+	newline = 0;
+	for ( i=0; i<cnt; ++i ) {
+		if ( first[i] == '\n' ) {
+			++newline;
+		}
+	}
+	charcnt = full_write(fd, first, cnt);
+	ftruncate(fd, charcnt+newline);
+#else
 	charcnt = full_write(fd, first, cnt);
 	ftruncate(fd, charcnt);
+#endif
 	if (charcnt == cnt) {
 		// good write
 		//file_modified = FALSE;
