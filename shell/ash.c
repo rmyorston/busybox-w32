@@ -13258,8 +13258,6 @@ unsetcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	return ret & 1;
 }
 
-/*      setmode.c      */
-
 #if !ENABLE_PLATFORM_MINGW32
 
 static const unsigned char timescmd_str[] ALIGN1 = {
