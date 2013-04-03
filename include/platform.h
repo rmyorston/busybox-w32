@@ -420,7 +420,6 @@ typedef unsigned smalluint;
 # undef HAVE_VASPRINTF
 # undef HAVE_UNLOCKED_STDIO
 # undef HAVE_UNLOCKED_LINE_OPS
-# undef HAVE_MNTENT_H
 # undef HAVE_SYS_STATFS_H
 #endif
 
