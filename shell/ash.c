@@ -13578,7 +13578,8 @@ init(void)
 
 			/* some initialisation normally performed at login */
 			pw = xgetpwuid(getuid());
-			setup_environment(pw->pw_shell, SETUP_ENV_CHANGEENV, pw);
+			setup_environment(pw->pw_shell,
+						SETUP_ENV_CHANGEENV|SETUP_ENV_NO_CHDIR, pw);
 		}
 #endif
 		for (envp = environ; envp && *envp; envp++) {
@@ -13822,6 +13823,11 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		isloginsh = 1;
 	if (isloginsh) {
 		const char *hp;
+
+#if ENABLE_PLATFORM_MINGW32
+		chdir(xgetpwuid(getuid())->pw_dir);
+		setpwd(NULL, 0);
+#endif
 
 		state = 1;
 		read_profile("/etc/profile");
