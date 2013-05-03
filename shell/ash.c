@@ -4153,7 +4153,7 @@ waitpid_child(int *status, int wait_flags)
 	#undef LOOP
 
 	idx = WaitForMultipleObjects(pid_nr, pidlist, FALSE,
-				wait_flags|WNOHANG ? 0 : INFINITE);
+				wait_flags|WNOHANG ? 1 : INFINITE);
 	if (idx >= pid_nr) {
 		free(pidlist);
 		return -1;
