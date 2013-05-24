@@ -281,6 +281,9 @@ static const char *const optletters_optnames[] = {
 	,"\0"  "nolog"
 	,"\0"  "debug"
 #endif
+#if ENABLE_PLATFORM_MINGW32
+	,"\0"  "noconsole"
+#endif
 };
 
 #define optletters(n)  optletters_optnames[n][0]
@@ -360,6 +363,9 @@ struct globals_misc {
 #if DEBUG
 # define nolog optlist[14 + ENABLE_ASH_BASH_COMPAT]
 # define debug optlist[15 + ENABLE_ASH_BASH_COMPAT]
+#endif
+#if ENABLE_PLATFORM_MINGW32
+# define noconsole optlist[14 + ENABLE_ASH_BASH_COMPAT + 2*DEBUG]
 #endif
 
 	/* trap handler commands */
@@ -13818,6 +13824,15 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 	procargs(argv);
+#if ENABLE_PLATFORM_MINGW32
+	if ( noconsole ) {
+		DWORD dummy;
+
+		if ( GetConsoleProcessList(&dummy, 1) == 1 ) {
+			ShowWindow(GetConsoleWindow(), SW_HIDE);
+		}
+	}
+#endif
 
 	if (argv[0] && argv[0][0] == '-')
 		isloginsh = 1;
