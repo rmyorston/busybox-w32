@@ -13,11 +13,22 @@ You need MinGW compiler and a POSIX environment (so that "make
 menuconfig" works).  I cross compile from Linux, but MSYS or Cygwin
 should be OK.
 
+Ob Debian-based distributions (including Debian Wheezy and Ubuntu),
+the mingw-w64 win32 and win64 targeting cross-compiler can be
+obtained by running:
+   apt-get install g++-4.6 libstdc++6-4.6-dev libtinfo-dev \
+   mingw-w64-i686-dev g++-mingw-w64-i686 gcc-mingw-w64-i686 binutils-mingw-w64-i686 \
+   mingw-w64-x86-64-dev g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 \
+   gcc-mingw-w64-base libncurses5-dev libncursesw5-dev
+
 To start, run "make mingw32_defconfig".  You can then customize your
 build with "make menuconfig".
 
 In particular you may need to adjust the compiler by going to Busybox
-Settings -> Build Options -> Cross Compiler Prefix
+Settings -> Build Options -> Cross Compiler Prefix.  If you're using
+mingw-w64, set the compiler prefix to "i686-w64-mingw32-" for a win32
+exectuable or to "x86_64-w64-mingw64-" for a win64 executable (note
+the trailing dash in both prefixes).
 
 Then just "make".
 
