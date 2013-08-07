@@ -8,7 +8,11 @@
  */
 typedef int gid_t;
 typedef int uid_t;
+#ifdef _WIN64
+typedef __int64 pid_t;
+#else
 typedef int pid_t;
+#endif
 
 /*
  * arpa/inet.h
@@ -240,7 +244,7 @@ int mingw_mkdir(const char *path, int mode);
 # define off_t off64_t
 #endif
 #define lseek _lseeki64
-#define stat _stati64
+#define stat _stat64
 int mingw_lstat(const char *file_name, struct stat *buf);
 int mingw_stat(const char *file_name, struct stat *buf);
 int mingw_fstat(int fd, struct stat *buf);
