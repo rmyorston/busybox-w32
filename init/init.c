@@ -140,12 +140,11 @@
  * not fully functional init by switching it on! */
 #define DEBUG_INIT 0
 
-#define COMMAND_SIZE      256
 #define CONSOLE_NAME_SIZE 32
 
 /* Default sysinit script. */
 #ifndef INIT_SCRIPT
-#define INIT_SCRIPT  "/etc/init.d/rcS"
+# define INIT_SCRIPT  "/etc/init.d/rcS"
 #endif
 
 /* Each type of actions can appear many times. They will be
@@ -195,7 +194,7 @@ struct init_action {
 	pid_t pid;
 	uint8_t action_type;
 	char terminal[CONSOLE_NAME_SIZE];
-	char command[COMMAND_SIZE];
+	char command[1];
 };
 
 static struct init_action *init_action_list = NULL;
@@ -398,7 +397,7 @@ static void reset_sighandlers_and_unblock_sigs(void)
 }
 
 /* Wrapper around exec:
- * Takes string (max COMMAND_SIZE chars).
+ * Takes string.
  * If chars like '>' detected, execs '[-]/bin/sh -c "exec ......."'.
  * Otherwise splits words on whitespace, deals with leading dash,
  * and uses plain exec().
@@ -406,10 +405,15 @@ static void reset_sighandlers_and_unblock_sigs(void)
  */
 static void init_exec(const char *command)
 {
-	char *cmd[COMMAND_SIZE / 2];
-	char buf[COMMAND_SIZE + 6];  /* COMMAND_SIZE+strlen("exec ")+1 */
-	int dash = (command[0] == '-' /* maybe? && command[1] == '/' */);
+	/* +8 allows to write VLA sizes below more efficiently: */
+	unsigned command_size = strlen(command) + 8;
+	/* strlen(command) + strlen("exec ")+1: */
+	char buf[command_size];
+	/* strlen(command) / 2 + 4: */
+	char *cmd[command_size / 2];
+	int dash;
 
+	dash = (command[0] == '-' /* maybe? && command[1] == '/' */);
 	command += dash;
 
 	/* See if any special /bin/sh requiring characters are present */
@@ -626,21 +630,21 @@ static void new_init_action(uint8_t action_type, const char *command, const char
 		nextp = &a->next;
 	}
 
-	a = xzalloc(sizeof(*a));
+	a = xzalloc(sizeof(*a) + strlen(command));
 
 	/* Append to the end of the list */
  append:
 	*nextp = a;
 	a->action_type = action_type;
-	safe_strncpy(a->command, command, sizeof(a->command));
+	strcpy(a->command, command);
 	safe_strncpy(a->terminal, cons, sizeof(a->terminal));
-	dbg_message(L_LOG | L_CONSOLE, "command='%s' action=%d tty='%s'\n",
+	dbg_message(L_LOG | L_CONSOLE, "command='%s' action=%x tty='%s'\n",
 		a->command, a->action_type, a->terminal);
 }
 
 /* NOTE that if CONFIG_FEATURE_USE_INITTAB is NOT defined,
  * then parse_inittab() simply adds in some default
- * actions(i.e., runs INIT_SCRIPT and then starts a pair
+ * actions (i.e., runs INIT_SCRIPT and then starts a pair
  * of "askfirst" shells).  If CONFIG_FEATURE_USE_INITTAB
  * _is_ defined, but /etc/inittab is missing, this
  * results in the same set of default behaviors.
@@ -655,23 +659,22 @@ static void parse_inittab(void)
 #endif
 	{
 		/* No inittab file - set up some default behavior */
-		/* Reboot on Ctrl-Alt-Del */
-		new_init_action(CTRLALTDEL, "reboot", "");
-		/* Umount all filesystems on halt/reboot */
-		new_init_action(SHUTDOWN, "umount -a -r", "");
-		/* Swapoff on halt/reboot */
-		if (ENABLE_SWAPONOFF)
-			new_init_action(SHUTDOWN, "swapoff -a", "");
-		/* Prepare to restart init when a QUIT is received */
-		new_init_action(RESTART, "init", "");
+		/* Sysinit */
+		new_init_action(SYSINIT, INIT_SCRIPT, "");
 		/* Askfirst shell on tty1-4 */
 		new_init_action(ASKFIRST, bb_default_login_shell, "");
 //TODO: VC_1 instead of ""? "" is console -> ctty problems -> angry users
 		new_init_action(ASKFIRST, bb_default_login_shell, VC_2);
 		new_init_action(ASKFIRST, bb_default_login_shell, VC_3);
 		new_init_action(ASKFIRST, bb_default_login_shell, VC_4);
-		/* sysinit */
-		new_init_action(SYSINIT, INIT_SCRIPT, "");
+		/* Reboot on Ctrl-Alt-Del */
+		new_init_action(CTRLALTDEL, "reboot", "");
+		/* Umount all filesystems on halt/reboot */
+		new_init_action(SHUTDOWN, "umount -a -r", "");
+		/* Swapoff on halt/reboot */
+		new_init_action(SHUTDOWN, "swapoff -a", "");
+		/* Restart init when a QUIT is received */
+		new_init_action(RESTART, "init", "");
 		return;
 	}
 
@@ -931,10 +934,17 @@ static void reload_inittab(void)
 
 	/* Remove stale entries and SYSINIT entries.
 	 * We never rerun SYSINIT entries anyway,
-	 * removing them too saves a few bytes */
+	 * removing them too saves a few bytes
+	 */
 	nextp = &init_action_list;
 	while ((a = *nextp) != NULL) {
-		if ((a->action_type & ~SYSINIT) == 0) {
+		/*
+		 * Why pid == 0 check?
+		 * Process can be removed from inittab and added *later*.
+		 * If we delete its entry but process still runs,
+		 * duplicate is spawned when the entry is re-added.
+		 */
+		if ((a->action_type & ~SYSINIT) == 0 && a->pid == 0) {
 			*nextp = a->next;
 			free(a);
 		} else {
@@ -1058,10 +1068,13 @@ int init_main(int argc UNUSED_PARAM, char **argv)
 	message(L_CONSOLE | L_LOG, "init started: %s", bb_banner);
 #endif
 
+#if 0
+/* It's 2013, does anyone really still depend on this? */
+/* If you do, consider adding swapon to sysinot actions then! */
 /* struct sysinfo is linux-specific */
-#ifdef __linux__
+# ifdef __linux__
 	/* Make sure there is enough memory to do something useful. */
-	if (ENABLE_SWAPONOFF) {
+	/*if (ENABLE_SWAPONOFF) - WRONG: we may have non-bbox swapon*/ {
 		struct sysinfo info;
 
 		if (sysinfo(&info) == 0
@@ -1075,6 +1088,7 @@ int init_main(int argc UNUSED_PARAM, char **argv)
 			run_actions(SYSINIT);   /* wait and removing */
 		}
 	}
+# endif
 #endif
 
 	/* Check if we are supposed to be in single user mode */

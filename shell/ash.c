@@ -9501,6 +9501,9 @@ static int getoptscmd(int, char **) FAST_FUNC;
 #if !ENABLE_FEATURE_SH_EXTRA_QUIET
 static int helpcmd(int, char **) FAST_FUNC;
 #endif
+#if MAX_HISTORY
+static int historycmd(int, char **) FAST_FUNC;
+#endif
 #if ENABLE_SH_MATH_SUPPORT
 static int letcmd(int, char **) FAST_FUNC;
 #endif
@@ -9573,6 +9576,9 @@ static const struct builtincmd builtintab[] = {
 	{ BUILTIN_NOSPEC        "hash"    , hashcmd    },
 #if !ENABLE_FEATURE_SH_EXTRA_QUIET
 	{ BUILTIN_NOSPEC        "help"    , helpcmd    },
+#endif
+#if MAX_HISTORY
+	{ BUILTIN_NOSPEC        "history" , historycmd },
 #endif
 #if JOBS
 	{ BUILTIN_REGULAR       "jobs"    , jobscmd    },
@@ -10155,7 +10161,12 @@ preadfd(void)
 		 * _during_ shell execution, not only if it was set when
 		 * shell was started. Therefore, re-check LANG every time:
 		 */
-		reinit_unicode(lookupvar("LANG"));
+		{
+			const char *s = lookupvar("LC_ALL");
+			if (!s) s = lookupvar("LC_CTYPE");
+			if (!s) s = lookupvar("LANG");
+			reinit_unicode(s);
+		}
 		nr = read_line_input(line_input_state, cmdedit_prompt, buf, IBUFSIZ, timeout);
 		if (nr == 0) {
 			/* Ctrl+C pressed */
@@ -13162,6 +13173,15 @@ helpcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	return EXIT_SUCCESS;
 }
 #endif /* FEATURE_SH_EXTRA_QUIET */
+
+#if MAX_HISTORY
+static int FAST_FUNC
+historycmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+{
+	show_history(line_input_state);
+	return EXIT_SUCCESS;
+}
+#endif
 
 /*
  * The export and readonly commands.

@@ -95,6 +95,7 @@
 #define RETRY_INTERVAL  5       /* on error, retry in N secs */
 #define RESPONSE_INTERVAL 15    /* wait for reply up to N secs */
 #define INITIAL_SAMPLES 4       /* how many samples do we want for init */
+#define BAD_DELAY_GROWTH 4	/* drop packet if its delay grew by more than this */
 
 /* Clock discipline parameters and constants */
 
@@ -227,8 +228,8 @@ typedef struct {
 	uint8_t          lastpkt_status;
 	uint8_t          lastpkt_stratum;
 	uint8_t          reachable_bits;
-        /* when to send new query (if p_fd == -1)
-         * or when receive times out (if p_fd >= 0): */
+	/* when to send new query (if p_fd == -1)
+	 * or when receive times out (if p_fd >= 0): */
 	double           next_action_time;
 	double           p_xmttime;
 	double           lastpkt_recv_time;
@@ -804,22 +805,34 @@ send_query_to_peer(peer_t *p)
 	p->p_xmt_msg.m_xmttime.fractionl = random();
 	p->p_xmttime = gettime1900d();
 
+	/* Were doing it only if sendto worked, but
+	 * loss of sync detection needs reachable_bits updated
+	 * even if sending fails *locally*:
+	 * "network is unreachable" because cable was pulled?
+	 * We still need to declare "unsync" if this condition persists.
+	 */
+	p->reachable_bits <<= 1;
+
 	if (do_sendto(p->p_fd, /*from:*/ NULL, /*to:*/ &p->p_lsa->u.sa, /*addrlen:*/ p->p_lsa->len,
 			&p->p_xmt_msg, NTP_MSGSIZE_NOAUTH) == -1
 	) {
 		close(p->p_fd);
 		p->p_fd = -1;
+		/*
+		 * We know that we sent nothing.
+		 * We can retry *soon* without fearing
+		 * that we are flooding the peer.
+		 */
 		set_next(p, RETRY_INTERVAL);
 		return;
 	}
 
-	p->reachable_bits <<= 1;
 	set_next(p, RESPONSE_INTERVAL);
 }
 
 
 /* Note that there is no provision to prevent several run_scripts
- * to be done in quick succession. In fact, it happens rather often
+ * to be started in quick succession. In fact, it happens rather often
  * if initial syncronization results in a step.
  * You will see "step" and then "stratum" script runs, sometimes
  * as close as only 0.002 seconds apart.
@@ -829,6 +842,8 @@ static void run_script(const char *action, double offset)
 {
 	char *argv[3];
 	char *env1, *env2, *env3, *env4;
+
+	G.last_script_run = G.cur_time;
 
 	if (!G.script_name)
 		return;
@@ -866,8 +881,6 @@ static void run_script(const char *action, double offset)
 	free(env2);
 	free(env3);
 	free(env4);
-
-	G.last_script_run = G.cur_time;
 }
 
 static NOINLINE void
@@ -1616,6 +1629,7 @@ recv_and_process_peer_pkt(peer_t *p)
 	ssize_t     size;
 	msg_t       msg;
 	double      T1, T2, T3, T4;
+	double      dv;
 	unsigned    interval;
 	datapoint_t *datapoint;
 	peer_t      *q;
@@ -1665,9 +1679,8 @@ recv_and_process_peer_pkt(peer_t *p)
 // TODO: stratum 0 responses may have commands in 32-bit m_refid field:
 // "DENY", "RSTR" - peer does not like us at all
 // "RATE" - peer is overloaded, reduce polling freq
-		interval = poll_interval(0);
-		bb_error_msg("reply from %s: peer is unsynced, next query in %us", p->p_dotted, interval);
-		goto set_next_and_ret;
+		bb_error_msg("reply from %s: peer is unsynced", p->p_dotted);
+		goto pick_normal_interval;
 	}
 
 //	/* Verify valid root distance */
@@ -1700,21 +1713,31 @@ recv_and_process_peer_pkt(peer_t *p)
 	T4 = G.cur_time;
 
 	p->lastpkt_recv_time = T4;
-
 	VERB5 bb_error_msg("%s->lastpkt_recv_time=%f", p->p_dotted, p->lastpkt_recv_time);
-	p->datapoint_idx = p->reachable_bits ? (p->datapoint_idx + 1) % NUM_DATAPOINTS : 0;
-	datapoint = &p->filter_datapoint[p->datapoint_idx];
-	datapoint->d_recv_time = T4;
-	datapoint->d_offset    = ((T2 - T1) + (T3 - T4)) / 2;
+
 	/* The delay calculation is a special case. In cases where the
 	 * server and client clocks are running at different rates and
 	 * with very fast networks, the delay can appear negative. In
 	 * order to avoid violating the Principle of Least Astonishment,
 	 * the delay is clamped not less than the system precision.
 	 */
+	dv = p->lastpkt_delay;
 	p->lastpkt_delay = (T4 - T1) - (T3 - T2);
 	if (p->lastpkt_delay < G_precision_sec)
 		p->lastpkt_delay = G_precision_sec;
+	/*
+	 * If this packet's delay is much bigger than the last one,
+	 * it's better to just ignore it than use its much less precise value.
+	 */
+	if (p->reachable_bits && p->lastpkt_delay > dv * BAD_DELAY_GROWTH) {
+		bb_error_msg("reply from %s: delay %f is too high, ignoring", p->p_dotted, p->lastpkt_delay);
+		goto pick_normal_interval;
+	}
+
+	p->datapoint_idx = p->reachable_bits ? (p->datapoint_idx + 1) % NUM_DATAPOINTS : 0;
+	datapoint = &p->filter_datapoint[p->datapoint_idx];
+	datapoint->d_recv_time = T4;
+	datapoint->d_offset    = ((T2 - T1) + (T3 - T4)) / 2;
 	datapoint->d_dispersion = LOG2D(msg.m_precision_exp) + G_precision_sec;
 	if (!p->reachable_bits) {
 		/* 1st datapoint ever - replicate offset in every element */
@@ -1811,6 +1834,7 @@ recv_and_process_peer_pkt(peer_t *p)
 	}
 
 	/* Decide when to send new query for this peer */
+ pick_normal_interval:
 	interval = poll_interval(0);
 
  set_next_and_ret:
@@ -2159,12 +2183,14 @@ int ntpd_main(int argc UNUSED_PARAM, char **argv)
  did_poll:
 		gettime1900d(); /* sets G.cur_time */
 		if (nfds <= 0) {
-			if (G.script_name && G.cur_time - G.last_script_run > 11*60) {
+			if (!bb_got_signal /* poll wasn't interrupted by a signal */
+			 && G.cur_time - G.last_script_run > 11*60
+			) {
 				/* Useful for updating battery-backed RTC and such */
 				run_script("periodic", G.last_update_offset);
 				gettime1900d(); /* sets G.cur_time */
 			}
-			continue;
+			goto check_unsync;
 		}
 
 		/* Process any received packets */
@@ -2194,6 +2220,21 @@ int ntpd_main(int argc UNUSED_PARAM, char **argv)
 				recv_and_process_peer_pkt(idx2peer[j]);
 				gettime1900d(); /* sets G.cur_time */
 			}
+		}
+
+ check_unsync:
+		if (G.ntp_peers && G.stratum != MAXSTRAT) {
+			for (item = G.ntp_peers; item != NULL; item = item->link) {
+				peer_t *p = (peer_t *) item->data;
+				if (p->reachable_bits)
+					goto have_reachable_peer;
+			}
+			/* No peer responded for last 8 packets, panic */
+			G.polladj_count = 0;
+			G.poll_exp = MINPOLL;
+			G.stratum = MAXSTRAT;
+			run_script("unsync", 0.0);
+ have_reachable_peer: ;
 		}
 	} /* while (!bb_got_signal) */
 

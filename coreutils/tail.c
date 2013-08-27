@@ -25,7 +25,6 @@
  */
 
 //kbuild:lib-$(CONFIG_TAIL) += tail.o
-//kbuild:lib-$(CONFIG_TAIL) += head_tail.o
 
 //usage:#define tail_trivial_usage
 //usage:       "[OPTIONS] [FILE]..."
@@ -51,7 +50,6 @@
 //usage:       "nameserver 10.0.0.1\n"
 
 #include "libbb.h"
-#include "head_tail.h"
 
 struct globals {
 	bool from_top;
@@ -69,15 +67,6 @@ static void tail_xprint_header(const char *fmt, const char *filename)
 static ssize_t tail_read(int fd, char *buf, size_t count)
 {
 	ssize_t r;
-	off_t current;
-	struct stat sbuf;
-
-	/* /proc files report zero st_size, don't lseek them. */
-	if (fstat(fd, &sbuf) == 0 && sbuf.st_size > 0) {
-		current = lseek(fd, 0, SEEK_CUR);
-		if (sbuf.st_size < current)
-			xlseek(fd, 0, SEEK_SET);
-	}
 
 	r = full_read(fd, buf, count);
 	if (r < 0) {
@@ -98,7 +87,7 @@ static unsigned eat_num(const char *p)
 		p++;
 		G.from_top = 1;
 	}
-	return xatou_sfx(p, head_tail_suffixes);
+	return xatou_sfx(p, bkm_suffixes);
 }
 
 int tail_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -363,7 +352,19 @@ int tail_main(int argc, char **argv)
 			if (nfiles > header_threshhold) {
 				fmt = header_fmt_str;
 			}
-			while ((nread = tail_read(fd, tailbuf, BUFSIZ)) > 0) {
+			for (;;) {
+				/* tail -f keeps following files even if they are truncated */
+				struct stat sbuf;
+				/* /proc files report zero st_size, don't lseek them */
+				if (fstat(fd, &sbuf) == 0 && sbuf.st_size > 0) {
+					off_t current = lseek(fd, 0, SEEK_CUR);
+					if (sbuf.st_size < current)
+						xlseek(fd, 0, SEEK_SET);
+				}
+
+				nread = tail_read(fd, tailbuf, BUFSIZ);
+				if (nread <= 0)
+					break;
 				if (fmt) {
 					tail_xprint_header(fmt, filename);
 					fmt = NULL;

@@ -569,7 +569,7 @@ static void NOINLINE vfork_compressor(int tar_fd, int gzip)
 		xmove_fd(gzipDataPipe.rd, 0);
 		xmove_fd(tar_fd, 1);
 		/* exec gzip/bzip2 program/applet */
-		BB_EXECLP(zip_exec, zip_exec, "-f", NULL);
+		BB_EXECLP(zip_exec, zip_exec, "-f", (char *)0);
 		vfork_exec_errno = errno;
 		_exit(EXIT_FAILURE);
 	}
@@ -681,14 +681,12 @@ static llist_t *append_file_list_to_list(llist_t *list)
 			char *cp = last_char_is(line, '/');
 			if (cp > line)
 				*cp = '\0';
-			llist_add_to(&newlist, line);
+			llist_add_to_end(&newlist, line);
 		}
 		fclose(src_stream);
 	}
 	return newlist;
 }
-#else
-# define append_file_list_to_list(x) 0
 #endif
 
 //usage:#define tar_trivial_usage

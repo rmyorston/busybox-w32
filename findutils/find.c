@@ -231,12 +231,13 @@
 //kbuild:lib-$(CONFIG_FIND) += find.o
 
 //usage:#define find_trivial_usage
-//usage:       "[PATH]... [OPTIONS] [ACTIONS]"
+//usage:       "[-HL] [PATH]... [OPTIONS] [ACTIONS]"
 //usage:#define find_full_usage "\n\n"
 //usage:       "Search for files and perform actions on them.\n"
 //usage:       "First failed action stops processing of current file.\n"
 //usage:       "Defaults: PATH is current directory, action is '-print'\n"
-//usage:     "\n	-follow		Follow symlinks"
+//usage:     "\n	-L,-follow	Follow symlinks"
+//usage:     "\n	-H		...on command line only"
 //usage:	IF_FEATURE_FIND_XDEV(
 //usage:     "\n	-xdev		Don't descend directories on other filesystems"
 //usage:	)
@@ -814,6 +815,31 @@ static const char* plus_minus_num(const char* str)
 }
 #endif
 
+/* Say no to GCCism */
+#define USE_NESTED_FUNCTION 0
+
+#if !USE_NESTED_FUNCTION
+struct pp_locals {
+	action*** appp;
+	unsigned cur_group;
+	unsigned cur_action;
+	IF_FEATURE_FIND_NOT( bool invert_flag; )
+};
+static action* alloc_action(struct pp_locals *ppl, int sizeof_struct, action_fp f)
+{
+	action *ap = xzalloc(sizeof_struct);
+	action **app;
+	action ***group = &ppl->appp[ppl->cur_group];
+	*group = app = xrealloc(*group, (ppl->cur_action+2) * sizeof(ppl->appp[0][0]));
+	app[ppl->cur_action++] = ap;
+	app[ppl->cur_action] = NULL;
+	ap->f = f;
+	IF_FEATURE_FIND_NOT( ap->invert = ppl->invert_flag; )
+	IF_FEATURE_FIND_NOT( ppl->invert_flag = 0; )
+	return ap;
+}
+#endif
+
 static action*** parse_params(char **argv)
 {
 	enum {
@@ -900,10 +926,18 @@ static action*** parse_params(char **argv)
 	IF_FEATURE_FIND_MAXDEPTH("-mindepth\0""-maxdepth\0")
 	;
 
+#if !USE_NESTED_FUNCTION
+	struct pp_locals ppl;
+#define appp        (ppl.appp       )
+#define cur_group   (ppl.cur_group  )
+#define cur_action  (ppl.cur_action )
+#define invert_flag (ppl.invert_flag)
+#define ALLOC_ACTION(name) (action_##name*)alloc_action(&ppl, sizeof(action_##name), (action_fp) func_##name)
+#else
 	action*** appp;
-	unsigned cur_group = 0;
-	unsigned cur_action = 0;
-	IF_FEATURE_FIND_NOT( bool invert_flag = 0; )
+	unsigned cur_group;
+	unsigned cur_action;
+	IF_FEATURE_FIND_NOT( bool invert_flag; )
 
 	/* This is the only place in busybox where we use nested function.
 	 * So far more standard alternatives were bigger. */
@@ -912,7 +946,7 @@ static action*** parse_params(char **argv)
 	action* alloc_action(int sizeof_struct, action_fp f)
 	{
 		action *ap;
-		appp[cur_group] = xrealloc(appp[cur_group], (cur_action+2) * sizeof(*appp));
+		appp[cur_group] = xrealloc(appp[cur_group], (cur_action+2) * sizeof(appp[0][0]));
 		appp[cur_group][cur_action++] = ap = xzalloc(sizeof_struct);
 		appp[cur_group][cur_action] = NULL;
 		ap->f = f;
@@ -920,9 +954,12 @@ static action*** parse_params(char **argv)
 		IF_FEATURE_FIND_NOT( invert_flag = 0; )
 		return ap;
 	}
-
 #define ALLOC_ACTION(name) (action_##name*)alloc_action(sizeof(action_##name), (action_fp) func_##name)
+#endif
 
+	cur_group = 0;
+	cur_action = 0;
+	IF_FEATURE_FIND_NOT( invert_flag = 0; )
 	appp = xzalloc(2 * sizeof(appp[0])); /* appp[0],[1] == NULL */
 
 	while (*argv) {
@@ -948,8 +985,8 @@ static action*** parse_params(char **argv)
  */
 		/* Options */
 		if (parm == OPT_FOLLOW) {
-                        dbg("follow enabled: %d", __LINE__);
-                        G.recurse_flags |= ACTION_FOLLOWLINKS | ACTION_DANGLING_OK;
+			dbg("follow enabled: %d", __LINE__);
+			G.recurse_flags |= ACTION_FOLLOWLINKS | ACTION_DANGLING_OK;
 		}
 #if ENABLE_FEATURE_FIND_XDEV
 		else if (parm == OPT_XDEV) {
@@ -987,7 +1024,7 @@ static action*** parse_params(char **argv)
 			dbg("%d", __LINE__);
 			/* start new OR group */
 			cur_group++;
-			appp = xrealloc(appp, (cur_group+2) * sizeof(*appp));
+			appp = xrealloc(appp, (cur_group+2) * sizeof(appp[0]));
 			/*appp[cur_group] = NULL; - already NULL */
 			appp[cur_group+1] = NULL;
 			cur_action = 0;
@@ -1245,6 +1282,9 @@ static action*** parse_params(char **argv)
 	dbg("exiting %s", __func__);
 	return appp;
 #undef ALLOC_ACTION
+#undef appp
+#undef cur_action
+#undef invert_flag
 }
 
 int find_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -1254,7 +1294,15 @@ int find_main(int argc UNUSED_PARAM, char **argv)
 
 	INIT_G();
 
-	argv++;
+	/* "+": stop on first non-option */
+	i = getopt32(argv, "+HLP");
+	if (i & (1<<0))
+		G.recurse_flags |= ACTION_FOLLOWLINKS_L0 | ACTION_DANGLING_OK;
+	if (i & (1<<1))
+		G.recurse_flags |= ACTION_FOLLOWLINKS | ACTION_DANGLING_OK;
+	/* -P is default and is ignored */
+	argv += optind;
+
 	for (firstopt = 0; argv[firstopt]; firstopt++) {
 		if (argv[firstopt][0] == '-')
 			break;

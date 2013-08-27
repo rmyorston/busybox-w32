@@ -18,6 +18,17 @@
  *	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 
+//kbuild:lib-$(CONFIG_FEATURE_VOLUMEID_NTFS) += ntfs.o
+
+//config:
+//config:config FEATURE_VOLUMEID_NTFS
+//config:	bool "ntfs filesystem"
+//config:	default y
+//config:	depends on VOLUMEID
+//config:	help
+//config:	  TODO
+//config:
+
 #include "volume_id_internal.h"
 
 struct ntfs_super_block {
@@ -150,7 +161,7 @@ int FAST_FUNC volume_id_probe_ntfs(struct volume_id *id /*,uint64_t off*/)
 
 		attr = (struct file_attribute*) &buf[attr_off];
 		attr_type = le32_to_cpu(attr->type);
-		attr_len = le16_to_cpu(attr->len);
+		attr_len = le32_to_cpu(attr->len);
 		val_off = le16_to_cpu(attr->value_offset);
 		val_len = le32_to_cpu(attr->value_len);
 		attr_off += attr_len;
