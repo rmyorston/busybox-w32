@@ -45,10 +45,31 @@ int FAST_FUNC bb_make_directory(char *path, long mode, int flags)
 		c = '\0';
 
 		if (flags & FILEUTILS_RECUR) {  /* Get the parent */
-			/* skip drive letter */
-			if (ENABLE_PLATFORM_MINGW32 && s == path && *s && s[1] == ':') {
+#if ENABLE_PLATFORM_MINGW32
+			if (s == path && *s && s[1] == ':') {
+				/* skip drive letter */
 				s += 2;
 			}
+			else if (s == path && s[0] == '/' && s[1] == '/' ) {
+				/* skip UNC server and share */
+				int count = 0;
+				s += 2;
+				while (*s) {
+					if (*s == '/') {
+						do {
+							++s;
+						} while (*s == '/');
+						if (++count == 2) {
+							--s;
+							break;
+						}
+					}
+					else {
+						++s;
+					}
+				}
+			}
+#endif
 			/* Bypass leading non-'/'s and then subsequent '/'s */
 			while (*s) {
 				if (*s == '/') {
