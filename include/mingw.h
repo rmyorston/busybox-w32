@@ -322,8 +322,10 @@ int mingw_open (const char *filename, int oflags, ...);
 int pipe(int filedes[2]);
 NOIMPL(readlink,const char *path UNUSED_PARAM, char *buf UNUSED_PARAM, size_t bufsiz UNUSED_PARAM);
 NOIMPL(setgid,gid_t gid UNUSED_PARAM);
+NOIMPL(setegid,gid_t gid UNUSED_PARAM);
 NOIMPL(setsid,void);
 NOIMPL(setuid,uid_t gid UNUSED_PARAM);
+NOIMPL(seteuid,uid_t gid UNUSED_PARAM);
 unsigned int sleep(unsigned int seconds);
 NOIMPL(symlink,const char *oldpath UNUSED_PARAM, const char *newpath UNUSED_PARAM);
 static inline void sync(void) {}
