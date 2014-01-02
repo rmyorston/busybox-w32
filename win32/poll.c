@@ -29,7 +29,7 @@
 #include <sys/types.h>
 
 /* Specification.  */
-#include <sys/poll.h>
+#include <poll.h>
 
 #include <errno.h>
 #include <limits.h>
