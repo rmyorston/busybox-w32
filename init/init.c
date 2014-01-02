@@ -9,11 +9,6 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 
-//applet:IF_INIT(APPLET(init, BB_DIR_SBIN, BB_SUID_DROP))
-//applet:IF_FEATURE_INITRD(APPLET_ODDNAME(linuxrc, init, BB_DIR_ROOT, BB_SUID_DROP, linuxrc))
-
-//kbuild:lib-$(CONFIG_INIT) += init.o
-
 //config:config INIT
 //config:	bool "init"
 //config:	default y
@@ -107,6 +102,11 @@
 //config:
 //config:	  Note that on Linux, init attempts to detect serial terminal and
 //config:	  sets TERM to "vt102" if one is found.
+
+//applet:IF_INIT(APPLET(init, BB_DIR_SBIN, BB_SUID_DROP))
+//applet:IF_FEATURE_INITRD(APPLET_ODDNAME(linuxrc, init, BB_DIR_ROOT, BB_SUID_DROP, linuxrc))
+
+//kbuild:lib-$(CONFIG_INIT) += init.o
 
 #define DEBUG_SEGV_HANDLER 0
 
@@ -222,8 +222,8 @@ static void message(int where, const char *fmt, ...)
 	msg[0] = '\r';
 	va_start(arguments, fmt);
 	l = 1 + vsnprintf(msg + 1, sizeof(msg) - 2, fmt, arguments);
-	if (l > sizeof(msg) - 1)
-		l = sizeof(msg) - 1;
+	if (l > sizeof(msg) - 2)
+		l = sizeof(msg) - 2;
 	va_end(arguments);
 
 #if ENABLE_FEATURE_INIT_SYSLOG
@@ -789,7 +789,7 @@ static void run_shutdown_and_kill_processes(void)
  * and only one will be remembered and acted upon.
  */
 
-/* The SIGUSR[12]/SIGTERM handler */
+/* The SIGPWR/SIGUSR[12]/SIGTERM handler */
 static void halt_reboot_pwoff(int sig) NORETURN;
 static void halt_reboot_pwoff(int sig)
 {
@@ -1103,8 +1103,8 @@ int init_main(int argc UNUSED_PARAM, char **argv)
 
 		/* NOTE that if CONFIG_FEATURE_USE_INITTAB is NOT defined,
 		 * then parse_inittab() simply adds in some default
-		 * actions(i.e., INIT_SCRIPT and a pair
-		 * of "askfirst" shells */
+		 * actions (i.e., INIT_SCRIPT and a pair
+		 * of "askfirst" shells) */
 		parse_inittab();
 	}
 
@@ -1128,13 +1128,14 @@ int init_main(int argc UNUSED_PARAM, char **argv)
 	strncpy(argv[0], "init", strlen(argv[0]));
 	/* Wipe argv[1]-argv[N] so they don't clutter the ps listing */
 	while (*++argv)
-		memset(*argv, 0, strlen(*argv));
+		nuke_str(*argv);
 
 	/* Set up signal handlers */
 	if (!DEBUG_INIT) {
 		struct sigaction sa;
 
 		bb_signals(0
+			+ (1 << SIGPWR)  /* halt */
 			+ (1 << SIGUSR1) /* halt */
 			+ (1 << SIGTERM) /* reboot */
 			+ (1 << SIGUSR2) /* poweroff */
@@ -1230,7 +1231,14 @@ int init_main(int argc UNUSED_PARAM, char **argv)
 //usage:#define init_trivial_usage
 //usage:       ""
 //usage:#define init_full_usage "\n\n"
-//usage:       "Init is the parent of all processes"
+//usage:       "Init is the first process started during boot. It never exits."
+//usage:	IF_FEATURE_USE_INITTAB(
+//usage:   "\n""It (re)spawns children according to /etc/inittab."
+//usage:	)
+//usage:	IF_NOT_FEATURE_USE_INITTAB(
+//usage:   "\n""This version of init doesn't use /etc/inittab,"
+//usage:   "\n""has fixed set of processed to run."
+//usage:	)
 //usage:
 //usage:#define init_notes_usage
 //usage:	"This version of init is designed to be run only by the kernel.\n"

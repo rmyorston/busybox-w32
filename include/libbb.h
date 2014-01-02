@@ -32,12 +32,12 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <string.h>
-/* There are two incompatible basename's, let not use them! */
+/* There are two incompatible basename's, let's not use them! */
 /* See the dirname/basename man page for details */
 #include <libgen.h> /* dirname,basename */
 #undef basename
 #define basename dont_use_basename
-#include <sys/poll.h>
+#include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -474,6 +474,8 @@ void record_signo(int signo); /* not FAST_FUNC! */
 
 void xsetgid(gid_t gid) FAST_FUNC;
 void xsetuid(uid_t uid) FAST_FUNC;
+void xsetegid(gid_t egid) FAST_FUNC;
+void xseteuid(uid_t euid) FAST_FUNC;
 void xchdir(const char *path) FAST_FUNC;
 void xchroot(const char *path) FAST_FUNC;
 void xsetenv(const char *key, const char *value) FAST_FUNC;
@@ -482,11 +484,12 @@ void bb_unsetenv_and_free(char *key) FAST_FUNC;
 void xunlink(const char *pathname) FAST_FUNC;
 void xstat(const char *pathname, struct stat *buf) FAST_FUNC;
 void xfstat(int fd, struct stat *buf, const char *errmsg) FAST_FUNC;
+int open3_or_warn(const char *pathname, int flags, int mode) FAST_FUNC;
+int open_or_warn(const char *pathname, int flags) FAST_FUNC;
+int xopen3(const char *pathname, int flags, int mode) FAST_FUNC;
 int xopen(const char *pathname, int flags) FAST_FUNC;
 int xopen_nonblocking(const char *pathname) FAST_FUNC;
-int xopen3(const char *pathname, int flags, int mode) FAST_FUNC;
-int open_or_warn(const char *pathname, int flags) FAST_FUNC;
-int open3_or_warn(const char *pathname, int flags, int mode) FAST_FUNC;
+int xopen_as_uid_gid(const char *pathname, int flags, uid_t u, gid_t g) FAST_FUNC;
 int open_or_warn_stdin(const char *pathname) FAST_FUNC;
 int xopen_stdin(const char *pathname) FAST_FUNC;
 void xrename(const char *oldpath, const char *newpath) FAST_FUNC;
@@ -831,8 +834,8 @@ char *itoa(int n) FAST_FUNC;
 char *utoa_to_buf(unsigned n, char *buf, unsigned buflen) FAST_FUNC;
 char *itoa_to_buf(int n, char *buf, unsigned buflen) FAST_FUNC;
 /* Intelligent formatters of bignums */
-void smart_ulltoa4(unsigned long long ul, char buf[4], const char *scale) FAST_FUNC;
-void smart_ulltoa5(unsigned long long ul, char buf[5], const char *scale) FAST_FUNC;
+char *smart_ulltoa4(unsigned long long ul, char buf[4], const char *scale) FAST_FUNC;
+char *smart_ulltoa5(unsigned long long ul, char buf[5], const char *scale) FAST_FUNC;
 /* If block_size == 0, display size without fractional part,
  * else display (size * block_size) with one decimal digit.
  * If display_unit == 0, show value no bigger than 1024 with suffix (K,M,G...),
@@ -1313,8 +1316,10 @@ int sd_listen_fds(void);
 #define SETUP_ENV_CLEARENV  (1 << 1)
 #define SETUP_ENV_TO_TMP    (1 << 2)
 #define SETUP_ENV_NO_CHDIR  (1 << 4)
-extern void setup_environment(const char *shell, int flags, const struct passwd *pw) FAST_FUNC;
-extern int correct_password(const struct passwd *pw) FAST_FUNC;
+void setup_environment(const char *shell, int flags, const struct passwd *pw) FAST_FUNC;
+void nuke_str(char *str) FAST_FUNC;
+int ask_and_check_password_extended(const struct passwd *pw, int timeout, const char *prompt) FAST_FUNC;
+int ask_and_check_password(const struct passwd *pw) FAST_FUNC;
 /* Returns a malloced string */
 #if !ENABLE_USE_BB_CRYPT
 #define pw_encrypt(clear, salt, cleanup) pw_encrypt(clear, salt)
@@ -1792,6 +1797,11 @@ extern struct globals *const ptr_to_globals;
 #define SET_PTR_TO_GLOBALS(x) do { \
 	(*(struct globals**)&ptr_to_globals) = (void*)(x); \
 	barrier(); \
+} while (0)
+#define FREE_PTR_TO_GLOBALS() do { \
+	if (ENABLE_FEATURE_CLEAN_UP) { \
+		free(ptr_to_globals); \
+	} \
 } while (0)
 
 /* You can change LIBBB_DEFAULT_LOGIN_SHELL, but don't use it,

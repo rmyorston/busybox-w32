@@ -15,6 +15,44 @@ mkdir tar.tempdir && cd tar.tempdir || exit 1
 
 # testing "test name" "script" "expected result" "file input" "stdin"
 
+testing "Empty file is not a tarball" '\
+tar xvf - 2>&1; echo $?
+' "\
+tar: short read
+1
+" \
+"" ""
+SKIP=
+
+optional FEATURE_SEAMLESS_GZ
+# In NOMMU case, "invalid magic" message comes from gunzip child process.
+# Otherwise, it comes from tar.
+# Need to fix output up to avoid false positive.
+testing "Empty file is not a tarball.tar.gz" '\
+{ tar xvzf - 2>&1; echo $?; } | grep -Fv "invalid magic"
+' "\
+tar: short read
+1
+" \
+"" ""
+SKIP=
+
+testing "Two zeroed blocks is a ('truncated') empty tarball" '\
+dd if=/dev/zero bs=512 count=2 2>/dev/null | tar xvf - 2>&1; echo $?
+' "\
+0
+" \
+"" ""
+SKIP=
+
+testing "Twenty zeroed blocks is an empty tarball" '\
+dd if=/dev/zero bs=512 count=20 2>/dev/null | tar xvf - 2>&1; echo $?
+' "\
+0
+" \
+"" ""
+SKIP=
+
 optional FEATURE_TAR_CREATE FEATURE_LS_SORTFILES
 testing "tar hardlinks and repeated files" '\
 rm -rf input_* test.tar 2>/dev/null

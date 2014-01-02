@@ -98,10 +98,10 @@ static int do_em_all(void)
 #if ENABLE_FEATURE_SWAPON_PRI
 				char *p;
 				g_flags = 0; /* each swap space might have different flags */
-				p = strstr(m->mnt_opts, "pri=");
+				p = hasmntopt(m, "pri");
 				if (p) {
 					/* Max allowed 32767 (==SWAP_FLAG_PRIO_MASK) */
-					int swap_prio = MIN(bb_strtoull(p + 4 , NULL, 10), SWAP_FLAG_PRIO_MASK);
+					unsigned int swap_prio = MIN(bb_strtou(p + 4 , NULL, 10), SWAP_FLAG_PRIO_MASK);
 					/* We want to allow "NNNN,foo", thus errno == EINVAL is allowed too */
 					if (errno != ERANGE) {
 						g_flags = SWAP_FLAG_PREFER |

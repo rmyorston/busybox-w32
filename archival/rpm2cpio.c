@@ -7,6 +7,15 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 
+//config:config RPM2CPIO
+//config:	bool "rpm2cpio"
+//config:	default y
+//config:	help
+//config:	  Converts a RPM file into a CPIO archive.
+
+//applet:IF_RPM2CPIO(APPLET(rpm2cpio, BB_DIR_USR_BIN, BB_SUID_DROP))
+//kbuild:lib-$(CONFIG_RPM2CPIO) += rpm2cpio.o
+
 //usage:#define rpm2cpio_trivial_usage
 //usage:       "package.rpm"
 //usage:#define rpm2cpio_full_usage "\n\n"

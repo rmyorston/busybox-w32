@@ -94,7 +94,7 @@ typedef struct {
 	( ((0x9f5f * ((((b[p]<<5)^b[p+1])<<5) ^ b[p+2])) >> 5) & (SWD_HSIZE-1) )
 
 #if defined(LZO_UNALIGNED_OK_2)
-#  define HEAD2(b,p)      (* (uint16_t *) &(b[p]))
+#  define HEAD2(b,p)      (* (bb__aliased_uint16_t *) &(b[p]))
 #else
 #  define HEAD2(b,p)      (b[p] ^ ((unsigned)b[p+1]<<8))
 #endif
@@ -465,7 +465,6 @@ static int find_match(lzo1x_999_t *c, lzo_swd_p s,
 		assert(this_len <= 1);
 	}
 
-	s->m_len = 1;
 	s->m_len = 1;
 #ifdef SWD_BEST_OFF
 	if (s->use_best_off)

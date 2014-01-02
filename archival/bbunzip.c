@@ -7,6 +7,9 @@
 #include "libbb.h"
 #include "bb_archive.h"
 
+/* lzop_main() uses bbunpack(), need this: */
+//kbuild:lib-$(CONFIG_LZOP) += bbunzip.o
+
 /* Note: must be kept in sync with archival/lzop.c */
 enum {
 	OPT_STDOUT     = 1 << 0,
@@ -207,7 +210,6 @@ char* FAST_FUNC make_new_name_generic(char *filename, const char *expected_ext)
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
 //usage:#define uncompress_trivial_usage
 //usage:       "[-cf] [FILE]..."
 //usage:#define uncompress_full_usage "\n\n"
@@ -215,6 +217,15 @@ char* FAST_FUNC make_new_name_generic(char *filename, const char *expected_ext)
 //usage:     "\n	-c	Write to stdout"
 //usage:     "\n	-f	Overwrite"
 
+//config:config UNCOMPRESS
+//config:	bool "uncompress"
+//config:	default n
+//config:	help
+//config:	  uncompress is used to decompress archives created by compress.
+//config:	  Not much used anymore, replaced by gzip/gunzip.
+
+//applet:IF_UNCOMPRESS(APPLET(uncompress, BB_DIR_BIN, BB_SUID_DROP))
+//kbuild:lib-$(CONFIG_UNCOMPRESS) += bbunzip.o
 #if ENABLE_UNCOMPRESS
 static
 IF_DESKTOP(long long) int FAST_FUNC unpack_uncompress(transformer_aux_data_t *aux)
@@ -255,11 +266,7 @@ int uncompress_main(int argc UNUSED_PARAM, char **argv)
  * Portions of the lzw code are derived from the public domain 'compress'
  * written by Spencer Thomas, Joe Orost, James Woods, Jim McKie, Steve Davies,
  * Ken Turkowski, Dave Mack and Peter Jannesen.
- *
- * See the license_msg below and the file COPYING for the software license.
- * See the file algorithm.doc for the compression algorithms and file formats.
  */
-
 //usage:#define gunzip_trivial_usage
 //usage:       "[-cft] [FILE]..."
 //usage:#define gunzip_full_usage "\n\n"
@@ -280,6 +287,18 @@ int uncompress_main(int argc UNUSED_PARAM, char **argv)
 //usage:#define zcat_full_usage "\n\n"
 //usage:       "Decompress to stdout"
 
+//config:config GUNZIP
+//config:	bool "gunzip"
+//config:	default y
+//config:	help
+//config:	  gunzip is used to decompress archives created by gzip.
+//config:	  You can use the `-t' option to test the integrity of
+//config:	  an archive, without decompressing it.
+
+//applet:IF_GUNZIP(APPLET(gunzip, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_GUNZIP(APPLET_ODDNAME(zcat, gunzip, BB_DIR_BIN, BB_SUID_DROP, zcat))
+//kbuild:lib-$(CONFIG_GZIP) += bbunzip.o
+//kbuild:lib-$(CONFIG_GUNZIP) += bbunzip.o
 #if ENABLE_GUNZIP
 static
 char* FAST_FUNC make_new_name_gunzip(char *filename, const char *expected_ext UNUSED_PARAM)
@@ -358,8 +377,24 @@ int gunzip_main(int argc UNUSED_PARAM, char **argv)
 //usage:       "[FILE]..."
 //usage:#define bzcat_full_usage "\n\n"
 //usage:       "Decompress to stdout"
+
+//config:config BUNZIP2
+//config:	bool "bunzip2"
+//config:	default y
+//config:	help
+//config:	  bunzip2 is a compression utility using the Burrows-Wheeler block
+//config:	  sorting text compression algorithm, and Huffman coding. Compression
+//config:	  is generally considerably better than that achieved by more
+//config:	  conventional LZ77/LZ78-based compressors, and approaches the
+//config:	  performance of the PPM family of statistical compressors.
+//config:
+//config:	  Unless you have a specific application which requires bunzip2, you
+//config:	  should probably say N here.
+
 //applet:IF_BUNZIP2(APPLET(bunzip2, BB_DIR_USR_BIN, BB_SUID_DROP))
 //applet:IF_BUNZIP2(APPLET_ODDNAME(bzcat, bunzip2, BB_DIR_USR_BIN, BB_SUID_DROP, bzcat))
+//kbuild:lib-$(CONFIG_BZIP2) += bbunzip.o
+//kbuild:lib-$(CONFIG_BUNZIP2) += bbunzip.o
 #if ENABLE_BUNZIP2
 static
 IF_DESKTOP(long long) int FAST_FUNC unpack_bunzip2(transformer_aux_data_t *aux)
@@ -387,7 +422,6 @@ int bunzip2_main(int argc UNUSED_PARAM, char **argv)
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-
 //usage:#define unlzma_trivial_usage
 //usage:       "[-cf] [FILE]..."
 //usage:#define unlzma_full_usage "\n\n"
@@ -428,6 +462,38 @@ int bunzip2_main(int argc UNUSED_PARAM, char **argv)
 //usage:#define xzcat_full_usage "\n\n"
 //usage:       "Decompress to stdout"
 
+//config:config UNLZMA
+//config:	bool "unlzma"
+//config:	default y
+//config:	help
+//config:	  unlzma is a compression utility using the Lempel-Ziv-Markov chain
+//config:	  compression algorithm, and range coding. Compression
+//config:	  is generally considerably better than that achieved by the bzip2
+//config:	  compressors.
+//config:
+//config:	  The BusyBox unlzma applet is limited to decompression only.
+//config:	  On an x86 system, this applet adds about 4K.
+//config:
+//config:config FEATURE_LZMA_FAST
+//config:	bool "Optimize unlzma for speed"
+//config:	default n
+//config:	depends on UNLZMA
+//config:	help
+//config:	  This option reduces decompression time by about 25% at the cost of
+//config:	  a 1K bigger binary.
+//config:
+//config:config LZMA
+//config:	bool "Provide lzma alias which supports only unpacking"
+//config:	default y
+//config:	depends on UNLZMA
+//config:	help
+//config:	  Enable this option if you want commands like "lzma -d" to work.
+//config:	  IOW: you'll get lzma applet, but it will always require -d option.
+
+//applet:IF_UNLZMA(APPLET(unlzma, BB_DIR_USR_BIN, BB_SUID_DROP))
+//applet:IF_UNLZMA(APPLET_ODDNAME(lzcat, unlzma, BB_DIR_USR_BIN, BB_SUID_DROP, lzcat))
+//applet:IF_LZMA(APPLET_ODDNAME(lzma, unlzma, BB_DIR_USR_BIN, BB_SUID_DROP, lzma))
+//kbuild:lib-$(CONFIG_UNLZMA) += bbunzip.o
 #if ENABLE_UNLZMA
 static
 IF_DESKTOP(long long) int FAST_FUNC unpack_unlzma(transformer_aux_data_t *aux)
@@ -453,6 +519,24 @@ int unlzma_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 
+//config:config UNXZ
+//config:	bool "unxz"
+//config:	default y
+//config:	help
+//config:	  unxz is a unlzma successor.
+//config:
+//config:config XZ
+//config:	bool "Provide xz alias which supports only unpacking"
+//config:	default y
+//config:	depends on UNXZ
+//config:	help
+//config:	  Enable this option if you want commands like "xz -d" to work.
+//config:	  IOW: you'll get xz applet, but it will always require -d option.
+
+//applet:IF_UNXZ(APPLET(unxz, BB_DIR_USR_BIN, BB_SUID_DROP))
+//applet:IF_UNXZ(APPLET_ODDNAME(xzcat, unxz, BB_DIR_USR_BIN, BB_SUID_DROP, xzcat))
+//applet:IF_XZ(APPLET_ODDNAME(xz, unxz, BB_DIR_USR_BIN, BB_SUID_DROP, xz))
+//kbuild:lib-$(CONFIG_UNXZ) += bbunzip.o
 #if ENABLE_UNXZ
 static
 IF_DESKTOP(long long) int FAST_FUNC unpack_unxz(transformer_aux_data_t *aux)
