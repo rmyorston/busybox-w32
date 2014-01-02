@@ -966,6 +966,10 @@ static const char tar_longopts[] ALIGN1 =
 	;
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+smallint bb_got_signal;
+#endif
+
 int tar_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int tar_main(int argc UNUSED_PARAM, char **argv)
 {
