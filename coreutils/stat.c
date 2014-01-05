@@ -343,11 +343,7 @@ static void FAST_FUNC print_stat(char *pformat, const char m,
 		printf(pformat, (unsigned long) 512); //ST_NBLOCKSIZE
 	} else if (m == 'b') {
 		strcat(pformat, "llu");
-#if !ENABLE_PLATFORM_MINGW32
 		printf(pformat, (unsigned long long) statbuf->st_blocks);
-#else
-		printf(pformat, (unsigned long long) ((statbuf->st_size+511)/512));
-#endif
 	} else if (m == 'o') {
 		strcat(pformat, "lu");
 #if !ENABLE_PLATFORM_MINGW32

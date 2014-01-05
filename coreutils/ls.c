@@ -754,12 +754,7 @@ static struct dnode *my_stat(const char *fullname, const char *name, int force_f
 	cur->dn_ctime  = statbuf.st_ctime ;
 #endif
 	cur->dn_ino    = statbuf.st_ino   ;
-#if !ENABLE_PLATFORM_MINGW32
 	cur->dn_blocks = statbuf.st_blocks;
-#else
-	/* MinGW does not have st_blocks */
-	cur->dn_blocks = 0;
-#endif
 	cur->dn_nlink  = statbuf.st_nlink ;
 	cur->dn_uid    = statbuf.st_uid   ;
 	cur->dn_gid    = statbuf.st_gid   ;

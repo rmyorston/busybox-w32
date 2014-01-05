@@ -248,6 +248,13 @@ int mingw_fstat(int fd, struct stat *buf);
 #define lstat mingw_lstat
 #define _stati64(x,y) mingw_stat(x,y)
 
+/* The Windows stat structure doesn't have the st_blocks member.  This
+ * macro calculates st_blocks from st_size.  It would be better if we
+ * could put brackets around it but most references to st_blocks in BusyBox
+ * are pretty simple and work without brackets.
+ */
+#define st_blocks st_size+511>>9
+
 /*
  * sys/sysmacros.h
  */
