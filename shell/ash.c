@@ -52,9 +52,7 @@
 #define JOBS ENABLE_ASH_JOB_CONTROL
 
 #include "busybox.h" /* for applet_names */
-#if !ENABLE_PLATFORM_MINGW32
 #include <paths.h>
-#endif
 #include <setjmp.h>
 #include <fnmatch.h>
 #include <sys/times.h>
