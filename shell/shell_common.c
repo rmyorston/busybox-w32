@@ -18,9 +18,7 @@
  */
 #include "libbb.h"
 #include "shell_common.h"
-#if !ENABLE_PLATFORM_MINGW32
 #include <sys/resource.h> /* getrlimit */
-#endif
 
 const char defifsvar[] ALIGN1 = "IFS= \t\n";
 
