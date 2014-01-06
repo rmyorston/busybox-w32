@@ -2,17 +2,30 @@
 #include "libbb.h"
 
 /*
- * Code from libguestfs
+ * Code from libguestfs (with addition of GetVolumeInformation call)
  */
 int statfs(const char *file, struct statfs *buf)
 {
 	ULONGLONG free_bytes_available;         /* for user - similar to bavail */
 	ULONGLONG total_number_of_bytes;
 	ULONGLONG total_number_of_free_bytes;   /* for everyone - bfree */
+	DWORD serial, namelen, flags;
+	char drive[4], fsname[100];
 
 	if ( !GetDiskFreeSpaceEx(file, (PULARGE_INTEGER) &free_bytes_available,
 			(PULARGE_INTEGER) &total_number_of_bytes,
 			(PULARGE_INTEGER) &total_number_of_free_bytes) ) {
+		return -1;
+	}
+
+	if ( strlen(file) == 2 && file[1] == ':' ) {
+		/* GetVolumeInformation wants a backslash */
+		strcat(strcpy(drive, file), "\\");
+		file = drive;
+	}
+
+	if ( !GetVolumeInformation(file, NULL, 0, &serial, &namelen, &flags,
+								fsname, 100) ) {
 		return -1;
 	}
 
@@ -34,6 +47,23 @@ int statfs(const char *file, struct statfs *buf)
 	else
 		buf->f_bsize = 65536;
 
+	/*
+	 * Valid filesystem names don't seem to be documented.  The following
+	 * are present in Wine.
+	 */
+	if ( strcmp(fsname, "NTFS") == 0 ) {
+		buf->f_type = 0x5346544e;
+	}
+	else if ( strcmp(fsname, "FAT") == 0 || strcmp(fsname, "FAT32") == 0 ) {
+		buf->f_type = 0x4006;
+	}
+	else if ( strcmp(fsname, "CDFS") == 0 ) {
+		buf->f_type = 0x9660;
+	}
+	else {
+		buf->f_type = 0;
+	}
+
 	/* As with stat, -1 indicates a field is not known. */
 	buf->f_frsize = buf->f_bsize;
 	buf->f_blocks = total_number_of_bytes / buf->f_bsize;
@@ -42,9 +72,9 @@ int statfs(const char *file, struct statfs *buf)
 	buf->f_files = -1;
 	buf->f_ffree = -1;
 	buf->f_favail = -1;
-	buf->f_fsid = -1;
+	buf->f_fsid = serial;
 	buf->f_flag = -1;
-	buf->f_namemax = FILENAME_MAX;
+	buf->f_namelen = namelen;
 
 	return 0;
 }

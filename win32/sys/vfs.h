@@ -1,17 +1,1 @@
-#include <stdint.h>
-
-struct statfs {
-	uint64_t f_bsize;
-	uint64_t f_frsize;
-	uint64_t f_blocks;
-	uint64_t f_bfree;
-	uint64_t f_bavail;
-	uint64_t f_files;
-	uint64_t f_ffree;
-	uint64_t f_favail;
-	uint64_t f_fsid;
-	uint64_t f_flag;
-	uint64_t f_namemax;
-};
-
-extern int statfs(const char *file, struct statfs *buf);
+#include <sys/statfs.h>
