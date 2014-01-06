@@ -20,9 +20,7 @@
 //usage:	IF_FEATURE_STAT_FORMAT(
 //usage:     "\n	-c fmt	Use the specified format"
 //usage:	)
-//usage:	IF_FEATURE_STAT_FILESYSTEM(
 //usage:     "\n	-f	Display filesystem status"
-//usage:	)
 //usage:     "\n	-L	Follow links"
 //usage:     "\n	-t	Display info in terse form"
 //usage:	IF_SELINUX(
@@ -56,7 +54,6 @@
 //usage:       " %Y	Time of last modification as seconds since Epoch\n"
 //usage:       " %z	Time of last change\n"
 //usage:       " %Z	Time of last change as seconds since Epoch\n"
-//usage:	IF_FEATURE_STAT_FILESYSTEM(
 //usage:       "\nValid format sequences for file systems:\n"
 //usage:       " %a	Free blocks available to non-superuser\n"
 //usage:       " %b	Total data blocks in file system\n"
@@ -74,13 +71,12 @@
 //usage:       " %t	Type in hex\n"
 //usage:       " %T	Type in human readable form"
 //usage:	)
-//usage:	)
 
 #include "libbb.h"
 
-#define OPT_TERSE       (1 << 0)
-#define OPT_DEREFERENCE (1 << 1)
-#define OPT_FILESYS     (1 << 2)
+#define OPT_FILESYS     (1 << 0)
+#define OPT_TERSE       (1 << 1)
+#define OPT_DEREFERENCE (1 << 2)
 #define OPT_SELINUX     (1 << 3)
 
 #if ENABLE_FEATURE_STAT_FORMAT
@@ -136,7 +132,6 @@ static const char *human_time(time_t t)
 #undef buf
 }
 
-#if ENABLE_FEATURE_STAT_FILESYSTEM
 /* Return the type of the specified file system.
  * Some systems have statfvs.f_basetype[FSTYPSZ]. (AIX, HP-UX, and Solaris)
  * Others have statfs.f_fstypename[MFSNAMELEN]. (NetBSD 1.5.2)
@@ -207,7 +202,6 @@ static unsigned long long get_f_fsid(const struct statfs *statfsbuf)
 	while (--sz > 0);
 	return r;
 }
-#endif  /* FEATURE_STAT_FILESYSTEM */
 
 #if ENABLE_FEATURE_STAT_FORMAT
 static void strcatc(char *str, char c)
@@ -223,7 +217,6 @@ static void printfs(char *pformat, const char *msg)
 	printf(pformat, msg);
 }
 
-#if ENABLE_FEATURE_STAT_FILESYSTEM
 /* print statfs info */
 static void FAST_FUNC print_statfs(char *pformat, const char m,
 		const char *const filename, const void *data
@@ -270,7 +263,6 @@ static void FAST_FUNC print_statfs(char *pformat, const char m,
 		printf(pformat, m);
 	}
 }
-#endif
 
 /* print stat info */
 static void FAST_FUNC print_stat(char *pformat, const char m,
@@ -435,7 +427,6 @@ static void print_it(const char *masterformat,
 }
 #endif  /* FEATURE_STAT_FORMAT */
 
-#if ENABLE_FEATURE_STAT_FILESYSTEM
 /* Stat the file system and print what we find.  */
 #if !ENABLE_FEATURE_STAT_FORMAT
 #define do_statfs(filename, format) do_statfs(filename)
@@ -551,7 +542,6 @@ static bool do_statfs(const char *filename, const char *format)
 #endif  /* FEATURE_STAT_FORMAT */
 	return 1;
 }
-#endif  /* FEATURE_STAT_FILESYSTEM */
 
 /* stat the file and print what we find */
 #if !ENABLE_FEATURE_STAT_FORMAT
@@ -736,15 +726,12 @@ int stat_main(int argc UNUSED_PARAM, char **argv)
 	statfunc_ptr statfunc = do_stat;
 
 	opt_complementary = "-1"; /* min one arg */
-	opts = getopt32(argv, "tL"
-		IF_FEATURE_STAT_FILESYSTEM("f")
+	opts = getopt32(argv, "ftL"
 		IF_SELINUX("Z")
 		IF_FEATURE_STAT_FORMAT("c:", &format)
 	);
-#if ENABLE_FEATURE_STAT_FILESYSTEM
 	if (opts & OPT_FILESYS) /* -f */
 		statfunc = do_statfs;
-#endif
 #if ENABLE_SELINUX
 	if (opts & OPT_SELINUX) {
 		selinux_or_die();

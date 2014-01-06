@@ -599,15 +599,6 @@ config FEATURE_STAT_FORMAT
 	  users can pass a custom format string for output. This adds about
 	  7k to a nonstatic build on amd64.
 
-config FEATURE_STAT_FILESYSTEM
-	bool "Enable display of filesystem status (-f)"
-	default y
-	depends on STAT
-	select PLATFORM_LINUX # statfs()
-	help
-	  Without this, stat will not support the '-f' option to display
-	  information about filesystem status.
-
 config STTY
 	bool "stty"
 	default y
