@@ -94,11 +94,7 @@ int mktemp_main(int argc UNUSED_PARAM, char **argv)
 
 	if (opts & OPT_u) {
 		chp = mktemp(chp);
-#if !ENABLE_PLATFORM_MINGW32
 		if (chp[0] == '\0')
-#else
-		if (chp == NULL || chp[0] == '\0')
-#endif
 			goto error;
 	} else if (opts & OPT_d) {
 		if (mkdtemp(chp) == NULL)

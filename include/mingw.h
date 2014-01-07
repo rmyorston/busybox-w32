@@ -164,12 +164,14 @@ int mingw_system(const char *cmd);
 
 int clearenv(void);
 char *mingw_getenv(const char *name);
+char *mingw_mktemp(char *template);
 int mkstemp(char *template);
 char *realpath(const char *path, char *resolved_path);
 int setenv(const char *name, const char *value, int replace);
 void unsetenv(const char *env);
 
 #define getenv mingw_getenv
+#define mktemp mingw_mktemp
 
 /*
  * sys/ioctl.h

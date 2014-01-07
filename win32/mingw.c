@@ -435,6 +435,20 @@ unsigned int sleep (unsigned int seconds)
 	return 0;
 }
 
+/*
+ * Windows' mktemp returns NULL on error whereas POSIX always returns the
+ * template and signals an error by making it an empty string.
+ */
+#undef mktemp
+char *mingw_mktemp(char *template)
+{
+	if ( mktemp(template) == NULL ) {
+		template[0] = '\0';
+	}
+
+	return template;
+}
+
 int mkstemp(char *template)
 {
 	char *filename = mktemp(template);
