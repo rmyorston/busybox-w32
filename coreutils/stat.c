@@ -338,11 +338,7 @@ static void FAST_FUNC print_stat(char *pformat, const char m,
 		printf(pformat, (unsigned long long) statbuf->st_blocks);
 	} else if (m == 'o') {
 		strcat(pformat, "lu");
-#if !ENABLE_PLATFORM_MINGW32
 		printf(pformat, (unsigned long) statbuf->st_blksize);
-#else
-		printf(pformat, (unsigned long) 4096);
-#endif
 	} else if (m == 'x') {
 		printfs(pformat, human_time(statbuf->st_atime));
 	} else if (m == 'X') {
@@ -550,7 +546,6 @@ static bool do_statfs(const char *filename, const char *format)
 static bool do_stat(const char *filename, const char *format)
 {
 	struct stat statbuf;
-	int status;
 #if ENABLE_SELINUX
 	security_context_t scontext = NULL;
 
@@ -565,8 +560,7 @@ static bool do_stat(const char *filename, const char *format)
 		}
 	}
 #endif
-	status = option_mask32 & OPT_DEREFERENCE ? stat(filename, &statbuf) : lstat(filename, &statbuf);
-	if (status != 0) {
+	if ((option_mask32 & OPT_DEREFERENCE ? stat : lstat) (filename, &statbuf) != 0) {
 		bb_perror_msg("can't stat '%s'", filename);
 		return 0;
 	}

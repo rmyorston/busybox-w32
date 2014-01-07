@@ -204,9 +204,6 @@ NOIMPL(mingw_bind,SOCKET s UNUSED_PARAM,const struct sockaddr* sa UNUSED_PARAM,i
 /*
  * sys/stat.h
  */
-typedef int blkcnt_t;
-typedef int nlink_t;
-
 #define S_ISUID 04000
 #define S_ISGID 02000
 #define S_ISVTX 01000
@@ -233,27 +230,37 @@ NOIMPL(fchown,int fd UNUSED_PARAM, uid_t uid UNUSED_PARAM, gid_t gid UNUSED_PARA
 int mingw_mkdir(const char *path, int mode);
 #define mkdir mingw_mkdir
 
-/* Use mingw_lstat()/mingw_stat() instead of lstat()/stat() and
- * mingw_fstat() instead of fstat() on Windows.
- */
 #if ENABLE_LFS
 # define off_t off64_t
 #endif
 #define lseek _lseeki64
-#define stat _stati64
-int mingw_lstat(const char *file_name, struct stat *buf);
-int mingw_stat(const char *file_name, struct stat *buf);
-int mingw_fstat(int fd, struct stat *buf);
-#define fstat mingw_fstat
-#define lstat mingw_lstat
-#define _stati64(x,y) mingw_stat(x,y)
 
-/* The Windows stat structure doesn't have the st_blocks member.  This
- * macro calculates st_blocks from st_size.  It would be better if we
- * could put brackets around it but most references to st_blocks in BusyBox
- * are pretty simple and work without brackets.
- */
-#define st_blocks st_size+511>>9
+typedef int nlink_t;
+typedef int blksize_t;
+typedef off_t blkcnt_t;
+
+struct mingw_stat {
+	dev_t     st_dev;
+	ino_t     st_ino;
+	mode_t    st_mode;
+	nlink_t   st_nlink;
+	uid_t     st_uid;
+	gid_t     st_gid;
+	dev_t     st_rdev;
+	off_t     st_size;
+	time_t    st_atime;
+	time_t    st_mtime;
+	time_t    st_ctime;
+	blksize_t st_blksize;
+	blkcnt_t  st_blocks;
+};
+
+int mingw_lstat(const char *file_name, struct mingw_stat *buf);
+int mingw_stat(const char *file_name, struct mingw_stat *buf);
+int mingw_fstat(int fd, struct mingw_stat *buf);
+#define lstat mingw_lstat
+#define stat mingw_stat
+#define fstat mingw_fstat
 
 /*
  * sys/sysmacros.h

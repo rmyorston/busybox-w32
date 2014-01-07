@@ -212,7 +212,7 @@ static inline int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fd
  * If follow is true then act like stat() and report on the link
  * target. Otherwise report on the link itself.
  */
-static int do_lstat(int follow, const char *file_name, struct stat *buf)
+static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 {
 	int err;
 	WIN32_FILE_ATTRIBUTE_DATA fdata;
@@ -253,6 +253,13 @@ static int do_lstat(int follow, const char *file_name, struct stat *buf)
 				FindClose(handle);
 			}
 		}
+
+		/*
+		 * Assume a block is 4096 bytes and calculate number of 512 byte
+		 * sectors.
+		 */
+		buf->st_blksize = 4096;
+		buf->st_blocks = ((buf->st_size+4095)>>12)<<3;
 		return 0;
 	}
 	errno = err;
@@ -265,7 +272,7 @@ static int do_lstat(int follow, const char *file_name, struct stat *buf)
  * complete. Note that Git stat()s are redirected to mingw_lstat()
  * too, since Windows doesn't really handle symlinks that well.
  */
-static int do_stat_internal(int follow, const char *file_name, struct stat *buf)
+static int do_stat_internal(int follow, const char *file_name, struct mingw_stat *buf)
 {
 	int namelen;
 	static char alt_name[PATH_MAX];
@@ -292,17 +299,16 @@ static int do_stat_internal(int follow, const char *file_name, struct stat *buf)
 	return do_lstat(follow, alt_name, buf);
 }
 
-int mingw_lstat(const char *file_name, struct stat *buf)
+int mingw_lstat(const char *file_name, struct mingw_stat *buf)
 {
 	return do_stat_internal(0, file_name, buf);
 }
-int mingw_stat(const char *file_name, struct stat *buf)
+int mingw_stat(const char *file_name, struct mingw_stat *buf)
 {
 	return do_stat_internal(1, file_name, buf);
 }
 
-#undef fstat
-int mingw_fstat(int fd, struct stat *buf)
+int mingw_fstat(int fd, struct mingw_stat *buf)
 {
 	HANDLE fh = (HANDLE)_get_osfhandle(fd);
 	BY_HANDLE_FILE_INFORMATION fdata;
@@ -312,8 +318,26 @@ int mingw_fstat(int fd, struct stat *buf)
 		return -1;
 	}
 	/* direct non-file handles to MS's fstat() */
-	if (GetFileType(fh) != FILE_TYPE_DISK)
-		return _fstati64(fd, buf);
+	if (GetFileType(fh) != FILE_TYPE_DISK) {
+		struct _stati64 buf64;
+
+		if ( _fstati64(fd, &buf64) != 0 )  {
+			return -1;
+		}
+		buf->st_dev = 0;
+		buf->st_ino = 0;
+		buf->st_mode = S_IREAD|S_IWRITE;
+		buf->st_nlink = 1;
+		buf->st_uid = 0;
+		buf->st_gid = 0;
+		buf->st_rdev = 0;
+		buf->st_size = buf64.st_size;
+		buf->st_atime = buf64.st_atime;
+		buf->st_mtime = buf64.st_mtime;
+		buf->st_ctime = buf64.st_ctime;
+		buf->st_blksize = 4096;
+		buf->st_blocks = ((buf64.st_size+4095)>>12)<<3;
+	}
 
 	if (GetFileInformationByHandle(fh, &fdata)) {
 		buf->st_ino = 0;
@@ -327,6 +351,8 @@ int mingw_fstat(int fd, struct stat *buf)
 		buf->st_atime = filetime_to_time_t(&(fdata.ftLastAccessTime));
 		buf->st_mtime = filetime_to_time_t(&(fdata.ftLastWriteTime));
 		buf->st_ctime = filetime_to_time_t(&(fdata.ftCreationTime));
+		buf->st_blksize = 4096;
+		buf->st_blocks = ((buf->st_size+4095)>>12)<<3;
 		return 0;
 	}
 	errno = EBADF;
