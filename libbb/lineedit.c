@@ -651,7 +651,6 @@ static char *username_path_completion(char *ud)
 	if (*ud == '/') {       /* "~/..." */
 		home = home_pwd_buf;
 	} else {
-#if !ENABLE_PLATFORM_MINGW32
 		/* "~user/..." */
 		ud = strchr(ud, '/');
 		*ud = '\0';           /* "~user" */
@@ -659,7 +658,6 @@ static char *username_path_completion(char *ud)
 		*ud = '/';            /* restore "~user/..." */
 		if (entry)
 			home = entry->pw_dir;
-#endif
 	}
 	if (home) {
 		ud = concat_path_file(home, ud);
