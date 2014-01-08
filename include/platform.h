@@ -394,6 +394,8 @@ typedef unsigned smalluint;
 #define HAVE_UNLOCKED_LINE_OPS 1
 #define HAVE_GETLINE 1
 #define HAVE_XTABS 1
+#define HAVE_SIGISEMPTYSET 1
+#define HAVE_STIME 1
 #define HAVE_MNTENT_H 1
 #define HAVE_NET_ETHERNET_H 1
 #define HAVE_SYS_STATFS_H 1
@@ -448,6 +450,8 @@ typedef unsigned smalluint;
 # undef HAVE_PTSNAME_R
 # undef HAVE_STRVERSCMP
 # undef HAVE_UNLOCKED_LINE_OPS
+# undef HAVE_SIGISEMPTYSET
+# undef HAVE_STIME
 # undef HAVE_STRUCT_IN_PKTINFO_IPI_SPEC_DST
 #endif
 
@@ -548,6 +552,18 @@ extern int vasprintf(char **string_ptr, const char *format, va_list p) FAST_FUNC
 # include <stdio.h> /* for FILE */
 # include <sys/types.h> /* size_t */
 extern ssize_t getline(char **lineptr, size_t *n, FILE *stream) FAST_FUNC;
+#endif
+
+#if defined(__CYGWIN__) && !defined(HAVE_SIGISEMPTYSET)
+#include <signal.h>
+#include <cygwin/signal.h>
+int sigisemptyset(sigset_t *set);
+#endif
+
+#if defined(__CYGWIN__) && !defined(HAVE_STIME)
+#include <time.h>
+#include <sys/time.h>
+int stime(time_t *t);
 #endif
 
 #endif
