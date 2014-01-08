@@ -83,7 +83,9 @@ send_to_from(int fd, void *buf, size_t len, int flags,
 		 * and CMSG_DATA returns &u + size_t + int + int.
 		 * Thus direct assignment is ok:
 		 */
+# ifdef HAVE_STRUCT_IN_PKTINFO_IPI_SPEC_DST
 		pktptr->ipi_spec_dst = ((struct sockaddr_in*)from)->sin_addr;
+# endif
 	}
 # if ENABLE_FEATURE_IPV6 && defined(IPV6_PKTINFO)
 	else if (to->sa_family == AF_INET6 && from->sa_family == AF_INET6) {

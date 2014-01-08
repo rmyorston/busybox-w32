@@ -176,3 +176,31 @@ ssize_t FAST_FUNC getline(char **lineptr, size_t *n, FILE *stream)
 	return len;
 }
 #endif
+
+#if defined(__CYGWIN__) && !defined(HAVE_SIGISEMPTYSET)
+/* /usr/include/sys/signal.h on cygwin said:
+ * "Cygwin defines it's own sigset_t in include/cygwin/signal.h"
+ * /usr/include/cygwin/signal.h defines sigset_t as __uint64_t when
+ * __WORDSIZE == 64, else __uint32_t.
+ */
+int sigisemptyset(sigset_t *set) {
+	return (*set == (sigset_t)0);
+}
+#endif
+
+#if defined(__CYGWIN__) && !defined(HAVE_STIME)
+/* /usr/include/sys/types.h defines suseconds_t as long.
+ * Is this appropriate tz?
+ */
+int stime(time_t *t) {
+	const struct timeval tv = {
+		.tv_sec = *t,
+		.tv_usec = (suseconds_t)0
+	};
+	const struct timezone tz = {
+		.tz_minuteswest = 0,
+		.tz_dsttime = 0
+	};
+	return settimeofday(&tv, &tz);
+}
+#endif

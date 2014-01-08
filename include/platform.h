@@ -372,7 +372,7 @@ typedef unsigned smalluint;
 
 /* ---- Who misses what? ------------------------------------ */
 
-/* Assume all these functions and header files exist by default.
+/* Assume all these functions, header files and members exist by default.
  * Platforms where it is not true will #undef them below.
  */
 #define HAVE_CLEARENV 1
@@ -394,9 +394,12 @@ typedef unsigned smalluint;
 #define HAVE_UNLOCKED_LINE_OPS 1
 #define HAVE_GETLINE 1
 #define HAVE_XTABS 1
+#define HAVE_SIGISEMPTYSET 1
+#define HAVE_STIME 1
 #define HAVE_MNTENT_H 1
 #define HAVE_NET_ETHERNET_H 1
 #define HAVE_SYS_STATFS_H 1
+#define HAVE_STRUCT_IN_PKTINFO_IPI_SPEC_DST 1
 
 #if defined(__UCLIBC__) && UCLIBC_VERSION < KERNEL_VERSION(0, 9, 32)
 # undef HAVE_STRVERSCMP
@@ -444,10 +447,18 @@ typedef unsigned smalluint;
 #if defined(__CYGWIN__)
 # undef HAVE_CLEARENV
 # undef HAVE_FDPRINTF
-# undef HAVE_MEMRCHR
 # undef HAVE_PTSNAME_R
 # undef HAVE_STRVERSCMP
 # undef HAVE_UNLOCKED_LINE_OPS
+# undef HAVE_SIGISEMPTYSET
+# undef HAVE_STIME
+# undef HAVE_STRUCT_IN_PKTINFO_IPI_SPEC_DST
+/* /usr/include/cygwin/socket.h said:
+ * "Not unsigned for backward compatibility.
+ *  Keep #define for backward compatibility.
+ */
+#define __socklen_t_defined 1
+#define _SOCKLEN_T_DECLARED 1
 #endif
 
 /* These BSD-derived OSes share many similarities */
@@ -547,6 +558,18 @@ extern int vasprintf(char **string_ptr, const char *format, va_list p) FAST_FUNC
 # include <stdio.h> /* for FILE */
 # include <sys/types.h> /* size_t */
 extern ssize_t getline(char **lineptr, size_t *n, FILE *stream) FAST_FUNC;
+#endif
+
+#if defined(__CYGWIN__) && !defined(HAVE_SIGISEMPTYSET)
+#include <signal.h>
+#include <cygwin/signal.h>
+int sigisemptyset(sigset_t *set);
+#endif
+
+#if defined(__CYGWIN__) && !defined(HAVE_STIME)
+#include <time.h>
+#include <sys/time.h>
+int stime(time_t *t);
 #endif
 
 #endif
