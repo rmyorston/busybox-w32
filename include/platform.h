@@ -372,7 +372,7 @@ typedef unsigned smalluint;
 
 /* ---- Who misses what? ------------------------------------ */
 
-/* Assume all these functions and header files exist by default.
+/* Assume all these functions, header files and members exist by default.
  * Platforms where it is not true will #undef them below.
  */
 #define HAVE_CLEARENV 1
@@ -398,6 +398,7 @@ typedef unsigned smalluint;
 #define HAVE_NET_ETHERNET_H 1
 #define HAVE_SYS_STATFS_H 1
 #define HAVE_SYS_SYSCALL_H 1
+#define HAVE_STRUCT_IN_PKTINFO_IPI_SPEC_DST 1
 
 #if defined(__UCLIBC__) && UCLIBC_VERSION < KERNEL_VERSION(0, 9, 32)
 # undef HAVE_STRVERSCMP
@@ -449,6 +450,7 @@ typedef unsigned smalluint;
 # undef HAVE_STRVERSCMP
 # undef HAVE_UNLOCKED_LINE_OPS
 # undef HAVE_SYS_SYSCALL_H
+# undef HAVE_STRUCT_IN_PKTINFO_IPI_SPEC_DST
 #endif
 
 /* These BSD-derived OSes share many similarities */
