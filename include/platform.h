@@ -444,7 +444,6 @@ typedef unsigned smalluint;
 #if defined(__CYGWIN__)
 # undef HAVE_CLEARENV
 # undef HAVE_FDPRINTF
-# undef HAVE_MEMRCHR
 # undef HAVE_PTSNAME_R
 # undef HAVE_STRVERSCMP
 # undef HAVE_UNLOCKED_LINE_OPS
