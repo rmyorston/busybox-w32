@@ -7,7 +7,9 @@
 //kbuild:lib-$(CONFIG_PLATFORM_POSIX) += missing_syscalls.o
 
 /*#include <linux/timex.h> - for struct timex, but may collide with <time.h> */
+#ifdef HAVE_SYS_SYSCALL_H
 #include <sys/syscall.h>
+#endif
 #include "libbb.h"
 
 #if defined(ANDROID) || defined(__ANDROID__)
