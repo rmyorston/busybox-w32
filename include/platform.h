@@ -453,6 +453,12 @@ typedef unsigned smalluint;
 # undef HAVE_SIGISEMPTYSET
 # undef HAVE_STIME
 # undef HAVE_STRUCT_IN_PKTINFO_IPI_SPEC_DST
+/* /usr/include/cygwin/socket.h said:
+ * "Not unsigned for backward compatibility.
+ *  Keep #define for backward compatibility.
+ */
+#define __socklen_t_defined 1
+#define _SOCKLEN_T_DECLARED 1
 #endif
 
 /* These BSD-derived OSes share many similarities */
