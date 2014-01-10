@@ -14035,7 +14035,7 @@ SLIST_COPY_END()
  */
 SLIST_SIZE_BEGIN(localvar_size,struct localvar)
 var_size(p->vp);
-funcstringsize += strlen(p->text) + 1;
+if (p->text) funcstringsize += strlen(p->text) + 1;
 nodeptrsize += 2; /* p->vp, p->text */
 SLIST_SIZE_END()
 
