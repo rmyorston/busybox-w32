@@ -20,7 +20,11 @@
 #include "shell_common.h"
 #include <sys/resource.h> /* getrlimit */
 
+#if !ENABLE_PLATFORM_MINGW32
 const char defifsvar[] ALIGN1 = "IFS= \t\n";
+#else
+const char defifsvar[] ALIGN1 = "IFS= \t\n\r";
+#endif
 
 
 int FAST_FUNC is_well_formed_var_name(const char *s, char terminator)
