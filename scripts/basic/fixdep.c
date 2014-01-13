@@ -117,7 +117,7 @@
 #ifndef __MINGW32__
 #include <arpa/inet.h>
 #endif
-#include <alloca.h>
+//bbox disabled: #include <alloca.h>
 
 /* bbox: not needed
 #define INT_CONF ntohl(0x434f4e46)
