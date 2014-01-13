@@ -13600,10 +13600,6 @@ init(void)
 			pw = xgetpwuid(getuid());
 			setup_environment(pw->pw_shell,
 						SETUP_ENV_CHANGEENV|SETUP_ENV_NO_CHDIR, pw);
-
-#if ENABLE_ASH_BASH_COMPAT
-			setvareq("SHLVL=0", VEXPORT|VTEXTFIXED);
-#endif
 		}
 #endif
 		for (envp = environ; envp && *envp; envp++) {
