@@ -224,7 +224,6 @@ struct forkshell {
 	struct globals_var *gvp;
 	struct globals_misc *gmp;
 	struct tblentry **cmdtable;
-	struct localvar *localvars;
 	/* struct alias **atab; */
 	/* struct parsefile *g_parsefile; */
 	int fpid;
@@ -14031,22 +14030,6 @@ SAVE_PTR((*vpp)->var_text);
 SLIST_COPY_END()
 
 /*
- * struct localvar
- */
-SLIST_SIZE_BEGIN(localvar_size,struct localvar)
-var_size(p->vp);
-if (p->text) funcstringsize += strlen(p->text) + 1;
-nodeptrsize += 2; /* p->vp, p->text */
-SLIST_SIZE_END()
-
-SLIST_COPY_BEGIN(localvar_copy,struct localvar)
-(*vpp)->text = nodeckstrdup(vp->text);
-(*vpp)->flags = vp->flags;
-(*vpp)->vp = var_copy(vp->vp);
-SAVE_PTR2((*vpp)->vp, (*vpp)->text);
-SLIST_COPY_END()
-
-/*
  * struct strlist
  */
 SLIST_SIZE_BEGIN(strlist_size,struct strlist)
@@ -14303,7 +14286,6 @@ forkshell_size(struct forkshell *fs)
 	globals_var_size(fs->gvp);
 	globals_misc_size(fs->gmp);
 	cmdtable_size(fs->cmdtable);
-	localvar_size(fs->localvars);
 	/* optlist_transfer(sending, fd); */
 	/* misc_transfer(sending, fd); */
 
@@ -14312,7 +14294,7 @@ forkshell_size(struct forkshell *fs)
 	funcstringsize += (fs->string ? strlen(fs->string) : 0) + 1;
 	strlist_size(fs->strlist);
 
-	nodeptrsize += 8; /* gvp, gmp, cmdtable, localvars, n, argv, string, strlist */
+	nodeptrsize += 7; /* gvp, gmp, cmdtable, n, argv, string, strlist */
 }
 
 static struct forkshell *
@@ -14327,8 +14309,7 @@ forkshell_copy(struct forkshell *fs)
 	new->gvp = globals_var_copy(fs->gvp);
 	new->gmp = globals_misc_copy(fs->gmp);
 	new->cmdtable = cmdtable_copy(fs->cmdtable);
-	new->localvars = localvar_copy(fs->localvars);
-	SAVE_PTR4(new->gvp, new->gmp, new->cmdtable, new->localvars);
+	SAVE_PTR3(new->gvp, new->gmp, new->cmdtable);
 
 	/* new->fs will be reconstructed from new->fpid */
 	new->n = copynode(fs->n);
@@ -14358,7 +14339,6 @@ forkshell_prepare(struct forkshell *fs)
 	fs->gvp = ash_ptr_to_globals_var;
 	fs->gmp = ash_ptr_to_globals_misc;
 	fs->cmdtable = cmdtable;
-	fs->localvars = localvars;
 
 	nodeptrsize = 1;	/* NULL terminated */
 	funcblocksize = 0;
@@ -14446,7 +14426,6 @@ forkshell_init(const char *idstr)
 	*gvpp = fs->gvp;
 	gmpp = (struct globals_misc **)&ash_ptr_to_globals_misc;
 	*gmpp = fs->gmp;
-	localvars = fs->localvars;
 	cmdtable = fs->cmdtable;
 
 	fs->fp(fs);
