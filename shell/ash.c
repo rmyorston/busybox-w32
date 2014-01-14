@@ -13937,6 +13937,30 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 }
 
 #if ENABLE_PLATFORM_MINGW32
+/*
+ * Reset the pointers to the builtin environment variables in the hash
+ * table to point to varinit rather than the bogus copy created during
+ * forkshell_prepare.
+ */
+static void
+reinitvar(void)
+{
+	struct var *vp;
+	struct var *end;
+	struct var **vpp;
+	struct var **old;
+
+	vp = varinit;
+	end = vp + ARRAY_SIZE(varinit);
+	do {
+		vpp = hashvar(vp->var_text);
+		if ( (old=findvar(vpp, vp->var_text)) != NULL ) {
+			vp->next = (*old)->next;
+			*old = vp;
+		}
+	} while (++vp < end);
+}
+
 /* FIXME: should consider running forkparent() and forkchild() */
 static int
 spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
@@ -14423,6 +14447,8 @@ forkshell_init(const char *idstr)
 	gmpp = (struct globals_misc **)&ash_ptr_to_globals_misc;
 	*gmpp = fs->gmp;
 	cmdtable = fs->cmdtable;
+
+	reinitvar();
 
 	fs->fp(fs);
 }
