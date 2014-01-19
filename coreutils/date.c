@@ -328,11 +328,7 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 			i = sizeof("%a, %d %b %Y %H:%M:%S ")-1;
 			goto format_utc;
 		} else { /* default case */
-#if ENABLE_PLATFORM_MINGW32
-			fmt_dt2str = (char*)"%a %b %d %H:%M:%S %Z %Y";
-#else
 			fmt_dt2str = (char*)"%a %b %e %H:%M:%S %Z %Y";
-#endif
 		}
 	}
 #if ENABLE_FEATURE_DATE_NANO
@@ -385,10 +381,6 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 		if (strncmp(fmt_dt2str, "%f", 2) == 0) {
 			fmt_dt2str = (char*)"%Y.%m.%d-%H:%M:%S";
 		}
-#if ENABLE_PLATFORM_MINGW32
-		if (strstr(fmt_dt2str, "%e"))
-			bb_error_msg_and_die("%%e is not supported by Windows strftime");
-#endif
 		/* Generate output string */
 		strftime(date_buf, sizeof(date_buf), fmt_dt2str, &tm_time);
 	}

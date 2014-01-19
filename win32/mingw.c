@@ -804,6 +804,37 @@ char *strptime(const char *s UNUSED_PARAM, const char *format UNUSED_PARAM, stru
 	return NULL;
 }
 
+#undef strftime
+size_t mingw_strftime(const char *buf, size_t max, const char *format, const struct tm *tm)
+{
+	size_t ret;
+	const char *s;
+	char *t;
+	char *fmt = NULL;
+
+	/*
+	 * Provide a simple-minded emulation of the '%e' format that Windows'
+	 * strftime lacks.  It won't work properly if there's more than one
+	 * '%e' or if the user is playing games with '%'s.
+	 */
+	if ( (s=strstr(format, "%e")) != NULL ) {
+		fmt = xmalloc(strlen(format)+5);
+		strcpy(fmt, format);
+		t = strstr(fmt, "%e");
+		if ( tm->tm_mday < 10 ) {
+			strcat(strcpy(t, " %#d"), s+2);
+		}
+		else {
+			t[1] = 'd';
+		}
+	}
+
+	ret = strftime(buf, max, fmt ? fmt : format, tm);
+	free(fmt);
+
+	return ret;
+}
+
 #undef access
 int mingw_access(const char *name, int mode)
 {
