@@ -835,6 +835,12 @@ size_t mingw_strftime(const char *buf, size_t max, const char *format, const str
 	return ret;
 }
 
+int stime(time_t *t)
+{
+	errno = EPERM;
+	return -1;
+}
+
 #undef access
 int mingw_access(const char *name, int mode)
 {

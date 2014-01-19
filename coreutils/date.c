@@ -293,14 +293,9 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 		maybe_set_utc(opt);
 
 		/* if setting time, set it */
-#if ENABLE_PLATFORM_MINGW32
-		if (opt & OPT_SET)
-			bb_error_msg_and_die("Setting date is not supported");
-#else
 		if ((opt & OPT_SET) && stime(&ts.tv_sec) < 0) {
 			bb_perror_msg("can't set date");
 		}
-#endif
 	}
 
 	/* Display output */
