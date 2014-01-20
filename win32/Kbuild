@@ -15,6 +15,7 @@ lib-$(CONFIG_PLATFORM_MINGW32) += poll.o
 lib-$(CONFIG_PLATFORM_MINGW32) += popen.o
 lib-$(CONFIG_PLATFORM_MINGW32) += statfs.o
 lib-$(CONFIG_PLATFORM_MINGW32) += mntent.o
+lib-$(CONFIG_PLATFORM_MINGW32) += strptime.o
 lib-$(CONFIG_PLATFORM_MINGW32) += system.o
 lib-$(CONFIG_PLATFORM_MINGW32) += termios.o
 lib-$(CONFIG_PLATFORM_MINGW32) += uname.o

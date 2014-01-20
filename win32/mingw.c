@@ -799,11 +799,6 @@ int mingw_unlink(const char *pathname)
 	return unlink(pathname);
 }
 
-char *strptime(const char *s UNUSED_PARAM, const char *format UNUSED_PARAM, struct tm *tm UNUSED_PARAM)
-{
-	return NULL;
-}
-
 #undef strftime
 size_t mingw_strftime(const char *buf, size_t max, const char *format, const struct tm *tm)
 {
