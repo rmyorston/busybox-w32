@@ -803,28 +803,33 @@ int mingw_unlink(const char *pathname)
 size_t mingw_strftime(const char *buf, size_t max, const char *format, const struct tm *tm)
 {
 	size_t ret;
-	const char *s;
+	char day[3];
 	char *t;
-	char *fmt = NULL;
+	char *fmt;
 
 	/*
-	 * Provide a simple-minded emulation of the '%e' format that Windows'
-	 * strftime lacks.  It won't work properly if there's more than one
-	 * '%e' or if the user is playing games with '%'s.
+	 * Emulate the '%e' format that Windows' strftime lacks.  Happily, the
+	 * string that replaces '%e' is always two characters long.
 	 */
-	if ( (s=strstr(format, "%e")) != NULL ) {
-		fmt = xmalloc(strlen(format)+5);
-		strcpy(fmt, format);
-		t = strstr(fmt, "%e");
-		if ( tm->tm_mday < 10 ) {
-			strcat(strcpy(t, " %#d"), s+2);
-		}
-		else {
-			t[1] = 'd';
+	fmt = xstrdup(format);
+	for ( t=fmt; *t; ++t ) {
+		if ( *t == '%' ) {
+			if ( t[1] == 'e' ) {
+				if ( tm->tm_mday >= 0 && tm->tm_mday <= 99 ) {
+					sprintf(day, "%2d", tm->tm_mday);
+				}
+				else {
+					strcpy(day, "  ");
+				}
+				memcpy(t++, day, 2);
+			}
+			else if ( t[1] != '\0' ) {
+				++t;
+			}
 		}
 	}
 
-	ret = strftime(buf, max, fmt ? fmt : format, tm);
+	ret = strftime(buf, max, fmt, tm);
 	free(fmt);
 
 	return ret;
