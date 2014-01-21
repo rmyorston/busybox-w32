@@ -51,9 +51,6 @@
 #ifndef IPTOS_LOWDELAY
 # define IPTOS_LOWDELAY 0x10
 #endif
-#ifndef IP_PKTINFO
-# error "Sorry, your kernel has to support IP_PKTINFO"
-#endif
 
 
 /* Verbosity control (max level of -dddd options accepted).
@@ -1328,7 +1325,9 @@ update_local_clock(peer_t *p)
 #if !USING_KERNEL_PLL_LOOP
 	double freq_drift;
 #endif
+#if !USING_KERNEL_PLL_LOOP || USING_INITIAL_FREQ_ESTIMATION
 	double since_last_update;
+#endif
 	double etemp, dtemp;
 
 	abs_offset = fabs(offset);
@@ -1356,7 +1355,9 @@ update_local_clock(peer_t *p)
 	 * action is and defines how the system reacts to large time
 	 * and frequency errors.
 	 */
+#if !USING_KERNEL_PLL_LOOP || USING_INITIAL_FREQ_ESTIMATION
 	since_last_update = recv_time - G.reftime;
+#endif
 #if !USING_KERNEL_PLL_LOOP
 	freq_drift = 0;
 #endif
