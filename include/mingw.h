@@ -307,9 +307,25 @@ int stime(time_t *t);
 #define strftime mingw_strftime
 
 /*
+ * times.h
+ */
+#define clock_t long
+
+struct tms {
+	clock_t tms_utime;		/* user CPU time */
+	clock_t tms_stime;		/* system CPU time */
+	clock_t tms_cutime;		/* user CPU time of children */
+	clock_t tms_cstime;		/* system CPU time of children */
+};
+
+clock_t times(struct tms *buf);
+
+/*
  * unistd.h
  */
 #define PIPE_BUF 8192
+
+#define _SC_CLK_TCK 2
 
 IMPL(alarm,unsigned int,0,unsigned int seconds UNUSED_PARAM);
 NOIMPL(chown,const char *path UNUSED_PARAM, uid_t uid UNUSED_PARAM, gid_t gid UNUSED_PARAM);
@@ -349,6 +365,7 @@ NOIMPL(seteuid,uid_t gid UNUSED_PARAM);
 unsigned int sleep(unsigned int seconds);
 NOIMPL(symlink,const char *oldpath UNUSED_PARAM, const char *newpath UNUSED_PARAM);
 static inline void sync(void) {}
+long sysconf(int name);
 NOIMPL(ttyname_r,int fd UNUSED_PARAM, char *buf UNUSED_PARAM, int sz UNUSED_PARAM);
 int mingw_unlink(const char *pathname);
 NOIMPL(vfork,void);

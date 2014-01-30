@@ -583,6 +583,25 @@ struct passwd *getpwuid(int uid UNUSED_PARAM)
 	return &p;
 }
 
+long sysconf(int name)
+{
+	if ( name == _SC_CLK_TCK ) {
+		return 100;
+	}
+	errno = EINVAL;
+	return -1;
+}
+
+clock_t times(struct tms *buf)
+{
+	buf->tms_utime = 0;
+	buf->tms_stime = 0;
+	buf->tms_cutime = 0;
+	buf->tms_cstime = 0;
+
+	return 0;
+}
+
 static HANDLE timer_event;
 static HANDLE timer_thread;
 static int timer_interval;

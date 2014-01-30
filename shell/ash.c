@@ -13278,8 +13278,6 @@ unsetcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	return ret & 1;
 }
 
-#if !ENABLE_PLATFORM_MINGW32
-
 static const unsigned char timescmd_str[] ALIGN1 = {
 	' ',  offsetof(struct tms, tms_utime),
 	'\n', offsetof(struct tms, tms_stime),
@@ -13311,13 +13309,6 @@ timescmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 
 	return 0;
 }
-#else
-static int FAST_FUNC
-timescmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
-{
-	return 0;
-}
-#endif
 
 #if ENABLE_SH_MATH_SUPPORT
 /*
