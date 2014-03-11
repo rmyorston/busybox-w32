@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.23.0.git
-# Tue Mar 11 20:15:08 2014
+# Tue Mar 11 20:48:59 2014
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -540,7 +540,7 @@ CONFIG_DEFAULT_DEPMOD_FILE=""
 # CONFIG_FEATURE_MDEV_RENAME_REGEXP is not set
 # CONFIG_FEATURE_MDEV_EXEC is not set
 # CONFIG_FEATURE_MDEV_LOAD_FIRMWARE is not set
-# CONFIG_REV is not set
+CONFIG_REV=y
 # CONFIG_ACPID is not set
 # CONFIG_FEATURE_ACPID_COMPAT is not set
 # CONFIG_BLKID is not set

@@ -32,7 +32,7 @@
 #endif
 
 /* In-place invert */
-static void strrev(CHAR_T *s, int len)
+static void bb_strrev(CHAR_T *s, int len)
 {
 	int i;
 
@@ -40,6 +40,10 @@ static void strrev(CHAR_T *s, int len)
 		len--;
 		if (len != 0 && s[len] == '\n')
 			len--;
+#if ENABLE_PLATFORM_MINGW32
+		if (len != 0 && s[len] == '\r')
+			len--;
+#endif
 	}
 
 	for (i = 0; i < len; i++, len--) {
@@ -100,14 +104,14 @@ int rev_main(int argc UNUSED_PARAM, char **argv)
 				/* Convert to wchar_t (might error out!) */
 				int len  = mbstowcs(tmp, buf, bufsize);
 				if (len >= 0) {
-					strrev(tmp, len);
+					bb_strrev(tmp, len);
 					/* Convert back to char */
 					wcstombs(buf, tmp, bufsize);
 				}
 				free(tmp);
 			}
 #else
-			strrev(buf, strlen(buf));
+			bb_strrev(buf, strlen(buf));
 #endif
 			fputs(buf, stdout);
 		}
