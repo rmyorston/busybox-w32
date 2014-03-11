@@ -46,11 +46,14 @@
 struct host_info {
 	char *allocated;
 	const char *path;
-	const char *user;
+	char       *user;
+	const char *protocol;
 	char       *host;
 	int         port;
-	smallint    is_ftp;
 };
+static const char P_FTP[] = "ftp";
+static const char P_HTTP[] = "http";
+static const char P_HTTPS[] = "https";
 
 
 /* Globals */
@@ -219,7 +222,7 @@ static FILE *open_socket(len_and_sockaddr *lsa)
 	/* glibc 2.4 seems to try seeking on it - ??! */
 	/* hopefully it understands what ESPIPE means... */
 	fp = fdopen(fd, "r+");
-	if (fp == NULL)
+	if (!fp)
 		bb_perror_msg_and_die(bb_msg_memory_exhausted);
 
 	return fp;
@@ -274,23 +277,31 @@ static void parse_url(const char *src_url, struct host_info *h)
 	free(h->allocated);
 	h->allocated = url = xstrdup(src_url);
 
-	if (strncmp(url, "ftp://", 6) == 0) {
-		h->port = bb_lookup_port("ftp", "tcp", 21);
-		h->host = url + 6;
-		h->is_ftp = 1;
-	} else
-	if (strncmp(url, "http://", 7) == 0) {
-		h->host = url + 7;
+	h->protocol = P_FTP;
+	p = strstr(url, "://");
+	if (p) {
+		*p = '\0';
+		h->host = p + 3;
+		if (strcmp(url, P_FTP) == 0) {
+			h->port = bb_lookup_port(P_FTP, "tcp", 21);
+		} else
+		if (strcmp(url, P_HTTPS) == 0) {
+			h->port = bb_lookup_port(P_HTTPS, "tcp", 443);
+			h->protocol = P_HTTPS;
+		} else
+		if (strcmp(url, P_HTTP) == 0) {
  http:
-		h->port = bb_lookup_port("http", "tcp", 80);
-		h->is_ftp = 0;
-	} else
-	if (!strstr(url, "//")) {
+			h->port = bb_lookup_port(P_HTTP, "tcp", 80);
+			h->protocol = P_HTTP;
+		} else {
+			*p = ':';
+			bb_error_msg_and_die("not an http or ftp url: %s", sanitize_string(url));
+		}
+	} else {
 		// GNU wget is user-friendly and falls back to http://
 		h->host = url;
 		goto http;
-	} else
-		bb_error_msg_and_die("not an http or ftp url: %s", sanitize_string(url));
+	}
 
 	// FYI:
 	// "Real" wget 'http://busybox.net?var=a/b' sends this request:
@@ -322,9 +333,6 @@ static void parse_url(const char *src_url, struct host_info *h)
 		h->path = sp;
 	}
 
-	// We used to set h->user to NULL here, but this interferes
-	// with handling of code 302 ("object was moved")
-
 	sp = strrchr(h->host, '@');
 	if (sp != NULL) {
 		// URL-decode "user:password" string before base64-encoding:
@@ -333,11 +341,13 @@ static void parse_url(const char *src_url, struct host_info *h)
 		// which decodes to "test:my pass".
 		// Standard wget and curl do this too.
 		*sp = '\0';
-		h->user = percent_decode_in_place(h->host, /*strict:*/ 0);
+		free(h->user);
+		h->user = xstrdup(percent_decode_in_place(h->host, /*strict:*/ 0));
 		h->host = sp + 1;
 	}
-
-	sp = h->host;
+	/* else: h->user remains NULL, or as set by original request
+	 * before redirect (if we are here after a redirect).
+	 */
 }
 
 static char *gethdr(FILE *fp)
@@ -472,6 +482,95 @@ static FILE* prepare_ftp_session(FILE **dfpp, struct host_info *target, len_and_
 
 	return sfp;
 }
+
+static int spawn_https_helper(const char *host, unsigned port)
+{
+	char *allocated = NULL;
+	int sp[2];
+	int pid;
+
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sp) != 0)
+		/* Kernel can have AF_UNIX support disabled */
+		bb_perror_msg_and_die("socketpair");
+
+	if (!strchr(host, ':'))
+		host = allocated = xasprintf("%s:%u", host, port);
+
+	pid = BB_MMU ? xfork() : xvfork();
+	if (pid == 0) {
+		/* Child */
+		char *argv[6];
+
+		close(sp[0]);
+		xmove_fd(sp[1], 0);
+		xdup2(0, 1);
+		/*
+		 * TODO: develop a tiny ssl/tls helper (using matrixssl?),
+		 * try to exec it here before falling back to big fat openssl.
+		 */
+		/*
+		 * openssl s_client -quiet -connect www.kernel.org:443 2>/dev/null
+		 * It prints some debug stuff on stderr, don't know how to suppress it.
+		 * Work around by dev-nulling stderr. We lose all error messages :(
+		 */
+		xmove_fd(2, 3);
+		xopen("/dev/null", O_RDWR);
+		argv[0] = (char*)"openssl";
+		argv[1] = (char*)"s_client";
+		argv[2] = (char*)"-quiet";
+		argv[3] = (char*)"-connect";
+		argv[4] = (char*)host;
+		argv[5] = NULL;
+		BB_EXECVP(argv[0], argv);
+		xmove_fd(3, 2);
+		bb_perror_msg_and_die("can't execute '%s'", argv[0]);
+		/* notreached */
+	}
+
+	/* Parent */
+	free(allocated);
+	close(sp[1]);
+	return sp[0];
+}
+
+/* See networking/ssl_helper/README */
+#define SSL_HELPER 0
+
+#if SSL_HELPER
+static void spawn_https_helper1(int network_fd)
+{
+	int sp[2];
+	int pid;
+
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sp) != 0)
+		/* Kernel can have AF_UNIX support disabled */
+		bb_perror_msg_and_die("socketpair");
+
+	pid = BB_MMU ? xfork() : xvfork();
+	if (pid == 0) {
+		/* Child */
+		char *argv[3];
+
+		close(sp[0]);
+		xmove_fd(sp[1], 0);
+		xdup2(0, 1);
+		xmove_fd(network_fd, 3);
+		/*
+		 * A simple ssl/tls helper
+		 */
+		argv[0] = (char*)"ssl_helper";
+		argv[1] = (char*)"-d3";
+		argv[2] = NULL;
+		BB_EXECVP(argv[0], argv);
+		bb_perror_msg_and_die("can't execute '%s'", argv[0]);
+		/* notreached */
+	}
+
+	/* Parent */
+	close(sp[1]);
+	xmove_fd(sp[0], network_fd);
+}
+#endif
 
 static void NOINLINE retrieve_file_data(FILE *dfp)
 {
@@ -645,7 +744,8 @@ static void download_one_url(const char *url)
 	/* Use the proxy if necessary */
 	use_proxy = (strcmp(G.proxy_flag, "off") != 0);
 	if (use_proxy) {
-		proxy = getenv(target.is_ftp ? "ftp_proxy" : "http_proxy");
+		proxy = getenv(target.protocol == P_FTP ? "ftp_proxy" : "http_proxy");
+//FIXME: what if protocol is https? Ok to use http_proxy?
 		use_proxy = (proxy && proxy[0]);
 		if (use_proxy)
 			parse_url(proxy, &server);
@@ -705,27 +805,37 @@ static void download_one_url(const char *url)
 	/*G.content_len = 0; - redundant, got_clen = 0 is enough */
 	G.got_clen = 0;
 	G.chunked = 0;
-	if (use_proxy || !target.is_ftp) {
+	if (use_proxy || target.protocol != P_FTP) {
 		/*
 		 *  HTTP session
 		 */
 		char *str;
 		int status;
 
-
-		/* Open socket to http server */
-		sfp = open_socket(lsa);
-
+		/* Open socket to http(s) server */
+		if (target.protocol == P_HTTPS) {
+/* openssl-based helper
+ * Inconvenient API since we can't give it an open fd
+ */
+			int fd = spawn_https_helper(server.host, server.port);
+			sfp = fdopen(fd, "r+");
+			if (!sfp)
+				bb_perror_msg_and_die(bb_msg_memory_exhausted);
+		} else
+			sfp = open_socket(lsa);
+#if SSL_HELPER
+		if (target.protocol == P_HTTPS)
+			spawn_https_helper1(fileno(sfp));
+#endif
 		/* Send HTTP request */
 		if (use_proxy) {
-			fprintf(sfp, "GET %stp://%s/%s HTTP/1.1\r\n",
-				target.is_ftp ? "f" : "ht", target.host,
+			fprintf(sfp, "GET %s://%s/%s HTTP/1.1\r\n",
+				target.protocol, target.host,
 				target.path);
 		} else {
-			if (option_mask32 & WGET_OPT_POST_DATA)
-				fprintf(sfp, "POST /%s HTTP/1.1\r\n", target.path);
-			else
-				fprintf(sfp, "GET /%s HTTP/1.1\r\n", target.path);
+			fprintf(sfp, "%s /%s HTTP/1.1\r\n",
+				(option_mask32 & WGET_OPT_POST_DATA) ? "POST" : "GET",
+				target.path);
 		}
 
 		fprintf(sfp, "Host: %s\r\nUser-Agent: %s\r\n",
@@ -880,6 +990,7 @@ However, in real world it was observed that some web servers
 				} else {
 					parse_url(str, &target);
 					if (!use_proxy) {
+						/* server.user remains untouched */
 						free(server.allocated);
 						server.allocated = NULL;
 						server.host = target.host;
@@ -929,6 +1040,8 @@ However, in real world it was observed that some web servers
 
 	free(server.allocated);
 	free(target.allocated);
+	free(server.user);
+	free(target.user);
 	free(fname_out_alloc);
 	free(redirected_path);
 }
