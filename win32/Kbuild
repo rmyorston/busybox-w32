@@ -14,6 +14,7 @@ lib-$(CONFIG_WIN32_NET) += net.o
 lib-$(CONFIG_PLATFORM_MINGW32) += poll.o
 lib-$(CONFIG_PLATFORM_MINGW32) += popen.o
 lib-$(CONFIG_PLATFORM_MINGW32) += statfs.o
+lib-$(CONFIG_PLATFORM_MINGW32) += mempcpy.o
 lib-$(CONFIG_PLATFORM_MINGW32) += mntent.o
 lib-$(CONFIG_PLATFORM_MINGW32) += strptime.o
 lib-$(CONFIG_PLATFORM_MINGW32) += system.o
