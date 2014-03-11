@@ -285,10 +285,12 @@ static void parse_url(const char *src_url, struct host_info *h)
 		if (strcmp(url, P_FTP) == 0) {
 			h->port = bb_lookup_port(P_FTP, "tcp", 21);
 		} else
+#if !ENABLE_PLATFORM_MINGW32
 		if (strcmp(url, P_HTTPS) == 0) {
 			h->port = bb_lookup_port(P_HTTPS, "tcp", 443);
 			h->protocol = P_HTTPS;
 		} else
+#endif
 		if (strcmp(url, P_HTTP) == 0) {
  http:
 			h->port = bb_lookup_port(P_HTTP, "tcp", 80);
@@ -483,6 +485,7 @@ static FILE* prepare_ftp_session(FILE **dfpp, struct host_info *target, len_and_
 	return sfp;
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 static int spawn_https_helper(const char *host, unsigned port)
 {
 	char *allocated = NULL;
@@ -532,6 +535,7 @@ static int spawn_https_helper(const char *host, unsigned port)
 	close(sp[1]);
 	return sp[0];
 }
+#endif
 
 /* See networking/ssl_helper/README */
 #define SSL_HELPER 0
@@ -813,6 +817,7 @@ static void download_one_url(const char *url)
 		int status;
 
 		/* Open socket to http(s) server */
+#if !ENABLE_PLATFORM_MINGW32
 		if (target.protocol == P_HTTPS) {
 /* openssl-based helper
  * Inconvenient API since we can't give it an open fd
@@ -822,6 +827,7 @@ static void download_one_url(const char *url)
 			if (!sfp)
 				bb_perror_msg_and_die(bb_msg_memory_exhausted);
 		} else
+#endif
 			sfp = open_socket(lsa);
 #if SSL_HELPER
 		if (target.protocol == P_HTTPS)
