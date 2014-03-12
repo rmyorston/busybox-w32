@@ -1,4 +1,3 @@
-#include <sys/utime.h>
 
 #define NOIMPL(name,...) static inline int name(__VA_ARGS__) { errno = ENOSYS; return -1; }
 #define IMPL(name,ret,retval,...) static inline ret name(__VA_ARGS__) { return retval; }
@@ -388,10 +387,7 @@ int mingw_access(const char *name, int mode);
 /*
  * utime.h
  */
-int mingw_utime(const char *file_name, const struct utimbuf *times);
 int utimes(const char *file_name, const struct timeval times[2]);
-
-#define utime mingw_utime
 
 /*
  * MinGW specific

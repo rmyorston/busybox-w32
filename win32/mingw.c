@@ -359,41 +359,6 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 	return -1;
 }
 
-static inline void time_t_to_filetime(time_t t, FILETIME *ft)
-{
-	long long winTime = t * 10000000LL + 116444736000000000LL;
-	ft->dwLowDateTime = winTime;
-	ft->dwHighDateTime = winTime >> 32;
-}
-
-int mingw_utime (const char *file_name, const struct utimbuf *times)
-{
-	FILETIME mft, aft;
-	int fh, rc;
-
-	/* must have write permission */
-	if ((fh = open(file_name, O_RDWR | O_BINARY)) < 0)
-		return -1;
-
-	if (times) {
-		time_t_to_filetime(times->modtime, &mft);
-		time_t_to_filetime(times->actime, &aft);
-	}
-	else {
-		SYSTEMTIME st;
-		GetSystemTime(&st);
-		SystemTimeToFileTime(&st, &aft);
-		mft = aft;
-	}
-	if (!SetFileTime((HANDLE)_get_osfhandle(fh), NULL, &aft, &mft)) {
-		errno = EINVAL;
-		rc = -1;
-	} else
-		rc = 0;
-	close(fh);
-	return rc;
-}
-
 static inline void timeval_to_filetime(const struct timeval tv, FILETIME *ft)
 {
 	long long winTime = ((tv.tv_sec * 1000000LL) + tv.tv_usec) * 10LL + 116444736000000000LL;
@@ -407,18 +372,25 @@ int utimes(const char *file_name, const struct timeval times[2])
 	int fh, rc;
 
 	/* must have write permission */
-	if ((fh = open(file_name, O_RDWR | O_BINARY)) < 0)
-		return -1;
+	DWORD attrs = GetFileAttributes(file_name);
+	if (attrs != INVALID_FILE_ATTRIBUTES &&
+	    (attrs & FILE_ATTRIBUTE_READONLY)) {
+		/* ignore errors here; open() will report them */
+		SetFileAttributes(file_name, attrs & ~FILE_ATTRIBUTE_READONLY);
+	}
+
+	if ((fh = open(file_name, O_RDWR | O_BINARY)) < 0) {
+		rc = -1;
+		goto revert_attrs;
+	}
 
 	if (times) {
 		timeval_to_filetime(times[0], &aft);
 		timeval_to_filetime(times[1], &mft);
 	}
 	else {
-		SYSTEMTIME st;
-		GetSystemTime(&st);
-		SystemTimeToFileTime(&st, &aft);
-		mft = aft;
+		GetSystemTimeAsFileTime(&mft);
+		aft = mft;
 	}
 	if (!SetFileTime((HANDLE)_get_osfhandle(fh), NULL, &aft, &mft)) {
 		errno = EINVAL;
@@ -426,6 +398,13 @@ int utimes(const char *file_name, const struct timeval times[2])
 	} else
 		rc = 0;
 	close(fh);
+
+revert_attrs:
+	if (attrs != INVALID_FILE_ATTRIBUTES &&
+	    (attrs & FILE_ATTRIBUTE_READONLY)) {
+		/* ignore errors again */
+		SetFileAttributes(file_name, attrs);
+	}
 	return rc;
 }
 
