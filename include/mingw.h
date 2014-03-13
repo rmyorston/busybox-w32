@@ -332,7 +332,7 @@ clock_t times(struct tms *buf);
 #define _SC_CLK_TCK 2
 
 IMPL(alarm,unsigned int,0,unsigned int seconds UNUSED_PARAM);
-NOIMPL(chown,const char *path UNUSED_PARAM, uid_t uid UNUSED_PARAM, gid_t gid UNUSED_PARAM);
+IMPL(chown,int,0,const char *path UNUSED_PARAM, uid_t uid UNUSED_PARAM, gid_t gid UNUSED_PARAM);
 NOIMPL(chroot,const char *root UNUSED_PARAM);
 int mingw_dup2 (int fd, int fdto);
 char *mingw_getcwd(char *pointer, int len);
