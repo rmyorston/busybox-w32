@@ -9,7 +9,7 @@ struct mntdata {
 	int index;
 };
 
-FILE *setmntent(const char *file, const char *mode)
+FILE *setmntent(const char *file UNUSED_PARAM, const char *mode UNUSED_PARAM)
 {
 	struct mntdata *data;
 
@@ -28,7 +28,8 @@ struct mntent *getmntent(FILE *stream)
 	struct mntdata *data = (struct mntdata *)stream;
 	static char mnt_fsname[4];
 	static char mnt_dir[4];
-	static struct mntent my_mount_entry = { mnt_fsname, mnt_dir, "", 0, 0 };
+	static struct mntent my_mount_entry =
+					{ mnt_fsname, mnt_dir, (char *)"", (char *)"", 0, 0 };
 	static struct mntent *entry;
 
 	entry = NULL;

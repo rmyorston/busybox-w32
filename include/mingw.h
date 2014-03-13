@@ -305,7 +305,7 @@ int waitpid(pid_t pid, int *status, unsigned options);
 struct tm *gmtime_r(const time_t *timep, struct tm *result);
 struct tm *localtime_r(const time_t *timep, struct tm *result);
 char *strptime(const char *s, const char *format, struct tm *tm);
-size_t mingw_strftime(const char *buf, size_t max, const char *format, const struct tm *tm);
+size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm *tm);
 int stime(time_t *t);
 
 #define strftime mingw_strftime

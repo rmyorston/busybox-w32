@@ -366,17 +366,17 @@ static inline void timeval_to_filetime(const struct timeval tv, FILETIME *ft)
 	ft->dwHighDateTime = winTime >> 32;
 }
 
-int utimes(const char *file_name, const struct timeval times[2])
+int utimes(const char *file_name, const struct timeval tims[2])
 {
 	FILETIME mft, aft;
 	HANDLE fh;
-	DWORD flags;
+	DWORD flags, attrs;
 	int rc;
 
 	flags = FILE_ATTRIBUTE_NORMAL;
 
 	/* must have write permission */
-	DWORD attrs = GetFileAttributes(file_name);
+	attrs = GetFileAttributes(file_name);
 	if ( attrs != INVALID_FILE_ATTRIBUTES ) {
 	    if ( attrs & FILE_ATTRIBUTE_READONLY ) {
 			/* ignore errors here; open() will report them */
@@ -397,9 +397,9 @@ int utimes(const char *file_name, const struct timeval times[2])
 		goto revert_attrs;
 	}
 
-	if (times) {
-		timeval_to_filetime(times[0], &aft);
-		timeval_to_filetime(times[1], &mft);
+	if (tims) {
+		timeval_to_filetime(tims[0], &aft);
+		timeval_to_filetime(tims[1], &mft);
 	}
 	else {
 		GetSystemTimeAsFileTime(&mft);
@@ -566,7 +566,7 @@ struct passwd *getpwuid(int uid UNUSED_PARAM)
 	if (!GetUserName(user_name, &len))
 		return NULL;
 	p.pw_name = user_name;
-	p.pw_gecos = "unknown";
+	p.pw_gecos = (char *)"unknown";
 	p.pw_dir = gethomedir();
 	p.pw_shell = NULL;
 	p.pw_uid = 1000;
@@ -811,7 +811,7 @@ int mingw_unlink(const char *pathname)
 }
 
 #undef strftime
-size_t mingw_strftime(const char *buf, size_t max, const char *format, const struct tm *tm)
+size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm *tm)
 {
 	size_t ret;
 	char day[3];
@@ -846,7 +846,7 @@ size_t mingw_strftime(const char *buf, size_t max, const char *format, const str
 	return ret;
 }
 
-int stime(time_t *t)
+int stime(time_t *t UNUSED_PARAM)
 {
 	errno = EPERM;
 	return -1;

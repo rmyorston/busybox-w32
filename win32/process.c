@@ -332,7 +332,7 @@ mingw_execv(const char *cmd, const char *const *argv)
 }
 
 /* POSIX version in libbb/procps.c */
-procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags)
+procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags UNUSED_PARAM)
 {
 	PROCESSENTRY32 pe;
 
