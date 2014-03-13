@@ -369,17 +369,30 @@ static inline void timeval_to_filetime(const struct timeval tv, FILETIME *ft)
 int utimes(const char *file_name, const struct timeval times[2])
 {
 	FILETIME mft, aft;
-	int fh, rc;
+	HANDLE fh;
+	DWORD flags;
+	int rc;
+
+	flags = FILE_ATTRIBUTE_NORMAL;
 
 	/* must have write permission */
 	DWORD attrs = GetFileAttributes(file_name);
-	if (attrs != INVALID_FILE_ATTRIBUTES &&
-	    (attrs & FILE_ATTRIBUTE_READONLY)) {
-		/* ignore errors here; open() will report them */
-		SetFileAttributes(file_name, attrs & ~FILE_ATTRIBUTE_READONLY);
+	if ( attrs != INVALID_FILE_ATTRIBUTES ) {
+	    if ( attrs & FILE_ATTRIBUTE_READONLY ) {
+			/* ignore errors here; open() will report them */
+			SetFileAttributes(file_name, attrs & ~FILE_ATTRIBUTE_READONLY);
+		}
+
+	    if ( attrs & FILE_ATTRIBUTE_DIRECTORY ) {
+			flags = FILE_FLAG_BACKUP_SEMANTICS;
+		}
 	}
 
-	if ((fh = open(file_name, O_RDWR | O_BINARY)) < 0) {
+	fh = CreateFile(file_name, GENERIC_READ|GENERIC_WRITE,
+				FILE_SHARE_READ|FILE_SHARE_WRITE,
+				NULL, OPEN_EXISTING, flags, NULL);
+	if ( fh == INVALID_HANDLE_VALUE ) {
+		errno = err_win_to_posix(GetLastError());
 		rc = -1;
 		goto revert_attrs;
 	}
@@ -392,12 +405,12 @@ int utimes(const char *file_name, const struct timeval times[2])
 		GetSystemTimeAsFileTime(&mft);
 		aft = mft;
 	}
-	if (!SetFileTime((HANDLE)_get_osfhandle(fh), NULL, &aft, &mft)) {
+	if (!SetFileTime(fh, NULL, &aft, &mft)) {
 		errno = EINVAL;
 		rc = -1;
 	} else
 		rc = 0;
-	close(fh);
+	CloseHandle(fh);
 
 revert_attrs:
 	if (attrs != INVALID_FILE_ATTRIBUTES &&
