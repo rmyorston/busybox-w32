@@ -258,11 +258,17 @@ static int ftpcmd(const char *s1, const char *s2, FILE *fp)
 		fprintf(fp, "%s%s\r\n", s1, s2);
 		fflush(fp);
 		log_io("> %s%s", s1, s2);
+#if ENABLE_PLATFORM_MINGW32
+		fseek(fp, 0L, SEEK_CUR);
+#endif
 	}
 
 	do {
 		fgets_and_trim(fp);
 	} while (!isdigit(G.wget_buf[0]) || G.wget_buf[3] != ' ');
+#if ENABLE_PLATFORM_MINGW32
+	fseek(fp, 0L, SEEK_CUR);
+#endif
 
 	G.wget_buf[3] = '\0';
 	result = xatoi_positive(G.wget_buf);

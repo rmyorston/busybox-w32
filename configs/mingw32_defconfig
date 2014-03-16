@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.23.0.git
-# Wed Mar 12 20:11:13 2014
+# Sun Mar 16 09:56:30 2014
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -756,9 +756,9 @@ CONFIG_STRINGS=y
 # CONFIG_FTPD is not set
 # CONFIG_FEATURE_FTP_WRITE is not set
 # CONFIG_FEATURE_FTPD_ACCEPT_BROKEN_LIST is not set
-# CONFIG_FTPGET is not set
-# CONFIG_FTPPUT is not set
-# CONFIG_FEATURE_FTPGETPUT_LONG_OPTIONS is not set
+CONFIG_FTPGET=y
+CONFIG_FTPPUT=y
+CONFIG_FEATURE_FTPGETPUT_LONG_OPTIONS=y
 # CONFIG_HOSTNAME is not set
 # CONFIG_HTTPD is not set
 # CONFIG_FEATURE_HTTPD_RANGES is not set

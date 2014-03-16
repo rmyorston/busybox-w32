@@ -100,6 +100,9 @@ static int ftpcmd(const char *s1, const char *s2)
 		fprintf(control_stream, (s2 ? "%s %s\r\n" : "%s %s\r\n"+3),
 						s1, s2);
 		fflush(control_stream);
+#if ENABLE_PLATFORM_MINGW32
+		fseek(control_stream, 0L, SEEK_CUR);
+#endif
 	}
 
 	do {
@@ -108,6 +111,9 @@ static int ftpcmd(const char *s1, const char *s2)
 			ftp_die(NULL);
 		}
 	} while (!isdigit(buf[0]) || buf[3] != ' ');
+#if ENABLE_PLATFORM_MINGW32
+	fseek(control_stream, 0L, SEEK_CUR);
+#endif
 
 	buf[3] = '\0';
 	n = xatou(buf);
