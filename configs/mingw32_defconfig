@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.23.0.git
-# Mon Mar 17 15:33:49 2014
+# Mon Mar 17 22:01:36 2014
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -679,7 +679,7 @@ CONFIG_FEATURE_BEEP_LENGTH_MS=0
 CONFIG_FEATURE_CROND_DIR=""
 # CONFIG_CRONTAB is not set
 CONFIG_DC=y
-# CONFIG_FEATURE_DC_LIBM is not set
+CONFIG_FEATURE_DC_LIBM=y
 # CONFIG_DEVFSD is not set
 # CONFIG_DEVFSD_MODLOAD is not set
 # CONFIG_DEVFSD_FG_NP is not set
