@@ -190,19 +190,15 @@ int ioctl(int fd, int code, ...);
  */
 #define hstrerror strerror
 
-#ifdef CONFIG_WIN32_NET
 int mingw_socket(int domain, int type, int protocol);
 int mingw_connect(int sockfd, struct sockaddr *sa, size_t sz);
 
-# define socket mingw_socket
-# define connect mingw_connect
-#endif
 NOIMPL(mingw_sendto,SOCKET s UNUSED_PARAM, const char *buf UNUSED_PARAM, int len UNUSED_PARAM, int flags UNUSED_PARAM, const struct sockaddr *sa UNUSED_PARAM, int salen UNUSED_PARAM);
 NOIMPL(mingw_listen,SOCKET s UNUSED_PARAM,int backlog UNUSED_PARAM);
 NOIMPL(mingw_bind,SOCKET s UNUSED_PARAM,const struct sockaddr* sa UNUSED_PARAM,int salen UNUSED_PARAM);
 
-/* Windows declaration is different */
 #define socket mingw_socket
+#define connect mingw_connect
 #define sendto mingw_sendto
 #define listen mingw_listen
 #define bind mingw_bind
