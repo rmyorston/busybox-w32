@@ -12,6 +12,8 @@
 #undef printf
 #undef fprintf
 #undef fputs
+#undef putchar
+#undef fwrite
 /* TODO: write */
 
 /*
@@ -309,10 +311,36 @@ static const char *set_attr(const char *str)
 	return func + 1;
 }
 
-static int ansi_emulate(const char *str, FILE *stream)
+static int ansi_emulate(const char *s, FILE *stream)
 {
 	int rv = 0;
-	const char *pos = str;
+	char *pos, *str;
+	size_t out_len, cur_len;
+	static size_t max_len = 0;
+	static char *mem = NULL;
+
+	/* if no special treatment is required output the string as-is */
+	for ( pos=s; *pos; ++pos ) {
+		if ( *pos == '\033' || *pos > 0x7f ) {
+			break;
+		}
+	}
+
+	if ( *pos == '\0' ) {
+		return fputs(s, stream) == EOF ? EOF : strlen(s);
+	}
+
+	/* make a writable copy of the string and retain it for reuse */
+	cur_len = strlen(s);
+	if ( cur_len == 0  || cur_len > max_len ) {
+		free(mem);
+		mem = strdup(s);
+		max_len = cur_len;
+	}
+	else {
+		strcpy(mem, s);
+	}
+	pos = str = mem;
 
 	while (*pos) {
 		pos = strstr(str, "\033[");
@@ -320,7 +348,8 @@ static int ansi_emulate(const char *str, FILE *stream)
 			size_t len = pos - str;
 
 			if (len) {
-				size_t out_len = fwrite(str, 1, len, stream);
+				CharToOemBuff(str, str, len);
+				out_len = fwrite(str, 1, len, stream);
 				rv += out_len;
 				if (out_len < len)
 					return rv;
@@ -331,15 +360,62 @@ static int ansi_emulate(const char *str, FILE *stream)
 
 			fflush(stream);
 
-			pos = set_attr(str);
+			pos = (char *)set_attr(str);
 			rv += pos - str;
 			str = pos;
 		} else {
 			rv += strlen(str);
+			CharToOem(str, str);
 			fputs(str, stream);
 			return rv;
 		}
 	}
+	return rv;
+}
+
+int winansi_putchar(int c)
+{
+	char t = c;
+	char *s = &t;
+
+	if (!isatty(0))
+		return putchar(c);
+
+	init();
+
+	if (!console)
+		return putchar(c);
+
+	CharToOemBuff(s, s, 1);
+	return putchar(t) == EOF ? EOF : c;
+}
+
+size_t winansi_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
+{
+	size_t lsize, lmemb;
+	char *str;
+	int rv;
+
+	lsize = MIN(size, nmemb);
+	lmemb = MAX(size, nmemb);
+	if (lsize != 1)
+		return fwrite(ptr, size, nmemb, stream);
+
+	if (!isatty(fileno(stream)))
+		return fwrite(ptr, size, nmemb, stream);
+
+	init();
+
+	if (!console)
+		return fwrite(ptr, size, nmemb, stream);
+
+	str = xmalloc(lmemb+1);
+	memcpy(str, ptr, lmemb);
+	str[lmemb] = '\0';
+
+	rv = ansi_emulate(str, stream);
+	free(str);
+
 	return rv;
 }
 

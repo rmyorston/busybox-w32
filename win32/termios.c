@@ -16,6 +16,7 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 	INPUT_RECORD record;
 	DWORD nevent_out, mode;
 	int ret = -1;
+	char *s;
 
 	if (fd != 0)
 		bb_error_msg_and_die("read_key only works on stdin");
@@ -74,6 +75,8 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 			}
 			continue;
 		}
+		s = &record.Event.KeyEvent.uChar.AsciiChar;
+		OemToCharBuff(s, s, 1);
 		ret = record.Event.KeyEvent.uChar.AsciiChar;
 		break;
 	}
