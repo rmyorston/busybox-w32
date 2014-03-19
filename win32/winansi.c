@@ -14,6 +14,7 @@
 #undef fputs
 #undef putchar
 #undef fwrite
+#undef puts
 /* TODO: write */
 
 /*
@@ -314,19 +315,20 @@ static const char *set_attr(const char *str)
 static int ansi_emulate(const char *s, FILE *stream)
 {
 	int rv = 0;
+	const char *t;
 	char *pos, *str;
 	size_t out_len, cur_len;
 	static size_t max_len = 0;
 	static char *mem = NULL;
 
 	/* if no special treatment is required output the string as-is */
-	for ( pos=s; *pos; ++pos ) {
-		if ( *pos == '\033' || *pos > 0x7f ) {
+	for ( t=s; *t; ++t ) {
+		if ( *t == '\033' || *t > 0x7f ) {
 			break;
 		}
 	}
 
-	if ( *pos == '\0' ) {
+	if ( *t == '\0' ) {
 		return fputs(s, stream) == EOF ? EOF : strlen(s);
 	}
 
@@ -378,7 +380,7 @@ int winansi_putchar(int c)
 	char t = c;
 	char *s = &t;
 
-	if (!isatty(0))
+	if (!isatty(STDOUT_FILENO))
 		return putchar(c);
 
 	init();
@@ -388,6 +390,24 @@ int winansi_putchar(int c)
 
 	CharToOemBuff(s, s, 1);
 	return putchar(t) == EOF ? EOF : c;
+}
+
+int winansi_puts(const char *s)
+{
+	int rv;
+
+	if (!isatty(STDOUT_FILENO))
+		return puts(s);
+
+	init();
+
+	if (!console)
+		return puts(s);
+
+	rv = ansi_emulate(s, stdout);
+	putchar('\n');
+
+	return rv;
 }
 
 size_t winansi_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
