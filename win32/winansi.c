@@ -17,6 +17,7 @@
 #undef puts
 #undef write
 #undef read
+#undef getc
 
 /*
  ANSI codes used by git: m, K
@@ -633,6 +634,29 @@ int winansi_read(int fd, void *buf, size_t count)
 
 	if ( rv > 0 ) {
 		OemToCharBuff(buf, buf, rv);
+	}
+
+	return rv;
+}
+
+int winansi_getc(FILE *stream)
+{
+	int rv;
+
+	rv = getc(stream);
+	if (!isatty(fileno(stream)))
+		return rv;
+
+	init();
+
+	if (!console_in)
+		return rv;
+
+	if ( rv != EOF ) {
+		unsigned char c = (unsigned char)rv;
+		char *s = (char *)&c;
+		OemToCharBuff(s, s, 1);
+		rv = (int)c;
 	}
 
 	return rv;
