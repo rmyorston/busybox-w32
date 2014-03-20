@@ -15,7 +15,7 @@
 #undef putchar
 #undef fwrite
 #undef puts
-/* TODO: write */
+#undef write
 
 /*
  ANSI codes used by git: m, K
@@ -536,4 +536,78 @@ int winansi_get_terminal_width_height(struct winsize *win)
 	}
 
 	return ret ? 0 : -1;
+}
+
+static int ansi_emulate_write(int fd, const void *buf, size_t count)
+{
+	int rv = 0, i;
+	const char *s = (const char *)buf;
+	char *pos, *str;
+	size_t len, out_len;
+	static size_t max_len = 0;
+	static char *mem = NULL;
+
+	/* if no special treatment is required output the string as-is */
+	for ( i=0; i<count; ++i ) {
+		if ( s[i] == '\033' || s[i] > 0x7f ) {
+			break;
+		}
+	}
+
+	if ( i == count ) {
+		return write(fd, buf, count);
+	}
+
+	/* make a writable copy of the data and retain it for reuse */
+	if ( count > max_len ) {
+		free(mem);
+		mem = xmalloc(count+1);
+		max_len = count;
+	}
+	memcpy(mem, buf, count);
+	mem[count] = '\0';
+	pos = str = mem;
+
+	/* we're writing to the console so we assume the data isn't binary */
+	while (*pos) {
+		pos = strstr(str, "\033[");
+		if (pos) {
+			len = pos - str;
+
+			if (len) {
+				CharToOemBuff(str, str, len);
+				out_len = write(fd, buf, len);
+				rv += out_len;
+				if (out_len < len)
+					return rv;
+			}
+
+			str = pos + 2;
+			rv += 2;
+
+			pos = (char *)set_attr(str);
+			rv += pos - str;
+			str = pos;
+		} else {
+			len = strlen(str);
+			rv += len;
+			CharToOem(str, str);
+			write(fd, str, len);
+			return rv;
+		}
+	}
+	return rv;
+}
+
+int winansi_write(int fd, const void *buf, size_t count)
+{
+	if (!isatty(fd))
+		return write(fd, buf, count);
+
+	init();
+
+	if (!console)
+		return write(fd, buf, count);
+
+	return ansi_emulate_write(fd, buf, count);
 }
