@@ -27,7 +27,7 @@
  * - both / and \ are supported in PATH. Usually you must use /
  * - trap/job does not work
  * - /dev/null is supported for redirection
- * - no $PPID
+ * - fake $PPID
  */
 
 /*
@@ -13599,8 +13599,7 @@ init(void)
 			}
 		}
 
-		if (!ENABLE_PLATFORM_MINGW32)
-			setvar2("PPID", utoa(getppid()));
+		setvar2("PPID", utoa(getppid()));
 #if ENABLE_ASH_BASH_COMPAT
 		p = lookupvar("SHLVL");
 		setvar("SHLVL", utoa((p ? atoi(p) : 0) + 1), VEXPORT);
