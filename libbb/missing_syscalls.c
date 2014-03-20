@@ -4,7 +4,7 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 
-//kbuild:lib-$(CONFIG_PLATFORM_POSIX) += missing_syscalls.o
+//kbuild:lib-y += missing_syscalls.o
 
 /*#include <linux/timex.h> - for struct timex, but may collide with <time.h> */
 #include <sys/syscall.h>
