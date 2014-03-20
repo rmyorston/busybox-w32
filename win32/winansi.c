@@ -561,7 +561,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 	/* make a writable copy of the data and retain it for reuse */
 	if ( count > max_len ) {
 		free(mem);
-		mem = xmalloc(count+1);
+		mem = malloc(count+1);
 		max_len = count;
 	}
 	memcpy(mem, buf, count);
@@ -576,7 +576,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 
 			if (len) {
 				CharToOemBuff(str, str, len);
-				out_len = write(fd, buf, len);
+				out_len = write(fd, str, len);
 				rv += out_len;
 				if (out_len < len)
 					return rv;
