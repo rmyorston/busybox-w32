@@ -9,6 +9,7 @@
 /*
  Functions to be wrapped:
 */
+#undef vprintf
 #undef printf
 #undef fprintf
 #undef fputs
@@ -466,7 +467,7 @@ int winansi_fputs(const char *str, FILE *stream)
 		return EOF;
 }
 
-static int winansi_vfprintf(FILE *stream, const char *format, va_list list)
+int winansi_vfprintf(FILE *stream, const char *format, va_list list)
 {
 	int len, rv;
 	char small_buf[256];
