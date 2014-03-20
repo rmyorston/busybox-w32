@@ -16,6 +16,7 @@
 #undef fwrite
 #undef puts
 #undef write
+#undef read
 
 /*
  ANSI codes used by git: m, K
@@ -25,6 +26,7 @@
 */
 
 static HANDLE console;
+static HANDLE console_in;
 static WORD plain_attr;
 static WORD attr;
 static int negative;
@@ -36,6 +38,10 @@ static void init(void)
 	static int initialized = 0;
 	if (initialized)
 		return;
+
+	console_in = GetStdHandle(STD_INPUT_HANDLE);
+	if (console_in == INVALID_HANDLE_VALUE)
+		console_in = NULL;
 
 	console = GetStdHandle(STD_OUTPUT_HANDLE);
 	if (console == INVALID_HANDLE_VALUE)
@@ -610,4 +616,24 @@ int winansi_write(int fd, const void *buf, size_t count)
 		return write(fd, buf, count);
 
 	return ansi_emulate_write(fd, buf, count);
+}
+
+int winansi_read(int fd, void *buf, size_t count)
+{
+	int rv;
+
+	rv = read(fd, buf, count);
+	if (!isatty(fd))
+		return rv;
+
+	init();
+
+	if (!console_in)
+		return rv;
+
+	if ( rv > 0 ) {
+		OemToCharBuff(buf, buf, rv);
+	}
+
+	return rv;
 }
