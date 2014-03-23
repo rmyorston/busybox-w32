@@ -647,10 +647,19 @@ static int busybox_main(char **argv)
 			)
 			"   or: function [arguments]...\n"
 			"\n"
+			IF_NOT_FEATURE_SH_STANDALONE(
 			"\tBusyBox is a multi-call binary that combines many common Unix\n"
 			"\tutilities into a single executable.  Most people will create a\n"
 			"\tlink to busybox for each function they wish to use and BusyBox\n"
 			"\twill act like whatever it was invoked as.\n"
+			)
+			IF_FEATURE_SH_STANDALONE(
+			"\tBusyBox is a multi-call binary that combines many common Unix\n"
+			"\tutilities into a single executable.  This version has been\n"
+			"\tconfigured to prefer built-in utilities to external binaries.\n"
+			"\tThis avoids having to install a link to busybox for each\n"
+			"\tfunction to be invoked.\n"
+			)
 			"\n"
 			"Currently defined functions:\n"
 		);
