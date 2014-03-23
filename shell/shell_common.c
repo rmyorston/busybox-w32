@@ -277,6 +277,7 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 
 /* ulimit builtin */
 
+#if !ENABLE_PLATFORM_MINGW32
 struct limits {
 	uint8_t cmd;            /* RLIMIT_xxx fit into it */
 	uint8_t factor_shift;   /* shift by to get rlim_{cur,max} values */
@@ -374,13 +375,6 @@ static const char ulimit_opt_string[] = "-HSa"
 #endif
 			;
 
-#if ENABLE_PLATFORM_MINGW32
-int FAST_FUNC
-shell_builtin_ulimit(char **argv)
-{
-	return 1;
-}
-#else
 static void printlim(unsigned opts, const struct rlimit *limit,
 			const struct limits *l)
 {
@@ -508,5 +502,10 @@ shell_builtin_ulimit(char **argv)
 	} /* while (there are options) */
 
 	return 0;
+}
+#else
+int FAST_FUNC shell_builtin_ulimit(char **argv UNUSED_PARAM)
+{
+	return 1;
 }
 #endif
