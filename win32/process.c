@@ -359,7 +359,7 @@ procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags UNUSED_PAR
 	}
 
 	sp->pid = pe.th32ProcessID;
-	strncpy(sp->comm, pe.szExeFile, COMM_LEN);
+	safe_strncpy(sp->comm, pe.szExeFile, COMM_LEN);
 	return sp;
 }
 
