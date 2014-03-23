@@ -570,8 +570,6 @@ procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags)
 	return sp;
 }
 
-#endif	/* ENABLE_PLATFORM_MINGW32 */
-
 void FAST_FUNC read_cmdline(char *buf, int col, unsigned pid, const char *comm)
 {
 	int sz;
@@ -622,6 +620,8 @@ void FAST_FUNC read_cmdline(char *buf, int col, unsigned pid, const char *comm)
 		snprintf(buf, col, "[%s]", comm);
 	}
 }
+
+#endif	/* ENABLE_PLATFORM_MINGW32 */
 
 /* from kernel:
 	//             pid comm S ppid pgid sid tty_nr tty_pgrp flg

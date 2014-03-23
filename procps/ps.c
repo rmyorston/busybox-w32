@@ -240,6 +240,7 @@ static unsigned get_kernel_HZ(void)
 
 /* Print value to buf, max size+1 chars (including trailing '\0') */
 
+#if !ENABLE_PLATFORM_MINGW32
 static void func_user(char *buf, int size, const procps_status_t *ps)
 {
 #if 1
@@ -263,12 +264,14 @@ static void func_group(char *buf, int size, const procps_status_t *ps)
 {
 	safe_strncpy(buf, get_cached_groupname(ps->gid), size+1);
 }
+#endif
 
 static void func_comm(char *buf, int size, const procps_status_t *ps)
 {
 	safe_strncpy(buf, ps->comm, size+1);
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 static void func_state(char *buf, int size, const procps_status_t *ps)
 {
 	safe_strncpy(buf, ps->state, size+1);
@@ -278,12 +281,14 @@ static void func_args(char *buf, int size, const procps_status_t *ps)
 {
 	read_cmdline(buf, size+1, ps->pid, ps->comm);
 }
+#endif
 
 static void func_pid(char *buf, int size, const procps_status_t *ps)
 {
 	sprintf(buf, "%*u", size, ps->pid);
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 static void func_ppid(char *buf, int size, const procps_status_t *ps)
 {
 	sprintf(buf, "%*u", size, ps->ppid);
@@ -320,6 +325,7 @@ static void func_tty(char *buf, int size, const procps_status_t *ps)
 	if (ps->tty_major) /* tty field of "0" means "no tty" */
 		snprintf(buf, size+1, "%u,%u", ps->tty_major, ps->tty_minor);
 }
+#endif
 
 #if ENABLE_FEATURE_PS_ADDITIONAL_COLUMNS
 

@@ -1633,7 +1633,11 @@ void free_procps_scan(procps_status_t* sp) FAST_FUNC;
 procps_status_t* procps_scan(procps_status_t* sp, int flags) FAST_FUNC;
 /* Format cmdline (up to col chars) into char buf[size] */
 /* Puts [comm] if cmdline is empty (-> process is a kernel thread) */
+#if !ENABLE_PLATFORM_MINGW32
 void read_cmdline(char *buf, int size, unsigned pid, const char *comm) FAST_FUNC;
+#else
+#define read_cmdline(buf, size, pid, comm) snprintf(buf, size, "[%s]", comm)
+#endif
 pid_t *find_pid_by_name(const char* procName) FAST_FUNC;
 pid_t *pidlist_reverse(pid_t *pidList) FAST_FUNC;
 int starts_with_cpu(const char *str) FAST_FUNC;
