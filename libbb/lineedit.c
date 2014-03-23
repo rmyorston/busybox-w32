@@ -672,18 +672,15 @@ static char *username_path_completion(char *ud)
  */
 static NOINLINE unsigned complete_username(const char *ud)
 {
-#if !ENABLE_PLATFORM_MINGW32
 	/* Using _r function to avoid pulling in static buffers */
 	char line_buff[256];
 	struct passwd pwd;
 	struct passwd *result;
-#endif
 	unsigned userlen;
 
 	ud++; /* skip ~ */
 	userlen = strlen(ud);
 
-#if !ENABLE_PLATFORM_MINGW32
 	setpwent();
 	while (!getpwent_r(&pwd, line_buff, sizeof(line_buff), &result)) {
 		/* Null usernames should result in all users as possible completions. */
@@ -692,7 +689,6 @@ static NOINLINE unsigned complete_username(const char *ud)
 		}
 	}
 	endpwent();
-#endif
 
 	return 1 + userlen;
 }

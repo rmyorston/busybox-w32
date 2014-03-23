@@ -76,6 +76,9 @@ struct passwd {
 
 IMPL(getpwnam,struct passwd *,NULL,const char *name UNUSED_PARAM);
 struct passwd *getpwuid(int uid);
+static inline void setpwent(void) {}
+static inline void endpwent(void) {}
+IMPL(getpwent_r,int,ENOENT,struct passwd *pwbuf UNUSED_PARAM,char *buf UNUSED_PARAM,size_t buflen UNUSED_PARAM,struct passwd **pwbufp UNUSED_PARAM);
 
 /*
  * signal.h
