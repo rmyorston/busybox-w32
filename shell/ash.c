@@ -51,7 +51,6 @@
 
 #define JOBS ENABLE_ASH_JOB_CONTROL
 
-#include "busybox.h" /* for applet_names */
 #include <paths.h>
 #include <setjmp.h>
 #include <fnmatch.h>
