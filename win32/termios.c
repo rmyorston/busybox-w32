@@ -75,8 +75,10 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 			}
 			continue;
 		}
-		s = &record.Event.KeyEvent.uChar.AsciiChar;
-		OemToCharBuff(s, s, 1);
+		if ( (record.Event.KeyEvent.uChar.AsciiChar & 0x80) == 0x80 ) {
+			s = &record.Event.KeyEvent.uChar.AsciiChar;
+			OemToCharBuff(s, s, 1);
+		}
 		ret = record.Event.KeyEvent.uChar.AsciiChar;
 		break;
 	}
