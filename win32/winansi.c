@@ -123,6 +123,30 @@ static void erase_till_end_of_screen(void)
 					    pos, &dummy);
 }
 
+static void move_cursor_up(int n)
+{
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
+
+	if (!console)
+		return;
+
+	GetConsoleScreenBufferInfo(console, &sbi);
+	sbi.dwCursorPosition.Y -= n;
+	SetConsoleCursorPosition(console, sbi.dwCursorPosition);
+}
+
+static void move_cursor_forward(int n)
+{
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
+
+	if (!console)
+		return;
+
+	GetConsoleScreenBufferInfo(console, &sbi);
+	sbi.dwCursorPosition.X += n;
+	SetConsoleCursorPosition(console, sbi.dwCursorPosition);
+}
+
 static void move_cursor_back(int n)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
@@ -284,6 +308,12 @@ static const char *set_attr(const char *str)
 		} while (*(str-1) == ';');
 
 		set_console_attr();
+		break;
+	case 'A':
+		move_cursor_up(strtol(str, (char **)&str, 10));
+		break;
+	case 'C':
+		move_cursor_forward(strtol(str, (char **)&str, 10));
 		break;
 	case 'D':
 		move_cursor_back(strtol(str, (char **)&str, 10));
