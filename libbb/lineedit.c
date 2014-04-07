@@ -465,6 +465,7 @@ static void input_backward(unsigned num)
 
 	if (cmdedit_x >= num) {
 		cmdedit_x -= num;
+#if !ENABLE_PLATFORM_MINGW32
 		if (num <= 4) {
 			/* This is longer by 5 bytes on x86.
 			 * Also gets miscompiled for ARM users
@@ -477,6 +478,7 @@ static void input_backward(unsigned num)
 			} while (--num);
 			return;
 		}
+#endif
 		printf(ESC"[%uD", num);
 		return;
 	}
