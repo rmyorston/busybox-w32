@@ -123,7 +123,7 @@ static void erase_till_end_of_screen(void)
 					    pos, &dummy);
 }
 
-static void move_cursor_up(int n)
+static void move_cursor_row(int n)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
@@ -131,11 +131,11 @@ static void move_cursor_up(int n)
 		return;
 
 	GetConsoleScreenBufferInfo(console, &sbi);
-	sbi.dwCursorPosition.Y -= n;
+	sbi.dwCursorPosition.Y += n;
 	SetConsoleCursorPosition(console, sbi.dwCursorPosition);
 }
 
-static void move_cursor_forward(int n)
+static void move_cursor_column(int n)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
@@ -144,18 +144,6 @@ static void move_cursor_forward(int n)
 
 	GetConsoleScreenBufferInfo(console, &sbi);
 	sbi.dwCursorPosition.X += n;
-	SetConsoleCursorPosition(console, sbi.dwCursorPosition);
-}
-
-static void move_cursor_back(int n)
-{
-	CONSOLE_SCREEN_BUFFER_INFO sbi;
-
-	if (!console)
-		return;
-
-	GetConsoleScreenBufferInfo(console, &sbi);
-	sbi.dwCursorPosition.X -= n;
 	SetConsoleCursorPosition(console, sbi.dwCursorPosition);
 }
 
@@ -309,14 +297,17 @@ static const char *set_attr(const char *str)
 
 		set_console_attr();
 		break;
-	case 'A':
-		move_cursor_up(strtol(str, (char **)&str, 10));
+	case 'A': /* up */
+		move_cursor_row(-strtol(str, (char **)&str, 10));
 		break;
-	case 'C':
-		move_cursor_forward(strtol(str, (char **)&str, 10));
+	case 'B': /* down */
+		move_cursor_row(strtol(str, (char **)&str, 10));
 		break;
-	case 'D':
-		move_cursor_back(strtol(str, (char **)&str, 10));
+	case 'C': /* forward */
+		move_cursor_column(strtol(str, (char **)&str, 10));
+		break;
+	case 'D': /* back */
+		move_cursor_column(-strtol(str, (char **)&str, 10));
 		break;
 	case 'H':
 		if (!len)
