@@ -409,6 +409,42 @@ static void put_cur_glyph_and_inc_cursor(void)
 	}
 }
 
+#if ENABLE_PLATFORM_MINGW32
+static void inc_cursor(void)
+{
+	CHAR_T c = command_ps[cursor];
+	unsigned width = 0;
+	int ofs_to_right;
+
+	/* advance cursor */
+	cursor++;
+	if (unicode_status == UNICODE_ON) {
+		IF_UNICODE_WIDE_WCHARS(width = cmdedit_x;)
+		c = adjust_width_and_validate_wc(&cmdedit_x, c);
+		IF_UNICODE_WIDE_WCHARS(width = cmdedit_x - width;)
+	} else {
+		cmdedit_x++;
+	}
+
+	ofs_to_right = cmdedit_x - cmdedit_termw;
+	if (!ENABLE_UNICODE_WIDE_WCHARS || ofs_to_right <= 0) {
+		/* cursor remains on this line */
+		printf(ESC"[1C");
+	}
+
+	if (ofs_to_right >= 0) {
+		/* we go to the next line */
+		printf(ESC"[1B");
+		bb_putchar('\r');
+		cmdedit_y++;
+		if (!ENABLE_UNICODE_WIDE_WCHARS || ofs_to_right == 0) {
+			width = 0;
+		}
+		cmdedit_x = width;
+	}
+}
+#endif
+
 /* Move to end of line (by printing all chars till the end) */
 static void put_till_end_and_adv_cursor(void)
 {
@@ -610,7 +646,11 @@ static void input_backspace(void)
 static void input_forward(void)
 {
 	if (cursor < command_len)
+#if !ENABLE_PLATFORM_MINGW32
 		put_cur_glyph_and_inc_cursor();
+#else
+		inc_cursor();
+#endif
 }
 
 #if ENABLE_FEATURE_TAB_COMPLETION
