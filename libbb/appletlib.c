@@ -792,11 +792,6 @@ void FAST_FUNC run_applet_and_exit(const char *name, char **argv)
 #if ENABLE_BUILD_LIBBUSYBOX
 int lbb_main(char **argv)
 #else
-#if ENABLE_NOGLOB
-/* disable MSVCRT command line globbing */
-int _CRT_glob = 0;
-#endif
-
 int main(int argc UNUSED_PARAM, char **argv)
 #endif
 {

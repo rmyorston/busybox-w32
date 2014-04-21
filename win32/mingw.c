@@ -1,6 +1,11 @@
 #include "libbb.h"
 #include <userenv.h>
 
+#if ENABLE_NOGLOB
+/* disable MSVCRT command line globbing */
+int _CRT_glob = 0;
+#endif
+
 unsigned int _CRT_fmode = _O_BINARY;
 
 static int err_win_to_posix(DWORD winerr)
