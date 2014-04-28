@@ -14437,6 +14437,8 @@ forkshell_init(const char *idstr)
 	*gmpp = fs->gmp;
 	cmdtable = fs->cmdtable;
 
+	CLEAR_RANDOM_T(&random_gen); /* or else $RANDOM repeats in child */
+
 	reinitvar();
 
 	fs->fp(fs);
