@@ -241,6 +241,24 @@ struct forkshell {
 	struct strlist *strlist;
 	pid_t pid;
 };
+
+static void forkshell_openhere(struct forkshell *fs);
+static void forkshell_evalbackcmd(struct forkshell *fs);
+static void forkshell_evalsubshell(struct forkshell *fs);
+static void forkshell_evalpipe(struct forkshell *fs);
+static void forkshell_shellexec(struct forkshell *fs);
+
+static const forkpoint_fn forkpoints[] = {
+	forkshell_openhere,
+	forkshell_evalbackcmd,
+	forkshell_evalsubshell,
+	forkshell_evalpipe,
+	forkshell_shellexec,
+	NULL
+};
+
+static struct forkshell* forkshell_prepare(struct forkshell *fs);
+static void forkshell_init(const char *idstr);
 static void sticky_free(void *p);
 #define free(p) sticky_free(p)
 static int spawn_forkshell(struct job *jp, struct forkshell *fs, int mode);
@@ -3526,7 +3544,9 @@ struct job {
 };
 
 static struct job *makejob(/*union node *,*/ int);
+#if !ENABLE_PLATFORM_MINGW32
 static int forkshell(struct job *, union node *, int);
+#endif
 static int waitforjob(struct job *);
 
 #if !JOBS
@@ -4911,6 +4931,7 @@ commandtext(union node *n)
  *
  * Called with interrupts off.
  */
+#if !ENABLE_PLATFORM_MINGW32
 /*
  * Clear traps on a fork.
  */
@@ -5059,6 +5080,7 @@ forkchild(struct job *jp, union node *n, int mode)
 		freejob(jp);
 	jobless = 0;
 }
+#endif
 
 /* Called after fork(), in parent */
 #if !JOBS
@@ -5102,14 +5124,13 @@ forkparent(struct job *jp, union node *n, int mode, pid_t pid)
 	}
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 static int
 forkshell(struct job *jp, union node *n, int mode)
 {
 	int pid;
 
 	TRACE(("forkshell(%%%d, %p, %d) called\n", jobno(jp), n, mode));
-	if (ENABLE_PLATFORM_MINGW32)
-		return -1;
 
 	pid = fork();
 	if (pid < 0) {
@@ -5126,6 +5147,7 @@ forkshell(struct job *jp, union node *n, int mode)
 	}
 	return pid;
 }
+#endif
 
 /*
  * Wait for job to finish.
@@ -5313,33 +5335,6 @@ noclobberopen(const char *fname)
  */
 /* openhere needs this forward reference */
 static void expandhere(union node *arg, int fd);
-#if ENABLE_PLATFORM_MINGW32
-static void
-forkshell_openhere(struct forkshell *fs)
-{
-	union node *redir = fs->n;
-	int pip[2];
-
-	pip[0] = fs->fd[0];
-	pip[1] = fs->fd[1];
-
-	TRACE(("ash: subshell: %s\n",__PRETTY_FUNCTION__));
-
-	close(pip[0]);
-	ignoresig(SIGINT);  //signal(SIGINT, SIG_IGN);
-	ignoresig(SIGQUIT); //signal(SIGQUIT, SIG_IGN);
-	ignoresig(SIGHUP);  //signal(SIGHUP, SIG_IGN);
-	ignoresig(SIGTSTP); //signal(SIGTSTP, SIG_IGN);
-	signal(SIGPIPE, SIG_DFL);
-	if (redir->type == NHERE) {
-		size_t len = strlen(redir->nhere.doc->narg.text);
-		full_write(pip[1], redir->nhere.doc->narg.text, len);
-	} else /* NXHERE */
-		expandhere(redir->nhere.doc, pip[1]);
-	_exit(EXIT_SUCCESS);
-}
-#endif
-
 static int
 openhere(union node *redir)
 {
@@ -5365,7 +5360,7 @@ openhere(union node *redir)
 	fs.fd[1] = pip[1];
 	if (spawn_forkshell(NULL, &fs, FORK_NOJOB) < 0)
 		ash_msg_and_raise_error("unable to spawn shell");
-#endif
+#else
 	if (forkshell((struct job *)NULL, (union node *)NULL, FORK_NOJOB) == 0) {
 		/* child */
 		close(pip[0]);
@@ -5380,6 +5375,7 @@ openhere(union node *redir)
 			expandhere(redir->nhere.doc, pip[1]);
 		_exit(EXIT_SUCCESS);
 	}
+#endif
  out:
 	close(pip[1]);
 	return pip[0];
@@ -6150,25 +6146,6 @@ static uint8_t back_exitstatus; /* exit status of backquoted command */
 #define EV_EXIT 01              /* exit after evaluating tree */
 static void evaltree(union node *, int);
 
-#if ENABLE_PLATFORM_MINGW32
-static void
-forkshell_evalbackcmd(struct forkshell *fs)
-{
-	union node *n = fs->n;
-	int pip[2] = {fs->fd[0], fs->fd[1]};
-
-	FORCE_INT_ON;
-	close(pip[0]);
-	if (pip[1] != 1) {
-		/*close(1);*/
-		copyfd(pip[1], 1 | COPYFD_EXACT);
-		close(pip[1]);
-	}
-	eflag = 0;
-	evaltree(n, EV_EXIT); /* actually evaltreenr... */
-	/* NOTREACHED */
-}
-#endif
 static void FAST_FUNC
 evalbackcmd(union node *n, struct backcmd *result)
 {
@@ -6199,7 +6176,7 @@ evalbackcmd(union node *n, struct backcmd *result)
 		result->fs.fd[1] = pip[1];
 		if (spawn_forkshell(jp, &result->fs, FORK_NOJOB) < 0)
 			ash_msg_and_raise_error("unable to spawn shell");
-#endif
+#else
 		if (forkshell(jp, n, FORK_NOJOB) == 0) {
 			FORCE_INT_ON;
 			close(pip[0]);
@@ -6212,6 +6189,7 @@ evalbackcmd(union node *n, struct backcmd *result)
 			evaltree(n, EV_EXIT); /* actually evaltreenr... */
 			/* NOTREACHED */
 		}
+#endif
 		close(pip[1]);
 		result->fd = pip[0];
 		result->jp = jp;
@@ -9001,22 +8979,6 @@ evalcase(union node *n, int flags)
 /*
  * Kick off a subshell to evaluate a tree.
  */
-#if ENABLE_PLATFORM_MINGW32
-static void
-forkshell_evalsubshell(struct forkshell *fs)
-{
-	union node *n = fs->n;
-	int flags = fs->flags;
-
-	TRACE(("ash: subshell: %s\n",__PRETTY_FUNCTION__));
-	INT_ON;
-	flags |= EV_EXIT;
-	expredir(n->nredir.redirect);
-	redirect(n->nredir.redirect, 0);
-	evaltreenr(n->nredir.n, flags);
-	/* never returns */
-}
-#endif
 static void
 evalsubshell(union node *n, int flags)
 {
@@ -9037,13 +8999,15 @@ evalsubshell(union node *n, int flags)
 	fs.flags = flags;
 	if (spawn_forkshell(jp, &fs, backgnd) < 0)
 		ash_msg_and_raise_error("unable to spawn shell");
-#endif
+	if ( 0 ) {
+#else
 	if (forkshell(jp, n, backgnd) == 0) {
 		/* child */
 		INT_ON;
 		flags |= EV_EXIT;
 		if (backgnd)
 			flags &= ~EV_TESTED;
+#endif
  nofork:
 		redirect(n->nredir.redirect, 0);
 		evaltreenr(n->nredir.n, flags);
@@ -9126,31 +9090,6 @@ expredir(union node *n)
  * of the shell, which make the last process in a pipeline the parent
  * of all the rest.)
  */
-#if ENABLE_PLATFORM_MINGW32
-static void
-forkshell_evalpipe(struct forkshell *fs)
-{
-	union node *n = fs->n;
-	int flags = fs->flags;
-	int prevfd = fs->fd[2];
-	int pip[2] = {fs->fd[0], fs->fd[1]};
-
-	TRACE(("ash: subshell: %s\n",__PRETTY_FUNCTION__));
-	INT_ON;
-	if (pip[1] >= 0) {
-		close(pip[0]);
-	}
-	if (prevfd > 0) {
-		dup2(prevfd, 0);
-		close(prevfd);
-	}
-	if (pip[1] > 1) {
-		dup2(pip[1], 1);
-		close(pip[1]);
-	}
-	evaltreenr(n, flags);
-}
-#endif
 static void
 evalpipe(union node *n, int flags)
 {
@@ -9188,7 +9127,7 @@ evalpipe(union node *n, int flags)
 		fs.fd[2] = prevfd;
 		if (spawn_forkshell(jp, &fs, n->npipe.pipe_backgnd) < 0)
 			ash_msg_and_raise_error("unable to spawn shell");
-#endif
+#else
 		if (forkshell(jp, lp->n, n->npipe.pipe_backgnd) == 0) {
 			INT_ON;
 			if (pip[1] >= 0) {
@@ -9205,6 +9144,7 @@ evalpipe(union node *n, int flags)
 			evaltreenr(lp->n, flags);
 			/* never returns */
 		}
+#endif
 		if (prevfd >= 0)
 			close(prevfd);
 		prevfd = pip[0];
@@ -9664,19 +9604,6 @@ bltincmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	return back_exitstatus;
 }
 
-#if ENABLE_PLATFORM_MINGW32
-static void
-forkshell_shellexec(struct forkshell *fs)
-{
-	int idx = fs->fd[0];
-	struct strlist *varlist = fs->strlist;
-	char **argv = fs->argv;
-	char *path = fs->string;
-
-	listsetvar(varlist, VEXPORT|VSTACK);
-	shellexec(argv, path, idx);
-}
-#endif
 static void
 evalcommand(union node *cmd, int flags)
 {
@@ -10444,6 +10371,7 @@ popallfiles(void)
 		popfile();
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 /*
  * Close the file(s) that the shell is reading commands from.  Called
  * after a fork is done.
@@ -10457,6 +10385,7 @@ closescript(void)
 		g_parsefile->pf_fd = 0;
 	}
 }
+#endif
 
 /*
  * Like setinputfile, but takes an open file descriptor.  Call this with
@@ -13735,20 +13664,6 @@ static short profile_buf[16384];
 extern int etext();
 #endif
 
-#if ENABLE_PLATFORM_MINGW32
-static const forkpoint_fn forkpoints[] = {
-	forkshell_openhere,
-	forkshell_evalbackcmd,
-	forkshell_evalsubshell,
-	forkshell_evalpipe,
-	forkshell_shellexec,
-	NULL
-};
-
-static struct forkshell* forkshell_prepare(struct forkshell *fs);
-static void forkshell_init(const char *idstr);
-#endif
-
 /*
  * Main routine.  We initialize things, parse the arguments, execute
  * profiles if we're a login shell, and then call cmdloop to execute
@@ -13926,6 +13841,100 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 }
 
 #if ENABLE_PLATFORM_MINGW32
+static void
+forkshell_openhere(struct forkshell *fs)
+{
+	union node *redir = fs->n;
+	int pip[2];
+
+	pip[0] = fs->fd[0];
+	pip[1] = fs->fd[1];
+
+	TRACE(("ash: subshell: %s\n",__PRETTY_FUNCTION__));
+
+	close(pip[0]);
+	ignoresig(SIGINT);  //signal(SIGINT, SIG_IGN);
+	ignoresig(SIGQUIT); //signal(SIGQUIT, SIG_IGN);
+	ignoresig(SIGHUP);  //signal(SIGHUP, SIG_IGN);
+	ignoresig(SIGTSTP); //signal(SIGTSTP, SIG_IGN);
+	signal(SIGPIPE, SIG_DFL);
+	if (redir->type == NHERE) {
+		size_t len = strlen(redir->nhere.doc->narg.text);
+		full_write(pip[1], redir->nhere.doc->narg.text, len);
+	} else /* NXHERE */
+		expandhere(redir->nhere.doc, pip[1]);
+	_exit(EXIT_SUCCESS);
+}
+
+static void
+forkshell_evalbackcmd(struct forkshell *fs)
+{
+	union node *n = fs->n;
+	int pip[2] = {fs->fd[0], fs->fd[1]};
+
+	FORCE_INT_ON;
+	close(pip[0]);
+	if (pip[1] != 1) {
+		/*close(1);*/
+		copyfd(pip[1], 1 | COPYFD_EXACT);
+		close(pip[1]);
+	}
+	eflag = 0;
+	evaltree(n, EV_EXIT); /* actually evaltreenr... */
+	/* NOTREACHED */
+}
+
+static void
+forkshell_evalsubshell(struct forkshell *fs)
+{
+	union node *n = fs->n;
+	int flags = fs->flags;
+
+	TRACE(("ash: subshell: %s\n",__PRETTY_FUNCTION__));
+	INT_ON;
+	flags |= EV_EXIT;
+	expredir(n->nredir.redirect);
+	redirect(n->nredir.redirect, 0);
+	evaltreenr(n->nredir.n, flags);
+	/* never returns */
+}
+
+static void
+forkshell_evalpipe(struct forkshell *fs)
+{
+	union node *n = fs->n;
+	int flags = fs->flags;
+	int prevfd = fs->fd[2];
+	int pip[2] = {fs->fd[0], fs->fd[1]};
+
+	TRACE(("ash: subshell: %s\n",__PRETTY_FUNCTION__));
+	INT_ON;
+	if (pip[1] >= 0) {
+		close(pip[0]);
+	}
+	if (prevfd > 0) {
+		dup2(prevfd, 0);
+		close(prevfd);
+	}
+	if (pip[1] > 1) {
+		dup2(pip[1], 1);
+		close(pip[1]);
+	}
+	evaltreenr(n, flags);
+}
+
+static void
+forkshell_shellexec(struct forkshell *fs)
+{
+	int idx = fs->fd[0];
+	struct strlist *varlist = fs->strlist;
+	char **argv = fs->argv;
+	char *path = fs->string;
+
+	listsetvar(varlist, VEXPORT|VSTACK);
+	shellexec(argv, path, idx);
+}
+
 /*
  * Reset the pointers to the builtin environment variables in the hash
  * table to point to varinit rather than the bogus copy created during
