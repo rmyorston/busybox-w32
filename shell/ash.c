@@ -212,12 +212,10 @@
 //kbuild:lib-$(CONFIG_ASH_RANDOM_SUPPORT) += random.o
 
 #if ENABLE_PLATFORM_MINGW32
-struct forkshell;
 union node;
 struct strlist;
 struct job;
 
-typedef void (*forkpoint_fn)(struct forkshell *fs);
 struct forkshell {
 	/* filled by forkshell_copy() */
 	struct globals_var *gvp;
@@ -225,40 +223,34 @@ struct forkshell {
 	struct tblentry **cmdtable;
 	/* struct alias **atab; */
 	/* struct parsefile *g_parsefile; */
-	int fpid;
 	HANDLE hMapFile;
 	void *old_base;
 	int nodeptr_offset;
 	int size;
 
-	forkpoint_fn fp;
-	/* optional data, used by forkpoint_fn */
+	/* type of forkshell */
+	int fpid;
+
+	/* optional data, used by forkshell_child */
 	int flags;
 	int fd[10];
 	union node *n;
 	char **argv;
 	char *string;
 	struct strlist *strlist;
-	pid_t pid;
 };
 
-static void forkshell_openhere(struct forkshell *fs);
-static void forkshell_evalbackcmd(struct forkshell *fs);
-static void forkshell_evalsubshell(struct forkshell *fs);
-static void forkshell_evalpipe(struct forkshell *fs);
-static void forkshell_shellexec(struct forkshell *fs);
-
-static const forkpoint_fn forkpoints[] = {
-	forkshell_openhere,
-	forkshell_evalbackcmd,
-	forkshell_evalsubshell,
-	forkshell_evalpipe,
-	forkshell_shellexec,
-	NULL
+enum {
+	FS_OPENHERE,
+	FS_EVALBACKCMD,
+	FS_EVALSUBSHELL,
+	FS_EVALPIPE,
+	FS_SHELLEXEC
 };
 
 static struct forkshell* forkshell_prepare(struct forkshell *fs);
 static void forkshell_init(const char *idstr);
+static void forkshell_child(struct forkshell *fs);
 static void sticky_free(void *p);
 #define free(p) sticky_free(p)
 static int spawn_forkshell(struct job *jp, struct forkshell *fs, int mode);
@@ -5353,8 +5345,7 @@ openhere(union node *redir)
 	}
 #if ENABLE_PLATFORM_MINGW32
 	memset(&fs, 0, sizeof(fs));
-	fs.fp = forkshell_openhere;
-	fs.flags = 0;
+	fs.fpid = FS_OPENHERE;
 	fs.n = redir;
 	fs.fd[0] = pip[0];
 	fs.fd[1] = pip[1];
@@ -6170,7 +6161,7 @@ evalbackcmd(union node *n, struct backcmd *result)
 			ash_msg_and_raise_error("pipe call failed");
 		jp = makejob(/*n,*/ 1);
 #if ENABLE_PLATFORM_MINGW32
-		result->fs.fp = forkshell_evalbackcmd;
+		result->fs.fpid = FS_EVALBACKCMD;
 		result->fs.n = n;
 		result->fs.fd[0] = pip[0];
 		result->fs.fd[1] = pip[1];
@@ -8994,7 +8985,7 @@ evalsubshell(union node *n, int flags)
 	jp = makejob(/*n,*/ 1);
 #if ENABLE_PLATFORM_MINGW32
 	memset(&fs, 0, sizeof(fs));
-	fs.fp = forkshell_evalsubshell;
+	fs.fpid = FS_EVALSUBSHELL;
 	fs.n = n;
 	fs.flags = flags;
 	if (spawn_forkshell(jp, &fs, backgnd) < 0)
@@ -9119,7 +9110,7 @@ evalpipe(union node *n, int flags)
 		}
 #if ENABLE_PLATFORM_MINGW32
 		memset(&fs, 0, sizeof(fs));
-		fs.fp = forkshell_evalpipe;
+		fs.fpid = FS_EVALPIPE;
 		fs.flags = flags;
 		fs.n = lp->n;
 		fs.fd[0] = pip[0];
@@ -9787,7 +9778,7 @@ evalcommand(union node *cmd, int flags)
 			struct forkshell fs;
 
 			memset(&fs, 0, sizeof(fs));
-			fs.fp = forkshell_shellexec;
+			fs.fpid = FS_SHELLEXEC;
 			fs.argv = argv;
 			fs.string = (char*)path;
 			fs.fd[0] = cmdentry.u.index;
@@ -13935,6 +13926,28 @@ forkshell_shellexec(struct forkshell *fs)
 	shellexec(argv, path, idx);
 }
 
+static void
+forkshell_child(struct forkshell *fs)
+{
+	switch ( fs->fpid ) {
+	case FS_OPENHERE:
+		forkshell_openhere(fs);
+		break;
+	case FS_EVALBACKCMD:
+		forkshell_evalbackcmd(fs);
+		break;
+	case FS_EVALSUBSHELL:
+		forkshell_evalsubshell(fs);
+		break;
+	case FS_EVALPIPE:
+		forkshell_evalpipe(fs);
+		break;
+	case FS_SHELLEXEC:
+		forkshell_shellexec(fs);
+		break;
+	}
+}
+
 /*
  * Reset the pointers to the builtin environment variables in the hash
  * table to point to varinit rather than the bogus copy created during
@@ -13963,23 +13976,24 @@ reinitvar(void)
 static int
 spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
 {
-	const char *argv[] = { "sh", "--forkshell", NULL, NULL };
-	char buf[16];
-
 	struct forkshell *new;
+	char buf[16];
+	const char *argv[] = { "sh", "--forkshell", NULL, NULL };
+	pid_t pid;
+
 	new = forkshell_prepare(fs);
 	sprintf(buf, "%x", (unsigned int)new->hMapFile);
 	argv[2] = buf;
-	fs->pid = mingw_spawn_applet(P_NOWAIT, "sh", argv,
+	pid = mingw_spawn_applet(P_NOWAIT, "sh", argv,
 				     (const char *const *)environ);
 	CloseHandle(new->hMapFile);
 	UnmapViewOfFile(new);
-	if (fs->pid == -1) {
+	if (pid == -1) {
 		free(jp);
 		return -1;
 	}
-	forkparent(jp, fs->node, mode, fs->pid);
-	return fs->pid;
+	forkparent(jp, fs->node, mode, pid);
+	return pid;
 }
 
 /*
@@ -14342,16 +14356,9 @@ static struct forkshell *
 forkshell_prepare(struct forkshell *fs)
 {
 	struct forkshell *new;
-	int size, fp, nodeptr_offset;
+	int size, nodeptr_offset;
 	HANDLE h;
 	SECURITY_ATTRIBUTES sa;
-
-	for (fp = 0; forkpoints[fp] && forkpoints[fp] != fs->fp; fp++)
-		;
-
-	if (!forkpoints[fp])
-		bb_error_msg_and_die("invalid forkpoint %08x", (int)fs->fp);
-	fs->fpid = fp;
 
 	/* Calculate size of "new" */
 	fs->gvp = ash_ptr_to_globals_var;
@@ -14423,7 +14430,6 @@ forkshell_init(const char *idstr)
 		nodeptr++;
 	}
 	/* Now fix up stuff that can't be transferred */
-	fs->fp = forkpoints[fs->fpid];
 	for (i = 0; i < ARRAY_SIZE(varinit_data); i++)
 		fs->gvp->varinit[i].var_func = varinit_data[i].var_func;
 	for (i = 0; i < CMDTABLESIZE; i++) {
@@ -14450,7 +14456,7 @@ forkshell_init(const char *idstr)
 
 	reinitvar();
 
-	fs->fp(fs);
+	forkshell_child(fs);
 }
 
 #undef free
