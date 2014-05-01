@@ -14343,7 +14343,6 @@ forkshell_copy(struct forkshell *fs)
 	new->cmdtable = cmdtable_copy(fs->cmdtable);
 	SAVE_PTR3(new->gvp, new->gmp, new->cmdtable);
 
-	/* new->fs will be reconstructed from new->fpid */
 	new->n = copynode(fs->n);
 	new->argv = argv_copy(fs->argv);
 	new->string = nodeckstrdup(fs->string);
