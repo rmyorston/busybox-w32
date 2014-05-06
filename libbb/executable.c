@@ -13,7 +13,7 @@
  * return 1 if found;
  * return 0 otherwise;
  */
-int FAST_FUNC execable_file(const char *name)
+int FAST_FUNC file_is_executable(const char *name)
 {
 	struct stat s;
 	return (!access(name, X_OK) && !stat(name, &s) && S_ISREG(s.st_mode));
@@ -23,7 +23,7 @@ int FAST_FUNC execable_file(const char *name)
  * return allocated string containing full path if found;
  *  PATHp points to the component after the one where it was found
  *  (or NULL),
- *  you may call find_execable again with this PATHp to continue
+ *  you may call find_executable again with this PATHp to continue
  *  (if it's not NULL).
  * return NULL otherwise; (PATHp is undefined)
  * in all cases (*PATHp) contents will be trashed (s/:/NUL/).
@@ -32,8 +32,16 @@ int FAST_FUNC execable_file(const char *name)
 #define next_path_sep(s) strchr(s, ':')
 #endif
 
-char* FAST_FUNC find_execable(const char *filename, char **PATHp)
+char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 {
+	/* About empty components in $PATH:
+	 * http://pubs.opengroup.org/onlinepubs/009695399/basedefs/xbd_chap08.html
+	 * 8.3 Other Environment Variables - PATH
+	 * A zero-length prefix is a legacy feature that indicates the current
+	 * working directory. It appears as two adjacent colons ( "::" ), as an
+	 * initial colon preceding the rest of the list, or as a trailing colon
+	 * following the rest of the list.
+	 */
 	char *p, *n;
 #if ENABLE_PLATFORM_MINGW32
 	char *w;
@@ -44,21 +52,22 @@ char* FAST_FUNC find_execable(const char *filename, char **PATHp)
 		n = (char*)next_path_sep(p);
 		if (n)
 			*n++ = '\0';
-		if (*p != '\0') { /* it's not a PATH="foo::bar" situation */
-			p = concat_path_file(p, filename);
-			if (execable_file(p)) {
-				*PATHp = n;
-				return p;
-			}
-#if ENABLE_PLATFORM_MINGW32
-			else if ((w=win32_execable_file(p))) {
-				*PATHp = n;
-				free(p);
-				return w;
-			}
-#endif
-			free(p);
+		p = concat_path_file(
+			p[0] ? p : ".", /* handle "::" case */
+			filename
+		);
+		if (file_is_executable(p)) {
+			*PATHp = n;
+			return p;
 		}
+#if ENABLE_PLATFORM_MINGW32
+		else if ((w=win32_execable_file(p))) {
+			*PATHp = n;
+			free(p);
+			return w;
+		}
+#endif
+		free(p);
 		p = n;
 	} /* on loop exit p == NULL */
 	return p;
@@ -68,17 +77,14 @@ char* FAST_FUNC find_execable(const char *filename, char **PATHp)
  * return 1 if found;
  * return 0 otherwise;
  */
-int FAST_FUNC exists_execable(const char *filename)
+int FAST_FUNC executable_exists(const char *filename)
 {
 	char *path = xstrdup(getenv("PATH"));
 	char *tmp = path;
-	char *ret = find_execable(filename, &tmp);
+	char *ret = find_executable(filename, &tmp);
 	free(path);
-	if (ret) {
-		free(ret);
-		return 1;
-	}
-	return 0;
+	free(ret);
+	return ret != NULL;
 }
 
 #if ENABLE_FEATURE_PREFER_APPLETS

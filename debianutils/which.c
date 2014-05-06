@@ -1,13 +1,9 @@
 /* vi: set sw=4 ts=4: */
 /*
- * Which implementation for busybox
- *
  * Copyright (C) 1999-2004 by Erik Andersen <andersen@codepoet.org>
  * Copyright (C) 2006 Gabriel Somlo <somlo at cmu.edu>
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
- *
- * Based on which from debianutils
  */
 
 //usage:#define which_trivial_usage
@@ -24,98 +20,59 @@
 int which_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int which_main(int argc UNUSED_PARAM, char **argv)
 {
-	IF_DESKTOP(int opt;)
-	int status = EXIT_SUCCESS;
-	char *path;
-	char *p;
+	const char *env_path;
+	int status = 0;
+
+	env_path = getenv("PATH");
+	if (!env_path)
+		env_path = bb_default_root_path;
 
 	opt_complementary = "-1"; /* at least one argument */
-	IF_DESKTOP(opt =) getopt32(argv, "a");
+	getopt32(argv, "a");
 	argv += optind;
 
-	/* This matches what is seen on e.g. ubuntu.
-	 * "which" there is a shell script. */
-	path = getenv("PATH");
-	if (!path) {
-		path = (char*)bb_PATH_root_path;
-		putenv(path);
-		path += 5; /* skip "PATH=" */
-	}
-
 	do {
+		int missing = 1;
+		char *p;
+
 #if ENABLE_FEATURE_PREFER_APPLETS
 		if ( find_applet_by_name(*argv) >= 0 ) {
+			missing = 0;
 			puts(*argv);
-			IF_DESKTOP(if ( !opt ))
-				continue;
+			if (!option_mask32) /* -a not set */
+				break;
 		}
 #endif
 
-#if ENABLE_DESKTOP
-/* Much bloat just to support -a */
+		/* If file contains a slash don't use PATH */
 		if (strchr(*argv, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(*argv, '\\'))) {
-			if (execable_file(*argv)) {
+			if (file_is_executable(*argv)) {
+				missing = 0;
 				puts(*argv);
-				continue;
 			}
 #if ENABLE_PLATFORM_MINGW32
 			else if ((p=win32_execable_file(*argv)) != NULL) {
+				missing = 0;
 				puts(p);
 				free(p);
-				continue;
-			}
-#endif
-			status = EXIT_FAILURE;
-		} else {
-			char *path2 = xstrdup(path);
-			char *tmp = path2;
-
-			p = find_execable(*argv, &tmp);
-			if (!p)
-				status = EXIT_FAILURE;
-			else {
- print:
-				puts(p);
-				free(p);
-				if (opt) {
-					/* -a: show matches in all PATH components */
-					if (tmp) {
-						p = find_execable(*argv, &tmp);
-						if (p)
-							goto print;
-					}
-				}
-			}
-			free(path2);
-		}
-#else
-/* Just ignoring -a */
-		if (strchr(*argv, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(*argv, '\\'))) {
-			if (execable_file(*argv)) {
-				puts(*argv);
-				continue;
-			}
-#if ENABLE_PLATFORM_MINGW32
-			else if ((p=win32_execable_file(*argv)) != NULL) {
-				puts(p);
-				free(p);
-				continue;
 			}
 #endif
 		} else {
-			char *path2 = xstrdup(path);
-			char *tmp = path2;
-			p = find_execable(*argv, &tmp);
-			free(path2);
-			if (p) {
+			char *path;
+			char *tmp;
+
+			path = tmp = xstrdup(env_path);
+			while ((p = find_executable(*argv, &tmp)) != NULL) {
+				missing = 0;
 				puts(p);
 				free(p);
-				continue;
+				if (!option_mask32) /* -a not set */
+					break;
 			}
+			free(path);
 		}
-		status = EXIT_FAILURE;
-#endif
-	} while (*(++argv) != NULL);
+		status |= missing;
+	} while (*++argv);
 
-	fflush_stdout_and_exit(status);
+	return status;
 }

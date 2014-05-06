@@ -42,6 +42,13 @@
 //usage:	)
 //usage:     "\n	-S PROG	Run PROG after stepping time, stratum change, and every 11 mins"
 //usage:     "\n	-p PEER	Obtain time from PEER (may be repeated)"
+//usage:	IF_FEATURE_NTPD_CONF(
+//usage:     "\n		If -p is not given, read /etc/ntp.conf"
+//usage:	)
+
+// -l and -p options are not compatible with "standard" ntpd:
+// it has them as "-l logfile" and "-p pidfile".
+// -S and -w are not compat either, "standard" ntpd has no such opts.
 
 #include "libbb.h"
 #include <math.h>
@@ -245,6 +252,9 @@ typedef struct {
 	 * or when receive times out (if p_fd >= 0): */
 	double           next_action_time;
 	double           p_xmttime;
+	double           p_raw_delay;
+	/* p_raw_delay is set even by "high delay" packets */
+	/* lastpkt_delay isn't */
 	double           lastpkt_recv_time;
 	double           lastpkt_delay;
 	double           lastpkt_rootdelay;
@@ -730,7 +740,7 @@ reset_peer_stats(peer_t *p, double offset)
 }
 
 static void
-add_peers(char *s)
+add_peers(const char *s)
 {
 	peer_t *p;
 
@@ -1678,7 +1688,8 @@ recv_and_process_peer_pkt(peer_t *p)
 	ssize_t     size;
 	msg_t       msg;
 	double      T1, T2, T3, T4;
-	double      dv, offset;
+	double      offset;
+	double      prev_delay, delay;
 	unsigned    interval;
 	datapoint_t *datapoint;
 	peer_t      *q;
@@ -1738,12 +1749,6 @@ recv_and_process_peer_pkt(peer_t *p)
 //	if (msg.m_rootdelay / 2 + msg.m_rootdisp >= MAXDISP || p->lastpkt_reftime > msg.m_xmt)
 //		return;                 /* invalid header values */
 
-	p->lastpkt_status = msg.m_status;
-	p->lastpkt_stratum = msg.m_stratum;
-	p->lastpkt_rootdelay = sfp_to_d(msg.m_rootdelay);
-	p->lastpkt_rootdisp = sfp_to_d(msg.m_rootdisp);
-	p->lastpkt_refid = msg.m_refid;
-
 	/*
 	 * From RFC 2030 (with a correction to the delay math):
 	 *
@@ -1763,27 +1768,34 @@ recv_and_process_peer_pkt(peer_t *p)
 	T3 = lfp_to_d(msg.m_xmttime);
 	T4 = G.cur_time;
 
-	p->lastpkt_recv_time = T4;
-	VERB6 bb_error_msg("%s->lastpkt_recv_time=%f", p->p_dotted, p->lastpkt_recv_time);
-
 	/* The delay calculation is a special case. In cases where the
 	 * server and client clocks are running at different rates and
 	 * with very fast networks, the delay can appear negative. In
 	 * order to avoid violating the Principle of Least Astonishment,
 	 * the delay is clamped not less than the system precision.
 	 */
-	dv = p->lastpkt_delay;
-	p->lastpkt_delay = (T4 - T1) - (T3 - T2);
-	if (p->lastpkt_delay < G_precision_sec)
-		p->lastpkt_delay = G_precision_sec;
+	delay = (T4 - T1) - (T3 - T2);
+	if (delay < G_precision_sec)
+		delay = G_precision_sec;
 	/*
 	 * If this packet's delay is much bigger than the last one,
 	 * it's better to just ignore it than use its much less precise value.
 	 */
-	if (p->reachable_bits && p->lastpkt_delay > dv * BAD_DELAY_GROWTH) {
-		bb_error_msg("reply from %s: delay %f is too high, ignoring", p->p_dotted, p->lastpkt_delay);
+	prev_delay = p->p_raw_delay;
+	p->p_raw_delay = delay;
+	if (p->reachable_bits && delay > prev_delay * BAD_DELAY_GROWTH) {
+		bb_error_msg("reply from %s: delay %f is too high, ignoring", p->p_dotted, delay);
 		goto pick_normal_interval;
 	}
+
+	p->lastpkt_delay = delay;
+	p->lastpkt_recv_time = T4;
+	VERB6 bb_error_msg("%s->lastpkt_recv_time=%f", p->p_dotted, p->lastpkt_recv_time);
+	p->lastpkt_status = msg.m_status;
+	p->lastpkt_stratum = msg.m_stratum;
+	p->lastpkt_rootdelay = sfp_to_d(msg.m_rootdelay);
+	p->lastpkt_rootdisp = sfp_to_d(msg.m_rootdisp);
+	p->lastpkt_refid = msg.m_refid;
 
 	p->datapoint_idx = p->reachable_bits ? (p->datapoint_idx + 1) % NUM_DATAPOINTS : 0;
 	datapoint = &p->filter_datapoint[p->datapoint_idx];
@@ -2087,14 +2099,34 @@ static NOINLINE void ntp_init(char **argv)
 			"d" /* compat */
 			"46aAbgL", /* compat, ignored */
 			&peers, &G.script_name, &G.verbose);
-	if (!(opts & (OPT_p|OPT_l)))
-		bb_show_usage();
+
 //	if (opts & OPT_x) /* disable stepping, only slew is allowed */
 //		G.time_was_stepped = 1;
 	if (peers) {
 		while (peers)
 			add_peers(llist_pop(&peers));
-	} else {
+	}
+#if ENABLE_FEATURE_NTPD_CONF
+	else {
+		parser_t *parser;
+		char *token[3];
+
+		parser = config_open("/etc/ntp.conf");
+		while (config_read(parser, token, 3, 1, "# \t", PARSE_NORMAL)) {
+			if (strcmp(token[0], "server") == 0 && token[1]) {
+				add_peers(token[1]);
+				continue;
+			}
+			bb_error_msg("skipping %s:%u: unimplemented command '%s'",
+				"/etc/ntp.conf", parser->lineno, token[0]
+			);
+		}
+		config_close(parser);
+	}
+#endif
+	if (G.peer_cnt == 0) {
+		if (!(opts & OPT_l))
+			bb_show_usage();
 		/* -l but no peers: "stratum 1 server" mode */
 		G.stratum = 1;
 	}

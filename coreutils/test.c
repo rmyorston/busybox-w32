@@ -650,7 +650,7 @@ static int filstat(char *nm, enum token mode)
 	if (mode == FILEX) {
 		char *p;
 
-		if (execable_file(nm)) {
+		if (file_is_executable(nm)) {
 			return 1;
 		}
 		else if ((p=win32_execable_file(nm))) {

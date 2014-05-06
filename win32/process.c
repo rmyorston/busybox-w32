@@ -238,7 +238,7 @@ mingw_spawn_interpreter(int mode, const char *prog, const char *const *argv, con
 	else {
 		char *path = xstrdup(getenv("PATH"));
 		char *tmp = path;
-		char *iprog = find_execable(interpr, &tmp);
+		char *iprog = find_executable(interpr, &tmp);
 		free(path);
 		if (!iprog) {
 			free(new_argv);
@@ -273,9 +273,9 @@ mingw_spawn_1(int mode, const char *cmd, const char *const *argv, const char *co
 			return -1;
 		}
 
-		/* exists_execable() does not return new file name */
+		/* executable_exists() does not return new file name */
 		tmp = path = xstrdup(path);
-		prog = find_execable(cmd, &tmp);
+		prog = find_executable(cmd, &tmp);
 		free(path);
 		if (!prog) {
 			errno = ENOENT;

@@ -943,11 +943,11 @@ char *win32_execable_file(const char *p)
 	if ( (path=malloc(len+5)) != NULL ) {
 		memcpy(path, p, len);
 		memcpy(path+len, ".exe", 5);
-		if (execable_file(path)) {
+		if (file_is_executable(path)) {
 			return path;
 		}
 		memcpy(path+len, ".com", 5);
-		if (execable_file(path)) {
+		if (file_is_executable(path)) {
 			return path;
 		}
 		free(path);
