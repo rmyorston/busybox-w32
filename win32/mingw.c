@@ -930,7 +930,7 @@ int mingw_access(const char *name, int mode)
  *
  * if path already has a suffix don't even bother trying
  */
-char *win32_execable_file(const char *p)
+char *file_is_win32_executable(const char *p)
 {
 	char *path;
 	int len = strlen(p);

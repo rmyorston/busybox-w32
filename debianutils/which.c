@@ -51,7 +51,7 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 				puts(*argv);
 			}
 #if ENABLE_PLATFORM_MINGW32
-			else if ((p=win32_execable_file(*argv)) != NULL) {
+			else if ((p=file_is_win32_executable(*argv)) != NULL) {
 				missing = 0;
 				puts(p);
 				free(p);

@@ -653,7 +653,7 @@ static int filstat(char *nm, enum token mode)
 		if (file_is_executable(nm)) {
 			return 1;
 		}
-		else if ((p=win32_execable_file(nm))) {
+		else if ((p=file_is_win32_executable(nm))) {
 			free(p);
 			return 1;
 		}
