@@ -3,9 +3,9 @@
 
 typedef struct {
 	PROCESS_INFORMATION piProcInfo;
-	HANDLE in[2], out[2], err[2];
+	HANDLE pipe[2];
 	char mode;
-	FILE *fd;
+	int fd;
 } pipe_data;
 
 static pipe_data *pipes = NULL;
@@ -35,6 +35,7 @@ FILE *mingw_popen(const char *cmd, const char *mode)
 	int success;
 	int fd;
 	int len, count;
+	int ip, ic;
 	char *cmd_buff = NULL;
 	const char *s;
 	char *t;
@@ -90,39 +91,43 @@ FILE *mingw_popen(const char *cmd, const char *mode)
 	*t++ = '"';
 	*t = '\0';
 
-	p->in[0]   = INVALID_HANDLE_VALUE;
-	p->in[1]   = INVALID_HANDLE_VALUE;
-	p->out[0]  = INVALID_HANDLE_VALUE;
-	p->out[1]  = INVALID_HANDLE_VALUE;
-	p->err[0]  = INVALID_HANDLE_VALUE;
-	p->err[1]  = INVALID_HANDLE_VALUE;
+	p->pipe[0] = INVALID_HANDLE_VALUE;
+	p->pipe[1] = INVALID_HANDLE_VALUE;
 
-	/* Create the Pipes... */
-	if ( mingw_pipe(p->in)  == -1 ||
-			mingw_pipe(p->out) == -1 ||
-			mingw_pipe(p->err) == -1) {
+	/* Create the pipe */
+	if ( mingw_pipe(p->pipe) == -1 ) {
 		goto finito;
 	}
 
-	/* Make the parent ends of the pipes non-inheritable */
-	SetHandleInformation(p->in[1], HANDLE_FLAG_INHERIT, 0);
-	SetHandleInformation(p->out[0], HANDLE_FLAG_INHERIT, 0);
-	SetHandleInformation(p->err[0], HANDLE_FLAG_INHERIT, 0);
+	/* index of parent end of pipe */
+	ip = !(*mode == 'r');
+	/* index of child end of pipe */
+	ic = (*mode == 'r');
+
+	/* Make the parent end of the pipe non-inheritable */
+	SetHandleInformation(p->pipe[ip], HANDLE_FLAG_INHERIT, 0);
 
 	/* Now create the child process */
 	ZeroMemory(&siStartInfo, sizeof(STARTUPINFO));
-	siStartInfo.cb           = sizeof(STARTUPINFO);
-	siStartInfo.hStdInput    = p->in[0];
-	siStartInfo.hStdOutput   = p->out[1];
-	siStartInfo.hStdError    = p->err[1];
-	siStartInfo.dwFlags      = STARTF_USESTDHANDLES;
+	siStartInfo.cb = sizeof(STARTUPINFO);
+	if ( *mode == 'r' ) {
+		siStartInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+		siStartInfo.hStdOutput = p->pipe[ic];
+	}
+	else {
+		siStartInfo.hStdInput = p->pipe[ic];
+		siStartInfo.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+	}
+	siStartInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+	siStartInfo.wShowWindow = SW_HIDE;
+	siStartInfo.dwFlags = STARTF_USESTDHANDLES|STARTF_USESHOWWINDOW;
 
 	success = CreateProcess(NULL,
 				(LPTSTR)cmd_buff,  /* command line */
 				NULL,              /* process security attributes */
 				NULL,              /* primary thread security attributes */
 				TRUE,              /* handles are inherited */
-				CREATE_NO_WINDOW,  /* creation flags */
+				0,                 /* creation flags */
 				NULL,              /* use parent's environment */
 				NULL,              /* use parent's current directory */
 				&siStartInfo,      /* STARTUPINFO pointer */
@@ -132,63 +137,51 @@ FILE *mingw_popen(const char *cmd, const char *mode)
 		goto finito;
 	}
 
-	/* Close the child ends of the pipes */
-	CloseHandle(p->in[0]);  p->in[0]  = INVALID_HANDLE_VALUE;
-	CloseHandle(p->out[1]); p->out[1] = INVALID_HANDLE_VALUE;
-	CloseHandle(p->err[1]); p->err[1] = INVALID_HANDLE_VALUE;
+	/* close child end of pipe */
+	CloseHandle(p->pipe[ic]);
+	p->pipe[ic] = INVALID_HANDLE_VALUE;
 
 	if ( *mode == 'r' ) {
-		fd = _open_osfhandle((long)p->out[0], _O_RDONLY|_O_BINARY);
+		fd = _open_osfhandle((long)p->pipe[ip], _O_RDONLY|_O_BINARY);
 		fptr = _fdopen(fd, "rb");
 	}
 	else {
-		fd = _open_osfhandle((long)p->in[1], _O_WRONLY|_O_BINARY);
+		fd = _open_osfhandle((long)p->pipe[ip], _O_WRONLY|_O_BINARY);
 		fptr = _fdopen(fd, "wb");
 	}
 
 finito:
-  if ( !fptr ) {
-		if ( p->in[0]  != INVALID_HANDLE_VALUE ) {
-			CloseHandle(p->in[0]);
+	if ( !fptr ) {
+		if ( p->pipe[0] != INVALID_HANDLE_VALUE ) {
+			CloseHandle(p->pipe[0]);
 		}
-		if ( p->in[1]  != INVALID_HANDLE_VALUE ) {
-			CloseHandle(p->in[1]);
-		}
-		if ( p->out[0] != INVALID_HANDLE_VALUE ) {
-			CloseHandle(p->out[0]);
-		}
-		if ( p->out[1] != INVALID_HANDLE_VALUE ) {
-			CloseHandle(p->out[1]);
-		}
-		if ( p->err[0] != INVALID_HANDLE_VALUE ) {
-			CloseHandle(p->err[0]);
-		}
-		if ( p->err[1] != INVALID_HANDLE_VALUE ) {
-			CloseHandle(p->err[1]);
+		if ( p->pipe[1] != INVALID_HANDLE_VALUE ) {
+			CloseHandle(p->pipe[1]);
 		}
 	}
 	else {
 		p->mode = *mode;
+		p->fd = fd;
 	}
 	free(cmd_buff);
 
-	p->fd = fptr;
 	return fptr;
 }
 
-int mingw_pclose(FILE *fd)
+int mingw_pclose(FILE *fp)
 {
-	int i;
+	int i, ip, fd;
 	pipe_data *p = NULL;
 	DWORD ret;
 
-	if ( fd == NULL ) {
+	if ( fp == NULL ) {
 		return -1;
 	}
 
 	/* find struct containing fd */
+	fd = fileno(fp);
 	for ( i=0; i<num_pipes; ++i ) {
-		if ( pipes[i].fd == fd ) {
+		if ( pipes[i].mode && pipes[i].fd == fd ) {
 			p = pipes+i;
 			break;
 		}
@@ -199,15 +192,10 @@ int mingw_pclose(FILE *fd)
 		return -1;
 	}
 
-	fclose(fd);
+	fclose(fp);
 
-	CloseHandle(p->err[0]);
-	if ( p->mode == 'r' ) {
-		CloseHandle(p->in[1]);
-	}
-	else {
-		CloseHandle(p->out[0]);
-	}
+	ip = !(p->mode == 'r');
+	CloseHandle(p->pipe[ip]);
 
 	ret = WaitForSingleObject(p->piProcInfo.hProcess, INFINITE);
 
