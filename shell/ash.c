@@ -2581,6 +2581,7 @@ updatepwd(const char *dir)
 {
 #if ENABLE_PLATFORM_MINGW32
 #define is_path_sep(x) ((x) == '/' || (x) == '\\')
+#define is_unc_path(x) (is_path_sep(x[0]) && is_path_sep(x[1]))
 	/*
 	 * Due to Windows drive notion, getting pwd is a completely
 	 * different thing. Handle it in a separate routine
@@ -2591,10 +2592,11 @@ updatepwd(const char *dir)
 	char *cdcomppath;
 	const char *lim;
 	/*
-	 * There are four cases
+	 * There are five cases that make some kind of sense
 	 *  absdrive +  abspath: c:/path
 	 *  absdrive + !abspath: c:path
 	 * !absdrive +  abspath: /path
+	 * !absdrive +  uncpath: //host/share
 	 * !absdrive + !abspath: path
 	 *
 	 * Damn DOS!
@@ -2606,7 +2608,6 @@ updatepwd(const char *dir)
 	 */
 	int absdrive = *dir && dir[1] == ':';
 	int abspath = absdrive ? is_path_sep(dir[2]) : is_path_sep(*dir);
-	char *drive;
 
 	cdcomppath = ststrdup(dir);
 	STARTSTACKSTR(new);
@@ -2619,19 +2620,25 @@ updatepwd(const char *dir)
 	}
 	new = makestrspace(strlen(dir) + 2, new);
 
-	drive = stackblock();
-	if (absdrive) {
-		*drive = *dir;
-		cdcomppath += 2;
-		dir += 2;
-	} else {
-		*drive = *curdir;
+	if ( is_unc_path(dir) || (!absdrive && !abspath && is_unc_path(curdir)) ) {
+		lim = (char *)stackblock() + 1;
 	}
-	drive[1] = ':'; /* in case of absolute drive+path */
+	else {
+		char *drive = stackblock();
+		if (absdrive) {
+			*drive = *dir;
+			cdcomppath += 2;
+			dir += 2;
+		} else {
+			*drive = *curdir;
+		}
+		drive[1] = ':'; /* in case of absolute drive+path */
 
-	if (abspath)
-		new = drive + 2;
-	lim = drive + 3;
+		if (abspath)
+			new = drive + 2;
+		lim = drive + 3;
+	}
+
 	if (!abspath) {
 		if (!is_path_sep(new[-1]))
 			USTPUTC('/', new);
