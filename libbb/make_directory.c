@@ -124,6 +124,10 @@ int FAST_FUNC bb_make_directory(char *path, long mode, int flags)
 			if (!c) {
 				goto ret0;
 			}
+		} else {
+			if (flags & FILEUTILS_VERBOSE) {
+				printf("created directory: '%s'\n", path);
+			}
 		}
 
 		if (!c) {

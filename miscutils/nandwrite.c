@@ -36,14 +36,16 @@
 //usage:     "\n	-s ADDR	Start address"
 
 //usage:#define nanddump_trivial_usage
-//usage:	"[-o] [-b] [-s ADDR] [-l LEN] [-f FILE] MTD_DEVICE"
+//usage:	"[-o] [--bb=padbad|skipbad] [-s ADDR] [-l LEN] [-f FILE] MTD_DEVICE"
 //usage:#define nanddump_full_usage "\n\n"
 //usage:	"Dump MTD_DEVICE\n"
 //usage:     "\n	-o	Dump oob data"
-//usage:     "\n	-b	Omit bad block from the dump"
 //usage:     "\n	-s ADDR	Start address"
 //usage:     "\n	-l LEN	Length"
 //usage:     "\n	-f FILE	Dump to file ('-' for stdout)"
+//usage:     "\n	--bb=METHOD:"
+//usage:     "\n		skipbad: skip bad blocks"
+//usage:     "\n		padbad: substitute bad blocks by 0xff (default)"
 
 #include "libbb.h"
 #include <mtd/mtd-user.h>
@@ -54,9 +56,12 @@
 #define OPT_p  (1 << 0) /* nandwrite only */
 #define OPT_o  (1 << 0) /* nanddump only */
 #define OPT_s  (1 << 1)
-#define OPT_b  (1 << 2)
-#define OPT_f  (1 << 3)
-#define OPT_l  (1 << 4)
+#define OPT_f  (1 << 2)
+#define OPT_l  (1 << 3)
+#define OPT_bb (1 << 4) /* must be the last one in the list */
+
+#define BB_PADBAD (1 << 0)
+#define BB_SKIPBAD (1 << 1)
 
 /* helper for writing out 0xff for bad blocks pad */
 static void dump_bad(struct mtd_info_user *meminfo, unsigned len, int oob)
@@ -64,8 +69,8 @@ static void dump_bad(struct mtd_info_user *meminfo, unsigned len, int oob)
 	unsigned char buf[meminfo->writesize];
 	unsigned count;
 
-	/* round len to the next page */
-	len = (len | ~(meminfo->writesize - 1)) + 1;
+	/* round len to the next page only if len is not already on a page */
+	len = ((len - 1) | (meminfo->writesize - 1)) + 1;
 
 	memset(buf, 0xff, sizeof(buf));
 	for (count = 0; count < len; count += meminfo->writesize) {
@@ -102,6 +107,7 @@ int nandwrite_main(int argc UNUSED_PARAM, char **argv)
 	/* Buffer for OOB data */
 	unsigned char *oobbuf;
 	unsigned opts;
+	unsigned bb_method = BB_SKIPBAD;
 	int fd;
 	ssize_t cnt;
 	unsigned mtdoffset, meminfo_writesize, blockstart, limit;
@@ -109,11 +115,14 @@ int nandwrite_main(int argc UNUSED_PARAM, char **argv)
 	struct mtd_info_user meminfo;
 	struct mtd_oob_buf oob;
 	unsigned char *filebuf;
-	const char *opt_s = "0", *opt_f = "-", *opt_l;
+	const char *opt_s = "0", *opt_f = "-", *opt_l, *opt_bb;
+	static const char nanddump_longopts[] ALIGN1 =
+		"bb\0" Required_argument "\xff"; /* no short equivalent */
 
 	if (IS_NANDDUMP) {
 		opt_complementary = "=1";
-		opts = getopt32(argv, "os:bf:l:", &opt_s, &opt_f, &opt_l);
+		applet_long_options = nanddump_longopts;
+		opts = getopt32(argv, "os:f:l:", &opt_s, &opt_f, &opt_l, &opt_bb);
 	} else { /* nandwrite */
 		opt_complementary = "-1:?2";
 		opts = getopt32(argv, "ps:", &opt_s);
@@ -137,6 +146,14 @@ int nandwrite_main(int argc UNUSED_PARAM, char **argv)
 		unsigned length = xstrtou(opt_l, 0);
 		if (length < meminfo.size - mtdoffset)
 			end_addr = mtdoffset + length;
+	}
+	if (IS_NANDDUMP && (opts & OPT_bb)) {
+		if (strcmp("skipbad", opt_bb) == 0)
+			bb_method = BB_SKIPBAD;
+		else if (strcmp("padbad", opt_bb) == 0)
+			bb_method = BB_PADBAD;
+		else
+			bb_show_usage();
 	}
 
 	/* Pull it into a CPU register (hopefully) - smaller code that way */
@@ -162,9 +179,15 @@ int nandwrite_main(int argc UNUSED_PARAM, char **argv)
 		tmp = next_good_eraseblock(fd, &meminfo, blockstart);
 		if (tmp != blockstart) {
 			/* bad block(s), advance mtdoffset */
-			if (IS_NANDDUMP && !(opts & OPT_b)) {
-				int bad_len = MIN(tmp, end_addr) - mtdoffset;
-				dump_bad(&meminfo, bad_len, opts & OPT_o);
+			if (IS_NANDDUMP) {
+				if (bb_method == BB_PADBAD) {
+					int bad_len = MIN(tmp, end_addr) - mtdoffset;
+					dump_bad(&meminfo, bad_len, opts & OPT_o);
+				}
+				/* with option skipbad, increase the total length */
+				if (bb_method == BB_SKIPBAD) {
+					end_addr += (tmp - blockstart);
+				}
 			}
 			mtdoffset = tmp;
 		}
@@ -182,9 +205,19 @@ int nandwrite_main(int argc UNUSED_PARAM, char **argv)
 			mtdoffset = next_good_eraseblock(fd, &meminfo, blockstart);
 			if (IS_NANDWRITE)
 				printf("Writing at 0x%08x\n", mtdoffset);
-			else if (mtdoffset > blockstart && !(opts & OPT_b)) {
-				int bad_len = MIN(mtdoffset, limit) - blockstart;
-				dump_bad(&meminfo, bad_len, opts & OPT_o);
+			else if (mtdoffset > blockstart) {
+				if (bb_method == BB_PADBAD) {
+					/* dump FF padded bad block */
+					int bad_len = MIN(mtdoffset, limit) - blockstart;
+					dump_bad(&meminfo, bad_len, opts & OPT_o);
+				} else if (bb_method == BB_SKIPBAD) {
+					/* for skipbad, increase the length */
+					if ((end_addr + mtdoffset - blockstart) > end_addr)
+						end_addr += (mtdoffset - blockstart);
+					else
+						end_addr = ~0;
+					limit = MIN(meminfo.size, end_addr);
+				}
 			}
 			if (mtdoffset >= limit)
 				break;

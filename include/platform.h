@@ -85,6 +85,9 @@
 # define UNUSED_PARAM_RESULT
 #endif
 
+/* used by unit test machinery to run registration functions before calling main() */
+#define INIT_FUNC __attribute__ ((constructor))
+
 /* -fwhole-program makes all symbols local. The attribute externally_visible
  * forces a symbol global.  */
 #if __GNUC_PREREQ(4,1)
