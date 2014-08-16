@@ -182,7 +182,7 @@ static inline int file_attr_to_st_mode (DWORD attr)
 {
 	int fMode = S_IREAD;
 	if (attr & FILE_ATTRIBUTE_DIRECTORY)
-		fMode |= S_IFDIR;
+		fMode |= S_IFDIR|S_IWRITE|S_IEXEC;
 	else
 		fMode |= S_IFREG;
 	if (!(attr & FILE_ATTRIBUTE_READONLY))
