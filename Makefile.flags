@@ -130,7 +130,7 @@ ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
 # edit the WATCOM variable in owsetenv.sh to reflect
 # install location of your watcom toolchain.
 CC 		= owcc
-CPP 		= wcc386 -pcl
+CPP 		= owcc -E
 AS 		= wasm
 AR 		= wlib
 LD 		= wlink
@@ -142,10 +142,10 @@ STRIP 		= wstrip
 OBJCOPY 	= true
 OBJDUMP 	= dmpobj
 #some recommended flags for optimized 32-bit
-CFLAGS 		= -oh -bcl=nt
-CPPFLAGS 	= -bt=nt
+CFLAGS 		= -b nt -mwindows -O3
+CPPFLAGS 	= -b nt -mwindows
 AFLAGS 		=
-LDFLAGS 	= 
+LDFLAGS 	= -mthreads
 CFLAGS += -Iwin32 -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0
 EXEEXT = .exe
 LDLIBS += userenv ws2_32
