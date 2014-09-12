@@ -20,6 +20,9 @@ config PLATFORM_POSIX
 
 config PLATFORM_MINGW32
 	bool "MS Windows (MinGW port)"
+	
+config PLATFORM_WATCOM386
+	bool "MS Windows (Open Watcom port)"
 
 endchoice
 

@@ -122,6 +122,37 @@ EXEEXT = .exe
 LDLIBS += userenv ws2_32
 endif
 
+ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+# Overide GCC/binutils-assumptions made in the Makefile
+# CFLAGS define NT (win32) as build target
+# make sure to have all environment variables set
+# by source /path/to/src/dir/scripts/owsetenv.sh
+# edit the WATCOM variable in owsetenv.sh to reflect
+# install location of your watcom toolchain.
+CC 		= owcc
+CPP 		= wcc386 -pcl
+AS 		= wasm
+AR 		= wlib
+LD 		= wlink
+#could not find something like nm, use host binutils
+NM 		= nm
+STRIP 		= wstrip
+#we do not want binutils to mess with object
+#format, let script believe it succeeded
+OBJCOPY 	= true
+OBJDUMP 	= dmpobj
+#some recommended flags for optimized 32-bit
+CFLAGS 		= -oh -bcl=nt
+CPPFLAGS 	= -bt=nt
+AFLAGS 		=
+LDFLAGS 	= 
+CFLAGS += -Iwin32 -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0
+EXEEXT = .exe
+LDLIBS += userenv ws2_32
+
+endif
+
+
 # Android has no separate crypt library
 # gcc-4.2.1 fails if we try to feed C source on stdin:
 #  echo 'int main(void){return 0;}' | $(CC) $(CFLAGS) -lcrypt -o /dev/null -xc -
