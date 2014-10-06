@@ -21,31 +21,31 @@
 //usage:       "(this version of syslogd ignores /etc/syslog.conf)\n"
 //usage:	)
 //usage:     "\n	-n		Run in foreground"
-//usage:     "\n	-O FILE		Log to FILE (default:/var/log/messages)"
-//usage:     "\n	-l N		Log only messages more urgent than prio N (1-8)"
-//usage:     "\n	-S		Smaller output"
-//usage:	IF_FEATURE_ROTATE_LOGFILE(
-//usage:     "\n	-s SIZE		Max size (KB) before rotation (default:200KB, 0=off)"
-//usage:     "\n	-b N		N rotated logs to keep (default:1, max=99, 0=purge)"
-//usage:	)
 //usage:	IF_FEATURE_REMOTE_LOG(
 //usage:     "\n	-R HOST[:PORT]	Log to HOST:PORT (default PORT:514)"
 //usage:     "\n	-L		Log locally and via network (default is network only if -R)"
-//usage:	)
-//usage:	IF_FEATURE_SYSLOGD_DUP(
-//usage:     "\n	-D		Drop duplicates"
 //usage:	)
 //usage:	IF_FEATURE_IPC_SYSLOG(
 /* NB: -Csize shouldn't have space (because size is optional) */
 //usage:     "\n	-C[size_kb]	Log to shared mem buffer (use logread to read it)"
 //usage:	)
+//usage:	IF_FEATURE_KMSG_SYSLOG(
+//usage:     "\n	-K		Log to kernel printk buffer (use dmesg to read it)"
+//usage:	)
+//usage:     "\n	-O FILE		Log to FILE (default:/var/log/messages, stdout if -)"
+//usage:	IF_FEATURE_ROTATE_LOGFILE(
+//usage:     "\n	-s SIZE		Max size (KB) before rotation (default:200KB, 0=off)"
+//usage:     "\n	-b N		N rotated logs to keep (default:1, max=99, 0=purge)"
+//usage:	)
+//usage:     "\n	-l N		Log only messages more urgent than prio N (1-8)"
+//usage:     "\n	-S		Smaller output"
+//usage:	IF_FEATURE_SYSLOGD_DUP(
+//usage:     "\n	-D		Drop duplicates"
+//usage:	)
 //usage:	IF_FEATURE_SYSLOGD_CFG(
 //usage:     "\n	-f FILE		Use FILE as config (default:/etc/syslog.conf)"
 //usage:	)
 /* //usage:  "\n	-m MIN		Minutes between MARK lines (default:20, 0=off)" */
-//usage:	IF_FEATURE_KMSG_SYSLOG(
-//usage:     "\n	-K		Log to kernel printk buffer (use dmesg to read it)"
-//usage:	)
 //usage:
 //usage:#define syslogd_example_usage
 //usage:       "$ syslogd -R masterlog:514\n"
@@ -110,6 +110,7 @@ typedef struct {
 typedef struct logFile_t {
 	const char *path;
 	int fd;
+	time_t last_log_time;
 #if ENABLE_FEATURE_ROTATE_LOGFILE
 	unsigned size;
 	uint8_t isRegular;
@@ -165,7 +166,6 @@ struct globals {
 #if ENABLE_FEATURE_IPC_SYSLOG
 	struct shbuf_ds *shbuf;
 #endif
-	time_t last_log_time;
 	/* localhost's name. We print only first 64 chars */
 	char *hostname;
 
@@ -569,7 +569,7 @@ static void log_to_kmsg(int pri, const char *msg)
 	 */
 	pri &= G.primask;
 
-	write(G.kmsgfd, G.printbuf, sprintf(G.printbuf, "<%d>%s\n", pri, msg));
+	full_write(G.kmsgfd, G.printbuf, sprintf(G.printbuf, "<%d>%s\n", pri, msg));
 }
 #else
 static void kmsg_init(void) {}
@@ -585,42 +585,54 @@ static void log_locally(time_t now, char *msg, logFile_t *log_file)
 #endif
 	int len = strlen(msg);
 
-	if (log_file->fd >= 0) {
-		/* Reopen log file every second. This allows admin
-		 * to delete the file and not worry about restarting us.
+	/* fd can't be 0 (we connect fd 0 to /dev/log socket) */
+	/* fd is 1 if "-O -" is in use */
+	if (log_file->fd > 1) {
+		/* Reopen log files every second. This allows admin
+		 * to delete the files and not worry about restarting us.
 		 * This costs almost nothing since it happens
-		 * _at most_ once a second.
+		 * _at most_ once a second for each file, and happens
+		 * only when each file is actually written.
 		 */
 		if (!now)
 			now = time(NULL);
-		if (G.last_log_time != now) {
-			G.last_log_time = now;
+		if (log_file->last_log_time != now) {
+			log_file->last_log_time = now;
 			close(log_file->fd);
 			goto reopen;
 		}
-	} else {
+	}
+	else if (log_file->fd == 1) {
+		/* We are logging to stdout: do nothing */
+	}
+	else {
+		if (LONE_DASH(log_file->path)) {
+			log_file->fd = 1;
+			/* log_file->isRegular = 0; - already is */
+		} else {
  reopen:
-		log_file->fd = open(log_file->path, O_WRONLY | O_CREAT
+			log_file->fd = open(log_file->path, O_WRONLY | O_CREAT
 					| O_NOCTTY | O_APPEND | O_NONBLOCK,
 					0666);
-		if (log_file->fd < 0) {
-			/* cannot open logfile? - print to /dev/console then */
-			int fd = device_open(DEV_CONSOLE, O_WRONLY | O_NOCTTY | O_NONBLOCK);
-			if (fd < 0)
-				fd = 2; /* then stderr, dammit */
-			full_write(fd, msg, len);
-			if (fd != 2)
-				close(fd);
-			return;
-		}
+			if (log_file->fd < 0) {
+				/* cannot open logfile? - print to /dev/console then */
+				int fd = device_open(DEV_CONSOLE, O_WRONLY | O_NOCTTY | O_NONBLOCK);
+				if (fd < 0)
+					fd = 2; /* then stderr, dammit */
+				full_write(fd, msg, len);
+				if (fd != 2)
+					close(fd);
+				return;
+			}
 #if ENABLE_FEATURE_ROTATE_LOGFILE
-		{
-			struct stat statf;
-			log_file->isRegular = (fstat(log_file->fd, &statf) == 0 && S_ISREG(statf.st_mode));
-			/* bug (mostly harmless): can wrap around if file > 4gb */
-			log_file->size = statf.st_size;
-		}
+			{
+				struct stat statf;
+				log_file->isRegular = (fstat(log_file->fd, &statf) == 0 && S_ISREG(statf.st_mode));
+				/* bug (mostly harmless): can wrap around if file > 4gb */
+				log_file->size = statf.st_size;
+			}
 #endif
+		}
 	}
 
 #ifdef SYSLOGD_WRLOCK
@@ -667,9 +679,14 @@ static void log_locally(time_t now, char *msg, logFile_t *log_file)
 		close(log_file->fd);
 		goto reopen;
 	}
-	log_file->size +=
+/* TODO: what to do on write errors ("disk full")? */
+	len = full_write(log_file->fd, msg, len);
+	if (len > 0)
+		log_file->size += len;
+#else
+	full_write(log_file->fd, msg, len);
 #endif
-			full_write(log_file->fd, msg, len);
+
 #ifdef SYSLOGD_WRLOCK
 	fl.l_type = F_UNLCK;
 	fcntl(log_file->fd, F_SETLKW, &fl);
@@ -865,7 +882,6 @@ static int try_to_resolve_remote(remoteHost_t *rh)
 static void do_syslogd(void) NORETURN;
 static void do_syslogd(void)
 {
-	int sock_fd;
 #if ENABLE_FEATURE_REMOTE_LOG
 	llist_t *item;
 #endif
@@ -886,7 +902,7 @@ static void do_syslogd(void)
 	signal(SIGALRM, do_mark);
 	alarm(G.markInterval);
 #endif
-	sock_fd = create_socket();
+	xmove_fd(create_socket(), STDIN_FILENO);
 
 	if (option_mask32 & OPT_circularlog)
 		ipcsyslog_init();
@@ -907,7 +923,7 @@ static void do_syslogd(void)
 			recvbuf = G.recvbuf;
 #endif
  read_again:
-		sz = read(sock_fd, recvbuf, MAX_READ - 1);
+		sz = read(STDIN_FILENO, recvbuf, MAX_READ - 1);
 		if (sz < 0) {
 			if (!bb_got_signal)
 				bb_perror_msg("read from %s", _PATH_LOG);
@@ -978,7 +994,6 @@ static void do_syslogd(void)
 	} /* while (!bb_got_signal) */
 
 	timestamp_and_log_internal("syslogd exiting");
-	puts("syslogd exiting");
 	remove_pidfile(CONFIG_PID_FILE_PATH "/syslogd.pid");
 	ipcsyslog_cleanup();
 	if (option_mask32 & OPT_kmsg)

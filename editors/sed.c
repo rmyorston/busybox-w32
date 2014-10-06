@@ -395,7 +395,9 @@ static int parse_subst_cmd(sed_cmd_t *sed_cmd, const char *substr)
 	/* process the flags */
 
 	sed_cmd->which_match = 1;
+	dbg("s flags:'%s'", substr + idx + 1);
 	while (substr[++idx]) {
+		dbg("s flag:'%c'", substr[idx]);
 		/* Parse match number */
 		if (isdigit(substr[idx])) {
 			if (match[0] != '^') {
@@ -403,7 +405,7 @@ static int parse_subst_cmd(sed_cmd_t *sed_cmd, const char *substr)
 				const char *pos = substr + idx;
 /* FIXME: error check? */
 				sed_cmd->which_match = (unsigned)strtol(substr+idx, (char**) &pos, 10);
-				idx = pos - substr;
+				idx = pos - substr - 1;
 			}
 			continue;
 		}
@@ -443,6 +445,7 @@ static int parse_subst_cmd(sed_cmd_t *sed_cmd, const char *substr)
 		case '}':
 			goto out;
 		default:
+			dbg("s bad flags:'%s'", substr + idx);
 			bb_error_msg_and_die("bad option in substitution expression");
 		}
 	}
@@ -1519,12 +1522,16 @@ int sed_main(int argc UNUSED_PARAM, char **argv)
 
 			/* -i: process each FILE separately: */
 
+			if (stat(*argv, &statbuf) != 0) {
+				bb_simple_perror_msg(*argv);
+				G.exitcode = EXIT_FAILURE;
+				G.current_input_file++;
+				continue;
+			}
 			G.outname = xasprintf("%sXXXXXX", *argv);
 			nonstdoutfd = xmkstemp(G.outname);
 			G.nonstdout = xfdopen_for_write(nonstdoutfd);
-
 			/* Set permissions/owner of output file */
-			stat(*argv, &statbuf);
 			/* chmod'ing AFTER chown would preserve suid/sgid bits,
 			 * but GNU sed 4.2.1 does not preserve them either */
 			fchmod(nonstdoutfd, statbuf.st_mode);

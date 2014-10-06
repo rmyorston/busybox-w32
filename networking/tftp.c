@@ -117,8 +117,10 @@ struct globals {
 	/* u16 TFTP_ERROR; u16 reason; both network-endian, then error text: */
 	uint8_t error_pkt[4 + 32];
 	struct passwd *pw;
-	/* used in tftpd_main(), a bit big for stack: */
-	char block_buf[TFTP_BLKSIZE_DEFAULT];
+	/* Used in tftpd_main() for initial packet */
+	/* Some HP PA-RISC firmware always sends fixed 516-byte requests */
+	char block_buf[516];
+	char block_buf_tail[1];
 #if ENABLE_FEATURE_TFTP_PROGRESS_BAR
 	off_t pos;
 	off_t size;
@@ -793,14 +795,16 @@ int tftpd_main(int argc UNUSED_PARAM, char **argv)
 		xchroot(argv[0]);
 	}
 
-	result = recv_from_to(STDIN_FILENO, G.block_buf, sizeof(G.block_buf),
+	result = recv_from_to(STDIN_FILENO,
+			G.block_buf, sizeof(G.block_buf) + 1,
+			/* ^^^ sizeof+1 to reliably detect oversized input */
 			0 /* flags */,
 			&peer_lsa->u.sa, &our_lsa->u.sa, our_lsa->len);
 
 	error_msg = "malformed packet";
 	opcode = ntohs(*(uint16_t*)G.block_buf);
-	if (result < 4 || result >= sizeof(G.block_buf)
-	 || G.block_buf[result-1] != '\0'
+	if (result < 4 || result > sizeof(G.block_buf)
+	/*|| G.block_buf[result-1] != '\0' - bug compatibility, see below */
 	 || (IF_FEATURE_TFTP_PUT(opcode != TFTP_RRQ) /* not download */
 	     IF_GETPUT(&&)
 	     IF_FEATURE_TFTP_GET(opcode != TFTP_WRQ) /* not upload */
@@ -808,6 +812,13 @@ int tftpd_main(int argc UNUSED_PARAM, char **argv)
 	) {
 		goto err;
 	}
+	/* Some HP PA-RISC firmware always sends fixed 516-byte requests,
+	 * with trailing garbage.
+	 * Support that by not requiring NUL to be the last byte (see above).
+	 * To make strXYZ() ops safe, force NUL termination:
+	 */
+	G.block_buf_tail[0] = '\0';
+
 	local_file = G.block_buf + 2;
 	if (local_file[0] == '.' || strstr(local_file, "/.")) {
 		error_msg = "dot in file name";

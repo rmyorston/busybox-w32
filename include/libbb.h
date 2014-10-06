@@ -403,8 +403,8 @@ const char *bb_basename(const char *name) FAST_FUNC;
 char *last_char_is(const char *s, int c) FAST_FUNC;
 const char* endofname(const char *name) FAST_FUNC;
 
-void ndelay_on(int fd) FAST_FUNC;
-void ndelay_off(int fd) FAST_FUNC;
+int ndelay_on(int fd) FAST_FUNC;
+int ndelay_off(int fd) FAST_FUNC;
 void close_on_exec_on(int fd) FAST_FUNC;
 void xdup2(int, int) FAST_FUNC;
 void xmove_fd(int, int) FAST_FUNC;
@@ -1332,6 +1332,7 @@ int sd_listen_fds(void);
 #define SETUP_ENV_NO_CHDIR  (1 << 4)
 void setup_environment(const char *shell, int flags, const struct passwd *pw) FAST_FUNC;
 void nuke_str(char *str) FAST_FUNC;
+int check_password(const struct passwd *pw, const char *plaintext) FAST_FUNC;
 int ask_and_check_password_extended(const struct passwd *pw, int timeout, const char *prompt) FAST_FUNC;
 int ask_and_check_password(const struct passwd *pw) FAST_FUNC;
 /* Returns a malloced string */
