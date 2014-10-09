@@ -798,6 +798,7 @@ int fcntl(int fd, int cmd, ...)
 		}
 		free(fds);
 		result = newfd;
+		break;
 	default:
 		errno = ENOSYS;
 		break;
