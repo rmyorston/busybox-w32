@@ -762,7 +762,20 @@ const char *get_busybox_exec_path(void)
 #undef mkdir
 int mingw_mkdir(const char *path, int mode UNUSED_PARAM)
 {
-	return mkdir(path);
+	int ret;
+	struct stat st;
+	int lerrno = 0;
+
+	if ( (ret=mkdir(path)) < 0 ) {
+		lerrno = errno;
+		if ( lerrno == EACCES && stat(path, &st) == 0 ) {
+			ret = 0;
+			lerrno = 0;
+		}
+	}
+
+	errno = lerrno;
+	return ret;
 }
 
 int fcntl(int fd, int cmd, ...)
