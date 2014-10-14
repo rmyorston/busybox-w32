@@ -133,7 +133,7 @@ CC 		= owcc
 CPP 		= owcc -E
 AS 		= wasm
 AR 		= wlib
-LD 		= wlink
+LD 		= owcc
 #could not find something like nm, use host binutils
 NM 		= nm
 STRIP 		= wstrip
@@ -142,9 +142,9 @@ STRIP 		= wstrip
 OBJCOPY 	= true
 OBJDUMP 	= dmpobj
 #some recommended flags for optimized 32-bit
-CFLAGS 		= -b nt -mwindows -O3
-CPPFLAGS 	= -b nt -mwindows
-AFLAGS 		=
+CFLAGS 		= -bnt -mwindows -O3
+CPPFLAGS 	= -bnt -mwindows -O3
+AFLAGS 		= -q -n -t
 LDFLAGS 	= -mthreads
 CFLAGS += -Iwin32 -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0
 EXEEXT = .exe
