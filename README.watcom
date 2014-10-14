@@ -6,9 +6,9 @@ the kconfig system).
 To build, make a build directory and cd to it
 from within the build directory, do :
 
-make -f ${path_to_busybox-w32_sources}/Makefile watcom386_defconfig 
+make KBUILD_SRC=${path_to_busybox-w32_sources} -f ${path_to_busybox-w32_sources}/Makefile watcom386_defconfig 
 
-an out-of-source build is preferrable since it will not pollute the source tree
+an out-of-tree build is preferrable since it will not pollute the source tree
 
 When busybox-win32 successully builds on Linux, the next aim will be to build it natively
 on Windows (preferably without any *nix environment stuff)
