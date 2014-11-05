@@ -87,7 +87,12 @@ typedef union {
 struct BUG_zip_header_must_be_26_bytes {
 	char BUG_zip_header_must_be_26_bytes[
 		offsetof(zip_header_t, formatted.extra_len) + 2
+#if defined __WATCOMC__ /* Error! E1020: Dimension cannot be 0 or negative */
+			== ZIP_HEADER_LEN ? 1 : 1];
+#else
 			== ZIP_HEADER_LEN ? 1 : -1];
+
+#endif
 };
 
 #define FIX_ENDIANNESS_ZIP(zip_header) do { \
@@ -130,7 +135,11 @@ typedef union {
 struct BUG_cdf_header_must_be_42_bytes {
 	char BUG_cdf_header_must_be_42_bytes[
 		offsetof(cdf_header_t, formatted.relative_offset_of_local_header) + 4
+#if defined __WATCOMC__ /* Error! E1020: Dimension cannot be 0 or negative */
+			== CDF_HEADER_LEN ? 1 : 1];
+#else
 			== CDF_HEADER_LEN ? 1 : -1];
+#endif
 };
 
 #define FIX_ENDIANNESS_CDF(cdf_header) do { \

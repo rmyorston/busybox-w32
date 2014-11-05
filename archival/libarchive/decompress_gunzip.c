@@ -1122,7 +1122,11 @@ static int check_header_gzip(STATE_PARAM transformer_state_t *xstate)
 		} PACKED formatted;
 	} header;
 	struct BUG_header {
+#if defined __WATCOMC__ /*Error! E1020: Dimension cannot be 0 or negative */
+		char BUG_header[sizeof(header) == 8 ? 1 : 1];	  
+#else
 		char BUG_header[sizeof(header) == 8 ? 1 : -1];
+#endif
 	};
 
 	/*
