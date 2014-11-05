@@ -125,15 +125,14 @@ endif
 ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
 # Overide GCC/binutils-assumptions made in the Makefile
 # CFLAGS define NT (win32) as build target
-# make sure to have all environment variables set
-# by source /path/to/src/dir/scripts/owsetenv.sh
-# edit the WATCOM variable in owsetenv.sh to reflect
-# install location of your watcom toolchain.
+# make sure that the WATCOM variable is set to the root
+# of your watcom install.
 CC 		= owcc
 CPP 		= owcc -E
 AS 		= wasm
 AR 		= wlib
 LD 		= owcc
+INCLUDE		= $(WATCOM)/h:$(WATCOM)/h/nt
 #could not find something like nm, use host binutils
 NM 		= nm
 STRIP 		= wstrip
@@ -142,11 +141,11 @@ STRIP 		= wstrip
 OBJCOPY 	= true
 OBJDUMP 	= dmpobj
 #some recommended flags for optimized 32-bit
-CFLAGS 		= -bnt -mwindows -O3
-CPPFLAGS 	= -bnt -mwindows -O3
-AFLAGS 		= -q -n -t
+CFLAGS 		= -bnt_win -mwindows -O3 -D+
+CPPFLAGS 	= -bnt_win -mwindows -O3 -D+
+AFLAGS 		= " "
 LDFLAGS 	= -mthreads
-CFLAGS += -Iwin32 -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0
+CFLAGS += -Iwin32 -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0
 EXEEXT = .exe
 LDLIBS += userenv ws2_32
 

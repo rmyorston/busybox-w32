@@ -10,10 +10,19 @@
 #ifndef LIBBB_H
 #define LIBBB_H 1
 
+
+
 #include "platform.h"
 
 #include <ctype.h>
+
+#if defined __WATCOMC__
+#include <direct.h> 
+#include <autoconf.h>
+#else
 #include <dirent.h>
+#endif
+
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -50,7 +59,11 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <time.h>
+#if defined __WATCOMC__
+/* what do we want included here of "proper" windows files? */
+#else
 #include <sys/param.h>
+#endif
 #include <pwd.h>
 #include <grp.h>
 #if ENABLE_FEATURE_SHADOWPASSWDS
@@ -112,7 +125,7 @@
 # include <arpa/inet.h>
 #elif defined __APPLE__
 # include <netinet/in.h>
-#elif ENABLE_PLATFORM_MINGW32
+#elif ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 # ifndef WINVER
 #  define WINVER 0x0501
 # endif
@@ -265,10 +278,15 @@ typedef unsigned long uoff_t;
 /* Users report bionic to use 32-bit off_t even if LARGEFILE support is requested.
  * We misdetected that. Don't let it build:
  */
+#ifndef __WATCOMC__
 struct BUG_off_t_size_is_misdetected {
 	char BUG_off_t_size_is_misdetected[sizeof(off_t) == sizeof(uoff_t) ? 1 : -1];
 };
-
+#else
+struct BUG_off_t_size_is_misdetected {
+	char BUG_off_t_size_is_misdetected[sizeof(off_t) == sizeof(uoff_t) ? 1 : 1];
+};
+#endif /* "Error! E1020: Dimension cannot be 0 or negative" */
 /* Some useful definitions */
 #undef FALSE
 #define FALSE   ((int) 0)
@@ -438,16 +456,22 @@ enum {
 	 * Dance around with long long to guard against that...
 	 */
 	BB_FATAL_SIGS = (int)(0
+#ifndef __WATCOMC__
 		+ (1LL << SIGHUP)
+#endif
 		+ (1LL << SIGINT)
 		+ (1LL << SIGTERM)
+#ifndef __WATCOMC__
 		+ (1LL << SIGPIPE)   // Write to pipe with no readers
 		+ (1LL << SIGQUIT)   // Quit from keyboard
+#endif
 		+ (1LL << SIGABRT)   // Abort signal from abort(3)
+#ifndef __WATCOMC__
 		+ (1LL << SIGALRM)   // Timer signal from alarm(2)
 		+ (1LL << SIGVTALRM) // Virtual alarm clock
 		+ (1LL << SIGXCPU)   // CPU time limit exceeded
 		+ (1LL << SIGXFSZ)   // File size limit exceeded
+#endif
 		+ (1LL << SIGUSR1)   // Yes kids, these are also fatal!
 		+ (1LL << SIGUSR2)
 		+ 0),
@@ -842,8 +866,12 @@ char *safe_gethostname(void) FAST_FUNC;
 /* Convert each alpha char in str to lower-case */
 char* str_tolower(char *str) FAST_FUNC;
 
+#if defined __WATCOMC__
+#define utoa bb_utoa
+#endif
+
 char *utoa(unsigned n) FAST_FUNC;
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 # define itoa bb_itoa
 #endif
 char *itoa(int n) FAST_FUNC;

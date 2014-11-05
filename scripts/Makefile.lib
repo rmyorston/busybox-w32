@@ -108,15 +108,23 @@ __a_flags	=                          $(call flags,_a_flags)
 __cpp_flags     =                          $(call flags,_cpp_flags)
 endif
 
-#-Wp,-MD,
-c_flags        = $(depfile) $(NOSTDINC_FLAGS) $(CPPFLAGS) \
+
+ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+c_flags        = $(NOSTDINC_FLAGS) $(CPPFLAGS) \
 		 $(__c_flags) $(modkern_cflags) \
 		 -D"KBUILD_STR(s)=\#s" $(basename_flags) $(modname_flags)
-#-Wp,-MD,
-a_flags        = $(depfile) $(NOSTDINC_FLAGS) $(CPPFLAGS) \
+a_flags        = $(NOSTDINC_FLAGS) $(CPPFLAGS) \
 		 $(__a_flags) $(modkern_aflags)
-#-Wp,-MD,
-cpp_flags      = $(depfile) $(NOSTDINC_FLAGS) $(__cpp_flags)
+cpp_flags      = $(NOSTDINC_FLAGS) $(__cpp_flags)
+else
+c_flags        = -Wp,-MD,$(depfile) $(NOSTDINC_FLAGS) $(CPPFLAGS) \
+		 $(__c_flags) $(modkern_cflags) \
+		 -D"KBUILD_STR(s)=\#s" $(basename_flags) $(modname_flags)
+a_flags        = -Wp,-MD,$(depfile) $(NOSTDINC_FLAGS) $(CPPFLAGS) \
+		 $(__a_flags) $(modkern_aflags)
+cpp_flags      = -Wp,-MD,$(depfile) $(NOSTDINC_FLAGS) $(__cpp_flags)
+endif
+
 
 # Seems to be a wrong thing to do. LDFLAGS contains gcc's flags,
 # yet ld_flags is fed to ld.

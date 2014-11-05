@@ -182,14 +182,24 @@ cmd_modversions =							\
 	fi;
 endif
 
+ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
 define rule_cc_o_c
 	$(call echo-cmd,checksrc) $(cmd_checksrc)			  \
 	$(call echo-cmd,cc_o_c) $(cmd_cc_o_c);				  \
 	$(cmd_modversions)						  \
-	scripts/basic/fixdep $(depfile) $@ '$(call make-cmd,cc_o_c)' > $(@D)/.$(@F).tmp;  \
+	$(call make-cmd,cc_o_c) > $(@D)/.$(@F).tmp;			  \
+	mv -f $(@D)/.$(@F).tmp $(@D)/.$(@F).cmd
+endef
+else
+define rule_cc_o_c
+	$(call echo-cmd,checksrc) $(cmd_checksrc)			  \
+	$(call echo-cmd,cc_o_c) $(cmd_cc_o_c);				  \
+	$(cmd_modversions)						  \
+	scripts/basic/fixdep -Wp,-MD,$(depfile) $@ '$(call make-cmd,cc_o_c)' > $(@D)/.$(@F).tmp;  \
 	rm -f $(depfile);						  \
 	mv -f $(@D)/.$(@F).tmp $(@D)/.$(@F).cmd
 endef
+endif
 
 # Built-in and composite module parts
 
@@ -256,9 +266,15 @@ ifdef builtin-target
 quiet_cmd_link_o_target = LD      $@
 # If the list of objects to link is empty, just create an empty built-in.o
 # -nostdlib is added to make "make LD=gcc ..." work (some people use that)
+ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+cmd_link_o_target = $(if $(strip $(obj-y)),\
+		$(LD) $(ld_flags) -o $@ $(filter $(obj-y), $^),\
+		rm -f $@; $(AR) rcs $@)
+else
 cmd_link_o_target = $(if $(strip $(obj-y)),\
 		$(LD) -nostdlib $(ld_flags) -r -o $@ $(filter $(obj-y), $^),\
-		rm -f $@; $(AR) rcs $@)
+		rm -f $@; $(AR) rcs $@)	
+endif
 
 $(builtin-target): $(obj-y) FORCE
 	$(call if_changed,link_o_target)

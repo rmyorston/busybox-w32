@@ -1,19 +1,31 @@
 An experimental compilation of busybox-win32 for the NT/Win32 target using Open Watcom (v2).
 
+This document: is a temporary set of notes while porting to Watcom
+When it is done, a much less verbose version will be merged into README.win32
+
 The first aim is to be able to cross-compile from Linux to Windows (avoiding having to port 
-the kconfig system).
+the kconfig system). Initial tests setting CC and HOSTCC to owcc still makes kconfig to build
+without issues, so there is hope :)
 
 To build, make a build directory and cd to it
 from within the build directory, do :
 
 make KBUILD_SRC=${path_to_busybox-w32_sources} -f ${path_to_busybox-w32_sources}/Makefile watcom386_defconfig 
 
+make sure that the following environment variables are set:
+WATCOM= path to the root of your watcom installation (for example /opt/watcom or C:\WATCOM)
+PATH=$WATCOM/bin*:$PATH (binl for linux, binnt for win32)
+INCLUDE=$WATCOM/h:$WATCOM/h/nt is set in the build (so owcc as HOSTCC can be used with other 
+includes if cross compiling)
+EDPATH=$WATCOM/eddat
+WIPFC=$WATCOM/wipfc
+
 an out-of-tree build is preferrable since it will not pollute the source tree
 
 When busybox-win32 successully builds on Linux, the next aim will be to build it natively
-on Windows (preferably without any *nix environment stuff)
+on Windows (preferably without any *nix environment stuff) or a clean WINE prefix.
 
 Expected dependencies for native compilation on Windows:
-shell? Perhaps not if possible to avoid, we will stick to the stock "cmd"
+shell? Perhaps if unavoidable, we will stick to the stock "cmd" if possible
 gmake: wmake can not handle the Makefiles in busybox.
 pdcurses-win32a : especially for "make menuconfig"

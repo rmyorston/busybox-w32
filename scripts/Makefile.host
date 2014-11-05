@@ -89,8 +89,13 @@ __hostc_flags	= -I$(obj) $(call flags,_hostc_flags)
 __hostcxx_flags	= -I$(obj) $(call flags,_hostcxx_flags)
 endif
 
+#ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+#hostc_flags    = $(__hostc_flags)
+#hostcxx_flags  = $(__hostcxx_flags)
+#else
 hostc_flags    = -Wp,-MD,$(depfile) $(__hostc_flags)
 hostcxx_flags  = -Wp,-MD,$(depfile) $(__hostcxx_flags)
+#endif
 
 #####
 # Compile programs on the host
