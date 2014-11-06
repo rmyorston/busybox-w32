@@ -6,8 +6,12 @@ BB_VER = $(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 export BB_VER
 SKIP_STRIP ?= n
 
+ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+CPPFLAGS = -std=c99 -D+
+else
 # -std=gnu99 needed for [U]LLONG_MAX on some systems
 CPPFLAGS += $(call cc-option,-std=gnu99,)
+endif
 
 CPPFLAGS += \
 	-Iinclude -Ilibbb \
@@ -132,8 +136,10 @@ CPP 		= owcc -E
 AS 		= wasm
 AR 		= wlib
 LD 		= owcc
-INCLUDE		= $(WATCOM)/h:$(WATCOM)/h/nt
-#could not find something like nm, use host binutils
+# INCLUDE is defined in specific makefile templates
+# to alow for watcom to be used as a host compiler
+# also when cross-compiling
+# could not find something like nm, use host binutils
 NM 		= nm
 STRIP 		= wstrip
 #we do not want binutils to mess with object
@@ -141,8 +147,8 @@ STRIP 		= wstrip
 OBJCOPY 	= true
 OBJDUMP 	= dmpobj
 #some recommended flags for optimized 32-bit
-CFLAGS 		= -bnt -O3 -D+
-CPPFLAGS 	= -bnt -O3 -D+
+CFLAGS 		= -bnt -mthreads -O3
+CXXFLAGS 	= -bnt -mthreads -O3
 AFLAGS 		= " "
 LDFLAGS 	= -mthreads
 CFLAGS += -Iwin32 -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0

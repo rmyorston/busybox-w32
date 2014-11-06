@@ -183,6 +183,7 @@ cmd_modversions =							\
 endif
 
 ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+INCLUDE		= $(WATCOM)/h:$(WATCOM)/h/nt
 define rule_cc_o_c
 	$(call echo-cmd,checksrc) $(cmd_checksrc)			  \
 	$(call echo-cmd,cc_o_c) $(cmd_cc_o_c);				  \

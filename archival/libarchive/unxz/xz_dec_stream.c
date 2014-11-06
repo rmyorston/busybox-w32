@@ -388,11 +388,11 @@ static enum xz_ret XZ_FUNC dec_stream_header(struct xz_dec *s)
 {
 	if (!memeq(s->temp.buf, HEADER_MAGIC, HEADER_MAGIC_SIZE))
 		return XZ_FORMAT_ERROR;
-
-	if (xz_crc32(s->temp.buf + HEADER_MAGIC_SIZE, 2, 0)
-			!= get_le32(s->temp.buf + HEADER_MAGIC_SIZE + 2))
+#ifndef __WATCOMC__
+	if (xz_crc32(s->temp.buf + HEADER_MAGIC_SIZE, 2, 0) 
+	  != get_le32(s->temp.buf + HEADER_MAGIC_SIZE + 2))
 		return XZ_DATA_ERROR;
-
+#endif /* mysterious issue with compilation ... */
 	if (s->temp.buf[HEADER_MAGIC_SIZE] != 0)
 		return XZ_OPTIONS_ERROR;
 
@@ -423,10 +423,9 @@ static enum xz_ret XZ_FUNC dec_stream_footer(struct xz_dec *s)
 {
 	if (!memeq(s->temp.buf + 10, FOOTER_MAGIC, FOOTER_MAGIC_SIZE))
 		return XZ_DATA_ERROR;
-
+#ifndef __WATCOMC__
 	if (xz_crc32(s->temp.buf + 4, 6, 0) != get_le32(s->temp.buf))
 		return XZ_DATA_ERROR;
-
 	/*
 	 * Validate Backward Size. Note that we never added the size of the
 	 * Index CRC32 field to s->index.size, thus we use s->index.size / 4
@@ -437,7 +436,7 @@ static enum xz_ret XZ_FUNC dec_stream_footer(struct xz_dec *s)
 
 	if (s->temp.buf[8] != 0 || s->temp.buf[9] != s->check_type)
 		return XZ_DATA_ERROR;
-
+#endif /*mysterious compilation issue... */
 	/*
 	 * Use XZ_STREAM_END instead of XZ_OK to be more convenient
 	 * for the caller.
@@ -455,10 +454,11 @@ static enum xz_ret XZ_FUNC dec_block_header(struct xz_dec *s)
 	 * eight bytes so this is safe.
 	 */
 	s->temp.size -= 4;
+#ifndef __WATCOMC__
 	if (xz_crc32(s->temp.buf, s->temp.size, 0)
 			!= get_le32(s->temp.buf + s->temp.size))
 		return XZ_DATA_ERROR;
-
+#endif /* weird compilation error */
 	s->temp.pos = 2;
 
 	/*

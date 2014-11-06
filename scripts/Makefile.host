@@ -90,6 +90,10 @@ __hostcxx_flags	= -I$(obj) $(call flags,_hostcxx_flags)
 endif
 
 #ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+#HOSTCC = owcc
+#HOSTCXX = owcc
+# INCLUDE = # need to figure out how to do this host-specific
+#HOSTCFLAGS = "-Ot -D+"
 #hostc_flags    = $(__hostc_flags)
 #hostcxx_flags  = $(__hostcxx_flags)
 #else
