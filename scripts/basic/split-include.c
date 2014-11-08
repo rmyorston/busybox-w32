@@ -30,6 +30,12 @@
 #include <string.h>
 #include <unistd.h>
 
+#if defined __WATCOMC__
+#define _popen_ _popen
+#define _pclose_ _pclose
+#endif
+
+
 #define ERROR_EXIT(strExit)						\
     {									\
 	const int errnoSave = errno;					\

@@ -864,9 +864,11 @@ int test_main(int argc, char **argv)
 	}
 	/* argc is unused after this point */
 
+#ifndef __WATCOMC__
 	/* We must do DEINIT_S() prior to returning */
 	INIT_S();
-
+#endif /* no idea what it is but it throws lots of errors... */
+	
 	res = setjmp(leaving);
 	if (res)
 		goto ret;

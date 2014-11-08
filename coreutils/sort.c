@@ -146,6 +146,7 @@ static char *get_key(char *str, struct sort_key *key, int flags)
 		}
 		if (!j) start = end;
 	}
+
 	/* Strip leading whitespace if necessary */
 //XXX: skip_whitespace()
 	if (flags & FLAG_b)
@@ -183,7 +184,6 @@ static char *get_key(char *str, struct sort_key *key, int flags)
 	if (flags & FLAG_f)
 		for (i = 0; str[i]; i++)
 			str[i] = toupper(str[i]);
-
 	return str;
 }
 
