@@ -95,6 +95,11 @@
 #include "libbb.h"
 #include "unicode.h"
 
+#if defined __WATCOMC__
+typedef unsigned long blkcnt_t;
+typedef unsigned int nlink_t;
+#endif
+
 
 /* This is a NOEXEC applet. Be very careful! */
 
@@ -754,7 +759,11 @@ static struct dnode *my_stat(const char *fullname, const char *name, int force_f
 	cur->dn_ctime  = statbuf.st_ctime ;
 #endif
 	cur->dn_ino    = statbuf.st_ino   ;
+#ifndef __WATCOMC__
 	cur->dn_blocks = statbuf.st_blocks;
+#else
+	cur->dn_blocks = 0;	
+#endif /* Win32 does not have st_blocks */
 	cur->dn_nlink  = statbuf.st_nlink ;
 	cur->dn_uid    = statbuf.st_uid   ;
 	cur->dn_gid    = statbuf.st_gid   ;

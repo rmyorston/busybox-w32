@@ -151,7 +151,7 @@ CFLAGS 		= -bnt -mthreads -O3
 CXXFLAGS 	= -bnt -mthreads -O3
 AFLAGS 		= " "
 LDFLAGS 	= -mthreads
-CFLAGS += -Iwin32 -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0
+CFLAGS += -Iwin32 -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -D_ENABLE_AUTODEPEND
 EXEEXT = .exe
 LDLIBS += userenv ws2_32
 

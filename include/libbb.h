@@ -19,6 +19,7 @@
 #if defined __WATCOMC__
 #include <direct.h> 
 #include <autoconf.h>
+#include <watcom_hacks.h>
 #else
 #include <dirent.h>
 #endif
@@ -59,9 +60,7 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <time.h>
-#if defined __WATCOMC__
-/* what do we want included here of "proper" windows files? */
-#else
+#ifndef __WATCOMC__
 #include <sys/param.h>
 #endif
 #include <pwd.h>
@@ -1614,7 +1613,9 @@ typedef struct procps_status_t {
 	/* Everything below must contain no ptrs to malloc'ed data:
 	 * it is memset(0) for each process in procps_scan() */
 	unsigned long vsz, rss; /* we round it to kbytes */
+#ifndef __WATCOMC__
 	unsigned long stime, utime;
+#endif
 	unsigned long start_time;
 	unsigned pid;
 	unsigned ppid;
@@ -1681,7 +1682,7 @@ void free_procps_scan(procps_status_t* sp) FAST_FUNC;
 procps_status_t* procps_scan(procps_status_t* sp, int flags) FAST_FUNC;
 /* Format cmdline (up to col chars) into char buf[size] */
 /* Puts [comm] if cmdline is empty (-> process is a kernel thread) */
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 || !__WATCOMC__
 void read_cmdline(char *buf, int size, unsigned pid, const char *comm) FAST_FUNC;
 #else
 #define read_cmdline(buf, size, pid, comm) snprintf(buf, size, "[%s]", comm)
@@ -1821,7 +1822,7 @@ extern const char bb_path_wtmp_file[] ALIGN1;
 #define bb_path_motd_file "/etc/motd"
 
 #define bb_dev_null "/dev/null"
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 #define bb_busybox_exec_path get_busybox_exec_path()
 #else
 extern const char bb_busybox_exec_path[] ALIGN1;
@@ -1925,6 +1926,8 @@ extern const char bb_default_login_shell[] ALIGN1;
  * can't be done with such byte-oriented operations anyway,
  * we don't lose anything.
  */
+#ifndef __WATCOMC__
+
 #undef isalnum
 #undef isalpha
 #undef isascii
@@ -1961,6 +1964,7 @@ extern const char bb_default_login_shell[] ALIGN1;
 #define ispunct(a) (strchrnul("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", (a))[0])
 // Bigger code: #define isalnum(a) ({ unsigned char bb__isalnum = (a) - '0'; bb__isalnum <= 9 || ((bb__isalnum - ('A' - '0')) & 0xdf) <= 25; })
 #define isalnum(a) bb_ascii_isalnum(a)
+
 static ALWAYS_INLINE int bb_ascii_isalnum(unsigned char a)
 {
 	unsigned char b = a - '0';
@@ -1978,6 +1982,7 @@ static ALWAYS_INLINE int bb_ascii_isxdigit(unsigned char a)
 	b = (a|0x20) - 'a';
 	return b <= 'f' - 'a';
 }
+
 #define toupper(a) bb_ascii_toupper(a)
 static ALWAYS_INLINE unsigned char bb_ascii_toupper(unsigned char a)
 {
@@ -1999,6 +2004,8 @@ static ALWAYS_INLINE unsigned char bb_ascii_tolower(unsigned char a)
  * Let's prevent ambiguous usage from the start */
 #define isgraph(a) isgraph_is_ambiguous_dont_use(a)
 #define isprint(a) isprint_is_ambiguous_dont_use(a)
+#endif /* Watcom somehow gets confused by these re-definitions */
+
 /* NB: must not treat EOF as isgraph or isprint */
 #define isgraph_asciionly(a) ((unsigned)((a) - 0x21) <= 0x7e - 0x21)
 #define isprint_asciionly(a) ((unsigned)((a) - 0x20) <= 0x7e - 0x20)

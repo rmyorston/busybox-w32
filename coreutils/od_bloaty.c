@@ -100,7 +100,7 @@ typedef long long llong;
 # define LDBL_DIG DBL_DIG
 #endif
 
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 /* symbol conflict */
 #define CHAR SIZE_CHAR
 #define SHORT SIZE_SHORT

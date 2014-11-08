@@ -167,8 +167,8 @@ int touch_main(int argc UNUSED_PARAM, char **argv)
 	do {
 		int result;
 		result = (
-#if ENABLE_FEATURE_TOUCH_NODEREF
-			(opts & OPT_h) ? lutimes :
+#if defined ENABLE_FEATURE_TOUCH_NODEREF
+		(opts & OPT_h) ? lutimes :
 #endif
 			utimes)(*argv, (reference_file || date_str) ? timebuf : NULL);
 		if (result != 0) {
