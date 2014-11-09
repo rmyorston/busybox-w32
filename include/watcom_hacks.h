@@ -11,24 +11,25 @@
 #define fseeko (off_t) fseek
 #define fchmod chmod
 
+/* note to self: perhaps the stub functions should be placed somewhere else... */
 /* copied from cpio sysdep.c */
 int
-mknod ( const char *filename __attribute__ ((unused)) ,  int mode __attribute__ ((unused)) ,  int dev __attribute__ ((unused)) )
+mknod ( const char *filename,  int mode,  int dev)
 {
   return -1;
 }
 int
-chown ( const char *filename __attribute__ ((unused)) ,  int owner __attribute__ ((unused)) ,  int group __attribute__ ((unused)) )
+chown ( const char *filename,  int owner,  int group)
 {
   return -1;
 }
 int
-link ( const char *oldname __attribute__ ((unused)) ,  const char *newname __attribute__ ((unused)) )
+link ( const char *oldname,  const char *newname)
 {
   return -1;
 }
 int
-symlink ( const char *oldname __attribute__ ((unused)) ,  const char *newname __attribute__ ((unused)) )
+symlink ( const char *oldname,  const char *newname)
 {
   return -1;
 }
@@ -41,6 +42,9 @@ int ftruncate ( int fildes, off_t length)
 {
  return -1;
 }
+#include <stdio.h>
+#define popen _popen
+#define pclose _pclose
 
 
 
@@ -68,6 +72,14 @@ uid_t getuid(void) {
 }
 #define geteuid getuid
 #define getegid getgid
+
+/* annoying things with INIT_ stuff that I do not understand */
+// xzalloc in libbb.h
+// barrier() played tricks, need to look into that
+
+#ifndef BB_VER
+#define BB_VER "1.23.0.watcom2"
+#endif
 
 
 #endif
