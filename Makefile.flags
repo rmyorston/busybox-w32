@@ -7,12 +7,28 @@ export BB_VER
 SKIP_STRIP ?= n
 
 ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+ifndef BB_VER
+BB_VER:="1.23.0.watcom2"
+export BB_VER
+endif
+endif
+
+ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
 CPPFLAGS = -std=c99 -D+
 else
 # -std=gnu99 needed for [U]LLONG_MAX on some systems
 CPPFLAGS += $(call cc-option,-std=gnu99,)
 endif
 
+ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+CPPFLAGS += \
+	-Iinclude -Ilibbb \
+	$(if $(KBUILD_SRC),-Iinclude2 -I$(srctree)/include -I$(srctree)/libbb) \
+	-include include/autoconf.h \
+	-D_GNU_SOURCE -DNDEBUG \
+	$(if $(CONFIG_LFS),-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64) \
+	-DBB_BT=AUTOCONF_TIMESTAMP
+else
 CPPFLAGS += \
 	-Iinclude -Ilibbb \
 	$(if $(KBUILD_SRC),-Iinclude2 -I$(srctree)/include -I$(srctree)/libbb) \
@@ -20,6 +36,7 @@ CPPFLAGS += \
 	-D_GNU_SOURCE -DNDEBUG \
 	$(if $(CONFIG_LFS),-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64) \
 	-D"BB_VER=KBUILD_STR($(BB_VER))" -DBB_BT=AUTOCONF_TIMESTAMP
+endif
 
 CFLAGS += $(call cc-option,-Wall,)
 CFLAGS += $(call cc-option,-Wshadow,)

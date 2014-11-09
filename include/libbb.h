@@ -106,6 +106,9 @@
 #ifdef DMALLOC
 # include <dmalloc.h>
 #endif
+#ifdef __WATCOMC__
+# include <malloc.h>
+#endif
 /* Just in case libc doesn't define some of these... */
 #ifndef _PATH_PASSWD
 #define _PATH_PASSWD  "/etc/passwd"
@@ -729,6 +732,7 @@ enum {
 };
 void visible(unsigned ch, char *buf, int flags) FAST_FUNC;
 
+#ifndef __WATCOMC__
 /* dmalloc will redefine these to it's own implementation. It is safe
  * to have the prototypes here unconditionally.  */
 void *malloc_or_warn(size_t size) FAST_FUNC RETURNS_MALLOC;
@@ -742,6 +746,12 @@ void *xrealloc(void *old, size_t size) FAST_FUNC;
  * xrealloc_vector(v, SHIFT, idx) *MUST* be called with consecutive IDXs -
  * skipping an index is a bad bug - it may miss a realloc!
  */
+#else
+#define xmalloc malloc
+#define xzalloc malloc
+#define xrealloc realloc
+#endif
+
 #define xrealloc_vector(vector, shift, idx) \
 	xrealloc_vector_helper((vector), (sizeof((vector)[0]) << 8) + (shift), (idx))
 void* xrealloc_vector_helper(void *vector, unsigned sizeof_and_shift, int idx) FAST_FUNC;
@@ -1848,7 +1858,12 @@ struct globals;
  * If you want to assign a value, use SET_PTR_TO_GLOBALS(x) */
 extern struct globals *const ptr_to_globals;
 /* At least gcc 3.4.6 on mipsel system needs optimization barrier */
+#ifndef __WATCOMC__
 #define barrier() __asm__ __volatile__("":::"memory")
+#else
+#define barrier() /*nothing? or should I make an inline ASM here? */
+#endif
+
 #define SET_PTR_TO_GLOBALS(x) do { \
 	(*(struct globals**)&ptr_to_globals) = (void*)(x); \
 	barrier(); \
