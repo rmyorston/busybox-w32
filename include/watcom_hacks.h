@@ -74,8 +74,8 @@ uid_t getuid(void) {
 #define getegid getgid
 
 /* annoying things with INIT_ stuff that I do not understand */
-// xzalloc in libbb.h
-// barrier() played tricks, need to look into that
+// xzalloc in libbb.h is provided by libbb later...
+// barrier() played tricks, need to look into that so that I do not introduce bugs
 
 #ifndef BB_VER
 #define BB_VER "1.23.0.watcom2"
