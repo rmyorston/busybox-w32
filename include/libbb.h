@@ -732,7 +732,6 @@ enum {
 };
 void visible(unsigned ch, char *buf, int flags) FAST_FUNC;
 
-#ifndef __WATCOMC__
 /* dmalloc will redefine these to it's own implementation. It is safe
  * to have the prototypes here unconditionally.  */
 void *malloc_or_warn(size_t size) FAST_FUNC RETURNS_MALLOC;
@@ -746,11 +745,6 @@ void *xrealloc(void *old, size_t size) FAST_FUNC;
  * xrealloc_vector(v, SHIFT, idx) *MUST* be called with consecutive IDXs -
  * skipping an index is a bad bug - it may miss a realloc!
  */
-#else
-#define xmalloc malloc
-#define xzalloc malloc
-#define xrealloc realloc
-#endif
 
 #define xrealloc_vector(vector, shift, idx) \
 	xrealloc_vector_helper((vector), (sizeof((vector)[0]) << 8) + (shift), (idx))
