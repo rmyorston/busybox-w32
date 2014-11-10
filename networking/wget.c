@@ -491,7 +491,7 @@ static FILE* prepare_ftp_session(FILE **dfpp, struct host_info *target, len_and_
 	return sfp;
 }
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
 static int spawn_https_helper(const char *host, unsigned port)
 {
 	char *allocated = NULL;
