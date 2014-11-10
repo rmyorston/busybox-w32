@@ -164,8 +164,8 @@ STRIP 		= wstrip
 OBJCOPY 	= true
 OBJDUMP 	= dmpobj
 #some recommended flags for optimized 32-bit
-CFLAGS 		= -bnt -mthreads -O3
-CXXFLAGS 	= -bnt -mthreads -O3
+CFLAGS 		= -bnt -mthreads -O3 -DUNICODE
+CXXFLAGS 	= -bnt -mthreads -O3 -DUNICODE
 AFLAGS 		= " "
 LDFLAGS 	= -mthreads
 CFLAGS += -Iwin32 -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -D_ENABLE_AUTODEPEND

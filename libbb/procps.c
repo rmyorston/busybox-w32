@@ -413,7 +413,11 @@ procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags)
 				,
 				sp->state, &sp->ppid,
 				&sp->pgid, &sp->sid, &tty,
+#if defined __WATCOMC__
+				&sp->p_utime, &sp->p_stime,	      
+#else
 				&sp->utime, &sp->stime,
+#endif
 				&tasknice,
 				&sp->start_time,
 				&vsz,

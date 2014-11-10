@@ -69,12 +69,12 @@ static len_and_sockaddr* get_lsa(int fd, int (*get_name)(int fd, struct sockaddr
 
 len_and_sockaddr* FAST_FUNC get_sock_lsa(int fd)
 {
-	return get_lsa(fd, getsockname);
+	return get_lsa(fd, (int) getsockname);
 }
 
 len_and_sockaddr* FAST_FUNC get_peer_lsa(int fd)
 {
-	return get_lsa(fd, getpeername);
+	return get_lsa(fd, (int) getpeername);
 }
 
 void FAST_FUNC xconnect(int s, const struct sockaddr *s_addr, socklen_t addrlen)

@@ -19,7 +19,6 @@
 #if defined __WATCOMC__
 #include <direct.h> 
 #include <autoconf.h>
-#include <watcom_hacks.h>
 #else
 #include <dirent.h>
 #endif
@@ -156,6 +155,7 @@
 #endif
 
 
+
 /* Some libc's forget to declare these, do it ourself */
 
 #if !ENABLE_PLATFORM_MINGW32
@@ -176,6 +176,10 @@ int klogctl(int type, char *b, int len);
 /* Can't use ENABLE_PLATFORM_MINGW32 because it's also called by host compiler */
 #if ENABLE_PLATFORM_MINGW32
 # include "mingw.h"
+#endif
+
+#if defined __WATCOMC__
+#include <watcom_hacks.h>
 #endif
 
 /* Busybox does not use threads, we can speed up stdio. */
@@ -1617,7 +1621,9 @@ typedef struct procps_status_t {
 	/* Everything below must contain no ptrs to malloc'ed data:
 	 * it is memset(0) for each process in procps_scan() */
 	unsigned long vsz, rss; /* we round it to kbytes */
-#ifndef __WATCOMC__
+#if defined __WATCOMC__
+	unsigned long p_stime, p_utime;
+#else
 	unsigned long stime, utime;
 #endif
 	unsigned long start_time;

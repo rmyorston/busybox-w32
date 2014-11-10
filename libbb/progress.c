@@ -150,8 +150,13 @@ void FAST_FUNC bb_progress_update(bb_progress_t *p,
 
 		barlength = get_tty2_width() - 49;
 		if (barlength > 0) {
+#ifndef __WATCOMC__
 			/* god bless gcc for variable arrays :) */
 			char buf[barlength + 1];
+#else
+			/*assume 80 char width of terminal... */
+			char buf[52];			
+#endif
 			unsigned stars = (unsigned)barlength * beg_and_transferred / totalsize;
 			memset(buf, ' ', barlength);
 			buf[barlength] = '\0';

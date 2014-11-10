@@ -10,6 +10,9 @@ lib-y:=
 
 INSERT
 
+ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+lib-y += watcom_stubs.o
+endif
 lib-y += appletlib.o
 lib-y += ask_confirmation.o
 lib-y += bb_askpass.o

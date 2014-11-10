@@ -315,6 +315,11 @@ typedef struct {
 	int *counter;
 } t_complementary;
 
+#if defined __WATCOMC__
+#undef ENABLE_FEATURE_GETOPT_LONG
+#undef ENABLE_LONG_OPTS
+#endif
+
 /* You can set applet_long_options for parse called long options */
 #if ENABLE_LONG_OPTS || ENABLE_FEATURE_GETOPT_LONG
 static const struct option bb_null_long_options[1] = {

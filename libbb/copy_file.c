@@ -167,7 +167,11 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 				mode = source_stat.st_mode & ~saved_umask;
 			/* Allow owner to access new dir (at least for now) */
 			mode |= S_IRWXU;
+#ifndef __WATCOMC__
 			if (mkdir(dest, mode) < 0) {
+#else
+			if (mkdir(dest) < 0) {			  
+#endif /* no unix-style permissions in windows/watcom */
 				umask(saved_umask);
 				bb_perror_msg("can't create directory '%s'", dest);
 				return -1;
