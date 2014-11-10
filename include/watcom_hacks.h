@@ -141,8 +141,11 @@ struct group {
 #define BB_VER "1.23.0.watcom2"
 #endif
 
+/* probably need to fix these ... */
 #define SIGALRM 14
 #define SIGWINCH 28
+#define SIGCONT 18
+#define SIGSTOP 19
 
 #define _SC_CLK_TCK 2
 
