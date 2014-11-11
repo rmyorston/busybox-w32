@@ -131,12 +131,7 @@ void FAST_FUNC data_extract_all(archive_handle_t *archive_handle)
 		break;
 	}
 	case S_IFDIR:
-#ifdef __WATCOMC__ 
-		/* nt version of mkdir in watcom has no unix-style permissions */
-		res = mkdir((const char) file_header->name);	  
-#else
 		res = mkdir(file_header->name, file_header->mode);
-#endif
 		if ((res == -1)
 		 && (errno != EISDIR) /* btw, Linux doesn't return this */
 		 && (errno != EEXIST)

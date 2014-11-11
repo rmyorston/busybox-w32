@@ -75,7 +75,7 @@ const char* FAST_FUNC get_cached_groupname(gid_t gid)
 	return get_cached(&groupname, gid, gid2group_utoa);
 }
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
 
 #define PROCPS_BUFSIZE 1024
 

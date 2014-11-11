@@ -642,7 +642,7 @@ static int filstat(char *nm, enum token mode)
 		return 0;
 	}
 
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 #undef R_OK
 #define R_OK S_IREAD
 #undef W_OK

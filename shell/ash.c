@@ -86,7 +86,7 @@
 # define PIPE_BUF 4096           /* amount of buffering in a pipe */
 #endif
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
 # define is_absolute_path(path) ((path)[0] == '/')
 #endif
 
@@ -219,7 +219,7 @@
 //kbuild:lib-$(CONFIG_ASH) += ash.o ash_ptr_hack.o shell_common.o
 //kbuild:lib-$(CONFIG_ASH_RANDOM_SUPPORT) += random.o
 
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 union node;
 struct strlist;
 struct job;
@@ -295,7 +295,7 @@ static const char *const optletters_optnames[] = {
 	,"\0"  "nolog"
 	,"\0"  "debug"
 #endif
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 	,"\0"  "noconsole"
 #endif
 };
@@ -378,7 +378,7 @@ struct globals_misc {
 # define nolog optlist[14 + ENABLE_ASH_BASH_COMPAT]
 # define debug optlist[15 + ENABLE_ASH_BASH_COMPAT]
 #endif
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 # define noconsole optlist[14 + ENABLE_ASH_BASH_COMPAT + 2*DEBUG]
 #endif
 
@@ -2461,7 +2461,7 @@ path_advance(const char **path, const char *name)
 	if (*path == NULL)
 		return NULL;
 	start = *path;
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 	p = next_path_sep(start);
 	q = strchr(start, '%');
 	if ((p && q && q < p) || (!p && q))
@@ -2488,7 +2488,7 @@ path_advance(const char **path, const char *name)
 	pathopt = NULL;
 	if (*p == '%') {
 		pathopt = ++p;
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 		p = next_path_sep(start);
 
 		/* *p != ':' and '*' would suffice */
@@ -2500,7 +2500,7 @@ path_advance(const char **path, const char *name)
 #endif
 	}
 	if (*p == ':' ||
-	    (ENABLE_PLATFORM_MINGW32 && *p == ';'))
+	    (ENABLE_PLATFORM_MINGW32 || __WATCOMC__ && *p == ';'))
 		*path = p + 1;
 	else
 		*path = NULL;
@@ -2602,7 +2602,7 @@ cdopt(void)
 static const char *
 updatepwd(const char *dir)
 {
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 #define is_path_sep(x) ((x) == '/' || (x) == '\\')
 #define is_unc_path(x) (is_path_sep(x[0]) && is_path_sep(x[1]))
 	/*
@@ -3567,7 +3567,7 @@ struct job {
 };
 
 static struct job *makejob(/*union node *,*/ int);
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
 static int forkshell(struct job *, union node *, int);
 #endif
 static int waitforjob(struct job *);
@@ -3624,7 +3624,7 @@ setsignal(int signo)
 	char cur_act, new_act;
 	struct sigaction act;
 
-	if (ENABLE_PLATFORM_MINGW32)
+	if (ENABLE_PLATFORM_MINGW32 || __WATCOMC__)
 		return;
 	t = trap[signo];
 	new_act = S_DFL;
@@ -4147,7 +4147,7 @@ sprint_status(char *s, int status, int sigonly)
 	return col;
 }
 
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 
 HANDLE hSIGINT;		/* Ctrl-C is pressed */
 
@@ -4236,7 +4236,7 @@ dowait(int wait_flags, struct job *job)
 	 * NB: _not_ safe_waitpid, we need to detect EINTR */
 	if (doing_jobctl)
 		wait_flags |= WUNTRACED;
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 	pid = waitpid_child(&status, wait_flags);
 #else
 	pid = waitpid(-1, &status, wait_flags);
@@ -4263,7 +4263,7 @@ dowait(int wait_flags, struct job *job)
 					jobno(jp), pid, ps->ps_status, status));
 				ps->ps_status = status;
 				thisjob = jp;
-				if (ENABLE_PLATFORM_MINGW32)
+				if (ENABLE_PLATFORM_MINGW32 || __WATCOMC__)
 					ps->ps_pid = -1;
 			}
 			if (ps->ps_status == -1)
@@ -4496,7 +4496,7 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 	int retval;
 	struct job *jp;
 
-	if (ENABLE_PLATFORM_MINGW32)
+	if (ENABLE_PLATFORM_MINGW32 || __WATCOMC__)
 		return 0;
 
 	if (pending_sig)
@@ -4954,7 +4954,7 @@ commandtext(union node *n)
  *
  * Called with interrupts off.
  */
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
 /*
  * Clear traps on a fork.
  */
@@ -5113,7 +5113,7 @@ static void
 forkparent(struct job *jp, union node *n, int mode, pid_t pid)
 {
 	TRACE(("In parent shell: child = %d\n", pid));
-	if (!jp && !ENABLE_PLATFORM_MINGW32) { /* FIXME not quite understand this */
+	if (!jp && !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__) { /* FIXME not quite understand this */
 		while (jobless && dowait(DOWAIT_NONBLOCK, NULL) > 0)
 			continue;
 		jobless++;
@@ -5147,7 +5147,7 @@ forkparent(struct job *jp, union node *n, int mode, pid_t pid)
 	}
 }
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
 static int
 forkshell(struct job *jp, union node *n, int mode)
 {
@@ -5374,7 +5374,7 @@ openhere(union node *redir)
 			goto out;
 		}
 	}
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 	memset(&fs, 0, sizeof(fs));
 	fs.fpid = FS_OPENHERE;
 	fs.n = redir;
@@ -5410,7 +5410,7 @@ openredirect(union node *redir)
 	int f;
 
 	fname = redir->nfile.expfname;
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 	/* Support for /dev/null */
 	switch (redir->nfile.type) {
 		case NFROM:
@@ -6191,7 +6191,7 @@ evalbackcmd(union node *n, struct backcmd *result)
 		if (pipe(pip) < 0)
 			ash_msg_and_raise_error("pipe call failed");
 		jp = makejob(/*n,*/ 1);
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 		result->fs.fpid = FS_EVALBACKCMD;
 		result->fs.n = n;
 		result->fs.fd[0] = pip[0];
@@ -8345,7 +8345,7 @@ static int funcblocksize;       /* size of structures in function */
 static int funcstringsize;      /* size of strings in node */
 static void *funcblock;         /* block to allocate function from */
 static char *funcstring;        /* block to allocate strings from */
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 static int nodeptrsize;
 static int *nodeptr;
 #endif
@@ -8508,7 +8508,7 @@ nodeckstrdup(const char *s)
 
 static union node *copynode(union node *);
 
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 # define SAVE_PTR(dst) {if (nodeptr) *nodeptr++ = (int)&(dst);}
 # define SAVE_PTR2(dst1,dst2) {if (nodeptr) { *nodeptr++ = (int)&(dst1);*nodeptr++ = (int)&(dst2);}}
 # define SAVE_PTR3(dst1,dst2,dst3) {if (nodeptr) { *nodeptr++ = (int)&(dst1);*nodeptr++ = (int)&(dst2);*nodeptr++ = (int)&(dst3);}}
@@ -9030,7 +9030,7 @@ evalsubshell(union node *n, int flags)
 		goto nofork;
 	INT_OFF;
 	jp = makejob(/*n,*/ 1);
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 	memset(&fs, 0, sizeof(fs));
 	fs.fpid = FS_EVALSUBSHELL;
 	fs.n = n;
@@ -9155,7 +9155,7 @@ evalpipe(union node *n, int flags)
 				ash_msg_and_raise_error("pipe call failed");
 			}
 		}
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 		memset(&fs, 0, sizeof(fs));
 		fs.fpid = FS_EVALPIPE;
 		fs.flags = flags;
@@ -9822,7 +9822,7 @@ evalcommand(union node *cmd, int flags)
 		 * in a script or a subshell does not need forking,
 		 * we can just exec it.
 		 */
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 		if (!(flags & EV_EXIT) || trap[0]) {
 			/* No, forking off a child is necessary */
 			struct forkshell fs;
@@ -10403,7 +10403,7 @@ popallfiles(void)
 		popfile();
 }
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
 /*
  * Close the file(s) that the shell is reading commands from.  Called
  * after a fork is done.
@@ -12913,7 +12913,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			TRACE(("searchexec \"%s\": no change\n", name));
 			goto success;
 		}
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 		len = strlen(fullname);
 		if (len > 4 &&
 		    (!strcasecmp(fullname+len-4, ".exe") ||
@@ -13500,7 +13500,7 @@ init(void)
 
 		initvar();
 
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 		/*
 		 * case insensitive env names from Windows world
 		 *
@@ -13768,7 +13768,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	init();
 	setstackmark(&smark);
 
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 	hSIGINT = CreateEvent(NULL, TRUE, FALSE, NULL);
 	SetConsoleCtrlHandler(ctrl_handler, TRUE);
 	if (argc == 3 && !strcmp(argv[1], "--forkshell")) {
@@ -13779,7 +13779,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 	procargs(argv);
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 	if ( noconsole ) {
 		DWORD dummy;
 
@@ -13794,7 +13794,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	if (isloginsh) {
 		const char *hp;
 
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 		chdir(xgetpwuid(getuid())->pw_dir);
 		setpwd(NULL, 0);
 #endif
@@ -13874,7 +13874,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	/* NOTREACHED */
 }
 
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 static void
 forkshell_openhere(struct forkshell *fs)
 {

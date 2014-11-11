@@ -2804,7 +2804,7 @@ static void catch_sig(int sig)
 
 static int mysleep(int hund)	// sleep for 'hund' 1/100 seconds or stdin ready
 {
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 	HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
 	DWORD ret;
 
@@ -2942,7 +2942,7 @@ static int file_insert(const char *fn, char *p, int initial)
 		status_line_bold("'%s' is not a regular file", fn);
 		goto fi;
 	}
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 	_setmode(fd, _O_TEXT);
 #endif
 	size = (statbuf.st_size < INT_MAX ? (int)statbuf.st_size : INT_MAX);
@@ -2953,7 +2953,7 @@ static int file_insert(const char *fn, char *p, int initial)
 		p = text_hole_delete(p, p + size - 1, NO_UNDO);	// un-do buffer insert
 	} else if (cnt < size) {
 		// There was a partial read, shrink unused space
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 		int i, newline;
 
 		newline = 0;
@@ -2964,7 +2964,7 @@ static int file_insert(const char *fn, char *p, int initial)
 		}
 #endif
 		p = text_hole_delete(p + cnt, p + size - 1, NO_UNDO);
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 		// on WIN32 a partial read might just mean CRs have been removed
 		if ( cnt+newline != size ) {
 			status_line_bold("can't read '%s'", fn);
@@ -2993,7 +2993,7 @@ static int file_insert(const char *fn, char *p, int initial)
 static int file_write(char *fn, char *first, char *last)
 {
 	int fd, cnt, charcnt;
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 	int i, newline;
 #endif
 
@@ -3009,7 +3009,7 @@ static int file_write(char *fn, char *first, char *last)
 	if (fd < 0)
 		return -1;
 	cnt = last - first + 1;
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 	/* write file in text mode; this makes it bigger so adjust
 	 * the truncation to match
 	 */

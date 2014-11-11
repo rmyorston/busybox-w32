@@ -388,11 +388,7 @@ int cpio_main(int argc UNUSED_PARAM, char **argv)
 		if (argv[0] == NULL)
 			bb_show_usage();
 		if (opt & OPT_CREATE_LEADING_DIR)
-#if defined __WATCOMC__
-			mkdir(argv[0]);
-#else
 			mkdir(argv[0], 0777);
-#endif
 		/* Crude existence check:
 		 * close(xopen(argv[0], O_RDONLY | O_DIRECTORY));
 		 * We can also xopen, fstat, IS_DIR, later fchdir.

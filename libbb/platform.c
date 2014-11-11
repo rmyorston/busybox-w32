@@ -107,11 +107,7 @@ void* FAST_FUNC memrchr(const void *s, int c, size_t n)
 /* This is now actually part of POSIX.1, but was only added in 2008 */
 char* FAST_FUNC mkdtemp(char *template)
 {
-#ifndef __WATCOMC__
 	if (mktemp(template) == NULL || mkdir(template, 0700) != 0)
-#else
-	if (mktemp(template) == NULL || mkdir(template) != 0)	  
-#endif
 		return NULL;
 	return template;
 }

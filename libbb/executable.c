@@ -28,7 +28,7 @@ int FAST_FUNC file_is_executable(const char *name)
  * return NULL otherwise; (PATHp is undefined)
  * in all cases (*PATHp) contents will be trashed (s/:/NUL/).
  */
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
 #define next_path_sep(s) strchr(s, ':')
 #endif
 
@@ -43,7 +43,7 @@ char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 	 * following the rest of the list.
 	 */
 	char *p, *n;
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 	char *w;
 #endif
 
@@ -60,7 +60,7 @@ char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 			*PATHp = n;
 			return p;
 		}
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 		else if ((w=file_is_win32_executable(p))) {
 			*PATHp = n;
 			free(p);

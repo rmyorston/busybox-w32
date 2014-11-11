@@ -855,7 +855,7 @@ int main(int argc UNUSED_PARAM, char **argv)
 	applet_name = argv[0];
 	if (applet_name[0] == '-')
 		applet_name++;
-	if (ENABLE_PLATFORM_MINGW32) {
+	if (ENABLE_PLATFORM_MINGW32 || __WATCOMC__) {
 		const char *applet_name_env = getenv("BUSYBOX_APPLET_NAME");
 		if (applet_name_env && *applet_name_env) {
 			applet_name = applet_name_env;
