@@ -57,7 +57,7 @@ char* FAST_FUNC xmalloc_fgetline(FILE *file)
 
 	if (i && c[--i] == '\n')
 		c[i] = '\0';
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 	if (i && c[--i] == '\r')
 		c[i] = '\0';
 #endif

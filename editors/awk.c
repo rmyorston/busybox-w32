@@ -723,7 +723,7 @@ static char *skip_spaces(char *p)
 		if (*p == '\\' && p[1] == '\n') {
 			p++;
 			t_lineno++;
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
 		} else if (*p != ' ' && *p != '\t') {
 #else
 		} else if (*p != ' ' && *p != '\t' && *p != '\r') {

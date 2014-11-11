@@ -39,6 +39,9 @@ int ftruncate ( int fildes, off_t length);
 #define popen _popen
 #define pclose _pclose
 
+/* Windows does not have unix-style permissions */
+#define mkdir(name,mode) mkdir(name)
+
 /*
  * stdlib.h
  */
@@ -56,8 +59,7 @@ struct sigaction {
 	int sa_mask;
 };
 
-long getpagesize(void);
-long getregionsize(void);
+int getpagesize(void);
 
 /*
  * sys/ioctl.h

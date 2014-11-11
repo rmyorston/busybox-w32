@@ -100,7 +100,7 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 			return -1;
 		}
 	} else {
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
         /* MinGW does not have inode, and does not use device */
 		if (source_stat.st_dev == dest_stat.st_dev
 		 && source_stat.st_ino == dest_stat.st_ino
@@ -142,6 +142,7 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 		}
 
 		/* Did we ever create source ourself before? */
+#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
 		tp = is_in_ino_dev_hashtable(&source_stat);
 		if (tp) {
 			/* We did! it's a recursion! man the lifeboats... */
@@ -167,11 +168,7 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 				mode = source_stat.st_mode & ~saved_umask;
 			/* Allow owner to access new dir (at least for now) */
 			mode |= S_IRWXU;
-#ifndef __WATCOMC__
-			if (mkdir(dest, mode) < 0) {
-#else
-			if (mkdir(dest) < 0) {			  
-#endif /* no unix-style permissions in windows/watcom */
+			if (mkdir(dest, mode) < 0) {			  
 				umask(saved_umask);
 				bb_perror_msg("can't create directory '%s'", dest);
 				return -1;
@@ -183,6 +180,7 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 				return -1;
 			}
 		}
+#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
 		/* remember (dev,inode) of each created dir.
 		 * NULL: name is not remembered */
 		add_to_ino_dev_hashtable(&dest_stat, NULL);
@@ -255,6 +253,7 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 			goto dont_cat;
 		}
 
+#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
 		if (ENABLE_FEATURE_PRESERVE_HARDLINKS && !FLAGS_DEREF) {
 			const char *link_target;
 			link_target = is_in_ino_dev_hashtable(&source_stat);

@@ -410,12 +410,12 @@ static int xargs_ask_confirmation(void)
 	FILE *tty_stream;
 	int c, savec;
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
 	tty_stream = xfopen_for_read(CURRENT_TTY);
 #endif
 	fputs(" ?...", stderr);
 	fflush_all();
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
 	c = savec = getc(tty_stream);
 	while (c != EOF && c != '\n')
 		c = getc(tty_stream);

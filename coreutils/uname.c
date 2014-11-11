@@ -70,7 +70,7 @@
 /* After libbb.h, since it needs sys/types.h on some systems */
 #include <sys/utsname.h>
 
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 # define OSNAME "MS/Windows"
 #else
 # define OSNAME "GNU/Linux"
