@@ -27,10 +27,6 @@
 #include "libbb.h"
 #include "unicode.h"
 
-#if defined __WATCOMC__
-#include <stdlib.h> /* EXIT_SUCCESS */
-#endif
-
 /* We often use "unsigned" intead of "int", it's easier to div on most CPUs */
 
 #define	THURSDAY		4		/* for reformation */

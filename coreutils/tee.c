@@ -52,10 +52,7 @@ int tee_main(int argc, char **argv)
 	retval = EXIT_SUCCESS;
 	/* gnu tee ignores SIGPIPE in case one of the output files is a pipe
 	 * that doesn't consume all its input.  Good idea... */
-#ifndef __WATCOMC__
-/* watcom NT headers do not contain sigpipe */
 	signal(SIGPIPE, SIG_IGN);
-#endif
 	/* Allocate an array of FILE *'s, with one extra for a sentinel. */
 	fp = files = xzalloc(sizeof(FILE *) * (argc + 2));
 	np = names = argv - 1;

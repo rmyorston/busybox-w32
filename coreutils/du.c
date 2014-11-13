@@ -131,12 +131,7 @@ static unsigned long long du(const char *filename)
 		}
 	}
 
-#if defined __WATCOMC__
-/* st_blksize and st_blocks not available in Win32 */
-	sum = 0;
-#else
 	sum = statbuf.st_blocks;
-#endif
 	
 	if (S_ISLNK(statbuf.st_mode)) {
 		if (G.slink_depth > G.du_depth) { /* -H or -L */
@@ -145,12 +140,8 @@ static unsigned long long du(const char *filename)
 				G.status = EXIT_FAILURE;
 				return 0;
 			}
-#if defined __WATCOMC__
-			sum = 0;
-#else
 			sum = statbuf.st_blocks;
-#endif
-			if (G.slink_depth == 1) {
+		if (G.slink_depth == 1) {
 				/* Convert -H to -L */
 				G.slink_depth = INT_MAX;
 			}

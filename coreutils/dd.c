@@ -335,7 +335,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	if (infile) {
-		if (ENABLE_PLATFORM_MINGW32 || __WATCOMC__ && !strcmp(infile, "/dev/zero")) {
+		if (ENABLE_PLATFORM_MINGW32 && !strcmp(infile, "/dev/zero")) {
 			flags |= FLAG_NOERROR;
 			devzero = 1;
 		} else {
