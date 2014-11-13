@@ -459,7 +459,11 @@ static void trace_vprintf(const char *fmt, va_list va);
 
 
 /* ============ Utility functions */
+#ifndef __WATCOMC__
 #define xbarrier() do { __asm__ __volatile__ ("": : :"memory"); } while (0)
+#else
+#define xbarrier() /* nothing? some asm stuff? */
+#endif
 
 #define is_name(c)      ((c) == '_' || isalpha((unsigned char)(c)))
 #define is_in_name(c)   ((c) == '_' || isalnum((unsigned char)(c)))

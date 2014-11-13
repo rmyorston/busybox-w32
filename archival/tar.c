@@ -1045,9 +1045,7 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 
 	if (opt & OPT_2COMMAND) {
 		putenv((char*)"TAR_FILETYPE=f");
-#ifndef __WATCOMC__
-		signal(SIGPIPE, SIG_IGN); /* Watcom C library does not have SIGPIPE to ignore */
-#endif
+		signal(SIGPIPE, SIG_IGN); 
 		tar_handle->action_data = data_extract_to_command;
 		IF_FEATURE_TAR_TO_COMMAND(tar_handle->tar__to_command_shell = xstrdup(get_shell_name());)
 	}

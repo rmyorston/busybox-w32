@@ -179,7 +179,7 @@ int klogctl(int type, char *b, int len);
 #endif
 
 #if defined __WATCOMC__
-#include <watcom_hacks.h>
+#include <watcom.h>
 #endif
 
 /* Busybox does not use threads, we can speed up stdio. */

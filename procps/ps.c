@@ -240,7 +240,7 @@ static unsigned get_kernel_HZ(void)
 
 /* Print value to buf, max size+1 chars (including trailing '\0') */
 
-#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
+#if !ENABLE_PLATFORM_MINGW32
 static void func_user(char *buf, int size, const procps_status_t *ps)
 {
 #if 1
@@ -271,7 +271,7 @@ static void func_comm(char *buf, int size, const procps_status_t *ps)
 	safe_strncpy(buf, ps->comm, size+1);
 }
 
-#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
+#if !ENABLE_PLATFORM_MINGW32
 static void func_state(char *buf, int size, const procps_status_t *ps)
 {
 	safe_strncpy(buf, ps->state, size+1);
@@ -288,7 +288,7 @@ static void func_pid(char *buf, int size, const procps_status_t *ps)
 	sprintf(buf, "%*u", size, ps->pid);
 }
 
-#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
+#if !ENABLE_PLATFORM_MINGW32
 static void func_ppid(char *buf, int size, const procps_status_t *ps)
 {
 	sprintf(buf, "%*u", size, ps->ppid);
@@ -396,16 +396,16 @@ static void func_pcpu(char *buf, int size, const procps_status_t *ps)
 
 static const ps_out_t out_spec[] = {
 /* Mandated by http://pubs.opengroup.org/onlinepubs/9699919799/utilities/ps.html: */
-#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
+#if !ENABLE_PLATFORM_MINGW32
 	{ 8                  , "user"  ,"USER"   ,func_user  ,PSSCAN_UIDGID  },
 	{ 8                  , "group" ,"GROUP"  ,func_group ,PSSCAN_UIDGID  },
 #endif
 	{ 16                 , "comm"  ,"COMMAND",func_comm  ,PSSCAN_COMM    },
-#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
+#if !ENABLE_PLATFORM_MINGW32
 	{ MAX_WIDTH          , "args"  ,"COMMAND",func_args  ,PSSCAN_COMM    },
 #endif
 	{ 5                  , "pid"   ,"PID"    ,func_pid   ,PSSCAN_PID     },
-#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
+#if !ENABLE_PLATFORM_MINGW32
 	{ 5                  , "ppid"  ,"PPID"   ,func_ppid  ,PSSCAN_PPID    },
 	{ 5                  , "pgid"  ,"PGID"   ,func_pgid  ,PSSCAN_PGID    },
 #endif
@@ -421,7 +421,7 @@ static const ps_out_t out_spec[] = {
 #if ENABLE_FEATURE_PS_TIME
 	{ 6                  , "time"  ,"TIME"   ,func_time  ,PSSCAN_STIME | PSSCAN_UTIME },
 #endif
-#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
+#if !ENABLE_PLATFORM_MINGW32
 	{ 6                  , "tty"   ,"TT"     ,func_tty   ,PSSCAN_TTY     },
 	{ 4                  , "vsz"   ,"VSZ"    ,func_vsz   ,PSSCAN_VSZ     },
 /* Not mandated, but useful: */
@@ -566,7 +566,7 @@ static void format_process(const procps_status_t *ps)
 #if ENABLE_SELINUX
 # define SELINUX_O_PREFIX "label,"
 # define DEFAULT_O_STR    (SELINUX_O_PREFIX "pid,user" IF_FEATURE_PS_TIME(",time") ",args")
-#elif ENABLE_PLATFORM_MINGW32 || __WATCOMC__
+#elif ENABLE_PLATFORM_MINGW32
 # define DEFAULT_O_STR    ("pid,comm")
 #else
 # define DEFAULT_O_STR    ("pid,user" IF_FEATURE_PS_TIME(",time") ",args")

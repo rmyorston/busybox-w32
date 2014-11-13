@@ -313,21 +313,13 @@ static void FAST_FUNC print_stat(char *pformat, const char m,
 		strcat(pformat, "lu");
 		printf(pformat, (unsigned long) statbuf->st_uid);
 	} else if (m == 'U') {
-#ifndef __WATCOMC__
 		pw_ent = getpwuid(statbuf->st_uid);
-#else
-		pw_ent = 0;
-#endif
 		printfs(pformat, (pw_ent != NULL) ? pw_ent->pw_name : "UNKNOWN");
 	} else if (m == 'g') {
 		strcat(pformat, "lu");
 		printf(pformat, (unsigned long) statbuf->st_gid);
 	} else if (m == 'G') {
-#ifndef __WATCOMC__
 		gw_ent = getgrgid(statbuf->st_gid);
-#else
-		gw_ent = 0; /* gid always root on windows */
-#endif
 		printfs(pformat, (gw_ent != NULL) ? gw_ent->gr_name : "UNKNOWN");
 	} else if (m == 't') {
 		strcat(pformat, "lx");
@@ -343,19 +335,10 @@ static void FAST_FUNC print_stat(char *pformat, const char m,
 		printf(pformat, (unsigned long) 512); //ST_NBLOCKSIZE
 	} else if (m == 'b') {
 		strcat(pformat, "llu");
-#if defined __WATCOMC__
-		printf(pformat, (unsigned long long) statbuf->st_size/512 ); //assume block size of 512		
-#else
 		printf(pformat, (unsigned long long) statbuf->st_blocks);
-#endif
 	} else if (m == 'o') {
 		strcat(pformat, "lu");
-#if defined __WATCOMC__
-		unsigned long blksize = 512;
-		printf(pformat, (unsigned long) blksize);		
-#else
 		printf(pformat, (unsigned long) statbuf->st_blksize);
-#endif
 	} else if (m == 'x') {
 		printfs(pformat, human_time(statbuf->st_atime));
 	} else if (m == 'X') {
@@ -656,9 +639,7 @@ static bool do_stat(const char *filename, const char *format)
 		       IF_NOT_SELINUX("\n"),
 		       filename,
 		       (unsigned long long) statbuf.st_size,
-#ifndef __WATCOMC__
 		       (unsigned long long) statbuf.st_blocks,
-#endif
 		       (unsigned long) statbuf.st_mode,
 		       (unsigned long) statbuf.st_uid,
 		       (unsigned long) statbuf.st_gid,
@@ -670,9 +651,7 @@ static bool do_stat(const char *filename, const char *format)
 		       (unsigned long) statbuf.st_atime,
 		       (unsigned long) statbuf.st_mtime,
 		       (unsigned long) statbuf.st_ctime,
-#ifndef __WATCOMC__
 		       (unsigned long) statbuf.st_blksize
-#endif
 		);
 # if ENABLE_SELINUX
 		if (option_mask32 & OPT_SELINUX)

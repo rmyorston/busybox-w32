@@ -142,11 +142,6 @@
 # include <sys/syscall.h>
 #endif
 
-#if defined __WATCOMC__
-#include <winsock2.h>
-#define timespec timeval
-#endif
-
 enum {
 	OPT_RFC2822   = (1 << 0), /* R */
 	OPT_SET       = (1 << 1), /* s */
