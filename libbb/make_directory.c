@@ -45,7 +45,7 @@ int FAST_FUNC bb_make_directory(char *path, long mode, int flags)
 		c = '\0';
 
 		if (flags & FILEUTILS_RECUR) {  /* Get the parent */
-#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
+#if ENABLE_PLATFORM_MINGW32
 			if (s == path && *s && s[1] == ':') {
 				/* skip drive letter */
 				s += 2;

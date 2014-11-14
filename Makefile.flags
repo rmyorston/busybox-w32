@@ -14,7 +14,7 @@ endif
 endif
 
 ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
-CPPFLAGS = -std=c99 -D+
+CPPFLAGS = -std=c99  -Wc,-aa -D+
 else
 # -std=gnu99 needed for [U]LLONG_MAX on some systems
 CPPFLAGS += $(call cc-option,-std=gnu99,)

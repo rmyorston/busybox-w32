@@ -22,10 +22,14 @@ typedef long long off64_t;
 #include "mingw.h"
 #undef ENABLE_PLATFORM_MINGW32
 #define ENABLE_PLATFORM_MINGW32 1
+#undef IF_PLATFORM_MINGW32
+#undef IF_NOT_PLATFORM_MINGW32
+#define IF_PLATFORM_MINGW32(...) __VA_ARGS__
 
 /* what to do about signals? some namespace conflicts with signals < 12 */
 
 #define lutimes utimes
+#define P_NOWAIT 1
 
 /* eliminate cases where mingw.h conflicts with system headers */
 
@@ -55,6 +59,8 @@ and not MinGW replacement functions */
 #ifndef BB_VER
 #define BB_VER "1.23.0.watcom2"
 #endif
+
+#define BB_MMU 1
 
 #define NSIG 13
 

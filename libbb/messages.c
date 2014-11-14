@@ -36,7 +36,7 @@ const char bb_msg_standard_output[] ALIGN1 = "standard output";
 const char bb_hexdigits_upcase[] ALIGN1 = "0123456789ABCDEF";
 
 
-#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
+#if !ENABLE_PLATFORM_MINGW32
 const char bb_busybox_exec_path[] ALIGN1 = CONFIG_BUSYBOX_EXEC_PATH;
 #endif
 

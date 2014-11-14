@@ -369,7 +369,9 @@ NOIMPL(getsid,pid_t pid UNUSED_PARAM);
 IMPL(getuid,int,1,void);
 int fcntl(int fd, int cmd, ...);
 #define fork() -1
+#ifndef __WATCOMC__
 IMPL(fsync,int,0,int fd UNUSED_PARAM);
+#endif
 int kill(pid_t pid, int sig);
 int link(const char *oldpath, const char *newpath);
 NOIMPL(mknod,const char *name UNUSED_PARAM, mode_t mode UNUSED_PARAM, dev_t device UNUSED_PARAM);

@@ -2019,6 +2019,7 @@ static ALWAYS_INLINE unsigned char bb_ascii_tolower(unsigned char a)
  * Let's prevent ambiguous usage from the start */
 #define isgraph(a) isgraph_is_ambiguous_dont_use(a)
 #define isprint(a) isprint_is_ambiguous_dont_use(a)
+
 #endif /* Watcom somehow gets confused by these re-definitions */
 
 /* NB: must not treat EOF as isgraph or isprint */

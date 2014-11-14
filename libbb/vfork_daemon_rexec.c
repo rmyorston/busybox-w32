@@ -25,7 +25,7 @@ pid_t FAST_FUNC spawn(char **argv)
 	volatile int failed;
 	pid_t pid;
 
-	if (ENABLE_PLATFORM_MINGW32 || __WATCOMC__)
+	if (ENABLE_PLATFORM_MINGW32)
 		return mingw_spawn(argv);
 
 	fflush_all();
@@ -143,13 +143,13 @@ int FAST_FUNC run_nofork_applet(int applet_no, char **argv)
 
 	rc = setjmp(die_jmp);
 	if (!rc) {
-#ifndef __WATCOMC__
 		/* Some callers (xargs)
 		 * need argv untouched because they free argv[i]! */
+#ifndef __WATCOMC__
 		char *tmp_argv[argc+1];
 #else
-		/* no idea how big the array need to be... */
-		char *tmp_argv[64];	
+		/* no idea what an appropriate size of the array would be */
+		char *tmp_argv[64];
 #endif
 		memcpy(tmp_argv, argv, (argc+1) * sizeof(tmp_argv[0]));
 		/* Finally we can call NOFORK applet's main() */
@@ -191,7 +191,7 @@ int FAST_FUNC spawn_and_wait(char **argv)
 		{
 			return run_nofork_applet(a, argv);
 		}
-# if BB_MMU && !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
+# if BB_MMU && !ENABLE_PLATFORM_MINGW32
 		/* MMU only */
 		/* a->noexec is true */
 		rc = fork();
