@@ -55,7 +55,7 @@ char* FAST_FUNC bb_ask(const int fd, int timeout, const char *prompt)
 	memset(&sa, 0, sizeof(sa));
 	/* sa.sa_flags = 0; - no SA_RESTART! */
 	/* SIGINT and SIGALRM will interrupt reads below */
-	sa.sa_handler = askpass_timeout;
+	sa.sa_handler = (sighandler_t) askpass_timeout;
 	sigaction(SIGINT, &sa, &oldsa);
 	if (timeout) {
 		sigaction_set(SIGALRM, &sa);

@@ -14,7 +14,7 @@ endif
 endif
 
 ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
-CPPFLAGS = -std=c99  -Wc,-aa -D+
+CPPFLAGS = -std=c99 -Wc,-aa -D+
 else
 # -std=gnu99 needed for [U]LLONG_MAX on some systems
 CPPFLAGS += $(call cc-option,-std=gnu99,)
@@ -164,8 +164,10 @@ STRIP 		= wstrip
 OBJCOPY 	= true
 OBJDUMP 	= dmpobj
 #some recommended flags for optimized 32-bit
-CFLAGS 		= -bnt -mthreads -O3 -DUNICODE
-CXXFLAGS 	= -bnt -mthreads -O3 -DUNICODE
+# -s strips debug flags, for debug build
+# remove this
+CFLAGS 		= -bnt -mthreads -O3 -DUNICODE -s
+CXXFLAGS 	= -bnt -mthreads -O3 -DUNICODE -s
 AFLAGS 		= " "
 LDFLAGS 	= -mthreads
 CFLAGS += -Iwin32 -Iwin32/watcom -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -D_ENABLE_AUTODEPEND

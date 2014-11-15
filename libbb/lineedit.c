@@ -2402,7 +2402,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 
 	/* Install window resize handler (NB: after *all* init is complete) */
 //FIXME: save entire sigaction!
-	previous_SIGWINCH_handler = signal(SIGWINCH, win_changed);
+	previous_SIGWINCH_handler = signal(SIGWINCH, (sighandler_t) win_changed);
 	win_changed(0); /* get initial window size */
 
 	read_key_buffer[0] = 0;
@@ -2875,7 +2875,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	/* restore initial_settings */
 	tcsetattr_stdin_TCSANOW(&initial_settings);
 	/* restore SIGWINCH handler */
-	signal(SIGWINCH, previous_SIGWINCH_handler);
+	signal(SIGWINCH, (sighandler_t) previous_SIGWINCH_handler);
 	fflush_all();
 
 	len = command_len;

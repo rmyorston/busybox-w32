@@ -128,6 +128,8 @@ static int err_win_to_posix(DWORD winerr)
 	return error;
 }
 
+#ifndef __WATCOMC__
+
 #undef open
 int mingw_open (const char *filename, int oflags, ...)
 {
@@ -168,6 +170,8 @@ int mingw_dup2 (int fd, int fdto)
 	int ret = dup2(fd, fdto);
 	return ret != -1 ? fdto : -1;
 }
+
+#endif /* use native open, fopen, dup2 on Watcom */
 
 /*
  * The unit of FILETIME is 100-nanoseconds since January 1, 1601, UTC.
@@ -453,6 +457,7 @@ char *mingw_mktemp(char *template)
 	return template;
 }
 
+#ifndef __WATCOMC__
 int mkstemp(char *template)
 {
 	char *filename = mktemp(template);
@@ -472,6 +477,8 @@ int gettimeofday(struct timeval *tv, void *tz UNUSED_PARAM)
 	tv->tv_usec = (hnsec % 10000000) / 10;
 	return 0;
 }
+
+#endif
 
 int pipe(int filedes[2])
 {
@@ -621,7 +628,9 @@ static sighandler_t timer_fn = SIG_DFL;
  * length to call the signal handler.
  */
 
-static __stdcall unsigned ticktack(void *dummy UNUSED_PARAM)
+typedef unsigned int (__stdcall ticktacktype);
+
+ticktacktype ticktack(void *dummy UNUSED_PARAM)
 {
 	while (WaitForSingleObject(timer_event, timer_interval) == WAIT_TIMEOUT) {
 		if (timer_fn == SIG_DFL)
@@ -674,6 +683,7 @@ static inline int is_timeval_eq(const struct timeval *i1, const struct timeval *
 	return i1->tv_sec == i2->tv_sec && i1->tv_usec == i2->tv_usec;
 }
 
+#ifndef __WATCOMC__
 int setitimer(int type UNUSED_PARAM, struct itimerval *in, struct itimerval *out)
 {
 	static const struct timeval zero;
@@ -704,6 +714,8 @@ int setitimer(int type UNUSED_PARAM, struct itimerval *in, struct itimerval *out
 	}
 	return start_timer_thread();
 }
+
+#endif /* use native watcom seitimer */
 
 int sigaction(int sig, struct sigaction *in, struct sigaction *out)
 {

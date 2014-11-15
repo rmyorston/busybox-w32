@@ -34,6 +34,7 @@ static int lookup_env(char **env, const char *name, size_t nmln)
 	return -1;
 }
 
+#ifndef __WATCOMC__
 #undef getenv
 char *mingw_getenv(const char *name)
 {
@@ -79,6 +80,7 @@ int setenv(const char *name, const char *value, int replace)
 
 	return out;
 }
+#endif /* getenv setenv already present in watcom */
 
 /*
  * If name contains '=', then sets the variable, otherwise it unsets it
@@ -110,10 +112,12 @@ char **env_setenv(char **env, const char *name)
 	return env;
 }
 
+#ifndef __WATCOMC__
 void unsetenv(const char *env)
 {
 	env_setenv(environ, env);
 }
+
 
 int clearenv(void)
 {
@@ -128,3 +132,6 @@ int clearenv(void)
 	environ = NULL;
 	return 0;
 }
+#endif /* unsetenv clearenv already present in watcom */
+
+

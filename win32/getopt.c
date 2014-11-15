@@ -19,9 +19,6 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef _LIBC
-# include <config.h>
-#endif
 
 #include "getopt.h"
 
@@ -30,16 +27,11 @@
 #include <string.h>
 #include <unistd.h>
 
-#ifdef _LIBC
-# include <libintl.h>
-#else
+
 # include "gettext.h"
 # define _(msgid) gettext (msgid)
-#endif
 
-#if defined _LIBC && defined USE_IN_LIBIO
 # include <wchar.h>
-#endif
 
 /* This version of 'getopt' appears to the caller like standard Unix 'getopt'
    but it behaves differently for the user, since it allows the user
@@ -96,11 +88,11 @@ int optopt = '?';
 
 static struct _getopt_data getopt_data;
 
-
+
 #if defined HAVE_DECL_GETENV && !HAVE_DECL_GETENV
 extern char *getenv ();
 #endif
-
+
 #ifdef _LIBC
 /* Stored original parameters.
    XXX This is no good solution.  We should rather copy the args so
@@ -221,6 +213,8 @@ exchange (char **argv, struct _getopt_data *d)
 
 /* Initialize the internal data when the first call is made.  */
 
+#undef _GL_UNUSED
+#define _GL_UNUSED /* nothing */
 static const char *
 _getopt_initialize (int argc _GL_UNUSED,
                     char **argv _GL_UNUSED, const char *optstring,
