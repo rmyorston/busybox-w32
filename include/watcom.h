@@ -13,22 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <utime.h>
-
-/* we try to keep as close as possible to MinGW port */
-typedef long long off64_t;
-#define __cdecl /*nothing*/
-#undef SIGUSR1
-#undef SIGUSR2
-#include "mingw.h"
-#undef ENABLE_PLATFORM_MINGW32
-#define ENABLE_PLATFORM_MINGW32 1
-
-/* what to do about signals? some namespace conflicts with signals < 12 */
-
-#define lutimes utimes
-
-/* eliminate cases where mingw.h conflicts with system headers */
-
+#include <process.h>
 
 /* getting rid of GCC-isms */
 #undef __volatile__
@@ -36,6 +21,23 @@ typedef long long off64_t;
 #undef __attribute__
 #define __attribute__(x) /*nothing*/
 
+/* we try to keep as close as possible to MinGW port */
+typedef long long off64_t;
+#undef SIGUSR1
+#undef SIGUSR2
+#include "mingw.h"
+#undef ENABLE_PLATFORM_MINGW32
+#define ENABLE_PLATFORM_MINGW32 1
+
+/* from Wine*/
+#define REPARSE_DATA_BUFFER_HEADER_SIZE 8
+#define MAXIMUM_REPARSE_DATA_BUFFER_SIZE  (16*1024)
+
+/* what to do about signals? some namespace conflicts with signals < 12 */
+
+#define lutimes utimes
+
+/* eliminate cases where mingw.h conflicts with system headers */
 
 /* some other re-definitions
 if possible, we want to use native Watom functions 
@@ -44,6 +46,7 @@ and not MinGW replacement functions */
 /* Windows does not have unix-style file permissions */
 #undef mkdir
 #define mkdir(name,mode) mkdir(name)
+#define mktemp _mktemp
 
 /* popen and _popen seem functionally equivalent */
 #undef popen
