@@ -85,13 +85,6 @@ LDLIBS="$7"
 # The --sort-section option is not supported by older versions of ld
 SORT_SECTION=`check_cc "-Wl,--sort-section,alignment" ""`
 
-if test -n $WATCOM; then
-START_GROUP=
-END_GROUP=
-INFO_OPTS=
-SORT_COMMON=
-GC_SECTIONS=
-else
 START_GROUP="-Wl,--start-group"
 END_GROUP="-Wl,--end-group"
 INFO_OPTS="-Wl,--warn-common -Wl,-Map,$EXE.map -Wl,--verbose"
@@ -112,7 +105,7 @@ else
     echo "-Wl,--gc-sections"
 fi
 )`
-fi #eliminated stuff confusing Watcom
+
 # The --gc-sections option is not supported by older versions of ld
 if test -n "$GC_SECTIONS"; then
     GC_SECTIONS=`check_cc "$GC_SECTIONS" ""`

@@ -183,8 +183,13 @@ busybox_unstripped.o: $(usage_stuff) include/applet_tables.h include/NUM_APPLETS
 		-c -o busybox_unstripped.o \
 		$(lib-all-y:.o=.c)
 
+		
+		
 busybox: busybox_unstripped.o
-	$(srctree)/scripts/trylink \
+ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+		wlink @"$(srctree)/scripts/wlinkscript.lnk"
+else
+		$(srctree)/scripts/trylink \
 		busybox_unstripped \
 		"$(CC) $(CFLAGS_busybox)" \
 		"$(CFLAGS)" \
@@ -194,7 +199,7 @@ busybox: busybox_unstripped.o
 		"crypt m"
 	cp -f $(@)_unstripped $@
 	-$(STRIP) -s -R .note -R .comment -R .version $@
-
+endif
 # If .config is newer than include/autoconf.h, someone tinkered
 # with it and forgot to run make oldconfig.
 include/autoconf.h: .config
