@@ -32,6 +32,11 @@ typedef long long off64_t;
 #undef IF_NOT_PLATFORM_MINGW32
 #define IF_PLATFORM_MINGW32(...) __VA_ARGS__
 
+#define mingw_open open 
+#define mingw_dup2 dup2 
+#define mingw_fopen fopen
+
+
 /* from Wine*/
 #define REPARSE_DATA_BUFFER_HEADER_SIZE 8
 #define MAXIMUM_REPARSE_DATA_BUFFER_SIZE  (16*1024)
@@ -46,6 +51,7 @@ typedef long long off64_t;
 /* some other re-definitions
 if possible, we want to use native Watom functions 
 and not MinGW replacement functions */
+#define useconds_t unsigned long
 
 /* Windows does not have unix-style file permissions */
 #undef mkdir
@@ -66,6 +72,23 @@ and not MinGW replacement functions */
 #define BB_MMU 1
 
 #define NSIG 13
+
+/* explicitly link system libraries here
+ * using -Wl, ... with spaces does not work that great
+ * -l seems to make owcc want to look for .a libraries
+ * By linking to the object files, I hope that the linker
+ * will be less confused at the later stage */
+
+#pragma library ("clib3r.lib")
+#pragma library ("kernel32.lib")
+#pragma library ("math387r.lib")
+#pragma library ("crypt32.lib")
+#pragma library ("userenv.lib")
+#pragma library ("ws2_32.lib")
+#pragma library ("wr7rdll.lib") /* for mktemp */
+
+
+
 
 
 #endif /* WATCOM_HACKS */

@@ -166,13 +166,14 @@ OBJDUMP 	= dmpobj
 #some recommended flags for optimized 32-bit
 # -s strips debug flags, for debug build
 # remove this
-CFLAGS 		= -bnt -mthreads -O3 -DUNICODE -s
-CXXFLAGS 	= -bnt -mthreads -O3 -DUNICODE -s
-AFLAGS 		= " "
-LDFLAGS 	= -mthreads
+ARFLAGS		= -q
+CFLAGS 		= -bnt -mabi=w -mtune=686 -msoft-float -mthreads -O3 -DUNICODE -DWIN32 -s
+CXXFLAGS 	= -bnt -mabi=w -mtune=686 -msoft-float -mthreads -O3 -DUNICODE -DWIN32 -s
+AFLAGS 		= 
+LIBPATH		= $(WATCOM)/lib386:$(WATCOM)/lib386/nt:$(WATCOM)/binnt
+LIBRARY		= clib3r math387r ncrypt crypt32 userenv ws2_32
 CFLAGS += -Iwin32 -Iwin32/watcom -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -D_ENABLE_AUTODEPEND
 EXEEXT = .exe
-LDLIBS += userenv ws2_32
 
 endif
 
@@ -181,12 +182,14 @@ endif
 # gcc-4.2.1 fails if we try to feed C source on stdin:
 #  echo 'int main(void){return 0;}' | $(CC) $(CFLAGS) -lcrypt -o /dev/null -xc -
 # fall back to using a temp file:
+ifneq ($(CONFIG_PLATFORM_WATCOM386),y)
 CRYPT_AVAILABLE := $(shell echo 'int main(void){return 0;}' >crypttest.c; $(CC) $(CFLAGS) -lcrypt -o /dev/null crypttest.c >/dev/null 2>&1 && echo "y"; rm crypttest.c)
 ifeq ($(CRYPT_AVAILABLE),y)
 LDLIBS += m crypt
 else
 LDLIBS += m
 endif
+endif #watcom does not have any of these
 
 ifeq ($(CONFIG_PAM),y)
 # libpam uses libpthread, so for static builds busybox must be linked to

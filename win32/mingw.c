@@ -447,6 +447,7 @@ unsigned int sleep (unsigned int seconds)
  * Windows' mktemp returns NULL on error whereas POSIX always returns the
  * template and signals an error by making it an empty string.
  */
+#ifndef __WATCOMC__
 #undef mktemp
 char *mingw_mktemp(char *template)
 {
@@ -457,7 +458,7 @@ char *mingw_mktemp(char *template)
 	return template;
 }
 
-#ifndef __WATCOMC__
+
 int mkstemp(char *template)
 {
 	char *filename = mktemp(template);
@@ -465,8 +466,13 @@ int mkstemp(char *template)
 		return -1;
 	return open(filename, O_RDWR | O_CREAT, 0600);
 }
+#endif
 
+#ifndef __WATCOMC__
 int gettimeofday(struct timeval *tv, void *tz UNUSED_PARAM)
+#else
+int gettimeofday(struct timeval *tv, struct timezone *tz )
+#endif
 {
 	FILETIME ft;
 	long long hnsec;
@@ -478,7 +484,7 @@ int gettimeofday(struct timeval *tv, void *tz UNUSED_PARAM)
 	return 0;
 }
 
-#endif
+
 
 int pipe(int filedes[2])
 {

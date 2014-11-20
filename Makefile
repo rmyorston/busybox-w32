@@ -605,6 +605,9 @@ busybox-all  := $(core-y) $(libs-y)
 # Rule to link busybox - also used during CONFIG_KALLSYMS
 # May be overridden by arch/$(ARCH)/Makefile
 quiet_cmd_busybox__ ?= LINK    $@
+ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+      cmd_busybox__ = wlink @"$(srctree)/scripts/wlinkscript.lnk"
+else
       cmd_busybox__ ?= $(srctree)/scripts/trylink \
       "$@" \
       "$(CC)" \
@@ -613,6 +616,7 @@ quiet_cmd_busybox__ ?= LINK    $@
       "$(core-y)" \
       "$(libs-y)" \
       "$(LDLIBS)"
+endif
 
 # Generate System.map
 quiet_cmd_sysmap = SYSMAP
