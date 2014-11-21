@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <utime.h>
 #include <process.h>
+#include <wincon.h>
 
 /* getting rid of GCC-isms */
 #undef __volatile__
@@ -28,6 +29,10 @@ typedef long long off64_t;
 #include "mingw.h"
 #undef ENABLE_PLATFORM_MINGW32
 #define ENABLE_PLATFORM_MINGW32 1
+
+#define HAVE_CHSIZE 1
+#define _GL_WINDOWS_64_BIT_OFF_T 1
+#define REGEX_MALLOC 1
 
 #define mingw_open open 
 #define mingw_dup2 dup2 
@@ -66,6 +71,8 @@ and not MinGW replacement functions */
 #endif
 
 #define NSIG 13
+
+extern int ftruncate (int fd, off_t length);
 
 /* explicitly link system libraries here
  * using -Wl, ... with spaces does not work that great
