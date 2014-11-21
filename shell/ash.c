@@ -41,6 +41,17 @@
  * debugging info will be written to ./trace and a quit signal
  * will generate a core dump.
  */
+
+#if defined __WATCOMC__
+#include <winsock2.h>
+#include <tchar.h>
+#include <windows.h>
+#include <windowsx.h>
+#pragma library ("kernel32.lib")
+#pragma aux GetConsoleProcessList "_GetConsoleProcessList@8";
+#pragma aux GetConsoleWindow "_GetConsoleWindow@0";
+#endif
+
 #define DEBUG 0
 /* Tweak debug output verbosity here */
 #define DEBUG_TIME 0
