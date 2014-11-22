@@ -725,8 +725,6 @@ busybox_unstripped$(EXEEXT): $(busybox-all) FORCE
 busybox$(EXEEXT): busybox_unstripped$(EXEEXT)
 ifeq ($(SKIP_STRIP),y)
 	$(Q)cp $< $@
-else ($(CONFIG_PLATFORM_WATCOM386),y)
-	$(Q)$(STRIP) busybox_unstripped$(EXEEXT) $@
 else
 	$(Q)$(STRIP) -s --remove-section=.note --remove-section=.comment \
 		busybox_unstripped$(EXEEXT) -o $@

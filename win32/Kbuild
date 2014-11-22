@@ -12,6 +12,7 @@ lib-y += getpagesize.o
 lib-y += ftruncate.o
 lib-y += msvc-nothrow.o
 lib-y += msvc-inval.o
+lib-y += wcwidth.o
 lib-y += usleep.o
 CONFIG_PLATFORM_MINGW32 = y
 endif
