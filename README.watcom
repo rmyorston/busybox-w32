@@ -3,10 +3,6 @@ An experimental compilation of busybox-win32 for the NT/Win32 target using Open 
 This document: is a temporary set of notes while porting to Watcom
 When it is done, a much less verbose version will be merged into README.win32
 
-The first aim is to be able to cross-compile from Linux to Windows (avoiding having to port 
-the kconfig system). Initial tests setting CC and HOSTCC to owcc still makes kconfig to build
-without issues, so there is hope :)
-
 To build, make a build directory and cd to it
 from within the build directory, do :
 
@@ -22,10 +18,36 @@ WIPFC=$WATCOM/wipfc
 
 an out-of-tree build is preferrable since it will not pollute the source tree
 
-When busybox-win32 successully builds on Linux, the next aim will be to build it natively
-on Windows (preferably without any *nix environment stuff) or a clean WINE prefix.
+STATUS
+
+Current status is that Open Watcom (v2 fork) can build busybox!
+V2 fork: https://github.com/open-watcom
+Many applets work fine and the executable is smaller than the MinGW version
+Shell still crashes. At this stage, eliminating some of the hacks and getting better solutions
+to some modifications (for example cases with variable sized arrays or compilation tests with a 
+"-1" dimension array)
+
+
+AIMS
+I imagine the porting to be done in 3 stages
+
+Stage 1 (completed, but room for improvement) : Cross-compile busybox for Win32 on a Linux HOSTCC
+At this stage, gcc is still used as HOSTCC
+
+
+Stage 2 : Enable using Watcom also as HOSTCC, adapt kbuild core system
+This modification is especially needed for stage 3
+
+Stage 3 : Enable building natively on Windows
 
 Expected dependencies for native compilation on Windows:
-shell? Perhaps if unavoidable, we will stick to the stock "cmd" if possible
-gmake: wmake can not handle the Makefiles in busybox.
-pdcurses-win32a : especially for "make menuconfig"
+shell? Perhaps if unavoidable, we will stick to the stock "cmd" if possible - make alternative .bat scripts?
+gmake: wmake can not handle the Makefiles in busybox - make alternative wmake files?
+pdcurses-win32a : especially for "make menuconfig" - not critical
+
+
+FUTURE PROSPECTS
+
+The work done on the Watcom port could ultimately also help porting to other alternative compilers,
+for example - one could do a "stage 1" port to MSVC using the msvcwrapper with basically the same strategy
+(http://code.google.com/p/wrapmsvc/)
