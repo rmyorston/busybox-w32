@@ -102,6 +102,11 @@
  * those files will have correct dependencies.
  */
 
+#ifdef __WATCOMC__
+/* assume overlapping needs */
+#define __MINGW32__ 1
+#endif
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #ifndef __MINGW32__
@@ -114,9 +119,11 @@
 #include <stdio.h>
 #include <limits.h>
 #include <ctype.h>
+
 #ifndef __MINGW32__
 #include <arpa/inet.h>
 #endif
+
 //bbox disabled: #include <alloca.h>
 
 /* bbox: not needed
@@ -127,7 +134,12 @@
 */
 
 #ifdef __MINGW32__
+
+#ifndef __WATCOMC__
 #define UNUSED __attribute__ ((__unused__))
+#else
+#define UNUSED /* nothing ? */
+#endif
 
 /* Workaround specifically for fixdep */
 #define PROT_READ 0
@@ -136,7 +148,7 @@ void *mmap(void *start UNUSED, size_t size, int prot UNUSED,
 	   int flags UNUSED, int fd, off_t offset UNUSED)
 {
 	void *p;
-	void *curP;
+	long *curP;
 	ssize_t readB;
 
 	p = malloc(size);

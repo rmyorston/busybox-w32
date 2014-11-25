@@ -6,8 +6,14 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef __WATCOMC__
 #include <regex.h>
 #include <sys/utsname.h>
+#else
+#include "../../win32/regex.c"
+#include "../../win32/sys/utsname.h"
+#endif
 
 #define LKC_DIRECT_LINK
 #include "lkc.h"

@@ -16,6 +16,13 @@
 #define LKC_DIRECT_LINK
 #include "lkc.h"
 
+#if defined __WATCOMC__
+#undef N_
+#define N_(x) x
+#define random(x) rand(x)
+#define srandom(x) srand(x)
+#endif
+
 static void conf(struct menu *menu);
 static void check_conf(struct menu *menu);
 

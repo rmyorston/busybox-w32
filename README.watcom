@@ -18,6 +18,9 @@ WIPFC=$WATCOM/wipfc
 
 an out-of-tree build is preferrable since it will not pollute the source tree
 
+______________________________________________________________________________________________________
+
+
 STATUS
 
 Current status is that Open Watcom (v2 fork) can build busybox!
@@ -27,6 +30,10 @@ Shell still crashes. At this stage, eliminating some of the hacks and getting be
 to some modifications (for example cases with variable sized arrays or compilation tests with a 
 "-1" dimension array)
 
+Using Watcom as HOSTCC is a work-in-progress (disabled by default)
+
+______________________________________________________________________________________________________
+
 
 AIMS
 I imagine the porting to be done in 3 stages
@@ -34,9 +41,18 @@ I imagine the porting to be done in 3 stages
 Stage 1 (completed, but room for improvement) : Cross-compile busybox for Win32 on a Linux HOSTCC
 At this stage, gcc is still used as HOSTCC
 
+______________________________________________________________________________________________________
+
 
 Stage 2 : Enable using Watcom also as HOSTCC, adapt kbuild core system
 This modification is especially needed for stage 3
+
+Currently, Watcom can build the binaries in scripts/basic and scripts/kconfig
+The makefile fails at the point where srcipts/kconfig/conf is invoked
+( Segmentation fault (core dumped) )
+Using Watcom as HOSTCC is currently disabled by commenting out this section in scripts/Makefile.host
+
+______________________________________________________________________________________________________
 
 Stage 3 : Enable building natively on Windows
 
@@ -44,6 +60,8 @@ Expected dependencies for native compilation on Windows:
 shell? Perhaps if unavoidable, we will stick to the stock "cmd" if possible - make alternative .bat scripts?
 gmake: wmake can not handle the Makefiles in busybox - make alternative wmake files?
 pdcurses-win32a : especially for "make menuconfig" - not critical
+
+______________________________________________________________________________________________________
 
 
 FUTURE PROSPECTS

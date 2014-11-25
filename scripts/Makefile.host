@@ -92,9 +92,11 @@ endif
 #ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
 #HOSTCC = owcc
 #HOSTCXX = owcc
-#HOSTCFLAGS = -std=c99 -Ot -D+
+#HOSTCFLAGS = -std=c99 -Wc,-aa -Ot -D+
 #HOSTCXXFLAGS = -Ot -D+
 #HOSTCPPFLAGS = 
+#hostc_flags    = $(__hostc_flags)
+#hostcxx_flags  = $(__hostcxx_flags)
 #ifeq ($(OS),Windows_NT)
 #	INCLUDE = $(WATCOM)/h:$(WATCOM)/h/nt
 #	HOSTCFLAGS += -bnt -I$(WATCOM)/h -I$(WATCOM)/h/nt
@@ -105,8 +107,6 @@ endif
 #	HOSTCFLAGS += -blinux -I$(WATCOM)/lh
 #	HOSTCXXFLAGS += -blinux -I$(WATCOM)/lh
 #endif
-#hostc_flags    = $(__hostc_flags)
-#hostcxx_flags  = $(__hostcxx_flags)
 #else
 hostc_flags    = -Wp,-MD,$(depfile) $(__hostc_flags)
 hostcxx_flags  = -Wp,-MD,$(depfile) $(__hostcxx_flags)

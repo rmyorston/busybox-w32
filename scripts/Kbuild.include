@@ -136,6 +136,8 @@ if_changed = $(if $(strip $(filter-out $(PHONY),$?)          \
 
 # execute the command and also postprocess generated .d dependencies
 # file
+
+ifneq ($(CONFIG_PLATFORM_WATCOM386),y)
 if_changed_dep = $(if $(strip $(filter-out $(PHONY),$?)  \
 		$(filter-out FORCE $(wildcard $^),$^)    \
 	$(call arg-check, $(cmd_$(1)), $(cmd_$@)) ),     \
@@ -144,6 +146,13 @@ if_changed_dep = $(if $(strip $(filter-out $(PHONY),$?)  \
 	scripts/basic/fixdep $(depfile) $@ '$(make-cmd)' > $(@D)/.$(@F).tmp; \
 	rm -f $(depfile); \
 	mv -f $(@D)/.$(@F).tmp $(@D)/.$(@F).cmd)
+else
+if_changed_dep = $(if $(strip $(filter-out $(PHONY),$?)  \
+		$(filter-out FORCE $(wildcard $^),$^)    \
+	$(call arg-check, $(cmd_$(1)), $(cmd_$@)) ),     \
+	@set -e; \
+	$(echo-cmd) $(cmd_$(1));)
+endif
 
 # Usage: $(call if_changed_rule,foo)
 # will check if $(cmd_foo) changed, or any of the prequisites changed,

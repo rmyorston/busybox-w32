@@ -151,7 +151,11 @@
 
 #include "zconf.hash.c"
 
+#ifndef __WATCOMC__
 #define printd(mask, fmt...) if (cdebug & (mask)) printf(fmt)
+#else
+#define printd(mask, fmt, ...) if (cdebug & (mask)) printf(fmt)
+#endif
 
 #define PRINTD		0x0001
 #define DEBUG_PARSE	0x0002

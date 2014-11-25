@@ -30,6 +30,11 @@
 #define LKC_DIRECT_LINK
 #include "lkc.h"
 
+#if defined __WATCOMC__
+#undef N_
+#define N_(x) x
+#endif
+
 static char menu_backtitle[128];
 static const char mconf_readme[] = N_(
 "Overview\n"

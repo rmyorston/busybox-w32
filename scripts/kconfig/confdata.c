@@ -14,9 +14,13 @@
 #define LKC_DIRECT_LINK
 #include "lkc.h"
 
+#ifndef __WATCOMC__
 static void conf_warning(const char *fmt, ...)
 	__attribute__ ((format (printf, 1, 2)));
-
+#else
+static void conf_warning(const char *fmt, ...);
+#endif
+	
 static const char *conf_filename;
 static int conf_lineno, conf_warnings, conf_unsaved;
 
