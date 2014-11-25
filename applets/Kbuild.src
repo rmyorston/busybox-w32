@@ -22,10 +22,10 @@ else
 srctree_slash = $(srctree)/
 endif
 
-applets/applets.o: include/usage_compressed.h include/applet_tables.h
-
 HOSTCFLAGS_usage.o = -I$(srctree_slash)include -Iinclude
 HOSTCFLAGS_usage_pod.o = -I$(srctree_slash)include -Iinclude
+
+applets/applets.o: include/usage_compressed.h include/applet_tables.h
 
 applets/applet_tables: .config include/applets.h
 applets/usage:         .config include/applets.h
