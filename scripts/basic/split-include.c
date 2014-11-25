@@ -31,8 +31,15 @@
 #include <unistd.h>
 
 #if defined __WATCOMC__
-#define _popen_ _popen
-#define _pclose_ _pclose
+#if defined __LINUX__
+/* watcom linux c library currently lack popen/pclose */
+#define _POPEN fopen
+#define _PCLOSE fclose
+#elif defined __NT__
+#define _POPEN _popen
+#define _PCLOSE _pclose
+#endif
+
 #endif
 
 
@@ -196,7 +203,7 @@ int main(int argc, const char * argv [])
      */
 
 #if defined __WATCOMC__
-    fp_find = _popen("find * -type f -name *.h -print", "r");
+    fp_find = _POPEN("find * -type f -name *.h -print", "r");
 #else
     fp_find = popen("find * -type f -name \"*.h\" -print", "r");
 #endif
@@ -230,7 +237,7 @@ int main(int argc, const char * argv [])
 	}
     }
 #if defined __WATCOMC__
-    if (_pclose(fp_find) != 0)
+    if (_PCLOSE(fp_find) != 0)
 #else
     if (pclose(fp_find) != 0)
 #endif
