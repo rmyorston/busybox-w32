@@ -168,7 +168,7 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 				mode = source_stat.st_mode & ~saved_umask;
 			/* Allow owner to access new dir (at least for now) */
 			mode |= S_IRWXU;
-			if (mkdir(dest, mode) < 0) {			  
+			if (mkdir(dest, mode) < 0) {
 				umask(saved_umask);
 				bb_perror_msg("can't create directory '%s'", dest);
 				return -1;

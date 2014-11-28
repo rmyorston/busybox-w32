@@ -15,13 +15,8 @@
 
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
-
-#ifdef _LIBC
-# include <getopt.h>
-#else
-# include <config.h>
-# include "getopt.h"
-#endif
+
+#include <getopt.h>
 #include "getopt_int.h"
 
 #include <stdio.h>

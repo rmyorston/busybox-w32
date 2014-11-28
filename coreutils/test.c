@@ -866,7 +866,7 @@ int test_main(int argc, char **argv)
 
 	/* We must do DEINIT_S() prior to returning */
 	INIT_S();
-	
+
 	res = setjmp(leaving);
 	if (res)
 		goto ret;

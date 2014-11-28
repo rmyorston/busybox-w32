@@ -393,6 +393,7 @@ int printf_main(int argc UNUSED_PARAM, char **argv)
 		return 1; /* match coreutils 6.10 (sans error msg to stderr) */
 	//if (dup2(1, 1) != 1) - old way
 	//	return 1;
+
 	/* bash builtin errors out on "printf '-%s-\n' foo",
 	 * coreutils-6.9 works. Both work with "printf -- '-%s-\n' foo".
 	 * We will mimic coreutils. */

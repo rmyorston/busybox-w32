@@ -1,7 +1,7 @@
 /* a collection of watcom-specific hacks */
 
 #ifndef WATCOM_HACKS
-#define WATCOM_HACKS
+#define WATCOM_HACKS 1
 
 /* enable various Windows and standard functions in Watcom libc */
 #define __STDC_WANT_LIB_EXT1__ 1
