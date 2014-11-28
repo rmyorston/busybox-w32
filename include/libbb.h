@@ -18,7 +18,6 @@
 
 #if defined __WATCOMC__
 #include <direct.h> 
-#include <autoconf.h>
 #else
 #include <dirent.h>
 #endif
@@ -173,13 +172,13 @@ int klogctl(int type, char *b, int len);
 # define BUFSIZ 4096
 #endif
 
+#if defined __WATCOMC__
+#include <watcom.h>
+#endif
+
 /* Can't use ENABLE_PLATFORM_MINGW32 because it's also called by host compiler */
 #if ENABLE_PLATFORM_MINGW32
 # include "mingw.h"
-#endif
-
-#if defined __WATCOMC__
-#include <watcom.h>
 #endif
 
 /* Busybox does not use threads, we can speed up stdio. */

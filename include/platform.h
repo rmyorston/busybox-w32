@@ -7,8 +7,15 @@
 #ifndef BB_PLATFORM_H
 #define BB_PLATFORM_H 1
 
+#if defined(__WATCOMC__)
+#if !ENABLE_PLATFORM_MINGW32
+#undef ENABLE_PLATFORM_MINGW32
+#define ENABLE_PLATFORM_MINGW32 1
+#endif
+#endif /* make sure this is active early! */
+
 #if ENABLE_PLATFORM_MINGW32
-# if !defined(__MINGW32__) /* HOSTCC is called */
+# if !defined(__MINGW32__) && !defined(__WATCOMC__) /* HOSTCC is called */
 #  undef ENABLE_PLATFORM_MINGW32
 # endif
 #else
