@@ -215,7 +215,6 @@ int cal_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	fflush_stdout_and_exit(EXIT_SUCCESS);
-	return EXIT_SUCCESS;
 }
 
 /*
@@ -290,6 +289,7 @@ static void day_array(unsigned month, unsigned year, unsigned *days)
 static void trim_trailing_spaces_and_print(char *s)
 {
 	char *p = s;
+
 	while (*p) {
 		++p;
 	}
@@ -299,7 +299,6 @@ static void trim_trailing_spaces_and_print(char *s)
 			p[1] = '\0';
 			break;
 		}
-
 	}
 
 	puts(s);

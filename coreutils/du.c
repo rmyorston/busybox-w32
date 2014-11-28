@@ -132,7 +132,7 @@ static unsigned long long du(const char *filename)
 	}
 
 	sum = statbuf.st_blocks;
-	
+
 	if (S_ISLNK(statbuf.st_mode)) {
 		if (G.slink_depth > G.du_depth) { /* -H or -L */
 			if (stat(filename, &statbuf) != 0) {
@@ -141,7 +141,7 @@ static unsigned long long du(const char *filename)
 				return 0;
 			}
 			sum = statbuf.st_blocks;
-		if (G.slink_depth == 1) {
+			if (G.slink_depth == 1) {
 				/* Convert -H to -L */
 				G.slink_depth = INT_MAX;
 			}

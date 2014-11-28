@@ -64,9 +64,7 @@ static void expand(FILE *file, unsigned tab_size, unsigned opt)
 	char *line;
 
 	while ((line = xmalloc_fgets(file)) != NULL) {
-
 		unsigned char c;
-
 		char *ptr;
 		char *ptr_strbeg;
 

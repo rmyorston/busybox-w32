@@ -2137,8 +2137,10 @@ int gzip_main(int argc UNUSED_PARAM, char **argv)
 	//if (opt & 0x2) // -f
 	//if (opt & 0x4) // -v
 	argv += optind;
-	SET_PTR_TO_GLOBALS((char *)xzalloc(sizeof(struct globals)+sizeof(struct globals2)) 
-	+ sizeof(struct globals));
+
+	SET_PTR_TO_GLOBALS((char *)xzalloc(sizeof(struct globals)+sizeof(struct globals2))
+			+ sizeof(struct globals));
+
 	/* Allocate all global buffers (for DYN_ALLOC option) */
 	ALLOC(uch, G1.l_buf, INBUFSIZ);
 	ALLOC(uch, G1.outbuf, OUTBUFSIZ);

@@ -35,11 +35,9 @@ const char bb_msg_standard_output[] ALIGN1 = "standard output";
 
 const char bb_hexdigits_upcase[] ALIGN1 = "0123456789ABCDEF";
 
-
 #if !ENABLE_PLATFORM_MINGW32
 const char bb_busybox_exec_path[] ALIGN1 = CONFIG_BUSYBOX_EXEC_PATH;
 #endif
-
 const char bb_default_login_shell[] ALIGN1 = LIBBB_DEFAULT_LOGIN_SHELL;
 /* util-linux manpage says /sbin:/bin:/usr/sbin:/usr/bin,
  * but I want to save a few bytes here. Check libbb.h before changing! */

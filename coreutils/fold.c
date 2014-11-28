@@ -132,10 +132,10 @@ int fold_main(int argc UNUSED_PARAM, char **argv)
 			if (option_mask32 & FLAG_BREAK_SPACES) {
 				unsigned i;
 				unsigned logical_end;
-				
+
 				/* Look for the last blank. */
 				for (logical_end = offset_out - 1; (int)logical_end >= 0; logical_end--) {
-				    if (!isblank(line_out[logical_end]))
+					if (!isblank(line_out[logical_end]))
 						continue;
 
 					/* Found a space or tab.

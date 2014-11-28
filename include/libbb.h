@@ -126,7 +126,7 @@
 # include <arpa/inet.h>
 #elif defined __APPLE__
 # include <netinet/in.h>
-#elif ENABLE_PLATFORM_MINGW32 || __WATCOMC__
+#elif ENABLE_PLATFORM_MINGW32
 # ifndef WINVER
 #  define WINVER 0x0501
 # endif
@@ -878,7 +878,7 @@ char* str_tolower(char *str) FAST_FUNC;
 #endif
 
 char *utoa(unsigned n) FAST_FUNC;
-#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
+#if ENABLE_PLATFORM_MINGW32
 # define itoa bb_itoa
 #endif
 char *itoa(int n) FAST_FUNC;
@@ -1692,7 +1692,7 @@ void free_procps_scan(procps_status_t* sp) FAST_FUNC;
 procps_status_t* procps_scan(procps_status_t* sp, int flags) FAST_FUNC;
 /* Format cmdline (up to col chars) into char buf[size] */
 /* Puts [comm] if cmdline is empty (-> process is a kernel thread) */
-#if !ENABLE_PLATFORM_MINGW32 || !__WATCOMC__
+#if !ENABLE_PLATFORM_MINGW32
 void read_cmdline(char *buf, int size, unsigned pid, const char *comm) FAST_FUNC;
 #else
 #define read_cmdline(buf, size, pid, comm) snprintf(buf, size, "[%s]", comm)
@@ -1832,7 +1832,7 @@ extern const char bb_path_wtmp_file[] ALIGN1;
 #define bb_path_motd_file "/etc/motd"
 
 #define bb_dev_null "/dev/null"
-#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
+#if ENABLE_PLATFORM_MINGW32
 #define bb_busybox_exec_path get_busybox_exec_path()
 #else
 extern const char bb_busybox_exec_path[] ALIGN1;

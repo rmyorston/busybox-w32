@@ -17,8 +17,6 @@
 
 /* Written by Bruno Haible and Martin Lambers.  */
 
-#include <config.h>
-
 /* Specification. */
 #include <unistd.h>
 
