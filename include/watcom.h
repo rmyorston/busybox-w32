@@ -32,8 +32,6 @@
 
 /* we try to keep as close as possible to MinGW port */
 typedef long long off64_t;
-#undef SIGUSR1
-#undef SIGUSR2
 #include "mingw.h"
 #undef ENABLE_PLATFORM_MINGW32
 #define ENABLE_PLATFORM_MINGW32 1
@@ -45,10 +43,24 @@ typedef long long off64_t;
 #define _GL_WINDOWS_64_BIT_OFF_T 1
 #define REGEX_MALLOC 1
 
-#define mingw_open open 
-#define mingw_dup2 dup2 
-#define mingw_fopen fopen
+/* signals */
+#define SIGHUP SIG_IGN
+#define SIGQUIT SIG_IGN
+#define SIGKILL SIG_IGN
+#define SIGPIPE SIG_IGN
+#define SIGALRM SIG_IGN
+#define SIGCHLD SIG_IGN
+#define SIGCONT SIG_IGN
+#define SIGSTOP SIG_IGN
+#define SIGTSTP SIG_IGN
+#define SIGTTIN SIG_IGN
+#define SIGTTOU SIG_IGN
+#define SIGXCPU SIG_IGN
+#define SIGXFSZ SIG_IGN
+#define SIGVTALRM SIG_IGN
+#define SIGWINCH SIG_IGN
 
+#define SIG_UNBLOCK SIG_IGN
 
 /* from Wine*/
 #define REPARSE_DATA_BUFFER_HEADER_SIZE 8
