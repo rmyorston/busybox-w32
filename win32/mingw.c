@@ -8,6 +8,8 @@ int _CRT_glob = 0;
 
 unsigned int _CRT_fmode = _O_BINARY;
 
+smallint bb_got_signal;
+
 static int err_win_to_posix(DWORD winerr)
 {
 	int error = ENOSYS;
