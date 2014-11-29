@@ -27,7 +27,9 @@ int FAST_FUNC check_signature16(transformer_aux_data_t *aux, int src_fd, unsigne
 	return 0;
 }
 
-#if !ENABLE_PLATFORM_MINGW32
+
+#if SEAMLESS_COMPRESSION
+
 void check_errors_in_children(int signo)
 {
 	int status;
@@ -58,7 +60,6 @@ void check_errors_in_children(int signo)
 		bb_got_signal = 1;
 	}
 }
-#endif
 
 /* transformer(), more than meets the eye */
 #if BB_MMU
@@ -113,9 +114,6 @@ void FAST_FUNC open_transformer(int fd, const char *transform_prog)
 	close(fd_pipe.wr); /* don't want to write to the child */
 	xmove_fd(fd_pipe.rd, fd);
 }
-
-
-#if SEAMLESS_COMPRESSION
 
 /* Used by e.g. rpm which gives us a fd without filename,
  * thus we can't guess the format from filename's extension.
