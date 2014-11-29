@@ -353,13 +353,6 @@ int mingw_dup2 (int fd, int fdto);
 char *mingw_getcwd(char *pointer, int len);
 
 
-#ifdef USE_WIN32_MMAP
-int mingw_getpagesize(void);
-#define getpagesize mingw_getpagesize
-#else
-int getpagesize(void);	/* defined in MinGW's libgcc.a */
-#endif
-
 IMPL(getgid,int,1,void);
 NOIMPL(getgroups,int n UNUSED_PARAM,gid_t *groups UNUSED_PARAM);
 IMPL(getppid,int,1,void);
