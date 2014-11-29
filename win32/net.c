@@ -16,7 +16,9 @@ void init_winsock(void)
 	if (WSAStartup(MAKEWORD(2,2), &wsa))
 		bb_error_msg_and_die("unable to initialize winsock subsystem, error %d",
 				     WSAGetLastError());
+#ifndef __WATCOMC__
 	atexit((void(*)(void)) WSACleanup); /* may conflict with other atexit? */
+#endif
 }
 
 int mingw_socket(int domain, int type, int protocol)
