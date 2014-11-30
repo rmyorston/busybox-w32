@@ -142,7 +142,6 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 		}
 
 		/* Did we ever create source ourself before? */
-#if !ENABLE_PLATFORM_MINGW32
 		tp = is_in_ino_dev_hashtable(&source_stat);
 		if (tp) {
 			/* We did! it's a recursion! man the lifeboats... */
@@ -150,7 +149,6 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 					source);
 			return -1;
 		}
-#endif
 
 		if (dest_exists) {
 			if (!S_ISDIR(dest_stat.st_mode)) {
@@ -181,11 +179,9 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 				return -1;
 			}
 		}
-#if !ENABLE_PLATFORM_MINGW32
 		/* remember (dev,inode) of each created dir.
 		 * NULL: name is not remembered */
 		add_to_ino_dev_hashtable(&dest_stat, NULL);
-#endif
 
 		/* Recursively copy files in SOURCE */
 		dp = opendir(source);
@@ -255,7 +251,6 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 			goto dont_cat;
 		}
 
-#if !ENABLE_PLATFORM_MINGW32
 		if (ENABLE_FEATURE_PRESERVE_HARDLINKS && !FLAGS_DEREF) {
 			const char *link_target;
 			link_target = is_in_ino_dev_hashtable(&source_stat);
@@ -273,7 +268,6 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 			}
 			add_to_ino_dev_hashtable(&source_stat, dest);
 		}
-#endif
 
 		src_fd = open_or_warn(source, O_RDONLY);
 		if (src_fd < 0)
