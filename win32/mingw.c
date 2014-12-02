@@ -837,11 +837,14 @@ size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm
 	size_t ret;
 	char day[3];
 	char *t;
-	char *fmt;
+	char *fmt, *newfmt;
+	struct tm tm2;
+	int m;
 
 	/*
-	 * Emulate the '%e' format that Windows' strftime lacks.  Happily, the
-	 * string that replaces '%e' is always two characters long.
+	 * Emulate the '%e' and '%s' formats that Windows' strftime lacks.
+	 * Happily, the string that replaces '%e' is two characters long.
+	 * '%s' is a bit more complicated.
 	 */
 	fmt = xstrdup(format);
 	for ( t=fmt; *t; ++t ) {
@@ -854,6 +857,15 @@ size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm
 					strcpy(day, "  ");
 				}
 				memcpy(t++, day, 2);
+			}
+			else if ( t[1] == 's' ) {
+				*t = '\0';
+				m = t - fmt;
+				tm2 = *tm;
+				newfmt = xasprintf("%s%d%s", fmt, (int)mktime(&tm2), t+2);
+				free(fmt);
+				t = newfmt + m + 1;
+				fmt = newfmt;
 			}
 			else if ( t[1] != '\0' ) {
 				++t;
