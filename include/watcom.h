@@ -45,13 +45,13 @@ typedef long long off64_t;
 
 /* signals */
 #define SIGHUP SIG_IGN
-#define SIGQUIT SIG_IGN
-#define SIGKILL SIG_IGN
+#define SIGQUIT SIGABRT
+#define SIGKILL SIGTERM
 #define SIGPIPE SIG_IGN
 #define SIGALRM SIG_IGN
 #define SIGCHLD SIG_IGN
-#define SIGCONT SIG_IGN
-#define SIGSTOP SIG_IGN
+#define SIGCONT SIGUSR2
+#define SIGSTOP SIGUSR1
 #define SIGTSTP SIG_IGN
 #define SIGTTIN SIG_IGN
 #define SIGTTOU SIG_IGN
@@ -60,7 +60,7 @@ typedef long long off64_t;
 #define SIGVTALRM SIG_IGN
 #define SIGWINCH SIG_IGN
 
-#define SIG_UNBLOCK SIG_IGN
+#define SIG_UNBLOCK SIGUSR3
 
 /* from Wine*/
 #define REPARSE_DATA_BUFFER_HEADER_SIZE 8
