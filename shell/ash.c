@@ -473,7 +473,9 @@ static void trace_vprintf(const char *fmt, va_list va);
 #ifndef __WATCOMC__
 #define xbarrier() do { __asm__ __volatile__ ("": : :"memory"); } while (0)
 #else
-#define xbarrier() /* nothing? some asm stuff? */
+extern void asm_sfence( void );
+#pragma aux asm_sfence = 0x0F 0xAE 0xF8;
+#define xbarrier() do {  asm_sfence(); } while (0)
 #endif
 
 #define is_name(c)      ((c) == '_' || isalpha((unsigned char)(c)))
