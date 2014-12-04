@@ -1861,7 +1861,7 @@ extern struct globals *const ptr_to_globals;
 #define barrier() __asm__ __volatile__("":::"memory")
 #else
 extern void barrier( void );
-#pragma aux barrier = 0x0F 0xAE 0xF8;
+#pragma aux barrier = "mfence";
 #endif
 
 #define SET_PTR_TO_GLOBALS(x) do { \

@@ -168,8 +168,8 @@ OBJDUMP 	= dmpobj
 # -s strips debug flags, for debug build
 # remove this
 ARFLAGS		= -q
-CFLAGS 		= -bnt -D_UNICODE
-CXXFLAGS 	= -bnt -D_UNICODE
+CFLAGS 		= -bnt -mthreads -mtune=i686 -D_UNICODE
+CXXFLAGS 	= -bnt -mthreads -mtune=i686 -D_UNICODE
 AFLAGS 		= 
 LIBPATH		= $(WATCOM)/lib386:$(WATCOM)/lib386/nt:$(WATCOM)/binnt
 LIBRARY		= clib3r math387r ncrypt crypt32 userenv ws2_32
