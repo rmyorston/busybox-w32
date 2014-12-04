@@ -475,15 +475,9 @@ static void trace_vprintf(const char *fmt, va_list va);
 #ifndef __WATCOMC__
 #define xbarrier() do { __asm__ __volatile__ ("": : :"memory"); } while (0)
 #else
-<<<<<<< HEAD
 extern void asm_mfence( void );
 #pragma aux asm_mfence = "mfence";
 #define xbarrier() do {  asm_mfence(); } while (0)
-=======
-extern void asm_sfence( void );
-#pragma aux asm_sfence = 0x0F 0xAE 0xF8;
-#define xbarrier() do {  asm_sfence(); } while (0)
->>>>>>> attempting watcom-variants of barrier and xbarrier
 #endif
 
 #define is_name(c)      ((c) == '_' || isalpha((unsigned char)(c)))

@@ -165,11 +165,16 @@ OBJDUMP 	= dmpobj
 # character encoding: use tchar.h wherever possible
 # several options: none, -D_UNICODE, -D_MBCS
 ARFLAGS		= -q
+<<<<<<< HEAD
 endif
 
 ifeq ($(CONFIG_PLATFORM_WATCOM386_WIN32),y)
 CFLAGS 		= -bnt -mthreads -mtune=i686 -fptune=i686 -D_UNICODE
 CXXFLAGS 	= -bnt -mthreads -mtune=i686 -fptune=i686 -D_UNICODE
+=======
+CFLAGS 		= -bnt -mthreads -mtune=i686 -D_UNICODE
+CXXFLAGS 	= -bnt -mthreads -mtune=i686 -D_UNICODE
+>>>>>>> change barriers to mfence
 AFLAGS 		= 
 LIBPATH		= $(WATCOM)/lib386:$(WATCOM)/lib386/nt:$(WATCOM)/binnt
 LIBRARY		= ncrypt crypt32 userenv ws2_32
