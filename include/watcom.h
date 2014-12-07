@@ -24,6 +24,8 @@
 #include <process.h>
 #include <wincon.h>
 
+#include <alloca.h>
+
 /* getting rid of GCC-isms */
 #undef __volatile__
 #define __volatile__ /* nothing */
@@ -81,21 +83,6 @@ and not MinGW replacement functions */
 #define NSIG 13
 
 extern int ftruncate (int fd, off_t length);
-
-/* explicitly link system libraries here
- * using -Wl, ... with spaces does not work that great
- * -l seems to make owcc want to look for .a libraries
- * By linking to the object files, I hope that the linker
- * will be less confused at the later stage */
-
-#pragma library ("clib3r.lib")
-#pragma library ("kernel32.lib")
-#pragma library ("math387r.lib")
-#pragma library ("crypt32.lib")
-#pragma library ("userenv.lib")
-#pragma library ("ws2_32.lib")
-#pragma library ("wr7rdll.lib") /* for mktemp */
-
 
 
 
