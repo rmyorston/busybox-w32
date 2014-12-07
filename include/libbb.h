@@ -104,9 +104,7 @@
 #ifdef DMALLOC
 # include <dmalloc.h>
 #endif
-#ifdef __WATCOMC__
-# include <malloc.h>
-#endif
+
 /* Just in case libc doesn't define some of these... */
 #ifndef _PATH_PASSWD
 #define _PATH_PASSWD  "/etc/passwd"

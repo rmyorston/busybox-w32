@@ -31,6 +31,15 @@ library shell/lib.a
 library sysklogd/lib.a
 library util-linux/lib.a
 library util-linux/volume_id/lib.a
+#system libraries to link
+library clib3r
+library kernel32
+library math387r
+library crypt32
+library userenv
+library ws2_32
+
+
 
 
 
