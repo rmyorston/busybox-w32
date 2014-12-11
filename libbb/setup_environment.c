@@ -30,6 +30,14 @@
 
 #include "libbb.h"
 
+#if ENABLE_PLATFORM_MINGW32
+static void xsetenv_if_unset(const char *key, const char *value)
+{
+	if (!getenv(key))
+		xsetenv(key, value);
+}
+#endif
+
 void FAST_FUNC setup_environment(const char *shell, int flags, const struct passwd *pw)
 {
 	if (!shell || !shell[0])
@@ -61,6 +69,9 @@ void FAST_FUNC setup_environment(const char *shell, int flags, const struct pass
 		//xsetenv("HOME",    pw->pw_dir);
 		//xsetenv("SHELL",   shell);
 	} else if (flags & SETUP_ENV_CHANGEENV) {
+#if ENABLE_PLATFORM_MINGW32
+#define xsetenv(k, v) xsetenv_if_unset(k, v)
+#endif
 		/* Set HOME, SHELL, and if not becoming a super-user,
 		 * USER and LOGNAME.  */
 		if (pw->pw_uid) {
