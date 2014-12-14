@@ -43,12 +43,14 @@
  */
 
 #if defined __WATCOMC__
-#define _WIN32_WINNT 0x0501
+#undef _WIN32_WINNT
+#define _WIN32_WINNT 0x0501 /* Windows XP */
+#undef WINVER
+#define WINVER 0x0501
+
 #include <winsock2.h>
 #include <tchar.h>
 #include <windows.h>
-#include <windowsx.h>
-#include <wincon.h>
 #endif
 
 #define DEBUG 0

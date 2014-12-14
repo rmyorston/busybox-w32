@@ -7,14 +7,14 @@
 #define __STDC_WANT_LIB_EXT1__ 1
 
 
-#include <winsock2.h>
-#include <tchar.h>
-#include <windows.h>
-
 #undef _WIN32_WINNT
 #define _WIN32_WINNT 0x0501 /* Windows XP */
 #undef WINVER
 #define WINVER 0x0501
+
+#include <winsock2.h>
+#include <tchar.h>
+#include <windows.h>
 
 #include <windowsx.h>
 #include <winnt.h>
