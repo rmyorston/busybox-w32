@@ -746,7 +746,8 @@ static int busybox_main(char **argv)
 	/*bb_error_msg_and_die("applet not found"); - sucks in printf */
 	full_write2_str(applet_name);
 	full_write2_str(": applet not found\n");
-	xfunc_die();
+	/* POSIX: "If a command is not found, the exit status shall be 127" */
+	exit(127);
 }
 
 void FAST_FUNC run_applet_no_and_exit(int applet_no, char **argv)
@@ -870,6 +871,7 @@ int main(int argc UNUSED_PARAM, char **argv)
 	/*bb_error_msg_and_die("applet not found"); - sucks in printf */
 	full_write2_str(applet_name);
 	full_write2_str(": applet not found\n");
-	xfunc_die();
+	/* POSIX: "If a command is not found, the exit status shall be 127" */
+	exit(127);
 #endif
 }
