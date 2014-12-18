@@ -8940,7 +8940,6 @@ void evaltreenr(union node *x, int y) {
 #ifndef __WATCOMC__
 static
 #endif
-
 void
 evalloop(union node *n, int flags)
 {
