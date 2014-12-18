@@ -180,15 +180,13 @@ int mingw_system(const char *cmd);
 
 int clearenv(void);
 char *mingw_getenv(const char *name);
-int mingw_putenv(const char *env);
 char *mingw_mktemp(char *template);
 int mkstemp(char *template);
 char *realpath(const char *path, char *resolved_path);
 int setenv(const char *name, const char *value, int replace);
-int unsetenv(const char *env);
+void unsetenv(const char *env);
 
 #define getenv mingw_getenv
-#define putenv mingw_putenv
 #define mktemp mingw_mktemp
 
 /*
