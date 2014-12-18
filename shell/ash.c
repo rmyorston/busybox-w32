@@ -2323,10 +2323,10 @@ setvar(const char *name, const char *val, int flags)
 
 	INT_OFF;
 	nameeq = ckmalloc(namelen + vallen + 2);
-	p = (char) memcpy(nameeq, name, namelen) + namelen;
+	p = memcpy(nameeq, name, namelen) + namelen;
 	if (val) {
 		*p++ = '=';
-		p = (char) memcpy(p, val, vallen) + vallen;
+		p = memcpy(p, val, vallen) + vallen;
 	}
 	*p = '\0';
 	setvareq(nameeq, flags | VNOSAVE);
@@ -6722,7 +6722,7 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 
 #if ENABLE_ASH_BASH_COMPAT
 	case VSSUBSTR:
-		loc = str = (char *) stackblock() + strloc;
+		loc = str = stackblock() + strloc;
 		/* Read POS in ${var:POS:LEN} */
 		pos = atoi(loc); /* number(loc) errors out on "1:4" */
 		len = str - startp - 1;
@@ -8936,7 +8936,11 @@ void evaltreenr(union node *, int) __attribute__ ((alias("evaltree"),__noreturn_
 #define evaltreenr evaltree
 #endif
 
-/* static */ void
+#ifndef __WATCOMC__
+static
+#endif
+
+void
 evalloop(union node *n, int flags)
 {
 	int status;

@@ -19,11 +19,7 @@ chown ( const char *filename,  int owner,  int group)
   errno = ENOSYS;
   return -1;
 }
-/* int
-link ( const char *oldname,  const char *newname)
-{
-  return -1;
-} */ /* implemented in win32/mingw.c */
+
 
 #undef symlink
 int
@@ -49,6 +45,23 @@ gid_t getgid(void) {
 uid_t getuid(void) {
  errno = ENOSYS;
  return 0;
+}
+
+/* the following functions fail to link when debug build with CFLAGS -g2 is used */
+
+void BUG_sizeof(void) {
+}
+
+void sed_free_and_close_stuff(void) {
+}
+
+void data_extract_to_command(void) {
+}
+
+void open_transformer(void) {
+}
+
+void check_errors_in_children(void) {
 }
 
 

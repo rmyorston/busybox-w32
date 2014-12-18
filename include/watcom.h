@@ -4,9 +4,6 @@
 #define WATCOM_HACKS 1
 
 /* enable various Windows and standard functions in Watcom libc */
-#define __STDC_WANT_LIB_EXT1__ 1
-
-
 #undef _WIN32_WINNT
 #define _WIN32_WINNT 0x0501 /* Windows XP */
 #undef WINVER
@@ -43,10 +40,9 @@ typedef long long off64_t;
 
 #define HAVE_CHSIZE 1
 #define _GL_WINDOWS_64_BIT_OFF_T 1
-#define REGEX_MALLOC 1
 
 /* signals */
-#define SIGHUP SIG_IGN
+#define SIGHUP SIGTERM
 #define SIGQUIT SIGABRT
 #define SIGKILL SIGTERM
 #define SIGPIPE SIG_IGN
@@ -54,9 +50,9 @@ typedef long long off64_t;
 #define SIGCHLD SIG_IGN
 #define SIGCONT SIGUSR2
 #define SIGSTOP SIGUSR1
-#define SIGTSTP SIG_IGN
-#define SIGTTIN SIG_IGN
-#define SIGTTOU SIG_IGN
+#define SIGTSTP SIGUSR1
+#define SIGTTIN SIGUSR1
+#define SIGTTOU SIGUSR1
 #define SIGXCPU SIG_IGN
 #define SIGXFSZ SIG_IGN
 #define SIGVTALRM SIG_IGN

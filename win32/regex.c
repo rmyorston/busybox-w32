@@ -1093,7 +1093,8 @@ regex_compile (pattern, size, syntax, bufp)
      number is put in the stop_memory as the start_memory.  */
   regnum_t regnum = 0;
 
-#ifdef DEBUG
+#ifdef DEBUG/* hacks to deal with __far */
+#define __far /* nothing */
   DEBUG_PRINT1 ("\nCompiling pattern: ");
   if (debug)
     {
@@ -1396,7 +1397,7 @@ regex_compile (pattern, size, syntax, bufp)
 		    && *p != ']')
 		  {
 		    reg_errcode_t ret
-		      = compile_range (&p, pend, translate, syntax, b);
+		      = compile_range ((const char **) &p, pend, translate, syntax, b);
 		    if (ret != REG_NOERROR) return ret;
 		  }
 
@@ -1407,7 +1408,7 @@ regex_compile (pattern, size, syntax, bufp)
 		    /* Move past the `-'.  */
 		    PATFETCH (c1);
 
-		    ret = compile_range (&p, pend, translate, syntax, b);
+		    ret = compile_range ((const char **) &p, pend, translate, syntax, b);
 		    if (ret != REG_NOERROR) return ret;
 		  }
 
@@ -3597,7 +3598,7 @@ re_match_2 (bufp, string1, size1, string2, size2, pos, regs, stop)
 
 	  if (REG_MATCH_NULL_STRING_P (reg_info[*p]) == MATCH_NULL_UNSET_VALUE)
 	    REG_MATCH_NULL_STRING_P (reg_info[*p])
-	      = group_match_null_string_p (&p1, pend, reg_info);
+	      = group_match_null_string_p ((unsigned char **) &p1, pend, reg_info);
 
 	  /* Save the position in the string where we were the last time
 	     we were at this open-group operator in case the group is
@@ -4432,7 +4433,7 @@ group_match_null_string_p (p, end, reg_info)
 
 
 	default:
-	  if (!common_op_match_null_string_p (&p1, end, reg_info))
+	  if (!common_op_match_null_string_p ((const char **) &p1, end, reg_info))
 	    return false;
 	}
     } /* while p1 < end */
@@ -4468,7 +4469,7 @@ alt_match_null_string_p (p, end, reg_info)
 	  break;
 
 	default:
-	  if (!common_op_match_null_string_p (&p1, end, reg_info))
+	  if (!common_op_match_null_string_p ((const char **) &p1, end, reg_info))
 	    return false;
 	}
     }  /* while p1 < end */
