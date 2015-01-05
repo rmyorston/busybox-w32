@@ -425,7 +425,9 @@ typedef unsigned smalluint;
 # undef HAVE_STRSEP
 # undef HAVE_STRSIGNAL
 # undef HAVE_STRVERSCMP
+#if !defined(__MINGW64_VERSION_MAJOR)
 # undef HAVE_VASPRINTF
+#endif
 # undef HAVE_UNLOCKED_STDIO
 # undef HAVE_UNLOCKED_LINE_OPS
 #endif

@@ -44,6 +44,9 @@
 
 #include "libbb.h"
 #include "bb_archive.h"
+#if ENABLE_PLATFORM_MINGW32
+#pragma pack(2)
+#endif
 
 enum {
 #if BB_BIG_ENDIAN

@@ -828,6 +828,18 @@ int main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 
+#if defined(__MINGW64_VERSION_MAJOR)
+	if ( stdin ) {
+		_setmode(fileno(stdin), _O_BINARY);
+	}
+	if ( stdout ) {
+		_setmode(fileno(stdout), _O_BINARY);
+	}
+	if ( stderr ) {
+		_setmode(fileno(stderr), _O_BINARY);
+	}
+#endif
+
 #if defined(SINGLE_APPLET_MAIN)
 	/* Only one applet is selected in .config */
 	if (argv[1] && strncmp(argv[0], "busybox", 7) == 0) {

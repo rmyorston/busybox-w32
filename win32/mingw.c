@@ -6,7 +6,12 @@
 int _CRT_glob = 0;
 #endif
 
+#if !defined(__MINGW64_VERSION_MAJOR)
 unsigned int _CRT_fmode = _O_BINARY;
+#else
+#undef _fmode
+int _fmode = _O_BINARY;
+#endif
 
 smallint bb_got_signal;
 

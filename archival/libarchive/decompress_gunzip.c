@@ -36,6 +36,9 @@
 #include <setjmp.h>
 #include "libbb.h"
 #include "bb_archive.h"
+#if ENABLE_PLATFORM_MINGW32
+#pragma pack(2)
+#endif
 
 typedef struct huft_t {
 	unsigned char e;	/* number of extra bits or operation */

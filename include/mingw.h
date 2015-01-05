@@ -122,6 +122,7 @@ NOIMPL(FAST_FUNC sigaction_set,int signo UNUSED_PARAM, const struct sigaction *s
 /*
  * stdio.h
  */
+#undef fseeko
 #define fseeko(f,o,w) fseek(f,o,w)
 
 int fdprintf(int fd, const char *format, ...);
@@ -252,6 +253,7 @@ int mingw_mkdir(const char *path, int mode);
 #if ENABLE_LFS
 # define off_t off64_t
 #endif
+#undef lseek
 #define lseek _lseeki64
 
 typedef int nlink_t;
@@ -277,6 +279,9 @@ struct mingw_stat {
 int mingw_lstat(const char *file_name, struct mingw_stat *buf);
 int mingw_stat(const char *file_name, struct mingw_stat *buf);
 int mingw_fstat(int fd, struct mingw_stat *buf);
+#undef lstat
+#undef stat
+#undef fstat
 #define lstat mingw_lstat
 #define stat mingw_stat
 #define fstat mingw_fstat
