@@ -18,7 +18,7 @@ ifeq ($(CONFIG_COMPILER_WATCOM),y)
 # -Wc,-zu does not assume stack in data segment, injects __far
 # -Wc,-s do not do stack checks
 # -Wc,-sg grow stack
-CPPFLAGS = -std=c99 -Wc,-aa -Wc,-ai -Wc,-aq -Wc,-zev -D+
+CPPFLAGS = -std=c99 -Wc,-aa -Wc,-ai -Wc,-aq -Wc,-sg -Wc,-zev -D+
 else
 # -std=gnu99 needed for [U]LLONG_MAX on some systems
 CPPFLAGS += $(call cc-option,-std=gnu99,)
