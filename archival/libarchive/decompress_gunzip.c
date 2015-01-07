@@ -36,7 +36,7 @@
 #include <setjmp.h>
 #include "libbb.h"
 #include "bb_archive.h"
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 && __GNUC__
 #pragma pack(2)
 #endif
 
