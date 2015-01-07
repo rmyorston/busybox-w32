@@ -20,7 +20,7 @@
    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.  */
 
 #if defined __WATCOMC__
-#define HAVE_ALLOCA_H 1
+#include <malloc.h>
 #endif
 
 /* AIX requires this to be the first thing in the file. */

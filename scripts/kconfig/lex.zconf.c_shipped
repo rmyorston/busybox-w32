@@ -2239,16 +2239,18 @@ FILE *zconf_fopen(const char *name)
 	FILE *f;
 
 	f = fopen(name, "r");
-	if (!f && name[0] != '/') {
+	
+    if (!f && name[0] != '/') {
 		env = getenv(SRCTREE);
 		if (env) {
-			char *fullname = alloca(strlen(env) + strlen(name) + 2);
+			char *fullname = alloca( strlen(env) + strlen(name) + 2 );
 			sprintf(fullname, "%s/%s", env, name);
 			f = fopen(fullname, "r");
 		}
 	}
 	return f;
 }
+
 
 void zconf_initscan(const char *name)
 {

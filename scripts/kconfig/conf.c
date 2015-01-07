@@ -19,8 +19,8 @@
 #if defined __WATCOMC__
 #undef N_
 #define N_(x) x
-#define random(x) rand(x)
-#define srandom(x) srand(x)
+#define random() (long) rand()
+#define srandom srand
 #endif
 
 static void conf(struct menu *menu);

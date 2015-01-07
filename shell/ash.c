@@ -8932,8 +8932,9 @@ static
 #ifndef __WATCOMC__
 void evaltreenr(union node *, int) __attribute__ ((alias("evaltree"),__noreturn__));
 #else
-/* ok... maybe not the nicest hack */
-#define evaltreenr evaltree
+void evaltreenr(union node *x, int y) {
+    evaltree(x, y);
+}
 #endif
 
 #ifndef __WATCOMC__
