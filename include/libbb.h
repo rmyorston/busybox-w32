@@ -174,6 +174,10 @@ int klogctl(int type, char *b, int len);
 #include <watcom_win32.h>
 #endif
 
+#if defined(__WATCOMC__) && defined(__LINUX__)
+#include <watcom_linux.h>
+#endif
+
 /* Can't use ENABLE_PLATFORM_MINGW32 because it's also called by host compiler */
 #if ENABLE_PLATFORM_MINGW32
 # include "mingw.h"
