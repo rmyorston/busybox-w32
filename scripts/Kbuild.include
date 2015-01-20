@@ -137,7 +137,7 @@ if_changed = $(if $(strip $(filter-out $(PHONY),$?)          \
 # execute the command and also postprocess generated .d dependencies
 # file
 
-ifneq ($(CONFIG_PLATFORM_WATCOM386),y)
+ifneq ($(CONFIG_COMPILER_WATCOM),y)
 if_changed_dep = $(if $(strip $(filter-out $(PHONY),$?)  \
 		$(filter-out FORCE $(wildcard $^),$^)    \
 	$(call arg-check, $(cmd_$(1)), $(cmd_$@)) ),     \

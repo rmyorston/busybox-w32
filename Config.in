@@ -9,6 +9,14 @@ config HAVE_DOT_CONFIG
 	bool
 	default y
 
+config COMPILER_WATCOM
+	bool "generic watcom-specific settings"
+	default n
+	
+config COMPILER_WATCOM386
+        bool "Open Watcom compiler for i686 target"
+        default n
+	
 choice
 	prompt "Target platform"
 	default PLATFORM_POSIX
@@ -20,9 +28,12 @@ config PLATFORM_POSIX
 
 config PLATFORM_MINGW32
 	bool "MS Windows (MinGW port)"
+		
+config PLATFORM_WATCOM386_WIN32
+	bool "MS Windows target (Open Watcom port)"
 	
-config PLATFORM_WATCOM386
-	bool "MS Windows (Open Watcom port)"
+config PLATFORM_WATCOM386_LINUX
+	bool "Linux target (Open Watcom port)"
 
 endchoice
 

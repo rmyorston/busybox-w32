@@ -16,7 +16,7 @@
 
 #include <ctype.h>
 
-#if defined __WATCOMC__
+#if defined(__WATCOMC__) && defined(__NT__)
 #include <direct.h> 
 #else
 #include <dirent.h>
@@ -170,8 +170,8 @@ int klogctl(int type, char *b, int len);
 # define BUFSIZ 4096
 #endif
 
-#if defined __WATCOMC__
-#include <watcom.h>
+#if defined(__WATCOMC__) && defined(__NT__)
+#include <watcom_win32.h>
 #endif
 
 /* Can't use ENABLE_PLATFORM_MINGW32 because it's also called by host compiler */

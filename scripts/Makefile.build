@@ -182,8 +182,15 @@ cmd_modversions =							\
 	fi;
 endif
 
-ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+ifeq ($(CONFIG_PLATFORM_WATCOM386_WIN32),y)
 INCLUDE		= $(WATCOM)/h:$(WATCOM)/h/nt
+endif
+
+ifeq ($(CONFIG_PLATFORM_WATCOM386_LINUX),y)
+INCLUDE		= $(WATCOM)/lh
+endif
+
+ifeq ($(CONFIG_COMPILER_WATCOM),y)
 define rule_cc_o_c
 	$(call echo-cmd,checksrc) $(cmd_checksrc)			  \
 	$(call echo-cmd,cc_o_c) $(cmd_cc_o_c);				  \
@@ -267,7 +274,7 @@ ifdef builtin-target
 quiet_cmd_link_o_target = LD      $@
 # If the list of objects to link is empty, just create an empty built-in.o
 # -nostdlib is added to make "make LD=gcc ..." work (some people use that)
-ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+ifeq ($(CONFIG_COMPILER_WATCOM),y)
 cmd_link_o_target = $(if $(strip $(obj-y)),\
 		$(LD) $(ld_flags) -o $@ $(filter $(obj-y), $^),\
 		rm -f $@; $(AR) $@)
@@ -287,7 +294,7 @@ endif # builtin-target
 # Rule to compile a set of .o files into one .a file
 #
 ifdef lib-target
-ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+ifeq ($(CONFIG_COMPILER_WATCOM),y)
 quiet_cmd_link_l_target = AR      $@
 cmd_link_l_target = rm -f $@; $(AR) $(EXTRA_ARFLAGS) $@ $(lib-y)
 else

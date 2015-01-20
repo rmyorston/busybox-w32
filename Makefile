@@ -605,7 +605,7 @@ busybox-all  := $(core-y) $(libs-y)
 # Rule to link busybox - also used during CONFIG_KALLSYMS
 # May be overridden by arch/$(ARCH)/Makefile
 quiet_cmd_busybox__ ?= LINK    $@
-ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+ifeq ($(CONFIG_COMPILER_WATCOM),y)
       cmd_busybox__ = wlink @"$(srctree)/scripts/wlinkscript.lnk"
 else
       cmd_busybox__ ?= $(srctree)/scripts/trylink \
@@ -1313,7 +1313,7 @@ quiet_cmd_rmdirs = $(if $(wildcard $(rm-dirs)),CLEAN   $(wildcard $(rm-dirs)))
 quiet_cmd_rmfiles = $(if $(wildcard $(rm-files)),CLEAN   $(wildcard $(rm-files)))
       cmd_rmfiles = rm -f $(rm-files)
 
-ifneq ($(CONFIG_PLATFORM_WATCOM386),y)
+ifneq ($(CONFIG_COMPILER_WATCOM),y)
 a_flags = -Wp,-MD,$(depfile) $(AFLAGS) $(AFLAGS_KERNEL) \
 	  $(NOSTDINC_FLAGS) $(CPPFLAGS) \
 	  $(modkern_aflags) $(EXTRA_AFLAGS) $(AFLAGS_$(*F).o)

@@ -7,7 +7,8 @@
 #ifndef BB_PLATFORM_H
 #define BB_PLATFORM_H 1
 
-#if defined(__WATCOMC__)
+
+#if defined(__WATCOMC__) && defined(__NT__)
 #if !ENABLE_PLATFORM_MINGW32
 #undef ENABLE_PLATFORM_MINGW32
 #define ENABLE_PLATFORM_MINGW32 1
@@ -15,7 +16,7 @@
 #endif /* make sure this is active early! */
 
 #if ENABLE_PLATFORM_MINGW32
-# if !defined(__MINGW32__) && !defined(__WATCOMC__) /* HOSTCC is called */
+# if !defined(__MINGW32__) && !defined(__WATCOMC__) && !defined(__NT__) /* HOSTCC is called */
 #  undef ENABLE_PLATFORM_MINGW32
 # endif
 #else
@@ -158,14 +159,14 @@
 #if defined(__digital__) && defined(__unix__)
 # include <sex.h>
 #elif defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) \
-   || defined(__APPLE__)
+   || defined(__APPLE__) 
 # include <sys/resource.h>  /* rlimit */
 # include <machine/endian.h>
 # define bswap_64 __bswap64
 # define bswap_32 __bswap32
 # define bswap_16 __bswap16
 # define __BIG_ENDIAN__ (_BYTE_ORDER == _BIG_ENDIAN)
-#elif ENABLE_PLATFORM_MINGW32
+#elif ENABLE_PLATFORM_MINGW32 || __WATCOMC__
 # define __BIG_ENDIAN 0
 # define __LITTLE_ENDIAN 1
 # define __BYTE_ORDER __LITTLE_ENDIAN

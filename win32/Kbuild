@@ -4,7 +4,12 @@
 
 lib-y:=
 
-ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+ifeq ($(CONFIG_PLATFORM_WATCOM386_LINUX),y)
+lib-y += poll.o
+lib-y += getopt.o
+endif
+
+ifeq ($(CONFIG_PLATFORM_WATCOM386_WIN32),y)
 lib-y += watcom_stubs.o
 lib-y += getopt.o
 lib-y += getpagesize.o

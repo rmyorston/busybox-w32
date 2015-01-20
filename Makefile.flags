@@ -6,14 +6,14 @@ BB_VER = $(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 export BB_VER
 SKIP_STRIP ?= n
 
-ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+ifeq ($(CONFIG_COMPILER_WATCOM),y)
 ifndef BB_VER
 BB_VER:="1.23.0.watcom2"
 export BB_VER
 endif
 endif
 
-ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+ifeq ($(CONFIG_COMPILER_WATCOM),y)
 # -Wc,-ez gives phar lap object format... 
 # -Wc,-zu does not assume stack in data segment, injects __far
 # -Wc,-s do not do stack checks
@@ -24,7 +24,7 @@ else
 CPPFLAGS += $(call cc-option,-std=gnu99,)
 endif
 
-ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+ifeq ($(CONFIG_COMPILER_WATCOM),y)
 CPPFLAGS += \
 	-Iinclude -Ilibbb \
 	$(if $(KBUILD_SRC),-Iinclude2 -I$(srctree)/include -I$(srctree)/libbb) \
@@ -147,7 +147,7 @@ EXEEXT = .exe
 LDLIBS += userenv ws2_32
 endif
 
-ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+ifeq ($(CONFIG_COMPILER_WATCOM),y)
 # Overide GCC/binutils-assumptions made in the Makefile
 # CFLAGS define NT (win32) as build target
 # make sure that the WATCOM variable is set to the root
@@ -171,6 +171,9 @@ OBJDUMP 	= dmpobj
 # character encoding: use tchar.h wherever possible
 # several options: none, -D_UNICODE, -D_MBCS
 ARFLAGS		= -q
+endif
+
+ifeq ($(CONFIG_PLATFORM_WATCOM386_WIN32),y)
 CFLAGS 		= -bnt -mthreads -mtune=i686 -fptune=i686 -D_UNICODE
 CXXFLAGS 	= -bnt -mthreads -mtune=i686 -fptune=i686 -D_UNICODE
 AFLAGS 		= 
@@ -178,7 +181,15 @@ LIBPATH		= $(WATCOM)/lib386:$(WATCOM)/lib386/nt:$(WATCOM)/binnt
 LIBRARY		= ncrypt crypt32 userenv ws2_32
 CFLAGS += -Iwin32 -Iwin32/watcom -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -D_ENABLE_AUTODEPEND
 EXEEXT = .exe
+endif
 
+ifeq ($(CONFIG_PLATFORM_WATCOM386_LINUX),y)
+CFLAGS 		= -blinux -mthreads -mtune=i686 -fptune=i686 -D_UNICODE
+CXXFLAGS 	= -blinux -mthreads -mtune=i686 -fptune=i686 -D_UNICODE
+AFLAGS 		= 
+LIBPATH		= $(WATCOM)/lib386:$(WATCOM)/lib386/linux
+LIBRARY		= 
+CFLAGS += -Iwin32 -Iwin32/watcom -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -D_ENABLE_AUTODEPEND
 endif
 
 
@@ -186,7 +197,7 @@ endif
 # gcc-4.2.1 fails if we try to feed C source on stdin:
 #  echo 'int main(void){return 0;}' | $(CC) $(CFLAGS) -lcrypt -o /dev/null -xc -
 # fall back to using a temp file:
-ifneq ($(CONFIG_PLATFORM_WATCOM386),y)
+ifneq ($(CONFIG_COMPILER_WATCOM),y)
 CRYPT_AVAILABLE := $(shell echo 'int main(void){return 0;}' >crypttest.c; $(CC) $(CFLAGS) -lcrypt -o /dev/null crypttest.c >/dev/null 2>&1 && echo "y"; rm crypttest.c)
 ifeq ($(CRYPT_AVAILABLE),y)
 LDLIBS += m crypt

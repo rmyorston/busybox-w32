@@ -186,7 +186,7 @@ busybox_unstripped.o: $(usage_stuff) include/applet_tables.h include/NUM_APPLETS
 		
 		
 busybox: busybox_unstripped.o
-ifeq ($(CONFIG_PLATFORM_WATCOM386),y)
+ifeq ($(CONFIG_COMPILER_WATCOM),y)
 		wlink @"$(srctree)/scripts/wlinkscript.lnk"
 else
 		$(srctree)/scripts/trylink \

@@ -105,7 +105,7 @@ lib-y += xgetcwd.o
 lib-y += xreadlink.o
 lib-y += xrealloc_vector.o
 
-lib-$(CONFIG_PLATFORM_WATCOM386) += read_key.o
+lib-$(CONFIG_COMPILER_WATCOM) += read_key.o
 
 lib-$(CONFIG_PLATFORM_POSIX) += get_console.o
 lib-$(CONFIG_PLATFORM_POSIX) += getpty.o
