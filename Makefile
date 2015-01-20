@@ -607,11 +607,15 @@ busybox-all  := $(core-y) $(libs-y)
 # May be overridden by arch/$(ARCH)/Makefile
 quiet_cmd_busybox__ ?= LINK    $@
 ifeq ($(CONFIG_COMPILER_WATCOM),y)
+<<<<<<< HEAD
 	ifeq ($(CONFIG_PLATFORM_WATCOM386_WIN32),y)
 		cmd_busybox__ = wlink @"$(srctree)/scripts/wlink-win32.lnk"
 	else
 		cmd_busybox__ = wlink @"$(srctree)/scripts/wlink-linux.lnk"
 	endif
+=======
+      cmd_busybox__ = wlink @"$(srctree)/scripts/wlinkscript.lnk"
+>>>>>>> split compiler- and target-configs
 else
       cmd_busybox__ ?= $(srctree)/scripts/trylink \
       "$@" \
