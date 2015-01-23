@@ -7,7 +7,11 @@
  */
 typedef int gid_t;
 typedef int uid_t;
+#ifndef _WIN64
 typedef int pid_t;
+#else
+typedef __int64 pid_t;
+#endif
 
 /*
  * arpa/inet.h
