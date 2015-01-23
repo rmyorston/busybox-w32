@@ -3,6 +3,8 @@
 #ifndef WATCOM_HACKS
 #define WATCOM_HACKS 1
 
+#define ENABLE_USE_PORTABLE_CODE 1
+
 /* enable various Windows and standard functions in Watcom libc */
 #undef _WIN32_WINNT
 #define _WIN32_WINNT 0x0501 /* Windows XP */

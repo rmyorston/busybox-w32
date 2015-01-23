@@ -3,6 +3,8 @@
 #ifndef WATCOM_HACKS
 #define WATCOM_HACKS 1
 
+#define ENABLE_USE_PORTABLE_CODE 1
+
 #include <sys/socket.h>
 #include <netinet/in.h>
 
