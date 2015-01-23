@@ -118,11 +118,7 @@ INCLUDE		= $(WATCOM)/lh
 endif
 
 ifeq ($(CONFIG_COMPILER_WATCOM),y)
-<<<<<<< HEAD
 c_flags        = -MD -MF $(depfile) $(NOSTDINC_FLAGS) $(CPPFLAGS) \
-=======
-c_flags        = $(NOSTDINC_FLAGS) $(CPPFLAGS) \
->>>>>>> split compiler- and target-configs
 		 $(__c_flags) $(modkern_cflags) \
 		 -D"KBUILD_STR(s)=\#s" $(basename_flags) $(modname_flags)
 a_flags        = -MD -MF $(depfile) $(NOSTDINC_FLAGS) $(CPPFLAGS) \
