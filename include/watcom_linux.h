@@ -12,6 +12,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+
+#define ENABLE_USE_PORTABLE_CODE 1
+
 #include <sys/socket.h>
 #include <netdb.h> /*h_error*/
 #include <netinet/in.h> /* sockaddr_in*/
@@ -38,9 +41,6 @@
 
 #define NOIMPL(name,...) static inline int name(__VA_ARGS__) { errno = ENOSYS; return -1; }
 #define IMPL(name,ret,retval,...) static inline ret name(__VA_ARGS__) { return retval; }
-
-#define ENABLE_USE_PORTABLE_CODE 1
-
 
 /*various */
 #ifndef BB_VER

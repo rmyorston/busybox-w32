@@ -3,19 +3,11 @@
 #ifndef WATCOM_HACKS
 #define WATCOM_HACKS 1
 
-<<<<<<< HEAD:include/watcom_win32.h
 #define ENABLE_USE_PORTABLE_CODE 1
 
 /* enable various Windows and standard functions in Watcom libc */
-=======
-/* enable various Windows and standard functions in Watcom libc */
-<<<<<<< HEAD:include/watcom_win32.h
 #define __STDC_WANT_LIB_EXT1__ 1
 
-
->>>>>>> a bit of cleaning up:include/watcom.h
-=======
->>>>>>> shell works!:include/watcom.h
 #undef _WIN32_WINNT
 #define _WIN32_WINNT 0x0501 /* Windows XP */
 #undef WINVER
