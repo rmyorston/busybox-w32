@@ -118,12 +118,12 @@ INCLUDE		= $(WATCOM)/lh
 endif
 
 ifeq ($(CONFIG_COMPILER_WATCOM),y)
-c_flags        = $(NOSTDINC_FLAGS) $(CPPFLAGS) \
+c_flags        = -MD -MF $(depfile) $(NOSTDINC_FLAGS) $(CPPFLAGS) \
 		 $(__c_flags) $(modkern_cflags) \
 		 -D"KBUILD_STR(s)=\#s" $(basename_flags) $(modname_flags)
-a_flags        = $(NOSTDINC_FLAGS) $(CPPFLAGS) \
+a_flags        = -MD -MF $(depfile) $(NOSTDINC_FLAGS) $(CPPFLAGS) \
 		 $(__a_flags) $(modkern_aflags)
-cpp_flags      = $(NOSTDINC_FLAGS) $(__cpp_flags)
+cpp_flags      = -MD -MF $(depfile) $(NOSTDINC_FLAGS) $(__cpp_flags)
 else
 c_flags        = -Wp,-MD,$(depfile) $(NOSTDINC_FLAGS) $(CPPFLAGS) \
 		 $(__c_flags) $(modkern_cflags) \

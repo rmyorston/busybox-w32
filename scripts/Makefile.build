@@ -275,8 +275,12 @@ quiet_cmd_link_o_target = LD      $@
 # If the list of objects to link is empty, just create an empty built-in.o
 # -nostdlib is added to make "make LD=gcc ..." work (some people use that)
 ifeq ($(CONFIG_COMPILER_WATCOM),y)
+# if there is a single object to link, just copy it to the new name to avoid
+# OpenWatcom's apparent lack of ability to link object files into other objects
 cmd_link_o_target = $(if $(strip $(obj-y)),\
-		$(LD) $(ld_flags) -o $@ $(filter $(obj-y), $^),\
+		$(if $(filter 1,$(words $(filter $(obj-y), $^))),\
+			cp $(filter $(obj-y), $^) $@ ,\
+			$(LD) $(ld_flags) -o $@ $(filter $(obj-y), $^)),\
 		rm -f $@; $(AR) $@)
 else
 cmd_link_o_target = $(if $(strip $(obj-y)),\
