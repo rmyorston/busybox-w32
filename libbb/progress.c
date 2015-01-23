@@ -150,12 +150,12 @@ void FAST_FUNC bb_progress_update(bb_progress_t *p,
 
 		barlength = get_tty2_width() - 49;
 		if (barlength > 0) {
-#ifndef __WATCOMC__
+
+#if ENABLE_USE_PORTABLE_CODE
+			char *buf = alloca(barlength + 1);
+#else
 			/* god bless gcc for variable arrays :) */
 			char buf[barlength + 1];
-#else
-			/* assume 80 char consoles */
-			char buf[32];
 #endif
 			unsigned stars = (unsigned)barlength * beg_and_transferred / totalsize;
 			memset(buf, ' ', barlength);
