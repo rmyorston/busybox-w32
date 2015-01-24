@@ -265,6 +265,14 @@ typedef uint64_t bb__aliased_uint64_t FIX_ALIASING;
 } while (0)
 #endif
 
+/* ---- Networking ------------------------------------------ */
+#ifdef __WATCOMC__
+# include <stddef.h>
+# include <sys/socket.h>
+// HACK just to get things to compile on OpenWatcom for now
+struct sockaddr_in {int x;};
+#endif
+
 /* ---- Size-saving "small" ints (arch-dependent) ----------- */
 
 #if defined(i386) || defined(__x86_64__) || defined(__mips__) || defined(__cris__)
@@ -369,7 +377,11 @@ typedef unsigned smalluint;
 # endif
 #endif
 
+<<<<<<< HEAD
 #if defined(__CYGWIN__) || defined(__WATCOMC__) && !defined(__NT__)
+=======
+#if defined(__CYGWIN__) || defined(__WATCOMC__)
+>>>>>>> manual application of Dan Fandrich patch 0003
 # define MAXSYMLINKS SYMLOOP_MAX
 #endif
 
@@ -440,13 +452,21 @@ typedef unsigned smalluint;
 #endif
 
 #if defined(__WATCOMC__)
+<<<<<<< HEAD
 /* # undef HAVE_CLEARENV
+=======
+# undef HAVE_CLEARENV
+>>>>>>> manual application of Dan Fandrich patch 0003
 # undef HAVE_FDATASYNC
 # undef HAVE_MNTENT_H
 # undef HAVE_PTSNAME_R
 # undef HAVE_SYS_STATFS_H
 # undef HAVE_SIGHANDLER_T
+<<<<<<< HEAD
 # undef HAVE_XTABS */
+=======
+# undef HAVE_XTABS
+>>>>>>> manual application of Dan Fandrich patch 0003
 # undef HAVE_DPRINTF
 # undef HAVE_GETLINE
 # undef HAVE_MEMRCHR
