@@ -8,7 +8,6 @@
  */
 #include "libbb.h"
 
-
 /* Suppose that you are a shell. You start child processes.
  * They work and eventually exit. You want to get user input.
  * You read stdin. But what happens if last child switched
