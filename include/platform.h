@@ -266,7 +266,7 @@ typedef uint64_t bb__aliased_uint64_t FIX_ALIASING;
 #endif
 
 /* ---- Networking ------------------------------------------ */
-#ifdef __WATCOMC__
+#if defined(__WATCOMC__) && !defined(__NT__) 
 # include <stddef.h>
 # include <sys/socket.h>
 // HACK just to get things to compile on OpenWatcom for now
@@ -378,7 +378,7 @@ typedef unsigned smalluint;
 # endif
 #endif
 
-#if defined(__CYGWIN__) || defined(__WATCOMC__)
+#if defined(__CYGWIN__) || defined(__WATCOMC__) && !defined(__NT__)
 # define MAXSYMLINKS SYMLOOP_MAX
 #endif
 
@@ -449,13 +449,13 @@ typedef unsigned smalluint;
 #endif
 
 #if defined(__WATCOMC__)
-# undef HAVE_CLEARENV
+/* # undef HAVE_CLEARENV
 # undef HAVE_FDATASYNC
 # undef HAVE_MNTENT_H
 # undef HAVE_PTSNAME_R
 # undef HAVE_SYS_STATFS_H
 # undef HAVE_SIGHANDLER_T
-# undef HAVE_XTABS
+# undef HAVE_XTABS */
 # undef HAVE_DPRINTF
 # undef HAVE_GETLINE
 # undef HAVE_MEMRCHR

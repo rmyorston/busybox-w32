@@ -8,7 +8,6 @@
  */
 #include "libbb.h"
 
-#ifdef USE_POLL
 /* Suppose that you are a shell. You start child processes.
  * They work and eventually exit. You want to get user input.
  * You read stdin. But what happens if last child switched
@@ -104,7 +103,7 @@ char* FAST_FUNC xmalloc_reads(int fd, size_t *maxsz_p)
 	p++;
 	return xrealloc(buf, p - buf);
 }
-#endif //USE_POLL
+
 
 // Read (potentially big) files in one go. File size is estimated
 // by stat. Extra '\0' byte is appended.
