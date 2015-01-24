@@ -1111,6 +1111,9 @@ static uint32_t buffer_read_le_u32(STATE_PARAM_ONLY)
 
 static int check_header_gzip(STATE_PARAM transformer_state_t *xstate)
 {
+#ifdef __WATCOMC__
+#pragma pack(1)
+#endif
 	union {
 		unsigned char raw[8];
 		struct {
@@ -1122,12 +1125,11 @@ static int check_header_gzip(STATE_PARAM transformer_state_t *xstate)
 		} PACKED formatted;
 	} header;
 	struct BUG_header {
-#if defined __WATCOMC__ /*Error! E1020: Dimension cannot be 0 or negative */
-		char BUG_header[sizeof(header) == 8 ? 1 : 1];	  
-#else
 		char BUG_header[sizeof(header) == 8 ? 1 : -1];
-#endif
 	};
+#ifdef __WATCOMC__
+#pragma pack()
+#endif
 
 	/*
 	 * Rewind bytebuffer. We use the beginning because the header has 8

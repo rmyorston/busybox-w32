@@ -58,6 +58,8 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <time.h>
+/* Try to pull in PATH_MAX */
+#include <limits.h>
 #ifndef __WATCOMC__
 #include <sys/param.h>
 #endif
@@ -1000,6 +1002,17 @@ int BB_EXECVP(const char *file, char *const argv[]) FAST_FUNC;
 #endif
 int BB_EXECVP_or_die(char **argv) NORETURN FAST_FUNC;
 
+#ifdef __WATCOMC__
+extern void bb_perror_msg_and_die(const char *s, ...) __attribute__ ((noreturn, format (printf, 1, 2))) FAST_FUNC;
+/* NOTE: Watcom does not currently inline this! Which breaks xvfork entirely */
+static inline pid_t xvfork(void) {
+	pid_t bb__xvfork_pid = vfork();
+	if (bb__xvfork_pid < 0)
+		bb_perror_msg_and_die("vfork");
+	bb_perror_msg_and_die("xvfork"); /* Don't ever let this succeed */
+	return bb__xvfork_pid;
+}
+#else
 /* xvfork() can't be a _function_, return after vfork mangles stack
  * in the parent. It must be a macro. */
 #define xvfork() \
@@ -1009,6 +1022,8 @@ int BB_EXECVP_or_die(char **argv) NORETURN FAST_FUNC;
 		bb_perror_msg_and_die("vfork"); \
 	bb__xvfork_pid; \
 })
+#endif
+
 #if BB_MMU
 pid_t xfork(void) FAST_FUNC;
 #endif
@@ -1943,23 +1958,24 @@ extern const char bb_default_login_shell[] ALIGN1;
  * can't be done with such byte-oriented operations anyway,
  * we don't lose anything.
  */
-#ifndef __WATCOMC__
 
 #undef isalnum
 #undef isalpha
 #undef isascii
-#undef isblank
-#undef iscntrl
 #undef isdigit
 #undef isgraph
 #undef islower
 #undef isprint
 #undef ispunct
-#undef isspace
 #undef isupper
 #undef isxdigit
 #undef toupper
 #undef tolower
+#ifndef __WATCOMC__
+#undef isblank
+#undef iscntrl
+#undef isspace
+#endif
 
 /* We save ~500 bytes on isdigit alone.
  * BTW, x86 likes (unsigned char) cast more than (unsigned). */
@@ -1971,6 +1987,7 @@ extern const char bb_default_login_shell[] ALIGN1;
 #define isupper(a) ((unsigned char)((a) - 'A') <= ('Z' - 'A'))
 #define islower(a) ((unsigned char)((a) - 'a') <= ('z' - 'a'))
 #define isalpha(a) ((unsigned char)(((a)|0x20) - 'a') <= ('z' - 'a'))
+#ifndef __WATCOMC__
 #define isblank(a) ({ unsigned char bb__isblank = (a); bb__isblank == ' ' || bb__isblank == '\t'; })
 #define iscntrl(a) ({ unsigned char bb__iscntrl = (a); bb__iscntrl < ' ' || bb__iscntrl == 0x7f; })
 /* In POSIX/C locale isspace is only these chars: "\t\n\v\f\r" and space.
@@ -1980,6 +1997,7 @@ extern const char bb_default_login_shell[] ALIGN1;
 // Unsafe wrt NUL: #define ispunct(a) (strchr("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", (a)) != NULL)
 #define ispunct(a) (strchrnul("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", (a))[0])
 // Bigger code: #define isalnum(a) ({ unsigned char bb__isalnum = (a) - '0'; bb__isalnum <= 9 || ((bb__isalnum - ('A' - '0')) & 0xdf) <= 25; })
+#endif /* __WATCOMC__ */
 #define isalnum(a) bb_ascii_isalnum(a)
 
 static ALWAYS_INLINE int bb_ascii_isalnum(unsigned char a)
@@ -2022,7 +2040,6 @@ static ALWAYS_INLINE unsigned char bb_ascii_tolower(unsigned char a)
 #define isgraph(a) isgraph_is_ambiguous_dont_use(a)
 #define isprint(a) isprint_is_ambiguous_dont_use(a)
 
-#endif /* Watcom somehow gets confused by these re-definitions */
 
 /* NB: must not treat EOF as isgraph or isprint */
 #define isgraph_asciionly(a) ((unsigned)((a) - 0x21) <= 0x7e - 0x21)

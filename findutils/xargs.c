@@ -140,7 +140,7 @@ static int xargs_exec(void)
 #ifndef __WATCOMC__
 #define ISSPACE(a) ({ unsigned char xargs__isspace = (a) - 9; xargs__isspace == (' ' - 9) || xargs__isspace <= (13 - 9); })
 #else
-#define ISSPACE(a) isspace(a)
+#define ISSPACE(a) (((a) - 9) == (' ' - 9) || ((a) - 9) <= (13 - 9))
 #endif
 
 static void store_param(char *s)
