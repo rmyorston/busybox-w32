@@ -878,6 +878,7 @@ char* str_tolower(char *str) FAST_FUNC;
 
 #if defined __WATCOMC__
 #define utoa bb_utoa
+#define itoa bb_itoa
 #endif
 
 char *utoa(unsigned n) FAST_FUNC;

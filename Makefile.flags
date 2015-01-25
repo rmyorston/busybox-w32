@@ -169,7 +169,7 @@ CXXFLAGS 	= -bnt -mthreads -mtune=i686 -fptune=i686 -D_UNICODE
 AFLAGS 		= 
 LIBPATH		= $(WATCOM)/lib386:$(WATCOM)/lib386/nt:$(WATCOM)/binnt
 LIBRARY		= ncrypt crypt32 userenv ws2_32
-CFLAGS += -Iwin32 -Iwin32/watcom -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -D_ENABLE_AUTODEPEND
+CFLAGS += -Iwin32 -Iwatcom -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -D_ENABLE_AUTODEPEND
 EXEEXT = .exe
 endif
 
@@ -179,7 +179,7 @@ CXXFLAGS 	= -blinux -mthreads -mtune=i686 -fptune=i686 -D_UNICODE
 AFLAGS 		= 
 LIBPATH		= $(WATCOM)/lib386:$(WATCOM)/lib386/linux
 LIBRARY		= 
-CFLAGS += -Iwin32 -Iwin32/watcom -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -D_ENABLE_AUTODEPEND
+CFLAGS += -Iwatcom -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -D_ENABLE_AUTODEPEND
 endif
 
 

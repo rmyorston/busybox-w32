@@ -42,7 +42,7 @@
  * will generate a core dump.
  */
 
-#if defined __WATCOMC__
+#if defined(__WATCOMC__) && defined(__NT__)
 #undef _WIN32_WINNT
 #define _WIN32_WINNT 0x0501 /* Windows XP */
 #undef WINVER

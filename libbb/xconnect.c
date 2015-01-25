@@ -151,9 +151,11 @@ void FAST_FUNC set_nport(struct sockaddr *sa, unsigned port)
 	/* What? UNIX socket? IPX?? :) */
 }
 
+
 /* We hijack this constant to mean something else */
 /* It doesn't hurt because we will remove this bit anyway */
 #define DIE_ON_ERROR AI_CANONNAME
+
 
 /* host: "1.2.3.4[:port]", "www.google.com[:port]"
  * port: if neither of above specifies port # */
