@@ -31,6 +31,11 @@
 #define __attribute__(x) /*nothing*/
 
 
+#define NOIMPL(name,...) static inline int name(__VA_ARGS__) { errno = ENOSYS; return -1; }
+#define IMPL(name,ret,retval,...) static inline ret name(__VA_ARGS__) { return retval; }
+
+#define ENABLE_USE_PORTABLE_CODE 1
+
 /* try to use platform POSIX */
 #undef ENABLE_PLATFORM_POSIX
 #define ENABLE_PLATFORM_POSIX 1
@@ -66,6 +71,9 @@ typedef void (*sighandler_t)(int);
 
 
 #endif /* WATCOM_HACKS */
+
+
+
 
 
 

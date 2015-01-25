@@ -448,29 +448,6 @@ typedef unsigned smalluint;
 #endif
 
 #if defined(__WATCOMC__)
-<<<<<<< HEAD
-<<<<<<< HEAD
-/* # undef HAVE_CLEARENV
-=======
-# undef HAVE_CLEARENV
->>>>>>> manual application of Dan Fandrich patch 0003
-=======
-/* # undef HAVE_CLEARENV
->>>>>>> fix win32 build errors after patch merge
-# undef HAVE_FDATASYNC
-# undef HAVE_MNTENT_H
-# undef HAVE_PTSNAME_R
-# undef HAVE_SYS_STATFS_H
-# undef HAVE_SIGHANDLER_T
-<<<<<<< HEAD
-<<<<<<< HEAD
-# undef HAVE_XTABS */
-=======
-# undef HAVE_XTABS
->>>>>>> manual application of Dan Fandrich patch 0003
-=======
-# undef HAVE_XTABS */
->>>>>>> fix win32 build errors after patch merge
 # undef HAVE_DPRINTF
 # undef HAVE_GETLINE
 # undef HAVE_MEMRCHR
