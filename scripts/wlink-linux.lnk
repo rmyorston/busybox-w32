@@ -1,10 +1,11 @@
-system nt
-name busybox_unstripped.exe
-option osname='Windows NT character-mode'
+system linux
+name busybox_unstripped
+option osname='Linux x86'
 #debug watcom all
 #the actual application
 file libbb/appletlib 				# main()
 #file applets/applets
+library watcom/lib.a
 library win32/lib.a
 library libbb/lib.a 
 library archival/lib.a
@@ -33,11 +34,10 @@ library shell/lib.a
 library sysklogd/lib.a
 library util-linux/lib.a
 library util-linux/volume_id/lib.a
-#system libraries to link
-library ncrypt
-library crypt32
-library userenv
-library ws2_32
+#system libraries
+library clib3r
+library emu387
+
 
 
 

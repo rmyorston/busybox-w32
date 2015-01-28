@@ -4,19 +4,24 @@
 
 lib-y:=
 
-ifeq ($(CONFIG_PLATFORM_WATCOM386_LINUX),y)
-lib-y += poll.o
-lib-y += getopt.o
-endif
-
 ifeq ($(CONFIG_PLATFORM_WATCOM386_WIN32),y)
-lib-y += watcom_stubs.o
-lib-y += getopt.o
-lib-y += getpagesize.o
-lib-y += ftruncate.o
-lib-y += wcwidth.o
-lib-y += usleep.o
-CONFIG_PLATFORM_MINGW32 = y
+#shared with MinGW but not Watcom/Linux
+lib-y += env.o
+lib-y += fnmatch.o
+lib-y += ioctl.o
+lib-y += mingw.o
+lib-y += process.o
+lib-y += regex.o
+lib-y += net.o
+lib-y += popen.o
+lib-y += mempcpy.o
+lib-y += mntent.o
+lib-y += statfs.o
+lib-y += strptime.o
+lib-y += system.o
+lib-y += termios.o
+lib-y += uname.o
+lib-y += winansi.o
 endif
 
 lib-$(CONFIG_PLATFORM_MINGW32) += env.o

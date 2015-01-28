@@ -105,7 +105,13 @@ lib-y += xgetcwd.o
 lib-y += xreadlink.o
 lib-y += xrealloc_vector.o
 
-lib-$(CONFIG_COMPILER_WATCOM) += read_key.o
+lib-$(CONFIG_PLATFORM_WATCOM386_WIN32) += read_key.o
+
+ifeq ($(CONFIG_PLATFORM_WATCOM386_LINUX),y)
+CONFIG_PLATFORM_POSIX = y
+CONFIG_PLATFORM_LINUX = y
+lib-y += missing_syscalls.o
+endif
 
 lib-$(CONFIG_PLATFORM_POSIX) += get_console.o
 lib-$(CONFIG_PLATFORM_POSIX) += getpty.o

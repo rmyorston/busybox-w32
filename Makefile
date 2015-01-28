@@ -492,6 +492,7 @@ libs-y		:= \
 		sysklogd/ \
 		util-linux/ \
 		util-linux/volume_id/ \
+		watcom/ \
 		win32/ \
 
 endif # KBUILD_EXTMOD
@@ -606,7 +607,11 @@ busybox-all  := $(core-y) $(libs-y)
 # May be overridden by arch/$(ARCH)/Makefile
 quiet_cmd_busybox__ ?= LINK    $@
 ifeq ($(CONFIG_COMPILER_WATCOM),y)
-      cmd_busybox__ = wlink @"$(srctree)/scripts/wlinkscript.lnk"
+	ifeq ($(CONFIG_PLATFORM_WATCOM386_WIN32),y)
+		cmd_busybox__ = wlink @"$(srctree)/scripts/wlin-win32.lnk"
+	else
+		cmd_busybox__ = wlink @"$(srctree)/scripts/wlink-linux.lnk"
+	endif
 else
       cmd_busybox__ ?= $(srctree)/scripts/trylink \
       "$@" \

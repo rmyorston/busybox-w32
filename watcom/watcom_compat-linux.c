@@ -1,17 +1,79 @@
+/* stubs and compat functions for missing stuff in the Watcom Linux libc */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
 
-typedef int gid_t;
-typedef int uid_t;
+int getpagesize(void)
+{
+	return 4096;
+}
 
+int getgroups (int n, gid_t *groups)
+{
+  errno = ENOSYS;
+  return -1;
+}
 
-#ifndef __NT__
+int statfs(const char *file, struct statfs *buf)
+{
+    return 0;
+}
+
+int getpwnam_r(const char *name, struct passwd *pwd, char *buffer,
+       size_t bufsize, struct passwd **result) 
+{
+        return NULL;
+}
+
+int getpwnam(const char *name, struct passwd *pwd, char *buffer,
+       size_t bufsize, struct passwd **result) 
+{
+        return NULL;
+}
+
 int ttyname_r(int fd, char *buf, size_t buflen)
 {
 	//strlcpy(buf,ttyname(fd),buflen);
 	//return 0;
 	return EBADF;
+}
+
+struct mntent {
+               char *mnt_fsname;   /* name of mounted filesystem */
+               char *mnt_dir;      /* filesystem path prefix */
+               char *mnt_type;     /* mount type (see mntent.h) */
+               char *mnt_opts;     /* mount options (see mntent.h) */
+               int   mnt_freq;     /* dump frequency in days */
+               int   mnt_passno;   /* pass number on parallel fsck */
+           };
+
+FILE *setmntent(const char *filename, const char *type)
+{
+        return NULL;
+}
+
+struct mntent *getmntent(FILE *streamp, struct mntent *mntbuf,
+                                  char *buf, int buflen)
+{
+        return NULL;
+}
+
+struct mntent *getmntent_r(FILE *streamp, struct mntent *mntbuf,
+                                  char *buf, int buflen)
+{
+        return NULL;
+}
+
+int endmntent(FILE *streamp)
+{
+        return 1;
+}
+
+#include <arpa/inet.h>
+int inet_aton(const char *cp, struct in_addr *addr)
+{
+        return 0; /*fail*/
 }
 
 /*
@@ -113,7 +175,6 @@ utimes(const char *file, struct timeval tvp[2])
 	return utime(file, &utb);
 }
 
-#endif
 
 #undef mknod
 int
@@ -123,40 +184,7 @@ mknod ( const char *filename,  int mode,  int dev)
   return -1;
 }
 
-#undef chown
-int
-chown ( const char *filename,  int owner,  int group)
-{
-  errno = ENOSYS;
-  return -1;
-}
 
-
-#undef symlink
-int
-symlink ( const char *oldname,  const char *newname)
-{
-  errno = ENOSYS;
-  return -1;
-}
-
-#undef getgroups
-int getgroups(int gidsetsize, gid_t grouplist[]) {
- errno = ENOSYS;
- return 0;
-}
-
-#undef getgid
-gid_t getgid(void) {
-  errno = ENOSYS;
-  return 0;
-}
-
-#undef getuid
-uid_t getuid(void) {
- errno = ENOSYS;
- return 0;
-}
 
 /* the following functions fail to link when debug build with CFLAGS -g2 is used */
 
