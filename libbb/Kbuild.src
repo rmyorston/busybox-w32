@@ -110,6 +110,10 @@ lib-$(CONFIG_PLATFORM_WATCOM386_WIN32) += read_key.o
 ifeq ($(CONFIG_PLATFORM_WATCOM386_LINUX),y)
 CONFIG_PLATFORM_POSIX = y
 CONFIG_PLATFORM_LINUX = y
+<<<<<<< HEAD
+=======
+lib-y += missing_syscalls.o
+>>>>>>> Isolate Watcom compat stuff. Building Linux busybox with watcom still fails at linking phase
 endif
 
 lib-$(CONFIG_PLATFORM_POSIX) += get_console.o

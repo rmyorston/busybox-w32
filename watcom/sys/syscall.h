@@ -1,5 +1,8 @@
+<<<<<<< HEAD
 #ifndef _SYS_SYSCALL_H
 #define _SYS_SYSCALL_H
+=======
+>>>>>>> Isolate Watcom compat stuff. Building Linux busybox with watcom still fails at linking phase
 
 #if defined(__386__)
 
@@ -19,4 +22,8 @@
 */
 
 
+<<<<<<< HEAD
 #endif
+=======
+
+>>>>>>> Isolate Watcom compat stuff. Building Linux busybox with watcom still fails at linking phase

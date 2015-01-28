@@ -608,6 +608,7 @@ busybox-all  := $(core-y) $(libs-y)
 quiet_cmd_busybox__ ?= LINK    $@
 ifeq ($(CONFIG_COMPILER_WATCOM),y)
 <<<<<<< HEAD
+<<<<<<< HEAD
 	ifeq ($(CONFIG_PLATFORM_WATCOM386_WIN32),y)
 		cmd_busybox__ = wlink @"$(srctree)/scripts/wlink-win32.lnk"
 	else
@@ -616,6 +617,13 @@ ifeq ($(CONFIG_COMPILER_WATCOM),y)
 =======
       cmd_busybox__ = wlink @"$(srctree)/scripts/wlinkscript.lnk"
 >>>>>>> split compiler- and target-configs
+=======
+	ifeq ($(CONFIG_PLATFORM_WATCOM386_WIN32),y)
+		cmd_busybox__ = wlink @"$(srctree)/scripts/wlin-win32.lnk"
+	else
+		cmd_busybox__ = wlink @"$(srctree)/scripts/wlink-linux.lnk"
+	endif
+>>>>>>> Isolate Watcom compat stuff. Building Linux busybox with watcom still fails at linking phase
 else
       cmd_busybox__ ?= $(srctree)/scripts/trylink \
       "$@" \

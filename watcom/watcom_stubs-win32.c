@@ -6,6 +6,7 @@
 typedef int gid_t;
 typedef int uid_t;
 
+<<<<<<< HEAD
 
 #ifndef __NT__
 int ttyname_r(int fd, char *buf, size_t buflen)
@@ -116,6 +117,8 @@ utimes(const char *file, struct timeval tvp[2])
 
 #endif
 
+=======
+>>>>>>> Isolate Watcom compat stuff. Building Linux busybox with watcom still fails at linking phase
 #undef mknod
 int
 mknod ( const char *filename,  int mode,  int dev)

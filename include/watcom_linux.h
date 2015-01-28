@@ -47,9 +47,12 @@
 #define BB_VER "1.23.0.watcom2"
 #endif
 
+<<<<<<< HEAD
 #define stime p_stime
 #define utime p_utime
 
+=======
+>>>>>>> Isolate Watcom compat stuff. Building Linux busybox with watcom still fails at linking phase
 #define ULONGLONG unsigned long long
 
 #define NSIG 12
