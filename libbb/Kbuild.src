@@ -105,7 +105,6 @@ lib-y += xgetcwd.o
 lib-y += xreadlink.o
 lib-y += xrealloc_vector.o
 
-
 lib-$(CONFIG_PLATFORM_WATCOM386_WIN32) += read_key.o
 
 ifeq ($(CONFIG_PLATFORM_WATCOM386_LINUX),y)

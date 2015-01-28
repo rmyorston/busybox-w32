@@ -30,19 +30,12 @@
 #undef __attribute__
 #define __attribute__(x) /*nothing*/
 
-
-#define NOIMPL(name,...) static inline int name(__VA_ARGS__) { errno = ENOSYS; return -1; }
-#define IMPL(name,ret,retval,...) static inline ret name(__VA_ARGS__) { return retval; }
-
-#define ENABLE_USE_PORTABLE_CODE 1
-
 /* try to use platform POSIX */
 #undef ENABLE_PLATFORM_POSIX
 #define ENABLE_PLATFORM_POSIX 1
 #undef IF_PLATFORM_POSIX
 #undef IF_NOT_PLATFORM_POSIX
 #define IF_PLATFORM_POSIX(...) __VA_ARGS__
-
 
 #define NOIMPL(name,...) static inline int name(__VA_ARGS__) { errno = ENOSYS; return -1; }
 #define IMPL(name,ret,retval,...) static inline ret name(__VA_ARGS__) { return retval; }
@@ -69,12 +62,7 @@ int utimes(const char, struct timeval *);
 typedef unsigned char* RE_TRANSLATE_TYPE;
 typedef void (*sighandler_t)(int);
 
-
 #endif /* WATCOM_HACKS */
-
-
-
-
 
 
 
