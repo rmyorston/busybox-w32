@@ -619,7 +619,7 @@ ifeq ($(CONFIG_COMPILER_WATCOM),y)
 >>>>>>> split compiler- and target-configs
 =======
 	ifeq ($(CONFIG_PLATFORM_WATCOM386_WIN32),y)
-		cmd_busybox__ = wlink @"$(srctree)/scripts/wlin-win32.lnk"
+		cmd_busybox__ = wlink @"$(srctree)/scripts/wlink-win32.lnk"
 	else
 		cmd_busybox__ = wlink @"$(srctree)/scripts/wlink-linux.lnk"
 	endif
