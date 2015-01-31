@@ -1,12 +1,27 @@
 /* stubs and compat functions for missing stuff in the Watcom Linux libc */
 
+#include <unistd.h>
+#include <string.h>
 #include <stdlib.h>
+#undef __OBSCURE_STREAM_INTERNALS
 #include <stdio.h>
 #include <errno.h>
+#include <pwd.h>
+#include <grp.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
+/* stubs.... can we find better functions? */
 
 int getpagesize(void)
 {
 	return 4096;
+}
+
+int mknod ( const char *filename,  int mode,  int dev)
+{
+  errno = ENOSYS;
+  return -1;
 }
 
 int getgroups (int n, gid_t *groups)
@@ -15,21 +30,43 @@ int getgroups (int n, gid_t *groups)
   return -1;
 }
 
+struct group *getgrnam( const char *__name )
+{
+    errno = ENOSYS;
+    return -1;
+}
+
 int statfs(const char *file, struct statfs *buf)
 {
     return 0;
 }
 
-int getpwnam_r(const char *name, struct passwd *pwd, char *buffer,
-       size_t bufsize, struct passwd **result) 
+int getpwnam_r( const char *__name )
+{
+        return 0;
+}
+
+struct passwd *getpwnam( const char *__name )
 {
         return NULL;
 }
 
-int getpwnam(const char *name, struct passwd *pwd, char *buffer,
-       size_t bufsize, struct passwd **result) 
+struct passwd *getpwent(void)
 {
-        return NULL;
+    return NULL;
+}
+
+struct passwd *getpwent_r(void)
+{
+    return NULL;
+}
+
+void endpwent(void)
+{
+}
+
+void setpwent(void)
+{
 }
 
 int ttyname_r(int fd, char *buf, size_t buflen)
@@ -70,11 +107,75 @@ int endmntent(FILE *streamp)
         return 1;
 }
 
-#include <arpa/inet.h>
 int inet_aton(const char *cp, struct in_addr *addr)
 {
         return 0; /*fail*/
 }
+
+int socketpair(int domain, int type, int protocol,
+       int socket_vector[2])
+{
+        errno = ENOSYS;
+        return -1;
+}
+
+struct group *getgrgid(gid_t gid)
+{
+        errno = ENOSYS;
+        return NULL;
+}
+
+int setgroups(int gidsetsize, gid_t grouplist[])
+{
+    errno = ENOSYS;
+    return -1;
+}
+
+long syscall(long n, ...)
+{
+        errno = ENOSYS;
+        return 0;
+}
+
+ssize_t pread(int fildes, void *buf, size_t nbyte, off_t offset)
+{
+    return read(fildes, buf, nbyte);
+}
+
+/* end of stubs start of functions */
+
+char *realpath(const char *path, char *resolved_path)
+{
+	/* FIXME: need normalization */
+	return strcpy(resolved_path, path);
+}
+
+struct passwd *getpwuid(uid_t uid)
+{
+	static char user_name[100];
+	static struct passwd p;
+	long len = sizeof(user_name);
+
+	user_name[0] = '\0';
+	p.pw_name = user_name;
+	p.pw_gecos = (char *)"unknown";
+	p.pw_dir = NULL;
+	p.pw_shell = NULL;
+	p.pw_uid = 1000;
+	p.pw_gid = 1000;
+
+	return &p;
+}
+
+long sysconf(int name)
+{
+	if ( name == _SC_CLK_TCK ) {
+		return 100;
+	}
+	errno = EINVAL;
+	return -1;
+}
+
 
 /*
         mktemp.c        Create a temporary file name.
@@ -173,15 +274,6 @@ utimes(const char *file, struct timeval tvp[2])
 	utb.actime = tvp[0].tv_sec;
 	utb.modtime = tvp[1].tv_sec;
 	return utime(file, &utb);
-}
-
-
-#undef mknod
-int
-mknod ( const char *filename,  int mode,  int dev)
-{
-  errno = ENOSYS;
-  return -1;
 }
 
 

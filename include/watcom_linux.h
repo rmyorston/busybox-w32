@@ -47,6 +47,9 @@
 #define BB_VER "1.23.0.watcom2"
 #endif
 
+#define stime p_stime
+#define utime p_utime
+
 #define ULONGLONG unsigned long long
 
 #define NSIG 12

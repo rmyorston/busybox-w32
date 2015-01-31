@@ -1,71 +1,40 @@
-An experimental compilation of busybox-win32 for the NT/Win32 target using Open Watcom (v2).
+An experimental compilation of busybox for the NT/Win32 and Linux target using Open Watcom (v2).
+The Win32 port makes heavy use of the MinGW port's compatibility changes.
 
-This document: is a temporary set of notes while porting to Watcom
-When it is done, a much less verbose version will be merged into README.win32
+http://open-watcom.github.io/open-watcom/
 
-To build, make a build directory and cd to it
-from within the build directory, do :
+*Make dependencies:*
 
-make KBUILD_SRC=${path_to_busybox-w32_sources} -f ${path_to_busybox-w32_sources}/Makefile watcom386_defconfig 
+minimal version of Open Watcom: v2 
+The build has been tested on Open Watcom v2 commit: 0.r2482.g7a44a32 (31 January, 2015)
+this or later should work.
 
-make sure that the following environment variables are set:
-WATCOM= path to the root of your watcom installation (for example /opt/watcom or C:\WATCOM)
-PATH=$WATCOM/bin*:$PATH (binl for linux, binnt for win32)
-INCLUDE=$WATCOM/h:$WATCOM/h/nt is set in the build (so owcc as HOSTCC can be used with other 
-includes if cross compiling)
-EDPATH=$WATCOM/eddat
-WIPFC=$WATCOM/wipfc
+On a linux host:
+GNU make is needed
 
-an out-of-tree build is preferrable since it will not pollute the source tree
-
-______________________________________________________________________________________________________
+On a Windows host (not entirely ready. Watcom as HOSTCC needs to be resolved)
+GNU make is needed
+KBuild depends on some UNIX utilities (sed, ...)
+- GNUWin32 or Busybox-w32 should provide the needed functions.
 
 
-STATUS
+* Out-of-tree build *
+It is recommended to build outside of the source tree. To do so, make and cd to a build directory and
 
-Current status is that Open Watcom (v2 fork) can build busybox!
-V2 fork: https://github.com/open-watcom
-Many applets work fine and the executable is smaller than the MinGW version
-Shell still crashes. At this stage, eliminating some of the hacks and getting better solutions
-to some modifications (for example cases with variable sized arrays or compilation tests with a 
-"-1" dimension array)
+On Linux:
 
-Using Watcom as HOSTCC is a work-in-progress (disabled by default)
+KBUILD_SRC=${source_path} make -f ${source_path}/Makefile watcom${arch}_${target}_defconfig
 
-______________________________________________________________________________________________________
+On Windows:
+In Powershell
 
-
-AIMS
-I imagine the porting to be done in 3 stages
-
-Stage 1 (completed, but room for improvement) : Cross-compile busybox for Win32 on a Linux HOSTCC
-At this stage, gcc is still used as HOSTCC
-
-______________________________________________________________________________________________________
+sv KBUILD_SRC ${source_path}
+make -f $KBUILD_SRC\Makefile watcom${arch}_${target}_defconfig
 
 
-Stage 2 : Enable using Watcom also as HOSTCC, adapt kbuild core system
-This modification is especially needed for stage 3
-
-Currently, Watcom can build the binaries in scripts/basic and scripts/kconfig
-The makefile fails at the point where srcipts/kconfig/conf is invoked
-( Segmentation fault (core dumped) )
-Using Watcom as HOSTCC is currently disabled by commenting out this section in scripts/Makefile.host
-
-______________________________________________________________________________________________________
-
-Stage 3 : Enable building natively on Windows
-
-Expected dependencies for native compilation on Windows:
-shell? Perhaps if unavoidable, we will stick to the stock "cmd" if possible - make alternative .bat scripts?
-gmake: wmake can not handle the Makefiles in busybox - make alternative wmake files?
-pdcurses-win32a : especially for "make menuconfig" - not critical
-
-______________________________________________________________________________________________________
+source_path is the path to the busybox-w32 source code
+arch can be: 386
+target can be: win32, linux
 
 
-FUTURE PROSPECTS
 
-The work done on the Watcom port could ultimately also help porting to other alternative compilers,
-for example - one could do a "stage 1" port to MSVC using the msvcwrapper with basically the same strategy
-(http://code.google.com/p/wrapmsvc/)
