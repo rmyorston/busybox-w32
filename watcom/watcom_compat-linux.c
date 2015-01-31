@@ -10,8 +10,22 @@
 #include <grp.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 
 /* stubs.... can we find better functions? */
+
+int p_stime(const time_t *t)
+{
+	struct timeval tv;
+	tv.tv_sec = *t;
+	tv.tv_usec = 0;
+	return settimeofday(&tv, NULL);
+}
+
+pid_t getsid(pid_t pid)
+{
+    return NULL;
+}
 
 int getpagesize(void)
 {

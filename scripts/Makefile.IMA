@@ -173,6 +173,14 @@ include libbb/Kbuild
 lib-all-y += $(patsubst %,libbb/%,$(sort $(lib-y)))
 lib-y:=
 
+include watcom/Kbuild
+lib-all-y += $(patsubst %,watcom/%,$(sort $(lib-y)))
+lib-y:=
+
+include win32/Kbuild
+lib-all-y += $(patsubst %,win32/%,$(sort $(lib-y)))
+lib-y:=
+
 comma:=,
 busybox_unstripped.o: $(usage_stuff) include/applet_tables.h include/NUM_APPLETS.h include/autoconf.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(EXTRA_CFLAGS) \

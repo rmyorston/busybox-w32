@@ -10,7 +10,7 @@
 #include <sys/syscall.h>
 #include "libbb.h"
 
-#if defined(ANDROID) || defined(__ANDROID__) || defined(__WATCOMC__)
+#if defined(ANDROID) || defined(__ANDROID__)
 pid_t getsid(pid_t pid)
 {
 	return syscall(__NR_getsid, pid);

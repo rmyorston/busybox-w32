@@ -9,9 +9,13 @@
 
 #ifndef __WATCOMC__
 #include <regex.h>
+#else
+#include "../../watcom/regex.c"
+#endif
+
+#ifndef __WATCOMC__ && __NT__
 #include <sys/utsname.h>
 #else
-#include "../../win32/regex.c"
 #include "../../win32/sys/utsname.h"
 #endif
 
