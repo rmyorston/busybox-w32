@@ -13,7 +13,7 @@
 #include "../../watcom/regex.c"
 #endif
 
-#ifndef __WATCOMC__ && __NT__
+#if !defined(__WATCOMC__) && !defined(__NT__)
 #include <sys/utsname.h>
 #else
 #include "../../win32/sys/utsname.h"

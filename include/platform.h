@@ -265,14 +265,6 @@ typedef uint64_t bb__aliased_uint64_t FIX_ALIASING;
 } while (0)
 #endif
 
-/* ---- Networking ------------------------------------------ */
-#if defined(__WATCOMC__) && !defined(__NT__) 
-# include <stddef.h>
-# include <sys/socket.h>
-// HACK just to get things to compile on OpenWatcom for now
-struct sockaddr_in {int x;};
-#endif
-
 /* ---- Size-saving "small" ints (arch-dependent) ----------- */
 
 #if defined(i386) || defined(__x86_64__) || defined(__mips__) || defined(__cris__)
