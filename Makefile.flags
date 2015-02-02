@@ -24,10 +24,7 @@ else
 CPPFLAGS += $(call cc-option,-std=gnu99,)
 endif
 
-<<<<<<< HEAD
-=======
 ifeq ($(CONFIG_COMPILER_WATCOM),y)
->>>>>>> split compiler- and target-configs
 CPPFLAGS += \
 	-Iinclude -Ilibbb \
 	$(if $(KBUILD_SRC),-Iinclude2 -I$(srctree)/include -I$(srctree)/libbb) \
@@ -183,11 +180,7 @@ CXXFLAGS 	= -blinux -mthreads -mtune=i686 -fptune=i686 -D_UNICODE
 AFLAGS 		= 
 LIBPATH		= $(WATCOM)/lib386:$(WATCOM)/lib386/linux
 LIBRARY		= 
-<<<<<<< HEAD
 CFLAGS += -Iwatcom -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -D_ENABLE_AUTODEPEND
-=======
-CFLAGS += -Iwin32 -Iwin32/watcom -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -D_ENABLE_AUTODEPEND
->>>>>>> split compiler- and target-configs
 endif
 
 

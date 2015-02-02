@@ -6,7 +6,8 @@ This port is used in production at Tigress.  Things may work for you, or may not
 
 You need a MinGW compiler and a POSIX environment (so that `make menuconfig` works).  I cross compile from Linux, but MSYS or Cygwin should be OK.
 
-To start, run `make mingw32_defconfig`.  You can then customize your build with `make menuconfig`.
+To start, run `make mingw32_defconfig`.  You can then customize your build with `make menuconfig`. Alternatively, to build using Open Watcom, run `make watcom386_win32_defconfig`. For more details about Open Watcom
+, see README.watcom.
 
 In particular you may need to adjust the compiler by going to Busybox Settings -> Build Options -> Cross Compiler Prefix
 
