@@ -102,14 +102,14 @@
  * those files will have correct dependencies.
  */
 
-#ifdef __WATCOMC__
+#ifdef __NT__
 /* assume overlapping needs */
 #define __MINGW32__ 1
 #endif
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#ifndef __MINGW32__
+#if !defined(__MINGW32__) && !defined(__WATCOMC__)
 #include <sys/mman.h>
 #endif
 #include <unistd.h>

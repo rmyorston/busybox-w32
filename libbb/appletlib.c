@@ -29,7 +29,7 @@
 #include "busybox.h"
 
 #if !(defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) \
-    || defined(__APPLE__) \
+    || defined(__APPLE__) || defined(__WATCOMC__) \
     )
 # include <malloc.h> /* for mallopt */
 #endif
@@ -187,7 +187,7 @@ void lbb_prepare(const char *applet
 	if (ENABLE_LOCALE_SUPPORT)
 		setlocale(LC_ALL, "");
 
-#if ENABLE_PLATFORM_MINGW32
+#if defined(ENABLE_PLATFORM_MINGW32)
 	init_winsock();
 #endif
 
@@ -855,7 +855,7 @@ int main(int argc UNUSED_PARAM, char **argv)
 	applet_name = argv[0];
 	if (applet_name[0] == '-')
 		applet_name++;
-	if (ENABLE_PLATFORM_MINGW32 || __WATCOMC__) {
+	if (MINGW_TEST) {
 		const char *applet_name_env = getenv("BUSYBOX_APPLET_NAME");
 		if (applet_name_env && *applet_name_env) {
 			applet_name = applet_name_env;

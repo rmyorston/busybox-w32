@@ -177,7 +177,7 @@ int FAST_FUNC bbunpack(char **argv,
 				/* Delete _source_ file */
 				del = filename;
 			}
-			if (ENABLE_PLATFORM_MINGW32)
+			if (MINGW_TEST)
 				xclose(STDIN_FILENO);
 			xunlink(del);
  free_name:

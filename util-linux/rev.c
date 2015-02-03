@@ -48,7 +48,7 @@ static void bb_strrev(CHAR_T *s, int len)
 		len--;
 		if (len != 0 && s[len] == '\n')
 			len--;
-#if ENABLE_PLATFORM_MINGW32
+#if defined(ENABLE_PLATFORM_MINGW32)
 		if (len != 0 && s[len] == '\r')
 			len--;
 #endif

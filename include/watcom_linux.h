@@ -49,6 +49,7 @@
 #define utime p_utime
 
 #define ULONGLONG unsigned long long
+#define DWORD long
 
 #define NSIG 12
 

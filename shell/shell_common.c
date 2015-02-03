@@ -20,7 +20,7 @@
 #include "shell_common.h"
 #include <sys/resource.h> /* getrlimit */
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !defined(ENABLE_PLATFORM_MINGW32)
 const char defifsvar[] ALIGN1 = "IFS= \t\n";
 #else
 const char defifsvar[] ALIGN1 = "IFS= \t\n\r";
@@ -205,7 +205,7 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 		}
 
 		c = buffer[bufpos];
-		if (c == '\0' || (ENABLE_PLATFORM_MINGW32 && c == '\r'))
+		if (c == '\0' || (MINGW_TEST && c == '\r'))
 			continue;
 		if (backslash) {
 			backslash = 0;
@@ -277,7 +277,7 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 
 /* ulimit builtin */
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !defined(ENABLE_PLATFORM_MINGW32)
 struct limits {
 	uint8_t cmd;            /* RLIMIT_xxx fit into it */
 	uint8_t factor_shift;   /* shift by to get rlim_{cur,max} values */

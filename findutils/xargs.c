@@ -65,7 +65,7 @@
 
 //kbuild:lib-$(CONFIG_XARGS) += xargs.o
 
-#if ENABLE_PLATFORM_MINGW32
+#if defined(ENABLE_PLATFORM_MINGW32) && !defined(__linux__)
 #include <conio.h>
 #endif
 #include "libbb.h"
@@ -410,12 +410,12 @@ static int xargs_ask_confirmation(void)
 	FILE *tty_stream;
 	int c, savec;
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !defined(ENABLE_PLATFORM_MINGW32)
 	tty_stream = xfopen_for_read(CURRENT_TTY);
 #endif
 	fputs(" ?...", stderr);
 	fflush_all();
-#if !ENABLE_PLATFORM_MINGW32
+#if !defined(ENABLE_PLATFORM_MINGW32)
 	c = savec = getc(tty_stream);
 	while (c != EOF && c != '\n')
 		c = getc(tty_stream);

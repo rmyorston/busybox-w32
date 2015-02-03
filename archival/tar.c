@@ -549,7 +549,7 @@ static int FAST_FUNC writeFileToTarball(const char *fileName, struct stat *statb
 		}
 	}
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !defined(ENABLE_PLATFORM_MINGW32)
 	/* It is a bad idea to store the archive we are in the process of creating,
 	 * so check the device and inode to be sure that this particular file isn't
 	 * the new tarball */

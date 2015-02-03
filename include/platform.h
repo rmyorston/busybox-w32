@@ -7,22 +7,33 @@
 #ifndef BB_PLATFORM_H
 #define BB_PLATFORM_H 1
 
-
-#if defined(__WATCOMC__) && defined(__NT__)
-#if !ENABLE_PLATFORM_MINGW32
-#undef ENABLE_PLATFORM_MINGW32
-#define ENABLE_PLATFORM_MINGW32 1
-#endif
-#endif /* make sure this is active early! */
-
-#if ENABLE_PLATFORM_MINGW32
-# if !defined(__MINGW32__) && !defined(__WATCOMC__) && !defined(__NT__) /* HOSTCC is called */
+#if defined(ENABLE_PLATFORM_MINGW32)
+# if !defined(__MINGW32__) /* HOSTCC is called */
 #  undef ENABLE_PLATFORM_MINGW32
 # endif
 #else
 # if defined(__MINGW32__)
 #  error "You must select target platform MS Windows, or it won't build"
 # endif
+#endif
+
+#if  defined(__LINUX__) || defined(__linux__)
+/* somehow an upstream expression contaminates normal GCC 
+ with ENABLE_PLATFORM_MINGW32 */
+#undef ENABLE_PLATFORM_MINGW32
+#endif
+
+#if !defined(ENABLE_PLATFORM_MINGW32)
+#define MINGW_TEST 0
+#else
+#define MINGW_TEST 1
+#endif
+
+#if !defined(__WATCOMC__)
+/* undefined variables do not work in if() statements */
+#define WATCOM_TEST 0
+#else
+#define WATCOM_TEST 1
 #endif
 
 /* Convenience macros to test the version of gcc. */
@@ -136,7 +147,7 @@
 
 /* Make all declarations hidden (-fvisibility flag only affects definitions) */
 /* (don't include system headers after this until corresponding pop!) */
-#if __GNUC_PREREQ(4,1) && !defined(__CYGWIN__) && !ENABLE_PLATFORM_MINGW32
+#if __GNUC_PREREQ(4,1) && !defined(__CYGWIN__) && !defined(ENABLE_PLATFORM_MINGW32)
 # define PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN _Pragma("GCC visibility push(hidden)")
 # define POP_SAVED_FUNCTION_VISIBILITY              _Pragma("GCC visibility pop")
 #else
@@ -159,7 +170,7 @@
 #if defined(__digital__) && defined(__unix__)
 # include <sex.h>
 #elif defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) \
-   || defined(__APPLE__) 
+   || defined(__APPLE__)
 # include <sys/resource.h>  /* rlimit */
 # include <machine/endian.h>
 # define bswap_64 __bswap64
@@ -265,6 +276,7 @@ typedef uint64_t bb__aliased_uint64_t FIX_ALIASING;
 } while (0)
 #endif
 
+
 /* ---- Size-saving "small" ints (arch-dependent) ----------- */
 
 #if defined(i386) || defined(__x86_64__) || defined(__mips__) || defined(__cris__)
@@ -369,7 +381,7 @@ typedef unsigned smalluint;
 # endif
 #endif
 
-#if defined(__CYGWIN__) || defined(__WATCOMC__) && !defined(__NT__)
+#if defined(__CYGWIN__)
 # define MAXSYMLINKS SYMLOOP_MAX
 #endif
 
@@ -420,7 +432,7 @@ typedef unsigned smalluint;
 # endif
 #endif
 
-#if ENABLE_PLATFORM_MINGW32
+#if defined(ENABLE_PLATFORM_MINGW32)
 # undef HAVE_DPRINTF
 # undef HAVE_GETLINE
 # undef HAVE_MEMRCHR

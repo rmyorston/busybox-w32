@@ -45,12 +45,12 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 		/* If file contains a slash don't use PATH */
-		if (strchr(*argv, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(*argv, '\\'))) {
+		if (strchr(*argv, '/') || (MINGW_TEST && strchr(*argv, '\\'))) {
 			if (file_is_executable(*argv)) {
 				missing = 0;
 				puts(*argv);
 			}
-#if ENABLE_PLATFORM_MINGW32
+#if defined(ENABLE_PLATFORM_MINGW32)
 			else if ((p=file_is_win32_executable(*argv)) != NULL) {
 				missing = 0;
 				puts(p);

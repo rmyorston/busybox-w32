@@ -25,7 +25,7 @@ pid_t FAST_FUNC spawn(char **argv)
 	volatile int failed;
 	pid_t pid;
 
-	if (ENABLE_PLATFORM_MINGW32 || __WATCOMC__)
+	if (MINGW_TEST)
 		return mingw_spawn(argv);
 
 	fflush_all();
@@ -191,7 +191,7 @@ int FAST_FUNC spawn_and_wait(char **argv)
 		{
 			return run_nofork_applet(a, argv);
 		}
-# if BB_MMU && !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
+# if BB_MMU && !defined(ENABLE_PLATFORM_MINGW32)
 		/* MMU only */
 		/* a->noexec is true */
 		rc = fork();
