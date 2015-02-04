@@ -19,8 +19,12 @@
 
 #if  defined(__LINUX__) || defined(__linux__)
 /* somehow an upstream expression contaminates normal GCC 
- with ENABLE_PLATFORM_MINGW32 */
+ (linux target) with ENABLE_PLATFORM_MINGW32 despite the check above */
 #undef ENABLE_PLATFORM_MINGW32
+#endif
+
+#if defined(__WATCOMC__) && defined(__NT__)
+#define ENABLE_PLATFORM_MINGW32 1
 #endif
 
 #if !defined(ENABLE_PLATFORM_MINGW32)

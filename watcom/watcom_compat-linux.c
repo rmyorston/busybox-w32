@@ -32,12 +32,6 @@ int getpagesize(void)
 	return 4096;
 }
 
-int mknod ( const char *filename,  int mode,  int dev)
-{
-  errno = ENOSYS;
-  return -1;
-}
-
 int getgroups (int n, gid_t *groups)
 {
   errno = ENOSYS;
@@ -60,27 +54,9 @@ int getpwnam_r( const char *__name )
         return 0;
 }
 
-struct passwd *getpwnam( const char *__name )
-{
-        return NULL;
-}
-
-struct passwd *getpwent(void)
-{
-    return NULL;
-}
-
 struct passwd *getpwent_r(void)
 {
     return NULL;
-}
-
-void endpwent(void)
-{
-}
-
-void setpwent(void)
-{
 }
 
 int ttyname_r(int fd, char *buf, size_t buflen)
@@ -162,23 +138,6 @@ char *realpath(const char *path, char *resolved_path)
 {
 	/* FIXME: need normalization */
 	return strcpy(resolved_path, path);
-}
-
-struct passwd *getpwuid(uid_t uid)
-{
-	static char user_name[100];
-	static struct passwd p;
-	long len = sizeof(user_name);
-
-	user_name[0] = '\0';
-	p.pw_name = user_name;
-	p.pw_gecos = (char *)"unknown";
-	p.pw_dir = NULL;
-	p.pw_shell = NULL;
-	p.pw_uid = 1000;
-	p.pw_gid = 1000;
-
-	return &p;
 }
 
 long sysconf(int name)
@@ -292,22 +251,6 @@ utimes(const char *file, struct timeval tvp[2])
 
 
 
-/* the following functions fail to link when debug build with CFLAGS -g2 is used */
-
-void BUG_sizeof(void) {
-}
-
-void sed_free_and_close_stuff(void) {
-}
-
-void data_extract_to_command(void) {
-}
-
-void open_transformer(void) {
-}
-
-void check_errors_in_children(void) {
-}
 
 
 

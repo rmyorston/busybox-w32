@@ -158,22 +158,6 @@ uid_t getuid(void) {
  return 0;
 }
 
-/* the following functions fail to link when debug build with CFLAGS -g2 is used */
-
-void BUG_sizeof(void) {
-}
-
-void sed_free_and_close_stuff(void) {
-}
-
-void data_extract_to_command(void) {
-}
-
-void open_transformer(void) {
-}
-
-void check_errors_in_children(void) {
-}
 
 
 

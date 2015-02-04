@@ -23,7 +23,6 @@
 /* hacks */
 #include <musl-netdb.h>
 
-
 /* getting rid of GCC-isms */
 #undef __volatile__
 #define __volatile__ /* nothing */
@@ -59,6 +58,8 @@
 int utimes(const char, struct timeval *);
 typedef unsigned char* RE_TRANSLATE_TYPE;
 typedef void (*sighandler_t)(int);
+
+extern const char bb_busybox_exec_path[] = CONFIG_BUSYBOX_EXEC_PATH;
 
 #endif /* WATCOM_HACKS */
 

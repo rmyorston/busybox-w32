@@ -125,7 +125,7 @@
 # include <arpa/inet.h>
 #elif defined __APPLE__
 # include <netinet/in.h>
-#elif ENABLE_PLATFORM_MINGW32
+#elif defined(ENABLE_PLATFORM_MINGW32)
 # ifndef WINVER
 #  define WINVER 0x0501
 # endif

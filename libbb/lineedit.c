@@ -409,7 +409,7 @@ static void put_cur_glyph_and_inc_cursor(void)
 	}
 }
 
-#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
+#if ENABLE_PLATFORM_MINGW32
 static void inc_cursor(void)
 {
 	CHAR_T c = command_ps[cursor];
@@ -501,7 +501,7 @@ static void input_backward(unsigned num)
 
 	if (cmdedit_x >= num) {
 		cmdedit_x -= num;
-#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
+#if !ENABLE_PLATFORM_MINGW32
 		if (num <= 4) {
 			/* This is longer by 5 bytes on x86.
 			 * Also gets miscompiled for ARM users
@@ -646,7 +646,7 @@ static void input_backspace(void)
 static void input_forward(void)
 {
 	if (cursor < command_len)
-#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
+#if !ENABLE_PLATFORM_MINGW32
 		put_cur_glyph_and_inc_cursor();
 #else
 		inc_cursor();
@@ -761,7 +761,7 @@ static int path_parse(char ***p)
 	tmp = (char*)pth;
 	npth = 1; /* path component count */
 	while (1) {
-#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
+#if ENABLE_PLATFORM_MINGW32
 		tmp = next_path_sep(tmp);
 #else
 		tmp = strchr(tmp, ':');
@@ -778,7 +778,7 @@ static int path_parse(char ***p)
 	res[0] = tmp = xstrdup(pth);
 	npth = 1;
 	while (1) {
-#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
+#if ENABLE_PLATFORM_MINGW32
 		tmp = next_path_sep(tmp);
 #else
 		tmp = strchr(tmp, ':');
@@ -1936,7 +1936,7 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 							/* /home/user[/something] -> ~[/something] */
 							l = strlen(home_pwd_buf);
 							if (l != 0
-#if !ENABLE_PLATFORM_MINGW32 && !__WATCOMC__
+#if !ENABLE_PLATFORM_MINGW32
 							 && strncmp(home_pwd_buf, cwd_buf, l) == 0
 #else
 							 && strncasecmp(home_pwd_buf, cwd_buf, l) == 0
@@ -2309,7 +2309,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 
 	INIT_S();
 
-#if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
+#if ENABLE_PLATFORM_MINGW32
 	memset(initial_settings.c_cc, sizeof(initial_settings.c_cc), 0);
 	initial_settings.c_cc[VINTR] = CTRL('C');
 	initial_settings.c_cc[VEOF] = CTRL('D');
