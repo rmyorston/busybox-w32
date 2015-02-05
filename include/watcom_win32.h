@@ -12,6 +12,7 @@
 #define IMPL(name,ret,retval,...) static inline ret name(__VA_ARGS__) { return retval; }
 
 #define ENABLE_USE_PORTABLE_CODE 1
+#define _SC_CLK_TCK 2
 
 /* enable various Windows and standard functions in Watcom libc */
 #define __STDC_WANT_LIB_EXT1__ 1
@@ -52,6 +53,14 @@ typedef long long off64_t;
 #undef IF_NOT_PLATFORM_MINGW32
 #define IF_PLATFORM_MINGW32(...) __VA_ARGS__
 
+
+#define WIFEXITED(x) ((unsigned)(x) < 259)	/* STILL_ACTIVE */
+#define WEXITSTATUS(x) ((x) & 0xff)
+#define WIFSIGNALED(x) ((unsigned)(x) > 259)
+#define WTERMSIG(x) ((x) & 0x7f)
+#define WCOREDUMP(x) 0
+
+
 /* signals */
 #define SIGHUP SIGTERM
 #define SIGQUIT SIGABRT
@@ -73,19 +82,31 @@ typedef long long off64_t;
 
 #define NSIG 13
 
-typedef void (__cdecl *sighandler_t)(int);
+typedef void (*sighandler_t)(int);
 struct sigaction {
 	sighandler_t sa_handler;
 	unsigned sa_flags;
 	int sa_mask;
 };
+#define __cdecl /*nothing*/
 #define sigemptyset(x) (void)0
 #define SA_RESTART 0
 
 int sigaction(int sig, struct sigaction *in, struct sigaction *out);
-
+NOIMPL(FAST_FUNC sigprocmask_allsigs, int how UNUSED_PARAM);
 
 /* time */
+
+#define clock_t long
+
+struct tms {
+	clock_t tms_utime;		/* user CPU time */
+	clock_t tms_stime;		/* system CPU time */
+	clock_t tms_cutime;		/* user CPU time of children */
+	clock_t tms_cstime;		/* system CPU time of children */
+};
+
+clock_t times(struct tms *buf);
 
 #define lutimes utimes
 #define P_NOWAIT 1
@@ -101,7 +122,11 @@ struct timespec {
 	long int tv_nsec;
 };
 
-/* File system and directories */
+#define WNOHANG 1
+#define WUNTRACED 2
+int waitpid(pid_t pid, int *status, unsigned options);
+
+/* File system, io and directories */
 
 #undef mkdir
 #define mkdir(name,mode) mkdir(name)
@@ -116,7 +141,10 @@ struct timespec {
 IMPL(fchmod,int,0,int fildes UNUSED_PARAM, mode_t mode UNUSED_PARAM);
 NOIMPL(fchown,int fd UNUSED_PARAM, uid_t uid UNUSED_PARAM, gid_t gid UNUSED_PARAM);
 NOIMPL(symlink,const char *oldpath UNUSED_PARAM, const char *newpath UNUSED_PARAM);
+NOIMPL(readlink,const char *path UNUSED_PARAM, char *buf UNUSED_PARAM, size_t bufsiz UNUSED_PARAM);
 NOIMPL(mknod,const char *name UNUSED_PARAM, mode_t mode UNUSED_PARAM, dev_t device UNUSED_PARAM);
+#define is_absolute_path(path) ((path)[0] == '/' || has_dos_drive_prefix(path))
+#define has_dos_drive_prefix(path) 0
 
 extern int ftruncate (int fd, off_t length);
 int link(const char *oldpath, const char *newpath);
@@ -151,6 +179,11 @@ int mingw_fstat(int fd, struct mingw_stat *buf);
 #define stat mingw_stat
 #define fstat mingw_fstat
 
+#define TIOCGWINSZ 0x5413
+int ioctl(int fd, int code, ...);
+
+#define PIPE_BUF 8192
+
 /* users and permissions */
 
 struct group {
@@ -161,8 +194,22 @@ struct group {
 };
 IMPL(getgrnam,struct group *,NULL,const char *name UNUSED_PARAM);
 IMPL(getgrgid,struct group *,NULL,gid_t gid UNUSED_PARAM);
+IMPL(getegid,int,1,void);
+IMPL(geteuid,int,1,void);
+NOIMPL(getsid,pid_t pid UNUSED_PARAM);
+NOIMPL(setsid,void);
+NOIMPL(setgid,gid_t gid UNUSED_PARAM);
+NOIMPL(setuid,uid_t gid UNUSED_PARAM);
+NOIMPL(setegid,gid_t gid UNUSED_PARAM);
+NOIMPL(seteuid,uid_t gid UNUSED_PARAM);
+IMPL(getpwnam,struct passwd *,NULL,const char *name UNUSED_PARAM);
+static inline void setpwent(void) {}
 NOIMPL(initgroups,const char *group UNUSED_PARAM,gid_t gid UNUSED_PARAM);
 static inline void endgrent(void) {}
+NOIMPL(chroot,const char *root UNUSED_PARAM);
+static inline void endpwent(void) {}
+IMPL(getpwent_r,int,ENOENT,struct passwd *pwbuf UNUSED_PARAM,char *buf UNUSED_PARAM,size_t buflen UNUSED_PARAM,struct passwd **pwbufp UNUSED_PARAM);
+IMPL(getppid,int,1,void);
 
 struct passwd {
 	char *pw_name;
@@ -188,6 +235,14 @@ NOIMPL(vfork,void);
 
 int fcntl(int fd, int cmd, ...);
 
+typedef int sa_family_t;
+struct sockaddr_un {
+	sa_family_t sun_family;
+	char sun_path[1]; /* to make compiler happy, don't bother */
+};
+
+#define fork() -1
+NOIMPL(ttyname_r,int fd UNUSED_PARAM, char *buf UNUSED_PARAM, int sz UNUSED_PARAM);
 
 /*
  * helpers

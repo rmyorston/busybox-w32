@@ -2030,7 +2030,10 @@ static void cmdedit_setwidth(unsigned w, int redraw_flg)
 	}
 }
 
-static void win_changed(int nsig)
+#if !defined(__WATCOMC__) && !defined(__NT__) 
+static
+#endif
+void win_changed(int nsig)
 {
 	int sv_errno = errno;
 	unsigned width;
