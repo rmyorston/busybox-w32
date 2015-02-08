@@ -18,13 +18,13 @@
 
 #if defined __WATCOMC__
 #undef N_
-#define N_(x) x
+#define N_(x) {x}
 #define random() (long) rand()
-#define srandom srand
+#define srandom(x) srand(x)
 #endif
 
-static void conf(struct menu *menu);
-static void check_conf(struct menu *menu);
+void conf(struct menu *menu);
+void check_conf(struct menu *menu);
 
 enum {
 	ask_all,
@@ -45,8 +45,7 @@ static char line[128];
 static struct menu *rootEntry;
 
 static char nohelp_text[] = N_("Sorry, no help available for this option yet.\n");
-
-static void strip(char *str)
+void strip(char *str)
 {
 	char *p = str;
 	int l;
@@ -62,8 +61,10 @@ static void strip(char *str)
 	while ((isspace(*p)))
 		*p-- = 0;
 }
-
-static void check_stdin(void)
+#ifndef __WATCOMC__
+static
+#endif
+void check_stdin(void)
 {
 	if (!valid_stdin && input_mode == ask_silent) {
 		printf(_("aborted!\n\n"));
@@ -73,7 +74,7 @@ static void check_stdin(void)
 	}
 }
 
-static void conf_askvalue(struct symbol *sym, const char *def)
+void conf_askvalue(struct symbol *sym, const char *def)
 {
 	enum symbol_type type = sym_get_type(sym);
 	tristate val;
@@ -407,7 +408,7 @@ static int conf_choice(struct menu *menu)
 	}
 }
 
-static void conf(struct menu *menu)
+void conf(struct menu *menu)
 {
 	struct symbol *sym;
 	struct property *prop;
@@ -469,7 +470,7 @@ conf_childs:
 		indent -= 2;
 }
 
-static void check_conf(struct menu *menu)
+void check_conf(struct menu *menu)
 {
 	struct symbol *sym;
 	struct menu *child;
@@ -538,6 +539,7 @@ int main(int ac, char **av)
 			exit(0);
 		}
 	}
+	
 	name = av[i];
 	if (!name) {
 		printf(_("%s: Kconfig file missing\n"), av[0]);

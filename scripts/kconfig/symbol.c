@@ -10,7 +10,7 @@
 #ifndef __WATCOMC__
 #include <regex.h>
 #else
-#include "../../watcom/regex.c"
+#include "../../watcom/regex.h"
 #endif
 
 #if !defined(__WATCOMC__) && !defined(__NT__)

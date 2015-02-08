@@ -21,10 +21,8 @@
 #ifndef _REGEX_H
 #define _REGEX_H 1
 
-#ifdef __WATCOMC__
 #define __USE_GNU 1
-#define CODESET
-#endif
+#define CODESET "u"
 
 #include <sys/types.h>
 

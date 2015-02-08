@@ -157,7 +157,7 @@
 
 /* Some libc's forget to declare these, do it ourself */
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !defined(ENABLE_PLATFORM_MINGW32)
 extern char **environ;
 #endif
 #if defined(__GLIBC__) && __GLIBC__ < 2
@@ -181,7 +181,7 @@ int klogctl(int type, char *b, int len);
 #endif
 
 /* Can't use ENABLE_PLATFORM_MINGW32 because it's also called by host compiler */
-#if ENABLE_PLATFORM_MINGW32
+#if defined(ENABLE_PLATFORM_MINGW32)
 # include "mingw.h"
 #endif
 
@@ -882,7 +882,7 @@ char* str_tolower(char *str) FAST_FUNC;
 #endif
 
 char *utoa(unsigned n) FAST_FUNC;
-#if ENABLE_PLATFORM_MINGW32
+#if defined(ENABLE_PLATFORM_MINGW32)
 # define itoa bb_itoa
 #endif
 char *itoa(int n) FAST_FUNC;
@@ -1668,7 +1668,7 @@ typedef struct procps_status_t {
 #if ENABLE_FEATURE_TOP_SMP_PROCESS
 	int last_seen_on_cpu;
 #endif
-#if ENABLE_PLATFORM_MINGW32
+#if defined(ENABLE_PLATFORM_MINGW32)
 	HANDLE snapshot;
 #endif
 } procps_status_t;
@@ -1709,7 +1709,7 @@ void free_procps_scan(procps_status_t* sp) FAST_FUNC;
 procps_status_t* procps_scan(procps_status_t* sp, int flags) FAST_FUNC;
 /* Format cmdline (up to col chars) into char buf[size] */
 /* Puts [comm] if cmdline is empty (-> process is a kernel thread) */
-#if !ENABLE_PLATFORM_MINGW32
+#if !defined(ENABLE_PLATFORM_MINGW32)
 void read_cmdline(char *buf, int size, unsigned pid, const char *comm) FAST_FUNC;
 #else
 #define read_cmdline(buf, size, pid, comm) snprintf(buf, size, "[%s]", comm)
@@ -1849,7 +1849,7 @@ extern const char bb_path_wtmp_file[] ALIGN1;
 #define bb_path_motd_file "/etc/motd"
 
 #define bb_dev_null "/dev/null"
-#if ENABLE_PLATFORM_MINGW32
+#if defined(ENABLE_PLATFORM_MINGW32)
 #define bb_busybox_exec_path get_busybox_exec_path()
 #else
 extern const char bb_busybox_exec_path[] ALIGN1;

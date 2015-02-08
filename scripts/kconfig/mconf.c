@@ -32,7 +32,7 @@
 
 #if defined __WATCOMC__
 #undef N_
-#define N_(x) x
+#define N_(x) {x}
 #endif
 
 static char menu_backtitle[128];
@@ -319,8 +319,10 @@ static void init_wsize(void)
 	}
 
 	if (rows < 19 || cols < 80) {
+#ifndef __WATCOMC__ /* something with fprintf */
 		fprintf(stderr, N_("Your display is too small to run Menuconfig!\n"));
 		fprintf(stderr, N_("It must be at least 19 lines by 80 columns.\n"));
+#endif
 		exit(1);
 	}
 

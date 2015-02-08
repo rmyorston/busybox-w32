@@ -102,8 +102,9 @@ int conf_read_simple(const char *name)
 		const char **names = conf_confnames;
 		while ((name = *names++)) {
 			name = conf_expand_value(name);
-			in = zconf_fopen(name);
-			if (in) {
+                        if (name) {
+                        in = zconf_fopen(name);
+                        } if (in) {
 				printf(_("#\n"
 				         "# using defaults found in %s\n"
 				         "#\n"), name);

@@ -102,11 +102,6 @@
  * those files will have correct dependencies.
  */
 
-#ifdef __NT__
-/* assume overlapping needs */
-#define __MINGW32__ 1
-#endif
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #if !defined(__MINGW32__) && !defined(__WATCOMC__)
@@ -133,7 +128,7 @@
 #define INT_FIG_ ntohl(0x4649475f)
 */
 
-#ifdef __MINGW32__
+#if defined(__MINGW32__) || defined(__WATCOMC__)
 
 #ifndef __WATCOMC__
 #define UNUSED __attribute__ ((__unused__))
