@@ -233,8 +233,8 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		int len = strlen(file_name);
 
 		buf->st_ino = 0;
-		buf->st_gid = 0;
-		buf->st_uid = 0;
+		buf->st_uid = DEFAULT_UID;
+		buf->st_gid = DEFAULT_GID;
 		buf->st_nlink = 1;
 		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
 		if (len > 4 && (!strcasecmp(file_name+len-4, ".exe") ||
@@ -340,8 +340,8 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 		buf->st_ino = 0;
 		buf->st_mode = S_IREAD|S_IWRITE;
 		buf->st_nlink = 1;
-		buf->st_uid = 0;
-		buf->st_gid = 0;
+		buf->st_uid = DEFAULT_UID;
+		buf->st_gid = DEFAULT_GID;
 		buf->st_rdev = 0;
 		buf->st_size = buf64.st_size;
 		buf->st_atime = buf64.st_atime;
@@ -353,8 +353,8 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 
 	if (GetFileInformationByHandle(fh, &fdata)) {
 		buf->st_ino = 0;
-		buf->st_gid = 0;
-		buf->st_uid = 0;
+		buf->st_uid = DEFAULT_UID;
+		buf->st_gid = DEFAULT_GID;
 		buf->st_nlink = 1;
 		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
 		buf->st_size = fdata.nFileSizeLow |
@@ -568,23 +568,60 @@ static char *gethomedir(void)
 	return buf;
 }
 
-struct passwd *getpwuid(int uid UNUSED_PARAM)
+static char *get_user_name(void)
 {
-	static char user_name[100];
-	static struct passwd p;
+	static char user_name[100] = "";
+	char *s;
 	DWORD len = sizeof(user_name);
 
-	user_name[0] = '\0';
-	if (!GetUserName(user_name, &len))
+	if ( user_name[0] != '\0' ) {
+		return user_name;
+	}
+
+	if ( !GetUserName(user_name, &len) ) {
 		return NULL;
-	p.pw_name = user_name;
+	}
+
+	for ( s=user_name; *s; ++s ) {
+		if ( *s == ' ' ) {
+			*s = '_';
+		}
+	}
+
+	return user_name;
+}
+
+struct passwd *getpwuid(uid_t uid UNUSED_PARAM)
+{
+	static struct passwd p;
+
+	if ( (p.pw_name=get_user_name()) == NULL ) {
+		return NULL;
+	}
+	p.pw_passwd = (char *)"secret";
 	p.pw_gecos = (char *)"unknown";
 	p.pw_dir = gethomedir();
 	p.pw_shell = NULL;
-	p.pw_uid = 1000;
-	p.pw_gid = 1000;
+	p.pw_uid = DEFAULT_UID;
+	p.pw_gid = DEFAULT_GID;
 
 	return &p;
+}
+
+struct group *getgrgid(gid_t gid UNUSED_PARAM)
+{
+	static char *members[2] = { NULL, NULL };
+	static struct group g;
+
+	if ( (g.gr_name=get_user_name()) == NULL ) {
+		return NULL;
+	}
+	g.gr_passwd = (char *)"secret";
+	g.gr_gid = DEFAULT_GID;
+	members[0] = g.gr_name;
+	g.gr_mem = members;
+
+	return &g;
 }
 
 long sysconf(int name)
