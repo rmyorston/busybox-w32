@@ -624,6 +624,23 @@ struct group *getgrgid(gid_t gid UNUSED_PARAM)
 	return &g;
 }
 
+int getlogin_r(char *buf, size_t len)
+{
+	char *name;
+
+	if ( (name=get_user_name()) == NULL ) {
+		return -1;
+	}
+
+	if ( strlen(name) >= len ) {
+		errno = ERANGE;
+		return -1;
+	}
+
+	strcpy(buf, name);
+	return 0;
+}
+
 long sysconf(int name)
 {
 	if ( name == _SC_CLK_TCK ) {

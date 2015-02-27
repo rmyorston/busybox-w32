@@ -371,6 +371,7 @@ IMPL(getegid,int,DEFAULT_GID,void);
 IMPL(geteuid,int,DEFAULT_UID,void);
 NOIMPL(getsid,pid_t pid UNUSED_PARAM);
 IMPL(getuid,int,DEFAULT_UID,void);
+int getlogin_r(char *buf, size_t len);
 int fcntl(int fd, int cmd, ...);
 #define fork() -1
 IMPL(fsync,int,0,int fd UNUSED_PARAM);

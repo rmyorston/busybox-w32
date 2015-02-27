@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
-# Busybox version: 1.23.0-TIG-1656-g6d6d18d
-# Sun Dec 14 14:24:44 2014
+# Busybox version: 1.23.0
+# Fri Feb 27 14:51:19 2015
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -241,7 +241,7 @@ CONFIG_FEATURE_FANCY_HEAD=y
 # CONFIG_INSTALL is not set
 # CONFIG_FEATURE_INSTALL_LONG_OPTIONS is not set
 # CONFIG_LN is not set
-# CONFIG_LOGNAME is not set
+CONFIG_LOGNAME=y
 CONFIG_LS=y
 CONFIG_FEATURE_LS_FILETYPES=y
 CONFIG_FEATURE_LS_FOLLOWLINKS=y
