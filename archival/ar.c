@@ -175,6 +175,7 @@ static int write_ar_archive(archive_handle_t *handle)
 {
 	struct stat st;
 	archive_handle_t *out_handle;
+	char *temp_fn = NULL;
 
 	xfstat(handle->src_fd, &st, handle->ar__name);
 
@@ -183,8 +184,14 @@ static int write_ar_archive(archive_handle_t *handle)
 	 */
 	if (st.st_size != 0) {
 		out_handle = init_handle();
+#if !ENABLE_PLATFORM_MINGW32
 		xunlink(handle->ar__name);
 		out_handle->src_fd = xopen(handle->ar__name, O_WRONLY | O_CREAT | O_TRUNC);
+#else
+		/* can't unlink open file, create temporary output file */
+		temp_fn = xasprintf("%sXXXXXX", handle->ar__name);
+		out_handle->src_fd = xmkstemp(temp_fn);
+#endif
 		out_handle->accept = handle->accept;
 	} else {
 		out_handle = handle;
@@ -206,11 +213,18 @@ static int write_ar_archive(archive_handle_t *handle)
 		continue;
 
 	/* optional, since we exit right after we return */
-	if (ENABLE_FEATURE_CLEAN_UP) {
+	if (ENABLE_FEATURE_CLEAN_UP || ENABLE_PLATFORM_MINGW32) {
 		close(handle->src_fd);
 		if (out_handle->src_fd != handle->src_fd)
 			close(out_handle->src_fd);
 	}
+
+#if ENABLE_PLATFORM_MINGW32
+	if ( temp_fn != NULL ) {
+		xrename(temp_fn, handle->ar__name);
+		free(temp_fn);
+	}
+#endif
 
 	return EXIT_SUCCESS;
 }
