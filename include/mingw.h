@@ -87,6 +87,7 @@ struct passwd *getpwuid(uid_t uid);
 static inline void setpwent(void) {}
 static inline void endpwent(void) {}
 IMPL(getpwent_r,int,ENOENT,struct passwd *pwbuf UNUSED_PARAM,char *buf UNUSED_PARAM,size_t buflen UNUSED_PARAM,struct passwd **pwbufp UNUSED_PARAM);
+IMPL(getpwent,struct passwd *,NULL,void)
 
 /*
  * signal.h
