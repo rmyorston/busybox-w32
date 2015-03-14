@@ -7075,6 +7075,14 @@ varvalue(char *name, int varflags, int flags, struct strlist *var_str_list)
 		len = strlen(p);
 		if (!(subtype == VSPLUS || subtype == VSLENGTH))
 			memtodest(p, len, syntax, quotes);
+#if ENABLE_UNICODE_SUPPORT
+		if (subtype == VSLENGTH && len > 0) {
+			reinit_unicode_for_ash();
+			if (unicode_status == UNICODE_ON) {
+				len = unicode_strlen(p);
+			}
+		}
+#endif
 		return len;
 	}
 
@@ -7158,15 +7166,7 @@ evalvar(char *p, int flags, struct strlist *var_str_list)
 		varunset(p, var, 0, 0);
 
 	if (subtype == VSLENGTH) {
-		ssize_t n = varlen;
-		if (n > 0) {
-			reinit_unicode_for_ash();
-			if (unicode_status == UNICODE_ON) {
-				const char *val = lookupvar(var);
-				n = unicode_strlen(val);
-			}
-		}
-		cvtnum(n > 0 ? n : 0);
+		cvtnum(varlen > 0 ? varlen : 0);
 		goto record;
 	}
 
@@ -10981,7 +10981,7 @@ static union node *andor(void);
 static union node *pipeline(void);
 static union node *parse_command(void);
 static void parseheredoc(void);
-static char peektoken(void);
+static char nexttoken_ends_list(void);
 static int readtoken(void);
 
 static union node *
@@ -10991,7 +10991,7 @@ list(int nlflag)
 	int tok;
 
 	checkkwd = CHKNL | CHKKWD | CHKALIAS;
-	if (nlflag == 2 && peektoken())
+	if (nlflag == 2 && nexttoken_ends_list())
 		return NULL;
 	n1 = NULL;
 	for (;;) {
@@ -11033,8 +11033,15 @@ list(int nlflag)
 				tokpushback = 1;
 			}
 			checkkwd = CHKNL | CHKKWD | CHKALIAS;
-			if (peektoken())
+			if (nexttoken_ends_list()) {
+				/* Testcase: "<<EOF; then <W".
+				 * It used to segfault w/o this check:
+				 */
+				if (heredoclist) {
+					raise_error_unexpected_syntax(-1);
+				}
 				return n1;
+			}
 			break;
 		case TEOF:
 			if (heredoclist)
@@ -12471,7 +12478,7 @@ readtoken(void)
 }
 
 static char
-peektoken(void)
+nexttoken_ends_list(void)
 {
 	int t;
 

@@ -1,7 +1,7 @@
 VERSION = 1
-PATCHLEVEL = 23
+PATCHLEVEL = 24
 SUBLEVEL = 0
-EXTRAVERSION =
+EXTRAVERSION = .git
 NAME = Unnamed
 
 # *DOCUMENTATION*
@@ -1167,24 +1167,7 @@ endif
 ALLSOURCE_ARCHS := $(ARCH)
 
 define all-sources
-	( find $(__srctree) $(RCS_FIND_IGNORE) \
-	       \( -name include -o -name arch \) -prune -o \
-	       -name '*.[chS]' -print; \
-	  for ARCH in $(ALLSOURCE_ARCHS) ; do \
-	       find $(__srctree)arch/$${ARCH} $(RCS_FIND_IGNORE) \
-	            -name '*.[chS]' -print; \
-	  done ; \
-	  find $(__srctree)security/selinux/include $(RCS_FIND_IGNORE) \
-	       -name '*.[chS]' -print; \
-	  find $(__srctree)include $(RCS_FIND_IGNORE) \
-	       \( -name config -o -name 'asm-*' \) -prune \
-	       -o -name '*.[chS]' -print; \
-	  for ARCH in $(ALLINCLUDE_ARCHS) ; do \
-	       find $(__srctree)include/asm-$${ARCH} $(RCS_FIND_IGNORE) \
-	            -name '*.[chS]' -print; \
-	  done ; \
-	  find $(__srctree)include/asm-generic $(RCS_FIND_IGNORE) \
-	       -name '*.[chS]' -print )
+	( find -regex '.*\.[ch]$$' )
 endef
 
 quiet_cmd_cscope-file = FILELST cscope.files

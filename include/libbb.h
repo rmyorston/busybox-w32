@@ -402,6 +402,7 @@ const char *bb_basename(const char *name) FAST_FUNC;
 /* NB: can violate const-ness (similarly to strchr) */
 char *last_char_is(const char *s, int c) FAST_FUNC;
 const char* endofname(const char *name) FAST_FUNC;
+char *is_prefixed_with(const char *string, const char *key) FAST_FUNC;
 
 int ndelay_on(int fd) FAST_FUNC;
 int ndelay_off(int fd) FAST_FUNC;
@@ -937,9 +938,11 @@ void die_if_bad_username(const char* name) FAST_FUNC;
 #if ENABLE_FEATURE_UTMP
 void FAST_FUNC write_new_utmp(pid_t pid, int new_type, const char *tty_name, const char *username, const char *hostname);
 void FAST_FUNC update_utmp(pid_t pid, int new_type, const char *tty_name, const char *username, const char *hostname);
+void FAST_FUNC update_utmp_DEAD_PROCESS(pid_t pid);
 #else
 # define write_new_utmp(pid, new_type, tty_name, username, hostname) ((void)0)
 # define update_utmp(pid, new_type, tty_name, username, hostname) ((void)0)
+# define update_utmp_DEAD_PROCESS(pid) ((void)0)
 #endif
 
 

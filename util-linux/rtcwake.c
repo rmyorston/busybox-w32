@@ -32,18 +32,18 @@
 //usage:     "\n	-l,--local	Clock is set to local time"
 //usage:     "\n	-u,--utc	Clock is set to UTC time"
 //usage:     "\n	-d,--device=DEV	Specify the RTC device"
-//usage:     "\n	-m,--mode=MODE	Set the sleep state (default: standby)"
-//usage:     "\n	-s,--seconds=SEC Set the timeout in SEC seconds from now"
-//usage:     "\n	-t,--time=TIME	Set the timeout to TIME seconds from epoch"
+//usage:     "\n	-m,--mode=MODE	Set sleep state (default: standby)"
+//usage:     "\n	-s,--seconds=SEC Set timeout in SEC seconds from now"
+//usage:     "\n	-t,--time=TIME	Set timeout to TIME seconds from epoch"
 //usage:	)
 //usage:	IF_NOT_LONG_OPTS(
 //usage:     "\n	-a	Read clock mode from adjtime"
 //usage:     "\n	-l	Clock is set to local time"
 //usage:     "\n	-u	Clock is set to UTC time"
 //usage:     "\n	-d DEV	Specify the RTC device"
-//usage:     "\n	-m MODE	Set the sleep state (default: standby)"
-//usage:     "\n	-s SEC	Set the timeout in SEC seconds from now"
-//usage:     "\n	-t TIME	Set the timeout to TIME seconds from epoch"
+//usage:     "\n	-m MODE	Set sleep state (default: standby)"
+//usage:     "\n	-s SEC	Set timeout in SEC seconds from now"
+//usage:     "\n	-t TIME	Set timeout to TIME seconds from epoch"
 //usage:	)
 
 #include "libbb.h"
@@ -66,7 +66,7 @@ static NOINLINE bool may_wakeup(const char *rtcname)
 		return false;
 
 	/* wakeup events could be disabled or not supported */
-	return strncmp(buf, "enabled\n", 8) == 0;
+	return is_prefixed_with(buf, "enabled\n") != NULL;
 }
 
 static NOINLINE void setup_alarm(int fd, time_t *wakeup, time_t rtc_time)

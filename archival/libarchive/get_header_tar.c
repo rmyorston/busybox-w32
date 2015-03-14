@@ -17,36 +17,6 @@
 typedef uint32_t aliased_uint32_t FIX_ALIASING;
 typedef off_t    aliased_off_t    FIX_ALIASING;
 
-
-const char* FAST_FUNC strip_unsafe_prefix(const char *str)
-{
-	const char *cp = str;
-	while (1) {
-		char *cp2;
-		if (*cp == '/') {
-			cp++;
-			continue;
-		}
-		if (strncmp(cp, "/../"+1, 3) == 0) {
-			cp += 3;
-			continue;
-		}
-		cp2 = strstr(cp, "/../");
-		if (!cp2)
-			break;
-		cp = cp2 + 4;
-	}
-	if (cp != str) {
-		static smallint warned = 0;
-		if (!warned) {
-			warned = 1;
-			bb_error_msg("removing leading '%.*s' from member names",
-				(int)(cp - str), str);
-		}
-	}
-	return cp;
-}
-
 /* NB: _DESTROYS_ str[len] character! */
 static unsigned long long getOctal(char *str, int len)
 {
@@ -135,7 +105,7 @@ static void process_pax_hdr(archive_handle_t *archive_handle, unsigned sz, int g
 		value = end + 1;
 
 #if ENABLE_FEATURE_TAR_GNU_EXTENSIONS
-		if (!global && strncmp(value, "path=", sizeof("path=") - 1) == 0) {
+		if (!global && is_prefixed_with(value, "path=")) {
 			value += sizeof("path=") - 1;
 			free(archive_handle->tar__longname);
 			archive_handle->tar__longname = xstrdup(value);
@@ -148,7 +118,7 @@ static void process_pax_hdr(archive_handle_t *archive_handle, unsigned sz, int g
 		 * This is what Red Hat's patched version of tar uses.
 		 */
 # define SELINUX_CONTEXT_KEYWORD "RHT.security.selinux"
-		if (strncmp(value, SELINUX_CONTEXT_KEYWORD"=", sizeof(SELINUX_CONTEXT_KEYWORD"=") - 1) == 0) {
+		if (is_prefixed_with(value, SELINUX_CONTEXT_KEYWORD"=")) {
 			value += sizeof(SELINUX_CONTEXT_KEYWORD"=") - 1;
 			free(archive_handle->tar__sctx[global]);
 			archive_handle->tar__sctx[global] = xstrdup(value);
@@ -232,7 +202,7 @@ char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 
 	/* Check header has valid magic, "ustar" is for the proper tar,
 	 * five NULs are for the old tar format  */
-	if (strncmp(tar.magic, "ustar", 5) != 0
+	if (!is_prefixed_with(tar.magic, "ustar")
 	 && (!ENABLE_FEATURE_TAR_OLDGNU_COMPATIBILITY
 	     || memcmp(tar.magic, "\0\0\0\0", 5) != 0)
 	) {

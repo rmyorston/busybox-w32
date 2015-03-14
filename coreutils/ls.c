@@ -566,12 +566,12 @@ static NOINLINE unsigned display_single(const struct dnode *dn)
 #if ENABLE_FEATURE_LS_TIMESTAMPS
 	if (G.all_fmt & (LIST_FULLTIME|LIST_DATE_TIME)) {
 		char *filetime;
-		time_t ttime = dn->dn_mtime;
+		const time_t *ttime = &dn->dn_mtime;
 		if (G.all_fmt & TIME_ACCESS)
-			ttime = dn->dn_atime;
+			ttime = &dn->dn_atime;
 		if (G.all_fmt & TIME_CHANGE)
-			ttime = dn->dn_ctime;
-		filetime = ctime(&ttime);
+			ttime = &dn->dn_ctime;
+		filetime = ctime(ttime);
 		/* filetime's format: "Wed Jun 30 21:49:08 1993\n" */
 		if (G.all_fmt & LIST_FULLTIME) { /* -e */
 			/* Note: coreutils 8.4 ls --full-time prints:
@@ -580,13 +580,16 @@ static NOINLINE unsigned display_single(const struct dnode *dn)
 			column += printf("%.24s ", filetime);
 		} else { /* LIST_DATE_TIME */
 			/* G.current_time_t ~== time(NULL) */
-			time_t age = G.current_time_t - ttime;
-			printf("%.6s ", filetime + 4); /* "Jun 30" */
+			time_t age = G.current_time_t - *ttime;
 			if (age < 3600L * 24 * 365 / 2 && age > -15 * 60) {
-				/* hh:mm if less than 6 months old */
-				printf("%.5s ", filetime + 11);
-			} else { /* year. buggy if year > 9999 ;) */
-				printf(" %.4s ", filetime + 20);
+				/* less than 6 months old */
+				/* "mmm dd hh:mm " */
+				printf("%.12s ", filetime + 4);
+			} else {
+				/* "mmm dd  yyyy " */
+				/* "mmm dd yyyyy " after year 9999 :) */
+				strchr(filetime + 20, '\n')[0] = ' ';
+				printf("%.7s%6s", filetime + 4, filetime + 20);
 			}
 			column += 13;
 		}

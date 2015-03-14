@@ -55,6 +55,7 @@
 #define RTF_WINDOW      0x0080	/* per route window clamping    */
 #define RTF_IRTT        0x0100	/* Initial round trip time      */
 #define RTF_REJECT      0x0200	/* Reject route                 */
+#define RTF_NONEXTHOP   0x00200000 /* route with no nexthop	*/
 #endif
 
 #if defined(SIOCADDRTOLD) || defined(RTF_IRTT)	/* route */
@@ -128,7 +129,7 @@ static const char tbl_ipvx[] ALIGN1 =
 	"\013\043reinstate"			/* Since last, we can save a byte. */
 ;
 
-static const int flags_ipvx[] = { /* MUST match tbl_ipvx[] values above. */
+static const uint16_t flags_ipvx[] = { /* MUST match tbl_ipvx[] values above. */
 #ifdef RTF_REJECT
 	RTF_REJECT,
 #endif
@@ -449,7 +450,11 @@ static NOINLINE void INET6_setroute(int action, char **args)
 }
 #endif
 
-static const unsigned flagvals[] = { /* Must agree with flagchars[]. */
+static const
+IF_NOT_FEATURE_IPV6(uint16_t)
+IF_FEATURE_IPV6(unsigned)
+flagvals[] = { /* Must agree with flagchars[]. */
+	RTF_UP,
 	RTF_GATEWAY,
 	RTF_HOST,
 	RTF_REINSTATE,
@@ -458,26 +463,24 @@ static const unsigned flagvals[] = { /* Must agree with flagchars[]. */
 #if ENABLE_FEATURE_IPV6
 	RTF_DEFAULT,
 	RTF_ADDRCONF,
-	RTF_CACHE
+	RTF_CACHE,
+	RTF_REJECT,
+	RTF_NONEXTHOP, /* this one doesn't fit into 16 bits */
 #endif
 };
-
-#define IPV4_MASK (RTF_GATEWAY|RTF_HOST|RTF_REINSTATE|RTF_DYNAMIC|RTF_MODIFIED)
-#define IPV6_MASK (RTF_GATEWAY|RTF_HOST|RTF_DEFAULT|RTF_ADDRCONF|RTF_CACHE)
-
 /* Must agree with flagvals[]. */
 static const char flagchars[] ALIGN1 =
-	"GHRDM"
+	"UGHRDM"
 #if ENABLE_FEATURE_IPV6
-	"DAC"
+	"DAC!n"
 #endif
 ;
+#define IPV4_MASK (RTF_UP|RTF_GATEWAY|RTF_HOST|RTF_REINSTATE|RTF_DYNAMIC|RTF_MODIFIED)
+#define IPV6_MASK (RTF_UP|RTF_GATEWAY|RTF_HOST|RTF_DEFAULT|RTF_ADDRCONF|RTF_CACHE|RTF_REJECT|RTF_NONEXTHOP)
 
 static void set_flags(char *flagstr, int flags)
 {
 	int i;
-
-	*flagstr++ = 'U';
 
 	for (i = 0; (*flagstr = flagchars[i]) != 0; i++) {
 		if (flags & flagvals[i]) {
@@ -491,6 +494,7 @@ void FAST_FUNC bb_displayroutes(int noresolve, int netstatfmt)
 {
 	char devname[64], flags[16], *sdest, *sgw;
 	unsigned long d, g, m;
+	int r;
 	int flgs, ref, use, metric, mtu, win, ir;
 	struct sockaddr_in s_addr;
 	struct in_addr mask;
@@ -501,20 +505,24 @@ void FAST_FUNC bb_displayroutes(int noresolve, int netstatfmt)
 		"Destination     Gateway         Genmask         Flags %s Iface\n",
 			netstatfmt ? "  MSS Window  irtt" : "Metric Ref    Use");
 
-	if (fscanf(fp, "%*[^\n]\n") < 0) { /* Skip the first line. */
-		goto ERROR;                /* Empty or missing line, or read error. */
+	/* Skip the first line. */
+	r = fscanf(fp, "%*[^\n]\n");
+	if (r < 0) {
+		/* Empty line, read error, or EOF. Yes, if routing table
+		 * is completely empty, /proc/net/route has no header.
+		 */
+		goto ERROR;
 	}
 	while (1) {
-		int r;
 		r = fscanf(fp, "%63s%lx%lx%X%d%d%d%lx%d%d%d\n",
 				devname, &d, &g, &flgs, &ref, &use, &metric, &m,
 				&mtu, &win, &ir);
 		if (r != 11) {
+ ERROR:
 			if ((r < 0) && feof(fp)) { /* EOF with no (nonspace) chars read. */
 				break;
 			}
- ERROR:
-			bb_error_msg_and_die("fscanf");
+			bb_perror_msg_and_die(bb_msg_read_error);
 		}
 
 		if (!(flgs & RTF_UP)) { /* Skip interfaces that are down. */
@@ -574,13 +582,13 @@ static void INET6_displayroutes(void)
 		int r;
 		r = fscanf(fp, "%32s%x%*s%x%32s%x%x%x%x%s\n",
 				addr6x+14, &prefix_len, &slen, addr6x+40+7,
-				&metric, &use, &refcnt, &iflags, iface);
+				&metric, &refcnt, &use, &iflags, iface);
 		if (r != 9) {
 			if ((r < 0) && feof(fp)) { /* EOF with no (nonspace) chars read. */
 				break;
 			}
  ERROR:
-			bb_error_msg_and_die("fscanf");
+			bb_perror_msg_and_die(bb_msg_read_error);
 		}
 
 		/* Do the addr6x shift-and-insert changes to ':'-delimit addresses.
@@ -604,10 +612,6 @@ static void INET6_displayroutes(void)
 					addr6x[i++] = ':';
 				}
 			} while (i < 40+28+7);
-		}
-
-		if (!(iflags & RTF_UP)) { /* Skip interfaces that are down. */
-			continue;
 		}
 
 		set_flags(flags, (iflags & IPV6_MASK));

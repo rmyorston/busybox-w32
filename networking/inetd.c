@@ -645,7 +645,7 @@ static servtab_t *dup_servtab(servtab_t *sep)
 }
 
 /* gcc generates much more code if this is inlined */
-static servtab_t *parse_one_line(void)
+static NOINLINE servtab_t *parse_one_line(void)
 {
 	int argc;
 	char *token[6+MAXARGV];
@@ -675,6 +675,8 @@ static servtab_t *parse_one_line(void)
 			 * default host for the following lines. */
 			free(default_local_hostname);
 			default_local_hostname = sep->se_local_hostname;
+			/*sep->se_local_hostname = NULL; - redundant */
+			/* (we'll overwrite this field anyway) */
 			goto more;
 		}
 	} else
@@ -688,10 +690,10 @@ static servtab_t *parse_one_line(void)
  parse_err:
 		bb_error_msg("parse error on line %u, line is ignored",
 				parser->lineno);
-		free_servtab_strings(sep);
 		/* Just "goto more" can make sep to carry over e.g.
 		 * "rpc"-ness (by having se_rpcver_lo != 0).
 		 * We will be more paranoid: */
+		free_servtab_strings(sep);
 		free(sep);
 		goto new;
 	}
@@ -725,7 +727,7 @@ static servtab_t *parse_one_line(void)
 			goto parse_err;
 #endif
 		}
-		if (strncmp(arg, "rpc/", 4) == 0) {
+		if (is_prefixed_with(arg, "rpc/")) {
 #if ENABLE_FEATURE_INETD_RPC
 			unsigned n;
 			arg += 4;
@@ -815,7 +817,7 @@ static servtab_t *parse_one_line(void)
 	}
 #endif
 	argc = 0;
-	while ((arg = token[6+argc]) != NULL && argc < MAXARGV)
+	while (argc < MAXARGV && (arg = token[6+argc]) != NULL)
 		sep->se_argv[argc++] = xstrdup(arg);
 	/* Some inetd.conf files have no argv's, not even argv[0].
 	 * Fix them up.
@@ -1654,7 +1656,7 @@ static void FAST_FUNC daytime_stream(int s, servtab_t *sep UNUSED_PARAM)
 {
 	time_t t;
 
-	t = time(NULL);
+	time(&t);
 	fdprintf(s, "%.24s\r\n", ctime(&t));
 }
 static void FAST_FUNC daytime_dg(int s, servtab_t *sep)

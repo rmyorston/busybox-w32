@@ -10,8 +10,9 @@
 //usage:#define loadkmap_trivial_usage
 //usage:       "< keymap"
 //usage:#define loadkmap_full_usage "\n\n"
-//usage:       "Load a binary keyboard translation table from stdin\n"
-/* //usage:     "\n	-C TTY	Affect TTY instead of /dev/tty" */
+//usage:       "Load a binary keyboard translation table from stdin"
+////usage:       "\n"
+////usage:       "\n	-C TTY	Affect TTY instead of /dev/tty"
 //usage:
 //usage:#define loadkmap_example_usage
 //usage:       "$ loadkmap < /etc/i18n/lang-keymap\n"
@@ -56,7 +57,7 @@ int loadkmap_main(int argc UNUSED_PARAM, char **argv)
 */
 
 	xread(STDIN_FILENO, flags, 7);
-	if (strncmp(flags, BINARY_KEYMAP_MAGIC, 7))
+	if (!is_prefixed_with(flags, BINARY_KEYMAP_MAGIC))
 		bb_error_msg_and_die("not a valid binary keymap");
 
 	xread(STDIN_FILENO, flags, MAX_NR_KEYMAPS);

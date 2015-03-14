@@ -234,6 +234,7 @@ typedef uint64_t bb__aliased_uint64_t FIX_ALIASING;
  * a lvalue. This makes it more likely to not swap them by mistake
  */
 #if defined(i386) || defined(__x86_64__) || defined(__powerpc__)
+# define BB_UNALIGNED_MEMACCESS_OK 1
 # define move_from_unaligned_int(v, intp)  ((v) = *(bb__aliased_int*)(intp))
 # define move_from_unaligned_long(v, longp) ((v) = *(bb__aliased_long*)(longp))
 # define move_from_unaligned16(v, u16p) ((v) = *(bb__aliased_uint16_t*)(u16p))
@@ -242,6 +243,7 @@ typedef uint64_t bb__aliased_uint64_t FIX_ALIASING;
 # define move_to_unaligned32(u32p, v)   (*(bb__aliased_uint32_t*)(u32p) = (v))
 /* #elif ... - add your favorite arch today! */
 #else
+# define BB_UNALIGNED_MEMACCESS_OK 0
 /* performs reasonably well (gcc usually inlines memcpy here) */
 # define move_from_unaligned_int(v, intp) (memcpy(&(v), (intp), sizeof(int)))
 # define move_from_unaligned_long(v, longp) (memcpy(&(v), (longp), sizeof(long)))
@@ -387,6 +389,7 @@ typedef unsigned smalluint;
 #define HAVE_SETBIT 1
 #define HAVE_SIGHANDLER_T 1
 #define HAVE_STPCPY 1
+#define HAVE_MEMPCPY 1
 #define HAVE_STRCASESTR 1
 #define HAVE_STRCHRNUL 1
 #define HAVE_STRSEP 1
@@ -486,6 +489,8 @@ typedef unsigned smalluint;
 #endif
 
 #if defined(__FreeBSD__)
+/* users say mempcpy is not present in FreeBSD 9.x */
+# undef HAVE_MEMPCPY
 # undef HAVE_CLEARENV
 # undef HAVE_FDATASYNC
 # undef HAVE_MNTENT_H
@@ -548,6 +553,18 @@ typedef void (*sighandler_t)(int);
 
 #ifndef HAVE_STPCPY
 extern char *stpcpy(char *p, const char *to_add) FAST_FUNC;
+#endif
+
+#ifndef HAVE_MEMPCPY
+#include <string.h>
+/* In case we are wrong about !HAVE_MEMPCPY, and toolchain _does_ have
+ * mempcpy(), avoid colliding with it:
+ */
+#define mempcpy bb__mempcpy
+static ALWAYS_INLINE void *mempcpy(void *dest, const void *src, size_t len)
+{
+	return memcpy(dest, src, len) + len;
+}
 #endif
 
 #ifndef HAVE_STRCASESTR

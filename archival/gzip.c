@@ -417,19 +417,46 @@ static void flush_outbuf(void)
 #define put_8bit(c) \
 do { \
 	G1.outbuf[G1.outcnt++] = (c); \
-	if (G1.outcnt == OUTBUFSIZ) flush_outbuf(); \
+	if (G1.outcnt == OUTBUFSIZ) \
+		flush_outbuf(); \
 } while (0)
 
 /* Output a 16 bit value, lsb first */
 static void put_16bit(ush w)
 {
-	if (G1.outcnt < OUTBUFSIZ - 2) {
-		G1.outbuf[G1.outcnt++] = w;
-		G1.outbuf[G1.outcnt++] = w >> 8;
-	} else {
-		put_8bit(w);
-		put_8bit(w >> 8);
+	/* GCC 4.2.1 won't optimize out redundant loads of G1.outcnt
+	 * (probably because of fear of aliasing with G1.outbuf[]
+	 * stores), do it explicitly:
+	 */
+	unsigned outcnt = G1.outcnt;
+	uch *dst = &G1.outbuf[outcnt];
+
+#if BB_UNALIGNED_MEMACCESS_OK && BB_LITTLE_ENDIAN
+	if (outcnt < OUTBUFSIZ-2) {
+		/* Common case */
+		ush *dst16 = (void*) dst;
+		*dst16 = w; /* unalinged LSB 16-bit store */
+		G1.outcnt = outcnt + 2;
+		return;
 	}
+	*dst = (uch)w;
+	w >>= 8;
+#else
+	*dst = (uch)w;
+	w >>= 8;
+	if (outcnt < OUTBUFSIZ-2) {
+		/* Common case */
+		dst[1] = w;
+		G1.outcnt = outcnt + 2;
+		return;
+	}
+#endif
+
+	/* Slowpath: we will need to do flush_outbuf() */
+	G1.outcnt = ++outcnt;
+	if (outcnt == OUTBUFSIZ)
+		flush_outbuf();
+	put_8bit(w);
 }
 
 static void put_32bit(ulg n)
@@ -2007,7 +2034,7 @@ static void ct_init(void)
  * IN assertions: the input and output buffers are cleared.
  */
 
-static void zip(ulg time_stamp)
+static void zip(void)
 {
 	ush deflate_flags = 0;  /* pkzip -es, -en or -ex equivalent */
 
@@ -2018,7 +2045,7 @@ static void zip(ulg time_stamp)
 	/* compression method: 8 (DEFLATED) */
 	/* general flags: 0 */
 	put_32bit(0x00088b1f);
-	put_32bit(time_stamp);
+	put_32bit(0);		/* Unix timestamp */
 
 	/* Write deflated file to zip file */
 	G1.crc = ~0;
@@ -2044,8 +2071,6 @@ static void zip(ulg time_stamp)
 static
 IF_DESKTOP(long long) int FAST_FUNC pack_gzip(transformer_state_t *xstate UNUSED_PARAM)
 {
-	struct stat s;
-
 	/* Clear input and output buffers */
 	G1.outcnt = 0;
 #ifdef DEBUG
@@ -2077,9 +2102,23 @@ IF_DESKTOP(long long) int FAST_FUNC pack_gzip(transformer_state_t *xstate UNUSED
 	G2.bl_desc.max_length  = MAX_BL_BITS;
 	//G2.bl_desc.max_code    = 0;
 
+#if 0
+	/* Saving of timestamp is disabled. Why?
+	 * - it is not Y2038-safe.
+	 * - some people want deterministic results
+	 *   (normally they'd use -n, but our -n is a nop).
+	 * - it's bloat.
+	 * Per RFC 1952, gzfile.time=0 is "no timestamp".
+	 * If users will demand this to be reinstated,
+	 * implement -n "don't save timestamp".
+	 */
+	struct stat s;
 	s.st_ctime = 0;
 	fstat(STDIN_FILENO, &s);
 	zip(s.st_ctime);
+#else
+	zip();
+#endif
 	return 0;
 }
 

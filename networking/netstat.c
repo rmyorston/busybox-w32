@@ -228,12 +228,12 @@ static long extract_socket_inode(const char *lname)
 {
 	long inode = -1;
 
-	if (strncmp(lname, "socket:[", sizeof("socket:[")-1) == 0) {
+	if (is_prefixed_with(lname, "socket:[")) {
 		/* "socket:[12345]", extract the "12345" as inode */
 		inode = bb_strtoul(lname + sizeof("socket:[")-1, (char**)&lname, 0);
 		if (*lname != ']')
 			inode = -1;
-	} else if (strncmp(lname, "[0000]:", sizeof("[0000]:")-1) == 0) {
+	} else if (is_prefixed_with(lname, "[0000]:")) {
 		/* "[0000]:12345", extract the "12345" as inode */
 		inode = bb_strtoul(lname + sizeof("[0000]:")-1, NULL, 0);
 		if (errno) /* not NUL terminated? */
@@ -622,7 +622,7 @@ static int FAST_FUNC unix_do_one(char *line)
 
 	/* TODO: currently we stop at first NUL byte. Is it a problem? */
 	line += path_ofs;
-	*strchrnul(line, '\n') = '\0';
+	chomp(line);
 	while (*line)
 		fputc_printable(*line++, stdout);
 	bb_putchar('\n');
