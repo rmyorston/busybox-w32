@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.24.0.git
-# Sat Mar 14 21:25:58 2015
+# Mon Mar 23 13:58:33 2015
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -203,6 +203,7 @@ CONFIG_FEATURE_TOUCH_SUSV3=y
 CONFIG_TR=y
 CONFIG_FEATURE_TR_CLASSES=y
 CONFIG_FEATURE_TR_EQUIV=y
+CONFIG_TRUNCATE=y
 CONFIG_UNLINK=y
 CONFIG_BASE64=y
 # CONFIG_WHO is not set
