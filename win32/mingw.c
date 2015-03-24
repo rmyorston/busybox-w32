@@ -228,6 +228,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 {
 	int err;
 	WIN32_FILE_ATTRIBUTE_DATA fdata;
+	mode_t usermode;
 
 	if (!(err = get_file_attr(file_name, &fdata))) {
 		int len = strlen(file_name);
@@ -265,6 +266,8 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 				FindClose(handle);
 			}
 		}
+		usermode = buf->st_mode & S_IRWXU;
+		buf->st_mode |= (usermode >> 3) | ((usermode >> 6) & ~S_IWOTH);
 
 		/*
 		 * Assume a block is 4096 bytes and calculate number of 512 byte
