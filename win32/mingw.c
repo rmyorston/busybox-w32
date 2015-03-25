@@ -842,6 +842,19 @@ int mingw_mkdir(const char *path, int mode UNUSED_PARAM)
 	return ret;
 }
 
+#undef chmod
+int mingw_chmod(const char *path, int mode)
+{
+	WIN32_FILE_ATTRIBUTE_DATA fdata;
+
+	if ( get_file_attr(path, &fdata) == 0 &&
+			fdata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
+		mode |= 0222;
+	}
+
+	return chmod(path, mode);
+}
+
 int fcntl(int fd, int cmd, ...)
 {
 	va_list arg;
@@ -1012,6 +1025,14 @@ int mingw_access(const char *name, int mode)
 	}
 
 	return -1;
+}
+
+#undef rmdir
+int mingw_rmdir(const char *path)
+{
+	/* read-only directories cannot be removed */
+	chmod(path, 0666);
+	return rmdir(path);
 }
 
 /* check if path can be made into an executable by adding a suffix;

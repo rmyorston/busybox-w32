@@ -257,7 +257,10 @@ NOIMPL(mingw_bind,SOCKET s UNUSED_PARAM,const struct sockaddr* sa UNUSED_PARAM,i
 IMPL(fchmod,int,0,int fildes UNUSED_PARAM, mode_t mode UNUSED_PARAM);
 NOIMPL(fchown,int fd UNUSED_PARAM, uid_t uid UNUSED_PARAM, gid_t gid UNUSED_PARAM);
 int mingw_mkdir(const char *path, int mode);
+int mingw_chmod(const char *path, int mode);
+
 #define mkdir mingw_mkdir
+#define chmod mingw_chmod
 
 #if ENABLE_LFS
 # define off_t off64_t
@@ -395,12 +398,14 @@ NOIMPL(ttyname_r,int fd UNUSED_PARAM, char *buf UNUSED_PARAM, int sz UNUSED_PARA
 int mingw_unlink(const char *pathname);
 NOIMPL(vfork,void);
 int mingw_access(const char *name, int mode);
+int mingw_rmdir(const char *name);
 
 #define dup2 mingw_dup2
 #define getcwd mingw_getcwd
 #define lchown chown
 #define open mingw_open
 #define unlink mingw_unlink
+#define rmdir mingw_rmdir
 
 #undef access
 #define access mingw_access
