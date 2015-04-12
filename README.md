@@ -17,3 +17,4 @@ Then just `make`.
  - Use forward slashes in paths:  Windows doesn't mind and the shell will be happier.
  - Don't do wild things with Windows drive or UNC notation.
  - tar doesn't support seamless compression/decompression:  use a pipeline to a compressor/decompressor.
+ - Wildcard expansion is disabled by default, though it can be turned on at compile time.  This only affects command line arguments to the binary:  the BusyBox shell has full support for wildcards.

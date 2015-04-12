@@ -1,16 +1,25 @@
 #include "libbb.h"
 #include <userenv.h>
 
-#if ENABLE_NOGLOB
-/* disable MSVCRT command line globbing */
-int _CRT_glob = 0;
+#if defined(__MINGW64_VERSION_MAJOR)
+#if ENABLE_GLOBBING
+int _dowildcard = -1;
+#else
+int _dowildcard = 0;
+#endif
+
+#undef _fmode
+int _fmode = _O_BINARY;
 #endif
 
 #if !defined(__MINGW64_VERSION_MAJOR)
-unsigned int _CRT_fmode = _O_BINARY;
+#if ENABLE_GLOBBING
+int _CRT_glob = 1;
 #else
-#undef _fmode
-int _fmode = _O_BINARY;
+int _CRT_glob = 0;
+#endif
+
+unsigned int _CRT_fmode = _O_BINARY;
 #endif
 
 smallint bb_got_signal;
