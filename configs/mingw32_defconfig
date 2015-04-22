@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.24.0.git
-# Sun Apr 12 13:04:19 2015
+# Wed Apr 22 21:15:08 2015
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -753,8 +753,8 @@ CONFIG_STRINGS=y
 # CONFIG_NAMEIF is not set
 # CONFIG_FEATURE_NAMEIF_EXTENDED is not set
 # CONFIG_NBDCLIENT is not set
-# CONFIG_NC is not set
-# CONFIG_NC_SERVER is not set
+CONFIG_NC=y
+CONFIG_NC_SERVER=y
 # CONFIG_NC_EXTRA is not set
 # CONFIG_NC_110_COMPAT is not set
 # CONFIG_PING is not set
