@@ -12,6 +12,7 @@ lib-$(CONFIG_PLATFORM_MINGW32) += process.o
 lib-$(CONFIG_PLATFORM_MINGW32) += regex.o
 lib-$(CONFIG_PLATFORM_MINGW32) += net.o
 lib-$(CONFIG_PLATFORM_MINGW32) += poll.o
+lib-$(CONFIG_PLATFORM_MINGW32) += select.o
 lib-$(CONFIG_PLATFORM_MINGW32) += popen.o
 lib-$(CONFIG_PLATFORM_MINGW32) += statfs.o
 lib-$(CONFIG_PLATFORM_MINGW32) += mempcpy.o
