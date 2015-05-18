@@ -48,6 +48,7 @@ IMPL(getgrnam,struct group *,NULL,const char *name UNUSED_PARAM);
 struct group *getgrgid(gid_t gid);
 NOIMPL(initgroups,const char *group UNUSED_PARAM,gid_t gid UNUSED_PARAM);
 static inline void endgrent(void) {}
+int getgrouplist(const char *user, gid_t group, gid_t *groups, int *ngroups);
 
 /*
  * limits.h
@@ -380,7 +381,7 @@ char *mingw_getcwd(char *pointer, int len);
 
 
 IMPL(getgid,int,DEFAULT_GID,void);
-NOIMPL(getgroups,int n UNUSED_PARAM,gid_t *groups UNUSED_PARAM);
+int getgroups(int n, gid_t *groups);
 IMPL(getppid,int,1,void);
 IMPL(getegid,int,DEFAULT_GID,void);
 IMPL(geteuid,int,DEFAULT_UID,void);

@@ -648,6 +648,28 @@ struct group *getgrgid(gid_t gid UNUSED_PARAM)
 	return &g;
 }
 
+int getgrouplist(const char *user, gid_t group, gid_t *groups, int *ngroups)
+{
+	if ( *ngroups == 0 ) {
+		*ngroups = 1;
+		return -1;
+	}
+
+	*ngroups = 1;
+	groups[0] = DEFAULT_GID;
+	return 1;
+}
+
+int getgroups(int n, gid_t *groups)
+{
+	if ( n == 0 ) {
+		return 1;
+	}
+
+	groups[0] = DEFAULT_GID;
+	return 1;
+}
+
 int getlogin_r(char *buf, size_t len)
 {
 	char *name;

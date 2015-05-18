@@ -18,3 +18,4 @@ Then just `make`.
  - Don't do wild things with Windows drive or UNC notation.
  - tar doesn't support seamless compression/decompression:  use a pipeline to a compressor/decompressor.
  - Wildcard expansion is disabled by default, though it can be turned on at compile time.  This only affects command line arguments to the binary:  the BusyBox shell has full support for wildcards.
+ - Handling of users, groups and permissions is totally bogus.  The system only admits to knowing about the current user and always returns the same hardcoded uid, gid and permission values.

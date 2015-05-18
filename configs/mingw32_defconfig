@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.24.0.git
-# Mon May 18 10:01:53 2015
+# Mon May 18 14:31:53 2015
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -193,8 +193,8 @@ CONFIG_DD=y
 CONFIG_FEATURE_DD_IBS_OBS=y
 CONFIG_FEATURE_DD_STATUS=y
 # CONFIG_HOSTID is not set
-# CONFIG_ID is not set
-# CONFIG_GROUPS is not set
+CONFIG_ID=y
+CONFIG_GROUPS=y
 CONFIG_SHUF=y
 CONFIG_TEST=y
 CONFIG_FEATURE_TEST_64=y
