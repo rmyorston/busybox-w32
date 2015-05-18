@@ -379,8 +379,12 @@ static int i2c_dev_open(int i2cbus)
 	sprintf(filename, "/dev/i2c-%d", i2cbus);
 	fd = open(filename, O_RDWR);
 	if (fd < 0) {
-		filename[8] = '/'; /* change to "/dev/i2c/%d" */
-		fd = xopen(filename, O_RDWR);
+		if (errno == ENOENT) {
+			filename[8] = '/'; /* change to "/dev/i2c/%d" */
+			fd = xopen(filename, O_RDWR);
+		} else {
+			bb_perror_msg_and_die("can't open '%s'", filename);
+		}
 	}
 
 	return fd;
@@ -1284,12 +1288,15 @@ int i2cdetect_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opts;
 
 	opt_complementary = "q--r:r--q:" /* mutually exclusive */
-    			"-1:?3"; /* from 1 to 3 args */
+			"?3"; /* up to 3 args */
 	opts = getopt32(argv, optstr);
 	argv += optind;
 
 	if (opts & opt_l)
 		list_i2c_busses_and_exit();
+
+	if (!argv[0])
+		bb_show_usage();
 
 	bus_num = i2c_bus_lookup(argv[0]);
 	fd = i2c_dev_open(bus_num);

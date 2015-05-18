@@ -84,7 +84,30 @@
 # include <selinux/av_permissions.h>
 #endif
 #if ENABLE_FEATURE_UTMP
-# include <utmp.h>
+# if defined __UCLIBC__ && ( \
+    (UCLIBC_VERSION >= KERNEL_VERSION(0, 9, 32) \
+     && UCLIBC_VERSION < KERNEL_VERSION(0, 9, 34) \
+     && defined __UCLIBC_HAS_UTMPX__ \
+    ) || ( \
+	 UCLIBC_VERSION >= KERNEL_VERSION(0, 9, 34) \
+	) \
+  )
+#  include <utmpx.h>
+# elif defined __UCLIBC__
+#  include <utmp.h>
+#  define utmpx utmp
+#  define setutxent setutent
+#  define endutxent endutent
+#  define getutxent getutent
+#  define getutxid getutid
+#  define getutxline getutline
+#  define pututxline pututline
+#  define utmpxname utmpname
+#  define updwtmpx updwtmp
+#  define _PATH_UTMPX _PATH_UTMP
+# else
+#  include <utmpx.h>
+# endif
 #endif
 #if ENABLE_LOCALE_SUPPORT
 # include <locale.h>
@@ -726,7 +749,7 @@ void* xrealloc_vector_helper(void *vector, unsigned sizeof_and_shift, int idx) F
 
 
 extern ssize_t safe_read(int fd, void *buf, size_t count) FAST_FUNC;
-extern ssize_t nonblock_immune_read(int fd, void *buf, size_t count, int loop_on_EINTR) FAST_FUNC;
+extern ssize_t nonblock_immune_read(int fd, void *buf, size_t count) FAST_FUNC;
 // NB: will return short read on error, not -1,
 // if some data was read before error occurred
 extern ssize_t full_read(int fd, void *buf, size_t count) FAST_FUNC;

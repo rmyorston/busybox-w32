@@ -385,6 +385,7 @@ typedef unsigned smalluint;
 #define HAVE_DPRINTF 1
 #define HAVE_MEMRCHR 1
 #define HAVE_MKDTEMP 1
+#define HAVE_TTYNAME_R 1
 #define HAVE_PTSNAME_R 1
 #define HAVE_SETBIT 1
 #define HAVE_SIGHANDLER_T 1
@@ -515,9 +516,17 @@ typedef unsigned smalluint;
 #endif
 
 #if defined(ANDROID) || defined(__ANDROID__)
-# undef HAVE_DPRINTF
-# undef HAVE_GETLINE
-# undef HAVE_STPCPY
+# if __ANDROID_API__ < 8
+#  undef HAVE_DPRINTF
+# else
+#  define dprintf fdprintf
+# endif
+# if __ANDROID_API__ < 21
+#  undef HAVE_TTYNAME_R
+#  undef HAVE_GETLINE
+#  undef HAVE_STPCPY
+# endif
+# undef HAVE_MEMPCPY
 # undef HAVE_STRCHRNUL
 # undef HAVE_STRVERSCMP
 # undef HAVE_UNLOCKED_LINE_OPS
@@ -540,6 +549,11 @@ extern void *memrchr(const void *s, int c, size_t n) FAST_FUNC;
 
 #ifndef HAVE_MKDTEMP
 extern char *mkdtemp(char *template) FAST_FUNC;
+#endif
+
+#ifndef HAVE_TTYNAME_R
+#define ttyname_r bb_ttyname_r
+extern int ttyname_r(int fd, char *buf, size_t buflen);
 #endif
 
 #ifndef HAVE_SETBIT
