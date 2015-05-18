@@ -82,7 +82,7 @@ struct passwd {
 	gid_t pw_gid;
 };
 
-IMPL(getpwnam,struct passwd *,NULL,const char *name UNUSED_PARAM);
+struct passwd *getpwnam(const char *name);
 struct passwd *getpwuid(uid_t uid);
 static inline void setpwent(void) {}
 static inline void endpwent(void) {}

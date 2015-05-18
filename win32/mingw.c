@@ -603,6 +603,18 @@ static char *get_user_name(void)
 	return user_name;
 }
 
+struct passwd *getpwnam(const char *name)
+{
+	const char *myname;
+
+	if ( (myname=get_user_name()) != NULL &&
+			strcmp(myname, name) == 0 ) {
+		return getpwuid(DEFAULT_UID);
+	}
+
+	return NULL;
+}
+
 struct passwd *getpwuid(uid_t uid UNUSED_PARAM)
 {
 	static struct passwd p;
