@@ -17,6 +17,7 @@
 
 #include "busybox.h" /* uses applet tables */
 
+#if !ENABLE_PLATFORM_MINGW32
 /* This does a fork/exec in one call, using vfork().  Returns PID of new child,
  * -1 for failure.  Runs argv[0], searching path if that has no / in it. */
 pid_t FAST_FUNC spawn(char **argv)
@@ -24,9 +25,6 @@ pid_t FAST_FUNC spawn(char **argv)
 	/* Compiler should not optimize stores here */
 	volatile int failed;
 	pid_t pid;
-
-	if (ENABLE_PLATFORM_MINGW32)
-		return mingw_spawn(argv);
 
 	fflush_all();
 
@@ -61,6 +59,7 @@ pid_t FAST_FUNC spawn(char **argv)
 	}
 	return pid;
 }
+#endif
 
 /* Die with an error message if we can't spawn a child process. */
 pid_t FAST_FUNC xspawn(char **argv)

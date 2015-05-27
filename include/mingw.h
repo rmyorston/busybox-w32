@@ -433,12 +433,13 @@ int utimes(const char *file_name, const struct timeval times[2]);
 #define is_dir_sep(c) ((c) == '/' || (c) == '\\')
 #define PRIuMAX "I64u"
 
-pid_t mingw_spawn(char **argv);
+pid_t FAST_FUNC mingw_spawn(char **argv);
 int mingw_execv(const char *cmd, const char *const *argv);
 int mingw_execvp(const char *cmd, const char *const *argv);
 int mingw_execve(const char *cmd, const char *const *argv, const char *const *envp);
 pid_t mingw_spawn_applet(int mode, const char *applet, const char *const *argv, const char *const *envp);
 pid_t mingw_spawn_1(int mode, const char *cmd, const char *const *argv, const char *const *envp);
+#define spawn mingw_spawn
 #define execvp mingw_execvp
 #define execve mingw_execve
 #define execv mingw_execv

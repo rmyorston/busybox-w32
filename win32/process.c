@@ -296,7 +296,7 @@ mingw_spawn_1(int mode, const char *cmd, const char *const *argv, const char *co
 	return ret;
 }
 
-pid_t
+pid_t FAST_FUNC
 mingw_spawn(char **argv)
 {
 	return mingw_spawn_1(P_NOWAIT, argv[0], (const char *const *)argv, (const char *const *)environ);
