@@ -3,9 +3,18 @@
 
 int waitpid(pid_t pid, int *status, unsigned options)
 {
+	HANDLE proc;
+	int ret;
+
 	/* Windows does not understand parent-child */
-	if (options == 0 && pid != -1)
-		return _cwait(status, pid, 0);
+	if (options == 0 && pid != -1) {
+		if ( (proc=OpenProcess(SYNCHRONIZE|PROCESS_QUERY_INFORMATION,
+						FALSE, pid)) != NULL ) {
+			ret = _cwait(status, proc, 0);
+			CloseHandle(proc);
+			return ret;
+		}
+	}
 	errno = EINVAL;
 	return -1;
 }
