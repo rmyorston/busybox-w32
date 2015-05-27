@@ -62,6 +62,7 @@ static const char usage_messages[] ALIGN1 = UNPACKED_USAGE;
 #if ENABLE_FEATURE_COMPRESS_USAGE
 
 static const char packed_usage[] ALIGN1 = { PACKED_USAGE };
+#define BB_ARCHIVE_PUBLIC
 # include "bb_archive.h"
 static const char *unpack_usage_messages(void)
 {

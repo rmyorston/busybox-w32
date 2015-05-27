@@ -20,6 +20,7 @@
 //config:	  a memory usage statistic tool.
 
 #include "libbb.h"
+#define BB_ARCHIVE_PUBLIC
 #include "bb_archive.h"
 
 struct fileblock {

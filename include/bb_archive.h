@@ -2,6 +2,16 @@
 #ifndef UNARCHIVE_H
 #define UNARCHIVE_H 1
 
+#if !defined(BB_ARCHIVE_PUBLIC) && ENABLE_PLATFORM_MINGW32
+/* treat mingw as a non-MMU platform */
+#undef BB_MMU
+#undef USE_FOR_NOMMU
+#undef USE_FOR_MMU
+#define BB_MMU 0
+#define USE_FOR_NOMMU(...) __VA_ARGS__
+#define USE_FOR_MMU(...)
+#endif
+
 PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 
 enum {

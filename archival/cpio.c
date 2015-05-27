@@ -374,6 +374,10 @@ int cpio_main(int argc UNUSED_PARAM, char **argv)
 	argv += optind;
 	if (opt & OPT_FILE) { /* -F */
 		xmove_fd(xopen(cpio_filename, O_RDONLY), STDIN_FILENO);
+#if ENABLE_PLATFORM_MINGW32
+		/* default is seek_by_read but seek_by_jump is OK for file */
+		archive_handle->seek = seek_by_jump;
+#endif
 	}
 #else
 	opt = getopt32(argv, OPTION_STR "oH:" IF_FEATURE_CPIO_P("p"), &cpio_filename, &cpio_fmt);

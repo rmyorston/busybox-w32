@@ -617,6 +617,7 @@ static int FAST_FUNC writeFileToTarball(const char *fileName, struct stat *statb
 }
 
 #if SEAMLESS_COMPRESSION
+#if !ENABLE_PLATFORM_MINGW32
 /* Don't inline: vfork scares gcc and pessimizes code */
 static void NOINLINE vfork_compressor(int tar_fd, const char *gzip)
 {
@@ -676,6 +677,27 @@ static void NOINLINE vfork_compressor(int tar_fd, const char *gzip)
 		bb_perror_msg_and_die("can't execute '%s'", gzip);
 	}
 }
+#else
+static pid_t vfork_compressor(int tar_fd, const char *gzip)
+{
+	char *cmd;
+	int fd1;
+	pid_t pid;
+
+	if (find_applet_by_name(gzip) >= 0) {
+		cmd = xasprintf("%s %s -cf -", bb_busybox_exec_path, gzip);
+	}
+	else {
+		cmd = xasprintf("%s -cf -", gzip);
+	}
+	if ( (fd1=mingw_popen_fd(cmd, "w", tar_fd, &pid)) == -1 ) {
+		bb_perror_msg_and_die("can't execute '%s'", gzip);
+	}
+	free(cmd);
+	xmove_fd(fd1, tar_fd);
+	return pid;
+}
+#endif /* ENABLE_PLATFORM_MINGW32 */
 #endif /* SEAMLESS_COMPRESSION */
 
 
@@ -691,6 +713,7 @@ static NOINLINE int writeTarFile(int tar_fd, int verboseFlag,
 {
 	int errorFlag = FALSE;
 	struct TarBallInfo tbInfo;
+	IF_PLATFORM_MINGW32(pid_t pid = 0;)
 
 	tbInfo.hlInfoHead = NULL;
 	tbInfo.tarFd = tar_fd;
@@ -702,7 +725,7 @@ static NOINLINE int writeTarFile(int tar_fd, int verboseFlag,
 
 #if SEAMLESS_COMPRESSION
 	if (gzip)
-		vfork_compressor(tbInfo.tarFd, gzip);
+		IF_PLATFORM_MINGW32(pid = )vfork_compressor(tbInfo.tarFd, gzip);
 #endif
 
 	tbInfo.excludeList = exclude;
@@ -738,7 +761,11 @@ static NOINLINE int writeTarFile(int tar_fd, int verboseFlag,
 #if SEAMLESS_COMPRESSION
 	if (gzip) {
 		int status;
+#if !ENABLE_PLATFORM_MINGW32
 		if (safe_waitpid(-1, &status, 0) == -1)
+#else
+		if (safe_waitpid(pid, &status, 0) == -1)
+#endif
 			bb_perror_msg("waitpid");
 		else if (!WIFEXITED(status) || WEXITSTATUS(status))
 			/* gzip was killed or has exited with nonzero! */
@@ -1208,10 +1235,12 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 	if (ENABLE_FEATURE_CLEAN_UP /* && tar_handle->src_fd != STDIN_FILENO */)
 		close(tar_handle->src_fd);
 
+#if !ENABLE_PLATFORM_MINGW32
 	if (SEAMLESS_COMPRESSION || OPT_COMPRESS) {
 		/* Set bb_got_signal to 1 if a child died with !0 exitcode */
 		check_errors_in_children(0);
 	}
+#endif
 
 	return bb_got_signal;
 }
