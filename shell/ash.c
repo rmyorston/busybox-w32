@@ -5455,6 +5455,9 @@ openredirect(union node *redir)
 		f = open(fname, O_WRONLY|O_CREAT|O_APPEND, 0666);
 		if (f < 0)
 			goto ecreate;
+#if ENABLE_PLATFORM_MINGW32
+		lseek(f, 0, SEEK_END);
+#endif
 		break;
 	default:
 #if DEBUG
