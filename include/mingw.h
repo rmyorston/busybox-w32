@@ -340,7 +340,7 @@ int setitimer(int type, struct itimerval *in, struct itimerval *out);
  */
 #define WNOHANG 1
 #define WUNTRACED 2
-int waitpid(pid_t pid, int *status, unsigned options);
+int waitpid(pid_t pid, int *status, int options);
 
 /*
  * time.h

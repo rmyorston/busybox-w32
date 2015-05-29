@@ -1,13 +1,13 @@
 #include "libbb.h"
 #include <tlhelp32.h>
 
-int waitpid(pid_t pid, int *status, unsigned options)
+int waitpid(pid_t pid, int *status, int options)
 {
 	HANDLE proc;
 	int ret;
 
 	/* Windows does not understand parent-child */
-	if (options == 0 && pid != -1) {
+	if (pid > 0 && options == 0) {
 		if ( (proc=OpenProcess(SYNCHRONIZE|PROCESS_QUERY_INFORMATION,
 						FALSE, pid)) != NULL ) {
 			ret = _cwait(status, proc, 0);
