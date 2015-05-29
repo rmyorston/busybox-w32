@@ -376,15 +376,19 @@ int kill(pid_t pid, int sig)
 {
 	HANDLE h;
 
-	if (sig != SIGTERM) {
-		bb_error_msg("kill only supports SIGTERM");
-		errno = EINVAL;
+	if (pid > 0 && sig == SIGTERM) {
+		if ((h=OpenProcess(PROCESS_TERMINATE, FALSE, pid)) != NULL &&
+				TerminateProcess(h, 0)) {
+			CloseHandle(h);
+			return 0;
+		}
+
+		errno = err_win_to_posix(GetLastError());
+		if (h != NULL)
+			CloseHandle(h);
 		return -1;
 	}
-	h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
-	if (h == NULL)
-		return -1;
-	if (TerminateProcess(h, 0) == 0)
-		return -1;
-	return 0;
+
+	errno = EINVAL;
+	return -1;
 }
