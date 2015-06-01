@@ -163,7 +163,8 @@ void FAST_FUNC fork_transformer(int fd, const char *transform_prog)
 	int fd1;
 
 	if (find_applet_by_name(transform_prog) >= 0) {
-		cmd = xasprintf("%s %s -cf -", bb_busybox_exec_path, transform_prog);
+		cmd = xasprintf("%s --busybox %s -cf -", bb_busybox_exec_path,
+						transform_prog);
 	}
 	else {
 		cmd = xasprintf("%s -cf -", transform_prog);

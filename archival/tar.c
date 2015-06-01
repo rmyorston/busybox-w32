@@ -685,7 +685,7 @@ static pid_t vfork_compressor(int tar_fd, const char *gzip)
 	pid_t pid;
 
 	if (find_applet_by_name(gzip) >= 0) {
-		cmd = xasprintf("%s %s -cf -", bb_busybox_exec_path, gzip);
+		cmd = xasprintf("%s --busybox %s -cf -", bb_busybox_exec_path, gzip);
 	}
 	else {
 		cmd = xasprintf("%s -cf -", gzip);

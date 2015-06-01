@@ -864,6 +864,10 @@ int main(int argc UNUSED_PARAM, char **argv)
 			applet_name = applet_name_env;
 			unsetenv("BUSYBOX_APPLET_NAME");
 		}
+		else if ( argv[1] && argv[2] && strcmp(argv[1], "--busybox") == 0 ) {
+			argv += 2;
+			applet_name = argv[0];
+		}
 		else {
 			char *s = argv[0];
 			int i, len = strlen(s);
