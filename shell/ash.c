@@ -297,6 +297,7 @@ static const char *const optletters_optnames[] = {
 #endif
 #if ENABLE_PLATFORM_MINGW32
 	,"\0"  "noconsole"
+	,"X"   "winxp"
 #endif
 };
 
@@ -380,6 +381,7 @@ struct globals_misc {
 #endif
 #if ENABLE_PLATFORM_MINGW32
 # define noconsole optlist[14 + ENABLE_ASH_BASH_COMPAT + 2*DEBUG]
+# define winxp optlist[15 + ENABLE_ASH_BASH_COMPAT + 2*DEBUG]
 #endif
 
 	/* trap handler commands */
@@ -13453,7 +13455,11 @@ exitshell(void)
 }
 
 static void
+#if ENABLE_PLATFORM_MINGW32
+init(int xp)
+#else
 init(void)
+#endif
 {
 	/* from input.c: */
 	/* we will never free this */
@@ -13502,8 +13508,7 @@ init(void)
 			struct passwd *pw;
 
 			for (envp = environ; envp && *envp; envp++) {
-				end = strchr(*envp, '=');
-				if (!end)
+				if (!(end=strchr(*envp, '=')))
 					continue;
 
 				/* make all variable names uppercase */
@@ -13511,9 +13516,11 @@ init(void)
 					*start = toupper(*start);
 
 				/* convert backslashes to forward slashes */
-				for ( ++end; *end; ++end ) {
-					if ( *end == '\\' ) {
-						*end = '/';
+				if (!xp) {
+					for ( ++end; *end; ++end ) {
+						if ( *end == '\\' ) {
+							*end = '/';
+						}
 					}
 				}
 			}
@@ -13739,7 +13746,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	rootpid = getpid();
 
-	init();
+	init(IF_PLATFORM_MINGW32(argc >= 2 && strcmp(argv[1], "-X") == 0));
 	setstackmark(&smark);
 
 #if ENABLE_PLATFORM_MINGW32
