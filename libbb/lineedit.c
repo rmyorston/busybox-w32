@@ -865,6 +865,9 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 			if (stat(found, &st) && lstat(found, &st))
 				goto cont; /* hmm, remove in progress? */
 
+			if (type == FIND_EXE_ONLY && !file_is_executable(found))
+				goto cont;
+
 			/* Save only name */
 			len = strlen(name_found);
 			found = xrealloc(found, len + 2); /* +2: for slash and NUL */
