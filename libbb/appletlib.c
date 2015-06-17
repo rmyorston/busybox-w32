@@ -655,12 +655,17 @@ static int busybox_main(char **argv)
 			)
 			IF_FEATURE_SH_STANDALONE(
 			"\tBusyBox is a multi-call binary that combines many common Unix\n"
-			"\tutilities into a single executable.  This version has been\n"
-			"\tconfigured to prefer built-in utilities to external binaries.\n"
-			"\tThis avoids having to install a link to busybox for each\n"
-			"\tfunction to be invoked.\n"
+			"\tutilities into a single executable.  The shell in this version\n"
+			"\thas been configured to prefer built-in utilities to external\n"
+			"\tbinaries.  This avoids having to install a link to busybox for\n"
+			"\teach function to be invoked.\n"
 			)
 			"\n"
+#if ENABLE_GLOBBING
+			"\tSupport for native Windows wildcards is enabled.  In some\n"
+			"\tcases this may result in wildcards being processed twice.\n"
+			"\n"
+#endif
 			"Currently defined functions:\n"
 		);
 		col = 0;
