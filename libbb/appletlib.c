@@ -635,10 +635,9 @@ static int busybox_main(char **argv)
 		dup2(1, 2);
 		full_write2_str(bb_banner); /* reuse const string */
 		full_write2_str(" multi-call binary.\n"); /* reuse */
-#if ENABLE_PLATFORM_MINGW32
-		if ((a=getenv("MINGW_VERSION"))) {
-			full_write2_str(a);
-			full_write2_str("\n\n");
+#if defined(MINGW_VER)
+		if (strlen(MINGW_VER)) {
+			full_write2_str(MINGW_VER "\n\n");
 		}
 #endif
 		full_write2_str(
