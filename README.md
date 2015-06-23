@@ -4,7 +4,7 @@ Things may work for you, or may not.  Things may never work because of huge diff
 
 ### Building
 
-You need a MinGW compiler and a POSIX environment (so that `make menuconfig` works).  I cross compile from Linux, but MSYS or Cygwin should be OK.
+You need a MinGW compiler and a POSIX environment (so that `make menuconfig` works).  I cross compile from Linux.  On Fedora or RHEL/CentOS+EPEL installing the mingw32-gcc package will pull in everything needed.
 
 To start, run `make mingw32_defconfig`.  You can then customize your build with `make menuconfig`.
 
