@@ -635,6 +635,12 @@ static int busybox_main(char **argv)
 		dup2(1, 2);
 		full_write2_str(bb_banner); /* reuse const string */
 		full_write2_str(" multi-call binary.\n"); /* reuse */
+#if ENABLE_PLATFORM_MINGW32
+		if ((a=getenv("MINGW_VERSION"))) {
+			full_write2_str(a);
+			full_write2_str("\n\n");
+		}
+#endif
 		full_write2_str(
 			"BusyBox is copyrighted by many authors between 1998-2015.\n"
 			"Licensed under GPLv2. See source distribution for detailed\n"
