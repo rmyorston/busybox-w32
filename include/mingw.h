@@ -192,13 +192,21 @@ int mingw_system(const char *cmd);
 
 int clearenv(void);
 char *mingw_getenv(const char *name);
+int mingw_putenv(const char *env);
 char *mingw_mktemp(char *template);
 int mkstemp(char *template);
 char *realpath(const char *path, char *resolved_path);
 int setenv(const char *name, const char *value, int replace);
+#if ENABLE_SAFE_ENV
+int unsetenv(const char *env);
+#else
 void unsetenv(const char *env);
+#endif
 
 #define getenv mingw_getenv
+#if ENABLE_SAFE_ENV
+#define putenv mingw_putenv
+#endif
 #define mktemp mingw_mktemp
 
 /*
