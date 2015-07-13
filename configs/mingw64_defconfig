@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.24.0.git
-# Fri Jul  3 13:59:27 2015
+# Mon Jul 13 12:28:05 2015
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -833,9 +833,9 @@ CONFIG_IFUPDOWN_IFSTATE_PATH=""
 # CONFIG_IPROUTE is not set
 # CONFIG_IPTUNNEL is not set
 # CONFIG_IPRULE is not set
-# CONFIG_IPCALC is not set
-# CONFIG_FEATURE_IPCALC_FANCY is not set
-# CONFIG_FEATURE_IPCALC_LONG_OPTIONS is not set
+CONFIG_IPCALC=y
+CONFIG_FEATURE_IPCALC_FANCY=y
+CONFIG_FEATURE_IPCALC_LONG_OPTIONS=y
 # CONFIG_NETSTAT is not set
 # CONFIG_FEATURE_NETSTAT_WIDE is not set
 # CONFIG_FEATURE_NETSTAT_PRG is not set

@@ -141,7 +141,7 @@
 # endif
 # include <winsock2.h>
 # include <ws2tcpip.h>
-# undef s_addr
+//# undef s_addr
 #else
 # include <arpa/inet.h>
 # if !defined(__socklen_t_defined) && !defined(_SOCKLEN_T_DECLARED)
@@ -571,7 +571,7 @@ char *strftime_YYYYMMDDHHMMSS(char *buf, unsigned len, time_t *tp) FAST_FUNC;
 int xsocket(int domain, int type, int protocol) FAST_FUNC;
 void xbind(int sockfd, struct sockaddr *my_addr, socklen_t addrlen) FAST_FUNC;
 void xlisten(int s, int backlog) FAST_FUNC;
-void xconnect(int s, const struct sockaddr *s_addr, socklen_t addrlen) FAST_FUNC;
+void xconnect(int s, const struct sockaddr *saddr, socklen_t addrlen) FAST_FUNC;
 ssize_t xsendto(int s, const void *buf, size_t len, const struct sockaddr *to,
 				socklen_t tolen) FAST_FUNC;
 /* SO_REUSEADDR allows a server to rebind to an address that is already
