@@ -141,7 +141,6 @@
 # endif
 # include <winsock2.h>
 # include <ws2tcpip.h>
-//# undef s_addr
 #else
 # include <arpa/inet.h>
 # if !defined(__socklen_t_defined) && !defined(_SOCKLEN_T_DECLARED)
@@ -181,7 +180,6 @@ int klogctl(int type, char *b, int len);
 # define BUFSIZ 4096
 #endif
 
-/* Can't use ENABLE_PLATFORM_MINGW32 because it's also called by host compiler */
 #if ENABLE_PLATFORM_MINGW32
 # include "mingw.h"
 #endif
