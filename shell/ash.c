@@ -8308,7 +8308,7 @@ static void *funcblock;         /* block to allocate function from */
 static char *funcstring;        /* block to allocate strings from */
 #if ENABLE_PLATFORM_MINGW32
 static int nodeptrsize;
-static int *nodeptr;
+static char **nodeptr;
 #endif
 
 /* flags in argument to evaltree */
@@ -8470,10 +8470,10 @@ nodeckstrdup(const char *s)
 static union node *copynode(union node *);
 
 #if ENABLE_PLATFORM_MINGW32
-# define SAVE_PTR(dst) {if (nodeptr) *nodeptr++ = (int)&(dst);}
-# define SAVE_PTR2(dst1,dst2) {if (nodeptr) { *nodeptr++ = (int)&(dst1);*nodeptr++ = (int)&(dst2);}}
-# define SAVE_PTR3(dst1,dst2,dst3) {if (nodeptr) { *nodeptr++ = (int)&(dst1);*nodeptr++ = (int)&(dst2);*nodeptr++ = (int)&(dst3);}}
-# define SAVE_PTR4(dst1,dst2,dst3,dst4) {if (nodeptr) { *nodeptr++ = (int)&(dst1);*nodeptr++ = (int)&(dst2);*nodeptr++ = (int)&(dst3);*nodeptr++ = (int)&(dst4);}}
+# define SAVE_PTR(dst) {if (nodeptr) *nodeptr++ = (char *)&(dst);}
+# define SAVE_PTR2(dst1,dst2) {if (nodeptr) { *nodeptr++ = (char *)&(dst1);*nodeptr++ = (char *)&(dst2);}}
+# define SAVE_PTR3(dst1,dst2,dst3) {if (nodeptr) { *nodeptr++ = (char *)&(dst1);*nodeptr++ = (char *)&(dst2);*nodeptr++ = (char *)&(dst3);}}
+# define SAVE_PTR4(dst1,dst2,dst3,dst4) {if (nodeptr) { *nodeptr++ = (char *)&(dst1);*nodeptr++ = (char *)&(dst2);*nodeptr++ = (char *)&(dst3);*nodeptr++ = (char *)&(dst4);}}
 #else
 # define SAVE_PTR(dst)
 # define SAVE_PTR2(dst,dst2)
@@ -14392,7 +14392,7 @@ forkshell_prepare(struct forkshell *fs)
 	funcblocksize = 0;
 	funcstringsize = 0;
 	forkshell_size(fs);
-	size = funcblocksize + funcstringsize + nodeptrsize*sizeof(int);
+	size = funcblocksize + funcstringsize + nodeptrsize*sizeof(char *);
 
 	/* Allocate, initialize pointers */
 	memset(&sa, 0, sizeof(sa));
@@ -14404,14 +14404,14 @@ forkshell_prepare(struct forkshell *fs)
 	/* new = ckmalloc(size); */
 	funcblock = new;
 	funcstring = (char *) funcblock + funcblocksize;
-	nodeptr = (int*)((char *) funcstring + funcstringsize);
-	nodeptr_offset = (int) nodeptr - (int) new;
+	nodeptr = (char **)((char *)funcstring + funcstringsize);
+	nodeptr_offset = (char *)nodeptr - (char *)new;
 
 	/* Now pack them all */
 	forkshell_copy(fs);
 
 	/* Finish it up */
-	*nodeptr = 0;
+	*nodeptr = NULL;
 	new->size = size;
 	new->nodeptr_offset = nodeptr_offset;
 	new->old_base = new;
@@ -14432,6 +14432,7 @@ forkshell_init(const char *idstr)
 	struct globals_var **gvpp;
 	struct globals_misc **gmpp;
 	int i;
+	char **ptr;
 
 	if (sscanf(idstr, "%x", &map_handle) != 1)
 		bb_error_msg_and_die("invalid forkshell ID");
@@ -14444,14 +14445,15 @@ forkshell_init(const char *idstr)
 	/* this memory can't be freed */
 	sticky_mem_start = fs;
 	sticky_mem_end = (char *) fs + fs->size;
+
 	/* pointer fixup */
-	nodeptr = (int*)((char*)fs + fs->nodeptr_offset);
-	while (*nodeptr) {
-		int *ptr = (int*)((char*)fs + (*nodeptr - (int)fs->old_base));
+	nodeptr = (char **)((char *)fs + fs->nodeptr_offset);
+	for ( i=0; nodeptr[i]; ++i ) {
+		ptr = (char **)((char *)fs + (nodeptr[i] - (char *)fs->old_base));
 		if (*ptr)
-			*ptr -= ((int)fs->old_base - (int)fs);
-		nodeptr++;
+			*ptr = (char *)fs + (*ptr - (char *)fs->old_base);
 	}
+
 	/* Now fix up stuff that can't be transferred */
 	for (i = 0; i < ARRAY_SIZE(varinit_data); i++)
 		fs->gvp->varinit[i].var_func = varinit_data[i].var_func;
