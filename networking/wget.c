@@ -1062,7 +1062,6 @@ However, in real world it was observed that some web servers
 
 		/* For HTTP, data is pumped over the same connection */
 		dfp = sfp;
-
 	} else {
 		/*
 		 *  FTP session

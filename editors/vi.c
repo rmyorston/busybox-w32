@@ -411,7 +411,6 @@ struct globals {
 		char undo_text[1];	// text that was deleted (if deletion)
 	} *undo_stack_tail;
 #endif /* ENABLE_FEATURE_VI_UNDO */
-
 };
 #define G (*ptr_to_globals)
 #define text           (G.text          )
@@ -501,7 +500,7 @@ static char *prev_line(char *);	// return pointer to prev line B-o-l
 static char *next_line(char *);	// return pointer to next line B-o-l
 static char *end_screen(void);	// get pointer to last char on screen
 static int count_lines(char *, char *);	// count line from start to stop
-static char *find_line(int);	// find begining of line #li
+static char *find_line(int);	// find beginning of line #li
 static char *move_to_col(char *, int);	// move "p" to column l
 static void dot_left(void);	// move dot left- dont leave line
 static void dot_right(void);	// move dot right- dont leave line
@@ -1684,10 +1683,10 @@ static char *dollar_line(char *p) // return pointer to just before NL line
 
 static char *prev_line(char *p) // return pointer first char prev line
 {
-	p = begin_line(p);	// goto begining of cur line
+	p = begin_line(p);	// goto beginning of cur line
 	if (p > text && p[-1] == '\n')
 		p--;			// step to prev line
-	p = begin_line(p);	// goto begining of prev line
+	p = begin_line(p);	// goto beginning of prev line
 	return p;
 }
 
@@ -1735,7 +1734,7 @@ static int count_lines(char *start, char *stop)
 	return cnt;
 }
 
-static char *find_line(int li)	// find begining of line #li
+static char *find_line(int li)	// find beginning of line #li
 {
 	char *q;
 
@@ -3404,7 +3403,7 @@ static void refresh(int full_screen)
 			tp = t + 1;
 		}
 
-		// see if there are any changes between vitual screen and out_buf
+		// see if there are any changes between virtual screen and out_buf
 		changed = FALSE;	// assume no change
 		cs = 0;
 		ce = columns - 1;
@@ -3441,7 +3440,7 @@ static void refresh(int full_screen)
 		if (cs < 0) cs = 0;
 		if (ce > columns - 1) ce = columns - 1;
 		if (cs > ce) { cs = 0; ce = columns - 1; }
-		// is there a change between vitual screen and out_buf
+		// is there a change between virtual screen and out_buf
 		if (changed) {
 			// copy changed part of buffer to virtual screen
 			memcpy(sp+cs, out_buf+cs, ce-cs+1);
@@ -3891,7 +3890,7 @@ static void do_cmd(int c)
 		}
 		break;
 #endif /* FEATURE_VI_SEARCH */
-	case '0':			// 0- goto begining of line
+	case '0':			// 0- goto beginning of line
 	case '1':			// 1-
 	case '2':			// 2-
 	case '3':			// 3-

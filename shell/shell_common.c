@@ -500,7 +500,6 @@ shell_builtin_ulimit(char **argv)
 			/* bad option. getopt already complained. */
 			break;
 		}
-
 	} /* while (there are options) */
 
 	return 0;
