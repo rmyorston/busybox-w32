@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.24.0.git
-# Mon Jul 13 12:28:05 2015
+# Wed Jul 15 14:03:10 2015
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -764,9 +764,9 @@ CONFIG_NC_SERVER=y
 # CONFIG_PING6 is not set
 # CONFIG_FEATURE_FANCY_PING is not set
 # CONFIG_WHOIS is not set
-# CONFIG_FEATURE_IPV6 is not set
+CONFIG_FEATURE_IPV6=y
 # CONFIG_FEATURE_UNIX_LOCAL is not set
-# CONFIG_FEATURE_PREFER_IPV4_ADDRESS is not set
+CONFIG_FEATURE_PREFER_IPV4_ADDRESS=y
 # CONFIG_VERBOSE_RESOLUTION_ERRORS is not set
 # CONFIG_ARP is not set
 # CONFIG_ARPING is not set

@@ -22,6 +22,7 @@ typedef __int64 pid_t;
 static inline unsigned int git_ntohl(unsigned int x) { return (unsigned int)ntohl(x); }
 #define ntohl git_ntohl
 int inet_aton(const char *cp, struct in_addr *inp);
+int inet_pton(int af, const char *src, void *dst);
 
 /*
  * fcntl.h
