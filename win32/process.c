@@ -10,7 +10,7 @@ int waitpid(pid_t pid, int *status, int options)
 	if (pid > 0 && options == 0) {
 		if ( (proc=OpenProcess(SYNCHRONIZE|PROCESS_QUERY_INFORMATION,
 						FALSE, pid)) != NULL ) {
-			ret = _cwait(status, proc, 0);
+			ret = _cwait(status, (intptr_t)proc, 0);
 			CloseHandle(proc);
 			return ret;
 		}

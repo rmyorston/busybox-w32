@@ -215,6 +215,11 @@ void unsetenv(const char *env);
 void *mempcpy(void *dest, const void *src, size_t n);
 
 /*
+ * strings.h
+ */
+int ffs(int i);
+
+/*
  * sys/ioctl.h
  */
 

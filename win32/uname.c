@@ -20,9 +20,9 @@ int uname(struct utsname *name)
 	strcpy(name->release, unk);
 	strcpy(name->version, unk);
 	if (GetVersionEx(&os_info)) {
-		sprintf(name->release, "%d.%d", os_info.dwMajorVersion,
-				os_info.dwMinorVersion);
-		sprintf(name->version, "%d", os_info.dwBuildNumber);
+		sprintf(name->release, "%u.%u", (unsigned int)os_info.dwMajorVersion,
+				(unsigned int)os_info.dwMinorVersion);
+		sprintf(name->version, "%u", (unsigned int)os_info.dwBuildNumber);
 	}
 
 	strcpy(name->machine, unk);

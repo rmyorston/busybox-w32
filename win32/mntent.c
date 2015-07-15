@@ -28,10 +28,11 @@ struct mntent *getmntent(FILE *stream)
 	struct mntdata *data = (struct mntdata *)stream;
 	static char mnt_fsname[4];
 	static char mnt_dir[4];
+	static char mnt_type[100];
+	static char mnt_opts[4];
 	static struct mntent my_mount_entry =
-					{ mnt_fsname, mnt_dir, (char *)"", (char *)"", 0, 0 };
+					{ mnt_fsname, mnt_dir, mnt_type, mnt_opts, 0, 0 };
 	struct mntent *entry;
-	static char fsname[100];
 
 	entry = NULL;
 	while ( ++data->index < 26 ) {
@@ -43,12 +44,13 @@ struct mntent *getmntent(FILE *stream)
 			mnt_dir[1] = ':';
 			mnt_dir[2] = '\\';
 			mnt_dir[3] = '\0';
+			mnt_type[0] = '\0';
+			mnt_opts[0] = '\0';
 
 			if ( GetDriveType(mnt_dir) == DRIVE_FIXED ) {
-				my_mount_entry.mnt_type = "";
-				if ( GetVolumeInformation(mnt_dir, NULL, 0, NULL, NULL,
-								NULL, fsname, 100) ) {
-					my_mount_entry.mnt_type = fsname;
+				if ( !GetVolumeInformation(mnt_dir, NULL, 0, NULL, NULL,
+								NULL, mnt_type, 100) ) {
+					mnt_type[0] = '\0';
 				}
 
 				entry = &my_mount_entry;

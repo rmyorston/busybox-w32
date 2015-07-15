@@ -760,7 +760,7 @@ static int path_parse(char ***p)
 	npth = 1; /* path component count */
 	while (1) {
 #if ENABLE_PLATFORM_MINGW32
-		tmp = next_path_sep(tmp);
+		tmp = (char *)next_path_sep(tmp);
 #else
 		tmp = strchr(tmp, ':');
 #endif
@@ -777,7 +777,7 @@ static int path_parse(char ***p)
 	npth = 1;
 	while (1) {
 #if ENABLE_PLATFORM_MINGW32
-		tmp = next_path_sep(tmp);
+		tmp = (char *)next_path_sep(tmp);
 #else
 		tmp = strchr(tmp, ':');
 #endif
@@ -2329,7 +2329,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	INIT_S();
 
 #if ENABLE_PLATFORM_MINGW32
-	memset(initial_settings.c_cc, sizeof(initial_settings.c_cc), 0);
+	memset(initial_settings.c_cc, 0, sizeof(initial_settings.c_cc));
 	initial_settings.c_cc[VINTR] = CTRL('C');
 	initial_settings.c_cc[VEOF] = CTRL('D');
 	if (!isatty(0) || !isatty(1)) {

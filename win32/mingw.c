@@ -648,7 +648,8 @@ struct group *getgrgid(gid_t gid UNUSED_PARAM)
 	return &g;
 }
 
-int getgrouplist(const char *user, gid_t group, gid_t *groups, int *ngroups)
+int getgrouplist(const char *user UNUSED_PARAM, gid_t group UNUSED_PARAM,
+					gid_t *groups, int *ngroups)
 {
 	if ( *ngroups == 0 ) {
 		*ngroups = 1;
