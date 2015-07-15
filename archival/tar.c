@@ -1235,12 +1235,10 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 	if (ENABLE_FEATURE_CLEAN_UP /* && tar_handle->src_fd != STDIN_FILENO */)
 		close(tar_handle->src_fd);
 
-#if !ENABLE_PLATFORM_MINGW32
 	if (SEAMLESS_COMPRESSION || OPT_COMPRESS) {
 		/* Set bb_got_signal to 1 if a child died with !0 exitcode */
 		check_errors_in_children(0);
 	}
-#endif
 
 	return bb_got_signal;
 }

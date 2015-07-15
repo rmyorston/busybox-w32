@@ -68,7 +68,6 @@ ssize_t FAST_FUNC xtransformer_write(transformer_state_t *xstate, const void *bu
 	return nwrote;
 }
 
-#if SEAMLESS_COMPRESSION
 #if !ENABLE_PLATFORM_MINGW32
 void check_errors_in_children(int signo)
 {
@@ -156,7 +155,12 @@ void FAST_FUNC fork_transformer(int fd, const char *transform_prog)
 	close(fd_pipe.wr); /* don't want to write to the child */
 	xmove_fd(fd_pipe.rd, fd);
 }
-#else
+#else /* ENABLE_PLATFORM_MINGW */
+void check_errors_in_children(int signo UNUSED_PARAM)
+{
+	bb_got_signal = 0;
+}
+
 void FAST_FUNC fork_transformer(int fd, const char *transform_prog)
 {
 	char *cmd;
@@ -176,6 +180,9 @@ void FAST_FUNC fork_transformer(int fd, const char *transform_prog)
 	xmove_fd(fd1, fd);
 }
 #endif
+
+
+#if SEAMLESS_COMPRESSION
 
 /* Used by e.g. rpm which gives us a fd without filename,
  * thus we can't guess the format from filename's extension.
