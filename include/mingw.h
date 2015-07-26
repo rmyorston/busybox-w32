@@ -123,13 +123,11 @@ struct sigaction {
 #define sigemptyset(x) (void)0
 #define SA_RESTART 0
 
-int sigaction(int sig, struct sigaction *in, struct sigaction *out);
-sighandler_t mingw_signal(int sig, sighandler_t handler);
+NOIMPL(sigaction,int sig UNUSED_PARAM, struct sigaction *in UNUSED_PARAM, struct sigaction *out UNUSED_PARAM);
 NOIMPL(sigfillset,int *mask UNUSED_PARAM);
 NOIMPL(FAST_FUNC sigprocmask_allsigs, int how UNUSED_PARAM);
 NOIMPL(FAST_FUNC sigaction_set,int signo UNUSED_PARAM, const struct sigaction *sa UNUSED_PARAM);
 
-#define signal mingw_signal
 /*
  * stdio.h
  */
@@ -342,12 +340,6 @@ struct timespec {
 	long int tv_nsec;
 };
 #endif
-struct itimerval {
-	struct timeval it_value, it_interval;
-};
-#define ITIMER_REAL 0
-
-int setitimer(int type, struct itimerval *in, struct itimerval *out);
 
 /*
  * sys/wait.h
