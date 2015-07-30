@@ -13475,6 +13475,12 @@ init(void)
 				for (start = *envp;start < end;start++)
 					*start = toupper(*start);
 
+				/* skip conversion of variables known to cause problems */
+				if ( strncmp(*envp, "SYSTEMROOT=", 11) == 0 ||
+						strncmp(*envp, "COMSPEC=", 8) == 0 ) {
+					continue;
+				}
+
 				/* convert backslashes to forward slashes */
 				if (!xp) {
 					for ( ++end; *end; ++end ) {
