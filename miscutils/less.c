@@ -126,6 +126,10 @@
 
 #include <sched.h>  /* sched_yield() */
 
+#if ENABLE_PLATFORM_MINGW32
+#include <conio.h>
+#endif
+
 #include "libbb.h"
 #if ENABLE_FEATURE_LESS_REGEXP
 #include "xregex.h"
@@ -304,8 +308,10 @@ static void less_exit(int code)
 {
 	set_tty_cooked();
 	clear_line();
+#if !ENABLE_PLATFORM_MINGW32
 	if (code < 0)
 		kill_myself_with_sig(- code); /* does not return */
+#endif
 	exit(code);
 }
 
@@ -516,6 +522,11 @@ static void read_lines(void)
 				last_line_pos = 0;
 				break;
 			}
+#if ENABLE_PLATFORM_MINGW32
+			if (c == '\r') {
+				continue;
+			}
+#endif
 			/* NUL is substituted by '\n'! */
 			if (c == '\0') c = '\n';
 			*p++ = c;
@@ -622,7 +633,12 @@ static void update_num_lines(void)
 	/* only do this for regular files */
 	if (num_lines == REOPEN_AND_COUNT || num_lines == REOPEN_STDIN) {
 		count = 0;
+#if !ENABLE_PLATFORM_MINGW32
 		fd = open("/proc/self/fd/0", O_RDONLY);
+#else
+		/* don't even try to access /proc on WIN32 */
+		fd = -1;
+#endif
 		if (fd < 0 && num_lines == REOPEN_AND_COUNT) {
 			/* "filename" is valid only if REOPEN_AND_COUNT */
 			fd = open(filename, O_RDONLY);
@@ -805,7 +821,12 @@ static void print_found(const char *line)
 			match_status = 1;
 	}
 
+#if !ENABLE_PLATFORM_MINGW32
 	printf("%s%s\n", growline ? growline : "", str);
+#else
+	/* skip newline, we use explicit positioning on WIN32 */
+	printf("%s%s", growline ? growline : "", str);
+#endif
 	free(growline);
 }
 #else
@@ -841,7 +862,12 @@ static void print_ascii(const char *str)
 		*p = '\0';
 		print_hilite(buf);
 	}
+#if !ENABLE_PLATFORM_MINGW32
 	puts(str);
+#else
+	/* skip newline, we use explicit positioning on WIN32 */
+	printf("%s", str);
+#endif
 }
 
 /* Print the buffer */
@@ -851,6 +877,10 @@ static void buffer_print(void)
 
 	move_cursor(0, 0);
 	for (i = 0; i <= max_displayed_line; i++) {
+#if ENABLE_PLATFORM_MINGW32
+		/* make sure we're on the right line */
+		move_cursor(i+1, 0);
+#endif
 		printf(CLEAR_2_EOL);
 		if (option_mask32 & FLAG_N)
 			print_lineno(buffer[i]);
@@ -1037,9 +1067,13 @@ static void reinitialize(void)
 	if (G.winsize_err)
 		printf("\033[999;999H" "\033[6n");
 #endif
+#if ENABLE_PLATFORM_MINGW32
+	puts(CLEAR);
+#endif
 	buffer_fill_and_print();
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 static int64_t getch_nowait(void)
 {
 	int rd;
@@ -1101,6 +1135,46 @@ static int64_t getch_nowait(void)
 	set_tty_cooked();
 	return key64;
 }
+#else
+static int64_t getch_nowait(void)
+{
+	int64_t c;
+
+retry:
+	c = _getch();
+	if (c == 0 || c == 0xe0) {
+		switch (_getch()) {
+		case 0x48:
+			c = KEYCODE_UP;
+			break;
+		case 0x50:
+			c = KEYCODE_DOWN;
+			break;
+		case 0x49:
+			c = KEYCODE_PAGEUP;
+			break;
+		case 0x51:
+			c = KEYCODE_PAGEDOWN;
+			break;
+		case 0x47:
+			c = KEYCODE_HOME;
+			break;
+		case 0x4f:
+			c = KEYCODE_END;
+			break;
+		default:
+			goto retry;
+		}
+	}
+
+	/* Position cursor if line input is done */
+	if (less_gets_pos >= 0)
+		move_cursor(max_displayed_line + 2, less_gets_pos + 1);
+	fflush_all();
+
+	return c;
+}
+#endif
 
 /* Grab a character from input without requiring the return key.
  * May return KEYCODE_xxx values.
@@ -1728,10 +1802,12 @@ static void keypress_process(int keypress)
 		number_process(keypress);
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 static void sig_catcher(int sig)
 {
 	less_exit(- sig);
 }
+#endif
 
 #if ENABLE_FEATURE_LESS_WINCH
 static void sigwinch_handler(int sig UNUSED_PARAM)
@@ -1743,8 +1819,10 @@ static void sigwinch_handler(int sig UNUSED_PARAM)
 int less_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int less_main(int argc, char **argv)
 {
+#if !ENABLE_PLATFORM_MINGW32
 	char *tty_name;
 	int tty_fd;
+#endif
 
 	INIT_G();
 
@@ -1778,6 +1856,7 @@ int less_main(int argc, char **argv)
 	if (option_mask32 & FLAG_TILDE)
 		empty_line_marker = "";
 
+#if !ENABLE_PLATFORM_MINGW32
 	/* Some versions of less can survive w/o controlling tty,
 	 * try to do the same. This also allows to specify an alternative
 	 * tty via "less 1<>TTY".
@@ -1800,6 +1879,9 @@ int less_main(int argc, char **argv)
 	}
 	ndelay_on(tty_fd);
 	kbd_fd = tty_fd; /* save in a global */
+#else
+	kbd_fd = 0;
+#endif
 
 	tcgetattr(kbd_fd, &term_orig);
 	term_less = term_orig;
@@ -1816,7 +1898,9 @@ int less_main(int argc, char **argv)
 	max_displayed_line -= 2;
 
 	/* We want to restore term_orig on exit */
+#if !ENABLE_PLATFORM_MINGW32
 	bb_signals(BB_FATAL_SIGS, sig_catcher);
+#endif
 #if ENABLE_FEATURE_LESS_WINCH
 	signal(SIGWINCH, sigwinch_handler);
 #endif
