@@ -48,6 +48,14 @@
 //config:	help
 //config:	  The -M/-m flag enables a more sophisticated status line.
 //config:
+//config:config FEATURE_LESS_TRUNCATE
+//config:	bool "Enable -S"
+//config:	default y
+//config:	depends on LESS
+//config:	help
+//config:	  The -S flag causes long lines to be truncated rather than
+//config:	  wrapped.
+//config:
 //config:config FEATURE_LESS_MARKS
 //config:	bool "Enable marks"
 //config:	default y
@@ -98,7 +106,8 @@
 //config:	  Enables "-N" command.
 
 //usage:#define less_trivial_usage
-//usage:       "[-E" IF_FEATURE_LESS_REGEXP("I")IF_FEATURE_LESS_FLAGS("Mm") "Nh~] [FILE]..."
+//usage:       "[-E" IF_FEATURE_LESS_REGEXP("I")IF_FEATURE_LESS_FLAGS("Mm")
+//usage:       "N" IF_FEATURE_LESS_TRUNCATE("S") "h~] [FILE]..."
 //usage:#define less_full_usage "\n\n"
 //usage:       "View FILE (or stdin) one screenful at a time\n"
 //usage:     "\n	-E	Quit once the end of a file is reached"
@@ -110,6 +119,9 @@
 //usage:     "\n		and percentage through the file"
 //usage:	)
 //usage:     "\n	-N	Prefix line number to each line"
+//usage:	IF_FEATURE_LESS_TRUNCATE(
+//usage:     "\n	-S	Truncate long lines"
+//usage:	)
 //usage:     "\n	-~	Suppress ~s displayed past EOF"
 
 #include <sched.h>  /* sched_yield() */
@@ -144,7 +156,7 @@ enum {
 	FLAG_N = 1 << 3,
 	FLAG_TILDE = 1 << 4,
 	FLAG_I = 1 << 5,
-	FLAG_S = (1 << 6) * ENABLE_FEATURE_LESS_DASHCMD,
+	FLAG_S = (1 << 6) * ENABLE_FEATURE_LESS_TRUNCATE,
 /* hijack command line options variable for internal state vars */
 	LESS_STATE_MATCH_BACKWARDS = 1 << 15,
 };
@@ -176,6 +188,12 @@ struct globals {
 	unsigned current_file;
 	char *filename;
 	char **files;
+#if ENABLE_FEATURE_LESS_FLAGS
+	int num_lines; /* a flag if < 0, line count if >= 0 */
+# define REOPEN_AND_COUNT (-1)
+# define REOPEN_STDIN     (-2)
+# define NOT_REGULAR_FILE (-3)
+#endif
 #if ENABLE_FEATURE_LESS_MARKS
 	unsigned num_marks;
 	unsigned mark_lines[15][2];
@@ -217,6 +235,7 @@ struct globals {
 #define current_file        (G.current_file      )
 #define filename            (G.filename          )
 #define files               (G.files             )
+#define num_lines           (G.num_lines         )
 #define num_marks           (G.num_marks         )
 #define mark_lines          (G.mark_lines        )
 #if ENABLE_FEATURE_LESS_REGEXP
@@ -319,8 +338,10 @@ static void re_wrap(void)
 		*d = *s;
 		if (*d != '\0') {
 			new_line_pos++;
-			if (*d == '\t') /* tab */
+			if (*d == '\t') { /* tab */
 				new_line_pos += 7;
+				new_line_pos &= (~7);
+			}
 			s++;
 			d++;
 			if (new_line_pos >= w) {
@@ -381,6 +402,14 @@ static void fill_match_lines(unsigned pos);
 #else
 #define fill_match_lines(pos) ((void)0)
 #endif
+
+static int at_end(void)
+{
+	return (option_mask32 & FLAG_S)
+		? !(cur_fline <= max_fline &&
+			max_lineno > LINENO(flines[cur_fline]) + max_displayed_line)
+		: !(max_fline > cur_fline + max_displayed_line);
+}
 
 /* Devilishly complex routine.
  *
@@ -480,16 +509,6 @@ static void read_lines(void)
 				*--p = '\0';
 				continue;
 			}
-			{
-				size_t new_last_line_pos = last_line_pos + 1;
-				if (c == '\t') {
-					new_last_line_pos += 7;
-					new_last_line_pos &= (~7);
-				}
-				if ((int)new_last_line_pos >= w)
-					break;
-				last_line_pos = new_last_line_pos;
-			}
 			/* ok, we will eat this char */
 			readpos++;
 			if (c == '\n') {
@@ -501,6 +520,16 @@ static void read_lines(void)
 			if (c == '\0') c = '\n';
 			*p++ = c;
 			*p = '\0';
+			{
+				size_t new_last_line_pos = last_line_pos + 1;
+				if (c == '\t') {
+					new_last_line_pos += 7;
+					new_last_line_pos &= (~7);
+				}
+				if ((int)new_last_line_pos >= w)
+					break;
+				last_line_pos = new_last_line_pos;
+			}
 		} /* end of "read chars until we have a line" loop */
 #if 0
 //BUG: also triggers on this:
@@ -528,11 +557,7 @@ static void read_lines(void)
 			eof_error = 0; /* Pretend we saw EOF */
 			break;
 		}
-		if (!(option_mask32 & FLAG_S)
-		  ? (max_fline > cur_fline + max_displayed_line)
-		  : (max_fline >= cur_fline
-		     && max_lineno > LINENO(flines[cur_fline]) + max_displayed_line)
-		) {
+		if (!at_end()) {
 #if !ENABLE_FEATURE_LESS_REGEXP
 			break;
 #else
@@ -560,6 +585,10 @@ static void read_lines(void)
 			print_statusline(bb_msg_read_error);
 		}
 	}
+#if ENABLE_FEATURE_LESS_FLAGS
+	else if (eof_error == 0)
+		num_lines = max_lineno;
+#endif
 
 	fill_match_lines(old_max_fline);
 #if ENABLE_FEATURE_LESS_REGEXP
@@ -570,18 +599,61 @@ static void read_lines(void)
 }
 
 #if ENABLE_FEATURE_LESS_FLAGS
-/* Interestingly, writing calc_percent as a function saves around 32 bytes
- * on my build. */
-static int calc_percent(void)
+static int safe_lineno(int fline)
 {
-	unsigned p = (100 * (cur_fline+max_displayed_line+1) + max_fline/2) / (max_fline+1);
-	return p <= 100 ? p : 100;
+	if (fline >= max_fline)
+		fline = max_fline - 1;
+
+	/* also catches empty file (max_fline == 0) */
+	if (fline < 0)
+		return 0;
+
+	return LINENO(flines[fline]) + 1;
+}
+
+/* count number of lines in file */
+static void update_num_lines(void)
+{
+	int count, fd;
+	struct stat stbuf;
+	ssize_t len, i;
+	char buf[4096];
+
+	/* only do this for regular files */
+	if (num_lines == REOPEN_AND_COUNT || num_lines == REOPEN_STDIN) {
+		count = 0;
+		fd = open("/proc/self/fd/0", O_RDONLY);
+		if (fd < 0 && num_lines == REOPEN_AND_COUNT) {
+			/* "filename" is valid only if REOPEN_AND_COUNT */
+			fd = open(filename, O_RDONLY);
+		}
+		if (fd < 0) {
+			/* somebody stole my file! */
+			num_lines = NOT_REGULAR_FILE;
+			return;
+		}
+		if (fstat(fd, &stbuf) != 0 || !S_ISREG(stbuf.st_mode)) {
+			num_lines = NOT_REGULAR_FILE;
+			goto do_close;
+		}
+		while ((len = safe_read(fd, buf, sizeof(buf))) > 0) {
+			for (i = 0; i < len; ++i) {
+				if (buf[i] == '\n' && ++count == MAXLINES)
+					goto done;
+			}
+		}
+ done:
+		num_lines = count;
+ do_close:
+		close(fd);
+	}
 }
 
 /* Print a status line if -M was specified */
 static void m_status_print(void)
 {
-	int percentage;
+	int first, last;
+	unsigned percent;
 
 	if (less_gets_pos >= 0) /* don't touch statusline while input is done! */
 		return;
@@ -590,17 +662,26 @@ static void m_status_print(void)
 	printf(HIGHLIGHT"%s", filename);
 	if (num_files > 1)
 		printf(" (file %i of %i)", current_file, num_files);
-	printf(" lines %i-%i/%i ",
-			cur_fline + 1, cur_fline + max_displayed_line + 1,
-			max_fline + 1);
-	if (cur_fline >= (int)(max_fline - max_displayed_line)) {
-		printf("(END)"NORMAL);
+
+	first = safe_lineno(cur_fline);
+	last = (option_mask32 & FLAG_S)
+			? MIN(first + max_displayed_line, max_lineno)
+			: safe_lineno(cur_fline + max_displayed_line);
+	printf(" lines %i-%i", first, last);
+
+	update_num_lines();
+	if (num_lines >= 0)
+		printf("/%i", num_lines);
+
+	if (at_end()) {
+		printf(" (END)");
 		if (num_files > 1 && current_file != num_files)
-			printf(HIGHLIGHT" - next: %s"NORMAL, files[current_file]);
-		return;
+			printf(" - next: %s", files[current_file]);
+	} else if (num_lines > 0) {
+		percent = (100 * last + num_lines/2) / num_lines;
+		printf(" %i%%", percent <= 100 ? percent : 100);
 	}
-	percentage = calc_percent();
-	printf("%i%%"NORMAL, percentage);
+	printf(NORMAL);
 }
 #endif
 
@@ -622,7 +703,7 @@ static void status_print(void)
 #endif
 
 	clear_line();
-	if (cur_fline && cur_fline < (int)(max_fline - max_displayed_line)) {
+	if (cur_fline && !at_end()) {
 		bb_putchar(':');
 		return;
 	}
@@ -637,23 +718,6 @@ static void status_print(void)
 	print_hilite(p);
 }
 
-static void cap_cur_fline(int nlines)
-{
-	int diff;
-	if (cur_fline < 0)
-		cur_fline = 0;
-	if (cur_fline + max_displayed_line > max_fline + TILDES) {
-		cur_fline -= nlines;
-		if (cur_fline < 0)
-			cur_fline = 0;
-		diff = max_fline - (cur_fline + max_displayed_line) + TILDES;
-		/* As the number of lines requested was too large, we just move
-		 * to the end of the file */
-		if (diff > 0)
-			cur_fline += diff;
-	}
-}
-
 static const char controls[] ALIGN1 =
 	/* NUL: never encountered; TAB: not converted */
 	/**/"\x01\x02\x03\x04\x05\x06\x07\x08"  "\x0a\x0b\x0c\x0d\x0e\x0f"
@@ -665,27 +729,21 @@ static const char ctrlconv[] ALIGN1 =
 	"\x40\x41\x42\x43\x44\x45\x46\x47\x48\x49\x40\x4b\x4c\x4d\x4e\x4f"
 	"\x50\x51\x52\x53\x54\x55\x56\x57\x58\x59\x5a\x5b\x5c\x5d\x5e\x5f";
 
-static void lineno_str(char *nbuf9, const char *line)
+static void print_lineno(const char *line)
 {
-	nbuf9[0] = '\0';
-	if (option_mask32 & FLAG_N) {
-		const char *fmt;
-		unsigned n;
+	const char *fmt = "        ";
+	unsigned n = n; /* for compiler */
 
-		if (line == empty_line_marker) {
-			memset(nbuf9, ' ', 8);
-			nbuf9[8] = '\0';
-			return;
-		}
+	if (line != empty_line_marker) {
 		/* Width of 7 preserves tab spacing in the text */
 		fmt = "%7u ";
 		n = LINENO(line) + 1;
-		if (n > 9999999) {
+		if (n > 9999999 && MAXLINES > 9999999) {
 			n %= 10000000;
 			fmt = "%07u ";
 		}
-		sprintf(nbuf9, fmt, n);
 	}
+	printf(fmt, n);
 }
 
 
@@ -698,7 +756,6 @@ static void print_found(const char *line)
 	regmatch_t match_structs;
 
 	char buf[width];
-	char nbuf9[9];
 	const char *str = line;
 	char *p = buf;
 	size_t n;
@@ -748,12 +805,7 @@ static void print_found(const char *line)
 			match_status = 1;
 	}
 
-	lineno_str(nbuf9, line);
-	if (!growline) {
-		printf(CLEAR_2_EOL"%s%s\n", nbuf9, str);
-		return;
-	}
-	printf(CLEAR_2_EOL"%s%s%s\n", nbuf9, growline, str);
+	printf("%s%s\n", growline ? growline : "", str);
 	free(growline);
 }
 #else
@@ -763,12 +815,8 @@ void print_found(const char *line);
 static void print_ascii(const char *str)
 {
 	char buf[width];
-	char nbuf9[9];
 	char *p;
 	size_t n;
-
-	lineno_str(nbuf9, str);
-	printf(CLEAR_2_EOL"%s", nbuf9);
 
 	while (*str) {
 		n = strcspn(str, controls);
@@ -803,6 +851,9 @@ static void buffer_print(void)
 
 	move_cursor(0, 0);
 	for (i = 0; i <= max_displayed_line; i++) {
+		printf(CLEAR_2_EOL);
+		if (option_mask32 & FLAG_N)
+			print_lineno(buffer[i]);
 		if (pattern_valid)
 			print_found(buffer[i]);
 		else
@@ -820,7 +871,7 @@ static void buffer_print(void)
 static void buffer_fill_and_print(void)
 {
 	unsigned i;
-#if ENABLE_FEATURE_LESS_DASHCMD
+#if ENABLE_FEATURE_LESS_TRUNCATE
 	int fpos = cur_fline;
 
 	if (option_mask32 & FLAG_S) {
@@ -852,45 +903,112 @@ static void buffer_fill_and_print(void)
 	buffer_print();
 }
 
+/* move cur_fline to a given line number, reading lines if necessary */
+static void goto_lineno(int target)
+{
+	if (target <= 0 ) {
+		cur_fline = 0;
+	}
+	else if (target > LINENO(flines[cur_fline])) {
+ retry:
+		while (LINENO(flines[cur_fline]) != target && cur_fline < max_fline)
+			++cur_fline;
+		/* target not reached but more input is available */
+		if (LINENO(flines[cur_fline]) != target && eof_error > 0) {
+			read_lines();
+			goto retry;
+		}
+	}
+	else {
+		/* search backwards through already-read lines */
+		while (LINENO(flines[cur_fline]) != target && cur_fline > 0)
+			--cur_fline;
+	}
+}
+
+static void cap_cur_fline(void)
+{
+	if ((option_mask32 & FLAG_S)) {
+		if (cur_fline > max_fline)
+			cur_fline = max_fline;
+		if (LINENO(flines[cur_fline]) + max_displayed_line > max_lineno + TILDES) {
+			goto_lineno(max_lineno - max_displayed_line + TILDES);
+			read_lines();
+		}
+	}
+	else {
+		if (cur_fline + max_displayed_line > max_fline + TILDES)
+			cur_fline = max_fline - max_displayed_line + TILDES;
+		if (cur_fline < 0)
+			cur_fline = 0;
+	}
+}
+
 /* Move the buffer up and down in the file in order to scroll */
 static void buffer_down(int nlines)
 {
-	cur_fline += nlines;
+	if ((option_mask32 & FLAG_S))
+		goto_lineno(LINENO(flines[cur_fline]) + nlines);
+	else
+		cur_fline += nlines;
 	read_lines();
-	cap_cur_fline(nlines);
+	cap_cur_fline();
 	buffer_fill_and_print();
 }
 
 static void buffer_up(int nlines)
 {
-	cur_fline -= nlines;
-	if (cur_fline < 0) cur_fline = 0;
+	if ((option_mask32 & FLAG_S)) {
+		goto_lineno(LINENO(flines[cur_fline]) - nlines);
+	}
+	else {
+		cur_fline -= nlines;
+		if (cur_fline < 0)
+			cur_fline = 0;
+	}
 	read_lines();
+	buffer_fill_and_print();
+}
+
+/* display a given line where the argument can be either an index into
+ * the flines array or a line number */
+static void buffer_to_line(int linenum, int is_lineno)
+{
+	if (linenum <= 0)
+		cur_fline = 0;
+	else if (is_lineno)
+		goto_lineno(linenum);
+	else
+		cur_fline = linenum;
+	read_lines();
+	cap_cur_fline();
 	buffer_fill_and_print();
 }
 
 static void buffer_line(int linenum)
 {
-	if (linenum < 0)
-		linenum = 0;
-	cur_fline = linenum;
-	read_lines();
-	if (linenum + max_displayed_line > max_fline)
-		linenum = max_fline - max_displayed_line + TILDES;
-	if (linenum < 0)
-		linenum = 0;
-	cur_fline = linenum;
-	buffer_fill_and_print();
+	buffer_to_line(linenum, FALSE);
+}
+
+static void buffer_lineno(int lineno)
+{
+	buffer_to_line(lineno, TRUE);
 }
 
 static void open_file_and_read_lines(void)
 {
 	if (filename) {
 		xmove_fd(xopen(filename, O_RDONLY), STDIN_FILENO);
+#if ENABLE_FEATURE_LESS_FLAGS
+		num_lines = REOPEN_AND_COUNT;
+#endif
 	} else {
 		/* "less" with no arguments in argv[] */
 		/* For status line only */
 		filename = xstrdup(bb_msg_standard_input);
+#if ENABLE_FEATURE_LESS_FLAGS
+		num_lines = REOPEN_STDIN;
+#endif
 	}
 	readpos = 0;
 	readeof = 0;
@@ -942,12 +1060,7 @@ static int64_t getch_nowait(void)
 	 */
 	rd = 1;
 	/* Are we interested in stdin? */
-//TODO: reuse code for determining this
-	if (!(option_mask32 & FLAG_S)
-	   ? !(max_fline > cur_fline + max_displayed_line)
-	   : !(max_fline >= cur_fline
-	       && max_lineno > LINENO(flines[cur_fline]) + max_displayed_line)
-	) {
+	if (at_end()) {
 		if (eof_error > 0) /* did NOT reach eof yet */
 			rd = 0; /* yes, we are interested in stdin */
 	}
@@ -1258,7 +1371,7 @@ static void number_process(int first_digit)
 	i = 1;
 	while (i < sizeof(num_input)-1) {
 		keypress = less_getch(i + 1);
-		if ((unsigned)keypress > 255 || !isdigit(num_input[i]))
+		if ((unsigned)keypress > 255 || !isdigit(keypress))
 			break;
 		num_input[i] = keypress;
 		bb_putchar(keypress);
@@ -1282,15 +1395,16 @@ static void number_process(int first_digit)
 		buffer_up(num);
 		break;
 	case 'g': case '<': case 'G': case '>':
-		cur_fline = num + max_displayed_line;
-		read_lines();
-		buffer_line(num - 1);
+		buffer_lineno(num - 1);
 		break;
 	case 'p': case '%':
-		num = num * (max_fline / 100); /* + max_fline / 2; */
-		cur_fline = num + max_displayed_line;
-		read_lines();
-		buffer_line(num);
+#if ENABLE_FEATURE_LESS_FLAGS
+		update_num_lines();
+		num = num * (num_lines > 0 ? num_lines : max_lineno) / 100;
+#else
+		num = num * max_lineno / 100;
+#endif
+		buffer_lineno(num);
 		break;
 #if ENABLE_FEATURE_LESS_REGEXP
 	case 'n':
@@ -1330,10 +1444,12 @@ static void flag_change(void)
 	case '~':
 		option_mask32 ^= FLAG_TILDE;
 		break;
+#if ENABLE_FEATURE_LESS_TRUNCATE
 	case 'S':
 		option_mask32 ^= FLAG_S;
 		buffer_fill_and_print();
 		break;
+#endif
 #if ENABLE_FEATURE_LESS_LINENUMS
 	case 'N':
 		option_mask32 ^= FLAG_N;
@@ -1638,7 +1754,7 @@ int less_main(int argc, char **argv)
 	 * -s: condense many empty lines to one
 	 *     (used by some setups for manpage display)
 	 */
-	getopt32(argv, "EMmN~I" IF_FEATURE_LESS_DASHCMD("S") /*ignored:*/"s");
+	getopt32(argv, "EMmN~I" IF_FEATURE_LESS_TRUNCATE("S") /*ignored:*/"s");
 	argc -= optind;
 	argv += optind;
 	num_files = argc;

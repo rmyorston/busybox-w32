@@ -70,17 +70,11 @@
 /* After libbb.h, since it needs sys/types.h on some systems */
 #include <sys/utsname.h>
 
-#if ENABLE_PLATFORM_MINGW32
-# define OSNAME "MS/Windows"
-#else
-# define OSNAME "GNU/Linux"
-#endif
-
 typedef struct {
 	struct utsname name;
 	char processor[sizeof(((struct utsname*)NULL)->machine)];
 	char platform[sizeof(((struct utsname*)NULL)->machine)];
-	char os[sizeof(OSNAME)];
+	char os[sizeof(CONFIG_UNAME_OSNAME)];
 } uname_info_t;
 
 static const char options[] ALIGN1 = "snrvmpioa";
@@ -147,7 +141,7 @@ int uname_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	strcpy(uname_info.processor, unknown_str);
 	strcpy(uname_info.platform, unknown_str);
-	strcpy(uname_info.os, OSNAME);
+	strcpy(uname_info.os, CONFIG_UNAME_OSNAME);
 #if 0
 	/* Fedora does something like this */
 	strcpy(uname_info.processor, uname_info.name.machine);

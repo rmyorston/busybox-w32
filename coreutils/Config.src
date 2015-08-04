@@ -570,12 +570,6 @@ config SUM
 	help
 	  checksum and count the blocks in a file
 
-config SYNC
-	bool "sync"
-	default y
-	help
-	  sync is used to flush filesystem buffers.
-
 config TAC
 	bool "tac"
 	default y
@@ -634,6 +628,14 @@ config UNAME
 	default y
 	help
 	  uname is used to print system information.
+
+config UNAME_OSNAME
+	string "Operating system name"
+	default "GNU/Linux"
+	depends on UNAME
+	help
+	  Sets the operating system name reported by uname -o.  The
+	  default is "GNU/Linux".
 
 config UNEXPAND
 	bool "unexpand"
