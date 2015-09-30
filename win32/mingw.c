@@ -986,3 +986,18 @@ char *file_is_win32_executable(const char *p)
 
 	return NULL;
 }
+
+#undef opendir
+DIR *mingw_opendir(const char *path)
+{
+	char name[4];
+
+	if (isalpha(path[0]) && path[1] == ':' && path[2] == '\0') {
+		strcpy(name, path);
+		name[2] = '/';
+		name[3] = '\0';
+		path = name;
+	}
+
+	return opendir(path);
+}

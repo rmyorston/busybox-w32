@@ -435,6 +435,12 @@ int mingw_rmdir(const char *name);
 int utimes(const char *file_name, const struct timeval times[2]);
 
 /*
+ * dirent.h
+ */
+DIR *mingw_opendir(const char *path);
+#define opendir mingw_opendir
+
+/*
  * MinGW specific
  */
 #define is_dir_sep(c) ((c) == '/' || (c) == '\\')
