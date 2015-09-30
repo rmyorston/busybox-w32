@@ -13471,9 +13471,15 @@ init(void)
 				if (!(end=strchr(*envp, '=')))
 					continue;
 
-				/* make all variable names uppercase */
-				for (start = *envp;start < end;start++)
+				for (start = *envp;start < end;start++) {
+					/* make all variable names uppercase */
 					*start = toupper(*start);
+
+					/* replace invalid characters with underscores */
+					if (!isdigit(*start) && !isalpha(*start) && *start != '_') {
+						*start = '_';
+					}
+				}
 
 				/* skip conversion of variables known to cause problems */
 				if ( strncmp(*envp, "SYSTEMROOT=", 11) == 0 ||
