@@ -13471,15 +13471,9 @@ init(void)
 				if (!(end=strchr(*envp, '=')))
 					continue;
 
-				for (start = *envp;start < end;start++) {
-					/* make all variable names uppercase */
+				/* make all variable names uppercase */
+				for (start = *envp;start < end;start++)
 					*start = toupper(*start);
-
-					/* replace invalid characters with underscores */
-					if (!isdigit(*start) && !isalpha(*start) && *start != '_') {
-						*start = '_';
-					}
-				}
 
 				/* skip conversion of variables known to cause problems */
 				if ( strncmp(*envp, "SYSTEMROOT=", 11) == 0 ||
@@ -13494,6 +13488,28 @@ init(void)
 							*end = '/';
 						}
 					}
+				}
+
+				/* check for invalid characters */
+				for (start = *envp;start < end;start++) {
+					if (!isdigit(*start) && !isalpha(*start) && *start != '_') {
+						break;
+					}
+				}
+
+				if (start != end) {
+					/*
+					 * Make a copy of the variable, replacing invalid
+					 * characters in the name with underscores.
+					 */
+					char *var = xstrdup(*envp);
+
+					for (start = var;*start != '=';start++) {
+						if (!isdigit(*start) && !isalpha(*start)) {
+							*start = '_';
+						}
+					}
+					setvareq(var, VEXPORT|VNOSAVE);
 				}
 			}
 
