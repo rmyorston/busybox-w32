@@ -862,6 +862,33 @@ size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm
 				t = newfmt + m + 1;
 				fmt = newfmt;
 			}
+			else if ( t[1] == 'z' ) {
+				char buffer[16] = "";
+
+				*t = '\0';
+				m = t - fmt;
+				_tzset();
+				if ( tm->tm_isdst >= 0 ) {
+					int offset = (int)_timezone - (tm->tm_isdst > 0 ? 3600 : 0);
+					int hr, min;
+
+					if ( offset > 0 ) {
+						buffer[0] = '-';
+					}
+					else {
+						buffer[0] = '+';
+						offset = -offset;
+					}
+
+					hr = offset / 3600;
+					min = (offset % 3600) / 60;
+					sprintf(buffer+1, "%02d%02d", hr, min);
+				}
+				newfmt = xasprintf("%s%s%s", fmt, buffer, t+2);
+				free(fmt);
+				t = newfmt + m + 1;
+				fmt = newfmt;
+			}
 			else if ( t[1] != '\0' ) {
 				++t;
 			}
