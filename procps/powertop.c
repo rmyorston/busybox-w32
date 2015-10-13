@@ -591,7 +591,7 @@ static NOINLINE void print_intel_cstates(void)
 	if (!edx || !(ecx & 1))
 		return;
 
-	printf("Your CPU supports the following C-states: ");
+	printf("Your %s the following C-states: ", "CPU supports");
 	i = 0;
 	while (edx) {
 		if (edx & 7)
@@ -602,7 +602,7 @@ static NOINLINE void print_intel_cstates(void)
 	bb_putchar('\n');
 
 	/* Print BIOS C-States */
-	printf("Your BIOS reports the following C-states: ");
+	printf("Your %s the following C-states: ", "BIOS reports");
 	for (i = 0; i < ARRAY_SIZE(bios_table); i++)
 		if (bios_table[i])
 			printf("C%u ", i);
@@ -704,7 +704,7 @@ int powertop_main(int UNUSED_PARAM argc, char UNUSED_PARAM **argv)
 	/* Get number of CPUs */
 	G.total_cpus = get_cpu_count();
 
-	printf("Collecting data for "DEFAULT_SLEEP_STR" seconds\n");
+	puts("Collecting data for "DEFAULT_SLEEP_STR" seconds");
 
 #if ENABLE_FEATURE_USE_TERMIOS
 	tcgetattr(0, (void *)&G.init_settings);

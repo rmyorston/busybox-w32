@@ -29,6 +29,20 @@
 #include <linux/filter.h>
 #include <linux/if_packet.h>
 
+#ifndef PACKET_AUXDATA
+# define PACKET_AUXDATA 8
+struct tpacket_auxdata {
+	uint32_t tp_status;
+	uint32_t tp_len;
+	uint32_t tp_snaplen;
+	uint16_t tp_mac;
+	uint16_t tp_net;
+	uint16_t tp_vlan_tci;
+	uint16_t tp_padding;
+};
+#endif
+
+
 /* "struct client_config_t client_config" is in bb_common_bufsiz1 */
 
 
@@ -1043,9 +1057,7 @@ static int udhcp_raw_socket(int ifindex)
 	}
 #endif
 
-	if (setsockopt(fd, SOL_PACKET, PACKET_AUXDATA,
-			&const_int_1, sizeof(int)) < 0
-	) {
+	if (setsockopt_1(fd, SOL_PACKET, PACKET_AUXDATA) != 0) {
 		if (errno != ENOPROTOOPT)
 			log1("Can't set PACKET_AUXDATA on raw socket");
 	}

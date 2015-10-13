@@ -768,7 +768,10 @@ ACTF(delete)
 {
 	int rc;
 	if (S_ISDIR(statbuf->st_mode)) {
-		rc = rmdir(fileName);
+		/* "find . -delete" skips rmdir(".") */
+		rc = 0;
+		if (NOT_LONE_CHAR(fileName, '.'))
+			rc = rmdir(fileName);
 	} else {
 		rc = unlink(fileName);
 	}
@@ -1261,7 +1264,8 @@ static action*** parse_params(char **argv)
 			ap->perm_char = arg1[0];
 			arg1 = (arg1[0] == '/' ? arg1+1 : plus_minus_num(arg1));
 			/*ap->perm_mask = 0; - ALLOC_ACTION did it */
-			if (!bb_parse_mode(arg1, &ap->perm_mask))
+			ap->perm_mask = bb_parse_mode(arg1, ap->perm_mask);
+			if (ap->perm_mask == (mode_t)-1)
 				bb_error_msg_and_die("invalid mode '%s'", arg1);
 		}
 #endif

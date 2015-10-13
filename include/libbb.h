@@ -424,6 +424,7 @@ const char *bb_basename(const char *name) FAST_FUNC;
 char *last_char_is(const char *s, int c) FAST_FUNC;
 const char* endofname(const char *name) FAST_FUNC;
 char *is_prefixed_with(const char *string, const char *key) FAST_FUNC;
+char *is_suffixed_with(const char *string, const char *key) FAST_FUNC;
 
 int ndelay_on(int fd) FAST_FUNC;
 int ndelay_off(int fd) FAST_FUNC;
@@ -572,6 +573,11 @@ void xlisten(int s, int backlog) FAST_FUNC;
 void xconnect(int s, const struct sockaddr *saddr, socklen_t addrlen) FAST_FUNC;
 ssize_t xsendto(int s, const void *buf, size_t len, const struct sockaddr *to,
 				socklen_t tolen) FAST_FUNC;
+
+int setsockopt_int(int fd, int level, int optname, int optval) FAST_FUNC;
+int setsockopt_1(int fd, int level, int optname) FAST_FUNC;
+int setsockopt_SOL_SOCKET_int(int fd, int optname, int optval) FAST_FUNC;
+int setsockopt_SOL_SOCKET_1(int fd, int optname) FAST_FUNC;
 /* SO_REUSEADDR allows a server to rebind to an address that is already
  * "in use" by old connections to e.g. previous server instance which is
  * killed or crashed. Without it bind will fail until all such connections
@@ -579,6 +585,7 @@ ssize_t xsendto(int s, const void *buf, size_t len, const struct sockaddr *to,
  * regardless of SO_REUSEADDR (unlike some other flavors of Unix).
  * Turn it on before you call bind(). */
 void setsockopt_reuseaddr(int fd) FAST_FUNC; /* On Linux this never fails. */
+int setsockopt_keepalive(int fd) FAST_FUNC;
 int setsockopt_broadcast(int fd) FAST_FUNC;
 int setsockopt_bindtodevice(int fd, const char *iface) FAST_FUNC;
 /* NB: returns port in host byte order */
@@ -696,6 +703,7 @@ int bb_putchar(int ch) FAST_FUNC;
 /* Note: does not use stdio, writes to fd 2 directly */
 int bb_putchar_stderr(char ch) FAST_FUNC;
 char *xasprintf(const char *format, ...) __attribute__ ((format(printf, 1, 2))) FAST_FUNC RETURNS_MALLOC;
+char *auto_string(char *str) FAST_FUNC;
 // gcc-4.1.1 still isn't good enough at optimizing it
 // (+200 bytes compared to macro)
 //static ALWAYS_INLINE
@@ -1134,9 +1142,8 @@ enum {
 extern const char *msg_eol;
 extern smallint syslog_level;
 extern smallint logmode;
-extern int die_sleep;
 extern uint8_t xfunc_error_retval;
-extern jmp_buf die_jmp;
+extern void (*die_func)(void);
 extern void xfunc_die(void) NORETURN FAST_FUNC;
 extern void bb_show_usage(void) NORETURN FAST_FUNC;
 extern void bb_error_msg(const char *s, ...) __attribute__ ((format (printf, 1, 2))) FAST_FUNC;
@@ -1258,7 +1265,8 @@ char *bb_ask_stdin(const char * prompt) FAST_FUNC;
 char *bb_ask(const int fd, int timeout, const char * prompt) FAST_FUNC;
 int bb_ask_confirmation(void) FAST_FUNC;
 
-int bb_parse_mode(const char* s, mode_t* theMode) FAST_FUNC;
+/* Returns -1 if input is invalid. current_mode is a base for e.g. "u+rw" */
+int bb_parse_mode(const char* s, unsigned cur_mode) FAST_FUNC;
 
 /*
  * Config file parser
@@ -1832,7 +1840,7 @@ extern const char bb_PATH_root_path[] ALIGN1; /* "PATH=/sbin:/usr/sbin:/bin:/usr
 #define bb_default_path      (bb_PATH_root_path + sizeof("PATH=/sbin:/usr/sbin"))
 
 extern const int const_int_0;
-extern const int const_int_1;
+//extern const int const_int_1;
 
 
 /* Providing hard guarantee on minimum size (think of BUFSIZ == 128) */
@@ -1918,6 +1926,7 @@ extern const char bb_default_login_shell[] ALIGN1;
 
 
 #define ARRAY_SIZE(x) ((unsigned)(sizeof(x) / sizeof((x)[0])))
+#define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
 
 
 /* We redefine ctype macros. Unicode-correct handling of char types
@@ -2008,7 +2017,6 @@ static ALWAYS_INLINE unsigned char bb_ascii_tolower(unsigned char a)
 typedef void (*bbunit_testfunc)(void);
 
 struct bbunit_listelem {
-	struct bbunit_listelem* next;
 	const char* name;
 	bbunit_testfunc testfunc;
 };

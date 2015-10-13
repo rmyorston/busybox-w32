@@ -57,6 +57,9 @@ CFLAGS += $(call cc-option,-falign-functions=1 -falign-jumps=1 -falign-labels=1 
 # Defeat .eh_frame bloat (gcc 4.6.3 x86-32 defconfig: 20% smaller busybox binary):
 CFLAGS += $(call cc-option,-fno-unwind-tables,)
 CFLAGS += $(call cc-option,-fno-asynchronous-unwind-tables,)
+# No automatic printf->puts,putchar conversions
+# (try disabling this and comparing assembly, it's instructive)
+CFLAGS += $(call cc-option,-fno-builtin-printf,)
 
 # FIXME: These warnings are at least partially to be concerned about and should
 # be fixed..
@@ -134,15 +137,19 @@ else
 LDLIBS += m
 endif
 
+# libpam may use libpthread, libdl and/or libaudit.
+# On some platforms that requires an explicit -lpthread, -ldl, -laudit.
+# However, on *other platforms* it fails when some of those flags
+# given needlessly. On some systems, crypt needs pthread.
+#
+# I even had a system where a runtime test for pthread
+# (similar to CRYPT_AVAILABLE test above) was not reliable.
+#
+# Do not propagate this mess by adding libraries to CONFIG_PAM/CRYPT_AVAILABLE blocks.
+# Add libraries you need to CONFIG_EXTRA_LDLIBS instead.
+
 ifeq ($(CONFIG_PAM),y)
-# libpam uses libpthread, so for static builds busybox must be linked to
-# libpthread. On some platforms that requires an explicit -lpthread, so
-# it should be in LDLIBS. For non-static builds, scripts/trylink will
-# take care of removing -lpthread if possible. (Not bothering to check
-# CONFIG_STATIC because even in a non-static build it could be that the
-# only libpam available is libpam.a, so -lpthread could still be
-# needed.)
-LDLIBS += pam pam_misc pthread
+LDLIBS += pam pam_misc
 endif
 
 ifeq ($(CONFIG_SELINUX),y)

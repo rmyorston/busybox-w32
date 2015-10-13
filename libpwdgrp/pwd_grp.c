@@ -16,11 +16,10 @@
  *      a) must contain the expected number of fields (as per count of field
  *         delimeters ":") or we will complain with a error message.
  *      b) leading and trailing whitespace in fields is stripped.
- *      c) some fields are not allowed to be empty (e.g. username, uid/gid,
- *         homedir, shell) and in this case NULL is returned and errno is
- *         set to EINVAL. This behaviour could be easily changed by
- *         modifying PW_DEF, GR_DEF, SP_DEF strings (uppercase
- *         makes a field mandatory).
+ *      c) some fields are not allowed to be empty (e.g. username, uid/gid),
+ *         and in this case NULL is returned and errno is set to EINVAL.
+ *         This behaviour could be easily changed by modifying PW_DEF, GR_DEF,
+ *         SP_DEF strings (uppercase makes a field mandatory).
  *      d) the string representing uid/gid must be convertible by strtoXX
  *         functions, or errno is set to EINVAL.
  *      e) leading and trailing whitespace in group member names is stripped.
@@ -58,7 +57,7 @@ struct passdb {
  * I = uid,gid, l = long maybe empty, m = members,
  * r = reserved
  */
-#define PW_DEF "SsIIsSS"
+#define PW_DEF "SsIIsss"
 #define GR_DEF "SsIm"
 #define SP_DEF "Ssllllllr"
 
@@ -70,8 +69,8 @@ static const struct const_passdb const_pw_db = {
 		offsetof(struct passwd, pw_uid),        /* 2 I */
 		offsetof(struct passwd, pw_gid),        /* 3 I */
 		offsetof(struct passwd, pw_gecos),      /* 4 s */
-		offsetof(struct passwd, pw_dir),        /* 5 S */
-		offsetof(struct passwd, pw_shell)       /* 6 S */
+		offsetof(struct passwd, pw_dir),        /* 5 s */
+		offsetof(struct passwd, pw_shell)       /* 6 s */
 	},
 	sizeof(PW_DEF)-1, sizeof(struct passwd)
 };
@@ -122,7 +121,7 @@ static struct statics *ptr_to_statics;
 #if ENABLE_FEATURE_CLEAN_UP
 static void free_static(void)
 {
-    	free(S.db[0].malloced);
+	free(S.db[0].malloced);
 	free(S.db[1].malloced);
 # if ENABLE_USE_BB_SHADOW
 	free(S.db[2].malloced);

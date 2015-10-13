@@ -5,6 +5,11 @@
 
 #include "libbb.h"
 
+/*
+ * Return NULL if string is not prefixed with key. Return pointer to the
+ * first character in string after the prefix key. If key is an empty string,
+ * return pointer to the beginning of string.
+ */
 char* FAST_FUNC is_prefixed_with(const char *string, const char *key)
 {
 #if 0	/* Two passes over key - probably slower */
@@ -21,6 +26,26 @@ char* FAST_FUNC is_prefixed_with(const char *string, const char *key)
 	}
 	return (char*)string;
 #endif
+}
+
+/*
+ * Return NULL if string is not suffixed with key. Return pointer to the
+ * beginning of prefix key in string. If key is an empty string return pointer
+ * to the end of string.
+ */
+char* FAST_FUNC is_suffixed_with(const char *string, const char *key)
+{
+	size_t key_len = strlen(key);
+	ssize_t len_diff = strlen(string) - key_len;
+
+	if (len_diff >= 0) {
+		string += len_diff;
+		if (strcmp(string, key) == 0) {
+			return (char*)string;
+		}
+	}
+
+	return NULL;
 }
 
 /* returns the array index of the string */
@@ -110,3 +135,37 @@ smallint FAST_FUNC yesno(const char *str)
 	return ret / 3;
 }
 #endif
+
+#if ENABLE_UNIT_TEST
+
+BBUNIT_DEFINE_TEST(is_prefixed_with)
+{
+	BBUNIT_ASSERT_STREQ(" bar", is_prefixed_with("foo bar", "foo"));
+	BBUNIT_ASSERT_STREQ("bar", is_prefixed_with("foo bar", "foo "));
+	BBUNIT_ASSERT_STREQ("", is_prefixed_with("foo", "foo"));
+	BBUNIT_ASSERT_STREQ("foo", is_prefixed_with("foo", ""));
+	BBUNIT_ASSERT_STREQ("", is_prefixed_with("", ""));
+
+	BBUNIT_ASSERT_NULL(is_prefixed_with("foo", "bar foo"));
+	BBUNIT_ASSERT_NULL(is_prefixed_with("foo foo", "bar"));
+	BBUNIT_ASSERT_NULL(is_prefixed_with("", "foo"));
+
+	BBUNIT_ENDTEST;
+}
+
+BBUNIT_DEFINE_TEST(is_suffixed_with)
+{
+	BBUNIT_ASSERT_STREQ("bar", is_suffixed_with("foo bar", "bar"));
+	BBUNIT_ASSERT_STREQ("foo", is_suffixed_with("foo", "foo"));
+	BBUNIT_ASSERT_STREQ("", is_suffixed_with("foo", ""));
+	BBUNIT_ASSERT_STREQ("", is_suffixed_with("", ""));
+	BBUNIT_ASSERT_STREQ("foo", is_suffixed_with("barfoofoo", "foo"));
+
+	BBUNIT_ASSERT_NULL(is_suffixed_with("foo", "bar foo"));
+	BBUNIT_ASSERT_NULL(is_suffixed_with("foo foo", "bar"));
+	BBUNIT_ASSERT_NULL(is_suffixed_with("", "foo"));
+
+	BBUNIT_ENDTEST;
+}
+
+#endif /* ENABLE_UNIT_TEST */

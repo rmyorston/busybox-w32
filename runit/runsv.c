@@ -49,16 +49,11 @@ static void gettimeofday_ns(struct timespec *ts)
 #else
 static void gettimeofday_ns(struct timespec *ts)
 {
-	if (sizeof(struct timeval) == sizeof(struct timespec)
-	 && sizeof(((struct timeval*)ts)->tv_usec) == sizeof(ts->tv_nsec)
-	) {
-		/* Cheat */
-		gettimeofday((void*)ts, NULL);
-		ts->tv_nsec *= 1000;
-	} else {
-		extern void BUG_need_to_implement_gettimeofday_ns(void);
-		BUG_need_to_implement_gettimeofday_ns();
-	}
+	BUILD_BUG_ON(sizeof(struct timeval) != sizeof(struct timespec));
+	BUILD_BUG_ON(sizeof(((struct timeval*)ts)->tv_usec) != sizeof(ts->tv_nsec));
+	/* Cheat */
+	gettimeofday((void*)ts, NULL);
+	ts->tv_nsec *= 1000;
 }
 #endif
 
@@ -114,7 +109,7 @@ struct globals {
 
 static void fatal2_cannot(const char *m1, const char *m2)
 {
-	bb_perror_msg_and_die("%s: fatal: cannot %s%s", dir, m1, m2);
+	bb_perror_msg_and_die("%s: fatal: can't %s%s", dir, m1, m2);
 	/* was exiting 111 */
 }
 static void fatal_cannot(const char *m)
@@ -124,7 +119,7 @@ static void fatal_cannot(const char *m)
 }
 static void fatal2x_cannot(const char *m1, const char *m2)
 {
-	bb_error_msg_and_die("%s: fatal: cannot %s%s", dir, m1, m2);
+	bb_error_msg_and_die("%s: fatal: can't %s%s", dir, m1, m2);
 	/* was exiting 111 */
 }
 static void warn_cannot(const char *m)

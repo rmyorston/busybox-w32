@@ -377,7 +377,7 @@ ftpdataio_get_pasv_fd(void)
 		return remote_fd;
 	}
 
-	setsockopt(remote_fd, SOL_SOCKET, SO_KEEPALIVE, &const_int_1, sizeof(const_int_1));
+	setsockopt_keepalive(remote_fd);
 	return remote_fd;
 }
 
@@ -1186,11 +1186,11 @@ int ftpd_main(int argc UNUSED_PARAM, char **argv)
 		, SIG_IGN);
 
 	/* Set up options on the command socket (do we need these all? why?) */
-	setsockopt(STDIN_FILENO, IPPROTO_TCP, TCP_NODELAY, &const_int_1, sizeof(const_int_1));
-	setsockopt(STDIN_FILENO, SOL_SOCKET, SO_KEEPALIVE, &const_int_1, sizeof(const_int_1));
+	setsockopt_1(STDIN_FILENO, IPPROTO_TCP, TCP_NODELAY);
+	setsockopt_keepalive(STDIN_FILENO);
 	/* Telnet protocol over command link may send "urgent" data,
 	 * we prefer it to be received in the "normal" data stream: */
-	setsockopt(STDIN_FILENO, SOL_SOCKET, SO_OOBINLINE, &const_int_1, sizeof(const_int_1));
+	setsockopt_1(STDIN_FILENO, SOL_SOCKET, SO_OOBINLINE);
 
 	WRITE_OK(FTP_GREET);
 	signal(SIGALRM, timeout_handler);
@@ -1223,11 +1223,26 @@ int ftpd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	argv += optind;
 	if (argv[0]) {
+		const char *basedir = argv[0];
 #if !BB_MMU
 		G.root_fd = xopen("/", O_RDONLY | O_DIRECTORY);
 		close_on_exec_on(G.root_fd);
 #endif
-		xchroot(argv[0]);
+		if (chroot(basedir) == 0)
+			basedir = "/";
+#if !BB_MMU
+		else {
+			close(G.root_fd);
+			G.root_fd = -1;
+		}
+#endif
+		/*
+		 * If chroot failed, assume that we aren't root,
+		 * and at least chdir to the specified DIR
+		 * (older versions were dying with error message).
+		 * If chroot worked, move current dir to new "/":
+		 */
+		xchdir(basedir);
 	}
 
 #if ENABLE_FEATURE_FTP_AUTHENTICATION
