@@ -56,6 +56,34 @@ Misc options:
         -q,--quiet              Quiet
         -v,--verbose            Verbose
 */
+//config:config START_STOP_DAEMON
+//config:	bool "start-stop-daemon"
+//config:	default y
+//config:	help
+//config:	  start-stop-daemon is used to control the creation and
+//config:	  termination of system-level processes, usually the ones
+//config:	  started during the startup of the system.
+//config:
+//config:config FEATURE_START_STOP_DAEMON_FANCY
+//config:	bool "Support additional arguments"
+//config:	default y
+//config:	depends on START_STOP_DAEMON
+//config:	help
+//config:	  Support additional arguments.
+//config:	  -o|--oknodo ignored since we exit with 0 anyway
+//config:	  -v|--verbose
+//config:	  -N|--nicelevel N
+//config:
+//config:config FEATURE_START_STOP_DAEMON_LONG_OPTIONS
+//config:	bool "Enable long options"
+//config:	default y
+//config:	depends on START_STOP_DAEMON && LONG_OPTS
+//config:	help
+//config:	  Support long options for the start-stop-daemon applet.
+
+//applet:IF_START_STOP_DAEMON(APPLET_ODDNAME(start-stop-daemon, start_stop_daemon, BB_DIR_SBIN, BB_SUID_DROP, start_stop_daemon))
+
+//kbuild:lib-$(CONFIG_START_STOP_DAEMON) += start_stop_daemon.o
 
 //usage:#define start_stop_daemon_trivial_usage
 //usage:       "[OPTIONS] [-S|-K] ... [-- ARGS...]"
@@ -511,15 +539,15 @@ int start_stop_daemon_main(int argc UNUSED_PARAM, char **argv)
 		write_pidfile(pidfile);
 	}
 	if (opt & OPT_c) {
-		struct bb_uidgid_t ugid = { -1, -1 };
+		struct bb_uidgid_t ugid;
 		parse_chown_usergroup_or_die(&ugid, chuid);
-		if (ugid.uid != (uid_t) -1) {
+		if (ugid.uid != (uid_t) -1L) {
 			struct passwd *pw = xgetpwuid(ugid.uid);
-			if (ugid.gid != (gid_t) -1)
+			if (ugid.gid != (gid_t) -1L)
 				pw->pw_gid = ugid.gid;
 			/* initgroups, setgid, setuid: */
 			change_identity(pw);
-		} else if (ugid.gid != (gid_t) -1) {
+		} else if (ugid.gid != (gid_t) -1L) {
 			xsetgid(ugid.gid);
 			setgroups(1, &ugid.gid);
 		}
