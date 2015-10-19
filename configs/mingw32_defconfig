@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.25.0.git
-# Tue Oct 13 14:47:01 2015
+# Mon Oct 19 10:23:32 2015
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -246,7 +246,7 @@ CONFIG_HEAD=y
 CONFIG_FEATURE_FANCY_HEAD=y
 # CONFIG_INSTALL is not set
 # CONFIG_FEATURE_INSTALL_LONG_OPTIONS is not set
-# CONFIG_LN is not set
+CONFIG_LN=y
 CONFIG_LOGNAME=y
 CONFIG_LS=y
 CONFIG_FEATURE_LS_FILETYPES=y

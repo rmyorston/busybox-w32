@@ -126,6 +126,7 @@ int err_win_to_posix(DWORD winerr)
 	case ERROR_SHARING_VIOLATION: error = EACCES; break;
 	case ERROR_STACK_OVERFLOW: error = ENOMEM; break;
 	case ERROR_SWAPERROR: error = ENOENT; break;
+	case ERROR_TOO_MANY_LINKS: error = EMLINK; break;
 	case ERROR_TOO_MANY_MODULES: error = EMFILE; break;
 	case ERROR_TOO_MANY_OPEN_FILES: error = EMFILE; break;
 	case ERROR_UNRECOGNIZED_MEDIA: error = ENXIO; break;
@@ -367,6 +368,7 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 		buf->st_ino = 0;
 		buf->st_uid = DEFAULT_UID;
 		buf->st_gid = DEFAULT_GID;
+		/* could use fdata.nNumberOfLinks but it's inconsistent with stat */
 		buf->st_nlink = 1;
 		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
 		buf->st_size = fdata.nFileSizeLow |
