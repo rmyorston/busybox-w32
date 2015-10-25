@@ -2,7 +2,7 @@
 /*
  * depmod - generate modules.dep
  * Copyright (c) 2008 Bernhard Reutner-Fischer
- * Copyrihgt (c) 2008 Timo Teras <timo.teras@iki.fi>
+ * Copyrihgt (c) 2008-2015 Timo Teras <timo.teras@iki.fi>
  * Copyright (c) 2008 Vladimir Dronnikov
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
@@ -24,6 +24,24 @@
 #include "libbb.h"
 #include "modutils.h"
 #include <sys/utsname.h> /* uname() */
+
+#define INDEX_MINCHAR	32
+#define INDEX_MAXCHAR	128
+
+typedef struct index_node {
+	char *prefix;
+	llist_t *values;
+	struct index_node *children[INDEX_MAXCHAR-INDEX_MINCHAR];
+} index_node;
+
+struct globals {
+	module_db db;
+	index_node *root_node;
+} FIX_ALIASING;
+#define G (*ptr_to_globals)
+#define INIT_G() do { \
+	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
+} while (0)
 
 /*
  * Theory of operation:
@@ -53,18 +71,12 @@ static int FAST_FUNC parse_module(struct recursive_state *state,
 
 	for (ptr = image; ptr < image + len - 10; ptr++) {
 		if (is_prefixed_with(ptr, "depends=")) {
-			char *u;
-
 			ptr += 8;
-			for (u = ptr; *u; u++)
-				if (*u == '-')
-					*u = '_';
-			ptr += string_to_llist(ptr, &e->deps, ",");
+			string_to_llist(replace_underscores(ptr), &e->deps, ",");
 		} else if (ENABLE_FEATURE_MODUTILS_ALIAS
 		 && is_prefixed_with(ptr, "alias=")
 		) {
-			llist_add_to(&e->aliases, xstrdup(ptr + 6));
-			ptr += strlen(ptr);
+			llist_add_to(&e->aliases, replace_underscores(xstrdup(ptr + 6)));
 		} else if (ENABLE_FEATURE_MODUTILS_SYMBOLS
 		 && is_prefixed_with(ptr, "__ksymtab_")
 		) {
@@ -74,9 +86,10 @@ static int FAST_FUNC parse_module(struct recursive_state *state,
 			) {
 				continue;
 			}
-			llist_add_to(&e->symbols, xstrdup(ptr));
-			ptr += strlen(ptr);
-		}
+			llist_add_to(&e->symbols, xasprintf("symbol:%s", ptr));
+		} else
+			continue;
+		ptr += strlen(ptr);
 	}
 	free(image);
 
@@ -106,12 +119,6 @@ static void order_dep_list(module_db *modules, module_entry *start, llist_t *add
 		/* recurse */
 		order_dep_list(modules, start, m->deps);
 	}
-}
-
-static void xfreopen_write(const char *file, FILE *f)
-{
-	if (freopen(file, "w", f) == NULL)
-		bb_perror_msg_and_die("can't open '%s'", file);
 }
 
 //usage:#if !ENABLE_MODPROBE_SMALL
@@ -167,6 +174,169 @@ enum {
 	OPT_C = (1 << 9), /* -C,--config etc_modules_conf: ignored */
 };
 
+/* Support for the mod binary index generation */
+
+static void index_init(const char *filename)
+{
+	if (ENABLE_FEATURE_MODUTILS_BIN) {
+		index_node *n;
+
+		n = xzalloc(sizeof(index_node));
+		n->prefix = xstrdup("");
+		G.root_node = n;
+	}
+
+	if (filename && !(option_mask32 & OPT_n)) {
+		if (freopen(filename, "w", stdout) == NULL)
+			bb_perror_msg_and_die("can't open '%s'", filename);
+	}
+}
+
+static void index_add(const char *key, char *value, const char *prefix)
+{
+	if (prefix && *prefix)
+		printf("%s%s %s\n", prefix, key, value);
+	else if (prefix)
+		printf("%s\n", value);
+
+	if (ENABLE_FEATURE_MODUTILS_BIN) {
+		index_node *cur = G.root_node, *n;
+		unsigned i = 0, j, ch;
+
+		while (1) {
+			/* Ensure node->prefix is a prefix of &str[i].
+			 * If it is not already, then we must split node. */
+			for (j = 0; cur->prefix[j]; j++) {
+				ch = cur->prefix[j];
+				if (ch != key[i+j]) {
+					/* New child is copy of node with prefix[j+1..N] */
+					n = xzalloc(sizeof(index_node));
+					n->prefix = xstrdup(&cur->prefix[j+1]);
+					n->values = cur->values;
+					memcpy(n->children, cur->children, sizeof(n->children));
+
+					/* Parent has prefix[0..j], child at prefix[j] */
+					cur->prefix[j] = '\0';
+					cur->values = NULL;
+					memset(cur->children, 0, sizeof(cur->children));
+					cur->children[ch-INDEX_MINCHAR] = n;
+					break;
+				}
+			}
+			i += j;
+
+			ch = key[i];
+			if (ch == 0)
+				break;
+
+			if (ch < INDEX_MINCHAR || ch >= INDEX_MAXCHAR)
+				bb_simple_error_msg_and_die("bad module name");
+
+			ch -= INDEX_MINCHAR;
+			if (!cur->children[ch]) {
+				n = xzalloc(sizeof(index_node));
+				cur->children[ch] = n;
+				n->prefix = xstrdup(&key[i+1]);
+				cur = n;
+				break;
+			}
+
+			/* Descend into child node and continue */
+			cur = cur->children[ch];
+			i++;
+		}
+
+		llist_add_to(&cur->values, value);
+	}
+}
+
+static uint32_t index_write_node(FILE *out, index_node *n, void (*freeit)(void *data))
+{
+	uint32_t child_offs[INDEX_MAXCHAR-INDEX_MINCHAR];
+	uint32_t offset;
+	uint8_t first = 255, last = 0;
+	unsigned i;
+
+	for (i = 0; i < INDEX_MAXCHAR-INDEX_MINCHAR; i++) {
+		child_offs[i] = 0;
+		if (!n->children[i])
+			continue;
+		child_offs[i] = index_write_node(out, n->children[i], freeit);
+		if (first > INDEX_MAXCHAR)
+			first = i;
+		last = i;
+	}
+
+	offset = ftell(out);
+
+	if (n->prefix[0]) {
+		fputs(n->prefix, out);
+		fputc('\0', out);
+		offset |= INDEX_NODE_PREFIX;
+	}
+
+	if (first < INDEX_MAXCHAR) {
+		fputc(first + INDEX_MINCHAR, out);
+		fputc(last + INDEX_MINCHAR, out);
+		fwrite(child_offs + first, sizeof(uint32_t), last - first + 1, out);
+		offset |= INDEX_NODE_CHILDS;
+	}
+
+	if (n->values) {
+		const llist_t *v;
+		unsigned int cnt;
+		uint32_t u;
+
+		n->values = llist_rev(n->values);
+		for (v = n->values, cnt = 0; v != NULL; v = v->link, cnt++);
+		u = htonl(cnt);
+		fwrite(&u, sizeof(u), 1, out);
+		for (v = n->values, cnt = 0; v != NULL; v = v->link, cnt++) {
+			u = htonl(cnt);
+			fwrite(&u, sizeof(u), 1, out);
+			fputs(v->data, out);
+			fputc('\0', out);
+		}
+		offset |= INDEX_NODE_VALUES;
+	}
+
+	llist_free(n->values, freeit);
+	free(n->prefix);
+	free(n);
+
+	return htonl(offset);
+}
+
+static void index_dump(const char *filename, int deps_file)
+{
+	if (ENABLE_FEATURE_MODUTILS_BIN) {
+		FILE *out;
+		uint32_t header[3] = {
+			htonl(INDEX_MAGIC),
+			htonl(INDEX_VERSION),
+		};
+
+		if (option_mask32 & OPT_n)
+			filename = "/dev/null";
+		else
+			filename = xasprintf("tmp.%s.bin", filename);
+
+		out = xfopen_for_write(filename);
+		fwrite(header, sizeof(uint32_t), 3, out);
+		header[2] = index_write_node(out, G.root_node, deps_file ? free : 0);
+		rewind(out);
+		G.root_node = NULL;
+		fwrite(header, sizeof(uint32_t), 3, out);
+		if (fclose(out)) {
+			remove(filename);
+			bb_simple_error_msg_and_die(bb_msg_write_error);
+		}
+		/* .bin files are mmap'ed; not renaming it may crash
+		 * long standing daemon using libkmod */
+		rename_or_warn(filename, filename + 4);
+	}
+}
+
 int depmod_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int depmod_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -177,6 +347,8 @@ int depmod_main(int argc UNUSED_PARAM, char **argv)
 	struct utsname uts;
 	unsigned i;
 	int tmp;
+
+	INIT_G();
 
 	getopt32(argv, "aAb:eF:nruqC:", &moddir_base, NULL, NULL);
 	argv += optind;
@@ -211,53 +383,60 @@ int depmod_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	/* Generate dependency and alias files */
-	if (!(option_mask32 & OPT_n))
-		xfreopen_write(CONFIG_DEFAULT_DEPMOD_FILE, stdout);
-
+	index_init(CONFIG_DEFAULT_DEPMOD_FILE);
 	moddb_foreach_module(&modules, m, i) {
-		printf("%s:", m->name);
-
+		char *buf = xasprintf("%s:", m->name);
 		order_dep_list(&modules, m, m->deps);
+
 		while (m->dnext != m) {
 			dep = m->dnext;
-			printf(" %s", dep->name);
-
+			buf = gather_options_str(buf, dep->name);
 			/* unlink current entry */
 			dep->dnext->dprev = dep->dprev;
 			dep->dprev->dnext = dep->dnext;
 			dep->dnext = dep->dprev = dep;
 		}
-		bb_putchar('\n');
+		index_add(m->modname, buf, "");
 	}
+	index_dump(CONFIG_DEFAULT_DEPMOD_FILE, 1);
 
-#if ENABLE_FEATURE_MODUTILS_ALIAS
-	if (!(option_mask32 & OPT_n))
-		xfreopen_write("modules.alias", stdout);
-	moddb_foreach_module(&modules, m, i) {
-		while (m->aliases) {
-			/*
-			 * Last word used to be a basename
-			 * (filename with path and .ko.* stripped)
-			 * at the time of module-init-tools 3.4.
-			 * kmod v.12 uses module name, i.e., s/-/_/g.
-			 */
-			printf("alias %s %s\n",
-				(char*)llist_pop(&m->aliases),
-				m->modname);
+	if (ENABLE_FEATURE_MODUTILS_ALIAS) {
+		index_init("modules.alias");
+		moddb_foreach_module(&modules, m, i) {
+			while (m->aliases) {
+				/*
+				 * Last word used to be a basename
+				 * (filename with path and .ko.* stripped)
+				 * at the time of module-init-tools 3.4.
+				 * kmod v.12 uses module name, i.e., s/-/_/g.
+				 */
+				index_add((char*)llist_pop(&m->aliases), m->modname, "alias ");
+			}
 		}
+		index_dump("modules.alias", 0);
 	}
-#endif
-#if ENABLE_FEATURE_MODUTILS_SYMBOLS
-	if (!(option_mask32 & OPT_n))
-		xfreopen_write("modules.symbols", stdout);
-	moddb_foreach_module(&modules, m, i) {
-		while (m->symbols) {
-			printf("alias symbol:%s %s\n",
-				(char*)llist_pop(&m->symbols),
-				m->modname);
+	if (ENABLE_FEATURE_MODUTILS_SYMBOLS) {
+		index_init("modules.symbols");
+		moddb_foreach_module(&modules, m, i) {
+			while (m->symbols) {
+				index_add((char*)llist_pop(&m->symbols), m->modname, "alias ");
+			}
 		}
+		index_dump("modules.symbols", 0);
 	}
-#endif
+	if (ENABLE_FEATURE_MODUTILS_BIN) {
+		char line[PATH_MAX], modname[MODULE_NAME_LEN];
+		FILE *in;
+
+		index_init(NULL);
+		in = xfopen_for_read("modules.builtin");
+		while (fgets(line, sizeof(line), in) != NULL) {
+			filename2modname(line, modname);
+			index_add(modname, (char *) "", 0);
+		}
+		fclose(in);
+		index_dump("modules.builtin", 0);
+	}
 
 	if (ENABLE_FEATURE_CLEAN_UP)
 		moddb_free(&modules);

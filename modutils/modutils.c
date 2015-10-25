@@ -69,6 +69,37 @@ void FAST_FUNC moddb_free(module_db *db)
 	}
 }
 
+char * FAST_FUNC gather_options_str(char *opts, const char *append)
+{
+	/* Speed-optimized. We call gather_options_str many times. */
+	if (append) {
+		if (opts == NULL) {
+			opts = xstrdup(append);
+		} else {
+			int optlen = strlen(opts);
+			opts = xrealloc(opts, optlen + strlen(append) + 2);
+			sprintf(opts + optlen, " %s", append);
+		}
+	}
+	return opts;
+}
+
+char* FAST_FUNC replace_underscores(char *s)
+{
+	int i;
+	for (i = 0; s[i]; i++) {
+		switch (s[i]) {
+		case '-':
+			s[i] = '_';
+			break;
+		case '[':
+			i += strcspn(&s[i], "]");
+			break;
+		}
+	}
+	return s;
+}
+
 int FAST_FUNC string_to_llist(char *string, llist_t **llist, const char *delim)
 {
 	char *tok;
