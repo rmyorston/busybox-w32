@@ -628,7 +628,7 @@ static int busybox_main(char **argv)
 		output_width = 80;
 		if (ENABLE_FEATURE_AUTOWIDTH) {
 			/* Obtain the terminal width */
-			get_terminal_width_height(0, &output_width, NULL);
+			output_width = get_terminal_width(2);
 		}
 
 		dup2(1, 2);
@@ -659,10 +659,10 @@ static int busybox_main(char **argv)
 			)
 			IF_FEATURE_SH_STANDALONE(
 			"\tBusyBox is a multi-call binary that combines many common Unix\n"
-			"\tutilities into a single executable.  The shell in this version\n"
-			"\thas been configured to prefer built-in utilities to external\n"
-			"\tbinaries.  This avoids having to install a link to busybox for\n"
-			"\teach function to be invoked.\n"
+			"\tutilities into a single executable.  The shell in this build\n"
+			"\tis configured to run built-in utilities without $PATH search.\n"
+			"\tYou don't need to install a link to busybox for each utility.\n"
+			"\tTo run external program, use full path (/sbin/ip instead of ip).\n"
 			)
 			"\n"
 #if ENABLE_GLOBBING

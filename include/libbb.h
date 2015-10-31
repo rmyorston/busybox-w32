@@ -1347,11 +1347,6 @@ extern void selinux_preserve_fcontext(int fdesc) FAST_FUNC;
 extern void selinux_or_die(void) FAST_FUNC;
 
 
-/* systemd support */
-#define SD_LISTEN_FDS_START 3
-int sd_listen_fds(void);
-
-
 /* setup_environment:
  * if chdir pw->pw_dir: ok: else if to_tmp == 1: goto /tmp else: goto / or die
  * if clear_env = 1: cd(pw->pw_dir), clear environment, then set
@@ -1418,6 +1413,7 @@ extern void print_login_prompt(void) FAST_FUNC;
 char *xmalloc_ttyname(int fd) FAST_FUNC RETURNS_MALLOC;
 /* NB: typically you want to pass fd 0, not 1. Think 'applet | grep something' */
 int get_terminal_width_height(int fd, unsigned *width, unsigned *height) FAST_FUNC;
+int get_terminal_width(int fd) FAST_FUNC;
 
 int tcsetattr_stdin_TCSANOW(const struct termios *tp) FAST_FUNC;
 

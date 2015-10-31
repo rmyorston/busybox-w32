@@ -829,10 +829,12 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 	if (type == FIND_EXE_ONLY) {
 		const char *p = applet_names;
 
-		for (i=0; i < NUM_APPLETS; i++) {
+		i = 0;
+		while (i < NUM_APPLETS) {
 			if (strncmp(pfind, p, pf_len) == 0)
 				add_match(xstrdup(p));
 			p += strlen(p) + 1;
+			i++;
 		}
 	}
 #endif

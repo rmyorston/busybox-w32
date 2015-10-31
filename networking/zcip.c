@@ -345,7 +345,7 @@ int zcip_main(int argc UNUSED_PARAM, char **argv)
 	state = PROBE;
 	while (1) {
 		struct pollfd fds[1];
-		unsigned deadline_us;
+		unsigned deadline_us = deadline_us;
 		struct arp_packet p;
 		int ip_conflict;
 		int n;
@@ -361,8 +361,10 @@ int zcip_main(int argc UNUSED_PARAM, char **argv)
 			// make the kernel filter out all packets except
 			// ones we'd care about.
 		}
-		// Set deadline_us to the point in time when we timeout
-		deadline_us = MONOTONIC_US() + timeout_ms * 1000;
+		if (timeout_ms >= 0) {
+			// Set deadline_us to the point in time when we timeout
+			deadline_us = MONOTONIC_US() + timeout_ms * 1000;
+		}
 
 		VDBG("...wait %d %s nsent=%u\n",
 				timeout_ms, argv_intf, nsent);
