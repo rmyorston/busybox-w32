@@ -723,16 +723,18 @@ static int read_block_data(int buf_fd, int mode, int *block)
 	uint8_t cblock[I2C_SMBUS_BLOCK_MAX + I2CDUMP_NUM_REGS];
 	int res, blen = 0, tmp, i;
 
-	if (mode == I2C_SMBUS_BLOCK_DATA || mode == I2C_SMBUS_I2C_BLOCK_DATA) {
-		res = i2c_smbus_read_block_data(buf_fd, 0, cblock);
-		blen = res;
+	if (mode == I2C_SMBUS_BLOCK_DATA) {
+		blen = i2c_smbus_read_block_data(buf_fd, 0, cblock);
+		if (blen <= 0)
+			goto fail;
 	} else {
 		for (res = 0; res < I2CDUMP_NUM_REGS; res += tmp) {
 			tmp = i2c_smbus_read_i2c_block_data(
 					buf_fd, res, I2C_SMBUS_BLOCK_MAX,
 					cblock + res);
-			if (tmp < 0) {
-				bb_error_msg_and_die("block read failed");
+			if (tmp <= 0) {
+				blen = tmp;
+				goto fail;
 			}
 		}
 
@@ -748,6 +750,9 @@ static int read_block_data(int buf_fd, int mode, int *block)
 	}
 
 	return blen;
+
+ fail:
+	bb_error_msg_and_die("block read failed: %d", blen);
 }
 
 /* Dump all but word data. */
@@ -904,7 +909,7 @@ int i2cdump_main(int argc UNUSED_PARAM, char **argv)
 	unsigned first = 0x00, last = 0xff, opts;
 	int *block = (int *)bb_common_bufsiz1;
 	char *opt_r_str, *dash;
-	int fd, res, blen;
+	int fd, res;
 
         opt_complementary = "-2:?3"; /* from 2 to 3 args */
 	opts = getopt32(argv, optstr, &opt_r_str);
@@ -971,7 +976,10 @@ int i2cdump_main(int argc UNUSED_PARAM, char **argv)
 
 	/* All but word data. */
 	if (mode != I2C_SMBUS_WORD_DATA || even) {
-		blen = read_block_data(fd, mode, block);
+		int blen = 0;
+
+		if (mode == I2C_SMBUS_BLOCK_DATA || mode == I2C_SMBUS_I2C_BLOCK_DATA)
+			blen = read_block_data(fd, mode, block);
 
 		if (mode == I2C_SMBUS_BYTE) {
 			res = i2c_smbus_write_byte(fd, first);
@@ -1200,7 +1208,7 @@ int i2cdetect_main(int argc UNUSED_PARAM, char **argv)
 			      opt_F = (1 << 4), opt_l = (1 << 5);
 	const char *const optstr = "yaqrFl";
 
-	int fd, bus_num, i, j, mode = I2CDETECT_MODE_AUTO, status;
+	int fd, bus_num, i, j, mode = I2CDETECT_MODE_AUTO, status, cmd;
 	unsigned first = 0x03, last = 0x77, opts;
 	unsigned long funcs;
 
@@ -1270,22 +1278,23 @@ int i2cdetect_main(int argc UNUSED_PARAM, char **argv)
 	puts("     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f");
 	for (i = 0; i < 128; i += 16) {
 		printf("%02x: ", i);
-		for(j = 0; j < 16; j++) {
+		for (j = 0; j < 16; j++) {
 			fflush_all();
 
+			cmd = mode;
 			if (mode == I2CDETECT_MODE_AUTO) {
 				if ((i+j >= 0x30 && i+j <= 0x37) ||
 				    (i+j >= 0x50 && i+j <= 0x5F))
-					mode = I2CDETECT_MODE_READ;
+					cmd = I2CDETECT_MODE_READ;
 				else
-					mode = I2CDETECT_MODE_QUICK;
+					cmd = I2CDETECT_MODE_QUICK;
 			}
 
 			/* Skip unwanted addresses. */
 			if (i+j < first
 			 || i+j > last
-			 || (mode == I2CDETECT_MODE_READ && !(funcs & I2C_FUNC_SMBUS_READ_BYTE))
-			 || (mode == I2CDETECT_MODE_QUICK && !(funcs & I2C_FUNC_SMBUS_QUICK)))
+			 || (cmd == I2CDETECT_MODE_READ && !(funcs & I2C_FUNC_SMBUS_READ_BYTE))
+			 || (cmd == I2CDETECT_MODE_QUICK && !(funcs & I2C_FUNC_SMBUS_QUICK)))
 			{
 				printf("   ");
 				continue;
@@ -1302,7 +1311,7 @@ int i2cdetect_main(int argc UNUSED_PARAM, char **argv)
 					"can't set address to 0x%02x", i + j);
 			}
 
-			switch (mode) {
+			switch (cmd) {
 			case I2CDETECT_MODE_READ:
 				/*
 				 * This is known to lock SMBus on various
