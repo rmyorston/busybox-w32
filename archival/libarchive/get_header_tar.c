@@ -17,36 +17,6 @@
 typedef uint32_t aliased_uint32_t FIX_ALIASING;
 typedef off_t    aliased_off_t    FIX_ALIASING;
 
-
-const char* FAST_FUNC strip_unsafe_prefix(const char *str)
-{
-	const char *cp = str;
-	while (1) {
-		char *cp2;
-		if (*cp == '/') {
-			cp++;
-			continue;
-		}
-		if (strncmp(cp, "/../"+1, 3) == 0) {
-			cp += 3;
-			continue;
-		}
-		cp2 = strstr(cp, "/../");
-		if (!cp2)
-			break;
-		cp = cp2 + 4;
-	}
-	if (cp != str) {
-		static smallint warned = 0;
-		if (!warned) {
-			warned = 1;
-			bb_error_msg("removing leading '%.*s' from member names",
-				(int)(cp - str), str);
-		}
-	}
-	return cp;
-}
-
 /* NB: _DESTROYS_ str[len] character! */
 static unsigned long long getOctal(char *str, int len)
 {
@@ -135,7 +105,7 @@ static void process_pax_hdr(archive_handle_t *archive_handle, unsigned sz, int g
 		value = end + 1;
 
 #if ENABLE_FEATURE_TAR_GNU_EXTENSIONS
-		if (!global && strncmp(value, "path=", sizeof("path=") - 1) == 0) {
+		if (!global && is_prefixed_with(value, "path=")) {
 			value += sizeof("path=") - 1;
 			free(archive_handle->tar__longname);
 			archive_handle->tar__longname = xstrdup(value);
@@ -148,7 +118,7 @@ static void process_pax_hdr(archive_handle_t *archive_handle, unsigned sz, int g
 		 * This is what Red Hat's patched version of tar uses.
 		 */
 # define SELINUX_CONTEXT_KEYWORD "RHT.security.selinux"
-		if (strncmp(value, SELINUX_CONTEXT_KEYWORD"=", sizeof(SELINUX_CONTEXT_KEYWORD"=") - 1) == 0) {
+		if (is_prefixed_with(value, SELINUX_CONTEXT_KEYWORD"=")) {
 			value += sizeof(SELINUX_CONTEXT_KEYWORD"=") - 1;
 			free(archive_handle->tar__sctx[global]);
 			archive_handle->tar__sctx[global] = xstrdup(value);
@@ -232,7 +202,7 @@ char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 
 	/* Check header has valid magic, "ustar" is for the proper tar,
 	 * five NULs are for the old tar format  */
-	if (strncmp(tar.magic, "ustar", 5) != 0
+	if (!is_prefixed_with(tar.magic, "ustar")
 	 && (!ENABLE_FEATURE_TAR_OLDGNU_COMPATIBILITY
 	     || memcmp(tar.magic, "\0\0\0\0", 5) != 0)
 	) {
@@ -380,7 +350,14 @@ char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 	case '6':
 		file_header->mode |= S_IFIFO;
 		goto size0;
+	case 'g':	/* pax global header */
+	case 'x': {	/* pax extended header */
+		if ((uoff_t)file_header->size > 0xfffff) /* paranoia */
+			goto skip_ext_hdr;
+		process_pax_hdr(archive_handle, file_header->size, (tar.typeflag == 'g'));
+		goto again_after_align;
 #if ENABLE_FEATURE_TAR_GNU_EXTENSIONS
+/* See http://www.gnu.org/software/tar/manual/html_node/Extensions.html */
 	case 'L':
 		/* free: paranoia: tar with several consecutive longnames */
 		free(p_longname);
@@ -400,18 +377,17 @@ char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 		archive_handle->offset += file_header->size;
 		/* return get_header_tar(archive_handle); */
 		goto again;
-	case 'D':	/* GNU dump dir */
-	case 'M':	/* Continuation of multi volume archive */
-	case 'N':	/* Old GNU for names > 100 characters */
-	case 'S':	/* Sparse file */
-	case 'V':	/* Volume header */
+/*
+ *	case 'S':	// Sparse file
+ * Was seen in the wild. Not supported (yet?).
+ * See https://www.gnu.org/software/tar/manual/html_section/tar_92.html
+ * for the format. (An "Old GNU Format" was seen, not PAX formats).
+ */
+//	case 'D':	/* GNU dump dir */
+//	case 'M':	/* Continuation of multi volume archive */
+//	case 'N':	/* Old GNU for names > 100 characters */
+//	case 'V':	/* Volume header */
 #endif
-	case 'g':	/* pax global header */
-	case 'x': {	/* pax extended header */
-		if ((uoff_t)file_header->size > 0xfffff) /* paranoia */
-			goto skip_ext_hdr;
-		process_pax_hdr(archive_handle, file_header->size, (tar.typeflag == 'g'));
-		goto again_after_align;
 	}
  skip_ext_hdr:
 	{
@@ -442,6 +418,7 @@ char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 
 	/* Everything up to and including last ".." component is stripped */
 	overlapping_strcpy(file_header->name, strip_unsafe_prefix(file_header->name));
+//TODO: do the same for file_header->link_target?
 
 	/* Strip trailing '/' in directories */
 	/* Must be done after mode is set as '/' is used to check if it's a directory */

@@ -11,7 +11,7 @@ config CAL
 	bool "cal"
 	default y
 	help
-	  cal is used to display a monthly calender.
+	  cal is used to display a monthly calendar.
 
 config CATV
 	bool "catv"
@@ -86,44 +86,6 @@ config CUT
 	help
 	  cut is used to print selected parts of lines from
 	  each file to stdout.
-
-config DD
-	bool "dd"
-	default y
-	help
-	  dd copies a file (from standard input to standard output,
-	  by default) using specific input and output blocksizes,
-	  while optionally performing conversions on it.
-
-config FEATURE_DD_SIGNAL_HANDLING
-	bool "Enable DD signal handling for status reporting"
-	default y
-	depends on DD
-	help
-	  Sending a SIGUSR1 signal to a running `dd' process makes it
-	  print to standard error the number of records read and written
-	  so far, then to resume copying.
-
-	  $ dd if=/dev/zero of=/dev/null&
-	  $ pid=$! kill -USR1 $pid; sleep 1; kill $pid
-	  10899206+0 records in
-	  10899206+0 records out
-
-config FEATURE_DD_THIRD_STATUS_LINE
-	bool "Enable the third status line upon signal"
-	default y
-	depends on DD && FEATURE_DD_SIGNAL_HANDLING
-	help
-	  Displays a coreutils-like third status line with transferred bytes,
-	  elapsed time and speed.
-
-config FEATURE_DD_IBS_OBS
-	bool "Enable ibs, obs and conv options"
-	default y
-	depends on DD
-	help
-	  Enables support for writing a certain number of bytes in and out,
-	  at a time, and performing conversions on the data stream.
 
 config DF
 	bool "df"
@@ -581,21 +543,6 @@ config FEATURE_SPLIT_FANCY
 	  Supports additional suffixes 'b' for 512 bytes,
 	  'g' for 1GiB for the -b option.
 
-config STAT
-	bool "stat"
-	default y
-	help
-	  display file or filesystem status.
-
-config FEATURE_STAT_FORMAT
-	bool "Enable custom formats (-c)"
-	default y
-	depends on STAT
-	help
-	  Without this, stat will not support the '-c format' option where
-	  users can pass a custom format string for output. This adds about
-	  7k to a nonstatic build on amd64.
-
 config STTY
 	bool "stty"
 	default y
@@ -607,12 +554,6 @@ config SUM
 	default y
 	help
 	  checksum and count the blocks in a file
-
-config SYNC
-	bool "sync"
-	default y
-	help
-	  sync is used to flush filesystem buffers.
 
 config TAC
 	bool "tac"
@@ -672,6 +613,14 @@ config UNAME
 	default y
 	help
 	  uname is used to print system information.
+
+config UNAME_OSNAME
+	string "Operating system name"
+	default "GNU/Linux"
+	depends on UNAME
+	help
+	  Sets the operating system name reported by uname -o.  The
+	  default is "GNU/Linux".
 
 config UNEXPAND
 	bool "unexpand"

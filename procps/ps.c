@@ -638,7 +638,7 @@ int ps_main(int argc UNUSED_PARAM, char **argv)
 	 * and such large widths */
 	terminal_width = MAX_WIDTH;
 	if (isatty(1)) {
-		get_terminal_width_height(0, &terminal_width, NULL);
+		terminal_width = get_terminal_width(0);
 		if (--terminal_width > MAX_WIDTH)
 			terminal_width = MAX_WIDTH;
 	}
@@ -670,8 +670,8 @@ int ps_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		OPT_l = (1 << ENABLE_SELINUX) * (1 << ENABLE_FEATURE_SHOW_THREADS) * ENABLE_FEATURE_PS_LONG,
 	};
 #if ENABLE_FEATURE_PS_LONG
-	time_t now = now;
-	unsigned long uptime;
+	time_t now = now; /* for compiler */
+	unsigned long uptime = uptime;
 #endif
 	/* If we support any options, parse argv */
 #if ENABLE_SELINUX || ENABLE_FEATURE_SHOW_THREADS || ENABLE_FEATURE_PS_WIDE || ENABLE_FEATURE_PS_LONG
@@ -688,7 +688,7 @@ int ps_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	if (w_count) {
 		terminal_width = (w_count == 1) ? 132 : MAX_WIDTH;
 	} else {
-		get_terminal_width_height(0, &terminal_width, NULL);
+		terminal_width = get_terminal_width(0);
 		/* Go one less... */
 		if (--terminal_width > MAX_WIDTH)
 			terminal_width = MAX_WIDTH;
@@ -802,6 +802,7 @@ int ps_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 
 		{
 			int sz = terminal_width - len;
+<<<<<<< HEAD
 #if ENABLE_USE_PORTABLE_CODE
 			char *buf = alloca(sz + 1);
 #else
@@ -809,6 +810,13 @@ int ps_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 #endif
 			read_cmdline(buf, sz, p->pid, p->comm);
 			puts(buf);
+=======
+			if (sz >= 0) {
+				char buf[sz + 1];
+				read_cmdline(buf, sz, p->pid, p->comm);
+				puts(buf);
+			}
+>>>>>>> master
 		}
 	}
 	if (ENABLE_FEATURE_CLEAN_UP)

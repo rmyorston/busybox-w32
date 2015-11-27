@@ -121,10 +121,8 @@ static void process_event(const char *event)
 	char *handler = xasprintf("./%s", event);
 	const char *args[] = { "run-parts", handler, NULL };
 
-	// debug info
-	if (option_mask32 & OPT_d) {
-		bb_error_msg("%s", event);
-	}
+	// log the event
+	bb_error_msg("%s", event);
 
 	// spawn handler
 	// N.B. run-parts would require scripts to have #!/bin/sh
@@ -153,7 +151,7 @@ static const char *find_action(struct input_event *ev, const char *buf)
 		}
 
 		if (buf) {
-			if (strncmp(buf, evt_tab[i].desc, strlen(buf)) == 0) {
+			if (is_prefixed_with(evt_tab[i].desc, buf)) {
 				action = evt_tab[i].desc;
 				break;
 			}
@@ -256,7 +254,7 @@ int acpid_main(int argc UNUSED_PARAM, char **argv)
 		/* No -d "Debug", we log to log file.
 		 * This includes any output from children.
 		 */
-		xmove_fd(xopen(opt_logfile, O_WRONLY | O_CREAT | O_TRUNC), STDOUT_FILENO);
+		xmove_fd(xopen(opt_logfile, O_WRONLY | O_CREAT | O_APPEND), STDOUT_FILENO);
 		xdup2(STDOUT_FILENO, STDERR_FILENO);
 		/* Also, acpid's messages (but not children) will go to syslog too */
 		openlog(applet_name, LOG_PID, LOG_DAEMON);

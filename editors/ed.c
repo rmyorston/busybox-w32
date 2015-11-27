@@ -206,7 +206,7 @@ static void doCommands(void)
 				if (fileName)
 					printf("\"%s\"\n", fileName);
 				else
-					printf("No file name\n");
+					puts("No file name");
 				break;
 			}
 			free(fileName);
@@ -732,7 +732,6 @@ static int readLines(const char *file, int num)
 		cc = safe_read(fd, bufPtr, bufSize - bufUsed);
 		bufUsed += cc;
 		bufPtr = bufBase;
-
 	} while (cc > 0);
 
 	if (cc < 0) {

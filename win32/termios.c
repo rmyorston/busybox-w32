@@ -67,11 +67,6 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 			case VK_END: ret = KEYCODE_END; goto done;
 			case VK_PRIOR: ret = KEYCODE_PAGEUP; goto done;
 			case VK_NEXT: ret = KEYCODE_PAGEDOWN; goto done;
-			case VK_CAPITAL:
-			case VK_SHIFT:
-			case VK_CONTROL:
-			case VK_MENU:
-				break;
 			}
 			continue;
 		}

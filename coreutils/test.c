@@ -39,14 +39,9 @@
 //config:	help
 //config:	  Enable 64-bit support in test.
 
-/* "test --help" does not print help (POSIX compat), only "[ --help" does.
- * We display "<applet> EXPRESSION ]" here (not "<applet> EXPRESSION")
- * Unfortunately, it screws up generated BusyBox.html. TODO. */
-//usage:#define test_trivial_usage
-//usage:       "EXPRESSION ]"
-//usage:#define test_full_usage "\n\n"
-//usage:       "Check file types, compare values etc. Return a 0/1 exit code\n"
-//usage:       "depending on logical value of EXPRESSION"
+/* "test --help" is special-cased to ignore --help */
+//usage:#define test_trivial_usage NOUSAGE_STR
+//usage:#define test_full_usage ""
 //usage:
 //usage:#define test_example_usage
 //usage:       "$ test 1 -eq 2\n"
@@ -642,11 +637,15 @@ static int filstat(char *nm, enum token mode)
 		return 0;
 	}
 
+<<<<<<< HEAD
 #if defined(ENABLE_PLATFORM_MINGW32)
 #undef R_OK
 #define R_OK S_IREAD
 #undef W_OK
 #define W_OK S_IWRITE
+=======
+#if ENABLE_PLATFORM_MINGW32
+>>>>>>> master
 	if (mode == FILEX) {
 		char *p;
 

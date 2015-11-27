@@ -207,7 +207,7 @@ typedef struct tsplitter_s {
 
 /* simple token classes */
 /* Order and hex values are very important!!!  See next_token() */
-#define	TC_SEQSTART	1			/* ( */
+#define	TC_SEQSTART	(1 << 0)		/* ( */
 #define	TC_SEQTERM	(1 << 1)		/* ) */
 #define	TC_REGEXP	(1 << 2)		/* /.../ */
 #define	TC_OUTRDR	(1 << 3)		/* | > >> */
@@ -227,16 +227,22 @@ typedef struct tsplitter_s {
 #define	TC_WHILE	(1 << 17)
 #define	TC_ELSE		(1 << 18)
 #define	TC_BUILTIN	(1 << 19)
-#define	TC_GETLINE	(1 << 20)
-#define	TC_FUNCDECL	(1 << 21)		/* `function' `func' */
-#define	TC_BEGIN	(1 << 22)
-#define	TC_END		(1 << 23)
-#define	TC_EOF		(1 << 24)
-#define	TC_VARIABLE	(1 << 25)
-#define	TC_ARRAY	(1 << 26)
-#define	TC_FUNCTION	(1 << 27)
-#define	TC_STRING	(1 << 28)
-#define	TC_NUMBER	(1 << 29)
+/* This costs ~50 bytes of code.
+ * A separate class to support deprecated "length" form. If we don't need that
+ * (i.e. if we demand that only "length()" with () is valid), then TC_LENGTH
+ * can be merged with TC_BUILTIN:
+ */
+#define	TC_LENGTH	(1 << 20)
+#define	TC_GETLINE	(1 << 21)
+#define	TC_FUNCDECL	(1 << 22)		/* `function' `func' */
+#define	TC_BEGIN	(1 << 23)
+#define	TC_END		(1 << 24)
+#define	TC_EOF		(1 << 25)
+#define	TC_VARIABLE	(1 << 26)
+#define	TC_ARRAY	(1 << 27)
+#define	TC_FUNCTION	(1 << 28)
+#define	TC_STRING	(1 << 29)
+#define	TC_NUMBER	(1 << 30)
 
 #define	TC_UOPPRE  (TC_UOPPRE1 | TC_UOPPRE2)
 
@@ -244,14 +250,16 @@ typedef struct tsplitter_s {
 #define	TC_BINOP   (TC_BINOPX | TC_COMMA | TC_PIPE | TC_IN)
 //#define	TC_UNARYOP (TC_UOPPRE | TC_UOPPOST)
 #define	TC_OPERAND (TC_VARIABLE | TC_ARRAY | TC_FUNCTION \
-                   | TC_BUILTIN | TC_GETLINE | TC_SEQSTART | TC_STRING | TC_NUMBER)
+                   | TC_BUILTIN | TC_LENGTH | TC_GETLINE \
+                   | TC_SEQSTART | TC_STRING | TC_NUMBER)
 
 #define	TC_STATEMNT (TC_STATX | TC_WHILE)
 #define	TC_OPTERM  (TC_SEMICOL | TC_NEWLINE)
 
 /* word tokens, cannot mean something else if not expected */
-#define	TC_WORD    (TC_IN | TC_STATEMNT | TC_ELSE | TC_BUILTIN \
-                   | TC_GETLINE | TC_FUNCDECL | TC_BEGIN | TC_END)
+#define	TC_WORD    (TC_IN | TC_STATEMNT | TC_ELSE \
+                   | TC_BUILTIN | TC_LENGTH | TC_GETLINE \
+                   | TC_FUNCDECL | TC_BEGIN | TC_END)
 
 /* discard newlines after these */
 #define	TC_NOTERM  (TC_COMMA | TC_GRPSTART | TC_GRPTERM \
@@ -346,53 +354,53 @@ enum {
 #define NTC     "\377"  /* switch to next token class (tc<<1) */
 #define NTCC    '\377'
 
-#define OC_B  OC_BUILTIN
-
 static const char tokenlist[] ALIGN1 =
-	"\1("         NTC
-	"\1)"         NTC
-	"\1/"         NTC                                   /* REGEXP */
-	"\2>>"        "\1>"         "\1|"       NTC         /* OUTRDR */
-	"\2++"        "\2--"        NTC                     /* UOPPOST */
-	"\2++"        "\2--"        "\1$"       NTC         /* UOPPRE1 */
-	"\2=="        "\1="         "\2+="      "\2-="      /* BINOPX */
+	"\1("         NTC                                   /* TC_SEQSTART */
+	"\1)"         NTC                                   /* TC_SEQTERM */
+	"\1/"         NTC                                   /* TC_REGEXP */
+	"\2>>"        "\1>"         "\1|"       NTC         /* TC_OUTRDR */
+	"\2++"        "\2--"        NTC                     /* TC_UOPPOST */
+	"\2++"        "\2--"        "\1$"       NTC         /* TC_UOPPRE1 */
+	"\2=="        "\1="         "\2+="      "\2-="      /* TC_BINOPX */
 	"\2*="        "\2/="        "\2%="      "\2^="
 	"\1+"         "\1-"         "\3**="     "\2**"
 	"\1/"         "\1%"         "\1^"       "\1*"
 	"\2!="        "\2>="        "\2<="      "\1>"
 	"\1<"         "\2!~"        "\1~"       "\2&&"
 	"\2||"        "\1?"         "\1:"       NTC
-	"\2in"        NTC
-	"\1,"         NTC
-	"\1|"         NTC
-	"\1+"         "\1-"         "\1!"       NTC         /* UOPPRE2 */
-	"\1]"         NTC
-	"\1{"         NTC
-	"\1}"         NTC
-	"\1;"         NTC
-	"\1\n"        NTC
-	"\2if"        "\2do"        "\3for"     "\5break"   /* STATX */
+	"\2in"        NTC                                   /* TC_IN */
+	"\1,"         NTC                                   /* TC_COMMA */
+	"\1|"         NTC                                   /* TC_PIPE */
+	"\1+"         "\1-"         "\1!"       NTC         /* TC_UOPPRE2 */
+	"\1]"         NTC                                   /* TC_ARRTERM */
+	"\1{"         NTC                                   /* TC_GRPSTART */
+	"\1}"         NTC                                   /* TC_GRPTERM */
+	"\1;"         NTC                                   /* TC_SEMICOL */
+	"\1\n"        NTC                                   /* TC_NEWLINE */
+	"\2if"        "\2do"        "\3for"     "\5break"   /* TC_STATX */
 	"\10continue" "\6delete"    "\5print"
 	"\6printf"    "\4next"      "\10nextfile"
 	"\6return"    "\4exit"      NTC
-	"\5while"     NTC
-	"\4else"      NTC
-
-	"\3and"       "\5compl"     "\6lshift"  "\2or"
+	"\5while"     NTC                                   /* TC_WHILE */
+	"\4else"      NTC                                   /* TC_ELSE */
+	"\3and"       "\5compl"     "\6lshift"  "\2or"      /* TC_BUILTIN */
 	"\6rshift"    "\3xor"
-	"\5close"     "\6system"    "\6fflush"  "\5atan2"   /* BUILTIN */
+	"\5close"     "\6system"    "\6fflush"  "\5atan2"
 	"\3cos"       "\3exp"       "\3int"     "\3log"
 	"\4rand"      "\3sin"       "\4sqrt"    "\5srand"
-	"\6gensub"    "\4gsub"      "\5index"   "\6length"
+	"\6gensub"    "\4gsub"      "\5index"	/* "\6length" was here */
 	"\5match"     "\5split"     "\7sprintf" "\3sub"
 	"\6substr"    "\7systime"   "\10strftime" "\6mktime"
 	"\7tolower"   "\7toupper"   NTC
-	"\7getline"   NTC
-	"\4func"      "\10function" NTC
-	"\5BEGIN"     NTC
-	"\3END"
+	"\6length"    NTC                                   /* TC_LENGTH */
+	"\7getline"   NTC                                   /* TC_GETLINE */
+	"\4func"      "\10function" NTC                     /* TC_FUNCDECL */
+	"\5BEGIN"     NTC                                   /* TC_BEGIN */
+	"\3END"                                             /* TC_END */
 	/* compiler adds trailing "\0" */
 	;
+
+#define OC_B  OC_BUILTIN
 
 static const uint32_t tokeninfo[] = {
 	0,
@@ -408,7 +416,7 @@ static const uint32_t tokeninfo[] = {
 	OC_COMPARE|VV|P(39)|4,   OC_COMPARE|VV|P(39)|3,   OC_COMPARE|VV|P(39)|0,   OC_COMPARE|VV|P(39)|1,
 	OC_COMPARE|VV|P(39)|2,   OC_MATCH|Sx|P(45)|'!',   OC_MATCH|Sx|P(45)|'~',   OC_LAND|Vx|P(55),
 	OC_LOR|Vx|P(59),         OC_TERNARY|Vx|P(64)|'?', OC_COLON|xx|P(67)|':',
-	OC_IN|SV|P(49), /* in */
+	OC_IN|SV|P(49), /* TC_IN */
 	OC_COMMA|SS|P(80),
 	OC_PGETLINE|SV|P(37),
 	OC_UNARY|xV|P(19)|'+',   OC_UNARY|xV|P(19)|'-',   OC_UNARY|xV|P(19)|'!',
@@ -423,20 +431,20 @@ static const uint32_t tokeninfo[] = {
 	OC_RETURN|Vx, OC_EXIT|Nx,
 	ST_WHILE,
 	0, /* else */
-
 	OC_B|B_an|P(0x83), OC_B|B_co|P(0x41), OC_B|B_ls|P(0x83), OC_B|B_or|P(0x83),
 	OC_B|B_rs|P(0x83), OC_B|B_xo|P(0x83),
 	OC_FBLTIN|Sx|F_cl, OC_FBLTIN|Sx|F_sy, OC_FBLTIN|Sx|F_ff, OC_B|B_a2|P(0x83),
 	OC_FBLTIN|Nx|F_co, OC_FBLTIN|Nx|F_ex, OC_FBLTIN|Nx|F_in, OC_FBLTIN|Nx|F_lg,
 	OC_FBLTIN|F_rn,    OC_FBLTIN|Nx|F_si, OC_FBLTIN|Nx|F_sq, OC_FBLTIN|Nx|F_sr,
-	OC_B|B_ge|P(0xd6), OC_B|B_gs|P(0xb6), OC_B|B_ix|P(0x9b), OC_FBLTIN|Sx|F_le,
+	OC_B|B_ge|P(0xd6), OC_B|B_gs|P(0xb6), OC_B|B_ix|P(0x9b), /* OC_FBLTIN|Sx|F_le, was here */
 	OC_B|B_ma|P(0x89), OC_B|B_sp|P(0x8b), OC_SPRINTF,        OC_B|B_su|P(0xb6),
 	OC_B|B_ss|P(0x8f), OC_FBLTIN|F_ti,    OC_B|B_ti|P(0x0b), OC_B|B_mt|P(0x0b),
 	OC_B|B_lo|P(0x49), OC_B|B_up|P(0x49),
+	OC_FBLTIN|Sx|F_le, /* TC_LENGTH */
 	OC_GETLINE|SV|P(0),
 	0,                 0,
 	0,
-	0 /* END */
+	0 /* TC_END */
 };
 
 /* internal variable names and their initial values       */
@@ -1064,12 +1072,10 @@ static uint32_t next_token(uint32_t expected)
 
 	if (t_rollback) {
 		t_rollback = FALSE;
-
 	} else if (concat_inserted) {
 		concat_inserted = FALSE;
 		t_tclass = save_tclass;
 		t_info = save_info;
-
 	} else {
 		p = g_pos;
  readnext:
@@ -1085,7 +1091,6 @@ static uint32_t next_token(uint32_t expected)
 		if (*p == '\0') {
 			tc = TC_EOF;
 			debug_printf_parse("%s: token found: TC_EOF\n", __func__);
-
 		} else if (*p == '\"') {
 			/* it's a string */
 			t_string = s = ++p;
@@ -1101,7 +1106,6 @@ static uint32_t next_token(uint32_t expected)
 			*s = '\0';
 			tc = TC_STRING;
 			debug_printf_parse("%s: token found:'%s' TC_STRING\n", __func__, t_string);
-
 		} else if ((expected & TC_REGEXP) && *p == '/') {
 			/* it's regexp */
 			t_string = s = ++p;
@@ -1134,7 +1138,6 @@ static uint32_t next_token(uint32_t expected)
 				syntax_error(EMSG_UNEXP_TOKEN);
 			tc = TC_NUMBER;
 			debug_printf_parse("%s: token found:%f TC_NUMBER\n", __func__, t_double);
-
 		} else {
 			/* search for something known */
 			tl = tokenlist;
@@ -1211,9 +1214,10 @@ static uint32_t next_token(uint32_t expected)
 	ltclass = t_tclass;
 
 	/* Are we ready for this? */
-	if (!(ltclass & expected))
+	if (!(ltclass & expected)) {
 		syntax_error((ltclass & (TC_NEWLINE | TC_EOF)) ?
 				EMSG_UNEXP_EOS : EMSG_UNEXP_TOKEN);
+	}
 
 	return ltclass;
 #undef concat_inserted
@@ -1379,6 +1383,16 @@ static node *parse_expr(uint32_t iexp)
 				case TC_BUILTIN:
 					debug_printf_parse("%s: TC_BUILTIN\n", __func__);
 					cn->l.n = condition();
+					break;
+
+				case TC_LENGTH:
+					debug_printf_parse("%s: TC_LENGTH\n", __func__);
+					next_token(TC_SEQSTART | TC_OPTERM | TC_GRPTERM);
+					rollback_token();
+					if (t_tclass & TC_SEQSTART) {
+						/* It was a "(" token. Handle just like TC_BUILTIN */
+						cn->l.n = condition();
+					}
 					break;
 				}
 			}
@@ -1584,12 +1598,10 @@ static void parse_program(char *p)
 			debug_printf_parse("%s: TC_BEGIN\n", __func__);
 			seq = &beginseq;
 			chain_group();
-
 		} else if (tclass & TC_END) {
 			debug_printf_parse("%s: TC_END\n", __func__);
 			seq = &endseq;
 			chain_group();
-
 		} else if (tclass & TC_FUNCDECL) {
 			debug_printf_parse("%s: TC_FUNCDECL\n", __func__);
 			next_token(TC_FUNCTION);
@@ -1607,7 +1619,6 @@ static void parse_program(char *p)
 			seq = &f->body;
 			chain_group();
 			clear_array(ahash);
-
 		} else if (tclass & TC_OPSEQ) {
 			debug_printf_parse("%s: TC_OPSEQ\n", __func__);
 			rollback_token();
@@ -1622,7 +1633,6 @@ static void parse_program(char *p)
 				chain_node(OC_PRINT);
 			}
 			cn->r.n = mainseq.last;
-
 		} else /* if (tclass & TC_GRPSTART) */ {
 			debug_printf_parse("%s: TC_GRPSTART(?)\n", __func__);
 			rollback_token();
@@ -1883,13 +1893,10 @@ static void handle_special(var *v)
 		split_f0();
 
 		mk_splitter(getvar_s(v), &fsplitter);
-
 	} else if (v == intvar[RS]) {
 		mk_splitter(getvar_s(v), &rsplitter);
-
 	} else if (v == intvar[IGNORECASE]) {
 		icase = istrue(v);
-
 	} else {				/* $n */
 		n = getvar_i(intvar[NF]);
 		setvar_i(intvar[NF], n > v-Fields ? n : v-Fields+1);

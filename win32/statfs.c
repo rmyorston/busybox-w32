@@ -10,22 +10,24 @@ int statfs(const char *file, struct statfs *buf)
 	ULONGLONG total_number_of_bytes;
 	ULONGLONG total_number_of_free_bytes;   /* for everyone - bfree */
 	DWORD serial, namelen, flags;
-	char drive[4], fsname[100];
+	char fsname[100];
+	struct mntent *mnt;
 
-	if ( !GetDiskFreeSpaceEx(file, (PULARGE_INTEGER) &free_bytes_available,
-			(PULARGE_INTEGER) &total_number_of_bytes,
-			(PULARGE_INTEGER) &total_number_of_free_bytes) ) {
+	if ( (mnt=find_mount_point(file, 0)) == NULL ) {
 		return -1;
 	}
 
-	if ( strlen(file) == 2 && file[1] == ':' ) {
-		/* GetVolumeInformation wants a backslash */
-		strcat(strcpy(drive, file), "\\");
-		file = drive;
+	file = mnt->mnt_dir;
+	if ( !GetDiskFreeSpaceEx(file, (PULARGE_INTEGER) &free_bytes_available,
+			(PULARGE_INTEGER) &total_number_of_bytes,
+			(PULARGE_INTEGER) &total_number_of_free_bytes) ) {
+		errno = err_win_to_posix(GetLastError());
+		return -1;
 	}
 
 	if ( !GetVolumeInformation(file, NULL, 0, &serial, &namelen, &flags,
 								fsname, 100) ) {
+		errno = err_win_to_posix(GetLastError());
 		return -1;
 	}
 
@@ -64,16 +66,14 @@ int statfs(const char *file, struct statfs *buf)
 		buf->f_type = 0;
 	}
 
-	/* As with stat, -1 indicates a field is not known. */
 	buf->f_frsize = buf->f_bsize;
 	buf->f_blocks = total_number_of_bytes / buf->f_bsize;
 	buf->f_bfree = total_number_of_free_bytes / buf->f_bsize;
 	buf->f_bavail = free_bytes_available / buf->f_bsize;
-	buf->f_files = -1;
-	buf->f_ffree = -1;
-	buf->f_favail = -1;
+	buf->f_files = UINT32_MAX;
+	buf->f_ffree = UINT32_MAX;
 	buf->f_fsid = serial;
-	buf->f_flag = -1;
+	buf->f_flag = UINT64_MAX;
 	buf->f_namelen = namelen;
 
 	return 0;

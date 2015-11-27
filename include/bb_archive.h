@@ -2,6 +2,16 @@
 #ifndef UNARCHIVE_H
 #define UNARCHIVE_H 1
 
+#if !defined(BB_ARCHIVE_PUBLIC) && ENABLE_PLATFORM_MINGW32
+/* treat mingw as a non-MMU platform */
+#undef BB_MMU
+#undef USE_FOR_NOMMU
+#undef USE_FOR_MMU
+#define BB_MMU 0
+#define USE_FOR_NOMMU(...) __VA_ARGS__
+#define USE_FOR_MMU(...)
+#endif
+
 PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 
 enum {
@@ -77,6 +87,9 @@ typedef struct archive_handle_t {
 	off_t offset;
 
 	/* Archiver specific. Can make it a union if it ever gets big */
+#if ENABLE_FEATURE_TAR_LONG_OPTIONS
+	unsigned tar__strip_components;
+#endif
 #define PAX_NEXT_FILE 0
 #define PAX_GLOBAL    1
 #if ENABLE_TAR || ENABLE_DPKG || ENABLE_DPKG_DEB
@@ -95,6 +108,7 @@ typedef struct archive_handle_t {
 #endif
 #if ENABLE_CPIO || ENABLE_RPM2CPIO || ENABLE_RPM
 	uoff_t cpio__blocks;
+	struct bb_uidgid_t cpio__owner;
 	struct hardlinks_t *cpio__hardlinks_to_create;
 	struct hardlinks_t *cpio__created_hardlinks;
 #endif
@@ -159,6 +173,8 @@ struct BUG_tar_header {
 };
 
 
+extern const char cpio_TRAILER[];
+
 
 archive_handle_t *init_handle(void) FAST_FUNC;
 
@@ -184,6 +200,7 @@ char get_header_tar(archive_handle_t *archive_handle) FAST_FUNC;
 char get_header_tar_gz(archive_handle_t *archive_handle) FAST_FUNC;
 char get_header_tar_bz2(archive_handle_t *archive_handle) FAST_FUNC;
 char get_header_tar_lzma(archive_handle_t *archive_handle) FAST_FUNC;
+char get_header_tar_xz(archive_handle_t *archive_handle) FAST_FUNC;
 
 void seek_by_jump(int fd, off_t amount) FAST_FUNC;
 void seek_by_read(int fd, off_t amount) FAST_FUNC;

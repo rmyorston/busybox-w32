@@ -101,6 +101,9 @@ static void erase_in_line(void)
 	FillConsoleOutputCharacterA(console, ' ',
 		sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition,
 		&dummy);
+	FillConsoleOutputAttribute(console, plain_attr,
+		sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition,
+		&dummy);
 }
 
 static void erase_till_end_of_screen(void)
@@ -116,11 +119,17 @@ static void erase_till_end_of_screen(void)
 	FillConsoleOutputCharacterA(console, ' ',
 		sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition,
 		&dummy);
+	FillConsoleOutputAttribute(console, plain_attr,
+		sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition,
+		&dummy);
 
 	pos.X = 0;
-	for (pos.Y = sbi.dwCursorPosition.Y+1; pos.Y < sbi.dwSize.Y; pos.Y++)
+	for (pos.Y = sbi.dwCursorPosition.Y+1; pos.Y < sbi.dwSize.Y; pos.Y++) {
 		FillConsoleOutputCharacterA(console, ' ', sbi.dwSize.X,
 					    pos, &dummy);
+		FillConsoleOutputAttribute(console, plain_attr, sbi.dwSize.X,
+					    pos, &dummy);
+	}
 }
 
 static void move_cursor_row(int n)
@@ -313,11 +322,13 @@ static const char *set_attr(const char *str)
 		if (!len)
 			move_cursor(0, 0);
 		else {
-			int row = strtol(str, (char **)&str, 10);
+			int row, col = 1;
+
+			row = strtol(str, (char **)&str, 10);
 			if (*str == ';') {
-				int col = strtol(str+1, (char **)&str, 10);
-				move_cursor(col-1, row-1);
+				col = strtol(str+1, (char **)&str, 10);
 			}
+			move_cursor(col > 0 ? col-1 : 0, row > 0 ? row-1 : 0);
 		}
 		break;
 	case 'J':

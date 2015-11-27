@@ -1,30 +1,43 @@
 /*
  * NTP client/server, based on OpenNTPD 3.9p1
  *
- * Author: Adam Tkac <vonsch@gmail.com>
+ * Busybox port author: Adam Tkac (C) 2009 <vonsch@gmail.com>
  *
- * Licensed under GPLv2, see file LICENSE in this source tree.
+ * OpenNTPd 3.9p1 copyright holders:
+ *   Copyright (c) 2003, 2004 Henning Brauer <henning@openbsd.org>
+ *   Copyright (c) 2004 Alexander Guy <alexander.guy@andern.org>
+ *
+ * OpenNTPd code is licensed under ISC-style licence:
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF MIND, USE, DATA OR PROFITS, WHETHER
+ * IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
+ * OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ ***********************************************************************
  *
  * Parts of OpenNTPD clock syncronization code is replaced by
- * code which is based on ntp-4.2.6, whuch carries the following
+ * code which is based on ntp-4.2.6, which carries the following
  * copyright notice:
  *
- ***********************************************************************
- *                                                                     *
- * Copyright (c) University of Delaware 1992-2009                      *
- *                                                                     *
- * Permission to use, copy, modify, and distribute this software and   *
- * its documentation for any purpose with or without fee is hereby     *
- * granted, provided that the above copyright notice appears in all    *
- * copies and that both the copyright notice and this permission       *
- * notice appear in supporting documentation, and that the name        *
- * University of Delaware not be used in advertising or publicity      *
- * pertaining to distribution of the software without specific,        *
- * written prior permission. The University of Delaware makes no       *
- * representations about the suitability this software for any         *
- * purpose. It is provided "as is" without express or implied          *
- * warranty.                                                           *
- *                                                                     *
+ * Copyright (c) University of Delaware 1992-2009
+ *
+ * Permission to use, copy, modify, and distribute this software and
+ * its documentation for any purpose with or without fee is hereby
+ * granted, provided that the above copyright notice appears in all
+ * copies and that both the copyright notice and this permission
+ * notice appear in supporting documentation, and that the name
+ * University of Delaware not be used in advertising or publicity
+ * pertaining to distribution of the software without specific,
+ * written prior permission. The University of Delaware makes no
+ * representations about the suitability this software for any
+ * purpose. It is provided "as is" without express or implied warranty.
  ***********************************************************************
  */
 
@@ -37,14 +50,15 @@
 //usage:     "\n	-q	Quit after clock is set"
 //usage:     "\n	-N	Run at high priority"
 //usage:     "\n	-w	Do not set time (only query peers), implies -n"
-//usage:	IF_FEATURE_NTPD_SERVER(
-//usage:     "\n	-l	Run as server on port 123"
-//usage:     "\n	-I IFACE Bind server to IFACE, implies -l"
-//usage:	)
 //usage:     "\n	-S PROG	Run PROG after stepping time, stratum change, and every 11 mins"
 //usage:     "\n	-p PEER	Obtain time from PEER (may be repeated)"
 //usage:	IF_FEATURE_NTPD_CONF(
-//usage:     "\n		If -p is not given, read /etc/ntp.conf"
+//usage:     "\n		If -p is not given, 'server HOST' lines"
+//usage:     "\n		from /etc/ntp.conf are used"
+//usage:	)
+//usage:	IF_FEATURE_NTPD_SERVER(
+//usage:     "\n	-l	Also run as server on port 123"
+//usage:     "\n	-I IFACE Bind server to IFACE, implies -l"
 //usage:	)
 
 // -l and -p options are not compatible with "standard" ntpd:
@@ -363,8 +377,6 @@ struct globals {
 	 */
 #define G_precision_sec  0.002
 	uint8_t  stratum;
-	/* Bool. After set to 1, never goes back to 0: */
-	smallint initial_poll_complete;
 
 #define STATE_NSET      0       /* initial state, "nothing is set" */
 //#define STATE_FSET    1       /* frequency set from file */
@@ -392,8 +404,6 @@ struct globals {
 #endif
 };
 #define G (*ptr_to_globals)
-
-static const int const_IPTOS_LOWDELAY = IPTOS_LOWDELAY;
 
 
 #define VERB1 if (MAX_VERBOSE && G.verbose)
@@ -825,7 +835,7 @@ send_query_to_peer(peer_t *p)
 #if ENABLE_FEATURE_IPV6
 		if (family == AF_INET)
 #endif
-			setsockopt(fd, IPPROTO_IP, IP_TOS, &const_IPTOS_LOWDELAY, sizeof(const_IPTOS_LOWDELAY));
+			setsockopt_int(fd, IPPROTO_IP, IP_TOS, IPTOS_LOWDELAY);
 		free(local_lsa);
 	}
 
@@ -1071,7 +1081,7 @@ select_and_cluster(void)
 
 	num_points = 0;
 	item = G.ntp_peers;
-	if (G.initial_poll_complete) while (item != NULL) {
+	while (item != NULL) {
 		double rd, offset;
 
 		p = (peer_t *) item->data;
@@ -1485,7 +1495,6 @@ update_local_clock(peer_t *p)
 #endif
 		abs_offset = offset = 0;
 		set_new_values(STATE_SYNC, offset, recv_time);
-
 	} else { /* abs_offset <= STEP_THRESHOLD */
 
 		/* The ratio is calculated before jitter is updated to make
@@ -1636,7 +1645,7 @@ update_local_clock(peer_t *p)
 	if (G.ntp_status & LI_MINUSSEC)
 		tmx.status |= STA_DEL;
 
-	tmx.constant = G.poll_exp - 4;
+	tmx.constant = (int)G.poll_exp - 4 > 0 ? (int)G.poll_exp - 4 : 0;
 	/* EXPERIMENTAL.
 	 * The below if statement should be unnecessary, but...
 	 * It looks like Linux kernel's PLL is far too gentle in changing
@@ -2175,7 +2184,7 @@ static NOINLINE void ntp_init(char **argv)
 				xfunc_die();
 		}
 		socket_want_pktinfo(G_listen_fd);
-		setsockopt(G_listen_fd, IPPROTO_IP, IP_TOS, &const_IPTOS_LOWDELAY, sizeof(const_IPTOS_LOWDELAY));
+		setsockopt_int(G_listen_fd, IPPROTO_IP, IP_TOS, IPTOS_LOWDELAY);
 	}
 #endif
 	if (!(opts & OPT_n)) {
@@ -2272,7 +2281,6 @@ int ntpd_main(int argc UNUSED_PARAM, char **argv)
 						VERB4 bb_error_msg("disabling burst mode");
 						G.polladj_count = 0;
 						G.poll_exp = MINPOLL;
-						G.initial_poll_complete = 1;
 					}
 					send_query_to_peer(p);
 				} else {

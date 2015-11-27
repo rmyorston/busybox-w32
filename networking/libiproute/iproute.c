@@ -55,39 +55,15 @@ static int flush_update(void)
 	return 0;
 }
 
-static unsigned get_hz(void)
-{
-	static unsigned hz_internal;
-	FILE *fp;
-
-	if (hz_internal)
-		return hz_internal;
-
-	fp = fopen_for_read("/proc/net/psched");
-	if (fp) {
-		unsigned nom, denom;
-
-		if (fscanf(fp, "%*08x%*08x%08x%08x", &nom, &denom) == 2)
-			if (nom == 1000000)
-				hz_internal = denom;
-		fclose(fp);
-	}
-	if (!hz_internal)
-		hz_internal = bb_clk_tck();
-	return hz_internal;
-}
-
 static int FAST_FUNC print_route(const struct sockaddr_nl *who UNUSED_PARAM,
 		struct nlmsghdr *n, void *arg UNUSED_PARAM)
 {
 	struct rtmsg *r = NLMSG_DATA(n);
 	int len = n->nlmsg_len;
 	struct rtattr *tb[RTA_MAX+1];
-	char abuf[256];
 	inet_prefix dst;
 	inet_prefix src;
 	int host_len = -1;
-	SPRINT_BUF(b1);
 
 	if (n->nlmsg_type != RTM_NEWROUTE && n->nlmsg_type != RTM_DELROUTE) {
 		fprintf(stderr, "Not a route: %08x %08x %08x\n",
@@ -218,7 +194,7 @@ static int FAST_FUNC print_route(const struct sockaddr_nl *who UNUSED_PARAM,
 
 		if (NLMSG_ALIGN(G_filter.flushp) + n->nlmsg_len > G_filter.flushe) {
 			if (flush_update())
-				bb_error_msg_and_die("flush");
+				xfunc_die();
 		}
 		fn = (void*)(G_filter.flushb + NLMSG_ALIGN(G_filter.flushp));
 		memcpy(fn, n, n->nlmsg_len);
@@ -236,22 +212,20 @@ static int FAST_FUNC print_route(const struct sockaddr_nl *who UNUSED_PARAM,
 		printf("Deleted ");
 	}
 	if (r->rtm_type != RTN_UNICAST /* && !G_filter.type - always 0 */) {
-		printf("%s ", rtnl_rtntype_n2a(r->rtm_type, b1));
+		printf("%s ", rtnl_rtntype_n2a(r->rtm_type));
 	}
 
 	if (tb[RTA_DST]) {
 		if (r->rtm_dst_len != host_len) {
-			printf("%s/%u ", rt_addr_n2a(r->rtm_family,
-						RTA_DATA(tb[RTA_DST]),
-						abuf, sizeof(abuf)),
-					r->rtm_dst_len
-					);
+			printf("%s/%u ",
+				rt_addr_n2a(r->rtm_family, RTA_DATA(tb[RTA_DST])),
+				r->rtm_dst_len
+			);
 		} else {
 			printf("%s ", format_host(r->rtm_family,
 						RTA_PAYLOAD(tb[RTA_DST]),
-						RTA_DATA(tb[RTA_DST]),
-						abuf, sizeof(abuf))
-					);
+						RTA_DATA(tb[RTA_DST]))
+			);
 		}
 	} else if (r->rtm_dst_len) {
 		printf("0/%d ", r->rtm_dst_len);
@@ -260,17 +234,15 @@ static int FAST_FUNC print_route(const struct sockaddr_nl *who UNUSED_PARAM,
 	}
 	if (tb[RTA_SRC]) {
 		if (r->rtm_src_len != host_len) {
-			printf("from %s/%u ", rt_addr_n2a(r->rtm_family,
-						RTA_DATA(tb[RTA_SRC]),
-						abuf, sizeof(abuf)),
-					r->rtm_src_len
-					);
+			printf("from %s/%u ",
+				rt_addr_n2a(r->rtm_family, RTA_DATA(tb[RTA_SRC])),
+				r->rtm_src_len
+			);
 		} else {
 			printf("from %s ", format_host(r->rtm_family,
 						RTA_PAYLOAD(tb[RTA_SRC]),
-						RTA_DATA(tb[RTA_SRC]),
-						abuf, sizeof(abuf))
-					);
+						RTA_DATA(tb[RTA_SRC]))
+			);
 		}
 	} else if (r->rtm_src_len) {
 		printf("from 0/%u ", r->rtm_src_len);
@@ -278,8 +250,8 @@ static int FAST_FUNC print_route(const struct sockaddr_nl *who UNUSED_PARAM,
 	if (tb[RTA_GATEWAY] && G_filter.rvia.bitlen != host_len) {
 		printf("via %s ", format_host(r->rtm_family,
 					RTA_PAYLOAD(tb[RTA_GATEWAY]),
-					RTA_DATA(tb[RTA_GATEWAY]),
-					abuf, sizeof(abuf)));
+					RTA_DATA(tb[RTA_GATEWAY]))
+		);
 	}
 	if (tb[RTA_OIF]) {
 		printf("dev %s ", ll_index_to_name(*(int*)RTA_DATA(tb[RTA_OIF])));
@@ -292,8 +264,7 @@ static int FAST_FUNC print_route(const struct sockaddr_nl *who UNUSED_PARAM,
 		   and symbolic name will not be useful.
 		 */
 		printf(" src %s ", rt_addr_n2a(r->rtm_family,
-					RTA_DATA(tb[RTA_PREFSRC]),
-					abuf, sizeof(abuf)));
+					RTA_DATA(tb[RTA_PREFSRC])));
 	}
 	if (tb[RTA_PRIORITY]) {
 		printf(" metric %d ", *(uint32_t*)RTA_DATA(tb[RTA_PRIORITY]));
@@ -426,7 +397,7 @@ IF_FEATURE_IP_RULE(ARG_table,)
 			uint32_t prot;
 			NEXT_ARG();
 			if (rtnl_rtprot_a2n(&prot, *argv))
-				invarg(*argv, "protocol");
+				invarg_1_to_2(*argv, "protocol");
 			req.r.rtm_protocol = prot;
 			ok |= proto_ok;
 #if ENABLE_FEATURE_IP_RULE
@@ -434,7 +405,7 @@ IF_FEATURE_IP_RULE(ARG_table,)
 			uint32_t tid;
 			NEXT_ARG();
 			if (rtnl_rttable_a2n(&tid, *argv))
-				invarg(*argv, "table");
+				invarg_1_to_2(*argv, "table");
 			req.r.rtm_table = tid;
 #endif
 		} else if (arg == ARG_dev || arg == ARG_oif) {
@@ -620,7 +591,7 @@ static int iproute_list_or_flush(char **argv, int flush)
 			//G_filter.protocolmask = -1;
 			if (rtnl_rtprot_a2n(&prot, *argv)) {
 				if (index_in_strings(keywords, *argv) != KW_all)
-					invarg(*argv, "protocol");
+					invarg_1_to_2(*argv, "protocol");
 				prot = 0;
 				//G_filter.protocolmask = 0;
 			}
@@ -645,10 +616,10 @@ static int iproute_list_or_flush(char **argv, int flush)
 #if ENABLE_FEATURE_IP_RULE
 				uint32_t tid;
 				if (rtnl_rttable_a2n(&tid, *argv))
-					invarg(*argv, "table");
+					invarg_1_to_2(*argv, "table");
 				G_filter.tb = tid;
 #else
-				invarg(*argv, "table");
+				invarg_1_to_2(*argv, "table");
 #endif
 			}
 		} else if (arg == KW_cache) {
@@ -955,7 +926,7 @@ int FAST_FUNC do_iproute(char **argv)
 		case 11: /* flush */
 			return iproute_list_or_flush(argv+1, 1);
 		default:
-			bb_error_msg_and_die("unknown command %s", *argv);
+			invarg_1_to_2(*argv, applet_name);
 	}
 
 	return iproute_modify(cmd, flags, argv+1);

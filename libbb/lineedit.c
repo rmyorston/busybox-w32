@@ -47,7 +47,8 @@
  * It stems from simplistic "cmdedit_y = cmdedit_prmt_len / cmdedit_termw"
  * calculation of how many lines the prompt takes.
  */
-#include "libbb.h"
+#include "busybox.h"
+#include "NUM_APPLETS.h"
 #include "unicode.h"
 #ifndef _POSIX_VDISABLE
 # define _POSIX_VDISABLE '\0'
@@ -714,23 +715,20 @@ static char *username_path_completion(char *ud)
  */
 static NOINLINE unsigned complete_username(const char *ud)
 {
-	/* Using _r function to avoid pulling in static buffers */
-	char line_buff[256];
-	struct passwd pwd;
-	struct passwd *result;
+	struct passwd *pw;
 	unsigned userlen;
 
 	ud++; /* skip ~ */
 	userlen = strlen(ud);
 
 	setpwent();
-	while (!getpwent_r(&pwd, line_buff, sizeof(line_buff), &result)) {
+	while ((pw = getpwent()) != NULL) {
 		/* Null usernames should result in all users as possible completions. */
-		if (/*!userlen || */ strncmp(ud, pwd.pw_name, userlen) == 0) {
-			add_match(xasprintf("~%s/", pwd.pw_name));
+		if (/* !ud[0] || */ is_prefixed_with(pw->pw_name, ud)) {
+			add_match(xasprintf("~%s/", pw->pw_name));
 		}
 	}
-	endpwent();
+	endpwent(); /* don't keep password file open */
 
 	return 1 + userlen;
 }
@@ -762,7 +760,7 @@ static int path_parse(char ***p)
 	npth = 1; /* path component count */
 	while (1) {
 #if ENABLE_PLATFORM_MINGW32
-		tmp = next_path_sep(tmp);
+		tmp = (char *)next_path_sep(tmp);
 #else
 		tmp = strchr(tmp, ':');
 #endif
@@ -779,7 +777,7 @@ static int path_parse(char ***p)
 	npth = 1;
 	while (1) {
 #if ENABLE_PLATFORM_MINGW32
-		tmp = next_path_sep(tmp);
+		tmp = (char *)next_path_sep(tmp);
 #else
 		tmp = strchr(tmp, ':');
 #endif
@@ -827,6 +825,20 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 	}
 	pf_len = strlen(pfind);
 
+#if ENABLE_FEATURE_SH_STANDALONE && NUM_APPLETS != 1
+	if (type == FIND_EXE_ONLY) {
+		const char *p = applet_names;
+
+		i = 0;
+		while (i < NUM_APPLETS) {
+			if (strncmp(pfind, p, pf_len) == 0)
+				add_match(xstrdup(p));
+			p += strlen(p) + 1;
+			i++;
+		}
+	}
+#endif
+
 	for (i = 0; i < npaths; i++) {
 		DIR *dir;
 		struct dirent *next;
@@ -845,7 +857,7 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 			if (!pfind[0] && DOT_OR_DOTDOT(name_found))
 				continue;
 			/* match? */
-			if (strncmp(name_found, pfind, pf_len) != 0)
+			if (!is_prefixed_with(name_found, pfind))
 				continue; /* no */
 
 			found = concat_path_file(paths[i], name_found);
@@ -854,6 +866,9 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 			 * we still match dangling links */
 			if (stat(found, &st) && lstat(found, &st))
 				goto cont; /* hmm, remove in progress? */
+
+			if (type == FIND_EXE_ONLY && !file_is_executable(found))
+				goto cont;
 
 			/* Save only name */
 			len = strlen(name_found);
@@ -1932,19 +1947,25 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 						cwd_buf = xrealloc_getcwd_or_warn(NULL);
 						if (!cwd_buf)
 							cwd_buf = (char *)bb_msg_unknown;
-						else {
+						else if (home_pwd_buf[0]) {
+							char *after_home_user;
+
 							/* /home/user[/something] -> ~[/something] */
+#if !ENABLE_PLATFORM_MINGW32
+							after_home_user = is_prefixed_with(cwd_buf, home_pwd_buf);
+#else
+							after_home_user = NULL;
 							l = strlen(home_pwd_buf);
 							if (l != 0
-#if !ENABLE_PLATFORM_MINGW32
-							 && strncmp(home_pwd_buf, cwd_buf, l) == 0
-#else
-							 && strncasecmp(home_pwd_buf, cwd_buf, l) == 0
+							 && strncasecmp(home_pwd_buf, cwd_buf, l) == 0) {
+								after_home_user = cwd_buf + l;
+							}
 #endif
-							 && (cwd_buf[l] == '/' || cwd_buf[l] == '\0')
+							if (after_home_user
+							 && (*after_home_user == '/' || *after_home_user == '\0')
 							) {
 								cwd_buf[0] = '~';
-								overlapping_strcpy(cwd_buf + 1, cwd_buf + l);
+								overlapping_strcpy(cwd_buf + 1, after_home_user);
 							}
 						}
 					}
@@ -2313,7 +2334,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	INIT_S();
 
 #if ENABLE_PLATFORM_MINGW32
-	memset(initial_settings.c_cc, sizeof(initial_settings.c_cc), 0);
+	memset(initial_settings.c_cc, 0, sizeof(initial_settings.c_cc));
 	initial_settings.c_cc[VINTR] = CTRL('C');
 	initial_settings.c_cc[VEOF] = CTRL('D');
 	if (!isatty(0) || !isatty(1)) {

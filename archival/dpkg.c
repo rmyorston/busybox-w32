@@ -1151,13 +1151,13 @@ static int check_deps(deb_file_t **deb_file, int deb_start /*, int dep_max_count
 				if (result && number_of_alternatives == 0) {
 					if (root_of_alternatives)
 						bb_error_msg_and_die(
-							"package %s %sdepends on %s, "
-							"which cannot be satisfied",
+							"package %s %sdepends on %s, which %s",
 							name_hashtable[package_node->name],
 							package_edge->type == EDGE_PRE_DEPENDS ? "pre-" : "",
-							name_hashtable[root_of_alternatives->name]);
+							name_hashtable[root_of_alternatives->name],
+							"cannot be satisfied");
 					bb_error_msg_and_die(
-						"package %s %sdepends on %s, which %s\n",
+						"package %s %sdepends on %s, which %s",
 						name_hashtable[package_node->name],
 						package_edge->type == EDGE_PRE_DEPENDS ? "pre-" : "",
 						name_hashtable[package_edge->name],
@@ -1472,11 +1472,15 @@ static void init_archive_deb_control(archive_handle_t *ar_handle)
 	tar_handle->src_fd = ar_handle->src_fd;
 
 	/* We don't care about data.tar.* or debian-binary, just control.tar.* */
+	llist_add_to(&(ar_handle->accept), (char*)"control.tar");
 #if ENABLE_FEATURE_SEAMLESS_GZ
 	llist_add_to(&(ar_handle->accept), (char*)"control.tar.gz");
 #endif
 #if ENABLE_FEATURE_SEAMLESS_BZ2
 	llist_add_to(&(ar_handle->accept), (char*)"control.tar.bz2");
+#endif
+#if ENABLE_FEATURE_SEAMLESS_XZ
+	llist_add_to(&(ar_handle->accept), (char*)"control.tar.xz");
 #endif
 
 	/* Assign the tar handle as a subarchive of the ar handle */
@@ -1492,11 +1496,18 @@ static void init_archive_deb_data(archive_handle_t *ar_handle)
 	tar_handle->src_fd = ar_handle->src_fd;
 
 	/* We don't care about control.tar.* or debian-binary, just data.tar.* */
+	llist_add_to(&(ar_handle->accept), (char*)"data.tar");
 #if ENABLE_FEATURE_SEAMLESS_GZ
 	llist_add_to(&(ar_handle->accept), (char*)"data.tar.gz");
 #endif
 #if ENABLE_FEATURE_SEAMLESS_BZ2
 	llist_add_to(&(ar_handle->accept), (char*)"data.tar.bz2");
+#endif
+#if ENABLE_FEATURE_SEAMLESS_LZMA
+	llist_add_to(&(ar_handle->accept), (char*)"data.tar.lzma");
+#endif
+#if ENABLE_FEATURE_SEAMLESS_XZ
+	llist_add_to(&(ar_handle->accept), (char*)"data.tar.xz");
 #endif
 
 	/* Assign the tar handle as a subarchive of the ar handle */

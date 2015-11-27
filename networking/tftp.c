@@ -129,10 +129,9 @@ struct globals {
 #endif
 } FIX_ALIASING;
 #define G (*(struct globals*)&bb_common_bufsiz1)
-struct BUG_G_too_big {
-	char BUG_G_too_big[sizeof(G) <= COMMON_BUFSIZE ? 1 : -1];
-};
-#define INIT_G() do { } while (0)
+#define INIT_G() do { \
+	BUILD_BUG_ON(sizeof(G) > COMMON_BUFSIZE); \
+} while (0)
 
 #define G_error_pkt_reason (G.error_pkt[3])
 #define G_error_pkt_str    ((char*)(G.error_pkt + 4))
@@ -348,7 +347,6 @@ static int tftp_protocol(
 			 * as if it is "block 0" */
 			block_nr = 0;
 		}
-
 	} else { /* tftp */
 		/* Open file (must be after changing user) */
 		local_fd = CMD_GET(option_mask32) ? STDOUT_FILENO : STDIN_FILENO;

@@ -345,6 +345,8 @@ done:
 // state 1: Found +++ file indicator, look for @@
 // state 2: In hunk: counting initial context lines
 // state 3: In hunk: getting body
+// Like GNU patch, we don't require a --- line before the +++, and
+// also allow the --- after the +++ line.
 
 int patch_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int patch_main(int argc UNUSED_PARAM, char **argv)
@@ -412,7 +414,7 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 		}
 
 		// Open a new file?
-		if (!strncmp("--- ", patchline, 4) || !strncmp("+++ ", patchline, 4)) {
+		if (is_prefixed_with(patchline, "--- ") || is_prefixed_with(patchline, "+++ ")) {
 			char *s, **name = reverse ? &newname : &oldname;
 			int i;
 
@@ -444,7 +446,7 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 
 		// Start a new hunk?  Usually @@ -oldline,oldlen +newline,newlen @@
 		// but a missing ,value means the value is 1.
-		} else if (state == 1 && !strncmp("@@ -", patchline, 4)) {
+		} else if (state == 1 && is_prefixed_with(patchline, "@@ -")) {
 			int i;
 			char *s = patchline+4;
 
@@ -461,6 +463,14 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 
 			TT.context = 0;
 			state = 2;
+
+			// If the --- line is missing or malformed, either oldname
+			// or (for -R) newname could be NULL -- but not both.  Like
+			// GNU patch, proceed based on the +++ line, and avoid SEGVs.
+			if (!oldname)
+				oldname = xstrdup("MISSING_FILENAME");
+			if (!newname)
+				newname = xstrdup("MISSING_FILENAME");
 
 			// If this is the first hunk, open the file.
 			if (TT.filein == -1) {

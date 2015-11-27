@@ -22,23 +22,13 @@
 //config:	default n  # needs to be improved to be able to replace binutils ar
 //config:	help
 //config:	  ar is an archival utility program used to create, modify, and
-//config:	  extract contents from archives. An archive is a single file holding
-//config:	  a collection of other files in a structure that makes it possible to
-//config:	  retrieve the original individual files (called archive members).
-//config:	  The original files' contents, mode (permissions), timestamp, owner,
-//config:	  and group are preserved in the archive, and can be restored on
-//config:	  extraction.
+//config:	  extract contents from archives. In practice, it is used exclusively
+//config:	  for object module archives used by compilers.
 //config:
-//config:	  The stored filename is limited to 15 characters. (for more information
-//config:	  see long filename support).
-//config:	  ar has 60 bytes of overheads for every stored file.
-//config:
-//config:	  This implementation of ar can extract archives, it cannot create or
-//config:	  modify them.
 //config:	  On an x86 system, the ar applet adds about 1K.
 //config:
 //config:	  Unless you have a specific application which requires ar, you should
-//config:	  probably say N here.
+//config:	  probably say N here: most compilers come with their own ar utility.
 //config:
 //config:config FEATURE_AR_LONG_FILENAMES
 //config:	bool "Support for long filenames (not needed for debs)"
@@ -175,6 +165,7 @@ static int write_ar_archive(archive_handle_t *handle)
 {
 	struct stat st;
 	archive_handle_t *out_handle;
+	char *temp_fn = NULL;
 
 	xfstat(handle->src_fd, &st, handle->ar__name);
 
@@ -183,8 +174,14 @@ static int write_ar_archive(archive_handle_t *handle)
 	 */
 	if (st.st_size != 0) {
 		out_handle = init_handle();
+#if !ENABLE_PLATFORM_MINGW32
 		xunlink(handle->ar__name);
 		out_handle->src_fd = xopen(handle->ar__name, O_WRONLY | O_CREAT | O_TRUNC);
+#else
+		/* can't unlink open file, create temporary output file */
+		temp_fn = xasprintf("%sXXXXXX", handle->ar__name);
+		out_handle->src_fd = xmkstemp(temp_fn);
+#endif
 		out_handle->accept = handle->accept;
 	} else {
 		out_handle = handle;
@@ -206,11 +203,18 @@ static int write_ar_archive(archive_handle_t *handle)
 		continue;
 
 	/* optional, since we exit right after we return */
-	if (ENABLE_FEATURE_CLEAN_UP) {
+	if (ENABLE_FEATURE_CLEAN_UP || ENABLE_PLATFORM_MINGW32) {
 		close(handle->src_fd);
 		if (out_handle->src_fd != handle->src_fd)
 			close(out_handle->src_fd);
 	}
+
+#if ENABLE_PLATFORM_MINGW32
+	if ( temp_fn != NULL ) {
+		xrename(temp_fn, handle->ar__name);
+		free(temp_fn);
+	}
+#endif
 
 	return EXIT_SUCCESS;
 }

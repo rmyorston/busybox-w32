@@ -29,6 +29,20 @@
 #include <linux/filter.h>
 #include <linux/if_packet.h>
 
+#ifndef PACKET_AUXDATA
+# define PACKET_AUXDATA 8
+struct tpacket_auxdata {
+	uint32_t tp_status;
+	uint32_t tp_len;
+	uint32_t tp_snaplen;
+	uint16_t tp_mac;
+	uint16_t tp_net;
+	uint16_t tp_vlan_tci;
+	uint16_t tp_padding;
+};
+#endif
+
+
 /* "struct client_config_t client_config" is in bb_common_bufsiz1 */
 
 
@@ -156,10 +170,6 @@ static const char *valid_domain_label(const char *label)
 	for (;;) {
 		ch = *label;
 		if ((ch|0x20) < 'a' || (ch|0x20) > 'z') {
-			if (pos == 0) {
-				/* label must begin with letter */
-				return NULL;
-			}
 			if (ch < '0' || ch > '9') {
 				if (ch == '\0' || ch == '.')
 					return label;
@@ -1047,9 +1057,7 @@ static int udhcp_raw_socket(int ifindex)
 	}
 #endif
 
-	if (setsockopt(fd, SOL_PACKET, PACKET_AUXDATA,
-			&const_int_1, sizeof(int)) < 0
-	) {
+	if (setsockopt_1(fd, SOL_PACKET, PACKET_AUXDATA) != 0) {
 		if (errno != ENOPROTOOPT)
 			log1("Can't set PACKET_AUXDATA on raw socket");
 	}
@@ -1752,7 +1760,6 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 				}
 #endif
 				/* enter bound state */
-				timeout = lease_seconds / 2;
 				temp_addr.s_addr = packet.yiaddr;
 				bb_info_msg("Lease of %s obtained, lease time %u",
 					inet_ntoa(temp_addr), (unsigned)lease_seconds);
@@ -1761,6 +1768,11 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 				start = monotonic_sec();
 				udhcp_run_script(&packet, state == REQUESTING ? "bound" : "renew");
 				already_waited_sec = (unsigned)monotonic_sec() - start;
+				timeout = lease_seconds / 2;
+				if ((unsigned)timeout < already_waited_sec) {
+					/* Something went wrong. Back to discover state */
+					timeout = already_waited_sec = 0;
+				}
 
 				state = BOUND;
 				change_listen_mode(LISTEN_NONE);

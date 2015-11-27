@@ -116,21 +116,21 @@ static char* copy_stringbuf(void)
 
 static char* find_keyword(char *ptr, size_t len, const char *word)
 {
-	int wlen;
-
 	if (!ptr) /* happens if xmalloc_open_zipped_read_close cannot read it */
 		return NULL;
 
-	wlen = strlen(word);
-	len -= wlen - 1;
+	len -= strlen(word) - 1;
 	while ((ssize_t)len > 0) {
 		char *old = ptr;
+		char *after_word;
+
 		/* search for the first char in word */
-		ptr = memchr(ptr, *word, len);
+		ptr = memchr(ptr, word[0], len);
 		if (ptr == NULL) /* no occurance left, done */
 			break;
-		if (strncmp(ptr, word, wlen) == 0)
-			return ptr + wlen; /* found, return ptr past it */
+		after_word = is_prefixed_with(ptr, word);
+		if (after_word)
+			return after_word; /* found, return ptr past it */
 		++ptr;
 		len -= (ptr - old);
 	}
@@ -149,14 +149,27 @@ static void replace(char *s, char what, char with)
 static char *filename2modname(const char *filename, char *modname)
 {
 	int i;
-	char *from;
+	const char *from;
 
-	from = bb_get_last_path_component_nostrip(filename);
+	// Disabled since otherwise "modprobe dir/name" would work
+	// as if it is "modprobe name". It is unclear why
+	// 'basenamization' was here in the first place.
+	//from = bb_get_last_path_component_nostrip(filename);
+	from = filename;
 	for (i = 0; i < (MODULE_NAME_LEN-1) && from[i] != '\0' && from[i] != '.'; i++)
 		modname[i] = (from[i] == '-') ? '_' : from[i];
 	modname[i] = '\0';
 
 	return modname;
+}
+
+static int pathname_matches_modname(const char *pathname, const char *modname)
+{
+	int r;
+	char name[MODULE_NAME_LEN];
+	filename2modname(bb_get_last_path_component_nostrip(pathname), name);
+	r = (strcmp(name, modname) == 0);
+	return r;
 }
 
 /* Take "word word", return malloced "word",NUL,"word",NUL,NUL */
@@ -289,18 +302,6 @@ static void parse_module(module_info *info, const char *pathname)
 	info->deps = copy_stringbuf();
 
 	free(module_image);
-}
-
-static int pathname_matches_modname(const char *pathname, const char *modname)
-{
-	int r;
-	char name[MODULE_NAME_LEN];
-	const char *fname = bb_get_last_path_component_nostrip(pathname);
-	const char *suffix = strrstr(fname, ".ko");
-	safe_strncpy(name, fname, suffix - fname + 1);
-	replace(name, '-', '_');
-	r = (strcmp(name, modname) == 0);
-	return r;
 }
 
 static FAST_FUNC int fileAction(const char *pathname,
@@ -535,21 +536,68 @@ static module_info** find_alias(const char *alias)
 // TODO: open only once, invent config_rewind()
 static int already_loaded(const char *name)
 {
-	int ret = 0;
-	char *s;
-	parser_t *parser = config_open2("/proc/modules", xfopen_for_read);
-	while (config_read(parser, &s, 1, 1, "# \t", PARSE_NORMAL & ~PARSE_GREEDY)) {
-		if (strcmp(s, name) == 0) {
-			ret = 1;
-			break;
+	int ret;
+	char *line;
+	FILE *fp;
+
+	ret = 5 * 2;
+ again:
+	fp = fopen_for_read("/proc/modules");
+	if (!fp)
+		return 0;
+	while ((line = xmalloc_fgetline(fp)) != NULL) {
+		char *live;
+		char *after_name;
+
+		// Examples from kernel 3.14.6:
+		//pcspkr 12718 0 - Live 0xffffffffa017e000
+		//snd_timer 28690 2 snd_seq,snd_pcm, Live 0xffffffffa025e000
+		//i915 801405 2 - Live 0xffffffffa0096000
+		after_name = is_prefixed_with(line, name);
+		if (!after_name || *after_name != ' ') {
+			free(line);
+			continue;
 		}
+		live = strstr(line, " Live");
+		free(line);
+		if (!live) {
+			/* State can be Unloading, Loading, or Live.
+			 * modprobe must not return prematurely if we see "Loading":
+			 * it can cause further programs to assume load completed,
+			 * but it did not (yet)!
+			 * Wait up to 5*20 ms for it to resolve.
+			 */
+			ret -= 2;
+			if (ret == 0)
+				break;  /* huh? report as "not loaded" */
+			fclose(fp);
+			usleep(20*1000);
+			goto again;
+		}
+		ret = 1;
+		break;
 	}
-	config_close(parser);
-	return ret;
+	fclose(fp);
+
+	return ret & 1;
 }
 #else
-#define already_loaded(name) is_rmmod
+#define already_loaded(name) 0
 #endif
+
+static int rmmod(const char *filename)
+{
+	int r;
+	char modname[MODULE_NAME_LEN];
+
+	filename2modname(filename, modname);
+	r = delete_module(modname, O_NONBLOCK | O_EXCL);
+	dbg1_error_msg("delete_module('%s', O_NONBLOCK | O_EXCL):%d", modname, r);
+	if (r != 0 && !(option_mask32 & OPT_q)) {
+		bb_perror_msg("remove '%s'", modname);
+	}
+	return r;
+}
 
 /*
  * Given modules definition and module name (or alias, or symbol)
@@ -567,26 +615,36 @@ static void process_module(char *name, const char *cmdline_options)
 	module_info **infovec;
 	module_info *info;
 	int infoidx;
-	int is_rmmod = (option_mask32 & OPT_r) != 0;
+	int is_remove = (option_mask32 & OPT_r) != 0;
 
 	dbg1_error_msg("process_module('%s','%s')", name, cmdline_options);
 
 	replace(name, '-', '_');
 
-	dbg1_error_msg("already_loaded:%d is_rmmod:%d", already_loaded(name), is_rmmod);
+	dbg1_error_msg("already_loaded:%d is_remove:%d", already_loaded(name), is_remove);
+
+	if (applet_name[0] == 'r') {
+		/* rmmod.
+		 * Does not remove dependencies, no need to scan, just remove.
+		 * (compat note: this allows and strips .ko suffix)
+		 */
+		rmmod(name);
+		return;
+	}
+
 	/*
-	 * We used to have "is_rmmod != already_loaded(name)" check here, but
+	 * We used to have "is_remove != already_loaded(name)" check here, but
 	 *  modprobe -r pci:v00008086d00007010sv00000000sd00000000bc01sc01i80
 	 * won't unload modules (there are more than one)
 	 * which have this alias.
 	 */
-	if (!is_rmmod && already_loaded(name)) {
+	if (!is_remove && already_loaded(name)) {
 		dbg1_error_msg("nothing to do for '%s'", name);
 		return;
 	}
 
 	options = NULL;
-	if (!is_rmmod) {
+	if (!is_remove) {
 		char *opt_filename = xasprintf("/etc/modules/%s", name);
 		options = xmalloc_open_read_close(opt_filename, NULL);
 		if (options)
@@ -620,7 +678,7 @@ static void process_module(char *name, const char *cmdline_options)
 			0 /* depth */
 		);
 		dbg1_error_msg("dirscan complete");
-		/* Module was not found, or load failed, or is_rmmod */
+		/* Module was not found, or load failed, or is_remove */
 		if (module_found_idx >= 0) { /* module was found */
 			infovec = xzalloc(2 * sizeof(infovec[0]));
 			infovec[0] = &modinfo[module_found_idx];
@@ -631,6 +689,14 @@ static void process_module(char *name, const char *cmdline_options)
 		infovec = find_alias(name);
 	}
 
+	if (!infovec) {
+		/* both dirscan and find_alias found nothing */
+		if (!is_remove && applet_name[0] != 'd') /* it wasn't rmmod or depmod */
+			bb_error_msg("module '%s' not found", name);
+//TODO: _and_die()? or should we continue (un)loading modules listed on cmdline?
+		goto ret;
+	}
+
 	/* There can be more than one module for the given alias. For example,
 	 * "pci:v00008086d00007010sv00000000sd00000000bc01sc01i80" matches
 	 * ata_piix because it has alias "pci:v00008086d00007010sv*sd*bc*sc*i*"
@@ -639,42 +705,21 @@ static void process_module(char *name, const char *cmdline_options)
 	 * a *list* of modinfo pointers from find_alias().
 	 */
 
-	/* rmmod or modprobe -r? unload module(s) */
-	if (is_rmmod) {
+	/* modprobe -r? unload module(s) */
+	if (is_remove) {
 		infoidx = 0;
 		while ((info = infovec[infoidx++]) != NULL) {
-			int r;
-			char modname[MODULE_NAME_LEN];
-
-			filename2modname(info->pathname, modname);
-			r = delete_module(modname, O_NONBLOCK | O_EXCL);
-			dbg1_error_msg("delete_module('%s', O_NONBLOCK | O_EXCL):%d", modname, r);
+			int r = rmmod(bb_get_last_path_component_nostrip(info->pathname));
 			if (r != 0) {
-				if (!(option_mask32 & OPT_q))
-					bb_perror_msg("remove '%s'", modname);
-				goto ret;
+				goto ret; /* error */
 			}
 		}
-
-		if (applet_name[0] == 'r') {
-			/* rmmod: do not remove dependencies, exit */
-			goto ret;
-		}
-
 		/* modprobe -r: we do not stop here -
 		 * continue to unload modules on which the module depends:
 		 * "-r --remove: option causes modprobe to remove a module.
 		 * If the modules it depends on are also unused, modprobe
 		 * will try to remove them, too."
 		 */
-	}
-
-	if (!infovec) {
-		/* both dirscan and find_alias found nothing */
-		if (!is_rmmod && applet_name[0] != 'd') /* it wasn't rmmod or depmod */
-			bb_error_msg("module '%s' not found", name);
-//TODO: _and_die()? or should we continue (un)loading modules listed on cmdline?
-		goto ret;
 	}
 
 	infoidx = 0;
@@ -689,7 +734,7 @@ static void process_module(char *name, const char *cmdline_options)
 		}
 		free(deps);
 
-		if (is_rmmod)
+		if (is_remove)
 			continue;
 
 		/* We are modprobe: load it */
@@ -892,10 +937,10 @@ int modprobe_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 #if ENABLE_FEATURE_MODPROBE_SMALL_OPTIONS_ON_CMDLINE
-	/* If not rmmod, parse possible module options given on command line.
+	/* If not rmmod/-r, parse possible module options given on command line.
 	 * insmod/modprobe takes one module name, the rest are parameters. */
 	options = NULL;
-	if ('r' != applet0) {
+	if (!(option_mask32 & OPT_r)) {
 		char **arg = argv;
 		while (*++arg) {
 			/* Enclose options in quotes */
@@ -906,7 +951,7 @@ int modprobe_main(int argc UNUSED_PARAM, char **argv)
 		}
 	}
 #else
-	if ('r' != applet0)
+	if (!(option_mask32 & OPT_r))
 		argv[1] = NULL;
 #endif
 
@@ -930,10 +975,11 @@ int modprobe_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	/* Try to load modprobe.dep.bb */
-	load_dep_bb();
+	if ('r' != applet0) /* not rmmod */
+		load_dep_bb();
 
 	/* Load/remove modules.
-	 * Only rmmod loops here, modprobe has only argv[0] */
+	 * Only rmmod/modprobe -r loops here, insmod/modprobe has only argv[0] */
 	do {
 		process_module(*argv, options);
 	} while (*++argv);

@@ -8,6 +8,51 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 
+//config:config DD
+//config:	bool "dd"
+//config:	default y
+//config:	help
+//config:	  dd copies a file (from standard input to standard output,
+//config:	  by default) using specific input and output blocksizes,
+//config:	  while optionally performing conversions on it.
+//config:
+//config:config FEATURE_DD_SIGNAL_HANDLING
+//config:	bool "Enable signal handling for status reporting"
+//config:	default y
+//config:	depends on DD
+//config:	help
+//config:	  Sending a SIGUSR1 signal to a running `dd' process makes it
+//config:	  print to standard error the number of records read and written
+//config:	  so far, then to resume copying.
+//config:
+//config:	  $ dd if=/dev/zero of=/dev/null &
+//config:	  $ pid=$!; kill -USR1 $pid; sleep 1; kill $pid
+//config:	  10899206+0 records in
+//config:	  10899206+0 records out
+//config:
+//config:config FEATURE_DD_THIRD_STATUS_LINE
+//config:	bool "Enable the third status line upon signal"
+//config:	default y
+//config:	depends on DD && FEATURE_DD_SIGNAL_HANDLING
+//config:	help
+//config:	  Displays a coreutils-like third status line with transferred bytes,
+//config:	  elapsed time and speed.
+//config:
+//config:config FEATURE_DD_IBS_OBS
+//config:	bool "Enable ibs, obs and conv options"
+//config:	default y
+//config:	depends on DD
+//config:	help
+//config:	  Enables support for writing a certain number of bytes in and out,
+//config:	  at a time, and performing conversions on the data stream.
+//config:
+//config:config FEATURE_DD_STATUS
+//config:	bool "Enable status display options"
+//config:	default y
+//config:	depends on DD
+//config:	help
+//config:	  Enables support for status=noxfer/none option.
+
 //usage:#define dd_trivial_usage
 //usage:       "[if=FILE] [of=FILE] " IF_FEATURE_DD_IBS_OBS("[ibs=N] [obs=N] ") "[bs=N] [count=N] [skip=N]\n"
 //usage:       "	[seek=N]" IF_FEATURE_DD_IBS_OBS(" [conv=notrunc|noerror|sync|fsync]")
@@ -32,8 +77,12 @@
 //usage:     "\n	conv=fsync	Physically write data out before finishing"
 //usage:     "\n	conv=swab	Swap every pair of bytes"
 //usage:	)
+//usage:	IF_FEATURE_DD_STATUS(
+//usage:     "\n	status=noxfer	Suppress rate output"
+//usage:     "\n	status=none	Suppress all output"
+//usage:	)
 //usage:     "\n"
-//usage:     "\nN may be suffixed by c (1), w (2), b (512), kD (1000), k (1024), MD, M, GD, G"
+//usage:     "\nN may be suffixed by c (1), w (2), b (512), kB (1000), k (1024), MB, M, GB, G"
 //usage:
 //usage:#define dd_example_usage
 //usage:       "$ dd if=/dev/zero of=/dev/ram1 bs=1M count=4\n"
@@ -50,26 +99,13 @@ enum {
 	ofd = STDOUT_FILENO,
 };
 
-static const struct suffix_mult dd_suffixes[] = {
-	{ "c", 1 },
-	{ "w", 2 },
-	{ "b", 512 },
-	{ "kD", 1000 },
-	{ "k", 1024 },
-	{ "K", 1024 },  /* compat with coreutils dd */
-	{ "MD", 1000000 },
-	{ "M", 1048576 },
-	{ "GD", 1000000000 },
-	{ "G", 1073741824 },
-	{ "", 0 }
-};
-
 struct globals {
 	off_t out_full, out_part, in_full, in_part;
 #if ENABLE_FEATURE_DD_THIRD_STATUS_LINE
 	unsigned long long total_bytes;
 	unsigned long long begin_time_us;
 #endif
+	int flags;
 } FIX_ALIASING;
 #define G (*(struct globals*)&bb_common_bufsiz1)
 #define INIT_G() do { \
@@ -77,6 +113,21 @@ struct globals {
 	memset(&G, 0, sizeof(G)); \
 } while (0)
 
+enum {
+	/* Must be in the same order as OP_conv_XXX! */
+	/* (see "flags |= (1 << what)" below) */
+	FLAG_NOTRUNC = (1 << 0) * ENABLE_FEATURE_DD_IBS_OBS,
+	FLAG_SYNC    = (1 << 1) * ENABLE_FEATURE_DD_IBS_OBS,
+	FLAG_NOERROR = (1 << 2) * ENABLE_FEATURE_DD_IBS_OBS,
+	FLAG_FSYNC   = (1 << 3) * ENABLE_FEATURE_DD_IBS_OBS,
+	FLAG_SWAB    = (1 << 4) * ENABLE_FEATURE_DD_IBS_OBS,
+	/* end of conv flags */
+	FLAG_TWOBUFS = (1 << 5) * ENABLE_FEATURE_DD_IBS_OBS,
+	FLAG_COUNT   = 1 << 6,
+	FLAG_STATUS  = 1 << 7,
+	FLAG_STATUS_NONE = 1 << 7,
+	FLAG_STATUS_NOXFER = 1 << 8,
+};
 
 static void dd_output_status(int UNUSED_PARAM cur_signal)
 {
@@ -93,6 +144,13 @@ static void dd_output_status(int UNUSED_PARAM cur_signal)
 			G.out_full, G.out_part);
 
 #if ENABLE_FEATURE_DD_THIRD_STATUS_LINE
+# if ENABLE_FEATURE_DD_STATUS
+	if (G.flags & FLAG_STATUS_NOXFER) /* status=noxfer active? */
+		return;
+	//TODO: should status=none make dd stop reacting to USR1 entirely?
+	//So far we react to it (we print the stats),
+	//status=none only suppresses final, non-USR1 generated status message.
+# endif
 	fprintf(stderr, "%llu bytes (%sB) copied, ",
 			G.total_bytes,
 			/* show fractional digit, use suffixes */
@@ -148,20 +206,8 @@ static bool write_and_stats(const void *buf, size_t len, size_t obs,
 int dd_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int dd_main(int argc UNUSED_PARAM, char **argv)
 {
-	enum {
-		/* Must be in the same order as OP_conv_XXX! */
-		/* (see "flags |= (1 << what)" below) */
-		FLAG_NOTRUNC = (1 << 0) * ENABLE_FEATURE_DD_IBS_OBS,
-		FLAG_SYNC    = (1 << 1) * ENABLE_FEATURE_DD_IBS_OBS,
-		FLAG_NOERROR = (1 << 2) * ENABLE_FEATURE_DD_IBS_OBS,
-		FLAG_FSYNC   = (1 << 3) * ENABLE_FEATURE_DD_IBS_OBS,
-		FLAG_SWAB    = (1 << 4) * ENABLE_FEATURE_DD_IBS_OBS,
-		/* end of conv flags */
-		FLAG_TWOBUFS = (1 << 5) * ENABLE_FEATURE_DD_IBS_OBS,
-		FLAG_COUNT   = 1 << 6,
-	};
 	static const char keywords[] ALIGN1 =
-		"bs\0""count\0""seek\0""skip\0""if\0""of\0"
+		"bs\0""count\0""seek\0""skip\0""if\0""of\0"IF_FEATURE_DD_STATUS("status\0")
 #if ENABLE_FEATURE_DD_IBS_OBS
 		"ibs\0""obs\0""conv\0"
 #endif
@@ -170,6 +216,10 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 	static const char conv_words[] ALIGN1 =
 		"notrunc\0""sync\0""noerror\0""fsync\0""swab\0";
 #endif
+#if ENABLE_FEATURE_DD_STATUS
+	static const char status_words[] ALIGN1 =
+		"none\0""noxfer\0";
+#endif
 	enum {
 		OP_bs = 0,
 		OP_count,
@@ -177,6 +227,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 		OP_skip,
 		OP_if,
 		OP_of,
+		IF_FEATURE_DD_STATUS(OP_status,)
 #if ENABLE_FEATURE_DD_IBS_OBS
 		OP_ibs,
 		OP_obs,
@@ -216,14 +267,12 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	/* These are all zeroed at once! */
 	struct {
-		int flags;
 		size_t oc;
 		ssize_t prev_read_size; /* for detecting swab failure */
 		off_t count;
 		off_t seek, skip;
 		const char *infile, *outfile;
 	} Z;
-#define flags   (Z.flags  )
 #define oc      (Z.oc     )
 #define prev_read_size (Z.prev_read_size)
 #define count   (Z.count  )
@@ -259,11 +308,11 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_FEATURE_DD_IBS_OBS
 		if (what == OP_ibs) {
 			/* Must fit into positive ssize_t */
-			ibs = xatoul_range_sfx(val, 1, ((size_t)-1L)/2, dd_suffixes);
+			ibs = xatoul_range_sfx(val, 1, ((size_t)-1L)/2, cwbkMG_suffixes);
 			/*continue;*/
 		}
 		if (what == OP_obs) {
-			obs = xatoul_range_sfx(val, 1, ((size_t)-1L)/2, dd_suffixes);
+			obs = xatoul_range_sfx(val, 1, ((size_t)-1L)/2, cwbkMG_suffixes);
 			/*continue;*/
 		}
 		if (what == OP_conv) {
@@ -278,8 +327,8 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 					*arg = '\0';
 				n = index_in_strings(conv_words, val);
 				if (n < 0)
-					bb_error_msg_and_die(bb_msg_invalid_arg, val, "conv");
-				flags |= (1 << n);
+					bb_error_msg_and_die(bb_msg_invalid_arg_to, val, "conv");
+				G.flags |= (1 << n);
 				if (!arg) /* no ',' left, so this was the last specifier */
 					break;
 				/* *arg = ','; - to preserve ps listing? */
@@ -289,22 +338,22 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 		}
 #endif
 		if (what == OP_bs) {
-			ibs = xatoul_range_sfx(val, 1, ((size_t)-1L)/2, dd_suffixes);
+			ibs = xatoul_range_sfx(val, 1, ((size_t)-1L)/2, cwbkMG_suffixes);
 			obs = ibs;
 			/*continue;*/
 		}
 		/* These can be large: */
 		if (what == OP_count) {
-			flags |= FLAG_COUNT;
-			count = XATOU_SFX(val, dd_suffixes);
+			G.flags |= FLAG_COUNT;
+			count = XATOU_SFX(val, cwbkMG_suffixes);
 			/*continue;*/
 		}
 		if (what == OP_seek) {
-			seek = XATOU_SFX(val, dd_suffixes);
+			seek = XATOU_SFX(val, cwbkMG_suffixes);
 			/*continue;*/
 		}
 		if (what == OP_skip) {
-			skip = XATOU_SFX(val, dd_suffixes);
+			skip = XATOU_SFX(val, cwbkMG_suffixes);
 			/*continue;*/
 		}
 		if (what == OP_if) {
@@ -315,6 +364,16 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 			outfile = val;
 			/*continue;*/
 		}
+#if ENABLE_FEATURE_DD_STATUS
+		if (what == OP_status) {
+			int n;
+			n = index_in_strings(status_words, val);
+			if (n < 0)
+				bb_error_msg_and_die(bb_msg_invalid_arg_to, val, "status");
+			G.flags |= FLAG_STATUS << n;
+			/*continue;*/
+		}
+#endif
 	} /* end of "for (argv[i])" */
 
 //XXX:FIXME for huge ibs or obs, malloc'ing them isn't the brightest idea ever
@@ -322,7 +381,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 	obuf = ibuf;
 #if ENABLE_FEATURE_DD_IBS_OBS
 	if (ibs != obs) {
-		flags |= FLAG_TWOBUFS;
+		G.flags |= FLAG_TWOBUFS;
 		obuf = xmalloc(obs);
 	}
 #endif
@@ -335,8 +394,13 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	if (infile) {
+<<<<<<< HEAD
 		if (MINGW_TEST && !strcmp(infile, "/dev/zero")) {
 			flags |= FLAG_NOERROR;
+=======
+		if (ENABLE_PLATFORM_MINGW32 && !strcmp(infile, "/dev/zero")) {
+			G.flags |= FLAG_NOERROR;
+>>>>>>> master
 			devzero = 1;
 		} else {
 			xmove_fd(xopen(infile, O_RDONLY), ifd);
@@ -347,12 +411,12 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 	if (outfile) {
 		int oflag = O_WRONLY | O_CREAT;
 
-		if (!seek && !(flags & FLAG_NOTRUNC))
+		if (!seek && !(G.flags & FLAG_NOTRUNC))
 			oflag |= O_TRUNC;
 
 		xmove_fd(xopen(outfile, oflag), ofd);
 
-		if (seek && !(flags & FLAG_NOTRUNC)) {
+		if (seek && !(G.flags & FLAG_NOTRUNC)) {
 			if (ftruncate(ofd, seek * obs) < 0) {
 				struct stat st;
 
@@ -383,7 +447,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 			goto die_outfile;
 	}
 
-	while (!(flags & FLAG_COUNT) || (G.in_full + G.in_part != count)) {
+	while (!(G.flags & FLAG_COUNT) || (G.in_full + G.in_part != count)) {
 		ssize_t n;
 
 		if (devzero) {
@@ -396,7 +460,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 			break;
 		if (n < 0) {
 			/* "Bad block" */
-			if (!(flags & FLAG_NOERROR))
+			if (!(G.flags & FLAG_NOERROR))
 				goto die_infile;
 			bb_simple_perror_msg(infile);
 			/* GNU dd with conv=noerror skips over bad blocks */
@@ -405,7 +469,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 			 * conv=noerror just ignores input bad blocks */
 			n = 0;
 		}
-		if (flags & FLAG_SWAB) {
+		if (G.flags & FLAG_SWAB) {
 			uint16_t *p16;
 			ssize_t n2;
 
@@ -430,12 +494,12 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 			G.in_full++;
 		else {
 			G.in_part++;
-			if (flags & FLAG_SYNC) {
+			if (G.flags & FLAG_SYNC) {
 				memset(ibuf + n, 0, ibs - n);
 				n = ibs;
 			}
 		}
-		if (flags & FLAG_TWOBUFS) {
+		if (G.flags & FLAG_TWOBUFS) {
 			char *tmp = ibuf;
 			while (n) {
 				size_t d = obs - oc;
@@ -457,7 +521,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 				goto out_status;
 		}
 
-		if (flags & FLAG_FSYNC) {
+		if (G.flags & FLAG_FSYNC) {
 			if (fsync(ofd) < 0)
 				goto die_outfile;
 		}
@@ -480,11 +544,12 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 
 	exitcode = EXIT_SUCCESS;
  out_status:
-	dd_output_status(0);
+	if (!ENABLE_FEATURE_DD_STATUS || !(G.flags & FLAG_STATUS_NONE))
+		dd_output_status(0);
 
 	if (ENABLE_FEATURE_CLEAN_UP) {
 		free(obuf);
-		if (flags & FLAG_TWOBUFS)
+		if (G.flags & FLAG_TWOBUFS)
 			free(ibuf);
 	}
 

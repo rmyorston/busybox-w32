@@ -1,11 +1,20 @@
 #include "libbb.h"
 #include <tlhelp32.h>
 
-int waitpid(pid_t pid, int *status, unsigned options)
+int waitpid(pid_t pid, int *status, int options)
 {
+	HANDLE proc;
+	int ret;
+
 	/* Windows does not understand parent-child */
-	if (options == 0 && pid != -1)
-		return _cwait(status, pid, 0);
+	if (pid > 0 && options == 0) {
+		if ( (proc=OpenProcess(SYNCHRONIZE|PROCESS_QUERY_INFORMATION,
+						FALSE, pid)) != NULL ) {
+			ret = _cwait(status, (intptr_t)proc, 0);
+			CloseHandle(proc);
+			return ret;
+		}
+	}
 	errno = EINVAL;
 	return -1;
 }
@@ -287,7 +296,7 @@ mingw_spawn_1(int mode, const char *cmd, const char *const *argv, const char *co
 	return ret;
 }
 
-pid_t
+pid_t FAST_FUNC
 mingw_spawn(char **argv)
 {
 	return mingw_spawn_1(P_NOWAIT, argv[0], (const char *const *)argv, (const char *const *)environ);
@@ -367,15 +376,19 @@ int kill(pid_t pid, int sig)
 {
 	HANDLE h;
 
-	if (sig != SIGTERM) {
-		bb_error_msg("kill only supports SIGTERM");
-		errno = EINVAL;
+	if (pid > 0 && sig == SIGTERM) {
+		if ((h=OpenProcess(PROCESS_TERMINATE, FALSE, pid)) != NULL &&
+				TerminateProcess(h, 0)) {
+			CloseHandle(h);
+			return 0;
+		}
+
+		errno = err_win_to_posix(GetLastError());
+		if (h != NULL)
+			CloseHandle(h);
 		return -1;
 	}
-	h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
-	if (h == NULL)
-		return -1;
-	if (TerminateProcess(h, 0) == 0)
-		return -1;
-	return 0;
+
+	errno = EINVAL;
+	return -1;
 }

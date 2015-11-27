@@ -426,9 +426,7 @@ struct globals {
 } FIX_ALIASING;
 #define G (*(struct globals*)&bb_common_bufsiz1)
 #define INIT_G() do { \
-	struct G_sizecheck { \
-		char G_sizecheck[sizeof(G) > COMMON_BUFSIZE ? -1 : 1]; \
-	}; \
+	BUILD_BUG_ON(sizeof(G) > COMMON_BUFSIZE); \
 	/* we have to zero it out because of NOEXEC */ \
 	memset(&G, 0, sizeof(G)); \
 	IF_FEATURE_FIND_MAXDEPTH(G.minmaxdepth[1] = INT_MAX;) \
@@ -771,7 +769,10 @@ ACTF(delete)
 {
 	int rc;
 	if (S_ISDIR(statbuf->st_mode)) {
-		rc = rmdir(fileName);
+		/* "find . -delete" skips rmdir(".") */
+		rc = 0;
+		if (NOT_LONE_CHAR(fileName, '.'))
+			rc = rmdir(fileName);
 	} else {
 		rc = unlink(fileName);
 	}
@@ -884,7 +885,7 @@ static int find_type(const char *type)
 		mask = S_IFSOCK;
 
 	if (mask == 0 || type[1] != '\0')
-		bb_error_msg_and_die(bb_msg_invalid_arg, type, "-type");
+		bb_error_msg_and_die(bb_msg_invalid_arg_to, type, "-type");
 
 	return mask;
 }
@@ -1264,7 +1265,8 @@ static action*** parse_params(char **argv)
 			ap->perm_char = arg1[0];
 			arg1 = (arg1[0] == '/' ? arg1+1 : plus_minus_num(arg1));
 			/*ap->perm_mask = 0; - ALLOC_ACTION did it */
-			if (!bb_parse_mode(arg1, &ap->perm_mask))
+			ap->perm_mask = bb_parse_mode(arg1, ap->perm_mask);
+			if (ap->perm_mask == (mode_t)-1)
 				bb_error_msg_and_die("invalid mode '%s'", arg1);
 		}
 #endif
@@ -1463,12 +1465,10 @@ int find_main(int argc UNUSED_PARAM, char **argv)
 				NULL,           /* user data */
 				0)              /* depth */
 		) {
-			status = EXIT_FAILURE;
-			goto out;
+			status |= EXIT_FAILURE;
 		}
 	}
 
-	IF_FEATURE_FIND_EXEC_PLUS(status = flush_exec_plus();)
-out:
+	IF_FEATURE_FIND_EXEC_PLUS(status |= flush_exec_plus();)
 	return status;
 }

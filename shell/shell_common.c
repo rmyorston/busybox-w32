@@ -190,6 +190,7 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 		 * regardless of SA_RESTART-ness of that signal!
 		 */
 		errno = 0;
+#if !ENABLE_PLATFORM_MINGW32
 		pfd[0].fd = fd;
 		pfd[0].events = POLLIN;
 		if (poll(pfd, 1, timeout) != 1) {
@@ -198,6 +199,7 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 			retval = (const char *)(uintptr_t)1;
 			goto ret;
 		}
+#endif
 		if (read(fd, &buffer[bufpos], 1) != 1) {
 			err = errno;
 			retval = (const char *)(uintptr_t)1;
@@ -385,7 +387,7 @@ static void printlim(unsigned opts, const struct rlimit *limit,
 		val = limit->rlim_cur;
 
 	if (val == RLIM_INFINITY)
-		printf("unlimited\n");
+		puts("unlimited");
 	else {
 		val >>= l->factor_shift;
 		printf("%llu\n", (long long) val);
@@ -498,7 +500,6 @@ shell_builtin_ulimit(char **argv)
 			/* bad option. getopt already complained. */
 			break;
 		}
-
 	} /* while (there are options) */
 
 	return 0;

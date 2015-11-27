@@ -9,24 +9,22 @@
  * This file can be redistributed under the terms of the GNU General
  * Public License
  */
+//config:config CHATTR
+//config:	bool "chattr"
+//config:	default y
+//config:	help
+//config:	  chattr changes the file attributes on a second extended file system.
 
-/*
- * History:
- * 93/10/30	- Creation
- * 93/11/13	- Replace stat() calls by lstat() to avoid loops
- * 94/02/27	- Integrated in Ted's distribution
- * 98/12/29	- Ignore symlinks when working recursively (G M Sipe)
- * 98/12/29	- Display version info only when -V specified (G M Sipe)
- */
+//applet:IF_CHATTR(APPLET(chattr, BB_DIR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_CHATTR) += chattr.o e2fs_lib.o
 
 //usage:#define chattr_trivial_usage
 //usage:       "[-R] [-+=AacDdijsStTu] [-v VERSION] [FILE]..."
 //usage:#define chattr_full_usage "\n\n"
-//usage:       "Change file attributes on an ext2 fs\n"
+//usage:       "Change ext2 file attributes\n"
 //usage:     "\nModifiers:"
-//usage:     "\n	-	Remove attributes"
-//usage:     "\n	+	Add attributes"
-//usage:     "\n	=	Set attributes"
+//usage:     "\n	-,+,=	Remove/add/set attributes"
 //usage:     "\nAttributes:"
 //usage:     "\n	A	Don't track atime"
 //usage:     "\n	a	Append mode only"
@@ -36,11 +34,11 @@
 //usage:     "\n	i	Cannot be modified (immutable)"
 //usage:     "\n	j	Write all data to journal first"
 //usage:     "\n	s	Zero disk storage when deleted"
-//usage:     "\n	S	Write file contents synchronously"
+//usage:     "\n	S	Write synchronously"
 //usage:     "\n	t	Disable tail-merging of partial blocks with other files"
 //usage:     "\n	u	Allow file to be undeleted"
 //usage:     "\n	-R	Recurse"
-//usage:     "\n	-v	Set the file's version/generation number"
+//usage:     "\n	-v VER	Set version/generation number"
 
 #include "libbb.h"
 #include "e2fs_lib.h"

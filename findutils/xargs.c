@@ -125,7 +125,7 @@ static int xargs_exec(void)
 		return 124;
 	}
 	if (status >= 0x180) {
-		bb_error_msg("%s: terminated by signal %d",
+		bb_error_msg("'%s' terminated by signal %d",
 			G.args[0], status - 0x180);
 		return 125;
 	}
@@ -158,7 +158,7 @@ static void store_param(char *s)
  * is seen, store the address of a new parameter to args[].
  * If reading discovers that last chars do not form the complete
  * parameter, the pointer to the first such "tail character" is returned.
- * (buf has extra byte at the end to accomodate terminating NUL
+ * (buf has extra byte at the end to accommodate terminating NUL
  * of "tail characters" string).
  * Otherwise, the returned pointer points to NUL byte.
  * On entry, buf[] may contain some "seed chars" which are to become
@@ -594,6 +594,9 @@ int xargs_main(int argc, char **argv)
 		G.argv = argv;
 		argc = 0;
 		read_args = process_stdin_with_replace;
+		/* Make -I imply -r. GNU findutils seems to do the same: */
+		/* (otherwise "echo -n | xargs -I% echo %" would SEGV) */
+		opt |= OPT_NO_EMPTY;
 	} else
 #endif
 	{

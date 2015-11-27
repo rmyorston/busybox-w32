@@ -377,7 +377,7 @@ ftpdataio_get_pasv_fd(void)
 		return remote_fd;
 	}
 
-	setsockopt(remote_fd, SOL_SOCKET, SO_KEEPALIVE, &const_int_1, sizeof(const_int_1));
+	setsockopt_keepalive(remote_fd);
 	return remote_fd;
 }
 
@@ -1116,6 +1116,9 @@ int ftpd_main(int argc, char **argv)
 int ftpd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 {
+#if ENABLE_FEATURE_FTP_AUTHENTICATION
+	struct passwd *pw = NULL;
+#endif
 	unsigned abs_timeout;
 	unsigned verbose_S;
 	smallint opts;
@@ -1174,43 +1177,42 @@ int ftpd_main(int argc UNUSED_PARAM, char **argv)
 
 	//umask(077); - admin can set umask before starting us
 
-	/* Signals. We'll always take -EPIPE rather than a rude signal, thanks */
-	signal(SIGPIPE, SIG_IGN);
+	/* Signals */
+	bb_signals(0
+		/* We'll always take EPIPE rather than a rude signal, thanks */
+		+ (1 << SIGPIPE)
+		/* LIST command spawns chilren. Prevent zombies */
+		+ (1 << SIGCHLD)
+		, SIG_IGN);
 
 	/* Set up options on the command socket (do we need these all? why?) */
-	setsockopt(STDIN_FILENO, IPPROTO_TCP, TCP_NODELAY, &const_int_1, sizeof(const_int_1));
-	setsockopt(STDIN_FILENO, SOL_SOCKET, SO_KEEPALIVE, &const_int_1, sizeof(const_int_1));
+	setsockopt_1(STDIN_FILENO, IPPROTO_TCP, TCP_NODELAY);
+	setsockopt_keepalive(STDIN_FILENO);
 	/* Telnet protocol over command link may send "urgent" data,
 	 * we prefer it to be received in the "normal" data stream: */
-	setsockopt(STDIN_FILENO, SOL_SOCKET, SO_OOBINLINE, &const_int_1, sizeof(const_int_1));
+	setsockopt_1(STDIN_FILENO, SOL_SOCKET, SO_OOBINLINE);
 
 	WRITE_OK(FTP_GREET);
 	signal(SIGALRM, timeout_handler);
 
 #if ENABLE_FEATURE_FTP_AUTHENTICATION
-	{
-		struct passwd *pw = NULL;
-
-		while (1) {
-			uint32_t cmdval = cmdio_get_cmd_and_arg();
-
+	while (1) {
+		uint32_t cmdval = cmdio_get_cmd_and_arg();
 			if (cmdval == const_USER) {
-				pw = getpwnam(G.ftp_arg);
-				cmdio_write_raw(STR(FTP_GIVEPWORD)" Please specify password\r\n");
-			} else if (cmdval == const_PASS) {
-				if (check_password(pw, G.ftp_arg) > 0) {
-					break;	/* login success */
-				}
-				cmdio_write_raw(STR(FTP_LOGINERR)" Login failed\r\n");
-				pw = NULL;
-			} else if (cmdval == const_QUIT) {
-				WRITE_OK(FTP_GOODBYE);
-				return 0;
-			} else {
-				cmdio_write_raw(STR(FTP_LOGINERR)" Login with USER and PASS\r\n");
+			pw = getpwnam(G.ftp_arg);
+			cmdio_write_raw(STR(FTP_GIVEPWORD)" Please specify password\r\n");
+		} else if (cmdval == const_PASS) {
+			if (check_password(pw, G.ftp_arg) > 0) {
+				break;	/* login success */
 			}
+			cmdio_write_raw(STR(FTP_LOGINERR)" Login failed\r\n");
+			pw = NULL;
+		} else if (cmdval == const_QUIT) {
+			WRITE_OK(FTP_GOODBYE);
+			return 0;
+		} else {
+			cmdio_write_raw(STR(FTP_LOGINERR)" Login with USER and PASS\r\n");
 		}
-		change_identity(pw);
 	}
 	WRITE_OK(FTP_LOGINOK);
 #endif
@@ -1221,12 +1223,31 @@ int ftpd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	argv += optind;
 	if (argv[0]) {
+		const char *basedir = argv[0];
 #if !BB_MMU
 		G.root_fd = xopen("/", O_RDONLY | O_DIRECTORY);
 		close_on_exec_on(G.root_fd);
 #endif
-		xchroot(argv[0]);
+		if (chroot(basedir) == 0)
+			basedir = "/";
+#if !BB_MMU
+		else {
+			close(G.root_fd);
+			G.root_fd = -1;
+		}
+#endif
+		/*
+		 * If chroot failed, assume that we aren't root,
+		 * and at least chdir to the specified DIR
+		 * (older versions were dying with error message).
+		 * If chroot worked, move current dir to new "/":
+		 */
+		xchdir(basedir);
 	}
+
+#if ENABLE_FEATURE_FTP_AUTHENTICATION
+	change_identity(pw);
+#endif
 
 	/* RFC-959 Section 5.1
 	 * The following commands and options MUST be supported by every

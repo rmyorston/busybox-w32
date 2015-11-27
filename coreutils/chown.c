@@ -11,9 +11,9 @@
 /* http://www.opengroup.org/onlinepubs/007904975/utilities/chown.html */
 
 //usage:#define chown_trivial_usage
-//usage:       "[-RhLHP"IF_DESKTOP("cvf")"]... OWNER[<.|:>[GROUP]] FILE..."
+//usage:       "[-Rh"IF_DESKTOP("LHPcvf")"]... USER[:[GRP]] FILE..."
 //usage:#define chown_full_usage "\n\n"
-//usage:       "Change the owner and/or group of each FILE to OWNER and/or GROUP\n"
+//usage:       "Change the owner and/or group of each FILE to USER and/or GRP\n"
 //usage:     "\n	-R	Recurse"
 //usage:     "\n	-h	Affect symlinks instead of symlink targets"
 //usage:	IF_DESKTOP(
@@ -111,10 +111,6 @@ int chown_main(int argc UNUSED_PARAM, char **argv)
 	int retval = EXIT_SUCCESS;
 	int opt, flags;
 	struct param_t param;
-
-	/* Just -1 might not work: uid_t may be unsigned long */
-	param.ugid.uid = -1L;
-	param.ugid.gid = -1L;
 
 #if ENABLE_FEATURE_CHOWN_LONG_OPTIONS
 	applet_long_options = chown_longopts;

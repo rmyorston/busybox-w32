@@ -10,6 +10,7 @@
 #include "libbb.h"
 #include "bbconfigopts.h"
 #if ENABLE_FEATURE_COMPRESS_BBCONFIG
+#define BB_ARCHIVE_PUBLIC
 # include "bb_archive.h"
 # include "bbconfigopts_bz2.h"
 #endif

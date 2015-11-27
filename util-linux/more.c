@@ -22,6 +22,9 @@
 //usage:#define more_example_usage
 //usage:       "$ dmesg | more\n"
 
+#if ENABLE_PLATFORM_MINGW32
+#include <conio.h>
+#endif
 #include "libbb.h"
 
 /* Support for FEATURE_USE_TERMIOS */
@@ -77,9 +80,13 @@ int more_main(int argc UNUSED_PARAM, char **argv)
 	 * is not a tty and turns into cat. This makes sense. */
 	if (!isatty(STDOUT_FILENO))
 		return bb_cat(argv);
+#if !ENABLE_PLATFORM_MINGW32
 	cin = fopen_for_read(CURRENT_TTY);
 	if (!cin)
 		return bb_cat(argv);
+#else
+	cin = stdin;
+#endif
 
 	if (ENABLE_FEATURE_USE_TERMIOS) {
 		cin_fileno = fileno(cin);
@@ -135,7 +142,11 @@ int more_main(int argc UNUSED_PARAM, char **argv)
 				 * to get input from the user.
 				 */
 				for (;;) {
+#if !ENABLE_PLATFORM_MINGW32
 					input = getc(cin);
+#else
+					input = _getch();
+#endif
 					input = tolower(input);
 					if (!ENABLE_FEATURE_USE_TERMIOS)
 						printf("\033[A"); /* cursor up */
@@ -149,6 +160,10 @@ int more_main(int argc UNUSED_PARAM, char **argv)
 					 * commands, else we show help msg. */
 					if (input == ' ' || input == '\n' || input == 'q' || input == 'r')
 						break;
+#if ENABLE_PLATFORM_MINGW32
+					if (input == '\r')
+						break;
+#endif
 					len = printf("(Enter:next line Space:next page Q:quit R:show the rest)");
 				}
 				len = 0;
@@ -189,6 +204,10 @@ int more_main(int argc UNUSED_PARAM, char **argv)
 				 * will move us to a new line. */
 				if (++lines >= terminal_height || input == '\n')
 					please_display_more_prompt = 1;
+#if ENABLE_PLATFORM_MINGW32
+				if (input == '\r')
+					please_display_more_prompt = 1;
+#endif
 				len = 0;
 			}
 			if (c != '\n' && wrap) {

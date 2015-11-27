@@ -62,6 +62,7 @@ static const char usage_messages[] ALIGN1 = UNPACKED_USAGE;
 #if ENABLE_FEATURE_COMPRESS_USAGE
 
 static const char packed_usage[] ALIGN1 = { PACKED_USAGE };
+#define BB_ARCHIVE_PUBLIC
 # include "bb_archive.h"
 static const char *unpack_usage_messages(void)
 {
@@ -130,7 +131,7 @@ void FAST_FUNC bb_show_usage(void)
 			full_write2_str(applet_name);
 			full_write2_str(" ");
 			full_write2_str(p);
-			full_write2_str("\n\n");
+			full_write2_str("\n");
 		}
 		if (ENABLE_FEATURE_CLEAN_UP)
 			dealloc_usage_messages((char*)usage_string);
@@ -197,7 +198,7 @@ void lbb_prepare(const char *applet
 	if (argv[1]
 	 && !argv[2]
 	 && strcmp(argv[1], "--help") == 0
-	 && strncmp(applet, "busybox", 7) != 0
+	 && !is_prefixed_with(applet, "busybox")
 	) {
 		/* Special case. POSIX says "test --help"
 		 * should be no different from e.g. "test --foo".  */
@@ -441,7 +442,7 @@ static void parse_config_file(void)
 						goto pe_label;
 					}
 					*e = ':'; /* get_uidgid needs USER:GROUP syntax */
-					if (get_uidgid(&sct->m_ugid, s, /*allow_numeric:*/ 1) == 0) {
+					if (get_uidgid(&sct->m_ugid, s) == 0) {
 						errmsg = "unknown user/group";
 						goto pe_label;
 					}
@@ -461,7 +462,6 @@ static void parse_config_file(void)
 			errmsg = "keyword outside section";
 			goto pe_label;
 		}
-
 	} /* while (1) */
 
  pe_label:
@@ -628,14 +628,19 @@ static int busybox_main(char **argv)
 		output_width = 80;
 		if (ENABLE_FEATURE_AUTOWIDTH) {
 			/* Obtain the terminal width */
-			get_terminal_width_height(0, &output_width, NULL);
+			output_width = get_terminal_width(2);
 		}
 
 		dup2(1, 2);
 		full_write2_str(bb_banner); /* reuse const string */
 		full_write2_str(" multi-call binary.\n"); /* reuse */
+#if defined(MINGW_VER)
+		if (strlen(MINGW_VER)) {
+			full_write2_str(MINGW_VER "\n\n");
+		}
+#endif
 		full_write2_str(
-			"BusyBox is copyrighted by many authors between 1998-2012.\n"
+			"BusyBox is copyrighted by many authors between 1998-2015.\n"
 			"Licensed under GPLv2. See source distribution for detailed\n"
 			"copyright notices.\n"
 			"\n"
@@ -654,12 +659,17 @@ static int busybox_main(char **argv)
 			)
 			IF_FEATURE_SH_STANDALONE(
 			"\tBusyBox is a multi-call binary that combines many common Unix\n"
-			"\tutilities into a single executable.  This version has been\n"
-			"\tconfigured to prefer built-in utilities to external binaries.\n"
-			"\tThis avoids having to install a link to busybox for each\n"
-			"\tfunction to be invoked.\n"
+			"\tutilities into a single executable.  The shell in this build\n"
+			"\tis configured to run built-in utilities without $PATH search.\n"
+			"\tYou don't need to install a link to busybox for each utility.\n"
+			"\tTo run external program, use full path (/sbin/ip instead of ip).\n"
 			)
 			"\n"
+#if ENABLE_GLOBBING
+			"\tSupport for native Windows wildcards is enabled.  In some\n"
+			"\tcases this may result in wildcards being processed twice.\n"
+			"\n"
+#endif
 			"Currently defined functions:\n"
 		);
 		col = 0;
@@ -686,7 +696,7 @@ static int busybox_main(char **argv)
 		return 0;
 	}
 
-	if (strncmp(argv[1], "--list", 6) == 0) {
+	if (is_prefixed_with(argv[1], "--list")) {
 		unsigned i = 0;
 		const char *a = applet_names;
 		dup2(1, 2);
@@ -761,23 +771,25 @@ void FAST_FUNC run_applet_no_and_exit(int applet_no, char **argv)
 	xfunc_error_retval = EXIT_FAILURE;
 	applet_name = APPLET_NAME(applet_no);
 
-#if defined APPLET_NO_test
 	/* Special case. POSIX says "test --help"
 	 * should be no different from e.g. "test --foo".
 	 * Thus for "test", we skip --help check.
+	 * "true" and "false" are also special.
 	 */
-	if (applet_no != APPLET_NO_test)
+	if (1
+#if defined APPLET_NO_test
+	 && applet_no != APPLET_NO_test
 #endif
-	{
-		if (argc == 2 && strcmp(argv[1], "--help") == 0) {
+#if defined APPLET_NO_true
+	 && applet_no != APPLET_NO_true
+#endif
 #if defined APPLET_NO_false
-			/* Someone insisted that "false --help" must exit 1. Sigh */
-			if (applet_no != APPLET_NO_false)
+	 && applet_no != APPLET_NO_false
 #endif
-			{
-				/* Make "foo --help" exit with 0: */
-				xfunc_error_retval = 0;
-			}
+	) {
+		if (argc == 2 && strcmp(argv[1], "--help") == 0) {
+			/* Make "foo --help" exit with 0: */
+			xfunc_error_retval = 0;
 			bb_show_usage();
 		}
 	}
@@ -791,7 +803,7 @@ void FAST_FUNC run_applet_and_exit(const char *name, char **argv)
 	int applet = find_applet_by_name(name);
 	if (applet >= 0)
 		run_applet_no_and_exit(applet, argv);
-	if (strncmp(name, "busybox", 7) == 0)
+	if (is_prefixed_with(name, "busybox"))
 		exit(busybox_main(argv));
 }
 
@@ -842,7 +854,7 @@ int main(int argc UNUSED_PARAM, char **argv)
 
 #if defined(SINGLE_APPLET_MAIN)
 	/* Only one applet is selected in .config */
-	if (argv[1] && strncmp(argv[0], "busybox", 7) == 0) {
+	if (argv[1] && is_prefixed_with(argv[0], "busybox")) {
 		/* "busybox <applet> <params>" should still work as expected */
 		argv++;
 	}
@@ -860,6 +872,10 @@ int main(int argc UNUSED_PARAM, char **argv)
 		if (applet_name_env && *applet_name_env) {
 			applet_name = applet_name_env;
 			unsetenv("BUSYBOX_APPLET_NAME");
+		}
+		else if ( argv[1] && argv[2] && strcmp(argv[1], "--busybox") == 0 ) {
+			argv += 2;
+			applet_name = argv[0];
 		}
 		else {
 			char *s = argv[0];
