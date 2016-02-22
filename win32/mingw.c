@@ -150,8 +150,7 @@ int mingw_open (const char *filename, int oflags, ...)
 	va_end(args);
 
 	if (oflags & O_NONBLOCK) {
-		errno = ENOSYS;
-		return -1;
+		oflags &= ~O_NONBLOCK;
 	}
 	if (filename && !strcmp(filename, "/dev/null"))
 		filename = "nul";
