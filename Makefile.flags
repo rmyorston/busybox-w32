@@ -125,8 +125,7 @@ export SYSROOT=$(CONFIG_SYSROOT)
 endif
 
 ifeq ($(CONFIG_PLATFORM_MINGW32),y)
-# These defintions are not strictly needed, but they help shut up fnmatch.c warnings
-CFLAGS += -Iwin32 -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -fno-builtin-stpcpy
+CFLAGS += -Iwin32 -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -fno-builtin-stpcpy -fno-ident
 EXEEXT = .exe
 LDLIBS += userenv ws2_32
 endif
