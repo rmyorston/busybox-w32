@@ -913,7 +913,8 @@ int mingw_access(const char *name, int mode)
 {
 	int ret;
 	struct stat s;
-	int fd, n, offset, sig;
+	int fd, n, sig;
+	unsigned int offset;
 	unsigned char buf[1024];
 
 	/* Windows can only handle test for existence, read or write */

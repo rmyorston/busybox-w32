@@ -47,7 +47,7 @@ int mingw_socket(int domain, int type, int protocol)
 }
 
 #undef connect
-int mingw_connect(int sockfd, struct sockaddr *sa, size_t sz)
+int mingw_connect(int sockfd, const struct sockaddr *sa, size_t sz)
 {
 	SOCKET s = (SOCKET)_get_osfhandle(sockfd);
 	return connect(s, sa, sz);

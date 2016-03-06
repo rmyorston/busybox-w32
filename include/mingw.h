@@ -234,7 +234,7 @@ int ioctl(int fd, int code, ...);
 #define SHUT_WR SD_SEND
 
 int mingw_socket(int domain, int type, int protocol);
-int mingw_connect(int sockfd, struct sockaddr *sa, size_t sz);
+int mingw_connect(int sockfd, const struct sockaddr *sa, size_t sz);
 int mingw_bind(int sockfd, struct sockaddr *sa, size_t sz);
 int mingw_setsockopt(int sockfd, int lvl, int optname, void *optval, int optlen);
 int mingw_shutdown(int sockfd, int how);
