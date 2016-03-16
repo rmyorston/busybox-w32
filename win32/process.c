@@ -119,58 +119,91 @@ parse_interpreter(const char *cmd, char ***opts, int *nopts)
 static char *
 quote_arg(const char *arg)
 {
-	/* count chars to quote */
 	int len = 0, n = 0;
 	int force_quotes = 0;
 	char *q, *d;
 	const char *p = arg;
-	if (!*p) force_quotes = 1;
+
+	/* empty arguments must be quoted */
+	if (!*p) {
+		force_quotes = 1;
+	}
+
 	while (*p) {
-		if (isspace(*p))
+		if (isspace(*p)) {
+			/* arguments containing whitespace must be quoted */
 			force_quotes = 1;
-		else if (*p == '"')
+		}
+		else if (*p == '"') {
+			/* double quotes in arguments need to be escaped */
 			n++;
+		}
 		else if (*p == '\\') {
+			/* count contiguous backslashes */
 			int count = 0;
 			while (*p == '\\') {
 				count++;
 				p++;
 				len++;
 			}
-			if (*p == '"')
+
+			/*
+			 * Only escape backslashes before explicit double quotes or
+			 * or where the backslashes are at the end of an argument
+			 * that is scheduled to be quoted.
+			 */
+			if (*p == '"' || (force_quotes && *p == '\0')) {
 				n += count*2 + 1;
+			}
+
+			if (*p == '\0') {
+				break;
+			}
 			continue;
 		}
 		len++;
 		p++;
 	}
-	if (!force_quotes && n == 0)
-		return (char*)arg;
 
-	/* insert \ where necessary */
+	if (!force_quotes && n == 0) {
+		return (char*)arg;
+	}
+
+	/* insert double quotes and backslashes where necessary */
 	d = q = xmalloc(len+n+3);
-	if (force_quotes)
+	if (force_quotes) {
 		*d++ = '"';
+	}
+
 	while (*arg) {
-		if (*arg == '"')
+		if (*arg == '"') {
 			*d++ = '\\';
+		}
 		else if (*arg == '\\') {
 			int count = 0;
 			while (*arg == '\\') {
 				count++;
 				*d++ = *arg++;
 			}
-			if (*arg == '"') {
-				while (count-- > 0)
+
+			if (*arg == '"' || (force_quotes && *arg == '\0')) {
+				while (count-- > 0) {
 					*d++ = '\\';
-				*d++ = '\\';
+				}
+				if (*arg == '"') {
+					*d++ = '\\';
+				}
 			}
 		}
-		*d++ = *arg++;
+		if (*arg != '\0') {
+			*d++ = *arg++;
+		}
 	}
-	if (force_quotes)
+	if (force_quotes) {
 		*d++ = '"';
-	*d++ = 0;
+	}
+	*d = '\0';
+
 	return q;
 }
 
