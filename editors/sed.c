@@ -990,6 +990,11 @@ static char *get_next_line(char *gets_char, char *last_puts_char, char last_gets
 			char c = temp[len-1];
 			if (c == '\n' || c == '\0') {
 				temp[len-1] = '\0';
+#if ENABLE_PLATFORM_MINGW32
+				if (c == '\n' && len > 1 && temp[len-2] == '\r') {
+					temp[len-2] = '\0';
+				}
+#endif
 				gc = c;
 				if (c == '\0') {
 					int ch = fgetc(fp);
