@@ -345,7 +345,7 @@ static void load_fs_info(const char *filename)
 
 	// Loop through entries
 	while (getmntent_r(fstab, &mte, buf, sizeof(buf))) {
-		//bb_info_msg("CREATE[%s][%s][%s][%s][%d]", mte.mnt_fsname, mte.mnt_dir,
+		//bb_error_msg("CREATE[%s][%s][%s][%s][%d]", mte.mnt_fsname, mte.mnt_dir,
 		//	mte.mnt_type, mte.mnt_opts,
 		//	mte.mnt_passno);
 		create_fs_device(mte.mnt_fsname, mte.mnt_dir,
@@ -602,7 +602,7 @@ static void fsck_device(struct fs_info *fs /*, int interactive */)
 	if (strcmp(fs->type, "auto") != 0) {
 		type = fs->type;
 		if (G.verbose > 2)
-			bb_info_msg("using filesystem type '%s' %s",
+			printf("using filesystem type '%s' %s\n",
 					type, "from fstab");
 	} else if (G.fstype
 	 && (G.fstype[0] != 'n' || G.fstype[1] != 'o') /* != "no" */
@@ -612,12 +612,12 @@ static void fsck_device(struct fs_info *fs /*, int interactive */)
 	) {
 		type = G.fstype;
 		if (G.verbose > 2)
-			bb_info_msg("using filesystem type '%s' %s",
+			printf("using filesystem type '%s' %s\n",
 					type, "from -t");
 	} else {
 		type = "auto";
 		if (G.verbose > 2)
-			bb_info_msg("using filesystem type '%s' %s",
+			printf("using filesystem type '%s' %s\n",
 					type, "(default)");
 	}
 

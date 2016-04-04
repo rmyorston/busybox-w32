@@ -267,6 +267,7 @@ typedef struct {
 
 typedef struct {
 	len_and_sockaddr *p_lsa;
+	char             *p_hostname;
 	char             *p_dotted;
 	int              p_fd;
 	int              datapoint_idx;
@@ -727,7 +728,7 @@ reset_peer_stats(peer_t *p, double offset)
 
 	/* Used to set p->filter_datapoint[i].d_dispersion = MAXDISP
 	 * and clear reachable bits, but this proved to be too agressive:
-	 * after step (tested with suspinding laptop for ~30 secs),
+	 * after step (tested with suspending laptop for ~30 secs),
 	 * this caused all previous data to be considered invalid,
 	 * making us needing to collect full ~8 datapoins per peer
 	 * after step in order to start trusting them.
@@ -766,11 +767,29 @@ reset_peer_stats(peer_t *p, double offset)
 static void
 add_peers(const char *s)
 {
+	llist_t *item;
 	peer_t *p;
 
 	p = xzalloc(sizeof(*p));
 	p->p_lsa = xhost2sockaddr(s, 123);
 	p->p_dotted = xmalloc_sockaddr2dotted_noport(&p->p_lsa->u.sa);
+
+	/* Names like N.<country2chars>.pool.ntp.org are randomly resolved
+	 * to a pool of machines. Sometimes different N's resolve to the same IP.
+	 * It is not useful to have two peers with same IP. We skip duplicates.
+	 */
+	for (item = G.ntp_peers; item != NULL; item = item->link) {
+		peer_t *pp = (peer_t *) item->data;
+		if (strcmp(p->p_dotted, pp->p_dotted) == 0) {
+			bb_error_msg("duplicate peer %s (%s)", s, p->p_dotted);
+			free(p->p_lsa);
+			free(p->p_dotted);
+			free(p);
+			return;
+		}
+	}
+
+	p->p_hostname = xstrdup(s);
 	p->p_fd = -1;
 	p->p_xmt_msg.m_status = MODE_CLIENT | (NTP_VERSION << 3);
 	p->next_action_time = G.cur_time; /* = set_next(p, 0); */
@@ -1685,8 +1704,14 @@ update_local_clock(peer_t *p)
 	VERB4 bb_error_msg("adjtimex:%d freq:%ld offset:%+ld status:0x%x",
 				rc, tmx.freq, tmx.offset, tmx.status);
 	G.kernel_freq_drift = tmx.freq / 65536;
-	VERB2 bb_error_msg("update from:%s offset:%+f jitter:%f clock drift:%+.3fppm tc:%d",
-			p->p_dotted, offset, G.discipline_jitter, (double)tmx.freq / 65536, (int)tmx.constant);
+	VERB2 bb_error_msg("update from:%s offset:%+f delay:%f jitter:%f clock drift:%+.3fppm tc:%d",
+			p->p_dotted,
+			offset,
+			p->lastpkt_delay,
+			G.discipline_jitter,
+			(double)tmx.freq / 65536,
+			(int)tmx.constant
+	);
 
 	return 1; /* "ok to increase poll interval" */
 }
@@ -1947,8 +1972,8 @@ recv_and_process_peer_pkt(peer_t *p)
 			adjust_poll(MINPOLL);
 		} else {
 			VERB3 if (rc > 0)
-				bb_error_msg("want smaller poll interval: offset/jitter > %u",
-					POLLADJ_GATE);
+				bb_error_msg("want smaller interval: offset/jitter = %u",
+					G.offset_to_jitter_ratio);
 			adjust_poll(-G.poll_exp * 2);
 		}
 	}
@@ -2311,6 +2336,21 @@ int ntpd_main(int argc UNUSED_PARAM, char **argv)
 					timeout = poll_interval(NOREPLY_INTERVAL);
 					bb_error_msg("timed out waiting for %s, reach 0x%02x, next query in %us",
 							p->p_dotted, p->reachable_bits, timeout);
+
+					/* What if don't see it because it changed its IP? */
+					if (p->reachable_bits == 0) {
+						len_and_sockaddr *lsa = host2sockaddr(p->p_hostname, 123);
+						if (lsa) {
+							char *dotted = xmalloc_sockaddr2dotted_noport(&lsa->u.sa);
+							//if (strcmp(dotted, p->p_dotted) != 0)
+							//	bb_error_msg("peer IP changed");
+							free(p->p_lsa);
+							free(p->p_dotted);
+							p->p_lsa = lsa;
+							p->p_dotted = dotted;
+						}
+					}
+
 					set_next(p, timeout);
 				}
 			}

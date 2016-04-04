@@ -148,14 +148,18 @@
 # include <ws2tcpip.h>
 #else
 # include <arpa/inet.h>
-# if !defined(__socklen_t_defined) && !defined(_SOCKLEN_T_DECLARED)
-/* We #define socklen_t *after* includes, otherwise we get
- * typedef redefinition errors from system headers
- * (in case "is it defined already" detection above failed)
- */
-#  define socklen_t bb_socklen_t
-   typedef unsigned socklen_t;
-# endif
+//This breaks on bionic:
+//# if !defined(__socklen_t_defined) && !defined(_SOCKLEN_T_DECLARED)
+///* We #define socklen_t *after* includes, otherwise we get
+// * typedef redefinition errors from system headers
+// * (in case "is it defined already" detection above failed)
+// */
+//#  define socklen_t bb_socklen_t
+//   typedef unsigned socklen_t;
+//# endif
+//if this is still needed, add a fix along the lines of
+//  ifdef SPECIFIC_BROKEN_LIBC_CHECK / typedef socklen_t / endif
+//in platform.h instead!
 #endif
 #ifndef HAVE_CLEARENV
 # define clearenv() do { if (environ) environ[0] = NULL; } while (0)
@@ -507,6 +511,7 @@ void xsetuid(uid_t uid) FAST_FUNC;
 void xsetegid(gid_t egid) FAST_FUNC;
 void xseteuid(uid_t euid) FAST_FUNC;
 void xchdir(const char *path) FAST_FUNC;
+void xfchdir(int fd) FAST_FUNC;
 void xchroot(const char *path) FAST_FUNC;
 void xsetenv(const char *key, const char *value) FAST_FUNC;
 void bb_unsetenv(const char *key) FAST_FUNC;
@@ -1001,9 +1006,10 @@ int BB_EXECVP(const char *file, char *const argv[]) FAST_FUNC;
 #define BB_EXECVP(prog,cmd)     execvp(prog,cmd)
 #define BB_EXECLP(prog,cmd,...) execlp(prog,cmd,__VA_ARGS__)
 #endif
-int BB_EXECVP_or_die(char **argv) NORETURN FAST_FUNC;
+void BB_EXECVP_or_die(char **argv) NORETURN FAST_FUNC;
+void exec_prog_or_SHELL(char **argv) NORETURN FAST_FUNC;
 
-/* xvfork() can't be a _function_, return after vfork mangles stack
+/* xvfork() can't be a _function_, return after vfork in child mangles stack
  * in the parent. It must be a macro. */
 #define xvfork() \
 ({ \
@@ -1015,6 +1021,7 @@ int BB_EXECVP_or_die(char **argv) NORETURN FAST_FUNC;
 #if BB_MMU
 pid_t xfork(void) FAST_FUNC;
 #endif
+void xvfork_parent_waits_and_exits(void) FAST_FUNC;
 
 /* NOMMU friendy fork+exec: */
 pid_t spawn(char **argv) FAST_FUNC;
@@ -1031,6 +1038,7 @@ pid_t wait_any_nohang(int *wstat) FAST_FUNC;
  *      if (rc > 0) bb_error_msg("exit code: %d", rc & 0xff);
  */
 int wait4pid(pid_t pid) FAST_FUNC;
+int wait_for_exitstatus(pid_t pid) FAST_FUNC;
 /* Same as wait4pid(spawn(argv)), but with NOFORK/NOEXEC if configured: */
 int spawn_and_wait(char **argv) FAST_FUNC;
 /* Does NOT check that applet is NOFORK, just blindly runs it */
@@ -1160,7 +1168,6 @@ extern void bb_herror_msg(const char *s, ...) __attribute__ ((format (printf, 1,
 extern void bb_herror_msg_and_die(const char *s, ...) __attribute__ ((noreturn, format (printf, 1, 2))) FAST_FUNC;
 extern void bb_perror_nomsg_and_die(void) NORETURN FAST_FUNC;
 extern void bb_perror_nomsg(void) FAST_FUNC;
-extern void bb_info_msg(const char *s, ...) __attribute__ ((format (printf, 1, 2))) FAST_FUNC;
 extern void bb_verror_msg(const char *s, va_list p, const char *strerr) FAST_FUNC;
 extern void bb_logenv_override(void) FAST_FUNC;
 
@@ -1783,6 +1790,9 @@ void bb_progress_update(bb_progress_t *p,
 			uoff_t beg_range,
 			uoff_t transferred,
 			uoff_t totalsize) FAST_FUNC;
+
+unsigned ubi_devnum_from_devname(const char *str) FAST_FUNC;
+int ubi_get_volid_by_name(unsigned ubi_devnum, const char *vol_name) FAST_FUNC;
 
 
 extern const char *applet_name;

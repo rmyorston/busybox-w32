@@ -12,7 +12,6 @@
 //config:	  sulogin is invoked when the system goes into single user
 //config:	  mode (this is done through an entry in inittab).
 
-//applet:/* Needs to be run by root or be suid root - needs to change uid and gid: */
 //applet:IF_SULOGIN(APPLET(sulogin, BB_DIR_SBIN, BB_SUID_DROP))
 
 //kbuild:lib-$(CONFIG_SULOGIN) += sulogin.o
@@ -33,6 +32,14 @@ int sulogin_main(int argc UNUSED_PARAM, char **argv)
 	struct passwd *pwd;
 	const char *shell;
 
+	/* Note: sulogin is not a suid app. It is meant to be run by init
+	 * for single user / emergency mode. init starts it as root.
+	 * Normal users (potentially malisious ones) can only run it under
+	 * their UID, therefore no paranoia here is warranted:
+	 * $LD_LIBRARY_PATH in env, TTY = /dev/sda
+	 * are no more dangerous here than in e.g. cp applet.
+	 */
+
 	logmode = LOGMODE_BOTH;
 	openlog(applet_name, 0, LOG_AUTH);
 
@@ -48,18 +55,9 @@ int sulogin_main(int argc UNUSED_PARAM, char **argv)
 		dup(0);
 	}
 
-	/* Malicious use like "sulogin /dev/sda"? */
-	if (!isatty(0) || !isatty(1) || !isatty(2)) {
-		logmode = LOGMODE_SYSLOG;
-		bb_error_msg_and_die("not a tty");
-	}
-
-	/* Clear dangerous stuff, set PATH */
-	sanitize_env_if_suid();
-
 	pwd = getpwuid(0);
 	if (!pwd) {
-		goto auth_error;
+		bb_error_msg_and_die("no password entry for root");
 	}
 
 	while (1) {
@@ -71,17 +69,17 @@ int sulogin_main(int argc UNUSED_PARAM, char **argv)
 		);
 		if (r < 0) {
 			/* ^D, ^C, timeout, or read error */
-			bb_info_msg("Normal startup");
+			bb_error_msg("normal startup");
 			return 0;
 		}
 		if (r > 0) {
 			break;
 		}
 		bb_do_delay(LOGIN_FAIL_DELAY);
-		bb_info_msg("Login incorrect");
+		bb_error_msg("Login incorrect");
 	}
 
-	bb_info_msg("System Maintenance Mode");
+	bb_error_msg("starting shell for system maintenance");
 
 	IF_SELINUX(renew_current_security_context());
 
@@ -93,7 +91,4 @@ int sulogin_main(int argc UNUSED_PARAM, char **argv)
 
 	/* Exec login shell with no additional parameters. Never returns. */
 	run_shell(shell, 1, NULL, NULL);
-
- auth_error:
-	bb_error_msg_and_die("no password entry for root");
 }
