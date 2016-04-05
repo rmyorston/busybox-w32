@@ -13486,7 +13486,7 @@ init(void)
 			 * variable called something other than PATH.  This suggests we
 			 * haven't been invoked from an earlier instance of BusyBox.
 			 */
-			char *start, *end;
+			char *start, *end, *s;
 			struct passwd *pw;
 
 			for (envp = environ; envp && *envp; envp++) {
@@ -13503,16 +13503,16 @@ init(void)
 					continue;
 				}
 
-				/* convert backslashes to forward slashes */
+				/* convert backslashes to forward slashes in value */
 				if (!xp) {
-					for ( ++end; *end; ++end ) {
-						if ( *end == '\\' ) {
-							*end = '/';
+					for ( s=end+1; *s; ++s ) {
+						if ( *s == '\\' ) {
+							*s = '/';
 						}
 					}
 				}
 
-				/* check for invalid characters */
+				/* check for invalid characters in name */
 				for (start = *envp;start < end;start++) {
 					if (!isdigit(*start) && !isalpha(*start) && *start != '_') {
 						break;
