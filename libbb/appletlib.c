@@ -662,6 +662,7 @@ static void check_suid(int applet_no)
 
 
 # if ENABLE_FEATURE_INSTALLER
+#  if !ENABLE_PLATFORM_MINGW32
 static const char usr_bin [] ALIGN1 = "/usr/bin/";
 static const char usr_sbin[] ALIGN1 = "/usr/sbin/";
 static const char *const install_dir[] = {
@@ -706,6 +707,29 @@ static void install_links(const char *busybox, int use_symbolic_links,
 			continue;
 	}
 }
+#  else /* ENABLE_PLATFORM_MINGW32 */
+static void install_links(const char *busybox,
+		int use_symbolic_links UNUSED_PARAM, char *custom_install_dir)
+{
+	char *fpc;
+	const char *appname = applet_names;
+	int rc;
+
+	if (!is_directory(custom_install_dir, FALSE))
+		bb_error_msg_and_die("'%s' is not a directory", custom_install_dir);
+
+	while (*appname) {
+		fpc = xasprintf("%s/%s.exe", custom_install_dir, appname);
+		rc = link(busybox, fpc);
+		if (rc != 0 && errno != EEXIST) {
+			bb_simple_perror_msg(fpc);
+		}
+		free(fpc);
+		while (*appname++ != '\0')
+			continue;
+	}
+}
+#  endif
 # else
 static void install_links(const char *busybox UNUSED_PARAM,
 		int use_symbolic_links UNUSED_PARAM,
@@ -743,9 +767,14 @@ static int busybox_main(char **argv)
 			"copyright notices.\n"
 			"\n"
 			"Usage: busybox [function [arguments]...]\n"
+			IF_NOT_PLATFORM_MINGW32(
 			"   or: busybox --list"IF_FEATURE_INSTALLER("[-full]")"\n"
+			)
+			IF_PLATFORM_MINGW32(
+			"   or: busybox --list\n"
+			)
 			IF_FEATURE_INSTALLER(
-			"   or: busybox --install [-s] [DIR]\n"
+			"   or: busybox --install "IF_NOT_PLATFORM_MINGW32("[-s] ")"[DIR]\n"
 			)
 			"   or: function [arguments]...\n"
 			"\n"
@@ -799,7 +828,7 @@ static int busybox_main(char **argv)
 		const char *a = applet_names;
 		dup2(1, 2);
 		while (*a) {
-# if ENABLE_FEATURE_INSTALLER
+# if ENABLE_FEATURE_INSTALLER && !ENABLE_PLATFORM_MINGW32
 			if (argv[1][6]) /* --list-full? */
 				full_write2_str(install_dir[APPLET_INSTALL_LOC(i)] + 1);
 # endif
@@ -812,6 +841,7 @@ static int busybox_main(char **argv)
 	}
 
 	if (ENABLE_FEATURE_INSTALLER && strcmp(argv[1], "--install") == 0) {
+#if !ENABLE_PLATFORM_MINGW32
 		int use_symbolic_links;
 		const char *busybox;
 
@@ -832,6 +862,14 @@ static int busybox_main(char **argv)
 		 */
 		use_symbolic_links = (argv[2] && strcmp(argv[2], "-s") == 0 && ++argv);
 		install_links(busybox, use_symbolic_links, argv[2]);
+#else
+		/* busybox --install [DIR]
+		 * where DIR is the directory to install to.  If DIR is not
+		 * provided put the links in the same directory as busybox.
+		 */
+		install_links(bb_busybox_exec_path, FALSE, argv[2] ? argv[2] :
+				dirname(xstrdup(bb_busybox_exec_path)));
+#endif
 		return 0;
 	}
 

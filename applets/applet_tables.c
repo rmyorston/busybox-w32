@@ -177,7 +177,7 @@ int main(int argc, char **argv)
 	printf("};\n\n");
 #endif
 
-#if ENABLE_FEATURE_INSTALLER
+#if ENABLE_FEATURE_INSTALLER && !ENABLE_PLATFORM_MINGW32
 	printf("const uint8_t applet_install_loc[] ALIGN1 = {\n");
 	i = 0;
 	while (i < NUM_APPLETS) {
