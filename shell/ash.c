@@ -7767,15 +7767,6 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) char *cmd, char **argv, char **
 	}
 }
 
-#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-/* check if command and executable are both busybox */
-static int busybox_cmd_and_exe(const char *name)
-{
-	return strcmp(name, "busybox") == 0 &&
-		strcmp(bb_basename(bb_busybox_exec_path), "busybox.exe") == 0;
-}
-#endif
-
 /*
  * Exec a program.  Never returns.  If you change this routine, you may
  * have to change the find_command routine as well.
@@ -7807,8 +7798,9 @@ shellexec(char **argv, const char *path, int idx)
 		}
 		e = errno;
 #if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-	} else if (busybox_cmd_and_exe(argv[0])) {
+	} else if (strcmp(argv[0], "busybox") == 0) {
 		tryexec(-1, bb_busybox_exec_path, argv, envp);
+		e = errno;
 #endif
 	} else {
  try_PATH:
@@ -12778,14 +12770,6 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 		return;
 	}
 
-#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-	if (busybox_cmd_and_exe(name)) {
-		entry->u.index = -1;
-		entry->cmdtype = CMDNORMAL;
-		return;
-	}
-#endif
-
 /* #if ENABLE_FEATURE_SH_STANDALONE... moved after builtin check */
 
 	updatetbl = (path == pathval());
@@ -12839,7 +12823,9 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 #if ENABLE_FEATURE_SH_STANDALONE
 	{
 		int applet_no = find_applet_by_name(name);
-		if (applet_no >= 0) {
+		if (applet_no >= 0 ||
+				/* requires find_applet_by_name to return -1 on no match */
+				(ENABLE_PLATFORM_MINGW32 && strcmp(name, "busybox") == 0)) {
 			entry->cmdtype = CMDNORMAL;
 			entry->u.index = -2 - applet_no;
 			return;
