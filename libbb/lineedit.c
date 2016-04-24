@@ -110,7 +110,7 @@ static bool BB_ispunct(CHAR_T c) { return ((unsigned)c < 256 && ispunct(c)); }
 #define ESC "\033"
 
 #define SEQ_CLEAR_TILL_END_OF_SCREEN  ESC"[J"
-//#define SEQ_CLEAR_TILL_END_OF_LINE  ESC"[K"
+#define SEQ_CLEAR_TILL_END_OF_LINE  ESC"[K"
 
 
 enum {
@@ -611,7 +611,7 @@ static void input_delete(int save)
 	command_len--;
 	put_till_end_and_adv_cursor();
 	/* Last char is still visible, erase it (and more) */
-	printf(SEQ_CLEAR_TILL_END_OF_SCREEN);
+	printf(SEQ_CLEAR_TILL_END_OF_LINE);
 	input_backward(cursor - j);     /* back to old pos cursor */
 }
 
