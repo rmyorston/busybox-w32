@@ -124,7 +124,7 @@ static void erase_till_end_of_screen(void)
 		&dummy);
 
 	pos.X = 0;
-	for (pos.Y = sbi.dwCursorPosition.Y+1; pos.Y < sbi.dwSize.Y; pos.Y++) {
+	for (pos.Y = sbi.dwCursorPosition.Y+1; pos.Y < sbi.srWindow.Bottom; pos.Y++) {
 		FillConsoleOutputCharacterA(console, ' ', sbi.dwSize.X,
 					    pos, &dummy);
 		FillConsoleOutputAttribute(console, plain_attr, sbi.dwSize.X,
@@ -159,12 +159,14 @@ static void move_cursor_column(int n)
 static void move_cursor(int x, int y)
 {
 	COORD pos;
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
 	if (!console)
 		return;
 
-	pos.X = x;
-	pos.Y = y;
+	GetConsoleScreenBufferInfo(console, &sbi);
+	pos.X = sbi.srWindow.Left + x;
+	pos.Y = sbi.srWindow.Top + y;
 	SetConsoleCursorPosition(console, pos);
 }
 
