@@ -2510,6 +2510,9 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 		case CTRL('L'):
 		vi_case(CTRL('L')|VI_CMDMODE_BIT:)
 			/* Control-l -- clear screen */
+#if ENABLE_PLATFORM_MINGW32
+			printf(ESC"[0A"); /* move to current cursor postion */
+#endif
 			printf(ESC"[H"); /* cursor to top,left */
 			redraw(0, command_len - cursor);
 			break;

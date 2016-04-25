@@ -124,7 +124,8 @@ static void erase_till_end_of_screen(void)
 		&dummy);
 
 	pos.X = 0;
-	for (pos.Y = sbi.dwCursorPosition.Y+1; pos.Y < sbi.srWindow.Bottom; pos.Y++) {
+	for (pos.Y = sbi.dwCursorPosition.Y+1; pos.Y <= sbi.srWindow.Bottom;
+			pos.Y++) {
 		FillConsoleOutputCharacterA(console, ' ', sbi.dwSize.X,
 					    pos, &dummy);
 		FillConsoleOutputAttribute(console, plain_attr, sbi.dwSize.X,
