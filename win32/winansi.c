@@ -109,31 +109,23 @@ static void erase_in_line(void)
 static void erase_till_end_of_screen(void)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
-	COORD pos;
-	DWORD dummy;
+	DWORD dummy, len;
 
 	if (!console)
 		return;
 
 	GetConsoleScreenBufferInfo(console, &sbi);
-	FillConsoleOutputCharacterA(console, ' ',
-		sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition,
+	len = sbi.dwSize.X - sbi.dwCursorPosition.X +
+			sbi.dwSize.X * (sbi.srWindow.Bottom - sbi.dwCursorPosition.Y);
+
+	FillConsoleOutputCharacterA(console, ' ', len, sbi.dwCursorPosition,
 		&dummy);
-	FillConsoleOutputAttribute(console, plain_attr,
-		sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition,
+	FillConsoleOutputAttribute(console, plain_attr, len, sbi.dwCursorPosition,
 		&dummy);
 
-	pos.X = 0;
-	for (pos.Y = sbi.dwCursorPosition.Y+1; pos.Y <= sbi.srWindow.Bottom;
-			pos.Y++) {
-		FillConsoleOutputCharacterA(console, ' ', sbi.dwSize.X,
-					    pos, &dummy);
-		FillConsoleOutputAttribute(console, plain_attr, sbi.dwSize.X,
-					    pos, &dummy);
-	}
 }
 
-static void move_cursor_row(int n)
+void move_cursor_row(int n)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
