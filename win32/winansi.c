@@ -125,7 +125,7 @@ static void erase_till_end_of_screen(void)
 
 }
 
-static void move_cursor_row(int n)
+void move_cursor_row(int n)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
