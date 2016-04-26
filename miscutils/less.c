@@ -1068,7 +1068,7 @@ static void reinitialize(void)
 		printf("\033[999;999H" "\033[6n");
 #endif
 #if ENABLE_PLATFORM_MINGW32
-	puts(CLEAR);
+	reset_screen();
 #endif
 	buffer_fill_and_print();
 }

@@ -155,6 +155,7 @@ int mingw_pclose(FILE *fd);
  */
 
 void move_cursor_row(int n);
+void reset_screen(void);
 int winansi_putchar(int c);
 int winansi_puts(const char *s);
 size_t winansi_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);

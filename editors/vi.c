@@ -3074,7 +3074,12 @@ static void go_bottom_and_clear_to_eol(void)
 //----- Erase from cursor to end of screen -----------------------
 static void clear_to_eos(void)
 {
+#if !ENABLE_PLATFORM_MINGW32
 	write1(ESC_CLEAR2EOS);
+#else
+	/* in practice clear_to_eos() always clears the entire screen */
+	reset_screen();
+#endif
 }
 
 //----- Start standout mode ------------------------------------
