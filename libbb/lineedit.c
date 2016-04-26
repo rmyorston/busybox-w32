@@ -110,7 +110,7 @@ static bool BB_ispunct(CHAR_T c) { return ((unsigned)c < 256 && ispunct(c)); }
 #define ESC "\033"
 
 #define SEQ_CLEAR_TILL_END_OF_SCREEN  ESC"[J"
-#define SEQ_CLEAR_TILL_END_OF_LINE  ESC"[K"
+//#define SEQ_CLEAR_TILL_END_OF_LINE  ESC"[K"
 
 
 enum {
@@ -568,7 +568,6 @@ static void input_backward(unsigned num)
 }
 
 /* draw prompt, editor line, and clear tail */
-#if !ENABLE_PLATFORM_MINGW32
 static void redraw(int y, int back_cursor)
 {
 	if (y > 0) /* up y lines */
@@ -579,22 +578,6 @@ static void redraw(int y, int back_cursor)
 	printf(SEQ_CLEAR_TILL_END_OF_SCREEN);
 	input_backward(back_cursor);
 }
-#else
-static void mingw_redraw(int y, int back_cursor, int clear_screen)
-{
-	if (y > 0) /* up y lines */
-		printf(ESC"[%uA", y);
-	bb_putchar('\r');
-	put_prompt();
-	put_till_end_and_adv_cursor();
-	printf(clear_screen ?
-		SEQ_CLEAR_TILL_END_OF_SCREEN : SEQ_CLEAR_TILL_END_OF_LINE);
-	input_backward(back_cursor);
-}
-
-#define redraw(y, bc) mingw_redraw(y, bc, FALSE)
-#define redraw_and_clear_screen(y, bc) mingw_redraw(y, bc, TRUE)
-#endif
 
 /* Delete the char in front of the cursor, optionally saving it
  * for later putback */
@@ -628,11 +611,7 @@ static void input_delete(int save)
 	command_len--;
 	put_till_end_and_adv_cursor();
 	/* Last char is still visible, erase it (and more) */
-#if !ENABLE_PLATFORM_MINGW32
 	printf(SEQ_CLEAR_TILL_END_OF_SCREEN);
-#else
-	printf(SEQ_CLEAR_TILL_END_OF_LINE);
-#endif
 	input_backward(cursor - j);     /* back to old pos cursor */
 }
 
@@ -2532,11 +2511,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 		vi_case(CTRL('L')|VI_CMDMODE_BIT:)
 			/* Control-l -- clear screen */
 			printf(ESC"[H"); /* cursor to top,left */
-#if !ENABLE_PLATFORM_MINGW32
 			redraw(0, command_len - cursor);
-#else
-			redraw_and_clear_screen(0, command_len - cursor);
-#endif
 			break;
 #if MAX_HISTORY > 0
 		case CTRL('N'):
