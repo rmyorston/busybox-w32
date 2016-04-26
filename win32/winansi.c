@@ -122,7 +122,25 @@ static void erase_till_end_of_screen(void)
 		&dummy);
 	FillConsoleOutputAttribute(console, plain_attr, len, sbi.dwCursorPosition,
 		&dummy);
+}
 
+void reset_screen(void)
+{
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
+	COORD pos;
+	DWORD dummy, len;
+
+	if (!console)
+		return;
+
+	/* move to start of screen buffer and clear it all */
+	GetConsoleScreenBufferInfo(console, &sbi);
+	pos.X = 0;
+	pos.Y = 0;
+	SetConsoleCursorPosition(console, pos);
+	len = sbi.dwSize.X * sbi.dwSize.Y;
+	FillConsoleOutputCharacterA(console, ' ', len, pos, &dummy);
+	FillConsoleOutputAttribute(console, plain_attr, len, pos, &dummy);
 }
 
 void move_cursor_row(int n)
