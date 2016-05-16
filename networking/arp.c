@@ -32,6 +32,7 @@
 //usage:       "\n	-H HWTYPE	Hardware address type"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include "inet_common.h"
 
 #include <arpa/inet.h>
@@ -69,12 +70,13 @@ struct globals {
 	const char *device;      /* current device */
 	smallint hw_set;         /* flag if hw-type was set (-H) */
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define ap         (G.ap        )
 #define hw         (G.hw        )
 #define device     (G.device    )
 #define hw_set     (G.hw_set    )
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	device = ""; \
 } while (0)
 

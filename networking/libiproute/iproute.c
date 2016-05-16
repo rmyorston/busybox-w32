@@ -11,6 +11,7 @@
  */
 
 #include "ip_common.h"  /* #include "libbb.h" is inside */
+#include "common_bufsiz.h"
 #include "rt_names.h"
 #include "utils.h"
 
@@ -43,7 +44,8 @@ struct filter_t {
 } FIX_ALIASING;
 typedef struct filter_t filter_t;
 
-#define G_filter (*(filter_t*)&bb_common_bufsiz1)
+#define G_filter (*(filter_t*)bb_common_bufsiz1)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 static int flush_update(void)
 {
@@ -901,6 +903,8 @@ int FAST_FUNC do_iproute(char **argv)
 	int command_num;
 	unsigned flags = 0;
 	int cmd = RTM_NEWROUTE;
+
+	INIT_G();
 
 	if (!*argv)
 		return iproute_list_or_flush(argv, 0);

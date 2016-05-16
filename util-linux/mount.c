@@ -223,6 +223,7 @@
 #define BB_MS_INVERTED_VALUE (1u << 31)
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #if ENABLE_FEATURE_MOUNT_LABEL
 # include "volume_id.h"
 #else
@@ -376,7 +377,7 @@ static const int32_t mount_options[] = {
 	/* "remount" */ MS_REMOUNT  // action flag
 };
 
-static const char mount_option_str[] =
+static const char mount_option_str[] ALIGN1 =
 	IF_FEATURE_MOUNT_LOOP(
 		"loop\0"
 	)
@@ -447,7 +448,7 @@ struct globals {
 	char getmntent_buf[1];
 } FIX_ALIASING;
 enum { GETMNTENT_BUFSIZE = COMMON_BUFSIZE - offsetof(struct globals, getmntent_buf) };
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define nfs_mount_version (G.nfs_mount_version)
 #if ENABLE_FEATURE_MOUNT_VERBOSE
 #define verbose           (G.verbose          )
@@ -456,7 +457,7 @@ enum { GETMNTENT_BUFSIZE = COMMON_BUFSIZE - offsetof(struct globals, getmntent_b
 #endif
 #define fslist            (G.fslist           )
 #define getmntent_buf     (G.getmntent_buf    )
-#define INIT_G() do { } while (0)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 #if ENABLE_FEATURE_MTAB_SUPPORT
 /*
@@ -1002,7 +1003,7 @@ enum {
 # define EDQUOT ENOSPC
 #endif
 /* Convert each NFSERR_BLAH into EBLAH */
-static const uint8_t nfs_err_stat[] = {
+static const uint8_t nfs_err_stat[] ALIGN1 = {
 	 1,  2,  5,  6, 13, 17,
 	19, 20, 21, 22, 27, 28,
 	30, 63, 66, 69, 70, 71
@@ -1015,7 +1016,7 @@ typedef uint8_t nfs_err_type;
 #else
 typedef uint16_t nfs_err_type;
 #endif
-static const nfs_err_type nfs_err_errnum[] = {
+static const nfs_err_type nfs_err_errnum[] ALIGN2 = {
 	EPERM , ENOENT      , EIO      , ENXIO , EACCES, EEXIST,
 	ENODEV, ENOTDIR     , EISDIR   , EINVAL, EFBIG , ENOSPC,
 	EROFS , ENAMETOOLONG, ENOTEMPTY, EDQUOT, ESTALE, EREMOTE

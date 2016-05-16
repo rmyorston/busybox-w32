@@ -28,6 +28,7 @@
 #include <netpacket/packet.h>
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 /* We don't expect to see 1000+ seconds delay, unsigned is enough */
 #define MONOTONIC_US() ((unsigned)monotonic_us())
@@ -60,7 +61,7 @@ struct globals {
 	unsigned brd_recv;
 	unsigned req_recv;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define src        (G.src       )
 #define dst        (G.dst       )
 #define me         (G.me        )
@@ -76,6 +77,7 @@ struct globals {
 #define brd_recv   (G.brd_recv  )
 #define req_recv   (G.req_recv  )
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	count = -1; \
 } while (0)
 

@@ -13,6 +13,7 @@
 #include <net/if_arp.h>
 
 #include "ip_common.h"  /* #include "libbb.h" is inside */
+#include "common_bufsiz.h"
 #include "rt_names.h"
 #include "utils.h"
 
@@ -39,8 +40,8 @@ struct filter_t {
 } FIX_ALIASING;
 typedef struct filter_t filter_t;
 
-#define G_filter (*(filter_t*)&bb_common_bufsiz1)
-
+#define G_filter (*(filter_t*)bb_common_bufsiz1)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 static void print_link_flags(unsigned flags, unsigned mdown)
 {
@@ -744,6 +745,9 @@ int FAST_FUNC do_ipaddr(char **argv)
 		/* 0    1         2      3          4         5       6       7      8 */
 		"add\0""change\0""chg\0""replace\0""delete\0""list\0""show\0""lst\0""flush\0";
 	int cmd = 2;
+
+	INIT_G();
+
 	if (*argv) {
 		cmd = index_in_substrings(commands, *argv);
 		if (cmd < 0)

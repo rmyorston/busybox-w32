@@ -89,17 +89,18 @@
 //usage:       "+ shutdown -h +4m"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 struct globals {
 	char **names;
 	int    cur;
 	char  *cmd[2 /* using 1 provokes compiler warning */];
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define names (G.names)
 #define cur   (G.cur  )
 #define cmd   (G.cmd  )
-#define INIT_G() do { } while (0)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 enum { NUM_CMD = (COMMON_BUFSIZE - sizeof(G)) / sizeof(cmd[0]) - 1 };
 

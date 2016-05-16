@@ -189,6 +189,7 @@ Exit Codes
 
 #include <sys/file.h>
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include "runit_lib.h"
 
 struct globals {
@@ -199,14 +200,14 @@ struct globals {
 	uint64_t tstart, tnow;
 	svstatus_t svstatus;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define acts         (G.acts        )
 #define service      (G.service     )
 #define rc           (G.rc          )
 #define tstart       (G.tstart      )
 #define tnow         (G.tnow        )
 #define svstatus     (G.svstatus    )
-#define INIT_G() do { } while (0)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 
 #define str_equal(s,t) (!strcmp((s), (t)))

@@ -109,7 +109,7 @@ enum {
 /*** Script execution code ***/
 
 /* get a rough idea of how long an option will be (rounding up...) */
-static const uint8_t len_of_option_as_string[] = {
+static const uint8_t len_of_option_as_string[] ALIGN1 = {
 	[OPTION_IP              ] = sizeof("255.255.255.255 "),
 	[OPTION_IP_PAIR         ] = sizeof("255.255.255.255 ") * 2,
 	[OPTION_STATIC_ROUTES   ] = sizeof("255.255.255.255/32 255.255.255.255 "),
@@ -1267,6 +1267,8 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 	int max_fd;
 	int retval;
 	fd_set rfds;
+
+	setup_common_bufsiz();
 
 	/* Default options */
 	IF_FEATURE_UDHCP_PORT(SERVER_PORT = 67;)

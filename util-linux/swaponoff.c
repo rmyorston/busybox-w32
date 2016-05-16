@@ -28,6 +28,7 @@
 //usage:     "\n	-a	Stop swapping on all swap devices"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include <mntent.h>
 #ifndef __BIONIC__
 # include <sys/swap.h>
@@ -62,7 +63,7 @@
 struct globals {
 	int flags;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define g_flags (G.flags)
 #define save_g_flags()    int save_g_flags = g_flags
 #define restore_g_flags() g_flags = save_g_flags
@@ -71,7 +72,7 @@ struct globals {
 #define save_g_flags()    ((void)0)
 #define restore_g_flags() ((void)0)
 #endif
-#define INIT_G() do { } while (0)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 #define do_swapoff   (applet_name[5] == 'f')
 

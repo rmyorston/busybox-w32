@@ -29,6 +29,7 @@
 //usage:	"filter show [ dev STRING ] [ root | parent CLASSID ]"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 #include "libiproute/utils.h"
 #include "libiproute/ip_common.h"
@@ -63,13 +64,14 @@ struct globals {
 	uint32_t filter_prio;
 	uint32_t filter_proto;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define filter_ifindex (G.filter_ifindex)
 #define filter_qdisc (G.filter_qdisc)
 #define filter_parent (G.filter_parent)
 #define filter_prio (G.filter_prio)
 #define filter_proto (G.filter_proto)
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	BUILD_BUG_ON(sizeof(G) > COMMON_BUFSIZE); \
 } while (0)
 

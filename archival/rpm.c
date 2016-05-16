@@ -29,6 +29,7 @@
 //usage:     "\n	-qpc	List config files"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include "bb_archive.h"
 #include "rpm.h"
 
@@ -93,8 +94,8 @@ struct globals {
 	rpm_index **mytags;
 	int tagcount;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
-#define INIT_G() do { } while (0)
+#define G (*(struct globals*)bb_common_bufsiz1)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 static void extract_cpio(int fd, const char *source_rpm)
 {

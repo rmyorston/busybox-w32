@@ -60,6 +60,7 @@
 //usage:     "\n	-c DIR	Cron dir. Default:"CONFIG_FEATURE_CROND_DIR"/crontabs"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include <syslog.h>
 
 /* glibc frees previous setenv'ed value when we do next setenv()
@@ -140,8 +141,9 @@ struct globals {
 	char *env_var_logname;
 #endif
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	G.log_level = 8; \
 	G.crontab_dir_name = CRONTABS; \
 } while (0)

@@ -105,6 +105,7 @@
 //config:	  Enable 's' in top (gives lots of memory info).
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 
 typedef struct top_status_t {
@@ -183,7 +184,7 @@ struct globals {
 	char line_buf[80];
 }; //FIX_ALIASING; - large code growth
 enum { LINE_BUF_SIZE = COMMON_BUFSIZE - offsetof(struct globals, line_buf) };
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define top              (G.top               )
 #define ntop             (G.ntop              )
 #define sort_field       (G.sort_field        )
@@ -201,6 +202,7 @@ enum { LINE_BUF_SIZE = COMMON_BUFSIZE - offsetof(struct globals, line_buf) };
 #define total_pcpu       (G.total_pcpu        )
 #define line_buf         (G.line_buf          )
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	BUILD_BUG_ON(sizeof(G) > COMMON_BUFSIZE); \
 	BUILD_BUG_ON(LINE_BUF_SIZE <= 80); \
 } while (0)
@@ -263,9 +265,9 @@ static int mult_lvl_cmp(void* a, void* b)
 static NOINLINE int read_cpu_jiffy(FILE *fp, jiffy_counts_t *p_jif)
 {
 #if !ENABLE_FEATURE_TOP_SMP_CPU
-	static const char fmt[] = "cpu %llu %llu %llu %llu %llu %llu %llu %llu";
+	static const char fmt[] ALIGN1 = "cpu %llu %llu %llu %llu %llu %llu %llu %llu";
 #else
-	static const char fmt[] = "cp%*s %llu %llu %llu %llu %llu %llu %llu %llu";
+	static const char fmt[] ALIGN1 = "cp%*s %llu %llu %llu %llu %llu %llu %llu %llu";
 #endif
 	int ret;
 
@@ -517,7 +519,7 @@ enum {
 
 static void parse_meminfo(unsigned long meminfo[MI_MAX])
 {
-	static const char fields[] =
+	static const char fields[] ALIGN1 =
 		"MemTotal\0"
 		"MemFree\0"
 		"MemShared\0"

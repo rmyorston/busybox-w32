@@ -146,6 +146,7 @@
 
 #include <fnmatch.h>
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include "bb_archive.h"
 /* FIXME: Stop using this non-standard feature */
 #ifndef FNM_LEADING_DIR
@@ -161,6 +162,7 @@
 
 
 #define block_buf bb_common_bufsiz1
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 
 #if ENABLE_FEATURE_TAR_CREATE
@@ -992,6 +994,7 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_FEATURE_TAR_LONG_OPTIONS && ENABLE_FEATURE_TAR_FROM
 	llist_t *excludes = NULL;
 #endif
+	INIT_G();
 
 	/* Initialise default values */
 	tar_handle = init_handle();

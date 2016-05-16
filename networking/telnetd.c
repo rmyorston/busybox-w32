@@ -44,6 +44,7 @@
 #define DEBUG 0
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include <syslog.h>
 
 #if DEBUG
@@ -82,8 +83,9 @@ struct globals {
 	const char *issuefile;
 	int maxfd;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	G.loginpath = "/bin/login"; \
 	G.issuefile = "/etc/issue.net"; \
 } while (0)

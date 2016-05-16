@@ -27,6 +27,7 @@
 //usage:     "\n	-F	Disable RTS/CTS flow control"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include "libiproute/utils.h" /* invarg_1_to_2() */
 
 struct globals {
@@ -34,11 +35,11 @@ struct globals {
 	int saved_disc;
 	struct termios saved_state;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define handle       (G.handle      )
 #define saved_disc   (G.saved_disc  )
 #define saved_state  (G.saved_state )
-#define INIT_G() do { } while (0)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 
 /*

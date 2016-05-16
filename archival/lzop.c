@@ -71,6 +71,7 @@
 //usage:     "\n	-F	Don't store or verify checksum"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include "bb_archive.h"
 #include "liblzo_interface.h"
 
@@ -443,8 +444,8 @@ struct globals {
 	chksum_t chksum_in;
 	chksum_t chksum_out;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
-#define INIT_G() do { } while (0)
+#define G (*(struct globals*)bb_common_bufsiz1)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 //#define G (*ptr_to_globals)
 //#define INIT_G() do {
 //	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G)));
@@ -895,7 +896,7 @@ static NOINLINE int lzo_decompress(const header_t *h)
  *                  chksum_out
  * The rest is identical.
 */
-static const unsigned char lzop_magic[9] = {
+static const unsigned char lzop_magic[9] ALIGN1 = {
 	0x89, 0x4c, 0x5a, 0x4f, 0x00, 0x0d, 0x0a, 0x1a, 0x0a
 };
 

@@ -19,6 +19,7 @@
 //usage:     "\n	-v	Don't use ^x or M-x escapes"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 #define CATV_OPT_e (1<<0)
 #define CATV_OPT_t (1<<1)
@@ -48,6 +49,9 @@ int catv_main(int argc UNUSED_PARAM, char **argv)
 	/* Read from stdin if there's nothing else to do. */
 	if (!argv[0])
 		*--argv = (char*)"-";
+
+#define read_buf bb_common_bufsiz1
+	setup_common_bufsiz();
 	do {
 		fd = open_or_warn_stdin(*argv);
 		if (fd < 0) {
@@ -57,7 +61,6 @@ int catv_main(int argc UNUSED_PARAM, char **argv)
 		for (;;) {
 			int i, res;
 
-#define read_buf bb_common_bufsiz1
 			res = read(fd, read_buf, COMMON_BUFSIZE);
 			if (res < 0)
 				retval = EXIT_FAILURE;

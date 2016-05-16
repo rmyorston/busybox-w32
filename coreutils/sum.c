@@ -21,6 +21,7 @@
 //usage:     "\n	-s	Use System V sum algorithm (512byte blocks)"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 enum { SUM_BSD, PRINT_NAME, SUM_SYSV };
 
@@ -30,18 +31,20 @@ enum { SUM_BSD, PRINT_NAME, SUM_SYSV };
 /* Return 1 if successful.  */
 static unsigned sum_file(const char *file, unsigned type)
 {
-#define buf bb_common_bufsiz1
 	unsigned long long total_bytes = 0;
 	int fd, r;
 	/* The sum of all the input bytes, modulo (UINT_MAX + 1).  */
 	unsigned s = 0;
+
+#define buf bb_common_bufsiz1
+	setup_common_bufsiz();
 
 	fd = open_or_warn_stdin(file);
 	if (fd == -1)
 		return 0;
 
 	while (1) {
-		size_t bytes_read = safe_read(fd, buf, BUFSIZ);
+		size_t bytes_read = safe_read(fd, buf, COMMON_BUFSIZE);
 
 		if ((ssize_t)bytes_read <= 0) {
 			r = (fd && close(fd) != 0);

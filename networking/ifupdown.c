@@ -44,6 +44,7 @@
 //usage:     "\n	-f	Force de/configuration"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 /* After libbb.h, since it needs sys/types.h on some systems */
 #include <sys/utsname.h>
 #include <fnmatch.h>
@@ -129,8 +130,8 @@ struct globals {
 	const char *startup_PATH;
 	char *shell;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
-#define INIT_G() do { } while (0)
+#define G (*(struct globals*)bb_common_bufsiz1)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 
 static const char keywords_up_down[] ALIGN1 =

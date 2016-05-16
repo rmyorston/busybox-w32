@@ -42,6 +42,7 @@
 //usage:     "\n	-F	Same as -f, but dump buffer first"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include <sys/ipc.h>
 #include <sys/sem.h>
 #include <sys/shm.h>
@@ -67,11 +68,12 @@ struct globals {
 	struct sembuf SMrdn[2]; // {1, 0}, {0, +1, SEM_UNDO}
 	struct shbuf_ds *shbuf;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define SMrup (G.SMrup)
 #define SMrdn (G.SMrdn)
 #define shbuf (G.shbuf)
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	memcpy(SMrup, init_sem, sizeof(init_sem)); \
 } while (0)
 

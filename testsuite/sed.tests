@@ -135,10 +135,12 @@ testing "sed empty file plus cat" "sed -e 's/nohit//' input -" "one\ntwo" \
 	"" "one\ntwo"
 testing "sed cat plus empty file" "sed -e 's/nohit//' input -" "one\ntwo" \
 	"one\ntwo" ""
-test x"$SKIP_KNOWN_BUGS" = x"" && {
 testing "sed append autoinserts newline" "sed -e '/woot/a woo' -" \
 	"woot\nwoo\n" "" "woot"
-}
+testing "sed append autoinserts newline 2" "sed -e '/oot/a woo' - input" \
+	"woot\nwoo\nboot\nwoo\n" "boot" "woot"
+testing "sed append autoinserts newline 3" "sed -e '/oot/a woo' -i input && cat input" \
+	"boot\nwoo\n" "boot" ""
 testing "sed insert doesn't autoinsert newline" "sed -e '/woot/i woo' -" \
 	"woo\nwoot" "" "woot"
 testing "sed print autoinsert newlines" "sed -e 'p' -" "one\none" "" "one"
@@ -274,6 +276,24 @@ testing "sed a cmd ended by double backslash" \
 '	| one \\
 	| two \\
 '
+
+testing "sed a cmd understands \\n,\\t,\\r" \
+	"sed '/1/a\\\\t\\rzero\\none\\\\ntwo\\\\\\nthree'" \
+"\
+line1
+\t\rzero
+one\\\\ntwo\\
+three
+" "" "line1\n"
+
+testing "sed i cmd understands \\n,\\t,\\r" \
+	"sed '/1/i\\\\t\\rzero\\none\\\\ntwo\\\\\\nthree'" \
+"\
+\t\rzero
+one\\\\ntwo\\
+three
+line1
+" "" "line1\n"
 
 # first three lines are deleted; 4th line is matched and printed by "2,3" and by "4" ranges
 testing "sed with N skipping lines past ranges on next cmds" \

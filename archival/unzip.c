@@ -48,6 +48,12 @@
 #pragma pack(2)
 #endif
 
+#if 0
+# define dbg(...) bb_error_msg(__VA_ARGS__)
+#else
+# define dbg(...) ((void)0)
+#endif
+
 enum {
 #if BB_BIG_ENDIAN
 	ZIP_FILEHEADER_MAGIC = 0x504b0304,
@@ -196,15 +202,17 @@ static uint32_t find_cdf_offset(void)
 	unsigned char *p;
 	off_t end;
 	unsigned char *buf = xzalloc(PEEK_FROM_END);
+	uint32_t found;
 
 	end = xlseek(zip_fd, 0, SEEK_END);
 	end -= PEEK_FROM_END;
 	if (end < 0)
 		end = 0;
-	xlseek(zip_fd, end, SEEK_SET);
+	dbg("Looking for cdf_offset starting from 0x%"OFF_FMT"x", end);
+ 	xlseek(zip_fd, end, SEEK_SET);
 	full_read(zip_fd, buf, PEEK_FROM_END);
 
-	cde_header.formatted.cdf_offset = BAD_CDF_OFFSET;
+	found = BAD_CDF_OFFSET;
 	p = buf;
 	while (p <= buf + PEEK_FROM_END - CDE_HEADER_LEN - 4) {
 		if (*p != 'P') {
@@ -223,14 +231,25 @@ static uint32_t find_cdf_offset(void)
 		/*
 		 * I've seen .ZIP files with seemingly valid CDEs
 		 * where cdf_offset points past EOF - ??
-		 * Ignore such CDEs:
+		 * This check ignores such CDEs:
 		 */
-		if (cde_header.formatted.cdf_offset < end + (p - buf))
-			break;
-		cde_header.formatted.cdf_offset = BAD_CDF_OFFSET;
+		if (cde_header.formatted.cdf_offset < end + (p - buf)) {
+			found = cde_header.formatted.cdf_offset;
+			dbg("Possible cdf_offset:0x%x at 0x%"OFF_FMT"x",
+				(unsigned)found, end + (p-3 - buf));
+			dbg("  cdf_offset+cdf_size:0x%x",
+				(unsigned)(found + SWAP_LE32(cde_header.formatted.cdf_size)));
+			/*
+			 * We do not "break" here because only the last CDE is valid.
+			 * I've seen a .zip archive which contained a .zip file,
+			 * uncompressed, and taking the first CDE was using
+			 * the CDE inside that file!
+			 */
+		}
 	}
 	free(buf);
-	return cde_header.formatted.cdf_offset;
+	dbg("Found cdf_offset:0x%x", (unsigned)found);
+	return found;
 };
 
 static uint32_t read_next_cdf(uint32_t cdf_offset, cdf_header_t *cdf_ptr)
@@ -243,15 +262,22 @@ static uint32_t read_next_cdf(uint32_t cdf_offset, cdf_header_t *cdf_ptr)
 		cdf_offset = find_cdf_offset();
 
 	if (cdf_offset != BAD_CDF_OFFSET) {
+		dbg("Reading CDF at 0x%x", (unsigned)cdf_offset);
 		xlseek(zip_fd, cdf_offset + 4, SEEK_SET);
 		xread(zip_fd, cdf_ptr->raw, CDF_HEADER_LEN);
 		FIX_ENDIANNESS_CDF(*cdf_ptr);
+		dbg("  file_name_length:%u extra_field_length:%u file_comment_length:%u",
+			(unsigned)cdf_ptr->formatted.file_name_length,
+			(unsigned)cdf_ptr->formatted.extra_field_length,
+			(unsigned)cdf_ptr->formatted.file_comment_length
+		);
 		cdf_offset += 4 + CDF_HEADER_LEN
 			+ cdf_ptr->formatted.file_name_length
 			+ cdf_ptr->formatted.extra_field_length
 			+ cdf_ptr->formatted.file_comment_length;
 	}
 
+	dbg("Returning file position to 0x%"OFF_FMT"x", org);
 	xlseek(zip_fd, org, SEEK_SET);
 	return cdf_offset;
 };
@@ -464,7 +490,7 @@ int unzip_main(int argc, char **argv)
 		if (overwrite == O_PROMPT)
 			overwrite = O_NEVER;
 	} else {
-		static const char extn[][5] = { ".zip", ".ZIP" };
+		static const char extn[][5] ALIGN1 = { ".zip", ".ZIP" };
 		char *ext = src_fn + strlen(src_fn);
 		int src_fd;
 
@@ -491,11 +517,11 @@ int unzip_main(int argc, char **argv)
 			printf("Archive:  %s\n", src_fn);
 		if (listing) {
 			puts(verbose ?
-				" Length   Method    Size  Ratio   Date   Time   CRC-32    Name\n"
-				"--------  ------  ------- -----   ----   ----   ------    ----"
+				" Length   Method    Size  Cmpr    Date    Time   CRC-32   Name\n"
+				"--------  ------  ------- ---- ---------- ----- --------  ----"
 				:
-				"  Length     Date   Time    Name\n"
-				" --------    ----   ----    ----"
+				"  Length      Date    Time    Name\n"
+				"---------  ---------- -----   ----"
 				);
 		}
 	}
@@ -535,11 +561,14 @@ int unzip_main(int argc, char **argv)
 		/* Check magic number */
 		xread(zip_fd, &magic, 4);
 		/* Central directory? It's at the end, so exit */
-		if (magic == ZIP_CDF_MAGIC)
+		if (magic == ZIP_CDF_MAGIC) {
+			dbg("got ZIP_CDF_MAGIC");
 			break;
+		}
 #if ENABLE_DESKTOP
 		/* Data descriptor? It was a streaming file, go on */
 		if (magic == ZIP_DD_MAGIC) {
+			dbg("got ZIP_DD_MAGIC");
 			/* skip over duplicate crc32, cmpsize and ucmpsize */
 			unzip_skip(3 * 4);
 			continue;
@@ -547,6 +576,7 @@ int unzip_main(int argc, char **argv)
 #endif
 		if (magic != ZIP_FILEHEADER_MAGIC)
 			bb_error_msg_and_die("invalid zip magic %08X", (int)magic);
+		dbg("got ZIP_FILEHEADER_MAGIC");
 
 		/* Read the file header */
 		xread(zip_fd, zip_header.raw, ZIP_HEADER_LEN);
@@ -590,6 +620,11 @@ int unzip_main(int argc, char **argv)
 			bb_error_msg_and_die("can't find file table");
 		}
 #endif
+		dbg("File cmpsize:0x%x extra_len:0x%x ucmpsize:0x%x",
+			(unsigned)zip_header.formatted.cmpsize,
+			(unsigned)zip_header.formatted.extra_len,
+			(unsigned)zip_header.formatted.ucmpsize
+		);
 
 		/* Read filename */
 		free(dst_fn);
@@ -610,40 +645,55 @@ int unzip_main(int argc, char **argv)
 		} else {
 			if (listing) {
 				/* List entry */
-				unsigned dostime = zip_header.formatted.modtime | (zip_header.formatted.moddate << 16);
+				char dtbuf[sizeof("mm-dd-yyyy hh:mm")];
+				sprintf(dtbuf, "%02u-%02u-%04u %02u:%02u",
+					(zip_header.formatted.moddate >> 5) & 0xf,  // mm: 0x01e0
+					(zip_header.formatted.moddate)      & 0x1f, // dd: 0x001f
+					(zip_header.formatted.moddate >> 9) + 1980, // yy: 0xfe00
+					(zip_header.formatted.modtime >> 11),       // hh: 0xf800
+					(zip_header.formatted.modtime >> 5) & 0x3f  // mm: 0x07e0
+					// seconds/2 are not shown, encoded in ----------- 0x001f
+				);
 				if (!verbose) {
-					//      "  Length     Date   Time    Name\n"
-					//      " --------    ----   ----    ----"
-					printf(       "%9u  %02u-%02u-%02u %02u:%02u   %s\n",
+					//      "  Length      Date    Time    Name\n"
+					//      "---------  ---------- -----   ----"
+					printf(       "%9u  " "%s   "         "%s\n",
 						(unsigned)zip_header.formatted.ucmpsize,
-						(dostime & 0x01e00000) >> 21,
-						(dostime & 0x001f0000) >> 16,
-						(((dostime & 0xfe000000) >> 25) + 1980) % 100,
-						(dostime & 0x0000f800) >> 11,
-						(dostime & 0x000007e0) >> 5,
+						dtbuf,
 						dst_fn);
-					total_usize += zip_header.formatted.ucmpsize;
 				} else {
 					unsigned long percents = zip_header.formatted.ucmpsize - zip_header.formatted.cmpsize;
+					if ((int32_t)percents < 0)
+						percents = 0; /* happens if ucmpsize < cmpsize */
 					percents = percents * 100;
 					if (zip_header.formatted.ucmpsize)
 						percents /= zip_header.formatted.ucmpsize;
-					//      " Length   Method    Size  Ratio   Date   Time   CRC-32    Name\n"
-					//      "--------  ------  ------- -----   ----   ----   ------    ----"
-					printf(      "%8u  Defl:N"    "%9u%4u%%  %02u-%02u-%02u %02u:%02u  %08x  %s\n",
+					//      " Length   Method    Size  Cmpr    Date    Time   CRC-32   Name\n"
+					//      "--------  ------  ------- ---- ---------- ----- --------  ----"
+					printf(      "%8u  %s"        "%9u%4u%% " "%s "         "%08x  "  "%s\n",
 						(unsigned)zip_header.formatted.ucmpsize,
+						zip_header.formatted.method == 0 ? "Stored" : "Defl:N", /* Defl is method 8 */
+/* TODO: show other methods?
+ *  1 - Shrunk
+ *  2 - Reduced with compression factor 1
+ *  3 - Reduced with compression factor 2
+ *  4 - Reduced with compression factor 3
+ *  5 - Reduced with compression factor 4
+ *  6 - Imploded
+ *  7 - Reserved for Tokenizing compression algorithm
+ *  9 - Deflate64
+ * 10 - PKWARE Data Compression Library Imploding
+ * 11 - Reserved by PKWARE
+ * 12 - BZIP2
+ */
 						(unsigned)zip_header.formatted.cmpsize,
 						(unsigned)percents,
-						(dostime & 0x01e00000) >> 21,
-						(dostime & 0x001f0000) >> 16,
-						(((dostime & 0xfe000000) >> 25) + 1980) % 100,
-						(dostime & 0x0000f800) >> 11,
-						(dostime & 0x000007e0) >> 5,
+						dtbuf,
 						zip_header.formatted.crc32,
 						dst_fn);
-					total_usize += zip_header.formatted.ucmpsize;
 					total_size += zip_header.formatted.cmpsize;
 				}
+				total_usize += zip_header.formatted.ucmpsize;
 				i = 'n';
 			} else if (dst_fd == STDOUT_FILENO) {
 				/* Extracting to STDOUT */
@@ -746,21 +796,25 @@ int unzip_main(int argc, char **argv)
 
 	if (listing && quiet <= 1) {
 		if (!verbose) {
-			//      "  Length     Date   Time    Name\n"
-			//      " --------    ----   ----    ----"
-			printf( " --------                   -------\n"
-				"%9lu"   "                   %u files\n",
-				total_usize, total_entries);
+			//	"  Length      Date    Time    Name\n"
+			//	"---------  ---------- -----   ----"
+			printf( " --------%21s"               "-------\n"
+				     "%9lu%21s"               "%u files\n",
+				"",
+				total_usize, "", total_entries);
 		} else {
 			unsigned long percents = total_usize - total_size;
+			if ((long)percents < 0)
+				percents = 0; /* happens if usize < size */
 			percents = percents * 100;
 			if (total_usize)
 				percents /= total_usize;
-			//      " Length   Method    Size  Ratio   Date   Time   CRC-32    Name\n"
-			//      "--------  ------  ------- -----   ----   ----   ------    ----"
-			printf( "--------          -------  ---                            -------\n"
-				"%8lu"              "%17lu%4u%%                            %u files\n",
-				total_usize, total_size, (unsigned)percents,
+			//	" Length   Method    Size  Cmpr    Date    Time   CRC-32   Name\n"
+			//	"--------  ------  ------- ---- ---------- ----- --------  ----"
+			printf( "--------          ------- ----%28s"                      "----\n"
+				"%8lu"              "%17lu%4u%%%28s"                      "%u files\n",
+				"",
+				total_usize, total_size, (unsigned)percents, "",
 				total_entries);
 		}
 	}

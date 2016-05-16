@@ -47,6 +47,7 @@
 //config:	  and /etc/bootchartd.conf files.
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 /* After libbb.h, since it needs sys/types.h on some systems */
 #include <sys/utsname.h>
 
@@ -115,8 +116,8 @@
 struct globals {
 	char jiffy_line[COMMON_BUFSIZE];
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
-#define INIT_G() do { } while (0)
+#define G (*(struct globals*)bb_common_bufsiz1)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 static void dump_file(FILE *fp, const char *filename)
 {
@@ -193,7 +194,7 @@ static char *make_tempdir(void)
 		 * Since we unmount it at once, we can mount it anywhere.
 		 * Try a few locations which are likely ti exist.
 		 */
-		static const char dirs[] = "/mnt\0""/tmp\0""/boot\0""/proc\0";
+		static const char dirs[] ALIGN1 = "/mnt\0""/tmp\0""/boot\0""/proc\0";
 		const char *try_dir = dirs;
 		while (mount("none", try_dir, "tmpfs", MS_SILENT, "size=16m") != 0) {
 			try_dir += strlen(try_dir) + 1;

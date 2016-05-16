@@ -62,6 +62,7 @@
 //usage:     "\n	-p	Preserve environment"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include <syslog.h>
 #include <sys/resource.h>
 
@@ -138,8 +139,8 @@ enum {
 struct globals {
 	struct termios tty_attrs;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
-#define INIT_G() do { } while (0)
+#define G (*(struct globals*)bb_common_bufsiz1)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 
 #if ENABLE_FEATURE_NOLOGIN

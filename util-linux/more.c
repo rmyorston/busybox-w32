@@ -26,6 +26,7 @@
 #include <conio.h>
 #endif
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 /* Support for FEATURE_USE_TERMIOS */
 
@@ -35,10 +36,10 @@ struct globals {
 	struct termios new_settings;
 } FIX_ALIASING;
 #define G (*(struct globals*)bb_common_bufsiz1)
-#define INIT_G() ((void)0)
 #define initial_settings (G.initial_settings)
 #define new_settings     (G.new_settings    )
 #define cin_fileno       (G.cin_fileno      )
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 #define setTermSettings(fd, argp) \
 do { \

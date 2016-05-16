@@ -53,6 +53,7 @@
 //  totalswap=134209536, freeswap=134209536, procs=157})
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 typedef unsigned long long ullong;
 
@@ -108,15 +109,14 @@ struct globals {
 #define proc_meminfo       (G.proc_meminfo      )
 #define proc_diskstats     (G.proc_diskstats    )
 #define proc_sys_fs_filenr (G.proc_sys_fs_filenr)
+#define outbuf bb_common_bufsiz1
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
 	cur_outbuf = outbuf; \
 	G.final_char = '\n'; \
 	G.deltanz = G.delta = 1000000; \
 } while (0)
-
-// We depend on this being a char[], not char* - we take sizeof() of it
-#define outbuf bb_common_bufsiz1
 
 static inline void reset_outbuf(void)
 {
@@ -140,7 +140,7 @@ static void print_outbuf(void)
 static void put(const char *s)
 {
 	char *p = cur_outbuf;
-	int sz = outbuf + sizeof(outbuf) - p;
+	int sz = outbuf + COMMON_BUFSIZE - p;
 	while (*s && --sz >= 0)
 		*p++ = *s++;
 	cur_outbuf = p;
@@ -148,7 +148,7 @@ static void put(const char *s)
 
 static void put_c(char c)
 {
-	if (cur_outbuf < outbuf + sizeof(outbuf))
+	if (cur_outbuf < outbuf + COMMON_BUFSIZE)
 		*cur_outbuf++ = c;
 }
 
