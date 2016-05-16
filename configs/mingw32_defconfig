@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.25.0.git
-# Mon Apr  4 16:27:18 2016
+# Mon May 16 09:34:15 2016
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -101,6 +101,7 @@ CONFIG_PREFIX=""
 #
 # Busybox Library Tuning
 #
+# CONFIG_FEATURE_USE_BSS_TAIL is not set
 CONFIG_FEATURE_RTMINMAX=y
 CONFIG_PASSWORD_MINLEN=6
 CONFIG_MD5_SMALL=1
