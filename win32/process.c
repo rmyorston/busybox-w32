@@ -4,7 +4,7 @@
 int waitpid(pid_t pid, int *status, int options)
 {
 	HANDLE proc;
-	int ret;
+	intptr_t ret;
 
 	/* Windows does not understand parent-child */
 	if (pid > 0 && options == 0) {
@@ -12,7 +12,7 @@ int waitpid(pid_t pid, int *status, int options)
 						FALSE, pid)) != NULL ) {
 			ret = _cwait(status, (intptr_t)proc, 0);
 			CloseHandle(proc);
-			return ret;
+			return ret == -1 ? -1 : pid;
 		}
 	}
 	errno = EINVAL;
@@ -207,12 +207,12 @@ quote_arg(const char *arg)
 	return q;
 }
 
-static pid_t
+static intptr_t
 spawnveq(int mode, const char *path, const char *const *argv, const char *const *env)
 {
 	char **new_argv;
 	int i, argc = 0;
-	pid_t ret;
+	intptr_t ret;
 
 	if (!argv) {
 		const char *empty_argv[] = { path, NULL };
@@ -235,7 +235,7 @@ spawnveq(int mode, const char *path, const char *const *argv, const char *const 
 	return ret;
 }
 
-pid_t
+static intptr_t
 mingw_spawn_applet(int mode,
 		   const char *applet,
 		   const char *const *argv,
@@ -243,7 +243,7 @@ mingw_spawn_applet(int mode,
 {
 	char **env = copy_environ(envp);
 	char path[MAX_PATH+20];
-	int ret;
+	intptr_t ret;
 
 	sprintf(path, "BUSYBOX_APPLET_NAME=%s", applet);
 	env = env_setenv(env, path);
@@ -252,10 +252,10 @@ mingw_spawn_applet(int mode,
 	return ret;
 }
 
-static pid_t
+static intptr_t
 mingw_spawn_interpreter(int mode, const char *prog, const char *const *argv, const char *const *envp)
 {
-	int ret;
+	intptr_t ret;
 	char **opts;
 	int nopts;
 	const char *interpr = parse_interpreter(prog, &opts, &nopts);
@@ -296,10 +296,10 @@ mingw_spawn_interpreter(int mode, const char *prog, const char *const *argv, con
 	return ret;
 }
 
-pid_t
+static intptr_t
 mingw_spawn_1(int mode, const char *cmd, const char *const *argv, const char *const *envp)
 {
-	int ret;
+	intptr_t ret;
 
 	if (ENABLE_FEATURE_PREFER_APPLETS &&
 	    find_applet_by_name(cmd) >= 0)

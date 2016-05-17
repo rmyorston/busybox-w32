@@ -14005,8 +14005,7 @@ spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
 	new = forkshell_prepare(fs);
 	sprintf(buf, "%x", (unsigned int)new->hMapFile);
 	argv[2] = buf;
-	pid = mingw_spawn_applet(P_NOWAIT, "sh", argv,
-				     (const char *const *)environ);
+	pid = spawn(argv);
 	CloseHandle(new->hMapFile);
 	UnmapViewOfFile(new);
 	if (pid == -1) {
