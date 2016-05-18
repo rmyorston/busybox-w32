@@ -4228,6 +4228,7 @@ waitpid_child(int *status, int wait_flags)
 	*status = (int)win_status;
 	return pid;
 }
+#define waitpid(p, s, f) waitpid_child(s, f)
 #endif
 
 static int
@@ -4245,11 +4246,7 @@ dowait(int wait_flags, struct job *job)
 	 * NB: _not_ safe_waitpid, we need to detect EINTR */
 	if (doing_jobctl)
 		wait_flags |= WUNTRACED;
-#if ENABLE_PLATFORM_MINGW32
-	pid = waitpid_child(&status, wait_flags);
-#else
 	pid = waitpid(-1, &status, wait_flags);
-#endif
 	TRACE(("wait returns pid=%d, status=0x%x, errno=%d(%s)\n",
 				pid, status, errno, strerror(errno)));
 	if (pid <= 0)
