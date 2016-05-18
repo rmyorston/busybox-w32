@@ -3538,6 +3538,9 @@ unaliascmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
  */
 struct procstat {
 	pid_t   ps_pid;         /* process id */
+#if ENABLE_PLATFORM_MINGW32
+	HANDLE  ps_proc;
+#endif
 	int     ps_status;      /* last process status from wait() */
 	char    *ps_cmd;        /* text of command being run */
 };
@@ -4159,54 +4162,69 @@ static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
 static pid_t
 waitpid_child(int *status, int wait_flags)
 {
-	HANDLE *pidlist, *pidp;
+	pid_t *pidlist;
+	HANDLE *proclist;
 	int pid_nr = 0;
 	pid_t pid;
 	DWORD win_status, idx;
 	struct job *jb;
 
-	#define LOOP(stmt) \
-	for (jb = curjob; jb; jb = jb->prev_job) { \
-		struct procstat *ps, *psend; \
-		if (jb->state == JOBDONE) \
-			continue; \
-		ps = jb->ps; \
-		psend = ps + jb->nprocs; \
-		while (ps < psend) { \
-			if (ps->ps_pid != -1) { \
-				stmt; \
-			} \
-			ps++; \
-		} \
+	for (jb = curjob; jb; jb = jb->prev_job) {
+		if (jb->state != JOBDONE)
+			pid_nr += jb->nprocs;
+	}
+	if ( pid_nr++ == 0 )
+		return -1;
+
+	pidlist = ckmalloc(sizeof(*pidlist)*pid_nr);
+	proclist = ckmalloc(sizeof(*proclist)*pid_nr);
+
+	pidlist[0] = -1;
+	proclist[0] = hSIGINT;
+	pid_nr = 1;
+	for (jb = curjob; jb; jb = jb->prev_job) {
+		struct procstat *ps, *psend;
+		if (jb->state == JOBDONE)
+			continue;
+		ps = jb->ps;
+		psend = ps + jb->nprocs;
+		while (ps < psend) {
+			if (ps->ps_pid != -1 && ps->ps_proc != NULL) {
+				pidlist[pid_nr] = ps->ps_pid;
+				proclist[pid_nr++] = ps->ps_proc;
+			}
+			ps++;
+		}
 	}
 
-	LOOP(pid_nr++);
-	if (!pid_nr)
+	if (pid_nr == 1) {
+		free(pidlist);
+		free(proclist);
 		return -1;
-	pid_nr++;
-	pidp = pidlist = ckmalloc(sizeof(*pidlist)*pid_nr);
-	*pidp++ = hSIGINT;
-	LOOP(*pidp++ = (HANDLE)ps->ps_pid);
-	#undef LOOP
+	}
 
-	idx = WaitForMultipleObjects(pid_nr, pidlist, FALSE,
+	idx = WaitForMultipleObjects(pid_nr, proclist, FALSE,
 				wait_flags|WNOHANG ? 1 : INFINITE);
 	if (idx >= pid_nr) {
 		free(pidlist);
+		free(proclist);
 		return -1;
 	}
 	if (!idx) { 		/* hSIGINT */
 		int i;
 		ResetEvent(hSIGINT);
 		for (i = 1; i < pid_nr; i++)
-			TerminateProcess(pidlist[i], 1);
+			TerminateProcess(proclist[i], 1);
+		pid = pidlist[1];
 		free(pidlist);
+		free(proclist);
 		*status = 260;	/* terminated by a signal */
-		return pidlist[1];
+		return pid;
 	}
-	GetExitCodeProcess(pidlist[idx], &win_status);
-	pid = (int)pidlist[idx];
+	GetExitCodeProcess(proclist[idx], &win_status);
+	pid = pidlist[idx];
 	free(pidlist);
+	free(proclist);
 	*status = (int)win_status;
 	return pid;
 }
@@ -4255,8 +4273,11 @@ dowait(int wait_flags, struct job *job)
 					jobno(jp), pid, ps->ps_status, status));
 				ps->ps_status = status;
 				thisjob = jp;
-				if (ENABLE_PLATFORM_MINGW32)
+				if (ENABLE_PLATFORM_MINGW32) {
 					ps->ps_pid = -1;
+					CloseHandle(ps->ps_proc);
+					ps->ps_proc = NULL;
+				}
 			}
 			if (ps->ps_status == -1)
 				jobstate = JOBRUNNING;
@@ -5096,8 +5117,15 @@ forkchild(struct job *jp, union node *n, int mode)
 #define forkparent(jp, n, mode, pid) forkparent(jp, mode, pid)
 #endif
 static void
+#if !ENABLE_PLATFORM_MINGW32
 forkparent(struct job *jp, union node *n, int mode, pid_t pid)
+#else
+forkparent(struct job *jp, union node *n, int mode, HANDLE proc)
+#endif
 {
+#if ENABLE_PLATFORM_MINGW32
+	pid_t pid = GetProcessId(proc);
+#endif
 	TRACE(("In parent shell: child = %d\n", pid));
 	if (!jp && !ENABLE_PLATFORM_MINGW32) { /* FIXME not quite understand this */
 		while (jobless && dowait(DOWAIT_NONBLOCK, NULL) > 0)
@@ -5124,6 +5152,9 @@ forkparent(struct job *jp, union node *n, int mode, pid_t pid)
 	if (jp) {
 		struct procstat *ps = &jp->ps[jp->nprocs++];
 		ps->ps_pid = pid;
+#if ENABLE_PLATFORM_MINGW32
+		ps->ps_proc = proc;
+#endif
 		ps->ps_status = -1;
 		ps->ps_cmd = nullstr;
 #if JOBS
@@ -14000,20 +14031,20 @@ spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
 	struct forkshell *new;
 	char buf[16];
 	const char *argv[] = { "sh", "--forkshell", NULL, NULL };
-	pid_t pid;
+	intptr_t ret;
 
 	new = forkshell_prepare(fs);
 	sprintf(buf, "%x", (unsigned int)new->hMapFile);
 	argv[2] = buf;
-	pid = spawn(argv);
+	ret = mingw_spawn_proc(argv);
 	CloseHandle(new->hMapFile);
 	UnmapViewOfFile(new);
-	if (pid == -1) {
+	if (ret == -1) {
 		free(jp);
 		return -1;
 	}
-	forkparent(jp, fs->node, mode, pid);
-	return pid;
+	forkparent(jp, fs->node, mode, (HANDLE)ret);
+	return ret == -1 ? -1 : 0;
 }
 
 /*

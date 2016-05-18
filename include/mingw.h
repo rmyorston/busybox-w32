@@ -450,6 +450,7 @@ DIR *mingw_opendir(const char *path);
 #define PRIuMAX "I64u"
 
 pid_t FAST_FUNC mingw_spawn(char **argv);
+intptr_t FAST_FUNC mingw_spawn_proc(char **argv);
 int mingw_execv(const char *cmd, const char *const *argv);
 int mingw_execvp(const char *cmd, const char *const *argv);
 int mingw_execve(const char *cmd, const char *const *argv, const char *const *envp);
