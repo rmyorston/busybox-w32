@@ -4507,9 +4507,6 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 	int retval;
 	struct job *jp;
 
-	if (ENABLE_PLATFORM_MINGW32)
-		return 0;
-
 	if (pending_sig)
 		raise_exception(EXSIG);
 
@@ -5168,7 +5165,6 @@ forkshell(struct job *jp, union node *n, int mode)
 	int pid;
 
 	TRACE(("forkshell(%%%d, %p, %d) called\n", jobno(jp), n, mode));
-
 	pid = fork();
 	if (pid < 0) {
 		TRACE(("Fork failed, errno=%d", errno));
