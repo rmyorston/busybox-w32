@@ -309,10 +309,8 @@ static void less_exit(int code)
 {
 	set_tty_cooked();
 	clear_line();
-#if !ENABLE_PLATFORM_MINGW32
 	if (code < 0)
 		kill_myself_with_sig(- code); /* does not return */
-#endif
 	exit(code);
 }
 
@@ -1805,12 +1803,10 @@ static void keypress_process(int keypress)
 		number_process(keypress);
 }
 
-#if !ENABLE_PLATFORM_MINGW32
 static void sig_catcher(int sig)
 {
 	less_exit(- sig);
 }
-#endif
 
 #if ENABLE_FEATURE_LESS_WINCH
 static void sigwinch_handler(int sig UNUSED_PARAM)
@@ -1901,9 +1897,7 @@ int less_main(int argc, char **argv)
 	max_displayed_line -= 2;
 
 	/* We want to restore term_orig on exit */
-#if !ENABLE_PLATFORM_MINGW32
 	bb_signals(BB_FATAL_SIGS, sig_catcher);
-#endif
 #if ENABLE_FEATURE_LESS_WINCH
 	signal(SIGWINCH, sigwinch_handler);
 #endif

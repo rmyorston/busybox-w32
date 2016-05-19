@@ -484,6 +484,7 @@ enum {
 		+ (1LL << SIGUSR2)
 		+ 0),
 };
+#if !ENABLE_PLATFORM_MINGW32
 void bb_signals(int sigs, void (*f)(int)) FAST_FUNC;
 /* Unlike signal() and bb_signals, sets handler with sigaction()
  * and in a way that while signal handler is run, no other signals
@@ -501,6 +502,10 @@ void sig_unblock(int sig) FAST_FUNC;
 int sigaction_set(int sig, const struct sigaction *act) FAST_FUNC;
 /* SIG_BLOCK/SIG_UNBLOCK all signals: */
 int sigprocmask_allsigs(int how) FAST_FUNC;
+#else
+#define bb_signals(s, f)
+#define kill_myself_with_sig(s)
+#endif
 /* Standard handler which just records signo */
 extern smallint bb_got_signal;
 void record_signo(int signo); /* not FAST_FUNC! */
