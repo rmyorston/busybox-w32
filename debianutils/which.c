@@ -46,7 +46,7 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 		char *p;
 
 #if ENABLE_FEATURE_PREFER_APPLETS
-		if ( find_applet_by_name(*argv) >= 0 ) {
+		if (find_applet_by_name(*argv) >= 0 || strcmp(*argv, "busybox") == 0) {
 			missing = 0;
 			puts(*argv);
 			if (!option_mask32) /* -a not set */
