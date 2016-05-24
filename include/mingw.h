@@ -289,11 +289,9 @@ int mingw_chmod(const char *path, int mode);
 #define mkdir mingw_mkdir
 #define chmod mingw_chmod
 
-#if ENABLE_LFS
+#if ENABLE_LFS && !defined(__MINGW64_VERSION_MAJOR)
 # define off_t off64_t
 #endif
-#undef lseek
-#define lseek _lseeki64
 
 typedef int nlink_t;
 typedef int blksize_t;
@@ -388,6 +386,7 @@ NOIMPL(chroot,const char *root UNUSED_PARAM);
 NOIMPL(fchdir,int fd UNUSED_PARAM);
 int mingw_dup2 (int fd, int fdto);
 char *mingw_getcwd(char *pointer, int len);
+off_t mingw_lseek(int fd, off_t offset, int whence);
 
 
 IMPL(getgid,int,DEFAULT_GID,void);
@@ -428,6 +427,8 @@ int mingw_rmdir(const char *name);
 #define open mingw_open
 #define unlink mingw_unlink
 #define rmdir mingw_rmdir
+#undef lseek
+#define lseek mingw_lseek
 
 #undef access
 #define access mingw_access

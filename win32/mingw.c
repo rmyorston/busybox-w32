@@ -1030,3 +1030,17 @@ DIR *mingw_opendir(const char *path)
 
 	return opendir(path);
 }
+
+off_t mingw_lseek(int fd, off_t offset, int whence)
+{
+	HANDLE h = (HANDLE)_get_osfhandle(fd);
+	if (h == INVALID_HANDLE_VALUE) {
+		errno = EBADF;
+		return -1;
+	}
+	if (GetFileType(h) != FILE_TYPE_DISK) {
+		errno = ESPIPE;
+		return -1;
+	}
+	return _lseeki64(fd, offset, whence);
+}
