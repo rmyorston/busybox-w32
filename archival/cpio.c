@@ -403,10 +403,6 @@ int cpio_main(int argc UNUSED_PARAM, char **argv)
 #if !ENABLE_FEATURE_CPIO_O
 	if (opt & OPT_FILE) { /* -F */
 		xmove_fd(xopen(cpio_filename, O_RDONLY), STDIN_FILENO);
-#if ENABLE_PLATFORM_MINGW32
-		/* default is seek_by_read but seek_by_jump is OK for file */
-		archive_handle->seek = seek_by_jump;
-#endif
 	}
 #else
 	if ((opt & (OPT_FILE|OPT_CREATE)) == OPT_FILE) { /* -F without -o */
