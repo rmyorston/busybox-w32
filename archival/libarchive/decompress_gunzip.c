@@ -36,9 +36,6 @@
 #include <setjmp.h>
 #include "libbb.h"
 #include "bb_archive.h"
-#if ENABLE_PLATFORM_MINGW32 && __GNUC__
-#pragma pack(2)
-#endif
 
 typedef struct huft_t {
 	unsigned char e;	/* number of extra bits or operation */
@@ -1121,6 +1118,9 @@ static uint32_t buffer_read_le_u32(STATE_PARAM_ONLY)
 	return res;
 }
 
+#if ENABLE_PLATFORM_MINGW32 && __GNUC__
+#pragma pack(2)
+#endif
 static int check_header_gzip(STATE_PARAM transformer_state_t *xstate)
 {
 	union {
@@ -1192,6 +1192,9 @@ static int check_header_gzip(STATE_PARAM transformer_state_t *xstate)
 	}
 	return 1;
 }
+#if ENABLE_PLATFORM_MINGW32 && __GNUC__
+#pragma pack()
+#endif
 
 IF_DESKTOP(long long) int FAST_FUNC
 unpack_gz_stream(transformer_state_t *xstate)
