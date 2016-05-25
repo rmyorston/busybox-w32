@@ -37,7 +37,7 @@ int mingw_socket(int domain, int type, int protocol)
 		return -1;
 	}
 	/* convert into a file descriptor */
-	if ((sockfd = _open_osfhandle(s, O_RDWR|O_BINARY)) < 0) {
+	if ((sockfd = _open_osfhandle((intptr_t)s, O_RDWR|O_BINARY)) < 0) {
 		closesocket(s);
 		bb_error_msg("unable to make a socket file descriptor: %s",
 			     strerror(errno));
@@ -90,7 +90,7 @@ int mingw_accept(int sockfd1, struct sockaddr *sa, socklen_t *sz)
 	SOCKET s2 = accept(s1, sa, sz);
 
 	/* convert into a file descriptor */
-	if ((sockfd2 = _open_osfhandle(s2, O_RDWR|O_BINARY)) < 0) {
+	if ((sockfd2 = _open_osfhandle((intptr_t)s2, O_RDWR|O_BINARY)) < 0) {
 		int err = errno;
 		closesocket(s2);
 		bb_error_msg("unable to make a socket file descriptor: %s",

@@ -154,11 +154,11 @@ FILE *mingw_popen(const char *cmd, const char *mode)
 	p->pipe[ic] = INVALID_HANDLE_VALUE;
 
 	if ( *mode == 'r' ) {
-		fd = _open_osfhandle((long)p->pipe[ip], _O_RDONLY|_O_BINARY);
+		fd = _open_osfhandle((intptr_t)p->pipe[ip], _O_RDONLY|_O_BINARY);
 		fptr = _fdopen(fd, "rb");
 	}
 	else {
-		fd = _open_osfhandle((long)p->pipe[ip], _O_WRONLY|_O_BINARY);
+		fd = _open_osfhandle((intptr_t)p->pipe[ip], _O_WRONLY|_O_BINARY);
 		fptr = _fdopen(fd, "wb");
 	}
 
@@ -252,10 +252,10 @@ int mingw_popen_fd(const char *cmd, const char *mode, int fd0, pid_t *pid)
 	p->pipe[ic] = INVALID_HANDLE_VALUE;
 
 	if ( *mode == 'r' ) {
-		fd = _open_osfhandle((long)p->pipe[ip], _O_RDONLY|_O_BINARY);
+		fd = _open_osfhandle((intptr_t)p->pipe[ip], _O_RDONLY|_O_BINARY);
 	}
 	else {
-		fd = _open_osfhandle((long)p->pipe[ip], _O_WRONLY|_O_BINARY);
+		fd = _open_osfhandle((intptr_t)p->pipe[ip], _O_WRONLY|_O_BINARY);
 	}
 
 finito:
