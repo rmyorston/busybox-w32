@@ -1,6 +1,6 @@
 ### Status
 
-Things may work for you, or may not.  Things may never work because of huge differences between Linux and Windows.  Or things may work in future, if you report the problem to https://github.com/rmyorston/busybox-w32.
+Things may work for you, or may not.  Things may never work because of huge differences between Linux and Windows.  Or things may work in future, if you report the problem to https://github.com/rmyorston/busybox-w32.  If you don't have a GitHub account you can email me: rmy@pobox.com.
 
 ### Building
 
