@@ -353,6 +353,10 @@ int FAST_FUNC xsocket_type(len_and_sockaddr **lsap, int family, int sock_type)
 #if ENABLE_FEATURE_IPV6
 		fd = socket(AF_INET6, sock_type, 0);
 		if (fd >= 0) {
+#if ENABLE_PLATFORM_MINGW32
+			DWORD buffer = 0;
+			setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &buffer, sizeof(DWORD));
+#endif
 			family = AF_INET6;
 			goto done;
 		}
