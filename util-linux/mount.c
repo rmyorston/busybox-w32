@@ -268,7 +268,7 @@ enum {
 };
 
 
-#define OPTION_STR "o:t:rwanfvsiO:" IF_FEATURE_MOUNT_OTHERTAB("T:")
+#define OPTION_STR "o:*t:rwanfvsiO:" IF_FEATURE_MOUNT_OTHERTAB("T:")
 enum {
 	OPT_o = (1 << 0),
 	OPT_t = (1 << 1),
@@ -2058,7 +2058,7 @@ static int singlemount(struct mntent *mp, int ignore_busy)
 		del_loop(mp->mnt_fsname);
 		if (ENABLE_FEATURE_CLEAN_UP) {
 			free(loopFile);
-			free(mp->mnt_fsname);
+			/* No, "rc != 0" needs it: free(mp->mnt_fsname); */
 		}
 	}
 
@@ -2167,7 +2167,7 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 
 	// Parse remaining options
 	// Max 2 params; -o is a list, -v is a counter
-	opt_complementary = "?2o::" IF_FEATURE_MOUNT_VERBOSE("vv");
+	opt_complementary = "?2" IF_FEATURE_MOUNT_VERBOSE("vv");
 	opt = getopt32(argv, OPTION_STR, &lst_o, &fstype, &O_optmatch
 			IF_FEATURE_MOUNT_OTHERTAB(, &fstabname)
 			IF_FEATURE_MOUNT_VERBOSE(, &verbose));

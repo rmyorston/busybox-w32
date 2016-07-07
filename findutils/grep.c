@@ -115,8 +115,8 @@
 //usage:#define fgrep_full_usage ""
 
 #define OPTSTR_GREP \
-	"lnqvscFiHhe:f:Lorm:wx" \
-	IF_FEATURE_GREP_CONTEXT("A:B:C:") \
+	"lnqvscFiHhe:*f:*Lorm:+wx" \
+	IF_FEATURE_GREP_CONTEXT("A:+B:+C:+") \
 	IF_FEATURE_GREP_EGREP_ALIAS("E") \
 	IF_EXTRA_COMPAT("z") \
 	"aI"
@@ -694,6 +694,7 @@ int grep_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_FEATURE_GREP_CONTEXT
 	int Copt, opts;
 #endif
+	INIT_G();
 
 	/* For grep, exitcode of 1 is "not found". Other errors are 2: */
 	xfunc_error_retval = 2;
@@ -702,7 +703,7 @@ int grep_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_FEATURE_GREP_CONTEXT
 	/* -H unsets -h; -C unsets -A,-B; -e,-f are lists;
 	 * -m,-A,-B,-C have numeric param */
-	opt_complementary = "H-h:C-AB:e::f::m+:A+:B+:C+";
+	opt_complementary = "H-h:C-AB";
 	opts = getopt32(argv,
 		OPTSTR_GREP,
 		&pattern_head, &fopt, &max_matches,
@@ -731,7 +732,7 @@ int grep_main(int argc UNUSED_PARAM, char **argv)
 #else
 	/* with auto sanity checks */
 	/* -H unsets -h; -c,-q or -l unset -n; -e,-f are lists; -m N */
-	opt_complementary = "H-h:c-n:q-n:l-n:e::f::m+";
+	opt_complementary = "H-h:c-n:q-n:l-n:";
 	getopt32(argv, OPTSTR_GREP,
 		&pattern_head, &fopt, &max_matches);
 #endif

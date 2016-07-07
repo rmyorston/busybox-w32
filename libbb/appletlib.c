@@ -52,7 +52,6 @@
 
 #include "usage_compressed.h"
 
-
 #if ENABLE_SHOW_USAGE && !ENABLE_FEATURE_COMPRESS_USAGE
 static const char usage_messages[] ALIGN1 = UNPACKED_USAGE;
 #else
@@ -730,13 +729,16 @@ static void install_links(const char *busybox,
 	}
 }
 #  endif
-# else
+# elif ENABLE_BUSYBOX
 static void install_links(const char *busybox UNUSED_PARAM,
 		int use_symbolic_links UNUSED_PARAM,
 		char *custom_install_dir UNUSED_PARAM)
 {
 }
 # endif
+
+# if ENABLE_BUSYBOX
+static void run_applet_and_exit(const char *name, char **argv) NORETURN;
 
 /* If we were called as "busybox..." */
 static int busybox_main(char **argv)
@@ -828,10 +830,10 @@ static int busybox_main(char **argv)
 		const char *a = applet_names;
 		dup2(1, 2);
 		while (*a) {
-# if ENABLE_FEATURE_INSTALLER && !ENABLE_PLATFORM_MINGW32
+#  if ENABLE_FEATURE_INSTALLER && !ENABLE_PLATFORM_MINGW32
 			if (argv[1][6]) /* --list-full? */
 				full_write2_str(install_dir[APPLET_INSTALL_LOC(i)] + 1);
-# endif
+#  endif
 			full_write2_str(a);
 			full_write2_str("\n");
 			i++;
@@ -889,14 +891,10 @@ static int busybox_main(char **argv)
 	 * "#!/bin/busybox"-style wrappers */
 	applet_name = bb_get_last_path_component_nostrip(argv[0]);
 	run_applet_and_exit(applet_name, argv);
-
-	/*bb_error_msg_and_die("applet not found"); - sucks in printf */
-	full_write2_str(applet_name);
-	full_write2_str(": applet not found\n");
-	/* POSIX: "If a command is not found, the exit status shall be 127" */
-	exit(127);
 }
+# endif
 
+# if NUM_APPLETS > 0
 void FAST_FUNC run_applet_no_and_exit(int applet_no, char **argv)
 {
 	int argc = 1;
@@ -914,15 +912,15 @@ void FAST_FUNC run_applet_no_and_exit(int applet_no, char **argv)
 	 * "true" and "false" are also special.
 	 */
 	if (1
-#if defined APPLET_NO_test
+#  if defined APPLET_NO_test
 	 && applet_no != APPLET_NO_test
-#endif
-#if defined APPLET_NO_true
+#  endif
+#  if defined APPLET_NO_true
 	 && applet_no != APPLET_NO_true
-#endif
-#if defined APPLET_NO_false
+#  endif
+#  if defined APPLET_NO_false
 	 && applet_no != APPLET_NO_false
-#endif
+#  endif
 	) {
 		if (argc == 2 && strcmp(argv[1], "--help") == 0) {
 			/* Make "foo --help" exit with 0: */
@@ -934,17 +932,28 @@ void FAST_FUNC run_applet_no_and_exit(int applet_no, char **argv)
 		check_suid(applet_no);
 	exit(applet_main[applet_no](argc, argv));
 }
+# endif /* NUM_APPLETS > 0 */
 
-void FAST_FUNC run_applet_and_exit(const char *name, char **argv)
+static NORETURN void run_applet_and_exit(const char *name, char **argv)
 {
-	int applet;
-
+# if ENABLE_BUSYBOX
 	if (is_prefixed_with(name, "busybox"))
 		exit(busybox_main(argv));
+# endif
+# if NUM_APPLETS > 0
 	/* find_applet_by_name() search is more expensive, so goes second */
-	applet = find_applet_by_name(name);
-	if (applet >= 0)
-		run_applet_no_and_exit(applet, argv);
+	{
+		int applet = find_applet_by_name(name);
+		if (applet >= 0)
+			run_applet_no_and_exit(applet, argv);
+	}
+# endif
+
+	/*bb_error_msg_and_die("applet not found"); - links in printf */
+	full_write2_str(applet_name);
+	full_write2_str(": applet not found\n");
+	/* POSIX: "If a command is not found, the exit status shall be 127" */
+	exit(127);
 }
 
 #endif /* !defined(SINGLE_APPLET_MAIN) */
@@ -1017,6 +1026,10 @@ int main(int argc UNUSED_PARAM, char **argv)
 #else
 	lbb_prepare("busybox" IF_FEATURE_INDIVIDUAL(, argv));
 
+# if !ENABLE_BUSYBOX
+	if (argv[1] && is_prefixed_with(bb_basename(argv[0]), "busybox"))
+		argv++;
+# endif
 	applet_name = argv[0];
 	if (applet_name[0] == '-')
 		applet_name++;
@@ -1048,11 +1061,5 @@ int main(int argc UNUSED_PARAM, char **argv)
 	parse_config_file(); /* ...maybe, if FEATURE_SUID_CONFIG */
 
 	run_applet_and_exit(applet_name, argv);
-
-	/*bb_error_msg_and_die("applet not found"); - sucks in printf */
-	full_write2_str(applet_name);
-	full_write2_str(": applet not found\n");
-	/* POSIX: "If a command is not found, the exit status shall be 127" */
-	exit(127);
 #endif
 }

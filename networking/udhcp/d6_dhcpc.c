@@ -793,7 +793,11 @@ static void perform_renew(void)
 static void perform_d6_release(struct in6_addr *server_ipv6, struct in6_addr *our_cur_ipv6)
 {
 	/* send release packet */
-	if (state == BOUND || state == RENEWING || state == REBINDING) {
+	if (state == BOUND
+	 || state == RENEWING
+	 || state == REBINDING
+	 || state == RENEW_REQUESTED
+	) {
 		bb_error_msg("unicasting a release");
 		send_d6_release(server_ipv6, our_cur_ipv6); /* unicast */
 		d6_run_script(NULL, "deconfig");
@@ -940,9 +944,9 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 
 	/* Parse command line */
 	/* O,x: list; -T,-t,-A take numeric param */
-	opt_complementary = "O::x::T+:t+:A+" IF_UDHCP_VERBOSE(":vv") ;
+	IF_UDHCP_VERBOSE(opt_complementary = "vv";)
 	IF_LONG_OPTS(applet_long_options = udhcpc6_longopts;)
-	opt = getopt32(argv, "i:np:qRr:s:T:t:SA:O:ox:f"
+	opt = getopt32(argv, "i:np:qRr:s:T:+t:+SA:+O:*ox:*f"
 		USE_FOR_MMU("b")
 		///IF_FEATURE_UDHCPC_ARPING("a")
 		IF_FEATURE_UDHCP_PORT("P:")

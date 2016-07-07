@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
-# Busybox version: 1.25.0.git
-# Mon May 16 09:34:15 2016
+# Busybox version: 1.26.0.git
+# Thu Jul  7 14:45:07 2016
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -25,6 +25,7 @@ CONFIG_FEATURE_BUFFERS_USE_MALLOC=y
 CONFIG_SHOW_USAGE=y
 CONFIG_FEATURE_VERBOSE_USAGE=y
 CONFIG_FEATURE_COMPRESS_USAGE=y
+CONFIG_BUSYBOX=y
 CONFIG_FEATURE_INSTALLER=y
 # CONFIG_INSTALL_NO_USR is not set
 # CONFIG_LOCALE_SUPPORT is not set

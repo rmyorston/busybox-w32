@@ -13,16 +13,13 @@ void FAST_FUNC init_transformer_state(transformer_state_t *xstate)
 
 int FAST_FUNC check_signature16(transformer_state_t *xstate, unsigned magic16)
 {
-	if (xstate->check_signature) {
+	if (!xstate->signature_skipped) {
 		uint16_t magic2;
 		if (full_read(xstate->src_fd, &magic2, 2) != 2 || magic2 != magic16) {
 			bb_error_msg("invalid magic");
-#if 0 /* possible future extension */
-			if (xstate->check_signature > 1)
-				xfunc_die();
-#endif
 			return -1;
 		}
+		xstate->signature_skipped = 2;
 	}
 	return 0;
 }
@@ -103,7 +100,7 @@ void check_errors_in_children(int signo)
 /* transformer(), more than meets the eye */
 #if BB_MMU
 void FAST_FUNC fork_transformer(int fd,
-	int check_signature,
+	int signature_skipped,
 	IF_DESKTOP(long long) int FAST_FUNC (*transformer)(transformer_state_t *xstate)
 )
 #else
@@ -124,7 +121,7 @@ void FAST_FUNC fork_transformer(int fd, const char *transform_prog)
 			IF_DESKTOP(long long) int r;
 			transformer_state_t xstate;
 			init_transformer_state(&xstate);
-			xstate.check_signature = check_signature;
+			xstate.signature_skipped = signature_skipped;
 			xstate.src_fd = fd;
 			xstate.dst_fd = fd_pipe.wr;
 			r = transformer(&xstate);
@@ -194,12 +191,11 @@ static transformer_state_t *setup_transformer_on_fd(int fd, int fail_if_not_comp
 		uint16_t b16[2];
 		uint32_t b32[1];
 	} magic;
-	int offset;
 	transformer_state_t *xstate;
 
-	offset = -2;
 	xstate = xzalloc(sizeof(*xstate));
 	xstate->src_fd = fd;
+	xstate->signature_skipped = 2;
 
 	/* .gz and .bz2 both have 2-byte signature, and their
 	 * unpack_XXX_stream wants this header skipped. */
@@ -228,7 +224,7 @@ static transformer_state_t *setup_transformer_on_fd(int fd, int fail_if_not_comp
 	if (ENABLE_FEATURE_SEAMLESS_XZ
 	 && magic.b16[0] == XZ_MAGIC1
 	) {
-		offset = -6;
+		xstate->signature_skipped = 6;
 		xread(fd, magic.b32, sizeof(magic.b32[0]));
 		if (magic.b32[0] == XZ_MAGIC2) {
 			xstate->xformer = unpack_xz_stream;
@@ -250,18 +246,8 @@ static transformer_state_t *setup_transformer_on_fd(int fd, int fail_if_not_comp
 	 */
 //	USE_FOR_MMU(xstate->xformer = copy_stream;)
 //	USE_FOR_NOMMU(xstate->xformer_prog = "cat";)
-	/* fall through to seeking bck over bytes we read earlier */
 
- USE_FOR_NOMMU(found_magic:)
-	/* NOMMU version of fork_transformer execs
-	 * an external unzipper that wants
-	 * file position at the start of the file.
-	 */
-	xlseek(fd, offset, SEEK_CUR);
-
- USE_FOR_MMU(found_magic:)
-	/* In MMU case, if magic was found, seeking back is not necessary */
-
+ found_magic:
 	return xstate;
 }
 
@@ -280,6 +266,12 @@ int FAST_FUNC setup_unzip_on_fd(int fd, int fail_if_not_compressed)
 # if BB_MMU
 	fork_transformer_with_no_sig(xstate->src_fd, xstate->xformer);
 # else
+	/* NOMMU version of fork_transformer execs
+	 * an external unzipper that wants
+	 * file position at the start of the file.
+	 */
+	xlseek(fd, - xstate->signature_skipped, SEEK_CUR);
+	xstate->signature_skipped = 0;
 	fork_transformer_with_sig(xstate->src_fd, xstate->xformer, xstate->xformer_prog);
 # endif
 	free(xstate);
@@ -322,14 +314,22 @@ int FAST_FUNC open_zipped(const char *fname, int fail_if_not_compressed)
 		return -1;
 
 	fd = xstate->src_fd;
-	if (xstate->xformer) {
 # if BB_MMU
-		fork_transformer_with_no_sig(xstate->src_fd, xstate->xformer);
-# else
-		fork_transformer_with_sig(xstate->src_fd, xstate->xformer, xstate->xformer_prog);
-# endif
+	if (xstate->xformer) {
+		fork_transformer_with_no_sig(fd, xstate->xformer);
+	} else {
+		/* the file is not compressed */
+		xlseek(fd, - xstate->signature_skipped, SEEK_CUR);
+		xstate->signature_skipped = 0;
 	}
-	/* else: the file is not compressed */
+# else
+	/* NOMMU can't avoid the seek :( */
+	xlseek(fd, - xstate->signature_skipped, SEEK_CUR);
+	xstate->signature_skipped = 0;
+	if (xstate->xformer) {
+		fork_transformer_with_sig(fd, xstate->xformer, xstate->xformer_prog);
+	} /* else: the file is not compressed */
+# endif
 
 	free(xstate);
 	return fd;
@@ -357,6 +357,9 @@ void* FAST_FUNC xmalloc_open_zipped_read_close(const char *fname, size_t *maxsz_
 		}
 	} else {
 		/* File is not compressed */
+//FIXME: avoid seek
+		xlseek(xstate->src_fd, - xstate->signature_skipped, SEEK_CUR);
+		xstate->signature_skipped = 0;
 		image = xmalloc_read(xstate->src_fd, maxsz_p);
 	}
 
