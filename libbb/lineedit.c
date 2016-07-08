@@ -679,6 +679,14 @@ static void add_match(char *matched)
 	num_matches++;
 }
 
+#if ENABLE_FEATURE_SH_STANDALONE && NUM_APPLETS != 1
+static void add_partial_match(const char *part, const char *full, int plen)
+{
+	if (strncmp(part, full, plen) == 0)
+		add_match(xstrdup(full));
+}
+#endif
+
 # if ENABLE_FEATURE_USERNAME_COMPLETION
 /* Replace "~user/..." with "/homedir/...".
  * The parameter is malloced, free it or return it
@@ -826,15 +834,15 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 	pf_len = strlen(pfind);
 
 #if ENABLE_FEATURE_SH_STANDALONE && NUM_APPLETS != 1
-	if (type == FIND_EXE_ONLY) {
+	if (type == FIND_EXE_ONLY && dirbuf == NULL) {
 		const char *p = applet_names;
 
 		while (*p) {
-			if (strncmp(pfind, p, pf_len) == 0)
-				add_match(xstrdup(p));
+			add_partial_match(pfind, p, pf_len);
 			while (*p++ != '\0')
 				continue;
 		}
+		add_partial_match(pfind, "busybox", pf_len);
 	}
 #endif
 
