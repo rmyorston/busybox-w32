@@ -536,8 +536,13 @@ int winansi_vfprintf(FILE *stream, const char *format, va_list list)
 		if (!buf)
 			goto abort;
 
-		len = vsnprintf(buf, len + 1, format, list);
+		va_copy(cp, list);
+		len = vsnprintf(buf, len + 1, format, cp);
+		va_end(cp);
 	}
+
+	if (len == -1)
+		goto abort;
 
 	rv = ansi_emulate(buf, stream);
 
