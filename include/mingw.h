@@ -178,6 +178,7 @@ int winansi_getc(FILE *stream);
 #define getc winansi_getc
 
 int winansi_get_terminal_width_height(struct winsize *win);
+int winansi_set_terminal_width_height(struct winsize *win);
 
 /*
  * stdlib.h
@@ -225,6 +226,7 @@ int ffs(int i);
  */
 
 #define TIOCGWINSZ 0x5413
+#define TIOCSWINSZ 0x5414
 
 int ioctl(int fd, int code, ...);
 

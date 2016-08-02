@@ -13,6 +13,10 @@ int ioctl(int fd UNUSED_PARAM, int code, ...)
 		arg = va_arg(ap, void *);
 		ret = winansi_get_terminal_width_height((struct winsize *)arg);
 		break;
+	case TIOCSWINSZ:
+		arg = va_arg(ap, void *);
+		ret = winansi_set_terminal_width_height((struct winsize *)arg);
+		break;
 	default:
 		ret = -1;
 		errno = EINVAL;

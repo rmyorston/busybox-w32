@@ -1,13 +1,26 @@
 #include "libbb.h"
 
-int tcsetattr(int fd UNUSED_PARAM, int mode UNUSED_PARAM,  const struct termios *t UNUSED_PARAM)
+static struct termios dummy = {
+	0,		/* c_iflag */
+	0,		/* c_oflag */
+	0,		/* c_cflag */
+	0,		/* c_lflag */
+	'\0',	/* c_line */
+	"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",	/* c_cc[NCCS] */
+	B9600,	/* c_ispeed */
+	B9600	/* c_ospeed */
+};
+
+int tcsetattr(int fd UNUSED_PARAM, int mode UNUSED_PARAM,  const struct termios *t)
 {
-	return -1;
+	dummy = *t;
+	return 0;
 }
 
-int tcgetattr(int fd UNUSED_PARAM, struct termios *t UNUSED_PARAM)
+int tcgetattr(int fd UNUSED_PARAM, struct termios *t)
 {
-	return -1;
+	*t = dummy;
+	return 0;
 }
 
 int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
@@ -80,4 +93,26 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
  done:
 	SetConsoleMode(cin, mode);
 	return ret;
+}
+
+speed_t cfgetispeed(const struct termios *termios_p)
+{
+	return termios_p->c_ispeed;
+}
+
+speed_t cfgetospeed(const struct termios *termios_p)
+{
+	return termios_p->c_ospeed;
+}
+
+int cfsetispeed(struct termios *termios_p, speed_t speed)
+{
+	termios_p->c_ispeed = speed;
+	return 0;
+}
+
+int cfsetospeed(struct termios *termios_p, speed_t speed)
+{
+	termios_p->c_ospeed = speed;
+	return 0;
 }

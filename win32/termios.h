@@ -100,6 +100,18 @@
 #define  B2400	0000013
 #define  B4800	0000014
 #define  B9600	0000015
+#define CSIZE   0000060
+#define   CS5   0000000
+#define   CS6   0000020
+#define   CS7   0000040
+#define   CS8   0000060
+#define CSTOPB  0000100
+#define CREAD   0000200
+#define PARENB  0000400
+#define PARODD  0001000
+#define HUPCL   0002000
+#define CLOCAL  0004000
+
 
 typedef unsigned char cc_t;
 typedef unsigned int  tcflag_t;
@@ -127,3 +139,8 @@ struct winsize {
 int tcflush(int fd, int queue_selector);
 int tcgetattr(int fd, struct termios *t);
 int tcsetattr(int fd, int mode,  const struct termios *t);
+
+speed_t cfgetispeed(const struct termios *termios_p);
+speed_t cfgetospeed(const struct termios *termios_p);
+int cfsetispeed(struct termios *termios_p, speed_t speed);
+int cfsetospeed(struct termios *termios_p, speed_t speed);

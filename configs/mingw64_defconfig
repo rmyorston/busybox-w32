@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.26.0.git
-# Thu Jul  7 14:45:07 2016
+# Tue Aug  2 15:42:24 2016
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -294,7 +294,7 @@ CONFIG_SORT=y
 CONFIG_FEATURE_SORT_BIG=y
 CONFIG_SPLIT=y
 CONFIG_FEATURE_SPLIT_FANCY=y
-# CONFIG_STTY is not set
+CONFIG_STTY=y
 CONFIG_SUM=y
 CONFIG_TAC=y
 CONFIG_TAIL=y
@@ -760,7 +760,7 @@ CONFIG_MAN=y
 CONFIG_STRINGS=y
 # CONFIG_TIME is not set
 # CONFIG_TIMEOUT is not set
-# CONFIG_TTYSIZE is not set
+CONFIG_TTYSIZE=y
 # CONFIG_VOLNAME is not set
 # CONFIG_WATCHDOG is not set
 

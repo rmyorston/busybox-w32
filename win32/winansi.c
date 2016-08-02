@@ -596,6 +596,23 @@ int winansi_get_terminal_width_height(struct winsize *win)
 	return ret ? 0 : -1;
 }
 
+int winansi_set_terminal_width_height(struct winsize *win)
+{
+	BOOL ret;
+	CONSOLE_SCREEN_BUFFER_INFOEX sbi;
+
+	init();
+
+	sbi.cbSize = sizeof(sbi);
+	if ((ret=GetConsoleScreenBufferInfoEx(console, &sbi)) != 0) {
+		sbi.srWindow.Bottom = sbi.srWindow.Top + win->ws_row;
+		sbi.srWindow.Right = sbi.srWindow.Left + win->ws_col;
+		ret = SetConsoleScreenBufferInfoEx(console, &sbi);
+	}
+
+	return ret ? 0 : -1;
+}
+
 static int ansi_emulate_write(int fd, const void *buf, size_t count)
 {
 	int rv = 0, i;
