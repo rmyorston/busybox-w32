@@ -605,6 +605,12 @@ int winansi_set_terminal_width_height(struct winsize *win)
 
 	sbi.cbSize = sizeof(sbi);
 	if ((ret=GetConsoleScreenBufferInfoEx(console, &sbi)) != 0) {
+		if (sbi.dwSize.X != win->ws_col) {
+			sbi.dwSize.X = win->ws_col;
+		}
+		if (sbi.dwSize.Y < win->ws_row) {
+			sbi.dwSize.Y = win->ws_row;
+		}
 		sbi.srWindow.Bottom = sbi.srWindow.Top + win->ws_row;
 		sbi.srWindow.Right = sbi.srWindow.Left + win->ws_col;
 		ret = SetConsoleScreenBufferInfoEx(console, &sbi);
