@@ -599,20 +599,27 @@ int winansi_get_terminal_width_height(struct winsize *win)
 static int ansi_emulate_write(int fd, const void *buf, size_t count)
 {
 	int rv = 0, i;
+	int special = FALSE, has_null = FALSE;
 	const char *s = (const char *)buf;
 	char *pos, *str;
 	size_t len, out_len;
 	static size_t max_len = 0;
 	static char *mem = NULL;
 
-	/* if no special treatment is required output the string as-is */
 	for ( i=0; i<count; ++i ) {
 		if ( s[i] == '\033' || s[i] > 0x7f ) {
-			break;
+			special = TRUE;
+		}
+		else if ( !s[i] ) {
+			has_null = TRUE;
 		}
 	}
 
-	if ( i == count ) {
+	/*
+	 * If no special treatment is required or the data contains NUL
+	 * characters output the string as-is.
+	 */
+	if ( !special || has_null ) {
 		return write(fd, buf, count);
 	}
 
@@ -626,7 +633,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 	mem[count] = '\0';
 	pos = str = mem;
 
-	/* we're writing to the console so we assume the data isn't binary */
+	/* we've checked the data doesn't contain any NULs */
 	while (*pos) {
 		pos = strstr(str, "\033[");
 		if (pos) {
