@@ -2650,7 +2650,7 @@ updatepwd(const char *dir)
 	int absdrive = *dir && dir[1] == ':';
 	int abspath = absdrive ? is_path_sep(dir[2]) : is_path_sep(*dir);
 
-	cdcomppath = ststrdup(dir);
+	cdcomppath = sstrdup(dir);
 	STARTSTACKSTR(new);
 	if (!absdrive && curdir == nullstr)
 		return 0;
@@ -10014,7 +10014,7 @@ evalcommand(union node *cmd, int flags)
 		if (applet_no >= 0 && APPLET_IS_NOFORK(applet_no)) {
 			listsetvar(varlist.list, VEXPORT|VSTACK);
 			/* run <applet>_main() */
-			exitstatus = run_nofork_applet(applet_no, argv);
+			status = run_nofork_applet(applet_no, argv);
 			break;
 		}
 #endif
@@ -10036,7 +10036,7 @@ evalcommand(union node *cmd, int flags)
 			jp = makejob(/*cmd,*/ 1);
 			if (spawn_forkshell(jp, &fs, FORK_FG) < 0)
 				ash_msg_and_raise_error("unable to spawn shell");
-			exitstatus = waitforjob(jp);
+			status = waitforjob(jp);
 			INT_ON;
 			TRACE(("forked child exited with %d\n", exitstatus));
 			break;
