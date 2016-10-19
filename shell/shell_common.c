@@ -25,6 +25,7 @@ const char defifsvar[] ALIGN1 = "IFS= \t\n";
 #else
 const char defifsvar[] ALIGN1 = "IFS= \t\n\r";
 #endif
+const char defoptindvar[] ALIGN1 = "OPTIND=1";
 
 
 int FAST_FUNC is_well_formed_var_name(const char *s, char terminator)

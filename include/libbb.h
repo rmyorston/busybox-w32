@@ -196,24 +196,33 @@ int klogctl(int type, char *b, int len);
 /* Busybox does not use threads, we can speed up stdio. */
 #ifdef HAVE_UNLOCKED_STDIO
 # undef  getc
-# define getc(stream) getc_unlocked(stream)
+# define getc(stream)   getc_unlocked(stream)
 # undef  getchar
-# define getchar() getchar_unlocked()
+# define getchar()      getchar_unlocked()
 # undef  putc
-# define putc(c, stream) putc_unlocked(c, stream)
+# define putc(c,stream) putc_unlocked(c,stream)
 # undef  putchar
-# define putchar(c) putchar_unlocked(c)
+# define putchar(c)     putchar_unlocked(c)
 # undef  fgetc
-# define fgetc(stream) getc_unlocked(stream)
+# define fgetc(stream)  getc_unlocked(stream)
 # undef  fputc
-# define fputc(c, stream) putc_unlocked(c, stream)
+# define fputc(c,stream) putc_unlocked(c,stream)
 #endif
 /* Above functions are required by POSIX.1-2008, below ones are extensions */
 #ifdef HAVE_UNLOCKED_LINE_OPS
 # undef  fgets
-# define fgets(s, n, stream) fgets_unlocked(s, n, stream)
+# define fgets(s,n,stream) fgets_unlocked(s,n,stream)
 # undef  fputs
-# define fputs(s, stream) fputs_unlocked(s, stream)
+# define fputs(s,stream) fputs_unlocked(s,stream)
+/* musl <= 1.1.15 does not support fflush_unlocked(NULL) */
+//# undef  fflush
+//# define fflush(stream) fflush_unlocked(stream)
+# undef  feof
+# define feof(stream)   feof_unlocked(stream)
+# undef  ferror
+# define ferror(stream) ferror_unlocked(stream)
+# undef  fileno
+# define fileno(stream) fileno_unlocked(stream)
 #endif
 
 
@@ -1755,6 +1764,7 @@ typedef struct sha512_ctx_t {
 typedef struct sha3_ctx_t {
 	uint64_t state[25];
 	unsigned bytes_queued;
+	unsigned input_block_bytes;
 } sha3_ctx_t;
 void md5_begin(md5_ctx_t *ctx) FAST_FUNC;
 void md5_hash(md5_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;

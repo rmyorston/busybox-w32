@@ -21,7 +21,7 @@
 //usage:       "[-an"IF_FEATURE_IFUPDOWN_MAPPING("m")"vf] [-i FILE] IFACE..."
 //usage:#define ifup_full_usage "\n\n"
 //usage:       "	-a	De/configure all interfaces automatically"
-//usage:     "\n	-i FILE	Use FILE for interface definitions"
+//usage:     "\n	-i FILE	Use FILE instead of /etc/network/interfaces"
 //usage:     "\n	-n	Print out what would happen, but don't do it"
 //usage:	IF_FEATURE_IFUPDOWN_MAPPING(
 //usage:     "\n		(note: doesn't disable mappings)"
@@ -492,7 +492,7 @@ static int FAST_FUNC static_up(struct interface_defn_t *ifd, execfn *exec)
 	result = execute("ifconfig %iface%[[ hw %hwaddress%]][[ media %media%]][[ mtu %mtu%]] up",
 				ifd, exec);
 	result += execute("ifconfig %iface% %address% netmask %netmask%"
-				"[[ broadcast %broadcast%]][[ pointopoint %pointopoint%]] ",
+				"[[ broadcast %broadcast%]][[ pointopoint %pointopoint%]]",
 				ifd, exec);
 	result += execute("[[route add default gw %gateway%[[ metric %metric%]] %iface%]]", ifd, exec);
 	return ((result == 3) ? 3 : 0);
@@ -503,7 +503,10 @@ static int FAST_FUNC static_down(struct interface_defn_t *ifd, execfn *exec)
 {
 	int result;
 # if ENABLE_FEATURE_IFUPDOWN_IP
-	result = execute("ip addr flush dev %iface%", ifd, exec);
+	/* Optional "label LBL" is necessary if interface is an alias (eth0:0),
+	 * otherwise "ip addr flush dev eth0:0" flushes all addresses on eth0.
+	 */
+	result = execute("ip addr flush dev %iface%[[ label %label%]]", ifd, exec);
 	result += execute("ip link set %iface% down", ifd, exec);
 # else
 	/* result = execute("[[route del default gw %gateway% %iface%]]", ifd, exec); */
@@ -1066,6 +1069,11 @@ static int execute_all(struct interface_defn_t *ifd, const char *opt)
 		}
 	}
 
+	/* Tested on Debian Squeeze: "standard" ifup runs this without
+	 * checking that directory exists. If it doesn't, run-parts
+	 * complains, and this message _is_ annoyingly visible.
+	 * Don't "fix" this (unless newer Debian does).
+	 */
 	buf = xasprintf("run-parts /etc/network/if-%s.d", opt);
 	/* heh, we don't bother free'ing it */
 	return doit(buf);

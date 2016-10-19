@@ -2722,9 +2722,8 @@ static char *swap_context(char *p) // goto new context for '' command make this 
 	// only swap context if other context is valid
 	if (text <= mark[27] && mark[27] <= end - 1) {
 		tmp = mark[27];
-		mark[27] = mark[26];
-		mark[26] = tmp;
-		p = mark[26];	// where we are going- previous context
+		mark[27] = p;
+		mark[26] = p = tmp;
 		context_start = prev_line(prev_line(prev_line(p)));
 		context_end = next_line(next_line(next_line(p)));
 	}
@@ -3665,8 +3664,9 @@ static void do_cmd(int c)
 		}
 		break;
 	case '\'':			// '- goto a specific mark
-		c1 = (get_one_char() | 0x20) - 'a';
-		if ((unsigned)c1 <= 25) { // a-z?
+		c1 = (get_one_char() | 0x20);
+		if ((unsigned)(c1 - 'a') <= 25) { // a-z?
+			c1 = (c1 - 'a');
 			// get the b-o-l
 			q = mark[c1];
 			if (text <= q && q < end) {
@@ -3980,7 +3980,9 @@ static void do_cmd(int c)
 		c1 = get_one_char();
 		if (c1 != 'g') {
 			buf[0] = 'g';
-			buf[1] = c1; // TODO: if Unicode?
+			// c1 < 0 if the key was special. Try "g<up-arrow>"
+			// TODO: if Unicode?
+			buf[1] = (c1 >= 0 ? c1 : '*');
 			buf[2] = '\0';
 			not_implemented(buf);
 			break;

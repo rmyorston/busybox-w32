@@ -930,7 +930,9 @@ void FAST_FUNC run_applet_no_and_exit(int applet_no, char **argv)
 	}
 	if (ENABLE_FEATURE_SUID)
 		check_suid(applet_no);
-	exit(applet_main[applet_no](argc, argv));
+	xfunc_error_retval = applet_main[applet_no](argc, argv);
+	/* Note: applet_main() may also not return (die on a xfunc or such) */
+	xfunc_die();
 }
 # endif /* NUM_APPLETS > 0 */
 
@@ -992,6 +994,14 @@ int main(int argc UNUSED_PARAM, char **argv)
 	 * Default is too big: 256k
 	 */
 	mallopt(M_MMAP_THRESHOLD, 32 * 1024 - 256);
+#endif
+#if 0 /*def M_TOP_PAD*/
+	/* When the program break is increased, then M_TOP_PAD bytes are added
+	 * to the sbrk(2) request. When the heap is trimmed because of free(3),
+	 * this much free space is preserved at the top of the heap.
+	 * glibc default seems to be way too big: 128k, but need to verify.
+	 */
+	mallopt(M_TOP_PAD, 8 * 1024);
 #endif
 
 #if !BB_MMU
