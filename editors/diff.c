@@ -724,6 +724,10 @@ static int diffreg(char *file[2])
 	FILE *fp[2];
 	bool binary = false, differ = false;
 	int status = STATUS_SAME, i;
+#if ENABLE_PLATFORM_MINGW32
+	char *tmpfile[2] = { NULL, NULL };
+	char *tmpdir;
+#endif
 
 	fp[0] = stdin;
 	fp[1] = stdin;
@@ -735,10 +739,19 @@ static int diffreg(char *file[2])
 		 * When we meet non-seekable file, we must make a temp copy.
 		 */
 		if (lseek(fd, 0, SEEK_SET) == -1 && errno == ESPIPE) {
+#if !ENABLE_PLATFORM_MINGW32
 			char name[] = "/tmp/difXXXXXX";
 			int fd_tmp = xmkstemp(name);
 
 			unlink(name);
+#else
+			int fd_tmp;
+
+			if (!(tmpdir=getenv("TMP")) && !(tmpdir=getenv("TEMP")))
+				goto out;
+			tmpfile[i] = xasprintf("%s/difXXXXXX", tmpdir);
+			fd_tmp = xmkstemp(tmpfile[i]);
+#endif
 			if (bb_copyfd_eof(fd, fd_tmp) < 0)
 				xfunc_die();
 			if (fd != STDIN_FILENO)
@@ -781,6 +794,14 @@ static int diffreg(char *file[2])
 out:
 	fclose_if_not_stdin(fp[0]);
 	fclose_if_not_stdin(fp[1]);
+#if ENABLE_PLATFORM_MINGW32
+	for (i = 0; i < 2; i++) {
+		if (tmpfile[i]) {
+			unlink(tmpfile[i]);
+			free(tmpfile[i]);
+		}
+	}
+#endif
 
 	return status;
 }
