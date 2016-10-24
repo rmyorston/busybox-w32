@@ -747,7 +747,7 @@ static int diffreg(char *file[2])
 #else
 			int fd_tmp;
 
-			if (!(tmpdir=getenv("TMP")) && !(tmpdir=getenv("TEMP")))
+			if (!(tmpdir=getenv("TMPDIR")))
 				goto out;
 			tmpfile[i] = xasprintf("%s/difXXXXXX", tmpdir);
 			fd_tmp = xmkstemp(tmpfile[i]);
