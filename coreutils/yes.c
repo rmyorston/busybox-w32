@@ -33,6 +33,10 @@ int yes_main(int argc UNUSED_PARAM, char **argv)
 		++argv;
 
 	do {
+#if ENABLE_PLATFORM_MINGW32
+		if (ferror(stdout) != 0)
+			break;
+#endif
 		pp = argv;
 		while (1) {
 			fputs(*pp, stdout);
