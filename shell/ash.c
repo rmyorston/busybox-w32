@@ -367,8 +367,6 @@ struct globals_misc {
 	/* exceptions */
 #define EXINT 0         /* SIGINT received */
 #define EXERROR 1       /* a generic error */
-#define EXSHELLPROC 2   /* execute a shell procedure */
-#define EXEXEC 3        /* command execution failed */
 #define EXEXIT 4        /* exit the shell */
 #define EXSIG 5         /* trapped signal in wait(1) */
 
@@ -1471,7 +1469,6 @@ struct globals_memstack {
 	char *g_stacknxt; // = stackbase.space;
 	char *sstrend; // = stackbase.space + MINSIZE;
 	size_t g_stacknleft; // = MINSIZE;
-	int    herefd; // = -1;
 	struct stack_block stackbase;
 };
 extern struct globals_memstack *const ash_ptr_to_globals_memstack;
@@ -1480,7 +1477,6 @@ extern struct globals_memstack *const ash_ptr_to_globals_memstack;
 #define g_stacknxt   (G_memstack.g_stacknxt  )
 #define sstrend      (G_memstack.sstrend     )
 #define g_stacknleft (G_memstack.g_stacknleft)
-#define herefd       (G_memstack.herefd      )
 #define stackbase    (G_memstack.stackbase   )
 #define INIT_G_memstack() do { \
 	(*(struct globals_memstack**)&ash_ptr_to_globals_memstack) = xzalloc(sizeof(G_memstack)); \
@@ -1489,7 +1485,6 @@ extern struct globals_memstack *const ash_ptr_to_globals_memstack;
 	g_stacknxt = stackbase.space; \
 	g_stacknleft = MINSIZE; \
 	sstrend = stackbase.space + MINSIZE; \
-	herefd = -1; \
 } while (0)
 
 
@@ -1677,10 +1672,6 @@ static void *
 growstackstr(void)
 {
 	size_t len = stackblocksize();
-	if (herefd >= 0 && len >= 1024) {
-		full_write(herefd, stackblock(), len);
-		return stackblock();
-	}
 	growstackblock();
 	return (char *)stackblock() + len;
 }
@@ -2030,7 +2021,6 @@ struct redirtab;
 struct globals_var {
 	struct shparam shellparam;      /* $@ current positional parameters */
 	struct redirtab *redirlist;
-	int g_nullredirs;
 	int preverrout_fd;   /* save fd2 before print debug if xflag is set. */
 	struct var *vartab[VTABSIZE];
 	struct var varinit[ARRAY_SIZE(varinit_data)];
@@ -2039,7 +2029,6 @@ extern struct globals_var *const ash_ptr_to_globals_var;
 #define G_var (*ash_ptr_to_globals_var)
 #define shellparam    (G_var.shellparam   )
 //#define redirlist     (G_var.redirlist    )
-#define g_nullredirs  (G_var.g_nullredirs )
 #define preverrout_fd (G_var.preverrout_fd)
 #define vartab        (G_var.vartab       )
 #define varinit       (G_var.varinit      )
@@ -2100,7 +2089,7 @@ extern struct globals_var *const ash_ptr_to_globals_var;
 static void FAST_FUNC
 getoptsreset(const char *value)
 {
-	shellparam.optind = number(value);
+	shellparam.optind = number(value) ?: 1;
 	shellparam.optoff = -1;
 }
 #endif
@@ -4963,8 +4952,7 @@ commandtext(union node *n)
 	STARTSTACKSTR(cmdnextc);
 	cmdtxt(n);
 	name = stackblock();
-	TRACE(("commandtext: name %p, end %p\n\t\"%s\"\n",
-			name, cmdnextc, cmdnextc));
+	TRACE(("commandtext: name %p, end %p\n", name, cmdnextc));
 	return ckstrdup(name);
 }
 #endif /* JOBS */
@@ -5539,9 +5527,7 @@ openredirect(union node *redir)
 }
 
 /*
- * Copy a file descriptor to be >= to.  Returns -1
- * if the source file descriptor is closed, EMPTY if there are no unused
- * file descriptors left.
+ * Copy a file descriptor to be >= to. Throws exception on error.
  */
 /* 0x800..00: bit to set in "to" to request dup2 instead of fcntl(F_DUPFD).
  * old code was doing close(to) prior to copyfd() to achieve the same */
@@ -5562,8 +5548,6 @@ copyfd(int from, int to)
 		newfd = fcntl(from, F_DUPFD, to);
 	}
 	if (newfd < 0) {
-		if (errno == EMFILE)
-			return EMPTY;
 		/* Happens when source fd is not open: try "echo >&99" */
 		ash_msg_and_raise_error("%d: %m", from);
 	}
@@ -5576,7 +5560,6 @@ struct two_fd_t {
 };
 struct redirtab {
 	struct redirtab *next;
-	int nullredirs;
 	int pair_count;
 	struct two_fd_t two_fd[];
 };
@@ -5655,7 +5638,6 @@ redirect(union node *redir, int flags)
 	int newfd;
 	int copied_fd2 = -1;
 
-	g_nullredirs++;
 	if (!redir) {
 		return;
 	}
@@ -5677,8 +5659,6 @@ redirect(union node *redir, int flags)
 		sv->next = redirlist;
 		sv->pair_count = sv_pos;
 		redirlist = sv;
-		sv->nullredirs = g_nullredirs - 1;
-		g_nullredirs = 0;
 		while (sv_pos > 0) {
 			sv_pos--;
 			sv->two_fd[sv_pos].orig = sv->two_fd[sv_pos].copy = EMPTY;
@@ -5790,7 +5770,7 @@ popredir(int drop, int restore)
 	struct redirtab *rp;
 	int i;
 
-	if (--g_nullredirs >= 0 || redirlist == NULL)
+	if (redirlist == NULL)
 		return;
 	INT_OFF;
 	rp = redirlist;
@@ -5812,7 +5792,6 @@ popredir(int drop, int restore)
 		}
 	}
 	redirlist = rp->next;
-	g_nullredirs = rp->nullredirs;
 	free(rp);
 	INT_ON;
 }
@@ -5827,12 +5806,8 @@ popredir(int drop, int restore)
 static void
 clearredir(int drop)
 {
-	for (;;) {
-		g_nullredirs = 0;
-		if (!redirlist)
-			break;
+	while (redirlist)
 		popredir(drop, /*restore:*/ 0);
-	}
 }
 
 static int
@@ -5891,6 +5866,17 @@ ash_arith(const char *s)
 #define EXP_TILDE       0x2     /* do normal tilde expansion */
 #define EXP_VARTILDE    0x4     /* expand tildes in an assignment */
 #define EXP_REDIR       0x8     /* file glob for a redirection (1 match only) */
+/* ^^^^^^^^^^^^^^ this is meant to support constructs such as "cmd >file*.txt"
+ * POSIX says for this case:
+ *  Pathname expansion shall not be performed on the word by a
+ *  non-interactive shell; an interactive shell may perform it, but shall
+ *  do so only when the expansion would result in one word.
+ * Currently, our code complies to the above rule by never globbing
+ * redirection filenames.
+ * Bash performs globbing, unless it is non-interactive and in POSIX mode.
+ * (this means that on a typical Linux distro, bash almost always
+ * performs globbing, and thus diverges from what we do).
+ */
 #define EXP_CASE        0x10    /* keeps quotes around for CASE pattern */
 #define EXP_QPAT        0x20    /* pattern in quoted parameter expansion */
 #define EXP_VARTILDE2   0x40    /* expand tildes after colons only */
@@ -6236,52 +6222,54 @@ static int evaltree(union node *, int);
 static void FAST_FUNC
 evalbackcmd(union node *n, struct backcmd *result)
 {
-	int saveherefd;
+	int pip[2];
+	struct job *jp;
 
 	result->fd = -1;
 	result->buf = NULL;
 	result->nleft = 0;
 	IF_PLATFORM_MINGW32(memset(&result->fs, 0, sizeof(result->fs)));
 	result->jp = NULL;
-	if (n == NULL)
+	if (n == NULL) {
 		goto out;
-
-	saveherefd = herefd;
-	herefd = -1;
-
-	{
-		int pip[2];
-		struct job *jp;
-
-		if (pipe(pip) < 0)
-			ash_msg_and_raise_error("pipe call failed");
-		jp = makejob(/*n,*/ 1);
-#if ENABLE_PLATFORM_MINGW32
-		result->fs.fpid = FS_EVALBACKCMD;
-		result->fs.n = n;
-		result->fs.fd[0] = pip[0];
-		result->fs.fd[1] = pip[1];
-		if (spawn_forkshell(jp, &result->fs, FORK_NOJOB) < 0)
-			ash_msg_and_raise_error("unable to spawn shell");
-#else
-		if (forkshell(jp, n, FORK_NOJOB) == 0) {
-			FORCE_INT_ON;
-			close(pip[0]);
-			if (pip[1] != 1) {
-				/*close(1);*/
-				copyfd(pip[1], 1 | COPYFD_EXACT);
-				close(pip[1]);
-			}
-			eflag = 0;
-			evaltree(n, EV_EXIT); /* actually evaltreenr... */
-			/* NOTREACHED */
-		}
-#endif
-		close(pip[1]);
-		result->fd = pip[0];
-		result->jp = jp;
 	}
-	herefd = saveherefd;
+
+	if (pipe(pip) < 0)
+		ash_msg_and_raise_error("pipe call failed");
+	jp = makejob(/*n,*/ 1);
+#if ENABLE_PLATFORM_MINGW32
+	result->fs.fpid = FS_EVALBACKCMD;
+	result->fs.n = n;
+	result->fs.fd[0] = pip[0];
+	result->fs.fd[1] = pip[1];
+	if (spawn_forkshell(jp, &result->fs, FORK_NOJOB) < 0)
+		ash_msg_and_raise_error("unable to spawn shell");
+#else
+	if (forkshell(jp, n, FORK_NOJOB) == 0) {
+		FORCE_INT_ON;
+		close(pip[0]);
+		if (pip[1] != 1) {
+			/*close(1);*/
+			copyfd(pip[1], 1 | COPYFD_EXACT);
+			close(pip[1]);
+		}
+/* TODO: eflag clearing makes the following not abort:
+ *  ash -c 'set -e; z=$(false;echo foo); echo $z'
+ * which is what bash does (unless it is in POSIX mode).
+ * dash deleted "eflag = 0" line in the commit
+ *  Date: Mon, 28 Jun 2010 17:11:58 +1000
+ *  [EVAL] Don't clear eflag in evalbackcmd
+ * For now, preserve bash-like behavior, it seems to be somewhat more useful:
+ */
+		eflag = 0;
+		evaltree(n, EV_EXIT); /* actually evaltreenr... */
+		/* NOTREACHED */
+	}
+#endif
+	close(pip[1]);
+	result->fd = pip[0];
+	result->jp = jp;
+
  out:
 	TRACE(("evalbackcmd done: fd=%d buf=0x%x nleft=%d jp=0x%x\n",
 		result->fd, result->buf, result->nleft, result->jp));
@@ -6689,7 +6677,6 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 	char *str;
 	IF_ASH_BASH_COMPAT(char *repl = NULL;)
 	IF_ASH_BASH_COMPAT(int pos, len, orig_len;)
-	int saveherefd = herefd;
 	int amount, resetloc;
 	IF_ASH_BASH_COMPAT(int workloc;)
 	int zero;
@@ -6698,12 +6685,10 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 	//bb_error_msg("subevalvar(p:'%s',varname:'%s',strloc:%d,subtype:%d,startloc:%d,varflags:%x,quotes:%d)",
 	//		p, varname, strloc, subtype, startloc, varflags, quotes);
 
-	herefd = -1;
 	argstr(p, EXP_TILDE | (subtype != VSASSIGN && subtype != VSQUESTION ?
 			(flag & (EXP_QUOTED | EXP_QPAT) ? EXP_QPAT : EXP_CASE) : 0),
 			var_str_list);
 	STPUTC('\0', expdest);
-	herefd = saveherefd;
 	argbackq = saveargbackq;
 	startp = (char *)stackblock() + startloc;
 
@@ -7125,6 +7110,10 @@ evalvar(char *p, int flag, struct strlist *var_str_list)
 
 	varflags = (unsigned char) *p++;
 	subtype = varflags & VSTYPE;
+
+	if (!subtype)
+		raise_error_syntax("bad substitution");
+
 	quoted = flag & EXP_QUOTED;
 	var = p;
 	easy = (!quoted || (*var == '@' && shellparam.nparam));
@@ -7737,7 +7726,6 @@ expandarg(union node *arg, struct arglist *arglist, int flag)
 static void
 expandhere(union node *arg, int fd)
 {
-	herefd = fd;
 	expandarg(arg, (struct arglist *)NULL, EXP_QUOTED);
 	full_write(fd, stackblock(), expdest - (char *)stackblock());
 }
@@ -7970,7 +7958,7 @@ shellexec(char **argv, const char *path, int idx)
 	exitstatus = exerrno;
 	TRACE(("shellexec failed for %s, errno %d, suppress_int %d\n",
 		argv[0], e, suppress_int));
-	ash_msg_and_raise(EXEXEC, "%s: %s", argv[0], errmsg(e, "not found"));
+	ash_msg_and_raise(EXEXIT, "%s: %s", argv[0], errmsg(e, "not found"));
 	/* NOTREACHED */
 }
 
@@ -8850,14 +8838,14 @@ copyfunc(union node *n)
  * Define a shell function.
  */
 static void
-defun(char *name, union node *func)
+defun(union node *func)
 {
 	struct cmdentry entry;
 
 	INT_OFF;
 	entry.cmdtype = CMDFUNCTION;
 	entry.u.func = copyfunc(func);
-	addcmdentry(name, &entry);
+	addcmdentry(func->narg.text, &entry);
 	INT_ON;
 }
 
@@ -8991,7 +8979,8 @@ evaltree(union node *n, int flags)
 		if (!status) {
 			status = evaltree(n->nredir.n, flags & EV_TESTED);
 		}
-		popredir(/*drop:*/ 0, /*restore:*/ 0 /* not sure */);
+		if (n->nredir.redirect)
+			popredir(/*drop:*/ 0, /*restore:*/ 0 /* not sure */);
 		goto setstatus;
 	case NCMD:
 		evalfn = evalcommand;
@@ -9007,11 +8996,9 @@ evaltree(union node *n, int flags)
 		evalfn = evalloop;
 		goto calleval;
 	case NSUBSHELL:
-		evalfn = evalsubshell;
-		goto checkexit;
 	case NBACKGND:
 		evalfn = evalsubshell;
-		goto calleval;
+		goto checkexit;
 	case NPIPE:
 		evalfn = evalpipe;
 		goto checkexit;
@@ -9057,7 +9044,7 @@ evaltree(union node *n, int flags)
 		status = 0;
 		goto setstatus;
 	case NDEFUN:
-		defun(n->narg.text, n->narg.next);
+		defun(n);
 		/* Not necessary. To test it:
 		 * "false; f() { qwerty; }; echo $?" should print 0.
 		 */
@@ -9506,7 +9493,7 @@ evalfun(struct funcnode *func, int argc, char **argv, int flags)
 	shellparam.optind = 1;
 	shellparam.optoff = -1;
 #endif
-	evaltree(&func->n, flags & EV_TESTED);
+	evaltree(func->n.narg.next, flags & EV_TESTED);
  funcdone:
 	INT_OFF;
 	funcnest--;
@@ -10084,7 +10071,7 @@ evalcommand(union node *cmd, int flags)
 		if (evalbltin(cmdentry.u.cmd, argc, argv, flags)) {
 			int exit_status;
 			int i = exception_type;
-			if (i == EXEXIT || i == EXEXEC)
+			if (i == EXEXIT)
 				goto raise;
 			exit_status = 2;
 			if (i == EXINT)
@@ -10112,7 +10099,8 @@ evalcommand(union node *cmd, int flags)
 	} /* switch */
 
  out:
-	popredir(/*drop:*/ cmd_is_exec, /*restore:*/ cmd_is_exec);
+	if (cmd->ncmd.redirect)
+		popredir(/*drop:*/ cmd_is_exec, /*restore:*/ cmd_is_exec);
 	if (lastarg) {
 		/* dsl: I think this is intended to be used to support
 		 * '_' in 'vi' command mode during line editing...
@@ -10685,13 +10673,12 @@ setinputfile(const char *fname, int flags)
 	if (fd < 0) {
 		if (flags & INPUT_NOFILE_OK)
 			goto out;
+		exitstatus = 127;
 		ash_msg_and_raise_error("can't open '%s'", fname);
 	}
 	if (fd < 10) {
 		fd2 = copyfd(fd, 10);
 		close(fd);
-		if (fd2 < 0)
-			ash_msg_and_raise_error("out of file descriptors");
 		fd = fd2;
 	}
 	setinputfd(fd, flags & INPUT_PUSH_FILE);
@@ -11046,8 +11033,6 @@ getopts(char *optstr, char *optvar, char **optfirst, int *param_optind, int *opt
 
 	sbuf[1] = '\0';
 
-	if (*param_optind < 1)
-		return 1;
 	optnext = optfirst + *param_optind - 1;
 
 	if (*param_optind <= 1 || *optoff < 0 || (int)strlen(optnext[-1]) < *optoff)
@@ -12178,7 +12163,7 @@ parseredir: {
 parsesub: {
 	unsigned char subtype;
 	int typeloc;
-	int flags;
+	int flags = 0;
 
 	c = pgetc_eatbnl();
 	if (c > 255 /* PEOA or PEOF */
@@ -12238,15 +12223,13 @@ parsesub: {
 			USTPUTC(c, out);
 			c = pgetc_eatbnl();
 		} else {
- badsub:
-			raise_error_syntax("bad substitution");
+			goto badsub;
 		}
 		if (c != '}' && subtype == VSLENGTH) {
 			/* ${#VAR didn't end with } */
 			goto badsub;
 		}
 
-		STPUTC('=', out);
 		flags = 0;
 		if (subtype == 0) {
 			static const char types[] ALIGN1 = "}-+?=";
@@ -12263,7 +12246,7 @@ parsesub: {
 				if (!strchr(types, c)) {
 					subtype = VSSUBSTR;
 					pungetc();
-					break; /* "goto do_pungetc" is bigger (!) */
+					break; /* "goto badsub" is bigger (!) */
 				}
 #endif
 				flags = VSNUL;
@@ -12271,7 +12254,7 @@ parsesub: {
 			default: {
 				const char *p = strchr(types, c);
 				if (p == NULL)
-					goto badsub;
+					break;
 				subtype = p - types + VSNORMAL;
 				break;
 			}
@@ -12281,7 +12264,7 @@ parsesub: {
 				subtype = (c == '#' ? VSTRIMLEFT : VSTRIMRIGHT);
 				c = pgetc_eatbnl();
 				if (c != cc)
-					goto do_pungetc;
+					goto badsub;
 				subtype++;
 				break;
 			}
@@ -12293,13 +12276,13 @@ parsesub: {
 				subtype = VSREPLACE;
 				c = pgetc_eatbnl();
 				if (c != '/')
-					goto do_pungetc;
+					goto badsub;
 				subtype++; /* VSREPLACEALL */
 				break;
 #endif
 			}
 		} else {
- do_pungetc:
+ badsub:
 			pungetc();
 		}
 		((unsigned char *)stackblock())[typeloc] = subtype | flags;
@@ -12309,6 +12292,7 @@ parsesub: {
 				dqvarnest++;
 			}
 		}
+		STPUTC('=', out);
 	}
 	goto parsesub_return;
 }
@@ -12746,11 +12730,17 @@ static const char *
 expandstr(const char *ps)
 {
 	union node n;
+	int saveprompt;
 
 	/* XXX Fix (char *) cast. It _is_ a bug. ps is variable's value,
 	 * and token processing _can_ alter it (delete NULs etc). */
 	setinputstring((char *)ps);
+
+	saveprompt = doprompt;
+	doprompt = 0;
 	readtoken1(pgetc(), PSSYNTAX, nullstr, 0);
+	doprompt = saveprompt;
+
 	popfile();
 
 	n.narg.type = NARG;
@@ -13680,12 +13670,12 @@ exitshell(void)
 		evalstring(p, 0);
 		/*free(p); - we'll exit soon */
 	}
-	flush_stdout_stderr();
  out:
 	/* dash wraps setjobctl(0) in "if (setjmp(loc.loc) == 0) {...}".
 	 * our setjobctl(0) does not panic if tcsetpgrp fails inside it.
 	 */
 	setjobctl(0);
+	flush_stdout_stderr();
 	_exit(status);
 	/* NOTREACHED */
 }
@@ -13978,8 +13968,6 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		reset();
 
 		e = exception_type;
-		if (e == EXERROR)
-			exitstatus = 2;
 		s = state;
 		if (e == EXEXIT || s == 0 || iflag == 0 || shlvl) {
 			exitshell();
