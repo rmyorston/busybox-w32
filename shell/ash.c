@@ -14510,7 +14510,6 @@ globals_var_size(struct globals_var *gvp)
 	nodeptrsize += 2 + VTABSIZE; /* gvp->redirlist, gvp->shellparam.p, vartab  */
 }
 
-#undef g_nullredirs
 #undef preverrout_fd
 static struct globals_var *
 globals_var_copy(struct globals_var *gvp)
@@ -14530,7 +14529,6 @@ globals_var_copy(struct globals_var *gvp)
 	new->redirlist = redirtab_copy(gvp->redirlist);
 	SAVE_PTR(new->redirlist);
 
-	new->g_nullredirs = gvp->g_nullredirs;
 	new->preverrout_fd = gvp->preverrout_fd;
 	for (i = 0; i < VTABSIZE; i++) {
 		new->vartab[i] = var_copy(gvp->vartab[i]);
