@@ -1561,12 +1561,10 @@ sstrdup(const char *p)
 	return memcpy(stalloc(len), p, len);
 }
 
-static void
+static inline void
 grabstackblock(size_t len)
 {
-	len = SHELL_ALIGN(len);
-	g_stacknxt += len;
-	g_stacknleft -= len;
+	stalloc(len);
 }
 
 static void
@@ -2328,32 +2326,6 @@ setvar0(const char *name, const char *val)
 	setvar(name, val, 0);
 }
 
-#if ENABLE_ASH_GETOPTS
-/*
- * Safe version of setvar, returns 1 on success 0 on failure.
- */
-static int
-setvarsafe(const char *name, const char *val, int flags)
-{
-	int err;
-	volatile int saveint;
-	struct jmploc *volatile savehandler = exception_handler;
-	struct jmploc jmploc;
-
-	SAVE_INT(saveint);
-	if (setjmp(jmploc.loc))
-		err = 1;
-	else {
-		exception_handler = &jmploc;
-		setvar(name, val, flags);
-		err = 0;
-	}
-	exception_handler = savehandler;
-	RESTORE_INT(saveint);
-	return err;
-}
-#endif
-
 /*
  * Unset the specified variable.
  */
@@ -2810,7 +2782,7 @@ setpwd(const char *val, int setold)
 static void hashcd(void);
 
 /*
- * Actually do the chdir.  We also call hashcd to let the routines in exec.c
+ * Actually do the chdir.  We also call hashcd to let other routines
  * know that the current directory has changed.
  */
 static int
@@ -2858,7 +2830,7 @@ cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	if (!dest)
 		dest = nullstr;
 	if (is_absolute_path(dest))
-		goto step7;
+		goto step6;
 	if (*dest == '.') {
 		c = dest[1];
  dotdot:
@@ -2875,13 +2847,7 @@ cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	if (!*dest)
 		dest = ".";
 	path = bltinlookup("CDPATH");
-	if (!path) {
- step6:
- step7:
-		p = dest;
-		goto docd;
-	}
-	do {
+	while (path) {
 		c = *path;
 		p = path_advance(&path, dest);
 		if (stat(p, &statb) >= 0 && S_ISDIR(statb.st_mode)) {
@@ -2890,9 +2856,15 @@ cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
  docd:
 			if (!docd(p, flags))
 				goto out;
-			break;
+			goto err;
 		}
-	} while (path);
+	}
+
+ step6:
+	p = dest;
+	goto docd;
+
+ err:
 	ash_msg_and_raise_error("can't cd to %s", dest);
 	/* NOTREACHED */
  out:
@@ -3959,12 +3931,12 @@ setjobctl(int on)
 				if (--fd < 0)
 					goto out;
 		}
+		/* fd is a tty at this point */
 		fd = fcntl(fd, F_DUPFD, 10);
-		if (ofd >= 0)
+		if (ofd >= 0) /* if it is "/dev/tty", close. If 0/1/2, dont */
 			close(ofd);
 		if (fd < 0)
-			goto out;
-		/* fd is a tty at this point */
+			goto out; /* F_DUPFD failed */
 		close_on_exec_on(fd);
 		while (1) { /* while we are in the background */
 			pgrp = tcgetpgrp(fd);
@@ -5001,6 +4973,7 @@ clear_traps(void)
 static void closescript(void);
 
 /* Called after fork(), in child */
+/* jp and n are NULL when called by openhere() for heredoc support */
 static NOINLINE void
 forkchild(struct job *jp, union node *n, int mode)
 {
@@ -5140,6 +5113,7 @@ forkparent(struct job *jp, union node *n, int mode, HANDLE proc)
 #endif
 	TRACE(("In parent shell: child = %d\n", pid));
 	if (!jp && !ENABLE_PLATFORM_MINGW32) { /* FIXME not quite understand this */
+		/* jp is NULL when called by openhere() for heredoc support */
 		while (jobless && dowait(DOWAIT_NONBLOCK, NULL) > 0)
 			continue;
 		jobless++;
@@ -5177,6 +5151,7 @@ forkparent(struct job *jp, union node *n, int mode, HANDLE proc)
 }
 
 #if !ENABLE_PLATFORM_MINGW32
+/* jp and n are NULL when called by openhere() for heredoc support */
 static int
 forkshell(struct job *jp, union node *n, int mode)
 {
@@ -5307,8 +5282,7 @@ stoppedjobs(void)
 }
 
 
-/* ============ redir.c
- *
+/*
  * Code for dealing with input/output redirection.
  */
 
@@ -5527,26 +5501,31 @@ openredirect(union node *redir)
 }
 
 /*
- * Copy a file descriptor to be >= to. Throws exception on error.
+ * Copy a file descriptor to be >= 10. Throws exception on error.
  */
-/* 0x800..00: bit to set in "to" to request dup2 instead of fcntl(F_DUPFD).
- * old code was doing close(to) prior to copyfd() to achieve the same */
-enum {
-	COPYFD_EXACT   = (int)~(INT_MAX),
-	COPYFD_RESTORE = (int)((unsigned)COPYFD_EXACT >> 1),
-};
 static int
-copyfd(int from, int to)
+savefd(int from)
+{
+	int newfd;
+	int err;
+
+	newfd = fcntl(from, F_DUPFD, 10);
+	err = newfd < 0 ? errno : 0;
+	if (err != EBADF) {
+		if (err)
+			ash_msg_and_raise_error("%d: %m", from);
+		close(from);
+		fcntl(newfd, F_SETFD, FD_CLOEXEC);
+	}
+
+	return newfd;
+}
+static int
+dup2_or_raise(int from, int to)
 {
 	int newfd;
 
-	if (to & COPYFD_EXACT) {
-		to &= ~COPYFD_EXACT;
-		/*if (from != to)*/
-			newfd = dup2(from, to);
-	} else {
-		newfd = fcntl(from, F_DUPFD, to);
-	}
+	newfd = (from != to) ? dup2(from, to) : to;
 	if (newfd < 0) {
 		/* Happens when source fd is not open: try "echo >&99" */
 		ash_msg_and_raise_error("%d: %m", from);
@@ -5564,6 +5543,9 @@ struct redirtab {
 	struct two_fd_t two_fd[];
 };
 #define redirlist (G_var.redirlist)
+enum {
+	COPYFD_RESTORE = (int)~(INT_MAX),
+};
 
 static int
 need_to_remember(struct redirtab *rp, int fd)
@@ -5737,10 +5719,10 @@ redirect(union node *redir, int flags)
 				if (fd != -1)
 					close(fd);
 			} else {
-				copyfd(redir->ndup.dupfd, fd | COPYFD_EXACT);
+				dup2_or_raise(redir->ndup.dupfd, fd);
 			}
 		} else if (fd != newfd) { /* move newfd to fd */
-			copyfd(newfd, fd | COPYFD_EXACT);
+			dup2_or_raise(newfd, fd);
 #if ENABLE_ASH_BASH_COMPAT
 			if (!(redir->nfile.type == NTO2 && fd == 2))
 #endif
@@ -5786,7 +5768,7 @@ popredir(int drop, int restore)
 			if (!drop || (restore && (copy & COPYFD_RESTORE))) {
 				copy &= ~COPYFD_RESTORE;
 				/*close(fd);*/
-				copyfd(copy, fd | COPYFD_EXACT);
+				dup2_or_raise(copy, fd);
 			}
 			close(copy & ~COPYFD_RESTORE);
 		}
@@ -5799,16 +5781,6 @@ popredir(int drop, int restore)
 /*
  * Undo all redirections.  Called on error or interrupt.
  */
-
-/*
- * Discard all saved file descriptors.
- */
-static void
-clearredir(int drop)
-{
-	while (redirlist)
-		popredir(drop, /*restore:*/ 0);
-}
 
 static int
 redirectsafe(union node *redir, int flags)
@@ -6246,11 +6218,12 @@ evalbackcmd(union node *n, struct backcmd *result)
 		ash_msg_and_raise_error("unable to spawn shell");
 #else
 	if (forkshell(jp, n, FORK_NOJOB) == 0) {
+		/* child */
 		FORCE_INT_ON;
 		close(pip[0]);
 		if (pip[1] != 1) {
 			/*close(1);*/
-			copyfd(pip[1], 1 | COPYFD_EXACT);
+			dup2_or_raise(pip[1], 1);
 			close(pip[1]);
 		}
 /* TODO: eflag clearing makes the following not abort:
@@ -6266,6 +6239,7 @@ evalbackcmd(union node *n, struct backcmd *result)
 		/* NOTREACHED */
 	}
 #endif
+	/* parent */
 	close(pip[1]);
 	result->fd = pip[0];
 	result->jp = jp;
@@ -7855,13 +7829,7 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) char *cmd, char **argv, char **
 #else
 	execve(cmd, argv, envp);
 #endif
-	if (cmd == (char*) bb_busybox_exec_path) {
-		/* We already visited ENOEXEC branch below, don't do it again */
-//TODO: try execve(initial_argv0_of_shell, argv, envp) before giving up?
-		free(argv);
-		return;
-	}
-	if (errno == ENOEXEC) {
+	if (cmd != (char*) bb_busybox_exec_path && errno == ENOEXEC) {
 		/* Run "cmd" as a shell script:
 		 * http://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
 		 * "If the execve() function fails with ENOEXEC, the shell
@@ -7878,19 +7846,13 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) char *cmd, char **argv, char **
 		 * message and exit code 126. For one, this prevents attempts
 		 * to interpret foreign ELF binaries as shell scripts.
 		 */
-		char **ap;
-		char **new;
-
-		for (ap = argv; *ap; ap++)
-			continue;
-		new = ckmalloc((ap - argv + 2) * sizeof(new[0]));
-		new[0] = (char*) "ash";
-		new[1] = cmd;
-		ap = new + 2;
-		while ((*ap++ = *++argv) != NULL)
-			continue;
+		argv[0] = cmd;
 		cmd = (char*) bb_busybox_exec_path;
-		argv = new;
+		/* NB: this is only possible because all callers of shellexec()
+		 * ensure that the argv[-1] slot exists!
+		 */
+		argv--;
+		argv[0] = (char*) "ash";
 		goto repeat;
 	}
 }
@@ -7898,6 +7860,7 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) char *cmd, char **argv, char **
 /*
  * Exec a program.  Never returns.  If you change this routine, you may
  * have to change the find_command routine as well.
+ * argv[-1] must exist and be writable! See tryexec() for why.
  */
 static void shellexec(char **, const char *, int) NORETURN;
 static void
@@ -7909,7 +7872,6 @@ shellexec(char **argv, const char *path, int idx)
 	int exerrno;
 	int applet_no = -1; /* used only by FEATURE_SH_STANDALONE */
 
-	clearredir(/*drop:*/ 1);
 	envp = listvars(VEXPORT, VUNSET, /*end:*/ NULL);
 	if ((strchr(argv[0], '/') || (ENABLE_PLATFORM_MINGW32 && strchr(argv[0], '\\')))
 #if ENABLE_FEATURE_SH_STANDALONE
@@ -9230,6 +9192,7 @@ evalsubshell(union node *n, int flags)
 		evaltreenr(n->nredir.n, flags);
 		/* never returns */
 	}
+	/* parent */
 	status = 0;
 	if (!backgnd)
 		status = waitforjob(jp);
@@ -9347,6 +9310,7 @@ evalpipe(union node *n, int flags)
 			ash_msg_and_raise_error("unable to spawn shell");
 #else
 		if (forkshell(jp, lp->n, n->npipe.pipe_backgnd) == 0) {
+			/* child */
 			INT_ON;
 			if (pip[1] >= 0) {
 				close(pip[0]);
@@ -9363,6 +9327,7 @@ evalpipe(union node *n, int flags)
 			/* never returns */
 		}
 #endif
+		/* parent */
 		if (prevfd >= 0)
 			close(prevfd);
 		prevfd = pip[0];
@@ -9884,7 +9849,9 @@ evalcommand(union node *cmd, int flags)
 			argc++;
 	}
 
-	argv = nargv = stalloc(sizeof(char *) * (argc + 1));
+	/* Reserve one extra spot at the front for shellexec. */
+	nargv = stalloc(sizeof(char *) * (argc + 2));
+	argv = ++nargv;
 	for (sp = arglist.list; sp; sp = sp->next) {
 		TRACE(("evalcommand arg: %s\n", sp->text));
 		*nargv++ = sp->text;
@@ -10202,8 +10169,7 @@ breakcmd(int argc UNUSED_PARAM, char **argv)
 }
 
 
-/* ============ input.c
- *
+/*
  * This implements the input routines used by the parser.
  */
 
@@ -10645,7 +10611,6 @@ closescript(void)
 static void
 setinputfd(int fd, int push)
 {
-	close_on_exec_on(fd);
 	if (push) {
 		pushfile();
 		g_parsefile->buf = NULL;
@@ -10666,7 +10631,6 @@ static int
 setinputfile(const char *fname, int flags)
 {
 	int fd;
-	int fd2;
 
 	INT_OFF;
 	fd = open(fname, O_RDONLY);
@@ -10676,11 +10640,10 @@ setinputfile(const char *fname, int flags)
 		exitstatus = 127;
 		ash_msg_and_raise_error("can't open '%s'", fname);
 	}
-	if (fd < 10) {
-		fd2 = copyfd(fd, 10);
-		close(fd);
-		fd = fd2;
-	}
+	if (fd < 10)
+		fd = savefd(fd);
+	else
+		close_on_exec_on(fd);
 	setinputfd(fd, flags & INPUT_PUSH_FILE);
  out:
 	INT_ON;
@@ -10703,8 +10666,7 @@ setinputstring(char *string)
 }
 
 
-/* ============ mail.c
- *
+/*
  * Routines to check for mail.
  */
 
@@ -11022,23 +10984,25 @@ change_random(const char *value)
 
 #if ENABLE_ASH_GETOPTS
 static int
-getopts(char *optstr, char *optvar, char **optfirst, int *param_optind, int *optoff)
+getopts(char *optstr, char *optvar, char **optfirst)
 {
 	char *p, *q;
 	char c = '?';
 	int done = 0;
-	int err = 0;
 	char sbuf[2];
 	char **optnext;
+	int ind = shellparam.optind;
+	int off = shellparam.optoff;
 
 	sbuf[1] = '\0';
 
-	optnext = optfirst + *param_optind - 1;
+	shellparam.optind = -1;
+	optnext = optfirst + ind - 1;
 
-	if (*param_optind <= 1 || *optoff < 0 || (int)strlen(optnext[-1]) < *optoff)
+	if (ind <= 1 || off < 0 || (int)strlen(optnext[-1]) < off)
 		p = NULL;
 	else
-		p = optnext[-1] + *optoff;
+		p = optnext[-1] + off;
 	if (p == NULL || *p == '\0') {
 		/* Current word is done, advance */
 		p = *optnext;
@@ -11059,7 +11023,7 @@ getopts(char *optstr, char *optvar, char **optfirst, int *param_optind, int *opt
 			if (optstr[0] == ':') {
 				sbuf[0] = c;
 				/*sbuf[1] = '\0'; - already is */
-				err |= setvarsafe("OPTARG", sbuf, 0);
+				setvar0("OPTARG", sbuf);
 			} else {
 				fprintf(stderr, "Illegal option -%c\n", c);
 				unsetvar("OPTARG");
@@ -11076,7 +11040,7 @@ getopts(char *optstr, char *optvar, char **optfirst, int *param_optind, int *opt
 			if (optstr[0] == ':') {
 				sbuf[0] = c;
 				/*sbuf[1] = '\0'; - already is */
-				err |= setvarsafe("OPTARG", sbuf, 0);
+				setvar0("OPTARG", sbuf);
 				c = ':';
 			} else {
 				fprintf(stderr, "No arg for -%c option\n", c);
@@ -11088,23 +11052,20 @@ getopts(char *optstr, char *optvar, char **optfirst, int *param_optind, int *opt
 
 		if (p == *optnext)
 			optnext++;
-		err |= setvarsafe("OPTARG", p, 0);
+		setvar0("OPTARG", p);
 		p = NULL;
 	} else
-		err |= setvarsafe("OPTARG", nullstr, 0);
+		setvar0("OPTARG", nullstr);
  out:
-	*optoff = p ? p - *(optnext - 1) : -1;
-	*param_optind = optnext - optfirst + 1;
-	err |= setvarsafe("OPTIND", itoa(*param_optind), VNOFUNC);
+	ind = optnext - optfirst + 1;
+	setvar("OPTIND", itoa(ind), VNOFUNC);
 	sbuf[0] = c;
 	/*sbuf[1] = '\0'; - already is */
-	err |= setvarsafe(optvar, sbuf, 0);
-	if (err) {
-		*param_optind = 1;
-		*optoff = -1;
-		flush_stdout_stderr();
-		raise_exception(EXERROR);
-	}
+	setvar0(optvar, sbuf);
+
+	shellparam.optoff = p ? p - *(optnext - 1) : -1;
+	shellparam.optind = ind;
+
 	return done;
 }
 
@@ -11123,20 +11084,19 @@ getoptscmd(int argc, char **argv)
 		ash_msg_and_raise_error("usage: getopts optstring var [arg]");
 	if (argc == 3) {
 		optbase = shellparam.p;
-		if (shellparam.optind > shellparam.nparam + 1) {
+		if ((unsigned)shellparam.optind > shellparam.nparam + 1) {
 			shellparam.optind = 1;
 			shellparam.optoff = -1;
 		}
 	} else {
 		optbase = &argv[3];
-		if (shellparam.optind > argc - 2) {
+		if ((unsigned)shellparam.optind > argc - 2) {
 			shellparam.optind = 1;
 			shellparam.optoff = -1;
 		}
 	}
 
-	return getopts(argv[1], argv[2], optbase, &shellparam.optind,
-			&shellparam.optoff);
+	return getopts(argv[1], argv[2], optbase);
 }
 #endif /* ASH_GETOPTS */
 
@@ -12060,11 +12020,17 @@ checkend: {
 		if (c == *eofmark) {
 			if (pfgets(line, sizeof(line)) != NULL) {
 				char *p, *q;
+				int cc;
 
 				p = line;
-				for (q = eofmark + 1; *q && *p == *q; p++, q++)
-					continue;
-				if (*p == '\n' && *q == '\0') {
+				for (q = eofmark + 1;; p++, q++) {
+					cc = *p;
+					if (cc == '\n')
+						cc = 0;
+					if (!*q || cc != *q)
+						break;
+				}
+				if (cc == *q) {
 					c = PEOF;
 					nlnoprompt();
 				} else {
@@ -12163,7 +12129,6 @@ parseredir: {
 parsesub: {
 	unsigned char subtype;
 	int typeloc;
-	int flags = 0;
 
 	c = pgetc_eatbnl();
 	if (c > 255 /* PEOA or PEOF */
@@ -12192,26 +12157,19 @@ parsesub: {
 		/* $VAR, $<specialchar>, ${...}, or PEOA/PEOF */
 		USTPUTC(CTLVAR, out);
 		typeloc = out - (char *)stackblock();
-		USTPUTC(VSNORMAL, out);
+		STADJUST(1, out);
 		subtype = VSNORMAL;
 		if (c == '{') {
 			c = pgetc_eatbnl();
-			if (c == '#') {
-				c = pgetc_eatbnl();
-				if (c == '}')
-					c = '#'; /* ${#} - same as $# */
-				else
-					subtype = VSLENGTH; /* ${#VAR} */
-			} else {
-				subtype = 0;
-			}
+			subtype = 0;
 		}
-		if (c <= 255 /* not PEOA or PEOF */ && is_name(c)) {
+ varname:
+		if (is_name(c)) {
 			/* $[{[#]]NAME[}] */
 			do {
 				STPUTC(c, out);
 				c = pgetc_eatbnl();
-			} while (c <= 255 /* not PEOA or PEOF */ && is_in_name(c));
+			} while (is_in_name(c));
 		} else if (isdigit(c)) {
 			/* $[{[#]]NUM[}] */
 			do {
@@ -12220,8 +12178,23 @@ parsesub: {
 			} while (isdigit(c));
 		} else if (is_special(c)) {
 			/* $[{[#]]<specialchar>[}] */
-			USTPUTC(c, out);
+			int cc = c;
+
 			c = pgetc_eatbnl();
+			if (!subtype && cc == '#') {
+				subtype = VSLENGTH;
+				if (c == '_' || isalnum(c))
+					goto varname;
+				cc = c;
+				c = pgetc_eatbnl();
+				if (cc == '}' || c != '}') {
+					pungetc();
+					subtype = 0;
+					c = cc;
+					cc = '#';
+				}
+			}
+			USTPUTC(cc, out);
 		} else {
 			goto badsub;
 		}
@@ -12230,7 +12203,6 @@ parsesub: {
 			goto badsub;
 		}
 
-		flags = 0;
 		if (subtype == 0) {
 			static const char types[] ALIGN1 = "}-+?=";
 			/* ${VAR...} but not $VAR or ${#VAR} */
@@ -12249,13 +12221,13 @@ parsesub: {
 					break; /* "goto badsub" is bigger (!) */
 				}
 #endif
-				flags = VSNUL;
+				subtype = VSNUL;
 				/*FALLTHROUGH*/
 			default: {
 				const char *p = strchr(types, c);
 				if (p == NULL)
 					break;
-				subtype = p - types + VSNORMAL;
+				subtype |= p - types + VSNORMAL;
 				break;
 			}
 			case '%':
@@ -12285,12 +12257,11 @@ parsesub: {
  badsub:
 			pungetc();
 		}
-		((unsigned char *)stackblock())[typeloc] = subtype | flags;
+		((unsigned char *)stackblock())[typeloc] = subtype;
 		if (subtype != VSNORMAL) {
 			varnest++;
-			if (dblquote) {
+			if (dblquote)
 				dqvarnest++;
-			}
 		}
 		STPUTC('=', out);
 	}
@@ -13921,7 +13892,8 @@ reset(void)
 	tokpushback = 0;
 	checkkwd = 0;
 	/* from redir.c: */
-	clearredir(/*drop:*/ 0);
+	while (redirlist)
+		popredir(/*drop:*/ 0, /*restore:*/ 0);
 }
 
 #if PROFILE
