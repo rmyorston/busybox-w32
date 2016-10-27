@@ -14111,7 +14111,7 @@ forkshell_evalbackcmd(struct forkshell *fs)
 	close(pip[0]);
 	if (pip[1] != 1) {
 		/*close(1);*/
-		copyfd(pip[1], 1 | COPYFD_EXACT);
+		dup2_or_raise(pip[1], 1);
 		close(pip[1]);
 	}
 	eflag = 0;
