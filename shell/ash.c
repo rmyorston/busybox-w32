@@ -3581,6 +3581,7 @@ ignoresig(int signo)
 	sigmode[signo - 1] = S_HARD_IGN;
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 /*
  * Only one usage site - in setsignal()
  */
@@ -3616,8 +3617,6 @@ setsignal(int signo)
 	char cur_act, new_act;
 	struct sigaction act;
 
-	if (ENABLE_PLATFORM_MINGW32)
-		return;
 	t = trap[signo];
 	new_act = S_DFL;
 	if (t != NULL) { /* trap for this sig is set */
@@ -3707,6 +3706,9 @@ setsignal(int signo)
 
 	*t = new_act;
 }
+#else
+#define setsignal(s)
+#endif
 
 /* mode flags for set_curjob */
 #define CUR_DELETE 2
@@ -4224,7 +4226,9 @@ waitpid_child(int *status, int wait_flags)
 	return pid;
 }
 #define waitpid(p, s, f) waitpid_child(s, f)
-#endif
+#define wait_block_or_sig(s, f) waitpid_child(s, f)
+
+#else
 
 static int
 wait_block_or_sig(int *status, int wait_flags)
@@ -4251,6 +4255,7 @@ wait_block_or_sig(int *status, int wait_flags)
 
 	return pid;
 }
+#endif
 
 
 static int
