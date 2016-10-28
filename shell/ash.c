@@ -361,6 +361,7 @@ struct globals_misc {
 
 	volatile int suppress_int; /* counter */
 	volatile /*sig_atomic_t*/ smallint pending_int; /* 1 = got SIGINT */
+	volatile /*sig_atomic_t*/ smallint got_sigchld; /* 1 = got SIGCHLD */
 	/* last pending signal */
 	volatile /*sig_atomic_t*/ smallint pending_sig;
 	smallint exception_type; /* kind of exception (0..5) */
@@ -368,7 +369,6 @@ struct globals_misc {
 #define EXINT 0         /* SIGINT received */
 #define EXERROR 1       /* a generic error */
 #define EXEXIT 4        /* exit the shell */
-#define EXSIG 5         /* trapped signal in wait(1) */
 
 	smallint isloginsh;
 	char nullstr[1];        /* zero length string */
@@ -441,6 +441,7 @@ extern struct globals_misc *const ash_ptr_to_globals_misc;
 #define exception_type    (G_misc.exception_type   )
 #define suppress_int      (G_misc.suppress_int     )
 #define pending_int       (G_misc.pending_int      )
+#define got_sigchld       (G_misc.got_sigchld      )
 #define pending_sig       (G_misc.pending_sig      )
 #define isloginsh   (G_misc.isloginsh  )
 #define nullstr     (G_misc.nullstr    )
@@ -552,26 +553,20 @@ static void raise_interrupt(void) NORETURN;
 static void
 raise_interrupt(void)
 {
-	int ex_type;
-
 	pending_int = 0;
 	/* Signal is not automatically unmasked after it is raised,
 	 * do it ourself - unmask all signals */
 	sigprocmask_allsigs(SIG_UNBLOCK);
 	/* pending_sig = 0; - now done in signal_handler() */
 
-	ex_type = EXSIG;
-	if (gotsig[SIGINT - 1] && !trap[SIGINT]) {
-		if (!(rootshell && iflag)) {
-			/* Kill ourself with SIGINT */
-			signal(SIGINT, SIG_DFL);
-			raise(SIGINT);
-		}
-		ex_type = EXINT;
+	if (!(rootshell && iflag)) {
+		/* Kill ourself with SIGINT */
+		signal(SIGINT, SIG_DFL);
+		raise(SIGINT);
 	}
 	/* bash: ^C even on empty command line sets $? */
 	exitstatus = SIGINT + 128;
-	raise_exception(ex_type);
+	raise_exception(EXINT);
 	/* NOTREACHED */
 }
 #if DEBUG
@@ -3592,7 +3587,14 @@ ignoresig(int signo)
 static void
 signal_handler(int signo)
 {
+	if (signo == SIGCHLD) {
+		got_sigchld = 1;
+		if (!trap[SIGCHLD])
+			return;
+	}
+
 	gotsig[signo - 1] = 1;
+	pending_sig = signo;
 
 	if (signo == SIGINT && !trap[SIGINT]) {
 		if (!suppress_int) {
@@ -3600,8 +3602,6 @@ signal_handler(int signo)
 			raise_interrupt(); /* does not return */
 		}
 		pending_int = 1;
-	} else {
-		pending_sig = signo;
 	}
 }
 
@@ -3661,6 +3661,9 @@ setsignal(int signo)
 //whereas we have to restore it to what shell got on entry
 //from the parent. See comment above
 
+	if (signo == SIGCHLD)
+		new_act = S_CATCH;
+
 	t = &sigmode[signo - 1];
 	cur_act = *t;
 	if (cur_act == 0) {
@@ -3711,8 +3714,9 @@ setsignal(int signo)
 #define CUR_STOPPED 0
 
 /* mode flags for dowait */
-#define DOWAIT_NONBLOCK WNOHANG
-#define DOWAIT_BLOCK    0
+#define DOWAIT_NONBLOCK 0
+#define DOWAIT_BLOCK    1
+#define DOWAIT_BLOCK_OR_SIG 2
 
 #if JOBS
 /* pgrp of shell on invocation */
@@ -4223,27 +4227,76 @@ waitpid_child(int *status, int wait_flags)
 #endif
 
 static int
-dowait(int wait_flags, struct job *job)
+wait_block_or_sig(int *status, int wait_flags)
 {
+	sigset_t mask;
+	int pid;
+
+	do {
+		/* Poll all children for changes in their state */
+		got_sigchld = 0;
+		pid = waitpid(-1, status, wait_flags | WNOHANG);
+		if (pid != 0)
+			break; /* Error (e.g. EINTR) or pid */
+
+		/* No child is ready. Sleep until interesting signal is received */
+		sigfillset(&mask);
+		sigprocmask(SIG_SETMASK, &mask, &mask);
+		while (!got_sigchld && !pending_sig)
+			sigsuspend(&mask);
+		sigprocmask(SIG_SETMASK, &mask, NULL);
+
+		/* If it was SIGCHLD, poll children again */
+	} while (got_sigchld);
+
+	return pid;
+}
+
+
+static int
+dowait(int block, struct job *job)
+{
+	int wait_flags;
 	int pid;
 	int status;
 	struct job *jp;
-	struct job *thisjob;
+	struct job *thisjob = NULL;
 
-	TRACE(("dowait(0x%x) called\n", wait_flags));
+	TRACE(("dowait(0x%x) called\n", block));
 
-	/* Do a wait system call. If job control is compiled in, we accept
-	 * stopped processes. wait_flags may have WNOHANG, preventing blocking.
-	 * NB: _not_ safe_waitpid, we need to detect EINTR */
+	wait_flags = 0;
+	if (block == DOWAIT_NONBLOCK)
+		wait_flags = WNOHANG;
+	/* If job control is compiled in, we accept stopped processes too. */
 	if (doing_jobctl)
 		wait_flags |= WUNTRACED;
-	pid = waitpid(-1, &status, wait_flags);
+
+	/* It's wrong to call waitpid() outside of INT_OFF region:
+	 * signal can arrive just after syscall return and handler can
+	 * longjmp away, losing stop/exit notification processing.
+	 * Thus, for "jobs" builtin, and for waiting for a fg job,
+	 * we call waitpid() (blocking or non-blocking) inside INT_OFF.
+	 *
+	 * However, for "wait" builtin it is wrong to simply call waitpid()
+	 * in INT_OFF region: "wait" needs to wait for any running job
+	 * to change state, but should exit on any trap too.
+	 * In INT_OFF region, a signal just before syscall entry can set
+	 * pending_sig valiables, but we can't check them, and we would
+	 * either enter a sleeping waitpid() (BUG), or need to busy-loop.
+	 * Because of this, we run inside INT_OFF, but use a special routine
+	 * which combines waitpid() and sigsuspend().
+	 */
+	INT_OFF;
+	if (block == DOWAIT_BLOCK_OR_SIG)
+		pid = wait_block_or_sig(&status, wait_flags);
+	else
+		/* NB: _not_ safe_waitpid, we need to detect EINTR. */
+		pid = waitpid(-1, &status, wait_flags);
 	TRACE(("wait returns pid=%d, status=0x%x, errno=%d(%s)\n",
 				pid, status, errno, strerror(errno)));
 	if (pid <= 0)
-		return pid;
+		goto out;
 
-	INT_OFF;
 	thisjob = NULL;
 	for (jp = curjob; jp; jp = jp->prev_job) {
 		int jobstate;
@@ -4317,15 +4370,6 @@ dowait(int wait_flags, struct job *job)
 			out2str(s);
 		}
 	}
-	return pid;
-}
-
-static int
-blocking_wait_with_raise_on_sig(void)
-{
-	pid_t pid = dowait(DOWAIT_BLOCK, NULL);
-	if (pid <= 0 && pending_sig)
-		raise_exception(EXSIG);
 	return pid;
 }
 
@@ -4498,9 +4542,6 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 	int retval;
 	struct job *jp;
 
-	if (pending_sig)
-		raise_exception(EXSIG);
-
 	nextopt(nullstr);
 	retval = 0;
 
@@ -4517,21 +4558,20 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 				jp->waited = 1;
 				jp = jp->prev_job;
 			}
-			blocking_wait_with_raise_on_sig();
 	/* man bash:
 	 * "When bash is waiting for an asynchronous command via
 	 * the wait builtin, the reception of a signal for which a trap
 	 * has been set will cause the wait builtin to return immediately
 	 * with an exit status greater than 128, immediately after which
 	 * the trap is executed."
-	 *
-	 * blocking_wait_with_raise_on_sig raises signal handlers
-	 * if it gets no pid (pid < 0). However,
-	 * if child sends us a signal *and immediately exits*,
-	 * blocking_wait_with_raise_on_sig gets pid > 0
-	 * and does not handle pending_sig. Check this case: */
+	 */
+			dowait(DOWAIT_BLOCK_OR_SIG, NULL);
+	/* if child sends us a signal *and immediately exits*,
+	 * dowait() returns pid > 0. Check this case,
+	 * not "if (dowait() < 0)"!
+	 */
 			if (pending_sig)
-				raise_exception(EXSIG);
+				goto sigout;
 		}
 	}
 
@@ -4551,14 +4591,20 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 			job = getjob(*argv, 0);
 		}
 		/* loop until process terminated or stopped */
-		while (job->state == JOBRUNNING)
-			blocking_wait_with_raise_on_sig();
+		while (job->state == JOBRUNNING) {
+			dowait(DOWAIT_BLOCK_OR_SIG, NULL);
+			if (pending_sig)
+				goto sigout;
+		}
 		job->waited = 1;
 		retval = getstatus(job);
  repeat: ;
 	} while (*++argv);
 
  ret:
+	return retval;
+ sigout:
+	retval = 128 + pending_sig;
 	return retval;
 }
 
@@ -4954,19 +5000,19 @@ clear_traps(void)
 {
 	char **tp;
 
+	INT_OFF;
 	for (tp = trap; tp < &trap[NSIG]; tp++) {
 		if (*tp && **tp) {      /* trap not NULL or "" (SIG_IGN) */
-			INT_OFF;
 			if (trap_ptr == trap)
 				free(*tp);
 			/* else: it "belongs" to trap_ptr vector, don't free */
 			*tp = NULL;
 			if ((tp - trap) != 0)
 				setsignal(tp - trap);
-			INT_ON;
 		}
 	}
 	may_have_traps = 0;
+	INT_ON;
 }
 
 /* Lives far away from here, needed for forkchild */
@@ -5914,6 +5960,119 @@ cvtnum(arith_t num)
 	return len;
 }
 
+/*
+ * Break the argument string into pieces based upon IFS and add the
+ * strings to the argument list.  The regions of the string to be
+ * searched for IFS characters have been stored by recordregion.
+ */
+static void
+ifsbreakup(char *string, struct arglist *arglist)
+{
+	struct ifsregion *ifsp;
+	struct strlist *sp;
+	char *start;
+	char *p;
+	char *q;
+	const char *ifs, *realifs;
+	int ifsspc;
+	int nulonly;
+
+	start = string;
+	if (ifslastp != NULL) {
+		ifsspc = 0;
+		nulonly = 0;
+		realifs = ifsset() ? ifsval() : defifs;
+		ifsp = &ifsfirst;
+		do {
+			p = string + ifsp->begoff;
+			nulonly = ifsp->nulonly;
+			ifs = nulonly ? nullstr : realifs;
+			ifsspc = 0;
+			while (p < string + ifsp->endoff) {
+				q = p;
+				if ((unsigned char)*p == CTLESC)
+					p++;
+				if (!strchr(ifs, *p)) {
+					p++;
+					continue;
+				}
+				if (!nulonly)
+					ifsspc = (strchr(defifs, *p) != NULL);
+				/* Ignore IFS whitespace at start */
+				if (q == start && ifsspc) {
+					p++;
+					start = p;
+					continue;
+				}
+				*q = '\0';
+				sp = stzalloc(sizeof(*sp));
+				sp->text = start;
+				*arglist->lastp = sp;
+				arglist->lastp = &sp->next;
+				p++;
+				if (!nulonly) {
+					for (;;) {
+						if (p >= string + ifsp->endoff) {
+							break;
+						}
+						q = p;
+						if ((unsigned char)*p == CTLESC)
+							p++;
+						if (strchr(ifs, *p) == NULL) {
+							p = q;
+							break;
+						}
+						if (strchr(defifs, *p) == NULL) {
+							if (ifsspc) {
+								p++;
+								ifsspc = 0;
+							} else {
+								p = q;
+								break;
+							}
+						} else
+							p++;
+					}
+				}
+				start = p;
+			} /* while */
+			ifsp = ifsp->next;
+		} while (ifsp != NULL);
+		if (nulonly)
+			goto add;
+	}
+
+	if (!*start)
+		return;
+
+ add:
+	sp = stzalloc(sizeof(*sp));
+	sp->text = start;
+	*arglist->lastp = sp;
+	arglist->lastp = &sp->next;
+}
+
+static void
+ifsfree(void)
+{
+	struct ifsregion *p = ifsfirst.next;
+
+	if (!p)
+		goto out;
+
+	INT_OFF;
+	do {
+		struct ifsregion *ifsp;
+		ifsp = p->next;
+		free(p);
+		p = ifsp;
+	} while (p);
+	ifsfirst.next = NULL;
+	INT_ON;
+ out:
+	ifslastp = NULL;
+}
+
 static size_t
 esclen(const char *start, const char *p)
 {
@@ -6235,6 +6394,7 @@ evalbackcmd(union node *n, struct backcmd *result)
  * For now, preserve bash-like behavior, it seems to be somewhat more useful:
  */
 		eflag = 0;
+		ifsfree();
 		evaltree(n, EV_EXIT); /* actually evaltreenr... */
 		/* NOTREACHED */
 	}
@@ -7207,116 +7367,6 @@ evalvar(char *p, int flag, struct strlist *var_str_list)
 }
 
 /*
- * Break the argument string into pieces based upon IFS and add the
- * strings to the argument list.  The regions of the string to be
- * searched for IFS characters have been stored by recordregion.
- */
-static void
-ifsbreakup(char *string, struct arglist *arglist)
-{
-	struct ifsregion *ifsp;
-	struct strlist *sp;
-	char *start;
-	char *p;
-	char *q;
-	const char *ifs, *realifs;
-	int ifsspc;
-	int nulonly;
-
-	start = string;
-	if (ifslastp != NULL) {
-		ifsspc = 0;
-		nulonly = 0;
-		realifs = ifsset() ? ifsval() : defifs;
-		ifsp = &ifsfirst;
-		do {
-			p = string + ifsp->begoff;
-			nulonly = ifsp->nulonly;
-			ifs = nulonly ? nullstr : realifs;
-			ifsspc = 0;
-			while (p < string + ifsp->endoff) {
-				q = p;
-				if ((unsigned char)*p == CTLESC)
-					p++;
-				if (!strchr(ifs, *p)) {
-					p++;
-					continue;
-				}
-				if (!nulonly)
-					ifsspc = (strchr(defifs, *p) != NULL);
-				/* Ignore IFS whitespace at start */
-				if (q == start && ifsspc) {
-					p++;
-					start = p;
-					continue;
-				}
-				*q = '\0';
-				sp = stzalloc(sizeof(*sp));
-				sp->text = start;
-				*arglist->lastp = sp;
-				arglist->lastp = &sp->next;
-				p++;
-				if (!nulonly) {
-					for (;;) {
-						if (p >= string + ifsp->endoff) {
-							break;
-						}
-						q = p;
-						if ((unsigned char)*p == CTLESC)
-							p++;
-						if (strchr(ifs, *p) == NULL) {
-							p = q;
-							break;
-						}
-						if (strchr(defifs, *p) == NULL) {
-							if (ifsspc) {
-								p++;
-								ifsspc = 0;
-							} else {
-								p = q;
-								break;
-							}
-						} else
-							p++;
-					}
-				}
-				start = p;
-			} /* while */
-			ifsp = ifsp->next;
-		} while (ifsp != NULL);
-		if (nulonly)
-			goto add;
-	}
-
-	if (!*start)
-		return;
-
- add:
-	sp = stzalloc(sizeof(*sp));
-	sp->text = start;
-	*arglist->lastp = sp;
-	arglist->lastp = &sp->next;
-}
-
-static void
-ifsfree(void)
-{
-	struct ifsregion *p;
-
-	INT_OFF;
-	p = ifsfirst.next;
-	do {
-		struct ifsregion *ifsp;
-		ifsp = p->next;
-		free(p);
-		p = ifsp;
-	} while (p);
-	ifslastp = NULL;
-	ifsfirst.next = NULL;
-	INT_ON;
-}
-
-/*
  * Add a file name to the list.
  */
 static void
@@ -7654,15 +7704,14 @@ expandarg(union node *arg, struct arglist *arglist, int flag)
 
 	argbackq = arg->narg.backquote;
 	STARTSTACKSTR(expdest);
-	ifsfirst.next = NULL;
-	ifslastp = NULL;
 	TRACE(("expandarg: argstr('%s',flags:%x)\n", arg->narg.text, flag));
 	argstr(arg->narg.text, flag,
 			/* var_str_list: */ arglist ? arglist->list : NULL);
 	p = _STPUTC('\0', expdest);
 	expdest = p - 1;
 	if (arglist == NULL) {
-		return;                 /* here document expanded */
+		/* here document expanded */
+		goto out;
 	}
 	p = grabstackstr(p);
 	TRACE(("expandarg: p:'%s'\n", p));
@@ -7685,13 +7734,14 @@ expandarg(union node *arg, struct arglist *arglist, int flag)
 		*exparg.lastp = sp;
 		exparg.lastp = &sp->next;
 	}
-	if (ifsfirst.next)
-		ifsfree();
 	*exparg.lastp = NULL;
 	if (exparg.list) {
 		*arglist->lastp = exparg.list;
 		arglist->lastp = exparg.lastp;
 	}
+
+ out:
+	ifsfree();
 }
 
 /*
@@ -7725,10 +7775,10 @@ casematch(union node *pattern, char *val)
 	setstackmark(&smark);
 	argbackq = pattern->narg.backquote;
 	STARTSTACKSTR(expdest);
-	ifslastp = NULL;
 	argstr(pattern->narg.text, EXP_TILDE | EXP_CASE,
 			/* var_str_list: */ NULL);
 	STACKSTRNUL(expdest);
+	ifsfree();
 	result = patmatch(stackblock(), val);
 	popstackmark(&smark);
 	return result;
@@ -8890,40 +8940,17 @@ static void prehash(union node *);
 static int
 evaltree(union node *n, int flags)
 {
-	struct jmploc *volatile savehandler = exception_handler;
-	struct jmploc jmploc;
 	int checkexit = 0;
 	int (*evalfn)(union node *, int);
 	int status = 0;
-	int int_level;
-
-	SAVE_INT(int_level);
 
 	if (n == NULL) {
 		TRACE(("evaltree(NULL) called\n"));
-		goto out1;
+		goto out;
 	}
 	TRACE(("evaltree(%p: %d, %d) called\n", n, n->type, flags));
 
 	dotrap();
-
-	exception_handler = &jmploc;
-	{
-		int err = setjmp(jmploc.loc);
-		if (err) {
-			/* if it was a signal, check for trap handlers */
-			if (exception_type == EXSIG) {
-				TRACE(("exception %d (EXSIG) in evaltree, err=%d\n",
-						exception_type, err));
-				goto out;
-			}
-			/* continue on the way out */
-			TRACE(("exception %d in evaltree, propagating err=%d\n",
-					exception_type, err));
-			exception_handler = savehandler;
-			longjmp(exception_handler->loc, err);
-		}
-	}
 
 	switch (n->type) {
 	default:
@@ -9015,11 +9042,7 @@ evaltree(union node *n, int flags)
 		exitstatus = status;
 		break;
 	}
-
  out:
-	exception_handler = savehandler;
-
- out1:
 	/* Order of checks below is important:
 	 * signal handlers trigger before exit caused by "set -e".
 	 */
@@ -9030,9 +9053,7 @@ evaltree(union node *n, int flags)
 	if (flags & EV_EXIT)
 		raise_exception(EXEXIT);
 
-	RESTORE_INT(int_level);
 	TRACE(("leaving evaltree (no interrupts)\n"));
-
 	return exitstatus;
 }
 
@@ -10036,21 +10057,12 @@ evalcommand(union node *cmd, int flags)
 		dowait(DOWAIT_NONBLOCK, NULL);
 
 		if (evalbltin(cmdentry.u.cmd, argc, argv, flags)) {
-			int exit_status;
-			int i = exception_type;
-			if (i == EXEXIT)
-				goto raise;
-			exit_status = 2;
-			if (i == EXINT)
-				exit_status = 128 + SIGINT;
-			if (i == EXSIG)
-				exit_status = 128 + pending_sig;
-			exitstatus = exit_status;
-			if (i == EXINT || spclbltin > 0) {
- raise:
-				longjmp(exception_handler->loc, 1);
+			if (exception_type == EXERROR && spclbltin <= 0) {
+				FORCE_INT_ON;
+				break;
 			}
-			FORCE_INT_ON;
+ raise:
+			longjmp(exception_handler->loc, 1);
 		}
 		goto readstatus;
 
@@ -13255,12 +13267,13 @@ trapcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		if (action) {
 			if (LONE_DASH(action))
 				action = NULL;
-			else
+			else {
+				if (action[0]) /* not NULL and not "" and not "-" */
+					may_have_traps = 1;
 				action = ckstrdup(action);
+			}
 		}
 		free(trap[signo]);
-		if (action)
-			may_have_traps = 1;
 		trap[signo] = action;
 		if (signo != 0)
 			setsignal(signo);
@@ -13661,7 +13674,9 @@ init(void)
 	/* we will never free this */
 	basepf.next_to_pgetc = basepf.buf = ckmalloc(IBUFSIZ);
 
-	signal(SIGCHLD, SIG_DFL);
+	sigmode[SIGCHLD - 1] = S_DFL;
+	setsignal(SIGCHLD);
+
 	/* bash re-enables SIGHUP which is SIG_IGNed on entry.
 	 * Try: "trap '' HUP; bash; echo RET" and type "kill -HUP $$"
 	 */
@@ -13863,11 +13878,12 @@ procargs(char **argv)
 }
 
 /*
- * Read /etc/profile or .profile.
+ * Read /etc/profile, ~/.profile, $ENV.
  */
 static void
 read_profile(const char *name)
 {
+	name = expandstr(name);
 	if (setinputfile(name, INPUT_PUSH_FILE | INPUT_NOFILE_OK) < 0)
 		return;
 	cmdloop(0);
@@ -13877,6 +13893,7 @@ read_profile(const char *name)
 /*
  * This routine is called when an error or an interrupt occurs in an
  * interactive shell and control is returned to the main command loop.
+ * (In dash, this function is auto-generated by build machinery).
  */
 static void
 reset(void)
@@ -13884,13 +13901,15 @@ reset(void)
 	/* from eval.c: */
 	evalskip = 0;
 	loopnest = 0;
+
+	/* from expand.c: */
+	ifsfree();
+
 	/* from input.c: */
 	g_parsefile->left_in_buffer = 0;
 	g_parsefile->left_in_line = 0;      /* clear input buffer */
 	popallfiles();
-	/* from parser.c: */
-	tokpushback = 0;
-	checkkwd = 0;
+
 	/* from redir.c: */
 	while (redirlist)
 		popredir(/*drop:*/ 0, /*restore:*/ 0);
@@ -13911,7 +13930,6 @@ extern int etext();
 int ash_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int ash_main(int argc UNUSED_PARAM, char **argv)
 {
-	const char *shinit;
 	volatile smallint state;
 	struct jmploc jmploc;
 	struct stackmark smark;
@@ -14005,11 +14023,8 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
  state1:
 		state = 2;
 		hp = lookupvar("HOME");
-		if (hp) {
-			hp = concat_path_file(hp, ".profile");
-			read_profile(hp);
-			free((char*)hp);
-		}
+		if (hp)
+			read_profile("$HOME/.profile");
 	}
  state2:
 	state = 3;
@@ -14019,11 +14034,11 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	 iflag
 	) {
-		shinit = lookupvar("ENV");
-		if (shinit != NULL && *shinit != '\0') {
+		const char *shinit = lookupvar("ENV");
+		if (shinit != NULL && *shinit != '\0')
 			read_profile(shinit);
-		}
 	}
+	popstackmark(&smark);
  state3:
 	state = 4;
 	if (minusc) {
