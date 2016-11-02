@@ -4215,7 +4215,7 @@ waitpid_child(int *status, int wait_flags)
 	return pid;
 }
 #define waitpid(p, s, f) waitpid_child(s, f)
-#define wait_block_or_sig(s, f) waitpid_child(s, f)
+#define wait_block_or_sig(s) waitpid_child(s, 0)
 
 #else
 
