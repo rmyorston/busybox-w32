@@ -362,8 +362,7 @@ struct globals_misc {
 	volatile int suppress_int; /* counter */
 	volatile /*sig_atomic_t*/ smallint pending_int; /* 1 = got SIGINT */
 	volatile /*sig_atomic_t*/ smallint got_sigchld; /* 1 = got SIGCHLD */
-	/* last pending signal */
-	volatile /*sig_atomic_t*/ smallint pending_sig;
+	volatile /*sig_atomic_t*/ smallint pending_sig;	/* last pending signal */
 	smallint exception_type; /* kind of exception (0..5) */
 	/* exceptions */
 #define EXINT 0         /* SIGINT received */
@@ -915,13 +914,8 @@ trace_vprintf(const char *fmt, va_list va)
 {
 	if (debug != 1)
 		return;
-	if (DEBUG_TIME)
-		fprintf(tracefile, "%u ", (int) time(NULL));
-	if (DEBUG_PID)
-		fprintf(tracefile, "[%u] ", (int) getpid());
-	if (DEBUG_SIG)
-		fprintf(tracefile, "pending s:%d i:%d(supp:%d) ", pending_sig, pending_int, suppress_int);
 	vfprintf(tracefile, fmt, va);
+	fprintf(tracefile, "\n");
 }
 
 static void
@@ -1314,11 +1308,10 @@ ash_vmsg_and_raise(int cond, const char *msg, va_list ap)
 {
 #if DEBUG
 	if (msg) {
-		TRACE(("ash_vmsg_and_raise(%d, \"", cond));
+		TRACE(("ash_vmsg_and_raise(%d):", cond));
 		TRACEV((msg, ap));
-		TRACE(("\") pid=%d\n", getpid()));
 	} else
-		TRACE(("ash_vmsg_and_raise(%d, NULL) pid=%d\n", cond, getpid()));
+		TRACE(("ash_vmsg_and_raise(%d):NULL\n", cond));
 	if (msg)
 #endif
 		ash_vmsg(msg, ap);
@@ -2250,6 +2243,7 @@ setvareq(char *s, int flags)
 			if (flags & VNOSAVE)
 				free(s);
 			n = vp->var_text;
+			exitstatus = 1;
 			ash_msg_and_raise_error("%.*s: is read only", strchrnul(n, '=') - n, n);
 		}
 
@@ -3715,11 +3709,6 @@ setsignal(int signo)
 #define CUR_RUNNING 1
 #define CUR_STOPPED 0
 
-/* mode flags for dowait */
-#define DOWAIT_NONBLOCK 0
-#define DOWAIT_BLOCK    1
-#define DOWAIT_BLOCK_OR_SIG 2
-
 #if JOBS
 /* pgrp of shell on invocation */
 static int initialpgrp; //references:2
@@ -4231,24 +4220,30 @@ waitpid_child(int *status, int wait_flags)
 #else
 
 static int
-wait_block_or_sig(int *status, int wait_flags)
+wait_block_or_sig(int *status)
 {
-	sigset_t mask;
 	int pid;
 
 	do {
 		/* Poll all children for changes in their state */
 		got_sigchld = 0;
-		pid = waitpid(-1, status, wait_flags | WNOHANG);
+		/* if job control is active, accept stopped processes too */
+		pid = waitpid(-1, status, doing_jobctl ? (WNOHANG|WUNTRACED) : WNOHANG);
 		if (pid != 0)
-			break; /* Error (e.g. EINTR) or pid */
+			break; /* Error (e.g. EINTR, ECHILD) or pid */
 
-		/* No child is ready. Sleep until interesting signal is received */
+		/* Children exist, but none are ready. Sleep until interesting signal */
+#if 0 /* dash does this */
+		sigset_t mask;
 		sigfillset(&mask);
 		sigprocmask(SIG_SETMASK, &mask, &mask);
 		while (!got_sigchld && !pending_sig)
 			sigsuspend(&mask);
 		sigprocmask(SIG_SETMASK, &mask, NULL);
+#else
+		while (!got_sigchld && !pending_sig)
+			pause();
+#endif
 
 		/* If it was SIGCHLD, poll children again */
 	} while (got_sigchld);
@@ -4257,24 +4252,19 @@ wait_block_or_sig(int *status, int wait_flags)
 }
 #endif
 
+#define DOWAIT_NONBLOCK 0
+#define DOWAIT_BLOCK    1
+#define DOWAIT_BLOCK_OR_SIG 2
 
 static int
 dowait(int block, struct job *job)
 {
-	int wait_flags;
 	int pid;
 	int status;
 	struct job *jp;
 	struct job *thisjob = NULL;
 
 	TRACE(("dowait(0x%x) called\n", block));
-
-	wait_flags = 0;
-	if (block == DOWAIT_NONBLOCK)
-		wait_flags = WNOHANG;
-	/* If job control is compiled in, we accept stopped processes too. */
-	if (doing_jobctl)
-		wait_flags |= WUNTRACED;
 
 	/* It's wrong to call waitpid() outside of INT_OFF region:
 	 * signal can arrive just after syscall return and handler can
@@ -4286,17 +4276,27 @@ dowait(int block, struct job *job)
 	 * in INT_OFF region: "wait" needs to wait for any running job
 	 * to change state, but should exit on any trap too.
 	 * In INT_OFF region, a signal just before syscall entry can set
-	 * pending_sig valiables, but we can't check them, and we would
+	 * pending_sig variables, but we can't check them, and we would
 	 * either enter a sleeping waitpid() (BUG), or need to busy-loop.
+	 *
 	 * Because of this, we run inside INT_OFF, but use a special routine
-	 * which combines waitpid() and sigsuspend().
+	 * which combines waitpid() and pause().
+	 * This is the reason why we need to have a handler for SIGCHLD:
+	 * SIG_DFL handler does not wake pause().
 	 */
 	INT_OFF;
-	if (block == DOWAIT_BLOCK_OR_SIG)
-		pid = wait_block_or_sig(&status, wait_flags);
-	else
-		/* NB: _not_ safe_waitpid, we need to detect EINTR. */
+	if (block == DOWAIT_BLOCK_OR_SIG) {
+		pid = wait_block_or_sig(&status);
+	} else {
+		int wait_flags = 0;
+		if (block == DOWAIT_NONBLOCK)
+			wait_flags = WNOHANG;
+		/* if job control is active, accept stopped processes too */
+		if (doing_jobctl)
+			wait_flags |= WUNTRACED;
+		/* NB: _not_ safe_waitpid, we need to detect EINTR */
 		pid = waitpid(-1, &status, wait_flags);
+	}
 	TRACE(("wait returns pid=%d, status=0x%x, errno=%d(%s)\n",
 				pid, status, errno, strerror(errno)));
 	if (pid <= 0)
@@ -7410,6 +7410,21 @@ expandmeta(struct strlist *str /*, int flag*/)
 
 		if (fflag)
 			goto nometa;
+
+		/* Avoid glob() (and thus, stat() et al) for words like "echo" */
+		p = str->text;
+		while (*p) {
+			if (*p == '*')
+				goto need_glob;
+			if (*p == '?')
+				goto need_glob;
+			if (*p == '[')
+				goto need_glob;
+			p++;
+		}
+		goto nometa;
+
+ need_glob:
 		INT_OFF;
 		p = preglob(str->text, RMESCAPE_ALLOC | RMESCAPE_HEAP);
 // GLOB_NOMAGIC (GNU): if no *?[ chars in pattern, return it even if no match
@@ -10064,7 +10079,7 @@ evalcommand(union node *cmd, int flags)
 		if (evalbltin(cmdentry.u.cmd, argc, argv, flags)) {
 			if (exception_type == EXERROR && spclbltin <= 0) {
 				FORCE_INT_ON;
-				break;
+				goto readstatus;
 			}
  raise:
 			longjmp(exception_handler->loc, 1);
@@ -10583,6 +10598,9 @@ static void
 popfile(void)
 {
 	struct parsefile *pf = g_parsefile;
+
+	if (pf == &basepf)
+		return;
 
 	INT_OFF;
 	if (pf->pf_fd >= 0)
@@ -12747,6 +12765,10 @@ expandstr(const char *ps)
 static int
 evalstring(char *s, int flags)
 {
+	struct jmploc *volatile savehandler;
+	struct jmploc jmploc;
+	int ex;
+
 	union node *n;
 	struct stackmark smark;
 	int status;
@@ -12756,6 +12778,19 @@ evalstring(char *s, int flags)
 	setstackmark(&smark);
 
 	status = 0;
+	/* On exception inside execution loop, we must popfile().
+	 * Try interactively:
+	 *	readonly a=a
+	 *	command eval "a=b"  # throws "is read only" error
+	 * "command BLTIN" is not supposed to abort (even in non-interactive use).
+	 * But if we skip popfile(), we hit EOF in eval's string, and exit.
+	 */
+	savehandler = exception_handler;
+	ex = setjmp(jmploc.loc);
+	if (ex)
+		goto out;
+	exception_handler = &jmploc;
+
 	while ((n = parsecmd(0)) != NODE_EOF) {
 		int i;
 
@@ -12766,9 +12801,14 @@ evalstring(char *s, int flags)
 		if (evalskip)
 			break;
 	}
+ out:
 	popstackmark(&smark);
 	popfile();
 	stunalloc(s);
+
+	exception_handler = savehandler;
+	if (ex)
+                longjmp(exception_handler->loc, ex);
 
 	return status;
 }
@@ -13982,11 +14022,6 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		goto state4;
 	}
 	exception_handler = &jmploc;
-#if DEBUG
-	opentrace();
-	TRACE(("Shell args: "));
-	trace_puts_args(argv);
-#endif
 	rootpid = getpid();
 
 	init(IF_PLATFORM_MINGW32(argc >= 2 && strcmp(argv[1], "-X") == 0));
@@ -14003,6 +14038,11 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 	procargs(argv);
+#if DEBUG
+	TRACE(("Shell args: "));
+	trace_puts_args(argv);
+#endif
+
 #if ENABLE_PLATFORM_MINGW32
 	if ( noconsole ) {
 		DWORD dummy;
