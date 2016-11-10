@@ -59,6 +59,19 @@ static void init(void)
 	initialized = 1;
 }
 
+static int skip_ansi_emulation(void)
+{
+	static char *var = NULL;
+	static int got_var = FALSE;
+
+	if (!got_var) {
+		var = getenv("BB_SKIP_ANSI_EMULATION");
+		got_var = TRUE;
+	}
+
+	return var != NULL;
+}
+
 
 #define FOREGROUND_ALL (FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE)
 #define BACKGROUND_ALL (BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE)
@@ -399,7 +412,7 @@ static int ansi_emulate(const char *s, FILE *stream)
 
 	while (*pos) {
 		pos = strstr(str, "\033[");
-		if (pos) {
+		if (pos && !skip_ansi_emulation()) {
 			size_t len = pos - str;
 
 			if (len) {
@@ -636,7 +649,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 	/* we've checked the data doesn't contain any NULs */
 	while (*pos) {
 		pos = strstr(str, "\033[");
-		if (pos) {
+		if (pos && !skip_ansi_emulation()) {
 			len = pos - str;
 
 			if (len) {
