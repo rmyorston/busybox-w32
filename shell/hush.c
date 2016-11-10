@@ -45,7 +45,6 @@
  *      tilde expansion
  *      aliases
  *      kill %jobspec
- *      wait %jobspec
  *      follow IFS rules more precisely, including update semantics
  *      builtins mandated by standards we don't support:
  *          [un]alias, command, fc, getopts, newgrp, readonly, times
@@ -470,11 +469,7 @@ typedef struct in_str {
 	int peek_buf[2];
 	int last_char;
 	FILE *file;
-	int (*get) (struct in_str *) FAST_FUNC;
-	int (*peek) (struct in_str *) FAST_FUNC;
 } in_str;
-#define i_getch(input) ((input)->get(input))
-#define i_peek(input)  ((input)->peek(input))
 
 /* The descrip member of this structure is only used to make
  * debugging output pretty */
@@ -589,10 +584,10 @@ struct pipe {
 	IF_HAS_KEYWORDS(smallint res_word;) /* needed for if, for, while, until... */
 };
 typedef enum pipe_style {
-	PIPE_SEQ = 1,
-	PIPE_AND = 2,
-	PIPE_OR  = 3,
-	PIPE_BG  = 4,
+	PIPE_SEQ = 0,
+	PIPE_AND = 1,
+	PIPE_OR  = 2,
+	PIPE_BG  = 3,
 } pipe_style;
 /* Is there anything in this pipe at all? */
 #define IS_NULL_PIPE(pi) \
@@ -2260,9 +2255,22 @@ static inline int fgetc_interactive(struct in_str *i)
 }
 #endif  /* INTERACTIVE */
 
-static int FAST_FUNC file_get(struct in_str *i)
+static int i_getch(struct in_str *i)
 {
 	int ch;
+
+	if (!i->file) {
+		/* string-based in_str */
+		ch = (unsigned char)*i->p;
+		if (ch != '\0') {
+			i->p++;
+			i->last_char = ch;
+			return ch;
+		}
+		return EOF;
+	}
+
+	/* FILE-based in_str */
 
 #if ENABLE_FEATURE_EDITING
 	/* This can be stdin, check line editing char[] buffer */
@@ -2289,9 +2297,17 @@ static int FAST_FUNC file_get(struct in_str *i)
 	return ch;
 }
 
-static int FAST_FUNC file_peek(struct in_str *i)
+static int i_peek(struct in_str *i)
 {
 	int ch;
+
+	if (!i->file) {
+		/* string-based in_str */
+		/* Doesn't report EOF on NUL. None of the callers care. */
+		return (unsigned char)*i->p;
+	}
+
+	/* FILE-based in_str */
 
 #if ENABLE_FEATURE_EDITING && ENABLE_HUSH_INTERACTIVE
 	/* This can be stdin, check line editing char[] buffer */
@@ -2317,23 +2333,6 @@ static int FAST_FUNC file_peek(struct in_str *i)
 	i->peek_buf[0] = ch;
 	/*i->peek_buf[1] = 0; - already is */
 	return ch;
-}
-
-static int FAST_FUNC static_get(struct in_str *i)
-{
-	int ch = (unsigned char)*i->p;
-	if (ch != '\0') {
-		i->p++;
-		i->last_char = ch;
-		return ch;
-	}
-	return EOF;
-}
-
-static int FAST_FUNC static_peek(struct in_str *i)
-{
-	/* Doesn't report EOF on NUL. None of the callers care. */
-	return (unsigned char)*i->p;
 }
 
 /* Only ever called if i_peek() was called, and did not return EOF.
@@ -2371,8 +2370,6 @@ static int i_peek2(struct in_str *i)
 static void setup_file_in_str(struct in_str *i, FILE *f)
 {
 	memset(i, 0, sizeof(*i));
-	i->get = file_get;
-	i->peek = file_peek;
 	/* i->promptmode = 0; - PS1 (memset did it) */
 	i->file = f;
 	/* i->p = NULL; */
@@ -2381,9 +2378,8 @@ static void setup_file_in_str(struct in_str *i, FILE *f)
 static void setup_string_in_str(struct in_str *i, const char *s)
 {
 	memset(i, 0, sizeof(*i));
-	i->get = static_get;
-	i->peek = static_peek;
 	/* i->promptmode = 0; - PS1 (memset did it) */
+	/*i->file = NULL */;
 	i->p = s;
 }
 
@@ -3140,7 +3136,6 @@ static struct pipe *new_pipe(void)
 {
 	struct pipe *pi;
 	pi = xzalloc(sizeof(struct pipe));
-	/*pi->followup = 0; - deliberately invalid value */
 	/*pi->res_word = RES_NONE; - RES_NONE is 0 anyway */
 	return pi;
 }
@@ -3915,12 +3910,17 @@ static int parse_group(o_string *dest, struct parse_context *ctx,
 		command->cmd_type = CMD_SUBSHELL;
 	} else {
 		/* bash does not allow "{echo...", requires whitespace */
-		ch = i_getch(input);
-		if (ch != ' ' && ch != '\t' && ch != '\n') {
+		ch = i_peek(input);
+		if (ch != ' ' && ch != '\t' && ch != '\n'
+		 && ch != '('	/* but "{(..." is allowed (without whitespace) */
+		) {
 			syntax_error_unexpected_ch(ch);
 			return 1;
 		}
-		nommu_addchr(&ctx->as_string, ch);
+		if (ch != '(') {
+			ch = i_getch(input);
+			nommu_addchr(&ctx->as_string, ch);
+		}
 	}
 
 	{
@@ -4528,10 +4528,12 @@ static struct pipe *parse_stream(char **pstring,
 				syntax_error_unterm_str("here document");
 				goto parse_error;
 			}
-			/* end_trigger == '}' case errors out earlier,
-			 * checking only ')' */
 			if (end_trigger == ')') {
 				syntax_error_unterm_ch('(');
+				goto parse_error;
+			}
+			if (end_trigger == '}') {
+				syntax_error_unterm_ch('{');
 				goto parse_error;
 			}
 
@@ -4575,6 +4577,7 @@ static struct pipe *parse_stream(char **pstring,
 		 || dest.has_quoted_part     /* ""{... - non-special */
 		 || (next != ';'             /* }; - special */
 		    && next != ')'           /* }) - special */
+		    && next != '('           /* {( - special */
 		    && next != '&'           /* }& and }&& ... - special */
 		    && next != '|'           /* }|| ... - special */
 		    && !strchr(defifs, next) /* {word - non-special */
@@ -4657,17 +4660,31 @@ static struct pipe *parse_stream(char **pstring,
 		 * Pathological example: { ""}; } should exec "}" cmd
 		 */
 		if (ch == '}') {
-			if (!IS_NULL_CMD(ctx.command) /* cmd } */
-			 || dest.length != 0 /* word} */
+			if (dest.length != 0 /* word} */
 			 || dest.has_quoted_part    /* ""} */
 			) {
 				goto ordinary_char;
 			}
+			if (!IS_NULL_CMD(ctx.command)) { /* cmd } */
+				/* Generally, there should be semicolon: "cmd; }"
+				 * However, bash allows to omit it if "cmd" is
+				 * a group. Examples:
+				 * { { echo 1; } }
+				 * {(echo 1)}
+				 * { echo 0 >&2 | { echo 1; } }
+				 * { while false; do :; done }
+				 * { case a in b) ;; esac }
+				 */
+				if (ctx.command->group)
+					goto term_group;
+				goto ordinary_char;
+			}
 			if (!IS_NULL_PIPE(ctx.pipe)) /* cmd | } */
+				/* Can't be an end of {cmd}, skip the check */
 				goto skip_end_trigger;
 			/* else: } does terminate a group */
 		}
-
+ term_group:
 		if (end_trigger && end_trigger == ch
 		 && (ch != ';' || heredoc_cnt == 0)
 #if ENABLE_HUSH_CASE
@@ -4987,8 +5004,8 @@ static struct pipe *parse_stream(char **pstring,
 		 * Run it from interactive shell, watch pmap `pidof hush`.
 		 * while if false; then false; fi; do break; fi
 		 * Samples to catch leaks at execution:
-		 * while if (true | {true;}); then echo ok; fi; do break; done
-		 * while if (true | {true;}); then echo ok; fi; do (if echo ok; break; then :; fi) | cat; break; done
+		 * while if (true | { true;}); then echo ok; fi; do break; done
+		 * while if (true | { true;}); then echo ok; fi; do (if echo ok; break; then :; fi) | cat; break; done
 		 */
 		pctx = &ctx;
 		do {
@@ -6962,12 +6979,12 @@ static const char *get_cmdtext(struct pipe *pi)
 	 * On subsequent bg argv is trashed, but we won't use it */
 	if (pi->cmdtext)
 		return pi->cmdtext;
+
 	argv = pi->cmds[0].argv;
-	if (!argv || !argv[0]) {
+	if (!argv) {
 		pi->cmdtext = xzalloc(1);
 		return pi->cmdtext;
 	}
-
 	len = 0;
 	do {
 		len += strlen(*argv) + 1;
@@ -6976,9 +6993,7 @@ static const char *get_cmdtext(struct pipe *pi)
 	pi->cmdtext = p;
 	argv = pi->cmds[0].argv;
 	do {
-		len = strlen(*argv);
-		memcpy(p, *argv, len);
-		p += len;
+		p = stpcpy(p, *argv);
 		*p++ = ' ';
 	} while (*++argv);
 	p[-1] = '\0';
@@ -7043,6 +7058,27 @@ static void delete_finished_bg_job(struct pipe *pi)
 }
 #endif /* JOB */
 
+static int job_exited_or_stopped(struct pipe *pi)
+{
+	int rcode, i;
+
+	if (pi->alive_cmds != pi->stopped_cmds)
+		return -1;
+
+	/* All processes in fg pipe have exited or stopped */
+	rcode = 0;
+	i = pi->num_cmds;
+	while (--i >= 0) {
+		rcode = pi->cmds[i].cmd_exitcode;
+		/* usually last process gives overall exitstatus,
+		 * but with "set -o pipefail", last *failed* process does */
+		if (G.o_opt[OPT_O_PIPEFAIL] == 0 || rcode != 0)
+			break;
+	}
+	IF_HAS_KEYWORDS(if (pi->pi_inverted) rcode = !rcode;)
+	return rcode;
+}
+
 static int process_wait_result(struct pipe *fg_pipe, pid_t childpid, int status)
 {
 #if ENABLE_HUSH_JOB
@@ -7066,7 +7102,10 @@ static int process_wait_result(struct pipe *fg_pipe, pid_t childpid, int status)
 	/* Were we asked to wait for a fg pipe? */
 	if (fg_pipe) {
 		i = fg_pipe->num_cmds;
+
 		while (--i >= 0) {
+			int rcode;
+
 			debug_printf_jobs("check pid %d\n", fg_pipe->cmds[i].pid);
 			if (fg_pipe->cmds[i].pid != childpid)
 				continue;
@@ -7095,18 +7134,8 @@ static int process_wait_result(struct pipe *fg_pipe, pid_t childpid, int status)
 			}
 			debug_printf_jobs("fg_pipe: alive_cmds %d stopped_cmds %d\n",
 					fg_pipe->alive_cmds, fg_pipe->stopped_cmds);
-			if (fg_pipe->alive_cmds == fg_pipe->stopped_cmds) {
-				/* All processes in fg pipe have exited or stopped */
-				int rcode = 0;
-				i = fg_pipe->num_cmds;
-				while (--i >= 0) {
-					rcode = fg_pipe->cmds[i].cmd_exitcode;
-					/* usually last process gives overall exitstatus,
-					 * but with "set -o pipefail", last *failed* process does */
-					if (G.o_opt[OPT_O_PIPEFAIL] == 0 || rcode != 0)
-						break;
-				}
-				IF_HAS_KEYWORDS(if (fg_pipe->pi_inverted) rcode = !rcode;)
+			rcode = job_exited_or_stopped(fg_pipe);
+			if (rcode >= 0) {
 /* Note: *non-interactive* bash does not continue if all processes in fg pipe
  * are stopped. Testcase: "cat | cat" in a script (not on command line!)
  * and "killall -STOP cat" */
@@ -7163,9 +7192,18 @@ static int process_wait_result(struct pipe *fg_pipe, pid_t childpid, int status)
 
 /* Check to see if any processes have exited -- if they have,
  * figure out why and see if a job has completed.
- * Alternatively (fg_pipe == NULL, waitfor_pid != 0),
- * wait for a specific pid to complete, return exitcode+1
- * (this allows to distinguish zero as "no children exited" result).
+ *
+ * If non-NULL fg_pipe: wait for its completion or stop.
+ * Return its exitcode or zero if stopped.
+ *
+ * Alternatively (fg_pipe == NULL, waitfor_pid != 0):
+ * waitpid(WNOHANG), if waitfor_pid exits or stops, return exitcode+1,
+ * else return <0 if waitpid errors out (e.g. ECHILD: nothing to wait for)
+ * or 0 if no children changed status.
+ *
+ * Alternatively (fg_pipe == NULL, waitfor_pid == 0),
+ * return <0 if waitpid errors out (e.g. ECHILD: nothing to wait for)
+ * or 0 if no children changed status.
  */
 static int checkjobs(struct pipe *fg_pipe, pid_t waitfor_pid)
 {
@@ -7234,9 +7272,13 @@ static int checkjobs(struct pipe *fg_pipe, pid_t waitfor_pid)
 			break;
 		}
 		if (childpid == waitfor_pid) {
+			debug_printf_exec("childpid==waitfor_pid:%d status:0x%08x\n", childpid, status);
 			rcode = WEXITSTATUS(status);
 			if (WIFSIGNALED(status))
 				rcode = 128 + WTERMSIG(status);
+			if (WIFSTOPPED(status))
+				/* bash: "cmd & wait $!" and cmd stops: $? = 128 + stopsig */
+				rcode = 128 + WSTOPSIG(status);
 			rcode++;
 			break; /* "wait PID" called us, give it exitcode+1 */
 		}
@@ -7757,6 +7799,8 @@ static int run_list(struct pipe *pi)
 
 	/* Go through list of pipes, (maybe) executing them. */
 	for (; pi; pi = IF_HUSH_LOOPS(rword == RES_DONE ? loop_top : ) pi->next) {
+		int r;
+
 		if (G.flag_SIGINT)
 			break;
 		if (G_flag_return_in_progress == 1)
@@ -7854,12 +7898,14 @@ static int run_list(struct pipe *pi)
 #endif
 #if ENABLE_HUSH_CASE
 		if (rword == RES_CASE) {
+			debug_printf_exec("CASE cond_code:%d\n", cond_code);
 			case_word = expand_strvec_to_string(pi->cmds->argv);
 			continue;
 		}
 		if (rword == RES_MATCH) {
 			char **argv;
 
+			debug_printf_exec("MATCH cond_code:%d\n", cond_code);
 			if (!case_word) /* "case ... matched_word) ... WORD)": we executed selected branch, stop */
 				break;
 			/* all prev words didn't match, does this one match? */
@@ -7870,8 +7916,8 @@ static int run_list(struct pipe *pi)
 				cond_code = (fnmatch(pattern, case_word, /*flags:*/ 0) != 0);
 				free(pattern);
 				if (cond_code == 0) { /* match! we will execute this branch */
-					free(case_word); /* make future "word)" stop */
-					case_word = NULL;
+					free(case_word);
+					case_word = NULL; /* make future "word)" stop */
 					break;
 				}
 				argv++;
@@ -7879,8 +7925,16 @@ static int run_list(struct pipe *pi)
 			continue;
 		}
 		if (rword == RES_CASE_BODY) { /* inside of a case branch */
+			debug_printf_exec("CASE_BODY cond_code:%d\n", cond_code);
 			if (cond_code != 0)
 				continue; /* not matched yet, skip this pipe */
+		}
+		if (rword == RES_ESAC) {
+			debug_printf_exec("ESAC cond_code:%d\n", cond_code);
+			if (case_word) {
+				/* "case" did not match anything: still set $? (to 0) */
+				G.last_exitcode = rcode = EXIT_SUCCESS;
+			}
 		}
 #endif
 		/* Just pressing <enter> in shell should check for jobs.
@@ -7897,74 +7951,72 @@ static int run_list(struct pipe *pi)
 		 * after run_pipe to collect any background children,
 		 * even if list execution is to be stopped. */
 		debug_printf_exec(": run_pipe with %d members\n", pi->num_cmds);
-		{
-			int r;
 #if ENABLE_HUSH_LOOPS
-			G.flag_break_continue = 0;
+		G.flag_break_continue = 0;
 #endif
-			rcode = r = run_pipe(pi); /* NB: rcode is a smallint */
-			if (r != -1) {
-				/* We ran a builtin, function, or group.
-				 * rcode is already known
-				 * and we don't need to wait for anything. */
-				G.last_exitcode = rcode;
-				debug_printf_exec(": builtin/func exitcode %d\n", rcode);
-				check_and_run_traps();
+		rcode = r = run_pipe(pi); /* NB: rcode is a smalluint, r is int */
+		if (r != -1) {
+			/* We ran a builtin, function, or group.
+			 * rcode is already known
+			 * and we don't need to wait for anything. */
+			debug_printf_exec(": builtin/func exitcode %d\n", rcode);
+			G.last_exitcode = rcode;
+			check_and_run_traps();
 #if ENABLE_HUSH_LOOPS
-				/* Was it "break" or "continue"? */
-				if (G.flag_break_continue) {
-					smallint fbc = G.flag_break_continue;
-					/* We might fall into outer *loop*,
-					 * don't want to break it too */
-					if (loop_top) {
-						G.depth_break_continue--;
-						if (G.depth_break_continue == 0)
-							G.flag_break_continue = 0;
-						/* else: e.g. "continue 2" should *break* once, *then* continue */
-					} /* else: "while... do... { we are here (innermost list is not a loop!) };...done" */
-					if (G.depth_break_continue != 0 || fbc == BC_BREAK) {
-						checkjobs(NULL, 0 /*(no pid to wait for)*/);
-						break;
-					}
-					/* "continue": simulate end of loop */
-					rword = RES_DONE;
-					continue;
-				}
-#endif
-				if (G_flag_return_in_progress == 1) {
+			/* Was it "break" or "continue"? */
+			if (G.flag_break_continue) {
+				smallint fbc = G.flag_break_continue;
+				/* We might fall into outer *loop*,
+				 * don't want to break it too */
+				if (loop_top) {
+					G.depth_break_continue--;
+					if (G.depth_break_continue == 0)
+						G.flag_break_continue = 0;
+					/* else: e.g. "continue 2" should *break* once, *then* continue */
+				} /* else: "while... do... { we are here (innermost list is not a loop!) };...done" */
+				if (G.depth_break_continue != 0 || fbc == BC_BREAK) {
 					checkjobs(NULL, 0 /*(no pid to wait for)*/);
 					break;
 				}
-			} else if (pi->followup == PIPE_BG) {
-				/* What does bash do with attempts to background builtins? */
-				/* even bash 3.2 doesn't do that well with nested bg:
-				 * try "{ { sleep 10; echo DEEP; } & echo HERE; } &".
-				 * I'm NOT treating inner &'s as jobs */
-				check_and_run_traps();
-#if ENABLE_HUSH_JOB
-				if (G.run_list_level == 1)
-					insert_bg_job(pi);
-#endif
-				/* Last command's pid goes to $! */
-				G.last_bg_pid = pi->cmds[pi->num_cmds - 1].pid;
-				G.last_exitcode = rcode = EXIT_SUCCESS;
-				debug_printf_exec(": cmd&: exitcode EXIT_SUCCESS\n");
-			} else {
-#if ENABLE_HUSH_JOB
-				if (G.run_list_level == 1 && G_interactive_fd) {
-					/* Waits for completion, then fg's main shell */
-					rcode = checkjobs_and_fg_shell(pi);
-					debug_printf_exec(": checkjobs_and_fg_shell exitcode %d\n", rcode);
-					check_and_run_traps();
-				} else
-#endif
-				{ /* This one just waits for completion */
-					rcode = checkjobs(pi, 0 /*(no pid to wait for)*/);
-					debug_printf_exec(": checkjobs exitcode %d\n", rcode);
-					check_and_run_traps();
-				}
-				G.last_exitcode = rcode;
+				/* "continue": simulate end of loop */
+				rword = RES_DONE;
+				continue;
 			}
+#endif
+			if (G_flag_return_in_progress == 1) {
+				checkjobs(NULL, 0 /*(no pid to wait for)*/);
+				break;
+			}
+		} else if (pi->followup == PIPE_BG) {
+			/* What does bash do with attempts to background builtins? */
+			/* even bash 3.2 doesn't do that well with nested bg:
+			 * try "{ { sleep 10; echo DEEP; } & echo HERE; } &".
+			 * I'm NOT treating inner &'s as jobs */
+#if ENABLE_HUSH_JOB
+			if (G.run_list_level == 1)
+				insert_bg_job(pi);
+#endif
+			/* Last command's pid goes to $! */
+			G.last_bg_pid = pi->cmds[pi->num_cmds - 1].pid;
+			debug_printf_exec(": cmd&: exitcode EXIT_SUCCESS\n");
+/* Check pi->pi_inverted? "! sleep 1 & echo $?": bash says 1. dash and ash says 0 */
+			rcode = EXIT_SUCCESS;
+			goto check_traps;
+		} else {
+#if ENABLE_HUSH_JOB
+			if (G.run_list_level == 1 && G_interactive_fd) {
+				/* Waits for completion, then fg's main shell */
+				rcode = checkjobs_and_fg_shell(pi);
+				debug_printf_exec(": checkjobs_and_fg_shell exitcode %d\n", rcode);
+				goto check_traps;
+			}
+#endif
+			/* This one just waits for completion */
+			rcode = checkjobs(pi, 0 /*(no pid to wait for)*/);
+			debug_printf_exec(": checkjobs exitcode %d\n", rcode);
+ check_traps:
+			G.last_exitcode = rcode;
+			check_and_run_traps();
 		}
 
 		/* Analyze how result affects subsequent commands */
@@ -8088,11 +8140,11 @@ static void install_fatal_sighandlers(void)
 
 	/* We will restore tty pgrp on these signals */
 	mask = 0
-		+ (1 << SIGILL ) * HUSH_DEBUG
-		+ (1 << SIGFPE ) * HUSH_DEBUG
+		/*+ (1 << SIGILL ) * HUSH_DEBUG*/
+		/*+ (1 << SIGFPE ) * HUSH_DEBUG*/
 		+ (1 << SIGBUS ) * HUSH_DEBUG
 		+ (1 << SIGSEGV) * HUSH_DEBUG
-		+ (1 << SIGTRAP) * HUSH_DEBUG
+		/*+ (1 << SIGTRAP) * HUSH_DEBUG*/
 		+ (1 << SIGABRT)
 	/* bash 3.2 seems to handle these just like 'fatal' ones */
 		+ (1 << SIGPIPE)
@@ -9194,10 +9246,28 @@ static int FAST_FUNC builtin_type(char **argv)
 }
 
 #if ENABLE_HUSH_JOB
+static struct pipe *parse_jobspec(const char *str)
+{
+	struct pipe *pi;
+	int jobnum;
+
+	if (sscanf(str, "%%%d", &jobnum) != 1) {
+		bb_error_msg("bad argument '%s'", str);
+		return NULL;
+	}
+	for (pi = G.job_list; pi; pi = pi->next) {
+		if (pi->jobid == jobnum) {
+			return pi;
+		}
+	}
+	bb_error_msg("%d: no such job", jobnum);
+	return NULL;
+}
+
 /* built-in 'fg' and 'bg' handler */
 static int FAST_FUNC builtin_fg_bg(char **argv)
 {
-	int i, jobnum;
+	int i;
 	struct pipe *pi;
 
 	if (!G_interactive_fd)
@@ -9213,17 +9283,10 @@ static int FAST_FUNC builtin_fg_bg(char **argv)
 		bb_error_msg("%s: no current job", argv[0]);
 		return EXIT_FAILURE;
 	}
-	if (sscanf(argv[1], "%%%d", &jobnum) != 1) {
-		bb_error_msg("%s: bad argument '%s'", argv[0], argv[1]);
+
+	pi = parse_jobspec(argv[1]);
+	if (!pi)
 		return EXIT_FAILURE;
-	}
-	for (pi = G.job_list; pi; pi = pi->next) {
-		if (pi->jobid == jobnum) {
-			goto found;
-		}
-	}
-	bb_error_msg("%s: %d: no such job", argv[0], jobnum);
-	return EXIT_FAILURE;
  found:
 	/* TODO: bash prints a string representation
 	 * of job being foregrounded (like "sleep 1 | cat") */
@@ -9286,6 +9349,7 @@ static int FAST_FUNC builtin_jobs(char **argv UNUSED_PARAM)
 	struct pipe *job;
 	const char *status_string;
 
+	checkjobs(NULL, 0 /*(no pid to wait for)*/);
 	for (job = G.job_list; job; job = job->next) {
 		if (job->alive_cmds == job->stopped_cmds)
 			status_string = "Stopped";
@@ -9438,12 +9502,18 @@ static int FAST_FUNC builtin_umask(char **argv)
 }
 
 /* http://www.opengroup.org/onlinepubs/9699919799/utilities/wait.html */
-static int wait_for_child_or_signal(pid_t waitfor_pid)
+#if !ENABLE_HUSH_JOB
+# define wait_for_child_or_signal(pipe,pid) wait_for_child_or_signal(pid)
+#endif
+static int wait_for_child_or_signal(struct pipe *waitfor_pipe, pid_t waitfor_pid)
 {
 	int ret = 0;
 	for (;;) {
 		int sig;
-		sigset_t oldset, allsigs;
+		sigset_t oldset;
+
+		if (!sigisemptyset(&G.pending_set))
+			goto check_sig;
 
 		/* waitpid is not interruptible by SA_RESTARTed
 		 * signals which we use. Thus, this ugly dance:
@@ -9452,43 +9522,51 @@ static int wait_for_child_or_signal(pid_t waitfor_pid)
 		/* Make sure possible SIGCHLD is stored in kernel's
 		 * pending signal mask before we call waitpid.
 		 * Or else we may race with SIGCHLD, lose it,
-		 * and get stuck in sigwaitinfo...
+		 * and get stuck in sigsuspend...
 		 */
-		sigfillset(&allsigs);
-		sigprocmask(SIG_SETMASK, &allsigs, &oldset);
+		sigfillset(&oldset); /* block all signals, remember old set */
+		sigprocmask(SIG_SETMASK, &oldset, &oldset);
 
 		if (!sigisemptyset(&G.pending_set)) {
 			/* Crap! we raced with some signal! */
-		//	sig = 0;
 			goto restore;
 		}
 
 		/*errno = 0; - checkjobs does this */
+/* Can't pass waitfor_pipe into checkjobs(): it won't be interruptible */
 		ret = checkjobs(NULL, waitfor_pid); /* waitpid(WNOHANG) inside */
+		debug_printf_exec("checkjobs:%d\n", ret);
+#if ENABLE_HUSH_JOB
+		if (waitfor_pipe) {
+			int rcode = job_exited_or_stopped(waitfor_pipe);
+			debug_printf_exec("job_exited_or_stopped:%d\n", rcode);
+			if (rcode >= 0) {
+				ret = rcode;
+				sigprocmask(SIG_SETMASK, &oldset, NULL);
+				break;
+			}
+		}
+#endif
 		/* if ECHILD, there are no children (ret is -1 or 0) */
 		/* if ret == 0, no children changed state */
 		/* if ret != 0, it's exitcode+1 of exited waitfor_pid child */
-		if (errno == ECHILD || ret--) {
-			if (ret < 0) /* if ECHILD, may need to fix */
+		if (errno == ECHILD || ret) {
+			ret--;
+			if (ret < 0) /* if ECHILD, may need to fix "ret" */
 				ret = 0;
 			sigprocmask(SIG_SETMASK, &oldset, NULL);
 			break;
 		}
-
 		/* Wait for SIGCHLD or any other signal */
-		//sig = sigwaitinfo(&allsigs, NULL);
 		/* It is vitally important for sigsuspend that SIGCHLD has non-DFL handler! */
 		/* Note: sigsuspend invokes signal handler */
 		sigsuspend(&oldset);
  restore:
 		sigprocmask(SIG_SETMASK, &oldset, NULL);
-
+ check_sig:
 		/* So, did we get a signal? */
-		//if (sig > 0)
-		//	raise(sig); /* run handler */
 		sig = check_and_run_traps();
 		if (sig /*&& sig != SIGCHLD - always true */) {
-			/* see note 2 */
 			ret = 128 + sig;
 			break;
 		}
@@ -9520,18 +9598,30 @@ static int FAST_FUNC builtin_wait(char **argv)
 		 * ^C <-- after ~4 sec from keyboard
 		 * $
 		 */
-		return wait_for_child_or_signal(0 /*(no pid to wait for)*/);
+		return wait_for_child_or_signal(NULL, 0 /*(no job and no pid to wait for)*/);
 	}
 
-	/* TODO: support "wait %jobspec" */
 	do {
 		pid_t pid = bb_strtou(*argv, NULL, 10);
 		if (errno || pid <= 0) {
+#if ENABLE_HUSH_JOB
+			if (argv[0][0] == '%') {
+				struct pipe *wait_pipe;
+				wait_pipe = parse_jobspec(*argv);
+				if (wait_pipe) {
+					ret = job_exited_or_stopped(wait_pipe);
+					if (ret < 0)
+						ret = wait_for_child_or_signal(wait_pipe, 0);
+					continue;
+				}
+			}
+#endif
 			/* mimic bash message */
 			bb_error_msg("wait: '%s': not a pid or valid job spec", *argv);
 			ret = EXIT_FAILURE;
 			continue; /* bash checks all argv[] */
 		}
+
 		/* Do we have such child? */
 		ret = waitpid(pid, &status, WNOHANG);
 		if (ret < 0) {
@@ -9541,12 +9631,13 @@ static int FAST_FUNC builtin_wait(char **argv)
 					/* "wait $!" but last bg task has already exited. Try:
 					 * (sleep 1; exit 3) & sleep 2; echo $?; wait $!; echo $?
 					 * In bash it prints exitcode 0, then 3.
+					 * In dash, it is 127.
 					 */
-					ret = 0; /* FIXME */
-					continue;
+					/* ret = G.last_bg_pid_exitstatus - FIXME */
+				} else {
+					/* Example: "wait 1". mimic bash message */
+					bb_error_msg("wait: pid %d is not a child of this shell", (int)pid);
 				}
-				/* Example: "wait 1". mimic bash message */
-				bb_error_msg("wait: pid %d is not a child of this shell", (int)pid);
 			} else {
 				/* ??? */
 				bb_perror_msg("wait %s", *argv);
@@ -9556,7 +9647,7 @@ static int FAST_FUNC builtin_wait(char **argv)
 		}
 		if (ret == 0) {
 			/* Yes, and it still runs */
-			ret = wait_for_child_or_signal(pid);
+			ret = wait_for_child_or_signal(NULL, pid);
 		} else {
 			/* Yes, and it just exited */
 			process_wait_result(NULL, pid, status);

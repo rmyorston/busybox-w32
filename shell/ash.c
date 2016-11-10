@@ -46,6 +46,7 @@
 #define DEBUG_TIME 0
 #define DEBUG_PID 1
 #define DEBUG_SIG 1
+#define DEBUG_INTONOFF 0
 
 #define PROFILE 0
 
@@ -512,10 +513,18 @@ static void exitshell(void) NORETURN;
  * much more efficient and portable.  (But hacking the kernel is so much
  * more fun than worrying about efficiency and portability. :-))
  */
-#define INT_OFF do { \
+#if DEBUG_INTONOFF
+# define INT_OFF do { \
+	TRACE(("%s:%d INT_OFF(%d)\n", __func__, __LINE__, suppress_int)); \
 	suppress_int++; \
 	barrier(); \
 } while (0)
+#else
+# define INT_OFF do { \
+	suppress_int++; \
+	barrier(); \
+} while (0)
+#endif
 
 /*
  * Called to raise an exception.  Since C doesn't include exceptions, we
@@ -583,7 +592,14 @@ int_on(void)
 		raise_interrupt();
 	}
 }
-#define INT_ON int_on()
+#if DEBUG_INTONOFF
+# define INT_ON do { \
+	TRACE(("%s:%d INT_ON(%d)\n", __func__, __LINE__, suppress_int-1)); \
+	int_on(); \
+} while (0)
+#else
+# define INT_ON int_on()
+#endif
 static IF_ASH_OPTIMIZE_FOR_SIZE(inline) void
 force_int_on(void)
 {
@@ -4225,6 +4241,8 @@ wait_block_or_sig(int *status)
 	int pid;
 
 	do {
+		sigset_t mask;
+
 		/* Poll all children for changes in their state */
 		got_sigchld = 0;
 		/* if job control is active, accept stopped processes too */
@@ -4233,14 +4251,13 @@ wait_block_or_sig(int *status)
 			break; /* Error (e.g. EINTR, ECHILD) or pid */
 
 		/* Children exist, but none are ready. Sleep until interesting signal */
-#if 0 /* dash does this */
-		sigset_t mask;
+#if 1
 		sigfillset(&mask);
 		sigprocmask(SIG_SETMASK, &mask, &mask);
 		while (!got_sigchld && !pending_sig)
 			sigsuspend(&mask);
 		sigprocmask(SIG_SETMASK, &mask, NULL);
-#else
+#else /* unsafe: a signal can set pending_sig after check, but before pause() */
 		while (!got_sigchld && !pending_sig)
 			pause();
 #endif
@@ -4280,9 +4297,9 @@ dowait(int block, struct job *job)
 	 * either enter a sleeping waitpid() (BUG), or need to busy-loop.
 	 *
 	 * Because of this, we run inside INT_OFF, but use a special routine
-	 * which combines waitpid() and pause().
+	 * which combines waitpid() and sigsuspend().
 	 * This is the reason why we need to have a handler for SIGCHLD:
-	 * SIG_DFL handler does not wake pause().
+	 * SIG_DFL handler does not wake sigsuspend().
 	 */
 	INT_OFF;
 	if (block == DOWAIT_BLOCK_OR_SIG) {
@@ -9542,7 +9559,7 @@ mklocal(char *name)
 			/* else:
 			 * it's a duplicate "local VAR" declaration, do nothing
 			 */
-			return;
+			goto ret;
 		}
 		lvp = lvp->next;
 	}
@@ -9581,6 +9598,7 @@ mklocal(char *name)
 	lvp->vp = vp;
 	lvp->next = localvars;
 	localvars = lvp;
+ ret:
 	INT_ON;
 }
 
