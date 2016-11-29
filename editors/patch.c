@@ -247,7 +247,7 @@ static int apply_one_hunk(void)
 		// Figure out which line of hunk to compare with next.  (Skip lines
 		// of the hunk we'd be adding.)
 		while (plist && *plist->data == "+-"[reverse]) {
-			if (data && !strcmp(data, plist->data+1)) {
+			if (data && strcmp(data, plist->data+1) == 0) {
 				if (!backwarn) {
 					backwarn = TT.linenum;
 					if (option_mask32 & FLAG_IGNORE) {
@@ -290,12 +290,24 @@ static int apply_one_hunk(void)
 		// out of buffer.
 
 		for (;;) {
+			while (plist && *plist->data == "+-"[reverse]) {
+				if (strcmp(check->data, plist->data+1) == 0
+				 && !backwarn
+				) {
+					backwarn = TT.linenum;
+					if (option_mask32 & FLAG_IGNORE) {
+						dummy_revert = 1;
+						reverse ^= 1;
+					}
+				}
+				plist = plist->next;
+			}
 			if (!plist || strcmp(check->data, plist->data+1)) {
 				// Match failed.  Write out first line of buffered data and
 				// recheck remaining buffered data for a new match.
 
 				if (PATCH_DEBUG)
-					fdprintf(2, "NOT: %s\n", plist->data);
+					fdprintf(2, "NOT: %s\n", plist ? plist->data : "EOF");
 
 				TT.state = 3;
 				check = buf;
@@ -480,7 +492,7 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 
 				// We're deleting oldname if new file is /dev/null (before -p)
 				// or if new hunk is empty (zero context) after patching
-				if (!strcmp(name, "/dev/null") || !(reverse ? oldsum : newsum)) {
+				if (strcmp(name, "/dev/null") == 0 || !(reverse ? oldsum : newsum)) {
 					name = reverse ? newname : oldname;
 					empty = 1;
 				}
@@ -516,7 +528,7 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 					struct stat statbuf;
 
 					// If the old file was null, we're creating a new one.
-					if (!strcmp(oldname, "/dev/null") || !oldsum) {
+					if (strcmp(oldname, "/dev/null") == 0 || !oldsum) {
 						printf("creating %s\n", name);
 						s = strrchr(name, '/');
 						if (s) {

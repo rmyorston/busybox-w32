@@ -27,6 +27,15 @@
  * mods from distributed source (eject-2.0.13) are by
  * Matthew Stoltenberg <d3matt@gmail.com>
  */
+//config:config VOLNAME
+//config:	bool "volname"
+//config:	default y
+//config:	help
+//config:	  Prints a CD-ROM volume name.
+
+//applet:IF_VOLNAME(APPLET(volname, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_VOLNAME) += volname.o
 
 //usage:#define volname_trivial_usage
 //usage:       "[DEVICE]"

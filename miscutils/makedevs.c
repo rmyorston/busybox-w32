@@ -6,6 +6,41 @@
  * Make ranges of device files quickly.
  * known bugs: can't deal with alpha ranges
  */
+//config:config MAKEDEVS
+//config:	bool "makedevs"
+//config:	default y
+//config:	help
+//config:	  'makedevs' is a utility used to create a batch of devices with
+//config:	  one command.
+//config:
+//config:	  There are two choices for command line behaviour, the interface
+//config:	  as used by LEAF/Linux Router Project, or a device table file.
+//config:
+//config:	  'leaf' is traditionally what busybox follows, it allows multiple
+//config:	  devices of a particluar type to be created per command.
+//config:	  e.g. /dev/hda[0-9]
+//config:	  Device properties are passed as command line arguments.
+//config:
+//config:	  'table' reads device properties from a file or stdin, allowing
+//config:	  a batch of unrelated devices to be made with one command.
+//config:	  User/group names are allowed as an alternative to uid/gid.
+//config:
+//config:choice
+//config:	prompt "Choose makedevs behaviour"
+//config:	depends on MAKEDEVS
+//config:	default FEATURE_MAKEDEVS_TABLE
+//config:
+//config:config FEATURE_MAKEDEVS_LEAF
+//config:	bool "leaf"
+//config:
+//config:config FEATURE_MAKEDEVS_TABLE
+//config:	bool "table"
+//config:
+//config:endchoice
+
+//applet:IF_MAKEDEVS(APPLET(makedevs, BB_DIR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_MAKEDEVS) += makedevs.o
 
 //usage:#if ENABLE_FEATURE_MAKEDEVS_LEAF
 //usage:#define makedevs_trivial_usage
@@ -122,8 +157,11 @@ int makedevs_main(int argc, char **argv)
 
 		/* if mode != S_IFCHR and != S_IFBLK,
 		 * third param in mknod() ignored */
-		if (mknod(nodname, mode, makedev(Smajor, Sminor)))
+		if (mknod(nodname, mode, makedev(Smajor, Sminor)) != 0
+		 && errno != EEXIST
+		) {
 			bb_perror_msg("can't create '%s'", nodname);
+		}
 
 		/*if (nodname == basedev)*/ /* ex. /dev/hda - to /dev/hda1 ... */
 			nodname = buf;
@@ -244,7 +282,9 @@ int makedevs_main(int argc UNUSED_PARAM, char **argv)
 			for (i = start; i <= start + count; i++) {
 				sprintf(full_name_inc, count ? "%s%u" : "%s", full_name, i);
 				rdev = makedev(major, minor + (i - start) * increment);
-				if (mknod(full_name_inc, mode, rdev) < 0) {
+				if (mknod(full_name_inc, mode, rdev) != 0
+				 && errno != EEXIST
+				) {
 					bb_perror_msg("line %d: can't create node %s", linenum, full_name_inc);
 					ret = EXIT_FAILURE;
 				} else if (chown(full_name_inc, uid, gid) < 0) {

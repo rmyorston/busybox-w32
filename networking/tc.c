@@ -7,6 +7,22 @@
  * Bernhard Reutner-Fischer adjusted for busybox
  */
 
+/* Was disabled in 2008 by Bernhard, not known why.
+--//config:#config TC
+--//config:#	bool "tc"
+--//config:#	default y
+--//config:#	help
+--//config:#	  Show / manipulate traffic control settings
+--//config:#
+--//config:#config FEATURE_TC_INGRESS
+--//config:#	default y
+--//config:#	depends on TC
+--
+--//applet:IF_TC(APPLET(tc, BB_DIR_SBIN, BB_SUID_DROP))
+--
+--//kbuild:lib-$(CONFIG_TC) += tc.o
+*/
+
 //usage:#define tc_trivial_usage
 /* //usage: "[OPTIONS] OBJECT CMD [dev STRING]" */
 //usage:	"OBJECT CMD [dev STRING]"
@@ -100,7 +116,7 @@ static int get_qdisc_handle(uint32_t *h, const char *str) {
 	char *p;
 
 	maj = TC_H_UNSPEC;
-	if (!strcmp(str, "none"))
+	if (strcmp(str, "none") == 0)
 		goto ok;
 	maj = strtoul(str, &p, 16);
 	if (p == str)
@@ -119,10 +135,10 @@ static int get_tc_classid(uint32_t *h, const char *str) {
 	char *p;
 
 	maj = TC_H_ROOT;
-	if (!strcmp(str, "root"))
+	if (strcmp(str, "root") == 0)
 		goto ok;
 	maj = TC_H_UNSPEC;
-	if (!strcmp(str, "none"))
+	if (strcmp(str, "none") == 0)
 		goto ok;
 	maj = strtoul(str, &p, 16);
 	if (p == str) {

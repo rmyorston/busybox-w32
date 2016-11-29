@@ -13,7 +13,6 @@
  *
  * This code is 'as is' with no warranty.
  */
-
 /*
  * Usage and known bugs:
  * Terminal key codes are not extensive, more needs to be added.
@@ -23,9 +22,6 @@
  * Ctrl-E also works as End.
  *
  * The following readline-like commands are not implemented:
- * ESC-b -- Move back one word
- * ESC-f -- Move forward one word
- * ESC-d -- Delete forward one word
  * CTL-t -- Transpose two characters
  *
  * lineedit does not know that the terminal escape sequences do not
@@ -133,8 +129,7 @@ static const char null_str[] ALIGN1 = "";
 struct lineedit_statics {
 	line_input_t *state;
 
-	volatile unsigned cmdedit_termw; /* = 80; */ /* actual terminal width */
-	sighandler_t previous_SIGWINCH_handler;
+	unsigned cmdedit_termw; /* = 80; */ /* actual terminal width */
 
 	unsigned cmdedit_x;        /* real x (col) terminal position */
 	unsigned cmdedit_y;        /* pseudoreal y (row) terminal position */
@@ -159,15 +154,22 @@ struct lineedit_statics {
 	unsigned num_matches;
 #endif
 
+	unsigned SIGWINCH_saved;
+	volatile unsigned SIGWINCH_count;
+	volatile smallint ok_to_redraw;
+
 #if ENABLE_FEATURE_EDITING_VI
 # define DELBUFSIZ 128
-	CHAR_T *delptr;
 	smallint newdelflag;     /* whether delbuf should be reused yet */
+	CHAR_T *delptr;
 	CHAR_T delbuf[DELBUFSIZ];  /* a place to store deleted characters */
 #endif
 #if ENABLE_FEATURE_EDITING_ASK_TERMINAL
 	smallint sent_ESC_br6n;
 #endif
+
+	/* Largish struct, keeping it last results in smaller code */
+	struct sigaction SIGWINCH_handler;
 };
 
 /* See lineedit_ptr_hack.c */
@@ -176,7 +178,6 @@ extern struct lineedit_statics *const lineedit_ptr_to_statics;
 #define S (*lineedit_ptr_to_statics)
 #define state            (S.state           )
 #define cmdedit_termw    (S.cmdedit_termw   )
-#define previous_SIGWINCH_handler (S.previous_SIGWINCH_handler)
 #define cmdedit_x        (S.cmdedit_x       )
 #define cmdedit_y        (S.cmdedit_y       )
 #define cmdedit_prmt_len (S.cmdedit_prmt_len)
@@ -474,14 +475,10 @@ static void beep(void)
 
 static void put_prompt(void)
 {
-	unsigned w;
-
 	fputs(cmdedit_prompt, stdout);
-	fflush_all();
 	cursor = 0;
-	w = cmdedit_termw; /* read volatile var once */
-	cmdedit_y = cmdedit_prmt_len / w; /* new quasireal y */
-	cmdedit_x = cmdedit_prmt_len % w;
+	cmdedit_y = cmdedit_prmt_len / cmdedit_termw; /* new quasireal y */
+	cmdedit_x = cmdedit_prmt_len % cmdedit_termw;
 }
 
 /* Move back one character */
@@ -555,13 +552,11 @@ static void input_backward(unsigned num)
 			put_cur_glyph_and_inc_cursor();
 	} else {
 		int lines_up;
-		unsigned width;
 		/* num = chars to go back from the beginning of current line: */
 		num -= cmdedit_x;
-		width = cmdedit_termw; /* read volatile var once */
 		/* num=1...w: one line up, w+1...2w: two, etc: */
-		lines_up = 1 + (num - 1) / width;
-		cmdedit_x = (width * cmdedit_y - num) % width;
+		lines_up = 1 + (num - 1) / cmdedit_termw;
+		cmdedit_x = (cmdedit_termw * cmdedit_y - num) % cmdedit_termw;
 		cmdedit_y -= lines_up;
 		/* go to 1st column; go up */
 		printf("\r" ESC"[%uA", lines_up);
@@ -2052,28 +2047,29 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 }
 #endif
 
-static void cmdedit_setwidth(unsigned w, int redraw_flg)
+static void cmdedit_setwidth(void)
 {
-	cmdedit_termw = w;
-	if (redraw_flg) {
-		/* new y for current cursor */
-		int new_y = (cursor + cmdedit_prmt_len) / w;
-		/* redraw */
-		redraw((new_y >= cmdedit_y ? new_y : cmdedit_y), command_len - cursor);
-		fflush_all();
-	}
+	int new_y;
+
+	cmdedit_termw = get_terminal_width(STDIN_FILENO);
+	/* new y for current cursor */
+	new_y = (cursor + cmdedit_prmt_len) / cmdedit_termw;
+	/* redraw */
+	redraw((new_y >= cmdedit_y ? new_y : cmdedit_y), command_len - cursor);
 }
 
-static void win_changed(int nsig)
+static void win_changed(int nsig UNUSED_PARAM)
 {
-	int sv_errno = errno;
-	unsigned width;
-
-	get_terminal_width_height(0, &width, NULL);
-//FIXME: cmdedit_setwidth() -> redraw() -> printf() -> KABOOM! (we are in signal handler!)
-	cmdedit_setwidth(width, /*redraw_flg:*/ nsig);
-
-	errno = sv_errno;
+	if (S.ok_to_redraw) {
+		/* We are in read_key(), safe to redraw immediately */
+		int sv_errno = errno;
+		cmdedit_setwidth();
+		fflush_all();
+		errno = sv_errno;
+	} else {
+		/* Signal main loop that redraw is necessary */
+		S.SIGWINCH_count++;
+	}
 }
 
 static int lineedit_read_key(char *read_key_buffer, int timeout)
@@ -2084,6 +2080,7 @@ static int lineedit_read_key(char *read_key_buffer, int timeout)
 	int unicode_idx = 0;
 #endif
 
+	fflush_all();
 	while (1) {
 		/* Wait for input. TIMEOUT = -1 makes read_key wait even
 		 * on nonblocking stdin, TIMEOUT = 50 makes sure we won't
@@ -2092,7 +2089,9 @@ static int lineedit_read_key(char *read_key_buffer, int timeout)
 		 *
 		 * Note: read_key sets errno to 0 on success.
 		 */
+		S.ok_to_redraw = 1;
 		ic = read_key(STDIN_FILENO, read_key_buffer, timeout);
+		S.ok_to_redraw = 0;
 		if (errno) {
 #if ENABLE_UNICODE_SUPPORT
 			if (errno == EAGAIN && unicode_idx != 0)
@@ -2223,7 +2222,6 @@ static int32_t reverse_i_search(void)
 		int h;
 		unsigned match_buf_len = strlen(match_buf);
 
-		fflush_all();
 //FIXME: correct timeout?
 		ic = lineedit_read_key(read_key_buffer, -1);
 
@@ -2325,6 +2323,7 @@ static int32_t reverse_i_search(void)
  * Returns:
  * -1 on read errors or EOF, or on bare Ctrl-D,
  * 0  on ctrl-C (the line entered is still returned in 'command'),
+ * (in both cases the cursor remains on the input line, '\n' is not printed)
  * >0 length of input string, including terminating '\n'
  */
 int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *command, int maxsize, int timeout)
@@ -2359,7 +2358,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 		 * tty is still in "raw mode").
 		 */
 		parse_and_put_prompt(prompt);
-		/* fflush_all(); - done by parse_and_put_prompt */
+		fflush_all();
 		if (fgets(command, maxsize, stdin) == NULL)
 			len = -1; /* EOF or error */
 		else
@@ -2435,9 +2434,11 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	ask_terminal();
 
 	/* Install window resize handler (NB: after *all* init is complete) */
-//FIXME: save entire sigaction!
-	previous_SIGWINCH_handler = signal(SIGWINCH, win_changed);
-	win_changed(0); /* get initial window size */
+	S.SIGWINCH_handler.sa_handler = win_changed;
+	S.SIGWINCH_handler.sa_flags = SA_RESTART;
+	sigaction(SIGWINCH, &S.SIGWINCH_handler, &S.SIGWINCH_handler);
+
+	cmdedit_termw = get_terminal_width(STDIN_FILENO);
 
 	read_key_buffer[0] = 0;
 	while (1) {
@@ -2450,8 +2451,14 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 		 * in one place.
 		 */
 		int32_t ic, ic_raw;
+		unsigned count;
 
-		fflush_all();
+		count = S.SIGWINCH_count;
+		if (S.SIGWINCH_saved != count) {
+			S.SIGWINCH_saved = count;
+			cmdedit_setwidth();
+		}
+
 		ic = ic_raw = lineedit_read_key(read_key_buffer, timeout);
 #if ENABLE_PLATFORM_MINGW32
 		/* scroll to cursor position on any keypress */
@@ -2565,6 +2572,24 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 			while (cursor > 0 && !BB_isspace(command_ps[cursor-1]))
 				input_backspace();
 			break;
+		case KEYCODE_ALT_D: {
+			/* Delete word forward */
+			int nc, sc = cursor;
+			ctrl_right();
+			nc = cursor - sc;
+			input_backward(nc);
+			while (--nc >= 0)
+				input_delete(1);
+			break;
+		}
+		case KEYCODE_ALT_BACKSPACE: {
+			/* Delete word backward */
+			int sc = cursor;
+			ctrl_left();
+			while (sc-- > cursor)
+				input_delete(1);
+			break;
+		}
 #if ENABLE_FEATURE_REVERSE_SEARCH
 		case CTRL('R'):
 			ic = ic_raw = reverse_i_search();
@@ -2792,7 +2817,6 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 			 && ic_raw == initial_settings.c_cc[VINTR]
 			) {
 				/* Ctrl-C (usually) - stop gathering input */
-				goto_new_line();
 				command_len = 0;
 				break_out = -1; /* "do not append '\n'" */
 				break;
@@ -2914,7 +2938,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	/* restore initial_settings */
 	tcsetattr_stdin_TCSANOW(&initial_settings);
 	/* restore SIGWINCH handler */
-	signal(SIGWINCH, previous_SIGWINCH_handler);
+	sigaction_set(SIGWINCH, &S.SIGWINCH_handler);
 	fflush_all();
 
 	len = command_len;

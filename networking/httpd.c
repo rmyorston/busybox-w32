@@ -98,6 +98,128 @@
  *
  */
  /* TODO: use TCP_CORK, parse_config() */
+//config:config HTTPD
+//config:	bool "httpd"
+//config:	default y
+//config:	help
+//config:	  Serve web pages via an HTTP server.
+//config:
+//config:config FEATURE_HTTPD_RANGES
+//config:	bool "Support 'Ranges:' header"
+//config:	default y
+//config:	depends on HTTPD
+//config:	help
+//config:	  Makes httpd emit "Accept-Ranges: bytes" header and understand
+//config:	  "Range: bytes=NNN-[MMM]" header. Allows for resuming interrupted
+//config:	  downloads, seeking in multimedia players etc.
+//config:
+//config:config FEATURE_HTTPD_SETUID
+//config:	bool "Enable -u <user> option"
+//config:	default y
+//config:	depends on HTTPD
+//config:	help
+//config:	  This option allows the server to run as a specific user
+//config:	  rather than defaulting to the user that starts the server.
+//config:	  Use of this option requires special privileges to change to a
+//config:	  different user.
+//config:
+//config:config FEATURE_HTTPD_BASIC_AUTH
+//config:	bool "Enable Basic http Authentication"
+//config:	default y
+//config:	depends on HTTPD
+//config:	help
+//config:	  Utilizes password settings from /etc/httpd.conf for basic
+//config:	  authentication on a per url basis.
+//config:	  Example for httpd.conf file:
+//config:	  /adm:toor:PaSsWd
+//config:
+//config:config FEATURE_HTTPD_AUTH_MD5
+//config:	bool "Support MD5 crypted passwords for http Authentication"
+//config:	default y
+//config:	depends on FEATURE_HTTPD_BASIC_AUTH
+//config:	help
+//config:	  Enables encrypted passwords, and wildcard user/passwords
+//config:	  in httpd.conf file.
+//config:	  User '*' means 'any system user name is ok',
+//config:	  password of '*' means 'use system password for this user'
+//config:	  Examples:
+//config:	  /adm:toor:$1$P/eKnWXS$aI1aPGxT.dJD5SzqAKWrF0
+//config:	  /adm:root:*
+//config:	  /wiki:*:*
+//config:
+//config:config FEATURE_HTTPD_CGI
+//config:	bool "Support Common Gateway Interface (CGI)"
+//config:	default y
+//config:	depends on HTTPD
+//config:	help
+//config:	  This option allows scripts and executables to be invoked
+//config:	  when specific URLs are requested.
+//config:
+//config:config FEATURE_HTTPD_CONFIG_WITH_SCRIPT_INTERPR
+//config:	bool "Support for running scripts through an interpreter"
+//config:	default y
+//config:	depends on FEATURE_HTTPD_CGI
+//config:	help
+//config:	  This option enables support for running scripts through an
+//config:	  interpreter. Turn this on if you want PHP scripts to work
+//config:	  properly. You need to supply an additional line in your
+//config:	  httpd.conf file:
+//config:	  *.php:/path/to/your/php
+//config:
+//config:config FEATURE_HTTPD_SET_REMOTE_PORT_TO_ENV
+//config:	bool "Set REMOTE_PORT environment variable for CGI"
+//config:	default y
+//config:	depends on FEATURE_HTTPD_CGI
+//config:	help
+//config:	  Use of this option can assist scripts in generating
+//config:	  references that contain a unique port number.
+//config:
+//config:config FEATURE_HTTPD_ENCODE_URL_STR
+//config:	bool "Enable -e option (useful for CGIs written as shell scripts)"
+//config:	default y
+//config:	depends on HTTPD
+//config:	help
+//config:	  This option allows html encoding of arbitrary strings for display
+//config:	  by the browser. Output goes to stdout.
+//config:	  For example, httpd -e "<Hello World>" produces
+//config:	  "&#60Hello&#32World&#62".
+//config:
+//config:config FEATURE_HTTPD_ERROR_PAGES
+//config:	bool "Support for custom error pages"
+//config:	default y
+//config:	depends on HTTPD
+//config:	help
+//config:	  This option allows you to define custom error pages in
+//config:	  the configuration file instead of the default HTTP status
+//config:	  error pages. For instance, if you add the line:
+//config:	        E404:/path/e404.html
+//config:	  in the config file, the server will respond the specified
+//config:	  '/path/e404.html' file instead of the terse '404 NOT FOUND'
+//config:	  message.
+//config:
+//config:config FEATURE_HTTPD_PROXY
+//config:	bool "Support for reverse proxy"
+//config:	default y
+//config:	depends on HTTPD
+//config:	help
+//config:	  This option allows you to define URLs that will be forwarded
+//config:	  to another HTTP server. To setup add the following line to the
+//config:	  configuration file
+//config:	        P:/url/:http://hostname[:port]/new/path/
+//config:	  Then a request to /url/myfile will be forwarded to
+//config:	  http://hostname[:port]/new/path/myfile.
+//config:
+//config:config FEATURE_HTTPD_GZIP
+//config:	bool "Support for GZIP content encoding"
+//config:	default y
+//config:	depends on HTTPD
+//config:	help
+//config:	  Makes httpd send files using GZIP content encoding if the
+//config:	  client supports it and a pre-compressed <file>.gz exists.
+
+//applet:IF_HTTPD(APPLET(httpd, BB_DIR_USR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_HTTPD) += httpd.o
 
 //usage:#define httpd_trivial_usage
 //usage:       "[-ifv[v]]"
@@ -926,16 +1048,16 @@ static void log_and_exit(void)
 static void send_headers(int responseNum)
 {
 	static const char RFC1123FMT[] ALIGN1 = "%a, %d %b %Y %H:%M:%S GMT";
+	/* Fixed size 29-byte string. Example: Sun, 06 Nov 1994 08:49:37 GMT */
+	char date_str[40]; /* using a bit larger buffer to paranoia reasons */
 
 	const char *responseString = "";
 	const char *infoString = NULL;
-	const char *mime_type;
 #if ENABLE_FEATURE_HTTPD_ERROR_PAGES
 	const char *error_page = NULL;
 #endif
 	unsigned i;
 	time_t timer = time(NULL);
-	char tmp_str[80];
 	int len;
 
 	for (i = 0; i < ARRAY_SIZE(http_response_type); i++) {
@@ -948,25 +1070,33 @@ static void send_headers(int responseNum)
 			break;
 		}
 	}
-	/* error message is HTML */
-	mime_type = responseNum == HTTP_OK ?
-				found_mime_type : "text/html";
 
 	if (verbose)
 		bb_error_msg("response:%u", responseNum);
 
-	/* emit the current date */
-	strftime(tmp_str, sizeof(tmp_str), RFC1123FMT, gmtime(&timer));
+	/* We use sprintf, not snprintf (it's less code).
+	 * iobuf[] is several kbytes long and all headers we generate
+	 * always fit into those kbytes.
+	 */
+
+	strftime(date_str, sizeof(date_str), RFC1123FMT, gmtime(&timer));
 	len = sprintf(iobuf,
-			"HTTP/1.0 %d %s\r\nContent-type: %s\r\n"
-			"Date: %s\r\nConnection: close\r\n",
-			responseNum, responseString, mime_type, tmp_str);
+			"HTTP/1.0 %d %s\r\n"
+			"Content-type: %s\r\n"
+			"Date: %s\r\n"
+			"Connection: close\r\n",
+			responseNum, responseString,
+			/* if it's error message, then it's HTML */
+			(responseNum == HTTP_OK ? found_mime_type : "text/html"),
+			date_str
+	);
 
 #if ENABLE_FEATURE_HTTPD_BASIC_AUTH
 	if (responseNum == HTTP_UNAUTHORIZED) {
 		len += sprintf(iobuf + len,
-				"WWW-Authenticate: Basic realm=\"%s\"\r\n",
-				g_realm);
+				"WWW-Authenticate: Basic realm=\"%.999s\"\r\n",
+				g_realm /* %.999s protects from overflowing iobuf[] */
+		);
 	}
 #endif
 	if (responseNum == HTTP_MOVED_TEMPORARILY) {
@@ -981,7 +1111,8 @@ static void send_headers(int responseNum)
 				"Location: %s/%s%s\r\n",
 				found_moved_temporarily,
 				(g_query ? "?" : ""),
-				(g_query ? g_query : ""));
+				(g_query ? g_query : "")
+		);
 		if (len > IOBUF_SIZE-3)
 			len = IOBUF_SIZE-3;
 	}
@@ -1002,13 +1133,15 @@ static void send_headers(int responseNum)
 #endif
 
 	if (file_size != -1) {    /* file */
-		strftime(tmp_str, sizeof(tmp_str), RFC1123FMT, gmtime(&last_mod));
+		strftime(date_str, sizeof(date_str), RFC1123FMT, gmtime(&last_mod));
 #if ENABLE_FEATURE_HTTPD_RANGES
 		if (responseNum == HTTP_PARTIAL_CONTENT) {
-			len += sprintf(iobuf + len, "Content-Range: bytes %"OFF_FMT"u-%"OFF_FMT"u/%"OFF_FMT"u\r\n",
+			len += sprintf(iobuf + len,
+				"Content-Range: bytes %"OFF_FMT"u-%"OFF_FMT"u/%"OFF_FMT"u\r\n",
 					range_start,
 					range_end,
-					file_size);
+					file_size
+			);
 			file_size = range_end - range_start + 1;
 		}
 #endif
@@ -1016,8 +1149,9 @@ static void send_headers(int responseNum)
 #if ENABLE_FEATURE_HTTPD_RANGES
 			"Accept-Ranges: bytes\r\n"
 #endif
-			"Last-Modified: %s\r\n%s %"OFF_FMT"u\r\n",
-				tmp_str,
+			"Last-Modified: %s\r\n"
+			"%s %"OFF_FMT"u\r\n",
+				date_str,
 				content_gzip ? "Transfer-length:" : "Content-length:",
 				file_size
 		);
@@ -1031,9 +1165,13 @@ static void send_headers(int responseNum)
 	if (infoString) {
 		len += sprintf(iobuf + len,
 				"<HTML><HEAD><TITLE>%d %s</TITLE></HEAD>\n"
-				"<BODY><H1>%d %s</H1>\n%s\n</BODY></HTML>\n",
+				"<BODY><H1>%d %s</H1>\n"
+				"%s\n"
+				"</BODY></HTML>\n",
 				responseNum, responseString,
-				responseNum, responseString, infoString);
+				responseNum, responseString,
+				infoString
+		);
 	}
 	if (DEBUG) {
 		iobuf[len] = '\0';

@@ -8,6 +8,15 @@
  *
  * Based on sysvinit's mountpoint
  */
+//config:config MOUNTPOINT
+//config:	bool "mountpoint"
+//config:	default y
+//config:	help
+//config:	  mountpoint checks if the directory is a mountpoint.
+
+//applet:IF_MOUNTPOINT(APPLET(mountpoint, BB_DIR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_MOUNTPOINT) += mountpoint.o
 
 //usage:#define mountpoint_trivial_usage
 //usage:       "[-q] <[-dn] DIR | -x DEVICE>"

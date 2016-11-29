@@ -9,6 +9,18 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
+//config:config TTYSIZE
+//config:	bool "ttysize"
+//config:	default y
+//config:	help
+//config:	  A replacement for "stty size". Unlike stty, can report only width,
+//config:	  only height, or both, in any order. It also does not complain on
+//config:	  error, but returns default 80x24.
+//config:	  Usage in shell scripts: width=`ttysize w`.
+
+//applet:IF_TTYSIZE(APPLET(ttysize, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_TTYSIZE) += ttysize.o
 
 //usage:#define ttysize_trivial_usage
 //usage:       "[w] [h]"

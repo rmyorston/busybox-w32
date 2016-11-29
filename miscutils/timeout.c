@@ -27,6 +27,16 @@
  * splitszf 12-05-2006 by Roberto A. Foglietta
  * rewrite  14-11-2008 vda
  */
+//config:config TIMEOUT
+//config:	bool "timeout"
+//config:	default y
+//config:	help
+//config:	  Runs a program and watches it. If it does not terminate in
+//config:	  specified number of seconds, it is sent a signal.
+
+//applet:IF_TIMEOUT(APPLET(timeout, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_TIMEOUT) += timeout.o
 
 //usage:#define timeout_trivial_usage
 //usage:       "[-t SECS] [-s SIG] PROG ARGS"

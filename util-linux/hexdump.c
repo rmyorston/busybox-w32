@@ -8,6 +8,34 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config HEXDUMP
+//config:	bool "hexdump"
+//config:	default y
+//config:	help
+//config:	  The hexdump utility is used to display binary data in a readable
+//config:	  way that is comparable to the output from most hex editors.
+//config:
+//config:config FEATURE_HEXDUMP_REVERSE
+//config:	bool "Support -R, reverse of 'hexdump -Cv'"
+//config:	default y
+//config:	depends on HEXDUMP
+//config:	help
+//config:	  The hexdump utility is used to display binary data in an ascii
+//config:	  readable way. This option creates binary data from an ascii input.
+//config:	  NB: this option is non-standard. It's unwise to use it in scripts
+//config:	  aimed to be portable.
+//config:
+//config:config HD
+//config:	bool "hd"
+//config:	default y
+//config:	help
+//config:	  hd is an alias to hexdump -C.
+
+//applet:IF_HEXDUMP(APPLET_NOEXEC(hexdump, hexdump, BB_DIR_USR_BIN, BB_SUID_DROP, hexdump))
+//applet:IF_HD(APPLET_NOEXEC(hd, hexdump, BB_DIR_USR_BIN, BB_SUID_DROP, hd))
+
+//kbuild:lib-$(CONFIG_HEXDUMP) += hexdump.o
+//kbuild:lib-$(CONFIG_HD) += hexdump.o
 
 //usage:#define hexdump_trivial_usage
 //usage:       "[-bcCdefnosvx" IF_FEATURE_HEXDUMP_REVERSE("R") "] [FILE]..."
@@ -77,7 +105,9 @@ int hexdump_main(int argc, char **argv)
 	smallint rdump = 0;
 #endif
 
-	if (ENABLE_HD && !applet_name[2]) { /* we are "hd" */
+	if (ENABLE_HD
+	 && (!ENABLE_HEXDUMP || !applet_name[2])
+	) { /* we are "hd" */
 		ch = 'C';
 		goto hd_applet;
 	}

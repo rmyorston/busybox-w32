@@ -14,6 +14,16 @@
  *
  * This was originally written for blob and then adapted for busybox.
  */
+//config:config RX
+//config:	bool "rx"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	  Receive files using the Xmodem protocol.
+
+//applet:IF_RX(APPLET(rx, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_RX) += rx.o
 
 //usage:#define rx_trivial_usage
 //usage:       "FILE"
@@ -101,7 +111,7 @@ static int receive(/*int read_fd, */int file_fd)
 			 && blockBuf[blockLength - 3] == PAD
 			) {
 				while (blockLength
-			           && blockBuf[blockLength - 1] == PAD
+				    && blockBuf[blockLength - 1] == PAD
 				) {
 					blockLength--;
 				}

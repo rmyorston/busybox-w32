@@ -7,6 +7,38 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config KILL
+//config:	bool "kill"
+//config:	default y
+//config:	help
+//config:	  The command kill sends the specified signal to the specified
+//config:	  process or process group. If no signal is specified, the TERM
+//config:	  signal is sent.
+//config:
+//config:config KILLALL
+//config:	bool "killall"
+//config:	default y
+//config:	help
+//config:	  killall sends a signal to all processes running any of the
+//config:	  specified commands. If no signal name is specified, SIGTERM is
+//config:	  sent.
+//config:
+//config:config KILLALL5
+//config:	bool "killall5"
+//config:	default y
+//config:	help
+//config:	  The SystemV killall command. killall5 sends a signal
+//config:	  to all processes except kernel threads and the processes
+//config:	  in its own session, so it won't kill the shell that is running
+//config:	  the script it was called from.
+
+//applet:IF_KILL(APPLET(kill, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_KILLALL(APPLET_ODDNAME(killall, kill, BB_DIR_USR_BIN, BB_SUID_DROP, killall))
+//applet:IF_KILLALL5(APPLET_ODDNAME(killall5, kill, BB_DIR_USR_SBIN, BB_SUID_DROP, killall5))
+
+//kbuild:lib-$(CONFIG_KILL) += kill.o
+//kbuild:lib-$(CONFIG_KILLALL) += kill.o
+//kbuild:lib-$(CONFIG_KILLALL5) += kill.o
 
 //usage:#define kill_trivial_usage
 //usage:       "[-l] [-SIG] PID..."
@@ -65,17 +97,23 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 	char *arg;
 	pid_t pid;
 	int signo = SIGTERM, errors = 0, quiet = 0;
-#if !ENABLE_KILLALL && !ENABLE_KILLALL5
-#define killall 0
-#define killall5 0
+#if ENABLE_KILL && !ENABLE_KILLALL && !ENABLE_KILLALL5
+# define killall  0
+# define killall5 0
+#elif !ENABLE_KILL && ENABLE_KILLALL && !ENABLE_KILLALL5
+# define killall  1
+# define killall5 0
+#elif !ENABLE_KILL && !ENABLE_KILLALL && ENABLE_KILLALL5
+# define killall  0
+# define killall5 1
 #else
 /* How to determine who we are? find 3rd char from the end:
  * kill, killall, killall5
  *  ^i       ^a        ^l  - it's unique
  * (checking from the start is complicated by /bin/kill... case) */
 	const char char3 = argv[0][strlen(argv[0]) - 3];
-#define killall (ENABLE_KILLALL && char3 == 'a')
-#define killall5 (ENABLE_KILLALL5 && char3 == 'l')
+# define killall  (ENABLE_KILLALL && char3 == 'a')
+# define killall5 (ENABLE_KILLALL5 && char3 == 'l')
 #endif
 
 	/* Parse any options */

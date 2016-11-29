@@ -9724,9 +9724,9 @@ static const struct builtincmd builtintab[] = {
 	{ BUILTIN_SPEC_REG      ":"       , truecmd    },
 #if ENABLE_ASH_BUILTIN_TEST
 	{ BUILTIN_REGULAR       "["       , testcmd    },
-#if ENABLE_ASH_BASH_COMPAT
+# if ENABLE_ASH_BASH_COMPAT
 	{ BUILTIN_REGULAR       "[["      , testcmd    },
-#endif
+# endif
 #endif
 #if ENABLE_ASH_ALIAS
 	{ BUILTIN_REG_ASSG      "alias"   , aliascmd   },
@@ -10334,13 +10334,16 @@ preadfd(void)
 		reinit_unicode_for_ash();
 		nr = read_line_input(line_input_state, cmdedit_prompt, buf, IBUFSIZ, timeout);
 		if (nr == 0) {
-			/* Ctrl+C pressed */
+			/* ^C pressed, "convert" to SIGINT */
+			write(STDOUT_FILENO, "^C", 2);
 			if (trap[SIGINT]) {
 				buf[0] = '\n';
 				buf[1] = '\0';
 				raise(SIGINT);
 				return 1;
 			}
+			exitstatus = 128 + SIGINT;
+			bb_putchar('\n');
 			goto retry;
 		}
 		if (nr < 0) {
