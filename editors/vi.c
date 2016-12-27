@@ -176,7 +176,7 @@
 //config:	Enable more verbose reporting of the results of yank, change,
 //config:	delete, undo and substitution commands.
 
-//applet:IF_VI(APPLET(vi, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_VI(APPLET(vi, BB_DIR_USR_BIN, BB_SUID_DROP))
 
 //kbuild:lib-$(CONFIG_VI) += vi.o
 
