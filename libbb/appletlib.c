@@ -334,21 +334,6 @@ static struct suid_config_t {
 
 static bool suid_cfg_readable;
 
-/* check if u is member of group g */
-static int ingroup(uid_t u, gid_t g)
-{
-	struct group *grp = getgrgid(g);
-	if (grp) {
-		char **mem;
-		for (mem = grp->gr_mem; *mem; mem++) {
-			struct passwd *pwd = getpwnam(*mem);
-			if (pwd && (pwd->pw_uid == u))
-				return 1;
-		}
-	}
-	return 0;
-}
-
 /* libbb candidate */
 static char *get_trimmed_slice(char *s, char *e)
 {
@@ -573,7 +558,24 @@ static inline void parse_config_file(void)
 # endif /* FEATURE_SUID_CONFIG */
 
 
-# if ENABLE_FEATURE_SUID
+# if ENABLE_FEATURE_SUID && NUM_APPLETS > 0
+#  if ENABLE_FEATURE_SUID_CONFIG
+/* check if u is member of group g */
+static int ingroup(uid_t u, gid_t g)
+{
+	struct group *grp = getgrgid(g);
+	if (grp) {
+		char **mem;
+		for (mem = grp->gr_mem; *mem; mem++) {
+			struct passwd *pwd = getpwnam(*mem);
+			if (pwd && (pwd->pw_uid == u))
+				return 1;
+		}
+	}
+	return 0;
+}
+#  endif
+
 static void check_suid(int applet_no)
 {
 	gid_t rgid;  /* real gid */

@@ -9,15 +9,16 @@
  */
 //config:config RMMOD
 //config:	bool "rmmod"
-//config:	default n
-//config:	depends on !MODPROBE_SMALL
+//config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
 //config:	  rmmod is used to unload specified modules from the kernel.
 
-//applet:IF_RMMOD(APPLET(rmmod, BB_DIR_SBIN, BB_SUID_DROP))
+//applet:IF_RMMOD(IF_NOT_MODPROBE_SMALL(APPLET(rmmod, BB_DIR_SBIN, BB_SUID_DROP)))
 
+//kbuild:ifneq ($(CONFIG_MODPROBE_SMALL),y)
 //kbuild:lib-$(CONFIG_RMMOD) += rmmod.o modutils.o
+//kbuild:endif
 
 //usage:#if !ENABLE_MODPROBE_SMALL
 //usage:#define rmmod_trivial_usage

@@ -211,7 +211,8 @@ int install_main(int argc, char **argv)
 				char *ddir = xstrdup(dest);
 				bb_make_directory(dirname(ddir), 0755, mkdir_flags);
 				/* errors are not checked. copy_file
-				 * will fail if dir is not created. */
+				 * will fail if dir is not created.
+				 */
 				free(ddir);
 			}
 			if (isdir)
