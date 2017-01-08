@@ -627,7 +627,7 @@ int unzip_main(int argc, char **argv)
 			cdf_offset = read_next_cdf(cdf_offset, &cdf_header);
 			if (cdf_offset == 0) /* EOF? */
 				break;
-# if 0
+# if 1
 			xlseek(zip_fd,
 				SWAP_LE32(cdf_header.formatted.relative_offset_of_local_header) + 4,
 				SEEK_SET);
