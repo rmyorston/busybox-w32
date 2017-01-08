@@ -41,6 +41,11 @@
 //config:	  shell (by Herbert Xu), which was created by porting the 'ash' shell
 //config:	  (written by Kenneth Almquist) from NetBSD.
 //config:
+//config:# ash options
+//config:# note: Don't remove !NOMMU part in the next line; it would break
+//config:# menuconfig's indenting.
+//config:if !NOMMU && (ASH || SH_IS_ASH || BASH_IS_ASH)
+//config:
 //config:config ASH_OPTIMIZE_FOR_SIZE
 //config:	bool "Optimize for size instead of speed"
 //config:	default y
@@ -155,6 +160,8 @@
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
 //config:	help
 //config:	  Enable "check for new mail" function in the ash shell.
+//config:
+//config:endif # ash options
 
 //applet:IF_ASH(APPLET(ash, BB_DIR_BIN, BB_SUID_DROP))
 //applet:IF_SH_IS_ASH(APPLET_ODDNAME(sh, ash, BB_DIR_BIN, BB_SUID_DROP, ash))
@@ -5778,11 +5785,11 @@ redirect(union node *redir, int flags)
 			/* Careful to not accidentally "save"
 			 * to the same fd as right side fd in N>&M */
 			int minfd = right_fd < 10 ? 10 : right_fd + 1;
+#if defined(F_DUPFD_CLOEXEC)
+			i = fcntl(fd, F_DUPFD_CLOEXEC, minfd);
+#else
 			i = fcntl(fd, F_DUPFD, minfd);
-/* You'd expect copy to be CLOEXECed. Currently these extra "saved" fds
- * are closed in popredir() in the child, preventing them from leaking
- * into child. (popredir() also cleans up the mess in case of failures)
- */
+#endif
 			if (i == -1) {
 				i = errno;
 				if (i != EBADF) {
@@ -5797,6 +5804,9 @@ redirect(union node *redir, int flags)
  remember_to_close:
 				i = CLOSED;
 			} else { /* fd is open, save its copy */
+#if !defined(F_DUPFD_CLOEXEC)
+				fcntl(i, F_SETFD, FD_CLOEXEC);
+#endif
 				/* "exec fd>&-" should not close fds
 				 * which point to script file(s).
 				 * Force them to be restored afterwards */
