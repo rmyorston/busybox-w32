@@ -452,6 +452,24 @@ unsigned int sleep (unsigned int seconds)
 	return 0;
 }
 
+int nanosleep(const struct timespec *req, struct timespec *rem)
+{
+	if (req->tv_nsec < 0 || 1000000000 <= req->tv_nsec) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	Sleep(req->tv_sec*1000 + req->tv_nsec/1000000);
+
+	/* Sleep is not interruptible.  So there is no remaining delay.  */
+	if (rem != NULL) {
+		rem->tv_sec = 0;
+		rem->tv_nsec = 0;
+	}
+
+	return 0;
+}
+
 /*
  * Windows' mktemp returns NULL on error whereas POSIX always returns the
  * template and signals an error by making it an empty string.

@@ -341,6 +341,8 @@ struct timespec {
 };
 #endif
 
+int nanosleep(const struct timespec *req, struct timespec *rem);
+
 /*
  * sys/wait.h
  */
