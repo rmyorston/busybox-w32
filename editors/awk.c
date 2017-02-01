@@ -2078,7 +2078,7 @@ static int fmt_num(char *b, int size, const char *format, double n, int int_as_i
 	const char *s = format;
 
 	if (int_as_int && n == (long long)n) {
-		r = snprintf(b, size, "%lld", (long long)n);
+		r = snprintf(b, size, "%"LL_FMT"d", (long long)n);
 	} else {
 		do { c = *s; } while (c && *++s);
 		if (strchr("diouxX", c)) {
