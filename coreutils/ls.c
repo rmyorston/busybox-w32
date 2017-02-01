@@ -496,7 +496,7 @@ static NOINLINE unsigned display_single(const struct dnode *dn)
 			lpath = xmalloc_readlink_or_warn(dn->fullname);
 
 	if (opt & OPT_i) /* show inode# */
-		column += printf("%7llu ", (long long) dn->dn_ino);
+		column += printf("%7"LL_FMT"u ", (long long) dn->dn_ino);
 //TODO: -h should affect -s too:
 	if (opt & OPT_s) /* show allocated blocks */
 		column += printf("%6"OFF_FMT"u ", (off_t) (dn->dn_blocks >> 1));

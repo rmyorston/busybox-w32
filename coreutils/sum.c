@@ -82,9 +82,9 @@ static unsigned sum_file(const char *file, unsigned type)
 	if (type >= SUM_SYSV) {
 		r = (s & 0xffff) + ((s & 0xffffffff) >> 16);
 		s = (r & 0xffff) + (r >> 16);
-		printf("%u %llu %s\n", s, (total_bytes + 511) / 512, file);
+		printf("%u %"LL_FMT"u %s\n", s, (total_bytes + 511) / 512, file);
 	} else
-		printf("%05u %5llu %s\n", s, (total_bytes + 1023) / 1024, file);
+		printf("%05u %5"OFF_FMT"u %s\n", s, (total_bytes + 1023) / 1024, file);
 	return 1;
 #undef buf
 }

@@ -56,7 +56,7 @@ typedef unsigned long data_t;
 #define DATA_FMT "l"
 #else
 typedef unsigned long long data_t;
-#define DATA_FMT "ll"
+#define DATA_FMT LL_FMT
 #endif
 
 

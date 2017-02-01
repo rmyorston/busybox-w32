@@ -84,7 +84,7 @@
 #if ENABLE_EXPR_MATH_SUPPORT_64
 typedef int64_t arith_t;
 
-#define PF_REZ      "ll"
+#define PF_REZ      LL_FMT
 #define PF_REZ_TYPE (long long)
 #define STRTOL(s, e, b) strtoll(s, e, b)
 #else

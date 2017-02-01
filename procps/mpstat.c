@@ -49,7 +49,7 @@
 #if 1
 typedef unsigned long long data_t;
 typedef long long idata_t;
-#define FMT_DATA "ll"
+#define FMT_DATA LL_FMT
 #define DATA_MAX ULLONG_MAX
 #else
 typedef unsigned long data_t;
