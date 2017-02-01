@@ -353,7 +353,7 @@ void do_config_file(char *filename)
 		return;
 	}
 	map = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-	if ((long) map == -1) {
+	if ((intptr_t) map == -1) {
 		perror("fixdep: mmap");
 		close(fd);
 		return;
@@ -428,7 +428,7 @@ void print_deps(void)
 		return;
 	}
 	map = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-	if ((long) map == -1) {
+	if ((intptr_t) map == -1) {
 		perror("fixdep: mmap");
 		close(fd);
 		return;
