@@ -571,15 +571,24 @@ int conf_write(const char *name)
 	fclose(out);
 	if (out_h) {
 		fclose(out_h);
+#ifdef __MINGW32__
+		unlink("include/autoconf.h");
+#endif
 		rename(".tmpconfig.h", "include/autoconf.h");
 	}
 	if (!name || basename != conf_def_filename) {
 		if (!name)
 			name = conf_def_filename;
 		sprintf(tmpname, "%s.old", name);
+#ifdef __MINGW32__
+		unlink(tmpname);
+#endif
 		rename(name, tmpname);
 	}
 	sprintf(tmpname, "%s%s", dirname, basename);
+#ifdef __MINGW32__
+	unlink(tmpname);
+#endif
 	if (rename(newname, tmpname))
 		return 1;
 
