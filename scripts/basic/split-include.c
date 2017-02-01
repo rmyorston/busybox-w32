@@ -39,8 +39,6 @@
 	exit(1);							\
     }
 
-
-
 int main(int argc, const char * argv [])
 {
     const char * str_my_name;
@@ -89,7 +87,11 @@ int main(int argc, const char * argv [])
     /* Make output directory if needed. */
     if (stat(str_dir_config, &stat_buf) != 0)
     {
+#ifdef __MINGW32__
+	if (mkdir(str_dir_config) != 0)
+#else
 	if (mkdir(str_dir_config, 0755) != 0)
+#endif
 	    ERROR_EXIT(str_dir_config);
     }
 
@@ -148,7 +150,12 @@ int main(int argc, const char * argv [])
 		{
 		    ptarget[islash] = '\0';
 		    if (stat(ptarget, &stat_buf) != 0
-		    &&  mkdir(ptarget, 0755)     != 0)
+#ifdef __MINGW32__
+		    &&  mkdir(ptarget)           != 0
+#else
+		    &&  mkdir(ptarget, 0755)     != 0
+#endif
+		    )
 			ERROR_EXIT( ptarget );
 		    ptarget[islash] = '/';
 		}
