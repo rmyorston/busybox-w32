@@ -14099,10 +14099,22 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 
 #if ENABLE_PLATFORM_MINGW32
 	if ( noconsole ) {
-		DWORD dummy;
+		// There is no user32.dll or GetConsoleProcessList on nanoserver.
+		// Hence do lazy-loading and become a no-op if not present.
+		HINSTANCE hKernel32 = LoadLibrary("kernel32.dll");
+		HINSTANCE hUser32 = LoadLibrary("user32.dll");
+		if (hUser32 && hKernel32) {
+	        typedef DWORD(WINAPI *pGetConsoleProcessList)(LPDWORD,DWORD);
+			typedef BOOL(WINAPI *pShowWindow)(HWND,int);
 
-		if ( GetConsoleProcessList(&dummy, 1) == 1 ) {
-			ShowWindow(GetConsoleWindow(), SW_HIDE);
+			pShowWindow funcShowWindow=(pShowWindow)GetProcAddress(hUser32,"ShowWindow");
+			pGetConsoleProcessList funcGetConsoleProcessList=(pGetConsoleProcessList)GetProcAddress(hKernel32,"GetConsoleProcessList"); 
+			if (funcShowWindow && funcGetConsoleProcessList) {
+				DWORD dummy;
+				if (funcGetConsoleProcessList(&dummy,1) == 1) {
+					funcShowWindow(GetConsoleWindow(), SW_HIDE);
+				}		
+			} 
 		}
 	}
 #endif
