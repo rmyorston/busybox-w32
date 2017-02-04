@@ -161,6 +161,18 @@
 //config:	help
 //config:	  Enable "check for new mail" function in the ash shell.
 //config:
+//config:
+//config:config ASH_NOCONSOLE
+//config:	bool "'noconsole' option"
+//config:	default y
+//config:	depends on (ASH || SH_IS_ASH || BASH_IS_ASH) && PLATFORM_MINGW32
+//config:	help
+//config:	  Enable support for the 'noconsole' option, which attempts to
+//config:	  hide the console normally associated with a command line
+//config:	  application.  This may be useful when running a shell script
+//config:	  from a GUI application.  Disable this if your platform doesn't
+//config:	  support the required APIs.
+//config:
 //config:endif # ash options
 
 //applet:IF_ASH(APPLET(ash, BB_DIR_BIN, BB_SUID_DROP))
@@ -334,8 +346,10 @@ static const char *const optletters_optnames[] = {
 	,"\0"  "debug"
 #endif
 #if ENABLE_PLATFORM_MINGW32
-	,"\0"  "noconsole"
 	,"X"   "winxp"
+#endif
+#if ENABLE_ASH_NOCONSOLE
+	,"\0"  "noconsole"
 #endif
 };
 
@@ -417,8 +431,10 @@ struct globals_misc {
 # define debug optlist[15 + ENABLE_ASH_BASH_COMPAT]
 #endif
 #if ENABLE_PLATFORM_MINGW32
-# define noconsole optlist[14 + ENABLE_ASH_BASH_COMPAT + 2*DEBUG]
-# define winxp optlist[15 + ENABLE_ASH_BASH_COMPAT + 2*DEBUG]
+# define winxp optlist[14 + ENABLE_ASH_BASH_COMPAT + 2*DEBUG]
+#endif
+#if ENABLE_ASH_NOCONSOLE
+# define noconsole optlist[15 + ENABLE_ASH_BASH_COMPAT + 2*DEBUG]
 #endif
 
 	/* trap handler commands */
@@ -14097,7 +14113,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	trace_puts_args(argv);
 #endif
 
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_ASH_NOCONSOLE
 	if ( noconsole ) {
 		DWORD dummy;
 
