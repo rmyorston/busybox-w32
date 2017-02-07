@@ -9,6 +9,7 @@
 /*
  Functions to be wrapped:
 */
+#undef vfprintf
 #undef vprintf
 #undef printf
 #undef fprintf

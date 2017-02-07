@@ -170,6 +170,7 @@ int winansi_getc(FILE *stream);
 #define puts winansi_puts
 #define fwrite winansi_fwrite
 #define fputs winansi_fputs
+#define vfprintf(stream, ...) winansi_vfprintf(stream, __VA_ARGS__)
 #define vprintf(...) winansi_vfprintf(stdout, __VA_ARGS__)
 #define printf(...) winansi_printf(__VA_ARGS__)
 #define fprintf(...) winansi_fprintf(__VA_ARGS__)
