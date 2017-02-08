@@ -56,6 +56,14 @@
 //config:	  The top program provides a dynamic real-time view of a running
 //config:	  system.
 //config:
+//config:config FEATURE_TOP_INTERACTIVE
+//config:	bool "Accept keyboard commands"
+//config:	default y
+//config:	depends on TOP
+//config:	help
+//config:	  Without this, top will only refresh display every 5 seconds.
+//config:	  No keyboard commands will work, only ^C to terminate.
+//config:
 //config:config FEATURE_TOP_CPU_USAGE_PERCENTAGE
 //config:	bool "Show CPU per-process usage percentage"
 //config:	default y
@@ -158,7 +166,7 @@ struct globals {
 	smallint smp_cpu_info; /* one/many cpu info lines? */
 #endif
 	unsigned lines;  /* screen height */
-#if ENABLE_FEATURE_USE_TERMIOS
+#if ENABLE_FEATURE_TOP_INTERACTIVE
 	struct termios initial_settings;
 	int scroll_ofs;
 #define G_scroll_ofs G.scroll_ofs
@@ -181,7 +189,7 @@ struct globals {
 	jiffy_counts_t *cpu_jif, *cpu_prev_jif;
 	int num_cpus;
 #endif
-#if ENABLE_FEATURE_USE_TERMIOS
+#if ENABLE_FEATURE_TOP_INTERACTIVE
 	char kbd_input[KEYCODE_BUFFER_SIZE];
 #endif
 	char line_buf[80];
@@ -220,7 +228,7 @@ enum {
 #define OPT_BATCH_MODE (option_mask32 & OPT_b)
 
 
-#if ENABLE_FEATURE_USE_TERMIOS
+#if ENABLE_FEATURE_TOP_INTERACTIVE
 static int pid_sort(top_status_t *P, top_status_t *Q)
 {
 	/* Buggy wrt pids with high bit set */
@@ -725,8 +733,7 @@ static void clearmems(void)
 	top = NULL;
 }
 
-#if ENABLE_FEATURE_USE_TERMIOS
-
+#if ENABLE_FEATURE_TOP_INTERACTIVE
 static void reset_term(void)
 {
 	if (!OPT_BATCH_MODE)
@@ -738,8 +745,7 @@ static void sig_catcher(int sig)
 	reset_term();
 	kill_myself_with_sig(sig);
 }
-
-#endif /* FEATURE_USE_TERMIOS */
+#endif /* FEATURE_TOP_INTERACTIVE */
 
 /*
  * TOPMEM support
@@ -894,7 +900,7 @@ enum {
 	EXIT_MASK = (unsigned)-1,
 };
 
-#if ENABLE_FEATURE_USE_TERMIOS
+#if ENABLE_FEATURE_TOP_INTERACTIVE
 static unsigned handle_input(unsigned scan_mask, unsigned interval)
 {
 	if (option_mask32 & OPT_EOF) {
@@ -1043,7 +1049,7 @@ static unsigned handle_input(unsigned scan_mask, unsigned interval)
 //usage:   "\n""Read the status of all processes from /proc each SECONDS"
 //usage:   "\n""and display a screenful of them."
 //usage:   "\n"
-//usage:	IF_FEATURE_USE_TERMIOS(
+//usage:	IF_FEATURE_TOP_INTERACTIVE(
 //usage:       "Keys:"
 //usage:   "\n""	N/M"
 //usage:                IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE("/P")
@@ -1091,9 +1097,6 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 	unsigned interval;
 	char *str_interval, *str_iterations;
 	unsigned scan_mask = TOP_MASK;
-#if ENABLE_FEATURE_USE_TERMIOS
-	struct termios new_settings;
-#endif
 
 	INIT_G();
 
@@ -1141,13 +1144,10 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 	if (OPT_BATCH_MODE) {
 		option_mask32 |= OPT_EOF;
 	}
-#if ENABLE_FEATURE_USE_TERMIOS
+#if ENABLE_FEATURE_TOP_INTERACTIVE
 	else {
-		tcgetattr(0, (void *) &initial_settings);
-		memcpy(&new_settings, &initial_settings, sizeof(new_settings));
-		/* unbuffered input, turn off echo */
-		new_settings.c_lflag &= ~(ISIG | ICANON | ECHO | ECHONL);
-		tcsetattr_stdin_TCSANOW(&new_settings);
+		/* Turn on unbuffered input; turn off echoing, ^C ^Z etc */
+		set_termios_to_raw(STDIN_FILENO, &initial_settings, TERMIOS_CLEAR_ISIG);
 	}
 
 	bb_signals(BB_FATAL_SIGS, sig_catcher);
@@ -1165,14 +1165,12 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 		} else {
 			G.lines = 24; /* default */
 			col = 79;
-#if ENABLE_FEATURE_USE_TERMIOS
 			/* We output to stdout, we need size of stdout (not stdin)! */
 			get_terminal_width_height(STDOUT_FILENO, &col, &G.lines);
 			if (G.lines < 5 || col < 10) {
 				sleep(interval);
 				continue;
 			}
-#endif
 			if (col > LINE_BUF_SIZE - 2)
 				col = LINE_BUF_SIZE - 2;
 		}
@@ -1247,7 +1245,7 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 		clearmems();
 		if (iterations >= 0 && !--iterations)
 			break;
-#if !ENABLE_FEATURE_USE_TERMIOS
+#if !ENABLE_FEATURE_TOP_INTERACTIVE
 		sleep(interval);
 #else
 		scan_mask = handle_input(scan_mask, interval);
@@ -1255,7 +1253,7 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 	} /* end of "while (not Q)" */
 
 	bb_putchar('\n');
-#if ENABLE_FEATURE_USE_TERMIOS
+#if ENABLE_FEATURE_TOP_INTERACTIVE
 	reset_term();
 #endif
 	if (ENABLE_FEATURE_CLEAN_UP) {

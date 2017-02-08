@@ -18,7 +18,6 @@
 //config:	bool "Pretty output"
 //config:	default y
 //config:	depends on LSMOD && !MODPROBE_SMALL
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	  This option makes output format of lsmod adjusted to
 //config:	  the format of module-init-tools for Linux kernel 2.6.
@@ -34,7 +33,7 @@
 //usage:#define lsmod_trivial_usage
 //usage:       ""
 //usage:#define lsmod_full_usage "\n\n"
-//usage:       "List the currently loaded kernel modules"
+//usage:       "List loaded kernel modules"
 //usage:#endif
 
 #include "libbb.h"

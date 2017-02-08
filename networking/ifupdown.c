@@ -66,14 +66,14 @@
 //config:	  utilities, or enable these applets in Busybox.
 //config:
 //config:config FEATURE_IFUPDOWN_IPV4
-//config:	bool "Support for IPv4"
+//config:	bool "Support IPv4"
 //config:	default y
 //config:	depends on IFUP || IFDOWN
 //config:	help
 //config:	  If you want ifup/ifdown to talk IPv4, leave this on.
 //config:
 //config:config FEATURE_IFUPDOWN_IPV6
-//config:	bool "Support for IPv6"
+//config:	bool "Support IPv6"
 //config:	default y
 //config:	depends on (IFUP || IFDOWN) && FEATURE_IPV6
 //config:	help
@@ -81,7 +81,7 @@
 //config:
 //UNUSED:
 ////////:config FEATURE_IFUPDOWN_IPX
-////////:	bool "Support for IPX"
+////////:	bool "Support IPX"
 ////////:	default y
 ////////:	depends on IFUP || IFDOWN
 ////////:	help
@@ -97,7 +97,7 @@
 //config:	  a weird network setup you don't need it.
 //config:
 //config:config FEATURE_IFUPDOWN_EXTERNAL_DHCP
-//config:	bool "Support for external dhcp clients"
+//config:	bool "Support external DHCP clients"
 //config:	default n
 //config:	depends on IFUP || IFDOWN
 //config:	help
@@ -106,7 +106,8 @@
 //config:	  Otherwise, if udhcpc applet is enabled, it is used.
 //config:	  Otherwise, ifup/ifdown will have no support for DHCP.
 
-//applet:IF_IFUP(APPLET_ODDNAME(ifup, ifupdown, BB_DIR_SBIN, BB_SUID_DROP, ifup))
+//                 APPLET_ODDNAME:name    main      location     suid_type     help
+//applet:IF_IFUP(  APPLET_ODDNAME(ifup,   ifupdown, BB_DIR_SBIN, BB_SUID_DROP, ifup))
 //applet:IF_IFDOWN(APPLET_ODDNAME(ifdown, ifupdown, BB_DIR_SBIN, BB_SUID_DROP, ifdown))
 
 //kbuild:lib-$(CONFIG_IFUP) += ifupdown.o

@@ -36,7 +36,7 @@ config DESKTOP
 
 	  If you are preparing your build to be used on an embedded box
 	  where you have tighter control over the entire set of userspace
-	  tools, you can unselect this option for smaller code size. 
+	  tools, you can unselect this option for smaller code size.
 
 config EXTRA_COMPAT
 	bool "Provide compatible behavior for rare corner cases (bigger code)"
@@ -63,17 +63,6 @@ config USE_PORTABLE_CODE
 	  Use this option if you are trying to compile busybox with
 	  compiler other than gcc.
 	  If you do use gcc, this option may needlessly increase code size.
-
-config PLATFORM_LINUX
-	bool "Enable Linux-specific applets and features"
-	default y
-	help
-	  For the most part, busybox requires only POSIX compatibility
-	  from the target system, but some applets and features use
-	  Linux-specific interfaces.
-
-	  Answering 'N' here will disable such applets and hide the
-	  corresponding configuration options.
 
 config SHOW_USAGE
 	bool "Show applet usage messages"
@@ -138,14 +127,14 @@ config INSTALL_NO_USR
 	  never to /usr/bin or /usr/sbin.
 
 config PAM
-	bool "Support for PAM (Pluggable Authentication Modules)"
+	bool "Support PAM (Pluggable Authentication Modules)"
 	default n
 	help
 	  Use PAM in some busybox applets (currently login and httpd) instead
 	  of direct access to password database.
 
 config LONG_OPTS
-	bool "Support for --long-options"
+	bool "Support --long-options"
 	default y
 	help
 	  Enable this if you want busybox applets to use the gnu --long-option
@@ -212,7 +201,7 @@ config PID_FILE_PATH
 	  specify a pidfile path.
 
 config FEATURE_SUID
-	bool "Support for SUID/SGID handling"
+	bool "Support SUID/SGID handling"
 	default y
 	help
 	  With this option you can install the busybox binary belonging
@@ -351,6 +340,17 @@ config FEATURE_HAVE_RPC
 	#help
 	#  This is automatically selected if any of enabled applets need it.
 	#  You do not need to select it manually.
+
+config PLATFORM_LINUX
+	bool #No description makes it a hidden option
+	default n
+	#help
+	#  For the most part, busybox requires only POSIX compatibility
+	#  from the target system, but some applets and features use
+	#  Linux-specific interfaces.
+	#
+	#  This is automatically selected if any applet or feature requires
+	#  Linux-specific interfaces. You do not need to select it manually.
 
 comment 'Build Options'
 
@@ -647,6 +647,8 @@ config DEBUG_SANITIZE
 	  catch bad memory accesses (e.g. buffer overflows), but will make
 	  the executable larger and slow down runtime a bit.
 
+	  This adds -fsanitize=foo options to gcc command line.
+
 	  If you aren't developing/testing busybox, say N here.
 
 config UNIT_TEST
@@ -661,7 +663,7 @@ config WERROR
 	bool "Abort compilation on any warning"
 	default n
 	help
-	  Selecting this will add -Werror to gcc command line.
+	  This adds -Werror to gcc command line.
 
 	  Most people should answer N.
 

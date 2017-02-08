@@ -44,7 +44,6 @@
  *      special variables (done: PWD, PPID, RANDOM)
  *      tilde expansion
  *      aliases
- *      kill %jobspec
  *      follow IFS rules more precisely, including update semantics
  *      builtins mandated by standards we don't support:
  *          [un]alias, command, fc, getopts, newgrp, readonly, times
@@ -100,8 +99,6 @@
 //config:	bool "bash-compatible extensions"
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
-//config:	help
-//config:	  Enable bash-compatible extensions.
 //config:
 //config:config HUSH_BRACE_EXPANSION
 //config:	bool "Brace expansion"
@@ -109,13 +106,6 @@
 //config:	depends on HUSH_BASH_COMPAT
 //config:	help
 //config:	  Enable {abc,def} extension.
-//config:
-//config:config HUSH_HELP
-//config:	bool "help builtin"
-//config:	default y
-//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
-//config:	help
-//config:	  Enable help builtin in hush. Code size + ~1 kbyte.
 //config:
 //config:config HUSH_INTERACTIVE
 //config:	bool "Interactive mode"
@@ -131,8 +121,6 @@
 //config:	bool "Save command history to .hush_history"
 //config:	default y
 //config:	depends on HUSH_INTERACTIVE && FEATURE_EDITING_SAVEHISTORY
-//config:	help
-//config:	  Enable history saving in hush.
 //config:
 //config:config HUSH_JOB
 //config:	bool "Job control"
@@ -146,42 +134,38 @@
 //config:	  but no separate process group is formed.
 //config:
 //config:config HUSH_TICK
-//config:	bool "Process substitution"
+//config:	bool "Support process substitution"
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
 //config:	help
-//config:	  Enable process substitution `command` and $(command) in hush.
+//config:	  Enable `command` and $(command).
 //config:
 //config:config HUSH_IF
 //config:	bool "Support if/then/elif/else/fi"
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
-//config:	help
-//config:	  Enable if/then/elif/else/fi in hush.
 //config:
 //config:config HUSH_LOOPS
 //config:	bool "Support for, while and until loops"
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
-//config:	help
-//config:	  Enable for, while and until loops in hush.
 //config:
 //config:config HUSH_CASE
 //config:	bool "Support case ... esac statement"
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
 //config:	help
-//config:	  Enable case ... esac statement in hush. +400 bytes.
+//config:	  Enable case ... esac statement. +400 bytes.
 //config:
 //config:config HUSH_FUNCTIONS
 //config:	bool "Support funcname() { commands; } syntax"
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
 //config:	help
-//config:	  Enable support for shell functions in hush. +800 bytes.
+//config:	  Enable support for shell functions. +800 bytes.
 //config:
 //config:config HUSH_LOCAL
-//config:	bool "Support local builtin"
+//config:	bool "local builtin"
 //config:	default y
 //config:	depends on HUSH_FUNCTIONS
 //config:	help
@@ -195,13 +179,6 @@
 //config:	  Enable pseudorandom generator and dynamic variable "$RANDOM".
 //config:	  Each read of "$RANDOM" will generate a new pseudorandom value.
 //config:
-//config:config HUSH_EXPORT_N
-//config:	bool "Support 'export -n' option"
-//config:	default y
-//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
-//config:	help
-//config:	  export -n unexports variables. It is a bash extension.
-//config:
 //config:config HUSH_MODE_X
 //config:	bool "Support 'hush -x' option and 'set -x' command"
 //config:	default y
@@ -209,6 +186,88 @@
 //config:	help
 //config:	  This instructs hush to print commands before execution.
 //config:	  Adds ~300 bytes.
+//config:
+//config:config HUSH_ECHO
+//config:	bool "echo builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_PRINTF
+//config:	bool "printf builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_TEST
+//config:	bool "test builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_HELP
+//config:	bool "help builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_EXPORT
+//config:	bool "export builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_EXPORT_N
+//config:	bool "Support 'export -n' option"
+//config:	default y
+//config:	depends on HUSH_EXPORT
+//config:	help
+//config:	  export -n unexports variables. It is a bash extension.
+//config:
+//config:config HUSH_KILL
+//config:	bool "kill builtin (supports kill %jobspec)"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_WAIT
+//config:	bool "wait builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_TRAP
+//config:	bool "trap builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_TYPE
+//config:	bool "type builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_READ
+//config:	bool "read builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_SET
+//config:	bool "set builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_UNSET
+//config:	bool "unset builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_ULIMIT
+//config:	bool "ulimit builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_UMASK
+//config:	bool "umask builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_MEMLEAK
+//config:	bool "memleak builtin (debugging)"
+//config:	default n
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
 //config:
 //config:config MSH
 //config:	bool "msh (deprecated: aliased to hush)"
@@ -218,8 +277,9 @@
 //config:	  msh is deprecated and will be removed, please migrate to hush.
 
 //applet:IF_HUSH(APPLET(hush, BB_DIR_BIN, BB_SUID_DROP))
-//applet:IF_MSH(APPLET_ODDNAME(msh, hush, BB_DIR_BIN, BB_SUID_DROP, hush))
-//applet:IF_SH_IS_HUSH(APPLET_ODDNAME(sh, hush, BB_DIR_BIN, BB_SUID_DROP, hush))
+//                       APPLET_ODDNAME:name  main  location    suid_type     help
+//applet:IF_MSH(         APPLET_ODDNAME(msh,  hush, BB_DIR_BIN, BB_SUID_DROP, hush))
+//applet:IF_SH_IS_HUSH(  APPLET_ODDNAME(sh,   hush, BB_DIR_BIN, BB_SUID_DROP, hush))
 //applet:IF_BASH_IS_HUSH(APPLET_ODDNAME(bash, hush, BB_DIR_BIN, BB_SUID_DROP, hush))
 
 //kbuild:lib-$(CONFIG_HUSH) += hush.o match.o shell_common.o
@@ -265,6 +325,15 @@
 #ifndef PIPE_BUF
 # define PIPE_BUF 4096  /* amount of buffering in a pipe */
 #endif
+
+
+/* So far, all bash compat is controlled by one config option */
+/* Separate defines document which part of code implements what */
+#define BASH_PATTERN_SUBST ENABLE_HUSH_BASH_COMPAT
+#define BASH_SUBSTR        ENABLE_HUSH_BASH_COMPAT
+#define BASH_TEST2         ENABLE_HUSH_BASH_COMPAT
+#define BASH_SOURCE        ENABLE_HUSH_BASH_COMPAT
+#define BASH_HOSTNAME_VAR  ENABLE_HUSH_BASH_COMPAT
 
 
 /* Build knobs */
@@ -347,12 +416,12 @@
 
 #define ERR_PTR ((void*)(long)1)
 
-#define JOB_STATUS_FORMAT    "[%d] %-22s %.40s\n"
+#define JOB_STATUS_FORMAT    "[%u] %-22s %.40s\n"
 
 #define _SPECIAL_VARS_STR     "_*@$!?#"
 #define SPECIAL_VARS_STR     ("_*@$!?#" + 1)
 #define NUMERIC_SPECVARS_STR ("_*@$!?#" + 3)
-#if ENABLE_HUSH_BASH_COMPAT
+#if BASH_PATTERN_SUBST
 /* Support / and // replace ops */
 /* Note that // is stored as \ in "encoded" string representation */
 # define VAR_ENCODED_SUBST_OPS      "\\/%#:-=+?"
@@ -513,7 +582,7 @@ struct command {
 	smallint cmd_type;          /* CMD_xxx */
 #define CMD_NORMAL   0
 #define CMD_SUBSHELL 1
-#if ENABLE_HUSH_BASH_COMPAT
+#if BASH_TEST2
 /* used for "[[ EXPR ]]" */
 # define CMD_SINGLEWORD_NOGLOB 2
 #endif
@@ -563,7 +632,7 @@ struct pipe {
 	int alive_cmds;             /* number of commands running (not exited) */
 	int stopped_cmds;           /* number of commands alive, but stopped */
 #if ENABLE_HUSH_JOB
-	int jobid;                  /* job number */
+	unsigned jobid;             /* job number */
 	pid_t pgrp;                 /* process group ID for the job */
 	char *cmdtext;              /* name of job */
 #endif
@@ -740,7 +809,7 @@ struct globals {
 #endif
 #if ENABLE_HUSH_JOB
 	int run_list_level;
-	int last_jobid;
+	unsigned last_jobid;
 	pid_t saved_tty_pgrp;
 	struct pipe *job_list;
 # define G_saved_tty_pgrp (G.saved_tty_pgrp)
@@ -770,8 +839,13 @@ struct globals {
 	smallint exiting; /* used to prevent EXIT trap recursion */
 	/* These four support $?, $#, and $1 */
 	smalluint last_exitcode;
+#if ENABLE_HUSH_SET
 	/* are global_argv and global_argv[1..n] malloced? (note: not [0]) */
 	smalluint global_args_malloced;
+# define G_global_args_malloced (G.global_args_malloced)
+#else
+# define G_global_args_malloced 0
+#endif
 	/* how many non-NULL argv's we have. NB: $# + 1 */
 	int global_argc;
 	char **global_argv;
@@ -810,14 +884,21 @@ struct globals {
 	unsigned special_sig_mask;
 #if ENABLE_HUSH_JOB
 	unsigned fatal_sig_mask;
-# define G_fatal_sig_mask G.fatal_sig_mask
+# define G_fatal_sig_mask (G.fatal_sig_mask)
 #else
 # define G_fatal_sig_mask 0
 #endif
+#if ENABLE_HUSH_TRAP
 	char **traps; /* char *traps[NSIG] */
+# define G_traps G.traps
+#else
+# define G_traps ((char**)NULL)
+#endif
 	sigset_t pending_set;
-#if HUSH_DEBUG
+#if ENABLE_HUSH_MEMLEAK
 	unsigned long memleak_value;
+#endif
+#if HUSH_DEBUG
 	int debug_indent;
 #endif
 	struct sigaction sa;
@@ -839,11 +920,15 @@ struct globals {
 
 /* Function prototypes for builtins */
 static int builtin_cd(char **argv) FAST_FUNC;
+#if ENABLE_HUSH_ECHO
 static int builtin_echo(char **argv) FAST_FUNC;
+#endif
 static int builtin_eval(char **argv) FAST_FUNC;
 static int builtin_exec(char **argv) FAST_FUNC;
 static int builtin_exit(char **argv) FAST_FUNC;
+#if ENABLE_HUSH_EXPORT
 static int builtin_export(char **argv) FAST_FUNC;
+#endif
 #if ENABLE_HUSH_JOB
 static int builtin_fg_bg(char **argv) FAST_FUNC;
 static int builtin_jobs(char **argv) FAST_FUNC;
@@ -857,24 +942,43 @@ static int builtin_history(char **argv) FAST_FUNC;
 #if ENABLE_HUSH_LOCAL
 static int builtin_local(char **argv) FAST_FUNC;
 #endif
-#if HUSH_DEBUG
+#if ENABLE_HUSH_MEMLEAK
 static int builtin_memleak(char **argv) FAST_FUNC;
 #endif
-#if ENABLE_PRINTF
+#if ENABLE_HUSH_PRINTF
 static int builtin_printf(char **argv) FAST_FUNC;
 #endif
 static int builtin_pwd(char **argv) FAST_FUNC;
+#if ENABLE_HUSH_READ
 static int builtin_read(char **argv) FAST_FUNC;
+#endif
+#if ENABLE_HUSH_SET
 static int builtin_set(char **argv) FAST_FUNC;
+#endif
 static int builtin_shift(char **argv) FAST_FUNC;
 static int builtin_source(char **argv) FAST_FUNC;
+#if ENABLE_HUSH_TEST || BASH_TEST2
 static int builtin_test(char **argv) FAST_FUNC;
+#endif
+#if ENABLE_HUSH_TRAP
 static int builtin_trap(char **argv) FAST_FUNC;
+#endif
+#if ENABLE_HUSH_TYPE
 static int builtin_type(char **argv) FAST_FUNC;
+#endif
 static int builtin_true(char **argv) FAST_FUNC;
+#if ENABLE_HUSH_UMASK
 static int builtin_umask(char **argv) FAST_FUNC;
+#endif
+#if ENABLE_HUSH_UNSET
 static int builtin_unset(char **argv) FAST_FUNC;
+#endif
+#if ENABLE_HUSH_KILL
+static int builtin_kill(char **argv) FAST_FUNC;
+#endif
+#if ENABLE_HUSH_WAIT
 static int builtin_wait(char **argv) FAST_FUNC;
+#endif
 #if ENABLE_HUSH_LOOPS
 static int builtin_break(char **argv) FAST_FUNC;
 static int builtin_continue(char **argv) FAST_FUNC;
@@ -901,13 +1005,13 @@ struct built_in_command {
 };
 
 static const struct built_in_command bltins1[] = {
-	BLTIN("."        , builtin_source  , "Run commands in a file"),
+	BLTIN("."        , builtin_source  , "Run commands in file"),
 	BLTIN(":"        , builtin_true    , NULL),
 #if ENABLE_HUSH_JOB
-	BLTIN("bg"       , builtin_fg_bg   , "Resume a job in the background"),
+	BLTIN("bg"       , builtin_fg_bg   , "Resume job in background"),
 #endif
 #if ENABLE_HUSH_LOOPS
-	BLTIN("break"    , builtin_break   , "Exit from a loop"),
+	BLTIN("break"    , builtin_break   , "Exit loop"),
 #endif
 	BLTIN("cd"       , builtin_cd      , "Change directory"),
 #if ENABLE_HUSH_LOOPS
@@ -915,53 +1019,84 @@ static const struct built_in_command bltins1[] = {
 #endif
 	BLTIN("eval"     , builtin_eval    , "Construct and run shell command"),
 	BLTIN("exec"     , builtin_exec    , "Execute command, don't return to shell"),
-	BLTIN("exit"     , builtin_exit    , "Exit"),
+	BLTIN("exit"     , builtin_exit    , NULL),
+#if ENABLE_HUSH_EXPORT
 	BLTIN("export"   , builtin_export  , "Set environment variables"),
+#endif
 #if ENABLE_HUSH_JOB
-	BLTIN("fg"       , builtin_fg_bg   , "Bring job into the foreground"),
+	BLTIN("fg"       , builtin_fg_bg   , "Bring job into foreground"),
 #endif
 #if ENABLE_HUSH_HELP
 	BLTIN("help"     , builtin_help    , NULL),
 #endif
 #if MAX_HISTORY && ENABLE_FEATURE_EDITING
-	BLTIN("history"  , builtin_history , "Show command history"),
+	BLTIN("history"  , builtin_history , "Show history"),
 #endif
 #if ENABLE_HUSH_JOB
 	BLTIN("jobs"     , builtin_jobs    , "List jobs"),
 #endif
+#if ENABLE_HUSH_KILL
+	BLTIN("kill"     , builtin_kill    , "Send signals to processes"),
+#endif
 #if ENABLE_HUSH_LOCAL
 	BLTIN("local"    , builtin_local   , "Set local variables"),
 #endif
-#if HUSH_DEBUG
+#if ENABLE_HUSH_MEMLEAK
 	BLTIN("memleak"  , builtin_memleak , NULL),
 #endif
+#if ENABLE_HUSH_READ
 	BLTIN("read"     , builtin_read    , "Input into variable"),
+#endif
 #if ENABLE_HUSH_FUNCTIONS
-	BLTIN("return"   , builtin_return  , "Return from a function"),
+	BLTIN("return"   , builtin_return  , "Return from function"),
 #endif
-	BLTIN("set"      , builtin_set     , "Set/unset positional parameters"),
+#if ENABLE_HUSH_SET
+	BLTIN("set"      , builtin_set     , "Set positional parameters"),
+#endif
 	BLTIN("shift"    , builtin_shift   , "Shift positional parameters"),
-#if ENABLE_HUSH_BASH_COMPAT
-	BLTIN("source"   , builtin_source  , "Run commands in a file"),
+#if BASH_SOURCE
+	BLTIN("source"   , builtin_source  , NULL),
 #endif
+#if ENABLE_HUSH_TRAP
 	BLTIN("trap"     , builtin_trap    , "Trap signals"),
+#endif
 	BLTIN("true"     , builtin_true    , NULL),
+#if ENABLE_HUSH_TYPE
 	BLTIN("type"     , builtin_type    , "Show command type"),
-	BLTIN("ulimit"   , shell_builtin_ulimit  , "Control resource limits"),
+#endif
+#if ENABLE_HUSH_ULIMIT
+	BLTIN("ulimit"   , shell_builtin_ulimit, "Control resource limits"),
+#endif
+#if ENABLE_HUSH_UMASK
 	BLTIN("umask"    , builtin_umask   , "Set file creation mask"),
+#endif
+#if ENABLE_HUSH_UNSET
 	BLTIN("unset"    , builtin_unset   , "Unset variables"),
+#endif
+#if ENABLE_HUSH_WAIT
 	BLTIN("wait"     , builtin_wait    , "Wait for process"),
+#endif
 };
-/* For now, echo and test are unconditionally enabled.
- * Maybe make it configurable? */
+/* These builtins won't be used if we are on NOMMU and need to re-exec
+ * (it's cheaper to run an external program in this case):
+ */
 static const struct built_in_command bltins2[] = {
+#if ENABLE_HUSH_TEST
 	BLTIN("["        , builtin_test    , NULL),
+#endif
+#if BASH_TEST2
+	BLTIN("[["       , builtin_test    , NULL),
+#endif
+#if ENABLE_HUSH_ECHO
 	BLTIN("echo"     , builtin_echo    , NULL),
-#if ENABLE_PRINTF
+#endif
+#if ENABLE_HUSH_PRINTF
 	BLTIN("printf"   , builtin_printf  , NULL),
 #endif
 	BLTIN("pwd"      , builtin_pwd     , NULL),
+#if ENABLE_HUSH_TEST
 	BLTIN("test"     , builtin_test    , NULL),
+#endif
 };
 
 
@@ -1346,7 +1481,7 @@ typedef struct save_arg_t {
 	char *sv_argv0;
 	char **sv_g_argv;
 	int sv_g_argc;
-	smallint sv_g_malloced;
+	IF_HUSH_SET(smallint sv_g_malloced;)
 } save_arg_t;
 
 static void save_and_replace_G_args(save_arg_t *sv, char **argv)
@@ -1356,11 +1491,11 @@ static void save_and_replace_G_args(save_arg_t *sv, char **argv)
 	sv->sv_argv0 = argv[0];
 	sv->sv_g_argv = G.global_argv;
 	sv->sv_g_argc = G.global_argc;
-	sv->sv_g_malloced = G.global_args_malloced;
+	IF_HUSH_SET(sv->sv_g_malloced = G.global_args_malloced;)
 
 	argv[0] = G.global_argv[0]; /* retain $0 */
 	G.global_argv = argv;
-	G.global_args_malloced = 0;
+	IF_HUSH_SET(G.global_args_malloced = 0;)
 
 	n = 1;
 	while (*++argv)
@@ -1370,19 +1505,19 @@ static void save_and_replace_G_args(save_arg_t *sv, char **argv)
 
 static void restore_G_args(save_arg_t *sv, char **argv)
 {
-	char **pp;
-
+#if ENABLE_HUSH_SET
 	if (G.global_args_malloced) {
 		/* someone ran "set -- arg1 arg2 ...", undo */
-		pp = G.global_argv;
+		char **pp = G.global_argv;
 		while (*++pp) /* note: does not free $0 */
 			free(*pp);
 		free(G.global_argv);
 	}
+#endif
 	argv[0] = sv->sv_argv0;
 	G.global_argv = sv->sv_g_argv;
 	G.global_argc = sv->sv_g_argc;
-	G.global_args_malloced = sv->sv_g_malloced;
+	IF_HUSH_SET(G.global_args_malloced = sv->sv_g_malloced;)
 }
 
 
@@ -1670,13 +1805,13 @@ static void hush_exit(int exitcode)
 #endif
 
 	fflush_all();
-	if (G.exiting <= 0 && G.traps && G.traps[0] && G.traps[0][0]) {
+	if (G.exiting <= 0 && G_traps && G_traps[0] && G_traps[0][0]) {
 		char *argv[3];
 		/* argv[0] is unused */
-		argv[1] = G.traps[0];
+		argv[1] = G_traps[0];
 		argv[2] = NULL;
 		G.exiting = 1; /* prevent EXIT trap recursion */
-		/* Note: G.traps[0] is not cleared!
+		/* Note: G_traps[0] is not cleared!
 		 * "trap" will still show it, if executed
 		 * in the handler */
 		builtin_eval(argv);
@@ -1727,14 +1862,14 @@ static int check_and_run_traps(void)
 		} while (sig < NSIG);
 		break;
  got_sig:
-		if (G.traps && G.traps[sig]) {
+		if (G_traps && G_traps[sig]) {
 			debug_printf_exec("%s: sig:%d handler:'%s'\n", __func__, sig, G.traps[sig]);
-			if (G.traps[sig][0]) {
+			if (G_traps[sig][0]) {
 				/* We have user-defined handler */
 				smalluint save_rcode;
 				char *argv[3];
 				/* argv[0] is unused */
-				argv[1] = G.traps[sig];
+				argv[1] = G_traps[sig];
 				argv[2] = NULL;
 				save_rcode = G.last_exitcode;
 				builtin_eval(argv);
@@ -2030,10 +2165,12 @@ static int unset_local_var_len(const char *name, int name_len)
 	return EXIT_SUCCESS;
 }
 
+#if ENABLE_HUSH_UNSET
 static int unset_local_var(const char *name)
 {
 	return unset_local_var_len(name, strlen(name));
 }
+#endif
 
 static void unset_vars(char **strings)
 {
@@ -2050,11 +2187,13 @@ static void unset_vars(char **strings)
 	free(strings);
 }
 
+#if BASH_HOSTNAME_VAR || ENABLE_FEATURE_SH_MATH || ENABLE_HUSH_READ
 static void FAST_FUNC set_local_var_from_halves(const char *name, const char *val)
 {
 	char *var = xasprintf("%s=%s", name, val);
 	set_local_var(var, /*flags:*/ 0, /*lvl:*/ 0, /*ro:*/ 0);
 }
+#endif
 
 
 /*
@@ -3507,7 +3646,7 @@ static int done_word(o_string *word, struct parse_context *ctx)
 						(ctx->ctx_res_w == RES_SNTX));
 				return (ctx->ctx_res_w == RES_SNTX);
 			}
-# if ENABLE_HUSH_BASH_COMPAT
+# if BASH_TEST2
 			if (strcmp(word->data, "[[") == 0) {
 				command->cmd_type = CMD_SINGLEWORD_NOGLOB;
 			}
@@ -4105,7 +4244,7 @@ static int add_till_closing_bracket(o_string *dest, struct in_str *input, unsign
 {
 	int ch;
 	char dbl = end_ch & DOUBLE_CLOSE_CHAR_FLAG;
-# if ENABLE_HUSH_BASH_COMPAT
+# if BASH_SUBSTR || BASH_PATTERN_SUBST
 	char end_char2 = end_ch >> 8;
 # endif
 	end_ch &= (DOUBLE_CLOSE_CHAR_FLAG - 1);
@@ -4116,7 +4255,11 @@ static int add_till_closing_bracket(o_string *dest, struct in_str *input, unsign
 			syntax_error_unterm_ch(end_ch);
 			return 0;
 		}
-		if (ch == end_ch  IF_HUSH_BASH_COMPAT( || ch == end_char2)) {
+		if (ch == end_ch
+# if BASH_SUBSTR || BASH_PATTERN_SUBST
+			|| ch == end_char2
+# endif
+		) {
 			if (!dbl)
 				break;
 			/* we look for closing )) of $((EXPR)) */
@@ -4269,14 +4412,14 @@ static int parse_dollar(o_string *as_string,
 
 				/* Eat everything until closing '}' (or ':') */
 				end_ch = '}';
-				if (ENABLE_HUSH_BASH_COMPAT
+				if (BASH_SUBSTR
 				 && ch == ':'
 				 && !strchr(MINUS_PLUS_EQUAL_QUESTION, i_peek(input))
 				) {
 					/* It's ${var:N[:M]} thing */
 					end_ch = '}' * 0x100 + ':';
 				}
-				if (ENABLE_HUSH_BASH_COMPAT
+				if (BASH_PATTERN_SUBST
 				 && ch == '/'
 				) {
 					/* It's ${var/[/]pattern[/repl]} thing */
@@ -4303,7 +4446,9 @@ static int parse_dollar(o_string *as_string,
 					o_addchr(as_string, last_ch);
 				}
 
-				if (ENABLE_HUSH_BASH_COMPAT && (end_ch & 0xff00)) {
+				if ((BASH_SUBSTR || BASH_PATTERN_SUBST)
+					 && (end_ch & 0xff00)
+				) {
 					/* close the first block: */
 					o_addchr(dest, SPECIAL_VAR_SYMBOL);
 					/* while parsing N from ${var:N[:M]}
@@ -4314,7 +4459,7 @@ static int parse_dollar(o_string *as_string,
 						goto again;
 					}
 					/* got '}' */
-					if (end_ch == '}' * 0x100 + ':') {
+					if (BASH_SUBSTR && end_ch == '}' * 0x100 + ':') {
 						/* it's ${var:N} - emulate :999999999 */
 						o_addstr(dest, "999999999");
 					} /* else: it's ${var/[/]pattern} */
@@ -4389,7 +4534,7 @@ static int parse_dollar(o_string *as_string,
 }
 
 #if BB_MMU
-# if ENABLE_HUSH_BASH_COMPAT
+# if BASH_PATTERN_SUBST
 #define encode_string(as_string, dest, input, dquote_end, process_bkslash) \
 	encode_string(dest, input, dquote_end, process_bkslash)
 # else
@@ -4401,7 +4546,7 @@ static int parse_dollar(o_string *as_string,
 
 #else /* !MMU */
 
-# if ENABLE_HUSH_BASH_COMPAT
+# if BASH_PATTERN_SUBST
 /* all parameters are needed, no macro tricks */
 # else
 #define encode_string(as_string, dest, input, dquote_end, process_bkslash) \
@@ -4414,7 +4559,7 @@ static int encode_string(o_string *as_string,
 		int dquote_end,
 		int process_bkslash)
 {
-#if !ENABLE_HUSH_BASH_COMPAT
+#if !BASH_PATTERN_SUBST
 	const int process_bkslash = 1;
 #endif
 	int ch;
@@ -5057,7 +5202,7 @@ static struct pipe *parse_stream(char **pstring,
 /*** Execution routines ***/
 
 /* Expansion can recurse, need forward decls: */
-#if !ENABLE_HUSH_BASH_COMPAT
+#if !BASH_PATTERN_SUBST
 /* only ${var/pattern/repl} (its pattern part) needs additional mode */
 #define expand_string_to_string(str, do_unbackslash) \
 	expand_string_to_string(str)
@@ -5178,7 +5323,7 @@ static int expand_on_ifs(int *ended_with_ifs, o_string *output, int n, const cha
  * Returns malloced string.
  * As an optimization, we return NULL if expansion is not needed.
  */
-#if !ENABLE_HUSH_BASH_COMPAT
+#if !BASH_PATTERN_SUBST
 /* only ${var/pattern/repl} (its pattern part) needs additional mode */
 #define encode_then_expand_string(str, process_bkslash, do_unbackslash) \
 	encode_then_expand_string(str)
@@ -5232,7 +5377,7 @@ static arith_t expand_and_evaluate_arith(const char *arg, const char **errmsg_p)
 }
 #endif
 
-#if ENABLE_HUSH_BASH_COMPAT
+#if BASH_PATTERN_SUBST
 /* ${var/[/]pattern[/repl]} helpers */
 static char *strstr_pattern(char *val, const char *pattern, int *size)
 {
@@ -5284,7 +5429,7 @@ static char *replace_pattern(char *val, const char *pattern, const char *repl, c
 	debug_printf_varexp("result:'%s'\n", result);
 	return result;
 }
-#endif
+#endif /* BASH_PATTERN_SUBST */
 
 /* Helper:
  * Handles <SPECIAL_VAR_SYMBOL>varname...<SPECIAL_VAR_SYMBOL> construct.
@@ -5332,7 +5477,7 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 			if (exp_op == ':') {
 				exp_op = *exp_word++;
 //TODO: try ${var:} and ${var:bogus} in non-bash config
-				if (ENABLE_HUSH_BASH_COMPAT
+				if (BASH_SUBSTR
 				 && (!exp_op || !strchr(MINUS_PLUS_EQUAL_QUESTION, exp_op))
 				) {
 					/* oops... it's ${var:N[:M]}, not ${var:?xxx} or some such */
@@ -5414,7 +5559,7 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 				}
 			}
 		}
-#if ENABLE_HUSH_BASH_COMPAT
+#if BASH_PATTERN_SUBST
 		else if (exp_op == '/' || exp_op == '\\') {
 			/* It's ${var/[/]pattern[/repl]} thing.
 			 * Note that in encoded form it has TWO parts:
@@ -5461,9 +5606,9 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 				free(repl);
 			}
 		}
-#endif
+#endif /* BASH_PATTERN_SUBST */
 		else if (exp_op == ':') {
-#if ENABLE_HUSH_BASH_COMPAT && ENABLE_FEATURE_SH_MATH
+#if BASH_SUBSTR && ENABLE_FEATURE_SH_MATH
 			/* It's ${var:N[:M]} bashism.
 			 * Note that in encoded form it has TWO parts:
 			 * var:N<SPECIAL_VAR_SYMBOL>M<SPECIAL_VAR_SYMBOL>
@@ -5499,7 +5644,7 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 				}
 				debug_printf_varexp("val:'%s'\n", val);
 			} else
-#endif
+#endif /* HUSH_SUBSTR_EXPANSION && FEATURE_SH_MATH */
 			{
 				die_if_script("malformed ${%s:...}", var);
 				val = NULL;
@@ -5789,7 +5934,7 @@ static char **expand_strvec_to_strvec(char **argv)
 	return expand_variables(argv, EXP_FLAG_GLOB | EXP_FLAG_ESC_GLOB_CHARS);
 }
 
-#if ENABLE_HUSH_BASH_COMPAT
+#if BASH_TEST2
 static char **expand_strvec_to_strvec_singleword_noglob(char **argv)
 {
 	return expand_variables(argv, EXP_FLAG_SINGLEWORD);
@@ -5804,7 +5949,7 @@ static char **expand_strvec_to_strvec_singleword_noglob(char **argv)
  */
 static char *expand_string_to_string(const char *str, int do_unbackslash)
 {
-#if !ENABLE_HUSH_BASH_COMPAT
+#if !BASH_PATTERN_SUBST
 	const int do_unbackslash = 1;
 #endif
 	char *argv[2], **list;
@@ -5882,13 +6027,15 @@ static void switch_off_special_sigs(unsigned mask)
 		sig++;
 		if (!(mask & 1))
 			continue;
-		if (G.traps) {
-			if (G.traps[sig] && !G.traps[sig][0])
+#if ENABLE_HUSH_TRAP
+		if (G_traps) {
+			if (G_traps[sig] && !G_traps[sig][0])
 				/* trap is '', has to remain SIG_IGN */
 				continue;
-			free(G.traps[sig]);
-			G.traps[sig] = NULL;
+			free(G_traps[sig]);
+			G_traps[sig] = NULL;
 		}
+#endif
 		/* We are here only if no trap or trap was not '' */
 		install_sighandler(sig, SIG_DFL);
 	}
@@ -5905,7 +6052,7 @@ static void reset_traps_to_defaults(void)
 	/* This function is always called in a child shell
 	 * after fork (not vfork, NOMMU doesn't use this function).
 	 */
-	unsigned sig;
+	IF_HUSH_TRAP(unsigned sig;)
 	unsigned mask;
 
 	/* Child shells are not interactive.
@@ -5914,35 +6061,37 @@ static void reset_traps_to_defaults(void)
 	 * Same goes for SIGTERM, SIGHUP, SIGINT.
 	 */
 	mask = (G.special_sig_mask & SPECIAL_INTERACTIVE_SIGS) | G_fatal_sig_mask;
-	if (!G.traps && !mask)
+	if (!G_traps && !mask)
 		return; /* already no traps and no special sigs */
 
 	/* Switch off special sigs */
 	switch_off_special_sigs(mask);
-#if ENABLE_HUSH_JOB
+# if ENABLE_HUSH_JOB
 	G_fatal_sig_mask = 0;
-#endif
+# endif
 	G.special_sig_mask &= ~SPECIAL_INTERACTIVE_SIGS;
 	/* SIGQUIT,SIGCHLD and maybe SPECIAL_JOBSTOP_SIGS
 	 * remain set in G.special_sig_mask */
 
-	if (!G.traps)
+# if ENABLE_HUSH_TRAP
+	if (!G_traps)
 		return;
 
 	/* Reset all sigs to default except ones with empty traps */
 	for (sig = 0; sig < NSIG; sig++) {
-		if (!G.traps[sig])
+		if (!G_traps[sig])
 			continue; /* no trap: nothing to do */
-		if (!G.traps[sig][0])
+		if (!G_traps[sig][0])
 			continue; /* empty trap: has to remain SIG_IGN */
 		/* sig has non-empty trap, reset it: */
-		free(G.traps[sig]);
-		G.traps[sig] = NULL;
+		free(G_traps[sig]);
+		G_traps[sig] = NULL;
 		/* There is no signal for trap 0 (EXIT) */
 		if (sig == 0)
 			continue;
 		install_sighandler(sig, pick_sighandler(sig));
 	}
+# endif
 }
 
 #else /* !BB_MMU */
@@ -5982,10 +6131,10 @@ static void re_execute_shell(char ***to_free, const char *s,
 		cnt++;
 
 	empty_trap_mask = 0;
-	if (G.traps) {
+	if (G_traps) {
 		int sig;
 		for (sig = 1; sig < NSIG; sig++) {
-			if (G.traps[sig] && !G.traps[sig][0])
+			if (G_traps[sig] && !G_traps[sig][0])
 				empty_trap_mask |= 1LL << sig;
 		}
 	}
@@ -6178,6 +6327,7 @@ static FILE *generate_stream_from_string(const char *s, pid_t *pid_p)
 		xmove_fd(channel[1], 1);
 		/* Prevent it from trying to handle ctrl-z etc */
 		IF_HUSH_JOB(G.run_list_level = 1;)
+# if ENABLE_HUSH_TRAP
 		/* Awful hack for `trap` or $(trap).
 		 *
 		 * http://www.opengroup.org/onlinepubs/009695399/utilities/trap.html
@@ -6221,6 +6371,7 @@ static FILE *generate_stream_from_string(const char *s, pid_t *pid_p)
 			fflush_all(); /* important */
 			_exit(0);
 		}
+# endif
 # if BB_MMU
 		reset_traps_to_defaults();
 		parse_and_run_string(s);
@@ -6629,6 +6780,7 @@ static struct function *new_function(char *name)
 	return funcp;
 }
 
+# if ENABLE_HUSH_UNSET
 static void unset_func(const char *name)
 {
 	struct function **funcpp = find_function_slot(name);
@@ -6644,13 +6796,14 @@ static void unset_func(const char *name)
 		if (funcp->body) {
 			free_pipe_list(funcp->body);
 			free(funcp->name);
-# if !BB_MMU
+#  if !BB_MMU
 			free(funcp->body_as_string);
-# endif
+#  endif
 		}
 		free(funcp);
 	}
 }
+# endif
 
 # if BB_MMU
 #define exec_function(to_free, funcp, argv) \
@@ -7043,7 +7196,7 @@ static void insert_bg_job(struct pipe *pi)
 	job->cmdtext = xstrdup(get_cmdtext(pi));
 
 	if (G_interactive_fd)
-		printf("[%d] %d %s\n", job->jobid, job->cmds[0].pid, job->cmdtext);
+		printf("[%u] %u %s\n", job->jobid, (unsigned)job->cmds[0].pid, job->cmdtext);
 	G.last_jobid = job->jobid;
 }
 
@@ -7518,7 +7671,7 @@ static NOINLINE int run_pipe(struct pipe *pi)
 		}
 
 		/* Expand the rest into (possibly) many strings each */
-#if ENABLE_HUSH_BASH_COMPAT
+#if BASH_TEST2
 		if (command->cmd_type == CMD_SINGLEWORD_NOGLOB) {
 			argv_expanded = expand_strvec_to_strvec_singleword_noglob(argv + command->assignment_cnt);
 		} else
@@ -8118,10 +8271,12 @@ static void install_sighandlers(unsigned mask)
 		if (old_handler == SIG_IGN) {
 			/* oops... restore back to IGN, and record this fact */
 			install_sighandler(sig, old_handler);
-			if (!G.traps)
-				G.traps = xzalloc(sizeof(G.traps[0]) * NSIG);
-			free(G.traps[sig]);
-			G.traps[sig] = xzalloc(1); /* == xstrdup(""); */
+#if ENABLE_HUSH_TRAP
+			if (!G_traps)
+				G_traps = xzalloc(sizeof(G_traps[0]) * NSIG);
+			free(G_traps[sig]);
+			G_traps[sig] = xzalloc(1); /* == xstrdup(""); */
+#endif
 		}
 	}
 }
@@ -8272,7 +8427,7 @@ int hush_main(int argc, char **argv)
 	/* Export PWD */
 	set_pwd_var(/*exp:*/ 1);
 
-#if ENABLE_HUSH_BASH_COMPAT
+#if BASH_HOSTNAME_VAR
 	/* Set (but not export) HOSTNAME unless already set */
 	if (!get_local_var_value("HOSTNAME")) {
 		struct utsname uts;
@@ -8422,10 +8577,10 @@ int hush_main(int argc, char **argv)
 			if (empty_trap_mask != 0) {
 				int sig;
 				install_special_sighandlers();
-				G.traps = xzalloc(sizeof(G.traps[0]) * NSIG);
+				G_traps = xzalloc(sizeof(G_traps[0]) * NSIG);
 				for (sig = 1; sig < NSIG; sig++) {
 					if (empty_trap_mask & (1LL << sig)) {
-						G.traps[sig] = xzalloc(1); /* == xstrdup(""); */
+						G_traps[sig] = xzalloc(1); /* == xstrdup(""); */
 						install_sighandler(sig, SIG_IGN);
 					}
 				}
@@ -8669,6 +8824,7 @@ static int FAST_FUNC builtin_true(char **argv UNUSED_PARAM)
 	return 0;
 }
 
+#if ENABLE_HUSH_TEST || ENABLE_HUSH_ECHO || ENABLE_HUSH_PRINTF || ENABLE_HUSH_KILL
 static int run_applet_main(char **argv, int (*applet_main_func)(int argc, char **argv))
 {
 	int argc = 0;
@@ -8678,21 +8834,47 @@ static int run_applet_main(char **argv, int (*applet_main_func)(int argc, char *
 	}
 	return applet_main_func(argc, argv - argc);
 }
-
+#endif
+#if ENABLE_HUSH_TEST || BASH_TEST2
 static int FAST_FUNC builtin_test(char **argv)
 {
 	return run_applet_main(argv, test_main);
 }
-
+#endif
+#if ENABLE_HUSH_ECHO
 static int FAST_FUNC builtin_echo(char **argv)
 {
 	return run_applet_main(argv, echo_main);
 }
-
-#if ENABLE_PRINTF
+#endif
+#if ENABLE_HUSH_PRINTF
 static int FAST_FUNC builtin_printf(char **argv)
 {
 	return run_applet_main(argv, printf_main);
+}
+#endif
+
+#if ENABLE_HUSH_HELP
+static int FAST_FUNC builtin_help(char **argv UNUSED_PARAM)
+{
+	const struct built_in_command *x;
+
+	printf(
+		"Built-in commands:\n"
+		"------------------\n");
+	for (x = bltins1; x != &bltins1[ARRAY_SIZE(bltins1)]; x++) {
+		if (x->b_descr)
+			printf("%-10s%s\n", x->b_cmd, x->b_descr);
+	}
+	return EXIT_SUCCESS;
+}
+#endif
+
+#if MAX_HISTORY && ENABLE_FEATURE_EDITING
+static int FAST_FUNC builtin_history(char **argv UNUSED_PARAM)
+{
+	show_history(G.line_input_state);
+	return EXIT_SUCCESS;
 }
 #endif
 
@@ -8702,24 +8884,6 @@ static char **skip_dash_dash(char **argv)
 	if (argv[0] && argv[0][0] == '-' && argv[0][1] == '-' && argv[0][2] == '\0')
 		argv++;
 	return argv;
-}
-
-static int FAST_FUNC builtin_eval(char **argv)
-{
-	int rcode = EXIT_SUCCESS;
-
-	argv = skip_dash_dash(argv);
-	if (*argv) {
-		char *str = expand_strvec_to_string(argv);
-		/* bash:
-		 * eval "echo Hi; done" ("done" is syntax error):
-		 * "echo Hi" will not execute too.
-		 */
-		parse_and_run_string(str);
-		free(str);
-		rcode = G.last_exitcode;
-	}
-	return rcode;
 }
 
 static int FAST_FUNC builtin_cd(char **argv)
@@ -8747,6 +8911,30 @@ static int FAST_FUNC builtin_cd(char **argv)
 	 */
 	set_pwd_var(/*exp:*/ 0);
 	return EXIT_SUCCESS;
+}
+
+static int FAST_FUNC builtin_pwd(char **argv UNUSED_PARAM)
+{
+	puts(get_cwd(0));
+	return EXIT_SUCCESS;
+}
+
+static int FAST_FUNC builtin_eval(char **argv)
+{
+	int rcode = EXIT_SUCCESS;
+
+	argv = skip_dash_dash(argv);
+	if (*argv) {
+		char *str = expand_strvec_to_string(argv);
+		/* bash:
+		 * eval "echo Hi; done" ("done" is syntax error):
+		 * "echo Hi" will not execute too.
+		 */
+		parse_and_run_string(str);
+		free(str);
+		rcode = G.last_exitcode;
+	}
+	return rcode;
 }
 
 static int FAST_FUNC builtin_exec(char **argv)
@@ -8794,6 +8982,148 @@ static int FAST_FUNC builtin_exit(char **argv)
 	hush_exit(xatoi(argv[0]) & 0xff);
 }
 
+#if ENABLE_HUSH_TYPE
+/* http://www.opengroup.org/onlinepubs/9699919799/utilities/type.html */
+static int FAST_FUNC builtin_type(char **argv)
+{
+	int ret = EXIT_SUCCESS;
+
+	while (*++argv) {
+		const char *type;
+		char *path = NULL;
+
+		if (0) {} /* make conditional compile easier below */
+		/*else if (find_alias(*argv))
+			type = "an alias";*/
+#if ENABLE_HUSH_FUNCTIONS
+		else if (find_function(*argv))
+			type = "a function";
+#endif
+		else if (find_builtin(*argv))
+			type = "a shell builtin";
+		else if ((path = find_in_path(*argv)) != NULL)
+			type = path;
+		else {
+			bb_error_msg("type: %s: not found", *argv);
+			ret = EXIT_FAILURE;
+			continue;
+		}
+
+		printf("%s is %s\n", *argv, type);
+		free(path);
+	}
+
+	return ret;
+}
+#endif
+
+#if ENABLE_HUSH_READ
+/* Interruptibility of read builtin in bash
+ * (tested on bash-4.2.8 by sending signals (not by ^C)):
+ *
+ * Empty trap makes read ignore corresponding signal, for any signal.
+ *
+ * SIGINT:
+ * - terminates non-interactive shell;
+ * - interrupts read in interactive shell;
+ * if it has non-empty trap:
+ * - executes trap and returns to command prompt in interactive shell;
+ * - executes trap and returns to read in non-interactive shell;
+ * SIGTERM:
+ * - is ignored (does not interrupt) read in interactive shell;
+ * - terminates non-interactive shell;
+ * if it has non-empty trap:
+ * - executes trap and returns to read;
+ * SIGHUP:
+ * - terminates shell (regardless of interactivity);
+ * if it has non-empty trap:
+ * - executes trap and returns to read;
+ */
+static int FAST_FUNC builtin_read(char **argv)
+{
+	const char *r;
+	char *opt_n = NULL;
+	char *opt_p = NULL;
+	char *opt_t = NULL;
+	char *opt_u = NULL;
+	const char *ifs;
+	int read_flags;
+
+	/* "!": do not abort on errors.
+	 * Option string must start with "sr" to match BUILTIN_READ_xxx
+	 */
+	read_flags = getopt32(argv, "!srn:p:t:u:", &opt_n, &opt_p, &opt_t, &opt_u);
+	if (read_flags == (uint32_t)-1)
+		return EXIT_FAILURE;
+	argv += optind;
+	ifs = get_local_var_value("IFS"); /* can be NULL */
+
+ again:
+	r = shell_builtin_read(set_local_var_from_halves,
+		argv,
+		ifs,
+		read_flags,
+		opt_n,
+		opt_p,
+		opt_t,
+		opt_u
+	);
+
+	if ((uintptr_t)r == 1 && errno == EINTR) {
+		unsigned sig = check_and_run_traps();
+		if (sig && sig != SIGINT)
+			goto again;
+	}
+
+	if ((uintptr_t)r > 1) {
+		bb_error_msg("%s", r);
+		r = (char*)(uintptr_t)1;
+	}
+
+	return (uintptr_t)r;
+}
+#endif
+
+#if ENABLE_HUSH_UMASK
+static int FAST_FUNC builtin_umask(char **argv)
+{
+	int rc;
+	mode_t mask;
+
+	rc = 1;
+	mask = umask(0);
+	argv = skip_dash_dash(argv);
+	if (argv[0]) {
+		mode_t old_mask = mask;
+
+		/* numeric umasks are taken as-is */
+		/* symbolic umasks are inverted: "umask a=rx" calls umask(222) */
+		if (!isdigit(argv[0][0]))
+			mask ^= 0777;
+		mask = bb_parse_mode(argv[0], mask);
+		if (!isdigit(argv[0][0]))
+			mask ^= 0777;
+		if ((unsigned)mask > 0777) {
+			mask = old_mask;
+			/* bash messages:
+			 * bash: umask: 'q': invalid symbolic mode operator
+			 * bash: umask: 999: octal number out of range
+			 */
+			bb_error_msg("%s: invalid mode '%s'", "umask", argv[0]);
+			rc = 0;
+		}
+	} else {
+		/* Mimic bash */
+		printf("%04o\n", (unsigned) mask);
+		/* fall through and restore mask which we set to 0 */
+	}
+	umask(mask);
+
+	return !rc; /* rc != 0 - success */
+}
+#endif
+
+#if ENABLE_HUSH_EXPORT || ENABLE_HUSH_TRAP
 static void print_escaped(const char *s)
 {
 	if (*s == '\'')
@@ -8812,11 +9142,13 @@ static void print_escaped(const char *s)
 		putchar('"');
 	} while (*s);
 }
+#endif
 
-#if !ENABLE_HUSH_LOCAL
+#if ENABLE_HUSH_EXPORT || ENABLE_HUSH_LOCAL
+# if !ENABLE_HUSH_LOCAL
 #define helper_export_local(argv, exp, lvl) \
 	helper_export_local(argv, exp)
-#endif
+# endif
 static void helper_export_local(char **argv, int exp, int lvl)
 {
 	do {
@@ -8849,14 +9181,14 @@ static void helper_export_local(char **argv, int exp, int lvl)
 					continue;
 				}
 			}
-#if ENABLE_HUSH_LOCAL
+# if ENABLE_HUSH_LOCAL
 			if (exp == 0 /* local? */
 			 && var && var->func_nest_level == lvl
 			) {
 				/* "local x=abc; ...; local x" - ignore second local decl */
 				continue;
 			}
-#endif
+# endif
 			/* Exporting non-existing variable.
 			 * bash does not put it in environment,
 			 * but remembers that it is exported,
@@ -8872,7 +9204,9 @@ static void helper_export_local(char **argv, int exp, int lvl)
 		set_local_var(name, /*exp:*/ exp, /*lvl:*/ lvl, /*ro:*/ 0);
 	} while (*++argv);
 }
+#endif
 
+#if ENABLE_HUSH_EXPORT
 static int FAST_FUNC builtin_export(char **argv)
 {
 	unsigned opt_unexport;
@@ -8918,6 +9252,7 @@ static int FAST_FUNC builtin_export(char **argv)
 
 	return EXIT_SUCCESS;
 }
+#endif
 
 #if ENABLE_HUSH_LOCAL
 static int FAST_FUNC builtin_local(char **argv)
@@ -8931,6 +9266,7 @@ static int FAST_FUNC builtin_local(char **argv)
 }
 #endif
 
+#if ENABLE_HUSH_UNSET
 /* http://www.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#unset */
 static int FAST_FUNC builtin_unset(char **argv)
 {
@@ -8958,16 +9294,18 @@ static int FAST_FUNC builtin_unset(char **argv)
 				ret = EXIT_FAILURE;
 			}
 		}
-#if ENABLE_HUSH_FUNCTIONS
+# if ENABLE_HUSH_FUNCTIONS
 		else {
 			unset_func(*argv);
 		}
-#endif
+# endif
 		argv++;
 	}
 	return ret;
 }
+#endif
 
+#if ENABLE_HUSH_SET
 /* http://www.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#set
  * built-in 'set' handler
  * SUSv3 says:
@@ -9050,6 +9388,7 @@ static int FAST_FUNC builtin_set(char **argv)
 	bb_error_msg("set: %s: invalid option", arg);
 	return EXIT_FAILURE;
 }
+#endif
 
 static int FAST_FUNC builtin_shift(char **argv)
 {
@@ -9059,7 +9398,7 @@ static int FAST_FUNC builtin_shift(char **argv)
 		n = atoi(argv[0]);
 	}
 	if (n >= 0 && n < G.global_argc) {
-		if (G.global_args_malloced) {
+		if (G_global_args_malloced) {
 			int m = 1;
 			while (m <= n)
 				free(G.global_argv[m++]);
@@ -9072,87 +9411,78 @@ static int FAST_FUNC builtin_shift(char **argv)
 	return EXIT_FAILURE;
 }
 
-/* Interruptibility of read builtin in bash
- * (tested on bash-4.2.8 by sending signals (not by ^C)):
- *
- * Empty trap makes read ignore corresponding signal, for any signal.
- *
- * SIGINT:
- * - terminates non-interactive shell;
- * - interrupts read in interactive shell;
- * if it has non-empty trap:
- * - executes trap and returns to command prompt in interactive shell;
- * - executes trap and returns to read in non-interactive shell;
- * SIGTERM:
- * - is ignored (does not interrupt) read in interactive shell;
- * - terminates non-interactive shell;
- * if it has non-empty trap:
- * - executes trap and returns to read;
- * SIGHUP:
- * - terminates shell (regardless of interactivity);
- * if it has non-empty trap:
- * - executes trap and returns to read;
- */
-static int FAST_FUNC builtin_read(char **argv)
+static int FAST_FUNC builtin_source(char **argv)
 {
-	const char *r;
-	char *opt_n = NULL;
-	char *opt_p = NULL;
-	char *opt_t = NULL;
-	char *opt_u = NULL;
-	const char *ifs;
-	int read_flags;
+	char *arg_path, *filename;
+	FILE *input;
+	save_arg_t sv;
+	char *args_need_save;
+#if ENABLE_HUSH_FUNCTIONS
+	smallint sv_flg;
+#endif
 
-	/* "!": do not abort on errors.
-	 * Option string must start with "sr" to match BUILTIN_READ_xxx
-	 */
-	read_flags = getopt32(argv, "!srn:p:t:u:", &opt_n, &opt_p, &opt_t, &opt_u);
-	if (read_flags == (uint32_t)-1)
+	argv = skip_dash_dash(argv);
+	filename = argv[0];
+	if (!filename) {
+		/* bash says: "bash: .: filename argument required" */
+		return 2; /* bash compat */
+	}
+	arg_path = NULL;
+	if (!strchr(filename, '/')) {
+		arg_path = find_in_path(filename);
+		if (arg_path)
+			filename = arg_path;
+	}
+	input = remember_FILE(fopen_or_warn(filename, "r"));
+	free(arg_path);
+	if (!input) {
+		/* bb_perror_msg("%s", *argv); - done by fopen_or_warn */
+		/* POSIX: non-interactive shell should abort here,
+		 * not merely fail. So far no one complained :)
+		 */
 		return EXIT_FAILURE;
-	argv += optind;
-	ifs = get_local_var_value("IFS"); /* can be NULL */
-
- again:
-	r = shell_builtin_read(set_local_var_from_halves,
-		argv,
-		ifs,
-		read_flags,
-		opt_n,
-		opt_p,
-		opt_t,
-		opt_u
-	);
-
-	if ((uintptr_t)r == 1 && errno == EINTR) {
-		unsigned sig = check_and_run_traps();
-		if (sig && sig != SIGINT)
-			goto again;
 	}
 
-	if ((uintptr_t)r > 1) {
-		bb_error_msg("%s", r);
-		r = (char*)(uintptr_t)1;
-	}
+#if ENABLE_HUSH_FUNCTIONS
+	sv_flg = G_flag_return_in_progress;
+	/* "we are inside sourced file, ok to use return" */
+	G_flag_return_in_progress = -1;
+#endif
+	args_need_save = argv[1]; /* used as a boolean variable */
+	if (args_need_save)
+		save_and_replace_G_args(&sv, argv);
 
-	return (uintptr_t)r;
+	/* "false; . ./empty_line; echo Zero:$?" should print 0 */
+	G.last_exitcode = 0;
+	parse_and_run_file(input);
+	fclose_and_forget(input);
+
+	if (args_need_save) /* can't use argv[1] instead: "shift" can mangle it */
+		restore_G_args(&sv, argv);
+#if ENABLE_HUSH_FUNCTIONS
+	G_flag_return_in_progress = sv_flg;
+#endif
+
+	return G.last_exitcode;
 }
 
+#if ENABLE_HUSH_TRAP
 static int FAST_FUNC builtin_trap(char **argv)
 {
 	int sig;
 	char *new_cmd;
 
-	if (!G.traps)
-		G.traps = xzalloc(sizeof(G.traps[0]) * NSIG);
+	if (!G_traps)
+		G_traps = xzalloc(sizeof(G_traps[0]) * NSIG);
 
 	argv++;
 	if (!*argv) {
 		int i;
 		/* No args: print all trapped */
 		for (i = 0; i < NSIG; ++i) {
-			if (G.traps[i]) {
+			if (G_traps[i]) {
 				printf("trap -- ");
-				print_escaped(G.traps[i]);
+				print_escaped(G_traps[i]);
 				/* note: bash adds "SIG", but only if invoked
 				 * as "bash". If called as "sh", or if set -o posix,
 				 * then it prints short signal names.
@@ -9182,11 +9512,11 @@ static int FAST_FUNC builtin_trap(char **argv)
 				continue;
 			}
 
-			free(G.traps[sig]);
-			G.traps[sig] = xstrdup(new_cmd);
+			free(G_traps[sig]);
+			G_traps[sig] = xstrdup(new_cmd);
 
 			debug_printf("trap: setting SIG%s (%i) to '%s'\n",
-				get_signame(sig), sig, G.traps[sig]);
+				get_signame(sig), sig, G_traps[sig]);
 
 			/* There is no signal for 0 (EXIT) */
 			if (sig == 0)
@@ -9226,57 +9556,52 @@ static int FAST_FUNC builtin_trap(char **argv)
 	argv++;
 	goto process_sig_list;
 }
-
-/* http://www.opengroup.org/onlinepubs/9699919799/utilities/type.html */
-static int FAST_FUNC builtin_type(char **argv)
-{
-	int ret = EXIT_SUCCESS;
-
-	while (*++argv) {
-		const char *type;
-		char *path = NULL;
-
-		if (0) {} /* make conditional compile easier below */
-		/*else if (find_alias(*argv))
-			type = "an alias";*/
-#if ENABLE_HUSH_FUNCTIONS
-		else if (find_function(*argv))
-			type = "a function";
 #endif
-		else if (find_builtin(*argv))
-			type = "a shell builtin";
-		else if ((path = find_in_path(*argv)) != NULL)
-			type = path;
-		else {
-			bb_error_msg("type: %s: not found", *argv);
-			ret = EXIT_FAILURE;
-			continue;
-		}
-
-		printf("%s is %s\n", *argv, type);
-		free(path);
-	}
-
-	return ret;
-}
 
 #if ENABLE_HUSH_JOB
 static struct pipe *parse_jobspec(const char *str)
 {
 	struct pipe *pi;
-	int jobnum;
+	unsigned jobnum;
 
-	if (sscanf(str, "%%%d", &jobnum) != 1) {
-		bb_error_msg("bad argument '%s'", str);
-		return NULL;
+	if (sscanf(str, "%%%u", &jobnum) != 1) {
+		if (str[0] != '%'
+		 || (str[1] != '%' && str[1] != '+' && str[1] != '\0')
+		) {
+			bb_error_msg("bad argument '%s'", str);
+			return NULL;
+		}
+		/* It is "%%", "%+" or "%" - current job */
+		jobnum = G.last_jobid;
+		if (jobnum == 0) {
+			bb_error_msg("no current job");
+			return NULL;
+		}
 	}
 	for (pi = G.job_list; pi; pi = pi->next) {
 		if (pi->jobid == jobnum) {
 			return pi;
 		}
 	}
-	bb_error_msg("%d: no such job", jobnum);
+	bb_error_msg("%u: no such job", jobnum);
 	return NULL;
+}
+
+static int FAST_FUNC builtin_jobs(char **argv UNUSED_PARAM)
+{
+	struct pipe *job;
+	const char *status_string;
+
+	checkjobs(NULL, 0 /*(no pid to wait for)*/);
+	for (job = G.job_list; job; job = job->next) {
+		if (job->alive_cmds == job->stopped_cmds)
+			status_string = "Stopped";
+		else
+			status_string = "Running";
+
+		printf(JOB_STATUS_FORMAT, job->jobid, status_string, job->cmdtext);
+	}
+	return EXIT_SUCCESS;
 }
 
 /* built-in 'fg' and 'bg' handler */
@@ -9334,188 +9659,81 @@ static int FAST_FUNC builtin_fg_bg(char **argv)
 }
 #endif
 
-#if ENABLE_HUSH_HELP
-static int FAST_FUNC builtin_help(char **argv UNUSED_PARAM)
+#if ENABLE_HUSH_KILL
+static int FAST_FUNC builtin_kill(char **argv)
 {
-	const struct built_in_command *x;
+	int ret = 0;
 
-	printf(
-		"Built-in commands:\n"
-		"------------------\n");
-	for (x = bltins1; x != &bltins1[ARRAY_SIZE(bltins1)]; x++) {
-		if (x->b_descr)
-			printf("%-10s%s\n", x->b_cmd, x->b_descr);
-	}
-	return EXIT_SUCCESS;
-}
-#endif
+# if ENABLE_HUSH_JOB
+	if (argv[1] && strcmp(argv[1], "-l") != 0) {
+		int i = 1;
 
-#if MAX_HISTORY && ENABLE_FEATURE_EDITING
-static int FAST_FUNC builtin_history(char **argv UNUSED_PARAM)
-{
-	show_history(G.line_input_state);
-	return EXIT_SUCCESS;
-}
-#endif
+		do {
+			struct pipe *pi;
+			char *dst;
+			int j, n;
 
-#if ENABLE_HUSH_JOB
-static int FAST_FUNC builtin_jobs(char **argv UNUSED_PARAM)
-{
-	struct pipe *job;
-	const char *status_string;
-
-	checkjobs(NULL, 0 /*(no pid to wait for)*/);
-	for (job = G.job_list; job; job = job->next) {
-		if (job->alive_cmds == job->stopped_cmds)
-			status_string = "Stopped";
-		else
-			status_string = "Running";
-
-		printf(JOB_STATUS_FORMAT, job->jobid, status_string, job->cmdtext);
-	}
-	return EXIT_SUCCESS;
-}
-#endif
-
-#if HUSH_DEBUG
-static int FAST_FUNC builtin_memleak(char **argv UNUSED_PARAM)
-{
-	void *p;
-	unsigned long l;
-
-# ifdef M_TRIM_THRESHOLD
-	/* Optional. Reduces probability of false positives */
-	malloc_trim(0);
-# endif
-	/* Crude attempt to find where "free memory" starts,
-	 * sans fragmentation. */
-	p = malloc(240);
-	l = (unsigned long)p;
-	free(p);
-	p = malloc(3400);
-	if (l < (unsigned long)p) l = (unsigned long)p;
-	free(p);
-
-
-# if 0  /* debug */
-	{
-		struct mallinfo mi = mallinfo();
-		printf("top alloc:0x%lx malloced:%d+%d=%d\n", l,
-			mi.arena, mi.hblkhd, mi.arena + mi.hblkhd);
-	}
-# endif
-
-	if (!G.memleak_value)
-		G.memleak_value = l;
-
-	l -= G.memleak_value;
-	if ((long)l < 0)
-		l = 0;
-	l /= 1024;
-	if (l > 127)
-		l = 127;
-
-	/* Exitcode is "how many kilobytes we leaked since 1st call" */
-	return l;
-}
-#endif
-
-static int FAST_FUNC builtin_pwd(char **argv UNUSED_PARAM)
-{
-	puts(get_cwd(0));
-	return EXIT_SUCCESS;
-}
-
-static int FAST_FUNC builtin_source(char **argv)
-{
-	char *arg_path, *filename;
-	FILE *input;
-	save_arg_t sv;
-#if ENABLE_HUSH_FUNCTIONS
-	smallint sv_flg;
-#endif
-
-	argv = skip_dash_dash(argv);
-	filename = argv[0];
-	if (!filename) {
-		/* bash says: "bash: .: filename argument required" */
-		return 2; /* bash compat */
-	}
-	arg_path = NULL;
-	if (!strchr(filename, '/')) {
-		arg_path = find_in_path(filename);
-		if (arg_path)
-			filename = arg_path;
-	}
-	input = remember_FILE(fopen_or_warn(filename, "r"));
-	free(arg_path);
-	if (!input) {
-		/* bb_perror_msg("%s", *argv); - done by fopen_or_warn */
-		/* POSIX: non-interactive shell should abort here,
-		 * not merely fail. So far no one complained :)
-		 */
-		return EXIT_FAILURE;
-	}
-
-#if ENABLE_HUSH_FUNCTIONS
-	sv_flg = G_flag_return_in_progress;
-	/* "we are inside sourced file, ok to use return" */
-	G_flag_return_in_progress = -1;
-#endif
-	if (argv[1])
-		save_and_replace_G_args(&sv, argv);
-
-	/* "false; . ./empty_line; echo Zero:$?" should print 0 */
-	G.last_exitcode = 0;
-	parse_and_run_file(input);
-	fclose_and_forget(input);
-
-	if (argv[1])
-		restore_G_args(&sv, argv);
-#if ENABLE_HUSH_FUNCTIONS
-	G_flag_return_in_progress = sv_flg;
-#endif
-
-	return G.last_exitcode;
-}
-
-static int FAST_FUNC builtin_umask(char **argv)
-{
-	int rc;
-	mode_t mask;
-
-	rc = 1;
-	mask = umask(0);
-	argv = skip_dash_dash(argv);
-	if (argv[0]) {
-		mode_t old_mask = mask;
-
-		/* numeric umasks are taken as-is */
-		/* symbolic umasks are inverted: "umask a=rx" calls umask(222) */
-		if (!isdigit(argv[0][0]))
-			mask ^= 0777;
-		mask = bb_parse_mode(argv[0], mask);
-		if (!isdigit(argv[0][0]))
-			mask ^= 0777;
-		if ((unsigned)mask > 0777) {
-			mask = old_mask;
-			/* bash messages:
-			 * bash: umask: 'q': invalid symbolic mode operator
-			 * bash: umask: 999: octal number out of range
+			if (argv[i][0] != '%')
+				continue;
+			/*
+			 * "kill %N" - job kill
+			 * Converting to pgrp / pid kill
 			 */
-			bb_error_msg("%s: invalid mode '%s'", "umask", argv[0]);
-			rc = 0;
-		}
-	} else {
-		/* Mimic bash */
-		printf("%04o\n", (unsigned) mask);
-		/* fall through and restore mask which we set to 0 */
+			pi = parse_jobspec(argv[i]);
+			if (!pi) {
+				/* Eat bad jobspec */
+				j = i;
+				do {
+					j++;
+					argv[j - 1] = argv[j];
+				} while (argv[j]);
+				ret = 1;
+				i--;
+				continue;
+			}
+			/*
+			 * In jobs started under job control, we signal
+			 * entire process group by kill -PGRP_ID.
+			 * This happens, f.e., in interactive shell.
+			 *
+			 * Otherwise, we signal each child via
+			 * kill PID1 PID2 PID3.
+			 * Testcases:
+			 * sh -c 'sleep 1|sleep 1 & kill %1'
+			 * sh -c 'true|sleep 2 & sleep 1; kill %1'
+			 * sh -c 'true|sleep 1 & sleep 2; kill %1'
+			 */
+			n = G_interactive_fd ? 1 : pi->num_cmds;
+			dst = alloca(n * sizeof(int)*4);
+			argv[i] = dst;
+			if (G_interactive_fd)
+				dst += sprintf(dst, " -%u", (int)pi->pgrp);
+			else for (j = 0; j < n; j++) {
+				struct command *cmd = &pi->cmds[j];
+				/* Skip exited members of the job */
+				if (cmd->pid == 0)
+					continue;
+				/*
+				 * kill_main has matching code to expect
+				 * leading space. Needed to not confuse
+				 * negative pids with "kill -SIGNAL_NO" syntax
+				 */
+				dst += sprintf(dst, " %u", (int)cmd->pid);
+			}
+			*dst = '\0';
+		} while (argv[++i]);
 	}
-	umask(mask);
+# endif
 
-	return !rc; /* rc != 0 - success */
+	if (argv[1] || ret == 0) {
+		ret = run_applet_main(argv, kill_main);
+	}
+	/* else: ret = 1, "kill %bad_jobspec" case */
+	return ret;
 }
+#endif
 
+#if ENABLE_HUSH_WAIT
 /* http://www.opengroup.org/onlinepubs/9699919799/utilities/wait.html */
 #if !ENABLE_HUSH_JOB
 # define wait_for_child_or_signal(pipe,pid) wait_for_child_or_signal(pid)
@@ -9622,13 +9840,15 @@ static int FAST_FUNC builtin_wait(char **argv)
 #if ENABLE_HUSH_JOB
 			if (argv[0][0] == '%') {
 				struct pipe *wait_pipe;
+				ret = 127; /* bash compat for bad jobspecs */
 				wait_pipe = parse_jobspec(*argv);
 				if (wait_pipe) {
 					ret = job_exited_or_stopped(wait_pipe);
 					if (ret < 0)
 						ret = wait_for_child_or_signal(wait_pipe, 0);
-					continue;
 				}
+				/* else: parse_jobspec() already emitted error msg */
+				continue;
 			}
 #endif
 			/* mimic bash message */
@@ -9674,6 +9894,7 @@ static int FAST_FUNC builtin_wait(char **argv)
 
 	return ret;
 }
+#endif
 
 #if ENABLE_HUSH_LOOPS || ENABLE_HUSH_FUNCTIONS
 static unsigned parse_numeric_argv1(char **argv, unsigned def, unsigned def_min)
@@ -9738,5 +9959,48 @@ static int FAST_FUNC builtin_return(char **argv)
 	 */
 	rc = parse_numeric_argv1(argv, G.last_exitcode, 0);
 	return rc;
+}
+#endif
+
+#if ENABLE_HUSH_MEMLEAK
+static int FAST_FUNC builtin_memleak(char **argv UNUSED_PARAM)
+{
+	void *p;
+	unsigned long l;
+
+# ifdef M_TRIM_THRESHOLD
+	/* Optional. Reduces probability of false positives */
+	malloc_trim(0);
+# endif
+	/* Crude attempt to find where "free memory" starts,
+	 * sans fragmentation. */
+	p = malloc(240);
+	l = (unsigned long)p;
+	free(p);
+	p = malloc(3400);
+	if (l < (unsigned long)p) l = (unsigned long)p;
+	free(p);
+
+
+# if 0  /* debug */
+	{
+		struct mallinfo mi = mallinfo();
+		printf("top alloc:0x%lx malloced:%d+%d=%d\n", l,
+			mi.arena, mi.hblkhd, mi.arena + mi.hblkhd);
+	}
+# endif
+
+	if (!G.memleak_value)
+		G.memleak_value = l;
+
+	l -= G.memleak_value;
+	if ((long)l < 0)
+		l = 0;
+	l /= 1024;
+	if (l > 127)
+		l = 127;
+
+	/* Exitcode is "how many kilobytes we leaked since 1st call" */
+	return l;
 }
 #endif

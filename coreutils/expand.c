@@ -8,13 +8,13 @@
  * David MacKenzie <djm@gnu.ai.mit.edu>
  *
  * Options for expand:
- * -t num  --tabs=NUM      Convert tabs to num spaces (default 8 spaces).
+ * -t num  --tabs NUM      Convert tabs to num spaces (default 8 spaces).
  * -i      --initial       Only convert initial tabs on each line to spaces.
  *
  * Options for unexpand:
  * -a      --all           Convert all blanks, instead of just initial blanks.
  * -f      --first-only    Convert only leading sequences of blanks (default).
- * -t num  --tabs=NUM      Have tabs num characters apart instead of 8.
+ * -t num  --tabs NUM      Have tabs num characters apart instead of 8.
  *
  *  Busybox version (C) 2007 by Tito Ragusa <farmatito@tiscali.it>
  *
@@ -30,8 +30,6 @@
 //config:	bool "Enable long options"
 //config:	default y
 //config:	depends on EXPAND && LONG_OPTS
-//config:	help
-//config:	  Support long options for the expand applet.
 //config:
 //config:config UNEXPAND
 //config:	bool "unexpand"
@@ -43,10 +41,9 @@
 //config:	bool "Enable long options"
 //config:	default y
 //config:	depends on UNEXPAND && LONG_OPTS
-//config:	help
-//config:	  Support long options for the unexpand applet.
 
 //applet:IF_EXPAND(APPLET(expand, BB_DIR_USR_BIN, BB_SUID_DROP))
+//                   APPLET_ODDNAME:name      main    location        suid_type     help
 //applet:IF_UNEXPAND(APPLET_ODDNAME(unexpand, expand, BB_DIR_USR_BIN, BB_SUID_DROP, unexpand))
 
 //kbuild:lib-$(CONFIG_EXPAND) += expand.o
@@ -58,7 +55,7 @@
 //usage:       "Convert tabs to spaces, writing to stdout\n"
 //usage:	IF_FEATURE_EXPAND_LONG_OPTIONS(
 //usage:     "\n	-i,--initial	Don't convert tabs after non blanks"
-//usage:     "\n	-t,--tabs=N	Tabstops every N chars"
+//usage:     "\n	-t,--tabs N	Tabstops every N chars"
 //usage:	)
 //usage:	IF_NOT_FEATURE_EXPAND_LONG_OPTIONS(
 //usage:     "\n	-i	Don't convert tabs after non blanks"
@@ -72,7 +69,7 @@
 //usage:	IF_FEATURE_UNEXPAND_LONG_OPTIONS(
 //usage:     "\n	-a,--all	Convert all blanks"
 //usage:     "\n	-f,--first-only	Convert only leading blanks"
-//usage:     "\n	-t,--tabs=N	Tabstops every N chars"
+//usage:     "\n	-t,--tabs N	Tabstops every N chars"
 //usage:	)
 //usage:	IF_NOT_FEATURE_UNEXPAND_LONG_OPTIONS(
 //usage:     "\n	-a	Convert all blanks"

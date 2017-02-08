@@ -21,8 +21,6 @@
 //config:	default y
 //config:	depends on FDISK
 //config:	depends on !LFS   # with LFS no special code is needed
-//config:	help
-//config:	  Enable this option to support large disks > 4GB.
 //config:
 //config:config FEATURE_FDISK_WRITABLE
 //config:	bool "Write support"
@@ -105,8 +103,8 @@
 //usage:	)
 //usage:     "\n	-b 2048		(for certain MO disks) use 2048-byte sectors"
 //usage:     "\n	-C CYLINDERS	Set number of cylinders/heads/sectors"
-//usage:     "\n	-H HEADS"
-//usage:     "\n	-S SECTORS"
+//usage:     "\n	-H HEADS	Typically 255"
+//usage:     "\n	-S SECTORS	Typically 63"
 
 #ifndef _LARGEFILE64_SOURCE
 /* For lseek64 */

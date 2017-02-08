@@ -278,9 +278,10 @@ unpack_lzma_stream(transformer_state_t *xstate)
 
 			if (state >= LZMA_NUM_LIT_STATES) {
 				int match_byte;
-				uint32_t pos = buffer_pos - rep0;
+				uint32_t pos;
 
-				while (pos >= header.dict_size)
+				pos = buffer_pos - rep0;
+				if ((int32_t)pos < 0)
 					pos += header.dict_size;
 				match_byte = buffer[pos];
 				do {
@@ -336,9 +337,11 @@ unpack_lzma_stream(transformer_state_t *xstate)
 					);
 					if (!rc_is_bit_1(rc, prob2)) {
 #if ENABLE_FEATURE_LZMA_FAST
-						uint32_t pos = buffer_pos - rep0;
+						uint32_t pos;
 						state = state < LZMA_NUM_LIT_STATES ? 9 : 11;
-						while (pos >= header.dict_size)
+
+						pos = buffer_pos - rep0;
+						if ((int32_t)pos < 0)
 							pos += header.dict_size;
 						previous_byte = buffer[pos];
 						goto one_byte1;
@@ -429,10 +432,25 @@ unpack_lzma_stream(transformer_state_t *xstate)
 			}
 
 			len += LZMA_MATCH_MIN_LEN;
+			/*
+			 * LZMA SDK has this optimized:
+			 * it precalculates size and copies many bytes
+			 * in a loop with simpler checks, a-la:
+			 *	do
+			 *		*(dest) = *(dest + ofs);
+			 *	while (++dest != lim);
+			 * and
+			 *	do {
+			 *		buffer[buffer_pos++] = buffer[pos];
+			 *		if (++pos == header.dict_size)
+			 *			pos = 0;
+			 *	} while (--cur_len != 0);
+			 * Our code is slower (more checks per byte copy):
+			 */
  IF_NOT_FEATURE_LZMA_FAST(string:)
 			do {
 				uint32_t pos = buffer_pos - rep0;
-				while (pos >= header.dict_size)
+				if ((int32_t)pos < 0)
 					pos += header.dict_size;
 				previous_byte = buffer[pos];
  IF_NOT_FEATURE_LZMA_FAST(one_byte2:)
@@ -448,6 +466,9 @@ unpack_lzma_stream(transformer_state_t *xstate)
 			} while (len != 0 && buffer_pos < header.dst_size);
 			/* FIXME: ...........^^^^^
 			 * shouldn't it be "global_pos + buffer_pos < header.dst_size"?
+			 * It probably should, but it is a "do we accidentally
+			 * unpack more bytes than expected?" check - which
+			 * never happens for well-formed compression data...
 			 */
 		}
 	}

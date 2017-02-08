@@ -45,7 +45,6 @@
 //config:	help
 //config:	  Enabling the -c options allows files to be checked
 //config:	  against pre-calculated hash values.
-//config:
 //config:	  -s and -w are useful options when verifying checksums.
 
 //applet:IF_MD5SUM(APPLET_NOEXEC(md5sum, md5_sha1_sum, BB_DIR_USR_BIN, BB_SUID_DROP, md5sum))
@@ -167,7 +166,7 @@ static uint8_t *hash_file(const char *filename, unsigned sha3_width)
 	} context;
 	uint8_t *hash_value;
 	void FAST_FUNC (*update)(void*, const void*, size_t);
-	void FAST_FUNC (*final)(void*, void*);
+	unsigned FAST_FUNC (*final)(void*, void*);
 	char hash_algo;
 
 	src_fd = open_or_warn_stdin(filename);

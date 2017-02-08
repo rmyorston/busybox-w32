@@ -39,8 +39,6 @@
 //config:	bool "Enable long options"
 //config:	default y
 //config:	depends on RUNCON && LONG_OPTS
-//config:	help
-//config:	  Support long options for the runcon applet.
 
 //applet:IF_RUNCON(APPLET(runcon, BB_DIR_USR_BIN, BB_SUID_DROP))
 
@@ -54,10 +52,10 @@
 //usage:     "\n	CONTEXT		Complete security context\n"
 //usage:	IF_FEATURE_RUNCON_LONG_OPTIONS(
 //usage:     "\n	-c,--compute	Compute process transition context before modifying"
-//usage:     "\n	-t,--type=TYPE	Type (for same role as parent)"
-//usage:     "\n	-u,--user=USER	User identity"
-//usage:     "\n	-r,--role=ROLE	Role"
-//usage:     "\n	-l,--range=RNG	Levelrange"
+//usage:     "\n	-t,--type TYPE	Type (for same role as parent)"
+//usage:     "\n	-u,--user USER	User identity"
+//usage:     "\n	-r,--role ROLE	Role"
+//usage:     "\n	-l,--range RNG	Levelrange"
 //usage:	)
 //usage:	IF_NOT_FEATURE_RUNCON_LONG_OPTIONS(
 //usage:     "\n	-c	Compute process transition context before modifying"

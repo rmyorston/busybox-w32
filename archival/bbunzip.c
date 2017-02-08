@@ -12,9 +12,9 @@
 //kbuild:lib-$(CONFIG_LZOPCAT) += bbunzip.o
 //kbuild:lib-$(CONFIG_UNLZOP) += bbunzip.o
 /* bzip2_main() too: */
-//kbuild:lib-$(CONFIG_BZIP2) += bbunzip.o
+//kbuild:lib-$(CONFIG_FEATURE_BZIP2_DECOMPRESS) += bbunzip.o
 /* gzip_main() too: */
-//kbuild:lib-$(CONFIG_GZIP) += bbunzip.o
+//kbuild:lib-$(CONFIG_FEATURE_GZIP_DECOMPRESS) += bbunzip.o
 
 /* Note: must be kept in sync with archival/lzop.c */
 enum {
@@ -25,7 +25,7 @@ enum {
 	OPT_QUIET      = 1 << 3,
 	OPT_DECOMPRESS = 1 << 4,
 	OPT_TEST       = 1 << 5,
-	SEAMLESS_MAGIC = (1 << 31) * SEAMLESS_COMPRESSION,
+	SEAMLESS_MAGIC = (1 << 31) * ENABLE_ZCAT * SEAMLESS_COMPRESSION,
 };
 
 static
@@ -127,7 +127,7 @@ int FAST_FUNC bbunpack(char **argv,
 
 		if (!(option_mask32 & SEAMLESS_MAGIC)) {
 			init_transformer_state(&xstate);
-			xstate.signature_skipped = 0;
+			/*xstate.signature_skipped = 0; - already is */
 			/*xstate.src_fd = STDIN_FILENO; - already is */
 			xstate.dst_fd = STDOUT_FILENO;
 			status = unpacker(&xstate);
@@ -199,7 +199,7 @@ int FAST_FUNC bbunpack(char **argv,
 }
 
 #if ENABLE_UNCOMPRESS \
- || ENABLE_BUNZIP2 || ENABLE_BZCAT \
+ || ENABLE_FEATURE_BZIP2_DECOMPRESS \
  || ENABLE_UNLZMA || ENABLE_LZCAT || ENABLE_LZMA \
  || ENABLE_UNXZ || ENABLE_XZCAT || ENABLE_XZ
 static
@@ -297,6 +297,7 @@ int uncompress_main(int argc UNUSED_PARAM, char **argv)
 //config:config GUNZIP
 //config:	bool "gunzip"
 //config:	default y
+//config:	select FEATURE_GZIP_DECOMPRESS
 //config:	help
 //config:	  gunzip is used to decompress archives created by gzip.
 //config:	  You can use the `-t' option to test the integrity of
@@ -305,6 +306,7 @@ int uncompress_main(int argc UNUSED_PARAM, char **argv)
 //config:config ZCAT
 //config:	bool "zcat"
 //config:	default y
+//config:	select FEATURE_GZIP_DECOMPRESS
 //config:	help
 //config:	  Alias to "gunzip -c".
 //config:
@@ -312,14 +314,11 @@ int uncompress_main(int argc UNUSED_PARAM, char **argv)
 //config:	bool "Enable long options"
 //config:	default y
 //config:	depends on (GUNZIP || ZCAT) && LONG_OPTS
-//config:	help
-//config:	  Enable use of long options.
 
 //applet:IF_GUNZIP(APPLET(gunzip, BB_DIR_BIN, BB_SUID_DROP))
+//               APPLET_ODDNAME:name  main    location    suid_type     help
 //applet:IF_ZCAT(APPLET_ODDNAME(zcat, gunzip, BB_DIR_BIN, BB_SUID_DROP, zcat))
-//kbuild:lib-$(CONFIG_GUNZIP) += bbunzip.o
-//kbuild:lib-$(CONFIG_ZCAT) += bbunzip.o
-#if ENABLE_GUNZIP || ENABLE_ZCAT
+#if ENABLE_FEATURE_GZIP_DECOMPRESS
 static
 char* FAST_FUNC make_new_name_gunzip(char *filename, const char *expected_ext UNUSED_PARAM)
 {
@@ -387,7 +386,7 @@ int gunzip_main(int argc UNUSED_PARAM, char **argv)
 
 	return bbunpack(argv, unpack_gz_stream, make_new_name_gunzip, /*unused:*/ NULL);
 }
-#endif
+#endif /* FEATURE_GZIP_DECOMPRESS */
 
 
 /*
@@ -410,6 +409,7 @@ int gunzip_main(int argc UNUSED_PARAM, char **argv)
 //config:config BUNZIP2
 //config:	bool "bunzip2"
 //config:	default y
+//config:	select FEATURE_BZIP2_DECOMPRESS
 //config:	help
 //config:	  bunzip2 is a compression utility using the Burrows-Wheeler block
 //config:	  sorting text compression algorithm, and Huffman coding. Compression
@@ -423,14 +423,14 @@ int gunzip_main(int argc UNUSED_PARAM, char **argv)
 //config:config BZCAT
 //config:	bool "bzcat"
 //config:	default y
+//config:	select FEATURE_BZIP2_DECOMPRESS
 //config:	help
 //config:	  Alias to "bunzip2 -c".
 
 //applet:IF_BUNZIP2(APPLET(bunzip2, BB_DIR_USR_BIN, BB_SUID_DROP))
+//                APPLET_ODDNAME:name   main     location        suid_type     help
 //applet:IF_BZCAT(APPLET_ODDNAME(bzcat, bunzip2, BB_DIR_USR_BIN, BB_SUID_DROP, bzcat))
-//kbuild:lib-$(CONFIG_BUNZIP2) += bbunzip.o
-//kbuild:lib-$(CONFIG_BZCAT) += bbunzip.o
-#if ENABLE_BUNZIP2 || ENABLE_BZCAT
+#if ENABLE_FEATURE_BZIP2_DECOMPRESS
 int bunzip2_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int bunzip2_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -471,26 +471,6 @@ int bunzip2_main(int argc UNUSED_PARAM, char **argv)
 //usage:       "[FILE]..."
 //usage:#define lzcat_full_usage "\n\n"
 //usage:       "Decompress to stdout"
-//usage:
-//usage:#define unxz_trivial_usage
-//usage:       "[-cf] [FILE]..."
-//usage:#define unxz_full_usage "\n\n"
-//usage:       "Decompress FILE (or stdin)\n"
-//usage:     "\n	-c	Write to stdout"
-//usage:     "\n	-f	Force"
-//usage:
-//usage:#define xz_trivial_usage
-//usage:       "-d [-cf] [FILE]..."
-//usage:#define xz_full_usage "\n\n"
-//usage:       "Decompress FILE (or stdin)\n"
-//usage:     "\n	-d	Decompress"
-//usage:     "\n	-c	Write to stdout"
-//usage:     "\n	-f	Force"
-//usage:
-//usage:#define xzcat_trivial_usage
-//usage:       "[FILE]..."
-//usage:#define xzcat_full_usage "\n\n"
-//usage:       "Decompress to stdout"
 
 //config:config UNLZMA
 //config:	bool "unlzma"
@@ -524,7 +504,7 @@ int bunzip2_main(int argc UNUSED_PARAM, char **argv)
 //config:	  IOW: you'll get lzma applet, but it will always require -d option.
 //config:
 //config:config FEATURE_LZMA_FAST
-//config:	bool "Optimize unlzma for speed"
+//config:	bool "Optimize for speed"
 //config:	default n
 //config:	depends on UNLZMA || LZCAT || LZMA
 //config:	help
@@ -532,8 +512,9 @@ int bunzip2_main(int argc UNUSED_PARAM, char **argv)
 //config:	  a 1K bigger binary.
 
 //applet:IF_UNLZMA(APPLET(unlzma, BB_DIR_USR_BIN, BB_SUID_DROP))
+//                APPLET_ODDNAME:name   main    location        suid_type     help
 //applet:IF_LZCAT(APPLET_ODDNAME(lzcat, unlzma, BB_DIR_USR_BIN, BB_SUID_DROP, lzcat))
-//applet:IF_LZMA(APPLET_ODDNAME(lzma, unlzma, BB_DIR_USR_BIN, BB_SUID_DROP, lzma))
+//applet:IF_LZMA( APPLET_ODDNAME(lzma,  unlzma, BB_DIR_USR_BIN, BB_SUID_DROP, lzma))
 //kbuild:lib-$(CONFIG_UNLZMA) += bbunzip.o
 //kbuild:lib-$(CONFIG_LZCAT) += bbunzip.o
 //kbuild:lib-$(CONFIG_LZMA) += bbunzip.o
@@ -557,6 +538,26 @@ int unlzma_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 
+//usage:#define unxz_trivial_usage
+//usage:       "[-cf] [FILE]..."
+//usage:#define unxz_full_usage "\n\n"
+//usage:       "Decompress FILE (or stdin)\n"
+//usage:     "\n	-c	Write to stdout"
+//usage:     "\n	-f	Force"
+//usage:
+//usage:#define xz_trivial_usage
+//usage:       "-d [-cf] [FILE]..."
+//usage:#define xz_full_usage "\n\n"
+//usage:       "Decompress FILE (or stdin)\n"
+//usage:     "\n	-d	Decompress"
+//usage:     "\n	-c	Write to stdout"
+//usage:     "\n	-f	Force"
+//usage:
+//usage:#define xzcat_trivial_usage
+//usage:       "[FILE]..."
+//usage:#define xzcat_full_usage "\n\n"
+//usage:       "Decompress to stdout"
+
 //config:config UNXZ
 //config:	bool "unxz"
 //config:	default y
@@ -577,8 +578,9 @@ int unlzma_main(int argc UNUSED_PARAM, char **argv)
 //config:	  IOW: you'll get xz applet, but it will always require -d option.
 
 //applet:IF_UNXZ(APPLET(unxz, BB_DIR_USR_BIN, BB_SUID_DROP))
+//                APPLET_ODDNAME:name   main  location        suid_type     help
 //applet:IF_XZCAT(APPLET_ODDNAME(xzcat, unxz, BB_DIR_USR_BIN, BB_SUID_DROP, xzcat))
-//applet:IF_XZ(APPLET_ODDNAME(xz, unxz, BB_DIR_USR_BIN, BB_SUID_DROP, xz))
+//applet:IF_XZ(   APPLET_ODDNAME(xz,    unxz, BB_DIR_USR_BIN, BB_SUID_DROP, xz))
 //kbuild:lib-$(CONFIG_UNXZ) += bbunzip.o
 //kbuild:lib-$(CONFIG_XZCAT) += bbunzip.o
 //kbuild:lib-$(CONFIG_XZ) += bbunzip.o

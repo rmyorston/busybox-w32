@@ -50,8 +50,6 @@
 //config:	bool "Optimize for size instead of speed"
 //config:	default y
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
-//config:	help
-//config:	  Compile ash for reduced size at the price of speed.
 //config:
 //config:config ASH_INTERNAL_GLOB
 //config:	bool "Use internal glob() implementation"
@@ -61,6 +59,23 @@
 //config:	  Do not use glob() function from libc, use internal implementation.
 //config:	  Use this if you are getting "glob.h: No such file or directory"
 //config:	  or similar build errors.
+//config:	  Note that as of now (2017-01), uclibc and musl glob() both have bugs
+//config:	  which would break ash if you select N here.
+//config:
+//config:config ASH_BASH_COMPAT
+//config:	bool "bash-compatible extensions"
+//config:	default y
+//config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
+//config:
+//config:config ASH_JOB_CONTROL
+//config:	bool "Job control"
+//config:	default y
+//config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
+//config:
+//config:config ASH_ALIAS
+//config:	bool "Alias support"
+//config:	default y
+//config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
 //config:
 //config:config ASH_RANDOM_SUPPORT
 //config:	bool "Pseudorandom generator and $RANDOM variable"
@@ -78,88 +93,60 @@
 //config:	default y
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
 //config:	help
-//config:	  "PS#" may contain volatile content, such as backquote commands.
+//config:	  $PS# may contain volatile content, such as backquote commands.
 //config:	  This option recreates the prompt string from the environment
 //config:	  variable each time it is displayed.
 //config:
-//config:config ASH_BASH_COMPAT
-//config:	bool "bash-compatible extensions"
-//config:	default y
-//config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
-//config:	help
-//config:	  Enable bash-compatible extensions.
-//config:
 //config:config ASH_IDLE_TIMEOUT
-//config:	bool "Idle timeout variable"
-//config:	default n
-//config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
-//config:	help
-//config:	  Enables bash-like auto-logout after $TMOUT seconds of idle time.
-//config:
-//config:config ASH_JOB_CONTROL
-//config:	bool "Job control"
+//config:	bool "Idle timeout variable $TMOUT"
 //config:	default y
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
 //config:	help
-//config:	  Enable job control in the ash shell.
+//config:	  Enable bash-like auto-logout after $TMOUT seconds of idle time.
 //config:
-//config:config ASH_ALIAS
-//config:	bool "Alias support"
+//config:config ASH_MAIL
+//config:	bool "Check for new mail in interactive shell"
 //config:	default y
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
 //config:	help
-//config:	  Enable alias support in the ash shell.
+//config:	  Enable "check for new mail" function:
+//config:	  if set, $MAIL file and $MAILPATH list of files
+//config:	  are checked for mtime changes, and "you have mail"
+//config:	  message is printed if change is detected.
 //config:
-//config:config ASH_GETOPTS
-//config:	bool "Builtin getopt to parse positional parameters"
+//config:config ASH_ECHO
+//config:	bool "echo builtin"
 //config:	default y
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
-//config:	help
-//config:	  Enable support for getopts builtin in ash.
 //config:
-//config:config ASH_BUILTIN_ECHO
-//config:	bool "Builtin version of 'echo'"
+//config:config ASH_PRINTF
+//config:	bool "printf builtin"
 //config:	default y
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
-//config:	help
-//config:	  Enable support for echo builtin in ash.
 //config:
-//config:config ASH_BUILTIN_PRINTF
-//config:	bool "Builtin version of 'printf'"
+//config:config ASH_TEST
+//config:	bool "test builtin"
 //config:	default y
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
-//config:	help
-//config:	  Enable support for printf builtin in ash.
-//config:
-//config:config ASH_BUILTIN_TEST
-//config:	bool "Builtin version of 'test'"
-//config:	default y
-//config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
-//config:	help
-//config:	  Enable support for test builtin in ash.
 //config:
 //config:config ASH_HELP
 //config:	bool "help builtin"
 //config:	default y
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
-//config:	help
-//config:	  Enable help builtin in ash.
+//config:
+//config:config ASH_GETOPTS
+//config:	bool "getopts builtin"
+//config:	default y
+//config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
 //config:
 //config:config ASH_CMDCMD
-//config:	bool "'command' command to override shell builtins"
+//config:	bool "command builtin"
 //config:	default y
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
 //config:	help
-//config:	  Enable support for the ash 'command' builtin, which allows
-//config:	  you to run the specified command with the specified arguments,
-//config:	  even when there is an ash builtin command with the same name.
-//config:
-//config:config ASH_MAIL
-//config:	bool "Check for new mail on interactive shells"
-//config:	default y
-//config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
-//config:	help
-//config:	  Enable "check for new mail" function in the ash shell.
+//config:	  Enable support for the 'command' builtin, which allows
+//config:	  you to run the specified command or builtin,
+//config:	  even when there is a function with the same name.
 //config:
 //config:
 //config:config ASH_NOCONSOLE
@@ -176,7 +163,8 @@
 //config:endif # ash options
 
 //applet:IF_ASH(APPLET(ash, BB_DIR_BIN, BB_SUID_DROP))
-//applet:IF_SH_IS_ASH(APPLET_ODDNAME(sh, ash, BB_DIR_BIN, BB_SUID_DROP, ash))
+//                      APPLET_ODDNAME:name  main location    suid_type     help
+//applet:IF_SH_IS_ASH(  APPLET_ODDNAME(sh,   ash, BB_DIR_BIN, BB_SUID_DROP, ash))
 //applet:IF_BASH_IS_ASH(APPLET_ODDNAME(bash, ash, BB_DIR_BIN, BB_SUID_DROP, ash))
 
 //kbuild:lib-$(CONFIG_ASH) += ash.o ash_ptr_hack.o shell_common.o
@@ -185,15 +173,10 @@
 //kbuild:lib-$(CONFIG_ASH_RANDOM_SUPPORT) += random.o
 
 /*
- * The following should be set to reflect the type of system you have:
- *      JOBS -> 1 if you have Berkeley job control, 0 otherwise.
- *      define SYSV if you are running under System V.
- *      define DEBUG=1 to compile in debugging ('set -o debug' to turn on)
- *      define DEBUG=2 to compile in and turn on debugging.
- *
- * When debugging is on (DEBUG is 1 and "set -o debug" was executed),
- * debugging info will be written to ./trace and a quit signal
- * will generate a core dump.
+ * DEBUG=1 to compile in debugging ('set -o debug' turns on)
+ * DEBUG=2 to compile in and turn on debugging.
+ * When debugging is on ("set -o debug" was executed, or DEBUG=2),
+ * debugging info is written to ./trace, quit signal generates core dump.
  */
 #define DEBUG 0
 /* Tweak debug output verbosity here */
@@ -210,8 +193,29 @@
 #include <fnmatch.h>
 #include <sys/times.h>
 #include <sys/utsname.h> /* for setting $HOSTNAME */
-
 #include "busybox.h" /* for applet_names */
+
+/* So far, all bash compat is controlled by one config option */
+/* Separate defines document which part of code implements what */
+/* function keyword */
+#define    BASH_FUNCTION        ENABLE_ASH_BASH_COMPAT
+#define IF_BASH_FUNCTION            IF_ASH_BASH_COMPAT
+/* &>file */
+#define    BASH_REDIR_OUTPUT    ENABLE_ASH_BASH_COMPAT
+#define IF_BASH_REDIR_OUTPUT        IF_ASH_BASH_COMPAT
+/* $'...' */
+#define    BASH_DOLLAR_SQUOTE   ENABLE_ASH_BASH_COMPAT
+#define IF_BASH_DOLLAR_SQUOTE       IF_ASH_BASH_COMPAT
+#define    BASH_PATTERN_SUBST   ENABLE_ASH_BASH_COMPAT
+#define IF_BASH_PATTERN_SUBST       IF_ASH_BASH_COMPAT
+#define    BASH_SUBSTR          ENABLE_ASH_BASH_COMPAT
+#define IF_BASH_SUBSTR              IF_ASH_BASH_COMPAT
+/* [[ EXPR ]] */
+#define    BASH_TEST2           (ENABLE_ASH_BASH_COMPAT * ENABLE_ASH_TEST)
+#define    BASH_SOURCE          ENABLE_ASH_BASH_COMPAT
+#define    BASH_PIPEFAIL        ENABLE_ASH_BASH_COMPAT
+#define    BASH_HOSTNAME_VAR    ENABLE_ASH_BASH_COMPAT
+#define    BASH_SHLVL_VAR       ENABLE_ASH_BASH_COMPAT
 
 #if defined(__ANDROID_API__) && __ANDROID_API__ <= 24
 /* Bionic at least up to version 24 has no glob() */
@@ -338,7 +342,7 @@ static const char *const optletters_optnames[] = {
 	"b"   "notify",
 	"u"   "nounset",
 	"\0"  "vi"
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_PIPEFAIL
 	,"\0"  "pipefail"
 #endif
 #if DEBUG
@@ -421,14 +425,14 @@ struct globals_misc {
 #define bflag optlist[11]
 #define uflag optlist[12]
 #define viflag optlist[13]
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_PIPEFAIL
 # define pipefail optlist[14]
 #else
 # define pipefail 0
 #endif
 #if DEBUG
-# define nolog optlist[14 + ENABLE_ASH_BASH_COMPAT]
-# define debug optlist[15 + ENABLE_ASH_BASH_COMPAT]
+# define nolog optlist[14 + BASH_PIPEFAIL]
+# define debug optlist[15 + BASH_PIPEFAIL]
 #endif
 #if ENABLE_PLATFORM_MINGW32
 # define winxp optlist[14 + ENABLE_ASH_BASH_COMPAT + 2*DEBUG]
@@ -755,8 +759,10 @@ out2str(const char *p)
 #define VSTRIMLEFT      0x8     /* ${var#pattern} */
 #define VSTRIMLEFTMAX   0x9     /* ${var##pattern} */
 #define VSLENGTH        0xa     /* ${#var} */
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_SUBSTR
 #define VSSUBSTR        0xc     /* ${var:position:length} */
+#endif
+#if BASH_PATTERN_SUBST
 #define VSREPLACE       0xd     /* ${var/pattern/replacement} */
 #define VSREPLACEALL    0xe     /* ${var//pattern/replacement} */
 #endif
@@ -783,7 +789,7 @@ static const char dolatstr[] ALIGN1 = {
 #define NDEFUN   14
 #define NARG     15
 #define NTO      16
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
 #define NTO2     17
 #endif
 #define NCLOBBER 18
@@ -1193,7 +1199,7 @@ shcmd(union node *cmd, FILE *fp)
 		case NTO:      s = ">>"+1; dftfd = 1; break;
 		case NCLOBBER: s = ">|"; dftfd = 1; break;
 		case NAPPEND:  s = ">>"; dftfd = 1; break;
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
 		case NTO2:
 #endif
 		case NTOFD:    s = ">&"; dftfd = 1; break;
@@ -3599,12 +3605,13 @@ struct job {
 #if JOBS
 	int stopstatus;         /* status of a stopped job */
 #endif
-	uint32_t
-		nprocs: 16,     /* number of processes */
-		state: 8,
+	unsigned nprocs;        /* number of processes */
+
 #define JOBRUNNING      0       /* at least one proc running */
 #define JOBSTOPPED      1       /* all procs are stopped */
 #define JOBDONE         2       /* all procs are completed */
+	unsigned
+		state: 8,
 #if JOBS
 		sigint: 1,      /* job was killed by SIGINT */
 		jobctl: 1,      /* job running under job control */
@@ -3790,6 +3797,72 @@ static unsigned njobs; //4
 static struct job *curjob; //lots
 /* number of presumed living untracked jobs */
 static int jobless; //4
+
+#if 0
+/* Bash has a feature: it restores termios after a successful wait for
+ * a foreground job which had at least one stopped or sigkilled member.
+ * The probable rationale is that SIGSTOP and SIGKILL can preclude task from
+ * properly restoring tty state. Should we do this too?
+ * A reproducer: ^Z an interactive python:
+ *
+ * # python
+ * Python 2.7.12 (...)
+ * >>> ^Z
+ *	{ python leaves tty in -icanon -echo state. We do survive that... }
+ *  [1]+  Stopped                    python
+ *	{ ...however, next program (python #2) does not survive it well: }
+ * # python
+ * Python 2.7.12 (...)
+ * >>> Traceback (most recent call last):
+ *	{ above, I typed "qwerty<CR>", but -echo state is still in effect }
+ *   File "<stdin>", line 1, in <module>
+ * NameError: name 'qwerty' is not defined
+ *
+ * The implementation below is modeled on bash code and seems to work.
+ * However, I'm not sure we should do this. For one: what if I'd fg
+ * the stopped python instead? It'll be confused by "restored" tty state.
+ */
+static struct termios shell_tty_info;
+static void
+get_tty_state(void)
+{
+	if (rootshell && ttyfd >= 0)
+		tcgetattr(ttyfd, &shell_tty_info);
+}
+static void
+set_tty_state(void)
+{
+	/* if (rootshell) - caller ensures this */
+	if (ttyfd >= 0)
+		tcsetattr(ttyfd, TCSADRAIN, &shell_tty_info);
+}
+static int
+job_signal_status(struct job *jp)
+{
+	int status;
+	unsigned i;
+	struct procstat *ps = jp->ps;
+	for (i = 0; i < jp->nprocs; i++) {
+		status = ps[i].ps_status;
+		if (WIFSIGNALED(status) || WIFSTOPPED(status))
+			return status;
+	}
+	return 0;
+}
+static void
+restore_tty_if_stopped_or_signaled(struct job *jp)
+{
+//TODO: check what happens if we come from waitforjob() in expbackq()
+	if (rootshell) {
+		int s = job_signal_status(jp);
+		if (s) /* WIFSIGNALED(s) || WIFSTOPPED(s) */
+			set_tty_state();
+	}
+}
+#else
+# define get_tty_state() ((void)0)
+# define restore_tty_if_stopped_or_signaled(jp) ((void)0)
+#endif
 
 static void
 set_curjob(struct job *jp, unsigned mode)
@@ -4122,8 +4195,10 @@ restartjob(struct job *jp, int mode)
 		goto out;
 	jp->state = JOBRUNNING;
 	pgid = jp->ps[0].ps_pid;
-	if (mode == FORK_FG)
+	if (mode == FORK_FG) {
+		get_tty_state();
 		xtcsetpgrp(ttyfd, pgid);
+	}
 	killpg(pgid, SIGCONT);
 	ps = jp->ps;
 	i = jp->nprocs;
@@ -4754,7 +4829,7 @@ makejob(/*union node *node,*/ int nprocs)
 	memset(jp, 0, sizeof(*jp));
 #if JOBS
 	/* jp->jobctl is a bitfield.
-	 * "jp->jobctl |= jobctl" likely to give awful code */
+	 * "jp->jobctl |= doing_jobctl" likely to give awful code */
 	if (doing_jobctl)
 		jp->jobctl = 1;
 #endif
@@ -4783,7 +4858,8 @@ cmdputs(const char *s)
 	static const char vstype[VSTYPE + 1][3] = {
 		"", "}", "-", "+", "?", "=",
 		"%", "%%", "#", "##"
-		IF_ASH_BASH_COMPAT(, ":", "/", "//")
+		IF_BASH_SUBSTR(, ":")
+		IF_BASH_PATTERN_SUBST(, "/", "//")
 	};
 
 	const char *p, *str;
@@ -5010,7 +5086,7 @@ cmdtxt(union node *n)
 	case NAPPEND:
 		p = ">>";
 		goto redir;
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
 	case NTO2:
 #endif
 	case NTOFD:
@@ -5362,6 +5438,8 @@ waitforjob(struct job *jp)
 #if JOBS
 	if (jp->jobctl) {
 		xtcsetpgrp(ttyfd, rootpid);
+		restore_tty_if_stopped_or_signaled(jp);
+
 		/*
 		 * This is truly gross.
 		 * If we're doing job control, then we did a TIOCSPGRP which
@@ -5587,7 +5665,7 @@ openredirect(union node *redir)
 			goto ecreate;
 		break;
 	case NTO:
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
 	case NTO2:
 #endif
 		/* Take care of noclobber mode. */
@@ -5751,7 +5829,7 @@ redirect(union node *redir, int flags)
 		union node *tmp = redir;
 		do {
 			sv_pos++;
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
 			if (tmp->nfile.type == NTO2)
 				sv_pos++;
 #endif
@@ -5793,7 +5871,7 @@ redirect(union node *redir, int flags)
 				continue;
 			}
 		}
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
  redirect_more:
 #endif
 		if (need_to_remember(sv, fd)) {
@@ -5846,12 +5924,12 @@ redirect(union node *redir, int flags)
 			}
 		} else if (fd != newfd) { /* move newfd to fd */
 			dup2_or_raise(newfd, fd);
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
 			if (!(redir->nfile.type == NTO2 && fd == 2))
 #endif
 				close(newfd);
 		}
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
 		if (redir->nfile.type == NTO2 && fd == 1) {
 			/* We already redirected it to fd 1, now copy it to 2 */
 			newfd = 1;
@@ -6168,15 +6246,15 @@ static char *
 rmescapes(char *str, int flag)
 {
 	static const char qchars[] ALIGN1 = {
-		IF_ASH_BASH_COMPAT('/',) CTLESC, CTLQUOTEMARK, '\0' };
+		IF_BASH_PATTERN_SUBST('/',) CTLESC, CTLQUOTEMARK, '\0' };
 
 	char *p, *q, *r;
 	unsigned inquotes;
 	unsigned protect_against_glob;
 	unsigned globbing;
-	IF_ASH_BASH_COMPAT(unsigned slash = flag & RMESCAPE_SLASH;)
+	IF_BASH_PATTERN_SUBST(unsigned slash = flag & RMESCAPE_SLASH;)
 
-	p = strpbrk(str, qchars IF_ASH_BASH_COMPAT(+ !slash));
+	p = strpbrk(str, qchars IF_BASH_PATTERN_SUBST(+ !slash));
 	if (!p)
 		return str;
 
@@ -6228,7 +6306,7 @@ rmescapes(char *str, int flag)
 			protect_against_glob = 0;
 			goto copy;
 		}
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_PATTERN_SUBST
 		else if (*p == '/' && slash) {
 			/* stop handling globbing and mark location of slash */
 			globbing = slash = 0;
@@ -6887,10 +6965,10 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 	char *loc;
 	char *rmesc, *rmescend;
 	char *str;
-	IF_ASH_BASH_COMPAT(char *repl = NULL;)
-	IF_ASH_BASH_COMPAT(int pos, len, orig_len;)
+	IF_BASH_SUBSTR(int pos, len, orig_len;)
 	int amount, resetloc;
-	IF_ASH_BASH_COMPAT(int workloc;)
+	IF_BASH_PATTERN_SUBST(int workloc;)
+	IF_BASH_PATTERN_SUBST(char *repl = NULL;)
 	int zero;
 	char *(*scan)(char*, char*, char*, char*, int, int);
 
@@ -6915,7 +6993,7 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 		varunset(p, varname, startp, varflags);
 		/* NOTREACHED */
 
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_SUBSTR
 	case VSSUBSTR:
 //TODO: support more general format ${v:EXPR:EXPR},
 // where EXPR follows $(()) rules
@@ -6984,17 +7062,19 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 		amount = loc - expdest;
 		STADJUST(amount, expdest);
 		return loc;
-#endif
+#endif /* BASH_SUBSTR */
 	}
 
 	resetloc = expdest - (char *)stackblock();
 
+#if BASH_PATTERN_SUBST
 	/* We'll comeback here if we grow the stack while handling
 	 * a VSREPLACE or VSREPLACEALL, since our pointers into the
 	 * stack will need rebasing, and we'll need to remove our work
 	 * areas each time
 	 */
- IF_ASH_BASH_COMPAT(restart:)
+ restart:
+#endif
 
 	amount = expdest - ((char *)stackblock() + resetloc);
 	STADJUST(-amount, expdest);
@@ -7019,11 +7099,11 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 	 * RMESCAPE_SLASH causes preglob to work differently on the pattern
 	 * and string.  It's only used on the first call.
 	 */
-	preglob(str, IF_ASH_BASH_COMPAT(
+	preglob(str, IF_BASH_PATTERN_SUBST(
 		(subtype == VSREPLACE || subtype == VSREPLACEALL) && !repl ?
-			RMESCAPE_SLASH :) 0);
+			RMESCAPE_SLASH : ) 0);
 
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_PATTERN_SUBST
 	workloc = expdest - (char *)stackblock();
 	if (subtype == VSREPLACE || subtype == VSREPLACEALL) {
 		char *idx, *end;
@@ -7124,7 +7204,7 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 		STADJUST(-amount, expdest);
 		return startp;
 	}
-#endif /* ENABLE_ASH_BASH_COMPAT */
+#endif /* BASH_PATTERN_SUBST */
 
 	subtype -= VSTRIMRIGHT;
 #if DEBUG
@@ -7392,8 +7472,10 @@ evalvar(char *p, int flag, struct strlist *var_str_list)
 	case VSTRIMLEFTMAX:
 	case VSTRIMRIGHT:
 	case VSTRIMRIGHTMAX:
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_SUBSTR
 	case VSSUBSTR:
+#endif
+#if BASH_PATTERN_SUBST
 	case VSREPLACE:
 	case VSREPLACEALL:
 #endif
@@ -7458,6 +7540,57 @@ addfname(const char *name)
 	exparg.lastp = &sp->next;
 }
 
+/* Avoid glob() (and thus, stat() et al) for words like "echo" */
+static int
+hasmeta(const char *p)
+{
+	static const char chars[] ALIGN1 = {
+		'*', '?', '[', '\\', CTLQUOTEMARK, CTLESC, 0
+	};
+
+	for (;;) {
+		p = strpbrk(p, chars);
+		if (!p)
+			break;
+		switch ((unsigned char) *p) {
+		case CTLQUOTEMARK:
+			for (;;) {
+				p++;
+				if (*p == CTLQUOTEMARK)
+					break;
+				if (*p == CTLESC)
+					p++;
+				if (*p == '\0') /* huh? */
+					return 0;
+			}
+			break;
+		case '\\':
+		case CTLESC:
+			p++;
+			if (*p == '\0')
+				return 0;
+			break;
+		case '[':
+			if (!strchr(p + 1, ']')) {
+				/* It's not a properly closed [] pattern,
+				 * but other metas may follow. Continue checking.
+				 * my[file* _is_ globbed by bash
+				 * and matches filenames like "my[file1".
+				 */
+				break;
+			}
+			/* fallthrough */
+		default:
+		/* case '*': */
+		/* case '?': */
+			return 1;
+		}
+		p++;
+	}
+
+	return 0;
+}
+
 /* If we want to use glob() from libc... */
 #if !ENABLE_ASH_INTERNAL_GLOB
 
@@ -7484,20 +7617,9 @@ expandmeta(struct strlist *str /*, int flag*/)
 		if (fflag)
 			goto nometa;
 
-		/* Avoid glob() (and thus, stat() et al) for words like "echo" */
-		p = str->text;
-		while (*p) {
-			if (*p == '*')
-				goto need_glob;
-			if (*p == '?')
-				goto need_glob;
-			if (*p == '[')
-				goto need_glob;
-			p++;
-		}
-		goto nometa;
+		if (!hasmeta(str->text))
+			goto nometa;
 
- need_glob:
 		INT_OFF;
 		p = preglob(str->text, RMESCAPE_ALLOC | RMESCAPE_HEAP);
 // GLOB_NOMAGIC (GNU): if no *?[ chars in pattern, return it even if no match
@@ -7734,9 +7856,6 @@ expsort(struct strlist *str)
 static void
 expandmeta(struct strlist *str /*, int flag*/)
 {
-	static const char metachars[] ALIGN1 = {
-		'*', '?', '[', 0
-	};
 	/* TODO - EXP_REDIR */
 
 	while (str) {
@@ -7747,7 +7866,7 @@ expandmeta(struct strlist *str /*, int flag*/)
 
 		if (fflag)
 			goto nometa;
-		if (!strpbrk(str->text, metachars))
+		if (!hasmeta(str->text))
 			goto nometa;
 		savelastp = exparg.lastp;
 
@@ -8322,7 +8441,7 @@ enum {
 	TESAC,
 	TFI,
 	TFOR,
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_FUNCTION
 	TFUNCTION,
 #endif
 	TIF,
@@ -8360,7 +8479,7 @@ enum {
 	/* 19 */ | (1u << TESAC)
 	/* 20 */ | (1u << TFI)
 	/* 21 */ | (0u << TFOR)
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_FUNCTION
 	/* 22 */ | (0u << TFUNCTION)
 #endif
 	/* 23 */ | (0u << TIF)
@@ -8398,7 +8517,7 @@ static const char *const tokname_array[] = {
 	"esac",
 	"fi",
 	"for",
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_FUNCTION
 	"function",
 #endif
 	"if",
@@ -8646,7 +8765,7 @@ static const uint8_t nodesize[N_NUMBER] ALIGN1 = {
 	[NDEFUN   ] = SHELL_ALIGN(sizeof(struct narg)),
 	[NARG     ] = SHELL_ALIGN(sizeof(struct narg)),
 	[NTO      ] = SHELL_ALIGN(sizeof(struct nfile)),
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
 	[NTO2     ] = SHELL_ALIGN(sizeof(struct nfile)),
 #endif
 	[NCLOBBER ] = SHELL_ALIGN(sizeof(struct nfile)),
@@ -8737,7 +8856,7 @@ calcsize(union node *n)
 		IF_PLATFORM_MINGW32(nodeptrsize += 3);
 		break;
 	case NTO:
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
 	case NTO2:
 #endif
 	case NCLOBBER:
@@ -8881,7 +9000,7 @@ copynode(union node *n)
 		SAVE_PTR3(new->narg.backquote,new->narg.text,new->narg.next);
 		break;
 	case NTO:
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
 	case NTO2:
 #endif
 	case NCLOBBER:
@@ -9277,13 +9396,15 @@ evalsubshell(union node *n, int flags)
 {
 	IF_PLATFORM_MINGW32(struct forkshell fs;)
 	struct job *jp;
-	int backgnd = (n->type == NBACKGND);
+	int backgnd = (n->type == NBACKGND); /* FORK_BG(1) if yes, else FORK_FG(0) */
 	int status;
 
 	expredir(n->nredir.redirect);
 	if (!backgnd && (flags & EV_EXIT) && !may_have_traps)
 		goto nofork;
 	INT_OFF;
+	if (backgnd == FORK_FG)
+		get_tty_state();
 	jp = makejob(/*n,*/ 1);
 #if ENABLE_PLATFORM_MINGW32
 	memset(&fs, 0, sizeof(fs));
@@ -9308,7 +9429,7 @@ evalsubshell(union node *n, int flags)
 	}
 	/* parent */
 	status = 0;
-	if (!backgnd)
+	if (backgnd == FORK_FG)
 		status = waitforjob(jp);
 	INT_ON;
 	return status;
@@ -9332,14 +9453,14 @@ expredir(union node *n)
 		case NFROMTO:
 		case NFROM:
 		case NTO:
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
 		case NTO2:
 #endif
 		case NCLOBBER:
 		case NAPPEND:
 			expandarg(redir->nfile.fname, &fn, EXP_TILDE | EXP_REDIR);
 			TRACE(("expredir expanded to '%s'\n", fn.list->text));
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
  store_expfname:
 #endif
 #if 0
@@ -9361,7 +9482,7 @@ expredir(union node *n)
 				expandarg(redir->ndup.vname, &fn, EXP_FULL | EXP_TILDE);
 				if (fn.list == NULL)
 					ash_msg_and_raise_error("redir error");
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
 //FIXME: we used expandarg with different args!
 				if (!isdigit_str9(fn.list->text)) {
 					/* >&file, not >&fd */
@@ -9401,6 +9522,8 @@ evalpipe(union node *n, int flags)
 		pipelen++;
 	flags |= EV_EXIT;
 	INT_OFF;
+	if (n->npipe.pipe_backgnd == 0)
+		get_tty_state();
 	jp = makejob(/*n,*/ pipelen);
 	prevfd = -1;
 	for (lp = n->npipe.cmdlist; lp; lp = lp->next) {
@@ -9764,13 +9887,13 @@ static int ulimitcmd(int, char **) FAST_FUNC;
 #define BUILTIN_SPEC_REG_ASSG   "7"
 
 /* Stubs for calling non-FAST_FUNC's */
-#if ENABLE_ASH_BUILTIN_ECHO
+#if ENABLE_ASH_ECHO
 static int FAST_FUNC echocmd(int argc, char **argv)   { return echo_main(argc, argv); }
 #endif
-#if ENABLE_ASH_BUILTIN_PRINTF
+#if ENABLE_ASH_PRINTF
 static int FAST_FUNC printfcmd(int argc, char **argv) { return printf_main(argc, argv); }
 #endif
-#if ENABLE_ASH_BUILTIN_TEST
+#if ENABLE_ASH_TEST || BASH_TEST2
 static int FAST_FUNC testcmd(int argc, char **argv)   { return test_main(argc, argv); }
 #endif
 
@@ -9778,11 +9901,11 @@ static int FAST_FUNC testcmd(int argc, char **argv)   { return test_main(argc, a
 static const struct builtincmd builtintab[] = {
 	{ BUILTIN_SPEC_REG      "."       , dotcmd     },
 	{ BUILTIN_SPEC_REG      ":"       , truecmd    },
-#if ENABLE_ASH_BUILTIN_TEST
+#if ENABLE_ASH_TEST
 	{ BUILTIN_REGULAR       "["       , testcmd    },
-# if ENABLE_ASH_BASH_COMPAT
+#endif
+#if BASH_TEST2
 	{ BUILTIN_REGULAR       "[["      , testcmd    },
-# endif
 #endif
 #if ENABLE_ASH_ALIAS
 	{ BUILTIN_REG_ASSG      "alias"   , aliascmd   },
@@ -9797,7 +9920,7 @@ static const struct builtincmd builtintab[] = {
 	{ BUILTIN_REGULAR       "command" , commandcmd },
 #endif
 	{ BUILTIN_SPEC_REG      "continue", breakcmd   },
-#if ENABLE_ASH_BUILTIN_ECHO
+#if ENABLE_ASH_ECHO
 	{ BUILTIN_REGULAR       "echo"    , echocmd    },
 #endif
 	{ BUILTIN_SPEC_REG      "eval"    , NULL       }, /*evalcmd() has a differing prototype*/
@@ -9826,7 +9949,7 @@ static const struct builtincmd builtintab[] = {
 	{ BUILTIN_NOSPEC        "let"     , letcmd     },
 #endif
 	{ BUILTIN_ASSIGN        "local"   , localcmd   },
-#if ENABLE_ASH_BUILTIN_PRINTF
+#if ENABLE_ASH_PRINTF
 	{ BUILTIN_REGULAR       "printf"  , printfcmd  },
 #endif
 	{ BUILTIN_NOSPEC        "pwd"     , pwdcmd     },
@@ -9835,10 +9958,10 @@ static const struct builtincmd builtintab[] = {
 	{ BUILTIN_SPEC_REG      "return"  , returncmd  },
 	{ BUILTIN_SPEC_REG      "set"     , setcmd     },
 	{ BUILTIN_SPEC_REG      "shift"   , shiftcmd   },
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_SOURCE
 	{ BUILTIN_SPEC_REG      "source"  , dotcmd     },
 #endif
-#if ENABLE_ASH_BUILTIN_TEST
+#if ENABLE_ASH_TEST
 	{ BUILTIN_REGULAR       "test"    , testcmd    },
 #endif
 	{ BUILTIN_SPEC_REG      "times"   , timescmd   },
@@ -9857,15 +9980,15 @@ static const struct builtincmd builtintab[] = {
 /* Should match the above table! */
 #define COMMANDCMD (builtintab + \
 	/* . : */	2 + \
-	/* [ */		1 * ENABLE_ASH_BUILTIN_TEST + \
-	/* [[ */	1 * ENABLE_ASH_BUILTIN_TEST * ENABLE_ASH_BASH_COMPAT + \
+	/* [ */		1 * ENABLE_ASH_TEST + \
+	/* [[ */	1 * BASH_TEST2 + \
 	/* alias */	1 * ENABLE_ASH_ALIAS + \
 	/* bg */	1 * ENABLE_ASH_JOB_CONTROL + \
 	/* break cd cddir  */	3)
 #define EVALCMD (COMMANDCMD + \
 	/* command */	1 * ENABLE_ASH_CMDCMD + \
 	/* continue */	1 + \
-	/* echo */	1 * ENABLE_ASH_BUILTIN_ECHO + \
+	/* echo */	1 * ENABLE_ASH_ECHO + \
 	0)
 #define EXECCMD (EVALCMD + \
 	/* eval */	1)
@@ -10117,6 +10240,7 @@ evalcommand(union node *cmd, int flags)
 		if (!(flags & EV_EXIT) || may_have_traps) {
 			/* No, forking off a child is necessary */
 			INT_OFF;
+			get_tty_state();
 			jp = makejob(/*cmd,*/ 1);
 			if (forkshell(jp, cmd, FORK_FG) != 0) {
 				/* parent */
@@ -11505,10 +11629,10 @@ simplecmd(void)
 	union node *vars, **vpp;
 	union node **rpp, *redir;
 	int savecheckkwd;
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_TEST2
 	smallint double_brackets_flag = 0;
-	smallint function_flag = 0;
 #endif
+	IF_BASH_FUNCTION(smallint function_flag = 0;)
 
 	args = NULL;
 	app = &args;
@@ -11523,12 +11647,14 @@ simplecmd(void)
 		checkkwd = savecheckkwd;
 		t = readtoken();
 		switch (t) {
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_FUNCTION
 		case TFUNCTION:
 			if (peektoken() != TWORD)
 				raise_error_unexpected_syntax(TWORD);
 			function_flag = 1;
 			break;
+#endif
+#if BASH_TEST2
 		case TAND: /* "&&" */
 		case TOR: /* "||" */
 			if (!double_brackets_flag) {
@@ -11542,7 +11668,7 @@ simplecmd(void)
 			n->type = NARG;
 			/*n->narg.next = NULL; - stzalloc did it */
 			n->narg.text = wordtext;
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_TEST2
 			if (strcmp("[[", wordtext) == 0)
 				double_brackets_flag = 1;
 			else if (strcmp("]]", wordtext) == 0)
@@ -11557,7 +11683,7 @@ simplecmd(void)
 				app = &n->narg.next;
 				savecheckkwd = 0;
 			}
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_FUNCTION
 			if (function_flag) {
 				checkkwd = CHKNL | CHKKWD;
 				switch (peektoken()) {
@@ -11587,7 +11713,7 @@ simplecmd(void)
 			parsefname();   /* read name of redirection file */
 			break;
 		case TLP:
- IF_ASH_BASH_COMPAT(do_func:)
+ IF_BASH_FUNCTION(do_func:)
 			if (args && app == &args->narg.next
 			 && !vars && !redir
 			) {
@@ -11595,7 +11721,7 @@ simplecmd(void)
 				const char *name;
 
 				/* We have a function */
-				if (IF_ASH_BASH_COMPAT(!function_flag &&) readtoken() != TRP)
+				if (IF_BASH_FUNCTION(!function_flag &&) readtoken() != TRP)
 					raise_error_unexpected_syntax(TRP);
 				name = n->narg.text;
 				if (!goodname(name)
@@ -11608,7 +11734,7 @@ simplecmd(void)
 				n->narg.next = parse_command();
 				return n;
 			}
-			IF_ASH_BASH_COMPAT(function_flag = 0;)
+			IF_BASH_FUNCTION(function_flag = 0;)
 			/* fall through */
 		default:
 			tokpushback = 1;
@@ -11789,7 +11915,7 @@ parse_command(void)
 		n1 = list(0);
 		t = TEND;
 		break;
-	IF_ASH_BASH_COMPAT(case TFUNCTION:)
+	IF_BASH_FUNCTION(case TFUNCTION:)
 	case TWORD:
 	case TREDIR:
 		tokpushback = 1;
@@ -11822,7 +11948,7 @@ parse_command(void)
 	return n1;
 }
 
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_DOLLAR_SQUOTE
 static int
 decode_dollar_squote(void)
 {
@@ -11907,7 +12033,7 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 	IF_FEATURE_SH_MATH(int parenlevel;) /* levels of parens in arithmetic */
 	int dqvarnest;       /* levels of variables expansion within double quotes */
 
-	IF_ASH_BASH_COMPAT(smallint bash_dollar_squote = 0;)
+	IF_BASH_DOLLAR_SQUOTE(smallint bash_dollar_squote = 0;)
 
 	startlinno = g_parsefile->linno;
 	bqlist = NULL;
@@ -11942,7 +12068,7 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 			USTPUTC(c, out);
 			break;
 		case CCTL:
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_DOLLAR_SQUOTE
 			if (c == '\\' && bash_dollar_squote) {
 				c = decode_dollar_squote();
 				if (c == '\0') {
@@ -12003,7 +12129,7 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 			dblquote = 1;
 			goto quotemark;
 		case CENDQUOTE:
-			IF_ASH_BASH_COMPAT(bash_dollar_squote = 0;)
+			IF_BASH_DOLLAR_SQUOTE(bash_dollar_squote = 0;)
 			if (eofmark != NULL && varnest == 0) {
 				USTPUTC(c, out);
 			} else {
@@ -12062,7 +12188,7 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 			break;
 		default:
 			if (varnest == 0) {
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
 				if (c == '&') {
 //Can't call pgetc_eatbnl() here, this requires three-deep pungetc()
 					if (pgetc() == '>')
@@ -12094,7 +12220,7 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 	len = out - (char *)stackblock();
 	out = stackblock();
 	if (eofmark == NULL) {
-		if ((c == '>' || c == '<' IF_ASH_BASH_COMPAT( || c == 0x100 + '>'))
+		if ((c == '>' || c == '<' IF_BASH_REDIR_OUTPUT( || c == 0x100 + '>'))
 		 && quotef == 0
 		) {
 			if (isdigit_str9(out)) {
@@ -12182,7 +12308,7 @@ parseredir: {
 			pungetc();
 		}
 	}
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
 	else if (c == 0x100 + '>') { /* this flags &> redirection */
 		np->nfile.fd = 1;
 		pgetc(); /* this is '>', no need to check */
@@ -12248,7 +12374,7 @@ parsesub: {
 	if (c > 255 /* PEOA or PEOF */
 	 || (c != '(' && c != '{' && !is_name(c) && !is_special(c))
 	) {
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_DOLLAR_SQUOTE
 		if (syntax != DQSYNTAX && c == '\'')
 			bash_dollar_squote = 1;
 		else
@@ -12324,7 +12450,7 @@ parsesub: {
 			switch (c) {
 			case ':':
 				c = pgetc_eatbnl();
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_SUBSTR
 				/* This check is only needed to not misinterpret
 				 * ${VAR:-WORD}, ${VAR:+WORD}, ${VAR:=WORD}, ${VAR:?WORD}
 				 * constructs.
@@ -12354,7 +12480,7 @@ parsesub: {
 				subtype++;
 				break;
 			}
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_PATTERN_SUBST
 			case '/':
 				/* ${v/[/]pattern/repl} */
 //TODO: encode pattern and repl separately.
@@ -12609,7 +12735,7 @@ xxreadtoken(void)
 						p += xxreadtoken_doubles + 1;
 					} else {
 						pungetc();
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_REDIR_OUTPUT
 						if (c == '&' && cc == '>') /* &> */
 							break; /* return readtoken1(...) */
 #endif
@@ -12999,16 +13125,7 @@ find_dot_file(char *name)
 	if (strchr(name, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(name, '\\')))
 		return name;
 
-	/* IIRC standards do not say whether . is to be searched.
-	 * And it is even smaller this way, making it unconditional for now:
-	 */
-	if (1) { /* ENABLE_ASH_BASH_COMPAT */
-		fullname = name;
-		goto try_cur_dir;
-	}
-
 	while ((fullname = path_advance(&path, name)) != NULL) {
- try_cur_dir:
 		if ((stat(fullname, &statb) == 0) && S_ISREG(statb.st_mode)) {
 			/*
 			 * Don't bother freeing here, since it will
@@ -13032,6 +13149,7 @@ dotcmd(int argc_ UNUSED_PARAM, char **argv_ UNUSED_PARAM)
 	int status = 0;
 	char *fullname;
 	char **argv;
+	char *args_need_save;
 	struct strlist *sp;
 	volatile struct shparam saveparam;
 
@@ -13051,7 +13169,8 @@ dotcmd(int argc_ UNUSED_PARAM, char **argv_ UNUSED_PARAM)
 	 */
 	fullname = find_dot_file(argv[0]);
 	argv++;
-	if (argv[0]) { /* . FILE ARGS, ARGS exist */
+	args_need_save = argv[0];
+	if (args_need_save) { /* ". FILE ARGS", and ARGS are not empty */
 		int argc;
 		saveparam = shellparam;
 		shellparam.malloced = 0;
@@ -13070,7 +13189,7 @@ dotcmd(int argc_ UNUSED_PARAM, char **argv_ UNUSED_PARAM)
 	status = cmdloop(0);
 	popfile();
 
-	if (argv[0]) {
+	if (args_need_save) {
 		freeparam(&shellparam);
 		shellparam = saveparam;
 	};
@@ -13902,9 +14021,11 @@ init(void)
 		setvareq((char*)defoptindvar, VTEXTFIXED);
 
 		setvar0("PPID", utoa(getppid()));
-#if ENABLE_ASH_BASH_COMPAT
+#if BASH_SHLVL_VAR
 		p = lookupvar("SHLVL");
 		setvar("SHLVL", utoa((p ? atoi(p) : 0) + 1), VEXPORT);
+#endif
+#if BASH_HOSTNAME_VAR
 		if (!lookupvar("HOSTNAME")) {
 			struct utsname uts;
 			uname(&uts);
@@ -13967,7 +14088,7 @@ procargs(char **argv)
 #if DEBUG == 2
 	debug = 1;
 #endif
-	/* POSIX 1003.2: first arg after -c cmd is $0, remainder $1... */
+	/* POSIX 1003.2: first arg after "-c CMD" is $0, remainder $1... */
 	if (xminusc) {
 		minusc = *xargv++;
 		if (*xargv)
@@ -14174,9 +14295,11 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 			if (!hp) {
 				hp = lookupvar("HOME");
 				if (hp) {
+					INT_OFF;
 					hp = concat_path_file(hp, ".ash_history");
 					setvar0("HISTFILE", hp);
 					free((char*)hp);
+					INT_ON;
 					hp = lookupvar("HISTFILE");
 				}
 			}

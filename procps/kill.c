@@ -33,7 +33,8 @@
 //config:	  the script it was called from.
 
 //applet:IF_KILL(APPLET(kill, BB_DIR_BIN, BB_SUID_DROP))
-//applet:IF_KILLALL(APPLET_ODDNAME(killall, kill, BB_DIR_USR_BIN, BB_SUID_DROP, killall))
+//                   APPLET_ODDNAME:name      main  location         suid_type     help
+//applet:IF_KILLALL( APPLET_ODDNAME(killall,  kill, BB_DIR_USR_BIN,  BB_SUID_DROP, killall))
 //applet:IF_KILLALL5(APPLET_ODDNAME(killall5, kill, BB_DIR_USR_SBIN, BB_SUID_DROP, killall5))
 
 //kbuild:lib-$(CONFIG_KILL) += kill.o
@@ -92,28 +93,34 @@
  * This is needed to avoid collision with kill -9 ... syntax
  */
 
+//kbuild:lib-$(CONFIG_ASH_JOB_CONTROL) += kill.o
+//kbuild:lib-$(CONFIG_HUSH_KILL) += kill.o
+
+#define SH_KILL (ENABLE_ASH_JOB_CONTROL || ENABLE_HUSH_KILL)
+/* If shells want to have "kill", for ifdefs it's like ENABLE_KILL=1 */
+#if SH_KILL
+# undef  ENABLE_KILL
+# define ENABLE_KILL 1
+#endif
+#define KILL_APPLET_CNT (ENABLE_KILL + ENABLE_KILLALL + ENABLE_KILLALL5)
+
 int kill_main(int argc UNUSED_PARAM, char **argv)
 {
 	char *arg;
 	pid_t pid;
 	int signo = SIGTERM, errors = 0, quiet = 0;
-#if ENABLE_KILL && !ENABLE_KILLALL && !ENABLE_KILLALL5
-# define killall  0
-# define killall5 0
-#elif !ENABLE_KILL && ENABLE_KILLALL && !ENABLE_KILLALL5
-# define killall  1
-# define killall5 0
-#elif !ENABLE_KILL && !ENABLE_KILLALL && ENABLE_KILLALL5
-# define killall  0
-# define killall5 1
+
+#if KILL_APPLET_CNT == 1
+# define is_killall  ENABLE_KILLALL
+# define is_killall5 ENABLE_KILLALL5
 #else
 /* How to determine who we are? find 3rd char from the end:
  * kill, killall, killall5
  *  ^i       ^a        ^l  - it's unique
  * (checking from the start is complicated by /bin/kill... case) */
 	const char char3 = argv[0][strlen(argv[0]) - 3];
-# define killall  (ENABLE_KILLALL && char3 == 'a')
-# define killall5 (ENABLE_KILLALL5 && char3 == 'l')
+# define is_killall  (ENABLE_KILLALL  && char3 == 'a')
+# define is_killall5 (ENABLE_KILLALL5 && char3 == 'l')
 #endif
 
 	/* Parse any options */
@@ -162,7 +169,7 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	/* The -q quiet option */
-	if (killall && arg[1] == 'q' && arg[2] == '\0') {
+	if (is_killall && arg[1] == 'q' && arg[2] == '\0') {
 		quiet = 1;
 		arg = *++argv;
 		if (!arg)
@@ -174,7 +181,7 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 	arg++; /* skip '-' */
 
 	/* -o PID? (if present, it always is at the end of command line) */
-	if (killall5 && arg[0] == 'o')
+	if (is_killall5 && arg[0] == 'o')
 		goto do_it_now;
 
 	if (argv[1] && arg[0] == 's' && arg[1] == '\0') { /* -s SIG? */
@@ -190,7 +197,7 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
  do_it_now:
 	pid = getpid();
 
-	if (killall5) {
+	if (is_killall5) {
 		pid_t sid;
 		procps_status_t* p = NULL;
 		/* compat: exitcode 2 is "no one was signaled" */
@@ -248,13 +255,14 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 		return ret;
 	}
 
+#if ENABLE_KILL || ENABLE_KILLALL
 	/* Pid or name is required for kill/killall */
 	if (!arg) {
 		bb_error_msg("you need to specify whom to kill");
 		return EXIT_FAILURE;
 	}
 
-	if (killall) {
+	if (!ENABLE_KILL || is_killall) {
 		/* Looks like they want to do a killall.  Do that */
 		do {
 			pid_t* pidList;
@@ -282,10 +290,12 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 		} while (arg);
 		return errors;
 	}
+#endif
 
+#if ENABLE_KILL
 	/* Looks like they want to do a kill. Do that */
 	while (arg) {
-#if ENABLE_ASH || ENABLE_HUSH
+# if SH_KILL
 		/*
 		 * We need to support shell's "hack formats" of
 		 * " -PRGP_ID" (yes, with a leading space)
@@ -307,7 +317,7 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 			}
 			arg = end; /* can only point to ' ' or '\0' now */
 		}
-#else
+# else /* ENABLE_KILL but !SH_KILL */
 		pid = bb_strtoi(arg, NULL, 10);
 		if (errno) {
 			bb_error_msg("invalid number '%s'", arg);
@@ -316,8 +326,9 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 			bb_perror_msg("can't kill pid %d", (int)pid);
 			errors++;
 		}
-#endif
+# endif
 		arg = *++argv;
 	}
 	return errors;
+#endif
 }

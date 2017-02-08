@@ -102,7 +102,7 @@
 //config:	bool "httpd"
 //config:	default y
 //config:	help
-//config:	  Serve web pages via an HTTP server.
+//config:	  HTTP server.
 //config:
 //config:config FEATURE_HTTPD_RANGES
 //config:	bool "Support 'Ranges:' header"
@@ -156,7 +156,7 @@
 //config:	  when specific URLs are requested.
 //config:
 //config:config FEATURE_HTTPD_CONFIG_WITH_SCRIPT_INTERPR
-//config:	bool "Support for running scripts through an interpreter"
+//config:	bool "Support running scripts through an interpreter"
 //config:	default y
 //config:	depends on FEATURE_HTTPD_CGI
 //config:	help
@@ -185,7 +185,7 @@
 //config:	  "&#60Hello&#32World&#62".
 //config:
 //config:config FEATURE_HTTPD_ERROR_PAGES
-//config:	bool "Support for custom error pages"
+//config:	bool "Support custom error pages"
 //config:	default y
 //config:	depends on HTTPD
 //config:	help
@@ -198,7 +198,7 @@
 //config:	  message.
 //config:
 //config:config FEATURE_HTTPD_PROXY
-//config:	bool "Support for reverse proxy"
+//config:	bool "Support reverse proxy"
 //config:	default y
 //config:	depends on HTTPD
 //config:	help
@@ -210,7 +210,7 @@
 //config:	  http://hostname[:port]/new/path/myfile.
 //config:
 //config:config FEATURE_HTTPD_GZIP
-//config:	bool "Support for GZIP content encoding"
+//config:	bool "Support GZIP content encoding"
 //config:	default y
 //config:	depends on HTTPD
 //config:	help
@@ -460,11 +460,6 @@ struct globals {
 #define ip_a_d            (G.ip_a_d           )
 #define g_realm           (G.g_realm          )
 #define remoteuser        (G.remoteuser       )
-#define referer           (G.referer          )
-#define user_agent        (G.user_agent       )
-#define host              (G.host             )
-#define http_accept       (G.http_accept      )
-#define http_accept_language (G.http_accept_language)
 #define file_size         (G.file_size        )
 #if ENABLE_FEATURE_HTTPD_RANGES
 #define range_start       (G.range_start      )
@@ -1152,7 +1147,7 @@ static void send_headers(int responseNum)
 			"Last-Modified: %s\r\n"
 			"%s %"OFF_FMT"u\r\n",
 				date_str,
-				content_gzip ? "Transfer-length:" : "Content-length:",
+				content_gzip ? "Transfer-Length:" : "Content-Length:",
 				file_size
 		);
 	}
@@ -1529,11 +1524,11 @@ static void send_cgi_and_exit(
 #endif
 		}
 	}
-	setenv1("HTTP_USER_AGENT", user_agent);
-	if (http_accept)
-		setenv1("HTTP_ACCEPT", http_accept);
-	if (http_accept_language)
-		setenv1("HTTP_ACCEPT_LANGUAGE", http_accept_language);
+	setenv1("HTTP_USER_AGENT", G.user_agent);
+	if (G.http_accept)
+		setenv1("HTTP_ACCEPT", G.http_accept);
+	if (G.http_accept_language)
+		setenv1("HTTP_ACCEPT_LANGUAGE", G.http_accept_language);
 	if (post_len)
 		putenv(xasprintf("CONTENT_LENGTH=%d", post_len));
 	if (cookie)
@@ -1546,9 +1541,9 @@ static void send_cgi_and_exit(
 		putenv((char*)"AUTH_TYPE=Basic");
 	}
 #endif
-	if (referer)
-		setenv1("HTTP_REFERER", referer);
-	setenv1("HTTP_HOST", host); /* set to "" if NULL */
+	if (G.referer)
+		setenv1("HTTP_REFERER", G.referer);
+	setenv1("HTTP_HOST", G.host); /* set to "" if NULL */
 	/* setenv1("SERVER_NAME", safe_gethostname()); - don't do this,
 	 * just run "env SERVER_NAME=xyz httpd ..." instead */
 
@@ -2269,10 +2264,8 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 #if ENABLE_FEATURE_HTTPD_PROXY
 			/* We need 2 more bytes for yet another "\r\n" -
 			 * see near fdprintf(proxy_fd...) further below */
-			if (proxy_entry && (header_ptr - header_buf) < IOBUF_SIZE - 2) {
-				int len = strlen(iobuf);
-				if (len > IOBUF_SIZE - (header_ptr - header_buf) - 4)
-					len = IOBUF_SIZE - (header_ptr - header_buf) - 4;
+			if (proxy_entry && (header_ptr - header_buf) < IOBUF_SIZE - 4) {
+				int len = strnlen(iobuf, IOBUF_SIZE - (header_ptr - header_buf) - 4);
 				memcpy(header_ptr, iobuf, len);
 				header_ptr += len;
 				header_ptr[0] = '\r';
@@ -2283,14 +2276,14 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 
 #if ENABLE_FEATURE_HTTPD_CGI || ENABLE_FEATURE_HTTPD_PROXY
 			/* Try and do our best to parse more lines */
-			if ((STRNCASECMP(iobuf, "Content-length:") == 0)) {
+			if ((STRNCASECMP(iobuf, "Content-Length:") == 0)) {
 				/* extra read only for POST */
 				if (prequest != request_GET
 # if ENABLE_FEATURE_HTTPD_CGI
 				 && prequest != request_HEAD
 # endif
 				) {
-					tptr = skip_whitespace(iobuf + sizeof("Content-length:") - 1);
+					tptr = skip_whitespace(iobuf + sizeof("Content-Length:") - 1);
 					if (!tptr[0])
 						send_headers_and_exit(HTTP_BAD_REQUEST);
 					/* not using strtoul: it ignores leading minus! */
@@ -2303,19 +2296,26 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 #endif
 #if ENABLE_FEATURE_HTTPD_CGI
 			else if (STRNCASECMP(iobuf, "Cookie:") == 0) {
-				cookie = xstrdup(skip_whitespace(iobuf + sizeof("Cookie:")-1));
+				if (!cookie) /* in case they send millions of these, do not OOM */
+					cookie = xstrdup(skip_whitespace(iobuf + sizeof("Cookie:")-1));
 			} else if (STRNCASECMP(iobuf, "Content-Type:") == 0) {
-				content_type = xstrdup(skip_whitespace(iobuf + sizeof("Content-Type:")-1));
+				if (!content_type)
+					content_type = xstrdup(skip_whitespace(iobuf + sizeof("Content-Type:")-1));
 			} else if (STRNCASECMP(iobuf, "Referer:") == 0) {
-				referer = xstrdup(skip_whitespace(iobuf + sizeof("Referer:")-1));
+				if (!G.referer)
+					G.referer = xstrdup(skip_whitespace(iobuf + sizeof("Referer:")-1));
 			} else if (STRNCASECMP(iobuf, "User-Agent:") == 0) {
-				user_agent = xstrdup(skip_whitespace(iobuf + sizeof("User-Agent:")-1));
+				if (!G.user_agent)
+					G.user_agent = xstrdup(skip_whitespace(iobuf + sizeof("User-Agent:")-1));
 			} else if (STRNCASECMP(iobuf, "Host:") == 0) {
-				host = xstrdup(skip_whitespace(iobuf + sizeof("Host:")-1));
+				if (!G.host)
+					G.host = xstrdup(skip_whitespace(iobuf + sizeof("Host:")-1));
 			} else if (STRNCASECMP(iobuf, "Accept:") == 0) {
-				http_accept = xstrdup(skip_whitespace(iobuf + sizeof("Accept:")-1));
+				if (!G.http_accept)
+					G.http_accept = xstrdup(skip_whitespace(iobuf + sizeof("Accept:")-1));
 			} else if (STRNCASECMP(iobuf, "Accept-Language:") == 0) {
-				http_accept_language = xstrdup(skip_whitespace(iobuf + sizeof("Accept-Language:")-1));
+				if (!G.http_accept_language)
+					G.http_accept_language = xstrdup(skip_whitespace(iobuf + sizeof("Accept-Language:")-1));
 			}
 #endif
 #if ENABLE_FEATURE_HTTPD_BASIC_AUTH
@@ -2396,11 +2396,11 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 		int proxy_fd;
 		len_and_sockaddr *lsa;
 
-		proxy_fd = socket(AF_INET, SOCK_STREAM, 0);
-		if (proxy_fd < 0)
-			send_headers_and_exit(HTTP_INTERNAL_SERVER_ERROR);
 		lsa = host2sockaddr(proxy_entry->host_port, 80);
 		if (lsa == NULL)
+			send_headers_and_exit(HTTP_INTERNAL_SERVER_ERROR);
+		proxy_fd = socket(lsa->u.sa.sa_family, SOCK_STREAM, 0);
+		if (proxy_fd < 0)
 			send_headers_and_exit(HTTP_INTERNAL_SERVER_ERROR);
 		if (connect(proxy_fd, &lsa->u.sa, lsa->len) < 0)
 			send_headers_and_exit(HTTP_INTERNAL_SERVER_ERROR);

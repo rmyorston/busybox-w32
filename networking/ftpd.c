@@ -15,7 +15,7 @@
 //config:	bool "ftpd"
 //config:	default y
 //config:	help
-//config:	  simple FTP daemon. You have to run it via inetd.
+//config:	  Simple FTP daemon. You have to run it via inetd.
 //config:
 //config:config FEATURE_FTPD_WRITE
 //config:	bool "Enable upload commands"
@@ -47,20 +47,26 @@
 //kbuild:lib-$(CONFIG_FTPD) += ftpd.o
 
 //usage:#define ftpd_trivial_usage
-//usage:       "[-wvS] [-t N] [-T N] [DIR]"
+//usage:       "[-wvS]"IF_FEATURE_FTPD_AUTHENTICATION(" [-a USER]")" [-t N] [-T N] [DIR]"
 //usage:#define ftpd_full_usage "\n\n"
-//usage:       "Anonymous FTP server\n"
-//usage:       "\n"
-//usage:       "ftpd should be used as an inetd service.\n"
-//usage:       "ftpd's line for inetd.conf:\n"
+//usage:	IF_NOT_FEATURE_FTPD_AUTHENTICATION(
+//usage:       "Anonymous FTP server. Accesses by clients occur under ftpd's UID.\n"
+//usage:	)
+//usage:	IF_FEATURE_FTPD_AUTHENTICATION(
+//usage:       "FTP server. "
+//usage:	)
+//usage:       "Chroots to DIR, if this fails (run by non-root), cds to it.\n"
+//usage:       "Should be used as inetd service, inetd.conf line:\n"
 //usage:       "	21 stream tcp nowait root ftpd ftpd /files/to/serve\n"
-//usage:       "It also can be ran from tcpsvd:\n"
+//usage:       "Can be run from tcpsvd:\n"
 //usage:       "	tcpsvd -vE 0.0.0.0 21 ftpd /files/to/serve\n"
 //usage:     "\n	-w	Allow upload"
+//usage:	IF_FEATURE_FTPD_AUTHENTICATION(
+//usage:     "\n	-a USER	Enable 'anonymous' login and map it to USER"
+//usage:	)
 //usage:     "\n	-v	Log errors to stderr. -vv: verbose log"
 //usage:     "\n	-S	Log errors to syslog. -SS: verbose log"
-//usage:     "\n	-t,-T	Idle and absolute timeouts"
-//usage:     "\n	DIR	Change root to this directory"
+//usage:     "\n	-t,-T N	Idle and absolute timeout"
 
 #include "libbb.h"
 #include "common_bufsiz.h"
@@ -695,7 +701,7 @@ popen_ls(const char *opt)
 		dup(STDOUT_FILENO); /* copy will become STDIN_FILENO */
 #if BB_MMU
 		/* memset(&G, 0, sizeof(G)); - ls_main does it */
-		exit(ls_main(ARRAY_SIZE(argv) - 1, (char**) argv));
+		exit(ls_main(/*argc_unused*/ 0, (char**) argv));
 #else
 		cur_fd = xopen(".", O_RDONLY | O_DIRECTORY);
 		/* On NOMMU, we want to execute a child - copy of ourself
@@ -1146,14 +1152,11 @@ enum {
 };
 
 int ftpd_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
-#if !BB_MMU
-int ftpd_main(int argc, char **argv)
-#else
 int ftpd_main(int argc UNUSED_PARAM, char **argv)
-#endif
 {
 #if ENABLE_FEATURE_FTPD_AUTHENTICATION
 	struct passwd *pw = NULL;
+	char *anon_opt = NULL;
 #endif
 	unsigned abs_timeout;
 	unsigned verbose_S;
@@ -1166,16 +1169,21 @@ int ftpd_main(int argc UNUSED_PARAM, char **argv)
 	G.timeout = 2 * 60;
 	opt_complementary = "vv:SS";
 #if BB_MMU
-	opts = getopt32(argv,    "vS" IF_FEATURE_FTPD_WRITE("w") "t:+T:+", &G.timeout, &abs_timeout, &G.verbose, &verbose_S);
+	opts = getopt32(argv,    "vS"
+		IF_FEATURE_FTPD_WRITE("w") "t:+T:+" IF_FEATURE_FTPD_AUTHENTICATION("a:"),
+		&G.timeout, &abs_timeout, IF_FEATURE_FTPD_AUTHENTICATION(&anon_opt,)
+		&G.verbose, &verbose_S);
 #else
-	opts = getopt32(argv, "l1AvS" IF_FEATURE_FTPD_WRITE("w") "t:+T:+", &G.timeout, &abs_timeout, &G.verbose, &verbose_S);
+	opts = getopt32(argv, "l1AvS"
+		IF_FEATURE_FTPD_WRITE("w") "t:+T:+" IF_FEATURE_FTPD_AUTHENTICATION("a:"),
+		&G.timeout, &abs_timeout, IF_FEATURE_FTPD_AUTHENTICATION(&anon_opt,)
+		&G.verbose, &verbose_S);
 	if (opts & (OPT_l|OPT_1)) {
 		/* Our secret backdoor to ls */
-/* TODO: pass --group-directories-first? would be nice, but ls doesn't do that yet */
 		if (fchdir(3) != 0)
 			_exit(127);
 		/* memset(&G, 0, sizeof(G)); - ls_main does it */
-		return ls_main(argc, argv);
+		return ls_main(/*argc_unused*/ 0, argv);
 	}
 #endif
 	if (G.verbose < verbose_S)
@@ -1234,7 +1242,12 @@ int ftpd_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_FEATURE_FTPD_AUTHENTICATION
 	while (1) {
 		uint32_t cmdval = cmdio_get_cmd_and_arg();
-			if (cmdval == const_USER) {
+		if (cmdval == const_USER) {
+			if (anon_opt && strcmp(G.ftp_arg, "anonymous") == 0) {
+				pw = getpwnam(anon_opt);
+				if (pw)
+					break; /* does not even ask for password */
+			}
 			pw = getpwnam(G.ftp_arg);
 			cmdio_write_raw(STR(FTP_GIVEPWORD)" Please specify password\r\n");
 		} else if (cmdval == const_PASS) {
