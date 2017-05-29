@@ -210,15 +210,17 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 		c = buffer[bufpos];
 		if (c == '\0' || (ENABLE_PLATFORM_MINGW32 && c == '\r'))
 			continue;
-		if (backslash) {
-			backslash = 0;
-			if (c != '\n')
-				goto put;
-			continue;
-		}
-		if (!(read_flags & BUILTIN_READ_RAW) && c == '\\') {
-			backslash = 1;
-			continue;
+		if (!(read_flags & BUILTIN_READ_RAW)) {
+			if (backslash) {
+				backslash = 0;
+				if (c != '\n')
+					goto put;
+				continue;
+			}
+			if (c == '\\') {
+				backslash = 1;
+				continue;
+			}
 		}
 		if (c == '\n')
 			break;
@@ -408,13 +410,7 @@ shell_builtin_ulimit(char **argv)
 	/* In case getopt was already called:
 	 * reset the libc getopt() function, which keeps internal state.
 	 */
-#ifdef __GLIBC__
-	optind = 0;
-#else /* BSD style */
-	optind = 1;
-	/* optreset = 1; */
-#endif
-	/* optarg = NULL; opterr = 0; optopt = 0; - do we need this?? */
+	GETOPT_RESET();
 
 	argc = 1;
 	while (argv[argc])

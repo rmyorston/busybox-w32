@@ -3554,11 +3554,9 @@ unaliascmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 {
 	int i;
 
-	while ((i = nextopt("a")) != '\0') {
-		if (i == 'a') {
-			rmaliases();
-			return 0;
-		}
+	while (nextopt("a") != '\0') {
+		rmaliases();
+		return 0;
 	}
 	for (i = 0; *argptr; argptr++) {
 		if (unalias(*argptr)) {
@@ -4069,7 +4067,7 @@ setjobctl(int on)
 		}
 		/* fd is a tty at this point */
 		fd = fcntl(fd, F_DUPFD, 10);
-		if (ofd >= 0) /* if it is "/dev/tty", close. If 0/1/2, dont */
+		if (ofd >= 0) /* if it is "/dev/tty", close. If 0/1/2, don't */
 			close(ofd);
 		if (fd < 0)
 			goto out; /* F_DUPFD failed */
@@ -6692,7 +6690,7 @@ static char *evalvar(char *p, int flags, struct strlist *var_str_list);
  * $@ like $* since no splitting will be performed.
  *
  * var_str_list (can be NULL) is a list of "VAR=val" strings which take precedence
- * over shell varables. Needed for "A=a B=$A; echo $B" case - we use it
+ * over shell variables. Needed for "A=a B=$A; echo $B" case - we use it
  * for correct expansion of "B=$A" word.
  */
 static void
@@ -6902,8 +6900,8 @@ scanright(char *startp, char *rmesc, char *rmescend,
 		if (try2optimize) {
 			/* Maybe we can optimize this:
 			 * if pattern ends with unescaped *, we can avoid checking
-			 * shorter strings: if "foo*" doesnt match "raw_value_of_v",
-			 * it wont match truncated "raw_value_of_" strings too.
+			 * shorter strings: if "foo*" doesn't match "raw_value_of_v",
+			 * it won't match truncated "raw_value_of_" strings too.
 			 */
 			unsigned plen = strlen(pattern);
 			/* Does it end with "*"? */
@@ -7630,7 +7628,7 @@ expandmeta(struct strlist *str /*, int flag*/)
 // Which means you need to unescape the string, right? Not so fast:
 // if there _is_ a file named "file\?" (with backslash), it is returned
 // as "file\?" too (whichever pattern you used to find it, say, "file*").
-// You DONT KNOW by looking at the result whether you need to unescape it.
+// You DON'T KNOW by looking at the result whether you need to unescape it.
 //
 // Worse, globbing of "file\?" in a directory with two files, "file?" and "file\?",
 // returns "file\?" - which is WRONG: "file\?" pattern matches "file?" file.
@@ -8124,9 +8122,8 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) char *cmd, char **argv, char **
  * have to change the find_command routine as well.
  * argv[-1] must exist and be writable! See tryexec() for why.
  */
-static void shellexec(char **, const char *, int) NORETURN;
-static void
-shellexec(char **argv, const char *path, int idx)
+static void shellexec(char *prog, char **argv, const char *path, int idx) NORETURN;
+static void shellexec(char *prog, char **argv, const char *path, int idx)
 {
 	char *cmdname;
 	int e;
@@ -8135,12 +8132,12 @@ shellexec(char **argv, const char *path, int idx)
 	int applet_no = -1; /* used only by FEATURE_SH_STANDALONE */
 
 	envp = listvars(VEXPORT, VUNSET, /*end:*/ NULL);
-	if ((strchr(argv[0], '/') || (ENABLE_PLATFORM_MINGW32 && strchr(argv[0], '\\')))
+	if ((strchr(prog, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(prog, '\\')))
 #if ENABLE_FEATURE_SH_STANDALONE
-	 || (applet_no = find_applet_by_name(argv[0])) >= 0
+	 || (applet_no = find_applet_by_name(prog)) >= 0
 #endif
 	) {
-		tryexec(IF_FEATURE_SH_STANDALONE(applet_no,) argv[0], argv, envp);
+		tryexec(IF_FEATURE_SH_STANDALONE(applet_no,) prog, argv, envp);
 		if (applet_no >= 0) {
 			/* We tried execing ourself, but it didn't work.
 			 * Maybe /proc/self/exe doesn't exist?
@@ -8157,7 +8154,7 @@ shellexec(char **argv, const char *path, int idx)
 	} else {
  try_PATH:
 		e = ENOENT;
-		while ((cmdname = path_advance(&path, argv[0])) != NULL) {
+		while ((cmdname = path_advance(&path, prog)) != NULL) {
 			if (--idx < 0 && pathopt == NULL) {
 				tryexec(IF_FEATURE_SH_STANDALONE(-1,) cmdname, argv, envp);
 				if (errno != ENOENT && errno != ENOTDIR)
@@ -8181,8 +8178,8 @@ shellexec(char **argv, const char *path, int idx)
 	}
 	exitstatus = exerrno;
 	TRACE(("shellexec failed for %s, errno %d, suppress_int %d\n",
-		argv[0], e, suppress_int));
-	ash_msg_and_raise(EXEXIT, "%s: %s", argv[0], errmsg(e, "not found"));
+		prog, e, suppress_int));
+	ash_msg_and_raise(EXEXIT, "%s: %s", prog, errmsg(e, "not found"));
 	/* NOTREACHED */
 }
 
@@ -8551,7 +8548,6 @@ static int
 describe_command(char *command, const char *path, int describe_command_verbose)
 {
 	struct cmdentry entry;
-	struct tblentry *cmdp;
 #if ENABLE_ASH_ALIAS
 	const struct alias *ap;
 #endif
@@ -8581,15 +8577,8 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 		goto out;
 	}
 #endif
-	/* Then check if it is a tracked alias */
-	cmdp = cmdlookup(command, 0);
-	if (cmdp != NULL) {
-		entry.cmdtype = cmdp->cmdtype;
-		entry.u = cmdp->param;
-	} else {
-		/* Finally use brute force */
-		find_command(command, &entry, DO_ABS, path);
-	}
+	/* Brute force */
+	find_command(command, &entry, DO_ABS, path);
 
 	switch (entry.cmdtype) {
 	case CMDNORMAL: {
@@ -8604,9 +8593,7 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 			} while (--j >= 0);
 		}
 		if (describe_command_verbose) {
-			out1fmt(" is%s %s",
-				(cmdp ? " a tracked alias for" : nullstr), p
-			);
+			out1fmt(" is %s", p);
 		} else {
 			out1str(p);
 		}
@@ -9814,7 +9801,14 @@ truecmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 static int FAST_FUNC
 execcmd(int argc UNUSED_PARAM, char **argv)
 {
-	if (argv[1]) {
+	optionarg = NULL;
+	while (nextopt("a:") != '\0')
+		/* nextopt() sets optionarg to "-a ARGV0" */;
+
+	argv = argptr;
+	if (argv[0]) {
+		char *prog;
+
 		iflag = 0;              /* exit on error */
 		mflag = 0;
 		optschanged();
@@ -9830,7 +9824,10 @@ execcmd(int argc UNUSED_PARAM, char **argv)
 		/*setsignal(SIGTSTP); - unnecessary because of mflag=0 */
 		/*setsignal(SIGTTOU); - unnecessary because of mflag=0 */
 
-		shellexec(argv + 1, pathval(), 0);
+		prog = argv[0];
+		if (optionarg)
+			argv[0] = optionarg;
+		shellexec(prog, argv, pathval(), 0);
 		/* NOTREACHED */
 	}
 	return 0;
@@ -10255,7 +10252,7 @@ evalcommand(union node *cmd, int flags)
 		}
 #endif
 		listsetvar(varlist.list, VEXPORT|VSTACK);
-		shellexec(argv, path, cmdentry.u.index);
+		shellexec(argv[0], argv, path, cmdentry.u.index);
 		/* NOTREACHED */
 	} /* default */
 	case CMDBUILTIN:
@@ -13605,7 +13602,7 @@ exportcmd(int argc UNUSED_PARAM, char **argv)
 	}
 	flag_off = ~flag_off;
 
-	/*if (opt_p_not_specified) - bash doesnt check this. Try "export -p NAME" */
+	/*if (opt_p_not_specified) - bash doesn't check this. Try "export -p NAME" */
 	{
 		aptr = argptr;
 		name = *aptr;
@@ -13785,6 +13782,7 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	/* "read -s" needs to save/restore termios, can't allow ^C
 	 * to jump out of it.
 	 */
+ again:
 	INT_OFF;
 	r = shell_builtin_read(setvar0,
 		argptr,
@@ -13796,6 +13794,12 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		opt_u
 	);
 	INT_ON;
+
+	if ((uintptr_t)r == 1 && errno == EINTR) {
+		/* to get SIGCHLD: sleep 1 & read x; echo $x */
+		if (pending_sig == 0)
+			goto again;
+	}
 
 	if ((uintptr_t)r > 1)
 		ash_msg_and_raise_error(r);
@@ -14420,7 +14424,7 @@ forkshell_shellexec(struct forkshell *fs)
 	char *path = fs->string;
 
 	listsetvar(varlist, VEXPORT|VSTACK);
-	shellexec(argv, path, idx);
+	shellexec(argv[0], argv, path, idx);
 }
 
 static void

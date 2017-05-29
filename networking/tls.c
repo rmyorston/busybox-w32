@@ -39,7 +39,7 @@
 
 // works against "openssl s_server -cipher NULL"
 // and against wolfssl-3.9.10-stable/examples/server/server.c:
-//#define CIPHER_ID TLS_RSA_WITH_NULL_SHA256 // for testing (does everything except encrypting)
+//#define CIPHER_ID1 TLS_RSA_WITH_NULL_SHA256 // for testing (does everything except encrypting)
 
 // works against wolfssl-3.9.10-stable/examples/server/server.c
 // works for kernel.org
@@ -367,11 +367,12 @@ static unsigned hmac_sha_precomputed_v(
 	return sha_end(&pre->hashed_key_xor_opad, out);
 }
 
-static void hmac_sha256_begin(hmac_precomputed_t *pre, uint8_t *key, unsigned key_size)
+typedef void md5sha_begin_func(md5sha_ctx_t *ctx) FAST_FUNC;
+static void hmac_begin(hmac_precomputed_t *pre, uint8_t *key, unsigned key_size, md5sha_begin_func *begin)
 {
 	uint8_t key_xor_ipad[SHA_INSIZE];
 	uint8_t key_xor_opad[SHA_INSIZE];
-	uint8_t tempkey[SHA256_OUTSIZE];
+	uint8_t tempkey[SHA1_OUTSIZE < SHA256_OUTSIZE ? SHA256_OUTSIZE : SHA1_OUTSIZE];
 	unsigned i;
 
 	// "The authentication key can be of any length up to INSIZE, the
@@ -380,7 +381,7 @@ static void hmac_sha256_begin(hmac_precomputed_t *pre, uint8_t *key, unsigned ke
 	// resultant OUTSIZE byte string as the actual key to HMAC."
 	if (key_size > SHA_INSIZE) {
 		md5sha_ctx_t ctx;
-		sha256_begin(&ctx);
+		begin(&ctx);
 		md5sha_hash(&ctx, key, key_size);
 		key_size = sha_end(&ctx, tempkey);
 	}
@@ -394,41 +395,8 @@ static void hmac_sha256_begin(hmac_precomputed_t *pre, uint8_t *key, unsigned ke
 		key_xor_opad[i] = 0x5c;
 	}
 
-	sha256_begin(&pre->hashed_key_xor_ipad);
-	sha256_begin(&pre->hashed_key_xor_opad);
-	md5sha_hash(&pre->hashed_key_xor_ipad, key_xor_ipad, SHA_INSIZE);
-	md5sha_hash(&pre->hashed_key_xor_opad, key_xor_opad, SHA_INSIZE);
-}
-// TODO: ^^^ vvv merge?
-static void hmac_sha1_begin(hmac_precomputed_t *pre, uint8_t *key, unsigned key_size)
-{
-	uint8_t key_xor_ipad[SHA_INSIZE];
-	uint8_t key_xor_opad[SHA_INSIZE];
-	uint8_t tempkey[SHA1_OUTSIZE];
-	unsigned i;
-
-	// "The authentication key can be of any length up to INSIZE, the
-	// block length of the hash function.  Applications that use keys longer
-	// than INSIZE bytes will first hash the key using H and then use the
-	// resultant OUTSIZE byte string as the actual key to HMAC."
-	if (key_size > SHA_INSIZE) {
-		md5sha_ctx_t ctx;
-		sha1_begin(&ctx);
-		md5sha_hash(&ctx, key, key_size);
-		key_size = sha_end(&ctx, tempkey);
-	}
-
-	for (i = 0; i < key_size; i++) {
-		key_xor_ipad[i] = key[i] ^ 0x36;
-		key_xor_opad[i] = key[i] ^ 0x5c;
-	}
-	for (; i < SHA_INSIZE; i++) {
-		key_xor_ipad[i] = 0x36;
-		key_xor_opad[i] = 0x5c;
-	}
-
-	sha1_begin(&pre->hashed_key_xor_ipad);
-	sha1_begin(&pre->hashed_key_xor_opad);
+	begin(&pre->hashed_key_xor_ipad);
+	begin(&pre->hashed_key_xor_opad);
 	md5sha_hash(&pre->hashed_key_xor_ipad, key_xor_ipad, SHA_INSIZE);
 	md5sha_hash(&pre->hashed_key_xor_opad, key_xor_opad, SHA_INSIZE);
 }
@@ -441,11 +409,11 @@ static unsigned hmac(tls_state_t *tls, uint8_t *out, uint8_t *key, unsigned key_
 
 	va_start(va, key_size);
 
-	if (tls->MAC_size == SHA256_OUTSIZE)
-		hmac_sha256_begin(&pre, key, key_size);
-	else
-		hmac_sha1_begin(&pre, key, key_size);
-
+	hmac_begin(&pre, key, key_size,
+			(tls->MAC_size == SHA256_OUTSIZE)
+				? sha256_begin
+				: sha1_begin
+	);
 	len = hmac_sha_precomputed_v(&pre, out, va);
 
 	va_end(va);
@@ -460,7 +428,7 @@ static unsigned hmac_sha256(/*tls_state_t *tls,*/ uint8_t *out, uint8_t *key, un
 
 	va_start(va, key_size);
 
-	hmac_sha256_begin(&pre, key, key_size);
+	hmac_begin(&pre, key, key_size, sha256_begin);
 	len = hmac_sha_precomputed_v(&pre, out, va);
 
 	va_end(va);
@@ -507,7 +475,7 @@ static void prf_hmac_sha256(/*tls_state_t *tls,*/
 	uint8_t a[TLS_MAX_MAC_SIZE];
 	uint8_t *out_p = outbuf;
 	unsigned label_size = strlen(label);
-	unsigned MAC_size = SHA256_OUTSIZE;///tls->MAC_size;
+	unsigned MAC_size = SHA256_OUTSIZE;
 
 	/* In P_hash() calculation, "seed" is "label + seed": */
 #define SEED   label, label_size, seed, seed_size
@@ -518,7 +486,7 @@ static void prf_hmac_sha256(/*tls_state_t *tls,*/
 	hmac_sha256(/*tls,*/ a, SECRET, SEED, NULL);
 //TODO: convert hmac to precomputed
 
-	for(;;) {
+	for (;;) {
 		/* HMAC_hash(secret, A(1) + seed) */
 		if (outbuf_size <= MAC_size) {
 			/* Last, possibly incomplete, block */
@@ -597,8 +565,11 @@ static void xwrite_encrypted(tls_state_t *tls, unsigned size, unsigned type)
 	uint8_t padding_length;
 
 	xhdr = (void*)(buf - RECHDR_LEN);
-	if (tls->cipher_id != TLS_RSA_WITH_NULL_SHA256)
+	if (CIPHER_ID1 != TLS_RSA_WITH_NULL_SHA256 /* if "no encryption" can't be selected */
+	 || tls->cipher_id != TLS_RSA_WITH_NULL_SHA256 /* or if it wasn't selected */
+	) {
 		xhdr = (void*)(buf - RECHDR_LEN - AES_BLOCKSIZE); /* place for IV */
+	}
 
 	xhdr->type = type;
 	xhdr->proto_maj = TLS_MAJ;
@@ -652,7 +623,9 @@ static void xwrite_encrypted(tls_state_t *tls, unsigned size, unsigned type)
 	// --------  -----------  ----------  --------------
 	// SHA       HMAC-SHA1       20            20
 	// SHA256    HMAC-SHA256     32            32
-	if (tls->cipher_id == TLS_RSA_WITH_NULL_SHA256) {
+	if (CIPHER_ID1 == TLS_RSA_WITH_NULL_SHA256
+	 && tls->cipher_id == TLS_RSA_WITH_NULL_SHA256
+	) {
 		/* No encryption, only signing */
 		xhdr->len16_hi = size >> 8;
 		xhdr->len16_lo = size & 0xff;
@@ -1698,9 +1671,11 @@ void FAST_FUNC tls_handshake(tls_state_t *tls, const char *sni)
 	if (len != 1 || memcmp(tls->inbuf, rec_CHANGE_CIPHER_SPEC, 6) != 0)
 		bad_record_die(tls, "switch to encrypted traffic", len);
 	dbg("<< CHANGE_CIPHER_SPEC\n");
-	if (tls->cipher_id == TLS_RSA_WITH_NULL_SHA256)
+	if (CIPHER_ID1 == TLS_RSA_WITH_NULL_SHA256
+	 && tls->cipher_id == TLS_RSA_WITH_NULL_SHA256
+	) {
 		tls->min_encrypted_len_on_read = tls->MAC_size;
-	else {
+	} else {
 		unsigned mac_blocks = (unsigned)(tls->MAC_size + AES_BLOCKSIZE-1) / AES_BLOCKSIZE;
 		/* all incoming packets now should be encrypted and have
 		 * at least IV + (MAC padded to blocksize):
@@ -1740,26 +1715,23 @@ static void tls_xwrite(tls_state_t *tls, int len)
 
 void FAST_FUNC tls_run_copy_loop(tls_state_t *tls)
 {
-	fd_set readfds;
 	int inbuf_size;
 	const int INBUF_STEP = 4 * 1024;
+	struct pollfd pfds[2];
 
-//TODO: convert to poll
-	/* Select loop copying stdin to ofd, and ifd to stdout */
-	FD_ZERO(&readfds);
-	FD_SET(tls->ifd, &readfds);
-	FD_SET(STDIN_FILENO, &readfds);
+	pfds[0].fd = STDIN_FILENO;
+	pfds[0].events = POLLIN;
+	pfds[1].fd = tls->ifd;
+	pfds[1].events = POLLIN;
 
 	inbuf_size = INBUF_STEP;
 	for (;;) {
-		fd_set testfds;
 		int nread;
 
-		testfds = readfds;
-		if (select(tls->ifd + 1, &testfds, NULL, NULL, NULL) < 0)
-			bb_perror_msg_and_die("select");
+		if (safe_poll(pfds, 2, -1) < 0)
+			bb_perror_msg_and_die("poll");
 
-		if (FD_ISSET(STDIN_FILENO, &testfds)) {
+		if (pfds[0].revents) {
 			void *buf;
 
 			dbg("STDIN HAS DATA\n");
@@ -1774,7 +1746,7 @@ void FAST_FUNC tls_run_copy_loop(tls_state_t *tls)
 				/* But TLS has no way to encode this,
 				 * doubt it's ok to do it "raw"
 				 */
-				FD_CLR(STDIN_FILENO, &readfds);
+				pfds[0].fd = -1;
 				tls_free_outbuf(tls); /* mem usage optimization */
 			} else {
 				if (nread == inbuf_size) {
@@ -1788,7 +1760,7 @@ void FAST_FUNC tls_run_copy_loop(tls_state_t *tls)
 				tls_xwrite(tls, nread);
 			}
 		}
-		if (FD_ISSET(tls->ifd, &testfds)) {
+		if (pfds[1].revents) {
 			dbg("NETWORK HAS DATA\n");
  read_record:
 			nread = tls_xread_record(tls);
@@ -1796,7 +1768,7 @@ void FAST_FUNC tls_run_copy_loop(tls_state_t *tls)
 				/* TLS protocol has no real concept of one-sided shutdowns:
 				 * if we get "TLS EOF" from the peer, writes will fail too
 				 */
-				//FD_CLR(tls->ifd, &readfds);
+				//pfds[1].fd = -1;
 				//close(STDOUT_FILENO);
 				//tls_free_inbuf(tls); /* mem usage optimization */
 				//continue;

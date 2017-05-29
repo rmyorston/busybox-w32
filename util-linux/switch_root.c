@@ -141,10 +141,12 @@ int switch_root_main(int argc UNUSED_PARAM, char **argv)
 
 	// If a new console specified, redirect stdin/stdout/stderr to it
 	if (console) {
-		close(0);
-		xopen(console, O_RDWR);
-		xdup2(0, 1);
-		xdup2(0, 2);
+		int fd = open_or_warn(console, O_RDWR);
+		if (fd >= 0) {
+			xmove_fd(fd, 0);
+			xdup2(0, 1);
+			xdup2(0, 2);
+		}
 	}
 
 	// Exec real init
@@ -181,7 +183,7 @@ So there's a step that needs to be sort of atomic but can't be as a shell
 script.  (You can work around this with static linking or very carefully laid
 out paths and sequencing, but it's brittle, ugly, and non-obvious.)
 
-2) The "find | rm" bit will acually delete everything because the mount points
+2) The "find | rm" bit will actually delete everything because the mount points
 still show up (even if their contents don't), and rm -rf will then happily zap
 that.  So the first line is an oversimplification of what you need to do _not_
 to descend into other filesystems and delete their contents.

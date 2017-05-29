@@ -128,7 +128,7 @@ const char *opt_complementary
  "abc"  If groups of two or more chars are specified, the first char
         is the main option and the other chars are secondary options.
         Their flags will be turned on if the main option is found even
-        if they are not specifed on the command line.  For example:
+        if they are not specified on the command line.  For example:
 
         opt_complementary = "abc";
         flags = getopt32(argv, "abcd")
@@ -576,13 +576,7 @@ getopt32(char **argv, const char *applet_opts, ...)
 	 * run_nofork_applet() does this, but we might end up here
 	 * also via gunzip_main() -> gzip_main(). Play safe.
 	 */
-#if defined(__GLIBC__) || ENABLE_PLATFORM_MINGW32
-	optind = 0;
-#else /* BSD style */
-	optind = 1;
-	/* optreset = 1; */
-#endif
-	/* optarg = NULL; opterr = 0; optopt = 0; - do we need this?? */
+	GETOPT_RESET();
 
 	/* Note: just "getopt() <= 0" will not work well for
 	 * "fake" short options, like this one:

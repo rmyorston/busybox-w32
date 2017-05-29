@@ -175,25 +175,6 @@ static void die_if_nologin(void)
 # define die_if_nologin() ((void)0)
 #endif
 
-#if ENABLE_FEATURE_SECURETTY && !ENABLE_PAM
-static int check_securetty(const char *short_tty)
-{
-	char *buf = (char*)"/etc/securetty"; /* any non-NULL is ok */
-	parser_t *parser = config_open2("/etc/securetty", fopen_for_read);
-	while (config_read(parser, &buf, 1, 1, "# \t", PARSE_NORMAL)) {
-		if (strcmp(buf, short_tty) == 0)
-			break;
-		buf = NULL;
-	}
-	config_close(parser);
-	/* buf != NULL here if config file was not found, empty
-	 * or line was found which equals short_tty */
-	return buf != NULL;
-}
-#else
-static ALWAYS_INLINE int check_securetty(const char *short_tty UNUSED_PARAM) { return 1; }
-#endif
-
 #if ENABLE_SELINUX
 static void initselinux(char *username, char *full_tty,
 						security_context_t *user_sid)
@@ -505,7 +486,7 @@ int login_main(int argc UNUSED_PARAM, char **argv)
 		if (opt & LOGIN_OPT_f)
 			break; /* -f USER: success without asking passwd */
 
-		if (pw->pw_uid == 0 && !check_securetty(short_tty))
+		if (pw->pw_uid == 0 && !is_tty_secure(short_tty))
 			goto auth_failed;
 
 		/* Don't check the password if password entry is empty (!) */

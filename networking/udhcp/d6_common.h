@@ -81,8 +81,13 @@ struct d6_option {
 #define D6_OPT_RECONF_MSG    19
 #define D6_OPT_RECONF_ACCEPT 20
 
+#define D6_OPT_DNS_SERVERS   23
+#define D6_OPT_DOMAIN_LIST   24
+
 #define D6_OPT_IA_PD         25
 #define D6_OPT_IAPREFIX      26
+
+#define D6_OPT_CLIENT_FQDN   39
 
 /*** Other shared functions ***/
 
@@ -91,9 +96,13 @@ struct client6_data_t {
 	struct d6_option *ia_na;
 	char **env_ptr;
 	unsigned env_idx;
+	/* link-local IPv6 address */
+	struct in6_addr ll_ip6;
 };
 
 #define client6_data (*(struct client6_data_t*)(&bb_common_bufsiz1[COMMON_BUFSIZE - sizeof(struct client6_data_t)]))
+
+int FAST_FUNC d6_read_interface(const char *interface, int *ifindex, struct in6_addr *nip6, uint8_t *mac);
 
 int FAST_FUNC d6_listen_socket(int port, const char *inf);
 
@@ -112,7 +121,8 @@ int FAST_FUNC d6_send_raw_packet(
 int FAST_FUNC d6_send_kernel_packet(
 		struct d6_packet *d6_pkt, unsigned d6_pkt_size,
 		struct in6_addr *src_ipv6, int source_port,
-		struct in6_addr *dst_ipv6, int dest_port
+		struct in6_addr *dst_ipv6, int dest_port,
+		int ifindex
 );
 
 #if defined CONFIG_UDHCP_DEBUG && CONFIG_UDHCP_DEBUG >= 2

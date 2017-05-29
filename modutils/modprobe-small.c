@@ -79,6 +79,7 @@ int lsmod_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 #define is_rmmod    (ENABLE_RMMOD    && (ONLY_APPLET || applet_name[0] == 'r'))
 
 enum {
+	DEPMOD_OPT_n = (1 << 0), /* dry-run, print to stdout */
 	OPT_q = (1 << 0), /* be quiet */
 	OPT_r = (1 << 1), /* module removal instead of loading */
 };
@@ -168,7 +169,7 @@ static char* find_keyword(char *ptr, size_t len, const char *word)
 
 		/* search for the first char in word */
 		ptr = memchr(ptr, word[0], len);
-		if (ptr == NULL) /* no occurance left, done */
+		if (ptr == NULL) /* no occurrence left, done */
 			break;
 		after_word = is_prefixed_with(ptr, word);
 		if (after_word)
@@ -410,7 +411,7 @@ static FAST_FUNC int fileAction(const char *pathname,
 		if (load_module(pathname, module_load_options) == 0) {
 			/* Load was successful, there is nothing else to do.
 			 * This can happen ONLY for "top-level" module load,
-			 * not a dep, because deps dont do dirscan. */
+			 * not a dep, because deps don't do dirscan. */
 			exit(EXIT_SUCCESS);
 		}
 	}
@@ -477,7 +478,7 @@ static int start_dep_bb_writeout(void)
 	int fd;
 
 	/* depmod -n: write result to stdout */
-	if (applet_name[0] == 'd' && (option_mask32 & 1))
+	if (is_depmod && (option_mask32 & DEPMOD_OPT_n))
 		return STDOUT_FILENO;
 
 	fd = open(DEPFILE_BB".new", O_WRONLY | O_CREAT | O_TRUNC | O_EXCL, 0644);
@@ -764,9 +765,12 @@ static int process_module(char *name, const char *cmdline_options)
 
 	if (!infovec) {
 		/* both dirscan and find_alias found nothing */
-		if (!is_remove && !is_depmod) /* it wasn't rmmod or depmod */
+		if (!is_remove && !is_depmod) { /* it wasn't rmmod or depmod */
 			bb_error_msg("module '%s' not found", name);
 //TODO: _and_die()? or should we continue (un)loading modules listed on cmdline?
+			/* "modprobe non-existing-module; echo $?" must print 1 */
+			exitcode = EXIT_FAILURE;
+		}
 		goto ret;
 	}
 
@@ -862,25 +866,28 @@ Usage: rmmod [-fhswvV] modulename ...
     should eventually fall to zero).
 
 # modprobe
-Usage: modprobe [-v] [-V] [-C config-file] [-n] [-i] [-q] [-b]
-    [-o <modname>] [ --dump-modversions ] <modname> [parameters...]
+Usage: modprobe [-v] [-V] [-C config-file] [-d <dirname> ] [-n] [-i] [-q]
+    [-b] [-o <modname>] [ --dump-modversions ] <modname> [parameters...]
 modprobe -r [-n] [-i] [-v] <modulename> ...
 modprobe -l -t <dirname> [ -a <modulename> ...]
 
 # depmod --help
-depmod 3.4 -- part of module-init-tools
-depmod -[aA] [-n -e -v -q -V -r -u]
+depmod 3.13 -- part of module-init-tools
+depmod -[aA] [-n -e -v -q -V -r -u -w -m]
       [-b basedirectory] [forced_version]
-depmod [-n -e -v -q -r -u] [-F kernelsyms] module1.ko module2.ko ...
+depmod [-n -e -v -q -r -u -w] [-F kernelsyms] module1.ko module2.ko ...
 If no arguments (except options) are given, "depmod -a" is assumed.
 depmod will output a dependency list suitable for the modprobe utility.
 Options:
     -a, --all           Probe all modules
     -A, --quick         Only does the work if there's a new module
-    -n, --show          Write the dependency file on stdout only
     -e, --errsyms       Report not supplied symbols
+    -m, --map           Create the legacy map files
+    -n, --show          Write the dependency file on stdout only
+    -P, --symbol-prefix Architecture symbol prefix
     -V, --version       Print the release version
     -v, --verbose       Enable verbose mode
+    -w, --warn          Warn on duplicates
     -h, --help          Print this usage message
 The following options are useful for people managing distributions:
     -b basedirectory
@@ -889,12 +896,18 @@ The following options are useful for people managing distributions:
     -F kernelsyms
     --filesyms kernelsyms
                         Use the file instead of the current kernel symbols
+    -E Module.symvers
+    --symvers Module.symvers
+                        Use Module.symvers file to check symbol versions
 */
 
 //usage:#if ENABLE_MODPROBE_SMALL
 
-//usage:#define depmod_trivial_usage NOUSAGE_STR
-//usage:#define depmod_full_usage ""
+//usage:#define depmod_trivial_usage "[-n]"
+//usage:#define depmod_full_usage "\n\n"
+//usage:       "Generate modules.dep.bb"
+//usage:     "\n"
+//usage:     "\n	-n	Dry run: print file to stdout"
 
 //usage:#define insmod_trivial_usage
 //usage:	"FILE" IF_FEATURE_CMDLINE_MODULE_OPTIONS(" [SYMBOL=VALUE]...")
@@ -947,10 +960,12 @@ int modprobe_main(int argc UNUSED_PARAM, char **argv)
 		 * -e: report any symbols which a module needs
 		 *  which are not supplied by other modules or the kernel
 		 * -F FILE: System.map (symbols for -e)
-		 * -q, -r, -u: noop?
+		 * -q, -r, -u: noop
 		 * Not supported:
 		 * -b BASEDIR: (TODO!) modules are in
 		 *  $BASEDIR/lib/modules/$VERSION
+		 * -m: create legacy "modules.*map" files (deprecated; in
+		 *  kmod's depmod, prints a warning message and continues)
 		 * -v: human readable deps to stdout
 		 * -V: version (don't want to support it - people may depend
 		 *  on it as an indicator of "standard" depmod)

@@ -715,14 +715,6 @@ static int init_text_buffer(char *fn)
 {
 	int rc;
 
-	flush_undo_data();
-	modified_count = 0;
-	last_modified_count = -1;
-#if ENABLE_FEATURE_VI_YANKMARK
-	/* init the marks */
-	memset(mark, 0, sizeof(mark));
-#endif
-
 	/* allocate/reallocate text buffer */
 	free(text);
 	text_size = 10240;
@@ -737,6 +729,14 @@ static int init_text_buffer(char *fn)
 		// file doesnt exist. Start empty buf with dummy line
 		char_insert(text, '\n', NO_UNDO);
 	}
+
+	flush_undo_data();
+	modified_count = 0;
+	last_modified_count = -1;
+#if ENABLE_FEATURE_VI_YANKMARK
+	/* init the marks */
+	memset(mark, 0, sizeof(mark));
+#endif
 	return rc;
 }
 
@@ -1034,7 +1034,9 @@ static void colon(char *buf)
 	 || strncmp(p, "wn", cnt) == 0
 	 || (p[0] == 'x' && !p[1])
 	) {
-		cnt = file_write(current_filename, text, end - 1);
+		if (modified_count != 0 || p[0] != 'x') {
+			cnt = file_write(current_filename, text, end - 1);
+		}
 		if (cnt < 0) {
 			if (cnt == -1)
 				status_line_bold("Write error: %s", strerror(errno));
@@ -1045,8 +1047,9 @@ static void colon(char *buf)
 				current_filename,
 				count_lines(text, end - 1), cnt
 			);
-			if (p[0] == 'x' || p[1] == 'q' || p[1] == 'n'
-			 || p[0] == 'X' || p[1] == 'Q' || p[1] == 'N'
+			if (p[0] == 'x'
+			 || p[1] == 'q' || p[1] == 'n'
+			 || p[1] == 'Q' || p[1] == 'N'
 			) {
 				editing = 0;
 			}
@@ -1476,16 +1479,19 @@ static void colon(char *buf)
 			goto ret;
 		}
 #endif
-		// how many lines in text[]?
-		li = count_lines(q, r);
-		size = r - q + 1;
 		//if (useforce) {
 			// if "fn" is not write-able, chmod u+w
 			// sprintf(syscmd, "chmod u+w %s", fn);
 			// system(syscmd);
 			// forced = TRUE;
 		//}
-		l = file_write(fn, q, r);
+		if (modified_count != 0 || cmd[0] != 'x') {
+			size = r - q + 1;
+			l = file_write(fn, q, r);
+		} else {
+			size = 0;
+			l = 0;
+		}
 		//if (useforce && forced) {
 			// chmod u-w
 			// sprintf(syscmd, "chmod u-w %s", fn);
@@ -1496,17 +1502,20 @@ static void colon(char *buf)
 			if (l == -1)
 				status_line_bold_errno(fn);
 		} else {
+			// how many lines written
+			li = count_lines(q, q + l - 1);
 			status_line("'%s' %dL, %dC", fn, li, l);
-			if (q == text && r == end - 1 && l == size) {
-				modified_count = 0;
-				last_modified_count = -1;
-			}
-			if ((cmd[0] == 'x' || cmd[1] == 'q' || cmd[1] == 'n'
-			    || cmd[0] == 'X' || cmd[1] == 'Q' || cmd[1] == 'N'
-			    )
-			 && l == size
-			) {
-				editing = 0;
+			if (l == size) {
+				if (q == text && q + l == end) {
+					modified_count = 0;
+					last_modified_count = -1;
+				}
+				if (cmd[0] == 'x'
+				 || cmd[1] == 'q' || cmd[1] == 'n'
+				 || cmd[1] == 'Q' || cmd[1] == 'N'
+				) {
+					editing = 0;
+				}
 			}
 		}
 #if ENABLE_FEATURE_VI_YANKMARK
@@ -2816,8 +2825,15 @@ static int readit(void) // read (maybe cursor) key from stdin
 	int c;
 
 	fflush_all();
-	c = read_key(STDIN_FILENO, readbuffer, /*timeout off:*/ -2);
+
+	// Wait for input. TIMEOUT = -1 makes read_key wait even
+	// on nonblocking stdin.
+	// Note: read_key sets errno to 0 on success.
+ again:
+	c = read_key(STDIN_FILENO, readbuffer, /*timeout:*/ -1);
 	if (c == -1) { // EOF/error
+		if (errno == EAGAIN) // paranoia
+			goto again;
 		go_bottom_and_clear_to_eol();
 		cookmode(); // terminal to "cooked"
 		bb_error_msg_and_die("can't read user input");

@@ -353,6 +353,8 @@ extern int *const bb_errno;
 uint64_t bb_bswap_64(uint64_t x) FAST_FUNC;
 #endif
 
+unsigned long FAST_FUNC isqrt(unsigned long long N);
+
 unsigned long long monotonic_ns(void) FAST_FUNC;
 unsigned long long monotonic_us(void) FAST_FUNC;
 unsigned long long monotonic_ms(void) FAST_FUNC;
@@ -1193,6 +1195,26 @@ extern const char *applet_long_options;
 #endif
 extern uint32_t option_mask32;
 extern uint32_t getopt32(char **argv, const char *applet_opts, ...) FAST_FUNC;
+/* BSD-derived getopt() functions require that optind be set to 1 in
+ * order to reset getopt() state.  This used to be generally accepted
+ * way of resetting getopt().  However, glibc's getopt()
+ * has additional getopt() state beyond optind (specifically, glibc
+ * extensions such as '+' and '-' at the start of the string), and requires
+ * that optind be set to zero to reset its state.  BSD-derived versions
+ * of getopt() misbehaved if optind is set to 0 in order to reset getopt(),
+ * and glibc's getopt() used to coredump if optind is set 1 in order
+ * to reset getopt().
+ * Then BSD introduced additional variable "optreset" which should be
+ * set to 1 in order to reset getopt().  Sigh.  Standards, anyone?
+ *
+ * By ~2008, OpenBSD 3.4 was changed to survive glibc-like optind = 0
+ * (to interpret it as if optreset was set).
+ */
+#if defined(__GLIBC__) || ENABLE_PLATFORM_MINGW32
+#define GETOPT_RESET() (optind = 0)
+#else /* BSD style */
+#define GETOPT_RESET() (optind = 1)
+#endif
 
 
 /* Having next pointer as a first member allows easy creation
@@ -1264,7 +1286,7 @@ extern void bb_logenv_override(void) FAST_FUNC;
 
 
 /* Applets which are useful from another applets */
-int bb_cat(char** argv);
+int bb_cat(char** argv) FAST_FUNC;
 /* If shell needs them, they exist even if not enabled as applets */
 int echo_main(int argc, char** argv) IF_ECHO(MAIN_EXTERNALLY_VISIBLE);
 int printf_main(int argc, char **argv) IF_PRINTF(MAIN_EXTERNALLY_VISIBLE);
@@ -1289,6 +1311,16 @@ int bunzip2_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 #if ENABLE_ROUTE
 void bb_displayroutes(int noresolve, int netstatfmt) FAST_FUNC;
 #endif
+
+struct number_state {
+	unsigned width;
+	unsigned start;
+	unsigned inc;
+	const char *sep;
+	const char *empty_str;
+	smallint all, nonempty;
+};
+void print_numbered_lines(struct number_state *ns, const char *filename) FAST_FUNC;
 
 
 /* Networking */
@@ -1348,10 +1380,15 @@ extern int get_linux_version_code(void) FAST_FUNC;
 
 extern char *query_loop(const char *device) FAST_FUNC;
 extern int del_loop(const char *device) FAST_FUNC;
-/* If *devname is not NULL, use that name, otherwise try to find free one,
+/*
+ * If *devname is not NULL, use that name, otherwise try to find free one,
  * malloc and return it in *devname.
- * return value: 1: read-only loopdev was setup, 0: rw, < 0: error */
-extern int set_loop(char **devname, const char *file, unsigned long long offset, int ro) FAST_FUNC;
+ * return value is the opened fd to the loop device, or < on error
+ */
+extern int set_loop(char **devname, const char *file, unsigned long long offset, unsigned flags) FAST_FUNC;
+/* These constants match linux/loop.h (without BB_ prefix): */
+#define BB_LO_FLAGS_READ_ONLY 1
+#define BB_LO_FLAGS_AUTOCLEAR 4
 
 /* Like bb_ask below, but asks on stdin with no timeout.  */
 char *bb_ask_stdin(const char * prompt) FAST_FUNC;
@@ -1463,6 +1500,12 @@ extern void selinux_or_die(void) FAST_FUNC;
 #define SETUP_ENV_NO_CHDIR  (1 << 4)
 void setup_environment(const char *shell, int flags, const struct passwd *pw) FAST_FUNC;
 void nuke_str(char *str) FAST_FUNC;
+#if ENABLE_FEATURE_SECURETTY && !ENABLE_PAM
+int is_tty_secure(const char *short_tty) FAST_FUNC;
+#else
+static ALWAYS_INLINE int is_tty_secure(const char *short_tty UNUSED_PARAM) { return 1; }
+#endif
+#define CHECKPASS_PW_HAS_EMPTY_PASSWORD 2
 int check_password(const struct passwd *pw, const char *plaintext) FAST_FUNC;
 int ask_and_check_password_extended(const struct passwd *pw, int timeout, const char *prompt) FAST_FUNC;
 int ask_and_check_password(const struct passwd *pw) FAST_FUNC;
