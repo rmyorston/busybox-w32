@@ -117,7 +117,7 @@ int nc_main(int argc, char **argv)
 	IF_NOT_NC_EXTRA (const) unsigned delay = 0;
 	IF_NOT_NC_EXTRA (const int execparam = 0;)
 	IF_NC_EXTRA     (char **execparam = NULL;)
-	struct pollfd pfds[2];
+	fd_set readfds, testfds;
 	int opt; /* must be signed (getopt returns -1) */
 
 	if (ENABLE_NC_SERVER || ENABLE_NC_EXTRA) {
@@ -235,28 +235,29 @@ int nc_main(int argc, char **argv)
 		IF_NC_EXTRA(bb_perror_msg_and_die("can't execute '%s'", execparam[0]);)
 	}
 
-	/* loop copying stdin to cfd, and cfd to stdout */
+	/* Select loop copying stdin to cfd, and cfd to stdout */
 
-	pfds[0].fd = STDIN_FILENO;
-	pfds[0].events = POLLIN;
-	pfds[1].fd = cfd;
-	pfds[1].events = POLLIN;
+	FD_ZERO(&readfds);
+	FD_SET(cfd, &readfds);
+	FD_SET(STDIN_FILENO, &readfds);
 
 #define iobuf bb_common_bufsiz1
 	setup_common_bufsiz();
 	for (;;) {
-		int fdidx;
+		int fd;
 		int ofd;
 		int nread;
 
-		if (safe_poll(pfds, 2, -1) < 0)
-			bb_perror_msg_and_die("poll");
+		testfds = readfds;
 
-		fdidx = 0;
+		if (select(cfd + 1, &testfds, NULL, NULL, NULL) < 0)
+			bb_perror_msg_and_die("select");
+
+		fd = STDIN_FILENO;
 		while (1) {
-			if (pfds[fdidx].revents) {
-				nread = safe_read(pfds[fdidx].fd, iobuf, COMMON_BUFSIZE);
-				if (fdidx != 0) {
+			if (FD_ISSET(fd, &testfds)) {
+				nread = safe_read(fd, iobuf, COMMON_BUFSIZE);
+				if (fd == cfd) {
 					if (nread < 1)
 						exit(EXIT_SUCCESS);
 					ofd = STDOUT_FILENO;
@@ -265,7 +266,7 @@ int nc_main(int argc, char **argv)
 						/* Close outgoing half-connection so they get EOF,
 						 * but leave incoming alone so we can see response */
 						shutdown(cfd, SHUT_WR);
-						pfds[0].fd = -1;
+						FD_CLR(STDIN_FILENO, &readfds);
 					}
 					ofd = cfd;
 				}
@@ -273,9 +274,9 @@ int nc_main(int argc, char **argv)
 				if (delay > 0)
 					sleep(delay);
 			}
-			if (fdidx == 1)
+			if (fd == cfd)
 				break;
-			fdidx++;
+			fd = cfd;
 		}
 	}
 }
