@@ -1820,10 +1820,12 @@ static void keypress_process(int keypress)
 		number_process(keypress);
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 static void sig_catcher(int sig)
 {
 	less_exit(- sig);
 }
+#endif
 
 #if ENABLE_FEATURE_LESS_WINCH
 static void sigwinch_handler(int sig UNUSED_PARAM)
