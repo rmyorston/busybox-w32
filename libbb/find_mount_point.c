@@ -20,11 +20,12 @@
 struct mntent* FAST_FUNC find_mount_point(const char *name, int subdir_too)
 {
 	struct stat s;
-	FILE *mtab_fp;
 	struct mntent *mountEntry;
+#if !ENABLE_PLATFORM_MINGW32
+	FILE *mtab_fp;
 	dev_t devno_of_name;
 	bool block_dev;
-#if ENABLE_PLATFORM_MINGW32
+#else
 	static char mnt_fsname[4];
 	static char mnt_dir[4];
 	static struct mntent my_mount_entry = { mnt_fsname, mnt_dir, "", "", 0, 0 };
