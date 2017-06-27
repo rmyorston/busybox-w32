@@ -25,7 +25,7 @@
 #endif
 
 #if ( S_IFSOCK!= 0140000 ) || ( S_IFLNK != 0120000 ) \
- || ( S_IFREG != 0100000 ) || ( S_IFBLK != 0060000 ) \
+ || ( S_IFREG != 0100000 ) || ( S_IFBLK != 0060000 && S_IFBLK != 0030000 ) \
  || ( S_IFDIR != 0040000 ) || ( S_IFCHR != 0020000 ) \
  || ( S_IFIFO != 0010000 )
 #warning mode type bitflag value assumption(s) violated! falling back to larger version
