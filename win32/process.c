@@ -208,14 +208,14 @@ quote_arg(const char *arg)
 }
 
 static intptr_t
-spawnveq(int mode, const char *path, const char *const *argv, const char *const *env)
+spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 {
 	char **new_argv;
 	int i, argc = 0;
 	intptr_t ret;
 
 	if (!argv) {
-		const char *empty_argv[] = { path, NULL };
+		char *const empty_argv[] = { (char *)path, NULL };
 		return spawnve(mode, path, empty_argv, env);
 	}
 
@@ -227,7 +227,7 @@ spawnveq(int mode, const char *path, const char *const *argv, const char *const 
 	for (i = 0;i < argc;i++)
 		new_argv[i] = quote_arg(argv[i]);
 	new_argv[argc] = NULL;
-	ret = spawnve(mode, path, (const char *const *)new_argv, env);
+	ret = spawnve(mode, path, new_argv, env);
 	for (i = 0;i < argc;i++)
 		if (new_argv[i] != argv[i])
 			free(new_argv[i]);
@@ -238,21 +238,21 @@ spawnveq(int mode, const char *path, const char *const *argv, const char *const 
 #if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
 static intptr_t
 mingw_spawn_applet(int mode,
-		   const char *const *argv,
-		   const char *const *envp)
+		   char *const *argv,
+		   char *const *envp)
 {
 	return spawnveq(mode, bb_busybox_exec_path, argv, envp);
 }
 #endif
 
 static intptr_t
-mingw_spawn_interpreter(int mode, const char *prog, const char *const *argv, const char *const *envp)
+mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *const *envp)
 {
 	intptr_t ret;
 	char **opts;
 	int nopts;
 	const char *interpr = parse_interpreter(prog, &opts, &nopts);
-	const char **new_argv;
+	char **new_argv;
 	int argc = 0;
 
 	if (!interpr)
@@ -264,11 +264,11 @@ mingw_spawn_interpreter(int mode, const char *prog, const char *const *argv, con
 	new_argv = malloc(sizeof(*argv)*(argc+nopts+2));
 	memcpy(new_argv+1, opts, sizeof(*opts)*nopts);
 	memcpy(new_argv+nopts+2, argv+1, sizeof(*argv)*argc);
-	new_argv[nopts+1] = prog; /* pass absolute path */
+	new_argv[nopts+1] = (char *)prog; /* pass absolute path */
 
 #if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
 	if (find_applet_by_name(interpr) >= 0) {
-		new_argv[0] = interpr;
+		new_argv[0] = (char *)interpr;
 		ret = mingw_spawn_applet(mode, new_argv, envp);
 	} else
 #endif
@@ -292,7 +292,7 @@ mingw_spawn_interpreter(int mode, const char *prog, const char *const *argv, con
 }
 
 static intptr_t
-mingw_spawn_1(int mode, const char *cmd, const char *const *argv, const char *const *envp)
+mingw_spawn_1(int mode, const char *cmd, char *const *argv, char *const *envp)
 {
 	intptr_t ret;
 
@@ -331,30 +331,28 @@ mingw_spawn(char **argv)
 {
 	intptr_t ret;
 
-	ret = mingw_spawn_1(P_NOWAIT, argv[0], (const char *const *)argv,
-			(const char *const *)environ);
+	ret = mingw_spawn_1(P_NOWAIT, argv[0], (char *const *)argv, environ);
 
 	return ret == -1 ? -1 : GetProcessId((HANDLE)ret);
 }
 
 intptr_t FAST_FUNC
-mingw_spawn_proc(char **argv)
+mingw_spawn_proc(const char **argv)
 {
-	return mingw_spawn_1(P_NOWAIT, argv[0], (const char *const *)argv,
-			(const char *const *)environ);
+	return mingw_spawn_1(P_NOWAIT, argv[0], (char *const *)argv, environ);
 }
 
 int
-mingw_execvp(const char *cmd, const char *const *argv)
+mingw_execvp(const char *cmd, char *const *argv)
 {
-	int ret = (int)mingw_spawn_1(P_WAIT, cmd, argv, (const char *const *)environ);
+	int ret = (int)mingw_spawn_1(P_WAIT, cmd, argv, environ);
 	if (ret != -1)
 		exit(ret);
 	return ret;
 }
 
 int
-mingw_execve(const char *cmd, const char *const *argv, const char *const *envp)
+mingw_execve(const char *cmd, char *const *argv, char *const *envp)
 {
 	int ret;
 	int mode = P_WAIT;
@@ -366,9 +364,9 @@ mingw_execve(const char *cmd, const char *const *argv, const char *const *envp)
 }
 
 int
-mingw_execv(const char *cmd, const char *const *argv)
+mingw_execv(const char *cmd, char *const *argv)
 {
-	return mingw_execve(cmd, argv, (const char *const *)environ);
+	return mingw_execve(cmd, argv, environ);
 }
 
 /* POSIX version in libbb/procps.c */
