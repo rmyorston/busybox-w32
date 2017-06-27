@@ -447,6 +447,8 @@ __strptime_internal (const char *rp, const char *fmt, struct tm *tm,
               }
             if (val > 1200)
               return NULL;
+            if (neg)
+              val = -val;
           }
           break;
         case 'E':
