@@ -14716,7 +14716,7 @@ spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
 	intptr_t ret;
 
 	new = forkshell_prepare(fs);
-	sprintf(buf, "%x", (unsigned int)new->hMapFile);
+	sprintf(buf, "%p", new->hMapFile);
 	argv[2] = buf;
 	ret = mingw_spawn_proc(argv);
 	CloseHandle(new->hMapFile);
