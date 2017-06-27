@@ -15134,14 +15134,14 @@ static void
 forkshell_init(const char *idstr)
 {
 	struct forkshell *fs;
-	int map_handle;
+	void *map_handle;
 	HANDLE h;
 	struct globals_var **gvpp;
 	struct globals_misc **gmpp;
 	int i;
 	char **ptr;
 
-	if (sscanf(idstr, "%x", &map_handle) != 1)
+	if (sscanf(idstr, "%p", &map_handle) != 1)
 		bb_error_msg_and_die("invalid forkshell ID");
 
 	h = (HANDLE)map_handle;
@@ -15168,7 +15168,7 @@ forkshell_init(const char *idstr)
 		struct tblentry *e = fs->cmdtable[i];
 		while (e) {
 			if (e->cmdtype == CMDBUILTIN)
-				e->param.cmd = builtintab + (int)e->param.cmd;
+				e->param.cmd = builtintab + (int)(intptr_t)e->param.cmd;
 			e = e->next;
 		}
 	}
