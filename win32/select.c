@@ -252,7 +252,7 @@ mingw_select (int nfds, fd_set *rfds, fd_set *wfds, fd_set *xfds,
   DWORD ret, wait_timeout, nhandles, nsock, nbuffer;
   MSG msg;
   int i, fd, rc;
-  clock_t tend;
+  clock_t tend = 0;
 
   if (nfds > FD_SETSIZE)
     nfds = FD_SETSIZE;
