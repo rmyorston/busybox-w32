@@ -35,8 +35,13 @@ struct mntent* FAST_FUNC find_mount_point(const char *name,
 #else
 	static char mnt_fsname[4];
 	static char mnt_dir[4];
-	static struct mntent my_mount_entry = { mnt_fsname, mnt_dir, "", "", 0, 0 };
-	char *current, *path;
+	static char mnt_type[1];
+	static char mnt_opts[1];
+	static struct mntent my_mount_entry = {
+		mnt_fsname, mnt_dir, mnt_type, mnt_opts, 0, 0
+	};
+	char *current;
+	const char *path;
 	DWORD len;
 #endif
 
