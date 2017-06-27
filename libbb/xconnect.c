@@ -69,6 +69,7 @@ int FAST_FUNC setsockopt_bindtodevice(int fd UNUSED_PARAM,
 }
 #endif
 
+#if !ENABLE_PLATFORM_MINGW32
 static len_and_sockaddr* get_lsa(int fd, int (*get_name)(int fd, struct sockaddr *addr, socklen_t *addrlen))
 {
 	len_and_sockaddr lsa;
@@ -97,6 +98,7 @@ len_and_sockaddr* FAST_FUNC get_peer_lsa(int fd)
 {
 	return get_lsa(fd, getpeername);
 }
+#endif
 
 void FAST_FUNC xconnect(int s, const struct sockaddr *saddr, socklen_t addrlen)
 {
