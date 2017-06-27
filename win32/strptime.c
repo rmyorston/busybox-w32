@@ -21,6 +21,7 @@
  * and lightly edited.
  */
 
+#include "libbb.h"
 #include <time.h>
 
 #include <assert.h>
