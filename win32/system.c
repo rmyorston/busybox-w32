@@ -10,7 +10,7 @@ int mingw_system(const char *cmd)
 	if (cmd == NULL)
 		return 1;
 
-	if ((proc=mingw_spawn_proc((char **)argv)) == -1)
+	if ((proc=mingw_spawn_proc(argv)) == -1)
 		return -1;
 
 	h = (HANDLE)proc;

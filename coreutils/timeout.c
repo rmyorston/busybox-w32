@@ -140,7 +140,7 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 	if (argv[0] == NULL)
 		bb_show_usage();
 
-	if ((ret=mingw_spawn_proc(argv)) == -1)
+	if ((ret=mingw_spawn_proc((const char **)argv)) == -1)
 		bb_perror_msg_and_die("can't execute '%s'", argv[0]);
 
 	h = (HANDLE)ret;
