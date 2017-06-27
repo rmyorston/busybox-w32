@@ -456,6 +456,8 @@ __strptime_internal (rp, fmt, tm, decided, era_cnt LOCALE_PARAM)
               }
             if (val > 1200)
               return NULL;
+            if (neg)
+              val = -val;
           }
           break;
         case 'E':
