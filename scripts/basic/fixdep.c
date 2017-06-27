@@ -337,7 +337,7 @@ void do_config_file(char *filename)
 	int fd;
 	void *map;
 
-	fd = open(filename, O_RDONLY);
+	fd = open(filename, O_RDONLY | O_BINARY);
 	if (fd < 0) {
 		fprintf(stderr, "fixdep: ");
 		perror(filename);
@@ -408,7 +408,7 @@ void print_deps(void)
 	int fd;
 	void *map;
 
-	fd = open(depfile, O_RDONLY);
+	fd = open(depfile, O_RDONLY | O_BINARY);
 	if (fd < 0) {
 		fprintf(stderr, "fixdep: ");
 		perror(depfile);
