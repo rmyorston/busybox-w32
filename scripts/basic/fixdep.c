@@ -385,10 +385,12 @@ void parse_dep_file(void *map, size_t len)
 			m++;
 		p = m;
 		while (p < end && *p != ' ') p++;
+		if (p == m) break;
 		if (p == end) {
-			do p--; while (!isalnum(*p));
+			do p--; while (p != m && !isalnum(*p));
 			p++;
 		}
+		if (p == m) break;
 		memcpy(s, m, p-m); s[p-m] = 0;
 		if (strrcmp(s, "include/autoconf.h") &&
 		    strrcmp(s, "arch/um/include/uml-config.h") &&
@@ -396,6 +398,7 @@ void parse_dep_file(void *map, size_t len)
 			printf("  %s \\\n", s);
 			do_config_file(s);
 		}
+		if (p == end) break;
 		m = p + 1;
 	}
 	printf("\n%s: $(deps_%s)\n\n", target, target);
