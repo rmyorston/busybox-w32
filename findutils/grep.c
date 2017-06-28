@@ -174,7 +174,9 @@ enum {
 #define NUL_DELIMITED               (option_mask32 & OPT_z)
 
 #if ENABLE_PLATFORM_MINGW32
-# define RE_TRANSLATE_TYPE unsigned char*
+# ifndef RE_TRANSLATE_TYPE
+#  define RE_TRANSLATE_TYPE unsigned char*
+# endif
 # undef ENABLE_EXTRA_COMPAT
 # define ENABLE_EXTRA_COMPAT 0
 # undef IF_EXTRA_COMPAT
