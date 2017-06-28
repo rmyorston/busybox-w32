@@ -18,6 +18,8 @@
    Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301 USA.  */
 
+#define UNUSED_PARAM __attribute__ ((__unused__))
+
 static reg_errcode_t re_compile_internal (regex_t *preg, const char * pattern,
 					  size_t length, reg_syntax_t syntax);
 static void re_compile_fastmap_iter (regex_t *bufp,
@@ -542,7 +544,7 @@ weak_alias (__regcomp, regcomp)
    from either regcomp or regexec.   We don't use PREG here.  */
 
 size_t
-regerror(int errcode, const regex_t *__restrict preg,
+regerror(int errcode, UNUSED_PARAM const regex_t *__restrict preg,
 	 char *__restrict errbuf, size_t errbuf_size)
 {
   const char *msg;
@@ -841,7 +843,7 @@ init_dfa (re_dfa_t *dfa, size_t pat_len)
 {
   unsigned int table_size;
 #ifndef _LIBC
-  char *codeset_name;
+  const char *codeset_name;
 #endif
 
   memset (dfa, '\0', sizeof (re_dfa_t));
@@ -1035,9 +1037,8 @@ create_initial_state (re_dfa_t *dfa)
 	    int dest_idx = dfa->edests[node_idx].elems[0];
 	    if (!re_node_set_contains (&init_nodes, dest_idx))
 	      {
-		reg_errcode_t err = re_node_set_merge (&init_nodes,
-						       dfa->eclosures
-						       + dest_idx);
+		err = re_node_set_merge (&init_nodes,
+					 dfa->eclosures + dest_idx);
 		if (err != REG_NOERROR)
 		  return err;
 		i = 0;
@@ -1388,7 +1389,7 @@ calc_first (void *extra, bin_tree_t *node)
 
 /* Pass 2: compute NEXT on the tree.  Preorder visit.  */
 static reg_errcode_t
-calc_next (void *extra, bin_tree_t *node)
+calc_next (UNUSED_PARAM void *extra, bin_tree_t *node)
 {
   switch (node->token.type)
     {
@@ -3336,8 +3337,9 @@ parse_bracket_exp (re_string_t *regexp, re_dfa_t *dfa, re_token_t *token,
 
 static reg_errcode_t
 parse_bracket_element (bracket_elem_t *elem, re_string_t *regexp,
-		       re_token_t *token, int token_len, re_dfa_t *dfa,
-		       reg_syntax_t syntax, int accept_hyphen)
+		       re_token_t *token, int token_len,
+		       UNUSED_PARAM re_dfa_t *dfa, reg_syntax_t syntax,
+		       int accept_hyphen)
 {
 #ifdef RE_ENABLE_I18N
   int cur_char_size;
@@ -3831,7 +3833,7 @@ free_token (re_token_t *node)
    and its children. */
 
 static reg_errcode_t
-free_tree (void *extra, bin_tree_t *node)
+free_tree (UNUSED_PARAM void *extra, bin_tree_t *node)
 {
   free_token (&node->token);
   return REG_NOERROR;

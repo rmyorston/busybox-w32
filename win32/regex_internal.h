@@ -115,7 +115,7 @@ is_blank (int c)
 #define MB_CUR_MAX 1
 #endif
 
-#if (defined MBS_SUPPORT) || _LIBC
+#if (defined MBS_SUPPORT) || defined _LIBC
 # define RE_ENABLE_I18N
 #endif
 
@@ -454,7 +454,7 @@ static unsigned int re_string_context_at (const re_string_t *input, int idx,
 
 #ifndef _LIBC
 # if HAVE_ALLOCA
-#  if (_MSC_VER)
+#  ifdef (_MSC_VER)
 #   include <malloc.h>
 #   define __libc_use_alloca(n) 0
 #  else

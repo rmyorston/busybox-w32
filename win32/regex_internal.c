@@ -685,7 +685,7 @@ re_string_reconstruct (re_string_t *pstr, int idx, int eflags)
 			 pstr->valid_len - offset);
 	      pstr->valid_len -= offset;
 	      pstr->valid_raw_len -= offset;
-#if DEBUG
+#ifdef DEBUG
 	      assert (pstr->valid_len > 0);
 #endif
 	    }
