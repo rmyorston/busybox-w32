@@ -420,6 +420,7 @@ int mingw_unlink(const char *pathname);
 NOIMPL(vfork,void);
 int mingw_access(const char *name, int mode);
 int mingw_rmdir(const char *name);
+int mingw_isatty(int fd);
 
 #define dup2 mingw_dup2
 #define getcwd mingw_getcwd
@@ -432,6 +433,7 @@ int mingw_rmdir(const char *name);
 
 #undef access
 #define access mingw_access
+#define isatty mingw_isatty
 
 /*
  * utime.h
