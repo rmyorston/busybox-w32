@@ -471,6 +471,34 @@ const char * next_path_sep(const char *path);
 #define find_mount_point(n, s) find_mount_point(n)
 #define add_to_ino_dev_hashtable(s, n) (void)0
 
+/* Ensure that isatty(fd) returns 0 for the NUL device */
+static inline int mingw_isatty(int fd)
+{
+	int result = _isatty(fd);
+
+	if (result) {
+		HANDLE handle = (HANDLE) _get_osfhandle(fd);
+		CONSOLE_SCREEN_BUFFER_INFO sbi;
+		DWORD mode;
+
+	        if (handle == INVALID_HANDLE_VALUE)
+	                return 0;
+
+	        /* check if its a device (i.e. console, printer, serial port) */
+	        if (GetFileType(handle) != FILE_TYPE_CHAR)
+	                return 0;
+
+		if (!fd) {
+			if (!GetConsoleMode(handle, &mode))
+				return 0;
+		} else if (!GetConsoleScreenBufferInfo(handle, &sbi))
+			return 0;
+	}
+
+	return result;
+}
+#define isatty mingw_isatty
+
 /*
  * helpers
  */
