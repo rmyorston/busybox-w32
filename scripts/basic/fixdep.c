@@ -337,7 +337,7 @@ void do_config_file(char *filename)
 	int fd;
 	void *map;
 
-	fd = open(filename, O_RDONLY);
+	fd = open(filename, O_RDONLY | O_BINARY);
 	if (fd < 0) {
 		fprintf(stderr, "fixdep: ");
 		perror(filename);
@@ -349,7 +349,7 @@ void do_config_file(char *filename)
 		return;
 	}
 	map = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-	if ((long) map == -1) {
+	if ((intptr_t) map == -1) {
 		perror("fixdep: mmap");
 		close(fd);
 		return;
@@ -385,10 +385,12 @@ void parse_dep_file(void *map, size_t len)
 			m++;
 		p = m;
 		while (p < end && *p != ' ') p++;
+		if (p == m) break;
 		if (p == end) {
-			do p--; while (!isalnum(*p));
+			do p--; while (p != m && !isalnum(*p));
 			p++;
 		}
+		if (p == m) break;
 		memcpy(s, m, p-m); s[p-m] = 0;
 		if (strrcmp(s, "include/autoconf.h") &&
 		    strrcmp(s, "arch/um/include/uml-config.h") &&
@@ -396,6 +398,7 @@ void parse_dep_file(void *map, size_t len)
 			printf("  %s \\\n", s);
 			do_config_file(s);
 		}
+		if (p == end) break;
 		m = p + 1;
 	}
 	printf("\n%s: $(deps_%s)\n\n", target, target);
@@ -408,7 +411,7 @@ void print_deps(void)
 	int fd;
 	void *map;
 
-	fd = open(depfile, O_RDONLY);
+	fd = open(depfile, O_RDONLY | O_BINARY);
 	if (fd < 0) {
 		fprintf(stderr, "fixdep: ");
 		perror(depfile);
@@ -421,7 +424,7 @@ void print_deps(void)
 		return;
 	}
 	map = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-	if ((long) map == -1) {
+	if ((intptr_t) map == -1) {
 		perror("fixdep: mmap");
 		close(fd);
 		return;

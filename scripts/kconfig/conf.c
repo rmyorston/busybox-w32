@@ -153,9 +153,14 @@ static void conf_askvalue(struct symbol *sym, const char *def)
 			break;
 		}
 	case set_random:
+#ifdef __MINGW32__
+		fprintf(stderr, "set_random not supported\n");
+		exit(1);
+#else
 		do {
 			val = (tristate)(random() % 3);
 		} while (!sym_tristate_within_range(sym, val));
+#endif
 		switch (val) {
 		case no: line[0] = 'n'; break;
 		case mod: line[0] = 'm'; break;
@@ -366,7 +371,12 @@ static int conf_choice(struct menu *menu)
 				continue;
 			break;
 		case set_random:
+#ifdef __MINGW32__
+		fprintf(stderr, "set_random not supported\n");
+		exit(1);
+#else
 			def = (random() % cnt) + 1;
+#endif
 		case set_default:
 		case set_yes:
 		case set_mod:
@@ -522,8 +532,13 @@ int main(int ac, char **av)
 			input_mode = set_yes;
 			break;
 		case 'r':
+#ifdef __MINGW32__
+			fprintf(stderr, "set_random not supported\n");
+			exit(1);
+#else
 			input_mode = set_random;
 			srandom(time(NULL));
+#endif
 			break;
 		case 'h':
 		case '?':
