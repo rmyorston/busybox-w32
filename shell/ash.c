@@ -4461,11 +4461,11 @@ dowait(int block, struct job *job)
 					jobno(jp), pid, ps->ps_status, status));
 				ps->ps_status = status;
 				thisjob = jp;
-				if (ENABLE_PLATFORM_MINGW32) {
-					ps->ps_pid = -1;
-					CloseHandle(ps->ps_proc);
-					ps->ps_proc = NULL;
-				}
+#if ENABLE_PLATFORM_MINGW32
+				ps->ps_pid = -1;
+				CloseHandle(ps->ps_proc);
+				ps->ps_proc = NULL;
+#endif
 			}
 			if (ps->ps_status == -1)
 				jobstate = JOBRUNNING;
