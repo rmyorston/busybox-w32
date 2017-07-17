@@ -10,11 +10,13 @@
 
 const char* FAST_FUNC bb_basename(const char *name)
 {
-	const char *cp = strrchr(name, '/');
-	if (cp)
-		return cp + 1;
 #if ENABLE_PLATFORM_MINGW32
-	cp = strrchr(name, '\\');
+	const char *cp;
+	for (cp = name; *cp; cp++)
+		if (*cp == '/' || *cp == '\\')
+			name = cp + 1;
+#else
+	const char *cp = strrchr(name, '/');
 	if (cp)
 		return cp + 1;
 #endif
