@@ -78,6 +78,17 @@
 #endif
 
 
+unsigned FAST_FUNC string_array_len(char **argv)
+{
+	char **start = argv;
+
+	while (*argv)
+		argv++;
+
+	return argv - start;
+}
+
+
 #if ENABLE_SHOW_USAGE && !ENABLE_FEATURE_COMPRESS_USAGE
 static const char usage_messages[] ALIGN1 = UNPACKED_USAGE;
 #else
@@ -675,8 +686,21 @@ static void check_suid(int applet_no)
 		if (geteuid())
 			bb_error_msg_and_die("must be suid to work properly");
 	} else if (APPLET_SUID(applet_no) == BB_SUID_DROP) {
-		xsetgid(rgid);  /* drop all privileges */
-		xsetuid(ruid);
+		/*
+		 * Drop all privileges.
+		 *
+		 * Don't check for errors: in normal use, they are impossible,
+		 * and in special cases, exiting is harmful. Example:
+		 * 'unshare --user' when user's shell is also from busybox.
+		 *
+		 * 'unshare --user' creates a new user namespace without any
+		 * uid mappings. Thus, busybox binary is setuid nobody:nogroup
+		 * within the namespace, as that is the only user. However,
+		 * since no uids are mapped, calls to setgid/setuid
+		 * fail (even though they would do nothing).
+		 */
+		setgid(rgid);
+		setuid(ruid);
 	}
 #  if ENABLE_FEATURE_SUID_CONFIG
  ret: ;
@@ -919,16 +943,17 @@ static int busybox_main(char **argv)
 # endif
 
 # if NUM_APPLETS > 0
-void FAST_FUNC run_applet_no_and_exit(int applet_no, char **argv)
+void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **argv)
 {
-	int argc = 1;
-
-	while (argv[argc])
-		argc++;
+	int argc = string_array_len(argv);
 
 	/* Reinit some shared global data */
 	xfunc_error_retval = EXIT_FAILURE;
-	applet_name = bb_get_last_path_component_nostrip(argv[0]);
+	/*
+	 * We do not use argv[0]: do not want to repeat massaging of
+	 * "-/sbin/halt" -> "halt", for example.
+	 */
+	applet_name = name;
 
 	/* Special case. POSIX says "test --help"
 	 * should be no different from e.g. "test --foo".
@@ -972,7 +997,7 @@ static NORETURN void run_applet_and_exit(const char *name, char **argv)
 	{
 		int applet = find_applet_by_name(name);
 		if (applet >= 0)
-			run_applet_no_and_exit(applet, argv);
+			run_applet_no_and_exit(applet, name, argv);
 	}
 #  endif
 
@@ -1058,7 +1083,11 @@ int main(int argc UNUSED_PARAM, char **argv)
 	}
 	/* applet_names in this case is just "applet\0\0" */
 	lbb_prepare(applet_names IF_FEATURE_INDIVIDUAL(, argv));
+# if ENABLE_BUILD_LIBBUSYBOX
+	return SINGLE_APPLET_MAIN(string_array_len(argv), argv);
+# else
 	return SINGLE_APPLET_MAIN(argc, argv);
+# endif
 
 #elif !ENABLE_BUSYBOX && NUM_APPLETS == 0
 

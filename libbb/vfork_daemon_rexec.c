@@ -16,6 +16,7 @@
  */
 
 #include "busybox.h" /* uses applet tables */
+#include "NUM_APPLETS.h"
 
 #if !ENABLE_PLATFORM_MINGW32
 /* This does a fork/exec in one call, using vfork().  Returns PID of new child,
@@ -158,7 +159,7 @@ int FAST_FUNC run_nofork_applet(int applet_no, char **argv)
 int FAST_FUNC spawn_and_wait(char **argv)
 {
 	int rc;
-#if ENABLE_FEATURE_PREFER_APPLETS
+#if ENABLE_FEATURE_PREFER_APPLETS && (NUM_APPLETS > 1)
 	int a = find_applet_by_name(argv[0]);
 
 	if (a >= 0) {
@@ -182,7 +183,7 @@ int FAST_FUNC spawn_and_wait(char **argv)
 			 * as of yet (and that should probably always stay true).
 			 */
 			/* xfunc_error_retval and applet_name are init by: */
-			run_applet_no_and_exit(a, argv);
+			run_applet_no_and_exit(a, argv[0], argv);
 		}
 #  endif
 # endif

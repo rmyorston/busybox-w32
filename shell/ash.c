@@ -2566,12 +2566,8 @@ putprompt(const char *s)
 }
 #endif
 
-#if ENABLE_ASH_EXPAND_PRMT
 /* expandstr() needs parsing machinery, so it is far away ahead... */
 static const char *expandstr(const char *ps);
-#else
-#define expandstr(s) s
-#endif
 
 static void
 setprompt_if(smallint do_set, int whichprompt)
@@ -2596,10 +2592,10 @@ setprompt_if(smallint do_set, int whichprompt)
 	}
 #if ENABLE_ASH_EXPAND_PRMT
 	pushstackmark(&smark, stackblocksize());
-#endif
 	putprompt(expandstr(prompt));
-#if ENABLE_ASH_EXPAND_PRMT
 	popstackmark(&smark);
+#else
+	putprompt(prompt);
 #endif
 }
 
@@ -4244,15 +4240,19 @@ sprint_status48(char *s, int status, int sigonly)
 
 	col = 0;
 	if (!WIFEXITED(status)) {
-		if (JOBS && WIFSTOPPED(status))
+#if JOBS
+		if (WIFSTOPPED(status))
 			st = WSTOPSIG(status);
 		else
+#endif
 			st = WTERMSIG(status);
 		if (sigonly) {
 			if (st == SIGINT || st == SIGPIPE)
 				goto out;
-			if (JOBS && WIFSTOPPED(status))
+#if JOBS
+			if (WIFSTOPPED(status))
 				goto out;
+#endif
 		}
 		st &= 0x7f;
 //TODO: use bbox's get_signame? strsignal adds ~600 bytes to text+rodata
@@ -4501,8 +4501,10 @@ dowait(int block, struct job *job)
 		goto out;
 	}
 	/* The process wasn't found in job list */
-	if (JOBS && !WIFSTOPPED(status))
+#if JOBS
+	if (!WIFSTOPPED(status))
 		jobless--;
+#endif
  out:
 	INT_ON;
 
@@ -6285,6 +6287,7 @@ rmescapes(char *str, int flag)
 	while (*p) {
 		if ((unsigned char)*p == CTLQUOTEMARK) {
 // Note: both inquotes and protect_against_glob only affect whether
+// CTLESC,<ch> gets converted to <ch> or to \<ch>
 			inquotes = ~inquotes;
 			p++;
 			protect_against_glob = globbing;
@@ -6297,7 +6300,33 @@ rmescapes(char *str, int flag)
 				ash_msg_and_raise_error("CTLESC at EOL (shouldn't happen)");
 #endif
 			if (protect_against_glob) {
-				*q++ = '\\';
+				/*
+				 * We used to trust glob() and fnmatch() to eat
+				 * superfluous escapes (\z where z has no
+				 * special meaning anyway). But this causes
+				 * bugs such as string of one greek letter rho
+				 * (unicode-encoded as two bytes "cf,81")
+				 * getting encoded as "cf,CTLESC,81"
+				 * and here, converted to "cf,\,81" -
+				 * which does not go well with some flavors
+				 * of fnmatch() in unicode locales
+				 * (for example, glibc <= 2.22).
+				 *
+				 * Lets add "\" only on the chars which need it.
+				 * Testcases for less obvious chars are shown.
+				 */
+				if (*p == '*'
+				 || *p == '?'
+				 || *p == '['
+				 || *p == '\\' /* case '\' in \\ ) echo ok;; *) echo WRONG;; esac */
+				 || *p == ']' /* case ']' in [a\]] ) echo ok;; *) echo WRONG;; esac */
+				 || *p == '-' /* case '-' in [a\-c]) echo ok;; *) echo WRONG;; esac */
+				 || *p == '!' /* case '!' in [\!] ) echo ok;; *) echo WRONG;; esac */
+				/* Some libc support [^negate], that's why "^" also needs love */
+				 || *p == '^' /* case '^' in [\^] ) echo ok;; *) echo WRONG;; esac */
+				) {
+					*q++ = '\\';
+				}
 			}
 		} else if (*p == '\\' && !inquotes) {
 			/* naked back slash */
@@ -6963,7 +6992,6 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 	char *loc;
 	char *rmesc, *rmescend;
 	char *str;
-	IF_BASH_SUBSTR(int pos, len, orig_len;)
 	int amount, resetloc;
 	IF_BASH_PATTERN_SUBST(int workloc;)
 	IF_BASH_PATTERN_SUBST(char *repl = NULL;)
@@ -6992,14 +7020,23 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 		/* NOTREACHED */
 
 #if BASH_SUBSTR
-	case VSSUBSTR:
-//TODO: support more general format ${v:EXPR:EXPR},
-// where EXPR follows $(()) rules
-		loc = str = stackblock() + strloc;
-		/* Read POS in ${var:POS:LEN} */
-		pos = atoi(loc); /* number(loc) errors out on "1:4" */
-		len = str - startp - 1;
+	case VSSUBSTR: {
+		int pos, len, orig_len;
+		char *colon;
 
+		loc = str = stackblock() + strloc;
+
+# if !ENABLE_FEATURE_SH_MATH
+#  define ash_arith number
+# endif
+		/* Read POS in ${var:POS:LEN} */
+		colon = strchr(loc, ':');
+		if (colon) *colon = '\0';
+		pos = ash_arith(loc);
+		if (colon) *colon = ':';
+
+		/* Read LEN in ${var:POS:LEN} */
+		len = str - startp - 1;
 		/* *loc != '\0', guaranteed by parser */
 		if (quotes) {
 			char *ptr;
@@ -7013,25 +7050,21 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 			}
 		}
 		orig_len = len;
-
 		if (*loc++ == ':') {
 			/* ${var::LEN} */
-			len = number(loc);
+			len = ash_arith(loc);
 		} else {
 			/* Skip POS in ${var:POS:LEN} */
 			len = orig_len;
 			while (*loc && *loc != ':') {
-				/* TODO?
-				 * bash complains on: var=qwe; echo ${var:1a:123}
-				if (!isdigit(*loc))
-					ash_msg_and_raise_error(msg_illnum, str);
-				 */
 				loc++;
 			}
 			if (*loc++ == ':') {
-				len = number(loc);
+				len = ash_arith(loc);
 			}
 		}
+#  undef ash_arith
+
 		if (pos < 0) {
 			/* ${VAR:$((-n)):l} starts n chars from the end */
 			pos = orig_len + pos;
@@ -7039,12 +7072,16 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 		if ((unsigned)pos >= orig_len) {
 			/* apart from obvious ${VAR:999999:l},
 			 * covers ${VAR:$((-9999999)):l} - result is ""
-			 * (bash-compat)
+			 * (bash compat)
 			 */
 			pos = 0;
 			len = 0;
 		}
-		if (len > (orig_len - pos))
+		if (len < 0) {
+			/* ${VAR:N:-M} sets LEN to strlen()-M */
+			len = (orig_len - pos) + len;
+		}
+		if ((unsigned)len > (orig_len - pos))
 			len = orig_len - pos;
 
 		for (str = startp; pos; str++, pos--) {
@@ -7060,6 +7097,7 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 		amount = loc - expdest;
 		STADJUST(amount, expdest);
 		return loc;
+	}
 #endif /* BASH_SUBSTR */
 	}
 
@@ -7104,6 +7142,7 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 #if BASH_PATTERN_SUBST
 	workloc = expdest - (char *)stackblock();
 	if (subtype == VSREPLACE || subtype == VSREPLACEALL) {
+		int len;
 		char *idx, *end;
 
 		if (!repl) {
@@ -7970,7 +8009,9 @@ expandhere(union node *arg, int fd)
 static int
 patmatch(char *pattern, const char *string)
 {
-	return pmatch(preglob(pattern, 0), string);
+	char *p = preglob(pattern, 0);
+	//bb_error_msg("fnmatch(pattern:'%s',str:'%s')", p, string);
+	return pmatch(p, string);
 }
 
 /*
@@ -8072,7 +8113,7 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) char *cmd, char **argv, char **
 			clearenv();
 			while (*envp)
 				putenv(*envp++);
-			run_applet_no_and_exit(applet_no, argv);
+			run_applet_no_and_exit(applet_no, cmd, argv);
 		}
 		/* re-exec ourselves with the new arguments */
 		execve(bb_busybox_exec_path, argv, envp);
@@ -12022,9 +12063,7 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 	smallint dblquote;
 	smallint oldstyle;
 	IF_FEATURE_SH_MATH(smallint prevsyntax;) /* syntax before arithmetic */
-#if ENABLE_ASH_EXPAND_PRMT
 	smallint pssyntax;   /* we are expanding a prompt string */
-#endif
 	int varnest;         /* levels of variables expansion */
 	IF_FEATURE_SH_MATH(int arinest;)    /* levels of arithmetic expansion */
 	IF_FEATURE_SH_MATH(int parenlevel;) /* levels of parens in arithmetic */
@@ -12036,11 +12075,9 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 	bqlist = NULL;
 	quotef = 0;
 	IF_FEATURE_SH_MATH(prevsyntax = 0;)
-#if ENABLE_ASH_EXPAND_PRMT
 	pssyntax = (syntax == PSSYNTAX);
 	if (pssyntax)
 		syntax = DQSYNTAX;
-#endif
 	dblquote = (syntax == DQSYNTAX);
 	varnest = 0;
 	IF_FEATURE_SH_MATH(arinest = 0;)
@@ -12094,12 +12131,10 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 			} else if (c == '\n') {
 				nlprompt();
 			} else {
-#if ENABLE_ASH_EXPAND_PRMT
 				if (c == '$' && pssyntax) {
 					USTPUTC(CTLESC, out);
 					USTPUTC('\\', out);
 				}
-#endif
 				/* Backslash is retained if we are in "str" and next char isn't special */
 				if (dblquote
 				 && c != '\\'
@@ -12384,7 +12419,7 @@ parsesub: {
 #if ENABLE_FEATURE_SH_MATH
 			PARSEARITH();
 #else
-			raise_error_syntax("you disabled math support for $((arith)) syntax");
+			raise_error_syntax("support for $((arith)) is disabled");
 #endif
 		} else {
 			pungetc();
@@ -12933,7 +12968,6 @@ parseheredoc(void)
 /*
  * called by editline -- any expansions to the prompt should be added here.
  */
-#if ENABLE_ASH_EXPAND_PRMT
 static const char *
 expandstr(const char *ps)
 {
@@ -12959,7 +12993,6 @@ expandstr(const char *ps)
 	expandarg(&n, NULL, EXP_QUOTED);
 	return stackblock();
 }
-#endif
 
 /*
  * Execute a command or commands contained in a string.
@@ -13497,7 +13530,7 @@ trapcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	exitcode = 0;
 	while (*ap) {
 		signo = get_signum(*ap);
-		if (signo < 0) {
+		if (signo < 0 || signo >= NSIG) {
 			/* Mimic bash message exactly */
 			ash_msg("%s: invalid signal specification", *ap);
 			exitcode = 1;

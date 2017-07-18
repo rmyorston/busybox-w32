@@ -58,7 +58,7 @@ static NOINLINE int bb_dump_size(FS *fs)
 	const char *p;
 	int prec;
 
-	/* figure out the data block bb_dump_size needed for each format unit */
+	/* figure out the data block size needed for each format unit */
 	for (cur_size = 0, fu = fs->nextfu; fu; fu = fu->nextfu) {
 		if (fu->bcnt) {
 			cur_size += fu->bcnt * fu->reps;
@@ -311,20 +311,18 @@ static NOINLINE void rewrite(priv_dumper_t *dumper, FS *fs)
 	}
 }
 
-static void do_skip(priv_dumper_t *dumper, const char *fname, int statok)
+static void do_skip(priv_dumper_t *dumper, const char *fname)
 {
 	struct stat sbuf;
 
-	if (statok) {
-		xfstat(STDIN_FILENO, &sbuf, fname);
-		if (!(S_ISCHR(sbuf.st_mode) || S_ISBLK(sbuf.st_mode) || S_ISFIFO(sbuf.st_mode))
-		 && dumper->pub.dump_skip >= sbuf.st_size
-		) {
-			/* If bb_dump_size valid and pub.dump_skip >= size */
-			dumper->pub.dump_skip -= sbuf.st_size;
-			dumper->address += sbuf.st_size;
-			return;
-		}
+	xfstat(STDIN_FILENO, &sbuf, fname);
+	if (S_ISREG(sbuf.st_mode)
+	 && dumper->pub.dump_skip >= sbuf.st_size
+	) {
+		/* If st_size is valid and pub.dump_skip >= st_size */
+		dumper->pub.dump_skip -= sbuf.st_size;
+		dumper->address += sbuf.st_size;
+		return;
 	}
 	if (fseeko(stdin, dumper->pub.dump_skip, SEEK_SET)) {
 		bb_simple_perror_msg_and_die(fname);
@@ -336,29 +334,26 @@ static void do_skip(priv_dumper_t *dumper, const char *fname, int statok)
 
 static NOINLINE int next(priv_dumper_t *dumper)
 {
-	int statok;
-
 	for (;;) {
-		if (*dumper->argv) {
-			dumper->next__done = statok = 1;
-			if (!(freopen(*dumper->argv, "r", stdin))) {
-				bb_simple_perror_msg(*dumper->argv);
-				dumper->exitval = 1;
-				++dumper->argv;
-				continue;
+		const char *fname = *dumper->argv;
+
+		if (fname) {
+			dumper->argv++;
+			if (NOT_LONE_DASH(fname)) {
+				if (!freopen(fname, "r", stdin)) {
+					bb_simple_perror_msg(fname);
+					dumper->exitval = 1;
+					continue;
+				}
 			}
 		} else {
 			if (dumper->next__done)
 				return 0; /* no next file */
-			dumper->next__done = 1;
-//why stat of stdin is specially prohibited?
-			statok = 0;
 		}
+		dumper->next__done = 1;
 		if (dumper->pub.dump_skip)
-			do_skip(dumper, statok ? *dumper->argv : "stdin", statok);
-		if (*dumper->argv)
-			++dumper->argv;
-		if (!dumper->pub.dump_skip)
+			do_skip(dumper, fname ? fname : "stdin");
+		if (dumper->pub.dump_skip == 0)
 			return 1;
 	}
 	/* NOTREACHED */
@@ -670,7 +665,7 @@ int FAST_FUNC bb_dump_dump(dumper_t *pub_dumper, char **argv)
 	FS *tfs;
 	int blocksize;
 
-	/* figure out the data block bb_dump_size */
+	/* figure out the data block size */
 	blocksize = 0;
 	tfs = dumper->pub.fshead;
 	while (tfs) {

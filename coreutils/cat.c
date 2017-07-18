@@ -13,6 +13,13 @@
 //config:	  cat is used to concatenate files and print them to the standard
 //config:	  output. Enable this option if you wish to enable the 'cat' utility.
 //config:
+//config:config FEATURE_CATN
+//config:	bool "Enable -n and -b options"
+//config:	default y
+//config:	depends on CAT
+//config:	help
+//config:	  -n numbers all output lines while -b numbers nonempty output lines.
+//config:
 //config:config FEATURE_CATV
 //config:	bool "cat -v[etA]"
 //config:	default y
@@ -27,12 +34,19 @@
 /* BB_AUDIT SUSv3 compliant */
 /* http://www.opengroup.org/onlinepubs/007904975/utilities/cat.html */
 
+//usage:#if ENABLE_FEATURE_CATN || ENABLE_FEATURE_CATV
 //usage:#define cat_trivial_usage
-//usage:       "[-nb"IF_FEATURE_CATV("vteA")"] [FILE]..."
+//usage:       "[-" IF_FEATURE_CATN("nb") IF_FEATURE_CATV("vteA") "] [FILE]..."
+//usage:#else
+//usage:#define cat_trivial_usage
+//usage:       "[FILE]..."
+//usage:#endif
 //usage:#define cat_full_usage "\n\n"
 //usage:       "Print FILEs to stdout\n"
+//usage:	IF_FEATURE_CATN(
 //usage:     "\n	-n	Number output lines"
 //usage:     "\n	-b	Number nonempty lines"
+//usage:	)
 //usage:	IF_FEATURE_CATV(
 //usage:     "\n	-v	Show nonprinting characters as ^x or M-x"
 //usage:     "\n	-t	...and tabs as ^I"
@@ -84,29 +98,34 @@
  * I agree with the argument. Unfortunately, this ship has sailed (1983...).
  * There are dozens of Linux distros and each of them has "cat" which supports -v.
  * It's unrealistic for us to "reeducate" them to use our, incompatible way
- * to achieve "cat -v" effect. The actuall effect would be "users pissed off
+ * to achieve "cat -v" effect. The actual effect would be "users pissed off
  * by gratuitous incompatibility".
  */
-#define CATV_OPT_e (1<<0)
-#define CATV_OPT_t (1<<1)
-#define CATV_OPT_v (1<<2)
+#define CAT_OPT_e (1<<0)
+#define CAT_OPT_t (1<<1)
+#define CAT_OPT_v (1<<2)
+/* -A occupies bit (1<<3) */
+#define CAT_OPT_n ((1<<4) * ENABLE_FEATURE_CATN)
+#define CAT_OPT_b ((1<<5) * ENABLE_FEATURE_CATN)
 static int catv(unsigned opts, char **argv)
 {
 	int retval = EXIT_SUCCESS;
 	int fd;
-
-	BUILD_BUG_ON(CATV_OPT_e != VISIBLE_ENDLINE);
-	BUILD_BUG_ON(CATV_OPT_t != VISIBLE_SHOW_TABS);
-#if 0 /* These consts match, we can just pass "opts" to visible() */
-	if (opts & CATV_OPT_e)
-		flags |= VISIBLE_ENDLINE;
-	if (opts & CATV_OPT_t)
-		flags |= VISIBLE_SHOW_TABS;
+#if ENABLE_FEATURE_CATN
+	unsigned lineno = 0;
+	unsigned eol_char = (opts & (CAT_OPT_n|CAT_OPT_b)) ? '\n' : 0x100;
+	unsigned skip_num_on = (opts & CAT_OPT_b) ? '\n' : 0x100;
+	bool eol_seen = 1;
 #endif
 
-	/* Read from stdin if there's nothing else to do. */
-	if (!argv[0])
-		*--argv = (char*)"-";
+	BUILD_BUG_ON(CAT_OPT_e != VISIBLE_ENDLINE);
+	BUILD_BUG_ON(CAT_OPT_t != VISIBLE_SHOW_TABS);
+#if 0 /* These consts match, we can just pass "opts" to visible() */
+	if (opts & CAT_OPT_e)
+		flags |= VISIBLE_ENDLINE;
+	if (opts & CAT_OPT_t)
+		flags |= VISIBLE_SHOW_TABS;
+#endif
 
 #define read_buf bb_common_bufsiz1
 	setup_common_bufsiz();
@@ -127,6 +146,11 @@ static int catv(unsigned opts, char **argv)
 			for (i = 0; i < res; i++) {
 				unsigned char c = read_buf[i];
 				char buf[sizeof("M-^c")];
+#if ENABLE_FEATURE_CATN
+				if (eol_seen && c != skip_num_on)
+					printf("%6u  ", ++lineno);
+				eol_seen = (c == eol_char);
+#endif
 				visible(c, buf, opts);
 				fputs(buf, stdout);
 			}
@@ -137,43 +161,50 @@ static int catv(unsigned opts, char **argv)
 
 	fflush_stdout_and_exit(retval);
 }
+#undef CAT_OPT_n
+#undef CAT_OPT_b
 #endif
 
 int cat_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int cat_main(int argc UNUSED_PARAM, char **argv)
 {
-	struct number_state ns;
 	unsigned opts;
 
 	IF_FEATURE_CATV(opt_complementary = "Aetv"; /* -A == -vet */)
 	/* -u is ignored ("unbuffered") */
-	opts = getopt32(argv, IF_FEATURE_CATV("etvA")"nbu");
+	opts = getopt32(argv, IF_FEATURE_CATV("etvA") IF_FEATURE_CATN("nb") "u");
 	argv += optind;
+
+	/* Read from stdin if there's nothing else to do. */
+	if (!argv[0])
+		*--argv = (char*)"-";
 
 #if ENABLE_FEATURE_CATV
 	if (opts & 7)
 		return catv(opts, argv);
-//BUG: -v,-e,-t,-A ignore -nb
 	opts >>= 4;
 #endif
 
-#define CAT_OPT_n (1<<0)
-#define CAT_OPT_b (1<<1)
-#define CAT_OPT_u (1<<2)
-	if (!(opts & (CAT_OPT_n|CAT_OPT_b))) /* no -n or -b */
-		return bb_cat(argv);
+#if ENABLE_FEATURE_CATN
+# define CAT_OPT_n (1<<0)
+# define CAT_OPT_b (1<<1)
+	if (opts & (CAT_OPT_n|CAT_OPT_b)) { /* -n or -b */
+		struct number_state ns;
 
-	if (!*argv)
-		*--argv = (char*)"-";
-	ns.width = 6;
-	ns.start = 1;
-	ns.inc = 1;
-	ns.sep = "\t";
-	ns.empty_str = "\n";
-	ns.all = !(opts & CAT_OPT_b); /* -n without -b */
-	ns.nonempty = (opts & CAT_OPT_b); /* -b (with or without -n) */
-	do {
-		print_numbered_lines(&ns, *argv);
-	} while (*++argv);
-	fflush_stdout_and_exit(EXIT_SUCCESS);
+		ns.width = 6;
+		ns.start = 1;
+		ns.inc = 1;
+		ns.sep = "\t";
+		ns.empty_str = "\n";
+		ns.all = !(opts & CAT_OPT_b); /* -n without -b */
+		ns.nonempty = (opts & CAT_OPT_b); /* -b (with or without -n) */
+		do {
+			print_numbered_lines(&ns, *argv);
+		} while (*++argv);
+		fflush_stdout_and_exit(EXIT_SUCCESS);
+	}
+	/*opts >>= 2;*/
+#endif
+
+	return bb_cat(argv);
 }

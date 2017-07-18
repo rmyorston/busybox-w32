@@ -1,5 +1,5 @@
 VERSION = 1
-PATCHLEVEL = 27
+PATCHLEVEL = 28
 SUBLEVEL = 0
 EXTRAVERSION = .git
 NAME = Unnamed
@@ -510,6 +510,8 @@ ifeq ($(dot-config),1)
 # To avoid any implicit rule to kick in, define an empty command
 .config .kconfig.d: ;
 
+-include $(srctree)/arch/$(ARCH)/Makefile
+
 # Now we can define CFLAGS etc according to .config
 include $(srctree)/Makefile.flags
 
@@ -532,8 +534,6 @@ endif
 # This allow a user to issue only 'make' to build a kernel including modules
 # Defaults busybox but it is usually overridden in the arch makefile
 all: busybox$(EXEEXT) doc
-
--include $(srctree)/arch/$(ARCH)/Makefile
 
 # arch Makefile may override CC so keep this after arch Makefile is included
 #bbox# NOSTDINC_FLAGS += -nostdinc -isystem $(shell $(CC) -print-file-name=include)

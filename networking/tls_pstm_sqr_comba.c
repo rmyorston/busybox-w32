@@ -78,7 +78,8 @@ asm(                                            \
 	 "addl  %%eax,%0     \n\t"                            \
 	 "adcl  %%edx,%1     \n\t"                            \
 	 "adcl  $0,%2        \n\t"                            \
-	 :"=r"(c0), "=r"(c1), "=r"(c2): "0"(c0), "1"(c1), "2"(c2), "m"(i) :"%eax","%edx","%cc");
+	 :"=rm"(c0), "=rm"(c1), "=rm"(c2): "0"(c0), "1"(c1), "2"(c2), "m"(i) :"%eax","%edx","%cc");
+	//bbox: ^^^ replaced "=r" with "=rm": %ebx is not available on shared build
 
 #define SQRADD2(i, j)                                     \
 asm(                                            \
@@ -90,7 +91,8 @@ asm(                                            \
 	 "addl  %%eax,%0     \n\t"                            \
 	 "adcl  %%edx,%1     \n\t"                            \
 	 "adcl  $0,%2        \n\t"                            \
-	 :"=r"(c0), "=r"(c1), "=r"(c2): "0"(c0), "1"(c1), "2"(c2), "m"(i), "m"(j)  :"%eax","%edx","%cc");
+	 :"=rm"(c0), "=rm"(c1), "=rm"(c2): "0"(c0), "1"(c1), "2"(c2), "m"(i), "m"(j)  :"%eax","%edx","%cc");
+	//bbox: ^^^ replaced "=r" with "=rm": %ebx is not available on shared build
 
 #define SQRADDSC(i, j)                                    \
 asm(                                                     \
@@ -445,7 +447,7 @@ asm(                               \
 static int32 pstm_sqr_comba_gen(psPool_t *pool, pstm_int *A, pstm_int *B,
 			pstm_digit *paD, uint32 paDlen)
 {
-	int16		paDfail, pa;
+	int		paDfail, pa; //bbox: was int16
 	int32       ix, iz;
 	pstm_digit  c0, c1, c2, *dst;
 #ifdef PSTM_ISO
