@@ -237,19 +237,10 @@ spawnveq(int mode, const char *path, const char *const *argv, const char *const 
 
 static intptr_t
 mingw_spawn_applet(int mode,
-		   const char *applet,
 		   const char *const *argv,
 		   const char *const *envp)
 {
-	char **env = copy_environ(envp);
-	char path[MAX_PATH+20];
-	intptr_t ret;
-
-	sprintf(path, "BUSYBOX_APPLET_NAME=%s", applet);
-	env = env_setenv(env, path);
-	ret = spawnveq(mode, get_busybox_exec_path(), argv, (const char *const *)env);
-	free_environ(env);
-	return ret;
+	return spawnveq(mode, bb_busybox_exec_path, argv, envp);
 }
 
 static intptr_t
@@ -275,7 +266,7 @@ mingw_spawn_interpreter(int mode, const char *prog, const char *const *argv, con
 
 	if (ENABLE_FEATURE_PREFER_APPLETS && find_applet_by_name(interpr) >= 0) {
 		new_argv[0] = interpr;
-		ret = mingw_spawn_applet(mode, interpr, new_argv, envp);
+		ret = mingw_spawn_applet(mode, new_argv, envp);
 	}
 	else {
 		char *path = xstrdup(getenv("PATH"));
@@ -303,7 +294,7 @@ mingw_spawn_1(int mode, const char *cmd, const char *const *argv, const char *co
 
 	if (ENABLE_FEATURE_PREFER_APPLETS &&
 	    find_applet_by_name(cmd) >= 0)
-		return mingw_spawn_applet(mode, cmd, argv, envp);
+		return mingw_spawn_applet(mode, argv, envp);
 	else if (is_absolute_path(cmd))
 		return mingw_spawn_interpreter(mode, cmd, argv, envp);
 	else {
@@ -362,18 +353,7 @@ mingw_execve(const char *cmd, const char *const *argv, const char *const *envp)
 	int ret;
 	int mode = P_WAIT;
 
-	if (ENABLE_FEATURE_PREFER_APPLETS &&
-	    find_applet_by_name(cmd) >= 0)
-		ret = mingw_spawn_applet(mode, cmd, argv, envp);
-	/*
-	 * execve(bb_busybox_exec_path, argv, envp) won't work
-	 * because argv[0] will be replaced to bb_busybox_exec_path
-	 * by MSVC runtime
-	 */
-	else if (argv && cmd != argv[0] && cmd == bb_busybox_exec_path)
-		ret = mingw_spawn_applet(mode, argv[0], argv, envp);
-	else
-		ret = mingw_spawn_interpreter(mode, cmd, argv, envp);
+	ret = (int)mingw_spawn_interpreter(mode, cmd, argv, envp);
 	if (ret != -1)
 		exit(ret);
 	return ret;
