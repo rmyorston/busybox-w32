@@ -1001,14 +1001,14 @@ static int udhcp_raw_socket(int ifindex)
 	int fd;
 	struct sockaddr_ll sock;
 
-	log1("opening raw socket on ifindex %d", ifindex); //log2?
+	log2("opening raw socket on ifindex %d", ifindex);
 
 	fd = xsocket(PF_PACKET, SOCK_DGRAM, htons(ETH_P_IP));
 	/* ^^^^^
 	 * SOCK_DGRAM: remove link-layer headers on input (SOCK_RAW keeps them)
 	 * ETH_P_IP: want to receive only packets with IPv4 eth type
 	 */
-	log1("got raw socket fd"); //log2?
+	log2("got raw socket fd");
 
 	sock.sll_family = AF_PACKET;
 	sock.sll_protocol = htons(ETH_P_IP);
@@ -1455,7 +1455,7 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 		retval = 0;
 		/* If we already timed out, fall through with retval = 0, else... */
 		if (tv > 0) {
-			log1("waiting on select %u seconds", tv);
+			log1("waiting %u seconds", tv);
 			timestamp_before_wait = (unsigned)monotonic_sec();
 			retval = poll(pfds, 2, tv < INT_MAX/1000 ? tv * 1000 : INT_MAX);
 			if (retval < 0) {
@@ -1465,7 +1465,7 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 					continue;
 				}
 				/* Else: an error occurred, panic! */
-				bb_perror_msg_and_die("select");
+				bb_perror_msg_and_die("poll");
 			}
 		}
 

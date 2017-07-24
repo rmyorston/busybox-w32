@@ -10,11 +10,11 @@
  * Public License
  */
 //config:config LSATTR
-//config:	bool "lsattr"
+//config:	bool "lsattr (5 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  lsattr lists the file attributes on a second extended file system.
+//config:	lsattr lists the file attributes on a second extended file system.
 
 //applet:IF_LSATTR(APPLET(lsattr, BB_DIR_BIN, BB_SUID_DROP))
 

@@ -15,17 +15,17 @@
  * certainly be used.  Its naming is built over multicast DNS.
  */
 //config:config ZCIP
-//config:	bool "zcip"
+//config:	bool "zcip (7.8 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	select FEATURE_SYSLOG
 //config:	help
-//config:	  ZCIP provides ZeroConf IPv4 address selection, according to RFC 3927.
-//config:	  It's a daemon that allocates and defends a dynamically assigned
-//config:	  address on the 169.254/16 network, requiring no system administrator.
+//config:	ZCIP provides ZeroConf IPv4 address selection, according to RFC 3927.
+//config:	It's a daemon that allocates and defends a dynamically assigned
+//config:	address on the 169.254/16 network, requiring no system administrator.
 //config:
-//config:	  See http://www.zeroconf.org for further details, and "zcip.script"
-//config:	  in the busybox examples.
+//config:	See http://www.zeroconf.org for further details, and "zcip.script"
+//config:	in the busybox examples.
 
 //applet:IF_ZCIP(APPLET(zcip, BB_DIR_SBIN, BB_SUID_DROP))
 
@@ -183,6 +183,7 @@ static int run(char *argv[3], const char *param, uint32_t nip)
 	int status;
 	const char *addr = addr; /* for gcc */
 	const char *fmt = "%s %s %s" + 3;
+	char *env_ip = env_ip;
 
 	argv[2] = (char*)param;
 
@@ -190,12 +191,16 @@ static int run(char *argv[3], const char *param, uint32_t nip)
 
 	if (nip != 0) {
 		addr = nip_to_a(nip);
-		xsetenv("ip", addr);
+		/* Must not use setenv() repeatedly, it leaks memory. Use putenv() */
+		env_ip = xasprintf("ip=%s", addr);
+		putenv(env_ip);
 		fmt -= 3;
 	}
 	bb_error_msg(fmt, argv[2], argv[0], addr);
-
 	status = spawn_and_wait(argv + 1);
+	if (nip != 0)
+		bb_unsetenv_and_free(env_ip);
+
 	if (status < 0) {
 		bb_perror_msg("%s %s %s" + 3, argv[2], argv[0]);
 		return -errno;

@@ -8,23 +8,23 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config MODPROBE
-//config:	bool "modprobe"
+//config:	bool "modprobe (29 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Handle the loading of modules, and their dependencies on a high
-//config:	  level.
+//config:	Handle the loading of modules, and their dependencies on a high
+//config:	level.
 //config:
 //config:config FEATURE_MODPROBE_BLACKLIST
 //config:	bool "Blacklist support"
 //config:	default y
 //config:	depends on MODPROBE && !MODPROBE_SMALL
 //config:	help
-//config:	  Say 'y' here to enable support for the 'blacklist' command in
-//config:	  modprobe.conf. This prevents the alias resolver to resolve
-//config:	  blacklisted modules. This is useful if you want to prevent your
-//config:	  hardware autodetection scripts to load modules like evdev, frame
-//config:	  buffer drivers etc.
+//config:	Say 'y' here to enable support for the 'blacklist' command in
+//config:	modprobe.conf. This prevents the alias resolver to resolve
+//config:	blacklisted modules. This is useful if you want to prevent your
+//config:	hardware autodetection scripts to load modules like evdev, frame
+//config:	buffer drivers etc.
 
 //applet:IF_MODPROBE(IF_NOT_MODPROBE_SMALL(APPLET(modprobe, BB_DIR_SBIN, BB_SUID_DROP)))
 

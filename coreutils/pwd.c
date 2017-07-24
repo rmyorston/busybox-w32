@@ -7,10 +7,10 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config PWD
-//config:	bool "pwd"
+//config:	bool "pwd (3.4 kb)"
 //config:	default y
 //config:	help
-//config:	  pwd is used to print the current directory.
+//config:	pwd is used to print the current directory.
 
 //applet:IF_PWD(APPLET_NOFORK(pwd, pwd, BB_DIR_BIN, BB_SUID_DROP, pwd))
 

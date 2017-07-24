@@ -6,18 +6,18 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config CHPASSWD
-//config:	bool "chpasswd"
+//config:	bool "chpasswd (18 kb)"
 //config:	default y
 //config:	help
-//config:	  Reads a file of user name and password pairs from standard input
-//config:	  and uses this information to update a group of existing users.
+//config:	Reads a file of user name and password pairs from standard input
+//config:	and uses this information to update a group of existing users.
 //config:
 //config:config FEATURE_DEFAULT_PASSWD_ALGO
 //config:	string "Default encryption method (passwd -a, cryptpw -m, chpasswd -c ALG)"
 //config:	default "des"
 //config:	depends on PASSWD || CRYPTPW || CHPASSWD
 //config:	help
-//config:	  Possible choices are "d[es]", "m[d5]", "s[ha256]" or "sha512".
+//config:	Possible choices are "d[es]", "m[d5]", "s[ha256]" or "sha512".
 
 //applet:IF_CHPASSWD(APPLET(chpasswd, BB_DIR_USR_SBIN, BB_SUID_DROP))
 

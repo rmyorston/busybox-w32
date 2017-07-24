@@ -5,14 +5,14 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config SU
-//config:	bool "su"
+//config:	bool "su (19 kb)"
 //config:	default y
 //config:	select FEATURE_SYSLOG
 //config:	help
-//config:	  su is used to become another user during a login session.
-//config:	  Invoked without a username, su defaults to becoming the super user.
-//config:	  Note that busybox binary must be setuid root for this applet to
-//config:	  work properly.
+//config:	su is used to become another user during a login session.
+//config:	Invoked without a username, su defaults to becoming the super user.
+//config:	Note that busybox binary must be setuid root for this applet to
+//config:	work properly.
 //config:
 //config:config FEATURE_SU_SYSLOG
 //config:	bool "Log to syslog all attempts to use su"

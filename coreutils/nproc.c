@@ -4,10 +4,10 @@
  * Licensed under GPLv2, see LICENSE in this source tree
  */
 //config:config NPROC
-//config:	bool "nproc"
+//config:	bool "nproc (248 bytes)"
 //config:	default y
 //config:	help
-//config:	  Print number of CPUs
+//config:	Print number of CPUs
 
 //applet:IF_NPROC(APPLET(nproc, BB_DIR_USR_BIN, BB_SUID_DROP))
 

@@ -11,12 +11,12 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config ADJTIMEX
-//config:	bool "adjtimex"
+//config:	bool "adjtimex (4.5 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Adjtimex reads and optionally sets adjustment parameters for
-//config:	  the Linux clock adjustment algorithm.
+//config:	Adjtimex reads and optionally sets adjustment parameters for
+//config:	the Linux clock adjustment algorithm.
 
 //applet:IF_ADJTIMEX(APPLET(adjtimex, BB_DIR_SBIN, BB_SUID_DROP))
 

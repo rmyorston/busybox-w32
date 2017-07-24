@@ -7,10 +7,10 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config UNIQ
-//config:	bool "uniq"
+//config:	bool "uniq (4.8 kb)"
 //config:	default y
 //config:	help
-//config:	  uniq is used to remove duplicate lines from a sorted file.
+//config:	uniq is used to remove duplicate lines from a sorted file.
 
 //applet:IF_UNIQ(APPLET(uniq, BB_DIR_USR_BIN, BB_SUID_DROP))
 

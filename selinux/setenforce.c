@@ -7,11 +7,11 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config SETENFORCE
-//config:	bool "setenforce"
+//config:	bool "setenforce (2.1 kb)"
 //config:	default n
 //config:	depends on SELINUX
 //config:	help
-//config:	  Enable support to modify the mode SELinux is running in.
+//config:	Enable support to modify the mode SELinux is running in.
 
 //applet:IF_SETENFORCE(APPLET(setenforce, BB_DIR_USR_SBIN, BB_SUID_DROP))
 

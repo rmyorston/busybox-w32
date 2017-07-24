@@ -9,54 +9,54 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config CROND
-//config:	bool "crond"
+//config:	bool "crond (13 kb)"
 //config:	default y
 //config:	select FEATURE_SYSLOG
 //config:	help
-//config:	  Crond is a background daemon that parses individual crontab
-//config:	  files and executes commands on behalf of the users in question.
-//config:	  This is a port of dcron from slackware. It uses files of the
-//config:	  format /var/spool/cron/crontabs/<username> files, for example:
-//config:	      $ cat /var/spool/cron/crontabs/root
-//config:	      # Run daily cron jobs at 4:40 every day:
-//config:	      40 4 * * * /etc/cron/daily > /dev/null 2>&1
+//config:	Crond is a background daemon that parses individual crontab
+//config:	files and executes commands on behalf of the users in question.
+//config:	This is a port of dcron from slackware. It uses files of the
+//config:	format /var/spool/cron/crontabs/<username> files, for example:
+//config:		$ cat /var/spool/cron/crontabs/root
+//config:		# Run daily cron jobs at 4:40 every day:
+//config:		40 4 * * * /etc/cron/daily > /dev/null 2>&1
 //config:
 //config:config FEATURE_CROND_D
 //config:	bool "Support option -d to redirect output to stderr"
 //config:	depends on CROND
 //config:	default y
 //config:	help
-//config:	  -d N sets loglevel (0:most verbose) and directs all output to stderr.
+//config:	-d N sets loglevel (0:most verbose) and directs all output to stderr.
 //config:
 //config:config FEATURE_CROND_CALL_SENDMAIL
 //config:	bool "Report command output via email (using sendmail)"
 //config:	default y
 //config:	depends on CROND
 //config:	help
-//config:	  Command output will be sent to corresponding user via email.
+//config:	Command output will be sent to corresponding user via email.
 //config:
 //config:config FEATURE_CROND_SPECIAL_TIMES
 //config:	bool "Support special times (@reboot, @daily, etc) in crontabs"
 //config:	default y
 //config:	depends on CROND
 //config:	help
-//config:	  string        meaning
-//config:	  ------        -------
-//config:	  @reboot       Run once, at startup
-//config:	  @yearly       Run once a year:  "0 0 1 1 *"
-//config:	  @annually     Same as @yearly:  "0 0 1 1 *"
-//config:	  @monthly      Run once a month: "0 0 1 * *"
-//config:	  @weekly       Run once a week:  "0 0 * * 0"
-//config:	  @daily        Run once a day:   "0 0 * * *"
-//config:	  @midnight     Same as @daily:   "0 0 * * *"
-//config:	  @hourly       Run once an hour: "0 * * * *"
+//config:	string        meaning
+//config:	------        -------
+//config:	@reboot       Run once, at startup
+//config:	@yearly       Run once a year:  "0 0 1 1 *"
+//config:	@annually     Same as @yearly:  "0 0 1 1 *"
+//config:	@monthly      Run once a month: "0 0 1 * *"
+//config:	@weekly       Run once a week:  "0 0 * * 0"
+//config:	@daily        Run once a day:   "0 0 * * *"
+//config:	@midnight     Same as @daily:   "0 0 * * *"
+//config:	@hourly       Run once an hour: "0 * * * *"
 //config:
 //config:config FEATURE_CROND_DIR
 //config:	string "crond spool directory"
 //config:	default "/var/spool/cron"
 //config:	depends on CROND || CRONTAB
 //config:	help
-//config:	  Location of crond spool.
+//config:	Location of crond spool.
 
 //applet:IF_CROND(APPLET(crond, BB_DIR_USR_SBIN, BB_SUID_DROP))
 
@@ -79,9 +79,9 @@
 #include "common_bufsiz.h"
 #include <syslog.h>
 
-/* glibc frees previous setenv'ed value when we do next setenv()
- * of the same variable. uclibc does not do this! */
-#if (defined(__GLIBC__) && !defined(__UCLIBC__)) /* || OTHER_SAFE_LIBC... */
+#if 0
+/* If libc tracks and reuses setenv()-allocated memory, ok to set this to 0 */
+/* Neither glibc nor uclibc do that! */
 # define SETENV_LEAKS 0
 #else
 # define SETENV_LEAKS 1
@@ -153,6 +153,7 @@ struct globals {
 	const char *log_filename;
 	const char *crontab_dir_name; /* = CRONTABS; */
 	CronFile *cron_files;
+	char *default_shell;
 #if SETENV_LEAKS
 	char *env_var_user;
 	char *env_var_home;
@@ -700,7 +701,7 @@ fork_job(const char *user, int mailFd, CronLine *line, bool run_sendmail)
 		goto err;
 	}
 
-	shell = line->cl_shell ? line->cl_shell : DEFAULT_SHELL;
+	shell = line->cl_shell ? line->cl_shell : G.default_shell;
 	prog = run_sendmail ? SENDMAIL : shell;
 
 	set_env_vars(pas, shell);
@@ -846,7 +847,7 @@ static pid_t start_one_job(const char *user, CronLine *line)
 	}
 
 	/* Prepare things before vfork */
-	shell = line->cl_shell ? line->cl_shell : DEFAULT_SHELL;
+	shell = line->cl_shell ? line->cl_shell : G.default_shell;
 	set_env_vars(pas, shell);
 
 	/* Fork as the user in question and run program */
@@ -1045,6 +1046,10 @@ int crond_main(int argc UNUSED_PARAM, char **argv)
 
 	reopen_logfile_to_stderr();
 	xchdir(G.crontab_dir_name);
+	/* $SHELL, or current UID's shell, or DEFAULT_SHELL */
+	/* Useful on Android where DEFAULT_SHELL /bin/sh may not exist */
+	G.default_shell = xstrdup(get_shell_name());
+
 	log8("crond (busybox "BB_VER") started, log level %d", G.log_level);
 	rescan_crontab_dir();
 	write_pidfile(CONFIG_PID_FILE_PATH "/crond.pid");

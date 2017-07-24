@@ -31,15 +31,14 @@
  */
 
 //config:config ASH
-//config:	bool "ash"
+//config:	bool "ash (77 kb)"
 //config:	default y
 //config:	depends on !NOMMU
 //config:	help
-//config:	  Tha 'ash' shell adds about 60k in the default configuration and is
-//config:	  the most complete and most pedantically correct shell included with
-//config:	  busybox. This shell is actually a derivative of the Debian 'dash'
-//config:	  shell (by Herbert Xu), which was created by porting the 'ash' shell
-//config:	  (written by Kenneth Almquist) from NetBSD.
+//config:	The most complete and most pedantically correct shell included with
+//config:	busybox. This shell is actually a derivative of the Debian 'dash'
+//config:	shell (by Herbert Xu), which was created by porting the 'ash' shell
+//config:	(written by Kenneth Almquist) from NetBSD.
 //config:
 //config:# ash options
 //config:# note: Don't remove !NOMMU part in the next line; it would break
@@ -56,11 +55,11 @@
 //config:	default y	# Y is bigger, but because of uclibc glob() bug, let Y be default for now
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
 //config:	help
-//config:	  Do not use glob() function from libc, use internal implementation.
-//config:	  Use this if you are getting "glob.h: No such file or directory"
-//config:	  or similar build errors.
-//config:	  Note that as of now (2017-01), uclibc and musl glob() both have bugs
-//config:	  which would break ash if you select N here.
+//config:	Do not use glob() function from libc, use internal implementation.
+//config:	Use this if you are getting "glob.h: No such file or directory"
+//config:	or similar build errors.
+//config:	Note that as of now (2017-01), uclibc and musl glob() both have bugs
+//config:	which would break ash if you select N here.
 //config:
 //config:config ASH_BASH_COMPAT
 //config:	bool "bash-compatible extensions"
@@ -82,37 +81,37 @@
 //config:	default y
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
 //config:	help
-//config:	  Enable pseudorandom generator and dynamic variable "$RANDOM".
-//config:	  Each read of "$RANDOM" will generate a new pseudorandom value.
-//config:	  You can reset the generator by using a specified start value.
-//config:	  After "unset RANDOM" the generator will switch off and this
-//config:	  variable will no longer have special treatment.
+//config:	Enable pseudorandom generator and dynamic variable "$RANDOM".
+//config:	Each read of "$RANDOM" will generate a new pseudorandom value.
+//config:	You can reset the generator by using a specified start value.
+//config:	After "unset RANDOM" the generator will switch off and this
+//config:	variable will no longer have special treatment.
 //config:
 //config:config ASH_EXPAND_PRMT
 //config:	bool "Expand prompt string"
 //config:	default y
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
 //config:	help
-//config:	  $PS# may contain volatile content, such as backquote commands.
-//config:	  This option recreates the prompt string from the environment
-//config:	  variable each time it is displayed.
+//config:	$PS# may contain volatile content, such as backquote commands.
+//config:	This option recreates the prompt string from the environment
+//config:	variable each time it is displayed.
 //config:
 //config:config ASH_IDLE_TIMEOUT
 //config:	bool "Idle timeout variable $TMOUT"
 //config:	default y
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
 //config:	help
-//config:	  Enable bash-like auto-logout after $TMOUT seconds of idle time.
+//config:	Enable bash-like auto-logout after $TMOUT seconds of idle time.
 //config:
 //config:config ASH_MAIL
 //config:	bool "Check for new mail in interactive shell"
 //config:	default y
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
 //config:	help
-//config:	  Enable "check for new mail" function:
-//config:	  if set, $MAIL file and $MAILPATH list of files
-//config:	  are checked for mtime changes, and "you have mail"
-//config:	  message is printed if change is detected.
+//config:	Enable "check for new mail" function:
+//config:	if set, $MAIL file and $MAILPATH list of files
+//config:	are checked for mtime changes, and "you have mail"
+//config:	message is printed if change is detected.
 //config:
 //config:config ASH_ECHO
 //config:	bool "echo builtin"
@@ -144,9 +143,9 @@
 //config:	default y
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
 //config:	help
-//config:	  Enable support for the 'command' builtin, which allows
-//config:	  you to run the specified command or builtin,
-//config:	  even when there is a function with the same name.
+//config:	Enable support for the 'command' builtin, which allows
+//config:	you to run the specified command or builtin,
+//config:	even when there is a function with the same name.
 //config:
 //config:
 //config:config ASH_NOCONSOLE
@@ -1746,7 +1745,7 @@ static char *
 stack_nputstr(const char *s, size_t n, char *p)
 {
 	p = makestrspace(n, p);
-	p = (char *)memcpy(p, s, n) + n;
+	p = (char *)mempcpy(p, s, n);
 	return p;
 }
 
@@ -1830,7 +1829,7 @@ number(const char *s)
 }
 
 /*
- * Produce a possibly single quoted string suitable as input to the shell.
+ * Produce a single quoted string suitable as input to the shell.
  * The return string is allocated on the stack.
  */
 static char *
@@ -1849,7 +1848,7 @@ single_quote(const char *s)
 		q = p = makestrspace(len + 3, p);
 
 		*q++ = '\'';
-		q = (char *)memcpy(q, s, len) + len;
+		q = (char *)mempcpy(q, s, len);
 		*q++ = '\'';
 		s += len;
 
@@ -1863,7 +1862,7 @@ single_quote(const char *s)
 		q = p = makestrspace(len + 3, p);
 
 		*q++ = '"';
-		q = (char *)memcpy(q, s - len, len) + len;
+		q = (char *)mempcpy(q, s - len, len);
 		*q++ = '"';
 
 		STADJUST(q - p, p);
@@ -1872,6 +1871,47 @@ single_quote(const char *s)
 	USTPUTC('\0', p);
 
 	return stackblock();
+}
+
+/*
+ * Produce a possibly single quoted string suitable as input to the shell.
+ * If 'conditional' is nonzero, quoting is only done if the string contains
+ * non-shellsafe characters, or is identical to a shell keyword (reserved
+ * word); if it is zero, quoting is always done.
+ * If quoting was done, the return string is allocated on the stack,
+ * otherwise a pointer to the original string is returned.
+ */
+static const char *
+maybe_single_quote(const char *s)
+{
+	const char *p = s;
+
+	while (*p) {
+		/* Assuming ACSII */
+		/* quote ctrl_chars space !"#$%&'()* */
+		if (*p < '+')
+			goto need_quoting;
+		/* quote ;<=>? */
+		if (*p >= ';' && *p <= '?')
+			goto need_quoting;
+		/* quote `[\ */
+		if (*p == '`')
+			goto need_quoting;
+		if (*p == '[')
+			goto need_quoting;
+		if (*p == '\\')
+			goto need_quoting;
+		/* quote {|}~ DEL and high bytes */
+		if (*p > 'z')
+			goto need_quoting;
+		/* Not quoting these: +,-./ 0-9 :@ A-Z ]^_ a-z */
+		/* TODO: maybe avoid quoting % */
+		p++;
+	}
+	return s;
+
+ need_quoting:
+	return single_quote(s);
 }
 
 
@@ -2362,10 +2402,10 @@ setvar(const char *name, const char *val, int flags)
 
 	INT_OFF;
 	nameeq = ckmalloc(namelen + vallen + 2);
-	p = memcpy(nameeq, name, namelen) + namelen;
+	p = mempcpy(nameeq, name, namelen);
 	if (val) {
 		*p++ = '=';
-		p = memcpy(p, val, vallen) + vallen;
+		p = mempcpy(p, val, vallen);
 	}
 	*p = '\0';
 	setvareq(nameeq, flags | VNOSAVE);
@@ -2512,8 +2552,7 @@ path_advance(const char **path, const char *name)
 		growstackblock();
 	q = stackblock();
 	if (p != start) {
-		memcpy(q, start, p - start);
-		q += p - start;
+		q = mempcpy(q, start, p - start);
 		*q++ = '/';
 	}
 	strcpy(q, name);
@@ -6277,7 +6316,7 @@ rmescapes(char *str, int flag)
 		}
 		q = r;
 		if (len > 0) {
-			q = (char *)memcpy(q, str, len) + len;
+			q = (char *)mempcpy(q, str, len);
 		}
 	}
 
@@ -10161,18 +10200,36 @@ evalcommand(union node *cmd, int flags)
 
 	/* Print the command if xflag is set. */
 	if (xflag) {
-		int n;
-		const char *p = " %s" + 1;
+		const char *pfx = "";
 
-		fdprintf(preverrout_fd, p, expandstr(ps4val()));
+		fdprintf(preverrout_fd, "%s", expandstr(ps4val()));
+
 		sp = varlist.list;
-		for (n = 0; n < 2; n++) {
-			while (sp) {
-				fdprintf(preverrout_fd, p, sp->text);
-				sp = sp->next;
-				p = " %s";
-			}
-			sp = arglist.list;
+		while (sp) {
+			char *varval = sp->text;
+			char *eq = strchrnul(varval, '=');
+			if (*eq)
+				eq++;
+			fdprintf(preverrout_fd, "%s%.*s%s",
+				pfx,
+				(int)(eq - varval), varval,
+				maybe_single_quote(eq)
+			);
+			sp = sp->next;
+			pfx = " ";
+		}
+
+		sp = arglist.list;
+		while (sp) {
+			fdprintf(preverrout_fd, "%s%s",
+				pfx,
+				/* always quote if matches reserved word: */
+				findkwd(sp->text)
+				? single_quote(sp->text)
+				: maybe_single_quote(sp->text)
+			);
+			sp = sp->next;
+			pfx = " ";
 		}
 		safe_write(preverrout_fd, "\n", 1);
 	}

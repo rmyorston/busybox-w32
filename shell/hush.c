@@ -101,18 +101,18 @@
  *              aaa
  */
 //config:config HUSH
-//config:	bool "hush"
+//config:	bool "hush (64 kb)"
 //config:	default y
 //config:	help
-//config:	  hush is a small shell (25k). It handles the normal flow control
-//config:	  constructs such as if/then/elif/else/fi, for/in/do/done, while loops,
-//config:	  case/esac. Redirections, here documents, $((arithmetic))
-//config:	  and functions are supported.
+//config:	hush is a small shell. It handles the normal flow control
+//config:	constructs such as if/then/elif/else/fi, for/in/do/done, while loops,
+//config:	case/esac. Redirections, here documents, $((arithmetic))
+//config:	and functions are supported.
 //config:
-//config:	  It will compile and work on no-mmu systems.
+//config:	It will compile and work on no-mmu systems.
 //config:
-//config:	  It does not handle select, aliases, tilde expansion,
-//config:	  &>file and >&file redirection of stdout+stderr.
+//config:	It does not handle select, aliases, tilde expansion,
+//config:	&>file and >&file redirection of stdout+stderr.
 //config:
 //config:config HUSH_BASH_COMPAT
 //config:	bool "bash-compatible extensions"
@@ -124,17 +124,17 @@
 //config:	default y
 //config:	depends on HUSH_BASH_COMPAT
 //config:	help
-//config:	  Enable {abc,def} extension.
+//config:	Enable {abc,def} extension.
 //config:
 //config:config HUSH_INTERACTIVE
 //config:	bool "Interactive mode"
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
 //config:	help
-//config:	  Enable interactive mode (prompt and command editing).
-//config:	  Without this, hush simply reads and executes commands
-//config:	  from stdin just like a shell script from a file.
-//config:	  No prompt, no PS1/PS2 magic shell variables.
+//config:	Enable interactive mode (prompt and command editing).
+//config:	Without this, hush simply reads and executes commands
+//config:	from stdin just like a shell script from a file.
+//config:	No prompt, no PS1/PS2 magic shell variables.
 //config:
 //config:config HUSH_SAVEHISTORY
 //config:	bool "Save command history to .hush_history"
@@ -146,18 +146,18 @@
 //config:	default y
 //config:	depends on HUSH_INTERACTIVE
 //config:	help
-//config:	  Enable job control: Ctrl-Z backgrounds, Ctrl-C interrupts current
-//config:	  command (not entire shell), fg/bg builtins work. Without this option,
-//config:	  "cmd &" still works by simply spawning a process and immediately
-//config:	  prompting for next command (or executing next command in a script),
-//config:	  but no separate process group is formed.
+//config:	Enable job control: Ctrl-Z backgrounds, Ctrl-C interrupts current
+//config:	command (not entire shell), fg/bg builtins work. Without this option,
+//config:	"cmd &" still works by simply spawning a process and immediately
+//config:	prompting for next command (or executing next command in a script),
+//config:	but no separate process group is formed.
 //config:
 //config:config HUSH_TICK
 //config:	bool "Support process substitution"
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
 //config:	help
-//config:	  Enable `command` and $(command).
+//config:	Enable `command` and $(command).
 //config:
 //config:config HUSH_IF
 //config:	bool "Support if/then/elif/else/fi"
@@ -174,37 +174,37 @@
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
 //config:	help
-//config:	  Enable case ... esac statement. +400 bytes.
+//config:	Enable case ... esac statement. +400 bytes.
 //config:
 //config:config HUSH_FUNCTIONS
 //config:	bool "Support funcname() { commands; } syntax"
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
 //config:	help
-//config:	  Enable support for shell functions. +800 bytes.
+//config:	Enable support for shell functions. +800 bytes.
 //config:
 //config:config HUSH_LOCAL
 //config:	bool "local builtin"
 //config:	default y
 //config:	depends on HUSH_FUNCTIONS
 //config:	help
-//config:	  Enable support for local variables in functions.
+//config:	Enable support for local variables in functions.
 //config:
 //config:config HUSH_RANDOM_SUPPORT
 //config:	bool "Pseudorandom generator and $RANDOM variable"
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
 //config:	help
-//config:	  Enable pseudorandom generator and dynamic variable "$RANDOM".
-//config:	  Each read of "$RANDOM" will generate a new pseudorandom value.
+//config:	Enable pseudorandom generator and dynamic variable "$RANDOM".
+//config:	Each read of "$RANDOM" will generate a new pseudorandom value.
 //config:
 //config:config HUSH_MODE_X
 //config:	bool "Support 'hush -x' option and 'set -x' command"
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
 //config:	help
-//config:	  This instructs hush to print commands before execution.
-//config:	  Adds ~300 bytes.
+//config:	This instructs hush to print commands before execution.
+//config:	Adds ~300 bytes.
 //config:
 //config:config HUSH_ECHO
 //config:	bool "echo builtin"
@@ -236,14 +236,14 @@
 //config:	default y
 //config:	depends on HUSH_EXPORT
 //config:	help
-//config:	  export -n unexports variables. It is a bash extension.
+//config:	export -n unexports variables. It is a bash extension.
 //config:
 //config:config HUSH_READONLY
 //config:	bool "readonly builtin"
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
 //config:	help
-//config:	  Enable support for read-only variables.
+//config:	Enable support for read-only variables.
 //config:
 //config:config HUSH_KILL
 //config:	bool "kill builtin (supports kill %jobspec)"
@@ -1068,7 +1068,7 @@ static const struct built_in_command bltins1[] = {
 	BLTIN("export"   , builtin_export  , "Set environment variables"),
 #endif
 #if ENABLE_HUSH_JOB
-	BLTIN("fg"       , builtin_fg_bg   , "Bring job into foreground"),
+	BLTIN("fg"       , builtin_fg_bg   , "Bring job to foreground"),
 #endif
 #if ENABLE_HUSH_HELP
 	BLTIN("help"     , builtin_help    , NULL),
@@ -1121,7 +1121,7 @@ static const struct built_in_command bltins1[] = {
 	BLTIN("unset"    , builtin_unset   , "Unset variables"),
 #endif
 #if ENABLE_HUSH_WAIT
-	BLTIN("wait"     , builtin_wait    , "Wait for process"),
+	BLTIN("wait"     , builtin_wait    , "Wait for process to finish"),
 #endif
 };
 /* These builtins won't be used if we are on NOMMU and need to re-exec
@@ -2662,9 +2662,8 @@ static void o_delchr(o_string *o)
 static void o_addblock(o_string *o, const char *str, int len)
 {
 	o_grow_by(o, len);
-	memcpy(&o->data[o->length], str, len);
+	((char*)mempcpy(&o->data[o->length], str, len))[0] = '\0';
 	o->length += len;
-	o->data[o->length] = '\0';
 }
 
 static void o_addstr(o_string *o, const char *str)
@@ -5519,17 +5518,15 @@ static char *replace_pattern(char *val, const char *pattern, const char *repl, c
 			break;
 
 		result = xrealloc(result, res_len + (s - val) + repl_len + 1);
-		memcpy(result + res_len, val, s - val);
-		res_len += s - val;
-		strcpy(result + res_len, repl);
-		res_len += repl_len;
+		strcpy(mempcpy(result + res_len, val, s - val), repl);
+		res_len += (s - val) + repl_len;
 		debug_printf_varexp("val:'%s' s:'%s' result:'%s'\n", val, s, result);
 
 		val = s + size;
 		if (exp_op == '/')
 			break;
 	}
-	if (val[0] && result) {
+	if (*val && result) {
 		result = xrealloc(result, res_len + strlen(val) + 1);
 		strcpy(result + res_len, val);
 		debug_printf_varexp("val:'%s' result:'%s'\n", val, result);

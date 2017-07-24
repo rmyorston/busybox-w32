@@ -6,11 +6,11 @@
  * Busybox port: Nick Fedchik <nick@fedchik.org.ua>
  */
 //config:config ARPING
-//config:	bool "arping"
+//config:	bool "arping (9.3 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Ping hosts by ARP packets.
+//config:	Ping hosts by ARP packets.
 //config:
 
 //applet:IF_ARPING(APPLET(arping, BB_DIR_USR_SBIN, BB_SUID_DROP))

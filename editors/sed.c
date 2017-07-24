@@ -57,11 +57,11 @@
  */
 
 //config:config SED
-//config:	bool "sed"
+//config:	bool "sed (12 kb)"
 //config:	default y
 //config:	help
-//config:	  sed is used to perform text transformations on a file
-//config:	  or input from a pipeline.
+//config:	sed is used to perform text transformations on a file
+//config:	or input from a pipeline.
 
 //kbuild:lib-$(CONFIG_SED) += sed.o
 

@@ -7,11 +7,11 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config FGCONSOLE
-//config:	bool "fgconsole"
+//config:	bool "fgconsole (1.6 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  This program prints active (foreground) console number.
+//config:	This program prints active (foreground) console number.
 
 //applet:IF_FGCONSOLE(APPLET(fgconsole, BB_DIR_USR_BIN, BB_SUID_DROP))
 

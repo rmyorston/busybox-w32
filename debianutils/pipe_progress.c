@@ -7,10 +7,10 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config PIPE_PROGRESS
-//config:	bool "pipe_progress"
+//config:	bool "pipe_progress (225 bytes)"
 //config:	default y
 //config:	help
-//config:	  Display a dot to indicate pipe activity.
+//config:	Display a dot to indicate pipe activity.
 
 //applet:IF_PIPE_PROGRESS(APPLET(pipe_progress, BB_DIR_BIN, BB_SUID_DROP))
 

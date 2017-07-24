@@ -7,12 +7,12 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config LOADKMAP
-//config:	bool "loadkmap"
+//config:	bool "loadkmap (1.5 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  This program loads a keyboard translation table from
-//config:	  standard input.
+//config:	This program loads a keyboard translation table from
+//config:	standard input.
 
 //applet:IF_LOADKMAP(APPLET(loadkmap, BB_DIR_SBIN, BB_SUID_DROP))
 

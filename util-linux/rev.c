@@ -6,10 +6,10 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config REV
-//config:	bool "rev"
+//config:	bool "rev (4.5 kb)"
 //config:	default y
 //config:	help
-//config:	  Reverse lines of a file or files.
+//config:	Reverse lines of a file or files.
 
 //applet:IF_REV(APPLET(rev, BB_DIR_BIN, BB_SUID_DROP))
 

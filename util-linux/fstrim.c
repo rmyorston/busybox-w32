@@ -9,11 +9,11 @@
  */
 
 //config:config FSTRIM
-//config:	bool "fstrim"
+//config:	bool "fstrim (5.5 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Discard unused blocks on a mounted filesystem.
+//config:	Discard unused blocks on a mounted filesystem.
 
 //applet:IF_FSTRIM(APPLET(fstrim, BB_DIR_SBIN, BB_SUID_DROP))
 

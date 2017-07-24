@@ -7,11 +7,11 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config MKFIFO
-//config:	bool "mkfifo"
+//config:	bool "mkfifo (3.7 kb)"
 //config:	default y
 //config:	help
-//config:	  mkfifo is used to create FIFOs (named pipes).
-//config:	  The 'mknod' program can also create FIFOs.
+//config:	mkfifo is used to create FIFOs (named pipes).
+//config:	The 'mknod' program can also create FIFOs.
 
 //applet:IF_MKFIFO(APPLET_NOEXEC(mkfifo, mkfifo, BB_DIR_USR_BIN, BB_SUID_DROP, mkfifo))
 

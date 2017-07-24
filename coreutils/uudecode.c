@@ -11,10 +11,10 @@
  * "end" line
  */
 //config:config UUDECODE
-//config:	bool "uudecode"
+//config:	bool "uudecode (5.9 kb)"
 //config:	default y
 //config:	help
-//config:	  uudecode is used to decode a uuencoded file.
+//config:	uudecode is used to decode a uuencoded file.
 
 //applet:IF_UUDECODE(APPLET(uudecode, BB_DIR_USR_BIN, BB_SUID_DROP))
 
@@ -176,10 +176,10 @@ int uudecode_main(int argc UNUSED_PARAM, char **argv)
 //kbuild:lib-$(CONFIG_BASE64) += uudecode.o
 
 //config:config BASE64
-//config:	bool "base64"
+//config:	bool "base64 (5 kb)"
 //config:	default y
 //config:	help
-//config:	  Base64 encode and decode
+//config:	Base64 encode and decode
 
 //usage:#define base64_trivial_usage
 //usage:	"[-d] [FILE]"

@@ -10,11 +10,11 @@
 /* "Standard" version of this tool is in ncurses package */
 
 //config:config RESET
-//config:	bool "reset"
+//config:	bool "reset (275 bytes)"
 //config:	default y
 //config:	help
-//config:	  This program is used to reset the terminal screen, if it
-//config:	  gets messed up.
+//config:	This program is used to reset the terminal screen, if it
+//config:	gets messed up.
 
 //applet:IF_RESET(APPLET(reset, BB_DIR_USR_BIN, BB_SUID_DROP))
 

@@ -7,11 +7,11 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config PASTE
-//config:	bool "paste"
+//config:	bool "paste (4.5 kb)"
 //config:	default y
 //config:	help
-//config:	  paste is used to paste lines of different files together
-//config:	  and write the result to stdout
+//config:	paste is used to paste lines of different files together
+//config:	and write the result to stdout
 
 //applet:IF_PASTE(APPLET_NOEXEC(paste, paste, BB_DIR_USR_BIN, BB_SUID_DROP, paste))
 

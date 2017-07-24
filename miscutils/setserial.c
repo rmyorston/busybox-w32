@@ -9,11 +9,11 @@
  */
 
 //config:config SETSERIAL
-//config:	bool "setserial"
+//config:	bool "setserial (6.6 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Retrieve or set Linux serial port.
+//config:	Retrieve or set Linux serial port.
 
 //applet:IF_SETSERIAL(APPLET(setserial, BB_DIR_BIN, BB_SUID_DROP))
 

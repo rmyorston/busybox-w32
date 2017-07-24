@@ -12,10 +12,10 @@
  * Size reduction and improved error checking.
  */
 //config:config MV
-//config:	bool "mv"
+//config:	bool "mv (9.8 kb)"
 //config:	default y
 //config:	help
-//config:	  mv is used to move or rename files or directories.
+//config:	mv is used to move or rename files or directories.
 //config:
 //config:config FEATURE_MV_LONG_OPTIONS
 //config:	bool "Enable long options"

@@ -7,11 +7,11 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config WHOAMI
-//config:	bool "whoami"
+//config:	bool "whoami (2.9 kb)"
 //config:	default y
 //config:	help
-//config:	  whoami is used to print the username of the current
-//config:	  user id (same as id -un).
+//config:	whoami is used to print the username of the current
+//config:	user id (same as id -un).
 
 //applet:IF_WHOAMI(APPLET_NOFORK(whoami, whoami, BB_DIR_USR_BIN, BB_SUID_DROP, whoami))
 

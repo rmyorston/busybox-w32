@@ -3,10 +3,10 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config MAN
-//config:	bool "man"
+//config:	bool "man (27 kb)"
 //config:	default y
 //config:	help
-//config:	  Format and display manual pages.
+//config:	Format and display manual pages.
 
 //applet:IF_MAN(APPLET(man, BB_DIR_USR_BIN, BB_SUID_DROP))
 

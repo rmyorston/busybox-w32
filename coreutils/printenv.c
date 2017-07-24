@@ -8,10 +8,10 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config PRINTENV
-//config:	bool "printenv"
+//config:	bool "printenv (1 kb)"
 //config:	default y
 //config:	help
-//config:	  printenv is used to print all or part of environment.
+//config:	printenv is used to print all or part of environment.
 
 //applet:IF_PRINTENV(APPLET_NOFORK(printenv, printenv, BB_DIR_BIN, BB_SUID_DROP, printenv))
 

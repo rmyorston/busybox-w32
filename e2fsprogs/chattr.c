@@ -10,10 +10,10 @@
  * Public License
  */
 //config:config CHATTR
-//config:	bool "chattr"
+//config:	bool "chattr (3.2 kb)"
 //config:	default y
 //config:	help
-//config:	  chattr changes the file attributes on a second extended file system.
+//config:	chattr changes the file attributes on a second extended file system.
 
 //applet:IF_CHATTR(APPLET(chattr, BB_DIR_BIN, BB_SUID_DROP))
 

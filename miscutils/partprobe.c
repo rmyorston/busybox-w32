@@ -5,11 +5,11 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config PARTPROBE
-//config:	bool "partprobe"
+//config:	bool "partprobe (3.6 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Ask kernel to rescan partition table.
+//config:	Ask kernel to rescan partition table.
 
 //applet:IF_PARTPROBE(APPLET(partprobe, BB_DIR_USR_SBIN, BB_SUID_DROP))
 

@@ -6,10 +6,10 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config BLOCKDEV
-//config:	bool "blockdev"
+//config:	bool "blockdev (2.4 kb)"
 //config:	default y
 //config:	help
-//config:	  Performs some ioctls with block devices.
+//config:	Performs some ioctls with block devices.
 
 //applet:IF_BLOCKDEV(APPLET(blockdev, BB_DIR_SBIN, BB_SUID_DROP))
 

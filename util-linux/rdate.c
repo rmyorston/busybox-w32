@@ -8,13 +8,13 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config RDATE
-//config:	bool "rdate"
+//config:	bool "rdate (6 kb)"
 //config:	default y
 //config:	help
-//config:	  The rdate utility allows you to synchronize the date and time of your
-//config:	  system clock with the date and time of a remote networked system using
-//config:	  the RFC868 protocol, which is built into the inetd daemon on most
-//config:	  systems.
+//config:	The rdate utility allows you to synchronize the date and time of your
+//config:	system clock with the date and time of a remote networked system using
+//config:	the RFC868 protocol, which is built into the inetd daemon on most
+//config:	systems.
 
 //applet:IF_RDATE(APPLET(rdate, BB_DIR_USR_SBIN, BB_SUID_DROP))
 

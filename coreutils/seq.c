@@ -7,10 +7,10 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config SEQ
-//config:	bool "seq"
+//config:	bool "seq (3.6 kb)"
 //config:	default y
 //config:	help
-//config:	  print a sequence of numbers
+//config:	print a sequence of numbers
 
 //applet:IF_SEQ(APPLET_NOFORK(seq, seq, BB_DIR_USR_BIN, BB_SUID_DROP, seq))
 

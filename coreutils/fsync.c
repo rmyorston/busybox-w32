@@ -7,10 +7,10 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config FSYNC
-//config:	bool "fsync"
+//config:	bool "fsync (3.7 kb)"
 //config:	default y
 //config:	help
-//config:	  fsync is used to flush file-related cached blocks to disk.
+//config:	fsync is used to flush file-related cached blocks to disk.
 
 //applet:IF_FSYNC(APPLET_NOFORK(fsync, fsync, BB_DIR_BIN, BB_SUID_DROP, fsync))
 

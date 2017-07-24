@@ -7,11 +7,11 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config FLASHCP
-//config:	bool "flashcp"
+//config:	bool "flashcp (5.4 kb)"
 //config:	default n  # doesn't build on Ubuntu 8.04
 //config:	help
-//config:	  The flashcp binary, inspired by mtd-utils as of git head 5eceb74f7.
-//config:	  This utility is used to copy images into a MTD device.
+//config:	The flashcp binary, inspired by mtd-utils as of git head 5eceb74f7.
+//config:	This utility is used to copy images into a MTD device.
 
 //applet:IF_FLASHCP(APPLET(flashcp, BB_DIR_USR_SBIN, BB_SUID_DROP))
 

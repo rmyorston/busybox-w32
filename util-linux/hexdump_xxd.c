@@ -7,11 +7,11 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config XXD
-//config:	bool "xxd"
+//config:	bool "xxd (8.9 kb)"
 //config:	default y
 //config:	help
-//config:	  The xxd utility is used to display binary data in a readable
-//config:	  way that is comparable to the output from most hex editors.
+//config:	The xxd utility is used to display binary data in a readable
+//config:	way that is comparable to the output from most hex editors.
 
 //applet:IF_XXD(APPLET_NOEXEC(xxd, xxd, BB_DIR_USR_BIN, BB_SUID_DROP, xxd))
 

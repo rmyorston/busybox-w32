@@ -8,12 +8,12 @@
  */
 
 //config:config ED
-//config:	bool "ed"
+//config:	bool "ed (25 kb)"
 //config:	default y
 //config:	help
-//config:	  The original 1970's Unix text editor, from the days of teletypes.
-//config:	  Small, simple, evil. Part of SUSv3. If you're not already using
-//config:	  this, you don't need it.
+//config:	The original 1970's Unix text editor, from the days of teletypes.
+//config:	Small, simple, evil. Part of SUSv3. If you're not already using
+//config:	this, you don't need it.
 
 //kbuild:lib-$(CONFIG_ED) += ed.o
 

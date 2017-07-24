@@ -7,11 +7,11 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config TTY
-//config:	bool "tty"
+//config:	bool "tty (3.3 kb)"
 //config:	default y
 //config:	help
-//config:	  tty is used to print the name of the current terminal to
-//config:	  standard output.
+//config:	tty is used to print the name of the current terminal to
+//config:	standard output.
 
 //applet:IF_TTY(APPLET(tty, BB_DIR_USR_BIN, BB_SUID_DROP))
 

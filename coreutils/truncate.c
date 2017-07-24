@@ -6,11 +6,11 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config TRUNCATE
-//config:	bool "truncate"
+//config:	bool "truncate (4.7 kb)"
 //config:	default y
 //config:	help
-//config:	  truncate truncates files to a given size. If a file does
-//config:	  not exist, it is created unless told otherwise.
+//config:	truncate truncates files to a given size. If a file does
+//config:	not exist, it is created unless told otherwise.
 
 //applet:IF_TRUNCATE(APPLET_NOFORK(truncate, truncate, BB_DIR_USR_BIN, BB_SUID_DROP, truncate))
 

@@ -7,10 +7,10 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config FALSE
-//config:	bool "false"
+//config:	bool "false (tiny)"
 //config:	default y
 //config:	help
-//config:	  false returns an exit code of FALSE (1).
+//config:	false returns an exit code of FALSE (1).
 
 //applet:IF_FALSE(APPLET_NOFORK(false, false, BB_DIR_BIN, BB_SUID_DROP, false))
 

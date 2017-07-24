@@ -13,11 +13,11 @@
  * modified for getopt32 by Arne Bernin <arne [at] alamut.de>
  */
 //config:config ARP
-//config:	bool "arp"
+//config:	bool "arp (11 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Manipulate the system ARP cache.
+//config:	Manipulate the system ARP cache.
 
 //applet:IF_ARP(APPLET(arp, BB_DIR_SBIN, BB_SUID_DROP))
 

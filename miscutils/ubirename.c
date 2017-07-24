@@ -7,11 +7,11 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config UBIRENAME
-//config:	bool "ubirename"
+//config:	bool "ubirename (2.2 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Utility to rename UBI volumes
+//config:	Utility to rename UBI volumes
 
 //applet:IF_UBIRENAME(APPLET(ubirename, BB_DIR_USR_SBIN, BB_SUID_DROP))
 

@@ -14,10 +14,10 @@
 /* Nov 28, 2006      Yoshinori Sato <ysato@users.sourceforge.jp>: Add SELinux Support.
  */
 //config:config MKDIR
-//config:	bool "mkdir"
+//config:	bool "mkdir (4.4 kb)"
 //config:	default y
 //config:	help
-//config:	  mkdir is used to create directories with the specified names.
+//config:	mkdir is used to create directories with the specified names.
 //config:
 //config:config FEATURE_MKDIR_LONG_OPTIONS
 //config:	bool "Enable long options"

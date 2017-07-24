@@ -7,11 +7,11 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config IFPLUGD
-//config:	bool "ifplugd"
+//config:	bool "ifplugd (9.9 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Network interface plug detection daemon.
+//config:	Network interface plug detection daemon.
 
 //applet:IF_IFPLUGD(APPLET(ifplugd, BB_DIR_USR_SBIN, BB_SUID_DROP))
 
@@ -342,10 +342,8 @@ static int run_script(const char *action)
 	/* r < 0 - can't exec, 0 <= r < 0x180 - exited, >=0x180 - killed by sig (r-0x180) */
 	r = spawn_and_wait(argv);
 
-	unsetenv(IFPLUGD_ENV_PREVIOUS);
-	unsetenv(IFPLUGD_ENV_CURRENT);
-	free(env_PREVIOUS);
-	free(env_CURRENT);
+	bb_unsetenv_and_free(env_PREVIOUS);
+	bb_unsetenv_and_free(env_CURRENT);
 
 	bb_error_msg("exit code: %d", r & 0xff);
 	return (option_mask32 & FLAG_IGNORE_RETVAL) ? 0 : r;

@@ -13,11 +13,11 @@
 //kbuild:lib-$(CONFIG_SMEMCAP) += smemcap.o
 
 //config:config SMEMCAP
-//config:	bool "smemcap"
+//config:	bool "smemcap (2.5 kb)"
 //config:	default y
 //config:	help
-//config:	  smemcap is a tool for capturing process data for smem,
-//config:	  a memory usage statistic tool.
+//config:	smemcap is a tool for capturing process data for smem,
+//config:	a memory usage statistic tool.
 
 #include "libbb.h"
 #define BB_ARCHIVE_PUBLIC

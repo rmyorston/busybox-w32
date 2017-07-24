@@ -8,11 +8,11 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config RMMOD
-//config:	bool "rmmod"
+//config:	bool "rmmod (3.6 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  rmmod is used to unload specified modules from the kernel.
+//config:	rmmod is used to unload specified modules from the kernel.
 
 //applet:IF_RMMOD(IF_NOT_MODPROBE_SMALL(APPLET(rmmod, BB_DIR_SBIN, BB_SUID_DROP)))
 

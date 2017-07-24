@@ -14,10 +14,10 @@
  * - busyboxed
  */
 //config:config SETSID
-//config:	bool "setsid"
+//config:	bool "setsid (3.9 kb)"
 //config:	default y
 //config:	help
-//config:	  setsid runs a program in a new session
+//config:	setsid runs a program in a new session
 
 //applet:IF_SETSID(APPLET(setsid, BB_DIR_USR_BIN, BB_SUID_DROP))
 

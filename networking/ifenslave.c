@@ -98,12 +98,12 @@
  *         set version to 1.1.0
  */
 //config:config IFENSLAVE
-//config:	bool "ifenslave"
+//config:	bool "ifenslave (13 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Userspace application to bind several interfaces
-//config:	  to a logical interface (use with kernel bonding driver).
+//config:	Userspace application to bind several interfaces
+//config:	to a logical interface (use with kernel bonding driver).
 
 //applet:IF_IFENSLAVE(APPLET(ifenslave, BB_DIR_SBIN, BB_SUID_DROP))
 

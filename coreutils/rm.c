@@ -11,10 +11,10 @@
  * Size reduction.
  */
 //config:config RM
-//config:	bool "rm"
+//config:	bool "rm (4.9 kb)"
 //config:	default y
 //config:	help
-//config:	  rm is used to remove files or directories.
+//config:	rm is used to remove files or directories.
 
 //applet:IF_RM(APPLET_NOFORK(rm, rm, BB_DIR_BIN, BB_SUID_DROP, rm))
 

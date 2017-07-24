@@ -9,18 +9,18 @@
  */
 
 //config:config NANDWRITE
-//config:	bool "nandwrite"
+//config:	bool "nandwrite (5.9 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Write to the specified MTD device, with bad blocks awareness
+//config:	Write to the specified MTD device, with bad blocks awareness
 //config:
 //config:config NANDDUMP
-//config:	bool "nanddump"
+//config:	bool "nanddump (6.3 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Dump the content of raw NAND chip
+//config:	Dump the content of raw NAND chip
 
 //applet:IF_NANDWRITE(APPLET(nandwrite, BB_DIR_USR_SBIN, BB_SUID_DROP))
 //applet:IF_NANDDUMP(APPLET_ODDNAME(nanddump, nandwrite, BB_DIR_USR_SBIN, BB_SUID_DROP, nanddump))

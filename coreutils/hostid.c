@@ -7,11 +7,11 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config HOSTID
-//config:	bool "hostid"
+//config:	bool "hostid (247 bytes)"
 //config:	default y
 //config:	help
-//config:	  hostid prints the numeric identifier (in hexadecimal) for
-//config:	  the current host.
+//config:	hostid prints the numeric identifier (in hexadecimal) for
+//config:	the current host.
 
 //applet:IF_HOSTID(APPLET_NOFORK(hostid, hostid, BB_DIR_USR_BIN, BB_SUID_DROP, hostid))
 

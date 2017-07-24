@@ -8,11 +8,11 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config CHCON
-//config:	bool "chcon"
+//config:	bool "chcon (8.9 kb)"
 //config:	default n
 //config:	depends on SELINUX
 //config:	help
-//config:	  Enable support to change the security context of file.
+//config:	Enable support to change the security context of file.
 //config:
 //config:config FEATURE_CHCON_LONG_OPTIONS
 //config:	bool "Enable long options"

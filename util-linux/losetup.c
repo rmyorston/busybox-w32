@@ -7,13 +7,13 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config LOSETUP
-//config:	bool "losetup"
+//config:	bool "losetup (5.4 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  losetup is used to associate or detach a loop device with a regular
-//config:	  file or block device, and to query the status of a loop device. This
-//config:	  version does not currently support enabling data encryption.
+//config:	losetup is used to associate or detach a loop device with a regular
+//config:	file or block device, and to query the status of a loop device. This
+//config:	version does not currently support enabling data encryption.
 
 //kbuild:lib-$(CONFIG_LOSETUP) += losetup.o
 

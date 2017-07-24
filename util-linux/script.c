@@ -11,10 +11,10 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config SCRIPT
-//config:	bool "script"
+//config:	bool "script (8 kb)"
 //config:	default y
 //config:	help
-//config:	  The script makes typescript of terminal session.
+//config:	The script makes typescript of terminal session.
 
 //applet:IF_SCRIPT(APPLET(script, BB_DIR_USR_BIN, BB_SUID_DROP))
 

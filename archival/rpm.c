@@ -8,10 +8,10 @@
  */
 
 //config:config RPM
-//config:	bool "rpm"
+//config:	bool "rpm (33 kb)"
 //config:	default y
 //config:	help
-//config:	  Mini RPM applet - queries and extracts RPM packages.
+//config:	Mini RPM applet - queries and extracts RPM packages.
 
 //applet:IF_RPM(APPLET(rpm, BB_DIR_BIN, BB_SUID_DROP))
 //kbuild:lib-$(CONFIG_RPM) += rpm.o

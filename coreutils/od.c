@@ -11,10 +11,10 @@
  * Original copyright notice is retained at the end of this file.
  */
 //config:config OD
-//config:	bool "od"
+//config:	bool "od (11 kb)"
 //config:	default y
 //config:	help
-//config:	  od is used to dump binary files in octal and other formats.
+//config:	od is used to dump binary files in octal and other formats.
 
 //applet:IF_OD(APPLET(od, BB_DIR_USR_BIN, BB_SUID_DROP))
 

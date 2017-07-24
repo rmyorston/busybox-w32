@@ -6,10 +6,10 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config INSTALL
-//config:	bool "install"
+//config:	bool "install (12 kb)"
 //config:	default y
 //config:	help
-//config:	  Copy files and set attributes.
+//config:	Copy files and set attributes.
 //config:
 //config:config FEATURE_INSTALL_LONG_OPTIONS
 //config:	bool "Enable long options"

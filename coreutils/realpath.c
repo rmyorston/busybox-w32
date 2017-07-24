@@ -7,11 +7,11 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config REALPATH
-//config:	bool "realpath"
+//config:	bool "realpath (1.1 kb)"
 //config:	default y
 //config:	help
-//config:	  Return the canonicalized absolute pathname.
-//config:	  This isn't provided by GNU shellutils, but where else does it belong.
+//config:	Return the canonicalized absolute pathname.
+//config:	This isn't provided by GNU shellutils, but where else does it belong.
 
 //applet:IF_REALPATH(APPLET(realpath, BB_DIR_USR_BIN, BB_SUID_DROP))
 

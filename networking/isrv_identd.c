@@ -7,12 +7,12 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config FAKEIDENTD
-//config:	bool "fakeidentd"
+//config:	bool "fakeidentd (8.9 kb)"
 //config:	default y
 //config:	select FEATURE_SYSLOG
 //config:	help
-//config:	  fakeidentd listens on the ident port and returns a predefined
-//config:	  fake value on any query.
+//config:	fakeidentd listens on the ident port and returns a predefined
+//config:	fake value on any query.
 
 //applet:IF_FAKEIDENTD(APPLET(fakeidentd, BB_DIR_USR_SBIN, BB_SUID_DROP))
 

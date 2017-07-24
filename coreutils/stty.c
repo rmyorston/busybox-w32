@@ -20,10 +20,10 @@
    Special for busybox ported by Vladimir Oleynik <dzo@simtreas.ru> 2001
 */
 //config:config STTY
-//config:	bool "stty"
+//config:	bool "stty (8.6 kb)"
 //config:	default y
 //config:	help
-//config:	  stty is used to change and print terminal line settings.
+//config:	stty is used to change and print terminal line settings.
 
 //applet:IF_STTY(APPLET(stty, BB_DIR_BIN, BB_SUID_DROP))
 

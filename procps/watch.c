@@ -12,11 +12,11 @@
 /* BB_AUDIT GNU defects -- only option -n is supported. */
 
 //config:config WATCH
-//config:	bool "watch"
+//config:	bool "watch (4.1 kb)"
 //config:	default y
 //config:	help
-//config:	  watch is used to execute a program periodically, showing
-//config:	  output to the screen.
+//config:	watch is used to execute a program periodically, showing
+//config:	output to the screen.
 
 //applet:IF_WATCH(APPLET(watch, BB_DIR_BIN, BB_SUID_DROP))
 

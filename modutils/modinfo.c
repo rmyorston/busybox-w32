@@ -6,11 +6,11 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config MODINFO
-//config:	bool "modinfo"
+//config:	bool "modinfo (25 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Show information about a Linux Kernel module
+//config:	Show information about a Linux Kernel module
 
 //applet:IF_MODINFO(APPLET(modinfo, BB_DIR_SBIN, BB_SUID_DROP))
 

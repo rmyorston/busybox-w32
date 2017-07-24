@@ -125,12 +125,12 @@ log message, you can use a pattern like this instead
 */
 
 //config:config SVLOGD
-//config:	bool "svlogd"
+//config:	bool "svlogd (15 kb)"
 //config:	default y
 //config:	help
-//config:	  svlogd continuously reads log data from its standard input, optionally
-//config:	  filters log messages, and writes the data to one or more automatically
-//config:	  rotated logs.
+//config:	svlogd continuously reads log data from its standard input, optionally
+//config:	filters log messages, and writes the data to one or more automatically
+//config:	rotated logs.
 
 //applet:IF_SVLOGD(APPLET(svlogd, BB_DIR_USR_SBIN, BB_SUID_DROP))
 

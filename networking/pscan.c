@@ -6,10 +6,10 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config PSCAN
-//config:	bool "pscan"
+//config:	bool "pscan (6.6 kb)"
 //config:	default y
 //config:	help
-//config:	  Simple network port scanner.
+//config:	Simple network port scanner.
 
 //applet:IF_PSCAN(APPLET(pscan, BB_DIR_USR_BIN, BB_SUID_DROP))
 

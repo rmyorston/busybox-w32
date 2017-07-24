@@ -12,14 +12,14 @@
  * initially busyboxified by Bernhard Reutner-Fischer
  */
 //config:config RUNLEVEL
-//config:	bool "runlevel"
+//config:	bool "runlevel (518 bytes)"
 //config:	default y
 //config:	depends on FEATURE_UTMP
 //config:	help
-//config:	  find the current and previous system runlevel.
+//config:	find the current and previous system runlevel.
 //config:
-//config:	  This applet uses utmp but does not rely on busybox supporing
-//config:	  utmp on purpose. It is used by e.g. emdebian via /etc/init.d/rc.
+//config:	This applet uses utmp but does not rely on busybox supporing
+//config:	utmp on purpose. It is used by e.g. emdebian via /etc/init.d/rc.
 
 //applet:IF_RUNLEVEL(APPLET(runlevel, BB_DIR_SBIN, BB_SUID_DROP))
 

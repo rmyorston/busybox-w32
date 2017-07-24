@@ -32,11 +32,11 @@
  * Paul Mundt <lethal@linux-sh.org>.
  */
 //config:config READPROFILE
-//config:	bool "readprofile"
+//config:	bool "readprofile (7.2 kb)"
 //config:	default y
 //config:	#select PLATFORM_LINUX
 //config:	help
-//config:	  This allows you to parse /proc/profile for basic profiling.
+//config:	This allows you to parse /proc/profile for basic profiling.
 
 //applet:IF_READPROFILE(APPLET(readprofile, BB_DIR_USR_SBIN, BB_SUID_DROP))
 

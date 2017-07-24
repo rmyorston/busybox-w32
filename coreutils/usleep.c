@@ -7,10 +7,10 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config USLEEP
-//config:	bool "usleep"
+//config:	bool "usleep (1.1 kb)"
 //config:	default y
 //config:	help
-//config:	  usleep is used to pause for a specified number of microseconds.
+//config:	usleep is used to pause for a specified number of microseconds.
 
 //applet:IF_USLEEP(APPLET_NOFORK(usleep, usleep, BB_DIR_BIN, BB_SUID_DROP, usleep))
 

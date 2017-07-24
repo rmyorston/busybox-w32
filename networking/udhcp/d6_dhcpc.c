@@ -14,31 +14,31 @@
 //config:	default n  # not yet ready
 //config:	depends on FEATURE_IPV6
 //config:	help
-//config:	  udhcpc6 is a DHCPv6 client
+//config:	udhcpc6 is a DHCPv6 client
 //config:
 //config:config FEATURE_UDHCPC6_RFC3646
 //config:	bool "Support RFC 3646 (DNS server and search list)"
 //config:	default y
 //config:	depends on UDHCPC6
 //config:	help
-//config:	  List of DNS servers and domain search list can be requested with
-//config:	  "-O dns" and "-O search". If server gives these values,
-//config:	  they will be set in environment variables "dns" and "search".
+//config:	List of DNS servers and domain search list can be requested with
+//config:	"-O dns" and "-O search". If server gives these values,
+//config:	they will be set in environment variables "dns" and "search".
 //config:
 //config:config FEATURE_UDHCPC6_RFC4704
 //config:	bool "Support RFC 4704 (Client FQDN)"
 //config:	default y
 //config:	depends on UDHCPC6
 //config:	help
-//config:	  You can request FQDN to be given by server using "-O fqdn".
+//config:	You can request FQDN to be given by server using "-O fqdn".
 //config:
 //config:config FEATURE_UDHCPC6_RFC4833
 //config:	bool "Support RFC 4833 (Timezones)"
 //config:	default y
 //config:	depends on UDHCPC6
 //config:	help
-//config:	  You can request POSIX timezone with "-O tz" and timezone name
-//config:	  with "-O timezone".
+//config:	You can request POSIX timezone with "-O tz" and timezone name
+//config:	with "-O timezone".
 
 //applet:IF_UDHCPC6(APPLET(udhcpc6, BB_DIR_USR_BIN, BB_SUID_DROP))
 
@@ -877,10 +877,10 @@ static int d6_raw_socket(int ifindex)
 	};
 #endif
 
-	log1("opening raw socket on ifindex %d", ifindex); //log2?
+	log2("opening raw socket on ifindex %d", ifindex);
 
 	fd = xsocket(PF_PACKET, SOCK_DGRAM, htons(ETH_P_IPV6));
-	log1("got raw socket fd %d", fd); //log2?
+	log2("got raw socket fd %d", fd);
 
 	sock.sll_family = AF_PACKET;
 	sock.sll_protocol = htons(ETH_P_IPV6);
@@ -1238,7 +1238,7 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 		retval = 0;
 		/* If we already timed out, fall through with retval = 0, else... */
 		if (tv > 0) {
-			log1("waiting on select %u seconds", tv);
+			log1("waiting %u seconds", tv);
 			timestamp_before_wait = (unsigned)monotonic_sec();
 			retval = poll(pfds, 2, tv < INT_MAX/1000 ? tv * 1000 : INT_MAX);
 			if (retval < 0) {
@@ -1248,7 +1248,7 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 					continue;
 				}
 				/* Else: an error occured, panic! */
-				bb_perror_msg_and_die("select");
+				bb_perror_msg_and_die("poll");
 			}
 		}
 

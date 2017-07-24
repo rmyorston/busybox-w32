@@ -8,13 +8,13 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config DEPMOD
-//config:	bool "depmod"
+//config:	bool "depmod (26 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  depmod generates modules.dep (and potentially modules.alias
-//config:	  and modules.symbols) that contain dependency information
-//config:	  for modprobe.
+//config:	depmod generates modules.dep (and potentially modules.alias
+//config:	and modules.symbols) that contain dependency information
+//config:	for modprobe.
 
 //applet:IF_DEPMOD(IF_NOT_MODPROBE_SMALL(APPLET(depmod, BB_DIR_SBIN, BB_SUID_DROP)))
 

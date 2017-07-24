@@ -13,10 +13,10 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config SUM
-//config:	bool "sum"
+//config:	bool "sum (4.3 kb)"
 //config:	default y
 //config:	help
-//config:	  checksum and count the blocks in a file
+//config:	checksum and count the blocks in a file
 
 //applet:IF_SUM(APPLET(sum, BB_DIR_USR_BIN, BB_SUID_DROP))
 

@@ -8,43 +8,43 @@
 //kbuild:lib-$(CONFIG_BOOTCHARTD) += bootchartd.o
 
 //config:config BOOTCHARTD
-//config:	bool "bootchartd"
+//config:	bool "bootchartd (10 kb)"
 //config:	default y
 //config:	help
-//config:	  bootchartd is commonly used to profile the boot process
-//config:	  for the purpose of speeding it up. In this case, it is started
-//config:	  by the kernel as the init process. This is configured by adding
-//config:	  the init=/sbin/bootchartd option to the kernel command line.
+//config:	bootchartd is commonly used to profile the boot process
+//config:	for the purpose of speeding it up. In this case, it is started
+//config:	by the kernel as the init process. This is configured by adding
+//config:	the init=/sbin/bootchartd option to the kernel command line.
 //config:
-//config:	  It can also be used to monitor the resource usage of a specific
-//config:	  application or the running system in general. In this case,
-//config:	  bootchartd is started interactively by running bootchartd start
-//config:	  and stopped using bootchartd stop.
+//config:	It can also be used to monitor the resource usage of a specific
+//config:	application or the running system in general. In this case,
+//config:	bootchartd is started interactively by running bootchartd start
+//config:	and stopped using bootchartd stop.
 //config:
 //config:config FEATURE_BOOTCHARTD_BLOATED_HEADER
 //config:	bool "Compatible, bloated header"
 //config:	default y
 //config:	depends on BOOTCHARTD
 //config:	help
-//config:	  Create extended header file compatible with "big" bootchartd.
-//config:	  "Big" bootchartd is a shell script and it dumps some
-//config:	  "convenient" info int the header, such as:
-//config:	    title = Boot chart for `hostname` (`date`)
-//config:	    system.uname = `uname -srvm`
-//config:	    system.release = `cat /etc/DISTRO-release`
-//config:	    system.cpu = `grep '^model name' /proc/cpuinfo | head -1` ($cpucount)
-//config:	    system.kernel.options = `cat /proc/cmdline`
-//config:	  This data is not mandatory for bootchart graph generation,
-//config:	  and is considered bloat. Nevertheless, this option
-//config:	  makes bootchartd applet to dump a subset of it.
+//config:	Create extended header file compatible with "big" bootchartd.
+//config:	"Big" bootchartd is a shell script and it dumps some
+//config:	"convenient" info int the header, such as:
+//config:		title = Boot chart for `hostname` (`date`)
+//config:		system.uname = `uname -srvm`
+//config:		system.release = `cat /etc/DISTRO-release`
+//config:		system.cpu = `grep '^model name' /proc/cpuinfo | head -1` ($cpucount)
+//config:		system.kernel.options = `cat /proc/cmdline`
+//config:	This data is not mandatory for bootchart graph generation,
+//config:	and is considered bloat. Nevertheless, this option
+//config:	makes bootchartd applet to dump a subset of it.
 //config:
 //config:config FEATURE_BOOTCHARTD_CONFIG_FILE
 //config:	bool "Support bootchartd.conf"
 //config:	default y
 //config:	depends on BOOTCHARTD
 //config:	help
-//config:	  Enable reading and parsing of $PWD/bootchartd.conf
-//config:	  and /etc/bootchartd.conf files.
+//config:	Enable reading and parsing of $PWD/bootchartd.conf
+//config:	and /etc/bootchartd.conf files.
 
 #include "libbb.h"
 #include "common_bufsiz.h"
@@ -171,7 +171,9 @@ static int dump_procs(FILE *fp, int look_for_login_process)
 			p++;
 			strchrnul(p, ')')[0] = '\0';
 			/* Is it gdm, kdm or a getty? */
-			if (((p[0] == 'g' || p[0] == 'k' || p[0] == 'x') && p[1] == 'd' && p[2] == 'm')
+			if (((p[0] == 'g' || p[0] == 'k' || p[0] == 'x')
+			     && p[1] == 'd' && p[2] == 'm' && p[3] == '\0'
+			    )
 			 || strstr(p, "getty")
 			) {
 				found_login_process = 1;
@@ -190,7 +192,7 @@ static char *make_tempdir(void)
 	if (!tempdir) {
 #ifdef __linux__
 		/* /tmp is not writable (happens when we are used as init).
-		 * Try to mount a tmpfs, them cd and lazily unmount it.
+		 * Try to mount a tmpfs, then cd and lazily unmount it.
 		 * Since we unmount it at once, we can mount it anywhere.
 		 * Try a few locations which are likely ti exist.
 		 */
