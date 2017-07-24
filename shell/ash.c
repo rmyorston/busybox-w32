@@ -13262,7 +13262,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	struct tblentry *cmdp;
 	int idx;
 	int prev;
-	char *fullname;
+	char *fullname IF_PLATFORM_MINGW32(= NULL);
 	struct stat statb;
 	int e;
 	int updatetbl;
@@ -13273,7 +13273,11 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	if (strchr(name, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(name, '\\'))) {
 		entry->u.index = -1;
 		if (act & DO_ABS) {
-			while (stat(name, &statb) < 0) {
+			while (stat(name, &statb) < 0
+#if ENABLE_PLATFORM_MINGW32
+				&& (fullname=file_is_win32_executable(name)) == NULL
+#endif
+				) {
 #ifdef SYSV
 				if (errno == EINTR)
 					continue;
@@ -13281,6 +13285,9 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 				entry->cmdtype = CMDUNKNOWN;
 				return;
 			}
+#if ENABLE_PLATFORM_MINGW32
+			free(fullname);
+#endif
 		}
 		entry->cmdtype = CMDNORMAL;
 		return;
