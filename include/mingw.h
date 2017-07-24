@@ -33,7 +33,8 @@ int inet_pton(int af, const char *src, void *dst);
 #define F_GETFL 3
 #define F_SETFL 3
 #define FD_CLOEXEC 0x1
-#define O_NONBLOCK 04000
+#define O_NONBLOCK 0
+#define O_NOFOLLOW 0
 
 /*
  * grp.h
