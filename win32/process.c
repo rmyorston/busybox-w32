@@ -235,6 +235,7 @@ spawnveq(int mode, const char *path, const char *const *argv, const char *const 
 	return ret;
 }
 
+#if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
 static intptr_t
 mingw_spawn_applet(int mode,
 		   const char *const *argv,
@@ -242,6 +243,7 @@ mingw_spawn_applet(int mode,
 {
 	return spawnveq(mode, bb_busybox_exec_path, argv, envp);
 }
+#endif
 
 static intptr_t
 mingw_spawn_interpreter(int mode, const char *prog, const char *const *argv, const char *const *envp)
@@ -264,11 +266,13 @@ mingw_spawn_interpreter(int mode, const char *prog, const char *const *argv, con
 	memcpy(new_argv+nopts+2, argv+1, sizeof(*argv)*argc);
 	new_argv[nopts+1] = prog; /* pass absolute path */
 
-	if (ENABLE_FEATURE_PREFER_APPLETS && find_applet_by_name(interpr) >= 0) {
+#if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
+	if (find_applet_by_name(interpr) >= 0) {
 		new_argv[0] = interpr;
 		ret = mingw_spawn_applet(mode, new_argv, envp);
-	}
-	else {
+	} else
+#endif
+	{
 		char *path = xstrdup(getenv("PATH"));
 		char *tmp = path;
 		char *iprog = find_executable(interpr, &tmp);
@@ -292,10 +296,12 @@ mingw_spawn_1(int mode, const char *cmd, const char *const *argv, const char *co
 {
 	intptr_t ret;
 
-	if (ENABLE_FEATURE_PREFER_APPLETS &&
-	    find_applet_by_name(cmd) >= 0)
+#if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
+	if (find_applet_by_name(cmd) >= 0)
 		return mingw_spawn_applet(mode, argv, envp);
-	else if (is_absolute_path(cmd))
+	else
+#endif
+	if (is_absolute_path(cmd))
 		return mingw_spawn_interpreter(mode, cmd, argv, envp);
 	else {
 		char *tmp, *path = getenv("PATH");
