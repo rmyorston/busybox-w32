@@ -8150,11 +8150,6 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 			goto try_PATH;
 		}
 		e = errno;
-#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-	} else if (strcmp(argv[0], "busybox") == 0) {
-		tryexec(-1, bb_busybox_exec_path, argv, envp);
-		e = errno;
-#endif
 	} else {
  try_PATH:
 		e = ENOENT;
@@ -13377,9 +13372,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 #if ENABLE_FEATURE_SH_STANDALONE
 	{
 		int applet_no = find_applet_by_name(name);
-		if (applet_no >= 0 ||
-				/* requires find_applet_by_name to return -1 on no match */
-				(ENABLE_PLATFORM_MINGW32 && strcmp(name, "busybox") == 0)) {
+		if (applet_no >= 0) {
 			entry->cmdtype = CMDNORMAL;
 			entry->u.index = -2 - applet_no;
 			return;
