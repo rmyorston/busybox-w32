@@ -453,6 +453,7 @@ typedef unsigned smalluint;
 #endif
 # undef HAVE_UNLOCKED_STDIO
 # undef HAVE_UNLOCKED_LINE_OPS
+# undef HAVE_PRINTF_PERCENTM
 #endif
 
 #if defined(__WATCOMC__)
