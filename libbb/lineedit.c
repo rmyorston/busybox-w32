@@ -2724,44 +2724,6 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 				vi_cmdmode = 1;
 				input_backward(1);
 			}
-			/* Handle a few ESC-<key> combinations the same way
-			 * standard readline bindings (IOW: bash) do.
-			 * Often, Alt-<key> generates ESC-<key>.
-			 */
-			ic = lineedit_read_key(read_key_buffer, 20);
-			switch (ic) {
-				//case KEYCODE_LEFT: - bash doesn't do this
-				case 'b':
-					ctrl_left();
-					break;
-				//case KEYCODE_RIGHT: - bash doesn't do this
-				case 'f':
-					ctrl_right();
-					break;
-				//case KEYCODE_DELETE: - bash doesn't do this
-				case 'd':  /* Alt-D */
-				{
-					/* Delete word forward */
-					int nc, sc = cursor;
-					ctrl_right();
-					nc = cursor - sc;
-					input_backward(nc);
-					while (--nc >= 0)
-						input_delete(1);
-					break;
-				}
-				case '\b':   /* Alt-Backspace(?) */
-				case '\x7f': /* Alt-Backspace(?) */
-				//case 'w': - bash doesn't do this
-				{
-					/* Delete word backward */
-					int sc = cursor;
-					ctrl_left();
-					while (sc-- > cursor)
-						input_delete(1);
-					break;
-				}
-			}
 			break;
 #endif /* FEATURE_COMMAND_EDITING_VI */
 
