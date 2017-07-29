@@ -54,6 +54,13 @@
 
 #define UNUSED_PARAM __attribute__ ((__unused__))
 #define NORETURN __attribute__ ((__noreturn__))
+
+#if __GNUC_PREREQ(4,5)
+# define bb_unreachable(altcode) __builtin_unreachable()
+#else
+# define bb_unreachable(altcode) altcode
+#endif
+
 /* "The malloc attribute is used to tell the compiler that a function
  * may be treated as if any non-NULL pointer it returns cannot alias
  * any other pointer valid when the function returns. This will often
@@ -416,6 +423,7 @@ typedef unsigned smalluint;
 #define HAVE_MNTENT_H 1
 #define HAVE_NET_ETHERNET_H 1
 #define HAVE_SYS_STATFS_H 1
+#define HAVE_PRINTF_PERCENTM 1
 
 #if defined(__UCLIBC__)
 # if UCLIBC_VERSION < KERNEL_VERSION(0, 9, 32)
@@ -490,6 +498,7 @@ typedef unsigned smalluint;
 # undef HAVE_DPRINTF
 # undef HAVE_UNLOCKED_STDIO
 # undef HAVE_UNLOCKED_LINE_OPS
+# undef HAVE_PRINTF_PERCENTM
 #endif
 
 #if defined(__dietlibc__)
@@ -512,6 +521,7 @@ typedef unsigned smalluint;
 # undef HAVE_STRVERSCMP
 # undef HAVE_XTABS
 # undef HAVE_UNLOCKED_LINE_OPS
+# undef HAVE_PRINTF_PERCENTM
 # include <osreldate.h>
 # if __FreeBSD_version < 1000029
 #  undef HAVE_STRCHRNUL /* FreeBSD added strchrnul() between 1000028 and 1000029 */
@@ -546,6 +556,7 @@ typedef unsigned smalluint;
 # undef HAVE_STRVERSCMP
 # undef HAVE_UNLOCKED_LINE_OPS
 # undef HAVE_NET_ETHERNET_H
+# undef HAVE_PRINTF_PERCENTM
 #endif
 
 /*

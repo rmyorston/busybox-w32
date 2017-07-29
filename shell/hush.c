@@ -4466,6 +4466,8 @@ static int parse_dollar(o_string *as_string,
 	case '@': /* args */
 		goto make_one_char_var;
 	case '{': {
+		char len_single_ch;
+
 		o_addchr(dest, SPECIAL_VAR_SYMBOL);
 
 		ch = i_getch(input); /* eat '{' */
@@ -4485,6 +4487,7 @@ static int parse_dollar(o_string *as_string,
 			return 0;
 		}
 		nommu_addchr(as_string, ch);
+		len_single_ch = ch;
 		ch |= quote_mask;
 
 		/* It's possible to just call add_till_closing_bracket() at this point.
@@ -4509,9 +4512,18 @@ static int parse_dollar(o_string *as_string,
 				/* handle parameter expansions
 				 * http://www.opengroup.org/onlinepubs/009695399/utilities/xcu_chap02.html#tag_02_06_02
 				 */
-				if (!strchr(VAR_SUBST_OPS, ch)) /* ${var<bad_char>... */
-					goto bad_dollar_syntax;
-
+				if (!strchr(VAR_SUBST_OPS, ch)) { /* ${var<bad_char>... */
+					if (len_single_ch != '#'
+					/*|| !strchr(SPECIAL_VARS_STR, ch) - disallow errors like ${#+} ? */
+					 || i_peek(input) != '}'
+					) {
+						goto bad_dollar_syntax;
+					}
+					/* else: it's "length of C" ${#C} op,
+					 * where C is a single char
+					 * special var name, e.g. ${#!}.
+					 */
+				}
 				/* Eat everything until closing '}' (or ':') */
 				end_ch = '}';
 				if (BASH_SUBSTR
@@ -4568,6 +4580,7 @@ static int parse_dollar(o_string *as_string,
 				}
 				break;
 			}
+			len_single_ch = 0; /* it can't be ${#C} op */
 		}
 		o_addchr(dest, SPECIAL_VAR_SYMBOL);
 		break;
@@ -5559,8 +5572,10 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 	first_char = arg[0] = arg0 & 0x7f;
 	exp_op = 0;
 
-	if (first_char == '#'      /* ${#... */
-	 && arg[1] && !exp_saveptr /* not ${#} and not ${#<op_char>...} */
+	if (first_char == '#' && arg[1] /* ${#...} but not ${#} */
+	 && (!exp_saveptr               /* and ( not(${#<op_char>...}) */
+	    || (arg[2] == '\0' && strchr(SPECIAL_VARS_STR, arg[1])) /* or ${#C} "len of $C" ) */
+	    )		/* NB: skipping ^^^specvar check mishandles ${#::2} */
 	) {
 		/* It must be length operator: ${#var} */
 		var++;
@@ -5797,7 +5812,11 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 					/* mimic bash message */
 					die_if_script("%s: %s",
 						var,
-						exp_word[0] ? exp_word : "parameter null or not set"
+						exp_word[0]
+						? exp_word
+						: "parameter null or not set"
+						/* ash has more specific messages, a-la: */
+						/*: (exp_save == ':' ? "parameter null or not set" : "parameter not set")*/
 					);
 //TODO: how interactive bash aborts expansion mid-command?
 				} else {
@@ -6643,8 +6662,18 @@ struct squirrel {
 	/* moved_to = -1: fd was opened by redirect; close orig_fd after redir */
 };
 
+static struct squirrel *append_squirrel(struct squirrel *sq, int i, int orig, int moved)
+{
+	sq = xrealloc(sq, (i + 2) * sizeof(sq[0]));
+	sq[i].orig_fd = orig;
+	sq[i].moved_to = moved;
+	sq[i+1].orig_fd = -1; /* end marker */
+	return sq;
+}
+
 static struct squirrel *add_squirrel(struct squirrel *sq, int fd, int avoid_fd)
 {
+	int moved_to;
 	int i = 0;
 
 	if (sq) while (sq[i].orig_fd >= 0) {
@@ -6664,15 +6693,12 @@ static struct squirrel *add_squirrel(struct squirrel *sq, int fd, int avoid_fd)
 		i++;
 	}
 
-	sq = xrealloc(sq, (i + 2) * sizeof(sq[0]));
-	sq[i].orig_fd = fd;
 	/* If this fd is open, we move and remember it; if it's closed, moved_to = -1 */
-	sq[i].moved_to = fcntl_F_DUPFD(fd, avoid_fd);
-	debug_printf_redir("redirect_fd %d: previous fd is moved to %d (-1 if it was closed)\n", fd, sq[i].moved_to);
-	if (sq[i].moved_to < 0 && errno != EBADF)
+	moved_to = fcntl_F_DUPFD(fd, avoid_fd);
+	debug_printf_redir("redirect_fd %d: previous fd is moved to %d (-1 if it was closed)\n", fd, moved_to);
+	if (moved_to < 0 && errno != EBADF)
 		xfunc_die();
-	sq[i+1].orig_fd = -1; /* end marker */
-	return sq;
+	return append_squirrel(sq, i, fd, moved_to);
 }
 
 /* fd: redirect wants this fd to be used (e.g. 3>file).
@@ -6777,6 +6803,19 @@ static int setup_redirects(struct command *prog, struct squirrel **sqp)
 				 * (though zsh doesn't!)
 				 */
 				return 1;
+			}
+			if (openfd == redir->rd_fd && sqp) {
+				/* open() gave us precisely the fd we wanted.
+				 * This means that this fd was not busy
+				 * (not opened to anywhere).
+				 * Remember to close it on restore:
+				 */
+				struct squirrel *sq = *sqp;
+				int i = 0;
+			        if (sq) while (sq[i].orig_fd >= 0)
+					i++;
+				*sqp = append_squirrel(sq, i, openfd, -1); /* -1 = "it was closed" */
+				debug_printf_redir("redir to previously closed fd %d\n", openfd);
 			}
 		} else {
 			/* "rd_fd<*>rd_dup" or "rd_fd<*>-" cases */
@@ -9719,7 +9758,7 @@ static int FAST_FUNC builtin_trap(char **argv)
 			sighandler_t handler;
 
 			sig = get_signum(*argv++);
-			if (sig < 0 || sig >= NSIG) {
+			if (sig < 0) {
 				ret = EXIT_FAILURE;
 				/* Mimic bash message exactly */
 				bb_error_msg("trap: %s: invalid signal specification", argv[-1]);

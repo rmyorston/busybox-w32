@@ -1,6 +1,8 @@
 # first try some invalid patterns (do in subshell due to parsing error)
-"$THIS_SH" -c 'echo ${-}'
-"$THIS_SH" -c 'echo ${:-}'
+# (set argv0 to "SHELL" to avoid "/path/to/shell: blah" in error messages)
+# valid in bash and ash (same as $-), not supported in hush (yet?):
+"$THIS_SH" -c 'echo ${-}' SHELL
+"$THIS_SH" -c 'echo ${:-}' SHELL
 
 # now some funky ones
 echo _${#-} _${#:-}

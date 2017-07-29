@@ -26,18 +26,17 @@
 //config:	tree. The 'mount' utility is used to graft a filesystem onto a
 //config:	particular part of the tree. A filesystem can either live on a block
 //config:	device, or it can be accessible over the network, as is the case with
-//config:	NFS filesystems. Most people using BusyBox will also want to enable
-//config:	the 'mount' utility.
+//config:	NFS filesystems.
 //config:
 //config:config FEATURE_MOUNT_FAKE
-//config:	bool "Support option -f"
+//config:	bool "Support -f (fake mount)"
 //config:	default y
 //config:	depends on MOUNT
 //config:	help
 //config:	Enable support for faking a file system mount.
 //config:
 //config:config FEATURE_MOUNT_VERBOSE
-//config:	bool "Support option -v"
+//config:	bool "Support -v (verbose)"
 //config:	default y
 //config:	depends on MOUNT
 //config:	help
@@ -65,7 +64,6 @@
 //config:	help
 //config:	This allows for specifying a device by label or uuid, rather than by
 //config:	name. This feature utilizes the same functionality as blkid/findfs.
-//config:	This also enables label or uuid support for swapon.
 //config:
 //config:config FEATURE_MOUNT_NFS
 //config:	bool "Support mounting NFS file systems on Linux < 2.6.23"
@@ -100,7 +98,7 @@
 //config:
 //config:config FEATURE_MOUNT_FSTAB
 //config:	depends on MOUNT
-//config:	bool "Support /etc/fstab and -a"
+//config:	bool "Support /etc/fstab and -a (mount all)"
 //config:	default y
 //config:	help
 //config:	Support mount all and looking for files in /etc/fstab.

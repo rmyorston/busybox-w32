@@ -834,7 +834,7 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 	}
 	pf_len = strlen(pfind);
 
-#if ENABLE_FEATURE_SH_STANDALONE && NUM_APPLETS != 1
+# if ENABLE_FEATURE_SH_STANDALONE && NUM_APPLETS != 1
 	if (type == FIND_EXE_ONLY && !dirbuf) {
 		const char *p = applet_names;
 
@@ -845,7 +845,7 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 		}
 		add_partial_match(pfind, "busybox", pf_len);
 	}
-#endif
+# endif
 
 	for (i = 0; i < npaths; i++) {
 		DIR *dir;

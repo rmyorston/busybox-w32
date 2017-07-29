@@ -34,6 +34,13 @@
 # include <malloc.h> /* for mallopt */
 #endif
 
+#include <sys/prctl.h>
+#ifndef PR_SET_NAME
+#define PR_SET_NAME 15
+#endif
+#ifndef PR_GET_NAME
+#define PR_GET_NAME 16
+#endif
 
 /* Declare <applet>_main() */
 #define PROTOTYPES
@@ -789,11 +796,26 @@ static void install_links(const char *busybox UNUSED_PARAM,
 }
 # endif
 
-# if ENABLE_BUSYBOX
 static void run_applet_and_exit(const char *name, char **argv) NORETURN;
 
-/* If we were called as "busybox..." */
-static int busybox_main(char **argv)
+# if ENABLE_BUSYBOX
+#  if ENABLE_FEATURE_SH_STANDALONE && ENABLE_FEATURE_TAB_COMPLETION
+    /*
+     * Insert "busybox" into applet table as well.
+     * This makes standalone shell tab-complete this name too.
+     * (Otherwise having "busybox" in applet table is not necessary,
+     * there is other code which routes "busyboxANY_SUFFIX" name
+     * to busybox_main()).
+     */
+//usage:#define busybox_trivial_usage NOUSAGE_STR
+//usage:#define busybox_full_usage ""
+//applet:IF_BUSYBOX(IF_FEATURE_SH_STANDALONE(IF_FEATURE_TAB_COMPLETION(APPLET(busybox, BB_DIR_BIN, BB_SUID_MAYBE))))
+int busybox_main(int argc, char *argv[]) MAIN_EXTERNALLY_VISIBLE;
+#  else
+#   define busybox_main(argc,argv) busybox_main(argv)
+static
+#  endif
+int busybox_main(int argc UNUSED_PARAM, char **argv)
 {
 	if (!argv[1]) {
 		/* Called without arguments */
@@ -990,7 +1012,7 @@ static NORETURN void run_applet_and_exit(const char *name, char **argv)
 {
 #  if ENABLE_BUSYBOX
 	if (is_prefixed_with(name, "busybox"))
-		exit(busybox_main(argv));
+		exit(busybox_main(/*unused:*/ 0, argv));
 #  endif
 #  if NUM_APPLETS > 0
 	/* find_applet_by_name() search is more expensive, so goes second */
@@ -1124,6 +1146,17 @@ int main(int argc UNUSED_PARAM, char **argv)
 		}
 	}
 	applet_name = bb_basename(applet_name);
+
+# if defined(__linux__)
+	/* If we are a result of execv("/proc/self/exe"), fix ugly comm of "exe" */
+	if (ENABLE_FEATURE_SH_STANDALONE
+	 || ENABLE_FEATURE_PREFER_APPLETS
+	 || !BB_MMU
+	) {
+		prctl(PR_SET_NAME, (long)applet_name, 0, 0, 0);
+	}
+# endif
+
 	parse_config_file(); /* ...maybe, if FEATURE_SUID_CONFIG */
 	run_applet_and_exit(applet_name, argv);
 
