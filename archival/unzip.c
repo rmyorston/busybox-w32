@@ -589,7 +589,7 @@ int unzip_main(int argc, char **argv)
 		}
 	}
 
-#ifndef __GLIBC__
+#if !defined(__GLIBC__) && !ENABLE_PLATFORM_MINGW32
 	/*
 	 * This code is needed for non-GNU getopt
 	 * which doesn't understand "-" in option string.
