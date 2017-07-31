@@ -301,7 +301,7 @@ mingw_spawn_1(int mode, const char *cmd, const char *const *argv, const char *co
 		return mingw_spawn_applet(mode, argv, envp);
 	else
 #endif
-	if (is_absolute_path(cmd))
+	if (strchr(cmd, '/') || strchr(cmd, '\\'))
 		return mingw_spawn_interpreter(mode, cmd, argv, envp);
 	else {
 		char *tmp, *path = getenv("PATH");
