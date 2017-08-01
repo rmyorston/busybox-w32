@@ -1145,6 +1145,9 @@ int run_nofork_applet(int applet_no, char **argv) FAST_FUNC;
 extern int find_applet_by_name(const char *name) FAST_FUNC;
 extern void run_applet_no_and_exit(int a, const char *name, char **argv) NORETURN FAST_FUNC;
 #endif
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_NOFORK
+extern int long_running_applet(int applet_no) FAST_FUNC;
+#endif
 
 /* Helpers for daemonization.
  *
