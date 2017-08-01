@@ -4306,6 +4306,7 @@ static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
 {
 	if (dwCtrlType == CTRL_C_EVENT || dwCtrlType == CTRL_BREAK_EVENT) {
 		SetEvent(hSIGINT);
+		pending_int = 1;
 		return TRUE;
 	}
 	return FALSE;
@@ -4369,6 +4370,7 @@ waitpid_child(int *status, int wait_flags)
 	if (!idx) { 		/* hSIGINT */
 		int i;
 		ResetEvent(hSIGINT);
+		pending_int = 0;
 		for (i = 1; i < pid_nr; i++)
 			TerminateProcess(proclist[i], 1);
 		pid = pidlist[1];
@@ -10282,6 +10284,7 @@ evalcommand(union node *cmd, int flags)
 			/* No, forking off a child is necessary */
 			struct forkshell fs;
 
+			INT_OFF;
 			memset(&fs, 0, sizeof(fs));
 			fs.fpid = FS_SHELLEXEC;
 			fs.argv = argv;
@@ -14492,6 +14495,7 @@ forkshell_shellexec(struct forkshell *fs)
 	char **argv = fs->argv;
 	char *path = fs->string;
 
+	FORCE_INT_ON;
 	listsetvar(varlist, VEXPORT|VSTACK);
 	shellexec(argv[0], argv, path, idx);
 }
