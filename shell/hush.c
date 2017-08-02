@@ -1454,11 +1454,11 @@ static int fcntl_F_DUPFD(int fd, int avoid_fd)
 	return newfd;
 }
 
-static int xdup_and_close(int fd, int F_DUPFD_maybe_CLOEXEC, int avoid_fd)
+static int xdup_CLOEXEC_and_close(int fd, int avoid_fd)
 {
 	int newfd;
  repeat:
-	newfd = fcntl(fd, F_DUPFD_maybe_CLOEXEC, avoid_fd + 1);
+	newfd = fcntl(fd, F_DUPFD_CLOEXEC, avoid_fd + 1);
 	if (newfd < 0) {
 		if (errno == EBUSY)
 			goto repeat;
@@ -1469,6 +1469,8 @@ static int xdup_and_close(int fd, int F_DUPFD_maybe_CLOEXEC, int avoid_fd)
 			return fd;
 		xfunc_die();
 	}
+	if (F_DUPFD_CLOEXEC == F_DUPFD) /* if old libc (w/o F_DUPFD_CLOEXEC) */
+		fcntl(newfd, F_SETFD, FD_CLOEXEC);
 	close(fd);
 	return newfd;
 }
@@ -1507,7 +1509,7 @@ static int save_FILEs_on_redirect(int fd, int avoid_fd)
 	while (fl) {
 		if (fd == fl->fd) {
 			/* We use it only on script files, they are all CLOEXEC */
-			fl->fd = xdup_and_close(fd, F_DUPFD_CLOEXEC, avoid_fd);
+			fl->fd = xdup_CLOEXEC_and_close(fd, avoid_fd);
 			debug_printf_redir("redirect_fd %d: matches a script fd, moving it to %d\n", fd, fl->fd);
 			return 1;
 		}
@@ -1544,6 +1546,16 @@ static void close_all_FILE_list(void)
 	}
 }
 #endif
+static int fd_in_FILEs(int fd)
+{
+	struct FILE_list *fl = G.FILE_list;
+	while (fl) {
+		if (fl->fd == fd)
+			return 1;
+		fl = fl->next;
+	}
+	return 0;
+}
 
 
 /* Helpers for setting new $n and restoring them back
@@ -4001,24 +4013,34 @@ static char *fetch_till_str(o_string *as_string,
 		ch = i_getch(input);
 		if (ch != EOF)
 			nommu_addchr(as_string, ch);
-		if ((ch == '\n' || ch == EOF)
-		 && ((heredoc_flags & HEREDOC_QUOTED) || prev != '\\')
-		) {
-			if (strcmp(heredoc.data + past_EOL, word) == 0) {
-				heredoc.data[past_EOL] = '\0';
-				debug_printf_parse("parsed heredoc '%s'\n", heredoc.data);
-				return heredoc.data;
-			}
-			while (ch == '\n') {
-				o_addchr(&heredoc, ch);
-				prev = ch;
+		if (ch == '\n' || ch == EOF) {
+ check_heredoc_end:
+			if ((heredoc_flags & HEREDOC_QUOTED) || prev != '\\') {
+				if (strcmp(heredoc.data + past_EOL, word) == 0) {
+					heredoc.data[past_EOL] = '\0';
+					debug_printf_parse("parsed heredoc '%s'\n", heredoc.data);
+					return heredoc.data;
+				}
+				if (ch == '\n') {
+					/* This is a new line.
+					 * Remember position and backslash-escaping status.
+					 */
+					o_addchr(&heredoc, ch);
+					prev = ch;
  jump_in:
-				past_EOL = heredoc.length;
-				do {
-					ch = i_getch(input);
-					if (ch != EOF)
-						nommu_addchr(as_string, ch);
-				} while ((heredoc_flags & HEREDOC_SKIPTABS) && ch == '\t');
+					past_EOL = heredoc.length;
+					/* Get 1st char of next line, possibly skipping leading tabs */
+					do {
+						ch = i_getch(input);
+						if (ch != EOF)
+							nommu_addchr(as_string, ch);
+					} while ((heredoc_flags & HEREDOC_SKIPTABS) && ch == '\t');
+					/* If this immediately ended the line,
+					 * go back to end-of-line checks.
+					 */
+					if (ch == '\n')
+						goto check_heredoc_end;
+				}
 			}
 		}
 		if (ch == EOF) {
@@ -6674,9 +6696,9 @@ static struct squirrel *append_squirrel(struct squirrel *sq, int i, int orig, in
 static struct squirrel *add_squirrel(struct squirrel *sq, int fd, int avoid_fd)
 {
 	int moved_to;
-	int i = 0;
+	int i;
 
-	if (sq) while (sq[i].orig_fd >= 0) {
+	if (sq) for (i = 0; sq[i].orig_fd >= 0; i++) {
 		/* If we collide with an already moved fd... */
 		if (fd == sq[i].moved_to) {
 			sq[i].moved_to = fcntl_F_DUPFD(sq[i].moved_to, avoid_fd);
@@ -6690,7 +6712,6 @@ static struct squirrel *add_squirrel(struct squirrel *sq, int fd, int avoid_fd)
 			debug_printf_redir("redirect_fd %d: already moved\n", fd);
 			return sq;
 		}
-		i++;
 	}
 
 	/* If this fd is open, we move and remember it; if it's closed, moved_to = -1 */
@@ -6701,18 +6722,41 @@ static struct squirrel *add_squirrel(struct squirrel *sq, int fd, int avoid_fd)
 	return append_squirrel(sq, i, fd, moved_to);
 }
 
+static struct squirrel *add_squirrel_closed(struct squirrel *sq, int fd)
+{
+	int i;
+
+	if (sq) for (i = 0; sq[i].orig_fd >= 0; i++) {
+		/* If we collide with an already moved fd... */
+		if (fd == sq[i].orig_fd) {
+			/* Examples:
+			 * "echo 3>FILE 3>&- 3>FILE"
+			 * "echo 3>&- 3>FILE"
+			 * No need for last redirect to insert
+			 * another "need to close 3" indicator.
+			 */
+			debug_printf_redir("redirect_fd %d: already moved or closed\n", fd);
+			return sq;
+		}
+	}
+
+	debug_printf_redir("redirect_fd %d: previous fd was closed\n", fd);
+	return append_squirrel(sq, i, fd, -1);
+}
+
 /* fd: redirect wants this fd to be used (e.g. 3>file).
  * Move all conflicting internally used fds,
  * and remember them so that we can restore them later.
  */
-static int save_fds_on_redirect(int fd, int avoid_fd, struct squirrel **sqp)
+static int save_fd_on_redirect(int fd, int avoid_fd, struct squirrel **sqp)
 {
 	if (avoid_fd < 9) /* the important case here is that it can be -1 */
 		avoid_fd = 9;
 
 #if ENABLE_HUSH_INTERACTIVE
-	if (fd != 0 && fd == G.interactive_fd) {
-		G.interactive_fd = xdup_and_close(G.interactive_fd, F_DUPFD_CLOEXEC, avoid_fd);
+	if (fd == G.interactive_fd) {
+		/* Testcase: "ls -l /proc/$$/fd 255>&-" should work */
+		G.interactive_fd = xdup_CLOEXEC_and_close(G.interactive_fd, avoid_fd);
 		debug_printf_redir("redirect_fd %d: matches interactive_fd, moving it to %d\n", fd, G.interactive_fd);
 		return 1; /* "we closed fd" */
 	}
@@ -6738,10 +6782,9 @@ static int save_fds_on_redirect(int fd, int avoid_fd, struct squirrel **sqp)
 
 static void restore_redirects(struct squirrel *sq)
 {
-
 	if (sq) {
-		int i = 0;
-		while (sq[i].orig_fd >= 0) {
+		int i;
+		for (i = 0; sq[i].orig_fd >= 0; i++) {
 			if (sq[i].moved_to >= 0) {
 				/* We simply die on error */
 				debug_printf_redir("restoring redirected fd from %d to %d\n", sq[i].moved_to, sq[i].orig_fd);
@@ -6751,7 +6794,6 @@ static void restore_redirects(struct squirrel *sq)
 				debug_printf_redir("restoring redirected fd %d: closing it\n", sq[i].orig_fd);
 				close(sq[i].orig_fd);
 			}
-			i++;
 		}
 		free(sq);
 	}
@@ -6761,17 +6803,47 @@ static void restore_redirects(struct squirrel *sq)
 	restore_redirected_FILEs();
 }
 
+#if ENABLE_FEATURE_SH_STANDALONE && BB_MMU
+static void close_saved_fds_and_FILE_fds(void)
+{
+	if (G_interactive_fd)
+		close(G_interactive_fd);
+	close_all_FILE_list();
+}
+#endif
+
+static int internally_opened_fd(int fd, struct squirrel *sq)
+{
+	int i;
+
+#if ENABLE_HUSH_INTERACTIVE
+	if (fd == G.interactive_fd)
+		return 1;
+#endif
+	/* If this one of script's fds? */
+	if (fd_in_FILEs(fd))
+		return 1;
+
+	if (sq) for (i = 0; sq[i].orig_fd >= 0; i++) {
+		if (fd == sq[i].moved_to)
+			return 1;
+	}
+	return 0;
+}
+
 /* squirrel != NULL means we squirrel away copies of stdin, stdout,
  * and stderr if they are redirected. */
 static int setup_redirects(struct command *prog, struct squirrel **sqp)
 {
-	int openfd, mode;
 	struct redir_struct *redir;
 
 	for (redir = prog->redirects; redir; redir = redir->next) {
+		int newfd;
+		int closed;
+
 		if (redir->rd_type == REDIRECT_HEREDOC2) {
 			/* "rd_fd<<HERE" case */
-			save_fds_on_redirect(redir->rd_fd, /*avoid:*/ 0, sqp);
+			save_fd_on_redirect(redir->rd_fd, /*avoid:*/ 0, sqp);
 			/* for REDIRECT_HEREDOC2, rd_filename holds _contents_
 			 * of the heredoc */
 			debug_printf_parse("set heredoc '%s'\n",
@@ -6783,6 +6855,8 @@ static int setup_redirects(struct command *prog, struct squirrel **sqp)
 		if (redir->rd_dup == REDIRFD_TO_FILE) {
 			/* "rd_fd<*>file" case (<*> is <,>,>>,<>) */
 			char *p;
+			int mode;
+
 			if (redir->rd_filename == NULL) {
 				/*
 				 * Examples:
@@ -6794,9 +6868,9 @@ static int setup_redirects(struct command *prog, struct squirrel **sqp)
 			}
 			mode = redir_table[redir->rd_type].mode;
 			p = expand_string_to_string(redir->rd_filename, /*unbackslash:*/ 1);
-			openfd = open_or_warn(p, mode);
+			newfd = open_or_warn(p, mode);
 			free(p);
-			if (openfd < 0) {
+			if (newfd < 0) {
 				/* Error message from open_or_warn can be lost
 				 * if stderr has been redirected, but bash
 				 * and ash both lose it as well
@@ -6804,40 +6878,52 @@ static int setup_redirects(struct command *prog, struct squirrel **sqp)
 				 */
 				return 1;
 			}
-			if (openfd == redir->rd_fd && sqp) {
+			if (newfd == redir->rd_fd && sqp) {
 				/* open() gave us precisely the fd we wanted.
 				 * This means that this fd was not busy
 				 * (not opened to anywhere).
 				 * Remember to close it on restore:
 				 */
-				struct squirrel *sq = *sqp;
-				int i = 0;
-			        if (sq) while (sq[i].orig_fd >= 0)
-					i++;
-				*sqp = append_squirrel(sq, i, openfd, -1); /* -1 = "it was closed" */
-				debug_printf_redir("redir to previously closed fd %d\n", openfd);
+				*sqp = add_squirrel_closed(*sqp, newfd);
+				debug_printf_redir("redir to previously closed fd %d\n", newfd);
 			}
 		} else {
-			/* "rd_fd<*>rd_dup" or "rd_fd<*>-" cases */
-			openfd = redir->rd_dup;
+			/* "rd_fd>&rd_dup" or "rd_fd>&-" case */
+			newfd = redir->rd_dup;
 		}
 
-		if (openfd != redir->rd_fd) {
-			int closed = save_fds_on_redirect(redir->rd_fd, /*avoid:*/ openfd, sqp);
-			if (openfd == REDIRFD_CLOSE) {
-				/* "rd_fd >&-" means "close me" */
-				if (!closed) {
-					/* ^^^ optimization: saving may already
-					 * have closed it. If not... */
-					close(redir->rd_fd);
-				}
-			} else {
-				xdup2(openfd, redir->rd_fd);
-				if (redir->rd_dup == REDIRFD_TO_FILE)
-					/* "rd_fd > FILE" */
-					close(openfd);
-				/* else: "rd_fd > rd_dup" */
+		if (newfd == redir->rd_fd)
+			continue;
+
+		/* if "N>FILE": move newfd to redir->rd_fd */
+		/* if "N>&M": dup newfd to redir->rd_fd */
+		/* if "N>&-": close redir->rd_fd (newfd is REDIRFD_CLOSE) */
+
+		closed = save_fd_on_redirect(redir->rd_fd, /*avoid:*/ newfd, sqp);
+		if (newfd == REDIRFD_CLOSE) {
+			/* "N>&-" means "close me" */
+			if (!closed) {
+				/* ^^^ optimization: saving may already
+				 * have closed it. If not... */
+				close(redir->rd_fd);
 			}
+			/* Sometimes we do another close on restore, getting EBADF.
+			 * Consider "echo 3>FILE 3>&-"
+			 * first redirect remembers "need to close 3",
+			 * and second redirect closes 3! Restore code then closes 3 again.
+			 */
+		} else {
+			/* if newfd is a script fd or saved fd, simulate EBADF */
+			if (internally_opened_fd(newfd, sqp ? *sqp : NULL)) {
+				//errno = EBADF;
+				//bb_perror_msg_and_die("can't duplicate file descriptor");
+				newfd = -1; /* same effect as code above */
+			}
+			xdup2(newfd, redir->rd_fd);
+			if (redir->rd_dup == REDIRFD_TO_FILE)
+				/* "rd_fd > FILE" */
+				close(newfd);
+			/* else: "rd_fd > rd_dup" */
 		}
 	}
 	return 0;
@@ -7004,11 +7090,34 @@ static void exec_function(char ***to_free,
 	argv[0] = G.global_argv[0];
 	G.global_argv = argv;
 	G.global_argc = n = 1 + string_array_len(argv + 1);
+
+// Example when we are here: "cmd | func"
+// func will run with saved-redirect fds open.
+// $ f() { echo /proc/self/fd/*; }
+// $ true | f
+// /proc/self/fd/0 /proc/self/fd/1 /proc/self/fd/2 /proc/self/fd/255 /proc/self/fd/3
+// stdio^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ G_interactive_fd^ DIR fd for glob
+// Same in script:
+// $ . ./SCRIPT
+// /proc/self/fd/0 /proc/self/fd/1 /proc/self/fd/2 /proc/self/fd/255 /proc/self/fd/3 /proc/self/fd/4
+// stdio^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ G_interactive_fd^ opened ./SCRIPT DIR fd for glob
+// They are CLOEXEC so external programs won't see them, but
+// for "more correctness" we might want to close those extra fds here:
+//?	close_saved_fds_and_FILE_fds();
+
+	/* "we are in function, ok to use return" */
+	G_flag_return_in_progress = -1;
+	IF_HUSH_LOCAL(G.func_nest_level++;)
+
 	/* On MMU, funcp->body is always non-NULL */
 	n = run_list(funcp->body);
 	fflush_all();
 	_exit(n);
 # else
+//?	close_saved_fds_and_FILE_fds();
+
+//TODO: check whether "true | func_with_return" works
+
 	re_execute_shell(to_free,
 			funcp->body_as_string,
 			G.global_argv[0],
@@ -7028,9 +7137,7 @@ static int run_function(const struct function *funcp, char **argv)
 	/* "we are in function, ok to use return" */
 	sv_flg = G_flag_return_in_progress;
 	G_flag_return_in_progress = -1;
-# if ENABLE_HUSH_LOCAL
-	G.func_nest_level++;
-# endif
+	IF_HUSH_LOCAL(G.func_nest_level++;)
 
 	/* On MMU, funcp->body is always non-NULL */
 # if !BB_MMU
@@ -7094,6 +7201,7 @@ static void exec_builtin(char ***to_free,
 #if BB_MMU
 	int rcode;
 	fflush_all();
+//?	close_saved_fds_and_FILE_fds();
 	rcode = x->b_function(argv);
 	fflush_all();
 	_exit(rcode);
@@ -7215,6 +7323,16 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 		goto skip;
 #endif
 
+#if ENABLE_HUSH_FUNCTIONS
+	/* Check if the command matches any functions (this goes before bltins) */
+	{
+		const struct function *funcp = find_function(argv[0]);
+		if (funcp) {
+			exec_function(&nommu_save->argv_from_re_execing, funcp, argv);
+		}
+	}
+#endif
+
 	/* Check if the command matches any of the builtins.
 	 * Depending on context, this might be redundant.  But it's
 	 * easier to waste a few CPU cycles than it is to figure out
@@ -7231,15 +7349,6 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 			exec_builtin(&nommu_save->argv_from_re_execing, x, argv);
 		}
 	}
-#if ENABLE_HUSH_FUNCTIONS
-	/* Check if the command matches any functions */
-	{
-		const struct function *funcp = find_function(argv[0]);
-		if (funcp) {
-			exec_function(&nommu_save->argv_from_re_execing, funcp, argv);
-		}
-	}
-#endif
 
 #if ENABLE_FEATURE_SH_STANDALONE
 	/* Check if the command matches any busybox applets */
@@ -7248,8 +7357,12 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 		if (a >= 0) {
 # if BB_MMU /* see above why on NOMMU it is not allowed */
 			if (APPLET_IS_NOEXEC(a)) {
-				/* Do not leak open fds from opened script files etc */
-				close_all_FILE_list();
+				/* Do not leak open fds from opened script files etc.
+				 * Testcase: interactive "ls -l /proc/self/fd"
+				 * should not show tty fd open.
+				 */
+				close_saved_fds_and_FILE_fds();
+//FIXME: should also close saved redir fds
 				debug_printf_exec("running applet '%s'\n", argv[0]);
 				run_applet_no_and_exit(a, argv[0], argv);
 			}
@@ -7886,12 +7999,13 @@ static NOINLINE int run_pipe(struct pipe *pi)
 			return G.last_exitcode;
 		}
 
-		x = find_builtin(argv_expanded[0]);
 #if ENABLE_HUSH_FUNCTIONS
-		funcp = NULL;
-		if (!x)
-			funcp = find_function(argv_expanded[0]);
+		/* Check if argv[0] matches any functions (this goes before bltins) */
+		funcp = find_function(argv_expanded[0]);
 #endif
+		x = NULL;
+		if (!funcp)
+			x = find_builtin(argv_expanded[0]);
 		if (x || funcp) {
 			if (!funcp) {
 				if (x->b_function == builtin_exec && argv_expanded[1] == NULL) {
@@ -9157,6 +9271,14 @@ static int FAST_FUNC builtin_exec(char **argv)
 	 * tty pgrp then, only top-level shell process does that */
 	if (G_saved_tty_pgrp && getpid() == G.root_pid)
 		tcsetpgrp(G_interactive_fd, G_saved_tty_pgrp);
+
+	/* Saved-redirect fds, script fds and G_interactive_fd are still
+	 * open here. However, they are all CLOEXEC, and execv below
+	 * closes them. Try interactive "exec ls -l /proc/self/fd",
+	 * it should show no extra open fds in the "ls" process.
+	 * If we'd try to run builtins/NOEXECs, this would need improving.
+	 */
+	//close_saved_fds_and_FILE_fds();
 
 	/* TODO: if exec fails, bash does NOT exit! We do.
 	 * We'll need to undo trap cleanup (it's inside execvp_or_die)

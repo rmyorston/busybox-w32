@@ -409,7 +409,6 @@ struct globals_misc {
 #define EXERROR 1       /* a generic error */
 #define EXEXIT 4        /* exit the shell */
 
-	smallint isloginsh;
 	char nullstr[1];        /* zero length string */
 
 	char optlist[NOPTS];
@@ -484,7 +483,6 @@ extern struct globals_misc *const ash_ptr_to_globals_misc;
 #define pending_int       (G_misc.pending_int      )
 #define got_sigchld       (G_misc.got_sigchld      )
 #define pending_sig       (G_misc.pending_sig      )
-#define isloginsh   (G_misc.isloginsh  )
 #define nullstr     (G_misc.nullstr    )
 #define optlist     (G_misc.optlist    )
 #define sigmode     (G_misc.sigmode    )
@@ -2117,7 +2115,7 @@ struct redirtab;
 struct globals_var {
 	struct shparam shellparam;      /* $@ current positional parameters */
 	struct redirtab *redirlist;
-	int preverrout_fd;   /* save fd2 before print debug if xflag is set. */
+	int preverrout_fd;   /* stderr fd: usually 2, unless redirect moved it */
 	struct var *vartab[VTABSIZE];
 	struct var varinit[ARRAY_SIZE(varinit_data)];
 };
@@ -2596,8 +2594,20 @@ putprompt(const char *s)
 #endif
 
 /* expandstr() needs parsing machinery, so it is far away ahead... */
-static const char *expandstr(const char *ps);
+static const char *expandstr(const char *ps, int syntax_type);
+/* Values for syntax param */
+#define BASESYNTAX 0    /* not in quotes */
+#define DQSYNTAX   1    /* in double quotes */
+#define SQSYNTAX   2    /* in single quotes */
+#define ARISYNTAX  3    /* in arithmetic */
+#if ENABLE_ASH_EXPAND_PRMT
+# define PSSYNTAX  4    /* prompt. never passed to SIT() */
+#endif
+/* PSSYNTAX expansion is identical to DQSYNTAX, except keeping '\$' as '\$' */
 
+/*
+ * called by editline -- any expansions to the prompt should be added here.
+ */
 static void
 setprompt_if(smallint do_set, int whichprompt)
 {
@@ -2621,7 +2631,7 @@ setprompt_if(smallint do_set, int whichprompt)
 	}
 #if ENABLE_ASH_EXPAND_PRMT
 	pushstackmark(&smark, stackblocksize());
-	putprompt(expandstr(prompt));
+	putprompt(expandstr(prompt, PSSYNTAX));
 	popstackmark(&smark);
 #else
 	putprompt(prompt);
@@ -3047,13 +3057,6 @@ enum {
 /* c in SIT(c, syntax) must be an *unsigned char* or PEOA or PEOF,
  * caller must ensure proper cast on it if c is *char_ptr!
  */
-/* Values for syntax param */
-#define BASESYNTAX 0    /* not in quotes */
-#define DQSYNTAX   1    /* in double quotes */
-#define SQSYNTAX   2    /* in single quotes */
-#define ARISYNTAX  3    /* in arithmetic */
-#define PSSYNTAX   4    /* prompt. never passed to SIT() */
-
 #if USE_SIT_FUNCTION
 
 static int
@@ -4953,6 +4956,10 @@ cmdputs(const char *s)
 			/* These can only happen inside quotes */
 			cc[0] = c;
 			str = cc;
+//FIXME:
+// $ true $$ &
+// $ <cr>
+// [1]+  Done    true ${\$}   <<=== BUG: ${\$} is not a valid way to write $$ (${$} would be ok)
 			c = '\\';
 			break;
 		default:
@@ -5134,7 +5141,10 @@ cmdtxt(union node *n)
 		cmdputs(utoa(n->nfile.fd));
 		cmdputs(p);
 		if (n->type == NTOFD || n->type == NFROMFD) {
-			cmdputs(utoa(n->ndup.dupfd));
+			if (n->ndup.dupfd >= 0)
+				cmdputs(utoa(n->ndup.dupfd));
+			else
+				cmdputs("-");
 			break;
 		}
 		n = n->nfile.fname;
@@ -5517,7 +5527,7 @@ stoppedjobs(void)
 #undef EMPTY
 #undef CLOSED
 #define EMPTY -2                /* marks an unused slot in redirtab */
-#define CLOSED -3               /* marks a slot of previously-closed fd */
+#define CLOSED -1               /* marks a slot of previously-closed fd */
 
 /*
  * Handle here documents.  Normally we fork off a process to write the
@@ -5713,72 +5723,181 @@ dup2_or_raise(int from, int to)
 	}
 	return newfd;
 }
+static int
+fcntl_F_DUPFD(int fd, int avoid_fd)
+{
+	int newfd;
+ repeat:
+	newfd = fcntl(fd, F_DUPFD, avoid_fd + 1);
+	if (newfd < 0) {
+		if (errno == EBUSY)
+			goto repeat;
+		if (errno == EINTR)
+			goto repeat;
+	}
+	return newfd;
+}
+static int
+xdup_CLOEXEC_and_close(int fd, int avoid_fd)
+{
+	int newfd;
+ repeat:
+	newfd = fcntl(fd, F_DUPFD, avoid_fd + 1);
+	if (newfd < 0) {
+		if (errno == EBUSY)
+			goto repeat;
+		if (errno == EINTR)
+			goto repeat;
+		/* fd was not open? */
+		if (errno == EBADF)
+			return fd;
+		ash_msg_and_raise_perror("%d", newfd);
+	}
+	fcntl(newfd, F_SETFD, FD_CLOEXEC);
+	close(fd);
+	return newfd;
+}
 
 /* Struct def and variable are moved down to the first usage site */
-struct two_fd_t {
-	int orig, copy;
+struct squirrel {
+	int orig_fd;
+	int moved_to;
 };
 struct redirtab {
 	struct redirtab *next;
 	int pair_count;
-	struct two_fd_t two_fd[];
+	struct squirrel two_fd[];
 };
 #define redirlist (G_var.redirlist)
-enum {
-	COPYFD_RESTORE = (int)~(INT_MAX),
-};
 
-static int
-need_to_remember(struct redirtab *rp, int fd)
+static void
+add_squirrel_closed(struct redirtab *sq, int fd)
 {
 	int i;
 
-	if (!rp) /* remembering was not requested */
-		return 0;
+	if (!sq)
+		return;
 
-	for (i = 0; i < rp->pair_count; i++) {
-		if (rp->two_fd[i].orig == fd) {
-			/* already remembered */
-			return 0;
+	for (i = 0; sq->two_fd[i].orig_fd != EMPTY; i++) {
+		/* If we collide with an already moved fd... */
+		if (fd == sq->two_fd[i].orig_fd) {
+			/* Examples:
+			 * "echo 3>FILE 3>&- 3>FILE"
+			 * "echo 3>&- 3>FILE"
+			 * No need for last redirect to insert
+			 * another "need to close 3" indicator.
+			 */
+			TRACE(("redirect_fd %d: already moved or closed\n", fd));
+			return;
 		}
 	}
-	return 1;
+	TRACE(("redirect_fd %d: previous fd was closed\n", fd));
+	sq->two_fd[i].orig_fd = fd;
+	sq->two_fd[i].moved_to = CLOSED;
 }
 
-/* "hidden" fd is a fd used to read scripts, or a copy of such */
 static int
-is_hidden_fd(struct redirtab *rp, int fd)
+save_fd_on_redirect(int fd, int avoid_fd, struct redirtab *sq)
 {
-	int i;
-	struct parsefile *pf;
+	int i, new_fd;
 
-	if (fd == -1)
+	if (avoid_fd < 9) /* the important case here is that it can be -1 */
+		avoid_fd = 9;
+
+#if JOBS
+	if (fd == ttyfd) {
+		/* Testcase: "ls -l /proc/$$/fd 10>&-" should work */
+		ttyfd = xdup_CLOEXEC_and_close(ttyfd, avoid_fd);
+		TRACE(("redirect_fd %d: matches ttyfd, moving it to %d\n", fd, ttyfd));
+		return 1; /* "we closed fd" */
+	}
+#endif
+	/* Are we called from redirect(0)? E.g. redirect
+	 * in a forked child. No need to save fds,
+	 * we aren't going to use them anymore, ok to trash.
+	 */
+	if (!sq)
 		return 0;
-	/* Check open scripts' fds */
-	pf = g_parsefile;
-	while (pf) {
-		/* We skip pf_fd == 0 case because of the following case:
-		 * $ ash  # running ash interactively
-		 * $ . ./script.sh
-		 * and in script.sh: "exec 9>&0".
-		 * Even though top-level pf_fd _is_ 0,
-		 * it's still ok to use it: "read" builtin uses it,
-		 * why should we cripple "exec" builtin?
-		 */
-		if (pf->pf_fd > 0 && fd == pf->pf_fd) {
-			return 1;
+
+	/* If this one of script's fds? */
+	if (fd != 0) {
+		struct parsefile *pf = g_parsefile;
+		while (pf) {
+			/* We skip fd == 0 case because of the following:
+			 * $ ash  # running ash interactively
+			 * $ . ./script.sh
+			 * and in script.sh: "exec 9>&0".
+			 * Even though top-level pf_fd _is_ 0,
+			 * it's still ok to use it: "read" builtin uses it,
+			 * why should we cripple "exec" builtin?
+			 */
+			if (fd == pf->pf_fd) {
+				pf->pf_fd = xdup_CLOEXEC_and_close(fd, avoid_fd);
+				return 1; /* "we closed fd" */
+			}
+			pf = pf->prev;
 		}
-		pf = pf->prev;
 	}
 
-	if (!rp)
-		return 0;
-	/* Check saved fds of redirects */
-	fd |= COPYFD_RESTORE;
-	for (i = 0; i < rp->pair_count; i++) {
-		if (rp->two_fd[i].copy == fd) {
-			return 1;
+	/* Check whether it collides with any open fds (e.g. stdio), save fds as needed */
+
+	/* First: do we collide with some already moved fds? */
+	for (i = 0; sq->two_fd[i].orig_fd != EMPTY; i++) {
+		/* If we collide with an already moved fd... */
+		if (fd == sq->two_fd[i].moved_to) {
+			new_fd = fcntl_F_DUPFD(fd, avoid_fd);
+			sq->two_fd[i].moved_to = new_fd;
+			TRACE(("redirect_fd %d: already busy, moving to %d\n", fd, new_fd));
+			if (new_fd < 0) /* what? */
+				xfunc_die();
+			return 0; /* "we did not close fd" */
 		}
+		if (fd == sq->two_fd[i].orig_fd) {
+			/* Example: echo Hello >/dev/null 1>&2 */
+			TRACE(("redirect_fd %d: already moved\n", fd));
+			return 0; /* "we did not close fd" */
+		}
+	}
+
+	/* If this fd is open, we move and remember it; if it's closed, new_fd = CLOSED (-1) */
+	new_fd = fcntl_F_DUPFD(fd, avoid_fd);
+	TRACE(("redirect_fd %d: previous fd is moved to %d (-1 if it was closed)\n", fd, new_fd));
+	if (new_fd < 0) {
+		if (errno != EBADF)
+			xfunc_die();
+		/* new_fd = CLOSED; - already is -1 */
+	}
+	sq->two_fd[i].moved_to = new_fd;
+	sq->two_fd[i].orig_fd = fd;
+
+	/* if we move stderr, let "set -x" code know */
+	if (fd == preverrout_fd)
+		preverrout_fd = new_fd;
+
+	return 0; /* "we did not close fd" */
+}
+
+static int
+internally_opened_fd(int fd, struct redirtab *sq)
+{
+	int i;
+#if JOBS
+	if (fd == ttyfd)
+		return 1;
+#endif
+	/* If this one of script's fds? */
+	if (fd != 0) {
+		struct parsefile *pf = g_parsefile;
+		while (pf) {
+			if (fd == pf->pf_fd)
+				return 1;
+			pf = pf->prev;
+		}
+	}
+
+	if (sq)	for (i = 0; i < sq->pair_count && sq->two_fd[i].orig_fd != EMPTY; i++) {
+		if (fd == sq->two_fd[i].moved_to)
+			return 1;
 	}
 	return 0;
 }
@@ -5790,181 +5909,93 @@ is_hidden_fd(struct redirtab *rp, int fd)
  */
 /* flags passed to redirect */
 #define REDIR_PUSH    01        /* save previous values of file descriptors */
-#define REDIR_SAVEFD2 03        /* set preverrout */
 static void
 redirect(union node *redir, int flags)
 {
 	struct redirtab *sv;
 	int sv_pos;
-	int i;
-	int fd;
-	int newfd;
-	int copied_fd2 = -1;
 
-	if (!redir) {
+	if (!redir)
 		return;
-	}
 
-	sv = NULL;
 	sv_pos = 0;
+	sv = NULL;
 	INT_OFF;
-	if (flags & REDIR_PUSH) {
-		union node *tmp = redir;
-		do {
-			sv_pos++;
-#if BASH_REDIR_OUTPUT
-			if (tmp->nfile.type == NTO2)
-				sv_pos++;
-#endif
-			tmp = tmp->nfile.next;
-		} while (tmp);
-		sv = ckmalloc(sizeof(*sv) + sv_pos * sizeof(sv->two_fd[0]));
-		sv->next = redirlist;
-		sv->pair_count = sv_pos;
-		redirlist = sv;
-		while (sv_pos > 0) {
-			sv_pos--;
-			sv->two_fd[sv_pos].orig = sv->two_fd[sv_pos].copy = EMPTY;
-		}
-	}
-
+	if (flags & REDIR_PUSH)
+		sv = redirlist;
 	do {
-		int right_fd = -1;
+		int fd;
+		int newfd;
+		int close_fd;
+		int closed;
+
 		fd = redir->nfile.fd;
 		if (redir->nfile.type == NTOFD || redir->nfile.type == NFROMFD) {
-			right_fd = redir->ndup.dupfd;
-			//bb_error_msg("doing %d > %d", fd, right_fd);
-			/* redirect from/to same file descriptor? */
-			if (right_fd == fd)
-				continue;
-			/* "echo >&10" and 10 is a fd opened to a sh script? */
-			if (is_hidden_fd(sv, right_fd)) {
-				errno = EBADF; /* as if it is closed */
-				ash_msg_and_raise_perror("%d", right_fd);
-			}
-			newfd = -1;
+			//bb_error_msg("doing %d > %d", fd, newfd);
+			newfd = redir->ndup.dupfd;
+			close_fd = -1;
 		} else {
 			newfd = openredirect(redir); /* always >= 0 */
 			if (fd == newfd) {
-				/* Descriptor wasn't open before redirect.
-				 * Mark it for close in the future */
-				if (need_to_remember(sv, fd)) {
-					goto remember_to_close;
-				}
+				/* open() gave us precisely the fd we wanted.
+				 * This means that this fd was not busy
+				 * (not opened to anywhere).
+				 * Remember to close it on restore:
+				 */
+				add_squirrel_closed(sv, fd);
 				continue;
 			}
+			close_fd = newfd;
 		}
-#if BASH_REDIR_OUTPUT
- redirect_more:
-#endif
-		if (need_to_remember(sv, fd)) {
-			/* Copy old descriptor */
-			/* Careful to not accidentally "save"
-			 * to the same fd as right side fd in N>&M */
-			int minfd = right_fd < 10 ? 10 : right_fd + 1;
-#if defined(F_DUPFD_CLOEXEC)
-			i = fcntl(fd, F_DUPFD_CLOEXEC, minfd);
-#else
-			i = fcntl(fd, F_DUPFD, minfd);
-#endif
-			if (i == -1) {
-				i = errno;
-				if (i != EBADF) {
-					/* Strange error (e.g. "too many files" EMFILE?) */
-					if (newfd >= 0)
-						close(newfd);
-					errno = i;
-					ash_msg_and_raise_perror("%d", fd);
-					/* NOTREACHED */
-				}
-				/* EBADF: it is not open - good, remember to close it */
- remember_to_close:
-				i = CLOSED;
-			} else { /* fd is open, save its copy */
-#if !defined(F_DUPFD_CLOEXEC)
-				fcntl(i, F_SETFD, FD_CLOEXEC);
-#endif
-				/* "exec fd>&-" should not close fds
-				 * which point to script file(s).
-				 * Force them to be restored afterwards */
-				if (is_hidden_fd(sv, fd))
-					i |= COPYFD_RESTORE;
-			}
-			if (fd == 2)
-				copied_fd2 = i;
-			sv->two_fd[sv_pos].orig = fd;
-			sv->two_fd[sv_pos].copy = i;
-			sv_pos++;
-		}
-		if (newfd < 0) {
-			/* NTOFD/NFROMFD: copy redir->ndup.dupfd to fd */
-			if (redir->ndup.dupfd < 0) { /* "fd>&-" */
-				/* Don't want to trigger debugging */
-				if (fd != -1)
-					close(fd);
-			} else {
-				dup2_or_raise(redir->ndup.dupfd, fd);
-			}
-		} else if (fd != newfd) { /* move newfd to fd */
-			dup2_or_raise(newfd, fd);
-#if BASH_REDIR_OUTPUT
-			if (!(redir->nfile.type == NTO2 && fd == 2))
-#endif
-				close(newfd);
-		}
-#if BASH_REDIR_OUTPUT
-		if (redir->nfile.type == NTO2 && fd == 1) {
-			/* We already redirected it to fd 1, now copy it to 2 */
-			newfd = 1;
-			fd = 2;
-			goto redirect_more;
-		}
-#endif
-	} while ((redir = redir->nfile.next) != NULL);
 
-	INT_ON;
-	if ((flags & REDIR_SAVEFD2) && copied_fd2 >= 0)
-		preverrout_fd = copied_fd2;
-}
-
-/*
- * Undo the effects of the last redirection.
- */
-static void
-popredir(int drop, int restore)
-{
-	struct redirtab *rp;
-	int i;
-
-	if (redirlist == NULL)
-		return;
-	INT_OFF;
-	rp = redirlist;
-	for (i = 0; i < rp->pair_count; i++) {
-		int fd = rp->two_fd[i].orig;
-		int copy = rp->two_fd[i].copy;
-		if (copy == CLOSED) {
-			if (!drop)
-				close(fd);
+		if (fd == newfd)
 			continue;
-		}
-		if (copy != EMPTY) {
-			if (!drop || (restore && (copy & COPYFD_RESTORE))) {
-				copy &= ~COPYFD_RESTORE;
-				/*close(fd);*/
-				dup2_or_raise(copy, fd);
-			}
-			close(copy & ~COPYFD_RESTORE);
-		}
-	}
-	redirlist = rp->next;
-	free(rp);
-	INT_ON;
-}
 
-/*
- * Undo all redirections.  Called on error or interrupt.
- */
+		/* if "N>FILE": move newfd to fd */
+		/* if "N>&M": dup newfd to fd */
+		/* if "N>&-": close fd (newfd is -1) */
+
+ IF_BASH_REDIR_OUTPUT(redirect_more:)
+
+		closed = save_fd_on_redirect(fd, /*avoid:*/ newfd, sv);
+		if (newfd == -1) {
+			/* "N>&-" means "close me" */
+			if (!closed) {
+				/* ^^^ optimization: saving may already
+				 * have closed it. If not... */
+				close(fd);
+			}
+		} else {
+			/* if newfd is a script fd or saved fd, simulate EBADF */
+			if (internally_opened_fd(newfd, sv)) {
+				errno = EBADF;
+				ash_msg_and_raise_perror("%d", newfd);
+			}
+			dup2_or_raise(newfd, fd);
+			if (close_fd >= 0) /* "N>FILE" or ">&FILE" or heredoc? */
+				close(close_fd);
+#if BASH_REDIR_OUTPUT
+			if (redir->nfile.type == NTO2 && fd == 1) {
+				/* ">&FILE". we already redirected to 1, now copy 1 to 2 */
+				fd = 2;
+				newfd = 1;
+				close_fd = -1;
+				goto redirect_more;
+			}
+#endif
+		}
+	} while ((redir = redir->nfile.next) != NULL);
+	INT_ON;
+
+//dash:#define REDIR_SAVEFD2 03        /* set preverrout */
+#define REDIR_SAVEFD2 0
+	// dash has a bug: since REDIR_SAVEFD2=3 and REDIR_PUSH=1, this test
+	// triggers for pure REDIR_PUSH too. Thus, this is done almost always,
+	// not only for calls with flags containing REDIR_SAVEFD2.
+	// We do this unconditionally (see save_fd_on_redirect()).
+	//if ((flags & REDIR_SAVEFD2) && copied_fd2 >= 0)
+	//	preverrout_fd = copied_fd2;
+}
 
 static int
 redirectsafe(union node *redir, int flags)
@@ -5976,7 +6007,7 @@ redirectsafe(union node *redir, int flags)
 
 	SAVE_INT(saveint);
 	/* "echo 9>/dev/null; echo >&9; echo result: $?" - result should be 1, not 2! */
-	err = setjmp(jmploc.loc); // huh?? was = setjmp(jmploc.loc) * 2;
+	err = setjmp(jmploc.loc); /* was = setjmp(jmploc.loc) * 2; */
 	if (!err) {
 		exception_handler = &jmploc;
 		redirect(redir, flags);
@@ -5986,6 +6017,75 @@ redirectsafe(union node *redir, int flags)
 		longjmp(exception_handler->loc, 1);
 	RESTORE_INT(saveint);
 	return err;
+}
+
+static struct redirtab*
+pushredir(union node *redir)
+{
+	struct redirtab *sv;
+	int i;
+
+	if (!redir)
+		return redirlist;
+
+	i = 0;
+	do {
+		i++;
+#if BASH_REDIR_OUTPUT
+		if (redir->nfile.type == NTO2)
+			i++;
+#endif
+		redir = redir->nfile.next;
+	} while (redir);
+
+	sv = ckzalloc(sizeof(*sv) + i * sizeof(sv->two_fd[0]));
+	sv->pair_count = i;
+	while (--i >= 0)
+		sv->two_fd[i].orig_fd = sv->two_fd[i].moved_to = EMPTY;
+	sv->next = redirlist;
+	redirlist = sv;
+	return sv->next;
+}
+
+/*
+ * Undo the effects of the last redirection.
+ */
+static void
+popredir(int drop)
+{
+	struct redirtab *rp;
+	int i;
+
+	if (redirlist == NULL)
+		return;
+	INT_OFF;
+	rp = redirlist;
+	for (i = 0; i < rp->pair_count; i++) {
+		int fd = rp->two_fd[i].orig_fd;
+		int copy = rp->two_fd[i].moved_to;
+		if (copy == CLOSED) {
+			if (!drop)
+				close(fd);
+			continue;
+		}
+		if (copy != EMPTY) {
+			if (!drop) {
+				/*close(fd);*/
+				dup2_or_raise(copy, fd);
+			}
+			close(copy);
+		}
+	}
+	redirlist = rp->next;
+	free(rp);
+	INT_ON;
+}
+
+static void
+unwindredir(struct redirtab *stop)
+{
+	while (redirlist != stop)
+		popredir(/*drop:*/ 0);
 }
 
 
@@ -8076,7 +8176,7 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 			clearenv();
 			while (*envp)
 				putenv(*envp++);
-			popredir(/*drop:*/ 1, /*restore:*/ 0);
+			popredir(/*drop:*/ 1);
 			run_applet_no_and_exit(applet_no, cmd, argv);
 		}
 		/* re-exec ourselves with the new arguments */
@@ -9159,12 +9259,13 @@ evaltree(union node *n, int flags)
 		goto setstatus;
 	case NREDIR:
 		expredir(n->nredir.redirect);
+		pushredir(n->nredir.redirect);
 		status = redirectsafe(n->nredir.redirect, REDIR_PUSH);
 		if (!status) {
 			status = evaltree(n->nredir.n, flags & EV_TESTED);
 		}
 		if (n->nredir.redirect)
-			popredir(/*drop:*/ 0, /*restore:*/ 0 /* not sure */);
+			popredir(/*drop:*/ 0);
 		goto setstatus;
 	case NCMD:
 		evalfn = evalcommand;
@@ -10079,6 +10180,7 @@ evalcommand(union node *cmd, int flags)
 		"\0\0", bltincmd /* why three NULs? */
 	};
 	struct localvar_list *localvar_stop;
+	struct redirtab *redir_stop;
 	struct stackmark smark;
 	union node *argp;
 	struct arglist arglist;
@@ -10093,9 +10195,7 @@ evalcommand(union node *cmd, int flags)
 	int spclbltin;
 	int status;
 	char **nargv;
-	struct builtincmd *bcmd;
 	smallint cmd_is_exec;
-	smallint pseudovarflag = 0;
 
 	/* First expand the arguments. */
 	TRACE(("evalcommand(0x%lx, %d) called\n", (long)cmd, flags));
@@ -10112,21 +10212,24 @@ evalcommand(union node *cmd, int flags)
 
 	argc = 0;
 	if (cmd->ncmd.args) {
+		struct builtincmd *bcmd;
+		smallint pseudovarflag;
+
 		bcmd = find_builtin(cmd->ncmd.args->narg.text);
 		pseudovarflag = bcmd && IS_BUILTIN_ASSIGN(bcmd);
-	}
 
-	for (argp = cmd->ncmd.args; argp; argp = argp->narg.next) {
-		struct strlist **spp;
+		for (argp = cmd->ncmd.args; argp; argp = argp->narg.next) {
+			struct strlist **spp;
 
-		spp = arglist.lastp;
-		if (pseudovarflag && isassignment(argp->narg.text))
-			expandarg(argp, &arglist, EXP_VARTILDE);
-		else
-			expandarg(argp, &arglist, EXP_FULL | EXP_TILDE);
+			spp = arglist.lastp;
+			if (pseudovarflag && isassignment(argp->narg.text))
+				expandarg(argp, &arglist, EXP_VARTILDE);
+			else
+				expandarg(argp, &arglist, EXP_FULL | EXP_TILDE);
 
-		for (sp = *spp; sp; sp = sp->next)
-			argc++;
+			for (sp = *spp; sp; sp = sp->next)
+				argc++;
+		}
 	}
 
 	/* Reserve one extra spot at the front for shellexec. */
@@ -10142,8 +10245,9 @@ evalcommand(union node *cmd, int flags)
 	if (iflag && funcnest == 0 && argc > 0)
 		lastarg = nargv[-1];
 
-	preverrout_fd = 2;
 	expredir(cmd->ncmd.redirect);
+	redir_stop = pushredir(cmd->ncmd.redirect);
+	preverrout_fd = 2;
 	status = redirectsafe(cmd->ncmd.redirect, REDIR_PUSH | REDIR_SAVEFD2);
 
 	path = vpath.var_text;
@@ -10169,7 +10273,7 @@ evalcommand(union node *cmd, int flags)
 	if (xflag) {
 		const char *pfx = "";
 
-		fdprintf(preverrout_fd, "%s", expandstr(ps4val()));
+		fdprintf(preverrout_fd, "%s", expandstr(ps4val(), DQSYNTAX));
 
 		sp = varlist.list;
 		while (sp) {
@@ -10365,7 +10469,8 @@ evalcommand(union node *cmd, int flags)
 
  out:
 	if (cmd->ncmd.redirect)
-		popredir(/*drop:*/ cmd_is_exec, /*restore:*/ cmd_is_exec);
+		popredir(/*drop:*/ cmd_is_exec);
+	unwindredir(redir_stop);
 	unwindlocalvars(localvar_stop);
 	if (lastarg) {
 		/* dsl: I think this is intended to be used to support
@@ -10482,6 +10587,7 @@ static smallint checkkwd;
 #define CHKALIAS        0x1
 #define CHKKWD          0x2
 #define CHKNL           0x4
+#define CHKEOFMARK      0x8
 
 /*
  * Push a string back onto the input at this current parsefile level.
@@ -10794,31 +10900,6 @@ pgetc_without_PEOA(void)
 #endif
 
 /*
- * Read a line from the script.
- */
-static char *
-pfgets(char *line, int len)
-{
-	char *p = line;
-	int nleft = len;
-	int c;
-
-	while (--nleft > 0) {
-		c = pgetc_without_PEOA();
-		if (c == PEOF) {
-			if (p == line)
-				return NULL;
-			break;
-		}
-		*p++ = c;
-		if (c == '\n')
-			break;
-	}
-	*p = '\0';
-	return line;
-}
-
-/*
  * Undo a call to pgetc.  Only two characters may be pushed back.
  * PEOF may be pushed back.
  */
@@ -11127,7 +11208,7 @@ setoption(int flag, int val)
 	/* NOTREACHED */
 }
 static int
-options(int cmdline)
+options(int cmdline, int *login_sh)
 {
 	char *p;
 	int val;
@@ -11168,11 +11249,14 @@ options(int cmdline)
 				if (*argptr)
 					argptr++;
 			} else if (cmdline && (c == 'l')) { /* -l or +l == --login */
-				isloginsh = 1;
+				if (login_sh)
+					*login_sh = 1;
 			/* bash does not accept +-login, we also won't */
 			} else if (cmdline && val && (c == '-')) { /* long options */
-				if (strcmp(p, "login") == 0)
-					isloginsh = 1;
+				if (strcmp(p, "login") == 0) {
+					if (login_sh)
+						*login_sh = 1;
+				}
 				break;
 			} else {
 				setoption(c, val);
@@ -11256,7 +11340,7 @@ setcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		return showvars(nullstr, 0, VUNSET);
 
 	INT_OFF;
-	retval = options(/*cmdline:*/ 0);
+	retval = options(/*cmdline:*/ 0, NULL);
 	if (retval == 0) { /* if no parse error... */
 		optschanged();
 		if (*argptr != NULL) {
@@ -11453,8 +11537,6 @@ raise_error_unexpected_syntax(int token)
 	/* NOTREACHED */
 }
 
-#define EOFMARKLEN 79
-
 /* parsing is heavily cross-recursive, need these forward decls */
 static union node *andor(void);
 static union node *pipeline(void);
@@ -11634,43 +11716,22 @@ fixredir(union node *n, const char *text, int err)
 	}
 }
 
-/*
- * Returns true if the text contains nothing to expand (no dollar signs
- * or backquotes).
- */
-static int
-noexpand(const char *text)
-{
-	unsigned char c;
-
-	while ((c = *text++) != '\0') {
-		if (c == CTLQUOTEMARK)
-			continue;
-		if (c == CTLESC)
-			text++;
-		else if (SIT(c, BASESYNTAX) == CCTL)
-			return 0;
-	}
-	return 1;
-}
-
 static void
 parsefname(void)
 {
 	union node *n = redirnode;
 
+	if (n->type == NHERE)
+		checkkwd = CHKEOFMARK;
 	if (readtoken() != TWORD)
 		raise_error_unexpected_syntax(-1);
 	if (n->type == NHERE) {
 		struct heredoc *here = heredoc;
 		struct heredoc *p;
-		int i;
 
 		if (quoteflag == 0)
 			n->type = NXHERE;
 		TRACE(("Here document %d\n", n->type));
-		if (!noexpand(wordtext) || (i = strlen(wordtext)) == 0 || i > EOFMARKLEN)
-			raise_error_syntax("illegal eof marker for << redirection");
 		rmescapes(wordtext, 0);
 		here->eofmark = wordtext;
 		here->next = NULL;
@@ -12062,6 +12123,15 @@ decode_dollar_squote(void)
 }
 #endif
 
+/* Used by expandstr to get here-doc like behaviour. */
+#define FAKEEOFMARK ((char*)(uintptr_t)1)
+
+static ALWAYS_INLINE int
+realeofmark(const char *eofmark)
+{
+	return eofmark && eofmark != FAKEEOFMARK;
+}
+
 /*
  * If eofmark is NULL, read a word or a redirection symbol.  If eofmark
  * is not NULL, read a here document.  In the latter case, eofmark is the
@@ -12086,7 +12156,6 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 	/* c parameter is an unsigned char or PEOF or PEOA */
 	char *out;
 	size_t len;
-	char line[EOFMARKLEN + 1];
 	struct nodelist *bqlist;
 	smallint quotef;
 	smallint dblquote;
@@ -12104,9 +12173,13 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 	bqlist = NULL;
 	quotef = 0;
 	IF_FEATURE_SH_MATH(prevsyntax = 0;)
+#if ENABLE_ASH_EXPAND_PRMT
 	pssyntax = (syntax == PSSYNTAX);
 	if (pssyntax)
 		syntax = DQSYNTAX;
+#else
+	pssyntax = 0; /* constant */
+#endif
 	dblquote = (syntax == DQSYNTAX);
 	varnest = 0;
 	IF_FEATURE_SH_MATH(arinest = 0;)
@@ -12160,7 +12233,7 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 			} else if (c == '\n') {
 				nlprompt();
 			} else {
-				if (c == '$' && pssyntax) {
+				if (pssyntax && c == '$') {
 					USTPUTC(CTLESC, out);
 					USTPUTC('\\', out);
 				}
@@ -12308,7 +12381,10 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
  * we are at the end of the here document, this routine sets the c to PEOF.
  */
 checkend: {
-	if (eofmark) {
+	if (realeofmark(eofmark)) {
+		int markloc;
+		char *p;
+
 #if ENABLE_ASH_ALIAS
 		if (c == PEOA)
 			c = pgetc_without_PEOA();
@@ -12318,27 +12394,42 @@ checkend: {
 				c = pgetc_without_PEOA();
 			}
 		}
-		if (c == *eofmark) {
-			if (pfgets(line, sizeof(line)) != NULL) {
-				char *p, *q;
-				int cc;
 
-				p = line;
-				for (q = eofmark + 1;; p++, q++) {
-					cc = *p;
-					if (cc == '\n')
-						cc = 0;
-					if (!*q || cc != *q)
-						break;
-				}
-				if (cc == *q) {
-					c = PEOF;
-					nlnoprompt();
-				} else {
-					pushstring(line, NULL);
+		markloc = out - (char *)stackblock();
+		for (p = eofmark; STPUTC(c, out), *p; p++) {
+			if (c != *p)
+				goto more_heredoc;
+
+			c = pgetc_without_PEOA();
+		}
+
+		if (c == '\n' || c == PEOF) {
+			c = PEOF;
+			g_parsefile->linno++;
+			needprompt = doprompt;
+		} else {
+			int len_here;
+
+ more_heredoc:
+			p = (char *)stackblock() + markloc + 1;
+			len_here = out - p;
+
+			if (len_here) {
+				len_here -= (c >= PEOF);
+				c = p[-1];
+
+				if (len_here) {
+					char *str;
+
+					str = alloca(len_here + 1);
+					*(char *)mempcpy(str, p, len_here) = '\0';
+
+					pushstring(str, NULL);
 				}
 			}
 		}
+
+		STADJUST((char *)stackblock() + markloc - out, out);
 	}
 	goto checkend_return;
 }
@@ -12432,7 +12523,8 @@ parsesub: {
 	int typeloc;
 
 	c = pgetc_eatbnl();
-	if (c > 255 /* PEOA or PEOF */
+	if ((checkkwd & CHKEOFMARK)
+	 || c > 255 /* PEOA or PEOF */
 	 || (c != '(' && c != '{' && !is_name(c) && !is_special(c))
 	) {
 #if BASH_DOLLAR_SQUOTE
@@ -12994,22 +13086,18 @@ parseheredoc(void)
 }
 
 
-/*
- * called by editline -- any expansions to the prompt should be added here.
- */
 static const char *
-expandstr(const char *ps)
+expandstr(const char *ps, int syntax_type)
 {
 	union node n;
 	int saveprompt;
 
-	/* XXX Fix (char *) cast. It _is_ a bug. ps is variable's value,
-	 * and token processing _can_ alter it (delete NULs etc). */
+	/* XXX Fix (char *) cast. */
 	setinputstring((char *)ps);
 
 	saveprompt = doprompt;
 	doprompt = 0;
-	readtoken1(pgetc(), PSSYNTAX, nullstr, 0);
+	readtoken1(pgetc(), syntax_type, FAKEEOFMARK, 0);
 	doprompt = saveprompt;
 
 	popfile();
@@ -14133,21 +14221,23 @@ init(void)
 /*
  * Process the shell command line arguments.
  */
-static void
+static int
 procargs(char **argv)
 {
 	int i;
 	const char *xminusc;
 	char **xargv;
+	int login_sh;
 
 	xargv = argv;
+	login_sh = xargv[0] && xargv[0][0] == '-';
 	arg0 = xargv[0];
 	/* if (xargv[0]) - mmm, this is always true! */
 		xargv++;
 	for (i = 0; i < NOPTS; i++)
 		optlist[i] = 2;
 	argptr = xargv;
-	if (options(/*cmdline:*/ 1)) {
+	if (options(/*cmdline:*/ 1, &login_sh)) {
 		/* it already printed err message */
 		raise_exception(EXERROR);
 	}
@@ -14191,6 +14281,8 @@ procargs(char **argv)
 		xargv++;
 	}
 	optschanged();
+
+	return login_sh;
 }
 
 /*
@@ -14199,7 +14291,7 @@ procargs(char **argv)
 static void
 read_profile(const char *name)
 {
-	name = expandstr(name);
+	name = expandstr(name, DQSYNTAX);
 	if (setinputfile(name, INPUT_PUSH_FILE | INPUT_NOFILE_OK) < 0)
 		return;
 	cmdloop(0);
@@ -14227,8 +14319,7 @@ reset(void)
 	popallfiles();
 
 	/* from redir.c: */
-	while (redirlist)
-		popredir(/*drop:*/ 0, /*restore:*/ 0);
+	unwindredir(NULL);
 
 	/* from var.c: */
 	unwindlocalvars(NULL);
@@ -14252,6 +14343,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	volatile smallint state;
 	struct jmploc jmploc;
 	struct stackmark smark;
+	int login_sh;
 
 	/* Initialize global data */
 	INIT_G_misc();
@@ -14304,6 +14396,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_PLATFORM_MINGW32
 	hSIGINT = CreateEvent(NULL, TRUE, FALSE, NULL);
 	SetConsoleCtrlHandler(ctrl_handler, TRUE);
+
 	if (argc == 3 && !strcmp(argv[1], "--forkshell")) {
 		forkshell_init(argv[2]);
 
@@ -14311,7 +14404,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		bb_error_msg_and_die("subshell ended unexpectedly");
 	}
 #endif
-	procargs(argv);
+	login_sh = procargs(argv);
 #if DEBUG
 	TRACE(("Shell args: "));
 	trace_puts_args(argv);
@@ -14327,9 +14420,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 
-	if (argv[0] && argv[0][0] == '-')
-		isloginsh = 1;
-	if (isloginsh) {
+	if (login_sh) {
 		const char *hp;
 
 #if ENABLE_PLATFORM_MINGW32
@@ -14367,7 +14458,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		 * Testcase: ash -c 'exec 1>&0' must not complain. */
 		// if (!sflag) g_parsefile->pf_fd = -1;
 		// ^^ not necessary since now we special-case fd 0
-		// in is_hidden_fd() to not be considered "hidden fd"
+		// in save_fd_on_redirect()
 		evalstring(minusc, sflag ? 0 : EV_EXIT);
 	}
 
