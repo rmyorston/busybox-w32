@@ -4370,7 +4370,6 @@ waitpid_child(int *status, int wait_flags)
 	if (!idx) { 		/* hSIGINT */
 		int i;
 		ResetEvent(hSIGINT);
-		pending_int = 0;
 		for (i = 1; i < pid_nr; i++)
 			TerminateProcess(proclist[i], 1);
 		pid = pidlist[1];
