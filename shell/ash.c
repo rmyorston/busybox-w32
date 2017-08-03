@@ -4308,8 +4308,8 @@ HANDLE hSIGINT;		/* Ctrl-C is pressed */
 static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
 {
 	if (dwCtrlType == CTRL_C_EVENT || dwCtrlType == CTRL_BREAK_EVENT) {
-		SetEvent(hSIGINT);
 		pending_int = 1;
+		SetEvent(hSIGINT);
 		return TRUE;
 	}
 	return FALSE;
@@ -4379,6 +4379,8 @@ waitpid_child(int *status, int wait_flags)
 		free(pidlist);
 		free(proclist);
 		*status = 128 + SIGINT;	/* terminated by a signal */
+		if (iflag)
+			write(STDOUT_FILENO, "^C", 2);
 		return pid;
 	}
 	GetExitCodeProcess(proclist[idx], &win_status);
@@ -15126,6 +15128,7 @@ forkshell_init(const char *idstr)
 
 	reinitvar();
 
+	shlvl++;
 	forkshell_child(fs);
 }
 
