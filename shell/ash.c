@@ -4378,14 +4378,14 @@ waitpid_child(int *status, int wait_flags)
 		pid = pidlist[1];
 		free(pidlist);
 		free(proclist);
-		*status = 260;	/* terminated by a signal */
+		*status = 128 + SIGINT;	/* terminated by a signal */
 		return pid;
 	}
 	GetExitCodeProcess(proclist[idx], &win_status);
 	pid = pidlist[idx];
 	free(pidlist);
 	free(proclist);
-	*status = (int)win_status;
+	*status = (int)win_status << 8;
 	return pid;
 }
 #define waitpid(p, s, f) waitpid_child(s, f)

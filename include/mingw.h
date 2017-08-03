@@ -184,10 +184,10 @@ int winansi_get_terminal_width_height(struct winsize *win);
 /*
  * stdlib.h
  */
-#define WIFEXITED(x) ((unsigned)(x) < 259)	/* STILL_ACTIVE */
-#define WEXITSTATUS(x) ((x) & 0xff)
-#define WIFSIGNALED(x) ((unsigned)(x) > 259)
 #define WTERMSIG(x) ((x) & 0x7f)
+#define WIFEXITED(x) (WTERMSIG(x) == 0)
+#define WEXITSTATUS(x) (((x) & 0xff00) >> 8)
+#define WIFSIGNALED(x) (((signed char) (((x) & 0x7f) + 1) >> 1) > 0)
 #define WCOREDUMP(x) 0
 
 int mingw_system(const char *cmd);
