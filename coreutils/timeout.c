@@ -50,10 +50,17 @@ int timeout_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int timeout_main(int argc UNUSED_PARAM, char **argv)
 {
 	int signo;
+#if !ENABLE_PLATFORM_MINGW32
 	int status;
+#endif
 	int parent = 0;
 	int timeout = 10;
+#if !ENABLE_PLATFORM_MINGW32
 	pid_t pid;
+#else
+	intptr_t ret;
+	HANDLE h;
+#endif
 #if !BB_MMU
 	char *sv1, *sv2;
 #endif
@@ -66,6 +73,7 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 	getopt32(argv, "+s:t:+" USE_FOR_NOMMU("p:+"), &opt_s, &timeout, &parent);
 	/*argv += optind; - no, wait for bb_daemonize_or_rexec! */
 	signo = get_signum(opt_s);
+#if !ENABLE_PLATFORM_MINGW32
 	if (signo < 0)
 		bb_error_msg_and_die("unknown signal '%s'", opt_s);
 
@@ -124,4 +132,31 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 	argv[1] = sv2;
 #endif
 	BB_EXECVP_or_die(argv);
+#else /* ENABLE_PLATFORM_MINGW32 */
+	if (signo != SIGTERM)
+		bb_error_msg_and_die("unknown signal '%s'", opt_s);
+
+	argv += optind;
+	if (argv[0] == NULL)
+		bb_show_usage();
+
+	if ((ret=mingw_spawn_proc(argv)) == -1)
+		bb_perror_msg_and_die("can't execute '%s'", argv[0]);
+
+	h = (HANDLE)ret;
+	while (1) {
+		sleep(1);
+		if (--timeout <= 0)
+			break;
+		if (WaitForSingleObject(h, 0) == WAIT_OBJECT_0) {
+			/* process is gone */
+			goto finish;
+		}
+	}
+
+	TerminateProcess(h, 0);
+ finish:
+	CloseHandle(h);
+	return EXIT_SUCCESS;
+#endif
 }
