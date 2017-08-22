@@ -140,6 +140,7 @@ static int rpm_gettags(const char *filename)
 	}
 	G.mytags = tags;
 
+#if !ENABLE_PLATFORM_MINGW32
 	/* Map the store */
 	storepos = (storepos + G.pagesize) & -(int)G.pagesize;
 	/* remember size for munmap */
@@ -148,6 +149,14 @@ static int rpm_gettags(const char *filename)
 	G.map = mmap(0, storepos, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (G.map == MAP_FAILED)
 		bb_perror_msg_and_die("mmap '%s'", filename);
+#else
+# undef munmap
+# define munmap(p, l) free(p)
+	/* Allocate memory for the store */
+	G.map = xmalloc(storepos);
+	xlseek(fd, 0, SEEK_SET);
+	full_read(fd, G.map, storepos);
+#endif
 
 	return fd;
 }
