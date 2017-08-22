@@ -77,6 +77,7 @@
 //usage:     "\n		Optionally back files up, appending SFX"
 //usage:     "\n	-n	Suppress automatic printing of pattern space"
 //usage:     "\n	-r,-E	Use extended regex syntax"
+//usage:     "\n	-b 	Keep CR/LF (Windows-only)"
 //usage:     "\n"
 //usage:     "\nIf no -e or -f, the first non-option argument is the sed command string."
 //usage:     "\nRemaining arguments are input files (stdin if none)."
@@ -134,7 +135,7 @@ static const char semicolon_whitespace[] ALIGN1 = "; \n\r\t\v";
 
 struct globals {
 	/* options */
-	int be_quiet, regex_type;
+	int be_quiet, regex_type, keep_cr;
 
 	FILE *nonstdout;
 	char *outname, *hold_space;
@@ -1017,7 +1018,7 @@ static char *get_next_line(char *gets_char, char *last_puts_char)
 			if (c == '\n' || c == '\0') {
 				temp[len-1] = '\0';
 #if ENABLE_PLATFORM_MINGW32
-				if (c == '\n' && len > 1 && temp[len-2] == '\r') {
+				if (!G.keep_cr && c == '\n' && len > 1 && temp[len-2] == '\r') {
 					temp[len-2] = '\0';
 				}
 #endif
@@ -1495,7 +1496,8 @@ int sed_main(int argc UNUSED_PARAM, char **argv)
 		"quiet\0"           No_argument         "n"
 		"silent\0"          No_argument         "n"
 		"expression\0"      Required_argument   "e"
-		"file\0"            Required_argument   "f";
+		"file\0"            Required_argument   "f"
+		"binary\0"          No_argument         "b";
 #endif
 
 	INIT_G();
@@ -1521,7 +1523,7 @@ int sed_main(int argc UNUSED_PARAM, char **argv)
 	 * GNU sed 4.2.1 mentions it in neither --help
 	 * nor manpage, but does recognize it.
 	 */
-	opt = getopt32(argv, "i::rEne:*f:*", &opt_i, &opt_e, &opt_f,
+	opt = getopt32(argv, "i::rEne:*f:*b", &opt_i, &opt_e, &opt_f,
 			    &G.be_quiet); /* counter for -n */
 	//argc -= optind;
 	argv += optind;
@@ -1532,6 +1534,8 @@ int sed_main(int argc UNUSED_PARAM, char **argv)
 		G.regex_type |= REG_EXTENDED; // -r or -E
 	//if (opt & 8)
 	//	G.be_quiet++; // -n (implemented with a counter instead)
+	if (opt & 0x40)
+		G.keep_cr = 1;
 	while (opt_e) { // -e
 		add_cmd_block(llist_pop(&opt_e));
 	}
