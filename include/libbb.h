@@ -1150,9 +1150,6 @@ void set_task_comm(const char *comm) FAST_FUNC;
 #else
 # define set_task_comm(name) ((void)0)
 #endif
-#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_NOFORK
-extern int long_running_applet(int applet_no) FAST_FUNC;
-#endif
 
 /* Helpers for daemonization.
  *

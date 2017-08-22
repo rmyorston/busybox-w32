@@ -10394,15 +10394,7 @@ evalcommand(union node *cmd, int flags)
  */
 		/* find_command() encodes applet_no as (-2 - applet_no) */
 		int applet_no = (- cmdentry.u.index - 2);
-		if (applet_no >= 0 && APPLET_IS_NOFORK(applet_no)
-#if ENABLE_PLATFORM_MINGW32
-				/*
-				 * Fork long-running nofork applets (e.g. yes) in interactive
-				 * sessions.  Otherwise ctrl-c won't let the user kill them.
-				 */
-				&& !(iflag && long_running_applet(applet_no))
-#endif
-		) {
+		if (applet_no >= 0 && APPLET_IS_NOFORK(applet_no)) {
 			listsetvar(varlist.list, VEXPORT|VSTACK);
 			/*
 			 * Run <applet>_main().

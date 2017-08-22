@@ -302,22 +302,6 @@ int FAST_FUNC find_applet_by_name(const char *name)
 #endif
 }
 
-# if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_NOFORK
-int FAST_FUNC long_running_applet(int applet_no)
-{
-	int ret = 0;
-
-#if defined(APPLET_NO_seq)
-	ret |= (applet_no == APPLET_NO_seq);
-#endif
-#if defined(APPLET_NO_yes)
-	ret |= (applet_no == APPLET_NO_yes);
-#endif
-
-	return ret;
-}
-#endif
-
 
 void lbb_prepare(const char *applet
 		IF_FEATURE_INDIVIDUAL(, char **argv))
