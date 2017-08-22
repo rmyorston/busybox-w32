@@ -452,13 +452,15 @@ DIR *mingw_opendir(const char *path);
  * MinGW specific
  */
 #define is_dir_sep(c) ((c) == '/' || (c) == '\\')
+#ifndef PRIuMAX
 #define PRIuMAX "I64u"
+#endif
 
 pid_t FAST_FUNC mingw_spawn(char **argv);
-intptr_t FAST_FUNC mingw_spawn_proc(char **argv);
-int mingw_execv(const char *cmd, const char *const *argv);
-int mingw_execvp(const char *cmd, const char *const *argv);
-int mingw_execve(const char *cmd, const char *const *argv, const char *const *envp);
+intptr_t FAST_FUNC mingw_spawn_proc(const char **argv);
+int mingw_execv(const char *cmd, char *const *argv);
+int mingw_execvp(const char *cmd, char *const *argv);
+int mingw_execve(const char *cmd, char *const *argv, char *const *envp);
 #define spawn mingw_spawn
 #define execvp mingw_execvp
 #define execve mingw_execve
@@ -472,7 +474,7 @@ const char * next_path_sep(const char *path);
  * helpers
  */
 
-char **copy_environ(const char *const *env);
+char **copy_environ(char *const *env);
 void free_environ(char **env);
 char **env_setenv(char **env, const char *name);
 

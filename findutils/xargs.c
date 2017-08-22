@@ -405,7 +405,9 @@ static char* FAST_FUNC process_stdin_with_replace(int n_max_chars, int n_max_arg
  */
 static int xargs_ask_confirmation(void)
 {
+#if !ENABLE_PLATFORM_MINGW32
 	FILE *tty_stream;
+#endif
 	int c, savec;
 
 #if !ENABLE_PLATFORM_MINGW32

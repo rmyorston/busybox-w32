@@ -21,6 +21,7 @@
  * and lightly edited.
  */
 
+#include "libbb.h"
 #include <time.h>
 
 #include <assert.h>
@@ -61,7 +62,7 @@ enum ptime_locale_status { not, loc, raw };
 #define recursive(new_fmt) \
   (*(new_fmt) != '\0'                                                         \
    && (rp = __strptime_internal (rp, (new_fmt), tm,                           \
-                                 decided, era_cnt LOCALE_ARG)) != NULL)
+                                 decided, era_cnt)) != NULL)
 
 
 static char const weekday_name[][10] =
@@ -98,11 +99,6 @@ static const unsigned short int __mon_yday[2][13] =
     { 0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366 }
   };
 
-# define LOCALE_PARAM
-# define LOCALE_ARG
-# define LOCALE_PARAM_DECL
-# define LOCALE_PARAM_PROTO
-# define HELPER_LOCALE_ARG
 # define ISSPACE(Ch) isspace (Ch)
 
 
@@ -143,13 +139,8 @@ day_of_the_year (struct tm *tm)
 
 
 static char *
-__strptime_internal (rp, fmt, tm, decided, era_cnt LOCALE_PARAM)
-     const char *rp;
-     const char *fmt;
-     struct tm *tm;
-     enum ptime_locale_status *decided;
-     int era_cnt;
-     LOCALE_PARAM_DECL
+__strptime_internal (const char *rp, const char *fmt, struct tm *tm,
+                     enum ptime_locale_status *decided, int era_cnt)
 {
 
   int cnt;
@@ -632,15 +623,11 @@ __strptime_internal (rp, fmt, tm, decided, era_cnt LOCALE_PARAM)
 
 
 char *
-strptime (buf, format, tm LOCALE_PARAM)
-     const char *buf;
-     const char *format;
-     struct tm *tm;
-     LOCALE_PARAM_DECL
+strptime (const char *buf, const char *format, struct tm *tm)
 {
   enum ptime_locale_status decided;
 
   decided = raw;
-  return __strptime_internal (buf, format, tm, &decided, -1 LOCALE_ARG);
+  return __strptime_internal (buf, format, tm, &decided, -1);
 }
 

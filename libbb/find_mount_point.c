@@ -10,6 +10,12 @@
 #include "libbb.h"
 #include <mntent.h>
 
+#ifdef __MINGW32__
+#define MINGW32_UNUSED_PARAM UNUSED_PARAM
+#else
+#define MINGW32_UNUSED_PARAM
+#endif
+
 /*
  * Given a block device, find the mount table entry if that block device
  * is mounted.
@@ -17,18 +23,25 @@
  * Given any other file (or directory), find the mount table entry for its
  * filesystem.
  */
-struct mntent* FAST_FUNC find_mount_point(const char *name, int subdir_too)
+struct mntent* FAST_FUNC find_mount_point(const char *name,
+		int MINGW32_UNUSED_PARAM subdir_too)
 {
 	struct stat s;
-	FILE *mtab_fp;
 	struct mntent *mountEntry;
+#if !ENABLE_PLATFORM_MINGW32
+	FILE *mtab_fp;
 	dev_t devno_of_name;
 	bool block_dev;
-#if ENABLE_PLATFORM_MINGW32
+#else
 	static char mnt_fsname[4];
 	static char mnt_dir[4];
-	static struct mntent my_mount_entry = { mnt_fsname, mnt_dir, "", "", 0, 0 };
-	char *current, *path;
+	static char mnt_type[1];
+	static char mnt_opts[1];
+	static struct mntent my_mount_entry = {
+		mnt_fsname, mnt_dir, mnt_type, mnt_opts, 0, 0
+	};
+	char *current;
+	const char *path;
 	DWORD len;
 #endif
 

@@ -56,8 +56,14 @@ char* FAST_FUNC is_in_ino_dev_hashtable(const struct stat *statbuf)
 	return NULL;
 }
 
+#if ENABLE_PLATFORM_MINGW32
+#define MINGW32_UNUSED_PARAM UNUSED_PARAM
+#else
+#define MINGW32_UNUSED_PARAM
+#endif
+
 /* Add statbuf to statbuf hash table */
-void FAST_FUNC add_to_ino_dev_hashtable(const struct stat *statbuf, const char *name)
+void FAST_FUNC add_to_ino_dev_hashtable(MINGW32_UNUSED_PARAM const struct stat *statbuf, MINGW32_UNUSED_PARAM const char *name)
 {
 #if !ENABLE_PLATFORM_MINGW32
 	int i;

@@ -1,6 +1,6 @@
 #include "libbb.h"
 
-char **copy_environ(const char *const *envp)
+char **copy_environ(char *const *envp)
 {
 	char **env;
 	int i = 0;
