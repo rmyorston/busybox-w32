@@ -13,7 +13,7 @@ modification, are permitted provided that the following conditions are met:
    3. The name of the author may not be used to endorse or promote products
       derived from this software without specific prior written permission.
 
-THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ''AS IS'' AND ANY EXPRESS OR IMPLIED
 WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO
 EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
@@ -59,12 +59,12 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //config:	help
 //config:	Sets soft resource limits as specified by options
 
-//applet:IF_CHPST(APPLET(chpst, BB_DIR_USR_BIN, BB_SUID_DROP))
-//                    APPLET_ODDNAME:name       main   location        suid_type     help
-//applet:IF_ENVDIR(   APPLET_ODDNAME(envdir,    chpst, BB_DIR_USR_BIN, BB_SUID_DROP, envdir))
-//applet:IF_ENVUIDGID(APPLET_ODDNAME(envuidgid, chpst, BB_DIR_USR_BIN, BB_SUID_DROP, envuidgid))
-//applet:IF_SETUIDGID(APPLET_ODDNAME(setuidgid, chpst, BB_DIR_USR_BIN, BB_SUID_DROP, setuidgid))
-//applet:IF_SOFTLIMIT(APPLET_ODDNAME(softlimit, chpst, BB_DIR_USR_BIN, BB_SUID_DROP, softlimit))
+//applet:IF_CHPST(    APPLET_NOEXEC(chpst,     chpst, BB_DIR_USR_BIN, BB_SUID_DROP, chpst))
+//                    APPLET_NOEXEC:name       main   location        suid_type     help
+//applet:IF_ENVDIR(   APPLET_NOEXEC(envdir,    chpst, BB_DIR_USR_BIN, BB_SUID_DROP, envdir))
+//applet:IF_ENVUIDGID(APPLET_NOEXEC(envuidgid, chpst, BB_DIR_USR_BIN, BB_SUID_DROP, envuidgid))
+//applet:IF_SETUIDGID(APPLET_NOEXEC(setuidgid, chpst, BB_DIR_USR_BIN, BB_SUID_DROP, setuidgid))
+//applet:IF_SOFTLIMIT(APPLET_NOEXEC(softlimit, chpst, BB_DIR_USR_BIN, BB_SUID_DROP, softlimit))
 
 //kbuild:lib-$(CONFIG_CHPST) += chpst.o
 //kbuild:lib-$(CONFIG_ENVDIR) += chpst.o
@@ -301,9 +301,10 @@ int chpst_main(int argc UNUSED_PARAM, char **argv)
 		// FIXME: can we live with int-sized limits?
 		// can we live with 40000 days?
 		// if yes -> getopt converts strings to numbers for us
-		opt_complementary = "-1";
-		opt = getopt32(argv, "+a:+c:+d:+f:+l:+m:+o:+p:+r:+s:+t:+u:U:e:"
-			IF_CHPST("/:n:vP012"),
+		opt = getopt32(argv, "^+"
+			"a:+c:+d:+f:+l:+m:+o:+p:+r:+s:+t:+u:U:e:"
+			IF_CHPST("/:n:vP012")
+			"\0" "-1",
 			&limita, &limitc, &limitd, &limitf, &limitl,
 			&limitm, &limito, &limitp, &limitr, &limits, &limitt,
 			&set_user, &set_user, &env_dir

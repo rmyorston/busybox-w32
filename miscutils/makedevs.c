@@ -38,7 +38,7 @@
 //config:
 //config:endchoice
 
-//applet:IF_MAKEDEVS(APPLET(makedevs, BB_DIR_SBIN, BB_SUID_DROP))
+//applet:IF_MAKEDEVS(APPLET_NOEXEC(makedevs, makedevs, BB_DIR_SBIN, BB_SUID_DROP, makedevs))
 
 //kbuild:lib-$(CONFIG_MAKEDEVS) += makedevs.o
 
@@ -183,8 +183,7 @@ int makedevs_main(int argc UNUSED_PARAM, char **argv)
 	char *line = (char *)"-";
 	int ret = EXIT_SUCCESS;
 
-	opt_complementary = "=1"; /* exactly one param */
-	getopt32(argv, "d:", &line);
+	getopt32(argv, "^" "d:" "\0" "=1", &line);
 	argv += optind;
 
 	xchdir(*argv); /* ensure root dir exists */

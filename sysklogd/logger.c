@@ -77,14 +77,14 @@ static int pencode(char *s)
 		;
 	if (*s) {
 		*s = '\0';
-		fac = decode(save, facilitynames);
+		fac = decode(save, bb_facilitynames);
 		if (fac < 0)
 			bb_error_msg_and_die("unknown %s name: %s", "facility", save);
 		*s++ = '.';
 	} else {
 		s = save;
 	}
-	lev = decode(s, prioritynames);
+	lev = decode(s, bb_prioritynames);
 	if (lev < 0)
 		bb_error_msg_and_die("unknown %s name: %s", "priority", save);
 	return ((lev & LOG_PRIMASK) | (fac & LOG_FACMASK));
@@ -167,7 +167,7 @@ int logger_main(int argc UNUSED_PARAM, char **argv)
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ''AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE

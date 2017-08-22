@@ -365,7 +365,7 @@ unsigned long long monotonic_ms(void) FAST_FUNC;
 unsigned monotonic_sec(void) FAST_FUNC;
 
 extern void chomp(char *s) FAST_FUNC;
-extern void trim(char *s) FAST_FUNC;
+extern char *trim(char *s) FAST_FUNC;
 extern char *skip_whitespace(const char *) FAST_FUNC;
 extern char *skip_non_whitespace(const char *) FAST_FUNC;
 extern char *skip_dev_pfx(const char *tty_name) FAST_FUNC;
@@ -886,7 +886,7 @@ unsigned bb_clk_tck(void) FAST_FUNC;
 
 #if SEAMLESS_COMPRESSION
 /* Autodetects gzip/bzip2 formats. fd may be in the middle of the file! */
-extern int setup_unzip_on_fd(int fd, int fail_if_not_compressed) FAST_FUNC;
+int setup_unzip_on_fd(int fd, int fail_if_not_compressed) FAST_FUNC;
 /* Autodetects .gz etc */
 extern int open_zipped(const char *fname, int fail_if_not_compressed) FAST_FUNC;
 extern void *xmalloc_open_zipped_read_close(const char *fname, size_t *maxsz_p) FAST_FUNC RETURNS_MALLOC;
@@ -895,6 +895,8 @@ extern void *xmalloc_open_zipped_read_close(const char *fname, size_t *maxsz_p) 
 # define open_zipped(fname, fail_if_not_compressed)  open((fname), O_RDONLY);
 # define xmalloc_open_zipped_read_close(fname, maxsz_p) xmalloc_open_read_close((fname), (maxsz_p))
 #endif
+/* lzma has no signature, need a little helper. NB: exist only for ENABLE_FEATURE_SEAMLESS_LZMA=y */
+void setup_lzma_on_fd(int fd) FAST_FUNC;
 
 extern ssize_t safe_write(int fd, const void *buf, size_t count) FAST_FUNC;
 // NB: will return short write on error, not -1,
@@ -1138,9 +1140,15 @@ int wait_for_exitstatus(pid_t pid) FAST_FUNC;
 int spawn_and_wait(char **argv) FAST_FUNC;
 /* Does NOT check that applet is NOFORK, just blindly runs it */
 int run_nofork_applet(int applet_no, char **argv) FAST_FUNC;
+void run_noexec_applet_and_exit(int a, const char *name, char **argv) NORETURN FAST_FUNC;
 #ifndef BUILD_INDIVIDUAL
-extern int find_applet_by_name(const char *name) FAST_FUNC;
-extern void run_applet_no_and_exit(int a, const char *name, char **argv) NORETURN FAST_FUNC;
+int find_applet_by_name(const char *name) FAST_FUNC;
+void run_applet_no_and_exit(int a, const char *name, char **argv) NORETURN FAST_FUNC;
+#endif
+#if defined(__linux__)
+void set_task_comm(const char *comm) FAST_FUNC;
+#else
+# define set_task_comm(name) ((void)0)
 #endif
 #if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_NOFORK
 extern int long_running_applet(int applet_no) FAST_FUNC;
@@ -1198,21 +1206,26 @@ enum {
 #endif
 void bb_daemonize_or_rexec(int flags, char **argv) FAST_FUNC;
 void bb_sanitize_stdio(void) FAST_FUNC;
+#define bb_daemon_helper(arg) bb_daemonize_or_rexec((arg) | DAEMON_ONLY_SANITIZE, NULL)
 /* Clear dangerous stuff, set PATH. Return 1 if was run by different user. */
 int sanitize_env_if_suid(void) FAST_FUNC;
 
 
+/* For top, ps. Some argv[i] are replaced by malloced "-opt" strings */
+void make_all_argv_opts(char **argv) FAST_FUNC;
 char* single_argv(char **argv) FAST_FUNC;
-extern const char *const bb_argv_dash[]; /* "-", NULL */
-extern const char *opt_complementary;
-#if ENABLE_LONG_OPTS || ENABLE_FEATURE_GETOPT_LONG
-#define No_argument "\0"
-#define Required_argument "\001"
-#define Optional_argument "\002"
-extern const char *applet_long_options;
-#endif
+extern const char *const bb_argv_dash[]; /* { "-", NULL } */
 extern uint32_t option_mask32;
-extern uint32_t getopt32(char **argv, const char *applet_opts, ...) FAST_FUNC;
+uint32_t getopt32(char **argv, const char *applet_opts, ...) FAST_FUNC;
+# define No_argument "\0"
+# define Required_argument "\001"
+# define Optional_argument "\002"
+#if ENABLE_LONG_OPTS
+uint32_t getopt32long(char **argv, const char *optstring, const char *longopts, ...) FAST_FUNC;
+#else
+#define getopt32long(argv,optstring,longopts,...) \
+	getopt32(argv,optstring,##__VA_ARGS__)
+#endif
 /* BSD-derived getopt() functions require that optind be set to 1 in
  * order to reset getopt() state.  This used to be generally accepted
  * way of resetting getopt().  However, glibc's getopt()
@@ -1429,6 +1442,11 @@ enum {
 	// keep a copy of current line
 	PARSE_KEEP_COPY = 0x00200000 * ENABLE_FEATURE_CROND_D,
 	PARSE_EOL_COMMENTS = 0x00400000, // comments are recognized even if they aren't the first char
+	PARSE_ALT_COMMENTS = 0x00800000, // delim[0] and delim[1] are two different allowed comment chars
+	// (so far, delim[0] will only work as comment char for full-line comment)
+	// (IOW: it works as if PARSE_EOL_COMMENTS is not set. sysctl applet is okay with this)
+	PARSE_WS_COMMENTS  = 0x01000000, // comments are recognized even if there is whitespace before
+	// ("line start><space><tab><space>#comment" is also comment, not only "line start>#comment")
 	// NORMAL is:
 	// * remove leading and trailing delimiters and collapse
 	//   multiple delimiters into one
@@ -1483,6 +1501,21 @@ extern void run_shell(const char *shell, int loginshell, const char **args) NORE
  * if there is a possibility of intervening getpwxxx() calls.
  */
 const char *get_shell_name(void) FAST_FUNC;
+
+unsigned cap_name_to_number(const char *cap) FAST_FUNC;
+void printf_cap(const char *pfx, unsigned cap_no) FAST_FUNC;
+void drop_capability(int cap_ordinal) FAST_FUNC;
+/* Structures inside "struct caps" are Linux-specific and libcap-specific: */
+#define DEFINE_STRUCT_CAPS \
+struct caps { \
+	struct __user_cap_header_struct header; \
+	unsigned u32s; \
+	struct __user_cap_data_struct data[2]; \
+}
+void getcaps(void *caps) FAST_FUNC;
+
+unsigned cap_name_to_number(const char *name) FAST_FUNC;
+void printf_cap(const char *pfx, unsigned cap_no) FAST_FUNC;
 
 #if ENABLE_SELINUX
 extern void renew_current_security_context(void) FAST_FUNC;
@@ -1668,9 +1701,9 @@ enum {
  * buffer[0] is used as a counter of buffered chars and must be 0
  * on first call.
  * timeout:
- * -2: do not poll for input;
- * -1: poll(-1) (i.e. block);
- * >=0: poll for TIMEOUT milliseconds, return -1/EAGAIN on timeout
+ * -2: do not poll(-1) for input - read() it, return on EAGAIN at once
+ * -1: poll(-1) (i.e. block even on NONBLOCKed fd)
+ * >=0: poll() for TIMEOUT milliseconds, return -1/EAGAIN on timeout
  */
 int64_t read_key(int fd, char *buffer, int timeout) FAST_FUNC;
 void read_key_ungets(char *buffer, const char *str, unsigned len) FAST_FUNC;
@@ -1686,6 +1719,7 @@ unsigned size_from_HISTFILESIZE(const char *hp) FAST_FUNC;
 # endif
 typedef struct line_input_t {
 	int flags;
+	int timeout;
 	const char *path_lookup;
 # if MAX_HISTORY
 	int cnt_history;
@@ -1721,7 +1755,7 @@ line_input_t *new_line_input_t(int flags) FAST_FUNC;
  * 0  on ctrl-C (the line entered is still returned in 'command'),
  * >0 length of input string, including terminating '\n'
  */
-int read_line_input(line_input_t *st, const char *prompt, char *command, int maxsize, int timeout) FAST_FUNC;
+int read_line_input(line_input_t *st, const char *prompt, char *command, int maxsize) FAST_FUNC;
 void show_history(const line_input_t *st) FAST_FUNC;
 # if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
 void save_history(line_input_t *st);
@@ -1729,7 +1763,7 @@ void save_history(line_input_t *st);
 #else
 #define MAX_HISTORY 0
 int read_line_input(const char* prompt, char* command, int maxsize) FAST_FUNC;
-#define read_line_input(state, prompt, command, maxsize, timeout) \
+#define read_line_input(state, prompt, command, maxsize) \
 	read_line_input(prompt, command, maxsize)
 #endif
 

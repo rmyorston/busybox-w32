@@ -13,7 +13,7 @@ modification, are permitted provided that the following conditions are met:
    3. The name of the author may not be used to endorse or promote products
       derived from this software without specific prior written permission.
 
-THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ''AS IS'' AND ANY EXPRESS OR IMPLIED
 WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO
 EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
@@ -175,8 +175,8 @@ Exit Codes
 //config:	svc controls the state of services monitored by the runsv supervisor.
 //config:	It is comaptible with daemontools command with the same name.
 
-//applet:IF_SV(APPLET(sv, BB_DIR_USR_BIN, BB_SUID_DROP))
-//applet:IF_SVC(APPLET(svc, BB_DIR_USR_BIN, BB_SUID_DROP))
+//applet:IF_SV( APPLET_NOEXEC(sv,  sv,  BB_DIR_USR_BIN, BB_SUID_DROP, sv ))
+//applet:IF_SVC(APPLET_NOEXEC(svc, svc, BB_DIR_USR_BIN, BB_SUID_DROP, svc))
 
 //kbuild:lib-$(CONFIG_SV) += sv.o
 //kbuild:lib-$(CONFIG_SVC) += sv.o
@@ -193,7 +193,7 @@ struct globals {
 /* "Bernstein" time format: unix + 0x400000000000000aULL */
 	uint64_t tstart, tnow;
 	svstatus_t svstatus;
-	unsigned islog;
+	smallint islog;
 } FIX_ALIASING;
 #define G (*(struct globals*)bb_common_bufsiz1)
 #define acts         (G.acts        )
@@ -203,7 +203,11 @@ struct globals {
 #define tnow         (G.tnow        )
 #define svstatus     (G.svstatus    )
 #define islog        (G.islog       )
-#define INIT_G() do { setup_common_bufsiz(); } while (0)
+#define INIT_G() do { \
+	setup_common_bufsiz(); \
+	/* need to zero out, svc calls sv() repeatedly */ \
+	memset(&G, 0, sizeof(G)); \
+} while (0)
 
 
 #define str_equal(s,t) (strcmp((s), (t)) == 0)
@@ -502,8 +506,9 @@ static int sv(char **argv)
 	x = getenv("SVWAIT");
 	if (x) waitsec = xatou(x);
 
-	opt_complementary = "vv"; /* -w N, -v is a counter */
-	getopt32(argv, "w:+v", &waitsec, &verbose);
+	getopt32(argv, "^" "w:+v" "\0" "vv" /* -w N, -v is a counter */,
+			&waitsec, &verbose
+	);
 	argv += optind;
 	action = *argv++;
 	if (!action || !*argv) bb_show_usage();
@@ -701,8 +706,6 @@ int svc_main(int argc UNUSED_PARAM, char **argv)
 	const char *optstring;
 	unsigned opts;
 
-	INIT_G();
-
 	optstring = "udopchaitkx";
 	opts = getopt32(argv, optstring);
 	argv += optind;
@@ -718,15 +721,16 @@ int svc_main(int argc UNUSED_PARAM, char **argv)
 	argv[1] = command;
 	command[1] = '\0';
 
-	/* getopt32() was already called:
-	 * reset the libc getopt() function, which keeps internal state.
-	 */
-	GETOPT_RESET();
-
 	do {
 		if (opts & 1) {
 			int r;
+
 			command[0] = *optstring;
+
+			/* getopt() was already called by getopt32():
+			 * reset the libc getopt() function's internal state.
+			 */
+			GETOPT_RESET();
 			r = sv(argv);
 			if (r)
 				return 1;

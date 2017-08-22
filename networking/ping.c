@@ -340,7 +340,8 @@ static int common_ping_main(sa_family_t af, char **argv)
 
 /* Full(er) version */
 
-#define OPT_STRING ("qvc:+s:t:+w:+W:+I:np:4" IF_PING6("6"))
+/* -c NUM, -t NUM, -w NUM, -W NUM */
+#define OPT_STRING "qvc:+s:t:+w:+W:+I:np:4"IF_PING6("6")
 enum {
 	OPT_QUIET = 1 << 0,
 	OPT_VERBOSE = 1 << 1,
@@ -863,9 +864,12 @@ static int common_ping_main(int opt, char **argv)
 
 	INIT_G();
 
-	/* exactly one argument needed; -v and -q don't mix; -c NUM, -t NUM, -w NUM, -W NUM */
-	opt_complementary = "=1:q--v:v--q";
-	opt |= getopt32(argv, OPT_STRING, &pingcount, &str_s, &opt_ttl, &deadline, &timeout, &str_I, &str_p);
+	opt |= getopt32(argv, "^"
+			OPT_STRING
+			/* exactly one arg; -v and -q don't mix */
+			"\0" "=1:q--v:v--q",
+			&pingcount, &str_s, &opt_ttl, &deadline, &timeout, &str_I, &str_p
+	);
 	if (opt & OPT_s)
 		datalen = xatou16(str_s); // -s
 	if (opt & OPT_I) { // -I
@@ -953,7 +957,7 @@ int ping6_main(int argc UNUSED_PARAM, char **argv)
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ''AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE

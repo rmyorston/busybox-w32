@@ -14,6 +14,7 @@
 //config:	This utility is used to copy images into a MTD device.
 
 //applet:IF_FLASHCP(APPLET(flashcp, BB_DIR_USR_SBIN, BB_SUID_DROP))
+/* not NOEXEC: if flash operation stalls, use less memory in "hung" process */
 
 //kbuild:lib-$(CONFIG_FLASHCP) += flashcp.o
 
@@ -68,8 +69,7 @@ int flashcp_main(int argc UNUSED_PARAM, char **argv)
 	RESERVE_CONFIG_UBUFFER(buf, BUFSIZE);
 	RESERVE_CONFIG_UBUFFER(buf2, BUFSIZE);
 
-	opt_complementary = "=2"; /* exactly 2 non-option args: file, dev */
-	/*opts =*/ getopt32(argv, "v");
+	/*opts =*/ getopt32(argv, "^" "v" "\0" "=2"/*exactly 2 non-option args: file,dev*/);
 	argv += optind;
 //	filename = *argv++;
 //	devicename = *argv;

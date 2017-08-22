@@ -215,6 +215,9 @@
 #define    BASH_PIPEFAIL        ENABLE_ASH_BASH_COMPAT
 #define    BASH_HOSTNAME_VAR    ENABLE_ASH_BASH_COMPAT
 #define    BASH_SHLVL_VAR       ENABLE_ASH_BASH_COMPAT
+#define    BASH_XTRACEFD        ENABLE_ASH_BASH_COMPAT
+#define    BASH_READ_D          ENABLE_ASH_BASH_COMPAT
+#define IF_BASH_READ_D              IF_ASH_BASH_COMPAT
 
 #if defined(__ANDROID_API__) && __ANDROID_API__ <= 24
 /* Bionic at least up to version 24 has no glob() */
@@ -452,7 +455,7 @@ struct globals_misc {
 #define S_DFL      1            /* default signal handling (SIG_DFL) */
 #define S_CATCH    2            /* signal is caught */
 #define S_IGN      3            /* signal is ignored (SIG_IGN) */
-#define S_HARD_IGN 4            /* signal is ignored permanently */
+#define S_HARD_IGN 4            /* signal is ignored permanently (it was SIG_IGN on entry to shell) */
 
 	/* indicates specified signal received */
 	uint8_t gotsig[NSIG - 1]; /* offset by 1: "signal" 0 is meaningless */
@@ -1313,6 +1316,10 @@ struct strpush {
 	int unget;
 };
 
+/*
+ * The parsefile structure pointed to by the global variable parsefile
+ * contains information about the current file being read.
+ */
 struct parsefile {
 	struct parsefile *prev; /* preceding file on stack */
 	int linno;              /* current line */
@@ -1986,10 +1993,6 @@ nextopt(const char *optstring)
 
 /* ============ Shell variables */
 
-/*
- * The parsefile structure pointed to by the global variable parsefile
- * contains information about the current file being read.
- */
 struct shparam {
 	int nparam;             /* # of positional parameters (without $0) */
 #if ENABLE_ASH_GETOPTS
@@ -2183,7 +2186,9 @@ extern struct globals_var *const ash_ptr_to_globals_var;
 static void FAST_FUNC
 getoptsreset(const char *value)
 {
-	shellparam.optind = number(value) ?: 1;
+	shellparam.optind = 1;
+	if (is_number(value))
+		shellparam.optind = number(value) ?: 1;
 	shellparam.optoff = -1;
 }
 #endif
@@ -3751,9 +3756,12 @@ setsignal(int signo)
 #endif
 		}
 	}
-//TODO: if !rootshell, we reset SIGQUIT to DFL,
-//whereas we have to restore it to what shell got on entry
-//from the parent. See comment above
+	/* if !rootshell, we reset SIGQUIT to DFL,
+	 * whereas we have to restore it to what shell got on entry.
+	 * This is handled by the fact that if signal was IGNored on entry,
+	 * then cur_act is S_HARD_IGN and we never change its sigaction
+	 * (see code below).
+	 */
 
 	if (signo == SIGCHLD)
 		new_act = S_CATCH;
@@ -3777,9 +3785,17 @@ setsignal(int signo)
 				cur_act = S_IGN;   /* don't hard ignore these */
 			}
 		}
+		if (act.sa_handler == SIG_DFL && new_act == S_DFL) {
+			/* installing SIG_DFL over SIG_DFL is a no-op */
+			/* saves one sigaction call in each "sh -c SCRIPT" invocation */
+			*t = S_DFL;
+			return;
+		}
 	}
 	if (cur_act == S_HARD_IGN || cur_act == new_act)
 		return;
+
+	*t = new_act;
 
 	act.sa_handler = SIG_DFL;
 	switch (new_act) {
@@ -3790,16 +3806,13 @@ setsignal(int signo)
 		act.sa_handler = SIG_IGN;
 		break;
 	}
-
 	/* flags and mask matter only if !DFL and !IGN, but we do it
 	 * for all cases for more deterministic behavior:
 	 */
-	act.sa_flags = 0;
+	act.sa_flags = 0; //TODO: why not SA_RESTART?
 	sigfillset(&act.sa_mask);
 
 	sigaction_set(signo, &act);
-
-	*t = new_act;
 }
 #else
 #define setsignal(s)
@@ -5915,12 +5928,10 @@ static void
 redirect(union node *redir, int flags)
 {
 	struct redirtab *sv;
-	int sv_pos;
 
 	if (!redir)
 		return;
 
-	sv_pos = 0;
 	sv = NULL;
 	INT_OFF;
 	if (flags & REDIR_PUSH)
@@ -8076,8 +8087,9 @@ static int
 patmatch(char *pattern, const char *string)
 {
 	char *p = preglob(pattern, 0);
-	//bb_error_msg("fnmatch(pattern:'%s',str:'%s')", p, string);
-	return pmatch(p, string);
+	int r = pmatch(p, string);
+	//bb_error_msg("!fnmatch(pattern:'%s',str:'%s',0):%d", p, string, r);
+	return r;
 }
 
 /*
@@ -8179,7 +8191,7 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 			while (*envp)
 				putenv(*envp++);
 			popredir(/*drop:*/ 1);
-			run_applet_no_and_exit(applet_no, cmd, argv);
+			run_noexec_applet_and_exit(applet_no, cmd, argv);
 		}
 		/* re-exec ourselves with the new arguments */
 		execve(bb_busybox_exec_path, argv, envp);
@@ -10250,6 +10262,15 @@ evalcommand(union node *cmd, int flags)
 	expredir(cmd->ncmd.redirect);
 	redir_stop = pushredir(cmd->ncmd.redirect);
 	preverrout_fd = 2;
+	if (BASH_XTRACEFD && xflag) {
+		/* NB: bash closes fd == $BASH_XTRACEFD when it is changed.
+		 * we do not emulate this. We only use its value.
+		 */
+		const char *xtracefd = lookupvar("BASH_XTRACEFD");
+		if (xtracefd && is_number(xtracefd))
+			preverrout_fd = atoi(xtracefd);
+
+	}
 	status = redirectsafe(cmd->ncmd.redirect, REDIR_PUSH | REDIR_SAVEFD2);
 
 	path = vpath.var_text;
@@ -10383,12 +10404,30 @@ evalcommand(union node *cmd, int flags)
 #endif
 		) {
 			listsetvar(varlist.list, VEXPORT|VSTACK);
-			/* run <applet>_main() */
+			/*
+			 * Run <applet>_main().
+			 * Signals (^C) can't interrupt here.
+			 * Otherwise we can mangle stdio or malloc internal state.
+			 * This makes applets which can run for a long time
+			 * and/or wait for user input ineligible for NOFORK:
+			 * for example, "yes" or "rm" (rm -i waits for input).
+			 */
+			INT_OFF;
 			status = run_nofork_applet(applet_no, argv);
+			/*
+			 * Try enabling NOFORK for "yes" applet.
+			 * ^C _will_ stop it (write returns EINTR),
+			 * but this causes stdout FILE to be stuck
+			 * and needing clearerr(). What if other applets
+			 * also can get EINTRs? Do we need to switch
+			 * our signals to SA_RESTART?
+			 */
+			/*clearerr(stdout);*/
+			INT_ON;
 			break;
 		}
 #endif
-		/* Can we avoid forking off? For example, very last command
+		/* Can we avoid forking? For example, very last command
 		 * in a script or a subshell does not need forking,
 		 * we can just exec it.
 		 */
@@ -10674,8 +10713,8 @@ preadfd(void)
 	if (!iflag || g_parsefile->pf_fd != STDIN_FILENO)
 		nr = nonblock_immune_read(g_parsefile->pf_fd, buf, IBUFSIZ - 1);
 	else {
-		int timeout = -1;
 # if ENABLE_ASH_IDLE_TIMEOUT
+		int timeout = -1;
 		if (iflag) {
 			const char *tmout_var = lookupvar("TMOUT");
 			if (tmout_var) {
@@ -10684,12 +10723,13 @@ preadfd(void)
 					timeout = -1;
 			}
 		}
+		line_input_state->timeout = timeout;
 # endif
 # if ENABLE_FEATURE_TAB_COMPLETION
 		line_input_state->path_lookup = pathval();
 # endif
 		reinit_unicode_for_ash();
-		nr = read_line_input(line_input_state, cmdedit_prompt, buf, IBUFSIZ, timeout);
+		nr = read_line_input(line_input_state, cmdedit_prompt, buf, IBUFSIZ);
 		if (nr == 0) {
 			/* ^C pressed, "convert" to SIGINT */
 			write(STDOUT_FILENO, "^C", 2);
@@ -11399,6 +11439,7 @@ getopts(char *optstr, char *optvar, char **optfirst)
 		p = *optnext;
 		if (p == NULL || *p != '-' || *++p == '\0') {
  atend:
+			unsetvar("OPTARG");
 			p = NULL;
 			done = 1;
 			goto out;
@@ -11411,7 +11452,11 @@ getopts(char *optstr, char *optvar, char **optfirst)
 	c = *p++;
 	for (q = optstr; *q != c;) {
 		if (*q == '\0') {
-			if (optstr[0] == ':') {
+			/* OPTERR is a bashism */
+			const char *cp = lookupvar("OPTERR");
+			if ((cp && LONE_CHAR(cp, '0'))
+			 || (optstr[0] == ':')
+			) {
 				sbuf[0] = c;
 				/*sbuf[1] = '\0'; - already is */
 				setvar0("OPTARG", sbuf);
@@ -11428,7 +11473,11 @@ getopts(char *optstr, char *optvar, char **optfirst)
 
 	if (*++q == ':') {
 		if (*p == '\0' && (p = *optnext) == NULL) {
-			if (optstr[0] == ':') {
+			/* OPTERR is a bashism */
+			const char *cp = lookupvar("OPTERR");
+			if ((cp && LONE_CHAR(cp, '0'))
+			 || (optstr[0] == ':')
+			) {
 				sbuf[0] = c;
 				/*sbuf[1] = '\0'; - already is */
 				setvar0("OPTARG", sbuf);
@@ -12571,7 +12620,7 @@ parsesub: {
 				STPUTC(c, out);
 				c = pgetc_eatbnl();
 			} while (isdigit(c));
-		} else if (is_special(c)) {
+		} else {
 			/* $[{[#]]<specialchar>[}] */
 			int cc = c;
 
@@ -12589,10 +12638,16 @@ parsesub: {
 					cc = '#';
 				}
 			}
+
+			if (!is_special(cc)) {
+				if (subtype == VSLENGTH)
+					subtype = 0;
+				goto badsub;
+			}
+
 			USTPUTC(cc, out);
-		} else {
-			goto badsub;
 		}
+
 		if (c != '}' && subtype == VSLENGTH) {
 			/* ${#VAR didn't end with } */
 			goto badsub;
@@ -13850,21 +13905,23 @@ static const unsigned char timescmd_str[] ALIGN1 = {
 static int FAST_FUNC
 timescmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 {
-	unsigned long clk_tck, s, t;
+	unsigned clk_tck;
 	const unsigned char *p;
 	struct tms buf;
 
 	clk_tck = bb_clk_tck();
-	times(&buf);
 
+	times(&buf);
 	p = timescmd_str;
 	do {
+		unsigned sec, frac;
+		unsigned long t;
 		t = *(clock_t *)(((char *) &buf) + p[1]);
-		s = t / clk_tck;
-		t = t % clk_tck;
-		out1fmt("%lum%lu.%03lus%c",
-			s / 60, s % 60,
-			(t * 1000) / clk_tck,
+		sec = t / clk_tck;
+		frac = t % clk_tck;
+		out1fmt("%um%u.%03us%c",
+			sec / 60, sec % 60,
+			(frac * 1000) / clk_tck,
 			p[0]);
 		p += 2;
 	} while (*p);
@@ -13903,10 +13960,10 @@ letcmd(int argc UNUSED_PARAM, char **argv)
  *      -p PROMPT       Display PROMPT on stderr (if input is from tty)
  *      -t SECONDS      Timeout after SECONDS (tty or pipe only)
  *      -u FD           Read from given FD instead of fd 0
+ *      -d DELIM        End on DELIM char, not newline
  * This uses unbuffered input, which may be avoidable in some cases.
  * TODO: bash also has:
  *      -a ARRAY        Read into array[0],[1],etc
- *      -d DELIM        End on DELIM char, not newline
  *      -e              Use line editing (tty only)
  */
 static int FAST_FUNC
@@ -13916,11 +13973,12 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	char *opt_p = NULL;
 	char *opt_t = NULL;
 	char *opt_u = NULL;
+	char *opt_d = NULL; /* optimized out if !BASH */
 	int read_flags = 0;
 	const char *r;
 	int i;
 
-	while ((i = nextopt("p:u:rt:n:s")) != '\0') {
+	while ((i = nextopt("p:u:rt:n:sd:")) != '\0') {
 		switch (i) {
 		case 'p':
 			opt_p = optionarg;
@@ -13940,6 +13998,11 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		case 'u':
 			opt_u = optionarg;
 			break;
+#if BASH_READ_D
+		case 'd':
+			opt_d = optionarg;
+			break;
+#endif
 		default:
 			break;
 		}
@@ -13957,12 +14020,15 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		opt_n,
 		opt_p,
 		opt_t,
-		opt_u
+		opt_u,
+		opt_d
 	);
 	INT_ON;
 
 	if ((uintptr_t)r == 1 && errno == EINTR) {
-		/* to get SIGCHLD: sleep 1 & read x; echo $x */
+		/* To get SIGCHLD: sleep 1 & read x; echo $x
+		 * Correct behavior is to not exit "read"
+		 */
 		if (pending_sig == 0)
 			goto again;
 	}
@@ -14077,7 +14143,8 @@ exitshell(void)
 	/* NOTREACHED */
 }
 
-static void
+/* Don't inline: conserve stack of caller from having our locals too */
+static NOINLINE void
 #if ENABLE_PLATFORM_MINGW32
 init(int xp)
 #else
@@ -14086,8 +14153,9 @@ init(void)
 {
 	/* we will never free this */
 	basepf.next_to_pgetc = basepf.buf = ckmalloc(IBUFSIZ);
+	basepf.linno = 1;
 
-	sigmode[SIGCHLD - 1] = S_DFL;
+	sigmode[SIGCHLD - 1] = S_DFL; /* ensure we install handler even if it is SIG_IGNed */
 	setsignal(SIGCHLD);
 
 	/* bash re-enables SIGHUP which is SIG_IGNed on entry.
@@ -14098,7 +14166,6 @@ init(void)
 	{
 		char **envp;
 		const char *p;
-		struct stat st1, st2;
 
 		initvar();
 
@@ -14204,6 +14271,7 @@ init(void)
 #endif
 		p = lookupvar("PWD");
 		if (p) {
+			struct stat st1, st2;
 			if (p[0] != '/' || stat(p, &st1) || stat(".", &st2)
 			 || st1.st_dev != st2.st_dev || st1.st_ino != st2.st_ino
 			) {
@@ -15161,7 +15229,7 @@ sticky_free(void *base)
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ''AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE

@@ -12,12 +12,12 @@
  * this paragraph in its entirety in the documentation or other materials
  * provided with the distribution, and (3) all advertising materials mentioning
  * features or use of this software display the following acknowledgement:
- * ``This product includes software developed by the University of California,
+ * ''This product includes software developed by the University of California,
  * Lawrence Berkeley Laboratory and its contributors.'' Neither the name of
  * the University nor the names of its contributors may be used to endorse
  * or promote products derived from this software without specific prior
  * written permission.
- * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR IMPLIED
+ * THIS SOFTWARE IS PROVIDED ''AS IS'' AND WITHOUT ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
@@ -833,9 +833,9 @@ common_traceroute_main(int op, char **argv)
 
 	INIT_G();
 
-	/* minimum 1 arg */
-	opt_complementary = "-1:x-x";
-	op |= getopt32(argv, OPT_STRING
+	op |= getopt32(argv, "^"
+		OPT_STRING
+		"\0" "-1:x-x" /* minimum 1 arg */
 		, &tos_str, &device, &max_ttl_str, &port_str, &nprobes_str
 		, &source, &waittime_str, &pausemsecs_str, &first_ttl_str
 	);

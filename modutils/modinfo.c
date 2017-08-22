@@ -12,7 +12,7 @@
 //config:	help
 //config:	Show information about a Linux Kernel module
 
-//applet:IF_MODINFO(APPLET(modinfo, BB_DIR_SBIN, BB_SUID_DROP))
+//applet:IF_MODINFO(APPLET_NOEXEC(modinfo, modinfo, BB_DIR_SBIN, BB_SUID_DROP, modinfo))
 
 //kbuild:lib-$(CONFIG_MODINFO) += modinfo.o modutils.o
 
@@ -148,8 +148,7 @@ int modinfo_main(int argc UNUSED_PARAM, char **argv)
 	unsigned i;
 
 	field = NULL;
-	opt_complementary = "-1"; /* minimum one param */
-	opts = getopt32(argv, "0F:nadlp", &field);
+	opts = getopt32(argv, "^" "0F:nadlp" "\0" "-1"/*minimum one arg*/, &field);
 	/* If no field selected, show all */
 	if (!(opts & (OPT_TAGS|OPT_F)))
 		option_mask32 |= OPT_TAGS;

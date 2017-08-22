@@ -70,7 +70,11 @@
 #endif
 
 
-#define OPTSTR_AWK \
+/* "+": stop on first non-option:
+ * $ awk 'BEGIN { for(i=1; i<ARGC; ++i) { print i ": " ARGV[i] }}' -argz
+ * 1: -argz
+ */
+#define OPTSTR_AWK "+" \
 	"F:v:*f:*" \
 	IF_FEATURE_AWK_GNU_EXTENSIONS("e:*") \
 	"W:"
@@ -230,7 +234,7 @@ typedef struct tsplitter_s {
  */
 #define	TC_LENGTH	(1 << 20)
 #define	TC_GETLINE	(1 << 21)
-#define	TC_FUNCDECL	(1 << 22)		/* `function' `func' */
+#define	TC_FUNCDECL	(1 << 22)		/* 'function' 'func' */
 #define	TC_BEGIN	(1 << 23)
 #define	TC_END		(1 << 24)
 #define	TC_EOF		(1 << 25)

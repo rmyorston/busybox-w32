@@ -39,37 +39,20 @@
 //usage:       "[OPTIONS] HOST [LOCAL_FILE] REMOTE_FILE"
 //usage:#define ftpget_full_usage "\n\n"
 //usage:       "Download a file via FTP\n"
-//usage:	IF_FEATURE_FTPGETPUT_LONG_OPTIONS(
-//usage:     "\n	-c,--continue		Continue previous transfer"
-//usage:     "\n	-v,--verbose		Verbose"
-//usage:     "\n	-u,--username USER	Username"
-//usage:     "\n	-p,--password PASS	Password"
-//usage:     "\n	-P,--port NUM		Port"
-//usage:	)
-//usage:	IF_NOT_FEATURE_FTPGETPUT_LONG_OPTIONS(
 //usage:     "\n	-c	Continue previous transfer"
 //usage:     "\n	-v	Verbose"
 //usage:     "\n	-u USER	Username"
 //usage:     "\n	-p PASS	Password"
 //usage:     "\n	-P NUM	Port"
-//usage:	)
 //usage:
 //usage:#define ftpput_trivial_usage
 //usage:       "[OPTIONS] HOST [REMOTE_FILE] LOCAL_FILE"
 //usage:#define ftpput_full_usage "\n\n"
 //usage:       "Upload a file to a FTP server\n"
-//usage:	IF_FEATURE_FTPGETPUT_LONG_OPTIONS(
-//usage:     "\n	-v,--verbose		Verbose"
-//usage:     "\n	-u,--username USER	Username"
-//usage:     "\n	-p,--password PASS	Password"
-//usage:     "\n	-P,--port NUM		Port"
-//usage:	)
-//usage:	IF_NOT_FEATURE_FTPGETPUT_LONG_OPTIONS(
 //usage:     "\n	-v	Verbose"
 //usage:     "\n	-u USER	Username"
 //usage:     "\n	-p PASS	Password"
 //usage:     "\n	-P NUM	Port number"
-//usage:	)
 
 #include "libbb.h"
 #include "common_bufsiz.h"
@@ -367,12 +350,15 @@ int ftpgetput_main(int argc UNUSED_PARAM, char **argv)
 	/*
 	 * Decipher the command line
 	 */
+	/* must have 2 to 3 params; -v and -c count */
+#define OPTSTRING "^cvu:p:P:" "\0" "-2:?3:vv:cc"
 #if ENABLE_FEATURE_FTPGETPUT_LONG_OPTIONS
-	applet_long_options = ftpgetput_longopts;
+	getopt32long(argv, OPTSTRING, ftpgetput_longopts,
+#else
+	getopt32(argv, OPTSTRING,
 #endif
-	opt_complementary = "-2:vv:cc"; /* must have 2 to 3 params; -v and -c count */
-	getopt32(argv, "cvu:p:P:", &user, &password, &port,
-					&verbose_flag, &do_continue);
+			&user, &password, &port, &verbose_flag, &do_continue
+	);
 	argv += optind;
 
 	/* We want to do exactly _one_ DNS lookup, since some

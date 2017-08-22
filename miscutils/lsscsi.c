@@ -16,7 +16,7 @@
 //config:
 //config:	This version uses sysfs (/sys/bus/scsi/devices) only.
 
-//applet:IF_LSSCSI(APPLET(lsscsi, BB_DIR_USR_BIN, BB_SUID_DROP))
+//applet:IF_LSSCSI(APPLET_NOEXEC(lsscsi, lsscsi, BB_DIR_USR_BIN, BB_SUID_DROP, lsscsi))
 
 //kbuild:lib-$(CONFIG_LSSCSI) += lsscsi.o
 
@@ -37,9 +37,8 @@ static char *get_line(const char *filename, char *buf, unsigned *bufsize_p)
 	if (sz < 0)
 		sz = 0;
 	buf[sz] = '\0';
-	trim(buf);
 
-	sz = strlen(buf) + 1;
+	sz = (trim(buf) - buf) + 1;
 	bufsize -= sz;
 	buf += sz;
 	buf[0] = '\0';

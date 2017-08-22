@@ -35,7 +35,7 @@
 //config:	Without this, stat will not support the '-f' option to display
 //config:	information about filesystem status.
 
-//applet:IF_STAT(APPLET(stat, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_STAT(APPLET_NOEXEC(stat, stat, BB_DIR_BIN, BB_SUID_DROP, stat))
 
 //kbuild:lib-$(CONFIG_STAT) += stat.o
 
@@ -761,11 +761,13 @@ int stat_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opts;
 	statfunc_ptr statfunc = do_stat;
 
-	opt_complementary = "-1"; /* min one arg */
-	opts = getopt32(argv, "tL"
+	opts = getopt32(argv, "^"
+		"tL"
 		IF_FEATURE_STAT_FILESYSTEM("f")
 		IF_SELINUX("Z")
-		IF_FEATURE_STAT_FORMAT("c:", &format)
+		IF_FEATURE_STAT_FORMAT("c:")
+		"\0" "-1" /* min one arg */
+		IF_FEATURE_STAT_FORMAT(,&format)
 	);
 #if ENABLE_FEATURE_STAT_FILESYSTEM
 	if (opts & OPT_FILESYS) /* -f */

@@ -48,7 +48,7 @@
  *      tilde expansion
  *      aliases
  *      builtins mandated by standards we don't support:
- *          [un]alias, command, fc, getopts, times:
+ *          [un]alias, command, fc:
  *          command -v CMD: print "/path/to/CMD"
  *              prints "CMD" for builtins
  *              prints "alias ALIAS='EXPANSION'" for aliases
@@ -58,8 +58,6 @@
  *              (can use this to override standalone shell as well)
  *              -p: use default $PATH
  *          command BLTIN: disables special-ness (e.g. errors do not abort)
- *          getopts: getopt() for shells
- *          times: print getrusage(SELF/CHILDREN).ru_utime/ru_stime
  *          fc -l[nr] [BEG] [END]: list range of commands in history
  *          fc [-e EDITOR] [BEG] [END]: edit/rerun range of commands
  *          fc -s [PAT=REP] [CMD]: rerun CMD, replacing PAT with REP
@@ -265,6 +263,11 @@
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
 //config:
+//config:config HUSH_TIMES
+//config:	bool "times builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
 //config:config HUSH_READ
 //config:	bool "read builtin"
 //config:	default y
@@ -287,6 +290,11 @@
 //config:
 //config:config HUSH_UMASK
 //config:	bool "umask builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_GETOPTS
+//config:	bool "getopts builtin"
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
 //config:
@@ -325,6 +333,7 @@
 #if ENABLE_HUSH_CASE
 # include <fnmatch.h>
 #endif
+#include <sys/times.h>
 #include <sys/utsname.h> /* for setting $HOSTNAME */
 
 #include "busybox.h"  /* for APPLET_IS_NOFORK/NOEXEC */
@@ -352,6 +361,7 @@
 #define BASH_SOURCE        ENABLE_HUSH_BASH_COMPAT
 #define BASH_HOSTNAME_VAR  ENABLE_HUSH_BASH_COMPAT
 #define BASH_TEST2         (ENABLE_HUSH_BASH_COMPAT && ENABLE_HUSH_TEST)
+#define BASH_READ_D        ENABLE_HUSH_BASH_COMPAT
 
 
 /* Build knobs */
@@ -977,6 +987,9 @@ static int builtin_readonly(char **argv) FAST_FUNC;
 static int builtin_fg_bg(char **argv) FAST_FUNC;
 static int builtin_jobs(char **argv) FAST_FUNC;
 #endif
+#if ENABLE_HUSH_GETOPTS
+static int builtin_getopts(char **argv) FAST_FUNC;
+#endif
 #if ENABLE_HUSH_HELP
 static int builtin_help(char **argv) FAST_FUNC;
 #endif
@@ -1009,6 +1022,9 @@ static int builtin_trap(char **argv) FAST_FUNC;
 #endif
 #if ENABLE_HUSH_TYPE
 static int builtin_type(char **argv) FAST_FUNC;
+#endif
+#if ENABLE_HUSH_TIMES
+static int builtin_times(char **argv) FAST_FUNC;
 #endif
 static int builtin_true(char **argv) FAST_FUNC;
 #if ENABLE_HUSH_UMASK
@@ -1070,6 +1086,9 @@ static const struct built_in_command bltins1[] = {
 #if ENABLE_HUSH_JOB
 	BLTIN("fg"       , builtin_fg_bg   , "Bring job to foreground"),
 #endif
+#if ENABLE_HUSH_GETOPTS
+	BLTIN("getopts"  , builtin_getopts , NULL),
+#endif
 #if ENABLE_HUSH_HELP
 	BLTIN("help"     , builtin_help    , NULL),
 #endif
@@ -1103,6 +1122,9 @@ static const struct built_in_command bltins1[] = {
 	BLTIN("shift"    , builtin_shift   , "Shift positional parameters"),
 #if BASH_SOURCE
 	BLTIN("source"   , builtin_source  , NULL),
+#endif
+#if ENABLE_HUSH_TIMES
+	BLTIN("times"    , builtin_times   , NULL),
 #endif
 #if ENABLE_HUSH_TRAP
 	BLTIN("trap"     , builtin_trap    , "Trap signals"),
@@ -1272,7 +1294,7 @@ static void xxfree(void *ptr)
  * HUSH_DEBUG >= 2 prints line number in this file where it was detected.
  */
 #if HUSH_DEBUG < 2
-# define die_if_script(lineno, ...)             die_if_script(__VA_ARGS__)
+# define msg_and_die_if_script(lineno, ...)     msg_and_die_if_script(__VA_ARGS__)
 # define syntax_error(lineno, msg)              syntax_error(msg)
 # define syntax_error_at(lineno, msg)           syntax_error_at(msg)
 # define syntax_error_unterm_ch(lineno, ch)     syntax_error_unterm_ch(ch)
@@ -1280,7 +1302,16 @@ static void xxfree(void *ptr)
 # define syntax_error_unexpected_ch(lineno, ch) syntax_error_unexpected_ch(ch)
 #endif
 
-static void die_if_script(unsigned lineno, const char *fmt, ...)
+static void die_if_script(void)
+{
+	if (!G_interactive_fd) {
+		if (G.last_exitcode) /* sometines it's 2, not 1 (bash compat) */
+			xfunc_error_retval = G.last_exitcode;
+		xfunc_die();
+	}
+}
+
+static void msg_and_die_if_script(unsigned lineno, const char *fmt, ...)
 {
 	va_list p;
 
@@ -1290,8 +1321,7 @@ static void die_if_script(unsigned lineno, const char *fmt, ...)
 	va_start(p, fmt);
 	bb_verror_msg(fmt, p, NULL);
 	va_end(p);
-	if (!G_interactive_fd)
-		xfunc_die();
+	die_if_script();
 }
 
 static void syntax_error(unsigned lineno UNUSED_PARAM, const char *msg)
@@ -1300,16 +1330,20 @@ static void syntax_error(unsigned lineno UNUSED_PARAM, const char *msg)
 		bb_error_msg("syntax error: %s", msg);
 	else
 		bb_error_msg("syntax error");
+	die_if_script();
 }
 
 static void syntax_error_at(unsigned lineno UNUSED_PARAM, const char *msg)
 {
 	bb_error_msg("syntax error at '%s'", msg);
+	die_if_script();
 }
 
 static void syntax_error_unterm_str(unsigned lineno UNUSED_PARAM, const char *s)
 {
 	bb_error_msg("syntax error: unterminated %s", s);
+//? source4.tests fails: in bash, echo ${^} in script does not terminate the script
+//	die_if_script();
 }
 
 static void syntax_error_unterm_ch(unsigned lineno, char ch)
@@ -1327,17 +1361,18 @@ static void syntax_error_unexpected_ch(unsigned lineno UNUSED_PARAM, int ch)
 	bb_error_msg("hush.c:%u", lineno);
 #endif
 	bb_error_msg("syntax error: unexpected %s", ch == EOF ? "EOF" : msg);
+	die_if_script();
 }
 
 #if HUSH_DEBUG < 2
-# undef die_if_script
+# undef msg_and_die_if_script
 # undef syntax_error
 # undef syntax_error_at
 # undef syntax_error_unterm_ch
 # undef syntax_error_unterm_str
 # undef syntax_error_unexpected_ch
 #else
-# define die_if_script(...)             die_if_script(__LINE__, __VA_ARGS__)
+# define msg_and_die_if_script(...)     msg_and_die_if_script(__LINE__, __VA_ARGS__)
 # define syntax_error(msg)              syntax_error(__LINE__, msg)
 # define syntax_error_at(msg)           syntax_error_at(__LINE__, msg)
 # define syntax_error_unterm_ch(ch)     syntax_error_unterm_ch(__LINE__, ch)
@@ -1800,7 +1835,7 @@ static void restore_ttypgrp_and__exit(void)
  *	echo END_OF_SCRIPT
  * lseeks fd in input FILE object from EOF to "e" in "echo END_OF_SCRIPT".
  * This makes "echo END_OF_SCRIPT" executed twice.
- * Similar problems can be seen with die_if_script() -> xfunc_die()
+ * Similar problems can be seen with msg_and_die_if_script() -> xfunc_die()
  * and in `cmd` handling.
  * If set as die_func(), this makes xfunc_die() exit via _exit(), not exit():
  */
@@ -1966,6 +2001,9 @@ static int check_and_run_traps(void)
 			break;
 #if ENABLE_HUSH_JOB
 		case SIGHUP: {
+//TODO: why are we doing this? ash and dash don't do this,
+//they have no handler for SIGHUP at all,
+//they rely on kernel to send SIGHUP+SIGCONT to orphaned process groups
 			struct pipe *job;
 			debug_printf_exec("%s: sig:%d default SIGHUP handler\n", __func__, sig);
 			/* bash is observed to signal whole process groups,
@@ -2411,18 +2449,17 @@ static int get_user_input(struct in_str *i)
 		/* buglet: SIGINT will not make new prompt to appear _at once_,
 		 * only after <Enter>. (^C works immediately) */
 		r = read_line_input(G.line_input_state, prompt_str,
-				G.user_input_buf, CONFIG_FEATURE_EDITING_MAX_LEN-1,
-				/*timeout*/ -1
+				G.user_input_buf, CONFIG_FEATURE_EDITING_MAX_LEN-1
 		);
 		/* read_line_input intercepts ^C, "convert" it to SIGINT */
-		if (r == 0) {
-			write(STDOUT_FILENO, "^C", 2);
+		if (r == 0)
 			raise(SIGINT);
-		}
 		check_and_run_traps();
 		if (r != 0 && !G.flag_SIGINT)
 			break;
 		/* ^C or SIGINT: repeat */
+		/* bash prints ^C even on real SIGINT (non-kbd generated) */
+		write(STDOUT_FILENO, "^C", 2);
 		G.last_exitcode = 128 + SIGINT;
 	}
 	if (r < 0) {
@@ -3384,7 +3421,7 @@ static int done_command(struct parse_context *ctx)
 #if 0	/* Instead we emit error message at run time */
 	if (ctx->pending_redirect) {
 		/* For example, "cmd >" (no filename to redirect to) */
-		die_if_script("syntax error: %s", "invalid redirect");
+		syntax_error("invalid redirect");
 		ctx->pending_redirect = NULL;
 	}
 #endif
@@ -3950,7 +3987,7 @@ static int parse_redirect(struct parse_context *ctx,
 #if 0		/* Instead we emit error message at run time */
 		if (ctx->pending_redirect) {
 			/* For example, "cmd > <file" */
-			die_if_script("syntax error: %s", "invalid redirect");
+			syntax_error("invalid redirect");
 		}
 #endif
 		/* Set ctx->pending_redirect, so we know what to do at the
@@ -5022,10 +5059,16 @@ static struct pipe *parse_stream(char **pstring,
 				else
 					o_free_unsafe(&ctx.as_string);
 #endif
-				debug_leave();
+				if (ch != ';' && IS_NULL_PIPE(ctx.list_head)) {
+					/* Example: bare "{ }", "()" */
+					G.last_exitcode = 2; /* bash compat */
+					syntax_error_unexpected_ch(ch);
+					goto parse_error2;
+				}
 				debug_printf_parse("parse_stream return %p: "
 						"end_trigger char found\n",
 						ctx.list_head);
+				debug_leave();
 				return ctx.list_head;
 			}
 		}
@@ -5283,8 +5326,8 @@ static struct pipe *parse_stream(char **pstring,
 			/* proper use of this character is caught by end_trigger:
 			 * if we see {, we call parse_group(..., end_trigger='}')
 			 * and it will match } earlier (not here). */
-			syntax_error_unexpected_ch(ch);
 			G.last_exitcode = 2;
+			syntax_error_unexpected_ch(ch);
 			goto parse_error2;
 		default:
 			if (HUSH_DEBUG)
@@ -5514,7 +5557,7 @@ static arith_t expand_and_evaluate_arith(const char *arg, const char **errmsg_p)
 	if (errmsg_p)
 		*errmsg_p = math_state.errmsg;
 	if (math_state.errmsg)
-		die_if_script(math_state.errmsg);
+		msg_and_die_if_script(math_state.errmsg);
 	return res;
 }
 #endif
@@ -5781,7 +5824,7 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 				/* in bash, len=-n means strlen()-n */
 				len = (arith_t)strlen(val) - beg + len;
 				if (len < 0) /* bash compat */
-					die_if_script("%s: substring expression < 0", var);
+					msg_and_die_if_script("%s: substring expression < 0", var);
 			}
 			if (len <= 0 || !val || beg >= strlen(val)) {
  arith_err:
@@ -5795,7 +5838,7 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 			}
 			debug_printf_varexp("val:'%s'\n", val);
 #else /* not (HUSH_SUBSTR_EXPANSION && FEATURE_SH_MATH) */
-			die_if_script("malformed ${%s:...}", var);
+			msg_and_die_if_script("malformed ${%s:...}", var);
 			val = NULL;
 #endif
 		} else { /* one of "-=+?" */
@@ -5832,7 +5875,7 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 					exp_word = to_be_freed;
 				if (exp_op == '?') {
 					/* mimic bash message */
-					die_if_script("%s: %s",
+					msg_and_die_if_script("%s: %s",
 						var,
 						exp_word[0]
 						? exp_word
@@ -5849,7 +5892,7 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 					/* ${var=[word]} or ${var:=[word]} */
 					if (isdigit(var[0]) || var[0] == '#') {
 						/* mimic bash message */
-						die_if_script("$%s: cannot assign in this way", var);
+						msg_and_die_if_script("$%s: cannot assign in this way", var);
 						val = NULL;
 					} else {
 						char *new_var = xasprintf("%s=%s", var, val);
@@ -6698,7 +6741,8 @@ static struct squirrel *add_squirrel(struct squirrel *sq, int fd, int avoid_fd)
 	int moved_to;
 	int i;
 
-	if (sq) for (i = 0; sq[i].orig_fd >= 0; i++) {
+	i = 0;
+	if (sq) for (; sq[i].orig_fd >= 0; i++) {
 		/* If we collide with an already moved fd... */
 		if (fd == sq[i].moved_to) {
 			sq[i].moved_to = fcntl_F_DUPFD(sq[i].moved_to, avoid_fd);
@@ -6726,7 +6770,8 @@ static struct squirrel *add_squirrel_closed(struct squirrel *sq, int fd)
 {
 	int i;
 
-	if (sq) for (i = 0; sq[i].orig_fd >= 0; i++) {
+	i = 0;
+	if (sq) for (; sq[i].orig_fd >= 0; i++) {
 		/* If we collide with an already moved fd... */
 		if (fd == sq[i].orig_fd) {
 			/* Examples:
@@ -6863,7 +6908,7 @@ static int setup_redirects(struct command *prog, struct squirrel **sqp)
 				 * "cmd >" (no filename)
 				 * "cmd > <file" (2nd redirect starts too early)
 				 */
-				die_if_script("syntax error: %s", "invalid redirect");
+				syntax_error("invalid redirect");
 				continue;
 			}
 			mode = redir_table[redir->rd_type].mode;
@@ -7363,8 +7408,10 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 				 */
 				close_saved_fds_and_FILE_fds();
 //FIXME: should also close saved redir fds
+				/* Without this, "rm -i FILE" can't be ^C'ed: */
+				switch_off_special_sigs(G.special_sig_mask);
 				debug_printf_exec("running applet '%s'\n", argv[0]);
-				run_applet_no_and_exit(a, argv[0], argv);
+				run_noexec_applet_and_exit(a, argv[0], argv);
 			}
 # endif
 			/* Re-exec ourselves */
@@ -8045,6 +8092,24 @@ static NOINLINE int run_pipe(struct pipe *pi)
 			add_vars(old_vars);
 /* clean_up_and_ret0: */
 			restore_redirects(squirrel);
+			/*
+			 * Try "usleep 99999999" + ^C + "echo $?"
+			 * with FEATURE_SH_NOFORK=y.
+			 */
+			if (!funcp) {
+				/* It was builtin or nofork.
+				 * if this would be a real fork/execed program,
+				 * it should have died if a fatal sig was received.
+				 * But OTOH, there was no separate process,
+				 * the sig was sent to _shell_, not to non-existing
+				 * child.
+				 * Let's just handle ^C only, this one is obvious:
+				 * we aren't ok with exitcode 0 when ^C was pressed
+				 * during builtin/nofork.
+				 */
+				if (sigismember(&G.pending_set, SIGINT))
+					rcode = 128 + SIGINT;
+			}
  clean_up_and_ret1:
 			free(argv_expanded);
 			IF_HAS_KEYWORDS(if (pi->pi_inverted) rcode = !rcode;)
@@ -8060,6 +8125,14 @@ static NOINLINE int run_pipe(struct pipe *pi)
 				if (rcode == 0) {
 					debug_printf_exec(": run_nofork_applet '%s' '%s'...\n",
 						argv_expanded[0], argv_expanded[1]);
+					/*
+					 * Note: signals (^C) can't interrupt here.
+					 * We remember them and they will be acted upon
+					 * after applet returns.
+					 * This makes applets which can run for a long time
+					 * and/or wait for user input ineligible for NOFORK:
+					 * for example, "yes" or "rm" (rm -i waits for input).
+					 */
 					rcode = run_nofork_applet(n, argv_expanded);
 				}
 				goto clean_up_and_ret;
@@ -8491,7 +8564,7 @@ static int run_list(struct pipe *pi)
 			G.last_bg_pid = pi->cmds[pi->num_cmds - 1].pid;
 			G.last_bg_pid_exitcode = 0;
 			debug_printf_exec(": cmd&: exitcode EXIT_SUCCESS\n");
-/* Check pi->pi_inverted? "! sleep 1 & echo $?": bash says 1. dash and ash says 0 */
+/* Check pi->pi_inverted? "! sleep 1 & echo $?": bash says 1. dash and ash say 0 */
 			rcode = EXIT_SUCCESS;
 			goto check_traps;
 		} else {
@@ -8600,6 +8673,10 @@ static void install_sighandlers(unsigned mask)
 		 */
 		if (sig == SIGCHLD)
 			continue;
+		/* bash re-enables SIGHUP which is SIG_IGNed on entry.
+		 * Try: "trap '' HUP; bash; echo RET" and type "kill -HUP $$"
+		 */
+		//if (sig == SIGHUP) continue; - TODO?
 		if (old_handler == SIG_IGN) {
 			/* oops... restore back to IGN, and record this fact */
 			install_sighandler(sig, old_handler);
@@ -9381,13 +9458,20 @@ static int FAST_FUNC builtin_read(char **argv)
 	char *opt_p = NULL;
 	char *opt_t = NULL;
 	char *opt_u = NULL;
+	char *opt_d = NULL; /* optimized out if !BASH */
 	const char *ifs;
 	int read_flags;
 
 	/* "!": do not abort on errors.
 	 * Option string must start with "sr" to match BUILTIN_READ_xxx
 	 */
-	read_flags = getopt32(argv, "!srn:p:t:u:", &opt_n, &opt_p, &opt_t, &opt_u);
+	read_flags = getopt32(argv,
+#if BASH_READ_D
+		"!srn:p:t:u:d:", &opt_n, &opt_p, &opt_t, &opt_u, &opt_d
+#else
+		"!srn:p:t:u:", &opt_n, &opt_p, &opt_t, &opt_u
+#endif
+	);
 	if (read_flags == (uint32_t)-1)
 		return EXIT_FAILURE;
 	argv += optind;
@@ -9401,7 +9485,8 @@ static int FAST_FUNC builtin_read(char **argv)
 		opt_n,
 		opt_p,
 		opt_t,
-		opt_u
+		opt_u,
+		opt_d
 	);
 
 	if ((uintptr_t)r == 1 && errno == EINTR) {
@@ -9785,6 +9870,93 @@ static int FAST_FUNC builtin_shift(char **argv)
 	}
 	return EXIT_FAILURE;
 }
+
+#if ENABLE_HUSH_GETOPTS
+static int FAST_FUNC builtin_getopts(char **argv)
+{
+/* http://pubs.opengroup.org/onlinepubs/9699919799/utilities/getopts.html
+
+TODO:
+If a required argument is not found, and getopts is not silent,
+a question mark (?) is placed in VAR, OPTARG is unset, and a
+diagnostic message is printed.  If getopts is silent, then a
+colon (:) is placed in VAR and OPTARG is set to the option
+character found.
+
+Test that VAR is a valid variable name?
+
+"Whenever the shell is invoked, OPTIND shall be initialized to 1"
+*/
+	char cbuf[2];
+	const char *cp, *optstring, *var;
+	int c, exitcode;
+
+	optstring = *++argv;
+	if (!optstring || !(var = *++argv)) {
+		bb_error_msg("usage: getopts OPTSTRING VAR [ARGS]");
+		return EXIT_FAILURE;
+	}
+
+	c = 0;
+	if (optstring[0] != ':') {
+		cp = get_local_var_value("OPTERR");
+		/* 0 if "OPTERR=0", 1 otherwise */
+		c = (!cp || NOT_LONE_CHAR(cp, '0'));
+	}
+	opterr = c;
+	cp = get_local_var_value("OPTIND");
+	optind = cp ? atoi(cp) : 0;
+	optarg = NULL;
+	cbuf[1] = '\0';
+
+	/* getopts stops on first non-option. Add "+" to force that */
+	/*if (optstring[0] != '+')*/ {
+		char *s = alloca(strlen(optstring) + 2);
+		sprintf(s, "+%s", optstring);
+		optstring = s;
+	}
+
+	if (argv[1])
+		argv[0] = G.global_argv[0]; /* for error messages */
+	else
+		argv = G.global_argv;
+	c = getopt(string_array_len(argv), argv, optstring);
+
+	/* Set OPTARG */
+	/* Always set or unset, never left as-is, even on exit/error:
+	 * "If no option was found, or if the option that was found
+	 * does not have an option-argument, OPTARG shall be unset."
+	 */
+	cp = optarg;
+	if (c == '?') {
+		/* If ":optstring" and unknown option is seen,
+		 * it is stored to OPTARG.
+		 */
+		if (optstring[1] == ':') {
+			cbuf[0] = optopt;
+			cp = cbuf;
+		}
+	}
+	if (cp)
+		set_local_var_from_halves("OPTARG", cp);
+	else
+		unset_local_var("OPTARG");
+
+	/* Convert -1 to "?" */
+	exitcode = EXIT_SUCCESS;
+	if (c < 0) { /* -1: end of options */
+		exitcode = EXIT_FAILURE;
+		c = '?';
+	}
+
+	/* Set VAR and OPTIND */
+	cbuf[0] = c;
+	set_local_var_from_halves(var, cbuf);
+	set_local_var_from_halves("OPTIND", utoa(optind));
+
+	return exitcode;
+}
+#endif
 
 static int FAST_FUNC builtin_source(char **argv)
 {
@@ -10178,6 +10350,7 @@ static int wait_for_child_or_signal(struct pipe *waitfor_pipe, pid_t waitfor_pid
 		/* So, did we get a signal? */
 		sig = check_and_run_traps();
 		if (sig /*&& sig != SIGCHLD - always true */) {
+			/* Do this for any (non-ignored) signal, not only for ^C */
 			ret = 128 + sig;
 			break;
 		}
@@ -10341,6 +10514,41 @@ static int FAST_FUNC builtin_return(char **argv)
 	 */
 	rc = parse_numeric_argv1(argv, G.last_exitcode, 0);
 	return rc;
+}
+#endif
+
+#if ENABLE_HUSH_TIMES
+static int FAST_FUNC builtin_times(char **argv UNUSED_PARAM)
+{
+	static const uint8_t times_tbl[] ALIGN1 = {
+		' ',  offsetof(struct tms, tms_utime),
+		'\n', offsetof(struct tms, tms_stime),
+		' ',  offsetof(struct tms, tms_cutime),
+		'\n', offsetof(struct tms, tms_cstime),
+		0
+	};
+	const uint8_t *p;
+	unsigned clk_tck;
+	struct tms buf;
+
+	clk_tck = bb_clk_tck();
+
+	times(&buf);
+	p = times_tbl;
+	do {
+		unsigned sec, frac;
+		unsigned long t;
+		t = *(clock_t *)(((char *) &buf) + p[1]);
+		sec = t / clk_tck;
+		frac = t % clk_tck;
+		printf("%um%u.%03us%c",
+			sec / 60, sec % 60,
+			(frac * 1000) / clk_tck,
+			p[0]);
+		p += 2;
+	} while (*p);
+
+	return EXIT_SUCCESS;
 }
 #endif
 

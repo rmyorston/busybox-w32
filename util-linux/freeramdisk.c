@@ -33,9 +33,9 @@
 //config:	ramdisk. If you have no use for freeing memory from a ramdisk, leave
 //config:	this disabled.
 
-//                  APPLET_ODDNAME:name     main         location    suid_type     help
-//applet:IF_FDFLUSH(APPLET_ODDNAME(fdflush, freeramdisk, BB_DIR_BIN, BB_SUID_DROP, fdflush))
-//applet:IF_FREERAMDISK(APPLET(freeramdisk, BB_DIR_SBIN, BB_SUID_DROP))
+//                     APPLET_ODDNAME:name         main         location     suid_type     help
+//applet:IF_FDFLUSH(   APPLET_ODDNAME(fdflush,     freeramdisk, BB_DIR_BIN,  BB_SUID_DROP, fdflush    ))
+//applet:IF_FREERAMDISK(APPLET_NOEXEC(freeramdisk, freeramdisk, BB_DIR_SBIN, BB_SUID_DROP, freeramdisk))
 
 //kbuild:lib-$(CONFIG_FDFLUSH) += freeramdisk.o
 //kbuild:lib-$(CONFIG_FREERAMDISK) += freeramdisk.o
@@ -67,8 +67,12 @@ int freeramdisk_main(int argc UNUSED_PARAM, char **argv)
 	fd = xopen(single_argv(argv), O_RDWR);
 
 	// Act like freeramdisk, fdflush, or both depending on configuration.
-	ioctl_or_perror_and_die(fd, (ENABLE_FREERAMDISK && applet_name[1] == 'r')
-			|| !ENABLE_FDFLUSH ? BLKFLSBUF : FDFLUSH, NULL, "%s", argv[1]);
+	ioctl_or_perror_and_die(fd,
+		((ENABLE_FREERAMDISK && applet_name[1] == 'r') || !ENABLE_FDFLUSH)
+				? BLKFLSBUF
+				: FDFLUSH,
+		NULL, "%s", argv[1]
+	);
 
 	if (ENABLE_FEATURE_CLEAN_UP) close(fd);
 

@@ -9,7 +9,7 @@
 //config:	help
 //config:	Print number of CPUs
 
-//applet:IF_NPROC(APPLET(nproc, BB_DIR_USR_BIN, BB_SUID_DROP))
+//applet:IF_NPROC(APPLET_NOFORK(nproc, nproc, BB_DIR_USR_BIN, BB_SUID_DROP, nproc))
 
 //kbuild:lib-$(CONFIG_NPROC) += nproc.o
 
@@ -28,7 +28,6 @@ int nproc_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	unsigned long mask[1024];
 	unsigned i, count = 0;
 
-	//applet_long_options = ...;
 	//getopt32(argv, "");
 
 	//if --all, count /sys/devices/system/cpu/cpuN dirs, else:

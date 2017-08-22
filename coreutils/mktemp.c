@@ -36,7 +36,7 @@
 //config:	help
 //config:	mktemp is used to create unique temporary files
 
-//applet:IF_MKTEMP(APPLET(mktemp, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_MKTEMP(APPLET_NOEXEC(mktemp, mktemp, BB_DIR_BIN, BB_SUID_DROP, mktemp))
 
 //kbuild:lib-$(CONFIG_MKTEMP) += mktemp.o
 
@@ -80,8 +80,7 @@ int mktemp_main(int argc UNUSED_PARAM, char **argv)
 	if (!path || path[0] == '\0')
 		path = "/tmp";
 
-	opt_complementary = "?1"; /* 1 argument max */
-	opts = getopt32(argv, "dqtp:u", &path);
+	opts = getopt32(argv, "^" "dqtp:u" "\0" "?1"/*1 arg max*/, &path);
 
 	chp = argv[optind];
 	if (!chp) {

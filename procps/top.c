@@ -116,7 +116,6 @@
 //kbuild:lib-$(CONFIG_TOP) += top.o
 
 #include "libbb.h"
-#include "common_bufsiz.h"
 
 
 typedef struct top_status_t {
@@ -154,6 +153,8 @@ typedef int (*cmp_funcp)(top_status_t *P, top_status_t *Q);
 
 enum { SORT_DEPTH = 3 };
 
+/* Screens wider than this are unlikely */
+enum { LINE_BUF_SIZE = 512 - 64 };
 
 struct globals {
 	top_status_t *top;
@@ -192,10 +193,9 @@ struct globals {
 #if ENABLE_FEATURE_TOP_INTERACTIVE
 	char kbd_input[KEYCODE_BUFFER_SIZE];
 #endif
-	char line_buf[80];
-}; //FIX_ALIASING; - large code growth
-enum { LINE_BUF_SIZE = COMMON_BUFSIZE - offsetof(struct globals, line_buf) };
-#define G (*(struct globals*)bb_common_bufsiz1)
+	char line_buf[LINE_BUF_SIZE];
+};
+#define G (*ptr_to_globals)
 #define top              (G.top               )
 #define ntop             (G.ntop              )
 #define sort_field       (G.sort_field        )
@@ -213,8 +213,7 @@ enum { LINE_BUF_SIZE = COMMON_BUFSIZE - offsetof(struct globals, line_buf) };
 #define total_pcpu       (G.total_pcpu        )
 #define line_buf         (G.line_buf          )
 #define INIT_G() do { \
-	setup_common_bufsiz(); \
-	BUILD_BUG_ON(sizeof(G) > COMMON_BUFSIZE); \
+	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
 	BUILD_BUG_ON(LINE_BUF_SIZE <= 80); \
 } while (0)
 
@@ -1110,15 +1109,14 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	/* all args are options; -n NUM */
-	opt_complementary = "-"; /* options can be specified w/o dash */
+	make_all_argv_opts(argv); /* options can be specified w/o dash */
 	col = getopt32(argv, "d:n:b"IF_FEATURE_TOPMEM("m"), &str_interval, &str_iterations);
 #if ENABLE_FEATURE_TOPMEM
 	if (col & OPT_m) /* -m (busybox specific) */
 		scan_mask = TOPMEM_MASK;
 #endif
 	if (col & OPT_d) {
-		/* work around for "-d 1" -> "-d -1" done by getopt32
-		 * (opt_complementary == "-" does this) */
+		/* work around for "-d 1" -> "-d -1" done by make_all_argv_opts() */
 		if (str_interval[0] == '-')
 			str_interval++;
 		/* Need to limit it to not overflow poll timeout */
@@ -1148,6 +1146,7 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 	else {
 		/* Turn on unbuffered input; turn off echoing, ^C ^Z etc */
 		set_termios_to_raw(STDIN_FILENO, &initial_settings, TERMIOS_CLEAR_ISIG);
+		die_func = reset_term;
 	}
 
 	bb_signals(BB_FATAL_SIGS, sig_catcher);

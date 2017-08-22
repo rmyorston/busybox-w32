@@ -22,7 +22,7 @@
 //config:	affinity parameter 0xHHHHHHHHHHHHHHHHHHHH can be arbitrarily long
 //config:	in this case. Otherwise, it is limited to sizeof(long).
 
-//applet:IF_TASKSET(APPLET(taskset, BB_DIR_USR_BIN, BB_SUID_DROP))
+//applet:IF_TASKSET(APPLET_NOEXEC(taskset, taskset, BB_DIR_USR_BIN, BB_SUID_DROP, taskset))
 //kbuild:lib-$(CONFIG_TASKSET) += taskset.o
 
 //usage:#define taskset_trivial_usage
@@ -123,8 +123,7 @@ int taskset_main(int argc UNUSED_PARAM, char **argv)
 	 * Indeed, util-linux-2.13-pre7 uses:
 	 * getopt_long(argc, argv, "+pchV", ...), not "...p:..." */
 
-	opt_complementary = "-1"; /* at least 1 arg */
-	opt_p = getopt32(argv, "+p");
+	opt_p = getopt32(argv, "^+" "p" "\0" "-1" /* at least 1 arg */);
 	argv += optind;
 
 	aff = *argv++;

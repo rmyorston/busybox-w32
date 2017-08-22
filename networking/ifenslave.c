@@ -105,7 +105,7 @@
 //config:	Userspace application to bind several interfaces
 //config:	to a logical interface (use with kernel bonding driver).
 
-//applet:IF_IFENSLAVE(APPLET(ifenslave, BB_DIR_SBIN, BB_SUID_DROP))
+//applet:IF_IFENSLAVE(APPLET_NOEXEC(ifenslave, ifenslave, BB_DIR_SBIN, BB_SUID_DROP, ifenslave))
 
 //kbuild:lib-$(CONFIG_IFENSLAVE) += ifenslave.o interface.o
 
@@ -113,10 +113,10 @@
 //usage:       "[-cdf] MASTER_IFACE SLAVE_IFACE..."
 //usage:#define ifenslave_full_usage "\n\n"
 //usage:       "Configure network interfaces for parallel routing\n"
-//usage:     "\n	-c,--change-active	Change active slave"
-//usage:     "\n	-d,--detach		Remove slave interface from bonding device"
-//usage:     "\n	-f,--force		Force, even if interface is not Ethernet"
-/* //usage:  "\n	-r,--receive-slave	Create a receive-only slave" */
+//usage:     "\n	-c	Change active slave"
+//usage:     "\n	-d	Remove slave interface from bonding device"
+//usage:     "\n	-f	Force, even if interface is not Ethernet"
+/* //usage:  "\n	-r	Create a receive-only slave" */
 //usage:
 //usage:#define ifenslave_example_usage
 //usage:       "To create a bond device, simply follow these three steps:\n"
@@ -493,19 +493,15 @@ int ifenslave_main(int argc UNUSED_PARAM, char **argv)
 		OPT_d = (1 << 1),
 		OPT_f = (1 << 2),
 	};
-#if ENABLE_LONG_OPTS
-	static const char ifenslave_longopts[] ALIGN1 =
+
+	INIT_G();
+
+	opt = getopt32long(argv, "cdfa",
 		"change-active\0"  No_argument "c"
 		"detach\0"         No_argument "d"
 		"force\0"          No_argument "f"
 		/* "all-interfaces\0" No_argument "a" */
-		;
-
-	applet_long_options = ifenslave_longopts;
-#endif
-	INIT_G();
-
-	opt = getopt32(argv, "cdfa");
+	);
 	argv += optind;
 	if (opt & (opt-1)) /* Only one option can be given */
 		bb_show_usage();

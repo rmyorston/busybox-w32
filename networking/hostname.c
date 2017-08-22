@@ -22,9 +22,9 @@
 //config:	help
 //config:	Alias to "hostname -d".
 
-//                        APPLET_ODDNAME:name           main      location    suid_type     help
-//applet:IF_DNSDOMAINNAME(APPLET_ODDNAME(dnsdomainname, hostname, BB_DIR_BIN, BB_SUID_DROP, dnsdomainname))
-//applet:IF_HOSTNAME(APPLET(hostname, BB_DIR_BIN, BB_SUID_DROP))
+//                        APPLET_NOEXEC:name           main      location    suid_type     help
+//applet:IF_DNSDOMAINNAME(APPLET_NOEXEC(dnsdomainname, hostname, BB_DIR_BIN, BB_SUID_DROP, dnsdomainname))
+//applet:IF_HOSTNAME(     APPLET_NOEXEC(hostname,      hostname, BB_DIR_BIN, BB_SUID_DROP, hostname     ))
 
 //kbuild: lib-$(CONFIG_HOSTNAME) += hostname.o
 //kbuild: lib-$(CONFIG_DNSDOMAINNAME) += hostname.o
@@ -114,7 +114,7 @@ static void do_sethostname(char *s, int isfile)
  *  { bbox: not supported }
  * -F, --file filename
  *  Read the host name from the specified file. Comments (lines
- *  starting with a `#') are ignored.
+ *  starting with a '#') are ignored.
  */
 int hostname_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int hostname_main(int argc UNUSED_PARAM, char **argv)
@@ -132,8 +132,9 @@ int hostname_main(int argc UNUSED_PARAM, char **argv)
 	char *buf;
 	char *hostname_str;
 
-#if ENABLE_LONG_OPTS
-	applet_long_options =
+	/* dnsdomainname from net-tools 1.60, hostname 1.100 (2001-04-14),
+	 * supports hostname's options too (not just -v as manpage says) */
+	opts = getopt32(argv, "dfisF:v", &hostname_str,
 		"domain\0"     No_argument "d"
 		"fqdn\0"       No_argument "f"
 	//Enable if seen in active use in some distro:
@@ -142,12 +143,7 @@ int hostname_main(int argc UNUSED_PARAM, char **argv)
 	//	"short\0"      No_argument "s"
 	//	"verbose\0"    No_argument "v"
 		"file\0"       No_argument "F"
-		;
-
-#endif
-	/* dnsdomainname from net-tools 1.60, hostname 1.100 (2001-04-14),
-	 * supports hostname's options too (not just -v as manpage says) */
-	opts = getopt32(argv, "dfisF:v", &hostname_str);
+	);
 	argv += optind;
 	buf = safe_gethostname();
 	if (ENABLE_DNSDOMAINNAME) {

@@ -13,7 +13,7 @@
 //config:	help
 //config:	Halt new accesses and flush writes on a mounted filesystem.
 
-//applet:IF_FSFREEZE(APPLET(fsfreeze, BB_DIR_USR_SBIN, BB_SUID_DROP))
+//applet:IF_FSFREEZE(APPLET_NOEXEC(fsfreeze, fsfreeze, BB_DIR_USR_SBIN, BB_SUID_DROP, fsfreeze))
 
 //kbuild:lib-$(CONFIG_FSFREEZE) += fsfreeze.o
 
@@ -36,15 +36,15 @@ int fsfreeze_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opts;
 	int fd;
 
-	applet_long_options =
-		"freeze\0"   No_argument "\xff"
-		"unfreeze\0" No_argument "\xfe"
-	;
 	/* exactly one non-option arg: the mountpoint */
 	/* one of opts is required */
 	/* opts are mutually exclusive */
-	opt_complementary = "=1:""\xff:\xfe:""\xff--\xfe:\xfe--\xff";
-	opts = getopt32(argv, "");
+	opts = getopt32long(argv, "^"
+		"" /* no opts */
+		"\0" "=1:""\xff:\xfe:""\xff--\xfe:\xfe--\xff",
+		"freeze\0"   No_argument "\xff"
+		"unfreeze\0" No_argument "\xfe"
+	);
 
 	fd = xopen(argv[optind], O_RDONLY);
 	/* Works with NULL arg on linux-4.8.0 */

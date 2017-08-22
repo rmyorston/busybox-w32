@@ -15,19 +15,19 @@
 //config:	help
 //config:	This program reports and sets keyboard mode.
 
-//applet:IF_KBD_MODE(APPLET(kbd_mode, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_KBD_MODE(APPLET_NOEXEC(kbd_mode, kbd_mode, BB_DIR_BIN, BB_SUID_DROP, kbd_mode))
 
 //kbuild:lib-$(CONFIG_KBD_MODE) += kbd_mode.o
 
 //usage:#define kbd_mode_trivial_usage
 //usage:       "[-a|k|s|u] [-C TTY]"
 //usage:#define kbd_mode_full_usage "\n\n"
-//usage:       "Report or set the keyboard mode\n"
+//usage:       "Report or set VT console keyboard mode\n"
 //usage:     "\n	-a	Default (ASCII)"
-//usage:     "\n	-k	Medium-raw (keyboard)"
+//usage:     "\n	-k	Medium-raw (keycode)"
 //usage:     "\n	-s	Raw (scancode)"
 //usage:     "\n	-u	Unicode (utf-8)"
-//usage:     "\n	-C TTY	Affect TTY instead of /dev/tty"
+//usage:     "\n	-C TTY	Affect TTY"
 
 #include "libbb.h"
 #include <linux/kd.h>
@@ -43,11 +43,20 @@ int kbd_mode_main(int argc UNUSED_PARAM, char **argv)
 	};
 	int fd;
 	unsigned opt;
-	const char *tty_name = CURRENT_TTY;
+	const char *tty_name;
 
 	opt = getopt32(argv, "sakuC:", &tty_name);
-	fd = xopen_nonblocking(tty_name);
-	opt &= 0xf; /* clear -C bit, see (*) */
+	if (opt & 0x10) {
+		opt &= 0xf; /* clear -C bit, see (*) */
+		fd = xopen_nonblocking(tty_name);
+	} else {
+		/* kbd-2.0.3 tries in sequence:
+		 * fd#0, /dev/tty, /dev/tty0.
+		 * get_console_fd_or_die: /dev/console, /dev/tty0, /dev/tty.
+		 * kbd-2.0.3 checks KDGKBTYPE, get_console_fd_or_die checks too.
+		 */
+		fd = get_console_fd_or_die();
+	}
 
 	if (!opt) { /* print current setting */
 		const char *mode = "unknown";
@@ -62,9 +71,19 @@ int kbd_mode_main(int argc UNUSED_PARAM, char **argv)
 			mode = "mediumraw (keycode)";
 		else if (m == K_UNICODE)
 			mode = "Unicode (UTF-8)";
+		else if (m == 4 /*K_OFF*/) /* kbd-2.0.3 does not show this mode, says "unknown" */
+			mode = "off";
 		printf("The keyboard is in %s mode\n", mode);
 	} else {
-		/* here we depend on specific bits assigned to options (*) */
+		/* here we depend on specific bits assigned to options (*)
+		 * KDSKBMODE constants have these values:
+		 * #define K_RAW           0x00
+		 * #define K_XLATE         0x01
+		 * #define K_MEDIUMRAW     0x02
+		 * #define K_UNICODE       0x03
+		 * #define K_OFF           0x04
+		 * (looks like "-ak" together would cause the same effect as -u)
+		 */
 		opt = opt & UNICODE ? 3 : opt >> 1;
 		/* double cast prevents warnings about widening conversion */
 		xioctl(fd, KDSKBMODE, (void*)(ptrdiff_t)opt);

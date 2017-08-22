@@ -31,7 +31,7 @@
 //config:	Adds the options hostname, prefix and silent to the output of
 //config:	"ipcalc".
 
-//applet:IF_IPCALC(APPLET(ipcalc, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_IPCALC(APPLET_NOEXEC(ipcalc, ipcalc, BB_DIR_BIN, BB_SUID_DROP, ipcalc))
 
 //kbuild:lib-$(CONFIG_IPCALC) += ipcalc.o
 
@@ -39,26 +39,14 @@
 //usage:       "[OPTIONS] ADDRESS"
 //usage:       IF_FEATURE_IPCALC_FANCY("[/PREFIX]") " [NETMASK]"
 //usage:#define ipcalc_full_usage "\n\n"
-//usage:       "Calculate IP network settings from a IP address\n"
-//usage:	IF_FEATURE_IPCALC_LONG_OPTIONS(
-//usage:     "\n	-b,--broadcast	Display calculated broadcast address"
-//usage:     "\n	-n,--network	Display calculated network address"
-//usage:     "\n	-m,--netmask	Display default netmask for IP"
+//usage:       "Calculate and display network settings from IP address\n"
+//usage:     "\n	-b	Broadcast address"
+//usage:     "\n	-n	Network address"
+//usage:     "\n	-m	Default netmask for IP"
 //usage:	IF_FEATURE_IPCALC_FANCY(
-//usage:     "\n	-p,--prefix	Display the prefix for IP/NETMASK"
-//usage:     "\n	-h,--hostname	Display first resolved host name"
-//usage:     "\n	-s,--silent	Don't ever display error messages"
-//usage:	)
-//usage:	)
-//usage:	IF_NOT_FEATURE_IPCALC_LONG_OPTIONS(
-//usage:     "\n	-b	Display calculated broadcast address"
-//usage:     "\n	-n	Display calculated network address"
-//usage:     "\n	-m	Display default netmask for IP"
-//usage:	IF_FEATURE_IPCALC_FANCY(
-//usage:     "\n	-p	Display the prefix for IP/NETMASK"
-//usage:     "\n	-h	Display first resolved host name"
-//usage:     "\n	-s	Don't ever display error messages"
-//usage:	)
+//usage:     "\n	-p	Prefix for IP/NETMASK"
+//usage:     "\n	-h	Resolved host name"
+//usage:     "\n	-s	No error messages"
 //usage:	)
 
 #include "libbb.h"
@@ -120,6 +108,11 @@ int get_prefix(unsigned long netmask);
 		"silent\0"    No_argument "s" // don’t ever display error messages
 # endif
 		;
+# define GETOPT32 getopt32long
+# define LONGOPTS ,ipcalc_longopts
+#else
+# define GETOPT32 getopt32
+# define LONGOPTS
 #endif
 
 int ipcalc_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -137,11 +130,11 @@ int ipcalc_main(int argc UNUSED_PARAM, char **argv)
 #define ipaddr    (s_ipaddr.s_addr)
 	char *ipstr;
 
-#if ENABLE_FEATURE_IPCALC_LONG_OPTIONS
-	applet_long_options = ipcalc_longopts;
-#endif
-	opt_complementary = "-1:?2"; /* minimum 1 arg, maximum 2 args */
-	opt = getopt32(argv, "mbn" IF_FEATURE_IPCALC_FANCY("phs"));
+	opt = GETOPT32(argv, "^"
+			"mbn" IF_FEATURE_IPCALC_FANCY("phs")
+			"\0" "-1:?2"/*min 1, max 2 args*/
+			LONGOPTS
+	);
 	argv += optind;
 	if (opt & SILENT)
 		logmode = LOGMODE_NONE; /* suppress error_msg() output */

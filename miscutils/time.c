@@ -127,13 +127,13 @@ static unsigned long ptok(const unsigned pagesize, const unsigned long pages)
 
 /* summarize: Report on the system use of a command.
 
-   Print the FMT argument except that `%' sequences
-   have special meaning, and `\n' and `\t' are translated into
-   newline and tab, respectively, and `\\' is translated into `\'.
+   Print the FMT argument except that '%' sequences
+   have special meaning, and '\n' and '\t' are translated into
+   newline and tab, respectively, and '\\' is translated into '\'.
 
-   The character following a `%' can be:
+   The character following a '%' can be:
    (* means the tcsh time builtin also recognizes it)
-   % == a literal `%'
+   % == a literal '%'
    C == command name and arguments
 *  D == average unshared data size in K (ru_idrss+ru_isrss)
 *  E == elapsed real (wall clock) time in [hour:]min:sec
@@ -430,9 +430,10 @@ int time_main(int argc UNUSED_PARAM, char **argv)
 		OPT_f = (1 << 4),
 	};
 
-	opt_complementary = "-1"; /* at least one arg */
 	/* "+": stop on first non-option */
-	opt = getopt32(argv, "+vpao:f:", &output_filename, &output_format);
+	opt = getopt32(argv, "^+" "vpao:f:" "\0" "-1"/*at least one arg*/,
+				&output_filename, &output_format
+	);
 	argv += optind;
 	if (opt & OPT_v)
 		output_format = long_format;

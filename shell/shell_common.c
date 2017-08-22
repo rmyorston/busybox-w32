@@ -58,7 +58,8 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 	const char *opt_n,
 	const char *opt_p,
 	const char *opt_t,
-	const char *opt_u
+	const char *opt_u,
+	const char *opt_d
 )
 {
 	struct pollfd pfd[1];
@@ -68,6 +69,7 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 	int nchars; /* -n NUM */
 	char **pp;
 	char *buffer;
+	char delim;
 	struct termios tty, old_tty;
 	const char *retval;
 	int bufpos; /* need to be able to hold -1 */
@@ -188,6 +190,7 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 		end_ms += (unsigned)monotonic_ms();
 	buffer = NULL;
 	bufpos = 0;
+	delim = opt_d ? *opt_d : '\n';
 	do {
 		char c;
 		int timeout;
@@ -243,14 +246,14 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 				continue;
 			}
 		}
-		if (c == '\n')
+		if (c == delim) /* '\n' or -d CHAR */
 			break;
 
 		/* $IFS splitting. NOT done if we run "read"
 		 * without variable names (bash compat).
 		 * Thus, "read" and "read REPLY" are not the same.
 		 */
-		if (argv[0]) {
+		if (!opt_d && argv[0]) {
 /* http://www.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_06_05 */
 			const char *is_ifs = strchr(ifs, c);
 			if (startword && is_ifs) {

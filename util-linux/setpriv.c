@@ -5,7 +5,6 @@
  * Copyright (C) 2017 by  <assafgordon@gmail.com>
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
- *
  */
 //config:config SETPRIV
 //config:	bool "setpriv (3.4 kb)"
@@ -125,96 +124,10 @@ enum {
 };
 
 #if ENABLE_FEATURE_SETPRIV_CAPABILITIES
-struct caps {
-	struct __user_cap_header_struct header;
-	cap_user_data_t data;
-	int u32s;
-};
+DEFINE_STRUCT_CAPS;
 
-# if ENABLE_FEATURE_SETPRIV_CAPABILITY_NAMES
-static const char *const capabilities[] = {
-	"chown",
-	"dac_override",
-	"dac_read_search",
-	"fowner",
-	"fsetid",
-	"kill",
-	"setgid",
-	"setuid",
-	"setpcap",
-	"linux_immutable",
-	"net_bind_service",
-	"net_broadcast",
-	"net_admin",
-	"net_raw",
-	"ipc_lock",
-	"ipc_owner",
-	"sys_module",
-	"sys_rawio",
-	"sys_chroot",
-	"sys_ptrace",
-	"sys_pacct",
-	"sys_admin",
-	"sys_boot",
-	"sys_nice",
-	"sys_resource",
-	"sys_time",
-	"sys_tty_config",
-	"mknod",
-	"lease",
-	"audit_write",
-	"audit_control",
-	"setfcap",
-	"mac_override",
-	"mac_admin",
-	"syslog",
-	"wake_alarm",
-	"block_suspend",
-	"audit_read",
-};
-# endif /* FEATURE_SETPRIV_CAPABILITY_NAMES */
-
-static void getcaps(struct caps *caps)
+static unsigned parse_cap(const char *cap)
 {
-	static const uint8_t versions[] = {
-		_LINUX_CAPABILITY_U32S_3, /* = 2 (fits into byte) */
-		_LINUX_CAPABILITY_U32S_2, /* = 2 */
-		_LINUX_CAPABILITY_U32S_1, /* = 1 */
-	};
-	int i;
-
-	caps->header.pid = 0;
-	for (i = 0; i < ARRAY_SIZE(versions); i++) {
-		caps->header.version = versions[i];
-		if (capget(&caps->header, NULL) == 0)
-			goto got_it;
-	}
-	bb_simple_perror_msg_and_die("capget");
- got_it:
-
-	switch (caps->header.version) {
-		case _LINUX_CAPABILITY_VERSION_1:
-			caps->u32s = _LINUX_CAPABILITY_U32S_1;
-			break;
-		case _LINUX_CAPABILITY_VERSION_2:
-			caps->u32s = _LINUX_CAPABILITY_U32S_2;
-			break;
-		case _LINUX_CAPABILITY_VERSION_3:
-			caps->u32s = _LINUX_CAPABILITY_U32S_3;
-			break;
-		default:
-			bb_error_msg_and_die("unsupported capability version");
-	}
-
-	caps->data = xmalloc(sizeof(caps->data[0]) * caps->u32s);
-	if (capget(&caps->header, caps->data) < 0)
-		bb_simple_perror_msg_and_die("capget");
-}
-
-static void parse_cap(unsigned long *index, const char *cap)
-{
-	unsigned long i;
-
 	switch (cap[0]) {
 	case '-':
 		break;
@@ -226,26 +139,7 @@ static void parse_cap(unsigned long *index, const char *cap)
 	}
 
 	cap++;
-	if ((sscanf(cap, "cap_%lu", &i)) == 1) {
-		if (!cap_valid(i))
-			bb_error_msg_and_die("unsupported capability '%s'", cap);
-		*index = i;
-		return;
-	}
-
-# if ENABLE_FEATURE_SETPRIV_CAPABILITY_NAMES
-	for (i = 0; i < ARRAY_SIZE(capabilities); i++) {
-		if (strcmp(capabilities[i], cap) != 0)
-			continue;
-
-		if (!cap_valid(i))
-			bb_error_msg_and_die("unsupported capability '%s'", cap);
-		*index = i;
-		return;
-	}
-# endif
-
-	bb_error_msg_and_die("unknown capability '%s'", cap);
+	return cap_name_to_number(cap);
 }
 
 static void set_inh_caps(char *capstring)
@@ -256,11 +150,11 @@ static void set_inh_caps(char *capstring)
 
 	capstring = strtok(capstring, ",");
 	while (capstring) {
-		unsigned long cap;
+		unsigned cap;
 
-		parse_cap(&cap, capstring);
+		cap = parse_cap(capstring);
 		if (CAP_TO_INDEX(cap) >= caps.u32s)
-			bb_error_msg_and_die("invalid capability cap");
+			bb_error_msg_and_die("invalid capability '%s'", capstring);
 
 		if (capstring[0] == '+')
 			caps.data[CAP_TO_INDEX(cap)].inheritable |= CAP_TO_MASK(cap);
@@ -269,11 +163,8 @@ static void set_inh_caps(char *capstring)
 		capstring = strtok(NULL, ",");
 	}
 
-	if ((capset(&caps.header, caps.data)) < 0)
+	if (capset(&caps.header, caps.data) != 0)
 		bb_perror_msg_and_die("capset");
-
-	if (ENABLE_FEATURE_CLEAN_UP)
-		free(caps.data);
 }
 
 static void set_ambient_caps(char *string)
@@ -282,9 +173,9 @@ static void set_ambient_caps(char *string)
 
 	cap = strtok(string, ",");
 	while (cap) {
-		unsigned long index;
+		unsigned index;
 
-		parse_cap(&index, cap);
+		index = parse_cap(cap);
 		if (cap[0] == '+') {
 			if (prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, index, 0, 0) < 0)
 				bb_perror_msg("cap_ambient_raise");
@@ -298,16 +189,7 @@ static void set_ambient_caps(char *string)
 #endif /* FEATURE_SETPRIV_CAPABILITIES */
 
 #if ENABLE_FEATURE_SETPRIV_DUMP
-# if ENABLE_FEATURE_SETPRIV_CAPABILITY_NAMES
-static void printf_cap(const char *pfx, unsigned cap_no)
-{
-	if (cap_no < ARRAY_SIZE(capabilities)) {
-		printf("%s%s", pfx, capabilities[cap_no]);
-		return;
-	}
-	printf("%scap_%u", pfx, cap_no);
-}
-# else
+# if !ENABLE_FEATURE_SETPRIV_CAPABILITY_NAMES
 #  define printf_cap(pfx, cap_no) printf("%scap_%u", (pfx), (cap_no))
 # endif
 
@@ -396,10 +278,9 @@ static int dump(void)
 	bb_putchar('\n');
 # endif
 
-	if (ENABLE_FEATURE_CLEAN_UP) {
-		IF_FEATURE_SETPRIV_CAPABILITIES(free(caps.data);)
+	if (ENABLE_FEATURE_CLEAN_UP)
 		free(gids);
-	}
+
 	return EXIT_SUCCESS;
 }
 #endif /* FEATURE_SETPRIV_DUMP */
@@ -421,9 +302,12 @@ int setpriv_main(int argc UNUSED_PARAM, char **argv)
 	int opts;
 	IF_FEATURE_SETPRIV_CAPABILITIES(char *inh_caps, *ambient_caps;)
 
-	applet_long_options = setpriv_longopts;
-	opts = getopt32(argv, "+"IF_FEATURE_SETPRIV_DUMP("d")
-			IF_FEATURE_SETPRIV_CAPABILITIES("\xfe:\xfd:", &inh_caps, &ambient_caps));
+	opts = getopt32long(argv, "+"
+		IF_FEATURE_SETPRIV_DUMP("d")
+		IF_FEATURE_SETPRIV_CAPABILITIES("\xfe:\xfd:"),
+		setpriv_longopts
+		IF_FEATURE_SETPRIV_CAPABILITIES(, &inh_caps, &ambient_caps)
+	);
 	argv += optind;
 
 #if ENABLE_FEATURE_SETPRIV_DUMP

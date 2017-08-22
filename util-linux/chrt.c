@@ -12,7 +12,7 @@
 //config:	manipulate real-time attributes of a process.
 //config:	This requires sched_{g,s}etparam support in your libc.
 
-//applet:IF_CHRT(APPLET(chrt, BB_DIR_USR_BIN, BB_SUID_DROP))
+//applet:IF_CHRT(APPLET_NOEXEC(chrt, chrt, BB_DIR_USR_BIN, BB_SUID_DROP, chrt))
 
 //kbuild:lib-$(CONFIG_CHRT) += chrt.o
 
@@ -77,8 +77,7 @@ int chrt_main(int argc UNUSED_PARAM, char **argv)
 	int policy = SCHED_RR;
 
 	/* only one policy accepted */
-	opt_complementary = "r--fo:f--ro:o--rf";
-	opt = getopt32(argv, "+mprfo");
+	opt = getopt32(argv, "^+" "mprfo" "\0" "r--fo:f--ro:o--rf");
 	if (opt & OPT_m) { /* print min/max and exit */
 		show_min_max(SCHED_FIFO);
 		show_min_max(SCHED_RR);

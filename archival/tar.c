@@ -278,23 +278,6 @@ static void chksum_and_xwrite(int fd, struct tar_header_t* hp)
 	xwrite(fd, hp, sizeof(*hp));
 }
 
-static void replace_symlink_placeholders(llist_t *list)
-{
-	while (list) {
-		char *target;
-
-		target = list->data + strlen(list->data) + 1;
-		if (symlink(target, list->data)) {
-			/* shared message */
-			bb_error_msg_and_die("can't create %slink '%s' to '%s'",
-				"sym",
-				list->data, target
-			);
-		}
-		list = list->link;
-	}
-}
-
 #if ENABLE_FEATURE_TAR_GNU_EXTENSIONS
 static void writeLongname(int fd, int type, const char *name, int dir)
 {
@@ -969,6 +952,11 @@ static const char tar_longopts[] ALIGN1 =
 	"exclude\0"             Required_argument "\xff"
 # endif
 	;
+# define GETOPT32 getopt32long
+# define LONGOPTS ,tar_longopts
+#else
+# define GETOPT32 getopt32
+# define LONGOPTS
 #endif
 
 int tar_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -995,21 +983,8 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 		tar_handle->ah_flags |= ARCHIVE_DONT_RESTORE_PERM;
 
 	/* Prepend '-' to the first argument if required */
-	opt_complementary = "--:" // first arg is options
-		"tt:vv:" // count -t,-v
-#if ENABLE_FEATURE_TAR_LONG_OPTIONS && ENABLE_FEATURE_TAR_FROM
-		"\xff::" // --exclude=PATTERN is a list
-#endif
-		IF_FEATURE_TAR_CREATE("c:") "t:x:" // at least one of these is reqd
-		IF_FEATURE_TAR_CREATE("c--tx:t--cx:x--ct") // mutually exclusive
-		IF_NOT_FEATURE_TAR_CREATE("t--x:x--t") // mutually exclusive
-#if ENABLE_FEATURE_TAR_LONG_OPTIONS
-		":\xf9+" // --strip-components=NUM
-#endif
-	;
-#if ENABLE_FEATURE_TAR_LONG_OPTIONS
-	applet_long_options = tar_longopts;
-#endif
+	if (argv[1] && argv[1][0] != '-' && argv[1][0] != '\0')
+		argv[1] = xasprintf("-%s", argv[1]);
 #if ENABLE_DESKTOP
 	/* Lie to buildroot when it starts asking stupid questions. */
 	if (argv[1] && strcmp(argv[1], "--version") == 0) {
@@ -1046,7 +1021,7 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 		}
 	}
 #endif
-	opt = getopt32(argv,
+	opt = GETOPT32(argv, "^"
 		"txC:f:Oopvk"
 		IF_FEATURE_TAR_CREATE(   "ch"    )
 		IF_FEATURE_SEAMLESS_BZ2( "j"     )
@@ -1057,6 +1032,18 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 		IF_FEATURE_SEAMLESS_Z(   "Z"     )
 		IF_FEATURE_TAR_NOPRESERVE_TIME("m")
 		IF_FEATURE_TAR_LONG_OPTIONS("\xf9:") // --strip-components
+		"\0"
+		"tt:vv:" // count -t,-v
+#if ENABLE_FEATURE_TAR_LONG_OPTIONS && ENABLE_FEATURE_TAR_FROM
+		"\xff::" // --exclude=PATTERN is a list
+#endif
+		IF_FEATURE_TAR_CREATE("c:") "t:x:" // at least one of these is reqd
+		IF_FEATURE_TAR_CREATE("c--tx:t--cx:x--ct") // mutually exclusive
+		IF_NOT_FEATURE_TAR_CREATE("t--x:x--t") // mutually exclusive
+#if ENABLE_FEATURE_TAR_LONG_OPTIONS
+		":\xf9+" // --strip-components=NUM
+#endif
+		LONGOPTS
 		, &base_dir // -C dir
 		, &tar_filename // -f filename
 		IF_FEATURE_TAR_FROM(, &(tar_handle->accept)) // T
@@ -1279,8 +1266,6 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 
 	while (get_header_tar(tar_handle) == EXIT_SUCCESS)
 		bb_got_signal = EXIT_SUCCESS; /* saw at least one header, good */
-
-	replace_symlink_placeholders(tar_handle->symlink_placeholders);
 
 	/* Check that every file that should have been extracted was */
 	while (tar_handle->accept) {

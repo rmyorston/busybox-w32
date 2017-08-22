@@ -26,7 +26,7 @@
 //config:	hardware autodetection scripts to load modules like evdev, frame
 //config:	buffer drivers etc.
 
-//applet:IF_MODPROBE(IF_NOT_MODPROBE_SMALL(APPLET(modprobe, BB_DIR_SBIN, BB_SUID_DROP)))
+//applet:IF_MODPROBE(IF_NOT_MODPROBE_SMALL(APPLET_NOEXEC(modprobe, modprobe, BB_DIR_SBIN, BB_SUID_DROP, modprobe)))
 
 //kbuild:ifneq ($(CONFIG_MODPROBE_SMALL),y)
 //kbuild:lib-$(CONFIG_MODPROBE) += modprobe.o modutils.o
@@ -133,7 +133,7 @@
  */
 #define MODPROBE_OPTS  "alrDb"
 /* -a and -D _are_ in fact compatible */
-#define MODPROBE_COMPLEMENTARY ("q-v:v-q:l--arD:r--alD:a--lr:D--rl")
+#define MODPROBE_COMPLEMENTARY "q-v:v-q:l--arD:r--alD:a--lr:D--rl"
 //#define MODPROBE_OPTS  "acd:lnrt:C:b"
 //#define MODPROBE_COMPLEMENTARY "q-v:v-q:l--acr:a--lr:r--al"
 enum {
@@ -566,9 +566,10 @@ int modprobe_main(int argc UNUSED_PARAM, char **argv)
 
 	INIT_G();
 
-	IF_LONG_OPTS(applet_long_options = modprobe_longopts;)
-	opt_complementary = MODPROBE_COMPLEMENTARY;
-	opt = getopt32(argv, INSMOD_OPTS MODPROBE_OPTS INSMOD_ARGS);
+	opt = getopt32long(argv, "^" INSMOD_OPTS MODPROBE_OPTS "\0" MODPROBE_COMPLEMENTARY,
+			modprobe_longopts
+			INSMOD_ARGS
+	);
 	argv += optind;
 
 	/* Goto modules location */

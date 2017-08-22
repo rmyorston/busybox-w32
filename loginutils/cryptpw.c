@@ -24,9 +24,9 @@
 //config:	using the given salt. Debian has this utility under mkpasswd
 //config:	name. Busybox provides mkpasswd as an alias for cryptpw.
 
-//applet:IF_CRYPTPW(APPLET(cryptpw, BB_DIR_USR_BIN, BB_SUID_DROP))
-//                   APPLET_ODDNAME:name      main     location        suid_type     help
-//applet:IF_MKPASSWD(APPLET_ODDNAME(mkpasswd, cryptpw, BB_DIR_USR_BIN, BB_SUID_DROP, cryptpw))
+//applet:IF_CRYPTPW( APPLET_NOEXEC(cryptpw,  cryptpw, BB_DIR_USR_BIN, BB_SUID_DROP, cryptpw))
+//                   APPLET_NOEXEC:name      main     location        suid_type     help
+//applet:IF_MKPASSWD(APPLET_NOEXEC(mkpasswd, cryptpw, BB_DIR_USR_BIN, BB_SUID_DROP, cryptpw))
 
 //kbuild:lib-$(CONFIG_CRYPTPW) += cryptpw.o
 //kbuild:lib-$(CONFIG_MKPASSWD) += cryptpw.o
@@ -106,14 +106,15 @@ int cryptpw_main(int argc UNUSED_PARAM, char **argv)
 		"salt\0"        Required_argument "S"
 		"method\0"      Required_argument "m"
 	;
-	applet_long_options = mkpasswd_longopts;
 #endif
 	fd = STDIN_FILENO;
 	opt_m = CONFIG_FEATURE_DEFAULT_PASSWD_ALGO;
 	opt_S = NULL;
 	/* at most two non-option arguments; -P NUM */
-	opt_complementary = "?2";
-	getopt32(argv, "sP:+S:m:a:", &fd, &opt_S, &opt_m, &opt_m);
+	getopt32long(argv, "^" "sP:+S:m:a:" "\0" "?2",
+			mkpasswd_longopts,
+			&fd, &opt_S, &opt_m, &opt_m
+	);
 	argv += optind;
 
 	/* have no idea how to handle -s... */

@@ -15,7 +15,7 @@
 //config:	help
 //config:	Discard unused blocks on a mounted filesystem.
 
-//applet:IF_FSTRIM(APPLET(fstrim, BB_DIR_SBIN, BB_SUID_DROP))
+//applet:IF_FSTRIM(APPLET_NOEXEC(fstrim, fstrim, BB_DIR_SBIN, BB_SUID_DROP, fstrim))
 
 //kbuild:lib-$(CONFIG_FSTRIM) += fstrim.o
 
@@ -63,17 +63,17 @@ int fstrim_main(int argc UNUSED_PARAM, char **argv)
 	};
 
 #if ENABLE_LONG_OPTS
-	static const char getopt_longopts[] ALIGN1 =
+	static const char fstrim_longopts[] ALIGN1 =
 		"offset\0"    Required_argument    "o"
 		"length\0"    Required_argument    "l"
 		"minimum\0"   Required_argument    "m"
 		"verbose\0"   No_argument          "v"
 		;
-	applet_long_options = getopt_longopts;
 #endif
 
-	opt_complementary = "=1"; /* exactly one non-option arg: the mountpoint */
-	opts = getopt32(argv, "o:l:m:v", &arg_o, &arg_l, &arg_m);
+	opts = getopt32long(argv, "^" "o:l:m:v" "\0" "=1", fstrim_longopts,
+			&arg_o, &arg_l, &arg_m
+	);
 
 	memset(&range, 0, sizeof(range));
 	range.len = ULLONG_MAX;

@@ -34,14 +34,6 @@
 # include <malloc.h> /* for mallopt */
 #endif
 
-#include <sys/prctl.h>
-#ifndef PR_SET_NAME
-#define PR_SET_NAME 15
-#endif
-#ifndef PR_GET_NAME
-#define PR_GET_NAME 16
-#endif
-
 /* Declare <applet>_main() */
 #define PROTOTYPES
 #include "applets.h"
@@ -985,8 +977,6 @@ void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **ar
 {
 	int argc = string_array_len(argv);
 
-	/* Reinit some shared global data */
-	xfunc_error_retval = EXIT_FAILURE;
 	/*
 	 * We do not use argv[0]: do not want to repeat massaging of
 	 * "-/sbin/halt" -> "halt", for example.
@@ -1163,15 +1153,14 @@ int main(int argc UNUSED_PARAM, char **argv)
 	}
 	applet_name = bb_basename(applet_name);
 
-# if defined(__linux__)
 	/* If we are a result of execv("/proc/self/exe"), fix ugly comm of "exe" */
 	if (ENABLE_FEATURE_SH_STANDALONE
 	 || ENABLE_FEATURE_PREFER_APPLETS
 	 || !BB_MMU
 	) {
-		prctl(PR_SET_NAME, (long)applet_name, 0, 0, 0);
+		if (NUM_APPLETS > 1)
+			set_task_comm(applet_name);
 	}
-# endif
 
 	parse_config_file(); /* ...maybe, if FEATURE_SUID_CONFIG */
 	run_applet_and_exit(applet_name, argv);

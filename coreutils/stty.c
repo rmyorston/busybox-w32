@@ -25,7 +25,7 @@
 //config:	help
 //config:	stty is used to change and print terminal line settings.
 
-//applet:IF_STTY(APPLET(stty, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_STTY(APPLET_NOEXEC(stty, stty, BB_DIR_BIN, BB_SUID_DROP, stty))
 
 //kbuild:lib-$(CONFIG_STTY) += stty.o
 
@@ -782,12 +782,13 @@ struct globals {
 	unsigned max_col;
 	/* Current position, to know when to wrap */
 	unsigned current_col;
-	char buf[10];
 } FIX_ALIASING;
 #define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	G.device_name = bb_msg_standard_input; \
 	G.max_col = 80; \
+	G.current_col = 0; /* we are noexec, must clear */ \
 } while (0)
 
 static void set_speed_or_die(enum speed_setting type, const char *arg,
@@ -1018,6 +1019,8 @@ static void do_display(const struct termios *mode, int all)
 
 	for (i = 0; i != CIDX_min; ++i) {
 		char ch;
+		char buf10[10];
+
 		/* If swtch is the same as susp, don't print both */
 #if VSWTCH == VSUSP
 		if (i == CIDX_swtch)
@@ -1033,10 +1036,10 @@ static void do_display(const struct termios *mode, int all)
 #endif
 		ch = mode->c_cc[control_info[i].offset];
 		if (ch == _POSIX_VDISABLE)
-			strcpy(G.buf, "<undef>");
+			strcpy(buf10, "<undef>");
 		else
-			visible(ch, G.buf, 0);
-		wrapf("%s = %s;", nth_string(control_name, i), G.buf);
+			visible(ch, buf10, 0);
+		wrapf("%s = %s;", nth_string(control_name, i), buf10);
 	}
 #if VEOF == VMIN
 	if ((mode->c_lflag & ICANON) == 0)

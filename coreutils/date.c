@@ -58,7 +58,8 @@
 //config:	the same format. With it on, 'date DATE' additionally supports
 //config:	MMDDhhmm[[YY]YY][.ss] format.
 
-//applet:IF_DATE(APPLET(date, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_DATE(APPLET_NOEXEC(date, date, BB_DIR_BIN, BB_SUID_DROP, date))
+/* bb_common_bufsiz1 usage here is safe wrt NOEXEC: not expecting it to be zeroed. */
 
 //kbuild:lib-$(CONFIG_DATE) += date.o
 
@@ -66,7 +67,7 @@
  * date [OPTION]... [+FORMAT]
  * date [-u|--utc|--universal] [MMDDhhmm[[CC]YY][.ss]]
  * -d, --date=STRING
- *      display time described by STRING, not `now'
+ *      display time described by STRING, not 'now'
  * -f, --file=DATEFILE
  *      like --date once for each line of DATEFILE
  * -r, --reference=FILE
@@ -152,12 +153,6 @@ enum {
 	OPT_HINT      = (1 << 6) * ENABLE_FEATURE_DATE_ISOFMT, /* D */
 };
 
-static void maybe_set_utc(int opt)
-{
-	if (opt & OPT_UTC)
-		putenv((char*)"TZ=UTC0");
-}
-
 #if ENABLE_LONG_OPTS
 static const char date_longopts[] ALIGN1 =
 		"rfc-822\0"   No_argument       "R"
@@ -169,6 +164,19 @@ static const char date_longopts[] ALIGN1 =
 		"reference\0" Required_argument "r"
 		;
 #endif
+
+/* We are a NOEXEC applet.
+ * Obstacles to NOFORK:
+ * - we change env
+ * - xasprintf result not freed
+ * - after xasprintf we use other xfuncs
+ */
+
+static void maybe_set_utc(int opt)
+{
+	if (opt & OPT_UTC)
+		putenv((char*)"TZ=UTC0");
+}
 
 int date_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int date_main(int argc UNUSED_PARAM, char **argv)
@@ -184,13 +192,16 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 	char *filename;
 	char *isofmt_arg = NULL;
 
-	opt_complementary = "d--s:s--d"
-		IF_FEATURE_DATE_ISOFMT(":R--I:I--R");
-	IF_LONG_OPTS(applet_long_options = date_longopts;)
-	opt = getopt32(argv, "Rs:ud:r:"
-			IF_FEATURE_DATE_ISOFMT("I::D:"),
+	opt = getopt32long(argv, "^"
+			"Rs:ud:r:"
+			IF_FEATURE_DATE_ISOFMT("I::D:")
+			"\0"
+			"d--s:s--d"
+			IF_FEATURE_DATE_ISOFMT(":R--I:I--R"),
+			date_longopts,
 			&date_str, &date_str, &filename
-			IF_FEATURE_DATE_ISOFMT(, &isofmt_arg, &fmt_str2dt));
+			IF_FEATURE_DATE_ISOFMT(, &isofmt_arg, &fmt_str2dt)
+	);
 	argv += optind;
 	maybe_set_utc(opt);
 

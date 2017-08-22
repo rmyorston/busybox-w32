@@ -644,7 +644,7 @@ read_line(const char *prompt)
 {
 	int sz;
 
-	sz = read_line_input(NULL, prompt, line_buffer, sizeof(line_buffer), /*timeout*/ -1);
+	sz = read_line_input(NULL, prompt, line_buffer, sizeof(line_buffer));
 	if (sz <= 0)
 		exit(EXIT_SUCCESS); /* Ctrl-D or Ctrl-C */
 
@@ -2848,7 +2848,7 @@ xselect(void)
 			if (dos_compatible_flag) {
 				sector_offset = g_sectors;
 				puts("Warning: setting sector offset for DOS "
-					"compatiblity");
+					"compatibility");
 			}
 			update_units();
 			break;

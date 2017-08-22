@@ -17,6 +17,7 @@
 //config:	This utility is used to erase the whole MTD device.
 
 //applet:IF_FLASH_ERASEALL(APPLET(flash_eraseall, BB_DIR_USR_SBIN, BB_SUID_DROP))
+/* not NOEXEC: if flash operation stalls, use less memory in "hung" process */
 
 //kbuild:lib-$(CONFIG_FLASH_ERASEALL) += flash_eraseall.o
 
@@ -81,8 +82,7 @@ int flash_eraseall_main(int argc UNUSED_PARAM, char **argv)
 	unsigned int flags;
 	char *mtd_name;
 
-	opt_complementary = "=1";
-	flags = getopt32(argv, "jNq");
+	flags = getopt32(argv, "^" "jNq" "\0" "=1");
 
 	mtd_name = argv[optind];
 	fd = xopen(mtd_name, O_RDWR);

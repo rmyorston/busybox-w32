@@ -18,7 +18,7 @@
 //kbuild:lib-$(CONFIG_PMAP) += pmap.o
 
 //usage:#define pmap_trivial_usage
-//usage:       "[-xq] PID"
+//usage:       "[-xq] PID..."
 //usage:#define pmap_full_usage "\n\n"
 //usage:       "Display process memory usage"
 //usage:     "\n"
@@ -96,7 +96,7 @@ int pmap_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opts;
 	int ret;
 
-	opts = getopt32(argv, "xq");
+	opts = getopt32(argv, "^" "xq" "\0" "-1"); /* min one arg */
 	argv += optind;
 
 	ret = 0;
