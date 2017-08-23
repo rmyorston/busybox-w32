@@ -453,7 +453,6 @@ DIR *mingw_opendir(const char *path);
  * MinGW specific
  */
 #define is_dir_sep(c) ((c) == '/' || (c) == '\\')
-#define PRIuMAX "I64u"
 
 pid_t FAST_FUNC mingw_spawn(char **argv);
 intptr_t FAST_FUNC mingw_spawn_proc(const char **argv);
