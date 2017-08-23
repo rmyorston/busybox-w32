@@ -213,11 +213,6 @@ void unsetenv(const char *env);
 #define mktemp mingw_mktemp
 
 /*
- * string.h
- */
-void *mempcpy(void *dest, const void *src, size_t n);
-
-/*
  * strings.h
  */
 int ffs(int i);
