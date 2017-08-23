@@ -470,6 +470,7 @@ const char * next_path_sep(const char *path);
 #define is_absolute_path(path) ((path)[0] == '/' || (path)[0] == '\\' || has_dos_drive_prefix(path))
 
 #define find_mount_point(n, s) find_mount_point(n)
+#define add_to_ino_dev_hashtable(s, n) (void)0
 
 /*
  * helpers

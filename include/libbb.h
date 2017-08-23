@@ -1626,7 +1626,9 @@ int bb_xioctl(int fd, unsigned request, void *argp) FAST_FUNC;
 #endif
 
 char *is_in_ino_dev_hashtable(const struct stat *statbuf) FAST_FUNC;
+#if !ENABLE_PLATFORM_MINGW32
 void add_to_ino_dev_hashtable(const struct stat *statbuf, const char *name) FAST_FUNC;
+#endif
 void reset_ino_dev_hashtable(void) FAST_FUNC;
 #ifdef __GLIBC__
 /* At least glibc has horrendously large inline for this, so wrap it */
