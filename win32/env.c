@@ -1,26 +1,5 @@
 #include "libbb.h"
 
-char **copy_environ(const char *const *envp)
-{
-	char **env;
-	int i = 0;
-	while (envp[i])
-		i++;
-	env = xmalloc((i+1)*sizeof(*env));
-	for (i = 0; envp[i]; i++)
-		env[i] = xstrdup(envp[i]);
-	env[i] = NULL;
-	return env;
-}
-
-void free_environ(char **env)
-{
-	int i;
-	for (i = 0; env[i]; i++)
-		free(env[i]);
-	free(env);
-}
-
 static int lookup_env(char **env, const char *name, size_t nmln)
 {
 	int i;

@@ -476,8 +476,6 @@ const char * next_path_sep(const char *path);
  * helpers
  */
 
-char **copy_environ(const char *const *env);
-void free_environ(char **env);
 char **env_setenv(char **env, const char *name);
 
 const char *get_busybox_exec_path(void);
