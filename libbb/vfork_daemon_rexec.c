@@ -232,6 +232,7 @@ int FAST_FUNC spawn_and_wait(char **argv)
 	return wait4pid(rc);
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 #if !BB_MMU
 void FAST_FUNC re_exec(char **argv)
 {
@@ -318,3 +319,4 @@ void FAST_FUNC bb_sanitize_stdio(void)
 {
 	bb_daemonize_or_rexec(DAEMON_ONLY_SANITIZE, NULL);
 }
+#endif /* !MINGW32 */
