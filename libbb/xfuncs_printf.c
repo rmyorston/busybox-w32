@@ -509,6 +509,7 @@ void FAST_FUNC xfstat(int fd, struct stat *stat_buf, const char *errmsg)
 		bb_simple_perror_msg_and_die(errmsg);
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 // selinux_or_die() - die if SELinux is disabled.
 void FAST_FUNC selinux_or_die(void)
 {
@@ -691,3 +692,4 @@ void FAST_FUNC xvfork_parent_waits_and_exits(void)
 	}
 	/* Child continues */
 }
+#endif /* !ENABLE_PLATFORM_MINGW32 */
