@@ -412,23 +412,25 @@ UNUSED_PARAM
 	return sp;
 }
 
-/*
- * Terminates the process corresponding to the process ID and all of its
- * directly and indirectly spawned subprocesses.
- *
- * This way of terminating the processes is not gentle: the processes get
- * no chance of cleaning up after themselves (closing file handles, removing
- * .lock files, terminating spawned processes (if any), etc).
+/**
+ * If the process ID is positive invoke the callback for that process
+ * only.  If negative or zero invoke the callback for all descendants
+ * of the indicated process.  Zero indicates the current process; negative
+ * indicates the process with process ID -pid.
  */
-static int terminate_process_tree(HANDLE main_process, int exit_status)
+typedef int (*kill_callback)(pid_t pid, int exit_code);
+
+static int kill_pids(pid_t pid, int exit_code, kill_callback killer)
 {
-	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-	PROCESSENTRY32 entry;
 	DWORD pids[16384];
 	int max_len = sizeof(pids) / sizeof(*pids), i, len, ret = 0;
-	pid_t pid = GetProcessId(main_process);
 
-	pids[0] = (DWORD)pid;
+	if(pid > 0)
+		pids[0] = (DWORD)pid;
+	else if (pid == 0)
+		pids[0] = (DWORD)getpid();
+	else
+		pids[0] = (DWORD)-pid;
 	len = 1;
 
 	/*
@@ -440,40 +442,46 @@ static int terminate_process_tree(HANDLE main_process, int exit_status)
 	 * Therefore, run through them at least twice and stop when no more
 	 * process IDs were added to the list.
 	 */
-	for (;;) {
-		int orig_len = len;
+	if (pid <= 0) {
+		HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 
-		memset(&entry, 0, sizeof(entry));
-		entry.dwSize = sizeof(entry);
+		if (snapshot == INVALID_HANDLE_VALUE) {
+			errno = err_win_to_posix(GetLastError());
+			return -1;
+		}
 
-		if (!Process32First(snapshot, &entry))
-			break;
+		for (;;) {
+			PROCESSENTRY32 entry;
+			int orig_len = len;
 
-		do {
-			for (i = len - 1; i >= 0; i--) {
-				if (pids[i] == entry.th32ProcessID)
-					break;
-				if (pids[i] == entry.th32ParentProcessID)
-					pids[len++] = entry.th32ProcessID;
-			}
-		} while (len < max_len && Process32Next(snapshot, &entry));
+			memset(&entry, 0, sizeof(entry));
+			entry.dwSize = sizeof(entry);
 
-		if (orig_len == len || len >= max_len)
-			break;
+			if (!Process32First(snapshot, &entry))
+				break;
+
+			do {
+				for (i = len - 1; i >= 0; i--) {
+					if (pids[i] == entry.th32ProcessID)
+						break;
+					if (pids[i] == entry.th32ParentProcessID)
+						pids[len++] = entry.th32ProcessID;
+				}
+			} while (len < max_len && Process32Next(snapshot, &entry));
+
+			if (orig_len == len || len >= max_len)
+				break;
+		}
+
+		CloseHandle(snapshot);
 	}
 
-	for (i = len - 1; i > 0; i--) {
-		HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, pids[i]);
-
-		if (process) {
-			if (!TerminateProcess(process, exit_status))
-				ret = -1;
-			CloseHandle(process);
+	for (i = len - 1; i >= 0; i--) {
+		if (killer(pids[i], exit_code)) {
+			errno = err_win_to_posix(GetLastError());
+			ret = -1;
 		}
 	}
-	if (!TerminateProcess(main_process, exit_status))
-		ret = -1;
-	CloseHandle(main_process);
 
 	return ret;
 }
@@ -499,94 +507,93 @@ static inline int process_architecture_matches_current(HANDLE process)
 }
 
 /**
- * This function tries to terminate a Win32 process, as gently as possible.
- *
- * At first, we will attempt to inject a thread that calls ExitProcess(). If
- * that fails, we will fall back to terminating the entire process tree.
+ * This function tries to terminate a Win32 process, as gently as possible,
+ * by injecting a thread that calls ExitProcess().
  *
  * Note: as kernel32.dll is loaded before any process, the other process and
  * this process will have ExitProcess() at the same address.
- *
- * This function expects the process handle to have the access rights for
- * CreateRemoteThread(): PROCESS_CREATE_THREAD, PROCESS_QUERY_INFORMATION,
- * PROCESS_VM_OPERATION, PROCESS_VM_WRITE, and PROCESS_VM_READ.
  *
  * The idea comes from the Dr Dobb's article "A Safer Alternative to
  * TerminateProcess()" by Andrew Tucker (July 1, 1999),
  * http://www.drdobbs.com/a-safer-alternative-to-terminateprocess/184416547
  *
- * If this method fails, we fall back to running terminate_process_tree().
  */
-static int exit_process(HANDLE process, int exit_code)
+static int exit_process(pid_t pid, int exit_code)
 {
+	HANDLE process;
 	DWORD code;
+	int ret = 0;
+
+	if (!(process = OpenProcess(SYNCHRONIZE | PROCESS_CREATE_THREAD |
+			PROCESS_QUERY_INFORMATION |
+			PROCESS_VM_OPERATION | PROCESS_VM_WRITE |
+			PROCESS_VM_READ, FALSE, pid))) {
+		return -1;
+	}
 
 	if (GetExitCodeProcess(process, &code) && code == STILL_ACTIVE) {
 		static int initialized;
 		static LPTHREAD_START_ROUTINE exit_process_address;
 		PVOID arg = (PVOID)(intptr_t)exit_code;
 		DWORD thread_id;
-		HANDLE thread = NULL;
+		HANDLE thread;
 
 		if (!initialized) {
 			HINSTANCE kernel32 = GetModuleHandle("kernel32");
 			if (!kernel32) {
 				fprintf(stderr, "BUG: cannot find kernel32");
-				return -1;
+				ret = -1;
+				goto finish;
 			}
 			exit_process_address = (LPTHREAD_START_ROUTINE)
 				GetProcAddress(kernel32, "ExitProcess");
 			initialized = 1;
 		}
 		if (!exit_process_address ||
-		    !process_architecture_matches_current(process))
-			return terminate_process_tree(process, exit_code);
-
-		thread = CreateRemoteThread(process, NULL, 0,
-					    exit_process_address,
-					    arg, 0, &thread_id);
-		if (thread) {
-			DWORD result;
-
-			CloseHandle(thread);
-			/*
-			 * If the process survives for 10 seconds (a completely
-			 * arbitrary value picked from thin air), fall back to
-			 * killing the process tree via TerminateProcess().
-			 */
-			result = WaitForSingleObject(process, 10000);
-			if (result == WAIT_OBJECT_0) {
-				CloseHandle(process);
-				return 0;
-			}
+		    !process_architecture_matches_current(process)) {
+			ret = -1;
+			goto finish;
 		}
 
-		return terminate_process_tree(process, exit_code);
+		if ((thread = CreateRemoteThread(process, NULL, 0,
+					    exit_process_address,
+					    arg, 0, &thread_id))) {
+			CloseHandle(thread);
+		}
 	}
 
-	return 0;
+ finish:
+	CloseHandle(process);
+	return ret;
+}
+
+/*
+ * This way of terminating processes is not gentle: they get no chance to
+ * clean up after themselves (closing file handles, removing .lock files,
+ * terminating spawned processes (if any), etc).
+ */
+static int terminate_process(pid_t pid, int exit_code)
+{
+	HANDLE process;
+	int ret;
+
+	if (!(process=OpenProcess(PROCESS_TERMINATE, FALSE, pid))) {
+		return -1;
+	}
+
+	ret = !TerminateProcess(process, exit_code);
+	CloseHandle(process);
+
+	return ret;
 }
 
 int kill(pid_t pid, int sig)
 {
-	HANDLE h;
-
-	if (pid > 0 && sig == SIGTERM) {
-		if ((h = OpenProcess(SYNCHRONIZE | PROCESS_CREATE_THREAD |
-				PROCESS_QUERY_INFORMATION |
-				PROCESS_VM_OPERATION | PROCESS_VM_WRITE |
-				PROCESS_VM_READ, FALSE, pid)))
-			return exit_process(h, 128 + sig);
-		if ((h=OpenProcess(PROCESS_TERMINATE, FALSE, pid)) != NULL &&
-				terminate_process_tree(h, 128 + sig)) {
-			CloseHandle(h);
-			return 0;
-		}
-
-		errno = err_win_to_posix(GetLastError());
-		if (h != NULL)
-			CloseHandle(h);
-		return -1;
+	if (sig == SIGTERM) {
+		return kill_pids(pid, 128+sig, exit_process);
+	}
+	else if (sig == SIGKILL) {
+		return kill_pids(pid, 128+sig, terminate_process);
 	}
 
 	errno = EINVAL;
