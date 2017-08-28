@@ -39,21 +39,12 @@ next_path_sep(const char *path)
 	return strchr(has_dos_drive_prefix(path) ? path+2 : path, ':');
 }
 
-#define MAX_OPT 10
-
-static const char *
-parse_interpreter(const char *cmd, char ***opts, int *nopts)
+static char *
+parse_interpreter(const char *cmd, char **name, char **opts)
 {
-	static char buf[100], *opt[MAX_OPT];
-	char *p, *s, *t;
+	static char buf[100];
+	char *path, *t;
 	int n, fd;
-
-	*nopts = 0;
-	*opts = opt;
-
-	/* don't even try a .exe */
-	if (has_exe_suffix(cmd))
-		return NULL;
 
 	fd = open(cmd, O_RDONLY);
 	if (fd < 0)
@@ -70,43 +61,21 @@ parse_interpreter(const char *cmd, char ***opts, int *nopts)
 	if (buf[0] != '#' || buf[1] != '!')
 		return NULL;
 	buf[n] = '\0';
-	p = strchr(buf, '\n');
-	if (!p)
+	if ((t=strchr(buf, '\n')) == NULL)
 		return NULL;
-	*p = '\0';
+	t[1] = '\0';
 
-	/* remove trailing whitespace */
-	while ( isspace(*--p) ) {
-		*p = '\0';
-	}
-
-	/* skip whitespace after '#!' */
-	for ( s=buf+2; *s && isspace(*s); ++s ) {
-	}
-
-	/* move to end of interpreter path (which may not contain spaces) */
-	for ( ; *s && !isspace(*s); ++s ) {
-	}
-
-	n = 0;
-	if ( *s != '\0' ) {
-		/* there are options */
-		*s++ = '\0';
-
-		while ( (t=strtok(s, " \t")) && n < MAX_OPT ) {
-			s = NULL;
-			opt[n++] = t;
-		}
-	}
-
-	/* find interpreter name */
-	if (!(p = strrchr(buf+2, '/')))
+	if ((path=strtok(buf+2, " \t\r\n")) == NULL)
 		return NULL;
 
-	*nopts = n;
-	*opts = opt;
+	t = (char *)bb_basename(path);
+	if (*t == '\0')
+		return NULL;
 
-	return p+1;
+	*name = t;
+	*opts = strtok(NULL, "\r\n");
+
+	return path;
 }
 
 /*
@@ -246,42 +215,51 @@ static intptr_t
 mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *const *envp)
 {
 	intptr_t ret;
-	char **opts;
 	int nopts;
-	const char *interpr = parse_interpreter(prog, &opts, &nopts);
+	char *int_name, *opts;
+	char *int_path = parse_interpreter(prog, &int_name, &opts);
 	char **new_argv;
 	int argc = 0;
+	char *fullpath = NULL;
 
-	if (!interpr)
+	if (!int_path)
 		return spawnveq(mode, prog, argv, envp);
 
-
+	nopts = opts != NULL;
 	while (argv[argc])
 		argc++;
-	new_argv = malloc(sizeof(*argv)*(argc+nopts+2));
-	memcpy(new_argv+1, opts, sizeof(*opts)*nopts);
-	memcpy(new_argv+nopts+2, argv+1, sizeof(*argv)*argc);
-	new_argv[nopts+1] = (char *)prog; /* pass absolute path */
 
+	new_argv = xmalloc(sizeof(*argv)*(argc+nopts+2));
+	new_argv[1] = opts;
+	new_argv[nopts+1] = (char *)prog; /* pass absolute path */
+	memcpy(new_argv+nopts+2, argv+1, sizeof(*argv)*argc);
+
+	if (file_is_executable(int_path) ||
+			(fullpath=file_is_win32_executable(int_path)) != NULL) {
+		new_argv[0] = fullpath ? fullpath : int_path;
+		ret = spawnveq(mode, new_argv[0], new_argv, envp);
+		free(fullpath);
+	} else
 #if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
-	if (find_applet_by_name(interpr) >= 0) {
-		new_argv[0] = (char *)interpr;
+	if (find_applet_by_name(int_name) >= 0) {
+		new_argv[0] = int_name;
 		ret = mingw_spawn_applet(mode, new_argv, envp);
 	} else
 #endif
 	{
 		char *path = xstrdup(getenv("PATH"));
 		char *tmp = path;
-		char *iprog = find_executable(interpr, &tmp);
+
+		fullpath = find_executable(int_name, &tmp);
 		free(path);
-		if (!iprog) {
+		if (!fullpath) {
 			free(new_argv);
 			errno = ENOENT;
 			return -1;
 		}
-		new_argv[0] = iprog;
-		ret = spawnveq(mode, iprog, new_argv, envp);
-		free(iprog);
+		new_argv[0] = fullpath;
+		ret = spawnveq(mode, fullpath, new_argv, envp);
+		free(fullpath);
 	}
 
 	free(new_argv);
