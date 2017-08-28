@@ -240,15 +240,12 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 	mode_t usermode;
 
 	if (!(err = get_file_attr(file_name, &fdata))) {
-		int len = strlen(file_name);
-
 		buf->st_ino = 0;
 		buf->st_uid = DEFAULT_UID;
 		buf->st_gid = DEFAULT_GID;
 		buf->st_nlink = 1;
 		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
-		if (len > 4 && (!strcasecmp(file_name+len-4, ".exe") ||
-						!strcasecmp(file_name+len-4, ".com")))
+		if (has_exe_suffix(file_name))
 			buf->st_mode |= S_IEXEC;
 		buf->st_size = fdata.nFileSizeLow |
 			(((off64_t)fdata.nFileSizeHigh)<<32);
@@ -1002,6 +999,14 @@ int mingw_rmdir(const char *path)
 	return rmdir(path);
 }
 
+int has_exe_suffix(const char *name)
+{
+	int len = strlen(name);
+
+	return len > 4 && (!strcasecmp(name+len-4, ".exe") ||
+				!strcasecmp(name+len-4, ".com"));
+}
+
 /* check if path can be made into an executable by adding a suffix;
  * return an allocated string containing the path if it can;
  * return NULL if not.
@@ -1011,25 +1016,22 @@ int mingw_rmdir(const char *path)
 char *file_is_win32_executable(const char *p)
 {
 	char *path;
-	int len = strlen(p);
 
-	if (len > 4 && (!strcasecmp(p+len-4, ".exe") ||
-					!strcasecmp(p+len-4, ".com"))) {
+	if (has_exe_suffix(p)) {
 		return NULL;
 	}
 
-	if ( (path=malloc(len+5)) != NULL ) {
-		memcpy(path, p, len);
-		memcpy(path+len, ".exe", 5);
-		if (file_is_executable(path)) {
-			return path;
-		}
-		memcpy(path+len, ".com", 5);
-		if (file_is_executable(path)) {
-			return path;
-		}
-		free(path);
+	path = xasprintf("%s.exe", p);
+	if (file_is_executable(path)) {
+		return path;
 	}
+
+	memcpy(path+strlen(p), ".com", 5);
+	if (file_is_executable(path)) {
+		return path;
+	}
+
+	free(path);
 
 	return NULL;
 }

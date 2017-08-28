@@ -52,10 +52,7 @@ parse_interpreter(const char *cmd, char ***opts, int *nopts)
 	*opts = opt;
 
 	/* don't even try a .exe */
-	n = strlen(cmd);
-	if (n >= 4 &&
-	    (!strcasecmp(cmd+n-4, ".exe") ||
-	     !strcasecmp(cmd+n-4, ".com")))
+	if (has_exe_suffix(cmd))
 		return NULL;
 
 	fd = open(cmd, O_RDONLY);

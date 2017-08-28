@@ -13564,10 +13564,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			goto success;
 		}
 #if ENABLE_PLATFORM_MINGW32
-		len = strlen(fullname);
-		if (len > 4 &&
-		    (!strcasecmp(fullname+len-4, ".exe") ||
-		     !strcasecmp(fullname+len-4, ".com"))) {
+		if (has_exe_suffix(fullname)) {
 			if (stat(fullname, &statb) < 0) {
 				if (errno != ENOENT && errno != ENOTDIR)
 					e = errno;
@@ -13576,14 +13573,12 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 		}
 		else {
 			/* path_advance() has reserved space for .exe */
-			memcpy(fullname+len, ".exe", 5);
+			len = strlen(fullname);
+			strcat(fullname, ".exe");
 			if (stat(fullname, &statb) < 0) {
-				if (errno != ENOENT && errno != ENOTDIR)
-					e = errno;
 				memcpy(fullname+len, ".com", 5);
 				if (stat(fullname, &statb) < 0) {
-					if (errno != ENOENT && errno != ENOTDIR)
-						e = errno;
+					/* check for script */
 					fullname[len] = '\0';
 					if (stat(fullname, &statb) < 0) {
 						if (errno != ENOENT && errno != ENOTDIR)
