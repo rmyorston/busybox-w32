@@ -192,27 +192,24 @@ static intptr_t
 spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 {
 	char **new_argv;
-	int i, argc = 0;
+	int i, argc = -1;
 	intptr_t ret;
 
-	if (!argv) {
-		char *const empty_argv[] = { (char *)path, NULL };
-		return spawnve(mode, path, empty_argv, env);
-	}
+	while (argv[++argc])
+		;
 
-
-	while (argv[argc])
-		argc++;
-
-	new_argv = malloc(sizeof(*argv)*(argc+1));
+	new_argv = xmalloc(sizeof(*argv)*(argc+1));
 	for (i = 0;i < argc;i++)
 		new_argv[i] = quote_arg(argv[i]);
 	new_argv[argc] = NULL;
+
 	ret = spawnve(mode, path, new_argv, env);
+
 	for (i = 0;i < argc;i++)
 		if (new_argv[i] != argv[i])
 			free(new_argv[i]);
 	free(new_argv);
+
 	return ret;
 }
 
@@ -234,15 +231,15 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *con
 	char *int_name, *opts;
 	char *int_path = parse_interpreter(prog, &int_name, &opts);
 	char **new_argv;
-	int argc = 0;
+	int argc = -1;
 	char *fullpath = NULL;
 
 	if (!int_path)
 		return spawnveq(mode, prog, argv, envp);
 
 	nopts = opts != NULL;
-	while (argv[argc])
-		argc++;
+	while (argv[++argc])
+		;
 
 	new_argv = xmalloc(sizeof(*argv)*(argc+nopts+2));
 	new_argv[1] = opts;
@@ -325,10 +322,7 @@ mingw_execvp(const char *cmd, char *const *argv)
 int
 mingw_execve(const char *cmd, char *const *argv, char *const *envp)
 {
-	int ret;
-	int mode = P_WAIT;
-
-	ret = (int)mingw_spawn_interpreter(mode, cmd, argv, envp);
+	int ret = (int)mingw_spawn_interpreter(P_WAIT, cmd, argv, envp);
 	if (ret != -1)
 		exit(ret);
 	return ret;
