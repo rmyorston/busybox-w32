@@ -173,6 +173,21 @@ quote_arg(const char *arg)
 	return q;
 }
 
+static char *
+find_first_executable(const char *name)
+{
+	char *tmp, *path = getenv("PATH");
+	char *exe_path = NULL;
+
+	if (path) {
+		tmp = path = xstrdup(path);
+		exe_path = find_executable(name, &tmp);
+		free(path);
+	}
+
+	return exe_path;
+}
+
 static intptr_t
 spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 {
@@ -238,7 +253,6 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *con
 			(fullpath=file_is_win32_executable(int_path)) != NULL) {
 		new_argv[0] = fullpath ? fullpath : int_path;
 		ret = spawnveq(mode, new_argv[0], new_argv, envp);
-		free(fullpath);
 	} else
 #if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
 	if (find_applet_by_name(int_name) >= 0) {
@@ -246,22 +260,16 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *con
 		ret = mingw_spawn_applet(mode, new_argv, envp);
 	} else
 #endif
-	{
-		char *path = xstrdup(getenv("PATH"));
-		char *tmp = path;
-
-		fullpath = find_executable(int_name, &tmp);
-		free(path);
-		if (!fullpath) {
-			free(new_argv);
-			errno = ENOENT;
-			return -1;
-		}
+	if ((fullpath=find_first_executable(int_name)) != NULL) {
 		new_argv[0] = fullpath;
 		ret = spawnveq(mode, fullpath, new_argv, envp);
-		free(fullpath);
+	}
+	else {
+		errno = ENOENT;
+		ret = -1;
 	}
 
+	free(fullpath);
 	free(new_argv);
 	return ret;
 }
@@ -269,36 +277,24 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *con
 static intptr_t
 mingw_spawn_1(int mode, const char *cmd, char *const *argv, char *const *envp)
 {
-	intptr_t ret;
+	char *prog;
 
 #if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
 	if (find_applet_by_name(cmd) >= 0)
 		return mingw_spawn_applet(mode, argv, envp);
 	else
 #endif
-	if (strchr(cmd, '/') || strchr(cmd, '\\'))
+	if (strchr(cmd, '/') || strchr(cmd, '\\')) {
 		return mingw_spawn_interpreter(mode, cmd, argv, envp);
-	else {
-		char *tmp, *path = getenv("PATH");
-		char *prog;
-
-		if (!path) {
-			errno = ENOENT;
-			return -1;
-		}
-
-		/* executable_exists() does not return new file name */
-		tmp = path = xstrdup(path);
-		prog = find_executable(cmd, &tmp);
-		free(path);
-		if (!prog) {
-			errno = ENOENT;
-			return -1;
-		}
-		ret = mingw_spawn_interpreter(mode, prog, argv, envp);
-		free(prog);
 	}
-	return ret;
+	else if ((prog=find_first_executable(cmd)) != NULL) {
+		intptr_t ret = mingw_spawn_interpreter(mode, prog, argv, envp);
+		free(prog);
+		return ret;
+	}
+
+	errno = ENOENT;
+	return -1;
 }
 
 pid_t FAST_FUNC
