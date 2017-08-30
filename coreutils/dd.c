@@ -211,6 +211,12 @@ static bool write_and_stats(const void *buf, size_t len, size_t obs,
 # define XATOU_SFX xatoul_sfx
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+#define XATOSIZE_T xatoull_range_sfx
+#else
+#define XATOSIZE_T xatoul_range_sfx
+#endif
+
 #if ENABLE_FEATURE_DD_IBS_OBS
 static int parse_comma_flags(char *val, const char *words, const char *error_in)
 {
@@ -347,11 +353,11 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_FEATURE_DD_IBS_OBS
 		if (what == OP_ibs) {
 			/* Must fit into positive ssize_t */
-			ibs = xatoul_range_sfx(val, 1, ((size_t)-1L)/2, cwbkMG_suffixes);
+			ibs = XATOSIZE_T(val, 1, ((size_t)-1L)/2, cwbkMG_suffixes);
 			/*continue;*/
 		}
 		if (what == OP_obs) {
-			obs = xatoul_range_sfx(val, 1, ((size_t)-1L)/2, cwbkMG_suffixes);
+			obs = XATOSIZE_T(val, 1, ((size_t)-1L)/2, cwbkMG_suffixes);
 			/*continue;*/
 		}
 		if (what == OP_conv) {
@@ -364,7 +370,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 		}
 #endif
 		if (what == OP_bs) {
-			ibs = xatoul_range_sfx(val, 1, ((size_t)-1L)/2, cwbkMG_suffixes);
+			ibs = XATOSIZE_T(val, 1, ((size_t)-1L)/2, cwbkMG_suffixes);
 			obs = ibs;
 			/*continue;*/
 		}
