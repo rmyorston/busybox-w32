@@ -1103,6 +1103,7 @@ void exec_prog_or_SHELL(char **argv) NORETURN FAST_FUNC;
 
 /* xvfork() can't be a _function_, return after vfork in child mangles stack
  * in the parent. It must be a macro. */
+#if !ENABLE_PLATFORM_MINGW32
 #define xvfork() \
 ({ \
 	pid_t bb__xvfork_pid = vfork(); \
@@ -1110,6 +1111,9 @@ void exec_prog_or_SHELL(char **argv) NORETURN FAST_FUNC;
 		bb_perror_msg_and_die("vfork"); \
 	bb__xvfork_pid; \
 })
+#else
+#define xvfork() vfork()
+#endif
 #if BB_MMU
 pid_t xfork(void) FAST_FUNC;
 #endif

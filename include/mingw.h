@@ -7,11 +7,6 @@
  */
 typedef int gid_t;
 typedef int uid_t;
-#ifndef _WIN64
-typedef int pid_t;
-#else
-typedef __int64 pid_t;
-#endif
 
 #define DEFAULT_UID 1000
 #define DEFAULT_GID 1000
@@ -397,7 +392,6 @@ NOIMPL(getsid,pid_t pid UNUSED_PARAM);
 IMPL(getuid,int,DEFAULT_UID,void);
 int getlogin_r(char *buf, size_t len);
 int fcntl(int fd, int cmd, ...);
-#define fork() -1
 IMPL(fsync,int,0,int fd UNUSED_PARAM);
 int kill(pid_t pid, int sig);
 int link(const char *oldpath, const char *newpath);
@@ -417,7 +411,7 @@ long sysconf(int name);
 IMPL(getpagesize,int,4096,void);
 NOIMPL(ttyname_r,int fd UNUSED_PARAM, char *buf UNUSED_PARAM, int sz UNUSED_PARAM);
 int mingw_unlink(const char *pathname);
-NOIMPL(vfork,void);
+pid_t vfork(void);
 int mingw_access(const char *name, int mode);
 int mingw_rmdir(const char *name);
 int mingw_isatty(int fd);

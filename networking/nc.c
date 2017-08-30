@@ -198,7 +198,7 @@ int nc_main(int argc, char **argv)
 			}
 #endif
 			close_on_exec_on(sfd);
- accept_again:
+ IF_NC_EXTRA(accept_again:)
 			cfd = accept(sfd, NULL, 0);
 			if (cfd < 0)
 				bb_perror_msg_and_die("accept");
@@ -216,6 +216,7 @@ int nc_main(int argc, char **argv)
 		/*signal(SIGALRM, SIG_DFL);*/
 	}
 
+#if ENABLE_NC_EXTRA
 	/* -e given? */
 	if (execparam) {
 		pid_t pid;
@@ -234,6 +235,7 @@ int nc_main(int argc, char **argv)
 		IF_NC_EXTRA(BB_EXECVP(execparam[0], execparam);)
 		IF_NC_EXTRA(bb_perror_msg_and_die("can't execute '%s'", execparam[0]);)
 	}
+#endif
 
 	/* Select loop copying stdin to cfd, and cfd to stdout */
 
