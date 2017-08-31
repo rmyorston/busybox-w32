@@ -347,11 +347,11 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_FEATURE_DD_IBS_OBS
 		if (what == OP_ibs) {
 			/* Must fit into positive ssize_t */
-			ibs = xatoul_range_sfx(val, 1, ((size_t)-1L)/2, cwbkMG_suffixes);
+			ibs = xatoul_range_sfx(val, 1, ULONG_MAX/2, cwbkMG_suffixes);
 			/*continue;*/
 		}
 		if (what == OP_obs) {
-			obs = xatoul_range_sfx(val, 1, ((size_t)-1L)/2, cwbkMG_suffixes);
+			obs = xatoul_range_sfx(val, 1, ULONG_MAX/2, cwbkMG_suffixes);
 			/*continue;*/
 		}
 		if (what == OP_conv) {
@@ -364,7 +364,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 		}
 #endif
 		if (what == OP_bs) {
-			ibs = xatoul_range_sfx(val, 1, ((size_t)-1L)/2, cwbkMG_suffixes);
+			ibs = xatoul_range_sfx(val, 1, ULONG_MAX/2, cwbkMG_suffixes);
 			obs = ibs;
 			/*continue;*/
 		}
