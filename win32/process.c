@@ -412,21 +412,188 @@ UNUSED_PARAM
 	return sp;
 }
 
-int kill(pid_t pid, int sig)
-{
-	HANDLE h;
+/**
+ * If the process ID is positive invoke the callback for that process
+ * only.  If negative or zero invoke the callback for all descendants
+ * of the indicated process.  Zero indicates the current process; negative
+ * indicates the process with process ID -pid.
+ */
+typedef int (*kill_callback)(pid_t pid, int exit_code);
 
-	if (pid > 0 && sig == SIGTERM) {
-		if ((h=OpenProcess(PROCESS_TERMINATE, FALSE, pid)) != NULL &&
-				TerminateProcess(h, 0)) {
-			CloseHandle(h);
-			return 0;
+static int kill_pids(pid_t pid, int exit_code, kill_callback killer)
+{
+	DWORD pids[16384];
+	int max_len = sizeof(pids) / sizeof(*pids), i, len, ret = 0;
+
+	if(pid > 0)
+		pids[0] = (DWORD)pid;
+	else if (pid == 0)
+		pids[0] = (DWORD)getpid();
+	else
+		pids[0] = (DWORD)-pid;
+	len = 1;
+
+	/*
+	 * Even if Process32First()/Process32Next() seem to traverse the
+	 * processes in topological order (i.e. parent processes before
+	 * child processes), there is nothing in the Win32 API documentation
+	 * suggesting that this is guaranteed.
+	 *
+	 * Therefore, run through them at least twice and stop when no more
+	 * process IDs were added to the list.
+	 */
+	if (pid <= 0) {
+		HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+
+		if (snapshot == INVALID_HANDLE_VALUE) {
+			errno = err_win_to_posix(GetLastError());
+			return -1;
 		}
 
-		errno = err_win_to_posix(GetLastError());
-		if (h != NULL)
-			CloseHandle(h);
+		for (;;) {
+			PROCESSENTRY32 entry;
+			int orig_len = len;
+
+			memset(&entry, 0, sizeof(entry));
+			entry.dwSize = sizeof(entry);
+
+			if (!Process32First(snapshot, &entry))
+				break;
+
+			do {
+				for (i = len - 1; i >= 0; i--) {
+					if (pids[i] == entry.th32ProcessID)
+						break;
+					if (pids[i] == entry.th32ParentProcessID)
+						pids[len++] = entry.th32ProcessID;
+				}
+			} while (len < max_len && Process32Next(snapshot, &entry));
+
+			if (orig_len == len || len >= max_len)
+				break;
+		}
+
+		CloseHandle(snapshot);
+	}
+
+	for (i = len - 1; i >= 0; i--) {
+		if (killer(pids[i], exit_code)) {
+			errno = err_win_to_posix(GetLastError());
+			ret = -1;
+		}
+	}
+
+	return ret;
+}
+
+/**
+ * Determine whether a process runs in the same architecture as the current
+ * one. That test is required before we assume that GetProcAddress() returns
+ * a valid address *for the target process*.
+ */
+static inline int process_architecture_matches_current(HANDLE process)
+{
+	static BOOL current_is_wow = -1;
+	BOOL is_wow;
+
+	if (current_is_wow == -1 &&
+	    !IsWow64Process (GetCurrentProcess(), &current_is_wow))
+		current_is_wow = -2;
+	if (current_is_wow == -2)
+		return 0; /* could not determine current process' WoW-ness */
+	if (!IsWow64Process (process, &is_wow))
+		return 0; /* cannot determine */
+	return is_wow == current_is_wow;
+}
+
+/**
+ * This function tries to terminate a Win32 process, as gently as possible,
+ * by injecting a thread that calls ExitProcess().
+ *
+ * Note: as kernel32.dll is loaded before any process, the other process and
+ * this process will have ExitProcess() at the same address.
+ *
+ * The idea comes from the Dr Dobb's article "A Safer Alternative to
+ * TerminateProcess()" by Andrew Tucker (July 1, 1999),
+ * http://www.drdobbs.com/a-safer-alternative-to-terminateprocess/184416547
+ *
+ */
+static int exit_process(pid_t pid, int exit_code)
+{
+	HANDLE process;
+	DWORD code;
+	int ret = 0;
+
+	if (!(process = OpenProcess(SYNCHRONIZE | PROCESS_CREATE_THREAD |
+			PROCESS_QUERY_INFORMATION |
+			PROCESS_VM_OPERATION | PROCESS_VM_WRITE |
+			PROCESS_VM_READ, FALSE, pid))) {
 		return -1;
+	}
+
+	if (GetExitCodeProcess(process, &code) && code == STILL_ACTIVE) {
+		static int initialized;
+		static LPTHREAD_START_ROUTINE exit_process_address;
+		PVOID arg = (PVOID)(intptr_t)exit_code;
+		DWORD thread_id;
+		HANDLE thread;
+
+		if (!initialized) {
+			HINSTANCE kernel32 = GetModuleHandle("kernel32");
+			if (!kernel32) {
+				fprintf(stderr, "BUG: cannot find kernel32");
+				ret = -1;
+				goto finish;
+			}
+			exit_process_address = (LPTHREAD_START_ROUTINE)
+				GetProcAddress(kernel32, "ExitProcess");
+			initialized = 1;
+		}
+		if (!exit_process_address ||
+		    !process_architecture_matches_current(process)) {
+			ret = -1;
+			goto finish;
+		}
+
+		if ((thread = CreateRemoteThread(process, NULL, 0,
+					    exit_process_address,
+					    arg, 0, &thread_id))) {
+			CloseHandle(thread);
+		}
+	}
+
+ finish:
+	CloseHandle(process);
+	return ret;
+}
+
+/*
+ * This way of terminating processes is not gentle: they get no chance to
+ * clean up after themselves (closing file handles, removing .lock files,
+ * terminating spawned processes (if any), etc).
+ */
+static int terminate_process(pid_t pid, int exit_code)
+{
+	HANDLE process;
+	int ret;
+
+	if (!(process=OpenProcess(PROCESS_TERMINATE, FALSE, pid))) {
+		return -1;
+	}
+
+	ret = !TerminateProcess(process, exit_code);
+	CloseHandle(process);
+
+	return ret;
+}
+
+int kill(pid_t pid, int sig)
+{
+	if (sig == SIGTERM) {
+		return kill_pids(pid, 128+sig, exit_process);
+	}
+	else if (sig == SIGKILL) {
+		return kill_pids(pid, 128+sig, terminate_process);
 	}
 
 	errno = EINVAL;
