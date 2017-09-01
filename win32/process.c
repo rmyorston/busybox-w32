@@ -334,8 +334,18 @@ mingw_execv(const char *cmd, char *const *argv)
 	return mingw_execve(cmd, argv, environ);
 }
 
+static inline long long filetime_to_ticks(const FILETIME *ft)
+{
+	return (((long long)ft->dwHighDateTime << 32) + ft->dwLowDateTime)/
+				HNSEC_PER_TICK;
+}
+
 /* POSIX version in libbb/procps.c */
-procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags UNUSED_PARAM)
+procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags
+#if !ENABLE_FEATURE_PS_TIME && !ENABLE_FEATURE_PS_LONG
+UNUSED_PARAM
+#endif
+)
 {
 	PROCESSENTRY32 pe;
 
@@ -360,6 +370,41 @@ procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags UNUSED_PAR
 			return NULL;
 		}
 	}
+
+#if ENABLE_FEATURE_PS_TIME || ENABLE_FEATURE_PS_LONG
+	if (flags & (PSSCAN_STIME|PSSCAN_UTIME|PSSCAN_START_TIME)) {
+		HANDLE proc;
+		FILETIME crTime, exTime, keTime, usTime;
+
+		if ((proc=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
+					FALSE, pe.th32ProcessID))) {
+			if (GetProcessTimes(proc, &crTime, &exTime, &keTime, &usTime)) {
+				/* times in ticks since 1 January 1601 */
+				static long long boot_time = 0;
+				long long start_time;
+
+				if (boot_time == 0) {
+					long long ticks_since_boot;
+					FILETIME now;
+
+					ticks_since_boot = GetTickCount64()/MS_PER_TICK;
+					GetSystemTimeAsFileTime(&now);
+					boot_time = filetime_to_ticks(&now) - ticks_since_boot;
+				}
+
+				start_time = filetime_to_ticks(&crTime);
+				sp->start_time = (unsigned long)(start_time - boot_time);
+
+				sp->stime = (unsigned long)filetime_to_ticks(&keTime);
+				sp->utime = (unsigned long)filetime_to_ticks(&usTime);
+			}
+			else {
+				sp->start_time = sp->stime = sp->utime = 0;
+			}
+			CloseHandle(proc);
+		}
+	}
+#endif
 
 	sp->pid = pe.th32ProcessID;
 	sp->ppid = pe.th32ParentProcessID;

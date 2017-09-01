@@ -35,7 +35,6 @@
 //config:	bool "Enable -o time and -o etime specifiers"
 //config:	default y
 //config:	depends on (PS || MINIPS) && DESKTOP
-//config:	select PLATFORM_LINUX
 //config:
 //config:config FEATURE_PS_UNUSUAL_SYSTEMS
 //config:	bool "Support Linux prior to 2.4.0 and non-ELF systems"
@@ -126,7 +125,7 @@ static unsigned long get_uptime(void)
 	if (sysinfo(&info) < 0)
 		return 0;
 	return info.uptime;
-#elif 1
+#elif !ENABLE_PLATFORM_MINGW32
 	unsigned long uptime;
 	char buf[sizeof(uptime)*3 + 2];
 	/* /proc/uptime is "UPTIME_SEC.NN IDLE_SEC.NN\n"
@@ -137,6 +136,8 @@ static unsigned long get_uptime(void)
 	buf[sizeof(buf)-1] = '\0';
 	sscanf(buf, "%lu", &uptime);
 	return uptime;
+#elif ENABLE_PLATFORM_MINGW32
+	return GetTickCount64()/1000;
 #else
 	struct timespec ts;
 	if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0)
@@ -556,7 +557,7 @@ static void format_process(const procps_status_t *ps)
 # define SELINUX_O_PREFIX "label,"
 # define DEFAULT_O_STR    (SELINUX_O_PREFIX "pid,user" IF_FEATURE_PS_TIME(",time") ",args")
 #elif ENABLE_PLATFORM_MINGW32
-# define DEFAULT_O_STR    ("pid,ppid,comm")
+# define DEFAULT_O_STR    ("pid,ppid" IF_FEATURE_PS_TIME(",time,etime") ",comm")
 #else
 # define DEFAULT_O_STR    ("pid,user" IF_FEATURE_PS_TIME(",time") ",args")
 #endif

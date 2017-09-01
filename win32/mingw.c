@@ -707,7 +707,7 @@ int getlogin_r(char *buf, size_t len)
 long sysconf(int name)
 {
 	if ( name == _SC_CLK_TCK ) {
-		return 100;
+		return TICKS_PER_SECOND;
 	}
 	errno = EINVAL;
 	return -1;
@@ -1064,3 +1064,19 @@ off_t mingw_lseek(int fd, off_t offset, int whence)
 	}
 	return _lseeki64(fd, offset, whence);
 }
+
+#if ENABLE_FEATURE_PS_TIME || ENABLE_FEATURE_PS_LONG
+#undef GetTickCount64
+#include "lazyload.h"
+
+ULONGLONG CompatGetTickCount64(void)
+{
+	DECLARE_PROC_ADDR(kernel32.dll, ULONGLONG, GetTickCount64, void);
+
+	if (!INIT_PROC_ADDR(GetTickCount64)) {
+		return (ULONGLONG)GetTickCount();
+	}
+
+	return GetTickCount64();
+}
+#endif
