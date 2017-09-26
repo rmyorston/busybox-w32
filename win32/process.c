@@ -587,6 +587,18 @@ static int terminate_process(pid_t pid, int exit_code)
 	return ret;
 }
 
+static int test_process(pid_t pid, int exit_code UNUSED_PARAM)
+{
+	HANDLE process;
+
+	if (!(process=OpenProcess(PROCESS_TERMINATE, FALSE, pid))) {
+		return -1;
+	}
+
+	CloseHandle(process);
+	return 0;
+}
+
 int kill(pid_t pid, int sig)
 {
 	if (sig == SIGTERM) {
@@ -594,6 +606,9 @@ int kill(pid_t pid, int sig)
 	}
 	else if (sig == SIGKILL) {
 		return kill_pids(pid, 128+sig, terminate_process);
+	}
+	else if (sig == 0) {
+		return kill_pids(pid, 128+sig, test_process);
 	}
 
 	errno = EINVAL;
