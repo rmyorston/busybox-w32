@@ -576,7 +576,7 @@ static int terminate_process(pid_t pid, int exit_code)
 	return ret;
 }
 
-static int test_process(pid_t pid, int exit_code)
+static int test_process(pid_t pid, int exit_code UNUSED_PARAM)
 {
 	HANDLE process;
 
