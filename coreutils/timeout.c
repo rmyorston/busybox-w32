@@ -52,15 +52,13 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 	int signo;
 #if !ENABLE_PLATFORM_MINGW32
 	int status;
-#endif
-	int parent = 0;
-	int timeout = 10;
-#if !ENABLE_PLATFORM_MINGW32
-	pid_t pid;
 #else
 	intptr_t ret;
 	HANDLE h;
 #endif
+	int parent = 0;
+	int timeout = 10;
+	pid_t pid;
 #if !BB_MMU
 	char *sv1, *sv2;
 #endif
@@ -133,7 +131,7 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	BB_EXECVP_or_die(argv);
 #else /* ENABLE_PLATFORM_MINGW32 */
-	if (signo != SIGTERM)
+	if (signo != SIGTERM && signo != SIGKILL && signo != 0)
 		bb_error_msg_and_die("unknown signal '%s'", opt_s);
 
 	argv += optind;
@@ -154,7 +152,8 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 		}
 	}
 
-	TerminateProcess(h, 0);
+	pid = (pid_t)GetProcessId(h);
+	kill(pid, signo);
  finish:
 	CloseHandle(h);
 	return EXIT_SUCCESS;
