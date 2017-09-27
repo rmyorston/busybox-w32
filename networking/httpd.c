@@ -1371,12 +1371,13 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 				out_cnt += count;
 				count = 0;
 				/* "Status" header format is: "Status: 302 Redirected\r\n" */
-				if (out_cnt >= 7 && memcmp(rbuf, "Status:", 7) == 0) {
+				if (out_cnt >= 8 && memcmp(rbuf, "Status: ", 8) == 0) {
 					/* send "HTTP/1.0 " */
 					if (full_write(STDOUT_FILENO, HTTP_200, 9) != 9)
 						break;
-					rbuf += 7; /* skip "Status:" */
-					count = out_cnt - 7;
+					/* skip "Status: " (including space, sending "HTTP/1.0  NNN" is wrong) */
+					rbuf += 8;
+					count = out_cnt - 8;
 					out_cnt = -1; /* buffering off */
 				} else if (out_cnt >= 4) {
 					/* Did CGI add "HTTP"? */
@@ -2337,7 +2338,7 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 			if (STRNCASECMP(iobuf, "Range:") == 0) {
 				/* We know only bytes=NNN-[MMM] */
 				char *s = skip_whitespace(iobuf + sizeof("Range:")-1);
-				if (is_prefixed_with(s, "bytes=") == 0) {
+				if (is_prefixed_with(s, "bytes=")) {
 					s += sizeof("bytes=")-1;
 					range_start = BB_STRTOOFF(s, &s, 10);
 					if (s[0] != '-' || range_start < 0) {

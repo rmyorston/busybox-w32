@@ -8,7 +8,6 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
 //config:config I2CGET
 //config:	bool "i2cget (5.6 kb)"
 //config:	default y
@@ -61,16 +60,33 @@
  */
 
 #include "libbb.h"
-#include "common_bufsiz.h"
 
 #include <linux/i2c.h>
-#include <linux/i2c-dev.h>
 
 #define I2CDUMP_NUM_REGS		256
 
 #define I2CDETECT_MODE_AUTO		0
 #define I2CDETECT_MODE_QUICK		1
 #define I2CDETECT_MODE_READ		2
+
+/* linux/i2c-dev.h from i2c-tools overwrites the one from linux uapi
+ * and defines symbols already defined by linux/i2c.h.
+ * Also, it defines a bunch of static inlines which we would rather NOT
+ * inline. What a mess.
+ * We need only these definitions from linux/i2c-dev.h:
+ */
+#define I2C_SLAVE			0x0703
+#define I2C_SLAVE_FORCE			0x0706
+#define I2C_FUNCS			0x0705
+#define I2C_PEC				0x0708
+#define I2C_SMBUS			0x0720
+struct i2c_smbus_ioctl_data {
+	__u8 read_write;
+	__u8 command;
+	__u32 size;
+	union i2c_smbus_data *data;
+};
+/* end linux/i2c-dev.h */
 
 /*
  * This is needed for ioctl_or_perror_and_die() since it only accepts pointers.
@@ -438,19 +454,20 @@ static void confirm_action(int bus_addr, int mode, int data_addr, int pec)
 
 #if ENABLE_I2CGET
 //usage:#define i2cget_trivial_usage
-//usage:       "[-f] [-y] BUS CHIP-ADDRESS [DATA-ADDRESS [MODE]]"
+//usage:       "[-fy] BUS CHIP-ADDRESS [DATA-ADDRESS [MODE]]"
 //usage:#define i2cget_full_usage "\n\n"
-//usage:       "Read from I2C/SMBus chip registers\n"
-//usage:     "\n	I2CBUS	i2c bus number"
-//usage:     "\n	ADDRESS	0x03 - 0x77"
+//usage:       "Read from I2C/SMBus chip registers"
+//usage:     "\n"
+//usage:     "\n	I2CBUS	I2C bus number"
+//usage:     "\n	ADDRESS	0x03-0x77"
 //usage:     "\nMODE is:"
-//usage:     "\n	b	read byte data (default)"
-//usage:     "\n	w	read word data"
-//usage:     "\n	c	write byte/read byte"
+//usage:     "\n	b	Read byte data (default)"
+//usage:     "\n	w	Read word data"
+//usage:     "\n	c	Write byte/read byte"
 //usage:     "\n	Append p for SMBus PEC"
 //usage:     "\n"
-//usage:     "\n	-f	force access"
-//usage:     "\n	-y	disable interactive mode"
+//usage:     "\n	-f	Force access"
+//usage:     "\n	-y	Disable interactive mode"
 int i2cget_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int i2cget_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -520,23 +537,24 @@ int i2cget_main(int argc UNUSED_PARAM, char **argv)
 
 #if ENABLE_I2CSET
 //usage:#define i2cset_trivial_usage
-//usage:       "[-f] [-y] [-m MASK] BUS CHIP-ADDR DATA-ADDR [VALUE] ... [MODE]"
+//usage:       "[-fy] [-m MASK] BUS CHIP-ADDRESS DATA-ADDRESS [VALUE] ... [MODE]"
 //usage:#define i2cset_full_usage "\n\n"
-//usage:       "Set I2C registers\n"
-//usage:     "\n	I2CBUS	i2c bus number"
-//usage:     "\n	ADDRESS	0x03 - 0x77"
+//usage:       "Set I2C registers"
+//usage:     "\n"
+//usage:     "\n	I2CBUS	I2C bus number"
+//usage:     "\n	ADDRESS	0x03-0x77"
 //usage:     "\nMODE is:"
-//usage:     "\n	c	byte, no value"
-//usage:     "\n	b	byte data (default)"
-//usage:     "\n	w	word data"
+//usage:     "\n	c	Byte, no value"
+//usage:     "\n	b	Byte data (default)"
+//usage:     "\n	w	Word data"
 //usage:     "\n	i	I2C block data"
 //usage:     "\n	s	SMBus block data"
 //usage:     "\n	Append p for SMBus PEC"
 //usage:     "\n"
-//usage:     "\n	-f	force access"
-//usage:     "\n	-y	disable interactive mode"
-//usage:     "\n	-r	read back and compare the result"
-//usage:     "\n	-m MASK	mask specifying which bits to write"
+//usage:     "\n	-f	Force access"
+//usage:     "\n	-y	Disable interactive mode"
+//usage:     "\n	-r	Read back and compare the result"
+//usage:     "\n	-m MASK	Mask specifying which bits to write"
 int i2cset_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int i2cset_main(int argc, char **argv)
 {
@@ -879,23 +897,24 @@ static void dump_word_data(int bus_fd, unsigned first, unsigned last)
 }
 
 //usage:#define i2cdump_trivial_usage
-//usage:       "[-f] [-r FIRST-LAST] [-y] BUS ADDR [MODE]"
+//usage:       "[-fy] [-r FIRST-LAST] BUS ADDR [MODE]"
 //usage:#define i2cdump_full_usage "\n\n"
-//usage:       "Examine I2C registers\n"
-//usage:     "\n	I2CBUS	i2c bus number"
-//usage:     "\n	ADDRESS	0x03 - 0x77"
+//usage:       "Examine I2C registers"
+//usage:     "\n"
+//usage:     "\n	I2CBUS	I2C bus number"
+//usage:     "\n	ADDRESS	0x03-0x77"
 //usage:     "\nMODE is:"
-//usage:     "\n	b	byte (default)"
-//usage:     "\n	w	word"
-//usage:     "\n	W	word on even register addresses"
+//usage:     "\n	b	Byte (default)"
+//usage:     "\n	w	Word"
+//usage:     "\n	W	Word on even register addresses"
 //usage:     "\n	i	I2C block"
 //usage:     "\n	s	SMBus block"
-//usage:     "\n	c	consecutive byte"
+//usage:     "\n	c	Consecutive byte"
 //usage:     "\n	Append p for SMBus PEC"
 //usage:     "\n"
-//usage:     "\n	-f	force access"
-//usage:     "\n	-y	disable interactive mode"
-//usage:     "\n	-r	limit the number of registers being accessed"
+//usage:     "\n	-f	Force access"
+//usage:     "\n	-y	Disable interactive mode"
+//usage:     "\n	-r	Limit the number of registers being accessed"
 int i2cdump_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int i2cdump_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -1188,18 +1207,17 @@ static void will_skip(const char *cmd)
 }
 
 //usage:#define i2cdetect_trivial_usage
-//usage:       "[-F I2CBUS] [-l] [-y] [-a] [-q|-r] I2CBUS [FIRST LAST]"
+//usage:       "-l | -F I2CBUS | [-ya] [-q|-r] I2CBUS [FIRST LAST]"
 //usage:#define i2cdetect_full_usage "\n\n"
-//usage:       "Detect I2C chips.\n"
-//usage:     "\n	I2CBUS	i2c bus number"
-//usage:     "\n	FIRST and LAST limit the probing range"
+//usage:       "Detect I2C chips"
 //usage:     "\n"
-//usage:     "\n	-l	output list of installed busses"
-//usage:     "\n	-y	disable interactive mode"
-//usage:     "\n	-a	force scanning of non-regular addresses"
-//usage:     "\n	-q	use smbus quick write commands for probing (default)"
-//usage:     "\n	-r	use smbus read byte commands for probing"
-//usage:     "\n	-F	display list of functionalities"
+//usage:     "\n	-l	List installed buses"
+//usage:     "\n	-F BUS#	List functionalities on this bus"
+//usage:     "\n	-y	Disable interactive mode"
+//usage:     "\n	-a	Force scanning of non-regular addresses"
+//usage:     "\n	-q	Use smbus quick write commands for probing (default)"
+//usage:     "\n	-r	Use smbus read byte commands for probing"
+//usage:     "\n	FIRST and LAST limit probing range"
 int i2cdetect_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int i2cdetect_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -1214,7 +1232,8 @@ int i2cdetect_main(int argc UNUSED_PARAM, char **argv)
 	opts = getopt32(argv, "^"
 			"yaqrFl"
 			"\0"
-			"q--r:r--q:"/*mutually exclusive*/ "?3"/*up to 3 args*/
+			"q--r:r--q:"/*mutually exclusive*/
+			"?3"/*up to 3 args*/
 	);
 	argv += optind;
 

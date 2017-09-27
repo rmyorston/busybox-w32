@@ -6,7 +6,6 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
 /*
  * TODO:
  * - Add more regular expression support - search modifiers, certain matches, etc.
@@ -20,7 +19,6 @@
  * - the inp file pointer is used so that keyboard input works after
  *   redirected input has been read from stdin
  */
-
 //config:config LESS
 //config:	bool "less (15 kb)"
 //config:	default y
@@ -141,9 +139,9 @@
 #define ESC "\033"
 /* The escape codes for highlighted and normal text */
 #define HIGHLIGHT   ESC"[7m"
-#define NORMAL      ESC"[0m"
+#define NORMAL      ESC"[m"
 /* The escape code to home and clear to the end of screen */
-#define CLEAR       ESC"[H\033[J"
+#define CLEAR       ESC"[H"ESC"[J"
 /* The escape code to clear to the end of line */
 #define CLEAR_2_EOL ESC"[K"
 
@@ -285,9 +283,9 @@ static void set_tty_cooked(void)
 
 /* Move the cursor to a position (x,y), where (0,0) is the
    top-left corner of the console */
-static void move_cursor(int line, int row)
+static void move_cursor(int line, int col)
 {
-	printf(ESC"[%u;%uH", line, row);
+	printf(ESC"[%u;%uH", line, col);
 }
 
 static void clear_line(void)
@@ -1070,7 +1068,7 @@ static void reinitialize(void)
 	open_file_and_read_lines();
 #if ENABLE_FEATURE_LESS_ASK_TERMINAL
 	if (G.winsize_err)
-		printf("\033[999;999H" "\033[6n");
+		printf(ESC"[999;999H" ESC"[6n");
 #endif
 #if ENABLE_PLATFORM_MINGW32
 	reset_screen();
@@ -1135,7 +1133,7 @@ static int64_t getch_nowait(void)
 			goto again;
 		}
 		/* EOF/error (ssh session got killed etc) */
-		less_exit(0);
+		less_exit(EXIT_SUCCESS);
 	}
 	set_tty_cooked();
 	return key64;
@@ -1839,8 +1837,8 @@ int less_main(int argc, char **argv)
 {
 #if !ENABLE_PLATFORM_MINGW32
 	char *tty_name;
-	int tty_fd;
 #endif
+	int tty_fd;
 
 	INIT_G();
 
@@ -1901,18 +1899,12 @@ int less_main(int argc, char **argv)
 	G.kbd_fd_orig_flags = ndelay_on(tty_fd);
 	kbd_fd = tty_fd; /* save in a global */
 #else
-	kbd_fd = 0;
+	kbd_fd = tty_fd = 0;
 #endif
 
-	tcgetattr(kbd_fd, &term_orig);
-	term_less = term_orig;
-	term_less.c_lflag &= ~(ICANON | ECHO);
-	term_less.c_iflag &= ~(IXON | ICRNL);
-	/*term_less.c_oflag &= ~ONLCR;*/
-	term_less.c_cc[VMIN] = 1;
-	term_less.c_cc[VTIME] = 0;
+	get_termios_and_make_raw(tty_fd, &term_less, &term_orig, TERMIOS_RAW_CRNL);
 
-	IF_FEATURE_LESS_ASK_TERMINAL(G.winsize_err =) get_terminal_width_height(kbd_fd, &width, &max_displayed_line);
+	IF_FEATURE_LESS_ASK_TERMINAL(G.winsize_err =) get_terminal_width_height(tty_fd, &width, &max_displayed_line);
 	/* 20: two tabstops + 4 */
 	if (width < 20 || max_displayed_line < 3)
 		return bb_cat(argv);

@@ -14,7 +14,6 @@
  * xargs is described in the Single Unix Specification v3 at
  * http://www.opengroup.org/onlinepubs/007904975/utilities/xargs.html
  */
-
 //config:config XARGS
 //config:	bool "xargs (6.7 kb)"
 //config:	default y
@@ -60,6 +59,16 @@
 //config:	depends on XARGS
 //config:	help
 //config:	Support -I STR and -i[STR] options.
+//config:
+//config:config FEATURE_XARGS_SUPPORT_PARALLEL
+//config:	bool "Enable -P N: processes to run in parallel"
+//config:	default y
+//config:	depends on XARGS
+//config:
+//config:config FEATURE_XARGS_SUPPORT_ARGS_FILE
+//config:	bool "Enable -a FILE: use FILE instead of stdin"
+//config:	default y
+//config:	depends on XARGS
 
 //applet:IF_XARGS(APPLET_NOEXEC(xargs, xargs, BB_DIR_USR_BIN, BB_SUID_DROP, xargs))
 
@@ -103,37 +112,121 @@ struct globals {
 #endif
 	const char *eof_str;
 	int idx;
+#if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
+	int running_procs;
+	int max_procs;
+#endif
+	smalluint xargs_exitcode;
 } FIX_ALIASING;
 #define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { \
 	setup_common_bufsiz(); \
 	G.eof_str = NULL; /* need to clear by hand because we are NOEXEC applet */ \
+	G.idx = 0; \
+	IF_FEATURE_XARGS_SUPPORT_PARALLEL(G.running_procs = 0;) \
+	IF_FEATURE_XARGS_SUPPORT_PARALLEL(G.max_procs = 1;) \
+	G.xargs_exitcode = 0; \
 	IF_FEATURE_XARGS_SUPPORT_REPL_STR(G.repl_str = "{}";) \
 	IF_FEATURE_XARGS_SUPPORT_REPL_STR(G.eol_ch = '\n';) \
 } while (0)
 
 
+/*
+ * Returns 0 if xargs should continue (but may set G.xargs_exitcode to 123).
+ * Else sets G.xargs_exitcode to error code and returns nonzero.
+ *
+ * If G.max_procs == 0, performs final waitpid() loop for all children.
+ */
 static int xargs_exec(void)
 {
 	int status;
 
+#if !ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
 	status = spawn_and_wait(G.args);
+#else
+	if (G.max_procs == 1) {
+		status = spawn_and_wait(G.args);
+	} else {
+		pid_t pid;
+		int wstat;
+ again:
+		if (G.running_procs >= G.max_procs)
+			pid = safe_waitpid(-1, &wstat, 0);
+		else
+			pid = wait_any_nohang(&wstat);
+		if (pid > 0) {
+			/* We may have children we don't know about:
+			 * sh -c 'sleep 1 & exec xargs ...'
+			 * Do not make G.running_procs go negative.
+			 */
+			if (G.running_procs != 0)
+				G.running_procs--;
+			status = WIFSIGNALED(wstat)
+				? 0x180 + WTERMSIG(wstat)
+				: WEXITSTATUS(wstat);
+			if (status > 0 && status < 255) {
+				/* See below why 123 does not abort */
+				G.xargs_exitcode = 123;
+				status = 0;
+			}
+			if (status == 0)
+				goto again; /* maybe we have more children? */
+			/* else: "bad" status, will bail out */
+		} else if (G.max_procs != 0) {
+			/* Not in final waitpid() loop,
+			 * and G.running_procs < G.max_procs: start more procs
+			 */
+			status = spawn(G.args);
+			/* here "status" actually holds pid, or -1 */
+			if (status > 0) {
+				G.running_procs++;
+				status = 0;
+			}
+			/* else: status == -1 (failed to fork or exec) */
+		} else {
+			/* final waitpid() loop: must be ECHILD "no more children" */
+			status = 0;
+		}
+	}
+#endif
+	/* Manpage:
+	 * """xargs exits with the following status:
+	 * 0 if it succeeds
+	 * 123 if any invocation of the command exited with status 1-125
+	 * 124 if the command exited with status 255
+	 *     ("""If any invocation of the command exits with a status of 255,
+	 *     xargs will stop immediately without reading any further input.
+	 *     An error message is issued on stderr when this happens.""")
+	 * 125 if the command is killed by a signal
+	 * 126 if the command cannot be run
+	 * 127 if the command is not found
+	 * 1 if some other error occurred."""
+	 */
 	if (status < 0) {
 		bb_simple_perror_msg(G.args[0]);
-		return errno == ENOENT ? 127 : 126;
+		status = (errno == ENOENT) ? 127 : 126;
 	}
-	if (status == 255) {
-		bb_error_msg("%s: exited with status 255; aborting", G.args[0]);
-		return 124;
-	}
-	if (status >= 0x180) {
+	else if (status >= 0x180) {
 		bb_error_msg("'%s' terminated by signal %d",
 			G.args[0], status - 0x180);
-		return 125;
+		status = 125;
 	}
-	if (status)
-		return 123;
-	return 0;
+	else if (status != 0) {
+		if (status == 255) {
+			bb_error_msg("%s: exited with status 255; aborting", G.args[0]);
+			return 124;
+		}
+		/* "123 if any invocation of the command exited with status 1-125"
+		 * This implies that nonzero exit code is remembered,
+		 * but does not cause xargs to stop: we return 0.
+		 */
+		G.xargs_exitcode = 123;
+		status = 0;
+	}
+
+	if (status != 0)
+		G.xargs_exitcode = status;
+	return status;
 }
 
 /* In POSIX/C locale isspace is only these chars: "\t\n\v\f\r" and space.
@@ -144,7 +237,7 @@ static int xargs_exec(void)
 static void store_param(char *s)
 {
 	/* Grow by 256 elements at once */
-	if (!(G.idx & 0xff)) { /* G.idx == N*256 */
+	if (!(G.idx & 0xff)) { /* G.idx == N*256? */
 		/* Enlarge, make G.args[(N+1)*256 - 1] last valid idx */
 		G.args = xrealloc(G.args, sizeof(G.args[0]) * (G.idx + 0x100));
 	}
@@ -444,12 +537,18 @@ static int xargs_ask_confirmation(void)
 //usage:	IF_FEATURE_XARGS_SUPPORT_ZERO_TERM(
 //usage:     "\n	-0	Input is separated by NUL characters"
 //usage:	)
+//usage:	IF_FEATURE_XARGS_SUPPORT_ARGS_FILE(
+//usage:     "\n	-a FILE	Read from FILE instead of stdin"
+//usage:	)
 //usage:     "\n	-t	Print the command on stderr before execution"
 //usage:     "\n	-e[STR]	STR stops input processing"
 //usage:     "\n	-n N	Pass no more than N args to PROG"
 //usage:     "\n	-s N	Pass command line of no more than N bytes"
 //usage:	IF_FEATURE_XARGS_SUPPORT_REPL_STR(
 //usage:     "\n	-I STR	Replace STR within PROG ARGS with input line"
+//usage:	)
+//usage:	IF_FEATURE_XARGS_SUPPORT_PARALLEL(
+//usage:     "\n	-P N	Run up to N PROGs in parallel"
 //usage:	)
 //usage:	IF_FEATURE_XARGS_SUPPORT_TERMOPT(
 //usage:     "\n	-x	Exit if size is exceeded"
@@ -488,13 +587,15 @@ enum {
 	IF_FEATURE_XARGS_SUPPORT_CONFIRMATION("p") \
 	IF_FEATURE_XARGS_SUPPORT_TERMOPT(     "x") \
 	IF_FEATURE_XARGS_SUPPORT_ZERO_TERM(   "0") \
-	IF_FEATURE_XARGS_SUPPORT_REPL_STR(    "I:i::")
+	IF_FEATURE_XARGS_SUPPORT_REPL_STR(    "I:i::") \
+	IF_FEATURE_XARGS_SUPPORT_PARALLEL(    "P:+") \
+	IF_FEATURE_XARGS_SUPPORT_ARGS_FILE(   "a:")
 
 int xargs_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
-int xargs_main(int argc, char **argv)
+int xargs_main(int argc UNUSED_PARAM, char **argv)
 {
+	int initial_idx;
 	int i;
-	int child_error = 0;
 	char *max_args;
 	char *max_chars;
 	char *buf;
@@ -507,6 +608,7 @@ int xargs_main(int argc, char **argv)
 #else
 #define read_args process_stdin
 #endif
+	IF_FEATURE_XARGS_SUPPORT_ARGS_FILE(char *opt_a = NULL;)
 
 	INIT_G();
 
@@ -514,7 +616,19 @@ int xargs_main(int argc, char **argv)
 		"no-run-if-empty\0" No_argument "r",
 		&max_args, &max_chars, &G.eof_str, &G.eof_str
 		IF_FEATURE_XARGS_SUPPORT_REPL_STR(, &G.repl_str, &G.repl_str)
+		IF_FEATURE_XARGS_SUPPORT_PARALLEL(, &G.max_procs)
+		IF_FEATURE_XARGS_SUPPORT_ARGS_FILE(, &opt_a)
 	);
+
+#if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
+	if (G.max_procs <= 0) /* -P0 means "run lots of them" */
+		G.max_procs = 100; /* let's not go crazy high */
+#endif
+
+#if ENABLE_FEATURE_XARGS_SUPPORT_ARGS_FILE
+	if (opt_a)
+		xmove_fd(xopen(opt_a, O_RDONLY), 0);
+#endif
 
 	/* -E ""? You may wonder why not just omit -E?
 	 * This is used for portability:
@@ -528,11 +642,11 @@ int xargs_main(int argc, char **argv)
 	}
 
 	argv += optind;
-	argc -= optind;
+	//argc -= optind;
 	if (!argv[0]) {
 		/* default behavior is to echo all the filenames */
 		*--argv = (char*)"echo";
-		argc++;
+		//argc++;
 	}
 
 	/*
@@ -587,7 +701,6 @@ int xargs_main(int argc, char **argv)
 		 */
 		G.args = NULL;
 		G.argv = argv;
-		argc = 0;
 		read_args = process_stdin_with_replace;
 		/* Make -I imply -r. GNU findutils seems to do the same: */
 		/* (otherwise "echo -n | xargs -I% echo %" would SEGV) */
@@ -595,30 +708,27 @@ int xargs_main(int argc, char **argv)
 	} else
 #endif
 	{
-		/* Allocate pointers for execvp.
+		/* Store the command to be executed, part 1.
 		 * We can statically allocate (argc + n_max_arg + 1) elements
 		 * and do not bother with resizing args[], but on 64-bit machines
 		 * this results in args[] vector which is ~8 times bigger
 		 * than n_max_chars! That is, with n_max_chars == 20k,
 		 * args[] will take 160k (!), which will most likely be
 		 * almost entirely unused.
-		 *
-		 * See store_param() for matching 256-step growth logic
 		 */
-		G.args = xmalloc(sizeof(G.args[0]) * ((argc + 0xff) & ~0xff));
-		/* Store the command to be executed, part 1 */
 		for (i = 0; argv[i]; i++)
-			G.args[i] = argv[i];
+			store_param(argv[i]);
 	}
 
+	initial_idx = G.idx;
 	while (1) {
 		char *rem;
 
-		G.idx = argc;
+		G.idx = initial_idx;
 		rem = read_args(n_max_chars, n_max_arg, buf);
 		store_param(NULL);
 
-		if (!G.args[argc]) {
+		if (!G.args[initial_idx]) { /* not even one ARG was added? */
 			if (*rem != '\0')
 				bb_error_msg_and_die("argument line too long");
 			if (opt & OPT_NO_EMPTY)
@@ -638,11 +748,8 @@ int xargs_main(int argc, char **argv)
 		}
 
 		if (!(opt & OPT_INTERACTIVE) || xargs_ask_confirmation()) {
-			child_error = xargs_exec();
-		}
-
-		if (child_error > 0 && child_error != 123) {
-			break;
+			if (xargs_exec() != 0)
+				break; /* G.xargs_exitcode is set by xargs_exec() */
 		}
 
 		overlapping_strcpy(buf, rem);
@@ -653,7 +760,12 @@ int xargs_main(int argc, char **argv)
 		free(buf);
 	}
 
-	return child_error;
+#if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
+	G.max_procs = 0;
+	xargs_exec(); /* final waitpid() loop */
+#endif
+
+	return G.xargs_exitcode;
 }
 
 

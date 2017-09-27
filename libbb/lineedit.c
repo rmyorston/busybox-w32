@@ -2321,7 +2321,7 @@ static int32_t reverse_i_search(int timeout)
  */
 int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *command, int maxsize)
 {
-	int len;
+	int len, n;
 	int timeout;
 #if ENABLE_FEATURE_TAB_COMPLETION
 	smallint lastWasTab = 0;
@@ -2336,15 +2336,15 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 
 	INIT_S();
 
+	n = get_termios_and_make_raw(STDIN_FILENO, &new_settings, &initial_settings, 0
+		| TERMIOS_CLEAR_ISIG /* turn off INTR (ctrl-C), QUIT, SUSP */
+	);
 #if ENABLE_PLATFORM_MINGW32
-	memset(initial_settings.c_cc, 0, sizeof(initial_settings.c_cc));
 	initial_settings.c_cc[VINTR] = CTRL('C');
 	initial_settings.c_cc[VEOF] = CTRL('D');
-	if (!isatty(0) || !isatty(1)) {
+	if (n > 0 || !isatty(0) || !isatty(1)) {
 #else
-	if (tcgetattr(STDIN_FILENO, &initial_settings) < 0
-	 || (initial_settings.c_lflag & (ECHO|ICANON)) == ICANON
-	) {
+	if (n != 0 || (initial_settings.c_lflag & (ECHO|ICANON)) == ICANON) {
 #endif
 		/* Happens when e.g. stty -echo was run before.
 		 * But if ICANON is not set, we don't come here.
@@ -2398,18 +2398,6 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 #endif
 #define command command_must_not_be_used
 
-	new_settings = initial_settings;
-	/* ~ICANON: unbuffered input (most c_cc[] are disabled, VMIN/VTIME are enabled) */
-	/* ~ECHO, ~ECHONL: turn off echoing, including newline echoing */
-	/* ~ISIG: turn off INTR (ctrl-C), QUIT, SUSP */
-	new_settings.c_lflag &= ~(ICANON | ECHO | ECHONL | ISIG);
-	/* reads will block only if < 1 char is available */
-	new_settings.c_cc[VMIN] = 1;
-	/* no timeout (reads block forever) */
-	new_settings.c_cc[VTIME] = 0;
-	/* Should be not needed if ISIG is off: */
-	/* Turn off CTRL-C */
-	/* new_settings.c_cc[VINTR] = _POSIX_VDISABLE; */
 	tcsetattr_stdin_TCSANOW(&new_settings);
 
 #if ENABLE_USERNAME_OR_HOMEDIR
@@ -2942,7 +2930,7 @@ int main(int argc, char **argv)
 #if ENABLE_FEATURE_EDITING_FANCY_PROMPT
 		"\\[\\033[32;1m\\]\\u@\\[\\x1b[33;1m\\]\\h:"
 		"\\[\\033[34;1m\\]\\w\\[\\033[35;1m\\] "
-		"\\!\\[\\e[36;1m\\]\\$ \\[\\E[0m\\]";
+		"\\!\\[\\e[36;1m\\]\\$ \\[\\E[m\\]";
 #else
 		"% ";
 #endif

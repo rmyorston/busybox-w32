@@ -7,10 +7,6 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
-/* BB_AUDIT SUSv3 N/A */
-/* BB_AUDIT GNU defects -- only option -n is supported. */
-
 //config:config WATCH
 //config:	bool "watch (4.1 kb)"
 //config:	default y
@@ -35,7 +31,12 @@
 //usage:       "Mon Dec 17 10:31:42 GMT 2000\n"
 //usage:       "Mon Dec 17 10:31:44 GMT 2000"
 
+/* BB_AUDIT SUSv3 N/A */
+/* BB_AUDIT GNU defects -- only option -n is supported. */
+
 #include "libbb.h"
+
+#define ESC "\033"
 
 // procps 2.0.18:
 // watch [-d] [-n seconds]
@@ -77,7 +78,7 @@ int watch_main(int argc UNUSED_PARAM, char **argv)
 	header = NULL;
 	while (1) {
 		/* home; clear to the end of screen */
-		printf("\033[H""\033[J");
+		printf(ESC"[H" ESC"[J");
 		if (!(opt & 0x2)) { // no -t
 			const unsigned time_len = sizeof("1234-67-90 23:56:89");
 
