@@ -1399,16 +1399,9 @@ ash_msg_and_raise_error(const char *msg, ...)
 }
 
 /*
- * Use '%m' to append error string on platforms that support it, '%s' and
- * strerror() on those that don't.
- *
  * 'fmt' must be a string literal.
  */
-#ifdef HAVE_PRINTF_PERCENTM
-#define ash_msg_and_raise_perror(fmt, ...) ash_msg_and_raise_error(fmt ": %m", ##__VA_ARGS__)
-#else
-#define ash_msg_and_raise_perror(fmt, ...) ash_msg_and_raise_error(fmt ": %s", ##__VA_ARGS__, strerror(errno))
-#endif
+#define ash_msg_and_raise_perror(fmt, ...) ash_msg_and_raise_error(fmt ": "STRERROR_FMT, ##__VA_ARGS__ STRERROR_ERRNO)
 
 static void raise_error_syntax(const char *) NORETURN;
 static void
@@ -2474,8 +2467,11 @@ listsetvar(struct strlist *list_set_var, int flags)
 /*
  * Generate a list of variables satisfying the given conditions.
  */
+#if !ENABLE_FEATURE_SH_NOFORK
+# define listvars(on, off, lp, end) listvars(on, off, end)
+#endif
 static char **
-listvars(int on, int off, char ***end)
+listvars(int on, int off, struct strlist *lp, char ***end)
 {
 	struct var **vpp;
 	struct var *vp;
@@ -2488,12 +2484,40 @@ listvars(int on, int off, char ***end)
 	do {
 		for (vp = *vpp; vp; vp = vp->next) {
 			if ((vp->flags & mask) == on) {
+#if ENABLE_FEATURE_SH_NOFORK
+				/* If variable with the same name is both
+				 * exported and temporarily set for a command:
+				 *  export ZVAR=5
+				 *  ZVAR=6 printenv
+				 * then "ZVAR=6" will be both in vartab and
+				 * lp lists. Do not pass it twice to printenv.
+				 */
+				struct strlist *lp1 = lp;
+				while (lp1) {
+					if (strcmp(lp1->text, vp->var_text) == 0)
+						goto skip;
+					lp1 = lp1->next;
+				}
+#endif
 				if (ep == stackstrend())
 					ep = growstackstr();
 				*ep++ = (char*)vp->var_text;
+#if ENABLE_FEATURE_SH_NOFORK
+ skip: ;
+#endif
 			}
 		}
 	} while (++vpp < vartab + VTABSIZE);
+
+#if ENABLE_FEATURE_SH_NOFORK
+	while (lp) {
+		if (ep == stackstrend())
+			ep = growstackstr();
+		*ep++ = lp->text;
+		lp = lp->next;
+	}
+#endif
+
 	if (ep == stackstrend())
 		ep = growstackstr();
 	if (end)
@@ -8250,7 +8274,7 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 	int exerrno;
 	int applet_no = -1; /* used only by FEATURE_SH_STANDALONE */
 
-	envp = listvars(VEXPORT, VUNSET, /*end:*/ NULL);
+	envp = listvars(VEXPORT, VUNSET, /*strlist:*/ NULL, /*end:*/ NULL);
 	if ((strchr(prog, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(prog, '\\')))
 #if ENABLE_FEATURE_SH_STANDALONE
 	 || (applet_no = find_applet_by_name(prog)) >= 0
@@ -10395,7 +10419,11 @@ evalcommand(union node *cmd, int flags)
 		/* find_command() encodes applet_no as (-2 - applet_no) */
 		int applet_no = (- cmdentry.u.index - 2);
 		if (applet_no >= 0 && APPLET_IS_NOFORK(applet_no)) {
-			listsetvar(varlist.list, VEXPORT|VSTACK);
+			char **sv_environ;
+
+			INT_OFF;
+			sv_environ = environ;
+			environ = listvars(VEXPORT, VUNSET, varlist.list, /*end:*/ NULL);
 			/*
 			 * Run <applet>_main().
 			 * Signals (^C) can't interrupt here.
@@ -10404,8 +10432,8 @@ evalcommand(union node *cmd, int flags)
 			 * and/or wait for user input ineligible for NOFORK:
 			 * for example, "yes" or "rm" (rm -i waits for input).
 			 */
-			INT_OFF;
 			status = run_nofork_applet(applet_no, argv);
+			environ = sv_environ;
 			/*
 			 * Try enabling NOFORK for "yes" applet.
 			 * ^C _will_ stop it (write returns EINTR),
@@ -11344,7 +11372,7 @@ showvars(const char *sep_prefix, int on, int off)
 	const char *sep;
 	char **ep, **epend;
 
-	ep = listvars(on, off, &epend);
+	ep = listvars(on, off, /*strlist:*/ NULL, &epend);
 	qsort(ep, epend - ep, sizeof(char *), vpcmp);
 
 	sep = *sep_prefix ? " " : sep_prefix;
@@ -11353,9 +11381,17 @@ showvars(const char *sep_prefix, int on, int off)
 		const char *p;
 		const char *q;
 
-		p = strchrnul(*ep, '=');
+		p = endofname(*ep);
+/* Used to have simple "p = strchrnul(*ep, '=')" here instead, but this
+ * makes "export -p" to have output not suitable for "eval":
+ * import os
+ * os.environ["test-test"]="test"
+ * if os.fork() == 0:
+ *   os.execv("ash", [ 'ash', '-c', 'eval $(export -p); echo OK' ])  # fixes this
+ * os.execv("ash", [ 'ash', '-c', 'env | grep test-test' ])
+ */
 		q = nullstr;
-		if (*p)
+		if (*p == '=')
 			q = single_quote(++p);
 		out1fmt("%s%s%.*s%s\n", sep_prefix, sep, (int)(p - *ep), *ep, q);
 	}
@@ -13146,7 +13182,24 @@ expandstr(const char *ps, int syntax_type)
 
 	saveprompt = doprompt;
 	doprompt = 0;
-	readtoken1(pgetc(), syntax_type, FAKEEOFMARK, 0);
+
+	/* readtoken1() might die horribly.
+	 * Try a prompt with syntactically wrong command:
+	 * PS1='$(date "+%H:%M:%S) > '
+	 */
+	{
+		volatile int saveint;
+		struct jmploc *volatile savehandler = exception_handler;
+		struct jmploc jmploc;
+		SAVE_INT(saveint);
+		if (setjmp(jmploc.loc) == 0) {
+			exception_handler = &jmploc;
+			readtoken1(pgetc(), syntax_type, FAKEEOFMARK, 0);
+		}
+		exception_handler = savehandler;
+		RESTORE_INT(saveint);
+	}
+
 	doprompt = saveprompt;
 
 	popfile();
@@ -13215,7 +13268,7 @@ evalstring(char *s, int flags)
 
 	exception_handler = savehandler;
 	if (ex)
-                longjmp(exception_handler->loc, ex);
+		longjmp(exception_handler->loc, ex);
 
 	return status;
 }
@@ -14069,8 +14122,8 @@ umaskcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		}
 	} else {
 		char *modestr = *argptr;
-                /* numeric umasks are taken as-is */
-                /* symbolic umasks are inverted: "umask a=rx" calls umask(222) */
+		/* numeric umasks are taken as-is */
+		/* symbolic umasks are inverted: "umask a=rx" calls umask(222) */
 		if (!isdigit(modestr[0]))
 			mask ^= 0777;
 		mask = bb_parse_mode(modestr, mask);
@@ -14236,8 +14289,18 @@ init(void)
 		}
 #endif
 		for (envp = environ; envp && *envp; envp++) {
-			p = endofname(*envp);
-			if (p != *envp && *p == '=') {
+/* Used to have
+ *			p = endofname(*envp);
+ *			if (p != *envp && *p == '=') {
+ * here to weed out badly-named variables, but this breaks
+ * scenarios where people do want them passed to children:
+ * import os
+ * os.environ["test-test"]="test"
+ * if os.fork() == 0:
+ *   os.execv("ash", [ 'ash', '-c', 'eval $(export -p); echo OK' ])  # fixes this
+ * os.execv("ash", [ 'ash', '-c', 'env | grep test-test' ])  # breaks this
+ */
+			if (strchr(*envp, '=')) {
 				setvareq(*envp, VEXPORT|VTEXTFIXED);
 			}
 		}

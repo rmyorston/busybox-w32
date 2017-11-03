@@ -391,8 +391,10 @@ static int open_stdio_to_tty(const char* tty_name)
 		/* fd can be only < 0 or 0: */
 		fd = device_open(tty_name, O_RDWR);
 		if (fd) {
-			message(L_LOG | L_CONSOLE, "can't open %s: %s",
-				tty_name, strerror(errno));
+			message(L_LOG | L_CONSOLE, "can't open %s: "STRERROR_FMT,
+				tty_name
+				STRERROR_ERRNO
+			);
 			return 0; /* failure */
 		}
 		dup2(STDIN_FILENO, STDOUT_FILENO);
@@ -469,7 +471,7 @@ static void init_exec(const char *command)
 	}
 	/* Here command never contains the dash, cmd[0] might */
 	BB_EXECVP(command, cmd);
-	message(L_LOG | L_CONSOLE, "can't run '%s': %s", command, strerror(errno));
+	message(L_LOG | L_CONSOLE, "can't run '%s': "STRERROR_FMT, command STRERROR_ERRNO);
 	/* returns if execvp fails */
 }
 
@@ -1062,6 +1064,12 @@ int init_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	if (!DEBUG_INIT) {
+		/* Some users send poweroff signals to init VERY early.
+		 * To handle this, mask signals early,
+		 * and unmask them only after signal handlers are installed.
+		 */
+		sigprocmask_allsigs(SIG_BLOCK);
+
 		/* Expect to be invoked as init with PID=1 or be invoked as linuxrc */
 		if (getpid() != 1
 		 && (!ENABLE_LINUXRC || applet_name[0] != 'l') /* not linuxrc? */
@@ -1102,29 +1110,6 @@ int init_main(int argc UNUSED_PARAM, char **argv)
 #if !ENABLE_FEATURE_INIT_QUIET
 	/* Hello world */
 	message(L_CONSOLE | L_LOG, "init started: %s", bb_banner);
-#endif
-
-#if 0
-/* It's 2013, does anyone really still depend on this? */
-/* If you do, consider adding swapon to sysinit actions then! */
-/* struct sysinfo is linux-specific */
-# ifdef __linux__
-	/* Make sure there is enough memory to do something useful. */
-	/*if (ENABLE_SWAPONOFF) - WRONG: we may have non-bbox swapon*/ {
-		struct sysinfo info;
-
-		if (sysinfo(&info) == 0
-		 && (info.mem_unit ? info.mem_unit : 1) * (long long)info.totalram < 1024*1024
-		) {
-			message(L_CONSOLE, "Low memory, forcing swapon");
-			/* swapon -a requires /proc typically */
-			new_init_action(SYSINIT, "mount -t proc proc /proc", "");
-			/* Try to turn on swap */
-			new_init_action(SYSINIT, "swapon -a", "");
-			run_actions(SYSINIT);   /* wait and removing */
-		}
-	}
-# endif
 #endif
 
 	/* Check if we are supposed to be in single user mode */
@@ -1202,6 +1187,8 @@ int init_main(int argc UNUSED_PARAM, char **argv)
 			+ (1 << SIGHUP)  /* reread /etc/inittab */
 #endif
 			, record_signo);
+
+		sigprocmask_allsigs(SIG_UNBLOCK);
 	}
 
 	/* Now run everything that needs to be run */

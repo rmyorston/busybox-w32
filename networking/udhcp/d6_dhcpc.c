@@ -702,13 +702,15 @@ static NOINLINE int send_d6_renew(uint32_t xid, struct in6_addr *server_ipv6, st
 	opt_ptr = add_d6_client_options(opt_ptr);
 
 	bb_error_msg("sending %s", "renew");
-	if (server_ipv6)
+	if (server_ipv6) {
 		return d6_send_kernel_packet(
 			&packet, (opt_ptr - (uint8_t*) &packet),
 			our_cur_ipv6, CLIENT_PORT6,
 			server_ipv6, SERVER_PORT6,
 			client_config.ifindex
+			/* TODO? send_flags: MSG_DONTROUTE (see IPv4 code for reason why) */
 		);
+	}
 	return d6_mcast_from_client_config_ifindex(&packet, opt_ptr);
 }
 
@@ -881,9 +883,14 @@ static int d6_raw_socket(int ifindex)
 	fd = xsocket(PF_PACKET, SOCK_DGRAM, htons(ETH_P_IPV6));
 	log2("got raw socket fd %d", fd);
 
+	memset(&sock, 0, sizeof(sock)); /* let's be deterministic */
 	sock.sll_family = AF_PACKET;
 	sock.sll_protocol = htons(ETH_P_IPV6);
 	sock.sll_ifindex = ifindex;
+	/*sock.sll_hatype = ARPHRD_???;*/
+	/*sock.sll_pkttype = PACKET_???;*/
+	/*sock.sll_halen = ???;*/
+	/*sock.sll_addr[8] = ???;*/
 	xbind(fd, (struct sockaddr *) &sock, sizeof(sock));
 
 #if 0
@@ -1425,7 +1432,7 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 				len = d6_recv_raw_packet(&srv6_buf, &packet, sockfd);
 			if (len == -1) {
 				/* Error is severe, reopen socket */
-				bb_error_msg("read error: %s, reopening socket", strerror(errno));
+				bb_error_msg("read error: "STRERROR_FMT", reopening socket" STRERROR_ERRNO);
 				sleep(discover_timeout); /* 3 seconds by default */
 				change_listen_mode(listen_mode); /* just close and reopen */
 			}

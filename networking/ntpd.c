@@ -71,7 +71,7 @@
 //usage:	"[-dnqNw"IF_FEATURE_NTPD_SERVER("l -I IFACE")"] [-S PROG] [-p PEER]..."
 //usage:#define ntpd_full_usage "\n\n"
 //usage:       "NTP client/server\n"
-//usage:     "\n	-d	Verbose"
+//usage:     "\n	-d	Verbose (may be repeated)"
 //usage:     "\n	-n	Do not daemonize"
 //usage:     "\n	-q	Quit after clock is set"
 //usage:     "\n	-N	Run at high priority"
@@ -155,7 +155,8 @@
 #define RETRY_INTERVAL    32    /* on send/recv error, retry in N secs (need to be power of 2) */
 #define NOREPLY_INTERVAL 512    /* sent, but got no reply: cap next query by this many seconds */
 #define RESPONSE_INTERVAL 16    /* wait for reply up to N secs */
-#define HOSTNAME_INTERVAL  5    /* hostname lookup failed. Wait N secs for next try */
+#define HOSTNAME_INTERVAL  4    /* hostname lookup failed. Wait N * peer->dns_errors secs for next try */
+#define DNS_ERRORS_CAP  0x3f    /* peer->dns_errors is in [0..63] */
 
 /* Step threshold (sec). std ntpd uses 0.128.
  */
@@ -301,6 +302,7 @@ typedef struct {
 	uint8_t          lastpkt_status;
 	uint8_t          lastpkt_stratum;
 	uint8_t          reachable_bits;
+	uint8_t          dns_errors;
 	/* when to send new query (if p_fd == -1)
 	 * or when receive times out (if p_fd >= 0): */
 	double           next_action_time;
@@ -802,10 +804,10 @@ resolve_peer_hostname(peer_t *p)
 		p->p_dotted = xmalloc_sockaddr2dotted_noport(&lsa->u.sa);
 		VERB1 if (strcmp(p->p_hostname, p->p_dotted) != 0)
 			bb_error_msg("'%s' is %s", p->p_hostname, p->p_dotted);
-	} else {
-		/* error message is emitted by host2sockaddr() */
-		set_next(p, HOSTNAME_INTERVAL);
+		p->dns_errors = 0;
+		return lsa;
 	}
+	p->dns_errors = ((p->dns_errors << 1) | 1) & DNS_ERRORS_CAP;
 	return lsa;
 }
 
@@ -866,10 +868,8 @@ do_sendto(int fd,
 static void
 send_query_to_peer(peer_t *p)
 {
-	if (!p->p_lsa) {
-		if (!resolve_peer_hostname(p))
-			return;
-	}
+	if (!p->p_lsa)
+		return;
 
 	/* Why do we need to bind()?
 	 * See what happens when we don't bind:
@@ -2441,12 +2441,41 @@ int ntpd_main(int argc UNUSED_PARAM, char **argv)
  did_poll:
 		gettime1900d(); /* sets G.cur_time */
 		if (nfds <= 0) {
-			if (!bb_got_signal /* poll wasn't interrupted by a signal */
-			 && G.cur_time - G.last_script_run > 11*60
-			) {
+			double ct;
+			int dns_error;
+
+			if (bb_got_signal)
+				break; /* poll was interrupted by a signal */
+
+			if (G.cur_time - G.last_script_run > 11*60) {
 				/* Useful for updating battery-backed RTC and such */
 				run_script("periodic", G.last_update_offset);
 				gettime1900d(); /* sets G.cur_time */
+			}
+
+			/* Resolve peer names to IPs, if not resolved yet.
+			 * We do it only when poll timed out:
+			 * this way, we almost never overlap DNS resolution with
+			 * "request-reply" packet round trip.
+			 */
+			dns_error = 0;
+			ct = G.cur_time;
+			for (item = G.ntp_peers; item != NULL; item = item->link) {
+				peer_t *p = (peer_t *) item->data;
+				if (p->next_action_time <= ct && !p->p_lsa) {
+					/* This can take up to ~10 sec per each DNS query */
+					dns_error |= (!resolve_peer_hostname(p));
+				}
+			}
+			if (!dns_error)
+				goto check_unsync;
+			/* Set next time for those which are still not resolved */
+			gettime1900d(); /* sets G.cur_time (needed for set_next()) */
+			for (item = G.ntp_peers; item != NULL; item = item->link) {
+				peer_t *p = (peer_t *) item->data;
+				if (p->next_action_time <= ct && !p->p_lsa) {
+					set_next(p, HOSTNAME_INTERVAL * p->dns_errors);
+				}
 			}
 			goto check_unsync;
 		}
