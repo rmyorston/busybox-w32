@@ -905,6 +905,11 @@ size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm
 				t = newfmt + m + 1;
 				fmt = newfmt;
 			}
+			else if ( t[1] == '-' && t[2] != '\0' &&
+						strchr("dHIjmMSUwWyY", t[2]) ) {
+				/* Microsoft uses '#' rather than '-' to remove padding */
+				t[1] = '#';
+			}
 			else if ( t[1] != '\0' ) {
 				++t;
 			}
