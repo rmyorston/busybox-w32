@@ -134,16 +134,6 @@ config GLOBBING
 	  the BusyBox binary to handle wildcard expansion using the C runtime
 	  set this to 'Y'.
 
-config SAFE_ENV
-	bool "Manipulate the environment through safe API calls"
-	default n
-	depends on PLATFORM_MINGW32
-	help
-	  Enable this option to use safe API calls when clearing environment
-	  variables.  This is necessary if BusyBox is to run on ReactOS or
-	  64-bit Windows.  The default is 'N', which must be used if BusyBox
-	  is to run on Windows XP.
-
 config PAM
 	bool "Support PAM (Pluggable Authentication Modules)"
 	default n
