@@ -6,7 +6,6 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
 /* Notes:
  *   Setting an absolute priority was obsoleted in SUSv2 and removed
  *   in SUSv3.  However, the common linux version of renice does
@@ -42,10 +41,6 @@
 #include "libbb.h"
 #include <sys/resource.h>
 
-void BUG_bad_PRIO_PROCESS(void);
-void BUG_bad_PRIO_PGRP(void);
-void BUG_bad_PRIO_USER(void);
-
 int renice_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int renice_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -59,12 +54,9 @@ int renice_main(int argc UNUSED_PARAM, char **argv)
 	char *arg;
 
 	/* Yes, they are not #defines in glibc 2.4! #if won't work */
-	if (PRIO_PROCESS < CHAR_MIN || PRIO_PROCESS > CHAR_MAX)
-		BUG_bad_PRIO_PROCESS();
-	if (PRIO_PGRP < CHAR_MIN || PRIO_PGRP > CHAR_MAX)
-		BUG_bad_PRIO_PGRP();
-	if (PRIO_USER < CHAR_MIN || PRIO_USER > CHAR_MAX)
-		BUG_bad_PRIO_USER();
+	BUILD_BUG_ON(PRIO_PROCESS < CHAR_MIN || PRIO_PROCESS > CHAR_MAX);
+	BUILD_BUG_ON(PRIO_PGRP < CHAR_MIN || PRIO_PGRP > CHAR_MAX);
+	BUILD_BUG_ON(PRIO_USER < CHAR_MIN || PRIO_USER > CHAR_MAX);
 
 	arg = *++argv;
 
@@ -102,6 +94,7 @@ int renice_main(int argc UNUSED_PARAM, char **argv)
 		/* Process an ID arg. */
 		if (which == PRIO_USER) {
 			struct passwd *p;
+			/* NB: use of getpwnam makes it risky to be NOFORK, switch to getpwnam_r? */
 			p = getpwnam(arg);
 			if (!p) {
 				bb_error_msg("unknown user %s", arg);

@@ -37,7 +37,7 @@
 //config:	elapsed time and speed.
 //config:
 //config:config FEATURE_DD_IBS_OBS
-//config:	bool "Enable ibs, obs and conv options"
+//config:	bool "Enable ibs, obs, iflag and conv options"
 //config:	default y
 //config:	depends on DD
 //config:	help
@@ -57,7 +57,7 @@
 
 //usage:#define dd_trivial_usage
 //usage:       "[if=FILE] [of=FILE] " IF_FEATURE_DD_IBS_OBS("[ibs=N] [obs=N] ") "[bs=N] [count=N] [skip=N]\n"
-//usage:       "	[seek=N]" IF_FEATURE_DD_IBS_OBS(" [conv=notrunc|noerror|sync|fsync] [iflag=skip_bytes]")
+//usage:       "	[seek=N]" IF_FEATURE_DD_IBS_OBS(" [conv=notrunc|noerror|sync|fsync] [iflag=skip_bytes|fullblock]")
 //usage:#define dd_full_usage "\n\n"
 //usage:       "Copy a file with converting and formatting\n"
 //usage:     "\n	if=FILE		Read from FILE instead of stdin"
@@ -79,6 +79,7 @@
 //usage:     "\n	conv=fsync	Physically write data out before finishing"
 //usage:     "\n	conv=swab	Swap every pair of bytes"
 //usage:     "\n	iflag=skip_bytes	skip=N is in bytes"
+//usage:     "\n	iflag=fullblock	Read full blocks"
 //usage:	)
 //usage:	IF_FEATURE_DD_STATUS(
 //usage:     "\n	status=noxfer	Suppress rate output"
@@ -130,11 +131,12 @@ enum {
 	/* start of input flags */
 	FLAG_IFLAG_SHIFT = 5,
 	FLAG_SKIP_BYTES = (1 << 5) * ENABLE_FEATURE_DD_IBS_OBS,
+	FLAG_FULLBLOCK = (1 << 6) * ENABLE_FEATURE_DD_IBS_OBS,
 	/* end of input flags */
-	FLAG_TWOBUFS = (1 << 6) * ENABLE_FEATURE_DD_IBS_OBS,
-	FLAG_COUNT   = 1 << 7,
-	FLAG_STATUS_NONE = 1 << 8,
-	FLAG_STATUS_NOXFER = 1 << 9,
+	FLAG_TWOBUFS = (1 << 7) * ENABLE_FEATURE_DD_IBS_OBS,
+	FLAG_COUNT   = 1 << 8,
+	FLAG_STATUS_NONE = 1 << 9,
+	FLAG_STATUS_NOXFER = 1 << 10,
 };
 
 static void dd_output_status(int UNUSED_PARAM cur_signal)
@@ -195,14 +197,18 @@ static bool write_and_stats(const void *buf, size_t len, size_t obs,
 	ssize_t n = full_write_or_warn(buf, len, filename);
 	if (n < 0)
 		return 1;
-	if ((size_t)n == obs)
-		G.out_full++;
-	else if (n) /* > 0 */
-		G.out_part++;
 #if ENABLE_FEATURE_DD_THIRD_STATUS_LINE
 	G.total_bytes += n;
 #endif
-	return 0;
+	if ((size_t)n == obs) {
+		G.out_full++;
+		return 0;
+	}
+	if ((size_t)n == len) {
+		G.out_part++;
+		return 0;
+	}
+	return 1;
 }
 
 #if ENABLE_LFS
@@ -251,7 +257,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 	static const char conv_words[] ALIGN1 =
 		"notrunc\0""sync\0""noerror\0""fsync\0""swab\0";
 	static const char iflag_words[] ALIGN1 =
-		"skip_bytes\0";
+		"skip_bytes\0""fullblock\0";
 #endif
 #if ENABLE_FEATURE_DD_STATUS
 	static const char status_words[] ALIGN1 =
@@ -290,6 +296,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 	/* Partially implemented: */
 	//swab          swap every pair of input bytes: will abort on non-even reads
 		OP_iflag_skip_bytes,
+		OP_iflag_fullblock,
 #endif
 	};
 	smallint exitcode = EXIT_FAILURE;
@@ -456,7 +463,13 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 		size_t blocksz = (G.flags & FLAG_SKIP_BYTES) ? 1 : ibs;
 		if (lseek(ifd, skip * blocksz, SEEK_CUR) < 0) {
 			do {
-				ssize_t n = safe_read(ifd, ibuf, blocksz);
+				ssize_t n;
+#if ENABLE_FEATURE_DD_IBS_OBS
+				if (G.flags & FLAG_FULLBLOCK)
+					n = full_read(ifd, ibuf, blocksz);
+				else
+#endif
+					n = safe_read(ifd, ibuf, blocksz);
 				if (n < 0)
 					goto die_infile;
 				if (n == 0)
@@ -477,6 +490,11 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 			n = ibs;
 		}
 		else
+#if ENABLE_FEATURE_DD_IBS_OBS
+		if (G.flags & FLAG_FULLBLOCK)
+			n = full_read(ifd, ibuf, ibs);
+		else
+#endif
 			n = safe_read(ifd, ibuf, ibs);
 		if (n == 0)
 			break;

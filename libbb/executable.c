@@ -25,7 +25,8 @@ int FAST_FUNC file_is_executable(const char *name)
  *  you may call find_executable again with this PATHp to continue
  *  (if it's not NULL).
  * return NULL otherwise; (PATHp is undefined)
- * in all cases (*PATHp) contents will be trashed (s/:/NUL/).
+ * in all cases (*PATHp) contents are temporarily modified
+ * but are restored on return (s/:/NUL/ and back).
  */
 #if !ENABLE_PLATFORM_MINGW32
 #define next_path_sep(s) strchr(s, ':')
@@ -48,14 +49,30 @@ char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 
 	p = *PATHp;
 	while (p) {
+		int ex;
+#if ENABLE_PLATFORM_MINGW32
+		char sep;
+
 		n = (char*)next_path_sep(p);
-		if (n)
-			*n++ = '\0';
+		if (n) {
+			sep = *n;
+			*n = '\0';
+		}
+#else
+		n = strchr(p, ':');
+		if (n) *n = '\0';
+#endif
 		p = concat_path_file(
 			p[0] ? p : ".", /* handle "::" case */
 			filename
 		);
-		if (file_is_executable(p)) {
+		ex = file_is_executable(p);
+#if ENABLE_PLATFORM_MINGW32
+		if (n) *n++ = sep;
+#else
+		if (n) *n++ = ':';
+#endif
+		if (ex) {
 			*PATHp = n;
 			return p;
 		}
@@ -78,10 +95,8 @@ char* FAST_FUNC find_executable(const char *filename, char **PATHp)
  */
 int FAST_FUNC executable_exists(const char *filename)
 {
-	char *path = xstrdup(getenv("PATH"));
-	char *tmp = path;
-	char *ret = find_executable(filename, &tmp);
-	free(path);
+	char *path = getenv("PATH");
+	char *ret = find_executable(filename, &path);
 	free(ret);
 	return ret != NULL;
 }

@@ -47,17 +47,13 @@
  *      follow IFS rules more precisely, including update semantics
  *      tilde expansion
  *      aliases
- *      builtins mandated by standards we don't support:
- *          [un]alias, command, fc:
- *          command -v CMD: print "/path/to/CMD"
- *              prints "CMD" for builtins
- *              prints "alias ALIAS='EXPANSION'" for aliases
- *              prints nothing and sets $? to 1 if not found
- *          command -V CMD: print "CMD is /path/CMD|a shell builtin|etc"
- *          command [-p] CMD: run CMD, even if a function CMD also exists
- *              (can use this to override standalone shell as well)
- *              -p: use default $PATH
+ *      "command" missing features:
+ *          command -p CMD: run CMD using default $PATH
+ *              (can use this to override standalone shell as well?)
  *          command BLTIN: disables special-ness (e.g. errors do not abort)
+ *          command -V CMD1 CMD2 CMD3 (multiple args) (not in standard)
+ *      builtins mandated by standards we don't support:
+ *          [un]alias, fc:
  *          fc -l[nr] [BEG] [END]: list range of commands in history
  *          fc [-e EDITOR] [BEG] [END]: edit/rerun range of commands
  *          fc -s [PAT=REP] [CMD]: rerun CMD, replacing PAT with REP
@@ -123,6 +119,18 @@
 //config:	depends on HUSH_BASH_COMPAT
 //config:	help
 //config:	Enable {abc,def} extension.
+//config:
+//config:config HUSH_LINENO_VAR
+//config:	bool "$LINENO variable"
+//config:	default y
+//config:	depends on HUSH_BASH_COMPAT
+//config:
+//config:config HUSH_BASH_SOURCE_CURDIR
+//config:	bool "'source' and '.' builtins search current directory after $PATH"
+//config:	default n   # do not encourage non-standard behavior
+//config:	depends on HUSH_BASH_COMPAT
+//config:	help
+//config:	This is not compliant with standards. Avoid if possible.
 //config:
 //config:config HUSH_INTERACTIVE
 //config:	bool "Interactive mode"
@@ -250,6 +258,11 @@
 //config:
 //config:config HUSH_WAIT
 //config:	bool "wait builtin"
+//config:	default y
+//config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
+//config:
+//config:config HUSH_COMMAND
+//config:	bool "command builtin"
 //config:	default y
 //config:	depends on HUSH || SH_IS_HUSH || BASH_IS_HUSH
 //config:
@@ -462,7 +475,10 @@
 # define MINUS_PLUS_EQUAL_QUESTION ("%#:-=+?" + 3)
 #endif
 
-#define SPECIAL_VAR_SYMBOL   3
+#define SPECIAL_VAR_SYMBOL_STR "\3"
+#define SPECIAL_VAR_SYMBOL       3
+/* The "variable" with name "\1" emits string "\3". Testcase: "echo ^C" */
+#define SPECIAL_VAR_QUOTED_SVS   1
 
 struct variable;
 
@@ -608,6 +624,9 @@ typedef enum redir_type {
 struct command {
 	pid_t pid;                  /* 0 if exited */
 	int assignment_cnt;         /* how many argv[i] are assignments? */
+#if ENABLE_HUSH_LINENO_VAR
+	unsigned lineno;
+#endif
 	smallint cmd_type;          /* CMD_xxx */
 #define CMD_NORMAL   0
 #define CMD_SUBSHELL 1
@@ -926,6 +945,10 @@ struct globals {
 	unsigned count_SIGCHLD;
 	unsigned handled_SIGCHLD;
 	smallint we_have_children;
+#endif
+#if ENABLE_HUSH_LINENO_VAR
+	unsigned lineno;
+	char *lineno_var;
 #endif
 	struct FILE_list *FILE_list;
 	/* Which signals have non-DFL handler (even with no traps set)?
@@ -1924,7 +1947,7 @@ static void hush_exit(int exitcode)
 	if (G.exiting <= 0 && G_traps && G_traps[0] && G_traps[0][0]) {
 		char *argv[3];
 		/* argv[0] is unused */
-		argv[1] = G_traps[0];
+		argv[1] = xstrdup(G_traps[0]); /* copy, since EXIT trap handler may modify G_traps[0] */
 		argv[2] = NULL;
 		G.exiting = 1; /* prevent EXIT trap recursion */
 		/* Note: G_traps[0] is not cleared!
@@ -1985,10 +2008,12 @@ static int check_and_run_traps(void)
 				smalluint save_rcode;
 				char *argv[3];
 				/* argv[0] is unused */
-				argv[1] = G_traps[sig];
+				argv[1] = xstrdup(G_traps[sig]);
+				/* why strdup? trap can modify itself: trap 'trap "echo oops" INT' INT */
 				argv[2] = NULL;
 				save_rcode = G.last_exitcode;
 				builtin_eval(argv);
+				free(argv[1]);
 //FIXME: shouldn't it be set to 128 + sig instead?
 				G.last_exitcode = save_rcode;
 				last_sig = sig;
@@ -2131,6 +2156,13 @@ static int set_local_var(char *str, unsigned flags)
 	}
 
 	name_len = eq_sign - str + 1; /* including '=' */
+#if ENABLE_HUSH_LINENO_VAR
+	if (G.lineno_var) {
+		if (name_len == 7 && strncmp("LINENO", str, 6) == 0)
+			G.lineno_var = NULL;
+	}
+#endif
+
 	var_pp = &G.top_var;
 	while ((cur = *var_pp) != NULL) {
 		if (strncmp(cur->varstr, str, name_len) != 0) {
@@ -2252,10 +2284,16 @@ static int unset_local_var_len(const char *name, int name_len)
 
 	if (!name)
 		return EXIT_SUCCESS;
+
 #if ENABLE_HUSH_GETOPTS
 	if (name_len == 6 && strncmp(name, "OPTIND", 6) == 0)
 		G.getopt_count = 0;
 #endif
+#if ENABLE_HUSH_LINENO_VAR
+	if (name_len == 6 && G.lineno_var && strncmp(name, "LINENO", 6) == 0)
+		G.lineno_var = NULL;
+#endif
+
 	var_pp = &G.top_var;
 	while ((cur = *var_pp) != NULL) {
 		if (strncmp(cur->varstr, name, name_len) == 0 && cur->varstr[name_len] == '=') {
@@ -2278,7 +2316,7 @@ static int unset_local_var_len(const char *name, int name_len)
 	return EXIT_SUCCESS;
 }
 
-#if ENABLE_HUSH_UNSET
+#if ENABLE_HUSH_UNSET || ENABLE_HUSH_GETOPTS
 static int unset_local_var(const char *name)
 {
 	return unset_local_var_len(name, strlen(name));
@@ -2300,7 +2338,7 @@ static void unset_vars(char **strings)
 	free(strings);
 }
 
-#if BASH_HOSTNAME_VAR || ENABLE_FEATURE_SH_MATH || ENABLE_HUSH_READ
+#if BASH_HOSTNAME_VAR || ENABLE_FEATURE_SH_MATH || ENABLE_HUSH_READ || ENABLE_HUSH_GETOPTS
 static void FAST_FUNC set_local_var_from_halves(const char *name, const char *val)
 {
 	char *var = xasprintf("%s=%s", name, val);
@@ -2574,6 +2612,12 @@ static int i_getch(struct in_str *i)
  out:
 	debug_printf("file_get: got '%c' %d\n", ch, ch);
 	i->last_char = ch;
+#if ENABLE_HUSH_LINENO_VAR
+	if (ch == '\n') {
+		G.lineno++;
+		debug_printf_parse("G.lineno++ = %u\n", G.lineno);
+	}
+#endif
 	return ch;
 }
 
@@ -3374,8 +3418,13 @@ static void debug_print_tree(struct pipe *pi, int lvl)
 
 	pin = 0;
 	while (pi) {
-		fdprintf(2, "%*spipe %d res_word=%s followup=%d %s\n", lvl*2, "",
-				pin, RES[pi->res_word], pi->followup, PIPE[pi->followup]);
+		fdprintf(2, "%*spipe %d %sres_word=%s followup=%d %s\n",
+				lvl*2, "",
+				pin,
+				(IF_HAS_KEYWORDS(pi->pi_inverted ? "! " :) ""),
+				RES[pi->res_word],
+				pi->followup, PIPE[pi->followup]
+		);
 		prn = 0;
 		while (prn < pi->num_cmds) {
 			struct command *command = &pi->cmds[prn];
@@ -3384,6 +3433,9 @@ static void debug_print_tree(struct pipe *pi, int lvl)
 			fdprintf(2, "%*s cmd %d assignment_cnt:%d",
 					lvl*2, "", prn,
 					command->assignment_cnt);
+#if ENABLE_HUSH_LINENO_VAR
+			fdprintf(2, " LINENO:%u", command->lineno);
+#endif
 			if (command->group) {
 				fdprintf(2, " group %s: (argv=%p)%s%s\n",
 						CMDTYPE[command->cmd_type],
@@ -3456,6 +3508,10 @@ static int done_command(struct parse_context *ctx)
 	ctx->command = command = &pi->cmds[pi->num_cmds];
  clear_and_ret:
 	memset(command, 0, sizeof(*command));
+#if ENABLE_HUSH_LINENO_VAR
+	command->lineno = G.lineno;
+	debug_printf_parse("command->lineno = G.lineno (%u)\n", G.lineno);
+#endif
 	return pi->num_cmds; /* used only for 0/nonzero check */
 }
 
@@ -3643,9 +3699,9 @@ static const struct reserved_combo* match_reserved_word(o_string *word)
 	}
 	return NULL;
 }
-/* Return 0: not a keyword, 1: keyword
+/* Return NULL: not a keyword, else: keyword
  */
-static int reserved_word(o_string *word, struct parse_context *ctx)
+static const struct reserved_combo* reserved_word(o_string *word, struct parse_context *ctx)
 {
 # if ENABLE_HUSH_CASE
 	static const struct reserved_combo reserved_match = {
@@ -3658,7 +3714,7 @@ static int reserved_word(o_string *word, struct parse_context *ctx)
 		return 0;
 	r = match_reserved_word(word);
 	if (!r)
-		return 0;
+		return r; /* NULL */
 
 	debug_printf("found reserved word %s, res %d\n", r->literal, r->res);
 # if ENABLE_HUSH_CASE
@@ -3673,7 +3729,7 @@ static int reserved_word(o_string *word, struct parse_context *ctx)
 			ctx->ctx_res_w = RES_SNTX;
 		}
 		ctx->ctx_inverted = 1;
-		return 1;
+		return r;
 	}
 	if (r->flag & FLAG_START) {
 		struct parse_context *old;
@@ -3685,7 +3741,7 @@ static int reserved_word(o_string *word, struct parse_context *ctx)
 	} else if (/*ctx->ctx_res_w == RES_NONE ||*/ !(ctx->old_flag & (1 << r->res))) {
 		syntax_error_at(word->data);
 		ctx->ctx_res_w = RES_SNTX;
-		return 1;
+		return r;
 	} else {
 		/* "{...} fi" is ok. "{...} if" is not
 		 * Example:
@@ -3735,7 +3791,7 @@ static int reserved_word(o_string *word, struct parse_context *ctx)
 		*ctx = *old;   /* physical copy */
 		free(old);
 	}
-	return 1;
+	return r;
 }
 #endif /* HAS_KEYWORDS */
 
@@ -3801,9 +3857,26 @@ static int done_word(o_string *word, struct parse_context *ctx)
 		 && ctx->ctx_res_w != RES_CASE
 # endif
 		) {
-			int reserved = reserved_word(word, ctx);
-			debug_printf_parse("checking for reserved-ness: %d\n", reserved);
+			const struct reserved_combo *reserved;
+			reserved = reserved_word(word, ctx);
+			debug_printf_parse("checking for reserved-ness: %d\n", !!reserved);
 			if (reserved) {
+# if ENABLE_HUSH_LINENO_VAR
+/* Case:
+ * "while ...; do
+ *	cmd ..."
+ * If we don't close the pipe _now_, immediately after "do", lineno logic
+ * sees "cmd" as starting at "do" - i.e., at the previous line.
+ */
+				if (0
+				 IF_HUSH_IF(|| reserved->res == RES_THEN)
+				 IF_HUSH_IF(|| reserved->res == RES_ELIF)
+				 IF_HUSH_IF(|| reserved->res == RES_ELSE)
+				 IF_HUSH_LOOPS(|| reserved->res == RES_DO)
+				) {
+					done_pipe(ctx, PIPE_SEQ);
+				}
+# endif
 				o_reset_to_empty_unquoted(word);
 				debug_printf_parse("done_word return %d\n",
 						(ctx->ctx_res_w == RES_SNTX));
@@ -3840,21 +3913,6 @@ static int done_word(o_string *word, struct parse_context *ctx)
 			word->o_assignment = MAYBE_ASSIGNMENT;
 		}
 		debug_printf_parse("word->o_assignment='%s'\n", assignment_flag[word->o_assignment]);
-
-		if (word->has_quoted_part
-		 /* optimization: and if it's ("" or '') or ($v... or `cmd`...): */
-		 && (word->data[0] == '\0' || word->data[0] == SPECIAL_VAR_SYMBOL)
-		 /* (otherwise it's known to be not empty and is already safe) */
-		) {
-			/* exclude "$@" - it can expand to no word despite "" */
-			char *p = word->data;
-			while (p[0] == SPECIAL_VAR_SYMBOL
-			    && (p[1] & 0x7f) == '@'
-			    && p[2] == SPECIAL_VAR_SYMBOL
-			) {
-				p += 3;
-			}
-		}
 		command->argv = add_string_to_strings(command->argv, xstrdup(word->data));
 		debug_print_strings("word appended to argv", command->argv);
 	}
@@ -4503,9 +4561,10 @@ static int parse_dollar(o_string *as_string,
 
 	debug_printf_parse("parse_dollar entered: ch='%c'\n", ch);
 	if (isalpha(ch)) {
+ make_var:
 		ch = i_getch(input);
 		nommu_addchr(as_string, ch);
- make_var:
+ /*make_var1:*/
 		o_addchr(dest, SPECIAL_VAR_SYMBOL);
 		while (1) {
 			debug_printf_parse(": '%c'\n", ch);
@@ -4698,19 +4757,22 @@ static int parse_dollar(o_string *as_string,
 	}
 #endif
 	case '_':
-		ch = i_getch(input);
-		nommu_addchr(as_string, ch);
-		ch = i_peek_and_eat_bkslash_nl(input);
-		if (isalnum(ch)) { /* it's $_name or $_123 */
-			ch = '_';
-			goto make_var;
-		}
-		/* else: it's $_ */
+		goto make_var;
+#if 0
 	/* TODO: $_ and $-: */
 	/* $_ Shell or shell script name; or last argument of last command
 	 * (if last command wasn't a pipe; if it was, bash sets $_ to "");
 	 * but in command's env, set to full pathname used to invoke it */
 	/* $- Option flags set by set builtin or shell options (-i etc) */
+		ch = i_getch(input);
+		nommu_addchr(as_string, ch);
+		ch = i_peek_and_eat_bkslash_nl(input);
+		if (isalnum(ch)) { /* it's $_name or $_123 */
+			ch = '_';
+			goto make_var1;
+		}
+		/* else: it's $_ */
+#endif
 	default:
 		o_addQchr(dest, '$');
 	}
@@ -4914,7 +4976,8 @@ static struct pipe *parse_stream(char **pstring,
 			next = i_peek(input);
 
 		is_special = "{}<>;&|()#'" /* special outside of "str" */
-				"\\$\"" IF_HUSH_TICK("`"); /* always special */
+				"\\$\"" IF_HUSH_TICK("`") /* always special */
+				SPECIAL_VAR_SYMBOL_STR;
 		/* Are { and } special here? */
 		if (ctx.command->argv /* word [word]{... - non-special */
 		 || dest.length       /* word{... - non-special */
@@ -4948,6 +5011,22 @@ static struct pipe *parse_stream(char **pstring,
 		}
 
 		if (is_blank) {
+#if ENABLE_HUSH_LINENO_VAR
+/* Case:
+ * "while ...; do<whitespace><newline>
+ *	cmd ..."
+ * would think that "cmd" starts in <whitespace> -
+ * i.e., at the previous line.
+ * We need to skip all whitespace before newlines.
+ */
+			while (ch != '\n') {
+				next = i_peek(input);
+				if (next != ' ' && next != '\t' && next != '\n')
+					break; /* next char is not ws */
+				ch = i_getch(input);
+			}
+			/* ch == last eaten whitespace char */
+#endif
 			if (done_word(&dest, &ctx)) {
 				goto parse_error;
 			}
@@ -5186,8 +5265,14 @@ static struct pipe *parse_stream(char **pstring,
 		/* Note: nommu_addchr(&ctx.as_string, ch) is already done */
 
 		switch (ch) {
-		case '#': /* non-comment #: "echo a#b" etc */
-			o_addQchr(&dest, ch);
+		case SPECIAL_VAR_SYMBOL:
+			/* Convert raw ^C to corresponding special variable reference */
+			o_addchr(&dest, SPECIAL_VAR_SYMBOL);
+			o_addchr(&dest, SPECIAL_VAR_QUOTED_SVS);
+			/* fall through */
+		case '#':
+			/* non-comment #: "echo a#b" etc */
+			o_addchr(&dest, ch);
 			break;
 		case '\\':
 			if (next == EOF) {
@@ -5229,6 +5314,11 @@ static struct pipe *parse_stream(char **pstring,
 					nommu_addchr(&ctx.as_string, ch);
 					if (ch == '\'')
 						break;
+					if (ch == SPECIAL_VAR_SYMBOL) {
+						/* Convert raw ^C to corresponding special variable reference */
+						o_addchr(&dest, SPECIAL_VAR_SYMBOL);
+						o_addchr(&dest, SPECIAL_VAR_QUOTED_SVS);
+					}
 					o_addqchr(&dest, ch);
 				}
 			}
@@ -5534,7 +5624,7 @@ static int expand_on_ifs(int *ended_with_ifs, o_string *output, int n, const cha
 static char *encode_then_expand_string(const char *str, int process_bkslash, int do_unbackslash)
 {
 #if !BASH_PATTERN_SUBST
-	const int do_unbackslash = 1;
+	enum { do_unbackslash = 1 };
 #endif
 	char *exp_str;
 	struct in_str input;
@@ -5610,6 +5700,10 @@ static char *replace_pattern(char *val, const char *pattern, const char *repl, c
 	unsigned res_len = 0;
 	unsigned repl_len = strlen(repl);
 
+	/* Null pattern never matches, including if "var" is empty */
+	if (!pattern[0])
+		return result; /* NULL, no replaces happened */
+
 	while (1) {
 		int size;
 		char *s = strstr_pattern(val, pattern, &size);
@@ -5640,9 +5734,9 @@ static char *replace_pattern(char *val, const char *pattern, const char *repl, c
  */
 static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, char **pp)
 {
-	const char *val = NULL;
-	char *to_be_freed = NULL;
-	char *p = *pp;
+	const char *val;
+	char *to_be_freed;
+	char *p;
 	char *var;
 	char first_char;
 	char exp_op;
@@ -5651,6 +5745,9 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 	char *exp_word = exp_word; /* for compiler */
 	char arg0;
 
+	val = NULL;
+	to_be_freed = NULL;
+	p = *pp;
 	*p = '\0'; /* replace trailing SPECIAL_VAR_SYMBOL */
 	var = arg;
 	exp_saveptr = arg[1] ? strchr(VAR_ENCODED_SUBST_OPS, arg[1]) : NULL;
@@ -5773,8 +5870,6 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 			 * and if // is used, it is encoded as \:
 			 * var\pattern<SPECIAL_VAR_SYMBOL>repl<SPECIAL_VAR_SYMBOL>
 			 */
-			/* Empty variable always gives nothing: */
-			// "v=''; echo ${v/*/w}" prints "", not "w"
 			if (val && val[0]) {
 				/* pattern uses non-standard expansion.
 				 * repl should be unbackslashed and globbed
@@ -5810,6 +5905,13 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 					val = to_be_freed;
 				free(pattern);
 				free(repl);
+			} else {
+				/* Empty variable always gives nothing */
+				// "v=''; echo ${v/*/w}" prints "", not "w"
+				/* Just skip "replace" part */
+				*p++ = SPECIAL_VAR_SYMBOL;
+				p = strchr(p, SPECIAL_VAR_SYMBOL);
+				*p = '\0';
 			}
 		}
 #endif /* BASH_PATTERN_SUBST */
@@ -6041,6 +6143,11 @@ static NOINLINE int expand_vars_to_list(o_string *output, int n, char *arg)
 			arg++;
 			cant_be_null = 0x80;
 			break;
+		case SPECIAL_VAR_QUOTED_SVS:
+			/* <SPECIAL_VAR_SYMBOL><SPECIAL_VAR_QUOTED_SVS><SPECIAL_VAR_SYMBOL> */
+			arg++;
+			val = SPECIAL_VAR_SYMBOL_STR;
+			break;
 #if ENABLE_HUSH_TICK
 		case '`': /* <SPECIAL_VAR_SYMBOL>`cmd<SPECIAL_VAR_SYMBOL> */
 			*p = '\0'; /* replace trailing <SPECIAL_VAR_SYMBOL> */
@@ -6199,7 +6306,7 @@ static char *expand_string_to_string(const char *str, int do_unbackslash)
 	return (char*)list;
 }
 
-/* Used for "eval" builtin and case string */
+#if ENABLE_HUSH_CASE
 static char* expand_strvec_to_string(char **argv)
 {
 	char **list;
@@ -6221,6 +6328,7 @@ static char* expand_strvec_to_string(char **argv)
 	debug_printf_expand("strvec_to_string='%s'\n", (char*)list);
 	return (char*)list;
 }
+#endif
 
 static char **expand_assignments(char **argv, int count)
 {
@@ -6513,8 +6621,17 @@ static void parse_and_run_string(const char *s)
 static void parse_and_run_file(FILE *f)
 {
 	struct in_str input;
+#if ENABLE_HUSH_LINENO_VAR
+	unsigned sv;
+
+	sv = G.lineno;
+	G.lineno = 1;
+#endif
 	setup_file_in_str(&input, f);
 	parse_and_run_stream(&input, ';');
+#if ENABLE_HUSH_LINENO_VAR
+	G.lineno = sv;
+#endif
 }
 
 #if ENABLE_HUSH_TICK
@@ -7330,6 +7447,32 @@ static void dump_cmd_in_x_mode(char **argv)
 # define dump_cmd_in_x_mode(argv) ((void)0)
 #endif
 
+#if ENABLE_HUSH_COMMAND
+static void if_command_vV_print_and_exit(char opt_vV, char *cmd, const char *explanation)
+{
+	char *to_free;
+
+	if (!opt_vV)
+		return;
+
+	to_free = NULL;
+	if (!explanation) {
+		char *path = getenv("PATH");
+		explanation = to_free = find_executable(cmd, &path); /* path == NULL is ok */
+		if (!explanation)
+			_exit(1); /* PROG was not found */
+		if (opt_vV != 'V')
+			cmd = to_free; /* -v PROG prints "/path/to/PROG" */
+	}
+	printf((opt_vV == 'V') ? "%s is %s\n" : "%s\n", cmd, explanation);
+	free(to_free);
+	fflush_all();
+	_exit(0);
+}
+#else
+# define if_command_vV_print_and_exit(a,b,c) ((void)0)
+#endif
+
 #if BB_MMU
 #define pseudo_exec_argv(nommu_save, argv, assignment_cnt, argv_expanded) \
 	pseudo_exec_argv(argv, assignment_cnt, argv_expanded)
@@ -7350,7 +7493,11 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 		char **argv, int assignment_cnt,
 		char **argv_expanded)
 {
+	const struct built_in_command *x;
 	char **new_env;
+#if ENABLE_HUSH_COMMAND
+	char opt_vV = 0;
+#endif
 
 	new_env = expand_assignments(argv, assignment_cnt);
 	dump_cmd_in_x_mode(new_env);
@@ -7399,21 +7546,58 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 	}
 #endif
 
+#if ENABLE_HUSH_COMMAND
+	/* "command BAR": run BAR without looking it up among functions
+	 * "command -v BAR": print "BAR" or "/path/to/BAR"; or exit 1
+	 * "command -V BAR": print "BAR is {a function,a shell builtin,/path/to/BAR}"
+	 */
+	while (strcmp(argv[0], "command") == 0 && argv[1]) {
+		char *p;
+
+		argv++;
+		p = *argv;
+		if (p[0] != '-' || !p[1])
+			continue; /* bash allows "command command command [-OPT] BAR" */
+
+		for (;;) {
+			p++;
+			switch (*p) {
+			case '\0':
+				argv++;
+				p = *argv;
+				if (p[0] != '-' || !p[1])
+					goto after_opts;
+				continue; /* next arg is also -opts, process it too */
+			case 'v':
+			case 'V':
+				opt_vV = *p;
+				continue;
+			default:
+				bb_error_msg_and_die("%s: %s: invalid option", "command", argv[0]);
+			}
+		}
+	}
+ after_opts:
+# if ENABLE_HUSH_FUNCTIONS
+	if (opt_vV && find_function(argv[0]))
+		if_command_vV_print_and_exit(opt_vV, argv[0], "a function");
+# endif
+#endif
+
 	/* Check if the command matches any of the builtins.
 	 * Depending on context, this might be redundant.  But it's
 	 * easier to waste a few CPU cycles than it is to figure out
 	 * if this is one of those cases.
 	 */
-	{
-		/* On NOMMU, it is more expensive to re-execute shell
-		 * just in order to run echo or test builtin.
-		 * It's better to skip it here and run corresponding
-		 * non-builtin later. */
-		const struct built_in_command *x;
-		x = BB_MMU ? find_builtin(argv[0]) : find_builtin1(argv[0]);
-		if (x) {
-			exec_builtin(&nommu_save->argv_from_re_execing, x, argv);
-		}
+	/* Why "BB_MMU ? :" difference in logic? -
+	 * On NOMMU, it is more expensive to re-execute shell
+	 * just in order to run echo or test builtin.
+	 * It's better to skip it here and run corresponding
+	 * non-builtin later. */
+	x = BB_MMU ? find_builtin(argv[0]) : find_builtin1(argv[0]);
+	if (x) {
+		if_command_vV_print_and_exit(opt_vV, argv[0], "a shell builtin");
+		exec_builtin(&nommu_save->argv_from_re_execing, x, argv);
 	}
 
 #if ENABLE_FEATURE_SH_STANDALONE
@@ -7421,6 +7605,7 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 	{
 		int a = find_applet_by_name(argv[0]);
 		if (a >= 0) {
+			if_command_vV_print_and_exit(opt_vV, argv[0], "an applet");
 # if BB_MMU /* see above why on NOMMU it is not allowed */
 			if (APPLET_IS_NOEXEC(a)) {
 				/* Do not leak open fds from opened script files etc.
@@ -7450,6 +7635,7 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 #if ENABLE_FEATURE_SH_STANDALONE || BB_MMU
  skip:
 #endif
+	if_command_vV_print_and_exit(opt_vV, argv[0], NULL);
 	execvp_or_die(argv);
 }
 
@@ -7992,6 +8178,11 @@ static NOINLINE int run_pipe(struct pipe *pi)
 		char **new_env = NULL;
 		struct variable *old_vars = NULL;
 
+#if ENABLE_HUSH_LINENO_VAR
+		if (G.lineno_var)
+			strcpy(G.lineno_var + sizeof("LINENO=")-1, utoa(command->lineno));
+#endif
+
 		if (argv[command->assignment_cnt] == NULL) {
 			/* Assignments, but no command */
 			/* Ensure redirects take effect (that is, create files).
@@ -8139,7 +8330,7 @@ static NOINLINE int run_pipe(struct pipe *pi)
 			return rcode;
 		}
 
-		if (ENABLE_FEATURE_SH_NOFORK) {
+		if (ENABLE_FEATURE_SH_NOFORK && NUM_APPLETS > 1) {
 			int n = find_applet_by_name(argv_expanded[0]);
 			if (n >= 0 && APPLET_IS_NOFORK(n)) {
 				rcode = redirect_and_varexp_helper(&new_env, &old_vars, command, &squirrel, argv_expanded);
@@ -8195,6 +8386,11 @@ static NOINLINE int run_pipe(struct pipe *pi)
 		pipefds.wr = 1;
 		if (cmd_no < pi->num_cmds)
 			xpiped_pair(pipefds);
+
+#if ENABLE_HUSH_LINENO_VAR
+		if (G.lineno_var)
+			strcpy(G.lineno_var + sizeof("LINENO=")-1, utoa(command->lineno));
+#endif
 
 		command->pid = BB_MMU ? fork() : vfork();
 		if (!command->pid) { /* child */
@@ -8387,7 +8583,10 @@ static int run_list(struct pipe *pi)
 				rword, cond_code, last_rword);
 
 		sv_errexit_depth = G.errexit_depth;
-		if (IF_HAS_KEYWORDS(rword == RES_IF || rword == RES_ELIF ||)
+		if (
+#if ENABLE_HUSH_IF
+		    rword == RES_IF || rword == RES_ELIF ||
+#endif
 		    pi->followup != PIPE_SEQ
 		) {
 			G.errexit_depth++;
@@ -8828,17 +9027,19 @@ int hush_main(int argc, char **argv)
 #if !BB_MMU
 	G.argv0_for_re_execing = argv[0];
 #endif
+
 	/* Deal with HUSH_VERSION */
+	debug_printf_env("unsetenv '%s'\n", "HUSH_VERSION");
+	unsetenv("HUSH_VERSION"); /* in case it exists in initial env */
 	shell_ver = xzalloc(sizeof(*shell_ver));
 	shell_ver->flg_export = 1;
 	shell_ver->flg_read_only = 1;
 	/* Code which handles ${var<op>...} needs writable values for all variables,
 	 * therefore we xstrdup: */
 	shell_ver->varstr = xstrdup(hush_version_str);
+
 	/* Create shell local variables from the values
 	 * currently living in the environment */
-	debug_printf_env("unsetenv '%s'\n", "HUSH_VERSION");
-	unsetenv("HUSH_VERSION"); /* in case it exists in initial env */
 	G.top_var = shell_ver;
 	cur_var = G.top_var;
 	e = environ;
@@ -8902,6 +9103,14 @@ int hush_main(int argc, char **argv)
 	 * PS2='> '
 	 * PS4='+ '
 	 */
+#endif
+
+#if ENABLE_HUSH_LINENO_VAR
+	if (ENABLE_HUSH_LINENO_VAR) {
+		char *p = xasprintf("LINENO=%*s", (int)(sizeof(int)*3), "");
+		set_local_var(p, /*flags*/ 0);
+		G.lineno_var = p; /* can't assign before set_local_var("LINENO=...") */
+	}
 #endif
 
 #if ENABLE_FEATURE_EDITING
@@ -9346,13 +9555,34 @@ static int FAST_FUNC builtin_eval(char **argv)
 	int rcode = EXIT_SUCCESS;
 
 	argv = skip_dash_dash(argv);
-	if (*argv) {
-		char *str = expand_strvec_to_string(argv);
+	if (argv[0]) {
+		char *str = NULL;
+
+		if (argv[1]) {
+			/* "The eval utility shall construct a command by
+			 * concatenating arguments together, separating
+			 * each with a <space> character."
+			 */
+			char *p;
+			unsigned len = 0;
+			char **pp = argv;
+			do
+				len += strlen(*pp) + 1;
+			while (*++pp);
+			str = p = xmalloc(len);
+			pp = argv;
+			do {
+				p = stpcpy(p, *pp);
+				*p++ = ' ';
+			} while (*++pp);
+			p[-1] = '\0';
+		}
+
 		/* bash:
 		 * eval "echo Hi; done" ("done" is syntax error):
 		 * "echo Hi" will not execute too.
 		 */
-		parse_and_run_string(str);
+		parse_and_run_string(str ? str : argv[0]);
 		free(str);
 		rcode = G.last_exitcode;
 	}
@@ -9855,7 +10085,7 @@ static int FAST_FUNC builtin_set(char **argv)
 
 	/* Nothing known, so abort */
  error:
-	bb_error_msg("set: %s: invalid option", arg);
+	bb_error_msg("%s: %s: invalid option", "set", arg);
 	return EXIT_FAILURE;
 }
 #endif
@@ -10038,6 +10268,11 @@ static int FAST_FUNC builtin_source(char **argv)
 		arg_path = find_in_path(filename);
 		if (arg_path)
 			filename = arg_path;
+		else if (!ENABLE_HUSH_BASH_SOURCE_CURDIR) {
+			errno = ENOENT;
+			bb_simple_perror_msg(filename);
+			return EXIT_FAILURE;
+		}
 	}
 	input = remember_FILE(fopen_or_warn(filename, "r"));
 	free(arg_path);

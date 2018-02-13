@@ -66,6 +66,22 @@
 //config:	default y
 //config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
 //config:
+//config:config ASH_BASH_SOURCE_CURDIR
+//config:	bool "'source' and '.' builtins search current directory after $PATH"
+//config:	default n   # do not encourage non-standard behavior
+//config:	depends on ASH_BASH_COMPAT
+//config:	help
+//config:	This is not compliant with standards. Avoid if possible.
+//config:
+//config:config ASH_BASH_NOT_FOUND_HOOK
+//config:	bool "command_not_found_handle hook support"
+//config:	default y
+//config:	depends on ASH_BASH_COMPAT
+//config:	help
+//config:	Enable support for the 'command_not_found_handle' hook function,
+//config:	from GNU bash, which allows for alternative command not found
+//config:	handling.
+//config:
 //config:config ASH_JOB_CONTROL
 //config:	bool "Job control"
 //config:	default y
@@ -278,6 +294,19 @@ typedef long arith_t;
 # error "Do not even bother, ash will not run on NOMMU machine"
 #endif
 
+/* We use a trick to have more optimized code (fewer pointer reloads):
+ *  ash.c:   extern struct globals *const ash_ptr_to_globals;
+ *  ash_ptr_hack.c: struct globals *ash_ptr_to_globals;
+ * This way, compiler in ash.c knows the pointer can not change.
+ *
+ * However, this may break on weird arches or toolchains. In this case,
+ * set "-DBB_GLOBAL_CONST=''" in CONFIG_EXTRA_CFLAGS to disable
+ * this optimization.
+ */
+#ifndef BB_GLOBAL_CONST
+# define BB_GLOBAL_CONST const
+#endif
+
 #if ENABLE_PLATFORM_MINGW32
 union node;
 struct strlist;
@@ -393,6 +422,8 @@ struct globals_misc {
 	/* shell level: 0 for the main shell, 1 for its children, and so on */
 	int shlvl;
 #define rootshell (!shlvl)
+	int errlinno;
+
 	char *minusc;  /* argument to -c option */
 
 	char *curdir; // = nullstr;     /* current working directory */
@@ -469,13 +500,14 @@ struct globals_misc {
 #endif
 	pid_t backgndpid;        /* pid of last background process */
 };
-extern struct globals_misc *const ash_ptr_to_globals_misc;
+extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define G_misc (*ash_ptr_to_globals_misc)
 #define exitstatus        (G_misc.exitstatus )
 #define back_exitstatus   (G_misc.back_exitstatus )
 #define job_warning       (G_misc.job_warning)
 #define rootpid     (G_misc.rootpid    )
 #define shlvl       (G_misc.shlvl      )
+#define errlinno    (G_misc.errlinno   )
 #define minusc      (G_misc.minusc     )
 #define curdir      (G_misc.curdir     )
 #define physdir     (G_misc.physdir    )
@@ -810,6 +842,7 @@ union node;
 
 struct ncmd {
 	smallint type; /* Nxxxx */
+	int linno;
 	union node *assign;
 	union node *args;
 	union node *redirect;
@@ -823,6 +856,7 @@ struct npipe {
 
 struct nredir {
 	smallint type;
+	int linno;
 	union node *n;
 	union node *redirect;
 };
@@ -842,6 +876,7 @@ struct nif {
 
 struct nfor {
 	smallint type;
+	int linno;
 	union node *args;
 	union node *body;
 	char *var;
@@ -849,6 +884,7 @@ struct nfor {
 
 struct ncase {
 	smallint type;
+	int linno;
 	union node *expr;
 	union node *cases;
 };
@@ -857,6 +893,13 @@ struct nclist {
 	smallint type;
 	union node *next;
 	union node *pattern;
+	union node *body;
+};
+
+struct ndefun {
+	smallint type;
+	int linno;
+	char *text;
 	union node *body;
 };
 
@@ -911,6 +954,7 @@ union node {
 	struct nfor nfor;
 	struct ncase ncase;
 	struct nclist nclist;
+	struct ndefun ndefun;
 	struct narg narg;
 	struct nfile nfile;
 	struct ndup ndup;
@@ -1340,7 +1384,6 @@ struct parsefile {
 
 static struct parsefile basepf;        /* top level input file */
 static struct parsefile *g_parsefile = &basepf;  /* current input file */
-static int startlinno;                 /* line # where last token started */
 static char *commandname;              /* currently executing command */
 
 
@@ -1354,7 +1397,7 @@ ash_vmsg(const char *msg, va_list ap)
 		if (strcmp(arg0, commandname))
 			fprintf(stderr, "%s: ", commandname);
 		if (!iflag || g_parsefile->pf_fd > 0)
-			fprintf(stderr, "line %d: ", startlinno);
+			fprintf(stderr, "line %d: ", errlinno);
 	}
 	vfprintf(stderr, msg, ap);
 	newline_and_flush(stderr);
@@ -1407,6 +1450,7 @@ static void raise_error_syntax(const char *) NORETURN;
 static void
 raise_error_syntax(const char *msg)
 {
+	errlinno = g_parsefile->linno;
 	ash_msg_and_raise_error("syntax error: %s", msg);
 	/* NOTREACHED */
 }
@@ -1529,7 +1573,7 @@ struct globals_memstack {
 	size_t g_stacknleft; // = MINSIZE;
 	struct stack_block stackbase;
 };
-extern struct globals_memstack *const ash_ptr_to_globals_memstack;
+extern struct globals_memstack *BB_GLOBAL_CONST ash_ptr_to_globals_memstack;
 #define G_memstack (*ash_ptr_to_globals_memstack)
 #define g_stackp     (G_memstack.g_stackp    )
 #define g_stacknxt   (G_memstack.g_stacknxt  )
@@ -1619,7 +1663,7 @@ sstrdup(const char *p)
 	return memcpy(stalloc(len), p, len);
 }
 
-static inline void
+static ALWAYS_INLINE void
 grabstackblock(size_t len)
 {
 	stalloc(len);
@@ -2094,6 +2138,7 @@ static const struct {
 #if ENABLE_ASH_GETOPTS
 	{ VSTRFIXED|VTEXTFIXED       , defoptindvar, getoptsreset    },
 #endif
+	{ VSTRFIXED|VTEXTFIXED       , NULL /* inited to linenovar */, NULL },
 #if ENABLE_ASH_RANDOM_SUPPORT
 	{ VSTRFIXED|VTEXTFIXED|VUNSET|VDYNAMIC, "RANDOM", change_random },
 #endif
@@ -2114,25 +2159,18 @@ struct globals_var {
 	int preverrout_fd;   /* stderr fd: usually 2, unless redirect moved it */
 	struct var *vartab[VTABSIZE];
 	struct var varinit[ARRAY_SIZE(varinit_data)];
+	int lineno;
+	char linenovar[sizeof("LINENO=") + sizeof(int)*3];
 };
-extern struct globals_var *const ash_ptr_to_globals_var;
+extern struct globals_var *BB_GLOBAL_CONST ash_ptr_to_globals_var;
 #define G_var (*ash_ptr_to_globals_var)
 #define shellparam    (G_var.shellparam   )
 //#define redirlist     (G_var.redirlist    )
 #define preverrout_fd (G_var.preverrout_fd)
 #define vartab        (G_var.vartab       )
 #define varinit       (G_var.varinit      )
-#define INIT_G_var() do { \
-	unsigned i; \
-	(*(struct globals_var**)&ash_ptr_to_globals_var) = xzalloc(sizeof(G_var)); \
-	barrier(); \
-	for (i = 0; i < ARRAY_SIZE(varinit_data); i++) { \
-		varinit[i].flags    = varinit_data[i].flags; \
-		varinit[i].var_text = varinit_data[i].var_text; \
-		varinit[i].var_func = varinit_data[i].var_func; \
-	} \
-} while (0)
-
+#define lineno        (G_var.lineno       )
+#define linenovar     (G_var.linenovar    )
 #define vifs      varinit[0]
 #if ENABLE_ASH_MAIL
 # define vmail    (&vifs)[1]
@@ -2146,14 +2184,28 @@ extern struct globals_var *const ash_ptr_to_globals_var;
 #define vps4      (&vps2)[1]
 #if ENABLE_ASH_GETOPTS
 # define voptind  (&vps4)[1]
+# define vlineno  (&voptind)[1]
 # if ENABLE_ASH_RANDOM_SUPPORT
-#  define vrandom (&voptind)[1]
+#  define vrandom (&vlineno)[1]
 # endif
 #else
+# define vlineno  (&vps4)[1]
 # if ENABLE_ASH_RANDOM_SUPPORT
-#  define vrandom (&vps4)[1]
+#  define vrandom (&vlineno)[1]
 # endif
 #endif
+#define INIT_G_var() do { \
+	unsigned i; \
+	(*(struct globals_var**)&ash_ptr_to_globals_var) = xzalloc(sizeof(G_var)); \
+	barrier(); \
+	for (i = 0; i < ARRAY_SIZE(varinit_data); i++) { \
+		varinit[i].flags    = varinit_data[i].flags; \
+		varinit[i].var_text = varinit_data[i].var_text; \
+		varinit[i].var_func = varinit_data[i].var_func; \
+	} \
+	strcpy(linenovar, "LINENO="); \
+	vlineno.var_text = linenovar; \
+} while (0)
 
 /*
  * The following macros access the values of the above variables.
@@ -2289,8 +2341,12 @@ lookupvar(const char *name)
 		if (v->flags & VDYNAMIC)
 			v->var_func(NULL);
 #endif
-		if (!(v->flags & VUNSET))
+		if (!(v->flags & VUNSET)) {
+			if (v == &vlineno && v->var_text == linenovar) {
+				fmtstr(linenovar+7, sizeof(linenovar)-7, "%d", lineno);
+			}
 			return var_end(v->var_text);
+		}
 	}
 	return NULL;
 }
@@ -5125,7 +5181,7 @@ cmdtxt(union node *n)
 		p = "; done";
 		goto dodo;
 	case NDEFUN:
-		cmdputs(n->narg.text);
+		cmdputs(n->ndefun.text);
 		p = "() { ... }";
 		goto dotail2;
 	case NCMD:
@@ -6151,6 +6207,26 @@ ash_arith(const char *s)
 	return result;
 }
 #endif
+#if BASH_SUBSTR
+# if ENABLE_FEATURE_SH_MATH
+static int substr_atoi(const char *s)
+{
+	arith_t t = ash_arith(s);
+	if (sizeof(t) > sizeof(int)) {
+		/* clamp very large or very large negative nums for ${v:N:M}:
+		 * else "${v:0:0x100000001}" would work as "${v:0:1}"
+		 */
+		if (t > INT_MAX)
+			t = INT_MAX;
+		if (t < INT_MIN)
+			t = INT_MIN;
+	}
+	return t;
+}
+# else
+#  define substr_atoi(s) number(s)
+# endif
+#endif
 
 /*
  * expandarg flags
@@ -6182,7 +6258,6 @@ ash_arith(const char *s)
 #define RMESCAPE_GLOB   0x2     /* Add backslashes for glob */
 #define RMESCAPE_GROW   0x8     /* Grow strings instead of stalloc */
 #define RMESCAPE_HEAP   0x10    /* Malloc strings instead of stalloc */
-#define RMESCAPE_SLASH  0x20    /* Stop globbing after slash */
 
 /* Add CTLESC when necessary. */
 #define QUOTES_ESC     (EXP_FULL | EXP_CASE | EXP_QPAT)
@@ -6363,8 +6438,12 @@ esclen(const char *start, const char *p)
 /*
  * Remove any CTLESC characters from a string.
  */
+#if !BASH_PATTERN_SUBST
+#define rmescapes(str, flag, slash_position) \
+	rmescapes(str, flag)
+#endif
 static char *
-rmescapes(char *str, int flag)
+rmescapes(char *str, int flag, int *slash_position)
 {
 	static const char qchars[] ALIGN1 = {
 		IF_BASH_PATTERN_SUBST('/',) CTLESC, CTLQUOTEMARK, '\0' };
@@ -6373,9 +6452,8 @@ rmescapes(char *str, int flag)
 	unsigned inquotes;
 	unsigned protect_against_glob;
 	unsigned globbing;
-	IF_BASH_PATTERN_SUBST(unsigned slash = flag & RMESCAPE_SLASH;)
 
-	p = strpbrk(str, qchars IF_BASH_PATTERN_SUBST(+ !slash));
+	p = strpbrk(str, qchars IF_BASH_PATTERN_SUBST(+ !slash_position));
 	if (!p)
 		return str;
 
@@ -6455,10 +6533,11 @@ rmescapes(char *str, int flag)
 			goto copy;
 		}
 #if BASH_PATTERN_SUBST
-		else if (*p == '/' && slash) {
-			/* stop handling globbing and mark location of slash */
-			globbing = slash = 0;
-			*p = CTLESC;
+		else if (slash_position && p == str + *slash_position) {
+			/* stop handling globbing */
+			globbing = 0;
+			*slash_position = q - r;
+			slash_position = NULL;
 		}
 #endif
 		protect_against_glob = globbing;
@@ -6482,7 +6561,7 @@ rmescapes(char *str, int flag)
 static char *
 preglob(const char *pattern, int flag)
 {
-	return rmescapes((char *)pattern, flag | RMESCAPE_GLOB);
+	return rmescapes((char *)pattern, flag | RMESCAPE_GLOB, NULL);
 }
 
 /*
@@ -6837,7 +6916,7 @@ expari(int flag)
 	expdest = p;
 
 	if (flag & QUOTES_ESC)
-		rmescapes(p + 1, 0);
+		rmescapes(p + 1, 0, NULL);
 
 	len = cvtnum(ash_arith(p + 1));
 
@@ -7125,20 +7204,58 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 	char *rmesc, *rmescend;
 	char *str;
 	int amount, resetloc;
+	int argstr_flags;
 	IF_BASH_PATTERN_SUBST(int workloc;)
-	IF_BASH_PATTERN_SUBST(char *repl = NULL;)
+	IF_BASH_PATTERN_SUBST(int slash_pos;)
+	IF_BASH_PATTERN_SUBST(char *repl;)
 	int zero;
 	char *(*scan)(char*, char*, char*, char*, int, int);
 
 	//bb_error_msg("subevalvar(p:'%s',varname:'%s',strloc:%d,subtype:%d,startloc:%d,varflags:%x,quotes:%d)",
 	//		p, varname, strloc, subtype, startloc, varflags, quotes);
 
-	argstr(p, EXP_TILDE | (subtype != VSASSIGN && subtype != VSQUESTION ?
-			(flag & (EXP_QUOTED | EXP_QPAT) ? EXP_QPAT : EXP_CASE) : 0)
-	);
+#if BASH_PATTERN_SUBST
+	/* For "${v/pattern/repl}", we must find the delimiter _before_
+	 * argstr() call expands possible variable references in pattern:
+	 * think about "v=a; a=a/; echo ${v/$a/r}" case.
+	 */
+	repl = NULL;
+	if (subtype == VSREPLACE || subtype == VSREPLACEALL) {
+		/* Find '/' and replace with NUL */
+		repl = p;
+		for (;;) {
+			/* Handle escaped slashes, e.g. "${v/\//_}" (they are CTLESC'ed by this point) */
+			if (*repl == '\0') {
+				repl = NULL;
+				break;
+			}
+			if (*repl == '/') {
+				*repl = '\0';
+				break;
+			}
+			if ((unsigned char)*repl == CTLESC && repl[1])
+				repl++;
+			repl++;
+		}
+	}
+#endif
+	argstr_flags = EXP_TILDE;
+	if (subtype != VSASSIGN && subtype != VSQUESTION)
+		argstr_flags |= (flag & (EXP_QUOTED | EXP_QPAT) ? EXP_QPAT : EXP_CASE);
+	argstr(p, argstr_flags);
+#if BASH_PATTERN_SUBST
+	slash_pos = -1;
+	if (repl) {
+		slash_pos = expdest - ((char *)stackblock() + strloc);
+		STPUTC('/', expdest);
+		argstr(repl + 1, argstr_flags);
+		*repl = '/';
+	}
+#endif
 	STPUTC('\0', expdest);
 	argbackq = saveargbackq;
 	startp = (char *)stackblock() + startloc;
+	//bb_error_msg("str1:'%s'", (char *)stackblock() + strloc);
 
 	switch (subtype) {
 	case VSASSIGN:
@@ -7158,13 +7275,10 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 
 		loc = str = stackblock() + strloc;
 
-# if !ENABLE_FEATURE_SH_MATH
-#  define ash_arith number
-# endif
 		/* Read POS in ${var:POS:LEN} */
 		colon = strchr(loc, ':');
 		if (colon) *colon = '\0';
-		pos = ash_arith(loc);
+		pos = substr_atoi(loc);
 		if (colon) *colon = ':';
 
 		/* Read LEN in ${var:POS:LEN} */
@@ -7172,7 +7286,6 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 		/* *loc != '\0', guaranteed by parser */
 		if (quotes) {
 			char *ptr;
-
 			/* Adjust the length by the number of escapes */
 			for (ptr = startp; ptr < (str - 1); ptr++) {
 				if ((unsigned char)*ptr == CTLESC) {
@@ -7184,19 +7297,15 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 		orig_len = len;
 		if (*loc++ == ':') {
 			/* ${var::LEN} */
-			len = ash_arith(loc);
+			len = substr_atoi(loc);
 		} else {
 			/* Skip POS in ${var:POS:LEN} */
 			len = orig_len;
-			while (*loc && *loc != ':') {
+			while (*loc && *loc != ':')
 				loc++;
-			}
-			if (*loc++ == ':') {
-				len = ash_arith(loc);
-			}
+			if (*loc++ == ':')
+				len = substr_atoi(loc);
 		}
-#  undef ash_arith
-
 		if (pos < 0) {
 			/* ${VAR:$((-n)):l} starts n chars from the end */
 			pos = orig_len + pos;
@@ -7236,6 +7345,8 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 	resetloc = expdest - (char *)stackblock();
 
 #if BASH_PATTERN_SUBST
+	repl = NULL;
+
 	/* We'll comeback here if we grow the stack while handling
 	 * a VSREPLACE or VSREPLACEALL, since our pointers into the
 	 * stack will need rebasing, and we'll need to remove our work
@@ -7250,8 +7361,10 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 
 	rmesc = startp;
 	rmescend = (char *)stackblock() + strloc;
+	//bb_error_msg("str7:'%s'", rmescend);
 	if (quotes) {
-		rmesc = rmescapes(startp, RMESCAPE_ALLOC | RMESCAPE_GROW);
+//TODO: how to handle slash_pos here if string changes (shortens?)
+		rmesc = rmescapes(startp, RMESCAPE_ALLOC | RMESCAPE_GROW, NULL);
 		if (rmesc != startp) {
 			rmescend = expdest;
 			startp = (char *)stackblock() + startloc;
@@ -7264,12 +7377,13 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 	 * The result is a_\_z_c (not a\_\_z_c)!
 	 *
 	 * The search pattern and replace string treat backslashes differently!
-	 * RMESCAPE_SLASH causes preglob to work differently on the pattern
+	 * "&slash_pos" causes rmescapes() to work differently on the pattern
 	 * and string.  It's only used on the first call.
 	 */
-	preglob(str, IF_BASH_PATTERN_SUBST(
-		(subtype == VSREPLACE || subtype == VSREPLACEALL) && !repl ?
-			RMESCAPE_SLASH : ) 0);
+	//bb_error_msg("str8:'%s' slash_pos:%d", str, slash_pos);
+	rmescapes(str, RMESCAPE_GLOB,
+		repl ? NULL : (slash_pos < 0 ? NULL : &slash_pos)
+	);
 
 #if BASH_PATTERN_SUBST
 	workloc = expdest - (char *)stackblock();
@@ -7278,11 +7392,12 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 		char *idx, *end;
 
 		if (!repl) {
-			repl = strchr(str, CTLESC);
-			if (repl)
+			//bb_error_msg("str9:'%s' slash_pos:%d", str, slash_pos);
+			repl = nullstr;
+			if (slash_pos >= 0) {
+				repl = str + slash_pos;
 				*repl++ = '\0';
-			else
-				repl = nullstr;
+			}
 		}
 		//bb_error_msg("str:'%s' repl:'%s'", str, repl);
 
@@ -7802,7 +7917,7 @@ expandmeta(struct strlist *str /*, int flag*/)
 			INT_ON;
  nometa:
 			*exparg.lastp = str;
-			rmescapes(str->text, 0);
+			rmescapes(str->text, 0, NULL);
 			exparg.lastp = &str->next;
 			break;
 		default:	/* GLOB_NOSPACE */
@@ -8031,7 +8146,7 @@ expandmeta(struct strlist *str /*, int flag*/)
 			 */
  nometa:
 			*exparg.lastp = str;
-			rmescapes(str->text, 0);
+			rmescapes(str->text, 0, NULL);
 			exparg.lastp = &str->next;
 		} else {
 			*exparg.lastp = NULL;
@@ -8970,6 +9085,10 @@ calcsize(union node *n)
 		IF_PLATFORM_MINGW32(nodeptrsize += 3);
 		break;
 	case NDEFUN:
+		calcsize(n->ndefun.body);
+		funcstringsize += strlen(n->ndefun.text) + 1;
+		IF_PLATFORM_MINGW32(nodeptrsize += 2);
+		break;
 	case NARG:
 		sizenodelist(n->narg.backquote);
 		funcstringsize += strlen(n->narg.text) + 1;
@@ -9067,6 +9186,7 @@ copynode(union node *n)
 		new->ncmd.redirect = copynode(n->ncmd.redirect);
 		new->ncmd.args = copynode(n->ncmd.args);
 		new->ncmd.assign = copynode(n->ncmd.assign);
+		new->ncmd.linno = n->ncmd.linno;
 		SAVE_PTR3(new->ncmd.redirect,new->ncmd.args, new->ncmd.assign);
 		break;
 	case NPIPE:
@@ -9079,6 +9199,7 @@ copynode(union node *n)
 	case NSUBSHELL:
 		new->nredir.redirect = copynode(n->nredir.redirect);
 		new->nredir.n = copynode(n->nredir.n);
+		new->nredir.linno = n->nredir.linno;
 		SAVE_PTR2(new->nredir.redirect,new->nredir.n);
 		break;
 	case NAND:
@@ -9100,11 +9221,13 @@ copynode(union node *n)
 		new->nfor.var = nodeckstrdup(n->nfor.var);
 		new->nfor.body = copynode(n->nfor.body);
 		new->nfor.args = copynode(n->nfor.args);
+		new->nfor.linno = n->nfor.linno;
 		SAVE_PTR3(new->nfor.var,new->nfor.body,new->nfor.args);
 		break;
 	case NCASE:
 		new->ncase.cases = copynode(n->ncase.cases);
 		new->ncase.expr = copynode(n->ncase.expr);
+		new->ncase.linno = n->ncase.linno;
 		SAVE_PTR2(new->ncase.cases,new->ncase.expr);
 		break;
 	case NCLIST:
@@ -9114,6 +9237,11 @@ copynode(union node *n)
 		SAVE_PTR3(new->nclist.body,new->nclist.pattern,new->nclist.next);
 		break;
 	case NDEFUN:
+		new->ndefun.body = copynode(n->ndefun.body);
+		new->ndefun.text = nodeckstrdup(n->ndefun.text);
+		new->ndefun.linno = n->ndefun.linno;
+		SAVE_PTR2(new->ndefun.body,new->ndefun.text);
+		break;
 	case NARG:
 		new->narg.backquote = copynodelist(n->narg.backquote);
 		new->narg.text = nodeckstrdup(n->narg.text);
@@ -9190,7 +9318,7 @@ defun(union node *func)
 	INT_OFF;
 	entry.cmdtype = CMDFUNCTION;
 	entry.u.func = copyfunc(func);
-	addcmdentry(func->narg.text, &entry);
+	addcmdentry(func->ndefun.text, &entry);
 	INT_ON;
 }
 
@@ -9200,8 +9328,8 @@ defun(union node *func)
 #define SKIPFUNC       (1 << 2)
 static smallint evalskip;       /* set to SKIPxxx if we are skipping commands */
 static int skipcount;           /* number of levels to skip */
-static int funcnest;            /* depth of function calls */
 static int loopnest;            /* current loop nesting level */
+static int funcline;            /* starting line number of current function, or 0 if not in a function */
 
 /* Forward decl way out to parsing code - dotrap needs it */
 static int evalstring(char *s, int flags);
@@ -9296,6 +9424,9 @@ evaltree(union node *n, int flags)
 		status = !evaltree(n->nnot.com, EV_TESTED);
 		goto setstatus;
 	case NREDIR:
+		errlinno = lineno = n->nredir.linno;
+		if (funcline)
+			lineno -= funcline - 1;
 		expredir(n->nredir.redirect);
 		pushredir(n->nredir.redirect);
 		status = redirectsafe(n->nredir.redirect, REDIR_PUSH);
@@ -9450,6 +9581,10 @@ evalfor(union node *n, int flags)
 	struct stackmark smark;
 	int status = 0;
 
+	errlinno = lineno = n->ncase.linno;
+	if (funcline)
+		lineno -= funcline - 1;
+
 	setstackmark(&smark);
 	arglist.list = NULL;
 	arglist.lastp = &arglist.list;
@@ -9480,6 +9615,10 @@ evalcase(union node *n, int flags)
 	struct arglist arglist;
 	struct stackmark smark;
 	int status = 0;
+
+	errlinno = lineno = n->ncase.linno;
+	if (funcline)
+		lineno -= funcline - 1;
 
 	setstackmark(&smark);
 	arglist.list = NULL;
@@ -9515,6 +9654,10 @@ evalsubshell(union node *n, int flags)
 	struct job *jp;
 	int backgnd = (n->type == NBACKGND); /* FORK_BG(1) if yes, else FORK_FG(0) */
 	int status;
+
+	errlinno = lineno = n->nredir.linno;
+	if (funcline)
+		lineno -= funcline - 1;
 
 	expredir(n->nredir.redirect);
 	if (!backgnd && (flags & EV_EXIT) && !may_have_traps)
@@ -9846,8 +9989,10 @@ evalfun(struct funcnode *func, int argc, char **argv, int flags)
 	struct jmploc *volatile savehandler;
 	struct jmploc jmploc;
 	int e;
+	int savefuncline;
 
 	saveparam = shellparam;
+	savefuncline = funcline;
 	savehandler = exception_handler;
 	e = setjmp(jmploc.loc);
 	if (e) {
@@ -9857,7 +10002,7 @@ evalfun(struct funcnode *func, int argc, char **argv, int flags)
 	exception_handler = &jmploc;
 	shellparam.malloced = 0;
 	func->count++;
-	funcnest++;
+	funcline = func->n.ndefun.linno;
 	INT_ON;
 	shellparam.nparam = argc - 1;
 	shellparam.p = argv + 1;
@@ -9866,11 +10011,11 @@ evalfun(struct funcnode *func, int argc, char **argv, int flags)
 	shellparam.optoff = -1;
 #endif
 	pushlocalvars();
-	evaltree(func->n.narg.next, flags & EV_TESTED);
+	evaltree(func->n.ndefun.body, flags & EV_TESTED);
 	poplocalvars(0);
  funcdone:
 	INT_OFF;
-	funcnest--;
+	funcline = savefuncline;
 	freefunc(func);
 	freeparam(&shellparam);
 	shellparam = saveparam;
@@ -10235,6 +10380,10 @@ evalcommand(union node *cmd, int flags)
 	char **nargv;
 	smallint cmd_is_exec;
 
+	errlinno = lineno = cmd->ncmd.linno;
+	if (funcline)
+		lineno -= funcline - 1;
+
 	/* First expand the arguments. */
 	TRACE(("evalcommand(0x%lx, %d) called\n", (long)cmd, flags));
 	setstackmark(&smark);
@@ -10280,7 +10429,7 @@ evalcommand(union node *cmd, int flags)
 	*nargv = NULL;
 
 	lastarg = NULL;
-	if (iflag && funcnest == 0 && argc > 0)
+	if (iflag && funcline == 0 && argc > 0)
 		lastarg = nargv[-1];
 
 	expredir(cmd->ncmd.redirect);
@@ -10410,7 +10559,9 @@ evalcommand(union node *cmd, int flags)
 	switch (cmdentry.cmdtype) {
 	default: {
 
-#if ENABLE_FEATURE_SH_NOFORK
+#if ENABLE_FEATURE_SH_STANDALONE \
+ && ENABLE_FEATURE_SH_NOFORK \
+ && NUM_APPLETS > 1
 /* (1) BUG: if variables are set, we need to fork, or save/restore them
  *     around run_nofork_applet() call.
  * (2) Should this check also be done in forkshell()?
@@ -11341,7 +11492,7 @@ shiftcmd(int argc UNUSED_PARAM, char **argv)
 	if (argv[1])
 		n = number(argv[1]);
 	if (n > shellparam.nparam)
-		n = 0; /* bash compat, was = shellparam.nparam; */
+		return 1;
 	INT_OFF;
 	shellparam.nparam -= n;
 	for (ap1 = shellparam.p; --n >= 0; ap1++) {
@@ -11811,7 +11962,7 @@ parsefname(void)
 		if (quoteflag == 0)
 			n->type = NXHERE;
 		TRACE(("Here document %d\n", n->type));
-		rmescapes(wordtext, 0);
+		rmescapes(wordtext, 0, NULL);
 		here->eofmark = wordtext;
 		here->next = NULL;
 		if (heredoclist == NULL)
@@ -11836,6 +11987,7 @@ simplecmd(void)
 	union node *vars, **vpp;
 	union node **rpp, *redir;
 	int savecheckkwd;
+	int savelinno;
 #if BASH_TEST2
 	smallint double_brackets_flag = 0;
 #endif
@@ -11849,6 +12001,7 @@ simplecmd(void)
 	rpp = &redir;
 
 	savecheckkwd = CHKALIAS;
+	savelinno = g_parsefile->linno;
 	for (;;) {
 		int t;
 		checkkwd = savecheckkwd;
@@ -11938,7 +12091,9 @@ simplecmd(void)
 				}
 				n->type = NDEFUN;
 				checkkwd = CHKNL | CHKKWD | CHKALIAS;
-				n->narg.next = parse_command();
+				n->ndefun.text = n->narg.text;
+				n->ndefun.linno = g_parsefile->linno;
+				n->ndefun.body = parse_command();
 				return n;
 			}
 			IF_BASH_FUNCTION(function_flag = 0;)
@@ -11954,6 +12109,7 @@ simplecmd(void)
 	*rpp = NULL;
 	n = stzalloc(sizeof(struct ncmd));
 	n->type = NCMD;
+	n->ncmd.linno = savelinno;
 	n->ncmd.args = args;
 	n->ncmd.assign = vars;
 	n->ncmd.redirect = redir;
@@ -11969,9 +12125,12 @@ parse_command(void)
 	union node *redir, **rpp;
 	union node **rpp2;
 	int t;
+	int savelinno;
 
 	redir = NULL;
 	rpp2 = &redir;
+
+	savelinno = g_parsefile->linno;
 
 	switch (readtoken()) {
 	default:
@@ -12023,6 +12182,7 @@ parse_command(void)
 			raise_error_syntax("bad for loop variable");
 		n1 = stzalloc(sizeof(struct nfor));
 		n1->type = NFOR;
+		n1->nfor.linno = savelinno;
 		n1->nfor.var = wordtext;
 		checkkwd = CHKNL | CHKKWD | CHKALIAS;
 		if (readtoken() == TIN) {
@@ -12063,6 +12223,7 @@ parse_command(void)
 	case TCASE:
 		n1 = stzalloc(sizeof(struct ncase));
 		n1->type = NCASE;
+		n1->ncase.linno = savelinno;
 		if (readtoken() != TWORD)
 			raise_error_unexpected_syntax(TWORD);
 		n1->ncase.expr = n2 = stzalloc(sizeof(struct narg));
@@ -12114,6 +12275,7 @@ parse_command(void)
 	case TLP:
 		n1 = stzalloc(sizeof(struct nredir));
 		n1->type = NSUBSHELL;
+		n1->nredir.linno = savelinno;
 		n1->nredir.n = list(0);
 		/*n1->nredir.redirect = NULL; - stzalloc did it */
 		t = TRP;
@@ -12147,6 +12309,7 @@ parse_command(void)
 		if (n1->type != NSUBSHELL) {
 			n2 = stzalloc(sizeof(struct nredir));
 			n2->type = NREDIR;
+			n2->nredir.linno = savelinno;
 			n2->nredir.n = n1;
 			n1 = n2;
 		}
@@ -12245,10 +12408,8 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 	IF_FEATURE_SH_MATH(int arinest;)    /* levels of arithmetic expansion */
 	IF_FEATURE_SH_MATH(int parenlevel;) /* levels of parens in arithmetic */
 	int dqvarnest;       /* levels of variables expansion within double quotes */
-
 	IF_BASH_DOLLAR_SQUOTE(smallint bash_dollar_squote = 0;)
 
-	startlinno = g_parsefile->linno;
 	bqlist = NULL;
 	quotef = 0;
 	IF_FEATURE_SH_MATH(prevsyntax = 0;)
@@ -12425,7 +12586,6 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 	if (syntax != BASESYNTAX && eofmark == NULL)
 		raise_error_syntax("unterminated quoted string");
 	if (varnest != 0) {
-		startlinno = g_parsefile->linno;
 		/* { */
 		raise_error_syntax("missing '}'");
 	}
@@ -12817,7 +12977,6 @@ parsebackq: {
 
 			case PEOF:
 			IF_ASH_ALIAS(case PEOA:)
-				startlinno = g_parsefile->linno;
 				raise_error_syntax("EOF in backquote substitution");
 
 			case '\n':
@@ -12899,8 +13058,6 @@ parsearith: {
  *      quoted.
  * If the token is TREDIR, then we set redirnode to a structure containing
  *      the redirection.
- * In all cases, the variable startlinno is set to the number of the line
- *      on which the token starts.
  *
  * [Change comment:  here documents and internal procedures]
  * [Readtoken shouldn't have any arguments.  Perhaps we should make the
@@ -12938,7 +13095,6 @@ xxreadtoken(void)
 		return lasttoken;
 	}
 	setprompt_if(needprompt, 2);
-	startlinno = g_parsefile->linno;
 	for (;;) {                      /* until token or start of word found */
 		c = pgetc();
 		if (c == ' ' || c == '\t' IF_ASH_ALIAS( || c == PEOA))
@@ -12999,7 +13155,6 @@ xxreadtoken(void)
 		return lasttoken;
 	}
 	setprompt_if(needprompt, 2);
-	startlinno = g_parsefile->linno;
 	for (;;) {      /* until token or start of word found */
 		c = pgetc();
 		switch (c) {
@@ -13391,10 +13546,14 @@ find_dot_file(char *name)
 		if (fullname != name)
 			stunalloc(fullname);
 	}
+	/* not found in PATH */
 
-	/* not found in the PATH */
+#if ENABLE_ASH_BASH_SOURCE_CURDIR
+	return name;
+#else
 	ash_msg_and_raise_error("%s: not found", name);
 	/* NOTREACHED */
+#endif
 }
 
 static int FAST_FUNC
@@ -13689,8 +13848,21 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	/* We failed.  If there was an entry for this command, delete it */
 	if (cmdp && updatetbl)
 		delete_cmd_entry();
-	if (act & DO_ERR)
+	if (act & DO_ERR) {
+#if ENABLE_ASH_BASH_NOT_FOUND_HOOK
+		struct tblentry *hookp = cmdlookup("command_not_found_handle", 0);
+		if (hookp && hookp->cmdtype == CMDFUNCTION) {
+			char *argv[3];
+			argv[0] = (char*) "command_not_found_handle";
+			argv[1] = name;
+			argv[2] = NULL;
+			evalfun(hookp->param.func, 2, argv, 0);
+			entry->cmdtype = CMDUNKNOWN;
+			return;
+		}
+#endif
 		ash_msg("%s: %s", name, errmsg(e, "not found"));
+	}
 	entry->cmdtype = CMDUNKNOWN;
 	return;
 

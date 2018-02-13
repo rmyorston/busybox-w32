@@ -171,9 +171,13 @@ struct globals {
 	char msg_ok [(sizeof("NNN " MSG_OK ) + 3) & 0xfffc];
 	char msg_err[(sizeof("NNN " MSG_ERR) + 3) & 0xfffc];
 } FIX_ALIASING;
-#define G (*(struct globals*)bb_common_bufsiz1)
+#define G (*ptr_to_globals)
+/* ^^^ about 75 bytes smaller code than this: */
+//#define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { \
-	setup_common_bufsiz(); \
+	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
+	/*setup_common_bufsiz();*/ \
+	\
 	/* Moved to main */ \
 	/*strcpy(G.msg_ok  + 4, MSG_OK );*/ \
 	/*strcpy(G.msg_err + 4, MSG_ERR);*/ \
@@ -258,7 +262,7 @@ cmdio_write(uint32_t status_str, const char *str)
 static void
 cmdio_write_ok(unsigned status)
 {
-	*(uint32_t *) G.msg_ok = status;
+	*(bb__aliased_uint32_t *) G.msg_ok = status;
 	xwrite(STDOUT_FILENO, G.msg_ok, sizeof("NNN " MSG_OK) - 1);
 	if (G.verbose > 1)
 		verbose_log(G.msg_ok);
@@ -269,7 +273,7 @@ cmdio_write_ok(unsigned status)
 static void
 cmdio_write_error(unsigned status)
 {
-	*(uint32_t *) G.msg_err = status;
+	*(bb__aliased_uint32_t *) G.msg_err = status;
 	xwrite(STDOUT_FILENO, G.msg_err, sizeof("NNN " MSG_ERR) - 1);
 	if (G.verbose > 0)
 		verbose_log(G.msg_err);
@@ -599,7 +603,7 @@ static void
 handle_rest(void)
 {
 	/* When ftp_arg == NULL simply restart from beginning */
-	G.restart_pos = G.ftp_arg ? xatoi_positive(G.ftp_arg) : 0;
+	G.restart_pos = G.ftp_arg ? XATOOFF(G.ftp_arg) : 0;
 	WRITE_OK(FTP_RESTOK);
 }
 

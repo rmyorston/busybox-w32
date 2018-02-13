@@ -32,6 +32,12 @@ in the file LICENSE.
 
 /* #include "bzlib_private.h" */
 
+#if BZIP2_SPEED >= 5
+# define ALWAYS_INLINE_5 ALWAYS_INLINE
+#else
+# define ALWAYS_INLINE_5 /*nothing*/
+#endif
+
 /*---------------------------------------------------*/
 /*--- Bit stream I/O                              ---*/
 /*---------------------------------------------------*/
@@ -50,8 +56,7 @@ static NOINLINE
 void bsFinishWrite(EState* s)
 {
 	while (s->bsLive > 0) {
-		s->zbits[s->numZ] = (uint8_t)(s->bsBuff >> 24);
-		s->numZ++;
+		*s->posZ++ = (uint8_t)(s->bsBuff >> 24);
 		s->bsBuff <<= 8;
 		s->bsLive -= 8;
 	}
@@ -61,19 +66,64 @@ void bsFinishWrite(EState* s)
 /*---------------------------------------------------*/
 static
 /* Helps only on level 5, on other levels hurts. ? */
-#if CONFIG_BZIP2_FAST >= 5
-ALWAYS_INLINE
-#endif
+ALWAYS_INLINE_5
 void bsW(EState* s, int32_t n, uint32_t v)
 {
 	while (s->bsLive >= 8) {
-		s->zbits[s->numZ] = (uint8_t)(s->bsBuff >> 24);
-		s->numZ++;
+		*s->posZ++ = (uint8_t)(s->bsBuff >> 24);
 		s->bsBuff <<= 8;
 		s->bsLive -= 8;
 	}
 	s->bsBuff |= (v << (32 - s->bsLive - n));
 	s->bsLive += n;
+}
+/* Same with n == 16: */
+static
+ALWAYS_INLINE_5
+void bsW16(EState* s, uint32_t v)
+{
+	while (s->bsLive >= 8) {
+		*s->posZ++ = (uint8_t)(s->bsBuff >> 24);
+		s->bsBuff <<= 8;
+		s->bsLive -= 8;
+	}
+	s->bsBuff |= (v << (16 - s->bsLive));
+	s->bsLive += 16;
+}
+/* Same with n == 1: */
+static
+ALWAYS_INLINE /* one callsite */
+void bsW1_1(EState* s)
+{
+	/* need space for only 1 bit, no need for loop freeing > 8 bits */
+	if (s->bsLive >= 8) {
+		*s->posZ++ = (uint8_t)(s->bsBuff >> 24);
+		s->bsBuff <<= 8;
+		s->bsLive -= 8;
+	}
+	s->bsBuff |= (1 << (31 - s->bsLive));
+	s->bsLive += 1;
+}
+static
+ALWAYS_INLINE_5
+void bsW1_0(EState* s)
+{
+	/* need space for only 1 bit, no need for loop freeing > 8 bits */
+	if (s->bsLive >= 8) {
+		*s->posZ++ = (uint8_t)(s->bsBuff >> 24);
+		s->bsBuff <<= 8;
+		s->bsLive -= 8;
+	}
+	//s->bsBuff |= (0 << (31 - s->bsLive));
+	s->bsLive += 1;
+}
+
+
+/*---------------------------------------------------*/
+static ALWAYS_INLINE
+void bsPutU16(EState* s, unsigned u)
+{
+	bsW16(s, u);
 }
 
 
@@ -81,19 +131,9 @@ void bsW(EState* s, int32_t n, uint32_t v)
 static
 void bsPutU32(EState* s, unsigned u)
 {
-	bsW(s, 8, (u >> 24) & 0xff);
-	bsW(s, 8, (u >> 16) & 0xff);
-	bsW(s, 8, (u >>  8) & 0xff);
-	bsW(s, 8,  u        & 0xff);
-}
-
-
-/*---------------------------------------------------*/
-static
-void bsPutU16(EState* s, unsigned u)
-{
-	bsW(s, 8, (u >>  8) & 0xff);
-	bsW(s, 8,  u        & 0xff);
+	//bsW(s, 32, u); // can't use: may try "uint32 << -n"
+	bsW16(s, (u >> 16) & 0xffff);
+	bsW16(s, u         & 0xffff);
 }
 
 
@@ -106,25 +146,57 @@ static
 void makeMaps_e(EState* s)
 {
 	int i;
-	s->nInUse = 0;
+	unsigned cnt = 0;
 	for (i = 0; i < 256; i++) {
 		if (s->inUse[i]) {
-			s->unseqToSeq[i] = s->nInUse;
-			s->nInUse++;
+			s->unseqToSeq[i] = cnt;
+			cnt++;
 		}
 	}
+	s->nInUse = cnt;
 }
 
 
 /*---------------------------------------------------*/
+/*
+ * This bit of code is performance-critical.
+ * On 32bit x86, gcc-6.3.0 was observed to spill ryy_j to stack,
+ * resulting in abysmal performance (x3 slowdown).
+ * Forcing it into a separate function alleviates register pressure,
+ * and spillage no longer happens.
+ * Other versions of gcc do not exhibit this problem, but out-of-line code
+ * seems to be helping them too (code is both smaller and faster).
+ * Therefore NOINLINE is enabled for the entire 32bit x86 arch for now,
+ * without a check for gcc version.
+ */
+static
+#if defined __i386__
+NOINLINE
+#endif
+int inner_loop(uint8_t *yy, uint8_t ll_i)
+{
+	register uint8_t  rtmp;
+	register uint8_t* ryy_j;
+	rtmp  = yy[1];
+	yy[1] = yy[0];
+	ryy_j = &(yy[1]);
+	while (ll_i != rtmp) {
+		register uint8_t rtmp2;
+		ryy_j++;
+		rtmp2  = rtmp;
+		rtmp   = *ryy_j;
+		*ryy_j = rtmp2;
+	}
+	yy[0] = rtmp;
+	return ryy_j - &(yy[0]);
+}
 static NOINLINE
 void generateMTFValues(EState* s)
 {
 	uint8_t yy[256];
-	int32_t i, j;
-	int32_t zPend;
+	int i;
+	int zPend;
 	int32_t wr;
-	int32_t EOB;
 
 	/*
 	 * After sorting (eg, here),
@@ -148,95 +220,74 @@ void generateMTFValues(EState* s)
 	 * compressBlock().
 	 */
 	uint32_t* ptr   = s->ptr;
-	uint8_t*  block = s->block;
-	uint16_t* mtfv  = s->mtfv;
 
 	makeMaps_e(s);
-	EOB = s->nInUse+1;
-
-	for (i = 0; i <= EOB; i++)
-		s->mtfFreq[i] = 0;
 
 	wr = 0;
 	zPend = 0;
+	for (i = 0; i <= s->nInUse+1; i++)
+		s->mtfFreq[i] = 0;
+
 	for (i = 0; i < s->nInUse; i++)
 		yy[i] = (uint8_t) i;
 
 	for (i = 0; i < s->nblock; i++) {
-		uint8_t ll_i;
+		uint8_t ll_i = ll_i; /* gcc 4.3.1 thinks it may be used w/o init */
+		int32_t j;
+
 		AssertD(wr <= i, "generateMTFValues(1)");
 		j = ptr[i] - 1;
 		if (j < 0)
 			j += s->nblock;
-		ll_i = s->unseqToSeq[block[j]];
+		ll_i = s->unseqToSeq[s->block[j]];
 		AssertD(ll_i < s->nInUse, "generateMTFValues(2a)");
 
 		if (yy[0] == ll_i) {
 			zPend++;
-		} else {
-			if (zPend > 0) {
-				zPend--;
-				while (1) {
-					if (zPend & 1) {
-						mtfv[wr] = BZ_RUNB; wr++;
-						s->mtfFreq[BZ_RUNB]++;
-					} else {
-						mtfv[wr] = BZ_RUNA; wr++;
-						s->mtfFreq[BZ_RUNA]++;
-					}
-					if (zPend < 2) break;
-					zPend = (uint32_t)(zPend - 2) / 2;
-					/* bbox: unsigned div is easier */
-				};
-				zPend = 0;
-			}
-			{
-				register uint8_t  rtmp;
-				register uint8_t* ryy_j;
-				register uint8_t  rll_i;
-				rtmp  = yy[1];
-				yy[1] = yy[0];
-				ryy_j = &(yy[1]);
-				rll_i = ll_i;
-				while (rll_i != rtmp) {
-					register uint8_t rtmp2;
-					ryy_j++;
-					rtmp2  = rtmp;
-					rtmp   = *ryy_j;
-					*ryy_j = rtmp2;
-				};
-				yy[0] = rtmp;
-				j = ryy_j - &(yy[0]);
-				mtfv[wr] = j+1;
-				wr++;
-				s->mtfFreq[j+1]++;
-			}
+			continue;
 		}
-	}
 
-	if (zPend > 0) {
-		zPend--;
-		while (1) {
-			if (zPend & 1) {
-				mtfv[wr] = BZ_RUNB;
+		if (zPend > 0) {
+ process_zPend:
+			zPend--;
+			while (1) {
+#if 0
+				if (zPend & 1) {
+					s->mtfv[wr] = BZ_RUNB; wr++;
+					s->mtfFreq[BZ_RUNB]++;
+				} else {
+					s->mtfv[wr] = BZ_RUNA; wr++;
+					s->mtfFreq[BZ_RUNA]++;
+				}
+#else /* same as above, since BZ_RUNA is 0 and BZ_RUNB is 1 */
+				unsigned run = zPend & 1;
+				s->mtfv[wr] = run;
 				wr++;
-				s->mtfFreq[BZ_RUNB]++;
-			} else {
-				mtfv[wr] = BZ_RUNA;
-				wr++;
-				s->mtfFreq[BZ_RUNA]++;
+				s->mtfFreq[run]++;
+#endif
+				zPend -= 2;
+				if (zPend < 0)
+					break;
+				zPend = (unsigned)zPend / 2;
+				/* bbox: unsigned div is easier */
 			}
-			if (zPend < 2)
-				break;
-			zPend = (uint32_t)(zPend - 2) / 2;
-			/* bbox: unsigned div is easier */
-		};
-		zPend = 0;
+			if (i < 0) /* came via "goto process_zPend"? exit */
+				goto end;
+			zPend = 0;
+		}
+		j = inner_loop(yy, ll_i);
+		s->mtfv[wr] = j+1;
+		wr++;
+		s->mtfFreq[j+1]++;
 	}
 
-	mtfv[wr] = EOB;
+	i = -1;
+	if (zPend > 0)
+		goto process_zPend; /* "process it and come back here" */
+ end:
+	s->mtfv[wr] = s->nInUse+1;
 	wr++;
-	s->mtfFreq[EOB]++;
+	s->mtfFreq[s->nInUse+1]++;
 
 	s->nMTF = wr;
 }
@@ -249,8 +300,11 @@ void generateMTFValues(EState* s)
 static NOINLINE
 void sendMTFValues(EState* s)
 {
-	int32_t v, t, i, j, gs, ge, bt, bc, iter;
-	int32_t nSelectors, alphaSize, minLen, maxLen, selCtr;
+	int32_t t, i;
+	unsigned iter;
+	unsigned gs;
+	int32_t alphaSize;
+	unsigned nSelectors, selCtr;
 	int32_t nGroups;
 
 	/*
@@ -266,39 +320,49 @@ void sendMTFValues(EState* s)
 #define rfreq    sendMTFValues__rfreq
 #define len_pack sendMTFValues__len_pack
 
-	uint16_t cost[BZ_N_GROUPS];
-	int32_t  fave[BZ_N_GROUPS];
+	unsigned /*uint16_t*/ cost[BZ_N_GROUPS];
 
 	uint16_t* mtfv = s->mtfv;
 
 	alphaSize = s->nInUse + 2;
-	for (t = 0; t < BZ_N_GROUPS; t++)
+	for (t = 0; t < BZ_N_GROUPS; t++) {
+		unsigned v;
 		for (v = 0; v < alphaSize; v++)
 			s->len[t][v] = BZ_GREATER_ICOST;
+	}
 
 	/*--- Decide how many coding tables to use ---*/
 	AssertH(s->nMTF > 0, 3001);
-	if (s->nMTF < 200)  nGroups = 2; else
-	if (s->nMTF < 600)  nGroups = 3; else
-	if (s->nMTF < 1200) nGroups = 4; else
-	if (s->nMTF < 2400) nGroups = 5; else
-	nGroups = 6;
+	// 1..199 = 2
+	// 200..599 = 3
+	// 600..1199 = 4
+	// 1200..2399 = 5
+	// 2400..99999 = 6
+	nGroups = 2;
+	nGroups += (s->nMTF >= 200);
+	nGroups += (s->nMTF >= 600);
+	nGroups += (s->nMTF >= 1200);
+	nGroups += (s->nMTF >= 2400);
 
 	/*--- Generate an initial set of coding tables ---*/
 	{
-		int32_t nPart, remF, tFreq, aFreq;
+		unsigned nPart, remF;
 
 		nPart = nGroups;
 		remF  = s->nMTF;
 		gs = 0;
 		while (nPart > 0) {
+			unsigned v;
+			unsigned ge;
+			unsigned tFreq, aFreq;
+
 			tFreq = remF / nPart;
-			ge = gs - 1;
+			ge = gs;
 			aFreq = 0;
-			while (aFreq < tFreq && ge < alphaSize-1) {
-				ge++;
-				aFreq += s->mtfFreq[ge];
+			while (aFreq < tFreq && ge < alphaSize) {
+				aFreq += s->mtfFreq[ge++];
 			}
+			ge--;
 
 			if (ge > gs
 			 && nPart != nGroups && nPart != 1
@@ -324,19 +388,19 @@ void sendMTFValues(EState* s)
 	 * Iterate up to BZ_N_ITERS times to improve the tables.
 	 */
 	for (iter = 0; iter < BZ_N_ITERS; iter++) {
-		for (t = 0; t < nGroups; t++)
-			fave[t] = 0;
-
-		for (t = 0; t < nGroups; t++)
+		for (t = 0; t < nGroups; t++) {
+			unsigned v;
 			for (v = 0; v < alphaSize; v++)
 				s->rfreq[t][v] = 0;
+		}
 
-#if CONFIG_BZIP2_FAST >= 5
+#if BZIP2_SPEED >= 5
 		/*
 		 * Set up an auxiliary length table which is used to fast-track
 		 * the common case (nGroups == 6).
 		 */
 		if (nGroups == 6) {
+			unsigned v;
 			for (v = 0; v < alphaSize; v++) {
 				s->len_pack[v][0] = (s->len[1][v] << 16) | s->len[0][v];
 				s->len_pack[v][1] = (s->len[3][v] << 16) | s->len[2][v];
@@ -347,6 +411,9 @@ void sendMTFValues(EState* s)
 		nSelectors = 0;
 		gs = 0;
 		while (1) {
+			unsigned ge;
+			unsigned bt, bc;
+
 			/*--- Set group start & end marks. --*/
 			if (gs >= s->nMTF)
 				break;
@@ -360,7 +427,7 @@ void sendMTFValues(EState* s)
 			 */
 			for (t = 0; t < nGroups; t++)
 				cost[t] = 0;
-#if CONFIG_BZIP2_FAST >= 5
+#if BZIP2_SPEED >= 5
 			if (nGroups == 6 && 50 == ge-gs+1) {
 				/*--- fast track the common case ---*/
 				register uint32_t cost01, cost23, cost45;
@@ -390,7 +457,7 @@ void sendMTFValues(EState* s)
 			{
 				/*--- slow version which correctly handles all situations ---*/
 				for (i = gs; i <= ge; i++) {
-					uint16_t icv = mtfv[i];
+					unsigned /*uint16_t*/ icv = mtfv[i];
 					for (t = 0; t < nGroups; t++)
 						cost[t] += s->len[t][icv];
 				}
@@ -409,7 +476,6 @@ void sendMTFValues(EState* s)
 					bt = t;
 				}
 			}
-			fave[bt]++;
 			s->selector[nSelectors] = bt;
 			nSelectors++;
 
@@ -417,7 +483,7 @@ void sendMTFValues(EState* s)
 			 * Increment the symbol frequencies for the selected table.
 			 */
 /* 1% faster compress. +800 bytes */
-#if CONFIG_BZIP2_FAST >= 4
+#if BZIP2_SPEED >= 4
 			if (nGroups == 6 && 50 == ge-gs+1) {
 				/*--- fast track the common case ---*/
 #define BZ_ITUR(nn) s->rfreq[bt][mtfv[gs + (nn)]]++
@@ -464,6 +530,7 @@ void sendMTFValues(EState* s)
 		for (i = 0; i < nGroups; i++)
 			pos[i] = i;
 		for (i = 0; i < nSelectors; i++) {
+			unsigned j;
 			ll_i = s->selector[i];
 			j = 0;
 			tmp = pos[j];
@@ -472,16 +539,16 @@ void sendMTFValues(EState* s)
 				tmp2 = tmp;
 				tmp = pos[j];
 				pos[j] = tmp2;
-			};
+			}
 			pos[0] = tmp;
 			s->selectorMtf[i] = j;
 		}
-	};
+	}
 
 	/*--- Assign actual codes for the tables. --*/
 	for (t = 0; t < nGroups; t++) {
-		minLen = 32;
-		maxLen = 0;
+		unsigned minLen = 32; //todo: s->len[t][0];
+		unsigned maxLen = 0;  //todo: s->len[t][0];
 		for (i = 0; i < alphaSize; i++) {
 			if (s->len[t][i] > maxLen) maxLen = s->len[t][i];
 			if (s->len[t][i] < minLen) minLen = s->len[t][i];
@@ -509,15 +576,16 @@ void sendMTFValues(EState* s)
 			}
 		}
 
-		bsW(s, 16, inUse16);
+		bsW16(s, inUse16);
 
 		inUse16 <<= (sizeof(int)*8 - 16); /* move 15th bit into sign bit */
 		for (i = 0; i < 16; i++) {
 			if (inUse16 < 0) {
 				unsigned v16 = 0;
+				unsigned j;
 				for (j = 0; j < 16; j++)
 					v16 = v16*2 + s->inUse[i * 16 + j];
-				bsW(s, 16, v16);
+				bsW16(s, v16);
 			}
 			inUse16 <<= 1;
 		}
@@ -527,19 +595,20 @@ void sendMTFValues(EState* s)
 	bsW(s, 3, nGroups);
 	bsW(s, 15, nSelectors);
 	for (i = 0; i < nSelectors; i++) {
+		unsigned j;
 		for (j = 0; j < s->selectorMtf[i]; j++)
-			bsW(s, 1, 1);
-		bsW(s, 1, 0);
+			bsW1_1(s);
+		bsW1_0(s);
 	}
 
 	/*--- Now the coding tables. ---*/
 	for (t = 0; t < nGroups; t++) {
-		int32_t curr = s->len[t][0];
+		unsigned curr = s->len[t][0];
 		bsW(s, 5, curr);
 		for (i = 0; i < alphaSize; i++) {
-			while (curr < s->len[t][i]) { bsW(s, 2, 2); curr++; /* 10 */ };
-			while (curr > s->len[t][i]) { bsW(s, 2, 3); curr--; /* 11 */ };
-			bsW(s, 1, 0);
+			while (curr < s->len[t][i]) { bsW(s, 2, 2); curr++; /* 10 */ }
+			while (curr > s->len[t][i]) { bsW(s, 2, 3); curr--; /* 11 */ }
+			bsW1_0(s);
 		}
 	}
 
@@ -547,6 +616,8 @@ void sendMTFValues(EState* s)
 	selCtr = 0;
 	gs = 0;
 	while (1) {
+		unsigned ge;
+
 		if (gs >= s->nMTF)
 			break;
 		ge = gs + BZ_G_SIZE - 1;
@@ -605,17 +676,21 @@ void sendMTFValues(EState* s)
 static
 void BZ2_compressBlock(EState* s, int is_last_block)
 {
+	int32_t origPtr = origPtr;
+
 	if (s->nblock > 0) {
 		BZ_FINALISE_CRC(s->blockCRC);
 		s->combinedCRC = (s->combinedCRC << 1) | (s->combinedCRC >> 31);
 		s->combinedCRC ^= s->blockCRC;
 		if (s->blockNo > 1)
-			s->numZ = 0;
+			s->posZ = s->zbits; // was: s->numZ = 0;
 
-		BZ2_blockSort(s);
+		origPtr = BZ2_blockSort(s);
 	}
 
 	s->zbits = &((uint8_t*)s->arr2)[s->nblock];
+	s->posZ = s->zbits;
+	s->state_out_pos = s->zbits;
 
 	/*-- If this is the first block, create the stream header. --*/
 	if (s->blockNo == 1) {
@@ -649,9 +724,9 @@ void BZ2_compressBlock(EState* s, int is_last_block)
 		 * so as to maintain backwards compatibility with
 		 * older versions of bzip2.
 		 */
-		bsW(s, 1, 0);
+		bsW1_0(s);
 
-		bsW(s, 24, s->origPtr);
+		bsW(s, 24, origPtr);
 		generateMTFValues(s);
 		sendMTFValues(s);
 	}

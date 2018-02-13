@@ -96,6 +96,7 @@ static const char udhcpc6_longopts[] ALIGN1 =
 	"quit\0"           No_argument       "q"
 	"release\0"        No_argument       "R"
 	"request\0"        Required_argument "r"
+	"requestprefix\0"  No_argument       "d"
 	"script\0"         Required_argument "s"
 	"timeout\0"        Required_argument "T"
 	"retries\0"        Required_argument "t"
@@ -128,8 +129,9 @@ enum {
 	OPT_o = 1 << 12,
 	OPT_x = 1 << 13,
 	OPT_f = 1 << 14,
+	OPT_d = 1 << 15,
 /* The rest has variable bit positions, need to be clever */
-	OPTBIT_f = 14,
+	OPTBIT_d = 15,
 	USE_FOR_MMU(             OPTBIT_b,)
 	///IF_FEATURE_UDHCPC_ARPING(OPTBIT_a,)
 	IF_FEATURE_UDHCP_PORT(   OPTBIT_P,)
@@ -277,11 +279,11 @@ static void option_to_env(uint8_t *option, uint8_t *option_end)
  * |               |
  * +-+-+-+-+-+-+-+-+
  */
-			//move_from_unaligned32(v32, option + 4 + 4);
-			//*new_env() = xasprintf("lease=%u", (unsigned)v32);
+			move_from_unaligned32(v32, option + 4 + 4);
+			*new_env() = xasprintf("ipv6prefix_lease=%u", (unsigned)v32);
 
-			sprint_nip6(ipv6str, option + 4 + 4 + 1);
-			*new_env() = xasprintf("ipv6prefix=%s/%u", ipv6str, (unsigned)(option[4 + 4]));
+			sprint_nip6(ipv6str, option + 4 + 4 + 4 + 1);
+			*new_env() = xasprintf("ipv6prefix=%s/%u", ipv6str, (unsigned)(option[4 + 4 + 4]));
 			break;
 #if ENABLE_FEATURE_UDHCPC6_RFC3646
 		case D6_OPT_DNS_SERVERS: {
@@ -561,18 +563,33 @@ static NOINLINE int send_d6_discover(uint32_t xid, struct in6_addr *requested_ip
 
 	/* Create new IA_NA, optionally with included IAADDR with requested IP */
 	free(client6_data.ia_na);
-	len = requested_ipv6 ? 2+2+4+4+4 + 2+2+16+4+4 : 2+2+4+4+4;
-	client6_data.ia_na = xzalloc(len);
-	client6_data.ia_na->code = D6_OPT_IA_NA;
-	client6_data.ia_na->len = len - 4;
-	*(uint32_t*)client6_data.ia_na->data = rand(); /* IAID */
-	if (requested_ipv6) {
-		struct d6_option *iaaddr = (void*)(client6_data.ia_na->data + 4+4+4);
-		iaaddr->code = D6_OPT_IAADDR;
-		iaaddr->len = 16+4+4;
-		memcpy(iaaddr->data, requested_ipv6, 16);
+	client6_data.ia_na = NULL;
+	if (option_mask32 & OPT_r) {
+		len = requested_ipv6 ? 2+2+4+4+4 + 2+2+16+4+4 : 2+2+4+4+4;
+		client6_data.ia_na = xzalloc(len);
+		client6_data.ia_na->code = D6_OPT_IA_NA;
+		client6_data.ia_na->len = len - 4;
+		*(uint32_t*)client6_data.ia_na->data = rand(); /* IAID */
+		if (requested_ipv6) {
+			struct d6_option *iaaddr = (void*)(client6_data.ia_na->data + 4+4+4);
+			iaaddr->code = D6_OPT_IAADDR;
+			iaaddr->len = 16+4+4;
+			memcpy(iaaddr->data, requested_ipv6, 16);
+		}
+		opt_ptr = mempcpy(opt_ptr, client6_data.ia_na, len);
 	}
-	opt_ptr = mempcpy(opt_ptr, client6_data.ia_na, len);
+
+	/* IA_PD */
+	free(client6_data.ia_pd);
+	client6_data.ia_pd = NULL;
+	if (option_mask32 & OPT_d) {
+		len = 2+2+4+4+4;
+		client6_data.ia_pd = xzalloc(len);
+		client6_data.ia_pd->code = D6_OPT_IA_PD;
+		client6_data.ia_pd->len = len - 4;
+		*(uint32_t*)client6_data.ia_pd->data = rand(); /* IAID */
+		opt_ptr = mempcpy(opt_ptr, client6_data.ia_pd, len);
+	}
 
 	/* Add options:
 	 * "param req" option according to -O, options specified with -x
@@ -625,7 +642,11 @@ static NOINLINE int send_d6_select(uint32_t xid)
 	/* server id */
 	opt_ptr = mempcpy(opt_ptr, client6_data.server_id, client6_data.server_id->len + 2+2);
 	/* IA NA (contains requested IP) */
-	opt_ptr = mempcpy(opt_ptr, client6_data.ia_na, client6_data.ia_na->len + 2+2);
+	if (client6_data.ia_na)
+		opt_ptr = mempcpy(opt_ptr, client6_data.ia_na, client6_data.ia_na->len + 2+2);
+	/* IA PD */
+	if (client6_data.ia_pd)
+		opt_ptr = mempcpy(opt_ptr, client6_data.ia_pd, client6_data.ia_pd->len + 2+2);
 
 	/* Add options:
 	 * "param req" option according to -O, options specified with -x
@@ -694,7 +715,11 @@ static NOINLINE int send_d6_renew(uint32_t xid, struct in6_addr *server_ipv6, st
 	/* server id */
 	opt_ptr = mempcpy(opt_ptr, client6_data.server_id, client6_data.server_id->len + 2+2);
 	/* IA NA (contains requested IP) */
-	opt_ptr = mempcpy(opt_ptr, client6_data.ia_na, client6_data.ia_na->len + 2+2);
+	if (client6_data.ia_na)
+		opt_ptr = mempcpy(opt_ptr, client6_data.ia_na, client6_data.ia_na->len + 2+2);
+	/* IA PD */
+	if (client6_data.ia_pd)
+		opt_ptr = mempcpy(opt_ptr, client6_data.ia_pd, client6_data.ia_pd->len + 2+2);
 
 	/* Add options:
 	 * "param req" option according to -O, options specified with -x
@@ -725,7 +750,11 @@ static int send_d6_release(struct in6_addr *server_ipv6, struct in6_addr *our_cu
 	/* server id */
 	opt_ptr = mempcpy(opt_ptr, client6_data.server_id, client6_data.server_id->len + 2+2);
 	/* IA NA (contains our current IP) */
-	opt_ptr = mempcpy(opt_ptr, client6_data.ia_na, client6_data.ia_na->len + 2+2);
+	if (client6_data.ia_na)
+		opt_ptr = mempcpy(opt_ptr, client6_data.ia_na, client6_data.ia_na->len + 2+2);
+	/* IA PD */
+	if (client6_data.ia_pd)
+		opt_ptr = mempcpy(opt_ptr, client6_data.ia_pd, client6_data.ia_pd->len + 2+2);
 
 	bb_error_msg("sending %s", "release");
 	return d6_send_kernel_packet(
@@ -1001,44 +1030,9 @@ static void client_background(void)
 //usage:# define IF_UDHCP_VERBOSE(...)
 //usage:#endif
 //usage:#define udhcpc6_trivial_usage
-//usage:       "[-fbnq"IF_UDHCP_VERBOSE("v")"oR] [-i IFACE] [-r IP] [-s PROG] [-p PIDFILE]\n"
+//usage:       "[-fbnq"IF_UDHCP_VERBOSE("v")"odR] [-i IFACE] [-r IPv6] [-s PROG] [-p PIDFILE]\n"
 //usage:       "	[-x OPT:VAL]... [-O OPT]..." IF_FEATURE_UDHCP_PORT(" [-P N]")
 //usage:#define udhcpc6_full_usage "\n"
-//usage:	IF_LONG_OPTS(
-//usage:     "\n	-i,--interface IFACE	Interface to use (default eth0)"
-//usage:     "\n	-p,--pidfile FILE	Create pidfile"
-//usage:     "\n	-s,--script PROG	Run PROG at DHCP events (default "CONFIG_UDHCPC_DEFAULT_SCRIPT")"
-//usage:     "\n	-B,--broadcast		Request broadcast replies"
-//usage:     "\n	-t,--retries N		Send up to N discover packets"
-//usage:     "\n	-T,--timeout N		Pause between packets (default 3 seconds)"
-//usage:     "\n	-A,--tryagain N		Wait N seconds after failure (default 20)"
-//usage:     "\n	-f,--foreground		Run in foreground"
-//usage:	USE_FOR_MMU(
-//usage:     "\n	-b,--background		Background if lease is not obtained"
-//usage:	)
-//usage:     "\n	-n,--now		Exit if lease is not obtained"
-//usage:     "\n	-q,--quit		Exit after obtaining lease"
-//usage:     "\n	-R,--release		Release IP on exit"
-//usage:     "\n	-S,--syslog		Log to syslog too"
-//usage:	IF_FEATURE_UDHCP_PORT(
-//usage:     "\n	-P,--client-port N	Use port N (default 546)"
-//usage:	)
-////usage:	IF_FEATURE_UDHCPC_ARPING(
-////usage:     "\n	-a,--arping		Use arping to validate offered address"
-////usage:	)
-//usage:     "\n	-O,--request-option OPT	Request option OPT from server (cumulative)"
-//usage:     "\n	-o,--no-default-options	Don't request any options (unless -O is given)"
-//usage:     "\n	-r,--request IP		Request this IP address"
-//usage:     "\n	-x OPT:VAL		Include option OPT in sent packets (cumulative)"
-//usage:     "\n				Examples of string, numeric, and hex byte opts:"
-//usage:     "\n				-x hostname:bbox - option 12"
-//usage:     "\n				-x lease:3600 - option 51 (lease time)"
-//usage:     "\n				-x 0x3d:0100BEEFC0FFEE - option 61 (client id)"
-//usage:	IF_UDHCP_VERBOSE(
-//usage:     "\n	-v			Verbose"
-//usage:	)
-//usage:	)
-//usage:	IF_NOT_LONG_OPTS(
 //usage:     "\n	-i IFACE	Interface to use (default eth0)"
 //usage:     "\n	-p FILE		Create pidfile"
 //usage:     "\n	-s PROG		Run PROG at DHCP events (default "CONFIG_UDHCPC_DEFAULT_SCRIPT")"
@@ -1062,7 +1056,8 @@ static void client_background(void)
 ////usage:	)
 //usage:     "\n	-O OPT		Request option OPT from server (cumulative)"
 //usage:     "\n	-o		Don't request any options (unless -O is given)"
-//usage:     "\n	-r IP		Request this IP address"
+//usage:     "\n	-r IPv6		Request this address ('no' to not request any IP)"
+//usage:     "\n	-d		Request prefix"
 //usage:     "\n	-x OPT:VAL	Include option OPT in sent packets (cumulative)"
 //usage:     "\n			Examples of string, numeric, and hex byte opts:"
 //usage:     "\n			-x hostname:bbox - option 12"
@@ -1070,7 +1065,6 @@ static void client_background(void)
 //usage:     "\n			-x 0x3d:0100BEEFC0FFEE - option 61 (client id)"
 //usage:	IF_UDHCP_VERBOSE(
 //usage:     "\n	-v		Verbose"
-//usage:	)
 //usage:	)
 //usage:     "\nSignals:"
 //usage:     "\n	USR1	Renew lease"
@@ -1099,6 +1093,8 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 	int retval;
 
 	setup_common_bufsiz();
+	/* We want random_xid to be random */
+	srand(monotonic_us());
 
 	/* Default options */
 	IF_FEATURE_UDHCP_PORT(SERVER_PORT6 = 547;)
@@ -1109,7 +1105,7 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 	/* Parse command line */
 	opt = getopt32long(argv, "^"
 		/* O,x: list; -T,-t,-A take numeric param */
-		"i:np:qRr:s:T:+t:+SA:+O:*ox:*f"
+		"i:np:qRr:s:T:+t:+SA:+O:*ox:*fd"
 		USE_FOR_MMU("b")
 		///IF_FEATURE_UDHCPC_ARPING("a")
 		IF_FEATURE_UDHCP_PORT("P:")
@@ -1125,10 +1121,15 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 		IF_UDHCP_VERBOSE(, &dhcp_verbose)
 	);
 	requested_ipv6 = NULL;
+	option_mask32 |= OPT_r;
 	if (opt & OPT_r) {
-		if (inet_pton(AF_INET6, str_r, &ipv6_buf) <= 0)
-			bb_error_msg_and_die("bad IPv6 address '%s'", str_r);
-		requested_ipv6 = &ipv6_buf;
+		if (strcmp(str_r, "no") == 0) {
+			option_mask32 -= OPT_r;
+		} else {
+			if (inet_pton(AF_INET6, str_r, &ipv6_buf) <= 0)
+				bb_error_msg_and_die("bad IPv6 address '%s'", str_r);
+			requested_ipv6 = &ipv6_buf;
+		}
 	}
 #if ENABLE_FEATURE_UDHCP_PORT
 	if (opt & OPT_P) {
@@ -1200,16 +1201,12 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 
 	/* Make sure fd 0,1,2 are open */
 	bb_sanitize_stdio();
-	/* Equivalent of doing a fflush after every \n */
-	setlinebuf(stdout);
 	/* Create pidfile */
 	write_pidfile(client_config.pidfile);
 	/* Goes to stdout (unless NOMMU) and possibly syslog */
 	bb_error_msg("started, v"BB_VER);
 	/* Set up the signal pipe */
 	udhcp_sp_setup();
-	/* We want random_xid to be random... */
-	srand(monotonic_us());
 
 	state = INIT_SELECTING;
 	d6_run_script(NULL, "deconfig");
@@ -1465,8 +1462,12 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 		case REBINDING:
 			if (packet.d6_msg_type == D6_MSG_REPLY) {
 				uint32_t lease_seconds;
-				struct d6_option *option, *iaaddr;
+				struct d6_option *option;
+				unsigned address_timeout;
+				unsigned prefix_timeout;
  type_is_ok:
+				address_timeout = 0;
+				prefix_timeout = 0;
 				option = d6_find_option(packet.d6_options, packet_end, D6_OPT_STATUS_CODE);
 				if (option && (option->data[0] | option->data[1]) != 0) {
 					/* return to init state */
@@ -1589,44 +1590,87 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
  * .                                                               .
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  */
-				free(client6_data.ia_na);
-				client6_data.ia_na = d6_copy_option(packet.d6_options, packet_end, D6_OPT_IA_NA);
-				if (!client6_data.ia_na) {
-					bb_error_msg("no %s option, ignoring packet", "IA_NA");
-					continue;
-				}
-				if (client6_data.ia_na->len < (4 + 4 + 4) + (2 + 2 + 16 + 4 + 4)) {
-					bb_error_msg("IA_NA option is too short:%d bytes", client6_data.ia_na->len);
-					continue;
-				}
-				iaaddr = d6_find_option(client6_data.ia_na->data + 4 + 4 + 4,
-						client6_data.ia_na->data + client6_data.ia_na->len,
-						D6_OPT_IAADDR
-				);
-				if (!iaaddr) {
-					bb_error_msg("no %s option, ignoring packet", "IAADDR");
-					continue;
-				}
-				if (iaaddr->len < (16 + 4 + 4)) {
-					bb_error_msg("IAADDR option is too short:%d bytes", iaaddr->len);
-					continue;
-				}
-				/* Note: the address is sufficiently aligned for cast:
-				 * we _copied_ IA-NA, and copy is always well-aligned.
-				 */
-				requested_ipv6 = (struct in6_addr*) iaaddr->data;
-				move_from_unaligned32(lease_seconds, iaaddr->data + 16 + 4);
-				lease_seconds = ntohl(lease_seconds);
-				/* paranoia: must not be too small and not prone to overflows */
-				if (lease_seconds < 0x10)
-					lease_seconds = 0x10;
+				if (option_mask32 & OPT_r) {
+					struct d6_option *iaaddr;
+
+					free(client6_data.ia_na);
+					client6_data.ia_na = d6_copy_option(packet.d6_options, packet_end, D6_OPT_IA_NA);
+					if (!client6_data.ia_na) {
+						bb_error_msg("no %s option, ignoring packet", "IA_NA");
+						continue;
+					}
+					if (client6_data.ia_na->len < (4 + 4 + 4) + (2 + 2 + 16 + 4 + 4)) {
+						bb_error_msg("%s option is too short:%d bytes",
+							"IA_NA", client6_data.ia_na->len);
+						continue;
+					}
+					iaaddr = d6_find_option(client6_data.ia_na->data + 4 + 4 + 4,
+							client6_data.ia_na->data + client6_data.ia_na->len,
+							D6_OPT_IAADDR
+					);
+					if (!iaaddr) {
+						bb_error_msg("no %s option, ignoring packet", "IAADDR");
+						continue;
+					}
+					if (iaaddr->len < (16 + 4 + 4)) {
+						bb_error_msg("%s option is too short:%d bytes",
+							"IAADDR", iaaddr->len);
+						continue;
+					}
+					/* Note: the address is sufficiently aligned for cast:
+					 * we _copied_ IA-NA, and copy is always well-aligned.
+					 */
+					requested_ipv6 = (struct in6_addr*) iaaddr->data;
+					move_from_unaligned32(lease_seconds, iaaddr->data + 16 + 4);
+					lease_seconds = ntohl(lease_seconds);
 /// TODO: check for 0 lease time?
-				if (lease_seconds > 0x7fffffff / 1000)
-					lease_seconds = 0x7fffffff / 1000;
+					bb_error_msg("%s obtained, lease time %u",
+						"IPv6", /*inet_ntoa(temp_addr),*/ (unsigned)lease_seconds);
+					address_timeout = lease_seconds;
+				}
+				if (option_mask32 & OPT_d) {
+					struct d6_option *iaprefix;
+
+					free(client6_data.ia_pd);
+					client6_data.ia_pd = d6_copy_option(packet.d6_options, packet_end, D6_OPT_IA_PD);
+					if (!client6_data.ia_pd) {
+						bb_error_msg("no %s option, ignoring packet", "IA_PD");
+						continue;
+					}
+					if (client6_data.ia_pd->len < (4 + 4 + 4) + (2 + 2 + 4 + 4 + 1 + 16)) {
+						bb_error_msg("%s option is too short:%d bytes",
+							"IA_PD", client6_data.ia_pd->len);
+						continue;
+					}
+					iaprefix = d6_find_option(client6_data.ia_pd->data + 4 + 4 + 4,
+							client6_data.ia_pd->data + client6_data.ia_pd->len,
+							D6_OPT_IAPREFIX
+					);
+					if (!iaprefix) {
+						bb_error_msg("no %s option, ignoring packet", "IAPREFIX");
+						continue;
+					}
+					if (iaprefix->len < (4 + 4 + 1 + 16)) {
+						bb_error_msg("%s option is too short:%d bytes",
+							"IAPREFIX", iaprefix->len);
+						continue;
+					}
+					move_from_unaligned32(lease_seconds, iaprefix->data + 4);
+					lease_seconds = ntohl(lease_seconds);
+					bb_error_msg("%s obtained, lease time %u",
+						"prefix", /*inet_ntoa(temp_addr),*/ (unsigned)lease_seconds);
+					prefix_timeout = lease_seconds;
+				}
+				if (!address_timeout)
+					address_timeout = prefix_timeout;
+				if (!prefix_timeout)
+					prefix_timeout = address_timeout;
+				/* note: "int timeout" will not overflow even with 0xffffffff inputs here: */
+				timeout = (prefix_timeout < address_timeout ? prefix_timeout : address_timeout) / 2;
+				/* paranoia: must not be too small */
+				if (timeout < 0x10)
+					timeout = 0x10;
 				/* enter bound state */
-				timeout = lease_seconds / 2;
-				bb_error_msg("lease obtained, lease time %u",
-					/*inet_ntoa(temp_addr),*/ (unsigned)lease_seconds);
 				d6_run_script(&packet, state == REQUESTING ? "bound" : "renew");
 
 				state = BOUND;

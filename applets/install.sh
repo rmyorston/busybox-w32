@@ -8,6 +8,7 @@ if [ -z "$prefix" ]; then
 	echo "usage: applets/install.sh DESTINATION [--symlinks/--hardlinks/--binaries/--scriptwrapper]"
 	exit 1
 fi
+shift # Keep only remaining options
 
 # Source the configuration
 . ./.config
@@ -21,18 +22,21 @@ scriptwrapper="n"
 binaries="n"
 cleanup="0"
 noclobber="0"
-case "$2" in
-	--hardlinks)     linkopts="-f";;
-	--symlinks)      linkopts="-fs";;
-	--binaries)      binaries="y";;
-	--scriptwrapper) scriptwrapper="y";swrapall="y";;
-	--sw-sh-hard)    scriptwrapper="y";linkopts="-f";;
-	--sw-sh-sym)     scriptwrapper="y";linkopts="-fs";;
-	--cleanup)       cleanup="1";;
-	--noclobber)     noclobber="1";;
-	"")              h="";;
-	*)               echo "Unknown install option: $2"; exit 1;;
-esac
+while [ ${#} -gt 0 ]; do
+	case "$1" in
+		--hardlinks)     linkopts="-f";;
+		--symlinks)      linkopts="-fs";;
+		--binaries)      binaries="y";;
+		--scriptwrapper) scriptwrapper="y"; swrapall="y";;
+		--sw-sh-hard)    scriptwrapper="y"; linkopts="-f";;
+		--sw-sh-sym)     scriptwrapper="y"; linkopts="-fs";;
+		--cleanup)       cleanup="1";;
+		--noclobber)     noclobber="1";;
+		"")              h="";;
+		*)               echo "Unknown install option: $1"; exit 1;;
+	esac
+	shift
+done
 
 if [ -n "$DO_INSTALL_LIBS" ] && [ "$DO_INSTALL_LIBS" != "n" ]; then
 	# get the target dir for the libs
@@ -77,6 +81,10 @@ install -m 755 busybox "$prefix/bin/busybox" || exit 1
 for i in $h; do
 	appdir=`dirname "$i"`
 	app=`basename "$i"`
+	if [ "$noclobber" = "1" ] && [ -e "$prefix/$i" ]; then
+		echo "  $prefix/$i already exists"
+		continue
+	fi
 	mkdir -p "$prefix/$appdir" || exit 1
 	if [ "$scriptwrapper" = "y" ]; then
 		if [ "$swrapall" != "y" ] && [ "$i" = "/bin/sh" ]; then
@@ -90,12 +98,8 @@ for i in $h; do
 	elif [ "$binaries" = "y" ]; then
 		# Copy the binary over rather
 		if [ -e $sharedlib_dir/$app ]; then
-			if [ "$noclobber" = "0" ] || [ ! -e "$prefix/$i" ]; then
-				echo "   Copying $sharedlib_dir/$app to $prefix/$i"
-				cp -pPR $sharedlib_dir/$app $prefix/$i || exit 1
-			else
-				echo "  $prefix/$i already exists"
-			fi
+			echo "   Copying $sharedlib_dir/$app to $prefix/$i"
+			cp -pPR $sharedlib_dir/$app $prefix/$i || exit 1
 		else
 			echo "Error: Could not find $sharedlib_dir/$app"
 			exit 1
@@ -123,12 +127,8 @@ for i in $h; do
 			;;
 			esac
 		fi
-		if [ "$noclobber" = "0" ] || [ ! -e "$prefix/$i" ]; then
-			echo "  $prefix/$i -> $bb_path"
-			ln $linkopts "$bb_path" "$prefix/$i" || exit 1
-		else
-			echo "  $prefix/$i already exists"
-		fi
+		echo "  $prefix/$i -> $bb_path"
+		ln $linkopts "$bb_path" "$prefix/$i" || exit 1
 	fi
 done
 

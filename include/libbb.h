@@ -422,10 +422,11 @@ enum {	/* cp.c, mv.c, install.c depend on these values. CAREFUL when changing th
 	/* -P = -d   (mapped in cp.c) */
 	FILEUTILS_VERBOSE         = (1 << 12) * ENABLE_FEATURE_VERBOSE,	/* -v */
 	FILEUTILS_UPDATE          = 1 << 13, /* -u */
+	FILEUTILS_NO_TARGET_DIR	  = 1 << 14, /* -T */
 #if ENABLE_SELINUX
-	FILEUTILS_PRESERVE_SECURITY_CONTEXT = 1 << 14, /* -c */
+	FILEUTILS_PRESERVE_SECURITY_CONTEXT = 1 << 15, /* -c */
 #endif
-	FILEUTILS_RMDEST          = 1 << (15 - !ENABLE_SELINUX), /* --remove-destination */
+	FILEUTILS_RMDEST          = 1 << (16 - !ENABLE_SELINUX), /* --remove-destination */
 	/*
 	 * Hole. cp may have some bits set here,
 	 * they should not affect remove_file()/copy_file()
@@ -435,7 +436,7 @@ enum {	/* cp.c, mv.c, install.c depend on these values. CAREFUL when changing th
 #endif
 	FILEUTILS_IGNORE_CHMOD_ERR = 1 << 31,
 };
-#define FILEUTILS_CP_OPTSTR "pdRfilsLHarPvu" IF_SELINUX("c")
+#define FILEUTILS_CP_OPTSTR "pdRfilsLHarPvuT" IF_SELINUX("c")
 extern int remove_file(const char *path, int flags) FAST_FUNC;
 /* NB: without FILEUTILS_RECUR in flags, it will basically "cat"
  * the source, not copy (unless "source" is a directory).
@@ -658,6 +659,7 @@ void setsockopt_reuseaddr(int fd) FAST_FUNC; /* On Linux this never fails. */
 int setsockopt_keepalive(int fd) FAST_FUNC;
 int setsockopt_broadcast(int fd) FAST_FUNC;
 int setsockopt_bindtodevice(int fd, const char *iface) FAST_FUNC;
+int bb_getsockname(int sockfd, void *addr, socklen_t addrlen) FAST_FUNC;
 /* NB: returns port in host byte order */
 unsigned bb_lookup_port(const char *port, const char *protocol, unsigned default_port) FAST_FUNC;
 typedef struct len_and_sockaddr {
@@ -794,7 +796,8 @@ static inline tls_state_t *new_tls_state(void)
 	return tls;
 }
 void tls_handshake(tls_state_t *tls, const char *sni) FAST_FUNC;
-void tls_run_copy_loop(tls_state_t *tls) FAST_FUNC;
+#define TLSLOOP_EXIT_ON_LOCAL_EOF (1 << 0)
+void tls_run_copy_loop(tls_state_t *tls, unsigned flags) FAST_FUNC;
 
 
 void socket_want_pktinfo(int fd) FAST_FUNC;
@@ -808,6 +811,7 @@ ssize_t recv_from_to(int fd, void *buf, size_t len, int flags,
 		socklen_t sa_size) FAST_FUNC;
 
 uint16_t inet_cksum(uint16_t *addr, int len) FAST_FUNC;
+int parse_pasv_epsv(char *buf) FAST_FUNC;
 
 /* 0 if argv[0] is NULL: */
 unsigned string_array_len(char **argv) FAST_FUNC;
@@ -1966,6 +1970,8 @@ typedef struct md5_ctx_t md5sha_ctx_t;
 
 extern uint32_t *global_crc32_table;
 uint32_t *crc32_filltable(uint32_t *tbl256, int endian) FAST_FUNC;
+uint32_t *crc32_new_table_le(void) FAST_FUNC;
+uint32_t *global_crc32_new_table_le(void) FAST_FUNC;
 uint32_t crc32_block_endian1(uint32_t val, const void *buf, unsigned len, uint32_t *crc_table) FAST_FUNC;
 uint32_t crc32_block_endian0(uint32_t val, const void *buf, unsigned len, uint32_t *crc_table) FAST_FUNC;
 
@@ -2048,10 +2054,16 @@ extern const char bb_path_wtmp_file[] ALIGN1;
 #else
 extern const char bb_busybox_exec_path[] ALIGN1;
 #endif
-/* util-linux manpage says /sbin:/bin:/usr/sbin:/usr/bin,
- * but I want to save a few bytes here */
-extern const char bb_PATH_root_path[] ALIGN1; /* "PATH=/sbin:/usr/sbin:/bin:/usr/bin" */
+/* allow default system PATH to be extended via CFLAGS */
+#ifndef BB_ADDITIONAL_PATH
+#define BB_ADDITIONAL_PATH ""
+#endif
+#define BB_PATH_ROOT_PATH "PATH=/sbin:/usr/sbin:/bin:/usr/bin" BB_ADDITIONAL_PATH
+extern const char bb_PATH_root_path[] ALIGN1; /* BB_PATH_ROOT_PATH */
 #define bb_default_root_path (bb_PATH_root_path + sizeof("PATH"))
+/* util-linux manpage says /sbin:/bin:/usr/sbin:/usr/bin,
+ * but I want to save a few bytes here:
+ */
 #define bb_default_path      (bb_PATH_root_path + sizeof("PATH=/sbin:/usr/sbin"))
 
 extern const int const_int_0;

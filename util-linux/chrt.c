@@ -9,7 +9,7 @@
 //config:	bool "chrt (4.4 kb)"
 //config:	default y
 //config:	help
-//config:	manipulate real-time attributes of a process.
+//config:	Manipulate real-time attributes of a process.
 //config:	This requires sched_{g,s}etparam support in your libc.
 
 //applet:IF_CHRT(APPLET_NOEXEC(chrt, chrt, BB_DIR_USR_BIN, BB_SUID_DROP, chrt))
@@ -17,13 +17,15 @@
 //kbuild:lib-$(CONFIG_CHRT) += chrt.o
 
 //usage:#define chrt_trivial_usage
-//usage:       "[-prfom] [PRIO] [PID | PROG ARGS]"
+//usage:       "[-prfombi] [PRIO] [PID | PROG ARGS]"
 //usage:#define chrt_full_usage "\n\n"
 //usage:       "Change scheduling priority and class for a process\n"
 //usage:     "\n	-p	Operate on PID"
 //usage:     "\n	-r	Set SCHED_RR class"
 //usage:     "\n	-f	Set SCHED_FIFO class"
 //usage:     "\n	-o	Set SCHED_OTHER class"
+//usage:     "\n	-b	Set SCHED_BATCH class"
+//usage:     "\n	-i	Set SCHED_IDLE class"
 //usage:     "\n	-m	Show min/max priorities"
 //usage:
 //usage:#define chrt_example_usage
@@ -33,19 +35,21 @@
 
 #include <sched.h>
 #include "libbb.h"
+#ifndef SCHED_IDLE
+# define SCHED_IDLE 5
+#endif
 
 static const struct {
-	int policy;
 	char name[sizeof("SCHED_OTHER")];
 } policies[] = {
-	{SCHED_OTHER, "SCHED_OTHER"},
-	{SCHED_FIFO, "SCHED_FIFO"},
-	{SCHED_RR, "SCHED_RR"}
+	{ "SCHED_OTHER" }, /* 0:SCHED_OTHER */
+	{ "SCHED_FIFO" },  /* 1:SCHED_FIFO */
+	{ "SCHED_RR" },    /* 2:SCHED_RR */
+	{ "SCHED_BATCH" }, /* 3:SCHED_BATCH */
+	{ "" },            /* 4:SCHED_ISO */
+	{ "SCHED_IDLE" },  /* 5:SCHED_IDLE */
+	/* 6:SCHED_DEADLINE */
 };
-
-//TODO: add
-// -b, SCHED_BATCH
-// -i, SCHED_IDLE
 
 static void show_min_max(int pol)
 {
@@ -64,6 +68,8 @@ static void show_min_max(int pol)
 #define OPT_r (1<<2)
 #define OPT_f (1<<3)
 #define OPT_o (1<<4)
+#define OPT_b (1<<5)
+#define OPT_i (1<<6)
 
 int chrt_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int chrt_main(int argc UNUSED_PARAM, char **argv)
@@ -76,20 +82,30 @@ int chrt_main(int argc UNUSED_PARAM, char **argv)
 	const char *current_new;
 	int policy = SCHED_RR;
 
-	/* only one policy accepted */
-	opt = getopt32(argv, "^+" "mprfo" "\0" "r--fo:f--ro:o--rf");
+	opt = getopt32(argv, "^"
+			"+" "mprfobi"
+			"\0"
+			/* only one policy accepted: */
+			"r--fobi:f--robi:o--rfbi:b--rfoi:i--rfob"
+	);
 	if (opt & OPT_m) { /* print min/max and exit */
+		show_min_max(SCHED_OTHER);
 		show_min_max(SCHED_FIFO);
 		show_min_max(SCHED_RR);
-		show_min_max(SCHED_OTHER);
+		show_min_max(SCHED_BATCH);
+		show_min_max(SCHED_IDLE);
 		fflush_stdout_and_exit(EXIT_SUCCESS);
 	}
-	if (opt & OPT_r)
-		policy = SCHED_RR;
+	//if (opt & OPT_r)
+	//	policy = SCHED_RR; - default, already set
 	if (opt & OPT_f)
 		policy = SCHED_FIFO;
 	if (opt & OPT_o)
 		policy = SCHED_OTHER;
+	if (opt & OPT_b)
+		policy = SCHED_BATCH;
+	if (opt & OPT_i)
+		policy = SCHED_IDLE;
 
 	argv += optind;
 	if (!argv[0])
@@ -131,12 +147,9 @@ int chrt_main(int argc UNUSED_PARAM, char **argv)
 		current_new += 8;
 	}
 
-	/* from the manpage of sched_getscheduler:
-	[...] sched_priority can have a value in the range 0 to 99.
-	[...] SCHED_OTHER or SCHED_BATCH must be assigned static priority 0.
-	[...] SCHED_FIFO or SCHED_RR can have static priority in 1..99 range.
-	*/
-	sp.sched_priority = xstrtou_range(priority, 0, policy != SCHED_OTHER ? 1 : 0, 99);
+	sp.sched_priority = xstrtou_range(priority, 0,
+		sched_get_priority_min(policy), sched_get_priority_max(policy)
+	);
 
 	if (sched_setscheduler(pid, policy, &sp) < 0)
 		bb_perror_msg_and_die("can't %cet pid %d's policy", 's', (int)pid);
