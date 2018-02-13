@@ -133,7 +133,7 @@ static void print(unsigned long long size, const char *filename)
 		size++;
 		size >>= 1;
 	}
-	printf("%llu\t%s\n", size, filename);
+	printf("%"LL_FMT"u\t%s\n", size, filename);
 #endif
 }
 
