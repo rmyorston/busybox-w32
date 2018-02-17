@@ -4457,7 +4457,7 @@ waitpid_child(int *status, int wait_flags)
 	}
 
 	idx = WaitForMultipleObjects(pid_nr, proclist, FALSE,
-				wait_flags|WNOHANG ? 1 : INFINITE);
+				wait_flags&WNOHANG ? 1 : INFINITE);
 	if (idx >= pid_nr) {
 		free(pidlist);
 		free(proclist);
