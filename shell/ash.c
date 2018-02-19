@@ -15044,7 +15044,7 @@ static void
 tblentry_size(struct tblentry *tep)
 {
 	while (tep) {
-		funcblocksize += sizeof(struct tblentry) + strlen(tep->cmdname) + 1;
+		funcblocksize += sizeof(struct tblentry) + strlen(tep->cmdname);
 		/* CMDBUILTIN, e->param.cmd needs no pointer relocation */
 		if (tep->cmdtype == CMDFUNCTION) {
 			funcblocksize += offsetof(struct funcnode, n);
@@ -15066,7 +15066,7 @@ tblentry_copy(struct tblentry *tep)
 	newp = &start;
 	while (tep) {
 		*newp = funcblock;
-		size = sizeof(struct tblentry) + strlen(tep->cmdname) + 1;
+		size = sizeof(struct tblentry) + strlen(tep->cmdname);
 
 		funcblock = (char *) funcblock + size;
 		memcpy(*newp, tep, size);
