@@ -390,7 +390,7 @@ NOIMPL(getsid,pid_t pid UNUSED_PARAM);
 IMPL(getuid,int,DEFAULT_UID,void);
 int getlogin_r(char *buf, size_t len);
 int fcntl(int fd, int cmd, ...);
-IMPL(fsync,int,0,int fd UNUSED_PARAM);
+int fsync(int fd);
 int kill(pid_t pid, int sig);
 int link(const char *oldpath, const char *newpath);
 NOIMPL(mknod,const char *name UNUSED_PARAM, mode_t mode UNUSED_PARAM, dev_t device UNUSED_PARAM);

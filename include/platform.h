@@ -442,6 +442,7 @@ typedef unsigned smalluint;
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
+# undef HAVE_FDATASYNC
 # undef HAVE_DPRINTF
 # undef HAVE_GETLINE
 # undef HAVE_MEMRCHR
