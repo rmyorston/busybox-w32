@@ -300,7 +300,6 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	};
 	smallint exitcode = EXIT_FAILURE;
-	int devzero = 0;
 	int i;
 	size_t ibs = 512;
 	char *ibuf;
@@ -427,12 +426,15 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	if (infile) {
-		if (ENABLE_PLATFORM_MINGW32 && !strcmp(infile, "/dev/zero")) {
-			G.flags |= FLAG_NOERROR;
-			devzero = 1;
-		} else {
-			xmove_fd(xopen(infile, O_RDONLY), ifd);
+		xmove_fd(xopen(infile, O_RDONLY), ifd);
+#if ENABLE_PLATFORM_MINGW32
+		if (!strcmp(infile, "/dev/zero")) {
+			mingw_read_zero(ifd);
 		}
+		else if (!strcmp(infile, "/dev/urandom")) {
+			mingw_read_random(ifd);
+		}
+#endif
 	} else {
 		infile = bb_msg_standard_input;
 	}
@@ -459,7 +461,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 	} else {
 		outfile = bb_msg_standard_output;
 	}
-	if (skip && !devzero) {
+	if (skip) {
 		size_t blocksz = (G.flags & FLAG_SKIP_BYTES) ? 1 : ibs;
 		if (lseek(ifd, skip * blocksz, SEEK_CUR) < 0) {
 			do {
@@ -485,11 +487,6 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 	while (!(G.flags & FLAG_COUNT) || (G.in_full + G.in_part != count)) {
 		ssize_t n;
 
-		if (devzero) {
-			memset(ibuf, 0, ibs);
-			n = ibs;
-		}
-		else
 #if ENABLE_FEATURE_DD_IBS_OBS
 		if (G.flags & FLAG_FULLBLOCK)
 			n = full_read(ifd, ibuf, ibs);
@@ -572,7 +569,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 			goto out_status;
 	}
 
-	if (!devzero && close(ifd) < 0) {
+	if (close(ifd) < 0) {
  die_infile:
 		bb_simple_perror_msg_and_die(infile);
 	}
