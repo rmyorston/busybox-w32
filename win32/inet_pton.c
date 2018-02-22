@@ -6,19 +6,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-/*! \file */
-
-#if defined(LIBC_SCCS) && !defined(lint)
-static char rcsid[] =
-	"$Id: inet_pton.c,v 1.19 2007/06/19 23:47:17 tbox Exp $";
-#endif /* LIBC_SCCS and not lint */
-
-#include <config.h>
+#include "libbb.h"
 
 #include <errno.h>
 #include <string.h>
-
-#include <isc/net.h>
 
 /*% INT16 Size */
 #define NS_INT16SZ	 2
@@ -33,7 +24,9 @@ static char rcsid[] =
  */
 
 static int inet_pton4(const char *src, unsigned char *dst);
+#if ENABLE_FEATURE_IPV6
 static int inet_pton6(const char *src, unsigned char *dst);
+#endif
 
 /*%
  *	convert from presentation format (which usually means ASCII printable)
@@ -46,12 +39,14 @@ static int inet_pton6(const char *src, unsigned char *dst);
  *	Paul Vixie, 1996.
  */
 int
-isc_net_pton(int af, const char *src, void *dst) {
+inet_pton(int af, const char *src, void *dst) {
 	switch (af) {
 	case AF_INET:
 		return (inet_pton4(src, dst));
+#if ENABLE_FEATURE_IPV6
 	case AF_INET6:
 		return (inet_pton6(src, dst));
+#endif
 	default:
 		errno = EAFNOSUPPORT;
 		return (-1);
@@ -122,6 +117,7 @@ inet_pton4(const char *src, unsigned char *dst) {
  * \author
  *	Paul Vixie, 1996.
  */
+#if ENABLE_FEATURE_IPV6
 static int
 inet_pton6(const char *src, unsigned char *dst) {
 	static const char xdigits_l[] = "0123456789abcdef",
@@ -204,3 +200,4 @@ inet_pton6(const char *src, unsigned char *dst) {
 	memmove(dst, tmp, NS_IN6ADDRSZ);
 	return (1);
 }
+#endif
