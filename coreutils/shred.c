@@ -96,8 +96,14 @@ int shred_main(int argc UNUSED_PARAM, char **argv)
 			}
 			if (opt & OPT_u) {
 				ftruncate(fd, 0);
+#if ENABLE_PLATFORM_MINGW32
+				xclose(fd);
+#endif
 				xunlink(fname);
 			}
+#if ENABLE_PLATFORM_MINGW32
+			else
+#endif
 			xclose(fd);
 		}
 	}
