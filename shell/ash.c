@@ -5701,22 +5701,17 @@ openredirect(union node *redir)
 	/* Support for /dev/null */
 	switch (redir->nfile.type) {
 		case NFROM:
-			if (!strcmp(fname, "/dev/null"))
-				return open("nul",O_RDWR);
-			if (!strncmp(fname, "/dev/", 5)) {
-				ash_msg("Unhandled device %s\n", fname);
-				return -1;
-			}
-			break;
-
 		case NFROMTO:
 		case NTO:
+#if BASH_REDIR_OUTPUT
+		case NTO2:
+#endif
 		case NCLOBBER:
 		case NAPPEND:
-			if (!strcmp(fname, "/dev/null"))
-				return open("nul",O_RDWR);
 			if (!strncmp(fname, "/dev/", 5)) {
-				ash_msg("Unhandled device %s\n", fname);
+				if (!strcmp(fname+5, "null"))
+					return open(fname,O_RDWR);
+				ash_msg_and_raise_error("Unhandled device %s\n", fname);
 				return -1;
 			}
 			break;
