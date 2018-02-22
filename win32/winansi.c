@@ -695,7 +695,7 @@ int winansi_read(int fd, void *buf, size_t count)
 {
 	int rv;
 
-	rv = read(fd, buf, count);
+	rv = mingw_read(fd, buf, count);
 	if (!isatty(fd))
 		return rv;
 

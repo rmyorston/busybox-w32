@@ -138,12 +138,28 @@ int err_win_to_posix(DWORD winerr)
 	return error;
 }
 
+static int zero_fd = -1;
+static int rand_fd = -1;
+
+void mingw_read_zero(int fd)
+{
+	zero_fd = fd;
+}
+
+void mingw_read_random(int fd)
+{
+	rand_fd = fd;
+}
+
 #undef open
 int mingw_open (const char *filename, int oflags, ...)
 {
 	va_list args;
 	unsigned mode;
 	int fd;
+	int devnull = 0;
+	int devzero = 0;
+	int devrand = 0;
 
 	va_start(args, oflags);
 	mode = va_arg(args, int);
@@ -152,13 +168,28 @@ int mingw_open (const char *filename, int oflags, ...)
 	if (oflags & O_NONBLOCK) {
 		oflags &= ~O_NONBLOCK;
 	}
-	if (filename && !strcmp(filename, "/dev/null"))
-		filename = "nul";
+	if (filename && !strncmp(filename, "/dev/", 5)) {
+		if (!strcmp(filename+5, "null"))
+			devnull = 1;
+		else if (!strcmp(filename+5, "zero"))
+			devzero = 1;
+		else if (!strcmp(filename+5, "urandom"))
+			devrand = 1;
+
+		if (devnull || devzero || devrand )
+			filename = "nul";
+	}
 	fd = open(filename, oflags, mode);
 	if (fd < 0 && (oflags & O_ACCMODE) != O_RDONLY && errno == EACCES) {
 		DWORD attrs = GetFileAttributes(filename);
 		if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY))
 			errno = EISDIR;
+	}
+	if (fd >= 0 ) {
+		if (devzero)
+			zero_fd = fd;
+		else if (devrand)
+			rand_fd = fd;
 	}
 	return fd;
 }
@@ -169,6 +200,32 @@ FILE *mingw_fopen (const char *filename, const char *otype)
 	if (filename && !strcmp(filename, "/dev/null"))
 		filename = "nul";
 	return fopen(filename, otype);
+}
+
+#undef read
+ssize_t mingw_read(int fd, void *buf, size_t count)
+{
+	if (fd == zero_fd) {
+		memset(buf, 0, count);
+		return count;
+	}
+	else if (fd == rand_fd) {
+		memset(buf, 0x5A, count);
+		return count;
+	}
+	return read(fd, buf, count);
+}
+
+#undef close
+int mingw_close(int fd)
+{
+	if (fd == zero_fd) {
+		zero_fd = -1;
+	}
+	if (fd == rand_fd) {
+		rand_fd = -1;
+	}
+	return close(fd);
 }
 
 #undef dup2
