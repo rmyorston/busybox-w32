@@ -210,8 +210,7 @@ ssize_t mingw_read(int fd, void *buf, size_t count)
 		return count;
 	}
 	else if (fd == rand_fd) {
-		memset(buf, 0x5A, count);
-		return count;
+		return get_random_bytes(buf, count);
 	}
 	return read(fd, buf, count);
 }
