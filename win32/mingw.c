@@ -250,15 +250,15 @@ static inline time_t filetime_to_time_t(const FILETIME *ft)
 	return (time_t)(filetime_to_hnsec(ft) / 10000000);
 }
 
-static inline int file_attr_to_st_mode (DWORD attr)
+static inline mode_t file_attr_to_st_mode(DWORD attr)
 {
-	int fMode = S_IREAD;
+	mode_t fMode = S_IRUSR|S_IRGRP|S_IROTH;
 	if (attr & FILE_ATTRIBUTE_DIRECTORY)
-		fMode |= S_IFDIR|S_IWRITE|S_IEXEC;
+		fMode |= S_IFDIR|S_IWUSR|S_IWGRP|S_IXUSR|S_IXGRP|S_IXOTH;
 	else
 		fMode |= S_IFREG;
 	if (!(attr & FILE_ATTRIBUTE_READONLY))
-		fMode |= S_IWRITE;
+		fMode |= S_IWUSR|S_IWGRP;
 	return fMode;
 }
 
@@ -293,7 +293,6 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 {
 	int err;
 	WIN32_FILE_ATTRIBUTE_DATA fdata;
-	mode_t usermode;
 
 	if (!(err = get_file_attr(file_name, &fdata))) {
 		buf->st_ino = 0;
@@ -302,7 +301,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		buf->st_nlink = 1;
 		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
 		if (has_exe_suffix(file_name))
-			buf->st_mode |= S_IEXEC;
+			buf->st_mode |= S_IXUSR|S_IXGRP|S_IXOTH;
 		buf->st_size = fdata.nFileSizeLow |
 			(((off64_t)fdata.nFileSizeHigh)<<32);
 		buf->st_dev = buf->st_rdev = 0; /* not used by Git */
@@ -321,15 +320,13 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 					} else {
 						buf->st_mode = S_IFLNK;
 					}
-					buf->st_mode |= S_IREAD;
+					buf->st_mode |= S_IRUSR|S_IRGRP|S_IROTH;
 					if (!(findbuf.dwFileAttributes & FILE_ATTRIBUTE_READONLY))
-						buf->st_mode |= S_IWRITE;
+						buf->st_mode |= S_IWUSR|S_IWGRP;
 				}
 				FindClose(handle);
 			}
 		}
-		usermode = buf->st_mode & S_IRWXU;
-		buf->st_mode |= (usermode >> 3) | ((usermode >> 6) & ~S_IWOTH);
 
 		/*
 		 * Assume a block is 4096 bytes and calculate number of 512 byte
@@ -401,38 +398,34 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 		if ( _fstati64(fd, &buf64) != 0 )  {
 			return -1;
 		}
-		buf->st_dev = 0;
-		buf->st_ino = 0;
-		buf->st_mode = S_IREAD|S_IWRITE;
-		buf->st_nlink = 1;
-		buf->st_uid = DEFAULT_UID;
-		buf->st_gid = DEFAULT_GID;
-		buf->st_rdev = 0;
+		buf->st_mode = S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH;
 		buf->st_size = buf64.st_size;
 		buf->st_atime = buf64.st_atime;
 		buf->st_mtime = buf64.st_mtime;
 		buf->st_ctime = buf64.st_ctime;
-		buf->st_blksize = 4096;
 		buf->st_blocks = ((buf64.st_size+4095)>>12)<<3;
+		goto success;
 	}
 
 	if (GetFileInformationByHandle(fh, &fdata)) {
+		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
+		buf->st_size = fdata.nFileSizeLow |
+			(((off64_t)fdata.nFileSizeHigh)<<32);
+		buf->st_atime = filetime_to_time_t(&(fdata.ftLastAccessTime));
+		buf->st_mtime = filetime_to_time_t(&(fdata.ftLastWriteTime));
+		buf->st_ctime = filetime_to_time_t(&(fdata.ftCreationTime));
+		buf->st_blocks = ((buf->st_size+4095)>>12)<<3;
+ success:
+		buf->st_dev = buf->st_rdev = 0;
 		buf->st_ino = 0;
 		buf->st_uid = DEFAULT_UID;
 		buf->st_gid = DEFAULT_GID;
 		/* could use fdata.nNumberOfLinks but it's inconsistent with stat */
 		buf->st_nlink = 1;
-		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
-		buf->st_size = fdata.nFileSizeLow |
-			(((off64_t)fdata.nFileSizeHigh)<<32);
-		buf->st_dev = buf->st_rdev = 0; /* not used by Git */
-		buf->st_atime = filetime_to_time_t(&(fdata.ftLastAccessTime));
-		buf->st_mtime = filetime_to_time_t(&(fdata.ftLastWriteTime));
-		buf->st_ctime = filetime_to_time_t(&(fdata.ftCreationTime));
 		buf->st_blksize = 4096;
-		buf->st_blocks = ((buf->st_size+4095)>>12)<<3;
 		return 0;
 	}
+
 	errno = EBADF;
 	return -1;
 }
