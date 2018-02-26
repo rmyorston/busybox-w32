@@ -161,11 +161,13 @@ typedef struct TarBallInfo {
 # endif
 	HardLinkInfo *hlInfoHead;       /* Hard Link Tracking Information */
 	HardLinkInfo *hlInfo;           /* Hard Link Info for the current file */
+#if !ENABLE_PLATFORM_MINGW32
 //TODO: save only st_dev + st_ino
 	struct stat tarFileStatBuf;     /* Stat info for the tarball, letting
 	                                 * us know the inode and device that the
 	                                 * tarball lives, so we can avoid trying
 	                                 * to include the tarball into itself */
+#endif
 } TarBallInfo;
 
 /* A nice enum with all the possible tar file content types */
@@ -696,9 +698,11 @@ static NOINLINE int writeTarFile(
 
 	/*tbInfo->hlInfoHead = NULL; - already is */
 
+#if !ENABLE_PLATFORM_MINGW32
 	/* Store the stat info for the tarball's file, so
 	 * can avoid including the tarball into itself....  */
 	xfstat(tbInfo->tarFd, &tbInfo->tarFileStatBuf, "can't stat tar file");
+#endif
 
 # if SEAMLESS_COMPRESSION
 	if (gzip)
