@@ -203,6 +203,34 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 		new_argv[i] = quote_arg(argv[i]);
 	new_argv[argc] = NULL;
 
+	/*
+	 * Special case:  spawnve won't execute a batch file when the path
+	 * starts with a '.' and contains forward slashes.
+	 */
+	if (new_argv[0][0] == '.') {
+		char *s, *p;
+
+		if (has_bat_suffix(new_argv[0])) {
+			p = strdup(new_argv[0]);
+		}
+		else {
+			p = file_is_win32_executable(new_argv[0]);
+		}
+
+		if (p != NULL && has_bat_suffix(p)) {
+			for (s=p; *s; ++s) {
+				if (*s == '/')
+					*s = '\\';
+			}
+			if (new_argv[0] != argv[0])
+				free(new_argv[0]);
+			new_argv[0] = p;
+		}
+		else {
+			free(p);
+		}
+	}
+
 	ret = spawnve(mode, path, new_argv, env);
 
 	for (i = 0;i < argc;i++)

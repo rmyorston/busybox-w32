@@ -2620,7 +2620,7 @@ path_advance(const char **path, const char *name)
 #endif
 	len = p - start + strlen(name) + 2;     /* "2" is for '/' and '\0' */
 
-	/* preserve space for .exe too */
+	/* reserve space for suffix on WIN32 */
 	while (stackblocksize() < (ENABLE_PLATFORM_MINGW32 ? len+4 : len))
 		growstackblock();
 	q = stackblock();
@@ -13646,7 +13646,6 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	struct stat statb;
 	int e;
 	int updatetbl;
-	IF_PLATFORM_MINGW32(int len;)
 	struct builtincmd *bcmd;
 
 	/* If name contains a slash, don't use PATH or hash table */
@@ -13779,26 +13778,31 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			}
 		}
 		else {
-			/* path_advance() has reserved space for .exe */
+			extern const char win_suffix[4][4];
+			int i, len;
+
+			/* path_advance() has reserved space for suffix */
 			len = strlen(fullname);
-			strcat(fullname, ".exe");
-			if (stat(fullname, &statb) < 0) {
-				memcpy(fullname+len, ".com", 5);
-				if (stat(fullname, &statb) < 0) {
-					/* check for script */
-					fullname[len] = '\0';
-					if (stat(fullname, &statb) < 0) {
-						if (errno != ENOENT && errno != ENOTDIR)
-							e = errno;
-						goto loop;
-					}
-					if (!file_is_executable(fullname)) {
-						e = ENOEXEC;
-						goto loop;
-					}
-				}
+			fullname[len] = '.';
+			for (i=0; i<4; ++i) {
+				memcpy(fullname+len+1, win_suffix[i], 4);
+				if (stat(fullname, &statb) == 0)
+					break;
 			}
 			fullname[len] = '\0';
+
+			if (i == 4) {
+				/* suffix didn't work, try without */
+				if (stat(fullname, &statb) < 0) {
+					if (errno != ENOENT && errno != ENOTDIR)
+						e = errno;
+					goto loop;
+				}
+				if (!file_is_executable(fullname)) {
+					e = ENOEXEC;
+					goto loop;
+				}
+			}
 		}
 #else
 		while (stat(fullname, &statb) < 0) {

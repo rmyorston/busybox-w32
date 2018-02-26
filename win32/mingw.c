@@ -1003,7 +1003,7 @@ int mingw_access(const char *name, int mode)
 
 	if (!mingw_stat(name, &s) && S_ISREG(s.st_mode)) {
 
-		/* stat marks .exe and .com files as executable */
+		/* stat marks files as executable according to their suffix */
 		if ((s.st_mode&S_IEXEC)) {
 			return 0;
 		}
@@ -1060,12 +1060,30 @@ int mingw_rmdir(const char *path)
 	return rmdir(path);
 }
 
+const char win_suffix[4][4] = { "com", "exe", "bat", "cmd" };
+
+static int has_win_suffix(const char *name, int start)
+{
+	int i, len = strlen(name);
+
+	if (len > 4) {
+		for (i=start; i<4; ++i) {
+			if (!strcasecmp(name+len-3, win_suffix[i])) {
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+
+int has_bat_suffix(const char *name)
+{
+	return has_win_suffix(name, 2);
+}
+
 int has_exe_suffix(const char *name)
 {
-	int len = strlen(name);
-
-	return len > 4 && (!strcasecmp(name+len-4, ".exe") ||
-				!strcasecmp(name+len-4, ".com"));
+	return has_win_suffix(name, 0);
 }
 
 /* check if path can be made into an executable by adding a suffix;
@@ -1077,19 +1095,20 @@ int has_exe_suffix(const char *name)
 char *file_is_win32_executable(const char *p)
 {
 	char *path;
+	int i, len;
 
 	if (has_exe_suffix(p)) {
 		return NULL;
 	}
 
-	path = xasprintf("%s.exe", p);
-	if (file_is_executable(path)) {
-		return path;
-	}
+	len = strlen(p);
+	path = xasprintf("%s.com", p);
 
-	memcpy(path+strlen(p), ".com", 5);
-	if (file_is_executable(path)) {
-		return path;
+	for (i=0; i<4; ++i) {
+		memcpy(path+len+1, win_suffix[i], 4);
+		if (file_is_executable(path)) {
+			return path;
+		}
 	}
 
 	free(path);
