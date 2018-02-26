@@ -192,6 +192,7 @@ static intptr_t
 spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 {
 	char **new_argv;
+	char *new_path = NULL;
 	int i, argc = -1;
 	intptr_t ret;
 
@@ -214,7 +215,7 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 			p = strdup(new_argv[0]);
 		}
 		else {
-			p = file_is_win32_executable(new_argv[0]);
+			p = add_win32_extension(new_argv[0]);
 		}
 
 		if (p != NULL && has_bat_suffix(p)) {
@@ -231,12 +232,25 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 		}
 	}
 
-	ret = spawnve(mode, path, new_argv, env);
+	/*
+	 * Another special case:  if a binary executable doesn't have an
+	 * extension spawnve will only run it if the filename ends with a '.'.
+	 */
+	if (!has_exe_suffix(path)) {
+		int len = strlen(path);
+
+		if (path[len-1] != '.' && has_exec_format(path)) {
+			new_path = xasprintf("%s.", path);
+		}
+	}
+
+	ret = spawnve(mode, new_path ? new_path : path, new_argv, env);
 
 	for (i = 0;i < argc;i++)
 		if (new_argv[i] != argv[i])
 			free(new_argv[i]);
 	free(new_argv);
+	free(new_path);
 
 	return ret;
 }
@@ -275,7 +289,7 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *con
 	memcpy(new_argv+nopts+2, argv+1, sizeof(*argv)*argc);
 
 	if (file_is_executable(int_path) ||
-			(fullpath=file_is_win32_executable(int_path)) != NULL) {
+			(fullpath=add_win32_extension(int_path)) != NULL) {
 		new_argv[0] = fullpath ? fullpath : int_path;
 		ret = spawnveq(mode, new_argv[0], new_argv, envp);
 	} else

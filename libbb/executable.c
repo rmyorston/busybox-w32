@@ -77,7 +77,7 @@ char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 			return p;
 		}
 #if ENABLE_PLATFORM_MINGW32
-		else if ((w=file_is_win32_executable(p))) {
+		else if ((w=add_win32_extension(p))) {
 			*PATHp = n;
 			free(p);
 			return w;

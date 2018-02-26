@@ -300,7 +300,8 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		buf->st_gid = DEFAULT_GID;
 		buf->st_nlink = 1;
 		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
-		if (has_exe_suffix(file_name))
+		if (S_ISREG(buf->st_mode) &&
+				(has_exe_suffix(file_name) || has_exec_format(file_name)))
 			buf->st_mode |= S_IXUSR|S_IXGRP|S_IXOTH;
 		buf->st_size = fdata.nFileSizeLow |
 			(((off64_t)fdata.nFileSizeHigh)<<32);
@@ -982,9 +983,6 @@ int mingw_access(const char *name, int mode)
 {
 	int ret;
 	struct stat s;
-	int fd, n, sig;
-	unsigned int offset;
-	unsigned char buf[1024];
 
 	/* Windows can only handle test for existence, read or write */
 	if (mode == F_OK || (mode & ~X_OK)) {
@@ -994,52 +992,8 @@ int mingw_access(const char *name, int mode)
 		}
 	}
 
-	if (!mingw_stat(name, &s) && S_ISREG(s.st_mode)) {
-
-		/* stat marks files as executable according to their suffix */
-		if ((s.st_mode&S_IEXEC)) {
-			return 0;
-		}
-
-		fd = open(name, O_RDONLY);
-		if (fd < 0)
-			return -1;
-		n = read(fd, buf, sizeof(buf)-1);
-		close(fd);
-		if (n < 4)	/* at least '#!/x' and not error */
-			return -1;
-
-		/* shell script */
-		if (buf[0] == '#' && buf[1] == '!') {
-			return 0;
-		}
-
-		/*
-		 * Poke about in file to see if it's a PE binary.  I've just copied
-		 * the magic from the file command.
-		 */
-		if (buf[0] == 'M' && buf[1] == 'Z') {
-			offset = (buf[0x19] << 8) + buf[0x18];
-			if (offset > 0x3f) {
-				offset = (buf[0x3f] << 24) + (buf[0x3e] << 16) +
-							(buf[0x3d] << 8) + buf[0x3c];
-				if (offset < sizeof(buf)-100) {
-					if (memcmp(buf+offset, "PE\0\0", 4) == 0) {
-						sig = (buf[offset+25] << 8) + buf[offset+24];
-						if (sig == 0x10b || sig == 0x20b) {
-							sig = (buf[offset+23] << 8) + buf[offset+22];
-							if ((sig & 0x2000) != 0) {
-								/* DLL */
-								return -1;
-							}
-							sig = buf[offset+92];
-							return !(sig == 1 || sig == 2 ||
-										sig == 3 || sig == 7);
-						}
-					}
-				}
-			}
-		}
+	if (!mingw_stat(name, &s) && S_ISREG(s.st_mode) && (s.st_mode&S_IXUSR)) {
+		return 0;
 	}
 
 	return -1;
@@ -1085,7 +1039,7 @@ int has_exe_suffix(const char *name)
  *
  * if path already has a suffix don't even bother trying
  */
-char *file_is_win32_executable(const char *p)
+char *add_win32_extension(const char *p)
 {
 	char *path;
 	int i, len;
@@ -1107,6 +1061,61 @@ char *file_is_win32_executable(const char *p)
 	free(path);
 
 	return NULL;
+}
+
+/*
+ * Examine a file's contents to determine if it can be executed.  This
+ * should be a last resort:  in most cases it's much more efficient to
+ * check the file extension.
+ *
+ * We look for two types of file:  shell scripts and binary executables.
+ */
+int has_exec_format(const char *name)
+{
+	int fd, n, sig;
+	unsigned int offset;
+	unsigned char buf[1024];
+
+	fd = open(name, O_RDONLY);
+	if (fd < 0)
+		return 0;
+	n = read(fd, buf, sizeof(buf)-1);
+	close(fd);
+	if (n < 4)	/* at least '#!/x' and not error */
+		return 0;
+
+	/* shell script */
+	if (buf[0] == '#' && buf[1] == '!') {
+		return 1;
+	}
+
+	/*
+	 * Poke about in file to see if it's a PE binary.  I've just copied
+	 * the magic from the file command.
+	 */
+	if (buf[0] == 'M' && buf[1] == 'Z') {
+		offset = (buf[0x19] << 8) + buf[0x18];
+		if (offset > 0x3f) {
+			offset = (buf[0x3f] << 24) + (buf[0x3e] << 16) +
+						(buf[0x3d] << 8) + buf[0x3c];
+			if (offset < sizeof(buf)-100) {
+				if (memcmp(buf+offset, "PE\0\0", 4) == 0) {
+					sig = (buf[offset+25] << 8) + buf[offset+24];
+					if (sig == 0x10b || sig == 0x20b) {
+						sig = (buf[offset+23] << 8) + buf[offset+22];
+						if ((sig & 0x2000) != 0) {
+							/* DLL */
+							return 0;
+						}
+						sig = buf[offset+92];
+						return (sig == 1 || sig == 2 || sig == 3 || sig == 7);
+					}
+				}
+			}
+		}
+	}
+
+	return 0;
 }
 
 #undef opendir

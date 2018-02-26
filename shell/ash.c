@@ -13654,7 +13654,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 		if (act & DO_ABS) {
 			while (stat(name, &statb) < 0
 #if ENABLE_PLATFORM_MINGW32
-				&& (fullname=file_is_win32_executable(name)) == NULL
+				&& (fullname=add_win32_extension(name)) == NULL
 #endif
 				) {
 #ifdef SYSV
@@ -13796,10 +13796,6 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 				if (stat(fullname, &statb) < 0) {
 					if (errno != ENOENT && errno != ENOTDIR)
 						e = errno;
-					goto loop;
-				}
-				if (!file_is_executable(fullname)) {
-					e = ENOEXEC;
 					goto loop;
 				}
 			}
