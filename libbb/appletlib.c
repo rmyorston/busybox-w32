@@ -820,7 +820,7 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 		full_write2_str(bb_banner); /* reuse const string */
 		full_write2_str(" multi-call binary\n"); /* reuse */
 #if defined(MINGW_VER)
-		if (strlen(MINGW_VER)) {
+		if (sizeof(MINGW_VER) > 5) {
 			full_write2_str(MINGW_VER "\n\n");
 		}
 #endif
