@@ -66,23 +66,23 @@ char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 			p[0] ? p : ".", /* handle "::" case */
 			filename
 		);
-		ex = file_is_executable(p);
 #if ENABLE_PLATFORM_MINGW32
 		if (n) *n++ = sep;
 #else
 		if (n) *n++ = ':';
 #endif
-		if (ex) {
-			*PATHp = n;
-			return p;
-		}
 #if ENABLE_PLATFORM_MINGW32
-		else if ((w=add_win32_extension(p))) {
+		if ((w=add_win32_extension(p))) {
 			*PATHp = n;
 			free(p);
 			return w;
 		}
 #endif
+		ex = file_is_executable(p);
+		if (ex) {
+			*PATHp = n;
+			return p;
+		}
 		free(p);
 		p = n;
 	} /* on loop exit p == NULL */

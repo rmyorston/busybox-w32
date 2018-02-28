@@ -195,6 +195,23 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 	char *new_path = NULL;
 	int i, argc = -1;
 	intptr_t ret;
+	struct stat st;
+
+	/*
+	 * Require that the file exists, is a regular file and is executable.
+	 * It may still contain garbage but we let spawnve deal with that.
+	 */
+	if (stat(path, &st) == 0) {
+		if (!S_ISREG(st.st_mode) || !(st.st_mode&S_IXUSR)) {
+			errno = EACCES;
+			fprintf(stderr, "spawnveq: %s: %s\n", path, strerror(errno));
+			return -1;
+		}
+	}
+	else {
+		fprintf(stderr, "spawnveq: %s: %s\n", path, strerror(errno));
+		return -1;
+	}
 
 	while (argv[++argc])
 		;
@@ -233,15 +250,12 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 	}
 
 	/*
-	 * Another special case:  if a binary executable doesn't have an
-	 * extension spawnve will only run it if the filename ends with a '.'.
+	 * Another special case:  if a file doesn't have an extension add
+	 * a '.' at the end.  This forces spawnve to use precisely the
+	 * file specified without trying to add an extension.
 	 */
-	if (!has_exe_suffix(path)) {
-		int len = strlen(path);
-
-		if (path[len-1] != '.' && has_exec_format(path)) {
-			new_path = xasprintf("%s.", path);
-		}
+	if (!strchr(bb_basename(path), '.')) {
+		new_path = xasprintf("%s.", path);
 	}
 
 	ret = spawnve(mode, new_path ? new_path : path, new_argv, env);
@@ -288,8 +302,8 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *con
 	new_argv[nopts+1] = (char *)prog; /* pass absolute path */
 	memcpy(new_argv+nopts+2, argv+1, sizeof(*argv)*argc);
 
-	if (file_is_executable(int_path) ||
-			(fullpath=add_win32_extension(int_path)) != NULL) {
+	if ((fullpath=add_win32_extension(int_path)) != NULL ||
+			file_is_executable(int_path)) {
 		new_argv[0] = fullpath ? fullpath : int_path;
 		ret = spawnveq(mode, new_argv[0], new_argv, envp);
 	} else
