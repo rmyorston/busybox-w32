@@ -1033,6 +1033,12 @@ int has_exe_suffix(const char *name)
 	return has_win_suffix(name, 0);
 }
 
+int has_exe_suffix_or_dot(const char *name)
+{
+	int len = strlen(name);
+	return (len > 0 && name[len-1] == '.') || has_win_suffix(name, 0);
+}
+
 /* check if path can be made into an executable by adding a suffix;
  * return an allocated string containing the path if it can;
  * return NULL if not.
@@ -1044,7 +1050,7 @@ char *add_win32_extension(const char *p)
 	char *path;
 	int i, len;
 
-	if (has_exe_suffix(p)) {
+	if (has_exe_suffix_or_dot(p)) {
 		return NULL;
 	}
 
