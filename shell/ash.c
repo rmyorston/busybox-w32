@@ -8318,6 +8318,10 @@ static int builtinloc = -1;     /* index in path of %builtin, or -1 */
 static void
 tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, char **envp)
 {
+#if ENABLE_PLATFORM_MINGW32
+	char *new_cmd;
+#endif
+
 #if ENABLE_FEATURE_SH_STANDALONE
 	if (applet_no >= 0) {
 		if (APPLET_IS_NOEXEC(applet_no)) {
@@ -8334,6 +8338,16 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 	}
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+	/* ensure we have a path to a real, executable file */
+	if (!(new_cmd=add_win32_extension(cmd)) && !file_is_executable(cmd)) {
+		errno = EACCES;
+		return;
+	}
+	execve(new_cmd ? new_cmd : cmd, argv, envp);
+	free(new_cmd);
+	/* skip POSIX-mandated retry on ENOEXEC */
+#else
  repeat:
 #ifdef SYSV
 	do {
@@ -8368,6 +8382,7 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 		argv[0] = (char*) "ash";
 		goto repeat;
 	}
+#endif
 }
 
 /*
@@ -8437,6 +8452,9 @@ printentry(struct tblentry *cmdp)
 	int idx;
 	const char *path;
 	char *name;
+#if ENABLE_PLATFORM_MINGW32
+	char *n;
+#endif
 
 	idx = cmdp->param.index;
 	path = pathval();
@@ -8444,7 +8462,14 @@ printentry(struct tblentry *cmdp)
 		name = path_advance(&path, cmdp->cmdname);
 		stunalloc(name);
 	} while (--idx >= 0);
+#if ENABLE_PLATFORM_MINGW32
+	if ((n=add_win32_extension(name)) != NULL)
+		name = n;
+#endif
 	out1fmt("%s%s\n", name, (cmdp->rehash ? "*" : nullstr));
+#if ENABLE_PLATFORM_MINGW32
+	free(n);
+#endif
 }
 
 /*
@@ -8832,6 +8857,9 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 	case CMDNORMAL: {
 		int j = entry.u.index;
 		char *p;
+#if ENABLE_PLATFORM_MINGW32
+		char *q;
+#endif
 		if (j < 0) {
 			p = command;
 		} else {
@@ -8840,11 +8868,18 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 				stunalloc(p);
 			} while (--j >= 0);
 		}
+#if ENABLE_PLATFORM_MINGW32
+		if ((q=add_win32_extension(p)) != NULL)
+			p = q;
+#endif
 		if (describe_command_verbose) {
 			out1fmt(" is %s", p);
 		} else {
 			out1str(p);
 		}
+#if ENABLE_PLATFORM_MINGW32
+		free(q);
+#endif
 		break;
 	}
 
@@ -13647,16 +13682,21 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	int e;
 	int updatetbl;
 	struct builtincmd *bcmd;
+#if ENABLE_PLATFORM_MINGW32
+	extern const char win_suffix[4][4];
+	int i, len;
+#endif
 
 	/* If name contains a slash, don't use PATH or hash table */
 	if (strchr(name, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(name, '\\'))) {
 		entry->u.index = -1;
 		if (act & DO_ABS) {
-			while (stat(name, &statb) < 0
 #if ENABLE_PLATFORM_MINGW32
-				&& (fullname=add_win32_extension(name)) == NULL
+			while ((fullname=add_win32_extension(name)) == NULL ||
+					stat(name, &statb) < 0 ) {
+#else
+			while (stat(name, &statb) < 0) {
 #endif
-				) {
 #ifdef SYSV
 				if (errno == EINTR)
 					continue;
@@ -13770,34 +13810,26 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			goto success;
 		}
 #if ENABLE_PLATFORM_MINGW32
-		if (has_exe_suffix(fullname)) {
-			if (stat(fullname, &statb) < 0) {
-				if (errno != ENOENT && errno != ENOTDIR)
-					e = errno;
-				goto loop;
-			}
-		}
-		else {
-			extern const char win_suffix[4][4];
-			int i, len;
-
+		/* first try appending suffixes (unless there's one already) */
+		i = 4;
+		len = strlen(fullname);
+		if (!has_exe_suffix_or_dot(fullname)) {
 			/* path_advance() has reserved space for suffix */
-			len = strlen(fullname);
 			fullname[len] = '.';
 			for (i=0; i<4; ++i) {
 				memcpy(fullname+len+1, win_suffix[i], 4);
 				if (stat(fullname, &statb) == 0)
 					break;
 			}
-			fullname[len] = '\0';
+		}
 
-			if (i == 4) {
-				/* suffix didn't work, try without */
-				if (stat(fullname, &statb) < 0) {
-					if (errno != ENOENT && errno != ENOTDIR)
-						e = errno;
-					goto loop;
-				}
+		if (i == 4) {
+			/* adding a suffix failed (or wasn't tried), try original */
+			fullname[len] = '\0';
+			if (stat(fullname, &statb) < 0) {
+				if (errno != ENOENT && errno != ENOTDIR)
+					e = errno;
+				goto loop;
 			}
 		}
 #else
