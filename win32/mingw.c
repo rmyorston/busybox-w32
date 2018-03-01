@@ -282,6 +282,61 @@ static inline int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fd
 	}
 }
 
+/*
+ * Examine a file's contents to determine if it can be executed.  This
+ * should be a last resort:  in most cases it's much more efficient to
+ * check the file extension.
+ *
+ * We look for two types of file:  shell scripts and binary executables.
+ */
+static int has_exec_format(const char *name)
+{
+	int fd, n, sig;
+	unsigned int offset;
+	unsigned char buf[1024];
+
+	fd = open(name, O_RDONLY);
+	if (fd < 0)
+		return 0;
+	n = read(fd, buf, sizeof(buf)-1);
+	close(fd);
+	if (n < 4)	/* at least '#!/x' and not error */
+		return 0;
+
+	/* shell script */
+	if (buf[0] == '#' && buf[1] == '!') {
+		return 1;
+	}
+
+	/*
+	 * Poke about in file to see if it's a PE binary.  I've just copied
+	 * the magic from the file command.
+	 */
+	if (buf[0] == 'M' && buf[1] == 'Z') {
+		offset = (buf[0x19] << 8) + buf[0x18];
+		if (offset > 0x3f) {
+			offset = (buf[0x3f] << 24) + (buf[0x3e] << 16) +
+						(buf[0x3d] << 8) + buf[0x3c];
+			if (offset < sizeof(buf)-100) {
+				if (memcmp(buf+offset, "PE\0\0", 4) == 0) {
+					sig = (buf[offset+25] << 8) + buf[offset+24];
+					if (sig == 0x10b || sig == 0x20b) {
+						sig = (buf[offset+23] << 8) + buf[offset+22];
+						if ((sig & 0x2000) != 0) {
+							/* DLL */
+							return 0;
+						}
+						sig = buf[offset+92];
+						return (sig == 1 || sig == 2 || sig == 3 || sig == 7);
+					}
+				}
+			}
+		}
+	}
+
+	return 0;
+}
+
 /* We keep the do_lstat code in a separate function to avoid recursion.
  * When a path ends with a slash, the stat will fail with ENOENT. In
  * this case, we strip the trailing slashes and stat again.
@@ -1067,61 +1122,6 @@ char *add_win32_extension(const char *p)
 	free(path);
 
 	return NULL;
-}
-
-/*
- * Examine a file's contents to determine if it can be executed.  This
- * should be a last resort:  in most cases it's much more efficient to
- * check the file extension.
- *
- * We look for two types of file:  shell scripts and binary executables.
- */
-int has_exec_format(const char *name)
-{
-	int fd, n, sig;
-	unsigned int offset;
-	unsigned char buf[1024];
-
-	fd = open(name, O_RDONLY);
-	if (fd < 0)
-		return 0;
-	n = read(fd, buf, sizeof(buf)-1);
-	close(fd);
-	if (n < 4)	/* at least '#!/x' and not error */
-		return 0;
-
-	/* shell script */
-	if (buf[0] == '#' && buf[1] == '!') {
-		return 1;
-	}
-
-	/*
-	 * Poke about in file to see if it's a PE binary.  I've just copied
-	 * the magic from the file command.
-	 */
-	if (buf[0] == 'M' && buf[1] == 'Z') {
-		offset = (buf[0x19] << 8) + buf[0x18];
-		if (offset > 0x3f) {
-			offset = (buf[0x3f] << 24) + (buf[0x3e] << 16) +
-						(buf[0x3d] << 8) + buf[0x3c];
-			if (offset < sizeof(buf)-100) {
-				if (memcmp(buf+offset, "PE\0\0", 4) == 0) {
-					sig = (buf[offset+25] << 8) + buf[offset+24];
-					if (sig == 0x10b || sig == 0x20b) {
-						sig = (buf[offset+23] << 8) + buf[offset+22];
-						if ((sig & 0x2000) != 0) {
-							/* DLL */
-							return 0;
-						}
-						sig = buf[offset+92];
-						return (sig == 1 || sig == 2 || sig == 3 || sig == 7);
-					}
-				}
-			}
-		}
-	}
-
-	return 0;
 }
 
 #undef opendir

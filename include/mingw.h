@@ -478,7 +478,6 @@ int has_bat_suffix(const char *p);
 int has_exe_suffix(const char *p);
 int has_exe_suffix_or_dot(const char *name);
 char *add_win32_extension(const char *p);
-int has_exec_format(const char *name);
 
 int err_win_to_posix(DWORD winerr);
 
