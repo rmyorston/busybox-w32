@@ -90,39 +90,11 @@ IMPL(getpwent,struct passwd *,NULL,void)
 /*
  * signal.h
  */
-#define SIGHUP 1
-#define SIGQUIT 3
 #define SIGKILL 9
-#define SIGUSR1 10
-#define SIGUSR2 12
-#define SIGPIPE 13
-#define SIGALRM 14
-#define SIGCHLD 17
-#define SIGCONT 18
-#define SIGSTOP 19
-#define SIGTSTP 20
-#define SIGTTIN 21
-#define SIGTTOU 22
-#define SIGXCPU 24
-#define SIGXFSZ 25
-#define SIGVTALRM 26
-#define SIGWINCH 28
 
 #define SIG_UNBLOCK 1
 
-typedef void (__cdecl *sighandler_t)(int);
-struct sigaction {
-	sighandler_t sa_handler;
-	unsigned sa_flags;
-	int sa_mask;
-};
-#define sigemptyset(x) (void)0
-#define SA_RESTART 0
-
-NOIMPL(sigaction,int sig UNUSED_PARAM, struct sigaction *in UNUSED_PARAM, struct sigaction *out UNUSED_PARAM);
-NOIMPL(sigfillset,int *mask UNUSED_PARAM);
 NOIMPL(FAST_FUNC sigprocmask_allsigs, int how UNUSED_PARAM);
-NOIMPL(FAST_FUNC sigaction_set,int signo UNUSED_PARAM, const struct sigaction *sa UNUSED_PARAM);
 
 /*
  * stdio.h

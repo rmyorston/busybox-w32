@@ -3747,6 +3747,7 @@ static smallint doing_jobctl; //references:8
 static void setjobctl(int);
 #endif
 
+#if !ENABLE_PLATFORM_MINGW32
 /*
  * Ignore a signal.
  */
@@ -3761,7 +3762,6 @@ ignoresig(int signo)
 	sigmode[signo - 1] = S_HARD_IGN;
 }
 
-#if !ENABLE_PLATFORM_MINGW32
 /*
  * Only one usage site - in setsignal()
  */
@@ -3896,6 +3896,7 @@ setsignal(int signo)
 }
 #else
 #define setsignal(s)
+#define ignoresig(s)
 #endif
 
 /* mode flags for set_curjob */
@@ -4372,7 +4373,11 @@ sprint_status48(char *s, int status, int sigonly)
 #endif
 			st = WTERMSIG(status);
 		if (sigonly) {
+#ifdef SIGPIPE
 			if (st == SIGINT || st == SIGPIPE)
+#else
+			if (st == SIGINT)
+#endif
 				goto out;
 #if JOBS
 			if (WIFSTOPPED(status))
@@ -10633,7 +10638,7 @@ evalcommand(union node *cmd, int flags)
 		 * we can just exec it.
 		 */
 #if ENABLE_PLATFORM_MINGW32
-		if (!(flags & EV_EXIT) || trap[0]) {
+		if (!(flags & EV_EXIT) || may_have_traps) {
 			/* No, forking off a child is necessary */
 			struct forkshell fs;
 
@@ -14394,6 +14399,7 @@ init(void)
 	basepf.next_to_pgetc = basepf.buf = ckmalloc(IBUFSIZ);
 	basepf.linno = 1;
 
+#if !ENABLE_PLATFORM_MINGW32
 	sigmode[SIGCHLD - 1] = S_DFL; /* ensure we install handler even if it is SIG_IGNed */
 	setsignal(SIGCHLD);
 
@@ -14401,6 +14407,7 @@ init(void)
 	 * Try: "trap '' HUP; bash; echo RET" and type "kill -HUP $$"
 	 */
 	signal(SIGHUP, SIG_DFL);
+#endif
 
 	{
 		char **envp;
@@ -14838,7 +14845,7 @@ forkshell_openhere(struct forkshell *fs)
 	ignoresig(SIGQUIT); //signal(SIGQUIT, SIG_IGN);
 	ignoresig(SIGHUP);  //signal(SIGHUP, SIG_IGN);
 	ignoresig(SIGTSTP); //signal(SIGTSTP, SIG_IGN);
-	signal(SIGPIPE, SIG_DFL);
+	//signal(SIGPIPE, SIG_DFL);
 	if (redir->type == NHERE) {
 		size_t len = strlen(redir->nhere.doc->narg.text);
 		full_write(pip[1], redir->nhere.doc->narg.text, len);

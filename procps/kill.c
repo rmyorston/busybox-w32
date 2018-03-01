@@ -207,6 +207,7 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
  do_it_now:
 	pid = getpid();
 
+#if ENABLE_KILLALL5
 	if (is_killall5) {
 		pid_t sid;
 		procps_status_t* p = NULL;
@@ -264,6 +265,7 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 			kill(-1, SIGCONT);
 		return errors;
 	}
+#endif
 
 #if ENABLE_KILL || ENABLE_KILLALL
 	/* Pid or name is required for kill/killall */

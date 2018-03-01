@@ -110,10 +110,12 @@
  * when compared to "standard" nc
  */
 
+#if ENABLE_NC_EXTRA
 static void timeout(int signum UNUSED_PARAM)
 {
 	bb_error_msg_and_die("timed out");
 }
+#endif
 
 int nc_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int nc_main(int argc, char **argv)
@@ -187,10 +189,12 @@ int nc_main(int argc, char **argv)
 		argv++;
 	}
 
+#if ENABLE_NC_EXTRA
 	if (wsecs) {
 		signal(SIGALRM, timeout);
 		alarm(wsecs);
 	}
+#endif
 
 	if (!cfd) {
 		if (do_listen) {

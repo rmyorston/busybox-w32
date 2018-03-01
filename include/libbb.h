@@ -526,18 +526,36 @@ enum {
 	 * Dance around with long long to guard against that...
 	 */
 	BB_FATAL_SIGS = (int)(0
+#ifdef SIGHUP
 		+ (1LL << SIGHUP)
+#endif
 		+ (1LL << SIGINT)
 		+ (1LL << SIGTERM)
+#ifdef SIGPIPE
 		+ (1LL << SIGPIPE)   // Write to pipe with no readers
+#endif
+#ifdef SIGQUIT
 		+ (1LL << SIGQUIT)   // Quit from keyboard
+#endif
 		+ (1LL << SIGABRT)   // Abort signal from abort(3)
+#ifdef SIGALRM
 		+ (1LL << SIGALRM)   // Timer signal from alarm(2)
+#endif
+#ifdef SIGVTALRM
 		+ (1LL << SIGVTALRM) // Virtual alarm clock
+#endif
+#ifdef SIGXCPU
 		+ (1LL << SIGXCPU)   // CPU time limit exceeded
+#endif
+#ifdef SIGXFSZ
 		+ (1LL << SIGXFSZ)   // File size limit exceeded
+#endif
+#ifdef SIGUSR1
 		+ (1LL << SIGUSR1)   // Yes kids, these are also fatal!
+#endif
+#ifdef SIGUSR1
 		+ (1LL << SIGUSR2)
+#endif
 		+ 0),
 };
 #if !ENABLE_PLATFORM_MINGW32

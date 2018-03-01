@@ -69,9 +69,11 @@ int tee_main(int argc, char **argv)
 		signal(SIGINT, SIG_IGN); /* TODO - switch to sigaction. (why?) */
 	}
 	retval = EXIT_SUCCESS;
+#ifdef SIGPIPE
 	/* gnu tee ignores SIGPIPE in case one of the output files is a pipe
 	 * that doesn't consume all its input.  Good idea... */
 	signal(SIGPIPE, SIG_IGN);
+#endif
 
 	/* Allocate an array of FILE *'s, with one extra for a sentinel. */
 	fp = files = xzalloc(sizeof(FILE *) * (argc + 2));
