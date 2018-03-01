@@ -151,9 +151,11 @@ struct lineedit_statics {
 	unsigned num_matches;
 #endif
 
+#if ENABLE_FEATURE_EDITING_WINCH
 	unsigned SIGWINCH_saved;
 	volatile unsigned SIGWINCH_count;
 	volatile smallint ok_to_redraw;
+#endif
 
 #if ENABLE_FEATURE_EDITING_VI
 # define DELBUFSIZ 128
@@ -165,8 +167,10 @@ struct lineedit_statics {
 	smallint sent_ESC_br6n;
 #endif
 
+#if ENABLE_FEATURE_EDITING_WINCH
 	/* Largish struct, keeping it last results in smaller code */
 	struct sigaction SIGWINCH_handler;
+#endif
 };
 
 /* See lineedit_ptr_hack.c */
@@ -2092,6 +2096,7 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 }
 #endif
 
+#if ENABLE_FEATURE_EDITING_WINCH
 static void cmdedit_setwidth(void)
 {
 	int new_y;
@@ -2116,6 +2121,7 @@ static void win_changed(int nsig UNUSED_PARAM)
 		S.SIGWINCH_count++;
 	}
 }
+#endif
 
 static int lineedit_read_key(char *read_key_buffer, int timeout)
 {
@@ -2134,9 +2140,9 @@ static int lineedit_read_key(char *read_key_buffer, int timeout)
 		 *
 		 * Note: read_key sets errno to 0 on success.
 		 */
-		S.ok_to_redraw = 1;
+		IF_FEATURE_EDITING_WINCH(S.ok_to_redraw = 1;)
 		ic = read_key(STDIN_FILENO, read_key_buffer, timeout);
-		S.ok_to_redraw = 0;
+		IF_FEATURE_EDITING_WINCH(S.ok_to_redraw = 0;)
 		if (errno) {
 #if ENABLE_UNICODE_SUPPORT
 			if (errno == EAGAIN && unicode_idx != 0)
@@ -2476,11 +2482,12 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	parse_and_put_prompt(prompt);
 	ask_terminal();
 
+#if ENABLE_FEATURE_EDITING_WINCH
 	/* Install window resize handler (NB: after *all* init is complete) */
 	S.SIGWINCH_handler.sa_handler = win_changed;
 	S.SIGWINCH_handler.sa_flags = SA_RESTART;
 	sigaction(SIGWINCH, &S.SIGWINCH_handler, &S.SIGWINCH_handler);
-
+#endif
 	read_key_buffer[0] = 0;
 	while (1) {
 		/*
@@ -2492,6 +2499,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 		 * in one place.
 		 */
 		int32_t ic, ic_raw;
+#if ENABLE_FEATURE_EDITING_WINCH
 		unsigned count;
 
 		count = S.SIGWINCH_count;
@@ -2499,7 +2507,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 			S.SIGWINCH_saved = count;
 			cmdedit_setwidth();
 		}
-
+#endif
 		ic = ic_raw = lineedit_read_key(read_key_buffer, timeout);
 #if ENABLE_PLATFORM_MINGW32
 		/* scroll to cursor position on any keypress */
@@ -2941,8 +2949,10 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 
 	/* restore initial_settings */
 	tcsetattr_stdin_TCSANOW(&initial_settings);
+#if ENABLE_FEATURE_EDITING_WINCH
 	/* restore SIGWINCH handler */
 	sigaction_set(SIGWINCH, &S.SIGWINCH_handler);
+#endif
 	fflush_all();
 
 	len = command_len;
