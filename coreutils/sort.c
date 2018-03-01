@@ -62,9 +62,9 @@
 //usage:     "\n	-u	Suppress duplicate lines"
 //usage:	IF_FEATURE_SORT_BIG(
 //usage:     "\n	-z	Lines are terminated by NUL, not newline"
-////usage:     "\n	-m	Ignored for GNU compatibility"
-////usage:     "\n	-S BUFSZ Ignored for GNU compatibility"
-////usage:     "\n	-T TMPDIR Ignored for GNU compatibility"
+///////:     "\n	-m	Ignored for GNU compatibility"
+///////:     "\n	-S BUFSZ Ignored for GNU compatibility"
+///////:     "\n	-T TMPDIR Ignored for GNU compatibility"
 //usage:	)
 //usage:
 //usage:#define sort_example_usage
@@ -85,16 +85,7 @@
 
 #include "libbb.h"
 
-/* This is a NOEXEC applet. Be very careful! */
-
-
-/*
-	sort [-m][-o output][-bdfinru][-t char][-k keydef]... [file...]
-	sort -c [-bdfinru][-t char][-k keydef][file]
-*/
-
 /* These are sort types */
-#define OPT_STR "ngMucszbrdfimS:T:o:k:*t:"
 enum {
 	FLAG_n  = 1,            /* Numeric sort */
 	FLAG_g  = 2,            /* Sort using strtod() */
@@ -117,7 +108,17 @@ enum {
 	FLAG_k  = 0x10000,
 	FLAG_t  = 0x20000,
 	FLAG_bb = 0x80000000,   /* Ignore trailing blanks  */
+	FLAG_no_tie_break = 0x40000000,
 };
+
+static const char sort_opt_str[] ALIGN1 = "^"
+			"ngMucszbrdfimS:T:o:k:*t:"
+			"\0" "o--o:t--t"/*-t, -o: at most one of each*/;
+/*
+ * OPT_STR must not be string literal, needs to have stable address:
+ * code uses "strchr(OPT_STR,c) - OPT_STR" idiom.
+ */
+#define OPT_STR (sort_opt_str + 1)
 
 #if ENABLE_FEATURE_SORT_BIG
 static char key_separator;
@@ -127,6 +128,10 @@ static struct sort_key {
 	unsigned range[4];          /* start word, start char, end word, end char */
 	unsigned flags;
 } *key_list;
+
+
+/* This is a NOEXEC applet. Be very careful! */
+
 
 static char *get_key(char *str, struct sort_key *key, int flags)
 {
@@ -340,10 +345,35 @@ static int compare_keys(const void *xarg, const void *yarg)
 #endif
 	} /* for */
 
-	/* Perform fallback sort if necessary */
-	if (!retval && !(option_mask32 & FLAG_s)) {
-		flags = option_mask32;
-		retval = strcmp(*(char **)xarg, *(char **)yarg);
+	if (retval == 0) {
+		/* So far lines are "the same" */
+
+		if (option_mask32 & FLAG_s) {
+			/* "Stable sort": later line is "greater than",
+			 * IOW: do not allow qsort() to swap equal lines.
+			 */
+			uint32_t *p32;
+			uint32_t x32, y32;
+			char *line;
+			unsigned len;
+
+			line = *(char**)xarg;
+			len = (strlen(line) + 4) & (~3u);
+			p32 = (void*)(line + len);
+			x32 = *p32;
+			line = *(char**)yarg;
+			len = (strlen(line) + 4) & (~3u);
+			p32 = (void*)(line + len);
+			y32 = *p32;
+
+			/* If x > y, 1, else -1 */
+			retval = (x32 > y32) * 2 - 1;
+		} else
+		if (!(option_mask32 & FLAG_no_tie_break)) {
+			/* fallback sort */
+			flags = option_mask32;
+			retval = strcmp(*(char **)xarg, *(char **)yarg);
+		}
 	}
 
 	if (flags & FLAG_r)
@@ -368,7 +398,7 @@ static unsigned str2u(char **str)
 int sort_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int sort_main(int argc UNUSED_PARAM, char **argv)
 {
-	char *line, **lines;
+	char **lines;
 	char *str_ignored, *str_o, *str_t;
 	llist_t *lst_k = NULL;
 	int i;
@@ -378,9 +408,8 @@ int sort_main(int argc UNUSED_PARAM, char **argv)
 	xfunc_error_retval = 2;
 
 	/* Parse command line options */
-	opts = getopt32(argv, "^"
-			OPT_STR
-			"\0" "o--o:t--t"/*-t, -o: at most one of each*/,
+	opts = getopt32(argv,
+			sort_opt_str,
 			&str_ignored, &str_ignored, &str_o, &lst_k, &str_t
 	);
 	/* global b strips leading and trailing spaces */
@@ -457,7 +486,7 @@ int sort_main(int argc UNUSED_PARAM, char **argv)
 		 * do not continue to next file: */
 		FILE *fp = xfopen_stdin(*argv);
 		for (;;) {
-			line = GET_LINE(fp);
+			char *line = GET_LINE(fp);
 			if (!line)
 				break;
 			lines = xrealloc_vector(lines, 6, linecount);
@@ -482,15 +511,35 @@ int sort_main(int argc UNUSED_PARAM, char **argv)
 		return EXIT_SUCCESS;
 	}
 #endif
+
+	/* For stable sort, store original line position beyond terminating NUL */
+	if (option_mask32 & FLAG_s) {
+		for (i = 0; i < linecount; i++) {
+			uint32_t *p32;
+			char *line;
+			unsigned len;
+
+			line = lines[i];
+			len = (strlen(line) + 4) & (~3u);
+			lines[i] = line = xrealloc(line, len + 4);
+			p32 = (void*)(line + len);
+			*p32 = i;
+		}
+		/*option_mask32 |= FLAG_no_tie_break;*/
+		/* ^^^redundant: if FLAG_s, compare_keys() does no tie break */
+	}
+
 	/* Perform the actual sort */
 	qsort(lines, linecount, sizeof(lines[0]), compare_keys);
 
 	/* Handle -u */
 	if (option_mask32 & FLAG_u) {
 		int j = 0;
-		/* coreutils 6.3 drop lines for which only key is the same */
-		/* -- disabling last-resort compare... */
-		option_mask32 |= FLAG_s;
+		/* coreutils 6.3 drop lines for which only key is the same
+		 * -- disabling last-resort compare, or else compare_keys()
+		 * will be the same only for completely identical lines.
+		 */
+		option_mask32 |= FLAG_no_tie_break;
 		for (i = 1; i < linecount; i++) {
 			if (compare_keys(&lines[j], &lines[i]) == 0)
 				free(lines[i]);
