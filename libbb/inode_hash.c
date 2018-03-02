@@ -55,7 +55,6 @@ char* FAST_FUNC is_in_ino_dev_hashtable(const struct stat *statbuf)
 	return NULL;
 }
 
-#if !ENABLE_PLATFORM_MINGW32
 /* Add statbuf to statbuf hash table */
 void FAST_FUNC add_to_ino_dev_hashtable(const struct stat *statbuf, const char *name)
 {
@@ -77,7 +76,6 @@ void FAST_FUNC add_to_ino_dev_hashtable(const struct stat *statbuf, const char *
 	bucket->next = ino_dev_hashtable[i];
 	ino_dev_hashtable[i] = bucket;
 }
-#endif
 
 #if ENABLE_DU || ENABLE_FEATURE_CLEAN_UP
 /* Clear statbuf hash table */

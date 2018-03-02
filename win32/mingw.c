@@ -1090,8 +1090,7 @@ int has_exe_suffix(const char *name)
 
 int has_exe_suffix_or_dot(const char *name)
 {
-	int len = strlen(name);
-	return (len > 0 && name[len-1] == '.') || has_win_suffix(name, 0);
+	return last_char_is(name, '.') || has_win_suffix(name, 0);
 }
 
 /* check if path can be made into an executable by adding a suffix;

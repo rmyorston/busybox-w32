@@ -1662,11 +1662,15 @@ int bb_xioctl(int fd, unsigned request, void *argp) FAST_FUNC;
 #define xioctl(fd,request,argp)        bb_xioctl(fd,request,argp)
 #endif
 
-char *is_in_ino_dev_hashtable(const struct stat *statbuf) FAST_FUNC;
 #if !ENABLE_PLATFORM_MINGW32
+char *is_in_ino_dev_hashtable(const struct stat *statbuf) FAST_FUNC;
 void add_to_ino_dev_hashtable(const struct stat *statbuf, const char *name) FAST_FUNC;
-#endif
 void reset_ino_dev_hashtable(void) FAST_FUNC;
+#else
+#define add_to_ino_dev_hashtable(s, n) (void)0
+#define is_in_ino_dev_hashtable(s) NULL
+#define reset_ino_dev_hashtable()
+#endif
 #ifdef __GLIBC__
 /* At least glibc has horrendously large inline for this, so wrap it */
 unsigned long long bb_makedev(unsigned major, unsigned minor) FAST_FUNC;
