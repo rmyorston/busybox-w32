@@ -163,7 +163,9 @@ static int write_ar_archive(archive_handle_t *handle)
 {
 	struct stat st;
 	archive_handle_t *out_handle;
+#if ENABLE_PLATFORM_MINGW32
 	char *temp_fn = NULL;
+#endif
 
 	xfstat(handle->src_fd, &st, handle->ar__name);
 
