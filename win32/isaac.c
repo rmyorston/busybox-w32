@@ -19,34 +19,36 @@ You may use this code in any way you wish, and it is free.  No warrantee.
 */
 #include "libbb.h"
 
-/* external results */
-static uint32_t randrsl[256];
+typedef struct {
+	/* external results */
+	uint32_t randrsl[256];
 
-/* internal state */
-static uint32_t mm[256];
-static uint32_t aa=0, bb=0, cc=0;
+	/* internal state */
+	uint32_t mm[256];
+	uint32_t aa, bb, cc;
+} isaac_t;
 
 
-static void isaac(void)
+static void isaac(isaac_t *t)
 {
    register uint32_t i,x,y;
 
-   cc = cc + 1;    /* cc just gets incremented once per 256 results */
-   bb = bb + cc;   /* then combined with bb */
+   t->cc = t->cc + 1;    /* cc just gets incremented once per 256 results */
+   t->bb = t->bb + t->cc;   /* then combined with bb */
 
    for (i=0; i<256; ++i)
    {
-     x = mm[i];
+     x = t->mm[i];
      switch (i%4)
      {
-     case 0: aa = aa^(aa<<13); break;
-     case 1: aa = aa^(aa>>6); break;
-     case 2: aa = aa^(aa<<2); break;
-     case 3: aa = aa^(aa>>16); break;
+     case 0: t->aa = t->aa^(t->aa<<13); break;
+     case 1: t->aa = t->aa^(t->aa>>6); break;
+     case 2: t->aa = t->aa^(t->aa<<2); break;
+     case 3: t->aa = t->aa^(t->aa>>16); break;
      }
-     aa              = mm[(i+128)%256] + aa;
-     mm[i]      = y  = mm[(x>>2)%256] + aa + bb;
-     randrsl[i] = bb = mm[(y>>10)%256] + x;
+     t->aa              = t->mm[(i+128)%256] + t->aa;
+     t->mm[i]      = y  = t->mm[(x>>2)%256] + t->aa + t->bb;
+     t->randrsl[i] = t->bb = t->mm[(y>>10)%256] + x;
 
      /* Note that bits 2..9 are chosen from x but 10..17 are chosen
         from y.  The only important thing here is that 2..9 and 10..17
@@ -71,11 +73,11 @@ static void isaac(void)
    h^=a>>9;  c+=h; a+=b; \
 }
 
-static void randinit(int flag)
+static void randinit(isaac_t *t, int flag)
 {
    int i;
    uint32_t a,b,c,d,e,f,g,h;
-   aa=bb=cc=0;
+   t->aa = t->bb = t->cc = 0;
    a=b=c=d=e=f=g=h=0x9e3779b9;  /* the golden ratio */
 
    for (i=0; i<4; ++i)          /* scramble it */
@@ -87,27 +89,28 @@ static void randinit(int flag)
    {
      if (flag)                  /* use all the information in the seed */
      {
-       a+=randrsl[i  ]; b+=randrsl[i+1]; c+=randrsl[i+2]; d+=randrsl[i+3];
-       e+=randrsl[i+4]; f+=randrsl[i+5]; g+=randrsl[i+6]; h+=randrsl[i+7];
+       a+=t->randrsl[i  ]; b+=t->randrsl[i+1]; c+=t->randrsl[i+2];
+       d+=t->randrsl[i+3]; e+=t->randrsl[i+4]; f+=t->randrsl[i+5];
+       g+=t->randrsl[i+6]; h+=t->randrsl[i+7];
      }
      mix(a,b,c,d,e,f,g,h);
-     mm[i  ]=a; mm[i+1]=b; mm[i+2]=c; mm[i+3]=d;
-     mm[i+4]=e; mm[i+5]=f; mm[i+6]=g; mm[i+7]=h;
+     t->mm[i  ]=a; t->mm[i+1]=b; t->mm[i+2]=c; t->mm[i+3]=d;
+     t->mm[i+4]=e; t->mm[i+5]=f; t->mm[i+6]=g; t->mm[i+7]=h;
    }
 
    if (flag)
    {        /* do a second pass to make all of the seed affect all of mm */
      for (i=0; i<256; i+=8)
      {
-       a+=mm[i  ]; b+=mm[i+1]; c+=mm[i+2]; d+=mm[i+3];
-       e+=mm[i+4]; f+=mm[i+5]; g+=mm[i+6]; h+=mm[i+7];
+       a+=t->mm[i  ]; b+=t->mm[i+1]; c+=t->mm[i+2]; d+=t->mm[i+3];
+       e+=t->mm[i+4]; f+=t->mm[i+5]; g+=t->mm[i+6]; h+=t->mm[i+7];
        mix(a,b,c,d,e,f,g,h);
-       mm[i  ]=a; mm[i+1]=b; mm[i+2]=c; mm[i+3]=d;
-       mm[i+4]=e; mm[i+5]=f; mm[i+6]=g; mm[i+7]=h;
+       t->mm[i  ]=a; t->mm[i+1]=b; t->mm[i+2]=c; t->mm[i+3]=d;
+       t->mm[i+4]=e; t->mm[i+5]=f; t->mm[i+6]=g; t->mm[i+7]=h;
      }
    }
 
-   isaac();            /* fill in the first set of results */
+   isaac(t);            /* fill in the first set of results */
 }
 
 /* call 'fn' to put data in 'dt' then copy it to generator state */
@@ -115,7 +118,7 @@ static void randinit(int flag)
 	fn(&dt); \
 	u = (uint32_t *)&dt; \
 	for (j=0; j<sizeof(dt)/sizeof(uint32_t); ++j) { \
-		randrsl[i++] = *u++; \
+		t->randrsl[i++] = *u++; \
 	}
 
 /*
@@ -123,7 +126,7 @@ static void randinit(int flag)
  * This is unlikely to be very robust:  don't rely on it for
  * anything that needs to be secure.
  */
-static void get_entropy(void)
+static void get_entropy(isaac_t *t)
 {
 	int i, j, len;
 	SYSTEMTIME tm;
@@ -136,9 +139,9 @@ static void get_entropy(void)
 	unsigned char buf[16];
 
 	i = 0;
-	randrsl[i++] = (uint32_t)GetCurrentProcessId();
-	randrsl[i++] = (uint32_t)GetCurrentThreadId();
-	randrsl[i++] = (uint32_t)GetTickCount();
+	t->randrsl[i++] = (uint32_t)GetCurrentProcessId();
+	t->randrsl[i++] = (uint32_t)GetCurrentThreadId();
+	t->randrsl[i++] = (uint32_t)GetTickCount();
 
 	GET_DATA(GetLocalTime, tm)
 	GET_DATA(GlobalMemoryStatus, ms)
@@ -159,12 +162,12 @@ static void get_entropy(void)
 
 	u = (uint32_t *)buf;
 	for (j=0; j<sizeof(buf)/sizeof(uint32_t); ++j) {
-		randrsl[i++] = *u++;
+		t->randrsl[i++] = *u++;
 	}
 
 #if 0
 	{
-		unsigned char *p = (unsigned char *)randrsl;
+		unsigned char *p = (unsigned char *)t->randrsl;
 
 		for (j=0; j<i*sizeof(uint32_t); ++j) {
 			fprintf(stderr, "%02x", *p++);
@@ -180,8 +183,8 @@ static void get_entropy(void)
 #endif
 }
 
-#define RAND_BYTES sizeof(randrsl)
-#define RAND_WORDS (sizeof(randrsl)/sizeof(randrsl[0]))
+#define RAND_BYTES sizeof(t->randrsl)
+#define RAND_WORDS (sizeof(t->randrsl)/sizeof(t->randrsl[0]))
 
 /*
  * Place 'count' random bytes in the buffer 'buf'.  You're responsible
@@ -189,29 +192,26 @@ static void get_entropy(void)
  */
 ssize_t get_random_bytes(void *buf, ssize_t count)
 {
-	static int initialised = 0;
+	static isaac_t *t = NULL;
 	static int rand_index = 0;
-	int i;
 	ssize_t save_count = count;
-	unsigned char *ptr = (unsigned char *)randrsl;
+	unsigned char *ptr;
 
 	if (buf == NULL || count < 0) {
 		errno = EINVAL;
 		return -1;
 	}
 
-	if (!initialised) {
-		aa = bb = cc = (uint32_t)0;
-		for (i=0; i<RAND_WORDS; ++i)
-			mm[i] = randrsl[i] = (uint32_t)0;
+	if (!t) {
+		t = xzalloc(sizeof(isaac_t));
 
-		get_entropy();
-		randinit(1);
-		isaac();
+		get_entropy(t);
+		randinit(t, 1);
+		isaac(t);
 		rand_index = 0;
-		initialised = 1;
 	}
 
+	ptr = (unsigned char *)t->randrsl;
 	while (count > 0) {
 		int bytes_left = RAND_BYTES - rand_index;
 
@@ -231,7 +231,7 @@ ssize_t get_random_bytes(void *buf, ssize_t count)
 
 		if (rand_index >= RAND_BYTES) {
 			/* generate more */
-			isaac();
+			isaac(t);
 			rand_index = 0;
 		}
 	}

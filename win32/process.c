@@ -39,43 +39,50 @@ next_path_sep(const char *path)
 	return strchr(has_dos_drive_prefix(path) ? path+2 : path, ':');
 }
 
-static char *
-parse_interpreter(const char *cmd, char **name, char **opts)
+typedef struct {
+	char *path;
+	char *name;
+	char *opts;
+	char buf[100];
+} interp_t;
+
+static int
+parse_interpreter(const char *cmd, interp_t *interp)
 {
-	static char buf[100];
 	char *path, *t;
 	int n, fd;
 
 	fd = open(cmd, O_RDONLY);
 	if (fd < 0)
-		return NULL;
-	n = read(fd, buf, sizeof(buf)-1);
+		return 0;
+	n = read(fd, interp->buf, sizeof(interp->buf)-1);
 	close(fd);
 	if (n < 4)	/* at least '#!/x' and not error */
-		return NULL;
+		return 0;
 
 	/*
 	 * See http://www.in-ulm.de/~mascheck/various/shebang/ for trivia
 	 * relating to '#!'.
 	 */
-	if (buf[0] != '#' || buf[1] != '!')
-		return NULL;
-	buf[n] = '\0';
-	if ((t=strchr(buf, '\n')) == NULL)
-		return NULL;
+	if (interp->buf[0] != '#' || interp->buf[1] != '!')
+		return 0;
+	interp->buf[n] = '\0';
+	if ((t=strchr(interp->buf, '\n')) == NULL)
+		return 0;
 	t[1] = '\0';
 
-	if ((path=strtok(buf+2, " \t\r\n")) == NULL)
-		return NULL;
+	if ((path=strtok(interp->buf+2, " \t\r\n")) == NULL)
+		return 0;
 
 	t = (char *)bb_basename(path);
 	if (*t == '\0')
-		return NULL;
+		return 0;
 
-	*name = t;
-	*opts = strtok(NULL, "\r\n");
+	interp->path = path;
+	interp->name = t;
+	interp->opts = strtok(NULL, "\r\n");
 
-	return path;
+	return 1;
 }
 
 /*
@@ -284,36 +291,35 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *con
 {
 	intptr_t ret;
 	int nopts;
-	char *int_name, *opts;
-	char *int_path = parse_interpreter(prog, &int_name, &opts);
+	interp_t interp;
 	char **new_argv;
 	int argc = -1;
 	char *fullpath = NULL;
 
-	if (!int_path)
+	if (!parse_interpreter(prog, &interp))
 		return spawnveq(mode, prog, argv, envp);
 
-	nopts = opts != NULL;
+	nopts = interp.opts != NULL;
 	while (argv[++argc])
 		;
 
 	new_argv = xmalloc(sizeof(*argv)*(argc+nopts+2));
-	new_argv[1] = opts;
+	new_argv[1] = interp.opts;
 	new_argv[nopts+1] = (char *)prog; /* pass absolute path */
 	memcpy(new_argv+nopts+2, argv+1, sizeof(*argv)*argc);
 
-	if ((fullpath=add_win32_extension(int_path)) != NULL ||
-			file_is_executable(int_path)) {
-		new_argv[0] = fullpath ? fullpath : int_path;
+	if ((fullpath=add_win32_extension(interp.path)) != NULL ||
+			file_is_executable(interp.path)) {
+		new_argv[0] = fullpath ? fullpath : interp.path;
 		ret = spawnveq(mode, new_argv[0], new_argv, envp);
 	} else
 #if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
-	if (find_applet_by_name(int_name) >= 0) {
-		new_argv[0] = int_name;
+	if (find_applet_by_name(interp.name) >= 0) {
+		new_argv[0] = interp.name;
 		ret = mingw_spawn_applet(mode, new_argv, envp);
 	} else
 #endif
-	if ((fullpath=find_first_executable(int_name)) != NULL) {
+	if ((fullpath=find_first_executable(interp.name)) != NULL) {
 		new_argv[0] = fullpath;
 		ret = spawnveq(mode, fullpath, new_argv, envp);
 	}

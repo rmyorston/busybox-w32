@@ -676,10 +676,13 @@ int mingw_rename(const char *pold, const char *pnew)
 
 static char *gethomedir(void)
 {
-	static char buf[PATH_MAX];
-	DWORD len = sizeof(buf);
+	static char *buf = NULL;
+	DWORD len = PATH_MAX;
 	HANDLE h;
 	char *s;
+
+	if (!buf)
+		buf = xmalloc(PATH_MAX);
 
 	buf[0] = '\0';
 	if ( !OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &h) )
@@ -701,11 +704,17 @@ static char *gethomedir(void)
 	return buf;
 }
 
+#define NAME_LEN 100
 static char *get_user_name(void)
 {
-	static char user_name[100] = "";
+	static char *user_name = NULL;
 	char *s;
-	DWORD len = sizeof(user_name);
+	DWORD len = NAME_LEN;
+
+	if ( user_name == NULL ) {
+		user_name = xmalloc(NAME_LEN);
+		user_name[0] = '\0';
+	}
 
 	if ( user_name[0] != '\0' ) {
 		return user_name;
@@ -857,7 +866,12 @@ char *realpath(const char *path, char *resolved_path)
 
 const char *get_busybox_exec_path(void)
 {
-	static char path[PATH_MAX] = "";
+	static char *path = NULL;
+
+	if (!path) {
+		path = xmalloc(PATH_MAX);
+		path[0] = '\0';
+	}
 
 	if (!*path)
 		GetModuleFileName(NULL, path, PATH_MAX);
