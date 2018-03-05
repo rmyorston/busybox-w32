@@ -16,6 +16,8 @@
    write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
    Boston, MA 02111-1307, USA.  */
 
+#include <platform.h>
+
 #if HAVE_CONFIG_H
 # include <config.h>
 #endif
@@ -129,7 +131,7 @@ extern int errno;
 
 /* This function doesn't exist on most systems.  */
 
-# if !defined HAVE___STRCHRNUL && !defined _LIBC
+# if !defined HAVE___STRCHRNUL && !defined _LIBC && 0
 static char *
 __strchrnul (const char *s, int c)
 {
@@ -138,6 +140,8 @@ __strchrnul (const char *s, int c)
     result = strchr (s, '\0');
   return result;
 }
+# else
+#  define __strchrnul strchrnul
 # endif
 
 # ifndef internal_function
