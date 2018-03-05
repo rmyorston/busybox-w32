@@ -972,9 +972,11 @@ size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm
 	int m;
 
 	/*
-	 * Emulate the '%e' and '%s' formats that Windows' strftime lacks.
-	 * Happily, the string that replaces '%e' is two characters long.
-	 * '%s' is a bit more complicated.
+	 * Emulate the some formats that Windows' strftime lacks.
+	 * - '%e' day of the month with space padding
+	 * - '%s' number of seconds since the Unix epoch
+	 * - '%z' timezone offset
+	 * Also, permit the '-' modifier to omit padding.  Windows uses '#'.
 	 */
 	fmt = xstrdup(format);
 	for ( t=fmt; *t; ++t ) {
@@ -1017,7 +1019,7 @@ size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm
 
 					hr = offset / 3600;
 					min = (offset % 3600) / 60;
-					sprintf(buffer+1, "%02d%02d", hr, min);
+					sprintf(buffer+1, "%04d", hr*100 + min);
 				}
 				newfmt = xasprintf("%s%s%s", fmt, buffer, t+2);
 				free(fmt);
