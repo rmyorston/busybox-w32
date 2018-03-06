@@ -86,6 +86,9 @@
 //usage:     "\n	status=none	Suppress all output"
 //usage:	)
 //usage:     "\n"
+//usage:    IF_PLATFORM_MINGW32(
+//usage:     "\nif=/dev/zero and if=/dev/urandom are supported"
+//usage:	)
 //usage:     "\nN may be suffixed by c (1), w (2), b (512), kB (1000), k (1024), MB, M, GB, G"
 //usage:
 //usage:#define dd_example_usage
