@@ -472,15 +472,7 @@ int winansi_putchar(int c)
 
 int winansi_puts(const char *s)
 {
-	int rv;
-
-	if (!is_console(STDOUT_FILENO))
-		return puts(s);
-
-	rv = ansi_emulate(s, stdout);
-	putchar('\n');
-
-	return rv;
+	return (winansi_fputs(s, stdout) == EOF || putchar('\n') == EOF) ? EOF : 0;
 }
 
 size_t winansi_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
@@ -501,22 +493,15 @@ size_t winansi_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
 	rv = ansi_emulate(str, stream);
 	free(str);
 
-	return rv;
+	return rv == EOF ? 0 : nmemb;
 }
 
 int winansi_fputs(const char *str, FILE *stream)
 {
-	int rv;
-
 	if (!is_console(fileno(stream)))
 		return fputs(str, stream);
 
-	rv = ansi_emulate(str, stream);
-
-	if (rv >= 0)
-		return 0;
-	else
-		return EOF;
+	return ansi_emulate(str, stream) == EOF ? EOF : 0;
 }
 
 int winansi_vfprintf(FILE *stream, const char *format, va_list list)
