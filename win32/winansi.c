@@ -60,6 +60,18 @@ static void init(void)
 	initialized = 1;
 }
 
+static int is_console(int fd)
+{
+	init();
+	return isatty(fd) && console;
+}
+
+static int is_console_in(int fd)
+{
+	init();
+	return isatty(fd) && console_in;
+}
+
 static int skip_ansi_emulation(void)
 {
 	static char *var = NULL;
@@ -447,12 +459,7 @@ int winansi_putchar(int c)
 	char t = c;
 	char *s = &t;
 
-	if (!isatty(STDOUT_FILENO))
-		return putchar(c);
-
-	init();
-
-	if (!console)
+	if (!is_console(STDOUT_FILENO))
 		return putchar(c);
 
 	CharToOemBuff(s, s, 1);
@@ -463,12 +470,7 @@ int winansi_puts(const char *s)
 {
 	int rv;
 
-	if (!isatty(STDOUT_FILENO))
-		return puts(s);
-
-	init();
-
-	if (!console)
+	if (!is_console(STDOUT_FILENO))
 		return puts(s);
 
 	rv = ansi_emulate(s, stdout);
@@ -485,15 +487,7 @@ size_t winansi_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
 
 	lsize = MIN(size, nmemb);
 	lmemb = MAX(size, nmemb);
-	if (lsize != 1)
-		return fwrite(ptr, size, nmemb, stream);
-
-	if (!isatty(fileno(stream)))
-		return fwrite(ptr, size, nmemb, stream);
-
-	init();
-
-	if (!console)
+	if (lsize != 1 || !is_console(fileno(stream)))
 		return fwrite(ptr, size, nmemb, stream);
 
 	str = xmalloc(lmemb+1);
@@ -510,12 +504,7 @@ int winansi_fputs(const char *str, FILE *stream)
 {
 	int rv;
 
-	if (!isatty(fileno(stream)))
-		return fputs(str, stream);
-
-	init();
-
-	if (!console)
+	if (!is_console(fileno(stream)))
 		return fputs(str, stream);
 
 	rv = ansi_emulate(str, stream);
@@ -533,12 +522,7 @@ int winansi_vfprintf(FILE *stream, const char *format, va_list list)
 	char *buf = small_buf;
 	va_list cp;
 
-	if (!isatty(fileno(stream)))
-		goto abort;
-
-	init();
-
-	if (!console)
+	if (!is_console(fileno(stream)))
 		goto abort;
 
 	va_copy(cp, list);
@@ -680,12 +664,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 
 int winansi_write(int fd, const void *buf, size_t count)
 {
-	if (!isatty(fd))
-		return write(fd, buf, count);
-
-	init();
-
-	if (!console)
+	if (!is_console(fd))
 		return write(fd, buf, count);
 
 	return ansi_emulate_write(fd, buf, count);
@@ -696,12 +675,7 @@ int winansi_read(int fd, void *buf, size_t count)
 	int rv;
 
 	rv = mingw_read(fd, buf, count);
-	if (!isatty(fd))
-		return rv;
-
-	init();
-
-	if (!console_in)
+	if (!is_console_in(fd))
 		return rv;
 
 	if ( rv > 0 ) {
@@ -716,12 +690,7 @@ int winansi_getc(FILE *stream)
 	int rv;
 
 	rv = getc(stream);
-	if (!isatty(fileno(stream)))
-		return rv;
-
-	init();
-
-	if (!console_in)
+	if (!is_console_in(fileno(stream)))
 		return rv;
 
 	if ( rv != EOF ) {
