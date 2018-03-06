@@ -475,16 +475,31 @@ int winansi_puts(const char *s)
 	return (winansi_fputs(s, stdout) == EOF || putchar('\n') == EOF) ? EOF : 0;
 }
 
+static void check_pipe(FILE *stream)
+{
+	if (GetLastError() == ERROR_NO_DATA && ferror(stream)) {
+		int fd = fileno(stream);
+		if (fd != -1 &&
+				GetFileType((HANDLE)_get_osfhandle(fd)) == FILE_TYPE_PIPE) {
+			errno = EPIPE;
+		}
+	}
+}
+
 size_t winansi_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
 {
-	size_t lsize, lmemb;
+	size_t lsize, lmemb, ret;
 	char *str;
 	int rv;
 
 	lsize = MIN(size, nmemb);
 	lmemb = MAX(size, nmemb);
-	if (lsize != 1 || !is_console(fileno(stream)))
-		return fwrite(ptr, size, nmemb, stream);
+	if (lsize != 1 || !is_console(fileno(stream))) {
+		SetLastError(0);
+		if ((ret=fwrite(ptr, size, nmemb, stream)) < nmemb)
+			check_pipe(stream);
+		return ret;
+	}
 
 	str = xmalloc(lmemb+1);
 	memcpy(str, ptr, lmemb);
@@ -498,8 +513,14 @@ size_t winansi_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
 
 int winansi_fputs(const char *str, FILE *stream)
 {
-	if (!is_console(fileno(stream)))
-		return fputs(str, stream);
+	int ret;
+
+	if (!is_console(fileno(stream))) {
+		SetLastError(0);
+		if ((ret=fputs(str, stream)) == EOF)
+			check_pipe(stream);
+		return ret;
+	}
 
 	return ansi_emulate(str, stream) == EOF ? EOF : 0;
 }
@@ -538,7 +559,9 @@ int winansi_vfprintf(FILE *stream, const char *format, va_list list)
 	return rv;
 
 abort:
-	rv = vfprintf(stream, format, list);
+	SetLastError(0);
+	if ((rv=vfprintf(stream, format, list)) == EOF)
+		check_pipe(stream);
 	return rv;
 }
 
