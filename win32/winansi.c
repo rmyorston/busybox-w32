@@ -394,14 +394,14 @@ static const char *set_attr(const char *str)
 static int ansi_emulate(const char *s, FILE *stream)
 {
 	int rv = 0;
-	const char *t;
+	const unsigned char *t;
 	char *pos, *str;
-	size_t out_len, cur_len;
+	size_t cur_len;
 	static size_t max_len = 0;
 	static char *mem = NULL;
 
 	/* if no special treatment is required output the string as-is */
-	for ( t=s; *t; ++t ) {
+	for ( t=(unsigned char *)s; *t; ++t ) {
 		if ( *t == '\033' || *t > 0x7f ) {
 			break;
 		}
@@ -411,9 +411,13 @@ static int ansi_emulate(const char *s, FILE *stream)
 		return fputs(s, stream) == EOF ? EOF : strlen(s);
 	}
 
-	/* make a writable copy of the string and retain it for reuse */
+	/*
+	 * Make a writable copy of the string and retain array for reuse.
+	 * The test above guarantees that the string length won't be zero
+	 * so the array will always be allocated.
+	 */
 	cur_len = strlen(s);
-	if ( cur_len == 0  || cur_len > max_len ) {
+	if ( cur_len > max_len ) {
 		free(mem);
 		mem = strdup(s);
 		max_len = cur_len;
@@ -429,17 +433,18 @@ static int ansi_emulate(const char *s, FILE *stream)
 			size_t len = pos - str;
 
 			if (len) {
-				CharToOemBuff(str, str, len);
-				out_len = fwrite(str, 1, len, stream);
-				rv += out_len;
-				if (out_len < len)
-					return rv;
+				*pos = '\0';
+				CharToOem(str, str);
+				if (fputs(str, stream) == EOF)
+					return EOF;
+				rv += len;
 			}
 
 			str = pos + 2;
 			rv += 2;
 
-			fflush(stream);
+			if (fflush(stream) == EOF)
+				return EOF;
 
 			pos = (char *)set_attr(str);
 			rv += pos - str;
@@ -447,8 +452,7 @@ static int ansi_emulate(const char *s, FILE *stream)
 		} else {
 			rv += strlen(str);
 			CharToOem(str, str);
-			fputs(str, stream);
-			return rv;
+			return fputs(str, stream) == EOF ? EOF : rv;
 		}
 	}
 	return rv;
@@ -598,7 +602,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 {
 	int rv = 0, i;
 	int special = FALSE, has_null = FALSE;
-	const char *s = (const char *)buf;
+	const unsigned char *s = (const unsigned char *)buf;
 	char *pos, *str;
 	size_t len, out_len;
 	static size_t max_len = 0;
@@ -621,7 +625,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 		return write(fd, buf, count);
 	}
 
-	/* make a writable copy of the data and retain it for reuse */
+	/* make a writable copy of the data and retain array for reuse */
 	if ( count > max_len ) {
 		free(mem);
 		mem = malloc(count+1);
@@ -640,9 +644,9 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 			if (len) {
 				CharToOemBuff(str, str, len);
 				out_len = write(fd, str, len);
+				if (out_len == -1)
+					return -1;
 				rv += out_len;
-				if (out_len < len)
-					return rv;
 			}
 
 			str = pos + 2;
@@ -653,10 +657,9 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 			str = pos;
 		} else {
 			len = strlen(str);
-			rv += len;
 			CharToOem(str, str);
-			write(fd, str, len);
-			return rv;
+			out_len = write(fd, str, len);
+			return (out_len == -1) ? -1 : rv+out_len;
 		}
 	}
 	return rv;
