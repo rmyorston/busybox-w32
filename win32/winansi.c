@@ -60,6 +60,18 @@ static void init(void)
 	initialized = 1;
 }
 
+static int is_console(int fd)
+{
+	init();
+	return isatty(fd) && console;
+}
+
+static int is_console_in(int fd)
+{
+	init();
+	return isatty(fd) && console_in;
+}
+
 static int skip_ansi_emulation(void)
 {
 	static char *var = NULL;
@@ -382,14 +394,14 @@ static const char *set_attr(const char *str)
 static int ansi_emulate(const char *s, FILE *stream)
 {
 	int rv = 0;
-	const char *t;
+	const unsigned char *t;
 	char *pos, *str;
-	size_t out_len, cur_len;
+	size_t cur_len;
 	static size_t max_len = 0;
 	static char *mem = NULL;
 
 	/* if no special treatment is required output the string as-is */
-	for ( t=s; *t; ++t ) {
+	for ( t=(unsigned char *)s; *t; ++t ) {
 		if ( *t == '\033' || *t > 0x7f ) {
 			break;
 		}
@@ -399,9 +411,13 @@ static int ansi_emulate(const char *s, FILE *stream)
 		return fputs(s, stream) == EOF ? EOF : strlen(s);
 	}
 
-	/* make a writable copy of the string and retain it for reuse */
+	/*
+	 * Make a writable copy of the string and retain array for reuse.
+	 * The test above guarantees that the string length won't be zero
+	 * so the array will always be allocated.
+	 */
 	cur_len = strlen(s);
-	if ( cur_len == 0  || cur_len > max_len ) {
+	if ( cur_len > max_len ) {
 		free(mem);
 		mem = strdup(s);
 		max_len = cur_len;
@@ -417,17 +433,18 @@ static int ansi_emulate(const char *s, FILE *stream)
 			size_t len = pos - str;
 
 			if (len) {
-				CharToOemBuff(str, str, len);
-				out_len = fwrite(str, 1, len, stream);
-				rv += out_len;
-				if (out_len < len)
-					return rv;
+				*pos = '\0';
+				CharToOem(str, str);
+				if (fputs(str, stream) == EOF)
+					return EOF;
+				rv += len;
 			}
 
 			str = pos + 2;
 			rv += 2;
 
-			fflush(stream);
+			if (fflush(stream) == EOF)
+				return EOF;
 
 			pos = (char *)set_attr(str);
 			rv += pos - str;
@@ -435,8 +452,7 @@ static int ansi_emulate(const char *s, FILE *stream)
 		} else {
 			rv += strlen(str);
 			CharToOem(str, str);
-			fputs(str, stream);
-			return rv;
+			return fputs(str, stream) == EOF ? EOF : rv;
 		}
 	}
 	return rv;
@@ -447,12 +463,7 @@ int winansi_putchar(int c)
 	char t = c;
 	char *s = &t;
 
-	if (!isatty(STDOUT_FILENO))
-		return putchar(c);
-
-	init();
-
-	if (!console)
+	if (!is_console(STDOUT_FILENO))
 		return putchar(c);
 
 	CharToOemBuff(s, s, 1);
@@ -461,40 +472,34 @@ int winansi_putchar(int c)
 
 int winansi_puts(const char *s)
 {
-	int rv;
+	return (winansi_fputs(s, stdout) == EOF || putchar('\n') == EOF) ? EOF : 0;
+}
 
-	if (!isatty(STDOUT_FILENO))
-		return puts(s);
-
-	init();
-
-	if (!console)
-		return puts(s);
-
-	rv = ansi_emulate(s, stdout);
-	putchar('\n');
-
-	return rv;
+static void check_pipe(FILE *stream)
+{
+	if (GetLastError() == ERROR_NO_DATA && ferror(stream)) {
+		int fd = fileno(stream);
+		if (fd != -1 &&
+				GetFileType((HANDLE)_get_osfhandle(fd)) == FILE_TYPE_PIPE) {
+			errno = EPIPE;
+		}
+	}
 }
 
 size_t winansi_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
 {
-	size_t lsize, lmemb;
+	size_t lsize, lmemb, ret;
 	char *str;
 	int rv;
 
 	lsize = MIN(size, nmemb);
 	lmemb = MAX(size, nmemb);
-	if (lsize != 1)
-		return fwrite(ptr, size, nmemb, stream);
-
-	if (!isatty(fileno(stream)))
-		return fwrite(ptr, size, nmemb, stream);
-
-	init();
-
-	if (!console)
-		return fwrite(ptr, size, nmemb, stream);
+	if (lsize != 1 || !is_console(fileno(stream))) {
+		SetLastError(0);
+		if ((ret=fwrite(ptr, size, nmemb, stream)) < nmemb)
+			check_pipe(stream);
+		return ret;
+	}
 
 	str = xmalloc(lmemb+1);
 	memcpy(str, ptr, lmemb);
@@ -503,27 +508,21 @@ size_t winansi_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
 	rv = ansi_emulate(str, stream);
 	free(str);
 
-	return rv;
+	return rv == EOF ? 0 : nmemb;
 }
 
 int winansi_fputs(const char *str, FILE *stream)
 {
-	int rv;
+	int ret;
 
-	if (!isatty(fileno(stream)))
-		return fputs(str, stream);
+	if (!is_console(fileno(stream))) {
+		SetLastError(0);
+		if ((ret=fputs(str, stream)) == EOF)
+			check_pipe(stream);
+		return ret;
+	}
 
-	init();
-
-	if (!console)
-		return fputs(str, stream);
-
-	rv = ansi_emulate(str, stream);
-
-	if (rv >= 0)
-		return 0;
-	else
-		return EOF;
+	return ansi_emulate(str, stream) == EOF ? EOF : 0;
 }
 
 int winansi_vfprintf(FILE *stream, const char *format, va_list list)
@@ -533,12 +532,7 @@ int winansi_vfprintf(FILE *stream, const char *format, va_list list)
 	char *buf = small_buf;
 	va_list cp;
 
-	if (!isatty(fileno(stream)))
-		goto abort;
-
-	init();
-
-	if (!console)
+	if (!is_console(fileno(stream)))
 		goto abort;
 
 	va_copy(cp, list);
@@ -565,7 +559,9 @@ int winansi_vfprintf(FILE *stream, const char *format, va_list list)
 	return rv;
 
 abort:
-	rv = vfprintf(stream, format, list);
+	SetLastError(0);
+	if ((rv=vfprintf(stream, format, list)) == EOF)
+		check_pipe(stream);
 	return rv;
 }
 
@@ -614,7 +610,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 {
 	int rv = 0, i;
 	int special = FALSE, has_null = FALSE;
-	const char *s = (const char *)buf;
+	const unsigned char *s = (const unsigned char *)buf;
 	char *pos, *str;
 	size_t len, out_len;
 	static size_t max_len = 0;
@@ -637,7 +633,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 		return write(fd, buf, count);
 	}
 
-	/* make a writable copy of the data and retain it for reuse */
+	/* make a writable copy of the data and retain array for reuse */
 	if ( count > max_len ) {
 		free(mem);
 		mem = malloc(count+1);
@@ -656,9 +652,9 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 			if (len) {
 				CharToOemBuff(str, str, len);
 				out_len = write(fd, str, len);
+				if (out_len == -1)
+					return -1;
 				rv += out_len;
-				if (out_len < len)
-					return rv;
 			}
 
 			str = pos + 2;
@@ -669,10 +665,9 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 			str = pos;
 		} else {
 			len = strlen(str);
-			rv += len;
 			CharToOem(str, str);
-			write(fd, str, len);
-			return rv;
+			out_len = write(fd, str, len);
+			return (out_len == -1) ? -1 : rv+out_len;
 		}
 	}
 	return rv;
@@ -680,12 +675,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 
 int winansi_write(int fd, const void *buf, size_t count)
 {
-	if (!isatty(fd))
-		return write(fd, buf, count);
-
-	init();
-
-	if (!console)
+	if (!is_console(fd))
 		return write(fd, buf, count);
 
 	return ansi_emulate_write(fd, buf, count);
@@ -696,12 +686,7 @@ int winansi_read(int fd, void *buf, size_t count)
 	int rv;
 
 	rv = mingw_read(fd, buf, count);
-	if (!isatty(fd))
-		return rv;
-
-	init();
-
-	if (!console_in)
+	if (!is_console_in(fd))
 		return rv;
 
 	if ( rv > 0 ) {
@@ -716,12 +701,7 @@ int winansi_getc(FILE *stream)
 	int rv;
 
 	rv = getc(stream);
-	if (!isatty(fileno(stream)))
-		return rv;
-
-	init();
-
-	if (!console_in)
+	if (!is_console_in(fileno(stream)))
 		return rv;
 
 	if ( rv != EOF ) {
