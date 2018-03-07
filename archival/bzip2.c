@@ -6,21 +6,47 @@
  * See README and LICENSE files in bz/ directory for more information
  * about bzip2 library code.
  */
-
 //config:config BZIP2
-//config:	bool "bzip2"
+//config:	bool "bzip2 (18 kb)"
 //config:	default y
 //config:	help
-//config:	  bzip2 is a compression utility using the Burrows-Wheeler block
-//config:	  sorting text compression algorithm, and Huffman coding. Compression
-//config:	  is generally considerably better than that achieved by more
-//config:	  conventional LZ77/LZ78-based compressors, and approaches the
-//config:	  performance of the PPM family of statistical compressors.
+//config:	bzip2 is a compression utility using the Burrows-Wheeler block
+//config:	sorting text compression algorithm, and Huffman coding. Compression
+//config:	is generally considerably better than that achieved by more
+//config:	conventional LZ77/LZ78-based compressors, and approaches the
+//config:	performance of the PPM family of statistical compressors.
 //config:
-//config:	  Unless you have a specific application which requires bzip2, you
-//config:	  should probably say N here.
+//config:	Unless you have a specific application which requires bzip2, you
+//config:	should probably say N here.
+//config:
+//config:config BZIP2_SMALL
+//config:	int "Trade bytes for speed (0:fast, 9:small)"
+//config:	default 8  # all "fast or small" options default to small
+//config:	range 0 9
+//config:	depends on BZIP2
+//config:	help
+//config:	Trade code size versus speed.
+//config:	Approximate values with gcc-6.3.0 "bzip -9" compressing
+//config:	linux-4.15.tar were:
+//config:	value         time (sec)  code size (386)
+//config:	9 (smallest)       70.11             7687
+//config:	8                  67.93             8091
+//config:	7                  67.88             8405
+//config:	6                  67.78             8624
+//config:	5                  67.05             9427
+//config:	4-0 (fastest)      64.14            12083
+//config:
+//config:config FEATURE_BZIP2_DECOMPRESS
+//config:	bool "Enable decompression"
+//config:	default y
+//config:	depends on BZIP2 || BUNZIP2 || BZCAT
+//config:	help
+//config:	Enable -d (--decompress) and -t (--test) options for bzip2.
+//config:	This will be automatically selected if bunzip2 or bzcat is
+//config:	enabled.
 
 //applet:IF_BZIP2(APPLET(bzip2, BB_DIR_USR_BIN, BB_SUID_DROP))
+
 //kbuild:lib-$(CONFIG_BZIP2) += bzip2.o
 
 //usage:#define bzip2_trivial_usage
@@ -28,14 +54,22 @@
 //usage:#define bzip2_full_usage "\n\n"
 //usage:       "Compress FILEs (or stdin) with bzip2 algorithm\n"
 //usage:     "\n	-1..9	Compression level"
+//usage:	IF_FEATURE_BZIP2_DECOMPRESS(
 //usage:     "\n	-d	Decompress"
+//usage:     "\n	-t	Test file integrity"
+//usage:	)
 //usage:     "\n	-c	Write to stdout"
 //usage:     "\n	-f	Force"
+//usage:     "\n	-k	Keep input files"
 
 #include "libbb.h"
 #include "bb_archive.h"
 
-#define CONFIG_BZIP2_FAST 1
+#if CONFIG_BZIP2_SMALL >= 4
+#define BZIP2_SPEED (9 - CONFIG_BZIP2_SMALL)
+#else
+#define BZIP2_SPEED 5
+#endif
 
 /* Speed test:
  * Compiled with gcc 4.2.1, run on Athlon 64 1800 MHz (512K L2 cache).
@@ -43,7 +77,7 @@
  * (time to compress gcc-4.2.1.tar is 126.4% compared to bbox).
  * At SPEED 5 difference is 32.7%.
  *
- * Test run of all CONFIG_BZIP2_FAST values on a 11Mb text file:
+ * Test run of all BZIP2_SPEED values on a 11Mb text file:
  *     Size   Time (3 runs)
  * 0:  10828  4.145 4.146 4.148
  * 1:  11097  3.845 3.860 3.861
@@ -70,14 +104,12 @@
 /* No point in being shy and having very small buffer here.
  * bzip2 internal buffers are much bigger anyway, hundreds of kbytes.
  * If iobuf is several pages long, malloc() may use mmap,
- * making iobuf is page aligned and thus (maybe) have one memcpy less
+ * making iobuf page aligned and thus (maybe) have one memcpy less
  * if kernel is clever enough.
  */
 enum {
 	IOBUF_SIZE = 8 * 1024
 };
-
-static uint8_t level;
 
 /* NB: compressStream() has to return -1 on errors, not die.
  * bbunpack() will correctly clean up in this case
@@ -130,6 +162,7 @@ static
 IF_DESKTOP(long long) int FAST_FUNC compressStream(transformer_state_t *xstate UNUSED_PARAM)
 {
 	IF_DESKTOP(long long) int total;
+	unsigned opt, level;
 	ssize_t count;
 	bz_stream bzs; /* it's small */
 #define strm (&bzs)
@@ -138,6 +171,17 @@ IF_DESKTOP(long long) int FAST_FUNC compressStream(transformer_state_t *xstate U
 #define wbuf (iobuf + IOBUF_SIZE)
 
 	iobuf = xmalloc(2 * IOBUF_SIZE);
+
+	opt = option_mask32 >> (BBUNPK_OPTSTRLEN IF_FEATURE_BZIP2_DECOMPRESS(+ 2) + 2);
+	/* skipped BBUNPK_OPTSTR, "dt" and "zs" bits */
+	opt |= 0x100; /* if nothing else, assume -9 */
+	level = 0;
+	for (;;) {
+		level++;
+		if (opt & 1) break;
+		opt >>= 1;
+	}
+
 	BZ2_bzCompressInit(strm, level);
 
 	while (1) {
@@ -182,25 +226,20 @@ int bzip2_main(int argc UNUSED_PARAM, char **argv)
 	 * --best        alias for -9
 	 */
 
-	opt_complementary = "s2"; /* -s means -2 (compatibility) */
-	/* Must match bbunzip's constants OPT_STDOUT, OPT_FORCE! */
-	opt = getopt32(argv, "cfv" IF_BUNZIP2("dt") "123456789qzs");
-#if ENABLE_BUNZIP2 /* bunzip2_main may not be visible... */
-	if (opt & 0x18) // -d and/or -t
+	opt = getopt32(argv, "^"
+		/* Must match BBUNPK_foo constants! */
+		BBUNPK_OPTSTR IF_FEATURE_BZIP2_DECOMPRESS("dt") "zs123456789"
+		"\0" "s2" /* -s means -2 (compatibility) */
+	);
+#if ENABLE_FEATURE_BZIP2_DECOMPRESS /* bunzip2_main may not be visible... */
+	if (opt & (BBUNPK_OPT_DECOMPRESS|BBUNPK_OPT_TEST)) /* -d and/or -t */
 		return bunzip2_main(argc, argv);
-	opt >>= 5;
 #else
-	opt >>= 3;
+	/* clear "decompress" and "test" bits (or bbunpack() can get confused) */
+	/* in !BZIP2_DECOMPRESS config, these bits are -zs and are unused */
+	option_mask32 = opt & ~(BBUNPK_OPT_DECOMPRESS|BBUNPK_OPT_TEST);
 #endif
-	opt = (uint8_t)opt; /* isolate bits for -1..-8 */
-	opt |= 0x100; /* if nothing else, assume -9 */
-	level = 1;
-	while (!(opt & 1)) {
-		level++;
-		opt >>= 1;
-	}
 
 	argv += optind;
-	option_mask32 &= 0x7; /* ignore all except -cfv */
 	return bbunpack(argv, compressStream, append_ext, "bz2");
 }

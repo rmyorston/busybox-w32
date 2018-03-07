@@ -3,19 +3,19 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-#include "libbb.h"
-#include <netinet/tcp.h>
-#include <linux/fs.h>
+//config:config NBDCLIENT
+//config:	bool "nbd-client (4.6 kb)"
+//config:	default y
+//config:	help
+//config:	Network block device client
 
-//applet:IF_NBDCLIENT(APPLET_ODDNAME(nbd-client, nbdclient, BB_DIR_USR_SBIN, BB_SUID_DROP, nbdclient))
+//applet:IF_NBDCLIENT(APPLET_NOEXEC(nbd-client, nbdclient, BB_DIR_USR_SBIN, BB_SUID_DROP, nbdclient))
 
 //kbuild:lib-$(CONFIG_NBDCLIENT) += nbd-client.o
 
-//config:config NBDCLIENT
-//config:	bool "nbd-client"
-//config:	default y
-//config:	help
-//config:	  Network block device client
+#include "libbb.h"
+#include <netinet/tcp.h>
+#include <linux/fs.h>
 
 #define NBD_SET_SOCK          _IO(0xab, 0)
 #define NBD_SET_BLKSIZE       _IO(0xab, 1)
@@ -43,7 +43,7 @@
 //blocksizes other than 1024 without patches
 
 int nbdclient_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
-int nbdclient_main(int argc, char **argv)
+int nbdclient_main(int argc UNUSED_PARAM, char **argv)
 {
 	unsigned long timeout = 0;
 #if BB_MMU
@@ -61,7 +61,7 @@ int nbdclient_main(int argc, char **argv)
 	BUILD_BUG_ON(offsetof(struct nbd_header_t, data) != 8+8+8+4);
 
 	// Parse command line stuff (just a stub now)
-	if (argc != 4)
+	if (!argv[1] || !argv[2] || !argv[3] || argv[4])
 		bb_show_usage();
 
 #if !BB_MMU

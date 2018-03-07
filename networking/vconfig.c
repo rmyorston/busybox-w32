@@ -6,8 +6,16 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config VCONFIG
+//config:	bool "vconfig (2.5 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	Creates, removes, and configures VLAN interfaces
 
-/* BB_AUDIT SUSv3 N/A */
+//applet:IF_VCONFIG(APPLET_NOEXEC(vconfig, vconfig, BB_DIR_SBIN, BB_SUID_DROP, vconfig))
+
+//kbuild:lib-$(CONFIG_VCONFIG) += vconfig.o
 
 //usage:#define vconfig_trivial_usage
 //usage:       "COMMAND [OPTIONS]"
@@ -22,6 +30,8 @@
 
 #include "libbb.h"
 #include <net/if.h>
+
+/* BB_AUDIT SUSv3 N/A */
 
 /* Stuff from linux/if_vlan.h, kernel version 2.4.23 */
 enum vlan_ioctl_cmds {
@@ -127,7 +137,7 @@ int vconfig_main(int argc, char **argv)
 		/* I suppose one could try to combine some of the function calls below,
 		 * since ifr.u.flag, ifr.u.VID, and ifr.u.skb_priority are all same-sized
 		 * (unsigned) int members of a unions.  But because of the range checking,
-		 * doing so wouldn't save that much space and would also make maintainence
+		 * doing so wouldn't save that much space and would also make maintenance
 		 * more of a pain.
 		 */
 		if (ifr.cmd == SET_VLAN_FLAG_CMD) {

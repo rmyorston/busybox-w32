@@ -15,7 +15,7 @@
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY JULIE HAUGH AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY JULIE HAUGH AND CONTRIBUTORS ''AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED.  IN NO EVENT SHALL JULIE HAUGH OR CONTRIBUTORS BE LIABLE
@@ -27,7 +27,6 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-
 #include "libbb.h"
 #if ENABLE_SELINUX
 #include <selinux/selinux.h>  /* for setexeccon  */
@@ -50,19 +49,17 @@ void FAST_FUNC set_current_security_context(security_context_t sid)
 #endif
 
 /* Run SHELL, or DEFAULT_SHELL if SHELL is "" or NULL.
- * If COMMAND is nonzero, pass it to the shell with the -c option.
- * If ADDITIONAL_ARGS is nonzero, pass it to the shell as more
- * arguments.  */
-void FAST_FUNC run_shell(const char *shell, int loginshell, const char *command, const char **additional_args)
+ * If ADDITIONAL_ARGS is not NULL, pass them to the shell.
+ */
+void FAST_FUNC run_shell(const char *shell, int loginshell, const char **additional_args)
 {
 	const char **args;
-	int argno;
-	int additional_args_cnt = 0;
 
-	for (args = additional_args; args && *args; args++)
-		additional_args_cnt++;
+	args = additional_args;
+	while (args && *args)
+		args++;
 
-	args = xmalloc(sizeof(char*) * (4 + additional_args_cnt));
+	args = xmalloc(sizeof(char*) * (2 + (args - additional_args)));
 
 	if (!shell || !shell[0])
 		shell = DEFAULT_SHELL;
@@ -70,16 +67,13 @@ void FAST_FUNC run_shell(const char *shell, int loginshell, const char *command,
 	args[0] = bb_get_last_path_component_nostrip(shell);
 	if (loginshell)
 		args[0] = xasprintf("-%s", args[0]);
-	argno = 1;
-	if (command) {
-		args[argno++] = "-c";
-		args[argno++] = command;
-	}
+	args[1] = NULL;
 	if (additional_args) {
-		for (; *additional_args; ++additional_args)
-			args[argno++] = *additional_args;
+		int cnt = 1;
+		for (;;)
+			if ((args[cnt++] = *additional_args++) == NULL)
+				break;
 	}
-	args[argno] = NULL;
 
 #if ENABLE_SELINUX
 	if (current_sid)

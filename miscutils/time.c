@@ -1,19 +1,35 @@
 /* vi: set sw=4 ts=4: */
-/* 'time' utility to display resource usage of processes.
-   Copyright (C) 1990, 91, 92, 93, 96 Free Software Foundation, Inc.
-
-   Licensed under GPLv2, see file LICENSE in this source tree.
-*/
+/*
+ * 'time' utility to display resource usage of processes.
+ * Copyright (C) 1990, 91, 92, 93, 96 Free Software Foundation, Inc.
+ *
+ * Licensed under GPLv2, see file LICENSE in this source tree.
+ */
 /* Originally written by David Keppel <pardo@cs.washington.edu>.
-   Heavily modified by David MacKenzie <djm@gnu.ai.mit.edu>.
-   Heavily modified for busybox by Erik Andersen <andersen@codepoet.org>
-*/
+ * Heavily modified by David MacKenzie <djm@gnu.ai.mit.edu>.
+ * Heavily modified for busybox by Erik Andersen <andersen@codepoet.org>
+ */
+//config:config TIME
+//config:	bool "time (7 kb)"
+//config:	default y
+//config:	help
+//config:	The time command runs the specified program with the given arguments.
+//config:	When the command finishes, time writes a message to standard output
+//config:	giving timing statistics about this program run.
+
+//applet:IF_TIME(APPLET(time, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_TIME) += time.o
 
 //usage:#define time_trivial_usage
-//usage:       "[-v] PROG ARGS"
+//usage:       "[-vpa] [-o FILE] PROG ARGS"
 //usage:#define time_full_usage "\n\n"
 //usage:       "Run PROG, display resource usage when it exits\n"
 //usage:     "\n	-v	Verbose"
+//usage:     "\n	-p	POSIX output format"
+//usage:     "\n	-f FMT	Custom format"
+//usage:     "\n	-o FILE	Write result to FILE"
+//usage:     "\n	-a	Append (else overwrite)"
 
 #include "libbb.h"
 #include <sys/resource.h> /* getrusage */
@@ -112,13 +128,13 @@ static unsigned long ptok(const unsigned pagesize, const unsigned long pages)
 
 /* summarize: Report on the system use of a command.
 
-   Print the FMT argument except that `%' sequences
-   have special meaning, and `\n' and `\t' are translated into
-   newline and tab, respectively, and `\\' is translated into `\'.
+   Print the FMT argument except that '%' sequences
+   have special meaning, and '\n' and '\t' are translated into
+   newline and tab, respectively, and '\\' is translated into '\'.
 
-   The character following a `%' can be:
+   The character following a '%' can be:
    (* means the tcsh time builtin also recognizes it)
-   % == a literal `%'
+   % == a literal '%'
    C == command name and arguments
 *  D == average unshared data size in K (ru_idrss+ru_isrss)
 *  E == elapsed real (wall clock) time in [hour:]min:sec
@@ -386,7 +402,7 @@ static void run_command(char *const *cmd, resource_t *resp)
 	}
 
 	/* Have signals kill the child but not self (if possible).  */
-//TODO: just block all sigs? and reenable them in the very end in main?
+//TODO: just block all sigs? and re-enable them in the very end in main?
 	interrupt_signal = signal(SIGINT, SIG_IGN);
 	quit_signal = signal(SIGQUIT, SIG_IGN);
 
@@ -401,29 +417,56 @@ int time_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int time_main(int argc UNUSED_PARAM, char **argv)
 {
 	resource_t res;
-	const char *output_format = default_format;
+	/* $TIME has lowest prio (-v,-p,-f FMT overrride it) */
+	const char *output_format = getenv("TIME") ? : default_format;
+	char *output_filename;
+	int output_fd;
 	int opt;
+	int ex;
+	enum {
+		OPT_v = (1 << 0),
+		OPT_p = (1 << 1),
+		OPT_a = (1 << 2),
+		OPT_o = (1 << 3),
+		OPT_f = (1 << 4),
+	};
 
-	opt_complementary = "-1"; /* at least one arg */
 	/* "+": stop on first non-option */
-	opt = getopt32(argv, "+vp");
+	opt = getopt32(argv, "^+" "vpao:f:" "\0" "-1"/*at least one arg*/,
+				&output_filename, &output_format
+	);
 	argv += optind;
-	if (opt & 1)
+	if (opt & OPT_v)
 		output_format = long_format;
-	if (opt & 2)
+	if (opt & OPT_p)
 		output_format = posix_format;
+	output_fd = STDERR_FILENO;
+	if (opt & OPT_o) {
+#ifndef O_CLOEXEC
+# define O_CLOEXEC 0
+#endif
+		output_fd = xopen(output_filename,
+			(opt & OPT_a) /* append? */
+			? (O_CREAT | O_WRONLY | O_CLOEXEC | O_APPEND)
+			: (O_CREAT | O_WRONLY | O_CLOEXEC | O_TRUNC)
+		);
+		if (!O_CLOEXEC)
+			close_on_exec_on(output_fd);
+	}
 
 	run_command(argv, &res);
 
 	/* Cheat. printf's are shorter :) */
-	xdup2(STDERR_FILENO, STDOUT_FILENO);
+	xdup2(output_fd, STDOUT_FILENO);
 	summarize(output_format, argv, &res);
 
+	ex = WEXITSTATUS(res.waitstatus);
+	/* Impossible: we do not use WUNTRACED flag in wait()...
 	if (WIFSTOPPED(res.waitstatus))
-		return WSTOPSIG(res.waitstatus);
+		ex = WSTOPSIG(res.waitstatus);
+	*/
 	if (WIFSIGNALED(res.waitstatus))
-		return WTERMSIG(res.waitstatus);
-	if (WIFEXITED(res.waitstatus))
-		return WEXITSTATUS(res.waitstatus);
-	fflush_stdout_and_exit(EXIT_SUCCESS);
+		ex = WTERMSIG(res.waitstatus);
+
+	fflush_stdout_and_exit(ex);
 }

@@ -7,6 +7,15 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
+//config:config MICROCOM
+//config:	bool "microcom (5.6 kb)"
+//config:	default y
+//config:	help
+//config:	The poor man's minicom utility for chatting with serial port devices.
+
+//applet:IF_MICROCOM(APPLET(microcom, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_MICROCOM) += microcom.o
 
 //usage:#define microcom_trivial_usage
 //usage:       "[-d DELAY] [-t TIMEOUT] [-s SPEED] [-X] TTY"
@@ -19,18 +28,16 @@
 //usage:     "\n	-X	Disable special meaning of NUL and Ctrl-X from stdin"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 // set raw tty mode
 static void xget1(int fd, struct termios *t, struct termios *oldt)
 {
-	tcgetattr(fd, oldt);
-	*t = *oldt;
-	cfmakeraw(t);
-//	t->c_lflag &= ~(ISIG|ICANON|ECHO|IEXTEN);
-//	t->c_iflag &= ~(BRKINT|IXON|ICRNL);
-//	t->c_oflag &= ~(ONLCR);
-//	t->c_cc[VMIN]  = 1;
-//	t->c_cc[VTIME] = 0;
+	get_termios_and_make_raw(fd, t, oldt, 0
+		| TERMIOS_CLEAR_ISIG /* ^C is ASCII char 3, not "interrupt me!" */
+		| TERMIOS_RAW_INPUT /* pass all chars verbatim, no special handling or translating CR->NL */
+		| TERMIOS_RAW_CRNL  /* dont convert NL<->CR on output too */
+	);
 }
 
 static int xset1(int fd, struct termios *tio, const char *device)
@@ -63,8 +70,9 @@ int microcom_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opts;
 
 	// fetch options
-	opt_complementary = "=1:s+:d+:t+"; // exactly one arg, numeric options
-	opts = getopt32(argv, "Xs:d:t:", &speed, &delay, &timeout);
+	opts = getopt32(argv, "^" "Xs:+d:+t:+" "\0" "=1",
+				&speed, &delay, &timeout
+	);
 //	argc -= optind;
 	argv += optind;
 
@@ -155,10 +163,11 @@ int microcom_main(int argc UNUSED_PARAM, char **argv)
 skip_write: ;
 		}
 		if (pfd[0].revents) {
-#define iobuf bb_common_bufsiz1
 			ssize_t len;
+#define iobuf bb_common_bufsiz1
+			setup_common_bufsiz();
 			// read from device -> write to stdout
-			len = safe_read(sfd, iobuf, sizeof(iobuf));
+			len = safe_read(sfd, iobuf, COMMON_BUFSIZE);
 			if (len > 0)
 				full_write(STDOUT_FILENO, iobuf, len);
 			else {

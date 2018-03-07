@@ -5,8 +5,18 @@
  * Copyright (C) 2006 Bernhard Reutner-Fischer
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
- *
  */
+//config:config RAIDAUTORUN
+//config:	bool "raidautorun (1.4 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	raidautorun tells the kernel md driver to
+//config:	search and start RAID arrays.
+
+//applet:IF_RAIDAUTORUN(APPLET_NOEXEC(raidautorun, raidautorun, BB_DIR_SBIN, BB_SUID_DROP, raidautorun))
+
+//kbuild:lib-$(CONFIG_RAIDAUTORUN) += raidautorun.o
 
 //usage:#define raidautorun_trivial_usage
 //usage:       "DEVICE"

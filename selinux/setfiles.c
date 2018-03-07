@@ -3,6 +3,38 @@
   policycoreutils was released under GPL 2.
   Port to BusyBox (c) 2007 by Yuichi Nakamura <ynakam@hitachisoft.jp>
 */
+//config:config SETFILES
+//config:	bool "setfiles (13 kb)"
+//config:	default n
+//config:	depends on SELINUX
+//config:	help
+//config:	Enable support to modify to relabel files.
+//config:	Notice: If you built libselinux with -D_FILE_OFFSET_BITS=64,
+//config:	(It is default in libselinux's Makefile), you _must_ enable
+//config:	CONFIG_LFS.
+//config:
+//config:config FEATURE_SETFILES_CHECK_OPTION
+//config:	bool "Enable check option"
+//config:	default n
+//config:	depends on SETFILES
+//config:	help
+//config:	Support "-c" option (check the validity of the contexts against
+//config:	the specified binary policy) for setfiles. Requires libsepol.
+//config:
+//config:config RESTORECON
+//config:	bool "restorecon (12 kb)"
+//config:	default n
+//config:	depends on SELINUX
+//config:	help
+//config:	Enable support to relabel files. The feature is almost
+//config:	the same as setfiles, but usage is a little different.
+
+//applet:IF_SETFILES(APPLET(setfiles, BB_DIR_SBIN, BB_SUID_DROP))
+//                     APPLET_ODDNAME:name        main      location     suid_type     help
+//applet:IF_RESTORECON(APPLET_ODDNAME(restorecon, setfiles, BB_DIR_SBIN, BB_SUID_DROP, restorecon))
+
+//kbuild:lib-$(CONFIG_SETFILES) += setfiles.o
+//kbuild:lib-$(CONFIG_RESTORECON) += setfiles.o
 
 //usage:#define setfiles_trivial_usage
 //usage:       "[-dnpqsvW] [-e DIR]... [-o FILE] [-r alt_root_path]"
@@ -17,6 +49,7 @@
 //usage:	)
 //usage:     "\n	-d	Show which specification matched each file"
 //usage:     "\n	-l	Log changes in file labels to syslog"
+//TODO: log to syslog is not yet implemented, it goes to stdout only now
 //usage:     "\n	-n	Don't change any file labels"
 //usage:     "\n	-q	Suppress warnings"
 //usage:     "\n	-r DIR	Use an alternate root path"
@@ -45,6 +78,7 @@
 //usage:     "\n		if it has changed"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #if ENABLE_FEATURE_SETFILES_CHECK_OPTION
 #include <sepol/sepol.h>
 #endif
@@ -76,9 +110,10 @@ struct globals {
 	int nerr;
 	struct edir excludeArray[MAX_EXCLUDES];
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 void BUG_setfiles_globals_too_big(void);
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	if (sizeof(G) > COMMON_BUFSIZE) \
 		BUG_setfiles_globals_too_big(); \
 	/* memset(&G, 0, sizeof(G)); - already is */ \
@@ -383,16 +418,16 @@ static int restore(const char *file)
 		 * the user has changed but the role and type are the
 		 * same.  For "-vv", emit everything. */
 		if (verbose > 1 || !user_only_changed) {
-			bb_info_msg("%s: reset %s context %s->%s",
+			printf("%s: reset %s context %s->%s\n",
 				applet_name, my_file, context ? context : "", newcon);
 		}
 	}
 
 	if (FLAG_l_take_log && !user_only_changed) {
 		if (context)
-			bb_info_msg("relabeling %s from %s to %s", my_file, context, newcon);
+			printf("relabeling %s from %s to %s\n", my_file, context, newcon);
 		else
-			bb_info_msg("labeling %s to %s", my_file, newcon);
+			printf("labeling %s to %s\n", my_file, newcon);
 	}
 
 	if (outfile && !user_only_changed)
@@ -575,17 +610,25 @@ int setfiles_main(int argc UNUSED_PARAM, char **argv)
 
 	set_matchpathcon_flags(matchpathcon_flags);
 
-	opt_complementary = "e::vv:v--p:p--v:v--q:q--v";
 	/* Option order must match OPT_x definitions! */
 	if (applet_name[0] == 'r') { /* restorecon */
-		flags = getopt32(argv, "de:f:ilnpqrsvo:FWR",
-			&exclude_dir, &input_filename, &out_filename, &verbose);
+		flags = getopt32(argv, "^"
+			"de:*f:ilnpqrsvo:FWR"
+				"\0"
+				"vv:v--p:p--v:v--q:q--v",
+			&exclude_dir, &input_filename, &out_filename,
+				&verbose
+		);
 	} else { /* setfiles */
-		flags = getopt32(argv, "de:f:ilnpqr:svo:FW"
-				IF_FEATURE_SETFILES_CHECK_OPTION("c:"),
+		flags = getopt32(argv, "^"
+			"de:*f:ilnpqr:svo:FW"
+			IF_FEATURE_SETFILES_CHECK_OPTION("c:")
+				"\0"
+				"vv:v--p:p--v:v--q:q--v",
 			&exclude_dir, &input_filename, &rootpath, &out_filename,
-				IF_FEATURE_SETFILES_CHECK_OPTION(&policyfile,)
-			&verbose);
+			IF_FEATURE_SETFILES_CHECK_OPTION(&policyfile,)
+				&verbose
+		);
 	}
 	argv += optind;
 
@@ -638,7 +681,7 @@ int setfiles_main(int argc UNUSED_PARAM, char **argv)
 			bb_show_usage();
 		xstat(argv[0], &sb);
 		if (!S_ISREG(sb.st_mode)) {
-			bb_error_msg_and_die("spec file %s is not a regular file", argv[0]);
+			bb_error_msg_and_die("'%s' is not a regular file", argv[0]);
 		}
 		/* Load the file contexts configuration and check it. */
 		rc = matchpathcon_init(argv[0]);

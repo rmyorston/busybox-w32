@@ -153,6 +153,76 @@
  *                      setgid(specified group)
  *                      setuid()
  */
+//config:config INETD
+//config:	bool "inetd (18 kb)"
+//config:	default y
+//config:	select FEATURE_SYSLOG
+//config:	help
+//config:	Internet superserver daemon
+//config:
+//config:config FEATURE_INETD_SUPPORT_BUILTIN_ECHO
+//config:	bool "Support echo service on port 7"
+//config:	default y
+//config:	depends on INETD
+//config:	help
+//config:	Internal service which echoes data back.
+//config:	Activated by configuration lines like these:
+//config:		echo stream tcp nowait root internal
+//config:		echo dgram  udp wait   root internal
+//config:
+//config:config FEATURE_INETD_SUPPORT_BUILTIN_DISCARD
+//config:	bool "Support discard service on port 8"
+//config:	default y
+//config:	depends on INETD
+//config:	help
+//config:	Internal service which discards all input.
+//config:	Activated by configuration lines like these:
+//config:		discard stream tcp nowait root internal
+//config:		discard dgram  udp wait   root internal
+//config:
+//config:config FEATURE_INETD_SUPPORT_BUILTIN_TIME
+//config:	bool "Support time service on port 37"
+//config:	default y
+//config:	depends on INETD
+//config:	help
+//config:	Internal service which returns big-endian 32-bit number
+//config:	of seconds passed since 1900-01-01. The number wraps around
+//config:	on overflow.
+//config:	Activated by configuration lines like these:
+//config:		time stream tcp nowait root internal
+//config:		time dgram  udp wait   root internal
+//config:
+//config:config FEATURE_INETD_SUPPORT_BUILTIN_DAYTIME
+//config:	bool "Support daytime service on port 13"
+//config:	default y
+//config:	depends on INETD
+//config:	help
+//config:	Internal service which returns human-readable time.
+//config:	Activated by configuration lines like these:
+//config:		daytime stream tcp nowait root internal
+//config:		daytime dgram  udp wait   root internal
+//config:
+//config:config FEATURE_INETD_SUPPORT_BUILTIN_CHARGEN
+//config:	bool "Support chargen service on port 19"
+//config:	default y
+//config:	depends on INETD
+//config:	help
+//config:	Internal service which generates endless stream
+//config:	of all ASCII chars beetween space and char 126.
+//config:	Activated by configuration lines like these:
+//config:		chargen stream tcp nowait root internal
+//config:		chargen dgram  udp wait   root internal
+//config:
+//config:config FEATURE_INETD_RPC
+//config:	bool "Support RPC services"
+//config:	default n  # very rarely used, and needs Sun RPC support in libc
+//config:	depends on INETD
+//config:	help
+//config:	Support Sun-RPC based services
+
+//applet:IF_INETD(APPLET(inetd, BB_DIR_USR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_INETD) += inetd.o
 
 //usage:#define inetd_trivial_usage
 //usage:       "[-fe] [-q N] [-R N] [CONFFILE]"
@@ -160,9 +230,10 @@
 //usage:       "Listen for network connections and launch programs\n"
 //usage:     "\n	-f	Run in foreground"
 //usage:     "\n	-e	Log to stderr"
-//usage:     "\n	-q N	Socket listen queue (default: 128)"
+//usage:     "\n	-q N	Socket listen queue (default 128)"
 //usage:     "\n	-R N	Pause services after N connects/min"
-//usage:     "\n		(default: 0 - disabled)"
+//usage:     "\n		(default 0 - disabled)"
+//usage:     "\n	Default CONFFILE is /etc/inetd.conf"
 
 #include <syslog.h>
 #include <sys/resource.h> /* setrlimit */
@@ -170,10 +241,16 @@
 #include <sys/un.h>
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 #if ENABLE_FEATURE_INETD_RPC
 # if defined(__UCLIBC__) && ! defined(__UCLIBC_HAS_RPC__)
-#  error "You need to build uClibc with UCLIBC_HAS_RPC for NFS support"
+#  warning "You probably need to build uClibc with UCLIBC_HAS_RPC for NFS support"
+   /* not #error, since user may be using e.g. libtirpc instead.
+    * This might work:
+    * CONFIG_EXTRA_CFLAGS="-I/usr/include/tirpc"
+    * CONFIG_EXTRA_LDLIBS="tirpc"
+    */
 # endif
 # include <rpc/rpc.h>
 # include <rpc/pmap_clnt.h>
@@ -327,7 +404,7 @@ struct globals {
 	/* Used in next_line(), and as scratch read buffer */
 	char line[256];          /* _at least_ 256, see LINE_SIZE */
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 enum { LINE_SIZE = COMMON_BUFSIZE - offsetof(struct globals, line) };
 #define rlim_ofile_cur  (G.rlim_ofile_cur )
 #define rlim_ofile      (G.rlim_ofile     )
@@ -349,6 +426,7 @@ enum { LINE_SIZE = COMMON_BUFSIZE - offsetof(struct globals, line) };
 #define allsock         (G.allsock        )
 #define line            (G.line           )
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	BUILD_BUG_ON(sizeof(G) > COMMON_BUFSIZE); \
 	rlim_ofile_cur = OPEN_MAX; \
 	global_queuelen = 128; \
@@ -423,10 +501,9 @@ static void register_rpc(servtab_t *sep)
 {
 	int n;
 	struct sockaddr_in ir_sin;
-	socklen_t size;
 
-	size = sizeof(ir_sin);
-	if (getsockname(sep->se_fd, (struct sockaddr *) &ir_sin, &size) < 0) {
+	if (bb_getsockname(sep->se_fd, (struct sockaddr *) &ir_sin, sizeof(ir_sin)) < 0) {
+//TODO: verify that such failure is even possible in Linux kernel
 		bb_perror_msg("getsockname");
 		return;
 	}
@@ -834,10 +911,10 @@ static NOINLINE servtab_t *parse_one_line(void)
 			goto parse_err;
 	}
 
-//	bb_info_msg(
-//		"ENTRY[%s][%s][%s][%d][%d][%d][%d][%d][%s][%s][%s]",
-//		sep->se_local_hostname, sep->se_service, sep->se_proto, sep->se_wait, sep->se_proto_no,
-//		sep->se_max, sep->se_count, sep->se_time, sep->se_user, sep->se_group, sep->se_program);
+	//bb_error_msg(
+	//	"ENTRY[%s][%s][%s][%d][%d][%d][%d][%d][%s][%s][%s]",
+	//	sep->se_local_hostname, sep->se_service, sep->se_proto, sep->se_wait, sep->se_proto_no,
+	//	sep->se_max, sep->se_count, sep->se_time, sep->se_user, sep->se_group, sep->se_program);
 
 	/* check if the hostname specifier is a comma separated list
 	 * of hostnames. we'll make new entries for each address. */
@@ -1151,8 +1228,8 @@ int inetd_main(int argc UNUSED_PARAM, char **argv)
 	if (real_uid != 0) /* run by non-root user */
 		config_filename = NULL;
 
-	opt_complementary = "R+:q+"; /* -q N, -R N */
-	opt = getopt32(argv, "R:feq:", &max_concurrency, &global_queuelen);
+	/* -q N, -R N */
+	opt = getopt32(argv, "R:+feq:+", &max_concurrency, &global_queuelen);
 	argv += optind;
 	//argc -= optind;
 	if (argv[0])
@@ -1414,7 +1491,7 @@ int inetd_main(int argc UNUSED_PARAM, char **argv)
 				bb_error_msg("non-root must run services as himself");
 				goto do_exit1;
 			}
-			if (pwd->pw_uid != 0) {
+			if (pwd->pw_uid != real_uid) {
 				if (sep->se_group)
 					pwd->pw_gid = grp->gr_gid;
 				/* initgroups, setgid, setuid: */
@@ -1458,8 +1535,11 @@ int inetd_main(int argc UNUSED_PARAM, char **argv)
 	} /* for (;;) */
 }
 
-#if !BB_MMU
+#if ENABLE_FEATURE_INETD_SUPPORT_BUILTIN_ECHO \
+ || ENABLE_FEATURE_INETD_SUPPORT_BUILTIN_DISCARD
+# if !BB_MMU
 static const char *const cat_args[] = { "cat", NULL };
+# endif
 #endif
 
 /*
@@ -1470,14 +1550,14 @@ static const char *const cat_args[] = { "cat", NULL };
 /* ARGSUSED */
 static void FAST_FUNC echo_stream(int s, servtab_t *sep UNUSED_PARAM)
 {
-#if BB_MMU
+# if BB_MMU
 	while (1) {
 		ssize_t sz = safe_read(s, line, LINE_SIZE);
 		if (sz <= 0)
 			break;
 		xwrite(s, line, sz);
 	}
-#else
+# else
 	/* We are after vfork here! */
 	/* move network socket to stdin/stdout */
 	xmove_fd(s, STDIN_FILENO);
@@ -1487,7 +1567,7 @@ static void FAST_FUNC echo_stream(int s, servtab_t *sep UNUSED_PARAM)
 	xopen(bb_dev_null, O_WRONLY);
 	BB_EXECVP("cat", (char**)cat_args);
 	/* on failure we return to main, which does exit(EXIT_FAILURE) */
-#endif
+# endif
 }
 static void FAST_FUNC echo_dg(int s, servtab_t *sep)
 {
@@ -1511,10 +1591,10 @@ static void FAST_FUNC echo_dg(int s, servtab_t *sep)
 /* ARGSUSED */
 static void FAST_FUNC discard_stream(int s, servtab_t *sep UNUSED_PARAM)
 {
-#if BB_MMU
+# if BB_MMU
 	while (safe_read(s, line, LINE_SIZE) > 0)
 		continue;
-#else
+# else
 	/* We are after vfork here! */
 	/* move network socket to stdin */
 	xmove_fd(s, STDIN_FILENO);
@@ -1525,7 +1605,7 @@ static void FAST_FUNC discard_stream(int s, servtab_t *sep UNUSED_PARAM)
 	xdup2(STDOUT_FILENO, STDERR_FILENO);
 	BB_EXECVP("cat", (char**)cat_args);
 	/* on failure we return to main, which does exit(EXIT_FAILURE) */
-#endif
+# endif
 }
 /* ARGSUSED */
 static void FAST_FUNC discard_dg(int s, servtab_t *sep UNUSED_PARAM)
@@ -1622,7 +1702,7 @@ static uint32_t machtime(void)
 	struct timeval tv;
 
 	gettimeofday(&tv, NULL);
-	return htonl((uint32_t)(tv.tv_sec + 2208988800));
+	return htonl((uint32_t)(tv.tv_sec + 2208988800U));
 }
 /* ARGSUSED */
 static void FAST_FUNC machtime_stream(int s, servtab_t *sep UNUSED_PARAM)

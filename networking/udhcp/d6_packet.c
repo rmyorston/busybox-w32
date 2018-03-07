@@ -17,12 +17,12 @@ void FAST_FUNC d6_dump_packet(struct d6_packet *packet)
 	if (dhcp_verbose < 2)
 		return;
 
-	bb_info_msg(
+	bb_error_msg(
 		" xid %x"
 		, packet->d6_xid32
 	);
 	//*bin2hex(buf, (void *) packet->chaddr, sizeof(packet->chaddr)) = '\0';
-	//bb_info_msg(" chaddr %s", buf);
+	//bb_error_msg(" chaddr %s", buf);
 }
 #endif
 
@@ -35,15 +35,15 @@ int FAST_FUNC d6_recv_kernel_packet(struct in6_addr *peer_ipv6
 	memset(packet, 0, sizeof(*packet));
 	bytes = safe_read(fd, packet, sizeof(*packet));
 	if (bytes < 0) {
-		log1("Packet read error, ignoring");
+		log1("packet read error, ignoring");
 		return bytes; /* returns -1 */
 	}
 
 	if (bytes < offsetof(struct d6_packet, d6_options)) {
-		bb_info_msg("Packet with bad magic, ignoring");
+		bb_error_msg("packet with bad magic, ignoring");
 		return -2;
 	}
-	log1("Received a packet");
+	log1("received %s", "a packet");
 	d6_dump_packet(packet);
 
 	return bytes;
@@ -75,6 +75,8 @@ int FAST_FUNC d6_send_raw_packet(
 	dest_sll.sll_family = AF_PACKET;
 	dest_sll.sll_protocol = htons(ETH_P_IPV6);
 	dest_sll.sll_ifindex = ifindex;
+	/*dest_sll.sll_hatype = ARPHRD_???;*/
+	/*dest_sll.sll_pkttype = PACKET_???;*/
 	dest_sll.sll_halen = 6;
 	memcpy(dest_sll.sll_addr, dest_arp, 6);
 
@@ -127,7 +129,8 @@ int FAST_FUNC d6_send_raw_packet(
 int FAST_FUNC d6_send_kernel_packet(
 		struct d6_packet *d6_pkt, unsigned d6_pkt_size,
 		struct in6_addr *src_ipv6, int source_port,
-		struct in6_addr *dst_ipv6, int dest_port)
+		struct in6_addr *dst_ipv6, int dest_port,
+		int ifindex)
 {
 	struct sockaddr_in6 sa;
 	int fd;
@@ -154,6 +157,7 @@ int FAST_FUNC d6_send_kernel_packet(
 	sa.sin6_family = AF_INET6;
 	sa.sin6_port = htons(dest_port);
 	sa.sin6_addr = *dst_ipv6; /* struct copy */
+	sa.sin6_scope_id = ifindex;
 	if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) == -1) {
 		msg = "connect";
 		goto ret_close;

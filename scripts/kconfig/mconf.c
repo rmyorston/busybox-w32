@@ -12,8 +12,10 @@
 /* On Darwin, this may be needed to get SIGWINCH: */
 #define _DARWIN_C_SOURCE 1
 
+#ifndef __MINGW32__
 #include <sys/ioctl.h>
 #include <sys/wait.h>
+#endif
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -23,7 +25,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h> /* for strcasecmp */
+#ifndef __MINGW32__
 #include <termios.h>
+#endif
 #include <unistd.h>
 #include <locale.h>
 
@@ -271,11 +275,15 @@ static char input_buf[4096];
 static const char filename[] = ".config";
 static char *args[1024], **argptr = args;
 static int indent;
+#ifndef __MINGW32__
 static struct termios ios_org;
+#endif
 static int rows = 0, cols = 0;
 static struct menu *current_menu;
 static int child_count;
+#ifndef __MINGW32__
 static int do_resize;
+#endif
 static int single_menu_mode;
 
 static void conf(struct menu *menu);
@@ -295,6 +303,9 @@ static int cprint(const char *fmt, ...);
 
 static void init_wsize(void)
 {
+#ifdef __MINGW32__
+	fprintf(stderr, "Skipping attempt to change window size\n");
+#else
 	struct winsize ws;
 	char *env;
 
@@ -328,6 +339,7 @@ static void init_wsize(void)
 
 	rows -= 4;
 	cols -= 5;
+#endif
 }
 
 static void cprint_init(void)
@@ -464,6 +476,10 @@ static void winch_handler(int sig)
 
 static int exec_conf(void)
 {
+#ifdef __MINGW32__
+	fprintf(stderr, "exec_conf not implemented\n");
+	exit(1);
+#else
 	int pipefd[2], stat, size;
 	sigset_t sset, osset;
 
@@ -537,6 +553,7 @@ static int exec_conf(void)
 	sigprocmask(SIG_SETMASK, &osset, NULL);
 
 	return WEXITSTATUS(stat);
+#endif
 }
 
 static void search_conf(void)
@@ -790,7 +807,7 @@ static void conf(struct menu *menu)
 			switch (type) {
 			case 'm':
 				if (single_menu_mode)
-					submenu->data = (void *) (long) !submenu->data;
+					submenu->data = (void *) (intptr_t) !submenu->data;
 				else
 					conf(submenu);
 				break;
@@ -1051,7 +1068,9 @@ static void conf_save(void)
 
 static void conf_cleanup(void)
 {
+#ifndef __MINGW32__
 	tcsetattr(1, TCSAFLUSH, &ios_org);
+#endif
 	unlink(".help.tmp");
 	unlink("lxdialog.scrltmp");
 }
@@ -1080,7 +1099,9 @@ int main(int ac, char **av)
 			single_menu_mode = 1;
 	}
 
+#ifndef __MINGW32__
 	tcgetattr(1, &ios_org);
+#endif
 	atexit(conf_cleanup);
 	init_wsize();
 	conf(&rootmenu);

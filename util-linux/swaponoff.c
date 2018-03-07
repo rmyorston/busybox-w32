@@ -6,6 +6,53 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
+//config:config SWAPON
+//config:	bool "swapon (4.9 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	Once you have created some swap space using 'mkswap', you also need
+//config:	to enable your swap space with the 'swapon' utility. The 'swapoff'
+//config:	utility is used, typically at system shutdown, to disable any swap
+//config:	space. If you are not using any swap space, you can leave this
+//config:	option disabled.
+//config:
+//config:config FEATURE_SWAPON_DISCARD
+//config:	bool "Support discard option -d"
+//config:	default y
+//config:	depends on SWAPON
+//config:	help
+//config:	Enable support for discarding swap area blocks at swapon and/or as
+//config:	the kernel frees them. This option enables both the -d option on
+//config:	'swapon' and the 'discard' option for swap entries in /etc/fstab.
+//config:
+//config:config FEATURE_SWAPON_PRI
+//config:	bool "Support priority option -p"
+//config:	default y
+//config:	depends on SWAPON
+//config:	help
+//config:	Enable support for setting swap device priority in swapon.
+//config:
+//config:config SWAPOFF
+//config:	bool "swapoff (4.3 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:
+//config:config FEATURE_SWAPONOFF_LABEL
+//config:	bool "Support specifying devices by label or UUID"
+//config:	default y
+//config:	depends on SWAPON || SWAPOFF
+//config:	select VOLUMEID
+//config:	help
+//config:	This allows for specifying a device by label or uuid, rather than by
+//config:	name. This feature utilizes the same functionality as blkid/findfs.
+
+//                  APPLET_ODDNAME:name     main         location     suid_type     help
+//applet:IF_SWAPON( APPLET_ODDNAME(swapon,  swap_on_off, BB_DIR_SBIN, BB_SUID_DROP, swapon))
+//applet:IF_SWAPOFF(APPLET_ODDNAME(swapoff, swap_on_off, BB_DIR_SBIN, BB_SUID_DROP, swapoff))
+
+//kbuild:lib-$(CONFIG_SWAPON) += swaponoff.o
+//kbuild:lib-$(CONFIG_SWAPOFF) += swaponoff.o
 
 //usage:#define swapon_trivial_usage
 //usage:       "[-a] [-e]" IF_FEATURE_SWAPON_DISCARD(" [-d[POL]]") IF_FEATURE_SWAPON_PRI(" [-p PRI]") " [DEVICE]"
@@ -22,19 +69,19 @@
 //usage:	)
 //usage:
 //usage:#define swapoff_trivial_usage
-//usage:       "[-a] [-e] [DEVICE]"
+//usage:       "[-a] [DEVICE]"
 //usage:#define swapoff_full_usage "\n\n"
 //usage:       "Stop swapping on DEVICE\n"
 //usage:     "\n	-a	Stop swapping on all swap devices"
-//usage:     "\n	-e	Silently skip devices that do not exist"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include <mntent.h>
 #ifndef __BIONIC__
 # include <sys/swap.h>
 #endif
 
-#if ENABLE_FEATURE_MOUNT_LABEL
+#if ENABLE_FEATURE_SWAPONOFF_LABEL
 # include "volume_id.h"
 #else
 # define resolve_mount_spec(fsname) ((void)0)
@@ -63,7 +110,7 @@
 struct globals {
 	int flags;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define g_flags (G.flags)
 #define save_g_flags()    int save_g_flags = g_flags
 #define restore_g_flags() g_flags = save_g_flags
@@ -72,9 +119,17 @@ struct globals {
 #define save_g_flags()    ((void)0)
 #define restore_g_flags() ((void)0)
 #endif
-#define INIT_G() do { } while (0)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
-#define do_swapoff   (applet_name[5] == 'f')
+#if ENABLE_SWAPOFF
+# if ENABLE_SWAPON
+#  define do_swapoff (applet_name[5] == 'f')
+# else
+#  define do_swapoff 1
+# endif
+#else
+#  define do_swapoff 0
+#endif
 
 /* Command line options */
 enum {
@@ -97,11 +152,8 @@ static int swap_enable_disable(char *device)
 {
 	int err = 0;
 	int quiet = 0;
-	struct stat st;
 
 	resolve_mount_spec(&device);
-	if (!OPT_IFEXISTS)
-		xstat(device, &st);
 
 	if (do_swapoff) {
 		err = swapoff(device);
@@ -109,6 +161,7 @@ static int swap_enable_disable(char *device)
 		quiet = (OPT_ALL && (errno == EINVAL || errno == ENOENT));
 	} else {
 		/* swapon */
+		struct stat st;
 		err = stat(device, &st);
 		if (!err) {
 			if (ENABLE_DESKTOP && S_ISREG(st.st_mode)) {
@@ -119,9 +172,11 @@ static int swap_enable_disable(char *device)
 			}
 			err = swapon(device, g_flags);
 			/* Don't complain on swapon -a if device is already in use */
-			/* Don't complain if file does not exist with -e option */
-			quiet = (OPT_ALL && errno == EBUSY) || (OPT_IFEXISTS && errno == ENOENT);
+			quiet = (OPT_ALL && errno == EBUSY);
 		}
+		/* Don't complain if file does not exist with -e option */
+		if (err && OPT_IFEXISTS && errno == ENOENT)
+			err = 0;
 	}
 
 	if (err && !quiet) {

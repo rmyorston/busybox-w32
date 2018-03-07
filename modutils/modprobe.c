@@ -7,8 +7,30 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config MODPROBE
+//config:	bool "modprobe (29 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	Handle the loading of modules, and their dependencies on a high
+//config:	level.
+//config:
+//config:config FEATURE_MODPROBE_BLACKLIST
+//config:	bool "Blacklist support"
+//config:	default y
+//config:	depends on MODPROBE && !MODPROBE_SMALL
+//config:	help
+//config:	Say 'y' here to enable support for the 'blacklist' command in
+//config:	modprobe.conf. This prevents the alias resolver to resolve
+//config:	blacklisted modules. This is useful if you want to prevent your
+//config:	hardware autodetection scripts to load modules like evdev, frame
+//config:	buffer drivers etc.
 
-//applet:IF_MODPROBE(APPLET(modprobe, BB_DIR_SBIN, BB_SUID_DROP))
+//applet:IF_MODPROBE(IF_NOT_MODPROBE_SMALL(APPLET_NOEXEC(modprobe, modprobe, BB_DIR_SBIN, BB_SUID_DROP, modprobe)))
+
+//kbuild:ifneq ($(CONFIG_MODPROBE_SMALL),y)
+//kbuild:lib-$(CONFIG_MODPROBE) += modprobe.o modutils.o
+//kbuild:endif
 
 #include "libbb.h"
 #include "modutils.h"
@@ -90,7 +112,7 @@
 //usage:
 //usage:#define modprobe_trivial_usage
 //usage:	"[-alrqvsD" IF_FEATURE_MODPROBE_BLACKLIST("b") "]"
-//usage:	" MODULE [SYMBOL=VALUE]..."
+//usage:	" MODULE" IF_FEATURE_CMDLINE_MODULE_OPTIONS(" [SYMBOL=VALUE]...")
 //usage:#define modprobe_full_usage "\n\n"
 //usage:       "	-a	Load multiple MODULEs"
 //usage:     "\n	-l	List (MODULE is a pattern)"
@@ -111,7 +133,7 @@
  */
 #define MODPROBE_OPTS  "alrDb"
 /* -a and -D _are_ in fact compatible */
-#define MODPROBE_COMPLEMENTARY ("q-v:v-q:l--arD:r--alD:a--lr:D--rl")
+#define MODPROBE_COMPLEMENTARY "q-v:v-q:l--arD:r--alD:a--lr:D--rl"
 //#define MODPROBE_OPTS  "acd:lnrt:C:b"
 //#define MODPROBE_COMPLEMENTARY "q-v:v-q:l--acr:a--lr:r--al"
 enum {
@@ -149,10 +171,13 @@ static const char modprobe_longopts[] ALIGN1 =
 /* "was seen in modules.dep": */
 #define MODULE_FLAG_FOUND_IN_MODDEP     0x0004
 #define MODULE_FLAG_BLACKLISTED         0x0008
+#define MODULE_FLAG_BUILTIN             0x0010
 
 struct globals {
 	llist_t *probes; /* MEs of module(s) requested on cmdline */
+#if ENABLE_FEATURE_CMDLINE_MODULE_OPTIONS
 	char *cmdline_mopts; /* module options from cmdline */
+#endif
 	int num_unresolved_deps;
 	/* bool. "Did we have 'symbol:FOO' requested on cmdline?" */
 	smallint need_symbols;
@@ -193,7 +218,7 @@ static void add_probe(const char *name)
 
 	m = get_or_add_modentry(name);
 	if (!(option_mask32 & (OPT_REMOVE | OPT_SHOW_DEPS))
-	 && (m->flags & MODULE_FLAG_LOADED)
+	 && (m->flags & (MODULE_FLAG_LOADED | MODULE_FLAG_BUILTIN))
 	) {
 		DBG("skipping %s, it is already loaded", name);
 		return;
@@ -214,15 +239,37 @@ static void add_probe(const char *name)
 static int FAST_FUNC config_file_action(const char *filename,
 					struct stat *statbuf UNUSED_PARAM,
 					void *userdata UNUSED_PARAM,
-					int depth UNUSED_PARAM)
+					int depth)
 {
 	char *tokens[3];
 	parser_t *p;
 	struct module_entry *m;
 	int rc = TRUE;
+	const char *base, *ext;
 
-	if (bb_basename(filename)[0] == '.')
+	/* Skip files that begin with a "." */
+	base = bb_basename(filename);
+	if (base[0] == '.')
 		goto error;
+
+	/* "man modprobe.d" from kmod version 22 suggests
+	 * that we shouldn't recurse into /etc/modprobe.d/dir/
+	 * _subdirectories_:
+	 */
+	if (depth > 1)
+		return SKIP; /* stop recursing */
+//TODO: instead, can use dirAction in recursive_action() to SKIP dirs
+//on depth == 1 level. But that's more code...
+
+	/* In dir recursion, skip files that do not end with a ".conf"
+	 * depth==0: read_config("modules.{symbols,alias}") must work,
+	 * "include FILE_NOT_ENDING_IN_CONF" must work too.
+	 */
+	if (depth != 0) {
+		ext = strrchr(base, '.');
+		if (ext == NULL || strcmp(ext + 1, "conf"))
+			goto error;
+	}
 
 	p = config_open2(filename, fopen_for_read);
 	if (p == NULL) {
@@ -267,7 +314,7 @@ static int FAST_FUNC config_file_action(const char *filename,
 			m = get_or_add_modentry(tokens[1]);
 			m->options = gather_options_str(m->options, tokens[2]);
 		} else if (strcmp(tokens[0], "include") == 0) {
-			/* include <filename> */
+			/* include <filename>/<dirname> (yes, directories also must work) */
 			read_config(tokens[1]);
 		} else if (ENABLE_FEATURE_MODPROBE_BLACKLIST
 		 && strcmp(tokens[0], "blacklist") == 0
@@ -284,7 +331,8 @@ static int FAST_FUNC config_file_action(const char *filename,
 static int read_config(const char *path)
 {
 	return recursive_action(path, ACTION_RECURSE | ACTION_QUIET,
-				config_file_action, NULL, NULL, 1);
+				config_file_action, NULL, NULL,
+				/*depth:*/ 0);
 }
 
 static const char *humanly_readable_name(struct module_entry *m)
@@ -375,8 +423,10 @@ static int do_modprobe(struct module_entry *m)
 
 	if (!(m->flags & MODULE_FLAG_FOUND_IN_MODDEP)) {
 		if (!(option_mask32 & INSMOD_OPT_SILENT))
-			bb_error_msg("module %s not found in modules.dep",
-				humanly_readable_name(m));
+			bb_error_msg((m->flags & MODULE_FLAG_BUILTIN) ?
+				     "module %s is builtin" :
+				     "module %s not found in modules.dep",
+				     humanly_readable_name(m));
 		return -ENOENT;
 	}
 	DBG("do_modprob'ing %s", m->modname);
@@ -422,8 +472,10 @@ static int do_modprobe(struct module_entry *m)
 		options = m2->options;
 		m2->options = NULL;
 		options = parse_and_add_kcmdline_module_options(options, m2->modname);
+#if ENABLE_FEATURE_CMDLINE_MODULE_OPTIONS
 		if (m == m2)
 			options = gather_options_str(options, G.cmdline_mopts);
+#endif
 
 		if (option_mask32 & OPT_SHOW_DEPS) {
 			printf(options ? "insmod %s/%s/%s %s\n"
@@ -514,9 +566,10 @@ int modprobe_main(int argc UNUSED_PARAM, char **argv)
 
 	INIT_G();
 
-	IF_LONG_OPTS(applet_long_options = modprobe_longopts;)
-	opt_complementary = MODPROBE_COMPLEMENTARY;
-	opt = getopt32(argv, INSMOD_OPTS MODPROBE_OPTS INSMOD_ARGS);
+	opt = getopt32long(argv, "^" INSMOD_OPTS MODPROBE_OPTS "\0" MODPROBE_COMPLEMENTARY,
+			modprobe_longopts
+			INSMOD_ARGS
+	);
 	argv += optind;
 
 	/* Goto modules location */
@@ -578,6 +631,11 @@ int modprobe_main(int argc UNUSED_PARAM, char **argv)
 		while (config_read(parser, &s, 1, 1, "# \t", PARSE_NORMAL & ~PARSE_GREEDY))
 			get_or_add_modentry(s)->flags |= MODULE_FLAG_LOADED;
 		config_close(parser);
+
+		parser = config_open2("modules.builtin", fopen_for_read);
+		while (config_read(parser, &s, 1, 1, "# \t", PARSE_NORMAL))
+			get_or_add_modentry(s)->flags |= MODULE_FLAG_BUILTIN;
+		config_close(parser);
 	}
 
 	if (opt & (OPT_INSERT_ALL | OPT_REMOVE)) {
@@ -590,7 +648,9 @@ int modprobe_main(int argc UNUSED_PARAM, char **argv)
 		/* First argument is module name, rest are parameters */
 		DBG("probing just module %s", *argv);
 		add_probe(argv[0]);
+#if ENABLE_FEATURE_CMDLINE_MODULE_OPTIONS
 		G.cmdline_mopts = parse_cmdline_module_options(argv, /*quote_spaces:*/ 1);
+#endif
 	}
 
 	/* Happens if all requested modules are already loaded */

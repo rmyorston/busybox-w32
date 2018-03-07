@@ -1,8 +1,30 @@
 /* vi: set sw=4 ts=4: */
-/* Ported to busybox from mtd-utils.
+/*
+ * Ported to busybox from mtd-utils.
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
+//config:config FLASH_LOCK
+//config:	bool "flash_lock (2.1 kb)"
+//config:	default n  # doesn't build on Ubuntu 8.04
+//config:	help
+//config:	The flash_lock binary from mtd-utils as of git head 5ec0c10d0. This
+//config:	utility locks part or all of the flash device.
+//config:
+//config:config FLASH_UNLOCK
+//config:	bool "flash_unlock (1.3 kb)"
+//config:	default n  # doesn't build on Ubuntu 8.04
+//config:	help
+//config:	The flash_unlock binary from mtd-utils as of git head 5ec0c10d0. This
+//config:	utility unlocks part or all of the flash device.
+
+//                       APPLET_ODDNAME:name          main               location         suid_type     help
+//applet:IF_FLASH_LOCK(  APPLET_ODDNAME(flash_lock,   flash_lock_unlock, BB_DIR_USR_SBIN, BB_SUID_DROP, flash_lock))
+//applet:IF_FLASH_UNLOCK(APPLET_ODDNAME(flash_unlock, flash_lock_unlock, BB_DIR_USR_SBIN, BB_SUID_DROP, flash_unlock))
+/* not NOEXEC: if flash operation stalls, use less memory in "hung" process */
+
+//kbuild:lib-$(CONFIG_FLASH_LOCK) += flash_lock_unlock.o
+//kbuild:lib-$(CONFIG_FLASH_UNLOCK) += flash_lock_unlock.o
 
 //usage:#define flash_lock_trivial_usage
 //usage:       "MTD_DEVICE OFFSET SECTORS"

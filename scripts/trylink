@@ -46,23 +46,21 @@ try() {
 }
 
 check_cc() {
-    local tempname="$(mktemp)"
-    local r
+    tempname="$(mktemp tmp.XXXXXXXXXX)"
     echo "int main(int argc,char**argv){return argv?argc:0;}" >"$tempname".c
     # Can use "-o /dev/null", but older gcc tend to *unlink it* on failure! :(
     # Was using "-xc /dev/null", but we need a valid C program.
     # "eval" may be needed if CFLAGS can contain
     # '... -D"BB_VER=KBUILD_STR(1.N.M)" ...'
     # and we need shell to process quotes!
-    $CC $CFLAGS $1 "$tempname".c -o "$tempname" >/dev/null 2>&1
-    r=$?
+    $CC $CFLAGS $LDFLAGS $1 "$tempname".c -o "$tempname" >/dev/null 2>&1
+    exitcode=$?
     rm -f "$tempname" "$tempname".c "$tempname".o
-    return $r
+    return $exitcode
 }
 
 check_libc_is_glibc() {
-    local tempname="$(mktemp)"
-    local r
+    tempname="$(mktemp tmp.XXXXXXXXXX)"
     echo "\
 	#include <stdlib.h>
 	/* Apparently uclibc defines __GLIBC__ (compat trick?). Oh well. */
@@ -71,9 +69,9 @@ check_libc_is_glibc() {
 	#endif
 	" >"$tempname".c
     ! $CC $CFLAGS "$tempname".c -c -o "$tempname".o >/dev/null 2>&1
-    r=$?
+    exitcode=$?
     rm -f "$tempname" "$tempname".c "$tempname".o
-    return $r
+    return $exitcode
 }
 
 EXE="$1"
@@ -93,7 +91,9 @@ fi
 
 START_GROUP="-Wl,--start-group"
 END_GROUP="-Wl,--end-group"
-INFO_OPTS="-Wl,--warn-common -Wl,-Map,$EXE.map -Wl,--verbose"
+INFO_OPTS() {
+	echo "-Wl,--warn-common -Wl,-Map,$EXE.map -Wl,--verbose"
+}
 
 # gold may not support --sort-common (yet)
 SORT_COMMON="-Wl,--sort-common"
@@ -140,6 +140,8 @@ try $CC $CFLAGS $LDFLAGS \
 || {
     echo "Failed: $l_list"
     cat $EXE.out
+    echo 'Note: if build needs additional libraries, put them in CONFIG_EXTRA_LDLIBS.'
+    echo 'Example: CONFIG_EXTRA_LDLIBS="pthread dl tirpc audit pam"'
     exit 1
 }
 
@@ -194,7 +196,7 @@ if ! test -f busybox_ldscript; then
 	    $GC_SECTIONS \
 	    $START_GROUP $O_FILES $A_FILES $END_GROUP \
 	    $l_list \
-	    $INFO_OPTS \
+	    `INFO_OPTS` \
     || {
 	cat $EXE.out
 	exit 1
@@ -207,6 +209,16 @@ else
     #  *(.bss SORT_BY_ALIGNMENT(.bss.*) .gnu.linkonce.b.*)
     # This will eliminate most of the padding (~3kb).
     # Hmm, "ld --sort-section alignment" should do it too.
+    #
+    # There is a ld hack which is meant to decrease disk usage
+    # at the cost of more RAM usage (??!!) in standard ld script:
+    #  /* Adjust the address for the data segment.  We want to adjust up to
+    #     the same address within the page on the next page up.  */
+    #  . = ALIGN (0x1000) - ((0x1000 - .) & (0x1000 - 1)); . = DATA_SEGMENT_ALIGN (0x1000, 0x1000);
+    # Replace it with:
+    #  . = ALIGN (0x1000); . = DATA_SEGMENT_ALIGN (0x1000, 0x1000);
+    # to unconditionally align .data to the next page boundary,
+    # instead of "next page, plus current offset in this page"
     try $CC $CFLAGS $LDFLAGS \
 	    -o $EXE \
 	    $SORT_COMMON \
@@ -215,7 +227,7 @@ else
 	    -Wl,-T,busybox_ldscript \
 	    $START_GROUP $O_FILES $A_FILES $END_GROUP \
 	    $l_list \
-	    $INFO_OPTS \
+	    `INFO_OPTS` \
     || {
 	cat $EXE.out
 	exit 1
@@ -234,10 +246,14 @@ if test "$CONFIG_BUILD_LIBBUSYBOX" = y; then
     }
     ln -s "libbusybox.so.$BB_VER" "$sharedlib_dir"/libbusybox.so 2>/dev/null
 
+    # Yes, "ld -shared -static" is a thing. It's a shared library which is itself static.
+    LBB_STATIC=""
+    test "$CONFIG_FEATURE_LIBBUSYBOX_STATIC" = y && LBB_STATIC="-Wl,-static"
+
     EXE="$sharedlib_dir/libbusybox.so.${BB_VER}_unstripped"
     try $CC $CFLAGS $LDFLAGS \
 	    -o $EXE \
-	    -shared -fPIC \
+	    -shared -fPIC $LBB_STATIC \
 	    -Wl,--enable-new-dtags \
 	    -Wl,-z,combreloc \
 	    -Wl,-soname="libbusybox.so.$BB_VER" \
@@ -246,7 +262,7 @@ if test "$CONFIG_BUILD_LIBBUSYBOX" = y; then
 	    $SORT_SECTION \
 	    $START_GROUP $A_FILES $END_GROUP \
 	    $l_list \
-	    $INFO_OPTS \
+	    `INFO_OPTS` \
     || {
 	echo "Linking $EXE failed"
 	cat $EXE.out
@@ -267,7 +283,7 @@ if test "$CONFIG_FEATURE_SHARED_BUSYBOX" = y; then
 	    $START_GROUP $O_FILES $END_GROUP \
 	    -L"$sharedlib_dir" -lbusybox \
 	    $l_list \
-	    $INFO_OPTS \
+	    `INFO_OPTS` \
     || {
 	echo "Linking $EXE failed"
 	cat $EXE.out
@@ -281,7 +297,7 @@ if test "$CONFIG_FEATURE_INDIVIDUAL" = y; then
     echo "Linking individual applets against libbusybox (see $sharedlib_dir/*)"
     gcc -DNAME_MAIN -E -include include/autoconf.h include/applets.h \
     | grep -v "^#" \
-    | grep -v "^$" \
+    | grep -v "^ *$" \
     > applet_lst.tmp
     while read name main junk; do
 

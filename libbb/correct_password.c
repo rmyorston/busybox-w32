@@ -15,7 +15,7 @@
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY JULIE HAUGH AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY JULIE HAUGH AND CONTRIBUTORS ''AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED.  IN NO EVENT SHALL JULIE HAUGH OR CONTRIBUTORS BE LIABLE
@@ -27,7 +27,6 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-
 #include "libbb.h"
 
 #define SHADOW_BUFSIZE 256
@@ -63,7 +62,7 @@ static const char *get_passwd(const struct passwd *pw, char buffer[SHADOW_BUFSIZ
 }
 
 /*
- * Return 1 if PW has an empty password.
+ * Return CHECKPASS_PW_HAS_EMPTY_PASSWORD if PW has an empty password.
  * Return 1 if the user gives the correct password for entry PW,
  * 0 if not.
  * NULL pw means "just fake it for login with bad username"
@@ -77,7 +76,7 @@ int FAST_FUNC check_password(const struct passwd *pw, const char *plaintext)
 
 	pw_pass = get_passwd(pw, buffer);
 	if (!pw_pass[0]) { /* empty password field? */
-		return 1;
+		return CHECKPASS_PW_HAS_EMPTY_PASSWORD;
 	}
 
 	encrypted = pw_encrypt(plaintext, /*salt:*/ pw_pass, 1);
@@ -88,7 +87,7 @@ int FAST_FUNC check_password(const struct passwd *pw, const char *plaintext)
 
 
 /* Ask the user for a password.
- * Return 1 without asking if PW has an empty password.
+ * Return CHECKPASS_PW_HAS_EMPTY_PASSWORD without asking if PW has an empty password.
  * Return -1 on EOF, error while reading input, or timeout.
  * Return 1 if the user gives the correct password for entry PW,
  * 0 if not.
@@ -105,7 +104,7 @@ int FAST_FUNC ask_and_check_password_extended(const struct passwd *pw,
 
 	pw_pass = get_passwd(pw, buffer);
 	if (!pw_pass[0]) /* empty password field? */
-		return 1;
+		return CHECKPASS_PW_HAS_EMPTY_PASSWORD;
 
 	plaintext = bb_ask(STDIN_FILENO, timeout, prompt);
 	if (!plaintext) {

@@ -6,6 +6,15 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config UNIQ
+//config:	bool "uniq (4.8 kb)"
+//config:	default y
+//config:	help
+//config:	uniq is used to remove duplicate lines from a sorted file.
+
+//applet:IF_UNIQ(APPLET(uniq, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_UNIQ) += uniq.o
 
 /* BB_AUDIT SUSv3 compliant */
 /* http://www.opengroup.org/onlinepubs/007904975/utilities/uniq.html */
@@ -17,6 +26,7 @@
 //usage:     "\n	-c	Prefix lines by the number of occurrences"
 //usage:     "\n	-d	Only print duplicate lines"
 //usage:     "\n	-u	Only print unique lines"
+//usage:     "\n	-i	Ignore case"
 //usage:     "\n	-f N	Skip first N fields"
 //usage:     "\n	-s N	Skip first N chars (after any skipped fields)"
 //usage:     "\n	-w N	Compare N characters in line"
@@ -45,13 +55,13 @@ int uniq_main(int argc UNUSED_PARAM, char **argv)
 		OPT_f = 0x8,
 		OPT_s = 0x10,
 		OPT_w = 0x20,
+		OPT_i = 0x40,
 	};
 
 	skip_fields = skip_chars = 0;
 	max_chars = INT_MAX;
 
-	opt_complementary = "f+:s+:w+";
-	opt = getopt32(argv, "cduf:s:w:", &skip_fields, &skip_chars, &max_chars);
+	opt = getopt32(argv, "cduf:+s:+w:+i", &skip_fields, &skip_chars, &max_chars);
 	argv += optind;
 
 	input_filename = argv[0];
@@ -98,7 +108,12 @@ int uniq_main(int argc UNUSED_PARAM, char **argv)
 				++cur_compare;
 			}
 
-			if (!old_line || strncmp(old_compare, cur_compare, max_chars)) {
+			if (!old_line)
+				break;
+			if ((opt & OPT_i)
+				? strncasecmp(old_compare, cur_compare, max_chars)
+				: strncmp(old_compare, cur_compare, max_chars)
+			) {
 				break;
 			}
 

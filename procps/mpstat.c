@@ -6,16 +6,16 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-
-//applet:IF_MPSTAT(APPLET(mpstat, BB_DIR_BIN, BB_SUID_DROP))
-
-//kbuild:lib-$(CONFIG_MPSTAT) += mpstat.o
-
 //config:config MPSTAT
-//config:	bool "mpstat"
+//config:	bool "mpstat (10 kb)"
 //config:	default y
 //config:	help
-//config:	  Per-processor statistics
+//config:	Per-processor statistics
+
+//applet:IF_MPSTAT(APPLET(mpstat, BB_DIR_BIN, BB_SUID_DROP))
+/* shouldn't be noexec: "mpstat INTERVAL" runs indefinitely */
+
+//kbuild:lib-$(CONFIG_MPSTAT) += mpstat.o
 
 #include "libbb.h"
 #include <sys/utsname.h>  /* struct utsname */
@@ -49,7 +49,7 @@
 #if 1
 typedef unsigned long long data_t;
 typedef long long idata_t;
-#define FMT_DATA "ll"
+#define FMT_DATA LL_FMT
 #define DATA_MAX ULLONG_MAX
 #else
 typedef unsigned long data_t;
@@ -844,7 +844,7 @@ static int get_irqcpu_nr(const char *f, int max_irqs)
 //usage:     "\n	-u			Report CPU utilization"
 
 int mpstat_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
-int mpstat_main(int UNUSED_PARAM argc, char **argv)
+int mpstat_main(int argc UNUSED_PARAM, char **argv)
 {
 	char *opt_irq_fmt;
 	char *opt_set_cpu;

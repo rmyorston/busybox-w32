@@ -18,7 +18,7 @@
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ''AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
@@ -366,10 +366,11 @@ bsd_select(void)
 			}
 				printf("Reading disklabel of %s at sector %u\n",
 					partname(disk_device, t+1, 0), ss + BSD_LABELSECTOR);
-			if (xbsd_readlabel(xbsd_part) == 0)
+			if (xbsd_readlabel(xbsd_part) == 0) {
 				if (xbsd_create_disklabel() == 0)
 					return;
 				break;
+			}
 		}
 	}
 
@@ -708,6 +709,9 @@ sync_disks(void)
 static void
 xbsd_write_bootstrap(void)
 {
+#ifndef MAXPATHLEN
+# define MAXPATHLEN 1024
+#endif
 	char path[MAXPATHLEN];
 	const char *bootdir = BSD_LINUX_BOOTDIR;
 	const char *dkbasename;

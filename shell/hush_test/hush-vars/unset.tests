@@ -1,4 +1,7 @@
+(
+
 # check invalid options are rejected
+# bash: in posix mode, aborts if non-interactive
 unset -
 echo $?
 unset -m a b c
@@ -30,7 +33,13 @@ echo $? $f $g
 # check read only vars
 echo ___
 f=f g=g
-unset HUSH_VERSION
+VAR_RO=1
+readonly VAR_RO
+unset VAR_RO
 echo $? $f $g
-unset f HUSH_VERSION g
+unset f VAR_RO g
 echo $? $f $g
+
+) 2>&1 \
+| sed   -e 's/ unrecognized option: / invalid option -- /' \
+        -e 's/ illegal option -- / invalid option -- /' \

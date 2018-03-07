@@ -15,7 +15,6 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-
 #include "libbb.h"
 
 uint32_t *global_crc32_table;
@@ -24,7 +23,7 @@ uint32_t* FAST_FUNC crc32_filltable(uint32_t *crc_table, int endian)
 {
 	uint32_t polynomial = endian ? 0x04c11db7 : 0xedb88320;
 	uint32_t c;
-	int i, j;
+	unsigned i, j;
 
 	if (!crc_table)
 		crc_table = xmalloc(256 * sizeof(uint32_t));
@@ -41,6 +40,16 @@ uint32_t* FAST_FUNC crc32_filltable(uint32_t *crc_table, int endian)
 	}
 
 	return crc_table - 256;
+}
+/* Common uses: */
+uint32_t* FAST_FUNC crc32_new_table_le(void)
+{
+	return crc32_filltable(NULL, 0);
+}
+uint32_t* FAST_FUNC global_crc32_new_table_le(void)
+{
+	global_crc32_table = crc32_new_table_le();
+	return global_crc32_table;
 }
 
 uint32_t FAST_FUNC crc32_block_endian1(uint32_t val, const void *buf, unsigned len, uint32_t *crc_table)

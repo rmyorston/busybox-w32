@@ -6,38 +6,63 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-
-//applet:IF_HALT(APPLET(halt, BB_DIR_SBIN, BB_SUID_DROP))
-//applet:IF_HALT(APPLET_ODDNAME(poweroff, halt, BB_DIR_SBIN, BB_SUID_DROP, poweroff))
-//applet:IF_HALT(APPLET_ODDNAME(reboot, halt, BB_DIR_SBIN, BB_SUID_DROP, reboot))
-
-//kbuild:lib-$(CONFIG_HALT) += halt.o
-
 //config:config HALT
-//config:	bool "poweroff, halt, and reboot"
+//config:	bool "halt (3.7 kb)"
 //config:	default y
 //config:	help
-//config:	  Stop all processes and either halt, reboot, or power off the system.
+//config:	Stop all processes and halt the system.
+//config:
+//config:config POWEROFF
+//config:	bool "poweroff (3.7 kb)"
+//config:	default y
+//config:	help
+//config:	Stop all processes and power off the system.
+//config:
+//config:config REBOOT
+//config:	bool "reboot (3.7 kb)"
+//config:	default y
+//config:	help
+//config:	Stop all processes and reboot the system.
+//config:
+//config:config FEATURE_WAIT_FOR_INIT
+//config:	bool "Before signaling init, make sure it is ready for it"
+//config:	default y
+//config:	depends on HALT || POWEROFF || REBOOT
+//config:	help
+//config:	In rare cases, poweroff may be commanded by firmware to OS
+//config:	even before init process exists. On Linux, this spawns
+//config:	"/sbin/poweroff" very early. This option adds code
+//config:	which checks that init is ready to receive poweroff
+//config:	commands. Code size increase of ~80 bytes.
 //config:
 //config:config FEATURE_CALL_TELINIT
 //config:	bool "Call telinit on shutdown and reboot"
 //config:	default y
-//config:	depends on HALT && !INIT
+//config:	depends on (HALT || POWEROFF || REBOOT) && !INIT
 //config:	help
-//config:	  Call an external program (normally telinit) to facilitate
-//config:	  a switch to a proper runlevel.
+//config:	Call an external program (normally telinit) to facilitate
+//config:	a switch to a proper runlevel.
 //config:
-//config:	  This option is only available if you selected halt and friends,
-//config:	  but did not select init.
+//config:	This option is only available if you selected halt and friends,
+//config:	but did not select init.
 //config:
 //config:config TELINIT_PATH
 //config:	string "Path to telinit executable"
 //config:	default "/sbin/telinit"
 //config:	depends on FEATURE_CALL_TELINIT
 //config:	help
-//config:	  When busybox halt and friends have to call external telinit
-//config:	  to facilitate proper shutdown, this path is to be used when
-//config:	  locating telinit executable.
+//config:	When busybox halt and friends have to call external telinit
+//config:	to facilitate proper shutdown, this path is to be used when
+//config:	locating telinit executable.
+
+//applet:IF_HALT(APPLET(halt, BB_DIR_SBIN, BB_SUID_DROP))
+//                   APPLET_ODDNAME:name      main  location     suid_type     help
+//applet:IF_POWEROFF(APPLET_ODDNAME(poweroff, halt, BB_DIR_SBIN, BB_SUID_DROP, poweroff))
+//applet:IF_REBOOT(  APPLET_ODDNAME(reboot,   halt, BB_DIR_SBIN, BB_SUID_DROP, reboot))
+
+//kbuild:lib-$(CONFIG_HALT) += halt.o
+//kbuild:lib-$(CONFIG_POWEROFF) += halt.o
+//kbuild:lib-$(CONFIG_REBOOT) += halt.o
 
 //usage:#define halt_trivial_usage
 //usage:       "[-d DELAY] [-n] [-f]" IF_FEATURE_WTMP(" [-w]")
@@ -94,6 +119,47 @@ static void write_wtmp(void)
 #define write_wtmp() ((void)0)
 #endif
 
+#if ENABLE_FEATURE_WAIT_FOR_INIT
+/* In Linux, "poweroff" may be spawned even before init.
+ * For example, with ACPI:
+ * linux/drivers/acpi/bus.c:
+ *  static void sb_notify_work(struct work_struct *dummy)
+ *      orderly_poweroff(true);
+ * linux/kernel/reboot.c:
+ *  static int run_cmd(const char *cmd)
+ *      ret = call_usermodehelper(argv[0], argv, envp, UMH_WAIT_EXEC);
+ *  poweroff_cmd[] = "/sbin/poweroff";
+ *  static int __orderly_poweroff(bool force)
+ *      ret = run_cmd(poweroff_cmd);
+ *
+ * We want to make sure init exists and listens to signals.
+ */
+static int init_was_not_there(void)
+{
+	enum { initial = 5 }; /* 5 seconds should be plenty for timeout */
+	int cnt = initial - 1;
+
+	/* Just existence of PID 1 does not mean it installed
+	 * the handlers already.
+	 */
+#if 0
+	while (kill(1, 0) != 0 && --cnt >= 0)
+		sleep(1);
+#endif
+	/* ... so let's wait for some evidence a usual startup event,
+	 * mounting of /proc, happened. By that time init should be ready
+	 * for signals.
+	 */
+	while (access("/proc/meminfo", F_OK) != 0 && --cnt >= 0)
+		sleep(1);
+
+	/* Does it look like init wasn't there? */
+	return (cnt != initial - 1);
+}
+#else
+  /* Assume it's always there */
+# define init_was_not_there() 0
+#endif
 
 int halt_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int halt_main(int argc UNUSED_PARAM, char **argv)
@@ -109,16 +175,24 @@ int halt_main(int argc UNUSED_PARAM, char **argv)
 	int which, flags, rc;
 
 	/* Figure out which applet we're running */
+	if (ENABLE_HALT && !ENABLE_POWEROFF && !ENABLE_REBOOT)
+		which = 0;
+	else
+	if (!ENABLE_HALT && ENABLE_POWEROFF && !ENABLE_REBOOT)
+		which = 1;
+	else
+	if (!ENABLE_HALT && !ENABLE_POWEROFF && ENABLE_REBOOT)
+		which = 2;
+	else
 	for (which = 0; "hpr"[which] != applet_name[0]; which++)
 		continue;
 
 	/* Parse and handle arguments */
-	opt_complementary = "d+"; /* -d N */
 	/* We support -w even if !ENABLE_FEATURE_WTMP,
 	 * in order to not break scripts.
 	 * -i (shut down network interfaces) is ignored.
 	 */
-	flags = getopt32(argv, "d:nfwi", &delay);
+	flags = getopt32(argv, "d:+nfwi", &delay);
 
 	sleep(delay);
 
@@ -135,7 +209,7 @@ int halt_main(int argc UNUSED_PARAM, char **argv)
 	if (!(flags & 4)) { /* no -f */
 //TODO: I tend to think that signalling linuxrc is wrong
 // pity original author didn't comment on it...
-		if (ENABLE_FEATURE_INITRD) {
+		if (ENABLE_LINUXRC) {
 			/* talk to linuxrc */
 			/* bbox init/linuxrc assumed */
 			pid_t *pidlist = find_pid_by_name("linuxrc");
@@ -149,6 +223,8 @@ int halt_main(int argc UNUSED_PARAM, char **argv)
 			if (!ENABLE_FEATURE_CALL_TELINIT) {
 				/* bbox init assumed */
 				rc = kill(1, signals[which]);
+				if (init_was_not_there())
+					rc = kill(1, signals[which]);
 			} else {
 				/* SysV style init assumed */
 				/* runlevels:

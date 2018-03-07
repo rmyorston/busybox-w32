@@ -1,4 +1,4 @@
-#include <sys/vfs.h>
+#include <sys/statfs.h>
 #include "libbb.h"
 
 /*

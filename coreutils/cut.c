@@ -8,6 +8,16 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config CUT
+//config:	bool "cut (5.3 kb)"
+//config:	default y
+//config:	help
+//config:	cut is used to print selected parts of lines from
+//config:	each file to stdout.
+
+//applet:IF_CUT(APPLET_NOEXEC(cut, cut, BB_DIR_USR_BIN, BB_SUID_DROP, cut))
+
+//kbuild:lib-$(CONFIG_CUT) += cut.o
 
 //usage:#define cut_trivial_usage
 //usage:       "[OPTIONS] [FILE]..."
@@ -32,7 +42,7 @@
 
 
 /* option vars */
-static const char optstring[] ALIGN1 = "b:c:f:d:sn";
+#define OPT_STR "b:c:f:d:sn"
 #define CUT_OPT_BYTE_FLGS     (1 << 0)
 #define CUT_OPT_CHAR_FLGS     (1 << 1)
 #define CUT_OPT_FIELDS_FLGS   (1 << 2)
@@ -191,8 +201,11 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 	char *sopt, *ltok;
 	unsigned opt;
 
-	opt_complementary = "b--bcf:c--bcf:f--bcf";
-	opt = getopt32(argv, optstring, &sopt, &sopt, &sopt, &ltok);
+	opt = getopt32(argv, "^"
+			OPT_STR
+			"\0" "b--bcf:c--bcf:f--bcf",
+			&sopt, &sopt, &sopt, &ltok
+	);
 //	argc -= optind;
 	argv += optind;
 	if (!(opt & (CUT_OPT_BYTE_FLGS | CUT_OPT_CHAR_FLGS | CUT_OPT_FIELDS_FLGS)))

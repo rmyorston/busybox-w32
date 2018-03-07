@@ -1,8 +1,18 @@
 /*
+ * Copyright (C) 2000, Jan-Derk Bakker (J.D.Bakker@its.tudelft.nl)
+ * Copyright (C) 2008, BusyBox Team. -solar 4/26/08
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
- *  Copyright (C) 2000, Jan-Derk Bakker (J.D.Bakker@its.tudelft.nl)
- *  Copyright (C) 2008, BusyBox Team. -solar 4/26/08
  */
+//config:config DEVMEM
+//config:	bool "devmem (2.5 kb)"
+//config:	default y
+//config:	help
+//config:	devmem is a small program that reads and writes from physical
+//config:	memory using /dev/mem.
+
+//applet:IF_DEVMEM(APPLET(devmem, BB_DIR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_DEVMEM) += devmem.o
 
 //usage:#define devmem_trivial_usage
 //usage:	"ADDRESS [WIDTH [VALUE]]"

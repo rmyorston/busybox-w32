@@ -9,6 +9,7 @@
 /*
  Functions to be wrapped:
 */
+#undef vfprintf
 #undef vprintf
 #undef printf
 #undef fprintf
@@ -57,6 +58,19 @@ static void init(void)
 	negative = 0;
 
 	initialized = 1;
+}
+
+static int skip_ansi_emulation(void)
+{
+	static char *var = NULL;
+	static int got_var = FALSE;
+
+	if (!got_var) {
+		var = getenv("BB_SKIP_ANSI_EMULATION");
+		got_var = TRUE;
+	}
+
+	return var != NULL;
 }
 
 
@@ -109,30 +123,41 @@ static void erase_in_line(void)
 static void erase_till_end_of_screen(void)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
-	COORD pos;
-	DWORD dummy;
+	DWORD dummy, len;
 
 	if (!console)
 		return;
 
 	GetConsoleScreenBufferInfo(console, &sbi);
-	FillConsoleOutputCharacterA(console, ' ',
-		sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition,
-		&dummy);
-	FillConsoleOutputAttribute(console, plain_attr,
-		sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition,
-		&dummy);
+	len = sbi.dwSize.X - sbi.dwCursorPosition.X +
+			sbi.dwSize.X * (sbi.srWindow.Bottom - sbi.dwCursorPosition.Y);
 
-	pos.X = 0;
-	for (pos.Y = sbi.dwCursorPosition.Y+1; pos.Y < sbi.dwSize.Y; pos.Y++) {
-		FillConsoleOutputCharacterA(console, ' ', sbi.dwSize.X,
-					    pos, &dummy);
-		FillConsoleOutputAttribute(console, plain_attr, sbi.dwSize.X,
-					    pos, &dummy);
-	}
+	FillConsoleOutputCharacterA(console, ' ', len, sbi.dwCursorPosition,
+		&dummy);
+	FillConsoleOutputAttribute(console, plain_attr, len, sbi.dwCursorPosition,
+		&dummy);
 }
 
-static void move_cursor_row(int n)
+void reset_screen(void)
+{
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
+	COORD pos;
+	DWORD dummy, len;
+
+	if (!console)
+		return;
+
+	/* move to start of screen buffer and clear it all */
+	GetConsoleScreenBufferInfo(console, &sbi);
+	pos.X = 0;
+	pos.Y = 0;
+	SetConsoleCursorPosition(console, pos);
+	len = sbi.dwSize.X * sbi.dwSize.Y;
+	FillConsoleOutputCharacterA(console, ' ', len, pos, &dummy);
+	FillConsoleOutputAttribute(console, plain_attr, len, pos, &dummy);
+}
+
+void move_cursor_row(int n)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
@@ -159,12 +184,14 @@ static void move_cursor_column(int n)
 static void move_cursor(int x, int y)
 {
 	COORD pos;
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
 	if (!console)
 		return;
 
-	pos.X = x;
-	pos.Y = y;
+	GetConsoleScreenBufferInfo(console, &sbi);
+	pos.X = sbi.srWindow.Left + x;
+	pos.Y = sbi.srWindow.Top + y;
 	SetConsoleCursorPosition(console, pos);
 }
 
@@ -386,7 +413,7 @@ static int ansi_emulate(const char *s, FILE *stream)
 
 	while (*pos) {
 		pos = strstr(str, "\033[");
-		if (pos) {
+		if (pos && !skip_ansi_emulation()) {
 			size_t len = pos - str;
 
 			if (len) {
@@ -523,8 +550,13 @@ int winansi_vfprintf(FILE *stream, const char *format, va_list list)
 		if (!buf)
 			goto abort;
 
-		len = vsnprintf(buf, len + 1, format, list);
+		va_copy(cp, list);
+		len = vsnprintf(buf, len + 1, format, cp);
+		va_end(cp);
 	}
+
+	if (len == -1)
+		goto abort;
 
 	rv = ansi_emulate(buf, stream);
 
@@ -581,20 +613,27 @@ int winansi_get_terminal_width_height(struct winsize *win)
 static int ansi_emulate_write(int fd, const void *buf, size_t count)
 {
 	int rv = 0, i;
+	int special = FALSE, has_null = FALSE;
 	const char *s = (const char *)buf;
 	char *pos, *str;
 	size_t len, out_len;
 	static size_t max_len = 0;
 	static char *mem = NULL;
 
-	/* if no special treatment is required output the string as-is */
 	for ( i=0; i<count; ++i ) {
 		if ( s[i] == '\033' || s[i] > 0x7f ) {
-			break;
+			special = TRUE;
+		}
+		else if ( !s[i] ) {
+			has_null = TRUE;
 		}
 	}
 
-	if ( i == count ) {
+	/*
+	 * If no special treatment is required or the data contains NUL
+	 * characters output the string as-is.
+	 */
+	if ( !special || has_null ) {
 		return write(fd, buf, count);
 	}
 
@@ -608,10 +647,10 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 	mem[count] = '\0';
 	pos = str = mem;
 
-	/* we're writing to the console so we assume the data isn't binary */
+	/* we've checked the data doesn't contain any NULs */
 	while (*pos) {
 		pos = strstr(str, "\033[");
-		if (pos) {
+		if (pos && !skip_ansi_emulation()) {
 			len = pos - str;
 
 			if (len) {
@@ -656,7 +695,7 @@ int winansi_read(int fd, void *buf, size_t count)
 {
 	int rv;
 
-	rv = read(fd, buf, count);
+	rv = mingw_read(fd, buf, count);
 	if (!isatty(fd))
 		return rv;
 
@@ -693,4 +732,31 @@ int winansi_getc(FILE *stream)
 	}
 
 	return rv;
+}
+
+/* Ensure that isatty(fd) returns 0 for the NUL device */
+int mingw_isatty(int fd)
+{
+	int result = _isatty(fd);
+
+	if (result) {
+		HANDLE handle = (HANDLE) _get_osfhandle(fd);
+		CONSOLE_SCREEN_BUFFER_INFO sbi;
+		DWORD mode;
+
+		if (handle == INVALID_HANDLE_VALUE)
+			return 0;
+
+		/* check if its a device (i.e. console, printer, serial port) */
+		if (GetFileType(handle) != FILE_TYPE_CHAR)
+			return 0;
+
+		if (!fd) {
+			if (!GetConsoleMode(handle, &mode))
+				return 0;
+		} else if (!GetConsoleScreenBufferInfo(handle, &sbi))
+			return 0;
+	}
+
+	return result;
 }

@@ -10,13 +10,14 @@
  * Public License
  */
 //config:config LSATTR
-//config:	bool "lsattr"
+//config:	bool "lsattr (5 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  lsattr lists the file attributes on a second extended file system.
+//config:	lsattr lists the file attributes on a second extended file system.
 
-//applet:IF_LSATTR(APPLET(lsattr, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_LSATTR(APPLET_NOEXEC(lsattr, lsattr, BB_DIR_BIN, BB_SUID_DROP, lsattr))
+/* ls is NOEXEC, so we should be too! ;) */
 
 //kbuild:lib-$(CONFIG_LSATTR) += lsattr.o e2fs_lib.o
 

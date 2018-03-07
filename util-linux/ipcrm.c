@@ -7,15 +7,17 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config IPCRM
+//config:	bool "ipcrm (2.9 kb)"
+//config:	default y
+//config:	help
+//config:	The ipcrm utility allows the removal of System V interprocess
+//config:	communication (IPC) objects and the associated data structures
+//config:	from the system.
 
-//usage:#define ipcrm_trivial_usage
-//usage:       "[-MQS key] [-mqs id]"
-//usage:#define ipcrm_full_usage "\n\n"
-//usage:       "Upper-case options MQS remove an object by shmkey value.\n"
-//usage:       "Lower-case options remove an object by shmid value.\n"
-//usage:     "\n	-mM	Remove memory segment after last detach"
-//usage:     "\n	-qQ	Remove message queue"
-//usage:     "\n	-sS	Remove semaphore"
+//applet:IF_IPCRM(APPLET_NOEXEC(ipcrm, ipcrm, BB_DIR_USR_BIN, BB_SUID_DROP, ipcrm))
+
+//kbuild:lib-$(CONFIG_IPCRM) += ipcrm.o
 
 #include "libbb.h"
 
@@ -83,6 +85,14 @@ static int remove_ids(type_id type, char **argv)
 }
 #endif /* IPCRM_LEGACY */
 
+//usage:#define ipcrm_trivial_usage
+//usage:       "[-MQS key] [-mqs id]"
+//usage:#define ipcrm_full_usage "\n\n"
+//usage:       "Upper-case options MQS remove an object by shmkey value.\n"
+//usage:       "Lower-case options remove an object by shmid value.\n"
+//usage:     "\n	-mM	Remove memory segment after last detach"
+//usage:     "\n	-qQ	Remove message queue"
+//usage:     "\n	-sS	Remove semaphore"
 
 int ipcrm_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int ipcrm_main(int argc, char **argv)
@@ -126,28 +136,20 @@ int ipcrm_main(int argc, char **argv)
 #endif /* IPCRM_LEGACY */
 
 	/* process new syntax to conform with SYSV ipcrm */
-	while ((c = getopt(argc, argv, "q:m:s:Q:M:S:h?")) != -1) {
+	while ((c = getopt(argc, argv, "q:m:s:Q:M:S:")) != -1) {
 		int result;
-		int id = 0;
-		int iskey = isupper(c);
-
+		int id;
+		int iskey;
 		/* needed to delete semaphores */
 		union semun arg;
 
+		if (c == '?') /* option not in the string */
+			bb_show_usage();
+
+		id = 0;
 		arg.val = 0;
 
-		if ((c == '?') || (c == 'h')) {
-			bb_show_usage();
-		}
-
-		/* we don't need case information any more */
-		c = tolower(c);
-
-		/* make sure the option is in range: allowed are q, m, s */
-		if (c != 'q' && c != 'm' && c != 's') {
-			bb_show_usage();
-		}
-
+		iskey = !(c & 0x20); /* uppercase? */
 		if (iskey) {
 			/* keys are in hex or decimal */
 			key_t key = xstrtoul(optarg, 0);
@@ -158,6 +160,7 @@ int ipcrm_main(int argc, char **argv)
 				continue;
 			}
 
+			c |= 0x20; /* lowercase. c is 'q', 'm' or 's' now */
 			/* convert key to id */
 			id = ((c == 'q') ? msgget(key, 0) :
 				(c == 'm') ? shmget(key, 0, 0) : semget(key, 0, 0));

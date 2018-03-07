@@ -11,6 +11,38 @@
  * the GPL, and is (c) 1995-1999 by:
  *     Geert Uytterhoeven (Geert.Uytterhoeven@cs.kuleuven.ac.be)
  */
+//config:config FBSET
+//config:	bool "fbset (5.8 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	fbset is used to show or change the settings of a Linux frame buffer
+//config:	device. The frame buffer device provides a simple and unique
+//config:	interface to access a graphics display. Enable this option
+//config:	if you wish to enable the 'fbset' utility.
+//config:
+//config:config FEATURE_FBSET_FANCY
+//config:	bool "Enable extra options"
+//config:	default y
+//config:	depends on FBSET
+//config:	help
+//config:	This option enables extended fbset options, allowing one to set the
+//config:	framebuffer size, color depth, etc. interface to access a graphics
+//config:	display. Enable this option if you wish to enable extended fbset
+//config:	options.
+//config:
+//config:config FEATURE_FBSET_READMODE
+//config:	bool "Enable readmode support"
+//config:	default y
+//config:	depends on FBSET
+//config:	help
+//config:	This option allows fbset to read the video mode database stored by
+//config:	default as /etc/fb.modes, which can be used to set frame buffer
+//config:	device to pre-defined video modes.
+
+//applet:IF_FBSET(APPLET(fbset, BB_DIR_USR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_FBSET) += fbset.o
 
 //usage:#define fbset_trivial_usage
 //usage:       "[OPTIONS] [MODE]"
@@ -164,6 +196,7 @@ static const struct cmdoptions_t {
 	const unsigned char code;
 } g_cmdoptions[] = {
 	/*"12345678" + NUL */
+//TODO: convert to index_in_strings()
 	{ "fb"      , 1, CMD_FB       },
 	{ "db"      , 1, CMD_DB       },
 	{ "a"       , 0, CMD_ALL      },
@@ -248,12 +281,12 @@ static int read_mode_db(struct fb_var_screeninfo *base, const char *fn,
 		if (!p)
 			continue;
 		s = p + strlen(mode);
-		//bb_info_msg("CHECK[%s][%s][%d]", mode, p-1, *s);
+		//bb_error_msg("CHECK[%s][%s][%d]", mode, p-1, *s);
 		/* exact match? */
 		if (((!*s || isspace(*s)) && '"' != s[-1]) /* end-of-token */
 		 || ('"' == *s && '"' == p[-1]) /* ends with " but starts with " too! */
 		) {
-			//bb_info_msg("FOUND[%s][%s][%s][%d]", token[1], p, mode, isspace(*s));
+			//bb_error_msg("FOUND[%s][%s][%s][%d]", token[1], p, mode, isspace(*s));
 			break;
 		}
 	}
@@ -264,9 +297,9 @@ static int read_mode_db(struct fb_var_screeninfo *base, const char *fn,
 	while (config_read(parser, token, 2, 1, "# \t", PARSE_NORMAL)) {
 		int i;
 
-//bb_info_msg("???[%s][%s]", token[0], token[1]);
+//bb_error_msg("???[%s][%s]", token[0], token[1]);
 		if (strcmp(token[0], "endmode") == 0) {
-//bb_info_msg("OK[%s]", mode);
+//bb_error_msg("OK[%s]", mode);
 			return 1;
 		}
 		p = token[1];
@@ -294,7 +327,7 @@ static int read_mode_db(struct fb_var_screeninfo *base, const char *fn,
 				base->yres_virtual = base_yres_virtual;
 				base->bits_per_pixel = base_bits_per_pixel;
 			}
-//bb_info_msg("GEO[%s]", p);
+//bb_error_msg("GEO[%s]", p);
 			break;
 		case 1:
 			if (sizeof(int) == sizeof(base->xres)) {
@@ -321,13 +354,13 @@ static int read_mode_db(struct fb_var_screeninfo *base, const char *fn,
 				base->hsync_len = base_hsync_len;
 				base->vsync_len = base_vsync_len;
 			}
-//bb_info_msg("TIM[%s]", p);
+//bb_error_msg("TIM[%s]", p);
 			break;
 		case 2:
 		case 3: {
 			static const uint32_t syncs[] = {FB_VMODE_INTERLACED, FB_VMODE_DOUBLE};
 			ss(&base->vmode, syncs[i-2], p, "false");
-//bb_info_msg("VMODE[%s]", p);
+//bb_error_msg("VMODE[%s]", p);
 			break;
 		}
 		case 4:
@@ -335,12 +368,12 @@ static int read_mode_db(struct fb_var_screeninfo *base, const char *fn,
 		case 6: {
 			static const uint32_t syncs[] = {FB_SYNC_VERT_HIGH_ACT, FB_SYNC_HOR_HIGH_ACT, FB_SYNC_COMP_HIGH_ACT};
 			ss(&base->sync, syncs[i-4], p, "low");
-//bb_info_msg("SYNC[%s]", p);
+//bb_error_msg("SYNC[%s]", p);
 			break;
 		}
 		case 7:
 			ss(&base->sync, FB_SYNC_EXT, p, "false");
-//bb_info_msg("EXTSYNC[%s]", p);
+//bb_error_msg("EXTSYNC[%s]", p);
 			break;
 		case 8: {
 			int red_offset, red_length;
@@ -416,7 +449,7 @@ int fbset_main(int argc, char **argv)
 	unsigned options = 0;
 
 	const char *fbdev = DEFAULTFBDEV;
-	const char *modefile = DEFAULTFBMODE;
+	IF_FEATURE_FBSET_READMODE(const char *modefile = DEFAULTFBMODE;)
 	char *thisarg;
 	char *mode = mode; /* for compiler */
 
@@ -444,7 +477,7 @@ int fbset_main(int argc, char **argv)
 				fbdev = argv[1];
 				break;
 			case CMD_DB:
-				modefile = argv[1];
+				IF_FEATURE_FBSET_READMODE(modefile = argv[1];)
 				break;
 			case CMD_ALL:
 				options |= OPT_ALL;

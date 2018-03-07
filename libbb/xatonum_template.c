@@ -67,7 +67,7 @@ unsigned type FAST_FUNC xstrtou(_range_sfx)(const char *numstr, int base,
 	if (r >= lower && r <= upper)
 		return r;
  range:
-	bb_error_msg_and_die("number %s is not in %llu..%llu range",
+	bb_error_msg_and_die("number %s is not in %"LL_FMT"u..%"LL_FMT"u range",
 		numstr, (unsigned long long)lower,
 		(unsigned long long)upper);
  inval:
@@ -144,7 +144,8 @@ type FAST_FUNC xstrto(_range_sfx)(const char *numstr, int base,
 	}
 
 	if (r < lower || r > upper) {
-		bb_error_msg_and_die("number %s is not in %lld..%lld range",
+		bb_error_msg_and_die("number %s is not in "
+				"%"LL_FMT"d..%"LL_FMT"d range",
 				numstr, (long long)lower, (long long)upper);
 	}
 

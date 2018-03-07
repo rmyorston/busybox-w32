@@ -77,6 +77,13 @@
 
 #define UNUSED_PARAM __attribute__ ((__unused__))
 #define NORETURN __attribute__ ((__noreturn__))
+
+#if __GNUC_PREREQ(4,5)
+# define bb_unreachable(altcode) __builtin_unreachable()
+#else
+# define bb_unreachable(altcode) altcode
+#endif
+
 /* "The malloc attribute is used to tell the compiler that a function
  * may be treated as if any non-NULL pointer it returns cannot alias
  * any other pointer valid when the function returns. This will often
@@ -140,13 +147,18 @@
  * and/or smaller by using modified ABI. It is usually only needed
  * on non-static, busybox internal functions. Recent versions of gcc
  * optimize statics automatically. FAST_FUNC on static is required
- * only if you need to match a function pointer's type */
-#if __GNUC_PREREQ(3,0) && defined(i386) /* || defined(__x86_64__)? */
+ * only if you need to match a function pointer's type.
+ * FAST_FUNC may not work well with -flto so allow user to disable this.
+ * (-DFAST_FUNC= )
+ */
+#ifndef FAST_FUNC
+# if __GNUC_PREREQ(3,0) && defined(i386)
 /* stdcall makes callee to pop arguments from stack, not caller */
-# define FAST_FUNC __attribute__((regparm(3),stdcall))
+#  define FAST_FUNC __attribute__((regparm(3),stdcall))
 /* #elif ... - add your favorite arch today! */
-#else
-# define FAST_FUNC
+# else
+#  define FAST_FUNC
+# endif
 #endif
 
 /* Make all declarations hidden (-fvisibility flag only affects definitions) */
@@ -281,6 +293,17 @@ typedef uint64_t bb__aliased_uint64_t FIX_ALIASING;
 	memcpy((u32p), &__t, 4); \
 } while (0)
 #endif
+
+/* Unaligned, fixed-endian accessors */
+#define get_unaligned_le32(buf) ({ uint32_t v; move_from_unaligned32(v, buf); SWAP_LE32(v); })
+#define get_unaligned_be32(buf) ({ uint32_t v; move_from_unaligned32(v, buf); SWAP_BE32(v); })
+#define put_unaligned_le32(val, buf) move_to_unaligned32(buf, SWAP_LE32(val))
+#define put_unaligned_be32(val, buf) move_to_unaligned32(buf, SWAP_BE32(val))
+
+/* unxz needs an aligned fixed-endian accessor.
+ * (however, the compiler does not realize it's aligned, the cast is still necessary)
+ */
+#define get_le32(u32p) ({ uint32_t v = *(bb__aliased_uint32_t*)(u32p); SWAP_LE32(v); })
 
 
 /* ---- Size-saving "small" ints (arch-dependent) ----------- */
@@ -428,6 +451,7 @@ typedef unsigned smalluint;
 #define HAVE_MNTENT_H 1
 #define HAVE_NET_ETHERNET_H 1
 #define HAVE_SYS_STATFS_H 1
+#define HAVE_PRINTF_PERCENTM 1
 
 #if defined(__UCLIBC__)
 # if UCLIBC_VERSION < KERNEL_VERSION(0, 9, 32)
@@ -440,7 +464,9 @@ typedef unsigned smalluint;
 # endif
 #endif
 
-#if defined(ENABLE_PLATFORM_MINGW32)
+
+#if ENABLE_PLATFORM_MINGW32
+# undef HAVE_FDATASYNC
 # undef HAVE_DPRINTF
 # undef HAVE_GETLINE
 # undef HAVE_MEMRCHR
@@ -457,6 +483,7 @@ typedef unsigned smalluint;
 #endif
 # undef HAVE_UNLOCKED_STDIO
 # undef HAVE_UNLOCKED_LINE_OPS
+# undef HAVE_PRINTF_PERCENTM
 #endif
 
 #if defined(__WATCOMC__)
@@ -502,6 +529,7 @@ typedef unsigned smalluint;
 # undef HAVE_DPRINTF
 # undef HAVE_UNLOCKED_STDIO
 # undef HAVE_UNLOCKED_LINE_OPS
+# undef HAVE_PRINTF_PERCENTM
 #endif
 
 #if defined(__dietlibc__)
@@ -524,6 +552,7 @@ typedef unsigned smalluint;
 # undef HAVE_STRVERSCMP
 # undef HAVE_XTABS
 # undef HAVE_UNLOCKED_LINE_OPS
+# undef HAVE_PRINTF_PERCENTM
 # include <osreldate.h>
 # if __FreeBSD_version < 1000029
 #  undef HAVE_STRCHRNUL /* FreeBSD added strchrnul() between 1000028 and 1000029 */
@@ -540,9 +569,13 @@ typedef unsigned smalluint;
 
 #if defined(ANDROID) || defined(__ANDROID__)
 # if __ANDROID_API__ < 8
+   /* ANDROID < 8 has no [f]dprintf at all */
 #  undef HAVE_DPRINTF
-# else
+# elif __ANDROID_API__ < 21
+   /* ANDROID < 21 has fdprintf */
 #  define dprintf fdprintf
+# else
+   /* ANDROID >= 21 has standard dprintf */
 # endif
 # if __ANDROID_API__ < 21
 #  undef HAVE_TTYNAME_R
@@ -554,6 +587,7 @@ typedef unsigned smalluint;
 # undef HAVE_STRVERSCMP
 # undef HAVE_UNLOCKED_LINE_OPS
 # undef HAVE_NET_ETHERNET_H
+# undef HAVE_PRINTF_PERCENTM
 #endif
 
 /*

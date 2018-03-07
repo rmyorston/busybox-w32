@@ -11,24 +11,25 @@
  *
  * Added FEATURE_UPTIME_UTMP_SUPPORT flag.
  */
-
-/* getopt not needed */
-
 //config:config UPTIME
-//config:	bool "uptime"
+//config:	bool "uptime (632 bytes)"
 //config:	default y
 //config:	select PLATFORM_LINUX #sysinfo()
 //config:	help
-//config:	  uptime gives a one line display of the current time, how long
-//config:	  the system has been running, how many users are currently logged
-//config:	  on, and the system load averages for the past 1, 5, and 15 minutes.
+//config:	uptime gives a one line display of the current time, how long
+//config:	the system has been running, how many users are currently logged
+//config:	on, and the system load averages for the past 1, 5, and 15 minutes.
 //config:
 //config:config FEATURE_UPTIME_UTMP_SUPPORT
-//config:	bool "Support for showing the number of users"
+//config:	bool "Show the number of users"
 //config:	default y
 //config:	depends on UPTIME && FEATURE_UTMP
 //config:	help
-//config:	  Makes uptime display the number of users currently logged on.
+//config:	Display the number of users currently logged on.
+
+//applet:IF_UPTIME(APPLET_NOEXEC(uptime, uptime, BB_DIR_USR_BIN, BB_SUID_DROP, uptime))
+
+//kbuild:lib-$(CONFIG_UPTIME) += uptime.o
 
 //usage:#define uptime_trivial_usage
 //usage:       ""

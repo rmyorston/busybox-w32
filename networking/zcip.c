@@ -8,12 +8,27 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
 /*
  * ZCIP just manages the 169.254.*.* addresses.  That network is not
  * routed at the IP level, though various proxies or bridges can
  * certainly be used.  Its naming is built over multicast DNS.
  */
+//config:config ZCIP
+//config:	bool "zcip (7.8 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	select FEATURE_SYSLOG
+//config:	help
+//config:	ZCIP provides ZeroConf IPv4 address selection, according to RFC 3927.
+//config:	It's a daemon that allocates and defends a dynamically assigned
+//config:	address on the 169.254/16 network, requiring no system administrator.
+//config:
+//config:	See http://www.zeroconf.org for further details, and "zcip.script"
+//config:	in the busybox examples.
+
+//applet:IF_ZCIP(APPLET(zcip, BB_DIR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_ZCIP) += zcip.o
 
 //#define DEBUG
 
@@ -40,6 +55,7 @@
 //usage:     "\nexits only on I/O errors (link down etc)"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include <netinet/ether.h>
 #include <net/if.h>
 #include <net/if_arp.h>
@@ -90,8 +106,8 @@ struct globals {
 	struct ether_addr our_ethaddr;
 	uint32_t localnet_ip;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
-#define INIT_G() do { } while (0)
+#define G (*(struct globals*)bb_common_bufsiz1)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 
 /**
@@ -166,6 +182,7 @@ static int run(char *argv[3], const char *param, uint32_t nip)
 	int status;
 	const char *addr = addr; /* for gcc */
 	const char *fmt = "%s %s %s" + 3;
+	char *env_ip = env_ip;
 
 	argv[2] = (char*)param;
 
@@ -173,12 +190,16 @@ static int run(char *argv[3], const char *param, uint32_t nip)
 
 	if (nip != 0) {
 		addr = nip_to_a(nip);
-		xsetenv("ip", addr);
+		/* Must not use setenv() repeatedly, it leaks memory. Use putenv() */
+		env_ip = xasprintf("ip=%s", addr);
+		putenv(env_ip);
 		fmt -= 3;
 	}
-	bb_info_msg(fmt, argv[2], argv[0], addr);
-
+	bb_error_msg(fmt, argv[2], argv[0], addr);
 	status = spawn_and_wait(argv + 1);
+	if (nip != 0)
+		bb_unsetenv_and_free(env_ip);
+
 	if (status < 0) {
 		bb_perror_msg("%s %s %s" + 3, argv[2], argv[0]);
 		return -errno;
@@ -231,8 +252,9 @@ int zcip_main(int argc UNUSED_PARAM, char **argv)
 #define QUIT       (opts & 2)
 	// Parse commandline: prog [options] ifname script
 	// exactly 2 args; -v accumulates and implies -f
-	opt_complementary = "=2:vv:vf";
-	opts = getopt32(argv, "fqr:l:v", &r_opt, &l_opt, &verbose);
+	opts = getopt32(argv, "^" "fqr:l:v" "\0" "=2:vv:vf",
+				&r_opt, &l_opt, &verbose
+	);
 #if !BB_MMU
 	// on NOMMU reexec early (or else we will rerun things twice)
 	if (!FOREGROUND)
@@ -317,7 +339,7 @@ int zcip_main(int argc UNUSED_PARAM, char **argv)
 #if BB_MMU
 		bb_daemonize(0 /*was: DAEMON_CHDIR_ROOT*/);
 #endif
-		bb_info_msg("start, interface %s", argv_intf);
+		bb_error_msg("start, interface %s", argv_intf);
 	}
 
 	// Run the dynamic address negotiation protocol,

@@ -13,7 +13,7 @@ modification, are permitted provided that the following conditions are met:
    3. The name of the author may not be used to endorse or promote products
       derived from this software without specific prior written permission.
 
-THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ''AS IS'' AND ANY EXPRESS OR IMPLIED
 WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO
 EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
@@ -28,21 +28,21 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* Busyboxed by Denys Vlasenko <vda.linux@googlemail.com> */
 
 //config:config RUNSVDIR
-//config:	bool "runsvdir"
+//config:	bool "runsvdir (6 kb)"
 //config:	default y
 //config:	help
-//config:	  runsvdir starts a runsv process for each subdirectory, or symlink to
-//config:	  a directory, in the services directory dir, up to a limit of 1000
-//config:	  subdirectories, and restarts a runsv process if it terminates.
+//config:	runsvdir starts a runsv process for each subdirectory, or symlink to
+//config:	a directory, in the services directory dir, up to a limit of 1000
+//config:	subdirectories, and restarts a runsv process if it terminates.
 //config:
 //config:config FEATURE_RUNSVDIR_LOG
 //config:	bool "Enable scrolling argument log"
 //config:	depends on RUNSVDIR
 //config:	default n
 //config:	help
-//config:	  Enable feature where second parameter of runsvdir holds last error
-//config:	  message (viewable via top/ps). Otherwise (feature is off
-//config:	  or no parameter), error messages go to stderr only.
+//config:	Enable feature where second parameter of runsvdir holds last error
+//config:	message (viewable via top/ps). Otherwise (feature is off
+//config:	or no parameter), error messages go to stderr only.
 
 //applet:IF_RUNSVDIR(APPLET(runsvdir, BB_DIR_USR_BIN, BB_SUID_DROP))
 
@@ -57,6 +57,7 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <sys/file.h>
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include "runit_lib.h"
 
 #define MAXSERVICES 1000
@@ -84,7 +85,7 @@ struct globals {
 	unsigned stamplog;
 #endif
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define sv          (G.sv          )
 #define svdir       (G.svdir       )
 #define svnum       (G.svnum       )
@@ -92,7 +93,7 @@ struct globals {
 #define logpipe     (G.logpipe     )
 #define pfd         (G.pfd         )
 #define stamplog    (G.stamplog    )
-#define INIT_G() do { } while (0)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 static void fatal2_cannot(const char *m1, const char *m2)
 {
@@ -180,9 +181,9 @@ static NOINLINE int do_rescan(void)
 			continue;
 		/* Do we have this service listed already? */
 		for (i = 0; i < svnum; i++) {
-			if ((sv[i].ino == s.st_ino)
+			if (sv[i].ino == s.st_ino
 #if CHECK_DEVNO_TOO
-			 && (sv[i].dev == s.st_dev)
+			 && sv[i].dev == s.st_dev
 #endif
 			) {
 				if (sv[i].pid == 0) /* restart if it has died */
@@ -247,10 +248,9 @@ int runsvdir_main(int argc UNUSED_PARAM, char **argv)
 
 	INIT_G();
 
-	opt_complementary = "-1";
 	opt_s_argv[0] = NULL;
 	opt_s_argv[2] = NULL;
-	getopt32(argv, "Ps:", &opt_s_argv[0]);
+	getopt32(argv, "^" "Ps:" "\0" "-1", &opt_s_argv[0]);
 	argv += optind;
 
 	i_am_init = (getpid() == 1);

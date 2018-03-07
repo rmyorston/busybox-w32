@@ -8,33 +8,31 @@ menu "Archival Utilities"
 config FEATURE_SEAMLESS_XZ
 	bool "Make tar, rpm, modprobe etc understand .xz data"
 	default y
-	help
-	  Make tar, rpm, modprobe etc understand .xz data.
 
 config FEATURE_SEAMLESS_LZMA
 	bool "Make tar, rpm, modprobe etc understand .lzma data"
 	default y
-	help
-	  Make tar, rpm, modprobe etc understand .lzma data.
 
 config FEATURE_SEAMLESS_BZ2
 	bool "Make tar, rpm, modprobe etc understand .bz2 data"
 	default y
-	help
-	  Make tar, rpm, modprobe etc understand .bz2 data.
 
 config FEATURE_SEAMLESS_GZ
 	bool "Make tar, rpm, modprobe etc understand .gz data"
 	default y
-	help
-	  Make tar, rpm, modprobe etc understand .gz data.
 
 config FEATURE_SEAMLESS_Z
-	bool "tar, rpm, modprobe etc understand .Z data"
+	bool "Make tar, rpm, modprobe etc understand .Z data"
 	default n  # it is ancient
-	help
-	  Make tar, rpm, modprobe etc understand .Z data.
 
 INSERT
+
+config FEATURE_LZMA_FAST
+	bool "Optimize lzma for speed"
+	default n
+	depends on UNLZMA || LZCAT || LZMA || FEATURE_SEAMLESS_LZMA
+	help
+	This option reduces decompression time by about 25% at the cost of
+	a 1K bigger binary.
 
 endmenu

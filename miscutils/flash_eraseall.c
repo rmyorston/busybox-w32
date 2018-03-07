@@ -1,5 +1,6 @@
 /* vi: set sw=4 ts=4: */
-/* eraseall.c -- erase the whole of a MTD device
+/*
+ * eraseall.c -- erase the whole of a MTD device
  *
  * Ported to busybox from mtd-utils.
  *
@@ -9,6 +10,17 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config FLASH_ERASEALL
+//config:	bool "flash_eraseall (5.5 kb)"
+//config:	default n  # doesn't build on Ubuntu 8.04
+//config:	help
+//config:	The flash_eraseall binary from mtd-utils as of git head c4c6a59eb.
+//config:	This utility is used to erase the whole MTD device.
+
+//applet:IF_FLASH_ERASEALL(APPLET(flash_eraseall, BB_DIR_USR_SBIN, BB_SUID_DROP))
+/* not NOEXEC: if flash operation stalls, use less memory in "hung" process */
+
+//kbuild:lib-$(CONFIG_FLASH_ERASEALL) += flash_eraseall.o
 
 //usage:#define flash_eraseall_trivial_usage
 //usage:       "[-jNq] MTD_DEVICE"
@@ -71,8 +83,7 @@ int flash_eraseall_main(int argc UNUSED_PARAM, char **argv)
 	unsigned int flags;
 	char *mtd_name;
 
-	opt_complementary = "=1";
-	flags = getopt32(argv, "jNq");
+	flags = getopt32(argv, "^" "jNq" "\0" "=1");
 
 	mtd_name = argv[optind];
 	fd = xopen(mtd_name, O_RDWR);
@@ -90,7 +101,7 @@ int flash_eraseall_main(int argc UNUSED_PARAM, char **argv)
 	if (flags & OPTION_J) {
 		uint32_t *crc32_table;
 
-		crc32_table = crc32_filltable(NULL, 0);
+		crc32_table = crc32_new_table_le();
 
 		cleanmarker.magic = cpu_to_je16(JFFS2_MAGIC_BITMASK);
 		cleanmarker.nodetype = cpu_to_je16(JFFS2_NODETYPE_CLEANMARKER);
@@ -147,7 +158,7 @@ int flash_eraseall_main(int argc UNUSED_PARAM, char **argv)
 			ret = ioctl(fd, MEMGETBADBLOCK, &offset);
 			if (ret > 0) {
 				if (!(flags & OPTION_Q))
-					bb_info_msg("\nSkipping bad block at 0x%08x", erase.start);
+					printf("\nSkipping bad block at 0x%08x\n", erase.start);
 				continue;
 			}
 			if (ret < 0) {

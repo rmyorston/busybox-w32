@@ -7,9 +7,16 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config WATCH
+//config:	bool "watch (4.1 kb)"
+//config:	default y
+//config:	help
+//config:	watch is used to execute a program periodically, showing
+//config:	output to the screen.
 
-/* BB_AUDIT SUSv3 N/A */
-/* BB_AUDIT GNU defects -- only option -n is supported. */
+//applet:IF_WATCH(APPLET(watch, BB_DIR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_WATCH) += watch.o
 
 //usage:#define watch_trivial_usage
 //usage:       "[-n SEC] [-t] PROG ARGS"
@@ -24,7 +31,12 @@
 //usage:       "Mon Dec 17 10:31:42 GMT 2000\n"
 //usage:       "Mon Dec 17 10:31:44 GMT 2000"
 
+/* BB_AUDIT SUSv3 N/A */
+/* BB_AUDIT GNU defects -- only option -n is supported. */
+
 #include "libbb.h"
+
+#define ESC "\033"
 
 // procps 2.0.18:
 // watch [-d] [-n seconds]
@@ -51,9 +63,9 @@ int watch_main(int argc UNUSED_PARAM, char **argv)
 	xopen("/dev/null", O_RDONLY);
 #endif
 
-	opt_complementary = "-1:n+"; // at least one param; -n NUM
-	// "+": stop at first non-option (procps 3.x only)
-	opt = getopt32(argv, "+dtn:", &period);
+	// "+": stop at first non-option (procps 3.x only); -n NUM
+	// at least one param
+	opt = getopt32(argv, "^+" "dtn:+" "\0" "-1", &period);
 	argv += optind;
 
 	// watch from both procps 2.x and 3.x does concatenation. Example:
@@ -66,7 +78,7 @@ int watch_main(int argc UNUSED_PARAM, char **argv)
 	header = NULL;
 	while (1) {
 		/* home; clear to the end of screen */
-		printf("\033[H""\033[J");
+		printf(ESC"[H" ESC"[J");
 		if (!(opt & 0x2)) { // no -t
 			const unsigned time_len = sizeof("1234-67-90 23:56:89");
 

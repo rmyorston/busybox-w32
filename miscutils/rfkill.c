@@ -1,23 +1,22 @@
 /* vi: set sw=4 ts=4: */
 /*
-* rfkill implementation for busybox
-*
-* Copyright (C) 2010  Malek Degachi <malek-degachi@laposte.net>
-*
-* Licensed under GPLv2 or later, see file LICENSE in this source tree.
-*/
-
+ * rfkill implementation for busybox
+ *
+ * Copyright (C) 2010  Malek Degachi <malek-degachi@laposte.net>
+ *
+ * Licensed under GPLv2 or later, see file LICENSE in this source tree.
+ */
 //config:config RFKILL
-//config:	bool "rfkill"
+//config:	bool "rfkill (5.3 kb)"
 //config:	default n # doesn't build on Ubuntu 9.04
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Enable/disable wireless devices.
+//config:	Enable/disable wireless devices.
 //config:
-//config:	  rfkill list : list all wireless devices
-//config:	  rfkill list bluetooth : list all bluetooth devices
-//config:	  rfkill list 1 : list device corresponding to the given index
-//config:	  rfkill block|unblock wlan : block/unblock all wlan(wifi) devices
+//config:	rfkill list : list all wireless devices
+//config:	rfkill list bluetooth : list all bluetooth devices
+//config:	rfkill list 1 : list device corresponding to the given index
+//config:	rfkill block|unblock wlan : block/unblock all wlan(wifi) devices
 //config:
 
 //applet:IF_RFKILL(APPLET(rfkill, BB_DIR_USR_SBIN, BB_SUID_DROP))

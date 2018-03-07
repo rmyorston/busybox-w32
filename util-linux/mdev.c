@@ -7,64 +7,63 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-
 //config:config MDEV
-//config:	bool "mdev"
+//config:	bool "mdev (16 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  mdev is a mini-udev implementation for dynamically creating device
-//config:	  nodes in the /dev directory.
+//config:	mdev is a mini-udev implementation for dynamically creating device
+//config:	nodes in the /dev directory.
 //config:
-//config:	  For more information, please see docs/mdev.txt
+//config:	For more information, please see docs/mdev.txt
 //config:
 //config:config FEATURE_MDEV_CONF
 //config:	bool "Support /etc/mdev.conf"
 //config:	default y
 //config:	depends on MDEV
 //config:	help
-//config:	  Add support for the mdev config file to control ownership and
-//config:	  permissions of the device nodes.
+//config:	Add support for the mdev config file to control ownership and
+//config:	permissions of the device nodes.
 //config:
-//config:	  For more information, please see docs/mdev.txt
+//config:	For more information, please see docs/mdev.txt
 //config:
 //config:config FEATURE_MDEV_RENAME
 //config:	bool "Support subdirs/symlinks"
 //config:	default y
 //config:	depends on FEATURE_MDEV_CONF
 //config:	help
-//config:	  Add support for renaming devices and creating symlinks.
+//config:	Add support for renaming devices and creating symlinks.
 //config:
-//config:	  For more information, please see docs/mdev.txt
+//config:	For more information, please see docs/mdev.txt
 //config:
 //config:config FEATURE_MDEV_RENAME_REGEXP
 //config:	bool "Support regular expressions substitutions when renaming device"
 //config:	default y
 //config:	depends on FEATURE_MDEV_RENAME
 //config:	help
-//config:	  Add support for regular expressions substitutions when renaming
-//config:	  device.
+//config:	Add support for regular expressions substitutions when renaming
+//config:	device.
 //config:
 //config:config FEATURE_MDEV_EXEC
 //config:	bool "Support command execution at device addition/removal"
 //config:	default y
 //config:	depends on FEATURE_MDEV_CONF
 //config:	help
-//config:	  This adds support for an optional field to /etc/mdev.conf for
-//config:	  executing commands when devices are created/removed.
+//config:	This adds support for an optional field to /etc/mdev.conf for
+//config:	executing commands when devices are created/removed.
 //config:
-//config:	  For more information, please see docs/mdev.txt
+//config:	For more information, please see docs/mdev.txt
 //config:
 //config:config FEATURE_MDEV_LOAD_FIRMWARE
-//config:	bool "Support loading of firmwares"
+//config:	bool "Support loading of firmware"
 //config:	default y
 //config:	depends on MDEV
 //config:	help
-//config:	  Some devices need to load firmware before they can be usable.
+//config:	Some devices need to load firmware before they can be usable.
 //config:
-//config:	  These devices will request userspace look up the files in
-//config:	  /lib/firmware/ and if it exists, send it to the kernel for
-//config:	  loading into the hardware.
+//config:	These devices will request userspace look up the files in
+//config:	/lib/firmware/ and if it exists, send it to the kernel for
+//config:	loading into the hardware.
 
 //applet:IF_MDEV(APPLET(mdev, BB_DIR_SBIN, BB_SUID_DROP))
 
@@ -97,6 +96,7 @@
 //usage:       "If /dev/mdev.log file exists, debug log will be appended to it."
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include "xregex.h"
 
 /* "mdev -s" scans /sys/class/xxx, looking for directories which have dev
@@ -285,8 +285,9 @@ struct globals {
 	struct rule cur_rule;
 	char timestr[sizeof("HH:MM:SS.123456")];
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	IF_NOT_FEATURE_MDEV_CONF(G.cur_rule.maj = -1;) \
 	IF_NOT_FEATURE_MDEV_CONF(G.cur_rule.mode = 0660;) \
 } while (0)
@@ -541,8 +542,7 @@ static char *build_alias(char *alias, const char *device_name)
 
 /* mknod in /dev based on a path like "/sys/block/hda/hda1"
  * NB1: path parameter needs to have SCRATCH_SIZE scratch bytes
- * after NUL, but we promise to not mangle (IOW: to restore NUL if needed)
- * path string.
+ * after NUL, but we promise to not mangle it (IOW: to restore NUL if needed).
  * NB2: "mdev -s" may call us many times, do not leak memory/fds!
  *
  * device_name = $DEVNAME (may be NULL)
@@ -808,22 +808,47 @@ static void make_device(char *device_name, char *path, int operation)
 	} /* for (;;) */
 }
 
-/* File callback for /sys/ traversal */
+/* File callback for /sys/ traversal.
+ * We act only on "/sys/.../dev" (pseudo)file
+ */
 static int FAST_FUNC fileAction(const char *fileName,
 		struct stat *statbuf UNUSED_PARAM,
 		void *userData,
 		int depth UNUSED_PARAM)
 {
 	size_t len = strlen(fileName) - 4; /* can't underflow */
-	char *scratch = userData;
+	char *path = userData;	/* char array[PATH_MAX + SCRATCH_SIZE] */
+	char subsys[PATH_MAX];
+	int res;
 
-	/* len check is for paranoid reasons */
-	if (strcmp(fileName + len, "/dev") != 0 || len >= PATH_MAX)
-		return FALSE;
+	/* Is it a ".../dev" file? (len check is for paranoid reasons) */
+	if (strcmp(fileName + len, "/dev") != 0 || len >= PATH_MAX - 32)
+		return FALSE; /* not .../dev */
 
-	strcpy(scratch, fileName);
-	scratch[len] = '\0';
-	make_device(/*DEVNAME:*/ NULL, scratch, OP_add);
+	strcpy(path, fileName);
+	path[len] = '\0';
+
+	/* Read ".../subsystem" symlink in the same directory where ".../dev" is */
+	strcpy(subsys, path);
+	strcpy(subsys + len, "/subsystem");
+	res = readlink(subsys, subsys, sizeof(subsys)-1);
+	if (res > 0) {
+		subsys[res] = '\0';
+		free(G.subsystem);
+		if (G.subsys_env) {
+			bb_unsetenv_and_free(G.subsys_env);
+			G.subsys_env = NULL;
+		}
+		/* Set G.subsystem and $SUBSYSTEM from symlink's last component */
+		G.subsystem = strrchr(subsys, '/');
+		if (G.subsystem) {
+			G.subsystem = xstrdup(G.subsystem + 1);
+			G.subsys_env = xasprintf("%s=%s", "SUBSYSTEM", G.subsystem);
+			putenv(G.subsys_env);
+		}
+	}
+
+	make_device(/*DEVNAME:*/ NULL, path, OP_add);
 
 	return TRUE;
 }
@@ -834,22 +859,6 @@ static int FAST_FUNC dirAction(const char *fileName UNUSED_PARAM,
 		void *userData UNUSED_PARAM,
 		int depth)
 {
-	/* Extract device subsystem -- the name of the directory
-	 * under /sys/class/ */
-	if (1 == depth) {
-		free(G.subsystem);
-		if (G.subsys_env) {
-			bb_unsetenv_and_free(G.subsys_env);
-			G.subsys_env = NULL;
-		}
-		G.subsystem = strrchr(fileName, '/');
-		if (G.subsystem) {
-			G.subsystem = xstrdup(G.subsystem + 1);
-			G.subsys_env = xasprintf("%s=%s", "SUBSYSTEM", G.subsystem);
-			putenv(G.subsys_env);
-		}
-	}
-
 	return (depth >= MAX_SYSFS_DEPTH ? SKIP : TRUE);
 }
 
@@ -870,8 +879,9 @@ static void load_firmware(const char *firmware, const char *sysfs_path)
 	int firmware_fd, loading_fd;
 
 	/* check for /lib/firmware/$FIRMWARE */
-	xchdir("/lib/firmware");
-	firmware_fd = open(firmware, O_RDONLY); /* can fail */
+	firmware_fd = -1;
+	if (chdir("/lib/firmware") == 0)
+		firmware_fd = open(firmware, O_RDONLY); /* can fail */
 
 	/* check for /sys/$DEVPATH/loading ... give 30 seconds to appear */
 	xchdir(sysfs_path);
@@ -1063,25 +1073,10 @@ int mdev_main(int argc UNUSED_PARAM, char **argv)
 
 		putenv((char*)"ACTION=add");
 
-		/* ACTION_FOLLOWLINKS is needed since in newer kernels
-		 * /sys/block/loop* (for example) are symlinks to dirs,
-		 * not real directories.
-		 * (kernel's CONFIG_SYSFS_DEPRECATED makes them real dirs,
-		 * but we can't enforce that on users)
-		 */
-		if (access("/sys/class/block", F_OK) != 0) {
-			/* Scan obsolete /sys/block only if /sys/class/block
-			 * doesn't exist. Otherwise we'll have dupes.
-			 * Also, do not complain if it doesn't exist.
-			 * Some people configure kernel to have no blockdevs.
-			 */
-			recursive_action("/sys/block",
-				ACTION_RECURSE | ACTION_FOLLOWLINKS | ACTION_QUIET,
-				fileAction, dirAction, temp, 0);
-		}
-		recursive_action("/sys/class",
-			ACTION_RECURSE | ACTION_FOLLOWLINKS,
-			fileAction, dirAction, temp, 0);
+		/* Create all devices from /sys/dev hierarchy */
+		recursive_action("/sys/dev",
+				 ACTION_RECURSE | ACTION_FOLLOWLINKS,
+				 fileAction, dirAction, temp, 0);
 	} else {
 		char *fw;
 		char *seq;

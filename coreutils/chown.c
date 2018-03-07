@@ -6,6 +6,21 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config CHOWN
+//config:	bool "chown (7.2 kb)"
+//config:	default y
+//config:	help
+//config:	chown is used to change the user and/or group ownership
+//config:	of files.
+//config:
+//config:config FEATURE_CHOWN_LONG_OPTIONS
+//config:	bool "Enable long options"
+//config:	default y
+//config:	depends on CHOWN && LONG_OPTS
+
+//applet:IF_CHOWN(APPLET_NOEXEC(chown, chown, BB_DIR_BIN, BB_SUID_DROP, chown))
+
+//kbuild:lib-$(CONFIG_CHOWN) += chown.o
 
 /* BB_AUDIT SUSv3 defects - none? */
 /* http://www.opengroup.org/onlinepubs/007904975/utilities/chown.html */
@@ -40,7 +55,7 @@
 /* This is a NOEXEC applet. Be very careful! */
 
 
-#define OPT_STR     ("Rh" IF_DESKTOP("vcfLHP"))
+#define OPT_STR     "Rh" IF_DESKTOP("vcfLHP")
 #define BIT_RECURSE 1
 #define OPT_RECURSE (opt & 1)
 #define OPT_NODEREF (opt & 2)
@@ -113,10 +128,10 @@ int chown_main(int argc UNUSED_PARAM, char **argv)
 	struct param_t param;
 
 #if ENABLE_FEATURE_CHOWN_LONG_OPTIONS
-	applet_long_options = chown_longopts;
+	opt = getopt32long(argv, "^" OPT_STR "\0" "-2", chown_longopts);
+#else
+	opt = getopt32(argv, "^" OPT_STR "\0" "-2");
 #endif
-	opt_complementary = "-2";
-	opt = getopt32(argv, OPT_STR);
 	argv += optind;
 
 	/* This matches coreutils behavior (almost - see below) */

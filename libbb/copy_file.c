@@ -64,6 +64,11 @@ static int ask_and_unlink(const char *dest, int flags)
 		bb_perror_msg("can't create '%s'", dest);
 		return -1; /* error */
 	}
+#if ENABLE_FEATURE_CP_LONG_OPTIONS
+	if (flags & FILEUTILS_RMDEST)
+		if (flags & FILEUTILS_VERBOSE)
+			printf("removed '%s'\n", dest);
+#endif
 	return 1; /* ok (to try again) */
 }
 
@@ -213,6 +218,22 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 		goto preserve_mode_ugid_time;
 	}
 
+	if (dest_exists) {
+		if (flags & FILEUTILS_UPDATE) {
+			if (source_stat.st_mtime <= dest_stat.st_mtime) {
+				return 0; /* source file must be newer */
+			}
+		}
+#if ENABLE_FEATURE_CP_LONG_OPTIONS
+		if (flags & FILEUTILS_RMDEST) {
+			ovr = ask_and_unlink(dest, flags);
+			if (ovr <= 0)
+				return ovr;
+			dest_exists = 0;
+		}
+#endif
+	}
+
 	if (flags & (FILEUTILS_MAKE_SOFTLINK|FILEUTILS_MAKE_HARDLINK)) {
 		int (*lf)(const char *oldpath, const char *newpath);
  make_links:
@@ -278,11 +299,16 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 		if (!S_ISREG(source_stat.st_mode))
 			new_mode = 0666;
 
-		// POSIX way is a security problem versus (sym)link attacks
-		if (!ENABLE_FEATURE_NON_POSIX_CP) {
-			dst_fd = open(dest, O_WRONLY|O_CREAT|O_TRUNC, new_mode);
-		} else { /* safe way: */
+		if (ENABLE_FEATURE_NON_POSIX_CP || (flags & FILEUTILS_INTERACTIVE)) {
+			/*
+			 * O_CREAT|O_EXCL: require that file did not exist before creation
+			 */
 			dst_fd = open(dest, O_WRONLY|O_CREAT|O_EXCL, new_mode);
+		} else { /* POSIX, and not "cp -i" */
+			/*
+			 * O_CREAT|O_TRUNC: create, or truncate (security problem versus (sym)link attacks)
+			 */
+			dst_fd = open(dest, O_WRONLY|O_CREAT|O_TRUNC, new_mode);
 		}
 		if (dst_fd == -1) {
 			ovr = ask_and_unlink(dest, flags);
@@ -348,7 +374,10 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 			int r = symlink(lpath, dest);
 			free(lpath);
 			if (r < 0) {
-				bb_perror_msg("can't create symlink '%s'", dest);
+				/* shared message */
+				bb_perror_msg("can't create %slink '%s' to '%s'",
+					"sym", dest, lpath
+				);
 				return -1;
 			}
 			if (flags & FILEUTILS_PRESERVE_STATUS)
@@ -357,7 +386,7 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 		}
 		/* _Not_ jumping to preserve_mode_ugid_time:
 		 * symlinks don't have those */
-		return 0;
+		goto verb_and_exit;
 	}
 	if (S_ISBLK(source_stat.st_mode) || S_ISCHR(source_stat.st_mode)
 	 || S_ISSOCK(source_stat.st_mode) || S_ISFIFO(source_stat.st_mode)
@@ -392,6 +421,7 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 			bb_perror_msg("can't preserve %s of '%s'", "permissions", dest);
 	}
 
+ verb_and_exit:
 	if (flags & FILEUTILS_VERBOSE) {
 		printf("'%s' -> '%s'\n", source, dest);
 	}

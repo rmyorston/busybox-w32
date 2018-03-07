@@ -26,7 +26,9 @@ endif
 
 lib-$(CONFIG_PLATFORM_MINGW32) += env.o
 lib-$(CONFIG_PLATFORM_MINGW32) += fnmatch.o
+lib-$(CONFIG_PLATFORM_MINGW32) += fsync.o
 lib-$(CONFIG_PLATFORM_MINGW32) += ioctl.o
+lib-$(CONFIG_PLATFORM_MINGW32) += isaac.o
 lib-$(CONFIG_PLATFORM_MINGW32) += mingw.o
 lib-$(CONFIG_PLATFORM_MINGW32) += process.o
 lib-$(CONFIG_PLATFORM_MINGW32) += regex.o
@@ -36,7 +38,6 @@ lib-$(CONFIG_PLATFORM_MINGW32) += poll.o
 lib-$(CONFIG_PLATFORM_MINGW32) += select.o
 lib-$(CONFIG_PLATFORM_MINGW32) += popen.o
 lib-$(CONFIG_PLATFORM_MINGW32) += statfs.o
-lib-$(CONFIG_PLATFORM_MINGW32) += mempcpy.o
 lib-$(CONFIG_PLATFORM_MINGW32) += mntent.o
 lib-$(CONFIG_PLATFORM_MINGW32) += strptime.o
 lib-$(CONFIG_PLATFORM_MINGW32) += system.o

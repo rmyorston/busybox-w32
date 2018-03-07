@@ -12,6 +12,15 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config SUM
+//config:	bool "sum (4.3 kb)"
+//config:	default y
+//config:	help
+//config:	checksum and count the blocks in a file
+
+//applet:IF_SUM(APPLET(sum, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_SUM) += sum.o
 
 //usage:#define sum_trivial_usage
 //usage:       "[-rs] [FILE]..."
@@ -21,6 +30,7 @@
 //usage:     "\n	-s	Use System V sum algorithm (512byte blocks)"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 enum { SUM_BSD, PRINT_NAME, SUM_SYSV };
 
@@ -30,18 +40,20 @@ enum { SUM_BSD, PRINT_NAME, SUM_SYSV };
 /* Return 1 if successful.  */
 static unsigned sum_file(const char *file, unsigned type)
 {
-#define buf bb_common_bufsiz1
 	unsigned long long total_bytes = 0;
 	int fd, r;
 	/* The sum of all the input bytes, modulo (UINT_MAX + 1).  */
 	unsigned s = 0;
+
+#define buf bb_common_bufsiz1
+	setup_common_bufsiz();
 
 	fd = open_or_warn_stdin(file);
 	if (fd == -1)
 		return 0;
 
 	while (1) {
-		size_t bytes_read = safe_read(fd, buf, BUFSIZ);
+		size_t bytes_read = safe_read(fd, buf, COMMON_BUFSIZE);
 
 		if ((ssize_t)bytes_read <= 0) {
 			r = (fd && close(fd) != 0);
@@ -70,9 +82,9 @@ static unsigned sum_file(const char *file, unsigned type)
 	if (type >= SUM_SYSV) {
 		r = (s & 0xffff) + ((s & 0xffffffff) >> 16);
 		s = (r & 0xffff) + (r >> 16);
-		printf("%u %llu %s\n", s, (total_bytes + 511) / 512, file);
+		printf("%u %"LL_FMT"u %s\n", s, (total_bytes + 511) / 512, file);
 	} else
-		printf("%05u %5llu %s\n", s, (total_bytes + 1023) / 1024, file);
+		printf("%05u %5"OFF_FMT"u %s\n", s, (total_bytes + 1023) / 1024, file);
 	return 1;
 #undef buf
 }

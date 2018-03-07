@@ -12,12 +12,12 @@
  * this paragraph in its entirety in the documentation or other materials
  * provided with the distribution, and (3) all advertising materials mentioning
  * features or use of this software display the following acknowledgement:
- * ``This product includes software developed by the University of California,
+ * ''This product includes software developed by the University of California,
  * Lawrence Berkeley Laboratory and its contributors.'' Neither the name of
  * the University nor the names of its contributors may be used to endorse
  * or promote products derived from this software without specific prior
  * written permission.
- * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR IMPLIED
+ * THIS SOFTWARE IS PROVIDED ''AS IS'' AND WITHOUT ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
@@ -209,11 +209,43 @@
  *  -- Van Jacobson (van@ee.lbl.gov)
  *     Tue Dec 20 03:50:13 PST 1988
  */
+//config:config TRACEROUTE
+//config:	bool "traceroute (11 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	Utility to trace the route of IP packets.
+//config:
+//config:config TRACEROUTE6
+//config:	bool "traceroute6 (12 kb)"
+//config:	default y
+//config:	depends on FEATURE_IPV6
+//config:	help
+//config:	Utility to trace the route of IPv6 packets.
+//config:
+//config:config FEATURE_TRACEROUTE_VERBOSE
+//config:	bool "Enable verbose output"
+//config:	default y
+//config:	depends on TRACEROUTE || TRACEROUTE6
+//config:	help
+//config:	Add some verbosity to traceroute. This includes among other things
+//config:	hostnames and ICMP response types.
+//config:
+//config:config FEATURE_TRACEROUTE_USE_ICMP
+//config:	bool "Enable -I option (use ICMP instead of UDP)"
+//config:	default y
+//config:	depends on TRACEROUTE || TRACEROUTE6
+
+/* Needs socket(AF_INET, SOCK_RAW, IPPROTO_ICMP), therefore BB_SUID_MAYBE: */
+//applet:IF_TRACEROUTE(APPLET(traceroute, BB_DIR_USR_BIN, BB_SUID_MAYBE))
+//applet:IF_TRACEROUTE6(APPLET(traceroute6, BB_DIR_USR_BIN, BB_SUID_MAYBE))
+
+//kbuild:lib-$(CONFIG_TRACEROUTE) += traceroute.o
+//kbuild:lib-$(CONFIG_TRACEROUTE6) += traceroute.o
 
 //usage:#define traceroute_trivial_usage
 //usage:       "[-"IF_TRACEROUTE6("46")"FIlnrv] [-f 1ST_TTL] [-m MAXTTL] [-q PROBES] [-p PORT]\n"
-//usage:       "	[-t TOS] [-w WAIT_SEC]"
-//usage:       IF_FEATURE_TRACEROUTE_SOURCE_ROUTE(" [-g GATEWAY]")" [-s SRC_IP] [-i IFACE]\n"
+//usage:       "	[-t TOS] [-w WAIT_SEC] [-s SRC_IP] [-i IFACE]\n"
 //usage:       "	[-z PAUSE_MSEC] HOST [BYTES]"
 //usage:#define traceroute_full_usage "\n\n"
 //usage:       "Trace the route to HOST\n"
@@ -279,6 +311,9 @@
 # ifndef SOL_IPV6
 #  define SOL_IPV6 IPPROTO_IPV6
 # endif
+# if defined(IPV6_PKTINFO) && !defined(IPV6_RECVPKTINFO)
+#  define IPV6_RECVPKTINFO IPV6_PKTINFO
+# endif
 #endif
 
 #include "libbb.h"
@@ -291,10 +326,17 @@
 # define IPPROTO_IP 0
 #endif
 
+/* Some operating systems, like GNU/Hurd, don't define SOL_RAW, but do have
+ * IPPROTO_RAW. Since the IPPROTO definitions are also valid to use for
+ * setsockopt (and take the same value as their corresponding SOL definitions,
+ * if they exist), we can just fall back on IPPROTO_RAW. */
+#ifndef SOL_RAW
+# define SOL_RAW IPPROTO_RAW
+#endif
+
 
 #define OPT_STRING \
 	"FIlnrdvxt:i:m:p:q:s:w:z:f:" \
-	IF_FEATURE_TRACEROUTE_SOURCE_ROUTE("g:") \
 	"4" IF_TRACEROUTE6("6")
 enum {
 	OPT_DONT_FRAGMNT = (1 << 0),    /* F */
@@ -314,9 +356,8 @@ enum {
 	OPT_WAITTIME     = (1 << 14),   /* w */
 	OPT_PAUSE_MS     = (1 << 15),   /* z */
 	OPT_FIRST_TTL    = (1 << 16),   /* f */
-	OPT_SOURCE_ROUTE = (1 << 17) * ENABLE_FEATURE_TRACEROUTE_SOURCE_ROUTE, /* g */
-	OPT_IPV4         = (1 << (17+ENABLE_FEATURE_TRACEROUTE_SOURCE_ROUTE)),   /* 4 */
-	OPT_IPV6         = (1 << (18+ENABLE_FEATURE_TRACEROUTE_SOURCE_ROUTE)) * ENABLE_TRACEROUTE6, /* 6 */
+	OPT_IPV4         = (1 << 17),   /* 4 */
+	OPT_IPV6         = (1 << 18) * ENABLE_TRACEROUTE6, /* 6 */
 };
 #define verbose (option_mask32 & OPT_VERBOSE)
 
@@ -343,26 +384,18 @@ struct outdata6_t {
 #endif
 
 struct globals {
+	/* Pointer to entire malloced IP packet, "packlen" bytes long: */
 	struct ip *outip;
+	/* Pointer to ICMP or UDP payload (not header): */
 	struct outdata_t *outdata;
+
 	len_and_sockaddr *dest_lsa;
 	int packlen;                    /* total length of packet */
 	int pmtu;                       /* Path MTU Discovery (RFC1191) */
 	uint32_t ident;
-	uint16_t port; // 32768 + 666;  /* start udp dest port # for probe packets */
+	uint16_t port; // 33434;        /* start udp dest port # for probe packets */
 	int waittime; // 5;             /* time to wait for response (in seconds) */
-#if ENABLE_FEATURE_TRACEROUTE_SOURCE_ROUTE
-	int optlen;                     /* length of ip options */
-#else
-#define optlen 0
-#endif
 	unsigned char recv_pkt[512];    /* last inbound (icmp) packet */
-#if ENABLE_FEATURE_TRACEROUTE_SOURCE_ROUTE
-	/* Maximum number of gateways (include room for one noop) */
-#define NGATEWAYS ((int)((MAX_IPOPTLEN - IPOPT_MINOFF - 1) / sizeof(uint32_t)))
-	/* loose source route gateway list (including room for final destination) */
-	uint32_t gwlist[NGATEWAYS + 1];
-#endif
 };
 
 #define G (*ptr_to_globals)
@@ -374,14 +407,11 @@ struct globals {
 #define ident     (G.ident    )
 #define port      (G.port     )
 #define waittime  (G.waittime )
-#if ENABLE_FEATURE_TRACEROUTE_SOURCE_ROUTE
-# define optlen   (G.optlen   )
-#endif
 #define recv_pkt  (G.recv_pkt )
 #define gwlist    (G.gwlist   )
 #define INIT_G() do { \
 	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
-	port = 32768 + 666; \
+	port = 33434; \
 	waittime = 5; \
 } while (0)
 
@@ -421,7 +451,7 @@ send_probe(int seq, int ttl)
 	/* Payload */
 #if ENABLE_TRACEROUTE6
 	if (dest_lsa->u.sa.sa_family == AF_INET6) {
-		struct outdata6_t *pkt = (struct outdata6_t *) outip;
+		struct outdata6_t *pkt = (struct outdata6_t *) outdata;
 		pkt->ident6 = htonl(ident);
 		pkt->seq6   = htonl(seq);
 		/*gettimeofday(&pkt->tv, &tz);*/
@@ -438,8 +468,10 @@ send_probe(int seq, int ttl)
 
 			/* Always calculate checksum for icmp packets */
 			outicmp->icmp_cksum = 0;
-			outicmp->icmp_cksum = inet_cksum((uint16_t *)outicmp,
-						packlen - (sizeof(*outip) + optlen));
+			outicmp->icmp_cksum = inet_cksum(
+					(uint16_t *)outicmp,
+					((char*)outip + packlen) - (char*)outicmp
+			);
 			if (outicmp->icmp_cksum == 0)
 				outicmp->icmp_cksum = 0xffff;
 		}
@@ -471,13 +503,12 @@ send_probe(int seq, int ttl)
 	}
 #endif
 
+	out = outdata;
 #if ENABLE_TRACEROUTE6
 	if (dest_lsa->u.sa.sa_family == AF_INET6) {
 		res = setsockopt_int(sndsock, SOL_IPV6, IPV6_UNICAST_HOPS, ttl);
 		if (res != 0)
 			bb_perror_msg_and_die("setsockopt(%s) %d", "UNICAST_HOPS", ttl);
-		out = outip;
-		len = packlen;
 	} else
 #endif
 	{
@@ -486,18 +517,17 @@ send_probe(int seq, int ttl)
 		if (res != 0)
 			bb_perror_msg_and_die("setsockopt(%s) %d", "TTL", ttl);
 #endif
-		out = outicmp;
-		len = packlen - sizeof(*outip);
-		if (!(option_mask32 & OPT_USE_ICMP)) {
-			out = outdata;
-			len -= sizeof(*outudp);
-			set_nport(&dest_lsa->u.sa, htons(port + seq));
-		}
+		if (option_mask32 & OPT_USE_ICMP)
+			out = outicmp;
 	}
 
+	if (!(option_mask32 & OPT_USE_ICMP)) {
+		set_nport(&dest_lsa->u.sa, htons(port + seq));
+	}
+	len = ((char*)outip + packlen) - (char*)out;
 	res = xsendto(sndsock, out, len, &dest_lsa->u.sa, dest_lsa->len);
 	if (res != len)
-		bb_info_msg("sent %d octets, ret=%d", len, res);
+		bb_error_msg("sent %d octets, ret=%d", len, res);
 }
 
 #if ENABLE_FEATURE_TRACEROUTE_VERBOSE
@@ -679,6 +709,9 @@ packet_ok(int read_len, len_and_sockaddr *from_lsa,
 
 # if ENABLE_FEATURE_TRACEROUTE_VERBOSE
 	if (verbose) {
+#  ifndef MAXHOSTNAMELEN
+#   define MAXHOSTNAMELEN 80
+#  endif
 		unsigned char *p;
 		char pa1[MAXHOSTNAMELEN];
 		char pa2[MAXHOSTNAMELEN];
@@ -801,10 +834,6 @@ common_traceroute_main(int op, char **argv)
 	char *pausemsecs_str;
 	char *first_ttl_str;
 	char *dest_str;
-#if ENABLE_FEATURE_TRACEROUTE_SOURCE_ROUTE
-	llist_t *source_route_list = NULL;
-	int lsrr = 0;
-#endif
 #if ENABLE_TRACEROUTE6
 	sa_family_t af;
 #else
@@ -818,14 +847,11 @@ common_traceroute_main(int op, char **argv)
 
 	INIT_G();
 
-	/* minimum 1 arg */
-	opt_complementary = "-1:x-x" IF_FEATURE_TRACEROUTE_SOURCE_ROUTE(":g::");
-	op |= getopt32(argv, OPT_STRING
+	op |= getopt32(argv, "^"
+		OPT_STRING
+		"\0" "-1:x-x" /* minimum 1 arg */
 		, &tos_str, &device, &max_ttl_str, &port_str, &nprobes_str
 		, &source, &waittime_str, &pausemsecs_str, &first_ttl_str
-#if ENABLE_FEATURE_TRACEROUTE_SOURCE_ROUTE
-		, &source_route_list
-#endif
 	);
 	argv += optind;
 
@@ -858,26 +884,14 @@ common_traceroute_main(int op, char **argv)
 	if (op & OPT_FIRST_TTL)
 		first_ttl = xatou_range(first_ttl_str, 1, max_ttl);
 
-#if ENABLE_FEATURE_TRACEROUTE_SOURCE_ROUTE
-	if (source_route_list) {
-		while (source_route_list) {
-			len_and_sockaddr *lsa;
-
-			if (lsrr >= NGATEWAYS)
-				bb_error_msg_and_die("no more than %d gateways", NGATEWAYS);
-			lsa = xhost_and_af2sockaddr(llist_pop(&source_route_list), 0, AF_INET);
-			gwlist[lsrr] = lsa->u.sin.sin_addr.s_addr;
-			free(lsa);
-			++lsrr;
-		}
-		optlen = (lsrr + 1) * sizeof(gwlist[0]);
-	}
-#endif
-
 	/* Process destination and optional packet size */
-	minpacket = sizeof(*outip) + SIZEOF_ICMP_HDR + sizeof(*outdata) + optlen;
+	minpacket = sizeof(struct ip)
+			+ SIZEOF_ICMP_HDR
+			+ sizeof(struct outdata_t);
 	if (!(op & OPT_USE_ICMP))
-		minpacket += sizeof(*outudp) - SIZEOF_ICMP_HDR;
+		minpacket = sizeof(struct ip)
+			+ sizeof(struct udphdr)
+			+ sizeof(struct outdata_t);
 #if ENABLE_TRACEROUTE6
 	af = AF_UNSPEC;
 	if (op & OPT_IPV4)
@@ -887,7 +901,9 @@ common_traceroute_main(int op, char **argv)
 	dest_lsa = xhost_and_af2sockaddr(argv[0], port, af);
 	af = dest_lsa->u.sa.sa_family;
 	if (af == AF_INET6)
-		minpacket = sizeof(struct outdata6_t);
+		minpacket = sizeof(struct ip6_hdr)
+			+ sizeof(struct udphdr)
+			+ sizeof(struct outdata6_t);
 #else
 	dest_lsa = xhost2sockaddr(argv[0], port);
 #endif
@@ -901,12 +917,7 @@ common_traceroute_main(int op, char **argv)
 #if ENABLE_TRACEROUTE6
 	if (af == AF_INET6) {
 		xmove_fd(xsocket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6), rcvsock);
-# ifdef IPV6_RECVPKTINFO
 		setsockopt_1(rcvsock, SOL_IPV6, IPV6_RECVPKTINFO);
-		setsockopt_1(rcvsock, SOL_IPV6, IPV6_2292PKTINFO);
-# else
-		setsockopt_1(rcvsock, SOL_IPV6, IPV6_PKTINFO);
-# endif
 	} else
 #endif
 	{
@@ -932,31 +943,6 @@ common_traceroute_main(int op, char **argv)
 			xmove_fd(xsocket(AF_INET, SOCK_RAW, IPPROTO_ICMP), sndsock);
 		else
 			xmove_fd(xsocket(AF_INET, SOCK_DGRAM, 0), sndsock);
-#if ENABLE_FEATURE_TRACEROUTE_SOURCE_ROUTE && defined IP_OPTIONS
-		if (lsrr > 0) {
-			unsigned char optlist[MAX_IPOPTLEN];
-			unsigned size;
-
-			/* final hop */
-			gwlist[lsrr] = dest_lsa->u.sin.sin_addr.s_addr;
-			++lsrr;
-
-			/* force 4 byte alignment */
-			optlist[0] = IPOPT_NOP;
-			/* loose source route option */
-			optlist[1] = IPOPT_LSRR;
-			size = lsrr * sizeof(gwlist[0]);
-			optlist[2] = size + 3;
-			/* pointer to LSRR addresses */
-			optlist[3] = IPOPT_MINOFF;
-			memcpy(optlist + 4, gwlist, size);
-
-			if (setsockopt(sndsock, IPPROTO_IP, IP_OPTIONS,
-					(char *)optlist, size + sizeof(gwlist[0])) < 0) {
-				bb_perror_msg_and_die("IP_OPTIONS");
-			}
-		}
-#endif
 	}
 
 #ifdef SO_SNDBUF
@@ -984,7 +970,7 @@ common_traceroute_main(int op, char **argv)
 
 	ident = getpid();
 
-	if (af == AF_INET) {
+	if (!ENABLE_TRACEROUTE6 || af == AF_INET) {
 		if (op & OPT_USE_ICMP) {
 			ident |= 0x8000;
 			outicmp->icmp_type = ICMP_ECHO;
@@ -994,6 +980,14 @@ common_traceroute_main(int op, char **argv)
 			outdata = (struct outdata_t *)(outudp + 1);
 		}
 	}
+#if ENABLE_TRACEROUTE6
+	if (af == AF_INET6) {
+		outdata = (void*)((char*)outip
+				+ sizeof(struct ip6_hdr)
+				+ sizeof(struct udphdr)
+				);
+	}
+#endif
 
 	if (op & OPT_DEVICE) /* hmm, do we need error check? */
 		setsockopt_bindtodevice(sndsock, device);
@@ -1218,11 +1212,13 @@ common_traceroute_main(int op, char **argv)
 	return 0;
 }
 
+#if ENABLE_TRACEROUTE
 int traceroute_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int traceroute_main(int argc UNUSED_PARAM, char **argv)
 {
 	return common_traceroute_main(0, argv);
 }
+#endif
 
 #if ENABLE_TRACEROUTE6
 int traceroute6_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;

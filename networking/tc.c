@@ -6,51 +6,81 @@
  *
  * Bernhard Reutner-Fischer adjusted for busybox
  */
+//config:config TC
+//config:	bool "tc (3.1 kb)"
+//config:	default y
+//config:	help
+//config:	Show / manipulate traffic control settings
+//config:
+//config:config FEATURE_TC_INGRESS
+//config:	bool "Enable ingress"
+//config:	default y
+//config:	depends on TC
+
+//applet:IF_TC(APPLET(tc, BB_DIR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_TC) += tc.o
 
 //usage:#define tc_trivial_usage
 /* //usage: "[OPTIONS] OBJECT CMD [dev STRING]" */
 //usage:	"OBJECT CMD [dev STRING]"
 //usage:#define tc_full_usage "\n\n"
-//usage:	"OBJECT: {qdisc|class|filter}\n"
-//usage:	"CMD: {add|del|change|replace|show}\n"
+//usage:	"OBJECT: qdisc|class|filter\n"
+//usage:	"CMD: add|del|change|replace|show\n"
 //usage:	"\n"
-//usage:	"qdisc [ handle QHANDLE ] [ root |"IF_FEATURE_TC_INGRESS(" ingress |")" parent CLASSID ]\n"
-/* //usage: "[ estimator INTERVAL TIME_CONSTANT ]\n" */
-//usage:	"	[ [ QDISC_KIND ] [ help | OPTIONS ] ]\n"
-//usage:	"	QDISC_KIND := { [p|b]fifo | tbf | prio | cbq | red | etc. }\n"
-//usage:	"qdisc show [ dev STRING ]"IF_FEATURE_TC_INGRESS(" [ingress]")"\n"
-//usage:	"class [ classid CLASSID ] [ root | parent CLASSID ]\n"
-//usage:	"	[ [ QDISC_KIND ] [ help | OPTIONS ] ]\n"
-//usage:	"class show [ dev STRING ] [ root | parent CLASSID ]\n"
-//usage:	"filter [ pref PRIO ] [ protocol PROTO ]\n"
-/* //usage: "\t[ estimator INTERVAL TIME_CONSTANT ]\n" */
-//usage:	"	[ root | classid CLASSID ] [ handle FILTERID ]\n"
-//usage:	"	[ [ FILTER_TYPE ] [ help | OPTIONS ] ]\n"
-//usage:	"filter show [ dev STRING ] [ root | parent CLASSID ]"
+//usage:	"qdisc [handle QHANDLE] [root|"IF_FEATURE_TC_INGRESS("ingress|")"parent CLASSID]\n"
+/* //usage: "[estimator INTERVAL TIME_CONSTANT]\n" */
+//usage:	"	[[QDISC_KIND] [help|OPTIONS]]\n"
+//usage:	"	QDISC_KIND := [p|b]fifo|tbf|prio|cbq|red|etc.\n"
+//usage:	"qdisc show [dev STRING]"IF_FEATURE_TC_INGRESS(" [ingress]")"\n"
+//usage:	"class [classid CLASSID] [root|parent CLASSID]\n"
+//usage:	"	[[QDISC_KIND] [help|OPTIONS] ]\n"
+//usage:	"class show [ dev STRING ] [root|parent CLASSID]\n"
+//usage:	"filter [pref PRIO] [protocol PROTO]\n"
+/* //usage: "\t[estimator INTERVAL TIME_CONSTANT]\n" */
+//usage:	"	[root|classid CLASSID] [handle FILTERID]\n"
+//usage:	"	[[FILTER_TYPE] [help|OPTIONS]]\n"
+//usage:	"filter show [dev STRING] [root|parent CLASSID]"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 #include "libiproute/utils.h"
 #include "libiproute/ip_common.h"
 #include "libiproute/rt_names.h"
 #include <linux/pkt_sched.h> /* for the TC_H_* macros */
 
+/* This is the deprecated multiqueue interface */
+#ifndef TCA_PRIO_MAX
+enum
+{
+	TCA_PRIO_UNSPEC,
+	TCA_PRIO_MQ,
+	__TCA_PRIO_MAX
+};
+#define TCA_PRIO_MAX    (__TCA_PRIO_MAX - 1)
+#endif
+
 #define parse_rtattr_nested(tb, max, rta) \
 	(parse_rtattr((tb), (max), RTA_DATA(rta), RTA_PAYLOAD(rta)))
 
 /* nullifies tb on error */
 #define __parse_rtattr_nested_compat(tb, max, rta, len) \
-	({if ((RTA_PAYLOAD(rta) >= len) && \
-		 (RTA_PAYLOAD(rta) >= RTA_ALIGN(len) + sizeof(struct rtattr))) { \
-			rta = RTA_DATA(rta) + RTA_ALIGN(len); \
-			parse_rtattr_nested(tb, max, rta); \
-	  } else \
-			memset(tb, 0, sizeof(struct rtattr *) * (max + 1)); \
-	})
+({ \
+	if ((RTA_PAYLOAD(rta) >= len) \
+	 && (RTA_PAYLOAD(rta) >= RTA_ALIGN(len) + sizeof(struct rtattr)) \
+	) { \
+		rta = RTA_DATA(rta) + RTA_ALIGN(len); \
+		parse_rtattr_nested(tb, max, rta); \
+	} else \
+		memset(tb, 0, sizeof(struct rtattr *) * (max + 1)); \
+})
 
 #define parse_rtattr_nested_compat(tb, max, rta, data, len) \
-	({data = RTA_PAYLOAD(rta) >= len ? RTA_DATA(rta) : NULL; \
-	__parse_rtattr_nested_compat(tb, max, rta, len); })
+({ \
+	data = RTA_PAYLOAD(rta) >= len ? RTA_DATA(rta) : NULL; \
+	__parse_rtattr_nested_compat(tb, max, rta, len); \
+})
 
 #define show_details (0) /* not implemented. Does anyone need it? */
 #define use_iec (0) /* not currently documented in the upstream manpage */
@@ -63,13 +93,14 @@ struct globals {
 	uint32_t filter_prio;
 	uint32_t filter_proto;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define filter_ifindex (G.filter_ifindex)
 #define filter_qdisc (G.filter_qdisc)
 #define filter_parent (G.filter_parent)
 #define filter_prio (G.filter_prio)
 #define filter_proto (G.filter_proto)
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	BUILD_BUG_ON(sizeof(G) > COMMON_BUFSIZE); \
 } while (0)
 
@@ -98,7 +129,7 @@ static int get_qdisc_handle(uint32_t *h, const char *str) {
 	char *p;
 
 	maj = TC_H_UNSPEC;
-	if (!strcmp(str, "none"))
+	if (strcmp(str, "none") == 0)
 		goto ok;
 	maj = strtoul(str, &p, 16);
 	if (p == str)
@@ -117,10 +148,10 @@ static int get_tc_classid(uint32_t *h, const char *str) {
 	char *p;
 
 	maj = TC_H_ROOT;
-	if (!strcmp(str, "root"))
+	if (strcmp(str, "root") == 0)
 		goto ok;
 	maj = TC_H_UNSPEC;
-	if (!strcmp(str, "none"))
+	if (strcmp(str, "none") == 0)
 		goto ok;
 	maj = strtoul(str, &p, 16);
 	if (p == str) {
@@ -166,11 +197,13 @@ static void print_rate(char *buf, int len, uint32_t rate)
 	}
 }
 
+#if 0
 /* This is "pfifo_fast".  */
 static int prio_parse_opt(int argc, char **argv, struct nlmsghdr *n)
 {
 	return 0;
 }
+#endif
 static int prio_print_opt(struct rtattr *opt)
 {
 	int i;
@@ -193,11 +226,13 @@ static int prio_print_opt(struct rtattr *opt)
 	return 0;
 }
 
+#if 0
 /* Class Based Queue */
 static int cbq_parse_opt(int argc, char **argv, struct nlmsghdr *n)
 {
 	return 0;
 }
+#endif
 static int cbq_print_opt(struct rtattr *opt)
 {
 	struct rtattr *tb[TCA_CBQ_MAX+1];
@@ -290,8 +325,10 @@ static int cbq_print_opt(struct rtattr *opt)
 	return 0;
 }
 
-static int print_qdisc(const struct sockaddr_nl *who UNUSED_PARAM,
-						struct nlmsghdr *hdr, void *arg UNUSED_PARAM)
+static FAST_FUNC int print_qdisc(
+		const struct sockaddr_nl *who UNUSED_PARAM,
+		struct nlmsghdr *hdr,
+		void *arg UNUSED_PARAM)
 {
 	struct tcmsg *msg = NLMSG_DATA(hdr);
 	int len = hdr->nlmsg_len;
@@ -346,8 +383,10 @@ static int print_qdisc(const struct sockaddr_nl *who UNUSED_PARAM,
 	return 0;
 }
 
-static int print_class(const struct sockaddr_nl *who UNUSED_PARAM,
-						struct nlmsghdr *hdr, void *arg UNUSED_PARAM)
+static FAST_FUNC int print_class(
+		const struct sockaddr_nl *who UNUSED_PARAM,
+		struct nlmsghdr *hdr,
+		void *arg UNUSED_PARAM)
 {
 	struct tcmsg *msg = NLMSG_DATA(hdr);
 	int len = hdr->nlmsg_len;
@@ -414,8 +453,10 @@ static int print_class(const struct sockaddr_nl *who UNUSED_PARAM,
 	return 0;
 }
 
-static int print_filter(const struct sockaddr_nl *who UNUSED_PARAM,
-						struct nlmsghdr *hdr, void *arg UNUSED_PARAM)
+static FAST_FUNC int print_filter(
+		const struct sockaddr_nl *who UNUSED_PARAM,
+		struct nlmsghdr *hdr UNUSED_PARAM,
+		void *arg UNUSED_PARAM)
 {
 	return 0;
 }
@@ -433,6 +474,12 @@ int tc_main(int argc UNUSED_PARAM, char **argv)
 		"replace\0"
 		"show\0""list\0"
 		;
+	enum {
+		CMD_add = 0, CMD_del, CMD_change,
+		CMD_link,
+		CMD_replace,
+		CMD_show
+	};
 	static const char args[] ALIGN1 =
 		"dev\0" /* qdisc, class, filter */
 		"root\0" /* class, filter */
@@ -442,9 +489,15 @@ int tc_main(int argc UNUSED_PARAM, char **argv)
 		"classid\0" /* change: for class use "handle" */
 		"preference\0""priority\0""protocol\0" /* filter */
 		;
-	enum { CMD_add = 0, CMD_del, CMD_change, CMD_link, CMD_replace, CMD_show };
-	enum { ARG_dev = 0, ARG_root, ARG_parent, ARG_qdisc,
-			ARG_handle, ARG_classid, ARG_pref, ARG_prio, ARG_proto};
+	enum {
+		ARG_dev = 0,
+		ARG_root,
+		ARG_parent,
+		ARG_qdisc,
+		ARG_handle,
+		ARG_classid,
+		ARG_pref, ARG_prio, ARG_proto
+	};
 	struct rtnl_handle rth;
 	struct tcmsg msg;
 	int ret, obj, cmd, arg;
@@ -469,9 +522,12 @@ int tc_main(int argc UNUSED_PARAM, char **argv)
 			invarg_1_to_2(*argv, argv[-1]);
 		argv++;
 	}
+
 	memset(&msg, 0, sizeof(msg));
-	msg.tcm_family = AF_UNSPEC;
+	if (AF_UNSPEC != 0)
+		msg.tcm_family = AF_UNSPEC;
 	ll_init_map(&rth);
+
 	while (*argv) {
 		arg = index_in_substrings(args, *argv);
 		if (arg == ARG_dev) {
@@ -508,7 +564,8 @@ int tc_main(int argc UNUSED_PARAM, char **argv)
 			msg.tcm_parent = TC_H_ROOT;
 			if (obj == OBJ_filter)
 				filter_parent = TC_H_ROOT;
-		} else if (arg == ARG_parent) {
+		} else
+		if (arg == ARG_parent) {
 			uint32_t handle;
 			if (msg.tcm_parent)
 				duparg(*argv, "parent");
@@ -517,23 +574,31 @@ int tc_main(int argc UNUSED_PARAM, char **argv)
 			msg.tcm_parent = handle;
 			if (obj == OBJ_filter)
 				filter_parent = handle;
-		} else if (arg == ARG_handle) { /* filter::list */
+		} else
+		if (arg == ARG_handle) { /* filter::list */
 			if (msg.tcm_handle)
 				duparg(*argv, "handle");
 			/* reject LONG_MIN || LONG_MAX */
 			/* TODO: for fw
 			slash = strchr(handle, '/');
 			if (slash != NULL)
-				   *slash = '\0';
+				*slash = '\0';
 			 */
 			msg.tcm_handle = get_u32(*argv, "handle");
 			/* if (slash) {if (get_u32(uint32_t &mask, slash+1, NULL)) inv mask; addattr32(n, MAX_MSG, TCA_FW_MASK, mask); */
-		} else if (arg == ARG_classid && obj == OBJ_class && cmd == CMD_change){
-		} else if (arg == ARG_pref || arg == ARG_prio) { /* filter::list */
+		} else
+		if (arg == ARG_classid
+		 && obj == OBJ_class
+		 && cmd == CMD_change
+		) {
+			/* TODO */
+		} else
+		if (arg == ARG_pref || arg == ARG_prio) { /* filter::list */
 			if (filter_prio)
 				duparg(*argv, "priority");
 			filter_prio = get_u32(*argv, "priority");
-		} else if (arg == ARG_proto) { /* filter::list */
+		} else
+		if (arg == ARG_proto) { /* filter::list */
 			uint16_t tmp;
 			if (filter_proto)
 				duparg(*argv, "protocol");
@@ -542,6 +607,7 @@ int tc_main(int argc UNUSED_PARAM, char **argv)
 			filter_proto = tmp;
 		}
 	}
+
 	if (cmd >= CMD_show) { /* show or list */
 		if (obj == OBJ_filter)
 			msg.tcm_info = TC_H_MAKE(filter_prio<<16, filter_proto);

@@ -6,7 +6,6 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-
 #include <sys/types.h>
 #include <sys/socket.h> /* netinet/in.h needs it */
 #include <netinet/in.h>
@@ -69,6 +68,7 @@ int FAST_FUNC setsockopt_bindtodevice(int fd UNUSED_PARAM,
 }
 #endif
 
+#if !ENABLE_PLATFORM_MINGW32
 static len_and_sockaddr* get_lsa(int fd, int (*get_name)(int fd, struct sockaddr *addr, socklen_t *addrlen))
 {
 	len_and_sockaddr lsa;
@@ -97,6 +97,7 @@ len_and_sockaddr* FAST_FUNC get_peer_lsa(int fd)
 {
 	return get_lsa(fd, (int) getpeername);
 }
+#endif
 
 void FAST_FUNC xconnect(int s, const struct sockaddr *saddr, socklen_t addrlen)
 {
@@ -355,6 +356,10 @@ int FAST_FUNC xsocket_type(len_and_sockaddr **lsap, int family, int sock_type)
 #if ENABLE_FEATURE_IPV6
 		fd = socket(AF_INET6, sock_type, 0);
 		if (fd >= 0) {
+#if ENABLE_PLATFORM_MINGW32
+			DWORD buffer = 0;
+			setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &buffer, sizeof(DWORD));
+#endif
 			family = AF_INET6;
 			goto done;
 		}
@@ -498,12 +503,15 @@ char* FAST_FUNC xmalloc_sockaddr2hostonly_noport(const struct sockaddr *sa)
 {
 	return sockaddr2str(sa, NI_NAMEREQD | IGNORE_PORT);
 }
+#ifndef NI_NUMERICSCOPE
+# define NI_NUMERICSCOPE 0
+#endif
 char* FAST_FUNC xmalloc_sockaddr2dotted(const struct sockaddr *sa)
 {
-	return sockaddr2str(sa, NI_NUMERICHOST);
+	return sockaddr2str(sa, NI_NUMERICHOST | NI_NUMERICSCOPE);
 }
 
 char* FAST_FUNC xmalloc_sockaddr2dotted_noport(const struct sockaddr *sa)
 {
-	return sockaddr2str(sa, NI_NUMERICHOST | IGNORE_PORT);
+	return sockaddr2str(sa, NI_NUMERICHOST | NI_NUMERICSCOPE | IGNORE_PORT);
 }

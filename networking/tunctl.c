@@ -9,6 +9,24 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
+//config:config TUNCTL
+//config:	bool "tunctl (6.4 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	tunctl creates or deletes tun devices.
+//config:
+//config:config FEATURE_TUNCTL_UG
+//config:	bool "Support owner:group assignment"
+//config:	default y
+//config:	depends on TUNCTL
+//config:	help
+//config:	Allow to specify owner and group of newly created interface.
+//config:	340 bytes of pure bloat. Say no here.
+
+//applet:IF_TUNCTL(APPLET_NOEXEC(tunctl, tunctl, BB_DIR_SBIN, BB_SUID_DROP, tunctl))
+
+//kbuild:lib-$(CONFIG_TUNCTL) += tunctl.o
 
 //usage:#define tunctl_trivial_usage
 //usage:       "[-f device] ([-t name] | -d name)" IF_FEATURE_TUNCTL_UG(" [-u owner] [-g group] [-b]")
@@ -65,10 +83,13 @@ int tunctl_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	};
 
-	opt_complementary = "=0:t--d:d--t"; // no arguments; t ^ d
-	opts = getopt32(argv, "f:t:d:" IF_FEATURE_TUNCTL_UG("u:g:b"),
+	opts = getopt32(argv, "^"
+			"f:t:d:" IF_FEATURE_TUNCTL_UG("u:g:b")
+			"\0"
+			"=0:t--d:d--t", // no arguments; t ^ d
 			&opt_device, &opt_name, &opt_name
-			IF_FEATURE_TUNCTL_UG(, &opt_user, &opt_group));
+			IF_FEATURE_TUNCTL_UG(, &opt_user, &opt_group)
+	);
 
 	// select device
 	memset(&ifr, 0, sizeof(ifr));
@@ -82,7 +103,7 @@ int tunctl_main(int argc UNUSED_PARAM, char **argv)
 	// delete?
 	if (opts & OPT_d) {
 		IOCTL(fd, TUNSETPERSIST, (void *)(uintptr_t)0);
-		bb_info_msg("Set '%s' %spersistent", ifr.ifr_name, "non");
+		printf("Set '%s' nonpersistent\n", ifr.ifr_name);
 		return EXIT_SUCCESS;
 	}
 
@@ -135,9 +156,12 @@ int tunctl_main(int argc UNUSED_PARAM, char **argv)
 		OPT_d = 1 << 2, // delete named interface
 	};
 
-	opt_complementary = "=0:t--d:d--t"; // no arguments; t ^ d
-	opts = getopt32(argv, "f:t:d:u:g:b", // u, g, b accepted and ignored
-			&opt_device, &opt_name, &opt_name, NULL, NULL);
+	opts = getopt32(argv, "^"
+			"f:t:d:u:g:b" // u, g, b accepted and ignored
+			"\0"
+			"=0:t--d:d--t", // no arguments; t ^ d
+			&opt_device, &opt_name, &opt_name, NULL, NULL
+	);
 
 	// set interface name
 	memset(&ifr, 0, sizeof(ifr));

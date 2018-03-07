@@ -4,55 +4,53 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-#include "libbb.h"
-
-//applet:IF_CTTYHACK(APPLET(cttyhack, BB_DIR_BIN, BB_SUID_DROP))
-
-//kbuild:lib-$(CONFIG_CTTYHACK) += cttyhack.o
-
 //config:config CTTYHACK
-//config:	bool "cttyhack"
+//config:	bool "cttyhack (2.5 kb)"
 //config:	default y
 //config:	help
-//config:	  One common problem reported on the mailing list is the "can't
-//config:	  access tty; job control turned off" error message, which typically
-//config:	  appears when one tries to use a shell with stdin/stdout on
-//config:	  /dev/console.
-//config:	  This device is special - it cannot be a controlling tty.
+//config:	One common problem reported on the mailing list is the "can't
+//config:	access tty; job control turned off" error message, which typically
+//config:	appears when one tries to use a shell with stdin/stdout on
+//config:	/dev/console.
+//config:	This device is special - it cannot be a controlling tty.
 //config:
-//config:	  The proper solution is to use the correct device instead of
-//config:	  /dev/console.
+//config:	The proper solution is to use the correct device instead of
+//config:	/dev/console.
 //config:
-//config:	  cttyhack provides a "quick and dirty" solution to this problem.
-//config:	  It analyzes stdin with various ioctls, trying to determine whether
-//config:	  it is a /dev/ttyN or /dev/ttySN (virtual terminal or serial line).
-//config:	  On Linux it also checks sysfs for a pointer to the active console.
-//config:	  If cttyhack is able to find the real console device, it closes
-//config:	  stdin/out/err and reopens that device.
-//config:	  Then it executes the given program. Opening the device will make
-//config:	  that device a controlling tty. This may require cttyhack
-//config:	  to be a session leader.
+//config:	cttyhack provides a "quick and dirty" solution to this problem.
+//config:	It analyzes stdin with various ioctls, trying to determine whether
+//config:	it is a /dev/ttyN or /dev/ttySN (virtual terminal or serial line).
+//config:	On Linux it also checks sysfs for a pointer to the active console.
+//config:	If cttyhack is able to find the real console device, it closes
+//config:	stdin/out/err and reopens that device.
+//config:	Then it executes the given program. Opening the device will make
+//config:	that device a controlling tty. This may require cttyhack
+//config:	to be a session leader.
 //config:
-//config:	  Example for /etc/inittab (for busybox init):
+//config:	Example for /etc/inittab (for busybox init):
 //config:
-//config:	  ::respawn:/bin/cttyhack /bin/sh
+//config:	::respawn:/bin/cttyhack /bin/sh
 //config:
-//config:	  Starting an interactive shell from boot shell script:
+//config:	Starting an interactive shell from boot shell script:
 //config:
-//config:	  setsid cttyhack sh
+//config:	setsid cttyhack sh
 //config:
-//config:	  Giving controlling tty to shell running with PID 1:
+//config:	Giving controlling tty to shell running with PID 1:
 //config:
-//config:	  # exec cttyhack sh
+//config:	# exec cttyhack sh
 //config:
-//config:	  Without cttyhack, you need to know exact tty name,
-//config:	  and do something like this:
+//config:	Without cttyhack, you need to know exact tty name,
+//config:	and do something like this:
 //config:
-//config:	  # exec setsid sh -c 'exec sh </dev/tty1 >/dev/tty1 2>&1'
+//config:	# exec setsid sh -c 'exec sh </dev/tty1 >/dev/tty1 2>&1'
 //config:
-//config:	  Starting getty on a controlling tty from a shell script:
+//config:	Starting getty on a controlling tty from a shell script:
 //config:
-//config:	  # getty 115200 $(cttyhack)
+//config:	# getty 115200 $(cttyhack)
+
+//applet:IF_CTTYHACK(APPLET_NOEXEC(cttyhack, cttyhack, BB_DIR_BIN, BB_SUID_DROP, cttyhack))
+
+//kbuild:lib-$(CONFIG_CTTYHACK) += cttyhack.o
 
 //usage:#define cttyhack_trivial_usage
 //usage:       "[PROG ARGS]"
@@ -64,6 +62,8 @@
 //usage:     "\n	$ exec cttyhack sh"
 //usage:     "\nStarting interactive shell from boot shell script:"
 //usage:     "\n	setsid cttyhack sh"
+
+#include "libbb.h"
 
 #if !defined(__linux__) && !defined(TIOCGSERIAL) && !ENABLE_WERROR
 # warning cttyhack will not be able to detect a controlling tty on this system

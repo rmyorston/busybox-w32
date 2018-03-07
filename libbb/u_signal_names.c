@@ -6,20 +6,19 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
 //config:config FEATURE_RTMINMAX
 //config:	bool "Support RTMIN[+n] and RTMAX[-n] signal names"
 //config:	default y
 //config:	help
-//config:	  Support RTMIN[+n] and RTMAX[-n] signal names
-//config:	  in kill, killall etc. This costs ~250 bytes.
+//config:	Support RTMIN[+n] and RTMAX[-n] signal names
+//config:	in kill, killall etc. This costs ~250 bytes.
 
 #include "libbb.h"
 
 /* Believe it or not, but some arches have more than 32 SIGs!
  * HPPA: SIGSTKFLT == 36. */
 
-static const char signals[][7] = {
+static const char signals[][7] ALIGN1 = {
 	// SUSv3 says kill must support these, and specifies the numerical values,
 	// http://www.opengroup.org/onlinepubs/009695399/utilities/kill.html
 	// {0, "EXIT"}, {1, "HUP"}, {2, "INT"}, {3, "QUIT"},
@@ -143,7 +142,7 @@ int FAST_FUNC get_signum(const char *name)
 	unsigned i;
 
 	i = bb_strtou(name, NULL, 10);
-	if (!errno)
+	if (!errno && i < NSIG) /* for shells, we allow 0 too */
 		return i;
 	if (strncasecmp(name, "SIG", 3) == 0)
 		name += 3;

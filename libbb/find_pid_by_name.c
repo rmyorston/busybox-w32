@@ -6,7 +6,6 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
 #include "libbb.h"
 
 /*
@@ -40,8 +39,10 @@ and therefore comm field contains "exe".
 
 static int comm_match(procps_status_t *p, const char *procName)
 {
+#if !ENABLE_PLATFORM_MINGW32
 	int argv1idx;
 	const char *argv1;
+#endif
 
 	if (strncmp(p->comm, procName, 15) != 0)
 		return 0; /* comm does not match */

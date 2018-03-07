@@ -6,6 +6,23 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config TEE
+//config:	bool "tee (4.3 kb)"
+//config:	default y
+//config:	help
+//config:	tee is used to read from standard input and write
+//config:	to standard output and files.
+//config:
+//config:config FEATURE_TEE_USE_BLOCK_IO
+//config:	bool "Enable block I/O (larger/faster) instead of byte I/O"
+//config:	default y
+//config:	depends on TEE
+//config:	help
+//config:	Enable this option for a faster tee, at expense of size.
+
+//applet:IF_TEE(APPLET(tee, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_TEE) += tee.o
 
 /* BB_AUDIT SUSv3 compliant */
 /* http://www.opengroup.org/onlinepubs/007904975/utilities/tee.html */
@@ -23,6 +40,7 @@
 //usage:       "Hello\n"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 int tee_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int tee_main(int argc, char **argv)
@@ -37,6 +55,7 @@ int tee_main(int argc, char **argv)
 #if ENABLE_FEATURE_TEE_USE_BLOCK_IO
 	ssize_t c;
 # define buf bb_common_bufsiz1
+	setup_common_bufsiz();
 #else
 	int c;
 #endif
@@ -50,9 +69,11 @@ int tee_main(int argc, char **argv)
 		signal(SIGINT, SIG_IGN); /* TODO - switch to sigaction. (why?) */
 	}
 	retval = EXIT_SUCCESS;
+#ifdef SIGPIPE
 	/* gnu tee ignores SIGPIPE in case one of the output files is a pipe
 	 * that doesn't consume all its input.  Good idea... */
 	signal(SIGPIPE, SIG_IGN);
+#endif
 
 	/* Allocate an array of FILE *'s, with one extra for a sentinel. */
 	fp = files = xzalloc(sizeof(FILE *) * (argc + 2));
@@ -79,7 +100,7 @@ int tee_main(int argc, char **argv)
 	/* names[0] will be filled later */
 
 #if ENABLE_FEATURE_TEE_USE_BLOCK_IO
-	while ((c = safe_read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
+	while ((c = safe_read(STDIN_FILENO, buf, COMMON_BUFSIZE)) > 0) {
 		fp = files;
 		do
 			fwrite(buf, 1, c, *fp);

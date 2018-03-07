@@ -32,13 +32,9 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
 #include <setjmp.h>
 #include "libbb.h"
 #include "bb_archive.h"
-#if defined(ENABLE_PLATFORM_MINGW32) && __GNUC__
-#pragma pack(2)
-#endif
 
 typedef struct huft_t {
 	unsigned char e;	/* number of extra bits or operation */
@@ -284,8 +280,8 @@ static unsigned fill_bitbuffer(STATE_PARAM unsigned bitbuffer, unsigned *current
 /* Given a list of code lengths and a maximum table size, make a set of
  * tables to decode that set of codes.  Return zero on success, one if
  * the given code set is incomplete (the tables are still built in this
- * case), two if the input is invalid (all zero length codes or an
- * oversubscribed set of lengths) - in this case stores NULL in *t.
+ * case), two if the input is invalid (an oversubscribed set of lengths)
+ * - in this case stores NULL in *t.
  *
  * b:	code lengths in bits (all assumed <= BMAX)
  * n:	number of codes (assumed <= N_MAX)
@@ -334,8 +330,15 @@ static int huft_build(const unsigned *b, const unsigned n,
 		p++;     /* can't combine with above line (Solaris bug) */
 	} while (--i);
 	if (c[0] == n) {  /* null input - all zero length codes */
-		*m = 0;
-		return 2;
+		q = xzalloc(3 * sizeof(*q));
+		//q[0].v.t = NULL;
+		q[1].e = 99;    /* invalid code marker */
+		q[1].b = 1;
+		q[2].e = 99;    /* invalid code marker */
+		q[2].b = 1;
+		*t = q + 1;
+		*m = 1;
+		return 0;
 	}
 
 	/* Find minimum and maximum length, bound *m by those */
@@ -1004,7 +1007,7 @@ inflate_unzip_internal(STATE_PARAM transformer_state_t *xstate)
 	gunzip_bb = 0;
 
 	/* Create the crc table */
-	gunzip_crc_table = crc32_filltable(NULL, 0);
+	gunzip_crc_table = crc32_new_table_le();
 	gunzip_crc = ~0;
 
 	error_msg = "corrupted data";
@@ -1121,6 +1124,9 @@ static uint32_t buffer_read_le_u32(STATE_PARAM_ONLY)
 	return res;
 }
 
+#if ENABLE_PLATFORM_MINGW32 && __GNUC__
+#pragma pack(2)
+#endif
 static int check_header_gzip(STATE_PARAM transformer_state_t *xstate)
 {
 #ifdef __WATCOMC__
@@ -1136,18 +1142,13 @@ static int check_header_gzip(STATE_PARAM transformer_state_t *xstate)
 			uint8_t os_flags_UNUSED;
 		} PACKED formatted;
 	} header;
-<<<<<<< HEAD
-	struct BUG_header {
-		char BUG_header[sizeof(header) == 8 ? 1 : -1];
-	};
+
+	BUILD_BUG_ON(sizeof(header) != 8);
+
 #ifdef __WATCOMC__
 #pragma pack()
 #endif
-=======
-
-	BUILD_BUG_ON(sizeof(header) != 8);
->>>>>>> master
-
+    
 	/*
 	 * Rewind bytebuffer. We use the beginning because the header has 8
 	 * bytes, leaving enough for unwinding afterwards.
@@ -1204,6 +1205,9 @@ static int check_header_gzip(STATE_PARAM transformer_state_t *xstate)
 	}
 	return 1;
 }
+#if ENABLE_PLATFORM_MINGW32 && __GNUC__
+#pragma pack()
+#endif
 
 IF_DESKTOP(long long) int FAST_FUNC
 unpack_gz_stream(transformer_state_t *xstate)
@@ -1216,7 +1220,7 @@ unpack_gz_stream(transformer_state_t *xstate)
 	if (check_signature16(xstate, GZIP_MAGIC))
 		return -1;
 #else
-	if (xstate->check_signature) {
+	if (!xstate->signature_skipped) {
 		uint16_t magic2;
 
 		if (full_read(xstate->src_fd, &magic2, 2) != 2) {
@@ -1225,7 +1229,7 @@ unpack_gz_stream(transformer_state_t *xstate)
 			return -1;
 		}
 		if (magic2 == COMPRESS_MAGIC) {
-			xstate->check_signature = 0;
+			xstate->signature_skipped = 2;
 			return unpack_Z_stream(xstate);
 		}
 		if (magic2 != GZIP_MAGIC)

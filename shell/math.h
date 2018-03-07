@@ -63,9 +63,9 @@
 
 PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 
-#if ENABLE_SH_MATH_SUPPORT_64
+#if ENABLE_FEATURE_SH_MATH_64
 typedef long long arith_t;
-#define ARITH_FMT "%lld"
+#define ARITH_FMT "%"LL_FMT"d"
 #define strto_arith_t strtoull
 #else
 typedef long arith_t;

@@ -5,7 +5,32 @@
  * Copyright (C) 2002 Robert Griebl <griebl@gmx.de>
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
-*/
+ */
+//config:config HWCLOCK
+//config:	bool "hwclock (5.8 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	The hwclock utility is used to read and set the hardware clock
+//config:	on a system. This is primarily used to set the current time on
+//config:	shutdown in the hardware clock, so the hardware will keep the
+//config:	correct time when Linux is _not_ running.
+//config:
+//config:config FEATURE_HWCLOCK_ADJTIME_FHS
+//config:	bool "Use FHS /var/lib/hwclock/adjtime"
+//config:	default n  # util-linux-ng in Fedora 13 still uses /etc/adjtime
+//config:	depends on HWCLOCK
+//config:	help
+//config:	Starting with FHS 2.3, the adjtime state file is supposed to exist
+//config:	at /var/lib/hwclock/adjtime instead of /etc/adjtime. If you wish
+//config:	to use the FHS behavior, answer Y here, otherwise answer N for the
+//config:	classic /etc/adjtime path.
+//config:
+//config:	pathname.com/fhs/pub/fhs-2.3.html#VARLIBHWCLOCKSTATEDIRECTORYFORHWCLO
+
+//applet:IF_HWCLOCK(APPLET(hwclock, BB_DIR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_HWCLOCK) += hwclock.o
 
 #include "libbb.h"
 /* After libbb.h, since it needs sys/types.h on some systems */
@@ -137,7 +162,7 @@ static void from_sys_clock(const char **pp_rtcname, int utc)
  * On x86, even though code does set hw clock within <1ms of exact
  * whole seconds, apparently hw clock (at least on some machines)
  * doesn't reset internal fractional seconds to 0,
- * making all this a pointless excercise.
+ * making all this a pointless exercise.
  */
 	/* If we see that we are N usec away from whole second,
 	 * we'll sleep for N-ADJ usecs. ADJ corrects for the fact
@@ -263,12 +288,12 @@ static void set_system_clock_timezone(int utc)
 }
 
 //usage:#define hwclock_trivial_usage
-//usage:	IF_FEATURE_HWCLOCK_LONG_OPTIONS(
-//usage:       "[-r|--show] [-s|--hctosys] [-w|--systohc] [-t|--systz]"
-//usage:       " [-l|--localtime] [-u|--utc]"
+//usage:	IF_LONG_OPTS(
+//usage:       "[-r|--show] [-s|--hctosys] [-w|--systohc] [--systz]"
+//usage:       " [--localtime] [-u|--utc]"
 //usage:       " [-f|--rtc FILE]"
 //usage:	)
-//usage:	IF_NOT_FEATURE_HWCLOCK_LONG_OPTIONS(
+//usage:	IF_NOT_LONG_OPTS(
 //usage:       "[-r] [-s] [-w] [-t] [-l] [-u] [-f FILE]"
 //usage:	)
 //usage:#define hwclock_full_usage "\n\n"
@@ -276,11 +301,17 @@ static void set_system_clock_timezone(int utc)
 //usage:     "\n	-r	Show hardware clock time"
 //usage:     "\n	-s	Set system time from hardware clock"
 //usage:     "\n	-w	Set hardware clock from system time"
-//usage:     "\n	-t	Set in-kernel timezone, correct system time"
+//usage:	IF_LONG_OPTS(
+//usage:     "\n	--systz	Set in-kernel timezone, correct system time"
+//usage:	)
 //usage:     "\n		if hardware clock is in local time"
 //usage:     "\n	-u	Assume hardware clock is kept in UTC"
-//usage:     "\n	-l	Assume hardware clock is kept in local time"
+//usage:	IF_LONG_OPTS(
+//usage:     "\n	--localtime	Assume hardware clock is kept in local time"
+//usage:	)
 //usage:     "\n	-f FILE	Use specified device (e.g. /dev/rtc2)"
+
+//TODO: get rid of incompatible -t and -l aliases to --systz and --localtime
 
 #define HWCLOCK_OPT_LOCALTIME   0x01
 #define HWCLOCK_OPT_UTC         0x02
@@ -297,7 +328,7 @@ int hwclock_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opt;
 	int utc;
 
-#if ENABLE_FEATURE_HWCLOCK_LONG_OPTIONS
+#if ENABLE_LONG_OPTS
 	static const char hwclock_longopts[] ALIGN1 =
 		"localtime\0" No_argument "l" /* short opt is non-standard */
 		"utc\0"       No_argument "u"
@@ -307,14 +338,16 @@ int hwclock_main(int argc UNUSED_PARAM, char **argv)
 		"systz\0"     No_argument "t" /* short opt is non-standard */
 		"rtc\0"       Required_argument "f"
 		;
-	applet_long_options = hwclock_longopts;
 #endif
 
 	/* Initialize "timezone" (libc global variable) */
 	tzset();
 
-	opt_complementary = "r--wst:w--rst:s--wrt:t--rsw:l--u:u--l";
-	opt = getopt32(argv, "lurswtf:", &rtcname);
+	opt = getopt32long(argv,
+		"^lurswtf:" "\0" "r--wst:w--rst:s--wrt:t--rsw:l--u:u--l",
+		hwclock_longopts,
+		&rtcname
+	);
 
 	/* If -u or -l wasn't given check if we are using utc */
 	if (opt & (HWCLOCK_OPT_UTC | HWCLOCK_OPT_LOCALTIME))

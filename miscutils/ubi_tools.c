@@ -1,56 +1,58 @@
-/* Ported to busybox from mtd-utils.
+/*
+ * Ported to busybox from mtd-utils.
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-
 //config:config UBIATTACH
-//config:	bool "ubiattach"
+//config:	bool "ubiattach (4.7 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Attach MTD device to an UBI device.
+//config:	Attach MTD device to an UBI device.
 //config:
 //config:config UBIDETACH
-//config:	bool "ubidetach"
+//config:	bool "ubidetach (4.6 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Detach MTD device from an UBI device.
+//config:	Detach MTD device from an UBI device.
 //config:
 //config:config UBIMKVOL
-//config:	bool "ubimkvol"
+//config:	bool "ubimkvol (5.8 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Create a UBI volume.
+//config:	Create a UBI volume.
 //config:
 //config:config UBIRMVOL
-//config:	bool "ubirmvol"
+//config:	bool "ubirmvol (5.2 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Delete a UBI volume.
+//config:	Delete a UBI volume.
 //config:
 //config:config UBIRSVOL
-//config:	bool "ubirsvol"
+//config:	bool "ubirsvol (4.6 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Resize a UBI volume.
+//config:	Resize a UBI volume.
 //config:
 //config:config UBIUPDATEVOL
-//config:	bool "ubiupdatevol"
+//config:	bool "ubiupdatevol (5.6 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Update a UBI volume.
+//config:	Update a UBI volume.
 
-//applet:IF_UBIATTACH(APPLET_ODDNAME(ubiattach, ubi_tools, BB_DIR_USR_SBIN, BB_SUID_DROP, ubiattach))
-//applet:IF_UBIDETACH(APPLET_ODDNAME(ubidetach, ubi_tools, BB_DIR_USR_SBIN, BB_SUID_DROP, ubidetach))
-//applet:IF_UBIMKVOL(APPLET_ODDNAME(ubimkvol, ubi_tools, BB_DIR_USR_SBIN, BB_SUID_DROP, ubimkvol))
-//applet:IF_UBIRMVOL(APPLET_ODDNAME(ubirmvol, ubi_tools, BB_DIR_USR_SBIN, BB_SUID_DROP, ubirmvol))
-//applet:IF_UBIRSVOL(APPLET_ODDNAME(ubirsvol, ubi_tools, BB_DIR_USR_SBIN, BB_SUID_DROP, ubirsvol))
+//                       APPLET_ODDNAME:name       main       location         suid_type     help
+//applet:IF_UBIATTACH(   APPLET_ODDNAME(ubiattach, ubi_tools, BB_DIR_USR_SBIN, BB_SUID_DROP, ubiattach))
+//applet:IF_UBIDETACH(   APPLET_ODDNAME(ubidetach, ubi_tools, BB_DIR_USR_SBIN, BB_SUID_DROP, ubidetach))
+//applet:IF_UBIMKVOL(    APPLET_ODDNAME(ubimkvol,  ubi_tools, BB_DIR_USR_SBIN, BB_SUID_DROP, ubimkvol))
+//applet:IF_UBIRMVOL(    APPLET_ODDNAME(ubirmvol,  ubi_tools, BB_DIR_USR_SBIN, BB_SUID_DROP, ubirmvol))
+//applet:IF_UBIRSVOL(    APPLET_ODDNAME(ubirsvol,  ubi_tools, BB_DIR_USR_SBIN, BB_SUID_DROP, ubirsvol))
 //applet:IF_UBIUPDATEVOL(APPLET_ODDNAME(ubiupdatevol, ubi_tools, BB_DIR_USR_SBIN, BB_SUID_DROP, ubiupdatevol))
+/* not NOEXEC: if flash operation stalls, use less memory in "hung" process */
 
 //kbuild:lib-$(CONFIG_UBIATTACH) += ubi_tools.o
 //kbuild:lib-$(CONFIG_UBIDETACH) += ubi_tools.o
@@ -66,23 +68,32 @@
 #endif
 #include <mtd/ubi-user.h>
 
-#define do_attach (ENABLE_UBIATTACH && applet_name[3] == 'a')
-#define do_detach (ENABLE_UBIDETACH && applet_name[3] == 'd')
-#define do_mkvol  (ENABLE_UBIMKVOL  && applet_name[3] == 'm')
-#define do_rmvol  (ENABLE_UBIRMVOL  && applet_name[4] == 'm')
-#define do_rsvol  (ENABLE_UBIRSVOL  && applet_name[4] == 's')
-#define do_update (ENABLE_UBIUPDATEVOL && applet_name[3] == 'u')
+#define UBI_APPLET_CNT (0 \
+	+ ENABLE_UBIATTACH \
+	+ ENABLE_UBIDETACH \
+	+ ENABLE_UBIMKVOL \
+	+ ENABLE_UBIRMVOL \
+	+ ENABLE_UBIRSVOL \
+	+ ENABLE_UBIUPDATEVOL \
+	)
 
-static unsigned get_num_from_file(const char *path, unsigned max, const char *errmsg)
+#define do_attach (ENABLE_UBIATTACH    && (UBI_APPLET_CNT == 1 || applet_name[4] == 't'))
+#define do_detach (ENABLE_UBIDETACH    && (UBI_APPLET_CNT == 1 || applet_name[4] == 'e'))
+#define do_mkvol  (ENABLE_UBIMKVOL     && (UBI_APPLET_CNT == 1 || applet_name[4] == 'k'))
+#define do_rmvol  (ENABLE_UBIRMVOL     && (UBI_APPLET_CNT == 1 || applet_name[4] == 'm'))
+#define do_rsvol  (ENABLE_UBIRSVOL     && (UBI_APPLET_CNT == 1 || applet_name[4] == 's'))
+#define do_update (ENABLE_UBIUPDATEVOL && (UBI_APPLET_CNT == 1 || applet_name[4] == 'p'))
+
+static unsigned get_num_from_file(const char *path, unsigned max)
 {
 	char buf[sizeof(long long)*3];
 	unsigned long long num;
 
 	if (open_read_close(path, buf, sizeof(buf)) < 0)
-		bb_perror_msg_and_die(errmsg, path);
+		bb_perror_msg_and_die("can't open '%s'", path);
 	/* It can be \n terminated, xatoull won't work well */
 	if (sscanf(buf, "%llu", &num) != 1 || num > max)
-		bb_error_msg_and_die(errmsg, path);
+		bb_error_msg_and_die("number in '%s' is malformed or too large", path);
 	return num;
 }
 
@@ -134,20 +145,17 @@ int ubi_tools_main(int argc UNUSED_PARAM, char **argv)
 #define OPTION_a  (1 << 5)
 #define OPTION_t  (1 << 6)
 	if (do_mkvol) {
-		opt_complementary = "-1:d+:n+:a+:O+";
-		opts = getopt32(argv, "md:n:N:s:a:t:O:",
+		opts = getopt32(argv, "^" "md:+n:+N:s:a:+t:O:+" "\0" "-1",
 				&dev_num, &vol_id,
 				&vol_name, &size_bytes_str, &alignment, &type,
 				&vid_hdr_offset
 			);
 	} else
 	if (do_update) {
-		opt_complementary = "-1";
-		opts = getopt32(argv, "s:at", &size_bytes_str);
+		opts = getopt32(argv, "^" "s:at" "\0" "-1", &size_bytes_str);
 		opts *= OPTION_s;
 	} else {
-		opt_complementary = "-1:m+:d+:n+:a+";
-		opts = getopt32(argv, "m:d:n:N:s:a:t:",
+		opts = getopt32(argv, "^" "m:+d:+n:+N:s:a:+t:" "\0" "-1",
 				&mtd_num, &dev_num, &vol_id,
 				&vol_name, &size_bytes_str, &alignment, &type
 		);
@@ -195,7 +203,7 @@ int ubi_tools_main(int argc UNUSED_PARAM, char **argv)
 	} else
 
 //usage:#define ubimkvol_trivial_usage
-//usage:       "UBI_DEVICE -N NAME [-s SIZE | -m]"
+//usage:       "-N NAME [-s SIZE | -m] UBI_DEVICE"
 //usage:#define ubimkvol_full_usage "\n\n"
 //usage:       "Create UBI volume\n"
 //usage:     "\n	-a ALIGNMENT	Volume alignment (default 1)"
@@ -212,16 +220,14 @@ int ubi_tools_main(int argc UNUSED_PARAM, char **argv)
 			unsigned num;
 			char *p;
 
-			if (sscanf(ubi_ctrl, "/dev/ubi%u", &num) != 1)
-				bb_error_msg_and_die("wrong format of UBI device name");
-
+			num = ubi_devnum_from_devname(ubi_ctrl);
 			p = path_sys_class_ubi_ubi + sprintf(path_sys_class_ubi_ubi, "%u/", num);
 
 			strcpy(p, "avail_eraseblocks");
-			leb_avail = get_num_from_file(path, UINT_MAX, "Can't get available eraseblocks from '%s'");
+			leb_avail = get_num_from_file(path, UINT_MAX);
 
 			strcpy(p, "eraseblock_size");
-			leb_size = get_num_from_file(path, MAX_SANE_ERASEBLOCK, "Can't get eraseblock size from '%s'");
+			leb_size = get_num_from_file(path, MAX_SANE_ERASEBLOCK);
 
 			size_bytes = leb_avail * (unsigned long long)leb_size;
 			//if (size_bytes <= 0)
@@ -233,35 +239,49 @@ int ubi_tools_main(int argc UNUSED_PARAM, char **argv)
 		if (!(opts & OPTION_N))
 			bb_error_msg_and_die("name not specified");
 
+		/* the structure is memset(0) above */
 		mkvol_req.vol_id = vol_id;
 		mkvol_req.vol_type = UBI_DYNAMIC_VOLUME;
 		if ((opts & OPTION_t) && type[0] == 's')
 			mkvol_req.vol_type = UBI_STATIC_VOLUME;
 		mkvol_req.alignment = alignment;
 		mkvol_req.bytes = size_bytes; /* signed int64_t */
-		strncpy(mkvol_req.name, vol_name, UBI_MAX_VOLUME_NAME);
-		mkvol_req.name_len = strlen(vol_name);
+		/* strnlen avoids overflow of 16-bit field (paranoia) */
+		mkvol_req.name_len = strnlen(vol_name, UBI_MAX_VOLUME_NAME+1);
 		if (mkvol_req.name_len > UBI_MAX_VOLUME_NAME)
 			bb_error_msg_and_die("volume name too long: '%s'", vol_name);
+		/* this is safe: .name[] is UBI_MAX_VOLUME_NAME+1 bytes */
+		strcpy(mkvol_req.name, vol_name);
 
 		xioctl(fd, UBI_IOCMKVOL, &mkvol_req);
 	} else
 
 //usage:#define ubirmvol_trivial_usage
-//usage:       "UBI_DEVICE -n VOLID"
+//usage:       "-n VOLID / -N VOLNAME UBI_DEVICE"
 //usage:#define ubirmvol_full_usage "\n\n"
 //usage:       "Remove UBI volume\n"
 //usage:     "\n	-n VOLID	Volume ID"
+//usage:     "\n	-N VOLNAME	Volume name"
 	if (do_rmvol) {
-		if (!(opts & OPTION_n))
+		if (!(opts & (OPTION_n|OPTION_N)))
 			bb_error_msg_and_die("volume id not specified");
 
-		/* FIXME? kernel expects int32_t* here: */
-		xioctl(fd, UBI_IOCRMVOL, &vol_id);
+		if (opts & OPTION_N) {
+			unsigned num = ubi_devnum_from_devname(ubi_ctrl);
+			vol_id = ubi_get_volid_by_name(num, vol_name);
+		}
+
+		if (sizeof(vol_id) != 4) {
+			/* kernel expects int32_t* in this ioctl */
+			int32_t t = vol_id;
+			xioctl(fd, UBI_IOCRMVOL, &t);
+		} else {
+			xioctl(fd, UBI_IOCRMVOL, &vol_id);
+		}
 	} else
 
 //usage:#define ubirsvol_trivial_usage
-//usage:       "UBI_DEVICE -n VOLID -s SIZE"
+//usage:       "-n VOLID -s SIZE UBI_DEVICE"
 //usage:#define ubirsvol_full_usage "\n\n"
 //usage:       "Resize UBI volume\n"
 //usage:     "\n	-n VOLID	Volume ID"
@@ -279,7 +299,7 @@ int ubi_tools_main(int argc UNUSED_PARAM, char **argv)
 	} else
 
 //usage:#define ubiupdatevol_trivial_usage
-//usage:       "UBI_DEVICE [-t | [-s SIZE] IMG_FILE]"
+//usage:       "-t UBI_DEVICE | [-s SIZE] UBI_DEVICE IMG_FILE"
 //usage:#define ubiupdatevol_full_usage "\n\n"
 //usage:       "Update UBI volume\n"
 //usage:     "\n	-t	Truncate to zero size"
@@ -294,24 +314,25 @@ int ubi_tools_main(int argc UNUSED_PARAM, char **argv)
 			xioctl(fd, UBI_IOCVOLUP, &bytes64);
 		}
 		else {
-			struct stat st;
 			unsigned ubinum, volnum;
 			unsigned leb_size;
-			ssize_t len;
-			char *input_data;
+			char *buf;
 
 			/* Assume that device is in normal format. */
 			/* Removes need for scanning sysfs tree as full libubi does. */
 			if (sscanf(ubi_ctrl, "/dev/ubi%u_%u", &ubinum, &volnum) != 2)
-				bb_error_msg_and_die("wrong format of UBI device name");
+				bb_error_msg_and_die("UBI device name '%s' is not /dev/ubiN_M", ubi_ctrl);
 
 			sprintf(path_sys_class_ubi_ubi, "%u_%u/usable_eb_size", ubinum, volnum);
-			leb_size = get_num_from_file(path, MAX_SANE_ERASEBLOCK, "Can't get usable eraseblock size from '%s'");
+			leb_size = get_num_from_file(path, MAX_SANE_ERASEBLOCK);
+
+			if (!*argv)
+				bb_show_usage();
+			if (NOT_LONE_DASH(*argv)) /* mtd-utils supports "-" as stdin */
+				xmove_fd(xopen(*argv, O_RDONLY), STDIN_FILENO);
 
 			if (!(opts & OPTION_s)) {
-				if (!*argv)
-					bb_show_usage();
-				xmove_fd(xopen(*argv, O_RDONLY), STDIN_FILENO);
+				struct stat st;
 				xfstat(STDIN_FILENO, &st, *argv);
 				size_bytes = st.st_size;
 			}
@@ -320,12 +341,24 @@ int ubi_tools_main(int argc UNUSED_PARAM, char **argv)
 			/* this ioctl expects signed int64_t* parameter */
 			xioctl(fd, UBI_IOCVOLUP, &bytes64);
 
-			input_data = xmalloc(leb_size);
-			while ((len = full_read(STDIN_FILENO, input_data, leb_size)) > 0) {
-				xwrite(fd, input_data, len);
+			/* can't use bb_copyfd_exact_size(): copy in blocks of exactly leb_size */
+			buf = xmalloc(leb_size);
+			while (size_bytes != 0) {
+				int len = full_read(STDIN_FILENO, buf, leb_size);
+				if (len <= 0) {
+					if (len < 0)
+						bb_perror_msg_and_die("read error from '%s'", *argv);
+					break;
+				}
+				if ((unsigned)len > size_bytes) {
+					/* for this case: "ubiupdatevol -s 1024000 $UBIDEV /dev/urandom" */
+					len = size_bytes;
+				}
+				xwrite(fd, buf, len);
+				size_bytes -= len;
 			}
-			if (len < 0)
-				bb_perror_msg_and_die("UBI volume update failed");
+			if (ENABLE_FEATURE_CLEAN_UP)
+				free(buf);
 		}
 	}
 

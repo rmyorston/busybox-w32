@@ -7,7 +7,6 @@
  *
  * Authors: Alexey Kuznetsov, <kuznet@ms2.inr.ac.ru>
  */
-
 #include <sys/socket.h>
 #include <sys/uio.h>
 
@@ -16,16 +15,13 @@
 
 void FAST_FUNC xrtnl_open(struct rtnl_handle *rth/*, unsigned subscriptions*/)
 {
-	socklen_t addr_len;
-
 	memset(rth, 0, sizeof(*rth));
 	rth->fd = xsocket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
 	rth->local.nl_family = AF_NETLINK;
 	/*rth->local.nl_groups = subscriptions;*/
 
 	xbind(rth->fd, (struct sockaddr*)&rth->local, sizeof(rth->local));
-	addr_len = sizeof(rth->local);
-	getsockname(rth->fd, (struct sockaddr*)&rth->local, &addr_len);
+	bb_getsockname(rth->fd, (struct sockaddr*)&rth->local, sizeof(rth->local));
 
 /* too much paranoia
 	if (getsockname(rth->fd, (struct sockaddr*)&rth->local, &addr_len) < 0)
@@ -68,26 +64,32 @@ int FAST_FUNC rtnl_send(struct rtnl_handle *rth, char *buf, int len)
 
 int FAST_FUNC rtnl_dump_request(struct rtnl_handle *rth, int type, void *req, int len)
 {
-	struct nlmsghdr nlh;
-	struct sockaddr_nl nladdr;
-	struct iovec iov[2] = { { &nlh, sizeof(nlh) }, { req, len } };
-	struct msghdr msg = {
-		(void*)&nladdr, sizeof(nladdr),
-		iov,  2,
-		NULL, 0,
-		0
-	};
+	struct {
+		struct nlmsghdr nlh;
+		struct msghdr msg;
+		struct sockaddr_nl nladdr;
+	} s;
+	struct iovec iov[2] = { { &s.nlh, sizeof(s.nlh) }, { req, len } };
 
-	memset(&nladdr, 0, sizeof(nladdr));
-	nladdr.nl_family = AF_NETLINK;
+	memset(&s, 0, sizeof(s));
 
-	nlh.nlmsg_len = NLMSG_LENGTH(len);
-	nlh.nlmsg_type = type;
-	nlh.nlmsg_flags = NLM_F_ROOT|NLM_F_MATCH|NLM_F_REQUEST;
-	nlh.nlmsg_pid = 0;
-	nlh.nlmsg_seq = rth->dump = ++rth->seq;
+	s.msg.msg_name = (void*)&s.nladdr;
+	s.msg.msg_namelen = sizeof(s.nladdr);
+	s.msg.msg_iov = iov;
+	s.msg.msg_iovlen = 2;
+	/*s.msg.msg_control = NULL; - already is */
+	/*s.msg.msg_controllen = 0; - already is */
+	/*s.msg.msg_flags = 0; - already is */
 
-	return sendmsg(rth->fd, &msg, 0);
+	s.nladdr.nl_family = AF_NETLINK;
+
+	s.nlh.nlmsg_len = NLMSG_LENGTH(len);
+	s.nlh.nlmsg_type = type;
+	s.nlh.nlmsg_flags = NLM_F_ROOT|NLM_F_MATCH|NLM_F_REQUEST;
+	/*s.nlh.nlmsg_pid = 0; - already is */
+	s.nlh.nlmsg_seq = rth->dump = ++rth->seq;
+
+	return sendmsg(rth->fd, &s.msg, 0);
 }
 
 static int rtnl_dump_filter(struct rtnl_handle *rth,
@@ -104,12 +106,15 @@ static int rtnl_dump_filter(struct rtnl_handle *rth,
 	while (1) {
 		int status;
 		struct nlmsghdr *h;
-
+		/* Use designated initializers, struct layout is non-portable */
 		struct msghdr msg = {
-			(void*)&nladdr, sizeof(nladdr),
-			&iov, 1,
-			NULL, 0,
-			0
+			.msg_name = (void*)&nladdr,
+			.msg_namelen = sizeof(nladdr),
+			.msg_iov = &iov,
+			.msg_iovlen = 1,
+			.msg_control = NULL,
+			.msg_controllen = 0,
+			.msg_flags = 0
 		};
 
 		status = recvmsg(rth->fd, &msg, 0);
@@ -211,11 +216,15 @@ int FAST_FUNC rtnl_talk(struct rtnl_handle *rtnl, struct nlmsghdr *n,
 	struct sockaddr_nl nladdr;
 	struct iovec iov = { (void*)n, n->nlmsg_len };
 	char   *buf = xmalloc(8*1024); /* avoid big stack buffer */
+	/* Use designated initializers, struct layout is non-portable */
 	struct msghdr msg = {
-		(void*)&nladdr, sizeof(nladdr),
-		&iov, 1,
-		NULL, 0,
-		0
+		.msg_name = (void*)&nladdr,
+		.msg_namelen = sizeof(nladdr),
+		.msg_iov = &iov,
+		.msg_iovlen = 1,
+		.msg_control = NULL,
+		.msg_controllen = 0,
+		.msg_flags = 0
 	};
 
 	memset(&nladdr, 0, sizeof(nladdr));
@@ -327,14 +336,14 @@ int FAST_FUNC addattr32(struct nlmsghdr *n, int maxlen, int type, uint32_t data)
 	int len = RTA_LENGTH(4);
 	struct rtattr *rta;
 
-	if ((int)(NLMSG_ALIGN(n->nlmsg_len) + len) > maxlen) {
+	if ((int)(NLMSG_ALIGN(n->nlmsg_len + len)) > maxlen) {
 		return -1;
 	}
 	rta = (struct rtattr*)(((char*)n) + NLMSG_ALIGN(n->nlmsg_len));
 	rta->rta_type = type;
 	rta->rta_len = len;
 	move_to_unaligned32(RTA_DATA(rta), data);
-	n->nlmsg_len = NLMSG_ALIGN(n->nlmsg_len) + len;
+	n->nlmsg_len = NLMSG_ALIGN(n->nlmsg_len + len);
 	return 0;
 }
 
@@ -343,14 +352,14 @@ int FAST_FUNC addattr_l(struct nlmsghdr *n, int maxlen, int type, void *data, in
 	int len = RTA_LENGTH(alen);
 	struct rtattr *rta;
 
-	if ((int)(NLMSG_ALIGN(n->nlmsg_len) + len) > maxlen) {
+	if ((int)(NLMSG_ALIGN(n->nlmsg_len + len)) > maxlen) {
 		return -1;
 	}
 	rta = (struct rtattr*)(((char*)n) + NLMSG_ALIGN(n->nlmsg_len));
 	rta->rta_type = type;
 	rta->rta_len = len;
 	memcpy(RTA_DATA(rta), data, alen);
-	n->nlmsg_len = NLMSG_ALIGN(n->nlmsg_len) + len;
+	n->nlmsg_len = NLMSG_ALIGN(n->nlmsg_len + len);
 	return 0;
 }
 
@@ -359,14 +368,14 @@ int FAST_FUNC rta_addattr32(struct rtattr *rta, int maxlen, int type, uint32_t d
 	int len = RTA_LENGTH(4);
 	struct rtattr *subrta;
 
-	if (RTA_ALIGN(rta->rta_len) + len > maxlen) {
+	if (RTA_ALIGN(rta->rta_len + len) > maxlen) {
 		return -1;
 	}
 	subrta = (struct rtattr*)(((char*)rta) + RTA_ALIGN(rta->rta_len));
 	subrta->rta_type = type;
 	subrta->rta_len = len;
 	move_to_unaligned32(RTA_DATA(subrta), data);
-	rta->rta_len = NLMSG_ALIGN(rta->rta_len) + len;
+	rta->rta_len = NLMSG_ALIGN(rta->rta_len + len);
 	return 0;
 }
 
@@ -375,20 +384,22 @@ int FAST_FUNC rta_addattr_l(struct rtattr *rta, int maxlen, int type, void *data
 	struct rtattr *subrta;
 	int len = RTA_LENGTH(alen);
 
-	if (RTA_ALIGN(rta->rta_len) + len > maxlen) {
+	if (RTA_ALIGN(rta->rta_len + len) > maxlen) {
 		return -1;
 	}
 	subrta = (struct rtattr*)(((char*)rta) + RTA_ALIGN(rta->rta_len));
 	subrta->rta_type = type;
 	subrta->rta_len = len;
 	memcpy(RTA_DATA(subrta), data, alen);
-	rta->rta_len = NLMSG_ALIGN(rta->rta_len) + len;
+	rta->rta_len = NLMSG_ALIGN(rta->rta_len + len);
 	return 0;
 }
 
 
 void FAST_FUNC parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len)
 {
+	memset(tb, 0, (max + 1) * sizeof(tb[0]));
+
 	while (RTA_OK(rta, len)) {
 		if (rta->rta_type <= max) {
 			tb[rta->rta_type] = rta;

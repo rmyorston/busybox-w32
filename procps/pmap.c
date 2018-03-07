@@ -7,18 +7,18 @@
  * Licensed under GPLv2 or later, see the LICENSE file in this source tree
  * for details.
  */
-
 //config:config PMAP
-//config:       bool "pmap"
-//config:       default y
-//config:       help
-//config:         Display processes' memory mappings.
+//config:	bool "pmap (6 kb)"
+//config:	default y
+//config:	help
+//config:	Display processes' memory mappings.
 
 //applet:IF_PMAP(APPLET(pmap, BB_DIR_USR_BIN, BB_SUID_DROP))
+
 //kbuild:lib-$(CONFIG_PMAP) += pmap.o
 
 //usage:#define pmap_trivial_usage
-//usage:       "[-xq] PID"
+//usage:       "[-xq] PID..."
 //usage:#define pmap_full_usage "\n\n"
 //usage:       "Display process memory usage"
 //usage:     "\n"
@@ -96,7 +96,7 @@ int pmap_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opts;
 	int ret;
 
-	opts = getopt32(argv, "xq");
+	opts = getopt32(argv, "^" "xq" "\0" "-1"); /* min one arg */
 	argv += optind;
 
 	ret = 0;

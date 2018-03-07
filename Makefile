@@ -1,5 +1,5 @@
 VERSION = 1
-PATCHLEVEL = 25
+PATCHLEVEL = 29
 SUBLEVEL = 0
 EXTRAVERSION = .git
 NAME = Unnamed
@@ -178,7 +178,7 @@ endif
 # SUBARCH is subsequently ignored.
 
 ifneq ($(CROSS_COMPILE),)
-SUBARCH := $(shell echo $(CROSS_COMPILE) | cut -d- -f1)
+SUBARCH := $(shell echo $(CROSS_COMPILE) | cut -d- -f1 | sed 's:^.*/::g')
 else
 SUBARCH := $(shell uname -m)
 endif
@@ -471,6 +471,7 @@ libs-y		:= \
 		coreutils/ \
 		coreutils/libcoreutils/ \
 		debianutils/ \
+		klibc-utils/ \
 		e2fsprogs/ \
 		editors/ \
 		findutils/ \
@@ -511,6 +512,8 @@ ifeq ($(dot-config),1)
 # To avoid any implicit rule to kick in, define an empty command
 .config .kconfig.d: ;
 
+-include $(srctree)/arch/$(ARCH)/Makefile
+
 # Now we can define CFLAGS etc according to .config
 include $(srctree)/Makefile.flags
 
@@ -533,8 +536,6 @@ endif
 # This allow a user to issue only 'make' to build a kernel including modules
 # Defaults busybox but it is usually overridden in the arch makefile
 all: busybox$(EXEEXT) doc
-
--include $(srctree)/arch/$(ARCH)/Makefile
 
 # arch Makefile may override CC so keep this after arch Makefile is included
 #bbox# NOSTDINC_FLAGS += -nostdinc -isystem $(shell $(CC) -print-file-name=include)
@@ -620,8 +621,8 @@ else
       "$(LDFLAGS) $(EXTRA_LDFLAGS)" \
       "$(core-y)" \
       "$(libs-y)" \
-      "$(LDLIBS)"
-endif
+      "$(LDLIBS)" \
+      && $(srctree)/scripts/generate_BUFSIZ.sh --post include/common_bufsiz.h
 
 # Generate System.map
 quiet_cmd_sysmap = SYSMAP
@@ -855,12 +856,15 @@ export CPPFLAGS_busybox.lds += -P -C -U$(ARCH)
 # 	Split autoconf.h into include/linux/config/*
 quiet_cmd_gen_bbconfigopts = GEN     include/bbconfigopts.h
       cmd_gen_bbconfigopts = $(srctree)/scripts/mkconfigs include/bbconfigopts.h include/bbconfigopts_bz2.h
+quiet_cmd_gen_common_bufsiz = GEN     include/common_bufsiz.h
+      cmd_gen_common_bufsiz = $(srctree)/scripts/generate_BUFSIZ.sh include/common_bufsiz.h
 quiet_cmd_split_autoconf   = SPLIT   include/autoconf.h -> include/config/*
       cmd_split_autoconf   = scripts/basic/split-include include/autoconf.h include/config
 #bbox# piggybacked generation of few .h files
 include/config/MARKER: scripts/basic/split-include include/autoconf.h
 	$(call cmd,split_autoconf)
 	$(call cmd,gen_bbconfigopts)
+	$(call cmd,gen_common_bufsiz)
 	@touch $@
 
 # Generate some files
@@ -976,6 +980,7 @@ CLEAN_FILES +=	busybox$(EXEEXT) busybox_unstripped* busybox.links \
 MRPROPER_DIRS  += include/config include2
 MRPROPER_FILES += .config .config.old include/asm .version .old_version \
 		  include/NUM_APPLETS.h \
+		  include/common_bufsiz.h \
 		  include/autoconf.h \
 		  include/bbconfigopts.h \
 		  include/bbconfigopts_bz2.h \

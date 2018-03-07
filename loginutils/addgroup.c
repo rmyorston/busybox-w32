@@ -7,31 +7,24 @@
  * Copyright (C) 2007 by Tito Ragusa <farmatito@tiscali.it>
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
- *
  */
 //config:config ADDGROUP
-//config:	bool "addgroup"
+//config:	bool "addgroup (8.2 kb)"
 //config:	default y
+//config:	select LONG_OPTS
 //config:	help
-//config:	  Utility for creating a new group account.
-//config:
-//config:config FEATURE_ADDGROUP_LONG_OPTIONS
-//config:	bool "Enable long options"
-//config:	default y
-//config:	depends on ADDGROUP && LONG_OPTS
-//config:	help
-//config:	  Support long options for the addgroup applet.
+//config:	Utility for creating a new group account.
 //config:
 //config:config FEATURE_ADDUSER_TO_GROUP
-//config:	bool "Support for adding users to groups"
+//config:	bool "Support adding users to groups"
 //config:	default y
 //config:	depends on ADDGROUP
 //config:	help
-//config:	  If  called  with two non-option arguments,
-//config:	  addgroup will add an existing user to an
-//config:	  existing group.
+//config:	If called with two non-option arguments,
+//config:	addgroup will add an existing user to an
+//config:	existing group.
 
-//applet:IF_ADDGROUP(APPLET(addgroup, BB_DIR_USR_SBIN, BB_SUID_DROP))
+//applet:IF_ADDGROUP(APPLET_NOEXEC(addgroup, addgroup, BB_DIR_USR_SBIN, BB_SUID_DROP, addgroup))
 
 //kbuild:lib-$(CONFIG_ADDGROUP) += addgroup.o
 
@@ -133,12 +126,11 @@ static void new_group(char *group, gid_t gid)
 #endif
 }
 
-#if ENABLE_FEATURE_ADDGROUP_LONG_OPTIONS
+//FIXME: upstream addgroup has no short options! NOT COMPATIBLE!
 static const char addgroup_longopts[] ALIGN1 =
 		"gid\0"                 Required_argument "g"
 		"system\0"              No_argument       "S"
 		;
-#endif
 
 /*
  * addgroup will take a login_name as its first parameter.
@@ -150,23 +142,26 @@ static const char addgroup_longopts[] ALIGN1 =
 int addgroup_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int addgroup_main(int argc UNUSED_PARAM, char **argv)
 {
+#if ENABLE_FEATURE_ADDUSER_TO_GROUP
 	unsigned opts;
+#endif
 	const char *gid = "0";
 
 	/* need to be root */
 	if (geteuid()) {
 		bb_error_msg_and_die(bb_msg_perm_denied_are_you_root);
 	}
-#if ENABLE_FEATURE_ADDGROUP_LONG_OPTIONS
-	applet_long_options = addgroup_longopts;
-#endif
 	/* Syntax:
 	 *  addgroup group
-	 *  addgroup -g num group
+	 *  addgroup --gid num group
 	 *  addgroup user group
 	 * Check for min, max and missing args */
-	opt_complementary = "-1:?2";
-	opts = getopt32(argv, "g:S", &gid);
+#if ENABLE_FEATURE_ADDUSER_TO_GROUP
+	opts =
+#endif
+	getopt32long(argv, "^" "g:S" "\0" "-1:?2", addgroup_longopts,
+				&gid
+	);
 	/* move past the commandline options */
 	argv += optind;
 	//argc -= optind;
@@ -186,7 +181,7 @@ int addgroup_main(int argc UNUSED_PARAM, char **argv)
 		gr = xgetgrnam(argv[1]); /* unknown group: exit */
 		/* check if user is already in this group */
 		for (; *(gr->gr_mem) != NULL; (gr->gr_mem)++) {
-			if (!strcmp(argv[0], *(gr->gr_mem))) {
+			if (strcmp(argv[0], *(gr->gr_mem)) == 0) {
 				/* user is already in group: do nothing */
 				return EXIT_SUCCESS;
 			}

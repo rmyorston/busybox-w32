@@ -42,7 +42,6 @@
 #define ENABLE_FEATURE_VOLUMEID_VIARAID       0
 
 /* These filesystems also have no label or uuid: */
-#define ENABLE_FEATURE_VOLUMEID_MINIX         0
 #define ENABLE_FEATURE_VOLUMEID_HPFS          0
 #define ENABLE_FEATURE_VOLUMEID_UFS           0
 
@@ -98,6 +97,9 @@ static const probe_fptr fs1[] = {
 #if ENABLE_FEATURE_VOLUMEID_EXFAT
 	volume_id_probe_exfat,
 #endif
+#if ENABLE_FEATURE_VOLUMEID_LFS
+	volume_id_probe_lfs,
+#endif
 #if ENABLE_FEATURE_VOLUMEID_MAC
 	volume_id_probe_mac_partition_map,
 #endif
@@ -106,6 +108,9 @@ static const probe_fptr fs1[] = {
 #endif
 #if ENABLE_FEATURE_VOLUMEID_XFS
 	volume_id_probe_xfs,
+#endif
+#if ENABLE_FEATURE_VOLUMEID_BCACHE
+	volume_id_probe_bcache,
 #endif
 };
 
@@ -164,6 +169,9 @@ static const probe_fptr fs2[] = {
 #endif
 #if ENABLE_FEATURE_VOLUMEID_OCFS2
 	volume_id_probe_ocfs2,
+#endif
+#if ENABLE_FEATURE_VOLUMEID_UBIFS
+	volume_id_probe_ubifs,
 #endif
 };
 

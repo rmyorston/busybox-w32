@@ -5,6 +5,25 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config SPLIT
+//config:	bool "split (5.4 kb)"
+//config:	default y
+//config:	help
+//config:	Split a file into pieces.
+//config:
+//config:config FEATURE_SPLIT_FANCY
+//config:	bool "Fancy extensions"
+//config:	default y
+//config:	depends on SPLIT
+//config:	help
+//config:	Add support for features not required by SUSv3.
+//config:	Supports additional suffixes 'b' for 512 bytes,
+//config:	'g' for 1GiB for the -b option.
+
+//applet:IF_SPLIT(APPLET(split, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_SPLIT) += split.o
+
 /* BB_AUDIT: SUSv3 compliant
  * SUSv3 requirements:
  * http://www.opengroup.org/onlinepubs/009695399/utilities/split.html
@@ -22,6 +41,7 @@
 //usage:       "$ cat TODO | split -a 2 -l 2 TODO_\n"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 #if ENABLE_FEATURE_SPLIT_FANCY
 static const struct suffix_mult split_suffixes[] = {
@@ -78,8 +98,13 @@ int split_main(int argc UNUSED_PARAM, char **argv)
 	ssize_t bytes_read, to_write;
 	char *src;
 
-	opt_complementary = "?2:a+"; /* max 2 args; -a N */
-	opt = getopt32(argv, "l:b:a:", &count_p, &count_p, &suffix_len);
+	setup_common_bufsiz();
+
+	opt = getopt32(argv, "^"
+			"l:b:a:+" /* -a N */
+			"\0" "?2"/*max 2 args*/,
+			&count_p, &count_p, &suffix_len
+	);
 
 	if (opt & SPLIT_OPT_l)
 		cnt = XATOOFF(count_p);

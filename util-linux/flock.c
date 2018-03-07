@@ -3,6 +3,15 @@
  *
  * This is free software, licensed under the GNU General Public License v2.
  */
+//config:config FLOCK
+//config:	bool "flock (6.1 kb)"
+//config:	default y
+//config:	help
+//config:	Manage locks from shell scripts
+
+//applet:IF_FLOCK(APPLET(flock, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_FLOCK) += flock.o
 
 //usage:#define flock_trivial_usage
 //usage:       "[-sxun] FD|{FILE [-c] PROG ARGS}"
@@ -29,17 +38,15 @@ int flock_main(int argc UNUSED_PARAM, char **argv)
 	};
 
 #if ENABLE_LONG_OPTS
-	static const char getopt_longopts[] ALIGN1 =
+	static const char flock_longopts[] ALIGN1 =
 		"shared\0"      No_argument       "s"
 		"exclusive\0"   No_argument       "x"
 		"unlock\0"      No_argument       "u"
 		"nonblock\0"    No_argument       "n"
 		;
-	applet_long_options = getopt_longopts;
 #endif
-	opt_complementary = "-1";
 
-	opt = getopt32(argv, "+sxnu");
+	opt = getopt32long(argv, "^+" "sxnu" "\0" "-1", flock_longopts);
 	argv += optind;
 
 	if (argv[1]) {
@@ -57,7 +64,6 @@ int flock_main(int argc UNUSED_PARAM, char **argv)
 	/* If it is "flock FILE -c PROG", then -c isn't caught by getopt32:
 	 * we use "+" in order to support "flock -opt FILE PROG -with-opts",
 	 * we need to remove -c by hand.
-	 * TODO: in upstream, -c 'PROG ARGS' means "run sh -c 'PROG ARGS'"
 	 */
 	if (argv[0]
 	 && argv[0][0] == '-'
@@ -66,6 +72,9 @@ int flock_main(int argc UNUSED_PARAM, char **argv)
 	    )
 	) {
 		argv++;
+		if (argv[1])
+			bb_error_msg_and_die("-c takes only one argument");
+		opt |= OPT_c;
 	}
 
 	if (OPT_s == LOCK_SH && OPT_x == LOCK_EX && OPT_n == LOCK_NB && OPT_u == LOCK_UN) {
@@ -90,8 +99,21 @@ int flock_main(int argc UNUSED_PARAM, char **argv)
 		bb_perror_nomsg_and_die();
 	}
 
-	if (argv[0])
-		return spawn_and_wait(argv);
+	if (argv[0]) {
+		int rc;
+		if (opt & OPT_c) {
+			/* -c 'PROG ARGS' means "run sh -c 'PROG ARGS'" */
+			argv -= 2;
+			argv[0] = (char*)get_shell_name();
+			argv[1] = (char*)"-c";
+			/* argv[2] = "PROG ARGS"; */
+			/* argv[3] = NULL; */
+		}
+		rc = spawn_and_wait(argv);
+		if (rc < 0)
+			bb_simple_perror_msg(argv[0]);
+		return rc;
+	}
 
 	return EXIT_SUCCESS;
 }

@@ -23,35 +23,33 @@
  * broken compatibility because the BusyBox policy doesn't allow them.
  */
 //config:config RUN_PARTS
-//config:	bool "run-parts"
+//config:	bool "run-parts (5.6 kb)"
 //config:	default y
 //config:	help
-//config:	  run-parts is a utility designed to run all the scripts in a directory.
+//config:	run-parts is a utility designed to run all the scripts in a directory.
 //config:
-//config:	  It is useful to set up a directory like cron.daily, where you need to
-//config:	  execute all the scripts in that directory.
+//config:	It is useful to set up a directory like cron.daily, where you need to
+//config:	execute all the scripts in that directory.
 //config:
-//config:	  In this implementation of run-parts some features (such as report
-//config:	  mode) are not implemented.
+//config:	In this implementation of run-parts some features (such as report
+//config:	mode) are not implemented.
 //config:
-//config:	  Unless you know that run-parts is used in some of your scripts
-//config:	  you can safely say N here.
+//config:	Unless you know that run-parts is used in some of your scripts
+//config:	you can safely say N here.
 //config:
 //config:config FEATURE_RUN_PARTS_LONG_OPTIONS
 //config:	bool "Enable long options"
 //config:	default y
 //config:	depends on RUN_PARTS && LONG_OPTS
-//config:	help
-//config:	  Support long options for the run-parts applet.
 //config:
 //config:config FEATURE_RUN_PARTS_FANCY
 //config:	bool "Support additional arguments"
 //config:	default y
 //config:	depends on RUN_PARTS
 //config:	help
-//config:	  Support additional options:
-//config:	  -l --list print the names of the all matching files (not
-//config:	            limited to executables), but don't actually run them.
+//config:	Support additional options:
+//config:	-l --list print the names of the all matching files (not
+//config:	limited to executables), but don't actually run them.
 
 //applet:IF_RUN_PARTS(APPLET_ODDNAME(run-parts, run_parts, BB_DIR_BIN, BB_SUID_DROP, run_parts))
 
@@ -89,17 +87,18 @@
 //usage:       "+ shutdown -h +4m"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 struct globals {
 	char **names;
 	int    cur;
 	char  *cmd[2 /* using 1 provokes compiler warning */];
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define names (G.names)
 #define cur   (G.cur  )
 #define cmd   (G.cmd  )
-#define INIT_G() do { } while (0)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 enum { NUM_CMD = (COMMON_BUFSIZE - sizeof(G)) / sizeof(cmd[0]) - 1 };
 
@@ -160,10 +159,15 @@ static const char runparts_longopts[] ALIGN1 =
 	"reverse\0" No_argument       "\xf0"
 	"test\0"    No_argument       "\xf1"
 	"exit-on-error\0" No_argument "\xf2"
-#if ENABLE_FEATURE_RUN_PARTS_FANCY
+# if ENABLE_FEATURE_RUN_PARTS_FANCY
 	"list\0"    No_argument       "\xf3"
-#endif
+# endif
 	;
+# define GETOPT32 getopt32long
+# define LONGOPTS ,runparts_longopts
+#else
+# define GETOPT32 getopt32
+# define LONGOPTS
 #endif
 
 int run_parts_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -176,12 +180,10 @@ int run_parts_main(int argc UNUSED_PARAM, char **argv)
 
 	INIT_G();
 
-#if ENABLE_FEATURE_RUN_PARTS_LONG_OPTIONS
-	applet_long_options = runparts_longopts;
-#endif
 	/* We require exactly one argument: the directory name */
-	opt_complementary = "=1:a::";
-	getopt32(argv, "a:u:", &arg_list, &umask_p);
+	GETOPT32(argv, "^" "a:*u:" "\0" "=1" LONGOPTS,
+			&arg_list, &umask_p
+	);
 
 	umask(xstrtou_range(umask_p, 8, 0, 07777));
 

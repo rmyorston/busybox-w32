@@ -2,9 +2,24 @@
 /*
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config DC
+//config:	bool "dc (4.2 kb)"
+//config:	default y
+//config:	help
+//config:	Dc is a reverse-polish desk calculator which supports unlimited
+//config:	precision arithmetic.
+//config:
+//config:config FEATURE_DC_LIBM
+//config:	bool "Enable power and exp functions (requires libm)"
+//config:	default y
+//config:	depends on DC
+//config:	help
+//config:	Enable power and exp functions.
+//config:	NOTE: This will require libm to be present for linking.
 
-#include "libbb.h"
-#include <math.h>
+//applet:IF_DC(APPLET(dc, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_DC) += dc.o
 
 //usage:#define dc_trivial_usage
 //usage:       "EXPRESSION..."
@@ -29,6 +44,10 @@
 //usage:       "$ echo 72 9 div 8 mul p | dc\n"
 //usage:       "64\n"
 
+#include "libbb.h"
+#include "common_bufsiz.h"
+#include <math.h>
+
 #if 0
 typedef unsigned data_t;
 #define DATA_FMT ""
@@ -37,7 +56,7 @@ typedef unsigned long data_t;
 #define DATA_FMT "l"
 #else
 typedef unsigned long long data_t;
-#define DATA_FMT "ll"
+#define DATA_FMT LL_FMT
 #endif
 
 
@@ -47,11 +66,12 @@ struct globals {
 	double stack[1];
 } FIX_ALIASING;
 enum { STACK_SIZE = (COMMON_BUFSIZE - offsetof(struct globals, stack)) / sizeof(double) };
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define pointer   (G.pointer   )
 #define base      (G.base      )
 #define stack     (G.stack     )
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	base = 10; \
 } while (0)
 

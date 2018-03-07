@@ -13,7 +13,7 @@ modification, are permitted provided that the following conditions are met:
    3. The name of the author may not be used to endorse or promote products
       derived from this software without specific prior written permission.
 
-THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ''AS IS'' AND ANY EXPRESS OR IMPLIED
 WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO
 EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
@@ -28,42 +28,43 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* Busyboxed by Denys Vlasenko <vda.linux@googlemail.com> */
 
 //config:config CHPST
-//config:	bool "chpst"
+//config:	bool "chpst (8.7 kb)"
 //config:	default y
 //config:	help
-//config:	  chpst changes the process state according to the given options, and
-//config:	  execs specified program.
+//config:	chpst changes the process state according to the given options, and
+//config:	execs specified program.
 //config:
 //config:config SETUIDGID
-//config:	bool "setuidgid"
+//config:	bool "setuidgid (4.2 kb)"
 //config:	default y
 //config:	help
-//config:	  Sets soft resource limits as specified by options
+//config:	Sets soft resource limits as specified by options
 //config:
 //config:config ENVUIDGID
-//config:	bool "envuidgid"
+//config:	bool "envuidgid (3.6 kb)"
 //config:	default y
 //config:	help
-//config:	  Sets $UID to account's uid and $GID to account's gid
+//config:	Sets $UID to account's uid and $GID to account's gid
 //config:
 //config:config ENVDIR
-//config:	bool "envdir"
+//config:	bool "envdir (2.5 kb)"
 //config:	default y
 //config:	help
-//config:	  Sets various environment variables as specified by files
-//config:	  in the given directory
+//config:	Sets various environment variables as specified by files
+//config:	in the given directory
 //config:
 //config:config SOFTLIMIT
-//config:	bool "softlimit"
+//config:	bool "softlimit (4.3 kb)"
 //config:	default y
 //config:	help
-//config:	  Sets soft resource limits as specified by options
+//config:	Sets soft resource limits as specified by options
 
-//applet:IF_CHPST(APPLET(chpst, BB_DIR_USR_BIN, BB_SUID_DROP))
-//applet:IF_ENVDIR(APPLET_ODDNAME(envdir, chpst, BB_DIR_USR_BIN, BB_SUID_DROP, envdir))
-//applet:IF_ENVUIDGID(APPLET_ODDNAME(envuidgid, chpst, BB_DIR_USR_BIN, BB_SUID_DROP, envuidgid))
-//applet:IF_SETUIDGID(APPLET_ODDNAME(setuidgid, chpst, BB_DIR_USR_BIN, BB_SUID_DROP, setuidgid))
-//applet:IF_SOFTLIMIT(APPLET_ODDNAME(softlimit, chpst, BB_DIR_USR_BIN, BB_SUID_DROP, softlimit))
+//applet:IF_CHPST(    APPLET_NOEXEC(chpst,     chpst, BB_DIR_USR_BIN, BB_SUID_DROP, chpst))
+//                    APPLET_NOEXEC:name       main   location        suid_type     help
+//applet:IF_ENVDIR(   APPLET_NOEXEC(envdir,    chpst, BB_DIR_USR_BIN, BB_SUID_DROP, envdir))
+//applet:IF_ENVUIDGID(APPLET_NOEXEC(envuidgid, chpst, BB_DIR_USR_BIN, BB_SUID_DROP, envuidgid))
+//applet:IF_SETUIDGID(APPLET_NOEXEC(setuidgid, chpst, BB_DIR_USR_BIN, BB_SUID_DROP, setuidgid))
+//applet:IF_SOFTLIMIT(APPLET_NOEXEC(softlimit, chpst, BB_DIR_USR_BIN, BB_SUID_DROP, softlimit))
 
 //kbuild:lib-$(CONFIG_CHPST) += chpst.o
 //kbuild:lib-$(CONFIG_ENVDIR) += chpst.o
@@ -255,8 +256,7 @@ static NOINLINE void edir(const char *directory_name)
 		xsetenv(d->d_name, buf);
 	}
 	closedir(dir);
-	if (fchdir(wdir) == -1)
-		bb_perror_msg_and_die("fchdir");
+	xfchdir(wdir);
 	close(wdir);
 }
 
@@ -301,9 +301,10 @@ int chpst_main(int argc UNUSED_PARAM, char **argv)
 		// FIXME: can we live with int-sized limits?
 		// can we live with 40000 days?
 		// if yes -> getopt converts strings to numbers for us
-		opt_complementary = "-1:a+:c+:d+:f+:l+:m+:o+:p+:r+:s+:t+";
-		opt = getopt32(argv, "+a:c:d:f:l:m:o:p:r:s:t:u:U:e:"
-			IF_CHPST("/:n:vP012"),
+		opt = getopt32(argv, "^+"
+			"a:+c:+d:+f:+l:+m:+o:+p:+r:+s:+t:+u:U:e:"
+			IF_CHPST("/:n:vP012")
+			"\0" "-1",
 			&limita, &limitc, &limitd, &limitf, &limitl,
 			&limitm, &limito, &limitp, &limitr, &limits, &limitt,
 			&set_user, &set_user, &env_dir
@@ -463,17 +464,18 @@ int chpst_main(int argc UNUSED_PARAM, char **argv)
 		xchroot(root);
 	}
 
+	/* nice should be done before xsetuid */
+	if (opt & OPT_n) {
+		errno = 0;
+		if (nice(xatoi(nicestr)) == -1)
+			bb_perror_msg_and_die("nice");
+	}
+
 	if (opt & OPT_u) {
 		if (setgroups(1, &ugid.gid) == -1)
 			bb_perror_msg_and_die("setgroups");
 		xsetgid(ugid.gid);
 		xsetuid(ugid.uid);
-	}
-
-	if (opt & OPT_n) {
-		errno = 0;
-		if (nice(xatoi(nicestr)) == -1)
-			bb_perror_msg_and_die("nice");
 	}
 
 	if (opt & OPT_0)

@@ -7,22 +7,17 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config IPCS
+//config:	bool "ipcs (11 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	The ipcs utility is used to provide information on the currently
+//config:	allocated System V interprocess (IPC) objects in the system.
 
-//usage:#define ipcs_trivial_usage
-//usage:       "[[-smq] -i shmid] | [[-asmq] [-tcplu]]"
-//usage:#define ipcs_full_usage "\n\n"
-//usage:       "	-i	Show specific resource"
-//usage:     "\nResource specification:"
-//usage:     "\n	-m	Shared memory segments"
-//usage:     "\n	-q	Message queues"
-//usage:     "\n	-s	Semaphore arrays"
-//usage:     "\n	-a	All (default)"
-//usage:     "\nOutput format:"
-//usage:     "\n	-t	Time"
-//usage:     "\n	-c	Creator"
-//usage:     "\n	-p	Pid"
-//usage:     "\n	-l	Limits"
-//usage:     "\n	-u	Summary"
+//applet:IF_IPCS(APPLET_NOEXEC(ipcs, ipcs, BB_DIR_USR_BIN, BB_SUID_DROP, ipcs))
+
+//kbuild:lib-$(CONFIG_IPCS) += ipcs.o
 
 /* X/OPEN tells us to use <sys/{types,ipc,sem}.h> for semctl() */
 /* X/OPEN tells us to use <sys/{types,ipc,msg}.h> for msgctl() */
@@ -574,6 +569,22 @@ static void print_sem(int semid)
 	bb_putchar('\n');
 }
 
+//usage:#define ipcs_trivial_usage
+//usage:       "[[-smq] -i shmid] | [[-asmq] [-tcplu]]"
+//usage:#define ipcs_full_usage "\n\n"
+//usage:       "	-i	Show specific resource"
+//usage:     "\nResource specification:"
+//usage:     "\n	-m	Shared memory segments"
+//usage:     "\n	-q	Message queues"
+//usage:     "\n	-s	Semaphore arrays"
+//usage:     "\n	-a	All (default)"
+//usage:     "\nOutput format:"
+//usage:     "\n	-t	Time"
+//usage:     "\n	-c	Creator"
+//usage:     "\n	-p	Pid"
+//usage:     "\n	-l	Limits"
+//usage:     "\n	-u	Summary"
+
 int ipcs_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int ipcs_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -621,16 +632,16 @@ int ipcs_main(int argc UNUSED_PARAM, char **argv)
 		flags |= flag_msg | flag_shm | flag_sem;
 	bb_putchar('\n');
 
+	if (flags & flag_msg) {
+		do_msg();
+		bb_putchar('\n');
+	}
 	if (flags & flag_shm) {
 		do_shm();
 		bb_putchar('\n');
 	}
 	if (flags & flag_sem) {
 		do_sem();
-		bb_putchar('\n');
-	}
-	if (flags & flag_msg) {
-		do_msg();
 		bb_putchar('\n');
 	}
 	fflush_stdout_and_exit(EXIT_SUCCESS);

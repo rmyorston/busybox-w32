@@ -34,12 +34,12 @@
  * It doesn't guess filesystem types from on-disk format.
  */
 //config:config FSCK
-//config:	bool "fsck"
+//config:	bool "fsck (6.7 kb)"
 //config:	default y
 //config:	help
-//config:	  fsck is used to check and optionally repair one or more filesystems.
-//config:	  In actuality, fsck is simply a front-end for the various file system
-//config:	  checkers (fsck.fstype) available under Linux.
+//config:	fsck is used to check and optionally repair one or more filesystems.
+//config:	In actuality, fsck is simply a front-end for the various file system
+//config:	checkers (fsck.fstype) available under Linux.
 
 //applet:IF_FSCK(APPLET(fsck, BB_DIR_SBIN, BB_SUID_DROP))
 
@@ -60,6 +60,7 @@
 //usage:     "\n	-t TYPE	List of filesystem types to check"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 /* "progress indicator" code is somewhat buggy and ext[23] specific.
  * We should be filesystem agnostic. IOW: there should be a well-defined
@@ -169,8 +170,9 @@ struct globals {
 	struct fs_info *filesys_last;
 	struct fsck_instance *instance_list;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	BUILD_BUG_ON(sizeof(G) > COMMON_BUFSIZE); \
 } while (0)
 
@@ -345,7 +347,7 @@ static void load_fs_info(const char *filename)
 
 	// Loop through entries
 	while (getmntent_r(fstab, &mte, buf, sizeof(buf))) {
-		//bb_info_msg("CREATE[%s][%s][%s][%s][%d]", mte.mnt_fsname, mte.mnt_dir,
+		//bb_error_msg("CREATE[%s][%s][%s][%s][%d]", mte.mnt_fsname, mte.mnt_dir,
 		//	mte.mnt_type, mte.mnt_opts,
 		//	mte.mnt_passno);
 		create_fs_device(mte.mnt_fsname, mte.mnt_dir,
@@ -602,7 +604,7 @@ static void fsck_device(struct fs_info *fs /*, int interactive */)
 	if (strcmp(fs->type, "auto") != 0) {
 		type = fs->type;
 		if (G.verbose > 2)
-			bb_info_msg("using filesystem type '%s' %s",
+			printf("using filesystem type '%s' %s\n",
 					type, "from fstab");
 	} else if (G.fstype
 	 && (G.fstype[0] != 'n' || G.fstype[1] != 'o') /* != "no" */
@@ -612,12 +614,12 @@ static void fsck_device(struct fs_info *fs /*, int interactive */)
 	) {
 		type = G.fstype;
 		if (G.verbose > 2)
-			bb_info_msg("using filesystem type '%s' %s",
+			printf("using filesystem type '%s' %s\n",
 					type, "from -t");
 	} else {
 		type = "auto";
 		if (G.verbose > 2)
-			bb_info_msg("using filesystem type '%s' %s",
+			printf("using filesystem type '%s' %s\n",
 					type, "(default)");
 	}
 
@@ -656,7 +658,7 @@ static int device_already_active(char *device)
 		return (G.instance_list != NULL);
 
 	for (inst = G.instance_list; inst; inst = inst->next) {
-		if (!inst->base_device || !strcmp(base, inst->base_device)) {
+		if (!inst->base_device || strcmp(base, inst->base_device) == 0) {
 			free(base);
 			return 1;
 		}
@@ -1069,7 +1071,7 @@ int fsck_main(int argc UNUSED_PARAM, char **argv)
 	new_args(); /* G.args[G.num_args - 1] is the last, NULL element */
 
 	if (!notitle)
-		puts("fsck (busybox "BB_VER", "BB_BT")");
+		puts("fsck (busybox "BB_VER")");
 
 	/* Even plain "fsck /dev/hda1" needs fstab to get fs type,
 	 * so we are scanning it anyway */

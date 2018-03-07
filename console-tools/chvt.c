@@ -6,6 +6,17 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config CHVT
+//config:	bool "chvt (2 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	This program is used to change to another terminal.
+//config:	Example: chvt 4 (change to terminal /dev/tty4)
+
+//applet:IF_CHVT(APPLET_NOEXEC(chvt, chvt, BB_DIR_USR_BIN, BB_SUID_DROP, chvt))
+
+//kbuild:lib-$(CONFIG_CHVT) += chvt.o
 
 //usage:#define chvt_trivial_usage
 //usage:       "N"

@@ -7,14 +7,13 @@
  */
 #include "modutils.h"
 
-#ifdef __UCLIBC__
-extern int init_module(void *module, unsigned long len, const char *options);
-extern int delete_module(const char *module, unsigned int flags);
-#else
-# include <sys/syscall.h>
-# define init_module(mod, len, opts) syscall(__NR_init_module, mod, len, opts)
-# define delete_module(mod, flags) syscall(__NR_delete_module, mod, flags)
+#include <sys/syscall.h>
+
+#define init_module(mod, len, opts) syscall(__NR_init_module, mod, len, opts)
+#if defined(__NR_finit_module)
+# define finit_module(fd, uargs, flags) syscall(__NR_finit_module, fd, uargs, flags)
 #endif
+#define delete_module(mod, flags) syscall(__NR_delete_module, mod, flags)
 
 static module_entry *helper_get_module(module_db *db, const char *module, int create)
 {
@@ -76,12 +75,6 @@ void FAST_FUNC replace(char *s, char what, char with)
 	}
 }
 
-char* FAST_FUNC replace_underscores(char *s)
-{
-	replace(s, '-', '_');
-	return s;
-}
-
 int FAST_FUNC string_to_llist(char *string, llist_t **llist, const char *delim)
 {
 	char *tok;
@@ -121,6 +114,7 @@ char* FAST_FUNC filename2modname(const char *filename, char *modname)
 	return modname;
 }
 
+#if ENABLE_FEATURE_CMDLINE_MODULE_OPTIONS
 char* FAST_FUNC parse_cmdline_module_options(char **argv, int quote_spaces)
 {
 	char *options;
@@ -156,6 +150,7 @@ char* FAST_FUNC parse_cmdline_module_options(char **argv, int quote_spaces)
 	/* if (optlen != 0) options[optlen-1] = '\0'; */
 	return options;
 }
+#endif
 
 #if ENABLE_FEATURE_INSMOD_TRY_MMAP
 void* FAST_FUNC try_to_mmap_module(const char *filename, size_t *image_size_p)
@@ -211,6 +206,24 @@ int FAST_FUNC bb_init_module(const char *filename, const char *options)
 	if (get_linux_version_code() < KERNEL_VERSION(2,6,0))
 		return bb_init_module_24(filename, options);
 #endif
+
+	/*
+	 * First we try finit_module if available.  Some kernels are configured
+	 * to only allow loading of modules off of secure storage (like a read-
+	 * only rootfs) which needs the finit_module call.  If it fails, we fall
+	 * back to normal module loading to support compressed modules.
+	 */
+# ifdef __NR_finit_module
+	{
+		int fd = open(filename, O_RDONLY | O_CLOEXEC);
+		if (fd >= 0) {
+			rc = finit_module(fd, options, 0) != 0;
+			close(fd);
+			if (rc == 0)
+				return rc;
+		}
+	}
+# endif
 
 	image_size = INT_MAX - 4095;
 	mmaped = 0;

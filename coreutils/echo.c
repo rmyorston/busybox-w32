@@ -9,10 +9,6 @@
  *
  * Original copyright notice is retained at the end of this file.
  */
-
-/* BB_AUDIT SUSv3 compliant -- unless configured as fancy echo. */
-/* http://www.opengroup.org/onlinepubs/007904975/utilities/echo.html */
-
 /* Mar 16, 2003      Manuel Novoa III   (mjn3@codepoet.org)
  *
  * Because of behavioral differences, implemented configurable SUSv3
@@ -22,6 +18,27 @@
  * 2) SUSv3 specifies that octal escapes are of the form \0{#{#{#}}}.
  *    The previous version did not allow 4-digit octals.
  */
+//config:config ECHO
+//config:	bool "echo (basic SuSv3 version taking no options)"
+//config:	default y
+//config:	help
+//config:	echo is used to print a specified string to stdout.
+//config:
+//config:# this entry also appears in shell/Config.in, next to the echo builtin
+//config:config FEATURE_FANCY_ECHO
+//config:	bool "Enable -n and -e options"
+//config:	default y
+//config:	depends on ECHO || ASH_ECHO || HUSH_ECHO
+
+//applet:IF_ECHO(APPLET_NOFORK(echo, echo, BB_DIR_BIN, BB_SUID_DROP, echo))
+
+//kbuild:lib-$(CONFIG_ECHO) += echo.o
+
+//kbuild:lib-$(CONFIG_ASH_ECHO)  += echo.o
+//kbuild:lib-$(CONFIG_HUSH_ECHO) += echo.o
+
+/* BB_AUDIT SUSv3 compliant -- unless configured as fancy echo. */
+/* http://www.opengroup.org/onlinepubs/007904975/utilities/echo.html */
 
 //usage:#define echo_trivial_usage
 //usage:	IF_FEATURE_FANCY_ECHO("[-neE] ") "[ARG]..."
@@ -201,7 +218,7 @@ int echo_main(int argc UNUSED_PARAM, char **argv)
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ''AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE

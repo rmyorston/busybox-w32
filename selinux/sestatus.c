@@ -7,6 +7,16 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
+//config:config SESTATUS
+//config:	bool "sestatus (12 kb)"
+//config:	default n
+//config:	depends on SELINUX
+//config:	help
+//config:	Displays the status of SELinux.
+
+//applet:IF_SESTATUS(APPLET(sestatus, BB_DIR_USR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_SESTATUS) += sestatus.o
 
 //usage:#define sestatus_trivial_usage
 //usage:       "[-vb]"
@@ -157,8 +167,7 @@ int sestatus_main(int argc UNUSED_PARAM, char **argv)
 	const char *pol_path;
 	int rc;
 
-	opt_complementary = "?0";  /* no arguments are required. */
-	opts = getopt32(argv, "vb");
+	opts = getopt32(argv, "^" "vb" "\0" "=0"/*no arguments*/);
 
 	/* SELinux status: line */
 	rc = is_selinux_enabled();

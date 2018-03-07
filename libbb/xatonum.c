@@ -6,7 +6,6 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-
 #include "libbb.h"
 
 #define type long long
@@ -94,5 +93,24 @@ const struct suffix_mult cwbkMG_suffixes[] = {
 	{ "G", 1024*1024*1024 },
 	/* "D" suffix for decimal is not in coreutils manpage, looks like it's deprecated */
 	/* coreutils also understands TPEZY suffixes for tera- and so on, with B suffix for decimal */
+	{ "", 0 }
+};
+
+const struct suffix_mult kmg_i_suffixes[] = {
+	{ "KiB", 1024 },
+	{ "kiB", 1024 },
+	{ "K", 1024 },
+	{ "k", 1024 },
+	{ "MiB", 1048576 },
+	{ "miB", 1048576 },
+	{ "M", 1048576 },
+	{ "m", 1048576 },
+	{ "GiB", 1073741824 },
+	{ "giB", 1073741824 },
+	{ "G", 1073741824 },
+	{ "g", 1073741824 },
+	{ "KB", 1000 },
+	{ "MB", 1000000 },
+	{ "GB", 1000000000 },
 	{ "", 0 }
 };

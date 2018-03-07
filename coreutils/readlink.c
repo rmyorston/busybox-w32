@@ -6,6 +6,23 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config READLINK
+//config:	bool "readlink (3.6 kb)"
+//config:	default y
+//config:	help
+//config:	This program reads a symbolic link and returns the name
+//config:	of the file it points to
+//config:
+//config:config FEATURE_READLINK_FOLLOW
+//config:	bool "Enable canonicalization by following all symlinks (-f)"
+//config:	default y
+//config:	depends on READLINK
+//config:	help
+//config:	Enable the readlink option (-f).
+
+//applet:IF_READLINK(APPLET_NOFORK(readlink, readlink, BB_DIR_USR_BIN, BB_SUID_DROP, readlink))
+
+//kbuild:lib-$(CONFIG_READLINK) += readlink.o
 
 //usage:#define readlink_trivial_usage
 //usage:	IF_FEATURE_READLINK_FOLLOW("[-fnv] ") "FILE"
@@ -54,8 +71,7 @@ int readlink_main(int argc UNUSED_PARAM, char **argv)
 	IF_FEATURE_READLINK_FOLLOW(
 		unsigned opt;
 		/* We need exactly one non-option argument.  */
-		opt_complementary = "=1";
-		opt = getopt32(argv, "fnvsq");
+		opt = getopt32(argv, "^" "fnvsq" "\0" "=1");
 		fname = argv[optind];
 	)
 	IF_NOT_FEATURE_READLINK_FOLLOW(
@@ -68,6 +84,7 @@ int readlink_main(int argc UNUSED_PARAM, char **argv)
 	if (!(opt & 4)) /* not -v */
 		logmode = LOGMODE_NONE;
 
+	/* NOFORK: only one alloc is allowed; must free */
 	if (opt & 1) { /* -f */
 		buf = xmalloc_realpath(fname);
 	} else {
@@ -77,9 +94,7 @@ int readlink_main(int argc UNUSED_PARAM, char **argv)
 	if (!buf)
 		return EXIT_FAILURE;
 	printf((opt & 2) ? "%s" : "%s\n", buf);
-
-	if (ENABLE_FEATURE_CLEAN_UP)
-		free(buf);
+	free(buf);
 
 	fflush_stdout_and_exit(EXIT_SUCCESS);
 }

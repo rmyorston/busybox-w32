@@ -20,6 +20,7 @@
 
 
 /* #include "libbb.h" - done in od.c */
+#include "common_bufsiz.h"
 #define assert(a) ((void)0)
 
 
@@ -60,8 +61,8 @@ enum {
 	OPT_traditional = (1 << 18) * ENABLE_LONG_OPTS,
 };
 
-#define OD_GETOPT32() getopt32(argv, \
-	"A:N:abcdfhij:lot:vxsS:w::", \
+#define OD_GETOPT32() getopt32long(argv, \
+	"A:N:abcdfhij:lot:*vxsS:w:+:", od_longopts, \
 	/* -w with optional param */ \
 	/* -S was -s and also had optional parameter */ \
 	/* but in coreutils 6.3 it was renamed and now has */ \
@@ -217,14 +218,23 @@ struct globals {
 
 	bool not_first;
 	bool prev_pair_equal;
+
+	char address_fmt[sizeof("%0n"OFF_FMT"xc")];
 } FIX_ALIASING;
+/* Corresponds to 'x' above */
+#define address_base_char G.address_fmt[sizeof(G.address_fmt)-3]
+/* Corresponds to 'n' above */
+#define address_pad_len_char G.address_fmt[2]
+
 #if !ENABLE_LONG_OPTS
 enum { G_pseudo_offset = 0 };
 #endif
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	BUILD_BUG_ON(sizeof(G) > COMMON_BUFSIZE); \
 	G.bytes_per_block = 32; \
+	strcpy(G.address_fmt, "%0n"OFF_FMT"xc"); \
 } while (0)
 
 
@@ -670,7 +680,7 @@ decode_one_format(const char *s_orig, const char *s, struct tspec *tspec)
 		fmt = FLOATING_POINT;
 		++s;
 		p = strchr(FDL, *s);
-		if (!p) {
+		if (!p || *p == '\0') {
 			size = sizeof(double);
 			if (isdigit(s[0])) {
 				size = bb_strtou(s, &end, 0);
@@ -691,6 +701,7 @@ decode_one_format(const char *s_orig, const char *s, struct tspec *tspec)
 			};
 
 			size = FDL_sizeof[p - FDL];
+			s++; /* skip F/D/L */
 		}
 
 		size_spec = fp_type_size[size];
@@ -848,18 +859,12 @@ format_address_none(off_t address UNUSED_PARAM, char c UNUSED_PARAM)
 {
 }
 
-static char address_fmt[] ALIGN1 = "%0n"OFF_FMT"xc";
-/* Corresponds to 'x' above */
-#define address_base_char address_fmt[sizeof(address_fmt)-3]
-/* Corresponds to 'n' above */
-#define address_pad_len_char address_fmt[2]
-
 static void
 format_address_std(off_t address, char c)
 {
 	/* Corresponds to 'c' */
-	address_fmt[sizeof(address_fmt)-2] = c;
-	printf(address_fmt, address);
+	G.address_fmt[sizeof(G.address_fmt)-2] = c;
+	printf(G.address_fmt, address);
 }
 
 #if ENABLE_LONG_OPTS
@@ -1217,10 +1222,6 @@ int od_main(int argc UNUSED_PARAM, char **argv)
 	address_pad_len_char = '7';
 
 	/* Parse command line */
-	opt_complementary = "w+:t::"; /* -w N, -t is a list */
-#if ENABLE_LONG_OPTS
-	applet_long_options = od_longopts;
-#endif
 	opt = OD_GETOPT32();
 	argv += optind;
 	if (opt & OPT_A) {
@@ -1379,9 +1380,13 @@ int od_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 #ifdef DEBUG
-	for (i = 0; i < G.n_specs; i++) {
-		printf("%d: fmt=\"%s\" width=%d\n",
-			i, spec[i].fmt_string, width_bytes[spec[i].size]);
+	{
+		int i;
+		for (i = 0; i < G.n_specs; i++) {
+			printf("%d: fmt='%s' width=%d\n",
+				i, G.spec[i].fmt_string,
+				width_bytes[G.spec[i].size]);
+		}
 	}
 #endif
 

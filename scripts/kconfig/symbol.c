@@ -54,7 +54,9 @@ void sym_add_default(struct symbol *sym, const char *def)
 void sym_init(void)
 {
 	struct symbol *sym;
+#ifndef __MINGW32__
 	struct utsname uts;
+#endif
 	char *p;
 	static bool inited = false;
 
@@ -62,7 +64,9 @@ void sym_init(void)
 		return;
 	inited = true;
 
+#ifndef __MINGW32__
 	uname(&uts);
+#endif
 
 	sym = sym_lookup("ARCH", 0);
 	sym->type = S_STRING;
@@ -81,7 +85,11 @@ void sym_init(void)
 	sym = sym_lookup("UNAME_RELEASE", 0);
 	sym->type = S_STRING;
 	sym->flags |= SYMBOL_AUTO;
+#ifdef __MINGW32__
+	sym_add_default(sym, "UNKNOWN");
+#else
 	sym_add_default(sym, uts.release);
+#endif
 }
 
 enum symbol_type sym_get_type(struct symbol *sym)
@@ -730,6 +738,10 @@ struct symbol *sym_find(const char *name)
 
 struct symbol **sym_re_search(const char *pattern)
 {
+#ifdef __MINGW32__
+	fprintf(stderr, "NOTIMPL: sym_re_search\n");
+	exit(1);
+#else
 	struct symbol *sym, **sym_arr = NULL;
 	int i, cnt, size;
 	regex_t re;
@@ -762,6 +774,7 @@ struct symbol **sym_re_search(const char *pattern)
 	regfree(&re);
 
 	return sym_arr;
+#endif
 }
 
 

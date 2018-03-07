@@ -8,7 +8,6 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-
 /* We need to have separate xfuncs.c and xfuncs_printf.c because
  * with current linkers, even with section garbage collection,
  * if *.o module references any of XXXprintf functions, you pull in
@@ -21,7 +20,6 @@
  *
  * TODO: move xmalloc() and xatonum() here.
  */
-
 #include "libbb.h"
 
 /* Turn on nonblocking I/O on a fd */
@@ -237,16 +235,27 @@ ssize_t FAST_FUNC full_write2_str(const char *str)
 
 static int wh_helper(int value, int def_val, const char *env_name, int *err)
 {
-	if (value == 0) {
-		char *s = getenv(env_name);
-		if (s) {
-			value = atoi(s);
-			/* If LINES/COLUMNS are set, pretend that there is
-			 * no error getting w/h, this prevents some ugly
-			 * cursor tricks by our callers */
-			*err = 0;
-		}
+	/* Envvars override even if "value" from ioctl is valid (>0).
+	 * Rationale: it's impossible to guess what user wants.
+	 * For example: "man CMD | ...": should "man" format output
+	 * to stdout's width? stdin's width? /dev/tty's width? 80 chars?
+	 * We _cant_ know it. If "..." saves text for e.g. email,
+	 * then it's probably 80 chars.
+	 * If "..." is, say, "grep -v DISCARD | $PAGER", then user
+	 * would prefer his tty's width to be used!
+	 *
+	 * Since we don't know, at least allow user to do this:
+	 * "COLUMNS=80 man CMD | ..."
+	 */
+	char *s = getenv(env_name);
+	if (s) {
+		value = atoi(s);
+		/* If LINES/COLUMNS are set, pretend that there is
+		 * no error getting w/h, this prevents some ugly
+		 * cursor tricks by our callers */
+		*err = 0;
 	}
+
 	if (value <= 1 || value >= 30000)
 		value = def_val;
 	return value;
@@ -258,6 +267,20 @@ int FAST_FUNC get_terminal_width_height(int fd, unsigned *width, unsigned *heigh
 {
 	struct winsize win;
 	int err;
+	int close_me = -1;
+
+	if (fd == -1) {
+		if (isatty(STDOUT_FILENO))
+			fd = STDOUT_FILENO;
+		else
+		if (isatty(STDERR_FILENO))
+			fd = STDERR_FILENO;
+		else
+		if (isatty(STDIN_FILENO))
+			fd = STDIN_FILENO;
+		else
+			close_me = fd = open("/dev/tty", O_RDONLY);
+	}
 
 	win.ws_row = 0;
 	win.ws_col = 0;
@@ -268,6 +291,10 @@ int FAST_FUNC get_terminal_width_height(int fd, unsigned *width, unsigned *heigh
 		*height = wh_helper(win.ws_row, 24, "LINES", &err);
 	if (width)
 		*width = wh_helper(win.ws_col, 80, "COLUMNS", &err);
+
+	if (close_me >= 0)
+		close(close_me);
+
 	return err;
 }
 int FAST_FUNC get_terminal_width(int fd)
@@ -280,6 +307,77 @@ int FAST_FUNC get_terminal_width(int fd)
 int FAST_FUNC tcsetattr_stdin_TCSANOW(const struct termios *tp)
 {
 	return tcsetattr(STDIN_FILENO, TCSANOW, tp);
+}
+
+int FAST_FUNC get_termios_and_make_raw(int fd, struct termios *newterm, struct termios *oldterm, int flags)
+{
+//TODO: slattach, shell read might be adapted to use this too: grep for "tcsetattr", "[VTIME] = 0"
+	int r;
+
+	memset(oldterm, 0, sizeof(*oldterm)); /* paranoia */
+	r = tcgetattr(fd, oldterm);
+	*newterm = *oldterm;
+
+	/* Turn off buffered input (ICANON)
+	 * Turn off echoing (ECHO)
+	 * and separate echoing of newline (ECHONL, normally off anyway)
+	 */
+	newterm->c_lflag &= ~(ICANON | ECHO | ECHONL);
+	if (flags & TERMIOS_CLEAR_ISIG) {
+		/* dont recognize INT/QUIT/SUSP chars */
+		newterm->c_lflag &= ~ISIG;
+	}
+	/* reads will block only if < 1 char is available */
+	newterm->c_cc[VMIN] = 1;
+	/* no timeout (reads block forever) */
+	newterm->c_cc[VTIME] = 0;
+	if (flags & TERMIOS_RAW_CRNL) {
+/* IXON, IXOFF, and IXANY:
+ * IXOFF=1: sw flow control is enabled on input queue:
+ * tty transmits a STOP char when input queue is close to full
+ * and transmits a START char when input queue is nearly empty.
+ * IXON=1: sw flow control is enabled on output queue:
+ * tty will stop sending if STOP char is received,
+ * and resume sending if START is received, or if any char
+ * is received and IXANY=1.
+ */
+		/* IXON=0: XON/XOFF chars are treated as normal chars (why we do this?) */
+		/* dont convert CR to NL on input */
+		newterm->c_iflag &= ~(IXON | ICRNL);
+		/* dont convert NL to CR+NL on output */
+		newterm->c_oflag &= ~(ONLCR);
+		/* Maybe clear more c_oflag bits? Usually, only OPOST and ONLCR are set.
+		 * OPOST  Enable output processing (reqd for OLCUC and *NL* bits to work)
+		 * OLCUC  Map lowercase characters to uppercase on output.
+		 * OCRNL  Map CR to NL on output.
+		 * ONOCR  Don't output CR at column 0.
+		 * ONLRET Don't output CR.
+		 */
+	}
+	if (flags & TERMIOS_RAW_INPUT) {
+#ifndef IMAXBEL
+# define IMAXBEL 0
+#endif
+#ifndef IUCLC
+# define IUCLC 0
+#endif
+#ifndef IXANY
+# define IXANY 0
+#endif
+		/* IXOFF=0: disable sending XON/XOFF if input buf is full */
+		/* IXON=0: input XON/XOFF chars are not special */
+		/* dont convert anything on input */
+		newterm->c_iflag &= ~(IXOFF|IXON|IXANY|BRKINT|INLCR|ICRNL|IUCLC|IMAXBEL);
+	}
+	return r;
+}
+
+int FAST_FUNC set_termios_to_raw(int fd, struct termios *oldterm, int flags)
+{
+	struct termios newterm;
+
+	get_termios_and_make_raw(fd, &newterm, oldterm, flags);
+	return tcsetattr(fd, TCSANOW, &newterm);
 }
 
 pid_t FAST_FUNC safe_waitpid(pid_t pid, int *wstat, int options)
@@ -314,4 +412,16 @@ int FAST_FUNC wait4pid(pid_t pid)
 	if (WIFSIGNALED(status))
 		return WTERMSIG(status) + 0x180;
 	return 0;
+}
+
+// Useful when we do know that pid is valid, and we just want to wait
+// for it to exit. Not existing pid is fatal. waitpid() status is not returned.
+int FAST_FUNC wait_for_exitstatus(pid_t pid)
+{
+	int exit_status, n;
+
+	n = safe_waitpid(pid, &exit_status, 0);
+	if (n < 0)
+		bb_perror_msg_and_die("waitpid");
+	return exit_status;
 }

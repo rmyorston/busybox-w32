@@ -22,7 +22,7 @@ POSIX Tools supported only as shell built-ins (ash shell):
 POSIX Tools not supported:
   asa, at, batch, bc, c99, command, compress, csplit, ex, fc, file,
   gencat, getconf, iconv, join, link, locale, localedef, lp, m4,
-  mailx, newgrp, nl, paste, pathchk, pax, pr, qalter, qdel, qhold, qmove,
+  mailx, newgrp, nl, pathchk, pax, pr, qalter, qdel, qhold, qmove,
   qmsg, qrerun, qrls, qselect, qsig, qstat, qsub, tabs, talk, tput,
   tsort, unlink, uucp, uustat, uux
 
@@ -178,8 +178,10 @@ dd POSIX options:
   conv=noerror    |  yes   |           |
   conv=notrunc    |  yes   |           |
   conv=sync       |  yes   |           |
-dd Busybox specific options:
- conv=fsync
+dd compatibility options:
+  conv=fsync      |  yes   |           |
+  iflag=skip_bytes|  yes   |           |
+  iflag=fullblock |  yes   |           |
 
 df POSIX options
  option           | exists | compliant | remarks
@@ -467,6 +469,12 @@ od POSIX options
   -v              |  no    | no        |
   -x              |  no    | no        |
 od Busybox specific options: None
+
+paste POSIX options
+ option           | exists | compliant | remarks
+  -d list         |  yes   | yes       |
+  -s              |  yes   | yes       |
+paste Busybox specific options: None
 
 patch POSIX options
  option           | exists | compliant | remarks

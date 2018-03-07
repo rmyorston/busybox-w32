@@ -9,13 +9,12 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-
 /* findutils-4.1.20:
  *
  * # find file.txt -exec 'echo {}' '{}  {}' ';'
  * find: echo file.txt: No such file or directory
  * # find file.txt -exec 'echo' '{}  {}' '; '
- * find: missing argument to `-exec'
+ * find: missing argument to '-exec'
  * # find file.txt -exec 'echo {}' '{}  {}' ';' junk
  * find: paths must precede expression
  * # find file.txt -exec 'echo {}' '{}  {}' ';' junk ';'
@@ -44,7 +43,6 @@
  * # find t z t z '(' -name '*t*' -o -name '*z*' ')' -o -print
  * (no output)
  */
-
 /* Testing script
  * ./busybox find "$@" | tee /tmp/bb_find
  * echo ==================
@@ -52,189 +50,174 @@
  * echo ==================
  * diff -u /tmp/std_find /tmp/bb_find && echo Identical
  */
-
 //config:config FIND
-//config:	bool "find"
+//config:	bool "find (14 kb)"
 //config:	default y
 //config:	help
-//config:	  find is used to search your system to find specified files.
+//config:	find is used to search your system to find specified files.
 //config:
 //config:config FEATURE_FIND_PRINT0
 //config:	bool "Enable -print0: NUL-terminated output"
 //config:	default y
 //config:	depends on FIND
 //config:	help
-//config:	  Causes output names to be separated by a NUL character
-//config:	  rather than a newline. This allows names that contain
-//config:	  newlines and other whitespace to be more easily
-//config:	  interpreted by other programs.
+//config:	Causes output names to be separated by a NUL character
+//config:	rather than a newline. This allows names that contain
+//config:	newlines and other whitespace to be more easily
+//config:	interpreted by other programs.
 //config:
 //config:config FEATURE_FIND_MTIME
 //config:	bool "Enable -mtime: modified time matching"
 //config:	default y
 //config:	depends on FIND
 //config:	help
-//config:	  Allow searching based on the modification time of
-//config:	  files, in days.
+//config:	Allow searching based on the modification time of
+//config:	files, in days.
 //config:
 //config:config FEATURE_FIND_MMIN
 //config:	bool "Enable -mmin: modified time matching by minutes"
 //config:	default y
 //config:	depends on FIND
 //config:	help
-//config:	  Allow searching based on the modification time of
-//config:	  files, in minutes.
+//config:	Allow searching based on the modification time of
+//config:	files, in minutes.
 //config:
 //config:config FEATURE_FIND_PERM
 //config:	bool "Enable -perm: permissions matching"
 //config:	default y
 //config:	depends on FIND
-//config:	help
-//config:	  Enable searching based on file permissions.
 //config:
 //config:config FEATURE_FIND_TYPE
 //config:	bool "Enable -type: file type matching (file/dir/link/...)"
 //config:	default y
 //config:	depends on FIND
 //config:	help
-//config:	  Enable searching based on file type (file,
-//config:	  directory, socket, device, etc.).
+//config:	Enable searching based on file type (file,
+//config:	directory, socket, device, etc.).
 //config:
 //config:config FEATURE_FIND_XDEV
 //config:	bool "Enable -xdev: 'stay in filesystem'"
 //config:	default y
 //config:	depends on FIND
-//config:	help
-//config:	  This option allows find to restrict searches to a single filesystem.
 //config:
 //config:config FEATURE_FIND_MAXDEPTH
 //config:	bool "Enable -mindepth N and -maxdepth N"
 //config:	default y
 //config:	depends on FIND
-//config:	help
-//config:	  This option enables -mindepth N and -maxdepth N option.
 //config:
 //config:config FEATURE_FIND_NEWER
 //config:	bool "Enable -newer: compare file modification times"
 //config:	default y
 //config:	depends on FIND
 //config:	help
-//config:	  Support the 'find -newer' option for finding any files which have
-//config:	  modification time that is more recent than the specified FILE.
+//config:	Support the 'find -newer' option for finding any files which have
+//config:	modification time that is more recent than the specified FILE.
 //config:
 //config:config FEATURE_FIND_INUM
 //config:	bool "Enable -inum: inode number matching"
 //config:	default y
 //config:	depends on FIND
-//config:	help
-//config:	  Support the 'find -inum' option for searching by inode number.
 //config:
 //config:config FEATURE_FIND_EXEC
 //config:	bool "Enable -exec: execute commands"
 //config:	default y
 //config:	depends on FIND
 //config:	help
-//config:	  Support the 'find -exec' option for executing commands based upon
-//config:	  the files matched.
+//config:	Support the 'find -exec' option for executing commands based upon
+//config:	the files matched.
 //config:
 //config:config FEATURE_FIND_EXEC_PLUS
 //config:	bool "Enable -exec ... {} +"
 //config:	default y
 //config:	depends on FEATURE_FIND_EXEC
 //config:	help
-//config:	  Support the 'find -exec ... {} +' option for executing commands
-//config:	  for all matched files at once.
-//config:	  Without this option, -exec + is a synonym for -exec ;
-//config:	  (IOW: it works correctly, but without expected speedup)
+//config:	Support the 'find -exec ... {} +' option for executing commands
+//config:	for all matched files at once.
+//config:	Without this option, -exec + is a synonym for -exec ;
+//config:	(IOW: it works correctly, but without expected speedup)
 //config:
 //config:config FEATURE_FIND_USER
 //config:	bool "Enable -user: username/uid matching"
 //config:	default y
 //config:	depends on FIND
-//config:	help
-//config:	  Support the 'find -user' option for searching by username or uid.
 //config:
 //config:config FEATURE_FIND_GROUP
 //config:	bool "Enable -group: group/gid matching"
 //config:	default y
 //config:	depends on FIND
-//config:	help
-//config:	  Support the 'find -group' option for searching by group name or gid.
 //config:
 //config:config FEATURE_FIND_NOT
 //config:	bool "Enable the 'not' (!) operator"
 //config:	default y
 //config:	depends on FIND
 //config:	help
-//config:	  Support the '!' operator to invert the test results.
-//config:	  If 'Enable full-blown desktop' is enabled, then will also support
-//config:	  the non-POSIX notation '-not'.
+//config:	Support the '!' operator to invert the test results.
+//config:	If 'Enable full-blown desktop' is enabled, then will also support
+//config:	the non-POSIX notation '-not'.
 //config:
 //config:config FEATURE_FIND_DEPTH
 //config:	bool "Enable -depth"
 //config:	default y
 //config:	depends on FIND
 //config:	help
-//config:	  Process each directory's contents before the directory itself.
+//config:	Process each directory's contents before the directory itself.
 //config:
 //config:config FEATURE_FIND_PAREN
 //config:	bool "Enable parens in options"
 //config:	default y
 //config:	depends on FIND
 //config:	help
-//config:	  Enable usage of parens '(' to specify logical order of arguments.
+//config:	Enable usage of parens '(' to specify logical order of arguments.
 //config:
 //config:config FEATURE_FIND_SIZE
 //config:	bool "Enable -size: file size matching"
 //config:	default y
 //config:	depends on FIND
-//config:	help
-//config:	  Support the 'find -size' option for searching by file size.
 //config:
 //config:config FEATURE_FIND_PRUNE
 //config:	bool "Enable -prune: exclude subdirectories"
 //config:	default y
 //config:	depends on FIND
 //config:	help
-//config:	  If the file is a directory, dont descend into it. Useful for
-//config:	  exclusion .svn and CVS directories.
+//config:	If the file is a directory, don't descend into it. Useful for
+//config:	exclusion .svn and CVS directories.
 //config:
 //config:config FEATURE_FIND_DELETE
 //config:	bool "Enable -delete: delete files/dirs"
 //config:	default y
 //config:	depends on FIND && FEATURE_FIND_DEPTH
 //config:	help
-//config:	  Support the 'find -delete' option for deleting files and directories.
-//config:	  WARNING: This option can do much harm if used wrong. Busybox will not
-//config:	  try to protect the user from doing stupid things. Use with care.
+//config:	Support the 'find -delete' option for deleting files and directories.
+//config:	WARNING: This option can do much harm if used wrong. Busybox will not
+//config:	try to protect the user from doing stupid things. Use with care.
 //config:
 //config:config FEATURE_FIND_PATH
 //config:	bool "Enable -path: match pathname with shell pattern"
 //config:	default y
 //config:	depends on FIND
 //config:	help
-//config:	  The -path option matches whole pathname instead of just filename.
+//config:	The -path option matches whole pathname instead of just filename.
 //config:
 //config:config FEATURE_FIND_REGEX
 //config:	bool "Enable -regex: match pathname with regex"
 //config:	default y
 //config:	depends on FIND
 //config:	help
-//config:	  The -regex option matches whole pathname against regular expression.
+//config:	The -regex option matches whole pathname against regular expression.
 //config:
 //config:config FEATURE_FIND_CONTEXT
 //config:	bool "Enable -context: security context matching"
 //config:	default n
 //config:	depends on FIND && SELINUX
 //config:	help
-//config:	  Support the 'find -context' option for matching security context.
+//config:	Support the 'find -context' option for matching security context.
 //config:
 //config:config FEATURE_FIND_LINKS
 //config:	bool "Enable -links: link count matching"
 //config:	default y
 //config:	depends on FIND
 //config:	help
-//config:	  Support the 'find -links' option for matching number of links.
+//config:	Support the 'find -links' option for matching number of links.
 
 //applet:IF_FIND(APPLET_NOEXEC(find, find, BB_DIR_USR_BIN, BB_SUID_DROP, find))
 
@@ -342,6 +325,7 @@
 
 #include <fnmatch.h>
 #include "libbb.h"
+#include "common_bufsiz.h"
 #if ENABLE_FEATURE_FIND_REGEX
 # include "xregex.h"
 #endif
@@ -424,8 +408,9 @@ struct globals {
 	recurse_flags_t recurse_flags;
 	IF_FEATURE_FIND_EXEC_PLUS(unsigned max_argv_len;)
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	BUILD_BUG_ON(sizeof(G) > COMMON_BUFSIZE); \
 	/* we have to zero it out because of NOEXEC */ \
 	memset(&G, 0, sizeof(G)); \
@@ -503,26 +488,54 @@ static char *strcpy_upcase(char *dst, const char *src)
 
 ACTF(name)
 {
+	int r;
 	const char *tmp = bb_basename(fileName);
-	if (tmp != fileName && *tmp == '\0') {
-		/* "foo/bar/". Oh no... go back to 'b' */
-		tmp--;
-		while (tmp != fileName && *--tmp != '/')
-			continue;
-		if (*tmp == '/')
-			tmp++;
+	/* GNU findutils: find DIR/ -name DIR
+	 * prints "DIR/" (DIR// prints "DIR//" etc).
+	 * Need to strip trailing "/".
+	 * Such names can come only from top-level names, but
+	 * we can't do this before recursive_action() call,
+	 * since then "find FILE/ -name FILE"
+	 * would also work (on non-directories), which is wrong.
+	 */
+	char *trunc_slash = NULL;
+
+	if (*tmp == '\0') {
+		/* "foo/bar/[//...]" */
+		while (tmp != fileName && tmp[-1] == '/')
+			tmp--;
+		if (tmp == fileName) { /* entire fileName is "//.."? */
+			/* yes, convert "//..." to "/"
+			 * Testcases:
+			 * find / -maxdepth 1 -name /: prints /
+			 * find // -maxdepth 1 -name /: prints //
+			 * find / -maxdepth 1 -name //: prints nothing
+			 * find // -maxdepth 1 -name //: prints nothing
+			 */
+			if (tmp[1])
+				trunc_slash = (char*)tmp + 1;
+		} else {
+			/* no, it's "foo/bar/[//...]", go back to 'b' */
+			trunc_slash = (char*)tmp;
+			while (tmp != fileName && tmp[-1] != '/')
+				tmp--;
+		}
 	}
+
 	/* Was using FNM_PERIOD flag too,
 	 * but somewhere between 4.1.20 and 4.4.0 GNU find stopped using it.
 	 * find -name '*foo' should match .foo too:
 	 */
+	if (trunc_slash) *trunc_slash = '\0';
 #if FNM_CASEFOLD
-	return fnmatch(ap->pattern, tmp, (ap->iname ? FNM_CASEFOLD : 0)) == 0;
+	r = fnmatch(ap->pattern, tmp, (ap->iname ? FNM_CASEFOLD : 0));
 #else
 	if (ap->iname)
 		tmp = strcpy_upcase(alloca(strlen(tmp) + 1), tmp);
-	return fnmatch(ap->pattern, tmp, 0) == 0;
+	r = fnmatch(ap->pattern, tmp, 0);
 #endif
+	if (trunc_slash) *trunc_slash = '/';
+	return r == 0;
 }
 
 #if ENABLE_FEATURE_FIND_PATH

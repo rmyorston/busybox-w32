@@ -8,10 +8,6 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
-/* BB_AUDIT SUSv3 compliant (unless default blocksize set to 1k) */
-/* http://www.opengroup.org/onlinepubs/007904975/utilities/du.html */
-
 /* Mar 16, 2003      Manuel Novoa III   (mjn3@codepoet.org)
  *
  * Mostly rewritten for SUSv3 compliance and to fix bugs/defects.
@@ -22,6 +18,26 @@
  * 3) Added error checking of output.
  * 4) Fixed busybox bug #1284 involving long overflow with human_readable.
  */
+//config:config DU
+//config:	bool "du (default blocksize of 512 bytes)"
+//config:	default y
+//config:	help
+//config:	du is used to report the amount of disk space used
+//config:	for specified files.
+//config:
+//config:config FEATURE_DU_DEFAULT_BLOCKSIZE_1K
+//config:	bool "Use a default blocksize of 1024 bytes (1K)"
+//config:	default y
+//config:	depends on DU
+//config:	help
+//config:	Use a blocksize of (1K) instead of the default 512b.
+
+//applet:IF_DU(APPLET(du, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_DU) += du.o
+
+/* BB_AUDIT SUSv3 compliant (unless default blocksize set to 1k) */
+/* http://www.opengroup.org/onlinepubs/007904975/utilities/du.html */
 
 //usage:#define du_trivial_usage
 //usage:       "[-aHLdclsx" IF_FEATURE_HUMAN_READABLE("hm") "k] [FILE]..."
@@ -58,6 +74,7 @@
 //usage:       "2417    .\n"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 enum {
 	OPT_a_files_too    = (1 << 0),
@@ -85,8 +102,8 @@ struct globals {
 	int du_depth;
 	dev_t dir_dev;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
-#define INIT_G() do { } while (0)
+#define G (*(struct globals*)bb_common_bufsiz1)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 
 static void print(unsigned long long size, const char *filename)
@@ -116,7 +133,7 @@ static void print(unsigned long long size, const char *filename)
 		size++;
 		size >>= 1;
 	}
-	printf("%llu\t%s\n", size, filename);
+	printf("%"LL_FMT"u\t%s\n", size, filename);
 #endif
 }
 
@@ -225,8 +242,11 @@ int du_main(int argc UNUSED_PARAM, char **argv)
 	 * ignore -a.  This is consistent with -s being equivalent to -d 0.
 	 */
 #if ENABLE_FEATURE_HUMAN_READABLE
-	opt_complementary = "h-km:k-hm:m-hk:H-L:L-H:s-d:d-s:d+";
-	opt = getopt32(argv, "aHkLsx" "d:" "lc" "hm", &G.max_print_depth);
+	opt = getopt32(argv, "^"
+			"aHkLsxd:+lchm"
+			"\0" "h-km:k-hm:m-hk:H-L:L-H:s-d:d-s",
+			&G.max_print_depth
+	);
 	argv += optind;
 	if (opt & OPT_h_for_humans) {
 		G.disp_unit = 0;
@@ -238,8 +258,11 @@ int du_main(int argc UNUSED_PARAM, char **argv)
 		G.disp_unit = 1024;
 	}
 #else
-	opt_complementary = "H-L:L-H:s-d:d-s:d+";
-	opt = getopt32(argv, "aHkLsx" "d:" "lc", &G.max_print_depth);
+	opt = getopt32(argv, "^"
+			"aHkLsxd:+lc"
+			"\0" "H-L:L-H:s-d:d-s",
+			&G.max_print_depth
+	);
 	argv += optind;
 #if !ENABLE_FEATURE_DU_DEFAULT_BLOCKSIZE_1K
 	if (opt & OPT_k_kbytes) {

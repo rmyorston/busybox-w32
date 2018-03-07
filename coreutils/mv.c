@@ -7,14 +7,20 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
 /* Mar 16, 2003      Manuel Novoa III   (mjn3@codepoet.org)
  *
  * Size reduction and improved error checking.
  */
+//config:config MV
+//config:	bool "mv (9.8 kb)"
+//config:	default y
+//config:	help
+//config:	mv is used to move or rename files or directories.
 
-#include "libbb.h"
-#include "libcoreutils/coreutils.h"
+//applet:IF_MV(APPLET_NOEXEC(mv, mv, BB_DIR_BIN, BB_SUID_DROP, mv))
+/* NOEXEC despite cases when it can be a "runner" (mv LARGE_DIR OTHER_FS) */
+
+//kbuild:lib-$(CONFIG_MV) += mv.o
 
 //usage:#define mv_trivial_usage
 //usage:       "[-fin] SOURCE DEST\n"
@@ -28,22 +34,8 @@
 //usage:#define mv_example_usage
 //usage:       "$ mv /tmp/foo /bin/bar\n"
 
-#if ENABLE_FEATURE_MV_LONG_OPTIONS
-static const char mv_longopts[] ALIGN1 =
-	"interactive\0" No_argument "i"
-	"force\0"       No_argument "f"
-	"no-clobber\0"  No_argument "n"
-	IF_FEATURE_VERBOSE(
-	"verbose\0"     No_argument "v"
-	)
-	;
-#endif
-
-#define OPT_FORCE       (1 << 0)
-#define OPT_INTERACTIVE (1 << 1)
-#define OPT_NOCLOBBER   (1 << 2)
-#define OPT_VERBOSE     ((1 << 3) * ENABLE_FEATURE_VERBOSE)
-
+#include "libbb.h"
+#include "libcoreutils/coreutils.h"
 
 int mv_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int mv_main(int argc, char **argv)
@@ -56,15 +48,25 @@ int mv_main(int argc, char **argv)
 	int status = 0;
 	int copy_flag = 0;
 
-#if ENABLE_FEATURE_MV_LONG_OPTIONS
-	applet_long_options = mv_longopts;
-#endif
+#define OPT_FORCE       (1 << 0)
+#define OPT_INTERACTIVE (1 << 1)
+#define OPT_NOCLOBBER   (1 << 2)
+#define OPT_VERBOSE     ((1 << 3) * ENABLE_FEATURE_VERBOSE)
 	/* Need at least two arguments.
 	 * If more than one of -f, -i, -n is specified , only the final one
 	 * takes effect (it unsets previous options).
 	 */
-	opt_complementary = "-2:f-in:i-fn:n-fi";
-	flags = getopt32(argv, "finv");
+	flags = getopt32long(argv, "^"
+			"finv"
+			"\0"
+			"-2:f-in:i-fn:n-fi",
+			"interactive\0" No_argument "i"
+			"force\0"       No_argument "f"
+			"no-clobber\0"  No_argument "n"
+			IF_FEATURE_VERBOSE(
+			"verbose\0"     No_argument "v"
+			)
+	);
 	argc -= optind;
 	argv += optind;
 	last = argv[argc - 1];

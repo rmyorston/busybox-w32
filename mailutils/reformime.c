@@ -6,6 +6,21 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
+//config:config REFORMIME
+//config:	bool "reformime (7.5 kb)"
+//config:	default y
+//config:	help
+//config:	Parse MIME-formatted messages.
+//config:
+//config:config FEATURE_REFORMIME_COMPAT
+//config:	bool "Accept and ignore options other than -x and -X"
+//config:	default y
+//config:	depends on REFORMIME
+//config:	help
+//config:	Accept (for compatibility only) and ignore options
+//config:	other than -x and -X.
+
+//applet:IF_REFORMIME(APPLET(reformime, BB_DIR_BIN, BB_SUID_DROP))
 
 //kbuild:lib-$(CONFIG_REFORMIME) += reformime.o mail.o
 
@@ -265,9 +280,9 @@ int reformime_main(int argc UNUSED_PARAM, char **argv)
 
 	// parse options
 	// N.B. only -x and -X are supported so far
-	opt_complementary = "x--X:X--x" IF_FEATURE_REFORMIME_COMPAT(":m::");
-	opts = getopt32(argv,
-		"x:X" IF_FEATURE_REFORMIME_COMPAT("deis:r:c:m:h:o:O:"),
+	opts = getopt32(argv, "^"
+		"x:X" IF_FEATURE_REFORMIME_COMPAT("deis:r:c:m:*h:o:O:")
+		"\0" "x--X:X--x",
 		&opt_prefix
 		IF_FEATURE_REFORMIME_COMPAT(, NULL, NULL, &G.opt_charset, NULL, NULL, NULL, NULL)
 	);

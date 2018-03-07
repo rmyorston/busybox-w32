@@ -7,6 +7,27 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
+//config:config MKE2FS
+//config:	bool "mke2fs (9.7 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	Utility to create EXT2 filesystems.
+//config:
+//config:config MKFS_EXT2
+//config:	bool "mkfs.ext2 (9.8 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	Alias to "mke2fs".
+
+//                    APPLET_ODDNAME:name       main       location     suid_type     help
+//applet:IF_MKE2FS(   APPLET_ODDNAME(mke2fs,    mkfs_ext2, BB_DIR_SBIN, BB_SUID_DROP, mkfs_ext2))
+//applet:IF_MKFS_EXT2(APPLET_ODDNAME(mkfs.ext2, mkfs_ext2, BB_DIR_SBIN, BB_SUID_DROP, mkfs_ext2))
+////////:IF_MKFS_EXT3(APPLET_ODDNAME(mkfs.ext3, mkfs_ext2, BB_DIR_SBIN, BB_SUID_DROP, mkfs_ext2))
+
+//kbuild:lib-$(CONFIG_MKE2FS) += mkfs_ext2.o
+//kbuild:lib-$(CONFIG_MKFS_EXT2) += mkfs_ext2.o
 
 //usage:#define mkfs_ext2_trivial_usage
 //usage:       "[-Fn] "
@@ -62,11 +83,11 @@ char BUG_wrong_field_size(void);
 #define STORE_LE(field, value) \
 do { \
 	if (sizeof(field) == 4) \
-		field = SWAP_LE32(value); \
+		field = SWAP_LE32((uint32_t)(value)); \
 	else if (sizeof(field) == 2) \
-		field = SWAP_LE16(value); \
+		field = SWAP_LE16((uint16_t)(value)); \
 	else if (sizeof(field) == 1) \
-		field = (value); \
+		field = (uint8_t)(value); \
 	else \
 		BUG_wrong_field_size(); \
 } while (0)
@@ -116,7 +137,7 @@ static void allocate(uint8_t *bitmap, uint32_t blocksize, uint32_t start, uint32
 {
 	uint32_t i;
 
-//bb_info_msg("ALLOC: [%u][%u][%u]: [%u-%u]:=[%x],[%x]", blocksize, start, end, start/8, blocksize - end/8 - 1, (1 << (start & 7)) - 1, (uint8_t)(0xFF00 >> (end & 7)));
+//bb_error_msg("ALLOC: [%u][%u][%u]: [%u-%u]:=[%x],[%x]", blocksize, start, end, start/8, blocksize - end/8 - 1, (1 << (start & 7)) - 1, (uint8_t)(0xFF00 >> (end & 7)));
 	memset(bitmap, 0, blocksize);
 	i = start / 8;
 	memset(bitmap, 0xFF, i);
@@ -151,7 +172,7 @@ static uint32_t has_super(uint32_t x)
 
 static void PUT(uint64_t off, void *buf, uint32_t size)
 {
-//	bb_info_msg("PUT[%llu]:[%u]", off, size);
+	//bb_error_msg("PUT[%llu]:[%u]", off, size);
 	xlseek(fd, off, SEEK_SET);
 	xwrite(fd, buf, size);
 }
@@ -244,8 +265,7 @@ int mkfs_ext2_main(int argc UNUSED_PARAM, char **argv)
 
 	// using global "option_mask32" instead of local "opts":
 	// we are register starved here
-	opt_complementary = "-1:b+:i+:I+:m+";
-	/*opts =*/ getopt32(argv, "cl:b:f:i:I:J:G:N:m:o:g:L:M:O:r:E:T:U:jnqvFS",
+	/*opts =*/ getopt32(argv, "cl:b:+f:i:+I:+J:G:N:m:+o:g:L:M:O:r:E:T:U:jnqvFS",
 		/*lbfi:*/ NULL, &bs, NULL, &bpi,
 		/*IJGN:*/ &user_inodesize, NULL, NULL, NULL,
 		/*mogL:*/ &reserved_percent, NULL, NULL, &label,
@@ -412,7 +432,7 @@ int mkfs_ext2_main(int argc UNUSED_PARAM, char **argv)
 		// (a bit after 8M image size), but it works for two->three groups
 		// transition (at 16M).
 		if (remainder && (remainder < overhead + 50)) {
-//bb_info_msg("CHOP[%u]", remainder);
+//bb_error_msg("CHOP[%u]", remainder);
 			nblocks -= remainder;
 			goto retry;
 		}
@@ -568,7 +588,7 @@ int mkfs_ext2_main(int argc UNUSED_PARAM, char **argv)
 		free_blocks = (n < blocks_per_group ? n : blocks_per_group) - overhead;
 
 		// mark preallocated blocks as allocated
-//bb_info_msg("ALLOC: [%u][%u][%u]", blocksize, overhead, blocks_per_group - (free_blocks + overhead));
+//bb_error_msg("ALLOC: [%u][%u][%u]", blocksize, overhead, blocks_per_group - (free_blocks + overhead));
 		allocate(buf, blocksize,
 			// reserve "overhead" blocks
 			overhead,
@@ -647,7 +667,7 @@ int mkfs_ext2_main(int argc UNUSED_PARAM, char **argv)
 	n = FETCH_LE32(inode->i_block[0]) + 1;
 	for (i = 0; i < lost_and_found_blocks; ++i)
 		STORE_LE(inode->i_block[i], i + n); // use next block
-//bb_info_msg("LAST BLOCK USED[%u]", i + n);
+//bb_error_msg("LAST BLOCK USED[%u]", i + n);
 	PUT(((uint64_t)FETCH_LE32(gd[0].bg_inode_table) * blocksize) + (EXT2_GOOD_OLD_FIRST_INO-1) * inodesize,
 				buf, inodesize);
 

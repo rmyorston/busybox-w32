@@ -14,8 +14,148 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+#include <sys/prctl.h>
+#ifndef PR_SET_NAME
+#define PR_SET_NAME 15
+#endif
+#ifndef PR_GET_NAME
+#define PR_GET_NAME 16
+#endif
 
 #include "busybox.h" /* uses applet tables */
+#include "NUM_APPLETS.h"
+
+
+#define NOFORK_SUPPORT ((NUM_APPLETS > 1) && (ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_NOFORK))
+#define NOEXEC_SUPPORT ((NUM_APPLETS > 1) && (ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE))
+
+#if defined(__linux__) && (NUM_APPLETS > 1)
+void FAST_FUNC set_task_comm(const char *comm)
+{
+	/* okay if too long (truncates) */
+	prctl(PR_SET_NAME, (long)comm, 0, 0, 0);
+}
+#endif
+
+/*
+ * NOFORK/NOEXEC support
+ */
+#if NOFORK_SUPPORT
+static jmp_buf die_jmp;
+static void jump(void)
+{
+	/* Special case. We arrive here if NOFORK applet
+	 * calls xfunc, which then decides to die.
+	 * We don't die, but instead jump back to caller.
+	 * NOFORK applets still cannot carelessly call xfuncs:
+	 * p = xmalloc(10);
+	 * q = xmalloc(10); // BUG! if this dies, we leak p!
+	 */
+	/* | 0x100 allows to pass zero exitcode (longjmp can't pass 0).
+	 * This works because exitcodes are bytes,
+	 * run_nofork_applet() ensures that by "& 0xff"
+	 */
+	longjmp(die_jmp, xfunc_error_retval | 0x100);
+}
+
+struct nofork_save_area {
+	jmp_buf die_jmp;
+	void (*die_func)(void);
+	const char *applet_name;
+	uint32_t option_mask32;
+	smallint logmode;
+	uint8_t xfunc_error_retval;
+};
+static void save_nofork_data(struct nofork_save_area *save)
+{
+	memcpy(&save->die_jmp, &die_jmp, sizeof(die_jmp));
+	save->die_func = die_func;
+	save->applet_name = applet_name;
+	save->option_mask32 = option_mask32;
+	save->logmode = logmode;
+	save->xfunc_error_retval = xfunc_error_retval;
+}
+static void restore_nofork_data(struct nofork_save_area *save)
+{
+	memcpy(&die_jmp, &save->die_jmp, sizeof(die_jmp));
+	die_func = save->die_func;
+	applet_name = save->applet_name;
+	option_mask32 = save->option_mask32;
+	logmode = save->logmode;
+	xfunc_error_retval = save->xfunc_error_retval;
+}
+
+int FAST_FUNC run_nofork_applet(int applet_no, char **argv)
+{
+	int rc, argc;
+	struct nofork_save_area old;
+
+	save_nofork_data(&old);
+
+	logmode = LOGMODE_STDIO;
+	xfunc_error_retval = EXIT_FAILURE;
+	/* In case getopt() was already called:
+	 * reset the libc getopt() function, which keeps internal state.
+	 * (getopt32() does it itself, but getopt() doesn't (and can't))
+	 */
+	GETOPT_RESET();
+
+	argc = string_array_len(argv);
+
+	/* If xfunc "dies" in NOFORK applet, die_func longjmp's here instead */
+	die_func = jump;
+	rc = setjmp(die_jmp);
+	if (!rc) {
+		/* Some callers (xargs)
+		 * need argv untouched because they free argv[i]! */
+#ifndef __WATCOMC__
+		char *tmp_argv[argc+1];
+#else
+		/* no idea what an appropriate size of the array would be */
+		char *tmp_argv[64];
+#endif
+		memcpy(tmp_argv, argv, (argc+1) * sizeof(tmp_argv[0]));
+		applet_name = tmp_argv[0];
+		/* Finally we can call NOFORK applet's main() */
+		rc = applet_main[applet_no](argc, tmp_argv);
+		/* Important for shells: `which CMD` was failing */
+		fflush_all();
+	} else {
+		/* xfunc died in NOFORK applet */
+	}
+
+	/* Restoring some globals */
+	restore_nofork_data(&old);
+	/* Other globals can be simply reset to defaults */
+	GETOPT_RESET();
+
+	return rc & 0xff; /* don't confuse people with "exitcodes" >255 */
+}
+#endif
+
+#if NOEXEC_SUPPORT
+void FAST_FUNC run_noexec_applet_and_exit(int a, const char *name, char **argv)
+{
+	/* reset some state and run without execing */
+	/* msg_eol = "\n"; - no caller needs this reinited yet */
+	logmode = LOGMODE_STDIO;
+	xfunc_error_retval = EXIT_FAILURE;
+	die_func = NULL;
+	GETOPT_RESET();
+
+//TODO: think pidof, pgrep, pkill!
+//set_task_comm() makes our pidof find NOEXECs (e.g. "yes >/dev/null"),
+//but one from procps-ng-3.3.10 needs more!
+//Rewrite /proc/PID/cmdline? (need to save argv0 and length at init for this to work!)
+	set_task_comm(name);
+	/* applet_name is set by this function: */
+	run_applet_no_and_exit(a, name, argv);
+}
+#endif
+
+/*
+ * Higher-level code, hiding optional NOFORK/NOEXEC trickery.
+ */
 
 #if !ENABLE_PLATFORM_MINGW32
 /* This does a fork/exec in one call, using vfork().  Returns PID of new child,
@@ -26,12 +166,6 @@ pid_t FAST_FUNC spawn(char **argv)
 	volatile int failed;
 	pid_t pid;
 
-<<<<<<< HEAD
-	if (MINGW_TEST)
-		return mingw_spawn(argv);
-
-=======
->>>>>>> master
 	fflush_all();
 
 	/* Be nice to nommu machines. */
@@ -76,153 +210,35 @@ pid_t FAST_FUNC xspawn(char **argv)
 	return pid;
 }
 
-#if ENABLE_FEATURE_PREFER_APPLETS
-static jmp_buf die_jmp;
-static void jump(void)
-{
-	/* Special case. We arrive here if NOFORK applet
-	 * calls xfunc, which then decides to die.
-	 * We don't die, but jump instead back to caller.
-	 * NOFORK applets still cannot carelessly call xfuncs:
-	 * p = xmalloc(10);
-	 * q = xmalloc(10); // BUG! if this dies, we leak p!
-	 */
-	/* | 0x100 allows to pass zero exitcode (longjmp can't pass 0).
-	 * This works because exitcodes are bytes,
-	 * run_nofork_applet() ensures that by "& 0xff" */
-	longjmp(die_jmp, xfunc_error_retval | 0x100);
-}
-
-struct nofork_save_area {
-	jmp_buf die_jmp;
-	void (*die_func)(void);
-	const char *applet_name;
-	uint32_t option_mask32;
-	uint8_t xfunc_error_retval;
-};
-static void save_nofork_data(struct nofork_save_area *save)
-{
-	memcpy(&save->die_jmp, &die_jmp, sizeof(die_jmp));
-	save->die_func = die_func;
-	save->applet_name = applet_name;
-	save->option_mask32 = option_mask32;
-	save->xfunc_error_retval = xfunc_error_retval;
-}
-static void restore_nofork_data(struct nofork_save_area *save)
-{
-	memcpy(&die_jmp, &save->die_jmp, sizeof(die_jmp));
-	die_func = save->die_func;
-	applet_name = save->applet_name;
-	option_mask32 = save->option_mask32;
-	xfunc_error_retval = save->xfunc_error_retval;
-}
-
-int FAST_FUNC run_nofork_applet(int applet_no, char **argv)
-{
-	int rc, argc;
-	struct nofork_save_area old;
-
-	save_nofork_data(&old);
-
-	applet_name = APPLET_NAME(applet_no);
-
-	xfunc_error_retval = EXIT_FAILURE;
-
-	/* In case getopt() or getopt32() was already called:
-	 * reset the libc getopt() function, which keeps internal state.
-	 *
-	 * BSD-derived getopt() functions require that optind be set to 1 in
-	 * order to reset getopt() state.  This used to be generally accepted
-	 * way of resetting getopt().  However, glibc's getopt()
-	 * has additional getopt() state beyond optind, and requires that
-	 * optind be set to zero to reset its state.  So the unfortunate state of
-	 * affairs is that BSD-derived versions of getopt() misbehave if
-	 * optind is set to 0 in order to reset getopt(), and glibc's getopt()
-	 * will core dump if optind is set 1 in order to reset getopt().
-	 *
-	 * More modern versions of BSD require that optreset be set to 1 in
-	 * order to reset getopt().  Sigh.  Standards, anyone?
-	 */
-#ifdef __GLIBC__
-	optind = 0;
-#else /* BSD style */
-	optind = 1;
-	/* optreset = 1; */
-#endif
-	/* optarg = NULL; opterr = 1; optopt = 63; - do we need this too? */
-	/* (values above are what they initialized to in glibc and uclibc) */
-	/* option_mask32 = 0; - not needed, no applet depends on it being 0 */
-
-	argc = 1;
-	while (argv[argc])
-		argc++;
-
-	/* If xfunc "dies" in NOFORK applet, die_func longjmp's here instead */
-	die_func = jump;
-	rc = setjmp(die_jmp);
-	if (!rc) {
-		/* Some callers (xargs)
-		 * need argv untouched because they free argv[i]! */
-#ifndef __WATCOMC__
-		char *tmp_argv[argc+1];
-#else
-		/* no idea what an appropriate size of the array would be */
-		char *tmp_argv[64];
-#endif
-		memcpy(tmp_argv, argv, (argc+1) * sizeof(tmp_argv[0]));
-		/* Finally we can call NOFORK applet's main() */
-		rc = applet_main[applet_no](argc, tmp_argv);
-	} else {
-		/* xfunc died in NOFORK applet */
-	}
-
-	/* Restoring some globals */
-	restore_nofork_data(&old);
-
-	/* Other globals can be simply reset to defaults */
-#ifdef __GLIBC__
-	optind = 0;
-#else /* BSD style */
-	optind = 1;
-#endif
-
-	return rc & 0xff; /* don't confuse people with "exitcodes" >255 */
-}
-#endif /* FEATURE_PREFER_APPLETS */
-
 int FAST_FUNC spawn_and_wait(char **argv)
 {
 	int rc;
-#if ENABLE_FEATURE_PREFER_APPLETS
+#if ENABLE_FEATURE_PREFER_APPLETS && (NUM_APPLETS > 1)
 	int a = find_applet_by_name(argv[0]);
 
-	if (a >= 0 && (APPLET_IS_NOFORK(a)
-# if BB_MMU
-			|| APPLET_IS_NOEXEC(a) /* NOEXEC trick needs fork() */
-# endif
-	)) {
-# if BB_MMU
+	if (a >= 0) {
 		if (APPLET_IS_NOFORK(a))
-# endif
-		{
 			return run_nofork_applet(a, argv);
+# if BB_MMU /* NOEXEC needs fork(), thus this is done only on MMU machines: */
+#  if !ENABLE_PLATFORM_MINGW32 /* and then only if not on Microsoft Windows */
+		if (APPLET_IS_NOEXEC(a)) {
+			fflush_all();
+			rc = fork();
+			if (rc) /* parent or error */
+				return wait4pid(rc);
+
+			/* child */
+			run_noexec_applet_and_exit(a, argv[0], argv);
 		}
-# if BB_MMU && !defined(ENABLE_PLATFORM_MINGW32)
-		/* MMU only */
-		/* a->noexec is true */
-		rc = fork();
-		if (rc) /* parent or error */
-			return wait4pid(rc);
-		/* child */
-		xfunc_error_retval = EXIT_FAILURE;
-		run_applet_no_and_exit(a, argv);
+#  endif
 # endif
 	}
-#endif /* FEATURE_PREFER_APPLETS */
+#endif
 	rc = spawn(argv);
 	return wait4pid(rc);
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 #if !BB_MMU
 void FAST_FUNC re_exec(char **argv)
 {
@@ -239,6 +255,9 @@ pid_t FAST_FUNC fork_or_rexec(char **argv)
 	/* Maybe we are already re-execed and come here again? */
 	if (re_execed)
 		return 0;
+
+	/* fflush_all(); ? - so far all callers had no buffered output to flush */
+
 	pid = xvfork();
 	if (pid) /* parent */
 		return pid;
@@ -275,8 +294,11 @@ void FAST_FUNC bb_daemonize_or_rexec(int flags, char **argv)
 		fd = dup(fd); /* have 0,1,2 open at least to /dev/null */
 
 	if (!(flags & DAEMON_ONLY_SANITIZE)) {
+
+		/* fflush_all(); - add it in fork_or_rexec() if necessary */
+
 		if (fork_or_rexec(argv))
-			exit(EXIT_SUCCESS); /* parent */
+			_exit(EXIT_SUCCESS); /* parent */
 		/* if daemonizing, detach from stdio & ctty */
 		setsid();
 		dup2(fd, 0);
@@ -288,7 +310,7 @@ void FAST_FUNC bb_daemonize_or_rexec(int flags, char **argv)
 			 * Prevent this: stop being a session leader.
 			 */
 			if (fork_or_rexec(argv))
-				exit(EXIT_SUCCESS); /* parent */
+				_exit(EXIT_SUCCESS); /* parent */
 		}
 	}
 	while (fd > 2) {
@@ -303,3 +325,4 @@ void FAST_FUNC bb_sanitize_stdio(void)
 {
 	bb_daemonize_or_rexec(DAEMON_ONLY_SANITIZE, NULL);
 }
+#endif /* !MINGW32 */

@@ -138,30 +138,60 @@ int err_win_to_posix(DWORD winerr)
 	return error;
 }
 
-#ifndef __WATCOMC__
 
+static int zero_fd = -1;
+static int rand_fd = -1;
+
+void mingw_read_zero(int fd)
+{
+	zero_fd = fd;
+}
+
+void mingw_read_random(int fd)
+{
+	rand_fd = fd;
+}
+
+#ifndef __WATCOMC__
 #undef open
 int mingw_open (const char *filename, int oflags, ...)
 {
 	va_list args;
 	unsigned mode;
 	int fd;
+	int devnull = 0;
+	int devzero = 0;
+	int devrand = 0;
 
 	va_start(args, oflags);
 	mode = va_arg(args, int);
 	va_end(args);
 
 	if (oflags & O_NONBLOCK) {
-		errno = ENOSYS;
-		return -1;
+		oflags &= ~O_NONBLOCK;
 	}
-	if (filename && !strcmp(filename, "/dev/null"))
-		filename = "nul";
+	if (filename && !strncmp(filename, "/dev/", 5)) {
+		if (!strcmp(filename+5, "null"))
+			devnull = 1;
+		else if (!strcmp(filename+5, "zero"))
+			devzero = 1;
+		else if (!strcmp(filename+5, "urandom"))
+			devrand = 1;
+
+		if (devnull || devzero || devrand )
+			filename = "nul";
+	}
 	fd = open(filename, oflags, mode);
 	if (fd < 0 && (oflags & O_ACCMODE) != O_RDONLY && errno == EACCES) {
 		DWORD attrs = GetFileAttributes(filename);
 		if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY))
 			errno = EISDIR;
+	}
+	if (fd >= 0 ) {
+		if (devzero)
+			zero_fd = fd;
+		else if (devrand)
+			rand_fd = fd;
 	}
 	return fd;
 }
@@ -172,6 +202,31 @@ FILE *mingw_fopen (const char *filename, const char *otype)
 	if (filename && !strcmp(filename, "/dev/null"))
 		filename = "nul";
 	return fopen(filename, otype);
+}
+
+#undef read
+ssize_t mingw_read(int fd, void *buf, size_t count)
+{
+	if (fd == zero_fd) {
+		memset(buf, 0, count);
+		return count;
+	}
+	else if (fd == rand_fd) {
+		return get_random_bytes(buf, count);
+	}
+	return read(fd, buf, count);
+}
+
+#undef close
+int mingw_close(int fd)
+{
+	if (fd == zero_fd) {
+		zero_fd = -1;
+	}
+	if (fd == rand_fd) {
+		rand_fd = -1;
+	}
+	return close(fd);
 }
 
 #undef dup2
@@ -199,15 +254,15 @@ static inline time_t filetime_to_time_t(const FILETIME *ft)
 	return (time_t)(filetime_to_hnsec(ft) / 10000000);
 }
 
-static inline int file_attr_to_st_mode (DWORD attr)
+static inline mode_t file_attr_to_st_mode(DWORD attr)
 {
-	int fMode = S_IREAD;
+	mode_t fMode = S_IRUSR|S_IRGRP|S_IROTH;
 	if (attr & FILE_ATTRIBUTE_DIRECTORY)
-		fMode |= S_IFDIR|S_IWRITE|S_IEXEC;
+		fMode |= S_IFDIR|S_IWUSR|S_IWGRP|S_IXUSR|S_IXGRP|S_IXOTH;
 	else
 		fMode |= S_IFREG;
 	if (!(attr & FILE_ATTRIBUTE_READONLY))
-		fMode |= S_IWRITE;
+		fMode |= S_IWUSR|S_IWGRP;
 	return fMode;
 }
 
@@ -231,6 +286,61 @@ static inline int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fd
 	}
 }
 
+/*
+ * Examine a file's contents to determine if it can be executed.  This
+ * should be a last resort:  in most cases it's much more efficient to
+ * check the file extension.
+ *
+ * We look for two types of file:  shell scripts and binary executables.
+ */
+static int has_exec_format(const char *name)
+{
+	int fd, n, sig;
+	unsigned int offset;
+	unsigned char buf[1024];
+
+	fd = open(name, O_RDONLY);
+	if (fd < 0)
+		return 0;
+	n = read(fd, buf, sizeof(buf)-1);
+	close(fd);
+	if (n < 4)	/* at least '#!/x' and not error */
+		return 0;
+
+	/* shell script */
+	if (buf[0] == '#' && buf[1] == '!') {
+		return 1;
+	}
+
+	/*
+	 * Poke about in file to see if it's a PE binary.  I've just copied
+	 * the magic from the file command.
+	 */
+	if (buf[0] == 'M' && buf[1] == 'Z') {
+		offset = (buf[0x19] << 8) + buf[0x18];
+		if (offset > 0x3f) {
+			offset = (buf[0x3f] << 24) + (buf[0x3e] << 16) +
+						(buf[0x3d] << 8) + buf[0x3c];
+			if (offset < sizeof(buf)-100) {
+				if (memcmp(buf+offset, "PE\0\0", 4) == 0) {
+					sig = (buf[offset+25] << 8) + buf[offset+24];
+					if (sig == 0x10b || sig == 0x20b) {
+						sig = (buf[offset+23] << 8) + buf[offset+22];
+						if ((sig & 0x2000) != 0) {
+							/* DLL */
+							return 0;
+						}
+						sig = buf[offset+92];
+						return (sig == 1 || sig == 2 || sig == 3 || sig == 7);
+					}
+				}
+			}
+		}
+	}
+
+	return 0;
+}
+
 /* We keep the do_lstat code in a separate function to avoid recursion.
  * When a path ends with a slash, the stat will fail with ENOENT. In
  * this case, we strip the trailing slashes and stat again.
@@ -242,19 +352,16 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 {
 	int err;
 	WIN32_FILE_ATTRIBUTE_DATA fdata;
-	mode_t usermode;
 
 	if (!(err = get_file_attr(file_name, &fdata))) {
-		int len = strlen(file_name);
-
 		buf->st_ino = 0;
 		buf->st_uid = DEFAULT_UID;
 		buf->st_gid = DEFAULT_GID;
 		buf->st_nlink = 1;
 		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
-		if (len > 4 && (!strcasecmp(file_name+len-4, ".exe") ||
-						!strcasecmp(file_name+len-4, ".com")))
-			buf->st_mode |= S_IEXEC;
+		if (S_ISREG(buf->st_mode) &&
+				(has_exe_suffix(file_name) || has_exec_format(file_name)))
+			buf->st_mode |= S_IXUSR|S_IXGRP|S_IXOTH;
 		buf->st_size = fdata.nFileSizeLow |
 			(((off64_t)fdata.nFileSizeHigh)<<32);
 		buf->st_dev = buf->st_rdev = 0; /* not used by Git */
@@ -273,15 +380,13 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 					} else {
 						buf->st_mode = S_IFLNK;
 					}
-					buf->st_mode |= S_IREAD;
+					buf->st_mode |= S_IRUSR|S_IRGRP|S_IROTH;
 					if (!(findbuf.dwFileAttributes & FILE_ATTRIBUTE_READONLY))
-						buf->st_mode |= S_IWRITE;
+						buf->st_mode |= S_IWUSR|S_IWGRP;
 				}
 				FindClose(handle);
 			}
 		}
-		usermode = buf->st_mode & S_IRWXU;
-		buf->st_mode |= (usermode >> 3) | ((usermode >> 6) & ~S_IWOTH);
 
 		/*
 		 * Assume a block is 4096 bytes and calculate number of 512 byte
@@ -353,38 +458,34 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 		if ( _fstati64(fd, &buf64) != 0 )  {
 			return -1;
 		}
-		buf->st_dev = 0;
-		buf->st_ino = 0;
-		buf->st_mode = S_IREAD|S_IWRITE;
-		buf->st_nlink = 1;
-		buf->st_uid = DEFAULT_UID;
-		buf->st_gid = DEFAULT_GID;
-		buf->st_rdev = 0;
+		buf->st_mode = S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH;
 		buf->st_size = buf64.st_size;
 		buf->st_atime = buf64.st_atime;
 		buf->st_mtime = buf64.st_mtime;
 		buf->st_ctime = buf64.st_ctime;
-		buf->st_blksize = 4096;
 		buf->st_blocks = ((buf64.st_size+4095)>>12)<<3;
+		goto success;
 	}
 
 	if (GetFileInformationByHandle(fh, &fdata)) {
+		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
+		buf->st_size = fdata.nFileSizeLow |
+			(((off64_t)fdata.nFileSizeHigh)<<32);
+		buf->st_atime = filetime_to_time_t(&(fdata.ftLastAccessTime));
+		buf->st_mtime = filetime_to_time_t(&(fdata.ftLastWriteTime));
+		buf->st_ctime = filetime_to_time_t(&(fdata.ftCreationTime));
+		buf->st_blocks = ((buf->st_size+4095)>>12)<<3;
+ success:
+		buf->st_dev = buf->st_rdev = 0;
 		buf->st_ino = 0;
 		buf->st_uid = DEFAULT_UID;
 		buf->st_gid = DEFAULT_GID;
 		/* could use fdata.nNumberOfLinks but it's inconsistent with stat */
 		buf->st_nlink = 1;
-		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
-		buf->st_size = fdata.nFileSizeLow |
-			(((off64_t)fdata.nFileSizeHigh)<<32);
-		buf->st_dev = buf->st_rdev = 0; /* not used by Git */
-		buf->st_atime = filetime_to_time_t(&(fdata.ftLastAccessTime));
-		buf->st_mtime = filetime_to_time_t(&(fdata.ftLastWriteTime));
-		buf->st_ctime = filetime_to_time_t(&(fdata.ftCreationTime));
 		buf->st_blksize = 4096;
-		buf->st_blocks = ((buf->st_size+4095)>>12)<<3;
 		return 0;
 	}
+
 	errno = EBADF;
 	return -1;
 }
@@ -454,6 +555,24 @@ revert_attrs:
 unsigned int sleep (unsigned int seconds)
 {
 	Sleep(seconds*1000);
+	return 0;
+}
+
+int nanosleep(const struct timespec *req, struct timespec *rem)
+{
+	if (req->tv_nsec < 0 || 1000000000 <= req->tv_nsec) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	Sleep(req->tv_sec*1000 + req->tv_nsec/1000000);
+
+	/* Sleep is not interruptible.  So there is no remaining delay.  */
+	if (rem != NULL) {
+		rem->tv_sec = 0;
+		rem->tv_nsec = 0;
+	}
+
 	return 0;
 }
 
@@ -570,10 +689,13 @@ int mingw_rename(const char *pold, const char *pnew)
 
 static char *gethomedir(void)
 {
-	static char buf[PATH_MAX];
-	DWORD len = sizeof(buf);
+	static char *buf = NULL;
+	DWORD len = PATH_MAX;
 	HANDLE h;
 	char *s;
+
+	if (!buf)
+		buf = xmalloc(PATH_MAX);
 
 	buf[0] = '\0';
 	if ( !OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &h) )
@@ -595,11 +717,17 @@ static char *gethomedir(void)
 	return buf;
 }
 
+#define NAME_LEN 100
 static char *get_user_name(void)
 {
-	static char user_name[100] = "";
+	static char *user_name = NULL;
 	char *s;
-	DWORD len = sizeof(user_name);
+	DWORD len = NAME_LEN;
+
+	if ( user_name == NULL ) {
+		user_name = xmalloc(NAME_LEN);
+		user_name[0] = '\0';
+	}
 
 	if ( user_name[0] != '\0' ) {
 		return user_name;
@@ -647,13 +775,8 @@ struct passwd *getpwuid(uid_t uid UNUSED_PARAM)
 	return &p;
 }
 
-<<<<<<< HEAD
-typedef unsigned int (__stdcall ticktacktype);
 
-ticktacktype ticktack(void *dummy UNUSED_PARAM)
-=======
 struct group *getgrgid(gid_t gid UNUSED_PARAM)
->>>>>>> master
 {
 	static char *members[2] = { NULL, NULL };
 	static struct group g;
@@ -692,12 +815,8 @@ int getgroups(int n, gid_t *groups)
 	return 1;
 }
 
-<<<<<<< HEAD
-#ifndef __WATCOMC__
-int setitimer(int type UNUSED_PARAM, struct itimerval *in, struct itimerval *out)
-=======
 int getlogin_r(char *buf, size_t len)
->>>>>>> master
+
 {
 	char *name;
 
@@ -714,16 +833,10 @@ int getlogin_r(char *buf, size_t len)
 	return 0;
 }
 
-<<<<<<< HEAD
-#endif /* use native watcom seitimer */
-
-int sigaction(int sig, struct sigaction *in, struct sigaction *out)
-=======
 long sysconf(int name)
->>>>>>> master
 {
 	if ( name == _SC_CLK_TCK ) {
-		return 100;
+		return TICKS_PER_SECOND;
 	}
 	errno = EINVAL;
 	return -1;
@@ -768,7 +881,12 @@ char *realpath(const char *path, char *resolved_path)
 
 const char *get_busybox_exec_path(void)
 {
-	static char path[PATH_MAX] = "";
+	static char *path = NULL;
+
+	if (!path) {
+		path = xmalloc(PATH_MAX);
+		path[0] = '\0';
+	}
 
 	if (!*path)
 		GetModuleFileName(NULL, path, PATH_MAX);
@@ -869,9 +987,11 @@ size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm
 	int m;
 
 	/*
-	 * Emulate the '%e' and '%s' formats that Windows' strftime lacks.
-	 * Happily, the string that replaces '%e' is two characters long.
-	 * '%s' is a bit more complicated.
+	 * Emulate the some formats that Windows' strftime lacks.
+	 * - '%e' day of the month with space padding
+	 * - '%s' number of seconds since the Unix epoch
+	 * - '%z' timezone offset
+	 * Also, permit the '-' modifier to omit padding.  Windows uses '#'.
 	 */
 	fmt = xstrdup(format);
 	for ( t=fmt; *t; ++t ) {
@@ -914,12 +1034,17 @@ size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm
 
 					hr = offset / 3600;
 					min = (offset % 3600) / 60;
-					sprintf(buffer+1, "%02d%02d", hr, min);
+					sprintf(buffer+1, "%04d", hr*100 + min);
 				}
 				newfmt = xasprintf("%s%s%s", fmt, buffer, t+2);
 				free(fmt);
 				t = newfmt + m + 1;
 				fmt = newfmt;
+			}
+			else if ( t[1] == '-' && t[2] != '\0' &&
+						strchr("dHIjmMSUwWyY", t[2]) ) {
+				/* Microsoft uses '#' rather than '-' to remove padding */
+				t[1] = '#';
 			}
 			else if ( t[1] != '\0' ) {
 				++t;
@@ -944,8 +1069,6 @@ int mingw_access(const char *name, int mode)
 {
 	int ret;
 	struct stat s;
-	int fd, n, offset, sig;
-	unsigned char buf[1024];
 
 	/* Windows can only handle test for existence, read or write */
 	if (mode == F_OK || (mode & ~X_OK)) {
@@ -955,52 +1078,8 @@ int mingw_access(const char *name, int mode)
 		}
 	}
 
-	if (!mingw_stat(name, &s) && S_ISREG(s.st_mode)) {
-
-		/* stat marks .exe and .com files as executable */
-		if ((s.st_mode&S_IEXEC)) {
-			return 0;
-		}
-
-		fd = open(name, O_RDONLY);
-		if (fd < 0)
-			return -1;
-		n = read(fd, buf, sizeof(buf)-1);
-		close(fd);
-		if (n < 4)	/* at least '#!/x' and not error */
-			return -1;
-
-		/* shell script */
-		if (buf[0] == '#' && buf[1] == '!') {
-			return 0;
-		}
-
-		/*
-		 * Poke about in file to see if it's a PE binary.  I've just copied
-		 * the magic from the file command.
-		 */
-		if (buf[0] == 'M' && buf[1] == 'Z') {
-			offset = (buf[0x19] << 8) + buf[0x18];
-			if (offset > 0x3f) {
-				offset = (buf[0x3f] << 24) + (buf[0x3e] << 16) +
-							(buf[0x3d] << 8) + buf[0x3c];
-				if (offset < sizeof(buf)-100) {
-					if (memcmp(buf+offset, "PE\0\0", 4) == 0) {
-						sig = (buf[offset+25] << 8) + buf[offset+24];
-						if (sig == 0x10b || sig == 0x20b) {
-							sig = (buf[offset+23] << 8) + buf[offset+22];
-							if ((sig & 0x2000) != 0) {
-								/* DLL */
-								return -1;
-							}
-							sig = buf[offset+92];
-							return !(sig == 1 || sig == 2 ||
-										sig == 3 || sig == 7);
-						}
-					}
-				}
-			}
-		}
+	if (!mingw_stat(name, &s) && S_ISREG(s.st_mode) && (s.st_mode&S_IXUSR)) {
+		return 0;
 	}
 
 	return -1;
@@ -1014,34 +1093,63 @@ int mingw_rmdir(const char *path)
 	return rmdir(path);
 }
 
+const char win_suffix[4][4] = { "com", "exe", "bat", "cmd" };
+
+static int has_win_suffix(const char *name, int start)
+{
+	int i, len = strlen(name);
+
+	if (len > 4 && name[len-4] == '.') {
+		for (i=start; i<4; ++i) {
+			if (!strcasecmp(name+len-3, win_suffix[i])) {
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+
+int has_bat_suffix(const char *name)
+{
+	return has_win_suffix(name, 2);
+}
+
+int has_exe_suffix(const char *name)
+{
+	return has_win_suffix(name, 0);
+}
+
+int has_exe_suffix_or_dot(const char *name)
+{
+	return last_char_is(name, '.') || has_win_suffix(name, 0);
+}
+
 /* check if path can be made into an executable by adding a suffix;
  * return an allocated string containing the path if it can;
  * return NULL if not.
  *
  * if path already has a suffix don't even bother trying
  */
-char *file_is_win32_executable(const char *p)
+char *add_win32_extension(const char *p)
 {
 	char *path;
-	int len = strlen(p);
+	int i, len;
 
-	if (len > 4 && (!strcasecmp(p+len-4, ".exe") ||
-					!strcasecmp(p+len-4, ".com"))) {
+	if (has_exe_suffix_or_dot(p)) {
 		return NULL;
 	}
 
-	if ( (path=malloc(len+5)) != NULL ) {
-		memcpy(path, p, len);
-		memcpy(path+len, ".exe", 5);
+	len = strlen(p);
+	path = xasprintf("%s.com", p);
+
+	for (i=0; i<4; ++i) {
+		memcpy(path+len+1, win_suffix[i], 4);
 		if (file_is_executable(path)) {
 			return path;
 		}
-		memcpy(path+len, ".com", 5);
-		if (file_is_executable(path)) {
-			return path;
-		}
-		free(path);
 	}
+
+	free(path);
 
 	return NULL;
 }
@@ -1060,3 +1168,33 @@ DIR *mingw_opendir(const char *path)
 
 	return opendir(path);
 }
+
+off_t mingw_lseek(int fd, off_t offset, int whence)
+{
+	HANDLE h = (HANDLE)_get_osfhandle(fd);
+	if (h == INVALID_HANDLE_VALUE) {
+		errno = EBADF;
+		return -1;
+	}
+	if (GetFileType(h) != FILE_TYPE_DISK) {
+		errno = ESPIPE;
+		return -1;
+	}
+	return _lseeki64(fd, offset, whence);
+}
+
+#if ENABLE_FEATURE_PS_TIME || ENABLE_FEATURE_PS_LONG
+#undef GetTickCount64
+#include "lazyload.h"
+
+ULONGLONG CompatGetTickCount64(void)
+{
+	DECLARE_PROC_ADDR(kernel32.dll, ULONGLONG, GetTickCount64, void);
+
+	if (!INIT_PROC_ADDR(GetTickCount64)) {
+		return (ULONGLONG)GetTickCount();
+	}
+
+	return GetTickCount64();
+}
+#endif

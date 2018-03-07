@@ -22,6 +22,16 @@
  * RTC uses a local timezone instead (maybe you dual-boot MS-Windows).
  * That flag should not be needed on systems with adjtime support.
  */
+//config:config RTCWAKE
+//config:	bool "rtcwake (6.4 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	Enter a system sleep state until specified wakeup time.
+
+//applet:IF_RTCWAKE(APPLET(rtcwake, BB_DIR_USR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_RTCWAKE) += rtcwake.o
 
 //usage:#define rtcwake_trivial_usage
 //usage:       "[-a | -l | -u] [-d DEV] [-m MODE] [-s SEC | -t TIME]"
@@ -31,10 +41,10 @@
 //usage:     "\n	-a,--auto	Read clock mode from adjtime"
 //usage:     "\n	-l,--local	Clock is set to local time"
 //usage:     "\n	-u,--utc	Clock is set to UTC time"
-//usage:     "\n	-d,--device=DEV	Specify the RTC device"
-//usage:     "\n	-m,--mode=MODE	Set sleep state (default: standby)"
-//usage:     "\n	-s,--seconds=SEC Set timeout in SEC seconds from now"
-//usage:     "\n	-t,--time=TIME	Set timeout to TIME seconds from epoch"
+//usage:     "\n	-d,--device DEV	Specify the RTC device"
+//usage:     "\n	-m,--mode MODE	Set sleep state (default: standby)"
+//usage:     "\n	-s,--seconds SEC Set timeout in SEC seconds from now"
+//usage:     "\n	-t,--time TIME	Set timeout to TIME seconds from epoch"
 //usage:	)
 //usage:	IF_NOT_LONG_OPTS(
 //usage:     "\n	-a	Read clock mode from adjtime"
@@ -144,11 +154,11 @@ int rtcwake_main(int argc UNUSED_PARAM, char **argv)
 		"seconds\0" Required_argument "s"
 		"time\0"    Required_argument "t"
 		;
-	applet_long_options = rtcwake_longopts;
 #endif
-	/* Must have -s or -t, exclusive */
-	opt_complementary = "s:t:s--t:t--s";
-	opt = getopt32(argv, "alud:m:s:t:", &rtcname, &suspend, &opt_seconds, &opt_time);
+	opt = getopt32long(argv,
+			/* Must have -s or -t, exclusive */
+			"^alud:m:s:t:" "\0" "s:t:s--t:t--s", rtcwake_longopts,
+			&rtcname, &suspend, &opt_seconds, &opt_time);
 
 	/* this is the default
 	if (opt & RTCWAKE_OPT_AUTO)

@@ -1,5 +1,6 @@
 /* vi: set sw=4 ts=4: */
-/* route
+/*
+ * route
  *
  * Similar to the standard Unix route, but with only the necessary
  * parts for AF_INET and AF_INET6
@@ -18,12 +19,21 @@
  *
  * IPV6 support added by Bart Visscher <magick@linux-fan.com>
  */
-
 /* 2004/03/09  Manuel Novoa III <mjn3@codepoet.org>
  *
  * Rewritten to fix several bugs, add additional error checking, and
  * remove ridiculous amounts of bloat.
  */
+//config:config ROUTE
+//config:	bool "route (8.9 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	Route displays or manipulates the kernel's IP routing tables.
+
+//applet:IF_ROUTE(APPLET(route, BB_DIR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_ROUTE) += route.o
 
 //usage:#define route_trivial_usage
 //usage:       "[{add|del|delete}]"
@@ -295,7 +305,7 @@ static NOINLINE void INET_setroute(int action, char **args)
 #endif
 
 		/* Device is special in that it can be the last arg specified
-		 * and doesn't requre the dev/device keyword in that case. */
+		 * and doesn't require the dev/device keyword in that case. */
 		if (!rt->rt_dev && ((k == KW_IPVx_DEVICE) || (!k && !*++args))) {
 			/* Don't use args_m1 here since args may have changed! */
 			rt->rt_dev = args[-1];
@@ -416,7 +426,7 @@ static NOINLINE void INET6_setroute(int action, char **args)
 		}
 
 		/* Device is special in that it can be the last arg specified
-		 * and doesn't requre the dev/device keyword in that case. */
+		 * and doesn't require the dev/device keyword in that case. */
 		if (!devname && ((k == KW_IPVx_DEVICE) || (!k && !*++args))) {
 			/* Don't use args_m1 here since args may have changed! */
 			devname = args[-1];

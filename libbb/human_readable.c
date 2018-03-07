@@ -22,7 +22,6 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-
 #include "libbb.h"
 
 const char* FAST_FUNC make_human_readable_str(unsigned long long val,
@@ -39,7 +38,7 @@ const char* FAST_FUNC make_human_readable_str(unsigned long long val,
 	if (val == 0)
 		return "0";
 
-	fmt = "%llu";
+	fmt = "%"LL_FMT"u";
 	if (block_size > 1)
 		val *= block_size;
 	frac = 0;
@@ -53,7 +52,7 @@ const char* FAST_FUNC make_human_readable_str(unsigned long long val,
 		while ((val >= 1024)
 		 /* && (u < unit_chars + sizeof(unit_chars) - 1) - always true */
 		) {
-			fmt = "%llu.%u%c";
+			fmt = "%"LL_FMT"u.%u%c";
 			u++;
 			frac = (((unsigned)val % 1024) * 10 + 1024/2) / 1024;
 			val /= 1024;
@@ -68,7 +67,7 @@ const char* FAST_FUNC make_human_readable_str(unsigned long long val,
 			if (frac >= 5) {
 				++val;
 			}
-			fmt = "%llu%*c";
+			fmt = "%"LL_FMT"u%*c";
 			frac = 1;
 		}
 #endif

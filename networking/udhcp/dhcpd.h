@@ -57,7 +57,7 @@ struct server_config_t {
 	struct static_lease *static_leases; /* List of ip/mac pairs to assign static leases */
 } FIX_ALIASING;
 
-#define server_config (*(struct server_config_t*)&bb_common_bufsiz1)
+#define server_config (*(struct server_config_t*)bb_common_bufsiz1)
 /* client_config sits in 2nd half of bb_common_bufsiz1 */
 
 #if ENABLE_FEATURE_UDHCP_PORT
@@ -89,39 +89,6 @@ struct dyn_lease {
 	uint8_t pad[2];
 	/* total size is a multiply of 4 */
 } PACKED;
-
-extern struct dyn_lease *g_leases;
-
-struct dyn_lease *add_lease(
-		const uint8_t *chaddr, uint32_t yiaddr,
-		leasetime_t leasetime,
-		const char *hostname, int hostname_len
-		) FAST_FUNC;
-int is_expired_lease(struct dyn_lease *lease) FAST_FUNC;
-struct dyn_lease *find_lease_by_mac(const uint8_t *mac) FAST_FUNC;
-struct dyn_lease *find_lease_by_nip(uint32_t nip) FAST_FUNC;
-uint32_t find_free_or_expired_nip(const uint8_t *safe_mac, unsigned arpping_ms) FAST_FUNC;
-
-
-/* Config file parser will pass static lease info to this function
- * which will add it to a data structure that can be searched later */
-void add_static_lease(struct static_lease **st_lease_pp, uint8_t *mac, uint32_t nip) FAST_FUNC;
-/* Find static lease IP by mac */
-uint32_t get_static_nip_by_mac(struct static_lease *st_lease, void *arg) FAST_FUNC;
-/* Check to see if an IP is reserved as a static IP */
-int is_nip_reserved(struct static_lease *st_lease, uint32_t nip) FAST_FUNC;
-/* Print out static leases just to check what's going on (debug code) */
-#if defined CONFIG_UDHCP_DEBUG && CONFIG_UDHCP_DEBUG >= 2
-void log_static_leases(struct static_lease **st_lease_pp) FAST_FUNC;
-#else
-# define log_static_leases(st_lease_pp) ((void)0)
-#endif
-
-
-void read_config(const char *file) FAST_FUNC;
-void write_leases(void) FAST_FUNC;
-void read_leases(const char *file) FAST_FUNC;
-
 
 POP_SAVED_FUNCTION_VISIBILITY
 

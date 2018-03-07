@@ -18,8 +18,41 @@
  * <jam@ltsp.org>
  * Modified 2004/02/11 to add ability to pass the USER variable to remote host
  * by Fernando Silveira <swrh@gmx.net>
- *
  */
+//config:config TELNET
+//config:	bool "telnet (8.7 kb)"
+//config:	default y
+//config:	help
+//config:	Telnet is an interface to the TELNET protocol, but is also commonly
+//config:	used to test other simple protocols.
+//config:
+//config:config FEATURE_TELNET_TTYPE
+//config:	bool "Pass TERM type to remote host"
+//config:	default y
+//config:	depends on TELNET
+//config:	help
+//config:	Setting this option will forward the TERM environment variable to the
+//config:	remote host you are connecting to. This is useful to make sure that
+//config:	things like ANSI colors and other control sequences behave.
+//config:
+//config:config FEATURE_TELNET_AUTOLOGIN
+//config:	bool "Pass USER type to remote host"
+//config:	default y
+//config:	depends on TELNET
+//config:	help
+//config:	Setting this option will forward the USER environment variable to the
+//config:	remote host you are connecting to. This is useful when you need to
+//config:	log into a machine without telling the username (autologin). This
+//config:	option enables '-a' and '-l USER' options.
+//config:
+//config:config FEATURE_TELNET_WIDTH
+//config:	bool "Enable window size autodetection"
+//config:	default y
+//config:	depends on TELNET
+
+//applet:IF_TELNET(APPLET(telnet, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_TELNET) += telnet.o
 
 //usage:#if ENABLE_FEATURE_TELNET_AUTOLOGIN
 //usage:#define telnet_trivial_usage
@@ -39,6 +72,7 @@
 #include <arpa/telnet.h>
 #include <netinet/in.h>
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 #ifdef __BIONIC__
 /* should be in arpa/telnet.h */
@@ -98,7 +132,7 @@ struct globals {
 #if ENABLE_FEATURE_TELNET_AUTOLOGIN
 	const char *autologin;
 #endif
-#if ENABLE_FEATURE_AUTOWIDTH
+#if ENABLE_FEATURE_TELNET_WIDTH
 	unsigned win_width, win_height;
 #endif
 	/* same buffer used both for network and console read/write */
@@ -108,8 +142,9 @@ struct globals {
 	struct termios termios_def;
 	struct termios termios_raw;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	BUILD_BUG_ON(sizeof(G) > COMMON_BUFSIZE); \
 } while (0)
 
@@ -309,15 +344,16 @@ static void put_iac(int c)
 	G.iacbuf[G.iaclen++] = c;
 }
 
-static void put_iac2(byte wwdd, byte c)
+static void put_iac2_merged(unsigned wwdd_and_c)
 {
 	if (G.iaclen + 3 > IACBUFSIZE)
 		iac_flush();
 
 	put_iac(IAC);
-	put_iac(wwdd);
-	put_iac(c);
+	put_iac(wwdd_and_c >> 8);
+	put_iac(wwdd_and_c & 0xff);
 }
+#define put_iac2(wwdd,c) put_iac2_merged(((wwdd)<<8) + (c))
 
 #if ENABLE_FEATURE_TELNET_TTYPE
 static void put_iac_subopt(byte c, char *str)
@@ -369,7 +405,7 @@ static void put_iac_subopt_autologin(void)
 }
 #endif
 
-#if ENABLE_FEATURE_AUTOWIDTH
+#if ENABLE_FEATURE_TELNET_WIDTH
 static void put_iac_naws(byte c, int x, int y)
 {
 	if (G.iaclen + 9 > IACBUFSIZE)
@@ -506,7 +542,7 @@ static void to_new_environ(void)
 }
 #endif
 
-#if ENABLE_FEATURE_AUTOWIDTH
+#if ENABLE_FEATURE_TELNET_WIDTH
 static void to_naws(void)
 {
 	/* Tell server we will do NAWS */
@@ -529,7 +565,7 @@ static void telopt(byte c)
 	case TELOPT_NEW_ENVIRON:
 		to_new_environ(); break;
 #endif
-#if ENABLE_FEATURE_AUTOWIDTH
+#if ENABLE_FEATURE_TELNET_WIDTH
 	case TELOPT_NAWS:
 		to_naws();
 		put_iac_naws(c, G.win_width, G.win_height);
@@ -591,7 +627,7 @@ int telnet_main(int argc UNUSED_PARAM, char **argv)
 
 	INIT_G();
 
-#if ENABLE_FEATURE_AUTOWIDTH
+#if ENABLE_FEATURE_TELNET_WIDTH
 	get_terminal_width_height(0, &G.win_width, &G.win_height);
 #endif
 
@@ -606,8 +642,10 @@ int telnet_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 #if ENABLE_FEATURE_TELNET_AUTOLOGIN
-	if (1 & getopt32(argv, "al:", &G.autologin))
+	if (1 == getopt32(argv, "al:", &G.autologin)) {
+		/* Only -a without -l USER picks $USER from envvar */
 		G.autologin = getenv("USER");
+	}
 	argv += optind;
 #else
 	argv++;

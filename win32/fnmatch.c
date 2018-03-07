@@ -16,6 +16,12 @@
    write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
    Boston, MA 02111-1307, USA.  */
 
+#include <platform.h>
+
+#if HAVE_CONFIG_H
+# include <config.h>
+#endif
+
 /* Enable GNU extensions in fnmatch.h.  */
 #ifndef _GNU_SOURCE
 # define _GNU_SOURCE	1
@@ -116,7 +122,7 @@
    whose names are inconsistent.  */
 
 # if !defined _LIBC && !defined getenv
-extern char *getenv ();
+extern char *getenv (const char *);
 # endif
 
 # ifndef errno
@@ -125,17 +131,17 @@ extern int errno;
 
 /* This function doesn't exist on most systems.  */
 
-# if !defined HAVE___STRCHRNUL && !defined _LIBC
+# if !defined HAVE___STRCHRNUL && !defined _LIBC && 0
 static char *
-__strchrnul (s, c)
-     const char *s;
-     int c;
+__strchrnul (const char *s, int c)
 {
   char *result = strchr (s, c);
   if (result == NULL)
     result = strchr (s, '\0');
   return result;
 }
+# else
+#  define __strchrnul strchrnul
 # endif
 
 # ifndef internal_function
@@ -151,11 +157,8 @@ static int internal_fnmatch __P ((const char *pattern, const char *string,
      internal_function;
 static int
 internal_function
-internal_fnmatch (pattern, string, no_leading_period, flags)
-     const char *pattern;
-     const char *string;
-     int no_leading_period;
-     int flags;
+internal_fnmatch (const char *pattern, const char *string,
+                  int no_leading_period, int flags)
 {
   register const char *p = pattern, *n = string;
   register unsigned char c;
@@ -473,10 +476,7 @@ internal_fnmatch (pattern, string, no_leading_period, flags)
 
 
 int
-fnmatch (pattern, string, flags)
-     const char *pattern;
-     const char *string;
-     int flags;
+fnmatch (const char *pattern, const char *string, int flags)
 {
   return internal_fnmatch (pattern, string, flags & FNM_PERIOD, flags);
 }

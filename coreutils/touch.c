@@ -6,44 +6,40 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
-/* BB_AUDIT SUSv3 _NOT_ compliant -- options -a, -m not supported. */
-/* http://www.opengroup.org/onlinepubs/007904975/utilities/touch.html */
-
 /* Mar 16, 2003      Manuel Novoa III   (mjn3@codepoet.org)
  *
  * Previous version called open() and then utime().  While this will be
  * be necessary to implement -r and -t, it currently only makes things bigger.
  * Also, exiting on a failure was a bug.  All args should be processed.
  */
-
-#include "libbb.h"
-
 //config:config TOUCH
-//config:	bool "touch"
+//config:	bool "touch (5.8 kb)"
 //config:	default y
 //config:	help
-//config:	  touch is used to create or change the access and/or
-//config:	  modification timestamp of specified files.
+//config:	touch is used to create or change the access and/or
+//config:	modification timestamp of specified files.
 //config:
 //config:config FEATURE_TOUCH_NODEREF
 //config:	bool "Add support for -h"
 //config:	default y
 //config:	depends on TOUCH
 //config:	help
-//config:	  Enable touch to have the -h option.
-//config:	  This requires libc support for lutimes() function.
+//config:	Enable touch to have the -h option.
+//config:	This requires libc support for lutimes() function.
 //config:
 //config:config FEATURE_TOUCH_SUSV3
 //config:	bool "Add support for SUSV3 features (-d -t -r)"
 //config:	default y
 //config:	depends on TOUCH
 //config:	help
-//config:	  Enable touch to use a reference file or a given date/time argument.
+//config:	Enable touch to use a reference file or a given date/time argument.
 
 //applet:IF_TOUCH(APPLET_NOFORK(touch, touch, BB_DIR_BIN, BB_SUID_DROP, touch))
 
 //kbuild:lib-$(CONFIG_TOUCH) += touch.o
+
+/* BB_AUDIT SUSv3 _NOT_ compliant -- options -a, -m not supported. */
+/* http://www.opengroup.org/onlinepubs/007904975/utilities/touch.html */
 
 //usage:#define touch_trivial_usage
 //usage:       "[-c]" IF_FEATURE_TOUCH_SUSV3(" [-d DATE] [-t DATE] [-r FILE]") " FILE..."
@@ -66,8 +62,6 @@
 //usage:       "$ ls -l /tmp/foo\n"
 //usage:       "-rw-rw-r--    1 andersen andersen        0 Apr 15 01:11 /tmp/foo\n"
 
-/* This is a NOFORK applet. Be very careful! */
-
 /* coreutils implements:
  * -a   change only the access time
  * -c, --no-create
@@ -84,6 +78,8 @@
  * --time=WORD
  *      change the specified time: WORD is access, atime, or use
  */
+
+#include "libbb.h"
 
 int touch_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int touch_main(int argc UNUSED_PARAM, char **argv)
@@ -107,6 +103,11 @@ int touch_main(int argc UNUSED_PARAM, char **argv)
 		"date\0"              Required_argument "d"
 		IF_FEATURE_TOUCH_NODEREF("no-dereference\0" No_argument "h")
 	;
+#  define GETOPT32 getopt32long
+#  define LONGOPTS ,touch_longopts
+# else
+#  define GETOPT32 getopt32
+#  define LONGOPTS
 # endif
 	char *reference_file = NULL;
 	char *date_str = NULL;
@@ -116,17 +117,17 @@ int touch_main(int argc UNUSED_PARAM, char **argv)
 # define reference_file NULL
 # define date_str       NULL
 # define timebuf        ((struct timeval*)NULL)
+# define GETOPT32 getopt32
+# define LONGOPTS
 #endif
 
-#if ENABLE_FEATURE_TOUCH_SUSV3 && ENABLE_LONG_OPTS
-	applet_long_options = touch_longopts;
-#endif
 	/* -d and -t both set time. In coreutils,
 	 * accepted data format differs a bit between -d and -t.
 	 * We accept the same formats for both */
-	opts = getopt32(argv, "c" IF_FEATURE_TOUCH_SUSV3("r:d:t:")
+	opts = GETOPT32(argv, "c" IF_FEATURE_TOUCH_SUSV3("r:d:t:")
 				IF_FEATURE_TOUCH_NODEREF("h")
 				/*ignored:*/ "fma"
+				LONGOPTS
 				IF_FEATURE_TOUCH_SUSV3(, &reference_file)
 				IF_FEATURE_TOUCH_SUSV3(, &date_str)
 				IF_FEATURE_TOUCH_SUSV3(, &date_str)

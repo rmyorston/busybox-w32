@@ -1,5 +1,6 @@
 /* vi: set sw=4 ts=4: */
-/* nohup - invoke a utility immune to hangups.
+/*
+ * nohup - invoke a utility immune to hangups.
  *
  * Busybox version based on nohup specification at
  * http://www.opengroup.org/onlinepubs/007904975/utilities/nohup.html
@@ -9,6 +10,15 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config NOHUP
+//config:	bool "nohup (2 kb)"
+//config:	default y
+//config:	help
+//config:	run a command immune to hangups, with output to a non-tty.
+
+//applet:IF_NOHUP(APPLET_NOEXEC(nohup, nohup, BB_DIR_USR_BIN, BB_SUID_DROP, nohup))
+
+//kbuild:lib-$(CONFIG_NOHUP) += nohup.o
 
 //usage:#define nohup_trivial_usage
 //usage:       "PROG ARGS"
@@ -22,12 +32,12 @@
 
 /* Compat info: nohup (GNU coreutils 6.8) does this:
 # nohup true
-nohup: ignoring input and appending output to `nohup.out'
+nohup: ignoring input and appending output to 'nohup.out'
 # nohup true 1>/dev/null
 nohup: ignoring input and redirecting stderr to stdout
 # nohup true 2>zz
 # cat zz
-nohup: ignoring input and appending output to `nohup.out'
+nohup: ignoring input and appending output to 'nohup.out'
 # nohup true 2>zz 1>/dev/null
 # cat zz
 nohup: ignoring input

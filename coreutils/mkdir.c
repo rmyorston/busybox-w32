@@ -6,18 +6,25 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
-/* BB_AUDIT SUSv3 compliant */
-/* http://www.opengroup.org/onlinepubs/007904975/utilities/mkdir.html */
-
 /* Mar 16, 2003      Manuel Novoa III   (mjn3@codepoet.org)
  *
  * Fixed broken permission setting when -p was used; especially in
  * conjunction with -m.
  */
-
 /* Nov 28, 2006      Yoshinori Sato <ysato@users.sourceforge.jp>: Add SELinux Support.
  */
+//config:config MKDIR
+//config:	bool "mkdir (4.4 kb)"
+//config:	default y
+//config:	help
+//config:	mkdir is used to create directories with the specified names.
+
+//applet:IF_MKDIR(APPLET_NOFORK(mkdir, mkdir, BB_DIR_BIN, BB_SUID_DROP, mkdir))
+
+//kbuild:lib-$(CONFIG_MKDIR) += mkdir.o
+
+/* BB_AUDIT SUSv3 compliant */
+/* http://www.opengroup.org/onlinepubs/007904975/utilities/mkdir.html */
 
 //usage:#define mkdir_trivial_usage
 //usage:       "[OPTIONS] DIRECTORY..."
@@ -41,19 +48,6 @@
 
 /* This is a NOFORK applet. Be very careful! */
 
-#if ENABLE_FEATURE_MKDIR_LONG_OPTIONS
-static const char mkdir_longopts[] ALIGN1 =
-	"mode\0"    Required_argument "m"
-	"parents\0" No_argument       "p"
-#if ENABLE_SELINUX
-	"context\0" Required_argument "Z"
-#endif
-#if ENABLE_FEATURE_VERBOSE
-	"verbose\0" No_argument       "v"
-#endif
-	;
-#endif
-
 int mkdir_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int mkdir_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -66,10 +60,17 @@ int mkdir_main(int argc UNUSED_PARAM, char **argv)
 	security_context_t scontext;
 #endif
 
-#if ENABLE_FEATURE_MKDIR_LONG_OPTIONS
-	applet_long_options = mkdir_longopts;
-#endif
-	opt = getopt32(argv, "m:pv" IF_SELINUX("Z:"), &smode IF_SELINUX(,&scontext));
+	opt = getopt32long(argv, "m:pv" IF_SELINUX("Z:"),
+			"mode\0"    Required_argument "m"
+			"parents\0" No_argument       "p"
+# if ENABLE_SELINUX
+			"context\0" Required_argument "Z"
+# endif
+# if ENABLE_FEATURE_VERBOSE
+			"verbose\0" No_argument       "v"
+# endif
+			, &smode IF_SELINUX(,&scontext)
+	);
 	if (opt & 1) {
 		mode_t mmode = bb_parse_mode(smode, 0777);
 		if (mmode == (mode_t)-1) {

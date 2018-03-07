@@ -5,16 +5,15 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-
-//applet:IF_BLOCKDEV(APPLET(blockdev, BB_DIR_SBIN, BB_SUID_DROP))
-
-//kbuild:lib-$(CONFIG_BLOCKDEV) += blockdev.o
-
 //config:config BLOCKDEV
-//config:	bool "blockdev"
+//config:	bool "blockdev (2.4 kb)"
 //config:	default y
 //config:	help
-//config:	  Performs some ioctls with block devices.
+//config:	Performs some ioctls with block devices.
+
+//applet:IF_BLOCKDEV(APPLET_NOEXEC(blockdev, blockdev, BB_DIR_SBIN, BB_SUID_DROP, blockdev))
+
+//kbuild:lib-$(CONFIG_BLOCKDEV) += blockdev.o
 
 //usage:#define blockdev_trivial_usage
 //usage:	"OPTION BLOCKDEV"

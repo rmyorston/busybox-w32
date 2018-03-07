@@ -8,20 +8,32 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 
-//applet:IF_MODPROBE_SMALL(APPLET(modprobe, BB_DIR_SBIN, BB_SUID_DROP))
-//applet:IF_MODPROBE_SMALL(APPLET_ODDNAME(depmod, modprobe, BB_DIR_SBIN, BB_SUID_DROP, depmod))
-//applet:IF_MODPROBE_SMALL(APPLET_ODDNAME(insmod, modprobe, BB_DIR_SBIN, BB_SUID_DROP, insmod))
-//applet:IF_MODPROBE_SMALL(APPLET_ODDNAME(lsmod, modprobe, BB_DIR_SBIN, BB_SUID_DROP, lsmod))
-//applet:IF_MODPROBE_SMALL(APPLET_ODDNAME(rmmod, modprobe, BB_DIR_SBIN, BB_SUID_DROP, rmmod))
+/* modprobe-small configs are defined in Config.src to ensure better
+ * "make config" order */
+
+//applet:IF_LSMOD(   IF_MODPROBE_SMALL(APPLET_NOEXEC( lsmod,    lsmod,    BB_DIR_SBIN, BB_SUID_DROP, lsmod   )))
+//applet:IF_MODPROBE(IF_MODPROBE_SMALL(APPLET_NOEXEC( modprobe, modprobe, BB_DIR_SBIN, BB_SUID_DROP, modprobe)))
+//                                     APPLET_ODDNAME:name      main      location     suid_type     help
+//applet:IF_DEPMOD(  IF_MODPROBE_SMALL(APPLET_ODDNAME(depmod,   modprobe, BB_DIR_SBIN, BB_SUID_DROP, depmod  )))
+//applet:IF_INSMOD(  IF_MODPROBE_SMALL(APPLET_NOEXEC( insmod,   modprobe, BB_DIR_SBIN, BB_SUID_DROP, insmod  )))
+//applet:IF_RMMOD(   IF_MODPROBE_SMALL(APPLET_NOEXEC( rmmod,    modprobe, BB_DIR_SBIN, BB_SUID_DROP, rmmod   )))
+/* noexec speeds up boot with many modules loaded (need SH_STANDALONE=y) */
+/* I measured about ~5 times faster insmod */
+/* depmod is not noexec, it runs longer and benefits from memory trimming via exec */
+
+//kbuild:lib-$(CONFIG_MODPROBE_SMALL) += modprobe-small.o
 
 #include "libbb.h"
 /* After libbb.h, since it needs sys/types.h on some systems */
 #include <sys/utsname.h> /* uname() */
 #include <fnmatch.h>
+#include <sys/syscall.h>
 
-extern int init_module(void *module, unsigned long len, const char *options);
-extern int delete_module(const char *module, unsigned flags);
-extern int query_module(const char *name, int which, void *buf, size_t bufsize, size_t *ret);
+#define init_module(mod, len, opts) syscall(__NR_init_module, mod, len, opts)
+#define delete_module(mod, flags) syscall(__NR_delete_module, mod, flags)
+#ifdef __NR_finit_module
+# define finit_module(fd, uargs, flags) syscall(__NR_finit_module, fd, uargs, flags)
+#endif
 /* linux/include/linux/module.h has limit of 64 chars on module names */
 #undef MODULE_NAME_LEN
 #define MODULE_NAME_LEN 64
@@ -37,7 +49,40 @@ extern int query_module(const char *name, int which, void *buf, size_t bufsize, 
 
 #define DEPFILE_BB CONFIG_DEFAULT_DEPMOD_FILE".bb"
 
+//usage:#if ENABLE_MODPROBE_SMALL
+
+//usage:#define lsmod_trivial_usage
+//usage:       ""
+//usage:#define lsmod_full_usage "\n\n"
+//usage:       "List loaded kernel modules"
+
+//usage:#endif
+
+#if ENABLE_LSMOD
+int lsmod_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+int lsmod_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+{
+	xprint_and_close_file(xfopen_for_read("/proc/modules"));
+	return EXIT_SUCCESS;
+}
+#endif
+
+/* Num of applets that use modprobe_main() entry point. */
+/* lsmod is not here. */
+#define MOD_APPLET_CNT (ENABLE_MODPROBE + ENABLE_DEPMOD + ENABLE_INSMOD + ENABLE_RMMOD)
+
+/* Do not bother if MODPROBE_SMALL=y but no applets selected. */
+/* The rest of the file is in this if block. */
+#if MOD_APPLET_CNT > 0
+
+#define ONLY_APPLET (MOD_APPLET_CNT == 1)
+#define is_modprobe (ENABLE_MODPROBE && (ONLY_APPLET || applet_name[0] == 'm'))
+#define is_depmod   (ENABLE_DEPMOD   && (ONLY_APPLET || applet_name[0] == 'd'))
+#define is_insmod   (ENABLE_INSMOD   && (ONLY_APPLET || applet_name[0] == 'i'))
+#define is_rmmod    (ENABLE_RMMOD    && (ONLY_APPLET || applet_name[0] == 'r'))
+
 enum {
+	DEPMOD_OPT_n = (1 << 0), /* dry-run, print to stdout */
 	OPT_q = (1 << 0), /* be quiet */
 	OPT_r = (1 << 1), /* module removal instead of loading */
 };
@@ -46,6 +91,7 @@ typedef struct module_info {
 	char *pathname;
 	char *aliases;
 	char *deps;
+	smallint open_read_failed;
 } module_info;
 
 /*
@@ -126,7 +172,7 @@ static char* find_keyword(char *ptr, size_t len, const char *word)
 
 		/* search for the first char in word */
 		ptr = memchr(ptr, word[0], len);
-		if (ptr == NULL) /* no occurance left, done */
+		if (ptr == NULL) /* no occurrence left, done */
 			break;
 		after_word = is_prefixed_with(ptr, word);
 		if (after_word)
@@ -209,11 +255,34 @@ static int load_module(const char *fname, const char *options)
 	int r;
 	size_t len = MAXINT(ssize_t);
 	char *module_image;
+
+	if (!options)
+		options = "";
+
 	dbg1_error_msg("load_module('%s','%s')", fname, options);
 
-	module_image = xmalloc_open_zipped_read_close(fname, &len);
-	r = (!module_image || init_module(module_image, len, options ? options : "") != 0);
-	free(module_image);
+	/*
+	 * First we try finit_module if available.  Some kernels are configured
+	 * to only allow loading of modules off of secure storage (like a read-
+	 * only rootfs) which needs the finit_module call.  If it fails, we fall
+	 * back to normal module loading to support compressed modules.
+	 */
+	r = 1;
+# ifdef __NR_finit_module
+	{
+		int fd = open(fname, O_RDONLY | O_CLOEXEC);
+		if (fd >= 0) {
+			r = finit_module(fd, options, 0) != 0;
+			close(fd);
+		}
+	}
+# endif
+	if (r != 0) {
+		module_image = xmalloc_open_zipped_read_close(fname, &len);
+		r = (!module_image || init_module(module_image, len, options) != 0);
+		free(module_image);
+	}
+
 	dbg1_error_msg("load_module:%d", r);
 	return r; /* 0 = success */
 #else
@@ -223,7 +292,8 @@ static int load_module(const char *fname, const char *options)
 #endif
 }
 
-static void parse_module(module_info *info, const char *pathname)
+/* Returns !0 if open/read was unsuccessful */
+static int parse_module(module_info *info, const char *pathname)
 {
 	char *module_image;
 	char *ptr;
@@ -232,6 +302,7 @@ static void parse_module(module_info *info, const char *pathname)
 	dbg1_error_msg("parse_module('%s')", pathname);
 
 	/* Read (possibly compressed) module */
+	errno = 0;
 	len = 64 * 1024 * 1024; /* 64 Mb at most */
 	module_image = xmalloc_open_zipped_read_close(pathname, &len);
 	/* module_image == NULL is ok here, find_keyword handles it */
@@ -299,9 +370,11 @@ static void parse_module(module_info *info, const char *pathname)
 		dbg2_error_msg("dep:'%s'", ptr);
 		append(ptr);
 	}
+	free(module_image);
 	info->deps = copy_stringbuf();
 
-	free(module_image);
+	info->open_read_failed = (module_image == NULL);
+	return info->open_read_failed;
 }
 
 static FAST_FUNC int fileAction(const char *pathname,
@@ -311,6 +384,8 @@ static FAST_FUNC int fileAction(const char *pathname,
 {
 	int cur;
 	const char *fname;
+	bool is_remove = (ENABLE_RMMOD && ONLY_APPLET)
+		|| ((ENABLE_RMMOD || ENABLE_MODPROBE) && (option_mask32 & OPT_r));
 
 	pathname += 2; /* skip "./" */
 	fname = bb_get_last_path_component_nostrip(pathname);
@@ -332,13 +407,14 @@ static FAST_FUNC int fileAction(const char *pathname,
 
 	dbg1_error_msg("'%s' module name matches", pathname);
 	module_found_idx = cur;
-	parse_module(&modinfo[cur], pathname);
+	if (parse_module(&modinfo[cur], pathname) != 0)
+		return TRUE; /* failed to open/read it, no point in trying loading */
 
-	if (!(option_mask32 & OPT_r)) {
+	if (!is_remove) {
 		if (load_module(pathname, module_load_options) == 0) {
 			/* Load was successful, there is nothing else to do.
 			 * This can happen ONLY for "top-level" module load,
-			 * not a dep, because deps dont do dirscan. */
+			 * not a dep, because deps don't do dirscan. */
 			exit(EXIT_SUCCESS);
 		}
 	}
@@ -405,7 +481,7 @@ static int start_dep_bb_writeout(void)
 	int fd;
 
 	/* depmod -n: write result to stdout */
-	if (applet_name[0] == 'd' && (option_mask32 & 1))
+	if (is_depmod && (option_mask32 & DEPMOD_OPT_n))
 		return STDOUT_FILENO;
 
 	fd = open(DEPFILE_BB".new", O_WRONLY | O_CREAT | O_TRUNC | O_EXCL, 0644);
@@ -605,17 +681,19 @@ static int rmmod(const char *filename)
  * NB: also called by depmod with bogus name "/",
  * just in order to force modprobe.dep.bb creation.
 */
-#if !ENABLE_FEATURE_MODPROBE_SMALL_OPTIONS_ON_CMDLINE
+#if !ENABLE_FEATURE_CMDLINE_MODULE_OPTIONS
 #define process_module(a,b) process_module(a)
 #define cmdline_options ""
 #endif
-static void process_module(char *name, const char *cmdline_options)
+static int process_module(char *name, const char *cmdline_options)
 {
 	char *s, *deps, *options;
 	module_info **infovec;
 	module_info *info;
 	int infoidx;
-	int is_remove = (option_mask32 & OPT_r) != 0;
+	bool is_remove = (ENABLE_RMMOD && ONLY_APPLET)
+		|| ((ENABLE_RMMOD || ENABLE_MODPROBE) && (option_mask32 & OPT_r));
+	int exitcode = EXIT_SUCCESS;
 
 	dbg1_error_msg("process_module('%s','%s')", name, cmdline_options);
 
@@ -623,13 +701,12 @@ static void process_module(char *name, const char *cmdline_options)
 
 	dbg1_error_msg("already_loaded:%d is_remove:%d", already_loaded(name), is_remove);
 
-	if (applet_name[0] == 'r') {
-		/* rmmod.
-		 * Does not remove dependencies, no need to scan, just remove.
+	if (is_rmmod) {
+		/* Does not remove dependencies, no need to scan, just remove.
 		 * (compat note: this allows and strips .ko suffix)
 		 */
 		rmmod(name);
-		return;
+		return EXIT_SUCCESS;
 	}
 
 	/*
@@ -640,7 +717,7 @@ static void process_module(char *name, const char *cmdline_options)
 	 */
 	if (!is_remove && already_loaded(name)) {
 		dbg1_error_msg("nothing to do for '%s'", name);
-		return;
+		return EXIT_SUCCESS;
 	}
 
 	options = NULL;
@@ -649,7 +726,7 @@ static void process_module(char *name, const char *cmdline_options)
 		options = xmalloc_open_read_close(opt_filename, NULL);
 		if (options)
 			replace(options, '\n', ' ');
-#if ENABLE_FEATURE_MODPROBE_SMALL_OPTIONS_ON_CMDLINE
+#if ENABLE_FEATURE_CMDLINE_MODULE_OPTIONS
 		if (cmdline_options) {
 			/* NB: cmdline_options always have one leading ' '
 			 * (see main()), we remove it here */
@@ -691,9 +768,12 @@ static void process_module(char *name, const char *cmdline_options)
 
 	if (!infovec) {
 		/* both dirscan and find_alias found nothing */
-		if (!is_remove && applet_name[0] != 'd') /* it wasn't rmmod or depmod */
+		if (!is_remove && !is_depmod) { /* it wasn't rmmod or depmod */
 			bb_error_msg("module '%s' not found", name);
 //TODO: _and_die()? or should we continue (un)loading modules listed on cmdline?
+			/* "modprobe non-existing-module; echo $?" must print 1 */
+			exitcode = EXIT_FAILURE;
+		}
 		goto ret;
 	}
 
@@ -742,6 +822,11 @@ static void process_module(char *name, const char *cmdline_options)
 			dbg1_error_msg("'%s': blacklisted", info->pathname);
 			continue;
 		}
+		if (info->open_read_failed) {
+			/* We already tried it, didn't work. Don't try load again */
+			exitcode = EXIT_FAILURE;
+			continue;
+		}
 		errno = 0;
 		if (load_module(info->pathname, options) != 0) {
 			if (EEXIST != errno) {
@@ -753,13 +838,14 @@ static void process_module(char *name, const char *cmdline_options)
 					info->pathname,
 					moderror(errno));
 			}
+			exitcode = EXIT_FAILURE;
 		}
 	}
  ret:
 	free(infovec);
 	free(options);
-//TODO: return load attempt result from process_module.
-//If dep didn't load ok, continuing makes little sense.
+
+	return exitcode;
 }
 #undef cmdline_options
 
@@ -783,25 +869,28 @@ Usage: rmmod [-fhswvV] modulename ...
     should eventually fall to zero).
 
 # modprobe
-Usage: modprobe [-v] [-V] [-C config-file] [-n] [-i] [-q] [-b]
-    [-o <modname>] [ --dump-modversions ] <modname> [parameters...]
+Usage: modprobe [-v] [-V] [-C config-file] [-d <dirname> ] [-n] [-i] [-q]
+    [-b] [-o <modname>] [ --dump-modversions ] <modname> [parameters...]
 modprobe -r [-n] [-i] [-v] <modulename> ...
 modprobe -l -t <dirname> [ -a <modulename> ...]
 
 # depmod --help
-depmod 3.4 -- part of module-init-tools
-depmod -[aA] [-n -e -v -q -V -r -u]
+depmod 3.13 -- part of module-init-tools
+depmod -[aA] [-n -e -v -q -V -r -u -w -m]
       [-b basedirectory] [forced_version]
-depmod [-n -e -v -q -r -u] [-F kernelsyms] module1.ko module2.ko ...
+depmod [-n -e -v -q -r -u -w] [-F kernelsyms] module1.ko module2.ko ...
 If no arguments (except options) are given, "depmod -a" is assumed.
 depmod will output a dependency list suitable for the modprobe utility.
 Options:
     -a, --all           Probe all modules
     -A, --quick         Only does the work if there's a new module
-    -n, --show          Write the dependency file on stdout only
     -e, --errsyms       Report not supplied symbols
+    -m, --map           Create the legacy map files
+    -n, --show          Write the dependency file on stdout only
+    -P, --symbol-prefix Architecture symbol prefix
     -V, --version       Print the release version
     -v, --verbose       Enable verbose mode
+    -w, --warn          Warn on duplicates
     -h, --help          Print this usage message
 The following options are useful for people managing distributions:
     -b basedirectory
@@ -810,85 +899,61 @@ The following options are useful for people managing distributions:
     -F kernelsyms
     --filesyms kernelsyms
                         Use the file instead of the current kernel symbols
+    -E Module.symvers
+    --symvers Module.symvers
+                        Use Module.symvers file to check symbol versions
 */
 
 //usage:#if ENABLE_MODPROBE_SMALL
 
-//usage:#define depmod_trivial_usage NOUSAGE_STR
-//usage:#define depmod_full_usage ""
-
-//usage:#define lsmod_trivial_usage
-//usage:       ""
-//usage:#define lsmod_full_usage "\n\n"
-//usage:       "List the currently loaded kernel modules"
+//usage:#define depmod_trivial_usage "[-n]"
+//usage:#define depmod_full_usage "\n\n"
+//usage:       "Generate modules.dep.bb"
+//usage:     "\n"
+//usage:     "\n	-n	Dry run: print file to stdout"
 
 //usage:#define insmod_trivial_usage
-//usage:	IF_FEATURE_2_4_MODULES("[OPTIONS] MODULE ")
-//usage:	IF_NOT_FEATURE_2_4_MODULES("FILE ")
-//usage:	"[SYMBOL=VALUE]..."
+//usage:	"FILE" IF_FEATURE_CMDLINE_MODULE_OPTIONS(" [SYMBOL=VALUE]...")
 //usage:#define insmod_full_usage "\n\n"
 //usage:       "Load kernel module"
-//usage:	IF_FEATURE_2_4_MODULES( "\n"
-//usage:     "\n	-f	Force module to load into the wrong kernel version"
-//usage:     "\n	-k	Make module autoclean-able"
-//usage:     "\n	-v	Verbose"
-//usage:     "\n	-q	Quiet"
-//usage:     "\n	-L	Lock: prevent simultaneous loads"
-//usage:	IF_FEATURE_INSMOD_LOAD_MAP(
-//usage:     "\n	-m	Output load map to stdout"
-//usage:	)
-//usage:     "\n	-x	Don't export externs"
-//usage:	)
 
 //usage:#define rmmod_trivial_usage
-//usage:       "[-wfa] [MODULE]..."
+//usage:       "MODULE..."
 //usage:#define rmmod_full_usage "\n\n"
-//usage:       "Unload kernel modules\n"
-//usage:     "\n	-w	Wait until the module is no longer used"
-//usage:     "\n	-f	Force unload"
-//usage:     "\n	-a	Remove all unused modules (recursively)"
-//usage:
-//usage:#define rmmod_example_usage
-//usage:       "$ rmmod tulip\n"
+//usage:       "Unload kernel modules"
 
 //usage:#define modprobe_trivial_usage
-//usage:	"[-qfwrsv] MODULE [SYMBOL=VALUE]..."
+//usage:	"[-rq] MODULE" IF_FEATURE_CMDLINE_MODULE_OPTIONS(" [SYMBOL=VALUE]...")
 //usage:#define modprobe_full_usage "\n\n"
-//usage:       "	-r	Remove MODULE (stacks) or do autoclean"
+//usage:       "	-r	Remove MODULE"
 //usage:     "\n	-q	Quiet"
-//usage:     "\n	-v	Verbose"
-//usage:     "\n	-f	Force"
-//usage:     "\n	-w	Wait for unload"
-//usage:     "\n	-s	Report via syslog instead of stderr"
 
 //usage:#endif
 
 int modprobe_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int modprobe_main(int argc UNUSED_PARAM, char **argv)
 {
+#if ENABLE_MODPROBE || ENABLE_INSMOD || ENABLE_RMMOD
+	int exitcode;
+#endif
 	struct utsname uts;
-	char applet0 = applet_name[0];
-	IF_FEATURE_MODPROBE_SMALL_OPTIONS_ON_CMDLINE(char *options;)
-
-	/* are we lsmod? -> just dump /proc/modules */
-	if ('l' == applet0) {
-		xprint_and_close_file(xfopen_for_read("/proc/modules"));
-		return EXIT_SUCCESS;
-	}
+	IF_FEATURE_CMDLINE_MODULE_OPTIONS(char *options = NULL;)
 
 	INIT_G();
 
 	/* Prevent ugly corner cases with no modules at all */
 	modinfo = xzalloc(sizeof(modinfo[0]));
 
-	if ('i' != applet0) { /* not insmod */
+	if ((MOD_APPLET_CNT == 2 && ENABLE_DEPMOD && ENABLE_MODPROBE)
+	 || is_depmod || is_modprobe
+	) {
 		/* Goto modules directory */
 		xchdir(CONFIG_DEFAULT_MODULES_DIR);
+		uname(&uts); /* never fails */
 	}
-	uname(&uts); /* never fails */
 
 	/* depmod? */
-	if ('d' == applet0) {
+	if (is_depmod) {
 		/* Supported:
 		 * -n: print result to stdout
 		 * -a: process all modules (default)
@@ -898,10 +963,12 @@ int modprobe_main(int argc UNUSED_PARAM, char **argv)
 		 * -e: report any symbols which a module needs
 		 *  which are not supplied by other modules or the kernel
 		 * -F FILE: System.map (symbols for -e)
-		 * -q, -r, -u: noop?
+		 * -q, -r, -u: noop
 		 * Not supported:
 		 * -b BASEDIR: (TODO!) modules are in
 		 *  $BASEDIR/lib/modules/$VERSION
+		 * -m: create legacy "modules.*map" files (deprecated; in
+		 *  kmod's depmod, prints a warning message and continues)
 		 * -v: human readable deps to stdout
 		 * -V: version (don't want to support it - people may depend
 		 *  on it as an indicator of "standard" depmod)
@@ -919,28 +986,27 @@ int modprobe_main(int argc UNUSED_PARAM, char **argv)
 		return !wrote_dep_bb_ok;
 	}
 
-	/* insmod, modprobe, rmmod require at least one argument */
-	opt_complementary = "-1";
+#if ENABLE_MODPROBE || ENABLE_INSMOD || ENABLE_RMMOD
+	/* modprobe, insmod, rmmod require at least one argument */
 	/* only -q (quiet) and -r (rmmod),
 	 * the rest are accepted and ignored (compat) */
-	getopt32(argv, "qrfsvwb");
+	getopt32(argv, "^" "qrfsvwb" "\0" "-1");
 	argv += optind;
 
-	/* are we rmmod? -> simulate modprobe -r */
-	if ('r' == applet0) {
-		option_mask32 |= OPT_r;
-	}
-
-	if ('i' != applet0) { /* not insmod */
+	if (is_modprobe) {
 		/* Goto $VERSION directory */
 		xchdir(uts.release);
 	}
 
-#if ENABLE_FEATURE_MODPROBE_SMALL_OPTIONS_ON_CMDLINE
+	/* are we rmmod? -> simulate modprobe -r, but don't bother the flag if
+	 * there're no other applets here */
+	if (is_rmmod) {
+		if (!ONLY_APPLET)
+			option_mask32 |= OPT_r;
+	} else if (!ENABLE_MODPROBE || !(option_mask32 & OPT_r)) {
+# if ENABLE_FEATURE_CMDLINE_MODULE_OPTIONS
 	/* If not rmmod/-r, parse possible module options given on command line.
 	 * insmod/modprobe takes one module name, the rest are parameters. */
-	options = NULL;
-	if (!(option_mask32 & OPT_r)) {
 		char **arg = argv;
 		while (*++arg) {
 			/* Enclose options in quotes */
@@ -949,13 +1015,12 @@ int modprobe_main(int argc UNUSED_PARAM, char **argv)
 			free(s);
 			*arg = NULL;
 		}
-	}
-#else
-	if (!(option_mask32 & OPT_r))
+# else
 		argv[1] = NULL;
-#endif
+# endif
+	}
 
-	if ('i' == applet0) { /* insmod */
+	if (is_insmod) {
 		size_t len;
 		void *map;
 
@@ -964,28 +1029,32 @@ int modprobe_main(int argc UNUSED_PARAM, char **argv)
 		if (!map)
 			bb_perror_msg_and_die("can't read '%s'", *argv);
 		if (init_module(map, len,
-			IF_FEATURE_MODPROBE_SMALL_OPTIONS_ON_CMDLINE(options ? options : "")
-			IF_NOT_FEATURE_MODPROBE_SMALL_OPTIONS_ON_CMDLINE("")
+			(IF_FEATURE_CMDLINE_MODULE_OPTIONS(options ? options : ) "")
 			) != 0
 		) {
 			bb_error_msg_and_die("can't insert '%s': %s",
 					*argv, moderror(errno));
 		}
-		return 0;
+		return EXIT_SUCCESS;
 	}
 
 	/* Try to load modprobe.dep.bb */
-	if ('r' != applet0) /* not rmmod */
+	if (!is_rmmod) {
 		load_dep_bb();
+	}
 
 	/* Load/remove modules.
 	 * Only rmmod/modprobe -r loops here, insmod/modprobe has only argv[0] */
+	exitcode = EXIT_SUCCESS;
 	do {
-		process_module(*argv, options);
+		exitcode |= process_module(*argv, options);
 	} while (*++argv);
 
 	if (ENABLE_FEATURE_CLEAN_UP) {
-		IF_FEATURE_MODPROBE_SMALL_OPTIONS_ON_CMDLINE(free(options);)
+		IF_FEATURE_CMDLINE_MODULE_OPTIONS(free(options);)
 	}
-	return EXIT_SUCCESS;
+	return exitcode;
+#endif /* MODPROBE || INSMOD || RMMOD */
 }
+
+#endif /* MOD_APPLET_CNT > 0 */

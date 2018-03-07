@@ -8,7 +8,6 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-
 /* We need to have separate xfuncs.c and xfuncs_printf.c because
  * with current linkers, even with section garbage collection,
  * if *.o module references any of XXXprintf functions, you pull in
@@ -19,7 +18,6 @@
  * which do not pull in printf, directly or indirectly.
  * xfunc_printf.c contains those which do.
  */
-
 #include "libbb.h"
 
 
@@ -235,8 +233,16 @@ void FAST_FUNC xwrite(int fd, const void *buf, size_t count)
 {
 	if (count) {
 		ssize_t size = full_write(fd, buf, count);
-		if ((size_t)size != count)
-			bb_error_msg_and_die("short write");
+		if ((size_t)size != count) {
+			/*
+			 * Two cases: write error immediately;
+			 * or some writes succeeded, then we hit an error.
+			 * In either case, errno is set.
+			 */
+			bb_perror_msg_and_die(
+				size >= 0 ? "short write" : "write error"
+			);
+		}
 	}
 }
 void FAST_FUNC xwrite_str(int fd, const char *str)
@@ -336,20 +342,28 @@ void FAST_FUNC xsetenv(const char *key, const char *value)
  */
 void FAST_FUNC bb_unsetenv(const char *var)
 {
-	char *tp = strchr(var, '=');
+	char onstack[128 - 16]; /* smaller stack setup code on x86 */
+	char *tp;
 
-	if (!tp) {
-		unsetenv(var);
-		return;
+	tp = strchr(var, '=');
+	if (tp) {
+		/* In case var was putenv'ed, we can't replace '='
+		 * with NUL and unsetenv(var) - it won't work,
+		 * env is modified by the replacement, unsetenv
+		 * sees "VAR" instead of "VAR=VAL" and does not remove it!
+		 * Horror :(
+		 */
+		unsigned sz = tp - var;
+		if (sz < sizeof(onstack)) {
+			((char*)mempcpy(onstack, var, sz))[0] = '\0';
+			tp = NULL;
+			var = onstack;
+		} else {
+			/* unlikely: very long var name */
+			var = tp = xstrndup(var, sz);
+		}
 	}
-
-	/* In case var was putenv'ed, we can't replace '='
-	 * with NUL and unsetenv(var) - it won't work,
-	 * env is modified by the replacement, unsetenv
-	 * sees "VAR" instead of "VAR=VAL" and does not remove it!
-	 * horror :( */
-	tp = xstrndup(var, tp - var);
-	unsetenv(tp);
+	unsetenv(var);
 	free(tp);
 }
 
@@ -388,6 +402,12 @@ void FAST_FUNC xchdir(const char *path)
 {
 	if (chdir(path))
 		bb_perror_msg_and_die("can't change directory to '%s'", path);
+}
+
+void FAST_FUNC xfchdir(int fd)
+{
+	if (fchdir(fd))
+		bb_perror_msg_and_die("fchdir");
 }
 
 void FAST_FUNC xchroot(const char *path)
@@ -487,6 +507,7 @@ void FAST_FUNC xfstat(int fd, struct stat *stat_buf, const char *errmsg)
 		bb_simple_perror_msg_and_die(errmsg);
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 // selinux_or_die() - die if SELinux is disabled.
 void FAST_FUNC selinux_or_die(void)
 {
@@ -653,3 +674,20 @@ pid_t FAST_FUNC xfork(void)
 	return pid;
 }
 #endif
+
+void FAST_FUNC xvfork_parent_waits_and_exits(void)
+{
+	pid_t pid;
+
+	fflush_all();
+	pid = xvfork();
+	if (pid > 0) {
+		/* Parent */
+		int exit_status = wait_for_exitstatus(pid);
+		if (WIFSIGNALED(exit_status))
+			kill_myself_with_sig(WTERMSIG(exit_status));
+		_exit(WEXITSTATUS(exit_status));
+	}
+	/* Child continues */
+}
+#endif /* !ENABLE_PLATFORM_MINGW32 */

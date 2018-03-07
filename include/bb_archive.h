@@ -74,6 +74,9 @@ typedef struct archive_handle_t {
 	/* Currently processed file's header */
 	file_header_t *file_header;
 
+	/* List of symlink placeholders */
+	llist_t *symlink_placeholders;
+
 	/* Process the header component, e.g. tar -t */
 	void FAST_FUNC (*action_header)(const file_header_t *);
 
@@ -129,15 +132,14 @@ typedef struct archive_handle_t {
 #define ARCHIVE_RESTORE_DATE        (1 << 0)
 #define ARCHIVE_CREATE_LEADING_DIRS (1 << 1)
 #define ARCHIVE_UNLINK_OLD          (1 << 2)
-#define ARCHIVE_EXTRACT_QUIET       (1 << 3)
-#define ARCHIVE_EXTRACT_NEWER       (1 << 4)
-#define ARCHIVE_DONT_RESTORE_OWNER  (1 << 5)
-#define ARCHIVE_DONT_RESTORE_PERM   (1 << 6)
-#define ARCHIVE_NUMERIC_OWNER       (1 << 7)
-#define ARCHIVE_O_TRUNC             (1 << 8)
-#define ARCHIVE_REMEMBER_NAMES      (1 << 9)
+#define ARCHIVE_EXTRACT_NEWER       (1 << 3)
+#define ARCHIVE_DONT_RESTORE_OWNER  (1 << 4)
+#define ARCHIVE_DONT_RESTORE_PERM   (1 << 5)
+#define ARCHIVE_NUMERIC_OWNER       (1 << 6)
+#define ARCHIVE_O_TRUNC             (1 << 7)
+#define ARCHIVE_REMEMBER_NAMES      (1 << 8)
 #if ENABLE_RPM
-#define ARCHIVE_REPLACE_VIA_RENAME  (1 << 10)
+#define ARCHIVE_REPLACE_VIA_RENAME  (1 << 9)
 #endif
 
 
@@ -198,6 +200,7 @@ char get_header_ar(archive_handle_t *archive_handle) FAST_FUNC;
 char get_header_cpio(archive_handle_t *archive_handle) FAST_FUNC;
 char get_header_tar(archive_handle_t *archive_handle) FAST_FUNC;
 char get_header_tar_gz(archive_handle_t *archive_handle) FAST_FUNC;
+char get_header_tar_xz(archive_handle_t *archive_handle) FAST_FUNC;
 char get_header_tar_bz2(archive_handle_t *archive_handle) FAST_FUNC;
 char get_header_tar_lzma(archive_handle_t *archive_handle) FAST_FUNC;
 char get_header_tar_xz(archive_handle_t *archive_handle) FAST_FUNC;
@@ -206,6 +209,10 @@ void seek_by_jump(int fd, off_t amount) FAST_FUNC;
 void seek_by_read(int fd, off_t amount) FAST_FUNC;
 
 const char *strip_unsafe_prefix(const char *str) FAST_FUNC;
+void create_or_remember_symlink(llist_t **symlink_placeholders,
+		const char *target,
+		const char *linkname) FAST_FUNC;
+void create_symlinks_from_list(llist_t *list) FAST_FUNC;
 
 void data_align(archive_handle_t *archive_handle, unsigned boundary) FAST_FUNC;
 const llist_t *find_list_entry(const llist_t *list, const char *filename) FAST_FUNC;
@@ -221,7 +228,7 @@ void dealloc_bunzip(bunzip_data *bd) FAST_FUNC;
 
 /* Meaning and direction (input/output) of the fields are transformer-specific */
 typedef struct transformer_state_t {
-	smallint check_signature; /* most often referenced member */
+	smallint signature_skipped; /* most often referenced member */
 
 	IF_DESKTOP(long long) int FAST_FUNC (*xformer)(struct transformer_state_t *xstate);
 	USE_FOR_NOMMU(const char *xformer_prog;)
@@ -258,15 +265,30 @@ int bbunpack(char **argv,
 		char* FAST_FUNC (*make_new_name)(char *filename, const char *expected_ext),
 		const char *expected_ext
 ) FAST_FUNC;
+#define BBUNPK_OPTSTR "cfkvq"
+#define BBUNPK_OPTSTRLEN  5
+#define BBUNPK_OPTSTRMASK ((1 << BBUNPK_OPTSTRLEN) - 1)
+enum {
+	BBUNPK_OPT_STDOUT     = 1 << 0,
+	BBUNPK_OPT_FORCE      = 1 << 1,
+	/* only some decompressors: */
+	BBUNPK_OPT_KEEP       = 1 << 2,
+	BBUNPK_OPT_VERBOSE    = 1 << 3,
+	BBUNPK_OPT_QUIET      = 1 << 4,
+	/* not included in BBUNPK_OPTSTR: */
+	BBUNPK_OPT_DECOMPRESS = 1 << 5,
+	BBUNPK_OPT_TEST       = 1 << 6,
+	BBUNPK_SEAMLESS_MAGIC = (1 << 31) * ENABLE_ZCAT * SEAMLESS_COMPRESSION,
+};
 
 void check_errors_in_children(int signo);
 #if BB_MMU
 void fork_transformer(int fd,
-	int check_signature,
+	int signature_skipped,
 	IF_DESKTOP(long long) int FAST_FUNC (*transformer)(transformer_state_t *xstate)
 ) FAST_FUNC;
-#define fork_transformer_with_sig(fd, transformer, transform_prog) fork_transformer((fd), 1, (transformer))
-#define fork_transformer_with_no_sig(fd, transformer)              fork_transformer((fd), 0, (transformer))
+#define fork_transformer_with_sig(fd, transformer, transform_prog) fork_transformer((fd), 0, (transformer))
+#define fork_transformer_with_no_sig(fd, transformer)              fork_transformer((fd), 1, (transformer))
 #else
 void fork_transformer(int fd, const char *transform_prog) FAST_FUNC;
 #define fork_transformer_with_sig(fd, transformer, transform_prog) fork_transformer((fd), (transform_prog))

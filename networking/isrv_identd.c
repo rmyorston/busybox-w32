@@ -6,6 +6,17 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
+//config:config FAKEIDENTD
+//config:	bool "fakeidentd (8.9 kb)"
+//config:	default y
+//config:	select FEATURE_SYSLOG
+//config:	help
+//config:	fakeidentd listens on the ident port and returns a predefined
+//config:	fake value on any query.
+
+//applet:IF_FAKEIDENTD(APPLET(fakeidentd, BB_DIR_USR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_FAKEIDENTD) += isrv_identd.o isrv.o
 
 //usage:#define fakeidentd_trivial_usage
 //usage:       "[-fiw] [-b ADDR] [STRING]"
@@ -18,6 +29,7 @@
 //usage:     "\n	STRING	Ident answer string (default: nobody)"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include <syslog.h>
 #include "isrv.h"
 
@@ -115,10 +127,12 @@ int fakeidentd_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opt;
 	int fd;
 
+	setup_common_bufsiz();
+
 	opt = getopt32(argv, "fiwb:", &bind_address);
 	strcpy(bogouser, "nobody");
 	if (argv[optind])
-		strncpy(bogouser, argv[optind], sizeof(bogouser) - 1);
+		strncpy(bogouser, argv[optind], COMMON_BUFSIZE - 1);
 
 	/* Daemonize if no -f and no -i and no -w */
 	if (!(opt & OPT_fiw))

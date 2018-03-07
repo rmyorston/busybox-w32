@@ -7,6 +7,26 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
+//config:config MKDOSFS
+//config:	bool "mkdosfs (6.8 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	Utility to create FAT32 filesystems.
+//config:
+//config:config MKFS_VFAT
+//config:	bool "mkfs.vfat (6.8 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	Alias to "mkdosfs".
+
+//                    APPLET_ODDNAME:name       main       location     suid_type     help
+//applet:IF_MKDOSFS(  APPLET_ODDNAME(mkdosfs,   mkfs_vfat, BB_DIR_SBIN, BB_SUID_DROP, mkfs_vfat))
+//applet:IF_MKFS_VFAT(APPLET_ODDNAME(mkfs.vfat, mkfs_vfat, BB_DIR_SBIN, BB_SUID_DROP, mkfs_vfat))
+
+//kbuild:lib-$(CONFIG_MKDOSFS) += mkfs_vfat.o
+//kbuild:lib-$(CONFIG_MKFS_VFAT) += mkfs_vfat.o
 
 //usage:#define mkfs_vfat_trivial_usage
 //usage:       "[-v] [-n LABEL] BLOCKDEV [KBYTES]"
@@ -190,11 +210,11 @@ void BUG_unsupported_field_size(void);
 #define STORE_LE(field, value) \
 do { \
 	if (sizeof(field) == 4) \
-		field = SWAP_LE32(value); \
+		field = SWAP_LE32((uint32_t)(value)); \
 	else if (sizeof(field) == 2) \
-		field = SWAP_LE16(value); \
+		field = SWAP_LE16((uint16_t)(value)); \
 	else if (sizeof(field) == 1) \
-		field = (value); \
+		field = (uint8_t)(value); \
 	else \
 		BUG_unsupported_field_size(); \
 } while (0)
@@ -249,8 +269,9 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 		OPT_v = 1 << 16, // verbose
 	};
 
-	opt_complementary = "-1";//:b+:f+:F+:h+:r+:R+:s+:S+:vv:c--l:l--c";
-	opts = getopt32(argv, "Ab:cCf:F:h:Ii:l:m:n:r:R:s:S:v",
+	opts = getopt32(argv, "^"
+		"Ab:cCf:F:h:Ii:l:m:n:r:R:s:S:v"
+		"\0" "-1", //:b+:f+:F+:h+:r+:R+:s+:S+:vv:c--l:l--c
 		NULL, NULL, NULL, NULL, NULL,
 		NULL, NULL, &volume_label, NULL, NULL, NULL, NULL);
 	argv += optind;
@@ -578,7 +599,7 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 		start_data_sector = (reserved_sect + NUM_FATS * sect_per_fat) * (bytes_per_sect / SECTOR_SIZE);
 		start_data_block = (start_data_sector + SECTORS_PER_BLOCK - 1) / SECTORS_PER_BLOCK;
 
-		bb_info_msg("searching for bad blocks ");
+		bb_error_msg("searching for bad blocks");
 		currently_testing = 0;
 		try = TEST_BUFFER_BLOCKS;
 		while (currently_testing < volume_size_blocks) {
@@ -616,7 +637,7 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 		}
 		free(blkbuf);
 		if (badblocks)
-			bb_info_msg("%d bad block(s)", badblocks);
+			bb_error_msg("%d bad block(s)", badblocks);
 	}
 #endif
 

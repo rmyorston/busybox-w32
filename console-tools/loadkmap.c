@@ -6,6 +6,17 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config LOADKMAP
+//config:	bool "loadkmap (1.5 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	This program loads a keyboard translation table from
+//config:	standard input.
+
+//applet:IF_LOADKMAP(APPLET_NOEXEC(loadkmap, loadkmap, BB_DIR_SBIN, BB_SUID_DROP, loadkmap))
+
+//kbuild:lib-$(CONFIG_LOADKMAP) += loadkmap.o
 
 //usage:#define loadkmap_trivial_usage
 //usage:       "< keymap"

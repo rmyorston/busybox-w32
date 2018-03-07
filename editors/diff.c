@@ -12,7 +12,6 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
 /*
  * The following code uses an algorithm due to Harold Stone,
  * which finds a pair of longest identical subsequences in
@@ -75,33 +74,30 @@
  * 3*(number of k-candidates installed), typically about
  * 6n words for files of length n.
  */
-
 //config:config DIFF
-//config:	bool "diff"
+//config:	bool "diff (13 kb)"
 //config:	default y
 //config:	help
-//config:	  diff compares two files or directories and outputs the
-//config:	  differences between them in a form that can be given to
-//config:	  the patch command.
+//config:	diff compares two files or directories and outputs the
+//config:	differences between them in a form that can be given to
+//config:	the patch command.
 //config:
 //config:config FEATURE_DIFF_LONG_OPTIONS
 //config:	bool "Enable long options"
 //config:	default y
 //config:	depends on DIFF && LONG_OPTS
-//config:	help
-//config:	  Enable use of long options.
 //config:
 //config:config FEATURE_DIFF_DIR
 //config:	bool "Enable directory support"
 //config:	default y
 //config:	depends on DIFF
 //config:	help
-//config:	  This option enables support for directory and subdirectory
-//config:	  comparison.
-
-//kbuild:lib-$(CONFIG_DIFF) += diff.o
+//config:	This option enables support for directory and subdirectory
+//config:	comparison.
 
 //applet:IF_DIFF(APPLET(diff, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_DIFF) += diff.o
 
 //usage:#define diff_trivial_usage
 //usage:       "[-abBdiNqrTstw] [-L LABEL] [-S FILE] [-U LINES] FILE1 FILE2"
@@ -125,6 +121,7 @@
 //usage:     "\n	-w	Ignore all whitespace"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 #if 0
 # define dbg_error_msg(...) bb_error_msg(__VA_ARGS__)
@@ -293,17 +290,6 @@ static int search(const int *c, int k, int y, const struct cand *list)
 				return l;
 		} else
 			return l + 1;
-	}
-}
-
-static unsigned isqrt(unsigned n)
-{
-	unsigned x = 1;
-	while (1) {
-		const unsigned y = x;
-		x = ((n / x) + x) >> 1;
-		if (x <= (y + 1) && x >= (y - 1))
-			return x;
 	}
 }
 
@@ -723,21 +709,44 @@ static int diffreg(char *file[2])
 	FILE *fp[2];
 	bool binary = false, differ = false;
 	int status = STATUS_SAME, i;
+#if ENABLE_PLATFORM_MINGW32
+	char *tmpfile[2] = { NULL, NULL };
+	char *tmpdir;
+#endif
 
 	fp[0] = stdin;
 	fp[1] = stdin;
 	for (i = 0; i < 2; i++) {
-		int fd = open_or_warn_stdin(file[i]);
-		if (fd == -1)
-			goto out;
+		int fd = STDIN_FILENO;
+		if (!LONE_DASH(file[i])) {
+			if (!(option_mask32 & FLAG(N))) {
+				fd = open_or_warn(file[i], O_RDONLY);
+				if (fd == -1)
+					goto out;
+			} else {
+				/* -N: if some file does not exist compare it like empty */
+				fd = open(file[i], O_RDONLY);
+				if (fd == -1)
+					fd = xopen("/dev/null", O_RDONLY);
+			}
+		}
 		/* Our diff implementation is using seek.
 		 * When we meet non-seekable file, we must make a temp copy.
 		 */
 		if (lseek(fd, 0, SEEK_SET) == -1 && errno == ESPIPE) {
+#if !ENABLE_PLATFORM_MINGW32
 			char name[] = "/tmp/difXXXXXX";
 			int fd_tmp = xmkstemp(name);
 
 			unlink(name);
+#else
+			int fd_tmp;
+
+			if (!(tmpdir=getenv("TMPDIR")))
+				goto out;
+			tmpfile[i] = xasprintf("%s/difXXXXXX", tmpdir);
+			fd_tmp = xmkstemp(tmpfile[i]);
+#endif
 			if (bb_copyfd_eof(fd, fd_tmp) < 0)
 				xfunc_die();
 			if (fd != STDIN_FILENO)
@@ -748,6 +757,7 @@ static int diffreg(char *file[2])
 		fp[i] = fdopen(fd, "r");
 	}
 
+	setup_common_bufsiz();
 	while (1) {
 		const size_t sz = COMMON_BUFSIZE / 2;
 		char *const buf0 = bb_common_bufsiz1;
@@ -779,6 +789,14 @@ static int diffreg(char *file[2])
 out:
 	fclose_if_not_stdin(fp[0]);
 	fclose_if_not_stdin(fp[1]);
+#if ENABLE_PLATFORM_MINGW32
+	for (i = 0; i < 2; i++) {
+		if (tmpfile[i]) {
+			unlink(tmpfile[i]);
+			free(tmpfile[i]);
+		}
+	}
+#endif
 
 	return status;
 }
@@ -968,6 +986,11 @@ static const char diff_longopts[] ALIGN1 =
 	"starting-file\0"            Required_argument "S"
 	"minimal\0"                  No_argument       "d"
 	;
+# define GETOPT32 getopt32long
+# define LONGOPTS ,diff_longopts
+#else
+# define GETOPT32 getopt32
+# define LONGOPTS
 #endif
 
 int diff_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -980,26 +1003,29 @@ int diff_main(int argc UNUSED_PARAM, char **argv)
 	INIT_G();
 
 	/* exactly 2 params; collect multiple -L <label>; -U N */
-	opt_complementary = "=2:L::U+";
-#if ENABLE_FEATURE_DIFF_LONG_OPTIONS
-	applet_long_options = diff_longopts;
-#endif
-	getopt32(argv, "abdiL:NqrsS:tTU:wupBE",
+	GETOPT32(argv, "^" "abdiL:*NqrsS:tTU:+wupBE" "\0" "=2"
+			LONGOPTS,
 			&L_arg, &s_start, &opt_U_context);
 	argv += optind;
 	while (L_arg)
 		label[!!label[0]] = llist_pop(&L_arg);
+
+	/* Compat: "diff file name_which_doesnt_exist" exits with 2 */
 	xfunc_error_retval = 2;
 	for (i = 0; i < 2; i++) {
 		file[i] = argv[i];
-		/* Compat: "diff file name_which_doesnt_exist" exits with 2 */
 		if (LONE_DASH(file[i])) {
 			fstat(STDIN_FILENO, &stb[i]);
 			gotstdin++;
-		} else
+		} else if (option_mask32 & FLAG(N)) {
+			if (stat(file[i], &stb[i]))
+				xstat("/dev/null", &stb[i]);
+		} else {
 			xstat(file[i], &stb[i]);
+		}
 	}
 	xfunc_error_retval = 1;
+
 	if (gotstdin && (S_ISDIR(stb[0].st_mode) || S_ISDIR(stb[1].st_mode)))
 		bb_error_msg_and_die("can't compare stdin to a directory");
 

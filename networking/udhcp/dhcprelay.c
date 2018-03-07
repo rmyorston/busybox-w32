@@ -1,5 +1,6 @@
 /* vi: set sw=4 ts=4: */
-/* Port to Busybox Copyright (C) 2006 Jesse Dutton <jessedutton@gmail.com>
+/*
+ * Port to Busybox Copyright (C) 2006 Jesse Dutton <jessedutton@gmail.com>
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  *
@@ -9,6 +10,9 @@
  *                   Netbeat AG
  * Upstream has GPL v2 or later
  */
+//applet:IF_DHCPRELAY(APPLET(dhcprelay, BB_DIR_USR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_DHCPRELAY) += dhcprelay.o
 
 //usage:#define dhcprelay_trivial_usage
 //usage:       "CLIENT_IFACE[,CLIENT_IFACE2]... SERVER_IFACE [SERVER_IP]"
@@ -33,7 +37,8 @@ struct xid_item {
 	struct xid_item *next;
 } FIX_ALIASING;
 
-#define dhcprelay_xid_list (*(struct xid_item*)&bb_common_bufsiz1)
+#define dhcprelay_xid_list (*(struct xid_item*)bb_common_bufsiz1)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 static struct xid_item *xid_add(uint32_t xid, struct sockaddr_in *ip, int client)
 {
@@ -249,7 +254,7 @@ static void pass_to_client(struct dhcp_packet *p, int packet_len, int *fds)
 }
 
 int dhcprelay_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
-int dhcprelay_main(int argc, char **argv)
+int dhcprelay_main(int argc UNUSED_PARAM, char **argv)
 {
 	struct sockaddr_in server_addr;
 	char **iface_list;
@@ -257,16 +262,18 @@ int dhcprelay_main(int argc, char **argv)
 	int num_sockets, max_socket;
 	uint32_t our_nip;
 
+	INIT_G();
+
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
 	server_addr.sin_port = htons(SERVER_PORT);
 
 	/* dhcprelay CLIENT_IFACE1[,CLIENT_IFACE2...] SERVER_IFACE [SERVER_IP] */
-	if (argc == 4) {
+	if (!argv[1] || !argv[2])
+		bb_show_usage();
+	if (argv[3]) {
 		if (!inet_aton(argv[3], &server_addr.sin_addr))
 			bb_perror_msg_and_die("bad server IP");
-	} else if (argc != 3) {
-		bb_show_usage();
 	}
 
 	iface_list = make_iface_list(argv + 1, &num_sockets);
@@ -355,7 +362,7 @@ int dhcprelay_main(int argc, char **argv)
 //   which the reply must be sent (i.e., the host or router interface
 //   connected to the same network as the BOOTP client).  If the content
 //   of the 'giaddr' field does not match one of the relay agent's
-//   directly-connected logical interfaces, the BOOTREPLY messsage MUST be
+//   directly-connected logical interfaces, the BOOTREPLY message MUST be
 //   silently discarded.
 				if (udhcp_read_interface(iface_list[i], NULL, &dhcp_msg.gateway_nip, NULL)) {
 					/* Fall back to our IP on server iface */

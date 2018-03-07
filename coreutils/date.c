@@ -8,8 +8,7 @@
  * bugfixes and cleanup by Bernhard Reutner-Fischer
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
-*/
-
+ */
 /* This 'date' command supports only 2 time setting formats,
    all the GNU strftime stuff (its in libc, lets use it),
    setting time using UTC and displaying it, as well as
@@ -19,55 +18,56 @@
 /* Input parsing code is always bulky - used heavy duty libc stuff as
    much as possible, missed out a lot of bounds checking */
 
-//applet:IF_DATE(APPLET(date, BB_DIR_BIN, BB_SUID_DROP))
-
-//kbuild:lib-$(CONFIG_DATE) += date.o
-
 //config:config DATE
-//config:	bool "date"
+//config:	bool "date (7.1 kb)"
 //config:	default y
 //config:	help
-//config:	  date is used to set the system date or display the
-//config:	  current time in the given format.
+//config:	date is used to set the system date or display the
+//config:	current time in the given format.
 //config:
 //config:config FEATURE_DATE_ISOFMT
 //config:	bool "Enable ISO date format output (-I)"
 //config:	default y
 //config:	depends on DATE
 //config:	help
-//config:	  Enable option (-I) to output an ISO-8601 compliant
-//config:	  date/time string.
+//config:	Enable option (-I) to output an ISO-8601 compliant
+//config:	date/time string.
 //config:
 //config:# defaults to "no": stat's nanosecond field is a bit non-portable
 //config:config FEATURE_DATE_NANO
 //config:	bool "Support %[num]N nanosecond format specifier"
-//config:	default n
-//config:	depends on DATE  # syscall(__NR_clock_gettime)
+//config:	default n  # syscall(__NR_clock_gettime)
+//config:	depends on DATE
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Support %[num]N format specifier. Adds ~250 bytes of code.
+//config:	Support %[num]N format specifier. Adds ~250 bytes of code.
 //config:
 //config:config FEATURE_DATE_COMPAT
 //config:	bool "Support weird 'date MMDDhhmm[[YY]YY][.ss]' format"
 //config:	default y
 //config:	depends on DATE
 //config:	help
-//config:	  System time can be set by 'date -s DATE' and simply 'date DATE',
-//config:	  but formats of DATE string are different. 'date DATE' accepts
-//config:	  a rather weird MMDDhhmm[[YY]YY][.ss] format with completely
-//config:	  unnatural placement of year between minutes and seconds.
-//config:	  date -s (and other commands like touch -d) use more sensible
-//config:	  formats (for one, ISO format YYYY-MM-DD hh:mm:ss.ssssss).
+//config:	System time can be set by 'date -s DATE' and simply 'date DATE',
+//config:	but formats of DATE string are different. 'date DATE' accepts
+//config:	a rather weird MMDDhhmm[[YY]YY][.ss] format with completely
+//config:	unnatural placement of year between minutes and seconds.
+//config:	date -s (and other commands like touch -d) use more sensible
+//config:	formats (for one, ISO format YYYY-MM-DD hh:mm:ss.ssssss).
 //config:
-//config:	  With this option off, 'date DATE' is 'date -s DATE' support
-//config:	  the same format. With it on, 'date DATE' additionally supports
-//config:	  MMDDhhmm[[YY]YY][.ss] format.
+//config:	With this option off, 'date DATE' is 'date -s DATE' support
+//config:	the same format. With it on, 'date DATE' additionally supports
+//config:	MMDDhhmm[[YY]YY][.ss] format.
+
+//applet:IF_DATE(APPLET_NOEXEC(date, date, BB_DIR_BIN, BB_SUID_DROP, date))
+/* bb_common_bufsiz1 usage here is safe wrt NOEXEC: not expecting it to be zeroed. */
+
+//kbuild:lib-$(CONFIG_DATE) += date.o
 
 /* GNU coreutils 6.9 man page:
  * date [OPTION]... [+FORMAT]
  * date [-u|--utc|--universal] [MMDDhhmm[[CC]YY][.ss]]
  * -d, --date=STRING
- *      display time described by STRING, not `now'
+ *      display time described by STRING, not 'now'
  * -f, --file=DATEFILE
  *      like --date once for each line of DATEFILE
  * -r, --reference=FILE
@@ -138,6 +138,7 @@
 //usage:       "Wed Apr 12 18:52:41 MDT 2000\n"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #if ENABLE_FEATURE_DATE_NANO
 # include <sys/syscall.h>
 #endif
@@ -152,12 +153,6 @@ enum {
 	OPT_HINT      = (1 << 6) * ENABLE_FEATURE_DATE_ISOFMT, /* D */
 };
 
-static void maybe_set_utc(int opt)
-{
-	if (opt & OPT_UTC)
-		putenv((char*)"TZ=UTC0");
-}
-
 #if ENABLE_LONG_OPTS
 static const char date_longopts[] ALIGN1 =
 		"rfc-822\0"   No_argument       "R"
@@ -169,6 +164,19 @@ static const char date_longopts[] ALIGN1 =
 		"reference\0" Required_argument "r"
 		;
 #endif
+
+/* We are a NOEXEC applet.
+ * Obstacles to NOFORK:
+ * - we change env
+ * - xasprintf result not freed
+ * - after xasprintf we use other xfuncs
+ */
+
+static void maybe_set_utc(int opt)
+{
+	if (opt & OPT_UTC)
+		putenv((char*)"TZ=UTC0");
+}
 
 int date_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int date_main(int argc UNUSED_PARAM, char **argv)
@@ -184,14 +192,18 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 	char *filename;
 	char *isofmt_arg = NULL;
 
-	opt_complementary = "d--s:s--d"
-		IF_FEATURE_DATE_ISOFMT(":R--I:I--R");
-	IF_LONG_OPTS(applet_long_options = date_longopts;)
-	opt = getopt32(argv, "Rs:ud:r:"
-			IF_FEATURE_DATE_ISOFMT("I::D:"),
+	opt = getopt32long(argv, "^"
+			"Rs:ud:r:"
+			IF_FEATURE_DATE_ISOFMT("I::D:")
+			"\0"
+			"d--s:s--d"
+			IF_FEATURE_DATE_ISOFMT(":R--I:I--R"),
+			date_longopts,
 			&date_str, &date_str, &filename
-			IF_FEATURE_DATE_ISOFMT(, &isofmt_arg, &fmt_str2dt));
+			IF_FEATURE_DATE_ISOFMT(, &isofmt_arg, &fmt_str2dt)
+	);
 	argv += optind;
+
 	maybe_set_utc(opt);
 
 	if (ENABLE_FEATURE_DATE_ISOFMT && (opt & OPT_TIMESPEC)) {
@@ -290,8 +302,6 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 			tm_time.tm_isdst = -1;
 		ts.tv_sec = validate_tm_time(date_str, &tm_time);
 
-		maybe_set_utc(opt);
-
 		/* if setting time, set it */
 		if ((opt & OPT_SET) && stime(&ts.tv_sec) < 0) {
 			bb_perror_msg("can't set date");
@@ -368,6 +378,7 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 #define date_buf bb_common_bufsiz1
+	setup_common_bufsiz();
 	if (*fmt_dt2str == '\0') {
 		/* With no format string, just print a blank line */
 		date_buf[0] = '\0';
@@ -377,7 +388,7 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 			fmt_dt2str = (char*)"%Y.%m.%d-%H:%M:%S";
 		}
 		/* Generate output string */
-		strftime(date_buf, sizeof(date_buf), fmt_dt2str, &tm_time);
+		strftime(date_buf, COMMON_BUFSIZE, fmt_dt2str, &tm_time);
 	}
 	puts(date_buf);
 

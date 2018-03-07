@@ -8,11 +8,6 @@
  */
 typedef int gid_t;
 typedef int uid_t;
-#ifndef _WIN64
-typedef int pid_t;
-#else
-typedef __int64 pid_t;
-#endif
 
 #define DEFAULT_UID 1000
 #define DEFAULT_GID 1000
@@ -34,7 +29,8 @@ int inet_pton(int af, const char *src, void *dst);
 #define F_GETFL 3
 #define F_SETFL 3
 #define FD_CLOEXEC 0x1
-#define O_NONBLOCK 04000
+#define O_NONBLOCK 0
+#define O_NOFOLLOW 0
 
 /*
  * grp.h
@@ -95,39 +91,11 @@ IMPL(getpwent,struct passwd *,NULL,void)
 /*
  * signal.h
  */
-#define SIGHUP 1
-#define SIGQUIT 3
 #define SIGKILL 9
-#define SIGUSR1 10
-#define SIGUSR2 12
-#define SIGPIPE 13
-#define SIGALRM 14
-#define SIGCHLD 17
-#define SIGCONT 18
-#define SIGSTOP 19
-#define SIGTSTP 20
-#define SIGTTIN 21
-#define SIGTTOU 22
-#define SIGXCPU 24
-#define SIGXFSZ 25
-#define SIGVTALRM 26
-#define SIGWINCH 28
 
 #define SIG_UNBLOCK 1
 
-typedef void (__cdecl *sighandler_t)(int);
-struct sigaction {
-	sighandler_t sa_handler;
-	unsigned sa_flags;
-	int sa_mask;
-};
-#define sigemptyset(x) (void)0
-#define SA_RESTART 0
-
-NOIMPL(sigaction,int sig UNUSED_PARAM, struct sigaction *in UNUSED_PARAM, struct sigaction *out UNUSED_PARAM);
-NOIMPL(sigfillset,int *mask UNUSED_PARAM);
 NOIMPL(FAST_FUNC sigprocmask_allsigs, int how UNUSED_PARAM);
-NOIMPL(FAST_FUNC sigaction_set,int signo UNUSED_PARAM, const struct sigaction *sa UNUSED_PARAM);
 
 /*
  * stdio.h
@@ -155,6 +123,8 @@ int mingw_pclose(FILE *fd);
  * ANSI emulation wrappers
  */
 
+void move_cursor_row(int n);
+void reset_screen(void);
 int winansi_putchar(int c);
 int winansi_puts(const char *s);
 size_t winansi_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
@@ -169,6 +139,7 @@ int winansi_getc(FILE *stream);
 #define puts winansi_puts
 #define fwrite winansi_fwrite
 #define fputs winansi_fputs
+#define vfprintf(stream, ...) winansi_vfprintf(stream, __VA_ARGS__)
 #define vprintf(...) winansi_vfprintf(stdout, __VA_ARGS__)
 #define printf(...) winansi_printf(__VA_ARGS__)
 #define fprintf(...) winansi_fprintf(__VA_ARGS__)
@@ -181,10 +152,10 @@ int winansi_get_terminal_width_height(struct winsize *win);
 /*
  * stdlib.h
  */
-#define WIFEXITED(x) ((unsigned)(x) < 259)	/* STILL_ACTIVE */
-#define WEXITSTATUS(x) ((x) & 0xff)
-#define WIFSIGNALED(x) ((unsigned)(x) > 259)
 #define WTERMSIG(x) ((x) & 0x7f)
+#define WIFEXITED(x) (WTERMSIG(x) == 0)
+#define WEXITSTATUS(x) (((x) & 0xff00) >> 8)
+#define WIFSIGNALED(x) (((signed char) (((x) & 0x7f) + 1) >> 1) > 0)
 #define WCOREDUMP(x) 0
 
 int mingw_system(const char *cmd);
@@ -197,22 +168,11 @@ char *mingw_mktemp(char *template);
 int mkstemp(char *template);
 char *realpath(const char *path, char *resolved_path);
 int setenv(const char *name, const char *value, int replace);
-#if ENABLE_SAFE_ENV
 int unsetenv(const char *env);
-#else
-void unsetenv(const char *env);
-#endif
 
 #define getenv mingw_getenv
-#if ENABLE_SAFE_ENV
 #define putenv mingw_putenv
-#endif
 #define mktemp mingw_mktemp
-
-/*
- * string.h
- */
-void *mempcpy(void *dest, const void *src, size_t n);
 
 /*
  * strings.h
@@ -235,7 +195,7 @@ int ioctl(int fd, int code, ...);
 #define SHUT_WR SD_SEND
 
 int mingw_socket(int domain, int type, int protocol);
-int mingw_connect(int sockfd, struct sockaddr *sa, size_t sz);
+int mingw_connect(int sockfd, const struct sockaddr *sa, size_t sz);
 int mingw_bind(int sockfd, struct sockaddr *sa, size_t sz);
 int mingw_setsockopt(int sockfd, int lvl, int optname, void *optval, int optlen);
 int mingw_shutdown(int sockfd, int how);
@@ -288,11 +248,9 @@ int mingw_chmod(const char *path, int mode);
 #define mkdir mingw_mkdir
 #define chmod mingw_chmod
 
-#if ENABLE_LFS
+#if ENABLE_LFS && !defined(__MINGW64_VERSION_MAJOR)
 # define off_t off64_t
 #endif
-#undef lseek
-#define lseek _lseeki64
 
 typedef int nlink_t;
 typedef int blksize_t;
@@ -342,6 +300,8 @@ struct timespec {
 };
 #endif
 
+int nanosleep(const struct timespec *req, struct timespec *rem);
+
 /*
  * sys/wait.h
  */
@@ -381,11 +341,17 @@ clock_t times(struct tms *buf);
 
 #define _SC_CLK_TCK 2
 
+#define TICKS_PER_SECOND 100
+#define MS_PER_TICK 10
+#define HNSEC_PER_TICK 100000
+
 IMPL(alarm,unsigned int,0,unsigned int seconds UNUSED_PARAM);
 IMPL(chown,int,0,const char *path UNUSED_PARAM, uid_t uid UNUSED_PARAM, gid_t gid UNUSED_PARAM);
 NOIMPL(chroot,const char *root UNUSED_PARAM);
+NOIMPL(fchdir,int fd UNUSED_PARAM);
 int mingw_dup2 (int fd, int fdto);
 char *mingw_getcwd(char *pointer, int len);
+off_t mingw_lseek(int fd, off_t offset, int whence);
 
 
 IMPL(getgid,int,DEFAULT_GID,void);
@@ -397,12 +363,15 @@ NOIMPL(getsid,pid_t pid UNUSED_PARAM);
 IMPL(getuid,int,DEFAULT_UID,void);
 int getlogin_r(char *buf, size_t len);
 int fcntl(int fd, int cmd, ...);
-#define fork() -1
-IMPL(fsync,int,0,int fd UNUSED_PARAM);
+int fsync(int fd);
 int kill(pid_t pid, int sig);
 int link(const char *oldpath, const char *newpath);
 NOIMPL(mknod,const char *name UNUSED_PARAM, mode_t mode UNUSED_PARAM, dev_t device UNUSED_PARAM);
 int mingw_open (const char *filename, int oflags, ...);
+void mingw_read_zero(int fd);
+void mingw_read_random(int fd);
+ssize_t mingw_read(int fd, void *buf, size_t count);
+int mingw_close(int fd);
 int pipe(int filedes[2]);
 NOIMPL(readlink,const char *path UNUSED_PARAM, char *buf UNUSED_PARAM, size_t bufsiz UNUSED_PARAM);
 NOIMPL(setgid,gid_t gid UNUSED_PARAM);
@@ -414,21 +383,27 @@ unsigned int sleep(unsigned int seconds);
 NOIMPL(symlink,const char *oldpath UNUSED_PARAM, const char *newpath UNUSED_PARAM);
 static inline void sync(void) {}
 long sysconf(int name);
+IMPL(getpagesize,int,4096,void);
 NOIMPL(ttyname_r,int fd UNUSED_PARAM, char *buf UNUSED_PARAM, int sz UNUSED_PARAM);
 int mingw_unlink(const char *pathname);
-NOIMPL(vfork,void);
+pid_t vfork(void);
 int mingw_access(const char *name, int mode);
 int mingw_rmdir(const char *name);
+int mingw_isatty(int fd);
 
 #define dup2 mingw_dup2
 #define getcwd mingw_getcwd
 #define lchown chown
 #define open mingw_open
+#define close mingw_close
 #define unlink mingw_unlink
 #define rmdir mingw_rmdir
+#undef lseek
+#define lseek mingw_lseek
 
 #undef access
 #define access mingw_access
+#define isatty mingw_isatty
 
 /*
  * utime.h
@@ -445,14 +420,12 @@ DIR *mingw_opendir(const char *path);
  * MinGW specific
  */
 #define is_dir_sep(c) ((c) == '/' || (c) == '\\')
-#define PRIuMAX "I64u"
 
 pid_t FAST_FUNC mingw_spawn(char **argv);
-int mingw_execv(const char *cmd, const char *const *argv);
-int mingw_execvp(const char *cmd, const char *const *argv);
-int mingw_execve(const char *cmd, const char *const *argv, const char *const *envp);
-pid_t mingw_spawn_applet(int mode, const char *applet, const char *const *argv, const char *const *envp);
-pid_t mingw_spawn_1(int mode, const char *cmd, const char *const *argv, const char *const *envp);
+intptr_t FAST_FUNC mingw_spawn_proc(const char **argv);
+int mingw_execv(const char *cmd, char *const *argv);
+int mingw_execvp(const char *cmd, char *const *argv);
+int mingw_execve(const char *cmd, char *const *argv, char *const *envp);
 #define spawn mingw_spawn
 #define execvp mingw_execvp
 #define execve mingw_execve
@@ -462,23 +435,28 @@ const char * next_path_sep(const char *path);
 #define has_dos_drive_prefix(path) (isalpha(*(path)) && (path)[1] == ':')
 #define is_absolute_path(path) ((path)[0] == '/' || (path)[0] == '\\' || has_dos_drive_prefix(path))
 
+#define find_mount_point(n, s) find_mount_point(n)
+
 /*
  * helpers
  */
 
-char **copy_environ(const char *const *env);
-void free_environ(char **env);
 char **env_setenv(char **env, const char *name);
 
 const char *get_busybox_exec_path(void);
 void init_winsock(void);
 
-char *file_is_win32_executable(const char *p);
+int has_bat_suffix(const char *p);
+int has_exe_suffix(const char *p);
+int has_exe_suffix_or_dot(const char *name);
+char *add_win32_extension(const char *p);
 
-<<<<<<< HEAD
 #endif /* __WATCOMC__ */
 
 
-=======
 int err_win_to_posix(DWORD winerr);
->>>>>>> master
+
+ULONGLONG CompatGetTickCount64(void);
+#define GetTickCount64 CompatGetTickCount64
+
+ssize_t get_random_bytes(void *buf, ssize_t count);

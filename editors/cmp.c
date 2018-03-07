@@ -6,20 +6,16 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
-/* BB_AUDIT SUSv3 (virtually) compliant -- uses nicer GNU format for -l. */
-/* http://www.opengroup.org/onlinepubs/007904975/utilities/cmp.html */
-
 //config:config CMP
-//config:	bool "cmp"
+//config:	bool "cmp (5.4 kb)"
 //config:	default y
 //config:	help
-//config:	  cmp is used to compare two files and returns the result
-//config:	  to standard output.
-
-//kbuild:lib-$(CONFIG_CMP) += cmp.o
+//config:	cmp is used to compare two files and returns the result
+//config:	to standard output.
 
 //applet:IF_CMP(APPLET(cmp, BB_DIR_USR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_CMP) += cmp.o
 
 //usage:#define cmp_trivial_usage
 //usage:       "[-l] [-s] FILE1 [FILE2" IF_DESKTOP(" [SKIP1 [SKIP2]]") "]"
@@ -29,6 +25,9 @@
 //usage:     "\n		for all differing bytes"
 //usage:     "\n	-s	Quiet"
 
+/* BB_AUDIT SUSv3 (virtually) compliant -- uses nicer GNU format for -l. */
+/* http://www.opengroup.org/onlinepubs/007904975/utilities/cmp.html */
+
 #include "libbb.h"
 
 static const char fmt_eof[] ALIGN1 = "cmp: EOF on %s\n";
@@ -36,7 +35,7 @@ static const char fmt_differ[] ALIGN1 = "%s %s differ: char %"OFF_FMT"u, line %u
 // This fmt_l_opt uses gnu-isms.  SUSv3 would be "%.0s%.0s%"OFF_FMT"u %o %o\n"
 static const char fmt_l_opt[] ALIGN1 = "%.0s%.0s%"OFF_FMT"u %3o %3o\n";
 
-static const char opt_chars[] ALIGN1 = "sl";
+#define OPT_STR "sl"
 #define CMP_OPT_s (1<<0)
 #define CMP_OPT_l (1<<1)
 
@@ -52,11 +51,13 @@ int cmp_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opt;
 	int retval = 0;
 
-	opt_complementary = "-1"
+	opt = getopt32(argv, "^"
+			OPT_STR
+			"\0" "-1"
 			IF_DESKTOP(":?4")
 			IF_NOT_DESKTOP(":?2")
-			":l--s:s--l";
-	opt = getopt32(argv, opt_chars);
+			":l--s:s--l"
+	);
 	argv += optind;
 
 	filename1 = *argv;

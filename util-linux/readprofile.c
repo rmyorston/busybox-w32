@@ -1,8 +1,8 @@
 /* vi: set sw=4 ts=4: */
 /*
- *  readprofile.c - used to read /proc/profile
+ * readprofile.c - used to read /proc/profile
  *
- *  Copyright (C) 1994,1996 Alessandro Rubini (rubini@ipvvis.unipv.it)
+ * Copyright (C) 1994,1996 Alessandro Rubini (rubini@ipvvis.unipv.it)
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
@@ -31,6 +31,16 @@
  * Taken from util-linux and adapted for busybox by
  * Paul Mundt <lethal@linux-sh.org>.
  */
+//config:config READPROFILE
+//config:	bool "readprofile (7.2 kb)"
+//config:	default y
+//config:	#select PLATFORM_LINUX
+//config:	help
+//config:	This allows you to parse /proc/profile for basic profiling.
+
+//applet:IF_READPROFILE(APPLET(readprofile, BB_DIR_USR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_READPROFILE) += readprofile.o
 
 //usage:#define readprofile_trivial_usage
 //usage:       "[OPTIONS]"
@@ -99,8 +109,7 @@ int readprofile_main(int argc UNUSED_PARAM, char **argv)
 	proFile = defaultpro;
 	mapFile = defaultmap;
 
-	opt_complementary = "M+"; /* -M N */
-	opt = getopt32(argv, "M:m:p:nabsirv", &multiplier, &mapFile, &proFile);
+	opt = getopt32(argv, "M:+m:p:nabsirv", &multiplier, &mapFile, &proFile);
 
 	if (opt & (OPT_M|OPT_r)) { /* mult or reset, or both */
 		int fd, to_write;
@@ -165,7 +174,7 @@ int readprofile_main(int argc UNUSED_PARAM, char **argv)
 			bb_error_msg_and_die("%s(%i): wrong map line",
 					mapFile, maplineno);
 
-		if (!strcmp(fn_name, "_stext")) /* only elf works like this */ {
+		if (strcmp(fn_name, "_stext") == 0) /* only elf works like this */ {
 			add0 = fn_add;
 			break;
 		}
@@ -215,8 +224,9 @@ int readprofile_main(int argc UNUSED_PARAM, char **argv)
 		if (optBins) {
 			if (optVerbose || this > 0)
 				printf("  total\t\t\t\t%u\n", this);
-		} else if ((this || optAll)
-		        && (fn_len = next_add-fn_add) != 0
+		} else
+		if ((this || optAll)
+		 && (fn_len = next_add-fn_add) != 0
 		) {
 			if (optVerbose)
 				printf("%016llx %-40s %6u %8.4f\n", fn_add,
@@ -256,8 +266,10 @@ int readprofile_main(int argc UNUSED_PARAM, char **argv)
 		printf("%6u %-40s %8.4f\n",
 			total, "total", total/(double)(fn_add-add0));
 
-	fclose(map);
-	free(buf);
+	if (ENABLE_FEATURE_CLEAN_UP) {
+		fclose(map);
+		free(buf);
+	}
 
 	return EXIT_SUCCESS;
 }

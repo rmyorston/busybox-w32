@@ -18,6 +18,7 @@
    You should have received a copy of the GNU General Public License along
    with this program; if not, see <http://www.gnu.org/licenses/>.  */
 
+#include "libbb.h"
 #include <malloc.h>
 #include <assert.h>
 
@@ -252,7 +253,7 @@ mingw_select (int nfds, fd_set *rfds, fd_set *wfds, fd_set *xfds,
   DWORD ret, wait_timeout, nhandles, nsock, nbuffer;
   MSG msg;
   int i, fd, rc;
-  clock_t tend;
+  clock_t tend = 0;
 
   if (nfds > FD_SETSIZE)
     nfds = FD_SETSIZE;

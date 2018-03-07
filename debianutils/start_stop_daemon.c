@@ -57,31 +57,29 @@ Misc options:
         -v,--verbose            Verbose
 */
 //config:config START_STOP_DAEMON
-//config:	bool "start-stop-daemon"
+//config:	bool "start-stop-daemon (12 kb)"
 //config:	default y
 //config:	help
-//config:	  start-stop-daemon is used to control the creation and
-//config:	  termination of system-level processes, usually the ones
-//config:	  started during the startup of the system.
+//config:	start-stop-daemon is used to control the creation and
+//config:	termination of system-level processes, usually the ones
+//config:	started during the startup of the system.
+//config:
+//config:config FEATURE_START_STOP_DAEMON_LONG_OPTIONS
+//config:	bool "Enable long options"
+//config:	default y
+//config:	depends on START_STOP_DAEMON && LONG_OPTS
 //config:
 //config:config FEATURE_START_STOP_DAEMON_FANCY
 //config:	bool "Support additional arguments"
 //config:	default y
 //config:	depends on START_STOP_DAEMON
 //config:	help
-//config:	  Support additional arguments.
-//config:	  -o|--oknodo ignored since we exit with 0 anyway
-//config:	  -v|--verbose
-//config:	  -N|--nicelevel N
-//config:
-//config:config FEATURE_START_STOP_DAEMON_LONG_OPTIONS
-//config:	bool "Enable long options"
-//config:	default y
-//config:	depends on START_STOP_DAEMON && LONG_OPTS
-//config:	help
-//config:	  Support long options for the start-stop-daemon applet.
+//config:	-o|--oknodo ignored since we exit with 0 anyway
+//config:	-v|--verbose
+//config:	-N|--nicelevel N
 
 //applet:IF_START_STOP_DAEMON(APPLET_ODDNAME(start-stop-daemon, start_stop_daemon, BB_DIR_SBIN, BB_SUID_DROP, start_stop_daemon))
+/* not NOEXEC: uses bb_common_bufsiz1 */
 
 //kbuild:lib-$(CONFIG_START_STOP_DAEMON) += start_stop_daemon.o
 
@@ -89,44 +87,15 @@ Misc options:
 //usage:       "[OPTIONS] [-S|-K] ... [-- ARGS...]"
 //usage:#define start_stop_daemon_full_usage "\n\n"
 //usage:       "Search for matching processes, and then\n"
-//usage:       "-K: stop all matching processes.\n"
-//usage:       "-S: start a process unless a matching process is found.\n"
-//usage:	IF_FEATURE_START_STOP_DAEMON_LONG_OPTIONS(
-//usage:     "\nProcess matching:"
-//usage:     "\n	-u,--user USERNAME|UID	Match only this user's processes"
-//usage:     "\n	-n,--name NAME		Match processes with NAME"
-//usage:     "\n				in comm field in /proc/PID/stat"
-//usage:     "\n	-x,--exec EXECUTABLE	Match processes with this command"
-//usage:     "\n				in /proc/PID/{exe,cmdline}"
-//usage:     "\n	-p,--pidfile FILE	Match a process with PID from the file"
-//usage:     "\n	All specified conditions must match"
-//usage:     "\n-S only:"
-//usage:     "\n	-x,--exec EXECUTABLE	Program to run"
-//usage:     "\n	-a,--startas NAME	Zeroth argument"
-//usage:     "\n	-b,--background		Background"
-//usage:	IF_FEATURE_START_STOP_DAEMON_FANCY(
-//usage:     "\n	-N,--nicelevel N	Change nice level"
-//usage:	)
-//usage:     "\n	-c,--chuid USER[:[GRP]]	Change to user/group"
-//usage:     "\n	-m,--make-pidfile	Write PID to the pidfile specified by -p"
-//usage:     "\n-K only:"
-//usage:     "\n	-s,--signal SIG		Signal to send"
-//usage:     "\n	-t,--test		Match only, exit with 0 if a process is found"
-//usage:     "\nOther:"
-//usage:	IF_FEATURE_START_STOP_DAEMON_FANCY(
-//usage:     "\n	-o,--oknodo		Exit with status 0 if nothing is done"
-//usage:     "\n	-v,--verbose		Verbose"
-//usage:	)
-//usage:     "\n	-q,--quiet		Quiet"
-//usage:	)
-//usage:	IF_NOT_FEATURE_START_STOP_DAEMON_LONG_OPTIONS(
+//usage:       "-K: stop all matching processes\n"
+//usage:       "-S: start a process unless a matching process is found\n"
 //usage:     "\nProcess matching:"
 //usage:     "\n	-u USERNAME|UID	Match only this user's processes"
 //usage:     "\n	-n NAME		Match processes with NAME"
 //usage:     "\n			in comm field in /proc/PID/stat"
 //usage:     "\n	-x EXECUTABLE	Match processes with this command"
 //usage:     "\n			command in /proc/PID/cmdline"
-//usage:     "\n	-p FILE		Match a process with PID from the file"
+//usage:     "\n	-p FILE		Match a process with PID from FILE"
 //usage:     "\n	All specified conditions must match"
 //usage:     "\n-S only:"
 //usage:     "\n	-x EXECUTABLE	Program to run"
@@ -135,24 +104,24 @@ Misc options:
 //usage:	IF_FEATURE_START_STOP_DAEMON_FANCY(
 //usage:     "\n	-N N		Change nice level"
 //usage:	)
-//usage:     "\n	-c USER[:[GRP]]	Change to user/group"
-//usage:     "\n	-m		Write PID to the pidfile specified by -p"
+//usage:     "\n	-c USER[:[GRP]]	Change user/group"
+//usage:     "\n	-m		Write PID to pidfile specified by -p"
 //usage:     "\n-K only:"
 //usage:     "\n	-s SIG		Signal to send"
-//usage:     "\n	-t		Match only, exit with 0 if a process is found"
+//usage:     "\n	-t		Match only, exit with 0 if found"
 //usage:     "\nOther:"
 //usage:	IF_FEATURE_START_STOP_DAEMON_FANCY(
 //usage:     "\n	-o		Exit with status 0 if nothing is done"
 //usage:     "\n	-v		Verbose"
 //usage:	)
 //usage:     "\n	-q		Quiet"
-//usage:	)
 
 #include <sys/resource.h>
 
 /* Override ENABLE_FEATURE_PIDFILE */
 #define WANT_PIDFILE 1
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 struct pid_list {
 	struct pid_list *next;
@@ -191,7 +160,7 @@ struct globals {
 	int user_id;
 	smallint signal_nr;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define userspec          (G.userspec            )
 #define cmdname           (G.cmdname             )
 #define execname          (G.execname            )
@@ -199,6 +168,7 @@ struct globals {
 #define user_id           (G.user_id             )
 #define signal_nr         (G.signal_nr           )
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	user_id = -1; \
 	signal_nr = 15; \
 } while (0)
@@ -410,11 +380,11 @@ static const char start_stop_daemon_longopts[] ALIGN1 =
 	"quiet\0"        No_argument       "q"
 	"test\0"         No_argument       "t"
 	"make-pidfile\0" No_argument       "m"
-#if ENABLE_FEATURE_START_STOP_DAEMON_FANCY
+# if ENABLE_FEATURE_START_STOP_DAEMON_FANCY
 	"oknodo\0"       No_argument       "o"
 	"verbose\0"      No_argument       "v"
 	"nicelevel\0"    Required_argument "N"
-#endif
+# endif
 	"startas\0"      Required_argument "a"
 	"name\0"         Required_argument "n"
 	"signal\0"       Required_argument "s"
@@ -422,10 +392,15 @@ static const char start_stop_daemon_longopts[] ALIGN1 =
 	"chuid\0"        Required_argument "c"
 	"exec\0"         Required_argument "x"
 	"pidfile\0"      Required_argument "p"
-#if ENABLE_FEATURE_START_STOP_DAEMON_FANCY
+# if ENABLE_FEATURE_START_STOP_DAEMON_FANCY
 	"retry\0"        Required_argument "R"
-#endif
+# endif
 	;
+# define GETOPT32 getopt32long
+# define LONGOPTS start_stop_daemon_longopts,
+#else
+# define GETOPT32 getopt32
+# define LONGOPTS
 #endif
 
 int start_stop_daemon_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -446,19 +421,18 @@ int start_stop_daemon_main(int argc UNUSED_PARAM, char **argv)
 
 	INIT_G();
 
-#if ENABLE_FEATURE_START_STOP_DAEMON_LONG_OPTIONS
-	applet_long_options = start_stop_daemon_longopts;
-#endif
-
-	/* -K or -S is required; they are mutually exclusive */
-	/* -p is required if -m is given */
-	/* -xpun (at least one) is required if -K is given */
-	/* -xa (at least one) is required if -S is given */
-	/* -q turns off -v */
-	opt_complementary = "K:S:K--S:S--K:m?p:K?xpun:S?xa"
-		IF_FEATURE_START_STOP_DAEMON_FANCY("q-v");
-	opt = getopt32(argv, "KSbqtma:n:s:u:c:x:p:"
-		IF_FEATURE_START_STOP_DAEMON_FANCY("ovN:R:"),
+	opt = GETOPT32(argv, "^"
+		"KSbqtma:n:s:u:c:x:p:"
+		IF_FEATURE_START_STOP_DAEMON_FANCY("ovN:R:")
+			/* -K or -S is required; they are mutually exclusive */
+			/* -p is required if -m is given */
+			/* -xpun (at least one) is required if -K is given */
+			/* -xa (at least one) is required if -S is given */
+			/* -q turns off -v */
+			"\0"
+			"K:S:K--S:S--K:m?p:K?xpun:S?xa"
+			IF_FEATURE_START_STOP_DAEMON_FANCY("q-v"),
+		LONGOPTS
 		&startas, &cmdname, &signame, &userspec, &chuid, &execname, &pidfile
 		IF_FEATURE_START_STOP_DAEMON_FANCY(,&opt_N)
 		/* We accept and ignore -R <param> / --retry <param> */
@@ -517,6 +491,11 @@ int start_stop_daemon_main(int argc UNUSED_PARAM, char **argv)
 		/* DAEMON_DEVNULL_STDIO is superfluous -
 		 * it's always done by bb_daemonize() */
 #else
+		/* Daemons usually call bb_daemonize_or_rexec(), but SSD can do
+		 * without: SSD is not itself a daemon, it _execs_ a daemon.
+		 * The usual NOMMU problem of "child can't run indefinitely,
+		 * it must exec" does not bite us: we exec anyway.
+		 */
 		pid_t pid = xvfork();
 		if (pid != 0) {
 			/* parent */
@@ -526,12 +505,8 @@ int start_stop_daemon_main(int argc UNUSED_PARAM, char **argv)
 		}
 		/* Child */
 		setsid(); /* detach from controlling tty */
-		/* Redirect stdio to /dev/null, close extra FDs.
-		 * We do not actually daemonize because of DAEMON_ONLY_SANITIZE */
-		bb_daemonize_or_rexec(DAEMON_DEVNULL_STDIO
-			+ DAEMON_CLOSE_EXTRA_FDS
-			+ DAEMON_ONLY_SANITIZE,
-			NULL /* argv, unused */ );
+		/* Redirect stdio to /dev/null, close extra FDs */
+		bb_daemon_helper(DAEMON_DEVNULL_STDIO + DAEMON_CLOSE_EXTRA_FDS);
 #endif
 	}
 	if (opt & OPT_MAKEPID) {

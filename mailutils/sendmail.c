@@ -6,11 +6,19 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
+//config:config SENDMAIL
+//config:	bool "sendmail (14 kb)"
+//config:	default y
+//config:	help
+//config:	Barebones sendmail.
+
+//applet:IF_SENDMAIL(APPLET(sendmail, BB_DIR_USR_SBIN, BB_SUID_DROP))
 
 //kbuild:lib-$(CONFIG_SENDMAIL) += sendmail.o mail.o
 
 //usage:#define sendmail_trivial_usage
-//usage:       "[OPTIONS] [RECIPIENT_EMAIL]..."
+//usage:       "[-tv] [-f SENDER] [-amLOGIN 4<user_pass.txt | -auUSER -apPASS]"
+//usage:     "\n		[-w SECS] [-H 'PROG ARGS' | -S HOST] [RECIPIENT_EMAIL]..."
 //usage:#define sendmail_full_usage "\n\n"
 //usage:       "Read email from stdin and send it\n"
 //usage:     "\nStandard options:"
@@ -18,27 +26,25 @@
 //usage:     "\n	-f SENDER	For use in MAIL FROM:<sender>. Can be empty string"
 //usage:     "\n			Default: -auUSER, or username of current UID"
 //usage:     "\n	-o OPTIONS	Various options. -oi implied, others are ignored"
-//usage:     "\n	-i		-oi synonym. implied and ignored"
+//usage:     "\n	-i		-oi synonym, implied and ignored"
 //usage:     "\n"
 //usage:     "\nBusybox specific options:"
 //usage:     "\n	-v		Verbose"
 //usage:     "\n	-w SECS		Network timeout"
-//usage:     "\n	-H 'PROG ARGS'	Run connection helper"
-//usage:     "\n			Examples:"
-//usage:     "\n			-H 'exec openssl s_client -quiet -tls1 -starttls smtp"
-//usage:     "\n				-connect smtp.gmail.com:25' <email.txt"
-//usage:     "\n				[4<username_and_passwd.txt | -auUSER -apPASS]"
-//usage:     "\n			-H 'exec openssl s_client -quiet -tls1"
-//usage:     "\n				-connect smtp.gmail.com:465' <email.txt"
-//usage:     "\n				[4<username_and_passwd.txt | -auUSER -apPASS]"
-//usage:     "\n	-S HOST[:PORT]	Server"
-//usage:     "\n	-auUSER		Username for AUTH LOGIN"
-//usage:     "\n	-apPASS 	Password for AUTH LOGIN"
-////usage:     "\n	-amMETHOD	Authentication method. Ignored. LOGIN is implied"
+//usage:     "\n	-H 'PROG ARGS'	Run connection helper. Examples:"
+//usage:     "\n		openssl s_client -quiet -tls1 -starttls smtp -connect smtp.gmail.com:25"
+//usage:     "\n		openssl s_client -quiet -tls1 -connect smtp.gmail.com:465"
+//usage:     "\n			$SMTP_ANTISPAM_DELAY: seconds to wait after helper connect"
+//usage:     "\n	-S HOST[:PORT]	Server (default $SMTPHOST or 127.0.0.1)"
+//usage:     "\n	-amLOGIN	Log in using AUTH LOGIN (-amCRAM-MD5 not supported)"
+//usage:     "\n	-auUSER		Username for AUTH"
+//usage:     "\n	-apPASS 	Password for AUTH"
 //usage:     "\n"
-//usage:     "\nOther options are silently ignored; -oi -t is implied"
+//usage:     "\nIf no -a options are given, authentication is not done."
+//usage:     "\nIf -amLOGIN is given but no -au/-ap, user/password is read from fd #4."
+//usage:     "\nOther options are silently ignored; -oi is implied."
 //usage:	IF_MAKEMIME(
-//usage:     "\nUse makemime to create emails with attachments"
+//usage:     "\nUse makemime to create emails with attachments."
 //usage:	)
 
 /* Currently we don't sanitize or escape user-supplied SENDER and RECIPIENT_EMAILs.
@@ -144,7 +150,13 @@ static char *sane_address(char *str)
 	trim(str);
 	s = str;
 	while (*s) {
-		if (!isalnum(*s) && !strchr("_-.@", *s)) {
+		/* Standard allows these chars in username without quoting:
+		 * /!#$%&'*+-=?^_`{|}~
+		 * and allows dot (.) with some restrictions.
+		 * I chose to only allow a saner subset.
+		 * I propose to expand it only on user's request.
+		 */
+		if (!isalnum(*s) && !strchr("=+_-.@", *s)) {
 			bb_error_msg("bad address '%s'", str);
 			/* returning "": */
 			str[0] = '\0';
@@ -160,9 +172,8 @@ static char *angle_address(char *str)
 {
 	char *s, *e;
 
-	trim(str);
-	e = last_char_is(str, '>');
-	if (e) {
+	e = trim(str);
+	if (e != str && e[-1] == '>') {
 		s = strrchr(str, '<');
 		if (s) {
 			*e = '\0';
@@ -184,8 +195,9 @@ static void rcptto(const char *s)
 // send to a list of comma separated addresses
 static void rcptto_list(const char *list)
 {
-	char *str = xstrdup(list);
-	char *s = str;
+	char *free_me = xstrdup(list);
+	char *str = free_me;
+	char *s = free_me;
 	char prev = 0;
 	int in_quote = 0;
 
@@ -203,13 +215,13 @@ static void rcptto_list(const char *list)
 	}
 	if (prev != ',')
 		rcptto(angle_address(str));
-	free(str);
+	free(free_me);
 }
 
 int sendmail_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int sendmail_main(int argc UNUSED_PARAM, char **argv)
 {
-	char *opt_connect = opt_connect;
+	char *opt_connect;
 	char *opt_from = NULL;
 	char *s;
 	llist_t *list = NULL;
@@ -241,18 +253,27 @@ int sendmail_main(int argc UNUSED_PARAM, char **argv)
 	// init global variables
 	INIT_G();
 
+	// default HOST[:PORT] is $SMTPHOST, or localhost
+	opt_connect = getenv("SMTPHOST");
+	if (!opt_connect)
+		opt_connect = (char *)"127.0.0.1";
+
 	// save initial stdin since body is piped!
 	xdup2(STDIN_FILENO, 3);
 	G.fp0 = xfdopen_for_read(3);
 
 	// parse options
-	// -v is a counter, -H and -S are mutually exclusive, -a is a list
-	opt_complementary = "vv:w+:H--S:S--H:a::";
 	// N.B. since -H and -S are mutually exclusive they do not interfere in opt_connect
 	// -a is for ssmtp (http://downloads.openwrt.org/people/nico/man/man8/ssmtp.8.html) compatibility,
 	// it is still under development.
-	opts = getopt32(argv, "tf:o:iw:H:S:a::v", &opt_from, NULL,
-			&timeout, &opt_connect, &opt_connect, &list, &verbose);
+	opts = getopt32(argv, "^"
+			"tf:o:iw:+H:S:a:*:v"
+			"\0"
+			// -v is a counter, -H and -S are mutually exclusive, -a is a list
+			"vv:H--S:S--H",
+			&opt_from, NULL,
+			&timeout, &opt_connect, &opt_connect, &list, &verbose
+	);
 	//argc -= optind;
 	argv += optind;
 
@@ -270,17 +291,14 @@ int sendmail_main(int argc UNUSED_PARAM, char **argv)
 		//	G.method = xstrdup(a+1);
 	}
 	// N.B. list == NULL here
-	//bb_info_msg("OPT[%x] AU[%s], AP[%s], AM[%s], ARGV[%s]", opts, au, ap, am, *argv);
+	//bb_error_msg("OPT[%x] AU[%s], AP[%s], AM[%s], ARGV[%s]", opts, au, ap, am, *argv);
 
 	// connect to server
 
 	// connection helper ordered? ->
 	if (opts & OPT_H) {
-		const char *args[4];
-		args[0] = "sh";
-		args[1] = "-c";
-		args[2] = opt_connect;
-		args[3] = NULL;
+		const char *delay;
+		const char *args[] = { "sh", "-c", opt_connect, NULL };
 		// plug it in
 		launch_helper(args);
 		// Now:
@@ -298,7 +316,12 @@ int sendmail_main(int argc UNUSED_PARAM, char **argv)
 		// before 220 reached it. The code below is unsafe in this regard:
 		// in non-STARTTLSed case, we potentially send NOOP before 220
 		// is sent by server.
-		// Ideas? (--delay SECS opt? --assume-starttls-helper opt?)
+		//
+		// If $SMTP_ANTISPAM_DELAY is set, we pause before sending NOOP.
+		//
+		delay = getenv("SMTP_ANTISPAM_DELAY");
+		if (delay)
+			sleep(atoi(delay));
 		code = smtp_check("NOOP", -1);
 		if (code == 220)
 			// we got 220 - this is not STARTTLSed connection,
@@ -310,14 +333,6 @@ int sendmail_main(int argc UNUSED_PARAM, char **argv)
 	} else {
 		// vanilla connection
 		int fd;
-		// host[:port] not explicitly specified? -> use $SMTPHOST
-		// no $SMTPHOST? -> use localhost
-		if (!(opts & OPT_S)) {
-			opt_connect = getenv("SMTPHOST");
-			if (!opt_connect)
-				opt_connect = (char *)"127.0.0.1";
-		}
-		// do connect
 		fd = create_and_connect_stream_or_die(opt_connect, 25);
 		// and make ourselves a simple IO filter
 		xmove_fd(fd, STDIN_FILENO);

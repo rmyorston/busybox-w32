@@ -14,6 +14,7 @@ const uint8_t MAC_BCAST_ADDR[6] ALIGN2 = {
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff
 };
 
+#if ENABLE_UDHCPC || ENABLE_UDHCPD
 /* Supported options are easily added here.
  * See RFC2132 for more options.
  * OPTION_REQ: these options are requested by udhcpc (unless -o).
@@ -86,7 +87,7 @@ const struct dhcp_optflag dhcp_optflags[] = {
 };
 
 /* Used for converting options from incoming packets to env variables
- * for udhcpc stript, and for setting options for udhcpd via
+ * for udhcpc script, and for setting options for udhcpd via
  * "opt OPTION_NAME OPTION_VALUE" directives in udhcpd.conf file.
  */
 /* Must match dhcp_optflags[] order */
@@ -136,13 +137,14 @@ const char dhcp_option_strings[] ALIGN1 =
 	"msstaticroutes""\0"/* DHCP_MS_STATIC_ROUTES */
 	"wpad" "\0"        /* DHCP_WPAD           */
 	;
+#endif
 
 /* Lengths of the option types in binary form.
  * Used by:
  * udhcp_str2optset: to determine how many bytes to allocate.
  * xmalloc_optname_optval: to estimate string length
  * from binary option length: (option[LEN] / dhcp_option_lengths[opt_type])
- * is the number of elements, multiply in by one element's string width
+ * is the number of elements, multiply it by one element's string width
  * (len_of_option_as_string[opt_type]) and you know how wide string you need.
  */
 const uint8_t dhcp_option_lengths[] ALIGN1 = {
@@ -162,7 +164,18 @@ const uint8_t dhcp_option_lengths[] ALIGN1 = {
 	[OPTION_S32] =     4,
 	/* Just like OPTION_STRING, we use minimum length here */
 	[OPTION_STATIC_ROUTES] = 5,
-	[OPTION_6RD] =    22,  /* ignored by udhcp_str2optset */
+	[OPTION_6RD] =    12,  /* ignored by udhcp_str2optset */
+	/* The above value was chosen as follows:
+	 * len_of_option_as_string[] for this option is >60: it's a string of the form
+	 * "32 128 ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff 255.255.255.255 ".
+	 * Each additional ipv4 address takes 4 bytes in binary option and appends
+	 * another "255.255.255.255 " 16-byte string. We can set [OPTION_6RD] = 4
+	 * but this severely overestimates string length: instead of 16 bytes,
+	 * it adds >60 for every 4 bytes in binary option.
+	 * We cheat and declare here that option is in units of 12 bytes.
+	 * This adds more than 60 bytes for every three ipv4 addresses - more than enough.
+	 * (Even 16 instead of 12 should work, but let's be paranoid).
+	 */
 };
 
 
@@ -172,28 +185,33 @@ static void log_option(const char *pfx, const uint8_t *opt)
 	if (dhcp_verbose >= 2) {
 		char buf[256 * 2 + 2];
 		*bin2hex(buf, (void*) (opt + OPT_DATA), opt[OPT_LEN]) = '\0';
-		bb_info_msg("%s: 0x%02x %s", pfx, opt[OPT_CODE], buf);
+		bb_error_msg("%s: 0x%02x %s", pfx, opt[OPT_CODE], buf);
 	}
 }
 #else
 # define log_option(pfx, opt) ((void)0)
 #endif
 
-unsigned FAST_FUNC udhcp_option_idx(const char *name)
+unsigned FAST_FUNC udhcp_option_idx(const char *name, const char *option_strings)
 {
-	int n = index_in_strings(dhcp_option_strings, name);
+	int n = index_in_strings(option_strings, name);
 	if (n >= 0)
 		return n;
 
 	{
-		char buf[sizeof(dhcp_option_strings)];
-		char *d = buf;
-		const char *s = dhcp_option_strings;
-		while (s < dhcp_option_strings + sizeof(dhcp_option_strings) - 2) {
+		char *buf, *d;
+		const char *s;
+
+		s = option_strings;
+		while (*s)
+			s += strlen(s) + 1;
+
+		d = buf = xzalloc(s - option_strings);
+		s = option_strings;
+		while (!(*s == '\0' && s[1] == '\0')) {
 			*d++ = (*s == '\0' ? ' ' : *s);
 			s++;
 		}
-		*d = '\0';
 		bb_error_msg_and_die("unknown option '%s', known options: %s", name, buf);
 	}
 }
@@ -215,9 +233,12 @@ uint8_t* FAST_FUNC udhcp_get_option(struct dhcp_packet *packet, int code)
 	rem = sizeof(packet->options);
 	while (1) {
 		if (rem <= 0) {
+ complain:
 			bb_error_msg("bad packet, malformed option field");
 			return NULL;
 		}
+
+		/* DHCP_PADDING and DHCP_END have no [len] byte */
 		if (optionptr[OPT_CODE] == DHCP_PADDING) {
 			rem--;
 			optionptr++;
@@ -240,25 +261,29 @@ uint8_t* FAST_FUNC udhcp_get_option(struct dhcp_packet *packet, int code)
 			}
 			break;
 		}
+
+		if (rem <= OPT_LEN)
+			goto complain; /* complain and return NULL */
 		len = 2 + optionptr[OPT_LEN];
 		rem -= len;
 		if (rem < 0)
-			continue; /* complain and return NULL */
+			goto complain; /* complain and return NULL */
 
 		if (optionptr[OPT_CODE] == code) {
-			log_option("Option found", optionptr);
+			log_option("option found", optionptr);
 			return optionptr + OPT_DATA;
 		}
 
 		if (optionptr[OPT_CODE] == DHCP_OPTION_OVERLOAD) {
-			overload |= optionptr[OPT_DATA];
+			if (len >= 3)
+				overload |= optionptr[OPT_DATA];
 			/* fall through */
 		}
 		optionptr += len;
 	}
 
 	/* log3 because udhcpc uses it a lot - very noisy */
-	log3("Option 0x%02x not found", code);
+	log3("option 0x%02x not found", code);
 	return NULL;
 }
 
@@ -292,11 +317,12 @@ void FAST_FUNC udhcp_add_binary_option(struct dhcp_packet *packet, uint8_t *addo
 				addopt[OPT_CODE]);
 		return;
 	}
-	log_option("Adding option", addopt);
+	log_option("adding option", addopt);
 	memcpy(optionptr + end, addopt, len);
 	optionptr[end + len] = DHCP_END;
 }
 
+#if ENABLE_UDHCPC || ENABLE_UDHCPD
 /* Add an one to four byte option to a packet */
 void FAST_FUNC udhcp_add_simple_option(struct dhcp_packet *packet, uint8_t code, uint32_t data)
 {
@@ -320,6 +346,7 @@ void FAST_FUNC udhcp_add_simple_option(struct dhcp_packet *packet, uint8_t code,
 
 	bb_error_msg("can't add option 0x%02x", code);
 }
+#endif
 
 /* Find option 'code' in opt_list */
 struct option_set* FAST_FUNC udhcp_find_option(struct option_set *opt_list, uint8_t code)
@@ -391,7 +418,7 @@ static NOINLINE void attach_option(
 		struct option_set *new, **curr;
 
 		/* make a new option */
-		log2("Attaching option %02x to list", optflag->code);
+		log2("attaching option %02x to list", optflag->code);
 		new = xmalloc(sizeof(*new));
 		new->data = xmalloc(length + OPT_DATA);
 		new->data[OPT_CODE] = optflag->code;
@@ -411,7 +438,7 @@ static NOINLINE void attach_option(
 		unsigned old_len;
 
 		/* add it to an existing option */
-		log2("Attaching option %02x to existing member of list", optflag->code);
+		log2("attaching option %02x to existing member of list", optflag->code);
 		old_len = existing->data[OPT_LEN];
 		if (old_len + length < 255) {
 			/* actually 255 is ok too, but adding a space can overlow it */
@@ -433,7 +460,7 @@ static NOINLINE void attach_option(
 	free(allocated);
 }
 
-int FAST_FUNC udhcp_str2optset(const char *const_str, void *arg)
+int FAST_FUNC udhcp_str2optset(const char *const_str, void *arg, const struct dhcp_optflag *optflags, const char *option_strings)
 {
 	struct option_set **opt_list = arg;
 	char *opt, *val;
@@ -460,7 +487,7 @@ int FAST_FUNC udhcp_str2optset(const char *const_str, void *arg)
 		bin_optflag.code = optcode;
 		optflag = &bin_optflag;
 	} else {
-		optflag = &dhcp_optflags[udhcp_option_idx(opt)];
+		optflag = &optflags[udhcp_option_idx(opt, option_strings)];
 	}
 
 	retval = 0;

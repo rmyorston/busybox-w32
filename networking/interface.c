@@ -30,7 +30,6 @@
  *          20001008 - Bernd Eckenfels, Patch from RH for setting mtu
  *			(default AF was wrong)
  */
-
 #include "libbb.h"
 #include "inet_common.h"
 #include <net/if.h>
@@ -223,7 +222,7 @@ static char* FAST_FUNC UNSPEC_print(unsigned char *ptr)
 	pos = buff;
 	for (i = 0; i < sizeof(struct sockaddr); i++) {
 		/* careful -- not every libc's sprintf returns # bytes written */
-		sprintf(pos, "%02X-", (*ptr++ & 0377));
+		sprintf(pos, "%02X-", *ptr++);
 		pos += 3;
 	}
 	/* Erase trailing "-".  Works as long as sizeof(struct sockaddr) != 0 */
@@ -264,7 +263,7 @@ const struct aftype* FAST_FUNC get_aftype(const char *name)
 
 	afp = aftypes;
 	while (*afp != NULL) {
-		if (!strcmp((*afp)->name, name))
+		if (strcmp((*afp)->name, name) == 0)
 			return (*afp);
 		afp++;
 	}
@@ -572,7 +571,7 @@ static int if_readlist_proc(char *target)
 		ife = add_interface(name);
 		get_dev_fields(s, ife, procnetdev_vsn);
 		ife->statistics_valid = 1;
-		if (target && !strcmp(target, name))
+		if (target && strcmp(target, name) == 0)
 			break;
 	}
 	if (ferror(fh)) {
@@ -704,9 +703,8 @@ static char* FAST_FUNC ether_print(unsigned char *ptr)
 {
 	char *buff;
 	buff = xasprintf("%02X:%02X:%02X:%02X:%02X:%02X",
-			 (ptr[0] & 0377), (ptr[1] & 0377), (ptr[2] & 0377),
-			 (ptr[3] & 0377), (ptr[4] & 0377), (ptr[5] & 0377)
-		);
+		ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5]
+	);
 	return auto_string(buff);
 }
 
@@ -781,7 +779,7 @@ const struct hwtype* FAST_FUNC get_hwtype(const char *name)
 
 	hwp = hwtypes;
 	while (*hwp != NULL) {
-		if (!strcmp((*hwp)->name, name))
+		if (strcmp((*hwp)->name, name) == 0)
 			return (*hwp);
 		hwp++;
 	}
@@ -877,10 +875,11 @@ static void ife_print6(struct interface *ptr)
 			addr6p[5], addr6p[6], addr6p[7], &if_idx, &plen, &scope,
 			&dad_status, devname) != EOF
 	) {
-		if (!strcmp(devname, ptr->name)) {
+		if (strcmp(devname, ptr->name) == 0) {
 			sprintf(addr6, "%s:%s:%s:%s:%s:%s:%s:%s",
 					addr6p[0], addr6p[1], addr6p[2], addr6p[3],
 					addr6p[4], addr6p[5], addr6p[6], addr6p[7]);
+			memset(&sap, 0, sizeof(sap));
 			inet_pton(AF_INET6, addr6,
 					  (struct sockaddr *) &sap.sin6_addr);
 			sap.sin6_family = AF_INET6;

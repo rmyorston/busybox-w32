@@ -48,10 +48,13 @@ module_entry *moddb_get_or_create(module_db *db, const char *s) FAST_FUNC;
 void moddb_free(module_db *db) FAST_FUNC;
 
 void replace(char *s, char what, char with) FAST_FUNC;
-char *replace_underscores(char *s) FAST_FUNC;
 int string_to_llist(char *string, llist_t **llist, const char *delim) FAST_FUNC;
 char *filename2modname(const char *filename, char *modname) FAST_FUNC;
+#if ENABLE_FEATURE_CMDLINE_MODULE_OPTIONS
 char *parse_cmdline_module_options(char **argv, int quote_spaces) FAST_FUNC;
+#else
+# define parse_cmdline_module_options(argv, quote_spaces) ""
+#endif
 
 /* insmod for 2.4 and modprobe's options (insmod 2.6 has no options at all): */
 #define INSMOD_OPTS \

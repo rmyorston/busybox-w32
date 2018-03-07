@@ -1,5 +1,5 @@
 /* vi: set sw=4 ts=4: */
-/*----------------------------------------------------------------------
+/*
  * Mini who is used to display user name, login time,
  * idle time and host name.
  *
@@ -13,35 +13,69 @@
  * Copyright (c) 2002 AYR Networks, Inc.
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
- *
- *----------------------------------------------------------------------
  */
-/* BB_AUDIT SUSv3 _NOT_ compliant -- missing options -b, -d, -l, -m, -p, -q, -r, -s, -t, -T, -u; Missing argument 'file'.  */
-
 //config:config WHO
-//config:      bool "who"
-//config:      default y
-//config:      depends on FEATURE_UTMP
-//config:      help
-//config:        who is used to show who is logged on.
-
+//config:	bool "who (3.7 kb)"
+//config:	default y
+//config:	depends on FEATURE_UTMP
+//config:	help
+//config:	Print users currently logged on.
+//config:
+// procps-ng has this variation of "who":
+//config:config W
+//config:	bool "w (3.7 kb)"
+//config:	default y
+//config:	depends on FEATURE_UTMP
+//config:	help
+//config:	Print users currently logged on.
+//config:
 //config:config USERS
-//config:      bool "users"
-//config:      default y
-//config:      depends on FEATURE_UTMP
-//config:      help
-//config:        Print users currently logged on.
+//config:	bool "users (3.2 kb)"
+//config:	default y
+//config:	depends on FEATURE_UTMP
+//config:	help
+//config:	Print users currently logged on.
 
-//applet:IF_USERS(APPLET_ODDNAME(users, who, BB_DIR_USR_BIN, BB_SUID_DROP, users))
-//applet:IF_WHO(  APPLET(  who, BB_DIR_USR_BIN, BB_SUID_DROP))
+//                APPLET_NOEXEC:name   main location        suid_type     help
+//applet:IF_USERS(APPLET_NOEXEC(users, who, BB_DIR_USR_BIN, BB_SUID_DROP, users))
+//applet:IF_W(    APPLET_NOEXEC(w,     who, BB_DIR_USR_BIN, BB_SUID_DROP, w))
+//applet:IF_WHO(  APPLET_NOEXEC(who,   who, BB_DIR_USR_BIN, BB_SUID_DROP, who))
 
 //kbuild:lib-$(CONFIG_USERS) += who.o
-//kbuild:lib-$(CONFIG_WHO) += who.o
+//kbuild:lib-$(CONFIG_W)     += who.o
+//kbuild:lib-$(CONFIG_WHO)   += who.o
+
+/* BB_AUDIT SUSv3 _NOT_ compliant -- missing options -b, -d, -l, -m, -p, -q, -r, -s, -t, -T, -u; Missing argument 'file'.  */
 
 //usage:#define users_trivial_usage
 //usage:       ""
 //usage:#define users_full_usage "\n\n"
 //usage:       "Print the users currently logged on"
+
+//usage:#define w_trivial_usage
+//usage:       ""
+//usage:#define w_full_usage "\n\n"
+//usage:       "Show who is logged on"
+//
+// procps-ng 3.3.10:
+//           "\n	-h, --no-header"
+//           "\n	-u, --no-current"
+//	Ignores the username while figuring out the current process
+//	and cpu times.  To demonstrate this, do a "su" and do a "w" and a "w -u".
+//           "\n	-s, --short"
+//	Short format.  Don't print the login time, JCPU or PCPU times.
+//           "\n	-f, --from"
+//	Toggle printing the from (remote hostname) field.
+//	The default is for the from field to not be printed
+//           "\n	-i, --ip-addr"
+//	Display IP address instead of hostname for from field.
+//           "\n	-o, --old-style"
+//	Old style output. Prints blank space for idle times less than one minute.
+// Example output:
+//  17:28:00 up 4 days, 22:41,  4 users,  load average: 0.84, 0.97, 0.90
+// USER     TTY        LOGIN@   IDLE   JCPU   PCPU WHAT
+// root     tty1      Thu18    4days  4:33m  0.07s /bin/sh /etc/xdg/xfce4/xinitrc -- vt
+// root     pts/1     Mon13    3:24m  1:01   0.01s w
 
 //usage:#define who_trivial_usage
 //usage:       "[-a]"
@@ -73,14 +107,16 @@ static void idle_string(char *str6, time_t t)
 int who_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int who_main(int argc UNUSED_PARAM, char **argv)
 {
+#define CNT_APPLET (ENABLE_USERS + ENABLE_W + ENABLE_WHO)
+	int do_users = (ENABLE_USERS && (CNT_APPLET == 1 || applet_name[0] == 'u'));
+	int do_w     = (ENABLE_W     && (CNT_APPLET == 1 || applet_name[1] == '\0'));
+	int do_who   = (ENABLE_WHO   && (CNT_APPLET == 1 || applet_name[1] == 'h'));
 	struct utmpx *ut;
 	unsigned opt;
-	int do_users = (ENABLE_USERS && (!ENABLE_WHO || applet_name[0] == 'u'));
 	const char *fmt = "%s";
 
-	opt_complementary = "=0";
-	opt = getopt32(argv, do_users ? "" : "aH");
-	if (opt & 2) // -H
+	opt = getopt32(argv, do_who ? "^" "aH" "\0" "=0": "^" "" "\0" "=0");
+	if ((opt & 2) || do_w) /* -H or we are w */
 		puts("USER\t\tTTY\t\tIDLE\tTIME\t\t HOST");
 
 	setutxent();
@@ -114,6 +150,9 @@ int who_main(int argc UNUSED_PARAM, char **argv)
 						(int)sizeof(ut->ut_user), ut->ut_user,
 						(int)sizeof(ut->ut_line), ut->ut_line,
 						str6,
+// TODO: with LANG=en_US.UTF-8, who from coreutils 8.25 shows
+// TIME col as "2017-04-06 18:47" (the default format is "Apr  6 18:47").
+// The former format looks saner to me. Switch to it unconditionally?
 						ctime(&seconds) + 4,
 						(int)sizeof(ut->ut_host), ut->ut_host
 				);

@@ -7,6 +7,18 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config FINDFS
+//config:	bool "findfs (11 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	select VOLUMEID
+//config:	help
+//config:	Prints the name of a filesystem with given label or UUID.
+
+/* Benefits from suid root: better access to /dev/BLOCKDEVs: */
+//applet:IF_FINDFS(APPLET(findfs, BB_DIR_SBIN, BB_SUID_MAYBE))
+
+//kbuild:lib-$(CONFIG_FINDFS) += findfs.o
 
 //usage:#define findfs_trivial_usage
 //usage:       "LABEL=label or UUID=uuid"

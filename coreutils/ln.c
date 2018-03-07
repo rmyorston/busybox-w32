@@ -6,6 +6,15 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config LN
+//config:	bool "ln (4.5 kb)"
+//config:	default y
+//config:	help
+//config:	ln is used to create hard or soft links between files.
+
+//applet:IF_LN(APPLET_NOEXEC(ln, ln, BB_DIR_BIN, BB_SUID_DROP, ln))
+
+//kbuild:lib-$(CONFIG_LN) += ln.o
 
 /* BB_AUDIT SUSv3 compliant */
 /* BB_AUDIT GNU options missing: -d, -F, -i, and -v. */
@@ -53,8 +62,7 @@ int ln_main(int argc, char **argv)
 	struct stat statbuf;
 	int (*link_func)(const char *, const char *);
 
-	opt_complementary = "-1"; /* min one arg */
-	opts = getopt32(argv, "sfnbS:vT", &suffix);
+	opts = getopt32(argv, "^" "sfnbS:vT" "\0" "-1", &suffix);
 
 	last = argv[argc - 1];
 	argv += optind;

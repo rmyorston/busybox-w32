@@ -11,6 +11,7 @@
 //kbuild:lib-$(CONFIG_BLKID) += get_devname.o
 //kbuild:lib-$(CONFIG_FINDFS) += get_devname.o
 //kbuild:lib-$(CONFIG_FEATURE_MOUNT_LABEL) += get_devname.o
+//kbuild:lib-$(CONFIG_FEATURE_SWAPONOFF_LABEL) += get_devname.o
 
 #include <sys/mount.h> /* BLKGETSIZE64 */
 #if !defined(BLKGETSIZE64)
@@ -107,7 +108,11 @@ uuidcache_check_device(const char *device,
 		int depth UNUSED_PARAM)
 {
 	/* note: this check rejects links to devices, among other nodes */
-	if (!S_ISBLK(statbuf->st_mode))
+	if (!S_ISBLK(statbuf->st_mode)
+#if ENABLE_FEATURE_VOLUMEID_UBIFS
+	 && !(S_ISCHR(statbuf->st_mode) && strncmp(bb_basename(device), "ubi", 3) == 0)
+#endif
+	)
 		return TRUE;
 
 	/* Users report that mucking with floppies (especially non-present

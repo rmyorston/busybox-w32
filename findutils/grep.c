@@ -17,55 +17,50 @@
  *
  * (C) 2006 Jac Goudsmit added -o option
  */
-
-//applet:IF_GREP(APPLET(grep, BB_DIR_BIN, BB_SUID_DROP))
-//applet:IF_FEATURE_GREP_EGREP_ALIAS(APPLET_ODDNAME(egrep, grep, BB_DIR_BIN, BB_SUID_DROP, egrep))
-//applet:IF_FEATURE_GREP_FGREP_ALIAS(APPLET_ODDNAME(fgrep, grep, BB_DIR_BIN, BB_SUID_DROP, fgrep))
-
-//kbuild:lib-$(CONFIG_GREP) += grep.o
-
 //config:config GREP
-//config:	bool "grep"
+//config:	bool "grep (8.5 kb)"
 //config:	default y
 //config:	help
-//config:	  grep is used to search files for a specified pattern.
+//config:	grep is used to search files for a specified pattern.
 //config:
-//config:config FEATURE_GREP_EGREP_ALIAS
-//config:	bool "Enable extended regular expressions (egrep & grep -E)"
+//config:config EGREP
+//config:	bool "egrep (7.6 kb)"
 //config:	default y
-//config:	depends on GREP
 //config:	help
-//config:	  Enabled support for extended regular expressions. Extended
-//config:	  regular expressions allow for alternation (foo|bar), grouping,
-//config:	  and various repetition operators.
+//config:	Alias to "grep -E".
 //config:
-//config:config FEATURE_GREP_FGREP_ALIAS
-//config:	bool "Alias fgrep to grep -F"
+//config:config FGREP
+//config:	bool "fgrep (7.6 kb)"
 //config:	default y
-//config:	depends on GREP
 //config:	help
-//config:	  fgrep sees the search pattern as a normal string rather than
-//config:	  regular expressions.
-//config:	  grep -F always works, this just creates the fgrep alias.
+//config:	Alias to "grep -F".
 //config:
 //config:config FEATURE_GREP_CONTEXT
 //config:	bool "Enable before and after context flags (-A, -B and -C)"
 //config:	default y
-//config:	depends on GREP
+//config:	depends on GREP || EGREP || FGREP
 //config:	help
-//config:	  Print the specified number of leading (-B) and/or trailing (-A)
-//config:	  context surrounding our matching lines.
-//config:	  Print the specified number of context lines (-C).
+//config:	Print the specified number of leading (-B) and/or trailing (-A)
+//config:	context surrounding our matching lines.
+//config:	Print the specified number of context lines (-C).
+
+//applet:IF_GREP(APPLET(grep, BB_DIR_BIN, BB_SUID_DROP))
+//                APPLET_ODDNAME:name   main  location    suid_type     help
+//applet:IF_EGREP(APPLET_ODDNAME(egrep, grep, BB_DIR_BIN, BB_SUID_DROP, egrep))
+//applet:IF_FGREP(APPLET_ODDNAME(fgrep, grep, BB_DIR_BIN, BB_SUID_DROP, fgrep))
+
+//kbuild:lib-$(CONFIG_GREP) += grep.o
+//kbuild:lib-$(CONFIG_EGREP) += grep.o
+//kbuild:lib-$(CONFIG_FGREP) += grep.o
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include "xregex.h"
 
 
 /* options */
 //usage:#define grep_trivial_usage
-//usage:       "[-HhnlLoqvsriw"
-//usage:       "F"
-//usage:	IF_FEATURE_GREP_EGREP_ALIAS("E")
+//usage:       "[-HhnlLoqvsriwFE"
 //usage:	IF_EXTRA_COMPAT("z")
 //usage:       "] [-m N] "
 //usage:	IF_FEATURE_GREP_CONTEXT("[-A/B/C N] ")
@@ -87,9 +82,7 @@
 //usage:     "\n	-w	Match whole words only"
 //usage:     "\n	-x	Match whole lines only"
 //usage:     "\n	-F	PATTERN is a literal (not regexp)"
-//usage:	IF_FEATURE_GREP_EGREP_ALIAS(
 //usage:     "\n	-E	PATTERN is an extended regexp"
-//usage:	)
 //usage:	IF_EXTRA_COMPAT(
 //usage:     "\n	-z	Input is NUL terminated"
 //usage:	)
@@ -113,10 +106,11 @@
 //usage:#define fgrep_trivial_usage NOUSAGE_STR
 //usage:#define fgrep_full_usage ""
 
+/* -e,-f are lists; -m,-A,-B,-C have numeric param */
 #define OPTSTR_GREP \
-	"lnqvscFiHhe:f:Lorm:wx" \
-	IF_FEATURE_GREP_CONTEXT("A:B:C:") \
-	IF_FEATURE_GREP_EGREP_ALIAS("E") \
+	"lnqvscFiHhe:*f:*Lorm:+wx" \
+	IF_FEATURE_GREP_CONTEXT("A:+B:+C:+") \
+	"E" \
 	IF_EXTRA_COMPAT("z") \
 	"aI"
 /* ignored: -a "assume all files to be text" */
@@ -143,7 +137,7 @@ enum {
 	IF_FEATURE_GREP_CONTEXT(    OPTBIT_A ,) /* -A NUM: after-match context */
 	IF_FEATURE_GREP_CONTEXT(    OPTBIT_B ,) /* -B NUM: before-match context */
 	IF_FEATURE_GREP_CONTEXT(    OPTBIT_C ,) /* -C NUM: -A and -B combined */
-	IF_FEATURE_GREP_EGREP_ALIAS(OPTBIT_E ,) /* extended regexp */
+	OPTBIT_E, /* extended regexp */
 	IF_EXTRA_COMPAT(            OPTBIT_z ,) /* input is NUL terminated */
 	OPT_l = 1 << OPTBIT_l,
 	OPT_n = 1 << OPTBIT_n,
@@ -166,7 +160,7 @@ enum {
 	OPT_A = IF_FEATURE_GREP_CONTEXT(    (1 << OPTBIT_A)) + 0,
 	OPT_B = IF_FEATURE_GREP_CONTEXT(    (1 << OPTBIT_B)) + 0,
 	OPT_C = IF_FEATURE_GREP_CONTEXT(    (1 << OPTBIT_C)) + 0,
-	OPT_E = IF_FEATURE_GREP_EGREP_ALIAS((1 << OPTBIT_E)) + 0,
+	OPT_E = 1 << OPTBIT_E,
 	OPT_z = IF_EXTRA_COMPAT(            (1 << OPTBIT_z)) + 0,
 };
 
@@ -178,14 +172,6 @@ enum {
 #define FGREP_FLAG                  (option_mask32 & OPT_F)
 #define PRINT_FILES_WITHOUT_MATCHES (option_mask32 & OPT_L)
 #define NUL_DELIMITED               (option_mask32 & OPT_z)
-
-#if defined(ENABLE_PLATFORM_MINGW32)
-# define RE_TRANSLATE_TYPE unsigned char*
-# undef ENABLE_EXTRA_COMPAT
-# define ENABLE_EXTRA_COMPAT 0
-# undef IF_EXTRA_COMPAT
-# define IF_EXTRA_COMPAT(x)
-#endif
 
 struct globals {
 	int max_matches;
@@ -209,8 +195,9 @@ struct globals {
 	llist_t *pattern_head;   /* growable list of patterns to match */
 	const char *cur_file;    /* the current file we are reading */
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	BUILD_BUG_ON(sizeof(G) > COMMON_BUFSIZE); \
 } while (0)
 #define max_matches       (G.max_matches         )
@@ -253,7 +240,7 @@ typedef struct grep_list_data_t {
 #endif
 #define ALLOCATED 1
 #define COMPILED 2
-	int flg_mem_alocated_compiled;
+	int flg_mem_allocated_compiled;
 } grep_list_data_t;
 
 #if !ENABLE_EXTRA_COMPAT
@@ -386,8 +373,8 @@ static int grep_file(FILE *file)
 #endif
 				char *match_at;
 
-				if (!(gl->flg_mem_alocated_compiled & COMPILED)) {
-					gl->flg_mem_alocated_compiled |= COMPILED;
+				if (!(gl->flg_mem_allocated_compiled & COMPILED)) {
+					gl->flg_mem_allocated_compiled |= COMPILED;
 #if !ENABLE_EXTRA_COMPAT
 					xregcomp(&gl->compiled_regex, gl->pattern, reflags);
 #else
@@ -528,7 +515,7 @@ static int grep_file(FILE *file)
 				if (option_mask32 & OPT_o) {
 					if (FGREP_FLAG) {
 						/* -Fo just prints the pattern
-						 * (unless -v: -Fov doesnt print anything at all) */
+						 * (unless -v: -Fov doesn't print anything at all) */
 						if (found)
 							print_line(gl->pattern, strlen(gl->pattern), linenum, ':');
 					} else while (1) {
@@ -625,9 +612,9 @@ static char *add_grep_list_data(char *pattern)
 	grep_list_data_t *gl = xzalloc(sizeof(*gl));
 	gl->pattern = pattern;
 #if ENABLE_FEATURE_CLEAN_UP
-	gl->flg_mem_alocated_compiled = flg_used_mem;
+	gl->flg_mem_allocated_compiled = flg_used_mem;
 #else
-	/*gl->flg_mem_alocated_compiled = 0;*/
+	/*gl->flg_mem_allocated_compiled = 0;*/
 #endif
 	return (char *)gl;
 }
@@ -652,11 +639,28 @@ static void load_regexes_from_file(llist_t *fopt)
 }
 
 static int FAST_FUNC file_action_grep(const char *filename,
-			struct stat *statbuf UNUSED_PARAM,
+			struct stat *statbuf,
 			void* matched,
 			int depth UNUSED_PARAM)
 {
-	FILE *file = fopen_for_read(filename);
+	FILE *file;
+
+	/* If we are given a link to a directory, we should bail out now, rather
+	 * than trying to open the "file" and hoping getline gives us nothing,
+	 * since that is not portable across operating systems (FreeBSD for
+	 * example will return the raw directory contents). */
+	if (S_ISLNK(statbuf->st_mode)) {
+		struct stat sb;
+		if (stat(filename, &sb) != 0) {
+			if (!SUPPRESS_ERR_MSGS)
+				bb_simple_perror_msg(filename);
+			return 0;
+		}
+		if (S_ISDIR(sb.st_mode))
+			return 1;
+	}
+
+	file = fopen_for_read(filename);
 	if (file == NULL) {
 		if (!SUPPRESS_ERR_MSGS)
 			bb_simple_perror_msg(filename);
@@ -689,16 +693,19 @@ int grep_main(int argc UNUSED_PARAM, char **argv)
 	FILE *file;
 	int matched;
 	llist_t *fopt = NULL;
+#if ENABLE_FEATURE_GREP_CONTEXT
+	int Copt, opts;
+#endif
+	INIT_G();
+
+	/* For grep, exitcode of 1 is "not found". Other errors are 2: */
+	xfunc_error_retval = 2;
 
 	/* do normal option parsing */
 #if ENABLE_FEATURE_GREP_CONTEXT
-	int Copt, opts;
-
-	/* -H unsets -h; -C unsets -A,-B; -e,-f are lists;
-	 * -m,-A,-B,-C have numeric param */
-	opt_complementary = "H-h:C-AB:e::f::m+:A+:B+:C+";
+	/* -H unsets -h; -C unsets -A,-B */
 	opts = getopt32(argv,
-		OPTSTR_GREP,
+		"^" OPTSTR_GREP "\0" "H-h:C-AB",
 		&pattern_head, &fopt, &max_matches,
 		&lines_after, &lines_before, &Copt);
 
@@ -724,9 +731,7 @@ int grep_main(int argc UNUSED_PARAM, char **argv)
 	}
 #else
 	/* with auto sanity checks */
-	/* -H unsets -h; -c,-q or -l unset -n; -e,-f are lists; -m N */
-	opt_complementary = "H-h:c-n:q-n:l-n:e::f::m+";
-	getopt32(argv, OPTSTR_GREP,
+	getopt32(argv, "^" OPTSTR_GREP "\0" "H-h:c-n:q-n:l-n:", // why trailing ":"?
 		&pattern_head, &fopt, &max_matches);
 #endif
 	invert_search = ((option_mask32 & OPT_v) != 0); /* 0 | 1 */
@@ -745,7 +750,7 @@ int grep_main(int argc UNUSED_PARAM, char **argv)
 		}
 	}
 
-	if (ENABLE_FEATURE_GREP_FGREP_ALIAS && applet_name[0] == 'f')
+	if (ENABLE_FGREP && applet_name[0] == 'f')
 		option_mask32 |= OPT_F;
 
 #if !ENABLE_EXTRA_COMPAT
@@ -753,8 +758,8 @@ int grep_main(int argc UNUSED_PARAM, char **argv)
 		reflags = REG_NOSUB;
 #endif
 
-	if (ENABLE_FEATURE_GREP_EGREP_ALIAS
-	 && (applet_name[0] == 'e' || (option_mask32 & OPT_E))
+	if ((ENABLE_EGREP && applet_name[0] == 'e')
+	 || (option_mask32 & OPT_E)
 	) {
 		reflags |= REG_EXTENDED;
 	}
@@ -831,16 +836,16 @@ int grep_main(int argc UNUSED_PARAM, char **argv)
  grep_done: ;
 	} while (*argv && *++argv);
 
-	/* destroy all the elments in the pattern list */
+	/* destroy all the elements in the pattern list */
 	if (ENABLE_FEATURE_CLEAN_UP) {
 		while (pattern_head) {
 			llist_t *pattern_head_ptr = pattern_head;
 			grep_list_data_t *gl = (grep_list_data_t *)pattern_head_ptr->data;
 
 			pattern_head = pattern_head->link;
-			if (gl->flg_mem_alocated_compiled & ALLOCATED)
+			if (gl->flg_mem_allocated_compiled & ALLOCATED)
 				free(gl->pattern);
-			if (gl->flg_mem_alocated_compiled & COMPILED)
+			if (gl->flg_mem_allocated_compiled & COMPILED)
 				regfree(&gl->compiled_regex);
 			free(gl);
 			free(pattern_head_ptr);

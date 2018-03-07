@@ -10,39 +10,37 @@
  * Doesn't check CRC's
  * Only supports new ASCII and CRC formats
  */
-#include "libbb.h"
-#include "bb_archive.h"
-
 //config:config CPIO
-//config:	bool "cpio"
+//config:	bool "cpio (14 kb)"
 //config:	default y
 //config:	help
-//config:	  cpio is an archival utility program used to create, modify, and
-//config:	  extract contents from archives.
-//config:	  cpio has 110 bytes of overheads for every stored file.
+//config:	cpio is an archival utility program used to create, modify, and
+//config:	extract contents from archives.
+//config:	cpio has 110 bytes of overheads for every stored file.
 //config:
-//config:	  This implementation of cpio can extract cpio archives created in the
-//config:	  "newc" or "crc" format, it cannot create or modify them.
+//config:	This implementation of cpio can extract cpio archives created in the
+//config:	"newc" or "crc" format.
 //config:
-//config:	  Unless you have a specific application which requires cpio, you
-//config:	  should probably say N here.
+//config:	Unless you have a specific application which requires cpio, you
+//config:	should probably say N here.
 //config:
 //config:config FEATURE_CPIO_O
-//config:	bool "Support for archive creation"
+//config:	bool "Support archive creation"
 //config:	default y
 //config:	depends on CPIO
 //config:	help
-//config:	  This implementation of cpio can create cpio archives in the "newc"
-//config:	  format only.
+//config:	This implementation of cpio can create cpio archives in the "newc"
+//config:	format only.
 //config:
 //config:config FEATURE_CPIO_P
-//config:	bool "Support for passthrough mode"
+//config:	bool "Support passthrough mode"
 //config:	default y
 //config:	depends on FEATURE_CPIO_O
 //config:	help
-//config:	  Passthrough mode. Rarely used.
+//config:	Passthrough mode. Rarely used.
 
 //applet:IF_CPIO(APPLET(cpio, BB_DIR_BIN, BB_SUID_DROP))
+
 //kbuild:lib-$(CONFIG_CPIO) += cpio.o
 
 //usage:#define cpio_trivial_usage
@@ -50,10 +48,10 @@
 //usage:       " [-ti"IF_FEATURE_CPIO_O("o")"]" IF_FEATURE_CPIO_P(" [-p DIR]")
 //usage:       " [EXTR_FILE]..."
 //usage:#define cpio_full_usage "\n\n"
-//usage:       "Extract or list files from a cpio archive"
+//usage:       "Extract (-i) or list (-t) files from a cpio archive"
 //usage:	IF_FEATURE_CPIO_O(", or"
-//usage:     "\ncreate an archive" IF_FEATURE_CPIO_P(" (-o) or copy files (-p)")
-//usage:		" using file list on stdin"
+//usage:     "\ntake file list from stdin and create an archive (-o)"
+//usage:                IF_FEATURE_CPIO_P(" or copy files (-p)")
 //usage:	)
 //usage:     "\n"
 //usage:     "\nMain operation mode:"
@@ -141,6 +139,10 @@
   -u, --unconditional        Replace all files unconditionally
  */
 
+#include "libbb.h"
+#include "common_bufsiz.h"
+#include "bb_archive.h"
+
 enum {
 	OPT_EXTRACT            = (1 << 0),
 	OPT_TEST               = (1 << 1),
@@ -170,9 +172,10 @@ enum {
 struct globals {
 	struct bb_uidgid_t owner_ugid;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 void BUG_cpio_globals_too_big(void);
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	G.owner_ugid.uid = -1L; \
 	G.owner_ugid.gid = -1L; \
 } while (0)
@@ -358,9 +361,8 @@ int cpio_main(int argc UNUSED_PARAM, char **argv)
 	char *cpio_owner;
 	IF_FEATURE_CPIO_O(const char *cpio_fmt = "";)
 	unsigned opt;
-
 #if ENABLE_LONG_OPTS
-	applet_long_options =
+	const char *long_opts =
 		"extract\0"      No_argument       "i"
 		"list\0"         No_argument       "t"
 #if ENABLE_FEATURE_CPIO_O
@@ -388,9 +390,9 @@ int cpio_main(int argc UNUSED_PARAM, char **argv)
 	/* -L makes sense only with -o or -p */
 
 #if !ENABLE_FEATURE_CPIO_O
-	opt = getopt32(argv, OPTION_STR, &cpio_filename, &cpio_owner);
+	opt = getopt32long(argv, OPTION_STR, long_opts, &cpio_filename, &cpio_owner);
 #else
-	opt = getopt32(argv, OPTION_STR "oH:" IF_FEATURE_CPIO_P("p"),
+	opt = getopt32long(argv, OPTION_STR "oH:" IF_FEATURE_CPIO_P("p"), long_opts,
 		       &cpio_filename, &cpio_owner, &cpio_fmt);
 #endif
 	argv += optind;
@@ -401,10 +403,6 @@ int cpio_main(int argc UNUSED_PARAM, char **argv)
 #if !ENABLE_FEATURE_CPIO_O
 	if (opt & OPT_FILE) { /* -F */
 		xmove_fd(xopen(cpio_filename, O_RDONLY), STDIN_FILENO);
-#if ENABLE_PLATFORM_MINGW32
-		/* default is seek_by_read but seek_by_jump is OK for file */
-		archive_handle->seek = seek_by_jump;
-#endif
 	}
 #else
 	if ((opt & (OPT_FILE|OPT_CREATE)) == OPT_FILE) { /* -F without -o */

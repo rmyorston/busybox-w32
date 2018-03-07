@@ -20,6 +20,78 @@
  * Vladimir Oleynik <dzo@simtreas.ru> 2001
  * Set process group corrections, initial busybox port
  */
+//config:config TELNETD
+//config:	bool "telnetd (12 kb)"
+//config:	default y
+//config:	select FEATURE_SYSLOG
+//config:	help
+//config:	A daemon for the TELNET protocol, allowing you to log onto the host
+//config:	running the daemon. Please keep in mind that the TELNET protocol
+//config:	sends passwords in plain text. If you can't afford the space for an
+//config:	SSH daemon and you trust your network, you may say 'y' here. As a
+//config:	more secure alternative, you should seriously consider installing the
+//config:	very small Dropbear SSH daemon instead:
+//config:		http://matt.ucc.asn.au/dropbear/dropbear.html
+//config:
+//config:	Note that for busybox telnetd to work you need several things:
+//config:	First of all, your kernel needs:
+//config:		  CONFIG_UNIX98_PTYS=y
+//config:
+//config:	Next, you need a /dev/pts directory on your root filesystem:
+//config:
+//config:		  $ ls -ld /dev/pts
+//config:		  drwxr-xr-x  2 root root 0 Sep 23 13:21 /dev/pts/
+//config:
+//config:	Next you need the pseudo terminal master multiplexer /dev/ptmx:
+//config:
+//config:		  $ ls -la /dev/ptmx
+//config:		  crw-rw-rw-  1 root tty 5, 2 Sep 23 13:55 /dev/ptmx
+//config:
+//config:	Any /dev/ttyp[0-9]* files you may have can be removed.
+//config:	Next, you need to mount the devpts filesystem on /dev/pts using:
+//config:
+//config:		  mount -t devpts devpts /dev/pts
+//config:
+//config:	You need to be sure that busybox has LOGIN and
+//config:	FEATURE_SUID enabled. And finally, you should make
+//config:	certain that busybox has been installed setuid root:
+//config:
+//config:		chown root.root /bin/busybox
+//config:		chmod 4755 /bin/busybox
+//config:
+//config:	with all that done, telnetd _should_ work....
+//config:
+//config:config FEATURE_TELNETD_STANDALONE
+//config:	bool "Support standalone telnetd (not inetd only)"
+//config:	default y
+//config:	depends on TELNETD
+//config:	help
+//config:	Selecting this will make telnetd able to run standalone.
+//config:
+//config:config FEATURE_TELNETD_INETD_WAIT
+//config:	bool "Support -w SEC option (inetd wait mode)"
+//config:	default y
+//config:	depends on FEATURE_TELNETD_STANDALONE
+//config:	help
+//config:	This option allows you to run telnetd in "inet wait" mode.
+//config:	Example inetd.conf line (note "wait", not usual "nowait"):
+//config:
+//config:	telnet stream tcp wait root /bin/telnetd telnetd -w10
+//config:
+//config:	In this example, inetd passes _listening_ socket_ as fd 0
+//config:	to telnetd when connection appears.
+//config:	telnetd will wait for connections until all existing
+//config:	connections are closed, and no new connections
+//config:	appear during 10 seconds. Then it exits, and inetd continues
+//config:	to listen for new connections.
+//config:
+//config:	This option is rarely used. "tcp nowait" is much more usual
+//config:	way of running tcp services, including telnetd.
+//config:	You most probably want to say N here.
+
+//applet:IF_TELNETD(APPLET(telnetd, BB_DIR_USR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_TELNETD) += telnetd.o
 
 //usage:#define telnetd_trivial_usage
 //usage:       "[OPTIONS]"
@@ -44,6 +116,7 @@
 #define DEBUG 0
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include <syslog.h>
 
 #if DEBUG
@@ -59,6 +132,7 @@ struct tsession {
 	int sockfd_read;
 	int sockfd_write;
 	int ptyfd;
+	smallint buffered_IAC_for_pty;
 
 	/* two circular buffers */
 	/*char *buf1, *buf2;*/
@@ -82,114 +156,205 @@ struct globals {
 	const char *issuefile;
 	int maxfd;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
+#define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { \
+	setup_common_bufsiz(); \
 	G.loginpath = "/bin/login"; \
 	G.issuefile = "/etc/issue.net"; \
 } while (0)
 
 
-/*
-   Remove all IAC's from buf1 (received IACs are ignored and must be removed
-   so as to not be interpreted by the terminal).  Make an uninterrupted
-   string of characters fit for the terminal.  Do this by packing
-   all characters meant for the terminal sequentially towards the end of buf.
-
-   Return a pointer to the beginning of the characters meant for the terminal
-   and make *num_totty the number of characters that should be sent to
-   the terminal.
-
-   Note - if an IAC (3 byte quantity) starts before (bf + len) but extends
-   past (bf + len) then that IAC will be left unprocessed and *processed
-   will be less than len.
-
-   CR-LF ->'s CR mapping is also done here, for convenience.
-
-   NB: may fail to remove iacs which wrap around buffer!
+/* Write some buf1 data to pty, processing IACs.
+ * Update wridx1 and size1. Return < 0 on error.
+ * Buggy if IAC is present but incomplete: skips them.
  */
-static unsigned char *
-remove_iacs(struct tsession *ts, int *pnum_totty)
+static ssize_t
+safe_write_to_pty_decode_iac(struct tsession *ts)
 {
-	unsigned char *ptr0 = TS_BUF1(ts) + ts->wridx1;
-	unsigned char *ptr = ptr0;
-	unsigned char *totty = ptr;
-	unsigned char *end = ptr + MIN(BUFSIZE - ts->wridx1, ts->size1);
-	int num_totty;
+	unsigned wr;
+	ssize_t rc;
+	unsigned char *buf;
+	unsigned char *found;
 
-	while (ptr < end) {
-		if (*ptr != IAC) {
-			char c = *ptr;
+	buf = TS_BUF1(ts) + ts->wridx1;
+	wr = MIN(BUFSIZE - ts->wridx1, ts->size1);
+	/* wr is at least 1 here */
 
-			*totty++ = c;
-			ptr++;
-			/* We map \r\n ==> \r for pragmatic reasons.
-			 * Many client implementations send \r\n when
-			 * the user hits the CarriageReturn key.
-			 * See RFC 1123 3.3.1 Telnet End-of-Line Convention.
-			 */
-			if (c == '\r' && ptr < end && (*ptr == '\n' || *ptr == '\0'))
-				ptr++;
-			continue;
-		}
-
-		if ((ptr+1) >= end)
-			break;
-		if (ptr[1] == NOP) { /* Ignore? (putty keepalive, etc.) */
-			ptr += 2;
-			continue;
-		}
-		if (ptr[1] == IAC) { /* Literal IAC? (emacs M-DEL) */
-			*totty++ = ptr[1];
-			ptr += 2;
-			continue;
-		}
-
-		/*
-		 * TELOPT_NAWS support!
+	if (ts->buffered_IAC_for_pty) {
+		/* Last time we stopped on a "dangling" IAC byte.
+		 * We removed it from the buffer back then.
+		 * Now pretend it's still there, and jump to IAC processing.
 		 */
-		if ((ptr+2) >= end) {
-			/* Only the beginning of the IAC is in the
-			buffer we were asked to process, we can't
-			process this char */
-			break;
-		}
-		/*
-		 * IAC -> SB -> TELOPT_NAWS -> 4-byte -> IAC -> SE
-		 */
-		if (ptr[1] == SB && ptr[2] == TELOPT_NAWS) {
-			struct winsize ws;
-			if ((ptr+8) >= end)
-				break;  /* incomplete, can't process */
-			ws.ws_col = (ptr[3] << 8) | ptr[4];
-			ws.ws_row = (ptr[5] << 8) | ptr[6];
-			ioctl(ts->ptyfd, TIOCSWINSZ, (char *)&ws);
-			ptr += 9;
-			continue;
-		}
-		/* skip 3-byte IAC non-SB cmd */
-#if DEBUG
-		fprintf(stderr, "Ignoring IAC %s,%s\n",
-				TELCMD(ptr[1]), TELOPT(ptr[2]));
-#endif
-		ptr += 3;
+		ts->buffered_IAC_for_pty = 0;
+		wr++;
+		ts->size1++;
+		buf--; /* Yes, this can point before the buffer. It's ok */
+		ts->wridx1--;
+		goto handle_iac;
 	}
 
-	num_totty = totty - ptr0;
-	*pnum_totty = num_totty;
-	/* The difference between ptr and totty is number of iacs
-	   we removed from the stream. Adjust buf1 accordingly */
-	if ((ptr - totty) == 0) /* 99.999% of cases */
-		return ptr0;
-	ts->wridx1 += ptr - totty;
-	ts->size1 -= ptr - totty;
-	/* Move chars meant for the terminal towards the end of the buffer */
-	return memmove(ptr - num_totty, ptr0, num_totty);
+	found = memchr(buf, IAC, wr);
+	if (found != buf) {
+		/* There is a "prefix" of non-IAC chars.
+		 * Write only them, and return.
+		 */
+		if (found)
+			wr = found - buf;
+
+		/* We map \r\n ==> \r for pragmatic reasons:
+		 * many client implementations send \r\n when
+		 * the user hits the CarriageReturn key.
+		 * See RFC 1123 3.3.1 Telnet End-of-Line Convention.
+		 */
+		rc = wr;
+		found = memchr(buf, '\r', wr);
+		if (found)
+			rc = found - buf + 1;
+		rc = safe_write(ts->ptyfd, buf, rc);
+		if (rc <= 0)
+			return rc;
+		if (rc < wr /* don't look past available data */
+		 && buf[rc-1] == '\r' /* need this: imagine that write was _short_ */
+		 && (buf[rc] == '\n' || buf[rc] == '\0')
+		) {
+			rc++;
+		}
+		goto update_and_return;
+	}
+
+	/* buf starts with IAC char. Process that sequence.
+	 * Example: we get this from our own (bbox) telnet client:
+	 * read(5, "\377\374\1""\377\373\37""\377\372\37\0\262\0@\377\360""\377\375\1""\377\375\3"):
+	 * IAC WONT ECHO, IAC WILL NAWS, IAC SB NAWS <cols> <rows> IAC SE, IAC DO SGA
+	 * Another example (telnet-0.17 from old-netkit):
+	 * read(4, "\377\375\3""\377\373\30""\377\373\37""\377\373 ""\377\373!""\377\373\"""\377\373'"
+	 * "\377\375\5""\377\373#""\377\374\1""\377\372\37\0\257\0I\377\360""\377\375\1"):
+	 * IAC DO SGA, IAC WILL TTYPE, IAC WILL NAWS, IAC WILL TSPEED, IAC WILL LFLOW, IAC WILL LINEMODE, IAC WILL NEW_ENVIRON,
+	 * IAC DO STATUS, IAC WILL XDISPLOC, IAC WONT ECHO, IAC SB NAWS <cols> <rows> IAC SE, IAC DO ECHO
+	 */
+	if (wr <= 1) {
+		/* Only the single IAC byte is in the buffer, eat it
+		 * and set a flag "process the rest of the sequence
+		 * next time we are here".
+		 */
+		//bb_error_msg("dangling IAC!");
+		ts->buffered_IAC_for_pty = 1;
+		rc = 1;
+		goto update_and_return;
+	}
+
+ handle_iac:
+	/* 2-byte commands (240..250 and 255):
+	 * IAC IAC (255) Literal 255. Supported.
+	 * IAC SE  (240) End of subnegotiation. Treated as NOP.
+	 * IAC NOP (241) NOP. Supported.
+	 * IAC BRK (243) Break. Like serial line break. TODO via tcsendbreak()?
+	 * IAC AYT (246) Are you there. Send back evidence that AYT was seen. TODO (send NOP back)?
+	 *  These don't look useful:
+	 * IAC DM  (242) Data mark. What is this?
+	 * IAC IP  (244) Suspend, interrupt or abort the process. (Ancient cousin of ^C).
+	 * IAC AO  (245) Abort output. "You can continue running, but do not send me the output".
+	 * IAC EC  (247) Erase character. The receiver should delete the last received char.
+	 * IAC EL  (248) Erase line. The receiver should delete everything up tp last newline.
+	 * IAC GA  (249) Go ahead. For half-duplex lines: "now you talk".
+	 *  Implemented only as part of NAWS:
+	 * IAC SB  (250) Subnegotiation of an option follows.
+	 */
+	if (buf[1] == IAC) {
+		/* Literal 255 (emacs M-DEL) */
+		//bb_error_msg("255!");
+		rc = safe_write(ts->ptyfd, &buf[1], 1);
+		/*
+		 * If we went through buffered_IAC_for_pty==1 path,
+		 * bailing out on error like below messes up the buffer.
+		 * EAGAIN is highly unlikely here, other errors will be
+		 * repeated on next write, let's just skip error check.
+		 */
+#if 0
+		if (rc <= 0)
+			return rc;
+#endif
+		rc = 2;
+		goto update_and_return;
+	}
+	if (buf[1] >= 240 && buf[1] <= 249) {
+		/* NOP (241). Ignore (putty keepalive, etc) */
+		/* All other 2-byte commands also treated as NOPs here */
+		rc = 2;
+		goto update_and_return;
+	}
+
+	if (wr <= 2) {
+/* BUG: only 2 bytes of the IAC is in the buffer, we just eat them.
+ * This is not a practical problem since >2 byte IACs are seen only
+ * in initial negotiation, when buffer is empty
+ */
+		rc = 2;
+		goto update_and_return;
+	}
+
+	if (buf[1] == SB) {
+		if (buf[2] == TELOPT_NAWS) {
+			/* IAC SB, TELOPT_NAWS, 4-byte, IAC SE */
+			struct winsize ws;
+			if (wr <= 6) {
+/* BUG: incomplete, can't process */
+				rc = wr;
+				goto update_and_return;
+			}
+			memset(&ws, 0, sizeof(ws)); /* pixel sizes are set to 0 */
+			ws.ws_col = (buf[3] << 8) | buf[4];
+			ws.ws_row = (buf[5] << 8) | buf[6];
+			ioctl(ts->ptyfd, TIOCSWINSZ, (char *)&ws);
+			rc = 7;
+			/* trailing IAC SE will be eaten separately, as 2-byte NOP */
+			goto update_and_return;
+		}
+		/* else: other subnegs not supported yet */
+	}
+
+	/* Assume it is a 3-byte WILL/WONT/DO/DONT 251..254 command and skip it */
+#if DEBUG
+	fprintf(stderr, "Ignoring IAC %s,%s\n",
+			TELCMD(buf[1]), TELOPT(buf[2]));
+#endif
+	rc = 3;
+
+ update_and_return:
+	ts->wridx1 += rc;
+	if (ts->wridx1 >= BUFSIZE) /* actually == BUFSIZE */
+		ts->wridx1 = 0;
+	ts->size1 -= rc;
+	/*
+	 * Hack. We cannot process IACs which wrap around buffer's end.
+	 * Since properly fixing it requires writing bigger code,
+	 * we rely instead on this code making it virtually impossible
+	 * to have wrapped IAC (people don't type at 2k/second).
+	 * It also allows for bigger reads in common case.
+	 */
+	if (ts->size1 == 0) { /* very typical */
+		//bb_error_msg("zero size1");
+		ts->rdidx1 = 0;
+		ts->wridx1 = 0;
+		return rc;
+	}
+	wr = ts->wridx1;
+	if (wr != 0 && wr < ts->rdidx1) {
+		/* Buffer is not wrapped yet.
+		 * We can easily move it to the beginning.
+		 */
+		//bb_error_msg("moved %d", wr);
+		memmove(TS_BUF1(ts), TS_BUF1(ts) + wr, ts->size1);
+		ts->rdidx1 -= wr;
+		ts->wridx1 = 0;
+	}
+	return rc;
 }
 
 /*
  * Converting single IAC into double on output
  */
-static size_t iac_safe_write(int fd, const char *buf, size_t count)
+static size_t safe_write_double_iac(int fd, const char *buf, size_t count)
 {
 	const char *IACptr;
 	size_t wr, rc, total;
@@ -201,6 +366,7 @@ static size_t iac_safe_write(int fd, const char *buf, size_t count)
 		if (*buf == (char)IAC) {
 			static const char IACIAC[] ALIGN1 = { IAC, IAC };
 			rc = safe_write(fd, IACIAC, 2);
+/* BUG: if partial write was only 1 byte long, we end up emitting just one IAC */
 			if (rc != 2)
 				break;
 			buf++;
@@ -296,7 +462,7 @@ make_new_session(
 			IAC, WILL, TELOPT_ECHO,
 			IAC, WILL, TELOPT_SGA
 		};
-		/* This confuses iac_safe_write(), it will try to duplicate
+		/* This confuses safe_write_double_iac(), it will try to duplicate
 		 * each IAC... */
 		//memcpy(TS_BUF2(ts), iacs_to_send, sizeof(iacs_to_send));
 		//ts->rdidx2 = sizeof(iacs_to_send);
@@ -493,13 +659,15 @@ int telnetd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	INIT_G();
 
-	/* -w NUM, and implies -F. -w and -i don't mix */
-	IF_FEATURE_TELNETD_INETD_WAIT(opt_complementary = "wF:w+:i--w:w--i";)
 	/* Even if !STANDALONE, we accept (and ignore) -i, thus people
 	 * don't need to guess whether it's ok to pass -i to us */
-	opt = getopt32(argv, "f:l:Ki"
+	opt = getopt32(argv, "^"
+			"f:l:Ki"
 			IF_FEATURE_TELNETD_STANDALONE("p:b:F")
-			IF_FEATURE_TELNETD_INETD_WAIT("Sw:"),
+			IF_FEATURE_TELNETD_INETD_WAIT("Sw:+") /* -w NUM */
+			"\0"
+			/* -w implies -F. -w and -i don't mix */
+			IF_FEATURE_TELNETD_INETD_WAIT("wF:i--w:w--i"),
 			&G.issuefile, &G.loginpath
 			IF_FEATURE_TELNETD_STANDALONE(, &opt_portnbr, &opt_bindaddr)
 			IF_FEATURE_TELNETD_INETD_WAIT(, &sec_linger)
@@ -647,51 +815,34 @@ int telnetd_main(int argc UNUSED_PARAM, char **argv)
 		struct tsession *next = ts->next; /* in case we free ts */
 
 		if (/*ts->size1 &&*/ FD_ISSET(ts->ptyfd, &wrfdset)) {
-			int num_totty;
-			unsigned char *ptr;
 			/* Write to pty from buffer 1 */
-			ptr = remove_iacs(ts, &num_totty);
-			count = safe_write(ts->ptyfd, ptr, num_totty);
+			count = safe_write_to_pty_decode_iac(ts);
 			if (count < 0) {
 				if (errno == EAGAIN)
 					goto skip1;
 				goto kill_session;
 			}
-			ts->size1 -= count;
-			ts->wridx1 += count;
-			if (ts->wridx1 >= BUFSIZE) /* actually == BUFSIZE */
-				ts->wridx1 = 0;
 		}
  skip1:
 		if (/*ts->size2 &&*/ FD_ISSET(ts->sockfd_write, &wrfdset)) {
 			/* Write to socket from buffer 2 */
 			count = MIN(BUFSIZE - ts->wridx2, ts->size2);
-			count = iac_safe_write(ts->sockfd_write, (void*)(TS_BUF2(ts) + ts->wridx2), count);
+			count = safe_write_double_iac(ts->sockfd_write, (void*)(TS_BUF2(ts) + ts->wridx2), count);
 			if (count < 0) {
 				if (errno == EAGAIN)
 					goto skip2;
 				goto kill_session;
 			}
-			ts->size2 -= count;
 			ts->wridx2 += count;
 			if (ts->wridx2 >= BUFSIZE) /* actually == BUFSIZE */
 				ts->wridx2 = 0;
+			ts->size2 -= count;
+			if (ts->size2 == 0) {
+				ts->rdidx2 = 0;
+				ts->wridx2 = 0;
+			}
 		}
  skip2:
-		/* Should not be needed, but... remove_iacs is actually buggy
-		 * (it cannot process iacs which wrap around buffer's end)!
-		 * Since properly fixing it requires writing bigger code,
-		 * we rely instead on this code making it virtually impossible
-		 * to have wrapped iac (people don't type at 2k/second).
-		 * It also allows for bigger reads in common case. */
-		if (ts->size1 == 0) {
-			ts->rdidx1 = 0;
-			ts->wridx1 = 0;
-		}
-		if (ts->size2 == 0) {
-			ts->rdidx2 = 0;
-			ts->wridx2 = 0;
-		}
 
 		if (/*ts->size1 < BUFSIZE &&*/ FD_ISSET(ts->sockfd_read, &rdfdset)) {
 			/* Read from socket to buffer 1 */

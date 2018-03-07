@@ -73,13 +73,9 @@ testing "sed t (test/branch clears test bit)" "sed -e 's/a/b/;:loop;t loop'" \
 testing "sed T (!test/branch)" "sed -e 's/a/1/;T notone;p;: notone;p'" \
 	"1\n1\n1\nb\nb\nc\nc\n" "" "a\nb\nc\n"
 
-test x"$SKIP_KNOWN_BUGS" = x"" && {
-# Normal sed end-of-script doesn't print "c" because n flushed the pattern
-# space.  If n hits EOF, pattern space is empty when script ends.
-# Query: how does this interact with no newline at EOF?
 testing "sed n (flushes pattern space, terminates early)" "sed -e 'n;p'" \
 	"a\nb\nb\nc\n" "" "a\nb\nc\n"
-}
+
 # non-GNU sed: N does _not_ flush pattern space, therefore c is eaten @ script end
 # GNU sed: N flushes pattern space, therefore c is printed too @ script end
 testing "sed N (flushes pattern space (GNU behavior))" "sed -e 'N;p'" \
@@ -135,10 +131,12 @@ testing "sed empty file plus cat" "sed -e 's/nohit//' input -" "one\ntwo" \
 	"" "one\ntwo"
 testing "sed cat plus empty file" "sed -e 's/nohit//' input -" "one\ntwo" \
 	"one\ntwo" ""
-test x"$SKIP_KNOWN_BUGS" = x"" && {
 testing "sed append autoinserts newline" "sed -e '/woot/a woo' -" \
 	"woot\nwoo\n" "" "woot"
-}
+testing "sed append autoinserts newline 2" "sed -e '/oot/a woo' - input" \
+	"woot\nwoo\nboot\nwoo\n" "boot" "woot"
+testing "sed append autoinserts newline 3" "sed -e '/oot/a woo' -i input && cat input" \
+	"boot\nwoo\n" "boot" ""
 testing "sed insert doesn't autoinsert newline" "sed -e '/woot/i woo' -" \
 	"woo\nwoot" "" "woot"
 testing "sed print autoinsert newlines" "sed -e 'p' -" "one\none" "" "one"
@@ -275,6 +273,24 @@ testing "sed a cmd ended by double backslash" \
 	| two \\
 '
 
+testing "sed a cmd understands \\n,\\t,\\r" \
+	"sed '/1/a\\\\t\\rzero\\none\\\\ntwo\\\\\\nthree'" \
+"\
+line1
+\t\rzero
+one\\\\ntwo\\
+three
+" "" "line1\n"
+
+testing "sed i cmd understands \\n,\\t,\\r" \
+	"sed '/1/i\\\\t\\rzero\\none\\\\ntwo\\\\\\nthree'" \
+"\
+\t\rzero
+one\\\\ntwo\\
+three
+line1
+" "" "line1\n"
+
 # first three lines are deleted; 4th line is matched and printed by "2,3" and by "4" ranges
 testing "sed with N skipping lines past ranges on next cmds" \
 	"sed -n '1{N;N;d};1p;2,3p;3p;4p'" \
@@ -364,6 +380,18 @@ testing "sed /regex/,+0<cmd> -i works" \
 	"0\n""1\n2\n3\n5\n6\n7\n8\n""1\n2\n5\n6\n7\n8\n" \
 	"1\n2\n3\n4\n5\n6\n7\n8\n" \
 	"1\n2\n4\n5\n6\n7\n8\n" \
+
+testing "sed 's///w FILE'" \
+	"sed 's/qwe/ZZZ/wz'; cat z; rm z" \
+	"123\nZZZ\nasd\n""ZZZ\n" \
+	"" \
+	"123\nqwe\nasd\n"
+
+testing "sed uses previous regexp" \
+	"sed '/w/p;//q'" \
+	"q\nw\nw\n" \
+	"" \
+	"q\nw\ne\nr\n"
 
 # testing "description" "commands" "result" "infile" "stdin"
 

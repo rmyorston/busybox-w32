@@ -9,6 +9,19 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config CRONTAB
+//config:	bool "crontab (9.7 kb)"
+//config:	default y
+//config:	help
+//config:	Crontab manipulates the crontab for a particular user. Only
+//config:	the superuser may specify a different user and/or crontab directory.
+//config:	Note that busybox binary must be setuid root for this applet to
+//config:	work properly.
+
+/* Needs to be run by root or be suid root - needs to change /var/spool/cron* files: */
+//applet:IF_CRONTAB(APPLET(crontab, BB_DIR_USR_BIN, BB_SUID_REQUIRE))
+
+//kbuild:lib-$(CONFIG_CRONTAB) += crontab.o
 
 //usage:#define crontab_trivial_usage
 //usage:       "[-c DIR] [-u USER] [-ler]|[FILE]"
@@ -86,8 +99,9 @@ int crontab_main(int argc UNUSED_PARAM, char **argv)
 		OPT_ler = OPT_l + OPT_e + OPT_r,
 	};
 
-	opt_complementary = "?1:dr"; /* max one argument; -d implies -r */
-	opt_ler = getopt32(argv, "u:c:lerd", &user_name, &crontab_dir);
+	opt_ler = getopt32(argv, "^" "u:c:lerd" "\0" "?1:dr"/*max one arg; -d implies -r*/,
+				&user_name, &crontab_dir
+	);
 	argv += optind;
 
 	if (sanitize_env_if_suid()) { /* Clears dangerous stuff, sets PATH */

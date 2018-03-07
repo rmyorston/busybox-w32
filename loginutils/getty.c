@@ -22,23 +22,23 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config GETTY
-//config:	bool "getty"
+//config:	bool "getty (10 kb)"
 //config:	default y
 //config:	select FEATURE_SYSLOG
 //config:	help
-//config:	  getty lets you log in on a tty. It is normally invoked by init.
+//config:	getty lets you log in on a tty. It is normally invoked by init.
 //config:
-//config:	  Note that you can save a few bytes by disabling it and
-//config:	  using login applet directly.
-//config:	  If you need to reset tty attributes before calling login,
-//config:	  this script approximates getty:
+//config:	Note that you can save a few bytes by disabling it and
+//config:	using login applet directly.
+//config:	If you need to reset tty attributes before calling login,
+//config:	this script approximates getty:
 //config:
-//config:	  exec </dev/$1 >/dev/$1 2>&1 || exit 1
-//config:	  reset
-//config:	  stty sane; stty ispeed 38400; stty ospeed 38400
-//config:	  printf "%s login: " "`hostname`"
-//config:	  read -r login
-//config:	  exec /bin/login "$login"
+//config:	exec </dev/$1 >/dev/$1 2>&1 || exit 1
+//config:	reset
+//config:	stty sane; stty ispeed 38400; stty ospeed 38400
+//config:	printf "%s login: " "`hostname`"
+//config:	read -r login
+//config:	exec /bin/login "$login"
 
 //applet:IF_GETTY(APPLET(getty, BB_DIR_SBIN, BB_SUID_DROP))
 
@@ -131,7 +131,7 @@ struct globals {
 //usage:     "\n"
 //usage:     "\nBAUD_RATE of 0 leaves it unchanged"
 
-static const char opt_string[] ALIGN1 = "I:LH:f:hil:mt:wn";
+#define OPT_STR "I:LH:f:hil:mt:+wn"
 #define F_INITSTRING    (1 << 0)   /* -I */
 #define F_LOCAL         (1 << 1)   /* -L */
 #define F_FAKEHOST      (1 << 2)   /* -H */
@@ -179,8 +179,7 @@ static void parse_args(char **argv)
 	char *ts;
 	int flags;
 
-	opt_complementary = "-2:t+"; /* at least 2 args; -t N */
-	flags = getopt32(argv, opt_string,
+	flags = getopt32(argv, "^" OPT_STR "\0" "-2"/* at least 2 args*/,
 		&G.initstring, &G.fakehost, &G.issue,
 		&G.login, &G.timeout
 	);
@@ -316,7 +315,7 @@ static void init_tty_attrs(int speed)
 	/* non-raw output; add CR to each NL */
 	G.tty_attrs.c_oflag = OPOST | ONLCR;
 
-	/* reads would block only if < 1 char is available */
+	/* reads will block only if < 1 char is available */
 	G.tty_attrs.c_cc[VMIN] = 1;
 	/* no timeout (reads block forever) */
 	G.tty_attrs.c_cc[VTIME] = 0;

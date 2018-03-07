@@ -1,13 +1,10 @@
 /* vi: set sw=4 ts=4: */
-/* uname -- print system information
+/*
+ * uname -- print system information
  * Copyright (C) 1989-1999 Free Software Foundation, Inc.
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
-/* BB_AUDIT SUSv3 compliant */
-/* http://www.opengroup.org/onlinepubs/007904975/utilities/uname.html */
-
 /* Option		Example
  * -s, --sysname	SunOS
  * -n, --nodename	rocky8
@@ -37,7 +34,6 @@
  * -a, --all: all of the above, in the order shown.
  *      If -p or -i is not known, don't show them
  */
-
 /* Busyboxed by Erik Andersen
  *
  * Before 2003: Glenn McGrath and Manuel Novoa III
@@ -47,6 +43,36 @@
  * Jan 2009:
  *  Fix handling of -a to not print "unknown", add -o and -i support.
  */
+//config:config UNAME
+//config:	bool "uname (3.7 kb)"
+//config:	default y
+//config:	help
+//config:	uname is used to print system information.
+//config:
+//config:config UNAME_OSNAME
+//config:	string "Operating system name"
+//config:	default "GNU/Linux"
+//config:	depends on UNAME
+//config:	help
+//config:	Sets the operating system name reported by uname -o.  The
+//config:	default is "GNU/Linux".
+//config:
+//can't use "ARCH" for this applet, all hell breaks loose in build system :)
+//config:config BB_ARCH
+//config:	bool "arch (1.6 kb)"
+//config:	default y
+//config:	help
+//config:	Same as uname -m.
+
+//                  APPLET_NOFORK:name   main   location    suid_type     help
+//applet:IF_UNAME(APPLET_NOFORK(  uname, uname, BB_DIR_BIN, BB_SUID_DROP, uname))
+//applet:IF_BB_ARCH(APPLET_NOFORK(arch,  uname, BB_DIR_BIN, BB_SUID_DROP, arch))
+
+//kbuild:lib-$(CONFIG_UNAME)   += uname.o
+//kbuild:lib-$(CONFIG_BB_ARCH) += uname.o
+
+/* BB_AUDIT SUSv3 compliant */
+/* http://www.opengroup.org/onlinepubs/007904975/utilities/uname.html */
 
 //usage:#define uname_trivial_usage
 //usage:       "[-amnrspvio]"
@@ -65,6 +91,11 @@
 //usage:#define uname_example_usage
 //usage:       "$ uname -a\n"
 //usage:       "Linux debian 2.4.23 #2 Tue Dec 23 17:09:10 MST 2003 i686 GNU/Linux\n"
+
+//usage:#define arch_trivial_usage
+//usage:       ""
+//usage:#define arch_full_usage "\n\n"
+//usage:       "Print system architecture"
 
 #include "libbb.h"
 /* After libbb.h, since it needs sys/types.h on some systems */
@@ -86,7 +117,8 @@ typedef struct {
 	char os[sizeof(CONFIG_UNAME_OSNAME)];
 } uname_info_t;
 
-static const char options[] ALIGN1 = "snrvmpioa";
+#if ENABLE_UNAME
+#define options "snrvmpioa"
 static const unsigned short utsname_offset[] = {
 	offsetof(uname_info_t, name.sysname), /* -s */
 	offsetof(uname_info_t, name.nodename), /* -n */
@@ -97,86 +129,94 @@ static const unsigned short utsname_offset[] = {
 	offsetof(uname_info_t, platform), /* -i */
 	offsetof(uname_info_t, os), /* -o */
 };
+#endif
 
 int uname_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
-int uname_main(int argc UNUSED_PARAM, char **argv)
+int uname_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 {
-#if ENABLE_LONG_OPTS
-	static const char uname_longopts[] ALIGN1 =
-		/* name, has_arg, val */
-		"all\0"               No_argument       "a"
-		"kernel-name\0"       No_argument       "s"
-		"nodename\0"          No_argument       "n"
-		"kernel-release\0"    No_argument       "r"
-		"release\0"           No_argument       "r"
-		"kernel-version\0"    No_argument       "v"
-		"machine\0"           No_argument       "m"
-		"processor\0"         No_argument       "p"
-		"hardware-platform\0" No_argument       "i"
-		"operating-system\0"  No_argument       "o"
-	;
-#endif
 	uname_info_t uname_info;
-#if defined(__sparc__) && defined(__linux__)
-	char *fake_sparc = getenv("FAKE_SPARC");
+	IF_UNAME(const char *unknown_str = "unknown";)
+#if ENABLE_UNAME
+	unsigned toprint = (1 << 4); /* "arch" = "uname -m" */
+
+	if (!ENABLE_BB_ARCH || applet_name[0] == 'u') {
+# if ENABLE_LONG_OPTS
+		static const char uname_longopts[] ALIGN1 =
+			/* name, has_arg, val */
+			"all\0"               No_argument       "a"
+			"kernel-name\0"       No_argument       "s"
+			"nodename\0"          No_argument       "n"
+			"kernel-release\0"    No_argument       "r"
+			"release\0"           No_argument       "r"
+			"kernel-version\0"    No_argument       "v"
+			"machine\0"           No_argument       "m"
+			"processor\0"         No_argument       "p"
+			"hardware-platform\0" No_argument       "i"
+			"operating-system\0"  No_argument       "o"
+		;
+# endif
+		toprint = getopt32long(argv, options, uname_longopts);
+		if (argv[optind]) { /* coreutils-6.9 compat */
+			bb_show_usage();
+		}
+		if (toprint & (1 << 8)) { /* -a => all opts on */
+			toprint = (1 << 8) - 1;
+			unknown_str = ""; /* -a does not print unknown fields */
+		}
+		if (toprint == 0) { /* no opts => -s (sysname) */
+			toprint = 1;
+		}
+	} /* if "uname" */
 #endif
-	const char *unknown_str = "unknown";
-	const char *fmt;
-	const unsigned short *delta;
-	unsigned toprint;
-
-	IF_LONG_OPTS(applet_long_options = uname_longopts);
-	toprint = getopt32(argv, options);
-
-	if (argv[optind]) { /* coreutils-6.9 compat */
-		bb_show_usage();
-	}
-
-	if (toprint & (1 << 8)) { /* -a => all opts on */
-		toprint = (1 << 8) - 1;
-		unknown_str = ""; /* -a does not print unknown fields */
-	}
-
-	if (toprint == 0) { /* no opts => -s (sysname) */
-		toprint = 1;
-	}
 
 	uname(&uname_info.name); /* never fails */
 
 #if defined(__sparc__) && defined(__linux__)
-	if (fake_sparc && (fake_sparc[0] | 0x20) == 'y') {
-		strcpy(uname_info.name.machine, "sparc");
-	}
-#endif
-	strcpy(uname_info.processor, unknown_str);
-	strcpy(uname_info.platform, unknown_str);
-	strcpy(uname_info.os, CONFIG_UNAME_OSNAME);
-#if 0
-	/* Fedora does something like this */
-	strcpy(uname_info.processor, uname_info.name.machine);
-	strcpy(uname_info.platform, uname_info.name.machine);
-	if (uname_info.platform[0] == 'i'
-	 && uname_info.platform[1]
-	 && uname_info.platform[2] == '8'
-	 && uname_info.platform[3] == '6'
-	) {
-		uname_info.platform[1] = '3';
-	}
-#endif
-
-	delta = utsname_offset;
-	fmt = " %s" + 1;
-	do {
-		if (toprint & 1) {
-			const char *p = (char *)(&uname_info) + *delta;
-			if (p[0]) {
-				printf(fmt, p);
-				fmt = " %s";
-			}
+	{
+		char *fake_sparc = getenv("FAKE_SPARC");
+		if (fake_sparc && (fake_sparc[0] | 0x20) == 'y') {
+			strcpy(uname_info.name.machine, "sparc");
 		}
-		++delta;
-	} while (toprint >>= 1);
-	bb_putchar('\n');
+	}
+#endif
+	if (ENABLE_BB_ARCH && (!ENABLE_UNAME || applet_name[0] == 'a')) {
+		puts(uname_info.name.machine);
+	} else {
+#if ENABLE_UNAME
+		/* "uname" */
+		const char *fmt;
+		const unsigned short *delta;
+
+		strcpy(uname_info.processor, unknown_str);
+		strcpy(uname_info.platform, unknown_str);
+		strcpy(uname_info.os, CONFIG_UNAME_OSNAME);
+# if ENABLE_FEDORA_COMPAT
+		/* Fedora does something like this */
+		strcpy(uname_info.processor, uname_info.name.machine);
+		strcpy(uname_info.platform, uname_info.name.machine);
+		if (uname_info.platform[0] == 'i'
+		 && uname_info.platform[1]
+		 && uname_info.platform[2] == '8'
+		 && uname_info.platform[3] == '6'
+		) {
+			uname_info.platform[1] = '3';
+		}
+# endif
+		delta = utsname_offset;
+		fmt = " %s" + 1;
+		do {
+			if (toprint & 1) {
+				const char *p = (char *)(&uname_info) + *delta;
+				if (p[0]) {
+					printf(fmt, p);
+					fmt = " %s";
+				}
+			}
+			++delta;
+		} while (toprint >>= 1);
+		bb_putchar('\n');
+#endif
+	}
 
 	fflush_stdout_and_exit(EXIT_SUCCESS); /* coreutils-6.9 compat */
 }

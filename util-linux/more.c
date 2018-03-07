@@ -13,6 +13,19 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config MORE
+//config:	bool "more (6.7 kb)"
+//config:	default y
+//config:	help
+//config:	more is a simple utility which allows you to read text one screen
+//config:	sized page at a time. If you want to read text that is larger than
+//config:	the screen, and you are using anything faster than a 300 baud modem,
+//config:	you will probably find this utility very helpful. If you don't have
+//config:	any need to reading text files, you can leave this disabled.
+
+//applet:IF_MORE(APPLET(more, BB_DIR_BIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_MORE) += more.o
 
 //usage:#define more_trivial_usage
 //usage:       "[FILE]..."
@@ -26,33 +39,35 @@
 #include <conio.h>
 #endif
 #include "libbb.h"
-
-/* Support for FEATURE_USE_TERMIOS */
+#include "common_bufsiz.h"
 
 struct globals {
-	int cin_fileno;
+	int tty_fileno;
+	unsigned terminal_width;
+	unsigned terminal_height;
 	struct termios initial_settings;
-	struct termios new_settings;
 } FIX_ALIASING;
 #define G (*(struct globals*)bb_common_bufsiz1)
-#define INIT_G() ((void)0)
-#define initial_settings (G.initial_settings)
-#define new_settings     (G.new_settings    )
-#define cin_fileno       (G.cin_fileno      )
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
-#define setTermSettings(fd, argp) \
-do { \
-	if (ENABLE_FEATURE_USE_TERMIOS) \
-		tcsetattr(fd, TCSANOW, argp); \
-} while (0)
-#define getTermSettings(fd, argp) tcgetattr(fd, argp)
+static void get_wh(void)
+{
+	/* never returns w, h <= 1 */
+	get_terminal_width_height(G.tty_fileno, &G.terminal_width, &G.terminal_height);
+	G.terminal_height -= 1;
+}
+
+static void tcsetattr_tty_TCSANOW(struct termios *settings)
+{
+	tcsetattr(G.tty_fileno, TCSANOW, settings);
+}
 
 static void gotsig(int sig UNUSED_PARAM)
 {
 	/* bb_putchar_stderr doesn't use stdio buffering,
 	 * therefore it is safe in signal handler */
 	bb_putchar_stderr('\n');
-	setTermSettings(cin_fileno, &initial_settings);
+	tcsetattr_tty_TCSANOW(&G.initial_settings);
 	_exit(EXIT_FAILURE);
 }
 
@@ -62,48 +77,47 @@ int more_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int more_main(int argc UNUSED_PARAM, char **argv)
 {
 	int c = c; /* for compiler */
-	int lines;
 	int input = 0;
 	int spaces = 0;
 	int please_display_more_prompt;
-	struct stat st;
-	FILE *file;
-	FILE *cin;
-	int len;
-	unsigned terminal_width;
-	unsigned terminal_height;
+	FILE *tty;
 
 	INIT_G();
 
-	argv++;
+	/* Parse options */
+	/* Accepted but ignored: */
+	/* -d	Display help instead of ringing bell */
+	/* -f	Count logical lines (IOW: long lines are not folded) */
+	/* -l	Do not pause after any line containing a ^L (form feed) */
+	/* -s	Squeeze blank lines into one */
+	/* -u	Suppress underlining */
+	getopt32(argv, "dflsu");
+	argv += optind;
+
 	/* Another popular pager, most, detects when stdout
 	 * is not a tty and turns into cat. This makes sense. */
 	if (!isatty(STDOUT_FILENO))
 		return bb_cat(argv);
 #if !ENABLE_PLATFORM_MINGW32
-	cin = fopen_for_read(CURRENT_TTY);
-	if (!cin)
+	tty = fopen_for_read(CURRENT_TTY);
+	if (!tty)
 		return bb_cat(argv);
 #else
-	cin = stdin;
+	tty = stdin;
 #endif
 
-	if (ENABLE_FEATURE_USE_TERMIOS) {
-		cin_fileno = fileno(cin);
-		getTermSettings(cin_fileno, &initial_settings);
-		new_settings = initial_settings;
-		new_settings.c_lflag &= ~(ICANON | ECHO);
-		new_settings.c_cc[VMIN] = 1;
-		new_settings.c_cc[VTIME] = 0;
-		setTermSettings(cin_fileno, &new_settings);
-		bb_signals(0
-			+ (1 << SIGINT)
-			+ (1 << SIGQUIT)
-			+ (1 << SIGTERM)
-			, gotsig);
-	}
+	G.tty_fileno = fileno(tty);
+
+	/* Turn on unbuffered input; turn off echoing */
+	set_termios_to_raw(G.tty_fileno, &G.initial_settings, 0);
+	bb_signals(BB_FATAL_SIGS, gotsig);
 
 	do {
+		struct stat st;
+		FILE *file;
+		int len;
+		int lines;
+
 		file = stdin;
 		if (*argv) {
 			file = fopen_or_warn(*argv, "r");
@@ -113,17 +127,20 @@ int more_main(int argc UNUSED_PARAM, char **argv)
 		st.st_size = 0;
 		fstat(fileno(file), &st);
 
-		please_display_more_prompt = 0;
-		/* never returns w, h <= 1 */
-		get_terminal_width_height(fileno(cin), &terminal_width, &terminal_height);
-		terminal_height -= 1;
+		get_wh();
 
+		please_display_more_prompt = 0;
 		len = 0;
 		lines = 0;
-		while (spaces || (c = getc(file)) != EOF) {
+		for (;;) {
 			int wrap;
+
 			if (spaces)
 				spaces--;
+			else {
+				c = getc(file);
+				if (c == EOF) break;
+			}
  loop_top:
 			if (input != 'r' && please_display_more_prompt) {
 				len = printf("--More-- ");
@@ -135,7 +152,6 @@ int more_main(int argc UNUSED_PARAM, char **argv)
 						(int) ((uoff_t)ftello(file) / d),
 						st.st_size);
 				}
-				fflush_all();
 
 				/*
 				 * We've just displayed the "--More--" prompt, so now we need
@@ -143,22 +159,23 @@ int more_main(int argc UNUSED_PARAM, char **argv)
 				 */
 				for (;;) {
 #if !ENABLE_PLATFORM_MINGW32
-					input = getc(cin);
+					fflush_all();
+					input = getc(tty);
 #else
 					input = _getch();
 #endif
 					input = tolower(input);
-					if (!ENABLE_FEATURE_USE_TERMIOS)
-						printf("\033[A"); /* cursor up */
 					/* Erase the last message */
 					printf("\r%*s\r", len, "");
 
+					if (input == 'q')
+						goto end;
 					/* Due to various multibyte escape
 					 * sequences, it's not ok to accept
 					 * any input as a command to scroll
 					 * the screen. We only allow known
 					 * commands, else we show help msg. */
-					if (input == ' ' || input == '\n' || input == 'q' || input == 'r')
+					if (input == ' ' || input == '\n' || input == 'r')
 						break;
 #if ENABLE_PLATFORM_MINGW32
 					if (input == '\r')
@@ -170,15 +187,9 @@ int more_main(int argc UNUSED_PARAM, char **argv)
 				lines = 0;
 				please_display_more_prompt = 0;
 
-				if (input == 'q')
-					goto end;
-
 				/* The user may have resized the terminal.
 				 * Re-read the dimensions. */
-				if (ENABLE_FEATURE_USE_TERMIOS) {
-					get_terminal_width_height(cin_fileno, &terminal_width, &terminal_height);
-					terminal_height -= 1;
-				}
+				get_wh();
 			}
 
 			/* Crudely convert tabs into spaces, which are
@@ -198,11 +209,11 @@ int more_main(int argc UNUSED_PARAM, char **argv)
 			 * see if any characters have been hit in the _input_ stream. This
 			 * allows the user to quit while in the middle of a file.
 			 */
-			wrap = (++len > terminal_width);
+			wrap = (++len > G.terminal_width);
 			if (c == '\n' || wrap) {
 				/* Then outputting this character
 				 * will move us to a new line. */
-				if (++lines >= terminal_height || input == '\n')
+				if (++lines >= G.terminal_height || input == '\n')
 					please_display_more_prompt = 1;
 #if ENABLE_PLATFORM_MINGW32
 				if (input == '\r')
@@ -226,6 +237,6 @@ int more_main(int argc UNUSED_PARAM, char **argv)
 		fflush_all();
 	} while (*argv && *++argv);
  end:
-	setTermSettings(cin_fileno, &initial_settings);
+	tcsetattr_tty_TCSANOW(&G.initial_settings);
 	return 0;
 }

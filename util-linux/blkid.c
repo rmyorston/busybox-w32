@@ -6,6 +6,24 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
+//config:config BLKID
+//config:	bool "blkid (11 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	select VOLUMEID
+//config:	help
+//config:	Lists labels and UUIDs of all filesystems.
+//config:
+//config:config FEATURE_BLKID_TYPE
+//config:	bool "Print filesystem type"
+//config:	default y
+//config:	depends on BLKID
+//config:	help
+//config:	Show TYPE="filesystem type"
+
+//applet:IF_BLKID(APPLET_NOEXEC(blkid, blkid, BB_DIR_SBIN, BB_SUID_DROP, blkid))
+
+//kbuild:lib-$(CONFIG_BLKID) += blkid.o
 
 //usage:#define blkid_trivial_usage
 //usage:       "[BLOCKDEV]..."

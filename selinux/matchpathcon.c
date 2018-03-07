@@ -5,6 +5,17 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
+//config:config MATCHPATHCON
+//config:	bool "matchpathcon (6.1 kb)"
+//config:	default n
+//config:	depends on SELINUX
+//config:	help
+//config:	Enable support to get default security context of the
+//config:	specified path from the file contexts configuration.
+
+//applet:IF_MATCHPATHCON(APPLET(matchpathcon, BB_DIR_USR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_MATCHPATHCON) += matchpathcon.o
 
 //usage:#define matchpathcon_trivial_usage
 //usage:       "[-n] [-N] [-f file_contexts_file] [-p prefix] [-V]"
@@ -47,9 +58,13 @@ int matchpathcon_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opts;
 	char *fcontext, *prefix, *path;
 
-	opt_complementary = "-1" /* at least one param reqd */
-		":?:f--p:p--f"; /* mutually exclusive */
-	opts = getopt32(argv, "nNf:p:V", &fcontext, &prefix);
+	opts = getopt32(argv, "^"
+			"nNf:p:V"
+			"\0"
+			"-1" /* at least one param reqd */
+			":?:f--p:p--f" /* mutually exclusive */
+			, &fcontext, &prefix
+	);
 	argv += optind;
 
 	if (opts & OPT_NOT_TRANS) {
@@ -89,7 +104,7 @@ int matchpathcon_main(int argc UNUSED_PARAM, char **argv)
 			freecon(con);
 			continue;
 		}
-		printf("actual context unknown: %s, should be ", strerror(errno));
+		printf("actual context unknown: "STRERROR_FMT", should be " STRERROR_ERRNO);
 		error += print_matchpathcon(path, 1);
 	}
 	matchpathcon_fini();

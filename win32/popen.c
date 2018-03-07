@@ -1,5 +1,6 @@
 #include <fcntl.h>
 #include "libbb.h"
+#include "NUM_APPLETS.h"
 
 typedef struct {
 	PROCESS_INFORMATION piProcInfo;
@@ -90,13 +91,22 @@ FILE *mingw_popen(const char *cmd, const char *mode)
 		}
 	}
 
-	len = strlen(cmd) + 10 + count;
+	len = strlen(bb_busybox_exec_path) + strlen(cmd) + 32 + count;
 	if ( (cmd_buff=malloc(len)) == NULL ) {
 		return NULL;
 	}
 
+#if (ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE) && \
+		NUM_APPLETS > 1
+	if (find_applet_by_name("sh") >= 0) {
+		strcpy(cmd_buff, bb_busybox_exec_path);
+		strcat(cmd_buff, " --busybox sh -c \"");
+	}
+	else
+#endif
+		strcpy(cmd_buff, "sh -c \"");
+
 	/* escape double quotes */
-	strcpy(cmd_buff, "sh -c \"");
 	for ( s=cmd,t=cmd_buff+strlen(cmd_buff); *s; ++s ) {
 		if ( *s == '"' ) {
 			*t++ = '\\';
@@ -154,11 +164,11 @@ FILE *mingw_popen(const char *cmd, const char *mode)
 	p->pipe[ic] = INVALID_HANDLE_VALUE;
 
 	if ( *mode == 'r' ) {
-		fd = _open_osfhandle((long)p->pipe[ip], _O_RDONLY|_O_BINARY);
+		fd = _open_osfhandle((intptr_t)p->pipe[ip], _O_RDONLY|_O_BINARY);
 		fptr = _fdopen(fd, "rb");
 	}
 	else {
-		fd = _open_osfhandle((long)p->pipe[ip], _O_WRONLY|_O_BINARY);
+		fd = _open_osfhandle((intptr_t)p->pipe[ip], _O_WRONLY|_O_BINARY);
 		fptr = _fdopen(fd, "wb");
 	}
 
@@ -252,10 +262,10 @@ int mingw_popen_fd(const char *cmd, const char *mode, int fd0, pid_t *pid)
 	p->pipe[ic] = INVALID_HANDLE_VALUE;
 
 	if ( *mode == 'r' ) {
-		fd = _open_osfhandle((long)p->pipe[ip], _O_RDONLY|_O_BINARY);
+		fd = _open_osfhandle((intptr_t)p->pipe[ip], _O_RDONLY|_O_BINARY);
 	}
 	else {
-		fd = _open_osfhandle((long)p->pipe[ip], _O_WRONLY|_O_BINARY);
+		fd = _open_osfhandle((intptr_t)p->pipe[ip], _O_WRONLY|_O_BINARY);
 	}
 
 finito:

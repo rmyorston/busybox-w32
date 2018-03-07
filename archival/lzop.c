@@ -24,53 +24,73 @@
 
    "Minimalized" for busybox by Alain Knaff
 */
-
 //config:config LZOP
-//config:	bool "lzop"
+//config:	bool "lzop (13 kb)"
 //config:	default y
 //config:	help
-//config:	  Lzop compression/decompresion.
+//config:	Lzop compression/decompresion.
+//config:
+//config:config UNLZOP
+//config:	bool "unlzop (13 kb)"
+//config:	default n  # INCOMPAT: upstream lzop does not provide such tool
+//config:	help
+//config:	Lzop decompresion.
+//config:
+//config:config LZOPCAT
+//config:	bool "lzopcat (13 kb)"
+//config:	default n  # INCOMPAT: upstream lzop does not provide such tool
+//config:	help
+//config:	Alias to "lzop -dc".
 //config:
 //config:config LZOP_COMPR_HIGH
 //config:	bool "lzop compression levels 7,8,9 (not very useful)"
 //config:	default n
-//config:	depends on LZOP
+//config:	depends on LZOP || UNLZOP || LZOPCAT
 //config:	help
-//config:	  High levels (7,8,9) of lzop compression. These levels
-//config:	  are actually slower than gzip at equivalent compression ratios
-//config:	  and take up 3.2K of code.
+//config:	High levels (7,8,9) of lzop compression. These levels
+//config:	are actually slower than gzip at equivalent compression ratios
+//config:	and take up 3.2K of code.
 
 //applet:IF_LZOP(APPLET(lzop, BB_DIR_BIN, BB_SUID_DROP))
-//applet:IF_LZOP(APPLET_ODDNAME(lzopcat, lzop, BB_DIR_USR_BIN, BB_SUID_DROP, lzopcat))
-//applet:IF_LZOP(APPLET_ODDNAME(unlzop, lzop, BB_DIR_USR_BIN, BB_SUID_DROP, unlzop))
+//                  APPLET_ODDNAME:name     main  location        suid_type     help
+//applet:IF_UNLZOP( APPLET_ODDNAME(unlzop,  lzop, BB_DIR_USR_BIN, BB_SUID_DROP, unlzop))
+//applet:IF_LZOPCAT(APPLET_ODDNAME(lzopcat, lzop, BB_DIR_USR_BIN, BB_SUID_DROP, lzopcat))
+
 //kbuild:lib-$(CONFIG_LZOP) += lzop.o
+//kbuild:lib-$(CONFIG_UNLZOP) += lzop.o
+//kbuild:lib-$(CONFIG_LZOPCAT) += lzop.o
 
 //usage:#define lzop_trivial_usage
-//usage:       "[-cfvd123456789CF] [FILE]..."
+//usage:       "[-cfUvd123456789CF] [FILE]..."
 //usage:#define lzop_full_usage "\n\n"
 //usage:       "	-1..9	Compression level"
 //usage:     "\n	-d	Decompress"
 //usage:     "\n	-c	Write to stdout"
 //usage:     "\n	-f	Force"
+//usage:     "\n	-U	Delete input files"
+///////:     "\n	-k	Keep input files" (default, so why bother documenting?)
 //usage:     "\n	-v	Verbose"
 //usage:     "\n	-F	Don't store or verify checksum"
 //usage:     "\n	-C	Also write checksum of compressed block"
 //usage:
 //usage:#define lzopcat_trivial_usage
-//usage:       "[-vCF] [FILE]..."
+//usage:       "[-vF] [FILE]..."
 //usage:#define lzopcat_full_usage "\n\n"
 //usage:       "	-v	Verbose"
-//usage:     "\n	-F	Don't store or verify checksum"
+//usage:     "\n	-F	Don't verify checksum"
 //usage:
 //usage:#define unlzop_trivial_usage
-//usage:       "[-cfvCF] [FILE]..."
+//usage:       "[-cfUvF] [FILE]..."
 //usage:#define unlzop_full_usage "\n\n"
 //usage:       "	-c	Write to stdout"
 //usage:     "\n	-f	Force"
+//usage:     "\n	-U	Delete input files"
+///////:     "\n	-k	Keep input files" (default, so why bother documenting?)
 //usage:     "\n	-v	Verbose"
-//usage:     "\n	-F	Don't store or verify checksum"
+//usage:     "\n	-F	Don't verify checksum"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include "bb_archive.h"
 #include "liblzo_interface.h"
 
@@ -121,8 +141,7 @@ static void copy3(uint8_t* ip, const uint8_t* m_pos, unsigned off)
 #define TEST_OP		(op <= op_end)
 
 static NOINLINE int lzo1x_optimize(uint8_t *in, unsigned in_len,
-		uint8_t *out, unsigned *out_len,
-		void* wrkmem UNUSED_PARAM)
+		uint8_t *out, unsigned *out_len /*, void* wrkmem */)
 {
 	uint8_t* op;
 	uint8_t* ip;
@@ -443,8 +462,8 @@ struct globals {
 	chksum_t chksum_in;
 	chksum_t chksum_out;
 } FIX_ALIASING;
-#define G (*(struct globals*)&bb_common_bufsiz1)
-#define INIT_G() do { } while (0)
+#define G (*(struct globals*)bb_common_bufsiz1)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 //#define G (*ptr_to_globals)
 //#define INIT_G() do {
 //	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G)));
@@ -456,27 +475,33 @@ struct globals {
 //#define LZOP_VERSION_STRING     "1.01"
 //#define LZOP_VERSION_DATE       "Apr 27th 2003"
 
-#define OPTION_STRING "cfvqdt123456789CF"
+// lzop wants to be weird:
+// unlike all other compressosrs, its -k "keep" option is the default,
+// and -U is used to delete the source. We will invert the bit after getopt().
+#define OPTION_STRING "cfUvqdt123456789CFk"
 
 /* Note: must be kept in sync with archival/bbunzip.c */
 enum {
 	OPT_STDOUT      = (1 << 0),
 	OPT_FORCE       = (1 << 1),
-	OPT_VERBOSE     = (1 << 2),
-	OPT_QUIET       = (1 << 3),
-	OPT_DECOMPRESS  = (1 << 4),
-	OPT_TEST        = (1 << 5),
-	OPT_1           = (1 << 6),
-	OPT_2           = (1 << 7),
-	OPT_3           = (1 << 8),
-	OPT_4           = (1 << 9),
-	OPT_5           = (1 << 10),
-	OPT_6           = (1 << 11),
-	OPT_789         = (7 << 12),
+	OPT_KEEP        = (1 << 2),
+	OPT_VERBOSE     = (1 << 3),
+	OPT_QUIET       = (1 << 4),
+	OPT_DECOMPRESS  = (1 << 5),
+	OPT_TEST        = (1 << 6),
+	OPT_1           = (1 << 7),
+	OPT_2           = (1 << 8),
+	OPT_3           = (1 << 9),
+	OPT_4           = (1 << 10),
+	OPT_5           = (1 << 11),
+	OPT_6           = (1 << 12),
 	OPT_7           = (1 << 13),
 	OPT_8           = (1 << 14),
-	OPT_C           = (1 << 15),
-	OPT_F           = (1 << 16),
+	OPT_9           = (1 << 15),
+	OPT_C           = (1 << 16),
+	OPT_F           = (1 << 17),
+	OPT_k           = (1 << 18),
+	OPT_789         = OPT_7 | OPT_8 | OPT_9
 };
 
 /**********************************************************************/
@@ -698,7 +723,7 @@ static NOINLINE int lzo_compress(const header_t *h)
 			/* optimize */
 			if (h->method == M_LZO1X_999) {
 				unsigned new_len = src_len;
-				r = lzo1x_optimize(b2, dst_len, b1, &new_len, NULL);
+				r = lzo1x_optimize(b2, dst_len, b1, &new_len /*, NULL*/);
 				if (r != 0 /*LZO_E_OK*/ || new_len != src_len)
 					bb_error_msg_and_die("internal error - optimization failed");
 			}
@@ -833,9 +858,9 @@ static NOINLINE int lzo_decompress(const header_t *h)
 
 			/* decompress */
 //			if (option_mask32 & OPT_F)
-//				r = lzo1x_decompress(b1, src_len, b2, &d, NULL);
+//				r = lzo1x_decompress(b1, src_len, b2, &d /*, NULL*/);
 //			else
-				r = lzo1x_decompress_safe(b1, src_len, b2, &d, NULL);
+				r = lzo1x_decompress_safe(b1, src_len, b2, &d /*, NULL*/);
 
 			if (r != 0 /*LZO_E_OK*/ || dst_len != d) {
 				bb_error_msg_and_die("corrupted data");
@@ -895,7 +920,7 @@ static NOINLINE int lzo_decompress(const header_t *h)
  *                  chksum_out
  * The rest is identical.
 */
-static const unsigned char lzop_magic[9] = {
+static const unsigned char lzop_magic[9] ALIGN1 = {
 	0x89, 0x4c, 0x5a, 0x4f, 0x00, 0x0d, 0x0a, 0x1a, 0x0a
 };
 
@@ -1109,13 +1134,20 @@ int lzop_main(int argc UNUSED_PARAM, char **argv)
 {
 	getopt32(argv, OPTION_STRING);
 	argv += optind;
+	/* -U is "anti -k", invert bit for bbunpack(): */
+	option_mask32 ^= OPT_KEEP;
+	/* -k disables -U (if any): */
+	/* opt_complementary "k-U"? - nope, only handles -Uk, not -kU */
+	if (option_mask32 & OPT_k)
+		option_mask32 |= OPT_KEEP;
+
 	/* lzopcat? */
-	if (applet_name[4] == 'c')
+	if (ENABLE_LZOPCAT && applet_name[4] == 'c')
 		option_mask32 |= (OPT_STDOUT | OPT_DECOMPRESS);
 	/* unlzop? */
-	if (applet_name[4] == 'o')
+	if (ENABLE_UNLZOP && applet_name[4] == 'o')
 		option_mask32 |= OPT_DECOMPRESS;
 
-	global_crc32_table = crc32_filltable(NULL, 0);
+	global_crc32_new_table_le();
 	return bbunpack(argv, pack_lzop, make_new_name_lzop, /*unused:*/ NULL);
 }

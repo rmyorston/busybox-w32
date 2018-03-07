@@ -9,6 +9,15 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config CHMOD
+//config:	bool "chmod (5.1 kb)"
+//config:	default y
+//config:	help
+//config:	chmod is used to change the access permission of files.
+
+//applet:IF_CHMOD(APPLET_NOEXEC(chmod, chmod, BB_DIR_BIN, BB_SUID_DROP, chmod))
+
+//kbuild:lib-$(CONFIG_CHMOD) += chmod.o
 
 /* BB_AUDIT SUSv3 compliant */
 /* BB_AUDIT GNU defects - unsupported long options. */
@@ -114,8 +123,7 @@ int chmod_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	/* Parse options */
-	opt_complementary = "-2";
-	getopt32(argv, ("-"OPT_STR) + 1); /* Reuse string */
+	getopt32(argv, "^" OPT_STR "\0" "-2");
 	argv += optind;
 
 	/* Restore option-like mode if needed */

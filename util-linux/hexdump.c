@@ -8,24 +8,54 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config HEXDUMP
+//config:	bool "hexdump (8.8 kb)"
+//config:	default y
+//config:	help
+//config:	The hexdump utility is used to display binary data in a readable
+//config:	way that is comparable to the output from most hex editors.
+//config:
+//config:config FEATURE_HEXDUMP_REVERSE
+//config:	bool "Support -R, reverse of 'hexdump -Cv'"
+//config:	default y
+//config:	depends on HEXDUMP
+//config:	help
+//config:	The hexdump utility is used to display binary data in an ascii
+//config:	readable way. This option creates binary data from an ascii input.
+//config:	NB: this option is non-standard. It's unwise to use it in scripts
+//config:	aimed to be portable.
+//config:
+//config:config HD
+//config:	bool "hd (8 kb)"
+//config:	default y
+//config:	help
+//config:	hd is an alias to hexdump -C.
+
+//applet:IF_HEXDUMP(APPLET_NOEXEC(hexdump, hexdump, BB_DIR_USR_BIN, BB_SUID_DROP, hexdump))
+//applet:IF_HD(APPLET_NOEXEC(hd, hexdump, BB_DIR_USR_BIN, BB_SUID_DROP, hd))
+
+//kbuild:lib-$(CONFIG_HEXDUMP) += hexdump.o
+//kbuild:lib-$(CONFIG_HD) += hexdump.o
 
 //usage:#define hexdump_trivial_usage
 //usage:       "[-bcCdefnosvx" IF_FEATURE_HEXDUMP_REVERSE("R") "] [FILE]..."
 //usage:#define hexdump_full_usage "\n\n"
 //usage:       "Display FILEs (or stdin) in a user specified format\n"
-//usage:     "\n	-b		One-byte octal display"
-//usage:     "\n	-c		One-byte character display"
-//usage:     "\n	-C		Canonical hex+ASCII, 16 bytes per line"
-//usage:     "\n	-d		Two-byte decimal display"
-//usage:     "\n	-e FORMAT_STRING"
+//usage:     "\n	-b		1-byte octal display"
+//usage:     "\n	-c		1-byte character display"
+//usage:     "\n	-d		2-byte decimal display"
+//usage:     "\n	-o		2-byte octal display"
+//usage:     "\n	-x		2-byte hex display"
+//usage:     "\n	-C		hex+ASCII 16 bytes per line"
+//usage:     "\n	-v		Show all (no dup folding)"
+//usage:     "\n	-e FORMAT_STR	Example: '16/1 \"%02x|\"\"\\n\"'"
 //usage:     "\n	-f FORMAT_FILE"
-//usage:     "\n	-n LENGTH	Interpret only LENGTH bytes of input"
-//usage:     "\n	-o		Two-byte octal display"
+// exactly the same help text lines in hexdump and xxd:
+//usage:     "\n	-n LENGTH	Show only first LENGTH bytes"
 //usage:     "\n	-s OFFSET	Skip OFFSET bytes"
-//usage:     "\n	-v		Display all input data"
-//usage:     "\n	-x		Two-byte hexadecimal display"
 //usage:	IF_FEATURE_HEXDUMP_REVERSE(
 //usage:     "\n	-R		Reverse of 'hexdump -Cv'")
+// TODO: NONCOMPAT!!! move -R to xxd -r
 //usage:
 //usage:#define hd_trivial_usage
 //usage:       "FILE..."
@@ -55,11 +85,11 @@ static void bb_dump_addfile(dumper_t *dumper, char *name)
 }
 
 static const char *const add_strings[] = {
-	"\"%07.7_ax \" 16/1 \"%03o \" \"\\n\"",   /* b */
-	"\"%07.7_ax \" 16/1 \"%3_c \" \"\\n\"",   /* c */
-	"\"%07.7_ax \" 8/2 \"  %05u \" \"\\n\"",  /* d */
-	"\"%07.7_ax \" 8/2 \" %06o \" \"\\n\"",   /* o */
-	"\"%07.7_ax \" 8/2 \"   %04x \" \"\\n\"", /* x */
+	"\"%07.7_ax \"16/1 \"%03o \"\"\n\"",   /* b */
+	"\"%07.7_ax \"16/1 \"%3_c \"\"\n\"",   /* c */
+	"\"%07.7_ax \"8/2 \"  %05u \"\"\n\"",  /* d */
+	"\"%07.7_ax \"8/2 \" %06o \"\"\n\"",   /* o */
+	"\"%07.7_ax \"8/2 \"   %04x \"\"\n\"", /* x */
 };
 
 static const char add_first[] ALIGN1 = "\"%07.7_Ax\n\"";
@@ -77,7 +107,9 @@ int hexdump_main(int argc, char **argv)
 	smallint rdump = 0;
 #endif
 
-	if (ENABLE_HD && !applet_name[2]) { /* we are "hd" */
+	if (ENABLE_HD
+	 && (!ENABLE_HEXDUMP || !applet_name[2])
+	) { /* we are "hd" */
 		ch = 'C';
 		goto hd_applet;
 	}
@@ -95,9 +127,11 @@ int hexdump_main(int argc, char **argv)
 		/* Save a little bit of space below by omitting the 'else's. */
 		if (ch == 'C') {
  hd_applet:
-			bb_dump_add(dumper, "\"%08.8_Ax\n\"");
-			bb_dump_add(dumper, "\"%08.8_ax  \" 8/1 \"%02x \" \"  \" 8/1 \"%02x \" ");
-			bb_dump_add(dumper, "\"  |\" 16/1 \"%_p\" \"|\\n\"");
+			bb_dump_add(dumper, "\"%08.8_Ax\n\""); // final address line after dump
+			//------------------- "address  "   8 * "xx "    "  "  8 * "xx "
+			bb_dump_add(dumper, "\"%08.8_ax  \"8/1 \"%02x \"\"  \"8/1 \"%02x \"");
+			//------------------- "  |ASCII...........|\n"
+			bb_dump_add(dumper, "\"  |\"16/1 \"%_p\"\"|\n\"");
 		}
 		if (ch == 'e') {
 			bb_dump_add(dumper, optarg);
@@ -128,7 +162,7 @@ int hexdump_main(int argc, char **argv)
 
 	if (!dumper->fshead) {
 		bb_dump_add(dumper, add_first);
-		bb_dump_add(dumper, "\"%07.7_ax \" 8/2 \"%04x \" \"\\n\"");
+		bb_dump_add(dumper, "\"%07.7_ax \"8/2 \"%04x \"\"\n\"");
 	}
 
 	argv += optind;

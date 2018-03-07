@@ -38,7 +38,9 @@
 #include <unistd.h>
 #include <limits.h>
 #include <sys/types.h>
+#ifndef __MINGW32__
 #include <sys/wait.h>
+#endif
 //bbox disabled: #include <alloca.h>
 
 /* exitstatus is used to keep track of any failing calls to kernel-doc,
@@ -78,12 +80,24 @@ void usage (void)
  */
 void exec_kernel_doc(char **svec)
 {
+#ifndef __MINGW32__
 	pid_t pid;
 	int ret;
+#endif
 	char *real_filename;
 	int rflen;
 
 	/* Make sure output generated so far are flushed */
+#ifdef __MINGW32__
+	fflush(stdout);
+	rflen  = strlen(getenv("SRCTREE"));
+	rflen += strlen(KERNELDOCPATH KERNELDOC);
+	real_filename = alloca(rflen + 1);
+	strcpy(real_filename, getenv("SRCTREE"));
+	strcat(real_filename, KERNELDOCPATH KERNELDOC);
+	fprintf(stderr, "NOTIMPL: exec %s\n", real_filename);
+	exit(1);
+#else
 	fflush(stdout);
 	switch(pid=fork()) {
 		case -1:
@@ -106,6 +120,7 @@ void exec_kernel_doc(char **svec)
 		exitstatus |= WEXITSTATUS(ret);
 	else
 		exitstatus = 0xff;
+#endif
 }
 
 /* Types used to create list of all exported symbols in a number of files */

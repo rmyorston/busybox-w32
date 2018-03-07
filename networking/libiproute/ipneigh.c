@@ -6,8 +6,8 @@
  *
  * Ported to Busybox by:  Curt Brune <curt@cumulusnetworks.com>
  */
-
 #include "ip_common.h"  /* #include "libbb.h" is inside */
+#include "common_bufsiz.h"
 #include "rt_names.h"
 #include "utils.h"
 #include <linux/neighbour.h>
@@ -40,7 +40,8 @@ struct filter_t {
 } FIX_ALIASING;
 typedef struct filter_t filter_t;
 
-#define G_filter (*(filter_t*)&bb_common_bufsiz1)
+#define G_filter (*(filter_t*)bb_common_bufsiz1)
+#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 static int flush_update(void)
 {
@@ -60,7 +61,7 @@ static unsigned nud_state_a2n(char *arg)
 		"stale\0"     "incomplete\0"  "delay\0"  "probe\0"
 		"failed\0"
 		;
-	static uint8_t nuds[] = {
+	static uint8_t nuds[] ALIGN1 = {
 		NUD_PERMANENT,NUD_REACHABLE, NUD_NOARP,NUD_NONE,
 		NUD_STALE,    NUD_INCOMPLETE,NUD_DELAY,NUD_PROBE,
 		NUD_FAILED
@@ -109,11 +110,13 @@ static int FAST_FUNC print_neigh(const struct sockaddr_nl *who UNUSED_PARAM,
 		return 0;
 	if (G_filter.index && G_filter.index != r->ndm_ifindex)
 		return 0;
-	if (!(G_filter.state&r->ndm_state) &&
-	    !(r->ndm_flags & NTF_PROXY) &&
-	    (r->ndm_state || !(G_filter.state & 0x100)) &&
-	    (r->ndm_family != AF_DECnet))
+	if (!(G_filter.state&r->ndm_state)
+	 && !(r->ndm_flags & NTF_PROXY)
+	 && (r->ndm_state || !(G_filter.state & 0x100))
+	 && (r->ndm_family != AF_DECnet)
+	) {
 		return 0;
+	}
 
 	parse_rtattr(tb, NDA_MAX, NDA_RTA(r), n->nlmsg_len - NLMSG_LENGTH(sizeof(*r)));
 
@@ -337,6 +340,8 @@ int FAST_FUNC do_ipneigh(char **argv)
 	static const char ip_neigh_commands[] ALIGN1 =
 		/*0-1*/	"show\0"  "flush\0";
 	int command_num;
+
+	INIT_G();
 
 	if (!*argv)
 		return ipneigh_list_or_flush(argv, 0);

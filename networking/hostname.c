@@ -9,6 +9,24 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config HOSTNAME
+//config:	bool "hostname (5.6 kb)"
+//config:	default y
+//config:	help
+//config:	Show or set the system's host name.
+//config:
+//config:config DNSDOMAINNAME
+//config:	bool "dnsdomainname (3.6 kb)"
+//config:	default y
+//config:	help
+//config:	Alias to "hostname -d".
+
+//                        APPLET_NOEXEC:name           main      location    suid_type     help
+//applet:IF_DNSDOMAINNAME(APPLET_NOEXEC(dnsdomainname, hostname, BB_DIR_BIN, BB_SUID_DROP, dnsdomainname))
+//applet:IF_HOSTNAME(     APPLET_NOEXEC(hostname,      hostname, BB_DIR_BIN, BB_SUID_DROP, hostname     ))
+
+//kbuild: lib-$(CONFIG_HOSTNAME) += hostname.o
+//kbuild: lib-$(CONFIG_DNSDOMAINNAME) += hostname.o
 
 //usage:#define hostname_trivial_usage
 //usage:       "[OPTIONS] [HOSTNAME | -F FILE]"
@@ -95,7 +113,7 @@ static void do_sethostname(char *s, int isfile)
  *  { bbox: not supported }
  * -F, --file filename
  *  Read the host name from the specified file. Comments (lines
- *  starting with a `#') are ignored.
+ *  starting with a '#') are ignored.
  */
 int hostname_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int hostname_main(int argc UNUSED_PARAM, char **argv)
@@ -113,8 +131,9 @@ int hostname_main(int argc UNUSED_PARAM, char **argv)
 	char *buf;
 	char *hostname_str;
 
-#if ENABLE_LONG_OPTS
-	applet_long_options =
+	/* dnsdomainname from net-tools 1.60, hostname 1.100 (2001-04-14),
+	 * supports hostname's options too (not just -v as manpage says) */
+	opts = getopt32(argv, "dfisF:v", &hostname_str,
 		"domain\0"     No_argument "d"
 		"fqdn\0"       No_argument "f"
 	//Enable if seen in active use in some distro:
@@ -123,16 +142,15 @@ int hostname_main(int argc UNUSED_PARAM, char **argv)
 	//	"short\0"      No_argument "s"
 	//	"verbose\0"    No_argument "v"
 		"file\0"       No_argument "F"
-		;
-
-#endif
-	/* dnsdomainname from net-tools 1.60, hostname 1.100 (2001-04-14),
-	 * supports hostname's options too (not just -v as manpage says) */
-	opts = getopt32(argv, "dfisF:v", &hostname_str);
+	);
 	argv += optind;
 	buf = safe_gethostname();
-	if (applet_name[0] == 'd') /* dnsdomainname? */
-		opts = OPT_d;
+	if (ENABLE_DNSDOMAINNAME) {
+		if (!ENABLE_HOSTNAME || applet_name[0] == 'd') {
+			/* dnsdomainname */
+			opts = OPT_d;
+		}
+	}
 
 	if (opts & OPT_dfi) {
 		/* Cases when we need full hostname (or its part) */

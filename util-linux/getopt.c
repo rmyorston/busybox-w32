@@ -1,11 +1,10 @@
 /* vi: set sw=4 ts=4: */
 /*
  * getopt.c - Enhanced implementation of BSD getopt(1)
- *   Copyright (c) 1997, 1998, 1999, 2000  Frodo Looijaard <frodol@dds.nl>
+ * Copyright (c) 1997, 1998, 1999, 2000  Frodo Looijaard <frodol@dds.nl>
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
 /*
  * Version 1.0-b4: Tue Sep 23 1997. First public release.
  * Version 1.0: Wed Nov 19 1997.
@@ -28,26 +27,32 @@
  *  Removed --version/-V and --help/-h
  *  Removed parse_error(), using bb_error_msg() from Busybox instead
  *  Replaced our_malloc with xmalloc and our_realloc with xrealloc
- *
  */
+//config:config GETOPT
+//config:	bool "getopt (5.6 kb)"
+//config:	default y
+//config:	help
+//config:	The getopt utility is used to break up (parse) options in command
+//config:	lines to make it easy to write complex shell scripts that also check
+//config:	for legal (and illegal) options. If you want to write horribly
+//config:	complex shell scripts, or use some horribly complex shell script
+//config:	written by others, this utility may be for you. Most people will
+//config:	wisely leave this disabled.
+//config:
+//config:config FEATURE_GETOPT_LONG
+//config:	bool "Support -l LONGOPTs"
+//config:	default y
+//config:	depends on GETOPT && LONG_OPTS
+//config:	help
+//config:	Enable support for long options (option -l).
+
+//applet:IF_GETOPT(APPLET_NOEXEC(getopt, getopt, BB_DIR_BIN, BB_SUID_DROP, getopt))
+
+//kbuild:lib-$(CONFIG_GETOPT) += getopt.o
 
 //usage:#define getopt_trivial_usage
 //usage:       "[OPTIONS] [--] OPTSTRING PARAMS"
 //usage:#define getopt_full_usage "\n\n"
-//usage:	IF_LONG_OPTS(
-//usage:	IF_FEATURE_GETOPT_LONG(
-//usage:       "	-a,--alternative		Allow long options starting with single -\n"
-//usage:       "	-l,--longoptions=LOPT[,...]	Long options to recognize\n"
-//usage:	)
-//usage:       "	-n,--name=PROGNAME		The name under which errors are reported"
-//usage:     "\n	-o,--options=OPTSTRING		Short options to recognize"
-//usage:     "\n	-q,--quiet			No error messages on unrecognized options"
-//usage:     "\n	-Q,--quiet-output		No normal output"
-//usage:     "\n	-s,--shell=SHELL		Set shell quoting conventions"
-//usage:     "\n	-T,--test			Version test (exits with 4)"
-//usage:     "\n	-u,--unquoted			Don't quote output"
-//usage:	)
-//usage:	IF_NOT_LONG_OPTS(
 //usage:	IF_FEATURE_GETOPT_LONG(
 //usage:       "	-a		Allow long options starting with single -\n"
 //usage:       "	-l LOPT[,...]	Long options to recognize\n"
@@ -59,7 +64,6 @@
 //usage:     "\n	-s SHELL	Set shell quoting conventions"
 //usage:     "\n	-T		Version test (exits with 4)"
 //usage:     "\n	-u		Don't quote output"
-//usage:	)
 //usage:	IF_FEATURE_GETOPT_LONG( /* example uses -l, needs FEATURE_GETOPT_LONG */
 //usage:     "\n"
 //usage:     "\nExample:"
@@ -226,12 +230,7 @@ static int generate_output(char **argv, int argc, const char *optstr, const stru
 
 	/* We used it already in main() in getopt32(),
 	 * we *must* reset getopt(3): */
-#ifdef __GLIBC__
-	optind = 0;
-#else /* BSD style */
-	optind = 1;
-	/* optreset = 1; */
-#endif
+	GETOPT_RESET();
 
 	while (1) {
 #if ENABLE_FEATURE_GETOPT_LONG
@@ -327,9 +326,9 @@ static struct option *add_long_options(struct option *long_options, char *option
 
 static void set_shell(const char *new_shell)
 {
-	if (!strcmp(new_shell, "bash") || !strcmp(new_shell, "sh"))
+	if (strcmp(new_shell, "bash") == 0 || strcmp(new_shell, "sh") == 0)
 		return;
-	if (!strcmp(new_shell, "tcsh") || !strcmp(new_shell, "csh"))
+	if (strcmp(new_shell, "tcsh") == 0 || strcmp(new_shell, "csh") == 0)
 		option_mask32 |= SHELL_IS_TCSH;
 	else
 		bb_error_msg("unknown shell '%s', assuming bash", new_shell);
@@ -396,9 +395,7 @@ int getopt_main(int argc, char **argv)
 #if !ENABLE_FEATURE_GETOPT_LONG
 	opt = getopt32(argv, "+o:n:qQs:Tu", &optstr, &name, &s_arg);
 #else
-	applet_long_options = getopt_longopts;
-	opt_complementary = "l::";
-	opt = getopt32(argv, "+o:n:qQs:Tual:",
+	opt = getopt32long(argv, "+o:n:qQs:Tual:*", getopt_longopts,
 					&optstr, &name, &s_arg, &l_arg);
 	/* Effectuate the read options for the applet itself */
 	while (l_arg) {

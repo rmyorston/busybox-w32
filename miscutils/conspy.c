@@ -9,20 +9,19 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config CONSPY
+//config:	bool "conspy (10 kb)"
+//config:	default y
+//config:	select PLATFORM_LINUX
+//config:	help
+//config:	A text-mode VNC like program for Linux virtual terminals.
+//config:	example:  conspy NUM      shared access to console num
+//config:	or        conspy -nd NUM  screenshot of console num
+//config:	or        conspy -cs NUM  poor man's GNU screen like
 
 //applet:IF_CONSPY(APPLET(conspy, BB_DIR_BIN, BB_SUID_DROP))
 
 //kbuild:lib-$(CONFIG_CONSPY) += conspy.o
-
-//config:config CONSPY
-//config:	bool "conspy"
-//config:	default y
-//config:	select PLATFORM_LINUX
-//config:	help
-//config:	  A text-mode VNC like program for Linux virtual terminals.
-//config:	  example:  conspy NUM      shared access to console num
-//config:	  or        conspy -nd NUM  screenshot of console num
-//config:	  or        conspy -cs NUM  poor man's GNU screen like
 
 //usage:#define conspy_trivial_usage
 //usage:	"[-vcsndfFQ] [-x COL] [-y LINE] [CONSOLE_NO]"
@@ -42,6 +41,7 @@
 //usage:     "\n	-y LINE	Starting line"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include <sys/kd.h>
 
 #define ESC "\033"
@@ -363,13 +363,11 @@ int conspy_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int conspy_main(int argc UNUSED_PARAM, char **argv)
 {
 	char tty_name[sizeof(DEV_TTY "NN")];
-#define keybuf bb_common_bufsiz1
-	struct termios termbuf;
 	unsigned opts;
 	unsigned ttynum;
 	int poll_timeout_ms;
 #if ENABLE_LONG_OPTS
-	static const char getopt_longopts[] ALIGN1 =
+	static const char conspy_longopts[] ALIGN1 =
 		"viewonly\0"     No_argument "v"
 		"createdevice\0" No_argument "c"
 		"neverquit\0"    No_argument "Q"
@@ -379,14 +377,15 @@ int conspy_main(int argc UNUSED_PARAM, char **argv)
 		"follow\0"       No_argument "f"
 		"framebuffer\0"  No_argument "F"
 		;
-
-	applet_long_options = getopt_longopts;
 #endif
+#define keybuf bb_common_bufsiz1
+	setup_common_bufsiz();
+
 	INIT_G();
 	strcpy(G.vcsa_name, DEV_VCSA);
 
-	opt_complementary = "x+:y+"; // numeric params
-	opts = getopt32(argv, "vcQsndfFx:y:", &G.x, &G.y);
+	// numeric params
+	opts = getopt32long(argv, "vcQsndfFx:+y:+", conspy_longopts, &G.x, &G.y);
 	argv += optind;
 	ttynum = 0;
 	if (argv[0]) {
@@ -412,16 +411,14 @@ int conspy_main(int argc UNUSED_PARAM, char **argv)
 
 	bb_signals(BB_FATAL_SIGS, cleanup);
 
-	// All characters must be passed through to us unaltered
 	G.kbd_fd = xopen(CURRENT_TTY, O_RDONLY);
-	tcgetattr(G.kbd_fd, &G.term_orig);
-	termbuf = G.term_orig;
-	termbuf.c_iflag &= ~(BRKINT|INLCR|ICRNL|IXON|IXOFF|IUCLC|IXANY|IMAXBEL);
-	//termbuf.c_oflag &= ~(OPOST); - no, we still want \n -> \r\n
-	termbuf.c_lflag &= ~(ISIG|ICANON|ECHO);
-	termbuf.c_cc[VMIN] = 1;
-	termbuf.c_cc[VTIME] = 0;
-	tcsetattr(G.kbd_fd, TCSANOW, &termbuf);
+
+	// All characters must be passed through to us unaltered
+	set_termios_to_raw(G.kbd_fd, &G.term_orig, 0
+		| TERMIOS_CLEAR_ISIG // no signals on ^C ^Z etc
+		| TERMIOS_RAW_INPUT  // turn off all input conversions
+	);
+	//Note: termios.c_oflag &= ~(OPOST); - no, we still want \n -> \r\n
 
 	poll_timeout_ms = 250;
 	while (1) {
@@ -513,7 +510,7 @@ int conspy_main(int argc UNUSED_PARAM, char **argv)
 		default:
 			// Read the keys pressed
 			k = keybuf + G.key_count;
-			bytes_read = read(G.kbd_fd, k, sizeof(keybuf) - G.key_count);
+			bytes_read = read(G.kbd_fd, k, COMMON_BUFSIZE - G.key_count);
 			if (bytes_read < 0)
 				goto abort;
 

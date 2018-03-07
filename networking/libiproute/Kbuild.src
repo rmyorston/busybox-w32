@@ -12,6 +12,12 @@ INSERT
 lib-$(CONFIG_SLATTACH) += \
 	utils.o
 
+lib-$(CONFIG_TC) += \
+	libnetlink.o \
+	ll_map.o \
+	ll_proto.o \
+	utils.o
+
 lib-$(CONFIG_IP) += \
 	ip_parse_common_args.o \
 	libnetlink.o \
@@ -62,13 +68,16 @@ lib-$(CONFIG_FEATURE_IP_TUNNEL) += \
 lib-$(CONFIG_FEATURE_IP_RULE) += \
 	ip_parse_common_args.o \
 	iprule.o \
+	libnetlink.o \
 	rt_names.o \
+	rtm_map.o \
 	utils.o
 
 lib-$(CONFIG_FEATURE_IP_NEIGH) += \
 	ip_parse_common_args.o \
 	ipneigh.o \
 	libnetlink.o \
+	ll_addr.o \
 	ll_map.o \
 	rt_names.o \
 	utils.o

@@ -7,14 +7,14 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config LOGGER
-//config:	bool "logger"
+//config:	bool "logger (6.4 kb)"
 //config:	default y
 //config:	select FEATURE_SYSLOG
 //config:	help
-//config:	    The logger utility allows you to send arbitrary text
-//config:	    messages to the system log (i.e. the 'syslogd' utility) so
-//config:	    they can be logged. This is generally used to help locate
-//config:	    problems that occur within programs and scripts.
+//config:	The logger utility allows you to send arbitrary text
+//config:	messages to the system log (i.e. the 'syslogd' utility) so
+//config:	they can be logged. This is generally used to help locate
+//config:	problems that occur within programs and scripts.
 
 //applet:IF_LOGGER(APPLET(logger, BB_DIR_USR_BIN, BB_SUID_DROP))
 
@@ -77,14 +77,14 @@ static int pencode(char *s)
 		;
 	if (*s) {
 		*s = '\0';
-		fac = decode(save, facilitynames);
+		fac = decode(save, bb_facilitynames);
 		if (fac < 0)
 			bb_error_msg_and_die("unknown %s name: %s", "facility", save);
 		*s++ = '.';
 	} else {
 		s = save;
 	}
-	lev = decode(s, prioritynames);
+	lev = decode(s, bb_prioritynames);
 	if (lev < 0)
 		bb_error_msg_and_die("unknown %s name: %s", "priority", save);
 	return ((lev & LOG_PRIMASK) | (fac & LOG_FACMASK));
@@ -98,6 +98,8 @@ int logger_main(int argc UNUSED_PARAM, char **argv)
 	char *str_p, *str_t;
 	int opt;
 	int i = 0;
+
+	setup_common_bufsiz();
 
 	/* Fill out the name string early (may be overwritten later) */
 	str_t = uid2uname_utoa(geteuid());
@@ -165,7 +167,7 @@ int logger_main(int argc UNUSED_PARAM, char **argv)
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ''AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE

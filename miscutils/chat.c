@@ -7,16 +7,87 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
+//config:config CHAT
+//config:	bool "chat (6.6 kb)"
+//config:	default y
+//config:	help
+//config:	Simple chat utility.
+//config:
+//config:config FEATURE_CHAT_NOFAIL
+//config:	bool "Enable NOFAIL expect strings"
+//config:	depends on CHAT
+//config:	default y
+//config:	help
+//config:	When enabled expect strings which are started with a dash trigger
+//config:	no-fail mode. That is when expectation is not met within timeout
+//config:	the script is not terminated but sends next SEND string and waits
+//config:	for next EXPECT string. This allows to compose far more flexible
+//config:	scripts.
+//config:
+//config:config FEATURE_CHAT_TTY_HIFI
+//config:	bool "Force STDIN to be a TTY"
+//config:	depends on CHAT
+//config:	default n
+//config:	help
+//config:	Original chat always treats STDIN as a TTY device and sets for it
+//config:	so-called raw mode. This option turns on such behaviour.
+//config:
+//config:config FEATURE_CHAT_IMPLICIT_CR
+//config:	bool "Enable implicit Carriage Return"
+//config:	depends on CHAT
+//config:	default y
+//config:	help
+//config:	When enabled make chat to terminate all SEND strings with a "\r"
+//config:	unless "\c" is met anywhere in the string.
+//config:
+//config:config FEATURE_CHAT_SWALLOW_OPTS
+//config:	bool "Swallow options"
+//config:	depends on CHAT
+//config:	default y
+//config:	help
+//config:	Busybox chat require no options. To make it not fail when used
+//config:	in place of original chat (which has a bunch of options) turn
+//config:	this on.
+//config:
+//config:config FEATURE_CHAT_SEND_ESCAPES
+//config:	bool "Support weird SEND escapes"
+//config:	depends on CHAT
+//config:	default y
+//config:	help
+//config:	Original chat uses some escape sequences in SEND arguments which
+//config:	are not sent to device but rather performs special actions.
+//config:	E.g. "\K" means to send a break sequence to device.
+//config:	"\d" delays execution for a second, "\p" -- for a 1/100 of second.
+//config:	Before turning this option on think twice: do you really need them?
+//config:
+//config:config FEATURE_CHAT_VAR_ABORT_LEN
+//config:	bool "Support variable-length ABORT conditions"
+//config:	depends on CHAT
+//config:	default y
+//config:	help
+//config:	Original chat uses fixed 50-bytes length ABORT conditions. Say N here.
+//config:
+//config:config FEATURE_CHAT_CLR_ABORT
+//config:	bool "Support revoking of ABORT conditions"
+//config:	depends on CHAT
+//config:	default y
+//config:	help
+//config:	Support CLR_ABORT directive.
+
+//applet:IF_CHAT(APPLET(chat, BB_DIR_USR_SBIN, BB_SUID_DROP))
+
+//kbuild:lib-$(CONFIG_CHAT) += chat.o
 
 //usage:#define chat_trivial_usage
 //usage:       "EXPECT [SEND [EXPECT [SEND...]]]"
 //usage:#define chat_full_usage "\n\n"
 //usage:       "Useful for interacting with a modem connected to stdin/stdout.\n"
-//usage:       "A script consists of one or more \"expect-send\" pairs of strings,\n"
-//usage:       "each pair is a pair of arguments. Example:\n"
+//usage:       "A script consists of \"expect-send\" argument pairs.\n"
+//usage:       "Example:\n"
 //usage:       "chat '' ATZ OK ATD123456 CONNECT '' ogin: pppuser word: ppppass '~'"
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 
 // default timeout: 45 sec
 #define DEFAULT_CHAT_TIMEOUT 45*1000
@@ -142,6 +213,7 @@ int chat_main(int argc UNUSED_PARAM, char **argv)
 		, signal_handler);
 
 #if ENABLE_FEATURE_CHAT_TTY_HIFI
+//TODO: use set_termios_to_raw()
 	tcgetattr(STDIN_FILENO, &tio);
 	tio0 = tio;
 	cfmakeraw(&tio);
@@ -166,10 +238,18 @@ int chat_main(int argc UNUSED_PARAM, char **argv)
 			, *argv
 		);
 		if (key >= 0) {
+			bool onoff;
 			// cache directive value
 			char *arg = *++argv;
+
+			if (!arg) {
+#if ENABLE_FEATURE_CHAT_TTY_HIFI
+				tcsetattr(STDIN_FILENO, TCSAFLUSH, &tio0);
+#endif
+				bb_show_usage();
+			}
 			// OFF -> 0, anything else -> 1
-			bool onoff = (0 != strcmp("OFF", arg));
+			onoff = (0 != strcmp("OFF", arg));
 			// process directive
 			if (DIR_HANGUP == key) {
 				// turn SIGHUP on/off
@@ -285,9 +365,10 @@ int chat_main(int argc UNUSED_PARAM, char **argv)
 			    && poll(&pfd, 1, timeout) > 0
 			    && (pfd.revents & POLLIN)
 			) {
-#define buf bb_common_bufsiz1
 				llist_t *l;
 				ssize_t delta;
+#define buf bb_common_bufsiz1
+				setup_common_bufsiz();
 
 				// read next char from device
 				if (safe_read(STDIN_FILENO, buf+buf_len, 1) > 0) {

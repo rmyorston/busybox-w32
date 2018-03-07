@@ -18,26 +18,23 @@
  *	License along with this library; if not, write to the Free Software
  *	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
-
-//kbuild:lib-$(CONFIG_FEATURE_VOLUMEID_NILFS) += nilfs.o
-
-//config:
 //config:config FEATURE_VOLUMEID_NILFS
 //config:	bool "nilfs filesystem"
 //config:	default y
 //config:	depends on VOLUMEID
 //config:	help
-//config:	  NILFS is a New Implementation of a Log-Structured File System (LFS)
-//config:	  that supports continuous snapshots. This provides features like
-//config:	  versioning of the entire filesystem, restoration of files that
-//config:	  were deleted a few minutes ago. NILFS keeps consistency like
-//config:	  conventional LFS, so it provides quick recovery after system crashes.
+//config:	NILFS is a New Implementation of a Log-Structured File System (LFS)
+//config:	that supports continuous snapshots. This provides features like
+//config:	versioning of the entire filesystem, restoration of files that
+//config:	were deleted a few minutes ago. NILFS keeps consistency like
+//config:	conventional LFS, so it provides quick recovery after system crashes.
 //config:
-//config:	  The possible use of NILFS includes versioning, tamper detection,
-//config:	  SOX compliance logging, and so forth. It can serve as an alternative
-//config:	  filesystem for Linux desktop environment, or as a basis of advanced
-//config:	  storage appliances.
-//config:
+//config:	The possible use of NILFS includes versioning, tamper detection,
+//config:	SOX compliance logging, and so forth. It can serve as an alternative
+//config:	filesystem for Linux desktop environment, or as a basis of advanced
+//config:	storage appliances.
+
+//kbuild:lib-$(CONFIG_FEATURE_VOLUMEID_NILFS) += nilfs.o
 
 #include "volume_id_internal.h"
 

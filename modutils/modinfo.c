@@ -6,13 +6,13 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config MODINFO
-//config:	bool "modinfo"
+//config:	bool "modinfo (25 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
-//config:	  Show information about a Linux Kernel module
+//config:	Show information about a Linux Kernel module
 
-//applet:IF_MODINFO(APPLET(modinfo, BB_DIR_SBIN, BB_SUID_DROP))
+//applet:IF_MODINFO(APPLET_NOEXEC(modinfo, modinfo, BB_DIR_SBIN, BB_SUID_DROP, modinfo))
 
 //kbuild:lib-$(CONFIG_MODINFO) += modinfo.o modutils.o
 
@@ -104,7 +104,7 @@ static void modinfo(const char *path, const char *version,
 			char *after_pattern;
 
 			ptr = memchr(ptr, *pattern, len - (ptr - (char*)the_module));
-			if (ptr == NULL) /* no occurance left, done */
+			if (ptr == NULL) /* no occurrence left, done */
 				break;
 			after_pattern = is_prefixed_with(ptr, pattern);
 			if (after_pattern && *after_pattern == '=') {
@@ -148,8 +148,7 @@ int modinfo_main(int argc UNUSED_PARAM, char **argv)
 	unsigned i;
 
 	field = NULL;
-	opt_complementary = "-1"; /* minimum one param */
-	opts = getopt32(argv, "0F:nadlp", &field);
+	opts = getopt32(argv, "^" "0F:nadlp" "\0" "-1"/*minimum one arg*/, &field);
 	/* If no field selected, show all */
 	if (!(opts & (OPT_TAGS|OPT_F)))
 		option_mask32 |= OPT_TAGS;

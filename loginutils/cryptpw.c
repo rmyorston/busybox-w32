@@ -10,52 +10,42 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config CRYPTPW
-//config:	bool "cryptpw"
+//config:	bool "cryptpw (14 kb)"
 //config:	default y
 //config:	help
-//config:	  Encrypts the given password with the crypt(3) libc function
-//config:	  using the given salt. Debian has this utility under mkpasswd
-//config:	  name. Busybox provides mkpasswd as an alias for cryptpw.
+//config:	Encrypts the given password with the crypt(3) libc function
+//config:	using the given salt.
+//config:
+//config:config MKPASSWD
+//config:	bool "mkpasswd (15 kb)"
+//config:	default y
+//config:	help
+//config:	Encrypts the given password with the crypt(3) libc function
+//config:	using the given salt. Debian has this utility under mkpasswd
+//config:	name. Busybox provides mkpasswd as an alias for cryptpw.
 
-//applet:IF_CRYPTPW(APPLET(cryptpw, BB_DIR_USR_BIN, BB_SUID_DROP))
-//applet:IF_CRYPTPW(APPLET_ODDNAME(mkpasswd, cryptpw, BB_DIR_USR_BIN, BB_SUID_DROP, mkpasswd))
+//applet:IF_CRYPTPW( APPLET_NOEXEC(cryptpw,  cryptpw, BB_DIR_USR_BIN, BB_SUID_DROP, cryptpw))
+//                   APPLET_NOEXEC:name      main     location        suid_type     help
+//applet:IF_MKPASSWD(APPLET_NOEXEC(mkpasswd, cryptpw, BB_DIR_USR_BIN, BB_SUID_DROP, cryptpw))
 
 //kbuild:lib-$(CONFIG_CRYPTPW) += cryptpw.o
+//kbuild:lib-$(CONFIG_MKPASSWD) += cryptpw.o
 
 //usage:#define cryptpw_trivial_usage
 //usage:       "[OPTIONS] [PASSWORD] [SALT]"
 /* We do support -s, we just don't mention it */
 //usage:#define cryptpw_full_usage "\n\n"
-//usage:       "Crypt PASSWORD using crypt(3)\n"
+//usage:       "Print crypt(3) hashed PASSWORD\n"
 //usage:	IF_LONG_OPTS(
-//usage:     "\n	-P,--password-fd=N	Read password from fd N"
+//usage:     "\n	-P,--password-fd N	Read password from fd N"
 /* //usage:  "\n	-s,--stdin		Use stdin; like -P0" */
-//usage:     "\n	-m,--method=TYPE	Encryption method"
-//usage:     "\n	-S,--salt=SALT"
+//usage:     "\n	-m,--method TYPE	"CRYPT_METHODS_HELP_STR
+//usage:     "\n	-S,--salt SALT"
 //usage:	)
 //usage:	IF_NOT_LONG_OPTS(
 //usage:     "\n	-P N	Read password from fd N"
 /* //usage:  "\n	-s	Use stdin; like -P0" */
-//usage:     "\n	-m TYPE	Encryption method TYPE"
-//usage:     "\n	-S SALT"
-//usage:	)
-
-/* mkpasswd is an alias to cryptpw */
-//usage:#define mkpasswd_trivial_usage
-//usage:       "[OPTIONS] [PASSWORD] [SALT]"
-/* We do support -s, we just don't mention it */
-//usage:#define mkpasswd_full_usage "\n\n"
-//usage:       "Crypt PASSWORD using crypt(3)\n"
-//usage:	IF_LONG_OPTS(
-//usage:     "\n	-P,--password-fd=N	Read password from fd N"
-/* //usage:  "\n	-s,--stdin		Use stdin; like -P0" */
-//usage:     "\n	-m,--method=TYPE	Encryption method"
-//usage:     "\n	-S,--salt=SALT"
-//usage:	)
-//usage:	IF_NOT_LONG_OPTS(
-//usage:     "\n	-P N	Read password from fd N"
-/* //usage:  "\n	-s	Use stdin; like -P0" */
-//usage:     "\n	-m TYPE	Encryption method TYPE"
+//usage:     "\n	-m TYPE	"CRYPT_METHODS_HELP_STR
 //usage:     "\n	-S SALT"
 //usage:	)
 
@@ -74,7 +64,7 @@ OPTIONS
     $1$.
 -R, --rounds=NUMBER
     Use NUMBER rounds. This argument is ignored if the method
-    choosen does not support variable rounds. For the OpenBSD Blowfish
+    chosen does not support variable rounds. For the OpenBSD Blowfish
     method this is the logarithm of the number of rounds.
 -m, --method=TYPE
     Compute the password using the TYPE method. If TYPE is 'help'
@@ -102,7 +92,8 @@ to cryptpw. -a option (alias for -m) came from cryptpw.
 int cryptpw_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int cryptpw_main(int argc UNUSED_PARAM, char **argv)
 {
-	char salt[MAX_PW_SALT_LEN];
+	/* Supports: cryptpw -m sha256 PASS 'rounds=999999999$SALT' */
+	char salt[MAX_PW_SALT_LEN + sizeof("rounds=999999999$")];
 	char *salt_ptr;
 	char *password;
 	const char *opt_m, *opt_S;
@@ -115,14 +106,15 @@ int cryptpw_main(int argc UNUSED_PARAM, char **argv)
 		"salt\0"        Required_argument "S"
 		"method\0"      Required_argument "m"
 	;
-	applet_long_options = mkpasswd_longopts;
 #endif
 	fd = STDIN_FILENO;
 	opt_m = CONFIG_FEATURE_DEFAULT_PASSWD_ALGO;
 	opt_S = NULL;
 	/* at most two non-option arguments; -P NUM */
-	opt_complementary = "?2:P+";
-	getopt32(argv, "sP:S:m:a:", &fd, &opt_S, &opt_m, &opt_m);
+	getopt32long(argv, "^" "sP:+S:m:a:" "\0" "?2",
+			mkpasswd_longopts,
+			&fd, &opt_S, &opt_m, &opt_m
+	);
 	argv += optind;
 
 	/* have no idea how to handle -s... */
@@ -132,6 +124,7 @@ int cryptpw_main(int argc UNUSED_PARAM, char **argv)
 
 	salt_ptr = crypt_make_pw_salt(salt, opt_m);
 	if (opt_S)
+		/* put user's data after the "$N$" prefix */
 		safe_strncpy(salt_ptr, opt_S, sizeof(salt) - (sizeof("$N$")-1));
 
 	xmove_fd(fd, STDIN_FILENO);
@@ -140,7 +133,7 @@ int cryptpw_main(int argc UNUSED_PARAM, char **argv)
 	if (!password) {
 		/* Only mkpasswd, and only from tty, prompts.
 		 * Otherwise it is a plain read. */
-		password = (isatty(STDIN_FILENO) && applet_name[0] == 'm')
+		password = (ENABLE_MKPASSWD && isatty(STDIN_FILENO) && applet_name[0] == 'm')
 			? bb_ask_stdin("Password: ")
 			: xmalloc_fgetline(stdin)
 		;

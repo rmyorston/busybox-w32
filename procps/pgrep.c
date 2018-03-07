@@ -6,12 +6,35 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+//config:config PGREP
+//config:	bool "pgrep (6.8 kb)"
+//config:	default y
+//config:	help
+//config:	Look for processes by name.
+//config:
+//config:config PKILL
+//config:	bool "pkill (7.6 kb)"
+//config:	default y
+//config:	help
+//config:	Send signals to processes by name.
+
+//applet:IF_PGREP(APPLET_ODDNAME(pgrep, pgrep, BB_DIR_USR_BIN, BB_SUID_DROP, pgrep))
+//                APPLET_ODDNAME:name   main   location        suid_type     help
+//applet:IF_PKILL(APPLET_ODDNAME(pkill, pgrep, BB_DIR_USR_BIN, BB_SUID_DROP, pkill))
+/* can't be noexec: can find _itself_ under wrong name, since after fork only,
+ * /proc/PID/cmdline and comm are wrong! Can fix comm (prctl(PR_SET_NAME)),
+ * but cmdline?
+ */
+
+//kbuild:lib-$(CONFIG_PGREP) += pgrep.o
+//kbuild:lib-$(CONFIG_PKILL) += pgrep.o
 
 //usage:#define pgrep_trivial_usage
-//usage:       "[-flnovx] [-s SID|-P PPID|PATTERN]"
+//usage:       "[-flanovx] [-s SID|-P PPID|PATTERN]"
 //usage:#define pgrep_full_usage "\n\n"
 //usage:       "Display process(es) selected by regex PATTERN\n"
 //usage:     "\n	-l	Show command name too"
+//usage:     "\n	-a	Show command line too"
 //usage:     "\n	-f	Match against entire command line"
 //usage:     "\n	-n	Show the newest process only"
 //usage:     "\n	-o	Show the oldest process only"
@@ -37,13 +60,14 @@
 #include "xregex.h"
 
 /* Idea taken from kill.c */
-#define pgrep (ENABLE_PGREP && applet_name[1] == 'g')
-#define pkill (ENABLE_PKILL && applet_name[1] == 'k')
+#define pgrep (ENABLE_PGREP && (!ENABLE_PKILL || applet_name[1] == 'g'))
+#define pkill (ENABLE_PKILL && (!ENABLE_PGREP || applet_name[1] == 'k'))
 
 enum {
-	/* "vlfxons:P:" */
+	/* "vlafxons:+P:+" */
 	OPTBIT_V = 0, /* must be first, we need OPT_INVERT = 0/1 */
 	OPTBIT_L,
+	OPTBIT_A,
 	OPTBIT_F,
 	OPTBIT_X,
 	OPTBIT_O,
@@ -54,6 +78,7 @@ enum {
 
 #define OPT_INVERT	(opt & (1 << OPTBIT_V))
 #define OPT_LIST	(opt & (1 << OPTBIT_L))
+#define OPT_LISTFULL	(opt & (1 << OPTBIT_A))
 #define OPT_FULL	(opt & (1 << OPTBIT_F))
 #define OPT_ANCHOR	(opt & (1 << OPTBIT_X))
 #define OPT_FIRST	(opt & (1 << OPTBIT_O))
@@ -64,7 +89,7 @@ enum {
 static void act(unsigned pid, char *cmd, int signo)
 {
 	if (pgrep) {
-		if (option_mask32 & (1 << OPTBIT_L)) /* OPT_LIST */
+		if (option_mask32 & ((1 << OPTBIT_L)|(1 << OPTBIT_A))) /* -l or -a */
 			printf("%u %s\n", pid, cmd);
 		else
 			printf("%u\n", pid);
@@ -106,8 +131,7 @@ int pgrep_main(int argc UNUSED_PARAM, char **argv)
 	/* Parse remaining options */
 	ppid2match = -1;
 	sid2match = -1;
-	opt_complementary = "s+:P+"; /* numeric opts */
-	opt = getopt32(argv, "vlfxons:P:", &sid2match, &ppid2match);
+	opt = getopt32(argv, "vlafxons:+P:+", &sid2match, &ppid2match);
 	argv += optind;
 
 	if (pkill && OPT_LIST) { /* -l: print the whole signal list */
@@ -135,38 +159,78 @@ int pgrep_main(int argc UNUSED_PARAM, char **argv)
 	proc = NULL;
 	while ((proc = procps_scan(proc, scan_mask)) != NULL) {
 		char *cmd;
+		int cmdlen, match;
 
 		if (proc->pid == pid)
 			continue;
 
+		if (!OPT_INVERT) {
+			/* Quickly reject -sN -PN mismatches... unless -v */
+			if (ppid2match >= 0 && ppid2match != proc->ppid)
+				continue;
+			if (sid2match >= 0 && sid2match != proc->sid)
+				continue;
+		}
+
+		cmdlen = -1;
 		cmd = proc->argv0;
 		if (!cmd) {
 			cmd = proc->comm;
 		} else {
 			int i = proc->argv_len;
+
+			if (!OPT_LISTFULL)
+				cmdlen = strlen(cmd); /* not -a: find first NUL */
+			/*
+			 * "sleep 11" looks like "sleep""\0""11""\0" in argv0.
+			 * Make sure last "\0" does not get converted to " ":
+			 */
+			if (i && cmd[i-1] == '\0')
+				i--;
 			while (--i >= 0) {
 				if ((unsigned char)cmd[i] < ' ')
 					cmd[i] = ' ';
 			}
 		}
 
-		if (ppid2match >= 0 && ppid2match != proc->ppid)
-			continue;
-		if (sid2match >= 0  && sid2match != proc->sid)
-			continue;
+		if (OPT_INVERT) {
+			/* "pgrep -v -P1 firefox" means "not (ppid=1 AND name=firefox)"
+			 * or equivalently "ppid!=1 OR name!=firefox".
+			 * Check the first condition and if true, skip matching.
+			 */
+			if (ppid2match >= 0 && ppid2match != proc->ppid)
+				goto got_it;
+			if (sid2match >= 0 && sid2match != proc->sid)
+				goto got_it;
+		}
+
+		match = !argv[0]; /* if no PATTERN, then it's a match, else... */
+		if (!match) {
+ again:
+			match = (regexec(&re_buffer, cmd, 1, re_match, 0) == 0);
+			if (!match && cmd != proc->comm) {
+				/* if argv[] did not match, try comm */
+				cmdlen = -1;
+				cmd = proc->comm;
+				goto again;
+			}
+			if (match && OPT_ANCHOR) {
+				/* -x requires full string match */
+				match = (re_match[0].rm_so == 0 && cmd[re_match[0].rm_eo] == '\0');
+			}
+		}
 
 		/* NB: OPT_INVERT is always 0 or 1 */
-		if (!argv[0]
-		 || (regexec(&re_buffer, cmd, 1, re_match, 0) == 0 /* match found */
-		    && (!OPT_ANCHOR || (re_match[0].rm_so == 0 && re_match[0].rm_eo == (regoff_t)strlen(cmd)))
-		    ) ^ OPT_INVERT
-		) {
+		if (match ^ OPT_INVERT) {
+ got_it:
 			matched_pid = proc->pid;
 			if (OPT_LAST) {
 				free(cmd_last);
 				cmd_last = xstrdup(cmd);
 				continue;
 			}
+			if (cmdlen >= 0)
+				cmd[cmdlen] = '\0';
 			act(proc->pid, cmd, signo);
 			if (OPT_FIRST)
 				break;
