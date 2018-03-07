@@ -2239,10 +2239,10 @@ FILE *zconf_fopen(const char *name)
 	FILE *f;
 
 	f = fopen(name, "r");
-    if (!f && name[0] != '/') {
- 		env = getenv(SRCTREE);
+	if (!f && name[0] != '/') {
+		env = getenv(SRCTREE);
 		if (env) {
-			char *fullname = alloca( strlen(env) + strlen(name) + 2 );
+			char *fullname = alloca(strlen(env) + strlen(name) + 2);
 			sprintf(fullname, "%s/%s", env, name);
 			f = fopen(fullname, "r");
 		}
@@ -2250,12 +2250,9 @@ FILE *zconf_fopen(const char *name)
 	return f;
 }
 
-
 void zconf_initscan(const char *name)
 {
-        if (name) { /* avoid calling when name == NULL */
 	zconfin = zconf_fopen(name);
-	}
 	if (!zconfin) {
 		printf("can't find file %s\n", name);
 		exit(1);
@@ -2276,9 +2273,7 @@ void zconf_nextfile(const char *name)
 	memset(buf, 0, sizeof(*buf));
 
 	current_buf->state = YY_CURRENT_BUFFER;
-	if (name) { /* avoid calling when name == NULL */
 	zconfin = zconf_fopen(name);
-	}
 	if (!zconfin) {
 		printf("%s:%d: can't open file \"%s\"\n", zconf_curname(), zconf_lineno(), name);
 		exit(1);

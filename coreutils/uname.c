@@ -101,15 +101,6 @@
 /* After libbb.h, since it needs sys/types.h on some systems */
 #include <sys/utsname.h>
 
-<<<<<<< HEAD
-#if defined(ENABLE_PLATFORM_MINGW32)
-# define OSNAME "MS/Windows"
-#else
-# define OSNAME "GNU/Linux"
-#endif
-
-=======
->>>>>>> master
 typedef struct {
 	struct utsname name;
 	char processor[sizeof(((struct utsname*)NULL)->machine)];

@@ -429,11 +429,6 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	if (infile) {
-		if (ENABLE_PLATFORM_MINGW32 && !strcmp(infile, "/dev/zero")) {
-			G.flags |= FLAG_NOERROR;
-			devzero = 1;
-		} else {
-			xmove_fd(xopen(infile, O_RDONLY), ifd);
 		xmove_fd(xopen(infile, O_RDONLY), ifd);
 #if ENABLE_PLATFORM_MINGW32
 		if (!strcmp(infile, "/dev/zero")) {

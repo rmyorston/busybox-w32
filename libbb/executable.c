@@ -28,7 +28,7 @@ int FAST_FUNC file_is_executable(const char *name)
  * in all cases (*PATHp) contents are temporarily modified
  * but are restored on return (s/:/NUL/ and back).
  */
-#if !defined(ENABLE_PLATFORM_MINGW32)
+#if !ENABLE_PLATFORM_MINGW32
 #define next_path_sep(s) strchr(s, ':')
 #endif
 
@@ -43,7 +43,7 @@ char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 	 * following the rest of the list.
 	 */
 	char *p, *n;
-#if defined(ENABLE_PLATFORM_MINGW32)
+#if ENABLE_PLATFORM_MINGW32
 	char *w;
 #endif
 
@@ -66,7 +66,6 @@ char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 			p[0] ? p : ".", /* handle "::" case */
 			filename
 		);
-
 #if ENABLE_PLATFORM_MINGW32
 		if (n) *n++ = sep;
 #else

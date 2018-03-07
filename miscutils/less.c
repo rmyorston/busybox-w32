@@ -153,9 +153,6 @@
 #if ENABLE_FEATURE_LESS_REGEXP
 #include "xregex.h"
 #endif
-#if ENABLE_USE_PORTABLE_CODE
-#include <alloca.h>
-#endif
 
 
 #define ESC "\033"
@@ -883,16 +880,7 @@ void print_found(const char *line);
 
 static void print_ascii(const char *str)
 {
-<<<<<<< HEAD
-#if ENABLE_USE_PORTABLE_CODE
-	char *buf = alloca(width);
-#else
-	char buf[width];
-#endif
-	char nbuf9[9];
-=======
 	char buf[width+1];
->>>>>>> master
 	char *p;
 	size_t n;
 

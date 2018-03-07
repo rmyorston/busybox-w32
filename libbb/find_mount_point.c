@@ -40,7 +40,7 @@ struct mntent* FAST_FUNC find_mount_point(const char *name, int subdir_too)
 	if (stat(name, &s) != 0)
 		return NULL;
 
-#if !defined(ENABLE_PLATFORM_MINGW32)
+#if !ENABLE_PLATFORM_MINGW32
 	devno_of_name = s.st_dev;
 	block_dev = 0;
 	/* Why S_ISCHR? - UBI volumes use char devices, not block */

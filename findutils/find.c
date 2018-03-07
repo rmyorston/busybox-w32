@@ -333,9 +333,6 @@
 #ifndef FNM_CASEFOLD
 # define FNM_CASEFOLD 0
 #endif
-#if ENABLE_USE_PORTABLE_CODE
-#include <alloca.h>
-#endif
 
 #if 1
 # define dbg(...) ((void)0)

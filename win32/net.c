@@ -10,18 +10,13 @@ int inet_aton(const char *cp, struct in_addr *inp)
 	return 1;
 }
 
-static void wsa_cleanup(void)
-{
-	WSACleanup();
-}
-
 void init_winsock(void)
 {
 	WSADATA wsa;
 	if (WSAStartup(MAKEWORD(2,2), &wsa))
 		bb_error_msg_and_die("unable to initialize winsock subsystem, error %d",
 				     WSAGetLastError());
-	atexit(wsa_cleanup); /* may conflict with other atexit? */
+	atexit((void(*)(void)) WSACleanup); /* may conflict with other atexit? */
 }
 
 int mingw_socket(int domain, int type, int protocol)

@@ -623,6 +623,7 @@ else
       "$(libs-y)" \
       "$(LDLIBS)" \
       && $(srctree)/scripts/generate_BUFSIZ.sh --post include/common_bufsiz.h
+endif
 
 # Generate System.map
 quiet_cmd_sysmap = SYSMAP

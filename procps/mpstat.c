@@ -549,11 +549,7 @@ static void get_irqs_from_interrupts(const char *fname,
 	unsigned buflen;
 	unsigned cpu;
 	unsigned irq;
-#if ENABLE_USE_PORTABLE_CODE
-	int *cpu_index = alloca(G.cpu_nr*sizeof(int));
-#else
 	int cpu_index[G.cpu_nr];
-#endif
 	int iindex;
 
 // Moved to caller.

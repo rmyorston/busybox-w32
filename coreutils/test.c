@@ -637,22 +637,6 @@ static int filstat(char *nm, enum token mode)
 		return 0;
 	}
 
-
-#if ENABLE_PLATFORM_MINGW32
-	if (mode == FILEX) {
-		char *p;
-
-		if (file_is_executable(nm)) {
-			return 1;
-		}
-		else if ((p=file_is_win32_executable(nm))) {
-			free(p);
-			return 1;
-		}
-		return 0;
-	}
-#endif
-
 	if (stat(nm, &s) != 0)
 		return 0;
 	if (mode == FILEXIST)

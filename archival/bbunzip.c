@@ -178,7 +178,7 @@ int FAST_FUNC bbunpack(char **argv,
 				if (option_mask32 & BBUNPK_OPT_KEEP) /* ... unless -k */
 					del = NULL;
 			}
-			if (MINGW_TEST)
+			if (ENABLE_PLATFORM_MINGW32)
 				xclose(STDIN_FILENO);
 			if (del)
 				xunlink(del);
