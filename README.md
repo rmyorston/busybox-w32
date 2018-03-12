@@ -6,7 +6,7 @@ Things may work for you, or may not.  Things may never work because of huge diff
 
 You need a MinGW compiler and a POSIX environment (so that `make menuconfig` works).  I cross-compile on Linux.  On Fedora or RHEL/CentOS+EPEL installing mingw32-gcc (32-bit build) or mingw64-gcc (64-bit build) will pull in everything needed.
 
-To start, run `make mingw32_defconfig` or `make mingw64_defconfig`.  You can then customize your build with `make menuconfig`. alternatively, to build using Open Watcom, run `make watcom386_win32_defconfig`. For more details about Open Watcom, see README.watcom.
+To start, run `make mingw32_defconfig` or `make mingw64_defconfig`.  You can then customize your build with `make menuconfig`. alternatively, to build using Open Watcom, run `make watcom386_win32_defconfig`. For more details about Open Watcom, see watcom/README.
 
 In particular you may need to adjust the compiler by going to Busybox Settings -> Build Options -> Cross Compiler Prefix
 

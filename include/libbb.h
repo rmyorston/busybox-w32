@@ -1188,10 +1188,10 @@ static inline pid_t xvfork(void) {
 		bb_perror_msg_and_die("vfork"); \
 	bb__xvfork_pid; \
 })
-#endif
 #else
 #define xvfork() vfork()
-#endif
+#endif /* ENABLE_PLATFORM_MINGW32 */
+#endif /* ifdef __WATCOMC__ */
 
 #if BB_MMU
 pid_t xfork(void) FAST_FUNC;
