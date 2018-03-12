@@ -475,14 +475,21 @@ int winansi_puts(const char *s)
 	return (winansi_fputs(s, stdout) == EOF || putchar('\n') == EOF) ? EOF : 0;
 }
 
-static void check_pipe(FILE *stream)
+static void check_pipe_fd(int fd)
 {
-	if (GetLastError() == ERROR_NO_DATA && ferror(stream)) {
-		int fd = fileno(stream);
-		if (fd != -1 &&
-				GetFileType((HANDLE)_get_osfhandle(fd)) == FILE_TYPE_PIPE) {
+	if (GetLastError() == ERROR_NO_DATA) {
+		if (GetFileType((HANDLE)_get_osfhandle(fd)) == FILE_TYPE_PIPE) {
 			errno = EPIPE;
 		}
+	}
+}
+
+static void check_pipe(FILE *stream)
+{
+	int fd = fileno(stream);
+
+	if (fd != -1 && ferror(stream)) {
+		check_pipe_fd(fd);
 	}
 }
 
@@ -675,8 +682,15 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 
 int winansi_write(int fd, const void *buf, size_t count)
 {
-	if (!is_console(fd))
-		return write(fd, buf, count);
+	if (!is_console(fd)) {
+		int ret;
+
+		SetLastError(0);
+		if ((ret=write(fd, buf, count)) == -1) {
+			check_pipe_fd(fd);
+		}
+		return ret;
+	}
 
 	return ansi_emulate_write(fd, buf, count);
 }
