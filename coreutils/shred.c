@@ -38,6 +38,10 @@
 
 #include "libbb.h"
 
+#if ENABLE_PLATFORM_MINGW32
+#define xopen mingw_xopen
+#endif
+
 int shred_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int shred_main(int argc UNUSED_PARAM, char **argv)
 {

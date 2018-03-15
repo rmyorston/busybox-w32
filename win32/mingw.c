@@ -157,6 +157,7 @@ int mingw_open (const char *filename, int oflags, ...)
 	va_list args;
 	unsigned mode;
 	int fd;
+	int special = 0;
 	int devnull = 0;
 	int devzero = 0;
 	int devrand = 0;
@@ -165,16 +166,20 @@ int mingw_open (const char *filename, int oflags, ...)
 	mode = va_arg(args, int);
 	va_end(args);
 
-	if (oflags & O_NONBLOCK) {
-		oflags &= ~O_NONBLOCK;
+	if (oflags & O_SPECIAL) {
+		oflags &= ~O_SPECIAL;
+		special = 1;
 	}
 	if (filename && !strncmp(filename, "/dev/", 5)) {
-		if (!strcmp(filename+5, "null"))
+		if (!strcmp(filename+5, "null")) {
 			devnull = 1;
-		else if (!strcmp(filename+5, "zero"))
-			devzero = 1;
-		else if (!strcmp(filename+5, "urandom"))
-			devrand = 1;
+		}
+		else if (special) {
+			if (!strcmp(filename+5, "zero"))
+				devzero = 1;
+			else if (!strcmp(filename+5, "urandom"))
+				devrand = 1;
+		}
 
 		if (devnull || devzero || devrand )
 			filename = "nul";
@@ -192,6 +197,18 @@ int mingw_open (const char *filename, int oflags, ...)
 			rand_fd = fd;
 	}
 	return fd;
+}
+
+int mingw_xopen(const char *pathname, int flags)
+{
+	int ret;
+
+	/* allow use of special devices */
+	ret = mingw_open(pathname, flags|O_SPECIAL);
+	if (ret < 0) {
+		bb_perror_msg_and_die("can't open '%s'", pathname);
+	}
+	return ret;
 }
 
 #undef fopen

@@ -429,8 +429,10 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	if (infile) {
+#if !ENABLE_PLATFORM_MINGW32
 		xmove_fd(xopen(infile, O_RDONLY), ifd);
-#if ENABLE_PLATFORM_MINGW32
+#else
+		xmove_fd(mingw_xopen(infile, O_RDONLY), ifd);
 		if (!strcmp(infile, "/dev/zero")) {
 			mingw_read_zero(ifd);
 		}

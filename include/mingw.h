@@ -30,6 +30,7 @@ int inet_pton(int af, const char *src, void *dst);
 #define FD_CLOEXEC 0x1
 #define O_NONBLOCK 0
 #define O_NOFOLLOW 0
+#define O_SPECIAL 0x800000
 
 /*
  * grp.h
@@ -367,6 +368,7 @@ int kill(pid_t pid, int sig);
 int link(const char *oldpath, const char *newpath);
 NOIMPL(mknod,const char *name UNUSED_PARAM, mode_t mode UNUSED_PARAM, dev_t device UNUSED_PARAM);
 int mingw_open (const char *filename, int oflags, ...);
+int mingw_xopen(const char *filename, int oflags);
 void mingw_read_zero(int fd);
 void mingw_read_random(int fd);
 ssize_t mingw_read(int fd, void *buf, size_t count);
