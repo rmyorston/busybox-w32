@@ -288,6 +288,109 @@ finito:
 	return fd;
 }
 
+/*
+ * Open a bidirectional pipe to a command.  The pid of the command is
+ * returned in the variable pid, which can be NULL.
+ */
+int mingw_popen2(const char *cmd, pid_t *pid)
+{
+	pipe_data *p;
+	char *name = NULL;
+	SECURITY_ATTRIBUTES sa;
+	STARTUPINFO siStartInfo;
+	int success;
+	int fd = -1;
+	const int ip = 1; /* index of parent end of pipe */
+	const int ic = 0; /* index of child end of pipe */
+
+	if ( cmd == NULL || *cmd == '\0' ) {
+		return -1;
+	}
+
+	/* find an unused pipe structure */
+	if ( (p=find_pipe()) == NULL ) {
+		return -1;
+	}
+
+	/* Create the pipe */
+	name = xasprintf("\\\\.\\pipe\\bb_pipe.%d.%d", getpid(), (int)(p-pipes));
+
+	sa.nLength = sizeof(sa);          /* Length in bytes */
+	sa.bInheritHandle = 1;            /* the child must inherit these handles */
+	sa.lpSecurityDescriptor = NULL;
+
+	p->pipe[ip] = CreateNamedPipe(name,
+						PIPE_ACCESS_DUPLEX|FILE_FLAG_OVERLAPPED,
+						PIPE_TYPE_BYTE|PIPE_WAIT,
+						1, 4096, 4096, 0, &sa);
+	if (p->pipe[ip] == INVALID_HANDLE_VALUE) {
+		goto finito;
+	}
+
+	/* Connect to the pipe */
+	p->pipe[ic] = CreateFile(name, GENERIC_READ|GENERIC_WRITE, 0, &sa,
+								OPEN_EXISTING,
+								FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OVERLAPPED,
+								NULL);
+	if (p->pipe[ic] == INVALID_HANDLE_VALUE) {
+		goto finito;
+	}
+
+	/* Make the parent end of the pipe non-inheritable */
+	SetHandleInformation(p->pipe[ip], HANDLE_FLAG_INHERIT, 0);
+
+	/* Now create the child process */
+	ZeroMemory(&siStartInfo, sizeof(STARTUPINFO));
+	siStartInfo.cb = sizeof(STARTUPINFO);
+	siStartInfo.wShowWindow = SW_HIDE;
+	siStartInfo.hStdInput = p->pipe[ic];
+	siStartInfo.hStdOutput = p->pipe[ic];
+	siStartInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+	siStartInfo.dwFlags = STARTF_USESTDHANDLES|STARTF_USESHOWWINDOW;
+
+	success = CreateProcess(NULL,
+				(LPTSTR)cmd,       /* command line */
+				NULL,              /* process security attributes */
+				NULL,              /* primary thread security attributes */
+				TRUE,              /* handles are inherited */
+				0,                 /* creation flags */
+				NULL,              /* use parent's environment */
+				NULL,              /* use parent's current directory */
+				&siStartInfo,      /* STARTUPINFO pointer */
+				&p->piProcInfo);   /* receives PROCESS_INFORMATION */
+
+	if ( !success ) {
+		goto finito;
+	}
+
+	/* close child end of pipe */
+	CloseHandle(p->pipe[ic]);
+	p->pipe[ic] = INVALID_HANDLE_VALUE;
+
+	fd = _open_osfhandle((intptr_t)p->pipe[ip], _O_RDWR|_O_BINARY);
+
+finito:
+	free(name);
+	if ( fd == -1 ) {
+		errno = err_win_to_posix(GetLastError());
+		if ( p->pipe[0] != INVALID_HANDLE_VALUE ) {
+			CloseHandle(p->pipe[0]);
+		}
+		if ( p->pipe[1] != INVALID_HANDLE_VALUE ) {
+			CloseHandle(p->pipe[1]);
+		}
+	}
+	else {
+		p->mode = 'r';
+		p->fd = fd;
+		if ( pid ) {
+			*pid = (pid_t)p->piProcInfo.dwProcessId;
+		}
+	}
+
+	return fd;
+}
+
 int mingw_pclose(FILE *fp)
 {
 	int i, ip, fd;

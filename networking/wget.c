@@ -714,6 +714,7 @@ static int spawn_https_helper_openssl(const char *host, unsigned port)
 #endif
 
 #if ENABLE_FEATURE_WGET_HTTPS
+# if !ENABLE_PLATFORM_MINGW32
 static void spawn_ssl_client(const char *host, int network_fd, int flags)
 {
 	int sp[2];
@@ -763,6 +764,32 @@ static void spawn_ssl_client(const char *host, int network_fd, int flags)
 	close(sp[1]);
 	xmove_fd(sp[0], network_fd);
 }
+# else
+static void spawn_ssl_client(const char *host, int network_fd, int flags)
+{
+	int fd1;
+	pid_t pid;
+	char *servername, *p, *cmd;
+
+	servername = xstrdup(host);
+	p = strrchr(servername, ':');
+	if (p) *p = '\0';
+
+	fflush_all();
+
+	cmd = xasprintf("%s ssl_client -h %p -n %s%s", bb_busybox_exec_path,
+					(void *)_get_osfhandle(network_fd), servername,
+					flags & TLSLOOP_EXIT_ON_LOCAL_EOF ? " -e" : "");
+
+	if ( (fd1=mingw_popen2(cmd, &pid)) == -1 ) {
+		bb_perror_msg_and_die("can't execute ssl_client");
+	}
+
+	free(cmd);
+	free(servername);
+	xmove_fd(fd1, network_fd);
+}
+# endif
 #endif
 
 static FILE* prepare_ftp_session(FILE **dfpp, struct host_info *target, len_and_sockaddr *lsa)
