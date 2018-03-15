@@ -181,8 +181,10 @@ int mingw_open (const char *filename, int oflags, ...)
 				devrand = 1;
 		}
 
-		if (devnull || devzero || devrand )
+		if (devnull || devzero || devrand ) {
 			filename = "nul";
+			oflags = O_RDWR;
+		}
 	}
 	fd = open(filename, oflags, mode);
 	if (fd < 0 && (oflags & O_ACCMODE) != O_RDONLY && errno == EACCES) {

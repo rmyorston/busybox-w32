@@ -5702,26 +5702,6 @@ openredirect(union node *redir)
 	 * allocated space. Do it only when we know it is safe.
 	 */
 	fname = redir->nfile.expfname;
-#if ENABLE_PLATFORM_MINGW32
-	/* Support for /dev/null */
-	switch (redir->nfile.type) {
-		case NFROM:
-		case NFROMTO:
-		case NTO:
-#if BASH_REDIR_OUTPUT
-		case NTO2:
-#endif
-		case NCLOBBER:
-		case NAPPEND:
-			if (!strncmp(fname, "/dev/", 5)) {
-				if (!strcmp(fname+5, "null"))
-					return open(fname,O_RDWR);
-				ash_msg_and_raise_error("Unhandled device %s\n", fname);
-				return -1;
-			}
-			break;
-	}
-#endif
 
 	switch (redir->nfile.type) {
 	default:
