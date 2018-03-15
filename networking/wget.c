@@ -768,7 +768,6 @@ static void spawn_ssl_client(const char *host, int network_fd, int flags)
 static void spawn_ssl_client(const char *host, int network_fd, int flags)
 {
 	int fd1;
-	pid_t pid;
 	char *servername, *p, *cmd;
 
 	servername = xstrdup(host);
@@ -781,7 +780,7 @@ static void spawn_ssl_client(const char *host, int network_fd, int flags)
 					(void *)_get_osfhandle(network_fd), servername,
 					flags & TLSLOOP_EXIT_ON_LOCAL_EOF ? " -e" : "");
 
-	if ( (fd1=mingw_popen2(cmd, &pid)) == -1 ) {
+	if ( (fd1=mingw_popen_fd(cmd, "b", -1, NULL)) == -1 ) {
 		bb_perror_msg_and_die("can't execute ssl_client");
 	}
 
