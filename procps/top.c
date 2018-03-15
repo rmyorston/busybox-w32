@@ -180,7 +180,7 @@ struct globals {
 #else
 	cmp_funcp sort_function[SORT_DEPTH];
 	struct save_hist *prev_hist;
-	int prev_hist_count;
+	unsigned prev_hist_count;
 	jiffy_counts_t cur_jif, prev_jif;
 	/* int hist_iterations; */
 	unsigned total_pcpu;
@@ -189,7 +189,7 @@ struct globals {
 #if ENABLE_FEATURE_TOP_SMP_CPU
 	/* Per CPU samples: current and last */
 	jiffy_counts_t *cpu_jif, *cpu_prev_jif;
-	int num_cpus;
+	unsigned num_cpus;
 #endif
 #if ENABLE_FEATURE_TOP_INTERACTIVE
 	char kbd_input[KEYCODE_BUFFER_SIZE];
@@ -355,7 +355,8 @@ static void do_stats(void)
 {
 	top_status_t *cur;
 	pid_t pid;
-	int i, last_i, n;
+	int n;
+	unsigned i, last_i;
 	struct save_hist *new_hist;
 
 	get_jiffy_counts();
@@ -607,7 +608,6 @@ static NOINLINE void display_process_list(int lines_rem, int scr_width)
 	};
 
 	top_status_t *s;
-	char vsz_str_buf[8];
 	unsigned long total_memory = display_header(scr_width, &lines_rem); /* or use total_vsz? */
 	/* xxx_shift and xxx_scale variables allow us to replace
 	 * expensive divides with multiply and shift */
@@ -688,19 +688,18 @@ static NOINLINE void display_process_list(int lines_rem, int scr_width)
 		lines_rem = ntop - G_scroll_ofs;
 	s = top + G_scroll_ofs;
 	while (--lines_rem >= 0) {
+		char vsz_str_buf[8];
 		unsigned col;
+
 		CALC_STAT(pmem, (s->vsz*pmem_scale + pmem_half) >> pmem_shift);
 #if ENABLE_FEATURE_TOP_CPU_USAGE_PERCENTAGE
 		CALC_STAT(pcpu, (s->pcpu*pcpu_scale + pcpu_half) >> pcpu_shift);
 #endif
 
-		if (s->vsz >= 100000)
-			sprintf(vsz_str_buf, "%6ldm", s->vsz/1024);
-		else
-			sprintf(vsz_str_buf, "%7lu", s->vsz);
+		smart_ulltoa5(s->vsz, vsz_str_buf, " mgtpezy");
 		/* PID PPID USER STAT VSZ %VSZ [%CPU] COMMAND */
 		col = snprintf(line_buf, scr_width,
-				"\n" "%5u%6u %-8.8s %s%s" FMT
+				"\n" "%5u%6u %-8.8s %s  %.5s" FMT
 				IF_FEATURE_TOP_SMP_PROCESS(" %3d")
 				IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE(FMT)
 				" ",
@@ -710,7 +709,7 @@ static NOINLINE void display_process_list(int lines_rem, int scr_width)
 				IF_FEATURE_TOP_SMP_PROCESS(, s->last_seen_on_cpu)
 				IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE(, SHOW_STAT(pcpu))
 		);
-		if ((int)(col + 1) < scr_width)
+		if ((int)(scr_width - col) > 1)
 			read_cmdline(line_buf + col, scr_width - col, s->pid, s->comm);
 		fputs(line_buf, stdout);
 		/* printf(" %d/%d %lld/%lld", s->pcpu, total_pcpu,
@@ -897,7 +896,8 @@ enum {
 		| PSSCAN_PID
 		| PSSCAN_SMAPS
 		| PSSCAN_COMM,
-	EXIT_MASK = (unsigned)-1,
+	EXIT_MASK = 0,
+	NO_RESCAN_MASK = (unsigned)-1,
 };
 
 #if ENABLE_FEATURE_TOP_INTERACTIVE
@@ -935,7 +935,7 @@ static unsigned handle_input(unsigned scan_mask, unsigned interval)
 		}
 		if (c == KEYCODE_HOME) {
 			G_scroll_ofs = 0;
-			break;
+			goto normalize_ofs;
 		}
 		if (c == KEYCODE_END) {
 			G_scroll_ofs = ntop - G.lines / 2;
@@ -952,7 +952,7 @@ static unsigned handle_input(unsigned scan_mask, unsigned interval)
 				G_scroll_ofs = ntop - 1;
 			if (G_scroll_ofs < 0)
 				G_scroll_ofs = 0;
-			break;
+			return NO_RESCAN_MASK;
 		}
 
 		c |= 0x20; /* lowercase */
@@ -1157,6 +1157,7 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	while (scan_mask != EXIT_MASK) {
+		unsigned new_mask;
 		procps_status_t *p = NULL;
 
 		if (OPT_BATCH_MODE) {
@@ -1234,21 +1235,32 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 #else
 			qsort(top, ntop, sizeof(top_status_t), (void*)(sort_function[0]));
 #endif
-			display_process_list(G.lines, col);
 		}
 #if ENABLE_FEATURE_TOPMEM
 		else { /* TOPMEM */
 			qsort(topmem, ntop, sizeof(topmem_status_t), (void*)topmem_sort);
+		}
+#endif
+ IF_FEATURE_TOP_INTERACTIVE(display:)
+		IF_FEATURE_TOPMEM(if (scan_mask != TOPMEM_MASK)) {
+			display_process_list(G.lines, col);
+		}
+#if ENABLE_FEATURE_TOPMEM
+		else { /* TOPMEM */
 			display_topmem_process_list(G.lines, col);
 		}
 #endif
-		clearmems();
 		if (iterations >= 0 && !--iterations)
 			break;
 #if !ENABLE_FEATURE_TOP_INTERACTIVE
+		clearmems();
 		sleep(interval);
 #else
-		scan_mask = handle_input(scan_mask, interval);
+		new_mask = handle_input(scan_mask, interval);
+		if (new_mask == NO_RESCAN_MASK)
+			goto display;
+		scan_mask = new_mask;
+		clearmems();
 #endif
 	} /* end of "while (not Q)" */
 

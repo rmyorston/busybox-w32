@@ -853,6 +853,9 @@ int udhcpd_main(int argc UNUSED_PARAM, char **argv)
 	/* Would rather not do read_config before daemonization -
 	 * otherwise NOMMU machines will parse config twice */
 	read_config(argv[0] ? argv[0] : DHCPD_CONF_FILE);
+	/* prevent poll timeout overflow */
+	if (server_config.auto_time > INT_MAX / 1000)
+		server_config.auto_time = INT_MAX / 1000;
 
 	/* Make sure fd 0,1,2 are open */
 	bb_sanitize_stdio();
@@ -914,21 +917,31 @@ int udhcpd_main(int argc UNUSED_PARAM, char **argv)
 		}
 
 		udhcp_sp_fd_set(pfds, server_socket);
-		tv = timeout_end - monotonic_sec();
-		retval = 0;
-		if (!server_config.auto_time || tv > 0) {
-			retval = poll(pfds, 2, server_config.auto_time ? tv * 1000 : -1);
-		}
-		if (retval == 0) {
-			write_leases();
-			goto continue_with_autotime;
-		}
-		if (retval < 0 && errno != EINTR) {
-			log1("error on select");
-			continue;
+
+ new_tv:
+		tv = -1;
+		if (server_config.auto_time) {
+			tv = timeout_end - monotonic_sec();
+			if (tv <= 0) {
+ write_leases:
+				write_leases();
+				goto continue_with_autotime;
+			}
+			tv *= 1000;
 		}
 
-		switch (udhcp_sp_read(pfds)) {
+		/* Block here waiting for either signal or packet */
+		retval = poll(pfds, 2, tv);
+		if (retval <= 0) {
+			if (retval == 0)
+				goto write_leases;
+			if (errno == EINTR)
+				goto new_tv;
+			/* < 0 and not EINTR: should not happen */
+			bb_perror_msg_and_die("poll");
+		}
+
+		if (pfds[0].revents) switch (udhcp_sp_read()) {
 		case SIGUSR1:
 			bb_error_msg("received %s", "SIGUSR1");
 			write_leases();
@@ -938,12 +951,16 @@ int udhcpd_main(int argc UNUSED_PARAM, char **argv)
 			bb_error_msg("received %s", "SIGTERM");
 			write_leases();
 			goto ret0;
-		case 0: /* no signal: read a packet */
-			break;
-		default: /* signal or error (probably EINTR): back to select */
-			continue;
 		}
 
+		/* Is it a packet? */
+		if (!pfds[1].revents)
+			continue; /* no */
+
+		/* Note: we do not block here, we block on poll() instead.
+		 * Blocking here would prevent SIGTERM from working:
+		 * socket read inside this call is restarted on caught signals.
+		 */
 		bytes = udhcp_recv_kernel_packet(&packet, server_socket);
 		if (bytes < 0) {
 			/* bytes can also be -2 ("bad packet data") */

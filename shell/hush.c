@@ -4488,7 +4488,7 @@ static int add_till_closing_bracket(o_string *dest, struct in_str *input, unsign
 		}
 		if (ch == end_ch
 # if BASH_SUBSTR || BASH_PATTERN_SUBST
-			|| ch == end_char2
+		 || ch == end_char2
 # endif
 		) {
 			if (!dbl)
@@ -4500,6 +4500,7 @@ static int add_till_closing_bracket(o_string *dest, struct in_str *input, unsign
 			}
 		}
 		o_addchr(dest, ch);
+		//bb_error_msg("%s:o_addchr('%c')", __func__, ch);
 		if (ch == '(' || ch == '{') {
 			ch = (ch == '(' ? ')' : '}');
 			if (!add_till_closing_bracket(dest, input, ch))
@@ -4529,7 +4530,7 @@ static int add_till_closing_bracket(o_string *dest, struct in_str *input, unsign
 			/* \x. Copy verbatim. Important for  \(, \) */
 			ch = i_getch(input);
 			if (ch == EOF) {
-				syntax_error_unterm_ch(')');
+				syntax_error_unterm_ch(end_ch);
 				return 0;
 			}
 #if 0
@@ -4540,6 +4541,7 @@ static int add_till_closing_bracket(o_string *dest, struct in_str *input, unsign
 			}
 #endif
 			o_addchr(dest, ch);
+			//bb_error_msg("%s:o_addchr('%c') after '\\'", __func__, ch);
 			continue;
 		}
 	}
@@ -5842,17 +5844,24 @@ static NOINLINE const char *expand_one_var(char **to_be_freed_pp, char *arg, cha
 				unsigned scan_flags = pick_scan(exp_op, *exp_word);
 				if (exp_op == *exp_word)  /* ## or %% */
 					exp_word++;
-				exp_exp_word = encode_then_expand_string(exp_word, /*process_bkslash:*/ 1, /*unbackslash:*/ 1);
+				debug_printf_expand("expand: exp_word:'%s'\n", exp_word);
+				/*
+				 * process_bkslash:1 unbackslash:1 breaks this:
+				 * a='a\\'; echo ${a%\\\\} # correct output is: a
+				 * process_bkslash:1 unbackslash:0 breaks this:
+				 * a='a}'; echo ${a%\}}    # correct output is: a
+				 */
+				exp_exp_word = encode_then_expand_string(exp_word, /*process_bkslash:*/ 0, /*unbackslash:*/ 0);
 				if (exp_exp_word)
 					exp_word = exp_exp_word;
+				debug_printf_expand("expand: exp_exp_word:'%s'\n", exp_word);
 				/* HACK ALERT. We depend here on the fact that
 				 * G.global_argv and results of utoa and get_local_var_value
 				 * are actually in writable memory:
 				 * scan_and_match momentarily stores NULs there. */
 				t = (char*)val;
 				loc = scan_and_match(t, exp_word, scan_flags);
-				//bb_error_msg("op:%c str:'%s' pat:'%s' res:'%s'",
-				//		exp_op, t, exp_word, loc);
+				debug_printf_expand("op:%c str:'%s' pat:'%s' res:'%s'\n", exp_op, t, exp_word, loc);
 				free(exp_exp_word);
 				if (loc) { /* match was found */
 					if (scan_flags & SCAN_MATCH_LEFT_HALF) /* #[#] */
@@ -7172,21 +7181,22 @@ static const struct built_in_command *find_builtin(const char *name)
 #if ENABLE_HUSH_FUNCTIONS
 static struct function **find_function_slot(const char *name)
 {
+	struct function *funcp;
 	struct function **funcpp = &G.top_func;
-	while (*funcpp) {
-		if (strcmp(name, (*funcpp)->name) == 0) {
+
+	while ((funcp = *funcpp) != NULL) {
+		if (strcmp(name, funcp->name) == 0) {
+			debug_printf_exec("found function '%s'\n", name);
 			break;
 		}
-		funcpp = &(*funcpp)->next;
+		funcpp = &funcp->next;
 	}
 	return funcpp;
 }
 
-static const struct function *find_function(const char *name)
+static ALWAYS_INLINE const struct function *find_function(const char *name)
 {
 	const struct function *funcp = *find_function_slot(name);
-	if (funcp)
-		debug_printf_exec("found function '%s'\n", name);
 	return funcp;
 }
 
