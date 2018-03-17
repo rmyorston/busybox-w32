@@ -286,6 +286,22 @@ static inline int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fd
 	if (GetFileAttributesExA(fname, GetFileExInfoStandard, fdata))
 		return 0;
 
+	if (GetLastError() == ERROR_SHARING_VIOLATION) {
+		HANDLE hnd;
+		WIN32_FIND_DATA fd;
+
+		if ((hnd=FindFirstFile(fname, &fd)) != INVALID_HANDLE_VALUE) {
+			fdata->dwFileAttributes = fd.dwFileAttributes;
+			fdata->ftCreationTime = fd.ftCreationTime;
+			fdata->ftLastAccessTime = fd.ftLastAccessTime;
+			fdata->ftLastWriteTime = fd.ftLastWriteTime;
+			fdata->nFileSizeHigh = fd.nFileSizeHigh;
+			fdata->nFileSizeLow = fd.nFileSizeLow;
+			FindClose(hnd);
+			return 0;
+		}
+	}
+
 	switch (GetLastError()) {
 	case ERROR_ACCESS_DENIED:
 	case ERROR_SHARING_VIOLATION:
