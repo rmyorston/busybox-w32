@@ -442,8 +442,6 @@ const char * next_path_sep(const char *path);
  * helpers
  */
 
-char **env_setenv(char **env, const char *name);
-
 const char *get_busybox_exec_path(void);
 void init_winsock(void);
 
@@ -451,6 +449,7 @@ int has_bat_suffix(const char *p);
 int has_exe_suffix(const char *p);
 int has_exe_suffix_or_dot(const char *name);
 char *add_win32_extension(const char *p);
+void FAST_FUNC convert_slashes(char *p);
 
 int err_win_to_posix(DWORD winerr);
 

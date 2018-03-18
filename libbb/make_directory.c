@@ -51,11 +51,7 @@ int FAST_FUNC bb_make_directory(char *path, long mode, int flags)
 	org_mask = cur_mask = (mode_t)-1L;
 #if ENABLE_PLATFORM_MINGW32
 	/* normalise path separators, path is already assumed writable */
-	for (s=path; *s; ++s) {
-		if (*s == '\\') {
-			*s = '/';
-		}
-	}
+	convert_slashes(path);
 #endif
 	s = path;
 	while (1) {

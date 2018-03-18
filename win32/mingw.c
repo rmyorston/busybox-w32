@@ -665,13 +665,10 @@ struct tm *localtime_r(const time_t *timep, struct tm *result)
 #undef getcwd
 char *mingw_getcwd(char *pointer, int len)
 {
-	int i;
 	char *ret = getcwd(pointer, len);
 	if (!ret)
 		return ret;
-	for (i = 0; ret[i]; i++)
-		if (ret[i] == '\\')
-			ret[i] = '/';
+	convert_slashes(ret);
 	return ret;
 }
 
@@ -714,7 +711,6 @@ static char *gethomedir(void)
 	static char *buf = NULL;
 	DWORD len = PATH_MAX;
 	HANDLE h;
-	char *s;
 
 	if (!buf)
 		buf = xmalloc(PATH_MAX);
@@ -730,11 +726,7 @@ static char *gethomedir(void)
 
 	CloseHandle(h);
 
-	for ( s=buf; *s; ++s ) {
-		if ( *s == '\\' ) {
-			*s = '/';
-		}
-	}
+	convert_slashes(buf);
 
 	return buf;
 }
@@ -908,8 +900,10 @@ const char *get_busybox_exec_path(void)
 		path[0] = '\0';
 	}
 
-	if (!*path)
+	if (!*path) {
 		GetModuleFileName(NULL, path, PATH_MAX);
+		convert_slashes(path);
+	}
 	return path;
 }
 
@@ -1172,6 +1166,15 @@ char *add_win32_extension(const char *p)
 	free(path);
 
 	return NULL;
+}
+
+void FAST_FUNC convert_slashes(char *p)
+{
+	for (; *p; ++p) {
+		if ( *p == '\\' ) {
+			*p = '/';
+		}
+	}
 }
 
 #undef opendir
