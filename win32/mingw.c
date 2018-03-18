@@ -330,6 +330,11 @@ static int has_exec_format(const char *name)
 	unsigned int offset;
 	unsigned char buf[1024];
 
+	/* special case: skip DLLs, there are thousands of them! */
+	n = strlen(name);
+	if (n > 4 && !strcasecmp(name+n-4, ".dll"))
+		return 0;
+
 	fd = open(name, O_RDONLY);
 	if (fd < 0)
 		return 0;
