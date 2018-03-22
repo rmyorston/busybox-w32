@@ -718,19 +718,16 @@ static char *gethomedir(void)
 	HANDLE h;
 
 	if (!buf)
-		buf = xmalloc(PATH_MAX);
+		buf = xzalloc(PATH_MAX);
 
-	buf[0] = '\0';
+	if (buf[0])
+		return buf;
+
 	if ( !OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &h) )
 		return buf;
 
-	if ( !GetUserProfileDirectory(h, buf, &len) ) {
-		CloseHandle(h);
-		return buf;
-	}
-
+	GetUserProfileDirectory(h, buf, &len);
 	CloseHandle(h);
-
 	convert_slashes(buf);
 
 	return buf;
@@ -744,8 +741,7 @@ static char *get_user_name(void)
 	DWORD len = NAME_LEN;
 
 	if ( user_name == NULL ) {
-		user_name = xmalloc(NAME_LEN);
-		user_name[0] = '\0';
+		user_name = xzalloc(NAME_LEN);
 	}
 
 	if ( user_name[0] != '\0' ) {
@@ -901,8 +897,7 @@ const char *get_busybox_exec_path(void)
 	static char *path = NULL;
 
 	if (!path) {
-		path = xmalloc(PATH_MAX);
-		path[0] = '\0';
+		path = xzalloc(PATH_MAX);
 	}
 
 	if (!*path) {
