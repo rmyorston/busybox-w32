@@ -122,18 +122,6 @@ config LFS
 	programs that can benefit from large file support include dd, gzip,
 	cp, mount, tar.
 
-config GLOBBING
-	bool "Allow busybox.exe to expand wildcards"
-	default n
-	depends on PLATFORM_MINGW32
-	help
-	  In Microsoft Windows expansion of wildcards on the command line
-	  ('globbing') is handled by the C runtime while the BusyBox shell
-	  does its own wildcard expansion.  For best results when using the
-	  shell globbing by the C runtime should be turned off. If you want
-	  the BusyBox binary to handle wildcard expansion using the C runtime
-	  set this to 'Y'.
-
 config PAM
 	bool "Support PAM (Pluggable Authentication Modules)"
 	default n
@@ -379,6 +367,39 @@ config PLATFORM_LINUX
 	#
 	#This is automatically selected if any applet or feature requires
 	#Linux-specific interfaces. You do not need to select it manually.
+
+config GLOBBING
+	bool "Allow busybox.exe to expand wildcards"
+	default n
+	depends on PLATFORM_MINGW32
+	help
+	  In Microsoft Windows expansion of wildcards on the command line
+	  ('globbing') is handled by the C runtime while the BusyBox shell
+	  does its own wildcard expansion.  For best results when using the
+	  shell globbing by the C runtime should be turned off. If you want
+	  the BusyBox binary to handle wildcard expansion using the C runtime
+	  set this to 'Y'.
+
+choice
+	prompt "Random number generator"
+	default FEATURE_PRNG_SHELL
+	depends on PLATFORM_MINGW32
+	help
+	BusyBox on Microsoft Windows uses a pseudo-random number
+	generator to emulate the Linux /dev/urandom device.  There
+	are two options:
+	- The shell's built-in PRNG.
+	- Bob Jenkins' ISAAC.  This is intended to be a secure PRNG.  It's
+	slightly faster than the shell's PRNG but is larger both in terms
+	of code and runtime memory.
+
+config FEATURE_PRNG_SHELL
+	bool "Use shell PRNG"
+
+config FEATURE_PRNG_ISAAC
+	bool "Use ISAAC PRNG"
+
+endchoice
 
 comment 'Build Options'
 

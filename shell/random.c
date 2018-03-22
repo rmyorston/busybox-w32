@@ -19,6 +19,17 @@
 # include "random.h"
 # define RAND_BASH_MASK 0x7fff
 
+# if ENABLE_FEATURE_PRNG_SHELL
+uint32_t FAST_FUNC
+next_random(random_t *rnd)
+{
+	return full_random(rnd) & RAND_BASH_MASK;
+}
+#  undef RAND_BASH_MASK
+#  define RAND_BASH_MASK 0xffffffff
+#  define next_random full_random
+# endif
+
 #else
 # include <stdint.h>
 # include <unistd.h>
