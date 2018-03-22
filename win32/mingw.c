@@ -746,6 +746,7 @@ static char *get_user_name(void)
 	return user_name;
 }
 
+#ifndef __WATCOMC__
 struct passwd *getpwnam(const char *name)
 {
 	const char *myname;
@@ -757,6 +758,7 @@ struct passwd *getpwnam(const char *name)
 
 	return NULL;
 }
+#endif
 
 struct passwd *getpwuid(uid_t uid UNUSED_PARAM)
 {
@@ -775,7 +777,7 @@ struct passwd *getpwuid(uid_t uid UNUSED_PARAM)
 	return &p;
 }
 
-
+#ifndef __WATCOMC__
 struct group *getgrgid(gid_t gid UNUSED_PARAM)
 {
 	static char *members[2] = { NULL, NULL };
@@ -791,6 +793,7 @@ struct group *getgrgid(gid_t gid UNUSED_PARAM)
 
 	return &g;
 }
+#endif
 
 int getgrouplist(const char *user UNUSED_PARAM, gid_t group UNUSED_PARAM,
 					gid_t *groups, int *ngroups)

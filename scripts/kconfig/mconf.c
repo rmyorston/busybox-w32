@@ -476,7 +476,7 @@ static void winch_handler(int sig)
 
 static int exec_conf(void)
 {
-#ifdef __MINGW32__
+#if defined(__MINGW32__) || defined(__WATCOMC__)
 	fprintf(stderr, "exec_conf not implemented\n");
 	exit(1);
 #else

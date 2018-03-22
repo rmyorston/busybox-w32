@@ -89,28 +89,29 @@ __hostc_flags	= -I$(obj) $(call flags,_hostc_flags)
 __hostcxx_flags	= -I$(obj) $(call flags,_hostcxx_flags)
 endif
 
+ifeq ($(WATCOM_HOSTCC),1)
 #ifeq ($(CONFIG_COMPILER_WATCOM),y)
-#HOSTCC = owcc
-#HOSTCXX = owcc
-#HOSTCFLAGS = -std=c99 -Wc,-aa -Wc,-zev -Wc,-hd -D+ -g3
-#HOSTCXXFLAGS = -D+
-#HOSTCPPFLAGS = 
-#hostc_flags    = $(__hostc_flags)
-#hostcxx_flags  = $(__hostcxx_flags)
-#ifeq ($(OS),Windows_NT)
-#        INCLUDE = $(WATCOM)/h:$(WATCOM)/h/nt
-#        HOSTCFLAGS += -bnt -I$(WATCOM)/h -I$(WATCOM)/h/nt
-#        HOSTCXXFLAGS += -bnt -I$(WATCOM)/h -I$(WATCOM)/h/nt
-#else
+HOSTCC = owcc
+HOSTCXX = owcc
+HOSTCFLAGS = -std=c99 -Wc,-aa -Wc,-zev -Wc,-hd -D+ -g3
+HOSTCXXFLAGS = -D+
+HOSTCPPFLAGS = 
+hostc_flags = $(__hostc_flags)
+hostcxx_flags = $(__hostcxx_flags)
+ifeq ($(OS),Windows_NT)
+        INCLUDE = $(WATCOM)/h:$(WATCOM)/h/nt
+        HOSTCFLAGS += -bnt -I$(WATCOM)/h -I$(WATCOM)/h/nt
+        HOSTCXXFLAGS += -bnt -I$(WATCOM)/h -I$(WATCOM)/h/nt
+else
         #assume Linux
-#        INCLUDE = $(WATCOM)/lh
-#        HOSTCFLAGS += -blinux -I$(WATCOM)/lh
-#        HOSTCXXFLAGS += -blinux -I$(WATCOM)/lh
-#endif
-#else
+        INCLUDE = $(WATCOM)/lh
+        HOSTCFLAGS += -blinux -I$(WATCOM)/lh
+        HOSTCXXFLAGS += -blinux -I$(WATCOM)/lh
+endif
+else
 hostc_flags    = -Wp,-MD,$(depfile) $(__hostc_flags)
 hostcxx_flags  = -Wp,-MD,$(depfile) $(__hostcxx_flags)
-#endif
+endif
 
 #####
 # Compile programs on the host

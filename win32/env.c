@@ -149,7 +149,7 @@ int clearenv(void)
 	environ = NULL;
 	return 0;
 }
-
+#endif /* safe env */
 #endif /* unsetenv clearenv already present in watcom */
 
 

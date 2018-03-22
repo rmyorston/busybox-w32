@@ -1,5 +1,6 @@
-#ifndef __WATCOMC__ 
-
+#ifdef __WATCOMC__ 
+# include "watcom_win32.h"
+#else
 #define NOIMPL(name,...) static inline int name(__VA_ARGS__) { errno = ENOSYS; return -1; }
 #define IMPL(name,ret,retval,...) static inline ret name(__VA_ARGS__) { return retval; }
 
@@ -437,6 +438,9 @@ const char * next_path_sep(const char *path);
 
 #define find_mount_point(n, s) find_mount_point(n)
 
+
+#endif /* __WATCOMC__ */
+
 /*
  * helpers
  */
@@ -450,9 +454,6 @@ int has_bat_suffix(const char *p);
 int has_exe_suffix(const char *p);
 int has_exe_suffix_or_dot(const char *name);
 char *add_win32_extension(const char *p);
-
-#endif /* __WATCOMC__ */
-
 
 int err_win_to_posix(DWORD winerr);
 

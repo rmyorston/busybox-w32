@@ -118,10 +118,11 @@ hostprogs-y	:= conf mconf qconf gconf kxgettext
 conf-objs	:= conf.o  zconf.tab.o
 mconf-objs	:= mconf.o zconf.tab.o
 kxgettext-objs	:= kxgettext.o zconf.tab.o
+ifeq ($(WATCOM_HOSTCC),1)
 #ifeq ($(CONFIG_COMPILER_WATCOM),y)
-#conf-objs	+= regex.o
-#mconf-objs	+= regex.o
-#endif
+conf-objs	+= regex.o
+mconf-objs	+= regex.o
+endif
 
 ifeq ($(MAKECMDGOALS),xconfig)
 	qconf-target := 1

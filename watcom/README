@@ -3,7 +3,9 @@ The Win32 port makes heavy use of the MinGW port's compatibility changes.
 
 http://open-watcom.github.io/open-watcom/
 
-*Make dependencies:*
+      #####################
+      # Make dependencies #
+      #####################
 
 minimal version of Open Watcom: v2 
 The build has been tested on Open Watcom v2 commit: 0.r2482.g7a44a32 (31 January, 2015)
@@ -18,23 +20,37 @@ KBuild depends on some UNIX utilities (sed, ...)
 - GNUWin32 or Busybox-w32 should provide the needed functions.
 
 
-* Out-of-tree build *
+      #####################
+      # Out-of-tree build #
+      #####################
 It is recommended to build outside of the source tree. To do so, make and cd to a build directory and
 
 On Linux:
 
 KBUILD_SRC=${source_path} make -f ${source_path}/Makefile watcom${arch}_${target}_defconfig
+make
 
 On Windows:
 In Powershell
 
 sv KBUILD_SRC ${source_path}
 make -f $KBUILD_SRC\Makefile watcom${arch}_${target}_defconfig
-
+make
 
 source_path is the path to the busybox-w32 source code
 arch can be: 386
-target can be: win32, linux
+386 target can be: win32, linux
 
+      ####################
+      # Watcom as HOSTCC #
+      ####################
+      
+Watcom compiles the HOSTCC objects without error and successfully compiles/links the "conf" binary on a 
+Linux host. The "conf" binary does however crash with a segmentation fault.
+
+To test (and debug the "conf" binary), run: make WATCOM_HOSTCC=1 in your build directory
+This will trigger a currently inactivated segments in scripts/Makefile.host and scripts/kconfig/Makefile
+
+Making Watcom capable as HOSTCC is important for native compilation of busybox on Windows without GCC.
 
 

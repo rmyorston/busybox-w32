@@ -4,10 +4,6 @@
 #define WATCOM_HACKS 1
 
 /*various */
-#ifndef BB_VER
-#define BB_VER "1.23.0.watcom2"
-#endif
-
 #define NOIMPL(name,...) static inline int name(__VA_ARGS__) { errno = ENOSYS; return -1; }
 #define IMPL(name,ret,retval,...) static inline ret name(__VA_ARGS__) { return retval; }
 
@@ -21,13 +17,9 @@
 /* from Wine*/
 #define REPARSE_DATA_BUFFER_HEADER_SIZE 8
 #define MAXIMUM_REPARSE_DATA_BUFFER_SIZE  (16*1024)
+#define __USE_GNU	1
 
-#undef _WIN32_WINNT
-#define _WIN32_WINNT 0x0501 /* Windows XP */
-#undef WINVER
-#define WINVER 0x0501
-
-#include <winsock2.h>
+/*other headers*/
 #include <tchar.h>
 #include <windows.h>
 #include <windowsx.h>
@@ -45,20 +37,24 @@
 #undef __attribute__
 #define __attribute__(x) /*nothing*/
 
+#if !defined(LOAD_LIBRARY_SEARCH_SYSTEM32)
+#define LOAD_LIBRARY_SEARCH_SYSTEM32   0x00000800
+#endif
+
 /* we try to keep as close as possible to MinGW port */
 typedef long long off64_t;
-#undef ENABLE_PLATFORM_MINGW32
-#define ENABLE_PLATFORM_MINGW32 1
 #undef IF_PLATFORM_MINGW32
-#undef IF_NOT_PLATFORM_MINGW32
 #define IF_PLATFORM_MINGW32(...) __VA_ARGS__
-
 
 #define WIFEXITED(x) ((unsigned)(x) < 259)	/* STILL_ACTIVE */
 #define WEXITSTATUS(x) ((x) & 0xff)
 #define WIFSIGNALED(x) ((unsigned)(x) > 259)
 #define WTERMSIG(x) ((x) & 0x7f)
 #define WCOREDUMP(x) 0
+
+intptr_t FAST_FUNC mingw_spawn_proc(const char **argv);
+pid_t FAST_FUNC mingw_spawn(char **argv);
+#define spawn mingw_spawn
 
 
 /* signals */
@@ -95,9 +91,21 @@ struct sigaction {
 int sigaction(int sig, struct sigaction *in, struct sigaction *out);
 NOIMPL(FAST_FUNC sigprocmask_allsigs, int how UNUSED_PARAM);
 
+#define WINDOWS_SOCKETS 1
+#define SHUT_WR SD_SEND
+#define hstrerror strerror
+
+#define EAFNOSUPPORT ENXIO
+
 /* time */
 
+#define _timezone timezone
+#define _tzset tzset
 #define clock_t long
+
+#define TICKS_PER_SECOND 100
+#define MS_PER_TICK 10
+#define HNSEC_PER_TICK 100000
 
 struct tms {
 	clock_t tms_utime;		/* user CPU time */
@@ -124,7 +132,7 @@ struct timespec {
 
 #define WNOHANG 1
 #define WUNTRACED 2
-int waitpid(pid_t pid, int *status, unsigned options);
+int waitpid(pid_t pid, int *status, int options);
 
 /* File system, io and directories */
 
@@ -137,6 +145,7 @@ int waitpid(pid_t pid, int *status, unsigned options);
 #define pclose _pclose
 #define fseeko(f,o,w) fseek(f,o,w)
 #define lchown chown
+#define mingw_read read
 
 IMPL(fchmod,int,0,int fildes UNUSED_PARAM, mode_t mode UNUSED_PARAM);
 NOIMPL(fchown,int fd UNUSED_PARAM, uid_t uid UNUSED_PARAM, gid_t gid UNUSED_PARAM);
@@ -179,8 +188,13 @@ int mingw_fstat(int fd, struct mingw_stat *buf);
 #define stat mingw_stat
 #define fstat mingw_fstat
 
-#define TIOCGWINSZ 0x5413
 int ioctl(int fd, int code, ...);
+
+/* window/terminal size */
+
+#define TIOCGWINSZ 0x5413
+int winansi_get_terminal_width_height(struct winsize *win);
+
 
 #define PIPE_BUF 8192
 
@@ -192,10 +206,15 @@ struct group {
 	gid_t gr_gid;
 	char **gr_mem;
 };
+
+#define DEFAULT_UID 1000
+#define DEFAULT_GID 1000
+
 IMPL(getgrnam,struct group *,NULL,const char *name UNUSED_PARAM);
 IMPL(getgrgid,struct group *,NULL,gid_t gid UNUSED_PARAM);
 IMPL(getegid,int,1,void);
 IMPL(geteuid,int,1,void);
+IMPL(getuid,int,DEFAULT_UID,void);
 NOIMPL(getsid,pid_t pid UNUSED_PARAM);
 NOIMPL(setsid,void);
 NOIMPL(setgid,gid_t gid UNUSED_PARAM);
@@ -206,13 +225,17 @@ IMPL(getpwnam,struct passwd *,NULL,const char *name UNUSED_PARAM);
 static inline void setpwent(void) {}
 NOIMPL(initgroups,const char *group UNUSED_PARAM,gid_t gid UNUSED_PARAM);
 static inline void endgrent(void) {}
+IMPL(alarm,unsigned int,0,unsigned int seconds UNUSED_PARAM);
 NOIMPL(chroot,const char *root UNUSED_PARAM);
+NOIMPL(fchdir,int fd UNUSED_PARAM);
 static inline void endpwent(void) {}
 IMPL(getpwent_r,int,ENOENT,struct passwd *pwbuf UNUSED_PARAM,char *buf UNUSED_PARAM,size_t buflen UNUSED_PARAM,struct passwd **pwbufp UNUSED_PARAM);
+IMPL(getpwent,struct passwd *,NULL,void)
 IMPL(getppid,int,1,void);
 
 struct passwd {
 	char *pw_name;
+	char *pw_passwd;
 	char *pw_gecos;
 	char *pw_dir;
 	char *pw_shell;
@@ -232,6 +255,7 @@ NOIMPL(vfork,void);
 #define F_SETFL 3
 #define FD_CLOEXEC 0x1
 #define O_NONBLOCK 04000
+#define O_NOFOLLOW 0
 
 int fcntl(int fd, int cmd, ...);
 
@@ -243,6 +267,14 @@ struct sockaddr_un {
 
 #define fork() -1
 NOIMPL(ttyname_r,int fd UNUSED_PARAM, char *buf UNUSED_PARAM, int sz UNUSED_PARAM);
+
+/*
+ * arpa/inet.h
+ */
+static inline unsigned int git_ntohl(unsigned int x) { return (unsigned int)ntohl(x); }
+#define ntohl git_ntohl
+int inet_aton(const char *cp, struct in_addr *inp);
+int inet_pton(int af, const char *src, void *dst);
 
 /*
  * helpers

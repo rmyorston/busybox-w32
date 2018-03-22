@@ -120,7 +120,11 @@ int sleep_main(int argc UNUSED_PARAM, char **argv)
 		}
 	} while (*++argv);
 
+#ifndef __WATCOMC__
 	ts.tv_sec = MAXINT(typeof(ts.tv_sec));
+#else
+    ts.tv_sec = MAXINT(time_t);
+#endif
 	ts.tv_nsec = 0;
 	if (duration >= 0 && duration < ts.tv_sec) {
 		ts.tv_sec = duration;

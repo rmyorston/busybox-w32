@@ -1,4 +1,4 @@
 /* compatibility hack for Watcom as host compiler*/
-#include "../../watcom/regex.c"
+#include "../../win32/regex.c"
 
 

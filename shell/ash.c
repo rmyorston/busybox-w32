@@ -193,18 +193,6 @@
  * When debugging is on ("set -o debug" was executed, or DEBUG=2),
  * debugging info is written to ./trace, quit signal generates core dump.
  */
-
-#if defined(__WATCOMC__) && defined(__NT__)
-#undef _WIN32_WINNT
-#define _WIN32_WINNT 0x0501 /* Windows XP */
-#undef WINVER
-#define WINVER 0x0501
-
-#include <winsock2.h>
-#include <tchar.h>
-#include <windows.h>
-#endif
-
 #define DEBUG 0
 /* Tweak debug output verbosity here */
 #define DEBUG_TIME 0
@@ -298,7 +286,7 @@ typedef long arith_t;
 # define PIPE_BUF 4096           /* amount of buffering in a pipe */
 #endif
 
-#if !defined(ENABLE_PLATFORM_MINGW32)
+#if !ENABLE_PLATFORM_MINGW32
 # define is_absolute_path(path) ((path)[0] == '/')
 #endif
 
@@ -319,7 +307,7 @@ typedef long arith_t;
 # define BB_GLOBAL_CONST const
 #endif
 
-#if defined(ENABLE_PLATFORM_MINGW32)
+#if ENABLE_PLATFORM_MINGW32
 union node;
 struct strlist;
 struct job;
@@ -364,7 +352,6 @@ static void sticky_free(void *p);
 static int spawn_forkshell(struct job *jp, struct forkshell *fs, int mode);
 #endif
 
-
 /* ============ Hash table sizes. Configurable. */
 
 #define VTABSIZE 39
@@ -396,7 +383,6 @@ static const char *const optletters_optnames[] = {
 	,"\0"  "nolog"
 	,"\0"  "debug"
 #endif
-
 #if ENABLE_PLATFORM_MINGW32
 	,"X"   "winxp"
 #endif
@@ -569,7 +555,6 @@ static void trace_vprintf(const char *fmt, va_list va);
 
 
 /* ============ Utility functions */
-
 #define is_name(c)      ((c) == '_' || isalpha((unsigned char)(c)))
 #define is_in_name(c)   ((c) == '_' || isalnum((unsigned char)(c)))
 
@@ -2621,7 +2606,7 @@ path_advance(const char **path, const char *name)
 	if (*path == NULL)
 		return NULL;
 	start = *path;
-#if defined(ENABLE_PLATFORM_MINGW32)
+#if ENABLE_PLATFORM_MINGW32
 	p = next_path_sep(start);
 	q = strchr(start, '%');
 	if ((p && q && q < p) || (!p && q))
@@ -2635,13 +2620,8 @@ path_advance(const char **path, const char *name)
 #endif
 	len = p - start + strlen(name) + 2;     /* "2" is for '/' and '\0' */
 
-<<<<<<< HEAD
-	/* preserve space for .exe too */
-	while (stackblocksize() < (MINGW_TEST ? len+4 : len))
-=======
 	/* reserve space for suffix on WIN32 */
 	while (stackblocksize() < (ENABLE_PLATFORM_MINGW32 ? len+4 : len))
->>>>>>> master
 		growstackblock();
 	q = stackblock();
 	if (p != start) {
@@ -2652,7 +2632,7 @@ path_advance(const char **path, const char *name)
 	pathopt = NULL;
 	if (*p == '%') {
 		pathopt = ++p;
-#if defined(ENABLE_PLATFORM_MINGW32)
+#if ENABLE_PLATFORM_MINGW32
 		p = next_path_sep(start);
 
 		/* *p != ':' and '*' would suffice */
@@ -2664,7 +2644,7 @@ path_advance(const char **path, const char *name)
 #endif
 	}
 	if (*p == ':' ||
-	    (MINGW_TEST && *p == ';'))
+	    (ENABLE_PLATFORM_MINGW32 && *p == ';'))
 		*path = p + 1;
 	else
 		*path = NULL;
@@ -2698,7 +2678,7 @@ putprompt(const char *s)
 }
 #endif
 
-/* expandstr() needs parsing machinery, so it is far away ahead... */
+/* expandstr() needs parsing machinery, so it is far away ahead0... */
 static const char *expandstr(const char *ps, int syntax_type);
 /* Values for syntax param */
 #define BASESYNTAX 0    /* not in quotes */
@@ -2773,7 +2753,7 @@ cdopt(void)
 static const char *
 updatepwd(const char *dir)
 {
-#if defined(ENABLE_PLATFORM_MINGW32)
+#if ENABLE_PLATFORM_MINGW32
 #define is_path_sep(x) ((x) == '/' || (x) == '\\')
 #define is_unc_path(x) (is_path_sep(x[0]) && is_path_sep(x[1]))
 	/*
@@ -3754,7 +3734,7 @@ struct job {
 };
 
 static struct job *makejob(/*union node *,*/ int);
-#if !defined(ENABLE_PLATFORM_MINGW32)
+#if !ENABLE_PLATFORM_MINGW32
 static int forkshell(struct job *, union node *, int);
 #endif
 static int waitforjob(struct job *);
@@ -3817,11 +3797,6 @@ setsignal(int signo)
 	char cur_act, new_act;
 	struct sigaction act;
 
-<<<<<<< HEAD
-	if (MINGW_TEST)
-		return;
-=======
->>>>>>> master
 	t = trap[signo];
 	new_act = S_DFL;
 	if (t != NULL) { /* trap for this sig is set */
@@ -4424,7 +4399,7 @@ sprint_status48(char *s, int status, int sigonly)
 	return col;
 }
 
-#if defined(ENABLE_PLATFORM_MINGW32)
+#if ENABLE_PLATFORM_MINGW32
 
 HANDLE hSIGINT;		/* Ctrl-C is pressed */
 
@@ -4566,18 +4541,6 @@ dowait(int block, struct job *job)
 
 	TRACE(("dowait(0x%x) called\n", block));
 
-<<<<<<< HEAD
-	/* Do a wait system call. If job control is compiled in, we accept
-	 * stopped processes. wait_flags may have WNOHANG, preventing blocking.
-	 * NB: _not_ safe_waitpid, we need to detect EINTR */
-	if (doing_jobctl)
-		wait_flags |= WUNTRACED;
-#if defined(ENABLE_PLATFORM_MINGW32)
-	pid = waitpid_child(&status, wait_flags);
-#else
-	pid = waitpid(-1, &status, wait_flags);
-#endif
-=======
 	/* It's wrong to call waitpid() outside of INT_OFF region:
 	 * signal can arrive just after syscall return and handler can
 	 * longjmp away, losing stop/exit notification processing.
@@ -4609,7 +4572,6 @@ dowait(int block, struct job *job)
 		/* NB: _not_ safe_waitpid, we need to detect EINTR */
 		pid = waitpid(-1, &status, wait_flags);
 	}
->>>>>>> master
 	TRACE(("wait returns pid=%d, status=0x%x, errno=%d(%s)\n",
 				pid, status, errno, strerror(errno)));
 	if (pid <= 0)
@@ -4632,16 +4594,11 @@ dowait(int block, struct job *job)
 					jobno(jp), pid, ps->ps_status, status));
 				ps->ps_status = status;
 				thisjob = jp;
-<<<<<<< HEAD
-				if (MINGW_TEST)
-					ps->ps_pid = -1;
-=======
 #if ENABLE_PLATFORM_MINGW32
 				ps->ps_pid = -1;
 				CloseHandle(ps->ps_proc);
 				ps->ps_proc = NULL;
 #endif
->>>>>>> master
 			}
 			if (ps->ps_status == -1)
 				jobstate = JOBRUNNING;
@@ -4867,15 +4824,6 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 	int retval;
 	struct job *jp;
 
-<<<<<<< HEAD
-	if (MINGW_TEST)
-		return 0;
-
-	if (pending_sig)
-		raise_exception(EXSIG);
-
-=======
->>>>>>> master
 	nextopt(nullstr);
 	retval = 0;
 
@@ -5333,7 +5281,7 @@ commandtext(union node *n)
  *
  * Called with interrupts off.
  */
-#if !defined(ENABLE_PLATFORM_MINGW32)
+#if !ENABLE_PLATFORM_MINGW32
 /*
  * Clear traps on a fork.
  */
@@ -5500,12 +5448,8 @@ forkparent(struct job *jp, union node *n, int mode, HANDLE proc)
 	pid_t pid = GetProcessId(proc);
 #endif
 	TRACE(("In parent shell: child = %d\n", pid));
-<<<<<<< HEAD
-	if (!jp && !MINGW_TEST) { /* FIXME not quite understand this */
-=======
 	if (!jp && !ENABLE_PLATFORM_MINGW32) { /* FIXME not quite understand this */
 		/* jp is NULL when called by openhere() for heredoc support */
->>>>>>> master
 		while (jobless && dowait(DOWAIT_NONBLOCK, NULL) > 0)
 			continue;
 		jobless++;
@@ -5542,12 +5486,8 @@ forkparent(struct job *jp, union node *n, int mode, HANDLE proc)
 	}
 }
 
-<<<<<<< HEAD
-#if !defined(ENABLE_PLATFORM_MINGW32)
-=======
 #if !ENABLE_PLATFORM_MINGW32
 /* jp and n are NULL when called by openhere() for heredoc support */
->>>>>>> master
 static int
 forkshell(struct job *jp, union node *n, int mode)
 {
@@ -5712,7 +5652,7 @@ openhere(union node *redir)
 			goto out;
 		}
 	}
-#if defined(ENABLE_PLATFORM_MINGW32)
+#if ENABLE_PLATFORM_MINGW32
 	memset(&fs, 0, sizeof(fs));
 	fs.fpid = FS_OPENHERE;
 	fs.n = redir;
@@ -5762,7 +5702,7 @@ openredirect(union node *redir)
 	 * allocated space. Do it only when we know it is safe.
 	 */
 	fname = redir->nfile.expfname;
-#if defined(ENABLE_PLATFORM_MINGW32)
+#if ENABLE_PLATFORM_MINGW32
 	/* Support for /dev/null */
 	switch (redir->nfile.type) {
 		case NFROM:
@@ -6823,25 +6763,6 @@ evalbackcmd(union node *n, struct backcmd *result)
 		goto out;
 	}
 
-<<<<<<< HEAD
-	saveherefd = herefd;
-	herefd = -1;
-
-	{
-		int pip[2];
-		struct job *jp;
-
-		if (pipe(pip) < 0)
-			ash_msg_and_raise_error("pipe call failed");
-		jp = makejob(/*n,*/ 1);
-#if defined(ENABLE_PLATFORM_MINGW32)
-		result->fs.fpid = FS_EVALBACKCMD;
-		result->fs.n = n;
-		result->fs.fd[0] = pip[0];
-		result->fs.fd[1] = pip[1];
-		if (spawn_forkshell(jp, &result->fs, FORK_NOJOB) < 0)
-			ash_msg_and_raise_error("unable to spawn shell");
-=======
 	if (pipe(pip) < 0)
 		ash_msg_and_raise_perror("can't create pipe");
 	jp = makejob(/*n,*/ 1);
@@ -6852,7 +6773,6 @@ evalbackcmd(union node *n, struct backcmd *result)
 	result->fs.fd[1] = pip[1];
 	if (spawn_forkshell(jp, &result->fs, FORK_NOJOB) < 0)
 		ash_msg_and_raise_error("unable to spawn shell");
->>>>>>> master
 #else
 	if (forkshell(jp, n, FORK_NOJOB) == 0) {
 		/* child */
@@ -6934,7 +6854,7 @@ expbackq(union node *cmd, int flag)
 	/* Eat all trailing newlines */
 	dest = expdest;
 	for (; dest > (char *)stackblock() && (dest[-1] == '\n' ||
-			(MINGW_TEST && dest[-1] == '\r'));)
+			(ENABLE_PLATFORM_MINGW32 && dest[-1] == '\r'));)
 		STUNPUTC(dest);
 	expdest = dest;
 
@@ -7353,7 +7273,7 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 		int pos, len, orig_len;
 		char *colon;
 
-		loc = str = stackblock() + strloc;
+		loc = str = (char *)stackblock() + strloc;
 
 		/* Read POS in ${var:POS:LEN} */
 		colon = strchr(loc, ':');
@@ -8484,14 +8404,8 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 	int exerrno;
 	int applet_no = -1; /* used only by FEATURE_SH_STANDALONE */
 
-<<<<<<< HEAD
-	clearredir(/*drop:*/ 1);
-	envp = listvars(VEXPORT, VUNSET, /*end:*/ NULL);
-	if ((strchr(argv[0], '/') || (MINGW_TEST && strchr(argv[0], '\\')))
-=======
 	envp = listvars(VEXPORT, VUNSET, /*strlist:*/ NULL, /*end:*/ NULL);
 	if ((strchr(prog, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(prog, '\\')))
->>>>>>> master
 #if ENABLE_FEATURE_SH_STANDALONE
 	 || (applet_no = find_applet_by_name(prog)) >= 0
 #endif
@@ -9099,7 +9013,7 @@ static int funcblocksize;       /* size of structures in function */
 static int funcstringsize;      /* size of strings in node */
 static void *funcblock;         /* block to allocate function from */
 static char *funcstring;        /* block to allocate strings from */
-#if defined(ENABLE_PLATFORM_MINGW32)
+#if ENABLE_PLATFORM_MINGW32
 static int nodeptrsize;
 static char **nodeptr;
 #endif
@@ -9261,19 +9175,11 @@ nodeckstrdup(const char *s)
 
 static union node *copynode(union node *);
 
-<<<<<<< HEAD
-#if defined(ENABLE_PLATFORM_MINGW32)
-# define SAVE_PTR(dst) {if (nodeptr) *nodeptr++ = (int)&(dst);}
-# define SAVE_PTR2(dst1,dst2) {if (nodeptr) { *nodeptr++ = (int)&(dst1);*nodeptr++ = (int)&(dst2);}}
-# define SAVE_PTR3(dst1,dst2,dst3) {if (nodeptr) { *nodeptr++ = (int)&(dst1);*nodeptr++ = (int)&(dst2);*nodeptr++ = (int)&(dst3);}}
-# define SAVE_PTR4(dst1,dst2,dst3,dst4) {if (nodeptr) { *nodeptr++ = (int)&(dst1);*nodeptr++ = (int)&(dst2);*nodeptr++ = (int)&(dst3);*nodeptr++ = (int)&(dst4);}}
-=======
 #if ENABLE_PLATFORM_MINGW32
 # define SAVE_PTR(dst) {if (nodeptr) *nodeptr++ = (char *)&(dst);}
 # define SAVE_PTR2(dst1,dst2) {if (nodeptr) { *nodeptr++ = (char *)&(dst1);*nodeptr++ = (char *)&(dst2);}}
 # define SAVE_PTR3(dst1,dst2,dst3) {if (nodeptr) { *nodeptr++ = (char *)&(dst1);*nodeptr++ = (char *)&(dst2);*nodeptr++ = (char *)&(dst3);}}
 # define SAVE_PTR4(dst1,dst2,dst3,dst4) {if (nodeptr) { *nodeptr++ = (char *)&(dst1);*nodeptr++ = (char *)&(dst2);*nodeptr++ = (char *)&(dst3);*nodeptr++ = (char *)&(dst4);}}
->>>>>>> master
 #else
 # define SAVE_PTR(dst)
 # define SAVE_PTR2(dst,dst2)
@@ -9651,24 +9557,6 @@ evaltree(union node *n, int flags)
 	return exitstatus;
 }
 
-<<<<<<< HEAD
-#if !defined(__alpha__) || (defined(__GNUC__) && __GNUC__ >= 3)
-static
-#endif
-
-#ifndef __WATCOMC__
-void evaltreenr(union node *, int) __attribute__ ((alias("evaltree"),__noreturn__));
-#else
-void evaltreenr(union node *x, int y) {
-    evaltree(x, y);
-}
-#endif
-
-#ifndef __WATCOMC__
-static
-#endif
-void
-=======
 static int
 skiploop(void)
 {
@@ -9690,7 +9578,6 @@ skiploop(void)
 }
 
 static int
->>>>>>> master
 evalloop(union node *n, int flags)
 {
 	int skip;
@@ -9814,7 +9701,7 @@ evalsubshell(union node *n, int flags)
 	if (backgnd == FORK_FG)
 		get_tty_state();
 	jp = makejob(/*n,*/ 1);
-#if defined(ENABLE_PLATFORM_MINGW32)
+#if ENABLE_PLATFORM_MINGW32
 	memset(&fs, 0, sizeof(fs));
 	fs.fpid = FS_EVALSUBSHELL;
 	fs.n = n;
@@ -9943,7 +9830,7 @@ evalpipe(union node *n, int flags)
 				ash_msg_and_raise_perror("can't create pipe");
 			}
 		}
-#if defined(ENABLE_PLATFORM_MINGW32)
+#if ENABLE_PLATFORM_MINGW32
 		memset(&fs, 0, sizeof(fs));
 		fs.fpid = FS_EVALPIPE;
 		fs.flags = flags;
@@ -10750,13 +10637,8 @@ evalcommand(union node *cmd, int flags)
 		 * in a script or a subshell does not need forking,
 		 * we can just exec it.
 		 */
-<<<<<<< HEAD
-#if defined(ENABLE_PLATFORM_MINGW32)
-		if (!(flags & EV_EXIT) || trap[0]) {
-=======
 #if ENABLE_PLATFORM_MINGW32
 		if (!(flags & EV_EXIT) || may_have_traps) {
->>>>>>> master
 			/* No, forking off a child is necessary */
 			struct forkshell fs;
 
@@ -11178,7 +11060,7 @@ preadbuffer(void)
 		more--;
 
 		c = *q;
-		if (c == '\0' || (MINGW_TEST && c == '\r')) {
+		if (c == '\0' || (ENABLE_PLATFORM_MINGW32 && c == '\r')) {
 			memmove(q, q + 1, more);
 		} else {
 			q++;
@@ -11340,7 +11222,7 @@ popallfiles(void)
 		popfile();
 }
 
-#if !defined(ENABLE_PLATFORM_MINGW32)
+#if !ENABLE_PLATFORM_MINGW32
 /*
  * Close the file(s) that the shell is reading commands from.  Called
  * after a fork is done.
@@ -13696,7 +13578,7 @@ find_dot_file(char *name)
 	struct stat statb;
 
 	/* don't try this for absolute or relative paths */
-	if (strchr(name, '/') || (MINGW_TEST && strchr(name, '\\')))
+	if (strchr(name, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(name, '\\')))
 		return name;
 
 	while ((fullname = path_advance(&path, name)) != NULL) {
@@ -13822,7 +13704,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 #endif
 
 	/* If name contains a slash, don't use PATH or hash table */
-	if (strchr(name, '/') || (MINGW_TEST && strchr(name, '\\'))) {
+	if (strchr(name, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(name, '\\'))) {
 		entry->u.index = -1;
 		if (act & DO_ABS) {
 #if ENABLE_PLATFORM_MINGW32
@@ -13943,13 +13825,9 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			TRACE(("searchexec \"%s\": no change\n", name));
 			goto success;
 		}
-<<<<<<< HEAD
-#if defined(ENABLE_PLATFORM_MINGW32)
-=======
 #if ENABLE_PLATFORM_MINGW32
 		/* first try appending suffixes (unless there's one already) */
 		i = 4;
->>>>>>> master
 		len = strlen(fullname);
 		if (!has_exe_suffix_or_dot(fullname)) {
 			/* path_advance() has reserved space for suffix */
@@ -14548,7 +14426,7 @@ init(void)
 
 		initvar();
 
-#if defined(ENABLE_PLATFORM_MINGW32)
+#if ENABLE_PLATFORM_MINGW32
 		/*
 		 * case insensitive env names from Windows world
 		 *
@@ -14852,7 +14730,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	init(IF_PLATFORM_MINGW32(argc >= 2 && strcmp(argv[1], "-X") == 0));
 	setstackmark(&smark);
 
-#if defined(ENABLE_PLATFORM_MINGW32)
+#if ENABLE_PLATFORM_MINGW32
 	hSIGINT = CreateEvent(NULL, TRUE, FALSE, NULL);
 	SetConsoleCtrlHandler(ctrl_handler, TRUE);
 
@@ -14863,10 +14741,6 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		bb_error_msg_and_die("subshell ended unexpectedly");
 	}
 #endif
-<<<<<<< HEAD
-	procargs(argv);
-#if defined(ENABLE_PLATFORM_MINGW32)
-=======
 	login_sh = procargs(argv);
 #if DEBUG
 	TRACE(("Shell args: "));
@@ -14874,7 +14748,6 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 #if ENABLE_ASH_NOCONSOLE
->>>>>>> master
 	if ( noconsole ) {
 		DWORD dummy;
 
@@ -14887,7 +14760,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	if (login_sh) {
 		const char *hp;
 
-#if defined(ENABLE_PLATFORM_MINGW32)
+#if ENABLE_PLATFORM_MINGW32
 		chdir(xgetpwuid(getuid())->pw_dir);
 		setpwd(NULL, 0);
 #endif
@@ -14966,7 +14839,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	/* NOTREACHED */
 }
 
-#if defined(ENABLE_PLATFORM_MINGW32)
+#if ENABLE_PLATFORM_MINGW32
 static void
 forkshell_openhere(struct forkshell *fs)
 {
@@ -14996,7 +14869,9 @@ static void
 forkshell_evalbackcmd(struct forkshell *fs)
 {
 	union node *n = fs->n;
-	int pip[2] = {fs->fd[0], fs->fd[1]};
+	int pip[2]; 
+    pip[0] = fs->fd[0]; 
+    pip[1] = fs->fd[1];
 
 	FORCE_INT_ON;
 	close(pip[0]);
@@ -15031,8 +14906,10 @@ forkshell_evalpipe(struct forkshell *fs)
 	union node *n = fs->n;
 	int flags = fs->flags;
 	int prevfd = fs->fd[2];
-	int pip[2] = {fs->fd[0], fs->fd[1]};
-
+	int pip[2]; 
+    pip[0] = fs->fd[0]; 
+    pip[1] = fs->fd[1];
+    
 	TRACE(("ash: subshell: %s\n",__PRETTY_FUNCTION__));
 	INT_ON;
 	if (pip[1] >= 0) {

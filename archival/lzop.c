@@ -781,7 +781,7 @@ static NOINLINE int lzo_decompress(const header_t *h)
 {
 	unsigned block_size = LZO_BLOCK_SIZE;
 	int r;
-	uint32_t src_len, dst_len;
+	int32_t src_len, dst_len;
 	uint32_t c_adler32 = ADLER32_INIT_VALUE;
 	uint32_t d_adler32 = ADLER32_INIT_VALUE;
 	uint32_t c_crc32 = CRC32_INIT_VALUE, d_crc32 = CRC32_INIT_VALUE;
@@ -1006,7 +1006,7 @@ static int read_header(header_t *h)
 	if (h->header_checksum != checksum)
 		return 2;
 
-	if (h->method <= 0)
+	if ((int) h->method <= 0)
 		return 14;
 	r = lzo_get_method(h);
 	if (r != 0)

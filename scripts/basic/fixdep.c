@@ -132,8 +132,13 @@
 #define O_BINARY 0
 #endif
 
-#ifdef __MINGW32__
+#if defined(__MINGW32__) || defined(__WATCOMC__)
+
+#ifdef __WATCOMC__
+#define UNUSED /* nothing */
+#else
 #define UNUSED __attribute__ ((__unused__))
+#endif
 
 /* Workaround specifically for fixdep */
 #define PROT_READ 0
@@ -142,7 +147,7 @@ void *mmap(void *start UNUSED, size_t size, int prot UNUSED,
 	   int flags UNUSED, int fd, off_t offset UNUSED)
 {
 	void *p;
-	void *curP;
+	long *curP; // can not add value to void in watcom
 	ssize_t readB;
 
 	p = malloc(size);
@@ -168,7 +173,7 @@ void *mmap(void *start UNUSED, size_t size, int prot UNUSED,
 		}
 
 		size -= readB;
-		curP += readB;
+		curP += readB; // watcom complains here if curP is void
 	}
 
 	return p;

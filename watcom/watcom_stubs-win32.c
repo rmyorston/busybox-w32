@@ -140,12 +140,6 @@ symlink ( const char *oldname,  const char *newname)
   return -1;
 }
 
-#undef getgroups
-int getgroups(int gidsetsize, gid_t grouplist[]) {
- errno = ENOSYS;
- return 0;
-}
-
 #undef getgid
 gid_t getgid(void) {
   errno = ENOSYS;

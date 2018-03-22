@@ -10,17 +10,17 @@
 #ifndef LIBBB_H
 #define LIBBB_H 1
 
-
+#if defined(__WATCOMC__) && defined(__NT__)
+# include <direct.h> 
+# define _ENABLE_AUTODEPEND 1
+# define __INLINE_FUNCTIONS__ 1 
+#else
+#include <dirent.h>
+#endif
 
 #include "platform.h"
 
 #include <ctype.h>
-
-#if defined(__WATCOMC__) && defined(__NT__)
-#include <direct.h> 
-#else
-#include <dirent.h>
-#endif
 
 #include <errno.h>
 #include <fcntl.h>
@@ -153,7 +153,10 @@
 # include <netinet/in.h>
 #elif defined(ENABLE_PLATFORM_MINGW32)
 # ifndef WINVER
-#  define WINVER 0x0501
+#  define WINVER 0x0501 //XP
+# endif
+# ifndef _WIN32_WINNT
+#  define _WIN32_WINNT 0x0501 //XP
 # endif
 # include <winsock2.h>
 # include <ws2tcpip.h>
@@ -560,23 +563,23 @@ enum {
 		+ (1LL << SIGINT)
 		+ (1LL << SIGTERM)
 #ifdef SIGPIPE
-		+ (1LL << SIGPIPE)   // Write to pipe with no readers
+		+ (1LL << (int) SIGPIPE)   // Write to pipe with no readers
 #endif
 #ifdef SIGQUIT
-		+ (1LL << SIGQUIT)   // Quit from keyboard
+		+ (1LL << (int) SIGQUIT)   // Quit from keyboard
 #endif
 		+ (1LL << SIGABRT)   // Abort signal from abort(3)
 #ifdef SIGALRM
-		+ (1LL << SIGALRM)   // Timer signal from alarm(2)
+		+ (1LL << (int) SIGALRM)   // Timer signal from alarm(2)
 #endif
 #ifdef SIGVTALRM
-		+ (1LL << SIGVTALRM) // Virtual alarm clock
+		+ (1LL << (int) SIGVTALRM) // Virtual alarm clock
 #endif
 #ifdef SIGXCPU
-		+ (1LL << SIGXCPU)   // CPU time limit exceeded
+		+ (1LL << (int) SIGXCPU)   // CPU time limit exceeded
 #endif
 #ifdef SIGXFSZ
-		+ (1LL << SIGXFSZ)   // File size limit exceeded
+		+ (1LL << (int) SIGXFSZ)   // File size limit exceeded
 #endif
 #ifdef SIGUSR1
 		+ (1LL << SIGUSR1)   // Yes kids, these are also fatal!
@@ -1901,6 +1904,8 @@ typedef struct procps_status_t {
 	unsigned long vsz, rss; /* we round it to kbytes */
 #if defined __WATCOMC__
 	unsigned long p_stime, p_utime;
+#define stime p_stime
+#define utime p_utime
 #else
 	unsigned long stime, utime;
 #endif

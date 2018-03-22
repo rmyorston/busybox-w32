@@ -28,6 +28,11 @@
 
 typedef unsigned long long wide_t;
 
+#ifdef __WATCOMC__
+typedef unsigned half_t;
+#define HALF_MAX UINT_MAX
+#define HALF_FMT ""
+#else
 #if ULLONG_MAX == (UINT_MAX * UINT_MAX + 2 * UINT_MAX)
 /* "unsigned" is half as wide as ullong */
 typedef unsigned half_t;
@@ -41,6 +46,7 @@ typedef unsigned long half_t;
 #else
 #error Cant find an integer type which is half as wide as ullong
 #endif
+#endif /*watcom*/
 
 static half_t isqrt_odd(wide_t N)
 {

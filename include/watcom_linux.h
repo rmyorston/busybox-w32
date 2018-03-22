@@ -33,16 +33,10 @@
 #undef ENABLE_PLATFORM_POSIX
 #define ENABLE_PLATFORM_POSIX 1
 #undef IF_PLATFORM_POSIX
-#undef IF_NOT_PLATFORM_POSIX
 #define IF_PLATFORM_POSIX(...) __VA_ARGS__
 
 #define NOIMPL(name,...) static inline int name(__VA_ARGS__) { errno = ENOSYS; return -1; }
 #define IMPL(name,ret,retval,...) static inline ret name(__VA_ARGS__) { return retval; }
-
-/*various */
-#ifndef BB_VER
-#define BB_VER "1.23.0.watcom2"
-#endif
 
 #define stime p_stime
 #define utime p_utime

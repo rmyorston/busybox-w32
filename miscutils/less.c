@@ -348,7 +348,11 @@ static void re_wrap(void)
 	int dst_idx;
 	int new_cur_fline = 0;
 	uint32_t lineno;
+#if __WATCOMC__
+    char linebuf[81]; // array must be constant 80 char terminal old standard.
+#else
 	char linebuf[w + 1];
+#endif
 	const char **old_flines = flines;
 	const char *s;
 	char **new_flines = NULL;
@@ -816,7 +820,11 @@ static void print_found(const char *line)
 	char *growline;
 	regmatch_t match_structs;
 
+#if __WATCOMC__
+    char buf[81]; // array must be constant size
+#else
 	char buf[width+1];
+#endif
 	const char *str = line;
 	char *p = buf;
 	size_t n;
@@ -880,7 +888,11 @@ void print_found(const char *line);
 
 static void print_ascii(const char *str)
 {
+#if __WATCOMC__
+    char buf[81];
+#else
 	char buf[width+1];
+#endif
 	char *p;
 	size_t n;
 

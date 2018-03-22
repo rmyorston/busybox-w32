@@ -11,11 +11,11 @@
 #include <netinet/in.h>
 #include <net/if.h>
 #include <sys/un.h>
-#include "libbb.h"
+#include <libbb.h>
 
 int FAST_FUNC setsockopt_int(int fd, int level, int optname, int optval)
 {
-	return setsockopt(fd, level, optname, &optval, sizeof(int));
+	return setsockopt(fd, level, optname, (const char *) &optval, sizeof(int));
 }
 int FAST_FUNC setsockopt_1(int fd, int level, int optname)
 {
@@ -358,7 +358,7 @@ int FAST_FUNC xsocket_type(len_and_sockaddr **lsap, int family, int sock_type)
 		if (fd >= 0) {
 #if ENABLE_PLATFORM_MINGW32
 			DWORD buffer = 0;
-			setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &buffer, sizeof(DWORD));
+			setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, (const char*) &buffer, sizeof(DWORD));
 #endif
 			family = AF_INET6;
 			goto done;

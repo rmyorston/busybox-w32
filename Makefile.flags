@@ -2,28 +2,28 @@
 # Build system
 # ==========================================================================
 
+ifeq ($(CONFIG_COMPILER_WATCOM),y)
+EXTRAVERSION = ".watcom2"
+endif
+
 BB_VER = $(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 export BB_VER
 SKIP_STRIP ?= n
-
-ifeq ($(CONFIG_COMPILER_WATCOM),y)
-ifndef BB_VER
-BB_VER:="1.23.0.watcom2"
-export BB_VER
-endif
-endif
 
 ifeq ($(CONFIG_COMPILER_WATCOM),y)
 # -Wc,-ez gives phar lap object format... 
 # -Wc,-zu does not assume stack in data segment, injects __far
 # -Wc,-s do not do stack checks
 # -Wc,-sg grow stack
-CPPFLAGS = -std=c99 -Wc,-aa -Wc,-ai -Wc,-aq -Wc,-sg -Wc,-zev -D+
+CPPFLAGS = -std=c99 -Wc,-aa -Wc,-ai -Wc,-aq -Wc,-sg -Wc,-zev -D+ \
+	-Iinclude -Ilibbb \
+	$(if $(KBUILD_SRC),-Iinclude2 -I$(srctree)/include -I$(srctree)/libbb) \
+	-include include/autoconf.h \
+	$(if $(CONFIG_LFS),-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64) \
+	-D"BB_VER=\"$(BB_VER)\""
 else
 # -std=gnu99 needed for [U]LLONG_MAX on some systems
 CPPFLAGS += $(call cc-option,-std=gnu99,)
-endif
-
 
 CPPFLAGS += \
 	-Iinclude -Ilibbb \
@@ -32,7 +32,6 @@ CPPFLAGS += \
 	-D_GNU_SOURCE -DNDEBUG \
 	$(if $(CONFIG_LFS),-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64) \
 	-D"BB_VER=KBUILD_STR($(BB_VER))" -D"MINGW_VER=KBUILD_STR($(MINGW_VER))"
-
 CFLAGS += $(call cc-option,-Wall,)
 CFLAGS += $(call cc-option,-Wshadow,)
 CFLAGS += $(call cc-option,-Wwrite-strings,)
@@ -46,6 +45,7 @@ CFLAGS += $(call cc-option,-Wno-format-security,)
 CFLAGS += $(call cc-option,-Wdeclaration-after-statement,)
 # If you want to add more -Wsomething above, make sure that it is
 # still possible to build bbox without warnings.
+endif #not watcom
 
 ifeq ($(CONFIG_WERROR),y)
 CFLAGS += $(call cc-option,-Werror,)

@@ -75,7 +75,11 @@
 # define __const const
 #endif
 
-#define UNUSED_PARAM __attribute__ ((__unused__))
+#ifndef __WATCOMC__
+# define UNUSED_PARAM __attribute__ ((__unused__))
+#else
+# define UNUSED_PARAM /*nothing*/
+#endif
 #define NORETURN __attribute__ ((__noreturn__))
 
 #if __GNUC_PREREQ(4,5)
@@ -487,6 +491,7 @@ typedef unsigned smalluint;
 #endif
 
 #if defined(__WATCOMC__)
+void *mempcpy(void *dest, const void *src, size_t len);
 # undef HAVE_DPRINTF
 # undef HAVE_GETLINE
 # undef HAVE_MEMRCHR
@@ -634,7 +639,7 @@ extern char *stpcpy(char *p, const char *to_add) FAST_FUNC;
 #define mempcpy bb__mempcpy
 static ALWAYS_INLINE void *mempcpy(void *dest, const void *src, size_t len)
 {
-	return memcpy(dest, src, len) + len;
+	return memcpy(dest, src, len) + len; 
 }
 #endif
 
