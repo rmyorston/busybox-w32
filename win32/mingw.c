@@ -141,14 +141,33 @@ int err_win_to_posix(DWORD winerr)
 static int zero_fd = -1;
 static int rand_fd = -1;
 
-void mingw_read_zero(int fd)
+/*
+ * Determine if 'filename' corresponds to one of the supported
+ * device files.  Constants for these are defined as an enum
+ * in mingw.h.
+ */
+int get_dev_type(const char *filename)
 {
-	zero_fd = fd;
+	int i;
+	const char *devname[NOT_DEVICE] = { "null", "zero", "urandom" };
+
+	if (filename && !strncmp(filename, "/dev/", 5)) {
+		for (i=0; i<NOT_DEVICE; ++i ) {
+			if (!strcmp(filename+5, devname[i])) {
+				return i;
+			}
+		}
+	}
+
+	return NOT_DEVICE;
 }
 
-void mingw_read_random(int fd)
+void update_dev_fd(int dev, int fd)
 {
-	rand_fd = fd;
+	if (dev == DEV_ZERO)
+		zero_fd = fd;
+	else if (dev == DEV_URANDOM)
+		rand_fd = fd;
 }
 
 #undef open
@@ -157,46 +176,27 @@ int mingw_open (const char *filename, int oflags, ...)
 	va_list args;
 	unsigned mode;
 	int fd;
-	int special = 0;
-	int devnull = 0;
-	int devzero = 0;
-	int devrand = 0;
+	int special = (oflags & O_SPECIAL);
+	int dev = get_dev_type(filename);
+
+	/* /dev/null is always allowed, others only if O_SPECIAL is set */
+	if (dev != NOT_DEVICE && (dev == DEV_NULL || special)) {
+		filename = "nul";
+		oflags = O_RDWR;
+	}
 
 	va_start(args, oflags);
 	mode = va_arg(args, int);
 	va_end(args);
 
-	if (oflags & O_SPECIAL) {
-		oflags &= ~O_SPECIAL;
-		special = 1;
+	fd = open(filename, oflags&~O_SPECIAL, mode);
+	if (fd >= 0) {
+		update_dev_fd(dev, fd);
 	}
-	if (filename && !strncmp(filename, "/dev/", 5)) {
-		if (!strcmp(filename+5, "null")) {
-			devnull = 1;
-		}
-		else if (special) {
-			if (!strcmp(filename+5, "zero"))
-				devzero = 1;
-			else if (!strcmp(filename+5, "urandom"))
-				devrand = 1;
-		}
-
-		if (devnull || devzero || devrand ) {
-			filename = "nul";
-			oflags = O_RDWR;
-		}
-	}
-	fd = open(filename, oflags, mode);
-	if (fd < 0 && (oflags & O_ACCMODE) != O_RDONLY && errno == EACCES) {
+	else if ((oflags & O_ACCMODE) != O_RDONLY && errno == EACCES) {
 		DWORD attrs = GetFileAttributes(filename);
 		if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY))
 			errno = EISDIR;
-	}
-	if (fd >= 0 ) {
-		if (devzero)
-			zero_fd = fd;
-		else if (devrand)
-			rand_fd = fd;
 	}
 	return fd;
 }

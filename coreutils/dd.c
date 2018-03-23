@@ -433,12 +433,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 		xmove_fd(xopen(infile, O_RDONLY), ifd);
 #else
 		xmove_fd(mingw_xopen(infile, O_RDONLY), ifd);
-		if (!strcmp(infile, "/dev/zero")) {
-			mingw_read_zero(ifd);
-		}
-		else if (!strcmp(infile, "/dev/urandom")) {
-			mingw_read_random(ifd);
-		}
+		update_dev_fd(get_dev_type(infile), ifd);
 #endif
 	} else {
 		infile = bb_msg_standard_input;

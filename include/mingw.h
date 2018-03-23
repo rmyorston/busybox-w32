@@ -367,10 +367,12 @@ int fsync(int fd);
 int kill(pid_t pid, int sig);
 int link(const char *oldpath, const char *newpath);
 NOIMPL(mknod,const char *name UNUSED_PARAM, mode_t mode UNUSED_PARAM, dev_t device UNUSED_PARAM);
+/* order of devices must match that in get_dev_type */
+enum {DEV_NULL, DEV_ZERO, DEV_URANDOM, NOT_DEVICE};
+int get_dev_type(const char *filename);
+void update_dev_fd(int dev, int fd);
 int mingw_open (const char *filename, int oflags, ...);
 int mingw_xopen(const char *filename, int oflags);
-void mingw_read_zero(int fd);
-void mingw_read_random(int fd);
 ssize_t mingw_read(int fd, void *buf, size_t count);
 int mingw_close(int fd);
 int pipe(int filedes[2]);
