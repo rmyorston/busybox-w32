@@ -55,6 +55,7 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 #else
 	intptr_t ret;
 	HANDLE h;
+	DWORD status = EXIT_SUCCESS;
 #endif
 	int parent = 0;
 	int timeout = 10;
@@ -131,6 +132,7 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	BB_EXECVP_or_die(argv);
 #else /* ENABLE_PLATFORM_MINGW32 */
+	xfunc_error_retval = 125;
 	if (signo != SIGTERM && signo != SIGKILL && signo != 0)
 		bb_error_msg_and_die("unknown signal '%s'", opt_s);
 
@@ -138,16 +140,21 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 	if (argv[0] == NULL)
 		bb_show_usage();
 
-	if ((ret=mingw_spawn_proc((const char **)argv)) == -1)
+	if ((ret=mingw_spawn_proc((const char **)argv)) == -1) {
+		xfunc_error_retval = errno == EACCES ? 126 : 127;
 		bb_perror_msg_and_die("can't execute '%s'", argv[0]);
+	}
 
 	h = (HANDLE)ret;
 	while (1) {
 		sleep(1);
-		if (--timeout <= 0)
+		if (--timeout <= 0) {
+			status = signo == SIGKILL ? 137 : 124;
 			break;
+		}
 		if (WaitForSingleObject(h, 0) == WAIT_OBJECT_0) {
 			/* process is gone */
+			GetExitCodeProcess(h, &status);
 			goto finish;
 		}
 	}
@@ -156,6 +163,6 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 	kill(pid, signo);
  finish:
 	CloseHandle(h);
-	return EXIT_SUCCESS;
+	return status;
 #endif
 }
