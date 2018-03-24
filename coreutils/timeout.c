@@ -65,6 +65,10 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	const char *opt_s = "TERM";
 
+#if ENABLE_PLATFORM_MINGW32
+	xfunc_error_retval = 125;
+#endif
+
 	/* -p option is not documented, it is needed to support NOMMU. */
 
 	/* -t SECONDS; -p PARENT_PID */
@@ -132,7 +136,6 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	BB_EXECVP_or_die(argv);
 #else /* ENABLE_PLATFORM_MINGW32 */
-	xfunc_error_retval = 125;
 	if (signo != SIGTERM && signo != SIGKILL && signo != 0)
 		bb_error_msg_and_die("unknown signal '%s'", opt_s);
 
