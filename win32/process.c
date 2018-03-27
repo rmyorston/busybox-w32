@@ -580,18 +580,10 @@ static inline int process_architecture_matches_current(HANDLE process)
  * http://www.drdobbs.com/a-safer-alternative-to-terminateprocess/184416547
  *
  */
-static int exit_process(pid_t pid, int exit_code)
+int kill_SIGTERM_by_handle(HANDLE process, int exit_code)
 {
-	HANDLE process;
 	DWORD code;
 	int ret = 0;
-
-	if (!(process = OpenProcess(SYNCHRONIZE | PROCESS_CREATE_THREAD |
-			PROCESS_QUERY_INFORMATION |
-			PROCESS_VM_OPERATION | PROCESS_VM_WRITE |
-			PROCESS_VM_READ, FALSE, pid))) {
-		return -1;
-	}
 
 	if (GetExitCodeProcess(process, &code) && code == STILL_ACTIVE) {
 		static int initialized;
@@ -629,12 +621,26 @@ static int exit_process(pid_t pid, int exit_code)
 	return ret;
 }
 
+static int kill_SIGTERM(pid_t pid, int exit_code)
+{
+	HANDLE process;
+
+	if (!(process = OpenProcess(SYNCHRONIZE | PROCESS_CREATE_THREAD |
+			PROCESS_QUERY_INFORMATION |
+			PROCESS_VM_OPERATION | PROCESS_VM_WRITE |
+			PROCESS_VM_READ, FALSE, pid))) {
+		return -1;
+	}
+
+	return kill_SIGTERM_by_handle(process, exit_code);
+}
+
 /*
  * This way of terminating processes is not gentle: they get no chance to
  * clean up after themselves (closing file handles, removing .lock files,
  * terminating spawned processes (if any), etc).
  */
-static int terminate_process(pid_t pid, int exit_code)
+static int kill_SIGKILL(pid_t pid, int exit_code)
 {
 	HANDLE process;
 	int ret;
@@ -649,7 +655,7 @@ static int terminate_process(pid_t pid, int exit_code)
 	return ret;
 }
 
-static int test_process(pid_t pid, int exit_code UNUSED_PARAM)
+static int kill_SIGTEST(pid_t pid, int exit_code UNUSED_PARAM)
 {
 	HANDLE process;
 
@@ -664,13 +670,13 @@ static int test_process(pid_t pid, int exit_code UNUSED_PARAM)
 int kill(pid_t pid, int sig)
 {
 	if (sig == SIGTERM) {
-		return kill_pids(pid, 128+sig, exit_process);
+		return kill_pids(pid, 128+sig, kill_SIGTERM);
 	}
 	else if (sig == SIGKILL) {
-		return kill_pids(pid, 128+sig, terminate_process);
+		return kill_pids(pid, 128+sig, kill_SIGKILL);
 	}
 	else if (sig == 0) {
-		return kill_pids(pid, 128+sig, test_process);
+		return kill_pids(pid, 128+sig, kill_SIGTEST);
 	}
 
 	errno = EINVAL;
