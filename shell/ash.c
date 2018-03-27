@@ -4472,7 +4472,15 @@ waitpid_child(int *status, int wait_flags)
 		int i;
 		ResetEvent(hSIGINT);
 		for (i = 1; i < pid_nr; i++)
-			TerminateProcess(proclist[i], 1);
+			kill_SIGTERM_by_handle(proclist[i], 128+SIGINT);
+		Sleep(200);
+		for (i = 1; i < pid_nr; i++) {
+			DWORD code;
+			if (GetExitCodeProcess(proclist[i], &code) &&
+					code == STILL_ACTIVE) {
+				TerminateProcess(proclist[i], 128+SIGINT);
+			}
+		}
 		pid = pidlist[1];
 		free(pidlist);
 		free(proclist);
