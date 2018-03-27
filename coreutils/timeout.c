@@ -46,6 +46,17 @@
 
 #include "libbb.h"
 
+#if ENABLE_PLATFORM_MINGW32
+HANDLE child = INVALID_HANDLE_VALUE;
+
+static void kill_child(void)
+{
+	if (child != INVALID_HANDLE_VALUE) {
+		kill_SIGTERM_by_handle(child, 128+SIGTERM);
+	}
+}
+#endif
+
 int timeout_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int timeout_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -54,7 +65,6 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 	int status;
 #else
 	intptr_t ret;
-	HANDLE h;
 	DWORD status = EXIT_SUCCESS;
 #endif
 	int parent = 0;
@@ -148,24 +158,26 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 		bb_perror_msg_and_die("can't execute '%s'", argv[0]);
 	}
 
-	h = (HANDLE)ret;
+	child = (HANDLE)ret;
+	atexit(kill_child);
 	while (1) {
 		sleep(1);
-		if (--timeout <= 0) {
+		if (signo && --timeout <= 0) {
 			status = signo == SIGKILL ? 137 : 124;
 			break;
 		}
-		if (WaitForSingleObject(h, 0) == WAIT_OBJECT_0) {
+		if (WaitForSingleObject(child, 0) == WAIT_OBJECT_0) {
 			/* process is gone */
-			GetExitCodeProcess(h, &status);
+			GetExitCodeProcess(child, &status);
 			goto finish;
 		}
 	}
 
-	pid = (pid_t)GetProcessId(h);
+	pid = (pid_t)GetProcessId(child);
 	kill(pid, signo);
  finish:
-	CloseHandle(h);
+	CloseHandle(child);
+	child = INVALID_HANDLE_VALUE;
 	return status;
 #endif
 }
