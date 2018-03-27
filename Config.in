@@ -401,6 +401,31 @@ config FEATURE_PRNG_ISAAC
 
 endchoice
 
+config FEATURE_ICON
+	bool "Include application icon in binary"
+	default y
+	depends on PLATFORM_MINGW32
+	help
+	Microsoft Windows applications can contain icons which are used in
+	various places in the user interface.  Each icon adds 15 Kbytes to
+	the size of the binary.
+
+choice
+	prompt "Application icon"
+	default FEATURE_ICON_ALL
+	depends on FEATURE_ICON
+
+config FEATURE_ICON_ATERM
+	bool "Adwaita terminal"
+
+config FEATURE_ICON_STERM
+	bool "Adwaita terminal (symbolic)"
+
+config FEATURE_ICON_ALL
+	bool "All available icons"
+
+endchoice
+
 comment 'Build Options'
 
 config STATIC

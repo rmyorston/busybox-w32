@@ -1,0 +1,15 @@
+# Makefile for busybox
+#
+# Copyright (C) 2018 by R M Yorston <rmy@pobox.com>
+#
+# Licensed under GPLv2, see file LICENSE in this source tree.
+
+obj-y :=
+
+obj-$(CONFIG_FEATURE_ICON) += icon.o
+
+quiet_cmd_windres = WINDRES $@
+      cmd_windres = $(WINDRES) $< $@
+
+win32/icon/icon.o: win32/icon/icon.rc .config
+	$(call cmd,windres)

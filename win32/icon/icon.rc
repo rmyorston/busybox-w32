@@ -1,0 +1,8 @@
+#include "../../include/autoconf.h"
+
+#if CONFIG_FEATURE_ICON_ATERM || CONFIG_FEATURE_ICON_ALL
+1 ICON "aterm.ico"
+#endif
+#if CONFIG_FEATURE_ICON_STERM || CONFIG_FEATURE_ICON_ALL
+2 ICON "sterm.ico"
+#endif
