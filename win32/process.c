@@ -433,6 +433,8 @@ UNUSED_PARAM
 		}
 	}
 
+	memset(&sp->vsz, 0, sizeof(*sp) - offsetof(procps_status_t, vsz));
+
 #if ENABLE_FEATURE_PS_TIME || ENABLE_FEATURE_PS_LONG
 	if (flags & (PSSCAN_STIME|PSSCAN_UTIME|PSSCAN_START_TIME)) {
 		HANDLE proc;

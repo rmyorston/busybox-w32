@@ -1840,7 +1840,11 @@ int FAST_FUNC procps_read_smaps(pid_t pid, struct smaprec *total,
 		void (*cb)(struct smaprec *, void *), void *data);
 
 typedef struct procps_status_t {
+#if !ENABLE_PLATFORM_MINGW32
 	DIR *dir;
+#else
+	HANDLE snapshot;
+#endif
 	IF_FEATURE_SHOW_THREADS(DIR *task_dir;)
 	uint8_t shift_pages_to_bytes;
 	uint8_t shift_pages_to_kb;
@@ -1878,9 +1882,6 @@ typedef struct procps_status_t {
 	/* user/group? - use passwd/group parsing functions */
 #if ENABLE_FEATURE_TOP_SMP_PROCESS
 	int last_seen_on_cpu;
-#endif
-#if ENABLE_PLATFORM_MINGW32
-	HANDLE snapshot;
 #endif
 } procps_status_t;
 /* flag bits for procps_scan(xx, flags) calls */
