@@ -410,6 +410,7 @@ UNUSED_PARAM
 )
 {
 	PROCESSENTRY32 pe;
+	const char *comm;
 
 	pe.dwSize = sizeof(pe);
 	if (!sp) {
@@ -472,7 +473,21 @@ UNUSED_PARAM
 
 	sp->pid = pe.th32ProcessID;
 	sp->ppid = pe.th32ParentProcessID;
-	safe_strncpy(sp->comm, pe.szExeFile, COMM_LEN);
+
+	comm = pe.szExeFile;
+	if (sp->pid == GetProcessId(GetCurrentProcess())) {
+		comm = applet_name;
+	}
+	else {
+		char *name, *value;
+
+		name = xasprintf("BB_APPLET_%d", sp->pid);
+		if ((value=getenv(name)) != NULL) {
+			comm = value;
+		}
+		free(name);
+	}
+	safe_strncpy(sp->comm, comm, COMM_LEN);
 	return sp;
 }
 

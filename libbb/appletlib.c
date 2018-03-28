@@ -990,6 +990,15 @@ void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **ar
 	}
 	if (ENABLE_FEATURE_SUID)
 		check_suid(applet_no);
+
+#if ENABLE_PLATFORM_MINGW32
+	{
+		char *var = xasprintf("BB_APPLET_%d=%s", getpid(), applet_name);
+		putenv(var);
+		free(var);
+	}
+#endif
+
 	xfunc_error_retval = applet_main[applet_no](argc, argv);
 	/* Note: applet_main() may also not return (die on a xfunc or such) */
 	xfunc_die();
