@@ -12,7 +12,11 @@ int waitpid(pid_t pid, int *status, int options)
 						FALSE, pid)) != NULL ) {
 			ret = _cwait(status, (intptr_t)proc, 0);
 			CloseHandle(proc);
-			return ret == -1 ? -1 : pid;
+			if (ret == -1) {
+				return -1;
+			}
+			*status <<= 8;
+			return pid;
 		}
 	}
 	errno = pid < 0 ? ENOSYS : EINVAL;
