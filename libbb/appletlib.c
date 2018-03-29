@@ -48,6 +48,13 @@
 # define IF_FEATURE_INDIVIDUAL(...) __VA_ARGS__
 #endif
 
+#if (ENABLE_FEATURE_INSTALLER && !ENABLE_PLATFORM_MINGW32) || \
+	(ENABLE_PLATFORM_MINGW32 && (ENABLE_FEATURE_PREFER_APPLETS \
+		|| ENABLE_FEATURE_SH_STANDALONE \
+		|| ENABLE_FEATURE_SH_NOFORK))
+# define IF_FULL_LIST_OPTION(...) __VA_ARGS__
+#endif
+
 #include "usage_compressed.h"
 
 
@@ -830,12 +837,7 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 			"copyright notices.\n"
 			"\n"
 			"Usage: busybox [function [arguments]...]\n"
-			IF_NOT_PLATFORM_MINGW32(
-			"   or: busybox --list"IF_FEATURE_INSTALLER("[-full]")"\n"
-			)
-			IF_PLATFORM_MINGW32(
-			"   or: busybox --list\n"
-			)
+			"   or: busybox --list"IF_FULL_LIST_OPTION("[-full]")"\n"
 			IF_FEATURE_INSTALLER(
 			"   or: busybox --install "IF_NOT_PLATFORM_MINGW32("[-s] ")"[DIR]\n"
 			)
@@ -894,6 +896,20 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 #  if ENABLE_FEATURE_INSTALLER && !ENABLE_PLATFORM_MINGW32
 			if (argv[1][6]) /* --list-full? */
 				full_write2_str(install_dir[APPLET_INSTALL_LOC(i)] + 1);
+#  elif ENABLE_PLATFORM_MINGW32 && (ENABLE_FEATURE_PREFER_APPLETS \
+		|| ENABLE_FEATURE_SH_STANDALONE \
+		|| ENABLE_FEATURE_SH_NOFORK)
+			if (argv[1][6]) { /* --list-full? */
+				const char *str;
+
+				if (APPLET_IS_NOFORK(i))
+					str = "NOFORK  ";
+				else if (APPLET_IS_NOEXEC(i))
+					str = "noexec  ";
+				else
+					str = "        ";
+				full_write2_str(str);
+			}
 #  endif
 			full_write2_str(a);
 			full_write2_str("\n");
