@@ -19,5 +19,8 @@ WRFLAGS := -D"KBUILD_STR(s)=\#s" -D"BB_VER=KBUILD_STR($(BB_VER))" \
 quiet_cmd_windres = WINDRES $@
       cmd_windres = $(WINDRES) $(WRFLAGS) $< $@
 
-win32/icon/icon.o: win32/icon/icon.rc .config .kernelrelease
-	$(call cmd,windres)
+%.o: %.rc FORCE
+	$(call if_changed,windres)
+
+win32/icon/icon.o: win32/icon/icon.rc .config
+win32/icon/icon.o: win32/icon/aterm.ico win32/icon/sterm.ico
