@@ -993,9 +993,10 @@ void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **ar
 
 #if ENABLE_PLATFORM_MINGW32
 	{
-		char *var = xasprintf("BB_APPLET_%d=%s", getpid(), applet_name);
+		char var[64];
+
+		sprintf(var, "BB_APPLET_%d=%s", getpid(), applet_name);
 		putenv(var);
-		free(var);
 	}
 #endif
 

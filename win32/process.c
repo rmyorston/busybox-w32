@@ -361,7 +361,7 @@ mingw_spawn(char **argv)
 {
 	intptr_t ret;
 
-	ret = mingw_spawn_1(P_NOWAIT, argv[0], (char *const *)argv, environ);
+	ret = mingw_spawn_proc((const char **)argv);
 
 	return ret == -1 ? -1 : GetProcessId((HANDLE)ret);
 }
@@ -479,13 +479,12 @@ UNUSED_PARAM
 		comm = applet_name;
 	}
 	else {
-		char *name, *value;
+		char name[32], *value;
 
-		name = xasprintf("BB_APPLET_%d", sp->pid);
+		sprintf(name, "BB_APPLET_%d", sp->pid);
 		if ((value=getenv(name)) != NULL) {
 			comm = value;
 		}
-		free(name);
 	}
 	safe_strncpy(sp->comm, comm, COMM_LEN);
 	return sp;
