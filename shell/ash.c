@@ -14502,7 +14502,11 @@ init(void)
  * os.execv("ash", [ 'ash', '-c', 'env | grep test-test' ])  # breaks this
  */
 			if (strchr(*envp, '=')) {
+#if !ENABLE_PLATFORM_MINGW32
 				setvareq(*envp, VEXPORT|VTEXTFIXED);
+#else
+				setvareq(*envp, VEXPORT);
+#endif
 			}
 		}
 
