@@ -14946,27 +14946,31 @@ forkshell_child(struct forkshell *fs)
 }
 
 /*
- * Reset the pointers to the builtin environment variables in the hash
- * table to point to varinit rather than the bogus copy created during
- * forkshell_prepare.
+ * Reinitialise the builtin environment variables in varinit.  Their
+ * current settings have been copied from the parent in vartab.  Look
+ * these up using the names from varinit_data, copy the details from
+ * vartab to varinit and replace the old copy in vartab with the new
+ * one in varinit.
+ *
+ * Also reinitialise the function pointers and line number variable.
  */
 static void
 reinitvar(void)
 {
-	struct var *vp;
-	struct var *end;
-	struct var **vpp;
-	struct var **old;
+	int i;
+	const char *name;
+	struct var **vpp, **old;
 
-	vp = varinit;
-	end = vp + ARRAY_SIZE(varinit);
-	do {
-		vpp = hashvar(vp->var_text);
-		if ( (old=findvar(vpp, vp->var_text)) != NULL ) {
-			vp->next = (*old)->next;
-			*old = vp;
+	for (i=0; i<ARRAY_SIZE(varinit); ++i) {
+		name = varinit_data[i].var_text ? varinit_data[i].var_text : "LINENO=";
+		vpp = hashvar(name);
+		if ( (old=findvar(vpp, name)) != NULL ) {
+			varinit[i] = **old;
+			*old = varinit+i;
 		}
-	} while (++vp < end);
+		varinit[i].var_func = varinit_data[i].var_func;
+	}
+	vlineno.var_text = linenovar;
 }
 
 /* FIXME: should consider running forkparent() and forkchild() */
@@ -15049,10 +15053,6 @@ SLIST_SIZE_END()
 SLIST_COPY_BEGIN(var_copy,struct var)
 (*vpp)->var_text = nodeckstrdup(vp->var_text);
 (*vpp)->flags = vp->flags;
-/*
- * The only place that can set struct var#func is varinit[],
- * which will be fixed by forkshell_init()
- */
 (*vpp)->var_func = NULL;
 SAVE_PTR((*vpp)->var_text);
 SLIST_COPY_END()
@@ -15230,12 +15230,12 @@ globals_var_size(struct globals_var *gvp)
 	redirtab_size(gvp->redirlist);
 	for (i = 0; i < VTABSIZE; i++)
 		var_size(gvp->vartab[i]);
-	for (i = 0; i < ARRAY_SIZE(varinit_data); i++)
-		var_size(gvp->varinit+i);
-	nodeptrsize += 2 + VTABSIZE; /* gvp->redirlist, gvp->shellparam.p, vartab  */
+	nodeptrsize += 2 + VTABSIZE; /* gvp->redirlist, gvp->shellparam.p, vartab */
 }
 
 #undef preverrout_fd
+#undef lineno
+#undef linenovar
 static struct globals_var *
 globals_var_copy(struct globals_var *gvp)
 {
@@ -15260,14 +15260,8 @@ globals_var_copy(struct globals_var *gvp)
 		SAVE_PTR(new->vartab[i]);
 	}
 
-	/* Can't use var_copy because varinit is already allocated */
-	for (i = 0; i < ARRAY_SIZE(varinit_data); i++) {
-		new->varinit[i].next = NULL;
-		new->varinit[i].var_text = nodeckstrdup(gvp->varinit[i].var_text);
-		SAVE_PTR(new->varinit[i].var_text);
-		new->varinit[i].flags = gvp->varinit[i].flags;
-		new->varinit[i].var_func = gvp->varinit[i].var_func;
-	}
+	new->lineno = gvp->lineno;
+	strcpy(new->linenovar, gvp->linenovar);
 	return new;
 }
 
@@ -15425,8 +15419,6 @@ forkshell_init(const char *idstr)
 	}
 
 	/* Now fix up stuff that can't be transferred */
-	for (i = 0; i < ARRAY_SIZE(varinit_data); i++)
-		fs->gvp->varinit[i].var_func = varinit_data[i].var_func;
 	for (i = 0; i < CMDTABLESIZE; i++) {
 		struct tblentry *e = fs->cmdtable[i];
 		while (e) {
