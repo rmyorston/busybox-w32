@@ -1142,24 +1142,20 @@ int main(int argc UNUSED_PARAM, char **argv)
 	applet_name = argv[0];
 	if (applet_name[0] == '-')
 		applet_name++;
-	if (ENABLE_PLATFORM_MINGW32) {
-		if ( argv[1] && argv[2] && strcmp(argv[1], "--busybox") == 0 ) {
-			argv += 2;
-			applet_name = argv[0];
-		}
-		else {
-			char *s = argv[0];
-			int i, len = strlen(s);
+# if ENABLE_PLATFORM_MINGW32
+	if ( argv[1] && argv[2] && strcmp(argv[1], "--busybox") == 0 ) {
+		argv += 2;
+		applet_name = argv[0];
+	}
+	else {
+		char *s;
 
-			for ( i=0; i < len; ++i ) {
-				s[i] = tolower(s[i]);
-			}
-			if (len > 4 && !strcmp(s+len-4, ".exe")) {
-				len -= 4;
-				s[len] = '\0';
-			}
+		str_tolower(argv[0]);
+		if (has_exe_suffix_or_dot(argv[0]) && !(s=strrchr(argv[0], '.'))) {
+			*s = '\0';
 		}
 	}
+# endif
 	applet_name = bb_basename(applet_name);
 
 	/* If we are a result of execv("/proc/self/exe"), fix ugly comm of "exe" */
