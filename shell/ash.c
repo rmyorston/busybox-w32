@@ -8999,7 +8999,7 @@ commandcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 #endif
 
 
-static int funcblocksize;       /* size of structures in function */
+/*static int funcblocksize;     // size of structures in function */
 /*static int funcstringsize;    // size of strings in node */
 static void *funcblock;         /* block to allocate function from */
 static char *funcstring_end;    /* end of block to allocate strings from */
@@ -9040,41 +9040,42 @@ static const uint8_t nodesize[N_NUMBER] ALIGN1 = {
 	[NNOT     ] = SHELL_ALIGN(sizeof(struct nnot)),
 };
 
-static void calcsize(union node *n);
+static int calcsize(int funcblocksize, union node *n);
 
-static void
-sizenodelist(struct nodelist *lp)
+static int
+sizenodelist(int funcblocksize, struct nodelist *lp)
 {
 	while (lp) {
 		funcblocksize += SHELL_ALIGN(sizeof(struct nodelist));
 		IF_PLATFORM_MINGW32(nodeptrcount += 2);
-		calcsize(lp->n);
+		funcblocksize = calcsize(funcblocksize, lp->n);
 		lp = lp->next;
 	}
+	return funcblocksize;
 }
 
-static void
-calcsize(union node *n)
+static int
+calcsize(int funcblocksize, union node *n)
 {
 	if (n == NULL)
-		return;
+		return funcblocksize;
 	funcblocksize += nodesize[n->type];
 	switch (n->type) {
 	case NCMD:
-		calcsize(n->ncmd.redirect);
-		calcsize(n->ncmd.args);
-		calcsize(n->ncmd.assign);
+		funcblocksize = calcsize(funcblocksize, n->ncmd.redirect);
+		funcblocksize = calcsize(funcblocksize, n->ncmd.args);
+		funcblocksize = calcsize(funcblocksize, n->ncmd.assign);
 		IF_PLATFORM_MINGW32(nodeptrcount += 3);
 		break;
 	case NPIPE:
-		sizenodelist(n->npipe.cmdlist);
+		funcblocksize = sizenodelist(funcblocksize, n->npipe.cmdlist);
 		IF_PLATFORM_MINGW32(nodeptrcount++);
 		break;
 	case NREDIR:
 	case NBACKGND:
 	case NSUBSHELL:
-		calcsize(n->nredir.redirect);
-		calcsize(n->nredir.n);
+		funcblocksize = calcsize(funcblocksize, n->nredir.redirect);
+		funcblocksize = calcsize(funcblocksize, n->nredir.n);
 		IF_PLATFORM_MINGW32(nodeptrcount += 2);
 		break;
 	case NAND:
@@ -9082,42 +9083,42 @@ calcsize(union node *n)
 	case NSEMI:
 	case NWHILE:
 	case NUNTIL:
-		calcsize(n->nbinary.ch2);
-		calcsize(n->nbinary.ch1);
+		funcblocksize = calcsize(funcblocksize, n->nbinary.ch2);
+		funcblocksize = calcsize(funcblocksize, n->nbinary.ch1);
 		IF_PLATFORM_MINGW32(nodeptrcount += 2);
 		break;
 	case NIF:
-		calcsize(n->nif.elsepart);
-		calcsize(n->nif.ifpart);
-		calcsize(n->nif.test);
+		funcblocksize = calcsize(funcblocksize, n->nif.elsepart);
+		funcblocksize = calcsize(funcblocksize, n->nif.ifpart);
+		funcblocksize = calcsize(funcblocksize, n->nif.test);
 		IF_PLATFORM_MINGW32(nodeptrcount += 3);
 		break;
 	case NFOR:
 		funcblocksize += SHELL_ALIGN(strlen(n->nfor.var) + 1); /* was funcstringsize += ... */
-		calcsize(n->nfor.body);
-		calcsize(n->nfor.args);
+		funcblocksize = calcsize(funcblocksize, n->nfor.body);
+		funcblocksize = calcsize(funcblocksize, n->nfor.args);
 		IF_PLATFORM_MINGW32(nodeptrcount += 3);
 		break;
 	case NCASE:
-		calcsize(n->ncase.cases);
-		calcsize(n->ncase.expr);
+		funcblocksize = calcsize(funcblocksize, n->ncase.cases);
+		funcblocksize = calcsize(funcblocksize, n->ncase.expr);
 		IF_PLATFORM_MINGW32(nodeptrcount += 2);
 		break;
 	case NCLIST:
-		calcsize(n->nclist.body);
-		calcsize(n->nclist.pattern);
-		calcsize(n->nclist.next);
+		funcblocksize = calcsize(funcblocksize, n->nclist.body);
+		funcblocksize = calcsize(funcblocksize, n->nclist.pattern);
+		funcblocksize = calcsize(funcblocksize, n->nclist.next);
 		IF_PLATFORM_MINGW32(nodeptrcount += 3);
 		break;
 	case NDEFUN:
-		calcsize(n->ndefun.body);
+		funcblocksize = calcsize(funcblocksize, n->ndefun.body);
 		funcblocksize += SHELL_ALIGN(strlen(n->ndefun.text) + 1);
 		IF_PLATFORM_MINGW32(nodeptrcount += 2);
 		break;
 	case NARG:
-		sizenodelist(n->narg.backquote);
+		funcblocksize = sizenodelist(funcblocksize, n->narg.backquote);
 		funcblocksize += SHELL_ALIGN(strlen(n->narg.text) + 1); /* was funcstringsize += ... */
-		calcsize(n->narg.next);
+		funcblocksize = calcsize(funcblocksize, n->narg.next);
 		IF_PLATFORM_MINGW32(nodeptrcount += 3);
 		break;
 	case NTO:
@@ -9128,27 +9129,28 @@ calcsize(union node *n)
 	case NFROM:
 	case NFROMTO:
 	case NAPPEND:
-		calcsize(n->nfile.fname);
-		calcsize(n->nfile.next);
+		funcblocksize = calcsize(funcblocksize, n->nfile.fname);
+		funcblocksize = calcsize(funcblocksize, n->nfile.next);
 		IF_PLATFORM_MINGW32(nodeptrcount += 2);
 		break;
 	case NTOFD:
 	case NFROMFD:
-		calcsize(n->ndup.vname);
-		calcsize(n->ndup.next);
+		funcblocksize = calcsize(funcblocksize, n->ndup.vname);
+		funcblocksize = calcsize(funcblocksize, n->ndup.next);
 		IF_PLATFORM_MINGW32(nodeptrcount += 2);
 	break;
 	case NHERE:
 	case NXHERE:
-		calcsize(n->nhere.doc);
-		calcsize(n->nhere.next);
+		funcblocksize = calcsize(funcblocksize, n->nhere.doc);
+		funcblocksize = calcsize(funcblocksize, n->nhere.next);
 		IF_PLATFORM_MINGW32(nodeptrcount += 2);
 		break;
 	case NNOT:
-		calcsize(n->nnot.com);
+		funcblocksize = calcsize(funcblocksize, n->nnot.com);
 		IF_PLATFORM_MINGW32(nodeptrcount++);
 		break;
 	};
+	return funcblocksize;
 }
 
 static char *
@@ -9318,10 +9320,8 @@ copyfunc(union node *n)
 	struct funcnode *f;
 	size_t blocksize;
 
-	funcblocksize = offsetof(struct funcnode, n);
 	/*funcstringsize = 0;*/
-	calcsize(n);
-	blocksize = funcblocksize;
+	blocksize = offsetof(struct funcnode, n) + calcsize(0, n);
 	f = ckzalloc(blocksize /* + funcstringsize */);
 	funcblock = (char *) f + offsetof(struct funcnode, n);
 	funcstring_end = (char *) f + blocksize;
@@ -15016,8 +15016,8 @@ static int align_len(const char *s)
 }
 
 #define SLIST_SIZE_BEGIN(name,type) \
-static void \
-name(type *p) \
+static int \
+name(int funcblocksize, type *p) \
 { \
 	while (p) { \
 		funcblocksize += sizeof(type);
@@ -15026,6 +15026,7 @@ name(type *p) \
 		nodeptrcount++; \
 		p = p->next; \
 	} \
+	return funcblocksize; \
 }
 
 #define SLIST_COPY_BEGIN(name,type) \
@@ -15079,20 +15080,21 @@ SLIST_COPY_END()
 /*
  * struct tblentry
  */
-static void
-tblentry_size(struct tblentry *tep)
+static int
+tblentry_size(int funcblocksize, struct tblentry *tep)
 {
 	while (tep) {
 		funcblocksize += sizeof(struct tblentry) + strlen(tep->cmdname);
 		/* CMDBUILTIN, e->param.cmd needs no pointer relocation */
 		if (tep->cmdtype == CMDFUNCTION) {
 			funcblocksize += offsetof(struct funcnode, n);
-			calcsize(&tep->param.func->n);
+			funcblocksize = calcsize(funcblocksize, &tep->param.func->n);
 			nodeptrcount++; /* tep->param.func */
 		}
 		nodeptrcount++;	/* tep->next */
 		tep = tep->next;
 	}
+	return funcblocksize;
 }
 
 static struct tblentry *
@@ -15131,14 +15133,15 @@ tblentry_copy(struct tblentry *tep)
 	return start;
 }
 
-static void
-cmdtable_size(struct tblentry **cmdtablep)
+static int
+cmdtable_size(int funcblocksize, struct tblentry **cmdtablep)
 {
 	int i;
 	nodeptrcount += CMDTABLESIZE;
 	funcblocksize += sizeof(struct tblentry *)*CMDTABLESIZE;
 	for (i = 0; i < CMDTABLESIZE; i++)
-		tblentry_size(cmdtablep[i]);
+		funcblocksize = tblentry_size(funcblocksize, cmdtablep[i]);
+	return funcblocksize;
 }
 
 static struct tblentry **
@@ -15158,8 +15161,8 @@ cmdtable_copy(struct tblentry **cmdtablep)
 /*
  * char **
  */
-static void
-argv_size(char **p)
+static int
+argv_size(int funcblocksize, char **p)
 {
 	while (p && *p) {
 		funcblocksize += sizeof(char *);
@@ -15168,6 +15171,7 @@ argv_size(char **p)
 		p++;
 	}
 	funcblocksize += sizeof(char *);
+	return funcblocksize;
 }
 
 static char **
@@ -15192,14 +15196,15 @@ argv_copy(char **p)
 /*
  * struct redirtab
  */
-static void
-redirtab_size(struct redirtab *rdtp)
+static int
+redirtab_size(int funcblocksize, struct redirtab *rdtp)
 {
 	while (rdtp) {
 		funcblocksize += sizeof(*rdtp)+sizeof(rdtp->two_fd[0])*rdtp->pair_count;
 		rdtp = rdtp->next;
 		nodeptrcount++; /* rdtp->next */
 	}
+	return funcblocksize;
 }
 
 static struct redirtab *
@@ -15226,18 +15231,19 @@ redirtab_copy(struct redirtab *rdtp)
 #undef redirlist
 #undef varinit
 #undef vartab
-static void
-globals_var_size(struct globals_var *gvp)
+static int
+globals_var_size(int funcblocksize, struct globals_var *gvp)
 {
 	int i;
 
 	funcblocksize += sizeof(struct globals_var);
-	argv_size(gvp->shellparam.p);
-	redirtab_size(gvp->redirlist);
+	funcblocksize = argv_size(funcblocksize, gvp->shellparam.p);
+	funcblocksize = redirtab_size(funcblocksize, gvp->redirlist);
 	for (i = 0; i < VTABSIZE; i++)
-		var_size(gvp->vartab[i]);
+		funcblocksize = var_size(funcblocksize, gvp->vartab[i]);
 	/* gvp->redirlist, gvp->shellparam.p, vartab */
 	nodeptrcount += 2 + VTABSIZE;
+	return funcblocksize;
 }
 
 #undef preverrout_fd
@@ -15277,8 +15283,8 @@ globals_var_copy(struct globals_var *gvp)
 #undef physdir
 #undef arg0
 #undef nullstr
-static void
-globals_misc_size(struct globals_misc *p)
+static int
+globals_misc_size(int funcblocksize, struct globals_misc *p)
 {
 	funcblocksize += sizeof(struct globals_misc);
 	funcblocksize += align_len(p->minusc);
@@ -15288,6 +15294,7 @@ globals_misc_size(struct globals_misc *p)
 		funcblocksize += align_len(p->physdir);
 	funcblocksize += align_len(p->arg0);
 	nodeptrcount += 4;	/* minusc, curdir, physdir, arg0 */
+	return funcblocksize;
 }
 
 static struct globals_misc *
@@ -15306,21 +15313,22 @@ globals_misc_copy(struct globals_misc *p)
 	return new;
 }
 
-static void
-forkshell_size(struct forkshell *fs)
+static int
+forkshell_size(int funcblocksize, struct forkshell *fs)
 {
-	globals_var_size(fs->gvp);
-	globals_misc_size(fs->gmp);
-	cmdtable_size(fs->cmdtable);
+	funcblocksize = globals_var_size(funcblocksize, fs->gvp);
+	funcblocksize = globals_misc_size(funcblocksize, fs->gmp);
+	funcblocksize = cmdtable_size(funcblocksize, fs->cmdtable);
 	/* optlist_transfer(sending, fd); */
 	/* misc_transfer(sending, fd); */
 
-	calcsize(fs->n);
-	argv_size(fs->argv);
+	funcblocksize = calcsize(funcblocksize, fs->n);
+	funcblocksize = argv_size(funcblocksize, fs->argv);
 	funcblocksize += align_len(fs->string);
-	strlist_size(fs->strlist);
+	funcblocksize = strlist_size(funcblocksize, fs->strlist);
 
 	nodeptrcount += 7; /* gvp, gmp, cmdtable, n, argv, string, strlist */
+	return funcblocksize;
 }
 
 static struct forkshell *
@@ -15343,6 +15351,7 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 static struct forkshell *
 forkshell_prepare(struct forkshell *fs)
 {
+	int funcblocksize;
 	struct forkshell *new;
 	int size;
 	HANDLE h;
@@ -15359,8 +15368,7 @@ forkshell_prepare(struct forkshell *fs)
 	 * The array in the forkshell structure gives us one element for free.
 	 */
 	nodeptrcount = 0;
-	funcblocksize = 0;
-	forkshell_size(fs);
+	funcblocksize = forkshell_size(0, fs);
 	size = sizeof(struct forkshell) + nodeptrcount*sizeof(char *) +
 			funcblocksize;
 
