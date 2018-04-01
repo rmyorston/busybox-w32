@@ -311,6 +311,7 @@ typedef long arith_t;
 union node;
 struct strlist;
 struct job;
+#define FORKSHELL_DEBUG 0
 
 struct forkshell {
 	/* filled by forkshell_copy() */
@@ -321,6 +322,11 @@ struct forkshell {
 	/* struct parsefile *g_parsefile; */
 	HANDLE hMapFile;
 	void *old_base;
+#if FORKSHELL_DEBUG
+	int nodeptrcount;
+	int funcblocksize;
+	int funcstringsize;
+#endif
 	int size;
 
 	/* type of forkshell */
@@ -15348,6 +15354,60 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 	return new;
 }
 
+#if FORKSHELL_DEBUG
+static void forkshell_print(FILE *fp, struct forkshell *fs)
+{
+	void *lfuncblock;
+	char *lfuncstring;
+	char **lnodeptr;
+	char *s;
+	int count;
+
+	fprintf(fp, "size %d = %d + %d*%d + %d + %d\n\n", fs->size,
+				(int)sizeof(struct forkshell), fs->nodeptrcount,
+				(int)sizeof(char *), fs->funcblocksize, fs->funcstringsize);
+
+	lnodeptr = fs->nodeptr;
+	lfuncblock = (char *)lnodeptr + (fs->nodeptrcount+1)*sizeof(char *);
+	lfuncstring = (char *)lfuncblock + fs->funcblocksize;
+
+	fprintf(fp, "funcblocksize %d = %d + %d + %d\n\n", fs->funcblocksize,
+				(int)((char *)fs->gmp-(char *)fs->gvp),
+				(int)((char *)fs->cmdtable-(char *)fs->gmp),
+				(int)(lfuncstring-(char *)fs->cmdtable));
+
+	fprintf(fp, "--- funcstring ---\n");
+	count = 0;
+	s = lfuncstring;
+	while (s-lfuncstring < fs->funcstringsize) {
+		if (!*s) {
+			++s;
+			continue;
+		}
+		fprintf(fp, "%d '%s'\n", (int)(s-lfuncstring), s);
+		s += strlen(s)+1;
+		++count;
+	}
+	fprintf(fp, "--- %d strings ---\n\n", count);
+
+	fprintf(fp, "--- nodeptr ---\n");
+	count = 0;
+	while (*lnodeptr) {
+		fprintf(fp, "%p ", *lnodeptr++);
+		if ((count&3) == 3)
+			fprintf(fp, "\n");
+		++count;
+	}
+	if (((count-1)&3) != 3)
+		fprintf(fp, "\n");
+	if (count != fs->nodeptrcount)
+		fprintf(fp, "--- %d pointers (expected %d) ---\n", count,
+					fs->nodeptrcount);
+	else
+		fprintf(fp, "--- %d pointers ---\n", count);
+}
+#endif
+
 static struct forkshell *
 forkshell_prepare(struct forkshell *fs)
 {
@@ -15356,6 +15416,10 @@ forkshell_prepare(struct forkshell *fs)
 	int size;
 	HANDLE h;
 	SECURITY_ATTRIBUTES sa;
+#if FORKSHELL_DEBUG
+	void *fb0;
+	FILE *fp;
+#endif
 
 	/* Calculate size of "new" */
 	fs->gvp = ash_ptr_to_globals_var;
@@ -15382,6 +15446,9 @@ forkshell_prepare(struct forkshell *fs)
 	nodeptr = new->nodeptr;
 	funcblock = (char *)nodeptr + (nodeptrcount+1)*sizeof(char *);
 	funcstring_end = (char *)new + size;
+#if FORKSHELL_DEBUG
+	fb0 = funcblock;
+#endif
 
 	/* Now pack them all */
 	forkshell_copy(fs, new);
@@ -15391,6 +15458,26 @@ forkshell_prepare(struct forkshell *fs)
 	new->size = size;
 	new->old_base = new;
 	new->hMapFile = h;
+#if FORKSHELL_DEBUG
+	if ((fp=fopen("fs.out", "w")) != NULL) {
+		int match;
+
+		match = (char *)(nodeptr+1) == (char *)fb0;
+		fprintf(fp, "%p %s %p nodeptr/funcblock boundary\n",
+					nodeptr+1, match ? "==" : "!=", fb0);
+
+		match = (char *)funcblock == funcstring_end;
+		fprintf(fp, "%p %s %p funcblock/funcstring boundary\n",
+					funcblock, match ? "==" : "!=", funcstring_end);
+		fprintf(fp, "\n");
+
+		new->nodeptrcount = nodeptrcount;
+		new->funcblocksize = (char *)funcblock - (char *)fb0;
+		new->funcstringsize = (char *)new + size - funcstring_end;
+		forkshell_print(fp, new);
+		fclose(fp);
+	}
+#endif
 	return new;
 }
 
