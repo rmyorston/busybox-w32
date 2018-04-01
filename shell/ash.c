@@ -9000,9 +9000,9 @@ commandcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 
 
 static int funcblocksize;       /* size of structures in function */
-static int funcstringsize;      /* size of strings in node */
+/*static int funcstringsize;    // size of strings in node */
 static void *funcblock;         /* block to allocate function from */
-static char *funcstring;        /* block to allocate strings from */
+static char *funcstring_end;    /* end of block to allocate strings from */
 #if ENABLE_PLATFORM_MINGW32
 static int nodeptrcount;
 static char **nodeptr;
@@ -9093,7 +9093,7 @@ calcsize(union node *n)
 		IF_PLATFORM_MINGW32(nodeptrcount += 3);
 		break;
 	case NFOR:
-		funcstringsize += strlen(n->nfor.var) + 1;
+		funcblocksize += SHELL_ALIGN(strlen(n->nfor.var) + 1); /* was funcstringsize += ... */
 		calcsize(n->nfor.body);
 		calcsize(n->nfor.args);
 		IF_PLATFORM_MINGW32(nodeptrcount += 3);
@@ -9111,12 +9111,12 @@ calcsize(union node *n)
 		break;
 	case NDEFUN:
 		calcsize(n->ndefun.body);
-		funcstringsize += strlen(n->ndefun.text) + 1;
+		funcblocksize += SHELL_ALIGN(strlen(n->ndefun.text) + 1);
 		IF_PLATFORM_MINGW32(nodeptrcount += 2);
 		break;
 	case NARG:
 		sizenodelist(n->narg.backquote);
-		funcstringsize += strlen(n->narg.text) + 1;
+		funcblocksize += SHELL_ALIGN(strlen(n->narg.text) + 1); /* was funcstringsize += ... */
 		calcsize(n->narg.next);
 		IF_PLATFORM_MINGW32(nodeptrcount += 3);
 		break;
@@ -9154,13 +9154,12 @@ calcsize(union node *n)
 static char *
 nodeckstrdup(const char *s)
 {
-	char *rtn = funcstring;
-
-	if (!s)
+#if ENABLE_PLATFORM_MINGW32
+	if(!s)
 		return NULL;
-	strcpy(funcstring, s);
-	funcstring += strlen(s) + 1;
-	return rtn;
+#endif
+	funcstring_end -= SHELL_ALIGN(strlen(s) + 1);
+	return strcpy(funcstring_end, s);
 }
 
 static union node *copynode(union node *);
@@ -9320,15 +9319,15 @@ copyfunc(union node *n)
 	size_t blocksize;
 
 	funcblocksize = offsetof(struct funcnode, n);
-	funcstringsize = 0;
+	/*funcstringsize = 0;*/
 	calcsize(n);
 	blocksize = funcblocksize;
-	f = ckmalloc(blocksize + funcstringsize);
+	f = ckzalloc(blocksize /* + funcstringsize */);
 	funcblock = (char *) f + offsetof(struct funcnode, n);
-	funcstring = (char *) f + blocksize;
+	funcstring_end = (char *) f + blocksize;
 	IF_PLATFORM_MINGW32(nodeptr = NULL);
 	copynode(n);
-	f->count = 0;
+	/* f->count = 0; - ckzalloc did it */
 	return f;
 }
 
@@ -15002,7 +15001,7 @@ spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
  * forkshell_prepare() and friends
  *
  * The sequence is as follows:
- * - funcblocksize, funcstringsize, nodeptrcount are initialized
+ * - funcblocksize, nodeptrcount are initialized
  * - forkshell_size(fs) is called to calculate the exact memory needed
  * - a new struct is allocated
  * - funcblock, funcstring, nodeptr are initialized from the new block
@@ -15011,6 +15010,11 @@ spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
  *
  * When this memory is mapped elsewhere, pointer fixup will be needed
  */
+static int align_len(const char *s)
+{
+	return s ? SHELL_ALIGN(strlen(s)+1) : 0;
+}
+
 #define SLIST_SIZE_BEGIN(name,type) \
 static void \
 name(type *p) \
@@ -15048,7 +15052,7 @@ name(type *vp) \
  * struct var
  */
 SLIST_SIZE_BEGIN(var_size,struct var)
-funcstringsize += strlen(p->var_text) + 1;
+funcblocksize += align_len(p->var_text);
 nodeptrcount++; /* p->text */
 SLIST_SIZE_END()
 
@@ -15063,7 +15067,7 @@ SLIST_COPY_END()
  * struct strlist
  */
 SLIST_SIZE_BEGIN(strlist_size,struct strlist)
-funcstringsize += strlen(p->text) + 1;
+funcblocksize += align_len(p->text);
 nodeptrcount++; /* p->text */
 SLIST_SIZE_END()
 
@@ -15159,7 +15163,7 @@ argv_size(char **p)
 {
 	while (p && *p) {
 		funcblocksize += sizeof(char *);
-		funcstringsize += strlen(*p)+1;
+		funcblocksize += align_len(*p);
 		nodeptrcount++;
 		p++;
 	}
@@ -15277,12 +15281,12 @@ static void
 globals_misc_size(struct globals_misc *p)
 {
 	funcblocksize += sizeof(struct globals_misc);
-	funcstringsize += p->minusc ? strlen(p->minusc) + 1 : 1;
+	funcblocksize += align_len(p->minusc);
 	if (p->curdir != p->nullstr)
-		funcstringsize += strlen(p->curdir) + 1;
+		funcblocksize += align_len(p->curdir);
 	if (p->physdir != p->nullstr)
-		funcstringsize += strlen(p->physdir) + 1;
-	funcstringsize += strlen(p->arg0) + 1;
+		funcblocksize += align_len(p->physdir);
+	funcblocksize += align_len(p->arg0);
 	nodeptrcount += 4;	/* minusc, curdir, physdir, arg0 */
 }
 
@@ -15313,7 +15317,7 @@ forkshell_size(struct forkshell *fs)
 
 	calcsize(fs->n);
 	argv_size(fs->argv);
-	funcstringsize += (fs->string ? strlen(fs->string) : 0) + 1;
+	funcblocksize += align_len(fs->string);
 	strlist_size(fs->strlist);
 
 	nodeptrcount += 7; /* gvp, gmp, cmdtable, n, argv, string, strlist */
@@ -15356,10 +15360,9 @@ forkshell_prepare(struct forkshell *fs)
 	 */
 	nodeptrcount = 0;
 	funcblocksize = 0;
-	funcstringsize = 0;
 	forkshell_size(fs);
 	size = sizeof(struct forkshell) + nodeptrcount*sizeof(char *) +
-			funcblocksize + funcstringsize;
+			funcblocksize;
 
 	/* Allocate, initialize pointers */
 	memset(&sa, 0, sizeof(sa));
@@ -15370,7 +15373,7 @@ forkshell_prepare(struct forkshell *fs)
 	new = (struct forkshell *)MapViewOfFile(h, FILE_MAP_WRITE, 0,0, 0);
 	nodeptr = new->nodeptr;
 	funcblock = (char *)nodeptr + (nodeptrcount+1)*sizeof(char *);
-	funcstring = (char *) funcblock + funcblocksize;
+	funcstring_end = (char *)new + size;
 
 	/* Now pack them all */
 	forkshell_copy(fs, new);
