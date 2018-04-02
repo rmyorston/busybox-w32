@@ -41,7 +41,6 @@ int ssl_client_main(int argc UNUSED_PARAM, char **argv)
 	tls = new_tls_state();
 #if !ENABLE_PLATFORM_MINGW32
 	opt = getopt32(argv, "es:+r:+n:", &tls->ofd, &tls->ifd, &sni);
-
 	if (!(opt & (1<<2))) {
 		/* -r N defaults to -s N */
 		tls->ifd = tls->ofd;

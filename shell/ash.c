@@ -282,6 +282,12 @@ typedef long arith_t;
 # define IF_NOT_FEATURE_SH_STANDALONE(...) __VA_ARGS__
 #endif
 
+#ifndef F_DUPFD_CLOEXEC
+# define F_DUPFD_CLOEXEC F_DUPFD
+#endif
+#ifndef O_CLOEXEC
+# define O_CLOEXEC 0
+#endif
 #ifndef PIPE_BUF
 # define PIPE_BUF 4096           /* amount of buffering in a pipe */
 #endif
@@ -4196,12 +4202,13 @@ setjobctl(int on)
 					goto out;
 		}
 		/* fd is a tty at this point */
-		fd = fcntl(fd, F_DUPFD, 10);
+		fd = fcntl(fd, F_DUPFD_CLOEXEC, 10);
 		if (ofd >= 0) /* if it is "/dev/tty", close. If 0/1/2, don't */
 			close(ofd);
 		if (fd < 0)
 			goto out; /* F_DUPFD failed */
-		close_on_exec_on(fd);
+		if (F_DUPFD_CLOEXEC == F_DUPFD) /* if old libc (w/o F_DUPFD_CLOEXEC) */
+			close_on_exec_on(fd);
 		while (1) { /* while we are in the background */
 			pgrp = tcgetpgrp(fd);
 			if (pgrp < 0) {
@@ -5791,13 +5798,14 @@ savefd(int from)
 	int newfd;
 	int err;
 
-	newfd = fcntl(from, F_DUPFD, 10);
+	newfd = fcntl(from, F_DUPFD_CLOEXEC, 10);
 	err = newfd < 0 ? errno : 0;
 	if (err != EBADF) {
 		if (err)
 			ash_msg_and_raise_perror("%d", from);
 		close(from);
-		fcntl(newfd, F_SETFD, FD_CLOEXEC);
+		if (F_DUPFD_CLOEXEC == F_DUPFD)
+			close_on_exec_on(newfd);
 	}
 
 	return newfd;
@@ -5815,12 +5823,15 @@ dup2_or_raise(int from, int to)
 	return newfd;
 }
 static int
-fcntl_F_DUPFD(int fd, int avoid_fd)
+dup_CLOEXEC(int fd, int avoid_fd)
 {
 	int newfd;
  repeat:
-	newfd = fcntl(fd, F_DUPFD, avoid_fd + 1);
-	if (newfd < 0) {
+	newfd = fcntl(fd, F_DUPFD_CLOEXEC, avoid_fd + 1);
+	if (newfd >= 0) {
+		if (F_DUPFD_CLOEXEC == F_DUPFD) /* if old libc (w/o F_DUPFD_CLOEXEC) */
+			close_on_exec_on(newfd);
+	} else { /* newfd < 0 */
 		if (errno == EBUSY)
 			goto repeat;
 		if (errno == EINTR)
@@ -5833,7 +5844,7 @@ xdup_CLOEXEC_and_close(int fd, int avoid_fd)
 {
 	int newfd;
  repeat:
-	newfd = fcntl(fd, F_DUPFD, avoid_fd + 1);
+	newfd = fcntl(fd, F_DUPFD_CLOEXEC, avoid_fd + 1);
 	if (newfd < 0) {
 		if (errno == EBUSY)
 			goto repeat;
@@ -5844,7 +5855,8 @@ xdup_CLOEXEC_and_close(int fd, int avoid_fd)
 			return fd;
 		ash_msg_and_raise_perror("%d", newfd);
 	}
-	fcntl(newfd, F_SETFD, FD_CLOEXEC);
+	if (F_DUPFD_CLOEXEC == F_DUPFD)
+		close_on_exec_on(newfd);
 	close(fd);
 	return newfd;
 }
@@ -5936,7 +5948,7 @@ save_fd_on_redirect(int fd, int avoid_fd, struct redirtab *sq)
 	for (i = 0; sq->two_fd[i].orig_fd != EMPTY; i++) {
 		/* If we collide with an already moved fd... */
 		if (fd == sq->two_fd[i].moved_to) {
-			new_fd = fcntl_F_DUPFD(fd, avoid_fd);
+			new_fd = dup_CLOEXEC(fd, avoid_fd);
 			sq->two_fd[i].moved_to = new_fd;
 			TRACE(("redirect_fd %d: already busy, moving to %d\n", fd, new_fd));
 			if (new_fd < 0) /* what? */
@@ -5951,7 +5963,7 @@ save_fd_on_redirect(int fd, int avoid_fd, struct redirtab *sq)
 	}
 
 	/* If this fd is open, we move and remember it; if it's closed, new_fd = CLOSED (-1) */
-	new_fd = fcntl_F_DUPFD(fd, avoid_fd);
+	new_fd = dup_CLOEXEC(fd, avoid_fd);
 	TRACE(("redirect_fd %d: previous fd is moved to %d (-1 if it was closed)\n", fd, new_fd));
 	if (new_fd < 0) {
 		if (errno != EBADF)
@@ -7559,7 +7571,7 @@ varvalue(char *name, int varflags, int flags, int *quotedp)
 	case '-':
 		expdest = makestrspace(NOPTS, expdest);
 		for (i = NOPTS - 1; i >= 0; i--) {
-			if (optlist[i]) {
+			if (optlist[i] && optletters(i)) {
 				USTPUTC(optletters(i), expdest);
 				len++;
 			}
@@ -7806,13 +7818,13 @@ hasmeta(const char *p)
 		p = strpbrk(p, chars);
 		if (!p)
 			break;
-		switch ((unsigned char) *p) {
+		switch ((unsigned char)*p) {
 		case CTLQUOTEMARK:
 			for (;;) {
 				p++;
-				if (*p == CTLQUOTEMARK)
+				if ((unsigned char)*p == CTLQUOTEMARK)
 					break;
-				if (*p == CTLESC)
+				if ((unsigned char)*p == CTLESC)
 					p++;
 				if (*p == '\0') /* huh? */
 					return 0;
@@ -11262,7 +11274,7 @@ setinputfile(const char *fname, int flags)
 	int fd;
 
 	INT_OFF;
-	fd = open(fname, O_RDONLY);
+	fd = open(fname, O_RDONLY | O_CLOEXEC);
 	if (fd < 0) {
 		if (flags & INPUT_NOFILE_OK)
 			goto out;
@@ -11271,8 +11283,9 @@ setinputfile(const char *fname, int flags)
 	}
 	if (fd < 10)
 		fd = savefd(fd);
-	else
+	else if (O_CLOEXEC == 0) /* old libc */
 		close_on_exec_on(fd);
+
 	setinputfd(fd, flags & INPUT_PUSH_FILE);
  out:
 	INT_ON;
@@ -12595,6 +12608,12 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 			break;
 #endif
 		case CBQUOTE:   /* '`' */
+			if (checkkwd & CHKEOFMARK) {
+				quotef = 1;
+				USTPUTC('`', out);
+				break;
+			}
+
 			PARSEBACKQOLD();
 			break;
 		case CENDFILE:
@@ -12727,7 +12746,7 @@ parseredir: {
 	np = stzalloc(sizeof(struct nfile));
 	if (c == '>') {
 		np->nfile.fd = 1;
-		c = pgetc();
+		c = pgetc_eatbnl();
 		if (c == '>')
 			np->type = NAPPEND;
 		else if (c == '|')
@@ -12749,7 +12768,7 @@ parseredir: {
 #endif
 	else { /* c == '<' */
 		/*np->nfile.fd = 0; - stzalloc did it */
-		c = pgetc();
+		c = pgetc_eatbnl();
 		switch (c) {
 		case '<':
 			if (sizeof(struct nfile) != sizeof(struct nhere)) {
@@ -12759,7 +12778,7 @@ parseredir: {
 			np->type = NHERE;
 			heredoc = stzalloc(sizeof(struct heredoc));
 			heredoc->here = np;
-			c = pgetc();
+			c = pgetc_eatbnl();
 			if (c == '-') {
 				heredoc->striptabs = 1;
 			} else {
@@ -12989,23 +13008,13 @@ parsebackq: {
 			int pc;
 
 			setprompt_if(needprompt, 2);
-			pc = pgetc();
+			pc = pgetc_eatbnl();
 			switch (pc) {
 			case '`':
 				goto done;
 
 			case '\\':
-				pc = pgetc();
-				if (pc == '\n') {
-					nlprompt();
-					/*
-					 * If eating a newline, avoid putting
-					 * the newline into the new character
-					 * stream (via the STPUTC after the
-					 * switch).
-					 */
-					continue;
-				}
+				pc = pgetc(); /* or pgetc_eatbnl()? why (example)? */
 				if (pc != '\\' && pc != '`' && pc != '$'
 				 && (!dblquote || pc != '"')
 				) {
@@ -13137,7 +13146,7 @@ xxreadtoken(void)
 	}
 	setprompt_if(needprompt, 2);
 	for (;;) {                      /* until token or start of word found */
-		c = pgetc();
+		c = pgetc_eatbnl();
 		if (c == ' ' || c == '\t' IF_ASH_ALIAS( || c == PEOA))
 			continue;
 
@@ -13146,11 +13155,7 @@ xxreadtoken(void)
 				continue;
 			pungetc();
 		} else if (c == '\\') {
-			if (pgetc() != '\n') {
-				pungetc();
-				break; /* return readtoken1(...) */
-			}
-			nlprompt();
+			break; /* return readtoken1(...) */
 		} else {
 			const char *p;
 
@@ -13165,7 +13170,7 @@ xxreadtoken(void)
 					break; /* return readtoken1(...) */
 
 				if ((int)(p - xxreadtoken_chars) >= xxreadtoken_singles) {
-					int cc = pgetc();
+					int cc = pgetc_eatbnl();
 					if (cc == c) {    /* double occurrence? */
 						p += xxreadtoken_doubles + 1;
 					} else {
@@ -13197,7 +13202,7 @@ xxreadtoken(void)
 	}
 	setprompt_if(needprompt, 2);
 	for (;;) {      /* until token or start of word found */
-		c = pgetc();
+		c = pgetc_eatbnl();
 		switch (c) {
 		case ' ': case '\t':
 		IF_ASH_ALIAS(case PEOA:)
@@ -13207,30 +13212,23 @@ xxreadtoken(void)
 				continue;
 			pungetc();
 			continue;
-		case '\\':
-			if (pgetc() == '\n') {
-				nlprompt();
-				continue;
-			}
-			pungetc();
-			goto breakloop;
 		case '\n':
 			nlnoprompt();
 			RETURN(TNL);
 		case PEOF:
 			RETURN(TEOF);
 		case '&':
-			if (pgetc() == '&')
+			if (pgetc_eatbnl() == '&')
 				RETURN(TAND);
 			pungetc();
 			RETURN(TBACKGND);
 		case '|':
-			if (pgetc() == '|')
+			if (pgetc_eatbnl() == '|')
 				RETURN(TOR);
 			pungetc();
 			RETURN(TPIPE);
 		case ';':
-			if (pgetc() == ';')
+			if (pgetc_eatbnl() == ';')
 				RETURN(TENDCASE);
 			pungetc();
 			RETURN(TSEMI);
@@ -13238,11 +13236,9 @@ xxreadtoken(void)
 			RETURN(TLP);
 		case ')':
 			RETURN(TRP);
-		default:
-			goto breakloop;
 		}
+		break;
 	}
- breakloop:
 	return readtoken1(c, BASESYNTAX, (char *)NULL, 0);
 #undef RETURN
 }

@@ -1501,12 +1501,15 @@ static void free_strings(char **strings)
 	free(strings);
 }
 
-static int fcntl_F_DUPFD(int fd, int avoid_fd)
+static int dup_CLOEXEC(int fd, int avoid_fd)
 {
 	int newfd;
  repeat:
-	newfd = fcntl(fd, F_DUPFD, avoid_fd + 1);
-	if (newfd < 0) {
+	newfd = fcntl(fd, F_DUPFD_CLOEXEC, avoid_fd + 1);
+	if (newfd >= 0) {
+		if (F_DUPFD_CLOEXEC == F_DUPFD) /* if old libc (w/o F_DUPFD_CLOEXEC) */
+			fcntl(newfd, F_SETFD, FD_CLOEXEC);
+	} else { /* newfd < 0 */
 		if (errno == EBUSY)
 			goto repeat;
 		if (errno == EINTR)
@@ -2691,6 +2694,42 @@ static int i_peek2(struct in_str *i)
 	return ch;
 }
 
+static int i_getch_and_eat_bkslash_nl(struct in_str *input)
+{
+	for (;;) {
+		int ch, ch2;
+
+		ch = i_getch(input);
+		if (ch != '\\')
+			return ch;
+		ch2 = i_peek(input);
+		if (ch2 != '\n')
+			return ch;
+		/* backslash+newline, skip it */
+		i_getch(input);
+	}
+}
+
+/* Note: this function _eats_ \<newline> pairs, safe to use plain
+ * i_getch() after it instead of i_getch_and_eat_bkslash_nl().
+ */
+static int i_peek_and_eat_bkslash_nl(struct in_str *input)
+{
+	for (;;) {
+		int ch, ch2;
+
+		ch = i_peek(input);
+		if (ch != '\\')
+			return ch;
+		ch2 = i_peek2(input);
+		if (ch2 != '\n')
+			return ch;
+		/* backslash+newline, skip it */
+		i_getch(input);
+		i_getch(input);
+	}
+}
+
 static void setup_file_in_str(struct in_str *i, FILE *f)
 {
 	memset(i, 0, sizeof(*i));
@@ -3119,7 +3158,7 @@ static int glob_brace(char *pattern, o_string *o, int n)
 				return o_save_ptr_helper(o, n);
 			}
 			if (gr == GLOB_NOSPACE)
-				bb_error_msg_and_die(bb_msg_memory_exhausted);
+				bb_die_memory_exhausted();
 			/* GLOB_ABORTED? Only happens with GLOB_ERR flag,
 			 * but we didn't specify it. Paranoia again. */
 			bb_error_msg_and_die("glob error %d on '%s'", gr, pattern);
@@ -3221,7 +3260,7 @@ static int perform_glob(o_string *o, int n)
 			goto literal;
 		}
 		if (gr == GLOB_NOSPACE)
-			bb_error_msg_and_die(bb_msg_memory_exhausted);
+			bb_die_memory_exhausted();
 		/* GLOB_ABORTED? Only happens with GLOB_ERR flag,
 		 * but we didn't specify it. Paranoia again. */
 		bb_error_msg_and_die("glob error %d on '%s'", gr, pattern);
@@ -3812,16 +3851,28 @@ static int done_word(o_string *word, struct parse_context *ctx)
 	if (ctx->pending_redirect) {
 		/* We do not glob in e.g. >*.tmp case. bash seems to glob here
 		 * only if run as "bash", not "sh" */
-		/* http://www.opengroup.org/onlinepubs/009695399/utilities/xcu_chap02.html
+		/* http://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
 		 * "2.7 Redirection
-		 * ...the word that follows the redirection operator
-		 * shall be subjected to tilde expansion, parameter expansion,
-		 * command substitution, arithmetic expansion, and quote
-		 * removal. Pathname expansion shall not be performed
+		 * If the redirection operator is "<<" or "<<-", the word
+		 * that follows the redirection operator shall be
+		 * subjected to quote removal; it is unspecified whether
+		 * any of the other expansions occur. For the other
+		 * redirection operators, the word that follows the
+		 * redirection operator shall be subjected to tilde
+		 * expansion, parameter expansion, command substitution,
+		 * arithmetic expansion, and quote removal.
+		 * Pathname expansion shall not be performed
 		 * on the word by a non-interactive shell; an interactive
 		 * shell may perform it, but shall do so only when
 		 * the expansion would result in one word."
 		 */
+//bash does not do parameter/command substitution or arithmetic expansion
+//for _heredoc_ redirection word: these constructs look for exact eof marker
+// as written:
+// <<EOF$t
+// <<EOF$((1))
+// <<EOF`true`  [this case also makes heredoc "quoted", a-la <<"EOF". Probably bash-4.3.43 bug]
+
 		ctx->pending_redirect->rd_filename = xstrdup(word->data);
 		/* Cater for >\file case:
 		 * >\a creates file a; >\\a, >"\a", >"\\a" create file \a
@@ -4011,7 +4062,7 @@ static int parse_redirect(struct parse_context *ctx,
 		if (dup_num == REDIRFD_SYNTAX_ERR)
 			return 1;
 	} else {
-		int ch = i_peek(input);
+		int ch = i_peek_and_eat_bkslash_nl(input);
 		dup_num = (ch == '-'); /* HEREDOC_SKIPTABS bit is 1 */
 		if (dup_num) { /* <<-... */
 			ch = i_getch(input);
@@ -4021,7 +4072,7 @@ static int parse_redirect(struct parse_context *ctx,
 	}
 
 	if (style == REDIRECT_OVERWRITE && dup_num == REDIRFD_TO_FILE) {
-		int ch = i_peek(input);
+		int ch = i_peek_and_eat_bkslash_nl(input);
 		if (ch == '|') {
 			/* >|FILE redirect ("clobbering" >).
 			 * Since we do not support "set -o noclobber" yet,
@@ -4189,6 +4240,7 @@ static int fetch_heredocs(int heredoc_cnt, struct parse_context *ctx, struct in_
 
 					redir->rd_type = REDIRECT_HEREDOC2;
 					/* redir->rd_dup is (ab)used to indicate <<- */
+bb_error_msg("redir->rd_filename:'%s'",  redir->rd_filename);
 					p = fetch_till_str(&ctx->as_string, input,
 							redir->rd_filename, redir->rd_dup);
 					if (!p) {
@@ -4338,39 +4390,6 @@ static int parse_group(o_string *dest, struct parse_context *ctx,
 	debug_printf_parse("parse_group return 0\n");
 	return 0;
 	/* command remains "open", available for possible redirects */
-}
-
-static int i_getch_and_eat_bkslash_nl(struct in_str *input)
-{
-	for (;;) {
-		int ch, ch2;
-
-		ch = i_getch(input);
-		if (ch != '\\')
-			return ch;
-		ch2 = i_peek(input);
-		if (ch2 != '\n')
-			return ch;
-		/* backslash+newline, skip it */
-		i_getch(input);
-	}
-}
-
-static int i_peek_and_eat_bkslash_nl(struct in_str *input)
-{
-	for (;;) {
-		int ch, ch2;
-
-		ch = i_peek(input);
-		if (ch != '\\')
-			return ch;
-		ch2 = i_peek2(input);
-		if (ch2 != '\n')
-			return ch;
-		/* backslash+newline, skip it */
-		i_getch(input);
-		i_getch(input);
-	}
 }
 
 #if ENABLE_HUSH_TICK || ENABLE_FEATURE_SH_MATH || ENABLE_HUSH_DOLLAR_OPS
@@ -4974,8 +4993,14 @@ static struct pipe *parse_stream(char **pstring,
 		nommu_addchr(&ctx.as_string, ch);
 
 		next = '\0';
-		if (ch != '\n')
+		if (ch != '\n') {
 			next = i_peek(input);
+			/* Can't use i_peek_and_eat_bkslash_nl(input) here:
+			 *  echo '\
+			 *  '
+			 * will break.
+			 */
+		}
 
 		is_special = "{}<>;&|()#'" /* special outside of "str" */
 				"\\$\"" IF_HUSH_TICK("`") /* always special */
@@ -5178,6 +5203,8 @@ static struct pipe *parse_stream(char **pstring,
 				goto parse_error;
 			}
 			redir_style = REDIRECT_OVERWRITE;
+			if (next == '\\')
+				next = i_peek_and_eat_bkslash_nl(input);
 			if (next == '>') {
 				redir_style = REDIRECT_APPEND;
 				ch = i_getch(input);
@@ -5198,6 +5225,8 @@ static struct pipe *parse_stream(char **pstring,
 				goto parse_error;
 			}
 			redir_style = REDIRECT_INPUT;
+			if (next == '\\')
+				next = i_peek_and_eat_bkslash_nl(input);
 			if (next == '<') {
 				redir_style = REDIRECT_HEREDOC;
 				heredoc_cnt++;
@@ -5365,7 +5394,7 @@ static struct pipe *parse_stream(char **pstring,
 			/* Eat multiple semicolons, detect
 			 * whether it means something special */
 			while (1) {
-				ch = i_peek(input);
+				ch = i_peek_and_eat_bkslash_nl(input);
 				if (ch != ';')
 					break;
 				ch = i_getch(input);
@@ -5387,6 +5416,8 @@ static struct pipe *parse_stream(char **pstring,
 			if (done_word(&dest, &ctx)) {
 				goto parse_error;
 			}
+			if (next == '\\')
+				next = i_peek_and_eat_bkslash_nl(input);
 			if (next == '&') {
 				ch = i_getch(input);
 				nommu_addchr(&ctx.as_string, ch);
@@ -5403,6 +5434,8 @@ static struct pipe *parse_stream(char **pstring,
 			if (ctx.ctx_res_w == RES_MATCH)
 				break; /* we are in case's "word | word)" */
 #endif
+			if (next == '\\')
+				next = i_peek_and_eat_bkslash_nl(input);
 			if (next == '|') { /* || */
 				ch = i_getch(input);
 				nommu_addchr(&ctx.as_string, ch);
@@ -6123,7 +6156,7 @@ static NOINLINE int expand_vars_to_list(o_string *output, int n, char *arg)
 			} else
 			/* If EXP_FLAG_SINGLEWORD, we handle assignment 'a=....$@.....'
 			 * and in this case should treat it like '$*' - see 'else...' below */
-			if (first_ch == ('@'|0x80)  /* quoted $@ */
+			if (first_ch == (char)('@'|0x80)  /* quoted $@ */
 			 && !(output->o_expflags & EXP_FLAG_SINGLEWORD) /* not v="$@" case */
 			) {
 				while (1) {
@@ -6890,7 +6923,7 @@ static struct squirrel *add_squirrel(struct squirrel *sq, int fd, int avoid_fd)
 	if (sq) for (; sq[i].orig_fd >= 0; i++) {
 		/* If we collide with an already moved fd... */
 		if (fd == sq[i].moved_to) {
-			sq[i].moved_to = fcntl_F_DUPFD(sq[i].moved_to, avoid_fd);
+			sq[i].moved_to = dup_CLOEXEC(sq[i].moved_to, avoid_fd);
 			debug_printf_redir("redirect_fd %d: already busy, moving to %d\n", fd, sq[i].moved_to);
 			if (sq[i].moved_to < 0) /* what? */
 				xfunc_die();
@@ -6904,7 +6937,7 @@ static struct squirrel *add_squirrel(struct squirrel *sq, int fd, int avoid_fd)
 	}
 
 	/* If this fd is open, we move and remember it; if it's closed, moved_to = -1 */
-	moved_to = fcntl_F_DUPFD(fd, avoid_fd);
+	moved_to = dup_CLOEXEC(fd, avoid_fd);
 	debug_printf_redir("redirect_fd %d: previous fd is moved to %d (-1 if it was closed)\n", fd, moved_to);
 	if (moved_to < 0 && errno != EBADF)
 		xfunc_die();
@@ -7622,6 +7655,10 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 				 */
 				close_saved_fds_and_FILE_fds();
 //FIXME: should also close saved redir fds
+//This casuses test failures in
+//redir_children_should_not_see_saved_fd_2.tests
+//redir_children_should_not_see_saved_fd_3.tests
+//if you replace "busybox find" with just "find" in them
 				/* Without this, "rm -i FILE" can't be ^C'ed: */
 				switch_off_special_sigs(G.special_sig_mask);
 				debug_printf_exec("running applet '%s'\n", argv[0]);
@@ -8166,6 +8203,12 @@ static NOINLINE int run_pipe(struct pipe *pi)
 		rcode = 1; /* exitcode if redir failed */
 		if (setup_redirects(command, &squirrel) == 0) {
 			debug_printf_exec(": run_list\n");
+//FIXME: we need to pass squirrel down into run_list()
+//for SH_STANDALONE case, or else this construct:
+// { find /proc/self/fd; true; } >FILE; cmd2
+//has no way of closing saved fd#1 for "find",
+//and in SH_STANDALONE mode, "find" is not execed,
+//therefore CLOEXEC on saved fd does not help.
 			rcode = run_list(command->group) & 0xff;
 		}
 		restore_redirects(squirrel);
@@ -9347,7 +9390,7 @@ int hush_main(int argc, char **argv)
 			G_saved_tty_pgrp = 0;
 
 		/* try to dup stdin to high fd#, >= 255 */
-		G_interactive_fd = fcntl_F_DUPFD(STDIN_FILENO, 254);
+		G_interactive_fd = dup_CLOEXEC(STDIN_FILENO, 254);
 		if (G_interactive_fd < 0) {
 			/* try to dup to any fd */
 			G_interactive_fd = dup(STDIN_FILENO);
@@ -9420,10 +9463,10 @@ int hush_main(int argc, char **argv)
 #elif ENABLE_HUSH_INTERACTIVE
 	/* No job control compiled in, only prompt/line editing */
 	if (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)) {
-		G_interactive_fd = fcntl_F_DUPFD(STDIN_FILENO, 254);
+		G_interactive_fd = dup_CLOEXEC(STDIN_FILENO, 254);
 		if (G_interactive_fd < 0) {
 			/* try to dup to any fd */
-			G_interactive_fd = dup(STDIN_FILENO);
+			G_interactive_fd = dup_CLOEXEC(STDIN_FILENO);
 			if (G_interactive_fd < 0)
 				/* give up */
 				G_interactive_fd = 0;

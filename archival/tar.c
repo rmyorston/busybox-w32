@@ -792,7 +792,7 @@ static llist_t *append_file_list_to_list(llist_t *list)
 //usage:	IF_FEATURE_SEAMLESS_LZMA("a")
 //usage:	IF_FEATURE_TAR_CREATE("h")
 //usage:	IF_FEATURE_TAR_NOPRESERVE_TIME("m")
-//usage:	"vO] "
+//usage:	"vokO] "
 //usage:	"[-f TARFILE] [-C DIR] "
 //usage:	IF_FEATURE_TAR_FROM("[-T FILE] [-X FILE] "IF_FEATURE_TAR_LONG_OPTIONS("[--exclude PATTERN]... "))
 //usage:	"[FILE]..."
@@ -809,6 +809,13 @@ static llist_t *append_file_list_to_list(llist_t *list)
 //usage:     "\n	-f FILE	Name of TARFILE ('-' for stdin/out)"
 //usage:     "\n	-C DIR	Change to DIR before operation"
 //usage:     "\n	-v	Verbose"
+//usage:     "\n	-O	Extract to stdout"
+//usage:	IF_FEATURE_TAR_NOPRESERVE_TIME(
+//usage:     "\n	-m	Don't restore mtime"
+//usage:	)
+//usage:     "\n	-o	Don't restore user:group"
+///////:-p - accepted but ignored, restores mode (aliases in GNU tar: --preserve-permissions, --same-permissions)
+//usage:     "\n	-k	Don't replace existing files"
 //usage:	IF_FEATURE_SEAMLESS_Z(
 //usage:     "\n	-Z	(De)compress using compress"
 //usage:	)
@@ -824,12 +831,8 @@ static llist_t *append_file_list_to_list(llist_t *list)
 //usage:	IF_FEATURE_SEAMLESS_LZMA(
 //usage:     "\n	-a	(De)compress using lzma"
 //usage:	)
-//usage:     "\n	-O	Extract to stdout"
 //usage:	IF_FEATURE_TAR_CREATE(
 //usage:     "\n	-h	Follow symlinks"
-//usage:	)
-//usage:	IF_FEATURE_TAR_NOPRESERVE_TIME(
-//usage:     "\n	-m	Don't restore mtime"
 //usage:	)
 //usage:	IF_FEATURE_TAR_FROM(
 //usage:     "\n	-T FILE	File with names to include"
@@ -844,9 +847,6 @@ static llist_t *append_file_list_to_list(llist_t *list)
 //usage:       "$ tar -cf /tmp/tarball.tar /usr/local\n"
 
 // Supported but aren't in --help:
-//	o	no-same-owner
-//	p	same-permissions
-//	k	keep-old
 //	no-recursion
 //	numeric-owner
 //	no-same-permissions
