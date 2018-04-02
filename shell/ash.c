@@ -14870,7 +14870,8 @@ forkshell_evalbackcmd(struct forkshell *fs)
 		close(pip[1]);
 	}
 	eflag = 0;
-	evaltree(n, EV_EXIT); /* actually evaltreenr... */
+	ifsfree();
+	evaltreenr(n, EV_EXIT);
 	/* NOTREACHED */
 }
 
@@ -14981,7 +14982,7 @@ static int
 spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
 {
 	struct forkshell *new;
-	char buf[16];
+	char buf[32];
 	const char *argv[] = { "sh", "--forkshell", NULL, NULL };
 	intptr_t ret;
 
@@ -15259,9 +15260,9 @@ globals_var_copy(struct globals_var *gvp)
 
 	new = funcblock;
 	funcblock = (char *) funcblock + sizeof(struct globals_var);
+	memcpy(new, gvp, sizeof(struct globals_var));
 
 	/* shparam */
-	memcpy(&new->shellparam, &gvp->shellparam, sizeof(struct shparam));
 	new->shellparam.malloced = 0;
 	new->shellparam.p = argv_copy(gvp->shellparam.p);
 	SAVE_PTR(new->shellparam.p);
@@ -15269,14 +15270,11 @@ globals_var_copy(struct globals_var *gvp)
 	new->redirlist = redirtab_copy(gvp->redirlist);
 	SAVE_PTR(new->redirlist);
 
-	new->preverrout_fd = gvp->preverrout_fd;
 	for (i = 0; i < VTABSIZE; i++) {
 		new->vartab[i] = var_copy(gvp->vartab[i]);
 		SAVE_PTR(new->vartab[i]);
 	}
 
-	new->lineno = gvp->lineno;
-	strcpy(new->linenovar, gvp->linenovar);
 	return new;
 }
 
@@ -15359,7 +15357,7 @@ static void forkshell_print(FILE *fp, struct forkshell *fs)
 	char *s;
 	int count;
 
-	fprintf(fp, "size %d = %d + %d*%d + %d + %d\n\n", fs->size,
+	fprintf(fp, "size %d = %d + %d*%d + %d + %d\n", fs->size,
 				(int)sizeof(struct forkshell), fs->nodeptrcount,
 				(int)sizeof(char *), fs->funcblocksize, fs->funcstringsize);
 
