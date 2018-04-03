@@ -26,9 +26,6 @@
 #ifndef O_NOATIME
 # define O_NOATIME 0
 #endif
-#ifndef O_NOCTTY
-# define O_NOCTTY 0
-#endif
 
 /* This is a NOFORK applet. Be very careful! */
 
