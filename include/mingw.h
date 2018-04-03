@@ -147,8 +147,6 @@ int winansi_getc(FILE *stream);
 #define read winansi_read
 #define getc winansi_getc
 
-int winansi_get_terminal_width_height(struct winsize *win);
-
 /*
  * stdlib.h
  */

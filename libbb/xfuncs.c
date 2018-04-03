@@ -268,6 +268,7 @@ int FAST_FUNC get_terminal_width_height(int fd, unsigned *width, unsigned *heigh
 	int err;
 	int close_me = -1;
 
+#if !ENABLE_PLATFORM_MINGW32
 	if (fd == -1) {
 		if (isatty(STDOUT_FILENO))
 			fd = STDOUT_FILENO;
@@ -280,6 +281,7 @@ int FAST_FUNC get_terminal_width_height(int fd, unsigned *width, unsigned *heigh
 		else
 			close_me = fd = open("/dev/tty", O_RDONLY);
 	}
+#endif
 
 	win.ws_row = 0;
 	win.ws_col = 0;
