@@ -735,7 +735,6 @@ int mingw_isatty(int fd)
 
 	if (result) {
 		HANDLE handle = (HANDLE) _get_osfhandle(fd);
-		CONSOLE_SCREEN_BUFFER_INFO sbi;
 		DWORD mode;
 
 		if (handle == INVALID_HANDLE_VALUE)
@@ -745,10 +744,7 @@ int mingw_isatty(int fd)
 		if (GetFileType(handle) != FILE_TYPE_CHAR)
 			return 0;
 
-		if (!fd) {
-			if (!GetConsoleMode(handle, &mode))
-				return 0;
-		} else if (!GetConsoleScreenBufferInfo(handle, &sbi))
+		if (!GetConsoleMode(handle, &mode))
 			return 0;
 	}
 
