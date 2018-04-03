@@ -796,6 +796,13 @@ static void install_links(const char *busybox UNUSED_PARAM,
 
 static void run_applet_and_exit(const char *name, char **argv) NORETURN;
 
+#if ENABLE_PLATFORM_MINGW32
+char *bb_applet_pid(void)
+{
+	return auto_string(xasprintf("BB_APPLET_%d=%s", getpid(), applet_name));
+}
+#endif
+
 # if ENABLE_BUSYBOX
 #  if ENABLE_FEATURE_SH_STANDALONE && ENABLE_FEATURE_TAB_COMPLETION
     /*
@@ -1008,12 +1015,7 @@ void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **ar
 		check_suid(applet_no);
 
 #if ENABLE_PLATFORM_MINGW32
-	{
-		char var[64];
-
-		sprintf(var, "BB_APPLET_%d=%s", getpid(), applet_name);
-		putenv(var);
-	}
+	putenv(bb_applet_pid());
 #endif
 
 	xfunc_error_retval = applet_main[applet_no](argc, argv);
