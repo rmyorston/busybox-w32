@@ -1,5 +1,6 @@
 #include "libbb.h"
 #include <tlhelp32.h>
+#include <psapi.h>
 
 int waitpid(pid_t pid, int *status, int options)
 {
@@ -406,6 +407,79 @@ static inline long long filetime_to_ticks(const FILETIME *ft)
 				HNSEC_PER_TICK;
 }
 
+/*
+ * Attempt to get the applet name from another instance of busybox.exe.
+ * This will only work if the other process is using the same binary
+ * as the current process.  If anything goes wrong just give up.
+ */
+static char *get_applet_name(DWORD pid, char *exe)
+{
+	HANDLE proc;
+	HMODULE mlist[32];
+	DWORD needed;
+	void *address;
+	char *my_base;
+	char buffer[128];
+	char *name = NULL;
+	int i;
+
+	if (!(proc=OpenProcess(PROCESS_QUERY_INFORMATION|PROCESS_VM_READ,
+							FALSE, pid))) {
+		return NULL;
+	}
+
+	/*
+	 * Search for the module that matches the name of the executable.
+	 * The values returned in mlist are actually the base address of
+	 * the module in the other process (as noted in the documentation
+	 * for the MODULEINFO structure).
+	 */
+	if (!EnumProcessModules(proc, mlist, sizeof(mlist), &needed)) {
+		goto finish;
+	}
+
+	for (i=0; i<needed/sizeof(HMODULE); ++i) {
+		char modname[MAX_PATH];
+		if (GetModuleFileNameEx(proc, mlist[i], modname, sizeof(modname))) {
+			if (strcasecmp(bb_basename(modname), exe) == 0) {
+				break;
+			}
+		}
+	}
+
+	if (i == needed/sizeof(HMODULE)) {
+		goto finish;
+	}
+
+	/* attempt to read the BusyBox version string */
+	my_base = (char *)GetModuleHandle(NULL);
+	address = (char *)mlist[i] + ((char *)bb_banner - my_base);
+	if (!ReadProcessMemory(proc, address, buffer, 128, NULL)) {
+		goto finish;
+	}
+
+	if (memcmp(buffer, bb_banner, strlen(bb_banner)) != 0) {
+		/* version mismatch (or not BusyBox at all) */
+		goto finish;
+	}
+
+	/* attempt to read the applet name */
+	address = (char *)mlist[i] + ((char *)bb_applet_name - my_base);
+	if (!ReadProcessMemory(proc, address, buffer, 128, NULL)) {
+		goto finish;
+	}
+
+	/* check that the string really is an applet name */
+	buffer[31] = '\0';
+	if (find_applet_by_name(buffer) >= 0) {
+		name = auto_string(xstrdup(buffer));
+	}
+
+ finish:
+	CloseHandle(proc);
+	return name;
+}
+
 /* POSIX version in libbb/procps.c */
 procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags
 #if !ENABLE_FEATURE_PS_TIME && !ENABLE_FEATURE_PS_LONG
@@ -414,7 +488,8 @@ UNUSED_PARAM
 )
 {
 	PROCESSENTRY32 pe;
-	const char *comm;
+	const char *comm, *name;
+	BOOL ret;
 
 	pe.dwSize = sizeof(pe);
 	if (!sp) {
@@ -424,18 +499,16 @@ UNUSED_PARAM
 			free(sp);
 			return NULL;
 		}
-		if (!Process32First(sp->snapshot, &pe)) {
-			CloseHandle(sp->snapshot);
-			free(sp);
-			return NULL;
-		}
+		ret = Process32First(sp->snapshot, &pe);
 	}
 	else {
-		if (!Process32Next(sp->snapshot, &pe)) {
-			CloseHandle(sp->snapshot);
-			free(sp);
-			return NULL;
-		}
+		ret = Process32Next(sp->snapshot, &pe);
+	}
+
+	if (!ret) {
+		CloseHandle(sp->snapshot);
+		free(sp);
+		return NULL;
 	}
 
 	memset(&sp->vsz, 0, sizeof(*sp) - offsetof(procps_status_t, vsz));
@@ -478,19 +551,17 @@ UNUSED_PARAM
 	sp->pid = pe.th32ProcessID;
 	sp->ppid = pe.th32ParentProcessID;
 
-	comm = pe.szExeFile;
 	if (sp->pid == GetProcessId(GetCurrentProcess())) {
 		comm = applet_name;
 	}
+	else if ((name=get_applet_name(pe.th32ProcessID, pe.szExeFile)) != NULL) {
+		comm = name;
+	}
 	else {
-		char name[32], *value;
-
-		sprintf(name, "BB_APPLET_%d", sp->pid);
-		if ((value=getenv(name)) != NULL) {
-			comm = value;
-		}
+		comm = pe.szExeFile;
 	}
 	safe_strncpy(sp->comm, comm, COMM_LEN);
+
 	return sp;
 }
 

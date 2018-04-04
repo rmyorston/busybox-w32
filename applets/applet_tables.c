@@ -61,6 +61,7 @@ static int str_isalnum_(const char *s)
 int main(int argc, char **argv)
 {
 	int i, j;
+	unsigned MAX_APPLET_NAME_LEN = 1;
 
 	// In find_applet_by_name(), before linear search, narrow it down
 	// by looking at N "equidistant" names. With ~350 applets:
@@ -124,8 +125,8 @@ int main(int argc, char **argv)
 	printf("const char applet_names[] ALIGN1 = \"\"\n");
 	for (i = 0; i < NUM_APPLETS; i++) {
 		printf("\"%s\" \"\\0\"\n", applets[i].name);
-//		if (MAX_APPLET_NAME_LEN < strlen(applets[i].name))
-//			MAX_APPLET_NAME_LEN = strlen(applets[i].name);
+		if (MAX_APPLET_NAME_LEN < strlen(applets[i].name))
+			MAX_APPLET_NAME_LEN = strlen(applets[i].name);
 	}
 	printf(";\n\n");
 
@@ -193,8 +194,8 @@ int main(int argc, char **argv)
 #endif
 	//printf("#endif /* SKIP_definitions */\n");
 
-//	printf("\n");
-//	printf("#define MAX_APPLET_NAME_LEN %u\n", MAX_APPLET_NAME_LEN);
+	printf("\n");
+	printf("#define MAX_APPLET_NAME_LEN %u\n", MAX_APPLET_NAME_LEN);
 
 	if (argv[2]) {
 		FILE *fp;

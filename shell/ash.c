@@ -14975,13 +14975,6 @@ reinitvar(void)
 		varinit[i].var_func = varinit_data[i].var_func;
 	}
 	vlineno.var_text = linenovar;
-
-	/*
-	 * BB_APPLET_<pid> was correct when 'sh --forkshell' was started
-	 * but has now been overwritten by the environment from the forkshell
-	 * data block.  Reinstate it.
-	 */
-	setvareq(bb_applet_pid(), VEXPORT);
 }
 
 /* FIXME: should consider running forkparent() and forkchild() */

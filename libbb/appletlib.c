@@ -796,13 +796,6 @@ static void install_links(const char *busybox UNUSED_PARAM,
 
 static void run_applet_and_exit(const char *name, char **argv) NORETURN;
 
-#if ENABLE_PLATFORM_MINGW32
-char *bb_applet_pid(void)
-{
-	return auto_string(xasprintf("BB_APPLET_%d=%s", getpid(), applet_name));
-}
-#endif
-
 # if ENABLE_BUSYBOX
 #  if ENABLE_FEATURE_SH_STANDALONE && ENABLE_FEATURE_TAB_COMPLETION
     /*
@@ -979,6 +972,11 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 # endif
 
 # if NUM_APPLETS > 0
+
+#  if ENABLE_PLATFORM_MINGW32
+char bb_applet_name[MAX_APPLET_NAME_LEN+1];
+#  endif
+
 void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **argv)
 {
 	int argc = string_array_len(argv);
@@ -988,6 +986,9 @@ void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **ar
 	 * "-/sbin/halt" -> "halt", for example.
 	 */
 	applet_name = name;
+#if ENABLE_PLATFORM_MINGW32
+	strcpy(bb_applet_name, applet_name);
+#endif
 
 	/* Special case. POSIX says "test --help"
 	 * should be no different from e.g. "test --foo".
@@ -1013,10 +1014,6 @@ void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **ar
 	}
 	if (ENABLE_FEATURE_SUID)
 		check_suid(applet_no);
-
-#if ENABLE_PLATFORM_MINGW32
-	putenv(bb_applet_pid());
-#endif
 
 	xfunc_error_retval = applet_main[applet_no](argc, argv);
 	/* Note: applet_main() may also not return (die on a xfunc or such) */

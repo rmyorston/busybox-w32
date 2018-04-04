@@ -2075,7 +2075,7 @@ extern const char bb_path_wtmp_file[] ALIGN1;
 #define bb_dev_null "/dev/null"
 #if ENABLE_PLATFORM_MINGW32
 #define bb_busybox_exec_path get_busybox_exec_path()
-extern char *bb_applet_pid(void);
+extern char bb_applet_name[];
 #else
 extern const char bb_busybox_exec_path[] ALIGN1;
 #endif

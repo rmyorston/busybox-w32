@@ -126,7 +126,7 @@ endif
 ifeq ($(CONFIG_PLATFORM_MINGW32),y)
 CFLAGS += -Iwin32 -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -fno-builtin-stpcpy -fno-ident
 EXEEXT = .exe
-LDLIBS += userenv ws2_32
+LDLIBS += userenv psapi ws2_32
 endif
 
 # Android has no separate crypt library
