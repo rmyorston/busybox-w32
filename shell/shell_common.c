@@ -70,7 +70,9 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 	char **pp;
 	char *buffer;
 	char delim;
+#if !ENABLE_PLATFORM_MINGW32
 	struct termios tty, old_tty;
+#endif
 	const char *retval;
 	int bufpos; /* need to be able to hold -1 */
 	int startword;
@@ -140,6 +142,7 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 	}
 
 	if (opt_t && end_ms == 0) {
+#if !ENABLE_PLATFORM_MINGW32
 		/* "If timeout is 0, read returns immediately, without trying
 		 * to read any data. The exit status is 0 if input is available
 		 * on the specified file descriptor, non-zero otherwise."
@@ -150,6 +153,9 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 		r = poll(pfd, 1, /*timeout:*/ 0);
 		/* Return 0 only if poll returns 1 ("one fd ready"), else return 1: */
 		return (const char *)(uintptr_t)(r <= 0);
+#else
+		return (const char *)(uintptr_t)(1);
+#endif
 	}
 
 	if (opt_p && isatty(fd)) {
@@ -160,6 +166,7 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 	if (ifs == NULL)
 		ifs = defifs;
 
+#if !ENABLE_PLATFORM_MINGW32
 	if (nchars || (read_flags & BUILTIN_READ_SILENT)) {
 		tcgetattr(fd, &tty);
 		old_tty = tty;
@@ -182,6 +189,7 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 		 * Ignoring, it's harmless. */
 		tcsetattr(fd, TCSANOW, &tty);
 	}
+#endif
 
 	retval = (const char *)(uintptr_t)0;
 	startword = 1;
@@ -211,12 +219,12 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 			}
 		}
 
+#if !ENABLE_PLATFORM_MINGW32
 		/* We must poll even if timeout is -1:
 		 * we want to be interrupted if signal arrives,
 		 * regardless of SA_RESTART-ness of that signal!
 		 */
 		errno = 0;
-#if !ENABLE_PLATFORM_MINGW32
 		pfd[0].events = POLLIN;
 		if (poll(pfd, 1, timeout) <= 0) {
 			/* timed out, or EINTR */
@@ -224,12 +232,36 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 			retval = (const char *)(uintptr_t)1;
 			goto ret;
 		}
-#endif
 		if (read(fd, &buffer[bufpos], 1) != 1) {
 			err = errno;
 			retval = (const char *)(uintptr_t)1;
 			break;
 		}
+#else
+		errno = 0;
+		if (isatty(fd) && (opt_n || opt_d || opt_t)) {
+			int64_t key;
+
+			key = read_key(fd, NULL, timeout);
+			if (key == 0x03 || key == -1) {
+				/* ^C or timeout */
+				retval = (const char *)(uintptr_t)1;
+				goto ret;
+			}
+			buffer[bufpos] = key == '\r' ? '\n' : key;
+			if (!(read_flags & BUILTIN_READ_SILENT)) {
+				/* echo input if not in silent mode */
+				putchar(buffer[bufpos]);
+			}
+		}
+		else {
+			if (read(fd, &buffer[bufpos], 1) != 1) {
+				err = errno;
+				retval = (const char *)(uintptr_t)1;
+				break;
+			}
+		}
+#endif
 
 		c = buffer[bufpos];
 		if (c == '\0' || (ENABLE_PLATFORM_MINGW32 && c == '\r'))
@@ -297,8 +329,10 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 
  ret:
 	free(buffer);
+#if !ENABLE_PLATFORM_MINGW32
 	if (read_flags & BUILTIN_READ_SILENT)
 		tcsetattr(fd, TCSANOW, &old_tty);
+#endif
 
 	errno = err;
 	return retval;
