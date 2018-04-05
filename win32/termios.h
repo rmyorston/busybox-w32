@@ -123,7 +123,3 @@ struct winsize {
 	unsigned short ws_row, ws_col;
 	unsigned short ws_xpixel, ws_ypixel;
 };
-
-int tcflush(int fd, int queue_selector);
-int tcgetattr(int fd, struct termios *t);
-int tcsetattr(int fd, int mode,  const struct termios *t);

@@ -2379,7 +2379,7 @@ static int32_t reverse_i_search(int timeout)
  */
 int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *command, int maxsize)
 {
-	int len, n;
+	int len IF_NOT_PLATFORM_MINGW32(, n);
 	int timeout;
 #if ENABLE_FEATURE_TAB_COMPLETION
 	smallint lastWasTab = 0;
@@ -2389,21 +2389,18 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	smallint vi_cmdmode = 0;
 #endif
 	struct termios initial_settings;
+#if !ENABLE_PLATFORM_MINGW32
 	struct termios new_settings;
+#endif
 	char read_key_buffer[KEYCODE_BUFFER_SIZE];
 
 	INIT_S();
 
+#if !ENABLE_PLATFORM_MINGW32
 	n = get_termios_and_make_raw(STDIN_FILENO, &new_settings, &initial_settings, 0
 		| TERMIOS_CLEAR_ISIG /* turn off INTR (ctrl-C), QUIT, SUSP */
 	);
-#if ENABLE_PLATFORM_MINGW32
-	initial_settings.c_cc[VINTR] = CTRL('C');
-	initial_settings.c_cc[VEOF] = CTRL('D');
-	if (n > 0 || !isatty(0) || !isatty(1)) {
-#else
 	if (n != 0 || (initial_settings.c_lflag & (ECHO|ICANON)) == ICANON) {
-#endif
 		/* Happens when e.g. stty -echo was run before.
 		 * But if ICANON is not set, we don't come here.
 		 * (example: interactive python ^Z-backgrounded,
@@ -2418,6 +2415,10 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 		DEINIT_S();
 		return len;
 	}
+#else
+	initial_settings.c_cc[VINTR] = CTRL('C');
+	initial_settings.c_cc[VEOF] = CTRL('D');
+#endif
 
 	init_unicode();
 
@@ -2456,7 +2457,9 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 #endif
 #define command command_must_not_be_used
 
+#if !ENABLE_PLATFORM_MINGW32
 	tcsetattr_stdin_TCSANOW(&new_settings);
+#endif
 
 #if ENABLE_USERNAME_OR_HOMEDIR
 	{
@@ -2947,8 +2950,10 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	free_tab_completion_data();
 #endif
 
+#if !ENABLE_PLATFORM_MINGW32
 	/* restore initial_settings */
 	tcsetattr_stdin_TCSANOW(&initial_settings);
+#endif
 #if ENABLE_FEATURE_EDITING_WINCH
 	/* restore SIGWINCH handler */
 	sigaction_set(SIGWINCH, &S.SIGWINCH_handler);

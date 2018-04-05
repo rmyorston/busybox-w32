@@ -305,6 +305,7 @@ int FAST_FUNC get_terminal_width(int fd)
 	return width;
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 int FAST_FUNC tcsetattr_stdin_TCSANOW(const struct termios *tp)
 {
 	return tcsetattr(STDIN_FILENO, TCSANOW, tp);
@@ -380,6 +381,7 @@ int FAST_FUNC set_termios_to_raw(int fd, struct termios *oldterm, int flags)
 	get_termios_and_make_raw(fd, &newterm, oldterm, flags);
 	return tcsetattr(fd, TCSANOW, &newterm);
 }
+#endif
 
 pid_t FAST_FUNC safe_waitpid(pid_t pid, int *wstat, int options)
 {

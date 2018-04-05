@@ -238,7 +238,9 @@ struct globals {
 	smallint winsize_err;
 #endif
 	smallint terminated;
+#if !ENABLE_PLATFORM_MINGW32
 	struct termios term_orig, term_less;
+#endif
 	char kbd_input[KEYCODE_BUFFER_SIZE];
 };
 #define G (*ptr_to_globals)
@@ -300,7 +302,9 @@ struct globals {
 static void set_tty_cooked(void)
 {
 	fflush_all();
+#if !ENABLE_PLATFORM_MINGW32
 	tcsetattr(kbd_fd, TCSANOW, &term_orig);
+#endif
 }
 
 /* Move the cursor to a position (x,y), where (0,0) is the
@@ -1966,7 +1970,9 @@ int less_main(int argc, char **argv)
 	kbd_fd = tty_fd = 0;
 #endif
 
+#if !ENABLE_PLATFORM_MINGW32
 	get_termios_and_make_raw(tty_fd, &term_less, &term_orig, TERMIOS_RAW_CRNL);
+#endif
 
 	IF_FEATURE_LESS_ASK_TERMINAL(G.winsize_err =) get_terminal_width_height(tty_fd, &width, &max_displayed_line);
 	/* 20: two tabstops + 4 */

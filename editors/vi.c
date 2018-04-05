@@ -353,7 +353,9 @@ struct globals {
 #if ENABLE_FEATURE_VI_USE_SIGNALS
 	sigjmp_buf restart;     // catch_sig()
 #endif
+#if !ENABLE_PLATFORM_MINGW32
 	struct termios term_orig; // remember what the cooked mode was
+#endif
 #if ENABLE_FEATURE_VI_COLON
 	char *initial_cmds[3];  // currently 2 entries, NULL terminated
 #endif
@@ -2738,15 +2740,19 @@ static char *swap_context(char *p) // goto new context for '' command make this 
 //----- Set terminal attributes --------------------------------
 static void rawmode(void)
 {
+#if !ENABLE_PLATFORM_MINGW32
 	// no TERMIOS_CLEAR_ISIG: leave ISIG on - allow signals
 	set_termios_to_raw(STDIN_FILENO, &term_orig, TERMIOS_RAW_CRNL);
 	erase_char = term_orig.c_cc[VERASE];
+#endif
 }
 
 static void cookmode(void)
 {
 	fflush_all();
+#if !ENABLE_PLATFORM_MINGW32
 	tcsetattr_stdin_TCSANOW(&term_orig);
+#endif
 }
 
 #if ENABLE_FEATURE_VI_USE_SIGNALS

@@ -1,15 +1,5 @@
 #include "libbb.h"
 
-int tcsetattr(int fd UNUSED_PARAM, int mode UNUSED_PARAM,  const struct termios *t UNUSED_PARAM)
-{
-	return -1;
-}
-
-int tcgetattr(int fd UNUSED_PARAM, struct termios *t UNUSED_PARAM)
-{
-	return -1;
-}
-
 int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 {
 	HANDLE cin = GetStdHandle(STD_INPUT_HANDLE);
