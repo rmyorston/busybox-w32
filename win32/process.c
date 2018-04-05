@@ -471,7 +471,7 @@ static char *get_applet_name(DWORD pid, char *exe)
 
 	/* check that the string really is an applet name */
 	buffer[31] = '\0';
-	if (find_applet_by_name(buffer) >= 0) {
+	if (find_applet_by_name(buffer) >= 0 || !strcmp(buffer, "[sh]")) {
 		name = auto_string(xstrdup(buffer));
 	}
 

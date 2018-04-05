@@ -14725,11 +14725,12 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	hSIGINT = CreateEvent(NULL, TRUE, FALSE, NULL);
 	SetConsoleCtrlHandler(ctrl_handler, TRUE);
 
-	if (argc == 3 && !strcmp(argv[1], "--forkshell")) {
+	if (argc == 3 && !strcmp(argv[1], "--fs")) {
+		strcpy(bb_applet_name, "[sh]");
 		forkshell_init(argv[2]);
 
 		/* NOTREACHED */
-		bb_error_msg_and_die("subshell ended unexpectedly");
+		bb_error_msg_and_die("forkshell failed");
 	}
 #endif
 	login_sh = procargs(argv);
@@ -14983,7 +14984,7 @@ spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
 {
 	struct forkshell *new;
 	char buf[32];
-	const char *argv[] = { "sh", "--forkshell", NULL, NULL };
+	const char *argv[] = { "sh", "--fs", NULL, NULL };
 	intptr_t ret;
 
 	new = forkshell_prepare(fs);
