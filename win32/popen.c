@@ -5,16 +5,17 @@
 typedef struct {
 	PROCESS_INFORMATION piProcInfo;
 	HANDLE pipe[2];
-	char mode;
 	int fd;
 } pipe_data;
 
 static pipe_data *pipes = NULL;
 static int num_pipes = 0;
 
+static int mingw_popen_internal(pipe_data *p, const char *cmd,
+					const char *mode, int fd0, pid_t *pid);
+
 static int mingw_pipe(pipe_data *p, int bidi)
 {
-	int ret = 0;
 	SECURITY_ATTRIBUTES sa;
 
 	sa.nLength = sizeof(sa);          /* Length in bytes */
@@ -31,9 +32,9 @@ static int mingw_pipe(pipe_data *p, int bidi)
 		char *name;
 		const int ip = 1; /* index of parent end of pipe */
 		const int ic = 0; /* index of child end of pipe */
+		static int count = 0;
 
-		name = xasprintf("\\\\.\\pipe\\bb_pipe.%d.%d", getpid(),
-							(int)(p-pipes));
+		name = xasprintf("\\\\.\\pipe\\bb_pipe.%d.%d", getpid(), ++count);
 
 		p->pipe[ip] = CreateNamedPipe(name,
 							PIPE_ACCESS_DUPLEX|FILE_FLAG_OVERLAPPED,
@@ -44,29 +45,52 @@ static int mingw_pipe(pipe_data *p, int bidi)
 									OPEN_EXISTING,
 									FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OVERLAPPED,
 									NULL);
-		if (p->pipe[ip] == INVALID_HANDLE_VALUE ||
-				p->pipe[ic] == INVALID_HANDLE_VALUE) {
-			ret = -1;
-		}
-
 		free(name);
 	}
 
-	return ret;
+	return (p->pipe[0] == INVALID_HANDLE_VALUE ||
+				p->pipe[1] == INVALID_HANDLE_VALUE) ? -1 : 0;
 }
 
-static pipe_data *find_pipe(void)
+static void clear_pipe_data(pipe_data *p)
+{
+	memset(p, 0, sizeof(pipe_data));
+	p->pipe[0] = INVALID_HANDLE_VALUE;
+	p->pipe[1] = INVALID_HANDLE_VALUE;
+	p->fd = -1;
+}
+
+static void close_pipe_data(pipe_data *p)
+{
+	if (p->pipe[0] != INVALID_HANDLE_VALUE)
+		CloseHandle(p->pipe[0]);
+	if (p->pipe[1] != INVALID_HANDLE_VALUE)
+		CloseHandle(p->pipe[1]);
+	clear_pipe_data(p);
+}
+
+/*
+ * Search for a pipe_data structure with file descriptor fd.  If fd is
+ * -1 and no empty slots are available the array is extended.  Return
+ * NULL if the file descriptor can't be found or the array can't be
+ * extended.
+ */
+static pipe_data *find_pipe(int fd)
 {
 	int i;
 	pipe_data *p = NULL;
 
-	/* find an unused pipe structure */
+	/* find a matching pipe structure */
 	for ( i=0; i<num_pipes; ++i ) {
-		if ( pipes[i].mode == '\0' ) {
+		if (pipes[i].fd == fd) {
 			p = pipes+i;
 			break;
 		}
 	}
+
+	/* if looking for valid file descriptor return now */
+	if (fd != -1)
+		return p;
 
 	if ( p == NULL ) {
 		/* need to extend array */
@@ -75,22 +99,20 @@ static pipe_data *find_pipe(void)
 		}
 
 		pipes = p;
-		for ( i=0; i<10; ++i ) {
-			memset(pipes+num_pipes+i, 0, sizeof(pipe_data));
-		}
 		p = pipes + num_pipes;
+		for ( i=0; i<10; ++i ) {
+			clear_pipe_data(p+i);
+		}
 		num_pipes += 10;
 	}
-
-	p->pipe[0] = INVALID_HANDLE_VALUE;
-	p->pipe[1] = INVALID_HANDLE_VALUE;
-	p->fd = -1;
+	clear_pipe_data(p);
 
 	return p;
 }
 
 FILE *mingw_popen(const char *cmd, const char *mode)
 {
+	pipe_data *p;
 	FILE *fptr = NULL;
 	int fd;
 	int len, count;
@@ -100,6 +122,11 @@ FILE *mingw_popen(const char *cmd, const char *mode)
 
 	if ( cmd == NULL || *cmd == '\0' || mode == NULL ||
 			(*mode != 'r' && *mode != 'w') ) {
+		return NULL;
+	}
+
+	/* find an unused pipe structure */
+	if ((p=find_pipe(-1)) == NULL) {
 		return NULL;
 	}
 
@@ -115,16 +142,15 @@ FILE *mingw_popen(const char *cmd, const char *mode)
 	if ( (cmd_buff=malloc(len)) == NULL ) {
 		return NULL;
 	}
+	cmd_buff[0] = '\0';
 
 #if (ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE) && \
 		NUM_APPLETS > 1
 	if (find_applet_by_name("sh") >= 0) {
-		strcpy(cmd_buff, bb_busybox_exec_path);
-		strcat(cmd_buff, " --busybox sh -c \"");
+		sprintf(cmd_buff, "%s --busybox ", bb_busybox_exec_path);
 	}
-	else
 #endif
-		strcpy(cmd_buff, "sh -c \"");
+	strcat(cmd_buff, "sh -c \"");
 
 	/* escape double quotes */
 	for ( s=cmd,t=cmd_buff+strlen(cmd_buff); *s; ++s ) {
@@ -137,7 +163,7 @@ FILE *mingw_popen(const char *cmd, const char *mode)
 	*t = '\0';
 
 	/* Create the pipe */
-	if ((fd=mingw_popen_fd(cmd_buff, mode, -1, NULL)) != -1) {
+	if ((fd=mingw_popen_internal(p, cmd_buff, mode, -1, NULL)) != -1) {
 		fptr = _fdopen(fd, *mode == 'r' ? "rb" : "wb");
 	}
 
@@ -157,9 +183,10 @@ FILE *mingw_popen(const char *cmd, const char *mode)
  * - the pid of the command is returned in the variable pid, which
  *   can be NULL if the pid is not required.
  */
-int mingw_popen_fd(const char *cmd, const char *mode, int fd0, pid_t *pid)
+static int mingw_popen_internal(pipe_data *p, const char *cmd,
+					const char *mode, int fd0, pid_t *pid)
 {
-	pipe_data *p;
+	pipe_data pd;
 	STARTUPINFO siStartInfo;
 	int success;
 	int fd = -1;
@@ -187,9 +214,9 @@ int mingw_popen_fd(const char *cmd, const char *mode, int fd0, pid_t *pid)
 	}
 	ic = !ip;
 
-	/* find an unused pipe structure */
-	if ( (p=find_pipe()) == NULL ) {
-		return -1;
+	if (!p) {
+		/* no struct provided, use a local one */
+		p = &pd;
 	}
 
 	/* Create the pipe */
@@ -242,15 +269,9 @@ int mingw_popen_fd(const char *cmd, const char *mode, int fd0, pid_t *pid)
 
 finito:
 	if ( fd == -1 ) {
-		if ( p->pipe[0] != INVALID_HANDLE_VALUE ) {
-			CloseHandle(p->pipe[0]);
-		}
-		if ( p->pipe[1] != INVALID_HANDLE_VALUE ) {
-			CloseHandle(p->pipe[1]);
-		}
+		close_pipe_data(p);
 	}
 	else {
-		p->mode = *mode;
 		p->fd = fd;
 		if ( pid ) {
 			*pid = (pid_t)p->piProcInfo.dwProcessId;
@@ -260,41 +281,28 @@ finito:
 	return fd;
 }
 
+int mingw_popen_fd(const char *cmd, const char *mode, int fd0, pid_t *pid)
+{
+	return mingw_popen_internal(NULL, cmd, mode, fd0, pid);
+}
+
 int mingw_pclose(FILE *fp)
 {
-	int i, ip, fd;
-	pipe_data *p = NULL;
+	int fd;
+	pipe_data *p;
 	DWORD ret;
 
-	if ( fp == NULL ) {
-		return -1;
-	}
-
 	/* find struct containing fd */
-	fd = fileno(fp);
-	for ( i=0; i<num_pipes; ++i ) {
-		if ( pipes[i].mode && pipes[i].fd == fd ) {
-			p = pipes+i;
-			break;
-		}
-	}
-
-	if ( p == NULL ) {
-		/* no pipe data, maybe fd isn't a pipe? */
+	if (fp == NULL || (fd=fileno(fp)) == -1 || (p=find_pipe(fd)) == NULL)
 		return -1;
-	}
 
 	fclose(fp);
-
-	ip = !(p->mode == 'r');
-	CloseHandle(p->pipe[ip]);
 
 	ret = WaitForSingleObject(p->piProcInfo.hProcess, INFINITE);
 
 	CloseHandle(p->piProcInfo.hProcess);
 	CloseHandle(p->piProcInfo.hThread);
-
-	p->mode = '\0';
+	close_pipe_data(p);
 
 	return (ret == WAIT_OBJECT_0) ? 0 : -1;
 }
