@@ -1150,7 +1150,8 @@ int main(int argc UNUSED_PARAM, char **argv)
 		char *s;
 
 		str_tolower(argv[0]);
-		if (has_exe_suffix_or_dot(argv[0]) && !(s=strrchr(argv[0], '.'))) {
+		convert_slashes(argv[0]);
+		if (has_exe_suffix_or_dot(argv[0]) && (s=strrchr(argv[0], '.'))) {
 			*s = '\0';
 		}
 	}

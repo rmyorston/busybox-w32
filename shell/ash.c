@@ -14593,6 +14593,9 @@ procargs(char **argv)
 			goto setarg0;
 	} else if (!sflag) {
 		setinputfile(*xargv, 0);
+#if ENABLE_PLATFORM_MINGW32
+		convert_slashes(*xargv);
+#endif
  setarg0:
 		arg0 = *xargv++;
 		commandname = arg0;
