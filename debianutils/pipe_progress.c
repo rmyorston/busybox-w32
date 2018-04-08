@@ -16,8 +16,10 @@
 
 //kbuild:lib-$(CONFIG_PIPE_PROGRESS) += pipe_progress.o
 
-//usage:#define pipe_progress_trivial_usage NOUSAGE_STR
-//usage:#define pipe_progress_full_usage ""
+//usage:#define pipe_progress_trivial_usage
+//usage:     ""
+//usage:#define pipe_progress_full_usage "\n\n"
+//usage:     "Display a dot to indicate pipe activity"
 
 #include "libbb.h"
 
