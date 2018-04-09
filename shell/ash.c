@@ -204,7 +204,6 @@
 
 #define JOBS ENABLE_ASH_JOB_CONTROL
 
-#include <setjmp.h>
 #include <fnmatch.h>
 #include <sys/times.h>
 #include <sys/utsname.h> /* for setting $HOSTNAME */
@@ -5755,7 +5754,7 @@ openredirect(union node *redir)
 				f = open(fname, O_WRONLY, 0666);
 				if (f < 0)
 					goto ecreate;
-				if (fstat(f, &sb) < 0 && S_ISREG(sb.st_mode)) {
+				if (!fstat(f, &sb) && S_ISREG(sb.st_mode)) {
 					close(f);
 					errno = EEXIST;
 					goto ecreate;
@@ -6255,10 +6254,9 @@ static int substr_atoi(const char *s)
  * performs globbing, and thus diverges from what we do).
  */
 #define EXP_CASE        0x10    /* keeps quotes around for CASE pattern */
-#define EXP_QPAT        0x20    /* pattern in quoted parameter expansion */
-#define EXP_VARTILDE2   0x40    /* expand tildes after colons only */
-#define EXP_WORD        0x80    /* expand word in parameter expansion */
-#define EXP_QUOTED      0x100   /* expand word in double quotes */
+#define EXP_VARTILDE2   0x20    /* expand tildes after colons only */
+#define EXP_WORD        0x40    /* expand word in parameter expansion */
+#define EXP_QUOTED      0x80    /* expand word in double quotes */
 /*
  * rmescape() flags
  */
@@ -6268,7 +6266,7 @@ static int substr_atoi(const char *s)
 #define RMESCAPE_HEAP   0x10    /* Malloc strings instead of stalloc */
 
 /* Add CTLESC when necessary. */
-#define QUOTES_ESC     (EXP_FULL | EXP_CASE | EXP_QPAT)
+#define QUOTES_ESC     (EXP_FULL | EXP_CASE)
 /* Do not skip NUL characters. */
 #define QUOTES_KEEPNUL EXP_TILDE
 
@@ -6343,7 +6341,10 @@ ifsbreakup(char *string, struct arglist *arglist)
 		realifs = ifsset() ? ifsval() : defifs;
 		ifsp = &ifsfirst;
 		do {
+			int afternul;
+
 			p = string + ifsp->begoff;
+			afternul = nulonly;
 			nulonly = ifsp->nulonly;
 			ifs = nulonly ? nullstr : realifs;
 			ifsspc = 0;
@@ -6355,7 +6356,7 @@ ifsbreakup(char *string, struct arglist *arglist)
 					p++;
 					continue;
 				}
-				if (!nulonly)
+				if (!(afternul || nulonly))
 					ifsspc = (strchr(defifs, *p) != NULL);
 				/* Ignore IFS whitespace at start */
 				if (q == start && ifsspc) {
@@ -6457,7 +6458,6 @@ rmescapes(char *str, int flag, int *slash_position)
 		IF_BASH_PATTERN_SUBST('/',) CTLESC, CTLQUOTEMARK, '\0' };
 
 	char *p, *q, *r;
-	unsigned inquotes;
 	unsigned protect_against_glob;
 	unsigned globbing;
 
@@ -6488,17 +6488,20 @@ rmescapes(char *str, int flag, int *slash_position)
 		}
 	}
 
-	inquotes = 0;
 	globbing = flag & RMESCAPE_GLOB;
 	protect_against_glob = globbing;
 	while (*p) {
 		if ((unsigned char)*p == CTLQUOTEMARK) {
-// Note: both inquotes and protect_against_glob only affect whether
+// Note: protect_against_glob only affect whether
 // CTLESC,<ch> gets converted to <ch> or to \<ch>
-			inquotes = ~inquotes;
 			p++;
 			protect_against_glob = globbing;
 			continue;
+		}
+		if (*p == '\\') {
+			/* naked back slash */
+			protect_against_glob = 0;
+			goto copy;
 		}
 		if ((unsigned char)*p == CTLESC) {
 			p++;
@@ -6535,10 +6538,6 @@ rmescapes(char *str, int flag, int *slash_position)
 					*q++ = '\\';
 				}
 			}
-		} else if (*p == '\\' && !inquotes) {
-			/* naked back slash */
-			protect_against_glob = 0;
-			goto copy;
 		}
 #if BASH_PATTERN_SUBST
 		else if (slash_position && p == str + *slash_position) {
@@ -7032,12 +7031,12 @@ argstr(char *p, int flags)
 		case CTLENDVAR: /* ??? */
 			goto breakloop;
 		case CTLQUOTEMARK:
-			inquotes ^= EXP_QUOTED;
 			/* "$@" syntax adherence hack */
-			if (inquotes && !memcmp(p, dolatstr + 1, DOLATSTRLEN - 1)) {
-				p = evalvar(p + 1, flags | inquotes) + 1;
+			if (!inquotes && !memcmp(p, dolatstr + 1, DOLATSTRLEN - 1)) {
+				p = evalvar(p + 1, flags | EXP_QUOTED) + 1;
 				goto start;
 			}
+			inquotes ^= EXP_QUOTED;
  addquote:
 			if (flags & QUOTES_ESC) {
 				p--;
@@ -7048,16 +7047,6 @@ argstr(char *p, int flags)
 		case CTLESC:
 			startloc++;
 			length++;
-
-			/*
-			 * Quoted parameter expansion pattern: remove quote
-			 * unless inside inner quotes or we have a literal
-			 * backslash.
-			 */
-			if (((flags | inquotes) & (EXP_QPAT | EXP_QUOTED)) ==
-			    EXP_QPAT && *p != '\\')
-				break;
-
 			goto addquote;
 		case CTLVAR:
 			TRACE(("argstr: evalvar('%s')\n", p));
@@ -7248,15 +7237,24 @@ subevalvar(char *p, char *varname, int strloc, int subtype,
 	}
 #endif
 	argstr_flags = EXP_TILDE;
-	if (subtype != VSASSIGN && subtype != VSQUESTION)
-		argstr_flags |= (flag & (EXP_QUOTED | EXP_QPAT) ? EXP_QPAT : EXP_CASE);
+	if (subtype != VSASSIGN
+	 && subtype != VSQUESTION
+#if BASH_SUBSTR
+	 && subtype != VSSUBSTR
+#endif
+	) {
+		/* EXP_CASE keeps CTLESC's */
+		argstr_flags = EXP_TILDE | EXP_CASE;
+	}
 	argstr(p, argstr_flags);
+	//bb_error_msg("str0:'%s'", (char *)stackblock() + strloc);
 #if BASH_PATTERN_SUBST
 	slash_pos = -1;
 	if (repl) {
 		slash_pos = expdest - ((char *)stackblock() + strloc);
 		STPUTC('/', expdest);
-		argstr(repl + 1, argstr_flags);
+		//bb_error_msg("repl+1:'%s'", repl + 1);
+		argstr(repl + 1, EXP_TILDE); /* EXP_TILDE: echo "${v/x/~}" expands ~ ! */
 		*repl = '/';
 	}
 #endif
@@ -11182,6 +11180,34 @@ pgetc_eatbnl(void)
 	return c;
 }
 
+struct synstack {
+	smalluint syntax;
+	uint8_t innerdq   :1;
+	uint8_t varpushed :1;
+	uint8_t dblquote  :1;
+	int varnest;		/* levels of variables expansion */
+	int dqvarnest;		/* levels of variables expansion within double quotes */
+	int parenlevel;		/* levels of parens in arithmetic */
+	struct synstack *prev;
+	struct synstack *next;
+};
+
+static void
+synstack_push(struct synstack **stack, struct synstack *next, int syntax)
+{
+	memset(next, 0, sizeof(*next));
+	next->syntax = syntax;
+	next->next = *stack;
+	(*stack)->prev = next;
+	*stack = next;
+}
+
+static ALWAYS_INLINE void
+synstack_pop(struct synstack **stack)
+{
+	*stack = (*stack)->next;
+}
+
 /*
  * To handle the "." command, a stack of input files is used.  Pushfile
  * adds a new entry to the stack and popfile restores the previous level.
@@ -12443,19 +12469,13 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 	size_t len;
 	struct nodelist *bqlist;
 	smallint quotef;
-	smallint dblquote;
 	smallint oldstyle;
-	IF_FEATURE_SH_MATH(smallint prevsyntax;) /* syntax before arithmetic */
 	smallint pssyntax;   /* we are expanding a prompt string */
-	int varnest;         /* levels of variables expansion */
-	IF_FEATURE_SH_MATH(int arinest;)    /* levels of arithmetic expansion */
-	IF_FEATURE_SH_MATH(int parenlevel;) /* levels of parens in arithmetic */
-	int dqvarnest;       /* levels of variables expansion within double quotes */
 	IF_BASH_DOLLAR_SQUOTE(smallint bash_dollar_squote = 0;)
+	/* syntax stack */
+	struct synstack synbase = { };
+	struct synstack *synstack = &synbase;
 
-	bqlist = NULL;
-	quotef = 0;
-	IF_FEATURE_SH_MATH(prevsyntax = 0;)
 #if ENABLE_ASH_EXPAND_PRMT
 	pssyntax = (syntax == PSSYNTAX);
 	if (pssyntax)
@@ -12463,11 +12483,12 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 #else
 	pssyntax = 0; /* constant */
 #endif
-	dblquote = (syntax == DQSYNTAX);
-	varnest = 0;
-	IF_FEATURE_SH_MATH(arinest = 0;)
-	IF_FEATURE_SH_MATH(parenlevel = 0;)
-	dqvarnest = 0;
+	synstack->syntax = syntax;
+
+	if (syntax == DQSYNTAX)
+		synstack->dblquote = 1;
+	quotef = 0;
+	bqlist = NULL;
 
 	STARTSTACKSTR(out);
  loop:
@@ -12475,9 +12496,9 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 	CHECKEND();     /* set c to PEOF if at end of here document */
 	for (;;) {      /* until end of line or end of word */
 		CHECKSTRSPACE(4, out);  /* permit 4 calls to USTPUTC */
-		switch (SIT(c, syntax)) {
+		switch (SIT(c, synstack->syntax)) {
 		case CNL:       /* '\n' */
-			if (syntax == BASESYNTAX)
+			if (synstack->syntax == BASESYNTAX)
 				goto endword;   /* exit outer loop */
 			USTPUTC(c, out);
 			nlprompt();
@@ -12497,13 +12518,13 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 				if (c & 0x100) {
 					/* Unknown escape. Encode as '\z' */
 					c = (unsigned char)c;
-					if (eofmark == NULL || dblquote)
+					if (eofmark == NULL || synstack->dblquote)
 						USTPUTC(CTLESC, out);
 					USTPUTC('\\', out);
 				}
 			}
 #endif
-			if (eofmark == NULL || dblquote)
+			if (!eofmark || synstack->dblquote || synstack->varnest)
 				USTPUTC(CTLESC, out);
 			USTPUTC(c, out);
 			break;
@@ -12523,20 +12544,13 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 				/* Backslash is retained if we are in "str"
 				 * and next char isn't dquote-special.
 				 */
-				if (dblquote
+				if (synstack->dblquote
 				 && c != '\\'
 				 && c != '`'
 				 && c != '$'
-				 && (c != '"' || eofmark != NULL)
+				 && (c != '"' || (eofmark != NULL && !synstack->varnest))
+				 && (c != '}' || !synstack->varnest)
 				) {
-//dash survives not doing USTPUTC(CTLESC), but merely by chance:
-//Example: "\z" gets encoded as "\<CTLESC>z".
-//rmescapes() then emits "\", "\z", protecting z from globbing.
-//But it's wrong, should protect _both_ from globbing:
-//everything in double quotes is not globbed.
-//Unlike dash, we have a fix in rmescapes() which emits bare "z"
-//for "<CTLESC>z" since "z" is not glob-special (else unicode may break),
-//and glob would see "\z" and eat "\". Thus:
 					USTPUTC(CTLESC, out); /* protect '\' from glob */
 					USTPUTC('\\', out);
 				}
@@ -12546,56 +12560,62 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 			}
 			break;
 		case CSQUOTE:
-			syntax = SQSYNTAX;
+			synstack->syntax = SQSYNTAX;
  quotemark:
 			if (eofmark == NULL) {
 				USTPUTC(CTLQUOTEMARK, out);
 			}
 			break;
 		case CDQUOTE:
-			syntax = DQSYNTAX;
-			dblquote = 1;
+			synstack->syntax = DQSYNTAX;
+			synstack->dblquote = 1;
+ toggledq:
+			if (synstack->varnest)
+				synstack->innerdq ^= 1;
 			goto quotemark;
 		case CENDQUOTE:
 			IF_BASH_DOLLAR_SQUOTE(bash_dollar_squote = 0;)
-			if (eofmark != NULL && varnest == 0) {
+			if (eofmark != NULL && synstack->varnest == 0) {
 				USTPUTC(c, out);
-			} else {
-				if (dqvarnest == 0) {
-					syntax = BASESYNTAX;
-					dblquote = 0;
-				}
-				quotef = 1;
-				goto quotemark;
+				break;
 			}
-			break;
+
+			if (synstack->dqvarnest == 0) {
+				synstack->syntax = BASESYNTAX;
+				synstack->dblquote = 0;
+			}
+
+			quotef = 1;
+
+			if (c == '"')
+				goto toggledq;
+
+			goto quotemark;
 		case CVAR:      /* '$' */
 			PARSESUB();             /* parse substitution */
 			break;
 		case CENDVAR:   /* '}' */
-			if (varnest > 0) {
-				varnest--;
-				if (dqvarnest > 0) {
-					dqvarnest--;
-				}
+			if (!synstack->innerdq && synstack->varnest > 0) {
+				if (!--synstack->varnest && synstack->varpushed)
+					synstack_pop(&synstack);
+				else if (synstack->dqvarnest > 0)
+					synstack->dqvarnest--;
 				c = CTLENDVAR;
 			}
 			USTPUTC(c, out);
 			break;
 #if ENABLE_FEATURE_SH_MATH
 		case CLP:       /* '(' in arithmetic */
-			parenlevel++;
+			synstack->parenlevel++;
 			USTPUTC(c, out);
 			break;
 		case CRP:       /* ')' in arithmetic */
-			if (parenlevel > 0) {
-				parenlevel--;
+			if (synstack->parenlevel > 0) {
+				synstack->parenlevel--;
 			} else {
 				if (pgetc_eatbnl() == ')') {
 					c = CTLENDARI;
-					if (--arinest == 0) {
-						syntax = prevsyntax;
-					}
+					synstack_pop(&synstack);
 				} else {
 					/*
 					 * unbalanced parens
@@ -12621,7 +12641,7 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 		case CIGN:
 			break;
 		default:
-			if (varnest == 0) {
+			if (synstack->varnest == 0) {
 #if BASH_REDIR_OUTPUT
 				if (c == '&') {
 //Can't call pgetc_eatbnl() here, this requires three-deep pungetc()
@@ -12640,12 +12660,12 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
  endword:
 
 #if ENABLE_FEATURE_SH_MATH
-	if (syntax == ARISYNTAX)
+	if (synstack->syntax == ARISYNTAX)
 		raise_error_syntax("missing '))'");
 #endif
-	if (syntax != BASESYNTAX && eofmark == NULL)
+	if (synstack->syntax != BASESYNTAX && eofmark == NULL)
 		raise_error_syntax("unterminated quoted string");
-	if (varnest != 0) {
+	if (synstack->varnest != 0) {
 		/* { */
 		raise_error_syntax("missing '}'");
 	}
@@ -12827,7 +12847,7 @@ parsesub: {
 	 || (c != '(' && c != '{' && !is_name(c) && !is_special(c))
 	) {
 #if BASH_DOLLAR_SQUOTE
-		if (syntax != DQSYNTAX && c == '\'')
+		if (synstack->syntax != DQSYNTAX && c == '\'')
 			bash_dollar_squote = 1;
 		else
 #endif
@@ -12847,6 +12867,8 @@ parsesub: {
 		}
 	} else {
 		/* $VAR, $<specialchar>, ${...}, or PEOA/PEOF */
+		smalluint newsyn = synstack->syntax;
+
 		USTPUTC(CTLVAR, out);
 		typeloc = out - (char *)stackblock();
 		STADJUST(1, out);
@@ -12905,6 +12927,8 @@ parsesub: {
 			static const char types[] ALIGN1 = "}-+?=";
 			/* ${VAR...} but not $VAR or ${#VAR} */
 			/* c == first char after VAR */
+			int cc = c;
+
 			switch (c) {
 			case ':':
 				c = pgetc_eatbnl();
@@ -12929,21 +12953,24 @@ parsesub: {
 				break;
 			}
 			case '%':
-			case '#': {
-				int cc = c;
+			case '#':
 				subtype = (c == '#' ? VSTRIMLEFT : VSTRIMRIGHT);
 				c = pgetc_eatbnl();
-				if (c != cc)
-					goto badsub;
-				subtype++;
+				if (c == cc)
+					subtype++;
+				else
+					pungetc();
+
+				newsyn = BASESYNTAX;
 				break;
-			}
 #if BASH_PATTERN_SUBST
 			case '/':
 				/* ${v/[/]pattern/repl} */
 //TODO: encode pattern and repl separately.
-// Currently ${v/$var_with_slash/repl} is horribly broken
+// Currently cases like: v=1;echo ${v/$((1/1))/ONE}
+// are broken (should print "ONE")
 				subtype = VSREPLACE;
+				newsyn = BASESYNTAX;
 				c = pgetc_eatbnl();
 				if (c != '/')
 					goto badsub;
@@ -12955,11 +12982,26 @@ parsesub: {
  badsub:
 			pungetc();
 		}
+
+		if (newsyn == ARISYNTAX)
+			newsyn = DQSYNTAX;
+
+		if ((newsyn != synstack->syntax || synstack->innerdq)
+		 && subtype != VSNORMAL
+		) {
+			synstack_push(&synstack,
+				synstack->prev ?: alloca(sizeof(*synstack)),
+				newsyn);
+
+			synstack->varpushed = 1;
+			synstack->dblquote = newsyn != BASESYNTAX;
+		}
+
 		((unsigned char *)stackblock())[typeloc] = subtype;
 		if (subtype != VSNORMAL) {
-			varnest++;
-			if (dblquote)
-				dqvarnest++;
+			synstack->varnest++;
+			if (synstack->dblquote)
+				synstack->dqvarnest++;
 		}
 		STPUTC('=', out);
 	}
@@ -13016,7 +13058,7 @@ parsebackq: {
 			case '\\':
 				pc = pgetc(); /* or pgetc_eatbnl()? why (example)? */
 				if (pc != '\\' && pc != '`' && pc != '$'
-				 && (!dblquote || pc != '"')
+				 && (!synstack->dblquote || pc != '"')
 				) {
 					STPUTC('\\', pout);
 				}
@@ -13091,10 +13133,11 @@ parsebackq: {
  * Parse an arithmetic expansion (indicate start of one and set state)
  */
 parsearith: {
-	if (++arinest == 1) {
-		prevsyntax = syntax;
-		syntax = ARISYNTAX;
-	}
+
+	synstack_push(&synstack,
+			synstack->prev ?: alloca(sizeof(*synstack)),
+			ARISYNTAX);
+	synstack->dblquote = 1;
 	USTPUTC(CTLARI, out);
 	goto parsearith_return;
 }
@@ -14542,7 +14585,7 @@ init(void)
 
 
 //usage:#define ash_trivial_usage
-//usage:	"[-/+OPTIONS] [-/+o OPT]... [-c 'SCRIPT' [ARG0 [ARGS]] / FILE [ARGS]]"
+//usage:	"[-/+OPTIONS] [-/+o OPT]... [-c 'SCRIPT' [ARG0 [ARGS]] / FILE [ARGS] / -s [ARGS]]"
 //usage:#define ash_full_usage "\n\n"
 //usage:	"Unix shell interpreter"
 

@@ -570,27 +570,28 @@ static int xargs_ask_confirmation(void)
 {
 #if !ENABLE_PLATFORM_MINGW32
 	FILE *tty_stream;
-#endif
-	int c, savec;
+	int r;
 
-#if !ENABLE_PLATFORM_MINGW32
 	tty_stream = xfopen_for_read(CURRENT_TTY);
-#endif
+
 	fputs(" ?...", stderr);
-	fflush_all();
-#if !ENABLE_PLATFORM_MINGW32
-	c = savec = getc(tty_stream);
-	while (c != EOF && c != '\n')
-		c = getc(tty_stream);
+	r = bb_ask_y_confirmation_FILE(tty_stream);
+
 	fclose(tty_stream);
 #else
+	int r, c, savec;
+
+	fputs(" ?...", stderr);
+	fflush_all();
 	c = savec = getche();
 	while (c != EOF && c != '\r')
 		c = getche();
 	fputs("\n", stderr);
 	fflush_all();
+	r = (savec == 'y' || savec == 'Y');
 #endif
-	return (savec == 'y' || savec == 'Y');
+
+	return r;
 }
 #else
 # define xargs_ask_confirmation() 1

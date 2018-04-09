@@ -438,36 +438,33 @@ typedef struct chksum_t {
 } chksum_t;
 
 typedef struct header_t {
-	unsigned version;
-	unsigned lib_version;
-	unsigned version_needed_to_extract;
-	uint32_t flags;
-	uint32_t mode;
-	uint32_t mtime;
-	uint32_t gmtdiff;
-	uint32_t header_checksum;
+	/* used to have auxiliary fields here */
 
-	uint32_t extra_field_len;
-	uint32_t extra_field_checksum;
-
-	unsigned char method;
-	unsigned char level;
-
-	/* info */
-	char name[255+1];
+	/* Starting from here, the layout and endianness
+	 * are exactly in on-disk format.
+	 */
+	uint16_t version_be16;
+	uint16_t lib_version_be16;
+	uint16_t version_needed_to_extract_be16;
+	uint8_t  method;
+	uint8_t	 level;
+	uint32_t flags32; /* be32 on disk, but we keep this field in native order */
+	uint32_t mode_be32;
+	uint32_t mtime_be32;
+	uint32_t gmtdiff_be32;
+	char     len_and_name[1+255+1];
 } header_t;
 
 struct globals {
 	/*const uint32_t *lzo_crc32_table;*/
-	chksum_t chksum_in;
-	chksum_t chksum_out;
+	chksum_t chksum;
 } FIX_ALIASING;
 #define G (*(struct globals*)bb_common_bufsiz1)
-#define INIT_G() do { setup_common_bufsiz(); } while (0)
 //#define G (*ptr_to_globals)
-//#define INIT_G() do {
-//	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G)));
-//} while (0)
+#define INIT_G() do { \
+	setup_common_bufsiz(); \
+	/*SET_PTR_TO_GLOBALS(xzalloc(sizeof(G)));*/ \
+} while (0)
 
 
 /**********************************************************************/
@@ -548,24 +545,24 @@ lzo_crc32(uint32_t c, const uint8_t* buf, unsigned len)
 }
 
 /**********************************************************************/
-static void init_chksum(chksum_t *ct)
+static void init_chksum(void)
 {
-	ct->f_adler32 = ADLER32_INIT_VALUE;
-	ct->f_crc32 = CRC32_INIT_VALUE;
+	G.chksum.f_adler32 = ADLER32_INIT_VALUE;
+	G.chksum.f_crc32 = CRC32_INIT_VALUE;
 }
 
-static void add_bytes_to_chksum(chksum_t *ct, const void* buf, int cnt)
+static void add_bytes_to_chksum(const void* buf, int cnt)
 {
 	/* We need to handle the two checksums at once, because at the
 	 * beginning of the header, we don't know yet which one we'll
 	 * eventually need */
-	ct->f_adler32 = lzo_adler32(ct->f_adler32, (const uint8_t*)buf, cnt);
-	ct->f_crc32 = lzo_crc32(ct->f_crc32, (const uint8_t*)buf, cnt);
+	G.chksum.f_adler32 = lzo_adler32(G.chksum.f_adler32, (const uint8_t*)buf, cnt);
+	G.chksum.f_crc32 = lzo_crc32(G.chksum.f_crc32, (const uint8_t*)buf, cnt);
 }
 
-static uint32_t chksum_getresult(chksum_t *ct, const header_t *h)
+static uint32_t chksum_getresult(uint32_t h_flags32)
 {
-	return (h->flags & F_H_CRC32) ? ct->f_crc32 : ct->f_adler32;
+	return (h_flags32 & F_H_CRC32) ? G.chksum.f_crc32 : G.chksum.f_adler32;
 }
 
 /**********************************************************************/
@@ -575,50 +572,23 @@ static uint32_t read32(void)
 	xread(0, &v, 4);
 	return ntohl(v);
 }
-
-static void write32(uint32_t v)
-{
-	v = htonl(v);
-	xwrite(1, &v, 4);
-}
-
-static void f_write(const void* buf, int cnt)
-{
-	xwrite(1, buf, cnt);
-	add_bytes_to_chksum(&G.chksum_out, buf, cnt);
-}
-
 static void f_read(void* buf, int cnt)
 {
 	xread(0, buf, cnt);
-	add_bytes_to_chksum(&G.chksum_in, buf, cnt);
+	add_bytes_to_chksum(buf, cnt);
 }
-
-static int f_read8(void)
-{
-	uint8_t v;
-	f_read(&v, 1);
-	return v;
-}
-
-static void f_write8(uint8_t v)
-{
-	f_write(&v, 1);
-}
-
-static unsigned f_read16(void)
-{
-	uint16_t v;
-	f_read(&v, 2);
-	return ntohs(v);
-}
-
-static void f_write16(uint16_t v)
-{
-	v = htons(v);
-	f_write(&v, 2);
-}
-
+//static int f_read8(void)
+//{
+//	uint8_t v;
+//	f_read(&v, 1);
+//	return v;
+//}
+//static unsigned f_read16(void)
+//{
+//	uint16_t v;
+//	f_read(&v, 2);
+//	return ntohs(v);
+//}
 static uint32_t f_read32(void)
 {
 	uint32_t v;
@@ -626,34 +596,30 @@ static uint32_t f_read32(void)
 	return ntohl(v);
 }
 
-static void f_write32(uint32_t v)
+static void write32(uint32_t v)
 {
 	v = htonl(v);
-	f_write(&v, 4);
+	xwrite(1, &v, 4);
 }
-
-/**********************************************************************/
-static int lzo_get_method(header_t *h)
+static void f_write(const void* buf, int cnt)
 {
-	/* check method */
-	if (h->method == M_LZO1X_1) {
-		if (h->level == 0)
-			h->level = 3;
-	} else if (h->method == M_LZO1X_1_15) {
-		if (h->level == 0)
-			h->level = 1;
-	} else if (h->method == M_LZO1X_999) {
-		if (h->level == 0)
-			h->level = 9;
-	} else
-		return -1;		/* not a LZO method */
-
-	/* check compression level */
-	if (h->level < 1 || h->level > 9)
-		return 15;
-
-	return 0;
+	xwrite(1, buf, cnt);
+	add_bytes_to_chksum(buf, cnt);
 }
+//static void f_write8(uint8_t v)
+//{
+//	f_write(&v, 1);
+//}
+//static void f_write16(uint16_t v)
+//{
+//	v = htons(v);
+//	f_write(&v, 2);
+//}
+//static void f_write32(uint32_t v)
+//{
+//	v = htonl(v);
+//	f_write(&v, 4);
+//}
 
 /**********************************************************************/
 #define LZO_BLOCK_SIZE	(256 * 1024l)
@@ -671,52 +637,61 @@ static NOINLINE int lzo_compress(const header_t *h)
 	int r = 0; /* LZO_E_OK */
 	uint8_t *const b1 = xzalloc(block_size);
 	uint8_t *const b2 = xzalloc(MAX_COMPRESSED_SIZE(block_size));
-	unsigned src_len = 0, dst_len = 0;
 	uint32_t d_adler32 = ADLER32_INIT_VALUE;
 	uint32_t d_crc32 = CRC32_INIT_VALUE;
-	int l;
 	uint8_t *wrk_mem = NULL;
 
+	/* Only these methods are possible, see lzo_set_method():
+	 * -1:    M_LZO1X_1_15
+	 * -2..6: M_LZO1X_1
+	 * -7..9: M_LZO1X_999 if ENABLE_LZOP_COMPR_HIGH
+	 */
 	if (h->method == M_LZO1X_1)
 		wrk_mem = xzalloc(LZO1X_1_MEM_COMPRESS);
-	else if (h->method == M_LZO1X_1_15)
-		wrk_mem = xzalloc(LZO1X_1_15_MEM_COMPRESS);
-	else if (h->method == M_LZO1X_999)
+	else /* check only if it's not the only possibility */
+		IF_LZOP_COMPR_HIGH(if (h->method == M_LZO1X_1_15))
+			wrk_mem = xzalloc(LZO1X_1_15_MEM_COMPRESS);
+#if ENABLE_LZOP_COMPR_HIGH
+	else /* must be h->method == M_LZO1X_999 */
 		wrk_mem = xzalloc(LZO1X_999_MEM_COMPRESS);
+#endif
 
 	for (;;) {
+		unsigned src_len, dst_len;
+		int l;
+		uint32_t wordbuf[6];
+		uint32_t *wordptr = wordbuf;
+
 		/* read a block */
 		l = full_read(0, b1, block_size);
 		src_len = (l > 0 ? l : 0);
 
 		/* write uncompressed block size */
-		write32(src_len);
-
 		/* exit if last block */
-		if (src_len == 0)
+		if (src_len == 0) {
+			write32(0);
 			break;
+		}
+		*wordptr++ = htonl(src_len);
 
 		/* compute checksum of uncompressed block */
-		if (h->flags & F_ADLER32_D)
+		if (h->flags32 & F_ADLER32_D)
 			d_adler32 = lzo_adler32(ADLER32_INIT_VALUE, b1, src_len);
-		if (h->flags & F_CRC32_D)
+		if (h->flags32 & F_CRC32_D)
 			d_crc32 = lzo_crc32(CRC32_INIT_VALUE, b1, src_len);
 
 		/* compress */
 		if (h->method == M_LZO1X_1)
 			r = lzo1x_1_compress(b1, src_len, b2, &dst_len, wrk_mem);
-		else if (h->method == M_LZO1X_1_15)
+		else IF_LZOP_COMPR_HIGH(if (h->method == M_LZO1X_1_15))
 			r = lzo1x_1_15_compress(b1, src_len, b2, &dst_len, wrk_mem);
 #if ENABLE_LZOP_COMPR_HIGH
-		else if (h->method == M_LZO1X_999)
+		else /* must be h->method == M_LZO1X_999 */
 			r = lzo1x_999_compress_level(b1, src_len, b2, &dst_len,
 						wrk_mem, h->level);
 #endif
-		else
-			bb_error_msg_and_die("internal error");
-
 		if (r != 0) /* not LZO_E_OK */
-			bb_error_msg_and_die("internal error - compression failed");
+			bb_error_msg_and_die("%s: %s", "internal error", "compression");
 
 		/* write compressed block size */
 		if (dst_len < src_len) {
@@ -725,32 +700,38 @@ static NOINLINE int lzo_compress(const header_t *h)
 				unsigned new_len = src_len;
 				r = lzo1x_optimize(b2, dst_len, b1, &new_len /*, NULL*/);
 				if (r != 0 /*LZO_E_OK*/ || new_len != src_len)
-					bb_error_msg_and_die("internal error - optimization failed");
+					bb_error_msg_and_die("%s: %s", "internal error", "optimization");
 			}
-			write32(dst_len);
+			*wordptr++ = htonl(dst_len);
 		} else {
 			/* data actually expanded => store data uncompressed */
-			write32(src_len);
+			*wordptr++ = htonl(src_len);
 		}
 
 		/* write checksum of uncompressed block */
-		if (h->flags & F_ADLER32_D)
-			write32(d_adler32);
-		if (h->flags & F_CRC32_D)
-			write32(d_crc32);
+		if (h->flags32 & F_ADLER32_D)
+			*wordptr++ = htonl(d_adler32);
+		if (h->flags32 & F_CRC32_D)
+			*wordptr++ = htonl(d_crc32);
 
 		if (dst_len < src_len) {
 			/* write checksum of compressed block */
-			if (h->flags & F_ADLER32_C)
-				write32(lzo_adler32(ADLER32_INIT_VALUE, b2, dst_len));
-			if (h->flags & F_CRC32_C)
-				write32(lzo_crc32(CRC32_INIT_VALUE, b2, dst_len));
+			if (h->flags32 & F_ADLER32_C)
+				*wordptr++ = htonl(lzo_adler32(ADLER32_INIT_VALUE, b2, dst_len));
+			if (h->flags32 & F_CRC32_C)
+				*wordptr++ = htonl(lzo_crc32(CRC32_INIT_VALUE, b2, dst_len));
+		}
+		xwrite(1, wordbuf, ((char*)wordptr) - ((char*)wordbuf));
+		if (dst_len < src_len) {
 			/* write compressed block data */
 			xwrite(1, b2, dst_len);
 		} else {
 			/* write uncompressed block data */
 			xwrite(1, b1, src_len);
 		}
+		// /* if full_read() was nevertheless "short", it was EOF */
+		// if (src_len < block_size)
+		// 	break;
 	}
 
 	free(wrk_mem);
@@ -777,7 +758,9 @@ static FAST_FUNC void lzo_check(
 /**********************************************************************/
 // decompress a file
 /**********************************************************************/
-static NOINLINE int lzo_decompress(const header_t *h)
+// used to have "const header_t *h" parameter, but since it uses
+// only flags32 field, changed to receive only that.
+static NOINLINE int lzo_decompress(uint32_t h_flags32)
 {
 	unsigned block_size = LZO_BLOCK_SIZE;
 	int r;
@@ -822,16 +805,16 @@ static NOINLINE int lzo_decompress(const header_t *h)
 		}
 
 		/* read checksum of uncompressed block */
-		if (h->flags & F_ADLER32_D)
+		if (h_flags32 & F_ADLER32_D)
 			d_adler32 = read32();
-		if (h->flags & F_CRC32_D)
+		if (h_flags32 & F_CRC32_D)
 			d_crc32 = read32();
 
 		/* read checksum of compressed block */
 		if (src_len < dst_len) {
-			if (h->flags & F_ADLER32_C)
+			if (h_flags32 & F_ADLER32_C)
 				c_adler32 = read32();
-			if (h->flags & F_CRC32_C)
+			if (h_flags32 & F_CRC32_C)
 				c_crc32 = read32();
 		}
 
@@ -846,11 +829,11 @@ static NOINLINE int lzo_decompress(const header_t *h)
 
 			if (!(option_mask32 & OPT_F)) {
 				/* verify checksum of compressed block */
-				if (h->flags & F_ADLER32_C)
+				if (h_flags32 & F_ADLER32_C)
 					lzo_check(ADLER32_INIT_VALUE,
 							b1, src_len,
 							lzo_adler32, c_adler32);
-				if (h->flags & F_CRC32_C)
+				if (h_flags32 & F_CRC32_C)
 					lzo_check(CRC32_INIT_VALUE,
 							b1, src_len,
 							lzo_crc32, c_crc32);
@@ -873,11 +856,11 @@ static NOINLINE int lzo_decompress(const header_t *h)
 
 		if (!(option_mask32 & OPT_F)) {
 			/* verify checksum of uncompressed block */
-			if (h->flags & F_ADLER32_D)
+			if (h_flags32 & F_ADLER32_D)
 				lzo_check(ADLER32_INIT_VALUE,
 					dst, dst_len,
 					lzo_adler32, d_adler32);
-			if (h->flags & F_CRC32_D)
+			if (h_flags32 & F_CRC32_D)
 				lzo_check(CRC32_INIT_VALUE,
 					dst, dst_len,
 					lzo_crc32, d_crc32);
@@ -917,7 +900,7 @@ static NOINLINE int lzo_decompress(const header_t *h)
  * -00000020  00 00 2d 67 04 17 00 04 00 00 00 03 ed ec 9d 6d
  * +00000020  00 00 10 5f 00 c1 00 04 00 00 00 03 ed ec 9d 6d
  *                  ^^^^^^^^^^^
- *                  chksum_out
+ *                  chksum
  * The rest is identical.
 */
 static const unsigned char lzop_magic[9] ALIGN1 = {
@@ -936,112 +919,110 @@ static void check_magic(void)
 /**********************************************************************/
 // lzop file header
 /**********************************************************************/
-static void write_header(const header_t *h)
+static void write_header(header_t *h)
 {
-	int l;
+	char *end;
 
 	xwrite(1, lzop_magic, sizeof(lzop_magic));
 
-	init_chksum(&G.chksum_out);
+	init_chksum();
 
-	f_write16(h->version);
-	f_write16(h->lib_version);
-	f_write16(h->version_needed_to_extract);
-	f_write8(h->method);
-	f_write8(h->level);
-	f_write32(h->flags);
-	f_write32(h->mode);
-	f_write32(h->mtime);
-	f_write32(h->gmtdiff);
+	/* Our caller leaves name zero-filled, so len == 0 */
+	end = h->len_and_name+1 + 0; /* 0 is strlen(h->len_and_name+1) */
+	/* Store length byte */
+	/*h->len_and_name[0] = end - (h->len_and_name+1); - zero already */
 
-	l = (int) strlen(h->name);
-	f_write8(l);
-	if (l)
-		f_write(h->name, l);
+	f_write(&h->version_be16, end - (char*)&h->version_be16);
 
-	f_write32(chksum_getresult(&G.chksum_out, h));
+	h->flags32 = htonl(h->flags32); /* native endianness for lzo_compress() */
+
+	write32(chksum_getresult(h->flags32));
 }
 
 static int read_header(header_t *h)
 {
-	int r;
 	int l;
 	uint32_t checksum;
+	/* As it stands now, only h->flags32 is used by our caller.
+	 * Therefore we don't store many fields in h->FIELD.
+	 */
+	unsigned h_version;
+	unsigned h_version_needed_to_extract;
 
-	memset(h, 0, sizeof(*h));
-	h->version_needed_to_extract = 0x0900;	/* first lzop version */
-	h->level = 0;
+	init_chksum();
 
-	init_chksum(&G.chksum_in);
+	/* We don't support versions < 0.94, since 0.94
+	 * came only 2 months after 0.90:
+	 * 0.90 (10 Aug 1997): First public release of lzop
+	 * 0.94 (15 Oct 1997): Header format change
+	 */
 
-	h->version = f_read16();
-	if (h->version < 0x0900)
+	/* Read up to and including name length byte */
+	f_read(&h->version_be16, ((char*)&h->len_and_name[1]) - ((char*)&h->version_be16));
+
+	h_version = htons(h->version_be16);
+	if (h_version < 0x0940)
 		return 3;
-	h->lib_version = f_read16();
-	if (h->version >= 0x0940) {
-		h->version_needed_to_extract = f_read16();
-		if (h->version_needed_to_extract > LZOP_VERSION)
-			return 16;
-		if (h->version_needed_to_extract < 0x0900)
-			return 3;
-	}
-	h->method = f_read8();
-	if (h->version >= 0x0940)
-		h->level = f_read8();
-	h->flags = f_read32();
-	if (h->flags & F_H_FILTER)
-		return 16; /* filter not supported */
-	h->mode = f_read32();
-	h->mtime = f_read32();
-	if (h->version >= 0x0940)
-		h->gmtdiff = f_read32();
-
-	l = f_read8();
-	if (l > 0)
-		f_read(h->name, l);
-	h->name[l] = 0;
-
-	checksum = chksum_getresult(&G.chksum_in, h);
-	h->header_checksum = f_read32();
-	if (h->header_checksum != checksum)
-		return 2;
+	h_version_needed_to_extract = htons(h->version_needed_to_extract_be16);
+	if (h_version_needed_to_extract > LZOP_VERSION)
+		return 16;
+	if (h_version_needed_to_extract < 0x0940)
+		return 3;
 
 	if (h->method <= 0)
 		return 14;
-	r = lzo_get_method(h);
-	if (r != 0)
-		return r;
 
+	/* former lzo_get_method(h): */
+	if (h->method == M_LZO1X_1) {
+		if (h->level == 0)
+			h->level = 3;
+	} else if (h->method == M_LZO1X_1_15) {
+		if (h->level == 0)
+			h->level = 1;
+	} else if (h->method == M_LZO1X_999) {
+		if (h->level == 0)
+			h->level = 9;
+	} else
+		return -1; /* not a LZO method */
+	/* check compression level */
+	if (h->level < 1 || h->level > 9)
+		return 15;
+
+	h->flags32 = ntohl(h->flags32);
+	if (h->flags32 & F_H_FILTER)
+		return 16; /* filter not supported */
 	/* check reserved flags */
-	if (h->flags & F_RESERVED)
+	if (h->flags32 & F_RESERVED)
 		return -13;
 
+	l = h->len_and_name[0];
+	if (l > 0)
+		/* UNUSED */ f_read(h->len_and_name+1, l);
+	/* UNUSED h->len_and_name[1+l] = 0; */
+
+	checksum = chksum_getresult(h->flags32);
+	if (read32() != checksum)
+		return 2;
+
 	/* skip extra field [not used yet] */
-	if (h->flags & F_H_EXTRA_FIELD) {
+	if (h->flags32 & F_H_EXTRA_FIELD) {
+		uint32_t extra_field_len;
+		uint32_t extra_field_checksum;
 		uint32_t k;
+		char dummy;
 
 		/* note: the checksum also covers the length */
-		init_chksum(&G.chksum_in);
-		h->extra_field_len = f_read32();
-		for (k = 0; k < h->extra_field_len; k++)
-			f_read8();
-		checksum = chksum_getresult(&G.chksum_in, h);
-		h->extra_field_checksum = f_read32();
-		if (h->extra_field_checksum != checksum)
+		init_chksum();
+		extra_field_len = f_read32();
+		for (k = 0; k < extra_field_len; k++)
+			f_read(&dummy, 1);
+		checksum = chksum_getresult(h->flags32);
+		extra_field_checksum = read32();
+		if (extra_field_checksum != checksum)
 			return 3;
 	}
 
 	return 0;
-}
-
-static void p_header(header_t *h)
-{
-	int r;
-
-	r = read_header(h);
-	if (r == 0)
-		return;
-	bb_error_msg_and_die("header_error %d", r);
 }
 
 /**********************************************************************/
@@ -1049,25 +1030,27 @@ static void p_header(header_t *h)
 /**********************************************************************/
 static void lzo_set_method(header_t *h)
 {
-	int level = 1;
+	smallint level;
+
+	/* levels 2..6 or none (defaults to level 3) */
+	h->method = M_LZO1X_1;
+	level = 5; /* levels 2-6 are actually the same */
 
 	if (option_mask32 & OPT_1) {
 		h->method = M_LZO1X_1_15;
-	} else if (option_mask32 & OPT_789) {
+		level = 1;
+	}
+	if (option_mask32 & OPT_789) {
 #if ENABLE_LZOP_COMPR_HIGH
 		h->method = M_LZO1X_999;
+		level = 9;
 		if (option_mask32 & OPT_7)
 			level = 7;
 		else if (option_mask32 & OPT_8)
 			level = 8;
-		else
-			level = 9;
 #else
 		bb_error_msg_and_die("high compression not compiled in");
 #endif
-	} else { /* levels 2..6 or none (defaults to level 3) */
-		h->method = M_LZO1X_1;
-		level = 5; /* levels 2-6 are actually the same */
 	}
 
 	h->level = level;
@@ -1082,18 +1065,21 @@ static int do_lzo_compress(void)
 
 	lzo_set_method(h);
 
-	h->version = (LZOP_VERSION & 0xffff);
-	h->version_needed_to_extract = 0x0940;
-	h->lib_version = lzo_version() & 0xffff;
+	h->version_be16 = htons(LZOP_VERSION & 0xffff);
+	h->version_needed_to_extract_be16 = htons(0x0940);
+	h->lib_version_be16 = htons(lzo_version() & 0xffff);
 
-	h->flags = (F_OS & F_OS_MASK) | (F_CS & F_CS_MASK);
+	h->flags32 = htonl((F_OS & F_OS_MASK) | (F_CS & F_CS_MASK));
 
 	if (!(option_mask32 & OPT_F) || h->method == M_LZO1X_999) {
-		h->flags |= F_ADLER32_D;
+		h->flags32 |= htonl(F_ADLER32_D);
 		if (option_mask32 & OPT_C)
-			h->flags |= F_ADLER32_C;
+			h->flags32 |= htonl(F_ADLER32_C);
 	}
+
+	/* write_header() also converts h->flags32 to native endianness */
 	write_header(h);
+
 	return lzo_compress(h);
 #undef h
 }
@@ -1103,11 +1089,14 @@ static int do_lzo_compress(void)
 /**********************************************************************/
 static int do_lzo_decompress(void)
 {
+	int r;
 	header_t header;
 
 	check_magic();
-	p_header(&header);
-	return lzo_decompress(&header);
+	r = read_header(&header);
+	if (r != 0)
+		bb_error_msg_and_die("header_error %d", r);
+	return lzo_decompress(header.flags32);
 }
 
 static char* FAST_FUNC make_new_name_lzop(char *filename, const char *expected_ext UNUSED_PARAM)
@@ -1132,6 +1121,8 @@ static IF_DESKTOP(long long) int FAST_FUNC pack_lzop(transformer_state_t *xstate
 int lzop_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int lzop_main(int argc UNUSED_PARAM, char **argv)
 {
+	INIT_G();
+
 	getopt32(argv, OPTION_STRING);
 	argv += optind;
 	/* -U is "anti -k", invert bit for bbunpack(): */
