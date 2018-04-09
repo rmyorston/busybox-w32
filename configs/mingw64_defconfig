@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.29.0.git
-# Mon Apr  2 09:25:40 2018
+# Mon Apr  9 08:51:17 2018
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -61,6 +61,7 @@ CONFIG_EXTRA_CFLAGS="-funwind-tables -fasynchronous-unwind-tables"
 CONFIG_EXTRA_LDFLAGS=""
 CONFIG_EXTRA_LDLIBS=""
 CONFIG_USE_PORTABLE_CODE=y
+CONFIG_STACK_OPTIMIZATION_386=y
 
 #
 # Installation Options ("make install" behavior)
@@ -297,6 +298,7 @@ CONFIG_FEATURE_FANCY_SLEEP=y
 CONFIG_FEATURE_FLOAT_SLEEP=y
 CONFIG_SORT=y
 CONFIG_FEATURE_SORT_BIG=y
+# CONFIG_FEATURE_SORT_OPTIMIZE_MEMORY is not set
 CONFIG_SPLIT=y
 CONFIG_FEATURE_SPLIT_FANCY=y
 CONFIG_STAT=y
