@@ -212,7 +212,11 @@ const char *strip_unsafe_prefix(const char *str) FAST_FUNC;
 void create_or_remember_symlink(llist_t **symlink_placeholders,
 		const char *target,
 		const char *linkname) FAST_FUNC;
+#if !ENABLE_PLATFORM_MINGW32
 void create_symlinks_from_list(llist_t *list) FAST_FUNC;
+#else
+#define create_symlinks_from_list(l) (void)0
+#endif
 
 void data_align(archive_handle_t *archive_handle, unsigned boundary) FAST_FUNC;
 const llist_t *find_list_entry(const llist_t *list, const char *filename) FAST_FUNC;
