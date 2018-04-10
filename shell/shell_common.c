@@ -238,7 +238,8 @@ shell_builtin_read(void FAST_FUNC (*setvar)(const char *name, const char *val),
 		}
 #else
 		errno = 0;
-		if (isatty(fd) && (opt_n || opt_d || opt_t)) {
+		if (isatty(fd) && (opt_n || opt_d || opt_t ||
+							(read_flags & BUILTIN_READ_SILENT))) {
 			int64_t key;
 
 			key = read_key(fd, NULL, timeout);
