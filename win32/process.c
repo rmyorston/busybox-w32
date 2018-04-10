@@ -540,9 +540,6 @@ UNUSED_PARAM
 				sp->stime = (unsigned long)filetime_to_ticks(&keTime);
 				sp->utime = (unsigned long)filetime_to_ticks(&usTime);
 			}
-			else {
-				sp->start_time = sp->stime = sp->utime = 0;
-			}
 			CloseHandle(proc);
 		}
 	}
