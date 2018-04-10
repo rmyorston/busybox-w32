@@ -6732,7 +6732,6 @@ struct backcmd {                /* result of evalbackcmd */
 	int fd;                 /* file descriptor to read from */
 	int nleft;              /* number of chars in buffer */
 	char *buf;              /* buffer */
-	IF_PLATFORM_MINGW32(struct forkshell fs);
 	struct job *jp;         /* job structure for command */
 };
 
@@ -6760,11 +6759,11 @@ evalbackcmd(union node *n, struct backcmd *result)
 {
 	int pip[2];
 	struct job *jp;
+	IF_PLATFORM_MINGW32(struct forkshell fs);
 
 	result->fd = -1;
 	result->buf = NULL;
 	result->nleft = 0;
-	IF_PLATFORM_MINGW32(memset(&result->fs, 0, sizeof(result->fs)));
 	result->jp = NULL;
 	if (n == NULL) {
 		goto out;
@@ -6774,11 +6773,12 @@ evalbackcmd(union node *n, struct backcmd *result)
 		ash_msg_and_raise_perror("can't create pipe");
 	jp = makejob(/*n,*/ 1);
 #if ENABLE_PLATFORM_MINGW32
-	result->fs.fpid = FS_EVALBACKCMD;
-	result->fs.n = n;
-	result->fs.fd[0] = pip[0];
-	result->fs.fd[1] = pip[1];
-	if (spawn_forkshell(jp, &result->fs, FORK_NOJOB) < 0)
+	memset(&fs, 0, sizeof(fs));
+	fs.fpid = FS_EVALBACKCMD;
+	fs.n = n;
+	fs.fd[0] = pip[0];
+	fs.fd[1] = pip[1];
+	if (spawn_forkshell(jp, &fs, FORK_NOJOB) < 0)
 		ash_msg_and_raise_error("unable to spawn shell");
 #else
 	if (forkshell(jp, n, FORK_NOJOB) == 0) {
