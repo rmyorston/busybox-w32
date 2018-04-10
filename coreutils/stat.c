@@ -317,6 +317,7 @@ static void FAST_FUNC print_stat(char *pformat, const char m,
 		printfs(pformat, filename);
 	} else if (m == 'N') {
 		strcatc(pformat, 's');
+#if !ENABLE_PLATFORM_MINGW32
 		if (S_ISLNK(statbuf->st_mode)) {
 			char *linkname = xmalloc_readlink_or_warn(filename);
 			if (linkname == NULL)
@@ -326,6 +327,9 @@ static void FAST_FUNC print_stat(char *pformat, const char m,
 		} else {
 			printf(pformat, filename);
 		}
+#else
+		printf(pformat, filename);
+#endif
 	} else if (m == 'd') {
 		strcat(pformat, "llu");
 		printf(pformat, (unsigned long long) statbuf->st_dev);
@@ -708,6 +712,7 @@ static bool do_stat(const char *filename, const char *format)
 		gw_ent = getgrgid(statbuf.st_gid);
 		pw_ent = getpwuid(statbuf.st_uid);
 
+#if !ENABLE_PLATFORM_MINGW32
 		if (S_ISLNK(statbuf.st_mode))
 			linkname = xmalloc_readlink_or_warn(filename);
 		if (linkname) {
@@ -716,6 +721,9 @@ static bool do_stat(const char *filename, const char *format)
 		} else {
 			printf("  File: '%s'\n", filename);
 		}
+#else
+		printf("  File: '%s'\n", filename);
+#endif
 
 		printf("  Size: %-10llu\tBlocks: %-10llu IO Block: %-6lu %s\n"
 		       "Device: %llxh/%llud\tInode: %-10llu  Links: %-5lu",

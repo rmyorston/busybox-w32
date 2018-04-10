@@ -492,9 +492,11 @@ static NOINLINE unsigned display_single(const struct dnode *dn)
 	/* Do readlink early, so that if it fails, error message
 	 * does not appear *inside* the "ls -l" line */
 	lpath = NULL;
+#if !ENABLE_PLATFORM_MINGW32
 	if (opt & OPT_l)
 		if (S_ISLNK(dn->dn_mode))
 			lpath = xmalloc_readlink_or_warn(dn->fullname);
+#endif
 
 	if (opt & OPT_i) /* show inode# */
 		column += printf("%7"LL_FMT"u ", (long long) dn->dn_ino);
