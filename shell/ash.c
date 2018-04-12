@@ -443,6 +443,7 @@ struct globals_misc {
 	char *physdir; // = nullstr;    /* physical working directory */
 
 	char *arg0; /* value of $0 */
+	char *commandname;
 
 	struct jmploc *exception_handler;
 
@@ -525,6 +526,7 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define curdir      (G_misc.curdir     )
 #define physdir     (G_misc.physdir    )
 #define arg0        (G_misc.arg0       )
+#define commandname (G_misc.commandname)
 #define exception_handler (G_misc.exception_handler)
 #define exception_type    (G_misc.exception_type   )
 #define suppress_int      (G_misc.suppress_int     )
@@ -1397,7 +1399,6 @@ struct parsefile {
 
 static struct parsefile basepf;        /* top level input file */
 static struct parsefile *g_parsefile = &basepf;  /* current input file */
-static char *commandname;              /* currently executing command */
 
 
 /* ============ Message printing */
@@ -15329,6 +15330,7 @@ globals_var_copy(struct globals_var *gvp)
 #undef curdir
 #undef physdir
 #undef arg0
+#undef commandname
 #undef nullstr
 static int
 globals_misc_size(int funcblocksize, struct globals_misc *p)
@@ -15340,7 +15342,8 @@ globals_misc_size(int funcblocksize, struct globals_misc *p)
 	if (p->physdir != p->nullstr)
 		funcblocksize += align_len(p->physdir);
 	funcblocksize += align_len(p->arg0);
-	nodeptrcount += 4;	/* minusc, curdir, physdir, arg0 */
+	funcblocksize += align_len(p->commandname);
+	nodeptrcount += 5;	/* minusc, curdir, physdir, arg0, commandname */
 	return funcblocksize;
 }
 
@@ -15356,7 +15359,9 @@ globals_misc_copy(struct globals_misc *p)
 	new->curdir = p->curdir != p->nullstr ? nodeckstrdup(p->curdir) : new->nullstr;
 	new->physdir = p->physdir != p->nullstr ? nodeckstrdup(p->physdir) : new->nullstr;
 	new->arg0 = nodeckstrdup(p->arg0);
+	new->commandname = nodeckstrdup(p->commandname);
 	SAVE_PTR4(new->minusc, new->curdir, new->physdir, new->arg0);
+	SAVE_PTR(new->commandname);
 	return new;
 }
 
