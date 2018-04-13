@@ -434,6 +434,7 @@ struct globals_misc {
 	int rootpid;            /* pid of main shell */
 	/* shell level: 0 for the main shell, 1 for its children, and so on */
 	int shlvl;
+	int loopnest;           /* current loop nesting level */
 #define rootshell (!shlvl)
 	int errlinno;
 
@@ -522,6 +523,7 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define rootpid     (G_misc.rootpid    )
 #define shlvl       (G_misc.shlvl      )
 #define errlinno    (G_misc.errlinno   )
+#define loopnest    (G_misc.loopnest   )
 #define minusc      (G_misc.minusc     )
 #define curdir      (G_misc.curdir     )
 #define physdir     (G_misc.physdir    )
@@ -9369,7 +9371,6 @@ defun(union node *func)
 #define SKIPFUNC       (1 << 2)
 static smallint evalskip;       /* set to SKIPxxx if we are skipping commands */
 static int skipcount;           /* number of levels to skip */
-static int loopnest;            /* current loop nesting level */
 static int funcline;            /* starting line number of current function, or 0 if not in a function */
 
 /* Forward decl way out to parsing code - dotrap needs it */
