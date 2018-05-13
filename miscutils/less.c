@@ -121,11 +121,12 @@
 //kbuild:lib-$(CONFIG_LESS) += less.o
 
 //usage:#define less_trivial_usage
-//usage:       "[-E" IF_FEATURE_LESS_REGEXP("I")IF_FEATURE_LESS_FLAGS("Mm")
+//usage:       "[-EF" IF_FEATURE_LESS_REGEXP("I")IF_FEATURE_LESS_FLAGS("Mm")
 //usage:       "N" IF_FEATURE_LESS_TRUNCATE("S") IF_FEATURE_LESS_RAW("R") "h~] [FILE]..."
 //usage:#define less_full_usage "\n\n"
 //usage:       "View FILE (or stdin) one screenful at a time\n"
 //usage:     "\n	-E	Quit once the end of a file is reached"
+//usage:     "\n	-F	Quit if entire file fits on first screen"
 //usage:	IF_FEATURE_LESS_REGEXP(
 //usage:     "\n	-I	Ignore case in all searches"
 //usage:	)
@@ -179,8 +180,9 @@ enum {
 	FLAG_N = 1 << 3,
 	FLAG_TILDE = 1 << 4,
 	FLAG_I = 1 << 5,
-	FLAG_S = (1 << 6) * ENABLE_FEATURE_LESS_TRUNCATE,
-	FLAG_R = (1 << 7) * ENABLE_FEATURE_LESS_RAW,
+	FLAG_F = 1 << 6,
+	FLAG_S = (1 << 7) * ENABLE_FEATURE_LESS_TRUNCATE,
+	FLAG_R = (1 << 8) * ENABLE_FEATURE_LESS_RAW,
 /* hijack command line options variable for internal state vars */
 	LESS_STATE_MATCH_BACKWARDS = 1 << 15,
 };
@@ -938,11 +940,12 @@ static void buffer_print(void)
 		else
 			print_ascii(buffer[i]);
 	}
-	if ((option_mask32 & FLAG_E)
+	if ((option_mask32 & (FLAG_E|FLAG_F))
 	 && eof_error <= 0
-	 && (max_fline - cur_fline) <= max_displayed_line
 	) {
-		less_exit(EXIT_SUCCESS);
+		i = option_mask32 & FLAG_F ? 0 : cur_fline;
+		if (max_fline - i <= max_displayed_line)
+			less_exit(EXIT_SUCCESS);
 	}
 	status_print();
 }
@@ -1894,7 +1897,7 @@ int less_main(int argc, char **argv)
 	 * -s: condense many empty lines to one
 	 *     (used by some setups for manpage display)
 	 */
-	getopt32(argv, "EMmN~I"
+	getopt32(argv, "EMmN~IF"
 		IF_FEATURE_LESS_TRUNCATE("S")
 		IF_FEATURE_LESS_RAW("R")
 		/*ignored:*/"s"
@@ -1908,6 +1911,9 @@ int less_main(int argc, char **argv)
 	if (ENABLE_FEATURE_LESS_ENV) {
 		char *c = getenv("LESS");
 		if (c) while (*c) switch (*c++) {
+		case 'F':
+			option_mask32 |= FLAG_F;
+			break;
 		case 'M':
 			option_mask32 |= FLAG_M;
 			break;
@@ -1930,7 +1936,6 @@ int less_main(int argc, char **argv)
 	if (!num_files) {
 		if (isatty(STDIN_FILENO)) {
 			/* Just "less"? No args and no redirection? */
-			bb_error_msg("missing filename");
 			bb_show_usage();
 		}
 	} else {
@@ -1971,7 +1976,7 @@ int less_main(int argc, char **argv)
 #endif
 
 #if !ENABLE_PLATFORM_MINGW32
-	get_termios_and_make_raw(tty_fd, &term_less, &term_orig, TERMIOS_RAW_CRNL);
+	get_termios_and_make_raw(tty_fd, &term_less, &term_orig, TERMIOS_RAW_CRNL_INPUT);
 #endif
 
 	IF_FEATURE_LESS_ASK_TERMINAL(G.winsize_err =) get_terminal_width_height(tty_fd, &width, &max_displayed_line);

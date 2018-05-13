@@ -681,6 +681,11 @@ int setsockopt_bindtodevice(int fd, const char *iface) FAST_FUNC;
 int bb_getsockname(int sockfd, void *addr, socklen_t addrlen) FAST_FUNC;
 /* NB: returns port in host byte order */
 unsigned bb_lookup_port(const char *port, const char *protocol, unsigned default_port) FAST_FUNC;
+#if ENABLE_FEATURE_ETC_SERVICES
+# define bb_lookup_std_port(portstr, protocol, portnum) bb_lookup_port(portstr, protocol, portnum)
+#else
+# define bb_lookup_std_port(portstr, protocol, portnum) (portnum)
+#endif
 typedef struct len_and_sockaddr {
 	socklen_t len;
 	union {
@@ -1645,9 +1650,11 @@ int get_terminal_width_height(int fd, unsigned *width, unsigned *height) FAST_FU
 int get_terminal_width(int fd) FAST_FUNC;
 
 int tcsetattr_stdin_TCSANOW(const struct termios *tp) FAST_FUNC;
-#define TERMIOS_CLEAR_ISIG (1 << 0)
-#define TERMIOS_RAW_CRNL   (1 << 1)
-#define TERMIOS_RAW_INPUT  (1 << 2)
+#define TERMIOS_CLEAR_ISIG      (1 << 0)
+#define TERMIOS_RAW_CRNL_INPUT  (1 << 1)
+#define TERMIOS_RAW_CRNL_OUTPUT (1 << 2)
+#define TERMIOS_RAW_CRNL        (TERMIOS_RAW_CRNL_INPUT|TERMIOS_RAW_CRNL_OUTPUT)
+#define TERMIOS_RAW_INPUT       (1 << 3)
 int get_termios_and_make_raw(int fd, struct termios *newterm, struct termios *oldterm, int flags) FAST_FUNC;
 int set_termios_to_raw(int fd, struct termios *oldterm, int flags) FAST_FUNC;
 

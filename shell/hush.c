@@ -79,6 +79,18 @@
  *      Some builtins mandated by standards:
  *          newgrp [GRP]: not a builtin in bash but a suid binary
  *              which spawns a new shell with new group ID
+ *
+ * Status of [[ support:
+ * [[ args ]] are CMD_SINGLEWORD_NOGLOB:
+ *   v='a b'; [[ $v = 'a b' ]]; echo 0:$?
+ *   [[ /bin/n* ]]; echo 0:$?
+ * TODO:
+ * &&/|| are AND/OR ops, -a/-o are not
+ * quoting needs to be considered (-f is an operator, "-f" and ""-f are not; etc)
+ * = is glob match operator, not equality operator: STR = GLOB
+ * (in GLOB, quoting is significant on char-by-char basis: a*cd"*")
+ * == same as =
+ * add =~ regex match operator: STR =~ REGEX
  */
 //config:config HUSH
 //config:	bool "hush (64 kb)"
@@ -522,7 +534,6 @@ typedef struct o_string {
 	 * possibly empty one: word"", wo''rd etc. */
 	smallint has_quoted_part;
 	smallint has_empty_slot;
-	smallint o_assignment; /* 0:maybe, 1:yes, 2:no */
 } o_string;
 enum {
 	EXP_FLAG_SINGLEWORD     = 0x80, /* must be 0x80 */
@@ -530,13 +541,6 @@ enum {
 	/* Protect newly added chars against globbing
 	 * by prepending \ to *, ?, [, \ */
 	EXP_FLAG_ESC_GLOB_CHARS = 0x1,
-};
-enum {
-	MAYBE_ASSIGNMENT      = 0,
-	DEFINITELY_ASSIGNMENT = 1,
-	NOT_ASSIGNMENT        = 2,
-	/* Not an assignment, but next word may be: "if v=xyz cmd;" */
-	WORD_IS_KEYWORD       = 3,
 };
 /* Used for initialization: o_string foo = NULL_O_STRING; */
 #define NULL_O_STRING { NULL }
@@ -694,9 +698,11 @@ struct parse_context {
 	struct command *command;
 	/* last redirect in command->redirects list */
 	struct redir_struct *pending_redirect;
+	o_string word;
 #if !BB_MMU
 	o_string as_string;
 #endif
+	smallint is_assignment; /* 0:maybe, 1:yes, 2:no, 3:keyword */
 #if HAS_KEYWORDS
 	smallint ctx_res_w;
 	smallint ctx_inverted; /* "! cmd | cmd" */
@@ -716,6 +722,13 @@ struct parse_context {
 	 */
 	struct parse_context *stack;
 #endif
+};
+enum {
+	MAYBE_ASSIGNMENT      = 0,
+	DEFINITELY_ASSIGNMENT = 1,
+	NOT_ASSIGNMENT        = 2,
+	/* Not an assignment, but next word may be: "if v=xyz cmd;" */
+	WORD_IS_KEYWORD       = 3,
 };
 
 /* On program start, environ points to initial environment.
@@ -917,6 +930,7 @@ struct globals {
 	unsigned getopt_count;
 #endif
 	const char *ifs;
+	char *ifs_whitespace; /* = G.ifs or malloced */
 	const char *cwd;
 	struct variable *top_var;
 	char **expanded_assignments;
@@ -1413,8 +1427,19 @@ static char *unbackslash(char *src)
 {
 	char *dst = src = strchrnul(src, '\\');
 	while (1) {
-		if (*src == '\\')
+		if (*src == '\\') {
 			src++;
+			if (*src != '\0') {
+				/* \x -> x */
+				*dst++ = *src++;
+				continue;
+			}
+			/* else: "\<nul>". Do not delete this backslash.
+			 * Testcase: eval 'echo ok\'
+			 */
+			*dst++ = '\\';
+			/* fallthrough */
+		}
 		if ((*dst++ = *src++) == '\0')
 			break;
 	}
@@ -2266,6 +2291,7 @@ static int set_local_var(char *str, unsigned flags)
 	}
 
 	/* Not found or shadowed - create new variable struct */
+	debug_printf_env("%s: alloc new var '%s'/%u\n", __func__, str, local_lvl);
 	cur = xzalloc(sizeof(*cur));
 	cur->var_nest_level = local_lvl;
 	cur->next = *cur_pp;
@@ -2420,7 +2446,7 @@ static void set_vars_and_save_old(char **strings)
 				 * global linked list.
 				 */
 			}
-			//bb_error_msg("G.var_nest_level:%d", G.var_nest_level);
+			debug_printf_env("%s: env override '%s'/%u\n", __func__, *s, G.var_nest_level);
 			set_local_var(*s, (G.var_nest_level << SETFLAG_VARLVL_SHIFT) | SETFLAG_EXPORT);
 		} else if (HUSH_DEBUG) {
 			bb_error_msg_and_die("BUG in varexp4");
@@ -3670,6 +3696,8 @@ static void done_pipe(struct parse_context *ctx, pipe_style type)
 static void initialize_context(struct parse_context *ctx)
 {
 	memset(ctx, 0, sizeof(*ctx));
+	if (MAYBE_ASSIGNMENT != 0)
+		ctx->is_assignment = MAYBE_ASSIGNMENT;
 	ctx->pipe = ctx->list_head = new_pipe();
 	/* Create the memory for command, roughly:
 	 * ctx->pipe->cmds = new struct command;
@@ -3751,7 +3779,7 @@ static const struct reserved_combo* match_reserved_word(o_string *word)
 }
 /* Return NULL: not a keyword, else: keyword
  */
-static const struct reserved_combo* reserved_word(o_string *word, struct parse_context *ctx)
+static const struct reserved_combo* reserved_word(struct parse_context *ctx)
 {
 # if ENABLE_HUSH_CASE
 	static const struct reserved_combo reserved_match = {
@@ -3760,9 +3788,9 @@ static const struct reserved_combo* reserved_word(o_string *word, struct parse_c
 # endif
 	const struct reserved_combo *r;
 
-	if (word->has_quoted_part)
+	if (ctx->word.has_quoted_part)
 		return 0;
-	r = match_reserved_word(word);
+	r = match_reserved_word(&ctx->word);
 	if (!r)
 		return r; /* NULL */
 
@@ -3789,7 +3817,7 @@ static const struct reserved_combo* reserved_word(o_string *word, struct parse_c
 		initialize_context(ctx);
 		ctx->stack = old;
 	} else if (/*ctx->ctx_res_w == RES_NONE ||*/ !(ctx->old_flag & (1 << r->res))) {
-		syntax_error_at(word->data);
+		syntax_error_at(ctx->word.data);
 		ctx->ctx_res_w = RES_SNTX;
 		return r;
 	} else {
@@ -3802,8 +3830,8 @@ static const struct reserved_combo* reserved_word(o_string *word, struct parse_c
 
 	ctx->ctx_res_w = r->res;
 	ctx->old_flag = r->flag;
-	word->o_assignment = r->assignment_flag;
-	debug_printf_parse("word->o_assignment='%s'\n", assignment_flag[word->o_assignment]);
+	ctx->is_assignment = r->assignment_flag;
+	debug_printf_parse("ctx->is_assignment='%s'\n", assignment_flag[ctx->is_assignment]);
 
 	if (ctx->old_flag & FLAG_END) {
 		struct parse_context *old;
@@ -3849,12 +3877,12 @@ static const struct reserved_combo* reserved_word(o_string *word, struct parse_c
  * Normal return is 0. Syntax errors return 1.
  * Note: on return, word is reset, but not o_free'd!
  */
-static int done_word(o_string *word, struct parse_context *ctx)
+static int done_word(struct parse_context *ctx)
 {
 	struct command *command = ctx->command;
 
-	debug_printf_parse("done_word entered: '%s' %p\n", word->data, command);
-	if (word->length == 0 && !word->has_quoted_part) {
+	debug_printf_parse("done_word entered: '%s' %p\n", ctx->word.data, command);
+	if (ctx->word.length == 0 && !ctx->word.has_quoted_part) {
 		debug_printf_parse("done_word return 0: true null, ignored\n");
 		return 0;
 	}
@@ -3884,7 +3912,7 @@ static int done_word(o_string *word, struct parse_context *ctx)
 // <<EOF$((1))
 // <<EOF`true`  [this case also makes heredoc "quoted", a-la <<"EOF". Probably bash-4.3.43 bug]
 
-		ctx->pending_redirect->rd_filename = xstrdup(word->data);
+		ctx->pending_redirect->rd_filename = xstrdup(ctx->word.data);
 		/* Cater for >\file case:
 		 * >\a creates file a; >\\a, >"\a", >"\\a" create file \a
 		 * Same with heredocs:
@@ -3893,17 +3921,17 @@ static int done_word(o_string *word, struct parse_context *ctx)
 		if (ctx->pending_redirect->rd_type == REDIRECT_HEREDOC) {
 			unbackslash(ctx->pending_redirect->rd_filename);
 			/* Is it <<"HEREDOC"? */
-			if (word->has_quoted_part) {
+			if (ctx->word.has_quoted_part) {
 				ctx->pending_redirect->rd_dup |= HEREDOC_QUOTED;
 			}
 		}
-		debug_printf_parse("word stored in rd_filename: '%s'\n", word->data);
+		debug_printf_parse("word stored in rd_filename: '%s'\n", ctx->word.data);
 		ctx->pending_redirect = NULL;
 	} else {
 #if HAS_KEYWORDS
 # if ENABLE_HUSH_CASE
 		if (ctx->ctx_dsemicolon
-		 && strcmp(word->data, "esac") != 0 /* not "... pattern) cmd;; esac" */
+		 && strcmp(ctx->word.data, "esac") != 0 /* not "... pattern) cmd;; esac" */
 		) {
 			/* already done when ctx_dsemicolon was set to 1: */
 			/* ctx->ctx_res_w = RES_MATCH; */
@@ -3920,7 +3948,7 @@ static int done_word(o_string *word, struct parse_context *ctx)
 # endif
 		) {
 			const struct reserved_combo *reserved;
-			reserved = reserved_word(word, ctx);
+			reserved = reserved_word(ctx);
 			debug_printf_parse("checking for reserved-ness: %d\n", !!reserved);
 			if (reserved) {
 # if ENABLE_HUSH_LINENO_VAR
@@ -3939,7 +3967,7 @@ static int done_word(o_string *word, struct parse_context *ctx)
 					done_pipe(ctx, PIPE_SEQ);
 				}
 # endif
-				o_reset_to_empty_unquoted(word);
+				o_reset_to_empty_unquoted(&ctx->word);
 				debug_printf_parse("done_word return %d\n",
 						(ctx->ctx_res_w == RES_SNTX));
 				return (ctx->ctx_res_w == RES_SNTX);
@@ -3947,7 +3975,7 @@ static int done_word(o_string *word, struct parse_context *ctx)
 # if defined(CMD_SINGLEWORD_NOGLOB)
 			if (0
 #  if BASH_TEST2
-			 || strcmp(word->data, "[[") == 0
+			 || strcmp(ctx->word.data, "[[") == 0
 #  endif
 			/* In bash, local/export/readonly are special, args
 			 * are assignments and therefore expansion of them
@@ -3964,9 +3992,9 @@ static int done_word(o_string *word, struct parse_context *ctx)
 			 *  $ "export" i=`echo 'aaa  bbb'`; echo "$i"
 			 *  aaa
 			 */
-			IF_HUSH_LOCAL(    || strcmp(word->data, "local") == 0)
-			IF_HUSH_EXPORT(   || strcmp(word->data, "export") == 0)
-			IF_HUSH_READONLY( || strcmp(word->data, "readonly") == 0)
+			 IF_HUSH_LOCAL(   || strcmp(ctx->word.data, "local") == 0)
+			 IF_HUSH_EXPORT(  || strcmp(ctx->word.data, "export") == 0)
+			 IF_HUSH_READONLY(|| strcmp(ctx->word.data, "readonly") == 0)
 			) {
 				command->cmd_type = CMD_SINGLEWORD_NOGLOB;
 			}
@@ -3977,7 +4005,7 @@ static int done_word(o_string *word, struct parse_context *ctx)
 
 		if (command->group) {
 			/* "{ echo foo; } echo bar" - bad */
-			syntax_error_at(word->data);
+			syntax_error_at(ctx->word.data);
 			debug_printf_parse("done_word return 1: syntax error, "
 					"groups and arglists don't mix\n");
 			return 1;
@@ -3985,26 +4013,26 @@ static int done_word(o_string *word, struct parse_context *ctx)
 
 		/* If this word wasn't an assignment, next ones definitely
 		 * can't be assignments. Even if they look like ones. */
-		if (word->o_assignment != DEFINITELY_ASSIGNMENT
-		 && word->o_assignment != WORD_IS_KEYWORD
+		if (ctx->is_assignment != DEFINITELY_ASSIGNMENT
+		 && ctx->is_assignment != WORD_IS_KEYWORD
 		) {
-			word->o_assignment = NOT_ASSIGNMENT;
+			ctx->is_assignment = NOT_ASSIGNMENT;
 		} else {
-			if (word->o_assignment == DEFINITELY_ASSIGNMENT) {
+			if (ctx->is_assignment == DEFINITELY_ASSIGNMENT) {
 				command->assignment_cnt++;
 				debug_printf_parse("++assignment_cnt=%d\n", command->assignment_cnt);
 			}
-			debug_printf_parse("word->o_assignment was:'%s'\n", assignment_flag[word->o_assignment]);
-			word->o_assignment = MAYBE_ASSIGNMENT;
+			debug_printf_parse("ctx->is_assignment was:'%s'\n", assignment_flag[ctx->is_assignment]);
+			ctx->is_assignment = MAYBE_ASSIGNMENT;
 		}
-		debug_printf_parse("word->o_assignment='%s'\n", assignment_flag[word->o_assignment]);
-		command->argv = add_string_to_strings(command->argv, xstrdup(word->data));
+		debug_printf_parse("ctx->is_assignment='%s'\n", assignment_flag[ctx->is_assignment]);
+		command->argv = add_string_to_strings(command->argv, xstrdup(ctx->word.data));
 		debug_print_strings("word appended to argv", command->argv);
 	}
 
 #if ENABLE_HUSH_LOOPS
 	if (ctx->ctx_res_w == RES_FOR) {
-		if (word->has_quoted_part
+		if (ctx->word.has_quoted_part
 		 || !is_well_formed_var_name(command->argv[0], '\0')
 		) {
 			/* bash says just "not a valid identifier" */
@@ -4025,7 +4053,7 @@ static int done_word(o_string *word, struct parse_context *ctx)
 	}
 #endif
 
-	o_reset_to_empty_unquoted(word);
+	o_reset_to_empty_unquoted(&ctx->word);
 
 	debug_printf_parse("done_word return 0\n");
 	return 0;
@@ -4309,14 +4337,10 @@ static struct pipe *parse_stream(char **pstring,
 		int end_trigger);
 
 
-#if !ENABLE_HUSH_FUNCTIONS
-#define parse_group(dest, ctx, input, ch) \
-	parse_group(ctx, input, ch)
-#endif
-static int parse_group(o_string *dest, struct parse_context *ctx,
+static int parse_group(struct parse_context *ctx,
 	struct in_str *input, int ch)
 {
-	/* dest contains characters seen prior to ( or {.
+	/* ctx->word contains characters seen prior to ( or {.
 	 * Typically it's empty, but for function defs,
 	 * it contains function name (without '()'). */
 #if BB_MMU
@@ -4330,9 +4354,9 @@ static int parse_group(o_string *dest, struct parse_context *ctx,
 
 	debug_printf_parse("parse_group entered\n");
 #if ENABLE_HUSH_FUNCTIONS
-	if (ch == '(' && !dest->has_quoted_part) {
-		if (dest->length)
-			if (done_word(dest, ctx))
+	if (ch == '(' && !ctx->word.has_quoted_part) {
+		if (ctx->word.length)
+			if (done_word(ctx))
 				return 1;
 		if (!command->argv)
 			goto skip; /* (... */
@@ -4364,8 +4388,8 @@ static int parse_group(o_string *dest, struct parse_context *ctx,
 
 #if 0 /* Prevented by caller */
 	if (command->argv /* word [word]{... */
-	 || dest->length /* word{... */
-	 || dest->has_quoted_part /* ""{... */
+	 || ctx->word.length /* word{... */
+	 || ctx->word.has_quoted_part /* ""{... */
 	) {
 		syntax_error(NULL);
 		debug_printf_parse("parse_group return 1: "
@@ -4913,8 +4937,12 @@ static int encode_string(o_string *as_string,
 			ch, ch, !!(dest->o_expflags & EXP_FLAG_ESC_GLOB_CHARS));
 	if (process_bkslash && ch == '\\') {
 		if (next == EOF) {
-			syntax_error("\\<eof>");
-			xfunc_die();
+			/* Testcase: in interactive shell a file with
+			 *  echo "unterminated string\<eof>
+			 * is sourced.
+			 */
+			syntax_error_unterm_ch('"');
+			return 0; /* error */
 		}
 		/* bash:
 		 * "The backslash retains its special meaning [in "..."]
@@ -4971,29 +4999,28 @@ static struct pipe *parse_stream(char **pstring,
 		int end_trigger)
 {
 	struct parse_context ctx;
-	o_string dest = NULL_O_STRING;
 	int heredoc_cnt;
 
 	/* Single-quote triggers a bypass of the main loop until its mate is
-	 * found.  When recursing, quote state is passed in via dest->o_expflags.
+	 * found.  When recursing, quote state is passed in via ctx.word.o_expflags.
 	 */
 	debug_printf_parse("parse_stream entered, end_trigger='%c'\n",
 			end_trigger ? end_trigger : 'X');
 	debug_enter();
 
-	/* If very first arg is "" or '', dest.data may end up NULL.
-	 * Preventing this: */
-	o_addchr(&dest, '\0');
-	dest.length = 0;
+	initialize_context(&ctx);
+
+	/* If very first arg is "" or '', ctx.word.data may end up NULL.
+	 * Preventing this:
+	 */
+	o_addchr(&ctx.word, '\0');
+	ctx.word.length = 0;
 
 	/* We used to separate words on $IFS here. This was wrong.
 	 * $IFS is used only for word splitting when $var is expanded,
 	 * here we should use blank chars as separators, not $IFS
 	 */
 
-	if (MAYBE_ASSIGNMENT != 0)
-		dest.o_assignment = MAYBE_ASSIGNMENT;
-	initialize_context(&ctx);
 	heredoc_cnt = 0;
 	while (1) {
 		const char *is_blank;
@@ -5005,7 +5032,7 @@ static struct pipe *parse_stream(char **pstring,
 
 		ch = i_getch(input);
 		debug_printf_parse(": ch=%c (%d) escape=%d\n",
-				ch, ch, !!(dest.o_expflags & EXP_FLAG_ESC_GLOB_CHARS));
+				ch, ch, !!(ctx.word.o_expflags & EXP_FLAG_ESC_GLOB_CHARS));
 		if (ch == EOF) {
 			struct pipe *pi;
 
@@ -5022,10 +5049,10 @@ static struct pipe *parse_stream(char **pstring,
 				goto parse_error;
 			}
 
-			if (done_word(&dest, &ctx)) {
+			if (done_word(&ctx)) {
 				goto parse_error;
 			}
-			o_free(&dest);
+			o_free(&ctx.word);
 			done_pipe(&ctx, PIPE_SEQ);
 			pi = ctx.list_head;
 			/* If we got nothing... */
@@ -5048,25 +5075,74 @@ static struct pipe *parse_stream(char **pstring,
 			debug_printf_parse("parse_stream return %p\n", pi);
 			return pi;
 		}
-		nommu_addchr(&ctx.as_string, ch);
 
-		next = '\0';
-		if (ch != '\n') {
-			next = i_peek(input);
-			/* Can't use i_peek_and_eat_bkslash_nl(input) here:
-			 *  echo '\
-			 *  '
-			 * will break.
+		/* Handle "'" and "\" first, as they won't play nice with
+		 * i_peek_and_eat_bkslash_nl() anyway:
+		 *   echo z\\
+		 * and
+		 *   echo '\
+		 *   '
+		 * would break.
+		 */
+		if (ch == '\\') {
+			ch = i_getch(input);
+			if (ch == '\n')
+				continue; /* drop \<newline>, get next char */
+			nommu_addchr(&ctx.as_string, '\\');
+			o_addchr(&ctx.word, '\\');
+			if (ch == EOF) {
+				/* Testcase: eval 'echo Ok\' */
+				/* bash-4.3.43 was removing backslash,
+				 * but 4.4.19 retains it, most other shells too
+				 */
+				continue; /* get next char */
+			}
+			/* Example: echo Hello \2>file
+			 * we need to know that word 2 is quoted
 			 */
+			ctx.word.has_quoted_part = 1;
+			nommu_addchr(&ctx.as_string, ch);
+			o_addchr(&ctx.word, ch);
+			continue; /* get next char */
+		}
+		nommu_addchr(&ctx.as_string, ch);
+		if (ch == '\'') {
+			ctx.word.has_quoted_part = 1;
+			next = i_getch(input);
+			if (next == '\'' && !ctx.pending_redirect)
+				goto insert_empty_quoted_str_marker;
+
+			ch = next;
+			while (1) {
+				if (ch == EOF) {
+					syntax_error_unterm_ch('\'');
+					goto parse_error;
+				}
+				nommu_addchr(&ctx.as_string, ch);
+				if (ch == '\'')
+					break;
+				if (ch == SPECIAL_VAR_SYMBOL) {
+					/* Convert raw ^C to corresponding special variable reference */
+					o_addchr(&ctx.word, SPECIAL_VAR_SYMBOL);
+					o_addchr(&ctx.word, SPECIAL_VAR_QUOTED_SVS);
+				}
+				o_addqchr(&ctx.word, ch);
+				ch = i_getch(input);
+			}
+			continue; /* get next char */
 		}
 
-		is_special = "{}<>;&|()#'" /* special outside of "str" */
-				"\\$\"" IF_HUSH_TICK("`") /* always special */
+		next = '\0';
+		if (ch != '\n')
+			next = i_peek_and_eat_bkslash_nl(input);
+
+		is_special = "{}<>;&|()#" /* special outside of "str" */
+				"$\"" IF_HUSH_TICK("`") /* always special */
 				SPECIAL_VAR_SYMBOL_STR;
 		/* Are { and } special here? */
 		if (ctx.command->argv /* word [word]{... - non-special */
-		 || dest.length       /* word{... - non-special */
-		 || dest.has_quoted_part     /* ""{... - non-special */
+		 || ctx.word.length       /* word{... - non-special */
+		 || ctx.word.has_quoted_part     /* ""{... - non-special */
 		 || (next != ';'             /* }; - special */
 		    && next != ')'           /* }) - special */
 		    && next != '('           /* {( - special */
@@ -5083,14 +5159,14 @@ static struct pipe *parse_stream(char **pstring,
 
 		if (!is_special && !is_blank) { /* ordinary char */
  ordinary_char:
-			o_addQchr(&dest, ch);
-			if ((dest.o_assignment == MAYBE_ASSIGNMENT
-			    || dest.o_assignment == WORD_IS_KEYWORD)
+			o_addQchr(&ctx.word, ch);
+			if ((ctx.is_assignment == MAYBE_ASSIGNMENT
+			    || ctx.is_assignment == WORD_IS_KEYWORD)
 			 && ch == '='
-			 && is_well_formed_var_name(dest.data, '=')
+			 && is_well_formed_var_name(ctx.word.data, '=')
 			) {
-				dest.o_assignment = DEFINITELY_ASSIGNMENT;
-				debug_printf_parse("dest.o_assignment='%s'\n", assignment_flag[dest.o_assignment]);
+				ctx.is_assignment = DEFINITELY_ASSIGNMENT;
+				debug_printf_parse("ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
 			}
 			continue;
 		}
@@ -5112,7 +5188,7 @@ static struct pipe *parse_stream(char **pstring,
 			}
 			/* ch == last eaten whitespace char */
 #endif
-			if (done_word(&dest, &ctx)) {
+			if (done_word(&ctx)) {
 				goto parse_error;
 			}
 			if (ch == '\n') {
@@ -5122,7 +5198,7 @@ static struct pipe *parse_stream(char **pstring,
 				 * "case ... in <newline> word) ..."
 				 */
 				if (IS_NULL_CMD(ctx.command)
-				 && dest.length == 0 && !dest.has_quoted_part
+				 && ctx.word.length == 0 && !ctx.word.has_quoted_part
 				) {
 					/* This newline can be ignored. But...
 					 * Without check #1, interactive shell
@@ -5157,8 +5233,8 @@ static struct pipe *parse_stream(char **pstring,
 					}
 					heredoc_cnt = 0;
 				}
-				dest.o_assignment = MAYBE_ASSIGNMENT;
-				debug_printf_parse("dest.o_assignment='%s'\n", assignment_flag[dest.o_assignment]);
+				ctx.is_assignment = MAYBE_ASSIGNMENT;
+				debug_printf_parse("ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
 				ch = ';';
 				/* note: if (is_blank) continue;
 				 * will still trigger for us */
@@ -5170,8 +5246,8 @@ static struct pipe *parse_stream(char **pstring,
 		 * Pathological example: { ""}; } should exec "}" cmd
 		 */
 		if (ch == '}') {
-			if (dest.length != 0 /* word} */
-			 || dest.has_quoted_part    /* ""} */
+			if (ctx.word.length != 0 /* word} */
+			 || ctx.word.has_quoted_part    /* ""} */
 			) {
 				goto ordinary_char;
 			}
@@ -5200,7 +5276,7 @@ static struct pipe *parse_stream(char **pstring,
 #if ENABLE_HUSH_CASE
 		 && (ch != ')'
 		    || ctx.ctx_res_w != RES_MATCH
-		    || (!dest.has_quoted_part && strcmp(dest.data, "esac") == 0)
+		    || (!ctx.word.has_quoted_part && strcmp(ctx.word.data, "esac") == 0)
 		    )
 #endif
 		) {
@@ -5217,17 +5293,17 @@ static struct pipe *parse_stream(char **pstring,
 				syntax_error_unterm_str("here document");
 				goto parse_error;
 			}
-			if (done_word(&dest, &ctx)) {
+			if (done_word(&ctx)) {
 				goto parse_error;
 			}
 			done_pipe(&ctx, PIPE_SEQ);
-			dest.o_assignment = MAYBE_ASSIGNMENT;
-			debug_printf_parse("dest.o_assignment='%s'\n", assignment_flag[dest.o_assignment]);
+			ctx.is_assignment = MAYBE_ASSIGNMENT;
+			debug_printf_parse("ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
 			/* Do we sit outside of any if's, loops or case's? */
 			if (!HAS_KEYWORDS
 			IF_HAS_KEYWORDS(|| (ctx.ctx_res_w == RES_NONE && ctx.old_flag == 0))
 			) {
-				o_free(&dest);
+				o_free(&ctx.word);
 #if !BB_MMU
 				debug_printf_parse("as_string2 '%s'\n", ctx.as_string.data);
 				if (pstring)
@@ -5248,7 +5324,7 @@ static struct pipe *parse_stream(char **pstring,
 				return ctx.list_head;
 			}
 		}
- skip_end_trigger:
+
 		if (is_blank)
 			continue;
 
@@ -5256,13 +5332,11 @@ static struct pipe *parse_stream(char **pstring,
 		 * an assignment. a=1 2>z b=2: b=2 is still assignment */
 		switch (ch) {
 		case '>':
-			redir_fd = redirect_opt_num(&dest);
-			if (done_word(&dest, &ctx)) {
+			redir_fd = redirect_opt_num(&ctx.word);
+			if (done_word(&ctx)) {
 				goto parse_error;
 			}
 			redir_style = REDIRECT_OVERWRITE;
-			if (next == '\\')
-				next = i_peek_and_eat_bkslash_nl(input);
 			if (next == '>') {
 				redir_style = REDIRECT_APPEND;
 				ch = i_getch(input);
@@ -5276,15 +5350,13 @@ static struct pipe *parse_stream(char **pstring,
 #endif
 			if (parse_redirect(&ctx, redir_fd, redir_style, input))
 				goto parse_error;
-			continue; /* back to top of while (1) */
+			continue; /* get next char */
 		case '<':
-			redir_fd = redirect_opt_num(&dest);
-			if (done_word(&dest, &ctx)) {
+			redir_fd = redirect_opt_num(&ctx.word);
+			if (done_word(&ctx)) {
 				goto parse_error;
 			}
 			redir_style = REDIRECT_INPUT;
-			if (next == '\\')
-				next = i_peek_and_eat_bkslash_nl(input);
 			if (next == '<') {
 				redir_style = REDIRECT_HEREDOC;
 				heredoc_cnt++;
@@ -5304,9 +5376,9 @@ static struct pipe *parse_stream(char **pstring,
 #endif
 			if (parse_redirect(&ctx, redir_fd, redir_style, input))
 				goto parse_error;
-			continue; /* back to top of while (1) */
+			continue; /* get next char */
 		case '#':
-			if (dest.length == 0 && !dest.has_quoted_part) {
+			if (ctx.word.length == 0 && !ctx.word.has_quoted_part) {
 				/* skip "#comment" */
 				/* note: we do not add it to &ctx.as_string */
 /* TODO: in bash:
@@ -5325,30 +5397,20 @@ static struct pipe *parse_stream(char **pstring,
 					if (ch == EOF)
 						break;
 				}
-				continue; /* back to top of while (1) */
-			}
-			break;
-		case '\\':
-			if (next == '\n') {
-				/* It's "\<newline>" */
-#if !BB_MMU
-				/* Remove trailing '\' from ctx.as_string */
-				ctx.as_string.data[--ctx.as_string.length] = '\0';
-#endif
-				ch = i_getch(input); /* eat it */
-				continue; /* back to top of while (1) */
+				continue; /* get next char */
 			}
 			break;
 		}
+ skip_end_trigger:
 
-		if (dest.o_assignment == MAYBE_ASSIGNMENT
+		if (ctx.is_assignment == MAYBE_ASSIGNMENT
 		 /* check that we are not in word in "a=1 2>word b=1": */
 		 && !ctx.pending_redirect
 		) {
 			/* ch is a special char and thus this word
 			 * cannot be an assignment */
-			dest.o_assignment = NOT_ASSIGNMENT;
-			debug_printf_parse("dest.o_assignment='%s'\n", assignment_flag[dest.o_assignment]);
+			ctx.is_assignment = NOT_ASSIGNMENT;
+			debug_printf_parse("ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
 		}
 
 		/* Note: nommu_addchr(&ctx.as_string, ch) is already done */
@@ -5356,95 +5418,59 @@ static struct pipe *parse_stream(char **pstring,
 		switch (ch) {
 		case SPECIAL_VAR_SYMBOL:
 			/* Convert raw ^C to corresponding special variable reference */
-			o_addchr(&dest, SPECIAL_VAR_SYMBOL);
-			o_addchr(&dest, SPECIAL_VAR_QUOTED_SVS);
+			o_addchr(&ctx.word, SPECIAL_VAR_SYMBOL);
+			o_addchr(&ctx.word, SPECIAL_VAR_QUOTED_SVS);
 			/* fall through */
 		case '#':
 			/* non-comment #: "echo a#b" etc */
-			o_addchr(&dest, ch);
-			break;
-		case '\\':
-			if (next == EOF) {
-				syntax_error("\\<eof>");
-				xfunc_die();
-			}
-			ch = i_getch(input);
-			/* note: ch != '\n' (that case does not reach this place) */
-			o_addchr(&dest, '\\');
-			/*nommu_addchr(&ctx.as_string, '\\'); - already done */
-			o_addchr(&dest, ch);
-			nommu_addchr(&ctx.as_string, ch);
-			/* Example: echo Hello \2>file
-			 * we need to know that word 2 is quoted */
-			dest.has_quoted_part = 1;
-			break;
+			o_addchr(&ctx.word, ch);
+			continue; /* get next char */
 		case '$':
-			if (!parse_dollar(&ctx.as_string, &dest, input, /*quote_mask:*/ 0)) {
+			if (!parse_dollar(&ctx.as_string, &ctx.word, input, /*quote_mask:*/ 0)) {
 				debug_printf_parse("parse_stream parse error: "
 					"parse_dollar returned 0 (error)\n");
 				goto parse_error;
 			}
-			break;
-		case '\'':
-			dest.has_quoted_part = 1;
-			if (next == '\'' && !ctx.pending_redirect) {
+			continue; /* get next char */
+		case '"':
+			ctx.word.has_quoted_part = 1;
+			if (next == '"' && !ctx.pending_redirect) {
+				i_getch(input); /* eat second " */
  insert_empty_quoted_str_marker:
 				nommu_addchr(&ctx.as_string, next);
-				i_getch(input); /* eat second ' */
-				o_addchr(&dest, SPECIAL_VAR_SYMBOL);
-				o_addchr(&dest, SPECIAL_VAR_SYMBOL);
-			} else {
-				while (1) {
-					ch = i_getch(input);
-					if (ch == EOF) {
-						syntax_error_unterm_ch('\'');
-						goto parse_error;
-					}
-					nommu_addchr(&ctx.as_string, ch);
-					if (ch == '\'')
-						break;
-					if (ch == SPECIAL_VAR_SYMBOL) {
-						/* Convert raw ^C to corresponding special variable reference */
-						o_addchr(&dest, SPECIAL_VAR_SYMBOL);
-						o_addchr(&dest, SPECIAL_VAR_QUOTED_SVS);
-					}
-					o_addqchr(&dest, ch);
-				}
+				o_addchr(&ctx.word, SPECIAL_VAR_SYMBOL);
+				o_addchr(&ctx.word, SPECIAL_VAR_SYMBOL);
+				continue; /* get next char */
 			}
-			break;
-		case '"':
-			dest.has_quoted_part = 1;
-			if (next == '"' && !ctx.pending_redirect)
-				goto insert_empty_quoted_str_marker;
-			if (dest.o_assignment == NOT_ASSIGNMENT)
-				dest.o_expflags |= EXP_FLAG_ESC_GLOB_CHARS;
-			if (!encode_string(&ctx.as_string, &dest, input, '"', /*process_bkslash:*/ 1))
+			if (ctx.is_assignment == NOT_ASSIGNMENT)
+				ctx.word.o_expflags |= EXP_FLAG_ESC_GLOB_CHARS;
+			if (!encode_string(&ctx.as_string, &ctx.word, input, '"', /*process_bkslash:*/ 1))
 				goto parse_error;
-			dest.o_expflags &= ~EXP_FLAG_ESC_GLOB_CHARS;
-			break;
+			ctx.word.o_expflags &= ~EXP_FLAG_ESC_GLOB_CHARS;
+			continue; /* get next char */
 #if ENABLE_HUSH_TICK
 		case '`': {
 			USE_FOR_NOMMU(unsigned pos;)
 
-			o_addchr(&dest, SPECIAL_VAR_SYMBOL);
-			o_addchr(&dest, '`');
-			USE_FOR_NOMMU(pos = dest.length;)
-			if (!add_till_backquote(&dest, input, /*in_dquote:*/ 0))
+			o_addchr(&ctx.word, SPECIAL_VAR_SYMBOL);
+			o_addchr(&ctx.word, '`');
+			USE_FOR_NOMMU(pos = ctx.word.length;)
+			if (!add_till_backquote(&ctx.word, input, /*in_dquote:*/ 0))
 				goto parse_error;
 # if !BB_MMU
-			o_addstr(&ctx.as_string, dest.data + pos);
+			o_addstr(&ctx.as_string, ctx.word.data + pos);
 			o_addchr(&ctx.as_string, '`');
 # endif
-			o_addchr(&dest, SPECIAL_VAR_SYMBOL);
-			//debug_printf_subst("SUBST RES3 '%s'\n", dest.data + pos);
-			break;
+			o_addchr(&ctx.word, SPECIAL_VAR_SYMBOL);
+			//debug_printf_subst("SUBST RES3 '%s'\n", ctx.word.data + pos);
+			continue; /* get next char */
 		}
 #endif
 		case ';':
 #if ENABLE_HUSH_CASE
  case_semi:
 #endif
-			if (done_word(&dest, &ctx)) {
+			if (done_word(&ctx)) {
 				goto parse_error;
 			}
 			done_pipe(&ctx, PIPE_SEQ);
@@ -5467,15 +5493,13 @@ static struct pipe *parse_stream(char **pstring,
  new_cmd:
 			/* We just finished a cmd. New one may start
 			 * with an assignment */
-			dest.o_assignment = MAYBE_ASSIGNMENT;
-			debug_printf_parse("dest.o_assignment='%s'\n", assignment_flag[dest.o_assignment]);
-			break;
+			ctx.is_assignment = MAYBE_ASSIGNMENT;
+			debug_printf_parse("ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
+			continue; /* get next char */
 		case '&':
-			if (done_word(&dest, &ctx)) {
+			if (done_word(&ctx)) {
 				goto parse_error;
 			}
-			if (next == '\\')
-				next = i_peek_and_eat_bkslash_nl(input);
 			if (next == '&') {
 				ch = i_getch(input);
 				nommu_addchr(&ctx.as_string, ch);
@@ -5485,15 +5509,13 @@ static struct pipe *parse_stream(char **pstring,
 			}
 			goto new_cmd;
 		case '|':
-			if (done_word(&dest, &ctx)) {
+			if (done_word(&ctx)) {
 				goto parse_error;
 			}
 #if ENABLE_HUSH_CASE
 			if (ctx.ctx_res_w == RES_MATCH)
 				break; /* we are in case's "word | word)" */
 #endif
-			if (next == '\\')
-				next = i_peek_and_eat_bkslash_nl(input);
 			if (next == '|') { /* || */
 				ch = i_getch(input);
 				nommu_addchr(&ctx.as_string, ch);
@@ -5510,14 +5532,14 @@ static struct pipe *parse_stream(char **pstring,
 			/* "case... in [(]word)..." - skip '(' */
 			if (ctx.ctx_res_w == RES_MATCH
 			 && ctx.command->argv == NULL /* not (word|(... */
-			 && dest.length == 0 /* not word(... */
-			 && dest.has_quoted_part == 0 /* not ""(... */
+			 && ctx.word.length == 0 /* not word(... */
+			 && ctx.word.has_quoted_part == 0 /* not ""(... */
 			) {
-				continue;
+				continue; /* get next char */
 			}
 #endif
 		case '{':
-			if (parse_group(&dest, &ctx, input, ch) != 0) {
+			if (parse_group(&ctx, input, ch) != 0) {
 				goto parse_error;
 			}
 			goto new_cmd;
@@ -5574,7 +5596,7 @@ static struct pipe *parse_stream(char **pstring,
 			IF_HAS_KEYWORDS(pctx = p2;)
 		} while (HAS_KEYWORDS && pctx);
 
-		o_free(&dest);
+		o_free(&ctx.word);
 #if !BB_MMU
 		if (pstring)
 			*pstring = NULL;
@@ -5589,11 +5611,10 @@ static struct pipe *parse_stream(char **pstring,
 
 /* Expansion can recurse, need forward decls: */
 #if !BASH_PATTERN_SUBST && !ENABLE_HUSH_CASE
-/* only ${var/pattern/repl} (its pattern part) needs additional mode */
-#define expand_string_to_string(str, do_unbackslash) \
+#define expand_string_to_string(str, EXP_flags, do_unbackslash) \
 	expand_string_to_string(str)
 #endif
-static char *expand_string_to_string(const char *str, int do_unbackslash);
+static char *expand_string_to_string(const char *str, int EXP_flags, int do_unbackslash);
 #if ENABLE_HUSH_TICK
 static int process_command_subs(o_string *dest, const char *s);
 #endif
@@ -5676,9 +5697,19 @@ static int expand_on_ifs(int *ended_with_ifs, o_string *output, int n, const cha
 
 		/* We know str here points to at least one IFS char */
 		last_is_ifs = 1;
-		str += strspn(str, G.ifs); /* skip IFS chars */
+		str += strspn(str, G.ifs_whitespace); /* skip IFS whitespace chars */
 		if (!*str)  /* EOL - do not finalize word */
 			break;
+
+		if (G.ifs_whitespace != G.ifs /* usually false ($IFS is usually all whitespace), */
+		 && strchr(G.ifs, *str)       /* the second check would fail */
+		) {
+			/* This is a non-whitespace $IFS char */
+			/* Skip it and IFS whitespace chars, start new word */
+			str++;
+			str += strspn(str, G.ifs_whitespace);
+			goto new_word;
+		}
 
 		/* Start new word... but not always! */
 		/* Case "v=' a'; echo ''$v": we do need to finalize empty word: */
@@ -5690,6 +5721,7 @@ static int expand_on_ifs(int *ended_with_ifs, o_string *output, int n, const cha
 		 */
 		 || (n > 0 && output->data[output->length - 1])
 		) {
+ new_word:
 			o_addchr(output, '\0');
 			debug_print_list("expand_on_ifs", output, n);
 			n = o_save_ptr(output, n);
@@ -5739,7 +5771,10 @@ static char *encode_then_expand_string(const char *str, int process_bkslash, int
 	encode_string(NULL, &dest, &input, EOF, process_bkslash);
 //TODO: error check (encode_string returns 0 on error)?
 	//bb_error_msg("'%s' -> '%s'", str, dest.data);
-	exp_str = expand_string_to_string(dest.data, /*unbackslash:*/ do_unbackslash);
+	exp_str = expand_string_to_string(dest.data,
+			do_unbackslash ? EXP_FLAG_ESC_GLOB_CHARS : 0,
+			do_unbackslash
+	);
 	//bb_error_msg("'%s' -> '%s'", dest.data, exp_str);
 	o_free_unsafe(&dest);
 	return exp_str;
@@ -6372,10 +6407,11 @@ static char **expand_strvec_to_strvec_singleword_noglob(char **argv)
  * NB: should NOT do globbing!
  * "export v=/bin/c*; env | grep ^v=" outputs "v=/bin/c*"
  */
-static char *expand_string_to_string(const char *str, int do_unbackslash)
+static char *expand_string_to_string(const char *str, int EXP_flags, int do_unbackslash)
 {
 #if !BASH_PATTERN_SUBST && !ENABLE_HUSH_CASE
 	const int do_unbackslash = 1;
+	const int EXP_flags = EXP_FLAG_ESC_GLOB_CHARS;
 #endif
 	char *argv[2], **list;
 
@@ -6392,10 +6428,7 @@ static char *expand_string_to_string(const char *str, int do_unbackslash)
 
 	argv[0] = (char*)str;
 	argv[1] = NULL;
-	list = expand_variables(argv, do_unbackslash
-			? EXP_FLAG_ESC_GLOB_CHARS | EXP_FLAG_SINGLEWORD
-			: EXP_FLAG_SINGLEWORD
-	);
+	list = expand_variables(argv, EXP_flags | EXP_FLAG_SINGLEWORD);
 	if (HUSH_DEBUG)
 		if (!list[0] || list[1])
 			bb_error_msg_and_die("BUG in varexp2");
@@ -6439,7 +6472,13 @@ static char **expand_assignments(char **argv, int count)
 	G.expanded_assignments = p = NULL;
 	/* Expand assignments into one string each */
 	for (i = 0; i < count; i++) {
-		G.expanded_assignments = p = add_string_to_strings(p, expand_string_to_string(argv[i], /*unbackslash:*/ 1));
+		p = add_string_to_strings(p,
+			expand_string_to_string(argv[i],
+				EXP_FLAG_ESC_GLOB_CHARS,
+				/*unbackslash:*/ 1
+			)
+		);
+		G.expanded_assignments = p;
 	}
 	G.expanded_assignments = NULL;
 	return p;
@@ -7151,7 +7190,8 @@ static int setup_redirects(struct command *prog, struct squirrel **sqp)
 				continue;
 			}
 			mode = redir_table[redir->rd_type].mode;
-			p = expand_string_to_string(redir->rd_filename, /*unbackslash:*/ 1);
+			p = expand_string_to_string(redir->rd_filename,
+				EXP_FLAG_ESC_GLOB_CHARS, /*unbackslash:*/ 1);
 			newfd = open_or_warn(p, mode);
 			free(p);
 			if (newfd < 0) {
@@ -7358,6 +7398,58 @@ static void unset_func(const char *name)
 }
 # endif
 
+static void remove_nested_vars(void)
+{
+	struct variable *cur;
+	struct variable **cur_pp;
+
+	cur_pp = &G.top_var;
+	while ((cur = *cur_pp) != NULL) {
+		if (cur->var_nest_level <= G.var_nest_level) {
+			cur_pp = &cur->next;
+			continue;
+		}
+		/* Unexport */
+		if (cur->flg_export) {
+			debug_printf_env("unexporting nested '%s'/%u\n", cur->varstr, cur->var_nest_level);
+			bb_unsetenv(cur->varstr);
+		}
+		/* Remove from global list */
+		*cur_pp = cur->next;
+		/* Free */
+		if (!cur->max_len) {
+			debug_printf_env("freeing nested '%s'/%u\n", cur->varstr, cur->var_nest_level);
+			free(cur->varstr);
+		}
+		free(cur);
+	}
+}
+
+static void enter_var_nest_level(void)
+{
+	G.var_nest_level++;
+	debug_printf_env("var_nest_level++ %u\n", G.var_nest_level);
+
+	/* Try:	f() { echo -n .; f; }; f
+	 * struct variable::var_nest_level is uint16_t,
+	 * thus limiting recursion to < 2^16.
+	 * In any case, with 8 Mbyte stack SEGV happens
+	 * not too long after 2^16 recursions anyway.
+	 */
+	if (G.var_nest_level > 0xff00)
+		bb_error_msg_and_die("fatal recursion (depth %u)", G.var_nest_level);
+}
+
+static void leave_var_nest_level(void)
+{
+	G.var_nest_level--;
+	debug_printf_env("var_nest_level-- %u\n", G.var_nest_level);
+	if (HUSH_DEBUG && (int)G.var_nest_level < 0)
+		bb_error_msg_and_die("BUG: nesting underflow");
+
+	remove_nested_vars();
+}
+
 # if BB_MMU
 #define exec_function(to_free, funcp, argv) \
 	exec_function(funcp, argv)
@@ -7392,7 +7484,7 @@ static void exec_function(char ***to_free,
 
 	/* "we are in a function, ok to use return" */
 	G_flag_return_in_progress = -1;
-	G.var_nest_level++;
+	enter_var_nest_level();
 	IF_HUSH_LOCAL(G.func_nest_level++;)
 
 	/* On MMU, funcp->body is always non-NULL */
@@ -7410,53 +7502,6 @@ static void exec_function(char ***to_free,
 			argv + 1,
 			NULL);
 # endif
-}
-
-static void enter_var_nest_level(void)
-{
-	G.var_nest_level++;
-	debug_printf_env("var_nest_level++ %u\n", G.var_nest_level);
-
-	/* Try:	f() { echo -n .; f; }; f
-	 * struct variable::var_nest_level is uint16_t,
-	 * thus limiting recursion to < 2^16.
-	 * In any case, with 8 Mbyte stack SEGV happens
-	 * not too long after 2^16 recursions anyway.
-	 */
-	if (G.var_nest_level > 0xff00)
-		bb_error_msg_and_die("fatal recursion (depth %u)", G.var_nest_level);
-}
-
-static void leave_var_nest_level(void)
-{
-	struct variable *cur;
-	struct variable **cur_pp;
-
-	cur_pp = &G.top_var;
-	while ((cur = *cur_pp) != NULL) {
-		if (cur->var_nest_level < G.var_nest_level) {
-			cur_pp = &cur->next;
-			continue;
-		}
-		/* Unexport */
-		if (cur->flg_export) {
-			debug_printf_env("unexporting nested '%s'/%u\n", cur->varstr, cur->var_nest_level);
-			bb_unsetenv(cur->varstr);
-		}
-		/* Remove from global list */
-		*cur_pp = cur->next;
-		/* Free */
-		if (!cur->max_len) {
-			debug_printf_env("freeing nested '%s'/%u\n", cur->varstr, cur->var_nest_level);
-			free(cur->varstr);
-		}
-		free(cur);
-	}
-
-	G.var_nest_level--;
-	debug_printf_env("var_nest_level-- %u\n", G.var_nest_level);
-	if (HUSH_DEBUG && (int)G.var_nest_level < 0)
-		bb_error_msg_and_die("BUG: nesting underflow");
 }
 
 static int run_function(const struct function *funcp, char **argv)
@@ -7648,6 +7693,7 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 	G.shadowed_vars_pp = NULL; /* "don't save, free them instead" */
 #else
 	G.shadowed_vars_pp = &nommu_save->old_vars;
+	G.var_nest_level++;
 #endif
 	set_vars_and_save_old(new_env);
 	G.shadowed_vars_pp = sv_shadowed;
@@ -8249,9 +8295,31 @@ static NOINLINE int run_pipe(struct pipe *pi)
 	/* Testcase: set -- q w e; (IFS='' echo "$*"; IFS=''; echo "$*"); echo "$*"
 	 * Result should be 3 lines: q w e, qwe, q w e
 	 */
+	if (G.ifs_whitespace != G.ifs)
+		free(G.ifs_whitespace);
 	G.ifs = get_local_var_value("IFS");
-	if (!G.ifs)
+	if (G.ifs) {
+		char *p;
+		G.ifs_whitespace = (char*)G.ifs;
+		p = skip_whitespace(G.ifs);
+		if (*p) {
+			/* Not all $IFS is whitespace */
+			char *d;
+			int len = p - G.ifs;
+			p = skip_non_whitespace(p);
+			G.ifs_whitespace = xmalloc(len + strlen(p) + 1); /* can overestimate */
+			d = mempcpy(G.ifs_whitespace, G.ifs, len);
+			while (*p) {
+				if (isspace(*p))
+					*d++ = *p;
+				p++;
+			}
+			*d = '\0';
+		}
+	} else {
 		G.ifs = defifs;
+		G.ifs_whitespace = (char*)G.ifs;
+	}
 
 	IF_HUSH_JOB(pi->pgrp = -1;)
 	pi->stopped_cmds = 0;
@@ -8343,7 +8411,10 @@ static NOINLINE int run_pipe(struct pipe *pi)
 				bb_putchar_stderr('+');
 			i = 0;
 			while (i < command->assignment_cnt) {
-				char *p = expand_string_to_string(argv[i], /*unbackslash:*/ 1);
+				char *p = expand_string_to_string(argv[i],
+						EXP_FLAG_ESC_GLOB_CHARS,
+						/*unbackslash:*/ 1
+				);
 				if (G_x_mode)
 					fprintf(stderr, " %s", p);
 				debug_printf_env("set shell var:'%s'->'%s'\n", *argv, p);
@@ -8522,6 +8593,7 @@ static NOINLINE int run_pipe(struct pipe *pi)
 	while (cmd_no < pi->num_cmds) {
 		struct fd_pair pipefds;
 #if !BB_MMU
+		int sv_var_nest_level = G.var_nest_level;
 		volatile nommu_save_t nommu_save;
 		nommu_save.old_vars = NULL;
 		nommu_save.argv = NULL;
@@ -8615,6 +8687,8 @@ static NOINLINE int run_pipe(struct pipe *pi)
 		/* Clean up after vforked child */
 		free(nommu_save.argv);
 		free(nommu_save.argv_from_re_execing);
+		G.var_nest_level = sv_var_nest_level;
+		remove_nested_vars();
 		add_vars(nommu_save.old_vars);
 #endif
 		free(argv_expanded);
@@ -8835,7 +8909,8 @@ static int run_list(struct pipe *pi)
 #if ENABLE_HUSH_CASE
 		if (rword == RES_CASE) {
 			debug_printf_exec("CASE cond_code:%d\n", cond_code);
-			case_word = expand_string_to_string(pi->cmds->argv[0], 1);
+			case_word = expand_string_to_string(pi->cmds->argv[0],
+				EXP_FLAG_ESC_GLOB_CHARS, /*unbackslash:*/ 1);
 			debug_printf_exec("CASE word1:'%s'\n", case_word);
 			//unbackslash(case_word);
 			//debug_printf_exec("CASE word2:'%s'\n", case_word);
@@ -8850,12 +8925,19 @@ static int run_list(struct pipe *pi)
 			/* all prev words didn't match, does this one match? */
 			argv = pi->cmds->argv;
 			while (*argv) {
-				char *pattern = expand_string_to_string(*argv, /*unbackslash:*/ 0);
+				char *pattern;
+				debug_printf_exec("expand_string_to_string('%s')\n", *argv);
+				pattern = expand_string_to_string(*argv,
+						EXP_FLAG_ESC_GLOB_CHARS,
+						/*unbackslash:*/ 0
+				);
 				/* TODO: which FNM_xxx flags to use? */
 				cond_code = (fnmatch(pattern, case_word, /*flags:*/ 0) != 0);
-				debug_printf_exec("fnmatch(pattern:'%s',str:'%s'):%d\n", pattern, case_word, cond_code);
+				debug_printf_exec("fnmatch(pattern:'%s',str:'%s'):%d\n",
+						pattern, case_word, cond_code);
 				free(pattern);
-				if (cond_code == 0) { /* match! we will execute this branch */
+				if (cond_code == 0) {
+					/* match! we will execute this branch */
 					free(case_word);
 					case_word = NULL; /* make future "word)" stop */
 					break;
@@ -9393,6 +9475,13 @@ int hush_main(int argc, char **argv)
 # if ENABLE_HUSH_LOOPS
 			optarg++;
 			G.depth_of_loop = bb_strtou(optarg, &optarg, 16);
+# endif
+# if ENABLE_HUSH_FUNCTIONS
+			/* nommu uses re-exec trick for "... | func | ...",
+			 * should allow "return".
+			 * This accidentally allows returns in subshells.
+			 */
+			G_flag_return_in_progress = -1;
 # endif
 			break;
 		}

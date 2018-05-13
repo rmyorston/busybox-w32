@@ -224,6 +224,7 @@ unpack_lzma_stream(transformer_state_t *xstate)
 	rc_t *rc;
 	int i;
 	uint8_t *buffer;
+	uint32_t buffer_size;
 	uint8_t previous_byte = 0;
 	size_t buffer_pos = 0, global_pos = 0;
 	int len = 0;
@@ -253,7 +254,8 @@ unpack_lzma_stream(transformer_state_t *xstate)
 	if (header.dict_size == 0)
 		header.dict_size++;
 
-	buffer = xmalloc(MIN(header.dst_size, header.dict_size));
+	buffer_size = MIN(header.dst_size, header.dict_size);
+	buffer = xmalloc(buffer_size);
 
 	{
 		int num_probs;
@@ -464,7 +466,10 @@ unpack_lzma_stream(transformer_state_t *xstate)
 				if ((int32_t)pos < 0) {
 					pos += header.dict_size;
 					/* bug 10436 has an example file where this triggers: */
-					if ((int32_t)pos < 0)
+					//if ((int32_t)pos < 0)
+					//	goto bad;
+					/* more stringent test (see unzip_bad_lzma_1.zip): */
+					if (pos >= buffer_size)
 						goto bad;
 				}
 				previous_byte = buffer[pos];
@@ -493,6 +498,12 @@ unpack_lzma_stream(transformer_state_t *xstate)
 		IF_DESKTOP(total_written += buffer_pos;)
 		if (transformer_write(xstate, buffer, buffer_pos) != (ssize_t)buffer_pos) {
  bad:
+			/* One of our users, bbunpack(), expects _us_ to emit
+			 * the error message (since it's the best place to give
+			 * potentially more detailed information).
+			 * Do not fail silently.
+			 */
+			bb_error_msg("corrupted data");
 			total_written = -1; /* failure */
 		}
 		rc_free(rc);
