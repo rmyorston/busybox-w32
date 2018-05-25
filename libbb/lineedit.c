@@ -2402,6 +2402,11 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 		| TERMIOS_CLEAR_ISIG /* turn off INTR (ctrl-C), QUIT, SUSP */
 	);
 	if (n != 0 || (initial_settings.c_lflag & (ECHO|ICANON)) == ICANON) {
+#else
+	initial_settings.c_cc[VINTR] = CTRL('C');
+	initial_settings.c_cc[VEOF] = CTRL('D');
+	if (!isatty(0) || !isatty(1)) {
+#endif
 		/* Happens when e.g. stty -echo was run before.
 		 * But if ICANON is not set, we don't come here.
 		 * (example: interactive python ^Z-backgrounded,
@@ -2416,10 +2421,6 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 		DEINIT_S();
 		return len;
 	}
-#else
-	initial_settings.c_cc[VINTR] = CTRL('C');
-	initial_settings.c_cc[VEOF] = CTRL('D');
-#endif
 
 	init_unicode();
 
