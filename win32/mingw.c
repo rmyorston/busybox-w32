@@ -888,8 +888,11 @@ int link(const char *oldpath, const char *newpath)
 
 char *realpath(const char *path, char *resolved_path)
 {
-	/* FIXME: need normalization */
-	return strcpy(resolved_path, path);
+	if (_fullpath(resolved_path, path, PATH_MAX)) {
+		convert_slashes(resolved_path);
+		return resolved_path;
+	}
+	return NULL;
 }
 
 const char *get_busybox_exec_path(void)
