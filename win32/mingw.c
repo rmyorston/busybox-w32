@@ -886,9 +886,71 @@ int link(const char *oldpath, const char *newpath)
 	return 0;
 }
 
+static char *win32_resolve_symlink(char *from_path);
+static char *win32_resolve_symlink(char *from_path)
+{
+	static char buffer[MAX_PATH];
+	typedef DWORD WINAPI (*T)(HANDLE hFile, LPSTR lpszFilePath, DWORD cchFilePath, DWORD dwFlags);
+	static T pGetFinalPathNameByHandleA = NULL;
+	HANDLE h = INVALID_HANDLE_VALUE;
+	if (!pGetFinalPathNameByHandleA) {
+		pGetFinalPathNameByHandleA = (T)GetProcAddress(GetModuleHandle("kernel32"), "GetFinalPathNameByHandleA");
+	}
+	if (!pGetFinalPathNameByHandleA) {
+		errno = ENOSYS;
+		return NULL;
+	}
+	/* Need a Win32 file handle to resolve symlinks */
+	h = CreateFileA(from_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL);
+	if (h != INVALID_HANDLE_VALUE) {
+		/* We were able to open the path, so normalize the path and return that path on success */
+		DWORD status = pGetFinalPathNameByHandleA(h, buffer, sizeof(buffer), FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+		CloseHandle(h);
+		if (status != 0 && status < sizeof(buffer)) {
+			/* GetFinalPathNameByHandleA returns a path with '\\?\' prepended, so strip it off */
+			return (!strncmp(buffer, "\\\\?\\", 4)) ? (buffer + 4) : buffer;
+		}
+	}
+	errno = err_win_to_posix(GetLastError());
+	return NULL;
+}
+
+static char *resolve_symlinks(char *from_path);
+static char *resolve_symlinks(char *from_path)
+{
+	static char buffer[MAX_PATH];
+	char *last_part = NULL;
+	for (last_part = from_path + strlen(from_path);last_part > from_path;--last_part) {
+		if (!*last_part || is_dir_sep(*last_part))
+		{
+			char *resolved = NULL;
+			const char last_sep = *last_part;
+			*last_part = '\0';
+			resolved = win32_resolve_symlink(from_path);
+			*last_part = last_sep;
+			if (resolved && strlen(resolved) + strlen(last_part) < MAX_PATH) {
+				strcpy(buffer, resolved);
+				if (is_dir_sep(resolved[strlen(resolved)-1]))
+					strcat(buffer, last_part + 1);
+				else
+					strcat(buffer, last_part);
+				return buffer;
+			}
+		}
+	}
+	return NULL;
+}
+
 char *realpath(const char *path, char *resolved_path)
 {
-	/* FIXME: need normalization */
+	if (GetFullPathNameA(path, MAX_PATH, resolved_path, NULL)) {
+		char *real_path = resolve_symlinks(resolved_path);
+		if (real_path) {
+			strcpy(resolved_path, real_path);
+			convert_slashes(resolved_path);
+			return resolved_path;
+		}
+	}
 	return strcpy(resolved_path, path);
 }
 
