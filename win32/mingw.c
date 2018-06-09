@@ -1,5 +1,6 @@
 #include "libbb.h"
 #include <userenv.h>
+#include "lazyload.h"
 
 #if defined(__MINGW64_VERSION_MAJOR)
 #if ENABLE_GLOBBING
@@ -886,10 +887,63 @@ int link(const char *oldpath, const char *newpath)
 	return 0;
 }
 
+static char *resolve_symlinks(char *path)
+{
+	HANDLE h = INVALID_HANDLE_VALUE;
+	DECLARE_PROC_ADDR(kernel32.dll, DWORD, GetFinalPathNameByHandleA, HANDLE,
+						LPSTR, DWORD, DWORD);
+
+	if (!INIT_PROC_ADDR(GetFinalPathNameByHandleA)) {
+		errno = ENOSYS;
+		return NULL;
+	}
+
+	/* need a file handle to resolve symlinks */
+	h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL,
+			OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL|FILE_FLAG_BACKUP_SEMANTICS,
+			NULL);
+	if (h != INVALID_HANDLE_VALUE) {
+		/* normalize the path and return it on success */
+		DWORD status = GetFinalPathNameByHandleA(h, path, MAX_PATH,
+							FILE_NAME_NORMALIZED|VOLUME_NAME_DOS);
+		CloseHandle(h);
+		if (status != 0 && status < MAX_PATH) {
+			/* skip '\\?\' prefix */
+			return (!strncmp(path, "\\\\?\\", 4)) ? (path + 4) : path;
+		}
+	}
+
+	errno = err_win_to_posix(GetLastError());
+	return NULL;
+}
+
+/*
+ * Emulate realpath in two stages:
+ *
+ * - _fullpath handles './', '../' and extra '/' characters.  The
+ *   resulting path may not refer to an actual file.
+ *
+ * - resolve_symlinks checks that the file exists (by opening it) and
+ *   resolves symlinks by calling GetFinalPathNameByHandleA.
+ */
 char *realpath(const char *path, char *resolved_path)
 {
-	/* FIXME: need normalization */
-	return strcpy(resolved_path, path);
+	char buffer[MAX_PATH];
+	char *real_path;
+
+	/* enforce glibc pre-2.3 behaviour */
+	if (path == NULL || resolved_path == NULL) {
+		errno = EINVAL;
+		return NULL;
+	}
+
+	if (_fullpath(buffer, path, MAX_PATH) &&
+			(real_path=resolve_symlinks(buffer))) {
+		strcpy(resolved_path, real_path);
+		convert_slashes(resolved_path);
+		return resolved_path;
+	}
+	return NULL;
 }
 
 const char *get_busybox_exec_path(void)
@@ -1208,7 +1262,6 @@ off_t mingw_lseek(int fd, off_t offset, int whence)
 
 #if ENABLE_FEATURE_PS_TIME || ENABLE_FEATURE_PS_LONG
 #undef GetTickCount64
-#include "lazyload.h"
 
 ULONGLONG CompatGetTickCount64(void)
 {
