@@ -30,3 +30,5 @@ BEGIN
     VALUE "Translation", 0x809, 1252
   END
 END
+
+1 RT_MANIFEST "busybox-w32.manifest"
