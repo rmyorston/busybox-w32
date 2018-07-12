@@ -627,6 +627,7 @@ static int kill_pids(pid_t pid, int exit_code, kill_callback killer)
 	}
 
 	for (i = len - 1; i >= 0; i--) {
+		SetLastError(0);
 		if (killer(pids[i], exit_code)) {
 			errno = err_win_to_posix(GetLastError());
 			ret = -1;
@@ -693,6 +694,7 @@ int kill_SIGTERM_by_handle(HANDLE process, int exit_code)
 		}
 		if (!exit_process_address ||
 		    !process_architecture_matches_current(process)) {
+			SetLastError(ERROR_ACCESS_DENIED);
 			ret = -1;
 			goto finish;
 		}
