@@ -6,7 +6,7 @@
 
 obj-y :=
 
-obj-$(CONFIG_FEATURE_RESOURCES) += icon.o
+obj-$(CONFIG_FEATURE_RESOURCES) += resources.o
 
 # return commit level if available or 0
 bb_level = $(or $(word 2,$(subst -, ,$1)),0)
@@ -22,9 +22,9 @@ quiet_cmd_windres = WINDRES $@
 %.o: %.rc FORCE
 	$(call if_changed,windres)
 
-win32/icon/icon.o: win32/icon/icon.rc .config
-win32/icon/icon.o: win32/icon/aterm.ico win32/icon/sterm.ico
-win32/icon/icon.o: win32/icon/busybox-w32.manifest
+win32/resources/resources.o: win32/resources/resources.rc .config
+win32/resources/resources.o: win32/resources/aterm.ico win32/resources/sterm.ico
+win32/resources/resources.o: win32/resources/busybox-w32.manifest
 
-win32/icon/busybox-w32.manifest: win32/icon/busybox-w32.manifest.src .config
-	@sed -b "s/VERSION/$(BB_VER)/" win32/icon/busybox-w32.manifest.src >win32/icon/busybox-w32.manifest
+win32/resources/busybox-w32.manifest: win32/resources/busybox-w32.manifest.src .config
+	@sed -b "s/VERSION/$(BB_VER)/" win32/resources/busybox-w32.manifest.src >win32/resources/busybox-w32.manifest

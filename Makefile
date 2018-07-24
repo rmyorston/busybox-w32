@@ -464,7 +464,7 @@ scripts_basic: include/autoconf.h
 # Objects we will link into busybox / subdirs we need to visit
 core-y		:= \
 		applets/ \
-		win32/icon/ \
+		win32/resources/ \
 
 libs-y		:= \
 		archival/ \
