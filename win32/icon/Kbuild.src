@@ -6,7 +6,7 @@
 
 obj-y :=
 
-obj-$(CONFIG_FEATURE_ICON) += icon.o
+obj-$(CONFIG_FEATURE_RESOURCES) += icon.o
 
 # return commit level if available or 0
 bb_level = $(or $(word 2,$(subst -, ,$1)),0)

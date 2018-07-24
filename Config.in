@@ -401,10 +401,32 @@ config FEATURE_PRNG_ISAAC
 
 endchoice
 
+config FEATURE_RESOURCES
+	bool "Include resources in binary"
+	default y
+	depends on PLATFORM_MINGW32
+	help
+	Microsoft Windows applications can contain non-executable resources
+	of various sorts.
+
+config FEATURE_VERSIONINFO
+	bool "Include version information in binary (1.0 kb)"
+	default y
+	depends on FEATURE_RESOURCES
+	help
+	Include version information in the application.
+
+config FEATURE_MANIFEST
+	bool "Include manifest in binary (1.5 kb)"
+	default y
+	depends on FEATURE_RESOURCES
+	help
+	Include a manifest which declares privleges required by the application.
+
 config FEATURE_ICON
 	bool "Include application icon in binary"
 	default y
-	depends on PLATFORM_MINGW32
+	depends on FEATURE_RESOURCES
 	help
 	Microsoft Windows applications can contain icons which are used in
 	various places in the user interface.  Each icon adds 15 Kbytes to
