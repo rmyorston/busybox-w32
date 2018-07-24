@@ -27,4 +27,4 @@ win32/icon/icon.o: win32/icon/aterm.ico win32/icon/sterm.ico
 win32/icon/icon.o: win32/icon/busybox-w32.manifest
 
 win32/icon/busybox-w32.manifest: win32/icon/busybox-w32.manifest.src .config
-	@sed "s/VERSION/$(BB_VER)/" win32/icon/busybox-w32.manifest.src >win32/icon/busybox-w32.manifest
+	@sed -b "s/VERSION/$(BB_VER)/" win32/icon/busybox-w32.manifest.src >win32/icon/busybox-w32.manifest
