@@ -177,8 +177,11 @@ void FAST_FUNC bb_show_usage(void)
 		else {
 			full_write2_str("\nUsage: ");
 			full_write2_str(applet_name);
-			full_write2_str(" ");
-			full_write2_str(p);
+			if (p[0]) {
+				if (p[0] != '\n')
+					full_write2_str(" ");
+				full_write2_str(p);
+			}
 			full_write2_str("\n");
 		}
 		if (ENABLE_FEATURE_CLEAN_UP)
@@ -747,7 +750,7 @@ static void install_links(const char *busybox, int use_symbolic_links,
 	 * busybox.h::bb_install_loc_t, or else... */
 	int (*lf)(const char *, const char *);
 	char *fpc;
-        const char *appname = applet_names;
+	const char *appname = applet_names;
 	unsigned i;
 	int rc;
 

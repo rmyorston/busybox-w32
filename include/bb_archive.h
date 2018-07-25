@@ -74,8 +74,8 @@ typedef struct archive_handle_t {
 	/* Currently processed file's header */
 	file_header_t *file_header;
 
-	/* List of symlink placeholders */
-	llist_t *symlink_placeholders;
+	/* List of link placeholders */
+	llist_t *link_placeholders;
 
 	/* Process the header component, e.g. tar -t */
 	void FAST_FUNC (*action_header)(const file_header_t *);
@@ -126,10 +126,10 @@ typedef struct archive_handle_t {
 #if ENABLE_FEATURE_AR_CREATE
 	const char *ar__name;
 	struct archive_handle_t *ar__out;
-# if ENABLE_FEATURE_AR_LONG_FILENAMES
+#endif
+#if ENABLE_FEATURE_AR_LONG_FILENAMES
 	char *ar__long_names;
 	unsigned ar__long_name_size;
-# endif
 #endif
 } archive_handle_t;
 /* bits in ah_flags */
@@ -213,13 +213,14 @@ void seek_by_jump(int fd, off_t amount) FAST_FUNC;
 void seek_by_read(int fd, off_t amount) FAST_FUNC;
 
 const char *strip_unsafe_prefix(const char *str) FAST_FUNC;
-void create_or_remember_symlink(llist_t **symlink_placeholders,
+void create_or_remember_link(llist_t **link_placeholders,
 		const char *target,
-		const char *linkname) FAST_FUNC;
+		const char *linkname,
+		int hard_link) FAST_FUNC;
 #if !ENABLE_PLATFORM_MINGW32
-void create_symlinks_from_list(llist_t *list) FAST_FUNC;
+void create_links_from_list(llist_t *list) FAST_FUNC;
 #else
-#define create_symlinks_from_list(l) (void)0
+#define create_links_from_list(l) (void)0
 #endif
 
 void data_align(archive_handle_t *archive_handle, unsigned boundary) FAST_FUNC;

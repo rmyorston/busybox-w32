@@ -693,16 +693,10 @@ static int raw_bcast_from_client_config_ifindex(struct dhcp_packet *packet, uint
 
 static int bcast_or_ucast(struct dhcp_packet *packet, uint32_t ciaddr, uint32_t server)
 {
-	if (server) {
-		/* Without MSG_DONTROUTE, the packet was seen routed over
-		 * _other interface_ if server ID is bogus (example: 1.1.1.1).
-		 */
+	if (server)
 		return udhcp_send_kernel_packet(packet,
 			ciaddr, CLIENT_PORT,
-			server, SERVER_PORT,
-			/*send_flags: "to hosts only on directly connected networks" */ MSG_DONTROUTE
-		);
-	}
+			server, SERVER_PORT);
 	return raw_bcast_from_client_config_ifindex(packet, ciaddr);
 }
 
@@ -1337,7 +1331,10 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 	}
 	while (list_x) {
 		char *optstr = xstrdup(llist_pop(&list_x));
-		udhcp_str2optset(optstr, &client_config.options, dhcp_optflags, dhcp_option_strings);
+		udhcp_str2optset(optstr, &client_config.options,
+				dhcp_optflags, dhcp_option_strings,
+				/*dhcpv6:*/ 0
+		);
 		free(optstr);
 	}
 

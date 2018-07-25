@@ -137,6 +137,7 @@
 //usage:       "Retrieve files via HTTP or FTP\n"
 //usage:	IF_FEATURE_WGET_LONG_OPTIONS(
 //usage:     "\n	--spider	Only check URL existence: $? is 0 if exists"
+///////:     "\n	--no-check-certificate	Don't validate the server's certificate"
 //usage:	)
 //usage:     "\n	-c		Continue retrieval of aborted transfer"
 //usage:     "\n	-q		Quiet"
@@ -271,6 +272,7 @@ enum {
 	WGET_OPT_HEADER     = (1 << 10) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
 	WGET_OPT_POST_DATA  = (1 << 11) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
 	WGET_OPT_SPIDER     = (1 << 12) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
+	WGET_OPT_NO_CHECK_CERT = (1 << 13) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
 };
 
 enum {
@@ -720,6 +722,9 @@ static void spawn_ssl_client(const char *host, int network_fd, int flags)
 	int sp[2];
 	int pid;
 	char *servername, *p;
+
+	if (!(option_mask32 & WGET_OPT_NO_CHECK_CERT))
+		bb_error_msg("note: TLS certificate validation not implemented");
 
 	servername = xstrdup(host);
 	p = strrchr(servername, ':');
@@ -1362,6 +1367,7 @@ However, in real world it was observed that some web servers
 						/* server.user remains untouched */
 						free(server.allocated);
 						server.allocated = NULL;
+						server.protocol = target.protocol;
 						server.host = target.host;
 						/* strip_ipv6_scope_id(target.host); - no! */
 						/* we assume remote never gives us IPv6 addr with scope id */
@@ -1434,10 +1440,9 @@ IF_DESKTOP(	"tries\0"            Required_argument "t")
 		"header\0"           Required_argument "\xff"
 		"post-data\0"        Required_argument "\xfe"
 		"spider\0"           No_argument       "\xfd"
+		"no-check-certificate\0" No_argument   "\xfc"
 		/* Ignored (we always use PASV): */
 IF_DESKTOP(	"passive-ftp\0"      No_argument       "\xf0")
-		/* Ignored (we don't do ssl) */
-IF_DESKTOP(	"no-check-certificate\0" No_argument   "\xf0")
 		/* Ignored (we don't support caching) */
 IF_DESKTOP(	"no-cache\0"         No_argument       "\xf0")
 IF_DESKTOP(	"no-verbose\0"       No_argument       "\xf0")
@@ -1497,6 +1502,7 @@ IF_DESKTOP(	"no-parent\0"        No_argument       "\xf0")
 	if (option_mask32 & WGET_OPT_HEADER) bb_error_msg("--header");
 	if (option_mask32 & WGET_OPT_POST_DATA) bb_error_msg("--post-data");
 	if (option_mask32 & WGET_OPT_SPIDER) bb_error_msg("--spider");
+	if (option_mask32 & WGET_OPT_NO_CHECK_CERT) bb_error_msg("--no-check-certificate");
 	exit(0);
 #endif
 	argv += optind;

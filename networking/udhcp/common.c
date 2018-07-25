@@ -65,6 +65,7 @@ const struct dhcp_optflag dhcp_optflags[] = {
 #endif
 	{ OPTION_STRING                           , 0xd1 }, /* DHCP_PXE_CONF_FILE */
 	{ OPTION_STRING                           , 0xd2 }, /* DHCP_PXE_PATH_PREFIX */
+	{ OPTION_U32                              , 0xd3 }, /* DHCP_REBOOT_TIME   */
 	{ OPTION_6RD                              , 0xd4 }, /* DHCP_6RD           */
 	{ OPTION_STATIC_ROUTES | OPTION_LIST      , 0xf9 }, /* DHCP_MS_STATIC_ROUTES */
 	{ OPTION_STRING                           , 0xfc }, /* DHCP_WPAD          */
@@ -92,50 +93,51 @@ const struct dhcp_optflag dhcp_optflags[] = {
  */
 /* Must match dhcp_optflags[] order */
 const char dhcp_option_strings[] ALIGN1 =
-	"subnet" "\0"      /* DHCP_SUBNET         */
-	"timezone" "\0"    /* DHCP_TIME_OFFSET    */
-	"router" "\0"      /* DHCP_ROUTER         */
-//	"timesrv" "\0"     /* DHCP_TIME_SERVER    */
-//	"namesrv" "\0"     /* DHCP_NAME_SERVER    */
-	"dns" "\0"         /* DHCP_DNS_SERVER     */
-//	"logsrv" "\0"      /* DHCP_LOG_SERVER     */
-//	"cookiesrv" "\0"   /* DHCP_COOKIE_SERVER  */
-	"lprsrv" "\0"      /* DHCP_LPR_SERVER     */
-	"hostname" "\0"    /* DHCP_HOST_NAME      */
-	"bootsize" "\0"    /* DHCP_BOOT_SIZE      */
-	"domain" "\0"      /* DHCP_DOMAIN_NAME    */
-	"swapsrv" "\0"     /* DHCP_SWAP_SERVER    */
-	"rootpath" "\0"    /* DHCP_ROOT_PATH      */
-	"ipttl" "\0"       /* DHCP_IP_TTL         */
-	"mtu" "\0"         /* DHCP_MTU            */
-	"broadcast" "\0"   /* DHCP_BROADCAST      */
-	"routes" "\0"      /* DHCP_ROUTES         */
-	"nisdomain" "\0"   /* DHCP_NIS_DOMAIN     */
-	"nissrv" "\0"      /* DHCP_NIS_SERVER     */
-	"ntpsrv" "\0"      /* DHCP_NTP_SERVER     */
-	"wins" "\0"        /* DHCP_WINS_SERVER    */
-	"lease" "\0"       /* DHCP_LEASE_TIME     */
-	"serverid" "\0"    /* DHCP_SERVER_ID      */
-	"message" "\0"     /* DHCP_ERR_MESSAGE    */
-	"tftp" "\0"        /* DHCP_TFTP_SERVER_NAME */
-	"bootfile" "\0"    /* DHCP_BOOT_FILE      */
-//	"userclass" "\0"   /* DHCP_USER_CLASS     */
+	"subnet" "\0"           /* DHCP_SUBNET          */
+	"timezone" "\0"         /* DHCP_TIME_OFFSET     */
+	"router" "\0"           /* DHCP_ROUTER          */
+//	"timesrv" "\0"          /* DHCP_TIME_SERVER     */
+//	"namesrv" "\0"          /* DHCP_NAME_SERVER     */
+	"dns" "\0"              /* DHCP_DNS_SERVER      */
+//	"logsrv" "\0"           /* DHCP_LOG_SERVER      */
+//	"cookiesrv" "\0"        /* DHCP_COOKIE_SERVER   */
+	"lprsrv" "\0"           /* DHCP_LPR_SERVER      */
+	"hostname" "\0"         /* DHCP_HOST_NAME       */
+	"bootsize" "\0"         /* DHCP_BOOT_SIZE       */
+	"domain" "\0"           /* DHCP_DOMAIN_NAME     */
+	"swapsrv" "\0"          /* DHCP_SWAP_SERVER     */
+	"rootpath" "\0"         /* DHCP_ROOT_PATH       */
+	"ipttl" "\0"            /* DHCP_IP_TTL          */
+	"mtu" "\0"              /* DHCP_MTU             */
+	"broadcast" "\0"        /* DHCP_BROADCAST       */
+	"routes" "\0"           /* DHCP_ROUTES          */
+	"nisdomain" "\0"        /* DHCP_NIS_DOMAIN      */
+	"nissrv" "\0"           /* DHCP_NIS_SERVER      */
+	"ntpsrv" "\0"           /* DHCP_NTP_SERVER      */
+	"wins" "\0"             /* DHCP_WINS_SERVER     */
+	"lease" "\0"            /* DHCP_LEASE_TIME      */
+	"serverid" "\0"         /* DHCP_SERVER_ID       */
+	"message" "\0"          /* DHCP_ERR_MESSAGE     */
+	"tftp" "\0"             /* DHCP_TFTP_SERVER_NAME*/
+	"bootfile" "\0"         /* DHCP_BOOT_FILE       */
+//	"userclass" "\0"        /* DHCP_USER_CLASS      */
 #if ENABLE_FEATURE_UDHCP_RFC3397
-	"search" "\0"      /* DHCP_DOMAIN_SEARCH  */
+	"search" "\0"           /* DHCP_DOMAIN_SEARCH   */
 // doesn't work in udhcpd.conf since OPTION_SIP_SERVERS
 // is not handled yet by "string->option" conversion code:
-	"sipsrv" "\0"      /* DHCP_SIP_SERVERS    */
+	"sipsrv" "\0"           /* DHCP_SIP_SERVERS     */
 #endif
-	"staticroutes" "\0"/* DHCP_STATIC_ROUTES  */
+	"staticroutes" "\0"     /* DHCP_STATIC_ROUTES   */
 #if ENABLE_FEATURE_UDHCP_8021Q
-	"vlanid" "\0"      /* DHCP_VLAN_ID        */
-	"vlanpriority" "\0"/* DHCP_VLAN_PRIORITY  */
+	"vlanid" "\0"           /* DHCP_VLAN_ID         */
+	"vlanpriority" "\0"     /* DHCP_VLAN_PRIORITY   */
 #endif
-	"pxeconffile" "\0" /* DHCP_PXE_CONF_FILE  */
-	"pxepathprefix" "\0" /* DHCP_PXE_PATH_PREFIX  */
-	"ip6rd" "\0"       /* DHCP_6RD            */
-	"msstaticroutes""\0"/* DHCP_MS_STATIC_ROUTES */
-	"wpad" "\0"        /* DHCP_WPAD           */
+	"pxeconffile" "\0"      /* DHCP_PXE_CONF_FILE   */
+	"pxepathprefix" "\0"    /* DHCP_PXE_PATH_PREFIX */
+	"reboottime" "\0"       /* DHCP_REBOOT_TIME     */
+	"ip6rd" "\0"            /* DHCP_6RD             */
+	"msstaticroutes" "\0"   /* DHCP_MS_STATIC_ROUTES*/
+	"wpad" "\0"             /* DHCP_WPAD            */
 	;
 #endif
 
@@ -379,12 +381,18 @@ int FAST_FUNC udhcp_str2nip(const char *str, void *arg)
  * and to parse udhcpd.conf's "opt OPTNAME OPTVAL" directives.
  */
 /* helper: add an option to the opt_list */
+#if !ENABLE_UDHCPC6
+#define attach_option(opt_list, optflag, buffer, length, dhcpv6) \
+	attach_option(opt_list, optflag, buffer, length)
+#endif
 static NOINLINE void attach_option(
 		struct option_set **opt_list,
 		const struct dhcp_optflag *optflag,
 		char *buffer,
-		int length)
+		int length,
+		bool dhcpv6)
 {
+	IF_NOT_UDHCPC6(bool dhcpv6 = 0;)
 	struct option_set *existing;
 	char *allocated = NULL;
 
@@ -410,10 +418,21 @@ static NOINLINE void attach_option(
 		/* make a new option */
 		log2("attaching option %02x to list", optflag->code);
 		new = xmalloc(sizeof(*new));
-		new->data = xmalloc(length + OPT_DATA);
-		new->data[OPT_CODE] = optflag->code;
-		new->data[OPT_LEN] = length;
-		memcpy(new->data + OPT_DATA, (allocated ? allocated : buffer), length);
+		if (!dhcpv6) {
+			new->data = xmalloc(length + OPT_DATA);
+			new->data[OPT_CODE] = optflag->code;
+			new->data[OPT_LEN] = length;
+			memcpy(new->data + OPT_DATA, (allocated ? allocated : buffer),
+					length);
+		} else {
+			new->data = xmalloc(length + D6_OPT_DATA);
+			new->data[D6_OPT_CODE] = optflag->code >> 8;
+			new->data[D6_OPT_CODE + 1] = optflag->code & 0xff;
+			new->data[D6_OPT_LEN] = length >> 8;
+			new->data[D6_OPT_LEN + 1] = length & 0xff;
+			memcpy(new->data + D6_OPT_DATA, (allocated ? allocated : buffer),
+					length);
+		}
 
 		curr = opt_list;
 		while (*curr && (*curr)->data[OPT_CODE] < optflag->code)
@@ -450,7 +469,9 @@ static NOINLINE void attach_option(
 	free(allocated);
 }
 
-int FAST_FUNC udhcp_str2optset(const char *const_str, void *arg, const struct dhcp_optflag *optflags, const char *option_strings)
+int FAST_FUNC udhcp_str2optset(const char *const_str, void *arg,
+		const struct dhcp_optflag *optflags, const char *option_strings,
+		bool dhcpv6)
 {
 	struct option_set **opt_list = arg;
 	char *opt;
@@ -489,9 +510,10 @@ int FAST_FUNC udhcp_str2optset(const char *const_str, void *arg, const struct dh
 		int length;
 		char *val;
 
-		if (optflag->flags == OPTION_BIN)
-			val = trim(strtok(NULL, "")); /* do not split "'q w e'" */
-		else
+		if (optflag->flags == OPTION_BIN) {
+			val = strtok(NULL, ""); /* do not split "'q w e'" */
+			trim(val);
+		} else
 			val = strtok(NULL, ", \t");
 		if (!val)
 			break;
@@ -601,7 +623,7 @@ case_OPTION_STRING:
 		}
 
 		if (retval)
-			attach_option(opt_list, optflag, opt, length);
+			attach_option(opt_list, optflag, opt, length, dhcpv6);
 	} while (retval && (optflag->flags & OPTION_LIST));
 
 	return retval;

@@ -752,7 +752,10 @@ static int query_screen_dimensions(void)
 	return err;
 }
 #else
-# define query_screen_dimensions() (0)
+static ALWAYS_INLINE int query_screen_dimensions(void)
+{
+	return 0;
+}
 #endif
 
 static void edit_file(char *fn)
@@ -1069,10 +1072,13 @@ static void colon(char *buf)
 	not_implemented(p);
 #else
 
-	char c, *orig_buf, *buf1, *q, *r;
+	char c, *buf1, *q, *r;
 	char *fn, cmd[MAX_INPUT_LEN], args[MAX_INPUT_LEN];
 	int i, l, li, b, e;
 	int useforce;
+# if ENABLE_FEATURE_VI_SEARCH || ENABLE_FEATURE_ALLOW_EXEC
+	char *orig_buf;
+# endif
 
 	// :3154	// if (-e line 3154) goto it  else stay put
 	// :4,33w! foo	// write a portion of buffer to file "foo"
@@ -1104,8 +1110,10 @@ static void colon(char *buf)
 	// look for optional address(es)  :.  :1  :1,9   :'q,'a   :%
 	buf = get_address(buf, &b, &e);
 
+# if ENABLE_FEATURE_VI_SEARCH || ENABLE_FEATURE_ALLOW_EXEC
 	// remember orig command line
 	orig_buf = buf;
+# endif
 
 	// get the COMMAND into cmd[]
 	buf1 = cmd;
@@ -1149,7 +1157,7 @@ static void colon(char *buf)
 			dot_skip_over_ws();
 		}
 	}
-#if ENABLE_FEATURE_ALLOW_EXEC
+# if ENABLE_FEATURE_ALLOW_EXEC
 	else if (cmd[0] == '!') {	// run a cmd
 		int retcode;
 		// :!ls   run the <cmd>
@@ -1161,7 +1169,7 @@ static void colon(char *buf)
 		rawmode();
 		Hit_Return();			// let user see results
 	}
-#endif
+# endif
 	else if (cmd[0] == '=' && !cmd[1]) {	// where is the address
 		if (b < 0) {	// no addr given- use defaults
 			b = e = count_lines(text, dot);
@@ -1196,7 +1204,7 @@ static void colon(char *buf)
 
 		size = init_text_buffer(fn);
 
-#if ENABLE_FEATURE_VI_YANKMARK
+# if ENABLE_FEATURE_VI_YANKMARK
 		if (Ureg >= 0 && Ureg < 28) {
 			free(reg[Ureg]);	//   free orig line reg- for 'U'
 			reg[Ureg] = NULL;
@@ -1205,7 +1213,7 @@ static void colon(char *buf)
 			free(reg[YDreg]);	//   free default yank/delete register
 			reg[YDreg] = NULL;
 		}
-#endif
+# endif
 		// how many lines in text[]?
 		li = count_lines(text, end - 1);
 		status_line("'%s'%s"
@@ -1352,16 +1360,16 @@ static void colon(char *buf)
 			optind = -1; /* start from 0th file */
 			editing = 0;
 		}
-#if ENABLE_FEATURE_VI_SET
+# if ENABLE_FEATURE_VI_SET
 	} else if (strncmp(cmd, "set", i) == 0) {	// set or clear features
-#if ENABLE_FEATURE_VI_SETOPTS
+#  if ENABLE_FEATURE_VI_SETOPTS
 		char *argp;
-#endif
+#  endif
 		i = 0;			// offset into args
 		// only blank is regarded as args delimiter. What about tab '\t'?
 		if (!args[0] || strcasecmp(args, "all") == 0) {
 			// print out values of all options
-#if ENABLE_FEATURE_VI_SETOPTS
+#  if ENABLE_FEATURE_VI_SETOPTS
 			status_line_bold(
 				"%sautoindent "
 				"%sflash "
@@ -1374,10 +1382,10 @@ static void colon(char *buf)
 				showmatch ? "" : "no",
 				tabstop
 			);
-#endif
+#  endif
 			goto ret;
 		}
-#if ENABLE_FEATURE_VI_SETOPTS
+#  if ENABLE_FEATURE_VI_SETOPTS
 		argp = args;
 		while (*argp) {
 			if (strncmp(argp, "no", 2) == 0)
@@ -1395,16 +1403,17 @@ static void colon(char *buf)
 			argp = skip_non_whitespace(argp);
 			argp = skip_whitespace(argp);
 		}
-#endif /* FEATURE_VI_SETOPTS */
-#endif /* FEATURE_VI_SET */
-#if ENABLE_FEATURE_VI_SEARCH
+#  endif /* FEATURE_VI_SETOPTS */
+# endif /* FEATURE_VI_SET */
+
+# if ENABLE_FEATURE_VI_SEARCH
 	} else if (cmd[0] == 's') {	// substitute a pattern with a replacement pattern
 		char *F, *R, *flags;
 		size_t len_F, len_R;
 		int gflag;		// global replace flag
-#if ENABLE_FEATURE_VI_UNDO
+#  if ENABLE_FEATURE_VI_UNDO
 		int dont_chain_first_item = ALLOW_UNDO;
-#endif
+#  endif
 
 		// F points to the "find" pattern
 		// R points to the "replace" pattern
@@ -1441,9 +1450,9 @@ static void colon(char *buf)
 				// we found the "find" pattern - delete it
 				// For undo support, the first item should not be chained
 				text_hole_delete(found, found + len_F - 1, dont_chain_first_item);
-#if ENABLE_FEATURE_VI_UNDO
+#  if ENABLE_FEATURE_VI_UNDO
 				dont_chain_first_item = ALLOW_UNDO_CHAIN;
-#endif
+#  endif
 				// insert the "replace" patern
 				bias = string_insert(found, R, ALLOW_UNDO_CHAIN);
 				found += bias;
@@ -1459,7 +1468,7 @@ static void colon(char *buf)
 			}
 			q = next_line(ls);
 		}
-#endif /* FEATURE_VI_SEARCH */
+# endif /* FEATURE_VI_SEARCH */
 	} else if (strncmp(cmd, "version", i) == 0) {  // show software version
 		status_line(BB_VER);
 	} else if (strncmp(cmd, "write", i) == 0  // write text to file
@@ -1474,12 +1483,12 @@ static void colon(char *buf)
 		if (args[0]) {
 			fn = args;
 		}
-#if ENABLE_FEATURE_VI_READONLY
+# if ENABLE_FEATURE_VI_READONLY
 		if (readonly_mode && !useforce) {
 			status_line_bold("'%s' is read only", fn);
 			goto ret;
 		}
-#endif
+# endif
 		//if (useforce) {
 			// if "fn" is not write-able, chmod u+w
 			// sprintf(syscmd, "chmod u+w %s", fn);
@@ -1519,7 +1528,7 @@ static void colon(char *buf)
 				}
 			}
 		}
-#if ENABLE_FEATURE_VI_YANKMARK
+# if ENABLE_FEATURE_VI_YANKMARK
 	} else if (strncmp(cmd, "yank", i) == 0) {	// yank lines
 		if (b < 0) {	// no addr given- use defaults
 			q = begin_line(dot);	// assume .,. for the range
@@ -1529,7 +1538,7 @@ static void colon(char *buf)
 		li = count_lines(q, r);
 		status_line("Yank %d lines (%d chars) into [%c]",
 				li, strlen(reg[YDreg]), what_reg());
-#endif
+# endif
 	} else {
 		// cmd unknown
 		not_implemented(cmd);
@@ -1537,10 +1546,10 @@ static void colon(char *buf)
  ret:
 	dot = bound_dot(dot);	// make sure "dot" is valid
 	return;
-#if ENABLE_FEATURE_VI_SEARCH
+# if ENABLE_FEATURE_VI_SEARCH
  colon_s_fail:
 	status_line(":s expression missing delimiters");
-#endif
+# endif
 #endif /* FEATURE_VI_COLON */
 }
 

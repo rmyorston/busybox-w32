@@ -57,6 +57,8 @@ if test x"$LIBC" = x"glibc"; then
 	| grep -v CONFIG_FEATURE_2_4_MODULES \
 	| grep -v CONFIG_FEATURE_USE_BSS_TAIL \
 	| grep -v CONFIG_DEBUG_SANITIZE \
+	| grep -v CONFIG_FEATURE_MOUNT_NFS \
+	| grep -v CONFIG_FEATURE_INETD_RPC \
 	>.config.new
 	mv .config.new .config
 	echo '# CONFIG_STATIC is not set' >>.config
@@ -66,6 +68,9 @@ if test x"$LIBC" = x"glibc"; then
 	echo '# CONFIG_FEATURE_2_4_MODULES is not set' >>.config
 	echo '# CONFIG_FEATURE_USE_BSS_TAIL is not set' >>.config
 	echo '# CONFIG_DEBUG_SANITIZE is not set' >>.config
+	# 2018: current glibc versions no longer include rpc/rpc.h
+	echo '# CONFIG_FEATURE_MOUNT_NFS is not set' >>.config
+	echo '# CONFIG_FEATURE_INETD_RPC is not set' >>.config
 fi
 
 # If uclibc, build static, and remove some things
@@ -86,6 +91,7 @@ if test x"$LIBC" = x"uclibc"; then
 	| grep -v CONFIG_UNSHARE \
 	| grep -v CONFIG_FALLOCATE \
 	| grep -v CONFIG_UDHCPC6 \
+	| grep -v CONFIG_NSLOOKUP \
 	| grep -v CONFIG_ASH_INTERNAL_GLOB \
 	>.config.new
 	mv .config.new .config
@@ -103,6 +109,7 @@ if test x"$LIBC" = x"uclibc"; then
 	echo '# CONFIG_UNSHARE is not set' >>.config
 	echo '# CONFIG_FALLOCATE is not set' >>.config
 	echo '# CONFIG_UDHCPC6 is not set' >>.config
+	echo '# CONFIG_NSLOOKUP is not set' >>.config
 	echo 'CONFIG_ASH_INTERNAL_GLOB=y' >>.config
 fi
 
