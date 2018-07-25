@@ -421,7 +421,8 @@ config FEATURE_MANIFEST
 	default y
 	depends on FEATURE_RESOURCES
 	help
-	Include a manifest which declares privleges required by the application.
+	Include a manifest which declares privileges required by the
+	application.
 
 config FEATURE_ICON
 	bool "Include application icon in binary"
