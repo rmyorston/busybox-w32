@@ -601,35 +601,46 @@ static int FAST_FUNC writeFileToTarball(const char *fileName, struct stat *statb
 /* Don't inline: vfork scares gcc and pessimizes code */
 static void NOINLINE vfork_compressor(int tar_fd, const char *gzip)
 {
-	pid_t gzipPid;
-
 	// On Linux, vfork never unpauses parent early, although standard
 	// allows for that. Do we want to waste bytes checking for it?
 #  define WAIT_FOR_CHILD 0
 	volatile int vfork_exec_errno = 0;
-	struct fd_pair gzipDataPipe;
+	struct fd_pair data;
 #  if WAIT_FOR_CHILD
-	struct fd_pair gzipStatusPipe;
-	xpiped_pair(gzipStatusPipe);
+	struct fd_pair status;
+	xpiped_pair(status);
 #  endif
-	xpiped_pair(gzipDataPipe);
+	xpiped_pair(data);
 
 	signal(SIGPIPE, SIG_IGN); /* we only want EPIPE on errors */
 
-	gzipPid = xvfork();
-
-	if (gzipPid == 0) {
+	if (xvfork() == 0) {
 		/* child */
+		int tfd;
 		/* NB: close _first_, then move fds! */
-		close(gzipDataPipe.wr);
+		close(data.wr);
 #  if WAIT_FOR_CHILD
-		close(gzipStatusPipe.rd);
-		/* gzipStatusPipe.wr will close only on exec -
+		close(status.rd);
+		/* status.wr will close only on exec -
 		 * parent waits for this close to happen */
-		fcntl(gzipStatusPipe.wr, F_SETFD, FD_CLOEXEC);
+		fcntl(status.wr, F_SETFD, FD_CLOEXEC);
 #  endif
-		xmove_fd(gzipDataPipe.rd, 0);
-		xmove_fd(tar_fd, 1);
+		/* copy it: parent's tar_fd variable must not change */
+		tfd = tar_fd;
+		if (tfd == 0) {
+			/* Output tar fd may be zero.
+			 * xmove_fd(data.rd, 0) would destroy it.
+			 * Reproducer:
+			 *  exec 0>&-
+			 *  exec 1>&-
+			 *  tar czf Z.tar.gz FILE
+			 * Swapping move_fd's order wouldn't work:
+			 * data.rd is 1 and _it_ would be destroyed.
+			 */
+			tfd = dup(tfd);
+		}
+		xmove_fd(data.rd, 0);
+		xmove_fd(tfd, 1);
 		/* exec gzip/bzip2 program/applet */
 		BB_EXECLP(gzip, gzip, "-f", (char *)0);
 		vfork_exec_errno = errno;
@@ -637,20 +648,18 @@ static void NOINLINE vfork_compressor(int tar_fd, const char *gzip)
 	}
 
 	/* parent */
-	xmove_fd(gzipDataPipe.wr, tar_fd);
-	close(gzipDataPipe.rd);
+	xmove_fd(data.wr, tar_fd);
+	close(data.rd);
 #  if WAIT_FOR_CHILD
-	close(gzipStatusPipe.wr);
+	close(status.wr);
 	while (1) {
-		char buf;
-		int n;
-
 		/* Wait until child execs (or fails to) */
-		n = full_read(gzipStatusPipe.rd, &buf, 1);
+		char buf;
+		int n = full_read(status.rd, &buf, 1);
 		if (n < 0 /* && errno == EAGAIN */)
 			continue;	/* try it again */
 	}
-	close(gzipStatusPipe.rd);
+	close(status.rd);
 #  endif
 	if (vfork_exec_errno) {
 		errno = vfork_exec_errno;
@@ -754,11 +763,7 @@ static NOINLINE int writeTarFile(
 	return errorFlag;
 }
 
-#else /* !FEATURE_TAR_CREATE */
-
-# define writeTarFile(...) 0
-
-#endif
+#endif /* FEATURE_TAR_CREATE */
 
 #if ENABLE_FEATURE_TAR_FROM
 static llist_t *append_file_list_to_list(llist_t *list)
@@ -1190,17 +1195,16 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 		if (LONE_DASH(tar_filename)) {
 			tar_handle->src_fd = tar_fd;
 			tar_handle->seek = seek_by_read;
+		} else
+		if (ENABLE_FEATURE_TAR_AUTODETECT
+		 && flags == O_RDONLY
+		 && !(opt & OPT_ANY_COMPRESS)
+		) {
+			tar_handle->src_fd = open_zipped(tar_filename, /*fail_if_not_compressed:*/ 0);
+			if (tar_handle->src_fd < 0)
+				bb_perror_msg_and_die("can't open '%s'", tar_filename);
 		} else {
-			if (ENABLE_FEATURE_TAR_AUTODETECT
-			 && flags == O_RDONLY
-			 && !(opt & OPT_ANY_COMPRESS)
-			) {
-				tar_handle->src_fd = open_zipped(tar_filename, /*fail_if_not_compressed:*/ 0);
-				if (tar_handle->src_fd < 0)
-					bb_perror_msg_and_die("can't open '%s'", tar_filename);
-			} else {
-				tar_handle->src_fd = xopen(tar_filename, flags);
-			}
+			tar_handle->src_fd = xopen(tar_filename, flags);
 		}
 	}
 

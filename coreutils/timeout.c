@@ -39,10 +39,10 @@
 //kbuild:lib-$(CONFIG_TIMEOUT) += timeout.o
 
 //usage:#define timeout_trivial_usage
-//usage:       "[-t SECS] [-s SIG] PROG ARGS"
+//usage:       "[-s SIG] SECS PROG ARGS"
 //usage:#define timeout_full_usage "\n\n"
 //usage:       "Runs PROG. Sends SIG to it if it is not gone in SECS seconds.\n"
-//usage:       "Defaults: SECS: 10, SIG: TERM."
+//usage:       "Default SIG: TERM."
 
 #include "libbb.h"
 
@@ -68,7 +68,7 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 	DWORD status = EXIT_SUCCESS;
 #endif
 	int parent = 0;
-	int timeout = 10;
+	int timeout;
 	pid_t pid;
 #if !BB_MMU
 	char *sv1, *sv2;
@@ -83,25 +83,34 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 
 	/* -t SECONDS; -p PARENT_PID */
 	/* '+': stop at first non-option */
-	getopt32(argv, "+s:t:+" USE_FOR_NOMMU("p:+"), &opt_s, &timeout, &parent);
+	getopt32(argv, "+s:" USE_FOR_NOMMU("p:+"), &opt_s, &parent);
 	/*argv += optind; - no, wait for bb_daemonize_or_rexec! */
+
 	signo = get_signum(opt_s);
 #if !ENABLE_PLATFORM_MINGW32
 	if (signo < 0)
+#else
+	if (signo != SIGTERM && signo != SIGKILL && signo != 0)
+#endif
 		bb_error_msg_and_die("unknown signal '%s'", opt_s);
 
+	if (!argv[optind])
+		bb_show_usage();
+	timeout = parse_duration_str(argv[optind++]);
+	if (!argv[optind]) /* no PROG? */
+		bb_show_usage();
+
+#if !ENABLE_PLATFORM_MINGW32
 	/* We want to create a grandchild which will watch
 	 * and kill the grandparent. Other methods:
 	 * making parent watch child disrupts parent<->child link
 	 * (example: "tcpsvd 0.0.0.0 1234 timeout service_prog" -
 	 * it's better if service_prog is a child of tcpsvd!),
 	 * making child watch parent results in programs having
-	 * unexpected children. */
+	 * unexpected children.	*/
 
 	if (parent) /* we were re-execed, already grandchild */
 		goto grandchild;
-	if (!argv[optind]) /* no PROG? */
-		bb_show_usage();
 
 #if !BB_MMU
 	sv1 = argv[optind];
@@ -146,13 +155,6 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	BB_EXECVP_or_die(argv);
 #else /* ENABLE_PLATFORM_MINGW32 */
-	if (signo != SIGTERM && signo != SIGKILL && signo != 0)
-		bb_error_msg_and_die("unknown signal '%s'", opt_s);
-
-	argv += optind;
-	if (argv[0] == NULL)
-		bb_show_usage();
-
 	if ((ret=mingw_spawn_proc((const char **)argv)) == -1) {
 		xfunc_error_retval = errno == EACCES ? 126 : 127;
 		bb_perror_msg_and_die("can't execute '%s'", argv[0]);
