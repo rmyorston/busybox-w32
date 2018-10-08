@@ -874,7 +874,8 @@ typedef struct uni_stat_t {
 } uni_stat_t;
 /* Returns a string with unprintable chars replaced by '?' or
  * SUBST_WCHAR. This function is unicode-aware. */
-const char* FAST_FUNC printable_string(uni_stat_t *stats, const char *str);
+const char* FAST_FUNC printable_string(const char *str);
+const char* FAST_FUNC printable_string2(uni_stat_t *stats, const char *str);
 /* Prints unprintable char ch as ^C or M-c to file
  * (M-c is used only if ch is ORed with PRINTABLE_META),
  * else it is printed as-is (except for ch = 0x9b) */
@@ -2193,6 +2194,23 @@ extern const char bb_default_login_shell[] ALIGN1;
 # define LOOP_NAME "/dev/loop"
 # define FB_0 "/dev/fb0"
 #endif
+
+// storage helpers for mk*fs utilities
+char BUG_wrong_field_size(void);
+#define STORE_LE(field, value) \
+do { \
+	if (sizeof(field) == 4) \
+		field = SWAP_LE32((uint32_t)(value)); \
+	else if (sizeof(field) == 2) \
+		field = SWAP_LE16((uint16_t)(value)); \
+	else if (sizeof(field) == 1) \
+		field = (uint8_t)(value); \
+	else \
+		BUG_wrong_field_size(); \
+} while (0)
+
+#define FETCH_LE32(field) \
+	(sizeof(field) == 4 ? SWAP_LE32(field) : BUG_wrong_field_size())
 
 
 #define ARRAY_SIZE(x) ((unsigned)(sizeof(x) / sizeof((x)[0])))
