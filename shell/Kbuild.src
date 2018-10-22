@@ -10,3 +10,13 @@ INSERT
 
 lib-$(CONFIG_FEATURE_SH_MATH) += math.o
 lib-$(CONFIG_FEATURE_PRNG_SHELL) += random.o
+
+quiet_cmd_gen_embedded_scripts = GEN     include/embedded_scripts.h
+      cmd_gen_embedded_scripts = $(srctree_slash)shell/embedded_scripts include/embedded_scripts.h embed
+
+ifdef CONFIG_ASH_EMBEDDED_SCRIPTS
+shell/ash.o: include/embedded_scripts.h
+endif
+
+include/embedded_scripts.h: $(wildcard embed/*) shell/embedded_scripts
+	$(call cmd,gen_embedded_scripts)

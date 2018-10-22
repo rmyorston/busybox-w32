@@ -175,6 +175,25 @@
 //config:	  from a GUI application.  Disable this if your platform doesn't
 //config:	  support the required APIs.
 //config:
+//config:config ASH_EMBEDDED_SCRIPTS
+//config:	bool "Embed scripts in the binary"
+//config:	default n
+//config:	depends on ASH || SH_IS_ASH || BASH_IS_ASH
+//config:	help
+//config:	Allow scripts to be compressed and embedded in the BusyBox
+//config:	binary.  The scripts should be placed in the 'embed' directory.
+//config:	Such scripts can only be run by giving their name as an
+//config:	argument to the shell, though aliases are set up to do this.
+//config:	The names of the scripts are listed by the '-L' shell argument.
+//config:
+//config:config ASH_LIST_EMBEDDED_SCRIPTS
+//config:	bool "Allow the contents of embedded scripts to be listed"
+//config:	default n
+//config:	depends on ASH_EMBEDDED_SCRIPTS
+//config:	help
+//config:	Allow the contents of embedded script to be listed using
+//config:	the '-L name' shell argument.
+//config:
 //config:endif # ash options
 
 //applet:IF_ASH(APPLET(ash, BB_DIR_BIN, BB_SUID_DROP))
@@ -208,6 +227,16 @@
 #include <sys/times.h>
 #include <sys/utsname.h> /* for setting $HOSTNAME */
 #include "busybox.h" /* for applet_names */
+
+#if ENABLE_ASH_EMBEDDED_SCRIPTS
+#include "embedded_scripts.h"
+#else
+#define NUM_SCRIPTS 0
+#endif
+
+#if NUM_SCRIPTS
+static const char packed_scripts[] ALIGN1 = { PACKED_SCRIPTS };
+#endif
 
 /* So far, all bash compat is controlled by one config option */
 /* Separate defines document which part of code implements what */
@@ -11490,6 +11519,76 @@ setparam(char **argv)
 #endif
 }
 
+#if NUM_SCRIPTS
+#define BB_ARCHIVE_PUBLIC
+# include "bb_archive.h"
+static char *unpack_scripts(void)
+{
+	char *outbuf = NULL;
+	bunzip_data *bd;
+	int i;
+	jmp_buf jmpbuf;
+
+	/* Setup for I/O error handling via longjmp */
+	i = setjmp(jmpbuf);
+	if (i == 0) {
+		i = start_bunzip(&jmpbuf,
+			&bd,
+			/* src_fd: */ -1,
+			/* inbuf:  */ packed_scripts,
+			/* len:    */ sizeof(packed_scripts)
+		);
+	}
+	/* read_bunzip can longjmp and end up here with i != 0
+	 * on read data errors! Not trivial */
+	if (i == 0) {
+		/* Cannot use xmalloc: will leak bd in NOFORK case! */
+		outbuf = malloc_or_warn(UNPACKED_SCRIPTS_LENGTH);
+		if (outbuf)
+			read_bunzip(bd, outbuf, UNPACKED_SCRIPTS_LENGTH);
+	}
+	dealloc_bunzip(bd);
+	return outbuf;
+}
+
+static char *
+check_embedded(const char *arg)
+{
+	int i;
+	char *scripts;
+	const char *s;
+
+	i = 0;
+	for (s=script_names; *s; s+=strlen(s)+1) {
+		if (strcmp(arg, s) == 0) {
+			break;
+		}
+		++i;
+	}
+
+	if (i != NUM_SCRIPTS && (scripts=unpack_scripts()) != NULL) {
+		char *t = scripts;
+		while (i != 0) {
+			t += strlen(t) + 1;
+			--i;
+		}
+		return t;
+	}
+
+	return NULL;
+}
+
+static void
+alias_embedded(void)
+{
+	const char *s;
+
+	for (s=script_names; *s; s+=strlen(s)+1) {
+		setalias(s, auto_string(xasprintf("sh %s", s)));
+	}
+}
+#endif
+
 /*
  * Process shell options.  The global variable argptr contains a pointer
  * to the argument list; we advance it past the options.
@@ -11600,6 +11699,26 @@ options(int cmdline, int *login_sh)
 						*login_sh = 1;
 				}
 				break;
+#if NUM_SCRIPTS
+			} else if (cmdline && (c == 'L')) {
+#if ENABLE_ASH_LIST_EMBEDDED_SCRIPTS
+				if (*argptr) {
+					char *script;
+
+					if ((script=check_embedded(*argptr)) != NULL) {
+						printf(script);
+					}
+				} else
+#endif
+				{
+					const char *s;
+
+					for (s=script_names; *s; s+=strlen(s)+1) {
+						printf("%s\n", s);
+					}
+				}
+				exit(0);
+#endif
 			} else {
 				setoption(c, val);
 			}
@@ -14643,9 +14762,17 @@ init(void)
 	}
 }
 
-
 //usage:#define ash_trivial_usage
 //usage:	"[-/+OPTIONS] [-/+o OPT]... [-c 'SCRIPT' [ARG0 [ARGS]] / FILE [ARGS] / -s [ARGS]]"
+//usage:	IF_ASH_EMBEDDED_SCRIPTS(
+//usage:	" [-L"
+//usage:	)
+//usage:	IF_ASH_LIST_EMBEDDED_SCRIPTS(
+//usage:	" [name]"
+//usage:	)
+//usage:	IF_ASH_EMBEDDED_SCRIPTS(
+//usage:	"]"
+//usage:	)
 //usage:#define ash_full_usage "\n\n"
 //usage:	"Unix shell interpreter"
 
@@ -14689,12 +14816,23 @@ procargs(char **argv)
 #if DEBUG == 2
 	debug = 1;
 #endif
+#if NUM_SCRIPTS
+	alias_embedded();
+#endif
 	/* POSIX 1003.2: first arg after "-c CMD" is $0, remainder $1... */
 	if (xminusc) {
 		minusc = *xargv++;
 		if (*xargv)
 			goto setarg0;
 	} else if (!sflag) {
+#if NUM_SCRIPTS
+		char *script;
+		if ((script=check_embedded(*xargv)) != NULL) {
+			setinputstring(script);
+			xflag = 0;
+			goto setarg0;
+		}
+#endif
 		setinputfile(*xargv, 0);
 #if ENABLE_PLATFORM_MINGW32
 		convert_slashes(*xargv);
