@@ -14829,7 +14829,9 @@ procargs(char **argv)
 		char *script;
 		if ((script=check_embedded(*xargv)) != NULL) {
 			setinputstring(script);
+#if !ENABLE_ASH_LIST_EMBEDDED_SCRIPTS
 			xflag = 0;
+#endif
 			goto setarg0;
 		}
 #endif
