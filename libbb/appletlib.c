@@ -53,6 +53,8 @@
 		|| ENABLE_FEATURE_SH_STANDALONE \
 		|| ENABLE_FEATURE_SH_NOFORK))
 # define IF_FULL_LIST_OPTION(...) __VA_ARGS__
+#else
+# define IF_FULL_LIST_OPTION(...)
 #endif
 
 #include "usage_compressed.h"
