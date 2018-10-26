@@ -205,7 +205,7 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 {
 	char **new_argv;
 	char *new_path = NULL;
-	int i, argc = -1;
+	int i, argc;
 	intptr_t ret;
 	struct stat st;
 
@@ -225,9 +225,7 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 		return -1;
 	}
 
-	while (argv[++argc])
-		;
-
+	argc = string_array_len((char **)argv);
 	new_argv = xmalloc(sizeof(*argv)*(argc+1));
 	for (i = 0;i < argc;i++)
 		new_argv[i] = quote_arg(argv[i]);
@@ -298,16 +296,14 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *con
 	int nopts;
 	interp_t interp;
 	char **new_argv;
-	int argc = -1;
+	int argc;
 	char *fullpath = NULL;
 
 	if (!parse_interpreter(prog, &interp))
 		return spawnveq(mode, prog, argv, envp);
 
 	nopts = interp.opts != NULL;
-	while (argv[++argc])
-		;
-
+	argc = string_array_len((char **)argv);
 	new_argv = xmalloc(sizeof(*argv)*(argc+nopts+2));
 	new_argv[1] = interp.opts;
 	new_argv[nopts+1] = (char *)prog; /* pass absolute path */
