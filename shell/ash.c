@@ -14550,9 +14550,11 @@ init(void)
 				if (!(end=strchr(*envp, '=')))
 					continue;
 
-				/* make all variable names uppercase */
-				for (start = *envp;start < end;start++)
-					*start = toupper(*start);
+				/* make only the "Path" variable uppercase */
+				if (strncasecmp(*envp, "PATH=", 5) == 0) {
+					for (start = *envp;start < end;start++)
+						*start = toupper(*start);
+				}
 
 				/* skip conversion of variables known to cause problems */
 				if ( strncmp(*envp, "SYSTEMROOT=", 11) == 0 ||
