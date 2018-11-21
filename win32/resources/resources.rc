@@ -1,4 +1,4 @@
-#include "../../include/autoconf.h"
+#include <autoconf.h>
 
 #if ENABLE_FEATURE_ICON_ATERM || ENABLE_FEATURE_ICON_ALL
 1 ICON "aterm.ico"

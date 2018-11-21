@@ -983,6 +983,7 @@ MRPROPER_FILES += .config .config.old include/asm .version .old_version \
 		  include/applets.h \
 		  include/usage.h \
 		  applets/usage \
+		  win32/resources/busybox-w32.manifest \
 		  .kernelrelease Module.symvers tags TAGS cscope* \
 		  busybox_old
 
