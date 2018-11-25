@@ -1010,9 +1010,6 @@ char *safe_gethostname(void) FAST_FUNC;
 char* str_tolower(char *str) FAST_FUNC;
 
 char *utoa(unsigned n) FAST_FUNC;
-#if ENABLE_PLATFORM_MINGW32
-# define itoa bb_itoa
-#endif
 char *itoa(int n) FAST_FUNC;
 /* Returns a pointer past the formatted number, does NOT null-terminate */
 char *utoa_to_buf(unsigned n, char *buf, unsigned buflen) FAST_FUNC;

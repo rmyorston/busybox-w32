@@ -419,6 +419,12 @@ DIR *mingw_opendir(const char *path);
 #define opendir mingw_opendir
 
 /*
+ * Functions with different prototypes in BusyBox and WIN32
+ */
+#define itoa bb_itoa
+#define strrev bb_strrev
+
+/*
  * MinGW specific
  */
 #define is_dir_sep(c) ((c) == '/' || (c) == '\\')
