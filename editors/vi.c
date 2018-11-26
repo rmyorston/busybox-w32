@@ -2969,26 +2969,20 @@ static int file_insert(const char *fn, char *p, int initial)
 		status_line_bold_errno(fn);
 		p = text_hole_delete(p, p + size - 1, NO_UNDO);	// un-do buffer insert
 	} else if (cnt < size) {
-		// There was a partial read, shrink unused space
 #if ENABLE_PLATFORM_MINGW32
-		int i, newline;
+		int i, cnt_cr;
 
-		newline = 0;
-		for ( i=0; i<cnt; ++i ) {
-			if ( p[i] == '\n' ) {
-				++newline;
-			}
-		}
+		// on WIN32 a partial read might just mean CRs have been removed
+		for (i = 0, cnt_cr = cnt; i < cnt; ++i)
+			if (p[i] == '\n')
+				++cnt_cr;
 #endif
+		// There was a partial read, shrink unused space
 		p = text_hole_delete(p + cnt, p + size - 1, NO_UNDO);
 #if ENABLE_PLATFORM_MINGW32
-		// on WIN32 a partial read might just mean CRs have been removed
-		if ( cnt+newline != size ) {
-			status_line_bold("can't read '%s'", fn);
-		}
-#else
-		status_line_bold("can't read '%s'", fn);
+		if (cnt_cr < size)
 #endif
+		status_line_bold("can't read '%s'", fn);
 	}
  fi:
 	close(fd);
