@@ -169,7 +169,6 @@
 # define bswap_64 __bswap64
 # define bswap_32 __bswap32
 # define bswap_16 __bswap16
-# define __BIG_ENDIAN__ (_BYTE_ORDER == _BIG_ENDIAN)
 #elif ENABLE_PLATFORM_MINGW32
 # define __BIG_ENDIAN 0
 # define __LITTLE_ENDIAN 1
