@@ -517,22 +517,15 @@ UNUSED_PARAM
 		if ((proc=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
 					FALSE, pe.th32ProcessID))) {
 			if (GetProcessTimes(proc, &crTime, &exTime, &keTime, &usTime)) {
-				/* times in ticks since 1 January 1601 */
-				static long long boot_time = 0;
-				long long start_time;
+				long long ticks_since_boot, boot_time, create_time;
+				FILETIME now;
 
-				if (boot_time == 0) {
-					long long ticks_since_boot;
-					FILETIME now;
+				ticks_since_boot = GetTickCount64()/MS_PER_TICK;
+				GetSystemTimeAsFileTime(&now);
+				boot_time = filetime_to_ticks(&now) - ticks_since_boot;
+				create_time = filetime_to_ticks(&crTime);
 
-					ticks_since_boot = GetTickCount64()/MS_PER_TICK;
-					GetSystemTimeAsFileTime(&now);
-					boot_time = filetime_to_ticks(&now) - ticks_since_boot;
-				}
-
-				start_time = filetime_to_ticks(&crTime);
-				sp->start_time = (unsigned long)(start_time - boot_time);
-
+				sp->start_time = (unsigned long)(create_time - boot_time);
 				sp->stime = (unsigned long)filetime_to_ticks(&keTime);
 				sp->utime = (unsigned long)filetime_to_ticks(&usTime);
 			}
