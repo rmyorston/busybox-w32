@@ -125,7 +125,9 @@ static unsigned long get_uptime(void)
 	if (sysinfo(&info) < 0)
 		return 0;
 	return info.uptime;
-#elif !ENABLE_PLATFORM_MINGW32
+#elif ENABLE_PLATFORM_MINGW32
+	return GetTickCount64()/1000;
+#elif 1
 	unsigned long uptime;
 	char buf[sizeof(uptime)*3 + 2];
 	/* /proc/uptime is "UPTIME_SEC.NN IDLE_SEC.NN\n"
@@ -136,8 +138,6 @@ static unsigned long get_uptime(void)
 	buf[sizeof(buf)-1] = '\0';
 	sscanf(buf, "%lu", &uptime);
 	return uptime;
-#elif ENABLE_PLATFORM_MINGW32
-	return GetTickCount64()/1000;
 #else
 	struct timespec ts;
 	if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0)
