@@ -95,6 +95,12 @@ static int multiconvert(const char *arg, void *result, converter convert)
 
 static void FAST_FUNC conv_strtoull(const char *arg, void *result)
 {
+	/* Allow leading '+' - bb_strtoull() by itself does not allow it,
+	 * and probably shouldn't (other callers might require purely numeric
+	 * inputs to be allowed.
+	 */
+	if (arg[0] == '+')
+		arg++;
 	*(unsigned long long*)result = bb_strtoull(arg, NULL, 0);
 	/* both coreutils 6.10 and bash 3.2:
 	 * $ printf '%x\n' -2
@@ -107,6 +113,8 @@ static void FAST_FUNC conv_strtoull(const char *arg, void *result)
 }
 static void FAST_FUNC conv_strtoll(const char *arg, void *result)
 {
+	if (arg[0] == '+')
+		arg++;
 	*(long long*)result = bb_strtoll(arg, NULL, 0);
 }
 static void FAST_FUNC conv_strtod(const char *arg, void *result)
@@ -191,6 +199,7 @@ static void print_direc(char *format, unsigned fmt_length,
 	if (have_width - 1 == have_prec)
 		have_width = NULL;
 
+	/* multiconvert sets errno = 0, but %s needs it cleared */
 	errno = 0;
 
 	switch (format[fmt_length - 1]) {
@@ -199,7 +208,7 @@ static void print_direc(char *format, unsigned fmt_length,
 		break;
 	case 'd':
 	case 'i':
-		llv = my_xstrtoll(argument);
+		llv = my_xstrtoll(skip_whitespace(argument));
  print_long:
 		if (!have_width) {
 			if (!have_prec)
@@ -217,7 +226,7 @@ static void print_direc(char *format, unsigned fmt_length,
 	case 'u':
 	case 'x':
 	case 'X':
-		llv = my_xstrtoull(argument);
+		llv = my_xstrtoull(skip_whitespace(argument));
 		/* cheat: unsigned long and long have same width, so... */
 		goto print_long;
 	case 's':

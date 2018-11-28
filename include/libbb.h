@@ -777,18 +777,25 @@ struct hostent *xgethostbyname(const char *name) FAST_FUNC;
 // + inet_common.c has additional IPv4-only stuff
 
 
+struct tls_aes {
+	uint32_t key[60];
+	unsigned rounds;
+};
 #define TLS_MAX_MAC_SIZE 32
 #define TLS_MAX_KEY_SIZE 32
+#define TLS_MAX_IV_SIZE   4
 struct tls_handshake_data; /* opaque */
 typedef struct tls_state {
+	unsigned flags;
+
 	int ofd;
 	int ifd;
 
 	unsigned min_encrypted_len_on_read;
 	uint16_t cipher_id;
-	uint8_t  encrypt_on_write;
 	unsigned MAC_size;
 	unsigned key_size;
+	unsigned IV_size;
 
 	uint8_t *outbuf;
 	int     outbuf_size;
@@ -810,12 +817,21 @@ typedef struct tls_state {
 	/*uint64_t read_seq64_be;*/
 	uint64_t write_seq64_be;
 
+	/*uint8_t *server_write_MAC_key;*/
 	uint8_t *client_write_key;
 	uint8_t *server_write_key;
+	uint8_t *client_write_IV;
+	uint8_t *server_write_IV;
 	uint8_t client_write_MAC_key[TLS_MAX_MAC_SIZE];
 	uint8_t server_write_MAC_k__[TLS_MAX_MAC_SIZE];
 	uint8_t client_write_k__[TLS_MAX_KEY_SIZE];
 	uint8_t server_write_k__[TLS_MAX_KEY_SIZE];
+	uint8_t client_write_I_[TLS_MAX_IV_SIZE];
+	uint8_t server_write_I_[TLS_MAX_IV_SIZE];
+
+	struct tls_aes aes_encrypt;
+	struct tls_aes aes_decrypt;
+	uint8_t H[16]; //used by AES_GCM
 } tls_state_t;
 
 static inline tls_state_t *new_tls_state(void)
@@ -1366,9 +1382,22 @@ void bb_logenv_override(void) FAST_FUNC;
 #define MAIN_EXTERNALLY_VISIBLE
 #endif
 
+/* Embedded script support */
+char *get_script_content(unsigned n) FAST_FUNC;
+int scripted_main(int argc, char** argv);
 
 /* Applets which are useful from another applets */
 int bb_cat(char** argv) FAST_FUNC;
+int ash_main(int argc, char** argv)
+#if ENABLE_ASH || ENABLE_SH_IS_ASH || ENABLE_BASH_IS_ASH
+		MAIN_EXTERNALLY_VISIBLE
+#endif
+;
+int hush_main(int argc, char** argv)
+#if ENABLE_HUSH || ENABLE_SH_IS_HUSH || ENABLE_BASH_IS_HUSH
+		MAIN_EXTERNALLY_VISIBLE
+#endif
+;
 /* If shell needs them, they exist even if not enabled as applets */
 int echo_main(int argc, char** argv) IF_ECHO(MAIN_EXTERNALLY_VISIBLE);
 int printf_main(int argc, char **argv) IF_PRINTF(MAIN_EXTERNALLY_VISIBLE);
@@ -2041,7 +2070,7 @@ typedef struct bb_progress_t {
 	(p)->curfile = NULL; \
 } while (0)
 void bb_progress_init(bb_progress_t *p, const char *curfile) FAST_FUNC;
-void bb_progress_update(bb_progress_t *p,
+int bb_progress_update(bb_progress_t *p,
 			uoff_t beg_range,
 			uoff_t transferred,
 			uoff_t totalsize) FAST_FUNC;

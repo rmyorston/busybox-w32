@@ -814,7 +814,9 @@ static NOINLINE int send_d6_renew(uint32_t xid, struct in6_addr *server_ipv6, st
 }
 
 /* Unicast a DHCP release message */
-static int send_d6_release(struct in6_addr *server_ipv6, struct in6_addr *our_cur_ipv6)
+static
+ALWAYS_INLINE /* one caller, help compiler to use this fact */
+int send_d6_release(struct in6_addr *server_ipv6, struct in6_addr *our_cur_ipv6)
 {
 	struct d6_packet packet;
 	uint8_t *opt_ptr;
@@ -1738,8 +1740,9 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 				/* note: "int timeout" will not overflow even with 0xffffffff inputs here: */
 				timeout = (prefix_timeout < address_timeout ? prefix_timeout : address_timeout) / 2;
 				/* paranoia: must not be too small */
-				if (timeout < 0x10)
-					timeout = 0x10;
+				/* timeout > 60 - ensures at least one unicast renew attempt */
+				if (timeout < 61)
+					timeout = 61;
 				/* enter bound state */
 				d6_run_script(packet.d6_options, packet_end,
 					(state == REQUESTING ? "bound" : "renew"));

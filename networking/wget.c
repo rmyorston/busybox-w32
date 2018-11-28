@@ -233,20 +233,19 @@ struct globals {
 	char *fname_out;        /* where to direct output (-O) */
 	const char *proxy_flag; /* Use proxies if env vars are set */
 	const char *user_agent; /* "User-Agent" header field */
-#if ENABLE_FEATURE_WGET_TIMEOUT
-	unsigned timeout_seconds;
-	bool die_if_timed_out;
-#endif
 	int output_fd;
 	int o_flags;
+#if ENABLE_FEATURE_WGET_TIMEOUT
+	unsigned timeout_seconds;
+	smallint die_if_timed_out;
+#endif
 	smallint chunked;         /* chunked transfer encoding */
 	smallint got_clen;        /* got content-length: from server  */
 	/* Local downloads do benefit from big buffer.
 	 * With 512 byte buffer, it was measured to be
 	 * an order of magnitude slower than with big one.
 	 */
-	uint64_t just_to_align_next_member;
-	char wget_buf[CONFIG_FEATURE_COPYBUF_KB*1024];
+	char wget_buf[CONFIG_FEATURE_COPYBUF_KB*1024] ALIGNED(sizeof(long));
 } FIX_ALIASING;
 #define G (*ptr_to_globals)
 #define INIT_G() do { \
@@ -283,13 +282,15 @@ enum {
 #if ENABLE_FEATURE_WGET_STATUSBAR
 static void progress_meter(int flag)
 {
+	int notty;
+
 	if (option_mask32 & WGET_OPT_QUIET)
 		return;
 
 	if (flag == PROGRESS_START)
 		bb_progress_init(&G.pmt, G.curfile);
 
-	bb_progress_update(&G.pmt,
+	notty = bb_progress_update(&G.pmt,
 			G.beg_range,
 			G.transferred,
 			(G.chunked || !G.got_clen) ? 0 : G.beg_range + G.transferred + G.content_len
@@ -297,7 +298,8 @@ static void progress_meter(int flag)
 
 	if (flag == PROGRESS_END) {
 		bb_progress_free(&G.pmt);
-		bb_putchar_stderr('\n');
+		if (notty == 0)
+			bb_putchar_stderr('\n'); /* it's tty */
 		G.transferred = 0;
 	}
 }
@@ -346,9 +348,8 @@ static void strip_ipv6_scope_id(char *host)
 /* Base64-encode character string. */
 static char *base64enc(const char *str)
 {
-	unsigned len = strlen(str);
-	if (len > sizeof(G.wget_buf)/4*3 - 10) /* paranoia */
-		len = sizeof(G.wget_buf)/4*3 - 10;
+	/* paranoia */
+	unsigned len = strnlen(str, sizeof(G.wget_buf)/4*3 - 10);
 	bb_uuencode(G.wget_buf, str, len, bb_uuenc_tbl_base64);
 	return G.wget_buf;
 }
@@ -723,8 +724,10 @@ static void spawn_ssl_client(const char *host, int network_fd, int flags)
 	int pid;
 	char *servername, *p;
 
-	if (!(option_mask32 & WGET_OPT_NO_CHECK_CERT))
+	if (!(option_mask32 & WGET_OPT_NO_CHECK_CERT)) {
+		option_mask32 |= WGET_OPT_NO_CHECK_CERT;
 		bb_error_msg("note: TLS certificate validation not implemented");
+	}
 
 	servername = xstrdup(host);
 	p = strrchr(servername, ':');

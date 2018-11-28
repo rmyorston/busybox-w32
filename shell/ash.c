@@ -208,6 +208,11 @@
 #include <sys/times.h>
 #include <sys/utsname.h> /* for setting $HOSTNAME */
 #include "busybox.h" /* for applet_names */
+#if ENABLE_FEATURE_SH_EMBEDDED_SCRIPTS
+# include "embedded_scripts.h"
+#else
+# define NUM_SCRIPTS 0
+#endif
 
 /* So far, all bash compat is controlled by one config option */
 /* Separate defines document which part of code implements what */
@@ -2503,13 +2508,12 @@ setvar(const char *name, const char *val, int flags)
 	}
 
 	INT_OFF;
-	nameeq = ckmalloc(namelen + vallen + 2);
+	nameeq = ckzalloc(namelen + vallen + 2);
 	p = mempcpy(nameeq, name, namelen);
 	if (val) {
 		*p++ = '=';
-		p = mempcpy(p, val, vallen);
+		memcpy(p, val, vallen);
 	}
-	*p = '\0';
 	vp = setvareq(nameeq, flags | VNOSAVE);
 	INT_ON;
 
@@ -8420,6 +8424,7 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 #else
 	execve(cmd, argv, envp);
 #endif
+
 	if (cmd != bb_busybox_exec_path && errno == ENOEXEC) {
 		/* Run "cmd" as a shell script:
 		 * http://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
@@ -13459,6 +13464,7 @@ parseheredoc(void)
 	heredoclist = NULL;
 
 	while (here) {
+		tokpushback = 0;
 		setprompt_if(needprompt, 2);
 		readtoken1(pgetc(), here->here->type == NHERE ? SQSYNTAX : DQSYNTAX,
 				here->eofmark, here->striptabs);
@@ -14662,12 +14668,16 @@ procargs(char **argv)
 
 	xargv = argv;
 	login_sh = xargv[0] && xargv[0][0] == '-';
+#if NUM_SCRIPTS > 0
+	if (minusc)
+		goto setarg0;
+#endif
 	arg0 = xargv[0];
 	/* if (xargv[0]) - mmm, this is always true! */
 		xargv++;
+	argptr = xargv;
 	for (i = 0; i < NOPTS; i++)
 		optlist[i] = 2;
-	argptr = xargv;
 	if (options(/*cmdline:*/ 1, &login_sh)) {
 		/* it already printed err message */
 		raise_exception(EXERROR);
@@ -14772,7 +14782,12 @@ extern int etext();
  * is used to figure out how far we had gotten.
  */
 int ash_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+#if NUM_SCRIPTS > 0
+int ash_main(int argc, char **argv)
+#else
 int ash_main(int argc UNUSED_PARAM, char **argv)
+#endif
+/* note: 'argc' is used only if embedded scripts are enabled */
 {
 	volatile smallint state;
 	struct jmploc jmploc;
@@ -14838,6 +14853,12 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		/* NOTREACHED */
 		bb_error_msg_and_die("forkshell failed");
 	}
+#endif
+
+#if NUM_SCRIPTS > 0
+	if (argc < 0)
+		/* Non-NULL minusc tells procargs that an embedded script is being run */
+		minusc = get_script_content(-argc - 1);
 #endif
 	login_sh = procargs(argv);
 #if DEBUG

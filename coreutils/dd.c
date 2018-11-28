@@ -37,7 +37,7 @@
 //config:	elapsed time and speed.
 //config:
 //config:config FEATURE_DD_IBS_OBS
-//config:	bool "Enable ibs, obs, iflag and conv options"
+//config:	bool "Enable ibs, obs, iflag, oflag and conv options"
 //config:	default y
 //config:	depends on DD
 //config:	help
@@ -56,8 +56,11 @@
 //kbuild:lib-$(CONFIG_DD) += dd.o
 
 //usage:#define dd_trivial_usage
-//usage:       "[if=FILE] [of=FILE] " IF_FEATURE_DD_IBS_OBS("[ibs=N] [obs=N] ") "[bs=N] [count=N] [skip=N]\n"
-//usage:       "	[seek=N]" IF_FEATURE_DD_IBS_OBS(" [conv=notrunc|noerror|sync|fsync] [iflag=skip_bytes|fullblock]")
+//usage:       "[if=FILE] [of=FILE] [" IF_FEATURE_DD_IBS_OBS("ibs=N obs=N/") "bs=N] [count=N] [skip=N] [seek=N]\n"
+//usage:	IF_FEATURE_DD_IBS_OBS(
+//usage:       "	[conv=notrunc|noerror|sync|fsync]\n"
+//usage:       "	[iflag=skip_bytes|fullblock] [oflag=seek_bytes]"
+//usage:	)
 //usage:#define dd_full_usage "\n\n"
 //usage:       "Copy a file with converting and formatting\n"
 //usage:     "\n	if=FILE		Read from FILE instead of stdin"
@@ -80,6 +83,7 @@
 //usage:     "\n	conv=swab	Swap every pair of bytes"
 //usage:     "\n	iflag=skip_bytes	skip=N is in bytes"
 //usage:     "\n	iflag=fullblock	Read full blocks"
+//usage:     "\n	oflag=seek_bytes	seek=N is in bytes"
 //usage:	)
 //usage:	IF_FEATURE_DD_STATUS(
 //usage:     "\n	status=noxfer	Suppress rate output"
@@ -136,10 +140,14 @@ enum {
 	FLAG_SKIP_BYTES = (1 << 5) * ENABLE_FEATURE_DD_IBS_OBS,
 	FLAG_FULLBLOCK = (1 << 6) * ENABLE_FEATURE_DD_IBS_OBS,
 	/* end of input flags */
-	FLAG_TWOBUFS = (1 << 7) * ENABLE_FEATURE_DD_IBS_OBS,
-	FLAG_COUNT   = 1 << 8,
-	FLAG_STATUS_NONE = 1 << 9,
-	FLAG_STATUS_NOXFER = 1 << 10,
+	/* start of output flags */
+	FLAG_OFLAG_SHIFT = 7,
+	FLAG_SEEK_BYTES = (1 << 7) * ENABLE_FEATURE_DD_IBS_OBS,
+	/* end of output flags */
+	FLAG_TWOBUFS = (1 << 8) * ENABLE_FEATURE_DD_IBS_OBS,
+	FLAG_COUNT   = 1 << 9,
+	FLAG_STATUS_NONE = 1 << 10,
+	FLAG_STATUS_NOXFER = 1 << 11,
 };
 
 static void dd_output_status(int UNUSED_PARAM cur_signal)
@@ -253,7 +261,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 	static const char keywords[] ALIGN1 =
 		"bs\0""count\0""seek\0""skip\0""if\0""of\0"IF_FEATURE_DD_STATUS("status\0")
 #if ENABLE_FEATURE_DD_IBS_OBS
-		"ibs\0""obs\0""conv\0""iflag\0"
+		"ibs\0""obs\0""conv\0""iflag\0""oflag\0"
 #endif
 		;
 #if ENABLE_FEATURE_DD_IBS_OBS
@@ -261,6 +269,8 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 		"notrunc\0""sync\0""noerror\0""fsync\0""swab\0";
 	static const char iflag_words[] ALIGN1 =
 		"skip_bytes\0""fullblock\0";
+	static const char oflag_words[] ALIGN1 =
+		"seek_bytes\0";
 #endif
 #if ENABLE_FEATURE_DD_STATUS
 	static const char status_words[] ALIGN1 =
@@ -279,6 +289,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 		OP_obs,
 		OP_conv,
 		OP_iflag,
+		OP_oflag,
 		/* Must be in the same order as FLAG_XXX! */
 		OP_conv_notrunc = 0,
 		OP_conv_sync,
@@ -300,6 +311,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 	//swab          swap every pair of input bytes: will abort on non-even reads
 		OP_iflag_skip_bytes,
 		OP_iflag_fullblock,
+		OP_oflag_seek_bytes,
 #endif
 	};
 	smallint exitcode = EXIT_FAILURE;
@@ -315,13 +327,13 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	/* These are all zeroed at once! */
 	struct {
-		size_t oc;
+		IF_FEATURE_DD_IBS_OBS(size_t ocount;)
 		ssize_t prev_read_size; /* for detecting swab failure */
 		off_t count;
 		off_t seek, skip;
 		const char *infile, *outfile;
 	} Z;
-#define oc      (Z.oc     )
+#define ocount  (Z.ocount )
 #define prev_read_size (Z.prev_read_size)
 #define count   (Z.count  )
 #define seek    (Z.seek   )
@@ -369,6 +381,10 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 		}
 		if (what == OP_iflag) {
 			G.flags |= parse_comma_flags(val, iflag_words, "iflag") << FLAG_IFLAG_SHIFT;
+			/*continue;*/
+		}
+		if (what == OP_oflag) {
+			G.flags |= parse_comma_flags(val, oflag_words, "oflag") << FLAG_OFLAG_SHIFT;
 			/*continue;*/
 		}
 #endif
@@ -447,7 +463,8 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 		xmove_fd(xopen(outfile, oflag), ofd);
 
 		if (seek && !(G.flags & FLAG_NOTRUNC)) {
-			if (ftruncate(ofd, seek * obs) < 0) {
+			size_t blocksz = (G.flags & FLAG_SEEK_BYTES) ? 1 : obs;
+			if (ftruncate(ofd, seek * blocksz) < 0) {
 				struct stat st;
 
 				if (fstat(ofd, &st) < 0
@@ -480,7 +497,8 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 		}
 	}
 	if (seek) {
-		if (lseek(ofd, seek * obs, SEEK_CUR) < 0)
+		size_t blocksz = (G.flags & FLAG_SEEK_BYTES) ? 1 : obs;
+		if (lseek(ofd, seek * blocksz, SEEK_CUR) < 0)
 			goto die_outfile;
 	}
 
@@ -536,24 +554,26 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 				n = ibs;
 			}
 		}
+#if ENABLE_FEATURE_DD_IBS_OBS
 		if (G.flags & FLAG_TWOBUFS) {
 			char *tmp = ibuf;
 			while (n) {
-				size_t d = obs - oc;
-
+				size_t d = obs - ocount;
 				if (d > (size_t)n)
 					d = n;
-				memcpy(obuf + oc, tmp, d);
+				memcpy(obuf + ocount, tmp, d);
 				n -= d;
 				tmp += d;
-				oc += d;
-				if (oc == obs) {
+				ocount += d;
+				if (ocount == obs) {
 					if (write_and_stats(obuf, obs, obs, outfile))
 						goto out_status;
-					oc = 0;
+					ocount = 0;
 				}
 			}
-		} else {
+		} else
+#endif
+		{
 			if (write_and_stats(ibuf, n, obs, outfile))
 				goto out_status;
 		}
@@ -564,11 +584,12 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 			goto die_outfile;
 	}
 
-	if (ENABLE_FEATURE_DD_IBS_OBS && oc) {
-		if (write_and_stats(obuf, oc, obs, outfile))
+#if ENABLE_FEATURE_DD_IBS_OBS
+	if (ocount != 0) {
+		if (write_and_stats(obuf, ocount, obs, outfile))
 			goto out_status;
 	}
-
+#endif
 	if (close(ifd) < 0) {
  die_infile:
 		bb_simple_perror_msg_and_die(infile);

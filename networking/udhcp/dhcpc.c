@@ -850,7 +850,9 @@ static NOINLINE int send_decline(/*uint32_t xid,*/ uint32_t server, uint32_t req
 #endif
 
 /* Unicast a DHCP release message */
-static int send_release(uint32_t server, uint32_t ciaddr)
+static
+ALWAYS_INLINE /* one caller, help compiler to use this fact */
+int send_release(uint32_t server, uint32_t ciaddr)
 {
 	struct dhcp_packet packet;
 
@@ -1725,8 +1727,9 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 					move_from_unaligned32(lease_seconds, temp);
 					lease_seconds = ntohl(lease_seconds);
 					/* paranoia: must not be too small and not prone to overflows */
-					if (lease_seconds < 0x10)
-						lease_seconds = 0x10;
+					/* timeout > 60 - ensures at least one unicast renew attempt */
+					if (lease_seconds < 2 * 61)
+						lease_seconds = 2 * 61;
 					//if (lease_seconds > 0x7fffffff)
 					//	lease_seconds = 0x7fffffff;
 					//^^^not necessary since "timeout = lease_seconds / 2"

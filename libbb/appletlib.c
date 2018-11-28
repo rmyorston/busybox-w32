@@ -59,6 +59,17 @@
 
 #include "usage_compressed.h"
 
+#if ENABLE_FEATURE_SH_EMBEDDED_SCRIPTS
+# define DEFINE_SCRIPT_DATA 1
+# include "embedded_scripts.h"
+#else
+# define NUM_SCRIPTS 0
+#endif
+#if NUM_SCRIPTS > 0
+# define BB_ARCHIVE_PUBLIC
+# include "bb_archive.h"
+static const char packed_scripts[] ALIGN1 = { PACKED_SCRIPTS };
+#endif
 
 /* "Do not compress usage text if uncompressed text is small
  *  and we don't include bunzip2 code for other reasons"
@@ -105,36 +116,10 @@ static const char usage_messages[] ALIGN1 = UNPACKED_USAGE;
 #if ENABLE_FEATURE_COMPRESS_USAGE
 
 static const char packed_usage[] ALIGN1 = { PACKED_USAGE };
-#define BB_ARCHIVE_PUBLIC
+# define BB_ARCHIVE_PUBLIC
 # include "bb_archive.h"
-static const char *unpack_usage_messages(void)
-{
-	char *outbuf = NULL;
-	bunzip_data *bd;
-	int i;
-	jmp_buf jmpbuf;
-
-	/* Setup for I/O error handling via longjmp */
-	i = setjmp(jmpbuf);
-	if (i == 0) {
-		i = start_bunzip(&jmpbuf,
-			&bd,
-			/* src_fd: */ -1,
-			/* inbuf:  */ packed_usage,
-			/* len:    */ sizeof(packed_usage)
-		);
-	}
-	/* read_bunzip can longjmp and end up here with i != 0
-	 * on read data errors! Not trivial */
-	if (i == 0) {
-		/* Cannot use xmalloc: will leak bd in NOFORK case! */
-		outbuf = malloc_or_warn(sizeof(UNPACKED_USAGE));
-		if (outbuf)
-			read_bunzip(bd, outbuf, sizeof(UNPACKED_USAGE));
-	}
-	dealloc_bunzip(bd);
-	return outbuf;
-}
+# define unpack_usage_messages() \
+	unpack_bz2_data(packed_usage, sizeof(packed_usage), sizeof(UNPACKED_USAGE))
 # define dealloc_usage_messages(s) free(s)
 
 #else
@@ -152,21 +137,23 @@ void FAST_FUNC bb_show_usage(void)
 		/* Imagine that this applet is "true". Dont suck in printf! */
 		const char *usage_string = unpack_usage_messages();
 
-		if (*usage_string == '\b') {
-			full_write2_str("No help available.\n\n");
-		} else {
-			full_write2_str("Usage: "SINGLE_APPLET_STR" ");
-			full_write2_str(usage_string);
-			full_write2_str("\n\n");
+		if (usage_string) {
+			if (*usage_string == '\b') {
+				full_write2_str("No help available.\n\n");
+			} else {
+				full_write2_str("Usage: "SINGLE_APPLET_STR" ");
+				full_write2_str(usage_string);
+				full_write2_str("\n\n");
+			}
+			if (ENABLE_FEATURE_CLEAN_UP)
+				dealloc_usage_messages((char*)usage_string);
 		}
-		if (ENABLE_FEATURE_CLEAN_UP)
-			dealloc_usage_messages((char*)usage_string);
 #else
 		const char *p;
 		const char *usage_string = p = unpack_usage_messages();
 		int ap = find_applet_by_name(applet_name);
 
-		if (ap < 0) /* never happens, paranoia */
+		if (ap < 0 || usage_string == NULL)
 			xfunc_die();
 		while (ap) {
 			while (*p++) continue;
@@ -808,6 +795,50 @@ static void install_links(const char *busybox UNUSED_PARAM,
 
 static void run_applet_and_exit(const char *name, char **argv) NORETURN;
 
+# if NUM_SCRIPTS > 0
+static int find_script_by_name(const char *name)
+{
+	int i;
+	int applet = find_applet_by_name(name);
+
+	if (applet >= 0) {
+		for (i = 0; i < NUM_SCRIPTS; ++i)
+			if (applet_numbers[i] == applet)
+				return i;
+	}
+	return -1;
+}
+
+int scripted_main(int argc UNUSED_PARAM, char **argv)
+{
+	int script = find_script_by_name(applet_name);
+	if (script >= 0)
+#if ENABLE_ASH || ENABLE_SH_IS_ASH || ENABLE_BASH_IS_ASH
+		exit(ash_main(-script - 1, argv));
+#elif ENABLE_HUSH || ENABLE_SH_IS_HUSH || ENABLE_BASH_IS_HUSH
+		exit(hush_main(-script - 1, argv));
+#else
+		return 1;
+#endif
+	return 0;
+}
+
+char* FAST_FUNC
+get_script_content(unsigned n)
+{
+	char *t = unpack_bz2_data(packed_scripts, sizeof(packed_scripts),
+					UNPACKED_SCRIPTS_LENGTH);
+	if (t) {
+		while (n != 0) {
+			while (*t++ != '\0')
+				continue;
+			n--;
+		}
+	}
+	return t;
+}
+# endif /* NUM_SCRIPTS > 0 */
+
 # if ENABLE_BUSYBOX
 #  if ENABLE_FEATURE_SH_STANDALONE && ENABLE_FEATURE_TAB_COMPLETION
     /*
@@ -850,6 +881,9 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 			"\n"
 			"Usage: busybox [function [arguments]...]\n"
 			"   or: busybox --list"IF_FULL_LIST_OPTION("[-full]")"\n"
+#  if ENABLE_FEATURE_SHOW_SCRIPT && NUM_SCRIPTS > 0
+			"   or: busybox --show SCRIPT\n"
+#  endif
 			IF_FEATURE_INSTALLER(
 			"   or: busybox --install "IF_NOT_PLATFORM_MINGW32("[-s] ")"[DIR]\n"
 			)
@@ -877,9 +911,9 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 			"Currently defined functions:\n"
 		);
 		col = 0;
-		a = applet_names;
 		/* prevent last comma to be in the very last pos */
 		output_width--;
+		a = applet_names;
 		while (*a) {
 			int len2 = strlen(a) + 2;
 			if (col >= (int)output_width - len2) {
@@ -899,6 +933,19 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 		full_write2_str("\n");
 		return 0;
 	}
+
+#  if ENABLE_FEATURE_SHOW_SCRIPT && NUM_SCRIPTS > 0
+	if (strcmp(argv[1], "--show") == 0) {
+		int n;
+		if (!argv[2])
+			bb_error_msg_and_die(bb_msg_requires_arg, "--show");
+		n = find_script_by_name(argv[2]);
+		if (n < 0)
+			bb_error_msg_and_die("script '%s' not found", argv[2]);
+		full_write1_str(get_script_content(n));
+		return 0;
+	}
+#  endif
 
 	if (is_prefixed_with(argv[1], "--list")) {
 		unsigned i = 0;

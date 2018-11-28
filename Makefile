@@ -363,7 +363,7 @@ scripts/basic/%: scripts_basic ;
 
 # This target generates Kbuild's and Config.in's from *.c files
 PHONY += gen_build_files
-gen_build_files: $(wildcard $(srctree)/*/*.c) $(wildcard $(srctree)/*/*/*.c)
+gen_build_files: $(wildcard $(srctree)/*/*.c) $(wildcard $(srctree)/*/*/*.c) $(wildcard $(srctree)/embed/*)
 	$(Q)$(srctree)/scripts/gen_build_files.sh $(srctree) $(objtree)
 
 # bbox: we have helpers in applets/
@@ -854,11 +854,14 @@ quiet_cmd_gen_common_bufsiz = GEN     include/common_bufsiz.h
       cmd_gen_common_bufsiz = $(srctree)/scripts/generate_BUFSIZ.sh include/common_bufsiz.h
 quiet_cmd_split_autoconf   = SPLIT   include/autoconf.h -> include/config/*
       cmd_split_autoconf   = scripts/basic/split-include include/autoconf.h include/config
+quiet_cmd_gen_embedded_scripts = GEN     include/embedded_scripts.h
+      cmd_gen_embedded_scripts = $(srctree)/scripts/embedded_scripts include/embedded_scripts.h $(srctree)/embed $(srctree)/applets_sh
 #bbox# piggybacked generation of few .h files
-include/config/MARKER: scripts/basic/split-include include/autoconf.h
+include/config/MARKER: scripts/basic/split-include include/autoconf.h $(wildcard $(srctree)/embed/*) $(wildcard $(srctree)/applets_sh/*) $(srctree)/scripts/embedded_scripts
 	$(call cmd,split_autoconf)
 	$(call cmd,gen_bbconfigopts)
 	$(call cmd,gen_common_bufsiz)
+	$(call cmd,gen_embedded_scripts)
 	@touch $@
 
 # Generate some files
@@ -978,6 +981,7 @@ MRPROPER_FILES += .config .config.old include/asm .version .old_version \
 		  include/autoconf.h \
 		  include/bbconfigopts.h \
 		  include/bbconfigopts_bz2.h \
+		  include/embedded_scripts.h \
 		  include/usage_compressed.h \
 		  include/applet_tables.h \
 		  include/applets.h \
