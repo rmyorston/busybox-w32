@@ -1,6 +1,6 @@
 //config:config NOLOGIN
 //config:	bool "nologin"
-//config:	default n
+//config:	default y
 //config:	depends on FEATURE_SH_EMBEDDED_SCRIPTS
 //config:	help
 //config:	Politely refuse a login
