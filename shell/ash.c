@@ -14555,14 +14555,11 @@ init(void)
 				for (start = *envp;start < end;start++)
 					*start = toupper(*start);
 
-				/* skip conversion of variables known to cause problems */
-				if ( strncmp(*envp, "SYSTEMROOT=", 11) == 0 ||
-						strncmp(*envp, "COMSPEC=", 8) == 0 ) {
-					continue;
-				}
-
-				/* convert backslashes to forward slashes in value */
-				if (!xp) {
+				/* Convert backslashes to forward slashes in value but
+				 * not if we're on Windows XP or for variables known to
+				 * cause problems */
+				if ( !xp && strncmp(*envp, "SYSTEMROOT=", 11) != 0 &&
+						strncmp(*envp, "COMSPEC=", 8) != 0 ) {
 					convert_slashes(end+1);
 				}
 
