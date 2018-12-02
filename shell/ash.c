@@ -9243,12 +9243,10 @@ static union node *copynode(union node *);
 # define SAVE_PTR(dst) {if (nodeptr) *nodeptr++ = (char *)&(dst);}
 # define SAVE_PTR2(dst1,dst2) {if (nodeptr) { *nodeptr++ = (char *)&(dst1);*nodeptr++ = (char *)&(dst2);}}
 # define SAVE_PTR3(dst1,dst2,dst3) {if (nodeptr) { *nodeptr++ = (char *)&(dst1);*nodeptr++ = (char *)&(dst2);*nodeptr++ = (char *)&(dst3);}}
-# define SAVE_PTR4(dst1,dst2,dst3,dst4) {if (nodeptr) { *nodeptr++ = (char *)&(dst1);*nodeptr++ = (char *)&(dst2);*nodeptr++ = (char *)&(dst3);*nodeptr++ = (char *)&(dst4);}}
 #else
 # define SAVE_PTR(dst)
 # define SAVE_PTR2(dst,dst2)
 # define SAVE_PTR3(dst,dst2,dst3)
-# define SAVE_PTR4(dst,dst2,dst3,dst4)
 #endif
 
 static struct nodelist *
@@ -15132,6 +15130,16 @@ spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
  *
  * When this memory is mapped elsewhere, pointer fixup will be needed
  */
+
+/* redefine without test that nodeptr is non-NULL */
+#undef SAVE_PTR
+#undef SAVE_PTR2
+#undef SAVE_PTR3
+#define SAVE_PTR(dst) {*nodeptr++ = (char *)&(dst);}
+#define SAVE_PTR2(dst1,dst2) {SAVE_PTR(dst1); SAVE_PTR(dst2);}
+#define SAVE_PTR3(dst1,dst2,dst3) {SAVE_PTR2(dst1,dst2); SAVE_PTR(dst3);}
+#define SAVE_PTR4(dst1,dst2,dst3,dst4) {SAVE_PTR2(dst1,dst2); SAVE_PTR2(dst3,dst4);}
+
 static int align_len(const char *s)
 {
 	return s ? SHELL_ALIGN(strlen(s)+1) : 0;
