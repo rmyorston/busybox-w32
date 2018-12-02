@@ -330,11 +330,11 @@ typedef long arith_t;
 # define BB_GLOBAL_CONST const
 #endif
 
+#define FORKSHELL_DEBUG 0
 #if ENABLE_PLATFORM_MINGW32
 union node;
 struct strlist;
 struct job;
-#define FORKSHELL_DEBUG 0
 
 struct forkshell {
 	/* filled by forkshell_copy() */
@@ -345,11 +345,11 @@ struct forkshell {
 	/* struct parsefile *g_parsefile; */
 	HANDLE hMapFile;
 	void *old_base;
-#if FORKSHELL_DEBUG
+# if FORKSHELL_DEBUG
 	int nodeptrcount;
 	int funcblocksize;
 	int funcstringsize;
-#endif
+# endif
 	int size;
 
 	/* type of forkshell */
@@ -360,8 +360,8 @@ struct forkshell {
 	int fd[10];
 	union node *n;
 	char **argv;
-	char *string;
-	struct strlist *strlist;
+	char *path;
+	struct strlist *varlist;
 
 	/* start of data block */
 	char *nodeptr[1];
@@ -9079,6 +9079,10 @@ static char *funcstring_end;    /* end of block to allocate strings from */
 #if ENABLE_PLATFORM_MINGW32
 static int nodeptrcount;
 static char **nodeptr;
+# if FORKSHELL_DEBUG
+static int annot_count;
+static char **annot;
+# endif
 #endif
 
 static const uint8_t nodesize[N_NUMBER] ALIGN1 = {
@@ -9249,6 +9253,20 @@ static union node *copynode(union node *);
 # define SAVE_PTR3(dst,dst2,dst3)
 #endif
 
+#if ENABLE_PLATFORM_MINGW32 && FORKSHELL_DEBUG
+# define ANNOT_NO_DUP(note) {if (annot) annot[annot_count++] = note;}
+# define ANNOT(note) {ANNOT_NO_DUP(xstrdup(note));}
+# define ANNOT2(n1,n2) {ANNOT(n1); ANNOT(n2)}
+# define ANNOT3(n1,n2,n3) {ANNOT2(n1,n2); ANNOT(n3);}
+# define ANNOT4(n1,n2,n3,n4) {ANNOT3(n1,n2,n3); ANNOT(n4);}
+#else
+# define ANNOT_NO_DUP(note)
+# define ANNOT(note)
+# define ANNOT2(n1,n2)
+# define ANNOT3(n1,n2,n3)
+# define ANNOT4(n1,n2,n3,n4)
+#endif
+
 static struct nodelist *
 copynodelist(struct nodelist *lp)
 {
@@ -9261,6 +9279,7 @@ copynodelist(struct nodelist *lp)
 		funcblock = (char *) funcblock + SHELL_ALIGN(sizeof(struct nodelist));
 		(*lpp)->n = copynode(lp->n);
 		SAVE_PTR2((*lpp)->n, (*lpp)->next);
+		ANNOT2("(*lpp)->n","(*lpp)->next");
 		lp = lp->next;
 		lpp = &(*lpp)->next;
 	}
@@ -9285,11 +9304,13 @@ copynode(union node *n)
 		new->ncmd.assign = copynode(n->ncmd.assign);
 		new->ncmd.linno = n->ncmd.linno;
 		SAVE_PTR3(new->ncmd.redirect,new->ncmd.args, new->ncmd.assign);
+		ANNOT3("ncmd.redirect","ncmd.args","ncmd.assign");
 		break;
 	case NPIPE:
 		new->npipe.cmdlist = copynodelist(n->npipe.cmdlist);
 		new->npipe.pipe_backgnd = n->npipe.pipe_backgnd;
 		SAVE_PTR(new->npipe.cmdlist);
+		ANNOT("npipe.cmdlist");
 		break;
 	case NREDIR:
 	case NBACKGND:
@@ -9298,6 +9319,7 @@ copynode(union node *n)
 		new->nredir.n = copynode(n->nredir.n);
 		new->nredir.linno = n->nredir.linno;
 		SAVE_PTR2(new->nredir.redirect,new->nredir.n);
+		ANNOT2("nredir.redirect","nredir.n");
 		break;
 	case NAND:
 	case NOR:
@@ -9307,12 +9329,14 @@ copynode(union node *n)
 		new->nbinary.ch2 = copynode(n->nbinary.ch2);
 		new->nbinary.ch1 = copynode(n->nbinary.ch1);
 		SAVE_PTR2(new->nbinary.ch1,new->nbinary.ch2);
+		ANNOT2("nbinary.ch1","nbinary.ch2");
 		break;
 	case NIF:
 		new->nif.elsepart = copynode(n->nif.elsepart);
 		new->nif.ifpart = copynode(n->nif.ifpart);
 		new->nif.test = copynode(n->nif.test);
 		SAVE_PTR3(new->nif.elsepart,new->nif.ifpart,new->nif.test);
+		ANNOT3("nif.elsepart","nif.ifpart","nif.test");
 		break;
 	case NFOR:
 		new->nfor.var = nodeckstrdup(n->nfor.var);
@@ -9320,30 +9344,38 @@ copynode(union node *n)
 		new->nfor.args = copynode(n->nfor.args);
 		new->nfor.linno = n->nfor.linno;
 		SAVE_PTR3(new->nfor.var,new->nfor.body,new->nfor.args);
+		ANNOT_NO_DUP(xasprintf("nfor.var '%s'", n->nfor.var ?: "NULL"));
+		ANNOT2("nfor.body","nfor.args");
 		break;
 	case NCASE:
 		new->ncase.cases = copynode(n->ncase.cases);
 		new->ncase.expr = copynode(n->ncase.expr);
 		new->ncase.linno = n->ncase.linno;
 		SAVE_PTR2(new->ncase.cases,new->ncase.expr);
+		ANNOT2("ncase.cases","ncase.expr");
 		break;
 	case NCLIST:
 		new->nclist.body = copynode(n->nclist.body);
 		new->nclist.pattern = copynode(n->nclist.pattern);
 		new->nclist.next = copynode(n->nclist.next);
 		SAVE_PTR3(new->nclist.body,new->nclist.pattern,new->nclist.next);
+		ANNOT3("nclist.body","nclist.pattern","nclist.next");
 		break;
 	case NDEFUN:
 		new->ndefun.body = copynode(n->ndefun.body);
 		new->ndefun.text = nodeckstrdup(n->ndefun.text);
 		new->ndefun.linno = n->ndefun.linno;
 		SAVE_PTR2(new->ndefun.body,new->ndefun.text);
+		ANNOT("ndefun.body");
+		ANNOT_NO_DUP(xasprintf("ndefun.text '%s'", n->ndefun.text ?: "NULL"));
 		break;
 	case NARG:
 		new->narg.backquote = copynodelist(n->narg.backquote);
 		new->narg.text = nodeckstrdup(n->narg.text);
 		new->narg.next = copynode(n->narg.next);
 		SAVE_PTR3(new->narg.backquote,new->narg.text,new->narg.next);
+		ANNOT2("narg.backquote","narg.next");
+		ANNOT_NO_DUP(xasprintf("narg.text '%s'", n->narg.text ?: "NULL"));
 		break;
 	case NTO:
 #if BASH_REDIR_OUTPUT
@@ -9357,6 +9389,7 @@ copynode(union node *n)
 		new->nfile.fd = n->nfile.fd;
 		new->nfile.next = copynode(n->nfile.next);
 		SAVE_PTR2(new->nfile.fname,new->nfile.next);
+		ANNOT2("nfile.fname","nfile.next");
 		break;
 	case NTOFD:
 	case NFROMFD:
@@ -9365,6 +9398,7 @@ copynode(union node *n)
 		new->ndup.fd = n->ndup.fd;
 		new->ndup.next = copynode(n->ndup.next);
 		SAVE_PTR2(new->ndup.vname,new->ndup.next);
+		ANNOT2("ndup.vname","ndup.next");
 		break;
 	case NHERE:
 	case NXHERE:
@@ -9372,10 +9406,12 @@ copynode(union node *n)
 		new->nhere.fd = n->nhere.fd;
 		new->nhere.next = copynode(n->nhere.next);
 		SAVE_PTR2(new->nhere.doc,new->nhere.next);
+		ANNOT2("nhere.doc","nhere.next");
 		break;
 	case NNOT:
 		new->nnot.com = copynode(n->nnot.com);
 		SAVE_PTR(new->nnot.com);
+		ANNOT("nnot.com");
 		break;
 	};
 	new->type = n->type;
@@ -10704,9 +10740,9 @@ evalcommand(union node *cmd, int flags)
 			memset(&fs, 0, sizeof(fs));
 			fs.fpid = FS_SHELLEXEC;
 			fs.argv = argv;
-			fs.string = (char*)path;
+			fs.path = (char*)path;
 			fs.fd[0] = cmdentry.u.index;
-			fs.strlist = varlist.list;
+			fs.varlist = varlist.list;
 			jp = makejob(/*cmd,*/ 1);
 			spawn_forkshell(jp, &fs, FORK_FG);
 			status = waitforjob(jp);
@@ -15036,9 +15072,9 @@ static void
 forkshell_shellexec(struct forkshell *fs)
 {
 	int idx = fs->fd[0];
-	struct strlist *varlist = fs->strlist;
+	struct strlist *varlist = fs->varlist;
 	char **argv = fs->argv;
-	char *path = fs->string;
+	char *path = fs->path;
 
 	FORCE_INT_ON;
 	listsetvar(varlist, VEXPORT|VSTACK);
@@ -15172,6 +15208,7 @@ name(type *vp) \
 		/* do something here with vpp and vp */
 #define SLIST_COPY_END() \
 		SAVE_PTR((*vpp)->next); \
+		ANNOT("(*vpp)->next"); \
 		vp = vp->next; \
 		vpp = &(*vpp)->next; \
 	} \
@@ -15192,6 +15229,7 @@ SLIST_COPY_BEGIN(var_copy,struct var)
 (*vpp)->flags = vp->flags;
 (*vpp)->var_func = NULL;
 SAVE_PTR((*vpp)->var_text);
+ANNOT_NO_DUP(xasprintf("(*vpp)->var_text '%s'", vp->var_text ?: "NULL"));
 SLIST_COPY_END()
 
 /*
@@ -15205,6 +15243,7 @@ SLIST_SIZE_END()
 SLIST_COPY_BEGIN(strlist_copy,struct strlist)
 (*vpp)->text = nodeckstrdup(vp->text);
 SAVE_PTR((*vpp)->text);
+ANNOT_NO_DUP(xasprintf("(*vpp)->text '%s'", vp->text ?: "NULL"));
 SLIST_COPY_END()
 
 /*
@@ -15251,11 +15290,13 @@ tblentry_copy(struct tblentry *tep)
 			funcblock = (char *) funcblock + offsetof(struct funcnode, n);
 			copynode(&tep->param.func->n);
 			SAVE_PTR((*newp)->param.func);
+			ANNOT("param.func");
 			break;
 		default:
 			break;
 		}
 		SAVE_PTR((*newp)->next);
+		ANNOT_NO_DUP(xasprintf("cmdname '%s'", tep->cmdname));
 		tep = tep->next;
 		newp = &(*newp)->next;
 	}
@@ -15284,6 +15325,7 @@ cmdtable_copy(struct tblentry **cmdtablep)
 	for (i = 0; i < CMDTABLESIZE; i++) {
 		new[i] = tblentry_copy(cmdtablep[i]);
 		SAVE_PTR(new[i]);
+		ANNOT_NO_DUP(xasprintf("cmdtablep[%d]", i));
 	}
 	return new;
 }
@@ -15308,12 +15350,16 @@ static char **
 argv_copy(char **p)
 {
 	char **new, **start = funcblock;
+#if FORKSHELL_DEBUG
+	int i = 0;
+#endif
 
 	while (p && *p) {
 		new = funcblock;
 		funcblock = (char *) funcblock + sizeof(char *);
 		*new = nodeckstrdup(*p);
 		SAVE_PTR(*new);
+		ANNOT_NO_DUP(xasprintf("argv[%d] '%s'", i++, *p));
 		p++;
 		new++;
 	}
@@ -15350,6 +15396,7 @@ redirtab_copy(struct redirtab *rdtp)
 		funcblock = (char *) funcblock + size;
 		memcpy(*vpp, rdtp, size);
 		SAVE_PTR((*vpp)->next);
+		ANNOT("(*vpp)->next");
 		rdtp = rdtp->next;
 		vpp = &(*vpp)->next;
 	}
@@ -15393,13 +15440,16 @@ globals_var_copy(struct globals_var *gvp)
 	new->shellparam.malloced = 0;
 	new->shellparam.p = argv_copy(gvp->shellparam.p);
 	SAVE_PTR(new->shellparam.p);
+	ANNOT("shellparam.p");
 
 	new->redirlist = redirtab_copy(gvp->redirlist);
 	SAVE_PTR(new->redirlist);
+	ANNOT("redirlist");
 
 	for (i = 0; i < VTABSIZE; i++) {
 		new->vartab[i] = var_copy(gvp->vartab[i]);
 		SAVE_PTR(new->vartab[i]);
+		ANNOT_NO_DUP(xasprintf("vartab[%d]", i));
 	}
 
 	return new;
@@ -15441,6 +15491,11 @@ globals_misc_copy(struct globals_misc *p)
 	new->commandname = nodeckstrdup(p->commandname);
 	SAVE_PTR4(new->minusc, new->curdir, new->physdir, new->arg0);
 	SAVE_PTR(new->commandname);
+	ANNOT_NO_DUP(xasprintf("minusc '%s'", p->minusc ?: "NULL"));
+	ANNOT_NO_DUP(xasprintf("curdir '%s'", new->curdir ?: "NULL"));
+	ANNOT_NO_DUP(xasprintf("physdir '%s'", new->physdir ?: "NULL"));
+	ANNOT_NO_DUP(xasprintf("arg0 '%s'", p->arg0 ?: "NULL");)
+	ANNOT_NO_DUP(xasprintf("commandname '%s'", p->commandname ?: "NULL"));
 	return new;
 }
 
@@ -15455,8 +15510,8 @@ forkshell_size(int funcblocksize, struct forkshell *fs)
 
 	funcblocksize = calcsize(funcblocksize, fs->n);
 	funcblocksize = argv_size(funcblocksize, fs->argv);
-	funcblocksize += align_len(fs->string);
-	funcblocksize = strlist_size(funcblocksize, fs->strlist);
+	funcblocksize += align_len(fs->path);
+	funcblocksize = strlist_size(funcblocksize, fs->varlist);
 
 	nodeptrcount += 7; /* gvp, gmp, cmdtable, n, argv, string, strlist */
 	return funcblocksize;
@@ -15470,23 +15525,31 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 	new->gmp = globals_misc_copy(fs->gmp);
 	new->cmdtable = cmdtable_copy(fs->cmdtable);
 	SAVE_PTR3(new->gvp, new->gmp, new->cmdtable);
+	ANNOT3("gvp", "gmp", "cmdtable");
 
 	new->n = copynode(fs->n);
 	new->argv = argv_copy(fs->argv);
-	new->string = nodeckstrdup(fs->string);
-	new->strlist = strlist_copy(fs->strlist);
-	SAVE_PTR4(new->n, new->argv, new->string, new->strlist);
+	new->path = nodeckstrdup(fs->path);
+	new->varlist = strlist_copy(fs->varlist);
+	SAVE_PTR4(new->n, new->argv, new->path, new->varlist);
+	ANNOT2("n", "argv");
+	ANNOT_NO_DUP(xasprintf("path '%s'", fs->path ?: "NULL"));
+	ANNOT("varlist");
 	return new;
 }
 
 #if FORKSHELL_DEBUG
-static void forkshell_print(FILE *fp, struct forkshell *fs)
+/* fp and notes can each be NULL */
+static void forkshell_print(FILE *fp, struct forkshell *fs, char **notes)
 {
 	void *lfuncblock;
 	char *lfuncstring;
 	char **lnodeptr;
 	char *s;
 	int count;
+
+	if (fp == NULL && (fp=fopen("fs.out", "w")) == NULL)
+		return;
 
 	fprintf(fp, "size %d = %d + %d*%d + %d + %d\n", fs->size,
 				(int)sizeof(struct forkshell), fs->nodeptrcount,
@@ -15501,6 +15564,29 @@ static void forkshell_print(FILE *fp, struct forkshell *fs)
 				(int)((char *)fs->cmdtable-(char *)fs->gmp),
 				(int)(lfuncstring-(char *)fs->cmdtable));
 
+	fprintf(fp, "--- nodeptr ---\n");
+	count = 0;
+	if (notes == NULL) {
+		while (*lnodeptr) {
+			fprintf(fp, "%p ", *lnodeptr++);
+			if ((count&3) == 3)
+				fprintf(fp, "\n");
+			++count;
+		}
+		if (((count-1)&3) != 3)
+			fprintf(fp, "\n");
+	}
+	else {
+		while (*lnodeptr) {
+			fprintf(fp, "%p %s\n", *lnodeptr++, notes[count++]);
+		}
+	}
+	if (count != fs->nodeptrcount)
+		fprintf(fp, "--- %d pointers (expected %d) ---\n\n", count,
+					fs->nodeptrcount);
+	else
+		fprintf(fp, "--- %d pointers ---\n\n", count);
+
 	fprintf(fp, "--- funcstring ---\n");
 	count = 0;
 	s = lfuncstring;
@@ -15509,27 +15595,11 @@ static void forkshell_print(FILE *fp, struct forkshell *fs)
 			++s;
 			continue;
 		}
-		fprintf(fp, "%d '%s'\n", (int)(s-lfuncstring), s);
+		fprintf(fp, "%p '%s'\n", s, s);
 		s += strlen(s)+1;
 		++count;
 	}
-	fprintf(fp, "--- %d strings ---\n\n", count);
-
-	fprintf(fp, "--- nodeptr ---\n");
-	count = 0;
-	while (*lnodeptr) {
-		fprintf(fp, "%p ", *lnodeptr++);
-		if ((count&3) == 3)
-			fprintf(fp, "\n");
-		++count;
-	}
-	if (((count-1)&3) != 3)
-		fprintf(fp, "\n");
-	if (count != fs->nodeptrcount)
-		fprintf(fp, "--- %d pointers (expected %d) ---\n", count,
-					fs->nodeptrcount);
-	else
-		fprintf(fp, "--- %d pointers ---\n", count);
+	fprintf(fp, "--- %d strings ---\n", count);
 }
 #endif
 
@@ -15573,6 +15643,8 @@ forkshell_prepare(struct forkshell *fs)
 	funcstring_end = (char *)new + size;
 #if FORKSHELL_DEBUG
 	fb0 = funcblock;
+	annot = xmalloc(sizeof(char *)*nodeptrcount);
+	annot_count = 0;
 #endif
 
 	/* Now pack them all */
@@ -15585,21 +15657,37 @@ forkshell_prepare(struct forkshell *fs)
 	new->hMapFile = h;
 #if FORKSHELL_DEBUG
 	if ((fp=fopen("fs.out", "w")) != NULL) {
-		int match;
+		int i;
 
-		match = (char *)(nodeptr+1) == (char *)fb0;
-		fprintf(fp, "%p %s %p nodeptr/funcblock boundary\n",
-					nodeptr+1, match ? "==" : "!=", fb0);
+		/* perform some sanity checks on pointers */
+		fprintf(fp, "%p start of forkshell struct\n", new);
+		fprintf(fp, "%p start of nodeptr\n", new->nodeptr);
+		fprintf(fp, "%p start of funcblock", fb0);
+		if ((char *)(nodeptr+1) != (char *)fb0)
+			fprintf(fp, " != end nodeptr block + 1 %p\n", nodeptr+1);
+		else
+			fprintf(fp, "\n");
 
-		match = (char *)funcblock == funcstring_end;
-		fprintf(fp, "%p %s %p funcblock/funcstring boundary\n",
-					funcblock, match ? "==" : "!=", funcstring_end);
-		fprintf(fp, "\n");
+		fprintf(fp, "%p start of funcstring", funcstring_end);
+		if ((char *)funcblock != funcstring_end)
+			fprintf(fp, " != end funcblock + 1 %p\n\n", funcblock);
+		else
+			fprintf(fp, "\n\n");
+
+		if (nodeptrcount != annot_count)
+			fprintf(fp, "nodeptrcount (%d) != annot_count (%d)\n\n",
+					nodeptrcount, annot_count);
 
 		new->nodeptrcount = nodeptrcount;
 		new->funcblocksize = (char *)funcblock - (char *)fb0;
 		new->funcstringsize = (char *)new + size - funcstring_end;
-		forkshell_print(fp, new);
+		forkshell_print(fp, new, nodeptrcount == annot_count ? annot : NULL);
+
+		for (i = 0; i < annot_count; ++i)
+			free(annot[i]);
+		free(annot);
+		annot = NULL;
+		annot_count = 0;
 		fclose(fp);
 	}
 #endif
