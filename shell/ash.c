@@ -379,8 +379,11 @@ static struct forkshell* forkshell_prepare(struct forkshell *fs);
 static void forkshell_init(const char *idstr);
 static void forkshell_child(struct forkshell *fs);
 static void sticky_free(void *p);
-#define free(p) sticky_free(p)
+# define free(p) sticky_free(p)
 static void spawn_forkshell(struct job *jp, struct forkshell *fs, int mode);
+# if FORKSHELL_DEBUG
+static void forkshell_print(FILE *fp0, struct forkshell *fs, char **notes);
+# endif
 #endif
 
 /* ============ Hash table sizes. Configurable. */
@@ -15540,16 +15543,26 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 
 #if FORKSHELL_DEBUG
 /* fp and notes can each be NULL */
-static void forkshell_print(FILE *fp, struct forkshell *fs, char **notes)
+static void
+forkshell_print(FILE *fp0, struct forkshell *fs, char **notes)
 {
+	FILE *fp;
 	void *lfuncblock;
 	char *lfuncstring;
 	char **lnodeptr;
 	char *s;
 	int count;
 
-	if (fp == NULL && (fp=fopen("fs.out", "w")) == NULL)
-		return;
+	if (fp0 != NULL) {
+		fp = fp0;
+	}
+	else {
+		char name[32];
+
+		sprintf(name, "fs_%d.out", getpid());
+		if ((fp=fopen(name, "w")) == NULL)
+			return;
+	}
 
 	fprintf(fp, "size %d = %d + %d*%d + %d + %d\n", fs->size,
 				(int)sizeof(struct forkshell), fs->nodeptrcount,
@@ -15600,6 +15613,9 @@ static void forkshell_print(FILE *fp, struct forkshell *fs, char **notes)
 		++count;
 	}
 	fprintf(fp, "--- %d strings ---\n", count);
+
+	if (fp0 == NULL)
+		fclose(fp);
 }
 #endif
 
@@ -15613,6 +15629,7 @@ forkshell_prepare(struct forkshell *fs)
 	SECURITY_ATTRIBUTES sa;
 #if FORKSHELL_DEBUG
 	void *fb0;
+	char name[32];
 	FILE *fp;
 #endif
 
@@ -15656,7 +15673,8 @@ forkshell_prepare(struct forkshell *fs)
 	new->old_base = new;
 	new->hMapFile = h;
 #if FORKSHELL_DEBUG
-	if ((fp=fopen("fs.out", "w")) != NULL) {
+	sprintf(name, "fs_%d.out", getpid());
+	if ((fp=fopen(name, "w")) != NULL) {
 		int i;
 
 		/* perform some sanity checks on pointers */
