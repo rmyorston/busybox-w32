@@ -15409,7 +15409,6 @@ redirtab_copy(struct redirtab *rdtp)
 
 #undef shellparam
 #undef redirlist
-#undef varinit
 #undef vartab
 static int
 globals_var_size(int funcblocksize, struct globals_var *gvp)
@@ -15426,9 +15425,6 @@ globals_var_size(int funcblocksize, struct globals_var *gvp)
 	return funcblocksize;
 }
 
-#undef preverrout_fd
-#undef lineno
-#undef linenovar
 static struct globals_var *
 globals_var_copy(struct globals_var *gvp)
 {
@@ -15520,7 +15516,7 @@ forkshell_size(int funcblocksize, struct forkshell *fs)
 	return funcblocksize;
 }
 
-static struct forkshell *
+static void
 forkshell_copy(struct forkshell *fs, struct forkshell *new)
 {
 	memcpy(new, fs, sizeof(struct forkshell)); /* non-pointer stuff */
@@ -15538,7 +15534,6 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 	ANNOT2("n", "argv");
 	ANNOT_NO_DUP(xasprintf("path '%s'", fs->path ?: "NULL"));
 	ANNOT("varlist");
-	return new;
 }
 
 #if FORKSHELL_DEBUG
