@@ -357,7 +357,7 @@ struct forkshell {
 
 	/* optional data, used by forkshell_child */
 	int flags;
-	int fd[10];
+	int fd[3];
 	union node *n;
 	char **argv;
 	char *path;
@@ -10750,7 +10750,7 @@ evalcommand(union node *cmd, int flags)
 			spawn_forkshell(jp, &fs, FORK_FG);
 			status = waitforjob(jp);
 			INT_ON;
-			TRACE(("forked child exited with %d\n", exitstatus));
+			TRACE(("forked child exited with %d\n", status));
 			break;
 		}
 		/* goes through to shellexec() */
@@ -15285,8 +15285,8 @@ tblentry_copy(struct tblentry *tep)
 		memcpy(*newp, tep, size);
 		switch (tep->cmdtype) {
 		case CMDBUILTIN:
-			/* No pointer saving, this field must be fixed by forkshell_init() */
-			(*newp)->param.cmd = (const struct builtincmd *)(tep->param.cmd - builtintab);
+			/* Save index of builtin, not pointer; fixed by forkshell_init() */
+			(*newp)->param.index = tep->param.cmd - builtintab;
 			break;
 		case CMDFUNCTION:
 			(*newp)->param.func = funcblock;
@@ -15746,7 +15746,7 @@ forkshell_init(const char *idstr)
 		struct tblentry *e = fs->cmdtable[i];
 		while (e) {
 			if (e->cmdtype == CMDBUILTIN)
-				e->param.cmd = builtintab + (int)(intptr_t)e->param.cmd;
+				e->param.cmd = builtintab + e->param.index;
 			e = e->next;
 		}
 	}
