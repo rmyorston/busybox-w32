@@ -216,12 +216,10 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 	if (stat(path, &st) == 0) {
 		if (!S_ISREG(st.st_mode) || !(st.st_mode&S_IXUSR)) {
 			errno = EACCES;
-			goto error;
+			return -1;
 		}
 	}
 	else {
- error:
-		fprintf(stderr, "spawnveq: %s: %s\n", path, strerror(errno));
 		return -1;
 	}
 

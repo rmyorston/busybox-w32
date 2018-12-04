@@ -8387,10 +8387,6 @@ static int builtinloc = -1;     /* index in path of %builtin, or -1 */
 static void
 tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, char **envp)
 {
-#if ENABLE_PLATFORM_MINGW32
-	char *new_cmd;
-#endif
-
 #if ENABLE_FEATURE_SH_STANDALONE
 	if (applet_no >= 0) {
 		if (APPLET_IS_NOEXEC(applet_no)) {
@@ -8408,13 +8404,11 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
-	/* ensure we have a path to a real, executable file */
-	if (!(new_cmd=add_win32_extension(cmd)) && !file_is_executable(cmd)) {
-		errno = EACCES;
-		return;
+	{
+		char *new_cmd = add_win32_extension(cmd);
+		execve(new_cmd ? new_cmd : cmd, argv, envp);
+		free(new_cmd);
 	}
-	execve(new_cmd ? new_cmd : cmd, argv, envp);
-	free(new_cmd);
 	/* skip POSIX-mandated retry on ENOEXEC */
 #else
  repeat:
