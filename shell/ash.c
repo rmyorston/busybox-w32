@@ -344,7 +344,7 @@ struct forkshell {
 	/* struct alias **atab; */
 	/* struct parsefile *g_parsefile; */
 	HANDLE hMapFile;
-	void *old_base;
+	char *old_base;
 # if FORKSHELL_DEBUG
 	int nodeptrcount;
 	int funcblocksize;
@@ -364,7 +364,7 @@ struct forkshell {
 	struct strlist *varlist;
 
 	/* start of data block */
-	char *nodeptr[1];
+	char **nodeptr[1];
 };
 
 enum {
@@ -9081,7 +9081,7 @@ static void *funcblock;         /* block to allocate function from */
 static char *funcstring_end;    /* end of block to allocate strings from */
 #if ENABLE_PLATFORM_MINGW32
 static int nodeptrcount;
-static char **nodeptr;
+static char ***nodeptr;
 # if FORKSHELL_DEBUG
 static int annot_count;
 static char **annot;
@@ -9247,9 +9247,9 @@ nodeckstrdup(const char *s)
 static union node *copynode(union node *);
 
 #if ENABLE_PLATFORM_MINGW32
-# define SAVE_PTR(dst) {if (nodeptr) *nodeptr++ = (char *)&(dst);}
-# define SAVE_PTR2(dst1,dst2) {if (nodeptr) { *nodeptr++ = (char *)&(dst1);*nodeptr++ = (char *)&(dst2);}}
-# define SAVE_PTR3(dst1,dst2,dst3) {if (nodeptr) { *nodeptr++ = (char *)&(dst1);*nodeptr++ = (char *)&(dst2);*nodeptr++ = (char *)&(dst3);}}
+# define SAVE_PTR(dst) {if (nodeptr) *nodeptr++ = (char **)&(dst);}
+# define SAVE_PTR2(dst1,dst2) {if (nodeptr) { *nodeptr++ = (char **)&(dst1);*nodeptr++ = (char **)&(dst2);}}
+# define SAVE_PTR3(dst1,dst2,dst3) {if (nodeptr) { *nodeptr++ = (char **)&(dst1);*nodeptr++ = (char **)&(dst2);*nodeptr++ = (char **)&(dst3);}}
 #else
 # define SAVE_PTR(dst)
 # define SAVE_PTR2(dst,dst2)
@@ -15174,7 +15174,7 @@ spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
 #undef SAVE_PTR
 #undef SAVE_PTR2
 #undef SAVE_PTR3
-#define SAVE_PTR(dst) {*nodeptr++ = (char *)&(dst);}
+#define SAVE_PTR(dst) {*nodeptr++ = (char **)&(dst);}
 #define SAVE_PTR2(dst1,dst2) {SAVE_PTR(dst1); SAVE_PTR(dst2);}
 #define SAVE_PTR3(dst1,dst2,dst3) {SAVE_PTR2(dst1,dst2); SAVE_PTR(dst3);}
 #define SAVE_PTR4(dst1,dst2,dst3,dst4) {SAVE_PTR2(dst1,dst2); SAVE_PTR2(dst3,dst4);}
@@ -15544,7 +15544,7 @@ forkshell_print(FILE *fp0, struct forkshell *fs, char **notes)
 	FILE *fp;
 	void *lfuncblock;
 	char *lfuncstring;
-	char **lnodeptr;
+	char ***lnodeptr;
 	char *s;
 	int count;
 
@@ -15586,7 +15586,8 @@ forkshell_print(FILE *fp0, struct forkshell *fs, char **notes)
 	}
 	else {
 		while (*lnodeptr) {
-			fprintf(fp, "%p %s\n", *lnodeptr++, notes[count++]);
+			fprintf(fp, "%p %p %s\n", *lnodeptr, **lnodeptr, notes[count++]);
+			lnodeptr++;
 		}
 	}
 	if (count != fs->nodeptrcount)
@@ -15665,7 +15666,7 @@ forkshell_prepare(struct forkshell *fs)
 	/* Finish it up */
 	*nodeptr = NULL;
 	new->size = size;
-	new->old_base = new;
+	new->old_base = (char *)new;
 	new->hMapFile = h;
 #if FORKSHELL_DEBUG
 	sprintf(name, "fs_%d.out", getpid());
@@ -15736,9 +15737,9 @@ forkshell_init(const char *idstr)
 
 	/* pointer fixup */
 	for ( i=0; fs->nodeptr[i]; ++i ) {
-		ptr = (char **)((char *)fs + (fs->nodeptr[i] - (char *)fs->old_base));
+		ptr = (char **)((char *)fs + ((char *)fs->nodeptr[i] - fs->old_base));
 		if (*ptr)
-			*ptr = (char *)fs + (*ptr - (char *)fs->old_base);
+			*ptr = (char *)fs + (*ptr - fs->old_base);
 	}
 
 	/* Now fix up stuff that can't be transferred */
