@@ -1142,8 +1142,11 @@ int mingw_access(const char *name, int mode)
 		}
 	}
 
-	if (!mingw_stat(name, &s) && S_ISREG(s.st_mode) && (s.st_mode&S_IXUSR)) {
-		return 0;
+	if (!mingw_stat(name, &s)) {
+		if ((s.st_mode&S_IXUSR)) {
+			return 0;
+		}
+		errno = EACCES;
 	}
 
 	return -1;
