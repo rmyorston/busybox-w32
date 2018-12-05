@@ -13841,7 +13841,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 		entry->u.index = -1;
 		if (act & DO_ABS) {
 #if ENABLE_PLATFORM_MINGW32
-			while ((fullname=add_win32_extension(name)) == NULL ||
+			while ((fullname=add_win32_extension(name)) == NULL &&
 					stat(name, &statb) < 0 ) {
 #else
 			while (stat(name, &statb) < 0) {
