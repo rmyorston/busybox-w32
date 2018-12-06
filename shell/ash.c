@@ -8405,7 +8405,7 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 
 #if ENABLE_PLATFORM_MINGW32
 	{
-		char *new_cmd = add_win32_extension(cmd);
+		char *new_cmd = alloc_win32_extension(cmd);
 		execve(new_cmd ? new_cmd : cmd, argv, envp);
 		free(new_cmd);
 	}
@@ -8516,9 +8516,6 @@ printentry(struct tblentry *cmdp)
 	int idx;
 	const char *path;
 	char *name;
-#if ENABLE_PLATFORM_MINGW32
-	char *n;
-#endif
 
 	idx = cmdp->param.index;
 	path = pathval();
@@ -8527,13 +8524,9 @@ printentry(struct tblentry *cmdp)
 		stunalloc(name);
 	} while (--idx >= 0);
 #if ENABLE_PLATFORM_MINGW32
-	if ((n=add_win32_extension(name)) != NULL)
-		name = n;
+	add_win32_extension(name);
 #endif
 	out1fmt("%s%s\n", name, (cmdp->rehash ? "*" : nullstr));
-#if ENABLE_PLATFORM_MINGW32
-	free(n);
-#endif
 }
 
 /*
@@ -8921,9 +8914,6 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 	case CMDNORMAL: {
 		int j = entry.u.index;
 		char *p;
-#if ENABLE_PLATFORM_MINGW32
-		char *q;
-#endif
 		if (j < 0) {
 			p = command;
 		} else {
@@ -8933,17 +8923,13 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 			} while (--j >= 0);
 		}
 #if ENABLE_PLATFORM_MINGW32
-		if ((q=add_win32_extension(p)) != NULL)
-			p = q;
+		add_win32_extension(p);
 #endif
 		if (describe_command_verbose) {
 			out1fmt(" is %s", p);
 		} else {
 			out1str(p);
 		}
-#if ENABLE_PLATFORM_MINGW32
-		free(q);
-#endif
 		break;
 	}
 
@@ -13826,36 +13812,28 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	struct tblentry *cmdp;
 	int idx;
 	int prev;
-	char *fullname IF_PLATFORM_MINGW32(= NULL);
+	char *fullname;
 	struct stat statb;
 	int e;
 	int updatetbl;
 	struct builtincmd *bcmd;
-#if ENABLE_PLATFORM_MINGW32
-	extern const char win_suffix[4][4];
-	int i, len;
-#endif
 
 	/* If name contains a slash, don't use PATH or hash table */
 	if (strchr(name, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(name, '\\'))) {
 		entry->u.index = -1;
 		if (act & DO_ABS) {
 #if ENABLE_PLATFORM_MINGW32
-			while ((fullname=add_win32_extension(name)) == NULL &&
-					stat(name, &statb) < 0 ) {
+			if (auto_win32_extension(name) == NULL && stat(name, &statb) < 0) {
 #else
 			while (stat(name, &statb) < 0) {
-#endif
 #ifdef SYSV
 				if (errno == EINTR)
 					continue;
 #endif
+#endif
 				entry->cmdtype = CMDUNKNOWN;
 				return;
 			}
-#if ENABLE_PLATFORM_MINGW32
-			free(fullname);
-#endif
 		}
 		entry->cmdtype = CMDNORMAL;
 		return;
@@ -13959,29 +13937,8 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			goto success;
 		}
 #if ENABLE_PLATFORM_MINGW32
-		/* first try appending suffixes (unless there's one already) */
-		i = 4;
-		len = strlen(fullname);
-		if (!has_exe_suffix_or_dot(fullname)) {
-			/* path_advance() has reserved space for suffix */
-			fullname[len] = '.';
-			for (i=0; i<4; ++i) {
-				memcpy(fullname+len+1, win_suffix[i], 4);
-				if (stat(fullname, &statb) == 0)
-					break;
-			}
-		}
-
-		if (i == 4) {
-			/* adding a suffix failed (or wasn't tried), try original */
-			fullname[len] = '\0';
-			if (stat(fullname, &statb) < 0) {
-				if (errno != ENOENT && errno != ENOTDIR)
-					e = errno;
-				goto loop;
-			}
-		}
-#else
+		add_win32_extension(fullname);
+#endif
 		while (stat(fullname, &statb) < 0) {
 #ifdef SYSV
 			if (errno == EINTR)
@@ -13991,7 +13948,6 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 				e = errno;
 			goto loop;
 		}
-#endif
 		e = EACCES;     /* if we fail, this will be the error */
 		if (!S_ISREG(statb.st_mode))
 			continue;

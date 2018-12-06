@@ -67,10 +67,9 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 		/* If file contains a slash don't use PATH */
 		if (strchr(*argv, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(*argv, '\\'))) {
 #if ENABLE_PLATFORM_MINGW32
-			if ((p=add_win32_extension(*argv)) != NULL) {
+			if ((p=auto_win32_extension(*argv)) != NULL) {
 				missing = 0;
 				puts(p);
-				free(p);
 			}
 			else
 #endif

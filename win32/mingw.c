@@ -1160,7 +1160,7 @@ int mingw_rmdir(const char *path)
 	return rmdir(path);
 }
 
-const char win_suffix[4][4] = { "com", "exe", "bat", "cmd" };
+static const char win_suffix[4][4] = { "com", "exe", "bat", "cmd" };
 
 static int has_win_suffix(const char *name, int start)
 {
@@ -1191,33 +1191,45 @@ int has_exe_suffix_or_dot(const char *name)
 	return last_char_is(name, '.') || has_win_suffix(name, 0);
 }
 
-/* check if path can be made into an executable by adding a suffix;
- * return an allocated string containing the path if it can;
+/* Check if path can be made into an executable by adding a suffix.
+ * The suffix is added to the end of the argument which must be
+ * long enough to allow this.
+ *
+ * If the return value is TRUE the argument contains the new path,
+ * if FALSE the argument is unchanged.
+ */
+int add_win32_extension(char *p)
+{
+	if (!has_exe_suffix_or_dot(p)) {
+		int i, len = strlen(p);
+
+		p[len] = '.';
+		for (i=0; i<4; ++i) {
+			memcpy(p+len+1, win_suffix[i], 4);
+			if (file_is_executable(p))
+				return TRUE;
+		}
+		p[len] = '\0';
+	}
+	return FALSE;
+}
+
+/* Check if path can be made into an executable by adding a suffix.
+ * Return an allocated string containing the path if it can;
  * return NULL if not.
  *
- * if path already has a suffix don't even bother trying
+ * If path already has a suffix don't even bother trying.
  */
-char *add_win32_extension(const char *p)
+char *alloc_win32_extension(const char *p)
 {
-	char *path;
-	int i, len;
+	if (!has_exe_suffix_or_dot(p)) {
+		int len = strlen(p);
+		char *path = strcpy(xmalloc(len+5), p);
 
-	if (has_exe_suffix_or_dot(p)) {
-		return NULL;
-	}
-
-	len = strlen(p);
-	path = xasprintf("%s.com", p);
-
-	for (i=0; i<4; ++i) {
-		memcpy(path+len+1, win_suffix[i], 4);
-		if (file_is_executable(path)) {
+		if (add_win32_extension(path))
 			return path;
-		}
+		free(path);
 	}
-
-	free(path);
-
 	return NULL;
 }
 

@@ -457,7 +457,16 @@ void init_winsock(void);
 int has_bat_suffix(const char *p);
 int has_exe_suffix(const char *p);
 int has_exe_suffix_or_dot(const char *name);
-char *add_win32_extension(const char *p);
+char *alloc_win32_extension(const char *p);
+int add_win32_extension(char *p);
+
+static inline char *auto_win32_extension(const char *p)
+{
+	extern char *auto_string(char *str) FAST_FUNC;
+	char *s = alloc_win32_extension(p);
+	return s ? auto_string(s) : NULL;
+}
+
 void FAST_FUNC convert_slashes(char *p);
 
 int err_win_to_posix(DWORD winerr);

@@ -240,7 +240,7 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 			p = strdup(new_argv[0]);
 		}
 		else {
-			p = add_win32_extension(new_argv[0]);
+			p = alloc_win32_extension(new_argv[0]);
 		}
 
 		if (p != NULL && has_bat_suffix(p)) {
@@ -307,7 +307,7 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *con
 	new_argv[nopts+1] = (char *)prog; /* pass absolute path */
 	memcpy(new_argv+nopts+2, argv+1, sizeof(*argv)*argc);
 
-	if ((fullpath=add_win32_extension(interp.path)) != NULL ||
+	if ((fullpath=alloc_win32_extension(interp.path)) != NULL ||
 			file_is_executable(interp.path)) {
 		new_argv[0] = fullpath ? fullpath : interp.path;
 		ret = spawnveq(mode, new_argv[0], new_argv, envp);
