@@ -1164,11 +1164,12 @@ static const char win_suffix[4][4] = { "com", "exe", "bat", "cmd" };
 
 static int has_win_suffix(const char *name, int start)
 {
-	int i, len = strlen(name);
+	const char *bname = bb_basename(name);
+	int i, len = strlen(bname);
 
 	if (len > 4 && name[len-4] == '.') {
 		for (i=start; i<4; ++i) {
-			if (!strcasecmp(name+len-3, win_suffix[i])) {
+			if (!strcasecmp(bname+len-3, win_suffix[i])) {
 				return 1;
 			}
 		}
