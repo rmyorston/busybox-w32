@@ -237,6 +237,13 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 			if (*s == '/')
 				*s = '\\';
 		}
+
+		/* Another special case:  spawnve returns ENOEXEC when passed an
+		 * empty batch file.  Pretend it worked. */
+		if (st.st_size == 0) {
+			ret = 0;
+			goto done;
+		}
 	}
 
 	/*
@@ -250,6 +257,7 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 
 	ret = spawnve(mode, new_path ? new_path : path, new_argv, env);
 
+ done:
 	for (i = 0;i < argc;i++)
 		if (new_argv[i] != argv[i])
 			free(new_argv[i]);
