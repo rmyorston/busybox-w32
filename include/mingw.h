@@ -447,6 +447,8 @@ int kill_SIGTERM_by_handle(HANDLE process, int exit_code);
 
 #define find_mount_point(n, s) find_mount_point(n)
 
+char *is_prefixed_with_case(const char *string, const char *key) FAST_FUNC;
+
 /*
  * helpers
  */

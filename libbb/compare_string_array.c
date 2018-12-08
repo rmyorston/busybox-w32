@@ -27,6 +27,19 @@ char* FAST_FUNC is_prefixed_with(const char *string, const char *key)
 #endif
 }
 
+#if ENABLE_PLATFORM_MINGW32
+char* FAST_FUNC is_prefixed_with_case(const char *string, const char *key)
+{
+	while (*key != '\0') {
+		if (tolower(*key) != tolower(*string))
+			return NULL;
+		key++;
+		string++;
+	}
+	return (char*)string;
+}
+#endif
+
 /*
  * Return NULL if string is not suffixed with key. Return pointer to the
  * beginning of prefix key in string. If key is an empty string return pointer

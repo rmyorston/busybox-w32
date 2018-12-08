@@ -681,6 +681,11 @@ static void input_forward(void)
 //Also, perhaps "foo b<TAB> needs to complete to "foo bar" <cursor>,
 //not "foo bar <cursor>...
 
+# if ENABLE_PLATFORM_MINGW32
+/* use case-insensitive comparisons for filenames */
+#  define is_prefixed_with(s, k) is_prefixed_with_case(s, k)
+# endif
+
 static void free_tab_completion_data(void)
 {
 	if (matches) {
@@ -897,8 +902,11 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 			if (stat(found, &st) && lstat(found, &st))
 				goto cont; /* hmm, remove in progress? */
 
-			if (type == FIND_EXE_ONLY && !file_is_executable(found))
+# if ENABLE_PLATFORM_MINGW32
+			if (type == FIND_EXE_ONLY && !S_ISDIR(st.st_mode) &&
+					!file_is_executable(found))
 				goto cont;
+# endif
 
 			/* Save only name */
 			len = strlen(name_found);
@@ -2005,16 +2013,7 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 							char *after_home_user;
 
 							/* /home/user[/something] -> ~[/something] */
-#if !ENABLE_PLATFORM_MINGW32
 							after_home_user = is_prefixed_with(cwd_buf, home_pwd_buf);
-#else
-							after_home_user = NULL;
-							l = strlen(home_pwd_buf);
-							if (l != 0
-							 && strncasecmp(home_pwd_buf, cwd_buf, l) == 0) {
-								after_home_user = cwd_buf + l;
-							}
-#endif
 							if (after_home_user
 							 && (*after_home_user == '/' || *after_home_user == '\0')
 							) {
