@@ -684,6 +684,9 @@ static void input_forward(void)
 # if ENABLE_PLATFORM_MINGW32
 /* use case-insensitive comparisons for filenames */
 #  define is_prefixed_with(s, k) is_prefixed_with_case(s, k)
+#  define qsort_string_vector(s, c) qsort_string_vector_case(s, c)
+#  define strcmp(s, t) strcasecmp(s, t)
+#  define strncmp(s, t, n) strncasecmp(s, t, n)
 # endif
 
 static void free_tab_completion_data(void)
@@ -1278,7 +1281,11 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 		for (cp = chosen_match; *cp; cp++) {
 			unsigned n;
 			for (n = 1; n < num_matches; n++) {
+# if !ENABLE_PLATFORM_MINGW32
 				if (matches[n][cp - chosen_match] != *cp) {
+# else
+				if (tolower(matches[n][cp - chosen_match]) != tolower(*cp)) {
+# endif
 					goto stop;
 				}
 			}
@@ -1350,6 +1357,13 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 	free(chosen_match);
 	free(match_buf);
 }
+
+# if ENABLE_PLATFORM_MINGW32
+#  undef is_prefixed_with
+#  undef qsort_string_vector
+#  undef strcmp
+#  undef strncmp
+# endif
 
 #endif  /* FEATURE_TAB_COMPLETION */
 
