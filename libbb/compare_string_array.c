@@ -45,6 +45,7 @@ char* FAST_FUNC is_prefixed_with_case(const char *string, const char *key)
  * beginning of prefix key in string. If key is an empty string return pointer
  * to the end of string.
  */
+#if !ENABLE_PLATFORM_MINGW32
 char* FAST_FUNC is_suffixed_with(const char *string, const char *key)
 {
 	size_t key_len = strlen(key);
@@ -59,6 +60,33 @@ char* FAST_FUNC is_suffixed_with(const char *string, const char *key)
 
 	return NULL;
 }
+#else
+static char* FAST_FUNC is_suffixed(const char *string, const char *key,
+		int (*fn)(const char *, const char*))
+{
+	size_t key_len = strlen(key);
+	ssize_t len_diff = strlen(string) - key_len;
+
+	if (len_diff >= 0) {
+		string += len_diff;
+		if (fn(string, key) == 0) {
+			return (char*)string;
+		}
+	}
+
+	return NULL;
+}
+
+char* FAST_FUNC is_suffixed_with(const char *string, const char *key)
+{
+	return is_suffixed(string, key, strcmp);
+}
+
+char* FAST_FUNC is_suffixed_with_case(const char *string, const char *key)
+{
+	return is_suffixed(string, key, strcasecmp);
+}
+#endif
 
 /* returns the array index of the string */
 /* (index of first match is returned, or -1) */

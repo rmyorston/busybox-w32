@@ -332,8 +332,7 @@ static int has_exec_format(const char *name)
 	unsigned char buf[1024];
 
 	/* special case: skip DLLs, there are thousands of them! */
-	n = strlen(name);
-	if (n > 4 && !strcasecmp(name+n-4, ".dll"))
+	if (is_suffixed_with_case(name, ".dll"))
 		return 0;
 
 	n = open_read_close(name, buf, sizeof(buf));
