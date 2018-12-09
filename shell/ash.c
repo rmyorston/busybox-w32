@@ -8404,11 +8404,8 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
-	{
-		char *new_cmd = alloc_win32_extension(cmd);
-		execve(new_cmd ? new_cmd : cmd, argv, envp);
-		free(new_cmd);
-	}
+	cmd = auto_win32_extension(cmd) ?: cmd;
+	execve(cmd, argv, envp);
 	/* skip POSIX-mandated retry on ENOEXEC */
 #else
  repeat:
@@ -8446,7 +8443,7 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 		argv[0] = (char*) "ash";
 		goto repeat;
 	}
-#endif
+#endif /* ENABLE_PLATFORM_MINGW32 */
 }
 
 /*
