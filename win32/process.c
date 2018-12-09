@@ -55,13 +55,9 @@ static int
 parse_interpreter(const char *cmd, interp_t *interp)
 {
 	char *path, *t;
-	int n, fd;
+	int n;
 
-	fd = open(cmd, O_RDONLY);
-	if (fd < 0)
-		return 0;
-	n = read(fd, interp->buf, sizeof(interp->buf)-1);
-	close(fd);
+	n = open_read_close(cmd, interp->buf, sizeof(interp->buf)-1);
 	if (n < 4)	/* at least '#!/x' and not error */
 		return 0;
 

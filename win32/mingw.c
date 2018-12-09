@@ -327,7 +327,7 @@ static inline int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fd
  */
 static int has_exec_format(const char *name)
 {
-	int fd, n, sig;
+	int n, sig;
 	unsigned int offset;
 	unsigned char buf[1024];
 
@@ -336,11 +336,7 @@ static int has_exec_format(const char *name)
 	if (n > 4 && !strcasecmp(name+n-4, ".dll"))
 		return 0;
 
-	fd = open(name, O_RDONLY);
-	if (fd < 0)
-		return 0;
-	n = read(fd, buf, sizeof(buf)-1);
-	close(fd);
+	n = open_read_close(name, buf, sizeof(buf));
 	if (n < 4)	/* at least '#!/x' and not error */
 		return 0;
 
