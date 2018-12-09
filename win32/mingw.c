@@ -1155,16 +1155,17 @@ int mingw_rmdir(const char *path)
 	return rmdir(path);
 }
 
-static const char win_suffix[4][4] = { "com", "exe", "bat", "cmd" };
+#define NUMEXT 5
+static const char win_suffix[NUMEXT][4] = { "sh", "com", "exe", "bat", "cmd" };
 
 static int has_win_suffix(const char *name, int start)
 {
-	const char *bname = bb_basename(name);
-	int i, len = strlen(bname);
+	const char *dot = strrchr(bb_basename(name), '.');
+	int i;
 
-	if (len > 3 && bname[len-4] == '.') {
-		for (i=start; i<4; ++i) {
-			if (!strcasecmp(bname+len-3, win_suffix[i])) {
+	if (dot != NULL && strlen(dot) < 5) {
+		for (i=start; i<NUMEXT; ++i) {
+			if (!strcasecmp(dot+1, win_suffix[i])) {
 				return 1;
 			}
 		}
@@ -1174,7 +1175,7 @@ static int has_win_suffix(const char *name, int start)
 
 int has_bat_suffix(const char *name)
 {
-	return has_win_suffix(name, 2);
+	return has_win_suffix(name, 3);
 }
 
 int has_exe_suffix(const char *name)
@@ -1200,8 +1201,8 @@ int add_win32_extension(char *p)
 		int i, len = strlen(p);
 
 		p[len] = '.';
-		for (i=0; i<4; ++i) {
-			memcpy(p+len+1, win_suffix[i], 4);
+		for (i=0; i<NUMEXT; ++i) {
+			strcpy(p+len+1, win_suffix[i]);
 			if (file_is_executable(p))
 				return TRUE;
 		}

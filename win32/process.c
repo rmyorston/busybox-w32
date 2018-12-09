@@ -57,33 +57,42 @@ parse_interpreter(const char *cmd, interp_t *interp)
 	char *path, *t;
 	int n;
 
-	n = open_read_close(cmd, interp->buf, sizeof(interp->buf)-1);
-	if (n < 4)	/* at least '#!/x' and not error */
-		return 0;
+	while (TRUE) {
+		n = open_read_close(cmd, interp->buf, sizeof(interp->buf)-1);
+		if (n < 4)	/* at least '#!/x' and not error */
+			break;
 
-	/*
-	 * See http://www.in-ulm.de/~mascheck/various/shebang/ for trivia
-	 * relating to '#!'.
-	 */
-	if (interp->buf[0] != '#' || interp->buf[1] != '!')
-		return 0;
-	interp->buf[n] = '\0';
-	if ((t=strchr(interp->buf, '\n')) == NULL)
-		return 0;
-	t[1] = '\0';
+		/*
+		 * See http://www.in-ulm.de/~mascheck/various/shebang/ for trivia
+		 * relating to '#!'.
+		 */
+		if (interp->buf[0] != '#' || interp->buf[1] != '!')
+			break;
+		interp->buf[n] = '\0';
+		if ((t=strchr(interp->buf, '\n')) == NULL)
+			break;
+		t[1] = '\0';
 
-	if ((path=strtok(interp->buf+2, " \t\r\n")) == NULL)
-		return 0;
+		if ((path=strtok(interp->buf+2, " \t\r\n")) == NULL)
+			break;
 
-	t = (char *)bb_basename(path);
-	if (*t == '\0')
-		return 0;
+		t = (char *)bb_basename(path);
+		if (*t == '\0')
+			break;
 
-	interp->path = path;
-	interp->name = t;
-	interp->opts = strtok(NULL, "\r\n");
+		interp->path = path;
+		interp->name = t;
+		interp->opts = strtok(NULL, "\r\n");
+		return 1;
+	}
 
-	return 1;
+	if (is_suffixed_with_case(cmd, ".sh")) {
+		interp->path = (char *)DEFAULT_SHELL;
+		interp->name = (char *)DEFAULT_SHELL_SHORT_NAME;
+		interp->opts = NULL;
+		return 1;
+	}
+	return 0;
 }
 
 /*
