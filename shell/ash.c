@@ -4410,11 +4410,7 @@ sprint_status48(char *s, int status, int sigonly)
 #endif
 			st = WTERMSIG(status);
 		if (sigonly) {
-#ifdef SIGPIPE
 			if (st == SIGINT || st == SIGPIPE)
-#else
-			if (st == SIGINT)
-#endif
 				goto out;
 #if JOBS
 			if (WIFSTOPPED(status))
@@ -14951,7 +14947,7 @@ forkshell_openhere(struct forkshell *fs)
 	ignoresig(SIGQUIT); //signal(SIGQUIT, SIG_IGN);
 	ignoresig(SIGHUP);  //signal(SIGHUP, SIG_IGN);
 	ignoresig(SIGTSTP); //signal(SIGTSTP, SIG_IGN);
-	//signal(SIGPIPE, SIG_DFL);
+	signal(SIGPIPE, SIG_DFL);
 	if (redir->type == NHERE) {
 		size_t len = strlen(redir->nhere.doc->narg.text);
 		full_write(pip[1], redir->nhere.doc->narg.text, len);

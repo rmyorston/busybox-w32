@@ -475,12 +475,32 @@ int winansi_puts(const char *s)
 	return (winansi_fputs(s, stdout) == EOF || putchar('\n') == EOF) ? EOF : 0;
 }
 
+static sighandler_t sigpipe_handler = SIG_DFL;
+
+#undef signal
+sighandler_t winansi_signal(int signum, sighandler_t handler)
+{
+	sighandler_t old;
+
+	if (signum == SIGPIPE) {
+		old = sigpipe_handler;
+		sigpipe_handler = handler;
+		return old;
+	}
+	return signal(signum, handler);
+}
+
 static void check_pipe_fd(int fd)
 {
-	if (GetLastError() == ERROR_NO_DATA) {
-		if (GetFileType((HANDLE)_get_osfhandle(fd)) == FILE_TYPE_PIPE) {
+	int error = GetLastError();
+
+	if ((error == ERROR_NO_DATA &&
+			GetFileType((HANDLE)_get_osfhandle(fd)) == FILE_TYPE_PIPE) ||
+			error == ERROR_BROKEN_PIPE) {
+		if (sigpipe_handler == SIG_DFL)
+			exit(128+SIGPIPE);
+		else /* SIG_IGN */
 			errno = EPIPE;
-		}
 	}
 }
 

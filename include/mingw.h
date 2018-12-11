@@ -93,10 +93,14 @@ IMPL(getpwent,struct passwd *,NULL,void)
  * signal.h
  */
 #define SIGKILL 9
+#define SIGPIPE 13
 
 #define SIG_UNBLOCK 1
 
 NOIMPL(FAST_FUNC sigprocmask_allsigs, int how UNUSED_PARAM);
+typedef void (*sighandler_t)(int);
+sighandler_t winansi_signal(int signum, sighandler_t handler);
+#define signal(s, h) winansi_signal(s, h)
 
 /*
  * stdio.h

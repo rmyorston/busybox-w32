@@ -27,6 +27,10 @@
 
 #include "libbb.h"
 
+#if ENABLE_PLATFORM_MINGW32
+# undef SIGPIPE
+#endif
+
 /* Believe it or not, but some arches have more than 32 SIGs!
  * HPPA: SIGSTKFLT == 36. */
 

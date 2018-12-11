@@ -536,9 +536,7 @@ enum {
 #endif
 		+ (1LL << SIGINT)
 		+ (1LL << SIGTERM)
-#ifdef SIGPIPE
 		+ (1LL << SIGPIPE)   // Write to pipe with no readers
-#endif
 #ifdef SIGQUIT
 		+ (1LL << SIGQUIT)   // Quit from keyboard
 #endif
