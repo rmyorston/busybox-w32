@@ -4453,12 +4453,14 @@ static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
 static pid_t
 waitpid_child(int *status, int wait_flags)
 {
+	struct job *jb;
+	struct procstat *ps;
+	int pid_nr = 0;
 	pid_t *pidlist;
 	HANDLE *proclist;
-	int pid_nr = 0;
-	pid_t pid;
+	pid_t pid = -1;
 	DWORD win_status, idx;
-	struct job *jb;
+	int i, delay;
 
 	for (jb = curjob; jb; jb = jb->prev_job) {
 		if (jb->state != JOBDONE)
@@ -4474,59 +4476,71 @@ waitpid_child(int *status, int wait_flags)
 	proclist[0] = hSIGINT;
 	pid_nr = 1;
 	for (jb = curjob; jb; jb = jb->prev_job) {
-		struct procstat *ps, *psend;
 		if (jb->state == JOBDONE)
 			continue;
 		ps = jb->ps;
-		psend = ps + jb->nprocs;
-		while (ps < psend) {
-			if (ps->ps_pid != -1 && ps->ps_proc != NULL) {
-				pidlist[pid_nr] = ps->ps_pid;
-				proclist[pid_nr++] = ps->ps_proc;
+		for (i = 0; i < jb->nprocs; ++i) {
+			if (ps[i].ps_proc) {
+				pidlist[pid_nr] = ps[i].ps_pid;
+				proclist[pid_nr++] = ps[i].ps_proc;
 			}
-			ps++;
 		}
 	}
 
-	if (pid_nr == 1) {
-		free(pidlist);
-		free(proclist);
-		return -1;
-	}
+	if (pid_nr == 1)
+		goto done;
 
 	idx = WaitForMultipleObjects(pid_nr, proclist, FALSE,
 				wait_flags&WNOHANG ? 1 : INFINITE);
-	if (idx >= pid_nr) {
-		free(pidlist);
-		free(proclist);
-		return -1;
-	}
-	if (!idx) { 		/* hSIGINT */
-		int i;
-		ResetEvent(hSIGINT);
-		for (i = 1; i < pid_nr; i++)
-			kill_SIGTERM_by_handle(proclist[i], 128+SIGINT);
-		Sleep(200);
-		for (i = 1; i < pid_nr; i++) {
-			DWORD code;
-			if (GetExitCodeProcess(proclist[i], &code) &&
-					code == STILL_ACTIVE) {
-				TerminateProcess(proclist[i], 128+SIGINT);
+	if (idx < pid_nr) {
+		if (idx == 0) {		/* hSIGINT */
+			ResetEvent(hSIGINT);
+
+			ps = curjob->ps;
+			for (i = 0; i < curjob->nprocs; ++i) {
+				if (ps[i].ps_proc) {
+					kill_SIGTERM_by_handle(ps[i].ps_proc, 128+SIGINT);
+					pid = ps[i].ps_pid;	/* remember last valid pid */
+				}
 			}
+
+			Sleep(200);
+			delay = FALSE;
+			for (i = 0; i < curjob->nprocs; ++i) {
+				DWORD code;
+				if (ps[i].ps_proc &&
+						GetExitCodeProcess(ps[i].ps_proc, &code) &&
+						code == STILL_ACTIVE) {
+					TerminateProcess(ps[i].ps_proc, 128+SIGINT);
+					delay = TRUE;
+				}
+			}
+
+			if (delay)
+				Sleep(200);
+			for (i = 0; i < curjob->nprocs; ++i) {
+				/* mark all pids dead except the one we'll return */
+				if (ps[i].ps_pid != pid) {
+					ps[i].ps_status = 128 + SIGINT;
+					ps[i].ps_pid = -1;
+					CloseHandle(ps[i].ps_proc);
+					ps[i].ps_proc = NULL;
+				}
+			}
+
+			*status = 128 + SIGINT;	/* terminated by a signal */
+			if (iflag)
+				write(STDOUT_FILENO, "^C", 2);
 		}
-		pid = pidlist[1];
-		free(pidlist);
-		free(proclist);
-		*status = 128 + SIGINT;	/* terminated by a signal */
-		if (iflag)
-			write(STDOUT_FILENO, "^C", 2);
-		return pid;
+		else {		/* valid pid index */
+			GetExitCodeProcess(proclist[idx], &win_status);
+			*status = (int)win_status << 8;
+			pid = pidlist[idx];
+		}
 	}
-	GetExitCodeProcess(proclist[idx], &win_status);
-	pid = pidlist[idx];
+ done:
 	free(pidlist);
 	free(proclist);
-	*status = (int)win_status << 8;
 	return pid;
 }
 #define waitpid(p, s, f) waitpid_child(s, f)
