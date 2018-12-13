@@ -355,6 +355,10 @@ struct forkshell {
 	/* type of forkshell */
 	int fpid;
 
+	/* generic data, used by forkshell_child */
+	int mode;
+	int nprocs;
+
 	/* optional data, used by forkshell_child */
 	int flags;
 	int fd[3];
@@ -15100,6 +15104,8 @@ spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
 	intptr_t ret;
 
 	new = forkshell_prepare(fs);
+	new->mode = mode;
+	new->nprocs = jp == NULL ? 0 : jp->nprocs;
 	sprintf(buf, "%p", new->hMapFile);
 	argv[2] = buf;
 	ret = mingw_spawn_proc(argv);
@@ -15725,6 +15731,14 @@ forkshell_init(const char *idstr)
 	reinitvar();
 
 	shlvl++;
+	if (fs->mode == FORK_BG) {
+		SetConsoleCtrlHandler(NULL, TRUE);
+		if (fs->nprocs == 0) {
+			close(0);
+			if (open(bb_dev_null, O_RDONLY) != 0)
+				ash_msg_and_raise_perror("can't open '%s'", bb_dev_null);
+		}
+	}
 	forkshell_child(fs);
 }
 
