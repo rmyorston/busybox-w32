@@ -14584,10 +14584,13 @@ init(void)
 				}
 			}
 
-			/* some initialisation normally performed at login */
+			/* Initialise some variables normally set at login, but
+			 * only if someone hasn't already set them. */
 			pw = xgetpwuid(getuid());
-			setup_environment(pw->pw_shell,
-						SETUP_ENV_CHANGEENV|SETUP_ENV_NO_CHDIR, pw);
+			if (!getenv("USER"))    xsetenv("USER",    pw->pw_name);
+			if (!getenv("LOGNAME")) xsetenv("LOGNAME", pw->pw_name);
+			if (!getenv("HOME"))    xsetenv("HOME",    pw->pw_dir);
+			if (!getenv("SHELL"))   xsetenv("SHELL",   DEFAULT_SHELL);
 		}
 #endif
 		for (envp = environ; envp && *envp; envp++) {
