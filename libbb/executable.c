@@ -40,28 +40,21 @@ char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 	 */
 	char *p, *n;
 #if ENABLE_PLATFORM_MINGW32
-	char sep, *w;
+	char *w;
 #endif
 
 	p = *PATHp;
 	while (p) {
 		int ex;
 
-#if !ENABLE_PLATFORM_MINGW32
-		n = strchr(p, ':');
+		n = strchr(p, PATH_SEP);
 		if (n) *n = '\0';
-#else
-		n = (char*)next_path_sep(p);
-		if (n) { sep = *n; *n = '\0'; }
-#endif
 		p = concat_path_file(
 			p[0] ? p : ".", /* handle "::" case */
 			filename
 		);
-#if !ENABLE_PLATFORM_MINGW32
-		if (n) *n++ = ':';
-#else
-		if (n) *n++ = sep;
+		if (n) *n++ = PATH_SEP;
+#if ENABLE_PLATFORM_MINGW32
 		if ((w=alloc_win32_extension(p))) {
 			free(p);
 			p = w;

@@ -199,19 +199,10 @@ static char **add_MANPATH(char **man_path_list, int *count_mp, char *path)
 	if (path) while (*path) {
 		char *next_path;
 		char **path_element;
-#if ENABLE_PLATFORM_MINGW32
-		char save;
-
-		next_path = (char *)next_path_sep(path);
-#else
-		next_path = strchr(path, ':');
-#endif
+		next_path = strchr(path, PATH_SEP);
 		if (next_path) {
 			if (next_path == path) /* "::"? */
 				goto next;
-#if ENABLE_PLATFORM_MINGW32
-			save = *next_path;
-#endif
 			*next_path = '\0';
 		}
 		/* Do we already have path? */
@@ -230,11 +221,7 @@ static char **add_MANPATH(char **man_path_list, int *count_mp, char *path)
 		if (!next_path)
 			break;
 		/* "path" may be a result of getenv(), be nice and don't mangle it */
-#if ENABLE_PLATFORM_MINGW32
-		*next_path = save;
-#else
-		*next_path = ':';
-#endif
+		*next_path = PATH_SEP;
  next:
 		path = next_path + 1;
 	}

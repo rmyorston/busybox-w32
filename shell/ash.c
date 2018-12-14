@@ -2422,6 +2422,42 @@ bltinlookup(const char *name)
 	return lookupvar(name);
 }
 
+#if ENABLE_PLATFORM_MINGW32
+static char *
+fix_pathvar(const char *path)
+{
+	char *newpath = xstrdup(path);
+	char *p;
+	int modified = FALSE;
+
+	p = newpath + 5;
+	while (*p) {
+		if (*p != ':' && *p != ';') {
+			/* skip drive */
+			if (isalpha(*p) && p[1] == ':')
+				p += 2;
+			/* skip through path component */
+			for (; *p != '\0' && *p != ':' && *p != ';'; ++p)
+				continue;
+		}
+		/* *p is ':', ';' or '\0' here */
+		if (*p == ':') {
+			*p++ = ';';
+			modified = TRUE;
+		}
+		else if (*p == ';') {
+			++p;
+		}
+	}
+
+	if (!modified) {
+		free(newpath);
+		newpath = NULL;
+	}
+	return newpath;
+}
+#endif
+
 /*
  * Same as setvar except that the variable and value are passed in
  * the first argument as name=value.  Since the first argument will
@@ -2433,6 +2469,19 @@ static struct var *
 setvareq(char *s, int flags)
 {
 	struct var *vp, **vpp;
+
+#if ENABLE_PLATFORM_MINGW32
+	if (strncmp(s, "PATH=", 5) == 0) {
+		char *newpath = fix_pathvar(s);
+		if (newpath) {
+			if ((flags & (VTEXTFIXED|VSTACK|VNOSAVE)) == VNOSAVE)
+				free(s);
+			flags |= VNOSAVE;
+			flags &= ~(VTEXTFIXED|VSTACK);
+			s = newpath;
+		}
+	}
+#endif
 
 	vpp = hashvar(s);
 	flags |= (VEXPORT & (((unsigned) (1 - aflag)) - 1));
@@ -2646,18 +2695,8 @@ path_advance(const char **path, const char *name)
 	if (*path == NULL)
 		return NULL;
 	start = *path;
-#if ENABLE_PLATFORM_MINGW32
-	p = next_path_sep(start);
-	q = strchr(start, '%');
-	if ((p && q && q < p) || (!p && q))
-		p = q;
-	if (!p)
-		for (p = start; *p; p++)
-			continue;
-#else
-	for (p = start; *p && *p != ':' && *p != '%'; p++)
+	for (p = start; *p && *p != PATH_SEP && *p != '%'; p++)
 		continue;
-#endif
 	len = p - start + strlen(name) + 2;     /* "2" is for '/' and '\0' */
 
 	/* reserve space for suffix on WIN32 */
@@ -2672,19 +2711,10 @@ path_advance(const char **path, const char *name)
 	pathopt = NULL;
 	if (*p == '%') {
 		pathopt = ++p;
-#if ENABLE_PLATFORM_MINGW32
-		p = next_path_sep(start);
-
-		/* *p != ':' and '*' would suffice */
-		if (!p)
-			p = pathopt - 1;
-#else
-		while (*p && *p != ':')
+		while (*p && *p != PATH_SEP)
 			p++;
-#endif
 	}
-	if (*p == ':' ||
-	    (ENABLE_PLATFORM_MINGW32 && *p == ';'))
+	if (*p == PATH_SEP)
 		*path = p + 1;
 	else
 		*path = NULL;
@@ -8733,8 +8763,8 @@ changepath(const char *new)
 	for (;;) {
 		if (*old != *new) {
 			firstchange = idx;
-			if ((*old == '\0' && *new == ':')
-			 || (*old == ':' && *new == '\0')
+			if ((*old == '\0' && *new == PATH_SEP)
+			 || (*old == PATH_SEP && *new == '\0')
 			) {
 				firstchange++;
 			}
@@ -8744,7 +8774,7 @@ changepath(const char *new)
 			break;
 		if (*new == '%' && idx_bltin < 0 && prefix(new + 1, "builtin"))
 			idx_bltin = idx;
-		if (*new == ':')
+		if (*new == PATH_SEP)
 			idx++;
 		new++;
 		old++;
@@ -10585,7 +10615,13 @@ evalcommand(union node *cmd, int flags)
 		 */
 		p = (*spp)->text;
 		if (varcmp(p, path) == 0)
+#if !ENABLE_PLATFORM_MINGW32
 			path = p;
+#else
+			/* fix_pathvar may have modified the value of the local
+			 * variable so we look it up again */
+			path = vpath.var_text;
+#endif
 	}
 
 	/* Print the command if xflag is set. */

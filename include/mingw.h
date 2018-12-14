@@ -443,7 +443,6 @@ int mingw_execve(const char *cmd, char *const *argv, char *const *envp);
 #define execve mingw_execve
 #define execv mingw_execv
 
-const char * next_path_sep(const char *path);
 #define has_dos_drive_prefix(path) (isalpha(*(path)) && (path)[1] == ':')
 #define is_absolute_path(path) ((path)[0] == '/' || (path)[0] == '\\' || has_dos_drive_prefix(path))
 
