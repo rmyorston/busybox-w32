@@ -10531,6 +10531,9 @@ evalcommand(union node *cmd, int flags)
 	int status;
 	char **nargv;
 	smallint cmd_is_exec;
+#if ENABLE_PLATFORM_MINGW32
+	int cmdpath;
+#endif
 
 	errlinno = lineno = cmd->ncmd.linno;
 	if (funcline)
@@ -10599,6 +10602,7 @@ evalcommand(union node *cmd, int flags)
 	}
 	status = redirectsafe(cmd->ncmd.redirect, REDIR_PUSH | REDIR_SAVEFD2);
 
+#if !ENABLE_PLATFORM_MINGW32
 	path = vpath.var_text;
 	for (argp = cmd->ncmd.assign; argp; argp = argp->narg.next) {
 		struct strlist **spp;
@@ -10615,14 +10619,17 @@ evalcommand(union node *cmd, int flags)
 		 */
 		p = (*spp)->text;
 		if (varcmp(p, path) == 0)
-#if !ENABLE_PLATFORM_MINGW32
 			path = p;
-#else
-			/* fix_pathvar may have modified the value of the local
-			 * variable so we look it up again */
-			path = vpath.var_text;
-#endif
 	}
+#else
+	/* Set path after any local PATH= has been processed. */
+	for (argp = cmd->ncmd.assign; argp; argp = argp->narg.next) {
+		struct strlist **spp = varlist.lastp;
+		expandarg(argp, &varlist, EXP_VARTILDE);
+		mklocal((*spp)->text);
+	}
+	path = vpath.var_text;
+#endif
 
 	/* Print the command if xflag is set. */
 	if (xflag) {
@@ -10780,7 +10787,13 @@ evalcommand(union node *cmd, int flags)
 			TRACE(("forked child exited with %d\n", status));
 			break;
 		}
-		/* goes through to shellexec() */
+		/* If we're running 'command -p' we need to use the value stored
+		 * in path by parse_command_args().  If PATH is a local variable
+		 * listsetvar() will free the value currently in path so we need
+		 * to fetch the updated version. */
+		cmdpath = (path != pathval());
+		listsetvar(varlist.list, VEXPORT|VSTACK);
+		shellexec(argv[0], argv, cmdpath ? path : pathval(), cmdentry.u.index);
 #else
 		if (!(flags & EV_EXIT) || may_have_traps) {
 			/* No, forking off a child is necessary */
@@ -10798,9 +10811,9 @@ evalcommand(union node *cmd, int flags)
 			FORCE_INT_ON;
 			/* fall through to exec'ing external program */
 		}
-#endif
 		listsetvar(varlist.list, VEXPORT|VSTACK);
 		shellexec(argv[0], argv, path, cmdentry.u.index);
+#endif
 		/* NOTREACHED */
 	} /* default */
 	case CMDBUILTIN:
