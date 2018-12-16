@@ -1039,45 +1039,42 @@ int mingw_unlink(const char *pathname)
 size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm *tm)
 {
 	size_t ret;
-	char day[3];
+	char buffer[64];
+	const char *replace;
 	char *t;
-	char *fmt, *newfmt;
+	char *fmt;
 	struct tm tm2;
-	int m;
 
 	/*
-	 * Emulate the some formats that Windows' strftime lacks.
+	 * Emulate some formats that Windows' strftime lacks.
 	 * - '%e' day of the month with space padding
 	 * - '%s' number of seconds since the Unix epoch
+	 * - '%T' same as %H:%M:%S
 	 * - '%z' timezone offset
 	 * Also, permit the '-' modifier to omit padding.  Windows uses '#'.
 	 */
 	fmt = xstrdup(format);
 	for ( t=fmt; *t; ++t ) {
 		if ( *t == '%' ) {
+			replace = NULL;
 			if ( t[1] == 'e' ) {
 				if ( tm->tm_mday >= 0 && tm->tm_mday <= 99 ) {
-					sprintf(day, "%2d", tm->tm_mday);
+					sprintf(buffer, "%2d", tm->tm_mday);
 				}
 				else {
-					strcpy(day, "  ");
+					strcpy(buffer, "  ");
 				}
-				memcpy(t++, day, 2);
+				replace = buffer;
 			}
 			else if ( t[1] == 's' ) {
-				*t = '\0';
-				m = t - fmt;
 				tm2 = *tm;
-				newfmt = xasprintf("%s%d%s", fmt, (int)mktime(&tm2), t+2);
-				free(fmt);
-				t = newfmt + m + 1;
-				fmt = newfmt;
+				sprintf(buffer, "%d", (int)mktime(&tm2));
+				replace = buffer;
+			}
+			else if ( t[1] == 'T' ) {
+				replace = "%H:%M:%S";
 			}
 			else if ( t[1] == 'z' ) {
-				char buffer[16] = "";
-
-				*t = '\0';
-				m = t - fmt;
 				_tzset();
 				if ( tm->tm_isdst >= 0 ) {
 					int offset = (int)_timezone - (tm->tm_isdst > 0 ? 3600 : 0);
@@ -1095,10 +1092,10 @@ size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm
 					min = (offset % 3600) / 60;
 					sprintf(buffer+1, "%04d", hr*100 + min);
 				}
-				newfmt = xasprintf("%s%s%s", fmt, buffer, t+2);
-				free(fmt);
-				t = newfmt + m + 1;
-				fmt = newfmt;
+				else {
+					buffer[0] = '\0';
+				}
+				replace = buffer;
 			}
 			else if ( t[1] == '-' && t[2] != '\0' &&
 						strchr("dHIjmMSUwWyY", t[2]) ) {
@@ -1107,6 +1104,18 @@ size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm
 			}
 			else if ( t[1] != '\0' ) {
 				++t;
+			}
+
+			if (replace) {
+				int m;
+				char *newfmt;
+
+				*t = '\0';
+				m = t - fmt;
+				newfmt = xasprintf("%s%s%s", fmt, replace, t+2);
+				free(fmt);
+				t = newfmt + m + strlen(replace);
+				fmt = newfmt;
 			}
 		}
 	}
