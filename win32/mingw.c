@@ -881,13 +881,11 @@ int link(const char *oldpath, const char *newpath)
 static char *resolve_symlinks(char *path)
 {
 	HANDLE h = INVALID_HANDLE_VALUE;
-	DECLARE_PROC_ADDR(kernel32.dll, DWORD, GetFinalPathNameByHandleA, HANDLE,
+	DECLARE_PROC_ADDR(DWORD, GetFinalPathNameByHandleA, HANDLE,
 						LPSTR, DWORD, DWORD);
 
-	if (!INIT_PROC_ADDR(GetFinalPathNameByHandleA)) {
-		errno = ENOSYS;
+	if (!INIT_PROC_ADDR(kernel32.dll, GetFinalPathNameByHandleA))
 		return NULL;
-	}
 
 	/* need a file handle to resolve symlinks */
 	h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL,
@@ -1282,9 +1280,9 @@ off_t mingw_lseek(int fd, off_t offset, int whence)
 
 ULONGLONG CompatGetTickCount64(void)
 {
-	DECLARE_PROC_ADDR(kernel32.dll, ULONGLONG, GetTickCount64, void);
+	DECLARE_PROC_ADDR(ULONGLONG, GetTickCount64, void);
 
-	if (!INIT_PROC_ADDR(GetTickCount64)) {
+	if (!INIT_PROC_ADDR(kernel32.dll, GetTickCount64)) {
 		return (ULONGLONG)GetTickCount();
 	}
 
