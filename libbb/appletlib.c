@@ -965,6 +965,10 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 					str = "NOFORK  ";
 				else if (APPLET_IS_NOEXEC(i))
 					str = "noexec  ";
+#   if NUM_SCRIPTS > 0
+				else if (applet_main[i] == scripted_main)
+					str = "script  ";
+#   endif
 				else
 					str = "        ";
 				full_write2_str(str);
