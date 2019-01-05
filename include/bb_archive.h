@@ -285,7 +285,11 @@ enum {
 	BBUNPK_SEAMLESS_MAGIC = (1 << 31) * ENABLE_ZCAT * SEAMLESS_COMPRESSION,
 };
 
+#if !ENABLE_PLATFORM_MINGW32
 void check_errors_in_children(int signo);
+#else
+#define check_errors_in_children(s) ((void)0)
+#endif
 #if BB_MMU
 void fork_transformer(int fd,
 	int signature_skipped,

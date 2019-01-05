@@ -152,11 +152,6 @@ void FAST_FUNC fork_transformer(int fd, const char *transform_prog)
 	xmove_fd(fd_pipe.rd, fd);
 }
 #else /* ENABLE_PLATFORM_MINGW */
-void check_errors_in_children(int signo UNUSED_PARAM)
-{
-	bb_got_signal = 0;
-}
-
 void FAST_FUNC fork_transformer(int fd, const char *transform_prog)
 {
 	char *cmd;
