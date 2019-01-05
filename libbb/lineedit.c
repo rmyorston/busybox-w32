@@ -705,8 +705,12 @@ static void add_match(char *matched)
 	while (*p) {
 		/* ESC attack fix: drop any string with control chars */
 		if (*p < ' '
+# if !ENABLE_PLATFORM_MINGW32
 		 || (!ENABLE_UNICODE_SUPPORT && *p >= 0x7f)
 		 || (ENABLE_UNICODE_SUPPORT && *p == 0x7f)
+# else
+		 || *p == 0x7f
+# endif
 		) {
 			free(matched);
 			return;
