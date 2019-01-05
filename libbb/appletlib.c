@@ -776,7 +776,8 @@ static void install_links(const char *busybox,
 	while (*appname) {
 		fpc = xasprintf("%s/%s.exe", custom_install_dir, appname);
 		rc = link(busybox, fpc);
-		if (rc != 0 && errno != EEXIST) {
+		if (rc != 0 && (errno != EEXIST ||
+				strcmp("busybox.exe", bb_basename(fpc)) != 0)) {
 			bb_simple_perror_msg(fpc);
 		}
 		free(fpc);
@@ -885,7 +886,13 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 			"   or: busybox --show SCRIPT\n"
 #  endif
 			IF_FEATURE_INSTALLER(
-			"   or: busybox --install "IF_NOT_PLATFORM_MINGW32("[-s] ")"[DIR]\n"
+			IF_NOT_PLATFORM_MINGW32(
+			"   or: busybox --install [-s] [DIR]\n"
+			)
+			IF_PLATFORM_MINGW32(
+			"   or: busybox --install [DIR]\n"
+			"   or: busybox --uninstall [-n] file\n"
+			)
 			)
 			"   or: function [arguments]...\n"
 			"\n"
@@ -1015,6 +1022,29 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 #endif
 		return 0;
 	}
+
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_INSTALLER
+	if (strcmp(argv[1], "--uninstall") == 0) {
+		char name[PATH_MAX];
+		int dry_run = (argv[2] && strcmp(argv[2], "-n") == 0 && ++argv);
+		const char *file = argv[2];
+
+		if (!argv[2])
+			bb_error_msg_and_die(bb_msg_requires_arg, "--uninstall");
+
+		while (enumerate_links(file, name)) {
+			if (dry_run) {
+				full_write1_str(name);
+				full_write1_str("\n");
+			}
+			else if (unlink(name) != 0) {
+				bb_simple_perror_msg(name);
+			}
+			file = NULL;
+		}
+		return 0;
+	}
+#endif
 
 	if (strcmp(argv[1], "--help") == 0) {
 		/* "busybox --help [<applet>]" */

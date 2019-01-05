@@ -1289,3 +1289,42 @@ ULONGLONG CompatGetTickCount64(void)
 	return GetTickCount64();
 }
 #endif
+
+#if ENABLE_FEATURE_INSTALLER
+/*
+ * Enumerate the names of all hard links to a file.  The first call
+ * provides the file name as the first argument; subsequent calls must
+ * set the first argument to NULL.  Returns 0 on error or when there are
+ * no more links.
+ */
+int enumerate_links(const char *file, char *name)
+{
+	static HANDLE h = INVALID_HANDLE_VALUE;
+	char aname[PATH_MAX];
+	wchar_t wname[PATH_MAX];
+	DWORD length = PATH_MAX;
+	DECLARE_PROC_ADDR(HANDLE, FindFirstFileNameW, LPCWSTR, DWORD, LPDWORD,
+						PWSTR);
+	DECLARE_PROC_ADDR(BOOL, FindNextFileNameW, HANDLE, LPDWORD, PWSTR);
+
+	if (!INIT_PROC_ADDR(kernel32.dll, FindFirstFileNameW) ||
+			!INIT_PROC_ADDR(kernel32.dll, FindNextFileNameW))
+		return 0;
+
+	if (file != NULL) {
+		wchar_t wfile[PATH_MAX];
+		MultiByteToWideChar(CP_ACP, 0, file, -1, wfile, PATH_MAX);
+		h = FindFirstFileNameW(wfile, 0, &length, wname);
+		if (h == INVALID_HANDLE_VALUE)
+			return 0;
+	}
+	else if (!FindNextFileNameW(h, &length, wname)) {
+		FindClose(h);
+		h = INVALID_HANDLE_VALUE;
+		return 0;
+	}
+	WideCharToMultiByte(CP_ACP, 0, wname, -1, aname, PATH_MAX, NULL, NULL);
+	realpath(aname, name);
+	return 1;
+}
+#endif
