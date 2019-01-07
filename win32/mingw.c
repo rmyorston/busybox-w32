@@ -318,6 +318,20 @@ static inline int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fd
 	}
 }
 
+#undef umask
+mode_t mingw_umask(mode_t new_mode)
+{
+	static mode_t old_mode = DEFAULT_UMASK;
+	mode_t tmp_mode;
+
+	tmp_mode = old_mode;
+	old_mode = new_mode;
+
+	umask((new_mode & S_IWUSR) ? _S_IWRITE : 0);
+
+	return tmp_mode;
+}
+
 /*
  * Examine a file's contents to determine if it can be executed.  This
  * should be a last resort:  in most cases it's much more efficient to

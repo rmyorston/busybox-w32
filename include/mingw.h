@@ -243,6 +243,11 @@ NOIMPL(mingw_sendto,SOCKET s UNUSED_PARAM, const char *buf UNUSED_PARAM, int len
 #define S_IWOTH (S_IWGRP >> 3)
 #define S_IXOTH (S_IXGRP >> 3)
 
+mode_t mingw_umask(mode_t mode);
+#define umask mingw_umask
+
+#define DEFAULT_UMASK 0002
+
 IMPL(fchmod,int,0,int fildes UNUSED_PARAM, mode_t mode UNUSED_PARAM);
 NOIMPL(fchown,int fd UNUSED_PARAM, uid_t uid UNUSED_PARAM, gid_t gid UNUSED_PARAM);
 int mingw_mkdir(const char *path, int mode);

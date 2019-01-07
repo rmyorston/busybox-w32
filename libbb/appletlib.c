@@ -1081,6 +1081,15 @@ void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **ar
 	applet_name = name;
 #if ENABLE_PLATFORM_MINGW32
 	strcpy(bb_applet_name, applet_name);
+
+	{
+		const char *vmask;
+		unsigned int mask;
+
+		vmask = getenv("BB_UMASK");
+		if (vmask && sscanf(vmask, "%o", &mask) == 1)
+			umask((mode_t)(mask&0777));
+	}
 #endif
 
 	/* Special case. POSIX says "test --help"

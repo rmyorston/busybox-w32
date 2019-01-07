@@ -14489,6 +14489,9 @@ umaskcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		if (!isdigit(modestr[0]))
 			mask ^= 0777;
 		umask(mask);
+#if ENABLE_PLATFORM_MINGW32
+		setvareq(xasprintf("BB_UMASK=0%o", mask), VEXPORT|VNOSAVE);
+#endif
 	}
 	return 0;
 }
