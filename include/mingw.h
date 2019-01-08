@@ -134,6 +134,7 @@ int winansi_putchar(int c);
 int winansi_puts(const char *s);
 size_t winansi_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
 int winansi_fputs(const char *str, FILE *stream);
+int winansi_vsnprintf(char *buf, size_t size, const char *format, va_list list);
 int winansi_vfprintf(FILE *stream, const char *format, va_list list);
 int winansi_printf(const char *format, ...) __attribute__((format (printf, 1, 2)));
 int winansi_fprintf(FILE *stream, const char *format, ...) __attribute__((format (printf, 2, 3)));
@@ -144,6 +145,9 @@ int winansi_getc(FILE *stream);
 #define puts winansi_puts
 #define fwrite winansi_fwrite
 #define fputs winansi_fputs
+#if !defined(__USE_MINGW_ANSI_STDIO) || !__USE_MINGW_ANSI_STDIO
+#define vsnprintf(buf, size, ...) winansi_vsnprintf(buf, size,  __VA_ARGS__)
+#endif
 #define vfprintf(stream, ...) winansi_vfprintf(stream, __VA_ARGS__)
 #define vprintf(...) winansi_vfprintf(stdout, __VA_ARGS__)
 #define printf(...) winansi_printf(__VA_ARGS__)

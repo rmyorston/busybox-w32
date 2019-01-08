@@ -552,6 +552,27 @@ int winansi_fputs(const char *str, FILE *stream)
 	return ansi_emulate(str, stream) == EOF ? EOF : 0;
 }
 
+#if !defined(__USE_MINGW_ANSI_STDIO) || !__USE_MINGW_ANSI_STDIO
+/*
+ * Prior to Windows 10 vsnprintf was incompatible with the C99 standard.
+ * Implement a replacement using _vsnprintf.
+ */
+int winansi_vsnprintf(char *buf, size_t size, const char *format, va_list list)
+{
+	size_t len;
+	va_list list2;
+
+	va_copy(list2, list);
+	len = _vsnprintf(NULL, 0, format, list2);
+	if (len < 0)
+		return -1;
+
+	_vsnprintf(buf, size, format, list);
+	buf[size-1] = '\0';
+	return len;
+}
+#endif
+
 int winansi_vfprintf(FILE *stream, const char *format, va_list list)
 {
 	int len, rv;
