@@ -457,6 +457,7 @@ UNUSED_PARAM
 )
 {
 	PROCESSENTRY32 pe;
+	HANDLE proc;
 	const char *comm, *name;
 	BOOL ret;
 
@@ -484,7 +485,6 @@ UNUSED_PARAM
 
 #if ENABLE_FEATURE_PS_TIME || ENABLE_FEATURE_PS_LONG
 	if (flags & (PSSCAN_STIME|PSSCAN_UTIME|PSSCAN_START_TIME)) {
-		HANDLE proc;
 		FILETIME crTime, exTime, keTime, usTime;
 
 		if ((proc=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
@@ -506,6 +506,15 @@ UNUSED_PARAM
 		}
 	}
 #endif
+
+	if (flags & PSSCAN_UIDGID) {
+		/* if we can open the process it belongs to us */
+		if ((proc=OpenProcess(PROCESS_ALL_ACCESS, FALSE, pe.th32ProcessID))) {
+			sp->uid = DEFAULT_UID;
+			sp->gid = DEFAULT_GID;
+			CloseHandle(proc);
+		}
+	}
 
 	sp->pid = pe.th32ProcessID;
 	sp->ppid = pe.th32ParentProcessID;

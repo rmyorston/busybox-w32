@@ -210,7 +210,6 @@ struct globals {
 
 /* Print value to buf, max size+1 chars (including trailing '\0') */
 
-#if !ENABLE_PLATFORM_MINGW32
 static void func_user(char *buf, int size, const procps_status_t *ps)
 {
 #if 1
@@ -234,7 +233,6 @@ static void func_group(char *buf, int size, const procps_status_t *ps)
 {
 	safe_strncpy(buf, get_cached_groupname(ps->gid), size+1);
 }
-#endif
 
 static void func_comm(char *buf, int size, const procps_status_t *ps)
 {
@@ -385,10 +383,8 @@ static void func_pcpu(char *buf, int size, const procps_status_t *ps)
 
 static const ps_out_t out_spec[] = {
 /* Mandated by http://pubs.opengroup.org/onlinepubs/9699919799/utilities/ps.html: */
-#if !ENABLE_PLATFORM_MINGW32
 	{ 8                  , "user"  ,"USER"   ,func_user  ,PSSCAN_UIDGID  },
 	{ 8                  , "group" ,"GROUP"  ,func_group ,PSSCAN_UIDGID  },
-#endif
 	{ 16                 , "comm"  ,"COMMAND",func_comm  ,PSSCAN_COMM    },
 #if !ENABLE_PLATFORM_MINGW32
 	{ MAX_WIDTH          , "args"  ,"COMMAND",func_args  ,PSSCAN_COMM    },
@@ -557,7 +553,7 @@ static void format_process(const procps_status_t *ps)
 # define SELINUX_O_PREFIX "label,"
 # define DEFAULT_O_STR    (SELINUX_O_PREFIX "pid,user" IF_FEATURE_PS_TIME(",time") ",args")
 #elif ENABLE_PLATFORM_MINGW32
-# define DEFAULT_O_STR    ("pid,ppid" IF_FEATURE_PS_TIME(",time,etime") ",comm")
+# define DEFAULT_O_STR    ("pid,ppid,user" IF_FEATURE_PS_TIME(",time,etime") ",comm")
 #else
 # define DEFAULT_O_STR    ("pid,user" IF_FEATURE_PS_TIME(",time") ",args")
 #endif
