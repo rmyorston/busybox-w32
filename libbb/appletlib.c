@@ -1067,6 +1067,7 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 # if NUM_APPLETS > 0
 
 #  if ENABLE_PLATFORM_MINGW32
+static int interp = 0;
 char bb_comm[COMM_LEN];
 char bb_command_line[128];
 #  endif
@@ -1086,7 +1087,9 @@ void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **ar
 	 */
 	applet_name = name;
 #  if ENABLE_PLATFORM_MINGW32
-	safe_strncpy(bb_comm, applet_name, sizeof(bb_comm));
+	safe_strncpy(bb_comm,
+					interp ? bb_basename(argv[interp]) : applet_name,
+					sizeof(bb_comm));
 
 	safe_strncpy(bb_command_line, applet_name, sizeof(bb_command_line));
 	for (i=1; i < argc && argv[i] &&
@@ -1204,6 +1207,19 @@ int main(int argc UNUSED_PARAM, char **argv)
 	if (argv[0][0] & 0x80) {
 		re_execed = 1;
 		argv[0][0] &= 0x7f;
+	}
+#endif
+#if ENABLE_PLATFORM_MINGW32
+	/* detect if we're running an interpreted script */
+	if (argv[0][1] == ':' && argv[0][2] == '/') {
+		switch (argv[0][0]) {
+		case '1':
+			interp = 1;
+			break;
+		case'2':
+			interp = 2;
+			break;
+		}
 	}
 #endif
 

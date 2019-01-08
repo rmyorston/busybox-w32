@@ -289,7 +289,8 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *con
 	} else
 #if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
 	if (find_applet_by_name(interp.name) >= 0) {
-		new_argv[0] = interp.name;
+		/* the fake path indicates the index of the script */
+		new_argv[0] = fullpath = xasprintf("%d:/%s", nopts+1, interp.name);
 		ret = mingw_spawn_applet(mode, new_argv, envp);
 	} else
 #endif
