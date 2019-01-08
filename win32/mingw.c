@@ -779,44 +779,57 @@ struct passwd *getpwnam(const char *name)
 			strcmp(myname, name) == 0 ) {
 		return getpwuid(DEFAULT_UID);
 	}
+	else if (strcmp(name, "root") == 0) {
+		return getpwuid(0);
+	}
 
 	return NULL;
 }
 
-struct passwd *getpwuid(uid_t uid UNUSED_PARAM)
+struct passwd *getpwuid(uid_t uid)
 {
 	static struct passwd p;
 
-	if ( (p.pw_name=get_user_name()) == NULL ) {
+	if (uid == 0) {
+		p.pw_name = (char *)"root";
+		p.pw_dir = (char *)"/";
+	}
+	else if (uid == DEFAULT_UID && (p.pw_name=get_user_name()) != NULL) {
+		p.pw_dir = gethomedir();
+	}
+	else {
 		return NULL;
 	}
-	p.pw_passwd = (char *)"secret";
-	p.pw_gecos = (char *)"unknown";
-	p.pw_dir = gethomedir();
+
+	p.pw_passwd = (char *)"";
+	p.pw_gecos = p.pw_name;
 	p.pw_shell = NULL;
-	p.pw_uid = DEFAULT_UID;
-	p.pw_gid = DEFAULT_GID;
+	p.pw_uid = uid;
+	p.pw_gid = uid;
 
 	return &p;
 }
 
-struct group *getgrgid(gid_t gid UNUSED_PARAM)
+struct group *getgrgid(gid_t gid)
 {
 	static char *members[2] = { NULL, NULL };
 	static struct group g;
 
-	if ( (g.gr_name=get_user_name()) == NULL ) {
+	if (gid == 0) {
+		g.gr_name = (char *)"root";
+	}
+	else if (gid != DEFAULT_GID || (g.gr_name=get_user_name()) == NULL) {
 		return NULL;
 	}
-	g.gr_passwd = (char *)"secret";
-	g.gr_gid = DEFAULT_GID;
+	g.gr_passwd = (char *)"";
+	g.gr_gid = gid;
 	members[0] = g.gr_name;
 	g.gr_mem = members;
 
 	return &g;
 }
 
-int getgrouplist(const char *user UNUSED_PARAM, gid_t group UNUSED_PARAM,
+int getgrouplist(const char *user UNUSED_PARAM, gid_t group,
 					gid_t *groups, int *ngroups)
 {
 	if ( *ngroups == 0 ) {
@@ -825,7 +838,7 @@ int getgrouplist(const char *user UNUSED_PARAM, gid_t group UNUSED_PARAM,
 	}
 
 	*ngroups = 1;
-	groups[0] = DEFAULT_GID;
+	groups[0] = group;
 	return 1;
 }
 
