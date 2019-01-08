@@ -1969,11 +1969,7 @@ void free_procps_scan(procps_status_t* sp) FAST_FUNC;
 procps_status_t* procps_scan(procps_status_t* sp, int flags) FAST_FUNC;
 /* Format cmdline (up to col chars) into char buf[size] */
 /* Puts [comm] if cmdline is empty (-> process is a kernel thread) */
-#if !ENABLE_PLATFORM_MINGW32
 void read_cmdline(char *buf, int size, unsigned pid, const char *comm) FAST_FUNC;
-#else
-#define read_cmdline(buf, size, pid, comm) snprintf(buf, size, "[%s]", comm)
-#endif
 pid_t *find_pid_by_name(const char* procName) FAST_FUNC;
 pid_t *pidlist_reverse(pid_t *pidList) FAST_FUNC;
 int starts_with_cpu(const char *str) FAST_FUNC;
@@ -2122,7 +2118,8 @@ extern const char bb_path_wtmp_file[] ALIGN1;
 #define bb_dev_null "/dev/null"
 #if ENABLE_PLATFORM_MINGW32
 #define bb_busybox_exec_path get_busybox_exec_path()
-extern char bb_applet_name[];
+extern char bb_comm[];
+extern char bb_command_line[];
 #else
 extern const char bb_busybox_exec_path[] ALIGN1;
 #endif

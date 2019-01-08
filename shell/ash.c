@@ -14892,7 +14892,6 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	SetConsoleCtrlHandler(ctrl_handler, TRUE);
 
 	if (argc == 3 && !strcmp(argv[1], "--fs")) {
-		strcpy(bb_applet_name, "[sh]");
 		forkshell_init(argv[2]);
 
 		/* NOTREACHED */

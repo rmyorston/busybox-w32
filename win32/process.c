@@ -377,11 +377,11 @@ static inline long long filetime_to_ticks(const FILETIME *ft)
 }
 
 /*
- * Attempt to get the applet name from another instance of busybox.exe.
+ * Attempt to get a string from another instance of busybox.exe.
  * This will only work if the other process is using the same binary
  * as the current process.  If anything goes wrong just give up.
  */
-static char *get_applet_name(DWORD pid, char *exe)
+static char *get_bb_string(DWORD pid, const char *exe, char *string)
 {
 	HANDLE proc;
 	HMODULE mlist[32];
@@ -389,12 +389,19 @@ static char *get_applet_name(DWORD pid, char *exe)
 	void *address;
 	char *my_base;
 	char buffer[128];
+	char exepath[PATH_MAX];
 	char *name = NULL;
 	int i;
 
 	if (!(proc=OpenProcess(PROCESS_QUERY_INFORMATION|PROCESS_VM_READ,
 							FALSE, pid))) {
 		return NULL;
+	}
+
+	if (exe == NULL) {
+		if (GetProcessImageFileName(proc, exepath, PATH_MAX) != 0) {
+			exe = bb_basename(exepath);
+		}
 	}
 
 	/*
@@ -407,7 +414,7 @@ static char *get_applet_name(DWORD pid, char *exe)
 		goto finish;
 	}
 
-	for (i=0; i<needed/sizeof(HMODULE); ++i) {
+	for (i=0; exe != NULL && i<needed/sizeof(HMODULE); ++i) {
 		char modname[MAX_PATH];
 		if (GetModuleFileNameEx(proc, mlist[i], modname, sizeof(modname))) {
 			if (strcasecmp(bb_basename(modname), exe) == 0) {
@@ -432,17 +439,14 @@ static char *get_applet_name(DWORD pid, char *exe)
 		goto finish;
 	}
 
-	/* attempt to read the applet name */
-	address = (char *)mlist[i] + ((char *)bb_applet_name - my_base);
+	/* attempt to read the required string */
+	address = (char *)mlist[i] + ((char *)string - my_base);
 	if (!ReadProcessMemory(proc, address, buffer, 128, NULL)) {
 		goto finish;
 	}
 
-	/* check that the string really is an applet name */
-	buffer[31] = '\0';
-	if (find_applet_by_name(buffer) >= 0 || !strcmp(buffer, "[sh]")) {
-		name = auto_string(xstrdup(buffer));
-	}
+	buffer[127] = '\0';
+	name = auto_string(xstrdup(buffer));
 
  finish:
 	CloseHandle(proc);
@@ -522,7 +526,7 @@ UNUSED_PARAM
 	if (sp->pid == GetProcessId(GetCurrentProcess())) {
 		comm = applet_name;
 	}
-	else if ((name=get_applet_name(pe.th32ProcessID, pe.szExeFile)) != NULL) {
+	else if ((name=get_bb_string(sp->pid, pe.szExeFile, bb_comm)) != NULL) {
 		comm = name;
 	}
 	else {
@@ -531,6 +535,20 @@ UNUSED_PARAM
 	safe_strncpy(sp->comm, comm, COMM_LEN);
 
 	return sp;
+}
+
+void FAST_FUNC read_cmdline(char *buf, int col, unsigned pid, const char *comm)
+{
+	const char *str, *cmdline;
+
+	*buf = '\0';
+	if (pid == GetProcessId(GetCurrentProcess()))
+		cmdline = bb_command_line;
+	else if ((str=get_bb_string(pid, NULL, bb_command_line)) != NULL)
+		cmdline = str;
+	else
+		cmdline = comm;
+	safe_strncpy(buf, cmdline, col);
 }
 
 /**

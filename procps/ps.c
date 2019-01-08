@@ -244,12 +244,12 @@ static void func_state(char *buf, int size, const procps_status_t *ps)
 {
 	safe_strncpy(buf, ps->state, size+1);
 }
+#endif
 
 static void func_args(char *buf, int size, const procps_status_t *ps)
 {
 	read_cmdline(buf, size+1, ps->pid, ps->comm);
 }
-#endif
 
 static void func_pid(char *buf, int size, const procps_status_t *ps)
 {
@@ -386,9 +386,7 @@ static const ps_out_t out_spec[] = {
 	{ 8                  , "user"  ,"USER"   ,func_user  ,PSSCAN_UIDGID  },
 	{ 8                  , "group" ,"GROUP"  ,func_group ,PSSCAN_UIDGID  },
 	{ 16                 , "comm"  ,"COMMAND",func_comm  ,PSSCAN_COMM    },
-#if !ENABLE_PLATFORM_MINGW32
 	{ MAX_WIDTH          , "args"  ,"COMMAND",func_args  ,PSSCAN_COMM    },
-#endif
 	{ 5                  , "pid"   ,"PID"    ,func_pid   ,PSSCAN_PID     },
 	{ 5                  , "ppid"  ,"PPID"   ,func_ppid  ,PSSCAN_PPID    },
 #if !ENABLE_PLATFORM_MINGW32
@@ -553,7 +551,7 @@ static void format_process(const procps_status_t *ps)
 # define SELINUX_O_PREFIX "label,"
 # define DEFAULT_O_STR    (SELINUX_O_PREFIX "pid,user" IF_FEATURE_PS_TIME(",time") ",args")
 #elif ENABLE_PLATFORM_MINGW32
-# define DEFAULT_O_STR    ("pid,ppid,user" IF_FEATURE_PS_TIME(",time,etime") ",comm")
+# define DEFAULT_O_STR    ("pid,ppid,user" IF_FEATURE_PS_TIME(",time,etime") ",args")
 #else
 # define DEFAULT_O_STR    ("pid,user" IF_FEATURE_PS_TIME(",time") ",args")
 #endif

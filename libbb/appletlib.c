@@ -1067,30 +1067,37 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 # if NUM_APPLETS > 0
 
 #  if ENABLE_PLATFORM_MINGW32
-char bb_applet_name[MAX_APPLET_NAME_LEN+1];
+char bb_comm[COMM_LEN];
+char bb_command_line[128];
 #  endif
 
 void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **argv)
 {
 	int argc = string_array_len(argv);
+#  if ENABLE_PLATFORM_MINGW32
+	int i;
+	const char *vmask;
+	unsigned int mask;
+#  endif
 
 	/*
 	 * We do not use argv[0]: do not want to repeat massaging of
 	 * "-/sbin/halt" -> "halt", for example.
 	 */
 	applet_name = name;
-#if ENABLE_PLATFORM_MINGW32
-	strcpy(bb_applet_name, applet_name);
+#  if ENABLE_PLATFORM_MINGW32
+	safe_strncpy(bb_comm, applet_name, sizeof(bb_comm));
 
-	{
-		const char *vmask;
-		unsigned int mask;
-
-		vmask = getenv("BB_UMASK");
-		if (vmask && sscanf(vmask, "%o", &mask) == 1)
-			umask((mode_t)(mask&0777));
+	safe_strncpy(bb_command_line, applet_name, sizeof(bb_command_line));
+	for (i=1; i < argc && argv[i] &&
+			strlen(bb_command_line) + strlen(argv[i]) + 2 < 128; ++i) {
+		strcat(strcat(bb_command_line, " "), argv[i]);
 	}
-#endif
+
+	vmask = getenv("BB_UMASK");
+	if (vmask && sscanf(vmask, "%o", &mask) == 1)
+		umask((mode_t)(mask&0777));
+#  endif
 
 	/* Special case. POSIX says "test --help"
 	 * should be no different from e.g. "test --foo".
