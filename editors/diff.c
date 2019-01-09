@@ -1039,7 +1039,7 @@ int diff_main(int argc UNUSED_PARAM, char **argv)
 	 * single NFS file system, if a local device number (st_dev) exceeds
 	 * 255, or if a local inode number (st_ino) exceeds 16777215.
 	 */
-	if (ENABLE_DESKTOP
+	if (ENABLE_DESKTOP && !ENABLE_PLATFORM_MINGW32
 	 && stb[0].st_ino == stb[1].st_ino
 	 && stb[0].st_dev == stb[1].st_dev
 	 && stb[0].st_size == stb[1].st_size
