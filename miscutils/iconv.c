@@ -16,6 +16,7 @@
 //config:config ICONV
 //config:   bool "iconv"
 //config:   default y
+//config:   depends on PLATFORM_MINGW32
 //config:   help
 //config:   'iconv' converts text between character encodings.
 
