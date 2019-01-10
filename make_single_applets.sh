@@ -27,6 +27,8 @@ allno="$cfg"
 for app in $apps; do
 	allno="`echo "$allno" | sed "s/^CONFIG_${app}=y\$/# CONFIG_${app} is not set/"`"
 done
+# remove "busybox" as well
+allno="`echo "$allno" | sed "s/^CONFIG_BUSYBOX=y\$/# CONFIG_BUSYBOX is not set/"`"
 #echo "$allno" >.config_allno
 
 trap 'test -f .config.SV && mv .config.SV .config && touch .config' EXIT
@@ -70,6 +72,16 @@ for app; do
 		echo "NUM_APPLETS != 1 for ${app}: `cat include/NUM_APPLETS.h`"
 		mv .config busybox_config_${app}
 	else
+		if grep -q 'use larger COMMON_BUFSIZE' busybox_make_${app}.log; then
+			# FEATURE_USE_BSS_TAIL=y is selected, and build system
+			# recommends rebuilding. Do so, and print some
+			# debug info to see whether it works right:
+			tail -n1 busybox_make_${app}.log
+			nm busybox_unstripped | grep ' _end'
+			make >/dev/null 2>&1
+			nm busybox_unstripped | grep ' _end'
+			grep ^bb_common_bufsiz1 busybox_unstripped.map
+		fi
 		grep -i -e error: -e warning: busybox_make_${app}.log \
 		|| rm busybox_make_${app}.log
 		mv busybox busybox_${app}

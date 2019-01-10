@@ -579,6 +579,8 @@ void sig_unblock(int sig) FAST_FUNC;
 int sigaction_set(int sig, const struct sigaction *act) FAST_FUNC;
 /* SIG_BLOCK/SIG_UNBLOCK all signals: */
 int sigprocmask_allsigs(int how) FAST_FUNC;
+/* Return old set in the same set: */
+int sigprocmask2(int how, sigset_t *set) FAST_FUNC;
 #else
 #define bb_signals(s, f)
 #define kill_myself_with_sig(s)
@@ -1835,7 +1837,7 @@ enum {
 	FOR_SHELL        = DO_HISTORY | TAB_COMPLETION | USERNAME_COMPLETION,
 };
 line_input_t *new_line_input_t(int flags) FAST_FUNC;
-/* So far static: void free_line_input_t(line_input_t *n) FAST_FUNC; */
+void free_line_input_t(line_input_t *n) FAST_FUNC;
 /*
  * maxsize must be >= 2.
  * Returns:
@@ -1875,7 +1877,12 @@ struct smaprec {
 	unsigned long stack;
 	unsigned long smap_pss, smap_swap;
 	unsigned long smap_size;
-	unsigned long smap_start;
+	// For mixed 32/64 userspace, 32-bit pmap still needs
+	// 64-bit field here to correctly show 64-bit processes:
+	unsigned long long smap_start;
+	// (strictly speaking, other fields need to be wider too,
+	// but they are in kbytes, not bytes, and they hold sizes,
+	// not start addresses, sizes tend to be less than 4 terabytes)
 	char smap_mode[5];
 	char *smap_name;
 };

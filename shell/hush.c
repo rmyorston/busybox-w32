@@ -93,7 +93,7 @@
  * add =~ regex match operator: STR =~ REGEX
  */
 //config:config HUSH
-//config:	bool "hush (64 kb)"
+//config:	bool "hush (68 kb)"
 //config:	default y
 //config:	help
 //config:	hush is a small shell. It handles the normal flow control
@@ -5998,7 +5998,7 @@ static const char *first_special_char_in_vararg(const char *cp)
 #endif
 static char *encode_then_expand_vararg(const char *str, int handle_squotes, int do_unbackslash)
 {
-#if !BASH_PATTERN_SUBST
+#if !BASH_PATTERN_SUBST && ENABLE_HUSH_CASE
 	const int do_unbackslash = 0;
 #endif
 	char *exp_str;
@@ -11442,7 +11442,7 @@ static int wait_for_child_or_signal(struct pipe *waitfor_pipe, pid_t waitfor_pid
 		 * and get stuck in sigsuspend...
 		 */
 		sigfillset(&oldset); /* block all signals, remember old set */
-		sigprocmask(SIG_SETMASK, &oldset, &oldset);
+		sigprocmask2(SIG_SETMASK, &oldset);
 
 		if (!sigisemptyset(&G.pending_set)) {
 			/* Crap! we raced with some signal! */

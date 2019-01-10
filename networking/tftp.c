@@ -19,7 +19,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config TFTP
-//config:	bool "tftp (12 kb)"
+//config:	bool "tftp (11 kb)"
 //config:	default y
 //config:	help
 //config:	Trivial File Transfer Protocol client. TFTP is usually used
@@ -40,9 +40,6 @@
 //config:	is already pending on it. It will exit after one transfer.
 //config:	In other words: it should be run from inetd in nowait mode,
 //config:	or from udpsvd. Example: "udpsvd -E 0 69 tftpd DIR"
-//config:
-//config:comment "Common options for tftp/tftpd"
-//config:	depends on TFTP || TFTPD
 //config:
 //config:config FEATURE_TFTP_GET
 //config:	bool "Enable 'tftp get' and/or tftpd upload code"

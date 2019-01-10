@@ -31,7 +31,7 @@
  */
 
 //config:config ASH
-//config:	bool "ash (77 kb)"
+//config:	bool "ash (78 kb)"
 //config:	default y
 //config:	depends on !NOMMU
 //config:	help
@@ -4600,7 +4600,7 @@ wait_block_or_sig(int *status)
 		/* Children exist, but none are ready. Sleep until interesting signal */
 #if 1
 		sigfillset(&mask);
-		sigprocmask(SIG_SETMASK, &mask, &mask);
+		sigprocmask2(SIG_SETMASK, &mask); /* mask is updated */
 		while (!got_sigchld && !pending_sig)
 			sigsuspend(&mask);
 		sigprocmask(SIG_SETMASK, &mask, NULL);

@@ -1444,6 +1444,16 @@ void FAST_FUNC show_history(const line_input_t *st)
 		printf("%4d %s\n", i, st->history[i]);
 }
 
+void FAST_FUNC free_line_input_t(line_input_t *n)
+{
+# if ENABLE_FEATURE_EDITING_SAVEHISTORY
+	int i = n->cnt_history;
+	while (i > 0)
+		free(n->history[--i]);
+#endif
+	free(n);
+}
+
 # if ENABLE_FEATURE_EDITING_SAVEHISTORY
 /* We try to ensure that concurrent additions to the history
  * do not overwrite each other.
@@ -1452,14 +1462,6 @@ void FAST_FUNC show_history(const line_input_t *st)
  * History file is trimmed lazily, when it grows several times longer
  * than configured MAX_HISTORY lines.
  */
-
-static void free_line_input_t(line_input_t *n)
-{
-	int i = n->cnt_history;
-	while (i > 0)
-		free(n->history[--i]);
-	free(n);
-}
 
 /* state->flags is already checked to be nonzero */
 static void load_history(line_input_t *st_parm)
@@ -2380,6 +2382,18 @@ static int32_t reverse_i_search(int timeout)
 }
 #endif
 
+#if ENABLE_FEATURE_EDITING_WINCH
+static void sigaction2(int sig, struct sigaction *act)
+{
+	// Grr... gcc 8.1.1:
+	// "passing argument 3 to restrict-qualified parameter aliases with argument 2"
+	// dance around that...
+	struct sigaction *oact FIX_ALIASING;
+	oact = act;
+	sigaction(sig, act, oact);
+}
+#endif
+
 /* maxsize must be >= 2.
  * Returns:
  * -1 on read errors or EOF, or on bare Ctrl-D,
@@ -2500,7 +2514,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	/* Install window resize handler (NB: after *all* init is complete) */
 	S.SIGWINCH_handler.sa_handler = win_changed;
 	S.SIGWINCH_handler.sa_flags = SA_RESTART;
-	sigaction(SIGWINCH, &S.SIGWINCH_handler, &S.SIGWINCH_handler);
+	sigaction2(SIGWINCH, &S.SIGWINCH_handler);
 #endif
 	read_key_buffer[0] = 0;
 	while (1) {

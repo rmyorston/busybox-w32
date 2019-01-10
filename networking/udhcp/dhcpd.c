@@ -378,7 +378,7 @@ struct config_keyword {
 #define OFS(field) offsetof(struct server_config_t, field)
 
 static const struct config_keyword keywords[] = {
-	/* keyword        handler           variable address               default */
+	/* keyword        handler           variable address    default */
 	{"start"        , udhcp_str2nip   , OFS(start_ip     ), "192.168.0.20"},
 	{"end"          , udhcp_str2nip   , OFS(end_ip       ), "192.168.0.254"},
 	{"interface"    , read_str        , OFS(interface    ), "eth0"},
@@ -640,7 +640,7 @@ static void add_server_options(struct dhcp_packet *packet)
 static uint32_t select_lease_time(struct dhcp_packet *packet)
 {
 	uint32_t lease_time_sec = server_config.max_lease_sec;
-	uint8_t *lease_time_opt = udhcp_get_option(packet, DHCP_LEASE_TIME);
+	uint8_t *lease_time_opt = udhcp_get_option32(packet, DHCP_LEASE_TIME);
 	if (lease_time_opt) {
 		move_from_unaligned32(lease_time_sec, lease_time_opt);
 		lease_time_sec = ntohl(lease_time_sec);
@@ -987,7 +987,7 @@ int udhcpd_main(int argc UNUSED_PARAM, char **argv)
 		}
 
 		/* Get SERVER_ID if present */
-		server_id_opt = udhcp_get_option(&packet, DHCP_SERVER_ID);
+		server_id_opt = udhcp_get_option32(&packet, DHCP_SERVER_ID);
 		if (server_id_opt) {
 			uint32_t server_id_network_order;
 			move_from_unaligned32(server_id_network_order, server_id_opt);
@@ -1011,7 +1011,7 @@ int udhcpd_main(int argc UNUSED_PARAM, char **argv)
 		}
 
 		/* Get REQUESTED_IP if present */
-		requested_ip_opt = udhcp_get_option(&packet, DHCP_REQUESTED_IP);
+		requested_ip_opt = udhcp_get_option32(&packet, DHCP_REQUESTED_IP);
 		if (requested_ip_opt) {
 			move_from_unaligned32(requested_nip, requested_ip_opt);
 		}

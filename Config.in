@@ -26,7 +26,7 @@ endchoice
 menu "Settings"
 
 config DESKTOP
-	bool "Enable compatibility for full-blown desktop systems"
+	bool "Enable compatibility for full-blown desktop systems (8kb)"
 	default y
 	help
 	Enable applet options and features which are not essential.

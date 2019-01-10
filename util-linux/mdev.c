@@ -8,7 +8,7 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config MDEV
-//config:	bool "mdev (16 kb)"
+//config:	bool "mdev (17 kb)"
 //config:	default y
 //config:	select PLATFORM_LINUX
 //config:	help
@@ -808,6 +808,16 @@ static void make_device(char *device_name, char *path, int operation)
 	} /* for (;;) */
 }
 
+static ssize_t readlink2(char *buf, size_t bufsize)
+{
+	// Grr... gcc 8.1.1:
+	// "passing argument 2 to restrict-qualified parameter aliases with argument 1"
+	// dance around that...
+	char *obuf FIX_ALIASING;
+	obuf = buf;
+	return readlink(buf, obuf, bufsize);
+}
+
 /* File callback for /sys/ traversal.
  * We act only on "/sys/.../dev" (pseudo)file
  */
@@ -831,7 +841,7 @@ static int FAST_FUNC fileAction(const char *fileName,
 	/* Read ".../subsystem" symlink in the same directory where ".../dev" is */
 	strcpy(subsys, path);
 	strcpy(subsys + len, "/subsystem");
-	res = readlink(subsys, subsys, sizeof(subsys)-1);
+	res = readlink2(subsys, sizeof(subsys)-1);
 	if (res > 0) {
 		subsys[res] = '\0';
 		free(G.subsystem);
