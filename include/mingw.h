@@ -55,6 +55,22 @@ int getgrouplist(const char *user, gid_t group, gid_t *groups, int *ngroups);
 #define NAME_MAX 255
 #define MAXSYMLINKS 20
 
+#ifdef LONG_MAX
+# if LONG_MAX == 2147483647
+#  define LONG_BIT  32
+# else
+/* Safe assumption.  */
+#  define LONG_BIT  64
+# endif
+#elif defined __LONG_MAX__
+# if __LONG_MAX__ == 2147483647
+#  define LONG_BIT  32
+# else
+/* Safe assumption.  */
+#  define LONG_BIT  64
+# endif
+#endif
+
 /*
  * netdb.h
  */
