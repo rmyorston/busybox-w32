@@ -1974,6 +1974,30 @@ static int ptest(node *pattern)
 	return istrue(evaluate(pattern, &G.ptest__v));
 }
 
+#if ENABLE_PLATFORM_MINGW32
+static ssize_t FAST_FUNC safe_read_strip_cr(int fd, void *buf, size_t count)
+{
+	ssize_t n, i, j;
+	char *b = (char *)buf;
+
+ retry:
+	n = safe_read(fd, buf, count);
+	if (n > 0) {
+		for (i=j=0; i<n; ++i) {
+			if (b[i] != '\r')
+				b[j++] = b[i];
+		}
+		if (j == 0)
+			goto retry;
+		n = j;
+	}
+
+	return n;
+}
+
+#define safe_read safe_read_strip_cr
+#endif
+
 /* read next record from stream rsm into a variable v */
 static int awk_getline(rstream *rsm, var *v)
 {
