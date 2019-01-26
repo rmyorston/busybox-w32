@@ -2827,7 +2827,20 @@ static int mysleep(int hund)	// sleep for 'hund' 1/100 seconds or stdin ready
 	HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
 	DWORD ret;
 
-	fflush(stdout);
+	if (hund == 0) {
+		/* Allow one event in the queue.  Otherwise pasted test isn't
+		 * displayed because there's still a key release event waiting
+		 * after the last character is processed. */
+		INPUT_RECORD record[2];
+		DWORD nevent_out, mode;
+
+		GetConsoleMode(h, &mode);
+		SetConsoleMode(h, 0);
+		ret = PeekConsoleInput(h, record, 2, &nevent_out);
+		GetConsoleMode(h, &mode);
+		return ret == 0 ? (nevent_out > 1) : 0;
+	}
+	fflush_all();
 	ret = WaitForSingleObject(h, hund*10);
 	return ret != WAIT_TIMEOUT;
 #else
