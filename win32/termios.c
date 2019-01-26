@@ -7,6 +7,8 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 	DWORD nevent_out, mode;
 	int ret = -1;
 	char *s;
+	int alt_pressed = FALSE;
+	DWORD state;
 
 	if (fd != 0)
 		bb_error_msg_and_die("read_key only works on stdin");
@@ -22,11 +24,40 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 		}
 		if (!ReadConsoleInput(cin, &record, 1, &nevent_out))
 			goto done;
-		if (record.EventType != KEY_EVENT || !record.Event.KeyEvent.bKeyDown)
-			continue;
-		if (!record.Event.KeyEvent.uChar.AsciiChar) {
-			DWORD state = record.Event.KeyEvent.dwControlKeyState;
 
+		if (record.EventType != KEY_EVENT)
+			continue;
+
+		state = record.Event.KeyEvent.dwControlKeyState;
+		if (!record.Event.KeyEvent.bKeyDown) {
+			/* ignore all key up events except Alt */
+			if (alt_pressed && !(state & LEFT_ALT_PRESSED))
+				alt_pressed = FALSE;
+			else
+				continue;
+		}
+		else {
+			alt_pressed = ((state & LEFT_ALT_PRESSED) != 0);
+		}
+
+		if (!record.Event.KeyEvent.uChar.AsciiChar) {
+			if (alt_pressed) {
+				switch (record.Event.KeyEvent.wVirtualKeyCode) {
+				case VK_MENU:
+				case VK_INSERT:
+				case VK_END:
+				case VK_DOWN:
+				case VK_NEXT:
+				case VK_LEFT:
+				case VK_CLEAR:
+				case VK_RIGHT:
+				case VK_HOME:
+				case VK_UP:
+				case VK_PRIOR:
+				case VK_KANA:
+					continue;
+				}
+			}
 			if (state & (RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED) &&
 			    (record.Event.KeyEvent.wVirtualKeyCode >= 'A' &&
 			     record.Event.KeyEvent.wVirtualKeyCode <= 'Z')) {
