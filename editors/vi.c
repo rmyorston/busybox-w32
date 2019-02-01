@@ -2831,14 +2831,10 @@ static int mysleep(int hund)	// sleep for 'hund' 1/100 seconds or stdin ready
 		/* Allow one event in the queue.  Otherwise pasted test isn't
 		 * displayed because there's still a key release event waiting
 		 * after the last character is processed. */
-		INPUT_RECORD record[2];
-		DWORD nevent_out, mode;
+		DWORD nevent_out;
 
-		GetConsoleMode(h, &mode);
-		SetConsoleMode(h, 0);
-		ret = PeekConsoleInput(h, record, 2, &nevent_out);
-		GetConsoleMode(h, &mode);
-		return ret == 0 ? (nevent_out > 1) : 0;
+		ret = GetNumberOfConsoleInputEvents(h, &nevent_out);
+		return ret != 0 ? (nevent_out > 1) : 0;
 	}
 	fflush_all();
 	ret = WaitForSingleObject(h, hund*10);
