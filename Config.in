@@ -454,6 +454,15 @@ config FEATURE_ICON_ALL
 
 endchoice
 
+config FEATURE_EURO
+	bool "Support the euro currency symbol (0.5 kb)"
+	default y
+	depends on PLATFORM_MINGW32
+	help
+	Support the entry and display of the euro currency symbol.  This
+	requires the OEM code page to be 858.  If the OEM code page of
+	the console is 850 when BusyBox starts it's changed to 858.
+
 comment 'Build Options'
 
 config STATIC

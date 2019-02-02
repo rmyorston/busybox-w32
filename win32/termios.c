@@ -6,7 +6,12 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 	INPUT_RECORD record;
 	DWORD nevent_out, mode;
 	int ret = -1;
+#if ENABLE_FEATURE_EURO
+	wchar_t uchar;
+	char achar;
+#else
 	char *s;
+#endif
 	int alt_pressed = FALSE;
 	DWORD state;
 
@@ -22,7 +27,11 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 			if (WaitForSingleObject(cin, timeout) != WAIT_OBJECT_0)
 				goto done;
 		}
+#if ENABLE_FEATURE_EURO
+		if (!ReadConsoleInputW(cin, &record, 1, &nevent_out))
+#else
 		if (!ReadConsoleInput(cin, &record, 1, &nevent_out))
+#endif
 			goto done;
 
 		if (record.EventType != KEY_EVENT)
@@ -40,7 +49,11 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 			alt_pressed = ((state & LEFT_ALT_PRESSED) != 0);
 		}
 
+#if ENABLE_FEATURE_EURO
+		if (!record.Event.KeyEvent.uChar.UnicodeChar) {
+#else
 		if (!record.Event.KeyEvent.uChar.AsciiChar) {
+#endif
 			if (alt_pressed) {
 				switch (record.Event.KeyEvent.wVirtualKeyCode) {
 				case VK_MENU:
@@ -91,11 +104,19 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 			}
 			continue;
 		}
+#if ENABLE_FEATURE_EURO
+		uchar = record.Event.KeyEvent.uChar.UnicodeChar;
+		achar = uchar & 0x7f;
+		if (achar != uchar)
+			WideCharToMultiByte(CP_ACP, 0, &uchar, 1, &achar, 1, NULL, NULL);
+		ret = achar;
+#else
 		if ( (record.Event.KeyEvent.uChar.AsciiChar & 0x80) == 0x80 ) {
 			s = &record.Event.KeyEvent.uChar.AsciiChar;
 			OemToCharBuff(s, s, 1);
 		}
 		ret = record.Event.KeyEvent.uChar.AsciiChar;
+#endif
 		break;
 	}
  done:

@@ -391,6 +391,74 @@ static const char *set_attr(const char *str)
 	return func + 1;
 }
 
+#if ENABLE_FEATURE_EURO
+void init_codepage(void)
+{
+	if (GetConsoleCP() == 850 && GetConsoleOutputCP() == 850) {
+		SetConsoleCP(858);
+		SetConsoleOutputCP(858);
+	}
+}
+
+static BOOL winansi_CharToOemBuff(LPCSTR s, LPSTR d, DWORD len)
+{
+	WCHAR *buf;
+	int i;
+
+	if (!s || !d)
+		return FALSE;
+
+	buf = xmalloc(len*sizeof(WCHAR));
+	MultiByteToWideChar(CP_ACP, 0, s, len, buf, len);
+	WideCharToMultiByte(CP_OEMCP, 0, buf, len, d, len, NULL, NULL);
+	if (GetConsoleOutputCP() == 858) {
+		for (i=0; i<len; ++i) {
+			if (buf[i] == 0x20ac) {
+				d[i] = 0xd5;
+			}
+		}
+	}
+	free(buf);
+	return TRUE;
+}
+
+static BOOL winansi_CharToOem(LPCSTR s, LPSTR d)
+{
+	if (!s || !d)
+		return FALSE;
+	return winansi_CharToOemBuff(s, d, strlen(s)+1);
+}
+
+static BOOL winansi_OemToCharBuff(LPCSTR s, LPSTR d, DWORD len)
+{
+	WCHAR *buf;
+	int i;
+
+	if (!s || !d)
+		return FALSE;
+
+	buf = xmalloc(len*sizeof(WCHAR));
+	MultiByteToWideChar(CP_OEMCP, 0, s, len, buf, len);
+	WideCharToMultiByte(CP_ACP, 0, buf, len, d, len, NULL, NULL);
+	if (GetConsoleOutputCP() == 858) {
+		for (i=0; i<len; ++i) {
+			if (buf[i] == 0x0131) {
+				d[i] = 0x80;
+			}
+		}
+	}
+	free(buf);
+	return TRUE;
+}
+
+# undef CharToOemBuff
+# undef CharToOem
+# undef OemToCharBuff
+# define CharToOemBuff winansi_CharToOemBuff
+# define CharToOem winansi_CharToOem
+# define OemToCharBuff winansi_OemToCharBuff
+#endif
+
 static int ansi_emulate(const char *s, FILE *stream)
 {
 	int rv = 0;

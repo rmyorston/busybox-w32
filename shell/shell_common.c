@@ -235,8 +235,7 @@ shell_builtin_read(struct builtin_read_params *params)
 		}
 #else
 		errno = 0;
-		if (isatty(fd) && (params->opt_n || params->opt_d || params->opt_t ||
-							(read_flags & BUILTIN_READ_SILENT))) {
+		if (isatty(fd)) {
 			int64_t key;
 
 			key = read_key(fd, NULL, timeout);

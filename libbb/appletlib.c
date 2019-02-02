@@ -1221,6 +1221,9 @@ int main(int argc UNUSED_PARAM, char **argv)
 			break;
 		}
 	}
+# if ENABLE_FEATURE_EURO
+	init_codepage();
+# endif
 #endif
 
 #if defined(__MINGW64_VERSION_MAJOR)
