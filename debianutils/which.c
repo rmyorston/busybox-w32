@@ -69,13 +69,20 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_PLATFORM_MINGW32
 			if ((p=auto_win32_extension(*argv)) != NULL) {
 				missing = 0;
+				convert_slashes(p);
 				puts(p);
 			}
 			else
 #endif
 			if (file_is_executable(*argv)) {
 				missing = 0;
+#if ENABLE_PLATFORM_MINGW32
+				p = auto_string(xstrdup(*argv));
+				convert_slashes(p);
+				puts(p);
+#else
 				puts(*argv);
+#endif
 			}
 		} else {
 			char *path;
@@ -84,6 +91,9 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 			/* NOFORK NB: xmalloc inside find_executable(), must have no allocs above! */
 			while ((p = find_executable(*argv, &path)) != NULL) {
 				missing = 0;
+#if ENABLE_PLATFORM_MINGW32
+				convert_slashes(p);
+#endif
 				puts(p);
 				free(p);
 				if (!option_mask32) /* -a not set */
