@@ -384,7 +384,11 @@ static void forkshell_init(const char *idstr);
 static void forkshell_child(struct forkshell *fs);
 static void sticky_free(void *p);
 # define free(p) sticky_free(p)
-static void spawn_forkshell(struct job *jp, struct forkshell *fs, int mode);
+#if !JOBS
+#define spawn_forkshell(fs, jp, n, mode) spawn_forkshell(fs, jp, mode)
+#endif
+static void spawn_forkshell(struct forkshell *fs, struct job *jp,
+							union node *n, int mode);
 # if FORKSHELL_DEBUG
 static void forkshell_print(FILE *fp0, struct forkshell *fs, char **notes);
 # endif
@@ -5747,7 +5751,7 @@ openhere(union node *redir)
 	fs.n = redir;
 	fs.fd[0] = pip[0];
 	fs.fd[1] = pip[1];
-	spawn_forkshell(NULL, &fs, FORK_NOJOB);
+	spawn_forkshell(&fs, NULL, NULL, FORK_NOJOB);
 #else
 	if (forkshell((struct job *)NULL, (union node *)NULL, FORK_NOJOB) == 0) {
 		/* child */
@@ -6842,7 +6846,7 @@ evalbackcmd(union node *n, struct backcmd *result)
 	fs.n = n;
 	fs.fd[0] = pip[0];
 	fs.fd[1] = pip[1];
-	spawn_forkshell(jp, &fs, FORK_NOJOB);
+	spawn_forkshell(&fs, jp, n, FORK_NOJOB);
 #else
 	if (forkshell(jp, n, FORK_NOJOB) == 0) {
 		/* child */
@@ -9825,7 +9829,7 @@ evalsubshell(union node *n, int flags)
 	fs.fpid = FS_EVALSUBSHELL;
 	fs.n = n;
 	fs.flags = flags;
-	spawn_forkshell(jp, &fs, backgnd);
+	spawn_forkshell(&fs, jp, n, backgnd);
 	if ( 0 ) {
 #else
 	if (forkshell(jp, n, backgnd) == 0) {
@@ -9956,7 +9960,7 @@ evalpipe(union node *n, int flags)
 		fs.fd[0] = pip[0];
 		fs.fd[1] = pip[1];
 		fs.fd[2] = prevfd;
-		spawn_forkshell(jp, &fs, n->npipe.pipe_backgnd);
+		spawn_forkshell(&fs, jp, lp->n, n->npipe.pipe_backgnd);
 #else
 		if (forkshell(jp, lp->n, n->npipe.pipe_backgnd) == 0) {
 			/* child */
@@ -10781,7 +10785,7 @@ evalcommand(union node *cmd, int flags)
 			fs.fd[0] = cmdentry.u.index;
 			fs.varlist = varlist.list;
 			jp = makejob(/*cmd,*/ 1);
-			spawn_forkshell(jp, &fs, FORK_FG);
+			spawn_forkshell(&fs, jp, cmd, FORK_FG);
 			status = waitforjob(jp);
 			INT_ON;
 			TRACE(("forked child exited with %d\n", status));
@@ -15162,7 +15166,7 @@ reinitvar(void)
 }
 
 static void
-spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
+spawn_forkshell(struct forkshell *fs, struct job *jp, union node *n, int mode)
 {
 	struct forkshell *new;
 	char buf[32];
@@ -15182,7 +15186,7 @@ spawn_forkshell(struct job *jp, struct forkshell *fs, int mode)
 			freejob(jp);
 		ash_msg_and_raise_error("unable to spawn shell");
 	}
-	forkparent(jp, fs->node, mode, (HANDLE)ret);
+	forkparent(jp, n, mode, (HANDLE)ret);
 }
 
 /*
