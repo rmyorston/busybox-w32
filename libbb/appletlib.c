@@ -1213,11 +1213,12 @@ int main(int argc UNUSED_PARAM, char **argv)
 	/* detect if we're running an interpreted script */
 	if (argv[0][1] == ':' && argv[0][2] == '/') {
 		switch (argv[0][0]) {
+		case '2':
+			++interp;
+			/* fall through */
 		case '1':
-			interp = 1;
-			break;
-		case'2':
-			interp = 2;
+			++interp;
+			argv[0] += 3;
 			break;
 		}
 	}
