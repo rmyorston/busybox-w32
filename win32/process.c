@@ -66,7 +66,7 @@ parse_interpreter(const char *cmd, interp_t *interp)
 		return 1;
 	}
 
-	if (is_suffixed_with_case(cmd, ".sh")) {
+	if (n >= 0 && is_suffixed_with_case(cmd, ".sh")) {
 		interp->path = (char *)DEFAULT_SHELL;
 		interp->name = (char *)DEFAULT_SHELL_SHORT_NAME;
 		interp->opts = NULL;
