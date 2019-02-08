@@ -136,20 +136,28 @@ shell_builtin_read(struct builtin_read_params *params)
 	}
 
 	if (params->opt_t && end_ms == 0) {
-#if !ENABLE_PLATFORM_MINGW32
 		/* "If timeout is 0, read returns immediately, without trying
 		 * to read any data. The exit status is 0 if input is available
 		 * on the specified file descriptor, non-zero otherwise."
 		 * bash seems to ignore -p PROMPT for this use case.
 		 */
 		int r;
+#if ENABLE_PLATFORM_MINGW32
+		HANDLE handle = (HANDLE)_get_osfhandle(fd);
+		DWORD filetype = FILE_TYPE_UNKNOWN;
+
+		if (handle != INVALID_HANDLE_VALUE)
+			filetype = GetFileType(handle);
+		/* poll uses WaitForSingleObject which can't handle disk files */
+		if (filetype == FILE_TYPE_DISK || filetype == FILE_TYPE_UNKNOWN)
+			return (const char *)(uintptr_t)(0);
+		if (isatty(fd))
+			return (const char *)(uintptr_t)(1);
+#endif
 		pfd[0].events = POLLIN;
 		r = poll(pfd, 1, /*timeout:*/ 0);
 		/* Return 0 only if poll returns 1 ("one fd ready"), else return 1: */
 		return (const char *)(uintptr_t)(r <= 0);
-#else
-		return (const char *)(uintptr_t)(1);
-#endif
 	}
 
 	if (params->opt_p && isatty(fd)) {
