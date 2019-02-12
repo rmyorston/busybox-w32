@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.31.0.git
-# Thu Jan 10 08:56:53 2019
+# Tue Feb 12 08:23:28 2019
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -786,6 +786,7 @@ CONFIG_FEATURE_CROND_DIR=""
 # CONFIG_I2CSET is not set
 # CONFIG_I2CDUMP is not set
 # CONFIG_I2CDETECT is not set
+# CONFIG_I2CTRANSFER is not set
 CONFIG_ICONV=y
 # CONFIG_INOTIFYD is not set
 CONFIG_LESS=y
