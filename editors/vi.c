@@ -600,6 +600,7 @@ static void check_context(char);	// remember context for '' command
 #if ENABLE_FEATURE_VI_UNDO
 static void flush_undo_data(void);
 static void undo_push(char *, unsigned int, unsigned char);	// Push an operation on the undo stack
+static void undo_push_insert(char *, int, int); // convenience function
 static void undo_pop(void);	// Undo the last operation
 # if ENABLE_FEATURE_VI_UNDO_QUEUE
 static void undo_queue_commit(void);	// Flush any queued objects to the undo stack
@@ -2013,19 +2014,7 @@ static char *char_insert(char *p, char c, int undo) // insert the char c at 'p'
 		c = get_one_char();
 		*p = c;
 #if ENABLE_FEATURE_VI_UNDO
-		switch (undo) {
-			case ALLOW_UNDO:
-				undo_push(p, 1, UNDO_INS);
-				break;
-			case ALLOW_UNDO_CHAIN:
-				undo_push(p, 1, UNDO_INS_CHAIN);
-				break;
-# if ENABLE_FEATURE_VI_UNDO_QUEUE
-			case ALLOW_UNDO_QUEUED:
-				undo_push(p, 1, UNDO_INS_QUEUED);
-				break;
-# endif
-		}
+		undo_push_insert(p, 1, undo);
 #else
 		modified_count++;
 #endif /* ENABLE_FEATURE_VI_UNDO */
@@ -2053,19 +2042,7 @@ static char *char_insert(char *p, char c, int undo) // insert the char c at 'p'
 		if (c == '\n')
 			undo_queue_commit();
 # endif
-		switch (undo) {
-			case ALLOW_UNDO:
-				undo_push(p, 1, UNDO_INS);
-				break;
-			case ALLOW_UNDO_CHAIN:
-				undo_push(p, 1, UNDO_INS_CHAIN);
-				break;
-# if ENABLE_FEATURE_VI_UNDO_QUEUE
-			case ALLOW_UNDO_QUEUED:
-				undo_push(p, 1, UNDO_INS_QUEUED);
-				break;
-# endif
-		}
+		undo_push_insert(p, 1, undo);
 #else
 		modified_count++;
 #endif /* ENABLE_FEATURE_VI_UNDO */
@@ -2085,7 +2062,7 @@ static char *char_insert(char *p, char c, int undo) // insert the char c at 'p'
 				p += bias;
 				q += bias;
 #if ENABLE_FEATURE_VI_UNDO
-				undo_push(p, len, UNDO_INS);
+				undo_push_insert(p, len, undo);
 #endif
 				memcpy(p, q, len);
 				p += len;
@@ -2339,16 +2316,18 @@ static void undo_push(char *src, unsigned int length, uint8_t u_type)	// Add to 
 		}
 		break;
 	case UNDO_INS_QUEUED:
-		if (length != 1)
+		if (length < 1)
 			return;
 		switch (undo_queue_state) {
 		case UNDO_EMPTY:
 			undo_queue_state = UNDO_INS;
 			undo_queue_spos = src;
 		case UNDO_INS:
-			undo_q++;	// Don't need to save any data for insertions
-			if (undo_q == CONFIG_FEATURE_VI_UNDO_QUEUE_MAX)
-				undo_queue_commit();
+			while (length--) {
+				undo_q++;	// Don't need to save any data for insertions
+				if (undo_q == CONFIG_FEATURE_VI_UNDO_QUEUE_MAX)
+					undo_queue_commit();
+			}
 			return;
 		case UNDO_DEL:
 			// Switch from storing deleted text to inserted text
@@ -2392,6 +2371,23 @@ static void undo_push(char *src, unsigned int length, uint8_t u_type)	// Add to 
 	undo_entry->prev = undo_stack_tail;
 	undo_stack_tail = undo_entry;
 	modified_count++;
+}
+
+static void undo_push_insert(char *p, int len, int undo)
+{
+	switch (undo) {
+	case ALLOW_UNDO:
+		undo_push(p, len, UNDO_INS);
+		break;
+	case ALLOW_UNDO_CHAIN:
+		undo_push(p, len, UNDO_INS_CHAIN);
+		break;
+# if ENABLE_FEATURE_VI_UNDO_QUEUE
+	case ALLOW_UNDO_QUEUED:
+		undo_push(p, len, UNDO_INS_QUEUED);
+		break;
+# endif
+	}
 }
 
 static void undo_pop(void)	// Undo the last operation
@@ -2667,14 +2663,7 @@ static uintptr_t string_insert(char *p, const char *s, int undo) // insert the s
 
 	i = strlen(s);
 #if ENABLE_FEATURE_VI_UNDO
-	switch (undo) {
-		case ALLOW_UNDO:
-			undo_push(p, i, UNDO_INS);
-			break;
-		case ALLOW_UNDO_CHAIN:
-			undo_push(p, i, UNDO_INS_CHAIN);
-			break;
-	}
+	undo_push_insert(p, i, undo);
 #endif
 	bias = text_hole_make(p, i);
 	p += bias;
@@ -4263,14 +4252,9 @@ static void do_cmd(int c)
 	case 'r':			// r- replace the current char with user input
 		c1 = get_one_char();	// get the replacement char
 		if (*dot != '\n') {
-#if ENABLE_FEATURE_VI_UNDO
-			undo_push(dot, 1, UNDO_DEL);
-			*dot = c1;
-			undo_push(dot, 1, UNDO_INS_CHAIN);
-#else
-			*dot = c1;
-			modified_count++;
-#endif
+			dot = text_hole_delete(dot, dot, ALLOW_UNDO);
+			dot = char_insert(dot, c1, ALLOW_UNDO_CHAIN);
+			dot_left();
 		}
 		end_cmd_q();	// stop adding to q
 		break;

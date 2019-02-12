@@ -248,7 +248,7 @@ struct globals {
 	 * With 512 byte buffer, it was measured to be
 	 * an order of magnitude slower than with big one.
 	 */
-	char wget_buf[CONFIG_FEATURE_COPYBUF_KB*1024] ALIGNED(sizeof(long));
+	char wget_buf[CONFIG_FEATURE_COPYBUF_KB*1024] ALIGNED(16);
 } FIX_ALIASING;
 #define G (*ptr_to_globals)
 #define INIT_G() do { \
@@ -388,9 +388,6 @@ static void set_alarm(void)
  * is_ip_address() attempts to verify whether or not a string
  * contains an IPv4 or IPv6 address (vs. an FQDN).  The result
  * of inet_pton() can be used to determine this.
- *
- * TODO add proper error checking when inet_pton() returns -1
- * (some form of system error has occurred, and errno is set)
  */
 static int is_ip_address(const char *string)
 {
@@ -908,10 +905,12 @@ static void NOINLINE retrieve_file_data(FILE *dfp)
 	polldata.fd = fileno(dfp);
 	polldata.events = POLLIN | POLLPRI;
 #endif
-	if (G.output_fd == 1)
-		fprintf(stderr, "writing to stdout\n");
-	else
-		fprintf(stderr, "saving to '%s'\n", G.fname_out);
+	if (!(option_mask32 & WGET_OPT_QUIET)) {
+		if (G.output_fd == 1)
+			fprintf(stderr, "writing to stdout\n");
+		else
+			fprintf(stderr, "saving to '%s'\n", G.fname_out);
+	}
 	progress_meter(PROGRESS_START);
 
 	if (G.chunked)
@@ -1042,6 +1041,15 @@ static void NOINLINE retrieve_file_data(FILE *dfp)
 		 */
 	}
 
+	/* Draw full bar and free its resources */
+	G.chunked = 0;  /* makes it show 100% even for chunked download */
+	G.got_clen = 1; /* makes it show 100% even for download of (formerly) unknown size */
+	progress_meter(PROGRESS_END);
+	if (G.content_len != 0) {
+		bb_perror_msg_and_die("connection closed prematurely");
+		/* GNU wget says "DATE TIME (NN MB/s) - Connection closed at byte NNN. Retrying." */
+	}
+
 	/* If -c failed, we restart from the beginning,
 	 * but we do not truncate file then, we do it only now, at the end.
 	 * This lets user to ^C if his 99% complete 10 GB file download
@@ -1053,14 +1061,12 @@ static void NOINLINE retrieve_file_data(FILE *dfp)
 			ftruncate(G.output_fd, pos);
 	}
 
-	/* Draw full bar and free its resources */
-	G.chunked = 0;  /* makes it show 100% even for chunked download */
-	G.got_clen = 1; /* makes it show 100% even for download of (formerly) unknown size */
-	progress_meter(PROGRESS_END);
-	if (G.output_fd == 1)
-		fprintf(stderr, "written to stdout\n");
-	else
-		fprintf(stderr, "'%s' saved\n", G.fname_out);
+	if (!(option_mask32 & WGET_OPT_QUIET)) {
+		if (G.output_fd == 1)
+			fprintf(stderr, "written to stdout\n");
+		else
+			fprintf(stderr, "'%s' saved\n", G.fname_out);
+	}
 }
 
 static void download_one_url(const char *url)
@@ -1421,7 +1427,8 @@ However, in real world it was observed that some web servers
 			G.output_fd = -1;
 		}
 	} else {
-		fprintf(stderr, "remote file exists\n");
+		if (!(option_mask32 & WGET_OPT_QUIET))
+			fprintf(stderr, "remote file exists\n");
 	}
 
 	if (dfp != sfp) {
@@ -1492,8 +1499,6 @@ IF_DESKTOP(	"no-parent\0"        No_argument       "\xf0")
 	G.proxy_flag = "on";   /* use proxies if env vars are set */
 	G.user_agent = "Wget"; /* "User-Agent" header field */
 
-#if ENABLE_FEATURE_WGET_LONG_OPTIONS
-#endif
 	GETOPT32(argv, "^"
 		"cqSO:o:P:Y:U:T:+"
 		/*ignored:*/ "t:"

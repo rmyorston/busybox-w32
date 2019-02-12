@@ -56,7 +56,31 @@ enum {
 
 static void sysctl_dots_to_slashes(char *name)
 {
-	char *cptr, *last_good, *end;
+	char *cptr, *last_good, *end, *slash;
+	char end_ch;
+
+	end = strchrnul(name, '=');
+
+	slash = strchrnul(name, '/');
+	if (slash < end
+	 && strchrnul(name, '.') < slash
+	) {
+		/* There are both dots and slashes, and 1st dot is
+		 * before 1st slash.
+		 * (IOW: not raw, unmangled a/b/c.d format)
+		 *
+		 * procps supports this syntax for names with dots:
+		 *  net.ipv4.conf.eth0/100.mc_forwarding
+		 * (dots and slashes are simply swapped)
+		 */
+		while (end != name) {
+			end--;
+			if (*end == '.') *end = '/';
+			else if (*end == '/') *end = '.';
+		}
+		return;
+	}
+	/* else: use our old behavior: */
 
 	/* Convert minimum number of '.' to '/' so that
 	 * we end up with existing file's name.
@@ -76,10 +100,10 @@ static void sysctl_dots_to_slashes(char *name)
 	 *
 	 * To set up testing: modprobe 8021q; vconfig add eth0 100
 	 */
-	end = name + strlen(name);
-	last_good = name - 1;
+	end_ch = *end;
 	*end = '.'; /* trick the loop into trying full name too */
 
+	last_good = name - 1;
  again:
 	cptr = end;
 	while (cptr > last_good) {
@@ -96,7 +120,7 @@ static void sysctl_dots_to_slashes(char *name)
 		}
 		cptr--;
 	}
-	*end = '\0';
+	*end = end_ch;
 }
 
 static int sysctl_act_on_setting(char *setting)
@@ -112,6 +136,8 @@ static int sysctl_act_on_setting(char *setting)
 	while (*cptr) {
 		if (*cptr == '/')
 			*cptr = '.';
+		else if (*cptr == '.')
+			*cptr = '/';
 		cptr++;
 	}
 
@@ -119,14 +145,16 @@ static int sysctl_act_on_setting(char *setting)
 	if (cptr)
 		writing = 1;
 	if (writing) {
-		if (cptr == NULL) {
+		if (!cptr) {
 			bb_error_msg("error: '%s' must be of the form name=value",
 				outname);
 			retval = EXIT_FAILURE;
 			goto end;
 		}
 		value = cptr + 1;  /* point to the value in name=value */
-		if (setting == cptr || !*value) {
+		if (setting == cptr /* "name" can't be empty */
+		 /* || !*value - WRONG: "sysctl net.ipv4.ip_local_reserved_ports=" is a valid syntax (clears the value) */
+		) {
 			bb_error_msg("error: malformed setting '%s'", outname);
 			retval = EXIT_FAILURE;
 			goto end;
@@ -175,6 +203,7 @@ static int sysctl_act_on_setting(char *setting)
 		close(fd);
 		if (value == NULL) {
 			bb_perror_msg("error reading key '%s'", outname);
+			retval = EXIT_FAILURE;
 			goto end;
 		}
 
@@ -203,19 +232,21 @@ static int sysctl_act_on_setting(char *setting)
 
 static int sysctl_act_recursive(const char *path)
 {
-	DIR *dirp;
 	struct stat buf;
-	struct dirent *entry;
-	char *next;
 	int retval = 0;
 
-	stat(path, &buf);
-	if (S_ISDIR(buf.st_mode) && !(option_mask32 & FLAG_WRITE)) {
+	if (!(option_mask32 & FLAG_WRITE)
+	 && stat(path, &buf) == 0
+	 && S_ISDIR(buf.st_mode)
+	) {
+		struct dirent *entry;
+		DIR *dirp;
+
 		dirp = opendir(path);
 		if (dirp == NULL)
 			return -1;
 		while ((entry = readdir(dirp)) != NULL) {
-			next = concat_subpath_file(path, entry->d_name);
+			char *next = concat_subpath_file(path, entry->d_name);
 			if (next == NULL)
 				continue; /* d_name is "." or ".." */
 			/* if path was ".", drop "./" prefix: */
@@ -302,6 +333,8 @@ int sysctl_main(int argc UNUSED_PARAM, char **argv)
 	if (opt & (FLAG_TABLE_FORMAT | FLAG_SHOW_ALL)) {
 		return sysctl_act_recursive(".");
 	}
+
+//TODO: if(!argv[0]) bb_show_usage() ?
 
 	retval = 0;
 	while (*argv) {
