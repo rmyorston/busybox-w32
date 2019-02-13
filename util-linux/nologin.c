@@ -19,7 +19,7 @@
 //config:	If you know these will be available externally you can
 //config:	disable this option.
 
-//applet:IF_NOLOGIN(APPLET_SCRIPTED(nologin, scripted, BB_DIR_USR_SBIN, BB_SUID_DROP, nologin))
+//applet:IF_NOLOGIN(APPLET_SCRIPTED(nologin, scripted, BB_DIR_SBIN, BB_SUID_DROP, nologin))
 
 //usage:#define nologin_trivial_usage
 //usage:	""
