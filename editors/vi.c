@@ -2938,6 +2938,18 @@ static char *get_input_line(const char *prompt)
 #undef buf
 }
 
+#if ENABLE_PLATFORM_MINGW32
+static int count_cr(char *p, int len)
+{
+	int i, cnt;
+
+	for (i = cnt = 0; i < len; ++i)
+		if (p[i] == '\n')
+			++cnt;
+	return cnt;
+}
+#endif
+
 // might reallocate text[]!
 static int file_insert(const char *fn, char *p, int initial)
 {
@@ -2950,7 +2962,11 @@ static int file_insert(const char *fn, char *p, int initial)
 	if (p > end)
 		p = end;
 
+#if !ENABLE_PLATFORM_MINGW32
 	fd = open(fn, O_RDONLY);
+#else
+	fd = open(fn, O_RDONLY | _O_TEXT);
+#endif
 	if (fd < 0) {
 		if (!initial)
 			status_line_bold_errno(fn);
@@ -2966,9 +2982,6 @@ static int file_insert(const char *fn, char *p, int initial)
 		status_line_bold("'%s' is not a regular file", fn);
 		goto fi;
 	}
-#if ENABLE_PLATFORM_MINGW32
-	_setmode(fd, _O_TEXT);
-#endif
 	size = (statbuf.st_size < INT_MAX ? (int)statbuf.st_size : INT_MAX);
 	p += text_hole_make(p, size);
 	cnt = full_read(fd, p, size);
@@ -2976,18 +2989,11 @@ static int file_insert(const char *fn, char *p, int initial)
 		status_line_bold_errno(fn);
 		p = text_hole_delete(p, p + size - 1, NO_UNDO);	// un-do buffer insert
 	} else if (cnt < size) {
-#if ENABLE_PLATFORM_MINGW32
-		int i, cnt_cr;
-
-		// on WIN32 a partial read might just mean CRs have been removed
-		for (i = 0, cnt_cr = cnt; i < cnt; ++i)
-			if (p[i] == '\n')
-				++cnt_cr;
-#endif
 		// There was a partial read, shrink unused space
 		p = text_hole_delete(p + cnt, p + size - 1, NO_UNDO);
 #if ENABLE_PLATFORM_MINGW32
-		if (cnt_cr < size)
+		// On WIN32 a partial read might just mean CRs have been removed
+		if (cnt + count_cr(p, cnt) < size)
 #endif
 		status_line_bold("can't read '%s'", fn);
 	}
@@ -3011,9 +3017,6 @@ static int file_insert(const char *fn, char *p, int initial)
 static int file_write(char *fn, char *first, char *last)
 {
 	int fd, cnt, charcnt;
-#if ENABLE_PLATFORM_MINGW32
-	int i, newline;
-#endif
 
 	if (fn == 0) {
 		status_line_bold("No current filename");
@@ -3023,26 +3026,21 @@ static int file_write(char *fn, char *first, char *last)
 	 * but instead ftruncate() it _after_ successful write.
 	 * Might reduce amount of data lost on power fail etc.
 	 */
+#if !ENABLE_PLATFORM_MINGW32
 	fd = open(fn, (O_WRONLY | O_CREAT), 0666);
+#else
+	fd = open(fn, (O_WRONLY | O_CREAT | _O_TEXT), 0666);
+#endif
 	if (fd < 0)
 		return -1;
 	cnt = last - first + 1;
-#if ENABLE_PLATFORM_MINGW32
-	/* write file in text mode; this makes it bigger so adjust
-	 * the truncation to match
-	 */
-	_setmode(fd, _O_TEXT);
-	newline = 0;
-	for ( i=0; i<cnt; ++i ) {
-		if ( first[i] == '\n' ) {
-			++newline;
-		}
-	}
 	charcnt = full_write(fd, first, cnt);
-	ftruncate(fd, charcnt+newline);
-#else
-	charcnt = full_write(fd, first, cnt);
+#if !ENABLE_PLATFORM_MINGW32
 	ftruncate(fd, charcnt);
+#else
+	/* File was written in text mode; this makes it bigger so adjust
+	 * the truncation to match. */
+	ftruncate(fd, charcnt + count_cr(first, cnt));
 #endif
 	if (charcnt == cnt) {
 		// good write
