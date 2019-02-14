@@ -348,6 +348,9 @@ static void unzip_create_leading_dirs(const char *fn)
 }
 
 #if ENABLE_FEATURE_UNZIP_CDF
+#if ENABLE_PLATFORM_MINGW32
+#define unzip_extract_symlink(s, z, d) unzip_extract_symlink(z, d)
+#endif
 static void unzip_extract_symlink(llist_t **symlink_placeholders,
 		zip_header_t *zip,
 		const char *dst_fn)
@@ -492,7 +495,7 @@ int unzip_main(int argc, char **argv)
 	llist_t *zaccept = NULL;
 	llist_t *zreject = NULL;
 	char *base_dir = NULL;
-#if ENABLE_FEATURE_UNZIP_CDF
+#if ENABLE_FEATURE_UNZIP_CDF && !ENABLE_PLATFORM_MINGW32
 	llist_t *symlink_placeholders = NULL;
 #endif
 	int i;

@@ -5,11 +5,10 @@
 #include "libbb.h"
 #include "bb_archive.h"
 
-void FAST_FUNC create_or_remember_link(llist_t **link_placeholders
-		IF_PLATFORM_MINGW32(UNUSED_PARAM),
+void FAST_FUNC create_or_remember_link(llist_t **link_placeholders,
 		const char *target,
 		const char *linkname,
-		int hard_link IF_PLATFORM_MINGW32(UNUSED_PARAM))
+		int hard_link)
 {
 #if !ENABLE_PLATFORM_MINGW32
 	if (hard_link || target[0] == '/' || strstr(target, "..")) {
