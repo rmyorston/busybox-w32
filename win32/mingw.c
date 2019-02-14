@@ -1273,6 +1273,17 @@ void FAST_FUNC convert_slashes(char *p)
 	}
 }
 
+size_t FAST_FUNC remove_cr(char *p, size_t len)
+{
+	ssize_t i, j;
+
+	for (i=j=0; i<len; ++i) {
+		if (p[i] != '\r')
+			p[j++] = p[i];
+	}
+	return j;
+}
+
 #undef opendir
 DIR *mingw_opendir(const char *path)
 {

@@ -13619,16 +13619,7 @@ evalstring(char *s, int flags)
 
 	s = sstrdup(s);
 #if ENABLE_PLATFORM_MINGW32
-	{
-		char *t, *u;
-
-		for (t=u=s; *t; ++t) {
-			if (*t != '\r') {
-				*u++ = *t;
-			}
-		}
-		*u = '\0';
-	}
+	remove_cr(s, strlen(s)+1);
 #endif
 	setinputstring(s);
 	setstackmark(&smark);

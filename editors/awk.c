@@ -1998,20 +1998,11 @@ static int ptest(node *pattern)
 #if ENABLE_PLATFORM_MINGW32
 static ssize_t FAST_FUNC safe_read_strip_cr(int fd, void *buf, size_t count)
 {
-	ssize_t n, i, j;
-	char *b = (char *)buf;
+	ssize_t n;
 
- retry:
-	n = safe_read(fd, buf, count);
-	if (n > 0) {
-		for (i=j=0; i<n; ++i) {
-			if (b[i] != '\r')
-				b[j++] = b[i];
-		}
-		if (j == 0)
-			goto retry;
-		n = j;
-	}
+	do {
+		n = safe_read(fd, buf, count);
+	} while (n > 0 && (n=remove_cr((char *)buf, n)) == 0);
 
 	return n;
 }
