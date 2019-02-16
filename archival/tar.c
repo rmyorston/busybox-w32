@@ -161,7 +161,7 @@ typedef struct TarBallInfo {
 # endif
 	HardLinkInfo *hlInfoHead;       /* Hard Link Tracking Information */
 	HardLinkInfo *hlInfo;           /* Hard Link Info for the current file */
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 || ENABLE_FEATURE_EXTRA_FILE_DATA
 //TODO: save only st_dev + st_ino
 	struct stat tarFileStatBuf;     /* Stat info for the tarball, letting
 	                                 * us know the inode and device that the
@@ -529,7 +529,7 @@ static int FAST_FUNC writeFileToTarball(const char *fileName, struct stat *statb
 		}
 	}
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 || ENABLE_FEATURE_EXTRA_FILE_DATA
 	/* It is a bad idea to store the archive we are in the process of creating,
 	 * so check the device and inode to be sure that this particular file isn't
 	 * the new tarball */
@@ -707,7 +707,7 @@ static NOINLINE int writeTarFile(
 
 	/*tbInfo->hlInfoHead = NULL; - already is */
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 || ENABLE_FEATURE_EXTRA_FILE_DATA
 	/* Store the stat info for the tarball's file, so
 	 * can avoid including the tarball into itself....  */
 	xfstat(tbInfo->tarFd, &tbInfo->tarFileStatBuf, "can't stat tar file");

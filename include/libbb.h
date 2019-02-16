@@ -1712,7 +1712,7 @@ int bb_xioctl(int fd, unsigned request, void *argp) FAST_FUNC;
 #define xioctl(fd,request,argp)        bb_xioctl(fd,request,argp)
 #endif
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 || ENABLE_FEATURE_EXTRA_FILE_DATA
 char *is_in_ino_dev_hashtable(const struct stat *statbuf) FAST_FUNC;
 void add_to_ino_dev_hashtable(const struct stat *statbuf, const char *name) FAST_FUNC;
 void reset_ino_dev_hashtable(void) FAST_FUNC;

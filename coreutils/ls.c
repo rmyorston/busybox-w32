@@ -499,7 +499,11 @@ static NOINLINE unsigned display_single(const struct dnode *dn)
 #endif
 
 	if (opt & OPT_i) /* show inode# */
+#if !ENABLE_FEATURE_EXTRA_FILE_DATA
 		column += printf("%7"LL_FMT"u ", (long long) dn->dn_ino);
+#else
+		column += printf("%19"LL_FMT"u ", (long long) dn->dn_ino);
+#endif
 //TODO: -h should affect -s too:
 	if (opt & OPT_s) /* show allocated blocks */
 		column += printf("%6"OFF_FMT"u ", (off_t) (dn->dn_blocks >> 1));

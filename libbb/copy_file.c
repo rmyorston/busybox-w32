@@ -105,7 +105,7 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 			return -1;
 		}
 	} else {
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 || ENABLE_FEATURE_EXTRA_FILE_DATA
         /* MinGW does not have inode, and does not use device */
 		if (source_stat.st_dev == dest_stat.st_dev
 		 && source_stat.st_ino == dest_stat.st_ino

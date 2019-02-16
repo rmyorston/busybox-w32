@@ -403,7 +403,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		buf->st_ino = 0;
 		buf->st_uid = DEFAULT_UID;
 		buf->st_gid = DEFAULT_GID;
-		buf->st_nlink = 1;
+		buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : 1;
 		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
 		if (S_ISREG(buf->st_mode) &&
 				(has_exe_suffix(file_name) || has_exec_format(file_name)))
@@ -433,6 +433,30 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 				FindClose(handle);
 			}
 		}
+
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
+		{
+			BY_HANDLE_FILE_INFORMATION hdata;
+			HANDLE fh = CreateFile(file_name, 0,
+							0, NULL, OPEN_EXISTING,
+							FILE_ATTRIBUTE_NORMAL|FILE_FLAG_BACKUP_SEMANTICS,
+							NULL);
+			if (fh != INVALID_HANDLE_VALUE) {
+				if (GetFileInformationByHandle(fh, &hdata)) {
+					buf->st_dev = hdata.dwVolumeSerialNumber;
+					buf->st_ino = hdata.nFileIndexLow |
+						(((uint64_t)hdata.nFileIndexHigh)<<32);
+					buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 :
+										hdata.nNumberOfLinks;
+				}
+				CloseHandle(fh);
+			}
+			else {
+				errno = err_win_to_posix(GetLastError());
+				return -1;
+			}
+		}
+#endif
 
 		/*
 		 * Assume a block is 4096 bytes and calculate number of 512 byte
@@ -522,12 +546,19 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 		buf->st_ctime = filetime_to_time_t(&(fdata.ftCreationTime));
 		buf->st_blocks = ((buf->st_size+4095)>>12)<<3;
  success:
-		buf->st_dev = buf->st_rdev = 0;
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
+		buf->st_dev = fdata.dwVolumeSerialNumber;
+		buf->st_ino = fdata.nFileIndexLow |
+			(((uint64_t)fdata.nFileIndexHigh)<<32);
+		buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : fdata.nNumberOfLinks;
+#else
+		buf->st_dev = 0;
 		buf->st_ino = 0;
+		buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : 1;
+#endif
+		buf->st_rdev = 0;
 		buf->st_uid = DEFAULT_UID;
 		buf->st_gid = DEFAULT_GID;
-		/* could use fdata.nNumberOfLinks but it's inconsistent with stat */
-		buf->st_nlink = 1;
 		buf->st_blksize = 4096;
 		return 0;
 	}

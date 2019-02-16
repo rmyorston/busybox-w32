@@ -121,7 +121,7 @@
 //config:config FEATURE_FIND_INUM
 //config:	bool "Enable -inum: inode number matching"
 //config:	default y
-//config:	depends on FIND
+//config:	depends on FIND && (PLATFORM_POSIX || FEATURE_EXTRA_FILE_DATA)
 //config:
 //config:config FEATURE_FIND_EXEC
 //config:	bool "Enable -exec: execute commands"
@@ -227,7 +227,7 @@
 //config:config FEATURE_FIND_LINKS
 //config:	bool "Enable -links: link count matching"
 //config:	default y
-//config:	depends on FIND
+//config:	depends on FIND && (PLATFORM_POSIX || FEATURE_EXTRA_FILE_DATA)
 //config:	help
 //config:	Support the 'find -links' option for matching number of links.
 
@@ -1361,7 +1361,11 @@ static action*** parse_params(char **argv)
 			action_inum *ap;
 			dbg("%d", __LINE__);
 			ap = ALLOC_ACTION(inum);
+# if !ENABLE_FEATURE_EXTRA_FILE_DATA
 			ap->inode_num = xatoul(arg1);
+# else
+			ap->inode_num = xatoull(arg1);
+# endif
 		}
 #endif
 #if ENABLE_FEATURE_FIND_USER

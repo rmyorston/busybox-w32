@@ -283,6 +283,9 @@ int mingw_chmod(const char *path, int mode);
 typedef int nlink_t;
 typedef int blksize_t;
 typedef off_t blkcnt_t;
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
+#define ino_t uint64_t
+#endif
 
 struct mingw_stat {
 	dev_t     st_dev;

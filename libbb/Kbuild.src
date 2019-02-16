@@ -98,6 +98,7 @@ lib-$(CONFIG_PLATFORM_POSIX) += getpty.o
 lib-$(CONFIG_PLATFORM_POSIX) += get_volsize.o
 lib-$(CONFIG_PLATFORM_POSIX) += inet_common.o
 lib-$(CONFIG_PLATFORM_POSIX) += inode_hash.o
+lib-$(CONFIG_FEATURE_EXTRA_FILE_DATA) += inode_hash.o
 lib-$(CONFIG_PLATFORM_POSIX) += kernel_version.o
 lib-$(CONFIG_PLATFORM_POSIX) += login.o
 lib-$(CONFIG_PLATFORM_POSIX) += makedev.o

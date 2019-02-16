@@ -463,6 +463,16 @@ config FEATURE_EURO
 	requires the OEM code page to be 858.  If the OEM code page of
 	the console is 850 when BusyBox starts it's changed to 858.
 
+config FEATURE_EXTRA_FILE_DATA
+	bool "Read additional file metadata (1.3 kb)"
+	default y
+	depends on PLATFORM_MINGW32
+	help
+	Read additional file metadata: device id, inode number and number
+	of hard links.  This may slow down some file operations but it
+	permits extra features such as warning of attempts to copy a file
+	onto itself or to store a tar archive in itself.
+
 comment 'Build Options'
 
 config STATIC
