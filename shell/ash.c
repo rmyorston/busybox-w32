@@ -514,10 +514,10 @@ struct globals_misc {
 # define debug optlist[15 + BASH_PIPEFAIL]
 #endif
 #if ENABLE_PLATFORM_MINGW32
-# define winxp optlist[14 + ENABLE_ASH_BASH_COMPAT + 2*DEBUG]
+# define winxp optlist[14 + BASH_PIPEFAIL + 2*DEBUG]
 #endif
 #if ENABLE_ASH_NOCONSOLE
-# define noconsole optlist[15 + ENABLE_ASH_BASH_COMPAT + 2*DEBUG]
+# define noconsole optlist[15 + BASH_PIPEFAIL + 2*DEBUG]
 #endif
 
 	/* trap handler commands */
@@ -14551,11 +14551,7 @@ exitshell(void)
 
 /* Don't inline: conserve stack of caller from having our locals too */
 static NOINLINE void
-#if ENABLE_PLATFORM_MINGW32
-init(int xp)
-#else
 init(void)
-#endif
 {
 	/* we will never free this */
 	basepf.next_to_pgetc = basepf.buf = ckmalloc(IBUFSIZ);
@@ -14615,7 +14611,7 @@ init(void)
 				/* Convert backslashes to forward slashes in value but
 				 * not if we're on Windows XP or for variables known to
 				 * cause problems */
-				if ( !xp && strncmp(*envp, "SYSTEMROOT=", 11) != 0 &&
+				if ( !winxp && strncmp(*envp, "SYSTEMROOT=", 11) != 0 &&
 						strncmp(*envp, "COMSPEC=", 8) != 0 ) {
 					convert_slashes(end+1);
 				}
@@ -14891,7 +14887,10 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	exception_handler = &jmploc;
 	rootpid = getpid();
 
-	init(IF_PLATFORM_MINGW32(argc >= 2 && strcmp(argv[1], "-X") == 0));
+#if ENABLE_PLATFORM_MINGW32
+	winxp = (argv[1] != NULL && strcmp(argv[1], "-X") == 0);
+#endif
+	init();
 	setstackmark(&smark);
 
 #if ENABLE_PLATFORM_MINGW32
