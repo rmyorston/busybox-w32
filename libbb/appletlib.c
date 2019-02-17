@@ -160,7 +160,11 @@ void FAST_FUNC bb_show_usage(void)
 			ap--;
 		}
 		full_write2_str(bb_banner);
+#if ENABLE_PLATFORM_MINGW32
 		full_write2_str(" multi-call binary\n");
+#else
+		full_write2_str(" multi-call binary.\n"); /* common string */
+#endif
 		if (*p == '\b')
 			full_write2_str("\nNo help available\n");
 		else {
@@ -869,7 +873,11 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 
 		dup2(1, 2);
 		full_write2_str(bb_banner); /* reuse const string */
+#if ENABLE_PLATFORM_MINGW32
 		full_write2_str(" multi-call binary\n"); /* reuse */
+#else
+		full_write2_str(" multi-call binary.\n"); /* reuse */
+#endif
 #if defined(MINGW_VER)
 		if (sizeof(MINGW_VER) > 5) {
 			full_write2_str(MINGW_VER "\n\n");

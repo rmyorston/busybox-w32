@@ -462,7 +462,9 @@ struct globals_misc {
 	int rootpid;            /* pid of main shell */
 	/* shell level: 0 for the main shell, 1 for its children, and so on */
 	int shlvl;
+#if ENABLE_PLATFORM_MINGW32
 	int loopnest;           /* current loop nesting level */
+#endif
 #define rootshell (!shlvl)
 	int errlinno;
 
@@ -472,7 +474,9 @@ struct globals_misc {
 	char *physdir; // = nullstr;    /* physical working directory */
 
 	char *arg0; /* value of $0 */
+#if ENABLE_PLATFORM_MINGW32
 	char *commandname;
+#endif
 
 	struct jmploc *exception_handler;
 
@@ -551,12 +555,16 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define rootpid     (G_misc.rootpid    )
 #define shlvl       (G_misc.shlvl      )
 #define errlinno    (G_misc.errlinno   )
+#if ENABLE_PLATFORM_MINGW32
 #define loopnest    (G_misc.loopnest   )
+#endif
 #define minusc      (G_misc.minusc     )
 #define curdir      (G_misc.curdir     )
 #define physdir     (G_misc.physdir    )
 #define arg0        (G_misc.arg0       )
+#if ENABLE_PLATFORM_MINGW32
 #define commandname (G_misc.commandname)
+#endif
 #define exception_handler (G_misc.exception_handler)
 #define exception_type    (G_misc.exception_type   )
 #define suppress_int      (G_misc.suppress_int     )
@@ -1429,6 +1437,9 @@ struct parsefile {
 
 static struct parsefile basepf;        /* top level input file */
 static struct parsefile *g_parsefile = &basepf;  /* current input file */
+#if ENABLE_PLATFORM_POSIX
+static char *commandname;              /* currently executing command */
+#endif
 
 
 /* ============ Message printing */
@@ -9486,6 +9497,9 @@ defun(union node *func)
 #define SKIPFUNC       (1 << 2)
 static smallint evalskip;       /* set to SKIPxxx if we are skipping commands */
 static int skipcount;           /* number of levels to skip */
+#if ENABLE_PLATFORM_POSIX
+static int loopnest;            /* current loop nesting level */
+#endif
 static int funcline;            /* starting line number of current function, or 0 if not in a function */
 
 /* Forward decl way out to parsing code - dotrap needs it */

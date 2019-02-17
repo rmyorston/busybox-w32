@@ -84,7 +84,7 @@ static unsigned sum_file(const char *file, unsigned type)
 		s = (r & 0xffff) + (r >> 16);
 		printf("%u %"LL_FMT"u %s\n", s, (total_bytes + 511) / 512, file);
 	} else
-		printf("%05u %5"OFF_FMT"u %s\n", s, (total_bytes + 1023) / 1024, file);
+		printf("%05u %5"LL_FMT"u %s\n", s, (total_bytes + 1023) / 1024, file);
 	return 1;
 #undef buf
 }

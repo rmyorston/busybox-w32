@@ -16,10 +16,11 @@
 
 //kbuild:lib-$(CONFIG_PIPE_PROGRESS) += pipe_progress.o
 
-//usage:#define pipe_progress_trivial_usage
-//usage:     ""
-//usage:#define pipe_progress_full_usage "\n\n"
-//usage:     "Display a dot to indicate pipe activity"
+//usage:#define pipe_progress_trivial_usage IF_PLATFORM_POSIX(NOUSAGE_STR)
+//usage:	IF_PLATFORM_MINGW32("")
+//usage:#define pipe_progress_full_usage IF_PLATFORM_POSIX("")
+//usage:	IF_PLATFORM_MINGW32("\n\n")
+//usage:	IF_PLATFORM_MINGW32("Display a dot to indicate pipe activity")
 
 #include "libbb.h"
 
