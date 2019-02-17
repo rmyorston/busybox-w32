@@ -172,8 +172,7 @@
 //config:	  Enable support for the 'noconsole' option, which attempts to
 //config:	  hide the console normally associated with a command line
 //config:	  application.  This may be useful when running a shell script
-//config:	  from a GUI application.  Disable this if your platform doesn't
-//config:	  support the required APIs.
+//config:	  from a GUI application.
 //config:
 //config:endif # ash options
 
@@ -14917,13 +14916,8 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 #if ENABLE_ASH_NOCONSOLE
-	if ( noconsole ) {
-		DWORD dummy;
-
-		if ( GetConsoleProcessList(&dummy, 1) == 1 ) {
-			ShowWindow(GetConsoleWindow(), SW_HIDE);
-		}
-	}
+	if (noconsole)
+		hide_console();
 #endif
 
 	if (login_sh) {

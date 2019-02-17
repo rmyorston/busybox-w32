@@ -513,3 +513,4 @@ ULONGLONG CompatGetTickCount64(void);
 
 ssize_t get_random_bytes(void *buf, ssize_t count);
 int enumerate_links(const char *file, char *name);
+void hide_console(void);
