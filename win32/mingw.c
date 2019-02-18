@@ -398,13 +398,17 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 {
 	int err;
 	WIN32_FILE_ATTRIBUTE_DATA fdata;
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
+	BY_HANDLE_FILE_INFORMATION hdata;
+	HANDLE fh;
+#endif
 
 	if (!(err = get_file_attr(file_name, &fdata))) {
 		buf->st_ino = 0;
 		buf->st_uid = DEFAULT_UID;
 		buf->st_gid = DEFAULT_GID;
-		buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : 1;
 		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
+		buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : 1;
 		if (S_ISREG(buf->st_mode) &&
 				(has_exe_suffix(file_name) || has_exec_format(file_name)))
 			buf->st_mode |= S_IXUSR|S_IXGRP|S_IXOTH;
@@ -435,26 +439,23 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		}
 
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
-		{
-			BY_HANDLE_FILE_INFORMATION hdata;
-			HANDLE fh = CreateFile(file_name, 0,
-							0, NULL, OPEN_EXISTING,
-							FILE_ATTRIBUTE_NORMAL|FILE_FLAG_BACKUP_SEMANTICS,
-							NULL);
-			if (fh != INVALID_HANDLE_VALUE) {
-				if (GetFileInformationByHandle(fh, &hdata)) {
-					buf->st_dev = hdata.dwVolumeSerialNumber;
-					buf->st_ino = hdata.nFileIndexLow |
-						(((uint64_t)hdata.nFileIndexHigh)<<32);
-					buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 :
-										hdata.nNumberOfLinks;
-				}
-				CloseHandle(fh);
-			}
-			else {
-				errno = err_win_to_posix(GetLastError());
-				return -1;
-			}
+		fh = CreateFile(file_name, 0, 0, NULL, OPEN_EXISTING,
+							FILE_FLAG_BACKUP_SEMANTICS, NULL);
+		if (fh == INVALID_HANDLE_VALUE)
+			goto error;
+
+		if (GetFileInformationByHandle(fh, &hdata)) {
+			buf->st_dev = hdata.dwVolumeSerialNumber;
+			buf->st_ino = hdata.nFileIndexLow |
+							(((ino_t)hdata.nFileIndexHigh)<<32);
+			buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : hdata.nNumberOfLinks;
+			CloseHandle(fh);
+		}
+		else {
+ error:
+			errno = err_win_to_posix(GetLastError());
+			CloseHandle(fh);
+			return -1;
 		}
 #endif
 
