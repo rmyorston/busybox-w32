@@ -534,6 +534,11 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 		buf->st_mtime = buf64.st_mtime;
 		buf->st_ctime = buf64.st_ctime;
 		buf->st_blocks = ((buf64.st_size+4095)>>12)<<3;
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
+		buf->st_dev = 0;
+		buf->st_ino = 0;
+		buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : 1;
+#endif
 		goto success;
 	}
 
@@ -545,13 +550,14 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 		buf->st_mtime = filetime_to_time_t(&(fdata.ftLastWriteTime));
 		buf->st_ctime = filetime_to_time_t(&(fdata.ftCreationTime));
 		buf->st_blocks = ((buf->st_size+4095)>>12)<<3;
- success:
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
 		buf->st_dev = fdata.dwVolumeSerialNumber;
 		buf->st_ino = fdata.nFileIndexLow |
 			(((uint64_t)fdata.nFileIndexHigh)<<32);
 		buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : fdata.nNumberOfLinks;
-#else
+#endif
+ success:
+#if !ENABLE_FEATURE_EXTRA_FILE_DATA
 		buf->st_dev = 0;
 		buf->st_ino = 0;
 		buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : 1;
