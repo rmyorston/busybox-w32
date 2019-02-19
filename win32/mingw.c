@@ -441,22 +441,14 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
 		fh = CreateFile(file_name, 0, 0, NULL, OPEN_EXISTING,
 							FILE_FLAG_BACKUP_SEMANTICS, NULL);
-		if (fh == INVALID_HANDLE_VALUE)
-			goto error;
-
-		if (GetFileInformationByHandle(fh, &hdata)) {
+		if (fh != INVALID_HANDLE_VALUE &&
+				GetFileInformationByHandle(fh, &hdata)) {
 			buf->st_dev = hdata.dwVolumeSerialNumber;
 			buf->st_ino = hdata.nFileIndexLow |
 							(((ino_t)hdata.nFileIndexHigh)<<32);
 			buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : hdata.nNumberOfLinks;
-			CloseHandle(fh);
 		}
-		else {
- error:
-			errno = err_win_to_posix(GetLastError());
-			CloseHandle(fh);
-			return -1;
-		}
+		CloseHandle(fh);
 #endif
 
 		/*

@@ -1040,7 +1040,9 @@ int diff_main(int argc UNUSED_PARAM, char **argv)
 	 * 255, or if a local inode number (st_ino) exceeds 16777215.
 	 */
 	if (ENABLE_DESKTOP
-	 && (!ENABLE_PLATFORM_MINGW32 || ENABLE_FEATURE_EXTRA_FILE_DATA)
+	 && (ENABLE_PLATFORM_POSIX || ENABLE_FEATURE_EXTRA_FILE_DATA)
+	 /* ignore invalid inode numbers */
+	 && (ENABLE_FEATURE_EXTRA_FILE_DATA && stb[0].st_ino != 0)
 	 && stb[0].st_ino == stb[1].st_ino
 	 && stb[0].st_dev == stb[1].st_dev
 	 && stb[0].st_size == stb[1].st_size

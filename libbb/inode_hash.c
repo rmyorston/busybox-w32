@@ -61,6 +61,11 @@ void FAST_FUNC add_to_ino_dev_hashtable(const struct stat *statbuf, const char *
 	int i;
 	ino_dev_hashtable_bucket_t *bucket;
 
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
+	/* ignore invalid inode numbers */
+	if (statbuf->st_ino == 0)
+		return;
+#endif
 	if (!name)
 		name = "";
 	bucket = xmalloc(sizeof(ino_dev_hashtable_bucket_t) + strlen(name));
