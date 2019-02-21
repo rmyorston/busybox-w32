@@ -25,7 +25,3 @@ quiet_cmd_windres = WINDRES $@
 
 win32/resources/resources.o: win32/resources/resources.rc .config
 win32/resources/resources.o: win32/resources/aterm.ico win32/resources/sterm.ico
-win32/resources/resources.o: win32/resources/busybox-w32.manifest
-
-win32/resources/busybox-w32.manifest: win32/resources/busybox-w32.manifest.src .config
-	@sed -b "s/VERSION/$(BB_VER)/" $< >$@

@@ -4,7 +4,7 @@ Things may work for you, or may not.  Things may never work because of huge diff
 
 ### Building
 
-You need a MinGW compiler and a POSIX environment (so that `make menuconfig` works).  I cross-compile on Linux.  On Fedora or RHEL/CentOS+EPEL installing mingw32-gcc (32-bit build) or mingw64-gcc (64-bit build) will pull in everything needed.
+You need a MinGW compiler and a POSIX environment (so that `make menuconfig` works).  I cross-compile on Linux.  On Fedora or RHEL/CentOS+EPEL installing mingw32-gcc and mingw32-windows-default-manifest (32-bit build) or mingw64-gcc and mingw64-windows-default-manifest (64-bit build) will pull in everything needed.
 
 To start, run `make mingw32_defconfig` or `make mingw64_defconfig`.  You can then customize your build with `make menuconfig`.
 

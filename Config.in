@@ -421,14 +421,6 @@ config FEATURE_VERSIONINFO
 	help
 	Include version information in the application.
 
-config FEATURE_MANIFEST
-	bool "Include manifest in binary (1.5 kb)"
-	default y
-	depends on FEATURE_RESOURCES
-	help
-	Include a manifest which declares privileges required by the
-	application.
-
 config FEATURE_ICON
 	bool "Include application icon in binary"
 	default y

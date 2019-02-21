@@ -32,7 +32,3 @@ BEGIN
   END
 END
 #endif
-
-#if ENABLE_FEATURE_MANIFEST
-1 RT_MANIFEST "busybox-w32.manifest"
-#endif
