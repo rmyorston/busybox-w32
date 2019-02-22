@@ -149,6 +149,11 @@ enum edge_type_e {
 	EDGE_RECOMMENDS = 13,
 	EDGE_ENHANCES = 15
 };
+#if ENABLE_PLATFORM_MINGW32
+#undef VER_EQUAL
+#undef VER_LESS
+#undef VER_LESS_EQUAL
+#endif
 enum operator_e {
 	VER_NULL = 0,
 	VER_EQUAL = 1,
