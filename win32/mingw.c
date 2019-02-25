@@ -448,6 +448,11 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 							(((ino_t)hdata.nFileIndexHigh)<<32);
 			buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : hdata.nNumberOfLinks;
 		}
+		else {
+			buf->st_uid = 0;
+			buf->st_gid = 0;
+			buf->st_mode &= ~(S_IROTH|S_IWOTH|S_IXOTH);
+		}
 		CloseHandle(fh);
 #endif
 
