@@ -1,6 +1,7 @@
 #include "libbb.h"
 #include <tlhelp32.h>
 #include <psapi.h>
+#include "lazyload.h"
 
 int waitpid(pid_t pid, int *status, int options)
 {
@@ -668,33 +669,20 @@ int kill_SIGTERM_by_handle(HANDLE process, int exit_code)
 	int ret = 0;
 
 	if (GetExitCodeProcess(process, &code) && code == STILL_ACTIVE) {
-		static int initialized;
-		static LPTHREAD_START_ROUTINE exit_process_address;
+		DECLARE_PROC_ADDR(DWORD, ExitProcess, LPVOID);
 		PVOID arg = (PVOID)(intptr_t)exit_code;
 		DWORD thread_id;
 		HANDLE thread;
 
-		if (!initialized) {
-			HINSTANCE kernel32 = GetModuleHandle("kernel32");
-			if (!kernel32) {
-				fprintf(stderr, "BUG: cannot find kernel32");
-				ret = -1;
-				goto finish;
-			}
-			exit_process_address = (LPTHREAD_START_ROUTINE)
-				GetProcAddress(kernel32, "ExitProcess");
-			initialized = 1;
-		}
-		if (!exit_process_address ||
-		    !process_architecture_matches_current(process)) {
+		if (!INIT_PROC_ADDR(kernel32, ExitProcess) ||
+				!process_architecture_matches_current(process)) {
 			SetLastError(ERROR_ACCESS_DENIED);
 			ret = -1;
 			goto finish;
 		}
 
 		if ((thread = CreateRemoteThread(process, NULL, 0,
-					    exit_process_address,
-					    arg, 0, &thread_id))) {
+					    ExitProcess, arg, 0, &thread_id))) {
 			CloseHandle(thread);
 		}
 	}

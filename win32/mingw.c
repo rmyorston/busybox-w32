@@ -921,19 +921,14 @@ clock_t times(struct tms *buf)
 
 int link(const char *oldpath, const char *newpath)
 {
-	typedef BOOL (WINAPI *T)(const char*, const char*, LPSECURITY_ATTRIBUTES);
-	static T create_hard_link = NULL;
-	if (!create_hard_link) {
-		create_hard_link = (T) GetProcAddress(
-			GetModuleHandle("kernel32.dll"), "CreateHardLinkA");
-		if (!create_hard_link)
-			create_hard_link = (T)-1;
-	}
-	if (create_hard_link == (T)-1) {
+	DECLARE_PROC_ADDR(BOOL, CreateHardLinkA, LPCSTR, LPCSTR,
+						LPSECURITY_ATTRIBUTES);
+
+	if (!INIT_PROC_ADDR(kernel32.dll, CreateHardLinkA)) {
 		errno = ENOSYS;
 		return -1;
 	}
-	if (!create_hard_link(newpath, oldpath, NULL)) {
+	if (!CreateHardLinkA(newpath, oldpath, NULL)) {
 		errno = err_win_to_posix(GetLastError());
 		return -1;
 	}
