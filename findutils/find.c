@@ -103,7 +103,7 @@
 //config:config FEATURE_FIND_XDEV
 //config:	bool "Enable -xdev: 'stay in filesystem'"
 //config:	default y
-//config:	depends on FIND
+//config:	depends on FIND && (PLATFORM_POSIX || FEATURE_EXTRA_FILE_DATA)
 //config:
 //config:config FEATURE_FIND_MAXDEPTH
 //config:	bool "Enable -mindepth N and -maxdepth N"
