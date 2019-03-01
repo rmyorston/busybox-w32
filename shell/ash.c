@@ -169,10 +169,18 @@
 //config:	default y
 //config:	depends on (ASH || SH_IS_ASH || BASH_IS_ASH) && PLATFORM_MINGW32
 //config:	help
-//config:	  Enable support for the 'noconsole' option, which attempts to
-//config:	  hide the console normally associated with a command line
-//config:	  application.  This may be useful when running a shell script
-//config:	  from a GUI application.
+//config:	Enable support for the 'noconsole' option, which attempts to
+//config:	hide the console normally associated with a command line
+//config:	application.  This may be useful when running a shell script
+//config:	from a GUI application.
+//config:
+//config:config ASH_NOCASEGLOB
+//config:	bool "'nocaseglob' option"
+//config:	default y
+//config:	depends on (ASH || SH_IS_ASH || BASH_IS_ASH) && PLATFORM_MINGW32
+//config:	help
+//config:	Enable support for the 'nocaseglob' option, which allows
+//config:	case-insensitive filename globbing.
 //config:
 //config:endif # ash options
 
@@ -430,6 +438,9 @@ static const char *const optletters_optnames[] = {
 #if ENABLE_ASH_NOCONSOLE
 	,"\0"  "noconsole"
 #endif
+#if ENABLE_ASH_NOCASEGLOB
+	,"\0"  "nocaseglob"
+#endif
 };
 
 #define optletters(n)  optletters_optnames[n][0]
@@ -521,6 +532,9 @@ struct globals_misc {
 #endif
 #if ENABLE_ASH_NOCONSOLE
 # define noconsole optlist[15 + BASH_PIPEFAIL + 2*DEBUG]
+#endif
+#if ENABLE_ASH_NOCASEGLOB
+# define nocaseglob optlist[15 + BASH_PIPEFAIL + 2*DEBUG + ENABLE_ASH_NOCONSOLE]
 #endif
 
 	/* trap handler commands */
@@ -8138,6 +8152,10 @@ expmeta(exp_t *exp, char *name, unsigned name_len, unsigned expdir_len)
 	while (!pending_int && (dp = readdir(dirp)) != NULL) {
 		if (dp->d_name[0] == '.' && !matchdot)
 			continue;
+#if ENABLE_ASH_NOCASEGLOB
+# undef pmatch
+# define pmatch(a, b) !fnmatch((a), (b), nocaseglob ? FNM_CASEFOLD : 0)
+#endif
 		if (pmatch(start, dp->d_name)) {
 			if (atend) {
 				strcpy(enddir, dp->d_name);
@@ -8167,6 +8185,10 @@ expmeta(exp_t *exp, char *name, unsigned name_len, unsigned expdir_len)
 		endname[-esc - 1] = esc ? '\\' : '/';
 #undef expdir
 #undef expdir_max
+#if ENABLE_ASH_NOCASEGLOB
+# undef pmatch
+# define pmatch(a, b) !fnmatch((a), (b), 0)
+#endif
 }
 
 static struct strlist *
