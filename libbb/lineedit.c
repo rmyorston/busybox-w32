@@ -1317,7 +1317,11 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 		/* save tail */
 		strcpy(match_buf, &command_ps[cursor]);
 		/* add match and tail */
+#if ENABLE_PLATFORM_MINGW32
+		sprintf(&command_ps[cursor-match_pfx_len], "%s%s", chosen_match, match_buf);
+#else
 		sprintf(&command_ps[cursor], "%s%s", chosen_match + match_pfx_len, match_buf);
+#endif
 		command_len = strlen(command_ps);
 		/* new pos */
 		pos = cursor + len_found - match_pfx_len;
