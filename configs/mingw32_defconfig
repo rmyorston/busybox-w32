@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.31.0.git
-# Tue Feb 12 08:23:28 2019
+# Fri Mar  1 08:50:17 2019
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -49,6 +49,7 @@ CONFIG_FEATURE_ICON=y
 CONFIG_FEATURE_ICON_ALL=y
 CONFIG_FEATURE_EURO=y
 CONFIG_FEATURE_EXTRA_FILE_DATA=y
+CONFIG_FEATURE_IDENTIFY_OWNER=y
 
 #
 # Build Options

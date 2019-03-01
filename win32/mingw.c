@@ -1,6 +1,9 @@
 #include "libbb.h"
 #include <userenv.h>
 #include "lazyload.h"
+#if ENABLE_FEATURE_IDENTIFY_OWNER
+#include <aclapi.h>
+#endif
 
 #if defined(__MINGW64_VERSION_MAJOR)
 #if ENABLE_GLOBBING
@@ -387,6 +390,47 @@ static int has_exec_format(const char *name)
 	return 0;
 }
 
+#if ENABLE_FEATURE_IDENTIFY_OWNER
+static int file_belongs_to_me(HANDLE fh)
+{
+	PSID pSidOwner;
+	PSECURITY_DESCRIPTOR pSD;
+	static PTOKEN_USER user = NULL;
+	static int initialised = 0;
+	int equal;
+
+	/*  get SID of current user */
+	if (!initialised) {
+		HANDLE token;
+		DWORD ret = 0;
+
+		initialised = 1;
+		if (OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, TRUE, &token) ||
+				OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+			GetTokenInformation(token, TokenUser, NULL, 0, &ret);
+			if (ret <= 0 || (user=malloc(ret)) == NULL ||
+					!GetTokenInformation(token, TokenUser, user, ret, &ret)) {
+				free(user);
+				user = NULL;
+			}
+			CloseHandle(token);
+		}
+	}
+
+	if (user == NULL)
+		return TRUE;
+
+	/* get SID of file's owner */
+	if (GetSecurityInfo(fh, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION,
+			&pSidOwner, NULL, NULL, NULL, &pSD) != ERROR_SUCCESS)
+		return FALSE;
+
+	equal = EqualSid(pSidOwner, user->User.Sid);
+	LocalFree(pSD);
+	return equal;
+}
+#endif
+
 /* We keep the do_lstat code in a separate function to avoid recursion.
  * When a path ends with a slash, the stat will fail with ENOENT. In
  * this case, we strip the trailing slashes and stat again.
@@ -439,21 +483,34 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		}
 
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
+#if ENABLE_FEATURE_IDENTIFY_OWNER
+		fh = CreateFile(file_name, READ_CONTROL, 0, NULL,
+							OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+#else
 		fh = CreateFile(file_name, 0, 0, NULL, OPEN_EXISTING,
 							FILE_FLAG_BACKUP_SEMANTICS, NULL);
-		if (fh != INVALID_HANDLE_VALUE &&
-				GetFileInformationByHandle(fh, &hdata)) {
-			buf->st_dev = hdata.dwVolumeSerialNumber;
-			buf->st_ino = hdata.nFileIndexLow |
-							(((ino_t)hdata.nFileIndexHigh)<<32);
-			buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : hdata.nNumberOfLinks;
+#endif
+		if (fh != INVALID_HANDLE_VALUE) {
+			if (GetFileInformationByHandle(fh, &hdata)) {
+				buf->st_dev = hdata.dwVolumeSerialNumber;
+				buf->st_ino = hdata.nFileIndexLow |
+						(((ino_t)hdata.nFileIndexHigh)<<32);
+				buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 :
+							hdata.nNumberOfLinks;
+			}
+#if ENABLE_FEATURE_IDENTIFY_OWNER
+			if (!file_belongs_to_me(fh)) {
+				buf->st_uid = 0;
+				buf->st_gid = 0;
+			}
+#endif
+			CloseHandle(fh);
 		}
 		else {
 			buf->st_uid = 0;
 			buf->st_gid = 0;
 			buf->st_mode &= ~(S_IROTH|S_IWOTH|S_IXOTH);
 		}
-		CloseHandle(fh);
 #endif
 
 		/*

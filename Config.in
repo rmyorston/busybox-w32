@@ -465,6 +465,14 @@ config FEATURE_EXTRA_FILE_DATA
 	permits extra features such as warning of attempts to copy a file
 	onto itself or to store a tar archive in itself.
 
+config FEATURE_IDENTIFY_OWNER
+	bool "Check whether files belong to current user (0.6 kb)"
+	default y
+	depends on FEATURE_EXTRA_FILE_DATA
+	help
+	Try to determine if files belong to the current user.  If they don't
+	they're listed as belonging to root.
+
 comment 'Build Options'
 
 config STATIC
