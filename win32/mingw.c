@@ -391,13 +391,20 @@ static int has_exec_format(const char *name)
 }
 
 #if ENABLE_FEATURE_IDENTIFY_OWNER
-static int file_belongs_to_me(HANDLE fh)
+static uid_t file_owner(HANDLE fh)
 {
 	PSID pSidOwner;
 	PSECURITY_DESCRIPTOR pSD;
 	static PTOKEN_USER user = NULL;
 	static int initialised = 0;
 	int equal;
+	uid_t uid = 0;
+	DWORD *ptr;
+	unsigned char prefix[] = {
+			0x01, 0x05, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x05,
+			0x15, 0x00, 0x00, 0x00
+	};
 
 	/*  get SID of current user */
 	if (!initialised) {
@@ -418,16 +425,51 @@ static int file_belongs_to_me(HANDLE fh)
 	}
 
 	if (user == NULL)
-		return TRUE;
+		return DEFAULT_UID;
 
 	/* get SID of file's owner */
 	if (GetSecurityInfo(fh, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION,
 			&pSidOwner, NULL, NULL, NULL, &pSD) != ERROR_SUCCESS)
-		return FALSE;
+		return 0;
 
 	equal = EqualSid(pSidOwner, user->User.Sid);
 	LocalFree(pSD);
-	return equal;
+
+	if (equal)
+		return DEFAULT_UID;
+
+	/* for local or domain users use the RID as uid */
+	if (memcmp(pSidOwner, prefix, sizeof(prefix)) == 0) {
+		ptr = (DWORD *)pSidOwner;
+		if (ptr[6] >= 500 && ptr[6] < DEFAULT_UID)
+			uid = (uid_t)ptr[6];
+	}
+	return uid;
+
+#if 0
+	/* this is how it would be done properly using the API */
+	{
+		PSID_IDENTIFIER_AUTHORITY auth;
+		unsigned char *count;
+		PDWORD subauth;
+		unsigned char nt_auth[] = {
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x05
+		};
+
+		if (IsValidSid(pSidOwner) ) {
+			auth = GetSidIdentifierAuthority(pSidOwner);
+			count = GetSidSubAuthorityCount(pSidOwner);
+			subauth = GetSidSubAuthority(pSidOwner, 0);
+			if (memcmp(auth, nt_auth, sizeof(nt_auth)) == 0 &&
+					*count == 5 && *subauth == 21) {
+				subauth = GetSidSubAuthority(pSidOwner, 4);
+				if (*subauth >= 500 && *subauth < DEFAULT_UID)
+					uid = (uid_t)*subauth;
+			}
+		}
+		return uid;
+	}
+#endif
 }
 #endif
 
@@ -499,10 +541,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 							hdata.nNumberOfLinks;
 			}
 #if ENABLE_FEATURE_IDENTIFY_OWNER
-			if (!file_belongs_to_me(fh)) {
-				buf->st_uid = 0;
-				buf->st_gid = 0;
-			}
+			buf->st_uid = buf->st_gid = file_owner(fh);
 #endif
 			CloseHandle(fh);
 		}

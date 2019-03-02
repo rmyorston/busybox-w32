@@ -8,8 +8,8 @@
 typedef int gid_t;
 typedef int uid_t;
 
-#define DEFAULT_UID 1000
-#define DEFAULT_GID 1000
+#define DEFAULT_UID 4095
+#define DEFAULT_GID 4095
 
 /*
  * arpa/inet.h
