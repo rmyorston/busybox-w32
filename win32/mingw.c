@@ -678,31 +678,13 @@ int utimes(const char *file_name, const struct timeval tims[2])
 {
 	FILETIME mft, aft;
 	HANDLE fh;
-	DWORD flags, attrs;
-	int rc;
+	int rc = 0;
 
-	flags = FILE_ATTRIBUTE_NORMAL;
-
-	/* must have write permission */
-	attrs = GetFileAttributes(file_name);
-	if ( attrs != INVALID_FILE_ATTRIBUTES ) {
-	    if ( attrs & FILE_ATTRIBUTE_READONLY ) {
-			/* ignore errors here; open() will report them */
-			SetFileAttributes(file_name, attrs & ~FILE_ATTRIBUTE_READONLY);
-		}
-
-	    if ( attrs & FILE_ATTRIBUTE_DIRECTORY ) {
-			flags = FILE_FLAG_BACKUP_SEMANTICS;
-		}
-	}
-
-	fh = CreateFile(file_name, GENERIC_READ|GENERIC_WRITE,
-				FILE_SHARE_READ|FILE_SHARE_WRITE,
-				NULL, OPEN_EXISTING, flags, NULL);
+	fh = CreateFile(file_name, FILE_WRITE_ATTRIBUTES, 0,
+				NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if ( fh == INVALID_HANDLE_VALUE ) {
 		errno = err_win_to_posix(GetLastError());
-		rc = -1;
-		goto revert_attrs;
+		return -1;
 	}
 
 	if (tims) {
@@ -713,19 +695,12 @@ int utimes(const char *file_name, const struct timeval tims[2])
 		GetSystemTimeAsFileTime(&mft);
 		aft = mft;
 	}
+
 	if (!SetFileTime(fh, NULL, &aft, &mft)) {
 		errno = EINVAL;
 		rc = -1;
-	} else
-		rc = 0;
-	CloseHandle(fh);
-
-revert_attrs:
-	if (attrs != INVALID_FILE_ATTRIBUTES &&
-	    (attrs & FILE_ATTRIBUTE_READONLY)) {
-		/* ignore errors again */
-		SetFileAttributes(file_name, attrs);
 	}
+	CloseHandle(fh);
 	return rc;
 }
 
