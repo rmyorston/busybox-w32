@@ -657,7 +657,11 @@ static void display_files(struct dnode **dn, unsigned nfiles)
 		}
 		column_width += 2
 			+ ((option_mask32 & OPT_Z) ? 33 : 0) /* context width */
+#if !ENABLE_FEATURE_EXTRA_FILE_DATA
 			+ ((option_mask32 & OPT_i) ? 8 : 0) /* inode# width */
+#else
+			+ ((option_mask32 & OPT_i) ? 20 : 0) /* inode# width */
+#endif
 			+ ((option_mask32 & OPT_s) ? 5 : 0) /* "alloc block" width */
 		;
 		ncols = (unsigned)G_terminal_width / column_width;
