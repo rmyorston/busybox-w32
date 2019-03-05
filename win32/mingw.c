@@ -138,6 +138,7 @@ int err_win_to_posix(DWORD winerr)
 	case ERROR_WAIT_NO_CHILDREN: error = ECHILD; break;
 	case ERROR_WRITE_FAULT: error = EIO; break;
 	case ERROR_WRITE_PROTECT: error = EROFS; break;
+	case ERROR_CANT_RESOLVE_FILENAME: error = ELOOP; break;
 	}
 	return error;
 }
@@ -480,60 +481,80 @@ static uid_t file_owner(HANDLE fh)
 }
 #endif
 
+static int is_symlink(DWORD attr, const char *pathname, WIN32_FIND_DATAA *fbuf)
+{
+	if (attr & FILE_ATTRIBUTE_REPARSE_POINT) {
+		HANDLE handle = FindFirstFileA(pathname, fbuf);
+		if (handle != INVALID_HANDLE_VALUE) {
+			FindClose(handle);
+			return ((fbuf->dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+					fbuf->dwReserved0 == IO_REPARSE_TAG_SYMLINK);
+		}
+	}
+	return 0;
+}
+
 /* If follow is true then act like stat() and report on the link
  * target. Otherwise report on the link itself.
  */
 static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 {
-	int err;
+	int err = EINVAL;
 	WIN32_FILE_ATTRIBUTE_DATA fdata;
+	WIN32_FIND_DATAA findbuf;
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
+	DWORD flags;
 	BY_HANDLE_FILE_INFORMATION hdata;
 	HANDLE fh;
 #endif
 
-	if (!(err = get_file_attr(file_name, &fdata))) {
+	while (file_name && !(err=get_file_attr(file_name, &fdata))) {
 		buf->st_ino = 0;
 		buf->st_uid = DEFAULT_UID;
 		buf->st_gid = DEFAULT_GID;
-		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
-		buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : 1;
-		if (S_ISREG(buf->st_mode) &&
-				(has_exe_suffix(file_name) || has_exec_format(file_name)))
-			buf->st_mode |= S_IXUSR|S_IXGRP|S_IXOTH;
-		buf->st_size = fdata.nFileSizeLow |
-			(((off64_t)fdata.nFileSizeHigh)<<32);
-		buf->st_dev = buf->st_rdev = 0; /* not used by Git */
-		buf->st_atime = filetime_to_time_t(&(fdata.ftLastAccessTime));
-		buf->st_mtime = filetime_to_time_t(&(fdata.ftLastWriteTime));
-		buf->st_ctime = filetime_to_time_t(&(fdata.ftCreationTime));
-		if (fdata.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
-			WIN32_FIND_DATAA findbuf;
-			HANDLE handle = FindFirstFileA(file_name, &findbuf);
-			if (handle != INVALID_HANDLE_VALUE) {
-				if ((findbuf.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
-						(findbuf.dwReserved0 == IO_REPARSE_TAG_SYMLINK)) {
-					if (follow) {
-						char buffer[MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
-						buf->st_size = readlink(file_name, buffer, MAXIMUM_REPARSE_DATA_BUFFER_SIZE);
-					} else {
-						buf->st_mode = S_IFLNK;
-					}
-					buf->st_mode |= S_IRUSR|S_IRGRP|S_IROTH;
-					if (!(findbuf.dwFileAttributes & FILE_ATTRIBUTE_READONLY))
-						buf->st_mode |= S_IWUSR|S_IWGRP;
-				}
-				FindClose(handle);
+		buf->st_dev = buf->st_rdev = 0;
+
+		if (is_symlink(fdata.dwFileAttributes, file_name, &findbuf)) {
+			char *name = auto_string(xmalloc_realpath(file_name));
+
+			if (follow) {
+				/* The file size and times are wrong when Windows follows
+				 * a symlink.  Use the canonicalized path to try again. */
+				err = errno;
+				file_name = name;
+				continue;
 			}
+
+			/* Get the contents of a symlink, not its target. */
+			buf->st_mode = S_IFLNK|S_IRWXU|S_IRWXG|S_IRWXO;
+			buf->st_size = name ? strlen(name) : 0; /* should use readlink */
+			buf->st_atime = filetime_to_time_t(&(findbuf.ftLastAccessTime));
+			buf->st_mtime = filetime_to_time_t(&(findbuf.ftLastWriteTime));
+			buf->st_ctime = filetime_to_time_t(&(findbuf.ftCreationTime));
 		}
+		else {
+			/* The file is not a symlink. */
+			buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
+			if (S_ISREG(buf->st_mode) &&
+					(has_exe_suffix(file_name) || has_exec_format(file_name)))
+				buf->st_mode |= S_IXUSR|S_IXGRP|S_IXOTH;
+			buf->st_size = fdata.nFileSizeLow |
+				(((off64_t)fdata.nFileSizeHigh)<<32);
+			buf->st_atime = filetime_to_time_t(&(fdata.ftLastAccessTime));
+			buf->st_mtime = filetime_to_time_t(&(fdata.ftLastWriteTime));
+			buf->st_ctime = filetime_to_time_t(&(fdata.ftCreationTime));
+		}
+		buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : 1;
 
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
+		flags = FILE_FLAG_BACKUP_SEMANTICS;
+		if (S_ISLNK(buf->st_mode))
+			flags |= FILE_FLAG_OPEN_REPARSE_POINT;
 #if ENABLE_FEATURE_IDENTIFY_OWNER
 		fh = CreateFile(file_name, READ_CONTROL, 0, NULL,
-							OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+							OPEN_EXISTING, flags, NULL);
 #else
-		fh = CreateFile(file_name, 0, 0, NULL, OPEN_EXISTING,
-							FILE_FLAG_BACKUP_SEMANTICS, NULL);
+		fh = CreateFile(file_name, 0, 0, NULL, OPEN_EXISTING, flags, NULL);
 #endif
 		if (fh != INVALID_HANDLE_VALUE) {
 			if (GetFileInformationByHandle(fh, &hdata)) {
@@ -987,9 +1008,8 @@ static char *resolve_symlinks(char *path)
 		return NULL;
 
 	/* need a file handle to resolve symlinks */
-	h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL,
-			OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL|FILE_FLAG_BACKUP_SEMANTICS,
-			NULL);
+	h = CreateFileA(path, 0, 0, NULL, OPEN_EXISTING,
+				FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (h != INVALID_HANDLE_VALUE) {
 		/* normalize the path and return it on success */
 		DWORD status = GetFinalPathNameByHandleA(h, path, MAX_PATH,
