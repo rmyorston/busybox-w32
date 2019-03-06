@@ -21,13 +21,13 @@ int statfs(const char *file, struct statfs *buf)
 	if ( !GetDiskFreeSpaceEx(file, (PULARGE_INTEGER) &free_bytes_available,
 			(PULARGE_INTEGER) &total_number_of_bytes,
 			(PULARGE_INTEGER) &total_number_of_free_bytes) ) {
-		errno = err_win_to_posix(GetLastError());
+		errno = err_win_to_posix();
 		return -1;
 	}
 
 	if ( !GetVolumeInformation(file, NULL, 0, &serial, &namelen, &flags,
 								fsname, 100) ) {
-		errno = err_win_to_posix(GetLastError());
+		errno = err_win_to_posix();
 		return -1;
 	}
 

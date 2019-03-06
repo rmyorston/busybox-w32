@@ -590,7 +590,7 @@ static int kill_pids(pid_t pid, int exit_code, kill_callback killer)
 		HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 
 		if (snapshot == INVALID_HANDLE_VALUE) {
-			errno = err_win_to_posix(GetLastError());
+			errno = err_win_to_posix();
 			return -1;
 		}
 
@@ -623,7 +623,7 @@ static int kill_pids(pid_t pid, int exit_code, kill_callback killer)
 	for (i = len - 1; i >= 0; i--) {
 		SetLastError(0);
 		if (killer(pids[i], exit_code)) {
-			errno = err_win_to_posix(GetLastError());
+			errno = err_win_to_posix();
 			ret = -1;
 		}
 	}

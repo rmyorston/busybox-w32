@@ -28,10 +28,10 @@ unsigned int _CRT_fmode = _O_BINARY;
 
 smallint bb_got_signal;
 
-int err_win_to_posix(DWORD winerr)
+int err_win_to_posix(void)
 {
 	int error = ENOSYS;
-	switch(winerr) {
+	switch(GetLastError()) {
 	case ERROR_ACCESS_DENIED: error = EACCES; break;
 	case ERROR_ACCOUNT_DISABLED: error = EACCES; break;
 	case ERROR_ACCOUNT_RESTRICTION: error = EACCES; break;
@@ -675,7 +675,7 @@ int utimes(const char *file_name, const struct timeval tims[2])
 	fh = CreateFile(file_name, FILE_WRITE_ATTRIBUTES, 0,
 				NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if ( fh == INVALID_HANDLE_VALUE ) {
-		errno = err_win_to_posix(GetLastError());
+		errno = err_win_to_posix();
 		return -1;
 	}
 
@@ -992,7 +992,7 @@ int link(const char *oldpath, const char *newpath)
 		return -1;
 	}
 	if (!CreateHardLinkA(newpath, oldpath, NULL)) {
-		errno = err_win_to_posix(GetLastError());
+		errno = err_win_to_posix();
 		return -1;
 	}
 	return 0;
@@ -1021,7 +1021,7 @@ static char *resolve_symlinks(char *path)
 		}
 	}
 
-	errno = err_win_to_posix(GetLastError());
+	errno = err_win_to_posix();
 	return NULL;
 }
 

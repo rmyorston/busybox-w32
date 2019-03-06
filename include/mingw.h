@@ -506,7 +506,7 @@ static inline char *auto_win32_extension(const char *p)
 void convert_slashes(char *p) FAST_FUNC;
 size_t remove_cr(char *p, size_t len) FAST_FUNC;
 
-int err_win_to_posix(DWORD winerr);
+int err_win_to_posix(void);
 
 ULONGLONG CompatGetTickCount64(void);
 #define GetTickCount64 CompatGetTickCount64
