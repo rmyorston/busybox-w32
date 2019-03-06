@@ -1000,29 +1000,35 @@ int link(const char *oldpath, const char *newpath)
 
 static char *resolve_symlinks(char *path)
 {
-	HANDLE h = INVALID_HANDLE_VALUE;
+	HANDLE h;
+	DWORD status;
+	char *ptr = NULL;
 	DECLARE_PROC_ADDR(DWORD, GetFinalPathNameByHandleA, HANDLE,
 						LPSTR, DWORD, DWORD);
-
-	if (!INIT_PROC_ADDR(kernel32.dll, GetFinalPathNameByHandleA))
-		return NULL;
 
 	/* need a file handle to resolve symlinks */
 	h = CreateFileA(path, 0, 0, NULL, OPEN_EXISTING,
 				FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (h != INVALID_HANDLE_VALUE) {
+		if (!INIT_PROC_ADDR(kernel32.dll, GetFinalPathNameByHandleA)) {
+			ptr = path;
+			goto end;
+		}
+
 		/* normalize the path and return it on success */
-		DWORD status = GetFinalPathNameByHandleA(h, path, MAX_PATH,
+		status = GetFinalPathNameByHandleA(h, path, MAX_PATH,
 							FILE_NAME_NORMALIZED|VOLUME_NAME_DOS);
-		CloseHandle(h);
 		if (status != 0 && status < MAX_PATH) {
 			/* skip '\\?\' prefix */
-			return (!strncmp(path, "\\\\?\\", 4)) ? (path + 4) : path;
+			ptr = (!strncmp(path, "\\\\?\\", 4)) ? (path + 4) : path;
+			goto end;
 		}
 	}
 
 	errno = err_win_to_posix();
-	return NULL;
+ end:
+	CloseHandle(h);
+	return ptr;
 }
 
 /*
