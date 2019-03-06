@@ -4,6 +4,9 @@
 #if ENABLE_FEATURE_IDENTIFY_OWNER
 #include <aclapi.h>
 #endif
+#if ENABLE_FEATURE_READLINK2
+#include <ntdef.h>
+#endif
 
 #if defined(__MINGW64_VERSION_MAJOR)
 #if ENABLE_GLOBBING
@@ -1059,6 +1062,68 @@ char *realpath(const char *path, char *resolved_path)
 	}
 	return NULL;
 }
+
+#if ENABLE_FEATURE_READLINK2
+static wchar_t *normalize_ntpath(wchar_t *wbuf)
+{
+	int i;
+	/* fix absolute path prefixes */
+	if (wbuf[0] == '\\') {
+		/* strip NT namespace prefixes */
+		if (!wcsncmp(wbuf, L"\\??\\", 4) ||
+		    !wcsncmp(wbuf, L"\\\\?\\", 4))
+			wbuf += 4;
+		else if (!wcsnicmp(wbuf, L"\\DosDevices\\", 12))
+			wbuf += 12;
+		/* replace remaining '...UNC\' with '\\' */
+		if (!wcsnicmp(wbuf, L"UNC\\", 4)) {
+			wbuf += 2;
+			*wbuf = '\\';
+		}
+	}
+	/* convert backslashes to slashes */
+	for (i = 0; wbuf[i]; i++)
+		if (wbuf[i] == '\\')
+			wbuf[i] = '/';
+	return wbuf;
+}
+
+#define SRPB rptr->SymbolicLinkReparseBuffer
+ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
+{
+	HANDLE h;
+
+	h = CreateFile(pathname, 0, 0, NULL, OPEN_EXISTING,
+				FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_BACKUP_SEMANTICS, NULL);
+	if (h != INVALID_HANDLE_VALUE) {
+		DWORD nbytes;
+		BYTE rbuf[MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
+		PREPARSE_DATA_BUFFER rptr = (PREPARSE_DATA_BUFFER)rbuf;
+		BOOL status;
+
+		status = DeviceIoControl(h, FSCTL_GET_REPARSE_POINT, NULL, 0,
+					rptr, sizeof(rbuf), &nbytes, NULL);
+		CloseHandle(h);
+
+		if (status && rptr->ReparseTag == IO_REPARSE_TAG_SYMLINK) {
+			size_t len = SRPB.SubstituteNameLength/sizeof(WCHAR);
+			WCHAR *name = SRPB.PathBuffer +
+							SRPB.SubstituteNameOffset/sizeof(WCHAR);
+
+			name[len] = 0;
+			name = normalize_ntpath(name);
+			len = wcslen(name);
+			if (len > bufsiz)
+				len = bufsiz;
+			if (WideCharToMultiByte(CP_ACP, 0, name, len, buf, bufsiz, 0, 0)) {
+				return len;
+			}
+		}
+	}
+	errno = err_win_to_posix();
+	return -1;
+}
+#endif
 
 const char *get_busybox_exec_path(void)
 {
