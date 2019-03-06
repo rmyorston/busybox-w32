@@ -1159,6 +1159,19 @@ int mingw_mkdir(const char *path, int mode UNUSED_PARAM)
 	return ret;
 }
 
+#undef chdir
+int mingw_chdir(const char *dirname)
+{
+	int ret = -1;
+	char *realdir = xmalloc_realpath(dirname);
+
+	if (realdir) {
+		ret = chdir(realdir);
+		free(realdir);
+	}
+	return ret;
+}
+
 #undef chmod
 int mingw_chmod(const char *path, int mode)
 {
