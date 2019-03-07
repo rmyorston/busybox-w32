@@ -8,6 +8,7 @@
 //config:	bool "su (19 kb)"
 //config:	default y
 //config:	select FEATURE_SYSLOG
+//config:	depends on PLATFORM_POSIX
 //config:	help
 //config:	su is used to become another user during a login session.
 //config:	Invoked without a username, su defaults to becoming the super user.

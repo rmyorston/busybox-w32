@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.31.0.git
-# Wed Mar  6 09:32:59 2019
+# Thu Mar  7 14:31:51 2019
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -550,6 +550,7 @@ CONFIG_FEATURE_DEFAULT_PASSWD_ALGO=""
 # CONFIG_FEATURE_SU_CHECKS_SHELLS is not set
 # CONFIG_FEATURE_SU_BLANK_PW_NEEDS_SECURE_TTY is not set
 # CONFIG_SULOGIN is not set
+CONFIG_SUW32=y
 # CONFIG_VLOCK is not set
 
 #
