@@ -28,7 +28,6 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 {
 	char *opt_command = NULL;
 	SHELLEXECUTEINFO info;
-	char *cwd;
 
 	getopt32(argv, "c:", &opt_command);
 	if (argv[optind])
@@ -40,12 +39,10 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	/* info.hwnd = NULL; */
 	info.lpVerb = "runas";
 	info.lpFile = bb_busybox_exec_path;
-	cwd = getcwd(NULL, 0);
+	info.lpParameters = xasprintf("--busybox ash -d \"%s\"", getcwd(NULL, 0));
 	if (opt_command)
 		info.lpParameters =
-			xasprintf("ash -d \"%s\" -s -c \"%s\"", cwd, opt_command);
-	else
-		info.lpParameters = xasprintf("ash -d \"%s\"", cwd);
+			xasprintf("%s -s -c \"%s\"", info.lpParameters, opt_command);
 	/* info.lpDirectory = NULL; */
 	info.nShow = SW_SHOWNORMAL;
 

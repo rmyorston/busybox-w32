@@ -789,7 +789,8 @@ static void spawn_ssl_client(const char *host, int network_fd, int flags)
 
 	fflush_all();
 
-	cmd = xasprintf("%s ssl_client -h %p -n %s%s", bb_busybox_exec_path,
+	cmd = xasprintf("%s --busybox ssl_client -h %p -n %s%s",
+					bb_busybox_exec_path,
 					(void *)_get_osfhandle(network_fd), servername,
 					flags & TLSLOOP_EXIT_ON_LOCAL_EOF ? " -e" : "");
 
