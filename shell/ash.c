@@ -480,6 +480,9 @@ struct globals_misc {
 	int errlinno;
 
 	char *minusc;  /* argument to -c option */
+#if ENABLE_PLATFORM_MINGW32
+	char *dirarg;  /* argument to -d option */
+#endif
 
 	char *curdir; // = nullstr;     /* current working directory */
 	char *physdir; // = nullstr;    /* physical working directory */
@@ -573,6 +576,9 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define loopnest    (G_misc.loopnest   )
 #endif
 #define minusc      (G_misc.minusc     )
+#if ENABLE_PLATFORM_MINGW32
+#define dirarg      (G_misc.dirarg     )
+#endif
 #define curdir      (G_misc.curdir     )
 #define physdir     (G_misc.physdir    )
 #define arg0        (G_misc.arg0       )
@@ -11672,8 +11678,12 @@ options(int cmdline, int *login_sh)
 	int val;
 	int c;
 
-	if (cmdline)
+	if (cmdline) {
 		minusc = NULL;
+#if ENABLE_PLATFORM_MINGW32
+		dirarg = NULL;
+#endif
+	}
 	while ((p = *argptr) != NULL) {
 		c = *p++;
 		if (c != '-' && c != '+')
@@ -11699,6 +11709,14 @@ options(int cmdline, int *login_sh)
 			/* bash 3.2 indeed handles -c CMD and +c CMD the same */
 			if (c == 'c' && cmdline) {
 				minusc = p;     /* command is after shell args */
+#if ENABLE_PLATFORM_MINGW32
+			/* Undocumented -d option to force current directory.
+			 * Must appear before -s or -c. */
+			} else if (c == 'd' && cmdline && val == 1) {
+				if (*argptr == NULL)
+					ash_msg_and_raise_error(bb_msg_requires_arg, "-d");
+				dirarg = *argptr++;
+#endif
 			} else if (c == 'o') {
 				if (plus_minus_o(*argptr, val)) {
 					/* it already printed err message */
@@ -14956,12 +14974,21 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		hide_console();
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+	if (dirarg) {
+		chdir(dirarg);
+		setpwd(NULL, 0);
+	}
+#endif
+
 	if (login_sh) {
 		const char *hp;
 
 #if ENABLE_PLATFORM_MINGW32
-		chdir(xgetpwuid(getuid())->pw_dir);
-		setpwd(NULL, 0);
+		if (!dirarg) {
+			chdir(xgetpwuid(getuid())->pw_dir);
+			setpwd(NULL, 0);
+		}
 #endif
 
 		state = 1;
