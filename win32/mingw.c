@@ -1001,6 +1001,25 @@ int link(const char *oldpath, const char *newpath)
 	return 0;
 }
 
+static char *normalize_ntpathA(char *buf)
+{
+	/* fix absolute path prefixes */
+	if (buf[0] == '\\') {
+		/* strip NT namespace prefixes */
+		if (!strncmp(buf, "\\??\\", 4) ||
+		    !strncmp(buf, "\\\\?\\", 4))
+			buf += 4;
+		else if (!strncasecmp(buf, "\\DosDevices\\", 12))
+			buf += 12;
+		/* replace remaining '...UNC\' with '\\' */
+		if (!strncasecmp(buf, "UNC\\", 4)) {
+			buf += 2;
+			*buf = '\\';
+		}
+	}
+	return buf;
+}
+
 static char *resolve_symlinks(char *path)
 {
 	HANDLE h;
@@ -1022,8 +1041,7 @@ static char *resolve_symlinks(char *path)
 		status = GetFinalPathNameByHandleA(h, path, MAX_PATH,
 							FILE_NAME_NORMALIZED|VOLUME_NAME_DOS);
 		if (status != 0 && status < MAX_PATH) {
-			/* skip '\\?\' prefix */
-			ptr = (!strncmp(path, "\\\\?\\", 4)) ? (path + 4) : path;
+			ptr = normalize_ntpathA(path);
 			goto end;
 		}
 	}
