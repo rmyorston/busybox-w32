@@ -45,6 +45,9 @@
 # define _POSIX_VDISABLE '\0'
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+# define geteuid() (is_admin() ? 0 : DEFAULT_UID)
+#endif
 
 #ifdef TEST
 # define ENABLE_FEATURE_EDITING 0

@@ -1576,3 +1576,21 @@ void hide_console(void)
 	}
 }
 #endif
+
+int is_admin(void)
+{
+	int ret = FALSE;
+	HANDLE h;
+
+	if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &h)) {
+		TOKEN_ELEVATION elevation;
+		DWORD size = sizeof(TOKEN_ELEVATION);
+
+		if (GetTokenInformation(h, TokenElevation, &elevation,
+					sizeof(elevation), &size)) {
+			ret = elevation.TokenIsElevated;
+		}
+		CloseHandle(h);
+	}
+	return ret;
+}
