@@ -465,6 +465,28 @@ static BOOL winansi_OemToCharBuff(LPCSTR s, LPSTR d, DWORD len)
 # define OemToCharBuff winansi_OemToCharBuff
 #endif
 
+static char *check_escapes(char *pos)
+{
+	char *str = pos+1;
+
+	switch (pos[1]) {
+	case '[':
+		str = (char *)set_attr(pos+2);
+		break;
+	case ']':
+		if ((pos[2] == '0' || pos[2] == '2') && pos[3] == ';' &&
+				(str=strchr(pos, '\007')) && str - pos < 260) {
+			*str = '\0';
+			CharToOem(pos+4, pos+4);
+			SetConsoleTitle(pos+4);
+			++str;
+		}
+		break;
+	}
+
+	return str;
+}
+
 static int ansi_emulate(const char *s, FILE *stream)
 {
 	int rv = 0;
@@ -502,7 +524,7 @@ static int ansi_emulate(const char *s, FILE *stream)
 	pos = str = mem;
 
 	while (*pos) {
-		pos = strstr(str, "\033[");
+		pos = strchr(str, '\033');
 		if (pos && !skip_ansi_emulation()) {
 			size_t len = pos - str;
 
@@ -514,15 +536,16 @@ static int ansi_emulate(const char *s, FILE *stream)
 				rv += len;
 			}
 
-			str = pos + 2;
-			rv += 2;
+			if (fflush(stream) == EOF)
+				return EOF;
+
+			str = check_escapes(pos);
+			rv += pos - str;
+			pos = str;
 
 			if (fflush(stream) == EOF)
 				return EOF;
 
-			pos = (char *)set_attr(str);
-			rv += pos - str;
-			str = pos;
 		} else {
 			rv += strlen(str);
 			CharToOem(str, str);
@@ -750,7 +773,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 
 	/* we've checked the data doesn't contain any NULs */
 	while (*pos) {
-		pos = strstr(str, "\033[");
+		pos = strchr(str, '\033');
 		if (pos && !skip_ansi_emulation()) {
 			len = pos - str;
 
@@ -762,12 +785,9 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 				rv += out_len;
 			}
 
-			str = pos + 2;
-			rv += 2;
-
-			pos = (char *)set_attr(str);
+			str = check_escapes(pos);
 			rv += pos - str;
-			str = pos;
+			pos = str;
 		} else {
 			len = strlen(str);
 			CharToOem(str, str);
