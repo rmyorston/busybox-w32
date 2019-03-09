@@ -482,6 +482,7 @@ struct globals_misc {
 	char *minusc;  /* argument to -c option */
 #if ENABLE_PLATFORM_MINGW32
 	char *dirarg;  /* argument to -d option */
+	char *title;   /* argument to -t option */
 #endif
 
 	char *curdir; // = nullstr;     /* current working directory */
@@ -578,6 +579,7 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define minusc      (G_misc.minusc     )
 #if ENABLE_PLATFORM_MINGW32
 #define dirarg      (G_misc.dirarg     )
+#define title       (G_misc.title      )
 #endif
 #define curdir      (G_misc.curdir     )
 #define physdir     (G_misc.physdir    )
@@ -11682,6 +11684,7 @@ options(int cmdline, int *login_sh)
 		minusc = NULL;
 #if ENABLE_PLATFORM_MINGW32
 		dirarg = NULL;
+		title = NULL;
 #endif
 	}
 	while ((p = *argptr) != NULL) {
@@ -11710,12 +11713,18 @@ options(int cmdline, int *login_sh)
 			if (c == 'c' && cmdline) {
 				minusc = p;     /* command is after shell args */
 #if ENABLE_PLATFORM_MINGW32
-			/* Undocumented -d option to force current directory.
+			/* Undocumented flags;
+			 *   -d force current directory
+			 *   -t title to display in console window
 			 * Must appear before -s or -c. */
 			} else if (c == 'd' && cmdline && val == 1) {
 				if (*argptr == NULL)
 					ash_msg_and_raise_error(bb_msg_requires_arg, "-d");
 				dirarg = *argptr++;
+			} else if (c == 't' && cmdline && val == 1) {
+				if (*argptr == NULL)
+					ash_msg_and_raise_error(bb_msg_requires_arg, "-t");
+				title = *argptr++;
 #endif
 			} else if (c == 'o') {
 				if (plus_minus_o(*argptr, val)) {
@@ -14979,6 +14988,9 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		chdir(dirarg);
 		setpwd(NULL, 0);
 	}
+
+	if (title)
+		set_title(title);
 #endif
 
 	if (login_sh) {

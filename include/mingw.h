@@ -144,6 +144,7 @@ int mingw_pclose(FILE *fd);
  * ANSI emulation wrappers
  */
 
+void set_title(const char *str);
 void move_cursor_row(int n);
 void reset_screen(void);
 int winansi_putchar(int c);

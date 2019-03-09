@@ -85,6 +85,12 @@ static int skip_ansi_emulation(void)
 	return var != NULL;
 }
 
+void set_title(const char *str)
+{
+	if (is_console(STDOUT_FILENO))
+		SetConsoleTitle(str);
+}
+
 
 #define FOREGROUND_ALL (FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE)
 #define BACKGROUND_ALL (BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE)

@@ -49,7 +49,9 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	info.lpFile = bb_path;
 	/* ShellExecuteEx() always runs system binaries in C:\Windows\System32.
 	 * Pass the directory we want to the shell. */
-	info.lpParameters = xasprintf("--busybox ash -d \"%s\"", getcwd(NULL, 0));
+	info.lpParameters =
+		xasprintf("--busybox ash -d \"%s\" -t \"BusyBox ash (su)\" ",
+					getcwd(NULL, 0));
 	if (opt_command)
 		info.lpParameters =
 			xasprintf("%s -s -c \"%s\"", info.lpParameters, opt_command);
