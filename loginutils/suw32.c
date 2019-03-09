@@ -28,17 +28,27 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 {
 	char *opt_command = NULL;
 	SHELLEXECUTEINFO info;
+	char *bb_path, *s;
 
 	getopt32(argv, "c:", &opt_command);
 	if (argv[optind])
 		bb_show_usage();
+
+	/* ShellExecuteEx() needs backslash as separator in UNC paths. */
+	bb_path = s = xstrdup(bb_busybox_exec_path);
+	for ( ; *s; ++s) {
+		if (*s == '/')
+			*s = '\\';
+	}
 
 	memset(&info, 0, sizeof(SHELLEXECUTEINFO));
 	info.cbSize = sizeof(SHELLEXECUTEINFO);
 	/* info.fMask = SEE_MASK_DEFAULT; */
 	/* info.hwnd = NULL; */
 	info.lpVerb = "runas";
-	info.lpFile = bb_busybox_exec_path;
+	info.lpFile = bb_path;
+	/* ShellExecuteEx() always runs system binaries in C:\Windows\System32.
+	 * Pass the directory we want to the shell. */
 	info.lpParameters = xasprintf("--busybox ash -d \"%s\"", getcwd(NULL, 0));
 	if (opt_command)
 		info.lpParameters =
