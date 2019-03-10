@@ -15014,8 +15014,10 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
  state2:
 	state = 3;
 	if (
+#if ENABLE_PLATFORM_POSIX
 #ifndef linux
 	 getuid() == geteuid() && getgid() == getegid() &&
+#endif
 #endif
 	 iflag
 	) {

@@ -872,6 +872,25 @@ static char *get_user_name(void)
 	return user_name;
 }
 
+int getuid(void)
+{
+	int ret = DEFAULT_UID;
+	HANDLE h;
+
+	if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &h)) {
+		TOKEN_ELEVATION elevation;
+		DWORD size = sizeof(TOKEN_ELEVATION);
+
+		if (GetTokenInformation(h, TokenElevation, &elevation,
+					sizeof(elevation), &size)) {
+			if (elevation.TokenIsElevated)
+				ret = 0;
+		}
+		CloseHandle(h);
+	}
+	return ret;
+}
+
 struct passwd *getpwnam(const char *name)
 {
 	const char *myname;
@@ -892,8 +911,17 @@ struct passwd *getpwuid(uid_t uid)
 	static struct passwd p;
 
 	if (uid == 0) {
+		static char *buf = NULL;
+		char dir[PATH_MAX];
+
+		if (!buf) {
+			buf = xzalloc(PATH_MAX);
+			GetSystemDirectory(dir, PATH_MAX);
+			realpath(dir, buf);
+		}
+
 		p.pw_name = (char *)"root";
-		p.pw_dir = (char *)"/";
+		p.pw_dir = buf;
 	}
 	else if (uid == DEFAULT_UID && (p.pw_name=get_user_name()) != NULL) {
 		p.pw_dir = gethomedir();
@@ -949,7 +977,7 @@ int getgroups(int n, gid_t *groups)
 		return 1;
 	}
 
-	groups[0] = DEFAULT_GID;
+	groups[0] = getgid();
 	return 1;
 }
 
@@ -1576,21 +1604,3 @@ void hide_console(void)
 	}
 }
 #endif
-
-int is_admin(void)
-{
-	int ret = FALSE;
-	HANDLE h;
-
-	if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &h)) {
-		TOKEN_ELEVATION elevation;
-		DWORD size = sizeof(TOKEN_ELEVATION);
-
-		if (GetTokenInformation(h, TokenElevation, &elevation,
-					sizeof(elevation), &size)) {
-			ret = elevation.TokenIsElevated;
-		}
-		CloseHandle(h);
-	}
-	return ret;
-}

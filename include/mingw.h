@@ -9,7 +9,7 @@ typedef int gid_t;
 typedef int uid_t;
 
 #define DEFAULT_UID 4095
-#define DEFAULT_GID 4095
+#define DEFAULT_GID DEFAULT_UID
 
 /*
  * arpa/inet.h
@@ -388,13 +388,13 @@ char *mingw_getcwd(char *pointer, int len);
 off_t mingw_lseek(int fd, off_t offset, int whence);
 
 
-IMPL(getgid,int,DEFAULT_GID,void);
+int getuid(void);
+#define getgid getuid
+#define geteuid getuid
+#define getegid getuid
 int getgroups(int n, gid_t *groups);
 IMPL(getppid,int,1,void);
-IMPL(getegid,int,DEFAULT_GID,void);
-IMPL(geteuid,int,DEFAULT_UID,void);
 NOIMPL(getsid,pid_t pid UNUSED_PARAM);
-IMPL(getuid,int,DEFAULT_UID,void);
 int getlogin_r(char *buf, size_t len);
 int fcntl(int fd, int cmd, ...);
 int fsync(int fd);
@@ -521,4 +521,3 @@ ULONGLONG CompatGetTickCount64(void);
 ssize_t get_random_bytes(void *buf, ssize_t count);
 int enumerate_links(const char *file, char *name);
 void hide_console(void);
-int is_admin(void);

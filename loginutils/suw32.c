@@ -47,10 +47,12 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	/* info.hwnd = NULL; */
 	info.lpVerb = "runas";
 	info.lpFile = bb_path;
-	/* ShellExecuteEx() always runs system binaries in C:\Windows\System32.
-	 * Pass the directory we want to the shell. */
+	/* It seems that when ShellExecuteEx() runs binaries residing in
+	 * certain 'system' directories it sets the current directory of
+	 * the process to %SYSTEMROOT%\System32.  Override this by passing
+	 * the directory we want to the shell. */
 	info.lpParameters =
-		xasprintf("--busybox ash -d \"%s\" -t \"BusyBox ash (su)\" ",
+		xasprintf("--busybox ash -d \"%s\" -t \"BusyBox ash (Admin)\" ",
 					getcwd(NULL, 0));
 	if (opt_command)
 		info.lpParameters =
