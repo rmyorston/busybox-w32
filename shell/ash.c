@@ -2852,6 +2852,34 @@ cdopt(void)
 	return flags;
 }
 
+#if ENABLE_PLATFORM_MINGW32
+#define is_path_sep(x) ((x) == '/' || (x) == '\\')
+#define is_unc_path(x) (is_path_sep(x[0]) && is_path_sep(x[1]))
+#define is_root(x) (is_path_sep(x[0]) && x[1] == '\0')
+
+/* Return the length of the root of a UNC path, i.e. the '//host/share'
+ * component, or 0 if the path doesn't look like that. */
+static int
+unc_root_len(const char *dir)
+{
+	const char *s = dir + 2;
+	int len;
+
+	if (!is_unc_path(dir))
+		return 0;
+	len = strcspn(s, "/\\");
+	if (len == 0)
+		return 0;
+	s += len + 1;
+	len = strcspn(s, "/\\");
+	if (len == 0)
+		return 0;
+	s += len;
+
+	return s - dir;
+}
+#endif
+
 /*
  * Update curdir (the name of the current directory) in response to a
  * cd command.
@@ -2860,8 +2888,6 @@ static const char *
 updatepwd(const char *dir)
 {
 #if ENABLE_PLATFORM_MINGW32
-#define is_path_sep(x) ((x) == '/' || (x) == '\\')
-#define is_unc_path(x) (is_path_sep(x[0]) && is_path_sep(x[1]))
 	/*
 	 * Due to Windows drive notion, getting pwd is a completely
 	 * different thing. Handle it in a separate routine
@@ -2871,6 +2897,7 @@ updatepwd(const char *dir)
 	char *p;
 	char *cdcomppath;
 	const char *lim;
+	int len = 0;
 	/*
 	 * There are five cases that make some kind of sense
 	 *  absdrive +  abspath: c:/path
@@ -2893,15 +2920,18 @@ updatepwd(const char *dir)
 	STARTSTACKSTR(new);
 	if (!absdrive && curdir == nullstr)
 		return 0;
-	if (!abspath) {
+	if (!abspath || (is_root(dir) && unc_root_len(curdir))) {
 		if (curdir == nullstr)
 			return 0;
 		new = stack_putstr(curdir, new);
 	}
 	new = makestrspace(strlen(dir) + 2, new);
 
-	if ( is_unc_path(dir) || (!absdrive && !abspath && is_unc_path(curdir)) ) {
-		lim = (char *)stackblock() + 1;
+	if ( (len=unc_root_len(dir)) || ((len=unc_root_len(curdir)) &&
+				(is_root(dir) || (!absdrive && !abspath))) ) {
+		if (is_root(dir))
+			new = (char *)stackblock() + len;
+		lim = (char *)stackblock() + len;
 	}
 	else {
 		char *drive = stackblock();
@@ -2922,15 +2952,12 @@ updatepwd(const char *dir)
 	if (!abspath) {
 		if (!is_path_sep(new[-1]))
 			USTPUTC('/', new);
-		if (new > lim && is_path_sep(*lim))
-			lim++;
 	} else {
 		USTPUTC('/', new);
 		cdcomppath ++;
 		if (is_path_sep(dir[1]) && !is_path_sep(dir[2])) {
 			USTPUTC('/', new);
 			cdcomppath++;
-			lim++;
 		}
 	}
 	p = strtok(cdcomppath, "/\\");
