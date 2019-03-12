@@ -108,8 +108,10 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 #if ENABLE_PLATFORM_POSIX || ENABLE_FEATURE_EXTRA_FILE_DATA
 		if (source_stat.st_dev == dest_stat.st_dev
 		 && source_stat.st_ino == dest_stat.st_ino
+# if ENABLE_FEATURE_EXTRA_FILE_DATA
 		 /* ignore invalid inode numbers */
-		 && (ENABLE_FEATURE_EXTRA_FILE_DATA && source_stat.st_ino != 0)
+		 && source_stat.st_ino != 0
+# endif
 		) {
 			bb_error_msg("'%s' and '%s' are the same file", source, dest);
 			return -1;

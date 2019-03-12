@@ -535,8 +535,10 @@ static int FAST_FUNC writeFileToTarball(const char *fileName, struct stat *statb
 	 * the new tarball */
 	if (tbInfo->tarFileStatBuf.st_dev == statbuf->st_dev
 	 && tbInfo->tarFileStatBuf.st_ino == statbuf->st_ino
+# if ENABLE_FEATURE_EXTRA_FILE_DATA
 	 /* ignore invalid inode numbers */
-	 && (ENABLE_FEATURE_EXTRA_FILE_DATA && statbuf->st_ino != 0)
+	 && statbuf->st_ino != 0
+# endif
 	) {
 		bb_error_msg("%s: file is the archive; skipping", fileName);
 		return TRUE;
