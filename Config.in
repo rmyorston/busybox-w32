@@ -456,22 +456,16 @@ config FEATURE_EURO
 	the console is 850 when BusyBox starts it's changed to 858.
 
 config FEATURE_EXTRA_FILE_DATA
-	bool "Read additional file metadata (1.3 kb)"
+	bool "Read additional file metadata (2.1 kb)"
 	default y
 	depends on PLATFORM_MINGW32
 	help
 	Read additional file metadata: device id, inode number and number
 	of hard links.  This may slow down some file operations but it
 	permits extra features such as warning of attempts to copy a file
-	onto itself or to store a tar archive in itself.
-
-config FEATURE_IDENTIFY_OWNER
-	bool "Check whether files belong to current user (0.6 kb)"
-	default y
-	depends on FEATURE_EXTRA_FILE_DATA
-	help
-	Try to determine if files belong to the current user.  If they don't
-	they're listed as belonging to root.
+	onto itself or to store a tar archive in itself.  Also try to
+	determine the ownership of files so that, for example, 'ls' can
+	distinguish files belonging to the current user.
 
 config FEATURE_READLINK2
 	bool "Read the contents of symbolic links (1.1 kb)"

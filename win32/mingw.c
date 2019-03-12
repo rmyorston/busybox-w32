@@ -1,7 +1,7 @@
 #include "libbb.h"
 #include <userenv.h>
 #include "lazyload.h"
-#if ENABLE_FEATURE_IDENTIFY_OWNER
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
 #include <aclapi.h>
 #endif
 #if ENABLE_FEATURE_READLINK2
@@ -401,7 +401,7 @@ static int has_exec_format(const char *name)
 	return 0;
 }
 
-#if ENABLE_FEATURE_IDENTIFY_OWNER
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
 static uid_t file_owner(HANDLE fh)
 {
 	PSID pSidOwner;
@@ -553,12 +553,8 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		flags = FILE_FLAG_BACKUP_SEMANTICS;
 		if (S_ISLNK(buf->st_mode))
 			flags |= FILE_FLAG_OPEN_REPARSE_POINT;
-#if ENABLE_FEATURE_IDENTIFY_OWNER
 		fh = CreateFile(file_name, READ_CONTROL, 0, NULL,
 							OPEN_EXISTING, flags, NULL);
-#else
-		fh = CreateFile(file_name, 0, 0, NULL, OPEN_EXISTING, flags, NULL);
-#endif
 		if (fh != INVALID_HANDLE_VALUE) {
 			if (GetFileInformationByHandle(fh, &hdata)) {
 				buf->st_dev = hdata.dwVolumeSerialNumber;
@@ -567,9 +563,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 				buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 :
 							hdata.nNumberOfLinks;
 			}
-#if ENABLE_FEATURE_IDENTIFY_OWNER
 			buf->st_uid = buf->st_gid = file_owner(fh);
-#endif
 			CloseHandle(fh);
 		}
 		else {
