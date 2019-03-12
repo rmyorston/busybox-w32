@@ -1209,13 +1209,13 @@ static void client_background(void)
 //usage:     "\n	-t N		Send up to N discover packets (default 3)"
 //usage:     "\n	-T SEC		Pause between packets (default 3)"
 //usage:     "\n	-A SEC		Wait if lease is not obtained (default 20)"
+//usage:	USE_FOR_MMU(
+//usage:     "\n	-b		Background if lease is not obtained"
+//usage:	)
 //usage:     "\n	-n		Exit if lease is not obtained"
 //usage:     "\n	-q		Exit after obtaining lease"
 //usage:     "\n	-R		Release IP on exit"
 //usage:     "\n	-f		Run in foreground"
-//usage:	USE_FOR_MMU(
-//usage:     "\n	-b		Background if lease is not obtained"
-//usage:	)
 //usage:     "\n	-S		Log to syslog too"
 //usage:	IF_FEATURE_UDHCPC_ARPING(
 //usage:     "\n	-a[MSEC]	Validate offered address with ARP ping"
@@ -1484,7 +1484,13 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 					bb_error_msg("no lease, forking to background");
 					client_background();
 					/* do not background again! */
-					opt = ((opt & ~OPT_b) | OPT_f);
+					opt = ((opt & ~(OPT_b|OPT_n)) | OPT_f);
+					/* ^^^ also disables -n (-b takes priority over -n):
+					 * ifup's default udhcpc options are -R -n,
+					 * and users want to be able to add -b
+					 * (in a config file) to make it background
+					 * _and not exit_.
+					 */
 				} else
 #endif
 				if (opt & OPT_n) { /* abort if no lease */
