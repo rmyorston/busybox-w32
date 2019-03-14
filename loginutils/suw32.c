@@ -28,7 +28,7 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 {
 	char *opt_command = NULL;
 	SHELLEXECUTEINFO info;
-	char *bb_path, *s;
+	char *bb_path, *cwd, *s;
 
 	getopt32(argv, "c:", &opt_command);
 	if (argv[optind])
@@ -47,13 +47,19 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	/* info.hwnd = NULL; */
 	info.lpVerb = "runas";
 	info.lpFile = bb_path;
-	/* It seems that when ShellExecuteEx() runs binaries residing in
+	/*
+	 * It seems that when ShellExecuteEx() runs binaries residing in
 	 * certain 'system' directories it sets the current directory of
 	 * the process to %SYSTEMROOT%\System32.  Override this by passing
-	 * the directory we want to the shell. */
+	 * the directory we want to the shell.
+	 *
+	 * Canonicalise the directory now:  if it's in a drive mapped to
+	 * a network share it may not be available once we have elevated
+	 * privileges.
+	 */
+	cwd = xmalloc_realpath(getcwd(NULL, 0));
 	info.lpParameters =
-		xasprintf("--busybox ash -d \"%s\" -t \"BusyBox ash (Admin)\" ",
-					getcwd(NULL, 0));
+		xasprintf("--busybox ash -d \"%s\" -t \"BusyBox ash (Admin)\" ", cwd);
 	if (opt_command)
 		info.lpParameters =
 			xasprintf("%s -s -c \"%s\"", info.lpParameters, opt_command);
