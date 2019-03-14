@@ -884,7 +884,7 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 		}
 #endif
 		full_write2_str(
-			"BusyBox is copyrighted by many authors between 1998-2018.\n"
+			"BusyBox is copyrighted by many authors between 1998-2019.\n"
 			"Licensed under GPLv2. See source distribution for detailed\n"
 			"copyright notices.\n"
 			"\n"
