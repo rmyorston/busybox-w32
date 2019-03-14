@@ -1086,7 +1086,7 @@ static char *resolve_symlinks(char *path)
 char *realpath(const char *path, char *resolved_path)
 {
 	char buffer[MAX_PATH];
-	char *real_path;
+	char *real_path, *p;
 
 	/* enforce glibc pre-2.3 behaviour */
 	if (path == NULL || resolved_path == NULL) {
@@ -1098,6 +1098,9 @@ char *realpath(const char *path, char *resolved_path)
 			(real_path=resolve_symlinks(buffer))) {
 		strcpy(resolved_path, real_path);
 		convert_slashes(resolved_path);
+		p = last_char_is(resolved_path, '/');
+		if (p && p > resolved_path && p[-1] != ':')
+			*p = '\0';
 		return resolved_path;
 	}
 	return NULL;
