@@ -28,18 +28,15 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 {
 	char *opt_command = NULL;
 	SHELLEXECUTEINFO info;
-	char *bb_path, *cwd, *s;
+	char *bb_path, *cwd;
 
 	getopt32(argv, "c:", &opt_command);
 	if (argv[optind])
 		bb_show_usage();
 
 	/* ShellExecuteEx() needs backslash as separator in UNC paths. */
-	bb_path = s = xstrdup(bb_busybox_exec_path);
-	for ( ; *s; ++s) {
-		if (*s == '/')
-			*s = '\\';
-	}
+	bb_path = xstrdup(bb_busybox_exec_path);
+	slash_to_bs(bb_path);
 
 	memset(&info, 0, sizeof(SHELLEXECUTEINFO));
 	info.cbSize = sizeof(SHELLEXECUTEINFO);

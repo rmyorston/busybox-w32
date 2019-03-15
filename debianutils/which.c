@@ -69,7 +69,7 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_PLATFORM_MINGW32
 			if ((p=auto_win32_extension(*argv)) != NULL) {
 				missing = 0;
-				convert_slashes(p);
+				bs_to_slash(p);
 				puts(p);
 			}
 			else
@@ -78,7 +78,7 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 				missing = 0;
 #if ENABLE_PLATFORM_MINGW32
 				p = auto_string(xstrdup(*argv));
-				convert_slashes(p);
+				bs_to_slash(p);
 				puts(p);
 #else
 				puts(*argv);
@@ -92,7 +92,7 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 			while ((p = find_executable(*argv, &path)) != NULL) {
 				missing = 0;
 #if ENABLE_PLATFORM_MINGW32
-				convert_slashes(p);
+				bs_to_slash(p);
 #endif
 				puts(p);
 				free(p);

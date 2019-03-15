@@ -14696,7 +14696,7 @@ init(void)
 				 * cause problems */
 				if ( !winxp && strncmp(*envp, "SYSTEMROOT=", 11) != 0 &&
 						strncmp(*envp, "COMSPEC=", 8) != 0 ) {
-					convert_slashes(end+1);
+					bs_to_slash(end+1);
 				}
 
 				/* check for invalid characters in name */
@@ -14838,7 +14838,7 @@ procargs(char **argv)
 	} else if (!sflag) {
 		setinputfile(*xargv, 0);
 #if ENABLE_PLATFORM_MINGW32
-		convert_slashes(*xargv);
+		bs_to_slash(*xargv);
 #endif
  setarg0:
 		arg0 = *xargv++;

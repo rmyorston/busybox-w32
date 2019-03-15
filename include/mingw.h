@@ -510,7 +510,8 @@ static inline char *auto_win32_extension(const char *p)
 	return s ? auto_string(s) : NULL;
 }
 
-void convert_slashes(char *p) FAST_FUNC;
+void bs_to_slash(char *p) FAST_FUNC;
+void slash_to_bs(char *p) FAST_FUNC;
 size_t remove_cr(char *p, size_t len) FAST_FUNC;
 
 int err_win_to_posix(void);

@@ -190,7 +190,7 @@ static intptr_t
 spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 {
 	char **new_argv;
-	char *s, *new_path = NULL;
+	char *new_path = NULL;
 	int i, argc;
 	intptr_t ret;
 	struct stat st;
@@ -219,10 +219,7 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 	 * argument is a relative path containing forward slashes.  Absolute
 	 * paths are fine but there's no harm in converting them too. */
 	if (has_bat_suffix(path)) {
-		for (s=new_argv[0]; *s; ++s) {
-			if (*s == '/')
-				*s = '\\';
-		}
+		slash_to_bs(new_argv[0]);
 
 		/* Another special case:  spawnve returns ENOEXEC when passed an
 		 * empty batch file.  Pretend it worked. */

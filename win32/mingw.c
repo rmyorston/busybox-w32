@@ -778,7 +778,7 @@ char *mingw_getcwd(char *pointer, int len)
 	char *ret = getcwd(pointer, len);
 	if (!ret)
 		return ret;
-	convert_slashes(ret);
+	bs_to_slash(ret);
 	return ret;
 }
 
@@ -833,7 +833,7 @@ static char *gethomedir(void)
 
 	GetUserProfileDirectory(h, buf, &len);
 	CloseHandle(h);
-	convert_slashes(buf);
+	bs_to_slash(buf);
 
 	return buf;
 }
@@ -1097,7 +1097,7 @@ char *realpath(const char *path, char *resolved_path)
 	if (_fullpath(buffer, path, MAX_PATH) &&
 			(real_path=resolve_symlinks(buffer))) {
 		strcpy(resolved_path, real_path);
-		convert_slashes(resolved_path);
+		bs_to_slash(resolved_path);
 		p = last_char_is(resolved_path, '/');
 		if (p && p > resolved_path && p[-1] != ':')
 			*p = '\0';
@@ -1178,7 +1178,7 @@ const char *get_busybox_exec_path(void)
 
 	if (!*path) {
 		GetModuleFileName(NULL, path, PATH_MAX);
-		convert_slashes(path);
+		bs_to_slash(path);
 	}
 	return path;
 }
@@ -1483,11 +1483,20 @@ char *alloc_win32_extension(const char *p)
 	return NULL;
 }
 
-void FAST_FUNC convert_slashes(char *p)
+void FAST_FUNC bs_to_slash(char *p)
 {
 	for (; *p; ++p) {
 		if ( *p == '\\' ) {
 			*p = '/';
+		}
+	}
+}
+
+void FAST_FUNC slash_to_bs(char *p)
+{
+	for (; *p; ++p) {
+		if ( *p == '/' ) {
+			*p = '\\';
 		}
 	}
 }

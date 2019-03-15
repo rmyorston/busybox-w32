@@ -2611,7 +2611,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 #if ENABLE_PLATFORM_MINGW32
 		case CTRL('Z'):
 			command_ps[command_len] = '\0';
-			convert_slashes(command_ps);
+			bs_to_slash(command_ps);
 			redraw(cmdedit_y, 0);
 			break;
 #endif
