@@ -15009,6 +15009,13 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		chdir(dirarg);
 		setpwd(NULL, 0);
 	}
+	else if (!login_sh && iflag) {
+		char *cwd = getcwd(NULL, 0);
+		if (cwd) {
+			docd(cwd, 0);
+			free(cwd);
+		}
+	}
 
 	if (title)
 		set_title(title);
