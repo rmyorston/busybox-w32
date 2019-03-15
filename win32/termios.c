@@ -71,12 +71,6 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 					continue;
 				}
 			}
-			if (state & (RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED) &&
-			    (record.Event.KeyEvent.wVirtualKeyCode >= 'A' &&
-			     record.Event.KeyEvent.wVirtualKeyCode <= 'Z')) {
-				ret = record.Event.KeyEvent.wVirtualKeyCode & ~0x40;
-				break;
-			}
 
 			switch (record.Event.KeyEvent.wVirtualKeyCode) {
 			case VK_DELETE: ret = KEYCODE_DELETE; goto done;
