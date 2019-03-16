@@ -2460,13 +2460,13 @@ bltinlookup(const char *name)
 
 #if ENABLE_PLATFORM_MINGW32
 static char *
-fix_pathvar(const char *path)
+fix_pathvar(const char *path, int len)
 {
 	char *newpath = xstrdup(path);
 	char *p;
 	int modified = FALSE;
 
-	p = newpath + 5;
+	p = newpath + len;
 	while (*p) {
 		if (*p != ':' && *p != ';') {
 			/* skip drive */
@@ -2507,14 +2507,26 @@ setvareq(char *s, int flags)
 	struct var *vp, **vpp;
 
 #if ENABLE_PLATFORM_MINGW32
-	if (strncmp(s, "PATH=", 5) == 0) {
-		char *newpath = fix_pathvar(s);
-		if (newpath) {
-			if ((flags & (VTEXTFIXED|VSTACK|VNOSAVE)) == VNOSAVE)
-				free(s);
-			flags |= VNOSAVE;
-			flags &= ~(VTEXTFIXED|VSTACK);
-			s = newpath;
+	struct pathname {
+		const char *name;
+		const int len;
+	} paths[] = {
+		{ "PATH=", sizeof("PATH=")-1 },
+		{ "CDPATH=", sizeof("CDPATH=")-1 },
+		{ "MANPATH=", sizeof("MANPATH=")-1 },
+	};
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(paths); ++i) {
+		if (strncmp(s, paths[i].name, paths[i].len) == 0) {
+			char *newpath = fix_pathvar(s, paths[i].len);
+			if (newpath) {
+				if ((flags & (VTEXTFIXED|VSTACK|VNOSAVE)) == VNOSAVE)
+					free(s);
+				flags |= VNOSAVE;
+				flags &= ~(VTEXTFIXED|VSTACK);
+				s = newpath;
+			}
 		}
 	}
 #endif
@@ -3156,7 +3168,7 @@ cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		c = *path;
 		p = path_advance(&path, dest);
 		if (stat(p, &statb) >= 0 && S_ISDIR(statb.st_mode)) {
-			if (c && c != ':')
+			if (c && c != PATH_SEP)
 				flags |= CD_PRINT;
  docd:
 			if (!docd(p, flags))
