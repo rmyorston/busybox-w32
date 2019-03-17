@@ -2989,11 +2989,14 @@ static int file_insert(const char *fn, char *p, int initial)
 		status_line_bold_errno(fn);
 		p = text_hole_delete(p, p + size - 1, NO_UNDO);	// un-do buffer insert
 	} else if (cnt < size) {
+#if ENABLE_PLATFORM_MINGW32
+		// On WIN32 a partial read might just mean CRs have been removed
+		int cnt_cr = cnt + count_cr(p, cnt);
+#endif
 		// There was a partial read, shrink unused space
 		p = text_hole_delete(p + cnt, p + size - 1, NO_UNDO);
 #if ENABLE_PLATFORM_MINGW32
-		// On WIN32 a partial read might just mean CRs have been removed
-		if (cnt + count_cr(p, cnt) < size)
+		if (cnt_cr < size)
 #endif
 		status_line_bold("can't read '%s'", fn);
 	}
