@@ -2507,19 +2507,14 @@ setvareq(char *s, int flags)
 	struct var *vp, **vpp;
 
 #if ENABLE_PLATFORM_MINGW32
-	struct pathname {
-		const char *name;
-		const int len;
-	} paths[] = {
-		{ "PATH=", sizeof("PATH=")-1 },
-		{ "CDPATH=", sizeof("CDPATH=")-1 },
-		{ "MANPATH=", sizeof("MANPATH=")-1 },
-	};
-	int i;
+	const char *paths = "PATH=\0""CDPATH=\0""MANPATH=\0";
+	const char *p;
+	int len;
 
-	for (i = 0; i < ARRAY_SIZE(paths); ++i) {
-		if (strncmp(s, paths[i].name, paths[i].len) == 0) {
-			char *newpath = fix_pathvar(s, paths[i].len);
+	for (p = paths; *p; p += len + 1) {
+		len = strlen(p);
+		if (strncmp(s, p, len) == 0) {
+			char *newpath = fix_pathvar(s, len);
 			if (newpath) {
 				if ((flags & (VTEXTFIXED|VSTACK|VNOSAVE)) == VNOSAVE)
 					free(s);
@@ -2527,6 +2522,7 @@ setvareq(char *s, int flags)
 				flags &= ~(VTEXTFIXED|VSTACK);
 				s = newpath;
 			}
+			break;
 		}
 	}
 #endif
