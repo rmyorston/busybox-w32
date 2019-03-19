@@ -213,12 +213,36 @@ static void move_cursor(int x, int y)
 	SetConsoleCursorPosition(console, pos);
 }
 
-static const char *set_attr(const char *str)
+/* On input pos points to the start of a suspected escape sequence.
+ * If a valid sequence is found return a pointer to the character
+ * following it, otherwise return the original pointer. */
+static char *process_escape(char *pos)
 {
-	const char *func;
-	size_t len = strspn(str, "0123456789;");
-	func = str + len;
+	const char *str, *func;
+	char *bel;
+	size_t len;
 
+	switch (pos[1]) {
+	case '[':
+		/* go ahead and process "\033[" sequence */
+		break;
+	case ']':
+		if ((pos[2] == '0' || pos[2] == '2') && pos[3] == ';' &&
+				(bel=strchr(pos+4, '\007')) && bel - pos < 260) {
+			/* set console title */
+			*bel++ = '\0';
+			CharToOem(pos+4, pos+4);
+			SetConsoleTitle(pos+4);
+			return bel;
+		}
+		/* invalid "\033]" sequence, fall through */
+	default:
+		return pos;
+	}
+
+	str = pos + 2;
+	len = strspn(str, "0123456789;");
+	func = str + len;
 	switch (*func) {
 	case 'm':
 		do {
@@ -344,7 +368,7 @@ static const char *set_attr(const char *str)
 				break;
 			default:
 				/* Unsupported code */
-				break;
+				return pos;
 			}
 			str++;
 		} while (*(str-1) == ';');
@@ -391,10 +415,10 @@ static const char *set_attr(const char *str)
 		break;
 	default:
 		/* Unsupported code */
-		break;
+		return pos;
 	}
 
-	return func + 1;
+	return (char *)func + 1;
 }
 
 #if ENABLE_FEATURE_EURO
@@ -465,28 +489,6 @@ static BOOL winansi_OemToCharBuff(LPCSTR s, LPSTR d, DWORD len)
 # define OemToCharBuff winansi_OemToCharBuff
 #endif
 
-static char *check_escapes(char *pos)
-{
-	char *str = pos+1;
-
-	switch (pos[1]) {
-	case '[':
-		str = (char *)set_attr(pos+2);
-		break;
-	case ']':
-		if ((pos[2] == '0' || pos[2] == '2') && pos[3] == ';' &&
-				(str=strchr(pos, '\007')) && str - pos < 260) {
-			*str = '\0';
-			CharToOem(pos+4, pos+4);
-			SetConsoleTitle(pos+4);
-			++str;
-		}
-		break;
-	}
-
-	return str;
-}
-
 static int ansi_emulate(const char *s, FILE *stream)
 {
 	int rv = 0;
@@ -529,7 +531,7 @@ static int ansi_emulate(const char *s, FILE *stream)
 			size_t len = pos - str;
 
 			if (len) {
-				*pos = '\0';
+				*pos = '\0';	/* NB, '\033' has been overwritten */
 				CharToOem(str, str);
 				if (fputs(str, stream) == EOF)
 					return EOF;
@@ -539,8 +541,13 @@ static int ansi_emulate(const char *s, FILE *stream)
 			if (fflush(stream) == EOF)
 				return EOF;
 
-			str = check_escapes(pos);
-			rv += pos - str;
+			str = process_escape(pos);
+			if (str == pos) {
+				if (fputc('\033', stream) == EOF)
+					return EOF;
+				++str;
+			}
+			rv += str - pos;
 			pos = str;
 
 			if (fflush(stream) == EOF)
@@ -785,8 +792,13 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 				rv += out_len;
 			}
 
-			str = check_escapes(pos);
-			rv += pos - str;
+			str = process_escape(pos);
+			if (str == pos) {
+				if (write(fd, pos, 1) == -1)
+					return -1;
+				++str;
+			}
+			rv += str - pos;
 			pos = str;
 		} else {
 			len = strlen(str);
