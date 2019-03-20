@@ -326,7 +326,6 @@ static inline int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fd
 		len = strlen(fname);
 		if (len > 1 && (fname[len-1] == '/' || fname[len-1] == '\\'))
 			return ENOTDIR;
-		return EINVAL;
 	default:
 		return ENOENT;
 	}
