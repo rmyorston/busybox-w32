@@ -204,6 +204,9 @@ static const char *human_fstype(uint32_t f_type)
 		{ 0x012FF7B5, "sysv4" },
 		{ 0x012FF7B6, "sysv2" },
 		{ 0x012FF7B7, "coh" },
+#if ENABLE_PLATFORM_MINGW32
+		{ 0x15013346, "udf" },
+#endif
 		{ 0x00011954, "ufs" },
 		{ 0x012FD16D, "xia" },
 		{ 0x5346544e, "ntfs" },

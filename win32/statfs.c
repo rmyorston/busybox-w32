@@ -51,7 +51,7 @@ int statfs(const char *file, struct statfs *buf)
 
 	/*
 	 * Valid filesystem names don't seem to be documented.  The following
-	 * are present in Wine.
+	 * are present in Wine (dlls/kernel32/volume.c).
 	 */
 	if ( strcmp(fsname, "NTFS") == 0 ) {
 		buf->f_type = 0x5346544e;
@@ -62,6 +62,9 @@ int statfs(const char *file, struct statfs *buf)
 	else if ( strcmp(fsname, "CDFS") == 0 ) {
 		buf->f_type = 0x9660;
 	}
+	else if ( strcmp(fsname, "UDF") == 0 ) {
+		buf->f_type = 0x15013346;
+	}
 	else {
 		buf->f_type = 0;
 	}
@@ -70,10 +73,10 @@ int statfs(const char *file, struct statfs *buf)
 	buf->f_blocks = total_number_of_bytes / buf->f_bsize;
 	buf->f_bfree = total_number_of_free_bytes / buf->f_bsize;
 	buf->f_bavail = free_bytes_available / buf->f_bsize;
-	buf->f_files = UINT32_MAX;
-	buf->f_ffree = UINT32_MAX;
+	buf->f_files = 0;
+	buf->f_ffree = 0;
 	buf->f_fsid = serial;
-	buf->f_flag = UINT64_MAX;
+	buf->f_flag = 0;
 	buf->f_namelen = namelen;
 
 	return 0;
