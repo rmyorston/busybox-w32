@@ -2860,34 +2860,6 @@ cdopt(void)
 	return flags;
 }
 
-#if ENABLE_PLATFORM_MINGW32
-#define is_path_sep(x) ((x) == '/' || (x) == '\\')
-#define is_unc_path(x) (is_path_sep(x[0]) && is_path_sep(x[1]))
-#define is_root(x) (is_path_sep(x[0]) && x[1] == '\0')
-
-/* Return the length of the root of a UNC path, i.e. the '//host/share'
- * component, or 0 if the path doesn't look like that. */
-static int
-unc_root_len(const char *dir)
-{
-	const char *s = dir + 2;
-	int len;
-
-	if (!is_unc_path(dir))
-		return 0;
-	len = strcspn(s, "/\\");
-	if (len == 0)
-		return 0;
-	s += len + 1;
-	len = strcspn(s, "/\\");
-	if (len == 0)
-		return 0;
-	s += len;
-
-	return s - dir;
-}
-#endif
-
 /*
  * Update curdir (the name of the current directory) in response to a
  * cd command.
@@ -2896,6 +2868,8 @@ static const char *
 updatepwd(const char *dir)
 {
 #if ENABLE_PLATFORM_MINGW32
+# define is_path_sep(x) ((x) == '/' || (x) == '\\')
+# define is_root(x) (is_path_sep(x[0]) && x[1] == '\0')
 	/*
 	 * Due to Windows drive notion, getting pwd is a completely
 	 * different thing. Handle it in a separate routine

@@ -1609,3 +1609,38 @@ void hide_console(void)
 	}
 }
 #endif
+
+#define is_path_sep(x) ((x) == '/' || (x) == '\\')
+#define is_unc_path(x) (is_path_sep(x[0]) && is_path_sep(x[1]))
+
+/* Return the length of the root of a UNC path, i.e. the '//host/share'
+ * component, or 0 if the path doesn't look like that. */
+int unc_root_len(const char *dir)
+{
+	const char *s = dir + 2;
+	int len;
+
+	if (!is_unc_path(dir))
+		return 0;
+	len = strcspn(s, "/\\");
+	if (len == 0)
+		return 0;
+	s += len + 1;
+	len = strcspn(s, "/\\");
+	if (len == 0)
+		return 0;
+	s += len;
+
+	return s - dir;
+}
+
+/* Return the length of the root of a path, i.e. either the drive or
+ * UNC '//host/share', or 0 if the path doesn't look like that. */
+int root_len(const char *path)
+{
+	if (path == NULL)
+		return 0;
+	if (isalpha(*path) && path[1] == ':')
+		return 2;
+	return unc_root_len(path);
+}
