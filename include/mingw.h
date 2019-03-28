@@ -525,3 +525,6 @@ void hide_console(void);
 
 int unc_root_len(const char *dir);
 int root_len(const char *path);
+char *get_system_drive(void);
+int chdir_system_drive(void);
+char *xabsolute_path(char *path);

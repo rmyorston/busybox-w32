@@ -253,11 +253,22 @@ int man_main(int argc UNUSED_PARAM, char **argv)
 	int cur_mp;
 	int opt, not_found;
 	char *token[2];
+#if ENABLE_PLATFORM_MINGW32
+	char **ptr;
+#endif
 
 	INIT_G();
 
 	opt = getopt32(argv, "^+" "aw" "\0" "-1"/*at least one arg*/);
 	argv += optind;
+#if ENABLE_PLATFORM_MINGW32
+	/* add system drive prefix to filenames, if necessary */
+	for (ptr = argv; *ptr; ++ptr) {
+		if (strchr(*ptr, '/') || strchr(*ptr, '\\'))
+			*ptr = xabsolute_path(*ptr);
+	}
+	chdir_system_drive();
+#endif
 
 	sec_list = xstrdup("0p:1:1p:2:3:3p:4:5:6:7:8:9");
 
@@ -311,7 +322,8 @@ int man_main(int argc UNUSED_PARAM, char **argv)
 		char *relpath = concat_path_file(dirname(exepath), "man");
 		if (count_mp == 0) {
 			/* default must match path set above */
-			man_path_list = add_MANPATH(man_path_list, &count_mp, "/usr/man");
+			man_path_list = add_MANPATH(man_path_list, &count_mp,
+										(char *)"/usr/man");
 		}
 		man_path_list = add_MANPATH(man_path_list, &count_mp, relpath);
 		free(relpath);

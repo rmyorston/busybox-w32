@@ -14906,6 +14906,9 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	struct jmploc jmploc;
 	struct stackmark smark;
 	int login_sh;
+#if ENABLE_PLATFORM_MINGW32
+	char *sd;
+#endif
 
 	/* Initialize global data */
 	INIT_G_misc();
@@ -15014,6 +15017,16 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 		state = 1;
+#if ENABLE_PLATFORM_MINGW32
+		sd = get_system_drive();
+		if (sd) {
+			char *path = xasprintf("%s/etc/profile", sd);
+			read_profile(path);
+			free(sd);
+			free(path);
+		}
+		else
+#endif
 		read_profile("/etc/profile");
  state1:
 		state = 2;

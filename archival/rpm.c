@@ -303,6 +303,9 @@ static void extract_cpio(int fd, const char *source_rpm)
 
 	if (source_rpm != NULL) {
 		/* Binary rpm (it was built from some SRPM), install to root */
+#if ENABLE_PLATFORM_MINGW32
+		if (chdir_system_drive())
+#endif
 		xchdir("/");
 	} /* else: SRPM, install to current dir */
 

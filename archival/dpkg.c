@@ -1752,6 +1752,10 @@ int dpkg_main(int argc UNUSED_PARAM, char **argv)
 	int state_status;
 	int status_num;
 	int i;
+#if ENABLE_PLATFORM_MINGW32
+	char **ptr, *path;
+	int fd;
+#endif
 #if ENABLE_LONG_OPTS
 	static const char dpkg_longopts[] ALIGN1 =
 // FIXME: we use -C non-compatibly, should be:
@@ -1795,6 +1799,26 @@ int dpkg_main(int argc UNUSED_PARAM, char **argv)
 	) {
 		bb_show_usage();
 	}
+
+#if ENABLE_PLATFORM_MINGW32
+	if (opt & OPT_install) {
+		/* add system drive prefix to filenames, if necessary */
+		for (ptr = argv; *ptr; ++ptr) {
+			*ptr = xabsolute_path(*ptr);
+		}
+	}
+
+	chdir_system_drive();
+
+	/* initialise data store */
+	path = xstrdup("/var/lib/dpkg/info");
+	bb_make_directory(path, -1, FILEUTILS_RECUR);
+	free(path);
+
+	fd = open("/var/lib/dpkg/status", O_RDWR|O_CREAT, 0666);
+	if (fd >= 0)
+		xclose(fd);
+#endif
 
 /*	puts("(Reading database ... xxxxx files and directories installed.)"); */
 	index_status_file("/var/lib/dpkg/status");
