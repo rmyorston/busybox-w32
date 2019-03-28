@@ -309,6 +309,10 @@ int man_main(int argc UNUSED_PARAM, char **argv)
 	{
 		char *exepath = xstrdup(bb_busybox_exec_path);
 		char *relpath = concat_path_file(dirname(exepath), "man");
+		if (count_mp == 0) {
+			/* default must match path set above */
+			man_path_list = add_MANPATH(man_path_list, &count_mp, "/usr/man");
+		}
 		man_path_list = add_MANPATH(man_path_list, &count_mp, relpath);
 		free(relpath);
 		free(exepath);
