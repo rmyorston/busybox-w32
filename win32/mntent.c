@@ -1,6 +1,6 @@
 /*
  * A simple WIN32 implementation of mntent routines.  It only handles
- * fixed logical drives.
+ * logical drives.
  */
 #include "libbb.h"
 
@@ -14,7 +14,7 @@ struct mntdata {
 	char mnt_opts[4];
 };
 
-FILE *setmntent(const char *file UNUSED_PARAM, const char *mode UNUSED_PARAM)
+FILE *mingw_setmntent(void)
 {
 	struct mntdata *data;
 
@@ -56,7 +56,8 @@ struct mntent *getmntent(FILE *stream)
 
 			drive_type = GetDriveType(data->mnt_dir);
 			if ( drive_type == DRIVE_FIXED || drive_type == DRIVE_CDROM ||
-						drive_type == DRIVE_REMOVABLE) {
+						drive_type == DRIVE_REMOVABLE ||
+						drive_type == DRIVE_REMOTE ) {
 				if ( !GetVolumeInformation(data->mnt_dir, NULL, 0, NULL, NULL,
 								NULL, data->mnt_type, 100) ) {
 					continue;
