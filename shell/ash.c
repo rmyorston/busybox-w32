@@ -2842,6 +2842,7 @@ setprompt_if(smallint do_set, int whichprompt)
 
 #define CD_PHYSICAL 1
 #define CD_PRINT 2
+#define CD_PRINT_ALL 4
 
 static int
 cdopt(void)
@@ -2850,7 +2851,14 @@ cdopt(void)
 	int i, j;
 
 	j = 'L';
+#if ENABLE_PLATFORM_MINGW32
+	while ((i = nextopt("LPa")) != '\0') {
+		if (i == 'a')
+			flags |= CD_PRINT_ALL;
+		else
+#else
 	while ((i = nextopt("LP")) != '\0') {
+#endif
 		if (i != j) {
 			flags ^= CD_PHYSICAL;
 			j = i;
@@ -2882,56 +2890,62 @@ updatepwd(const char *dir)
 	int len = 0;
 	/*
 	 * There are five cases that make some kind of sense
-	 *  absdrive +  abspath: c:/path
-	 *  absdrive + !abspath: c:path
-	 * !absdrive +  abspath: /path
-	 * !absdrive +  uncpath: //host/share
-	 * !absdrive + !abspath: path
 	 *
-	 * Damn DOS!
-	 * c:path behaviour is "undefined"
-	 * To properly handle this case, I have to keep track of cwd
-	 * of every drive, which is too painful to do.
-	 * So when c:path is given, I assume it's c:${curdir}path
-	 * with ${curdir} comes from the current drive
+	 * Absolute paths:
+	 *    c:/path
+	 *    //host/share
+	 *
+	 * Relative to current drive:
+	 *    /path
+	 *
+	 * Relative to current working directory of current drive
+	 *    path
+	 *
+	 * Relative to current working directory of other drive
+	 *    c:path
 	 */
-	int absdrive = *dir && dir[1] == ':';
-	int abspath = absdrive ? is_path_sep(dir[2]) : is_path_sep(*dir);
+	int absdrive = has_dos_drive_prefix(dir);
+	int curr_relpath = !absdrive && !is_path_sep(*dir);
+	int other_relpath = absdrive && !is_path_sep(dir[2]);
+	int relpath = curr_relpath || other_relpath;
 
 	cdcomppath = sstrdup(dir);
 	STARTSTACKSTR(new);
-	if (!absdrive && curdir == nullstr)
-		return 0;
-	if (!abspath || (is_root(dir) && unc_root_len(curdir))) {
+
+	/* prefix new path with current directory, if required */
+	if (other_relpath) {
+		/* c:path */
+		char buffer[PATH_MAX];
+
+		if (get_drive_cwd(dir, buffer, PATH_MAX) == NULL)
+			return 0;
+		new = stack_putstr(buffer, new);
+	}
+	else if (curr_relpath || (is_root(dir) && unc_root_len(curdir))) {
+		/* relative path on current drive or explicit root of UNC curdir */
 		if (curdir == nullstr)
 			return 0;
 		new = stack_putstr(curdir, new);
 	}
+
 	new = makestrspace(strlen(dir) + 2, new);
 
 	if ( (len=unc_root_len(dir)) || ((len=unc_root_len(curdir)) &&
-				(is_root(dir) || (!absdrive && !abspath))) ) {
-		if (is_root(dir))
-			new = (char *)stackblock() + len;
+				(is_root(dir) || curr_relpath)) ) {
+		/* //host/share or path relative to //host/share */
 		lim = (char *)stackblock() + len;
 	}
 	else {
-		char *drive = stackblock();
 		if (absdrive) {
-			*drive = *dir;
+			if (!relpath)
+				new = stack_nputstr(dir, 2, new);
 			cdcomppath += 2;
 			dir += 2;
-		} else {
-			*drive = *curdir;
 		}
-		drive[1] = ':'; /* in case of absolute drive+path */
-
-		if (abspath)
-			new = drive + 2;
-		lim = drive + 3;
+		lim = (char *)stackblock() + 3;
 	}
 
-	if (!abspath) {
+	if (relpath) {
 		if (!is_path_sep(new[-1]))
 			USTPUTC('/', new);
 	} else {
@@ -3160,6 +3174,25 @@ cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	return 0;
 }
 
+#if ENABLE_PLATFORM_MINGW32
+static void
+print_all_cwd(void)
+{
+	FILE *mnt;
+	struct mntent *entry;
+	char buffer[PATH_MAX];
+
+	mnt = setmntent(bb_path_mtab_file, "r");
+	if (mnt) {
+		while ((entry=getmntent(mnt)) != NULL) {
+			if (get_drive_cwd(entry->mnt_fsname, buffer, PATH_MAX) != NULL)
+				out1fmt("%s\n", buffer);
+		}
+		endmntent(mnt);
+	}
+}
+#endif
+
 static int FAST_FUNC
 pwdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 {
@@ -3167,6 +3200,12 @@ pwdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	const char *dir = curdir;
 
 	flags = cdopt();
+#if ENABLE_PLATFORM_MINGW32
+	if (flags & CD_PRINT_ALL) {
+		print_all_cwd();
+		return 0;
+	}
+#endif
 	if (flags) {
 		if (physdir == nullstr)
 			setpwd(dir, 0);

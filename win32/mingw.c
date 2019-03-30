@@ -1700,3 +1700,15 @@ char *xabsolute_path(char *path)
 	}
 	bb_perror_msg_and_die("can't open '%s'", path);
 }
+
+char *get_drive_cwd(const char *path, char *buffer, int size)
+{
+	char drive[3] = { *path, ':', '\0' };
+	DWORD ret;
+
+	ret = GetFullPathName(drive, size, buffer, NULL);
+	if (ret == 0 || ret > size)
+		return NULL;
+	bs_to_slash(buffer);
+	return buffer;
+}

@@ -843,6 +843,17 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 	path1[0] = (char*)".";
 
 	pfind = strrchr(command, '/');
+#if ENABLE_PLATFORM_MINGW32
+	if (!pfind && has_dos_drive_prefix(command) && command[2] != '\0') {
+		char buffer[PATH_MAX];
+
+		/* path is of form c:path with no '/' */
+		if (get_drive_cwd(command, buffer, PATH_MAX)) {
+			pfind = command + 2;
+			path1[0] = xstrdup(buffer);
+		}
+	} else
+#endif
 	if (!pfind) {
 		if (type == FIND_EXE_ONLY)
 			npaths = path_parse(&paths);
