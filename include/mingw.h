@@ -181,6 +181,7 @@ int winansi_getc(FILE *stream);
 #define WEXITSTATUS(x) (((x) & 0xff00) >> 8)
 #define WIFSIGNALED(x) (((signed char) (((x) & 0x7f) + 1) >> 1) > 0)
 #define WCOREDUMP(x) 0
+#define WIFSTOPPED(x) 0
 
 int mingw_system(const char *cmd);
 #define system mingw_system
