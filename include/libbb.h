@@ -1341,9 +1341,13 @@ llist_t *llist_find_str(llist_t *first, const char *str) FAST_FUNC;
 /* True only if we created pidfile which is *file*, not /dev/null etc */
 extern smallint wrote_pidfile;
 void write_pidfile(const char *path) FAST_FUNC;
+void write_pidfile_std_path_and_ext(const char *path) FAST_FUNC;
+void remove_pidfile_std_path_and_ext(const char *path) FAST_FUNC;
 #define remove_pidfile(path) do { if (wrote_pidfile) unlink(path); } while (0)
 #else
 enum { wrote_pidfile = 0 };
+#define write_pidfile_std_path_and_ext(path)  ((void)0)
+#define remove_pidfile_std_path_and_ext(path) ((void)0)
 #define write_pidfile(path)  ((void)0)
 #define remove_pidfile(path) ((void)0)
 #endif
@@ -1386,7 +1390,7 @@ void bb_logenv_override(void) FAST_FUNC;
 
 /* Embedded script support */
 char *get_script_content(unsigned n) FAST_FUNC;
-int scripted_main(int argc, char** argv);
+int scripted_main(int argc, char** argv) MAIN_EXTERNALLY_VISIBLE;
 
 /* Applets which are useful from another applets */
 int bb_cat(char** argv) FAST_FUNC;

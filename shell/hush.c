@@ -923,7 +923,7 @@ struct globals {
 # define G_flag_return_in_progress 0
 #endif
 	smallint exiting; /* used to prevent EXIT trap recursion */
-	/* These support $?, $#, and $1 */
+	/* These support $? */
 	smalluint last_exitcode;
 	smalluint expand_exitcode;
 	smalluint last_bg_pid_exitcode;
@@ -933,6 +933,9 @@ struct globals {
 # define G_global_args_malloced (G.global_args_malloced)
 #else
 # define G_global_args_malloced 0
+#endif
+#if ENABLE_HUSH_BASH_COMPAT
+	int dead_job_exitcode; /* for "wait -n" */
 #endif
 	/* how many non-NULL argv's we have. NB: $# + 1 */
 	int global_argc;
@@ -8657,6 +8660,9 @@ static int process_wait_result(struct pipe *fg_pipe, pid_t childpid, int status)
 		pi->cmds[i].pid = 0;
 		pi->alive_cmds--;
 		if (!pi->alive_cmds) {
+#if ENABLE_HUSH_BASH_COMPAT
+			G.dead_job_exitcode = job_exited_or_stopped(pi);
+#endif
 			if (G_interactive_fd) {
 				printf(JOB_STATUS_FORMAT, pi->jobid,
 						"Done", pi->cmdtext);
@@ -8763,7 +8769,7 @@ static int checkjobs(struct pipe *fg_pipe, pid_t waitfor_pid)
 			/* fg_pipe exited or stopped */
 			break;
 		}
-		if (childpid == waitfor_pid) {
+		if (childpid == waitfor_pid) { /* "wait PID" */
 			debug_printf_exec("childpid==waitfor_pid:%d status:0x%08x\n", childpid, status);
 			rcode = WEXITSTATUS(status);
 			if (WIFSIGNALED(status))
@@ -8774,6 +8780,15 @@ static int checkjobs(struct pipe *fg_pipe, pid_t waitfor_pid)
 			rcode++;
 			break; /* "wait PID" called us, give it exitcode+1 */
 		}
+#if ENABLE_HUSH_BASH_COMPAT
+		if (-1 == waitfor_pid /* "wait -n" (wait for any one job) */
+		 && G.dead_job_exitcode >= 0 /* some job did finish */
+		) {
+			debug_printf_exec("waitfor_pid:-1\n");
+			rcode = G.dead_job_exitcode + 1;
+			break;
+		}
+#endif
 		/* This wasn't one of our processes, or */
 		/* fg_pipe still has running processes, do waitpid again */
 	} /* while (waitpid succeeds)... */
@@ -11471,6 +11486,12 @@ static int wait_for_child_or_signal(struct pipe *waitfor_pipe, pid_t waitfor_pid
 			ret--;
 			if (ret < 0) /* if ECHILD, may need to fix "ret" */
 				ret = 0;
+#if ENABLE_HUSH_BASH_COMPAT
+			if (waitfor_pid == -1 && errno == ECHILD) {
+				/* exitcode of "wait -n" with no children is 127, not 0 */
+				ret = 127;
+			}
+#endif
 			sigprocmask(SIG_SETMASK, &oldset, NULL);
 			break;
 		}
@@ -11499,6 +11520,14 @@ static int FAST_FUNC builtin_wait(char **argv)
 	int status;
 
 	argv = skip_dash_dash(argv);
+#if ENABLE_HUSH_BASH_COMPAT
+	if (argv[0] && strcmp(argv[0], "-n") == 0) {
+		/* wait -n */
+		/* (bash accepts "wait -n PID" too and ignores PID) */
+		G.dead_job_exitcode = -1;
+		return wait_for_child_or_signal(NULL, -1 /*no job, wait for one job*/);
+	}
+#endif
 	if (argv[0] == NULL) {
 		/* Don't care about wait results */
 		/* Note 1: must wait until there are no more children */
@@ -11516,7 +11545,7 @@ static int FAST_FUNC builtin_wait(char **argv)
 		 * ^C <-- after ~4 sec from keyboard
 		 * $
 		 */
-		return wait_for_child_or_signal(NULL, 0 /*(no job and no pid to wait for)*/);
+		return wait_for_child_or_signal(NULL, 0 /*no job and no pid to wait for*/);
 	}
 
 	do {
