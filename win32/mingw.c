@@ -1204,13 +1204,16 @@ int mingw_mkdir(const char *path, int mode UNUSED_PARAM)
 #undef chdir
 int mingw_chdir(const char *dirname)
 {
+	struct stat st;
 	int ret = -1;
-	char *realdir = xmalloc_realpath(dirname);
+	const char *realdir = dirname;
 
-	if (realdir) {
+	if (lstat(dirname, &st) == 0 && S_ISLNK(st.st_mode))
+		realdir = auto_string(xmalloc_readlink(dirname));
+
+	if (realdir)
 		ret = chdir(realdir);
-		free(realdir);
-	}
+
 	return ret;
 }
 
