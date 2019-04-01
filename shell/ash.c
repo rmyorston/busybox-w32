@@ -3185,7 +3185,8 @@ print_all_cwd(void)
 	mnt = setmntent(bb_path_mtab_file, "r");
 	if (mnt) {
 		while ((entry=getmntent(mnt)) != NULL) {
-			if (get_drive_cwd(entry->mnt_fsname, buffer, PATH_MAX) != NULL)
+			entry->mnt_dir[2] = '\0';
+			if (get_drive_cwd(entry->mnt_dir, buffer, PATH_MAX) != NULL)
 				out1fmt("%s\n", buffer);
 		}
 		endmntent(mnt);

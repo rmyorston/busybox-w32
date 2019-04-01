@@ -8,7 +8,7 @@ struct mntdata {
 	DWORD flags;
 	int index;
 	struct mntent me;
-	char mnt_fsname[4];
+	char mnt_fsname[PATH_MAX];
 	char mnt_dir[4];
 	char mnt_type[100];
 	char mnt_opts[4];
@@ -33,6 +33,7 @@ struct mntent *getmntent(FILE *stream)
 	struct mntdata *data = (struct mntdata *)stream;
 	struct mntent *entry;
 	UINT drive_type;
+	char buf[PATH_MAX];
 
 	data->me.mnt_fsname = data->mnt_fsname;
 	data->me.mnt_dir = data->mnt_dir;
@@ -61,6 +62,12 @@ struct mntent *getmntent(FILE *stream)
 				if ( !GetVolumeInformation(data->mnt_dir, NULL, 0, NULL, NULL,
 								NULL, data->mnt_type, 100) ) {
 					continue;
+				}
+
+				if (realpath(data->mnt_dir, buf) != NULL) {
+					if (isalpha(buf[0]) && strcmp(buf+1, ":/") == 0)
+						buf[2] = '\0';
+					strcpy(data->mnt_fsname, buf);
 				}
 
 				entry = &data->me;
