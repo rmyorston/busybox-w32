@@ -1208,8 +1208,11 @@ int mingw_chdir(const char *dirname)
 	int ret = -1;
 	const char *realdir = dirname;
 
-	if (lstat(dirname, &st) == 0 && S_ISLNK(st.st_mode))
+	if (lstat(dirname, &st) == 0 && S_ISLNK(st.st_mode)) {
 		realdir = auto_string(xmalloc_readlink(dirname));
+		if (realdir)
+			fix_path_case((char *)realdir);
+	}
 
 	if (realdir)
 		ret = chdir(realdir);
@@ -1714,4 +1717,26 @@ char *get_drive_cwd(const char *path, char *buffer, int size)
 		return NULL;
 	bs_to_slash(buffer);
 	return buffer;
+}
+
+void fix_path_case(char *path)
+{
+	char resolved[PATH_MAX];
+	int len;
+
+	// Canonicalise path: for physical drives this makes case match
+	// what's stored on disk.  For mapped drives, not so much.
+	if (realpath(path, resolved) && strcasecmp(path, resolved) == 0)
+		strcpy(path, resolved);
+
+	// make drive letter or UNC hostname uppercase
+	len = root_len(path);
+	if (len == 2) {
+		*path = toupper(*path);
+	}
+	else if (len != 0) {
+		for (path+=2; !is_path_sep(*path); ++path) {
+			*path = toupper(*path);
+		}
+	}
 }

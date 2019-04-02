@@ -2980,6 +2980,7 @@ updatepwd(const char *dir)
 	if (new > lim)
 		STUNPUTC(new);
 	*new = 0;
+	fix_path_case((char *)stackblock());
 	return stackblock();
 #else
 	char *new;
