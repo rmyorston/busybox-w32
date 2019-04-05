@@ -373,6 +373,8 @@ config PLATFORM_LINUX
 	#This is automatically selected if any applet or feature requires
 	#Linux-specific interfaces. You do not need to select it manually.
 
+comment 'Settings for MINGW32'
+
 config GLOBBING
 	bool "Allow busybox.exe to expand wildcards"
 	default n
