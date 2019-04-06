@@ -21,15 +21,8 @@
 #undef read
 #undef getc
 
-/*
- ANSI codes used by git: m, K
-
- This file is git-specific. Therefore, this file does not attempt
- to implement any codes that are not used by git.
-*/
-
-static HANDLE console;
-static HANDLE console_in;
+static HANDLE console = INVALID_HANDLE_VALUE;
+static HANDLE console_in = INVALID_HANDLE_VALUE;
 static WORD plain_attr;
 static WORD attr;
 static int negative;
@@ -38,38 +31,28 @@ static void init(void)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
-	static int initialized = 0;
-	if (initialized)
+	if (console != INVALID_HANDLE_VALUE || console_in != INVALID_HANDLE_VALUE)
 		return;
-
-	console_in = GetStdHandle(STD_INPUT_HANDLE);
-	if (console_in == INVALID_HANDLE_VALUE)
-		console_in = NULL;
 
 	console = GetStdHandle(STD_OUTPUT_HANDLE);
-	if (console == INVALID_HANDLE_VALUE)
-		console = NULL;
+	console_in = GetStdHandle(STD_INPUT_HANDLE);
 
-	if (!console)
-		return;
-
-	GetConsoleScreenBufferInfo(console, &sbi);
-	attr = plain_attr = sbi.wAttributes;
-	negative = 0;
-
-	initialized = 1;
+	if (GetConsoleScreenBufferInfo(console, &sbi)) {
+		attr = plain_attr = sbi.wAttributes;
+		negative = 0;
+	}
 }
 
 static int is_console(int fd)
 {
 	init();
-	return isatty(fd) && console;
+	return isatty(fd) && console != INVALID_HANDLE_VALUE;
 }
 
 static int is_console_in(int fd)
 {
 	init();
-	return isatty(fd) && console_in;
+	return isatty(fd) && console_in != INVALID_HANDLE_VALUE;
 }
 
 static int skip_ansi_emulation(void)
@@ -126,10 +109,8 @@ static void erase_in_line(void)
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 	DWORD dummy; /* Needed for Windows 7 (or Vista) regression */
 
-	if (!console)
+	if (!GetConsoleScreenBufferInfo(console, &sbi))
 		return;
-
-	GetConsoleScreenBufferInfo(console, &sbi);
 	FillConsoleOutputCharacterA(console, ' ',
 		sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition,
 		&dummy);
@@ -143,10 +124,8 @@ static void erase_till_end_of_screen(void)
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 	DWORD dummy, len;
 
-	if (!console)
+	if(!GetConsoleScreenBufferInfo(console, &sbi))
 		return;
-
-	GetConsoleScreenBufferInfo(console, &sbi);
 	len = sbi.dwSize.X - sbi.dwCursorPosition.X +
 			sbi.dwSize.X * (sbi.srWindow.Bottom - sbi.dwCursorPosition.Y);
 
@@ -162,11 +141,9 @@ void reset_screen(void)
 	COORD pos;
 	DWORD dummy, len;
 
-	if (!console)
-		return;
-
 	/* move to start of screen buffer and clear it all */
-	GetConsoleScreenBufferInfo(console, &sbi);
+	if (!GetConsoleScreenBufferInfo(console, &sbi))
+		return;
 	pos.X = 0;
 	pos.Y = 0;
 	SetConsoleCursorPosition(console, pos);
@@ -179,10 +156,8 @@ void move_cursor_row(int n)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
-	if (!console)
+	if(!GetConsoleScreenBufferInfo(console, &sbi))
 		return;
-
-	GetConsoleScreenBufferInfo(console, &sbi);
 	sbi.dwCursorPosition.Y += n;
 	SetConsoleCursorPosition(console, sbi.dwCursorPosition);
 }
@@ -191,10 +166,8 @@ static void move_cursor_column(int n)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
-	if (!console)
+	if (!GetConsoleScreenBufferInfo(console, &sbi))
 		return;
-
-	GetConsoleScreenBufferInfo(console, &sbi);
 	sbi.dwCursorPosition.X += n;
 	SetConsoleCursorPosition(console, sbi.dwCursorPosition);
 }
@@ -204,10 +177,8 @@ static void move_cursor(int x, int y)
 	COORD pos;
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
-	if (!console)
+	if (!GetConsoleScreenBufferInfo(console, &sbi))
 		return;
-
-	GetConsoleScreenBufferInfo(console, &sbi);
 	pos.X = sbi.srWindow.Left + x;
 	pos.Y = sbi.srWindow.Top + y;
 	SetConsoleCursorPosition(console, pos);
