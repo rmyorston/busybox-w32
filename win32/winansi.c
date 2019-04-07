@@ -104,52 +104,45 @@ static void set_console_attr(void)
 	SetConsoleTextAttribute(console, attributes);
 }
 
+static void clear_buffer(DWORD len, COORD pos)
+{
+	DWORD dummy;
+
+	FillConsoleOutputCharacterA(console, ' ', len, pos, &dummy);
+	FillConsoleOutputAttribute(console, plain_attr, len, pos, &dummy);
+}
+
 static void erase_in_line(void)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
-	DWORD dummy; /* Needed for Windows 7 (or Vista) regression */
 
 	if (!GetConsoleScreenBufferInfo(console, &sbi))
 		return;
-	FillConsoleOutputCharacterA(console, ' ',
-		sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition,
-		&dummy);
-	FillConsoleOutputAttribute(console, plain_attr,
-		sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition,
-		&dummy);
+	clear_buffer(sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition);
 }
 
 static void erase_till_end_of_screen(void)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
-	DWORD dummy, len;
+	DWORD len;
 
 	if(!GetConsoleScreenBufferInfo(console, &sbi))
 		return;
 	len = sbi.dwSize.X - sbi.dwCursorPosition.X +
 			sbi.dwSize.X * (sbi.srWindow.Bottom - sbi.dwCursorPosition.Y);
-
-	FillConsoleOutputCharacterA(console, ' ', len, sbi.dwCursorPosition,
-		&dummy);
-	FillConsoleOutputAttribute(console, plain_attr, len, sbi.dwCursorPosition,
-		&dummy);
+	clear_buffer(len, sbi.dwCursorPosition);
 }
 
 void reset_screen(void)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
-	COORD pos;
-	DWORD dummy, len;
+	COORD pos = { 0, 0 };
 
 	/* move to start of screen buffer and clear it all */
 	if (!GetConsoleScreenBufferInfo(console, &sbi))
 		return;
-	pos.X = 0;
-	pos.Y = 0;
 	SetConsoleCursorPosition(console, pos);
-	len = sbi.dwSize.X * sbi.dwSize.Y;
-	FillConsoleOutputCharacterA(console, ' ', len, pos, &dummy);
-	FillConsoleOutputAttribute(console, plain_attr, len, pos, &dummy);
+	clear_buffer(sbi.dwSize.X * sbi.dwSize.Y, pos);
 }
 
 void move_cursor_row(int n)
