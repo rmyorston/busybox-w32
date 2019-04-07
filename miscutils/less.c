@@ -338,7 +338,11 @@ static void less_exit(int code)
 	set_tty_cooked();
 	if (!(G.kbd_fd_orig_flags & O_NONBLOCK))
 		ndelay_off(kbd_fd);
+#if !ENABLE_PLATFORM_MINGW32
 	clear_line();
+#else
+	printf(ESC"[?1049l");
+#endif
 	if (code < 0)
 		kill_myself_with_sig(- code); /* does not return */
 	exit(code);
@@ -1120,7 +1124,7 @@ static void reinitialize(void)
 		printf(ESC"[999;999H" ESC"[6n");
 #endif
 #if ENABLE_PLATFORM_MINGW32
-	reset_screen();
+	printf(ESC"[?1049h");
 #endif
 	buffer_fill_and_print();
 }
