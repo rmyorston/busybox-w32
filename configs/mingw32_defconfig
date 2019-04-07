@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.31.0.git
-# Sun Mar 31 09:45:46 2019
+# Sun Apr  7 12:34:37 2019
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -385,7 +385,7 @@ CONFIG_DEFAULT_SETFONT_DIR=""
 # CONFIG_FEATURE_LOADFONT_RAW is not set
 # CONFIG_LOADKMAP is not set
 # CONFIG_OPENVT is not set
-# CONFIG_RESET is not set
+CONFIG_RESET=y
 # CONFIG_RESIZE is not set
 # CONFIG_FEATURE_RESIZE_PRINT is not set
 # CONFIG_SETCONSOLE is not set
