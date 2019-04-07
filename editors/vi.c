@@ -1020,12 +1020,7 @@ static void refresh(int full_screen)
 static void redraw(int full_screen)
 {
 	// cursor to top,left; clear to the end of screen
-#if !ENABLE_PLATFORM_MINGW32
 	write1(ESC_SET_CURSOR_TOPLEFT ESC_CLEAR2EOS);
-#else
-	write1(ESC_SET_CURSOR_TOPLEFT);
-	reset_screen();
-#endif
 	screen_erase();		// erase the internal screen buffer
 	last_status_cksum = 0;	// force status update
 	refresh(full_screen);	// this will redraw the entire display

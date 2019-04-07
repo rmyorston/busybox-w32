@@ -74,6 +74,67 @@ void set_title(const char *str)
 		SetConsoleTitle(str);
 }
 
+static HANDLE dup_handle(HANDLE h)
+{
+	HANDLE h2;
+
+	if (!DuplicateHandle(GetCurrentProcess(), h, GetCurrentProcess(),
+							&h2, 0, TRUE, DUPLICATE_SAME_ACCESS))
+		return INVALID_HANDLE_VALUE;
+	return h2;
+}
+
+static void use_alt_buffer(int flag)
+{
+	static HANDLE console_orig = INVALID_HANDLE_VALUE;
+	static int initialised = FALSE;
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
+	HANDLE h;
+
+	init();
+
+	if (console == INVALID_HANDLE_VALUE)
+		return;
+
+	if (!initialised) {
+		console_orig = dup_handle(console);
+		initialised = TRUE;
+	}
+
+	if (console_orig == INVALID_HANDLE_VALUE)
+		return;
+
+	if (flag) {
+		SECURITY_ATTRIBUTES sa;
+
+		// handle should be inheritable
+		memset(&sa, 0, sizeof(sa));
+		sa.nLength = sizeof(sa);
+		/* sa.lpSecurityDescriptor = NULL; - memset did it */
+		sa.bInheritHandle = TRUE;
+
+		// create new alternate buffer
+		h = CreateConsoleScreenBuffer(GENERIC_READ|GENERIC_WRITE,
+					FILE_SHARE_READ|FILE_SHARE_WRITE, &sa,
+					CONSOLE_TEXTMODE_BUFFER, NULL);
+		if (h == INVALID_HANDLE_VALUE)
+			return;
+
+		if (GetConsoleScreenBufferInfo(console, &sbi))
+			SetConsoleScreenBufferSize(h, sbi.dwSize);
+	}
+	else {
+		// revert to original buffer
+		h = dup_handle(console_orig);
+		if (h == INVALID_HANDLE_VALUE)
+			return;
+	}
+
+	console = h;
+	SetConsoleActiveScreenBuffer(console);
+	close(STDOUT_FILENO);
+	_open_osfhandle((intptr_t)console, O_RDWR|O_BINARY);
+}
 
 #define FOREGROUND_ALL (FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE)
 #define BACKGROUND_ALL (BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE)
@@ -371,12 +432,13 @@ static char *process_escape(char *pos)
 		erase_in_line();
 		break;
 	case '?':
-		/* skip this to avoid ugliness when vi is shut down */
-		++str;
-		while (isdigit(*str))
-			++str;
-		func = str;
-		break;
+		if (strncmp(str+1, "1049", 4) == 0 &&
+				(str[5] == 'h' || str[5] == 'l') ) {
+			use_alt_buffer(str[5] == 'h');
+			func = str + 5;
+			break;
+		}
+		/* fall through */
 	default:
 		/* Unsupported code */
 		return pos;
