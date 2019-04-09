@@ -729,13 +729,16 @@ static void add_match(char *matched)
  */
 static char *username_path_completion(char *ud)
 {
+#  if !ENABLE_PLATFORM_MINGW32
 	struct passwd *entry;
+#endif
 	char *tilde_name = ud;
 	char *home = NULL;
 
 	ud++; /* skip ~ */
 	if (*ud == '/') {       /* "~/..." */
 		home = home_pwd_buf;
+#  if !ENABLE_PLATFORM_MINGW32
 	} else {
 		/* "~user/..." */
 		ud = strchr(ud, '/');
@@ -744,6 +747,7 @@ static char *username_path_completion(char *ud)
 		*ud = '/';            /* restore "~user/..." */
 		if (entry)
 			home = entry->pw_dir;
+#  endif
 	}
 	if (home) {
 		ud = concat_path_file(home, ud);
@@ -753,6 +757,7 @@ static char *username_path_completion(char *ud)
 	return tilde_name;
 }
 
+#  if !ENABLE_PLATFORM_MINGW32
 /* ~use<tab> - find all users with this prefix.
  * Return the length of the prefix used for matching.
  */
@@ -775,6 +780,7 @@ static NOINLINE unsigned complete_username(const char *ud)
 
 	return 1 + userlen;
 }
+#  endif
 # endif  /* FEATURE_USERNAME_COMPLETION */
 
 enum {
@@ -1237,7 +1243,7 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 	/* Free up any memory already allocated */
 	free_tab_completion_data();
 
-# if ENABLE_FEATURE_USERNAME_COMPLETION
+# if ENABLE_FEATURE_USERNAME_COMPLETION && !ENABLE_PLATFORM_MINGW32
 	/* If the word starts with ~ and there is no slash in the word,
 	 * then try completing this word as a username. */
 	if (state->flags & USERNAME_COMPLETION)
