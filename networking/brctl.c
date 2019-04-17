@@ -9,9 +9,6 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-/* This applet currently uses only the ioctl interface and no sysfs at all.
- * At the time of this writing this was considered a feature.
- */
 //config:config BRCTL
 //config:	bool "brctl (4.7 kb)"
 //config:	default y
@@ -44,29 +41,34 @@
 //kbuild:lib-$(CONFIG_BRCTL) += brctl.o
 
 //usage:#define brctl_trivial_usage
-//usage:       "COMMAND [BRIDGE [INTERFACE]]"
+//usage:       "COMMAND [BRIDGE [ARGS]]"
 //usage:#define brctl_full_usage "\n\n"
-//usage:       "Manage ethernet bridges\n"
+//usage:       "Manage ethernet bridges"
 //usage:     "\nCommands:"
 //usage:	IF_FEATURE_BRCTL_SHOW(
-//usage:     "\n	show			Show a list of bridges"
+//usage:     "\n	show [BRIDGE]...	Show bridges"
 //usage:	)
 //usage:     "\n	addbr BRIDGE		Create BRIDGE"
 //usage:     "\n	delbr BRIDGE		Delete BRIDGE"
 //usage:     "\n	addif BRIDGE IFACE	Add IFACE to BRIDGE"
 //usage:     "\n	delif BRIDGE IFACE	Delete IFACE from BRIDGE"
 //usage:	IF_FEATURE_BRCTL_FANCY(
-//usage:     "\n	setageing BRIDGE TIME		Set ageing time"
-//usage:     "\n	setfd BRIDGE TIME		Set bridge forward delay"
-//usage:     "\n	sethello BRIDGE TIME		Set hello time"
-//usage:     "\n	setmaxage BRIDGE TIME		Set max message age"
-//usage:     "\n	setpathcost BRIDGE COST		Set path cost"
-//usage:     "\n	setportprio BRIDGE PRIO		Set port priority"
+//usage:     "\n	stp BRIDGE 1/yes/on|0/no/off	STP on/off"
+//usage:     "\n	setageing BRIDGE SECONDS	Set ageing time"
+//usage:     "\n	setfd BRIDGE SECONDS		Set bridge forward delay"
+//usage:     "\n	sethello BRIDGE SECONDS		Set hello time"
+//usage:     "\n	setmaxage BRIDGE SECONDS	Set max message age"
 //usage:     "\n	setbridgeprio BRIDGE PRIO	Set bridge priority"
-//usage:     "\n	stp BRIDGE [1/yes/on|0/no/off]	STP on/off"
+//usage:     "\n	setportprio BRIDGE IFACE PRIO	Set port priority"
+//usage:     "\n	setpathcost BRIDGE IFACE COST	Set path cost"
 //usage:	)
+// Not yet implemented:
+//			hairpin BRIDGE IFACE on|off	Hairpin on/off
+//			showmacs BRIDGE			List mac addrs
+//			showstp	BRIDGE			Show stp info
 
 #include "libbb.h"
+#include "common_bufsiz.h"
 #include <linux/sockios.h>
 #include <net/if.h>
 
@@ -83,121 +85,114 @@
 # define SIOCBRDELIF BRCTL_DEL_IF
 #endif
 
-
-/* Maximum number of ports supported per bridge interface.  */
-#ifndef MAX_PORTS
-# define MAX_PORTS 32
-#endif
-
-/* Use internal number parsing and not the "exact" conversion.  */
-/* #define BRCTL_USE_INTERNAL 0 */ /* use exact conversion */
-#define BRCTL_USE_INTERNAL 1
-
 #if ENABLE_FEATURE_BRCTL_FANCY
-/* #include <linux/if_bridge.h>
- * breaks on musl: we already included netinet/in.h in libbb.h,
- * if we include <linux/if_bridge.h> here, we get this:
- * In file included from /usr/include/linux/if_bridge.h:18,
- *                  from networking/brctl.c:67:
- * /usr/include/linux/in6.h:32: error: redefinition of 'struct in6_addr'
- * /usr/include/linux/in6.h:49: error: redefinition of 'struct sockaddr_in6'
- * /usr/include/linux/in6.h:59: error: redefinition of 'struct ipv6_mreq'
- */
-/* From <linux/if_bridge.h> */
-#define BRCTL_GET_VERSION 0
-#define BRCTL_GET_BRIDGES 1
-#define BRCTL_ADD_BRIDGE 2
-#define BRCTL_DEL_BRIDGE 3
-#define BRCTL_ADD_IF 4
-#define BRCTL_DEL_IF 5
-#define BRCTL_GET_BRIDGE_INFO 6
-#define BRCTL_GET_PORT_LIST 7
-#define BRCTL_SET_BRIDGE_FORWARD_DELAY 8
-#define BRCTL_SET_BRIDGE_HELLO_TIME 9
-#define BRCTL_SET_BRIDGE_MAX_AGE 10
-#define BRCTL_SET_AGEING_TIME 11
-#define BRCTL_SET_GC_INTERVAL 12
-#define BRCTL_GET_PORT_INFO 13
-#define BRCTL_SET_BRIDGE_STP_STATE 14
-#define BRCTL_SET_BRIDGE_PRIORITY 15
-#define BRCTL_SET_PORT_PRIORITY 16
-#define BRCTL_SET_PATH_COST 17
-#define BRCTL_GET_FDB_ENTRIES 18
-struct __bridge_info {
-	uint64_t designated_root;
-	uint64_t bridge_id;
-	uint32_t root_path_cost;
-	uint32_t max_age;
-	uint32_t hello_time;
-	uint32_t forward_delay;
-	uint32_t bridge_max_age;
-	uint32_t bridge_hello_time;
-	uint32_t bridge_forward_delay;
-	uint8_t  topology_change;
-	uint8_t  topology_change_detected;
-	uint8_t  root_port;
-	uint8_t  stp_enabled;
-	uint32_t ageing_time;
-	uint32_t gc_interval;
-	uint32_t hello_timer_value;
-	uint32_t tcn_timer_value;
-	uint32_t topology_change_timer_value;
-	uint32_t gc_timer_value;
-};
-/* end <linux/if_bridge.h> */
-
-/* FIXME: These 4 funcs are not really clean and could be improved */
-static ALWAYS_INLINE void bb_strtotimeval(struct timeval *tv,
-		const char *time_str)
+static unsigned str_to_jiffies(const char *time_str)
 {
-	double secs;
-# if BRCTL_USE_INTERNAL
+	double dd;
 	char *endptr;
-	secs = /*bb_*/strtod(time_str, &endptr);
-	if (endptr == time_str)
-# else
-	if (sscanf(time_str, "%lf", &secs) != 1)
-# endif
+	dd = /*bb_*/strtod(time_str, &endptr);
+	if (endptr == time_str || dd < 0)
 		bb_error_msg_and_die(bb_msg_invalid_arg_to, time_str, "timespec");
-	tv->tv_sec = secs;
-	tv->tv_usec = 1000000 * (secs - tv->tv_sec);
-}
 
-static ALWAYS_INLINE unsigned long tv_to_jiffies(const struct timeval *tv)
-{
-	unsigned long long jif;
+	dd *= 100;
+	/* For purposes of brctl,
+	 * capping SECONDS by ~20 million seconds is quite enough:
+	 */
+	if (dd > INT_MAX)
+		dd = INT_MAX;
 
-	jif = 1000000ULL * tv->tv_sec + tv->tv_usec;
-
-	return jif/10000;
-}
-# if 0
-static void jiffies_to_tv(struct timeval *tv, unsigned long jiffies)
-{
-	unsigned long long tvusec;
-
-	tvusec = 10000ULL*jiffies;
-	tv->tv_sec = tvusec/1000000;
-	tv->tv_usec = tvusec - 1000000 * tv->tv_sec;
-}
-# endif
-static unsigned long str_to_jiffies(const char *time_str)
-{
-	struct timeval tv;
-	bb_strtotimeval(&tv, time_str);
-	return tv_to_jiffies(&tv);
-}
-
-static void arm_ioctl(unsigned long *args,
-		unsigned long arg0, unsigned long arg1, unsigned long arg2)
-{
-	args[0] = arg0;
-	args[1] = arg1;
-	args[2] = arg2;
-	args[3] = 0;
+	return dd;
 }
 #endif
 
+#define filedata bb_common_bufsiz1
+
+static int read_file(const char *name)
+{
+	int n = open_read_close(name, filedata, COMMON_BUFSIZE - 1);
+	if (n < 0) {
+		filedata[0] = '\0';
+	} else {
+		filedata[n] = '\0';
+		if (n != 0 && filedata[n - 1] == '\n')
+			filedata[--n] = '\0';
+	}
+	return n;
+}
+
+/* NB: we are in /sys/class/net
+ */
+static int show_bridge(const char *name, int need_hdr)
+{
+/* Output:
+ *bridge name	bridge id		STP enabled	interfaces
+ *br0		8000.000000000000	no		eth0
+ */
+	char pathbuf[IFNAMSIZ + sizeof("/bridge/bridge_id") + 32];
+	int tabs;
+	DIR *ifaces;
+	struct dirent *ent;
+	char *sfx;
+
+#if IFNAMSIZ == 16
+	sfx = pathbuf + sprintf(pathbuf, "%.16s/bridge/", name);
+#else
+	sfx = pathbuf + sprintf(pathbuf, "%.*s/bridge/", (int)IFNAMSIZ, name);
+#endif
+	strcpy(sfx, "bridge_id");
+	if (read_file(pathbuf) < 0)
+		return -1; /* this iface is not a bridge */
+
+	if (need_hdr)
+		puts("bridge name\tbridge id\t\tSTP enabled\tinterfaces");
+	printf("%s\t\t", name);
+	printf("%s\t", filedata);
+
+	strcpy(sfx, "stp_state");
+	read_file(pathbuf);
+	if (LONE_CHAR(filedata, '0'))
+		strcpy(filedata, "no");
+	else
+	if (LONE_CHAR(filedata, '1'))
+		strcpy(filedata, "yes");
+	fputs(filedata, stdout);
+
+	strcpy(sfx - (sizeof("bridge/")-1), "brif");
+	tabs = 0;
+	ifaces = opendir(pathbuf);
+	if (ifaces) {
+		while ((ent = readdir(ifaces)) != NULL) {
+			if (DOT_OR_DOTDOT(ent->d_name))
+				continue; /* . or .. */
+			if (tabs)
+				printf("\t\t\t\t\t");
+			else
+				tabs = 1;
+			printf("\t\t%s\n", ent->d_name);
+		}
+		closedir(ifaces);
+	}
+	if (!tabs)  /* bridge has no interfaces */
+		bb_putchar('\n');
+	return 0;
+}
+
+static void write_uint(const char *name, const char *leaf, unsigned val)
+{
+	char pathbuf[IFNAMSIZ + sizeof("/bridge/bridge_id") + 32];
+	int fd, n;
+
+#if IFNAMSIZ == 16
+	sprintf(pathbuf, "%.16s/%s", name, leaf);
+#else
+	sprintf(pathbuf, "%.*s/%s", (int)IFNAMSIZ, name, leaf);
+#endif
+	fd = xopen(pathbuf, O_WRONLY);
+	n = sprintf(filedata, "%u\n", val);
+	if (write(fd, filedata, n) < 0)
+		bb_simple_perror_msg_and_die(name);
+	close(fd);
+}
 
 int brctl_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int brctl_main(int argc UNUSED_PARAM, char **argv)
@@ -207,90 +202,71 @@ int brctl_main(int argc UNUSED_PARAM, char **argv)
 	IF_FEATURE_BRCTL_FANCY(
 		"stp\0"
 		"setageing\0" "setfd\0" "sethello\0" "setmaxage\0"
-		"setpathcost\0" "setportprio\0" "setbridgeprio\0"
+		"setpathcost\0" "setportprio\0"
+		"setbridgeprio\0"
 	)
 	IF_FEATURE_BRCTL_SHOW("show\0");
-
 	enum { ARG_addbr = 0, ARG_delbr, ARG_addif, ARG_delif
 		IF_FEATURE_BRCTL_FANCY(,
 			ARG_stp,
 			ARG_setageing, ARG_setfd, ARG_sethello, ARG_setmaxage,
-			ARG_setpathcost, ARG_setportprio, ARG_setbridgeprio
+			ARG_setpathcost, ARG_setportprio,
+			ARG_setbridgeprio
 		)
 		IF_FEATURE_BRCTL_SHOW(, ARG_show)
 	};
 
-	int fd;
-	smallint key;
-	struct ifreq ifr;
-	char *br, *brif;
-
 	argv++;
-	while (*argv) {
-#if ENABLE_FEATURE_BRCTL_FANCY
-		int ifidx[MAX_PORTS];
-		unsigned long args[4];
-		ifr.ifr_data = (char *) &args;
-#endif
+	if (!*argv) {
+		/* bare "brctl" shows --help */
+		bb_show_usage();
+	}
+
+	xchdir("/sys/class/net");
+
+//	while (*argv)
+	{
+		smallint key;
+		char *br;
 
 		key = index_in_strings(keywords, *argv);
 		if (key == -1) /* no match found in keywords array, bail out. */
 			bb_error_msg_and_die(bb_msg_invalid_arg_to, *argv, applet_name);
 		argv++;
-		fd = xsocket(AF_INET, SOCK_STREAM, 0);
 
 #if ENABLE_FEATURE_BRCTL_SHOW
-		if (key == ARG_show) { /* show */
-			char buf[IFNAMSIZ];
-			int bridx[MAX_PORTS];
-			int i, num;
-			arm_ioctl(args, BRCTL_GET_BRIDGES,
-						(unsigned long) bridx, MAX_PORTS);
-			num = xioctl(fd, SIOCGIFBR, args);
-			puts("bridge name\tbridge id\t\tSTP enabled\tinterfaces");
-			for (i = 0; i < num; i++) {
-				int j, tabs;
-				struct __bridge_info bi;
-				unsigned char *x;
+		if (key == ARG_show) { /* show [BR]... */
+			DIR *net;
+			struct dirent *ent;
+			int need_hdr = 1;
+			int exitcode = EXIT_SUCCESS;
 
-				if (!if_indextoname(bridx[i], buf))
-					bb_perror_msg_and_die("can't get bridge name for index %d", i);
-				strncpy_IFNAMSIZ(ifr.ifr_name, buf);
-
-				arm_ioctl(args, BRCTL_GET_BRIDGE_INFO,
-							(unsigned long) &bi, 0);
-				xioctl(fd, SIOCDEVPRIVATE, &ifr);
-				printf("%s\t\t", buf);
-
-				/* print bridge id */
-				x = (unsigned char *) &bi.bridge_id;
-				for (j = 0; j < 8; j++) {
-					printf("%02x", x[j]);
-					if (j == 1)
-						bb_putchar('.');
-				}
-				printf(bi.stp_enabled ? "\tyes" : "\tno");
-
-				/* print interface list */
-				arm_ioctl(args, BRCTL_GET_PORT_LIST,
-							(unsigned long) ifidx, MAX_PORTS);
-				xioctl(fd, SIOCDEVPRIVATE, &ifr);
-				tabs = 0;
-				for (j = 0; j < MAX_PORTS; j++) {
-					if (!ifidx[j])
-						continue;
-					if (!if_indextoname(ifidx[j], buf))
-						bb_perror_msg_and_die("can't get interface name for index %d", j);
-					if (tabs)
-						printf("\t\t\t\t\t");
-					else
-						tabs = 1;
-					printf("\t\t%s\n", buf);
-				}
-				if (!tabs)  /* bridge has no interfaces */
-					bb_putchar('\n');
+			if (*argv) {
+				/* "show BR1 BR2 BR3" */
+				do {
+					if (show_bridge(*argv, need_hdr) >= 0) {
+						need_hdr = 0;
+					} else {
+						bb_error_msg("bridge %s does not exist", *argv);
+//TODO: if device exists, but is not a BR, brctl from bridge-utils 1.6
+//says this instead: "device eth0 is not a bridge"
+						exitcode = EXIT_FAILURE;
+					}
+				} while (*++argv != NULL);
+				return exitcode;
 			}
-			goto done;
+
+			/* "show" (if no ifaces, shows nothing, not even header) */
+			net = xopendir(".");
+			while ((ent = readdir(net)) != NULL) {
+				if (DOT_OR_DOTDOT(ent->d_name))
+					continue; /* . or .. */
+				if (show_bridge(ent->d_name, need_hdr) >= 0)
+					need_hdr = 0;
+			}
+			if (ENABLE_FEATURE_CLEAN_UP)
+				closedir(net);
+			return exitcode;
 		}
 #endif
 
@@ -299,28 +275,29 @@ int brctl_main(int argc UNUSED_PARAM, char **argv)
 
 		br = *argv++;
 
-		if (key == ARG_addbr || key == ARG_delbr) { /* addbr or delbr */
+		if (key == ARG_addbr || key == ARG_delbr) {
+			/* addbr or delbr */
+			/* brctl from bridge-utils 1.6 still uses ioctl
+			 * for SIOCBRADDBR / SIOCBRDELBR, not /sys accesses
+			 */
+			int fd = xsocket(AF_INET, SOCK_STREAM, 0);
 			ioctl_or_perror_and_die(fd,
-					key == ARG_addbr ? SIOCBRADDBR : SIOCBRDELBR,
-					br, "bridge %s", br);
-			goto done;
+				key == ARG_addbr ? SIOCBRADDBR : SIOCBRDELBR,
+				br, "bridge %s", br
+			);
+			//close(fd);
+			//goto done;
+			/* bridge-utils 1.6 simply ignores trailing args:
+			 * "brctl addbr BR1 ARGS" ignores ARGS
+			 */
+			if (ENABLE_FEATURE_CLEAN_UP)
+				close(fd);
+			return EXIT_SUCCESS;
 		}
 
 		if (!*argv) /* all but 'addbr/delbr' need at least two arguments */
 			bb_show_usage();
 
-		strncpy_IFNAMSIZ(ifr.ifr_name, br);
-		if (key == ARG_addif || key == ARG_delif) { /* addif or delif */
-			brif = *argv;
-			ifr.ifr_ifindex = if_nametoindex(brif);
-			if (!ifr.ifr_ifindex) {
-				bb_perror_msg_and_die("iface %s", brif);
-			}
-			ioctl_or_perror_and_die(fd,
-					key == ARG_addif ? SIOCBRADDIF : SIOCBRDELIF,
-					&ifr, "bridge %s", br);
-			goto done_next_argv;
-		}
 #if ENABLE_FEATURE_BRCTL_FANCY
 		if (key == ARG_stp) { /* stp */
 			static const char no_yes[] ALIGN1 =
@@ -330,65 +307,102 @@ int brctl_main(int argc UNUSED_PARAM, char **argv)
 			if (onoff < 0)
 				bb_error_msg_and_die(bb_msg_invalid_arg_to, *argv, applet_name);
 			onoff = (unsigned)onoff / 4;
-			arm_ioctl(args, BRCTL_SET_BRIDGE_STP_STATE, onoff, 0);
-			goto fire;
+			write_uint(br, "bridge/stp_state", onoff);
+			//goto done_next_argv;
+			return EXIT_SUCCESS;
 		}
+
 		if ((unsigned)(key - ARG_setageing) < 4) { /* time related ops */
-			static const uint8_t ops[] ALIGN1 = {
-				BRCTL_SET_AGEING_TIME,          /* ARG_setageing */
-				BRCTL_SET_BRIDGE_FORWARD_DELAY, /* ARG_setfd     */
-				BRCTL_SET_BRIDGE_HELLO_TIME,    /* ARG_sethello  */
-				BRCTL_SET_BRIDGE_MAX_AGE        /* ARG_setmaxage */
-			};
-			arm_ioctl(args, ops[key - ARG_setageing], str_to_jiffies(*argv), 0);
-			goto fire;
+			/* setageing BR N: "N*100\n" to /sys/class/net/BR/bridge/ageing_time
+			 * setfd BR N:     "N*100\n" to /sys/class/net/BR/bridge/forward_delay
+			 * sethello BR N:  "N*100\n" to /sys/class/net/BR/bridge/hello_time
+			 * setmaxage BR N: "N*100\n" to /sys/class/net/BR/bridge/max_age
+			 */
+			write_uint(br,
+				nth_string(
+					"bridge/ageing_time"  "\0" /* ARG_setageing */
+					"bridge/forward_delay""\0" /* ARG_setfd     */
+					"bridge/hello_time"   "\0" /* ARG_sethello  */
+					"bridge/max_age",          /* ARG_setmaxage */
+					key - ARG_setageing
+				),
+				str_to_jiffies(*argv)
+			);
+			//goto done_next_argv;
+			return EXIT_SUCCESS;
 		}
+
+		if (key == ARG_setbridgeprio) {
+			write_uint(br, "bridge/priority", xatoi_positive(*argv));
+			//goto done_next_argv;
+			return EXIT_SUCCESS;
+		}
+
 		if (key == ARG_setpathcost
 		 || key == ARG_setportprio
-		 || key == ARG_setbridgeprio
 		) {
-			static const uint8_t ops[] ALIGN1 = {
-				BRCTL_SET_PATH_COST,      /* ARG_setpathcost   */
-				BRCTL_SET_PORT_PRIORITY,  /* ARG_setportprio   */
-				BRCTL_SET_BRIDGE_PRIORITY /* ARG_setbridgeprio */
-			};
-			int port = -1;
-			unsigned arg1, arg2;
-
-			if (key != ARG_setbridgeprio) {
-				/* get portnum */
-				unsigned i;
-
-				port = if_nametoindex(*argv++);
-				if (!port)
-					bb_error_msg_and_die(bb_msg_invalid_arg_to, *argv, "port");
-				memset(ifidx, 0, sizeof ifidx);
-				arm_ioctl(args, BRCTL_GET_PORT_LIST, (unsigned long)ifidx,
-						MAX_PORTS);
-				xioctl(fd, SIOCDEVPRIVATE, &ifr);
-				for (i = 0; i < MAX_PORTS; i++) {
-					if (ifidx[i] == port) {
-						port = i;
-						break;
-					}
-				}
-			}
-			arg1 = port;
-			arg2 = xatoi_positive(*argv);
-			if (key == ARG_setbridgeprio) {
-				arg1 = arg2;
-				arg2 = 0;
-			}
-			arm_ioctl(args, ops[key - ARG_setpathcost], arg1, arg2);
+			if (!argv[1])
+				bb_show_usage();
+			/* BR is not used (and ignored!) for these commands:
+			 * "setpathcost BR PORT N" writes "N\n" to
+			 * /sys/class/net/PORT/brport/path_cost
+			 * "setportprio BR PORT N" writes "N\n" to
+			 * /sys/class/net/PORT/brport/priority
+			 */
+			write_uint(argv[0],
+				nth_string(
+					"brport/path_cost" "\0" /* ARG_setpathcost */
+					"brport/priority",      /* ARG_setportprio */
+					key - ARG_setpathcost
+				),
+				xatoi_positive(argv[1])
+			);
+			//argv++;
+			//goto done_next_argv;
+			return EXIT_SUCCESS;
 		}
- fire:
-		/* Execute the previously set command */
-		xioctl(fd, SIOCDEVPRIVATE, &ifr);
+
+/* TODO: "showmacs BR"
+ *	port no\tmac addr\t\tis local?\tageing timer
+ *	<sp><sp>1\txx:xx:xx:xx:xx:xx\tno\t\t<sp><sp><sp>1.31
+ *	port no	mac addr		is local?	ageing timer
+ *	  1	xx:xx:xx:xx:xx:xx	no		   1.31
+ * Read fixed-sized records from /sys/class/net/BR/brforward:
+ *	struct __fdb_entry {
+ *		uint8_t  mac_addr[ETH_ALEN];
+ *		uint8_t  port_no; //lsb
+ *		uint8_t  is_local;
+ *		uint32_t ageing_timer_value;
+ *		uint8_t  port_hi;
+ *		uint8_t  pad0;
+ *		uint16_t unused;
+ *	};
+ */
 #endif
- done_next_argv:
-		argv++;
- done:
-		close(fd);
+		/* always true: if (key == ARG_addif || key == ARG_delif) */ {
+			/* addif or delif */
+			struct ifreq ifr;
+			int fd = xsocket(AF_INET, SOCK_STREAM, 0);
+
+			strncpy_IFNAMSIZ(ifr.ifr_name, br);
+			ifr.ifr_ifindex = if_nametoindex(*argv);
+			if (ifr.ifr_ifindex == 0) {
+				bb_perror_msg_and_die("iface %s", *argv);
+			}
+			ioctl_or_perror_and_die(fd,
+				key == ARG_addif ? SIOCBRADDIF : SIOCBRDELIF,
+				&ifr, "bridge %s", br
+			);
+			//close(fd);
+			//goto done_next_argv;
+			if (ENABLE_FEATURE_CLEAN_UP)
+				close(fd);
+			return EXIT_SUCCESS;
+		}
+
+// done_next_argv:
+//		argv++;
+// done:
 	}
 
 	return EXIT_SUCCESS;

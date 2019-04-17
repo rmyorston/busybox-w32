@@ -249,7 +249,7 @@ safe_write_to_pty_decode_iac(struct tsession *ts)
 	 * IAC SE  (240) End of subnegotiation. Treated as NOP.
 	 * IAC NOP (241) NOP. Supported.
 	 * IAC BRK (243) Break. Like serial line break. TODO via tcsendbreak()?
-	 * IAC AYT (246) Are you there. Send back evidence that AYT was seen. TODO (send NOP back)?
+	 * IAC AYT (246) Are you there.
 	 *  These don't look useful:
 	 * IAC DM  (242) Data mark. What is this?
 	 * IAC IP  (244) Suspend, interrupt or abort the process. (Ancient cousin of ^C).
@@ -274,6 +274,18 @@ safe_write_to_pty_decode_iac(struct tsession *ts)
 		if (rc <= 0)
 			return rc;
 #endif
+		rc = 2;
+		goto update_and_return;
+	}
+	if (buf[1] == AYT) {
+		if (ts->size2 == 0) { /* if nothing buffered yet... */
+			/* Send back evidence that AYT was seen */
+			unsigned char *buf2 = TS_BUF2(ts);
+			buf2[0] = IAC;
+			buf2[1] = NOP;
+			ts->wridx2 = 0;
+			ts->rdidx2 = ts->size2 = 2;
+		}
 		rc = 2;
 		goto update_and_return;
 	}

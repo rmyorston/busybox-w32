@@ -10,7 +10,11 @@
 #include <ifaddrs.h>
 #include <netpacket/packet.h>
 
-int FAST_FUNC d6_read_interface(const char *interface, int *ifindex, struct in6_addr *nip6, uint8_t *mac)
+int FAST_FUNC d6_read_interface(
+		const char *interface,
+		int *ifindex,
+		struct in6_addr *nip6,
+		uint8_t *mac)
 {
 	int retval = 3;
 	struct ifaddrs *ifap, *ifa;
@@ -22,12 +26,12 @@ int FAST_FUNC d6_read_interface(const char *interface, int *ifindex, struct in6_
 		if (!ifa->ifa_addr || (strcmp(ifa->ifa_name, interface) != 0))
 			continue;
 
-		sip6 = (struct sockaddr_in6*)(ifa->ifa_addr);
-
 		if (ifa->ifa_addr->sa_family == AF_PACKET) {
-			struct sockaddr_ll *sll = (struct sockaddr_ll*)(ifa->ifa_addr);
+			struct sockaddr_ll *sll = (void*)(ifa->ifa_addr);
 			memcpy(mac, sll->sll_addr, 6);
-			log2("MAC %02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+			log2("MAC %02x:%02x:%02x:%02x:%02x:%02x",
+				mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+			);
 			*ifindex = sll->sll_ifindex;
 			log2("ifindex %d", *ifindex);
 			retval &= (3 - (1<<0));
@@ -38,6 +42,17 @@ int FAST_FUNC d6_read_interface(const char *interface, int *ifindex, struct in6_
 			log1("IP %s", inet_ntoa(((struct sockaddr_in *)ifa->ifa_addr)->sin_addr));
 		}
 #endif
+/* RFC 3315
+ * 16. Client Source Address and Interface Selection
+ *
+ * "When a client sends a DHCP message to the
+ * All_DHCP_Relay_Agents_and_Servers address, ... ... The client
+ * MUST use a link-local address assigned to the interface for which it
+ * is requesting configuration information as the source address in the
+ * header of the IP datagram."
+ */
+		sip6 = (void*)(ifa->ifa_addr);
+
 		if (ifa->ifa_addr->sa_family == AF_INET6
 		 && IN6_IS_ADDR_LINKLOCAL(&sip6->sin6_addr)
 		) {
@@ -87,7 +102,7 @@ int FAST_FUNC d6_read_interface(const char *interface, int *ifindex, struct in6_
 		bb_error_msg("can't get %s", "MAC");
 	if (retval & (1<<1))
 		bb_error_msg("can't get %s", "link-local IPv6 address");
-	return -1;
+	return retval;
 }
 
 int FAST_FUNC d6_listen_socket(int port, const char *inf)

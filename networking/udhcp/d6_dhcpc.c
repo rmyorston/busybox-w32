@@ -2,15 +2,13 @@
 /*
  * DHCPv6 client.
  *
- * WARNING: THIS CODE IS INCOMPLETE.
- *
  * Copyright (C) 2011-2017 Denys Vlasenko.
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config UDHCPC6
 //config:	bool "udhcpc6 (21 kb)"
-//config:	default n  # not yet ready
+//config:	default y
 //config:	depends on FEATURE_IPV6
 //config:	help
 //config:	udhcpc6 is a DHCPv6 client
@@ -205,7 +203,6 @@ static void *d6_copy_option(uint8_t *option, uint8_t *option_end, unsigned code)
 		return opt;
 	return xmemdup(opt, opt[3] + 4);
 }
-
 
 /*** Script execution code ***/
 
@@ -533,6 +530,7 @@ static uint8_t *add_d6_client_options(uint8_t *ptr)
 
 static int d6_mcast_from_client_config_ifindex(struct d6_packet *packet, uint8_t *end)
 {
+	/* FF02::1:2 is "All_DHCP_Relay_Agents_and_Servers" address */
 	static const uint8_t FF02__1_2[16] = {
 		0xFF, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x02,
@@ -903,7 +901,6 @@ static NOINLINE int d6_recv_raw_packet(struct in6_addr *peer_ipv6, struct d6_pac
 	return bytes;
 }
 
-
 /*** Main ***/
 
 static int sockfd = -1;
@@ -1146,7 +1143,6 @@ static void client_background(void)
 //usage:     "\nSignals:"
 //usage:     "\n	USR1	Renew lease"
 //usage:     "\n	USR2	Release lease"
-
 
 int udhcpc6_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
