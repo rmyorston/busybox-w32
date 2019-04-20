@@ -259,18 +259,11 @@
 #if ENABLE_FEATURE_USE_SENDFILE
 # include <sys/sendfile.h>
 #endif
-/* amount of buffering in a pipe */
-#ifndef PIPE_BUF
-# define PIPE_BUF 4096
-#endif
 
 #define DEBUG 0
 
 #define IOBUF_SIZE 8192
-#define MAX_HTTP_HEADERS_SIZE ((8*1024) - 16)
-#if PIPE_BUF >= IOBUF_SIZE
-# error "PIPE_BUF >= IOBUF_SIZE"
-#endif
+#define MAX_HTTP_HEADERS_SIZE (32*1024)
 
 #define HEADER_READ_TIMEOUT 60
 
@@ -1150,18 +1143,61 @@ static void send_headers(unsigned responseNum)
 			file_size = range_end - range_start + 1;
 		}
 #endif
+
+//RFC 2616 4.4 Message Length
+// The transfer-length of a message is the length of the message-body as
+// it appears in the message; that is, after any transfer-codings have
+// been applied. When a message-body is included with a message, the
+// transfer-length of that body is determined by one of the following
+// (in order of precedence):
+// 1.Any response message which "MUST NOT" include a message-body (such
+//   as the 1xx, 204, and 304 responses and any response to a HEAD
+//   request) is always terminated by the first empty line after the
+//   header fields, regardless of the entity-header fields present in
+//   the message.
+// 2.If a Transfer-Encoding header field (section 14.41) is present and
+//   has any value other than "identity", then the transfer-length is
+//   defined by use of the "chunked" transfer-coding (section 3.6),
+//   unless the message is terminated by closing the connection.
+// 3.If a Content-Length header field (section 14.13) is present, its
+//   decimal value in OCTETs represents both the entity-length and the
+//   transfer-length. The Content-Length header field MUST NOT be sent
+//   if these two lengths are different (i.e., if a Transfer-Encoding
+//   header field is present). If a message is received with both a
+//   Transfer-Encoding header field and a Content-Length header field,
+//   the latter MUST be ignored.
+// 4.If the message uses the media type "multipart/byteranges" ...
+// 5.By the server closing the connection.
+//
+// (NB: standards do not define "Transfer-Length:" _header_,
+// transfer-length above is just a concept).
+
 		len += sprintf(iobuf + len,
 #if ENABLE_FEATURE_HTTPD_RANGES
 			"Accept-Ranges: bytes\r\n"
 #endif
 			"Last-Modified: %s\r\n"
-			"%s-Length: %"OFF_FMT"u\r\n",
+	/* Because of 4.4 (5), we can forgo sending of "Content-Length"
+	 * since we close connection afterwards, but it helps clients
+	 * to e.g. estimate download times, show progress bars etc.
+	 * Theoretically we should not send it if page is compressed,
+	 * but de-facto standard is to send it (see comment below).
+	 */
+			"Content-Length: %"OFF_FMT"u\r\n",
 				date_str,
-				content_gzip ? "Transfer" : "Content",
 				file_size
 		);
 	}
 
+	/* This should be "Transfer-Encoding", not "Content-Encoding":
+	 * "data is compressed for transfer", not "data is an archive".
+	 * But many clients were not handling "Transfer-Encoding" correctly
+	 * (they were not uncompressing gzipped pages, tried to show
+	 * raw compressed data), and servers worked around it by using
+	 * "Content-Encoding" instead... and this become de-facto standard.
+	 * https://bugzilla.mozilla.org/show_bug.cgi?id=68517
+	 * https://bugs.chromium.org/p/chromium/issues/detail?id=94730
+	 */
 	if (content_gzip)
 		len += sprintf(iobuf + len, "Content-Encoding: gzip\r\n");
 
@@ -1210,10 +1246,10 @@ static unsigned get_line(void)
 	unsigned count;
 	char c;
 
-	alarm(HEADER_READ_TIMEOUT);
 	count = 0;
 	while (1) {
 		if (hdr_cnt <= 0) {
+			alarm(HEADER_READ_TIMEOUT);
 			hdr_cnt = safe_read(STDIN_FILENO, hdr_buf, sizeof_hdr_buf);
 			if (hdr_cnt <= 0)
 				goto ret;
@@ -1370,10 +1406,10 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 				 * CGI may output a few first bytes and then wait
 				 * for POSTDATA without closing stdout.
 				 * With full_read we may wait here forever. */
-				count = safe_read(fromCgi_rd, rbuf + out_cnt, PIPE_BUF - 8);
+				count = safe_read(fromCgi_rd, rbuf + out_cnt, IOBUF_SIZE - 8);
 				if (count <= 0) {
 					/* eof (or error) and there was no "HTTP",
-					 * so write it, then write received data */
+					 * send "HTTP/1.0 200 OK\r\n", then send received data */
 					if (out_cnt) {
 						full_write(STDOUT_FILENO, HTTP_200, sizeof(HTTP_200)-1);
 						full_write(STDOUT_FILENO, rbuf, out_cnt);
@@ -1411,7 +1447,7 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 					out_cnt = -1; /* buffering off */
 				}
 			} else {
-				count = safe_read(fromCgi_rd, rbuf, PIPE_BUF);
+				count = safe_read(fromCgi_rd, rbuf, IOBUF_SIZE);
 				if (count <= 0)
 					break;  /* eof (or error) */
 			}
@@ -2085,7 +2121,6 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 #if ENABLE_FEATURE_HTTPD_BASIC_AUTH
 	smallint authorized = -1;
 #endif
-	char http_major_version;
 	char *HTTP_slash;
 
 	/* Allocation of iobuf is postponed until now
@@ -2148,16 +2183,12 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 	if (urlp[0] != '/')
 		send_headers_and_exit(HTTP_BAD_REQUEST);
 
-	/* Find end of URL and parse HTTP version, if any */
-//TODO: maybe just reject all queries which have no " HTTP/xyz" suffix?
-//Then 'http_major_version' can be deleted
-	http_major_version = ('0' - 1); /* "less than 0th" version */
-	HTTP_slash = strchrnul(urlp, ' ');
+	/* Find end of URL */
+	HTTP_slash = strchr(urlp, ' ');
 	/* Is it " HTTP/"? */
-	if (HTTP_slash[0] && strncmp(HTTP_slash + 1, HTTP_200, 5) == 0) {
-		http_major_version = HTTP_slash[6];
-		*HTTP_slash++ = '\0';
-	}
+	if (!HTTP_slash || strncmp(HTTP_slash + 1, HTTP_200, 5) != 0)
+		send_headers_and_exit(HTTP_BAD_REQUEST);
+	*HTTP_slash++ = '\0';
 
 	/* Copy URL from after "GET "/"POST " to stack-allocated char[] */
 	urlcopy = alloca((HTTP_slash - urlp) + 2 + strlen(index_page));
@@ -2173,6 +2204,8 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 		Htaccess_Proxy *proxy_entry = find_proxy_entry(urlcopy);
 
 		if (proxy_entry) {
+			if (verbose > 1)
+				bb_error_msg("proxy:%s", urlcopy);
 			lsa = host2sockaddr(proxy_entry->host_port, 80);
 			if (!lsa)
 				send_headers_and_exit(HTTP_INTERNAL_SERVER_ERROR);
@@ -2181,6 +2214,8 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 				send_headers_and_exit(HTTP_INTERNAL_SERVER_ERROR);
 			if (connect(proxy_fd, &lsa->u.sa, lsa->len) < 0)
 				send_headers_and_exit(HTTP_INTERNAL_SERVER_ERROR);
+			/* Disable peer header reading timeout */
+			alarm(0);
 			/* Config directive was of the form:
 			 *   P:/url:[http://]hostname[:port]/new/path
 			 * When /urlSFX is requested, reverse proxy it
@@ -2190,7 +2225,7 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 					prequest, /* "GET" or "POST" */
 					proxy_entry->url_to, /* "/new/path" */
 					urlcopy + strlen(proxy_entry->url_from), /* "SFX" */
-					HTTP_slash /* HTTP/xyz" or "" */
+					HTTP_slash /* "HTTP/xyz" */
 			);
 			cgi_io_loop_and_exit(proxy_fd, proxy_fd, /*max POST length:*/ INT_MAX);
 		}
@@ -2323,125 +2358,122 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 #if ENABLE_FEATURE_HTTPD_CGI
 	total_headers_len = 0;
 #endif
-	if (http_major_version >= '0') {
-		/* Request was with "... HTTP/nXXX", and n >= 0 */
 
-		/* Read until blank line */
-		while (1) {
-			unsigned iobuf_len = get_line();
-			if (!iobuf_len)
-				break; /* EOF or error or empty line */
+	/* Read until blank line */
+	while (1) {
+		unsigned iobuf_len = get_line();
+		if (!iobuf_len)
+			break; /* EOF or error or empty line */
 #if ENABLE_FEATURE_HTTPD_CGI
-			/* Prevent unlimited growth of HTTP_xyz envvars */
-			total_headers_len += iobuf_len;
-			if (total_headers_len >= MAX_HTTP_HEADERS_SIZE)
-				send_headers_and_exit(HTTP_ENTITY_TOO_LARGE);
+		/* Prevent unlimited growth of HTTP_xyz envvars */
+		total_headers_len += iobuf_len;
+		if (total_headers_len >= MAX_HTTP_HEADERS_SIZE)
+			send_headers_and_exit(HTTP_ENTITY_TOO_LARGE);
 #endif
-			if (DEBUG)
-				bb_error_msg("header: '%s'", iobuf);
+		if (DEBUG)
+			bb_error_msg("header: '%s'", iobuf);
 #if ENABLE_FEATURE_HTTPD_CGI || ENABLE_FEATURE_HTTPD_PROXY
-			/* Try and do our best to parse more lines */
-			if ((STRNCASECMP(iobuf, "Content-Length:") == 0)) {
-				/* extra read only for POST */
-				if (prequest != request_GET
+		/* Try and do our best to parse more lines */
+		if (STRNCASECMP(iobuf, "Content-Length:") == 0) {
+			/* extra read only for POST */
+			if (prequest != request_GET
 # if ENABLE_FEATURE_HTTPD_CGI
-				 && prequest != request_HEAD
+			 && prequest != request_HEAD
 # endif
-				) {
-					tptr = skip_whitespace(iobuf + sizeof("Content-Length:") - 1);
-					if (!tptr[0])
-						send_headers_and_exit(HTTP_BAD_REQUEST);
-					/* not using strtoul: it ignores leading minus! */
-					length = bb_strtou(tptr, NULL, 10);
-					/* length is "ulong", but we need to pass it to int later */
-					if (errno || length > INT_MAX)
-						send_headers_and_exit(HTTP_BAD_REQUEST);
-				}
-				continue;
+			) {
+				tptr = skip_whitespace(iobuf + sizeof("Content-Length:") - 1);
+				if (!tptr[0])
+					send_headers_and_exit(HTTP_BAD_REQUEST);
+				/* not using strtoul: it ignores leading minus! */
+				length = bb_strtou(tptr, NULL, 10);
+				/* length is "ulong", but we need to pass it to int later */
+				if (errno || length > INT_MAX)
+					send_headers_and_exit(HTTP_BAD_REQUEST);
 			}
+			continue;
+		}
 #endif
 #if ENABLE_FEATURE_HTTPD_BASIC_AUTH
-			if (STRNCASECMP(iobuf, "Authorization:") == 0) {
-				/* We only allow Basic credentials.
-				 * It shows up as "Authorization: Basic <user>:<passwd>" where
-				 * "<user>:<passwd>" is base64 encoded.
-				 */
-				tptr = skip_whitespace(iobuf + sizeof("Authorization:")-1);
-				if (STRNCASECMP(tptr, "Basic") != 0)
-					continue;
+		if (STRNCASECMP(iobuf, "Authorization:") == 0) {
+			/* We only allow Basic credentials.
+			 * It shows up as "Authorization: Basic <user>:<passwd>" where
+			 * "<user>:<passwd>" is base64 encoded.
+			 */
+			tptr = skip_whitespace(iobuf + sizeof("Authorization:")-1);
+			if (STRNCASECMP(tptr, "Basic") == 0) {
 				tptr += sizeof("Basic")-1;
 				/* decodeBase64() skips whitespace itself */
 				decodeBase64(tptr);
 				authorized = check_user_passwd(urlcopy, tptr);
 				continue;
 			}
+		}
 #endif
 #if ENABLE_FEATURE_HTTPD_RANGES
-			if (STRNCASECMP(iobuf, "Range:") == 0) {
-				/* We know only bytes=NNN-[MMM] */
-				char *s = skip_whitespace(iobuf + sizeof("Range:")-1);
-				if (is_prefixed_with(s, "bytes=")) {
-					s += sizeof("bytes=")-1;
-					range_start = BB_STRTOOFF(s, &s, 10);
-					if (s[0] != '-' || range_start < 0) {
+		if (STRNCASECMP(iobuf, "Range:") == 0) {
+			/* We know only bytes=NNN-[MMM] */
+			char *s = skip_whitespace(iobuf + sizeof("Range:")-1);
+			if (is_prefixed_with(s, "bytes=")) {
+				s += sizeof("bytes=")-1;
+				range_start = BB_STRTOOFF(s, &s, 10);
+				if (s[0] != '-' || range_start < 0) {
+					range_start = -1;
+				} else if (s[1]) {
+					range_end = BB_STRTOOFF(s+1, NULL, 10);
+					if (errno || range_end < range_start)
 						range_start = -1;
-					} else if (s[1]) {
-						range_end = BB_STRTOOFF(s+1, NULL, 10);
-						if (errno || range_end < range_start)
-							range_start = -1;
-					}
 				}
-				continue;
 			}
+			continue;
+		}
 #endif
 #if ENABLE_FEATURE_HTTPD_GZIP
-			if (STRNCASECMP(iobuf, "Accept-Encoding:") == 0) {
-				/* Note: we do not support "gzip;q=0"
-				 * method of _disabling_ gzip
-				 * delivery. No one uses that, though */
-				const char *s = strstr(iobuf, "gzip");
-				if (s) {
-					// want more thorough checks?
-					//if (s[-1] == ' '
-					// || s[-1] == ','
-					// || s[-1] == ':'
-					//) {
-						content_gzip = 1;
-					//}
-				}
-				continue;
+		if (STRNCASECMP(iobuf, "Accept-Encoding:") == 0) {
+			/* Note: we do not support "gzip;q=0"
+			 * method of _disabling_ gzip
+			 * delivery. No one uses that, though */
+			const char *s = strstr(iobuf, "gzip");
+			if (s) {
+				// want more thorough checks?
+				//if (s[-1] == ' '
+				// || s[-1] == ','
+				// || s[-1] == ':'
+				//) {
+					content_gzip = 1;
+				//}
 			}
+			continue;
+		}
 #endif
 #if ENABLE_FEATURE_HTTPD_CGI
-			if (cgi_type != CGI_NONE) {
-				bool ct = (STRNCASECMP(iobuf, "Content-Type:") == 0);
-				char *cp;
-				char *colon = strchr(iobuf, ':');
+		if (cgi_type != CGI_NONE) {
+			bool ct = (STRNCASECMP(iobuf, "Content-Type:") == 0);
+			char *cp;
+			char *colon = strchr(iobuf, ':');
 
-				if (!colon)
+			if (!colon)
+				continue;
+			cp = iobuf;
+			while (cp < colon) {
+				/* a-z => A-Z, not-alnum => _ */
+				char c = (*cp & ~0x20); /* toupper for A-Za-z, undef for others */
+				if ((unsigned)(c - 'A') <= ('Z' - 'A')) {
+					*cp++ = c;
 					continue;
-				cp = iobuf;
-				while (cp < colon) {
-					/* a-z => A-Z, not-alnum => _ */
-					char c = (*cp & ~0x20); /* toupper for A-Za-z, undef for others */
-					if ((unsigned)(c - 'A') <= ('Z' - 'A')) {
-						*cp++ = c;
-						continue;
-					}
-					if (!isdigit(*cp))
-						*cp = '_';
-					cp++;
 				}
-				/* "Content-Type:" gets no HTTP_ prefix, all others do */
-				cp = xasprintf(ct ? "HTTP_%.*s=%s" + 5 : "HTTP_%.*s=%s",
-					(int)(colon - iobuf), iobuf,
-					skip_whitespace(colon + 1)
-				);
-				putenv(cp);
+				if (!isdigit(*cp))
+					*cp = '_';
+				cp++;
 			}
+			/* "Content-Type:" gets no HTTP_ prefix, all others do */
+			cp = xasprintf(ct ? "HTTP_%.*s=%s" + 5 : "HTTP_%.*s=%s",
+				(int)(colon - iobuf), iobuf,
+				skip_whitespace(colon + 1)
+			);
+			putenv(cp);
+		}
 #endif
-		} /* while extra header reading */
-	}
+	} /* while extra header reading */
 
 	/* We are done reading headers, disable peer timeout */
 	alarm(0);
