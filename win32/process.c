@@ -64,6 +64,10 @@ parse_interpreter(const char *cmd, interp_t *interp)
 		interp->path = path;
 		interp->name = t;
 		interp->opts = strtok(NULL, "\r\n");
+		/* Trim leading and trailing whitespace from the options.
+		 * If the resulting string is empty return a NULL pointer. */
+		if (interp->opts && trim(interp->opts) == interp->opts)
+			interp->opts = NULL;
 		return 1;
 	}
 
