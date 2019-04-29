@@ -128,7 +128,11 @@ for i in $implemented; do
 	# Note: if $LINKSDIR/applet exists, we do not overwrite it.
 	# Useful if one wants to run tests against a standard utility,
 	# not an applet.
-	ln -s "$bindir/busybox" "$LINKSDIR/$i" 2>/dev/null
+	if [ -f $bindir/busybox.exe ]; then # Assume Windows if exe file exists
+		ln "$bindir/busybox.exe" "$LINKSDIR/$i.exe" 2>/dev/null
+	else
+		ln -s "$bindir/busybox" "$LINKSDIR/$i" 2>/dev/null
+	fi
 done
 
 # Set up option flags so tests can be selective.
@@ -146,7 +150,7 @@ for applet in $applets; do
 
 	# Is this a new-style test?
 	if [ -f "$applet.tests" ]; then
-		if [ ! -e "$LINKSDIR/$applet" ]; then
+		if [ ! -e "$LINKSDIR/$applet" ] && [ ! -e "$LINKSDIR/$applet.exe" ]; then
 			# (avoiding bash'ism "${applet:0:4}")
 			if ! echo "$applet" | grep "^all_" >/dev/null; then
 				echo "SKIPPED: $applet (not built)"
