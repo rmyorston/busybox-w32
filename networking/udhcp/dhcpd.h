@@ -15,11 +15,7 @@ PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 #define DHCPD_CONF_FILE         "/etc/udhcpd.conf"
 
 
-struct static_lease {
-	struct static_lease *next;
-	uint32_t nip;
-	uint8_t mac[6];
-};
+struct static_lease;
 
 struct server_config_t {
 	char *interface;                /* interface to use */
@@ -58,7 +54,7 @@ struct server_config_t {
 } FIX_ALIASING;
 
 #define server_config (*(struct server_config_t*)bb_common_bufsiz1)
-/* client_config sits in 2nd half of bb_common_bufsiz1 */
+/* client_data sits in 2nd half of bb_common_bufsiz1 */
 
 #if ENABLE_FEATURE_UDHCP_PORT
 #define SERVER_PORT  (server_config.port)

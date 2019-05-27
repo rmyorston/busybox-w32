@@ -1108,6 +1108,8 @@ static void process_files(void)
 		int old_matched, matched;
 
 		old_matched = sed_cmd->in_match;
+		if (!old_matched)
+			sed_cmd->end_line = sed_cmd->end_line_orig;
 
 		/* Determine if this command matches this line: */
 

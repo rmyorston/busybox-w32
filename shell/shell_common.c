@@ -26,19 +26,6 @@ const char defifsvar[] ALIGN1 = "IFS= \t\n\r";
 #endif
 const char defoptindvar[] ALIGN1 = "OPTIND=1";
 
-
-int FAST_FUNC is_well_formed_var_name(const char *s, char terminator)
-{
-	if (!s || !(isalpha(*s) || *s == '_'))
-		return 0;
-
-	do
-		s++;
-	while (isalnum(*s) || *s == '_');
-
-	return *s == terminator;
-}
-
 /* read builtin */
 
 /* Needs to be interruptible: shell must handle traps and shell-special signals
@@ -76,7 +63,7 @@ shell_builtin_read(struct builtin_read_params *params)
 	argv = params->argv;
 	pp = argv;
 	while (*pp) {
-		if (!is_well_formed_var_name(*pp, '\0')) {
+		if (endofname(*pp)[0] != '\0') {
 			/* Mimic bash message */
 			bb_error_msg("read: '%s': not a valid identifier", *pp);
 			return (const char *)(uintptr_t)1;
@@ -384,99 +371,138 @@ shell_builtin_read(struct builtin_read_params *params)
 struct limits {
 	uint8_t cmd;            /* RLIMIT_xxx fit into it */
 	uint8_t factor_shift;   /* shift by to get rlim_{cur,max} values */
-	char option;
 	const char *name;
 };
 
 static const struct limits limits_tbl[] = {
-#ifdef RLIMIT_FSIZE
-	{ RLIMIT_FSIZE,		9,	'f',	"file size (blocks)" },
-#endif
-#ifdef RLIMIT_CPU
-	{ RLIMIT_CPU,		0,	't',	"cpu time (seconds)" },
-#endif
-#ifdef RLIMIT_DATA
-	{ RLIMIT_DATA,		10,	'd',	"data seg size (kb)" },
-#endif
-#ifdef RLIMIT_STACK
-	{ RLIMIT_STACK,		10,	's',	"stack size (kb)" },
-#endif
-#ifdef RLIMIT_CORE
-	{ RLIMIT_CORE,		9,	'c',	"core file size (blocks)" },
-#endif
-#ifdef RLIMIT_RSS
-	{ RLIMIT_RSS,		10,	'm',	"resident set size (kb)" },
+	{ RLIMIT_CORE,		9,	"core file size (blocks)" }, // -c
+	{ RLIMIT_DATA,		10,	"data seg size (kb)" },      // -d
+	{ RLIMIT_NICE,		0,	"scheduling priority" },     // -e
+	{ RLIMIT_FSIZE,		9,	"file size (blocks)" },      // -f
+#define LIMIT_F_IDX     3
+#ifdef RLIMIT_SIGPENDING
+	{ RLIMIT_SIGPENDING,	0,	"pending signals" },         // -i
 #endif
 #ifdef RLIMIT_MEMLOCK
-	{ RLIMIT_MEMLOCK,	10,	'l',	"locked memory (kb)" },
+	{ RLIMIT_MEMLOCK,	10,	"max locked memory (kb)" },  // -l
 #endif
-#ifdef RLIMIT_NPROC
-	{ RLIMIT_NPROC,		0,	'p',	"processes" },
+#ifdef RLIMIT_RSS
+	{ RLIMIT_RSS,		10,	"max memory size (kb)" },    // -m
 #endif
 #ifdef RLIMIT_NOFILE
-	{ RLIMIT_NOFILE,	0,	'n',	"file descriptors" },
+	{ RLIMIT_NOFILE,	0,	"open files" },              // -n
 #endif
-#ifdef RLIMIT_AS
-	{ RLIMIT_AS,		10,	'v',	"address space (kb)" },
-#endif
-#ifdef RLIMIT_LOCKS
-	{ RLIMIT_LOCKS,		0,	'w',	"locks" },
-#endif
-#ifdef RLIMIT_NICE
-	{ RLIMIT_NICE,		0,	'e',	"scheduling priority" },
+#ifdef RLIMIT_MSGQUEUE
+	{ RLIMIT_MSGQUEUE,	0,	"POSIX message queues (bytes)" }, // -q
 #endif
 #ifdef RLIMIT_RTPRIO
-	{ RLIMIT_RTPRIO,	0,	'r',	"real-time priority" },
+	{ RLIMIT_RTPRIO,	0,	"real-time priority" },      // -r
+#endif
+#ifdef RLIMIT_STACK
+	{ RLIMIT_STACK,		10,	"stack size (kb)" },         // -s
+#endif
+#ifdef RLIMIT_CPU
+	{ RLIMIT_CPU,		0,	"cpu time (seconds)" },      // -t
+#endif
+#ifdef RLIMIT_NPROC
+	{ RLIMIT_NPROC,		0,	"max user processes" },      // -u
+#endif
+#ifdef RLIMIT_AS
+	{ RLIMIT_AS,		10,	"virtual memory (kb)" },     // -v
+#endif
+#ifdef RLIMIT_LOCKS
+	{ RLIMIT_LOCKS,		0,	"file locks" },              // -x
 #endif
 };
+// bash also shows:
+//pipe size            (512 bytes, -p) 8
 
-enum {
-	OPT_hard = (1 << 0),
-	OPT_soft = (1 << 1),
-};
+static const char limit_chars[] ALIGN1 =
+			"c"
+			"d"
+			"e"
+			"f"
+#ifdef RLIMIT_SIGPENDING
+			"i"
+#endif
+#ifdef RLIMIT_MEMLOCK
+			"l"
+#endif
+#ifdef RLIMIT_RSS
+			"m"
+#endif
+#ifdef RLIMIT_NOFILE
+			"n"
+#endif
+#ifdef RLIMIT_MSGQUEUE
+			"q"
+#endif
+#ifdef RLIMIT_RTPRIO
+			"r"
+#endif
+#ifdef RLIMIT_STACK
+			"s"
+#endif
+#ifdef RLIMIT_CPU
+			"t"
+#endif
+#ifdef RLIMIT_NPROC
+			"u"
+#endif
+#ifdef RLIMIT_AS
+			"v"
+#endif
+#ifdef RLIMIT_LOCKS
+			"x"
+#endif
+;
 
 /* "-": treat args as parameters of option with ASCII code 1 */
 static const char ulimit_opt_string[] ALIGN1 = "-HSa"
-#ifdef RLIMIT_FSIZE
-			"f::"
-#endif
-#ifdef RLIMIT_CPU
-			"t::"
-#endif
-#ifdef RLIMIT_DATA
-			"d::"
-#endif
-#ifdef RLIMIT_STACK
-			"s::"
-#endif
-#ifdef RLIMIT_CORE
 			"c::"
-#endif
-#ifdef RLIMIT_RSS
-			"m::"
+			"d::"
+			"e::"
+			"f::"
+#ifdef RLIMIT_SIGPENDING
+			"i::"
 #endif
 #ifdef RLIMIT_MEMLOCK
 			"l::"
 #endif
-#ifdef RLIMIT_NPROC
-			"p::"
+#ifdef RLIMIT_RSS
+			"m::"
 #endif
 #ifdef RLIMIT_NOFILE
 			"n::"
+#endif
+#ifdef RLIMIT_MSGQUEUE
+			"q::"
+#endif
+#ifdef RLIMIT_RTPRIO
+			"r::"
+#endif
+#ifdef RLIMIT_STACK
+			"s::"
+#endif
+#ifdef RLIMIT_CPU
+			"t::"
+#endif
+#ifdef RLIMIT_NPROC
+			"u::"
 #endif
 #ifdef RLIMIT_AS
 			"v::"
 #endif
 #ifdef RLIMIT_LOCKS
-			"w::"
+			"x::"
 #endif
-#ifdef RLIMIT_NICE
-			"e::"
-#endif
-#ifdef RLIMIT_RTPRIO
-			"r::"
-#endif
-			;
+;
+
+enum {
+	OPT_hard = (1 << 0),
+	OPT_soft = (1 << 1),
+	OPT_all  = (1 << 2),
+};
 
 static void printlim(unsigned opts, const struct rlimit *limit,
 			const struct limits *l)
@@ -484,7 +510,7 @@ static void printlim(unsigned opts, const struct rlimit *limit,
 	rlim_t val;
 
 	val = limit->rlim_max;
-	if (!(opts & OPT_hard))
+	if (opts & OPT_soft)
 		val = limit->rlim_cur;
 
 	if (val == RLIM_INFINITY)
@@ -498,8 +524,11 @@ static void printlim(unsigned opts, const struct rlimit *limit,
 int FAST_FUNC
 shell_builtin_ulimit(char **argv)
 {
+	struct rlimit limit;
+	unsigned opt_cnt;
 	unsigned opts;
 	unsigned argc;
+	unsigned i;
 
 	/* We can't use getopt32: need to handle commands like
 	 * ulimit 123 -c2 -l 456
@@ -510,12 +539,48 @@ shell_builtin_ulimit(char **argv)
 	 */
 	GETOPT_RESET();
 
+// bash 4.4.23:
+//
+// -H and/or -S change meaning even of options *before* them: ulimit -f 2000 -H
+// sets hard limit, ulimit -a -H prints hard limits.
+//
+// -a is equivalent for requesting all limits to be shown.
+//
+// If -a is specified, attempts to set limits are ignored:
+//  ulimit -m 1000; ulimit -m 2000 -a
+// shows 1000, not 2000. HOWEVER, *implicit* -f form "ulimit 2000 -a"
+// DOES set -f limit [we don't implement this quirk], "ulimit -a 2000" does not.
+// Options are still parsed: ulimit -az complains about unknown -z opt.
+//
+// -a is not cumulative: "ulimit -a -a" = "ulimit -a -f -m" = "ulimit -a"
+//
+// -HSa can be combined in one argument and with one other option (example: -Sm),
+// but other options can't: limit value is an optional argument,
+// thus "-mf" means "-m f", f is the parameter of -m.
+//
+// Limit can be set and then printed: ulimit -m 2000 -m
+// If set more than once, they are set and printed in order:
+// try ulimit -m -m 1000 -m -m 2000 -m -m 3000 -m
+//
+// Limits are shown in the order of options given:
+// ulimit -m -f is not the same as ulimit -f -m.
+//
+// If both -S and -H are given, show soft limit.
+//
+// Short printout (limit value only) is printed only if just one option
+// is given: ulimit -m. ulimit -f -m prints verbose lines.
+// ulimit -f -f prints same verbose line twice.
+// ulimit -m 10000 -f prints verbose line for -f.
+
 	argc = string_array_len(argv);
 
+	/* First pass over options: detect -H/-S/-a status,
+	 * and "bare ulimit" and "only one option" cases
+	 * by counting other opts.
+	 */
+	opt_cnt = 0;
 	opts = 0;
 	while (1) {
-		struct rlimit limit;
-		const struct limits *l;
 		int opt_char = getopt(argc, argv, ulimit_opt_string);
 
 		if (opt_char == -1)
@@ -528,74 +593,94 @@ shell_builtin_ulimit(char **argv)
 			opts |= OPT_soft;
 			continue;
 		}
-
 		if (opt_char == 'a') {
-			for (l = limits_tbl; l != &limits_tbl[ARRAY_SIZE(limits_tbl)]; l++) {
-				getrlimit(l->cmd, &limit);
-				printf("-%c: %-30s ", l->option, l->name);
-				printlim(opts, &limit, l);
-			}
+			opts |= OPT_all;
 			continue;
 		}
-
-		if (opt_char == 1)
-			opt_char = 'f';
-		for (l = limits_tbl; l != &limits_tbl[ARRAY_SIZE(limits_tbl)]; l++) {
-			if (opt_char == l->option) {
-				char *val_str;
-
-				getrlimit(l->cmd, &limit);
-
-				val_str = optarg;
-				if (!val_str && argv[optind] && argv[optind][0] != '-')
-					val_str = argv[optind++]; /* ++ skips NN in "-c NN" case */
-				if (val_str) {
-					rlim_t val;
-
-					if (strcmp(val_str, "unlimited") == 0)
-						val = RLIM_INFINITY;
-					else {
-						if (sizeof(val) == sizeof(int))
-							val = bb_strtou(val_str, NULL, 10);
-						else if (sizeof(val) == sizeof(long))
-							val = bb_strtoul(val_str, NULL, 10);
-						else
-							val = bb_strtoull(val_str, NULL, 10);
-						if (errno) {
-							bb_error_msg("invalid number '%s'", val_str);
-							return EXIT_FAILURE;
-						}
-						val <<= l->factor_shift;
-					}
-//bb_error_msg("opt %c val_str:'%s' val:%lld", opt_char, val_str, (long long)val);
-					/* from man bash: "If neither -H nor -S
-					 * is specified, both the soft and hard
-					 * limits are set. */
-					if (!opts)
-						opts = OPT_hard + OPT_soft;
-					if (opts & OPT_hard)
-						limit.rlim_max = val;
-					if (opts & OPT_soft)
-						limit.rlim_cur = val;
-//bb_error_msg("setrlimit(%d, %lld, %lld)", l->cmd, (long long)limit.rlim_cur, (long long)limit.rlim_max);
-					if (setrlimit(l->cmd, &limit) < 0) {
-						bb_perror_msg("error setting limit");
-						return EXIT_FAILURE;
-					}
-				} else {
-					printlim(opts, &limit, l);
-				}
-				break;
-			}
-		} /* for (every possible opt) */
-
-		if (l == &limits_tbl[ARRAY_SIZE(limits_tbl)]) {
+		if (opt_char == '?') {
 			/* bad option. getopt already complained. */
+			return EXIT_FAILURE;
+		}
+		opt_cnt++;
+	} /* while (there are options) */
+
+	if (!(opts & (OPT_hard | OPT_soft)))
+		opts |= (OPT_hard | OPT_soft);
+	if (opts & OPT_all) {
+		for (i = 0; i < ARRAY_SIZE(limits_tbl); i++) {
+			getrlimit(limits_tbl[i].cmd, &limit);
+			printf("%-32s(-%c) ", limits_tbl[i].name, limit_chars[i]);
+			printlim(opts, &limit, &limits_tbl[i]);
+		}
+		return EXIT_SUCCESS;
+	}
+
+	/* Second pass: set or print limits, in order */
+	GETOPT_RESET();
+	while (1) {
+		char *val_str;
+		int opt_char = getopt(argc, argv, ulimit_opt_string);
+
+		if (opt_char == -1)
 			break;
+		if (opt_char == 'H')
+			continue;
+		if (opt_char == 'S')
+			continue;
+		//if (opt_char == 'a') - impossible
+
+		if (opt_char == 1) /* if "ulimit NNN", -f is assumed */
+			opt_char = 'f';
+		i = strchrnul(limit_chars, opt_char) - limit_chars;
+		//if (i >= ARRAY_SIZE(limits_tbl)) - bad option, impossible
+
+		val_str = optarg;
+		if (!val_str && argv[optind] && argv[optind][0] != '-')
+			val_str = argv[optind++]; /* ++ skips NN in "-c NN" case */
+
+		getrlimit(limits_tbl[i].cmd, &limit);
+		if (!val_str) {
+			if (opt_cnt > 1)
+				printf("%-32s(-%c) ", limits_tbl[i].name, limit_chars[i]);
+			printlim(opts, &limit, &limits_tbl[i]);
+		} else {
+			rlim_t val = RLIM_INFINITY;
+			if (strcmp(val_str, "unlimited") != 0) {
+				if (sizeof(val) == sizeof(int))
+					val = bb_strtou(val_str, NULL, 10);
+				else if (sizeof(val) == sizeof(long))
+					val = bb_strtoul(val_str, NULL, 10);
+				else
+					val = bb_strtoull(val_str, NULL, 10);
+				if (errno) {
+					bb_error_msg("invalid number '%s'", val_str);
+					return EXIT_FAILURE;
+				}
+				val <<= limits_tbl[i].factor_shift;
+			}
+//bb_error_msg("opt %c val_str:'%s' val:%lld", opt_char, val_str, (long long)val);
+			/* from man bash: "If neither -H nor -S
+			 * is specified, both the soft and hard
+			 * limits are set. */
+			if (opts & OPT_hard)
+				limit.rlim_max = val;
+			if (opts & OPT_soft)
+				limit.rlim_cur = val;
+//bb_error_msg("setrlimit(%d, %lld, %lld)", limits_tbl[i].cmd, (long long)limit.rlim_cur, (long long)limit.rlim_max);
+			if (setrlimit(limits_tbl[i].cmd, &limit) < 0) {
+				bb_perror_msg("error setting limit");
+				return EXIT_FAILURE;
+			}
 		}
 	} /* while (there are options) */
 
-	return 0;
+	if (opt_cnt == 0) {
+		/* "bare ulimit": treat it as if it was -f */
+		getrlimit(limits_tbl[LIMIT_F_IDX].cmd, &limit);
+		printlim(opts, &limit, &limits_tbl[LIMIT_F_IDX]);
+	}
+
+	return EXIT_SUCCESS;
 }
 #else
 int FAST_FUNC shell_builtin_ulimit(char **argv UNUSED_PARAM)

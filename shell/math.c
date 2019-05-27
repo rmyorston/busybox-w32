@@ -513,6 +513,46 @@ static const char op_tokens[] ALIGN1 = {
 };
 #define ptr_to_rparen (&op_tokens[sizeof(op_tokens)-7])
 
+#if ENABLE_FEATURE_SH_MATH_BASE
+static arith_t strto_arith_t(const char *nptr, char **endptr)
+{
+	unsigned base;
+	arith_t n;
+
+# if ENABLE_FEATURE_SH_MATH_64
+	n = strtoull(nptr, endptr, 0);
+# else
+	n = strtoul(nptr, endptr, 0);
+# endif
+	if (**endptr != '#'
+	 || (*nptr < '1' || *nptr > '9')
+	 || (n < 2 || n > 64)
+	) {
+		return n;
+	}
+
+	/* It's "N#nnnn" or "NN#nnnn" syntax, NN can't start with 0,
+	 * NN is in 2..64 range.
+	 */
+	base = (unsigned)n;
+	n = 0;
+	nptr = *endptr + 1;
+	/* bash allows "N#" (empty "nnnn" part) */
+	while (isdigit(*nptr)) {
+		/* bash does not check for overflows */
+		n = n * base + (*nptr++ - '0');
+	}
+	*endptr = (char*)nptr;
+	return n;
+}
+#else /* !ENABLE_FEATURE_SH_MATH_BASE */
+# if ENABLE_FEATURE_SH_MATH_64
+#  define strto_arith_t(nptr, endptr) strtoull(nptr, endptr, 0)
+# else
+#  define strto_arith_t(nptr, endptr) strtoul(nptr, endptr, 0)
+# endif
+#endif
+
 static arith_t FAST_FUNC
 evaluate_string(arith_state_t *math_state, const char *expr)
 {
@@ -591,7 +631,7 @@ evaluate_string(arith_state_t *math_state, const char *expr)
 			/* Number */
 			numstackptr->var = NULL;
 			errno = 0;
-			numstackptr->val = strto_arith_t(expr, (char**) &expr, 0);
+			numstackptr->val = strto_arith_t(expr, (char**) &expr);
 			if (errno)
 				numstackptr->val = 0; /* bash compat */
 			goto num;

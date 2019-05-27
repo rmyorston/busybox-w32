@@ -920,6 +920,7 @@ extern ssize_t open_read_close(const char *filename, void *buf, size_t maxsz) FA
 extern char *xmalloc_reads(int fd, size_t *maxsz_p) FAST_FUNC;
 /* Reads block up to *maxsz_p (default: INT_MAX - 4095) */
 extern void *xmalloc_read(int fd, size_t *maxsz_p) FAST_FUNC RETURNS_MALLOC;
+extern void *xmalloc_read_with_initial_buf(int fd, size_t *maxsz_p, char *buf, size_t total) FAST_FUNC;
 /* Returns NULL if file can't be opened (default max size: INT_MAX - 4095) */
 extern void *xmalloc_open_read_close(const char *filename, size_t *maxsz_p) FAST_FUNC RETURNS_MALLOC;
 /* Never returns NULL */
@@ -1359,7 +1360,6 @@ enum {
 	LOGMODE_BOTH = LOGMODE_SYSLOG + LOGMODE_STDIO,
 };
 extern const char *msg_eol;
-extern smallint syslog_level;
 extern smallint logmode;
 extern uint8_t xfunc_error_retval;
 extern void (*die_func)(void);
@@ -1378,6 +1378,14 @@ void bb_perror_nomsg(void) FAST_FUNC;
 void bb_verror_msg(const char *s, va_list p, const char *strerr) FAST_FUNC;
 void bb_die_memory_exhausted(void) NORETURN FAST_FUNC;
 void bb_logenv_override(void) FAST_FUNC;
+
+#if ENABLE_FEATURE_SYSLOG_INFO
+void bb_info_msg(const char *s, ...) __attribute__ ((format (printf, 1, 2))) FAST_FUNC;
+void bb_vinfo_msg(const char *s, va_list p) FAST_FUNC;
+#else
+#define bb_info_msg bb_error_msg
+#define bb_vinfo_msg(s,p) bb_verror_msg(s,p,NULL)
+#endif
 
 /* We need to export XXX_main from libbusybox
  * only if we build "individual" binaries
