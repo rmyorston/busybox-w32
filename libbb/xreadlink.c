@@ -147,6 +147,35 @@ char* FAST_FUNC xmalloc_realpath_coreutils(const char *path)
 				buf[len++] = '/';
 				strcpy(buf + len, last_slash);
 			}
+		} else {
+			char *target = xmalloc_readlink(path);
+			if (target) {
+				char *cwd;
+				if (target[0] == '/') {
+					/*
+					 * $ ln -s /bin/qwe symlink  # note: /bin is a link to /usr/bin
+					 * $ readlink -f symlink
+					 * /usr/bin/qwe/target_does_not_exist
+					 * $ realpath symlink
+					 * /usr/bin/qwe/target_does_not_exist
+					 */
+					buf = xmalloc_realpath_coreutils(target);
+					free(target);
+					return buf;
+				}
+				/*
+				 * $ ln -s target_does_not_exist symlink
+				 * $ readlink -f symlink
+				 * /CURDIR/target_does_not_exist
+				 * $ realpath symlink
+				 * /CURDIR/target_does_not_exist
+				 */
+				cwd = xrealloc_getcwd_or_warn(NULL);
+				buf = concat_path_file(cwd, target);
+				free(cwd);
+				free(target);
+				return buf;
+			}
 		}
 	}
 

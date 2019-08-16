@@ -416,10 +416,18 @@ static const char *const optletters_optnames[] = {
 	"e"   "errexit",
 	"f"   "noglob",
 	"I"   "ignoreeof",
-	"i"   "interactive",
+/* The below allowed this invocation:
+ * ash -c 'set -i; echo $-; sleep 5; echo $-'
+ * to be ^C-ed and get to interactive ash prompt.
+ * bash does not support such "set -i".
+ * In our code, this is denoted by empty long name:
+ */
+	"i"   "",
 	"m"   "monitor",
 	"n"   "noexec",
-	"s"   "stdin",
+/* Ditto: bash has no "set -s" */
+	"s"   "",
+	"c"   "",
 	"x"   "xtrace",
 	"v"   "verbose",
 	"C"   "noclobber",
@@ -444,6 +452,20 @@ static const char *const optletters_optnames[] = {
 	,"\0"  "nocaseglob"
 #endif
 };
+//bash 4.4.23 also has these opts (with these defaults):
+//braceexpand           on
+//emacs                 on
+//errtrace              off
+//functrace             off
+//hashall               on
+//histexpand            off
+//history               on
+//interactive-comments  on
+//keyword               off
+//onecmd                off
+//physical              off
+//posix                 off
+//privileged            off
 
 #define optletters(n)  optletters_optnames[n][0]
 #define optnames(n)   (optletters_optnames[n] + 1)
@@ -517,21 +539,22 @@ struct globals_misc {
 #define mflag optlist[4]
 #define nflag optlist[5]
 #define sflag optlist[6]
-#define xflag optlist[7]
-#define vflag optlist[8]
-#define Cflag optlist[9]
-#define aflag optlist[10]
-#define bflag optlist[11]
-#define uflag optlist[12]
-#define viflag optlist[13]
+#define cflag optlist[7]
+#define xflag optlist[8]
+#define vflag optlist[9]
+#define Cflag optlist[10]
+#define aflag optlist[11]
+#define bflag optlist[12]
+#define uflag optlist[13]
+#define viflag optlist[14]
 #if BASH_PIPEFAIL
-# define pipefail optlist[14]
+# define pipefail optlist[15]
 #else
 # define pipefail 0
 #endif
 #if DEBUG
-# define nolog optlist[14 + BASH_PIPEFAIL]
-# define debug optlist[15 + BASH_PIPEFAIL]
+# define nolog optlist[15 + BASH_PIPEFAIL]
+# define debug optlist[16 + BASH_PIPEFAIL]
 #endif
 #if ENABLE_PLATFORM_MINGW32
 # define winxp optlist[14 + BASH_PIPEFAIL + 2*DEBUG]
@@ -10156,8 +10179,8 @@ setinteractive(int on)
 	setsignal(SIGINT);
 	setsignal(SIGQUIT);
 	setsignal(SIGTERM);
-#if !ENABLE_FEATURE_SH_EXTRA_QUIET
 	if (is_interactive > 1) {
+#if !ENABLE_FEATURE_SH_EXTRA_QUIET
 		/* Looks like they want an interactive shell */
 		static smallint did_banner;
 
@@ -10171,8 +10194,12 @@ setinteractive(int on)
 			);
 			did_banner = 1;
 		}
-	}
 #endif
+#if ENABLE_FEATURE_EDITING
+		if (!line_input_state)
+			line_input_state = new_line_input_t(FOR_SHELL | WITH_PATH_LOOKUP);
+#endif
+	}
 }
 
 static void
@@ -10184,10 +10211,12 @@ optschanged(void)
 	setinteractive(iflag);
 	setjobctl(mflag);
 #if ENABLE_FEATURE_EDITING_VI
-	if (viflag)
-		line_input_state->flags |= VI_MODE;
-	else
-		line_input_state->flags &= ~VI_MODE;
+	if (line_input_state) {
+		if (viflag)
+			line_input_state->flags |= VI_MODE;
+		else
+			line_input_state->flags &= ~VI_MODE;
+	}
 #else
 	viflag = 0; /* forcibly keep the option off */
 #endif
@@ -11203,13 +11232,11 @@ preadfd(void)
 	else {
 # if ENABLE_ASH_IDLE_TIMEOUT
 		int timeout = -1;
-		if (iflag) {
-			const char *tmout_var = lookupvar("TMOUT");
-			if (tmout_var) {
-				timeout = atoi(tmout_var) * 1000;
-				if (timeout <= 0)
-					timeout = -1;
-			}
+		const char *tmout_var = lookupvar("TMOUT");
+		if (tmout_var) {
+			timeout = atoi(tmout_var) * 1000;
+			if (timeout <= 0)
+				timeout = -1;
 		}
 		line_input_state->timeout = timeout;
 # endif
@@ -11750,6 +11777,8 @@ plus_minus_o(char *name, int val)
 		return 1;
 	}
 	for (i = 0; i < NOPTS; i++) {
+		if (optnames(i)[0] == '\0')
+			continue;
 		if (val) {
 			out1fmt("%-16s%s\n", optnames(i), optlist[i] ? "on" : "off");
 		} else {
@@ -11764,7 +11793,7 @@ setoption(int flag, int val)
 	int i;
 
 	for (i = 0; i < NOPTS; i++) {
-		if (optletters(i) == flag) {
+		if (optletters(i) == flag && optnames(i)[0] != '\0') {
 			optlist[i] = val;
 			return;
 		}
@@ -11772,14 +11801,17 @@ setoption(int flag, int val)
 	ash_msg_and_raise_error("illegal option %c%c", val ? '-' : '+', flag);
 	/* NOTREACHED */
 }
+/* If login_sh is not NULL, we are called to parse command line opts,
+ * not "set -opts"
+ */
 static int
-options(int cmdline, int *login_sh)
+options(int *login_sh)
 {
 	char *p;
 	int val;
 	int c;
 
-	if (cmdline) {
+	if (login_sh) {
 		minusc = NULL;
 #if ENABLE_PLATFORM_MINGW32
 		dirarg = NULL;
@@ -11795,7 +11827,7 @@ options(int cmdline, int *login_sh)
 		if (c == '-') {
 			val = 1;
 			if (p[0] == '\0' || LONE_DASH(p)) {
-				if (!cmdline) {
+				if (!login_sh) {
 					/* "-" means turn off -x and -v */
 					if (p[0] == '\0')
 						xflag = vflag = 0;
@@ -11808,40 +11840,58 @@ options(int cmdline, int *login_sh)
 		}
 		/* first char was + or - */
 		while ((c = *p++) != '\0') {
-			/* bash 3.2 indeed handles -c CMD and +c CMD the same */
-			if (c == 'c' && cmdline) {
-				minusc = p;     /* command is after shell args */
+			if (login_sh) {
+				/* bash 3.2 indeed handles -c CMD and +c CMD the same */
+				if (c == 'c') {
+					minusc = p; /* command is after shell args */
+					cflag = 1;
+					continue;
+				}
 #if ENABLE_PLATFORM_MINGW32
-			/* Undocumented flags;
-			 *   -d force current directory
-			 *   -t title to display in console window
-			 * Must appear before -s or -c. */
-			} else if (c == 'd' && cmdline && val == 1) {
-				if (*argptr == NULL)
-					ash_msg_and_raise_error(bb_msg_requires_arg, "-d");
-				dirarg = *argptr++;
-			} else if (c == 't' && cmdline && val == 1) {
-				if (*argptr == NULL)
-					ash_msg_and_raise_error(bb_msg_requires_arg, "-t");
-				title = *argptr++;
+				/* Undocumented flags;
+				 *   -d force current directory
+				 *   -t title to display in console window
+				 * Must appear before -s or -c. */
+				if (c == 'd' && val == 1) {
+					if (*argptr == NULL)
+						ash_msg_and_raise_error(bb_msg_requires_arg, "-d");
+					dirarg = *argptr++;
+					continue;
+				}
+				if (c == 't' && val == 1) {
+					if (*argptr == NULL)
+						ash_msg_and_raise_error(bb_msg_requires_arg, "-t");
+					title = *argptr++;
+					continue;
+				}
 #endif
-			} else if (c == 'o') {
+				if (c == 's') { /* -s, +s */
+					sflag = 1;
+					continue;
+				}
+				if (c == 'i') { /* -i, +i */
+					iflag = 1;
+					continue;
+				}
+				if (c == 'l') {
+					*login_sh = 1; /* -l or +l == --login */
+					continue;
+				}
+				/* bash does not accept +-login, we also won't */
+				if (val && (c == '-')) { /* long options */
+					if (strcmp(p, "login") == 0) {
+						*login_sh = 1;
+					}
+					break;
+				}
+			}
+			if (c == 'o') {
 				if (plus_minus_o(*argptr, val)) {
 					/* it already printed err message */
 					return 1; /* error */
 				}
 				if (*argptr)
 					argptr++;
-			} else if (cmdline && (c == 'l')) { /* -l or +l == --login */
-				if (login_sh)
-					*login_sh = 1;
-			/* bash does not accept +-login, we also won't */
-			} else if (cmdline && val && (c == '-')) { /* long options */
-				if (strcmp(p, "login") == 0) {
-					if (login_sh)
-						*login_sh = 1;
-				}
-				break;
 			} else {
 				setoption(c, val);
 			}
@@ -11932,7 +11982,7 @@ setcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		return showvars(nullstr, 0, VUNSET);
 
 	INT_OFF;
-	retval = options(/*cmdline:*/ 0, NULL);
+	retval = options(/*login_sh:*/ NULL);
 	if (retval == 0) { /* if no parse error... */
 		optschanged();
 		if (*argptr != NULL) {
@@ -13787,6 +13837,8 @@ expandstr(const char *ps, int syntax_type)
 	if (setjmp(jmploc.loc) == 0) {
 		exception_handler = &jmploc;
 		expandarg(&n, NULL, EXP_QUOTED);
+	} else if (exception_type == EXEXIT) {
+		exitshell();
 	}
 	exception_handler = savehandler;
 	RESTORE_INT(saveint);
@@ -14400,7 +14452,8 @@ helpcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 static int FAST_FUNC
 historycmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 {
-	show_history(line_input_state);
+	if (line_input_state)
+		show_history(line_input_state);
 	return EXIT_SUCCESS;
 }
 #endif
@@ -14719,7 +14772,8 @@ exitshell(void)
 	int status;
 
 #if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
-	save_history(line_input_state);
+	if (line_input_state)
+		save_history(line_input_state);
 #endif
 	status = exitstatus;
 	TRACE(("pid %d, exitshell(%d)\n", getpid(), status));
@@ -14923,7 +14977,7 @@ procargs(char **argv)
 	argptr = xargv;
 	for (i = 0; i < NOPTS; i++)
 		optlist[i] = 2;
-	if (options(/*cmdline:*/ 1, &login_sh)) {
+	if (options(&login_sh)) {
 		/* it already printed err message */
 		raise_exception(EXERROR);
 	}
@@ -14934,8 +14988,13 @@ procargs(char **argv)
 			ash_msg_and_raise_error(bb_msg_requires_arg, "-c");
 		sflag = 1;
 	}
-	if (iflag == 2 && sflag == 1 && isatty(0) && isatty(1))
+	if (iflag == 2 /* no explicit -i given */
+	 && sflag == 1 /* -s given (or implied) */
+	 && !minusc /* bash compat: ash -sc 'echo $-' is not interactive (dash is) */
+	 && isatty(0) && isatty(1) /* we are on tty */
+	) {
 		iflag = 1;
+	}
 	if (mflag == 2)
 		mflag = iflag;
 	for (i = 0; i < NOPTS; i++)
@@ -15055,9 +15114,6 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	monitor(4, etext, profile_buf, sizeof(profile_buf), 50);
 #endif
 
-#if ENABLE_FEATURE_EDITING
-	line_input_state = new_line_input_t(FOR_SHELL | WITH_PATH_LOOKUP);
-#endif
 	state = 0;
 	if (setjmp(jmploc.loc)) {
 		smallint e;
@@ -15188,10 +15244,17 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		 * Ensure we don't falsely claim that 0 (stdin)
 		 * is one of stacked source fds.
 		 * Testcase: ash -c 'exec 1>&0' must not complain. */
+
 		// if (!sflag) g_parsefile->pf_fd = -1;
 		// ^^ not necessary since now we special-case fd 0
 		// in save_fd_on_redirect()
-		evalstring(minusc, sflag ? 0 : EV_EXIT);
+
+		// dash: evalstring(minusc, sflag ? 0 : EV_EXIT);
+		// The above makes
+		//  ash -sc 'echo $-'
+		// continue reading input from stdin after running 'echo'.
+		// bash does not do this: it prints "hBcs" and exits.
+		evalstring(minusc, EV_EXIT);
 	}
 
 	if (sflag || minusc == NULL) {

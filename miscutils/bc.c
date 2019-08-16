@@ -893,7 +893,7 @@ static void fflush_and_check(void)
 {
 	fflush_all();
 	if (ferror(stdout) || ferror(stderr))
-		bb_perror_msg_and_die("output error");
+		bb_simple_perror_msg_and_die("output error");
 }
 
 #if ENABLE_FEATURE_CLEAN_UP
@@ -908,7 +908,7 @@ static void quit(void) NORETURN;
 static void quit(void)
 {
 	if (ferror(stdin))
-		bb_perror_msg_and_die("input error");
+		bb_simple_perror_msg_and_die("input error");
 	fflush_and_check();
 	dbg_exec("quit(): exiting with exitcode SUCCESS");
 	exit(0);
@@ -997,10 +997,12 @@ static ERRORFUNC int bc_error_bad_character(char c)
 		IF_ERROR_RETURN_POSSIBLE(return) bc_error("NUL character");
 	IF_ERROR_RETURN_POSSIBLE(return) bc_error_fmt("bad character '%c'", c);
 }
+#if ENABLE_BC
 static ERRORFUNC int bc_error_bad_function_definition(void)
 {
 	IF_ERROR_RETURN_POSSIBLE(return) bc_error_at("bad function definition");
 }
+#endif
 static ERRORFUNC int bc_error_bad_expression(void)
 {
 	IF_ERROR_RETURN_POSSIBLE(return) bc_error_at("bad expression");
@@ -1273,14 +1275,12 @@ static int bc_map_insert(BcVec *v, const void *ptr, size_t *i)
 	return 1; // "was inserted"
 }
 
-#if ENABLE_BC
 static size_t bc_map_find_exact(const BcVec *v, const void *ptr)
 {
 	size_t i = bc_map_find_ge(v, ptr);
 	if (i >= v->len) return BC_VEC_INVALID_IDX;
 	return bc_id_cmp(ptr, bc_vec_item(v, i)) ? BC_VEC_INVALID_IDX : i;
 }
-#endif
 
 static void bc_num_setToZero(BcNum *n, size_t scale)
 {
@@ -2576,7 +2576,7 @@ static void xc_read_line(BcVec *vec, FILE *fp)
 				goto get_char;
 			if (c == EOF) {
 				if (ferror(fp))
-					bb_perror_msg_and_die("input error");
+					bb_simple_perror_msg_and_die("input error");
 				// Note: EOF does not append '\n'
 				break;
 			}
@@ -6925,9 +6925,9 @@ static BC_STATUS zxc_vm_process(const char *text)
 		ip = (void*)G.prog.exestack.v;
 #if SANITY_CHECKS
 		if (G.prog.exestack.len != 1) // should have only main's IP
-			bb_error_msg_and_die("BUG:call stack");
+			bb_simple_error_msg_and_die("BUG:call stack");
 		if (ip->func != BC_PROG_MAIN)
-			bb_error_msg_and_die("BUG:not MAIN");
+			bb_simple_error_msg_and_die("BUG:not MAIN");
 #endif
 		f = xc_program_func_BC_PROG_MAIN();
 		// bc discards strings, constants and code after each
@@ -6943,7 +6943,7 @@ static BC_STATUS zxc_vm_process(const char *text)
 		if (IS_BC) {
 #if SANITY_CHECKS
 			if (G.prog.results.len != 0) // should be empty
-				bb_error_msg_and_die("BUG:data stack");
+				bb_simple_error_msg_and_die("BUG:data stack");
 #endif
 			IF_BC(bc_vec_pop_all(&f->strs);)
 			IF_BC(bc_vec_pop_all(&f->consts);)

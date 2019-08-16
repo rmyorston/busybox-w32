@@ -11,6 +11,9 @@
 #include <netinet/in.h>
 #include <net/if.h>
 #include <sys/un.h>
+#if ENABLE_IFPLUGD || ENABLE_FEATURE_MDEV_DAEMON || ENABLE_UEVENT
+# include <linux/netlink.h>
+#endif
 #include "libbb.h"
 
 int FAST_FUNC setsockopt_int(int fd, int level, int optname, int optval)
@@ -63,7 +66,7 @@ int FAST_FUNC setsockopt_bindtodevice(int fd, const char *iface)
 int FAST_FUNC setsockopt_bindtodevice(int fd UNUSED_PARAM,
 		const char *iface UNUSED_PARAM)
 {
-	bb_error_msg("SO_BINDTODEVICE is not supported on this system");
+	bb_simple_error_msg("SO_BINDTODEVICE is not supported on this system");
 	return -1;
 }
 #endif
@@ -108,7 +111,7 @@ void FAST_FUNC xconnect(int s, const struct sockaddr *saddr, socklen_t addrlen)
 			bb_perror_msg_and_die("%s (%s)",
 				"can't connect to remote host",
 				inet_ntoa(((struct sockaddr_in *)saddr)->sin_addr));
-		bb_perror_msg_and_die("can't connect to remote host");
+		bb_simple_perror_msg_and_die("can't connect to remote host");
 	}
 }
 
@@ -132,6 +135,7 @@ unsigned FAST_FUNC bb_lookup_port(const char *port, const char *protocol, unsign
 			port_nr = default_port;
 			if (tserv)
 				port_nr = ntohs(tserv->s_port);
+//FIXME: else: port string was garbage, but we don't report that???
 		}
 		errno = old_errno;
 	}
@@ -417,6 +421,38 @@ int FAST_FUNC create_and_bind_dgram_or_die(const char *bindaddr, int port)
 	return create_and_bind_or_die(bindaddr, port, SOCK_DGRAM);
 }
 
+
+#if ENABLE_IFPLUGD || ENABLE_FEATURE_MDEV_DAEMON || ENABLE_UEVENT
+int FAST_FUNC create_and_bind_to_netlink(int proto, int grp, unsigned rcvbuf)
+{
+	struct sockaddr_nl sa;
+	int fd;
+
+	memset(&sa, 0, sizeof(sa));
+	sa.nl_family = AF_NETLINK;
+	sa.nl_pid = getpid();
+	sa.nl_groups = grp;
+	fd = xsocket(AF_NETLINK, SOCK_DGRAM, proto);
+	xbind(fd, (struct sockaddr *) &sa, sizeof(sa));
+	close_on_exec_on(fd);
+
+	if (rcvbuf != 0) {
+		// SO_RCVBUFFORCE (root only) can go above net.core.rmem_max sysctl
+		setsockopt_SOL_SOCKET_int(fd, SO_RCVBUF,      rcvbuf);
+		setsockopt_SOL_SOCKET_int(fd, SO_RCVBUFFORCE, rcvbuf);
+# if 0
+		{
+			int z;
+			socklen_t zl = sizeof(z);
+			getsockopt(fd, SOL_SOCKET, SO_RCVBUF, &z, &zl);
+			bb_error_msg("SO_RCVBUF:%d", z);
+		}
+# endif
+	}
+
+	return fd;
+}
+#endif
 
 int FAST_FUNC create_and_connect_stream_or_die(const char *peer, int port)
 {

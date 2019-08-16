@@ -317,7 +317,7 @@ static void do_procinit(void)
 	}
 	closedir(procdir);
 	if (!pid)
-		bb_error_msg_and_die("nothing in /proc - not mounted?");
+		bb_simple_error_msg_and_die("nothing in /proc - not mounted?");
 }
 
 static int do_stop(void)
@@ -337,7 +337,7 @@ static int do_stop(void)
 	} else if (userspec) {
 		what = xasprintf("process(es) owned by '%s'", userspec);
 	} else {
-		bb_error_msg_and_die("internal error, please report");
+		bb_simple_error_msg_and_die("internal error, please report");
 	}
 
 	if (!G.found_procs) {
@@ -537,6 +537,15 @@ int start_stop_daemon_main(int argc UNUSED_PARAM, char **argv)
 		/* User wants _us_ to make the pidfile */
 		write_pidfile(pidfile);
 	}
+#if ENABLE_FEATURE_START_STOP_DAEMON_FANCY
+	if (opt & OPT_NICELEVEL) {
+		/* Set process priority (must be before OPT_c) */
+		int prio = getpriority(PRIO_PROCESS, 0) + xatoi_range(opt_N, INT_MIN/2, INT_MAX/2);
+		if (setpriority(PRIO_PROCESS, 0, prio) < 0) {
+			bb_perror_msg_and_die("setpriority(%d)", prio);
+		}
+	}
+#endif
 	if (opt & OPT_c) {
 		struct bb_uidgid_t ugid;
 		parse_chown_usergroup_or_die(&ugid, chuid);
@@ -551,15 +560,6 @@ int start_stop_daemon_main(int argc UNUSED_PARAM, char **argv)
 			setgroups(1, &ugid.gid);
 		}
 	}
-#if ENABLE_FEATURE_START_STOP_DAEMON_FANCY
-	if (opt & OPT_NICELEVEL) {
-		/* Set process priority */
-		int prio = getpriority(PRIO_PROCESS, 0) + xatoi_range(opt_N, INT_MIN/2, INT_MAX/2);
-		if (setpriority(PRIO_PROCESS, 0, prio) < 0) {
-			bb_perror_msg_and_die("setpriority(%d)", prio);
-		}
-	}
-#endif
 	/* Try:
 	 * strace -oLOG start-stop-daemon -S -x /bin/usleep -a qwerty 500000
 	 * should exec "/bin/usleep", but argv[0] should be "qwerty":
