@@ -426,7 +426,11 @@ static const char *const optletters_optnames[] = {
 	"m"   "monitor",
 	"n"   "noexec",
 /* Ditto: bash has no "set -s" */
+#if !ENABLE_PLATFORM_MINGW32
 	"s"   "",
+#else
+	"s"   "stdin",
+#endif
 	"c"   "",
 	"x"   "xtrace",
 	"v"   "verbose",
@@ -14990,7 +14994,9 @@ procargs(char **argv)
 	}
 	if (iflag == 2 /* no explicit -i given */
 	 && sflag == 1 /* -s given (or implied) */
+#if !ENABLE_PLATFORM_MINGW32
 	 && !minusc /* bash compat: ash -sc 'echo $-' is not interactive (dash is) */
+#endif
 	 && isatty(0) && isatty(1) /* we are on tty */
 	) {
 		iflag = 1;
@@ -15254,7 +15260,11 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		//  ash -sc 'echo $-'
 		// continue reading input from stdin after running 'echo'.
 		// bash does not do this: it prints "hBcs" and exits.
+#if !ENABLE_PLATFORM_MINGW32
 		evalstring(minusc, EV_EXIT);
+#else
+		evalstring(minusc, sflag ? 0 : EV_EXIT);
+#endif
 	}
 
 	if (sflag || minusc == NULL) {
