@@ -242,6 +242,19 @@ NOIMPL(mingw_sendto,SOCKET s UNUSED_PARAM, const char *buf UNUSED_PARAM, int len
 #define select mingw_select
 
 /*
+ * sys/time.h
+ */
+#ifndef _TIMESPEC_DEFINED
+#define _TIMESPEC_DEFINED
+struct timespec {
+	time_t tv_sec;
+	long int tv_nsec;
+};
+#endif
+
+int nanosleep(const struct timespec *req, struct timespec *rem);
+
+/*
  * sys/stat.h
  */
 #define S_ISUID 04000
@@ -300,12 +313,15 @@ struct mingw_stat {
 	gid_t     st_gid;
 	dev_t     st_rdev;
 	off_t     st_size;
-	time_t    st_atime;
-	time_t    st_mtime;
-	time_t    st_ctime;
+	struct timespec st_atim;
+	struct timespec st_mtim;
+	struct timespec st_ctim;
 	blksize_t st_blksize;
 	blkcnt_t  st_blocks;
 };
+#define st_atime st_atim.tv_sec
+#define st_mtime st_mtim.tv_sec
+#define st_ctime st_ctim.tv_sec
 
 int mingw_lstat(const char *file_name, struct mingw_stat *buf);
 int mingw_stat(const char *file_name, struct mingw_stat *buf);
@@ -323,19 +339,6 @@ int mingw_fstat(int fd, struct mingw_stat *buf);
 #define makedev(a,b) 0*(a)*(b) /* avoid unused warning */
 #define minor(x) 0
 #define major(x) 0
-
-/*
- * sys/time.h
- */
-#ifndef _TIMESPEC_DEFINED
-#define _TIMESPEC_DEFINED
-struct timespec {
-	time_t tv_sec;
-	long int tv_nsec;
-};
-#endif
-
-int nanosleep(const struct timespec *req, struct timespec *rem);
 
 /*
  * sys/wait.h

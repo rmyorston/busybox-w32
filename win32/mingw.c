@@ -277,6 +277,17 @@ static inline time_t filetime_to_time_t(const FILETIME *ft)
 	return (time_t)(filetime_to_hnsec(ft) / 10000000);
 }
 
+static inline struct timespec filetime_to_timespec(const FILETIME *ft)
+{
+	struct timespec ts;
+	long long winTime = filetime_to_hnsec(ft);
+
+	ts.tv_sec = (time_t)(winTime / 10000000);
+	ts.tv_nsec = (long)(winTime % 10000000) * 100;
+
+	return ts;
+}
+
 static inline mode_t file_attr_to_st_mode(DWORD attr)
 {
 	mode_t fMode = S_IRUSR|S_IRGRP|S_IROTH;
@@ -530,9 +541,9 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 			/* Get the contents of a symlink, not its target. */
 			buf->st_mode = S_IFLNK|S_IRWXU|S_IRWXG|S_IRWXO;
 			buf->st_size = name ? strlen(name) : 0; /* should use readlink */
-			buf->st_atime = filetime_to_time_t(&(findbuf.ftLastAccessTime));
-			buf->st_mtime = filetime_to_time_t(&(findbuf.ftLastWriteTime));
-			buf->st_ctime = filetime_to_time_t(&(findbuf.ftCreationTime));
+			buf->st_atim = filetime_to_timespec(&(findbuf.ftLastAccessTime));
+			buf->st_mtim = filetime_to_timespec(&(findbuf.ftLastWriteTime));
+			buf->st_ctim = filetime_to_timespec(&(findbuf.ftCreationTime));
 		}
 		else {
 			/* The file is not a symlink. */
@@ -542,9 +553,9 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 				buf->st_mode |= S_IXUSR|S_IXGRP|S_IXOTH;
 			buf->st_size = fdata.nFileSizeLow |
 				(((off64_t)fdata.nFileSizeHigh)<<32);
-			buf->st_atime = filetime_to_time_t(&(fdata.ftLastAccessTime));
-			buf->st_mtime = filetime_to_time_t(&(fdata.ftLastWriteTime));
-			buf->st_ctime = filetime_to_time_t(&(fdata.ftCreationTime));
+			buf->st_atim = filetime_to_timespec(&(fdata.ftLastAccessTime));
+			buf->st_mtim = filetime_to_timespec(&(fdata.ftLastWriteTime));
+			buf->st_ctim = filetime_to_timespec(&(fdata.ftCreationTime));
 		}
 		buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : 1;
 
@@ -594,6 +605,9 @@ int mingw_stat(const char *file_name, struct mingw_stat *buf)
 	return do_lstat(1, file_name, buf);
 }
 
+#undef st_atime
+#undef st_mtime
+#undef st_ctime
 int mingw_fstat(int fd, struct mingw_stat *buf)
 {
 	HANDLE fh = (HANDLE)_get_osfhandle(fd);
@@ -612,9 +626,12 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 		}
 		buf->st_mode = S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH;
 		buf->st_size = buf64.st_size;
-		buf->st_atime = buf64.st_atime;
-		buf->st_mtime = buf64.st_mtime;
-		buf->st_ctime = buf64.st_ctime;
+		buf->st_atim.tv_sec = buf64.st_atime;
+		buf->st_atim.tv_nsec = 0;
+		buf->st_mtim.tv_sec = buf64.st_mtime;
+		buf->st_mtim.tv_nsec = 0;
+		buf->st_ctim.tv_sec = buf64.st_ctime;
+		buf->st_ctim.tv_nsec = 0;
 		buf->st_blocks = ((buf64.st_size+4095)>>12)<<3;
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
 		buf->st_dev = 0;
@@ -628,9 +645,9 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
 		buf->st_size = fdata.nFileSizeLow |
 			(((off64_t)fdata.nFileSizeHigh)<<32);
-		buf->st_atime = filetime_to_time_t(&(fdata.ftLastAccessTime));
-		buf->st_mtime = filetime_to_time_t(&(fdata.ftLastWriteTime));
-		buf->st_ctime = filetime_to_time_t(&(fdata.ftCreationTime));
+		buf->st_atim = filetime_to_timespec(&(fdata.ftLastAccessTime));
+		buf->st_mtim = filetime_to_timespec(&(fdata.ftLastWriteTime));
+		buf->st_ctim = filetime_to_timespec(&(fdata.ftCreationTime));
 		buf->st_blocks = ((buf->st_size+4095)>>12)<<3;
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
 		buf->st_dev = fdata.dwVolumeSerialNumber;
