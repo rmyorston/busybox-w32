@@ -7,7 +7,7 @@
 . ./testing.sh
 test -f "$bindir/.config" && . "$bindir/.config"
 
-if [ -f $bindir/busybox.exe ]; then
+if [ -f "$bindir/busybox.exe" ]; then
 	# Copy rather than link busybox.exe:  we can only make hard
 	# links which can't be deleted because Windows sees the
 	# executable as running.
@@ -18,7 +18,7 @@ else
 	lncmd="ln -s"
 fi
 
-$lncmd `which busybox` unknown$suffix
+$lncmd "$(which busybox)" unknown$suffix
 
 testing "busybox as unknown name" "./unknown 2>&1" \
 	"unknown: applet not found\n" "" ""
@@ -34,7 +34,7 @@ optional FEATURE_VERBOSE_USAGE
 testing "busybox --help busybox" "true | busybox --help busybox 2>&1 | cat" "$HELPDUMP\n" "" ""
 SKIP=
 
-$lncmd `which busybox` busybox-suffix$suffix
+$lncmd "$(which busybox)" busybox-suffix$suffix
 for i in busybox ./busybox-suffix
 do
 	testing "$i" "$i 2>&1 | cat" "$HELPDUMP\n" "" ""

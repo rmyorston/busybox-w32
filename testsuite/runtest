@@ -99,7 +99,7 @@ if [ x"$1" = x"-v" ]; then
 	shift
 fi
 
-if [ -f $bindir/busybox.exe ]; then
+if [ -f "$bindir/busybox.exe" ]; then
 	suffix=".exe"
 	lnflag=""
 
