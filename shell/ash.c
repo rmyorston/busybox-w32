@@ -350,7 +350,9 @@ struct forkshell {
 	struct globals_var *gvp;
 	struct globals_misc *gmp;
 	struct tblentry **cmdtable;
-	/* struct alias **atab; */
+#if ENABLE_ASH_ALIAS
+	struct alias **atab;
+#endif
 	/* struct parsefile *g_parsefile; */
 	HANDLE hMapFile;
 	char *old_base;
@@ -15655,6 +15657,53 @@ cmdtable_copy(struct tblentry **cmdtablep)
 	return new;
 }
 
+#if ENABLE_ASH_ALIAS
+/*
+ * struct alias
+ */
+SLIST_SIZE_BEGIN(alias_size,struct alias)
+funcblocksize += align_len(p->name);
+funcblocksize += align_len(p->val);
+nodeptrcount += 2;
+SLIST_SIZE_END()
+
+SLIST_COPY_BEGIN(alias_copy,struct alias)
+(*vpp)->name = nodeckstrdup(vp->name);
+(*vpp)->val = nodeckstrdup(vp->val);
+(*vpp)->flag = vp->flag;
+SAVE_PTR((*vpp)->name);
+ANNOT_NO_DUP(xasprintf("(*vpp)->name '%s'", vp->name ?: "NULL"));
+SAVE_PTR((*vpp)->val);
+ANNOT_NO_DUP(xasprintf("(*vpp)->val '%s'", vp->val ?: "NULL"));
+SLIST_COPY_END()
+
+static int
+atab_size(int funcblocksize, struct alias **atabp)
+{
+	int i;
+	nodeptrcount += ATABSIZE;
+	funcblocksize += sizeof(struct alias *)*ATABSIZE;
+	for (i = 0; i < ATABSIZE; i++)
+		funcblocksize = alias_size(funcblocksize, atabp[i]);
+	return funcblocksize;
+}
+
+static struct alias **
+atab_copy(struct alias **atabp)
+{
+	struct alias **new = funcblock;
+	int i;
+
+	funcblock = (char *) funcblock + sizeof(struct alias *)*ATABSIZE;
+	for (i = 0; i < ATABSIZE; i++) {
+		new[i] = alias_copy(atabp[i]);
+		SAVE_PTR(new[i]);
+		ANNOT_NO_DUP(xasprintf("atabp[%d]", i));
+	}
+	return new;
+}
+#endif
+
 /*
  * char **
  */
@@ -15826,6 +15875,9 @@ forkshell_size(int funcblocksize, struct forkshell *fs)
 	funcblocksize = globals_var_size(funcblocksize, fs->gvp);
 	funcblocksize = globals_misc_size(funcblocksize, fs->gmp);
 	funcblocksize = cmdtable_size(funcblocksize, fs->cmdtable);
+#if ENABLE_ASH_ALIAS
+	funcblocksize = atab_size(funcblocksize, fs->atab);
+#endif
 	/* optlist_transfer(sending, fd); */
 	/* misc_transfer(sending, fd); */
 
@@ -15834,7 +15886,11 @@ forkshell_size(int funcblocksize, struct forkshell *fs)
 	funcblocksize += align_len(fs->path);
 	funcblocksize = strlist_size(funcblocksize, fs->varlist);
 
+#if ENABLE_ASH_ALIAS
+	nodeptrcount += 8; /* gvp, gmp, cmdtable, atab, n, argv, string, strlist */
+#else
 	nodeptrcount += 7; /* gvp, gmp, cmdtable, n, argv, string, strlist */
+#endif
 	return funcblocksize;
 }
 
@@ -15845,8 +15901,14 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 	new->gvp = globals_var_copy(fs->gvp);
 	new->gmp = globals_misc_copy(fs->gmp);
 	new->cmdtable = cmdtable_copy(fs->cmdtable);
+#if ENABLE_ASH_ALIAS
+	new->atab = atab_copy(fs->atab);
+	SAVE_PTR4(new->gvp, new->gmp, new->cmdtable, new->atab);
+	ANNOT4("gvp", "gmp", "cmdtable", "atab");
+#else
 	SAVE_PTR3(new->gvp, new->gmp, new->cmdtable);
 	ANNOT3("gvp", "gmp", "cmdtable");
+#endif
 
 	new->n = copynode(fs->n);
 	new->argv = argv_copy(fs->argv);
@@ -15889,10 +15951,18 @@ forkshell_print(FILE *fp0, struct forkshell *fs, char **notes)
 	lfuncblock = (char *)lnodeptr + (fs->nodeptrcount+1)*sizeof(char *);
 	lfuncstring = (char *)lfuncblock + fs->funcblocksize;
 
+#if ENABLE_ASH_ALIAS
+	fprintf(fp, "funcblocksize %d = %d + %d + %d + %d\n\n", fs->funcblocksize,
+				(int)((char *)fs->gmp-(char *)fs->gvp),
+				(int)((char *)fs->cmdtable-(char *)fs->gmp),
+				(int)((char *)fs->atab-(char *)fs->cmdtable),
+				(int)(lfuncstring-(char *)fs->atab));
+#else
 	fprintf(fp, "funcblocksize %d = %d + %d + %d\n\n", fs->funcblocksize,
 				(int)((char *)fs->gmp-(char *)fs->gvp),
 				(int)((char *)fs->cmdtable-(char *)fs->gmp),
 				(int)(lfuncstring-(char *)fs->cmdtable));
+#endif
 
 	fprintf(fp, "--- nodeptr ---\n");
 	count = 0;
@@ -15955,6 +16025,9 @@ forkshell_prepare(struct forkshell *fs)
 	fs->gvp = ash_ptr_to_globals_var;
 	fs->gmp = ash_ptr_to_globals_misc;
 	fs->cmdtable = cmdtable;
+#if ENABLE_ASH_ALIAS
+	fs->atab = atab;
+#endif
 
 	/*
 	 * Careful:  much scope for off-by-one errors.  nodeptrcount is the
@@ -16084,6 +16157,9 @@ forkshell_init(const char *idstr)
 	gmpp = (struct globals_misc **)&ash_ptr_to_globals_misc;
 	*gmpp = fs->gmp;
 	cmdtable = fs->cmdtable;
+#if ENABLE_ASH_ALIAS
+	atab = fs->atab;
+#endif
 
 	CLEAR_RANDOM_T(&random_gen); /* or else $RANDOM repeats in child */
 
