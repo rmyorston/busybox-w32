@@ -353,6 +353,10 @@ struct forkshell {
 #if ENABLE_ASH_ALIAS
 	struct alias **atab;
 #endif
+#if MAX_HISTORY
+	char **history;
+	int cnt_history;
+#endif
 	/* struct parsefile *g_parsefile; */
 	HANDLE hMapFile;
 	char *old_base;
@@ -15743,6 +15747,38 @@ argv_copy(char **p)
 	return start;
 }
 
+#if MAX_HISTORY
+static int
+history_size(int funcblocksize, line_input_t *st)
+{
+	int i;
+
+	funcblocksize += sizeof(char *) * st->cnt_history;
+	for (i = 0; i < st->cnt_history; i++) {
+		funcblocksize += align_len(st->history[i]);
+	}
+	nodeptrcount += st->cnt_history;
+	return funcblocksize;
+}
+
+static char **
+history_copy(line_input_t *st)
+{
+	char **new, **start = funcblock;
+	int i;
+
+	for (i = 0; i < st->cnt_history; i++) {
+		new = funcblock;
+		funcblock = (char *) funcblock + sizeof(char *);
+		*new = nodeckstrdup(st->history[i]);
+		SAVE_PTR(*new);
+		ANNOT_NO_DUP(xasprintf("history[%d] '%s'", i, st->history[i]));
+		new++;
+	}
+	return start;
+}
+#endif
+
 /*
  * struct redirtab
  */
@@ -15891,6 +15927,13 @@ forkshell_size(int funcblocksize, struct forkshell *fs)
 #else
 	nodeptrcount += 7; /* gvp, gmp, cmdtable, n, argv, string, strlist */
 #endif
+
+#if MAX_HISTORY
+	if (line_input_state) {
+		funcblocksize = history_size(funcblocksize, line_input_state);
+		nodeptrcount++; /* history */
+	}
+#endif
 	return funcblocksize;
 }
 
@@ -15918,6 +15961,15 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 	ANNOT2("n", "argv");
 	ANNOT_NO_DUP(xasprintf("path '%s'", fs->path ?: "NULL"));
 	ANNOT("varlist");
+
+#if MAX_HISTORY
+	if (line_input_state) {
+		new->history = history_copy(line_input_state);
+		SAVE_PTR(new->history);
+		ANNOT("history");
+		new->cnt_history = line_input_state->cnt_history;
+	}
+#endif
 }
 
 #if FORKSHELL_DEBUG
@@ -15931,6 +15983,7 @@ forkshell_print(FILE *fp0, struct forkshell *fs, char **notes)
 	char ***lnodeptr;
 	char *s;
 	int count;
+	int size_gvp, size_gmp, size_cmdtable, size_atab, size_history, total;
 
 	if (fp0 != NULL) {
 		fp = fp0;
@@ -15951,18 +16004,41 @@ forkshell_print(FILE *fp0, struct forkshell *fs, char **notes)
 	lfuncblock = (char *)lnodeptr + (fs->nodeptrcount+1)*sizeof(char *);
 	lfuncstring = (char *)lfuncblock + fs->funcblocksize;
 
-#if ENABLE_ASH_ALIAS
-	fprintf(fp, "funcblocksize %d = %d + %d + %d + %d\n\n", fs->funcblocksize,
-				(int)((char *)fs->gmp-(char *)fs->gvp),
-				(int)((char *)fs->cmdtable-(char *)fs->gmp),
-				(int)((char *)fs->atab-(char *)fs->cmdtable),
-				(int)(lfuncstring-(char *)fs->atab));
+	size_gvp = (int)((char *)fs->gmp-(char *)fs->gvp);
+	size_gmp = (int)((char *)fs->cmdtable-(char *)fs->gmp);
+#if ENABLE_ASH_ALIAS && MAX_HISTORY
+	size_cmdtable = (int)((char *)fs->atab-(char *)fs->cmdtable);
+	if (fs->history) {
+		size_atab = (int)((char *)fs->history-(char *)fs->atab);
+		size_history = (int)(lfuncstring-(char *)fs->history);
+	}
+	else {
+		size_atab = (int)(lfuncstring-(char *)fs->atab);
+		size_history = 0;
+	}
+#elif ENABLE_ASH_ALIAS
+	size_cmdtable = (int)((char *)fs->atab-(char *)fs->cmdtable);
+	size_atab = (int)(lfuncstring-(char *)fs->atab);
+	size_history = 0;
+#elif MAX_HISTORY
+	size_atab = 0;
+	if (fs->history) {
+		size_cmdtable = (int)((char *)fs->history-(char *)fs->cmdtable);
+		size_history = (int)(lfuncstring-(char *)fs->history);
+	}
+	else {
+		size_cmdtable = (int)(lfuncstring-(char *)fs->cmdtable);
+		size_history = 0;
+	}
 #else
-	fprintf(fp, "funcblocksize %d = %d + %d + %d\n\n", fs->funcblocksize,
-				(int)((char *)fs->gmp-(char *)fs->gvp),
-				(int)((char *)fs->cmdtable-(char *)fs->gmp),
-				(int)(lfuncstring-(char *)fs->cmdtable));
+	size_cmdtable = (int)(lfuncstring-(char *)fs->cmdtable);
+	size_atab = 0;
+	size_history = 0;
 #endif
+	total = size_gvp + size_gmp + size_cmdtable + size_atab + size_history;
+	fprintf(fp, "funcblocksize %d = %d + %d + %d + %d + %d = %d\n\n",
+				fs->funcblocksize, size_gvp, size_gmp, size_cmdtable,
+				size_atab, size_history, total);
 
 	fprintf(fp, "--- nodeptr ---\n");
 	count = 0;
@@ -16159,6 +16235,14 @@ forkshell_init(const char *idstr)
 	cmdtable = fs->cmdtable;
 #if ENABLE_ASH_ALIAS
 	atab = fs->atab;
+#endif
+#if MAX_HISTORY
+	if (fs->cnt_history) {
+		line_input_state = new_line_input_t(FOR_SHELL);
+		line_input_state->cnt_history = fs->cnt_history;
+		for (i = 0; i < line_input_state->cnt_history; i++)
+			line_input_state->history[i] = fs->history[i];
+	}
 #endif
 
 	CLEAR_RANDOM_T(&random_gen); /* or else $RANDOM repeats in child */
