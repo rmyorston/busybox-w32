@@ -21,21 +21,19 @@
 #undef read
 #undef getc
 
-static HANDLE console = INVALID_HANDLE_VALUE;
-static HANDLE console_in = INVALID_HANDLE_VALUE;
 static WORD plain_attr;
 static WORD attr;
 static int negative;
 
+static HANDLE get_console(void)
+{
+	return GetStdHandle(STD_OUTPUT_HANDLE);
+}
+
 static void init(void)
 {
+	HANDLE console = get_console();
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
-
-	if (console != INVALID_HANDLE_VALUE || console_in != INVALID_HANDLE_VALUE)
-		return;
-
-	console = GetStdHandle(STD_OUTPUT_HANDLE);
-	console_in = GetStdHandle(STD_INPUT_HANDLE);
 
 	if (GetConsoleScreenBufferInfo(console, &sbi)) {
 		attr = plain_attr = sbi.wAttributes;
@@ -46,13 +44,13 @@ static void init(void)
 static int is_console(int fd)
 {
 	init();
-	return isatty(fd) && console != INVALID_HANDLE_VALUE;
+	return isatty(fd) && get_console() != INVALID_HANDLE_VALUE;
 }
 
 static int is_console_in(int fd)
 {
 	init();
-	return isatty(fd) && console_in != INVALID_HANDLE_VALUE;
+	return isatty(fd) && GetStdHandle(STD_INPUT_HANDLE) != INVALID_HANDLE_VALUE;
 }
 
 static int skip_ansi_emulation(void)
@@ -87,20 +85,13 @@ static HANDLE dup_handle(HANDLE h)
 static void use_alt_buffer(int flag)
 {
 	static HANDLE console_orig = INVALID_HANDLE_VALUE;
-	static int initialised = FALSE;
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
-	HANDLE h;
+	HANDLE console, h;
 
 	init();
 
-	if (console == INVALID_HANDLE_VALUE)
-		return;
-
-	if (!initialised) {
-		console_orig = dup_handle(console);
-		initialised = TRUE;
-	}
-
+	console = get_console();
+	console_orig = dup_handle(console);
 	if (console_orig == INVALID_HANDLE_VALUE)
 		return;
 
@@ -120,6 +111,7 @@ static void use_alt_buffer(int flag)
 		if (h == INVALID_HANDLE_VALUE)
 			return;
 
+		console = get_console();
 		if (GetConsoleScreenBufferInfo(console, &sbi))
 			SetConsoleScreenBufferSize(h, sbi.dwSize);
 	}
@@ -141,6 +133,7 @@ static void use_alt_buffer(int flag)
 
 static void set_console_attr(void)
 {
+	HANDLE console = get_console();
 	WORD attributes = attr;
 	if (negative) {
 		attributes &= ~FOREGROUND_ALL;
@@ -167,6 +160,7 @@ static void set_console_attr(void)
 
 static void clear_buffer(DWORD len, COORD pos)
 {
+	HANDLE console = get_console();
 	DWORD dummy;
 
 	FillConsoleOutputCharacterA(console, ' ', len, pos, &dummy);
@@ -175,6 +169,7 @@ static void clear_buffer(DWORD len, COORD pos)
 
 static void erase_in_line(void)
 {
+	HANDLE console = get_console();
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
 	if (!GetConsoleScreenBufferInfo(console, &sbi))
@@ -184,6 +179,7 @@ static void erase_in_line(void)
 
 static void erase_till_end_of_screen(void)
 {
+	HANDLE console = get_console();
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 	DWORD len;
 
@@ -196,6 +192,7 @@ static void erase_till_end_of_screen(void)
 
 void reset_screen(void)
 {
+	HANDLE console = get_console();
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 	COORD pos = { 0, 0 };
 
@@ -208,6 +205,7 @@ void reset_screen(void)
 
 void move_cursor_row(int n)
 {
+	HANDLE console = get_console();
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
 	if(!GetConsoleScreenBufferInfo(console, &sbi))
@@ -218,6 +216,7 @@ void move_cursor_row(int n)
 
 static void move_cursor_column(int n)
 {
+	HANDLE console = get_console();
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
 	if (!GetConsoleScreenBufferInfo(console, &sbi))
@@ -228,6 +227,7 @@ static void move_cursor_column(int n)
 
 static void move_cursor(int x, int y)
 {
+	HANDLE console = get_console();
 	COORD pos;
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
