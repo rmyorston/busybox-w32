@@ -32,9 +32,15 @@ static HANDLE get_console(void)
 
 static void init(void)
 {
-	HANDLE console = get_console();
+	static int initialised = FALSE;
+	HANDLE console;
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
+	if (initialised)
+		return;
+	initialised = TRUE;
+
+	console = get_console();
 	if (GetConsoleScreenBufferInfo(console, &sbi)) {
 		attr = plain_attr = sbi.wAttributes;
 		negative = 0;
