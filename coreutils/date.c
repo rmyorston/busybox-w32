@@ -33,10 +33,9 @@
 //config:	Enable option (-I) to output an ISO-8601 compliant
 //config:	date/time string.
 //config:
-//config:# defaults to "no": stat's nanosecond field is a bit non-portable
 //config:config FEATURE_DATE_NANO
 //config:	bool "Support %[num]N nanosecond format specifier"
-//config:	default n  # syscall(__NR_clock_gettime)
+//config:	default n # stat's nanosecond field is a bit non-portable
 //config:	depends on DATE
 //config:	select PLATFORM_LINUX
 //config:	help
@@ -272,13 +271,14 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	} else {
 #if ENABLE_FEATURE_DATE_NANO
-		/* libc has incredibly messy way of doing this,
-		 * typically requiring -lrt. We just skip all this mess */
-		syscall(__NR_clock_gettime, CLOCK_REALTIME, &ts);
+		clock_gettime(CLOCK_REALTIME, &ts);
 #else
 		time(&ts.tv_sec);
 #endif
 	}
+#if !ENABLE_FEATURE_DATE_NANO
+	ts.tv_nsec = 0;
+#endif
 	localtime_r(&ts.tv_sec, &tm_time);
 
 	/* If date string is given, update tm_time, and maybe set date */
@@ -301,9 +301,10 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 		if (date_str[0] != '@')
 			tm_time.tm_isdst = -1;
 		ts.tv_sec = validate_tm_time(date_str, &tm_time);
+		ts.tv_nsec = 0;
 
 		/* if setting time, set it */
-		if ((opt & OPT_SET) && stime(&ts.tv_sec) < 0) {
+		if ((opt & OPT_SET) && clock_settime(CLOCK_REALTIME, &ts) < 0) {
 			bb_simple_perror_msg("can't set date");
 		}
 	}

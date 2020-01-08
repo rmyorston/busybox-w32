@@ -253,11 +253,9 @@ char* FAST_FUNC strftime_YYYYMMDDHHMMSS(char *buf, unsigned len, time_t *tp)
 #define CLOCK_MONOTONIC 1
 #endif
 
-/* libc has incredibly messy way of doing this,
- * typically requiring -lrt. We just skip all this mess */
 static void get_mono(struct timespec *ts)
 {
-	if (syscall(__NR_clock_gettime, CLOCK_MONOTONIC, ts))
+	if (clock_gettime(CLOCK_MONOTONIC, ts))
 		bb_simple_error_msg_and_die("clock_gettime(MONOTONIC) failed");
 }
 unsigned long long FAST_FUNC monotonic_ns(void)

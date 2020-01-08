@@ -538,6 +538,7 @@ int unlzma_main(int argc UNUSED_PARAM, char **argv)
 //usage:     "\n	-c	Write to stdout"
 //usage:     "\n	-f	Force"
 //usage:     "\n	-k	Keep input files"
+//usage:     "\n	-t	Test file integrity"
 //usage:
 //usage:#define xz_trivial_usage
 //usage:       "-d [-cfk] [FILE]..."
@@ -547,6 +548,7 @@ int unlzma_main(int argc UNUSED_PARAM, char **argv)
 //usage:     "\n	-c	Write to stdout"
 //usage:     "\n	-f	Force"
 //usage:     "\n	-k	Keep input files"
+//usage:     "\n	-t	Test file integrity"
 //usage:
 //usage:#define xzcat_trivial_usage
 //usage:       "[FILE]..."

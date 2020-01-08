@@ -283,6 +283,7 @@ static const struct {
 	{ ns_t_cname, "CNAME" },
 	{ ns_t_mx,    "MX"    },
 	{ ns_t_txt,   "TXT"   },
+	{ ns_t_srv,   "SRV"   },
 	{ ns_t_ptr,   "PTR"   },
 	{ ns_t_any,   "ANY"   },
 };
@@ -433,6 +434,25 @@ static int parse_reply(const unsigned char *msg, size_t len)
 				memcpy(dname, ns_rr_rdata(rr) + 1, n);
 				printf("%s\ttext = \"%s\"\n", ns_rr_name(rr), dname);
 			}
+			break;
+
+		case ns_t_srv:
+			if (rdlen < 6) {
+				//printf("SRV record too short\n");
+				return -1;
+			}
+
+			cp = ns_rr_rdata(rr);
+			n = ns_name_uncompress(ns_msg_base(handle), ns_msg_end(handle),
+			                       cp + 6, dname, sizeof(dname));
+
+			if (n < 0) {
+				//printf("Unable to uncompress domain: %s\n", strerror(errno));
+				return -1;
+			}
+
+			printf("%s\tservice = %u %u %u %s\n", ns_rr_name(rr),
+				ns_get16(cp), ns_get16(cp + 2), ns_get16(cp + 4), dname);
 			break;
 
 		case ns_t_soa:
@@ -615,9 +635,15 @@ static int send_queries(struct ns *ns)
 					G.query[qn].name, rcodes[rcode]);
 			G.exitcode = EXIT_FAILURE;
 		} else {
-			if (parse_reply(reply, recvlen) < 0) {
+			switch (parse_reply(reply, recvlen)) {
+			case -1:
 				printf("*** Can't find %s: Parse error\n", G.query[qn].name);
 				G.exitcode = EXIT_FAILURE;
+				break;
+
+			case 0:
+				printf("*** Can't find %s: No answer\n", G.query[qn].name);
+				break;
 			}
 		}
 		bb_putchar('\n');

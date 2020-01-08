@@ -44,6 +44,41 @@ testing "dc complex without spaces (multiple args)" \
 optional FEATURE_DC_BIG
 # All tests below depend on FEATURE_DC_BIG
 
+testing "dc: x should execute strings" \
+	"dc -e'[40 2 +] x f'" \
+	"42\n" \
+	"" ""
+
+testing "dc: x should not execute or pop non-strings" \
+	"dc -e'42 x f'" \
+	"42\n" \
+	"" ""
+
+testing "dc: x should work with strings created from a" \
+	"dc -e'42 112 a x'" \
+	"42\n" \
+	"" ""
+
+testing "dc: p should print invalid escapes" \
+	"dc -e '[\q] p'" \
+	"\\q\n" \
+	"" ""
+
+testing "dc: p should print trailing backslashes" \
+	"dc -e '[q\] p'" \
+	"q\\\\\n" \
+	"" ""
+
+testing "dc: p should parse/print single backslashes" \
+	"dc -e '[\] p'" \
+	"\\\\\n" \
+	"" ""
+
+testing "dc: p should print single backslash strings" \
+	"dc -e '92 a p'" \
+	"\\\\\n" \
+	"" ""
+
 testing "dc read" \
 	"dc -finput" \
 	"2\n9\n1\n" \

@@ -123,6 +123,7 @@ static const char udhcpc6_longopts[] ALIGN1 =
 	"request-option\0" Required_argument "O"
 	"no-default-options\0" No_argument   "o"
 	"foreground\0"     No_argument       "f"
+	"stateless\0"      No_argument       "l"
 	USE_FOR_MMU(
 	"background\0"     No_argument       "b"
 	)
@@ -147,9 +148,10 @@ enum {
 	OPT_o = 1 << 12,
 	OPT_x = 1 << 13,
 	OPT_f = 1 << 14,
-	OPT_d = 1 << 15,
+	OPT_l = 1 << 15,
+	OPT_d = 1 << 16,
 /* The rest has variable bit positions, need to be clever */
-	OPTBIT_d = 15,
+	OPTBIT_d = 16,
 	USE_FOR_MMU(             OPTBIT_b,)
 	///IF_FEATURE_UDHCPC_ARPING(OPTBIT_a,)
 	IF_FEATURE_UDHCP_PORT(   OPTBIT_P,)
@@ -479,15 +481,31 @@ static ALWAYS_INLINE uint32_t random_xid(void)
 /* Initialize the packet with the proper defaults */
 static uint8_t *init_d6_packet(struct d6_packet *packet, char type, uint32_t xid)
 {
+	uint8_t *ptr;
 	struct d6_option *clientid;
+	unsigned secs;
 
 	memset(packet, 0, sizeof(*packet));
 
 	packet->d6_xid32 = xid;
 	packet->d6_msg_type = type;
 
+	/* ELAPSED_TIME option is required to be present by the RFC,
+	 * and some servers do check for its presense. [which?]
+	 */
+	ptr = packet->d6_options; /* NB: it is 32-bit aligned */
+	*((uint32_t*)ptr) = htonl((D6_OPT_ELAPSED_TIME << 16) + 2);
+	ptr += 4;
+	client_data.last_secs = monotonic_sec();
+	if (client_data.first_secs == 0)
+		client_data.first_secs = client_data.last_secs;
+	secs = client_data.last_secs - client_data.first_secs;
+	*((uint16_t*)ptr) = (secs < 0xffff) ? htons(secs) : 0xffff;
+	ptr += 2;
+
+	/* add CLIENTID option */
 	clientid = (void*)client_data.clientid;
-	return mempcpy(packet->d6_options, clientid, clientid->len + 2+2);
+	return mempcpy(ptr, clientid, clientid->len + 2+2);
 }
 
 static uint8_t *add_d6_client_options(uint8_t *ptr)
@@ -542,6 +560,46 @@ static int d6_mcast_from_client_data_ifindex(struct d6_packet *packet, uint8_t *
 		/*dst*/ (struct in6_addr*)FF02__1_2, SERVER_PORT6, MAC_BCAST_ADDR,
 		client_data.ifindex
 	);
+}
+
+/* RFC 3315 18.1.5. Creation and Transmission of Information-request Messages
+ *
+ * The client uses an Information-request message to obtain
+ * configuration information without having addresses assigned to it.
+ *
+ * The client sets the "msg-type" field to INFORMATION-REQUEST.  The
+ * client generates a transaction ID and inserts this value in the
+ * "transaction-id" field.
+ *
+ * The client SHOULD include a Client Identifier option to identify
+ * itself to the server.  If the client does not include a Client
+ * Identifier option, the server will not be able to return any client-
+ * specific options to the client, or the server may choose not to
+ * respond to the message at all.  The client MUST include a Client
+ * Identifier option if the Information-Request message will be
+ * authenticated.
+ *
+ * The client MUST include an Option Request option (see section 22.7)
+ * to indicate the options the client is interested in receiving.  The
+ * client MAY include options with data values as hints to the server
+ * about parameter values the client would like to have returned.
+ */
+/* NOINLINE: limit stack usage in caller */
+static NOINLINE int send_d6_info_request(uint32_t xid)
+{
+	struct d6_packet packet;
+	uint8_t *opt_ptr;
+
+	/* Fill in: msg type, client id */
+	opt_ptr = init_d6_packet(&packet, D6_MSG_INFORMATION_REQUEST, xid);
+
+	/* Add options:
+	 * "param req" option according to -O, options specified with -x
+	 */
+	opt_ptr = add_d6_client_options(opt_ptr);
+
+	bb_error_msg("sending %s", "info request");
+	return d6_mcast_from_client_data_ifindex(&packet, opt_ptr);
 }
 
 /* Milticast a DHCPv6 Solicit packet to the network, with an optionally requested IP.
@@ -1129,6 +1187,8 @@ static void client_background(void)
 //usage:     "\n	-o		Don't request any options (unless -O is given)"
 //usage:     "\n	-r IPv6		Request this address ('no' to not request any IP)"
 //usage:     "\n	-d		Request prefix"
+//usage:     "\n	-l		Send 'information request' instead of 'solicit'"
+//usage:     "\n			(used for servers which do not assign IPv6 addresses)"
 //usage:     "\n	-x OPT:VAL	Include option OPT in sent packets (cumulative)"
 //usage:     "\n			Examples of string, numeric, and hex byte opts:"
 //usage:     "\n			-x hostname:bbox - option 12"
@@ -1181,7 +1241,7 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 	/* Parse command line */
 	opt = getopt32long(argv, "^"
 		/* O,x: list; -T,-t,-A take numeric param */
-		"i:np:qRr:s:T:+t:+SA:+O:*ox:*fd"
+		"i:np:qRr:s:T:+t:+SA:+O:*ox:*fld"
 		USE_FOR_MMU("b")
 		///IF_FEATURE_UDHCPC_ARPING("a")
 		IF_FEATURE_UDHCP_PORT("P:")
@@ -1198,15 +1258,20 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 	);
 	requested_ipv6 = NULL;
 	option_mask32 |= OPT_r;
-	if (opt & OPT_r) {
+	if (opt & OPT_l) {
+		/* for -l, do not require IPv6 assignment from server */
+		option_mask32 &= ~OPT_r;
+	} else if (opt & OPT_r) {
+		/* explicit "-r ARG" given */
 		if (strcmp(str_r, "no") == 0) {
-			option_mask32 -= OPT_r;
+			option_mask32 &= ~OPT_r;
 		} else {
 			if (inet_pton(AF_INET6, str_r, &ipv6_buf) <= 0)
 				bb_error_msg_and_die("bad IPv6 address '%s'", str_r);
 			requested_ipv6 = &ipv6_buf;
 		}
 	}
+
 #if ENABLE_FEATURE_UDHCP_PORT
 	if (opt & OPT_P) {
 		CLIENT_PORT6 = xatou16(str_P);
@@ -1353,7 +1418,10 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 					if (packet_num == 0)
 						xid = random_xid();
 					/* multicast */
-					send_d6_discover(xid, requested_ipv6);
+					if (opt & OPT_l)
+						send_d6_info_request(xid);
+					else
+						send_d6_discover(xid, requested_ipv6);
 					timeout = discover_timeout;
 					packet_num++;
 					continue;
@@ -1418,7 +1486,10 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 			 * Anyway, it does recover by eventually failing through
 			 * into INIT_SELECTING state.
 			 */
-					send_d6_renew(xid, &srv6_buf, requested_ipv6);
+					if (opt & OPT_l)
+						send_d6_info_request(xid);
+					else
+						send_d6_renew(xid, &srv6_buf, requested_ipv6);
 					timeout >>= 1;
 					continue;
 				}
@@ -1432,8 +1503,10 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 				/* Lease is *really* about to run out,
 				 * try to find DHCP server using broadcast */
 				if (timeout > 0) {
-					/* send a broadcast renew request */
-					send_d6_renew(xid, /*server_ipv6:*/ NULL, requested_ipv6);
+					if (opt & OPT_l)
+						send_d6_info_request(xid);
+					else /* send a broadcast renew request */
+						send_d6_renew(xid, /*server_ipv6:*/ NULL, requested_ipv6);
 					timeout >>= 1;
 					continue;
 				}
@@ -1740,6 +1813,12 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 					prefix_timeout = address_timeout;
 				/* note: "int timeout" will not overflow even with 0xffffffff inputs here: */
 				timeout = (prefix_timeout < address_timeout ? prefix_timeout : address_timeout) / 2;
+				if (opt & OPT_l) {
+					/* TODO: request OPTION_INFORMATION_REFRESH_TIME (32)
+					 * and use its value instead of the default 1 day.
+					 */
+					timeout = 24 * 60 * 60;
+				}
 				/* paranoia: must not be too small */
 				/* timeout > 60 - ensures at least one unicast renew attempt */
 				if (timeout < 61)

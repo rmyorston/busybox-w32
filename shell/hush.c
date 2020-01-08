@@ -573,7 +573,6 @@ typedef struct HFILE {
 	char *cur;
 	char *end;
 	struct HFILE *next_hfile;
-	int is_stdin;
 	int fd;
 	char buf[1024];
 } HFILE;
@@ -973,6 +972,7 @@ struct globals {
 	unsigned execute_lineno;
 #endif
 	HFILE *HFILE_list;
+	HFILE *HFILE_stdin;
 	/* Which signals have non-DFL handler (even with no traps set)?
 	 * Set at the start to:
 	 * (SIGQUIT + maybe SPECIAL_INTERACTIVE_SIGS + maybe SPECIAL_JOBSTOP_SIGS)
@@ -1603,7 +1603,8 @@ static HFILE *hfopen(const char *name)
 	}
 
 	fp = xmalloc(sizeof(*fp));
-	fp->is_stdin = (name == NULL);
+	if (name == NULL)
+		G.HFILE_stdin = fp;
 	fp->fd = fd;
 	fp->cur = fp->end = fp->buf;
 	fp->next_hfile = G.HFILE_list;
@@ -2666,7 +2667,7 @@ static int fgetc_interactive(struct in_str *i)
 {
 	int ch;
 	/* If it's interactive stdin, get new line. */
-	if (G_interactive_fd && i->file->is_stdin) {
+	if (G_interactive_fd && i->file == G.HFILE_stdin) {
 		/* Returns first char (or EOF), the rest is in i->p[] */
 		ch = get_user_input(i);
 		G.promptmode = 1; /* PS2 */
@@ -3652,9 +3653,9 @@ static void debug_print_tree(struct pipe *pi, int lvl)
 			fdprintf(2, "%*s cmd %d assignment_cnt:%d",
 					lvl*2, "", prn,
 					command->assignment_cnt);
-#if ENABLE_HUSH_LINENO_VAR
+# if ENABLE_HUSH_LINENO_VAR
 			fdprintf(2, " LINENO:%u", command->lineno);
-#endif
+# endif
 			if (command->group) {
 				fdprintf(2, " group %s: (argv=%p)%s%s\n",
 						CMDTYPE[command->cmd_type],
@@ -4770,9 +4771,9 @@ static int add_till_closing_bracket(o_string *dest, struct in_str *input, unsign
 # endif
 	end_ch &= (DOUBLE_CLOSE_CHAR_FLAG - 1);
 
-#if ENABLE_HUSH_INTERACTIVE
+# if ENABLE_HUSH_INTERACTIVE
 	G.promptmode = 1; /* PS2 */
-#endif
+# endif
 	debug_printf_prompt("%s promptmode=%d\n", __func__, G.promptmode);
 
 	while (1) {
@@ -4828,13 +4829,13 @@ static int add_till_closing_bracket(o_string *dest, struct in_str *input, unsign
 				syntax_error_unterm_ch(end_ch);
 				return 0;
 			}
-#if 0
+# if 0
 			if (ch == '\n') {
 				/* "backslash+newline", ignore both */
 				o_delchr(dest); /* undo insertion of '\' */
 				continue;
 			}
-#endif
+# endif
 			o_addchr(dest, ch);
 			//bb_error_msg("%s:o_addchr('%c') after '\\'", __func__, ch);
 			continue;
@@ -4991,7 +4992,7 @@ static int parse_dollar(o_string *as_string,
 				if (last_ch == 0) /* error? */
 					return 0;
 #else
-#error Simple code to only allow ${var} is not implemented
+# error Simple code to only allow ${var} is not implemented
 #endif
 				if (as_string) {
 					o_addstr(as_string, dest->data + pos);
@@ -7605,7 +7606,9 @@ static int save_fd_on_redirect(int fd, int avoid_fd, struct squirrel **sqp)
 		avoid_fd = 9;
 
 #if ENABLE_HUSH_INTERACTIVE
-	if (fd == G_interactive_fd) {
+	if (fd != 0 /* don't trigger for G_interactive_fd == 0 (that's "not interactive" flag) */
+	 && fd == G_interactive_fd
+	) {
 		/* Testcase: "ls -l /proc/$$/fd 255>&-" should work */
 		G_interactive_fd = xdup_CLOEXEC_and_close(G_interactive_fd, avoid_fd);
 		debug_printf_redir("redirect_fd %d: matches interactive_fd, moving it to %d\n", fd, G_interactive_fd);
@@ -7619,7 +7622,7 @@ static int save_fd_on_redirect(int fd, int avoid_fd, struct squirrel **sqp)
 		/* No need to move script fds.
 		 * For NOMMU case, it's actively wrong: we'd change ->fd
 		 * fields in memory for the parent, but parent's fds
-		 * aren't be moved, it would use wrong fd!
+		 * aren't moved, it would use wrong fd!
 		 * Reproducer: "cmd 3>FILE" in script.
 		 * If we would call move_HFILEs_on_redirect(), child would:
 		 *  fcntl64(3, F_DUPFD_CLOEXEC, 10)   = 10
@@ -7682,6 +7685,20 @@ static void restore_redirects(struct squirrel *sq)
 			}
 		}
 		free(sq);
+	}
+	if (G.HFILE_stdin
+	 && G.HFILE_stdin->fd != STDIN_FILENO
+	) {
+		/* Testcase: interactive "read r <FILE; echo $r; read r; echo $r".
+		 * Redirect moves ->fd to e.g. 10,
+		 * and it is not restored above (we do not restore script fds
+		 * after redirects, we just use new, "moved" fds).
+		 * However for stdin, get_user_input() -> read_line_input(),
+		 * and read builtin, depend on fd == STDIN_FILENO.
+		 */
+		debug_printf_redir("restoring %d to stdin\n", G.HFILE_stdin->fd);
+		xmove_fd(G.HFILE_stdin->fd, STDIN_FILENO);
+		G.HFILE_stdin->fd = STDIN_FILENO;
 	}
 
 	/* If moved, G_interactive_fd stays on new fd, not restoring it */
@@ -8684,9 +8701,9 @@ static int process_wait_result(struct pipe *fg_pipe, pid_t childpid, int status)
 		pi->cmds[i].pid = 0;
 		pi->alive_cmds--;
 		if (!pi->alive_cmds) {
-#if ENABLE_HUSH_BASH_COMPAT
+# if ENABLE_HUSH_BASH_COMPAT
 			G.dead_job_exitcode = job_exited_or_stopped(pi);
-#endif
+# endif
 			if (G_interactive_fd) {
 				printf(JOB_STATUS_FORMAT, pi->jobid,
 						"Done", pi->cmdtext);
@@ -9824,9 +9841,12 @@ static int set_mode(int state, char mode, const char *o_opt)
 		IF_HUSH_MODE_X(G_x_mode = state;)
 		IF_HUSH_MODE_X(if (G.x_mode_fd <= 0) G.x_mode_fd = dup_CLOEXEC(2, 10);)
 		break;
+	case 'e':
+		G.o_opt[OPT_O_ERREXIT] = state;
+		break;
 	case 'o':
 		if (!o_opt) {
-			/* "set -+o" without parameter.
+			/* "set -o" or "set +o" without parameter.
 			 * in bash, set -o produces this output:
 			 *  pipefail        off
 			 * and set +o:
@@ -9847,9 +9867,7 @@ static int set_mode(int state, char mode, const char *o_opt)
 			G.o_opt[idx] = state;
 			break;
 		}
-	case 'e':
-		G.o_opt[OPT_O_ERREXIT] = state;
-		break;
+		/* fall through to error */
 	default:
 		return EXIT_FAILURE;
 	}
@@ -10213,8 +10231,6 @@ int hush_main(int argc, char **argv)
 				G_saved_tty_pgrp = 0;
 			}
 		}
-// TODO: track & disallow any attempts of user
-// to (inadvertently) close/redirect G_interactive_fd
 	}
 	debug_printf("interactive_fd:%d\n", G_interactive_fd);
 	if (G_interactive_fd) {
@@ -10536,10 +10552,10 @@ static int FAST_FUNC builtin_type(char **argv)
 		if (0) {} /* make conditional compile easier below */
 		/*else if (find_alias(*argv))
 			type = "an alias";*/
-#if ENABLE_HUSH_FUNCTIONS
+# if ENABLE_HUSH_FUNCTIONS
 		else if (find_function(*argv))
 			type = "a function";
-#endif
+# endif
 		else if (find_builtin(*argv))
 			type = "a shell builtin";
 		else if ((path = find_in_path(*argv)) != NULL)
@@ -10594,11 +10610,11 @@ static int FAST_FUNC builtin_read(char **argv)
 	 * Option string must start with "sr" to match BUILTIN_READ_xxx
 	 */
 	params.read_flags = getopt32(argv,
-#if BASH_READ_D
+# if BASH_READ_D
 		"!srn:p:t:u:d:", &params.opt_n, &params.opt_p, &params.opt_t, &params.opt_u, &params.opt_d
-#else
+# else
 		"!srn:p:t:u:", &params.opt_n, &params.opt_p, &params.opt_t, &params.opt_u
-#endif
+# endif
 	);
 	if ((uint32_t)params.read_flags == (uint32_t)-1)
 		return EXIT_FAILURE;
@@ -10771,24 +10787,24 @@ static int FAST_FUNC builtin_export(char **argv)
 {
 	unsigned opt_unexport;
 
-#if ENABLE_HUSH_EXPORT_N
+# if ENABLE_HUSH_EXPORT_N
 	/* "!": do not abort on errors */
 	opt_unexport = getopt32(argv, "!n");
 	if (opt_unexport == (uint32_t)-1)
 		return EXIT_FAILURE;
 	argv += optind;
-#else
+# else
 	opt_unexport = 0;
 	argv++;
-#endif
+# endif
 
 	if (argv[0] == NULL) {
 		char **e = environ;
 		if (e) {
 			while (*e) {
-#if 0
+# if 0
 				puts(*e++);
-#else
+# else
 				/* ash emits: export VAR='VAL'
 				 * bash: declare -x VAR="VAL"
 				 * we follow ash example */
@@ -10801,7 +10817,7 @@ static int FAST_FUNC builtin_export(char **argv)
 				printf("export %.*s", (int)(p - s) + 1, s);
 				print_escaped(p + 1);
 				putchar('\n');
-#endif
+# endif
 			}
 			/*fflush_all(); - done after each builtin anyway */
 		}
@@ -10931,8 +10947,10 @@ static int FAST_FUNC builtin_set(char **argv)
 		if (arg[0] != '+' && arg[0] != '-')
 			break;
 		for (n = 1; arg[n]; ++n) {
-			if (set_mode((arg[0] == '-'), arg[n], argv[1]))
-				goto error;
+			if (set_mode((arg[0] == '-'), arg[n], argv[1])) {
+				bb_error_msg("%s: %s: invalid option", "set", arg);
+				return EXIT_FAILURE;
+			}
 			if (arg[n] == 'o' && argv[1])
 				argv++;
 		}
@@ -10962,11 +10980,6 @@ static int FAST_FUNC builtin_set(char **argv)
 	G.global_argc = 1 + string_array_len(pp + 1);
 
 	return EXIT_SUCCESS;
-
-	/* Nothing known, so abort */
- error:
-	bb_error_msg("%s: %s: invalid option", "set", arg);
-	return EXIT_FAILURE;
 }
 #endif
 
@@ -11459,9 +11472,9 @@ static int FAST_FUNC builtin_kill(char **argv)
 
 #if ENABLE_HUSH_WAIT
 /* http://www.opengroup.org/onlinepubs/9699919799/utilities/wait.html */
-#if !ENABLE_HUSH_JOB
-# define wait_for_child_or_signal(pipe,pid) wait_for_child_or_signal(pid)
-#endif
+# if !ENABLE_HUSH_JOB
+#  define wait_for_child_or_signal(pipe,pid) wait_for_child_or_signal(pid)
+# endif
 static int wait_for_child_or_signal(struct pipe *waitfor_pipe, pid_t waitfor_pid)
 {
 	int ret = 0;
@@ -11493,7 +11506,7 @@ static int wait_for_child_or_signal(struct pipe *waitfor_pipe, pid_t waitfor_pid
 /* Can't pass waitfor_pipe into checkjobs(): it won't be interruptible */
 		ret = checkjobs(NULL, waitfor_pid); /* waitpid(WNOHANG) inside */
 		debug_printf_exec("checkjobs:%d\n", ret);
-#if ENABLE_HUSH_JOB
+# if ENABLE_HUSH_JOB
 		if (waitfor_pipe) {
 			int rcode = job_exited_or_stopped(waitfor_pipe);
 			debug_printf_exec("job_exited_or_stopped:%d\n", rcode);
@@ -11503,7 +11516,7 @@ static int wait_for_child_or_signal(struct pipe *waitfor_pipe, pid_t waitfor_pid
 				break;
 			}
 		}
-#endif
+# endif
 		/* if ECHILD, there are no children (ret is -1 or 0) */
 		/* if ret == 0, no children changed state */
 		/* if ret != 0, it's exitcode+1 of exited waitfor_pid child */
@@ -11511,12 +11524,12 @@ static int wait_for_child_or_signal(struct pipe *waitfor_pipe, pid_t waitfor_pid
 			ret--;
 			if (ret < 0) /* if ECHILD, may need to fix "ret" */
 				ret = 0;
-#if ENABLE_HUSH_BASH_COMPAT
+# if ENABLE_HUSH_BASH_COMPAT
 			if (waitfor_pid == -1 && errno == ECHILD) {
 				/* exitcode of "wait -n" with no children is 127, not 0 */
 				ret = 127;
 			}
-#endif
+# endif
 			sigprocmask(SIG_SETMASK, &oldset, NULL);
 			break;
 		}
@@ -11545,14 +11558,14 @@ static int FAST_FUNC builtin_wait(char **argv)
 	int status;
 
 	argv = skip_dash_dash(argv);
-#if ENABLE_HUSH_BASH_COMPAT
+# if ENABLE_HUSH_BASH_COMPAT
 	if (argv[0] && strcmp(argv[0], "-n") == 0) {
 		/* wait -n */
 		/* (bash accepts "wait -n PID" too and ignores PID) */
 		G.dead_job_exitcode = -1;
 		return wait_for_child_or_signal(NULL, -1 /*no job, wait for one job*/);
 	}
-#endif
+# endif
 	if (argv[0] == NULL) {
 		/* Don't care about wait results */
 		/* Note 1: must wait until there are no more children */
@@ -11576,7 +11589,7 @@ static int FAST_FUNC builtin_wait(char **argv)
 	do {
 		pid_t pid = bb_strtou(*argv, NULL, 10);
 		if (errno || pid <= 0) {
-#if ENABLE_HUSH_JOB
+# if ENABLE_HUSH_JOB
 			if (argv[0][0] == '%') {
 				struct pipe *wait_pipe;
 				ret = 127; /* bash compat for bad jobspecs */
@@ -11593,7 +11606,7 @@ static int FAST_FUNC builtin_wait(char **argv)
 				/* else: parse_jobspec() already emitted error msg */
 				continue;
 			}
-#endif
+# endif
 			/* mimic bash message */
 			bb_error_msg("wait: '%s': not a pid or valid job spec", *argv);
 			ret = EXIT_FAILURE;
@@ -11615,7 +11628,7 @@ static int FAST_FUNC builtin_wait(char **argv)
 					ret = G.last_bg_pid_exitcode;
 				} else {
 					/* Example: "wait 1". mimic bash message */
-					bb_error_msg("wait: pid %d is not a child of this shell", (int)pid);
+					bb_error_msg("wait: pid %u is not a child of this shell", (unsigned)pid);
 				}
 			} else {
 				/* ??? */
