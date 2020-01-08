@@ -21,41 +21,35 @@
 #undef read
 #undef getc
 
-static WORD plain_attr;
-static WORD attr;
-static int negative;
+#define FOREGROUND_ALL (FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE)
+#define BACKGROUND_ALL (BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE)
+
+static WORD plain_attr = 0;
 
 static HANDLE get_console(void)
 {
 	return GetStdHandle(STD_OUTPUT_HANDLE);
 }
 
-static void init(void)
+static WORD get_console_attr(void)
 {
-	static int initialised = FALSE;
-	HANDLE console;
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
-	if (initialised)
-		return;
-	initialised = TRUE;
+	if (GetConsoleScreenBufferInfo(get_console(), &sbi))
+		return sbi.wAttributes;
 
-	console = get_console();
-	if (GetConsoleScreenBufferInfo(console, &sbi)) {
-		attr = plain_attr = sbi.wAttributes;
-		negative = 0;
-	}
+	return FOREGROUND_ALL;
 }
 
 static int is_console(int fd)
 {
-	init();
+	if (!plain_attr)
+		plain_attr = get_console_attr();
 	return isatty(fd) && get_console() != INVALID_HANDLE_VALUE;
 }
 
 static int is_console_in(int fd)
 {
-	init();
 	return isatty(fd) && GetStdHandle(STD_INPUT_HANDLE) != INVALID_HANDLE_VALUE;
 }
 
@@ -91,10 +85,7 @@ static HANDLE dup_handle(HANDLE h)
 static void use_alt_buffer(int flag)
 {
 	static HANDLE console_orig = INVALID_HANDLE_VALUE;
-	CONSOLE_SCREEN_BUFFER_INFO sbi;
 	HANDLE console, h;
-
-	init();
 
 	console = get_console();
 	console_orig = dup_handle(console);
@@ -103,6 +94,7 @@ static void use_alt_buffer(int flag)
 
 	if (flag) {
 		SECURITY_ATTRIBUTES sa;
+		CONSOLE_SCREEN_BUFFER_INFO sbi;
 
 		// handle should be inheritable
 		memset(&sa, 0, sizeof(sa));
@@ -134,31 +126,28 @@ static void use_alt_buffer(int flag)
 	_open_osfhandle((intptr_t)console, O_RDWR|O_BINARY);
 }
 
-#define FOREGROUND_ALL (FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE)
-#define BACKGROUND_ALL (BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE)
-
-static void set_console_attr(void)
+static void set_console_attr(WORD attributes, int invert)
 {
 	HANDLE console = get_console();
-	WORD attributes = attr;
-	if (negative) {
+	if (invert) {
+		WORD save = attributes;
 		attributes &= ~FOREGROUND_ALL;
 		attributes &= ~BACKGROUND_ALL;
 
 		/* This could probably use a bitmask
 		   instead of a series of ifs */
-		if (attr & FOREGROUND_RED)
+		if (save & FOREGROUND_RED)
 			attributes |= BACKGROUND_RED;
-		if (attr & FOREGROUND_GREEN)
+		if (save & FOREGROUND_GREEN)
 			attributes |= BACKGROUND_GREEN;
-		if (attr & FOREGROUND_BLUE)
+		if (save & FOREGROUND_BLUE)
 			attributes |= BACKGROUND_BLUE;
 
-		if (attr & BACKGROUND_RED)
+		if (save & BACKGROUND_RED)
 			attributes |= FOREGROUND_RED;
-		if (attr & BACKGROUND_GREEN)
+		if (save & BACKGROUND_GREEN)
 			attributes |= FOREGROUND_GREEN;
-		if (attr & BACKGROUND_BLUE)
+		if (save & BACKGROUND_BLUE)
 			attributes |= FOREGROUND_BLUE;
 	}
 	SetConsoleTextAttribute(console, attributes);
@@ -252,6 +241,9 @@ static char *process_escape(char *pos)
 	const char *str, *func;
 	char *bel;
 	size_t len;
+	WORD attr = get_console_attr();
+	int invert = FALSE;
+	static int inverse = 0;
 
 	switch (pos[1]) {
 	case '[':
@@ -281,7 +273,7 @@ static char *process_escape(char *pos)
 			switch (val) {
 			case 0: /* reset */
 				attr = plain_attr;
-				negative = 0;
+				inverse = 0;
 				break;
 			case 1: /* bold */
 				attr |= FOREGROUND_INTENSITY;
@@ -311,11 +303,13 @@ static char *process_escape(char *pos)
 			case 25: /* no blink */
 				attr &= ~BACKGROUND_INTENSITY;
 				break;
-			case 7:  /* negative */
-				negative = 1;
+			case 7:  /* inverse on */
+				invert = !inverse;
+				inverse = 1;
 				break;
-			case 27: /* positive */
-				negative = 0;
+			case 27: /* inverse off */
+				invert = inverse;
+				inverse = 0;
 				break;
 			case 8:  /* conceal */
 			case 28: /* reveal */
@@ -404,7 +398,7 @@ static char *process_escape(char *pos)
 			str++;
 		} while (*(str-1) == ';');
 
-		set_console_attr();
+		set_console_attr(attr, invert);
 		break;
 	case 'A': /* up */
 		move_cursor_row(-strtol(str, (char **)&str, 10));
