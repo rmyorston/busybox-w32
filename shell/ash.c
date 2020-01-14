@@ -15590,7 +15590,7 @@ static int
 tblentry_size(int funcblocksize, struct tblentry *tep)
 {
 	while (tep) {
-		funcblocksize += sizeof(struct tblentry) + strlen(tep->cmdname);
+		funcblocksize += sizeof(struct tblentry) + align_len(tep->cmdname);
 		/* CMDBUILTIN, e->param.cmd needs no pointer relocation */
 		if (tep->cmdtype == CMDFUNCTION) {
 			funcblocksize += offsetof(struct funcnode, n);
@@ -15613,7 +15613,7 @@ tblentry_copy(struct tblentry *tep)
 	newp = &start;
 	while (tep) {
 		*newp = funcblock;
-		size = sizeof(struct tblentry) + strlen(tep->cmdname);
+		size = sizeof(struct tblentry) + align_len(tep->cmdname);
 
 		funcblock = (char *) funcblock + size;
 		memcpy(*newp, tep, size);
@@ -15745,7 +15745,6 @@ argv_copy(char **p)
 		SAVE_PTR(*new);
 		ANNOT_NO_DUP(xasprintf("argv[%d] '%s'", i++, *p));
 		p++;
-		new++;
 	}
 	new = funcblock;
 	funcblock = (char *) funcblock + sizeof(char *);
@@ -15779,7 +15778,6 @@ history_copy(line_input_t *st)
 		*new = nodeckstrdup(st->history[i]);
 		SAVE_PTR(*new);
 		ANNOT_NO_DUP(xasprintf("history[%d] '%s'", i, st->history[i]));
-		new++;
 	}
 	return start;
 }
