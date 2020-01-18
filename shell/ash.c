@@ -360,12 +360,12 @@ struct forkshell {
 	/* struct parsefile *g_parsefile; */
 	HANDLE hMapFile;
 	char *old_base;
+	int size;
 # if FORKSHELL_DEBUG
 	int funcblocksize;
 	int funcstringsize;
-	int relocatesize;
 # endif
-	int size;
+	int relocatesize;
 
 	/* type of forkshell */
 	int fpid;
@@ -15972,7 +15972,8 @@ forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 
 	total = sizeof(struct forkshell) + fs->funcblocksize +
 				fs->funcstringsize + fs->relocatesize;
-	fprintf(fp, "total size    %6d = %d + %d + %d + %d = %d\n", 2*fs->size,
+	fprintf(fp, "total size    %6d = %d + %d + %d + %d = %d\n",
+				fs->size + fs->relocatesize,
 				(int)sizeof(struct forkshell), fs->funcblocksize,
 				fs->funcstringsize, fs->relocatesize, total);
 
@@ -16051,7 +16052,7 @@ static struct forkshell *
 forkshell_prepare(struct forkshell *fs)
 {
 	struct forkshell *new;
-	int size;
+	int size, relocatesize;
 	HANDLE h;
 	SECURITY_ATTRIBUTES sa;
 #if FORKSHELL_DEBUG
@@ -16069,6 +16070,7 @@ forkshell_prepare(struct forkshell *fs)
 
 	/* calculate size of structure, funcblock and funcstring */
 	size = sizeof(struct forkshell) + forkshell_size(fs);
+	relocatesize = size;
 
 	/* Allocate shared memory region.  We allocate twice 'size' to allow
 	 * for the relocation map.  This is an overestimate as the relocation
@@ -16078,7 +16080,8 @@ forkshell_prepare(struct forkshell *fs)
 	sa.nLength = sizeof(sa);
 	sa.lpSecurityDescriptor = NULL;
 	sa.bInheritHandle = TRUE;
-	h = CreateFileMapping(INVALID_HANDLE_VALUE, &sa, PAGE_READWRITE, 0, 2*size, NULL);
+	h = CreateFileMapping(INVALID_HANDLE_VALUE, &sa, PAGE_READWRITE, 0,
+			size+relocatesize, NULL);
 
 	/* Initialise pointers */
 	new = (struct forkshell *)MapViewOfFile(h, FILE_MAP_WRITE, 0,0, 0);
@@ -16086,7 +16089,7 @@ forkshell_prepare(struct forkshell *fs)
 	funcblock = (char *)(new + 1);
 	funcstring_end = relocate = (char *)new + size;
 #if FORKSHELL_DEBUG
-	annot = (const char **)xzalloc(sizeof(char *)*size);
+	annot = (const char **)xzalloc(sizeof(char *)*relocatesize);
 #endif
 
 	/* Now pack them all */
@@ -16094,6 +16097,7 @@ forkshell_prepare(struct forkshell *fs)
 
 	/* Finish it up */
 	new->size = size;
+	new->relocatesize = relocatesize;
 	new->old_base = (char *)new;
 	new->hMapFile = h;
 #if FORKSHELL_DEBUG
@@ -16103,7 +16107,6 @@ forkshell_prepare(struct forkshell *fs)
 
 		new->funcblocksize = (char *)funcblock - (char *)(new + 1);
 		new->funcstringsize = (char *)new + size - funcstring_end;
-		new->relocatesize = size;
 
 		/* perform some sanity checks on pointers */
 		fprintf(fp, "forkshell   %p  %6d\n", new, (int)sizeof(*new));
@@ -16116,7 +16119,7 @@ forkshell_prepare(struct forkshell *fs)
 
 		forkshell_print(fp, new, annot);
 
-		for (i = 0; i < size; ++i) {
+		for (i = 0; i < relocatesize; ++i) {
 			if (relocate[i] == FREE) {
 				free((void *)annot[i]);
 			}
@@ -16165,7 +16168,7 @@ forkshell_init(const char *idstr)
 
 	/* pointer fixup */
 	lrelocate = (char *)fs + fs->size;
-	for (i = 0; i < fs->size; i++) {
+	for (i = 0; i < fs->relocatesize; i++) {
 		if (lrelocate[i]) {
 			ptr = (char **)((char *)fs + i);
 			if (*ptr)
