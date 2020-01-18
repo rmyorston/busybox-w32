@@ -9449,15 +9449,14 @@ static union node *copynode(union node *);
 }
 # define SAVE_PTR2(dst1,note1,flag1,dst2,note2,flag2) { \
 	if (relocate) { \
-		MARK_PTR(dst1,flag1); ANNOT(dst1,note1); \
-		MARK_PTR(dst2,flag2); ANNOT(dst2,note2); \
+		MARK_PTR(dst1,flag1); MARK_PTR(dst2,flag2); \
+		ANNOT(dst1,note1); ANNOT(dst2,note2); \
 	} \
 }
 # define SAVE_PTR3(dst1,note1,flag1,dst2,note2,flag2,dst3,note3,flag3) { \
 	if (relocate) { \
-		MARK_PTR(dst1,flag1); ANNOT(dst1,note1); \
-		MARK_PTR(dst2,flag2); ANNOT(dst2,note2); \
-		MARK_PTR(dst3,flag3); ANNOT(dst3,note3); \
+		MARK_PTR(dst1,flag1); MARK_PTR(dst2,flag2); MARK_PTR(dst3,flag3); \
+		ANNOT(dst1,note1); ANNOT(dst2,note2); ANNOT(dst3,note3); \
 	} \
 }
 #else
@@ -15508,13 +15507,12 @@ spawn_forkshell(struct forkshell *fs, struct job *jp, union node *n, int mode)
 		MARK_PTR(dst,flag); ANNOT(dst,note); \
 }
 # define SAVE_PTR2(dst1,note1,flag1,dst2,note2,flag2) { \
-		MARK_PTR(dst1,flag1); ANNOT(dst1,note1); \
-		MARK_PTR(dst2,flag2); ANNOT(dst2,note2); \
+		MARK_PTR(dst1,flag1); MARK_PTR(dst2,flag2); \
+		ANNOT(dst1,note1); ANNOT(dst2,note2); \
 }
 # define SAVE_PTR3(dst1,note1,flag1,dst2,note2,flag2,dst3,note3,flag3) { \
-		MARK_PTR(dst1,flag1); ANNOT(dst1,note1); \
-		MARK_PTR(dst2,flag2); ANNOT(dst2,note2); \
-		MARK_PTR(dst3,flag3); ANNOT(dst3,note3); \
+		MARK_PTR(dst1,flag1); MARK_PTR(dst2,flag2); MARK_PTR(dst3,flag3); \
+		ANNOT(dst1,note1); ANNOT(dst2,note2); ANNOT(dst3,note3); \
 }
 
 static int align_len(const char *s)
