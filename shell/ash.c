@@ -15524,17 +15524,22 @@ static int align_len(const char *s)
 	return s ? SHELL_ALIGN(strlen(s)+1) : 0;
 }
 
+struct datasize {
+	int funcblocksize;
+	int funcstringsize;
+};
+
 #define SLIST_SIZE_BEGIN(name,type) \
-static int \
-name(int funcblocksize, type *p) \
+static struct datasize \
+name(struct datasize ds, type *p) \
 { \
 	while (p) { \
-		funcblocksize += sizeof(type);
+		ds.funcblocksize += sizeof(type);
 		/* do something here with p */
 #define SLIST_SIZE_END() \
 		p = p->next; \
 	} \
-	return funcblocksize; \
+	return ds; \
 }
 
 #define SLIST_COPY_BEGIN(name,type) \
@@ -15561,7 +15566,7 @@ name(type *vp) \
  * struct var
  */
 SLIST_SIZE_BEGIN(var_size,struct var)
-funcblocksize += align_len(p->var_text);
+ds.funcstringsize += align_len(p->var_text);
 SLIST_SIZE_END()
 
 SLIST_COPY_BEGIN(var_copy,struct var)
@@ -15575,7 +15580,7 @@ SLIST_COPY_END()
  * struct strlist
  */
 SLIST_SIZE_BEGIN(strlist_size,struct strlist)
-funcblocksize += align_len(p->text);
+ds.funcstringsize += align_len(p->text);
 SLIST_SIZE_END()
 
 SLIST_COPY_BEGIN(strlist_copy,struct strlist)
@@ -15586,19 +15591,19 @@ SLIST_COPY_END()
 /*
  * struct tblentry
  */
-static int
-tblentry_size(int funcblocksize, struct tblentry *tep)
+static struct datasize
+tblentry_size(struct datasize ds, struct tblentry *tep)
 {
 	while (tep) {
-		funcblocksize += sizeof(struct tblentry) + align_len(tep->cmdname);
+		ds.funcblocksize += sizeof(struct tblentry) + align_len(tep->cmdname);
 		/* CMDBUILTIN, e->param.cmd needs no pointer relocation */
 		if (tep->cmdtype == CMDFUNCTION) {
-			funcblocksize += offsetof(struct funcnode, n);
-			funcblocksize = calcsize(funcblocksize, &tep->param.func->n);
+			ds.funcblocksize += offsetof(struct funcnode, n);
+			ds.funcblocksize = calcsize(ds.funcblocksize, &tep->param.func->n);
 		}
 		tep = tep->next;
 	}
-	return funcblocksize;
+	return ds;
 }
 
 static struct tblentry *
@@ -15637,14 +15642,14 @@ tblentry_copy(struct tblentry *tep)
 	return start;
 }
 
-static int
-cmdtable_size(int funcblocksize, struct tblentry **cmdtablep)
+static struct datasize
+cmdtable_size(struct datasize ds, struct tblentry **cmdtablep)
 {
 	int i;
-	funcblocksize += sizeof(struct tblentry *)*CMDTABLESIZE;
+	ds.funcblocksize += sizeof(struct tblentry *)*CMDTABLESIZE;
 	for (i = 0; i < CMDTABLESIZE; i++)
-		funcblocksize = tblentry_size(funcblocksize, cmdtablep[i]);
-	return funcblocksize;
+		ds = tblentry_size(ds, cmdtablep[i]);
+	return ds;
 }
 
 static struct tblentry **
@@ -15666,8 +15671,8 @@ cmdtable_copy(struct tblentry **cmdtablep)
  * struct alias
  */
 SLIST_SIZE_BEGIN(alias_size,struct alias)
-funcblocksize += align_len(p->name);
-funcblocksize += align_len(p->val);
+ds.funcstringsize += align_len(p->name);
+ds.funcstringsize += align_len(p->val);
 SLIST_SIZE_END()
 
 SLIST_COPY_BEGIN(alias_copy,struct alias)
@@ -15678,14 +15683,14 @@ SAVE_PTR((*vpp)->name, xasprintf("(*vpp)->name '%s'", vp->name ?: "NULL"), FREE)
 SAVE_PTR((*vpp)->val, xasprintf("(*vpp)->val '%s'", vp->val ?: "NULL"), FREE);
 SLIST_COPY_END()
 
-static int
-atab_size(int funcblocksize, struct alias **atabp)
+static struct datasize
+atab_size(struct datasize ds, struct alias **atabp)
 {
 	int i;
-	funcblocksize += sizeof(struct alias *)*ATABSIZE;
+	ds.funcblocksize += sizeof(struct alias *)*ATABSIZE;
 	for (i = 0; i < ATABSIZE; i++)
-		funcblocksize = alias_size(funcblocksize, atabp[i]);
-	return funcblocksize;
+		ds = alias_size(ds, atabp[i]);
+	return ds;
 }
 
 static struct alias **
@@ -15706,16 +15711,16 @@ atab_copy(struct alias **atabp)
 /*
  * char **
  */
-static int
-argv_size(int funcblocksize, char **p)
+static struct datasize
+argv_size(struct datasize ds, char **p)
 {
 	while (p && *p) {
-		funcblocksize += sizeof(char *);
-		funcblocksize += align_len(*p);
+		ds.funcblocksize += sizeof(char *);
+		ds.funcstringsize += align_len(*p);
 		p++;
 	}
-	funcblocksize += sizeof(char *);
-	return funcblocksize;
+	ds.funcblocksize += sizeof(char *);
+	return ds;
 }
 
 static char **
@@ -15740,16 +15745,16 @@ argv_copy(char **p)
 }
 
 #if MAX_HISTORY
-static int
-history_size(int funcblocksize, line_input_t *st)
+static struct datasize
+history_size(struct datasize ds, line_input_t *st)
 {
 	int i;
 
-	funcblocksize += sizeof(char *) * st->cnt_history;
+	ds.funcblocksize += sizeof(char *) * st->cnt_history;
 	for (i = 0; i < st->cnt_history; i++) {
-		funcblocksize += align_len(st->history[i]);
+		ds.funcstringsize += align_len(st->history[i]);
 	}
-	return funcblocksize;
+	return ds;
 }
 
 static char **
@@ -15804,17 +15809,17 @@ redirtab_copy(struct redirtab *rdtp)
 #undef shellparam
 #undef redirlist
 #undef vartab
-static int
-globals_var_size(int funcblocksize, struct globals_var *gvp)
+static struct datasize
+globals_var_size(struct datasize ds, struct globals_var *gvp)
 {
 	int i;
 
-	funcblocksize += sizeof(struct globals_var);
-	funcblocksize = argv_size(funcblocksize, gvp->shellparam.p);
-	funcblocksize = redirtab_size(funcblocksize, gvp->redirlist);
+	ds.funcblocksize += sizeof(struct globals_var);
+	ds = argv_size(ds, gvp->shellparam.p);
+	ds.funcblocksize = redirtab_size(ds.funcblocksize, gvp->redirlist);
 	for (i = 0; i < VTABSIZE; i++)
-		funcblocksize = var_size(funcblocksize, gvp->vartab[i]);
-	return funcblocksize;
+		ds = var_size(ds, gvp->vartab[i]);
+	return ds;
 }
 
 static struct globals_var *
@@ -15849,18 +15854,18 @@ globals_var_copy(struct globals_var *gvp)
 #undef arg0
 #undef commandname
 #undef nullstr
-static int
-globals_misc_size(int funcblocksize, struct globals_misc *p)
+static struct datasize
+globals_misc_size(struct datasize ds, struct globals_misc *p)
 {
-	funcblocksize += sizeof(struct globals_misc);
-	funcblocksize += align_len(p->minusc);
+	ds.funcblocksize += sizeof(struct globals_misc);
+	ds.funcstringsize += align_len(p->minusc);
 	if (p->curdir != p->nullstr)
-		funcblocksize += align_len(p->curdir);
+		ds.funcstringsize += align_len(p->curdir);
 	if (p->physdir != p->nullstr)
-		funcblocksize += align_len(p->physdir);
-	funcblocksize += align_len(p->arg0);
-	funcblocksize += align_len(p->commandname);
-	return funcblocksize;
+		ds.funcstringsize += align_len(p->physdir);
+	ds.funcstringsize += align_len(p->arg0);
+	ds.funcstringsize += align_len(p->commandname);
+	return ds;
 }
 
 static struct globals_misc *
@@ -15887,31 +15892,31 @@ globals_misc_copy(struct globals_misc *p)
 	return new;
 }
 
-static int
+static struct datasize
 forkshell_size(struct forkshell *fs)
 {
-	int funcblocksize = 0;
+	struct datasize ds = {0, 0};
 
-	funcblocksize = globals_var_size(funcblocksize, fs->gvp);
-	funcblocksize = globals_misc_size(funcblocksize, fs->gmp);
-	funcblocksize = cmdtable_size(funcblocksize, fs->cmdtable);
+	ds = globals_var_size(ds, fs->gvp);
+	ds = globals_misc_size(ds, fs->gmp);
+	ds = cmdtable_size(ds, fs->cmdtable);
 #if ENABLE_ASH_ALIAS
-	funcblocksize = atab_size(funcblocksize, fs->atab);
+	ds = atab_size(ds, fs->atab);
 #endif
 	/* optlist_transfer(sending, fd); */
 	/* misc_transfer(sending, fd); */
 
-	funcblocksize = calcsize(funcblocksize, fs->n);
-	funcblocksize = argv_size(funcblocksize, fs->argv);
-	funcblocksize += align_len(fs->path);
-	funcblocksize = strlist_size(funcblocksize, fs->varlist);
+	ds.funcblocksize = calcsize(ds.funcblocksize, fs->n);
+	ds = argv_size(ds, fs->argv);
+	ds.funcstringsize += align_len(fs->path);
+	ds = strlist_size(ds, fs->varlist);
 
 #if MAX_HISTORY
 	if (line_input_state) {
-		funcblocksize = history_size(funcblocksize, line_input_state);
+		ds = history_size(ds, line_input_state);
 	}
 #endif
-	return funcblocksize;
+	return ds;
 }
 
 static void
@@ -16054,6 +16059,7 @@ static struct forkshell *
 forkshell_prepare(struct forkshell *fs)
 {
 	struct forkshell *new;
+	struct datasize ds;
 	int size, relocatesize;
 	HANDLE h;
 	SECURITY_ATTRIBUTES sa;
@@ -16072,8 +16078,9 @@ forkshell_prepare(struct forkshell *fs)
 #endif
 
 	/* calculate size of structure, funcblock and funcstring */
-	size = sizeof(struct forkshell) + forkshell_size(fs);
-	relocatesize = size;
+	ds = forkshell_size(fs);
+	size = sizeof(struct forkshell) + ds.funcblocksize + ds.funcstringsize;
+	relocatesize = sizeof(struct forkshell) + ds.funcblocksize;
 
 	/* Allocate shared memory region.  We allocate twice 'size' to allow
 	 * for the relocation map.  This is an overestimate as the relocation
@@ -16125,14 +16132,14 @@ forkshell_prepare(struct forkshell *fs)
 		forkshell_print(fp, new, annot);
 
 		for (i = 0; i < relocatesize; ++i) {
-			if (relocate[i] == FREE) {
-				free((void *)annot[i]);
-			}
 			/* check relocations are only present for structure and funcblock */
 			if (i >= sizeof(*new)+new->funcblocksize && annot[i] != NULL) {
-				fprintf(fp, "\nnon-NULL annotation at offset %d (> %d)\n",
-						i, (int)sizeof(*new)+new->funcblocksize);
+				fprintf(fp, "\nnon-NULL annotation at offset %d (> %d) %s\n",
+						i, (int)sizeof(*new)+new->funcblocksize, annot[i]);
 				break;
+			}
+			if (relocate[i] == FREE) {
+				free((void *)annot[i]);
 			}
 		}
 		free(annot);
