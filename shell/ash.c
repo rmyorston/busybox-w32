@@ -9280,9 +9280,9 @@ commandcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 static void *funcblock;         /* block to allocate function from */
 static char *funcstring_end;    /* end of block to allocate strings from */
 #if ENABLE_PLATFORM_MINGW32
-static char *relocate;
-static void *fs_start;
+static int fs_size;
 # if FORKSHELL_DEBUG
+static void *fs_start;
 static const char **annot;
 # endif
 #endif
@@ -9441,20 +9441,24 @@ static union node *copynode(union node *);
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
-# define MARK_PTR(dst,flag) {relocate[(char *)&dst - (char *)fs_start] = flag;}
+/* The relocation map is offset from the start of the forkshell data
+ * block by 'fs_size' bytes.  The flag relating to a particular destination
+ * pointer is thus at (dst+fs_size). */
+# define MARK_PTR(dst,flag) {*((char *)&dst + fs_size) = flag;}
+
 # define SAVE_PTR(dst,note,flag) { \
-	if (relocate) { \
+	if (fs_size) { \
 		MARK_PTR(dst,flag); ANNOT(dst,note); \
 	} \
 }
 # define SAVE_PTR2(dst1,note1,flag1,dst2,note2,flag2) { \
-	if (relocate) { \
+	if (fs_size) { \
 		MARK_PTR(dst1,flag1); MARK_PTR(dst2,flag2); \
 		ANNOT(dst1,note1); ANNOT(dst2,note2); \
 	} \
 }
 # define SAVE_PTR3(dst1,note1,flag1,dst2,note2,flag2,dst3,note3,flag3) { \
-	if (relocate) { \
+	if (fs_size) { \
 		MARK_PTR(dst1,flag1); MARK_PTR(dst2,flag2); MARK_PTR(dst3,flag3); \
 		ANNOT(dst1,note1); ANNOT(dst2,note2); ANNOT(dst3,note3); \
 	} \
@@ -9633,7 +9637,7 @@ copyfunc(union node *n)
 	f = ckzalloc(blocksize /* + funcstringsize */);
 	funcblock = (char *) f + offsetof(struct funcnode, n);
 	funcstring_end = (char *) f + blocksize;
-	IF_PLATFORM_MINGW32(relocate = NULL);
+	IF_PLATFORM_MINGW32(fs_size = 0);
 	copynode(n);
 	/* f->count = 0; - ckzalloc did it */
 	return f;
@@ -16054,6 +16058,7 @@ forkshell_prepare(struct forkshell *fs)
 	HANDLE h;
 	SECURITY_ATTRIBUTES sa;
 #if FORKSHELL_DEBUG
+	char *relocate;
 	char name[32];
 	FILE *fp;
 #endif
@@ -16083,10 +16088,12 @@ forkshell_prepare(struct forkshell *fs)
 
 	/* Initialise pointers */
 	new = (struct forkshell *)MapViewOfFile(h, FILE_MAP_WRITE, 0,0, 0);
-	fs_start = new;
+	fs_size = size;
 	funcblock = (char *)(new + 1);
-	funcstring_end = relocate = (char *)new + size;
+	funcstring_end = (char *)new + size;
 #if FORKSHELL_DEBUG
+	fs_start = new;
+	relocate = (char *)new + size;
 	annot = (const char **)xzalloc(sizeof(char *)*relocatesize);
 #endif
 
