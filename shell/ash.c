@@ -15619,7 +15619,7 @@ tblentry_copy(struct tblentry *tep)
 		size = sizeof(struct tblentry) + align_len(tep->cmdname);
 
 		funcblock = (char *) funcblock + size;
-		memcpy(*newp, tep, size);
+		memcpy(*newp, tep, sizeof(struct tblentry)+strlen(tep->cmdname));
 		switch (tep->cmdtype) {
 		case CMDBUILTIN:
 			/* Save index of builtin, not pointer; fixed by forkshell_init() */
