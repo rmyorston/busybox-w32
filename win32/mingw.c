@@ -1377,7 +1377,7 @@ size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm
 				m = t - fmt;
 				newfmt = xasprintf("%s%s%s", fmt, replace, t+2);
 				free(fmt);
-				t = newfmt + m + strlen(replace);
+				t = newfmt + m + strlen(replace) - 1;
 				fmt = newfmt;
 			}
 		}
