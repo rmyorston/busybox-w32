@@ -418,7 +418,6 @@ static uid_t file_owner(HANDLE fh)
 	PSECURITY_DESCRIPTOR pSD;
 	static PTOKEN_USER user = NULL;
 	static int initialised = 0;
-	int equal;
 	uid_t uid = 0;
 	DWORD *ptr;
 	unsigned char prefix[] = {
@@ -453,18 +452,16 @@ static uid_t file_owner(HANDLE fh)
 			&pSidOwner, NULL, NULL, NULL, &pSD) != ERROR_SUCCESS)
 		return 0;
 
-	equal = EqualSid(pSidOwner, user->User.Sid);
-	LocalFree(pSD);
-
-	if (equal)
-		return DEFAULT_UID;
-
-	/* for local or domain users use the RID as uid */
-	if (memcmp(pSidOwner, prefix, sizeof(prefix)) == 0) {
+	if (EqualSid(pSidOwner, user->User.Sid)) {
+		uid = DEFAULT_UID;
+	}
+	else if (memcmp(pSidOwner, prefix, sizeof(prefix)) == 0) {
+		/* for local or domain users use the RID as uid */
 		ptr = (DWORD *)pSidOwner;
 		if (ptr[6] >= 500 && ptr[6] < DEFAULT_UID)
 			uid = (uid_t)ptr[6];
 	}
+	LocalFree(pSD);
 	return uid;
 
 #if 0
