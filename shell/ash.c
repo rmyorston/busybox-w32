@@ -15760,16 +15760,16 @@ history_size(struct datasize ds, line_input_t *st)
 static char **
 history_copy(line_input_t *st)
 {
-	char **new, **start = funcblock;
+	char **new = funcblock;
 	int i;
 
+	funcblock = (char *)funcblock + sizeof(char *) * st->cnt_history;
 	for (i = 0; i < st->cnt_history; i++) {
-		new = funcblock;
-		funcblock = (char *) funcblock + sizeof(char *);
-		*new = nodeckstrdup(st->history[i]);
-		SAVE_PTR(*new, xasprintf("history[%d] '%s'", i, st->history[i]), FREE);
+		new[i] = nodeckstrdup(st->history[i]);
+		SAVE_PTR(new[i],
+			xasprintf("history[%d] '%s'", i, st->history[i]), FREE);
 	}
-	return start;
+	return new;
 }
 #endif
 
