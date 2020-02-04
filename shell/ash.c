@@ -16082,10 +16082,7 @@ forkshell_prepare(struct forkshell *fs)
 	size = sizeof(struct forkshell) + ds.funcblocksize + ds.funcstringsize;
 	relocatesize = sizeof(struct forkshell) + ds.funcblocksize;
 
-	/* Allocate shared memory region.  We allocate twice 'size' to allow
-	 * for the relocation map.  This is an overestimate as the relocation
-	 * map only needs to cover the forkshell structure and funcblock but
-	 * the size of funcstring isn't known separately at this point. */
+	/* Allocate shared memory region */
 	memset(&sa, 0, sizeof(sa));
 	sa.nLength = sizeof(sa);
 	sa.lpSecurityDescriptor = NULL;
