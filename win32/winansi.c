@@ -87,14 +87,15 @@ static void use_alt_buffer(int flag)
 	static HANDLE console_orig = INVALID_HANDLE_VALUE;
 	HANDLE console, h;
 
-	console = get_console();
-	console_orig = dup_handle(console);
-	if (console_orig == INVALID_HANDLE_VALUE)
-		return;
-
 	if (flag) {
 		SECURITY_ATTRIBUTES sa;
 		CONSOLE_SCREEN_BUFFER_INFO sbi;
+
+		if (console_orig != INVALID_HANDLE_VALUE)
+			return;
+
+		console = get_console();
+		console_orig = dup_handle(console);
 
 		// handle should be inheritable
 		memset(&sa, 0, sizeof(sa));
@@ -109,13 +110,16 @@ static void use_alt_buffer(int flag)
 		if (h == INVALID_HANDLE_VALUE)
 			return;
 
-		console = get_console();
 		if (GetConsoleScreenBufferInfo(console, &sbi))
 			SetConsoleScreenBufferSize(h, sbi.dwSize);
 	}
 	else {
+		if (console_orig == INVALID_HANDLE_VALUE)
+			return;
+
 		// revert to original buffer
 		h = dup_handle(console_orig);
+		console_orig = INVALID_HANDLE_VALUE;
 		if (h == INVALID_HANDLE_VALUE)
 			return;
 	}
