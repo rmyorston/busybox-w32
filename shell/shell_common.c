@@ -197,6 +197,7 @@ shell_builtin_read(struct builtin_read_params *params)
 		if ((bufpos & 0xff) == 0)
 			buffer = xrealloc(buffer, bufpos + 0x101);
 
+ IF_PLATFORM_MINGW32(loop:)
 		timeout = -1;
 		if (params->opt_t) {
 			timeout = end_ms - (unsigned)monotonic_ms();
@@ -238,6 +239,15 @@ shell_builtin_read(struct builtin_read_params *params)
 				/* ^C or timeout */
 				retval = (const char *)(uintptr_t)1;
 				goto ret;
+			}
+			else if (key == '\b') {
+				if (bufpos > 0) {
+					--bufpos;
+					if (!(read_flags & BUILTIN_READ_SILENT)) {
+						printf("\b \b");
+					}
+				}
+				goto loop;
 			}
 			buffer[bufpos] = key == '\r' ? '\n' : key;
 			if (!(read_flags & BUILTIN_READ_SILENT)) {
