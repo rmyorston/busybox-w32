@@ -574,6 +574,7 @@ struct globals_misc {
 #endif
 
 	/* trap handler commands */
+#if !ENABLE_PLATFORM_MINGW32
 	/*
 	 * Sigmode records the current value of the signal handlers for the various
 	 * modes.  A value of zero means that the current handler is not known.
@@ -587,6 +588,7 @@ struct globals_misc {
 
 	/* indicates specified signal received */
 	uint8_t gotsig[NSIG - 1]; /* offset by 1: "signal" 0 is meaningless */
+#endif
 	uint8_t may_have_traps; /* 0: definitely no traps are set, 1: some traps may be set */
 	char *trap[NSIG];
 	char **trap_ptr;        /* used only by "trap hack" */
@@ -9672,6 +9674,7 @@ static int funcline;            /* starting line number of current function, or 
 /* Forward decl way out to parsing code - dotrap needs it */
 static int evalstring(char *s, int flags);
 
+#if !ENABLE_PLATFORM_MINGW32
 /* Called to execute a trap.
  * Single callsite - at the end of evaltree().
  * If we return non-zero, evaltree raises EXEXIT exception.
@@ -9720,6 +9723,9 @@ dotrap(void)
 	exitstatus = last_status;
 	TRACE(("dotrap returns\n"));
 }
+#else
+# define dotrap()
+#endif
 
 /* forward declarations - evaluation is fairly recursive business... */
 static int evalloop(union node *, int);
