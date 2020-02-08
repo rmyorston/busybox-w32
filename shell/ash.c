@@ -14701,6 +14701,21 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 			goto again;
 	}
 
+#if ENABLE_PLATFORM_MINGW32
+	if ((uintptr_t)r == 2) {
+		/* ^C pressed, propagate event */
+		if (iflag) {
+			write(STDOUT_FILENO, "^C", 2);
+			raise_interrupt();
+		}
+		else {
+			GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0);
+			exitshell();
+		}
+		return (uintptr_t)r;
+	}
+#endif
+
 	if ((uintptr_t)r > 1)
 		ash_msg_and_raise_error(r);
 

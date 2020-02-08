@@ -235,8 +235,13 @@ shell_builtin_read(struct builtin_read_params *params)
 			int64_t key;
 
 			key = read_key(fd, NULL, timeout);
-			if (key == 0x03 || key == -1 || (key == 0x1a && bufpos == 0)) {
-				/* ^C, timeout or ^Z at start of buffer */
+			if (key == 0x03) {
+				/* ^C pressed */
+				retval = (const char *)(uintptr_t)2;
+				goto ret;
+			}
+			else if (key == -1 || (key == 0x1a && bufpos == 0)) {
+				/* timeout or ^Z at start of buffer */
 				retval = (const char *)(uintptr_t)1;
 				goto ret;
 			}
