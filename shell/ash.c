@@ -11266,7 +11266,9 @@ preadfd(void)
 			if (trap[SIGINT]) {
 				buf[0] = '\n';
 				buf[1] = '\0';
+# if !ENABLE_PLATFORM_MINGW32
 				raise(SIGINT);
+# endif
 				return 1;
 			}
 			exitstatus = 128 + SIGINT;
@@ -16216,9 +16218,8 @@ forkshell_init(const char *idstr)
 		}
 	}
 	fs->gmp->exception_handler = ash_ptr_to_globals_misc->exception_handler;
-	for (i = 0; i < NSIG; i++)
-		fs->gmp->trap[i] = ash_ptr_to_globals_misc->trap[i];
-	fs->gmp->trap_ptr = ash_ptr_to_globals_misc->trap_ptr;
+	memset(fs->gmp->trap, 0, sizeof(fs->gmp->trap[0])*NSIG);
+	fs->gmp->trap_ptr = fs->gmp->trap;
 
 	/* Switch global variables */
 	gvpp = (struct globals_var **)&ash_ptr_to_globals_var;
