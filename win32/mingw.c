@@ -1389,12 +1389,6 @@ size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm
 	return ret;
 }
 
-int clock_settime(clockid_t clk_id UNUSED_PARAM, const struct timespec *tp UNUSED_PARAM)
-{
-	errno = EPERM;
-	return -1;
-}
-
 #undef access
 int mingw_access(const char *name, int mode)
 {
