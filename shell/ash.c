@@ -588,10 +588,12 @@ struct globals_misc {
 
 	/* indicates specified signal received */
 	uint8_t gotsig[NSIG - 1]; /* offset by 1: "signal" 0 is meaningless */
-#endif
 	uint8_t may_have_traps; /* 0: definitely no traps are set, 1: some traps may be set */
+#endif
 	char *trap[NSIG];
+#if !ENABLE_PLATFORM_MINGW32
 	char **trap_ptr;        /* used only by "trap hack" */
+#endif
 
 	/* Rarely referenced stuff */
 #if ENABLE_ASH_RANDOM_SUPPORT
@@ -636,12 +638,20 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define trap_ptr    (G_misc.trap_ptr   )
 #define random_gen  (G_misc.random_gen )
 #define backgndpid  (G_misc.backgndpid )
+
+#if ENABLE_PLATFORM_MINGW32
+#undef may_have_traps
+#undef trap_ptr
+#define may_have_traps    (0)
+#define trap_ptr          trap
+#endif
+
 #define INIT_G_misc() do { \
 	(*(struct globals_misc**)not_const_pp(&ash_ptr_to_globals_misc)) = xzalloc(sizeof(G_misc)); \
 	barrier(); \
 	curdir = nullstr; \
 	physdir = nullstr; \
-	trap_ptr = trap; \
+	IF_NOT_PLATFORM_MINGW32(trap_ptr = trap;) \
 } while (0)
 
 
@@ -14415,8 +14425,10 @@ trapcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 			if (LONE_DASH(action))
 				action = NULL;
 			else {
+#if !ENABLE_PLATFORM_MINGW32
 				if (action[0]) /* not NULL and not "" and not "-" */
 					may_have_traps = 1;
+#endif
 				action = ckstrdup(action);
 			}
 		}
@@ -16219,7 +16231,7 @@ forkshell_init(const char *idstr)
 	}
 	fs->gmp->exception_handler = ash_ptr_to_globals_misc->exception_handler;
 	memset(fs->gmp->trap, 0, sizeof(fs->gmp->trap[0])*NSIG);
-	fs->gmp->trap_ptr = fs->gmp->trap;
+	/* fs->gmp->trap_ptr = fs->gmp->trap; */
 
 	/* Switch global variables */
 	gvpp = (struct globals_var **)&ash_ptr_to_globals_var;
