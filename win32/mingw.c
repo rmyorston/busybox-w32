@@ -791,8 +791,7 @@ char *mingw_getcwd(char *pointer, int len)
 	char *ret = getcwd(pointer, len);
 	if (!ret)
 		return ret;
-	bs_to_slash(ret);
-	return ret;
+	return bs_to_slash(ret);
 }
 
 #undef rename
@@ -846,9 +845,7 @@ static char *gethomedir(void)
 
 	GetUserProfileDirectory(h, buf, &len);
 	CloseHandle(h);
-	bs_to_slash(buf);
-
-	return buf;
+	return bs_to_slash(buf);
 }
 
 #define NAME_LEN 100
@@ -1109,8 +1106,7 @@ char *realpath(const char *path, char *resolved_path)
 
 	if (_fullpath(buffer, path, MAX_PATH) &&
 			(real_path=resolve_symlinks(buffer))) {
-		strcpy(resolved_path, real_path);
-		bs_to_slash(resolved_path);
+		bs_to_slash(strcpy(resolved_path, real_path));
 		p = last_char_is(resolved_path, '/');
 		if (p && p > resolved_path && p[-1] != ':')
 			*p = '\0';
@@ -1496,13 +1492,16 @@ char *alloc_win32_extension(const char *p)
 	return NULL;
 }
 
-void FAST_FUNC bs_to_slash(char *p)
+char * FAST_FUNC bs_to_slash(char *str)
 {
-	for (; *p; ++p) {
+	char *p;
+
+	for (p=str; *p; ++p) {
 		if ( *p == '\\' ) {
 			*p = '/';
 		}
 	}
+	return str;
 }
 
 void FAST_FUNC slash_to_bs(char *p)
@@ -1723,8 +1722,7 @@ char *get_drive_cwd(const char *path, char *buffer, int size)
 	ret = GetFullPathName(drive, size, buffer, NULL);
 	if (ret == 0 || ret > size)
 		return NULL;
-	bs_to_slash(buffer);
-	return buffer;
+	return bs_to_slash(buffer);
 }
 
 void fix_path_case(char *path)
