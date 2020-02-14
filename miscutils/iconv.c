@@ -54,18 +54,14 @@ typedef unsigned int uint;
 
 typedef void* iconv_t;
 
-iconv_t iconv_open(const char *tocode, const char *fromcode);
-int iconv_close(iconv_t cd);
-size_t iconv(iconv_t cd, const char **inbuf, size_t *inbytesleft, char **outbuf, size_t *outbytesleft);
+static iconv_t iconv_open(const char *tocode, const char *fromcode);
+static int iconv_close(iconv_t cd);
+static size_t iconv(iconv_t cd, const char **inbuf, size_t *inbytesleft, char **outbuf, size_t *outbytesleft);
 
 typedef struct compat_t compat_t;
 typedef struct csconv_t csconv_t;
 typedef struct rec_iconv_t rec_iconv_t;
 
-typedef iconv_t (*f_iconv_open)(const char *tocode, const char *fromcode);
-typedef int (*f_iconv_close)(iconv_t cd);
-typedef size_t (*f_iconv)(iconv_t cd, const char **inbuf, size_t *inbytesleft, char **outbuf, size_t *outbytesleft);
-typedef int* (*f_errno)(void);
 typedef int (*f_mbtowc)(csconv_t *cv, const uchar *buf, int bufsize, ushort *wbuf, int *wbufsize);
 typedef int (*f_wctomb)(csconv_t *cv, ushort *wbuf, int wbufsize, uchar *buf, int bufsize);
 typedef int (*f_mblen)(csconv_t *cv, const uchar *buf, int bufsize);
@@ -94,16 +90,9 @@ struct csconv_t {
 
 struct rec_iconv_t {
 	iconv_t cd;
-	f_iconv_close iconv_close;
-	f_iconv iconv;
-	f_errno _errno;
 	csconv_t from;
 	csconv_t to;
 };
-
-static int win_iconv_open(rec_iconv_t *cd, const char *tocode, const char *fromcode);
-static int win_iconv_close(iconv_t cd);
-static size_t win_iconv(iconv_t cd, const char **inbuf, size_t *inbytesleft, char **outbuf, size_t *outbytesleft);
 
 static int load_mlang(void);
 static int make_csconv(const char *name, csconv_t *cv);
@@ -697,7 +686,7 @@ load_mlang(void)
 	return TRUE;
 }
 
-iconv_t
+static iconv_t
 iconv_open(const char *tocode, const char *fromcode)
 {
 	rec_iconv_t *cd;
@@ -707,54 +696,24 @@ iconv_open(const char *tocode, const char *fromcode)
 	/* reset the errno to prevent reporting wrong error code.
 	 * 0 for unsorted error. */
 	errno = 0;
-	if (win_iconv_open(cd, tocode, fromcode))
+	if (make_csconv(fromcode, &cd->from) && make_csconv(tocode, &cd->to)) {
+		cd->cd = (iconv_t)cd;
 		return (iconv_t)cd;
+	}
 
 	free(cd);
-
 	return (iconv_t)(-1);
 }
 
-int
+static int
 iconv_close(iconv_t _cd)
 {
-	rec_iconv_t *cd = (rec_iconv_t *)_cd;
-	int r = cd->iconv_close(cd->cd);
-	int e = *(cd->_errno());
-	free(cd);
-	errno = e;
-	return r;
-}
-
-size_t
-iconv(iconv_t _cd, const char **inbuf, size_t *inbytesleft, char **outbuf, size_t *outbytesleft)
-{
-	rec_iconv_t *cd = (rec_iconv_t *)_cd;
-	size_t r = cd->iconv(cd->cd, inbuf, inbytesleft, outbuf, outbytesleft);
-	errno = *(cd->_errno());
-	return r;
-}
-
-static int
-win_iconv_open(rec_iconv_t *cd, const char *tocode, const char *fromcode)
-{
-	if (!make_csconv(fromcode, &cd->from) || !make_csconv(tocode, &cd->to))
-		return FALSE;
-	cd->iconv_close = win_iconv_close;
-	cd->iconv = win_iconv;
-	cd->_errno = _errno;
-	cd->cd = (iconv_t)cd;
-	return TRUE;
-}
-
-static int
-win_iconv_close(iconv_t cd UNUSED_PARAM)
-{
+	free(_cd);
 	return 0;
 }
 
 static size_t
-win_iconv(iconv_t _cd, const char **inbuf, size_t *inbytesleft, char **outbuf, size_t *outbytesleft)
+iconv(iconv_t _cd, const char **inbuf, size_t *inbytesleft, char **outbuf, size_t *outbytesleft)
 {
 	rec_iconv_t *cd = (rec_iconv_t *)_cd;
 	ushort wbuf[MB_CHAR_MAX]; /* enough room for one character */
@@ -1778,53 +1737,41 @@ static void process_file(iconv_t cd, FILE *in, FILE *out)
 		bb_perror_msg_and_die("conversion error");
 }
 
+enum {
+	OPT_f = (1 << 0),
+	OPT_t = (1 << 1),
+	OPT_l = (1 << 2),
+	OPT_c = (1 << 3),
+	OPT_o = (1 << 4),
+};
+
 int iconv_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int iconv_main(int argc, char **argv)
 {
-	char *fromcode = NULL;
-	char *tocode = NULL;
-	int i;
+	char *fromcode, *tocode, *outfile;
+	int i, opt;
 	iconv_t cd;
 	FILE *in = stdin;
 	FILE *out = stdout;
-	int ignore = 0;
-	const char *alias;
 
-	while ((i = getopt(argc, argv, "f:t:lco:")) != -1) {
-		switch (i) {
-		case 'l':
-			alias = cp_alias;
-			while (*alias) {
-				printf("%s\n", alias);
-				alias += strlen(alias) + 1;
-			}
-			return 0;
+	opt = getopt32(argv, "f:t:lco:", &fromcode, &tocode, &outfile);
 
-		case 'f':
-			fromcode = optarg;
-			break;
-
-		case 't':
-			tocode = optarg;
-			break;
-
-		case 'c':
-			ignore = 1;
-			break;
-
-		case 'o':
-			out = xfopen(optarg, "wb");
-			break;
-
-		default:
-			bb_show_usage();
+	if (opt & OPT_l) {
+		const char *alias = cp_alias;
+		while (*alias) {
+			printf("%s\n", alias);
+			alias += strlen(alias) + 1;
 		}
+		return 0;
 	}
 
-	if (fromcode == NULL || tocode == NULL)
+	if ((opt & (OPT_f|OPT_t)) != (OPT_f|OPT_t))
 		bb_show_usage();
 
-	if (ignore)
+	if (opt & OPT_o)
+		out = xfopen(outfile, "wb");
+
+	if (opt & OPT_c)
 		tocode = xasprintf("%s//IGNORE", tocode);
 
 	cd = iconv_open(tocode, fromcode);
@@ -1843,6 +1790,7 @@ int iconv_main(int argc, char **argv)
 		}
 	}
 
-	iconv_close(cd);
+	if (ENABLE_FEATURE_CLEAN_UP)
+		iconv_close(cd);
 	return 0;
 }
