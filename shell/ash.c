@@ -14850,6 +14850,14 @@ exitshell(void)
 	/* NOTREACHED */
 }
 
+#if ENABLE_PLATFORM_MINGW32
+static void xsetenv_if_unset(const char *key, const char *value)
+{
+	if (!getenv(key))
+		xsetenv(key, value);
+}
+#endif
+
 /* Don't inline: conserve stack of caller from having our locals too */
 static NOINLINE void
 init(void)
@@ -14943,10 +14951,10 @@ init(void)
 			/* Initialise some variables normally set at login, but
 			 * only if someone hasn't already set them. */
 			pw = xgetpwuid(getuid());
-			if (!getenv("USER"))    xsetenv("USER",    pw->pw_name);
-			if (!getenv("LOGNAME")) xsetenv("LOGNAME", pw->pw_name);
-			if (!getenv("HOME"))    xsetenv("HOME",    pw->pw_dir);
-			if (!getenv("SHELL"))   xsetenv("SHELL",   DEFAULT_SHELL);
+			xsetenv_if_unset("USER",    pw->pw_name);
+			xsetenv_if_unset("LOGNAME", pw->pw_name);
+			xsetenv_if_unset("HOME",    pw->pw_dir);
+			xsetenv_if_unset("SHELL",   DEFAULT_SHELL);
 		}
 #endif
 		for (envp = environ; envp && *envp; envp++) {
