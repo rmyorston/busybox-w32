@@ -12,6 +12,10 @@ int statfs(const char *file, struct statfs *buf)
 	DWORD serial, namelen, flags;
 	char fsname[100];
 	struct mntent *mnt;
+	/* Valid filesystem names don't seem to be documented.  The following
+	 * are present in Wine (dlls/kernel32/volume.c). */
+#define FS_NAMES "NTFS\0FAT\0FAT32\0CDFS\0UDF\0"
+	int fstypes[] = {0, 0x5346544e, 0x4006, 0x4006, 0x9660, 0x15013346};
 
 	if ( (mnt=find_mount_point(file, 0)) == NULL ) {
 		return -1;
@@ -49,26 +53,7 @@ int statfs(const char *file, struct statfs *buf)
 	else
 		buf->f_bsize = 65536;
 
-	/*
-	 * Valid filesystem names don't seem to be documented.  The following
-	 * are present in Wine (dlls/kernel32/volume.c).
-	 */
-	if ( strcmp(fsname, "NTFS") == 0 ) {
-		buf->f_type = 0x5346544e;
-	}
-	else if ( strcmp(fsname, "FAT") == 0 || strcmp(fsname, "FAT32") == 0 ) {
-		buf->f_type = 0x4006;
-	}
-	else if ( strcmp(fsname, "CDFS") == 0 ) {
-		buf->f_type = 0x9660;
-	}
-	else if ( strcmp(fsname, "UDF") == 0 ) {
-		buf->f_type = 0x15013346;
-	}
-	else {
-		buf->f_type = 0;
-	}
-
+	buf->f_type = fstypes[index_in_strings(FS_NAMES, fsname)+1];
 	buf->f_frsize = buf->f_bsize;
 	buf->f_blocks = total_number_of_bytes / buf->f_bsize;
 	buf->f_bfree = total_number_of_free_bytes / buf->f_bsize;
