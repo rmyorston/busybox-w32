@@ -10190,6 +10190,11 @@ evalpipe(union node *n, int flags)
 	return status;
 }
 
+/* setinteractive needs this forward reference */
+#if EDITING_HAS_get_exe_name
+static const char *get_builtin_name(int i) FAST_FUNC;
+#endif
+
 /*
  * Controls whether the shell is interactive or not.
  */
@@ -10221,8 +10226,12 @@ setinteractive(int on)
 		}
 #endif
 #if ENABLE_FEATURE_EDITING
-		if (!line_input_state)
+		if (!line_input_state) {
 			line_input_state = new_line_input_t(FOR_SHELL | WITH_PATH_LOOKUP);
+# if EDITING_HAS_get_exe_name
+			line_input_state->get_exe_name = get_builtin_name;
+# endif
+		}
 #endif
 	}
 }
@@ -10689,6 +10698,14 @@ find_builtin(const char *name)
 	);
 	return bp;
 }
+
+#if EDITING_HAS_get_exe_name
+static const char * FAST_FUNC
+get_builtin_name(int i)
+{
+	return /*i >= 0 &&*/ i < ARRAY_SIZE(builtintab) ? builtintab[i].name + 1 : NULL;
+}
+#endif
 
 /*
  * Execute a simple command.
@@ -13834,29 +13851,27 @@ expandstr(const char *ps, int syntax_type)
 	volatile int saveint;
 	struct jmploc *volatile savehandler = exception_handler;
 	struct jmploc jmploc;
+	const char *volatile result;
+	int err;
 
 	/* XXX Fix (char *) cast. */
 	setinputstring((char *)ps);
 
 	saveprompt = doprompt;
 	doprompt = 0;
+	result = ps;
+
+	SAVE_INT(saveint);
+	err = setjmp(jmploc.loc);
+	if (err)
+		goto out;
 
 	/* readtoken1() might die horribly.
 	 * Try a prompt with syntactically wrong command:
 	 * PS1='$(date "+%H:%M:%S) > '
 	 */
-	SAVE_INT(saveint);
-	if (setjmp(jmploc.loc) == 0) {
-		exception_handler = &jmploc;
-		readtoken1(pgetc(), syntax_type, FAKEEOFMARK, 0);
-	}
-	exception_handler = savehandler;
-	RESTORE_INT(saveint);
-
-	doprompt = saveprompt;
-
-	/* Try: PS1='`xxx(`' */
-	unwindfiles(file_stop);
+	exception_handler = &jmploc;
+	readtoken1(pgetc(), syntax_type, FAKEEOFMARK, 0);
 
 	n.narg.type = NARG;
 	n.narg.next = NULL;
@@ -13866,17 +13881,20 @@ expandstr(const char *ps, int syntax_type)
 	/* expandarg() might fail too:
 	 * PS1='$((123+))'
 	 */
-	SAVE_INT(saveint);
-	if (setjmp(jmploc.loc) == 0) {
-		exception_handler = &jmploc;
-		expandarg(&n, NULL, EXP_QUOTED);
-	} else if (exception_type == EXEXIT) {
-		exitshell();
-	}
+	expandarg(&n, NULL, EXP_QUOTED);
+	result = stackblock();
+
+out:
 	exception_handler = savehandler;
+	if (err && exception_type != EXERROR)
+		longjmp(exception_handler->loc, 1);
 	RESTORE_INT(saveint);
 
-	return stackblock();
+	doprompt = saveprompt;
+	/* Try: PS1='`xxx(`' */
+	unwindfiles(file_stop);
+
+	return result;
 }
 
 static inline int
