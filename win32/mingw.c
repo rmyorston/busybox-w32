@@ -157,13 +157,11 @@ static int rand_fd = -1;
 int get_dev_type(const char *filename)
 {
 	int i;
-	const char *devname[NOT_DEVICE] = { "null", "zero", "urandom" };
 
 	if (filename && !strncmp(filename, "/dev/", 5)) {
-		for (i=0; i<NOT_DEVICE; ++i ) {
-			if (!strcmp(filename+5, devname[i])) {
-				return i;
-			}
+		i = index_in_strings("null\0zero\0urandom\0", filename+5);
+		if (i != -1) {
+			return i;
 		}
 	}
 
@@ -224,7 +222,7 @@ int mingw_xopen(const char *pathname, int flags)
 #undef fopen
 FILE *mingw_fopen (const char *filename, const char *otype)
 {
-	if (filename && !strcmp(filename, "/dev/null"))
+	if (get_dev_type(filename) == DEV_NULL)
 		filename = "nul";
 	return fopen(filename, otype);
 }
