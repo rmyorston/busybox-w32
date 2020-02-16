@@ -35,6 +35,8 @@ int statfs(const char *file, struct statfs *buf)
 		return -1;
 	}
 
+	memset(buf, 0, sizeof(*buf));
+
 	/* XXX I couldn't determine how to get block size.  MSDN has a
 	 * unhelpful hard-coded list here:
 	 * http://support.microsoft.com/kb/140365
@@ -58,10 +60,10 @@ int statfs(const char *file, struct statfs *buf)
 	buf->f_blocks = total_number_of_bytes / buf->f_bsize;
 	buf->f_bfree = total_number_of_free_bytes / buf->f_bsize;
 	buf->f_bavail = free_bytes_available / buf->f_bsize;
-	buf->f_files = 0;
-	buf->f_ffree = 0;
+	//buf->f_files = 0;
+	//buf->f_ffree = 0;
 	buf->f_fsid = serial;
-	buf->f_flag = 0;
+	//buf->f_flag = 0;
 	buf->f_namelen = namelen;
 
 	return 0;
