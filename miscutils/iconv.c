@@ -14,7 +14,7 @@
  */
 
 //config:config ICONV
-//config:   bool "iconv"
+//config:   bool "iconv (11.4 kb)"
 //config:   default y
 //config:   depends on PLATFORM_MINGW32
 //config:   help
@@ -25,7 +25,7 @@
 //kbuild:lib-$(CONFIG_ICONV) += iconv.o
 
 //usage:#define iconv_trivial_usage
-//usage:       "[-lc] [-o outfile] -f from-enc -t to-enc [FILE]..."
+//usage:       "[-lc] [-o outfile] [-f from-enc] [-t to-enc] [FILE]..."
 //usage:#define iconv_full_usage "\n\n"
 //usage:       "Convert text between character encodings\n"
 //usage:     "\n    -l  List all known character encodings"
@@ -614,15 +614,6 @@ static compat_t *cp51932_compat = cp932_compat;
 /* cp20932_compat for kernel.  cp932_compat for mlang. */
 static compat_t *cp5022x_compat = cp932_compat;
 
-typedef HRESULT (WINAPI *CONVERTINETSTRING)(
-	LPDWORD lpdwMode,
-	DWORD dwSrcEncoding,
-	DWORD dwDstEncoding,
-	LPCSTR lpSrcStr,
-	LPINT lpnSrcSize,
-	LPBYTE lpDstStr,
-	LPINT lpnDstSize
-);
 typedef HRESULT (WINAPI *CONVERTINETMULTIBYTETOUNICODE)(
 	LPDWORD lpdwMode,
 	DWORD dwSrcEncoding,
@@ -631,6 +622,7 @@ typedef HRESULT (WINAPI *CONVERTINETMULTIBYTETOUNICODE)(
 	LPWSTR lpDstStr,
 	LPINT lpnWideCharCount
 );
+
 typedef HRESULT (WINAPI *CONVERTINETUNICODETOMULTIBYTE)(
 	LPDWORD lpdwMode,
 	DWORD dwEncoding,
@@ -639,50 +631,21 @@ typedef HRESULT (WINAPI *CONVERTINETUNICODETOMULTIBYTE)(
 	LPSTR lpDstStr,
 	LPINT lpnMultiCharCount
 );
-typedef HRESULT (WINAPI *ISCONVERTINETSTRINGAVAILABLE)(
-	DWORD dwSrcEncoding,
-	DWORD dwDstEncoding
-);
-typedef HRESULT (WINAPI *LCIDTORFC1766A)(
-	LCID Locale,
-	LPSTR pszRfc1766,
-	int nChar
-);
-typedef HRESULT (WINAPI *LCIDTORFC1766W)(
-	LCID Locale,
-	LPWSTR pszRfc1766,
-	int nChar
-);
-typedef HRESULT (WINAPI *RFC1766TOLCIDA)(
-	LCID *pLocale,
-	LPSTR pszRfc1766
-);
-typedef HRESULT (WINAPI *RFC1766TOLCIDW)(
-	LCID *pLocale,
-	LPWSTR pszRfc1766
-);
-static CONVERTINETSTRING ConvertINetString;
+
 static CONVERTINETMULTIBYTETOUNICODE ConvertINetMultiByteToUnicode;
 static CONVERTINETUNICODETOMULTIBYTE ConvertINetUnicodeToMultiByte;
-static ISCONVERTINETSTRINGAVAILABLE IsConvertINetStringAvailable;
-static LCIDTORFC1766A LcidToRfc1766A;
-static RFC1766TOLCIDA Rfc1766ToLcidA;
 
 static int
 load_mlang(void)
 {
 	HMODULE h;
-	if (ConvertINetString != NULL)
+	if (ConvertINetMultiByteToUnicode != NULL)
 		return TRUE;
 	h = LoadLibrary(TEXT("mlang.dll"));
 	if (!h)
 		return FALSE;
-	ConvertINetString = (CONVERTINETSTRING)GetProcAddressA(h, "ConvertINetString");
 	ConvertINetMultiByteToUnicode = (CONVERTINETMULTIBYTETOUNICODE)GetProcAddressA(h, "ConvertINetMultiByteToUnicode");
 	ConvertINetUnicodeToMultiByte = (CONVERTINETUNICODETOMULTIBYTE)GetProcAddressA(h, "ConvertINetUnicodeToMultiByte");
-	IsConvertINetStringAvailable = (ISCONVERTINETSTRINGAVAILABLE)GetProcAddressA(h, "IsConvertINetStringAvailable");
-	LcidToRfc1766A = (LCIDTORFC1766A)GetProcAddressA(h, "LcidToRfc1766A");
-	Rfc1766ToLcidA = (RFC1766TOLCIDA)GetProcAddressA(h, "Rfc1766ToLcidA");
 	return TRUE;
 }
 
@@ -841,21 +804,26 @@ make_csconv(const char *_name, csconv_t *cv)
 	int use_compat = TRUE;
 	int flag = 0;
 	char *name;
-	char *p;
+	char *p, *s;
 
-	name = xstrndup(_name, strlen(_name));
-	if (name == NULL)
-		return FALSE;
+	name = xstrdup(_name);
 
 	/* check for option "enc_name//opt1//opt2" */
 	while ((p = strrstr(name, "//")) != NULL)
 	{
-		if (_stricmp(p + 2, "nocompat") == 0)
+		for (s = p + 2; *s; ++s)
+			*s = tolower(*s);
+		switch (index_in_strings("nocompat\0translit\0ignore\0", p + 2)) {
+		case 0:
 			use_compat = FALSE;
-		else if (_stricmp(p + 2, "translit") == 0)
+			break;
+		case 1:
 			flag |= FLAG_TRANSLIT;
-		else if (_stricmp(p + 2, "ignore") == 0)
+			break;
+		case 2:
 			flag |= FLAG_IGNORE;
+			break;
+		}
 		*p = 0;
 	}
 
@@ -942,8 +910,7 @@ name_to_codepage(const char *name)
 	int i;
 	const char *alias;
 
-	if (*name == '\0' ||
-	strcmp(name, "char") == 0)
+	if (*name == '\0' || strcmp(name, "char") == 0)
 		return GetACP();
 	else if (strcmp(name, "wchar_t") == 0)
 		return 1200;
@@ -1748,7 +1715,7 @@ enum {
 int iconv_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int iconv_main(int argc, char **argv)
 {
-	char *fromcode, *tocode, *outfile;
+	const char *fromcode = "", *tocode = "", *outfile;
 	int i, opt;
 	iconv_t cd;
 	FILE *in = stdin;
@@ -1764,9 +1731,6 @@ int iconv_main(int argc, char **argv)
 		}
 		return 0;
 	}
-
-	if ((opt & (OPT_f|OPT_t)) != (OPT_f|OPT_t))
-		bb_show_usage();
 
 	if (opt & OPT_o)
 		out = xfopen(outfile, "wb");
