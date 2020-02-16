@@ -454,85 +454,19 @@ __strptime_internal (const char *rp, const char *fmt, struct tm *tm,
         case 'E':
           /* We have no information about the era format.  Just use
              the normal format.  */
-          if (*fmt != 'c' && *fmt != 'C' && *fmt != 'y' && *fmt != 'Y'
-              && *fmt != 'x' && *fmt != 'X')
+          if (strchr("cCyYxX", *fmt) == NULL)
             /* This is an illegal format.  */
             return NULL;
 
           goto start_over;
         case 'O':
-          switch (*fmt++)
-            {
-            case 'd':
-            case 'e':
-              /* Match day of month using alternate numeric symbols.  */
-              get_alt_number (1, 31, 2);
-              tm->tm_mday = val;
-              have_mday = 1;
-              want_xday = 1;
-              break;
-            case 'H':
-              /* Match hour in 24-hour clock using alternate numeric
-                 symbols.  */
-              get_alt_number (0, 23, 2);
-              tm->tm_hour = val;
-              have_I = 0;
-              break;
-            case 'I':
-              /* Match hour in 12-hour clock using alternate numeric
-                 symbols.  */
-              get_alt_number (1, 12, 2);
-              tm->tm_hour = val % 12;
-              have_I = 1;
-              break;
-            case 'm':
-              /* Match month using alternate numeric symbols.  */
-              get_alt_number (1, 12, 2);
-              tm->tm_mon = val - 1;
-              have_mon = 1;
-              want_xday = 1;
-              break;
-            case 'M':
-              /* Match minutes using alternate numeric symbols.  */
-              get_alt_number (0, 59, 2);
-              tm->tm_min = val;
-              break;
-            case 'S':
-              /* Match seconds using alternate numeric symbols.  */
-              get_alt_number (0, 61, 2);
-              tm->tm_sec = val;
-              break;
-            case 'U':
-              get_alt_number (0, 53, 2);
-              week_no = val;
-              have_uweek = 1;
-              break;
-            case 'W':
-              get_alt_number (0, 53, 2);
-              week_no = val;
-              have_wweek = 1;
-              break;
-            case 'V':
-              get_alt_number (0, 53, 2);
-              /* XXX This cannot determine any field in TM without
-                 further information.  */
-              break;
-            case 'w':
-              /* Match number of weekday using alternate numeric symbols.  */
-              get_alt_number (0, 6, 1);
-              tm->tm_wday = val;
-              have_wday = 1;
-              break;
-            case 'y':
-              /* Match year within century using alternate numeric symbols.  */
-              get_alt_number (0, 99, 2);
-              tm->tm_year = val >= 69 ? val : val + 100;
-              want_xday = 1;
-              break;
-            default:
-              return NULL;
-            }
-          break;
+          /* We don't have an alternative number format.  Just use
+             the normal format.  */
+          if (strchr("deHImMSUWVwy", *fmt) == NULL)
+            /* This is an illegal format.  */
+            return NULL;
+
+          goto start_over;
         default:
           return NULL;
         }
