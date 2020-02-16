@@ -17,6 +17,7 @@
    Boston, MA 02111-1307, USA.  */
 
 #include <platform.h>
+int index_in_strings(const char *strings, const char *key) FAST_FUNC;
 
 #if HAVE_CONFIG_H
 # include <config.h>
@@ -372,19 +373,60 @@ internal_fnmatch (const char *pattern, const char *string,
 		    if (__iswctype (__btowc ((unsigned char) *n), wt))
 		      goto matched;
 # else
-		    if ((STREQ (str, "alnum") && ISALNUM ((unsigned char) *n))
-			|| (STREQ (str, "alpha") && ISALPHA ((unsigned char) *n))
-			|| (STREQ (str, "blank") && ISBLANK ((unsigned char) *n))
-			|| (STREQ (str, "cntrl") && ISCNTRL ((unsigned char) *n))
-			|| (STREQ (str, "digit") && ISDIGIT ((unsigned char) *n))
-			|| (STREQ (str, "graph") && ISGRAPH ((unsigned char) *n))
-			|| (STREQ (str, "lower") && ISLOWER ((unsigned char) *n))
-			|| (STREQ (str, "print") && ISPRINT ((unsigned char) *n))
-			|| (STREQ (str, "punct") && ISPUNCT ((unsigned char) *n))
-			|| (STREQ (str, "space") && ISSPACE ((unsigned char) *n))
-			|| (STREQ (str, "upper") && ISUPPER ((unsigned char) *n))
-			|| (STREQ (str, "xdigit") && ISXDIGIT ((unsigned char) *n)))
-		      goto matched;
+#define CHAR_CLASSES \
+		    "alnum\0alpha\0blank\0cntrl\0digit\0graph\0" \
+			"lower\0print\0punct\0space\0upper\0xdigit\0"
+
+			switch (index_in_strings(CHAR_CLASSES, str)) {
+		    case 0:
+				if (ISALNUM ((unsigned char) *n))
+					goto matched;
+				break;
+			case 1:
+				if (ISALPHA ((unsigned char) *n))
+					goto matched;
+				break;
+			case 2:
+				if (ISBLANK ((unsigned char) *n))
+					goto matched;
+				break;
+			case 3:
+				if (ISCNTRL ((unsigned char) *n))
+					goto matched;
+				break;
+			case 4:
+				if (ISDIGIT ((unsigned char) *n))
+					goto matched;
+				break;
+			case 5:
+				if (ISGRAPH ((unsigned char) *n))
+					goto matched;
+				break;
+			case 6:
+				if (ISLOWER ((unsigned char) *n))
+					goto matched;
+				break;
+			case 7:
+				if (ISPRINT ((unsigned char) *n))
+					goto matched;
+				break;
+			case 8:
+				if (ISPUNCT ((unsigned char) *n))
+					goto matched;
+				break;
+			case 9:
+				if (ISSPACE ((unsigned char) *n))
+					goto matched;
+				break;
+			case 10:
+				if (ISUPPER ((unsigned char) *n))
+					goto matched;
+				break;
+			case 11:
+				if (ISXDIGIT ((unsigned char) *n))
+					goto matched;
+				break;
+			}
 # endif
 		  }
 		else if (c == '\0')
