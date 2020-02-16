@@ -156,14 +156,8 @@ static int rand_fd = -1;
  */
 int get_dev_type(const char *filename)
 {
-	int i;
-
-	if (filename && !strncmp(filename, "/dev/", 5)) {
-		i = index_in_strings("null\0zero\0urandom\0", filename+5);
-		if (i != -1) {
-			return i;
-		}
-	}
+	if (filename && !strncmp(filename, "/dev/", 5))
+		return index_in_strings("null\0zero\0urandom\0", filename+5);
 
 	return NOT_DEVICE;
 }
@@ -186,7 +180,7 @@ int mingw_open (const char *filename, int oflags, ...)
 	int dev = get_dev_type(filename);
 
 	/* /dev/null is always allowed, others only if O_SPECIAL is set */
-	if (dev != NOT_DEVICE && (dev == DEV_NULL || special)) {
+	if (dev == DEV_NULL || (special && dev != NOT_DEVICE)) {
 		filename = "nul";
 		oflags = O_RDWR;
 	}
