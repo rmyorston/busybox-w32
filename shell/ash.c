@@ -501,6 +501,7 @@ struct globals_misc {
 	uint8_t exitstatus;     /* exit status of last command */
 	uint8_t back_exitstatus;/* exit status of backquoted command */
 	smallint job_warning;   /* user was warned about stopped jobs (can be 2, 1 or 0). */
+	int savestatus;         /* exit status of last command outside traps */
 	int rootpid;            /* pid of main shell */
 	/* shell level: 0 for the main shell, 1 for its children, and so on */
 	int shlvl;
@@ -606,6 +607,7 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define exitstatus        (G_misc.exitstatus )
 #define back_exitstatus   (G_misc.back_exitstatus )
 #define job_warning       (G_misc.job_warning)
+#define savestatus  (G_misc.savestatus )
 #define rootpid     (G_misc.rootpid    )
 #define shlvl       (G_misc.shlvl      )
 #define errlinno    (G_misc.errlinno   )
@@ -649,6 +651,7 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define INIT_G_misc() do { \
 	(*(struct globals_misc**)not_const_pp(&ash_ptr_to_globals_misc)) = xzalloc(sizeof(G_misc)); \
 	barrier(); \
+	savestatus = -1; \
 	curdir = nullstr; \
 	physdir = nullstr; \
 	IF_NOT_PLATFORM_MINGW32(trap_ptr = trap;) \
@@ -868,7 +871,7 @@ fmtstr(char *outbuf, size_t length, const char *fmt, ...)
 	ret = vsnprintf(outbuf, length, fmt, ap);
 	va_end(ap);
 	INT_ON;
-	return ret;
+	return ret > (int)length ? length : ret;
 }
 
 static void
@@ -4572,12 +4575,11 @@ fg_bgcmd(int argc UNUSED_PARAM, char **argv)
 #endif
 
 static int
-sprint_status48(char *s, int status, int sigonly)
+sprint_status48(char *os, int status, int sigonly)
 {
-	int col;
+	char *s = os;
 	int st;
 
-	col = 0;
 	if (!WIFEXITED(status)) {
 #if JOBS
 		if (WIFSTOPPED(status))
@@ -4595,17 +4597,17 @@ sprint_status48(char *s, int status, int sigonly)
 		}
 		st &= 0x7f;
 //TODO: use bbox's get_signame? strsignal adds ~600 bytes to text+rodata
-		col = fmtstr(s, 32, strsignal(st));
+		//s = stpncpy(s, strsignal(st), 32); //not all libc have stpncpy()
+		s += fmtstr(s, 32, strsignal(st));
 		if (WCOREDUMP(status)) {
-			strcpy(s + col, " (core dumped)");
-			col += sizeof(" (core dumped)")-1;
+			s = stpcpy(s, " (core dumped)");
 		}
 	} else if (!sigonly) {
 		st = WEXITSTATUS(status);
-		col = fmtstr(s, 16, (st ? "Done(%d)" : "Done"), st);
+		s += fmtstr(s, 16, (st ? "Done(%d)" : "Done"), st);
 	}
  out:
-	return col;
+	return s - os;
 }
 
 #if ENABLE_PLATFORM_MINGW32
@@ -5291,7 +5293,8 @@ cmdputs(const char *s)
 				str = "${";
 			goto dostr;
 		case CTLENDVAR:
-			str = "\"}" + !(quoted & 1);
+			str = "\"}";
+			str += !(quoted & 1);
 			quoted >>= 1;
 			subtype = 0;
 			goto dostr;
@@ -6959,7 +6962,7 @@ exptilde(char *startp, char *p, int flags)
 			goto lose;
 		home = pw->pw_dir;
 	}
-	if (!home || !*home)
+	if (!home)
 		goto lose;
 	*p = c;
 	strtodest(home, SQSYNTAX, quotes);
@@ -8035,6 +8038,8 @@ evalvar(char *p, int flag)
 		removerecordregions(startloc);
 		goto record;
 	}
+
+	varlen = 0;
 
  end:
 	if (subtype != VSNORMAL) {      /* skip to end of alternative */
@@ -9697,12 +9702,17 @@ dotrap(void)
 {
 	uint8_t *g;
 	int sig;
-	uint8_t last_status;
+	int status, last_status;
 
 	if (!pending_sig)
 		return;
 
-	last_status = exitstatus;
+	status = savestatus;
+	last_status = status;
+	if (status < 0) {
+		status = exitstatus;
+		savestatus = status;
+	}
 	pending_sig = 0;
 	barrier();
 
@@ -9729,8 +9739,10 @@ dotrap(void)
 		if (!p)
 			continue;
 		evalstring(p, 0);
+		exitstatus = status;
 	}
-	exitstatus = last_status;
+
+	savestatus = last_status;
 	TRACE(("dotrap returns\n"));
 }
 #else
@@ -10089,11 +10101,10 @@ expredir(union node *n)
 		case NFROMFD:
 		case NTOFD: /* >& */
 			if (redir->ndup.vname) {
-				expandarg(redir->ndup.vname, &fn, EXP_FULL | EXP_TILDE);
+				expandarg(redir->ndup.vname, &fn, EXP_TILDE | EXP_REDIR);
 				if (fn.list == NULL)
 					ash_msg_and_raise_error("redir error");
 #if BASH_REDIR_OUTPUT
-//FIXME: we used expandarg with different args!
 				if (!isdigit_str9(fn.list->text)) {
 					/* >&file, not >&fd */
 					if (redir->nfile.fd != 1) /* 123>&file - BAD */
@@ -10620,7 +10631,7 @@ static const struct builtincmd builtintab[] = {
 #if ENABLE_ASH_GETOPTS
 	{ BUILTIN_REGULAR       "getopts" , getoptscmd },
 #endif
-	{ BUILTIN_NOSPEC        "hash"    , hashcmd    },
+	{ BUILTIN_REGULAR       "hash"    , hashcmd    },
 #if ENABLE_ASH_HELP
 	{ BUILTIN_NOSPEC        "help"    , helpcmd    },
 #endif
@@ -10638,7 +10649,7 @@ static const struct builtincmd builtintab[] = {
 #if ENABLE_ASH_PRINTF
 	{ BUILTIN_REGULAR       "printf"  , printfcmd  },
 #endif
-	{ BUILTIN_NOSPEC        "pwd"     , pwdcmd     },
+	{ BUILTIN_REGULAR       "pwd"     , pwdcmd     },
 	{ BUILTIN_REGULAR       "read"    , readcmd    },
 	{ BUILTIN_SPEC_REG_ASSG "readonly", exportcmd  },
 	{ BUILTIN_SPEC_REG      "return"  , returncmd  },
@@ -10653,8 +10664,8 @@ static const struct builtincmd builtintab[] = {
 	{ BUILTIN_SPEC_REG      "times"   , timescmd   },
 	{ BUILTIN_SPEC_REG      "trap"    , trapcmd    },
 	{ BUILTIN_REGULAR       "true"    , truecmd    },
-	{ BUILTIN_NOSPEC        "type"    , typecmd    },
-	{ BUILTIN_NOSPEC        "ulimit"  , ulimitcmd  },
+	{ BUILTIN_REGULAR       "type"    , typecmd    },
+	{ BUILTIN_REGULAR       "ulimit"  , ulimitcmd  },
 	{ BUILTIN_REGULAR       "umask"   , umaskcmd   },
 #if ENABLE_ASH_ALIAS
 	{ BUILTIN_REGULAR       "unalias" , unaliascmd },
@@ -11539,6 +11550,12 @@ struct synstack {
 	struct synstack *prev;
 	struct synstack *next;
 };
+
+static int
+pgetc_top(struct synstack *stack)
+{
+	return stack->syntax == SQSYNTAX ? pgetc() : pgetc_eatbnl();
+}
 
 static void
 synstack_push(struct synstack **stack, struct synstack *next, int syntax)
@@ -12930,7 +12947,7 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 			}
 			USTPUTC(c, out);
 			nlprompt();
-			c = pgetc();
+			c = pgetc_top(synstack);
 			goto loop;              /* continue outer loop */
 		case CWORD:
 			USTPUTC(c, out);
@@ -12962,8 +12979,6 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 				USTPUTC(CTLESC, out);
 				USTPUTC('\\', out);
 				pungetc();
-			} else if (c == '\n') {
-				nlprompt();
 			} else {
 				if (pssyntax && c == '$') {
 					USTPUTC(CTLESC, out);
@@ -13083,7 +13098,7 @@ readtoken1(int c, int syntax, char *eofmark, int striptabs)
 			IF_ASH_ALIAS(if (c != PEOA))
 				USTPUTC(c, out);
 		}
-		c = pgetc();
+		c = pgetc_top(synstack);
 	} /* for (;;) */
  endword:
 
@@ -13829,8 +13844,10 @@ parseheredoc(void)
 	while (here) {
 		tokpushback = 0;
 		setprompt_if(needprompt, 2);
-		readtoken1(pgetc(), here->here->type == NHERE ? SQSYNTAX : DQSYNTAX,
-				here->eofmark, here->striptabs);
+		if (here->here->type == NHERE)
+			readtoken1(pgetc(), SQSYNTAX, here->eofmark, here->striptabs);
+		else
+			readtoken1(pgetc_eatbnl(), DQSYNTAX, here->eofmark, here->striptabs);
 		n = stzalloc(sizeof(struct narg));
 		n->narg.type = NARG;
 		/*n->narg.next = NULL; - stzalloc did it */
@@ -14026,8 +14043,12 @@ cmdloop(int top)
 			if (!top || numeof >= 50)
 				break;
 			if (!stoppedjobs()) {
-				if (!Iflag)
+				if (!Iflag) {
+					if (iflag) {
+						newline_and_flush(stderr);
+					}
 					break;
+				}
 				out2str("\nUse \"exit\" to leave shell.\n");
 			}
 			numeof++;
@@ -14149,8 +14170,10 @@ exitcmd(int argc UNUSED_PARAM, char **argv)
 {
 	if (stoppedjobs())
 		return 0;
+
 	if (argv[1])
-		exitstatus = number(argv[1]);
+		savestatus = number(argv[1]);
+
 	raise_exception(EXEXIT);
 	/* NOTREACHED */
 }
@@ -14837,19 +14860,15 @@ exitshell(void)
 {
 	struct jmploc loc;
 	char *p;
-	int status;
 
 #if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
 	if (line_input_state)
 		save_history(line_input_state);
 #endif
-	status = exitstatus;
-	TRACE(("pid %d, exitshell(%d)\n", getpid(), status));
-	if (setjmp(loc.loc)) {
-		if (exception_type == EXEXIT)
-			status = exitstatus;
+	savestatus = exitstatus;
+	TRACE(("pid %d, exitshell(%d)\n", getpid(), savestatus));
+	if (setjmp(loc.loc))
 		goto out;
-	}
 	exception_handler = &loc;
 	p = trap[0];
 	if (p) {
@@ -14864,7 +14883,7 @@ exitshell(void)
 	 */
 	setjobctl(0);
 	flush_stdout_stderr();
-	_exit(status);
+	_exit(savestatus);
 	/* NOTREACHED */
 }
 
@@ -15135,6 +15154,10 @@ reset(void)
 	/* from eval.c: */
 	evalskip = 0;
 	loopnest = 0;
+	if (savestatus >= 0) {
+		exitstatus = savestatus;
+		savestatus = -1;
+	}
 
 	/* from expand.c: */
 	ifsfree();
