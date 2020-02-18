@@ -2210,9 +2210,11 @@ extern const char bb_busybox_exec_path[] ALIGN1;
 #if !ENABLE_PLATFORM_MINGW32
 #define BB_PATH_ROOT_PATH "PATH=/sbin:/usr/sbin:/bin:/usr/bin" BB_ADDITIONAL_PATH
 #define PATH_SEP ':'
+#define PATH_SEP_STR ":"
 #else
 #define BB_PATH_ROOT_PATH "PATH=/sbin;/usr/sbin;/bin;/usr/bin" BB_ADDITIONAL_PATH
 #define PATH_SEP ';'
+#define PATH_SEP_STR ";"
 #endif
 extern const char bb_PATH_root_path[] ALIGN1; /* BB_PATH_ROOT_PATH */
 #define bb_default_root_path (bb_PATH_root_path + sizeof("PATH"))

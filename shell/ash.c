@@ -1900,6 +1900,15 @@ growstackstr(void)
 	return (char *)stackblock() + len;
 }
 
+static char *
+growstackto(size_t len)
+{
+	while (stackblocksize() < len)
+		growstackblock();
+
+	return stackblock();
+}
+
 /*
  * Called from CHECKSTRSPACE.
  */
@@ -1907,18 +1916,8 @@ static char *
 makestrspace(size_t newlen, char *p)
 {
 	size_t len = p - g_stacknxt;
-	size_t size;
 
-	for (;;) {
-		size_t nleft;
-
-		size = stackblocksize();
-		nleft = size - len;
-		if (nleft >= newlen)
-			break;
-		growstackblock();
-	}
-	return (char *)stackblock() + len;
+	return growstackto(len + newlen) + len;
 }
 
 static char *
@@ -2775,53 +2774,103 @@ listvars(int on, int off, struct strlist *lp, char ***end)
 }
 
 
-/* ============ Path search helper
- *
+/* ============ Path search helper */
+static const char *
+legal_pathopt(const char *opt, const char *term, int magic)
+{
+	switch (magic) {
+	case 0:
+		opt = NULL;
+		break;
+
+	case 1:
+		opt = prefix(opt, "builtin") ?: prefix(opt, "func");
+		break;
+
+	default:
+		opt += strcspn(opt, term);
+		break;
+	}
+
+	if (opt && *opt == '%')
+		opt++;
+
+	return opt;
+}
+
+/*
  * The variable path (passed by reference) should be set to the start
- * of the path before the first call; path_advance will update
- * this value as it proceeds.  Successive calls to path_advance will return
+ * of the path before the first call; padvance will update
+ * this value as it proceeds.  Successive calls to padvance will return
  * the possible path expansions in sequence.  If an option (indicated by
  * a percent sign) appears in the path entry then the global variable
  * pathopt will be set to point to it; otherwise pathopt will be set to
  * NULL.
+ *
+ * If magic is 0 then pathopt recognition will be disabled.  If magic is
+ * 1 we shall recognise %builtin/%func.  Otherwise we shall accept any
+ * pathopt.
  */
-static const char *pathopt;     /* set by path_advance */
+static const char *pathopt;     /* set by padvance */
 
-static char *
-path_advance(const char **path, const char *name)
+static int
+padvance_magic(const char **path, const char *name, int magic)
 {
+	const char *term = "%"PATH_SEP_STR;
+	const char *lpathopt;
 	const char *p;
 	char *q;
 	const char *start;
+	size_t qlen;
 	size_t len;
 
 	if (*path == NULL)
-		return NULL;
-	start = *path;
-	for (p = start; *p && *p != PATH_SEP && *p != '%'; p++)
-		continue;
-	len = p - start + strlen(name) + 2;     /* "2" is for '/' and '\0' */
+		return -1;
 
+	lpathopt = NULL;
+	start = *path;
+
+	if (*start == '%' && (p = legal_pathopt(start + 1, term, magic))) {
+		lpathopt = start + 1;
+		start = p;
+		term = PATH_SEP_STR;
+	}
+
+	len = strcspn(start, term);
+	p = start + len;
+
+	if (*p == '%') {
+		size_t extra = strchrnul(p, PATH_SEP) - p;
+
+		if (legal_pathopt(p + 1, term, magic))
+			lpathopt = p + 1;
+		else
+			len += extra;
+
+		p += extra;
+	}
+
+	pathopt = lpathopt;
+	*path = *p == PATH_SEP ? p + 1 : NULL;
+
+	/* "2" is for '/' and '\0' */
 	/* reserve space for suffix on WIN32 */
-	while (stackblocksize() < (ENABLE_PLATFORM_MINGW32 ? len+4 : len))
-		growstackblock();
-	q = stackblock();
-	if (p != start) {
-		q = mempcpy(q, start, p - start);
+	qlen = len + strlen(name) + 2 IF_PLATFORM_MINGW32(+ 4);
+	q = growstackto(qlen);
+
+	if (len) {
+		q = mempcpy(q, start, len);
 		*q++ = '/';
 	}
 	strcpy(q, name);
-	pathopt = NULL;
-	if (*p == '%') {
-		pathopt = ++p;
-		while (*p && *p != PATH_SEP)
-			p++;
-	}
-	if (*p == PATH_SEP)
-		*path = p + 1;
-	else
-		*path = NULL;
-	return stalloc(len);
+
+	return qlen;
+}
+
+static int
+padvance(const char **path, const char *name)
+{
+	return padvance_magic(path, name, 1);
 }
 
 
@@ -3179,6 +3228,7 @@ cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	char c;
 	struct stat statb;
 	int flags;
+	int len;
 
 	flags = cdopt();
 	dest = *argptr;
@@ -3208,9 +3258,10 @@ cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	if (!*dest)
 		dest = ".";
 	path = bltinlookup("CDPATH");
-	while (path) {
-		c = *path;
-		p = path_advance(&path, dest);
+	while (p = path, (len = padvance(&path, dest)) >= 0) {
+		c = *p;
+		p = stalloc(len);
+
 		if (stat(p, &statb) >= 0 && S_ISDIR(statb.st_mode)) {
 			if (c && c != PATH_SEP)
 				flags |= CD_PRINT;
@@ -7109,8 +7160,8 @@ expbackq(union node *cmd, int flag)
 
 	/* Eat all trailing newlines */
 	dest = expdest;
-	for (; dest > (char *)stackblock() && (dest[-1] == '\n' ||
-			(ENABLE_PLATFORM_MINGW32 && dest[-1] == '\r'));)
+	for (; dest > ((char *)stackblock() + startloc) && (dest[-1] == '\n'
+				IF_PLATFORM_MINGW32(|| dest[-1] == '\r'));)
 		STUNPUTC(dest);
 	expdest = dest;
 
@@ -8718,13 +8769,13 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 	} else {
  try_PATH:
 		e = ENOENT;
-		while ((cmdname = path_advance(&path, prog)) != NULL) {
+		while (padvance(&path, argv[0]) >= 0) {
+			cmdname = stackblock();
 			if (--idx < 0 && pathopt == NULL) {
 				tryexec(IF_FEATURE_SH_STANDALONE(-1,) cmdname, argv, envp);
 				if (errno != ENOENT && errno != ENOTDIR)
 					e = errno;
 			}
-			stunalloc(cmdname);
 		}
 	}
 
@@ -8757,9 +8808,9 @@ printentry(struct tblentry *cmdp)
 	idx = cmdp->param.index;
 	path = pathval();
 	do {
-		name = path_advance(&path, cmdp->cmdname);
-		stunalloc(name);
+		padvance(&path, cmdp->cmdname);
 	} while (--idx >= 0);
+	name = stackblock();
 #if ENABLE_PLATFORM_MINGW32
 	add_win32_extension(name);
 #endif
@@ -8767,11 +8818,10 @@ printentry(struct tblentry *cmdp)
 }
 
 /*
- * Clear out command entries.  The argument specifies the first entry in
- * PATH which has changed.
+ * Clear out command entries.
  */
 static void
-clearcmdentry(int firstchange)
+clearcmdentry(void)
 {
 	struct tblentry **tblp;
 	struct tblentry **pp;
@@ -8781,10 +8831,11 @@ clearcmdentry(int firstchange)
 	for (tblp = cmdtable; tblp < &cmdtable[CMDTABLESIZE]; tblp++) {
 		pp = tblp;
 		while ((cmdp = *pp) != NULL) {
-			if ((cmdp->cmdtype == CMDNORMAL &&
-			     cmdp->param.index >= firstchange)
-			 || (cmdp->cmdtype == CMDBUILTIN &&
-			     builtinloc >= firstchange)
+			if (cmdp->cmdtype == CMDNORMAL
+			 || (cmdp->cmdtype == CMDBUILTIN
+			    && !IS_BUILTIN_REGULAR(cmdp->param.cmd)
+			    && builtinloc > 0
+			    )
 			) {
 				*pp = cmdp->next;
 				free(cmdp);
@@ -8884,7 +8935,7 @@ hashcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	char *name;
 
 	if (nextopt("r") != '\0') {
-		clearcmdentry(0);
+		clearcmdentry();
 		return 0;
 	}
 
@@ -8903,7 +8954,11 @@ hashcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		cmdp = cmdlookup(name, 0);
 		if (cmdp != NULL
 		 && (cmdp->cmdtype == CMDNORMAL
-		     || (cmdp->cmdtype == CMDBUILTIN && builtinloc >= 0))
+		    || (cmdp->cmdtype == CMDBUILTIN
+			&& !IS_BUILTIN_REGULAR(cmdp->param.cmd)
+			&& builtinloc > 0
+			)
+		    )
 		) {
 			delete_cmd_entry();
 		}
@@ -8945,42 +9000,28 @@ hashcd(void)
  * Called with interrupts off.
  */
 static void FAST_FUNC
-changepath(const char *new)
+changepath(const char *newval)
 {
-	const char *old;
-	int firstchange;
+	const char *new;
 	int idx;
-	int idx_bltin;
+	int bltin;
 
-	old = pathval();
-	firstchange = 9999;     /* assume no change */
+	new = newval;
 	idx = 0;
-	idx_bltin = -1;
+	bltin = -1;
 	for (;;) {
-		if (*old != *new) {
-			firstchange = idx;
-			if ((*old == '\0' && *new == PATH_SEP)
-			 || (*old == PATH_SEP && *new == '\0')
-			) {
-				firstchange++;
-			}
-			old = new;      /* ignore subsequent differences */
-		}
-		if (*new == '\0')
+		if (*new == '%' && prefix(new + 1, "builtin")) {
+			bltin = idx;
 			break;
-		if (*new == '%' && idx_bltin < 0 && prefix(new + 1, "builtin"))
-			idx_bltin = idx;
-		if (*new == PATH_SEP)
-			idx++;
+		}
+		new = strchr(new, PATH_SEP);
+		if (!new)
+			break;
+		idx++;
 		new++;
-		old++;
 	}
-	if (builtinloc < 0 && idx_bltin >= 0)
-		builtinloc = idx_bltin;             /* zap builtins */
-	if (builtinloc >= 0 && idx_bltin < 0)
-		firstchange = 0;
-	clearcmdentry(firstchange);
-	builtinloc = idx_bltin;
+	builtinloc = bltin;
+	clearcmdentry();
 }
 enum {
 	TEOF,
@@ -9155,9 +9196,9 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 			p = command;
 		} else {
 			do {
-				p = path_advance(&path, command);
-				stunalloc(p);
+				padvance(&path, command);
 			} while (--j >= 0);
+			p = stackblock();
 		}
 #if ENABLE_PLATFORM_MINGW32
 		add_win32_extension(p);
@@ -11736,8 +11777,12 @@ chkmail(void)
 	mpath = mpathset() ? mpathval() : mailval();
 	new_hash = 0;
 	for (;;) {
-		p = path_advance(&mpath, nullstr);
-		if (p == NULL)
+		int len;
+
+		len = padvance_magic(&mpath, nullstr, 2);
+		if (!len)
+			break;
+		p = stackblock();
 			break;
 		if (*p == '\0')
 			continue;
@@ -13338,7 +13383,7 @@ parsesub: {
 			do {
 				STPUTC(c, out);
 				c = pgetc_eatbnl();
-			} while (isdigit(c));
+			} while (!subtype && isdigit(c));
 		} else if (c != '}') {
 			/* $[{[#]]<specialchar>[}] */
 			int cc = c;
@@ -13469,6 +13514,7 @@ parsebackq: {
 	union node *n;
 	char *str;
 	size_t savelen;
+	struct heredoc *saveheredoclist;
 	smallint saveprompt = 0;
 
 	str = NULL;
@@ -13544,6 +13590,9 @@ parsebackq: {
 	*nlpp = stzalloc(sizeof(**nlpp));
 	/* (*nlpp)->next = NULL; - stzalloc did it */
 
+	saveheredoclist = heredoclist;
+	heredoclist = NULL;
+
 	if (oldstyle) {
 		saveprompt = doprompt;
 		doprompt = 0;
@@ -13553,21 +13602,22 @@ parsebackq: {
 
 	if (oldstyle)
 		doprompt = saveprompt;
-	else if (readtoken() != TRP)
-		raise_error_unexpected_syntax(TRP);
+	else {
+		if (readtoken() != TRP)
+			raise_error_unexpected_syntax(TRP);
+		setinputstring(nullstr);
+		parseheredoc();
+	}
+
+	heredoclist = saveheredoclist;
 
 	(*nlpp)->n = n;
-	if (oldstyle) {
-		/*
-		 * Start reading from old file again, ignoring any pushed back
-		 * tokens left from the backquote parsing
-		 */
-		popfile();
+	/* Start reading from old file again. */
+	popfile();
+	/* Ignore any pushed back tokens left from the backquote parsing. */
+	if (oldstyle)
 		tokpushback = 0;
-	}
-	while (stackblocksize() <= savelen)
-		growstackblock();
-	STARTSTACKSTR(out);
+	out = growstackto(savelen + 1);
 	if (str) {
 		memcpy(out, str, savelen);
 		STADJUST(savelen, out);
@@ -14078,33 +14128,32 @@ cmdloop(int top)
  * search for the file, which is necessary to find sub-commands.
  */
 static char *
-find_dot_file(char *name)
+find_dot_file(char *basename)
 {
 	char *fullname;
 	const char *path = pathval();
 	struct stat statb;
+	int len;
 
 	/* don't try this for absolute or relative paths */
-	if (strchr(name, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(name, '\\')))
-		return name;
+	if (strchr(basename, '/') IF_PLATFORM_MINGW32(|| strchr(basename, '\\')))
+		return basename;
 
-	while ((fullname = path_advance(&path, name)) != NULL) {
-		if ((stat(fullname, &statb) == 0) && S_ISREG(statb.st_mode)) {
-			/*
-			 * Don't bother freeing here, since it will
-			 * be freed by the caller.
-			 */
-			return fullname;
+	while ((len = padvance(&path, basename)) >= 0) {
+		fullname = stackblock();
+		if ((!pathopt || *pathopt == 'f')
+		 && !stat(fullname, &statb) && S_ISREG(statb.st_mode)
+		) {
+			/* This will be freed by the caller. */
+			return stalloc(len);
 		}
-		if (fullname != name)
-			stunalloc(fullname);
 	}
 	/* not found in PATH */
 
 #if ENABLE_ASH_BASH_SOURCE_CURDIR
-	return name;
+	return basename;
 #else
-	ash_msg_and_raise_error("%s: not found", name);
+	ash_msg_and_raise_error("%s: not found", basename);
 	/* NOTREACHED */
 #endif
 }
@@ -14207,6 +14256,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	int e;
 	int updatetbl;
 	struct builtincmd *bcmd;
+	int len;
 
 	/* If name contains a slash, don't use PATH or hash table */
 	if (strchr(name, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(name, '\\'))) {
@@ -14255,7 +14305,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			bit = DO_NOFUNC;
 			break;
 		case CMDBUILTIN:
-			bit = DO_ALTBLTIN;
+			bit = IS_BUILTIN_REGULAR(cmdp->param.cmd) ? 0 : DO_ALTBLTIN;
 			break;
 		}
 		if (act & bit) {
@@ -14302,20 +14352,20 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	e = ENOENT;
 	idx = -1;
  loop:
-	while ((fullname = path_advance(&path, name)) != NULL) {
-		stunalloc(fullname);
-		/* NB: code below will still use fullname
-		 * despite it being "unallocated" */
+	while ((len = padvance(&path, name)) >= 0) {
+		const char *lpathopt = pathopt;
+
+		fullname = stackblock();
 		idx++;
-		if (pathopt) {
-			if (prefix(pathopt, "builtin")) {
+		if (lpathopt) {
+			if (*lpathopt == 'b') {
 				if (bcmd)
 					goto builtin_success;
 				continue;
-			}
-			if ((act & DO_NOFUNC)
-			 || !prefix(pathopt, "func")
-			) {     /* ignore unimplemented options */
+			} else if (!(act & DO_NOFUNC)) {
+				/* handled below */
+			} else {
+				/* ignore unimplemented options */
 				continue;
 			}
 		}
@@ -14341,8 +14391,8 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 		e = EACCES;     /* if we fail, this will be the error */
 		if (!S_ISREG(statb.st_mode))
 			continue;
-		if (pathopt) {          /* this is a %func directory */
-			stalloc(strlen(fullname) + 1);
+		if (lpathopt) {          /* this is a %func directory */
+			stalloc(len);
 			/* NB: stalloc will return space pointed by fullname
 			 * (because we don't have any intervening allocations
 			 * between stunalloc above and this stalloc) */
@@ -15145,11 +15195,11 @@ read_profile(const char *name)
 
 /*
  * This routine is called when an error or an interrupt occurs in an
- * interactive shell and control is returned to the main command loop.
- * (In dash, this function is auto-generated by build machinery).
+ * interactive shell and control is returned to the main command loop
+ * but prior to exitshell.
  */
 static void
-reset(void)
+exitreset(void)
 {
 	/* from eval.c: */
 	evalskip = 0;
@@ -15162,13 +15212,22 @@ reset(void)
 	/* from expand.c: */
 	ifsfree();
 
+	/* from redir.c: */
+	unwindredir(NULL);
+}
+
+/*
+ * This routine is called when an error or an interrupt occurs in an
+ * interactive shell and control is returned to the main command loop.
+ * (In dash, this function is auto-generated by build machinery).
+ */
+static void
+reset(void)
+{
 	/* from input.c: */
 	g_parsefile->left_in_buffer = 0;
 	g_parsefile->left_in_line = 0;      /* clear input buffer */
 	popallfiles();
-
-	/* from redir.c: */
-	unwindredir(NULL);
 
 	/* from var.c: */
 	unwindlocalvars(NULL);
@@ -15220,13 +15279,16 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		smallint e;
 		smallint s;
 
-		reset();
+		exitreset();
 
 		e = exception_type;
 		s = state;
 		if (e == EXEXIT || s == 0 || iflag == 0 || shlvl) {
 			exitshell();
 		}
+
+		reset();
+
 		if (e == EXINT) {
 			newline_and_flush(stderr);
 		}
