@@ -1677,22 +1677,23 @@ static void process_file(iconv_t cd, FILE *in, FILE *out)
 	char outbuf[BUFSIZ];
 	const char *pin;
 	char *pout;
-	size_t inbytesleft;
+	size_t inbytesleft = 0;
 	size_t outbytesleft;
 	size_t rest = 0;
 	size_t r;
 
-	while ((inbytesleft=fread(inbuf+rest, 1, sizeof(inbuf)-rest, in)) != 0
+	while ((!feof(in) &&
+			(inbytesleft=fread(inbuf+rest, 1, sizeof(inbuf)-rest, in)) != 0)
 				|| rest != 0) {
 		inbytesleft += rest;
 		pin = inbuf;
 		pout = outbuf;
 		outbytesleft = sizeof(outbuf);
 		r = iconv(cd, &pin, &inbytesleft, &pout, &outbytesleft);
-		fwrite(outbuf, 1, sizeof(outbuf) - outbytesleft, out);
 		if (r == (size_t)(-1) && errno != E2BIG &&
 				(errno != EINVAL || feof(in)))
 			bb_perror_msg_and_die("conversion error");
+		fwrite(outbuf, 1, sizeof(outbuf) - outbytesleft, out);
 		memmove(inbuf, pin, inbytesleft);
 		rest = inbytesleft;
 	}
@@ -1718,7 +1719,7 @@ int iconv_main(int argc, char **argv)
 	const char *fromcode = "", *tocode = "", *outfile;
 	int i, opt;
 	iconv_t cd;
-	FILE *in = stdin;
+	FILE *in;
 	FILE *out = stdout;
 
 	opt = getopt32(argv, "f:t:lco:", &fromcode, &tocode, &outfile);
@@ -1742,16 +1743,16 @@ int iconv_main(int argc, char **argv)
 	if (cd == (iconv_t)(-1))
 		bb_perror_msg_and_die("iconv_open error");
 
-	if (optind == argc ||
-			(optind == argc-1 && strcmp(argv[optind], "-") == 0)) {
+	if (optind == argc)
+		argv[argc++] = (char *)"-";
+
+	for (i=optind; i<argc; ++i) {
+		if (argv[i][0] == '-' && argv[i][1] == '\0')
+			in = stdin;
+		else
+			in = xfopen(argv[optind], "rb");
 		process_file(cd, in, out);
-	}
-	else {
-		for (i=optind; i<argc; ++i) {
-			in = xfopen(argv[i], "rb");
-			process_file(cd, in, out);
-			fclose(in);
-		}
+		fclose(in);
 	}
 
 	if (ENABLE_FEATURE_CLEAN_UP)
