@@ -529,8 +529,10 @@ struct globals_misc {
 
 	volatile int suppress_int; /* counter */
 	volatile /*sig_atomic_t*/ smallint pending_int; /* 1 = got SIGINT */
+#if !ENABLE_PLATFORM_MINGW32
 	volatile /*sig_atomic_t*/ smallint got_sigchld; /* 1 = got SIGCHLD */
 	volatile /*sig_atomic_t*/ smallint pending_sig;	/* last pending signal */
+#endif
 	smallint exception_type; /* kind of exception (0..5) */
 	/* exceptions */
 #define EXINT 0         /* SIGINT received */
@@ -642,8 +644,11 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define backgndpid  (G_misc.backgndpid )
 
 #if ENABLE_PLATFORM_MINGW32
+#undef got_sigchld
+#undef pending_sig
 #undef may_have_traps
 #undef trap_ptr
+#define pending_sig       (0)
 #define may_have_traps    (0)
 #define trap_ptr          trap
 #endif
@@ -4963,15 +4968,18 @@ dowait(int block, struct job *jp)
 {
 #if !ENABLE_PLATFORM_MINGW32
 	int pid = block == DOWAIT_NONBLOCK ? got_sigchld : 1;
-#else
-	int pid = 1;
-#endif
 
 	while (jp ? jp->state == JOBRUNNING : pid > 0) {
 		if (!jp)
 			got_sigchld = 0;
 		pid = waitone(block, jp);
 	}
+#else
+	int pid = 1;
+
+	while (jp ? jp->state == JOBRUNNING : pid > 0)
+		pid = waitone(block, jp);
+#endif
 
 	return pid;
 }
