@@ -4181,8 +4181,6 @@ static struct job *jobtab; //5
 static unsigned njobs; //4
 /* current job */
 static struct job *curjob; //lots
-/* number of presumed living untracked jobs */
-static int jobless; //4
 
 #if 0
 /* Bash has a feature: it restores termios after a successful wait for
@@ -4796,8 +4794,19 @@ wait_block_or_sig(int *status)
 #if 1
 		sigfillset(&mask);
 		sigprocmask2(SIG_SETMASK, &mask); /* mask is updated */
-		while (!got_sigchld && !pending_sig)
+		while (!got_sigchld && !pending_sig) {
 			sigsuspend(&mask);
+			/* ^^^ add "sigdelset(&mask, SIGCHLD);" before sigsuspend
+			 * to make sure SIGCHLD is not masked off?
+			 * It was reported that this:
+			 *	fn() { : | return; }
+			 *	shopt -s lastpipe
+			 *	fn
+			 *	exec ash SCRIPT
+			 * under bash 4.4.23 runs SCRIPT with SIGCHLD masked,
+			 * making "wait" commands in SCRIPT block forever.
+			 */
+		}
 		sigprocmask(SIG_SETMASK, &mask, NULL);
 #else /* unsafe: a signal can set pending_sig after check, but before pause() */
 		while (!got_sigchld && !pending_sig)
@@ -4819,7 +4828,7 @@ wait_block_or_sig(int *status)
 #endif
 
 static int
-dowait(int block, struct job *job)
+waitone(int block, struct job *job)
 {
 	int pid;
 	int status;
@@ -4925,10 +4934,6 @@ dowait(int block, struct job *job)
 		goto out;
 	}
 	/* The process wasn't found in job list */
-#if JOBS
-	if (!WIFSTOPPED(status))
-		jobless--;
-#endif
  out:
 	INT_ON;
 
@@ -4950,6 +4955,20 @@ dowait(int block, struct job *job)
 			out2str(s);
 		}
 	}
+	return pid;
+}
+
+static int
+dowait(int block, struct job *jp)
+{
+	int pid = block == DOWAIT_NONBLOCK ? got_sigchld : 1;
+
+	while (jp ? jp->state == JOBRUNNING : pid > 0) {
+		if (!jp)
+			got_sigchld = 0;
+		pid = waitone(block, jp);
+	}
+
 	return pid;
 }
 
@@ -5041,8 +5060,7 @@ showjobs(int mode)
 	TRACE(("showjobs(0x%x) called\n", mode));
 
 	/* Handle all finished jobs */
-	while (dowait(DOWAIT_NONBLOCK, NULL) > 0)
-		continue;
+	dowait(DOWAIT_NONBLOCK, NULL);
 
 	for (jp = curjob; jp; jp = jp->prev_job) {
 		if (!(mode & SHOW_CHANGED) || jp->changed) {
@@ -5159,10 +5177,10 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 #else
 			dowait(DOWAIT_BLOCK_OR_SIG, NULL);
 #endif
-	/* if child sends us a signal *and immediately exits*,
-	 * dowait() returns pid > 0. Check this case,
-	 * not "if (dowait() < 0)"!
-	 */
+			/* if child sends us a signal *and immediately exits*,
+			 * dowait() returns pid > 0. Check this case,
+			 * not "if (dowait() < 0)"!
+			 */
 			if (pending_sig)
 				goto sigout;
 #if BASH_WAIT_N
@@ -5198,11 +5216,9 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 			job = getjob(*argv, 0);
 		}
 		/* loop until process terminated or stopped */
-		while (job->state == JOBRUNNING) {
-			dowait(DOWAIT_BLOCK_OR_SIG, NULL);
-			if (pending_sig)
-				goto sigout;
-		}
+		dowait(DOWAIT_BLOCK_OR_SIG, NULL);
+		if (pending_sig)
+			goto sigout;
 		job->waited = 1;
 		retval = getstatus(job);
  repeat: ;
@@ -5755,7 +5771,6 @@ forkchild(struct job *jp, union node *n, int mode)
 #endif
 	for (jp = curjob; jp; jp = jp->prev_job)
 		freejob(jp);
-	jobless = 0;
 }
 #endif
 
@@ -5774,13 +5789,8 @@ forkparent(struct job *jp, union node *n, int mode, HANDLE proc)
 	pid_t pid = GetProcessId(proc);
 #endif
 	TRACE(("In parent shell: child = %d\n", pid));
-	if (!jp && !ENABLE_PLATFORM_MINGW32) { /* FIXME not quite understand this */
-		/* jp is NULL when called by openhere() for heredoc support */
-		while (jobless && dowait(DOWAIT_NONBLOCK, NULL) > 0)
-			continue;
-		jobless++;
+	if (!jp) /* jp is NULL when called by openhere() for heredoc support */
 		return;
-	}
 #if JOBS
 	if (mode != FORK_NOJOB && jp->jobctl) {
 		int pgrp;
@@ -5862,43 +5872,41 @@ waitforjob(struct job *jp)
 {
 	int st;
 
-	TRACE(("waitforjob(%%%d) called\n", jobno(jp)));
+	TRACE(("waitforjob(%%%d) called\n", jp ? jobno(jp) : 0));
 
-	INT_OFF;
-	while (jp->state == JOBRUNNING) {
-		/* In non-interactive shells, we _can_ get
-		 * a keyboard signal here and be EINTRed,
-		 * but we just loop back, waiting for command to complete.
-		 *
-		 * man bash:
-		 * "If bash is waiting for a command to complete and receives
-		 * a signal for which a trap has been set, the trap
-		 * will not be executed until the command completes."
-		 *
-		 * Reality is that even if trap is not set, bash
-		 * will not act on the signal until command completes.
-		 * Try this. sleep5intoff.c:
-		 * #include <signal.h>
-		 * #include <unistd.h>
-		 * int main() {
-		 *         sigset_t set;
-		 *         sigemptyset(&set);
-		 *         sigaddset(&set, SIGINT);
-		 *         sigaddset(&set, SIGQUIT);
-		 *         sigprocmask(SIG_BLOCK, &set, NULL);
-		 *         sleep(5);
-		 *         return 0;
-		 * }
-		 * $ bash -c './sleep5intoff; echo hi'
-		 * ^C^C^C^C <--- pressing ^C once a second
-		 * $ _
-		 * $ bash -c './sleep5intoff; echo hi'
-		 * ^\^\^\^\hi <--- pressing ^\ (SIGQUIT)
-		 * $ _
-		 */
-		dowait(DOWAIT_BLOCK, jp);
-	}
-	INT_ON;
+	/* In non-interactive shells, we _can_ get
+	 * a keyboard signal here and be EINTRed, but we just loop
+	 * inside dowait(), waiting for command to complete.
+	 *
+	 * man bash:
+	 * "If bash is waiting for a command to complete and receives
+	 * a signal for which a trap has been set, the trap
+	 * will not be executed until the command completes."
+	 *
+	 * Reality is that even if trap is not set, bash
+	 * will not act on the signal until command completes.
+	 * Try this. sleep5intoff.c:
+	 * #include <signal.h>
+	 * #include <unistd.h>
+	 * int main() {
+	 *         sigset_t set;
+	 *         sigemptyset(&set);
+	 *         sigaddset(&set, SIGINT);
+	 *         sigaddset(&set, SIGQUIT);
+	 *         sigprocmask(SIG_BLOCK, &set, NULL);
+	 *         sleep(5);
+	 *         return 0;
+	 * }
+	 * $ bash -c './sleep5intoff; echo hi'
+	 * ^C^C^C^C <--- pressing ^C once a second
+	 * $ _
+	 * $ bash -c './sleep5intoff; echo hi'
+	 * ^\^\^\^\hi <--- pressing ^\ (SIGQUIT)
+	 * $ _
+	 */
+	dowait(jp ? DOWAIT_BLOCK : DOWAIT_NONBLOCK, jp);
+	if (!jp)
+		return exitstatus;
 
 	st = getstatus(jp);
 #if JOBS
@@ -10991,6 +10999,8 @@ evalcommand(union node *cmd, int flags)
 		goto out;
 	}
 
+	jp = NULL;
+
 	/* Execute the command. */
 	switch (cmdentry.cmdtype) {
 	default: {
@@ -11052,8 +11062,6 @@ evalcommand(union node *cmd, int flags)
 			fs.varlist = varlist.list;
 			jp = makejob(/*cmd,*/ 1);
 			spawn_forkshell(&fs, jp, cmd, FORK_FG);
-			status = waitforjob(jp);
-			INT_ON;
 			TRACE(("forked child exited with %d\n", status));
 			break;
 		}
@@ -11072,8 +11080,6 @@ evalcommand(union node *cmd, int flags)
 			jp = makejob(/*cmd,*/ 1);
 			if (forkshell(jp, cmd, FORK_FG) != 0) {
 				/* parent */
-				status = waitforjob(jp);
-				INT_ON;
 				TRACE(("forked child exited with %d\n", status));
 				break;
 			}
@@ -11092,32 +11098,22 @@ evalcommand(union node *cmd, int flags)
 			if (cmd_is_exec && argc > 1)
 				listsetvar(varlist.list, VEXPORT);
 		}
-
-		/* Tight loop with builtins only:
-		 * "while kill -0 $child; do true; done"
-		 * will never exit even if $child died, unless we do this
-		 * to reap the zombie and make kill detect that it's gone: */
-		dowait(DOWAIT_NONBLOCK, NULL);
-
-		if (evalbltin(cmdentry.u.cmd, argc, argv, flags)) {
-			if (exception_type == EXERROR && spclbltin <= 0) {
-				FORCE_INT_ON;
-				goto readstatus;
-			}
+		if (evalbltin(cmdentry.u.cmd, argc, argv, flags)
+		 && !(exception_type == EXERROR && spclbltin <= 0)
+		) {
  raise:
 			longjmp(exception_handler->loc, 1);
 		}
-		goto readstatus;
+		break;
 
 	case CMDFUNCTION:
-		/* See above for the rationale */
-		dowait(DOWAIT_NONBLOCK, NULL);
 		if (evalfun(cmdentry.u.func, argc, argv, flags))
 			goto raise;
- readstatus:
-		status = exitstatus;
 		break;
 	} /* switch */
+
+	status = waitforjob(jp);
+	FORCE_INT_ON;
 
  out:
 	if (cmd->ncmd.redirect)
@@ -14956,11 +14952,6 @@ init(void)
 #if !ENABLE_PLATFORM_MINGW32
 	sigmode[SIGCHLD - 1] = S_DFL; /* ensure we install handler even if it is SIG_IGNed */
 	setsignal(SIGCHLD);
-
-	/* bash re-enables SIGHUP which is SIG_IGNed on entry.
-	 * Try: "trap '' HUP; bash; echo RET" and type "kill -HUP $$"
-	 */
-	signal(SIGHUP, SIG_DFL);
 #endif
 
 	{
@@ -15448,6 +15439,16 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		}
 #endif
  state4: /* XXX ??? - why isn't this before the "if" statement */
+
+		/* Interactive bash re-enables SIGHUP which is SIG_IGNed on entry.
+		 * Try:
+		 * trap '' hup; bash; echo RET	# type "kill -hup $$", see SIGHUP having effect
+		 * trap '' hup; bash -c 'kill -hup $$; echo ALIVE'  # here SIGHUP is SIG_IGNed
+		 */
+#if !ENABLE_PLATFORM_MINGW32
+		signal(SIGHUP, SIG_DFL);
+#endif
+
 		cmdloop(1);
 	}
 #if PROFILE
