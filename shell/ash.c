@@ -4961,7 +4961,11 @@ waitone(int block, struct job *job)
 static int
 dowait(int block, struct job *jp)
 {
+#if !ENABLE_PLATFORM_MINGW32
 	int pid = block == DOWAIT_NONBLOCK ? got_sigchld : 1;
+#else
+	int pid = 1;
+#endif
 
 	while (jp ? jp->state == JOBRUNNING : pid > 0) {
 		if (!jp)
@@ -11029,7 +11033,7 @@ evalcommand(union node *cmd, int flags)
 			 * and/or wait for user input ineligible for NOFORK:
 			 * for example, "yes" or "rm" (rm -i waits for input).
 			 */
-			status = run_nofork_applet(applet_no, argv);
+			exitstatus = run_nofork_applet(applet_no, argv);
 			environ = sv_environ;
 			/*
 			 * Try enabling NOFORK for "yes" applet.
