@@ -532,11 +532,11 @@ struct globals_misc {
 	volatile /*sig_atomic_t*/ smallint got_sigchld; /* 1 = got SIGCHLD */
 	volatile /*sig_atomic_t*/ smallint pending_sig;	/* last pending signal */
 #endif
-	smallint exception_type; /* kind of exception (0..5) */
-	/* exceptions */
+	smallint exception_type; /* kind of exception: */
 #define EXINT 0         /* SIGINT received */
 #define EXERROR 1       /* a generic error */
-#define EXEXIT 4        /* exit the shell */
+#define EXEND 3         /* exit the shell */
+#define EXEXIT 4        /* exit the shell via exitcmd */
 
 	char nullstr[1];        /* zero length string */
 
@@ -6561,6 +6561,8 @@ static int substr_atoi(const char *s)
 #define EXP_VARTILDE2   0x20    /* expand tildes after colons only */
 #define EXP_WORD        0x40    /* expand word in parameter expansion */
 #define EXP_QUOTED      0x100   /* expand word in double quotes */
+#define EXP_KEEPNUL     0x200   /* do not skip NUL characters */
+
 /*
  * rmescape() flags
  */
@@ -6571,8 +6573,6 @@ static int substr_atoi(const char *s)
 
 /* Add CTLESC when necessary. */
 #define QUOTES_ESC     (EXP_FULL | EXP_CASE)
-/* Do not skip NUL characters. */
-#define QUOTES_KEEPNUL EXP_TILDE
 
 /*
  * Structure specifying which parts of the string should be searched
@@ -6879,27 +6879,28 @@ preglob(const char *pattern, int flag)
  * Put a string on the stack.
  */
 static void
-memtodest(const char *p, size_t len, int syntax, int quotes)
+memtodest(const char *p, size_t len, int flags)
 {
+	int syntax = flags & EXP_QUOTED ? DQSYNTAX : BASESYNTAX;
 	char *q;
 
 	if (!len)
 		return;
 
-	q = makestrspace((quotes & QUOTES_ESC) ? len * 2 : len, expdest);
+	q = makestrspace(len * 2, expdest);
 
 	do {
 		unsigned char c = *p++;
 		if (c) {
-			if (quotes & QUOTES_ESC) {
+			if (flags & QUOTES_ESC) {
 				int n = SIT(c, syntax);
 				if (n == CCTL
-				 || (syntax != BASESYNTAX && n == CBACK)
+				 || ((flags & EXP_QUOTED) && n == CBACK)
 				) {
 					USTPUTC(CTLESC, q);
 				}
 			}
-		} else if (!(quotes & QUOTES_KEEPNUL))
+		} else if (!(flags & EXP_KEEPNUL))
 			continue;
 		USTPUTC(c, q);
 	} while (--len);
@@ -6908,10 +6909,10 @@ memtodest(const char *p, size_t len, int syntax, int quotes)
 }
 
 static size_t
-strtodest(const char *p, int syntax, int quotes)
+strtodest(const char *p, int flags)
 {
 	size_t len = strlen(p);
-	memtodest(p, len, syntax, quotes);
+	memtodest(p, len, flags);
 	return len;
 }
 
@@ -6979,13 +6980,12 @@ removerecordregions(int endoff)
 }
 
 static char *
-exptilde(char *startp, char *p, int flags)
+exptilde(char *startp, char *p, int flag)
 {
 	unsigned char c;
 	char *name;
 	struct passwd *pw;
 	const char *home;
-	int quotes = flags & QUOTES_ESC;
 
 	name = p + 1;
 
@@ -6996,7 +6996,7 @@ exptilde(char *startp, char *p, int flags)
 		case CTLQUOTEMARK:
 			return startp;
 		case ':':
-			if (flags & EXP_VARTILDE)
+			if (flag & EXP_VARTILDE)
 				goto done;
 			break;
 		case '/':
@@ -7017,7 +7017,7 @@ exptilde(char *startp, char *p, int flags)
 	if (!home)
 		goto lose;
 	*p = c;
-	strtodest(home, SQSYNTAX, quotes);
+	strtodest(home, flag | EXP_QUOTED);
 	return p;
  lose:
 	*p = c;
@@ -7127,7 +7127,6 @@ expbackq(union node *cmd, int flag)
 	char *p;
 	char *dest;
 	int startloc;
-	int syntax = flag & EXP_QUOTED ? DQSYNTAX : BASESYNTAX;
 	struct stackmark smark;
 
 	INT_OFF;
@@ -7141,7 +7140,7 @@ expbackq(union node *cmd, int flag)
 	if (i == 0)
 		goto read;
 	for (;;) {
-		memtodest(p, i, syntax, flag & QUOTES_ESC);
+		memtodest(p, i, flag);
  read:
 		if (in.fd < 0)
 			break;
@@ -7851,11 +7850,10 @@ varvalue(char *name, int varflags, int flags, int quoted)
 	int sep;
 	int subtype = varflags & VSTYPE;
 	int discard = subtype == VSPLUS || subtype == VSLENGTH;
-	int quotes = (discard ? 0 : (flags & QUOTES_ESC)) | QUOTES_KEEPNUL;
-	int syntax;
 
+	flags |= EXP_KEEPNUL;
+	flags &= discard ? ~QUOTES_ESC : ~0;
 	sep = (flags & EXP_FULL) << CHAR_BIT;
-	syntax = quoted ? DQSYNTAX : BASESYNTAX;
 
 	switch (*name) {
 	case '$':
@@ -7921,11 +7919,11 @@ varvalue(char *name, int varflags, int flags, int quoted)
 		if (!ap)
 			return -1;
 		while ((p = *ap++) != NULL) {
-			len += strtodest(p, syntax, quotes);
+			len += strtodest(p, flags);
 
 			if (*ap && sep) {
 				len++;
-				memtodest(&sepc, 1, syntax, quotes);
+				memtodest(&sepc, 1, flags);
 			}
 		}
 		break;
@@ -7952,7 +7950,7 @@ varvalue(char *name, int varflags, int flags, int quoted)
 		if (!p)
 			return -1;
 
-		len = strtodest(p, syntax, quotes);
+		len = strtodest(p, flags);
 #if ENABLE_UNICODE_SUPPORT
 		if (subtype == VSLENGTH && len > 0) {
 			reinit_unicode_for_ash();
@@ -8795,7 +8793,7 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 	exitstatus = exerrno;
 	TRACE(("shellexec failed for %s, errno %d, suppress_int %d\n",
 		prog, e, suppress_int));
-	ash_msg_and_raise(EXEXIT, "%s: %s", prog, errmsg(e, "not found"));
+	ash_msg_and_raise(EXEND, "%s: %s", prog, errmsg(e, "not found"));
 	/* NOTREACHED */
 }
 
@@ -9742,6 +9740,7 @@ defun(union node *func)
 #define SKIPBREAK      (1 << 0)
 #define SKIPCONT       (1 << 1)
 #define SKIPFUNC       (1 << 2)
+#define SKIPFUNCDEF    (1 << 3)
 static smallint evalskip;       /* set to SKIPxxx if we are skipping commands */
 static int skipcount;           /* number of levels to skip */
 #if ENABLE_PLATFORM_POSIX
@@ -9802,7 +9801,8 @@ dotrap(void)
 		if (!p)
 			continue;
 		evalstring(p, 0);
-		exitstatus = status;
+		if (evalskip != SKIPFUNC)
+			exitstatus = status;
 	}
 
 	savestatus = last_status;
@@ -9946,9 +9946,9 @@ evaltree(union node *n, int flags)
 	dotrap();
 
 	if (checkexit & status)
-		raise_exception(EXEXIT);
+		raise_exception(EXEND);
 	if (flags & EV_EXIT)
-		raise_exception(EXEXIT);
+		raise_exception(EXEND);
 
 	popstackmark(&smark);
 	TRACE(("leaving evaltree (no interrupts)\n"));
@@ -10462,7 +10462,7 @@ evalfun(struct funcnode *func, int argc, char **argv, int flags)
 	shellparam = saveparam;
 	exception_handler = savehandler;
 	INT_ON;
-	evalskip &= ~SKIPFUNC;
+	evalskip &= ~(SKIPFUNC | SKIPFUNCDEF);
 	return e;
 }
 
@@ -10607,12 +10607,23 @@ execcmd(int argc UNUSED_PARAM, char **argv)
 static int FAST_FUNC
 returncmd(int argc UNUSED_PARAM, char **argv)
 {
+	int skip;
+	int status;
+
 	/*
 	 * If called outside a function, do what ksh does;
 	 * skip the rest of the file.
 	 */
-	evalskip = SKIPFUNC;
-	return argv[1] ? number(argv[1]) : exitstatus;
+	if (argv[1]) {
+		skip = SKIPFUNC;
+		status = number(argv[1]);
+	} else {
+		skip = SKIPFUNCDEF;
+		status = exitstatus;
+	}
+	evalskip = skip;
+
+	return status;
 }
 
 /* Forward declarations for builtintab[] */
@@ -14100,7 +14111,7 @@ cmdloop(int top)
 		skip = evalskip;
 
 		if (skip) {
-			evalskip &= ~SKIPFUNC;
+			evalskip &= ~(SKIPFUNC | SKIPFUNCDEF);
 			break;
 		}
 	}
@@ -14889,6 +14900,47 @@ ulimitcmd(int argc UNUSED_PARAM, char **argv)
 /* ============ main() and helpers */
 
 /*
+ * This routine is called when an error or an interrupt occurs in an
+ * interactive shell and control is returned to the main command loop
+ * but prior to exitshell.
+ */
+static void
+exitreset(void)
+{
+	/* from eval.c: */
+	if (savestatus >= 0) {
+		if (exception_type == EXEXIT || evalskip == SKIPFUNCDEF)
+			exitstatus = savestatus;
+		savestatus = -1;
+	}
+	evalskip = 0;
+	loopnest = 0;
+
+	/* from expand.c: */
+	ifsfree();
+
+	/* from redir.c: */
+	unwindredir(NULL);
+}
+
+/*
+ * This routine is called when an error or an interrupt occurs in an
+ * interactive shell and control is returned to the main command loop.
+ * (In dash, this function is auto-generated by build machinery).
+ */
+static void
+reset(void)
+{
+	/* from input.c: */
+	g_parsefile->left_in_buffer = 0;
+	g_parsefile->left_in_line = 0;      /* clear input buffer */
+	popallfiles();
+
+	/* from var.c: */
+	unwindlocalvars(NULL);
+}
+
+/*
  * Called to exit the shell.
  */
 static void
@@ -14911,15 +14963,17 @@ exitshell(void)
 		trap[0] = NULL;
 		evalskip = 0;
 		evalstring(p, 0);
+		evalskip = SKIPFUNCDEF;
 		/*free(p); - we'll exit soon */
 	}
  out:
+	exitreset();
 	/* dash wraps setjobctl(0) in "if (setjmp(loc.loc) == 0) {...}".
 	 * our setjobctl(0) does not panic if tcsetpgrp fails inside it.
 	 */
 	setjobctl(0);
 	flush_stdout_stderr();
-	_exit(savestatus);
+	_exit(exitstatus);
 	/* NOTREACHED */
 }
 
@@ -15174,46 +15228,6 @@ read_profile(const char *name)
 	popfile();
 }
 
-/*
- * This routine is called when an error or an interrupt occurs in an
- * interactive shell and control is returned to the main command loop
- * but prior to exitshell.
- */
-static void
-exitreset(void)
-{
-	/* from eval.c: */
-	evalskip = 0;
-	loopnest = 0;
-	if (savestatus >= 0) {
-		exitstatus = savestatus;
-		savestatus = -1;
-	}
-
-	/* from expand.c: */
-	ifsfree();
-
-	/* from redir.c: */
-	unwindredir(NULL);
-}
-
-/*
- * This routine is called when an error or an interrupt occurs in an
- * interactive shell and control is returned to the main command loop.
- * (In dash, this function is auto-generated by build machinery).
- */
-static void
-reset(void)
-{
-	/* from input.c: */
-	g_parsefile->left_in_buffer = 0;
-	g_parsefile->left_in_line = 0;      /* clear input buffer */
-	popallfiles();
-
-	/* from var.c: */
-	unwindlocalvars(NULL);
-}
-
 #if PROFILE
 static short profile_buf[16384];
 extern int etext();
@@ -15264,7 +15278,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 
 		e = exception_type;
 		s = state;
-		if (e == EXEXIT || s == 0 || iflag == 0 || shlvl) {
+		if (e == EXEND || e == EXEXIT || s == 0 || iflag == 0 || shlvl) {
 			exitshell();
 		}
 
