@@ -1842,15 +1842,16 @@ popstackmark(struct stackmark *mark)
  * part of the block that has been used.
  */
 static void
-growstackblock(void)
+growstackblock(size_t min)
 {
 	size_t newlen;
 
 	newlen = g_stacknleft * 2;
 	if (newlen < g_stacknleft)
 		ash_msg_and_raise_error(bb_msg_memory_exhausted);
-	if (newlen < 128)
-		newlen += 128;
+	min = SHELL_ALIGN(min | 128);
+	if (newlen < min)
+		newlen += min;
 
 	if (g_stacknxt == g_stackp->space && g_stackp != &stackbase) {
 		struct stack_block *sp;
@@ -1900,16 +1901,15 @@ static void *
 growstackstr(void)
 {
 	size_t len = stackblocksize();
-	growstackblock();
+	growstackblock(0);
 	return (char *)stackblock() + len;
 }
 
 static char *
 growstackto(size_t len)
 {
-	while (stackblocksize() < len)
-		growstackblock();
-
+	if (stackblocksize() < len)
+		growstackblock(len);
 	return stackblock();
 }
 
@@ -5962,29 +5962,36 @@ stoppedjobs(void)
  * the pipe without forking.
  */
 /* openhere needs this forward reference */
-static void expandhere(union node *arg, int fd);
+static void expandhere(union node *arg);
 static int
 openhere(union node *redir)
 {
+	char *p;
 	int pip[2];
 	size_t len = 0;
 	IF_PLATFORM_MINGW32(struct forkshell fs);
 
 	if (pipe(pip) < 0)
 		ash_msg_and_raise_perror("can't create pipe");
-	if (redir->type == NHERE) {
-		len = strlen(redir->nhere.doc->narg.text);
-		if (len <= PIPE_BUF) {
-			full_write(pip[1], redir->nhere.doc->narg.text, len);
-			goto out;
-		}
+
+	p = redir->nhere.doc->narg.text;
+	if (redir->type == NXHERE) {
+		expandhere(redir->nhere.doc);
+		p = stackblock();
 	}
+
+	len = strlen(p);
+	if (len <= PIPE_BUF) {
+		xwrite(pip[1], p, len);
+		goto out;
+	}
+
 #if ENABLE_PLATFORM_MINGW32
 	memset(&fs, 0, sizeof(fs));
 	fs.fpid = FS_OPENHERE;
-	fs.n = redir;
 	fs.fd[0] = pip[0];
 	fs.fd[1] = pip[1];
+	fs.path = p;
 	spawn_forkshell(&fs, NULL, NULL, FORK_NOJOB);
 #else
 	if (forkshell((struct job *)NULL, (union node *)NULL, FORK_NOJOB) == 0) {
@@ -5995,10 +6002,7 @@ openhere(union node *redir)
 		ignoresig(SIGHUP);  //signal(SIGHUP, SIG_IGN);
 		ignoresig(SIGTSTP); //signal(SIGTSTP, SIG_IGN);
 		signal(SIGPIPE, SIG_DFL);
-		if (redir->type == NHERE)
-			full_write(pip[1], redir->nhere.doc->narg.text, len);
-		else /* NXHERE */
-			expandhere(redir->nhere.doc, pip[1]);
+		xwrite(pip[1], p, len);
 		_exit(EXIT_SUCCESS);
 	}
 #endif
@@ -6602,26 +6606,6 @@ static struct ifsregion *ifslastp;
 static struct arglist exparg;
 
 /*
- * Our own itoa().
- * cvtnum() is used even if math support is off (to prepare $? values and such).
- */
-static int
-cvtnum(arith_t num)
-{
-	int len;
-
-	/* 32-bit and wider ints require buffer size of bytes*3 (or less) */
-	len = sizeof(arith_t) * 3;
-	/* If narrower: worst case, 1-byte ints: need 5 bytes: "-127<NUL>" */
-	if (sizeof(arith_t) < 4) len += 2;
-
-	expdest = makestrspace(len, expdest);
-	len = fmtstr(expdest, len, ARITH_FMT, num);
-	STADJUST(len, expdest);
-	return len;
-}
-
-/*
  * Break the argument string into pieces based upon IFS and add the
  * strings to the argument list.  The regions of the string to be
  * searched for IFS characters have been stored by recordregion.
@@ -6878,16 +6862,18 @@ preglob(const char *pattern, int flag)
 /*
  * Put a string on the stack.
  */
-static void
+static size_t
 memtodest(const char *p, size_t len, int flags)
 {
 	int syntax = flags & EXP_QUOTED ? DQSYNTAX : BASESYNTAX;
 	char *q;
+	char *s;
 
 	if (!len)
-		return;
+		return 0;
 
 	q = makestrspace(len * 2, expdest);
+	s = q;
 
 	do {
 		unsigned char c = *p++;
@@ -6906,6 +6892,7 @@ memtodest(const char *p, size_t len, int flags)
 	} while (--len);
 
 	expdest = q;
+	return q - s;
 }
 
 static size_t
@@ -6914,6 +6901,22 @@ strtodest(const char *p, int flags)
 	size_t len = strlen(p);
 	memtodest(p, len, flags);
 	return len;
+}
+
+/*
+ * Our own itoa().
+ * cvtnum() is used even if math support is off (to prepare $? values and such).
+ */
+static int
+cvtnum(arith_t num, int flags)
+{
+	/* 32-bit and wider ints require buffer size of bytes*3 (or less) */
+	/* If narrower: worst case, 1-byte ints: need 5 bytes: "-127<NUL>" */
+	int len = (sizeof(arith_t) >= 4) ? sizeof(arith_t) * 3 : sizeof(arith_t) * 3 + 2;
+	char buf[len];
+
+	len = fmtstr(buf, len, ARITH_FMT, num);
+	return memtodest(buf, len, flags);
 }
 
 /*
@@ -7225,7 +7228,7 @@ expari(int flag)
 	if (flag & QUOTES_ESC)
 		rmescapes(p + 1, 0, NULL);
 
-	len = cvtnum(ash_arith(p + 1));
+	len = cvtnum(ash_arith(p + 1), flag);
 
 	if (!(flag & EXP_QUOTED))
 		recordregion(begoff, begoff + len, 0);
@@ -7870,7 +7873,7 @@ varvalue(char *name, int varflags, int flags, int quoted)
 		if (num == 0)
 			return -1;
  numvar:
-		len = cvtnum(num);
+		len = cvtnum(num, flags);
 		goto check_1char_name;
 	case '-':
 		expdest = makestrspace(NOPTS, expdest);
@@ -8036,7 +8039,7 @@ evalvar(char *p, int flag)
 		varunset(p, var, 0, 0);
 
 	if (subtype == VSLENGTH) {
-		cvtnum(varlen > 0 ? varlen : 0);
+		cvtnum(varlen > 0 ? varlen : 0, flag);
 		goto record;
 	}
 
@@ -8567,10 +8570,9 @@ expandarg(union node *arg, struct arglist *arglist, int flag)
  * Expand shell variables and backquotes inside a here document.
  */
 static void
-expandhere(union node *arg, int fd)
+expandhere(union node *arg)
 {
 	expandarg(arg, (struct arglist *)NULL, EXP_QUOTED);
-	full_write(fd, stackblock(), expdest - (char *)stackblock());
 }
 
 /*
@@ -12331,7 +12333,7 @@ list(int nlflag)
 
 	n1 = NULL;
 	for (;;) {
-		switch (peektoken()) {
+		switch (readtoken()) {
 		case TNL:
 			if (!(nlflag & 1))
 				break;
@@ -12342,9 +12344,12 @@ list(int nlflag)
 			if (!n1 && (nlflag & 1))
 				n1 = NODE_EOF;
 			parseheredoc();
+			tokpushback++;
+			lasttoken = TEOF;
 			return n1;
 		}
 
+		tokpushback++;
 		checkkwd = CHKNL | CHKKWD | CHKALIAS;
 		if (nlflag == 2 && ((1 << peektoken()) & tokendlist))
 			return n1;
@@ -13601,9 +13606,9 @@ parsebackq: {
 		if (readtoken() != TRP)
 			raise_error_unexpected_syntax(TRP);
 		setinputstring(nullstr);
-		parseheredoc();
 	}
 
+	parseheredoc();
 	heredoclist = saveheredoclist;
 
 	(*nlpp)->n = n;
@@ -15473,7 +15478,8 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 static void
 forkshell_openhere(struct forkshell *fs)
 {
-	union node *redir = fs->n;
+	const char *p = fs->path;
+	size_t len = strlen(p);
 	int pip[2];
 
 	pip[0] = fs->fd[0];
@@ -15487,11 +15493,7 @@ forkshell_openhere(struct forkshell *fs)
 	ignoresig(SIGHUP);  //signal(SIGHUP, SIG_IGN);
 	ignoresig(SIGTSTP); //signal(SIGTSTP, SIG_IGN);
 	signal(SIGPIPE, SIG_DFL);
-	if (redir->type == NHERE) {
-		size_t len = strlen(redir->nhere.doc->narg.text);
-		full_write(pip[1], redir->nhere.doc->narg.text, len);
-	} else /* NXHERE */
-		expandhere(redir->nhere.doc, pip[1]);
+	xwrite(pip[1], p, len);
 	_exit(EXIT_SUCCESS);
 }
 
