@@ -8729,7 +8729,11 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 	int applet_no = -1; /* used only by FEATURE_SH_STANDALONE */
 
 	envp = listvars(VEXPORT, VUNSET, /*strlist:*/ NULL, /*end:*/ NULL);
-	if ((strchr(prog, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(prog, '\\')))
+#if ENABLE_PLATFORM_MINGW32
+	if ((strchr(prog, '/') || strchr(prog, '\\') || has_dos_drive_prefix(prog))
+#else
+	if (strchr(prog, '/') != NULL
+#endif
 #if ENABLE_FEATURE_SH_STANDALONE
 	 || (applet_no = find_applet_by_name(prog)) >= 0
 #endif
@@ -14235,7 +14239,11 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	int len;
 
 	/* If name contains a slash, don't use PATH or hash table */
-	if (strchr(name, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(name, '\\'))) {
+#if ENABLE_PLATFORM_MINGW32
+	if (strchr(name, '/') || strchr(name, '\\') || has_dos_drive_prefix(name)) {
+#else
+	if (strchr(name, '/' != NULL) {
+#endif
 		entry->u.index = -1;
 		if (act & DO_ABS) {
 #if ENABLE_PLATFORM_MINGW32
