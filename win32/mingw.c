@@ -504,6 +504,8 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 	int err = EINVAL;
 	WIN32_FILE_ATTRIBUTE_DATA fdata;
 	WIN32_FIND_DATAA findbuf;
+	DWORD low, high;
+	off64_t size;
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
 	DWORD flags;
 	BY_HANDLE_FILE_INFORMATION hdata;
@@ -572,12 +574,22 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		}
 #endif
 
+		/* Get actual size of compressed/sparse files */
+		low = GetCompressedFileSize(file_name, &high);
+		if ((low == INVALID_FILE_SIZE && GetLastError() != NO_ERROR) ||
+				S_ISDIR(buf->st_mode)) {
+			size = buf->st_size;
+		}
+		else {
+			size = low | (((off64_t)high)<<32);
+		}
+
 		/*
 		 * Assume a block is 4096 bytes and calculate number of 512 byte
 		 * sectors.
 		 */
 		buf->st_blksize = 4096;
-		buf->st_blocks = ((buf->st_size+4095)>>12)<<3;
+		buf->st_blocks = ((size+4095)>>12)<<3;
 		return 0;
 	}
 	errno = err;
