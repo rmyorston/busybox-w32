@@ -1750,3 +1750,20 @@ void fix_path_case(char *path)
 		}
 	}
 }
+
+void seek_sparse(int fd, size_t size)
+{
+	DWORD dwTemp;
+	HANDLE fh;
+	FILE_ZERO_DATA_INFORMATION fzdi;
+
+	if ((fh=(HANDLE)_get_osfhandle(fd)) == INVALID_HANDLE_VALUE)
+		return;
+
+	DeviceIoControl(fh, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &dwTemp, NULL);
+
+	fzdi.FileOffset.QuadPart = 0;
+	fzdi.BeyondFinalZero.QuadPart = size;
+	DeviceIoControl(fh, FSCTL_SET_ZERO_DATA, &fzdi, sizeof(fzdi),
+					 NULL, 0, &dwTemp, NULL);
+}

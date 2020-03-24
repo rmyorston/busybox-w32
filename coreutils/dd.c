@@ -502,6 +502,9 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 	}
 	if (seek) {
 		size_t blocksz = (G.flags & FLAG_SEEK_BYTES) ? 1 : obs;
+#if ENABLE_PLATFORM_MINGW32
+		seek_sparse(ofd, seek * blocksz);
+#endif
 		if (lseek(ofd, seek * blocksz, SEEK_CUR) < 0)
 			goto die_outfile;
 	}
