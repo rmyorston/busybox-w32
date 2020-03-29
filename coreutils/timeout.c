@@ -155,6 +155,7 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	BB_EXECVP_or_die(argv);
 #else /* ENABLE_PLATFORM_MINGW32 */
+	argv += optind;
 	if ((ret=mingw_spawn_proc((const char **)argv)) == -1) {
 		xfunc_error_retval = errno == EACCES ? 126 : 127;
 		bb_perror_msg_and_die("can't execute '%s'", argv[0]);
