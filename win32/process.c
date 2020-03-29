@@ -320,8 +320,9 @@ mingw_spawn_1(int mode, const char *cmd, char *const *argv, char *const *envp)
 		return mingw_spawn_applet(mode, argv, envp);
 	else
 #endif
-	if (strchr(cmd, '/') || strchr(cmd, '\\')) {
-		return mingw_spawn_interpreter(mode, cmd, argv, envp);
+	if (strchr(cmd, '/') || strchr(cmd, '\\') || has_dos_drive_prefix(cmd)) {
+		const char *path = auto_win32_extension(cmd);
+		return mingw_spawn_interpreter(mode, path ? path : cmd, argv, envp);
 	}
 	else if ((prog=find_first_executable(cmd)) != NULL) {
 		intptr_t ret = mingw_spawn_interpreter(mode, prog, argv, envp);

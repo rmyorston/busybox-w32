@@ -863,7 +863,7 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 		/* path is of form c:path with no '/' */
 		if (get_drive_cwd(command, buffer, PATH_MAX)) {
 			pfind = command + 2;
-			path1[0] = xstrdup(buffer);
+			path1[0] = dirbuf = xstrdup(buffer);
 		}
 	} else
 #endif
