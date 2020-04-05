@@ -228,6 +228,7 @@ int mingw_listen(int sockfd, int backlog);
 int mingw_accept(int sockfd1, struct sockaddr *sa, socklen_t *sz);
 int mingw_select (int nfds, fd_set *rfds, fd_set *wfds, fd_set *xfds,
             struct timeval *timeout);
+int mingw_getpeername(int fd, struct sockaddr *sa, socklen_t *sz);
 
 NOIMPL(mingw_sendto,SOCKET s UNUSED_PARAM, const char *buf UNUSED_PARAM, int len UNUSED_PARAM, int flags UNUSED_PARAM, const struct sockaddr *sa UNUSED_PARAM, int salen UNUSED_PARAM);
 
@@ -240,6 +241,7 @@ NOIMPL(mingw_sendto,SOCKET s UNUSED_PARAM, const char *buf UNUSED_PARAM, int len
 #define shutdown mingw_shutdown
 #define accept mingw_accept
 #define select mingw_select
+#define getpeername mingw_getpeername
 
 /*
  * sys/time.h
@@ -472,6 +474,7 @@ DIR *mingw_opendir(const char *path);
 #define is_dir_sep(c) ((c) == '/' || (c) == '\\')
 
 pid_t FAST_FUNC mingw_spawn(char **argv);
+pid_t FAST_FUNC mingw_spawn_detach(char **argv);
 intptr_t FAST_FUNC mingw_spawn_proc(const char **argv);
 int mingw_execv(const char *cmd, char *const *argv);
 int mingw_execvp(const char *cmd, char *const *argv);
