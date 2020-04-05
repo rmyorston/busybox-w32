@@ -1175,6 +1175,9 @@ int lbb_main(char **argv)
 int main(int argc UNUSED_PARAM, char **argv)
 #endif
 {
+#if ENABLE_PLATFORM_MINGW32
+	char *s;
+#endif
 #if 0
 	/* TODO: find a use for a block of memory between end of .bss
 	 * and end of page. For example, I'm getting "_end:0x812e698 2408 bytes"
@@ -1274,6 +1277,10 @@ int main(int argc UNUSED_PARAM, char **argv)
 
 #else
 
+# if ENABLE_PLATFORM_MINGW32
+	if (argv[1] && argv[2] && strcmp(argv[1], "--busybox") == 0)
+		argv += 2;
+# endif
 	lbb_prepare("busybox" IF_FEATURE_INDIVIDUAL(, argv));
 # if !ENABLE_BUSYBOX
 	if (argv[1] && is_prefixed_with(bb_basename(argv[0]), "busybox"))
@@ -1283,19 +1290,10 @@ int main(int argc UNUSED_PARAM, char **argv)
 	if (applet_name[0] == '-')
 		applet_name++;
 # if ENABLE_PLATFORM_MINGW32
-	if ( argv[1] && argv[2] && strcmp(argv[1], "--busybox") == 0 ) {
-		argv += 2;
-		applet_name = argv[0];
-	}
-	else {
-		char *s;
-
-		str_tolower(argv[0]);
-		bs_to_slash(argv[0]);
-		if (has_exe_suffix_or_dot(argv[0]) && (s=strrchr(argv[0], '.'))) {
-			*s = '\0';
-		}
-	}
+	str_tolower(argv[0]);
+	bs_to_slash(argv[0]);
+	if (has_exe_suffix_or_dot(argv[0]) && (s=strrchr(argv[0], '.')))
+		*s = '\0';
 # endif
 	applet_name = bb_basename(applet_name);
 
