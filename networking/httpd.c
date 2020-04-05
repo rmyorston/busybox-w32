@@ -229,7 +229,12 @@
 //usage:       "or httpd -d/-e" IF_FEATURE_HTTPD_AUTH_MD5("/-m") " STRING"
 //usage:#define httpd_full_usage "\n\n"
 //usage:       "Listen for incoming HTTP requests\n"
+//usage:	IF_NOT_PLATFORM_MINGW32(
 //usage:     "\n	-i		Inetd mode"
+//usage:	)
+//usage:	IF_PLATFORM_MINGW32(
+//usage:     "\n	-i fd		Inetd mode file descriptor"
+//usage:	)
 //usage:     "\n	-f		Don't daemonize"
 //usage:     "\n	-v[v]		Verbose"
 //usage:     "\n	-p [IP:]PORT	Bind to IP:PORT (default *:80)"
@@ -266,6 +271,8 @@
 #define MAX_HTTP_HEADERS_SIZE (32*1024)
 
 #define HEADER_READ_TIMEOUT 60
+
+static void send_REQUEST_TIMEOUT_and_exit(int sig) NORETURN;
 
 static const char DEFAULT_PATH_HTTPD_CONF[] ALIGN1 = "/etc";
 static const char HTTPD_CONF[] ALIGN1 = "httpd.conf";
@@ -652,8 +659,16 @@ static void parse_conf(const char *path, int flag)
 
 	filename = opt_c_configFile;
 	if (flag == SUBDIR_PARSE || filename == NULL) {
+#if !ENABLE_PLATFORM_MINGW32
 		filename = alloca(strlen(path) + sizeof(HTTPD_CONF) + 2);
 		sprintf((char *)filename, "%s/%s", path, HTTPD_CONF);
+#else
+		char *sd = get_system_drive();
+
+		filename = auto_string(xasprintf("%s%s/%s",
+				(sd && path[0] == '/' && root_len(path) == 0) ? sd : "",
+				path, HTTPD_CONF));
+#endif
 	}
 
 	while ((f = fopen_for_read(filename)) == NULL) {
@@ -702,6 +717,7 @@ static void parse_conf(const char *path, int flag)
 			 * without needless copying, therefore we don't merge
 			 * this operation into next while loop. */
 			while ((ch = *p0) != '\0' && ch != '\n' && ch != '#'
+			 IF_PLATFORM_MINGW32(&& ch != '\r')
 			 && ch != ' ' && ch != '\t'
 			) {
 				p0++;
@@ -709,7 +725,11 @@ static void parse_conf(const char *path, int flag)
 			p = p0;
 			/* if we enter this loop, we have some whitespace.
 			 * discard it */
+#if !ENABLE_PLATFORM_MINGW32
 			while (ch != '\0' && ch != '\n' && ch != '#') {
+#else
+			while (ch != '\0' && ch != '\n' && ch != '\r' && ch != '#') {
+#endif
 				if (ch != ' ' && ch != '\t') {
 					*p++ = ch;
 				}
@@ -1249,7 +1269,21 @@ static unsigned get_line(void)
 	count = 0;
 	while (1) {
 		if (hdr_cnt <= 0) {
+#if ENABLE_PLATFORM_MINGW32
+			int nfds = 1;
+			struct pollfd fds = {STDIN_FILENO, POLLIN, 0};
+
+			switch (poll(&fds, nfds, HEADER_READ_TIMEOUT*1000)) {
+			case 0:
+				send_REQUEST_TIMEOUT_and_exit(0);
+				break;
+			case -1:
+				bb_simple_perror_msg_and_die("poll");
+				break;
+			}
+#else
 			alarm(HEADER_READ_TIMEOUT);
+#endif
 			hdr_cnt = safe_read(STDIN_FILENO, hdr_buf, sizeof_hdr_buf);
 			if (hdr_cnt <= 0)
 				goto ret;
@@ -2090,7 +2124,6 @@ static Htaccess_Proxy *find_proxy_entry(const char *url)
 /*
  * Handle timeouts
  */
-static void send_REQUEST_TIMEOUT_and_exit(int sig) NORETURN;
 static void send_REQUEST_TIMEOUT_and_exit(int sig UNUSED_PARAM)
 {
 	send_headers_and_exit(HTTP_REQUEST_TIMEOUT);
@@ -2134,11 +2167,21 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 		remote_ip = ntohl(fromAddr->u.sin.sin_addr.s_addr);
 	}
 #if ENABLE_FEATURE_IPV6
+# if !ENABLE_PLATFORM_MINGW32
 	if (fromAddr->u.sa.sa_family == AF_INET6
 	 && fromAddr->u.sin6.sin6_addr.s6_addr32[0] == 0
 	 && fromAddr->u.sin6.sin6_addr.s6_addr32[1] == 0
 	 && ntohl(fromAddr->u.sin6.sin6_addr.s6_addr32[2]) == 0xffff)
 		remote_ip = ntohl(fromAddr->u.sin6.sin6_addr.s6_addr32[3]);
+# else
+	if (fromAddr->u.sa.sa_family == AF_INET6
+	 && fromAddr->u.sin6.sin6_addr.s6_words[0] == 0
+	 && fromAddr->u.sin6.sin6_addr.s6_words[1] == 0
+	 && fromAddr->u.sin6.sin6_addr.s6_words[2] == 0
+	 && fromAddr->u.sin6.sin6_addr.s6_words[3] == 0
+	 && ntohl(*(uint32_t *)(fromAddr->u.sin6.sin6_addr.s6_words+4)) == 0xffff)
+		remote_ip = ntohl(*(uint32_t *)(fromAddr->u.sin6.sin6_addr.s6_words+6));
+# endif
 #endif
 	if (ENABLE_FEATURE_HTTPD_CGI || DEBUG || verbose) {
 		/* NB: can be NULL (user runs httpd -i by hand?) */
@@ -2153,8 +2196,10 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 	}
 	if_ip_denied_send_HTTP_FORBIDDEN_and_exit(remote_ip);
 
+#ifdef SIGALRM
 	/* Install timeout handler. get_line() needs it. */
 	signal(SIGALRM, send_REQUEST_TIMEOUT_and_exit);
+#endif
 
 	if (!get_line()) /* EOF or error or empty line */
 		send_headers_and_exit(HTTP_BAD_REQUEST);
@@ -2527,12 +2572,14 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 #endif
 }
 
+
 /*
  * The main http server function.
  * Given a socket, listen for new connections and farm out
  * the processing as a [v]forked process.
  * Never returns.
  */
+# if !ENABLE_PLATFORM_MINGW32
 #if BB_MMU
 static void mini_httpd(int server_socket) NORETURN;
 static void mini_httpd(int server_socket)
@@ -2614,6 +2661,39 @@ static void mini_httpd_nommu(int server_socket, int argc, char **argv)
 	/* never reached */
 }
 #endif
+#else /* ENABLE_PLATFORM_MINGW32 */
+static void mini_httpd_win32(int fg, int sock, int argc, char **argv) NORETURN;
+static void mini_httpd_win32(int fg, int sock, int argc, char **argv)
+{
+	char *argv_copy[argc + 5];
+
+	argv_copy[0] = (char *)bb_busybox_exec_path;
+	argv_copy[1] = (char *)"--busybox";
+	argv_copy[2] = (char *)"httpd";
+	argv_copy[3] = (char *)"-i";
+	memcpy(&argv_copy[5], &argv[1], argc * sizeof(argv[0]));
+
+	while (1) {
+		int n;
+
+		/* Wait for connections... */
+		n = accept(sock, NULL, NULL);
+		if (n < 0)
+			continue;
+
+		/* set the KEEPALIVE option to cull dead connections */
+		setsockopt_keepalive(n);
+
+		argv_copy[4] = itoa(n);
+		if ((fg ? spawn(argv_copy) : mingw_spawn_detach(argv_copy)) == -1)
+			bb_perror_msg_and_die("can't execute 'httpd'");
+
+		/* parent, or spawn failed */
+		close(n);
+	} /* while (1) */
+	/* never reached */
+}
+#endif
 
 /*
  * Process a HTTP connection on stdin/out.
@@ -2631,12 +2711,39 @@ static void mini_httpd_inetd(void)
 	handle_incoming_and_exit(&fromAddr);
 }
 
+#if ENABLE_PLATFORM_MINGW32
+static void mingw_daemonize(char **argv)
+{
+	char **new_argv;
+	int argc, fd;
+
+	argc = string_array_len((char **)argv);
+	new_argv = xmalloc(sizeof(*argv)*(argc+3));
+	new_argv[0] = (char *)bb_busybox_exec_path;
+	new_argv[1] = (char *)"--busybox";
+	new_argv[2] = (char *)"-httpd";
+	memcpy(&new_argv[3], &argv[1], sizeof(*argv)*argc);
+
+	fd = xopen(bb_dev_null, O_RDWR);
+	xdup2(fd, 0);
+	xdup2(fd, 1);
+	xdup2(fd, 2);
+	close(fd);
+
+	if (mingw_spawn_detach(new_argv))
+		exit(EXIT_SUCCESS); /* parent */
+	exit(EXIT_FAILURE); /* parent */
+}
+#endif
+
+#ifdef SIGHUP
 static void sighup_handler(int sig UNUSED_PARAM)
 {
 	int sv = errno;
 	parse_conf(DEFAULT_PATH_HTTPD_CONF, SIGNALED_PARSE);
 	errno = sv;
 }
+#endif
 
 enum {
 	c_opt_config_file = 0,
@@ -2674,6 +2781,7 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 	IF_FEATURE_HTTPD_SETUID(const char *s_ugid = NULL;)
 	IF_FEATURE_HTTPD_SETUID(struct bb_uidgid_t ugid;)
 	IF_FEATURE_HTTPD_AUTH_MD5(const char *pass;)
+	IF_PLATFORM_MINGW32(int fd;)
 
 	INIT_G();
 
@@ -2692,7 +2800,8 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 			IF_FEATURE_HTTPD_BASIC_AUTH("r:")
 			IF_FEATURE_HTTPD_AUTH_MD5("m:")
 			IF_FEATURE_HTTPD_SETUID("u:")
-			"p:ifv"
+			IF_NOT_PLATFORM_MINGW32("p:ifv")
+			IF_PLATFORM_MINGW32("p:i:+fv")
 			"\0"
 			/* -v counts, -i implies -f */
 			"vv:if",
@@ -2702,6 +2811,7 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 			IF_FEATURE_HTTPD_AUTH_MD5(, &pass)
 			IF_FEATURE_HTTPD_SETUID(, &s_ugid)
 			, &bind_addr_or_port
+			IF_PLATFORM_MINGW32(, &fd)
 			, &verbose
 		);
 	if (opt & OPT_DECODE_URL) {
@@ -2731,15 +2841,22 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 
+#if !ENABLE_PLATFORM_MINGW32
 #if !BB_MMU
 	if (!(opt & OPT_FOREGROUND)) {
 		bb_daemonize_or_rexec(0, argv); /* don't change current directory */
 	}
 #endif
+#else /* ENABLE_PLATFORM_MINGW32 */
+	if (!(opt & OPT_FOREGROUND) && argv[0][0] != '-')
+		mingw_daemonize(argv);
+#endif
 
 	xchdir(home_httpd);
 	if (!(opt & OPT_INETD)) {
+#ifdef SIGCHLD
 		signal(SIGCHLD, SIG_IGN);
+#endif
 		server_socket = openServer();
 #if ENABLE_FEATURE_HTTPD_SETUID
 		/* drop privileges */
@@ -2773,18 +2890,32 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	parse_conf(DEFAULT_PATH_HTTPD_CONF, FIRST_PARSE);
+#ifdef SIGHUP
 	if (!(opt & OPT_INETD))
 		signal(SIGHUP, sighup_handler);
+#endif
 
 	xfunc_error_retval = 0;
+#if ENABLE_PLATFORM_MINGW32
+	if (opt & OPT_INETD) {
+		xmove_fd(fd, 0);
+		xdup2(0, 1);
+		while (--fd > 2)
+			close(fd);
+	}
+#endif
 	if (opt & OPT_INETD)
 		mini_httpd_inetd(); /* never returns */
+#if !ENABLE_PLATFORM_MINGW32
 #if BB_MMU
 	if (!(opt & OPT_FOREGROUND))
 		bb_daemonize(0); /* don't change current directory */
 	mini_httpd(server_socket); /* never returns */
 #else
 	mini_httpd_nommu(server_socket, argc, argv); /* never returns */
+#endif
+#else /* ENABLE_PLATFORM_MINGW32 */
+	mini_httpd_win32(opt & OPT_FOREGROUND, server_socket, argc, argv);
 #endif
 	/* return 0; */
 }
