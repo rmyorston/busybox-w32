@@ -3,21 +3,48 @@
 #include <psapi.h>
 #include "lazyload.h"
 
-int waitpid(pid_t pid, int *status, int options)
+pid_t waitpid(pid_t pid, int *status, int options)
+#if ENABLE_TIME
+{
+	return mingw_wait3(pid, status, options, NULL);
+}
+#endif
+
+#if ENABLE_TIME
+pid_t mingw_wait3(pid_t pid, int *status, int options, struct rusage *rusage)
+#endif
 {
 	HANDLE proc;
-	intptr_t ret;
+	DWORD code;
 
 	/* Windows does not understand parent-child */
 	if (pid > 0 && options == 0) {
 		if ( (proc=OpenProcess(SYNCHRONIZE|PROCESS_QUERY_INFORMATION,
 						FALSE, pid)) != NULL ) {
-			ret = _cwait(status, (intptr_t)proc, 0);
-			CloseHandle(proc);
-			if (ret == -1) {
-				return -1;
+			WaitForSingleObject(proc, INFINITE);
+			GetExitCodeProcess(proc, &code);
+#if ENABLE_TIME
+			if (rusage != NULL) {
+				FILETIME crTime, exTime, keTime, usTime;
+
+				memset(rusage, 0, sizeof(*rusage));
+				if (GetProcessTimes(proc, &crTime, &exTime, &keTime, &usTime)) {
+					uint64_t kernel_usec =
+						(((uint64_t)keTime.dwHighDateTime << 32)
+							| (uint64_t)keTime.dwLowDateTime)/10;
+					uint64_t user_usec =
+						(((uint64_t)usTime.dwHighDateTime << 32)
+							| (uint64_t)usTime.dwLowDateTime)/10;
+
+					rusage->ru_utime.tv_sec = user_usec / 1000000U;
+					rusage->ru_utime.tv_usec = user_usec % 1000000U;
+					rusage->ru_stime.tv_sec = kernel_usec / 1000000U;
+					rusage->ru_stime.tv_usec = kernel_usec % 1000000U;
+				}
 			}
-			*status <<= 8;
+#endif
+			CloseHandle(proc);
+			*status = code << 8;
 			return pid;
 		}
 	}

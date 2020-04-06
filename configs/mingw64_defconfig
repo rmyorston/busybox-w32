@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.32.0.git
-# Sun Apr  5 09:22:18 2020
+# Mon Apr  6 08:34:52 2020
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -832,7 +832,7 @@ CONFIG_MAN=y
 # CONFIG_SETFATTR is not set
 # CONFIG_SETSERIAL is not set
 CONFIG_STRINGS=y
-# CONFIG_TIME is not set
+CONFIG_TIME=y
 CONFIG_TS=y
 CONFIG_TTYSIZE=y
 # CONFIG_UBIRENAME is not set

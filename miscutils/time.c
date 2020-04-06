@@ -22,12 +22,21 @@
 //kbuild:lib-$(CONFIG_TIME) += time.o
 
 //usage:#define time_trivial_usage
+//usage:     IF_NOT_PLATFORM_MINGW32(
 //usage:       "[-vpa] [-o FILE] PROG ARGS"
+//usage:     )
+//usage:     IF_PLATFORM_MINGW32(
+//usage:       "[-pa] [-o FILE] PROG ARGS"
+//usage:     )
 //usage:#define time_full_usage "\n\n"
 //usage:       "Run PROG, display resource usage when it exits\n"
+//usage:     IF_NOT_PLATFORM_MINGW32(
 //usage:     "\n	-v	Verbose"
+//usage:     )
 //usage:     "\n	-p	POSIX output format"
+//usage:     IF_NOT_PLATFORM_MINGW32(
 //usage:     "\n	-f FMT	Custom format"
+//usage:     )
 //usage:     "\n	-o FILE	Write result to FILE"
 //usage:     "\n	-a	Append (else overwrite)"
 
@@ -50,6 +59,7 @@ static const char default_format[] ALIGN1 = "real\t%E\nuser\t%u\nsys\t%T";
 /* The output format for the -p option .*/
 static const char posix_format[] ALIGN1 = "real %e\nuser %U\nsys %S";
 
+#if !ENABLE_PLATFORM_MINGW32
 /* Format string for printing all statistics verbosely.
    Keep this output to 24 lines so users on terminals can see it all.*/
 static const char long_format[] ALIGN1 =
@@ -76,6 +86,7 @@ static const char long_format[] ALIGN1 =
 	"\tSignals delivered: %k\n"
 	"\tPage size (bytes): %Z\n"
 	"\tExit status: %x";
+#endif
 
 /* Wait for and fill in data on child process PID.
    Return 0 on error, 1 if ok.  */
@@ -86,7 +97,11 @@ static void resuse_end(pid_t pid, resource_t *resp)
 
 	/* Ignore signals, but don't ignore the children.  When wait3
 	 * returns the child process, set the time the command finished. */
+#if !ENABLE_PLATFORM_MINGW32
 	while ((caught = wait3(&resp->waitstatus, 0, &resp->ru)) != pid) {
+#else
+	while ((caught=mingw_wait3(pid, &resp->waitstatus, 0, &resp->ru)) != pid) {
+#endif
 		if (caught == -1 && errno != EINTR) {
 			bb_simple_perror_msg("wait");
 			return;
@@ -95,6 +110,7 @@ static void resuse_end(pid_t pid, resource_t *resp)
 	resp->elapsed_ms = monotonic_ms() - resp->elapsed_ms;
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 static void printargv(char *const *argv)
 {
 	const char *fmt = " %s" + 1;
@@ -124,6 +140,7 @@ static unsigned long ptok(const unsigned pagesize, const unsigned long pages)
 	tmp = pages * pagesize; /* Larger first, */
 	return tmp / 1024;      /* then smaller.  */
 }
+#endif
 
 /* summarize: Report on the system use of a command.
 
@@ -173,11 +190,17 @@ static unsigned long ptok(const unsigned pagesize, const unsigned long pages)
 #define TICKS_PER_SEC 100
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+#define summarize(f, c, r) summarize(f, r)
+#endif
+
 static void summarize(const char *fmt, char **command, resource_t *resp)
 {
+#if !ENABLE_PLATFORM_MINGW32
 	unsigned vv_ms;     /* Elapsed virtual (CPU) milliseconds */
 	unsigned cpu_ticks; /* Same, in "CPU ticks" */
 	unsigned pagesize = getpagesize();
+#endif
 
 	/* Impossible: we do not use WUNTRACED flag in wait()...
 	if (WIFSTOPPED(resp->waitstatus))
@@ -191,6 +214,7 @@ static void summarize(const char *fmt, char **command, resource_t *resp)
 		printf("Command exited with non-zero status %u\n",
 				WEXITSTATUS(resp->waitstatus));
 
+#if !ENABLE_PLATFORM_MINGW32
 	vv_ms = (resp->ru.ru_utime.tv_sec + resp->ru.ru_stime.tv_sec) * 1000
 	      + (resp->ru.ru_utime.tv_usec + resp->ru.ru_stime.tv_usec) / 1000;
 
@@ -201,6 +225,7 @@ static void summarize(const char *fmt, char **command, resource_t *resp)
 	cpu_ticks = vv_ms * (unsigned long long)TICKS_PER_SEC / 1000;
 #endif
 	if (!cpu_ticks) cpu_ticks = 1; /* we divide by it, must be nonzero */
+#endif
 
 	while (*fmt) {
 		/* Handle leading literal part */
@@ -234,6 +259,7 @@ static void summarize(const char *fmt, char **command, resource_t *resp)
 				bb_putchar(*fmt);
 				break;
 #endif
+#if !ENABLE_PLATFORM_MINGW32
 			case 'C':	/* The command that got timed.  */
 				printargv(command);
 				break;
@@ -242,6 +268,7 @@ static void summarize(const char *fmt, char **command, resource_t *resp)
 					(ptok(pagesize, (UL) resp->ru.ru_idrss) +
 					 ptok(pagesize, (UL) resp->ru.ru_isrss)) / cpu_ticks);
 				break;
+#endif
 			case 'E': {	/* Elapsed real (wall clock) time.  */
 				unsigned seconds = resp->elapsed_ms / 1000;
 				if (seconds >= 3600)	/* One hour -> h:m:s.  */
@@ -256,6 +283,7 @@ static void summarize(const char *fmt, char **command, resource_t *resp)
 							(unsigned)(resp->elapsed_ms / 10) % 100);
 				break;
 			}
+#if !ENABLE_PLATFORM_MINGW32
 			case 'F':	/* Major page faults.  */
 				printf("%lu", resp->ru.ru_majflt);
 				break;
@@ -284,6 +312,7 @@ static void summarize(const char *fmt, char **command, resource_t *resp)
 			case 'R':	/* Minor page faults (reclaims).  */
 				printf("%lu", resp->ru.ru_minflt);
 				break;
+#endif
 			case 'S':	/* System time.  */
 				printf("%u.%02u",
 						(unsigned)resp->ru.ru_stime.tv_sec,
@@ -318,6 +347,7 @@ static void summarize(const char *fmt, char **command, resource_t *resp)
 							(unsigned)(resp->ru.ru_utime.tv_sec % 60),
 							(unsigned)(resp->ru.ru_utime.tv_usec / 10000));
 				break;
+#if !ENABLE_PLATFORM_MINGW32
 			case 'W':	/* Times swapped out.  */
 				printf("%lu", resp->ru.ru_nswap);
 				break;
@@ -330,11 +360,13 @@ static void summarize(const char *fmt, char **command, resource_t *resp)
 			case 'c':	/* Involuntary context switches.  */
 				printf("%lu", resp->ru.ru_nivcsw);
 				break;
+#endif
 			case 'e':	/* Elapsed real time in seconds.  */
 				printf("%u.%02u",
 						(unsigned)resp->elapsed_ms / 1000,
 						(unsigned)(resp->elapsed_ms / 10) % 100);
 				break;
+#if !ENABLE_PLATFORM_MINGW32
 			case 'k':	/* Signals delivered.  */
 				printf("%lu", resp->ru.ru_nsignals);
 				break;
@@ -356,6 +388,7 @@ static void summarize(const char *fmt, char **command, resource_t *resp)
 			case 'x':	/* Exit status.  */
 				printf("%u", WEXITSTATUS(resp->waitstatus));
 				break;
+#endif
 			}
 			break;
 
@@ -390,6 +423,7 @@ static void summarize(const char *fmt, char **command, resource_t *resp)
 static void run_command(char *const *cmd, resource_t *resp)
 {
 	pid_t pid;
+#if !ENABLE_PLATFORM_MINGW32
 	void (*interrupt_signal)(int);
 	void (*quit_signal)(int);
 
@@ -410,6 +444,13 @@ static void run_command(char *const *cmd, resource_t *resp)
 	/* Re-enable signals.  */
 	signal(SIGINT, interrupt_signal);
 	signal(SIGQUIT, quit_signal);
+#else
+	resp->elapsed_ms = monotonic_ms();
+	if ((pid=spawn((char **)cmd)) == -1)
+		bb_perror_msg_and_die("can't execute %s", cmd[0]);
+
+	resuse_end(pid, resp);
+#endif
 }
 
 int time_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -423,20 +464,34 @@ int time_main(int argc UNUSED_PARAM, char **argv)
 	int opt;
 	int ex;
 	enum {
+#if ENABLE_PLATFORM_MINGW32
 		OPT_v = (1 << 0),
 		OPT_p = (1 << 1),
 		OPT_a = (1 << 2),
 		OPT_o = (1 << 3),
 		OPT_f = (1 << 4),
+#else
+		OPT_p = (1 << 0),
+		OPT_a = (1 << 1),
+		OPT_o = (1 << 2),
+#endif
 	};
 
 	/* "+": stop on first non-option */
+#if !ENABLE_PLATFORM_MINGW32
 	opt = getopt32(argv, "^+" "vpao:f:" "\0" "-1"/*at least one arg*/,
 				&output_filename, &output_format
 	);
+#else
+	opt = getopt32(argv, "^+" "pao:" "\0" "-1"/*at least one arg*/,
+				&output_filename
+	);
+#endif
 	argv += optind;
+#if !ENABLE_PLATFORM_MINGW32
 	if (opt & OPT_v)
 		output_format = long_format;
+#endif
 	if (opt & OPT_p)
 		output_format = posix_format;
 	output_fd = STDERR_FILENO;

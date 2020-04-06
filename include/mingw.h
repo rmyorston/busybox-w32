@@ -347,7 +347,8 @@ int mingw_fstat(int fd, struct mingw_stat *buf);
  */
 #define WNOHANG 1
 #define WUNTRACED 2
-int waitpid(pid_t pid, int *status, int options);
+pid_t waitpid(pid_t pid, int *status, int options);
+pid_t mingw_wait3(pid_t pid, int *status, int options, struct rusage *rusage);
 
 /*
  * time.h
