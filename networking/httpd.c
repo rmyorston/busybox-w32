@@ -220,7 +220,12 @@
 //kbuild:lib-$(CONFIG_HTTPD) += httpd.o
 
 //usage:#define httpd_trivial_usage
+//usage:	IF_NOT_PLATFORM_MINGW32(
 //usage:       "[-ifv[v]]"
+//usage:	)
+//usage:	IF_PLATFORM_MINGW32(
+//usage:       "[-fv[v]]"
+//usage:	)
 //usage:       " [-c CONFFILE]"
 //usage:       " [-p [IP:]PORT]"
 //usage:	IF_FEATURE_HTTPD_SETUID(" [-u USER[:GRP]]")
@@ -231,9 +236,6 @@
 //usage:       "Listen for incoming HTTP requests\n"
 //usage:	IF_NOT_PLATFORM_MINGW32(
 //usage:     "\n	-i		Inetd mode"
-//usage:	)
-//usage:	IF_PLATFORM_MINGW32(
-//usage:     "\n	-i fd		Inetd mode file descriptor"
 //usage:	)
 //usage:     "\n	-f		Don't daemonize"
 //usage:     "\n	-v[v]		Verbose"
@@ -2670,7 +2672,7 @@ static void mini_httpd_win32(int fg, int sock, int argc, char **argv)
 	argv_copy[0] = (char *)bb_busybox_exec_path;
 	argv_copy[1] = (char *)"--busybox";
 	argv_copy[2] = (char *)"httpd";
-	argv_copy[3] = (char *)"-i";
+	argv_copy[3] = (char *)"-I";
 	memcpy(&argv_copy[5], &argv[1], argc * sizeof(argv[0]));
 
 	while (1) {
@@ -2801,10 +2803,11 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 			IF_FEATURE_HTTPD_AUTH_MD5("m:")
 			IF_FEATURE_HTTPD_SETUID("u:")
 			IF_NOT_PLATFORM_MINGW32("p:ifv")
-			IF_PLATFORM_MINGW32("p:i:+fv")
+			IF_PLATFORM_MINGW32("p:I:+fv")
 			"\0"
 			/* -v counts, -i implies -f */
-			"vv:if",
+			IF_NOT_PLATFORM_MINGW32("vv:if",)
+			IF_PLATFORM_MINGW32("vv:If",)
 			&opt_c_configFile, &url_for_decode, &home_httpd
 			IF_FEATURE_HTTPD_ENCODE_URL_STR(, &url_for_encode)
 			IF_FEATURE_HTTPD_BASIC_AUTH(, &g_realm)
@@ -2852,7 +2855,10 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 		mingw_daemonize(argv);
 #endif
 
-	xchdir(home_httpd);
+#if ENABLE_PLATFORM_MINGW32
+	if (!(opt & OPT_INETD))
+#endif
+		xchdir(home_httpd);
 	if (!(opt & OPT_INETD)) {
 #ifdef SIGCHLD
 		signal(SIGCHLD, SIG_IGN);
