@@ -1983,7 +1983,11 @@ static int check_user_passwd(const char *path, char *user_and_passwd)
 
 		/* WHY? */
 		/* If already saw a match, don't accept other different matches */
+#if !ENABLE_PLATFORM_MINGW32
 		if (prev && strcmp(prev, dir_prefix) != 0)
+#else
+		if (prev && strcasecmp(prev, dir_prefix) != 0)
+#endif
 			continue;
 
 		if (DEBUG)
@@ -1992,7 +1996,11 @@ static int check_user_passwd(const char *path, char *user_and_passwd)
 		/* If it's not a prefix match, continue searching */
 		len = strlen(dir_prefix);
 		if (len != 1 /* dir_prefix "/" matches all, don't need to check */
+#if !ENABLE_PLATFORM_MINGW32
 		 && (strncmp(dir_prefix, path, len) != 0
+#else
+		 && (strncasecmp(dir_prefix, path, len) != 0
+#endif
 		    || (path[len] != '/' && path[len] != '\0')
 		    )
 		) {
@@ -2527,7 +2535,11 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 	/* We are done reading headers, disable peer timeout */
 	alarm(0);
 
+#if !ENABLE_PLATFORM_MINGW32
 	if (strcmp(bb_basename(urlcopy), HTTPD_CONF) == 0) {
+#else
+	if (strcasecmp(bb_basename(urlcopy), HTTPD_CONF) == 0) {
+#endif
 		/* protect listing [/path]/httpd.conf or IP deny */
 		send_headers_and_exit(HTTP_FORBIDDEN);
 	}
