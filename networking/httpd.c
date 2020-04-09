@@ -2022,6 +2022,7 @@ static int check_user_passwd(const char *path, char *user_and_passwd)
 				goto bad_input;
 
 			/* compare "user:" */
+# if !ENABLE_PLATFORM_MINGW32
 			if (cur->after_colon[0] != '*'
 			 && strncmp(cur->after_colon, user_and_passwd,
 					colon_after_user - user_and_passwd + 1) != 0
@@ -2029,11 +2030,20 @@ static int check_user_passwd(const char *path, char *user_and_passwd)
 				continue;
 			}
 			/* this cfg entry is '*' or matches username from peer */
+# else
+			if (strncmp(cur->after_colon, user_and_passwd,
+					colon_after_user - user_and_passwd + 1) != 0
+			) {
+				continue;
+			}
+			/* this cfg entry matches username from peer */
+# endif
 
 			passwd = strchr(cur->after_colon, ':');
 			if (!passwd)
 				goto bad_input;
 			passwd++;
+# if !ENABLE_PLATFORM_MINGW32
 			if (passwd[0] == '*') {
 # if ENABLE_PAM
 				struct pam_userinfo userinfo;
@@ -2081,11 +2091,12 @@ static int check_user_passwd(const char *path, char *user_and_passwd)
 				goto check_encrypted;
 # endif /* ENABLE_PAM */
 			}
+# endif /* !ENABLE_PLATFORM_MINGW32 */
 			/* Else: passwd is from httpd.conf, it is either plaintext or encrypted */
 
 			if (passwd[0] == '$' && isdigit(passwd[1])) {
 				char *encrypted;
-# if !ENABLE_PAM
+# if !ENABLE_PAM && !ENABLE_PLATFORM_MINGW32
  check_encrypted:
 # endif
 				/* encrypt pwd from peer and check match with local one */
