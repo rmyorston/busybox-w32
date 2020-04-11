@@ -464,7 +464,7 @@ int time_main(int argc UNUSED_PARAM, char **argv)
 	int opt;
 	int ex;
 	enum {
-#if ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32
 		OPT_v = (1 << 0),
 		OPT_p = (1 << 1),
 		OPT_a = (1 << 2),

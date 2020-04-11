@@ -14242,7 +14242,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 #if ENABLE_PLATFORM_MINGW32
 	if (strchr(name, '/') || strchr(name, '\\') || has_dos_drive_prefix(name)) {
 #else
-	if (strchr(name, '/' != NULL) {
+	if (strchr(name, '/') != NULL) {
 #endif
 		entry->u.index = -1;
 		if (act & DO_ABS) {
