@@ -53,12 +53,44 @@ static int is_console_in(int fd)
 	return isatty(fd) && GetStdHandle(STD_INPUT_HANDLE) != INVALID_HANDLE_VALUE;
 }
 
+#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+#define DISABLE_NEWLINE_AUTO_RETURN 0x0008
+
 int skip_ansi_emulation(int reset)
 {
 	static int skip = -1;
 
-	if (skip < 0 || reset)
-		skip = getenv(bb_skip_ansi_emulation) != NULL;
+	if (skip < 0 || reset) {
+		const char *var = getenv(bb_skip_ansi_emulation);
+		skip = var != NULL;
+		if (skip) {
+			switch (xatou(var)) {
+			case 1:
+				break;
+			case 2:
+				skip = 2;
+				break;
+			default:
+				skip = 0;
+				break;
+			}
+		}
+
+		if (is_console(STDOUT_FILENO)) {
+			HANDLE h = get_console();
+			DWORD mode;
+
+			if (GetConsoleMode(h, &mode)) {
+				if (skip)
+					mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+				else
+					mode &= ~ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+				mode &= ~DISABLE_NEWLINE_AUTO_RETURN;
+				if (!SetConsoleMode(h, mode) && skip == 2)
+					skip = 0;
+			}
+		}
+	}
 
 	return skip;
 }
