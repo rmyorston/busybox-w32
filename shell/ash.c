@@ -2248,6 +2248,14 @@ static void change_seconds(const char *) FAST_FUNC;
 static void change_realtime(const char *) FAST_FUNC;
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+static void FAST_FUNC
+change_skip_ansi(const char *newval UNUSED_PARAM)
+{
+	skip_ansi_emulation(TRUE);
+}
+#endif
+
 static const struct {
 	int flags;
 	const char *var_text;
@@ -2283,6 +2291,9 @@ static const struct {
 #endif
 #if ENABLE_FEATURE_EDITING_SAVEHISTORY
 	{ VSTRFIXED|VTEXTFIXED|VUNSET, "HISTFILE"  , NULL            },
+#endif
+#if ENABLE_PLATFORM_MINGW32
+	{ VSTRFIXED|VTEXTFIXED|VUNSET, bb_skip_ansi_emulation, change_skip_ansi },
 #endif
 };
 

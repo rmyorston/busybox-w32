@@ -53,17 +53,14 @@ static int is_console_in(int fd)
 	return isatty(fd) && GetStdHandle(STD_INPUT_HANDLE) != INVALID_HANDLE_VALUE;
 }
 
-static int skip_ansi_emulation(void)
+int skip_ansi_emulation(int reset)
 {
-	static char *var = NULL;
-	static int got_var = FALSE;
+	static int skip = -1;
 
-	if (!got_var) {
-		var = getenv("BB_SKIP_ANSI_EMULATION");
-		got_var = TRUE;
-	}
+	if (skip < 0 || reset)
+		skip = getenv(bb_skip_ansi_emulation) != NULL;
 
-	return var != NULL;
+	return skip;
 }
 
 void set_title(const char *str)
@@ -557,7 +554,7 @@ static int ansi_emulate(const char *s, FILE *stream)
 
 	while (*pos) {
 		pos = strchr(str, '\033');
-		if (pos && !skip_ansi_emulation()) {
+		if (pos && !skip_ansi_emulation(FALSE)) {
 			size_t len = pos - str;
 
 			if (len) {
@@ -811,7 +808,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 	/* we've checked the data doesn't contain any NULs */
 	while (*pos) {
 		pos = strchr(str, '\033');
-		if (pos && !skip_ansi_emulation()) {
+		if (pos && !skip_ansi_emulation(FALSE)) {
 			len = pos - str;
 
 			if (len) {
