@@ -103,6 +103,9 @@ int main(int argc, char **argv)
 	if (i < 0)
 		return 1;
 	dup2(i, 1);
+#ifdef __MINGW32__
+	close(i);
+#endif
 
 	/* Keep in sync with include/busybox.h! */
 
@@ -236,8 +239,14 @@ int main(int argc, char **argv)
 
 	if (fclose(stdout))
 		return 1;
+#ifdef __MINGW32__
+	unlink(argv[1]);
+#endif
 	if (rename(tmp1, argv[1]))
 		return 1;
+#ifdef __MINGW32__
+	unlink(argv[2]);
+#endif
 	if (rename(tmp2, argv[2]))
 		return 1;
 	return 0;
