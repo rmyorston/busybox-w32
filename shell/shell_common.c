@@ -248,6 +248,7 @@ shell_builtin_read(struct builtin_read_params *params)
 			else if (key == '\b') {
 				if (bufpos > 0) {
 					--bufpos;
+					++nchars;
 					if (!(read_flags & BUILTIN_READ_SILENT)) {
 						printf("\b \b");
 					}
