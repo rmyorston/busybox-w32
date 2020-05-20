@@ -537,5 +537,5 @@ int chdir_system_drive(void);
 char *xabsolute_path(char *path);
 char *get_drive_cwd(const char *path, char *buffer, int size);
 void fix_path_case(char *path);
-void seek_sparse(int fd, size_t size);
+void make_sparse(int fd, off_t start, off_t end);
 int skip_ansi_emulation(int reset);

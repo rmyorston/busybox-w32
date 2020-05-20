@@ -1751,7 +1751,7 @@ void fix_path_case(char *path)
 	}
 }
 
-void seek_sparse(int fd, size_t size)
+void make_sparse(int fd, off_t start, off_t end)
 {
 	DWORD dwTemp;
 	HANDLE fh;
@@ -1762,8 +1762,8 @@ void seek_sparse(int fd, size_t size)
 
 	DeviceIoControl(fh, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &dwTemp, NULL);
 
-	fzdi.FileOffset.QuadPart = 0;
-	fzdi.BeyondFinalZero.QuadPart = size;
+	fzdi.FileOffset.QuadPart = start;
+	fzdi.BeyondFinalZero.QuadPart = end;
 	DeviceIoControl(fh, FSCTL_SET_ZERO_DATA, &fzdi, sizeof(fzdi),
 					 NULL, 0, &dwTemp, NULL);
 }

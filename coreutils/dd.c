@@ -466,6 +466,27 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 
 		xmove_fd(xopen(outfile, oflag), ofd);
 
+#if ENABLE_PLATFORM_MINGW32
+		{
+			off_t len = (off_t)seek * ((G.flags & FLAG_SEEK_BYTES) ? 1 : obs);
+			struct stat st;
+			int ret = fstat(ofd, &st);
+
+			if (ret == 0 && !(G.flags & FLAG_APPEND) && len > st.st_size)
+				make_sparse(ofd, st.st_size, len);
+
+			if (seek && !(G.flags & FLAG_NOTRUNC)) {
+				if (ftruncate(ofd, len) < 0) {
+					if (ret < 0
+					 || S_ISREG(st.st_mode)
+					 || S_ISDIR(st.st_mode)
+					) {
+						goto die_outfile;
+					}
+				}
+			}
+		}
+#else
 		if (seek && !(G.flags & FLAG_NOTRUNC)) {
 			size_t blocksz = (G.flags & FLAG_SEEK_BYTES) ? 1 : obs;
 			if (ftruncate(ofd, seek * blocksz) < 0) {
@@ -479,6 +500,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 				}
 			}
 		}
+#endif
 	} else {
 		outfile = bb_msg_standard_output;
 	}
@@ -502,9 +524,6 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 	}
 	if (seek) {
 		size_t blocksz = (G.flags & FLAG_SEEK_BYTES) ? 1 : obs;
-#if ENABLE_PLATFORM_MINGW32
-		seek_sparse(ofd, seek * blocksz);
-#endif
 		if (lseek(ofd, seek * blocksz, SEEK_CUR) < 0)
 			goto die_outfile;
 	}
