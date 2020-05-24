@@ -22,8 +22,7 @@
  * - Environment variables from Windows will all be turned to uppercase.
  * - PATH accepts both ; and : as separator, but can't be mixed
  * - command without ".exe" extension is still understood as executable
- * - shell scripts on the path are detected by the presence of '#!';
- *   the path to the interpreter is ignored, PATH is searched to find it
+ * - shell scripts on the path are detected by the presence of '#!'
  * - both / and \ are supported in PATH. Usually you must use /
  * - trap/job does not work
  * - /dev/null is supported for redirection

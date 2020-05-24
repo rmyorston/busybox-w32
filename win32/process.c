@@ -292,7 +292,8 @@ mingw_spawn_applet(int mode,
 #endif
 
 static intptr_t
-mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *const *envp)
+mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
+			char *const *envp, int level)
 {
 	intptr_t ret;
 	int nopts;
@@ -304,6 +305,11 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *con
 	if (!parse_interpreter(prog, &interp))
 		return spawnveq(mode, prog, argv, envp);
 
+	if (++level > 4) {
+		errno = ELOOP;
+		return -1;
+	}
+
 	nopts = interp.opts != NULL;
 	argc = string_array_len((char **)argv);
 	new_argv = xmalloc(sizeof(*argv)*(argc+nopts+2));
@@ -314,7 +320,7 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *con
 	if ((fullpath=alloc_win32_extension(interp.path)) != NULL ||
 			file_is_executable(interp.path)) {
 		new_argv[0] = fullpath ? fullpath : interp.path;
-		ret = spawnveq(mode, new_argv[0], new_argv, envp);
+		ret = mingw_spawn_interpreter(mode, new_argv[0], new_argv, envp, level);
 	} else
 #if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
 	if (find_applet_by_name(interp.name) >= 0) {
@@ -323,11 +329,7 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv, char *con
 		ret = mingw_spawn_applet(mode, new_argv, envp);
 	} else
 #endif
-	if ((fullpath=find_first_executable(interp.name)) != NULL) {
-		new_argv[0] = fullpath;
-		ret = spawnveq(mode, fullpath, new_argv, envp);
-	}
-	else {
+	{
 		errno = ENOENT;
 		ret = -1;
 	}
@@ -349,10 +351,10 @@ mingw_spawn_1(int mode, const char *cmd, char *const *argv, char *const *envp)
 #endif
 	if (strchr(cmd, '/') || strchr(cmd, '\\') || has_dos_drive_prefix(cmd)) {
 		const char *path = auto_win32_extension(cmd);
-		return mingw_spawn_interpreter(mode, path ? path : cmd, argv, envp);
+		return mingw_spawn_interpreter(mode, path ? path : cmd, argv, envp, 0);
 	}
 	else if ((prog=find_first_executable(cmd)) != NULL) {
-		intptr_t ret = mingw_spawn_interpreter(mode, prog, argv, envp);
+		intptr_t ret = mingw_spawn_interpreter(mode, prog, argv, envp, 0);
 		free(prog);
 		return ret;
 	}
@@ -401,7 +403,7 @@ mingw_execvp(const char *cmd, char *const *argv)
 int
 mingw_execve(const char *cmd, char *const *argv, char *const *envp)
 {
-	int ret = (int)mingw_spawn_interpreter(P_WAIT, cmd, argv, envp);
+	int ret = (int)mingw_spawn_interpreter(P_WAIT, cmd, argv, envp, 0);
 	if (ret != -1)
 		exit(ret);
 	return ret;
