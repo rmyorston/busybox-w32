@@ -4,7 +4,13 @@ Things may work for you, or may not.  Things may never work because of huge diff
 
 ### Building
 
-You need a MinGW compiler and a POSIX environment (so that `make menuconfig` works).  I cross-compile on Linux.  On Fedora installing `mingw32-gcc` and `mingw32-windows-default-manifest` (32-bit build) or `mingw64-gcc` and `mingw64-windows-default-manifest` (64-bit build) will pull in everything needed.
+You need a MinGW compiler and a POSIX environment.  I cross-compile on Linux.  On Fedora the following should pull in everything required:
+
+`dnf install gcc make ncurses-devel perl-Pod-Html`
+
+`dnf install mingw32-gcc mingw32-windows-default-manifest` (for a 32-bit build)
+
+`dnf install mingw64-gcc mingw64-windows-default-manifest` (for a 64-bit build)
 
 To start, run `make mingw32_defconfig` or `make mingw64_defconfig`.  You can then customize your build with `make menuconfig` or by editing `.config`, if you know what you're doing.
 
