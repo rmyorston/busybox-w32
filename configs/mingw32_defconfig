@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.32.0.git
-# Thu May 28 10:59:26 2020
+# Fri May 29 10:58:25 2020
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -820,6 +820,7 @@ CONFIG_FEATURE_LESS_ENV=y
 # CONFIG_FEATURE_MAKEDEVS_TABLE is not set
 CONFIG_MAN=y
 # CONFIG_MICROCOM is not set
+# CONFIG_MIM is not set
 # CONFIG_MT is not set
 # CONFIG_NANDWRITE is not set
 # CONFIG_NANDDUMP is not set

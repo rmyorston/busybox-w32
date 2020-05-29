@@ -9251,7 +9251,6 @@ typecmd(int argc UNUSED_PARAM, char **argv)
 	return err;
 }
 
-#if ENABLE_ASH_CMDCMD
 static struct strlist *
 fill_arglist(struct arglist *arglist, union node **argpp)
 {
@@ -9268,6 +9267,7 @@ fill_arglist(struct arglist *arglist, union node **argpp)
 	return *lastp;
 }
 
+#if ENABLE_ASH_CMDCMD
 /* Is it "command [-p] PROG ARGS" bltin, no other opts? Return ptr to "PROG" if yes */
 static int
 parse_command_args(struct arglist *arglist, union node **argpp, const char **path)
@@ -10882,11 +10882,13 @@ evalcommand(union node *cmd, int flags)
 				vlocal = !spclbltin;
 			}
 			cmd_is_exec = cmdentry.u.cmd == EXECCMD;
+#if ENABLE_ASH_CMDCMD
 			if (cmdentry.u.cmd != COMMANDCMD)
 				break;
 
 			cmd_flag = parse_command_args(&arglist, &argp, &path);
 			if (!cmd_flag)
+#endif
 				break;
 		}
 
@@ -14574,8 +14576,7 @@ helpcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 static int FAST_FUNC
 historycmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 {
-	if (line_input_state)
-		show_history(line_input_state);
+	show_history(line_input_state);
 	return EXIT_SUCCESS;
 }
 #endif

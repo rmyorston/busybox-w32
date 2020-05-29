@@ -129,6 +129,12 @@ testing "grep -v -f EMPTY_FILE" \
 	"" \
 	"test\n"
 
+testing "grep -vxf EMPTY_FILE" \
+	"grep -vxf input" \
+	"test\n" \
+	"" \
+	"test\n"
+
 testing "grep -Fw matches only words" \
 	"grep -Fw foo input" \
 	"" \
@@ -183,6 +189,18 @@ testing "grep -x -v -e EXP1 -e EXP2 finds nothing if either EXP matches" \
 	"1\n" \
 	"" \
 	"  aa bb cc\n"
+
+testing "grep PATTERN can be a newline-delimited list" \
+	'grep -Fv "$(printf "foo\nbar\n")"' \
+	"baz\n" \
+	"" \
+	"foo\nbar\nbaz\n"
+
+testing "grep -e PATTERN can be a newline-delimited list" \
+	'grep -Fv -e "$(printf "foo\nbar\n")"' \
+	"baz\n" \
+	"" \
+	"foo\nbar\nbaz\n"
 
 # -r on symlink to dir should recurse into dir
 mkdir -p grep.testdir/foo
