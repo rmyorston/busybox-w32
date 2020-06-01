@@ -16096,14 +16096,22 @@ forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 	char *s;
 	int count, i;
 	int size_gvp, size_gmp, size_cmdtable, size_atab, size_history, total;
+	const char *fsname[] = {
+		"FS_OPENHERE",
+		"FS_EVALBACKCMD",
+		"FS_EVALSUBSHELL",
+		"FS_EVALPIPE",
+		"FS_SHELLEXEC"
+	};
 
 	if (fp0 != NULL) {
 		fp = fp0;
 	}
 	else {
-		char name[32];
+		char name[64];
+		static int num = 0;
 
-		sprintf(name, "fs_%d.out", getpid());
+		sprintf(name, "fs_%d_%03d.out", getpid(), ++num % 100);
 		if ((fp=fopen(name, "w")) == NULL)
 			return;
 	}
@@ -16155,6 +16163,7 @@ forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 				fs->funcblocksize, size_gvp, size_gmp, size_cmdtable,
 				size_atab, size_history, total);
 
+	fprintf(fp, "%s\n\n", fsname[fs->fpid]);
 	fprintf(fp, "--- relocate ---\n");
 	count = 0;
 	for (i = 0; i < fs->relocatesize; ++i) {
@@ -16196,8 +16205,9 @@ forkshell_prepare(struct forkshell *fs)
 	SECURITY_ATTRIBUTES sa;
 #if FORKSHELL_DEBUG
 	char *relocate;
-	char name[32];
+	char name[64];
 	FILE *fp;
+	static int num = 0;
 #endif
 
 	/* Calculate size of "new" */
@@ -16241,7 +16251,7 @@ forkshell_prepare(struct forkshell *fs)
 	new->old_base = (char *)new;
 	new->hMapFile = h;
 #if FORKSHELL_DEBUG
-	sprintf(name, "fs_%d.out", getpid());
+	sprintf(name, "fs_%d_%03d.out", getpid(), ++num % 100);
 	if ((fp=fopen(name, "w")) != NULL) {
 		int i;
 
