@@ -15314,7 +15314,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	if (argc == 3 && !strcmp(argv[1], "--fs")) {
 		forkshell_init(argv[2]);
 
-		/* NOTREACHED */
+		/* only reached in case of error */
 		bb_error_msg_and_die("forkshell failed");
 	}
 #endif
@@ -15620,6 +15620,9 @@ spawn_forkshell(struct forkshell *fs, struct job *jp, union node *n, int mode)
 	intptr_t ret;
 
 	new = forkshell_prepare(fs);
+	if (new == NULL)
+		goto fail;
+
 	new->mode = mode;
 	new->nprocs = jp == NULL ? 0 : jp->nprocs;
 	sprintf(buf, "%p", new->hMapFile);
@@ -15628,6 +15631,7 @@ spawn_forkshell(struct forkshell *fs, struct job *jp, union node *n, int mode)
 	CloseHandle(new->hMapFile);
 	UnmapViewOfFile(new);
 	if (ret == -1) {
+ fail:
 		if (jp)
 			freejob(jp);
 		ash_msg_and_raise_error("unable to spawn shell");
@@ -16233,6 +16237,8 @@ forkshell_prepare(struct forkshell *fs)
 
 	/* Initialise pointers */
 	new = (struct forkshell *)MapViewOfFile(h, FILE_MAP_WRITE, 0,0, 0);
+	if (new == NULL)
+		return NULL;
 	fs_size = size;
 	funcblock = (char *)(new + 1);
 	funcstring_end = (char *)new + size;
@@ -16305,12 +16311,12 @@ forkshell_init(const char *idstr)
 	char *lrelocate;
 
 	if (sscanf(idstr, "%p", &map_handle) != 1)
-		bb_error_msg_and_die("invalid forkshell ID");
+		return;
 
 	h = (HANDLE)map_handle;
 	fs = (struct forkshell *)MapViewOfFile(h, FILE_MAP_WRITE, 0,0, 0);
 	if (!fs)
-		bb_error_msg_and_die("Invalid forkshell memory");
+		return;
 
 	/* this memory can't be freed */
 	sticky_mem_start = fs;
