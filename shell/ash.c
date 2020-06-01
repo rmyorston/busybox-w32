@@ -14989,11 +14989,11 @@ static void xsetenv_if_unset(const char *key, const char *value)
 static NOINLINE void
 init(void)
 {
+#if !ENABLE_PLATFORM_MINGW32
 	/* we will never free this */
 	basepf.next_to_pgetc = basepf.buf = ckmalloc(IBUFSIZ);
 	basepf.linno = 1;
 
-#if !ENABLE_PLATFORM_MINGW32
 	sigmode[SIGCHLD - 1] = S_DFL; /* ensure we install handler even if it is SIG_IGNed */
 	setsignal(SIGCHLD);
 #endif
@@ -15254,6 +15254,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	int login_sh;
 #if ENABLE_PLATFORM_MINGW32
 	char *sd;
+	int is_forkshell;
 #endif
 
 	/* Initialize global data */
@@ -15302,7 +15303,13 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	rootpid = getpid();
 
 #if ENABLE_PLATFORM_MINGW32
+	/* we will never free this */
+	basepf.next_to_pgetc = basepf.buf = ckmalloc(IBUFSIZ);
+	basepf.linno = 1;
+
 	winxp = (argv[1] != NULL && strcmp(argv[1], "-X") == 0);
+	is_forkshell = (argc == 3 && !strcmp(argv[1], "--fs"));
+	if (!is_forkshell)
 #endif
 	init();
 	setstackmark(&smark);
@@ -15311,7 +15318,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	hSIGINT = CreateEvent(NULL, TRUE, FALSE, NULL);
 	SetConsoleCtrlHandler(ctrl_handler, TRUE);
 
-	if (argc == 3 && !strcmp(argv[1], "--fs")) {
+	if (is_forkshell) {
 		forkshell_init(argv[2]);
 
 		/* only reached in case of error */
