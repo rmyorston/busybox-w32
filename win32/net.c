@@ -10,19 +10,50 @@ int inet_aton(const char *cp, struct in_addr *inp)
 	return 1;
 }
 
-void init_winsock(void)
+static void init_winsock(void)
 {
 	WSADATA wsa;
+	static int initialized = 0;
+
+	if (initialized)
+		return;
+
 	if (WSAStartup(MAKEWORD(2,2), &wsa))
-		bb_error_msg_and_die("unable to initialize winsock subsystem, error %d",
-				     WSAGetLastError());
-	atexit((void(*)(void)) WSACleanup); /* may conflict with other atexit? */
+		bb_error_msg_and_die("WSAStartup failed, error %d", WSAGetLastError());
+
+	atexit((void(*)(void)) WSACleanup);
+	initialized = 1;
+}
+
+#undef gethostname
+int mingw_gethostname(char *name, int namelen)
+{
+	init_winsock();
+	return gethostname(name, namelen);
+}
+
+#undef gethostbyaddr
+struct hostent *mingw_gethostbyaddr(const void *addr, socklen_t len, int type)
+{
+	init_winsock();
+	return gethostbyaddr(addr, len, type);
+}
+
+#undef getaddrinfo
+int mingw_getaddrinfo(const char *node, const char *service,
+				const struct addrinfo *hints, struct addrinfo **res)
+{
+	init_winsock();
+	return getaddrinfo(node, service, hints, res);
 }
 
 int mingw_socket(int domain, int type, int protocol)
 {
 	int sockfd;
-	SOCKET s = WSASocket(domain, type, protocol, NULL, 0, 0);
+	SOCKET s;
+
+	init_winsock();
+	s = WSASocket(domain, type, protocol, NULL, 0, 0);
 	if (s == INVALID_SOCKET) {
 		/*
 		 * WSAGetLastError() values are regular BSD error codes

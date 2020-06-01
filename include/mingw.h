@@ -229,6 +229,10 @@ int mingw_accept(int sockfd1, struct sockaddr *sa, socklen_t *sz);
 int mingw_select (int nfds, fd_set *rfds, fd_set *wfds, fd_set *xfds,
             struct timeval *timeout);
 int mingw_getpeername(int fd, struct sockaddr *sa, socklen_t *sz);
+int mingw_gethostname(char *host, int namelen);
+int mingw_getaddrinfo(const char *node, const char *service,
+			const struct addrinfo *hints, struct addrinfo **res);
+struct hostent *mingw_gethostbyaddr(const void *addr, socklen_t len, int type);
 
 NOIMPL(mingw_sendto,SOCKET s UNUSED_PARAM, const char *buf UNUSED_PARAM, int len UNUSED_PARAM, int flags UNUSED_PARAM, const struct sockaddr *sa UNUSED_PARAM, int salen UNUSED_PARAM);
 
@@ -242,6 +246,9 @@ NOIMPL(mingw_sendto,SOCKET s UNUSED_PARAM, const char *buf UNUSED_PARAM, int len
 #define accept mingw_accept
 #define select mingw_select
 #define getpeername mingw_getpeername
+#define gethostname mingw_gethostname
+#define getaddrinfo mingw_getaddrinfo
+#define gethostbyaddr mingw_gethostbyaddr
 
 /*
  * sys/time.h
@@ -502,7 +509,6 @@ void qsort_string_vector_case(char **sv, unsigned count) FAST_FUNC;
  */
 
 const char *get_busybox_exec_path(void);
-void init_winsock(void);
 void init_codepage(void);
 
 int has_bat_suffix(const char *p);
