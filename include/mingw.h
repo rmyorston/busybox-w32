@@ -477,6 +477,7 @@ DIR *mingw_opendir(const char *path);
 pid_t FAST_FUNC mingw_spawn(char **argv);
 pid_t FAST_FUNC mingw_spawn_detach(char **argv);
 intptr_t FAST_FUNC mingw_spawn_proc(const char **argv);
+intptr_t FAST_FUNC mingw_spawn_forkshell(const char **argv);
 int mingw_execv(const char *cmd, char *const *argv);
 int mingw_execvp(const char *cmd, char *const *argv);
 int mingw_execve(const char *cmd, char *const *argv, char *const *envp);
