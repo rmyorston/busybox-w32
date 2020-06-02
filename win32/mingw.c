@@ -837,17 +837,17 @@ static char *gethomedir(void)
 	static char *buf = NULL;
 	DWORD len = PATH_MAX;
 	HANDLE h;
+	DECLARE_PROC_ADDR(BOOL, GetUserProfileDirectoryA, HANDLE, LPSTR, LPDWORD);
 
-	if (!buf)
-		buf = xzalloc(PATH_MAX);
-
-	if (buf[0])
+	if (buf)
 		return buf;
 
+	buf = xzalloc(PATH_MAX);
 	if ( !OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &h) )
 		return buf;
 
-	GetUserProfileDirectory(h, buf, &len);
+	if (INIT_PROC_ADDR(userenv.dll, GetUserProfileDirectoryA))
+		GetUserProfileDirectoryA(h, buf, &len);
 	CloseHandle(h);
 	return bs_to_slash(buf);
 }
@@ -1027,7 +1027,6 @@ int link(const char *oldpath, const char *newpath)
 						LPSECURITY_ATTRIBUTES);
 
 	if (!INIT_PROC_ADDR(kernel32.dll, CreateHardLinkA)) {
-		errno = ENOSYS;
 		return -1;
 	}
 	if (!CreateHardLinkA(newpath, oldpath, NULL)) {
@@ -1766,4 +1765,20 @@ void make_sparse(int fd, off_t start, off_t end)
 	fzdi.BeyondFinalZero.QuadPart = end;
 	DeviceIoControl(fh, FSCTL_SET_ZERO_DATA, &fzdi, sizeof(fzdi),
 					 NULL, 0, &dwTemp, NULL);
+}
+
+void *get_proc_addr(const char *dll, const char *function,
+					struct proc_addr *proc)
+{
+	/* only do this once */
+	if (!proc->initialized) {
+		HANDLE hnd = LoadLibraryExA(dll, NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+		if (hnd)
+			proc->pfunction = GetProcAddress(hnd, function);
+		proc->initialized = 1;
+	}
+	/* set ENOSYS if DLL or function was not found */
+	if (!proc->pfunction)
+		errno = ENOSYS;
+	return proc->pfunction;
 }

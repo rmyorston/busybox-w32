@@ -22,6 +22,7 @@
 //usage:     "\n    -c CMD  Command to pass to 'sh -c'"
 
 #include "libbb.h"
+#include "lazyload.h"
 
 int suw32_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int suw32_main(int argc UNUSED_PARAM, char **argv)
@@ -29,6 +30,7 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	char *opt_command = NULL;
 	SHELLEXECUTEINFO info;
 	char *bb_path, *cwd;
+	DECLARE_PROC_ADDR(BOOL, ShellExecuteExA, SHELLEXECUTEINFOA *);
 
 	getopt32(argv, "c:", &opt_command);
 	if (argv[optind])
@@ -63,5 +65,8 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	/* info.lpDirectory = NULL; */
 	info.nShow = SW_SHOWNORMAL;
 
-	return !ShellExecuteEx(&info);
+	if (!INIT_PROC_ADDR(shell32.dll, ShellExecuteExA))
+		return -1;
+
+	return !ShellExecuteExA(&info);
 }

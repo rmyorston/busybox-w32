@@ -446,6 +446,17 @@ static char *get_bb_string(DWORD pid, const char *exe, char *string)
 	char exepath[PATH_MAX];
 	char *name = NULL;
 	int i;
+	DECLARE_PROC_ADDR(DWORD, GetProcessImageFileNameA, HANDLE,
+							LPSTR, DWORD);
+	DECLARE_PROC_ADDR(BOOL, EnumProcessModules, HANDLE, HMODULE *,
+							DWORD, LPDWORD);
+	DECLARE_PROC_ADDR(DWORD, GetModuleFileNameExA, HANDLE, HMODULE,
+							LPSTR, DWORD);
+
+	if (!INIT_PROC_ADDR(psapi.dll, GetProcessImageFileNameA) ||
+			!INIT_PROC_ADDR(psapi.dll, EnumProcessModules) ||
+			!INIT_PROC_ADDR(psapi.dll, GetModuleFileNameExA))
+		return NULL;
 
 	if (!(proc=OpenProcess(PROCESS_QUERY_INFORMATION|PROCESS_VM_READ,
 							FALSE, pid))) {
@@ -453,7 +464,7 @@ static char *get_bb_string(DWORD pid, const char *exe, char *string)
 	}
 
 	if (exe == NULL) {
-		if (GetProcessImageFileName(proc, exepath, PATH_MAX) != 0) {
+		if (GetProcessImageFileNameA(proc, exepath, PATH_MAX) != 0) {
 			exe = bb_basename(exepath);
 		}
 	}
@@ -470,7 +481,7 @@ static char *get_bb_string(DWORD pid, const char *exe, char *string)
 
 	for (i=0; exe != NULL && i<needed/sizeof(HMODULE); ++i) {
 		char modname[MAX_PATH];
-		if (GetModuleFileNameEx(proc, mlist[i], modname, sizeof(modname))) {
+		if (GetModuleFileNameExA(proc, mlist[i], modname, sizeof(modname))) {
 			if (strcasecmp(bb_basename(modname), exe) == 0) {
 				break;
 			}
