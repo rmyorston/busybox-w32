@@ -64,6 +64,7 @@ int ssl_client_main(int argc UNUSED_PARAM, char **argv)
 	else {
 		if (!hstr || sscanf(hstr, "%p", &h) != 1)
 			bb_error_msg_and_die("invalid handle");
+		init_winsock();
 		tls->ifd = tls->ofd = _open_osfhandle((intptr_t)h, _O_RDWR|_O_BINARY);
 	}
 #endif

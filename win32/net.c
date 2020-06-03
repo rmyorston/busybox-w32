@@ -10,7 +10,7 @@ int inet_aton(const char *cp, struct in_addr *inp)
 	return 1;
 }
 
-static void init_winsock(void)
+void init_winsock(void)
 {
 	WSADATA wsa;
 	static int initialized = 0;
@@ -134,8 +134,10 @@ int mingw_accept(int sockfd1, struct sockaddr *sa, socklen_t *sz)
 #undef getpeername
 int mingw_getpeername(int fd, struct sockaddr *sa, socklen_t *sz)
 {
-	SOCKET sock = (SOCKET)_get_osfhandle(fd);
+	SOCKET sock;
 
+	init_winsock();
+	sock = (SOCKET)_get_osfhandle(fd);
 	if (sock == INVALID_SOCKET) {
 		errno = EBADF;
 		return -1;
