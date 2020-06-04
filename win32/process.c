@@ -370,7 +370,7 @@ mingw_spawn_pid(int mode, char **argv)
 
 	ret = mingw_spawn_1(mode, argv[0], (char *const *)argv, environ);
 
-	return ret == -1 ? -1 : GetProcessId((HANDLE)ret);
+	return ret == -1 ? (pid_t)-1 : (pid_t)GetProcessId((HANDLE)ret);
 }
 
 pid_t FAST_FUNC
