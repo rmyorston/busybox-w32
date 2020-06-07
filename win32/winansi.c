@@ -53,8 +53,13 @@ static int is_console_in(int fd)
 	return isatty(fd) && GetStdHandle(STD_INPUT_HANDLE) != INVALID_HANDLE_VALUE;
 }
 
+#ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
 #define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+#endif
+
+#ifndef DISABLE_NEWLINE_AUTO_RETURN
 #define DISABLE_NEWLINE_AUTO_RETURN 0x0008
+#endif
 
 int skip_ansi_emulation(int reset)
 {
