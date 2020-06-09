@@ -1122,6 +1122,9 @@ void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **ar
 #  if defined APPLET_NO_false
 	 && applet_no != APPLET_NO_false
 #  endif
+#  if defined APPLET_NO_busybox
+	 && applet_no != APPLET_NO_busybox
+#  endif
 	) {
 		if (argc == 2 && strcmp(argv[1], "--help") == 0) {
 			/* Make "foo --help" exit with 0: */
