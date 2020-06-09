@@ -391,7 +391,6 @@ enum {
 
 static struct forkshell* forkshell_prepare(struct forkshell *fs);
 static void forkshell_init(const char *idstr);
-static void forkshell_child(struct forkshell *fs);
 static void sticky_free(void *p);
 # define free(p) sticky_free(p)
 #if !JOBS
@@ -15254,12 +15253,27 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	int login_sh;
 #if ENABLE_PLATFORM_MINGW32
 	char *sd;
-	int is_forkshell;
+
+	INIT_G_memstack();
+
+	/* from init() */
+	basepf.next_to_pgetc = basepf.buf = ckmalloc(IBUFSIZ);
+	basepf.linno = 1;
+
+	hSIGINT = CreateEvent(NULL, TRUE, FALSE, NULL);
+
+	if (argc == 3 && !strcmp(argv[1], "--fs")) {
+		forkshell_init(argv[2]);
+		/* only reached in case of error */
+		bb_error_msg_and_die("forkshell failed");
+	}
 #endif
 
 	/* Initialize global data */
 	INIT_G_misc();
+#if !ENABLE_PLATFORM_MINGW32
 	INIT_G_memstack();
+#endif
 	INIT_G_var();
 #if ENABLE_ASH_ALIAS
 	INIT_G_alias();
@@ -15303,27 +15317,13 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	rootpid = getpid();
 
 #if ENABLE_PLATFORM_MINGW32
-	/* we will never free this */
-	basepf.next_to_pgetc = basepf.buf = ckmalloc(IBUFSIZ);
-	basepf.linno = 1;
-
 	winxp = (argv[1] != NULL && strcmp(argv[1], "-X") == 0);
-	is_forkshell = (argc == 3 && !strcmp(argv[1], "--fs"));
-	if (!is_forkshell)
 #endif
 	init();
 	setstackmark(&smark);
 
 #if ENABLE_PLATFORM_MINGW32
-	hSIGINT = CreateEvent(NULL, TRUE, FALSE, NULL);
 	SetConsoleCtrlHandler(ctrl_handler, TRUE);
-
-	if (is_forkshell) {
-		forkshell_init(argv[2]);
-
-		/* only reached in case of error */
-		bb_error_msg_and_die("forkshell failed");
-	}
 #endif
 
 #if NUM_SCRIPTS > 0
@@ -16301,7 +16301,6 @@ forkshell_prepare(struct forkshell *fs)
 	return new;
 }
 
-#undef exception_handler
 #undef trap
 #undef trap_ptr
 static void *sticky_mem_start, *sticky_mem_end;
@@ -16316,6 +16315,7 @@ forkshell_init(const char *idstr)
 	int i;
 	char **ptr;
 	char *lrelocate;
+	struct jmploc jmploc;
 
 	if (sscanf(idstr, "%p", &map_handle) != 1)
 		return;
@@ -16348,11 +16348,10 @@ forkshell_init(const char *idstr)
 			e = e->next;
 		}
 	}
-	fs->gmp->exception_handler = ash_ptr_to_globals_misc->exception_handler;
 	memset(fs->gmp->trap, 0, sizeof(fs->gmp->trap[0])*NSIG);
 	/* fs->gmp->trap_ptr = fs->gmp->trap; */
 
-	/* Switch global variables */
+	/* Set global variables */
 	gvpp = (struct globals_var **)&ash_ptr_to_globals_var;
 	*gvpp = fs->gvp;
 	gmpp = (struct globals_misc **)&ash_ptr_to_globals_misc;
@@ -16374,6 +16373,12 @@ forkshell_init(const char *idstr)
 
 	reinitvar();
 
+	if (setjmp(jmploc.loc)) {
+		exitreset();
+		exitshell();
+	}
+	exception_handler = &jmploc;
+
 	shlvl++;
 	if (fs->mode == FORK_BG) {
 		SetConsoleCtrlHandler(NULL, TRUE);
@@ -16382,6 +16387,9 @@ forkshell_init(const char *idstr)
 			if (open(bb_dev_null, O_RDONLY) != 0)
 				ash_msg_and_raise_perror("can't open '%s'", bb_dev_null);
 		}
+	}
+	else {
+		SetConsoleCtrlHandler(ctrl_handler, TRUE);
 	}
 	forkshell_child(fs);
 }
