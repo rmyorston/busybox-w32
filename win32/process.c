@@ -241,10 +241,9 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 	}
 
 	argc = string_array_len((char **)argv);
-	new_argv = xmalloc(sizeof(*argv)*(argc+1));
+	new_argv = xzalloc(sizeof(*argv)*(argc+1));
 	for (i = 0;i < argc;i++)
 		new_argv[i] = quote_arg(argv[i]);
-	new_argv[argc] = NULL;
 
 	/* Special case:  spawnve won't execute a batch file if the first
 	 * argument is a relative path containing forward slashes.  Absolute
@@ -395,7 +394,7 @@ mingw_spawn_proc(const char **argv)
 intptr_t FAST_FUNC
 mingw_spawn_forkshell(const char **argv)
 {
-   return spawnveq(P_NOWAIT, bb_busybox_exec_path, (char *const *)argv,
+   return spawnve(P_NOWAIT, bb_busybox_exec_path, (char *const *)argv,
 					environ);
 }
 #endif
