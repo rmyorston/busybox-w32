@@ -915,11 +915,6 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 			"\tTo run external program, use full path (/sbin/ip instead of ip).\n"
 			)
 			"\n"
-#if ENABLE_GLOBBING
-			"\tSupport for native Windows wildcards is enabled.  In some\n"
-			"\tcases this may result in wildcards being processed twice.\n"
-			"\n"
-#endif
 			"Currently defined functions:\n"
 		);
 		col = 0;

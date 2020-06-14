@@ -387,15 +387,15 @@ comment 'Settings for MINGW32'
 
 config GLOBBING
 	bool "Allow busybox.exe to expand wildcards"
-	default n
+	default y
 	depends on PLATFORM_MINGW32
 	help
 	  In Microsoft Windows expansion of wildcards on the command line
 	  ('globbing') is handled by the C runtime while the BusyBox shell
-	  does its own wildcard expansion.  For best results when using the
-	  shell globbing by the C runtime should be turned off. If you want
-	  the BusyBox binary to handle wildcard expansion using the C runtime
-	  set this to 'Y'.
+	  does its own wildcard expansion. In most circumstances BusyBox
+	  will do the right thing. If it doesn't or if you don't need to
+	  use BusyBox applets from the Windows Command Prompt you can stop
+	  busybox.exe from expanding wildcards by setting this to 'N'.
 
 choice
 	prompt "Random number generator"

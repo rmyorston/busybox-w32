@@ -10,7 +10,23 @@
 
 #if defined(__MINGW64_VERSION_MAJOR)
 #if ENABLE_GLOBBING
-int _dowildcard = -1;
+extern int _setargv(void);
+int _setargv(void)
+{
+	extern int _dowildcard;
+	char *glob;
+
+	_dowildcard = -1;
+	glob = getenv("BB_GLOBBING");
+	if (glob) {
+		if (strcmp(glob, "0") == 0)
+			_dowildcard = 0;
+	}
+	else {
+		setenv("BB_GLOBBING", "0", TRUE);
+	}
+	return 0;
+}
 #else
 int _dowildcard = 0;
 #endif
