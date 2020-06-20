@@ -16054,18 +16054,19 @@ forkshell_size(struct forkshell *fs)
 	ds = globals_var_size(ds, ash_ptr_to_globals_var);
 	ds = globals_misc_size(ds, ash_ptr_to_globals_misc);
 	ds = cmdtable_size(ds, cmdtable);
-#if ENABLE_ASH_ALIAS
-	ds = atab_size(ds, atab);
-#endif
 
 	ds.funcblocksize = calcsize(ds.funcblocksize, fs->n);
 	ds = argv_size(ds, fs->argv);
 
-#if MAX_HISTORY
-	if (line_input_state) {
-		ds = history_size(ds, line_input_state);
-	}
+	if ((ENABLE_ASH_ALIAS || MAX_HISTORY) && fs->fpid != FS_SHELLEXEC) {
+#if ENABLE_ASH_ALIAS
+		ds = atab_size(ds, atab);
 #endif
+#if MAX_HISTORY
+		if (line_input_state)
+			ds = history_size(ds, line_input_state);
+#endif
+	}
 	return ds;
 }
 
@@ -16086,23 +16087,24 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 		new->gmp, "gmp", NO_FREE,
 		new->cmdtable, "cmdtable", NO_FREE);
 
-#if ENABLE_ASH_ALIAS
-	new->atab = atab_copy(atab);
-	SAVE_PTR(new->atab, "atab", NO_FREE);
-#endif
-
 	new->n = copynode(fs->n);
 	new->argv = argv_copy(fs->argv);
 	SAVE_PTR2( new->n, "n", NO_FREE,
 		new->argv, "argv", NO_FREE);
 
-#if MAX_HISTORY
-	if (line_input_state) {
-		new->history = history_copy(line_input_state);
-		SAVE_PTR(new->history, "history", NO_FREE);
-		new->cnt_history = line_input_state->cnt_history;
-	}
+	if ((ENABLE_ASH_ALIAS || MAX_HISTORY) && fs->fpid != FS_SHELLEXEC) {
+#if ENABLE_ASH_ALIAS
+		new->atab = atab_copy(atab);
+		SAVE_PTR(new->atab, "atab", NO_FREE);
 #endif
+#if MAX_HISTORY
+		if (line_input_state) {
+			new->history = history_copy(line_input_state);
+			SAVE_PTR(new->history, "history", NO_FREE);
+			new->cnt_history = line_input_state->cnt_history;
+		}
+#endif
+	}
 }
 
 #if FORKSHELL_DEBUG
@@ -16153,19 +16155,38 @@ forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 		size_gvp = (int)((char *)fs->gmp-(char *)fs->gvp);
 		size_gmp = (int)((char *)fs->cmdtable-(char *)fs->gmp);
 #if ENABLE_ASH_ALIAS && MAX_HISTORY
-		size_cmdtable = (int)((char *)fs->atab-(char *)fs->cmdtable);
-		if (fs->history) {
-			size_atab = (int)((char *)fs->history-(char *)fs->atab);
-			size_history = (int)(lfuncstring-(char *)fs->history);
+		if (fs->atab) {
+			size_cmdtable = (int)((char *)fs->atab-(char *)fs->cmdtable);
+			if (fs->history) {
+				size_atab = (int)((char *)fs->history-(char *)fs->atab);
+				size_history = (int)(lfuncstring-(char *)fs->history);
+			}
+			else {
+				size_atab = (int)(lfuncstring-(char *)fs->atab);
+				size_history = 0;
+			}
 		}
 		else {
-			size_atab = (int)(lfuncstring-(char *)fs->atab);
-			size_history = 0;
+			size_atab = 0;
+			if (fs->history) {
+				size_cmdtable = (int)((char *)fs->history-(char *)fs->cmdtable);
+				size_history = (int)(lfuncstring-(char *)fs->history);
+			}
+			else {
+				size_cmdtable = (int)(lfuncstring-(char *)fs->cmdtable);
+				size_history = 0;
+			}
 		}
 #elif ENABLE_ASH_ALIAS
-		size_cmdtable = (int)((char *)fs->atab-(char *)fs->cmdtable);
-		size_atab = (int)(lfuncstring-(char *)fs->atab);
 		size_history = 0;
+		if (fs->atab) {
+			size_cmdtable = (int)((char *)fs->atab-(char *)fs->cmdtable);
+			size_atab = (int)(lfuncstring-(char *)fs->atab);
+		}
+		else {
+			size_cmdtable = (int)(lfuncstring-(char *)fs->cmdtable);
+			size_atab = 0;
+		}
 #elif MAX_HISTORY
 		size_atab = 0;
 		if (fs->history) {
@@ -16369,7 +16390,7 @@ forkshell_init(const char *idstr)
 	*gmpp = fs->gmp;
 	cmdtable = fs->cmdtable;
 #if ENABLE_ASH_ALIAS
-	atab = fs->atab;
+	atab = fs->atab;	/* will be NULL for FS_SHELLEXEC */
 #endif
 #if MAX_HISTORY
 	if (fs->cnt_history) {
