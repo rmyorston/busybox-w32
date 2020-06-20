@@ -771,6 +771,10 @@ raise_interrupt(void)
 		signal(SIGINT, SIG_DFL);
 		raise(SIGINT);
 	}
+#if ENABLE_PLATFORM_MINGW32
+	if (iflag)
+		write(STDOUT_FILENO, "^C", 2);
+#endif
 	/* bash: ^C even on empty command line sets $? */
 	exitstatus = SIGINT + 128;
 	raise_exception(EXINT);
@@ -4656,14 +4660,12 @@ sprint_status48(char *os, int status, int sigonly)
 }
 
 #if ENABLE_PLATFORM_MINGW32
-
-HANDLE hSIGINT;		/* Ctrl-C is pressed */
-
 static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
 {
 	if (dwCtrlType == CTRL_C_EVENT || dwCtrlType == CTRL_BREAK_EVENT) {
+		if (!suppress_int)
+			raise_interrupt(); /* does not return */
 		pending_int = 1;
-		SetEvent(hSIGINT);
 		return TRUE;
 	}
 	return FALSE;
@@ -4683,21 +4685,19 @@ waitpid_child(int *status, int wait_flags)
 	HANDLE *proclist;
 	pid_t pid = -1;
 	DWORD win_status, idx;
-	int i, delay;
+	int i;
 
 	for (jb = curjob; jb; jb = jb->prev_job) {
 		if (jb->state != JOBDONE)
 			pid_nr += jb->nprocs;
 	}
-	if ( pid_nr++ == 0 )
+	if (pid_nr == 0)
 		return -1;
 
 	pidlist = ckmalloc(sizeof(*pidlist)*pid_nr);
 	proclist = ckmalloc(sizeof(*proclist)*pid_nr);
 
-	pidlist[0] = -1;
-	proclist[0] = hSIGINT;
-	pid_nr = 1;
+	pid_nr = 0;
 	for (jb = curjob; jb; jb = jb->prev_job) {
 		if (jb->state == JOBDONE)
 			continue;
@@ -4710,56 +4710,15 @@ waitpid_child(int *status, int wait_flags)
 		}
 	}
 
-	if (pid_nr == 1)
+	if (pid_nr == 0)
 		goto done;
 
 	idx = WaitForMultipleObjects(pid_nr, proclist, FALSE,
 				wait_flags&WNOHANG ? 1 : INFINITE);
 	if (idx < pid_nr) {
-		if (idx == 0) {		/* hSIGINT */
-			ResetEvent(hSIGINT);
-
-			ps = curjob->ps;
-			for (i = 0; i < curjob->nprocs; ++i) {
-				if (ps[i].ps_proc) {
-					kill_SIGTERM_by_handle(ps[i].ps_proc, 128+SIGINT);
-					pid = ps[i].ps_pid;	/* remember last valid pid */
-				}
-			}
-
-			Sleep(200);
-			delay = FALSE;
-			for (i = 0; i < curjob->nprocs; ++i) {
-				DWORD code;
-				if (ps[i].ps_proc &&
-						GetExitCodeProcess(ps[i].ps_proc, &code) &&
-						code == STILL_ACTIVE) {
-					TerminateProcess(ps[i].ps_proc, 128+SIGINT);
-					delay = TRUE;
-				}
-			}
-
-			if (delay)
-				Sleep(200);
-			for (i = 0; i < curjob->nprocs; ++i) {
-				/* mark all pids dead except the one we'll return */
-				if (ps[i].ps_pid != pid) {
-					ps[i].ps_status = 128 + SIGINT;
-					ps[i].ps_pid = -1;
-					CloseHandle(ps[i].ps_proc);
-					ps[i].ps_proc = NULL;
-				}
-			}
-
-			*status = 128 + SIGINT;	/* terminated by a signal */
-			if (iflag)
-				write(STDOUT_FILENO, "^C", 2);
-		}
-		else {		/* valid pid index */
-			GetExitCodeProcess(proclist[idx], &win_status);
-			*status = (int)win_status << 8;
-			pid = pidlist[idx];
-		}
+		GetExitCodeProcess(proclist[idx], &win_status);
+		*status = (int)win_status << 8;
+		pid = pidlist[idx];
 	}
  done:
 	free(pidlist);
@@ -14821,7 +14780,6 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	if ((uintptr_t)r == 2) {
 		/* ^C pressed, propagate event */
 		if (iflag) {
-			write(STDOUT_FILENO, "^C", 2);
 			raise_interrupt();
 		}
 		else {
@@ -15268,8 +15226,6 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	/* from init() */
 	basepf.next_to_pgetc = basepf.buf = ckmalloc(IBUFSIZ);
 	basepf.linno = 1;
-
-	hSIGINT = CreateEvent(NULL, TRUE, FALSE, NULL);
 
 	if (argc == 3 && !strcmp(argv[1], "--fs")) {
 		forkshell_init(argv[2]);
