@@ -391,6 +391,7 @@ enum {
 
 static struct forkshell* forkshell_prepare(struct forkshell *fs);
 static void forkshell_init(const char *idstr);
+static void *sticky_mem_start, *sticky_mem_end;
 static void sticky_free(void *p);
 # define free(p) sticky_free(p)
 #if !JOBS
@@ -8667,8 +8668,11 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 #if ENABLE_FEATURE_SH_STANDALONE
 	if (applet_no >= 0) {
 # if ENABLE_PLATFORM_MINGW32
-		/* Treat all applets as NOEXEC apart from the shell itself */
-		if (applet_main[applet_no] != ash_main) {
+		/* Treat all applets as NOEXEC, including the shell itself if
+		 * this is a FS_SHELLEXEC shell. */
+		struct forkshell *fs = (struct forkshell *)sticky_mem_start;
+		if (applet_main[applet_no] != ash_main ||
+				(fs && fs->fpid == FS_SHELLEXEC)) {
 # else
 		if (APPLET_IS_NOEXEC(applet_no)) {
 # endif
@@ -16332,7 +16336,6 @@ forkshell_prepare(struct forkshell *fs)
 
 #undef trap
 #undef trap_ptr
-static void *sticky_mem_start, *sticky_mem_end;
 static void
 forkshell_init(const char *idstr)
 {
