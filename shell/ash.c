@@ -16047,6 +16047,10 @@ forkshell_size(struct forkshell *fs)
 {
 	struct datasize ds = {0, 0};
 
+	ds.funcstringsize += align_len(fs->path);
+	if (fs->fpid == FS_OPENHERE)
+		return ds;
+
 	ds = globals_var_size(ds, ash_ptr_to_globals_var);
 	ds = globals_misc_size(ds, ash_ptr_to_globals_misc);
 	ds = cmdtable_size(ds, cmdtable);
@@ -16056,7 +16060,6 @@ forkshell_size(struct forkshell *fs)
 
 	ds.funcblocksize = calcsize(ds.funcblocksize, fs->n);
 	ds = argv_size(ds, fs->argv);
-	ds.funcstringsize += align_len(fs->path);
 
 #if MAX_HISTORY
 	if (line_input_state) {
@@ -16070,6 +16073,12 @@ static void
 forkshell_copy(struct forkshell *fs, struct forkshell *new)
 {
 	memcpy(new, fs, sizeof(struct forkshell)); /* non-pointer stuff */
+
+	new->path = nodeckstrdup(fs->path);
+	SAVE_PTR(new->path, xasprintf("path '%s'", fs->path ?: "NULL"), FREE);
+	if (fs->fpid == FS_OPENHERE)
+		return;
+
 	new->gvp = globals_var_copy(ash_ptr_to_globals_var);
 	new->gmp = globals_misc_copy(ash_ptr_to_globals_misc);
 	new->cmdtable = cmdtable_copy(cmdtable);
@@ -16084,10 +16093,8 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 
 	new->n = copynode(fs->n);
 	new->argv = argv_copy(fs->argv);
-	new->path = nodeckstrdup(fs->path);
-	SAVE_PTR3( new->n, "n", NO_FREE,
-		new->argv, "argv", NO_FREE,
-		new->path, xasprintf("path '%s'", fs->path ?: "NULL"), FREE);
+	SAVE_PTR2( new->n, "n", NO_FREE,
+		new->argv, "argv", NO_FREE);
 
 #if MAX_HISTORY
 	if (line_input_state) {
@@ -16141,41 +16148,47 @@ forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 	lfuncstring = (char *)lfuncblock + fs->funcblocksize;
 	lrelocate = (char *)lfuncstring + fs->funcstringsize;
 
-	size_gvp = (int)((char *)fs->gmp-(char *)fs->gvp);
-	size_gmp = (int)((char *)fs->cmdtable-(char *)fs->gmp);
+	/* funcblocksize is zero for FS_OPENHERE */
+	if (fs->funcblocksize != 0) {
+		size_gvp = (int)((char *)fs->gmp-(char *)fs->gvp);
+		size_gmp = (int)((char *)fs->cmdtable-(char *)fs->gmp);
 #if ENABLE_ASH_ALIAS && MAX_HISTORY
-	size_cmdtable = (int)((char *)fs->atab-(char *)fs->cmdtable);
-	if (fs->history) {
-		size_atab = (int)((char *)fs->history-(char *)fs->atab);
-		size_history = (int)(lfuncstring-(char *)fs->history);
-	}
-	else {
+		size_cmdtable = (int)((char *)fs->atab-(char *)fs->cmdtable);
+		if (fs->history) {
+			size_atab = (int)((char *)fs->history-(char *)fs->atab);
+			size_history = (int)(lfuncstring-(char *)fs->history);
+		}
+		else {
+			size_atab = (int)(lfuncstring-(char *)fs->atab);
+			size_history = 0;
+		}
+#elif ENABLE_ASH_ALIAS
+		size_cmdtable = (int)((char *)fs->atab-(char *)fs->cmdtable);
 		size_atab = (int)(lfuncstring-(char *)fs->atab);
 		size_history = 0;
-	}
-#elif ENABLE_ASH_ALIAS
-	size_cmdtable = (int)((char *)fs->atab-(char *)fs->cmdtable);
-	size_atab = (int)(lfuncstring-(char *)fs->atab);
-	size_history = 0;
 #elif MAX_HISTORY
-	size_atab = 0;
-	if (fs->history) {
-		size_cmdtable = (int)((char *)fs->history-(char *)fs->cmdtable);
-		size_history = (int)(lfuncstring-(char *)fs->history);
+		size_atab = 0;
+		if (fs->history) {
+			size_cmdtable = (int)((char *)fs->history-(char *)fs->cmdtable);
+			size_history = (int)(lfuncstring-(char *)fs->history);
+		}
+		else {
+			size_cmdtable = (int)(lfuncstring-(char *)fs->cmdtable);
+			size_history = 0;
+		}
+#else
+		size_cmdtable = (int)(lfuncstring-(char *)fs->cmdtable);
+		size_atab = 0;
+		size_history = 0;
+#endif
+		total = size_gvp + size_gmp + size_cmdtable + size_atab + size_history;
+		fprintf(fp, "funcblocksize %6d = %d + %d + %d + %d + %d = %d\n\n",
+					fs->funcblocksize, size_gvp, size_gmp, size_cmdtable,
+					size_atab, size_history, total);
 	}
 	else {
-		size_cmdtable = (int)(lfuncstring-(char *)fs->cmdtable);
-		size_history = 0;
+		fprintf(fp, "\n");
 	}
-#else
-	size_cmdtable = (int)(lfuncstring-(char *)fs->cmdtable);
-	size_atab = 0;
-	size_history = 0;
-#endif
-	total = size_gvp + size_gmp + size_cmdtable + size_atab + size_history;
-	fprintf(fp, "funcblocksize %6d = %d + %d + %d + %d + %d = %d\n\n",
-				fs->funcblocksize, size_gvp, size_gmp, size_cmdtable,
-				size_atab, size_history, total);
 
 	fprintf(fp, "%s\n\n", fsname[fs->fpid]);
 	fprintf(fp, "--- relocate ---\n");
@@ -16334,6 +16347,9 @@ forkshell_init(const char *idstr)
 		}
 	}
 
+	if (fs->fpid == FS_OPENHERE)
+		goto end;
+
 	/* Now fix up stuff that can't be transferred */
 	for (i = 0; i < CMDTABLESIZE; i++) {
 		struct tblentry *e = fs->cmdtable[i];
@@ -16386,6 +16402,7 @@ forkshell_init(const char *idstr)
 	else {
 		SetConsoleCtrlHandler(ctrl_handler, TRUE);
 	}
+ end:
 	forkshell_child(fs);
 }
 
