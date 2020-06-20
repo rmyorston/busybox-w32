@@ -16047,14 +16047,12 @@ forkshell_size(struct forkshell *fs)
 {
 	struct datasize ds = {0, 0};
 
-	ds = globals_var_size(ds, fs->gvp);
-	ds = globals_misc_size(ds, fs->gmp);
-	ds = cmdtable_size(ds, fs->cmdtable);
+	ds = globals_var_size(ds, ash_ptr_to_globals_var);
+	ds = globals_misc_size(ds, ash_ptr_to_globals_misc);
+	ds = cmdtable_size(ds, cmdtable);
 #if ENABLE_ASH_ALIAS
-	ds = atab_size(ds, fs->atab);
+	ds = atab_size(ds, atab);
 #endif
-	/* optlist_transfer(sending, fd); */
-	/* misc_transfer(sending, fd); */
 
 	ds.funcblocksize = calcsize(ds.funcblocksize, fs->n);
 	ds = argv_size(ds, fs->argv);
@@ -16072,15 +16070,15 @@ static void
 forkshell_copy(struct forkshell *fs, struct forkshell *new)
 {
 	memcpy(new, fs, sizeof(struct forkshell)); /* non-pointer stuff */
-	new->gvp = globals_var_copy(fs->gvp);
-	new->gmp = globals_misc_copy(fs->gmp);
-	new->cmdtable = cmdtable_copy(fs->cmdtable);
+	new->gvp = globals_var_copy(ash_ptr_to_globals_var);
+	new->gmp = globals_misc_copy(ash_ptr_to_globals_misc);
+	new->cmdtable = cmdtable_copy(cmdtable);
 	SAVE_PTR3(new->gvp, "gvp", NO_FREE,
 		new->gmp, "gmp", NO_FREE,
 		new->cmdtable, "cmdtable", NO_FREE);
 
 #if ENABLE_ASH_ALIAS
-	new->atab = atab_copy(fs->atab);
+	new->atab = atab_copy(atab);
 	SAVE_PTR(new->atab, "atab", NO_FREE);
 #endif
 
@@ -16224,14 +16222,6 @@ forkshell_prepare(struct forkshell *fs)
 	char name[64];
 	FILE *fp;
 	static int num = 0;
-#endif
-
-	/* Calculate size of "new" */
-	fs->gvp = ash_ptr_to_globals_var;
-	fs->gmp = ash_ptr_to_globals_misc;
-	fs->cmdtable = cmdtable;
-#if ENABLE_ASH_ALIAS
-	fs->atab = atab;
 #endif
 
 	/* calculate size of structure, funcblock and funcstring */
