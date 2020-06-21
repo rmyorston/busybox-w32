@@ -15824,12 +15824,14 @@ atab_copy(struct alias **atabp)
 static struct datasize
 argv_size(struct datasize ds, char **p)
 {
-	while (p && *p) {
+	if (p) {
+		while (*p) {
+			ds.funcblocksize += sizeof(char *);
+			ds.funcstringsize += align_len(*p);
+			p++;
+		}
 		ds.funcblocksize += sizeof(char *);
-		ds.funcstringsize += align_len(*p);
-		p++;
 	}
-	ds.funcblocksize += sizeof(char *);
 	return ds;
 }
 
@@ -15841,17 +15843,20 @@ argv_copy(char **p)
 	int i = 0;
 #endif
 
-	while (p && *p) {
+	if (p) {
+		while (*p) {
+			new = funcblock;
+			funcblock = (char *) funcblock + sizeof(char *);
+			*new = nodeckstrdup(*p);
+			SAVE_PTR(*new, xasprintf("argv[%d] '%s'", i++, *p), FREE);
+			p++;
+		}
 		new = funcblock;
 		funcblock = (char *) funcblock + sizeof(char *);
-		*new = nodeckstrdup(*p);
-		SAVE_PTR(*new, xasprintf("argv[%d] '%s'", i++, *p), FREE);
-		p++;
+		*new = NULL;
+		return start;
 	}
-	new = funcblock;
-	funcblock = (char *) funcblock + sizeof(char *);
-	*new = NULL;
-	return start;
+	return NULL;
 }
 
 #if MAX_HISTORY
@@ -16069,6 +16074,7 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 
 #if FORKSHELL_DEBUG
 /* fp and notes can each be NULL */
+#define NUM_BLOCKS 7
 static void
 forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 {
@@ -16077,8 +16083,10 @@ forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 	char *lfuncstring;
 	char *lrelocate;
 	char *s;
-	int count, i;
-	int size_gvp, size_gmp, size_cmdtable, size_atab, size_history, total;
+	int count, i, total;
+	int size[NUM_BLOCKS];
+	char *lptr[NUM_BLOCKS+1];
+	enum {GVP, GMP, CMDTABLE, NODE, ARGV, ATAB, HISTORY, FUNCSTRING};
 	const char *fsname[] = {
 		"FS_OPENHERE",
 		"FS_EVALBACKCMD",
@@ -16112,60 +16120,29 @@ forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 
 	/* funcblocksize is zero for FS_OPENHERE */
 	if (fs->funcblocksize != 0) {
-		size_gvp = (int)((char *)fs->gmp-(char *)fs->gvp);
-		size_gmp = (int)((char *)fs->cmdtable-(char *)fs->gmp);
-#if ENABLE_ASH_ALIAS && MAX_HISTORY
-		if (fs->atab) {
-			size_cmdtable = (int)((char *)fs->atab-(char *)fs->cmdtable);
-			if (fs->history) {
-				size_atab = (int)((char *)fs->history-(char *)fs->atab);
-				size_history = (int)(lfuncstring-(char *)fs->history);
-			}
-			else {
-				size_atab = (int)(lfuncstring-(char *)fs->atab);
-				size_history = 0;
-			}
-		}
-		else {
-			size_atab = 0;
-			if (fs->history) {
-				size_cmdtable = (int)((char *)fs->history-(char *)fs->cmdtable);
-				size_history = (int)(lfuncstring-(char *)fs->history);
-			}
-			else {
-				size_cmdtable = (int)(lfuncstring-(char *)fs->cmdtable);
-				size_history = 0;
-			}
-		}
-#elif ENABLE_ASH_ALIAS
-		size_history = 0;
-		if (fs->atab) {
-			size_cmdtable = (int)((char *)fs->atab-(char *)fs->cmdtable);
-			size_atab = (int)(lfuncstring-(char *)fs->atab);
-		}
-		else {
-			size_cmdtable = (int)(lfuncstring-(char *)fs->cmdtable);
-			size_atab = 0;
-		}
-#elif MAX_HISTORY
-		size_atab = 0;
-		if (fs->history) {
-			size_cmdtable = (int)((char *)fs->history-(char *)fs->cmdtable);
-			size_history = (int)(lfuncstring-(char *)fs->history);
-		}
-		else {
-			size_cmdtable = (int)(lfuncstring-(char *)fs->cmdtable);
-			size_history = 0;
-		}
+		/* Depending on the configuration and the type of forkshell
+		 * some items may not be present. */
+		lptr[FUNCSTRING] = lfuncstring;
+#if MAX_HISTORY
+		lptr[HISTORY] = fs->history ? (char *)fs->history : lptr[FUNCSTRING];
 #else
-		size_cmdtable = (int)(lfuncstring-(char *)fs->cmdtable);
-		size_atab = 0;
-		size_history = 0;
+		lptr[HISTORY] = lptr[FUNCSTRING];
 #endif
-		total = size_gvp + size_gmp + size_cmdtable + size_atab + size_history;
-		fprintf(fp, "funcblocksize %6d = %d + %d + %d + %d + %d = %d\n\n",
-					fs->funcblocksize, size_gvp, size_gmp, size_cmdtable,
-					size_atab, size_history, total);
+		lptr[ATAB] = IF_ASH_ALIAS(fs->atab ? (char *)fs->atab :) lptr[HISTORY];
+		lptr[ARGV] = fs->argv ? (char *)fs->argv : lptr[ATAB];
+		lptr[NODE] = fs->n ? (char *)fs->n : lptr[ARGV];
+		lptr[CMDTABLE] = (char *)fs->cmdtable;
+		lptr[GMP] = (char *)fs->gmp;
+		lptr[GVP] = (char *)fs->gvp;
+
+		fprintf(fp, "funcblocksize %6d = ", fs->funcblocksize);
+		total = 0;
+		for (i=0; i<NUM_BLOCKS; ++i) {
+			size[i] = (int)(lptr[i+1] - lptr[i]);
+			total += size[i];
+			fprintf(fp, "%d %c ", size[i], i == NUM_BLOCKS - 1 ? '=' : '+');
+		}
+		fprintf(fp, "%d\n\n", total);
 	}
 	else {
 		fprintf(fp, "\n");
