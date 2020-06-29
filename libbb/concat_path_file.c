@@ -21,8 +21,14 @@ char* FAST_FUNC concat_path_file(const char *path, const char *filename)
 
 	if (!path)
 		path = "";
+#if ENABLE_PLATFORM_MINGW32
+	lc = last_char_is(path, '/') ?: last_char_is(path, '\\');
+	while (*filename == '/' || *filename == '\\')
+		filename++;
+#else
 	lc = last_char_is(path, '/');
 	while (*filename == '/')
 		filename++;
+#endif
 	return xasprintf("%s%s%s", path, (lc==NULL ? "/" : ""), filename);
 }

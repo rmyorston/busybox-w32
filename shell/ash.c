@@ -2860,6 +2860,9 @@ padvance_magic(const char **path, const char *name, int magic)
 
 	if (len) {
 		q = mempcpy(q, start, len);
+#if ENABLE_PLATFORM_MINGW32
+		if (q[-1] != '/' && q[-1] != '\\')
+#endif
 		*q++ = '/';
 	}
 	strcpy(q, name);
@@ -9160,6 +9163,7 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 		}
 #if ENABLE_PLATFORM_MINGW32
 		add_win32_extension(p);
+		bs_to_slash(p);
 #endif
 		if (describe_command_verbose) {
 			out1fmt(" is %s", p);
