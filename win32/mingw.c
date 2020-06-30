@@ -1643,7 +1643,8 @@ void hide_console(void)
 #endif
 
 #define is_path_sep(x) ((x) == '/' || (x) == '\\')
-#define is_unc_path(x) (is_path_sep(x[0]) && is_path_sep(x[1]))
+#define is_unc_path(x) (strlen(x) > 4 && is_path_sep(x[0]) && \
+							is_path_sep(x[1]) && !is_path_sep(x[2]))
 
 /* Return the length of the root of a UNC path, i.e. the '//host/share'
  * component, or 0 if the path doesn't look like that. */

@@ -2998,7 +2998,8 @@ updatepwd(const char *dir)
 	char *p;
 	char *cdcomppath;
 	const char *lim;
-	int len = 0;
+	int len;
+	char buffer[PATH_MAX];
 	/*
 	 * There are five cases that make some kind of sense
 	 *
@@ -3006,65 +3007,81 @@ updatepwd(const char *dir)
 	 *    c:/path
 	 *    //host/share
 	 *
-	 * Relative to current drive:
+	 * Relative to current working directory of other drive:
+	 *    c:path
+	 *
+	 * Relative to current root (drive/share):
 	 *    /path
 	 *
-	 * Relative to current working directory of current drive
+	 * Relative to current working directory of current root (drive/share):
 	 *    path
-	 *
-	 * Relative to current working directory of other drive
-	 *    c:path
 	 */
-	int absdrive = has_dos_drive_prefix(dir);
-	int curr_relpath = !absdrive && !is_path_sep(*dir);
-	int other_relpath = absdrive && !is_path_sep(dir[2]);
-	int relpath = curr_relpath || other_relpath;
+	enum {ABS_DRIVE, ABS_SHARE, REL_OTHER, REL_ROOT, REL_CWD} target;
+
+	/* skip multiple leading separators unless dir is a UNC path */
+	if (is_path_sep(*dir) && unc_root_len(dir) == 0) {
+		while (is_path_sep(dir[1]))
+			++dir;
+	}
+
+	len = strlen(dir);
+	if (len >= 2 && has_dos_drive_prefix(dir))
+		target = len >= 3 && is_path_sep(dir[2]) ? ABS_DRIVE : REL_OTHER;
+	else if (unc_root_len(dir) != 0)
+		target = ABS_SHARE;
+	else if (is_path_sep(*dir))
+		target = REL_ROOT;
+	else
+		target = REL_CWD;
 
 	cdcomppath = sstrdup(dir);
 	STARTSTACKSTR(new);
 
-	/* prefix new path with current directory, if required */
-	if (other_relpath) {
+	switch (target) {
+	case REL_OTHER:
 		/* c:path */
-		char buffer[PATH_MAX];
-
 		if (get_drive_cwd(dir, buffer, PATH_MAX) == NULL)
 			return 0;
 		new = stack_putstr(buffer, new);
-	}
-	else if (curr_relpath || (is_root(dir) && unc_root_len(curdir))) {
-		/* relative path on current drive or explicit root of UNC curdir */
-		if (curdir == nullstr)
+		len = 2;
+		cdcomppath += len;
+		dir += len;
+		break;
+	case REL_CWD:
+	case REL_ROOT:
+		/* path or /path */
+		len = root_len(curdir);
+		if (len == 0)
 			return 0;
-		new = stack_putstr(curdir, new);
+		new = target == REL_CWD ? stack_putstr(curdir, new) :
+									stnputs(curdir, len, new);
+		break;
+	default:
+		/* //host/share or c:/path */
+		len = root_len(dir);
+		if (len == 0)
+			return 0;
+		new = stnputs(dir, len, new);
+		cdcomppath += len;
+		dir += len;
+		break;
 	}
 
 	new = makestrspace(strlen(dir) + 2, new);
+	lim = (char *)stackblock() + len + 1;
 
-	if ( (len=unc_root_len(dir)) || ((len=unc_root_len(curdir)) &&
-				(is_root(dir) || curr_relpath)) ) {
-		/* //host/share or path relative to //host/share */
-		lim = (char *)stackblock() + len;
-	}
-	else {
-		if (absdrive) {
-			if (!relpath)
-				new = stnputs(dir, 2, new);
-			cdcomppath += 2;
-			dir += 2;
-		}
-		lim = (char *)stackblock() + 3;
-	}
-
-	if (relpath) {
+	if (!is_path_sep(*dir)) {
 		if (!is_path_sep(new[-1]))
 			USTPUTC('/', new);
+		if (new > lim && is_path_sep(*lim))
+			lim++;
 	} else {
 		USTPUTC('/', new);
-		cdcomppath ++;
+		cdcomppath++;
 		if (is_path_sep(dir[1]) && !is_path_sep(dir[2])) {
 			USTPUTC('/', new);
 			cdcomppath++;
+			lim++;
 		}
 	}
 	p = strtok(cdcomppath, "/\\");
@@ -3086,7 +3103,7 @@ updatepwd(const char *dir)
 			new = stack_putstr(p, new);
 			USTPUTC('/', new);
 		}
-		p = strtok(0, "/\\");
+		p = strtok(NULL, "/\\");
 	}
 	if (new > lim)
 		STUNPUTC(new);
