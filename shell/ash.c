@@ -565,13 +565,13 @@ struct globals_misc {
 # define debug optlist[16 + BASH_PIPEFAIL]
 #endif
 #if ENABLE_PLATFORM_MINGW32
-# define winxp optlist[14 + BASH_PIPEFAIL + 2*DEBUG]
-#endif
-#if ENABLE_ASH_NOCONSOLE
-# define noconsole optlist[15 + BASH_PIPEFAIL + 2*DEBUG]
-#endif
-#if ENABLE_ASH_NOCASEGLOB
-# define nocaseglob optlist[15 + BASH_PIPEFAIL + 2*DEBUG + ENABLE_ASH_NOCONSOLE]
+# define winxp optlist[15 + BASH_PIPEFAIL + 2*DEBUG]
+# if ENABLE_ASH_NOCONSOLE
+#  define noconsole optlist[16 + BASH_PIPEFAIL + 2*DEBUG]
+# endif
+# if ENABLE_ASH_NOCASEGLOB
+#  define nocaseglob optlist[16 + BASH_PIPEFAIL + 2*DEBUG+ENABLE_ASH_NOCONSOLE]
+# endif
 #endif
 
 	/* trap handler commands */
