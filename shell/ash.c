@@ -8726,10 +8726,9 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 	int applet_no = -1; /* used only by FEATURE_SH_STANDALONE */
 
 	envp = listvars(VEXPORT, VUNSET, /*strlist:*/ NULL, /*end:*/ NULL);
-#if ENABLE_PLATFORM_MINGW32
-	if ((strchr(prog, '/') || strchr(prog, '\\') || has_dos_drive_prefix(prog))
-#else
 	if (strchr(prog, '/') != NULL
+#if ENABLE_PLATFORM_MINGW32
+	 || strchr(prog, '\\') != NULL || has_dos_drive_prefix(prog)
 #endif
 #if ENABLE_FEATURE_SH_STANDALONE
 	 || (applet_no = find_applet_by_name(prog)) >= 0
