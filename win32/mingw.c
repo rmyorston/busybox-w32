@@ -547,6 +547,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 
 			/* Get the contents of a symlink, not its target. */
 			buf->st_mode = S_IFLNK|S_IRWXU|S_IRWXG|S_IRWXO;
+			buf->st_attr = fdata.dwFileAttributes;
 			buf->st_size = name ? strlen(name) : 0; /* should use readlink */
 			buf->st_atim = filetime_to_timespec(&(findbuf.ftLastAccessTime));
 			buf->st_mtim = filetime_to_timespec(&(findbuf.ftLastWriteTime));
@@ -555,6 +556,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		else {
 			/* The file is not a symlink. */
 			buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
+			buf->st_attr = fdata.dwFileAttributes;
 			if (S_ISREG(buf->st_mode) &&
 					(has_exe_suffix(file_name) || has_exec_format(file_name)))
 				buf->st_mode |= S_IXUSR|S_IXGRP|S_IXOTH;
@@ -642,6 +644,7 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 			return -1;
 		}
 		buf->st_mode = S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH;
+		buf->st_attr = FILE_ATTRIBUTE_NORMAL;
 		buf->st_size = buf64.st_size;
 		buf->st_atim.tv_sec = buf64.st_atime;
 		buf->st_atim.tv_nsec = 0;
@@ -660,6 +663,7 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 
 	if (GetFileInformationByHandle(fh, &fdata)) {
 		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
+		buf->st_attr = fdata.dwFileAttributes;
 		buf->st_size = fdata.nFileSizeLow |
 			(((off64_t)fdata.nFileSizeHigh)<<32);
 		buf->st_atim = filetime_to_timespec(&(fdata.ftLastAccessTime));

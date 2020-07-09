@@ -327,6 +327,7 @@ struct mingw_stat {
 	struct timespec st_ctim;
 	blksize_t st_blksize;
 	blkcnt_t  st_blocks;
+	DWORD     st_attr;
 };
 #define st_atime st_atim.tv_sec
 #define st_mtime st_mtim.tv_sec
