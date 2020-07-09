@@ -20,6 +20,7 @@ lib-$(CONFIG_PLATFORM_MINGW32) += regex.o
 lib-$(CONFIG_PLATFORM_MINGW32) += select.o
 lib-$(CONFIG_FEATURE_PRNG_SHELL) += sh_random.o
 lib-$(CONFIG_PLATFORM_MINGW32) += statfs.o
+lib-$(CONFIG_PLATFORM_MINGW32) += strndup.o
 lib-$(CONFIG_PLATFORM_MINGW32) += strptime.o
 lib-$(CONFIG_PLATFORM_MINGW32) += system.o
 lib-$(CONFIG_PLATFORM_MINGW32) += termios.o

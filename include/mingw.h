@@ -200,6 +200,11 @@ int unsetenv(const char *env);
 #define mktemp mingw_mktemp
 
 /*
+ * string.h
+ */
+char *strndup(char const *s, size_t n);
+
+/*
  * strings.h
  */
 int ffs(int i);
