@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.32.0.git
-# Sun Jun 14 09:30:06 2020
+# Thu Jul  9 08:46:09 2020
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -562,9 +562,9 @@ CONFIG_SUW32=y
 #
 # Linux Ext2 FS Progs
 #
-# CONFIG_CHATTR is not set
+CONFIG_CHATTR=y
 # CONFIG_FSCK is not set
-# CONFIG_LSATTR is not set
+CONFIG_LSATTR=y
 # CONFIG_TUNE2FS is not set
 
 #
