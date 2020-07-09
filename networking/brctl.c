@@ -107,7 +107,7 @@ static unsigned str_to_jiffies(const char *time_str)
 
 #define filedata bb_common_bufsiz1
 
-#if ENABLE_FEATURE_BRCTL_SHOW
+#if ENABLE_FEATURE_BRCTL_SHOW || ENABLE_FEATURE_BRCTL_FANCY
 static int read_file(const char *name)
 {
 	int n = open_read_close(name, filedata, COMMON_BUFSIZE - 1);
@@ -120,7 +120,9 @@ static int read_file(const char *name)
 	}
 	return n;
 }
+#endif
 
+#if ENABLE_FEATURE_BRCTL_SHOW
 /* NB: we are in /sys/class/net
  */
 static int show_bridge(const char *name, int need_hdr)
@@ -591,6 +593,7 @@ int brctl_main(int argc UNUSED_PARAM, char **argv)
 		return EXIT_SUCCESS;
 	}
 
+#if ENABLE_FEATURE_BRCTL_FANCY
 	if (key == ARG_showmacs) {
 		show_bridge_macs(br);
 		return EXIT_SUCCESS;
@@ -599,6 +602,7 @@ int brctl_main(int argc UNUSED_PARAM, char **argv)
 		show_bridge_stp(br);
 		return EXIT_SUCCESS;
 	}
+#endif
 
 	if (!*argv) /* All of the below need at least two arguments */
 		bb_show_usage();

@@ -2871,6 +2871,7 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 #if !BB_MMU
 	if (!(opt & OPT_FOREGROUND)) {
 		bb_daemonize_or_rexec(0, argv); /* don't change current directory */
+		re_execed = 0; /* for the following chdir to work */
 	}
 #endif
 #else /* ENABLE_PLATFORM_MINGW32 */
@@ -2878,8 +2879,8 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 		mingw_daemonize(argv);
 #endif
 
-	/* Chdir to home (unless we were re-execed for NOMMU case:
-	 * we are already in the home dir then).
+	/* Chdir to home (unless we were re_exec()ed for NOMMU case
+	 * in mini_httpd_nommu(): we are already in the home dir then).
 	 */
 #if ENABLE_PLATFORM_MINGW32
 	if (!(opt & OPT_INETD))

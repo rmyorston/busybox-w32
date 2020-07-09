@@ -159,61 +159,27 @@ static int mton(uint32_t mask)
 }
 
 #if ENABLE_FEATURE_UDHCPC_SANITIZEOPT
-/* Check if a given label represents a valid DNS label
- * Return pointer to the first character after the label
- * (NUL or dot) upon success, NULL otherwise.
- * See RFC1035, 2.3.1
- */
-/* We don't need to be particularly anal. For example, allowing _, hyphen
- * at the end, or leading and trailing dots would be ok, since it
- * can't be used for attacks. (Leading hyphen can be, if someone uses
- * cmd "$hostname"
- * in the script: then hostname may be treated as an option)
- */
-static const char *valid_domain_label(const char *label)
-{
-	unsigned char ch;
-	//unsigned pos = 0;
-
-	if (label[0] == '-')
-		return NULL;
-	for (;;) {
-		ch = *label;
-		if ((ch|0x20) < 'a' || (ch|0x20) > 'z') {
-			if (ch < '0' || ch > '9') {
-				if (ch == '\0' || ch == '.')
-					return label;
-				/* DNS allows only '-', but we are more permissive */
-				if (ch != '-' && ch != '_')
-					return NULL;
-			}
-		}
-		label++;
-		//pos++;
-		//Do we want this?
-		//if (pos > 63) /* NS_MAXLABEL; labels must be 63 chars or less */
-		//	return NULL;
-	}
-}
-
 /* Check if a given name represents a valid DNS name */
 /* See RFC1035, 2.3.1 */
+/* We don't need to be particularly anal. For example, allowing _, hyphen
+ * at the end, or leading and trailing dots would be ok, since it
+ * can't be used for attacks. (Leading hyphen can be, if someone uses cmd "$hostname"
+ * in the script: then hostname may be treated as an option)
+ */
 static int good_hostname(const char *name)
 {
-	//const char *start = name;
+	if (*name == '-') /* Can't start with '-' */
+		return 0;
 
-	for (;;) {
-		name = valid_domain_label(name);
-		if (!name)
-			return 0;
-		if (!name[0])
-			return 1;
-			//Do we want this?
-			//return ((name - start) < 1025); /* NS_MAXDNAME */
-		name++;
-		if (*name == '\0')
-			return 1; // We allow trailing dot too
+	while (*name) {
+		unsigned char ch = *name++;
+		if (!isalnum(ch))
+			/* DNS allows only '-', but we are more permissive */
+			if (ch != '-' && ch != '_' && ch != '.')
+				return 0;
+		// TODO: do we want to validate lengths against NS_MAXLABEL and NS_MAXDNAME?
 	}
+	return 1;
 }
 #else
 # define good_hostname(name) 1
@@ -242,9 +208,8 @@ static NOINLINE char *xmalloc_optname_optval(uint8_t *option, const struct dhcp_
 		case OPTION_IP:
 		case OPTION_IP_PAIR:
 			dest += sprint_nip(dest, "", option);
-			if (type == OPTION_IP)
-				break;
-			dest += sprint_nip(dest, "/", option + 4);
+			if (type == OPTION_IP_PAIR)
+				dest += sprint_nip(dest, "/", option + 4);
 			break;
 //		case OPTION_BOOLEAN:
 //			dest += sprintf(dest, *option ? "yes" : "no");
@@ -346,7 +311,7 @@ static NOINLINE char *xmalloc_optname_optval(uint8_t *option, const struct dhcp_
 			 * IPv4MaskLen <= 32,
 			 * 6rdPrefixLen <= 128,
 			 * 6rdPrefixLen + (32 - IPv4MaskLen) <= 128
-			 * (2nd condition need no check - it follows from 1st and 3rd).
+			 * (2nd condition needs no check - it follows from 1st and 3rd).
 			 * Else, return envvar with empty value ("optname=")
 			 */
 			if (len >= (1 + 1 + 16 + 4)
@@ -360,17 +325,12 @@ static NOINLINE char *xmalloc_optname_optval(uint8_t *option, const struct dhcp_
 				/* 6rdPrefix */
 				dest += sprint_nip6(dest, /* "", */ option);
 				option += 16;
-				len -= 1 + 1 + 16 + 4;
-				/* "+ 4" above corresponds to the length of IPv4 addr
-				 * we consume in the loop below */
-				while (1) {
-					/* 6rdBRIPv4Address(es) */
-					dest += sprint_nip(dest, " ", option);
-					option += 4;
-					len -= 4; /* do we have yet another 4+ bytes? */
-					if (len < 0)
-						break; /* no */
-				}
+				len -= 1 + 1 + 16;
+				*dest++ = ' ';
+				/* 6rdBRIPv4Address(es), use common IPv4 logic to process them */
+				type = OPTION_IP;
+				optlen = 4;
+				continue;
 			}
 
 			return ret;
@@ -392,22 +352,17 @@ static NOINLINE char *xmalloc_optname_optval(uint8_t *option, const struct dhcp_
 			 */
 			option++;
 			len--;
+			if (option[-1] == 1) {
+				/* use common IPv4 logic to process IP addrs */
+				type = OPTION_IP;
+				optlen = 4;
+				continue;
+			}
 			if (option[-1] == 0) {
 				dest = dname_dec(option, len, ret);
 				if (dest) {
 					free(ret);
 					return dest;
-				}
-			} else
-			if (option[-1] == 1) {
-				const char *pfx = "";
-				while (1) {
-					len -= 4;
-					if (len < 0)
-						break;
-					dest += sprint_nip(dest, pfx, option);
-					pfx = " ";
-					option += 4;
 				}
 			}
 			return ret;
@@ -431,58 +386,77 @@ static NOINLINE char *xmalloc_optname_optval(uint8_t *option, const struct dhcp_
 	return ret;
 }
 
-/* put all the parameters into the environment */
-static char **fill_envp(struct dhcp_packet *packet)
+static void putenvp(llist_t **envp, char *new_opt)
 {
-	int envc;
-	int i;
-	char **envp, **curr;
-	const char *opt_name;
-	uint8_t *temp;
-	uint8_t overload = 0;
+	putenv(new_opt);
+	log2(" %s", new_opt);
+	llist_add_to(envp, new_opt);
+}
 
-#define BITMAP unsigned
-#define BBITS (sizeof(BITMAP) * 8)
-#define BMASK(i) (1 << (i & (sizeof(BITMAP) * 8 - 1)))
-#define FOUND_OPTS(i) (found_opts[(unsigned)i / BBITS])
-	BITMAP found_opts[256 / BBITS];
-
-	memset(found_opts, 0, sizeof(found_opts));
-
-	/* We need 7 elements for:
-	 * "interface=IFACE"
-	 * "ip=N.N.N.N" from packet->yiaddr
-	 * "giaddr=IP" from packet->gateway_nip (unless 0)
-	 * "siaddr=IP" from packet->siaddr_nip (unless 0)
-	 * "boot_file=FILE" from packet->file (unless overloaded)
-	 * "sname=SERVER_HOSTNAME" from packet->sname (unless overloaded)
-	 * terminating NULL
+static const char* get_optname(uint8_t code, const struct dhcp_optflag **dh)
+{
+	/* Find the option:
+	 * dhcp_optflags is sorted so we stop searching when dh->code >= code, which is faster
+	 * than iterating over the entire array.
+	 * Options which don't have a match in dhcp_option_strings[], e.g DHCP_REQUESTED_IP,
+	 * are located after the sorted array, so these entries will never be reached
+	 * and they'll count as unknown options.
 	 */
-	envc = 7;
-	/* +1 element for each option, +2 for subnet option: */
-	if (packet) {
-		/* note: do not search for "pad" (0) and "end" (255) options */
-//TODO: change logic to scan packet _once_
-		for (i = 1; i < 255; i++) {
-			temp = udhcp_get_option(packet, i);
-			if (temp) {
-				if (i == DHCP_OPTION_OVERLOAD)
-					overload |= *temp;
-				else if (i == DHCP_SUBNET)
-					envc++; /* for $mask */
-				envc++;
-				/*if (i != DHCP_MESSAGE_TYPE)*/
-				FOUND_OPTS(i) |= BMASK(i);
-			}
-		}
-	}
-	curr = envp = xzalloc(sizeof(envp[0]) * envc);
+	for (*dh = dhcp_optflags; (*dh)->code && (*dh)->code < code; (*dh)++)
+		    continue;
 
-	*curr = xasprintf("interface=%s", client_data.interface);
-	putenv(*curr++);
+	if ((*dh)->code == code)
+		return nth_string(dhcp_option_strings, (*dh - dhcp_optflags));
+
+	return NULL;
+}
+
+/* put all the parameters into the environment */
+static llist_t *fill_envp(struct dhcp_packet *packet)
+{
+	uint8_t *optptr;
+	struct dhcp_scan_state scan_state;
+	char *new_opt;
+	llist_t *envp = NULL;
+
+	putenvp(&envp, xasprintf("interface=%s", client_data.interface));
 
 	if (!packet)
 		return envp;
+
+	init_scan_state(packet, &scan_state);
+
+	/* Iterate over the packet options.
+	 * Handle each option based on whether it's an unknown / known option.
+	 * There may be (although unlikely) duplicate options. For now, only the last
+	 * appearing option will be stored in the environment, and all duplicates
+	 * are freed properly.
+	 * Long options may be implemented in the future (see RFC 3396) if needed.
+	 */
+	while ((optptr = udhcp_scan_options(packet, &scan_state)) != NULL) {
+		const struct dhcp_optflag *dh;
+		const char *opt_name;
+		uint8_t code = optptr[OPT_CODE];
+		uint8_t len = optptr[OPT_LEN];
+		uint8_t *data = optptr + OPT_DATA;
+
+		opt_name = get_optname(code, &dh);
+		if (opt_name) {
+			new_opt = xmalloc_optname_optval(data, dh, opt_name);
+			if (code == DHCP_SUBNET && len == 4) {
+				uint32_t subnet;
+				putenvp(&envp, new_opt);
+				move_from_unaligned32(subnet, data);
+				new_opt = xasprintf("mask=%u", mton(subnet));
+			}
+		} else {
+			unsigned ofs;
+			new_opt = xmalloc(sizeof("optNNN=") + 1 + len*2);
+			ofs = sprintf(new_opt, "opt%u=", code);
+			bin2hex(new_opt + ofs, (char *)data, len)[0] = '\0';
+		}
+		putenvp(&envp, new_opt);
+	}
 
 	/* Export BOOTP fields. Fields we don't (yet?) export:
 	 * uint8_t op;      // always BOOTREPLY
@@ -497,77 +471,31 @@ static char **fill_envp(struct dhcp_packet *packet)
 	 * uint8_t chaddr[16]; // link-layer client hardware address (MAC)
 	 */
 	/* Most important one: yiaddr as $ip */
-	*curr = xmalloc(sizeof("ip=255.255.255.255"));
-	sprint_nip(*curr, "ip=", (uint8_t *) &packet->yiaddr);
-	putenv(*curr++);
+	new_opt = xmalloc(sizeof("ip=255.255.255.255"));
+	sprint_nip(new_opt, "ip=", (uint8_t *) &packet->yiaddr);
+	putenvp(&envp, new_opt);
+
 	if (packet->siaddr_nip) {
 		/* IP address of next server to use in bootstrap */
-		*curr = xmalloc(sizeof("siaddr=255.255.255.255"));
-		sprint_nip(*curr, "siaddr=", (uint8_t *) &packet->siaddr_nip);
-		putenv(*curr++);
+		new_opt = xmalloc(sizeof("siaddr=255.255.255.255"));
+		sprint_nip(new_opt, "siaddr=", (uint8_t *) &packet->siaddr_nip);
+		putenvp(&envp, new_opt);
 	}
 	if (packet->gateway_nip) {
 		/* IP address of DHCP relay agent */
-		*curr = xmalloc(sizeof("giaddr=255.255.255.255"));
-		sprint_nip(*curr, "giaddr=", (uint8_t *) &packet->gateway_nip);
-		putenv(*curr++);
+		new_opt = xmalloc(sizeof("giaddr=255.255.255.255"));
+		sprint_nip(new_opt, "giaddr=", (uint8_t *) &packet->gateway_nip);
+		putenvp(&envp, new_opt);
 	}
-	if (!(overload & FILE_FIELD) && packet->file[0]) {
+	if (!(scan_state.overload & FILE_FIELD) && packet->file[0]) {
 		/* watch out for invalid packets */
-		*curr = xasprintf("boot_file=%."DHCP_PKT_FILE_LEN_STR"s", packet->file);
-		putenv(*curr++);
+		new_opt = xasprintf("boot_file=%."DHCP_PKT_FILE_LEN_STR"s", packet->file);
+		putenvp(&envp, new_opt);
 	}
-	if (!(overload & SNAME_FIELD) && packet->sname[0]) {
+	if (!(scan_state.overload & SNAME_FIELD) && packet->sname[0]) {
 		/* watch out for invalid packets */
-		*curr = xasprintf("sname=%."DHCP_PKT_SNAME_LEN_STR"s", packet->sname);
-		putenv(*curr++);
-	}
-
-	/* Export known DHCP options */
-	opt_name = dhcp_option_strings;
-	i = 0;
-	while (*opt_name) {
-		uint8_t code = dhcp_optflags[i].code;
-		BITMAP *found_ptr = &FOUND_OPTS(code);
-		BITMAP found_mask = BMASK(code);
-		if (!(*found_ptr & found_mask))
-			goto next;
-		*found_ptr &= ~found_mask; /* leave only unknown options */
-		temp = udhcp_get_option(packet, code);
-		*curr = xmalloc_optname_optval(temp, &dhcp_optflags[i], opt_name);
-		putenv(*curr++);
-		if (code == DHCP_SUBNET && temp[-OPT_DATA + OPT_LEN] == 4) {
-			/* Subnet option: make things like "$ip/$mask" possible */
-			uint32_t subnet;
-			move_from_unaligned32(subnet, temp);
-			*curr = xasprintf("mask=%u", mton(subnet));
-			putenv(*curr++);
-		}
- next:
-		opt_name += strlen(opt_name) + 1;
-		i++;
-	}
-	/* Export unknown options */
-	for (i = 0; i < 256;) {
-		BITMAP bitmap = FOUND_OPTS(i);
-		if (!bitmap) {
-			i += BBITS;
-			continue;
-		}
-		if (bitmap & BMASK(i)) {
-			unsigned len, ofs;
-
-			temp = udhcp_get_option(packet, i);
-			/* udhcp_get_option returns ptr to data portion,
-			 * need to go back to get len
-			 */
-			len = temp[-OPT_DATA + OPT_LEN];
-			*curr = xmalloc(sizeof("optNNN=") + 1 + len*2);
-			ofs = sprintf(*curr, "opt%u=", i);
-			*bin2hex(*curr + ofs, (void*) temp, len) = '\0';
-			putenv(*curr++);
-		}
-		i++;
+		new_opt = xasprintf("sname=%."DHCP_PKT_SNAME_LEN_STR"s", packet->sname);
+		putenvp(&envp, new_opt);
 	}
 
 	return envp;
@@ -576,7 +504,7 @@ static char **fill_envp(struct dhcp_packet *packet)
 /* Call a script with a par file and env vars */
 static void udhcp_run_script(struct dhcp_packet *packet, const char *name)
 {
-	char **envp, **curr;
+	llist_t *envp;
 	char *argv[3];
 
 	envp = fill_envp(packet);
@@ -588,11 +516,8 @@ static void udhcp_run_script(struct dhcp_packet *packet, const char *name)
 	argv[2] = NULL;
 	spawn_and_wait(argv);
 
-	for (curr = envp; *curr; curr++) {
-		log2(" %s", *curr);
-		bb_unsetenv_and_free(*curr);
-	}
-	free(envp);
+	/* Free all allocated environment variables */
+	llist_free(envp, (void (*)(void *))bb_unsetenv_and_free);
 }
 
 
