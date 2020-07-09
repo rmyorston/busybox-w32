@@ -316,6 +316,9 @@ struct dnode {
 	int       dn_rdev_min;
 //	dev_t     dn_dev;
 //	blksize_t dn_blksize;
+#if ENABLE_PLATFORM_MINGW32
+	DWORD     dn_attr;
+#endif
 };
 
 struct globals {
@@ -742,6 +745,9 @@ static struct dnode *my_stat(const char *fullname, const char *name, int force_f
 
 	/* cur->dstat = statbuf: */
 	cur->dn_mode   = statbuf.st_mode  ;
+#if ENABLE_PLATFORM_MINGW32
+	cur->dn_attr   = statbuf.st_attr  ;
+#endif
 	cur->dn_size   = statbuf.st_size  ;
 #if ENABLE_FEATURE_LS_TIMESTAMPS || ENABLE_FEATURE_LS_SORTFILES
 	cur->dn_time   = statbuf.st_mtime ;
@@ -953,7 +959,13 @@ static struct dnode **scan_one_dir(const char *path, unsigned *nfiles_p)
 		}
 		fullname = concat_path_file(path, entry->d_name);
 		cur = my_stat(fullname, bb_basename(fullname), 0);
+#if !ENABLE_PLATFORM_MINGW32
 		if (!cur) {
+#else
+		if (!cur || ((cur->dn_attr & FILE_ATTRIBUTE_HIDDEN) &&
+						!(option_mask32 & (OPT_a|OPT_A)))) {
+			/* skip invalid or hidden files */
+#endif
 			free(fullname);
 			continue;
 		}
