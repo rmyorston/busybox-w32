@@ -108,7 +108,7 @@ parse_interpreter(const char *cmd, interp_t *interp)
 }
 
 /*
- * See http://msdn2.microsoft.com/en-us/library/17w5ykft(vs.71).aspx
+ * See https://docs.microsoft.com/en-us/cpp/cpp/main-function-command-line-args?view=vs-2019#parsing-c-command-line-arguments
  * (Parsing C++ Command-Line Arguments)
  */
 static char *
