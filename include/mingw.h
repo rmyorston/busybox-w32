@@ -502,7 +502,7 @@ int mingw_execve(const char *cmd, char *const *argv, char *const *envp);
 #define has_dos_drive_prefix(path) (isalpha(*(path)) && (path)[1] == ':')
 #define is_absolute_path(path) ((path)[0] == '/' || (path)[0] == '\\' || has_dos_drive_prefix(path))
 
-int kill_SIGTERM_by_handle(HANDLE process, int exit_code);
+int kill_SIGTERM_by_handle(HANDLE process);
 
 #define find_mount_point(n, s) find_mount_point(n)
 

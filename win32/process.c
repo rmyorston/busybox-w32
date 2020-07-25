@@ -624,9 +624,9 @@ void FAST_FUNC read_cmdline(char *buf, int col, unsigned pid, const char *comm)
  * of the indicated process.  Zero indicates the current process; negative
  * indicates the process with process ID -pid.
  */
-typedef int (*kill_callback)(pid_t pid, int exit_code);
+typedef int (*kill_callback)(pid_t pid, int sig);
 
-static int kill_pids(pid_t pid, int exit_code, kill_callback killer)
+static int kill_pids(pid_t pid, int sig, kill_callback killer)
 {
 	DWORD pids[16384];
 	int max_len = sizeof(pids) / sizeof(*pids), i, len, ret = 0;
@@ -684,7 +684,7 @@ static int kill_pids(pid_t pid, int exit_code, kill_callback killer)
 
 	for (i = len - 1; i >= 0; i--) {
 		SetLastError(0);
-		if (killer(pids[i], exit_code)) {
+		if (killer(pids[i], sig)) {
 			errno = err_win_to_posix();
 			ret = -1;
 		}
@@ -725,14 +725,14 @@ static inline int process_architecture_matches_current(HANDLE process)
  * http://www.drdobbs.com/a-safer-alternative-to-terminateprocess/184416547
  *
  */
-int kill_SIGTERM_by_handle(HANDLE process, int exit_code)
+int kill_SIGTERM_by_handle(HANDLE process)
 {
 	DWORD code;
 	int ret = 0;
 
 	if (GetExitCodeProcess(process, &code) && code == STILL_ACTIVE) {
 		DECLARE_PROC_ADDR(DWORD, ExitProcess, LPVOID);
-		PVOID arg = (PVOID)(intptr_t)exit_code;
+		PVOID arg = (PVOID)(intptr_t)(128 + SIGTERM);
 		DWORD thread_id;
 		HANDLE thread;
 
@@ -754,7 +754,7 @@ int kill_SIGTERM_by_handle(HANDLE process, int exit_code)
 	return ret;
 }
 
-static int kill_SIGTERM(pid_t pid, int exit_code)
+static int kill_SIGTERM(pid_t pid, int sig UNUSED_PARAM)
 {
 	HANDLE process;
 
@@ -765,52 +765,38 @@ static int kill_SIGTERM(pid_t pid, int exit_code)
 		return -1;
 	}
 
-	return kill_SIGTERM_by_handle(process, exit_code);
+	return kill_SIGTERM_by_handle(process);
 }
 
 /*
  * This way of terminating processes is not gentle: they get no chance to
  * clean up after themselves (closing file handles, removing .lock files,
  * terminating spawned processes (if any), etc).
+ *
+ * If the signal isn't SIGKILL just check if the target process exists.
  */
-static int kill_SIGKILL(pid_t pid, int exit_code)
+static int kill_SIGKILL(pid_t pid, int sig)
 {
 	HANDLE process;
-	int ret;
+	int ret = 0;
 
 	if (!(process=OpenProcess(PROCESS_TERMINATE, FALSE, pid))) {
 		return -1;
 	}
 
-	ret = !TerminateProcess(process, exit_code);
+	if (sig == SIGKILL)
+		ret = !TerminateProcess(process, 128 + SIGKILL);
 	CloseHandle(process);
 
 	return ret;
 }
 
-static int kill_SIGTEST(pid_t pid, int exit_code UNUSED_PARAM)
-{
-	HANDLE process;
-
-	if (!(process=OpenProcess(PROCESS_TERMINATE, FALSE, pid))) {
-		return -1;
-	}
-
-	CloseHandle(process);
-	return 0;
-}
-
 int kill(pid_t pid, int sig)
 {
-	if (sig == SIGTERM) {
-		return kill_pids(pid, 128+sig, kill_SIGTERM);
-	}
-	else if (sig == SIGKILL) {
-		return kill_pids(pid, 128+sig, kill_SIGKILL);
-	}
-	else if (sig == 0) {
-		return kill_pids(pid, 128+sig, kill_SIGTEST);
-	}
+	if (sig == SIGTERM)
+		return kill_pids(pid, sig, kill_SIGTERM);
+	else if (sig == SIGKILL || sig == 0)
+		return kill_pids(pid, sig, kill_SIGKILL);
 
 	errno = EINVAL;
 	return -1;

@@ -52,7 +52,7 @@ HANDLE child = INVALID_HANDLE_VALUE;
 static void kill_child(void)
 {
 	if (child != INVALID_HANDLE_VALUE) {
-		kill_SIGTERM_by_handle(child, 128+SIGTERM);
+		kill_SIGTERM_by_handle(child);
 	}
 }
 #endif
