@@ -30,6 +30,14 @@
 //config:	* simultaneous use of -f and -e on the command line.
 //config:	This enables the use of awk library files.
 //config:	Example: awk -f mylib.awk -e '{print myfunction($1);}' ...
+//config:config FEATURE_AWK_FASTER
+//config:	bool "Enable some speed enhancements"
+//config:	default n
+//config:	depends on AWK
+//config:	help
+//config:	Enable enhancements that speed up string concatenation and
+//config:	assignment of temporary strings to a variable.  Increases
+//config:	size of binary by 144 bytes.
 
 //applet:IF_AWK(APPLET_NOEXEC(awk, awk, BB_DIR_USR_BIN, BB_SUID_DROP, awk))
 
@@ -2766,15 +2774,14 @@ static var *evaluate(node *op, var *res)
 
 		case XC( OC_MOVE ):
 			debug_printf_eval("MOVE\n");
-			/* if source is a temporary string, jusk relink it to dest */
-//Disabled: if R.v is numeric but happens to have cached R.v->string,
-//then L.v ends up being a string, which is wrong
-//			if (R.v == v1+1 && R.v->string) {
-//				res = setvar_p(L.v, R.v->string);
-//				R.v->string = NULL;
-//			} else {
+#if ENABLE_FEATURE_AWK_FASTER
+			/* if source is a temporary string, just relink it to dest */
+			if (R.v == v1+1 && R.v->string && !(R.v->type & VF_NUMBER)) {
+				res = setvar_p(L.v, R.v->string);
+				R.v->string = NULL;
+			} else
+#endif
 				res = copyvar(L.v, R.v);
-//			}
 			break;
 
 		case XC( OC_TERNARY ):
@@ -3025,9 +3032,21 @@ static var *evaluate(node *op, var *res)
 		case XC( OC_CONCAT ):
 		case XC( OC_COMMA ): {
 			const char *sep = "";
+#if ENABLE_FEATURE_AWK_FASTER
+			char *buf;
+#endif
 			if ((opinfo & OPCLSMASK) == OC_COMMA)
 				sep = getvar_s(intvar[SUBSEP]);
+#if ENABLE_FEATURE_AWK_FASTER
+			buf = xmalloc(strlen(L.s) + strlen(sep) + strlen(R.s) + 1);
+			strcpy(buf, L.s);
+			if (*sep != '\0')
+				strcat(buf, sep);
+			strcat(buf, R.s);
+			setvar_p(res, buf);
+#else
 			setvar_p(res, xasprintf("%s%s%s", L.s, sep, R.s));
+#endif
 			break;
 		}
 
