@@ -22,6 +22,7 @@
 //config:	bool "Enable custom formats (-c)"
 //config:	default y
 //config:	depends on STAT
+//config:	select PLATFORM_LINUX # statfs()
 //config:	help
 //config:	Without this, stat will not support the '-c format' option where
 //config:	users can pass a custom format string for output. This adds about
