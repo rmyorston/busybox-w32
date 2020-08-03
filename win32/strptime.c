@@ -1,4 +1,4 @@
-/* Copyright (C) 2002, 2004-2005, 2007, 2009-2014 Free Software Foundation,
+/* Copyright (C) 2002, 2004-2005, 2007, 2009-2020 Free Software Foundation,
    Inc.
    This file is part of the GNU C Library.
 
@@ -13,10 +13,10 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License along
-   with this program; if not, see <http://www.gnu.org/licenses/>.  */
+   with this program; if not, see <https://www.gnu.org/licenses/>.  */
 
 /*
- * File from gnulib (http://www.gnu.org/software/gnulib/), processed with
+ * File from gnulib (https://www.gnu.org/software/gnulib/), processed with
  *    coan source -U_LIBC -U_NL_CURRENT -UHAVE_TM_GMTOFF strptime.c
  * and lightly edited.
  */
@@ -119,11 +119,12 @@ day_of_the_week (struct tm *tm)
      difference between this data in the one on TM and so determine
      the weekday.  */
   int corr_year = 1900 + tm->tm_year - (tm->tm_mon < 2);
+  int corr_quad = corr_year / 4;
   int wday = (-473
               + (365 * (tm->tm_year - 70))
-              + (corr_year / 4)
-              - ((corr_year / 4) / 25) + ((corr_year / 4) % 25 < 0)
-              + (((corr_year / 4) / 25) / 4)
+              + corr_quad
+              - ((corr_quad + (corr_quad < 0)) / 25 - (corr_quad < 0))
+              + ((corr_quad / 25) / 4)
               + __mon_yday[0][tm->tm_mon]
               + tm->tm_mday - 1);
   tm->tm_wday = ((wday % 7) + 7) % 7;
@@ -176,7 +177,7 @@ __strptime_internal (const char *rp, const char *fmt, struct tm *tm,
         }
 
       /* Any character but '%' must be matched by the same character
-         in the iput string.  */
+         in the input string.  */
       if (*fmt != '%')
         {
           match_char (*fmt++, *rp++);
@@ -313,6 +314,15 @@ __strptime_internal (const char *rp, const char *fmt, struct tm *tm,
                 return NULL;
             }
           break;
+        case 'q':
+          /* Match quarter of year.  GNU extension.  */
+          get_number (1, 4, 1);
+          tm->tm_mon = (val - 1) * 3;
+          tm->tm_mday = 1;
+          have_mon = 1;
+          have_mday = 1;
+          want_xday = 1;
+          break;
         case 'r':
           if (!recursive (HERE_T_FMT_AMPM))
             return NULL;
@@ -418,7 +428,6 @@ __strptime_internal (const char *rp, const char *fmt, struct tm *tm,
              specify hours.  If fours digits are used, minutes are
              also specified.  */
           {
-            bool neg;
             int n;
 
             val = 0;
@@ -426,7 +435,7 @@ __strptime_internal (const char *rp, const char *fmt, struct tm *tm,
               ++rp;
             if (*rp != '+' && *rp != '-')
               return NULL;
-            neg = *rp++ == '-';
+            ++rp;
             n = 0;
             while (n < 4 && *rp >= '0' && *rp <= '9')
               {
@@ -447,8 +456,6 @@ __strptime_internal (const char *rp, const char *fmt, struct tm *tm,
               }
             if (val > 1200)
               return NULL;
-            if (neg)
-              val = -val;
           }
           break;
         case 'E':
@@ -462,7 +469,7 @@ __strptime_internal (const char *rp, const char *fmt, struct tm *tm,
         case 'O':
           /* We don't have an alternative number format.  Just use
              the normal format.  */
-          if (strchr("deHImMSUWVwy", *fmt) == NULL)
+          if (strchr("deHImMqSUWVwy", *fmt) == NULL)
             /* This is an illegal format.  */
             return NULL;
 
