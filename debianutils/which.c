@@ -45,9 +45,10 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 
 	do {
 		int missing = 1;
+#if ENABLE_PLATFORM_MINGW32
 		char *p;
 
-#if ENABLE_FEATURE_SH_STANDALONE
+# if ENABLE_FEATURE_SH_STANDALONE
 		if (strcmp(*argv, "busybox") == 0 &&
 				is_suffixed_with(bb_busybox_exec_path, "busybox.exe")) {
 			missing = 0;
@@ -62,6 +63,7 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 			if (!option_mask32) /* -a not set */
 				break;
 		}
+# endif
 #endif
 
 		/* If file contains a slash don't use PATH */
@@ -83,6 +85,9 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 			}
 		} else {
 			char *path;
+#if !ENABLE_PLATFORM_MINGW32
+			char *p;
+#endif
 
 			path = env_path;
 			/* NOFORK NB: xmalloc inside find_executable(), must have no allocs above! */
