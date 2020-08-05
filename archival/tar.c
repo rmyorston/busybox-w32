@@ -601,8 +601,7 @@ static int FAST_FUNC writeFileToTarball(const char *fileName, struct stat *statb
 	return TRUE;
 }
 
-#if SEAMLESS_COMPRESSION
-#if !ENABLE_PLATFORM_MINGW32
+# if SEAMLESS_COMPRESSION && !ENABLE_PLATFORM_MINGW32
 /* Don't inline: vfork scares gcc and pessimizes code */
 static void NOINLINE vfork_compressor(int tar_fd, const char *gzip)
 {
@@ -677,28 +676,11 @@ static void NOINLINE vfork_compressor(int tar_fd, const char *gzip)
 		bb_perror_msg_and_die("can't execute '%s'", gzip);
 	}
 }
-#else
-static pid_t vfork_compressor(int tar_fd, const char *gzip)
-{
-	char *cmd;
-	int fd1;
-	pid_t pid;
+# endif /* SEAMLESS_COMPRESSION */
 
-	if (find_applet_by_name(gzip) >= 0) {
-		cmd = xasprintf("%s --busybox %s -cf -", bb_busybox_exec_path, gzip);
-	}
-	else {
-		cmd = xasprintf("%s -cf -", gzip);
-	}
-	if ( (fd1=mingw_popen_fd(cmd, "w", tar_fd, &pid)) == -1 ) {
-		bb_perror_msg_and_die("can't execute '%s'", gzip);
-	}
-	free(cmd);
-	xmove_fd(fd1, tar_fd);
-	return pid;
-}
-#endif /* ENABLE_PLATFORM_MINGW32 */
-#endif /* SEAMLESS_COMPRESSION */
+# if ENABLE_PLATFORM_MINGW32
+#  define vfork_compressor(f, g) mingw_fork_compressor((f), (g), "w")
+# endif
 
 
 # if !SEAMLESS_COMPRESSION

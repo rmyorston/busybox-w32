@@ -133,6 +133,7 @@ int mingw_rename(const char*, const char*);
 FILE *mingw_popen(const char *cmd, const char *mode);
 int mingw_popen_fd(const char *cmd, const char *mode, int fd0, pid_t *pid);
 int mingw_pclose(FILE *fd);
+pid_t mingw_fork_compressor(int fd, const char *compressor, const char *mode);
 #undef popen
 #undef pclose
 #define popen mingw_popen

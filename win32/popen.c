@@ -306,3 +306,25 @@ int mingw_pclose(FILE *fp)
 
 	return (ret == WAIT_OBJECT_0) ? 0 : -1;
 }
+
+/* Used with mode "w" and a compressor when creating a compressed tar
+ * file; with mode "r" and a decompressor in open_transformer. */
+pid_t mingw_fork_compressor(int fd, const char *compressor, const char *mode)
+{
+	char *cmd;
+	int fd1;
+	pid_t pid;
+
+	if (find_applet_by_name(compressor) >= 0)
+		cmd = xasprintf("%s --busybox %s -cf -", bb_busybox_exec_path,
+					compressor);
+	else
+		cmd = xasprintf("%s -cf -", compressor);
+
+	if ((fd1 = mingw_popen_fd(cmd, mode, fd, &pid)) == -1)
+		bb_perror_msg_and_die("can't execute '%s'", compressor);
+
+	free(cmd);
+	xmove_fd(fd1, fd);
+	return pid;
+}

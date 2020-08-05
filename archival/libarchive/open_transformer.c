@@ -154,21 +154,7 @@ void FAST_FUNC fork_transformer(int fd, const char *transform_prog)
 #else /* ENABLE_PLATFORM_MINGW */
 void FAST_FUNC fork_transformer(int fd, const char *transform_prog)
 {
-	char *cmd;
-	int fd1;
-
-	if (find_applet_by_name(transform_prog) >= 0) {
-		cmd = xasprintf("%s --busybox %s -cf -", bb_busybox_exec_path,
-						transform_prog);
-	}
-	else {
-		cmd = xasprintf("%s -cf -", transform_prog);
-	}
-	if ( (fd1=mingw_popen_fd(cmd, "r", fd, NULL)) == -1 ) {
-		bb_perror_msg_and_die("can't execute '%s'", transform_prog);
-	}
-	free(cmd);
-	xmove_fd(fd1, fd);
+	mingw_fork_compressor(fd, transform_prog, "r");
 }
 #endif
 
