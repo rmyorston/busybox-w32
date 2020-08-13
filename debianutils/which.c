@@ -71,6 +71,10 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 		if (strchr(*argv, '/')) {
 #else
 		if (has_path(*argv)) {
+# if ENABLE_FEATURE_SH_STANDALONE
+			const char *name = bb_basename(*argv);
+			int is_unix_path = unix_path(*argv);
+# endif
 			*argv = auto_add_system_drive(*argv);
 			if ((p=auto_win32_extension(*argv)) != NULL) {
 				missing = 0;
@@ -86,6 +90,12 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 				puts(*argv);
 #endif
 			}
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
+			else if (is_unix_path && find_applet_by_name(name) >= 0) {
+				missing = 0;
+				puts(name);
+			}
+#endif
 		} else {
 			char *path;
 #if !ENABLE_PLATFORM_MINGW32

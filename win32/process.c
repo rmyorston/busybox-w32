@@ -350,6 +350,7 @@ mingw_spawn_1(int mode, const char *cmd, char *const *argv, char *const *envp)
 {
 	char *prog;
 	const char *path;
+	intptr_t ret;
 
 #if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
 	if (find_applet_by_name(cmd) >= 0)
@@ -357,12 +358,22 @@ mingw_spawn_1(int mode, const char *cmd, char *const *argv, char *const *envp)
 	else
 #endif
 	if (has_path(cmd)) {
+#if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
+		const char *oldcmd = cmd;
+#endif
 		cmd = auto_add_system_drive(cmd);
 		path = auto_win32_extension(cmd);
-		return mingw_spawn_interpreter(mode, path ? path : cmd, argv, envp, 0);
+		ret = mingw_spawn_interpreter(mode, path ? path : cmd, argv, envp, 0);
+#if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
+		if (ret == -1 && cmd != oldcmd && unix_path(oldcmd) &&
+				find_applet_by_name(bb_basename(oldcmd))) {
+			return mingw_spawn_applet(mode, argv, envp);
+		}
+#endif
+		return ret;
 	}
 	else if ((prog=find_first_executable(cmd)) != NULL) {
-		intptr_t ret = mingw_spawn_interpreter(mode, prog, argv, envp, 0);
+		ret = mingw_spawn_interpreter(mode, prog, argv, envp, 0);
 		free(prog);
 		return ret;
 	}

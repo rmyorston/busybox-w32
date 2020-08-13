@@ -8754,6 +8754,9 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 #endif
 	) {
 #if ENABLE_PLATFORM_MINGW32
+# if ENABLE_FEATURE_SH_STANDALONE
+		char *oldprog = prog;
+# endif
 		prog = auto_add_system_drive(prog);
 #endif
 		tryexec(IF_FEATURE_SH_STANDALONE(applet_no,) prog, argv, envp);
@@ -8764,6 +8767,14 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 			 */
 			goto try_PATH;
 		}
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
+		if (oldprog != prog && unix_path(oldprog)) {
+			if ((applet_no = find_applet_by_name(bb_basename(oldprog))) >= 0)
+				tryexec(applet_no, bb_basename(oldprog), argv, envp);
+			else
+				errno = ENOENT;
+		}
+#endif
 		e = errno;
 	} else {
  try_PATH:
@@ -9191,6 +9202,12 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 	case CMDNORMAL: {
 		int j = entry.u.index;
 		char *p;
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
+		if (j == INT_MIN) {
+			p = (char *)bb_basename(command);
+			goto describe;
+		}
+#endif
 		if (j < 0) {
 #if ENABLE_PLATFORM_MINGW32
 			/* can't use auto_add_system_drive, need space for extension */
@@ -9211,6 +9228,7 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 #if ENABLE_PLATFORM_MINGW32
 		add_win32_extension(p);
 		bs_to_slash(p);
+ IF_FEATURE_SH_STANDALONE(describe:)
 #endif
 		if (describe_command_verbose) {
 			out1fmt(" is %s", p);
@@ -14268,23 +14286,15 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	struct builtincmd *bcmd;
 	int len;
 
+#if !ENABLE_PLATFORM_MINGW32
 	/* If name contains a slash, don't use PATH or hash table */
-#if ENABLE_PLATFORM_MINGW32
-	if (has_path(name)) {
-		name = auto_add_system_drive(name);
-#else
 	if (strchr(name, '/') != NULL) {
-#endif
 		entry->u.index = -1;
 		if (act & DO_ABS) {
-#if ENABLE_PLATFORM_MINGW32
-			if (auto_win32_extension(name) == NULL && stat(name, &statb) < 0) {
-#else
 			while (stat(name, &statb) < 0) {
 #ifdef SYSV
 				if (errno == EINTR)
 					continue;
-#endif
 #endif
 				entry->cmdtype = CMDUNKNOWN;
 				return;
@@ -14293,6 +14303,33 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 		entry->cmdtype = CMDNORMAL;
 		return;
 	}
+#else /* ENABLE_PLATFORM_MINGW32 */
+	/* If name contains a slash or drive prefix, don't use PATH or hash table */
+	if (has_path(name)) {
+# if ENABLE_FEATURE_SH_STANDALONE
+	char *oldname = name;
+# endif
+		name = auto_add_system_drive(name);
+		entry->u.index = -1;
+		if (act & DO_ABS) {
+			if (auto_win32_extension(name) == NULL && stat(name, &statb) < 0) {
+# if ENABLE_FEATURE_SH_STANDALONE
+				int applet_no;
+				if (unix_path(oldname) &&
+						(applet_no = find_applet_by_name(bb_basename(oldname))) >= 0) {
+					entry->cmdtype = CMDNORMAL;
+					entry->u.index = INT_MIN;
+					return;
+				}
+# endif
+				entry->cmdtype = CMDUNKNOWN;
+				return;
+			}
+		}
+		entry->cmdtype = CMDNORMAL;
+		return;
+	}
+#endif /* ENABLE_PLATFORM_MINGW32 */
 
 /* #if ENABLE_FEATURE_SH_STANDALONE... moved after builtin check */
 

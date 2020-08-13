@@ -1818,6 +1818,19 @@ void *get_proc_addr(const char *dll, const char *function,
 	return proc->pfunction;
 }
 
+#if ENABLE_FEATURE_SH_STANDALONE || ENABLE_FEATURE_PREFER_APPLETS
+int unix_path(const char *path)
+{
+	int i;
+	char *p = strdup(path);
+
+#define UNIX_PATHS "/bin\0/usr/bin\0/sbin\0/usr/sbin\0"
+	i = index_in_strings(UNIX_PATHS, dirname(p));
+	free(p);
+	return i >= 0;
+}
+#endif
+
 /* Return true if file is referenced using a path.  This means a path
  * look-up isn't required. */
 int has_path(const char *file)
