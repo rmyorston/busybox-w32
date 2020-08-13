@@ -1803,3 +1803,11 @@ void *get_proc_addr(const char *dll, const char *function,
 		errno = ENOSYS;
 	return proc->pfunction;
 }
+
+/* Return true if file is referenced using a path.  This means a path
+ * look-up isn't required. */
+int has_path(const char *file)
+{
+	return strchr(file, '/') || strchr(file, '\\') ||
+				has_dos_drive_prefix(file);
+}

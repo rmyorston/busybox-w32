@@ -70,8 +70,7 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 #if !ENABLE_PLATFORM_MINGW32
 		if (strchr(*argv, '/')) {
 #else
-		if (strchr(*argv, '/') || strchr(*argv, '\\') ||
-					has_dos_drive_prefix(*argv)) {
+		if (has_path(*argv)) {
 			if ((p=auto_win32_extension(*argv)) != NULL) {
 				missing = 0;
 				puts(bs_to_slash(p));

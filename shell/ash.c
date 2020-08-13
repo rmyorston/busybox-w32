@@ -322,6 +322,8 @@ typedef long arith_t;
 
 #if !ENABLE_PLATFORM_MINGW32
 # define is_absolute_path(path) ((path)[0] == '/')
+#else
+# define is_absolute_path(path) ((path)[0] == '/' || (path)[0] == '\\' || has_dos_drive_prefix(path))
 #endif
 
 #if !BB_MMU
@@ -8729,9 +8731,10 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 	int applet_no = -1; /* used only by FEATURE_SH_STANDALONE */
 
 	envp = listvars(VEXPORT, VUNSET, /*strlist:*/ NULL, /*end:*/ NULL);
+#if !ENABLE_PLATFORM_MINGW32
 	if (strchr(prog, '/') != NULL
-#if ENABLE_PLATFORM_MINGW32
-	 || strchr(prog, '\\') != NULL || has_dos_drive_prefix(prog)
+#else
+	if (has_path(prog)
 #endif
 #if ENABLE_FEATURE_SH_STANDALONE
 	 || (applet_no = find_applet_by_name(prog)) >= 0
@@ -14242,7 +14245,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 
 	/* If name contains a slash, don't use PATH or hash table */
 #if ENABLE_PLATFORM_MINGW32
-	if (strchr(name, '/') || strchr(name, '\\') || has_dos_drive_prefix(name)) {
+	if (has_path(name)) {
 #else
 	if (strchr(name, '/') != NULL) {
 #endif

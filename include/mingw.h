@@ -501,7 +501,6 @@ int mingw_execve(const char *cmd, char *const *argv, char *const *envp);
 #define execv mingw_execv
 
 #define has_dos_drive_prefix(path) (isalpha(*(path)) && (path)[1] == ':')
-#define is_absolute_path(path) ((path)[0] == '/' || (path)[0] == '\\' || has_dos_drive_prefix(path))
 
 int kill_SIGTERM_by_handle(HANDLE process);
 
@@ -554,3 +553,4 @@ char *get_drive_cwd(const char *path, char *buffer, int size);
 void fix_path_case(char *path);
 void make_sparse(int fd, off_t start, off_t end);
 int skip_ansi_emulation(int reset);
+int has_path(const char *file);
