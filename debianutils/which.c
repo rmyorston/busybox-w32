@@ -67,8 +67,11 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 		/* If file contains a slash don't use PATH */
-		if (strchr(*argv, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(*argv, '\\'))) {
-#if ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32
+		if (strchr(*argv, '/')) {
+#else
+		if (strchr(*argv, '/') || strchr(*argv, '\\') ||
+					has_dos_drive_prefix(*argv)) {
 			if ((p=auto_win32_extension(*argv)) != NULL) {
 				missing = 0;
 				puts(bs_to_slash(p));
