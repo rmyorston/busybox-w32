@@ -71,6 +71,7 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 		if (strchr(*argv, '/')) {
 #else
 		if (has_path(*argv)) {
+			*argv = auto_add_system_drive(*argv);
 			if ((p=auto_win32_extension(*argv)) != NULL) {
 				missing = 0;
 				puts(bs_to_slash(p));

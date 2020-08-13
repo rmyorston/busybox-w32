@@ -63,6 +63,7 @@ static int
 parse_interpreter(const char *cmd, interp_t *interp)
 {
 	char *path, *t;
+	const char *sd;
 	int n;
 
 	while (TRUE) {
@@ -87,6 +88,12 @@ parse_interpreter(const char *cmd, interp_t *interp)
 		t = (char *)bb_basename(path);
 		if (*t == '\0')
 			break;
+
+		sd = need_system_drive(path);
+		if (sd && strlen(sd) == 2) {
+			path -= 2;
+			memcpy(path, sd, 2);
+		}
 
 		interp->path = path;
 		interp->name = t;
@@ -342,6 +349,7 @@ static intptr_t
 mingw_spawn_1(int mode, const char *cmd, char *const *argv, char *const *envp)
 {
 	char *prog;
+	const char *path;
 
 #if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
 	if (find_applet_by_name(cmd) >= 0)
@@ -349,7 +357,8 @@ mingw_spawn_1(int mode, const char *cmd, char *const *argv, char *const *envp)
 	else
 #endif
 	if (has_path(cmd)) {
-		const char *path = auto_win32_extension(cmd);
+		cmd = auto_add_system_drive(cmd);
+		path = auto_win32_extension(cmd);
 		return mingw_spawn_interpreter(mode, path ? path : cmd, argv, envp, 0);
 	}
 	else if ((prog=find_first_executable(cmd)) != NULL) {

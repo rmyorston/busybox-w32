@@ -913,8 +913,12 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 		struct dirent *next;
 		struct stat st;
 		char *found;
-
+#if ENABLE_PLATFORM_MINGW32
+		char *lpath = auto_add_system_drive(paths[i]);
+		dir = opendir(lpath);
+#else
 		dir = opendir(paths[i]);
+#endif
 		if (!dir)
 			continue; /* don't print an error */
 
@@ -929,7 +933,11 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 			if (!is_prefixed_with(name_found, pfind))
 				continue; /* no */
 
+#if ENABLE_PLATFORM_MINGW32
+			found = concat_path_file(lpath, name_found);
+#else
 			found = concat_path_file(paths[i], name_found);
+#endif
 			/* NB: stat() first so that we see is it a directory;
 			 * but if that fails, use lstat() so that
 			 * we still match dangling links */

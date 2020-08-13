@@ -2828,6 +2828,10 @@ padvance_magic(const char **path, const char *name, int magic)
 	const char *start;
 	size_t qlen;
 	size_t len;
+#if ENABLE_PLATFORM_MINGW32
+	size_t sdlen = 0;
+	const char *sd;
+#endif
 
 	if (*path == NULL)
 		return -1;
@@ -2859,11 +2863,20 @@ padvance_magic(const char **path, const char *name, int magic)
 	*path = *p == PATH_SEP ? p + 1 : NULL;
 
 	/* "2" is for '/' and '\0' */
-	/* reserve space for suffix on WIN32 */
-	qlen = len + strlen(name) + 2 IF_PLATFORM_MINGW32(+ 4);
+	qlen = len + strlen(name) + 2;
+#if ENABLE_PLATFORM_MINGW32
+	/* reserve space for system drive prefix and extension */
+	sd = need_system_drive(start);
+	if (sd != NULL)
+		sdlen = strlen(sd);
+	qlen += 4 + sdlen;
+#endif
 	q = growstackto(qlen);
 
 	if (len) {
+#if ENABLE_PLATFORM_MINGW32
+		q = mempcpy(q, sd, sdlen);
+#endif
 		q = mempcpy(q, start, len);
 #if ENABLE_PLATFORM_MINGW32
 		if (q[-1] != '/' && q[-1] != '\\')
@@ -8740,6 +8753,9 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 	 || (applet_no = find_applet_by_name(prog)) >= 0
 #endif
 	) {
+#if ENABLE_PLATFORM_MINGW32
+		prog = auto_add_system_drive(prog);
+#endif
 		tryexec(IF_FEATURE_SH_STANDALONE(applet_no,) prog, argv, envp);
 		if (applet_no >= 0) {
 			/* We tried execing ourself, but it didn't work.
@@ -9176,7 +9192,16 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 		int j = entry.u.index;
 		char *p;
 		if (j < 0) {
+#if ENABLE_PLATFORM_MINGW32
+			/* can't use auto_add_system_drive, need space for extension */
+			const char *sd = need_system_drive(command);
+			size_t len = strlen(command) + 5 + (sd ? strlen(sd) : 0);
+
+			p = auto_string(xmalloc(len));
+			sprintf(p, "%s%s", sd ? sd : "", command);
+#else
 			p = command;
+#endif
 		} else {
 			do {
 				padvance(&path, command);
@@ -14246,6 +14271,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	/* If name contains a slash, don't use PATH or hash table */
 #if ENABLE_PLATFORM_MINGW32
 	if (has_path(name)) {
+		name = auto_add_system_drive(name);
 #else
 	if (strchr(name, '/') != NULL) {
 #endif

@@ -1698,6 +1698,21 @@ const char *get_system_drive(void)
 	return drive;
 }
 
+/* Return pointer to system drive if path is of form '/file', else NULL */
+const char *need_system_drive(const char *path)
+{
+	if (root_len(path) == 0 && (path[0] == '/' || path[0] == '\\'))
+		return get_system_drive();
+	return NULL;
+}
+
+/* Add a system drive prefix to 'path' if necessary, else return 'path' */
+char *auto_add_system_drive(const char *path)
+{
+	const char *sd = need_system_drive(path);
+	return sd ? auto_string(concat_path_file(sd, path)) : (char *)path;
+}
+
 int chdir_system_drive(void)
 {
 	const char *sd = get_system_drive();

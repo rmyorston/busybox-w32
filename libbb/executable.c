@@ -49,6 +49,9 @@ char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 
 		n = strchr(p, PATH_SEP);
 		if (n) *n = '\0';
+#if ENABLE_PLATFORM_MINGW32
+		p = auto_add_system_drive(p);
+#endif
 		p = concat_path_file(
 			p[0] ? p : ".", /* handle "::" case */
 			filename
