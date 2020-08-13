@@ -665,7 +665,7 @@ static void parse_conf(const char *path, int flag)
 		filename = alloca(strlen(path) + sizeof(HTTPD_CONF) + 2);
 		sprintf((char *)filename, "%s/%s", path, HTTPD_CONF);
 #else
-		char *sd = get_system_drive();
+		const char *sd = get_system_drive();
 
 		filename = auto_string(xasprintf("%s%s/%s",
 				(sd && path[0] == '/' && root_len(path) == 0) ? sd : "",

@@ -1682,16 +1682,17 @@ int root_len(const char *path)
 	return unc_root_len(path);
 }
 
-char *get_system_drive(void)
+const char *get_system_drive(void)
 {
 	struct passwd *pwd;
-	char *drive = NULL;
+	static char *drive = NULL;
 	int len;
 
-	pwd = getpwuid(0);
-	if (pwd != NULL && (len=root_len(pwd->pw_dir))) {
-		drive = xstrdup(pwd->pw_dir);
-		drive[len] = '\0';
+	if (drive == NULL) {
+		pwd = getpwuid(0);
+		if (pwd != NULL && (len=root_len(pwd->pw_dir))) {
+			drive = xstrndup(pwd->pw_dir, len);
+		}
 	}
 
 	return drive;
@@ -1699,14 +1700,11 @@ char *get_system_drive(void)
 
 int chdir_system_drive(void)
 {
-	char *sd = get_system_drive();
+	const char *sd = get_system_drive();
 	int ret = -1;
 
-	if (sd) {
-		strcat(sd, "/");
-		ret = chdir(sd);
-	}
-	free(sd);
+	if (sd)
+		ret = chdir(auto_string(concat_path_file(sd, "")));
 	return ret;
 }
 
@@ -1722,13 +1720,14 @@ int chdir_system_drive(void)
  */
 char *xabsolute_path(char *path)
 {
-	char *rpath, *sd;
+	char *rpath;
+	const char *sd;
 
 	if (root_len(path) != 0)
 		return path;	// absolute path
 	rpath = xmalloc_realpath(path);
 	if (rpath) {
-		sd = auto_string(get_system_drive());
+		sd = get_system_drive();
 		if (sd && is_prefixed_with_case(rpath, sd)) {
 			free(rpath);
 			return path;	// resolved path is on system drive

@@ -15245,7 +15245,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	struct stackmark smark;
 	int login_sh;
 #if ENABLE_PLATFORM_MINGW32
-	char *sd;
+	const char *sd;
 
 	INIT_G_memstack();
 
@@ -15366,7 +15366,6 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		if (sd) {
 			char *path = xasprintf("%s/etc/profile", sd);
 			read_profile(path);
-			free(sd);
 			free(path);
 		}
 		else
