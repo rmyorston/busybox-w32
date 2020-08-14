@@ -717,7 +717,6 @@ static void check_suid(int applet_no)
 
 
 # if ENABLE_FEATURE_INSTALLER
-#  if !ENABLE_PLATFORM_MINGW32
 static const char usr_bin [] ALIGN1 = "/usr/bin/";
 static const char usr_sbin[] ALIGN1 = "/usr/sbin/";
 static const char *const install_dir[] = {
@@ -730,6 +729,7 @@ static const char *const install_dir[] = {
 #  endif
 };
 
+#  if !ENABLE_PLATFORM_MINGW32
 /* create (sym)links for each applet */
 static void install_links(const char *busybox, int use_symbolic_links,
 		char *custom_install_dir)
@@ -768,13 +768,24 @@ static void install_links(const char *busybox,
 {
 	char *fpc;
 	const char *appname = applet_names;
-	int rc;
+	const char *sd = custom_install_dir == NULL ? get_system_drive() : NULL;
+	int i, rc;
 
-	if (!is_directory(custom_install_dir, FALSE))
+	if (custom_install_dir && !is_directory(custom_install_dir, FALSE))
 		bb_error_msg_and_die("'%s' is not a directory", custom_install_dir);
 
-	while (*appname) {
-		fpc = xasprintf("%s/%s.exe", custom_install_dir, appname);
+	if (custom_install_dir == NULL) {
+		for (i=1; i<ARRAY_SIZE(install_dir); ++i) {
+			fpc = xasprintf("%s%s", sd ?: "", install_dir[i]);
+			bb_make_directory(fpc, 0755, FILEUTILS_RECUR);
+			free(fpc);
+		}
+	}
+
+	for (i = 0; i < ARRAY_SIZE(applet_main); i++) {
+		fpc = xasprintf("%s%s/%s.exe", sd ?: "",
+				custom_install_dir ?: install_dir[APPLET_INSTALL_LOC(i)],
+				appname);
 		rc = link(busybox, fpc);
 		if (rc != 0 && (errno != EEXIST ||
 				strcmp("busybox.exe", bb_basename(fpc)) != 0)) {
@@ -897,7 +908,7 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 			"   or: busybox --install [-s] [DIR]\n"
 			)
 			IF_PLATFORM_MINGW32(
-			"   or: busybox --install [DIR]\n"
+			"   or: busybox --install [-u|DIR]\n"
 			"   or: busybox --uninstall [-n] file\n"
 			)
 			)
@@ -981,6 +992,7 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 				else
 					str = "        ";
 				full_write2_str(str);
+				full_write2_str(install_dir[APPLET_INSTALL_LOC(i)] + 1);
 			}
 #  endif
 			full_write2_str(a);
@@ -1015,12 +1027,23 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 		use_symbolic_links = (argv[2] && strcmp(argv[2], "-s") == 0 && ++argv);
 		install_links(busybox, use_symbolic_links, argv[2]);
 #else
-		/* busybox --install [DIR]
-		 * where DIR is the directory to install to.  If DIR is not
-		 * provided put the links in the same directory as busybox.
+		char *target = NULL;
+
+		/* busybox --install [-u|DIR]
+		 * -u: install to Unix-style directories in system drive
+		 * DIR: directory to install links to
+		 * If no argument is provided put the links in the same directory
+		 * as busybox.
 		 */
-		install_links(bb_busybox_exec_path, FALSE, argv[2] ? argv[2] :
-				dirname(xstrdup(bb_busybox_exec_path)));
+		if (argv[2]) {
+			if (strcmp(argv[2], "-u") != 0)
+				target = argv[2];
+		}
+		else {
+			target = dirname(xstrdup(bb_busybox_exec_path));
+		}
+		/* NULL target -> install to Unix-style dirs */
+		install_links(bb_busybox_exec_path, FALSE, target);
 #endif
 		return 0;
 	}
