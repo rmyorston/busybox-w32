@@ -768,13 +768,14 @@ static void install_links(const char *busybox,
 {
 	char *fpc;
 	const char *appname = applet_names;
-	const char *sd = custom_install_dir == NULL ? get_system_drive() : NULL;
+	const char *sd = NULL;
 	int i, rc;
 
-	if (custom_install_dir && !is_directory(custom_install_dir, FALSE))
-		bb_error_msg_and_die("'%s' is not a directory", custom_install_dir);
-
-	if (custom_install_dir == NULL) {
+	if (custom_install_dir != NULL) {
+		bb_make_directory(custom_install_dir, 0755, FILEUTILS_RECUR);
+	}
+	else {
+		sd = get_system_drive();
 		for (i=1; i<ARRAY_SIZE(install_dir); ++i) {
 			fpc = xasprintf("%s%s", sd ?: "", install_dir[i]);
 			bb_make_directory(fpc, 0755, FILEUTILS_RECUR);
