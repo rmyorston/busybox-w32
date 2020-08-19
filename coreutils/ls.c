@@ -1074,6 +1074,18 @@ static void scan_and_display_dirs_recur(struct dnode **dn, int first)
 	}
 }
 
+#if ENABLE_PLATFORM_MINGW32
+static char *fix_backslash(char *p)
+{
+	const char *flag = getenv("BB_FIX_BACKSLASH");
+	int value = flag ? atoi(flag) : 0;
+
+	if (value == 1)
+		bs_to_slash(p);
+	return p;
+}
+#endif
+
 
 int ls_main(int argc UNUSED_PARAM, char **argv)
 {	/*      ^^^^^^^^^^^^^^^^^ note: if FTPD, argc can be wrong, see ftpd.c */
@@ -1225,6 +1237,9 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 	dn = NULL;
 	nfiles = 0;
 	do {
+#if ENABLE_PLATFORM_MINGW32
+		*argv = fix_backslash(*argv);
+#endif
 		cur = my_stat(*argv, *argv,
 			/* follow links on command line unless -l, -i, -s or -F: */
 			!(option_mask32 & (OPT_l|OPT_i|OPT_s|OPT_F))
