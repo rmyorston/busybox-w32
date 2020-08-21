@@ -2102,6 +2102,22 @@ maybe_single_quote(const char *s)
 	return single_quote(s);
 }
 
+#if ENABLE_PLATFORM_MINGW32
+/*
+ * Place 'path' in a string on the stack, adding the system drive prefix
+ * if necessary and leaving room for an optional extension.
+ */
+static char *
+stack_add_system_drive(const char *path)
+{
+	const char *sd = need_system_drive(path);
+	char *p = growstackto(strlen(path) + 5 + (sd ? strlen(sd) : 0));
+
+	sprintf(p, "%s%s", sd ?: "", path);
+	return p;
+}
+#endif
+
 
 /* ============ nextopt */
 
@@ -8687,10 +8703,11 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
-	cmd = auto_win32_extension(cmd) ?: cmd;
+	/* cmd was allocated on the stack with room for an extension */
+	add_win32_extension((char *)cmd);
 	execve(cmd, argv, envp);
 	/* skip POSIX-mandated retry on ENOEXEC */
-#else
+#else /* !ENABLE_PLATFORM_MINGW32 */
  repeat:
 #ifdef SYSV
 	do {
@@ -8726,7 +8743,7 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 		argv[0] = (char*) "ash";
 		goto repeat;
 	}
-#endif /* ENABLE_PLATFORM_MINGW32 */
+#endif /* !ENABLE_PLATFORM_MINGW32 */
 }
 
 /*
@@ -8757,7 +8774,7 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 # if ENABLE_FEATURE_SH_STANDALONE
 		char *oldprog = prog;
 # endif
-		prog = auto_add_system_drive(prog);
+		prog = stack_add_system_drive(prog);
 #endif
 		tryexec(IF_FEATURE_SH_STANDALONE(applet_no,) prog, argv, envp);
 		if (applet_no >= 0) {
@@ -8768,7 +8785,7 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 			goto try_PATH;
 		}
 #if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-		if (oldprog != prog && unix_path(oldprog)) {
+		if (strcmp(oldprog, prog) != 0 && unix_path(oldprog)) {
 			if ((applet_no = find_applet_by_name(bb_basename(oldprog))) >= 0)
 				tryexec(applet_no, bb_basename(oldprog), argv, envp);
 			else
@@ -9210,12 +9227,7 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 #endif
 		if (j < 0) {
 #if ENABLE_PLATFORM_MINGW32
-			/* can't use auto_add_system_drive, need space for extension */
-			const char *sd = need_system_drive(command);
-			size_t len = strlen(command) + 5 + (sd ? strlen(sd) : 0);
-
-			p = auto_string(xmalloc(len));
-			sprintf(p, "%s%s", sd ? sd : "", command);
+			p = stack_add_system_drive(command);
 #else
 			p = command;
 #endif
@@ -14307,16 +14319,15 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	/* If name contains a slash or drive prefix, don't use PATH or hash table */
 	if (has_path(name)) {
 # if ENABLE_FEATURE_SH_STANDALONE
-	char *oldname = name;
+		char *oldname = name;
 # endif
-		name = auto_add_system_drive(name);
+		name = stack_add_system_drive(name);
 		entry->u.index = -1;
 		if (act & DO_ABS) {
-			if (auto_win32_extension(name) == NULL && stat(name, &statb) < 0) {
+			if (!add_win32_extension(name) && stat(name, &statb) < 0) {
 # if ENABLE_FEATURE_SH_STANDALONE
-				int applet_no;
 				if (unix_path(oldname) &&
-						(applet_no = find_applet_by_name(bb_basename(oldname))) >= 0) {
+						find_applet_by_name(bb_basename(oldname)) >= 0) {
 					entry->cmdtype = CMDNORMAL;
 					entry->u.index = INT_MIN;
 					return;
