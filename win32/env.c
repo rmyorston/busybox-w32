@@ -33,12 +33,12 @@ int setenv(const char *name, const char *value, int replace)
 }
 
 /*
- * Removing an environment variable with WIN32 putenv requires an argument
+ * Removing an environment variable with WIN32 _putenv requires an argument
  * like "NAME="; glibc omits the '='.  The implementations of unsetenv and
  * clearenv allow for this.
  *
  * It isn't possible to create an environment variable with an empty value
- * using WIN32 putenv.
+ * using WIN32 _putenv.
  */
 int unsetenv(const char *name)
 {
@@ -49,9 +49,8 @@ int unsetenv(const char *name)
 		return -1;
 	}
 
-	envstr = xmalloc(strlen(name)+2);
-	strcat(strcpy(envstr, name), "=");
-	ret = putenv(envstr);
+	envstr = xasprintf("%s=", name);
+	ret = _putenv(envstr);
 	free(envstr);
 
 	return ret;
@@ -64,7 +63,7 @@ int clearenv(void)
 	while ( environ && (envp=*environ) ) {
 		if ( (s=strchr(envp, '=')) != NULL ) {
 			name = xstrndup(envp, s-envp+1);
-			if ( putenv(name) == -1 ) {
+			if (_putenv(name) == -1) {
 				free(name);
 				return -1;
 			}
@@ -86,7 +85,7 @@ int mingw_putenv(const char *env)
 	}
 
 	if ( s[1] != '\0' ) {
-		return putenv(env);
+		return _putenv(env);
 	}
 
 	/* can't set empty value */
