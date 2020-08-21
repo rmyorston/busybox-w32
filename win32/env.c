@@ -78,16 +78,30 @@ int clearenv(void)
 
 int mingw_putenv(const char *env)
 {
-	char *s;
+	char *s, **envp;
+	int ret = 0;
 
 	if ( (s=strchr(env, '=')) == NULL ) {
 		return unsetenv(env);
 	}
 
-	if ( s[1] != '\0' ) {
+	if (s[1] != '\0') {
+		/* setting non-empty value is fine */
 		return _putenv(env);
 	}
+	else {
+		/* set empty value by setting a non-empty one then truncating */
+		char *envstr = xasprintf("%s0", env);
+		ret = _putenv(envstr);
 
-	/* can't set empty value */
-	return 0;
+		for (envp = environ; *envp; ++envp) {
+			if (strcmp(*envp, envstr) == 0) {
+				(*envp)[s - env + 1] = '\0';
+				break;
+			}
+		}
+		free(envstr);
+	}
+
+	return ret;
 }
