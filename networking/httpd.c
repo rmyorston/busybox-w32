@@ -1827,7 +1827,7 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 	}
 #if ENABLE_FEATURE_HTTPD_ETAG
 	/* ETag is "hex(last_mod)-hex(file_size)" e.g. "5e132e20-417" */
-	sprintf(G.etag, "\"%llx-%llx\"", (unsigned long long)last_mod, (unsigned long long)file_size);
+	sprintf(G.etag, "\"%"LL_FMT"x-%"LL_FMT"x\"", (unsigned long long)last_mod, (unsigned long long)file_size);
 
 	if (G.if_none_match) {
 		if (DEBUG)
