@@ -63,7 +63,6 @@ static int
 parse_interpreter(const char *cmd, interp_t *interp)
 {
 	char *path, *t;
-	const char *sd;
 	int n;
 
 	while (TRUE) {
@@ -88,12 +87,6 @@ parse_interpreter(const char *cmd, interp_t *interp)
 		t = (char *)bb_basename(path);
 		if (*t == '\0')
 			break;
-
-		sd = need_system_drive(path);
-		if (sd && strlen(sd) == 2) {
-			path -= 2;
-			memcpy(path, sd, 2);
-		}
 
 		interp->path = path;
 		interp->name = t;
@@ -323,9 +316,9 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
 	new_argv[nopts+1] = (char *)prog; /* pass absolute path */
 	memcpy(new_argv+nopts+2, argv+1, sizeof(*argv)*argc);
 
-	if ((fullpath=alloc_win32_extension(interp.path)) != NULL ||
-			file_is_executable(interp.path)) {
-		new_argv[0] = fullpath ? fullpath : interp.path;
+	fullpath = alloc_system_drive(interp.path);
+	if (add_win32_extension(fullpath) || file_is_executable(fullpath)) {
+		new_argv[0] = fullpath;
 		ret = mingw_spawn_interpreter(mode, new_argv[0], new_argv, envp, level);
 	} else
 #if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
@@ -349,7 +342,6 @@ static intptr_t
 mingw_spawn_1(int mode, const char *cmd, char *const *argv, char *const *envp)
 {
 	char *prog;
-	const char *path;
 	intptr_t ret;
 
 #if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
@@ -358,15 +350,13 @@ mingw_spawn_1(int mode, const char *cmd, char *const *argv, char *const *envp)
 	else
 #endif
 	if (has_path(cmd)) {
+		char *path = alloc_system_drive(cmd);
+		add_win32_extension(path);
+		ret = mingw_spawn_interpreter(mode, path, argv, envp, 0);
+		free(path);
 #if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
-		const char *oldcmd = cmd;
-#endif
-		cmd = auto_add_system_drive(cmd);
-		path = auto_win32_extension(cmd);
-		ret = mingw_spawn_interpreter(mode, path ? path : cmd, argv, envp, 0);
-#if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
-		if (ret == -1 && cmd != oldcmd && unix_path(oldcmd) &&
-				find_applet_by_name(bb_basename(oldcmd))) {
+		if (ret == -1 && unix_path(cmd) &&
+				find_applet_by_name(bb_basename(cmd)) >= 0) {
 			return mingw_spawn_applet(mode, argv, envp);
 		}
 #endif

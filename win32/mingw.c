@@ -1496,25 +1496,6 @@ int add_win32_extension(char *p)
 	return FALSE;
 }
 
-/* Check if path can be made into an executable by adding a suffix.
- * Return an allocated string containing the path if it can;
- * return NULL if not.
- *
- * If path already has a suffix don't even bother trying.
- */
-char *alloc_win32_extension(const char *p)
-{
-	if (!has_exe_suffix_or_dot(p)) {
-		int len = strlen(p);
-		char *path = strcpy(xmalloc(len+5), p);
-
-		if (add_win32_extension(path))
-			return path;
-		free(path);
-	}
-	return NULL;
-}
-
 char * FAST_FUNC bs_to_slash(char *str)
 {
 	char *p;
@@ -1706,11 +1687,14 @@ const char *need_system_drive(const char *path)
 	return NULL;
 }
 
-/* Add a system drive prefix to 'path' if necessary, else return 'path' */
-char *auto_add_system_drive(const char *path)
+/* Allocate a string long enough to allow a system drive prefix and
+ * file extension to be added to path.  Add the prefix if necessary. */
+char *alloc_system_drive(const char *path)
 {
 	const char *sd = need_system_drive(path);
-	return sd ? auto_string(concat_path_file(sd, path)) : (char *)path;
+	char *s = xmalloc(strlen(path) + 5 + (sd ? strlen(sd) : 0));
+	sprintf(s, "%s%s", sd ?: "", path);
+	return s;
 }
 
 int chdir_system_drive(void)
@@ -1822,7 +1806,7 @@ void *get_proc_addr(const char *dll, const char *function,
 int unix_path(const char *path)
 {
 	int i;
-	char *p = strdup(path);
+	char *p = xstrdup(path);
 
 #define UNIX_PATHS "/bin\0/usr/bin\0/sbin\0/usr/sbin\0"
 	i = index_in_strings(UNIX_PATHS, dirname(p));

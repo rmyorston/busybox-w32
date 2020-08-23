@@ -45,10 +45,8 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 
 	do {
 		int missing = 1;
-#if ENABLE_PLATFORM_MINGW32
-		char *p;
 
-# if ENABLE_FEATURE_SH_STANDALONE
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
 		if (strcmp(*argv, "busybox") == 0 &&
 				is_suffixed_with(bb_busybox_exec_path, "busybox.exe")) {
 			missing = 0;
@@ -63,44 +61,36 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 			if (!option_mask32) /* -a not set */
 				break;
 		}
-# endif
 #endif
 
-		/* If file contains a slash don't use PATH */
 #if !ENABLE_PLATFORM_MINGW32
+		/* If file contains a slash don't use PATH */
 		if (strchr(*argv, '/')) {
+			if (file_is_executable(*argv)) {
+				missing = 0;
+				puts(*argv);
+			}
 #else
 		if (has_path(*argv)) {
 # if ENABLE_FEATURE_SH_STANDALONE
 			const char *name = bb_basename(*argv);
-			int is_unix_path = unix_path(*argv);
 # endif
-			*argv = auto_add_system_drive(*argv);
-			if ((p=auto_win32_extension(*argv)) != NULL) {
+			char *path = alloc_system_drive(*argv);
+
+			if (add_win32_extension(path) || file_is_executable(path)) {
 				missing = 0;
-				puts(bs_to_slash(p));
+				puts(bs_to_slash(path));
 			}
-			else
-#endif
-			if (file_is_executable(*argv)) {
-				missing = 0;
-#if ENABLE_PLATFORM_MINGW32
-				puts(bs_to_slash(auto_string(xstrdup(*argv))));
-#else
-				puts(*argv);
-#endif
-			}
-#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-			else if (is_unix_path && find_applet_by_name(name) >= 0) {
+# if ENABLE_FEATURE_SH_STANDALONE
+			else if (unix_path(*argv) && find_applet_by_name(name) >= 0) {
 				missing = 0;
 				puts(name);
 			}
+# endif
 #endif
 		} else {
 			char *path;
-#if !ENABLE_PLATFORM_MINGW32
 			char *p;
-#endif
 
 			path = env_path;
 			/* NOFORK NB: xmalloc inside find_executable(), must have no allocs above! */

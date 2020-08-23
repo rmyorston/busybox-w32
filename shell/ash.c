@@ -8784,15 +8784,19 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 			 */
 			goto try_PATH;
 		}
+		e = errno;
 #if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-		if (strcmp(oldprog, prog) != 0 && unix_path(oldprog)) {
-			if ((applet_no = find_applet_by_name(bb_basename(oldprog))) >= 0)
-				tryexec(applet_no, bb_basename(oldprog), argv, envp);
-			else
-				errno = ENOENT;
+		if (unix_path(oldprog)) {
+			const char *name = bb_basename(oldprog);
+			if ((applet_no = find_applet_by_name(name)) >= 0) {
+				tryexec(applet_no, name, argv, envp);
+				e = errno;
+			}
+			else {
+				e = ENOENT;
+			}
 		}
 #endif
-		e = errno;
 	} else {
  try_PATH:
 		e = ENOENT;
@@ -14318,16 +14322,13 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 #else /* ENABLE_PLATFORM_MINGW32 */
 	/* If name contains a slash or drive prefix, don't use PATH or hash table */
 	if (has_path(name)) {
-# if ENABLE_FEATURE_SH_STANDALONE
-		char *oldname = name;
-# endif
-		name = stack_add_system_drive(name);
+		fullname = stack_add_system_drive(name);
 		entry->u.index = -1;
 		if (act & DO_ABS) {
-			if (!add_win32_extension(name) && stat(name, &statb) < 0) {
+			if (!add_win32_extension(fullname) && stat(fullname, &statb) < 0) {
 # if ENABLE_FEATURE_SH_STANDALONE
-				if (unix_path(oldname) &&
-						find_applet_by_name(bb_basename(oldname)) >= 0) {
+				if (unix_path(name) &&
+						find_applet_by_name(bb_basename(name)) >= 0) {
 					entry->cmdtype = CMDNORMAL;
 					entry->u.index = INT_MIN;
 					return;

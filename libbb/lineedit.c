@@ -913,8 +913,9 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 		struct dirent *next;
 		struct stat st;
 		char *found;
+
 #if ENABLE_PLATFORM_MINGW32
-		char *lpath = auto_add_system_drive(paths[i]);
+		char *lpath = auto_string(alloc_system_drive(paths[i]));
 		dir = opendir(lpath);
 #else
 		dir = opendir(paths[i]);

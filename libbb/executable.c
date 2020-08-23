@@ -49,20 +49,16 @@ char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 
 		n = strchr(p, PATH_SEP);
 		if (n) *n = '\0';
-#if ENABLE_PLATFORM_MINGW32
-		p = auto_add_system_drive(p);
-#endif
 		p = concat_path_file(
 			p[0] ? p : ".", /* handle "::" case */
 			filename
 		);
 		if (n) *n++ = PATH_SEP;
 #if ENABLE_PLATFORM_MINGW32
-		if ((w=alloc_win32_extension(p))) {
-			free(p);
-			p = w;
-			/* following test will succeed */
-		}
+		w = alloc_system_drive(p);
+		add_win32_extension(w);
+		free(p);
+		p = w;
 #endif
 		ex = file_is_executable(p);
 		if (ex) {
