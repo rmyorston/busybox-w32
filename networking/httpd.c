@@ -214,6 +214,44 @@
 //config:	help
 //config:	Makes httpd send files using GZIP content encoding if the
 //config:	client supports it and a pre-compressed <file>.gz exists.
+//config:
+//config:config FEATURE_HTTPD_ETAG
+//config:	bool "Support caching via ETag header"
+//config:	default y
+//config:	depends on HTTPD
+//config:	help
+//config:	If server responds with ETag then next time client (browser)
+//config:	resend it via If-None-Match header.
+//config:	Then httpd will check if file wasn't modified and if not,
+//config:	return 304 Not Modified status code.
+//config:	The ETag value is constructed from last modification date
+//config:	in unix epoch, and size: "hex(last_mod)-hex(file_size)".
+//config:	It's not completely reliable as hash functions but fair enough.
+//config:
+//config:config FEATURE_HTTPD_LAST_MODIFIED
+//config:	bool "Add Last-Modified header to response"
+//config:	default y
+//config:	depends on HTTPD
+//config:	help
+//config:	The Last-Modified header is used for cache validation.
+//config:	The client sends last seen mtime to server in If-Modified-Since.
+//config:	Both headers MUST be an RFC 1123 formatted, which is hard to parse.
+//config:	Use ETag header instead.
+//config:
+//config:config FEATURE_HTTPD_DATE
+//config:	bool "Add Date header to response"
+//config:	default y
+//config:	depends on HTTPD
+//config:	help
+//config:	RFC2616 says that server MUST add Date header to response.
+//config:	But it is almost useless and can be omitted.
+//config:
+//config:config FEATURE_HTTPD_ACL_IP
+//config:	bool "ACL IP"
+//config:	default y
+//config:	depends on HTTPD
+//config:	help
+//config:	Support IP deny/allow rules
 
 //applet:IF_HTTPD(APPLET(httpd, BB_DIR_USR_SBIN, BB_SUID_DROP))
 
@@ -278,7 +316,7 @@ static void send_REQUEST_TIMEOUT_and_exit(int sig) NORETURN;
 
 static const char DEFAULT_PATH_HTTPD_CONF[] ALIGN1 = "/etc";
 static const char HTTPD_CONF[] ALIGN1 = "httpd.conf";
-static const char HTTP_200[] ALIGN1 = "HTTP/1.0 200 OK\r\n";
+static const char HTTP_200[] ALIGN1 = "HTTP/1.1 200 OK\r\n";
 static const char index_html[] ALIGN1 = "index.html";
 
 typedef struct has_next_ptr {
@@ -292,6 +330,7 @@ typedef struct Htaccess {
 	char before_colon[1];  /* really bigger, must be last */
 } Htaccess;
 
+#if ENABLE_FEATURE_HTTPD_ACL_IP
 /* Must have "next" as a first member */
 typedef struct Htaccess_IP {
 	struct Htaccess_IP *next;
@@ -299,6 +338,7 @@ typedef struct Htaccess_IP {
 	unsigned mask;
 	int allow_deny;
 } Htaccess_IP;
+#endif
 
 /* Must have "next" as a first member */
 typedef struct Htaccess_Proxy {
@@ -319,6 +359,7 @@ enum {
 	HTTP_OK = 200,
 	HTTP_PARTIAL_CONTENT = 206,
 	HTTP_MOVED_TEMPORARILY = 302,
+	HTTP_NOT_MODIFIED = 304,
 	HTTP_BAD_REQUEST = 400,       /* malformed syntax */
 	HTTP_UNAUTHORIZED = 401, /* authentication needed, respond with auth hdr */
 	HTTP_NOT_FOUND = 404,
@@ -336,7 +377,6 @@ enum {
 	HTTP_NO_CONTENT = 204,
 	HTTP_MULTIPLE_CHOICES = 300,
 	HTTP_MOVED_PERMANENTLY = 301,
-	HTTP_NOT_MODIFIED = 304,
 	HTTP_PAYMENT_REQUIRED = 402,
 	HTTP_BAD_GATEWAY = 502,
 	HTTP_SERVICE_UNAVAILABLE = 503, /* overload, maintenance */
@@ -349,6 +389,9 @@ static const uint16_t http_response_type[] ALIGN2 = {
 	HTTP_PARTIAL_CONTENT,
 #endif
 	HTTP_MOVED_TEMPORARILY,
+#if ENABLE_FEATURE_HTTPD_ETAG
+	HTTP_NOT_MODIFIED,
+#endif
 	HTTP_REQUEST_TIMEOUT,
 	HTTP_NOT_IMPLEMENTED,
 #if ENABLE_FEATURE_HTTPD_BASIC_AUTH
@@ -365,7 +408,6 @@ static const uint16_t http_response_type[] ALIGN2 = {
 	HTTP_NO_CONTENT,
 	HTTP_MULTIPLE_CHOICES,
 	HTTP_MOVED_PERMANENTLY,
-	HTTP_NOT_MODIFIED,
 	HTTP_BAD_GATEWAY,
 	HTTP_SERVICE_UNAVAILABLE,
 #endif
@@ -380,6 +422,9 @@ static const struct {
 	{ "Partial Content", NULL },
 #endif
 	{ "Found", NULL },
+#if ENABLE_FEATURE_HTTPD_ETAG
+	{ "Not Modified" },
+#endif
 	{ "Request Timeout", "No request appeared within 60 seconds" },
 	{ "Not Implemented", "The requested method is not recognized" },
 #if ENABLE_FEATURE_HTTPD_BASIC_AUTH
@@ -396,7 +441,6 @@ static const struct {
 	{ "No Content" },
 	{ "Multiple Choices" },
 	{ "Moved Permanently" },
-	{ "Not Modified" },
 	{ "Bad Gateway", "" },
 	{ "Service Unavailable", "" },
 #endif
@@ -410,6 +454,9 @@ struct globals {
 	smallint content_gzip;
 #endif
 	time_t last_mod;
+#if ENABLE_FEATURE_HTTPD_ETAG
+	char *if_none_match;
+#endif
 	char *rmt_ip_str;       /* for $REMOTE_ADDR and $REMOTE_PORT */
 	const char *bind_addr_or_port;
 
@@ -420,7 +467,9 @@ struct globals {
 
 	const char *found_mime_type;
 	const char *found_moved_temporarily;
+#if ENABLE_FEATURE_HTTPD_ACL_IP
 	Htaccess_IP *ip_a_d;    /* config allow/deny lines */
+#endif
 
 	IF_FEATURE_HTTPD_BASIC_AUTH(const char *g_realm;)
 	IF_FEATURE_HTTPD_BASIC_AUTH(char *remoteuser;)
@@ -444,6 +493,9 @@ struct globals {
 #define sizeof_hdr_buf COMMON_BUFSIZE
 	char *hdr_ptr;
 	int hdr_cnt;
+#if ENABLE_FEATURE_HTTPD_ETAG
+	char etag[sizeof("'%llx-%llx'") + 2 * sizeof(long long)*3];
+#endif
 #if ENABLE_FEATURE_HTTPD_ERROR_PAGES
 	const char *http_error_page[ARRAY_SIZE(http_response_type)];
 #endif
@@ -467,7 +519,6 @@ struct globals {
 #define found_mime_type   (G.found_mime_type  )
 #define found_moved_temporarily (G.found_moved_temporarily)
 #define last_mod          (G.last_mod         )
-#define ip_a_d            (G.ip_a_d           )
 #define g_realm           (G.g_realm          )
 #define remoteuser        (G.remoteuser       )
 #define file_size         (G.file_size        )
@@ -528,11 +579,14 @@ static ALWAYS_INLINE void free_Htaccess_list(Htaccess **pptr)
 	free_llist((has_next_ptr**)pptr);
 }
 
+#if ENABLE_FEATURE_HTTPD_ACL_IP
 static ALWAYS_INLINE void free_Htaccess_IP_list(Htaccess_IP **pptr)
 {
 	free_llist((has_next_ptr**)pptr);
 }
+#endif
 
+#if ENABLE_FEATURE_HTTPD_ACL_IP
 /* Returns presumed mask width in bits or < 0 on error.
  * Updates strp, stores IP at provided pointer */
 static int scan_ip(const char **strp, unsigned *ipp, unsigned char endc)
@@ -617,6 +671,7 @@ static int scan_ip_mask(const char *str, unsigned *ipp, unsigned *maskp)
 	*maskp = (uint32_t)(~mask);
 	return 0;
 }
+#endif
 
 /*
  * Parse configuration file into in-memory linked list.
@@ -646,7 +701,9 @@ static void parse_conf(const char *path, int flag)
 	char buf[160];
 
 	/* discard old rules */
-	free_Htaccess_IP_list(&ip_a_d);
+#if ENABLE_FEATURE_HTTPD_ACL_IP
+	free_Htaccess_IP_list(&G.ip_a_d);
+#endif
 	flg_deny_all = 0;
 	/* retain previous auth and mime config only for subdir parse */
 	if (flag != SUBDIR_PARSE) {
@@ -763,6 +820,7 @@ static void parse_conf(const char *path, int flag)
 			continue;
 		}
 
+#if ENABLE_FEATURE_HTTPD_ACL_IP
 		if (ch == 'A' || ch == 'D') {
 			Htaccess_IP *pip;
 
@@ -784,13 +842,13 @@ static void parse_conf(const char *path, int flag)
 			pip->allow_deny = ch;
 			if (ch == 'D') {
 				/* Deny:from_IP - prepend */
-				pip->next = ip_a_d;
-				ip_a_d = pip;
+				pip->next = G.ip_a_d;
+				G.ip_a_d = pip;
 			} else {
 				/* A:from_IP - append (thus all D's precedes A's) */
-				Htaccess_IP *prev_IP = ip_a_d;
+				Htaccess_IP *prev_IP = G.ip_a_d;
 				if (prev_IP == NULL) {
-					ip_a_d = pip;
+					G.ip_a_d = pip;
 				} else {
 					while (prev_IP->next)
 						prev_IP = prev_IP->next;
@@ -799,6 +857,7 @@ static void parse_conf(const char *path, int flag)
 			}
 			continue;
 		}
+#endif
 
 #if ENABLE_FEATURE_HTTPD_ERROR_PAGES
 		if (flag == FIRST_PARSE && ch == 'E') {
@@ -1059,11 +1118,12 @@ static void log_and_exit(void)
  */
 static void send_headers(unsigned responseNum)
 {
+#if ENABLE_FEATURE_HTTPD_DATE || ENABLE_FEATURE_HTTPD_LAST_MODIFIED
 	static const char RFC1123FMT[] ALIGN1 = "%a, %d %b %Y %H:%M:%S GMT";
 	/* Fixed size 29-byte string. Example: Sun, 06 Nov 1994 08:49:37 GMT */
 	char date_str[40]; /* using a bit larger buffer to paranoia reasons */
-
 	struct tm tm;
+#endif
 	const char *responseString = "";
 	const char *infoString = NULL;
 #if ENABLE_FEATURE_HTTPD_ERROR_PAGES
@@ -1071,7 +1131,6 @@ static void send_headers(unsigned responseNum)
 #endif
 	unsigned len;
 	unsigned i;
-	time_t timer = time(NULL);
 
 	for (i = 0; i < ARRAY_SIZE(http_response_type); i++) {
 		if (http_response_type[i] == responseNum) {
@@ -1092,15 +1151,24 @@ static void send_headers(unsigned responseNum)
 	 * always fit into those kbytes.
 	 */
 
-	strftime(date_str, sizeof(date_str), RFC1123FMT, gmtime_r(&timer, &tm));
-	/* ^^^ using gmtime_r() instead of gmtime() to not use static data */
-	len = sprintf(iobuf,
-			"HTTP/1.0 %u %s\r\n"
+	{
+#if ENABLE_FEATURE_HTTPD_DATE
+		time_t timer = time(NULL);
+		strftime(date_str, sizeof(date_str), RFC1123FMT, gmtime_r(&timer, &tm));
+		/* ^^^ using gmtime_r() instead of gmtime() to not use static data */
+#endif
+		len = sprintf(iobuf,
+			"HTTP/1.1 %u %s\r\n"
+#if ENABLE_FEATURE_HTTPD_DATE
 			"Date: %s\r\n"
+#endif
 			"Connection: close\r\n",
-			responseNum, responseString,
-			date_str
-	);
+			responseNum, responseString
+#if ENABLE_FEATURE_HTTPD_DATE
+			,date_str
+#endif
+		);
+	}
 
 	if (responseNum != HTTP_OK || found_mime_type) {
 		len += sprintf(iobuf + len,
@@ -1120,7 +1188,7 @@ static void send_headers(unsigned responseNum)
 #endif
 	if (responseNum == HTTP_MOVED_TEMPORARILY) {
 		/* Responding to "GET /dir" with
-		 * "HTTP/1.0 302 Found" "Location: /dir/"
+		 * "HTTP/1.1 302 Found" "Location: /dir/"
 		 * - IOW, asking them to repeat with a slash.
 		 * Here, overflow IS possible, can't use sprintf:
 		 * mkdir test
@@ -1152,7 +1220,9 @@ static void send_headers(unsigned responseNum)
 #endif
 
 	if (file_size != -1) {    /* file */
+#if ENABLE_FEATURE_HTTPD_LAST_MODIFIED
 		strftime(date_str, sizeof(date_str), RFC1123FMT, gmtime_r(&last_mod, &tm));
+#endif
 #if ENABLE_FEATURE_HTTPD_RANGES
 		if (responseNum == HTTP_PARTIAL_CONTENT) {
 			len += sprintf(iobuf + len,
@@ -1197,7 +1267,13 @@ static void send_headers(unsigned responseNum)
 #if ENABLE_FEATURE_HTTPD_RANGES
 			"Accept-Ranges: bytes\r\n"
 #endif
+#if ENABLE_FEATURE_HTTPD_LAST_MODIFIED
 			"Last-Modified: %s\r\n"
+#endif
+#if ENABLE_FEATURE_HTTPD_ETAG
+			"ETag: %s\r\n"
+#endif
+
 	/* Because of 4.4 (5), we can forgo sending of "Content-Length"
 	 * since we close connection afterwards, but it helps clients
 	 * to e.g. estimate download times, show progress bars etc.
@@ -1205,7 +1281,12 @@ static void send_headers(unsigned responseNum)
 	 * but de-facto standard is to send it (see comment below).
 	 */
 			"Content-Length: %"OFF_FMT"u\r\n",
+#if ENABLE_FEATURE_HTTPD_LAST_MODIFIED
 				date_str,
+#endif
+#if ENABLE_FEATURE_HTTPD_ETAG
+				G.etag,
+#endif
 				file_size
 		);
 	}
@@ -1444,7 +1525,7 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 				count = safe_read(fromCgi_rd, rbuf + out_cnt, IOBUF_SIZE - 8);
 				if (count <= 0) {
 					/* eof (or error) and there was no "HTTP",
-					 * send "HTTP/1.0 200 OK\r\n", then send received data */
+					 * send "HTTP/1.1 200 OK\r\n", then send received data */
 					if (out_cnt) {
 						full_write(STDOUT_FILENO, HTTP_200, sizeof(HTTP_200)-1);
 						full_write(STDOUT_FILENO, rbuf, out_cnt);
@@ -1455,10 +1536,10 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 				count = 0;
 				/* "Status" header format is: "Status: 302 Redirected\r\n" */
 				if (out_cnt >= 8 && memcmp(rbuf, "Status: ", 8) == 0) {
-					/* send "HTTP/1.0 " */
+					/* send "HTTP/1.1 " */
 					if (full_write(STDOUT_FILENO, HTTP_200, 9) != 9)
 						break;
-					/* skip "Status: " (including space, sending "HTTP/1.0  NNN" is wrong) */
+					/* skip "Status: " (including space, sending "HTTP/1.1  NNN" is wrong) */
 					rbuf += 8;
 					count = out_cnt - 8;
 					out_cnt = -1; /* buffering off */
@@ -1474,7 +1555,7 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 						full_write(s, "Content-type: text/plain\r\n\r\n", 28);
 					}
 					 * Counter-example of valid CGI without Content-type:
-					 * echo -en "HTTP/1.0 302 Found\r\n"
+					 * echo -en "HTTP/1.1 302 Found\r\n"
 					 * echo -en "Location: http://www.busybox.net\r\n"
 					 * echo -en "\r\n"
 					 */
@@ -1581,7 +1662,7 @@ static void send_cgi_and_exit(
 	/* (Older versions of bbox seem to do some decoding) */
 	setenv1("QUERY_STRING", g_query);
 	putenv((char*)"SERVER_SOFTWARE=busybox httpd/"BB_VER);
-	putenv((char*)"SERVER_PROTOCOL=HTTP/1.0");
+	putenv((char*)"SERVER_PROTOCOL=HTTP/1.1");
 	putenv((char*)"GATEWAY_INTERFACE=CGI/1.1");
 	/* Having _separate_ variables for IP and port defeats
 	 * the purpose of having socket abstraction. Which "port"
@@ -1732,6 +1813,7 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 		}
 	} else {
 		fd = open(url, O_RDONLY);
+		/* file_size and last_mod are already populated */
 	}
 	if (fd < 0) {
 		if (DEBUG)
@@ -1743,6 +1825,19 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 			send_headers_and_exit(HTTP_NOT_FOUND);
 		log_and_exit();
 	}
+#if ENABLE_FEATURE_HTTPD_ETAG
+	/* ETag is "hex(last_mod)-hex(file_size)" e.g. "5e132e20-417" */
+	sprintf(G.etag, "\"%llx-%llx\"", (unsigned long long)last_mod, (unsigned long long)file_size);
+
+	if (G.if_none_match) {
+		if (DEBUG)
+			bb_perror_msg("If-None-Match and file's ETag are: '%s' '%s'\n", G.if_none_match, G.etag);
+		/* Weak ETag comparision.
+		 * If-None-Match may have many ETags but they are quoted so we can use simple substring search */
+		if (strstr(G.if_none_match, G.etag))
+			send_headers_and_exit(HTTP_NOT_MODIFIED);
+	}
+#endif
 	/* If you want to know about EPIPE below
 	 * (happens if you abort downloads from local httpd): */
 	signal(SIGPIPE, SIG_IGN);
@@ -1878,11 +1973,12 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 	log_and_exit();
 }
 
+#if ENABLE_FEATURE_HTTPD_ACL_IP
 static void if_ip_denied_send_HTTP_FORBIDDEN_and_exit(unsigned remote_ip)
 {
 	Htaccess_IP *cur;
 
-	for (cur = ip_a_d; cur; cur = cur->next) {
+	for (cur = G.ip_a_d; cur; cur = cur->next) {
 #if DEBUG
 		fprintf(stderr,
 			"checkPermIP: '%s' ? '%u.%u.%u.%u/%u.%u.%u.%u'\n",
@@ -1907,6 +2003,9 @@ static void if_ip_denied_send_HTTP_FORBIDDEN_and_exit(unsigned remote_ip)
 	if (flg_deny_all) /* depends on whether we saw "D:*" */
 		send_headers_and_exit(HTTP_FORBIDDEN);
 }
+#else
+# define if_ip_denied_send_HTTP_FORBIDDEN_and_exit(arg) ((void)0)
+#endif
 
 #if ENABLE_FEATURE_HTTPD_BASIC_AUTH
 
@@ -2160,7 +2259,9 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 	char *urlcopy;
 	char *urlp;
 	char *tptr;
+#if ENABLE_FEATURE_HTTPD_ACL_IP
 	unsigned remote_ip;
+#endif
 #if ENABLE_FEATURE_HTTPD_CGI
 	unsigned total_headers_len;
 #endif
@@ -2182,27 +2283,6 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 	 * (IOW, server process doesn't need to waste 8k) */
 	iobuf = xmalloc(IOBUF_SIZE);
 
-	remote_ip = 0;
-	if (fromAddr->u.sa.sa_family == AF_INET) {
-		remote_ip = ntohl(fromAddr->u.sin.sin_addr.s_addr);
-	}
-#if ENABLE_FEATURE_IPV6
-# if !ENABLE_PLATFORM_MINGW32
-	if (fromAddr->u.sa.sa_family == AF_INET6
-	 && fromAddr->u.sin6.sin6_addr.s6_addr32[0] == 0
-	 && fromAddr->u.sin6.sin6_addr.s6_addr32[1] == 0
-	 && ntohl(fromAddr->u.sin6.sin6_addr.s6_addr32[2]) == 0xffff)
-		remote_ip = ntohl(fromAddr->u.sin6.sin6_addr.s6_addr32[3]);
-# else
-	if (fromAddr->u.sa.sa_family == AF_INET6
-	 && fromAddr->u.sin6.sin6_addr.s6_words[0] == 0
-	 && fromAddr->u.sin6.sin6_addr.s6_words[1] == 0
-	 && fromAddr->u.sin6.sin6_addr.s6_words[2] == 0
-	 && fromAddr->u.sin6.sin6_addr.s6_words[3] == 0
-	 && ntohl(*(uint32_t *)(fromAddr->u.sin6.sin6_addr.s6_words+4)) == 0xffff)
-		remote_ip = ntohl(*(uint32_t *)(fromAddr->u.sin6.sin6_addr.s6_words+6));
-# endif
-#endif
 	if (ENABLE_FEATURE_HTTPD_CGI || DEBUG || verbose) {
 		/* NB: can be NULL (user runs httpd -i by hand?) */
 		rmt_ip_str = xmalloc_sockaddr2dotted(&fromAddr->u.sa);
@@ -2214,7 +2294,30 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 		if (verbose > 2)
 			bb_simple_error_msg("connected");
 	}
+#if ENABLE_FEATURE_HTTPD_ACL_IP
+	remote_ip = 0;
+	if (fromAddr->u.sa.sa_family == AF_INET) {
+		remote_ip = ntohl(fromAddr->u.sin.sin_addr.s_addr);
+	}
+# if ENABLE_FEATURE_IPV6
+#  if !ENABLE_PLATFORM_MINGW32
+	if (fromAddr->u.sa.sa_family == AF_INET6
+	 && fromAddr->u.sin6.sin6_addr.s6_addr32[0] == 0
+	 && fromAddr->u.sin6.sin6_addr.s6_addr32[1] == 0
+	 && ntohl(fromAddr->u.sin6.sin6_addr.s6_addr32[2]) == 0xffff)
+		remote_ip = ntohl(fromAddr->u.sin6.sin6_addr.s6_addr32[3]);
+#  else
+	if (fromAddr->u.sa.sa_family == AF_INET6
+	 && fromAddr->u.sin6.sin6_addr.s6_words[0] == 0
+	 && fromAddr->u.sin6.sin6_addr.s6_words[1] == 0
+	 && fromAddr->u.sin6.sin6_addr.s6_words[2] == 0
+	 && fromAddr->u.sin6.sin6_addr.s6_words[3] == 0
+	 && ntohl(*(uint32_t *)(fromAddr->u.sin6.sin6_addr.s6_words+4)) == 0xffff)
+		remote_ip = ntohl(*(uint32_t *)(fromAddr->u.sin6.sin6_addr.s6_words+6));
+#  endif
+# endif
 	if_ip_denied_send_HTTP_FORBIDDEN_and_exit(remote_ip);
+#endif
 
 #ifdef SIGALRM
 	/* Install timeout handler. get_line() needs it. */
@@ -2509,6 +2612,13 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 					content_gzip = 1;
 				//}
 			}
+			continue;
+		}
+#endif
+#if ENABLE_FEATURE_HTTPD_ETAG
+		if (STRNCASECMP(iobuf, "If-None-Match:") == 0) {
+			free(G.if_none_match);
+			G.if_none_match = xstrdup(skip_whitespace(iobuf + sizeof("If-None-Match:") - 1));
 			continue;
 		}
 #endif

@@ -33,7 +33,6 @@
 //config:
 //config:config FEATURE_PS_TIME
 //config:	bool "Enable -o time and -o etime specifiers"
-//config:	select PLATFORM_LINUX # statfs()
 //config:	default y
 //config:	depends on (PS || MINIPS) && DESKTOP
 //config:

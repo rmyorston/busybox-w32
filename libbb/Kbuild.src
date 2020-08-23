@@ -116,7 +116,8 @@ lib-$(CONFIG_PLATFORM_POSIX) += warn_ignoring_args.o
 lib-$(CONFIG_PLATFORM_POSIX) += write.o
 lib-$(CONFIG_PLATFORM_POSIX) += xgethostbyname.o
 
-lib-$(CONFIG_PLATFORM_LINUX) += match_fstype.o
+lib-$(CONFIG_MOUNT) += match_fstype.o
+lib-$(CONFIG_UMOUNT) += match_fstype.o
 
 lib-$(CONFIG_FEATURE_UTMP) += utmp.o
 

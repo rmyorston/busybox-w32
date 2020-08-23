@@ -9,7 +9,6 @@
 //config:config HWCLOCK
 //config:	bool "hwclock (5.8 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	The hwclock utility is used to read and set the hardware clock
 //config:	on a system. This is primarily used to set the current time on
@@ -122,16 +121,20 @@ static void to_sys_clock(const char **pp_rtcname, int utc)
 	struct timeval tv;
 	struct timezone tz;
 
-	tz.tz_minuteswest = timezone/60;
+	tz.tz_minuteswest = timezone / 60;
 	/* ^^^ used to also subtract 60*daylight, but it's wrong:
 	 * daylight!=0 means "this timezone has some DST
 	 * during the year", not "DST is in effect now".
 	 */
 	tz.tz_dsttime = 0;
 
+	/* glibc v2.31+ returns an error if both args are non-NULL */
+	if (settimeofday(NULL, &tz))
+		bb_simple_perror_msg_and_die("settimeofday");
+
 	tv.tv_sec = read_rtc(pp_rtcname, NULL, utc);
 	tv.tv_usec = 0;
-	if (settimeofday(&tv, &tz))
+	if (settimeofday(&tv, NULL))
 		bb_simple_perror_msg_and_die("settimeofday");
 }
 
@@ -283,7 +286,11 @@ static void set_system_clock_timezone(int utc)
 	gettimeofday(&tv, NULL);
 	if (!utc)
 		tv.tv_sec += tz.tz_minuteswest * 60;
-	if (settimeofday(&tv, &tz))
+
+	/* glibc v2.31+ returns an error if both args are non-NULL */
+	if (settimeofday(NULL, &tz))
+		bb_simple_perror_msg_and_die("settimeofday");
+	if (settimeofday(&tv, NULL))
 		bb_simple_perror_msg_and_die("settimeofday");
 }
 

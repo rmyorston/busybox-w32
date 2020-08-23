@@ -271,8 +271,10 @@ shell_builtin_read(struct builtin_read_params *params)
 #endif
 
 		c = buffer[bufpos];
-		if (c == '\0' || (ENABLE_PLATFORM_MINGW32 && c == '\r'))
+#if ENABLE_PLATFORM_MINGW32
+		if (c == '\r')
 			continue;
+#endif
 		if (!(read_flags & BUILTIN_READ_RAW)) {
 			if (backslash) {
 				backslash = 0;
@@ -287,6 +289,8 @@ shell_builtin_read(struct builtin_read_params *params)
 		}
 		if (c == delim) /* '\n' or -d CHAR */
 			break;
+		if (c == '\0')
+			continue;
 
 		/* $IFS splitting. NOT done if we run "read"
 		 * without variable names (bash compat).
