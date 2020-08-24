@@ -423,7 +423,15 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 				printf(s);
 				return saved_argv; /* causes main() to exit */
 			}
-			*t++ = bb_process_escape_sequence((const char **)&f);
+			*t = bb_process_escape_sequence((const char **)&f);
+			if (*t == '\0') {
+				printf(s);
+				bb_putchar(*t);
+				t = s;
+			}
+			else {
+				++t;
+			}
 			f--;
 			break;
 		default:
