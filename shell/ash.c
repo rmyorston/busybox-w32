@@ -3143,7 +3143,7 @@ updatepwd(const char *dir)
 		STUNPUTC(new);
 	*new = 0;
 	fix_path_case((char *)stackblock());
-	return stackblock();
+	return bs_to_slash((char *)stackblock());
 #else
 	char *new;
 	char *p;
