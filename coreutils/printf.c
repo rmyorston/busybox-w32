@@ -151,6 +151,11 @@ static double my_xstrtod(const char *arg)
 	return result;
 }
 
+static int fputs_stdout(const char *s)
+{
+	return fputs(s, stdout);
+}
+
 /* Handles %b; return 1 if output is to be short-circuited by \c */
 static int print_esc_string(const char *str)
 {
@@ -196,7 +201,7 @@ static int print_esc_string(const char *str)
 #if ENABLE_PLATFORM_MINGW32
  finish:
 	*t = '\0';
-	printf(s);
+	fputs_stdout(s);
 	free(s);
 	return ret;
 #else
@@ -325,7 +330,7 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 		case '%':
 #if ENABLE_PLATFORM_MINGW32
 			*t = '\0';
-			printf(s);
+			fputs_stdout(s);
 			t = s;
 #endif
 			direc_start = f++;
@@ -420,12 +425,12 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 		case '\\':
 			if (*++f == 'c') {
 				*t = '\0';
-				printf(s);
+				fputs_stdout(s);
 				return saved_argv; /* causes main() to exit */
 			}
 			*t = bb_process_escape_sequence((const char **)&f);
 			if (*t == '\0') {
-				printf(s);
+				fputs_stdout(s);
 				bb_putchar(*t);
 				t = s;
 			}
@@ -451,7 +456,7 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 	}
 #if ENABLE_PLATFORM_MINGW32
 	*t = '\0';
-	printf(s);
+	fputs_stdout(s);
 #endif
 
 	return argv;
