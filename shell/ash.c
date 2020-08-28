@@ -8293,6 +8293,10 @@ expmeta(exp_t *exp, char *name, unsigned name_len, unsigned expdir_len)
 
 	metaflag = 0;
 	start = name;
+#if ENABLE_PLATFORM_MINGW32
+	if (expdir_len == 0 && has_dos_drive_prefix(start) && start[2] != '/')
+		start += 2;
+#endif
 	for (p = name; esc = 0, *p; p += esc + 1) {
 		if (*p == '*' || *p == '?')
 			metaflag = 1;

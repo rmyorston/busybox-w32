@@ -472,12 +472,6 @@ int mingw_isatty(int fd);
 int utimes(const char *file_name, const struct timeval times[2]);
 
 /*
- * dirent.h
- */
-DIR *mingw_opendir(const char *path);
-#define opendir mingw_opendir
-
-/*
  * Functions with different prototypes in BusyBox and WIN32
  */
 #define itoa bb_itoa

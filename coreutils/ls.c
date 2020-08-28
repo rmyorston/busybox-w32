@@ -957,6 +957,11 @@ static struct dnode **scan_one_dir(const char *path, unsigned *nfiles_p)
 				continue; /* if only -A, skip . and .. but show other dotfiles */
 			}
 		}
+#if ENABLE_PLATFORM_MINGW32
+		if (has_dos_drive_prefix(path) && path[2] == '\0')
+			fullname = xasprintf("%s%s", path, entry->d_name);
+		else
+#endif
 		fullname = concat_path_file(path, entry->d_name);
 		cur = my_stat(fullname, bb_basename(fullname), 0);
 #if !ENABLE_PLATFORM_MINGW32

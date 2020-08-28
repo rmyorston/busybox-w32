@@ -1528,21 +1528,6 @@ size_t FAST_FUNC remove_cr(char *p, size_t len)
 	return j;
 }
 
-#undef opendir
-DIR *mingw_opendir(const char *path)
-{
-	char name[4];
-
-	if (isalpha(path[0]) && path[1] == ':' && path[2] == '\0') {
-		strcpy(name, path);
-		name[2] = '/';
-		name[3] = '\0';
-		path = name;
-	}
-
-	return opendir(path);
-}
-
 off_t mingw_lseek(int fd, off_t offset, int whence)
 {
 	HANDLE h = (HANDLE)_get_osfhandle(fd);
