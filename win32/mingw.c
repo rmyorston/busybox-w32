@@ -1661,7 +1661,7 @@ const char *get_system_drive(void)
 		}
 	}
 
-	return drive;
+	return getenv("BB_SYSTEMROOT") ?: drive;
 }
 
 /* Return pointer to system drive if path is of form '/file', else NULL */
