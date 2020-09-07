@@ -23,9 +23,8 @@
  * That flag should not be needed on systems with adjtime support.
  */
 //config:config RTCWAKE
-//config:	bool "rtcwake (6.4 kb)"
+//config:	bool "rtcwake (6.8 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Enter a system sleep state until specified wakeup time.
 
@@ -230,7 +229,7 @@ int rtcwake_main(int argc UNUSED_PARAM, char **argv)
 		do {
 			ssize_t ret = safe_read(fd, &data, sizeof(data));
 			if (ret < 0) {
-				bb_perror_msg("rtc read");
+				bb_simple_perror_msg("rtc read");
 				break;
 			}
 		} while (!(data & RTC_AF));

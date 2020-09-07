@@ -14,7 +14,7 @@
 # Create a scratch directory
 
 mkdir temp
-cd temp
+cd temp || exit $?
 
 # Create test file to work with.
 
@@ -31,10 +31,10 @@ rmdir foo
 rm foo.zip
 
 # File containing some damaged encrypted stream
-optional FEATURE_UNZIP_CDF
+optional FEATURE_UNZIP_CDF CONFIG_UNICODE_SUPPORT
 testing "unzip (bad archive)" "uudecode; unzip bad.zip 2>&1; echo \$?" \
 "Archive:  bad.zip
-  inflating: ]3j½r«IK-%Ix
+  inflating: ]3j½r«I??K-%Ix
 unzip: corrupted data
 unzip: inflate error
 1
@@ -52,7 +52,31 @@ NzITNFBLBQUKAC4JAA04Cw0EOhZQSwUGAQAABAIAAgCZAAAAeQAAAAIALhM=
 "
 SKIP=
 
-rm *
+rm -f *
+
+optional FEATURE_UNZIP_LZMA
+testing "unzip (archive with corrupted lzma 1)" "unzip -p ../unzip_bad_lzma_1.zip 2>&1; echo \$?" \
+"unzip: removing leading '/' from member names
+unzip: corrupted data
+unzip: inflate error
+1
+" \
+"" ""
+SKIP=
+
+rm -f *
+
+optional FEATURE_UNZIP_LZMA
+testing "unzip (archive with corrupted lzma 2)" "unzip -p ../unzip_bad_lzma_2.zip 2>&1; echo \$?" \
+"unzip: removing leading '/' from member names
+unzip: corrupted data
+unzip: inflate error
+1
+" \
+"" ""
+SKIP=
+
+rm -f *
 
 # Clean up scratch directory.
 

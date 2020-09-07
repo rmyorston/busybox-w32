@@ -8,7 +8,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config REALPATH
-//config:	bool "realpath (1.1 kb)"
+//config:	bool "realpath (1.6 kb)"
 //config:	default y
 //config:	help
 //config:	Return the canonicalized absolute pathname.
@@ -38,7 +38,7 @@ int realpath_main(int argc UNUSED_PARAM, char **argv)
 
 	do {
 		/* NOFORK: only one alloc is allowed; must free */
-		char *resolved_path = xmalloc_realpath(*argv);
+		char *resolved_path = xmalloc_realpath_coreutils(*argv);
 		if (resolved_path != NULL) {
 			puts(resolved_path);
 			free(resolved_path);

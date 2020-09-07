@@ -1,6 +1,6 @@
 #
 # For a description of the syntax of this configuration file,
-# see scripts/kbuild/config-language.txt.
+# see docs/Kconfig-language.txt.
 #
 
 comment "Library Tuning"
@@ -75,6 +75,18 @@ config FEATURE_ETC_NETWORKS
 	Enable support for network names in /etc/networks. This is
 	a rarely used feature which allows you to use names
 	instead of IP/mask pairs in route command.
+
+config FEATURE_ETC_SERVICES
+	bool "Consult /etc/services even for well-known ports"
+	default n
+	help
+	Look up e.g. "telnet" and "http" in /etc/services file
+	instead of assuming ports 23 and 80.
+	This is almost never necessary (everybody uses standard ports),
+	and it makes sense to avoid reading this file.
+	If you disable this option, in the cases where port is explicitly
+	specified as a service name (e.g. "telnet HOST PORTNAME"),
+	it will still be looked up in /etc/services.
 
 config FEATURE_EDITING
 	bool "Command line editing"
@@ -322,7 +334,6 @@ config FEATURE_VERBOSE_CP_MESSAGE
 config FEATURE_USE_SENDFILE
 	bool "Use sendfile system call"
 	default y
-	select PLATFORM_LINUX
 	help
 	When enabled, busybox will use the kernel sendfile() function
 	instead of read/write loops to copy data between file descriptors
@@ -364,7 +375,6 @@ config FEATURE_SKIP_ROOTFS
 config MONOTONIC_SYSCALL
 	bool "Use clock_gettime(CLOCK_MONOTONIC) syscall"
 	default y
-	select PLATFORM_LINUX
 	help
 	Use clock_gettime(CLOCK_MONOTONIC) syscall for measuring
 	time intervals (time, ping, traceroute etc need this).

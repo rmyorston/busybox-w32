@@ -51,11 +51,7 @@ int FAST_FUNC bb_make_directory(char *path, long mode, int flags)
 	org_mask = cur_mask = (mode_t)-1L;
 #if ENABLE_PLATFORM_MINGW32
 	/* normalise path separators, path is already assumed writable */
-	for (s=path; *s; ++s) {
-		if (*s == '\\') {
-			*s = '/';
-		}
-	}
+	bs_to_slash(path);
 #endif
 	s = path;
 	while (1) {
@@ -63,29 +59,8 @@ int FAST_FUNC bb_make_directory(char *path, long mode, int flags)
 
 		if (flags & FILEUTILS_RECUR) {  /* Get the parent */
 #if ENABLE_PLATFORM_MINGW32 || __WATCOMC__
-			if (s == path && *s && s[1] == ':') {
-				/* skip drive letter */
-				s += 2;
-			}
-			else if (s == path && s[0] == '/' && s[1] == '/' ) {
-				/* skip UNC server and share */
-				int count = 0;
-				s += 2;
-				while (*s) {
-					if (*s == '/') {
-						do {
-							++s;
-						} while (*s == '/');
-						if (++count == 2) {
-							--s;
-							break;
-						}
-					}
-					else {
-						++s;
-					}
-				}
-			}
+			if (s == path)
+				s += root_len(path);
 #endif
 			/* Bypass leading non-'/'s and then subsequent '/'s */
 			while (*s) {

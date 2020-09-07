@@ -13,13 +13,13 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config FTPGET
-//config:	bool "ftpget (8 kb)"
+//config:	bool "ftpget (7.8 kb)"
 //config:	default y
 //config:	help
 //config:	Retrieve a remote file via FTP.
 //config:
 //config:config FTPPUT
-//config:	bool "ftpput (7.7 kb)"
+//config:	bool "ftpput (7.5 kb)"
 //config:	default y
 //config:	help
 //config:	Store a remote file via FTP.
@@ -220,7 +220,7 @@ int ftp_receive(const char *local_path, char *server_path)
 		struct stat sbuf;
 		/* lstat would be wrong here! */
 		if (stat(local_path, &sbuf) < 0) {
-			bb_perror_msg_and_die("stat");
+			bb_simple_perror_msg_and_die("stat");
 		}
 		if (sbuf.st_size > 0) {
 			beg_range = sbuf.st_size;
@@ -315,7 +315,7 @@ int ftpgetput_main(int argc UNUSED_PARAM, char **argv)
 	INIT_G();
 	/* Set default values */
 	user = "anonymous";
-	password = "busybox@";
+	password = "busybox";
 
 	/*
 	 * Decipher the command line

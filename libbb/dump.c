@@ -199,7 +199,7 @@ static NOINLINE void rewrite(priv_dumper_t *dumper, FS *fs)
 				pr->bcnt = fu->bcnt;
 				if (fu->bcnt == 0) {
 					if (!prec)
-						bb_error_msg_and_die("%%s needs precision or byte count");
+						bb_simple_error_msg_and_die("%%s needs precision or byte count");
 					pr->bcnt = atoi(prec);
 				}
 			} else
@@ -266,7 +266,7 @@ static NOINLINE void rewrite(priv_dumper_t *dumper, FS *fs)
 
 			/* only one conversion character if byte count */
 			if (!(pr->flags & F_ADDRESS) && fu->bcnt && nconv++) {
-				bb_error_msg_and_die("byte count with multiple conversion characters");
+				bb_simple_error_msg_and_die("byte count with multiple conversion characters");
 			}
 		}
 		/*
@@ -387,7 +387,10 @@ static unsigned char *get(priv_dumper_t *dumper)
 			if (need == blocksize) {
 				return NULL;
 			}
-			if (dumper->pub.dump_vflag != ALL && !memcmp(dumper->get__curp, dumper->get__savp, nread)) {
+			if (dumper->pub.dump_vflag != ALL   /* not "show all"? */
+			 && dumper->pub.dump_vflag != FIRST /* not first line? */
+			 && memcmp(dumper->get__curp, dumper->get__savp, nread) == 0 /* same data? */
+			) {
 				if (dumper->pub.dump_vflag != DUP) {
 					puts("*");
 				}
@@ -399,7 +402,7 @@ static unsigned char *get(priv_dumper_t *dumper)
 		}
 		n = fread(dumper->get__curp + nread, sizeof(unsigned char),
 				dumper->pub.dump_length == -1 ? need : MIN(dumper->pub.dump_length, need), stdin);
-		if (!n) {
+		if (n == 0) {
 			if (ferror(stdin)) {
 				bb_simple_perror_msg(dumper->argv[-1]);
 			}
@@ -411,9 +414,10 @@ static unsigned char *get(priv_dumper_t *dumper)
 			dumper->pub.dump_length -= n;
 		}
 		need -= n;
-		if (!need) {
-			if (dumper->pub.dump_vflag == ALL || dumper->pub.dump_vflag == FIRST
-			 || memcmp(dumper->get__curp, dumper->get__savp, blocksize)
+		if (need == 0) {
+			if (dumper->pub.dump_vflag == ALL   /* "show all"? */
+			 || dumper->pub.dump_vflag == FIRST /* first line? */
+			 || memcmp(dumper->get__curp, dumper->get__savp, blocksize) != 0 /* not same data? */
 			) {
 				if (dumper->pub.dump_vflag == DUP || dumper->pub.dump_vflag == FIRST) {
 					dumper->pub.dump_vflag = WAIT;
@@ -464,11 +468,9 @@ static const char conv_str[] ALIGN1 =
 	"\v"  "\\""v""\0"
 	;
 
-
 static void conv_c(PR *pr, unsigned char *p)
 {
 	const char *str = conv_str;
-	char buf[10];
 
 	do {
 		if (*p == *str) {
@@ -482,7 +484,9 @@ static void conv_c(PR *pr, unsigned char *p)
 		*pr->cchar = 'c';
 		printf(pr->fmt, *p);
 	} else {
-		sprintf(buf, "%03o", (int) *p);
+		char buf[4];
+		/* gcc-8.0.1 needs lots of casts to shut up */
+		sprintf(buf, "%03o", (unsigned)(uint8_t)*p);
 		str = buf;
  strpr:
 		*pr->cchar = 's';

@@ -25,9 +25,8 @@
  * remove ridiculous amounts of bloat.
  */
 //config:config ROUTE
-//config:	bool "route (8.9 kb)"
+//config:	bool "route (8.7 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Route displays or manipulates the kernel's IP routing tables.
 
@@ -336,7 +335,7 @@ static NOINLINE void INET_setroute(int action, char **args)
 		}
 		mask = ((struct sockaddr_in *) &rt->rt_dst)->sin_addr.s_addr;
 		if (mask & ~(uint32_t)mask_in_addr(*rt)) {
-			bb_error_msg_and_die("netmask and route address conflict");
+			bb_simple_error_msg_and_die("netmask and route address conflict");
 		}
 	}
 
@@ -444,7 +443,7 @@ static NOINLINE void INET6_setroute(int action, char **args)
 
 	if (devname) {
 		struct ifreq ifr;
-		memset(&ifr, 0, sizeof(ifr));
+		/*memset(&ifr, 0, sizeof(ifr)); - SIOCGIFINDEX does not need to clear all */
 		strncpy_IFNAMSIZ(ifr.ifr_name, devname);
 		xioctl(skfd, SIOCGIFINDEX, &ifr);
 		rt.rtmsg_ifindex = ifr.ifr_ifindex;
@@ -532,7 +531,7 @@ void FAST_FUNC bb_displayroutes(int noresolve, int netstatfmt)
 			if ((r < 0) && feof(fp)) { /* EOF with no (nonspace) chars read. */
 				break;
 			}
-			bb_perror_msg_and_die(bb_msg_read_error);
+			bb_simple_perror_msg_and_die(bb_msg_read_error);
 		}
 
 		if (!(flgs & RTF_UP)) { /* Skip interfaces that are down. */
@@ -598,7 +597,7 @@ static void INET6_displayroutes(void)
 				break;
 			}
  ERROR:
-			bb_perror_msg_and_die(bb_msg_read_error);
+			bb_simple_perror_msg_and_die(bb_msg_read_error);
 		}
 
 		/* Do the addr6x shift-and-insert changes to ':'-delimit addresses.
@@ -628,6 +627,7 @@ static void INET6_displayroutes(void)
 
 		r = 0;
 		while (1) {
+			memset(&snaddr6, 0, sizeof(snaddr6));
 			inet_pton(AF_INET6, addr6x + r,
 					  (struct sockaddr *) &snaddr6.sin6_addr);
 			snaddr6.sin6_family = AF_INET6;

@@ -8,13 +8,16 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config RESET
-//config:	bool "reset (275 bytes)"
+//config:	bool "reset (345 bytes)"
 //config:	default y
 //config:	help
 //config:	This program is used to reset the terminal screen, if it
 //config:	gets messed up.
 
-//applet:IF_RESET(APPLET_NOEXEC(reset, reset, BB_DIR_USR_BIN, BB_SUID_DROP, reset))
+// NOTE: For WIN32 this applet is NOFORK so we can change the screen
+//       buffer for the current process.
+
+//applet:IF_RESET(APPLET_NOFORK(reset, reset, BB_DIR_USR_BIN, BB_SUID_DROP, reset))
 
 //kbuild:lib-$(CONFIG_RESET) += reset.o
 
@@ -36,6 +39,7 @@ int stty_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int reset_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int reset_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 {
+#if !ENABLE_PLATFORM_MINGW32
 	static const char *const args[] = {
 		"stty", "sane", NULL
 	};
@@ -61,5 +65,14 @@ int reset_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		execvp("stty", (char**)args);
 #endif
 	}
+#else
+	if (isatty(STDOUT_FILENO)) {
+		// "ESC [ m"        -- Reset all display attributes
+		// "ESC [ ? 1049 l" -- Use normal screen buffer
+		// reset_screen     -- Reset cursor and clear screen buffer
+		full_write1_str(ESC"[m" ESC"[?1049l");
+		reset_screen();
+	}
+#endif
 	return EXIT_SUCCESS;
 }

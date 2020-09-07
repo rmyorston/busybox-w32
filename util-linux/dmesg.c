@@ -9,9 +9,8 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config DMESG
-//config:	bool "dmesg (3.5 kb)"
+//config:	bool "dmesg (3.7 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	dmesg is used to examine or control the kernel ring buffer. When the
 //config:	Linux kernel prints messages to the system log, they are stored in
@@ -74,7 +73,7 @@ int dmesg_main(int argc UNUSED_PARAM, char **argv)
 	opts = getopt32(argv, "cs:+n:+r", &len, &level);
 	if (opts & OPT_n) {
 		if (klogctl(8, NULL, (long) level))
-			bb_perror_msg_and_die("klogctl");
+			bb_simple_perror_msg_and_die("klogctl");
 		return EXIT_SUCCESS;
 	}
 
@@ -88,7 +87,7 @@ int dmesg_main(int argc UNUSED_PARAM, char **argv)
 	buf = xmalloc(len);
 	len = klogctl(3 + (opts & OPT_c), buf, len); /* read ring buffer */
 	if (len < 0)
-		bb_perror_msg_and_die("klogctl");
+		bb_simple_perror_msg_and_die("klogctl");
 	if (len == 0)
 		return EXIT_SUCCESS;
 

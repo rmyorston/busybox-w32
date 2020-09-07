@@ -6,7 +6,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config SPLIT
-//config:	bool "split (5.4 kb)"
+//config:	bool "split (5 kb)"
 //config:	default y
 //config:	help
 //config:	Split a file into pieces.
@@ -127,7 +127,7 @@ int split_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	if (NAME_MAX < strlen(sfx) + suffix_len)
-		bb_error_msg_and_die("suffix too long");
+		bb_simple_error_msg_and_die("suffix too long");
 
 	{
 		char *char_p = xzalloc(suffix_len + 1);
@@ -147,7 +147,7 @@ int split_main(int argc UNUSED_PARAM, char **argv)
 		do {
 			if (!remaining) {
 				if (!pfx)
-					bb_error_msg_and_die("suffixes exhausted");
+					bb_simple_error_msg_and_die("suffixes exhausted");
 				xmove_fd(xopen(pfx, O_WRONLY | O_CREAT | O_TRUNC), 1);
 				pfx = next_file(pfx, suffix_len);
 				remaining = cnt;

@@ -11,7 +11,7 @@
  * Only supports new ASCII and CRC formats
  */
 //config:config CPIO
-//config:	bool "cpio (14 kb)"
+//config:	bool "cpio (15 kb)"
 //config:	default y
 //config:	help
 //config:	cpio is an archival utility program used to create, modify, and
@@ -64,15 +64,17 @@
 //usage:     "\n	-p DIR	Copy files to DIR"
 //usage:	)
 //usage:     "\nOptions:"
+//usage:	IF_FEATURE_CPIO_O(
+//usage:     "\n	-H newc	Archive format"
+//usage:	)
 //usage:     "\n	-d	Make leading directories"
 //usage:     "\n	-m	Preserve mtime"
 //usage:     "\n	-v	Verbose"
 //usage:     "\n	-u	Overwrite"
 //usage:     "\n	-F FILE	Input (-t,-i,-p) or output (-o) file"
 //usage:     "\n	-R USER[:GRP]	Set owner of created files"
-//usage:	IF_FEATURE_CPIO_O(
-//usage:     "\n	-H newc	Archive format"
-//usage:	)
+//usage:     "\n	-L	Dereference symlinks"
+//usage:     "\n	-0	Input is separated by NULs"
 
 /* GNU cpio 2.9 --help (abridged):
 
@@ -374,6 +376,7 @@ int cpio_main(int argc UNUSED_PARAM, char **argv)
 #endif
 		"owner\0"        Required_argument "R"
 		"verbose\0"      No_argument       "v"
+		"null\0"         No_argument       "0"
 		"quiet\0"        No_argument       "\xff"
 		"to-stdout\0"    No_argument       "\xfe"
 		;
@@ -508,9 +511,12 @@ int cpio_main(int argc UNUSED_PARAM, char **argv)
 	while (get_header_cpio(archive_handle) == EXIT_SUCCESS)
 		continue;
 
+	create_links_from_list(archive_handle->link_placeholders);
+
 	if (archive_handle->cpio__blocks != (off_t)-1
 	 && !(opt & OPT_QUIET)
 	) {
+		fflush_all();
 		fprintf(stderr, "%"OFF_FMT"u blocks\n", archive_handle->cpio__blocks);
 	}
 

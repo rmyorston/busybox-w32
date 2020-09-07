@@ -9,3 +9,4 @@ lib-y:=
 INSERT
 
 lib-$(CONFIG_FEATURE_SH_MATH) += math.o
+lib-$(CONFIG_FEATURE_PRNG_SHELL) += random.o

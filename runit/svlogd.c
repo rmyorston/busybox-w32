@@ -124,7 +124,7 @@ log message, you can use a pattern like this instead
 -*: *: pid *
 */
 //config:config SVLOGD
-//config:	bool "svlogd (15 kb)"
+//config:	bool "svlogd (16 kb)"
 //config:	default y
 //config:	help
 //config:	svlogd continuously reads log data from its standard input, optionally
@@ -274,7 +274,7 @@ static void warnx(const char *m0, const char *m1)
 }
 static void pause_nomem(void)
 {
-	bb_error_msg(PAUSE"out of memory");
+	bb_simple_error_msg(PAUSE"out of memory");
 	sleep(3);
 }
 static void pause1cannot(const char *m0)
@@ -347,11 +347,13 @@ static unsigned pmatch(const char *p, const char *s, unsigned len)
 /* NUL terminated */
 static void fmt_time_human_30nul(char *s, char dt_delim)
 {
+	struct tm tm;
 	struct tm *ptm;
 	struct timeval tv;
 
 	gettimeofday(&tv, NULL);
-	ptm = gmtime(&tv.tv_sec);
+	ptm = gmtime_r(&tv.tv_sec, &tm);
+	/* ^^^ using gmtime_r() instead of gmtime() to not use static data */
 	sprintf(s, "%04u-%02u-%02u%c%02u:%02u:%02u.%06u000",
 		(unsigned)(1900 + ptm->tm_year),
 		(unsigned)(ptm->tm_mon + 1),
@@ -1008,7 +1010,7 @@ static void sig_hangup_handler(int sig_no UNUSED_PARAM)
 	reopenasap = 1;
 }
 
-static void logmatch(struct logdir *ld)
+static void logmatch(struct logdir *ld, char* lineptr, int lineptr_len)
 {
 	char *s;
 
@@ -1019,12 +1021,12 @@ static void logmatch(struct logdir *ld)
 		switch (s[0]) {
 		case '+':
 		case '-':
-			if (pmatch(s+1, line, linelen))
+			if (pmatch(s+1, lineptr, lineptr_len))
 				ld->match = s[0];
 			break;
 		case 'e':
 		case 'E':
-			if (pmatch(s+1, line, linelen))
+			if (pmatch(s+1, lineptr, lineptr_len))
 				ld->matcherr = s[0];
 			break;
 		}
@@ -1180,7 +1182,7 @@ int svlogd_main(int argc, char **argv)
 			if (ld->fddir == -1)
 				continue;
 			if (ld->inst)
-				logmatch(ld);
+				logmatch(ld, lineptr, linelen);
 			if (ld->matcherr == 'e') {
 				/* runit-1.8.0 compat: if timestamping, do it on stderr too */
 				////full_write(STDERR_FILENO, printptr, printlen);

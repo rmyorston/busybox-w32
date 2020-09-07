@@ -103,7 +103,7 @@ void FAST_FUNC data_extract_all(archive_handle_t *archive_handle)
 		struct stat existing_sb;
 		if (lstat(dst_name, &existing_sb) == -1) {
 			if (errno != ENOENT) {
-				bb_perror_msg_and_die("can't stat old file");
+				bb_simple_perror_msg_and_die("can't stat old file");
 			}
 		}
 		else if (existing_sb.st_mtime >= file_header->mtime) {
@@ -122,13 +122,10 @@ void FAST_FUNC data_extract_all(archive_handle_t *archive_handle)
 
 	/* Handle hard links separately */
 	if (hard_link) {
-		res = link(hard_link, dst_name);
-		if (res != 0) {
-			/* shared message */
-			bb_perror_msg("can't create %slink '%s' to '%s'",
-				"hard",	dst_name, hard_link
-			);
-		}
+		create_or_remember_link(&archive_handle->link_placeholders,
+				hard_link,
+				dst_name,
+				1);
 		/* Hardlinks have no separate mode/ownership, skip chown/chmod */
 		goto ret;
 	}
@@ -195,9 +192,10 @@ void FAST_FUNC data_extract_all(archive_handle_t *archive_handle)
 		 *
 		 * Untarring bug.tar would otherwise place evil.py in '/tmp'.
 		 */
-		create_or_remember_symlink(&archive_handle->symlink_placeholders,
+		create_or_remember_link(&archive_handle->link_placeholders,
 				file_header->link_target,
-				dst_name);
+				dst_name,
+				0);
 		break;
 	case S_IFSOCK:
 	case S_IFBLK:
@@ -209,7 +207,7 @@ void FAST_FUNC data_extract_all(archive_handle_t *archive_handle)
 		}
 		break;
 	default:
-		bb_error_msg_and_die("unrecognized file type");
+		bb_simple_error_msg_and_die("unrecognized file type");
 	}
 
 	if (!S_ISLNK(file_header->mode)) {

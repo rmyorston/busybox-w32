@@ -107,10 +107,9 @@ char* FAST_FUNC xmalloc_reads(int fd, size_t *maxsz_p)
 
 // Read (potentially big) files in one go. File size is estimated
 // by stat. Extra '\0' byte is appended.
-void* FAST_FUNC xmalloc_read(int fd, size_t *maxsz_p)
+void* FAST_FUNC xmalloc_read_with_initial_buf(int fd, size_t *maxsz_p, char *buf, size_t total)
 {
-	char *buf;
-	size_t size, rd_size, total;
+	size_t size, rd_size;
 	size_t to_read;
 	struct stat st;
 
@@ -123,8 +122,6 @@ void* FAST_FUNC xmalloc_read(int fd, size_t *maxsz_p)
 	/* In order to make such files readable, we add small const */
 	size = (st.st_size | 0x3ff) + 1;
 
-	total = 0;
-	buf = NULL;
 	while (1) {
 		if (to_read < size)
 			size = to_read;
@@ -151,6 +148,11 @@ void* FAST_FUNC xmalloc_read(int fd, size_t *maxsz_p)
 	if (maxsz_p)
 		*maxsz_p = total;
 	return buf;
+}
+
+void* FAST_FUNC xmalloc_read(int fd, size_t *maxsz_p)
+{
+	return xmalloc_read_with_initial_buf(fd, maxsz_p, NULL, 0);
 }
 
 #ifdef USING_LSEEK_TO_GET_SIZE
@@ -220,7 +222,7 @@ void FAST_FUNC xread(int fd, void *buf, size_t count)
 	if (count) {
 		ssize_t size = full_read(fd, buf, count);
 		if ((size_t)size != count)
-			bb_error_msg_and_die("short read");
+			bb_simple_error_msg_and_die("short read");
 	}
 }
 

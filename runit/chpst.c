@@ -28,20 +28,20 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* Busyboxed by Denys Vlasenko <vda.linux@googlemail.com> */
 
 //config:config CHPST
-//config:	bool "chpst (8.7 kb)"
+//config:	bool "chpst (9 kb)"
 //config:	default y
 //config:	help
 //config:	chpst changes the process state according to the given options, and
 //config:	execs specified program.
 //config:
 //config:config SETUIDGID
-//config:	bool "setuidgid (4.2 kb)"
+//config:	bool "setuidgid (4 kb)"
 //config:	default y
 //config:	help
 //config:	Sets soft resource limits as specified by options
 //config:
 //config:config ENVUIDGID
-//config:	bool "envuidgid (3.6 kb)"
+//config:	bool "envuidgid (3.9 kb)"
 //config:	default y
 //config:	help
 //config:	Sets $UID to account's uid and $GID to account's gid
@@ -54,7 +54,7 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //config:	in the given directory
 //config:
 //config:config SOFTLIMIT
-//config:	bool "softlimit (4.3 kb)"
+//config:	bool "softlimit (4.5 kb)"
 //config:	default y
 //config:	help
 //config:	Sets soft resource limits as specified by options
@@ -135,7 +135,6 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //usage:     "\n			a SIGXCPU after N seconds"
 
 #include "libbb.h"
-#include <sys/resource.h> /* getrlimit */
 
 /*
 Five applets here: chpst, envdir, envuidgid, setuidgid, softlimit.
@@ -271,7 +270,7 @@ static void limit(int what, long l)
 	else
 		r.rlim_cur = l;
 	if (setrlimit(what, &r) == -1)
-		bb_perror_msg_and_die("setrlimit");
+		bb_simple_perror_msg_and_die("setrlimit");
 }
 
 int chpst_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -468,12 +467,12 @@ int chpst_main(int argc UNUSED_PARAM, char **argv)
 	if (opt & OPT_n) {
 		errno = 0;
 		if (nice(xatoi(nicestr)) == -1)
-			bb_perror_msg_and_die("nice");
+			bb_simple_perror_msg_and_die("nice");
 	}
 
 	if (opt & OPT_u) {
 		if (setgroups(1, &ugid.gid) == -1)
-			bb_perror_msg_and_die("setgroups");
+			bb_simple_perror_msg_and_die("setgroups");
 		xsetgid(ugid.gid);
 		xsetuid(ugid.uid);
 	}

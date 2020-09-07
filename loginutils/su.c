@@ -8,6 +8,7 @@
 //config:	bool "su (19 kb)"
 //config:	default y
 //config:	select FEATURE_SYSLOG
+//config:	depends on PLATFORM_POSIX
 //config:	help
 //config:	su is used to become another user during a login session.
 //config:	Invoked without a username, su defaults to becoming the super user.
@@ -147,7 +148,7 @@ int su_main(int argc UNUSED_PARAM, char **argv)
 			syslog(LOG_NOTICE, "%c %s %s:%s",
 				'-', tty, old_user, opt_username);
 		bb_do_delay(LOGIN_FAIL_DELAY);
-		bb_error_msg_and_die("incorrect password");
+		bb_simple_error_msg_and_die("incorrect password");
 	}
 
 	if (ENABLE_FEATURE_CLEAN_UP && ENABLE_FEATURE_SU_SYSLOG) {
@@ -165,7 +166,7 @@ int su_main(int argc UNUSED_PARAM, char **argv)
 		 * probably a uucp account or has restricted access.  Don't
 		 * compromise the account by allowing access with a standard
 		 * shell.  */
-		bb_error_msg("using restricted shell");
+		bb_simple_error_msg("using restricted shell");
 		opt_shell = NULL; /* ignore -s PROG */
 	}
 	/* else: user can run whatever he wants via "su -s PROG USER".

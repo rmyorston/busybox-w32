@@ -8,7 +8,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config RDATE
-//config:	bool "rdate (6 kb)"
+//config:	bool "rdate (5.6 kb)"
 //config:	default y
 //config:	help
 //config:	The rdate utility allows you to synchronize the date and time of your
@@ -33,7 +33,7 @@ enum { RFC_868_BIAS = 2208988800UL };
 
 static void socket_timeout(int sig UNUSED_PARAM)
 {
-	bb_error_msg_and_die("timeout connecting to time server");
+	bb_simple_error_msg_and_die("timeout connecting to time server");
 }
 
 static time_t askremotedate(const char *host)
@@ -45,7 +45,7 @@ static time_t askremotedate(const char *host)
 	alarm(10);
 	signal(SIGALRM, socket_timeout);
 
-	fd = create_and_connect_stream_or_die(host, bb_lookup_port("time", "tcp", 37));
+	fd = create_and_connect_stream_or_die(host, bb_lookup_std_port("time", "tcp", 37));
 
 	if (safe_read(fd, &nett, 4) != 4)    /* read time from server */
 		bb_error_msg_and_die("%s: %s", host, "short read");
@@ -94,10 +94,14 @@ int rdate_main(int argc UNUSED_PARAM, char **argv)
 
 	if (!(flags & 2)) { /* no -p (-s may be present) */
 		if (time(NULL) == remote_time)
-			bb_error_msg("current time matches remote time");
-		else
-			if (stime(&remote_time) < 0)
-				bb_perror_msg_and_die("can't set time of day");
+			bb_simple_error_msg("current time matches remote time");
+		else {
+			struct timespec ts;
+			ts.tv_sec = remote_time;
+			ts.tv_nsec = 0;
+			if (clock_settime(CLOCK_REALTIME, &ts) < 0)
+				bb_simple_perror_msg_and_die("can't set time of day");
+		}
 	}
 
 	if (flags != 1) /* not lone -s */

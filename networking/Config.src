@@ -1,6 +1,6 @@
 #
 # For a description of the syntax of this configuration file,
-# see scripts/kbuild/config-language.txt.
+# see docs/Kconfig-language.txt.
 #
 
 menu "Networking Utilities"
@@ -45,6 +45,17 @@ config VERBOSE_RESOLUTION_ERRORS
 	Enable if you are not satisfied with simplistic
 	"can't resolve 'hostname.com'" and want to know more.
 	This may increase size of your executable a bit.
+
+config FEATURE_TLS_SHA1
+	bool "In TLS code, support ciphers which use deprecated SHA1"
+	depends on TLS
+	default n
+	help
+	Selecting this option increases interoperability with very old
+	servers, but slightly increases code size.
+
+	Most TLS servers support SHA256 today (2018), since SHA1 is
+	considered possibly insecure (although not yet definitely broken).
 
 INSERT
 

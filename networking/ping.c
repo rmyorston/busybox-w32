@@ -25,15 +25,14 @@
  * The code was modified by Bart Visscher <magick@linux-fan.com>
  */
 //config:config PING
-//config:	bool "ping (9.5 kb)"
+//config:	bool "ping (10 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	ping uses the ICMP protocol's mandatory ECHO_REQUEST datagram to
 //config:	elicit an ICMP ECHO_RESPONSE from a host or gateway.
 //config:
 //config:config PING6
-//config:	bool "ping6 (10 kb)"
+//config:	bool "ping6 (11 kb)"
 //config:	default y
 //config:	depends on FEATURE_IPV6
 //config:	help
@@ -74,6 +73,7 @@
 //usage:	)
 //usage:     "\n	-c CNT		Send only CNT pings"
 //usage:     "\n	-s SIZE		Send SIZE data bytes in packets (default 56)"
+//usage:     "\n	-i SECS		Interval"
 //usage:     "\n	-A		Ping as soon as reply is recevied"
 //usage:     "\n	-t TTL		Set TTL"
 //usage:     "\n	-I IFACE/IP	Source interface or IP address"
@@ -91,6 +91,7 @@
 //usage:       "Send ICMP ECHO_REQUEST packets to network hosts\n"
 //usage:     "\n	-c CNT		Send only CNT pings"
 //usage:     "\n	-s SIZE		Send SIZE data bytes in packets (default 56)"
+//usage:     "\n	-i SECS		Interval"
 //usage:     "\n	-A		Ping as soon as reply is recevied"
 //usage:     "\n	-I IFACE/IP	Source interface or IP address"
 //usage:     "\n	-q		Quiet, only display output at start"
@@ -182,8 +183,8 @@ create_icmp_socket(void)
 		sock = socket(AF_INET, SOCK_RAW, 1); /* 1 == ICMP */
 	if (sock < 0) {
 		if (errno == EPERM)
-			bb_error_msg_and_die(bb_msg_perm_denied_are_you_root);
-		bb_perror_msg_and_die(bb_msg_can_not_create_raw_socket);
+			bb_simple_error_msg_and_die(bb_msg_perm_denied_are_you_root);
+		bb_simple_perror_msg_and_die(bb_msg_can_not_create_raw_socket);
 	}
 
 	xmove_fd(sock, pingsock);
@@ -233,7 +234,7 @@ static void ping4(len_and_sockaddr *lsa)
 #endif
 		if (c < 0) {
 			if (errno != EINTR)
-				bb_perror_msg("recvfrom");
+				bb_simple_perror_msg("recvfrom");
 			continue;
 		}
 		if (c >= 76) {			/* ip + icmp */
@@ -278,7 +279,7 @@ static void ping6(len_and_sockaddr *lsa)
 #endif
 		if (c < 0) {
 			if (errno != EINTR)
-				bb_perror_msg("recvfrom");
+				bb_simple_perror_msg("recvfrom");
 			continue;
 		}
 		if (c >= ICMP_MINLEN) {	/* icmp6_hdr */
@@ -350,7 +351,7 @@ static int common_ping_main(sa_family_t af, char **argv)
 /* Full(er) version */
 
 /* -c NUM, -t NUM, -w NUM, -W NUM */
-#define OPT_STRING "qvAc:+s:t:+w:+W:+I:np:4"IF_PING6("6")
+#define OPT_STRING "qvAc:+s:t:+w:+W:+I:np:i:4"IF_PING6("6")
 enum {
 	OPT_QUIET = 1 << 0,
 	OPT_VERBOSE = 1 << 1,
@@ -363,8 +364,9 @@ enum {
 	OPT_I = 1 << 8,
 	/*OPT_n = 1 << 9, - ignored */
 	OPT_p = 1 << 10,
-	OPT_IPV4 = 1 << 11,
-	OPT_IPV6 = (1 << 12) * ENABLE_PING6,
+	OPT_i = 1 << 11,
+	OPT_IPV4 = 1 << 12,
+	OPT_IPV6 = (1 << 13) * ENABLE_PING6,
 };
 
 
@@ -382,6 +384,7 @@ struct globals {
 	unsigned long long tsum; /* in us, sum of all times */
 	unsigned cur_us; /* low word only, we don't need more */
 	unsigned deadline_us;
+	unsigned interval_us;
 	unsigned timeout;
 	unsigned sizeof_rcv_packet;
 	char *rcv_packet; /* [datalen + MAXIPLEN + MAXICMPLEN] */
@@ -478,12 +481,18 @@ static void sendping_tail(void (*sp)(int), int size_pkt)
 	 * it doesn't matter */
 	sz = xsendto(pingsock, G.snd_packet, size_pkt, &pingaddr.sa, sizeof(pingaddr));
 	if (sz != size_pkt)
-		bb_error_msg_and_die(bb_msg_write_error);
+		bb_simple_error_msg_and_die(bb_msg_write_error);
 
 	if (pingcount == 0 || G.ntransmitted < pingcount) {
-		/* Didn't send all pings yet - schedule next in 1s */
+		/* Didn't send all pings yet - schedule next in -i SEC interval */
+		struct itimerval i;
 		signal(SIGALRM, sp);
-		alarm(PINGINTERVAL);
+		/*ualarm(G.interval_us, 0); - does not work for >=1sec on some libc */
+		i.it_interval.tv_sec = 0;
+		i.it_interval.tv_usec = 0;
+		i.it_value.tv_sec = G.interval_us / 1000000;
+		i.it_value.tv_usec = G.interval_us % 1000000;
+		setitimer(ITIMER_REAL, &i, NULL);
 	} else { /* -c NN, and all NN are sent */
 		/* Wait for the last ping to come back.
 		 * -W timeout: wait for a response in seconds.
@@ -713,7 +722,7 @@ static void ping4(len_and_sockaddr *lsa)
 	if (source_lsa) {
 		if (setsockopt(pingsock, IPPROTO_IP, IP_MULTICAST_IF,
 				&source_lsa->u.sa, source_lsa->len))
-			bb_error_msg_and_die("can't set multicast source interface");
+			bb_simple_error_msg_and_die("can't set multicast source interface");
 		xbind(pingsock, &source_lsa->u.sa, source_lsa->len);
 	}
 
@@ -747,7 +756,7 @@ static void ping4(len_and_sockaddr *lsa)
 				(struct sockaddr *) &from, &fromlen);
 		if (c < 0) {
 			if (errno != EINTR)
-				bb_perror_msg("recvfrom");
+				bb_simple_perror_msg("recvfrom");
 			continue;
 		}
 		c = unpack4(G.rcv_packet, c, &from);
@@ -828,7 +837,7 @@ static void ping6(len_and_sockaddr *lsa)
 		c = recvmsg(pingsock, &msg, 0);
 		if (c < 0) {
 			if (errno != EINTR)
-				bb_perror_msg("recvfrom");
+				bb_simple_perror_msg("recvfrom");
 			continue;
 		}
 		for (mp = CMSG_FIRSTHDR(&msg); mp; mp = CMSG_NXTHDR(&msg, mp)) {
@@ -885,6 +894,8 @@ static int common_ping_main(int opt, char **argv)
 {
 	len_and_sockaddr *lsa;
 	char *str_s, *str_p;
+	char *str_i = (char*)"1";
+	duration_t interval;
 
 	INIT_G();
 
@@ -892,7 +903,7 @@ static int common_ping_main(int opt, char **argv)
 			OPT_STRING
 			/* exactly one arg; -v and -q don't mix */
 			"\0" "=1:q--v:v--q",
-			&pingcount, &str_s, &opt_ttl, &G.deadline_us, &timeout, &str_I, &str_p
+			&pingcount, &str_s, &opt_ttl, &G.deadline_us, &timeout, &str_I, &str_p, &str_i
 	);
 	if (opt & OPT_s)
 		datalen = xatou16(str_s); // -s
@@ -910,6 +921,10 @@ static int common_ping_main(int opt, char **argv)
 		unsigned d = G.deadline_us < INT_MAX/1000000 ? G.deadline_us : INT_MAX/1000000;
 		G.deadline_us = 1 | ((d * 1000000) + monotonic_us());
 	}
+	interval = parse_duration_str(str_i);
+	if (interval > INT_MAX/1000000)
+		interval = INT_MAX/1000000;
+	G.interval_us = interval * 1000000;
 
 	myid = (uint16_t) getpid();
 	hostname = argv[optind];

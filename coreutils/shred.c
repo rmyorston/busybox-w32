@@ -5,7 +5,7 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config SHRED
-//config:	bool "shred (5 kb)"
+//config:	bool "shred (4.9 kb)"
 //config:	default y
 //config:	help
 //config:	Overwrite a file to hide its contents, and optionally delete it
@@ -37,6 +37,10 @@
 */
 
 #include "libbb.h"
+
+#if ENABLE_PLATFORM_MINGW32
+#define xopen mingw_xopen
+#endif
 
 int shred_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int shred_main(int argc UNUSED_PARAM, char **argv)

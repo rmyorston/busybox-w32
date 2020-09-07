@@ -7,9 +7,8 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config RFKILL
-//config:	bool "rfkill (5.3 kb)"
+//config:	bool "rfkill (4.4 kb)"
 //config:	default n # doesn't build on Ubuntu 9.04
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Enable/disable wireless devices.
 //config:
@@ -88,7 +87,7 @@ int rfkill_main(int argc UNUSED_PARAM, char **argv)
 
 	rf_fd = device_open("/dev/rfkill", mode);
 	if (rf_fd < 0)
-		bb_perror_msg_and_die("/dev/rfkill");
+		bb_simple_perror_msg_and_die("/dev/rfkill");
 
 	if (rf_opt & OPT_l) {
 		while (full_read(rf_fd, &event, sizeof(event)) == RFKILL_EVENT_SIZE_V1) {

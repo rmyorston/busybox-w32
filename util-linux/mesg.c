@@ -7,7 +7,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config MESG
-//config:	bool "mesg (1.2 kb)"
+//config:	bool "mesg (1.4 kb)"
 //config:	default y
 //config:	help
 //config:	Mesg controls access to your terminal by others. It is typically
@@ -65,7 +65,7 @@ int mesg_main(int argc UNUSED_PARAM, char **argv)
 	 */
 
 	if (!isatty(STDIN_FILENO))
-		bb_error_msg_and_die("not a tty");
+		bb_simple_error_msg_and_die("not a tty");
 
 	xfstat(STDIN_FILENO, &sb, "stdin");
 	if (c == 0) {

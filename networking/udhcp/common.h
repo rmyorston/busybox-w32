@@ -40,7 +40,7 @@ struct dhcp_packet {
 	uint32_t yiaddr; /* 'your' (client) IP address */
 	/* IP address of next server to use in bootstrap, returned in DHCPOFFER, DHCPACK by server */
 	uint32_t siaddr_nip;
-	uint32_t gateway_nip; /* relay agent IP address */
+	uint32_t gateway_nip; /* aka 'giaddr': relay agent IP address */
 	uint8_t chaddr[16];   /* link-layer client hardware address (MAC) */
 	uint8_t sname[64];    /* server host name (ASCIZ) */
 	uint8_t file[128];    /* boot file name (ASCIZ) */
@@ -78,7 +78,7 @@ struct BUG_bad_sizeof_struct_ip_udp_dhcp_packet {
 /*** Options ***/
 
 enum {
-	OPTION_IP = 1,
+	OPTION_IP = 0,
 	OPTION_IP_PAIR,
 	OPTION_STRING,
 	/* Opts of STRING_HOST type will be sanitized before they are passed
@@ -107,6 +107,12 @@ enum {
 	OPTION_LIST = 0x20,
 };
 
+struct dhcp_scan_state {
+	int overload;
+	int rem;
+	uint8_t *optionptr;
+};
+
 /* DHCP option codes (partial list). See RFC 2132 and
  * http://www.iana.org/assignments/bootp-dhcp-parameters/
  * Commented out options are handled by common option machinery,
@@ -119,12 +125,12 @@ enum {
 //#define DHCP_TIME_SERVER      0x04 /* RFC 868 time server (32-bit, 0 = 1.1.1900) */
 //#define DHCP_NAME_SERVER      0x05 /* IEN 116 _really_ ancient kind of NS */
 //#define DHCP_DNS_SERVER       0x06
-//#define DHCP_LOG_SERVER       0x07 /* port 704 UDP log (not syslog)
+//#define DHCP_LOG_SERVER       0x07 /* port 704 UDP log (not syslog) */
 //#define DHCP_COOKIE_SERVER    0x08 /* "quote of the day" server */
 //#define DHCP_LPR_SERVER       0x09
-#define DHCP_HOST_NAME          0x0c /* either client informs server or server gives name to client */
+#define DHCP_HOST_NAME          0x0c /* 12: either client informs server or server gives name to client */
 //#define DHCP_BOOT_SIZE        0x0d
-//#define DHCP_DOMAIN_NAME      0x0f /* server gives domain suffix */
+//#define DHCP_DOMAIN_NAME      0x0f /* 15: server gives domain suffix */
 //#define DHCP_SWAP_SERVER      0x10
 //#define DHCP_ROOT_PATH        0x11
 //#define DHCP_IP_TTL           0x17
@@ -135,35 +141,42 @@ enum {
 //#define DHCP_NIS_SERVER       0x29
 //#define DHCP_NTP_SERVER       0x2a
 //#define DHCP_WINS_SERVER      0x2c
-#define DHCP_REQUESTED_IP       0x32 /* sent by client if specific IP is wanted */
-#define DHCP_LEASE_TIME         0x33
-#define DHCP_OPTION_OVERLOAD    0x34
-#define DHCP_MESSAGE_TYPE       0x35
-#define DHCP_SERVER_ID          0x36 /* by default server's IP */
-#define DHCP_PARAM_REQ          0x37 /* list of options client wants */
-//#define DHCP_ERR_MESSAGE      0x38 /* error message when sending NAK etc */
-#define DHCP_MAX_SIZE           0x39
-#define DHCP_VENDOR             0x3c /* client's vendor (a string) */
-#define DHCP_CLIENT_ID          0x3d /* by default client's MAC addr, but may be arbitrarily long */
-//#define DHCP_TFTP_SERVER_NAME 0x42 /* same as 'sname' field */
-//#define DHCP_BOOT_FILE        0x43 /* same as 'file' field */
-//#define DHCP_USER_CLASS       0x4d /* RFC 3004. set of LASCII strings. "I am a printer" etc */
-#define DHCP_FQDN               0x51 /* client asks to update DNS to map its FQDN to its new IP */
-//#define DHCP_DOMAIN_SEARCH    0x77 /* RFC 3397. set of ASCIZ string, DNS-style compressed */
-//#define DHCP_SIP_SERVERS      0x78 /* RFC 3361. flag byte, then: 0: domain names, 1: IP addrs */
-//#define DHCP_STATIC_ROUTES    0x79 /* RFC 3442. (mask,ip,router) tuples */
-//#define DHCP_VLAN_ID          0x84 /* 802.1P VLAN ID */
-//#define DHCP_VLAN_PRIORITY    0x85 /* 802.1Q VLAN priority */
-//#define DHCP_PXE_CONF_FILE    0xd1 /* RFC 5071 Configuration File */
-//#define DHCP_PXE_PATH_PREFIX  0xd2 /* RFC 5071 Configuration File */
-//#define DHCP_MS_STATIC_ROUTES 0xf9 /* Microsoft's pre-RFC 3442 code for 0x79? */
-//#define DHCP_WPAD             0xfc /* MSIE's Web Proxy Autodiscovery Protocol */
-#define DHCP_END                0xff
+#define DHCP_REQUESTED_IP       0x32 /* 50: sent by client if specific IP is wanted */
+#define DHCP_LEASE_TIME         0x33 /* 51: */
+#define DHCP_OPTION_OVERLOAD    0x34 /* 52: */
+#define DHCP_MESSAGE_TYPE       0x35 /* 53: */
+#define DHCP_SERVER_ID          0x36 /* 54: server's IP */
+#define DHCP_PARAM_REQ          0x37 /* 55: list of options client wants */
+//#define DHCP_ERR_MESSAGE      0x38 /* 56: error message when sending NAK etc */
+#define DHCP_MAX_SIZE           0x39 /* 57: */
+#define DHCP_VENDOR             0x3c /* 60: client's vendor (a string) */
+#define DHCP_CLIENT_ID          0x3d /* 61: by default client's MAC addr, but may be arbitrarily long */
+//#define DHCP_TFTP_SERVER_NAME 0x42 /* 66: same as 'sname' field */
+//#define DHCP_BOOT_FILE        0x43 /* 67: same as 'file' field */
+//#define DHCP_USER_CLASS       0x4d /* 77: RFC 3004. set of LASCII strings. "I am a printer" etc */
+#define DHCP_FQDN               0x51 /* 81: client asks to update DNS to map its FQDN to its new IP */
+//#define DHCP_PCODE            0x64 /* 100: RFC 4833. IEEE 1003.1 TZ string */
+//#define DHCP_TCODE            0x65 /* 101: RFC 4833. Reference to the TZ database string */
+//#define DHCP_DOMAIN_SEARCH    0x77 /* 119: RFC 3397. set of ASCIZ string, DNS-style compressed */
+//#define DHCP_SIP_SERVERS      0x78 /* 120: RFC 3361. flag byte, then: 0: domain names, 1: IP addrs */
+//#define DHCP_STATIC_ROUTES    0x79 /* 121: RFC 3442. (mask,ip,router) tuples */
+//#define DHCP_VLAN_ID          0x84 /* 132: 802.1P VLAN ID */
+//#define DHCP_VLAN_PRIORITY    0x85 /* 133: 802.1Q VLAN priority */
+//#define DHCP_PXE_CONF_FILE    0xd1 /* 209: RFC 5071 Configuration file */
+//#define DHCP_PXE_PATH_PREFIX  0xd2 /* 210: RFC 5071 Path prefix */
+//#define DHCP_REBOOT_TIME      0xd3 /* 211: RFC 5071 Reboot time */
+//#define DHCP_MS_STATIC_ROUTES 0xf9 /* 249: Microsoft's pre-RFC 3442 code for 0x79? */
+//#define DHCP_WPAD             0xfc /* 252: MSIE's Web Proxy Autodiscovery Protocol */
+#define DHCP_END                0xff /* 255: */
 
 /* Offsets in option byte sequence */
 #define OPT_CODE                0
 #define OPT_LEN                 1
 #define OPT_DATA                2
+/* Offsets in option byte sequence for DHCPv6 */
+#define D6_OPT_CODE             0
+#define D6_OPT_LEN              2
+#define D6_OPT_DATA             4
 /* Bits in "overload" option */
 #define OPTION_FIELD            0
 #define FILE_FIELD              1
@@ -199,7 +212,13 @@ extern const uint8_t dhcp_option_lengths[] ALIGN1;
 
 unsigned FAST_FUNC udhcp_option_idx(const char *name, const char *option_strings);
 
+void init_scan_state(struct dhcp_packet *packet, struct dhcp_scan_state *scan_state) FAST_FUNC;
+uint8_t *udhcp_scan_options(struct dhcp_packet *packet, struct dhcp_scan_state *scan_state) FAST_FUNC;
 uint8_t *udhcp_get_option(struct dhcp_packet *packet, int code) FAST_FUNC;
+/* Same as above + ensures that option length is 4 bytes
+ * (returns NULL if size is different)
+ */
+uint8_t *udhcp_get_option32(struct dhcp_packet *packet, int code) FAST_FUNC;
 int udhcp_end_option(uint8_t *optionptr) FAST_FUNC;
 void udhcp_add_binary_option(struct dhcp_packet *packet, uint8_t *addopt) FAST_FUNC;
 #if ENABLE_UDHCPC || ENABLE_UDHCPD
@@ -207,14 +226,13 @@ void udhcp_add_simple_option(struct dhcp_packet *packet, uint8_t code, uint32_t 
 #endif
 #if ENABLE_FEATURE_UDHCP_RFC3397 || ENABLE_FEATURE_UDHCPC6_RFC3646 || ENABLE_FEATURE_UDHCPC6_RFC4704
 char *dname_dec(const uint8_t *cstr, int clen, const char *pre) FAST_FUNC;
-uint8_t *dname_enc(const uint8_t *cstr, int clen, const char *src, int *retlen) FAST_FUNC;
+uint8_t *dname_enc(/*const uint8_t *cstr, int clen,*/ const char *src, int *retlen) FAST_FUNC;
 #endif
 struct option_set *udhcp_find_option(struct option_set *opt_list, uint8_t code) FAST_FUNC;
 
-
 // RFC 2131  Table 5: Fields and options used by DHCP clients
 //
-// Fields 'hops', 'yiaddr', 'siaddr', 'giaddr' are always zero
+// Fields 'hops', 'yiaddr', 'siaddr', 'giaddr' are always zero, 'chaddr' is always client's MAC
 //
 // Field      DHCPDISCOVER          DHCPINFORM            DHCPREQUEST           DHCPDECLINE         DHCPRELEASE
 // -----      ------------          ------------          -----------           -----------         -----------
@@ -223,77 +241,94 @@ struct option_set *udhcp_find_option(struct option_set *opt_list, uint8_t code) 
 // 'secs'     0 or seconds since    0 or seconds since    0 or seconds since    0                   0
 //            DHCP process started  DHCP process started  DHCP process started
 // 'flags'    Set 'BROADCAST'       Set 'BROADCAST'       Set 'BROADCAST'       0                   0
-//            flag if client        flag if client        flag if client
-//            requires broadcast    requires broadcast    requires broadcast
-//            reply                 reply                 reply
+//            flag if client needs  flag if client needs  flag if client needs
+//            broadcast reply       broadcast reply       broadcast reply
 // 'ciaddr'   0                     client's IP           0 or client's IP      0                   client's IP
 //                                                        (BOUND/RENEW/REBIND)
-// 'chaddr'   client's MAC          client's MAC          client's MAC          client's MAC        client's MAC
 // 'sname'    options or sname      options or sname      options or sname      (unused)            (unused)
 // 'file'     options or file       options or file       options or file       (unused)            (unused)
 // 'options'  options               options               options               message type opt    message type opt
 //
-// Option                     DHCPDISCOVER  DHCPINFORM  DHCPREQUEST      DHCPDECLINE  DHCPRELEASE
-// ------                     ------------  ----------  -----------      -----------  -----------
-// Requested IP address       MAY           MUST NOT    MUST (in         MUST         MUST NOT
-//                                                      SELECTING or
-//                                                      INIT-REBOOT)
-//                                                      MUST NOT (in
-//                                                      BOUND or
-//                                                      RENEWING)
-// IP address lease time      MAY           MUST NOT    MAY              MUST NOT     MUST NOT
-// Use 'file'/'sname' fields  MAY           MAY         MAY              MAY          MAY
-// Client identifier          MAY           MAY         MAY              MAY          MAY
-// Vendor class identifier    MAY           MAY         MAY              MUST NOT     MUST NOT
-// Server identifier          MUST NOT      MUST NOT    MUST (after      MUST         MUST
-//                                                      SELECTING)
+// Option                     DHCPDISCOVER  DHCPINFORM  DHCPREQUEST             DHCPDECLINE  DHCPRELEASE
+// ------                     ------------  ----------  -----------             -----------  -----------
+// Requested IP address       MAY           MUST NOT    MUST (in SELECTING      MUST         MUST NOT
+//                                                      or INIT-REBOOT)
+//                                                      MUST NOT (in BOUND
+//                                                      or RENEWING)
+// IP address lease time      MAY           MUST NOT    MAY                     MUST NOT     MUST NOT
+// Use 'file'/'sname' fields  MAY           MAY         MAY                     MAY          MAY
+// Client identifier          MAY           MAY         MAY                     MAY          MAY
+// Vendor class identifier    MAY           MAY         MAY                     MUST NOT     MUST NOT
+// Server identifier          MUST NOT      MUST NOT    MUST (after SELECTING)  MUST         MUST
 //                                                      MUST NOT (after
-//                                                      INIT-REBOOT,
-//                                                      BOUND, RENEWING
-//                                                      or REBINDING)
-// Parameter request list     MAY           MAY         MAY              MUST NOT     MUST NOT
-// Maximum message size       MAY           MAY         MAY              MUST NOT     MUST NOT
-// Message                    SHOULD NOT    SHOULD NOT  SHOULD NOT       SHOULD       SHOULD
-// Site-specific              MAY           MAY         MAY              MUST NOT     MUST NOT
-// All others                 MAY           MAY         MAY              MUST NOT     MUST NOT
-
+//                                                      INIT-REBOOT, BOUND,
+//                                                      RENEWING or REBINDING)
+// Parameter request list     MAY           MAY         MAY                     MUST NOT     MUST NOT
+// Maximum message size       MAY           MAY         MAY                     MUST NOT     MUST NOT
+// Message                    SHOULD NOT    SHOULD NOT  SHOULD NOT              SHOULD       SHOULD
+// Site-specific              MAY           MAY         MAY                     MUST NOT     MUST NOT
+// All others                 MAY           MAY         MAY                     MUST NOT     MUST NOT
 
 /*** Logging ***/
 
 #if defined CONFIG_UDHCP_DEBUG && CONFIG_UDHCP_DEBUG >= 1
 # define IF_UDHCP_VERBOSE(...) __VA_ARGS__
 extern unsigned dhcp_verbose;
-# define log1(...) do { if (dhcp_verbose >= 1) bb_error_msg(__VA_ARGS__); } while (0)
+# define log1(...) do { if (dhcp_verbose >= 1) bb_info_msg(__VA_ARGS__); } while (0)
+# define log1s(msg) do { if (dhcp_verbose >= 1) bb_simple_info_msg(msg); } while (0)
 # if CONFIG_UDHCP_DEBUG >= 2
 void udhcp_dump_packet(struct dhcp_packet *packet) FAST_FUNC;
-#  define log2(...) do { if (dhcp_verbose >= 2) bb_error_msg(__VA_ARGS__); } while (0)
+#  define log2(...) do { if (dhcp_verbose >= 2) bb_info_msg(__VA_ARGS__); } while (0)
+#  define log2s(msg) do { if (dhcp_verbose >= 2) bb_simple_info_msg(msg); } while (0)
 # else
 #  define udhcp_dump_packet(...) ((void)0)
 #  define log2(...) ((void)0)
+#  define log2s(msg) ((void)0)
 # endif
 # if CONFIG_UDHCP_DEBUG >= 3
-#  define log3(...) do { if (dhcp_verbose >= 3) bb_error_msg(__VA_ARGS__); } while (0)
+#  define log3(...) do { if (dhcp_verbose >= 3) bb_info_msg(__VA_ARGS__); } while (0)
+#  define log3s(msg) do { if (dhcp_verbose >= 3) bb_simple_info_msg(msg); } while (0)
 # else
 #  define log3(...) ((void)0)
+#  define log3s(msg) ((void)0)
 # endif
 #else
 # define IF_UDHCP_VERBOSE(...)
 # define udhcp_dump_packet(...) ((void)0)
 # define log1(...) ((void)0)
+# define log1s(msg) ((void)0)
 # define log2(...) ((void)0)
+# define log2s(msg) ((void)0)
 # define log3(...) ((void)0)
+# define log3s(msg) ((void)0)
 #endif
 
+#if defined(__mips__)
+/*
+ * The 'simple' message functions have a negative impact on the size of the
+ * DHCP code when compiled for MIPS, so don't use them in this case.
+ */
+#define bb_simple_info_msg bb_info_msg
+#define bb_simple_error_msg bb_error_msg
+#define bb_simple_perror_msg_and_die bb_perror_msg_and_die
+#undef log1s
+#define log1s log1
+#endif
 
 /*** Other shared functions ***/
 
 /* 2nd param is "uint32_t*" */
 int FAST_FUNC udhcp_str2nip(const char *str, void *arg);
 /* 2nd param is "struct option_set**" */
+#if !ENABLE_UDHCPC6
+#define udhcp_str2optset(str, arg, optflags, option_strings, dhcpv6) \
+	udhcp_str2optset(str, arg, optflags, option_strings)
+#endif
 int FAST_FUNC udhcp_str2optset(const char *str,
 		void *arg,
 		const struct dhcp_optflag *optflags,
-		const char *option_strings);
+		const char *option_strings,
+		bool dhcpv6);
 
 #if ENABLE_UDHCPC || ENABLE_UDHCPD
 void udhcp_init_header(struct dhcp_packet *packet, char type) FAST_FUNC;
@@ -308,13 +343,11 @@ int udhcp_send_raw_packet(struct dhcp_packet *dhcp_pkt,
 
 int udhcp_send_kernel_packet(struct dhcp_packet *dhcp_pkt,
 		uint32_t source_nip, int source_port,
-		uint32_t dest_nip, int dest_port,
-		int send_flags
-) FAST_FUNC;
+		uint32_t dest_nip, int dest_port) FAST_FUNC;
 
 void udhcp_sp_setup(void) FAST_FUNC;
 void udhcp_sp_fd_set(struct pollfd *pfds, int extra_fd) FAST_FUNC;
-int udhcp_sp_read(struct pollfd *pfds) FAST_FUNC;
+int udhcp_sp_read(void) FAST_FUNC;
 
 int udhcp_read_interface(const char *interface, int *ifindex, uint32_t *nip, uint8_t *mac) FAST_FUNC;
 

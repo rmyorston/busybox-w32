@@ -13,7 +13,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config SYSLOGD
-//config:	bool "syslogd (12 kb)"
+//config:	bool "syslogd (13 kb)"
 //config:	default y
 //config:	help
 //config:	The syslogd utility is used to record logs of all the
@@ -64,6 +64,14 @@
 //config:	help
 //config:	Supports restricted syslogd config. See docs/syslog.conf.txt
 //config:
+//config:config FEATURE_SYSLOGD_PRECISE_TIMESTAMPS
+//config:	bool "Include milliseconds in timestamps"
+//config:	default n
+//config:	depends on SYSLOGD
+//config:	help
+//config:	Includes milliseconds (HH:MM:SS.mmm) in timestamp when
+//config:	timestamps are added.
+//config:
 //config:config FEATURE_SYSLOGD_READ_BUFFER_SIZE
 //config:	int "Read buffer size in bytes"
 //config:	default 256
@@ -101,7 +109,6 @@
 //config:	bool "Linux kernel printk buffer support"
 //config:	default y
 //config:	depends on SYSLOGD
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	When you enable this feature, the syslogd utility will
 //config:	write system log message to the Linux kernel's printk buffer.
@@ -140,6 +147,7 @@
 //usage:	)
 //usage:     "\n	-l N		Log only messages more urgent than prio N (1-8)"
 //usage:     "\n	-S		Smaller output"
+//usage:     "\n	-t		Strip client-generated timestamps"
 //usage:	IF_FEATURE_SYSLOGD_DUP(
 //usage:     "\n	-D		Drop duplicates"
 //usage:	)
@@ -275,7 +283,7 @@ struct globals {
 	/* ...then copy to parsebuf, escaping control chars */
 	/* (can grow x2 max) */
 	char parsebuf[MAX_READ*2];
-	/* ...then sprintf into printbuf, adding timestamp (15 chars),
+	/* ...then sprintf into printbuf, adding timestamp (15 or 19 chars),
 	 * host (64), fac.prio (20) to the message */
 	/* (growth by: 15 + 64 + 20 + delims = ~110) */
 	char printbuf[MAX_READ*2 + 128];
@@ -316,6 +324,7 @@ enum {
 	OPTBIT_outfile, // -O
 	OPTBIT_loglevel, // -l
 	OPTBIT_small, // -S
+	OPTBIT_timestamp, // -t
 	IF_FEATURE_ROTATE_LOGFILE(OPTBIT_filesize   ,)	// -s
 	IF_FEATURE_ROTATE_LOGFILE(OPTBIT_rotatecnt  ,)	// -b
 	IF_FEATURE_REMOTE_LOG(    OPTBIT_remotelog  ,)	// -R
@@ -330,6 +339,7 @@ enum {
 	OPT_outfile     = 1 << OPTBIT_outfile ,
 	OPT_loglevel    = 1 << OPTBIT_loglevel,
 	OPT_small       = 1 << OPTBIT_small   ,
+	OPT_timestamp   = 1 << OPTBIT_timestamp,
 	OPT_filesize    = IF_FEATURE_ROTATE_LOGFILE((1 << OPTBIT_filesize   )) + 0,
 	OPT_rotatecnt   = IF_FEATURE_ROTATE_LOGFILE((1 << OPTBIT_rotatecnt  )) + 0,
 	OPT_remotelog   = IF_FEATURE_REMOTE_LOG(    (1 << OPTBIT_remotelog  )) + 0,
@@ -339,7 +349,7 @@ enum {
 	OPT_cfg         = IF_FEATURE_SYSLOGD_CFG(   (1 << OPTBIT_cfg        )) + 0,
 	OPT_kmsg        = IF_FEATURE_KMSG_SYSLOG(   (1 << OPTBIT_kmsg       )) + 0,
 };
-#define OPTION_STR "m:nO:l:S" \
+#define OPTION_STR "m:nO:l:St" \
 	IF_FEATURE_ROTATE_LOGFILE("s:" ) \
 	IF_FEATURE_ROTATE_LOGFILE("b:" ) \
 	IF_FEATURE_REMOTE_LOG(    "R:*") \
@@ -569,12 +579,12 @@ static void ipcsyslog_init(void)
 
 	G.shmid = shmget(KEY_ID, G.shm_size, IPC_CREAT | 0644);
 	if (G.shmid == -1) {
-		bb_perror_msg_and_die("shmget");
+		bb_simple_perror_msg_and_die("shmget");
 	}
 
 	G.shbuf = shmat(G.shmid, NULL, 0);
 	if (G.shbuf == (void*) -1L) { /* shmat has bizarre error return */
-		bb_perror_msg_and_die("shmat");
+		bb_simple_perror_msg_and_die("shmat");
 	}
 
 	memset(G.shbuf, 0, G.shm_size);
@@ -589,7 +599,7 @@ static void ipcsyslog_init(void)
 			if (G.s_semid != -1)
 				return;
 		}
-		bb_perror_msg_and_die("semget");
+		bb_simple_perror_msg_and_die("semget");
 	}
 }
 
@@ -600,7 +610,7 @@ static void log_to_shmem(const char *msg)
 	int len;
 
 	if (semop(G.s_semid, G.SMwdn, 3) == -1) {
-		bb_perror_msg_and_die("SMwdn");
+		bb_simple_perror_msg_and_die("SMwdn");
 	}
 
 	/* Circular Buffer Algorithm:
@@ -628,7 +638,7 @@ static void log_to_shmem(const char *msg)
 		goto again;
 	}
 	if (semop(G.s_semid, G.SMwup, 1) == -1) {
-		bb_perror_msg_and_die("SMwup");
+		bb_simple_perror_msg_and_die("SMwup");
 	}
 	if (DEBUG)
 		printf("tail:%d\n", G.shbuf->tail);
@@ -813,22 +823,40 @@ static void parse_fac_prio_20(int pri, char *res20)
  * that there is no timestamp, short-circuiting the test. */
 static void timestamp_and_log(int pri, char *msg, int len)
 {
-	char *timestamp;
+	char *timestamp = NULL;
 	time_t now;
 
 	/* Jan 18 00:11:22 msg... */
 	/* 01234567890123456 */
-	if (len < 16 || msg[3] != ' ' || msg[6] != ' '
-	 || msg[9] != ':' || msg[12] != ':' || msg[15] != ' '
+	if (len >= 16 && msg[3] == ' ' && msg[6] == ' '
+	 && msg[9] == ':' && msg[12] == ':' && msg[15] == ' '
 	) {
-		time(&now);
-		timestamp = ctime(&now) + 4; /* skip day of week */
-	} else {
-		now = 0;
-		timestamp = msg;
+		if (!(option_mask32 & OPT_timestamp)) {
+			/* use message timestamp */
+			timestamp = msg;
+			now = 0;
+		}
 		msg += 16;
 	}
+
+#if ENABLE_FEATURE_SYSLOGD_PRECISE_TIMESTAMPS
+	if (!timestamp) {
+		struct timeval tv;
+		gettimeofday(&tv, NULL);
+		now = tv.tv_sec;
+		timestamp = ctime(&now) + 4; /* skip day of week */
+		/* overwrite year by milliseconds, zero terminate */
+		sprintf(timestamp + 15, ".%03u", (unsigned)tv.tv_usec / 1000u);
+	} else {
+		timestamp[15] = '\0';
+	}
+#else
+	if (!timestamp) {
+		time(&now);
+		timestamp = ctime(&now) + 4; /* skip day of week */
+	}
 	timestamp[15] = '\0';
+#endif
 
 	if (option_mask32 & OPT_kmsg) {
 		log_to_kmsg(pri, msg);
@@ -1089,7 +1117,7 @@ static void do_syslogd(void)
 	} /* while (!bb_got_signal) */
 
 	timestamp_and_log_internal("syslogd exiting");
-	remove_pidfile(CONFIG_PID_FILE_PATH "/syslogd.pid");
+	remove_pidfile_std_path_and_ext("syslogd");
 	ipcsyslog_cleanup();
 	if (option_mask32 & OPT_kmsg)
 		kmsg_cleanup();
@@ -1155,7 +1183,7 @@ int syslogd_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	//umask(0); - why??
-	write_pidfile(CONFIG_PID_FILE_PATH "/syslogd.pid");
+	write_pidfile_std_path_and_ext("syslogd");
 
 	do_syslogd();
 	/* return EXIT_SUCCESS; */

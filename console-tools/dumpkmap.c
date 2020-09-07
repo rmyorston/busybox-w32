@@ -7,9 +7,8 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config DUMPKMAP
-//config:	bool "dumpkmap (1.3 kb)"
+//config:	bool "dumpkmap (1.6 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	This program dumps the kernel's keyboard translation table to
 //config:	stdout, in binary format. You can then use loadkmap to load it.

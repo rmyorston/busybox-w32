@@ -295,19 +295,19 @@ sgi_list_table(int xtra)
 			"%u cylinders, %u physical cylinders\n"
 			"%u extra sects/cyl, interleave %u:1\n"
 			"%s\n"
-			"Units = %s of %u * 512 bytes\n\n",
+			"Units = %ss of %u * 512 bytes\n\n",
 			disk_device, g_heads, g_sectors, g_cylinders,
 			SGI_SSWAP16(sgiparam.pcylcount),
 			SGI_SSWAP16(sgiparam.sparecyl),
 			SGI_SSWAP16(sgiparam.ilfact),
 			(char *)sgilabel,
-			str_units(PLURAL), units_per_sector);
+			str_units(), units_per_sector);
 	} else {
 		printf("\nDisk %s (SGI disk label): "
 			"%u heads, %u sectors, %u cylinders\n"
-			"Units = %s of %u * 512 bytes\n\n",
+			"Units = %ss of %u * 512 bytes\n\n",
 			disk_device, g_heads, g_sectors, g_cylinders,
-			str_units(PLURAL), units_per_sector );
+			str_units(), units_per_sector );
 	}
 
 	w = strlen(disk_device);
@@ -425,7 +425,7 @@ create_sgiinfo(void)
 	/* I keep SGI's habit to write the sgilabel to the second block */
 	sgilabel->directory[0].vol_file_start = SGI_SSWAP32(2);
 	sgilabel->directory[0].vol_file_size = SGI_SSWAP32(sizeof(sgiinfo));
-	strncpy((char*)sgilabel->directory[0].vol_file_name, "sgilabel", 8);
+	memcpy((char*)sgilabel->directory[0].vol_file_name, "sgilabel", 8);
 }
 
 static sgiinfo *fill_sgiinfo(void);
@@ -623,7 +623,7 @@ sgi_change_sysid(int i, int sys)
 			"retrieve from its directory standalone tools like sash and fx.\n"
 			"Only the \"SGI volume\" entire disk section may violate this.\n"
 			"Type YES if you are sure about tagging this partition differently.\n");
-		if (strcmp(line_ptr, "YES\n") != 0)
+		if (strcmp(line_ptr, "YES") != 0)
 			return;
 	}
 	sgilabel->partitions[i].id = SGI_SSWAP32(sys);
@@ -720,7 +720,7 @@ sgi_add_partition(int n, int sys)
 		printf("You got a partition overlap on the disk. Fix it first!\n");
 		return;
 	}
-	snprintf(mesg, sizeof(mesg), "First %s", str_units(SINGULAR));
+	snprintf(mesg, sizeof(mesg), "First %s", str_units());
 	while (1) {
 		if (sys == SGI_VOLUME) {
 			last = sgi_get_lastblock();
@@ -746,7 +746,7 @@ sgi_add_partition(int n, int sys)
 		printf("You will get a partition overlap on the disk. "
 				"Fix it first!\n");
 	}
-	snprintf(mesg, sizeof(mesg), " Last %s", str_units(SINGULAR));
+	snprintf(mesg, sizeof(mesg), " Last %s", str_units());
 	last = read_int(scround(first), scround(last)-1, scround(last)-1,
 			scround(first), mesg)+1;
 	if (display_in_cyl_units)

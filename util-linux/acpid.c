@@ -7,9 +7,8 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config ACPID
-//config:	bool "acpid (8.7 kb)"
+//config:	bool "acpid (9 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	acpid listens to ACPI events coming either in textual form from
 //config:	/proc/acpi/event (though it is marked deprecated it is still widely
@@ -42,7 +41,9 @@
 //usage:     "\n	-c DIR	Config directory [/etc/acpi]"
 //usage:     "\n	-e FILE	/proc event file [/proc/acpi/event]"
 //usage:     "\n	-l FILE	Log file [/var/log/acpid.log]"
-//usage:     "\n	-p FILE	Pid file [/var/run/acpid.pid]"
+//usage:	IF_FEATURE_PIDFILE(
+//usage:     "\n	-p FILE	Pid file [" CONFIG_PID_FILE_PATH "/acpid.pid]"
+//usage:	)
 //usage:     "\n	-a FILE	Action file [/etc/acpid.conf]"
 //usage:     "\n	-M FILE Map file [/etc/acpi.map]"
 //usage:	IF_FEATURE_ACPID_COMPAT(
@@ -148,7 +149,7 @@ static void process_event(const char *event)
 	const char *args[] = { "run-parts", handler, NULL };
 
 	// log the event
-	bb_error_msg("%s", event);
+	bb_simple_error_msg(event);
 
 	// spawn handler
 	// N.B. run-parts would require scripts to have #!/bin/sh

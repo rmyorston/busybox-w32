@@ -8,16 +8,14 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config MKE2FS
-//config:	bool "mke2fs (9.7 kb)"
+//config:	bool "mke2fs (10 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Utility to create EXT2 filesystems.
 //config:
 //config:config MKFS_EXT2
-//config:	bool "mkfs.ext2 (9.8 kb)"
+//config:	bool "mkfs.ext2 (10 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Alias to "mke2fs".
 
@@ -77,23 +75,6 @@
 #define EXT2_HASH_HALF_MD4       1
 #define EXT2_FLAGS_SIGNED_HASH   0x0001
 #define EXT2_FLAGS_UNSIGNED_HASH 0x0002
-
-// storage helpers
-char BUG_wrong_field_size(void);
-#define STORE_LE(field, value) \
-do { \
-	if (sizeof(field) == 4) \
-		field = SWAP_LE32((uint32_t)(value)); \
-	else if (sizeof(field) == 2) \
-		field = SWAP_LE16((uint16_t)(value)); \
-	else if (sizeof(field) == 1) \
-		field = (uint8_t)(value); \
-	else \
-		BUG_wrong_field_size(); \
-} while (0)
-
-#define FETCH_LE32(field) \
-	(sizeof(field) == 4 ? SWAP_LE32(field) : BUG_wrong_field_size())
 
 // All fields are little-endian
 struct ext2_dir {
@@ -283,7 +264,7 @@ int mkfs_ext2_main(int argc UNUSED_PARAM, char **argv)
 	// N.B. what if we format a file? find_mount_point will return false negative since
 	// it is loop block device which is mounted!
 	if (find_mount_point(argv[0], 0))
-		bb_error_msg_and_die("can't format mounted filesystem");
+		bb_simple_error_msg_and_die("can't format mounted filesystem");
 
 	// get size in kbytes
 	kilobytes = get_volume_size_in_bytes(fd, argv[1], 1024, /*extend:*/ !(option_mask32 & OPT_n)) / 1024;
@@ -343,11 +324,11 @@ int mkfs_ext2_main(int argc UNUSED_PARAM, char **argv)
 	kilobytes >>= (blocksize_log2 - EXT2_MIN_BLOCK_LOG_SIZE);
 	nblocks = kilobytes;
 	if (nblocks != kilobytes)
-		bb_error_msg_and_die("block count doesn't fit in 32 bits");
+		bb_simple_error_msg_and_die("block count doesn't fit in 32 bits");
 #define kilobytes kilobytes_unused_after_this
 	// Experimentally, standard mke2fs won't work on images smaller than 60k
 	if (nblocks < 60)
-		bb_error_msg_and_die("need >= 60 blocks");
+		bb_simple_error_msg_and_die("need >= 60 blocks");
 
 	// How many reserved blocks?
 	if (reserved_percent > 50)

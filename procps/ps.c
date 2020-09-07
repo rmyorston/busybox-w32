@@ -125,7 +125,9 @@ static unsigned long get_uptime(void)
 	if (sysinfo(&info) < 0)
 		return 0;
 	return info.uptime;
-#elif !ENABLE_PLATFORM_MINGW32
+#elif ENABLE_PLATFORM_MINGW32
+	return GetTickCount64()/1000;
+#elif 1
 	unsigned long uptime;
 	char buf[sizeof(uptime)*3 + 2];
 	/* /proc/uptime is "UPTIME_SEC.NN IDLE_SEC.NN\n"
@@ -136,8 +138,6 @@ static unsigned long get_uptime(void)
 	buf[sizeof(buf)-1] = '\0';
 	sscanf(buf, "%lu", &uptime);
 	return uptime;
-#elif ENABLE_PLATFORM_MINGW32
-	return GetTickCount64()/1000;
 #else
 	struct timespec ts;
 	if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0)
@@ -210,7 +210,6 @@ struct globals {
 
 /* Print value to buf, max size+1 chars (including trailing '\0') */
 
-#if !ENABLE_PLATFORM_MINGW32
 static void func_user(char *buf, int size, const procps_status_t *ps)
 {
 #if 1
@@ -234,7 +233,6 @@ static void func_group(char *buf, int size, const procps_status_t *ps)
 {
 	safe_strncpy(buf, get_cached_groupname(ps->gid), size+1);
 }
-#endif
 
 static void func_comm(char *buf, int size, const procps_status_t *ps)
 {
@@ -246,12 +244,12 @@ static void func_state(char *buf, int size, const procps_status_t *ps)
 {
 	safe_strncpy(buf, ps->state, size+1);
 }
+#endif
 
 static void func_args(char *buf, int size, const procps_status_t *ps)
 {
 	read_cmdline(buf, size+1, ps->pid, ps->comm);
 }
-#endif
 
 static void func_pid(char *buf, int size, const procps_status_t *ps)
 {
@@ -385,14 +383,10 @@ static void func_pcpu(char *buf, int size, const procps_status_t *ps)
 
 static const ps_out_t out_spec[] = {
 /* Mandated by http://pubs.opengroup.org/onlinepubs/9699919799/utilities/ps.html: */
-#if !ENABLE_PLATFORM_MINGW32
 	{ 8                  , "user"  ,"USER"   ,func_user  ,PSSCAN_UIDGID  },
 	{ 8                  , "group" ,"GROUP"  ,func_group ,PSSCAN_UIDGID  },
-#endif
 	{ 16                 , "comm"  ,"COMMAND",func_comm  ,PSSCAN_COMM    },
-#if !ENABLE_PLATFORM_MINGW32
 	{ MAX_WIDTH          , "args"  ,"COMMAND",func_args  ,PSSCAN_COMM    },
-#endif
 	{ 5                  , "pid"   ,"PID"    ,func_pid   ,PSSCAN_PID     },
 	{ 5                  , "ppid"  ,"PPID"   ,func_ppid  ,PSSCAN_PPID    },
 #if !ENABLE_PLATFORM_MINGW32
@@ -548,7 +542,7 @@ static void format_process(const procps_status_t *ps)
 		len = out[i].width - len + 1;
 		if (++i == out_cnt) /* do not pad last field */
 			break;
-		p += sprintf(p, "%*s", len, "");
+		p += sprintf(p, "%*s", len, " "); /* " ", not "", to ensure separation of fields */
 	}
 	printf("%.*s\n", terminal_width, buffer);
 }
@@ -557,7 +551,7 @@ static void format_process(const procps_status_t *ps)
 # define SELINUX_O_PREFIX "label,"
 # define DEFAULT_O_STR    (SELINUX_O_PREFIX "pid,user" IF_FEATURE_PS_TIME(",time") ",args")
 #elif ENABLE_PLATFORM_MINGW32
-# define DEFAULT_O_STR    ("pid,ppid" IF_FEATURE_PS_TIME(",time,etime") ",comm")
+# define DEFAULT_O_STR    ("pid,ppid,user" IF_FEATURE_PS_TIME(",time,etime") ",args")
 #else
 # define DEFAULT_O_STR    ("pid,user" IF_FEATURE_PS_TIME(",time") ",args")
 #endif

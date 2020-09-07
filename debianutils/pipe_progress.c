@@ -7,7 +7,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config PIPE_PROGRESS
-//config:	bool "pipe_progress (225 bytes)"
+//config:	bool "pipe_progress (275 bytes)"
 //config:	default y
 //config:	help
 //config:	Display a dot to indicate pipe activity.
@@ -16,8 +16,11 @@
 
 //kbuild:lib-$(CONFIG_PIPE_PROGRESS) += pipe_progress.o
 
-//usage:#define pipe_progress_trivial_usage NOUSAGE_STR
-//usage:#define pipe_progress_full_usage ""
+//usage:#define pipe_progress_trivial_usage IF_PLATFORM_POSIX(NOUSAGE_STR)
+//usage:	IF_PLATFORM_MINGW32("")
+//usage:#define pipe_progress_full_usage IF_PLATFORM_POSIX("")
+//usage:	IF_PLATFORM_MINGW32("\n\n")
+//usage:	IF_PLATFORM_MINGW32("Display a dot to indicate pipe activity")
 
 #include "libbb.h"
 

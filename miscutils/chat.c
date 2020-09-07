@@ -8,7 +8,7 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config CHAT
-//config:	bool "chat (6.6 kb)"
+//config:	bool "chat (6.3 kb)"
 //config:	default y
 //config:	help
 //config:	Simple chat utility.
@@ -307,7 +307,7 @@ int chat_main(int argc UNUSED_PARAM, char **argv)
 			} else if (DIR_SAY == key) {
 				// just print argument verbatim
 				// TODO: should we use full_write() to avoid unistd/stdio conflict?
-				bb_error_msg("%s", arg);
+				bb_simple_error_msg(arg);
 			}
 			// next, please!
 			argv++;

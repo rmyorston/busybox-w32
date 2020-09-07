@@ -19,10 +19,10 @@
  *    The previous version did not allow 4-digit octals.
  */
 //config:config ECHO
-//config:	bool "echo (basic SuSv3 version taking no options)"
+//config:	bool "echo (1.8 kb)"
 //config:	default y
 //config:	help
-//config:	echo is used to print a specified string to stdout.
+//config:	echo prints a specified string to stdout.
 //config:
 //config:# this entry also appears in shell/Config.in, next to the echo builtin
 //config:config FEATURE_FANCY_ECHO
@@ -188,7 +188,7 @@ int echo_main(int argc UNUSED_PARAM, char **argv)
 	/*r =*/ full_write(STDOUT_FILENO, buffer, out - buffer);
 	free(buffer);
 	if (/*WRONG:r < 0*/ errno) {
-		bb_perror_msg(bb_msg_write_error);
+		bb_simple_perror_msg(bb_msg_write_error);
 		return 1;
 	}
 	return 0;

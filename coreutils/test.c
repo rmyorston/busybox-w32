@@ -20,7 +20,7 @@
  *     "This program is in the Public Domain."
  */
 //config:config TEST
-//config:	bool "test (3.6 kb)"
+//config:	bool "test (4.1 kb)"
 //config:	default y
 //config:	help
 //config:	test is used to check file types and compare values,
@@ -76,7 +76,6 @@
 //usage:       "1\n"
 
 #include "libbb.h"
-#include <setjmp.h>
 
 /* This is a NOFORK applet. Be very careful! */
 
@@ -314,6 +313,9 @@ static const struct operator_t ops_table[] = {
 	{ /* "-L" */ FILSYM  , UNOP   },
 	{ /* "-S" */ FILSOCK , UNOP   },
 	{ /* "="  */ STREQ   , BINOP  },
+	/* "==" is bashism, http://pubs.opengroup.org/onlinepubs/9699919799/utilities/test.html
+	 * lists only "=" as comparison operator.
+	 */
 	{ /* "==" */ STREQ   , BINOP  },
 	{ /* "!=" */ STRNE   , BINOP  },
 	{ /* "<"  */ STRLT   , BINOP  },
@@ -358,6 +360,7 @@ static const char ops_texts[] ALIGN1 =
 	"-L"  "\0"
 	"-S"  "\0"
 	"="   "\0"
+	/* "==" is bashism */
 	"=="  "\0"
 	"!="  "\0"
 	"<"   "\0"
@@ -408,7 +411,7 @@ extern struct test_statics *const test_ptr_to_statics;
 #define leaving         (S.leaving      )
 
 #define INIT_S() do { \
-	(*(struct test_statics**)&test_ptr_to_statics) = xzalloc(sizeof(S)); \
+	(*(struct test_statics**)not_const_pp(&test_ptr_to_statics)) = xzalloc(sizeof(S)); \
 	barrier(); \
 } while (0)
 #define DEINIT_S() do { \
@@ -829,12 +832,12 @@ int test_main(int argc, char **argv)
 		--argc;
 		if (!arg0[1]) { /* "[" ? */
 			if (NOT_LONE_CHAR(argv[argc], ']')) {
-				bb_error_msg("missing ]");
+				bb_simple_error_msg("missing ]");
 				return 2;
 			}
 		} else { /* assuming "[[" */
 			if (strcmp(argv[argc], "]]") != 0) {
-				bb_error_msg("missing ]]");
+				bb_simple_error_msg("missing ]]");
 				return 2;
 			}
 		}

@@ -70,13 +70,20 @@
 #if ENABLE_UNICODE_SUPPORT
 # define BB_NUL ((wchar_t)0)
 # define CHAR_T wchar_t
-static bool BB_isspace(CHAR_T c) { return ((unsigned)c < 256 && isspace(c)); }
+static bool BB_isspace(CHAR_T c)
+{
+	return ((unsigned)c < 256 && isspace(c));
+}
 # if ENABLE_FEATURE_EDITING_VI
-static bool BB_isalnum_or_underscore(CHAR_T c) {
+static bool BB_isalnum_or_underscore(CHAR_T c)
+{
 	return ((unsigned)c < 256 && isalnum(c)) || c == '_';
 }
 # endif
-static bool BB_ispunct(CHAR_T c) { return ((unsigned)c < 256 && ispunct(c)); }
+static bool BB_ispunct(CHAR_T c)
+{
+	return ((unsigned)c < 256 && ispunct(c));
+}
 # undef isspace
 # undef isalnum
 # undef ispunct
@@ -92,7 +99,7 @@ static bool BB_ispunct(CHAR_T c) { return ((unsigned)c < 256 && ispunct(c)); }
 # if ENABLE_FEATURE_EDITING_VI
 static bool BB_isalnum_or_underscore(CHAR_T c)
 {
-	return ((unsigned)c < 256 && isalnum(c)) || c == '_';
+	return isalnum(c) || c == '_';
 }
 # endif
 # define BB_ispunct(c) ispunct(c)
@@ -196,7 +203,7 @@ extern struct lineedit_statics *const lineedit_ptr_to_statics;
 #define delbuf           (S.delbuf          )
 
 #define INIT_S() do { \
-	(*(struct lineedit_statics**)&lineedit_ptr_to_statics) = xzalloc(sizeof(S)); \
+	(*(struct lineedit_statics**)not_const_pp(&lineedit_ptr_to_statics)) = xzalloc(sizeof(S)); \
 	barrier(); \
 	cmdedit_termw = 80; \
 	IF_USERNAME_OR_HOMEDIR(home_pwd_buf = (char*)null_str;) \
@@ -466,7 +473,8 @@ static void put_till_end_and_adv_cursor(void)
 static void goto_new_line(void)
 {
 	put_till_end_and_adv_cursor();
-	if (cmdedit_x != 0)
+	/* "cursor == 0" is only if prompt is "" and user input is empty */
+	if (cursor == 0 || cmdedit_x != 0)
 		bb_putchar('\n');
 }
 
@@ -680,6 +688,14 @@ static void input_forward(void)
 //Also, perhaps "foo b<TAB> needs to complete to "foo bar" <cursor>,
 //not "foo bar <cursor>...
 
+# if ENABLE_PLATFORM_MINGW32
+/* use case-insensitive comparisons for filenames */
+#  define is_prefixed_with(s, k) is_prefixed_with_case(s, k)
+#  define qsort_string_vector(s, c) qsort_string_vector_case(s, c)
+#  define strcmp(s, t) strcasecmp(s, t)
+#  define strncmp(s, t, n) strncasecmp(s, t, n)
+# endif
+
 static void free_tab_completion_data(void)
 {
 	if (matches) {
@@ -696,8 +712,12 @@ static void add_match(char *matched)
 	while (*p) {
 		/* ESC attack fix: drop any string with control chars */
 		if (*p < ' '
+# if !ENABLE_PLATFORM_MINGW32
 		 || (!ENABLE_UNICODE_SUPPORT && *p >= 0x7f)
 		 || (ENABLE_UNICODE_SUPPORT && *p == 0x7f)
+# else
+		 || *p == 0x7f
+# endif
 		) {
 			free(matched);
 			return;
@@ -716,13 +736,16 @@ static void add_match(char *matched)
  */
 static char *username_path_completion(char *ud)
 {
+#  if !ENABLE_PLATFORM_MINGW32
 	struct passwd *entry;
+#endif
 	char *tilde_name = ud;
 	char *home = NULL;
 
 	ud++; /* skip ~ */
 	if (*ud == '/') {       /* "~/..." */
 		home = home_pwd_buf;
+#  if !ENABLE_PLATFORM_MINGW32
 	} else {
 		/* "~user/..." */
 		ud = strchr(ud, '/');
@@ -731,6 +754,7 @@ static char *username_path_completion(char *ud)
 		*ud = '/';            /* restore "~user/..." */
 		if (entry)
 			home = entry->pw_dir;
+#  endif
 	}
 	if (home) {
 		ud = concat_path_file(home, ud);
@@ -740,6 +764,7 @@ static char *username_path_completion(char *ud)
 	return tilde_name;
 }
 
+#  if !ENABLE_PLATFORM_MINGW32
 /* ~use<tab> - find all users with this prefix.
  * Return the length of the prefix used for matching.
  */
@@ -762,6 +787,7 @@ static NOINLINE unsigned complete_username(const char *ud)
 
 	return 1 + userlen;
 }
+#  endif
 # endif  /* FEATURE_USERNAME_COMPLETION */
 
 enum {
@@ -789,11 +815,7 @@ static int path_parse(char ***p)
 	tmp = (char*)pth;
 	npth = 1; /* path component count */
 	while (1) {
-#if ENABLE_PLATFORM_MINGW32
-		tmp = (char *)next_path_sep(tmp);
-#else
-		tmp = strchr(tmp, ':');
-#endif
+		tmp = strchr(tmp, PATH_SEP);
 		if (!tmp)
 			break;
 		tmp++;
@@ -806,11 +828,7 @@ static int path_parse(char ***p)
 	res[0] = tmp = xstrdup(pth);
 	npth = 1;
 	while (1) {
-#if ENABLE_PLATFORM_MINGW32
-		tmp = (char *)next_path_sep(tmp);
-#else
-		tmp = strchr(tmp, ':');
-#endif
+		tmp = strchr(tmp, PATH_SEP);
 		if (!tmp)
 			break;
 		*tmp++ = '\0'; /* ':' -> '\0' */
@@ -838,6 +856,17 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 	path1[0] = (char*)".";
 
 	pfind = strrchr(command, '/');
+#if ENABLE_PLATFORM_MINGW32
+	if (!pfind && has_dos_drive_prefix(command) && command[2] != '\0') {
+		char buffer[PATH_MAX];
+
+		/* path is of form c:path with no '/' */
+		if (get_drive_cwd(command, buffer, PATH_MAX)) {
+			pfind = command + 2;
+			path1[0] = dirbuf = xstrdup(buffer);
+		}
+	} else
+#endif
 	if (!pfind) {
 		if (type == FIND_EXE_ONLY)
 			npaths = path_parse(&paths);
@@ -855,18 +884,29 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 	}
 	pf_len = strlen(pfind);
 
-# if ENABLE_FEATURE_SH_STANDALONE && NUM_APPLETS != 1
 	if (type == FIND_EXE_ONLY && !dirbuf) {
+# if ENABLE_FEATURE_SH_STANDALONE && NUM_APPLETS != 1
 		const char *p = applet_names;
-
 		while (*p) {
 			if (strncmp(pfind, p, pf_len) == 0)
 				add_match(xstrdup(p));
 			while (*p++ != '\0')
 				continue;
 		}
-	}
 # endif
+# if EDITING_HAS_get_exe_name
+		if (state->get_exe_name) {
+			i = 0;
+			for (;;) {
+				const char *b = state->get_exe_name(i++);
+				if (!b)
+					break;
+				if (strncmp(pfind, b, pf_len) == 0)
+					add_match(xstrdup(b));
+			}
+		}
+# endif
+	}
 
 	for (i = 0; i < npaths; i++) {
 		DIR *dir;
@@ -874,7 +914,12 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 		struct stat st;
 		char *found;
 
+#if ENABLE_PLATFORM_MINGW32
+		char *lpath = auto_string(alloc_system_drive(paths[i]));
+		dir = opendir(lpath);
+#else
 		dir = opendir(paths[i]);
+#endif
 		if (!dir)
 			continue; /* don't print an error */
 
@@ -889,15 +934,22 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 			if (!is_prefixed_with(name_found, pfind))
 				continue; /* no */
 
+#if ENABLE_PLATFORM_MINGW32
+			found = concat_path_file(lpath, name_found);
+#else
 			found = concat_path_file(paths[i], name_found);
+#endif
 			/* NB: stat() first so that we see is it a directory;
 			 * but if that fails, use lstat() so that
 			 * we still match dangling links */
 			if (stat(found, &st) && lstat(found, &st))
 				goto cont; /* hmm, remove in progress? */
 
-			if (type == FIND_EXE_ONLY && !file_is_executable(found))
+# if ENABLE_PLATFORM_MINGW32
+			if (type == FIND_EXE_ONLY && !S_ISDIR(st.st_mode) &&
+					!file_is_executable(found))
 				goto cont;
+# endif
 
 			/* Save only name */
 			len = strlen(name_found);
@@ -1138,7 +1190,7 @@ static void showfiles(void)
 			);
 		}
 		if (ENABLE_UNICODE_SUPPORT)
-			puts(printable_string(NULL, matches[n]));
+			puts(printable_string(matches[n]));
 		else
 			puts(matches[n]);
 	}
@@ -1218,7 +1270,7 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 	/* Free up any memory already allocated */
 	free_tab_completion_data();
 
-# if ENABLE_FEATURE_USERNAME_COMPLETION
+# if ENABLE_FEATURE_USERNAME_COMPLETION && !ENABLE_PLATFORM_MINGW32
 	/* If the word starts with ~ and there is no slash in the word,
 	 * then try completing this word as a username. */
 	if (state->flags & USERNAME_COMPLETION)
@@ -1269,7 +1321,11 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 		for (cp = chosen_match; *cp; cp++) {
 			unsigned n;
 			for (n = 1; n < num_matches; n++) {
+# if !ENABLE_PLATFORM_MINGW32
 				if (matches[n][cp - chosen_match] != *cp) {
+# else
+				if (tolower(matches[n][cp - chosen_match]) != tolower(*cp)) {
+# endif
 					goto stop;
 				}
 			}
@@ -1305,7 +1361,11 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 		/* save tail */
 		strcpy(match_buf, &command_ps[cursor]);
 		/* add match and tail */
+#if ENABLE_PLATFORM_MINGW32
+		sprintf(&command_ps[cursor-match_pfx_len], "%s%s", chosen_match, match_buf);
+#else
 		sprintf(&command_ps[cursor], "%s%s", chosen_match + match_pfx_len, match_buf);
+#endif
 		command_len = strlen(command_ps);
 		/* new pos */
 		pos = cursor + len_found - match_pfx_len;
@@ -1341,6 +1401,13 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 	free(chosen_match);
 	free(match_buf);
 }
+
+# if ENABLE_PLATFORM_MINGW32
+#  undef is_prefixed_with
+#  undef qsort_string_vector
+#  undef strcmp
+#  undef strncmp
+# endif
 
 #endif  /* FEATURE_TAB_COMPLETION */
 
@@ -1425,6 +1492,16 @@ void FAST_FUNC show_history(const line_input_t *st)
 		printf("%4d %s\n", i, st->history[i]);
 }
 
+void FAST_FUNC free_line_input_t(line_input_t *n)
+{
+# if ENABLE_FEATURE_EDITING_SAVEHISTORY
+	int i = n->cnt_history;
+	while (i > 0)
+		free(n->history[--i]);
+#endif
+	free(n);
+}
+
 # if ENABLE_FEATURE_EDITING_SAVEHISTORY
 /* We try to ensure that concurrent additions to the history
  * do not overwrite each other.
@@ -1433,14 +1510,6 @@ void FAST_FUNC show_history(const line_input_t *st)
  * History file is trimmed lazily, when it grows several times longer
  * than configured MAX_HISTORY lines.
  */
-
-static void free_line_input_t(line_input_t *n)
-{
-	int i = n->cnt_history;
-	while (i > 0)
-		free(n->history[--i]);
-	free(n);
-}
 
 /* state->flags is already checked to be nonzero */
 static void load_history(line_input_t *st_parm)
@@ -2004,16 +2073,7 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 							char *after_home_user;
 
 							/* /home/user[/something] -> ~[/something] */
-#if !ENABLE_PLATFORM_MINGW32
 							after_home_user = is_prefixed_with(cwd_buf, home_pwd_buf);
-#else
-							after_home_user = NULL;
-							l = strlen(home_pwd_buf);
-							if (l != 0
-							 && strncasecmp(home_pwd_buf, cwd_buf, l) == 0) {
-								after_home_user = cwd_buf + l;
-							}
-#endif
 							if (after_home_user
 							 && (*after_home_user == '/' || *after_home_user == '\0')
 							) {
@@ -2373,6 +2433,18 @@ static int32_t reverse_i_search(int timeout)
 }
 #endif
 
+#if ENABLE_FEATURE_EDITING_WINCH
+static void sigaction2(int sig, struct sigaction *act)
+{
+	// Grr... gcc 8.1.1:
+	// "passing argument 3 to restrict-qualified parameter aliases with argument 2"
+	// dance around that...
+	struct sigaction *oact FIX_ALIASING;
+	oact = act;
+	sigaction(sig, act, oact);
+}
+#endif
+
 /* maxsize must be >= 2.
  * Returns:
  * -1 on read errors or EOF, or on bare Ctrl-D,
@@ -2382,7 +2454,7 @@ static int32_t reverse_i_search(int timeout)
  */
 int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *command, int maxsize)
 {
-	int len, n;
+	int len IF_NOT_PLATFORM_MINGW32(, n);
 	int timeout;
 #if ENABLE_FEATURE_TAB_COMPLETION
 	smallint lastWasTab = 0;
@@ -2392,20 +2464,22 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	smallint vi_cmdmode = 0;
 #endif
 	struct termios initial_settings;
+#if !ENABLE_PLATFORM_MINGW32
 	struct termios new_settings;
+#endif
 	char read_key_buffer[KEYCODE_BUFFER_SIZE];
 
 	INIT_S();
 
+#if !ENABLE_PLATFORM_MINGW32
 	n = get_termios_and_make_raw(STDIN_FILENO, &new_settings, &initial_settings, 0
 		| TERMIOS_CLEAR_ISIG /* turn off INTR (ctrl-C), QUIT, SUSP */
 	);
-#if ENABLE_PLATFORM_MINGW32
+	if (n != 0 || (initial_settings.c_lflag & (ECHO|ICANON)) == ICANON) {
+#else
 	initial_settings.c_cc[VINTR] = CTRL('C');
 	initial_settings.c_cc[VEOF] = CTRL('D');
-	if (n > 0 || !isatty(0) || !isatty(1)) {
-#else
-	if (n != 0 || (initial_settings.c_lflag & (ECHO|ICANON)) == ICANON) {
+	if (!isatty(0) || !isatty(1)) {
 #endif
 		/* Happens when e.g. stty -echo was run before.
 		 * But if ICANON is not set, we don't come here.
@@ -2439,13 +2513,14 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 		timeout = st->timeout;
 	}
 #if MAX_HISTORY > 0
+	if (state->flags & DO_HISTORY) {
 # if ENABLE_FEATURE_EDITING_SAVEHISTORY
-	if (state->hist_file)
-		if (state->cnt_history == 0)
-			load_history(state);
+		if (state->hist_file)
+			if (state->cnt_history == 0)
+				load_history(state);
 # endif
-	if (state->flags & DO_HISTORY)
 		state->cur_history = state->cnt_history;
+	}
 #endif
 
 	/* prepare before init handlers */
@@ -2459,7 +2534,9 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 #endif
 #define command command_must_not_be_used
 
+#if !ENABLE_PLATFORM_MINGW32
 	tcsetattr_stdin_TCSANOW(&new_settings);
+#endif
 
 #if ENABLE_USERNAME_OR_HOMEDIR
 	{
@@ -2489,7 +2566,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	/* Install window resize handler (NB: after *all* init is complete) */
 	S.SIGWINCH_handler.sa_handler = win_changed;
 	S.SIGWINCH_handler.sa_flags = SA_RESTART;
-	sigaction(SIGWINCH, &S.SIGWINCH_handler, &S.SIGWINCH_handler);
+	sigaction2(SIGWINCH, &S.SIGWINCH_handler);
 #endif
 
 	read_key_buffer[0] = 0;
@@ -2577,6 +2654,13 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 #if ENABLE_FEATURE_TAB_COMPLETION
 		case '\t':
 			input_tab(&lastWasTab);
+			break;
+#endif
+#if ENABLE_PLATFORM_MINGW32
+		case CTRL('Z'):
+			command_ps[command_len] = '\0';
+			bs_to_slash(command_ps);
+			redraw(cmdedit_y, 0);
 			break;
 #endif
 		case CTRL('K'):
@@ -2951,8 +3035,10 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	free_tab_completion_data();
 #endif
 
+#if !ENABLE_PLATFORM_MINGW32
 	/* restore initial_settings */
 	tcsetattr_stdin_TCSANOW(&initial_settings);
+#endif
 #if ENABLE_FEATURE_EDITING_WINCH
 	/* restore SIGWINCH handler */
 	sigaction_set(SIGWINCH, &S.SIGWINCH_handler);

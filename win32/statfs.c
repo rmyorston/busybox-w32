@@ -12,6 +12,10 @@ int statfs(const char *file, struct statfs *buf)
 	DWORD serial, namelen, flags;
 	char fsname[100];
 	struct mntent *mnt;
+	/* Valid filesystem names don't seem to be documented.  The following
+	 * are present in Wine (dlls/kernel32/volume.c). */
+#define FS_NAMES "NTFS\0FAT\0FAT32\0CDFS\0UDF\0"
+	int fstypes[] = {0, 0x5346544e, 0x4006, 0x4006, 0x9660, 0x15013346};
 
 	if ( (mnt=find_mount_point(file, 0)) == NULL ) {
 		return -1;
@@ -21,15 +25,17 @@ int statfs(const char *file, struct statfs *buf)
 	if ( !GetDiskFreeSpaceEx(file, (PULARGE_INTEGER) &free_bytes_available,
 			(PULARGE_INTEGER) &total_number_of_bytes,
 			(PULARGE_INTEGER) &total_number_of_free_bytes) ) {
-		errno = err_win_to_posix(GetLastError());
+		errno = err_win_to_posix();
 		return -1;
 	}
 
 	if ( !GetVolumeInformation(file, NULL, 0, &serial, &namelen, &flags,
 								fsname, 100) ) {
-		errno = err_win_to_posix(GetLastError());
+		errno = err_win_to_posix();
 		return -1;
 	}
+
+	memset(buf, 0, sizeof(*buf));
 
 	/* XXX I couldn't determine how to get block size.  MSDN has a
 	 * unhelpful hard-coded list here:
@@ -49,31 +55,15 @@ int statfs(const char *file, struct statfs *buf)
 	else
 		buf->f_bsize = 65536;
 
-	/*
-	 * Valid filesystem names don't seem to be documented.  The following
-	 * are present in Wine.
-	 */
-	if ( strcmp(fsname, "NTFS") == 0 ) {
-		buf->f_type = 0x5346544e;
-	}
-	else if ( strcmp(fsname, "FAT") == 0 || strcmp(fsname, "FAT32") == 0 ) {
-		buf->f_type = 0x4006;
-	}
-	else if ( strcmp(fsname, "CDFS") == 0 ) {
-		buf->f_type = 0x9660;
-	}
-	else {
-		buf->f_type = 0;
-	}
-
+	buf->f_type = fstypes[index_in_strings(FS_NAMES, fsname)+1];
 	buf->f_frsize = buf->f_bsize;
 	buf->f_blocks = total_number_of_bytes / buf->f_bsize;
 	buf->f_bfree = total_number_of_free_bytes / buf->f_bsize;
 	buf->f_bavail = free_bytes_available / buf->f_bsize;
-	buf->f_files = UINT32_MAX;
-	buf->f_ffree = UINT32_MAX;
+	//buf->f_files = 0;
+	//buf->f_ffree = 0;
 	buf->f_fsid = serial;
-	buf->f_flag = UINT64_MAX;
+	//buf->f_flag = 0;
 	buf->f_namelen = namelen;
 
 	return 0;

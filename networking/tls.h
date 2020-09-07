@@ -78,12 +78,19 @@ typedef  int16_t  int16;
 #define PUBKEY_TYPE     0x01
 #define PRIVKEY_TYPE    0x02
 
-void tls_get_random(void *buf, unsigned len);
+#define AES_BLOCK_SIZE  16
+
+void tls_get_random(void *buf, unsigned len) FAST_FUNC;
+
+void xorbuf(void* buf, const void* mask, unsigned count) FAST_FUNC;
+
+#define ALIGNED_long ALIGNED(sizeof(long))
+void xorbuf_aligned_AES_BLOCK_SIZE(void* buf, const void* mask) FAST_FUNC;
 
 #define matrixCryptoGetPrngData(buf, len, userPtr) (tls_get_random(buf, len), PS_SUCCESS)
 
 #define psFree(p, pool)    free(p)
-#define psTraceCrypto(...) bb_error_msg_and_die(__VA_ARGS__)
+#define psTraceCrypto(msg) bb_simple_error_msg_and_die(msg)
 
 /* Secure zerofill */
 #define memset_s(A,B,C,D) memset((A),(C),(D))
@@ -94,6 +101,8 @@ void tls_get_random(void *buf, unsigned len);
 
 
 #include "tls_pstm.h"
-#include "tls_rsa.h"
 #include "tls_symmetric.h"
 #include "tls_aes.h"
+#include "tls_aesgcm.h"
+#include "tls_rsa.h"
+#include "tls_fe.h"

@@ -36,12 +36,17 @@ extern const char e2attr_flags_sname[];
 
 /* If you plan to ENABLE_COMPRESSION, see e2fs_lib.c and chattr.c - */
 /* make sure that chattr doesn't accept bad options! */
+#if !ENABLE_PLATFORM_MINGW32
 #ifdef ENABLE_COMPRESSION
 #define e2attr_flags_value_chattr (&e2attr_flags_value[5])
 #define e2attr_flags_sname_chattr (&e2attr_flags_sname[5])
 #else
 #define e2attr_flags_value_chattr (&e2attr_flags_value[1])
 #define e2attr_flags_sname_chattr (&e2attr_flags_sname[1])
+#endif
+#else
+#define e2attr_flags_value_chattr (&e2attr_flags_value[5])
+#define e2attr_flags_sname_chattr (&e2attr_flags_sname[5])
 #endif
 
 POP_SAVED_FUNCTION_VISIBILITY

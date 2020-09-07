@@ -7,9 +7,8 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config NSENTER
-//config:	bool "nsenter (8.6 kb)"
+//config:	bool "nsenter (6.5 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Run program with namespaces of other processes.
 
@@ -105,14 +104,14 @@ static const struct namespace_descr ns_list[] = {
 /*
  * Upstream nsenter doesn't support the short option for --preserve-credentials
  */
-static const char opt_str[] ALIGN1 = "U::i::u::n::p::m::""t+S+G+r::w::F";
+static const char opt_str[] ALIGN1 = "U::i::u::n::p::m::""t:+S:+G:+r::w::F";
 
 #if ENABLE_LONG_OPTS
 static const char nsenter_longopts[] ALIGN1 =
 	"user\0"			Optional_argument	"U"
 	"ipc\0"				Optional_argument	"i"
 	"uts\0"				Optional_argument	"u"
-	"network\0"			Optional_argument	"n"
+	"net\0"				Optional_argument	"n"
 	"pid\0"				Optional_argument	"p"
 	"mount\0"			Optional_argument	"m"
 	"target\0"			Required_argument	"t"
@@ -257,7 +256,7 @@ int nsenter_main(int argc UNUSED_PARAM, char **argv)
 
 	if (opts & OPT_setgid) {
 		if (setgroups(0, NULL) < 0 && setgroups_failed)
-			bb_perror_msg_and_die("setgroups");
+			bb_simple_perror_msg_and_die("setgroups");
 		xsetgid(gid);
 	}
 	if (opts & OPT_setuid)

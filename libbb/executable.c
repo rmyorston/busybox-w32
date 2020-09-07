@@ -28,10 +28,6 @@ int FAST_FUNC file_is_executable(const char *name)
  * in all cases (*PATHp) contents are temporarily modified
  * but are restored on return (s/:/NUL/ and back).
  */
-#if !ENABLE_PLATFORM_MINGW32
-#define next_path_sep(s) strchr(s, ':')
-#endif
-
 char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 {
 	/* About empty components in $PATH:
@@ -50,33 +46,19 @@ char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 	p = *PATHp;
 	while (p) {
 		int ex;
-#if ENABLE_PLATFORM_MINGW32
-		char sep;
 
-		n = (char*)next_path_sep(p);
-		if (n) {
-			sep = *n;
-			*n = '\0';
-		}
-#else
-		n = strchr(p, ':');
+		n = strchr(p, PATH_SEP);
 		if (n) *n = '\0';
-#endif
 		p = concat_path_file(
 			p[0] ? p : ".", /* handle "::" case */
 			filename
 		);
+		if (n) *n++ = PATH_SEP;
 #if ENABLE_PLATFORM_MINGW32
-		if (n) *n++ = sep;
-#else
-		if (n) *n++ = ':';
-#endif
-#if ENABLE_PLATFORM_MINGW32
-		if ((w=add_win32_extension(p))) {
-			*PATHp = n;
-			free(p);
-			return w;
-		}
+		w = alloc_system_drive(p);
+		add_win32_extension(w);
+		free(p);
+		p = w;
 #endif
 		ex = file_is_executable(p);
 		if (ex) {

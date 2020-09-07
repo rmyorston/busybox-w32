@@ -23,7 +23,7 @@
 //config:	help
 //config:	Create extended header file compatible with "big" bootchartd.
 //config:	"Big" bootchartd is a shell script and it dumps some
-//config:	"convenient" info int the header, such as:
+//config:	"convenient" info into the header, such as:
 //config:		title = Boot chart for `hostname` (`date`)
 //config:		system.uname = `uname -srvm`
 //config:		system.release = `cat /etc/DISTRO-release`
@@ -208,7 +208,7 @@ static char *make_tempdir(void)
 			bb_perror_msg_and_die("can't %smount tmpfs", "un");
 		}
 #else
-		bb_perror_msg_and_die("can't create temporary directory");
+		bb_simple_perror_msg_and_die("can't create temporary directory");
 #endif
 	} else {
 		xchdir(tempdir);

@@ -1,6 +1,6 @@
 /*
  * A simple WIN32 implementation of mntent routines.  It only handles
- * fixed logical drives.
+ * logical drives.
  */
 #include "libbb.h"
 
@@ -8,13 +8,13 @@ struct mntdata {
 	DWORD flags;
 	int index;
 	struct mntent me;
-	char mnt_fsname[4];
+	char mnt_fsname[PATH_MAX];
 	char mnt_dir[4];
 	char mnt_type[100];
 	char mnt_opts[4];
 };
 
-FILE *setmntent(const char *file UNUSED_PARAM, const char *mode UNUSED_PARAM)
+FILE *mingw_setmntent(void)
 {
 	struct mntdata *data;
 
@@ -32,6 +32,8 @@ struct mntent *getmntent(FILE *stream)
 {
 	struct mntdata *data = (struct mntdata *)stream;
 	struct mntent *entry;
+	UINT drive_type;
+	char buf[PATH_MAX];
 
 	data->me.mnt_fsname = data->mnt_fsname;
 	data->me.mnt_dir = data->mnt_dir;
@@ -48,15 +50,24 @@ struct mntent *getmntent(FILE *stream)
 			data->mnt_fsname[2] = '\0';
 			data->mnt_dir[0] = 'A' + data->index;
 			data->mnt_dir[1] = ':';
-			data->mnt_dir[2] = '\\';
+			data->mnt_dir[2] = '/';
 			data->mnt_dir[3] = '\0';
 			data->mnt_type[0] = '\0';
 			data->mnt_opts[0] = '\0';
 
-			if ( GetDriveType(data->mnt_dir) == DRIVE_FIXED ) {
+			drive_type = GetDriveType(data->mnt_dir);
+			if ( drive_type == DRIVE_FIXED || drive_type == DRIVE_CDROM ||
+						drive_type == DRIVE_REMOVABLE ||
+						drive_type == DRIVE_REMOTE ) {
 				if ( !GetVolumeInformation(data->mnt_dir, NULL, 0, NULL, NULL,
 								NULL, data->mnt_type, 100) ) {
-					data->mnt_type[0] = '\0';
+					continue;
+				}
+
+				if (realpath(data->mnt_dir, buf) != NULL) {
+					if (isalpha(buf[0]) && strcmp(buf+1, ":/") == 0)
+						buf[2] = '\0';
+					strcpy(data->mnt_fsname, buf);
 				}
 
 				entry = &data->me;

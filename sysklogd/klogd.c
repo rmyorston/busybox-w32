@@ -17,7 +17,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config KLOGD
-//config:	bool "klogd (5.5 kb)"
+//config:	bool "klogd (5.7 kb)"
 //config:	default y
 //config:	help
 //config:	klogd is a utility which intercepts and logs all
@@ -33,7 +33,6 @@
 //config:	bool "Use the klogctl() interface"
 //config:	default y
 //config:	depends on KLOGD
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	The klogd applet supports two interfaces for reading
 //config:	kernel messages. Linux provides the klogctl() interface
@@ -53,7 +52,7 @@
 //usage:#define klogd_trivial_usage
 //usage:       "[-c N] [-n]"
 //usage:#define klogd_full_usage "\n\n"
-//usage:       "Kernel logger\n"
+//usage:       "Log kernel messages to syslog\n"
 //usage:     "\n	-c N	Print to console messages more urgent than prio N (1-8)"
 //usage:     "\n	-n	Run in foreground"
 
@@ -85,6 +84,7 @@ static void klogd_setloglevel(int lvl)
 
 static int klogd_read(char *bufp, int len)
 {
+	/* "2 -- Read from the log." */
 	return klogctl(2, bufp, len);
 }
 # define READ_ERROR "klogctl(2) error"
@@ -230,7 +230,7 @@ int klogd_main(int argc UNUSED_PARAM, char **argv)
 
 	syslog(LOG_NOTICE, "klogd started: %s", bb_banner);
 
-	write_pidfile(CONFIG_PID_FILE_PATH "/klogd.pid");
+	write_pidfile_std_path_and_ext("klogd");
 
 	used = 0;
 	while (!bb_got_signal) {
@@ -238,13 +238,12 @@ int klogd_main(int argc UNUSED_PARAM, char **argv)
 		int priority;
 		char *start;
 
-		/* "2 -- Read from the log." */
 		start = log_buffer + used;
 		n = klogd_read(start, KLOGD_LOGBUF_SIZE-1 - used);
 		if (n < 0) {
 			if (errno == EINTR)
 				continue;
-			bb_perror_msg(READ_ERROR);
+			bb_simple_perror_msg(READ_ERROR);
 			break;
 		}
 		start[n] = '\0';
@@ -275,10 +274,13 @@ int klogd_main(int argc UNUSED_PARAM, char **argv)
 			priority = LOG_INFO;
 			if (*start == '<') {
 				start++;
-				if (*start)
-					priority = strtoul(start, &start, 10);
-				if (*start == '>')
-					start++;
+				if (*start) {
+					char *end;
+					priority = strtoul(start, &end, 10);
+					if (*end == '>')
+						end++;
+					start = end;
+				}
 			}
 			/* Log (only non-empty lines) */
 			if (*start)
@@ -292,7 +294,7 @@ int klogd_main(int argc UNUSED_PARAM, char **argv)
 
 	klogd_close();
 	syslog(LOG_NOTICE, "klogd: exiting");
-	remove_pidfile(CONFIG_PID_FILE_PATH "/klogd.pid");
+	remove_pidfile_std_path_and_ext("klogd");
 	if (bb_got_signal)
 		kill_myself_with_sig(bb_got_signal);
 	return EXIT_FAILURE;

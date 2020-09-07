@@ -8,9 +8,8 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config OPENVT
-//config:	bool "openvt (7 kb)"
+//config:	bool "openvt (7.2 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	This program is used to start a command on an unused
 //config:	virtual terminal.
@@ -87,7 +86,7 @@ static int get_vt_fd(void)
 	fd = open(DEV_CONSOLE, O_RDONLY | O_NONBLOCK);
 	if (fd >= 0 && !not_vt_fd(fd))
 		return fd;
-	bb_error_msg_and_die("can't find open VT");
+	bb_simple_error_msg_and_die("can't find open VT");
 }
 
 static int find_free_vtno(void)
@@ -98,7 +97,7 @@ static int find_free_vtno(void)
 	errno = 0;
 	/*xfunc_error_retval = 3; - do we need compat? */
 	if (ioctl(fd, VT_OPENQRY, &vtno) != 0 || vtno <= 0)
-		bb_perror_msg_and_die("can't find open VT");
+		bb_simple_perror_msg_and_die("can't find open VT");
 // Not really needed, grep for DAEMON_CLOSE_EXTRA_FDS
 //	if (fd > 2)
 //		close(fd);

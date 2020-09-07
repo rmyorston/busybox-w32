@@ -74,8 +74,8 @@ typedef struct archive_handle_t {
 	/* Currently processed file's header */
 	file_header_t *file_header;
 
-	/* List of symlink placeholders */
-	llist_t *symlink_placeholders;
+	/* List of link placeholders */
+	llist_t *link_placeholders;
 
 	/* Process the header component, e.g. tar -t */
 	void FAST_FUNC (*action_header)(const file_header_t *);
@@ -126,6 +126,10 @@ typedef struct archive_handle_t {
 #if ENABLE_FEATURE_AR_CREATE
 	const char *ar__name;
 	struct archive_handle_t *ar__out;
+#endif
+#if ENABLE_FEATURE_AR_LONG_FILENAMES
+	char *ar__long_names;
+	unsigned ar__long_name_size;
 #endif
 } archive_handle_t;
 /* bits in ah_flags */
@@ -209,22 +213,25 @@ void seek_by_jump(int fd, off_t amount) FAST_FUNC;
 void seek_by_read(int fd, off_t amount) FAST_FUNC;
 
 const char *strip_unsafe_prefix(const char *str) FAST_FUNC;
-void create_or_remember_symlink(llist_t **symlink_placeholders,
+#if ENABLE_PLATFORM_MINGW32
+#define create_or_remember_link(lp, t, ln, hl) create_or_remember_link(t, ln)
+#endif
+void create_or_remember_link(llist_t **link_placeholders,
 		const char *target,
-		const char *linkname) FAST_FUNC;
-void create_symlinks_from_list(llist_t *list) FAST_FUNC;
+		const char *linkname,
+		int hard_link) FAST_FUNC;
+#if !ENABLE_PLATFORM_MINGW32
+void create_links_from_list(llist_t *list) FAST_FUNC;
+#else
+#define create_links_from_list(l) (void)0
+#endif
 
 void data_align(archive_handle_t *archive_handle, unsigned boundary) FAST_FUNC;
 const llist_t *find_list_entry(const llist_t *list, const char *filename) FAST_FUNC;
 const llist_t *find_list_entry2(const llist_t *list, const char *filename) FAST_FUNC;
 
 /* A bit of bunzip2 internals are exposed for compressed help support: */
-typedef struct bunzip_data bunzip_data;
-int start_bunzip(bunzip_data **bdp, int in_fd, const void *inbuf, int len) FAST_FUNC;
-/* NB: read_bunzip returns < 0 on error, or the number of *unfilled* bytes
- * in outbuf. IOW: on EOF returns len ("all bytes are not filled"), not 0: */
-int read_bunzip(bunzip_data *bd, char *outbuf, int len) FAST_FUNC;
-void dealloc_bunzip(bunzip_data *bd) FAST_FUNC;
+char *unpack_bz2_data(const char *packed, int packed_len, int unpacked_len) FAST_FUNC;
 
 /* Meaning and direction (input/output) of the fields are transformer-specific */
 typedef struct transformer_state_t {
@@ -245,6 +252,12 @@ typedef struct transformer_state_t {
 	off_t    bytes_in;  /* used in unzip code only: needs to know packed size */
 	uint32_t crc32;
 	time_t   mtime;     /* gunzip code may set this on exit */
+
+	union {             /* if we read magic, it's saved here */
+		uint8_t b[8];
+		uint16_t b16[4];
+		uint32_t b32[2];
+	} magic;
 } transformer_state_t;
 
 void init_transformer_state(transformer_state_t *xstate) FAST_FUNC;
@@ -281,7 +294,11 @@ enum {
 	BBUNPK_SEAMLESS_MAGIC = (1 << 31) * ENABLE_ZCAT * SEAMLESS_COMPRESSION,
 };
 
+#if !ENABLE_PLATFORM_MINGW32
 void check_errors_in_children(int signo);
+#else
+#define check_errors_in_children(s) ((void)0)
+#endif
 #if BB_MMU
 void fork_transformer(int fd,
 	int signature_skipped,

@@ -6,7 +6,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config WHICH
-//config:	bool "which (3.7 kb)"
+//config:	bool "which (3.8 kb)"
 //config:	default y
 //config:	help
 //config:	which is used to find programs in your PATH and
@@ -45,9 +45,8 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 
 	do {
 		int missing = 1;
-		char *p;
 
-#if ENABLE_FEATURE_SH_STANDALONE
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
 		if (strcmp(*argv, "busybox") == 0 &&
 				is_suffixed_with(bb_busybox_exec_path, "busybox.exe")) {
 			missing = 0;
@@ -64,28 +63,44 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 		}
 #endif
 
+#if !ENABLE_PLATFORM_MINGW32
 		/* If file contains a slash don't use PATH */
-		if (strchr(*argv, '/') || (ENABLE_PLATFORM_MINGW32 && strchr(*argv, '\\'))) {
-#if ENABLE_PLATFORM_MINGW32
-			if ((p=add_win32_extension(*argv)) != NULL) {
-				missing = 0;
-				puts(p);
-				free(p);
-			}
-			else
-#endif
+		if (strchr(*argv, '/')) {
 			if (file_is_executable(*argv)) {
 				missing = 0;
 				puts(*argv);
 			}
+#else
+		if (has_path(*argv)) {
+# if ENABLE_FEATURE_SH_STANDALONE
+			const char *name = bb_basename(*argv);
+# endif
+			char *path = alloc_system_drive(*argv);
+
+			if (add_win32_extension(path) || file_is_executable(path)) {
+				missing = 0;
+				puts(bs_to_slash(path));
+			}
+# if ENABLE_FEATURE_SH_STANDALONE
+			else if (unix_path(*argv) && find_applet_by_name(name) >= 0) {
+				missing = 0;
+				puts(name);
+			}
+# endif
+#endif
 		} else {
 			char *path;
+			char *p;
 
 			path = env_path;
 			/* NOFORK NB: xmalloc inside find_executable(), must have no allocs above! */
 			while ((p = find_executable(*argv, &path)) != NULL) {
 				missing = 0;
+#if ENABLE_PLATFORM_MINGW32
+				puts(bs_to_slash(p));
+#else
 				puts(p);
+#endif
 				free(p);
 				if (!option_mask32) /* -a not set */
 					break;

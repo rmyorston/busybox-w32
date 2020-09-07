@@ -113,7 +113,7 @@
 #if ENABLE_NC_EXTRA
 static void timeout(int signum UNUSED_PARAM)
 {
-	bb_error_msg_and_die("timed out");
+	bb_simple_error_msg_and_die("timed out");
 }
 #endif
 
@@ -215,7 +215,7 @@ int nc_main(int argc, char **argv)
  IF_NC_EXTRA(accept_again:)
 			cfd = accept(sfd, NULL, 0);
 			if (cfd < 0)
-				bb_perror_msg_and_die("accept");
+				bb_simple_perror_msg_and_die("accept");
 			if (!execparam)
 				close(sfd);
 		} else {
@@ -267,7 +267,7 @@ int nc_main(int argc, char **argv)
 		testfds = readfds;
 
 		if (select(cfd + 1, &testfds, NULL, NULL, NULL) < 0)
-			bb_perror_msg_and_die("select");
+			bb_simple_perror_msg_and_die("select");
 
 		fd = STDIN_FILENO;
 		while (1) {

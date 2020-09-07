@@ -10,7 +10,7 @@
  * Add proxy support
  */
 //config:config WHOIS
-//config:	bool "whois (6.6 kb)"
+//config:	bool "whois (6.3 kb)"
 //config:	default y
 //config:	help
 //config:	whois is a client for the whois directory service
@@ -39,20 +39,28 @@ static char *query(const char *host, int port, const char *domain)
 	bool success;
 	char *redir = NULL;
 	const char *pfx = "";
-	char linebuf[1024];
+	/* some .io domains reported to have very long strings in whois
+	 * responses, 1k was not enough:
+	 */
+	char linebuf[2 * 1024];
 	char *buf = NULL;
 	unsigned bufpos = 0;
 
  again:
 	printf("[Querying %s:%d '%s%s']\n", host, port, pfx, domain);
 	fd = create_and_connect_stream_or_die(host, port);
-	success = 0;
 	fdprintf(fd, "%s%s\r\n", pfx, domain);
 	fp = xfdopen_for_read(fd);
 
-	while (fgets(linebuf, sizeof(linebuf), fp)) {
-		unsigned len = strcspn(linebuf, "\r\n");
+	success = 0;
+	while (bufpos < 32*1024 /* paranoia */
+	 && fgets(linebuf, sizeof(linebuf)-1, fp)
+	) {
+		unsigned len;
+
+		len = strcspn(linebuf, "\r\n");
 		linebuf[len++] = '\n';
+		linebuf[len] = '\0';
 
 		buf = xrealloc(buf, bufpos + len + 1);
 		memcpy(buf + bufpos, linebuf, len);

@@ -6,7 +6,7 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config REV
-//config:	bool "rev (4.5 kb)"
+//config:	bool "rev (4.4 kb)"
 //config:	default y
 //config:	help
 //config:	Reverse lines of a file or files.
@@ -39,7 +39,7 @@
 #endif
 
 /* In-place invert */
-static void bb_strrev(CHAR_T *s, int len)
+static void strrev(CHAR_T *s, int len)
 {
 	int i;
 
@@ -111,14 +111,14 @@ int rev_main(int argc UNUSED_PARAM, char **argv)
 				/* Convert to wchar_t (might error out!) */
 				int len  = mbstowcs(tmp, buf, bufsize);
 				if (len >= 0) {
-					bb_strrev(tmp, len);
+					strrev(tmp, len);
 					/* Convert back to char */
 					wcstombs(buf, tmp, bufsize);
 				}
 				free(tmp);
 			}
 #else
-			bb_strrev(buf, strlen(buf));
+			strrev(buf, strlen(buf));
 #endif
 			fputs(buf, stdout);
 		}

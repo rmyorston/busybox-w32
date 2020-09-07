@@ -17,7 +17,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config IFUP
-//config:	bool "ifup (17 kb)"
+//config:	bool "ifup (14 kb)"
 //config:	default y
 //config:	help
 //config:	Activate the specified interfaces. This applet makes use
@@ -33,7 +33,7 @@
 //config:	via busybox or via standalone utilities.
 //config:
 //config:config IFDOWN
-//config:	bool "ifdown (15 kb)"
+//config:	bool "ifdown (13 kb)"
 //config:	default y
 //config:	help
 //config:	Deactivate the specified interfaces.
@@ -138,6 +138,7 @@
 //usage:     "\n	-v	Print out what would happen before doing it"
 //usage:     "\n	-f	Force deconfiguration"
 
+#include <net/if.h>
 #include "libbb.h"
 #include "common_bufsiz.h"
 /* After libbb.h, since it needs sys/types.h on some systems */
@@ -503,6 +504,8 @@ static int FAST_FUNC static_up6(struct interface_defn_t *ifd, execfn *exec)
 
 static int FAST_FUNC static_down6(struct interface_defn_t *ifd, execfn *exec)
 {
+	if (!if_nametoindex(ifd->iface))
+		return 1; /* already gone */
 # if ENABLE_FEATURE_IFUPDOWN_IP
 	return execute("ip link set %iface% down", ifd, exec);
 # else
@@ -598,6 +601,9 @@ static int FAST_FUNC static_up(struct interface_defn_t *ifd, execfn *exec)
 static int FAST_FUNC static_down(struct interface_defn_t *ifd, execfn *exec)
 {
 	int result;
+
+	if (!if_nametoindex(ifd->iface))
+		return 2; /* already gone */
 # if ENABLE_FEATURE_IFUPDOWN_IP
 	/* Optional "label LBL" is necessary if interface is an alias (eth0:0),
 	 * otherwise "ip addr flush dev eth0:0" flushes all addresses on eth0.
@@ -659,7 +665,7 @@ static int FAST_FUNC dhcp_up(struct interface_defn_t *ifd, execfn *exec)
 		if (executable_exists(ext_dhcp_clients[i].name))
 			return execute(ext_dhcp_clients[i].startcmd, ifd, exec);
 	}
-	bb_error_msg("no dhcp clients found");
+	bb_simple_error_msg("no dhcp clients found");
 	return 0;
 }
 # elif ENABLE_UDHCPC
@@ -701,7 +707,7 @@ static int FAST_FUNC dhcp_down(struct interface_defn_t *ifd, execfn *exec)
 	}
 
 	if (!result)
-		bb_error_msg("warning: no dhcp clients found and stopped");
+		bb_simple_error_msg("warning: no dhcp clients found and stopped");
 
 	/* Sleep a bit, otherwise static_down tries to bring down interface too soon,
 	   and it may come back up because udhcpc is still shutting down */
@@ -1016,6 +1022,22 @@ static struct interfaces_file_t *read_interfaces(const char *filename, struct in
 			currently_processing = NONE;
 		} else if (strcmp(first_word, "source") == 0) {
 			read_interfaces(next_word(&rest_of_line), defn);
+		} else if (is_prefixed_with(first_word, "source-dir")) {
+			const char *dirpath;
+			DIR *dir;
+			struct dirent *entry;
+
+			dirpath = next_word(&rest_of_line);
+			dir = xopendir(dirpath);
+			while ((entry = readdir(dir)) != NULL) {
+				char *path;
+				if (entry->d_name[0] == '.')
+					continue;
+				path = concat_path_file(dirpath, entry->d_name);
+				read_interfaces(path, defn);
+				free(path);
+			}
+			closedir(dir);
 		} else {
 			switch (currently_processing) {
 			case IFACE:
@@ -1155,8 +1177,15 @@ static int doit(char *str)
 
 static int execute_all(struct interface_defn_t *ifd, const char *opt)
 {
+	/* 'opt' is always short, the longest value is "post-down".
+	 * Can use on-stack buffer instead of xasprintf'ed one.
+	 */
+	char buf[sizeof("run-parts /etc/network/if-%s.d")
+		+ sizeof("post-down")
+		/*paranoia:*/ + 8
+	];
 	int i;
-	char *buf;
+
 	for (i = 0; i < ifd->n_options; i++) {
 		if (strcmp(ifd->option[i].name, opt) == 0) {
 			if (!doit(ifd->option[i].value)) {
@@ -1170,8 +1199,7 @@ static int execute_all(struct interface_defn_t *ifd, const char *opt)
 	 * complains, and this message _is_ annoyingly visible.
 	 * Don't "fix" this (unless newer Debian does).
 	 */
-	buf = xasprintf("run-parts /etc/network/if-%s.d", opt);
-	/* heh, we don't bother free'ing it */
+	sprintf(buf, "run-parts /etc/network/if-%s.d", opt);
 	return doit(buf);
 }
 

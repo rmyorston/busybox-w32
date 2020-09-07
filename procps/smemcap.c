@@ -66,7 +66,11 @@ static void archivefile(const char *path)
 	struct stat s;
 
 	/* buffer the file */
-	fd = xopen(path, O_RDONLY);
+	fd = open(path, O_RDONLY);
+	if (fd == -1) {
+		/* skip vanished processes between dir listing and traversal */
+		return;
+	}
 	do {
 		cur = xzalloc(sizeof(*cur));
 		*prev = cur;

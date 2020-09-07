@@ -154,7 +154,7 @@ Exit Codes
 /* Busyboxed by Denys Vlasenko <vda.linux@googlemail.com> */
 
 //config:config SV
-//config:	bool "sv (7.8 kb)"
+//config:	bool "sv (8.5 kb)"
 //config:	default y
 //config:	help
 //config:	sv reports the current status and controls the state of services
@@ -163,23 +163,32 @@ Exit Codes
 //config:config SV_DEFAULT_SERVICE_DIR
 //config:	string "Default directory for services"
 //config:	default "/var/service"
-//config:	depends on SV
+//config:	depends on SV || SVC || SVOK
 //config:	help
 //config:	Default directory for services.
 //config:	Defaults to "/var/service"
 //config:
 //config:config SVC
-//config:	bool "svc (7.8 kb)"
+//config:	bool "svc (8.4 kb)"
 //config:	default y
 //config:	help
 //config:	svc controls the state of services monitored by the runsv supervisor.
-//config:	It is comaptible with daemontools command with the same name.
+//config:	It is compatible with daemontools command with the same name.
+//config:
+//config:config SVOK
+//config:	bool "svok (1.5 kb)"
+//config:	default y
+//config:	help
+//config:	svok checks whether runsv supervisor is running.
+//config:	It is compatible with daemontools command with the same name.
 
-//applet:IF_SV( APPLET_NOEXEC(sv,  sv,  BB_DIR_USR_BIN, BB_SUID_DROP, sv ))
-//applet:IF_SVC(APPLET_NOEXEC(svc, svc, BB_DIR_USR_BIN, BB_SUID_DROP, svc))
+//applet:IF_SV(  APPLET_NOEXEC(sv,   sv,   BB_DIR_USR_BIN, BB_SUID_DROP, sv  ))
+//applet:IF_SVC( APPLET_NOEXEC(svc,  svc,  BB_DIR_USR_BIN, BB_SUID_DROP, svc ))
+//applet:IF_SVOK(APPLET_NOEXEC(svok, svok, BB_DIR_USR_BIN, BB_SUID_DROP, svok))
 
 //kbuild:lib-$(CONFIG_SV) += sv.o
 //kbuild:lib-$(CONFIG_SVC) += sv.o
+//kbuild:lib-$(CONFIG_SVOK) += sv.o
 
 #include <sys/file.h>
 #include "libbb.h"
@@ -213,6 +222,7 @@ struct globals {
 #define str_equal(s,t) (strcmp((s), (t)) == 0)
 
 
+#if ENABLE_SV || ENABLE_SVC
 static void fatal_cannot(const char *m1) NORETURN;
 static void fatal_cannot(const char *m1)
 {
@@ -615,7 +625,7 @@ static int sv(char **argv)
 	service = argv;
 	while ((x = *service) != NULL) {
 		if (x[0] != '/' && x[0] != '.'
-		 && x[0] != '\0' && x[strlen(x) - 1] != '/'
+		 && !last_char_is(x, '/')
 		) {
 			if (chdir(varservice) == -1)
 				goto chdir_failed_0;
@@ -679,6 +689,7 @@ static int sv(char **argv)
 	}
 	return rc > 99 ? 99 : rc;
 }
+#endif
 
 #if ENABLE_SV
 int sv_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -738,6 +749,44 @@ int svc_main(int argc UNUSED_PARAM, char **argv)
 		optstring++;
 		opts >>= 1;
 	} while (opts);
+
+	return 0;
+}
+#endif
+
+//usage:#define svok_trivial_usage
+//usage:       "SERVICE_DIR"
+//usage:#define svok_full_usage "\n\n"
+//usage:       "Check whether runsv supervisor is running.\n"
+//usage:       "Exit code is 0 if it does, 100 if it does not,\n"
+//usage:       "111 (with error message) if SERVICE_DIR does not exist."
+#if ENABLE_SVOK
+int svok_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+int svok_main(int argc UNUSED_PARAM, char **argv)
+{
+	const char *dir = argv[1];
+
+	if (!dir)
+		bb_show_usage();
+
+	xfunc_error_retval = 111;
+
+	/*
+	 * daemontools has no concept of "default service dir", runit does.
+	 * Let's act as runit.
+	 */
+	if (dir[0] != '/' && dir[0] != '.'
+	 && !last_char_is(dir, '/')
+	) {
+		xchdir(CONFIG_SV_DEFAULT_SERVICE_DIR);
+	}
+
+	xchdir(dir);
+	if (open("supervise/ok", O_WRONLY) < 0) {
+		if (errno == ENOENT || errno == ENXIO)
+			return 100;
+		bb_perror_msg_and_die("can't open '%s'", "supervise/ok");
+	}
 
 	return 0;
 }

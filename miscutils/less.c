@@ -20,7 +20,7 @@
  *   redirected input has been read from stdin
  */
 //config:config LESS
-//config:	bool "less (15 kb)"
+//config:	bool "less (16 kb)"
 //config:	default y
 //config:	help
 //config:	'less' is a pager, meaning that it displays text files. It possesses
@@ -121,11 +121,12 @@
 //kbuild:lib-$(CONFIG_LESS) += less.o
 
 //usage:#define less_trivial_usage
-//usage:       "[-E" IF_FEATURE_LESS_REGEXP("I")IF_FEATURE_LESS_FLAGS("Mm")
+//usage:       "[-EF" IF_FEATURE_LESS_REGEXP("I")IF_FEATURE_LESS_FLAGS("Mm")
 //usage:       "N" IF_FEATURE_LESS_TRUNCATE("S") IF_FEATURE_LESS_RAW("R") "h~] [FILE]..."
 //usage:#define less_full_usage "\n\n"
 //usage:       "View FILE (or stdin) one screenful at a time\n"
 //usage:     "\n	-E	Quit once the end of a file is reached"
+//usage:     "\n	-F	Quit if entire file fits on first screen"
 //usage:	IF_FEATURE_LESS_REGEXP(
 //usage:     "\n	-I	Ignore case in all searches"
 //usage:	)
@@ -179,8 +180,9 @@ enum {
 	FLAG_N = 1 << 3,
 	FLAG_TILDE = 1 << 4,
 	FLAG_I = 1 << 5,
-	FLAG_S = (1 << 6) * ENABLE_FEATURE_LESS_TRUNCATE,
-	FLAG_R = (1 << 7) * ENABLE_FEATURE_LESS_RAW,
+	FLAG_F = 1 << 6,
+	FLAG_S = (1 << 7) * ENABLE_FEATURE_LESS_TRUNCATE,
+	FLAG_R = (1 << 8) * ENABLE_FEATURE_LESS_RAW,
 /* hijack command line options variable for internal state vars */
 	LESS_STATE_MATCH_BACKWARDS = 1 << 15,
 };
@@ -238,7 +240,9 @@ struct globals {
 	smallint winsize_err;
 #endif
 	smallint terminated;
+#if !ENABLE_PLATFORM_MINGW32
 	struct termios term_orig, term_less;
+#endif
 	char kbd_input[KEYCODE_BUFFER_SIZE];
 };
 #define G (*ptr_to_globals)
@@ -300,7 +304,9 @@ struct globals {
 static void set_tty_cooked(void)
 {
 	fflush_all();
+#if !ENABLE_PLATFORM_MINGW32
 	tcsetattr(kbd_fd, TCSANOW, &term_orig);
+#endif
 }
 
 /* Move the cursor to a position (x,y), where (0,0) is the
@@ -332,7 +338,11 @@ static void less_exit(int code)
 	set_tty_cooked();
 	if (!(G.kbd_fd_orig_flags & O_NONBLOCK))
 		ndelay_off(kbd_fd);
+#if !ENABLE_PLATFORM_MINGW32
 	clear_line();
+#else
+	printf(ESC"[?1049l");
+#endif
 	if (code < 0)
 		kill_myself_with_sig(- code); /* does not return */
 	exit(code);
@@ -946,11 +956,12 @@ static void buffer_print(void)
 		else
 			print_ascii(buffer[i]);
 	}
-	if ((option_mask32 & FLAG_E)
+	if ((option_mask32 & (FLAG_E|FLAG_F))
 	 && eof_error <= 0
-	 && (max_fline - cur_fline) <= max_displayed_line
 	) {
-		less_exit(EXIT_SUCCESS);
+		i = option_mask32 & FLAG_F ? 0 : cur_fline;
+		if (max_fline - i <= max_displayed_line)
+			less_exit(EXIT_SUCCESS);
 	}
 	status_print();
 }
@@ -1125,7 +1136,7 @@ static void reinitialize(void)
 		printf(ESC"[999;999H" ESC"[6n");
 #endif
 #if ENABLE_PLATFORM_MINGW32
-	reset_screen();
+	printf(ESC"[?1049h");
 #endif
 	buffer_fill_and_print();
 }
@@ -1902,7 +1913,7 @@ int less_main(int argc, char **argv)
 	 * -s: condense many empty lines to one
 	 *     (used by some setups for manpage display)
 	 */
-	getopt32(argv, "EMmN~I"
+	getopt32(argv, "EMmN~IF"
 		IF_FEATURE_LESS_TRUNCATE("S")
 		IF_FEATURE_LESS_RAW("R")
 		/*ignored:*/"s"
@@ -1916,6 +1927,9 @@ int less_main(int argc, char **argv)
 	if (ENABLE_FEATURE_LESS_ENV) {
 		char *c = getenv("LESS");
 		if (c) while (*c) switch (*c++) {
+		case 'F':
+			option_mask32 |= FLAG_F;
+			break;
 		case 'M':
 			option_mask32 |= FLAG_M;
 			break;
@@ -1938,7 +1952,6 @@ int less_main(int argc, char **argv)
 	if (!num_files) {
 		if (isatty(STDIN_FILENO)) {
 			/* Just "less"? No args and no redirection? */
-			bb_error_msg("missing filename");
 			bb_show_usage();
 		}
 	} else {
@@ -1978,7 +1991,9 @@ int less_main(int argc, char **argv)
 	kbd_fd = tty_fd = 0;
 #endif
 
-	get_termios_and_make_raw(tty_fd, &term_less, &term_orig, TERMIOS_RAW_CRNL);
+#if !ENABLE_PLATFORM_MINGW32
+	get_termios_and_make_raw(tty_fd, &term_less, &term_orig, TERMIOS_RAW_CRNL_INPUT);
+#endif
 
 	IF_FEATURE_LESS_ASK_TERMINAL(G.winsize_err =) get_terminal_width_height(tty_fd, &width, &max_displayed_line);
 	/* 20: two tabstops + 4 */

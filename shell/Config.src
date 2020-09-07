@@ -1,6 +1,6 @@
 #
 # For a description of the syntax of this configuration file,
-# see scripts/kbuild/config-language.txt.
+# see docs/Kconfig-language.txt.
 #
 
 menu "Shells"
@@ -17,6 +17,7 @@ choice
 config SH_IS_ASH
 	depends on !NOMMU
 	bool "ash"
+	select SHELL_ASH
 	help
 	Choose ash to be the shell executed by 'sh' name.
 	The ash code will be built into busybox. If you don't select
@@ -25,6 +26,7 @@ config SH_IS_ASH
 
 config SH_IS_HUSH
 	bool "hush"
+	select SHELL_HUSH
 	help
 	Choose hush to be the shell executed by 'sh' name.
 	The hush code will be built into busybox. If you don't select
@@ -57,6 +59,7 @@ choice
 config BASH_IS_ASH
 	depends on !NOMMU
 	bool "ash"
+	select SHELL_ASH
 	help
 	Choose ash to be the shell executed by 'bash' name.
 	The ash code will be built into busybox. If you don't select
@@ -65,6 +68,7 @@ config BASH_IS_ASH
 
 config BASH_IS_HUSH
 	bool "hush"
+	select SHELL_HUSH
 	help
 	Choose hush to be the shell executed by 'bash' name.
 	The hush code will be built into busybox. If you don't select
@@ -81,12 +85,12 @@ INSERT
 
 
 comment "Options common to all shells"
-if ASH || HUSH || SH_IS_ASH || BASH_IS_ASH || SH_IS_HUSH || BASH_IS_HUSH
+if SHELL_ASH || SHELL_HUSH
 
 config FEATURE_SH_MATH
 	bool "POSIX math support"
 	default y
-	depends on ASH || HUSH || SH_IS_ASH || BASH_IS_ASH || SH_IS_HUSH || BASH_IS_HUSH
+	depends on SHELL_ASH || SHELL_HUSH
 	help
 	Enable math support in the shell via $((...)) syntax.
 
@@ -99,17 +103,22 @@ config FEATURE_SH_MATH_64
 	slightly larger, but will allow computation with very large numbers.
 	This is not in POSIX, so do not rely on this in portable code.
 
+config FEATURE_SH_MATH_BASE
+	bool "Support BASE#nnnn literals"
+	default y
+	depends on FEATURE_SH_MATH
+
 config FEATURE_SH_EXTRA_QUIET
 	bool "Hide message on interactive shell startup"
 	default y
-	depends on ASH || HUSH || SH_IS_ASH || BASH_IS_ASH || SH_IS_HUSH || BASH_IS_HUSH
+	depends on SHELL_ASH || SHELL_HUSH
 	help
 	Remove the busybox introduction when starting a shell.
 
 config FEATURE_SH_STANDALONE
 	bool "Standalone shell"
 	default n
-	depends on ASH || HUSH || SH_IS_ASH || BASH_IS_ASH || SH_IS_HUSH || BASH_IS_HUSH
+	depends on SHELL_ASH || SHELL_HUSH
 	help
 	This option causes busybox shells to use busybox applets
 	in preference to executables in the PATH whenever possible. For
@@ -130,7 +139,7 @@ config FEATURE_SH_STANDALONE
 config FEATURE_SH_NOFORK
 	bool "Run 'nofork' applets directly"
 	default n
-	depends on ASH || HUSH || SH_IS_ASH || BASH_IS_ASH || SH_IS_HUSH || BASH_IS_HUSH
+	depends on SHELL_ASH || SHELL_HUSH
 	help
 	This option causes busybox shells to not execute typical
 	fork/exec/wait sequence, but call <applet>_main directly,
@@ -148,18 +157,32 @@ config FEATURE_SH_NOFORK
 config FEATURE_SH_READ_FRAC
 	bool "read -t N.NNN support (+110 bytes)"
 	default y
-	depends on ASH || HUSH || SH_IS_ASH || BASH_IS_ASH || SH_IS_HUSH || BASH_IS_HUSH
+	depends on SHELL_ASH || SHELL_HUSH
 	help
 	Enable support for fractional second timeout in read builtin.
 
 config FEATURE_SH_HISTFILESIZE
 	bool "Use $HISTFILESIZE"
 	default y
-	depends on ASH || HUSH || SH_IS_ASH || BASH_IS_ASH || SH_IS_HUSH || BASH_IS_HUSH
+	depends on SHELL_ASH || SHELL_HUSH
 	help
 	This option makes busybox shells to use $HISTFILESIZE variable
 	to set shell history size. Note that its max value is capped
 	by "History size" setting in library tuning section.
+
+config FEATURE_SH_EMBEDDED_SCRIPTS
+	bool "Embed scripts in the binary"
+	default y
+	depends on SHELL_ASH || SHELL_HUSH
+	help
+	Allow scripts to be compressed and embedded in the busybox
+	binary. The scripts should be placed in the 'embed' directory
+	at build time. Like applets, scripts can be run as
+	'busybox SCRIPT ...' or by linking their name to the binary.
+
+	This also allows applets to be implemented as scripts: place
+	the script in 'applets_sh' and a stub C file containing
+	configuration in the appropriate subsystem directory.
 
 endif # Options common to all shells
 

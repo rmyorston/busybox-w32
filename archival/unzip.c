@@ -17,7 +17,7 @@
  * Zip64 + other methods
  */
 //config:config UNZIP
-//config:	bool "unzip (24 kb)"
+//config:	bool "unzip (26 kb)"
 //config:	default y
 //config:	help
 //config:	unzip will list or extract files from a ZIP archive,
@@ -160,15 +160,15 @@ typedef union {
 #define FIX_ENDIANNESS_CDF(cdf) \
 do { if (BB_BIG_ENDIAN) { \
 	(cdf).fmt.version_made_by = SWAP_LE16((cdf).fmt.version_made_by); \
-	(cdf).fmt.version_needed = SWAP_LE16((cdf).fmt.version_needed); \
-	(cdf).fmt.method        = SWAP_LE16((cdf).fmt.method      ); \
-	(cdf).fmt.modtime       = SWAP_LE16((cdf).fmt.modtime     ); \
-	(cdf).fmt.moddate       = SWAP_LE16((cdf).fmt.moddate     ); \
-	(cdf).fmt.crc32         = SWAP_LE32((cdf).fmt.crc32       ); \
-	(cdf).fmt.cmpsize       = SWAP_LE32((cdf).fmt.cmpsize     ); \
-	(cdf).fmt.ucmpsize      = SWAP_LE32((cdf).fmt.ucmpsize    ); \
-	(cdf).fmt.filename_len  = SWAP_LE16((cdf).fmt.filename_len); \
-	(cdf).fmt.extra_len     = SWAP_LE16((cdf).fmt.extra_len   ); \
+	(cdf).fmt.version_needed  = SWAP_LE16((cdf).fmt.version_needed ); \
+	(cdf).fmt.method          = SWAP_LE16((cdf).fmt.method         ); \
+	(cdf).fmt.modtime         = SWAP_LE16((cdf).fmt.modtime        ); \
+	(cdf).fmt.moddate         = SWAP_LE16((cdf).fmt.moddate        ); \
+	(cdf).fmt.crc32           = SWAP_LE32((cdf).fmt.crc32          ); \
+	(cdf).fmt.cmpsize         = SWAP_LE32((cdf).fmt.cmpsize        ); \
+	(cdf).fmt.ucmpsize        = SWAP_LE32((cdf).fmt.ucmpsize       ); \
+	(cdf).fmt.filename_len    = SWAP_LE16((cdf).fmt.filename_len   ); \
+	(cdf).fmt.extra_len       = SWAP_LE16((cdf).fmt.extra_len      ); \
 	(cdf).fmt.file_comment_length = SWAP_LE16((cdf).fmt.file_comment_length); \
 	(cdf).fmt.external_attributes = SWAP_LE32((cdf).fmt.external_attributes); \
 }} while (0)
@@ -332,7 +332,7 @@ static uint32_t read_next_cdf(uint32_t cdf_offset, cdf_header_t *cdf)
 static void die_if_bad_fnamesize(unsigned sz)
 {
 	if (sz > 0xfff) /* more than 4k?! no funny business please */
-		bb_error_msg_and_die("bad archive");
+		bb_simple_error_msg_and_die("bad archive");
 }
 
 static void unzip_skip(off_t skip)
@@ -355,6 +355,9 @@ static void unzip_create_leading_dirs(const char *fn)
 }
 
 #if ENABLE_FEATURE_UNZIP_CDF
+#if ENABLE_PLATFORM_MINGW32
+#define unzip_extract_symlink(s, z, d) unzip_extract_symlink(z, d)
+#endif
 static void unzip_extract_symlink(llist_t **symlink_placeholders,
 		zip_header_t *zip,
 		const char *dst_fn)
@@ -369,7 +372,7 @@ static void unzip_extract_symlink(llist_t **symlink_placeholders,
 		xread(zip_fd, target, zip->fmt.ucmpsize);
 	} else {
 #if 1
-		bb_error_msg_and_die("compressed symlink is not supported");
+		bb_simple_error_msg_and_die("compressed symlink is not supported");
 #else
 		transformer_state_t xstate;
 		init_transformer_state(&xstate);
@@ -382,9 +385,10 @@ static void unzip_extract_symlink(llist_t **symlink_placeholders,
 		target[xstate.mem_output_size] = '\0';
 #endif
 	}
-	create_or_remember_symlink(symlink_placeholders,
+	create_or_remember_link(symlink_placeholders,
 			target,
-			dst_fn);
+			dst_fn,
+			0);
 	free(target);
 }
 #endif
@@ -408,10 +412,10 @@ static void unzip_extract(zip_header_t *zip, int dst_fd)
 	if (zip->fmt.method == 8) {
 		/* Method 8 - inflate */
 		if (inflate_unzip(&xstate) < 0)
-			bb_error_msg_and_die("inflate error");
+			bb_simple_error_msg_and_die("inflate error");
 		/* Validate decompression - crc */
 		if (zip->fmt.crc32 != (xstate.crc32 ^ 0xffffffffL)) {
-			bb_error_msg_and_die("crc error");
+			bb_simple_error_msg_and_die("crc error");
 		}
 	}
 #if ENABLE_FEATURE_UNZIP_BZIP2
@@ -421,7 +425,7 @@ static void unzip_extract(zip_header_t *zip, int dst_fd)
 		 */
 		xstate.bytes_out = unpack_bz2_stream(&xstate);
 		if (xstate.bytes_out < 0)
-			bb_error_msg_and_die("inflate error");
+			bb_simple_error_msg_and_die("inflate error");
 	}
 #endif
 #if ENABLE_FEATURE_UNZIP_LZMA
@@ -429,7 +433,7 @@ static void unzip_extract(zip_header_t *zip, int dst_fd)
 		/* Not tested yet */
 		xstate.bytes_out = unpack_lzma_stream(&xstate);
 		if (xstate.bytes_out < 0)
-			bb_error_msg_and_die("inflate error");
+			bb_simple_error_msg_and_die("inflate error");
 	}
 #endif
 #if ENABLE_FEATURE_UNZIP_XZ
@@ -437,7 +441,7 @@ static void unzip_extract(zip_header_t *zip, int dst_fd)
 		/* Not tested yet */
 		xstate.bytes_out = unpack_xz_stream(&xstate);
 		if (xstate.bytes_out < 0)
-			bb_error_msg_and_die("inflate error");
+			bb_simple_error_msg_and_die("inflate error");
 	}
 #endif
 	else {
@@ -448,7 +452,7 @@ static void unzip_extract(zip_header_t *zip, int dst_fd)
 	if (zip->fmt.ucmpsize != xstate.bytes_out) {
 		/* Don't die. Who knows, maybe len calculation
 		 * was botched somewhere. After all, crc matched! */
-		bb_error_msg("bad length");
+		bb_simple_error_msg("bad length");
 	}
 }
 
@@ -456,7 +460,7 @@ static void my_fgets80(char *buf80)
 {
 	fflush_all();
 	if (!fgets(buf80, 80, stdin)) {
-		bb_perror_msg_and_die("can't read standard input");
+		bb_simple_perror_msg_and_die("can't read standard input");
 	}
 }
 
@@ -465,7 +469,9 @@ static int get_lstat_mode(const char *dst_fn)
 	struct stat stat_buf;
 	if (lstat(dst_fn, &stat_buf) == -1) {
 		if (errno != ENOENT) {
-			bb_perror_msg_and_die("can't stat '%s'", dst_fn);
+			bb_perror_msg_and_die("can't stat '%s'",
+				dst_fn
+			);
 		}
 		/* File does not exist */
 		return -1;
@@ -496,7 +502,7 @@ int unzip_main(int argc, char **argv)
 	llist_t *zaccept = NULL;
 	llist_t *zreject = NULL;
 	char *base_dir = NULL;
-#if ENABLE_FEATURE_UNZIP_CDF
+#if ENABLE_FEATURE_UNZIP_CDF && !ENABLE_PLATFORM_MINGW32
 	llist_t *symlink_placeholders = NULL;
 #endif
 	int i;
@@ -643,7 +649,9 @@ int unzip_main(int argc, char **argv)
 				break;
 			if (++i > 2) {
 				*ext = '\0';
-				bb_error_msg_and_die("can't open %s[.zip]", src_fn);
+				bb_error_msg_and_die("can't open %s[.zip]",
+					src_fn
+				);
 			}
 			strcpy(ext, extn[i - 1]);
 		}
@@ -651,12 +659,21 @@ int unzip_main(int argc, char **argv)
 	}
 
 	/* Change dir if necessary */
-	if (base_dir)
+	if (base_dir) {
+		/* -p DIR: try to create, errors don't matter.
+		 * UnZip 6.00 does no multi-level mkdir (-p DIR1/DIR2 syntax),
+		 * not using bb_make_directory() here (yet?)
+		 */
+		mkdir(base_dir, 0777);
 		xchdir(base_dir);
+	}
 
 	if (quiet <= 1) { /* not -qq */
-		if (quiet == 0)
-			printf("Archive:  %s\n", src_fn);
+		if (quiet == 0) {
+			printf("Archive:  %s\n",
+				printable_string(src_fn)
+			);
+		}
 		if (opts & OPT_l) {
 			puts(verbose ?
 				" Length   Method    Size  Cmpr    Date    Time   CRC-32   Name\n"
@@ -840,7 +857,8 @@ int unzip_main(int argc, char **argv)
 				printf(       "%9u  " "%s   "         "%s\n",
 					(unsigned)zip.fmt.ucmpsize,
 					dtbuf,
-					dst_fn);
+					printable_string(dst_fn)
+				);
 			} else {
 				char method6[7];
 				unsigned long percents;
@@ -869,7 +887,8 @@ int unzip_main(int argc, char **argv)
 					(unsigned)percents,
 					dtbuf,
 					zip.fmt.crc32,
-					dst_fn);
+					printable_string(dst_fn)
+				);
 				total_size += zip.fmt.cmpsize;
 			}
 			total_usize += zip.fmt.ucmpsize;
@@ -895,7 +914,7 @@ int unzip_main(int argc, char **argv)
 			mode = get_lstat_mode(dst_fn);
 			if (mode == -1) { /* ENOENT */
 				if (!quiet) {
-					printf("   creating: %s\n", dst_fn);
+					printf("   creating: %s\n", printable_string(dst_fn));
 				}
 				unzip_create_leading_dirs(dst_fn);
 				if (bb_make_directory(dst_fn, dir_mode, FILEUTILS_IGNORE_CHMOD_ERR)) {
@@ -904,7 +923,9 @@ int unzip_main(int argc, char **argv)
 			} else {
 				if (!S_ISDIR(mode)) {
 					bb_error_msg_and_die("'%s' exists but is not a %s",
-						dst_fn, "directory");
+						printable_string(dst_fn),
+						"directory"
+					);
 				}
 			}
 			goto skip_cmpsize;
@@ -923,12 +944,16 @@ int unzip_main(int argc, char **argv)
 			if (!S_ISREG(mode)) {
  fishy:
 				bb_error_msg_and_die("'%s' exists but is not a %s",
-					dst_fn, "regular file");
+					printable_string(dst_fn),
+					"regular file"
+				);
 			}
 			if (overwrite == O_ALWAYS) {
 				goto do_open_and_extract;
 			}
-			printf("replace %s? [y]es, [n]o, [A]ll, [N]one, [r]ename: ", dst_fn);
+			printf("replace %s? [y]es, [n]o, [A]ll, [N]one, [r]ename: ",
+				printable_string(dst_fn)
+			);
 			my_fgets80(key_buf);
 			/* User input could take a long time. Is it still a regular file? */
 			mode = get_lstat_mode(dst_fn);
@@ -958,7 +983,9 @@ int unzip_main(int argc, char **argv)
 			if (!quiet) {
 				printf(/* zip.fmt.method == 0
 					? " extracting: %s\n"
-					: */ "  inflating: %s\n", dst_fn);
+					: */ "  inflating: %s\n",
+					printable_string(dst_fn)
+				);
 			}
 #if ENABLE_FEATURE_UNZIP_CDF
 			if (S_ISLNK(file_mode)) {
@@ -1000,7 +1027,7 @@ int unzip_main(int argc, char **argv)
 	}
 
 #if ENABLE_FEATURE_UNZIP_CDF
-	create_symlinks_from_list(symlink_placeholders);
+	create_links_from_list(symlink_placeholders);
 #endif
 
 	if ((opts & OPT_l) && quiet <= 1) {

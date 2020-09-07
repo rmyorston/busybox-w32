@@ -1,0 +1,90 @@
+#!/bin/sh
+#
+# Test sh scripts
+#
+# Copyright 2019 by STMicroelectronics
+# Licensed under GPLv2, see file LICENSE in this source tree.
+
+. ./testing.sh
+
+test -f "$bindir/.config" && . "$bindir/.config"
+
+# testing "test name" "options" "expected result" "file input" "stdin"
+
+# Test case
+testing "shebang" \
+	"uudecode; sh -c './shebang.sh'; echo \$?" \
+	"Hello world
+0
+" \
+"" "\
+begin-base64 755 shebang.sh
+IyEvYmluL3NoCmVjaG8gIkhlbGxvIHdvcmxkIgo=
+====
+"
+rm -f shebang.sh
+
+# Test case
+testing "shebang with whitespace" \
+	"uudecode; sh -c './shebang_trailing_space.sh'; echo \$?" \
+	"Hello world
+0
+" \
+"" "\
+begin-base64 755 shebang_trailing_space.sh
+IyEvYmluL3NoIAplY2hvICJIZWxsbyB3b3JsZCIK
+====
+"
+rm -f shebang_trailing_space.sh
+
+# Test case
+testing "shebang with argument" \
+	"uudecode; sh -c './shebang_argument.sh'; echo \$?" \
+	"Hello world
+0
+" \
+"" "\
+begin-base64 755 shebang_argument.sh
+IyEvYmluL3NoIC0KZWNobyAiSGVsbG8gd29ybGQiCg==
+====
+"
+rm -f shebang_argument.sh
+
+# Test case
+testing "shebang with leading whitespace and argument" \
+       "uudecode; sh -c './shebang_leading_space_argument.sh'; echo \$?" \
+       "Hello world
+0
+" \
+"" "\
+begin-base64 755 shebang_leading_space_argument.sh
+IyEvYmluL3NoICAtCmVjaG8gIkhlbGxvIHdvcmxkIgo=
+====
+"
+rm -f shebang_leading_space_argument.sh
+
+# Test case
+testing "shebang with argument and trailing whitespace" \
+	"uudecode; sh -c './shebang_argument_trailing_space.sh'; echo \$?" \
+	"Hello world
+0
+" \
+"" "\
+begin-base64 755 shebang_argument_trailing_space.sh
+IyEvYmluL3NoIC0gCmVjaG8gIkhlbGxvIHdvcmxkIgo=
+====
+"
+rm -f shebang_argument_trailing_space.sh
+
+# Test case
+testing "shebang with leading whitespace, argument and trailing whitespace" \
+       "uudecode; sh -c './shebang_leading_argument_trailing_space.sh'; echo \$?" \
+       "Hello world
+0
+" \
+"" "\
+begin-base64 755 shebang_leading_argument_trailing_space.sh
+IyEvYmluL3NoICAtIAplY2hvICJIZWxsbyB3b3JsZCIK
+====
+"
+rm -f shebang_leading_argument_trailing_space.sh

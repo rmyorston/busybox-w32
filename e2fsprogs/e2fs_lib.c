@@ -8,6 +8,7 @@
 #include "libbb.h"
 #include "e2fs_lib.h"
 
+#if !ENABLE_PLATFORM_MINGW32
 #define HAVE_EXT2_IOCTLS 1
 
 #if INT_MAX == LONG_MAX
@@ -24,6 +25,7 @@ static void close_silently(int fd)
 	close(fd);
 	errno = e;
 }
+#endif
 
 
 /* Iterate a function on each entry of a directory */
@@ -46,6 +48,7 @@ int iterate_on_dir(const char *dir_name,
 }
 
 
+#if !ENABLE_PLATFORM_MINGW32
 /* Get/set a file version on an ext2 file system */
 int fgetsetversion(const char *name, unsigned long *get_version, unsigned long set_version)
 {
@@ -80,7 +83,6 @@ int fgetsetversion(const char *name, unsigned long *get_version, unsigned long s
 	return -1;
 #endif /* ! HAVE_EXT2_IOCTLS */
 }
-
 
 /* Get/set a file flags on an ext2 file system */
 int fgetsetflags(const char *name, unsigned long *get_flags, unsigned long set_flags)
@@ -124,8 +126,38 @@ int fgetsetflags(const char *name, unsigned long *get_flags, unsigned long set_f
 	errno = EOPNOTSUPP;
 	return -1;
 }
+#else /* ENABLE_PLATFORM_MINGW32 */
+/* Only certain attributes can be set using SetFileAttributes() */
+#define CHATTR_MASK (FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_HIDDEN | \
+			FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE | \
+			FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED | \
+			FILE_ATTRIBUTE_OFFLINE)
+
+/* Get/set file attributes on a Windows file system */
+int fgetsetflags(const char *name, unsigned long *get_flags, unsigned long set_flags)
+{
+	struct stat buf;
+
+	if (stat(name, &buf) == 0 /* stat is ok */
+	 && !S_ISREG(buf.st_mode) && !S_ISDIR(buf.st_mode)
+	) {
+		errno = EOPNOTSUPP;
+		return -1;
+	}
+
+	if (get_flags) {
+		*get_flags = (unsigned long)buf.st_attr;
+	}
+	else if (!SetFileAttributes(name, set_flags & CHATTR_MASK)) {
+		errno = err_win_to_posix();
+		return -1;
+	}
+	return 0;
+}
+#endif
 
 
+#if !ENABLE_PLATFORM_MINGW32
 /* Print file attributes on an ext2 file system */
 const uint32_t e2attr_flags_value[] = {
 #ifdef ENABLE_COMPRESSION
@@ -177,6 +209,39 @@ static const char e2attr_flags_lname[] ALIGN1 =
 	"No_Tailmerging" "\0"
 	"Top_of_Directory_Hierarchies" "\0"
 	/* Another trailing NUL is added by compiler */;
+#else /* ENABLE_PLATFORM_MINGW32 */
+/* Print file attributes on a Windows file system */
+const uint32_t e2attr_flags_value[] = {
+	FILE_ATTRIBUTE_REPARSE_POINT,
+	FILE_ATTRIBUTE_OFFLINE,
+	FILE_ATTRIBUTE_ENCRYPTED,
+	FILE_ATTRIBUTE_COMPRESSED,
+	FILE_ATTRIBUTE_SPARSE_FILE,
+	FILE_ATTRIBUTE_READONLY,
+	FILE_ATTRIBUTE_HIDDEN,
+	FILE_ATTRIBUTE_SYSTEM,
+	FILE_ATTRIBUTE_ARCHIVE,
+	FILE_ATTRIBUTE_TEMPORARY,
+	FILE_ATTRIBUTE_NOT_CONTENT_INDEXED,
+};
+
+const char e2attr_flags_sname[] ALIGN1 =
+	"roecSrhsatn";
+
+static const char e2attr_flags_lname[] ALIGN1 =
+	"Reparse" "\0"
+	"Offline" "\0"
+	"Encrypted" "\0"
+	"Compressed" "\0"
+	"Sparse" "\0"
+	"Readonly" "\0"
+	"Hidden" "\0"
+	"System" "\0"
+	"Archive" "\0"
+	"Temporary" "\0"
+	"Notindexed" "\0"
+	/* Another trailing NUL is added by compiler */;
+#endif
 
 void print_e2flags(FILE *f, unsigned long flags, unsigned options)
 {

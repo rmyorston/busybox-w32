@@ -19,18 +19,16 @@
  * 4) Fixed busybox bug #1284 involving long overflow with human_readable.
  */
 //config:config DU
-//config:	bool "du (default blocksize of 512 bytes)"
+//config:	bool "du (6.3 kb)"
 //config:	default y
 //config:	help
 //config:	du is used to report the amount of disk space used
 //config:	for specified files.
 //config:
 //config:config FEATURE_DU_DEFAULT_BLOCKSIZE_1K
-//config:	bool "Use a default blocksize of 1024 bytes (1K)"
+//config:	bool "Use default blocksize of 1024 bytes (else it's 512 bytes)"
 //config:	default y
 //config:	depends on DU
-//config:	help
-//config:	Use a blocksize of (1K) instead of the default 512b.
 
 //applet:IF_DU(APPLET(du, BB_DIR_USR_BIN, BB_SUID_DROP))
 
@@ -292,11 +290,11 @@ int du_main(int argc UNUSED_PARAM, char **argv)
 	total = 0;
 	do {
 		total += du(*argv);
-		/* otherwise du /dir /dir won't show /dir twice: */
-		reset_ino_dev_hashtable();
 		G.slink_depth = slink_depth_save;
 	} while (*++argv);
 
+	if (ENABLE_FEATURE_CLEAN_UP)
+		reset_ino_dev_hashtable();
 	if (opt & OPT_c_total)
 		print(total, "total");
 

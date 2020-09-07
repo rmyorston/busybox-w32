@@ -156,7 +156,7 @@ int popmaildir_main(int argc UNUSED_PARAM, char **argv)
 				md5_ctx_t ctx;
 				char hex[16 * 2 + 1];
 			} md5;
-			uint32_t res[16 / 4];
+			uint32_t res[MD5_OUTSIZE / 4];
 
 			char *s = strchr(buf, '>');
 			if (s)
@@ -222,7 +222,7 @@ int popmaildir_main(int argc UNUSED_PARAM, char **argv)
 			fp = popen(delivery, "w");
 			unsetenv("FILENAME");
 			if (!fp) {
-				bb_perror_msg("delivery helper");
+				bb_simple_perror_msg("delivery helper");
 				break;
 			}
 		} else
@@ -265,7 +265,7 @@ int popmaildir_main(int argc UNUSED_PARAM, char **argv)
 
 		// atomically move message to ./new/
 		target = xstrdup(filename);
-		strncpy(target, "new", 3);
+		memcpy(target, "new", 3);
 		// ... or just stop receiving on failure
 		if (rename_or_warn(filename, target))
 			break;

@@ -107,7 +107,7 @@ static int FAST_FUNC change_filedir_context(
 
 	context_string = context_str(context);
 	if (!context_string) {
-		bb_error_msg("can't obtain security context in text expression");
+		bb_simple_error_msg("can't obtain security context in text expression");
 		goto skip;
 	}
 
@@ -131,8 +131,10 @@ static int FAST_FUNC change_filedir_context(
 			bb_error_msg("can't change context of %s to %s",
 					fname, context_string);
 		}
-	} else if (option_mask32 & OPT_VERBOSE) {
-		printf("context of %s retained as %s\n", fname, context_string);
+	} else {
+		if (option_mask32 & OPT_VERBOSE) {
+			printf("context of %s retained as %s\n", fname, context_string);
+		}
 		rc = TRUE;
 	}
 skip:
@@ -192,7 +194,7 @@ int chcon_main(int argc UNUSED_PARAM, char **argv)
 		/* specified_context is never NULL -
 		 * "-1" in opt_complementary prevents this. */
 		if (!argv[0])
-			bb_error_msg_and_die("too few arguments");
+			bb_simple_error_msg_and_die("too few arguments");
 	}
 
 	for (i = 0; (fname = argv[i]) != NULL; i++) {
@@ -202,7 +204,7 @@ int chcon_main(int argc UNUSED_PARAM, char **argv)
 		fname[fname_len] = '\0';
 
 		if (recursive_action(fname,
-					1<<option_mask32 & OPT_RECURSIVE,
+					((option_mask32 & OPT_RECURSIVE) ? ACTION_RECURSE : 0),
 					change_filedir_context,
 					change_filedir_context,
 					NULL, 0) != TRUE)

@@ -14,9 +14,8 @@
  * certainly be used.  Its naming is built over multicast DNS.
  */
 //config:config ZCIP
-//config:	bool "zcip (7.8 kb)"
+//config:	bool "zcip (8.4 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	select FEATURE_SYSLOG
 //config:	help
 //config:	ZCIP provides ZeroConf IPv4 address selection, according to RFC 3927.
@@ -195,7 +194,7 @@ static int run(char *argv[3], const char *param, uint32_t nip)
 		putenv(env_ip);
 		fmt -= 3;
 	}
-	bb_error_msg(fmt, argv[2], argv[0], addr);
+	bb_info_msg(fmt, argv[2], argv[0], addr);
 	status = spawn_and_wait(argv + 1);
 	if (nip != 0)
 		bb_unsetenv_and_free(env_ip);
@@ -276,7 +275,7 @@ int zcip_main(int argc UNUSED_PARAM, char **argv)
 		if (inet_aton(l_opt, &net) == 0
 		 || (net.s_addr & htonl(IN_CLASSB_NET)) != net.s_addr
 		) {
-			bb_error_msg_and_die("invalid network address");
+			bb_simple_error_msg_and_die("invalid network address");
 		}
 		G.localnet_ip = ntohl(net.s_addr);
 	}
@@ -285,7 +284,7 @@ int zcip_main(int argc UNUSED_PARAM, char **argv)
 		if (inet_aton(r_opt, &ip) == 0
 		 || (ntohl(ip.s_addr) & IN_CLASSB_NET) != G.localnet_ip
 		) {
-			bb_error_msg_and_die("invalid link address");
+			bb_simple_error_msg_and_die("invalid link address");
 		}
 		chosen_nip = ip.s_addr;
 	}
@@ -339,7 +338,7 @@ int zcip_main(int argc UNUSED_PARAM, char **argv)
 #if BB_MMU
 		bb_daemonize(0 /*was: DAEMON_CHDIR_ROOT*/);
 #endif
-		bb_error_msg("start, interface %s", argv_intf);
+		bb_info_msg("start, interface %s", argv_intf);
 	}
 
 	// Run the dynamic address negotiation protocol,
@@ -473,7 +472,7 @@ int zcip_main(int argc UNUSED_PARAM, char **argv)
 
 		// Read ARP packet
 		if (safe_read(sock_fd, &p, sizeof(p)) < 0) {
-			bb_perror_msg_and_die(bb_msg_read_error);
+			bb_simple_perror_msg_and_die(bb_msg_read_error);
 		}
 
 		if (p.eth.ether_type != htons(ETHERTYPE_ARP))

@@ -212,12 +212,11 @@
 //config:config TRACEROUTE
 //config:	bool "traceroute (11 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Utility to trace the route of IP packets.
 //config:
 //config:config TRACEROUTE6
-//config:	bool "traceroute6 (12 kb)"
+//config:	bool "traceroute6 (13 kb)"
 //config:	default y
 //config:	depends on FEATURE_IPV6
 //config:	help
@@ -546,11 +545,11 @@ pr_type(unsigned char t)
 	};
 # if ENABLE_TRACEROUTE6
 	static const char *const ttab6[] = {
-[0]	"Error", "Dest Unreachable", "Packet Too Big", "Time Exceeded",
-[4]	"Param Problem",
-[8]	"Echo Request", "Echo Reply", "Membership Query", "Membership Report",
-[12]	"Membership Reduction", "Router Solicit", "Router Advert", "Neighbor Solicit",
-[16]	"Neighbor Advert", "Redirect",
+[0]	= "Error", "Dest Unreachable", "Packet Too Big", "Time Exceeded",
+[4]	= "Param Problem",
+[8]	= "Echo Request", "Echo Reply", "Membership Query", "Membership Report",
+[12]	= "Membership Reduction", "Router Solicit", "Router Advert", "Neighbor Solicit",
+[16]	= "Neighbor Advert", "Redirect",
 	};
 
 	if (dest_lsa->u.sa.sa_family == AF_INET6) {
@@ -875,7 +874,7 @@ common_traceroute_main(int op, char **argv)
 		 * probe (e.g., on a multi-homed host).
 		 */
 		if (getuid() != 0)
-			bb_error_msg_and_die(bb_msg_you_must_be_root);
+			bb_simple_error_msg_and_die(bb_msg_you_must_be_root);
 	}
 	if (op & OPT_WAITTIME)
 		waittime = xatou_range(waittime_str, 1, 24 * 60 * 60);
@@ -1003,7 +1002,7 @@ common_traceroute_main(int op, char **argv)
 		if (af == AF_INET)
 			if (setsockopt(sndsock, IPPROTO_IP, IP_MULTICAST_IF,
 					&source_lsa->u.sa, source_lsa->len))
-				bb_error_msg_and_die("can't set multicast source interface");
+				bb_simple_error_msg_and_die("can't set multicast source interface");
 //TODO: we can query source port we bound to,
 // and check it in replies... if we care enough
 		xbind(sndsock, &source_lsa->u.sa, source_lsa->len);
@@ -1025,7 +1024,7 @@ common_traceroute_main(int op, char **argv)
 		/* read IP and port */
 		source_lsa = get_sock_lsa(probe_fd);
 		if (source_lsa == NULL)
-			bb_error_msg_and_die("can't get probe addr");
+			bb_simple_error_msg_and_die("can't get probe addr");
 
 		close(probe_fd);
 

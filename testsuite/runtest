@@ -99,6 +99,20 @@ if [ x"$1" = x"-v" ]; then
 	shift
 fi
 
+if [ -f "$bindir/busybox.exe" ]; then
+	suffix=".exe"
+	lnflag=""
+
+	# Some tests require /bin/echo and /bin/true exist
+	test ! -d /tmp && mkdir /tmp
+	test ! -d /bin && mkdir /bin
+	test ! -f /bin/echo.exe && cp "$bindir/busybox.exe" /bin/echo.exe
+	test ! -f /bin/true.exe && cp "$bindir/busybox.exe" /bin/true.exe
+else
+	suffix=""
+	lnflag="-s"
+fi
+
 implemented=$(
 	printf "busybox " # always implemented
 	"$bindir/busybox" 2>&1 |
@@ -128,7 +142,7 @@ for i in $implemented; do
 	# Note: if $LINKSDIR/applet exists, we do not overwrite it.
 	# Useful if one wants to run tests against a standard utility,
 	# not an applet.
-	ln -s "$bindir/busybox" "$LINKSDIR/$i" 2>/dev/null
+	ln $lnflag "$bindir/busybox$suffix" "$LINKSDIR/$i$suffix" 2>/dev/null
 done
 
 # Set up option flags so tests can be selective.
@@ -146,7 +160,7 @@ for applet in $applets; do
 
 	# Is this a new-style test?
 	if [ -f "$applet.tests" ]; then
-		if [ ! -e "$LINKSDIR/$applet" ]; then
+		if [ ! -e "$LINKSDIR/$applet$suffix" ]; then
 			# (avoiding bash'ism "${applet:0:4}")
 			if ! echo "$applet" | grep "^all_" >/dev/null; then
 				echo "SKIPPED: $applet (not built)"

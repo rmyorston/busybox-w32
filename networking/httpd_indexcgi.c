@@ -52,43 +52,42 @@ httpd_indexcgi.c -o index.cgi
  * to elements. Edit stylesheet to your liking and recompile. */
 
 #define STYLE_STR \
-"<style>"                                               "\n"\
-"table {"                                               "\n"\
-  "width:100%;"                                         "\n"\
-  "background-color:#fff5ee;"                           "\n"\
-  "border-width:1px;" /* 1px 1px 1px 1px; */            "\n"\
-  "border-spacing:2px;"                                 "\n"\
-  "border-style:solid;" /* solid solid solid solid; */  "\n"\
-  "border-color:black;" /* black black black black; */  "\n"\
-  "border-collapse:collapse;"                           "\n"\
-"}"                                                     "\n"\
-"th {"                                                  "\n"\
-  "border-width:1px;" /* 1px 1px 1px 1px; */            "\n"\
-  "padding:1px;" /* 1px 1px 1px 1px; */                 "\n"\
-  "border-style:solid;" /* solid solid solid solid; */  "\n"\
-  "border-color:black;" /* black black black black; */  "\n"\
-"}"                                                     "\n"\
-"td {"                                                  "\n"\
-             /* top right bottom left */                    \
-  "border-width:0px 1px 0px 1px;"                       "\n"\
-  "padding:1px;" /* 1px 1px 1px 1px; */                 "\n"\
-  "border-style:solid;" /* solid solid solid solid; */  "\n"\
-  "border-color:black;" /* black black black black; */  "\n"\
-  "white-space:nowrap;"                                 "\n"\
-"}"                                                     "\n"\
-"tr.hdr { background-color:#eee5de; }"                  "\n"\
-"tr.o { background-color:#ffffff; }"                    "\n"\
-/* tr.e { ... } - for even rows (currently none) */         \
-"tr.foot { background-color:#eee5de; }"                 "\n"\
-"th.cnt { text-align:left; }"                           "\n"\
-"th.sz { text-align:right; }"                           "\n"\
-"th.dt { text-align:right; }"                           "\n"\
-"td.sz { text-align:right; }"                           "\n"\
-"td.dt { text-align:right; }"                           "\n"\
-"col.nm { width:98%; }"                                 "\n"\
-"col.sz { width:1%; }"                                  "\n"\
-"col.dt { width:1%; }"                                  "\n"\
-"</style>"                                              "\n"\
+"<style>"                                              \
+"table {"                                              \
+  "width:100%;"                                        \
+  "background-color:#fff5ee;"                          \
+  "border-width:1px;" /* 1px 1px 1px 1px; */           \
+  "border-spacing:2px;"                                \
+  "border-style:solid;" /* solid solid solid solid; */ \
+  "border-color:black;" /* black black black black; */ \
+  "border-collapse:collapse"                           \
+"}"                                                    \
+"th {"                                                 \
+  "border-width:1px;" /* 1px 1px 1px 1px; */           \
+  "padding:1px;" /* 1px 1px 1px 1px; */                \
+  "border-style:solid;" /* solid solid solid solid; */ \
+  "border-color:black" /* black black black black; */  \
+"}"                                                    \
+"td {"                                                 \
+             /* top right bottom left */               \
+  "border-width:0 1px 0 1px;"                          \
+  "padding:1px;" /* 1px 1px 1px 1px; */                \
+  "border-style:solid;" /* solid solid solid solid; */ \
+  "border-color:black;" /* black black black black; */ \
+  "white-space:nowrap"                                 \
+"}"                                                    \
+"tr:nth-child(odd) { background-color:#ffffff }"       \
+"tr.hdr { background-color:#eee5de }"                  \
+"tr.foot { background-color:#eee5de }"                 \
+"th.cnt { text-align:left }"                           \
+"th.sz { text-align:right }"                           \
+"th.dt { text-align:right }"                           \
+"td.sz { text-align:right }"                           \
+"td.dt { text-align:right }"                           \
+"col.nm { width:98% }"                                 \
+"col.sz { width:1% }"                                  \
+"col.dt { width:1% }"                                  \
+"</style>"                                             \
 
 typedef struct dir_list_t {
 	char  *dl_name;
@@ -220,7 +219,6 @@ int main(int argc, char *argv[])
 	unsigned count_dirs;
 	unsigned count_files;
 	unsigned long long size_total;
-	int odd;
 	DIR *dirp;
 	char *location;
 
@@ -291,7 +289,6 @@ int main(int argc, char *argv[])
 		"<col class=nm><col class=sz><col class=dt>" "\n"
 		"<tr class=hdr><th class=cnt>Name<th class=sz>Size<th class=dt>Last modified" "\n");
 
-	odd = 0;
 	count_dirs = 0;
 	count_files = 0;
 	size_total = 0;
@@ -307,9 +304,7 @@ int main(int argc, char *argv[])
 		} else
 			goto next;
 
-		fmt_str("<tr class=");
-		*dst++ = (odd ? 'o' : 'e');
-		fmt_str("><td class=nm><a href='");
+		fmt_str("<tr><td class=nm><a href='");
 		fmt_url(cdir->dl_name); /* %20 etc */
 		if (S_ISDIR(cdir->dl_mode))
 			*dst++ = '/';
@@ -330,7 +325,6 @@ int main(int argc, char *argv[])
 		fmt_02u(ptm->tm_sec);
 		*dst++ = '\n';
 
-		odd = 1 - odd;
  next:
 		cdir++;
 	}

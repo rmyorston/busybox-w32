@@ -95,10 +95,15 @@
 //config:	Enable searching based on file type (file,
 //config:	directory, socket, device, etc.).
 //config:
+//config:config FEATURE_FIND_EXECUTABLE
+//config:	bool "Enable -executable: file is executable"
+//config:	default y
+//config:	depends on FIND
+//config:
 //config:config FEATURE_FIND_XDEV
 //config:	bool "Enable -xdev: 'stay in filesystem'"
 //config:	default y
-//config:	depends on FIND
+//config:	depends on FIND && (PLATFORM_POSIX || FEATURE_EXTRA_FILE_DATA)
 //config:
 //config:config FEATURE_FIND_MAXDEPTH
 //config:	bool "Enable -mindepth N and -maxdepth N"
@@ -116,7 +121,7 @@
 //config:config FEATURE_FIND_INUM
 //config:	bool "Enable -inum: inode number matching"
 //config:	default y
-//config:	depends on FIND
+//config:	depends on FIND && (PLATFORM_POSIX || FEATURE_EXTRA_FILE_DATA)
 //config:
 //config:config FEATURE_FIND_EXEC
 //config:	bool "Enable -exec: execute commands"
@@ -182,6 +187,13 @@
 //config:	If the file is a directory, don't descend into it. Useful for
 //config:	exclusion .svn and CVS directories.
 //config:
+//config:config FEATURE_FIND_QUIT
+//config:	bool "Enable -quit: exit"
+//config:	default y
+//config:	depends on FIND
+//config:	help
+//config:	If this action is reached, 'find' exits.
+//config:
 //config:config FEATURE_FIND_DELETE
 //config:	bool "Enable -delete: delete files/dirs"
 //config:	default y
@@ -190,6 +202,14 @@
 //config:	Support the 'find -delete' option for deleting files and directories.
 //config:	WARNING: This option can do much harm if used wrong. Busybox will not
 //config:	try to protect the user from doing stupid things. Use with care.
+//config:
+//config:config FEATURE_FIND_EMPTY
+//config:	bool "Enable -empty: match empty files or directories"
+//config:	default y
+//config:	depends on FIND
+//config:	help
+//config:	Support the 'find -empty' option to find empty regular files
+//config:	or directories.
 //config:
 //config:config FEATURE_FIND_PATH
 //config:	bool "Enable -path: match pathname with shell pattern"
@@ -215,7 +235,7 @@
 //config:config FEATURE_FIND_LINKS
 //config:	bool "Enable -links: link count matching"
 //config:	default y
-//config:	depends on FIND
+//config:	depends on FIND && (PLATFORM_POSIX || FEATURE_EXTRA_FILE_DATA)
 //config:	help
 //config:	Support the 'find -links' option for matching number of links.
 
@@ -263,7 +283,10 @@
 //usage:     "\n	-regex PATTERN	Match path to regex PATTERN"
 //usage:	)
 //usage:	IF_FEATURE_FIND_TYPE(
-//usage:     "\n	-type X		File type is X (one of: f,d,l,b,c,...)"
+//usage:     "\n	-type X		File type is X (one of: f,d,l,b,c,s,p)"
+//usage:	)
+//usage:	IF_FEATURE_FIND_EXECUTABLE(
+//usage:     "\n	-executable	File is executable"
 //usage:	)
 //usage:	IF_FEATURE_FIND_PERM(
 //usage:     "\n	-perm MASK	At least one mask bit (+MASK), all bits (-MASK),"
@@ -300,6 +323,9 @@
 //usage:	IF_FEATURE_FIND_CONTEXT(
 //usage:     "\n	-context CTX	File has specified security context"
 //usage:	)
+//usage:	IF_FEATURE_FIND_EMPTY(
+//usage:     "\n	-empty		Match empty file/directory"
+//usage:	)
 //usage:	IF_FEATURE_FIND_PRUNE(
 //usage:     "\n	-prune		If current file is directory, don't descend into it"
 //usage:	)
@@ -317,6 +343,9 @@
 //usage:	)
 //usage:	IF_FEATURE_FIND_DELETE(
 //usage:     "\n	-delete		Delete current file/directory. Turns on -depth option"
+//usage:	)
+//usage:	IF_FEATURE_FIND_QUIT(
+//usage:     "\n	-quit		Exit"
 //usage:	)
 //usage:
 //usage:#define find_example_usage
@@ -365,6 +394,7 @@ IF_FEATURE_FIND_PATH(   ACTS(path,  const char *pattern; bool ipath;))
 IF_FEATURE_FIND_REGEX(  ACTS(regex, regex_t compiled_pattern;))
 IF_FEATURE_FIND_PRINT0( ACTS(print0))
 IF_FEATURE_FIND_TYPE(   ACTS(type,  int type_mask;))
+IF_FEATURE_FIND_EXECUTABLE(ACTS(executable))
 IF_FEATURE_FIND_PERM(   ACTS(perm,  char perm_char; mode_t perm_mask;))
 IF_FEATURE_FIND_MTIME(  ACTS(mtime, char mtime_char; unsigned mtime_days;))
 IF_FEATURE_FIND_MMIN(   ACTS(mmin,  char mmin_char; unsigned mmin_mins;))
@@ -375,7 +405,9 @@ IF_FEATURE_FIND_SIZE(   ACTS(size,  char size_char; off_t size;))
 IF_FEATURE_FIND_CONTEXT(ACTS(context, security_context_t context;))
 IF_FEATURE_FIND_PAREN(  ACTS(paren, action ***subexpr;))
 IF_FEATURE_FIND_PRUNE(  ACTS(prune))
+IF_FEATURE_FIND_QUIT(   ACTS(quit))
 IF_FEATURE_FIND_DELETE( ACTS(delete))
+IF_FEATURE_FIND_EMPTY(  ACTS(empty))
 IF_FEATURE_FIND_EXEC(   ACTS(exec,
 				char **exec_argv; /* -exec ARGS */
 				unsigned *subst_count;
@@ -402,6 +434,7 @@ struct globals {
 	action ***actions;
 	smallint need_print;
 	smallint xdev_on;
+	smalluint exitstatus;
 	recurse_flags_t recurse_flags;
 	IF_FEATURE_FIND_EXEC_PLUS(unsigned max_argv_len;)
 } FIX_ALIASING;
@@ -564,6 +597,12 @@ ACTF(regex)
 ACTF(type)
 {
 	return ((statbuf->st_mode & S_IFMT) == ap->type_mask);
+}
+#endif
+#if ENABLE_FEATURE_FIND_EXECUTABLE
+ACTF(executable)
+{
+	return access(fileName, X_OK) == 0;
 }
 #endif
 #if ENABLE_FEATURE_FIND_PERM
@@ -774,6 +813,12 @@ ACTF(prune)
 	return SKIP + TRUE;
 }
 #endif
+#if ENABLE_FEATURE_FIND_QUIT
+ACTF(quit)
+{
+	exit(G.exitstatus);
+}
+#endif
 #if ENABLE_FEATURE_FIND_DELETE
 ACTF(delete)
 {
@@ -789,6 +834,30 @@ ACTF(delete)
 	if (rc < 0)
 		bb_simple_perror_msg(fileName);
 	return TRUE;
+}
+#endif
+#if ENABLE_FEATURE_FIND_EMPTY
+ACTF(empty)
+{
+	if (S_ISDIR(statbuf->st_mode)) {
+		DIR *dir;
+		struct dirent *dent;
+
+		dir = opendir(fileName);
+		if (!dir) {
+			bb_simple_perror_msg(fileName);
+			return FALSE;
+		}
+
+		while ((dent = readdir(dir)) != NULL
+		 && DOT_OR_DOTDOT(dent->d_name)
+		) {
+			continue;
+		}
+		closedir(dir);
+		return dent == NULL;
+	}
+	return S_ISREG(statbuf->st_mode) && statbuf->st_size == 0;
 }
 #endif
 #if ENABLE_FEATURE_FIND_CONTEXT
@@ -954,8 +1023,11 @@ static action*** parse_params(char **argv)
 	                        PARM_print     ,
 	IF_FEATURE_FIND_PRINT0( PARM_print0    ,)
 	IF_FEATURE_FIND_PRUNE(  PARM_prune     ,)
+	IF_FEATURE_FIND_QUIT(   PARM_quit      ,)
 	IF_FEATURE_FIND_DELETE( PARM_delete    ,)
+	IF_FEATURE_FIND_EMPTY(	PARM_empty     ,)
 	IF_FEATURE_FIND_EXEC(   PARM_exec      ,)
+	IF_FEATURE_FIND_EXECUTABLE(PARM_executable,)
 	IF_FEATURE_FIND_PAREN(  PARM_char_brace,)
 	/* All options/actions starting from here require argument */
 	                        PARM_name      ,
@@ -997,8 +1069,11 @@ static action*** parse_params(char **argv)
 	                        "-print\0"
 	IF_FEATURE_FIND_PRINT0( "-print0\0" )
 	IF_FEATURE_FIND_PRUNE(  "-prune\0"  )
+	IF_FEATURE_FIND_QUIT(   "-quit\0"  )
 	IF_FEATURE_FIND_DELETE( "-delete\0" )
+	IF_FEATURE_FIND_EMPTY(	"-empty\0"  )
 	IF_FEATURE_FIND_EXEC(   "-exec\0"   )
+	IF_FEATURE_FIND_EXECUTABLE("-executable\0")
 	IF_FEATURE_FIND_PAREN(  "(\0"       )
 	/* All options/actions starting from here require argument */
 	                        "-name\0"
@@ -1152,12 +1227,24 @@ static action*** parse_params(char **argv)
 			(void) ALLOC_ACTION(prune);
 		}
 #endif
+#if ENABLE_FEATURE_FIND_QUIT
+		else if (parm == PARM_quit) {
+			dbg("%d", __LINE__);
+			(void) ALLOC_ACTION(quit);
+		}
+#endif
 #if ENABLE_FEATURE_FIND_DELETE
 		else if (parm == PARM_delete) {
 			dbg("%d", __LINE__);
 			G.need_print = 0;
 			G.recurse_flags |= ACTION_DEPTHFIRST;
 			(void) ALLOC_ACTION(delete);
+		}
+#endif
+#if ENABLE_FEATURE_FIND_EMPTY
+		else if (parm == PARM_empty) {
+			dbg("%d", __LINE__);
+			(void) ALLOC_ACTION(empty);
 		}
 #endif
 #if ENABLE_FEATURE_FIND_EXEC
@@ -1202,7 +1289,7 @@ static action*** parse_params(char **argv)
 			 * coreutils expects {} to appear only once in "-exec +"
 			 */
 			if (all_subst != 1 && ap->filelist)
-				bb_error_msg_and_die("only one '{}' allowed for -exec +");
+				bb_simple_error_msg_and_die("only one '{}' allowed for -exec +");
 # endif
 		}
 #endif
@@ -1216,7 +1303,7 @@ static action*** parse_params(char **argv)
 			endarg = argv;
 			while (1) {
 				if (!*++endarg)
-					bb_error_msg_and_die("unpaired '('");
+					bb_simple_error_msg_and_die("unpaired '('");
 				if (LONE_CHAR(*endarg, '('))
 					nested++;
 				else if (LONE_CHAR(*endarg, ')') && !--nested) {
@@ -1260,6 +1347,11 @@ static action*** parse_params(char **argv)
 			ap = ALLOC_ACTION(type);
 			ap->type_mask = find_type(arg1);
 			dbg("created:type mask:%x", ap->type_mask);
+		}
+#endif
+#if ENABLE_FEATURE_FIND_EXECUTABLE
+		else if (parm == PARM_executable) {
+			(void) ALLOC_ACTION(executable);
 		}
 #endif
 #if ENABLE_FEATURE_FIND_PERM
@@ -1313,7 +1405,11 @@ static action*** parse_params(char **argv)
 			action_inum *ap;
 			dbg("%d", __LINE__);
 			ap = ALLOC_ACTION(inum);
+# if !ENABLE_FEATURE_EXTRA_FILE_DATA
 			ap->inode_num = xatoul(arg1);
+# else
+			ap->inode_num = xatoull(arg1);
+# endif
 		}
 #endif
 #if ENABLE_FEATURE_FIND_USER
@@ -1401,7 +1497,7 @@ static action*** parse_params(char **argv)
 int find_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int find_main(int argc UNUSED_PARAM, char **argv)
 {
-	int i, firstopt, status = EXIT_SUCCESS;
+	int i, firstopt;
 	char **past_HLP, *saved;
 
 	INIT_G();
@@ -1419,6 +1515,12 @@ int find_main(int argc UNUSED_PARAM, char **argv)
 			break;
 		if (!saved[1])
 			break; /* it is "-" */
+		if (saved[1] == '-' && !saved[2]) {
+			/* it is "--" */
+			/* Try: find -- /dev/null */
+			saved = *++past_HLP;
+			break;
+		}
 		if ((saved+1)[strspn(saved+1, "HLP")] != '\0')
 			break;
 	}
@@ -1475,10 +1577,10 @@ int find_main(int argc UNUSED_PARAM, char **argv)
 				NULL,           /* user data */
 				0)              /* depth */
 		) {
-			status |= EXIT_FAILURE;
+			G.exitstatus |= EXIT_FAILURE;
 		}
 	}
 
-	IF_FEATURE_FIND_EXEC_PLUS(status |= flush_exec_plus();)
-	return status;
+	IF_FEATURE_FIND_EXEC_PLUS(G.exitstatus |= flush_exec_plus();)
+	return G.exitstatus;
 }

@@ -1,0 +1,34 @@
+#include <autoconf.h>
+
+#if ENABLE_FEATURE_ICON_ATERM || ENABLE_FEATURE_ICON_ALL
+1 ICON "aterm.ico"
+#endif
+#if ENABLE_FEATURE_ICON_STERM || ENABLE_FEATURE_ICON_ALL
+2 ICON "sterm.ico"
+#endif
+
+#if ENABLE_FEATURE_VERSIONINFO
+1 VERSIONINFO
+FILEVERSION     BB_VERSION,BB_PATCHLEVEL,BB_SUBLEVEL,BB_EXTRAVERSION
+PRODUCTVERSION  BB_VERSION,BB_PATCHLEVEL,BB_SUBLEVEL,BB_EXTRAVERSION
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "080904E4"
+    BEGIN
+      VALUE "CompanyName", "frippery.org"
+      VALUE "FileDescription", "BusyBox multi-call binary"
+      VALUE "FileVersion", BB_VER
+      VALUE "InternalName", "busybox"
+      VALUE "LegalCopyright", "(C) 1998-2020 Many authors"
+      VALUE "OriginalFilename", "busybox.exe"
+      VALUE "ProductName", "busybox-w32"
+      VALUE "ProductVersion", BB_VER
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x809, 1252
+  END
+END
+#endif

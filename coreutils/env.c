@@ -24,7 +24,7 @@
  * - use xfunc_error_retval
  */
 //config:config ENV
-//config:	bool "env (3.8 kb)"
+//config:	bool "env (4 kb)"
 //config:	default y
 //config:	help
 //config:	env is used to set an environment variable and run
@@ -79,7 +79,7 @@ int env_main(int argc UNUSED_PARAM, char **argv)
 
 	while (*argv && (strchr(*argv, '=') != NULL)) {
 		if (putenv(*argv) < 0) {
-			bb_perror_msg_and_die("putenv");
+			bb_simple_perror_msg_and_die("putenv");
 		}
 		++argv;
 	}

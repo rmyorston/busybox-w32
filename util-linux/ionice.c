@@ -7,9 +7,8 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config IONICE
-//config:	bool "ionice (3.6 kb)"
+//config:	bool "ionice (3.8 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Set/set program io scheduling class and priority
 //config:	Requires kernel >= 2.6.13

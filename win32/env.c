@@ -35,47 +35,14 @@ int setenv(const char *name, const char *value, int replace)
 }
 #endif /* getenv setenv already present in watcom */
 
-/*
- * If name contains '=', then sets the variable, otherwise it unsets it
- */
-char **env_setenv(char **env, const char *name)
-{
-	char *eq = strchrnul(name, '=');
-	int i = lookup_env(env, name, eq-name);
-
-	if (i < 0) {
-		if (*eq) {
-			for (i = 0; env[i]; i++)
-				;
-			env = xrealloc(env, (i+2)*sizeof(*env));
-			env[i] = xstrdup(name);
-			env[i+1] = NULL;
-		}
-	}
-	else {
-		free(env[i]);
-		if (*eq)
-			env[i] = xstrdup(name);
-		else {
-			for (; env[i]; i++)
-				env[i] = env[i+1];
-#if !ENABLE_SAFE_ENV
-			SetEnvironmentVariable(name, NULL);
-#endif
-		}
-	}
-	return env;
-}
-
 #ifndef __WATCOMC__
-#if ENABLE_SAFE_ENV
 /*
  * Removing an environment variable with WIN32 putenv requires an argument
  * like "NAME="; glibc omits the '='.  The implementations of unsetenv and
  * clearenv allow for this.
  *
  * It isn't possible to create an environment variable with an empty value
- * using WIN32 putenv.
+ * using WIN32 _putenv.
  */
 int unsetenv(const char *name)
 {
@@ -86,9 +53,8 @@ int unsetenv(const char *name)
 		return -1;
 	}
 
-	envstr = xmalloc(strlen(name)+2);
-	strcat(strcpy(envstr, name), "=");
-	ret = putenv(envstr);
+	envstr = xasprintf("%s=", name);
+	ret = _putenv(envstr);
 	free(envstr);
 
 	return ret;
@@ -101,7 +67,7 @@ int clearenv(void)
 	while ( environ && (envp=*environ) ) {
 		if ( (s=strchr(envp, '=')) != NULL ) {
 			name = xstrndup(envp, s-envp+1);
-			if ( putenv(name) == -1 ) {
+			if (_putenv(name) == -1) {
 				free(name);
 				return -1;
 			}
@@ -116,18 +82,32 @@ int clearenv(void)
 
 int mingw_putenv(const char *env)
 {
-	char *s;
+	char *s, **envp;
+	int ret = 0;
 
 	if ( (s=strchr(env, '=')) == NULL ) {
 		return unsetenv(env);
 	}
 
-	if ( s[1] != '\0' ) {
-		return putenv(env);
+	if (s[1] != '\0') {
+		/* setting non-empty value is fine */
+		return _putenv(env);
+	}
+	else {
+		/* set empty value by setting a non-empty one then truncating */
+		char *envstr = xasprintf("%s0", env);
+		ret = _putenv(envstr);
+
+		for (envp = environ; *envp; ++envp) {
+			if (strcmp(*envp, envstr) == 0) {
+				(*envp)[s - env + 1] = '\0';
+				break;
+			}
+		}
+		free(envstr);
 	}
 
-	/* can't set empty value */
-	return 0;
+	return ret;
 }
 
 void unsetenv(const char *env)
@@ -149,7 +129,6 @@ int clearenv(void)
 	environ = NULL;
 	return 0;
 }
-#endif /* safe env */
 #endif /* unsetenv clearenv already present in watcom */
 
 

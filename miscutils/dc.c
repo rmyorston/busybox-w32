@@ -2,50 +2,11 @@
 /*
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-//config:config DC
-//config:	bool "dc (4.2 kb)"
-//config:	default y
-//config:	help
-//config:	Dc is a reverse-polish desk calculator which supports unlimited
-//config:	precision arithmetic.
-//config:
-//config:config FEATURE_DC_LIBM
-//config:	bool "Enable power and exp functions (requires libm)"
-//config:	default y
-//config:	depends on DC
-//config:	help
-//config:	Enable power and exp functions.
-//config:	NOTE: This will require libm to be present for linking.
 
-//applet:IF_DC(APPLET(dc, BB_DIR_USR_BIN, BB_SUID_DROP))
+/* config/applet/usage bits are in bc.c */
 
-//kbuild:lib-$(CONFIG_DC) += dc.o
-
-//usage:#define dc_trivial_usage
-//usage:       "EXPRESSION..."
-//usage:
-//usage:#define dc_full_usage "\n\n"
-//usage:       "Tiny RPN calculator. Operations:\n"
-//usage:       "+, add, -, sub, *, mul, /, div, %, mod, "IF_FEATURE_DC_LIBM("**, exp, ")"and, or, not, xor,\n"
-//usage:       "p - print top of the stack (without popping),\n"
-//usage:       "f - print entire stack,\n"
-//usage:       "o - pop the value and set output radix (must be 10, 16, 8 or 2).\n"
-//usage:       "Examples: 'dc 2 2 add p' -> 4, 'dc 8 8 mul 2 2 + / p' -> 16"
-//usage:
-//usage:#define dc_example_usage
-//usage:       "$ dc 2 2 + p\n"
-//usage:       "4\n"
-//usage:       "$ dc 8 8 \\* 2 2 + / p\n"
-//usage:       "16\n"
-//usage:       "$ dc 0 1 and p\n"
-//usage:       "0\n"
-//usage:       "$ dc 0 1 or p\n"
-//usage:       "1\n"
-//usage:       "$ echo 72 9 div 8 mul p | dc\n"
-//usage:       "64\n"
-
-#include "libbb.h"
-#include "common_bufsiz.h"
+//#include "libbb.h"
+//#include "common_bufsiz.h"
 #include <math.h>
 
 #if 0
@@ -58,7 +19,6 @@ typedef unsigned long data_t;
 typedef unsigned long long data_t;
 #define DATA_FMT LL_FMT
 #endif
-
 
 struct globals {
 	unsigned pointer;
@@ -75,24 +35,26 @@ enum { STACK_SIZE = (COMMON_BUFSIZE - offsetof(struct globals, stack)) / sizeof(
 	base = 10; \
 } while (0)
 
-
-static void check_under(void)
+static unsigned check_under(void)
 {
-	if (pointer == 0)
-		bb_error_msg_and_die("stack underflow");
+	unsigned p = pointer;
+	if (p == 0)
+		bb_simple_error_msg_and_die("stack underflow");
+	return p - 1;
 }
 
 static void push(double a)
 {
 	if (pointer >= STACK_SIZE)
-		bb_error_msg_and_die("stack overflow");
+		bb_simple_error_msg_and_die("stack overflow");
 	stack[pointer++] = a;
 }
 
 static double pop(void)
 {
-	check_under();
-	return stack[--pointer];
+	unsigned p = check_under();
+	pointer = p;
+	return stack[p];
 }
 
 static void add(void)
@@ -131,6 +93,19 @@ static void divide(void)
 static void mod(void)
 {
 	data_t d = pop();
+
+	/* compat with dc (GNU bc 1.07.1) 1.4.1:
+	 * $ dc -e '4 0 % p'
+	 * dc: remainder by zero
+	 * 0
+	 */
+	if (d == 0) {
+		bb_error_msg("remainder by zero");
+		pop();
+		push(0);
+		return;
+	}
+	/* ^^^^ without this, we simply get SIGFPE and die */
 
 	push((data_t) pop() % d);
 }
@@ -212,8 +187,7 @@ static void print_stack_no_pop(void)
 
 static void print_no_pop(void)
 {
-	check_under();
-	print_base(stack[pointer-1]);
+	print_base(stack[check_under()]);
 }
 
 struct op {
@@ -223,25 +197,25 @@ struct op {
 
 static const struct op operators[] = {
 #if ENABLE_FEATURE_DC_LIBM
-	{"**",  power},
-	{"exp", power},
-	{"pow", power},
+	{"^",   power},
+//	{"exp", power},
+//	{"pow", power},
 #endif
 	{"%",   mod},
-	{"mod", mod},
+//	{"mod", mod},
+	// logic ops are not standard, remove?
 	{"and", and},
 	{"or",  or},
 	{"not", not},
-	{"eor", eor},
 	{"xor", eor},
 	{"+",   add},
-	{"add", add},
+//	{"add", add},
 	{"-",   sub},
-	{"sub", sub},
+//	{"sub", sub},
 	{"*",   mul},
-	{"mul", mul},
+//	{"mul", mul},
 	{"/",   divide},
-	{"div", divide},
+//	{"div", divide},
 	{"p", print_no_pop},
 	{"f", print_stack_no_pop},
 	{"o", set_output_base},
@@ -282,23 +256,50 @@ static void stack_machine(const char *argument)
 	bb_error_msg_and_die("syntax error at '%s'", argument);
 }
 
+static void process_file(FILE *fp)
+{
+	char *line;
+	while ((line = xmalloc_fgetline(fp)) != NULL) {
+		stack_machine(line);
+		free(line);
+	}
+}
+
 int dc_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int dc_main(int argc UNUSED_PARAM, char **argv)
 {
+	bool script = 0;
+
 	INIT_G();
 
-	argv++;
-	if (!argv[0]) {
-		/* take stuff from stdin if no args are given */
-		char *line;
-		while ((line = xmalloc_fgetline(stdin)) != NULL) {
-			stack_machine(line);
-			free(line);
+	/* Run -e'SCRIPT' and -fFILE in order of appearance, then handle FILEs */
+	for (;;) {
+		int n = getopt(argc, argv, "e:f:");
+		if (n <= 0)
+			break;
+		switch (n) {
+		case 'e':
+			script = 1;
+			stack_machine(optarg);
+			break;
+		case 'f':
+			script = 1;
+			process_file(xfopen_for_read(optarg));
+			break;
+		default:
+			bb_show_usage();
 		}
-	} else {
-		do {
-			stack_machine(*argv);
-		} while (*++argv);
 	}
+	argv += optind;
+
+	if (*argv) {
+		do
+			process_file(xfopen_for_read(*argv++));
+		while (*argv);
+	} else if (!script) {
+		/* Take stuff from stdin if no args are given */
+		process_file(stdin);
+	}
+
 	return EXIT_SUCCESS;
 }

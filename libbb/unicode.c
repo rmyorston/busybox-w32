@@ -674,14 +674,20 @@ int FAST_FUNC wcwidth(unsigned ucs)
 		(  (/*ucs >= 0x1100 &&*/ ucs <= 0x115f) /* Hangul Jamo init. consonants */
 		|| ucs == 0x2329 /* left-pointing angle bracket; also CJK punct. char */
 		|| ucs == 0x232a /* right-pointing angle bracket; also CJK punct. char */
+#   if CONFIG_LAST_SUPPORTED_WCHAR >= 0x2e80
 		|| (ucs >= 0x2e80 && ucs <= 0xa4cf && ucs != 0x303f) /* CJK ... Yi */
+#   endif
 #   if CONFIG_LAST_SUPPORTED_WCHAR >= 0xac00
 		|| (ucs >= 0xac00 && ucs <= 0xd7a3) /* Hangul Syllables */
+#   endif
+#   if CONFIG_LAST_SUPPORTED_WCHAR >= 0xf900
 		|| (ucs >= 0xf900 && ucs <= 0xfaff) /* CJK Compatibility Ideographs */
 		|| (ucs >= 0xfe10 && ucs <= 0xfe19) /* Vertical forms */
 		|| (ucs >= 0xfe30 && ucs <= 0xfe6f) /* CJK Compatibility Forms */
 		|| (ucs >= 0xff00 && ucs <= 0xff60) /* Fullwidth Forms */
 		|| (ucs >= 0xffe0 && ucs <= 0xffe6)
+#   endif
+#   if CONFIG_LAST_SUPPORTED_WCHAR >= 0x20000
 		|| ((ucs >> 17) == (2 >> 1)) /* 20000..3ffff: Supplementary and Tertiary Ideographic Planes */
 #   endif
 		);
@@ -996,7 +1002,7 @@ size_t FAST_FUNC unicode_strlen(const char *string)
 size_t FAST_FUNC unicode_strwidth(const char *string)
 {
 	uni_stat_t uni_stat;
-	printable_string(&uni_stat, string);
+	printable_string2(&uni_stat, string);
 	return uni_stat.unicode_width;
 }
 
@@ -1121,6 +1127,8 @@ static char* FAST_FUNC unicode_conv_to_printable2(uni_stat_t *stats, const char 
 			dst[dst_len++] = ' ';
 		}
 	}
+	if (!dst) /* for example, if input was "" */
+		dst = xzalloc(1);
 	dst[dst_len] = '\0';
 	if (stats) {
 		stats->byte_count = dst_len;

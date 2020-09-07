@@ -18,9 +18,8 @@
 //
 
 //config:config MOUNT
-//config:	bool "mount (30 kb)"
+//config:	bool "mount (23 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	All files and filesystems in Unix are arranged into one big directory
 //config:	tree. The 'mount' utility is used to graft a filesystem onto a
@@ -483,7 +482,7 @@ static void FAST_FUNC update_mtab_entry_on_move(const struct mntent *mp)
 
 	mountTable = setmntent(bb_path_mtab_file, "r");
 	if (!mountTable) {
-		bb_perror_msg(bb_path_mtab_file);
+		bb_simple_perror_msg(bb_path_mtab_file);
 		return;
 	}
 
@@ -511,7 +510,7 @@ static void FAST_FUNC update_mtab_entry_on_move(const struct mntent *mp)
 		}
 		endmntent(mountTable);
 	} else if (errno != EROFS)
-		bb_perror_msg(bb_path_mtab_file);
+		bb_simple_perror_msg(bb_path_mtab_file);
 
 	if (ENABLE_FEATURE_CLEAN_UP) {
 		for (i = 0; i < count; i++) {
@@ -739,7 +738,7 @@ static int mount_it_now(struct mntent *mp, unsigned long vfsflags, char *filtero
 	// Abort entirely if permission denied.
 
 	if (rc && errno == EPERM)
-		bb_error_msg_and_die(bb_msg_perm_denied_are_you_root);
+		bb_simple_error_msg_and_die(bb_msg_perm_denied_are_you_root);
 
 	// If the mount was successful, and we're maintaining an old-style
 	// mtab file by hand, add the new entry to it now.
@@ -751,7 +750,7 @@ static int mount_it_now(struct mntent *mp, unsigned long vfsflags, char *filtero
 		int i;
 
 		if (!mountTable) {
-			bb_perror_msg(bb_path_mtab_file);
+			bb_simple_perror_msg(bb_path_mtab_file);
 			goto ret;
 		}
 
@@ -1194,7 +1193,10 @@ static int daemonize(void)
 	return 1;
 }
 #else
-static inline int daemonize(void) { return -ENOSYS; }
+static inline int daemonize(void)
+{
+	return -ENOSYS;
+}
 #endif
 
 /* TODO */
@@ -1285,18 +1287,18 @@ static NOINLINE int nfsmount(struct mntent *mp, unsigned long vfsflags, char *fi
 	s = strchr(hostname, ',');
 	if (s) {
 		*s = '\0';
-		bb_error_msg("warning: multiple hostnames not supported");
+		bb_simple_error_msg("warning: multiple hostnames not supported");
 	}
 
 	server_addr.sin_family = AF_INET;
 	if (!inet_aton(hostname, &server_addr.sin_addr)) {
 		hp = gethostbyname(hostname);
 		if (hp == NULL) {
-			bb_herror_msg("%s", hostname);
+			bb_simple_herror_msg(hostname);
 			goto fail;
 		}
 		if (hp->h_length != (int)sizeof(struct in_addr)) {
-			bb_error_msg_and_die("only IPv4 is supported");
+			bb_simple_error_msg_and_die("only IPv4 is supported");
 		}
 		memcpy(&server_addr.sin_addr, hp->h_addr_list[0], sizeof(struct in_addr));
 	}
@@ -1386,7 +1388,7 @@ static NOINLINE int nfsmount(struct mntent *mp, unsigned long vfsflags, char *fi
 				else if (is_prefixed_with(opteq, "udp"))
 					tcp = 0;
 				else
-					bb_error_msg("warning: unrecognized proto= option");
+					bb_simple_error_msg("warning: unrecognized proto= option");
 				continue;
 			case 20: // "addr" - ignore
 				continue;
@@ -1519,7 +1521,7 @@ static NOINLINE int nfsmount(struct mntent *mp, unsigned long vfsflags, char *fi
 				if (nfs_mount_version >= 3)
 					nolock = !val;
 				else
-					bb_error_msg("warning: option nolock is not supported");
+					bb_simple_error_msg("warning: option nolock is not supported");
 				break;
 			case 11: //rdirplus
 				nordirplus = !val;
@@ -1587,11 +1589,11 @@ static NOINLINE int nfsmount(struct mntent *mp, unsigned long vfsflags, char *fi
 		} else {
 			hp = gethostbyname(mounthost);
 			if (hp == NULL) {
-				bb_herror_msg("%s", mounthost);
+				bb_simple_herror_msg(mounthost);
 				goto fail;
 			}
 			if (hp->h_length != (int)sizeof(struct in_addr)) {
-				bb_error_msg_and_die("only IPv4 is supported");
+				bb_simple_error_msg_and_die("only IPv4 is supported");
 			}
 			mount_server_addr.sin_family = AF_INET;
 			memcpy(&mount_server_addr.sin_addr, hp->h_addr_list[0], sizeof(struct in_addr));
@@ -1764,18 +1766,18 @@ static NOINLINE int nfsmount(struct mntent *mp, unsigned long vfsflags, char *fi
 	/* Create nfs socket for kernel */
 	if (tcp) {
 		if (nfs_mount_version < 3) {
-			bb_error_msg("NFS over TCP is not supported");
+			bb_simple_error_msg("NFS over TCP is not supported");
 			goto fail;
 		}
 		fsock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	} else
 		fsock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (fsock < 0) {
-		bb_perror_msg("nfs socket");
+		bb_simple_perror_msg("nfs socket");
 		goto fail;
 	}
 	if (bindresvport(fsock, 0) < 0) {
-		bb_perror_msg("nfs bindresvport");
+		bb_simple_perror_msg("nfs bindresvport");
 		goto fail;
 	}
 	if (port == 0) {
@@ -2044,9 +2046,9 @@ static int singlemount(struct mntent *mp, int ignore_busy)
 			);
 			if (loopfd < 0) {
 				if (errno == EPERM || errno == EACCES)
-					bb_error_msg(bb_msg_perm_denied_are_you_root);
+					bb_simple_error_msg(bb_msg_perm_denied_are_you_root);
 				else
-					bb_perror_msg("can't setup loop device");
+					bb_simple_perror_msg("can't setup loop device");
 				return errno;
 			}
 
@@ -2252,7 +2254,7 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 		// argument when we get it.
 		if (argv[1]) {
 			if (nonroot)
-				bb_error_msg_and_die(bb_msg_you_must_be_root);
+				bb_simple_error_msg_and_die(bb_msg_you_must_be_root);
 			mtpair->mnt_fsname = argv[0];
 			mtpair->mnt_dir = argv[1];
 			mtpair->mnt_type = fstype;
@@ -2269,7 +2271,7 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 
 	cmdopt_flags = parse_mount_options(cmdopts, NULL);
 	if (nonroot && (cmdopt_flags & ~MS_SILENT)) // Non-root users cannot specify flags
-		bb_error_msg_and_die(bb_msg_you_must_be_root);
+		bb_simple_error_msg_and_die(bb_msg_you_must_be_root);
 
 	// If we have a shared subtree flag, don't worry about fstab or mtab.
 	if (ENABLE_FEATURE_MOUNT_FLAGS
@@ -2334,7 +2336,7 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 			// No, mount -a won't mount anything,
 			// even user mounts, for mere humans
 			if (nonroot)
-				bb_error_msg_and_die(bb_msg_you_must_be_root);
+				bb_simple_error_msg_and_die(bb_msg_you_must_be_root);
 
 			// Does type match? (NULL matches always)
 			if (!fstype_matches(mtcur->mnt_type, fstype))
@@ -2414,7 +2416,7 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 			// fstab must have "users" or "user"
 			l = parse_mount_options(mtcur->mnt_opts, NULL);
 			if (!(l & MOUNT_USERS))
-				bb_error_msg_and_die(bb_msg_you_must_be_root);
+				bb_simple_error_msg_and_die(bb_msg_you_must_be_root);
 		}
 
 		//util-linux-2.12 does not do this check.

@@ -86,7 +86,7 @@
  * enforced (but it's not much fun on a character device :-).
  */
 //config:config FSCK_MINIX
-//config:	bool "fsck_minix"
+//config:	bool "fsck.minix (13 kb)"
 //config:	default y
 //config:	help
 //config:	The minix filesystem is a nice, small, compact, read-write filesystem
@@ -321,7 +321,7 @@ static void die(const char *str)
 {
 	if (termios_set)
 		tcsetattr_stdin_TCSANOW(&sv_termios);
-	bb_error_msg_and_die("%s", str);
+	bb_simple_error_msg_and_die(str);
 }
 
 static void push_filename(const char *name)

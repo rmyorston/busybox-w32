@@ -10,7 +10,7 @@
  * Public License
  */
 //config:config CHATTR
-//config:	bool "chattr (3.2 kb)"
+//config:	bool "chattr (3.8 kb)"
 //config:	default y
 //config:	help
 //config:	chattr changes the file attributes on a second extended file system.
@@ -20,13 +20,26 @@
 //kbuild:lib-$(CONFIG_CHATTR) += chattr.o e2fs_lib.o
 
 //usage:#define chattr_trivial_usage
+//usage:     IF_NOT_PLATFORM_MINGW32(
 //usage:       "[-R] [-v VERSION] [-+=AacDdijsStTu] FILE..."
+//usage:     )
+//usage:     IF_PLATFORM_MINGW32(
+//usage:       "[-R] [-+rhsatn] FILE..."
+//usage:     )
 //usage:#define chattr_full_usage "\n\n"
+//usage:     IF_NOT_PLATFORM_MINGW32(
 //usage:       "Change ext2 file attributes\n"
+//usage:     )
+//usage:     IF_PLATFORM_MINGW32(
+//usage:       "Change file attributes\n"
+//usage:     )
 //usage:     "\n	-R	Recurse"
+//usage:     IF_NOT_PLATFORM_MINGW32(
 //usage:     "\n	-v VER	Set version/generation number"
+//usage:     )
 //-V, -f accepted but ignored
 //usage:     "\nModifiers:"
+//usage:     IF_NOT_PLATFORM_MINGW32(
 //usage:     "\n	-,+,=	Remove/add/set attributes"
 //usage:     "\nAttributes:"
 //usage:     "\n	A	Don't track atime"
@@ -40,6 +53,17 @@
 //usage:     "\n	S	Write synchronously"
 //usage:     "\n	t	Disable tail-merging of partial blocks with other files"
 //usage:     "\n	u	Allow file to be undeleted"
+//usage:     )
+//usage:     IF_PLATFORM_MINGW32(
+//usage:     "\n	-,+	Remove/add attributes"
+//usage:     "\nAttributes:"
+//usage:     "\n	r	Read only"
+//usage:     "\n	h	Hidden"
+//usage:     "\n	s	System"
+//usage:     "\n	a	Archive"
+//usage:     "\n	t	Temporary"
+//usage:     "\n	n	Not indexed"
+//usage:     )
 
 #include "libbb.h"
 #include "e2fs_lib.h"
@@ -50,7 +74,9 @@
 #define OPT_SET_VER 8
 
 struct globals {
+#if !ENABLE_PLATFORM_MINGW32
 	unsigned long version;
+#endif
 	unsigned long af;
 	unsigned long rf;
 	int flags;
@@ -75,11 +101,17 @@ static char** decode_arg(char **argv, struct globals *gp)
 	if (opt == '-') {
 		gp->flags |= OPT_REM;
 		fl = &gp->rf;
+#if ENABLE_PLATFORM_MINGW32
+	} else { /* if (opt == '+') */
+		gp->flags |= OPT_ADD;
+	}
+#else
 	} else if (opt == '+') {
 		gp->flags |= OPT_ADD;
 	} else { /* if (opt == '=') */
 		gp->flags |= OPT_SET;
 	}
+#endif
 
 	while (*++arg) {
 		if (opt == '-') {
@@ -92,6 +124,7 @@ static char** decode_arg(char **argv, struct globals *gp)
 				gp->recursive = 1;
 				continue;
 			}
+#if !ENABLE_PLATFORM_MINGW32
 			if (*arg == 'V') {
 				/*"verbose and print program version" (nop for now) */;
 				continue;
@@ -108,6 +141,7 @@ static char** decode_arg(char **argv, struct globals *gp)
 				continue;
 			}
 //TODO: "-p PROJECT_NUM" ?
+#endif
 			/* not a known option, try as an attribute */
 		}
 		*fl |= get_flag(*arg);
@@ -148,9 +182,11 @@ static void change_attributes(const char *name, struct globals *gp)
 	if (!S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode) && !S_ISDIR(st.st_mode))
 		return;
 
+#if !ENABLE_PLATFORM_MINGW32
 	if (gp->flags & OPT_SET_VER)
 		if (fsetversion(name, gp->version) != 0)
 			bb_perror_msg("setting version on %s", name);
+#endif
 
 	if (gp->flags & OPT_SET) {
 		fsflags = gp->af;
@@ -163,9 +199,11 @@ static void change_attributes(const char *name, struct globals *gp)
 			fsflags &= ~gp->rf;
 		/*if (gp->flags & OPT_ADD) - not needed, af is zero otherwise */
 			fsflags |= gp->af;
+#if !ENABLE_PLATFORM_MINGW32
 // What is this? And why it's not done for SET case?
 		if (!S_ISDIR(st.st_mode))
 			fsflags &= ~EXT2_DIRSYNC_FL;
+#endif
 	}
 	if (fsetflags(name, fsflags) != 0)
 		bb_perror_msg("setting flags on %s", name);
@@ -187,7 +225,11 @@ int chattr_main(int argc UNUSED_PARAM, char **argv)
 		char *arg = *++argv;
 		if (!arg)
 			bb_show_usage();
+#if ENABLE_PLATFORM_MINGW32
+		if (arg[0] != '-' && arg[0] != '+')
+#else
 		if (arg[0] != '-' && arg[0] != '+' && arg[0] != '=')
+#endif
 			break;
 
 		argv = decode_arg(argv, &g);
@@ -196,11 +238,15 @@ int chattr_main(int argc UNUSED_PARAM, char **argv)
 
 	/* run sanity checks on all the arguments given us */
 	if ((g.flags & OPT_SET) && (g.flags & (OPT_ADD|OPT_REM)))
-		bb_error_msg_and_die("= is incompatible with - and +");
+		bb_simple_error_msg_and_die("= is incompatible with - and +");
 	if (g.rf & g.af)
-		bb_error_msg_and_die("can't set and unset a flag");
+		bb_simple_error_msg_and_die("can't set and unset a flag");
 	if (!g.flags)
-		bb_error_msg_and_die("must use '-v', =, - or +");
+#if ENABLE_PLATFORM_MINGW32
+		bb_simple_error_msg_and_die("must use - or +");
+#else
+		bb_simple_error_msg_and_die("must use '-v', =, - or +");
+#endif
 
 	/* now run chattr on all the files passed to us */
 	do change_attributes(*argv, &g); while (*++argv);

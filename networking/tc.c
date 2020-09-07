@@ -7,7 +7,7 @@
  * Bernhard Reutner-Fischer adjusted for busybox
  */
 //config:config TC
-//config:	bool "tc (3.1 kb)"
+//config:	bool "tc (8.3 kb)"
 //config:	default y
 //config:	help
 //config:	Show / manipulate traffic control settings
@@ -124,7 +124,8 @@ static char* print_tc_classid(uint32_t cid)
 }
 
 /* Get a qdisc handle.  Return 0 on success, !0 otherwise.  */
-static int get_qdisc_handle(uint32_t *h, const char *str) {
+static int get_qdisc_handle(uint32_t *h, const char *str)
+{
 	uint32_t maj;
 	char *p;
 
@@ -143,7 +144,8 @@ static int get_qdisc_handle(uint32_t *h, const char *str) {
 }
 
 /* Get class ID.  Return 0 on success, !0 otherwise.  */
-static int get_tc_classid(uint32_t *h, const char *str) {
+static int get_tc_classid(uint32_t *h, const char *str)
+{
 	uint32_t maj, min;
 	char *p;
 
@@ -213,8 +215,6 @@ static int prio_print_opt(struct rtattr *opt)
 	if (opt == NULL)
 		return 0;
 	parse_rtattr_nested_compat(tb, TCA_PRIO_MAX, opt, qopt, sizeof(*qopt));
-	if (tb == NULL)
-		return 0;
 	printf("bands %u priomap ", qopt->bands);
 	for (i=0; i<=TC_PRIO_MAX; i++)
 		printf(" %d", qopt->priomap[i]);

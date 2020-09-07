@@ -39,9 +39,9 @@ int FAST_FUNC remove_file(const char *path, int flags)
 		if ((!(flags & FILEUTILS_FORCE) && access(path, W_OK) < 0 && isatty(0))
 		 || (flags & FILEUTILS_INTERACTIVE)
 		) {
-			fprintf(stderr, "%s: descend into directory '%s'? ", applet_name,
-					path);
-			if (!bb_ask_confirmation())
+			fprintf(stderr, "%s: descend into directory '%s'? ",
+					applet_name, path);
+			if (!bb_ask_y_confirmation())
 				return 0;
 		}
 
@@ -67,12 +67,13 @@ int FAST_FUNC remove_file(const char *path, int flags)
 		}
 
 		if (flags & FILEUTILS_INTERACTIVE) {
-			fprintf(stderr, "%s: remove directory '%s'? ", applet_name, path);
-			if (!bb_ask_confirmation())
+			fprintf(stderr, "%s: remove directory '%s'? ",
+					applet_name, path);
+			if (!bb_ask_y_confirmation())
 				return status;
 		}
 
-		if (rmdir(path) < 0) {
+		if (status == 0 && rmdir(path) < 0) {
 			bb_perror_msg("can't remove '%s'", path);
 			return -1;
 		}
@@ -92,7 +93,7 @@ int FAST_FUNC remove_file(const char *path, int flags)
 	 || (flags & FILEUTILS_INTERACTIVE)
 	) {
 		fprintf(stderr, "%s: remove '%s'? ", applet_name, path);
-		if (!bb_ask_confirmation())
+		if (!bb_ask_y_confirmation())
 			return 0;
 	}
 

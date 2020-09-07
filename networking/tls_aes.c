@@ -130,7 +130,7 @@ static int KeyExpansion(uint32_t *RoundKey, const void *key, unsigned key_len)
 	// The round constant word array, Rcon[i], contains the values given by
 	// x to th e power (i-1) being powers of x (x is denoted as {02}) in the field GF(2^8).
 	// Note that i starts at 2, not 0.
-	static const uint8_t Rcon[] = {
+	static const uint8_t Rcon[] ALIGN1 = {
 		0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36
 	//..... 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6,...
 	// but aes256 only uses values up to 0x36
@@ -326,8 +326,11 @@ static void InvMixColumns(unsigned astate[16])
 	}
 }
 
-static void aes_encrypt_1(unsigned astate[16], unsigned rounds, const uint32_t *RoundKey)
+static void aes_encrypt_1(struct tls_aes *aes, unsigned astate[16])
 {
+	unsigned rounds = aes->rounds;
+	const uint32_t *RoundKey = aes->key;
+
 	for (;;) {
 		AddRoundKey(astate, RoundKey);
 		RoundKey += 4;
@@ -340,8 +343,12 @@ static void aes_encrypt_1(unsigned astate[16], unsigned rounds, const uint32_t *
 	AddRoundKey(astate, RoundKey);
 }
 
-#if 0 // UNUSED
-static void aes_encrypt_one_block(unsigned rounds, const uint32_t *RoundKey, const void *data, void *dst)
+void FAST_FUNC aes_setkey(struct tls_aes *aes, const void *key, unsigned key_len)
+{
+	aes->rounds = KeyExpansion(aes->key, key, key_len);
+}
+
+void FAST_FUNC aes_encrypt_one_block(struct tls_aes *aes, const void *data, void *dst)
 {
 	unsigned astate[16];
 	unsigned i;
@@ -351,23 +358,19 @@ static void aes_encrypt_one_block(unsigned rounds, const uint32_t *RoundKey, con
 
 	for (i = 0; i < 16; i++)
 		astate[i] = pt[i];
-	aes_encrypt_1(astate, rounds, RoundKey);
+	aes_encrypt_1(aes, astate);
 	for (i = 0; i < 16; i++)
 		ct[i] = astate[i];
 }
-#endif
 
-void aes_cbc_encrypt(const void *key, int klen, void *iv, const void *data, size_t len, void *dst)
+void FAST_FUNC aes_cbc_encrypt(struct tls_aes *aes, void *iv, const void *data, size_t len, void *dst)
 {
-	uint32_t RoundKey[60];
 	uint8_t iv2[16];
-	unsigned rounds;
 
 	const uint8_t *pt = data;
 	uint8_t *ct = dst;
 
 	memcpy(iv2, iv, 16);
-	rounds = KeyExpansion(RoundKey, key, klen);
 	while (len > 0) {
 		{
 			/* almost aes_encrypt_one_block(rounds, RoundKey, pt, ct);
@@ -378,7 +381,7 @@ void aes_cbc_encrypt(const void *key, int klen, void *iv, const void *data, size
 			unsigned astate[16];
 			for (i = 0; i < 16; i++)
 				astate[i] = pt[i] ^ iv2[i];
-			aes_encrypt_1(astate, rounds, RoundKey);
+			aes_encrypt_1(aes, astate);
 			for (i = 0; i < 16; i++)
 				iv2[i] = ct[i] = astate[i];
 		}
@@ -388,8 +391,11 @@ void aes_cbc_encrypt(const void *key, int klen, void *iv, const void *data, size
 	}
 }
 
-static void aes_decrypt_1(unsigned astate[16], unsigned rounds, const uint32_t *RoundKey)
+static void aes_decrypt_1(struct tls_aes *aes, unsigned astate[16])
 {
+	unsigned rounds = aes->rounds;
+	const uint32_t *RoundKey = aes->key;
+
 	RoundKey += rounds * 4;
 	AddRoundKey(astate, RoundKey);
 	for (;;) {
@@ -404,8 +410,10 @@ static void aes_decrypt_1(unsigned astate[16], unsigned rounds, const uint32_t *
 }
 
 #if 0 //UNUSED
-static void aes_decrypt_one_block(unsigned rounds, const uint32_t *RoundKey, const void *data, void *dst)
+static void aes_decrypt_one_block(struct tls_aes *aes, const void *data, void *dst)
 {
+	unsigned rounds = aes->rounds;
+	const uint32_t *RoundKey = aes->key;
 	unsigned astate[16];
 	unsigned i;
 
@@ -414,25 +422,22 @@ static void aes_decrypt_one_block(unsigned rounds, const uint32_t *RoundKey, con
 
 	for (i = 0; i < 16; i++)
 		astate[i] = ct[i];
-	aes_decrypt_1(astate, rounds, RoundKey);
+	aes_decrypt_1(aes, astate);
 	for (i = 0; i < 16; i++)
 		pt[i] = astate[i];
 }
 #endif
 
-void aes_cbc_decrypt(const void *key, int klen, void *iv, const void *data, size_t len, void *dst)
+void FAST_FUNC aes_cbc_decrypt(struct tls_aes *aes, void *iv, const void *data, size_t len, void *dst)
 {
-	uint32_t RoundKey[60];
 	uint8_t iv2[16];
 	uint8_t iv3[16];
-	unsigned rounds;
 	uint8_t *ivbuf;
 	uint8_t *ivnext;
 
 	const uint8_t *ct = data;
 	uint8_t *pt = dst;
 
-	rounds = KeyExpansion(RoundKey, key, klen);
 	ivbuf = memcpy(iv2, iv, 16);
 	while (len) {
 		ivnext = (ivbuf==iv2) ? iv3 : iv2;
@@ -444,7 +449,7 @@ void aes_cbc_decrypt(const void *key, int klen, void *iv, const void *data, size
 			unsigned astate[16];
 			for (i = 0; i < 16; i++)
 				ivnext[i] = astate[i] = ct[i];
-			aes_decrypt_1(astate, rounds, RoundKey);
+			aes_decrypt_1(aes, astate);
 			for (i = 0; i < 16; i++)
 				pt[i] = astate[i] ^ ivbuf[i];
 		}

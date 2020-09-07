@@ -8,9 +8,8 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config FDISK
-//config:	bool "fdisk (41 kb)"
+//config:	bool "fdisk (37 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	The fdisk utility is used to divide hard disks into one or more
 //config:	logical disks, which are generally called partitions. This utility
@@ -169,9 +168,9 @@ typedef unsigned long long ullong;
  * do not support more than 2^32 sectors
  */
 typedef uint32_t sector_t;
-#if UINT_MAX == 4294967295
+#if UINT_MAX == 0xffffffff
 # define SECT_FMT ""
-#elif ULONG_MAX == 4294967295
+#elif ULONG_MAX == 0xffffffff
 # define SECT_FMT "l"
 #else
 # error Cant detect sizeof(uint32_t)
@@ -299,9 +298,6 @@ static int get_boot(enum action what);
 static int get_boot(void);
 #endif
 
-#define PLURAL   0
-#define SINGULAR 1
-
 static sector_t get_start_sect(const struct partition *p);
 static sector_t get_nr_sects(const struct partition *p);
 
@@ -347,6 +343,7 @@ static const char *const i386_sys_types[] = {
 	"\xa8" "Darwin UFS",
 	"\xa9" "NetBSD",
 	"\xab" "Darwin boot",
+	"\xaf" "HFS / HFS+",
 	"\xb7" "BSDI fs",
 	"\xb8" "BSDI swap",
 	"\xbe" "Solaris boot",
@@ -393,15 +390,12 @@ static const char *const i386_sys_types[] = {
 	"\xc6" "DRDOS/sec (FAT-16)",
 	"\xc7" "Syrinx",
 	"\xda" "Non-FS data",
-	"\xdb" "CP/M / CTOS / ...",/* CP/M or Concurrent CP/M or
-	                              Concurrent DOS or CTOS */
+	"\xdb" "CP/M / CTOS / ...",/* CP/M or Concurrent CP/M or Concurrent DOS or CTOS */
 	"\xde" "Dell Utility",     /* Dell PowerEdge Server utilities */
 	"\xdf" "BootIt",           /* BootIt EMBRM */
-	"\xe1" "DOS access",       /* DOS access or SpeedStor 12-bit FAT
-	                              extended partition */
+	"\xe1" "DOS access",       /* DOS access or SpeedStor 12-bit FAT extended partition */
 	"\xe3" "DOS R/O",          /* DOS R/O or SpeedStor */
-	"\xe4" "SpeedStor",        /* SpeedStor 16-bit FAT extended
-	                              partition < 1024 cyl. */
+	"\xe4" "SpeedStor",        /* SpeedStor 16-bit FAT extended partition <1024 cyl. */
 	"\xf1" "SpeedStor",
 	"\xf4" "SpeedStor",        /* SpeedStor large partition */
 	"\xfe" "LANstep",          /* SpeedStor >1024 cyl. or LANstep */
@@ -426,7 +420,7 @@ struct globals {
 	unsigned sector_offset; // = 1;
 	unsigned g_heads, g_sectors, g_cylinders;
 	smallint /* enum label_type */ current_label_type;
-	smallint display_in_cyl_units; // = 1;
+	smallint display_in_cyl_units;
 #if ENABLE_FEATURE_OSF_LABEL
 	smallint possibly_osf_label;
 #endif
@@ -488,7 +482,6 @@ struct globals {
 	sector_size = DEFAULT_SECTOR_SIZE; \
 	sector_offset = 1; \
 	g_partitions = 4; \
-	display_in_cyl_units = 1; \
 	units_per_sector = 1; \
 	dos_compatible_flag = 1; \
 } while (0)
@@ -512,7 +505,7 @@ static sector_t bb_BLKGETSIZE_sectors(int fd)
 			 * we support can't record more than 32 bit
 			 * sector counts or offsets
 			 */
-			bb_error_msg("device has more than 2^32 sectors, can't use all of them");
+			bb_simple_error_msg("device has more than 2^32 sectors, can't use all of them");
 			v64 = (uint32_t)-1L;
 		}
 		return v64;
@@ -592,18 +585,18 @@ partname(const char *dev, int pno, int lth)
 	return bufp;
 }
 
+#if ENABLE_FEATURE_SGI_LABEL || ENABLE_FEATURE_OSF_LABEL
 static ALWAYS_INLINE struct partition *
 get_part_table(int i)
 {
 	return ptes[i].part_table;
 }
+#endif
 
-static const char *
-str_units(int n)
-{      /* n==1: use singular */
-	if (n == 1)
-		return display_in_cyl_units ? "cylinder" : "sector";
-	return display_in_cyl_units ? "cylinders" : "sectors";
+static ALWAYS_INLINE const char *
+str_units(void)
+{
+	return display_in_cyl_units ? "cylinder" : "sector";
 }
 
 static int
@@ -639,25 +632,6 @@ seek_sector(sector_t secno)
 }
 
 #if ENABLE_FEATURE_FDISK_WRITABLE
-/* Read line; return 0 or first printable char */
-static int
-read_line(const char *prompt)
-{
-	int sz;
-
-	sz = read_line_input(NULL, prompt, line_buffer, sizeof(line_buffer));
-	if (sz <= 0)
-		exit(EXIT_SUCCESS); /* Ctrl-D or Ctrl-C */
-
-	if (line_buffer[sz-1] == '\n')
-		line_buffer[--sz] = '\0';
-
-	line_ptr = line_buffer;
-	while (*line_ptr != '\0' && (unsigned char)*line_ptr <= ' ')
-		line_ptr++;
-	return *line_ptr;
-}
-
 static void
 set_all_unchanged(void)
 {
@@ -678,6 +652,25 @@ write_part_table_flag(char *b)
 {
 	b[510] = 0x55;
 	b[511] = 0xaa;
+}
+
+/* Read line; return 0 or first printable non-space char */
+static int
+read_line(const char *prompt)
+{
+	int sz;
+
+	sz = read_line_input(NULL, prompt, line_buffer, sizeof(line_buffer));
+	if (sz <= 0)
+		exit(EXIT_SUCCESS); /* Ctrl-D or Ctrl-C */
+
+	if (line_buffer[sz-1] == '\n')
+		line_buffer[--sz] = '\0';
+
+	line_ptr = line_buffer;
+	while (*line_ptr != '\0' && (unsigned char)*line_ptr <= ' ')
+		line_ptr++;
+	return *line_ptr;
 }
 
 static char
@@ -1614,53 +1607,74 @@ read_int(sector_t low, sector_t dflt, sector_t high, sector_t base, const char *
 
 		if (*line_ptr == '+' || *line_ptr == '-') {
 			int minus = (*line_ptr == '-');
-			int absolute = 0;
+			unsigned scale_shift;
 
-			value = atoi(line_ptr + 1);
+			if (sizeof(value) <= sizeof(long))
+				value = strtoul(line_ptr + 1, NULL, 10);
+			else
+				value = strtoull(line_ptr + 1, NULL, 10);
 
 			/* (1) if 2nd char is digit, use_default = 0.
-			 * (2) move line_ptr to first non-digit. */
+			 * (2) move line_ptr to first non-digit.
+			 */
 			while (isdigit(*++line_ptr))
 				use_default = 0;
 
-			switch (*line_ptr) {
-			case 'c':
-			case 'C':
-				if (!display_in_cyl_units)
-					value *= g_heads * g_sectors;
-				break;
-			case 'K':
-				absolute = 1024;
-				break;
+			scale_shift = 0;
+			switch (*line_ptr | 0x20) {
 			case 'k':
-				absolute = 1000;
+				scale_shift = 10; /* 1024 */
 				break;
+/*
+ * fdisk from util-linux 2.31 seems to round '+NNNk' and '+NNNK' to megabytes,
+ * (512-byte) sector count of the partition does not equal NNN*2:
+ *
+ * Last sector, +sectors or +size{K,M,G,T,P} (1953792-1000215215, default 1000215215): +9727k
+ *   Device     Boot   Start     End Sectors  Size Id Type
+ *   /dev/sdaN       1953792 1972223   18432    9M 83 Linux   <-- size exactly 9*1024*1024 bytes
+ *
+ * Last sector, +sectors or +size{K,M,G,T,P} (1953792-1000215215, default 1000215215): +9728k
+ *   /dev/sdaN       1953792 1974271   20480   10M 83 Linux   <-- size exactly 10*1024*1024 bytes
+ *
+ * If 'k' means 1000 bytes (not 1024), then 9728k = 9728*1000 = 9500*1024,
+ * exactly halfway from 9000 to 10000, which explains why it jumps to next mbyte
+ * at this value.
+ *
+ * 'm' does not seem to behave this way: it means 1024*1024 bytes.
+ *
+ * Not sure we want to copy this. If user says he wants 1234kbyte partition,
+ * we do _exactly that_: 1234kbytes = 2468 sectors.
+ */
 			case 'm':
-			case 'M':
-				absolute = 1000000;
+				scale_shift = 20; /* 1024*1024 */
 				break;
 			case 'g':
-			case 'G':
-				absolute = 1000000000;
+				scale_shift = 30; /* 1024*1024*1024 */
+				break;
+			case 't':
+				scale_shift = 40; /* 1024*1024*1024*1024 */
 				break;
 			default:
 				break;
 			}
-			if (absolute) {
+			if (scale_shift) {
 				ullong bytes;
 				unsigned long unit;
 
-				bytes = (ullong) value * absolute;
+				bytes = (ullong) value << scale_shift;
 				unit = sector_size * units_per_sector;
 				bytes += unit/2; /* round */
 				bytes /= unit;
-				value = bytes;
+				value = (bytes != 0 ? bytes - 1 : 0);
 			}
 			if (minus)
 				value = -value;
 			value += base;
 		} else {
-			value = atoi(line_ptr);
+			if (sizeof(value) <= sizeof(long))
+				value = strtoul(line_ptr, NULL, 10);
+			else
+				value = strtoull(line_ptr, NULL, 10);
 			while (isdigit(*line_ptr)) {
 				line_ptr++;
 				use_default = 0;
@@ -1725,8 +1739,9 @@ get_existing_partition(int warn, unsigned max)
 }
 
 static int
-get_nonexisting_partition(int warn, unsigned max)
+get_nonexisting_partition(void)
 {
+	const int max = 4;
 	int pno = -1;
 	unsigned i;
 
@@ -1748,7 +1763,7 @@ get_nonexisting_partition(int warn, unsigned max)
 	return -1;
 
  not_unique:
-	return get_partition(warn, max);
+	return get_partition(/*warn*/ 0, max);
 }
 
 
@@ -1757,8 +1772,8 @@ change_units(void)
 {
 	display_in_cyl_units = !display_in_cyl_units;
 	update_units();
-	printf("Changing display/entry units to %s\n",
-		str_units(PLURAL));
+	printf("Changing display/entry units to %ss\n",
+		str_units());
 }
 
 static void
@@ -2004,19 +2019,12 @@ check_consistency(const struct partition *p, int partition)
 		printf("     phys=(%u,%u,%u) ", pec, peh, pes);
 		printf("logical=(%u,%u,%u)\n", lec, leh, les);
 	}
-
-/* Ending on cylinder boundary? */
-	if (peh != (g_heads - 1) || pes != g_sectors) {
-		printf("Partition %u does not end on cylinder boundary\n",
-			partition + 1);
-	}
 }
 
 static void
 list_disk_geometry(void)
 {
-	ullong bytes = ((ullong)total_number_of_sectors << 9);
-	ullong xbytes = bytes / (1024*1024);
+	ullong xbytes = total_number_of_sectors / (1024*1024 / 512);
 	char x = 'M';
 
 	if (xbytes >= 10000) {
@@ -2026,11 +2034,12 @@ list_disk_geometry(void)
 	}
 	printf("Disk %s: %llu %cB, %llu bytes, %"SECT_FMT"u sectors\n"
 		"%u cylinders, %u heads, %u sectors/track\n"
-		"Units: %s of %u * %u = %u bytes\n\n",
+		"Units: %ss of %u * %u = %u bytes\n"
+		"\n",
 		disk_device, xbytes, x,
-		bytes, total_number_of_sectors,
+		((ullong)total_number_of_sectors * 512), total_number_of_sectors,
 		g_cylinders, g_heads, g_sectors,
-		str_units(PLURAL),
+		str_units(),
 		units_per_sector, sector_size, units_per_sector * sector_size
 	);
 }
@@ -2471,7 +2480,7 @@ add_partition(int n, int sys)
 		for (i = 0; i < g_partitions; i++)
 			first[i] = (cround(first[i]) - 1) * units_per_sector;
 
-	snprintf(mesg, sizeof(mesg), "First %s", str_units(SINGULAR));
+	snprintf(mesg, sizeof(mesg), "First %s", str_units());
 	do {
 		temp = start;
 		for (i = 0; i < g_partitions; i++) {
@@ -2532,8 +2541,9 @@ add_partition(int n, int sys)
 		stop = limit;
 	} else {
 		snprintf(mesg, sizeof(mesg),
-			 "Last %s or +size or +sizeM or +sizeK",
-			 str_units(SINGULAR));
+			 "Last %s or +size{,K,M,G,T}",
+			 str_units()
+		);
 		stop = read_int(cround(start), cround(limit), cround(limit), cround(start), mesg);
 		if (display_in_cyl_units) {
 			stop = stop * units_per_sector - 1;
@@ -2617,15 +2627,16 @@ new_partition(void)
 	} else {
 		char c, line[80];
 		snprintf(line, sizeof(line),
-			"Command action\n"
-			"   %s\n"
-			"   p   primary partition (1-4)\n",
+			"Partition type\n"
+			"   p   primary partition (1-4)\n"
+			"   %s\n",
 			(extended_offset ?
 			"l   logical (5 or over)" : "e   extended"));
 		while (1) {
 			c = read_nonempty(line);
-			if ((c | 0x20) == 'p') {
-				i = get_nonexisting_partition(0, 4);
+			c |= 0x20; /* lowercase */
+			if (c == 'p') {
+				i = get_nonexisting_partition();
 				if (i >= 0)
 					add_partition(i, LINUX_NATIVE);
 				return;
@@ -2635,7 +2646,7 @@ new_partition(void)
 				return;
 			}
 			if (c == 'e' && !extended_offset) {
-				i = get_nonexisting_partition(0, 4);
+				i = get_nonexisting_partition();
 				if (i >= 0)
 					add_partition(i, EXTENDED);
 				return;

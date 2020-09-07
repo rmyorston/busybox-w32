@@ -26,7 +26,7 @@
 USE_PATCH(NEWTOY(patch, USE_TOYBOX_DEBUG("x")"up#i:R", TOYFLAG_USR|TOYFLAG_BIN))
 
 config PATCH
-	bool "patch (9.1 kb)"
+	bool "patch (9.4 kb)"
 	default y
 	help
 	  usage: patch [-i file] [-p depth] [-Ru]
@@ -200,7 +200,7 @@ int copy_tempfile(int fdin, char *name, char **tempname)
 
 	*tempname = xasprintf("%sXXXXXX", name);
 	fd = mkstemp(*tempname);
-	if(-1 == fd) bb_perror_msg_and_die("no temp file");
+	if(-1 == fd) bb_simple_perror_msg_and_die("no temp file");
 
 	// Set permissions of output file
 	fstat(fdin, &statbuf);

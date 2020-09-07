@@ -316,6 +316,9 @@ struct dnode {
 	int       dn_rdev_min;
 //	dev_t     dn_dev;
 //	blksize_t dn_blksize;
+#if ENABLE_PLATFORM_MINGW32
+	DWORD     dn_attr;
+#endif
 };
 
 struct globals {
@@ -421,7 +424,7 @@ static unsigned calc_name_len(const char *name)
 	uni_stat_t uni_stat;
 
 	// TODO: quote tab as \t, etc, if -Q
-	name = printable_string(&uni_stat, name);
+	name = printable_string2(&uni_stat, name);
 
 	if (!(option_mask32 & OPT_Q)) {
 		return uni_stat.unicode_width;
@@ -450,7 +453,7 @@ static unsigned print_name(const char *name)
 	uni_stat_t uni_stat;
 
 	// TODO: quote tab as \t, etc, if -Q
-	name = printable_string(&uni_stat, name);
+	name = printable_string2(&uni_stat, name);
 
 	if (!(option_mask32 & OPT_Q)) {
 		fputs(name, stdout);
@@ -492,12 +495,18 @@ static NOINLINE unsigned display_single(const struct dnode *dn)
 	/* Do readlink early, so that if it fails, error message
 	 * does not appear *inside* the "ls -l" line */
 	lpath = NULL;
+#if ENABLE_PLATFORM_POSIX || ENABLE_FEATURE_READLINK2
 	if (opt & OPT_l)
 		if (S_ISLNK(dn->dn_mode))
 			lpath = xmalloc_readlink_or_warn(dn->fullname);
+#endif
 
 	if (opt & OPT_i) /* show inode# */
+#if !ENABLE_FEATURE_EXTRA_FILE_DATA
 		column += printf("%7"LL_FMT"u ", (long long) dn->dn_ino);
+#else
+		column += printf("%19"LL_FMT"u ", (long long) dn->dn_ino);
+#endif
 //TODO: -h should affect -s too:
 	if (opt & OPT_s) /* show allocated blocks */
 		column += printf("%6"OFF_FMT"u ", (off_t) (dn->dn_blocks >> 1));
@@ -651,7 +660,11 @@ static void display_files(struct dnode **dn, unsigned nfiles)
 		}
 		column_width += 2
 			+ ((option_mask32 & OPT_Z) ? 33 : 0) /* context width */
+#if !ENABLE_FEATURE_EXTRA_FILE_DATA
 			+ ((option_mask32 & OPT_i) ? 8 : 0) /* inode# width */
+#else
+			+ ((option_mask32 & OPT_i) ? 20 : 0) /* inode# width */
+#endif
 			+ ((option_mask32 & OPT_s) ? 5 : 0) /* "alloc block" width */
 		;
 		ncols = (unsigned)G_terminal_width / column_width;
@@ -732,6 +745,9 @@ static struct dnode *my_stat(const char *fullname, const char *name, int force_f
 
 	/* cur->dstat = statbuf: */
 	cur->dn_mode   = statbuf.st_mode  ;
+#if ENABLE_PLATFORM_MINGW32
+	cur->dn_attr   = statbuf.st_attr  ;
+#endif
 	cur->dn_size   = statbuf.st_size  ;
 #if ENABLE_FEATURE_LS_TIMESTAMPS || ENABLE_FEATURE_LS_SORTFILES
 	cur->dn_time   = statbuf.st_mtime ;
@@ -941,9 +957,20 @@ static struct dnode **scan_one_dir(const char *path, unsigned *nfiles_p)
 				continue; /* if only -A, skip . and .. but show other dotfiles */
 			}
 		}
+#if ENABLE_PLATFORM_MINGW32
+		if (has_dos_drive_prefix(path) && path[2] == '\0')
+			fullname = xasprintf("%s%s", path, entry->d_name);
+		else
+#endif
 		fullname = concat_path_file(path, entry->d_name);
 		cur = my_stat(fullname, bb_basename(fullname), 0);
+#if !ENABLE_PLATFORM_MINGW32
 		if (!cur) {
+#else
+		if (!cur || ((cur->dn_attr & FILE_ATTRIBUTE_HIDDEN) &&
+						!(option_mask32 & (OPT_a|OPT_A)))) {
+			/* skip invalid or hidden files */
+#endif
 			free(fullname);
 			continue;
 		}
@@ -1016,7 +1043,15 @@ static void scan_and_display_dirs_recur(struct dnode **dn, int first)
 		subdnp = scan_one_dir((*dn)->fullname, &nfiles);
 #if ENABLE_DESKTOP
 		if (option_mask32 & (OPT_s|OPT_l)) {
-			printf("total %"OFF_FMT"u\n", calculate_blocks(subdnp));
+			if (option_mask32 & OPT_h) {
+				printf("total %-"HUMAN_READABLE_MAX_WIDTH_STR"s\n",
+					/* print size, no fractions, use suffixes */
+					make_human_readable_str(calculate_blocks(subdnp) * 1024,
+								0, 0)
+				);
+			} else {
+				printf("total %"OFF_FMT"u\n", calculate_blocks(subdnp));
+			}
 		}
 #endif
 		if (nfiles > 0) {
@@ -1043,6 +1078,18 @@ static void scan_and_display_dirs_recur(struct dnode **dn, int first)
 		}
 	}
 }
+
+#if ENABLE_PLATFORM_MINGW32
+static char *fix_backslash(char *p)
+{
+	const char *flag = getenv("BB_FIX_BACKSLASH");
+	int value = flag ? atoi(flag) : 0;
+
+	if (value == 1)
+		bs_to_slash(p);
+	return p;
+}
+#endif
 
 
 int ls_main(int argc UNUSED_PARAM, char **argv)
@@ -1078,7 +1125,7 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 	static const char ls_longopts[] ALIGN1 =
 		"full-time\0" No_argument "\xff"
 		"group-directories-first\0" No_argument "\xfe"
-		"color\0" Optional_argument "\xfd"
+		IF_FEATURE_LS_COLOR("color\0" Optional_argument "\xfd")
 	;
 #endif
 
@@ -1195,9 +1242,12 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 	dn = NULL;
 	nfiles = 0;
 	do {
+#if ENABLE_PLATFORM_MINGW32
+		*argv = fix_backslash(*argv);
+#endif
 		cur = my_stat(*argv, *argv,
-			/* follow links on command line unless -l, -s or -F: */
-			!(option_mask32 & (OPT_l|OPT_s|OPT_F))
+			/* follow links on command line unless -l, -i, -s or -F: */
+			!(option_mask32 & (OPT_l|OPT_i|OPT_s|OPT_F))
 			/* ... or if -H: */
 			|| (option_mask32 & OPT_H)
 			/* ... or if -L, but my_stat always follows links if -L */

@@ -7,7 +7,7 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config MKSWAP
-//config:	bool "mkswap (5.8 kb)"
+//config:	bool "mkswap (6.3 kb)"
 //config:	default y
 //config:	help
 //config:	The mkswap utility is used to configure a file or disk partition as
@@ -75,7 +75,7 @@ static void mkswap_selinux_setcontext(int fd, const char *path)
 	}
 	return;
  error:
-	bb_perror_msg_and_die("SELinux relabeling failed");
+	bb_simple_perror_msg_and_die("SELinux relabeling failed");
 }
 #else
 # define mkswap_selinux_setcontext(fd, path) ((void)0)

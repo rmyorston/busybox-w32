@@ -40,7 +40,7 @@ void FAST_FUNC udhcp_dump_packet(struct dhcp_packet *packet)
 	if (dhcp_verbose < 2)
 		return;
 
-	bb_error_msg(
+	bb_info_msg(
 		//" op %x"
 		//" htype %x"
 		" hlen %x"
@@ -73,7 +73,7 @@ void FAST_FUNC udhcp_dump_packet(struct dhcp_packet *packet)
 		//, packet->options[]
 	);
 	*bin2hex(buf, (void *) packet->chaddr, sizeof(packet->chaddr)) = '\0';
-	bb_error_msg(" chaddr %s", buf);
+	bb_info_msg(" chaddr %s", buf);
 }
 #endif
 
@@ -85,14 +85,14 @@ int FAST_FUNC udhcp_recv_kernel_packet(struct dhcp_packet *packet, int fd)
 	memset(packet, 0, sizeof(*packet));
 	bytes = safe_read(fd, packet, sizeof(*packet));
 	if (bytes < 0) {
-		log1("packet read error, ignoring");
+		log1s("packet read error, ignoring");
 		return bytes; /* returns -1 */
 	}
 
 	if (bytes < offsetof(struct dhcp_packet, options)
 	 || packet->cookie != htonl(DHCP_MAGIC)
 	) {
-		bb_error_msg("packet with bad magic, ignoring");
+		bb_simple_info_msg("packet with bad magic, ignoring");
 		return -2;
 	}
 	log1("received %s", "a packet");
@@ -189,8 +189,7 @@ int FAST_FUNC udhcp_send_raw_packet(struct dhcp_packet *dhcp_pkt,
 /* Let the kernel do all the work for packet generation */
 int FAST_FUNC udhcp_send_kernel_packet(struct dhcp_packet *dhcp_pkt,
 		uint32_t source_nip, int source_port,
-		uint32_t dest_nip, int dest_port,
-		int send_flags)
+		uint32_t dest_nip, int dest_port)
 {
 	struct sockaddr_in sa;
 	unsigned padding;
@@ -227,8 +226,8 @@ int FAST_FUNC udhcp_send_kernel_packet(struct dhcp_packet *dhcp_pkt,
 	padding = DHCP_OPTIONS_BUFSIZE - 1 - udhcp_end_option(dhcp_pkt->options);
 	if (padding > DHCP_SIZE - 300)
 		padding = DHCP_SIZE - 300;
-	result = send(fd, dhcp_pkt, DHCP_SIZE - padding, send_flags);
-	msg = "send";
+	result = safe_write(fd, dhcp_pkt, DHCP_SIZE - padding);
+	msg = "write";
  ret_close:
 	close(fd);
 	if (result < 0) {

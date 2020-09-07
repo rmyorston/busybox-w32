@@ -186,18 +186,23 @@ static void sed_free_and_close_stuff(void)
 		if (sed_cmd->sw_file)
 			fclose(sed_cmd->sw_file);
 
-		if (sed_cmd->beg_match) {
-			regfree(sed_cmd->beg_match);
-			free(sed_cmd->beg_match);
-		}
-		if (sed_cmd->end_match) {
-			regfree(sed_cmd->end_match);
-			free(sed_cmd->end_match);
-		}
-		if (sed_cmd->sub_match) {
-			regfree(sed_cmd->sub_match);
-			free(sed_cmd->sub_match);
-		}
+		/* Used to free regexps, but now there is code
+		 * in get_address() which can reuse a regexp
+		 * for constructs as /regexp/cmd1;//cmd2
+		 * leading to double-frees here:
+		 */
+		//if (sed_cmd->beg_match) {
+		//	regfree(sed_cmd->beg_match);
+		//	free(sed_cmd->beg_match);
+		//}
+		//if (sed_cmd->end_match) {
+		//	regfree(sed_cmd->end_match);
+		//	free(sed_cmd->end_match);
+		//}
+		//if (sed_cmd->sub_match) {
+		//	regfree(sed_cmd->sub_match);
+		//	free(sed_cmd->sub_match);
+		//}
 		free(sed_cmd->string);
 		free(sed_cmd);
 		sed_cmd = sed_cmd_next;
@@ -316,7 +321,7 @@ static int parse_regex_delim(const char *cmdstr, char **match, char **replace)
 	/* verify that the 's' or 'y' is followed by something.  That something
 	 * (typically a 'slash') is now our regexp delimiter... */
 	if (*cmdstr == '\0')
-		bb_error_msg_and_die("bad format in substitution expression");
+		bb_simple_error_msg_and_die("bad format in substitution expression");
 	delimiter = *cmdstr_ptr++;
 
 	/* save the match string */
@@ -361,7 +366,7 @@ static int get_address(const char *my_str, int *linenum, regex_t ** regex)
 		} else {
 			*regex = G.previous_regex_ptr;
 			if (!G.previous_regex_ptr)
-				bb_error_msg_and_die("no previous regexp");
+				bb_simple_error_msg_and_die("no previous regexp");
 		}
 		/* Move position to next character after last delimiter */
 		pos += (next+1);
@@ -372,25 +377,25 @@ static int get_address(const char *my_str, int *linenum, regex_t ** regex)
 /* Grab a filename.  Whitespace at start is skipped, then goes to EOL. */
 static int parse_file_cmd(/*sed_cmd_t *sed_cmd,*/ const char *filecmdstr, char **retval)
 {
-	int start = 0, idx, hack = 0;
+	const char *start;
+	const char *eol;
 
 	/* Skip whitespace, then grab filename to end of line */
-	while (isspace(filecmdstr[start]))
-		start++;
-	idx = start;
-	while (filecmdstr[idx] && filecmdstr[idx] != '\n')
-		idx++;
+	start = skip_whitespace(filecmdstr);
+	eol = strchrnul(start, '\n');
+	if (eol == start)
+		bb_simple_error_msg_and_die("empty filename");
 
-	/* If lines glued together, put backslash back. */
-	if (filecmdstr[idx] == '\n')
-		hack = 1;
-	if (idx == start)
-		bb_error_msg_and_die("empty filename");
-	*retval = xstrndup(filecmdstr+start, idx-start+hack+1);
-	if (hack)
-		(*retval)[idx] = '\\';
+	if (*eol) {
+		/* If lines glued together, put backslash back. */
+		*retval = xstrndup(start, eol-start + 1);
+		(*retval)[eol-start] = '\\';
+	} else {
+		/* eol is NUL */
+		*retval = xstrdup(start);
+	}
 
-	return idx;
+	return eol - filecmdstr;
 }
 
 static int parse_subst_cmd(sed_cmd_t *sed_cmd, const char *substr)
@@ -469,7 +474,7 @@ static int parse_subst_cmd(sed_cmd_t *sed_cmd, const char *substr)
 			goto out;
 		default:
 			dbg("s bad flags:'%s'", substr + idx);
-			bb_error_msg_and_die("bad option in substitution expression");
+			bb_simple_error_msg_and_die("bad option in substitution expression");
 		}
 	}
  out:
@@ -689,7 +694,7 @@ static void add_cmd(const char *cmdstr)
 				idx--; /* if 0, trigger error check below */
 			}
 			if (idx < 0)
-				bb_error_msg_and_die("no address after comma");
+				bb_simple_error_msg_and_die("no address after comma");
 			sed_cmd->end_line_orig = sed_cmd->end_line;
 		}
 
@@ -707,7 +712,7 @@ static void add_cmd(const char *cmdstr)
 
 		/* last part (mandatory) will be a command */
 		if (!*cmdstr)
-			bb_error_msg_and_die("missing command");
+			bb_simple_error_msg_and_die("missing command");
 		sed_cmd->cmd = *cmdstr++;
 		cmdstr = parse_cmd_args(sed_cmd, cmdstr);
 
@@ -792,7 +797,7 @@ static int do_subst_command(sed_cmd_t *sed_cmd, char **line_p)
 	if (!current_regex) {
 		current_regex = G.previous_regex_ptr;
 		if (!current_regex)
-			bb_error_msg_and_die("no previous regexp");
+			bb_simple_error_msg_and_die("no previous regexp");
 	}
 	G.previous_regex_ptr = current_regex;
 
@@ -963,7 +968,7 @@ static void puts_maybe_newline(char *s, FILE *file, char *last_puts_char, char l
 
 	if (ferror(file)) {
 		xfunc_error_retval = 4;  /* It's what gnu sed exits with... */
-		bb_error_msg_and_die(bb_msg_write_error);
+		bb_simple_error_msg_and_die(bb_msg_write_error);
 	}
 	*last_puts_char = lpc;
 }
@@ -994,7 +999,7 @@ static void flush_append(char *last_puts_char)
 static char *get_next_line(char *gets_char, char *last_puts_char)
 {
 	char *temp = NULL;
-	int len;
+	size_t len;
 	char gc;
 
 	flush_append(last_puts_char);
@@ -1103,6 +1108,8 @@ static void process_files(void)
 		int old_matched, matched;
 
 		old_matched = sed_cmd->in_match;
+		if (!old_matched)
+			sed_cmd->end_line = sed_cmd->end_line_orig;
 
 		/* Determine if this command matches this line: */
 
@@ -1196,7 +1203,7 @@ static void process_files(void)
 					}
 					sed_cmd = sed_cmd->next;
 					if (!sed_cmd)
-						bb_error_msg_and_die("unterminated {");
+						bb_simple_error_msg_and_die("unterminated {");
 				}
 			}
 			continue;

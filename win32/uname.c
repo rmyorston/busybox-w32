@@ -25,14 +25,10 @@ int uname(struct utsname *name)
 		sprintf(name->version, "%u", (unsigned int)os_info.dwBuildNumber);
 	}
 
-	strcpy(name->machine, unk);
 	GetSystemInfo(&sys_info);
 	switch (sys_info.wProcessorArchitecture) {
 	case PROCESSOR_ARCHITECTURE_AMD64:
 		strcpy(name->machine, "x86_64");
-		break;
-	case PROCESSOR_ARCHITECTURE_IA64:
-		strcpy(name->machine, "ia64");
 		break;
 	case PROCESSOR_ARCHITECTURE_INTEL:
 		if (sys_info.wProcessorLevel < 6) {
@@ -41,6 +37,9 @@ int uname(struct utsname *name)
 		else {
 			strcpy(name->machine, "i686");
 		}
+		break;
+	default:
+		strcpy(name->machine, unk);
 		break;
 	}
 

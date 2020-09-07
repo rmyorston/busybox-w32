@@ -9,13 +9,13 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config DELUSER
-//config:	bool "deluser (8.4 kb)"
+//config:	bool "deluser (9.1 kb)"
 //config:	default y
 //config:	help
 //config:	Utility for deleting a user account.
 //config:
 //config:config DELGROUP
-//config:	bool "delgroup (5.6 kb)"
+//config:	bool "delgroup (6.4 kb)"
 //config:	default y
 //config:	help
 //config:	Utility for deleting a group account.
@@ -76,7 +76,7 @@ int deluser_main(int argc, char **argv)
 #endif
 
 	if (geteuid() != 0)
-		bb_error_msg_and_die(bb_msg_perm_denied_are_you_root);
+		bb_simple_error_msg_and_die(bb_msg_perm_denied_are_you_root);
 
 	name = argv[1];
 	member = NULL;
@@ -99,8 +99,14 @@ int deluser_main(int argc, char **argv)
 			pfile = bb_path_passwd_file;
 			if (ENABLE_FEATURE_SHADOWPASSWDS)
 				sfile = bb_path_shadow_file;
-			if (opt_delhome)
-				remove_file(pw->pw_dir, FILEUTILS_RECUR);
+			if (opt_delhome) {
+				struct stat st;
+
+				/* Make sure home is an actual directory before
+				 * removing it (e.g. users with /dev/null as home) */
+				if (stat(pw->pw_dir, &st) == 0 && S_ISDIR(st.st_mode))
+					remove_file(pw->pw_dir, FILEUTILS_RECUR);
+			}
 		} else {
 			struct group *gr;
  do_delgroup:

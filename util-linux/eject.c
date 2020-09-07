@@ -13,9 +13,8 @@
  * Most of the dirty work blatantly ripped off from cat.c =)
  */
 //config:config EJECT
-//config:	bool "eject (4.1 kb)"
+//config:	bool "eject (4 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Used to eject cdroms. (defaults to /dev/cdrom)
 //config:
@@ -70,7 +69,7 @@ static void eject_scsi(const char *dev)
 	sg_io_hdr_t io_hdr;
 
 	if ((ioctl(dev_fd, SG_GET_VERSION_NUM, &i) < 0) || (i < 30000))
-		bb_error_msg_and_die("not a sg device or old sg driver");
+		bb_simple_error_msg_and_die("not a sg device or old sg driver");
 
 	memset(&io_hdr, 0, sizeof(sg_io_hdr_t));
 	io_hdr.interface_id = 'S';

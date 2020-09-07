@@ -84,6 +84,7 @@
 //usage:	)
 //usage:     "\n	-n	Don't do DNS resolution"
 //usage:     "\n	-u	UDP mode"
+//usage:     "\n	-b	Allow broadcasts"
 //usage:     "\n	-v	Verbose"
 //usage:	IF_NC_EXTRA(
 //usage:     "\n	-o FILE	Hex dump traffic"
@@ -171,17 +172,19 @@ enum {
 	OPT_p = (1 << 1),
 	OPT_s = (1 << 2),
 	OPT_u = (1 << 3),
-	OPT_v = (1 << 4),
-	OPT_w = (1 << 5),
-	OPT_l = (1 << 6) * ENABLE_NC_SERVER,
-	OPT_k = (1 << 7) * ENABLE_NC_SERVER,
-	OPT_i = (1 << (6+2*ENABLE_NC_SERVER)) * ENABLE_NC_EXTRA,
-	OPT_o = (1 << (7+2*ENABLE_NC_SERVER)) * ENABLE_NC_EXTRA,
-	OPT_z = (1 << (8+2*ENABLE_NC_SERVER)) * ENABLE_NC_EXTRA,
+	OPT_b = (1 << 4),
+	OPT_v = (1 << 5),
+	OPT_w = (1 << 6),
+	OPT_l = (1 << 7) * ENABLE_NC_SERVER,
+	OPT_k = (1 << 8) * ENABLE_NC_SERVER,
+	OPT_i = (1 << (7+2*ENABLE_NC_SERVER)) * ENABLE_NC_EXTRA,
+	OPT_o = (1 << (8+2*ENABLE_NC_SERVER)) * ENABLE_NC_EXTRA,
+	OPT_z = (1 << (9+2*ENABLE_NC_SERVER)) * ENABLE_NC_EXTRA,
 };
 
 #define o_nflag   (option_mask32 & OPT_n)
 #define o_udpmode (option_mask32 & OPT_u)
+#define o_bcmode  (option_mask32 & OPT_b)
 #if ENABLE_NC_EXTRA
 #define o_ofile   (option_mask32 & OPT_o)
 #define o_zero    (option_mask32 & OPT_z)
@@ -198,8 +201,8 @@ enum {
 #define Debug(...) do { } while (0)
 #endif
 
-#define holler_error(...)  do { if (o_verbose) bb_error_msg(__VA_ARGS__); } while (0)
-#define holler_perror(...) do { if (o_verbose) bb_perror_msg(__VA_ARGS__); } while (0)
+#define holler_error(msg)  do { if (o_verbose) bb_simple_error_msg(msg); } while (0)
+#define holler_perror(msg) do { if (o_verbose) bb_simple_perror_msg(msg); } while (0)
 
 /* catch: no-brainer interrupt handler */
 static void catch(int sig)
@@ -361,10 +364,10 @@ static void dolisten(int is_persistent, char **proggie)
 			rr = recv_from_to(netfd, NULL, 0, MSG_PEEK, /*was bigbuf_net, BIGSIZ*/
 				&remend.u.sa, &ouraddr->u.sa, ouraddr->len);
 			if (rr < 0)
-				bb_perror_msg_and_die("recvfrom");
+				bb_simple_perror_msg_and_die("recvfrom");
 			unarm();
 		} else
-			bb_error_msg_and_die("timeout");
+			bb_simple_error_msg_and_die("timeout");
 /* Now we learned *to which IP* peer has connected, and we want to anchor
 our socket on it, so that our outbound packets will have correct local IP.
 Unfortunately, bind() on already bound socket will fail now (EINVAL):
@@ -382,7 +385,7 @@ create new one, and bind() it. TODO */
 			remend.len = LSA_SIZEOF_SA;
 			rr = accept(netfd, &remend.u.sa, &remend.len);
 			if (rr < 0)
-				bb_perror_msg_and_die("accept");
+				bb_simple_perror_msg_and_die("accept");
 			if (themaddr) {
 				int sv_port, port, r;
 
@@ -409,7 +412,7 @@ create new one, and bind() it. TODO */
 			}
 			unarm();
 		} else
-			bb_error_msg_and_die("timeout");
+			bb_simple_error_msg_and_die("timeout");
 
 		if (is_persistent && proggie) {
 			/* -l -k -e PROG */
@@ -494,7 +497,7 @@ static int udptest(void)
 
 	rr = write(netfd, bigbuf_in, 1);
 	if (rr != 1)
-		bb_perror_msg("udptest first write");
+		bb_simple_perror_msg("udptest first write");
 
 	if (o_wait)
 		sleep(o_wait); // can be interrupted! while (t) nanosleep(&t)?
@@ -644,7 +647,7 @@ static int readwrite(void)
 			if (rr <= 0) {
 				if (rr < 0 && o_verbose > 1) {
 					/* nc 1.10 doesn't do this */
-					bb_perror_msg("net read");
+					bb_simple_perror_msg("net read");
 				}
 				pfds[1].fd = -1;                   /* don't poll for netfd anymore */
 				fds_open--;
@@ -788,10 +791,10 @@ int nc_main(int argc UNUSED_PARAM, char **argv)
 
 	// -g -G -t -r deleted, unimplemented -a deleted too
 	getopt32(argv, "^"
-		"np:s:uvw:+"/* -w N */ IF_NC_SERVER("lk")
+		"np:s:ubvw:+"/* -w N */ IF_NC_SERVER("lk")
 		IF_NC_EXTRA("i:o:z")
 			"\0"
-			"?2:vv:ll", /* max 2 params; -v and -l are counters */
+			"?2:vv"IF_NC_SERVER(":ll"), /* max 2 params; -v and -l are counters */
 		&str_p, &str_s, &o_wait
 		IF_NC_EXTRA(, &str_i, &str_o)
 			, &o_verbose IF_NC_SERVER(, &cnt_l)
@@ -851,8 +854,11 @@ int nc_main(int argc UNUSED_PARAM, char **argv)
 	}
 	xmove_fd(x, netfd);
 	setsockopt_reuseaddr(netfd);
-	if (o_udpmode)
+	if (o_udpmode) {
+		if (o_bcmode)
+			setsockopt_broadcast(netfd);
 		socket_want_pktinfo(netfd);
+	}
 	if (!ENABLE_FEATURE_UNIX_LOCAL
 	 || cnt_l != 0 /* listen */
 	 || ouraddr->u.sa.sa_family != AF_UNIX
@@ -869,7 +875,7 @@ int nc_main(int argc UNUSED_PARAM, char **argv)
 		/* apparently UDP can listen ON "port 0",
 		 but that's not useful */
 		if (!o_lport)
-			bb_error_msg_and_die("UDP listen needs nonzero -p port");
+			bb_simple_error_msg_and_die("UDP listen needs nonzero -p port");
 	}
 #endif
 

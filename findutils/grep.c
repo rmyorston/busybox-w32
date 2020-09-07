@@ -18,19 +18,19 @@
  * (C) 2006 Jac Goudsmit added -o option
  */
 //config:config GREP
-//config:	bool "grep (8.5 kb)"
+//config:	bool "grep (8.6 kb)"
 //config:	default y
 //config:	help
 //config:	grep is used to search files for a specified pattern.
 //config:
 //config:config EGREP
-//config:	bool "egrep (7.6 kb)"
+//config:	bool "egrep (7.8 kb)"
 //config:	default y
 //config:	help
 //config:	Alias to "grep -E".
 //config:
 //config:config FGREP
-//config:	bool "fgrep (7.6 kb)"
+//config:	bool "fgrep (7.8 kb)"
 //config:	default y
 //config:	help
 //config:	Alias to "grep -F".
@@ -60,7 +60,7 @@
 
 /* options */
 //usage:#define grep_trivial_usage
-//usage:       "[-HhnlLoqvsriwFE"
+//usage:       "[-HhnlLoqvsrRiwFE"
 //usage:	IF_EXTRA_COMPAT("z")
 //usage:       "] [-m N] "
 //usage:	IF_FEATURE_GREP_CONTEXT("[-A/B/C N] ")
@@ -78,6 +78,7 @@
 //usage:     "\n	-v	Select non-matching lines"
 //usage:     "\n	-s	Suppress open and read errors"
 //usage:     "\n	-r	Recurse"
+//usage:     "\n	-R	Recurse and dereference symlinks"
 //usage:     "\n	-i	Ignore case"
 //usage:     "\n	-w	Match whole words only"
 //usage:     "\n	-x	Match whole lines only"
@@ -108,7 +109,7 @@
 
 /* -e,-f are lists; -m,-A,-B,-C have numeric param */
 #define OPTSTR_GREP \
-	"lnqvscFiHhe:*f:*Lorm:+wx" \
+	"lnqvscFiHhe:*f:*LorRm:+wx" \
 	IF_FEATURE_GREP_CONTEXT("A:+B:+C:+") \
 	"E" \
 	IF_EXTRA_COMPAT("z") \
@@ -131,6 +132,7 @@ enum {
 	OPTBIT_L, /* list unmatched file names only */
 	OPTBIT_o, /* show only matching parts of lines */
 	OPTBIT_r, /* recurse dirs */
+	OPTBIT_R, /* recurse dirs and symlinks to dirs */
 	OPTBIT_m, /* -m MAX_MATCHES */
 	OPTBIT_w, /* -w whole word match */
 	OPTBIT_x, /* -x whole line match */
@@ -154,6 +156,7 @@ enum {
 	OPT_L = 1 << OPTBIT_L,
 	OPT_o = 1 << OPTBIT_o,
 	OPT_r = 1 << OPTBIT_r,
+	OPT_R = 1 << OPTBIT_R,
 	OPT_m = 1 << OPTBIT_m,
 	OPT_w = 1 << OPTBIT_w,
 	OPT_x = 1 << OPTBIT_x,
@@ -164,13 +167,11 @@ enum {
 	OPT_z = IF_EXTRA_COMPAT(            (1 << OPTBIT_z)) + 0,
 };
 
-#define PRINT_FILES_WITH_MATCHES    (option_mask32 & OPT_l)
 #define PRINT_LINE_NUM              (option_mask32 & OPT_n)
 #define BE_QUIET                    (option_mask32 & OPT_q)
 #define SUPPRESS_ERR_MSGS           (option_mask32 & OPT_s)
 #define PRINT_MATCH_COUNTS          (option_mask32 & OPT_c)
 #define FGREP_FLAG                  (option_mask32 & OPT_F)
-#define PRINT_FILES_WITHOUT_MATCHES (option_mask32 & OPT_L)
 #define NUL_DELIMITED               (option_mask32 & OPT_z)
 
 struct globals {
@@ -352,7 +353,7 @@ static int grep_file(FILE *file)
 							goto opt_f_not_found;
 					} else
 					if (option_mask32 & OPT_w) {
-						char c = (match != str) ? match[-1] : ' ';
+						char c = (match != line) ? match[-1] : ' ';
 						if (!isalnum(c) && c != '_') {
 							c = match[strlen(gl->pattern)];
 							if (!c || (!isalnum(c) && c != '_'))
@@ -404,7 +405,7 @@ static int grep_file(FILE *file)
 #endif
 				) {
 					if (option_mask32 & OPT_x) {
-						found = (gl->matched_range.rm_so == 0
+						found |= (gl->matched_range.rm_so == 0
 						         && match_at[gl->matched_range.rm_eo] == '\0');
 					} else
 					if (!(option_mask32 & OPT_w)) {
@@ -443,15 +444,23 @@ static int grep_file(FILE *file)
 					}
 				}
 			}
-			/* If it's non-inverted search, we can stop
-			 * at first match */
-			if (found && !invert_search)
-				goto do_found;
+			/* If it's a non-inverted search, we can stop
+			 * at first match and report it.
+			 * If it's an inverted search, we can move on
+			 * to the next line of input, ignoring the
+			 * rest of the patterns.
+			 */
+			if (found) {
+				//if (invert_search)
+				//	goto do_not_found;
+				//goto do_found;
+				break; // this accomplishes both
+			}
 			pattern_ptr = pattern_ptr->link;
 		} /* while (pattern_ptr) */
 
 		if (found ^ invert_search) {
- do_found:
+ //do_found:
 			/* keep track of matches */
 			nmatches++;
 
@@ -465,13 +474,13 @@ static int grep_file(FILE *file)
 					 * even if errors were detected" */
 					exit(EXIT_SUCCESS);
 				}
-				/* if we're just printing filenames, we stop after the first match */
-				if (PRINT_FILES_WITH_MATCHES) {
+				/* -l "print filenames with matches": stop after the first match */
+				if (option_mask32 & OPT_l) {
 					puts(cur_file);
-					/* fall through to "return 1" */
+					return 1;
 				}
-				/* OPT_L aka PRINT_FILES_WITHOUT_MATCHES: return early */
-				return 1; /* one match */
+				/* -L "print filenames without matches": return early too */
+				return 0; /* 0: we do not print fname, hence it's "not a match" */
 			}
 
 #if ENABLE_FEATURE_GREP_CONTEXT
@@ -552,6 +561,7 @@ static int grep_file(FILE *file)
 		}
 #if ENABLE_FEATURE_GREP_CONTEXT
 		else { /* no match */
+ //do_not_found:
 			/* if we need to print some context lines after the last match, do so */
 			if (print_n_lines_after) {
 				print_line(line, strlen(line), linenum, '-');
@@ -590,15 +600,16 @@ static int grep_file(FILE *file)
 		printf("%d\n", nmatches);
 	}
 
-	/* grep -L: print just the filename */
-	if (PRINT_FILES_WITHOUT_MATCHES) {
+	/* grep -L: "print filenames without matches" */
+	if (option_mask32 & OPT_L) {
 		/* nmatches is zero, no need to check it:
-		 * we return 1 early if we detected a match
-		 * and PRINT_FILES_WITHOUT_MATCHES is set */
+		 * we return 0 early if -L and we detect a match
+		 */
 		puts(cur_file);
+		return 1; /* 1: we printed fname, hence it's "a match" */
 	}
 
-	return nmatches;
+	return nmatches != 0; /* we return not a count, but a boolean */
 }
 
 #if ENABLE_FEATURE_CLEAN_UP
@@ -638,6 +649,13 @@ static void load_regexes_from_file(llist_t *fopt)
 	}
 }
 
+static void load_pattern_list(llist_t **lst, char *pattern)
+{
+	char *p;
+	while ((p = strsep(&pattern, "\n")) != NULL)
+		llist_add_to(lst, new_grep_list_data(p, 0));
+}
+
 static int FAST_FUNC file_action_grep(const char *filename,
 			struct stat *statbuf,
 			void* matched,
@@ -668,7 +686,7 @@ static int FAST_FUNC file_action_grep(const char *filename,
 		return 0;
 	}
 	cur_file = filename;
-	*(int*)matched += grep_file(file);
+	*(int*)matched |= grep_file(file);
 	fclose(file);
 	return 1;
 }
@@ -678,6 +696,7 @@ static int grep_dir(const char *dir)
 	int matched = 0;
 	recursive_action(dir,
 		/* recurse=yes */ ACTION_RECURSE |
+		/* followLinks=always */ ((option_mask32 & OPT_R) ? ACTION_FOLLOWLINKS : 0) |
 		/* followLinks=command line only */ ACTION_FOLLOWLINKS_L0 |
 		/* depthFirst=yes */ ACTION_DEPTHFIRST,
 		/* fileAction= */ file_action_grep,
@@ -704,10 +723,15 @@ int grep_main(int argc UNUSED_PARAM, char **argv)
 	/* do normal option parsing */
 #if ENABLE_FEATURE_GREP_CONTEXT
 	/* -H unsets -h; -C unsets -A,-B */
-	opts = getopt32(argv,
-		"^" OPTSTR_GREP "\0" "H-h:C-AB",
+	opts = getopt32long(argv, "^"
+		OPTSTR_GREP
+			"\0"
+			"H-h:C-AB",
+		"color\0" Optional_argument "\xff",
 		&pattern_head, &fopt, &max_matches,
-		&lines_after, &lines_before, &Copt);
+		&lines_after, &lines_before, &Copt
+		, NULL
+	);
 
 	if (opts & OPT_C) {
 		/* -C unsets prev -A and -B, but following -A or -B
@@ -736,16 +760,19 @@ int grep_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	invert_search = ((option_mask32 & OPT_v) != 0); /* 0 | 1 */
 
-	{	/* convert char **argv to grep_list_data_t */
-		llist_t *cur;
+	{	/* convert char **argv to pattern_list */
+		llist_t *cur, *new = NULL;
 		for (cur = pattern_head; cur; cur = cur->link)
-			cur->data = new_grep_list_data(cur->data, 0);
+			load_pattern_list(&new, cur->data);
+		llist_free(pattern_head, NULL);
+		pattern_head = new;
 	}
 	if (option_mask32 & OPT_f) {
 		load_regexes_from_file(fopt);
 		if (!pattern_head) { /* -f EMPTY_FILE? */
-			/* GNU grep treats it as "nothing matches" */
-			llist_add_to(&pattern_head, new_grep_list_data((char*) "", 0));
+			/* GNU grep treats it as "nothing matches" except when -x */
+			const char *data = (option_mask32 & OPT_x) ? ".*" : "";
+			llist_add_to(&pattern_head, new_grep_list_data((char*)data, 0));
 			invert_search ^= 1;
 		}
 	}
@@ -787,11 +814,9 @@ int grep_main(int argc UNUSED_PARAM, char **argv)
 	/* if we didn't get a pattern from -e and no command file was specified,
 	 * first parameter should be the pattern. no pattern, no worky */
 	if (pattern_head == NULL) {
-		char *pattern;
 		if (*argv == NULL)
 			bb_show_usage();
-		pattern = new_grep_list_data(*argv++, 0);
-		llist_add_to(&pattern_head, pattern);
+		load_pattern_list(&pattern_head, *argv++);
 	}
 
 	/* argv[0..(argc-1)] should be names of file to grep through. If
@@ -813,12 +838,12 @@ int grep_main(int argc UNUSED_PARAM, char **argv)
 		if (!cur_file || LONE_DASH(cur_file)) {
 			cur_file = "(standard input)";
 		} else {
-			if (option_mask32 & OPT_r) {
+			if (option_mask32 & (OPT_r|OPT_R)) {
 				struct stat st;
 				if (stat(cur_file, &st) == 0 && S_ISDIR(st.st_mode)) {
 					if (!(option_mask32 & OPT_h))
 						print_filename = 1;
-					matched += grep_dir(cur_file);
+					matched |= grep_dir(cur_file);
 					goto grep_done;
 				}
 			}
@@ -831,7 +856,7 @@ int grep_main(int argc UNUSED_PARAM, char **argv)
 				continue;
 			}
 		}
-		matched += grep_file(file);
+		matched |= grep_file(file);
 		fclose_if_not_stdin(file);
  grep_done: ;
 	} while (*argv && *++argv);

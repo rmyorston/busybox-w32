@@ -6,9 +6,8 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config RUN_INIT
-//config:	bool "run-init (7.5 kb)"
+//config:	bool "run-init (7.7 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	The run-init utility is used from initramfs to select a new
 //config:	root device. Under initramfs, you have to use this instead of

@@ -1,12 +1,11 @@
 #
 # For a description of the syntax of this configuration file,
-# see scripts/kbuild/config-language.txt.
+# see docs/Kconfig-language.txt.
 #
 
 config UDHCPD
-	bool "udhcpd"
+	bool "udhcpd (21 kb)"
 	default y
-	select PLATFORM_LINUX
 	help
 	udhcpd is a DHCP server geared primarily toward embedded systems,
 	while striving to be fully functional and RFC compliant.
@@ -44,7 +43,7 @@ config DHCPD_LEASES_FILE
 	of the file. Normally it is safe to leave it untouched.
 
 config DUMPLEASES
-	bool "dumpleases (6.4 kb)"
+	bool "dumpleases (5.1 kb)"
 	default y
 	help
 	dumpleases displays the leases written out by the udhcpd.
@@ -52,7 +51,7 @@ config DUMPLEASES
 	by the absolute time that it expires in seconds from epoch.
 
 config DHCPRELAY
-	bool "dhcprelay (5.8 kb)"
+	bool "dhcprelay (5.2 kb)"
 	default y
 	help
 	dhcprelay listens for DHCP requests on one or more interfaces
@@ -60,9 +59,8 @@ config DHCPRELAY
 	server.
 
 config UDHCPC
-	bool "udhcpc"
+	bool "udhcpc (24 kb)"
 	default y
-	select PLATFORM_LINUX
 	help
 	udhcpc is a DHCP client geared primarily toward embedded systems,
 	while striving to be fully functional and RFC compliant.
@@ -116,7 +114,7 @@ config FEATURE_UDHCP_PORT
 
 config UDHCP_DEBUG
 	int "Maximum verbosity level (0..9)"
-	default 9
+	default 2
 	range 0 9
 	depends on UDHCPD || UDHCPC || UDHCPC6 || DHCPRELAY
 	help

@@ -10,10 +10,9 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config READAHEAD
-//config:	bool "readahead (2 kb)"
+//config:	bool "readahead (1.5 kb)"
 //config:	default y
 //config:	depends on LFS
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Preload the files listed on the command line into RAM cache so that
 //config:	subsequent reads on these files will not block on disk I/O.

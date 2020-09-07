@@ -18,7 +18,7 @@
  * Implement -P and -B; better coreutils compat; cleanup
  */
 //config:config DF
-//config:	bool "df (7.5 kb)"
+//config:	bool "df (6.8 kb)"
 //config:	default y
 //config:	help
 //config:	df reports the amount of disk space used and available
@@ -178,7 +178,7 @@ int df_main(int argc UNUSED_PARAM, char **argv)
 	if (!argv[0]) {
 		mount_table = setmntent(bb_path_mtab_file, "r");
 		if (!mount_table)
-			bb_perror_msg_and_die(bb_path_mtab_file);
+			bb_simple_perror_msg_and_die(bb_path_mtab_file);
 	}
 
 	while (1) {

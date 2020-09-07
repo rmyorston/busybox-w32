@@ -9,9 +9,8 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config SETKEYCODES
-//config:	bool "setkeycodes (1.7 kb)"
+//config:	bool "setkeycodes (2.1 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	This program loads entries into the kernel's scancode-to-keycode
 //config:	map, allowing unusual keyboards to generate usable keycodes.

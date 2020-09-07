@@ -1027,7 +1027,7 @@ int diff_main(int argc UNUSED_PARAM, char **argv)
 	xfunc_error_retval = 1;
 
 	if (gotstdin && (S_ISDIR(stb[0].st_mode) || S_ISDIR(stb[1].st_mode)))
-		bb_error_msg_and_die("can't compare stdin to a directory");
+		bb_simple_error_msg_and_die("can't compare stdin to a directory");
 
 	/* Compare metadata to check if the files are the same physical file.
 	 *
@@ -1040,6 +1040,11 @@ int diff_main(int argc UNUSED_PARAM, char **argv)
 	 * 255, or if a local inode number (st_ino) exceeds 16777215.
 	 */
 	if (ENABLE_DESKTOP
+	 && (ENABLE_PLATFORM_POSIX || ENABLE_FEATURE_EXTRA_FILE_DATA)
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
+	 /* ignore invalid inode numbers */
+	 && stb[0].st_ino != 0
+#endif
 	 && stb[0].st_ino == stb[1].st_ino
 	 && stb[0].st_dev == stb[1].st_dev
 	 && stb[0].st_size == stb[1].st_size
@@ -1058,7 +1063,7 @@ int diff_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_FEATURE_DIFF_DIR
 		diffdir(file, s_start);
 #else
-		bb_error_msg_and_die("no support for directory comparison");
+		bb_simple_error_msg_and_die("no support for directory comparison");
 #endif
 	} else {
 		bool dirfile = S_ISDIR(stb[0].st_mode) || S_ISDIR(stb[1].st_mode);

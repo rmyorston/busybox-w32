@@ -35,6 +35,9 @@ typedef struct random_t {
 	((rnd)->galois_LFSR = 0)
 
 uint32_t next_random(random_t *rnd) FAST_FUNC;
+#if ENABLE_FEATURE_PRNG_SHELL
+uint32_t full_random(random_t *rnd) FAST_FUNC;
+#endif
 
 POP_SAVED_FUNCTION_VISIBILITY
 

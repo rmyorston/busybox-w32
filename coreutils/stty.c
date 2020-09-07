@@ -5,23 +5,12 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-/* Usage: stty [-ag] [-F device] [setting...]
- *
- * Options:
- * -a Write all current settings to stdout in human-readable form.
- * -g Write all current settings to stdout in stty-readable form.
- * -F Open and use the specified device instead of stdin
- *
- * If no args are given, write to stdout the baud rate and settings that
- * have been changed from their defaults.  Mode reading and changes
- * are done on the specified device, or stdin if none was specified.
- *
- * David MacKenzie <djm@gnu.ai.mit.edu>
+/* David MacKenzie <djm@gnu.ai.mit.edu>
  *
  * Special for busybox ported by Vladimir Oleynik <dzo@simtreas.ru> 2001
  */
 //config:config STTY
-//config:	bool "stty (8.6 kb)"
+//config:	bool "stty (8.9 kb)"
 //config:	default y
 //config:	help
 //config:	stty is used to change and print terminal line settings.
@@ -39,6 +28,11 @@
 //usage:     "\n	-a		Print all current settings in human-readable form"
 //usage:     "\n	-g		Print in stty-readable form"
 //usage:     "\n	[SETTING]	See manpage"
+
+/* If no args are given, write to stdout the baud rate and settings that
+ * have been changed from their defaults.  Mode reading and changes
+ * are done on the specified device, or stdin if none was specified.
+ */
 
 #include "libbb.h"
 #include "common_bufsiz.h"
@@ -1326,7 +1320,7 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 					break;
 				case 'F':
 					if (file_name)
-						bb_error_msg_and_die("only one device may be specified");
+						bb_simple_error_msg_and_die("only one device may be specified");
 					file_name = &arg[i+1]; /* "-Fdevice" ? */
 					if (!file_name[0]) { /* nope, "-F device" */
 						int p = k+1; /* argv[p] is argnext */
@@ -1411,13 +1405,13 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 	if ((stty_state & (STTY_verbose_output | STTY_recoverable_output)) ==
 		(STTY_verbose_output | STTY_recoverable_output)
 	) {
-		bb_error_msg_and_die("-a and -g are mutually exclusive");
+		bb_simple_error_msg_and_die("-a and -g are mutually exclusive");
 	}
 	/* Specifying -a or -g with non-options is an error */
 	if ((stty_state & (STTY_verbose_output | STTY_recoverable_output))
 	 && !(stty_state & STTY_noargs)
 	) {
-		bb_error_msg_and_die("modes may not be set when -a or -g is used");
+		bb_simple_error_msg_and_die("modes may not be set when -a or -g is used");
 	}
 
 	/* Now it is safe to start doing things */

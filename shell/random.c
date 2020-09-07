@@ -19,6 +19,17 @@
 # include "random.h"
 # define RAND_BASH_MASK 0x7fff
 
+# if ENABLE_FEATURE_PRNG_SHELL
+uint32_t FAST_FUNC
+next_random(random_t *rnd)
+{
+	return full_random(rnd) & RAND_BASH_MASK;
+}
+#  undef RAND_BASH_MASK
+#  define RAND_BASH_MASK 0xffffffff
+#  define next_random full_random
+# endif
+
 #else
 # include <stdint.h>
 # include <unistd.h>
@@ -46,11 +57,11 @@ next_random(random_t *rnd)
 	 * Choices for a,b,c: 10,13,10; 8,9,22; 2,7,3; 23,3,24
 	 * (given by algorithm author)
 	 */
-        enum {
-                a = 2,
-                b = 7,
-                c = 3,
-        };
+	enum {
+		a = 2,
+		b = 7,
+		c = 3,
+	};
 
 	uint32_t t;
 
@@ -154,7 +165,7 @@ int main(int argc, char **argv)
 		write(1, buf, sizeof(buf));
 	}
 
-        return 0;
+	return 0;
 }
 
 #endif

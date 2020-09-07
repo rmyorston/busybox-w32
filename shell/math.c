@@ -513,6 +513,75 @@ static const char op_tokens[] ALIGN1 = {
 };
 #define ptr_to_rparen (&op_tokens[sizeof(op_tokens)-7])
 
+#if ENABLE_FEATURE_SH_MATH_BASE
+static arith_t strto_arith_t(const char *nptr, char **endptr)
+{
+	unsigned base;
+	arith_t n;
+
+# if ENABLE_FEATURE_SH_MATH_64
+	n = strtoull(nptr, endptr, 0);
+# else
+	n = strtoul(nptr, endptr, 0);
+# endif
+	if (**endptr != '#'
+	 || (*nptr < '1' || *nptr > '9')
+	 || (n < 2 || n > 64)
+	) {
+		return n;
+	}
+
+	/* It's "N#nnnn" or "NN#nnnn" syntax, NN can't start with 0,
+	 * NN is in 2..64 range.
+	 */
+	base = (unsigned)n;
+	n = 0;
+	nptr = *endptr + 1;
+	for (;;) {
+		unsigned digit = (unsigned)*nptr - '0';
+		if (digit >= 10 /* not 0..9 */
+		 && digit <= 'z' - '0' /* needed to reject e.g. $((64#~)) */
+		) {
+			/* in bases up to 36, case does not matter for a-z */
+			digit = (unsigned)(*nptr | 0x20) - ('a' - 10);
+			if (base > 36 && *nptr <= '_') {
+				/* otherwise, A-Z,@,_ are 36-61,62,63 */
+				if (*nptr == '_')
+					digit = 63;
+				else if (*nptr == '@')
+					digit = 62;
+				else if (digit < 36) /* A-Z */
+					digit += 36 - 10;
+				else
+					break; /* error: one of [\]^ */
+			}
+			//bb_error_msg("ch:'%c'%d digit:%u", *nptr, *nptr, digit);
+			//if (digit < 10) - example where we need this?
+			//	break;
+		}
+		if (digit >= base)
+			break;
+		/* bash does not check for overflows */
+		n = n * base + digit;
+		nptr++;
+	}
+	/* Note: we do not set errno on bad chars, we just set a pointer
+	 * to the first invalid char. For example, this allows
+	 * "N#" (empty "nnnn" part): 64#+1 is a valid expression,
+	 * it means 64# + 1, whereas 64#~... is not, since ~ is not a valid
+	 * operator.
+	 */
+	*endptr = (char*)nptr;
+	return n;
+}
+#else /* !ENABLE_FEATURE_SH_MATH_BASE */
+# if ENABLE_FEATURE_SH_MATH_64
+#  define strto_arith_t(nptr, endptr) strtoull(nptr, endptr, 0)
+# else
+#  define strto_arith_t(nptr, endptr) strtoul(nptr, endptr, 0)
+# endif
+#endif
+
 static arith_t FAST_FUNC
 evaluate_string(arith_state_t *math_state, const char *expr)
 {
@@ -591,7 +660,7 @@ evaluate_string(arith_state_t *math_state, const char *expr)
 			/* Number */
 			numstackptr->var = NULL;
 			errno = 0;
-			numstackptr->val = strto_arith_t(expr, (char**) &expr, 0);
+			numstackptr->val = strto_arith_t(expr, (char**) &expr);
 			if (errno)
 				numstackptr->val = 0; /* bash compat */
 			goto num;

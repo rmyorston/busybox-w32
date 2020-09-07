@@ -12,8 +12,10 @@ struct mntent {
 	int mnt_passno;     /* Pass number for `fsck'.  */
 };
 
-extern FILE *setmntent(const char *file, const char *mode);
+extern FILE *mingw_setmntent(void);
 extern struct mntent *getmntent(FILE *stream);
 extern int endmntent(FILE *stream);
+
+#define setmntent(f, m) mingw_setmntent()
 
 #endif

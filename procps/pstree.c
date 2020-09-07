@@ -10,7 +10,7 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config PSTREE
-//config:	bool "pstree (9.4 kb)"
+//config:	bool "pstree (9.3 kb)"
 //config:	default y
 //config:	help
 //config:	Display a tree of processes.
@@ -404,7 +404,7 @@ int pstree_main(int argc UNUSED_PARAM, char **argv)
 	else {
 		dump_by_user(find_proc(1), uid);
 		if (!G.dumped) {
-			bb_error_msg_and_die("no processes found");
+			bb_simple_error_msg_and_die("no processes found");
 		}
 	}
 

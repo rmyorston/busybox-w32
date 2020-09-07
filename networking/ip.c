@@ -9,9 +9,8 @@
  * Bernhard Reutner-Fischer rewrote to use index_in_substr_array
  */
 //config:config IP
-//config:	bool "ip (34 kb)"
+//config:	bool "ip (35 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	The "ip" applet is a TCP/IP interface configuration and routing
 //config:	utility.
@@ -23,15 +22,13 @@
 //config:	bool "ipaddr (14 kb)"
 //config:	default y
 //config:	select FEATURE_IP_ADDRESS
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Short form of "ip addr"
 //config:
 //config:config IPLINK
-//config:	bool "iplink (16 kb)"
+//config:	bool "iplink (17 kb)"
 //config:	default y
 //config:	select FEATURE_IP_LINK
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Short form of "ip link"
 //config:
@@ -39,7 +36,6 @@
 //config:	bool "iproute (15 kb)"
 //config:	default y
 //config:	select FEATURE_IP_ROUTE
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Short form of "ip route"
 //config:
@@ -47,7 +43,6 @@
 //config:	bool "iptunnel (9.6 kb)"
 //config:	default y
 //config:	select FEATURE_IP_TUNNEL
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Short form of "ip tunnel"
 //config:
@@ -55,7 +50,6 @@
 //config:	bool "iprule (10 kb)"
 //config:	default y
 //config:	select FEATURE_IP_RULE
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Short form of "ip rule"
 //config:
@@ -63,7 +57,6 @@
 //config:	bool "ipneigh (8.3 kb)"
 //config:	default y
 //config:	select FEATURE_IP_NEIGH
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Short form of "ip neigh"
 //config:
@@ -146,18 +139,20 @@
 //usage:#define ipaddr_trivial_usage
 //usage:       "add|del IFADDR dev IFACE | show|flush [dev IFACE] [to PREFIX]"
 //usage:#define ipaddr_full_usage "\n\n"
-//usage:       "ipaddr add|change|replace|delete dev IFACE IFADDR\n"
+//usage:       "ipaddr add|change|replace|delete dev IFACE [CONFFLAG-LIST] IFADDR\n"
 //usage:       "	IFADDR := PREFIX | ADDR peer PREFIX [broadcast ADDR|+|-]\n"
 //usage:       "		[anycast ADDR] [label STRING] [scope SCOPE]\n"
 //usage:       "	PREFIX := ADDR[/MASK]\n"
 //usage:       "	SCOPE := [host|link|global|NUMBER]\n"
+//usage:       "	CONFFLAG-LIST := [CONFFLAG-LIST] CONFFLAG\n"
+//usage:       "	CONFFLAG := [noprefixroute]\n"
 //usage:       "ipaddr show|flush [dev IFACE] [scope SCOPE] [to PREFIX] [label PATTERN]"
 //usage:
 //--------------123456789.123456789.123456789.123456789.123456789.123456789.123456789.123....79
 //usage:#define iplink_trivial_usage
 //usage:       /*Usage:iplink*/"set IFACE [up|down] [arp on|off] [multicast on|off]\n"
 //usage:       "	[promisc on|off] [mtu NUM] [name NAME] [qlen NUM] [address MAC]\n"
-//usage:       "	[master IFACE | nomaster]\n"
+//usage:       "	[master IFACE | nomaster]"
 // * short help shows only "set" command, long help continues (with just one "\n")
 // * and shows all other commands:
 //usage:#define iplink_full_usage "\n"
@@ -267,8 +262,7 @@
 //--------------123456789.123456789.123456789.123456789.123456789.123456789.123456789.123....79
 //usage:#define iptunnel_trivial_usage
 //usage:       "add|change|del|show [NAME]\n"
-//usage:       "	[mode ipip|gre|sit]\n"
-//usage:       "	[remote ADDR] [local ADDR] [ttl TTL]"
+//usage:       "	[mode ipip|gre|sit] [remote ADDR] [local ADDR] [ttl TTL]"
 //usage:#define iptunnel_full_usage "\n\n"
 //usage:       "iptunnel add|change|del|show [NAME]\n"
 //usage:       "	[mode ipip|gre|sit] [remote ADDR] [local ADDR]\n"
@@ -308,10 +302,9 @@
 //usage:	IF_FEATURE_IP_TUNNEL( IP_BAR_TUNNEL"tunnel")
 //usage:	IF_FEATURE_IP_NEIGH(  IP_BAR_NEIGH "neigh")
 //usage:	IF_FEATURE_IP_RULE(   IP_BAR_RULE  "rule")
-//usage:       " [COMMAND]"
+//usage:       " [ARGS]"
 //usage:#define ip_full_usage "\n\n"
 //usage:       "OPTIONS := -f[amily] inet|inet6|link | -o[neline]\n"
-//usage:       "COMMAND :="
 //usage:	IF_FEATURE_IP_ADDRESS("\n"
 //usage:	"ip addr "ipaddr_trivial_usage)
 //usage:	IF_FEATURE_IP_ROUTE("\n"

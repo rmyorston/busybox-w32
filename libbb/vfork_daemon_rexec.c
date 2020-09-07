@@ -14,14 +14,6 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-#include <sys/prctl.h>
-#ifndef PR_SET_NAME
-#define PR_SET_NAME 15
-#endif
-#ifndef PR_GET_NAME
-#define PR_GET_NAME 16
-#endif
-
 #include "busybox.h" /* uses applet tables */
 #include "NUM_APPLETS.h"
 
@@ -30,6 +22,13 @@
 #define NOEXEC_SUPPORT ((NUM_APPLETS > 1) && (ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE))
 
 #if defined(__linux__) && (NUM_APPLETS > 1)
+# include <sys/prctl.h>
+# ifndef PR_SET_NAME
+# define PR_SET_NAME 15
+# endif
+# ifndef PR_GET_NAME
+# define PR_GET_NAME 16
+# endif
 void FAST_FUNC set_task_comm(const char *comm)
 {
 	/* okay if too long (truncates) */
@@ -275,12 +274,6 @@ void FAST_FUNC bb_daemonize_or_rexec(int flags, char **argv)
 	if (flags & DAEMON_CHDIR_ROOT)
 		xchdir("/");
 
-	if (flags & DAEMON_DEVNULL_STDIO) {
-		close(0);
-		close(1);
-		close(2);
-	}
-
 	fd = open(bb_dev_null, O_RDWR);
 	if (fd < 0) {
 		/* NB: we can be called as bb_sanitize_stdio() from init
@@ -290,8 +283,15 @@ void FAST_FUNC bb_daemonize_or_rexec(int flags, char **argv)
 		fd = xopen("/", O_RDONLY); /* don't believe this can fail */
 	}
 
-	while ((unsigned)fd < 2)
-		fd = dup(fd); /* have 0,1,2 open at least to /dev/null */
+	if (flags & DAEMON_DEVNULL_STDIO) {
+		xdup2(fd, 0);
+		xdup2(fd, 1);
+		xdup2(fd, 2);
+	} else {
+		/* have 0,1,2 open at least to /dev/null */
+		while ((unsigned)fd < 2)
+			fd = dup(fd);
+	}
 
 	if (!(flags & DAEMON_ONLY_SANITIZE)) {
 
@@ -304,14 +304,14 @@ void FAST_FUNC bb_daemonize_or_rexec(int flags, char **argv)
 		dup2(fd, 0);
 		dup2(fd, 1);
 		dup2(fd, 2);
-		if (flags & DAEMON_DOUBLE_FORK) {
-			/* On Linux, session leader can acquire ctty
-			 * unknowingly, by opening a tty.
-			 * Prevent this: stop being a session leader.
-			 */
-			if (fork_or_rexec(argv))
-				_exit(EXIT_SUCCESS); /* parent */
-		}
+//		if (flags & DAEMON_DOUBLE_FORK) {
+//			/* On Linux, session leader can acquire ctty
+//			 * unknowingly, by opening a tty.
+//			 * Prevent this: stop being a session leader.
+//			 */
+//			if (fork_or_rexec(argv))
+//				_exit(EXIT_SUCCESS); /* parent */
+//		}
 	}
 	while (fd > 2) {
 		close(fd--);

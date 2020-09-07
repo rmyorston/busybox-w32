@@ -28,7 +28,7 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* Busyboxed by Denys Vlasenko <vda.linux@googlemail.com> */
 
 //config:config RUNSV
-//config:	bool "runsv (7.2 kb)"
+//config:	bool "runsv (7.8 kb)"
 //config:	default y
 //config:	help
 //config:	runsv starts and monitors a service and optionally an appendant log
@@ -51,11 +51,9 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #if ENABLE_MONOTONIC_SYSCALL
 #include <sys/syscall.h>
 
-/* libc has incredibly messy way of doing this,
- * typically requiring -lrt. We just skip all this mess */
 static void gettimeofday_ns(struct timespec *ts)
 {
-	syscall(__NR_clock_gettime, CLOCK_REALTIME, ts);
+	clock_gettime(CLOCK_REALTIME, ts);
 }
 #else
 static void gettimeofday_ns(struct timespec *ts)

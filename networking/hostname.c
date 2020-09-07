@@ -10,7 +10,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config HOSTNAME
-//config:	bool "hostname (5.6 kb)"
+//config:	bool "hostname (5.5 kb)"
 //config:	default y
 //config:	help
 //config:	Show or set the system's host name.
@@ -61,7 +61,7 @@ static void do_sethostname(char *s, int isfile)
 	} else if (sethostname(s, strlen(s))) {
 //		if (errno == EPERM)
 //			bb_error_msg_and_die(bb_msg_perm_denied_are_you_root);
-		bb_perror_msg_and_die("sethostname");
+		bb_simple_perror_msg_and_die("sethostname");
 	}
 }
 

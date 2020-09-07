@@ -12,7 +12,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config IPCALC
-//config:	bool "ipcalc (4.3 kb)"
+//config:	bool "ipcalc (4.4 kb)"
 //config:	default y
 //config:	help
 //config:	ipcalc takes an IP address and netmask and calculates the
@@ -183,7 +183,7 @@ int ipcalc_main(int argc UNUSED_PARAM, char **argv)
 
 	if (argv[1]) {
 		if (ENABLE_FEATURE_IPCALC_FANCY && have_netmask) {
-			bb_error_msg_and_die("use prefix or netmask, not both");
+			bb_simple_error_msg_and_die("use prefix or netmask, not both");
 		}
 		if (inet_aton(argv[1], &s_netmask) == 0) {
 			bb_error_msg_and_die("bad netmask: %s", argv[1]);

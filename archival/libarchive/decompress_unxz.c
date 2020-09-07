@@ -74,7 +74,7 @@ unpack_xz_stream(transformer_state_t *xstate)
 		if (iobuf.in_pos == iobuf.in_size) {
 			int rd = safe_read(xstate->src_fd, membuf, BUFSIZ);
 			if (rd < 0) {
-				bb_error_msg(bb_msg_read_error);
+				bb_simple_error_msg(bb_msg_read_error);
 				total = -1;
 				break;
 			}
@@ -96,6 +96,24 @@ unpack_xz_stream(transformer_state_t *xstate)
 			 */
 			do {
 				if (membuf[iobuf.in_pos] != 0) {
+					/* There is more data, but is it XZ data?
+					 * Example: dpkg-deb -f busybox_1.30.1-4_amd64.deb
+					 * reads control.tar.xz "control" file
+					 * inside the ar archive, but tar.xz
+					 * extraction code reaches end of xz data,
+					 * reached this code and reads the beginning
+					 * of data.tar.xz's ar header, which isn't xz data,
+					 * and prints "corrupted data".
+					 * The correct solution is to not read
+					 * past nested archive (to simulate EOF).
+					 * This is a workaround:
+					 */
+					if (membuf[iobuf.in_pos] != 0xfd) {
+						/* It's definitely not a xz signature
+						 * (which is 0xfd,"7zXZ",0x00).
+						 */
+						goto end;
+					}
 					xz_dec_reset(state);
 					goto do_run;
 				}
@@ -123,12 +141,12 @@ unpack_xz_stream(transformer_state_t *xstate)
 			continue;
 		}
 		if (xz_result != XZ_OK && xz_result != XZ_UNSUPPORTED_CHECK) {
-			bb_error_msg("corrupted data");
+			bb_simple_error_msg("corrupted data");
 			total = -1;
 			break;
 		}
 	}
-
+ end:
 	xz_dec_end(state);
 	free(membuf);
 

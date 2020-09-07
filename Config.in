@@ -1,6 +1,6 @@
 #
 # For a description of the syntax of this configuration file,
-# see scripts/kbuild/config-language.txt.
+# see docs/Kconfig-language.txt.
 #
 
 mainmenu "Configuration"
@@ -40,7 +40,7 @@ endchoice
 menu "Settings"
 
 config DESKTOP
-	bool "Enable compatibility for full-blown desktop systems"
+	bool "Enable compatibility for full-blown desktop systems (8kb)"
 	default y
 	help
 	Enable applet options and features which are not essential.
@@ -136,18 +136,6 @@ config LFS
 	programs that can benefit from large file support include dd, gzip,
 	cp, mount, tar.
 
-config GLOBBING
-	bool "Allow busybox.exe to expand wildcards"
-	default n
-	depends on PLATFORM_MINGW32
-	help
-	  In Microsoft Windows expansion of wildcards on the command line
-	  ('globbing') is handled by the C runtime while the BusyBox shell
-	  does its own wildcard expansion.  For best results when using the
-	  shell globbing by the C runtime should be turned off. If you want
-	  the BusyBox binary to handle wildcard expansion using the C runtime
-	  set this to 'Y'.
-
 config PAM
 	bool "Support PAM (Pluggable Authentication Modules)"
 	default n
@@ -196,12 +184,13 @@ config FEATURE_PIDFILE
 config PID_FILE_PATH
 	string "Directory for pidfiles"
 	default "/var/run"
-	depends on FEATURE_PIDFILE
+	depends on FEATURE_PIDFILE || FEATURE_CROND_SPECIAL_TIMES
 	help
 	This is the default path where pidfiles are created.  Applets which
 	allow you to set the pidfile path on the command line will override
 	this value.  The option has no effect on applets that require you to
-	specify a pidfile path.
+	specify a pidfile path.  When crond has the 'Support special times'
+	option enabled, the 'crond.reboot' file is also stored here.
 
 config BUSYBOX
 	bool "Include busybox applet"
@@ -217,6 +206,11 @@ config BUSYBOX
 	busybox: applet not found
 
 	Running "busybox APPLET [ARGS...]" will still work, of course.
+
+config FEATURE_SHOW_SCRIPT
+	bool "Support --show SCRIPT"
+	default y
+	depends on BUSYBOX
 
 config FEATURE_INSTALLER
 	bool "Support --install [-s] to install applet links at runtime"
@@ -346,7 +340,6 @@ config BUSYBOX_EXEC_PATH
 config SELINUX
 	bool "Support NSA Security Enhanced Linux"
 	default n
-	select PLATFORM_LINUX
 	help
 	Enable support for SELinux in applets ls, ps, and id. Also provide
 	the option of compiling in SELinux applets.
@@ -374,6 +367,15 @@ config FEATURE_CLEAN_UP
 	Don't enable this unless you have a really good reason to clean
 	things up manually.
 
+config FEATURE_SYSLOG_INFO
+	bool "Support LOG_INFO level syslog messages"
+	default y
+	depends on FEATURE_SYSLOG
+	help
+	Applets which send their output to syslog use either LOG_INFO or
+	LOG_ERR log levels, but by disabling this option all messages will
+	be logged at the LOG_ERR level, saving just under 200 bytes.
+
 # These are auto-selected by other options
 
 config FEATURE_SYSLOG
@@ -383,16 +385,111 @@ config FEATURE_SYSLOG
 	#This option is auto-selected when you select any applet which may
 	#send its output to syslog. You do not need to select it manually.
 
-config PLATFORM_LINUX
-	bool #No description makes it a hidden option
-	default n
-	#help
-	#For the most part, busybox requires only POSIX compatibility
-	#from the target system, but some applets and features use
-	#Linux-specific interfaces.
-	#
-	#This is automatically selected if any applet or feature requires
-	#Linux-specific interfaces. You do not need to select it manually.
+comment 'Settings for MINGW32'
+
+config GLOBBING
+	bool "Allow busybox.exe to expand wildcards"
+	default y
+	depends on PLATFORM_MINGW32
+	help
+	  In Microsoft Windows expansion of wildcards on the command line
+	  ('globbing') is handled by the C runtime while the BusyBox shell
+	  does its own wildcard expansion. In most circumstances BusyBox
+	  will do the right thing. If it doesn't or if you don't need to
+	  use BusyBox applets from the Windows Command Prompt you can stop
+	  busybox.exe from expanding wildcards by setting this to 'N'.
+
+choice
+	prompt "Random number generator"
+	default FEATURE_PRNG_SHELL
+	depends on PLATFORM_MINGW32
+	help
+	BusyBox on Microsoft Windows uses a pseudo-random number
+	generator to emulate the Linux /dev/urandom device.  There
+	are two options:
+	- The shell's built-in PRNG.
+	- Bob Jenkins' ISAAC.  This is intended to be a secure PRNG.  It's
+	slightly faster than the shell's PRNG but is larger both in terms
+	of code and runtime memory.
+
+config FEATURE_PRNG_SHELL
+	bool "Use shell PRNG"
+
+config FEATURE_PRNG_ISAAC
+	bool "Use ISAAC PRNG"
+
+endchoice
+
+config FEATURE_RESOURCES
+	bool "Include resources in binary"
+	default y
+	depends on PLATFORM_MINGW32
+	help
+	Microsoft Windows applications can contain non-executable resources
+	of various sorts.
+
+config FEATURE_VERSIONINFO
+	bool "Include version information in binary (1.0 kb)"
+	default y
+	depends on FEATURE_RESOURCES
+	help
+	Include version information in the application.
+
+config FEATURE_ICON
+	bool "Include application icon in binary"
+	default y
+	depends on FEATURE_RESOURCES
+	help
+	Microsoft Windows applications can contain icons which are used in
+	various places in the user interface.  Each icon adds 15 Kbytes to
+	the size of the binary.
+
+choice
+	prompt "Application icon"
+	default FEATURE_ICON_ALL
+	depends on FEATURE_ICON
+
+config FEATURE_ICON_ATERM
+	bool "Adwaita terminal"
+
+config FEATURE_ICON_STERM
+	bool "Adwaita terminal (symbolic)"
+
+config FEATURE_ICON_ALL
+	bool "All available icons"
+
+endchoice
+
+config FEATURE_EURO
+	bool "Support the euro currency symbol (0.5 kb)"
+	default y
+	depends on PLATFORM_MINGW32
+	help
+	Support the entry and display of the euro currency symbol.  This
+	requires the OEM code page to be 858.  If the OEM code page of
+	the console is 850 when BusyBox starts it's changed to 858.
+
+config FEATURE_EXTRA_FILE_DATA
+	bool "Read additional file metadata (2.1 kb)"
+	default y
+	depends on PLATFORM_MINGW32
+	help
+	Read additional file metadata: device id, inode number and number
+	of hard links.  This may slow down some file operations but it
+	permits extra features such as warning of attempts to copy a file
+	onto itself or to store a tar archive in itself.  Also try to
+	determine the ownership of files so that, for example, 'ls' can
+	distinguish files belonging to the current user.
+
+config FEATURE_READLINK2
+	bool "Read the contents of symbolic links (1.1 kb)"
+	default y
+	depends on PLATFORM_MINGW32
+	help
+	Implement the readlink(2) system call to allow applets to read
+	the contents of symbolic links.  With this feature ls and stat
+	can display the target of symbolic links and it makes sense to
+	enable the readlink applet.
 
 comment 'Build Options'
 
@@ -558,6 +655,14 @@ config USE_PORTABLE_CODE
 	compiler other than gcc.
 	If you do use gcc, this option may needlessly increase code size.
 
+config STACK_OPTIMIZATION_386
+	bool "Use -mpreferred-stack-boundary=2 on i386 arch"
+	default y
+	help
+	This option makes for smaller code, but some libc versions
+	do not work with it (they use SSE instructions without
+	ensuring stack alignment).
+
 comment 'Installation Options ("make install" behavior)'
 
 choice
@@ -678,6 +783,19 @@ config WERROR
 	This adds -Werror to gcc command line.
 
 	Most people should answer N.
+
+config WARN_SIMPLE_MSG
+	bool "Warn about single parameter bb_xx_msg calls"
+	default n
+	help
+	This will cause warnings to be shown for any instances of
+	bb_error_msg(), bb_error_msg_and_die(), bb_perror_msg(),
+	bb_perror_msg_and_die(), bb_herror_msg() or bb_herror_msg_and_die()
+	being called with a single parameter. In these cases the equivalent
+	bb_simple_xx_msg function should be used instead.
+	Note that use of STRERROR_FMT may give false positives.
+
+	If you aren't developing busybox, say N here.
 
 choice
 	prompt "Additional debugging library"

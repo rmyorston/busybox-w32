@@ -114,7 +114,7 @@ int FAST_FUNC bbunpack(char **argv,
 
 		/* Check that the input is sane */
 		if (!(option_mask32 & BBUNPK_OPT_FORCE) && isatty(STDIN_FILENO)) {
-			bb_error_msg_and_die("compressed data not read from terminal, "
+			bb_simple_error_msg_and_die("compressed data not read from terminal, "
 					"use -f to force it");
 		}
 
@@ -301,7 +301,7 @@ int uncompress_main(int argc UNUSED_PARAM, char **argv)
 //usage:       "Decompress to stdout"
 
 //config:config GUNZIP
-//config:	bool "gunzip (12 kb)"
+//config:	bool "gunzip (11 kb)"
 //config:	default y
 //config:	select FEATURE_GZIP_DECOMPRESS
 //config:	help
@@ -310,7 +310,7 @@ int uncompress_main(int argc UNUSED_PARAM, char **argv)
 //config:	an archive, without decompressing it.
 //config:
 //config:config ZCAT
-//config:	bool "zcat (25 kb)"
+//config:	bool "zcat (24 kb)"
 //config:	default y
 //config:	select FEATURE_GZIP_DECOMPRESS
 //config:	help
@@ -388,7 +388,7 @@ int gunzip_main(int argc UNUSED_PARAM, char **argv)
 	 * Normally, "zcat" is just "gunzip -c".
 	 * But if seamless magic is enabled, then we are much more clever.
 	 */
-	if (ENABLE_ZCAT && (!ENABLE_GUNZIP || applet_name[1] == 'c'))
+	if (ENABLE_ZCAT && applet_name[1] == 'c')
 		option_mask32 |= BBUNPK_OPT_STDOUT | BBUNPK_SEAMLESS_MAGIC;
 
 	return bbunpack(argv, unpack_gz_stream, make_new_name_gunzip, /*unused:*/ NULL);
@@ -415,7 +415,7 @@ int gunzip_main(int argc UNUSED_PARAM, char **argv)
 //usage:       "Decompress to stdout"
 
 //config:config BUNZIP2
-//config:	bool "bunzip2 (8.8 kb)"
+//config:	bool "bunzip2 (8.7 kb)"
 //config:	default y
 //config:	select FEATURE_BZIP2_DECOMPRESS
 //config:	help
@@ -429,7 +429,7 @@ int gunzip_main(int argc UNUSED_PARAM, char **argv)
 //config:	should probably say N here.
 //config:
 //config:config BZCAT
-//config:	bool "bzcat (8.8 kb)"
+//config:	bool "bzcat (8.7 kb)"
 //config:	default y
 //config:	select FEATURE_BZIP2_DECOMPRESS
 //config:	help
@@ -483,7 +483,7 @@ int bunzip2_main(int argc UNUSED_PARAM, char **argv)
 //usage:       "Decompress to stdout"
 
 //config:config UNLZMA
-//config:	bool "unlzma (8.6 kb)"
+//config:	bool "unlzma (7.5 kb)"
 //config:	default y
 //config:	help
 //config:	unlzma is a compression utility using the Lempel-Ziv-Markov chain
@@ -492,7 +492,7 @@ int bunzip2_main(int argc UNUSED_PARAM, char **argv)
 //config:	compressors.
 //config:
 //config:config LZCAT
-//config:	bool "lzcat (8.5 kb)"
+//config:	bool "lzcat (7.5 kb)"
 //config:	default y
 //config:	help
 //config:	Alias to "unlzma -c".
@@ -538,6 +538,7 @@ int unlzma_main(int argc UNUSED_PARAM, char **argv)
 //usage:     "\n	-c	Write to stdout"
 //usage:     "\n	-f	Force"
 //usage:     "\n	-k	Keep input files"
+//usage:     "\n	-t	Test file integrity"
 //usage:
 //usage:#define xz_trivial_usage
 //usage:       "-d [-cfk] [FILE]..."
@@ -547,6 +548,7 @@ int unlzma_main(int argc UNUSED_PARAM, char **argv)
 //usage:     "\n	-c	Write to stdout"
 //usage:     "\n	-f	Force"
 //usage:     "\n	-k	Keep input files"
+//usage:     "\n	-t	Test file integrity"
 //usage:
 //usage:#define xzcat_trivial_usage
 //usage:       "[FILE]..."

@@ -1,0 +1,27 @@
+# Makefile for busybox
+#
+# Copyright (C) 2018 by R M Yorston <rmy@pobox.com>
+#
+# Licensed under GPLv2, see file LICENSE in this source tree.
+
+obj-y :=
+
+obj-$(CONFIG_FEATURE_RESOURCES) += resources.o
+
+# return commit level if available or 0
+bb_level = $(or $(word 2,$(subst -, ,$1)),0)
+
+WRFLAGS := -D"KBUILD_STR(s)=\#s" -D"BB_VER=KBUILD_STR($(BB_VER))" \
+	-D"BB_VERSION=$(VERSION)" -D"BB_PATCHLEVEL=$(PATCHLEVEL)" \
+	-D"BB_SUBLEVEL=$(SUBLEVEL)" \
+	-D"BB_EXTRAVERSION=$(call bb_level,$(EXTRAVERSION))" \
+	--include-dir=$(objtree)/include --include-dir=$(objtree)/win32/resources
+
+quiet_cmd_windres = WINDRES $@
+      cmd_windres = $(WINDRES) $(WRFLAGS) $< $@
+
+%.o: %.rc FORCE
+	$(call if_changed,windres)
+
+win32/resources/resources.o: win32/resources/resources.rc .config
+win32/resources/resources.o: win32/resources/aterm.ico win32/resources/sterm.ico

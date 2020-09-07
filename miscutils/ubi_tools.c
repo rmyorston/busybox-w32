@@ -4,44 +4,38 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config UBIATTACH
-//config:	bool "ubiattach (4.7 kb)"
+//config:	bool "ubiattach (4.2 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Attach MTD device to an UBI device.
 //config:
 //config:config UBIDETACH
-//config:	bool "ubidetach (4.6 kb)"
+//config:	bool "ubidetach (4.1 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Detach MTD device from an UBI device.
 //config:
 //config:config UBIMKVOL
-//config:	bool "ubimkvol (5.8 kb)"
+//config:	bool "ubimkvol (5.3 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Create a UBI volume.
 //config:
 //config:config UBIRMVOL
-//config:	bool "ubirmvol (5.2 kb)"
+//config:	bool "ubirmvol (4.9 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Delete a UBI volume.
 //config:
 //config:config UBIRSVOL
-//config:	bool "ubirsvol (4.6 kb)"
+//config:	bool "ubirsvol (4.2 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Resize a UBI volume.
 //config:
 //config:config UBIUPDATEVOL
-//config:	bool "ubiupdatevol (5.6 kb)"
+//config:	bool "ubiupdatevol (5.2 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Update a UBI volume.
 
@@ -234,10 +228,10 @@ int ubi_tools_main(int argc UNUSED_PARAM, char **argv)
 			//	bb_error_msg_and_die("%s invalid maximum size calculated", "UBI");
 		} else
 		if (!(opts & OPTION_s))
-			bb_error_msg_and_die("size not specified");
+			bb_simple_error_msg_and_die("size not specified");
 
 		if (!(opts & OPTION_N))
-			bb_error_msg_and_die("name not specified");
+			bb_simple_error_msg_and_die("name not specified");
 
 		/* the structure is memset(0) above */
 		mkvol_req.vol_id = vol_id;
@@ -264,7 +258,7 @@ int ubi_tools_main(int argc UNUSED_PARAM, char **argv)
 //usage:     "\n	-N VOLNAME	Volume name"
 	if (do_rmvol) {
 		if (!(opts & (OPTION_n|OPTION_N)))
-			bb_error_msg_and_die("volume id not specified");
+			bb_simple_error_msg_and_die("volume id not specified");
 
 		if (opts & OPTION_N) {
 			unsigned num = ubi_devnum_from_devname(ubi_ctrl);
@@ -288,9 +282,9 @@ int ubi_tools_main(int argc UNUSED_PARAM, char **argv)
 //usage:     "\n	-s SIZE		Size in bytes"
 	if (do_rsvol) {
 		if (!(opts & OPTION_s))
-			bb_error_msg_and_die("size not specified");
+			bb_simple_error_msg_and_die("size not specified");
 		if (!(opts & OPTION_n))
-			bb_error_msg_and_die("volume id not specified");
+			bb_simple_error_msg_and_die("volume id not specified");
 
 		rsvol_req.bytes = size_bytes; /* signed int64_t */
 		rsvol_req.vol_id = vol_id;

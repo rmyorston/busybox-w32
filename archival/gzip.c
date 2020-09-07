@@ -22,7 +22,7 @@ gzip: bogus: No such file or directory
 aa:      85.1% -- replaced with aa.gz
 */
 //config:config GZIP
-//config:	bool "gzip (19 kb)"
+//config:	bool "gzip (17 kb)"
 //config:	default y
 //config:	help
 //config:	gzip is used to compress files.
@@ -52,7 +52,7 @@ aa:      85.1% -- replaced with aa.gz
 //config:	help
 //config:	Enable support for compression levels 4-9. The default level
 //config:	is 6. If levels 1-3 are specified, 4 is used.
-//config:	If this option is not selected, -N options are ignored and -9
+//config:	If this option is not selected, -N options are ignored and -6
 //config:	is used.
 //config:
 //config:config FEATURE_GZIP_DECOMPRESS
@@ -99,7 +99,7 @@ aa:      85.1% -- replaced with aa.gz
 /* Diagnostic functions */
 #ifdef DEBUG
 static int verbose;
-#  define Assert(cond,msg) { if (!(cond)) bb_error_msg(msg); }
+#  define Assert(cond,msg) { if (!(cond)) bb_simple_error_msg(msg); }
 #  define Trace(x) fprintf x
 #  define Tracev(x) {if (verbose) fprintf x; }
 #  define Tracevv(x) {if (verbose > 1) fprintf x; }
@@ -259,12 +259,13 @@ enum {
 
 #if !ENABLE_FEATURE_GZIP_LEVELS
 
-	max_chain_length = 4096,
+	comp_level_minus4 = 6 - 4,
+	max_chain_length = 128,
 /* To speed up deflation, hash chains are never searched beyond this length.
  * A higher limit improves compression ratio but degrades the speed.
  */
 
-	max_lazy_match = 258,
+	max_lazy_match = 16,
 /* Attempt to find a better match only when the current match is strictly
  * smaller than this value. This mechanism is used only for compression
  * levels >= 4.
@@ -276,7 +277,7 @@ enum {
  * max_insert_length is used only for compression levels <= 3.
  */
 
-	good_match = 32,
+	good_match = 8,
 /* Use a faster search when the previous match is longer than this */
 
 /* Values for max_lazy_match, good_match and max_chain_length, depending on
@@ -285,7 +286,7 @@ enum {
  * found for specific files.
  */
 
-	nice_match = 258,	/* Stop searching when current match exceeds this */
+	nice_match = 128,	/* Stop searching when current match exceeds this */
 /* Note: the deflate() code requires max_lazy >= MIN_MATCH and max_chain >= 4
  * For deflate_fast() (levels <= 3) good is ignored and lazy has a different
  * meaning.
@@ -333,22 +334,24 @@ struct globals {
 	/* DECLARE(Pos, head, 1<<HASH_BITS); */
 #define head (G1.prev + WSIZE) /* hash head (see deflate.c) */
 
+#if ENABLE_FEATURE_GZIP_LEVELS
+	unsigned comp_level_minus4;	/* can be a byte */
+	unsigned max_chain_length;
+	unsigned max_lazy_match;
+	unsigned good_match;
+	unsigned nice_match;
+#define comp_level_minus4 (G1.comp_level_minus4)
+#define max_chain_length  (G1.max_chain_length)
+#define max_lazy_match    (G1.max_lazy_match)
+#define good_match        (G1.good_match)
+#define nice_match        (G1.nice_match)
+#endif
+
 /* =========================================================================== */
 /* all members below are zeroed out in pack_gzip() for each next file */
 
 	uint32_t crc;	/* shift register contents */
 	/*uint32_t *crc_32_tab;*/
-
-#if ENABLE_FEATURE_GZIP_LEVELS
-	unsigned max_chain_length;
-	unsigned max_lazy_match;
-	unsigned good_match;
-	unsigned nice_match;
-#define max_chain_length (G1.max_chain_length)
-#define max_lazy_match   (G1.max_lazy_match)
-#define good_match	 (G1.good_match)
-#define nice_match	 (G1.nice_match)
-#endif
 
 /* window position at the beginning of the current output block. Gets
  * negative when the window is moved backwards.
@@ -504,7 +507,7 @@ static ALWAYS_INLINE void flush_outbuf_if_32bit_optimized(void)
  * pointer, then initialize the crc shift register contents instead.
  * Return the current crc in either case.
  */
-static void updcrc(uch * s, unsigned n)
+static void updcrc(uch *s, unsigned n)
 {
 	G1.crc = crc32_block_endian0(G1.crc, s, n, global_crc32_table /*G1.crc_32_tab*/);
 }
@@ -607,7 +610,7 @@ static void bi_windup(void)
  * Copy a stored block to the zip file, storing first the length and its
  * one's complement if requested.
  */
-static void copy_block(char *buf, unsigned len, int header)
+static void copy_block(const char *buf, unsigned len, int header)
 {
 	bi_windup();		/* align on byte boundary */
 
@@ -787,7 +790,7 @@ static void check_match(IPos start, IPos match, int length)
 	/* check that the match is indeed a match */
 	if (memcmp(G1.window + match, G1.window + start, length) != 0) {
 		bb_error_msg(" start %d, match %d, length %d", start, match, length);
-		bb_error_msg("invalid match");
+		bb_simple_error_msg("invalid match");
 	}
 	if (verbose > 1) {
 		bb_error_msg("\\[%d,%d]", start - match, length);
@@ -1007,7 +1010,8 @@ struct globals2 {
 	tree_desc d_desc;
 	tree_desc bl_desc;
 
-	ush bl_count[MAX_BITS + 1];
+	/* was "ush", but "unsigned" results in smaller code */
+	unsigned bl_count[MAX_BITS + 1];
 
 /* The lengths of the bit length codes are sent in order of decreasing
  * probability, to avoid transmitting the lengths for unused bit length codes.
@@ -1118,7 +1122,7 @@ static void init_block(void)
 	(tree[n].Freq < tree[m].Freq \
 	|| (tree[n].Freq == tree[m].Freq && G2.depth[n] <= G2.depth[m]))
 
-static void pqdownheap(ct_data * tree, int k)
+static void pqdownheap(const ct_data *tree, int k)
 {
 	int v = G2.heap[k];
 	int j = k << 1;		/* left son of k */
@@ -1152,22 +1156,15 @@ static void pqdownheap(ct_data * tree, int k)
  *     The length opt_len is updated; static_len is also updated if stree is
  *     not null.
  */
-static void gen_bitlen(tree_desc * desc)
+static void gen_bitlen(const tree_desc *desc)
 {
-	ct_data *tree = desc->dyn_tree;
-	const uint8_t *extra = desc->extra_bits;
-	int base = desc->extra_base;
-	int max_code = desc->max_code;
-	int max_length = desc->max_length;
-	ct_data *stree = desc->static_tree;
-	int h;				/* heap index */
-	int n, m;			/* iterate over the tree elements */
-	int bits;			/* bit length */
-	int xbits;			/* extra bits */
-	ush f;				/* frequency */
-	int overflow = 0;	/* number of elements with bit length too large */
+#define tree desc->dyn_tree
+	int h;          /* heap index */
+	int n, m;       /* iterate over the tree elements */
+	int bits;       /* bit length */
+	int overflow;   /* number of elements with bit length too large */
 
-	for (bits = 0; bits <= MAX_BITS; bits++)
+	for (bits = 0; bits < ARRAY_SIZE(G2.bl_count); bits++)
 		G2.bl_count[bits] = 0;
 
 	/* In a first pass, compute the optimal bit lengths (which may
@@ -1175,28 +1172,32 @@ static void gen_bitlen(tree_desc * desc)
 	 */
 	tree[G2.heap[G2.heap_max]].Len = 0;	/* root of the heap */
 
+	overflow = 0;
 	for (h = G2.heap_max + 1; h < HEAP_SIZE; h++) {
+		ulg f;          /* frequency */
+		int xbits;      /* extra bits */
+
 		n = G2.heap[h];
 		bits = tree[tree[n].Dad].Len + 1;
-		if (bits > max_length) {
-			bits = max_length;
+		if (bits > desc->max_length) {
+			bits = desc->max_length;
 			overflow++;
 		}
 		tree[n].Len = (ush) bits;
 		/* We overwrite tree[n].Dad which is no longer needed */
 
-		if (n > max_code)
+		if (n > desc->max_code)
 			continue;	/* not a leaf node */
 
 		G2.bl_count[bits]++;
 		xbits = 0;
-		if (n >= base)
-			xbits = extra[n - base];
+		if (n >= desc->extra_base)
+			xbits = desc->extra_bits[n - desc->extra_base];
 		f = tree[n].Freq;
-		G2.opt_len += (ulg) f *(bits + xbits);
+		G2.opt_len += f * (bits + xbits);
 
-		if (stree)
-			G2.static_len += (ulg) f * (stree[n].Len + xbits);
+		if (desc->static_tree)
+			G2.static_len += f * (desc->static_tree[n].Len + xbits);
 	}
 	if (overflow == 0)
 		return;
@@ -1206,14 +1207,14 @@ static void gen_bitlen(tree_desc * desc)
 
 	/* Find the first bit length which could increase: */
 	do {
-		bits = max_length - 1;
+		bits = desc->max_length - 1;
 		while (G2.bl_count[bits] == 0)
 			bits--;
 		G2.bl_count[bits]--;	/* move one leaf down the tree */
 		G2.bl_count[bits + 1] += 2;	/* move one overflow item as its brother */
-		G2.bl_count[max_length]--;
+		G2.bl_count[desc->max_length]--;
 		/* The brother of the overflow item also moves one step up,
-		 * but this does not affect bl_count[max_length]
+		 * but this does not affect bl_count[desc->max_length]
 		 */
 		overflow -= 2;
 	} while (overflow > 0);
@@ -1223,11 +1224,11 @@ static void gen_bitlen(tree_desc * desc)
 	 * lengths instead of fixing only the wrong ones. This idea is taken
 	 * from 'ar' written by Haruhiko Okumura.)
 	 */
-	for (bits = max_length; bits != 0; bits--) {
+	for (bits = desc->max_length; bits != 0; bits--) {
 		n = G2.bl_count[bits];
 		while (n != 0) {
 			m = G2.heap[--h];
-			if (m > max_code)
+			if (m > desc->max_code)
 				continue;
 			if (tree[m].Len != (unsigned) bits) {
 				Trace((stderr, "code %d bits %d->%d\n", m, tree[m].Len, bits));
@@ -1237,6 +1238,7 @@ static void gen_bitlen(tree_desc * desc)
 			n--;
 		}
 	}
+#undef tree
 }
 
 /* ===========================================================================
@@ -1247,12 +1249,13 @@ static void gen_bitlen(tree_desc * desc)
  * OUT assertion: the field code is set for all tree elements of non
  *     zero code length.
  */
-static void gen_codes(ct_data * tree, int max_code)
+static void gen_codes(ct_data *tree, int max_code)
 {
-	ush next_code[MAX_BITS + 1];	/* next code value for each bit length */
-	ush code = 0;		/* running code value */
-	int bits;			/* bit index */
-	int n;				/* code index */
+	/* next_code[] and code used to be "ush", but "unsigned" results in smaller code */
+	unsigned next_code[MAX_BITS + 1]; /* next code value for each bit length */
+	unsigned code = 0;      /* running code value */
+	int bits;               /* bit index */
+	int n;                  /* code index */
 
 	/* The distribution counts are first used to generate the code values
 	 * without bit reversal.
@@ -1304,7 +1307,7 @@ do { \
 	pqdownheap(tree, SMALLEST); \
 } while (0)
 
-static void build_tree(tree_desc * desc)
+static void build_tree(tree_desc *desc)
 {
 	ct_data *tree = desc->dyn_tree;
 	ct_data *stree = desc->static_tree;
@@ -1382,10 +1385,10 @@ static void build_tree(tree_desc * desc)
 	/* At this point, the fields freq and dad are set. We can now
 	 * generate the bit lengths.
 	 */
-	gen_bitlen((tree_desc *) desc);
+	gen_bitlen(desc);
 
 	/* The field len is now set, we can generate the bit codes */
-	gen_codes((ct_data *) tree, max_code);
+	gen_codes(tree, max_code);
 }
 
 /* ===========================================================================
@@ -1394,7 +1397,7 @@ static void build_tree(tree_desc * desc)
  * counts. (The contribution of the bit length codes will be added later
  * during the construction of bl_tree.)
  */
-static void scan_tree(ct_data * tree, int max_code)
+static void scan_tree(ct_data *tree, int max_code)
 {
 	int n;				/* iterates over all tree elements */
 	int prevlen = -1;	/* last emitted length */
@@ -1446,7 +1449,7 @@ static void scan_tree(ct_data * tree, int max_code)
  * Send a literal or distance tree in compressed form, using the codes in
  * bl_tree.
  */
-static void send_tree(ct_data * tree, int max_code)
+static void send_tree(const ct_data *tree, int max_code)
 {
 	int n;				/* iterates over all tree elements */
 	int prevlen = -1;	/* last emitted length */
@@ -1622,7 +1625,7 @@ static int ct_tally(int dist, int lc)
 /* ===========================================================================
  * Send the block data compressed using the given Huffman trees
  */
-static void compress_block(ct_data * ltree, ct_data * dtree)
+static void compress_block(const ct_data *ltree, const ct_data *dtree)
 {
 	unsigned dist;          /* distance of matched string */
 	int lc;                 /* match length or unmatched char (if dist == 0) */
@@ -1672,7 +1675,7 @@ static void compress_block(ct_data * ltree, ct_data * dtree)
  * trees or store, and output the encoded block to the zip file. This function
  * returns the total compressed length for the file so far.
  */
-static void flush_block(char *buf, ulg stored_len, int eof)
+static void flush_block(const char *buf, ulg stored_len, int eof)
 {
 	ulg opt_lenb, static_lenb;      /* opt_len and static_len in bytes */
 	int max_blindex;                /* index of last bit length code of non zero freq */
@@ -1919,7 +1922,7 @@ static void bi_init(void)
 /* ===========================================================================
  * Initialize the "longest match" routines for a new file
  */
-static void lm_init(unsigned *flags16p)
+static void lm_init(void)
 {
 	unsigned j;
 
@@ -1927,8 +1930,6 @@ static void lm_init(unsigned *flags16p)
 	memset(head, 0, HASH_SIZE * sizeof(*head));
 	/* prev will be initialized on the fly */
 
-	/* speed options for the general purpose bit flag */
-	*flags16p |= 2;	/* FAST 4, SLOW 2 */
 	/* ??? reduce max_chain_length for binary files */
 
 	//G1.strstart = 0; // globals are zeroed in pack_gzip()
@@ -2076,10 +2077,16 @@ static void zip(void)
 
 	bi_init();
 	ct_init();
-	deflate_flags = 0;  /* pkzip -es, -en or -ex equivalent */
-	lm_init(&deflate_flags);
+	lm_init();
 
-	put_16bit(deflate_flags | 0x300); /* extra flags. OS id = 3 (Unix) */
+	deflate_flags = 0x300; /* extra flags. OS id = 3 (Unix) */
+#if ENABLE_FEATURE_GZIP_LEVELS
+	/* Note that comp_level < 4 do not exist in this version of gzip */
+	if (comp_level_minus4 == 9 - 4) {
+		deflate_flags |= 0x02; /* SLOW flag */
+	}
+#endif
+	put_16bit(deflate_flags);
 
 	/* The above 32-bit misaligns outbuf (10 bytes are stored), flush it */
 	flush_outbuf_if_32bit_optimized();
@@ -2222,8 +2229,11 @@ int gzip_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_FEATURE_GZIP_LEVELS
 	opt >>= (BBUNPK_OPTSTRLEN IF_FEATURE_GZIP_DECOMPRESS(+ 2) + 1); /* drop cfkvq[dt]n bits */
 	if (opt == 0)
-		opt = 1 << 6; /* default: 6 */
+		opt = 1 << 5; /* default: 6 */
 	opt = ffs(opt >> 4); /* Maps -1..-4 to [0], -5 to [1] ... -9 to [5] */
+
+	comp_level_minus4 = opt;
+
 	max_chain_length = 1 << gzip_level_config[opt].chain_shift;
 	good_match	 = gzip_level_config[opt].good;
 	max_lazy_match	 = gzip_level_config[opt].lazy2 * 2;

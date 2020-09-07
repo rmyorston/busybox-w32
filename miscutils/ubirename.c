@@ -7,9 +7,8 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config UBIRENAME
-//config:	bool "ubirename (2.2 kb)"
+//config:	bool "ubirename (2.4 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	Utility to rename UBI volumes
 
@@ -72,7 +71,7 @@ int ubirename_main(int argc, char **argv)
 	rnvol = xzalloc(sizeof(*rnvol));
 	rnvol->count = --argc;
 	if (argc > ARRAY_SIZE(rnvol->ents))
-		bb_error_msg_and_die("too many renames requested");
+		bb_simple_error_msg_and_die("too many renames requested");
 
 	ubi_devname = argv[1];
 	ubi_devnum = ubi_devnum_from_devname(ubi_devname);

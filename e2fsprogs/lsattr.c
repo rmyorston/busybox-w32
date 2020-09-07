@@ -10,9 +10,8 @@
  * Public License
  */
 //config:config LSATTR
-//config:	bool "lsattr (5 kb)"
+//config:	bool "lsattr (5.5 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	lsattr lists the file attributes on a second extended file system.
 
@@ -22,14 +21,21 @@
 //kbuild:lib-$(CONFIG_LSATTR) += lsattr.o e2fs_lib.o
 
 //usage:#define lsattr_trivial_usage
+//usage:     IF_NOT_PLATFORM_MINGW32(
 //usage:       "[-Radlv] [FILE]..."
+//usage:     )
+//usage:     IF_PLATFORM_MINGW32(
+//usage:       "[-Radl] [FILE]..."
+//usage:     )
 //usage:#define lsattr_full_usage "\n\n"
 //usage:       "List ext2 file attributes\n"
 //usage:     "\n	-R	Recurse"
 //usage:     "\n	-a	Don't hide entries starting with ."
 //usage:     "\n	-d	List directory entries instead of contents"
 //usage:     "\n	-l	List long flag names"
+//usage:     IF_NOT_PLATFORM_MINGW32(
 //usage:     "\n	-v	List version/generation number"
+//usage:     )
 
 #include "libbb.h"
 #include "e2fs_lib.h"
@@ -45,16 +51,20 @@ enum {
 static void list_attributes(const char *name)
 {
 	unsigned long fsflags;
+#if !ENABLE_PLATFORM_MINGW32
 	unsigned long generation;
+#endif
 
 	if (fgetflags(name, &fsflags) != 0)
 		goto read_err;
 
+#if !ENABLE_PLATFORM_MINGW32
 	if (option_mask32 & OPT_GENERATION) {
 		if (fgetversion(name, &generation) != 0)
 			goto read_err;
 		printf("%5lu ", generation);
 	}
+#endif
 
 	if (option_mask32 & OPT_PF_LONG) {
 		printf("%-28s ", name);
@@ -112,7 +122,11 @@ static void lsattr_args(const char *name)
 int lsattr_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int lsattr_main(int argc UNUSED_PARAM, char **argv)
 {
+#if ENABLE_PLATFORM_MINGW32
+	getopt32(argv, "Radl");
+#else
 	getopt32(argv, "Radlv");
+#endif
 	argv += optind;
 
 	if (!*argv)

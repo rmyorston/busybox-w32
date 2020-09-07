@@ -87,7 +87,7 @@ gpt_print_wide36(uint16_t *s)
 	}
 	wc[i] = 0;
 	if (wcstombs(buf, wc, sizeof(buf)) <= sizeof(buf)-1)
-		fputs(printable_string(NULL, buf), stdout);
+		fputs(printable_string(buf), stdout);
 #else
 	char buf[37];
 	int i = 0;
@@ -161,7 +161,7 @@ check_gpt_label(void)
 	if (!valid_part_table_flag(MBRbuffer)
 	 || first->sys_ind != LEGACY_GPT_TYPE
 	) {
-		current_label_type = 0;
+		current_label_type = LABEL_DOS;
 		return 0;
 	}
 
@@ -171,7 +171,7 @@ check_gpt_label(void)
 	gpt_hdr = (void *)pe.sectorbuffer;
 
 	if (gpt_hdr->magic != SWAP_LE64(GPT_MAGIC)) {
-		current_label_type = 0;
+		current_label_type = LABEL_DOS;
 		return 0;
 	}
 
@@ -194,7 +194,7 @@ check_gpt_label(void)
 	 || SWAP_LE32(gpt_hdr->hdr_size) > sector_size
 	) {
 		puts("\nwarning: unable to parse GPT disklabel\n");
-		current_label_type = 0;
+		current_label_type = LABEL_DOS;
 		return 0;
 	}
 

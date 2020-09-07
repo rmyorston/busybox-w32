@@ -29,7 +29,7 @@
  * - don't know how to retrieve ORIGDST for udp.
  */
 //config:config TCPSVD
-//config:	bool "tcpsvd (13 kb)"
+//config:	bool "tcpsvd (14 kb)"
 //config:	default y
 //config:	help
 //config:	tcpsvd listens on a TCP port and runs a program for each new
@@ -270,17 +270,22 @@ int tcpudpsvd_main(int argc UNUSED_PARAM, char **argv)
 
 	tcp = (applet_name[0] == 't');
 
+	/* "+": stop on first non-option */
 #ifdef SSLSVD
 	opts = getopt32(argv, "^+"
 		"c:+C:i:x:u:l:Eb:+hpt:vU:/:Z:K:" /* -c NUM, -b NUM */
+		"\0"
 		/* 3+ args, -i at most once, -p implies -h, -v is a counter */
-		"\0" "-3:i--i:ph:vv",
+		"-3:i--i:ph:vv",
 		&cmax, &str_C, &instructs, &instructs, &user, &preset_local_hostname,
 		&backlog, &str_t, &ssluser, &root, &cert, &key, &verbose
 	);
 #else
-	/* "+": stop on first non-option */
-	opts = getopt32(argv, "+c:+C:i:x:u:l:Eb:hpt:v",
+	opts = getopt32(argv, "^+"
+		"c:+C:i:x:u:l:Eb:+hpt:v" /* -c NUM, -b NUM */
+		"\0"
+		/* 3+ args, -i at most once, -p implies -h, -v is a counter */
+		"-3:i--i:ph:vv",
 		&cmax, &str_C, &instructs, &instructs, &user, &preset_local_hostname,
 		&backlog, &str_t, &verbose
 	);
@@ -320,7 +325,7 @@ int tcpudpsvd_main(int argc UNUSED_PARAM, char **argv)
 	client = 0;
 	if ((getuid() == 0) && !(opts & OPT_u)) {
 		xfunc_error_retval = 100;
-		bb_error_msg_and_die(bb_msg_you_must_be_root);
+		bb_simple_error_msg_and_die(bb_msg_you_must_be_root);
 	}
 	if (opts & OPT_u)
 		if (!uidgid_get(&sslugid, ssluser, 1)) {
@@ -414,7 +419,7 @@ int tcpudpsvd_main(int argc UNUSED_PARAM, char **argv)
 	sig_block(SIGCHLD);
 	if (conn < 0) {
 		if (errno != EINTR)
-			bb_perror_msg(tcp ? "accept" : "recv");
+			bb_simple_perror_msg(tcp ? "accept" : "recv");
 		goto again2;
 	}
 	xmove_fd(tcp ? conn : sock, 0);
@@ -479,7 +484,7 @@ int tcpudpsvd_main(int argc UNUSED_PARAM, char **argv)
 
 	pid = vfork();
 	if (pid == -1) {
-		bb_perror_msg("vfork");
+		bb_simple_perror_msg("vfork");
 		goto again;
 	}
 

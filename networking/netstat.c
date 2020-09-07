@@ -16,7 +16,6 @@
 //config:config NETSTAT
 //config:	bool "netstat (10 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	netstat prints information about the Linux networking subsystem.
 //config:
@@ -172,7 +171,7 @@ struct prg_node {
 #define PRG_HASH_SIZE 211
 
 struct globals {
-	smallint flags;
+	smalluint flags;
 #if ENABLE_FEATURE_NETSTAT_PRG
 	smallint prg_cache_loaded;
 	struct prg_node *prg_hash[PRG_HASH_SIZE];
@@ -343,9 +342,9 @@ static void prg_cache_load(void)
 		return;
 
 	if (prg_cache_loaded == 1)
-		bb_error_msg("can't scan /proc - are you root?");
+		bb_simple_error_msg("can't scan /proc - are you root?");
 	else
-		bb_error_msg("showing only processes with your user ID");
+		bb_simple_error_msg("showing only processes with your user ID");
 }
 
 #else
@@ -397,8 +396,11 @@ static char *ip_port_str(struct sockaddr *addr, int port, const char *proto, int
 	/* Code which used "*" for INADDR_ANY is removed: it's ambiguous
 	 * in IPv6, while "0.0.0.0" is not. */
 
-	host = numeric ? xmalloc_sockaddr2dotted_noport(addr)
-	               : xmalloc_sockaddr2host_noport(addr);
+	host = NULL;
+	if (!numeric)
+		host = xmalloc_sockaddr2host_noport(addr);
+	if (!host)
+		host = xmalloc_sockaddr2dotted_noport(addr);
 
 	host_port = xasprintf("%s:%s", host, get_sname(htons(port), proto, numeric));
 	free(host);

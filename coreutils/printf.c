@@ -38,7 +38,7 @@
 /* 19990508 Busy Boxed! Dave Cinege */
 
 //config:config PRINTF
-//config:	bool "printf (3.3 kb)"
+//config:	bool "printf (3.8 kb)"
 //config:	default y
 //config:	help
 //config:	printf is used to format and print specified strings.
@@ -95,6 +95,12 @@ static int multiconvert(const char *arg, void *result, converter convert)
 
 static void FAST_FUNC conv_strtoull(const char *arg, void *result)
 {
+	/* Allow leading '+' - bb_strtoull() by itself does not allow it,
+	 * and probably shouldn't (other callers might require purely numeric
+	 * inputs to be allowed.
+	 */
+	if (arg[0] == '+')
+		arg++;
 	*(unsigned long long*)result = bb_strtoull(arg, NULL, 0);
 	/* both coreutils 6.10 and bash 3.2:
 	 * $ printf '%x\n' -2
@@ -107,6 +113,8 @@ static void FAST_FUNC conv_strtoull(const char *arg, void *result)
 }
 static void FAST_FUNC conv_strtoll(const char *arg, void *result)
 {
+	if (arg[0] == '+')
+		arg++;
 	*(long long*)result = bb_strtoll(arg, NULL, 0);
 }
 static void FAST_FUNC conv_strtod(const char *arg, void *result)
@@ -143,10 +151,21 @@ static double my_xstrtod(const char *arg)
 	return result;
 }
 
+static int fputs_stdout(const char *s)
+{
+	return fputs(s, stdout);
+}
+
 /* Handles %b; return 1 if output is to be short-circuited by \c */
 static int print_esc_string(const char *str)
 {
 	char c;
+#if ENABLE_PLATFORM_MINGW32
+	char *s, *t;
+	int ret = 0;
+
+	s = t = xstrdup(str);
+#endif
 	while ((c = *str) != '\0') {
 		str++;
 		if (c == '\\') {
@@ -158,7 +177,12 @@ static int print_esc_string(const char *str)
 				}
 			}
 			else if (*str == 'c') {
+#if ENABLE_PLATFORM_MINGW32
+				ret = 1;
+				goto finish;
+#else
 				return 1;
+#endif
 			}
 			{
 				/* optimization: don't force arg to be on-stack,
@@ -168,10 +192,21 @@ static int print_esc_string(const char *str)
 				str = z;
 			}
 		}
+#if ENABLE_PLATFORM_MINGW32
+		*t++ = c;
+#else
 		putchar(c);
+#endif
 	}
-
+#if ENABLE_PLATFORM_MINGW32
+ finish:
+	*t = '\0';
+	fputs_stdout(s);
+	free(s);
+	return ret;
+#else
 	return 0;
+#endif
 }
 
 static void print_direc(char *format, unsigned fmt_length,
@@ -191,6 +226,7 @@ static void print_direc(char *format, unsigned fmt_length,
 	if (have_width - 1 == have_prec)
 		have_width = NULL;
 
+	/* multiconvert sets errno = 0, but %s needs it cleared */
 	errno = 0;
 
 	switch (format[fmt_length - 1]) {
@@ -199,7 +235,7 @@ static void print_direc(char *format, unsigned fmt_length,
 		break;
 	case 'd':
 	case 'i':
-		llv = my_xstrtoll(argument);
+		llv = my_xstrtoll(skip_whitespace(argument));
  print_long:
 		if (!have_width) {
 			if (!have_prec)
@@ -217,7 +253,7 @@ static void print_direc(char *format, unsigned fmt_length,
 	case 'u':
 	case 'x':
 	case 'X':
-		llv = my_xstrtoull(argument);
+		llv = my_xstrtoull(skip_whitespace(argument));
 		/* cheat: unsigned long and long have same width, so... */
 		goto print_long;
 	case 's':
@@ -284,10 +320,19 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 	int field_width;        /* Arg to first '*' */
 	int precision;          /* Arg to second '*' */
 	char **saved_argv = argv;
+#if ENABLE_PLATFORM_MINGW32
+	char *s, *t;
+	s = t = auto_string(xstrdup(f));
+#endif
 
 	for (; *f; ++f) {
 		switch (*f) {
 		case '%':
+#if ENABLE_PLATFORM_MINGW32
+			*t = '\0';
+			fputs_stdout(s);
+			t = s;
+#endif
 			direc_start = f++;
 			direc_length = 1;
 			field_width = precision = 0;
@@ -376,6 +421,27 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 				free(p);
 			}
 			break;
+#if ENABLE_PLATFORM_MINGW32
+		case '\\':
+			if (*++f == 'c') {
+				*t = '\0';
+				fputs_stdout(s);
+				return saved_argv; /* causes main() to exit */
+			}
+			*t = bb_process_escape_sequence((const char **)&f);
+			if (*t == '\0') {
+				fputs_stdout(s);
+				bb_putchar(*t);
+				t = s;
+			}
+			else {
+				++t;
+			}
+			f--;
+			break;
+		default:
+			*t++ = *f;
+#else
 		case '\\':
 			if (*++f == 'c') {
 				return saved_argv; /* causes main() to exit */
@@ -385,8 +451,13 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 			break;
 		default:
 			putchar(*f);
+#endif
 		}
 	}
+#if ENABLE_PLATFORM_MINGW32
+	*t = '\0';
+	fputs_stdout(s);
+#endif
 
 	return argv;
 }
@@ -421,7 +492,7 @@ int printf_main(int argc UNUSED_PARAM, char **argv)
 		if (ENABLE_ASH_PRINTF
 		 && applet_name[0] != 'p'
 		) {
-			bb_error_msg("usage: printf FORMAT [ARGUMENT...]");
+			bb_simple_error_msg("usage: printf FORMAT [ARGUMENT...]");
 			return 2; /* bash compat */
 		}
 		bb_show_usage();

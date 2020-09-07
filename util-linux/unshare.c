@@ -7,10 +7,9 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config UNSHARE
-//config:	bool "unshare (9.2 kb)"
+//config:	bool "unshare (7.2 kb)"
 //config:	default y
 //config:	depends on !NOMMU
-//config:	select PLATFORM_LINUX
 //config:	select LONG_OPTS
 //config:	help
 //config:	Run program with some namespaces unshared from parent.
@@ -73,7 +72,7 @@
 #include "libbb.h"
 
 static void mount_or_die(const char *source, const char *target,
-                 const char *fstype, unsigned long mountflags)
+		const char *fstype, unsigned long mountflags)
 {
 	if (mount(source, target, fstype, mountflags, NULL)) {
 		bb_perror_msg_and_die("can't mount %s on %s (flags:0x%lx)",
@@ -239,7 +238,7 @@ int unshare_main(int argc UNUSED_PARAM, char **argv)
 	if (setgrp_str) {
 		if (strcmp(setgrp_str, "allow") == 0) {
 			if (opts & OPT_map_root) {
-				bb_error_msg_and_die(
+				bb_simple_error_msg_and_die(
 					"--setgroups=allow and --map-root-user "
 					"are mutually exclusive"
 				);

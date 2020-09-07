@@ -21,198 +21,289 @@
 #undef read
 #undef getc
 
-/*
- ANSI codes used by git: m, K
+#define FOREGROUND_ALL (FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE)
+#define BACKGROUND_ALL (BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE)
 
- This file is git-specific. Therefore, this file does not attempt
- to implement any codes that are not used by git.
-*/
+static WORD plain_attr = 0;
 
-static HANDLE console;
-static HANDLE console_in;
-static WORD plain_attr;
-static WORD attr;
-static int negative;
+static HANDLE get_console(void)
+{
+	return GetStdHandle(STD_OUTPUT_HANDLE);
+}
 
-static void init(void)
+static WORD get_console_attr(void)
 {
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
-	static int initialized = 0;
-	if (initialized)
-		return;
+	if (GetConsoleScreenBufferInfo(get_console(), &sbi))
+		return sbi.wAttributes;
 
-	console_in = GetStdHandle(STD_INPUT_HANDLE);
-	if (console_in == INVALID_HANDLE_VALUE)
-		console_in = NULL;
-
-	console = GetStdHandle(STD_OUTPUT_HANDLE);
-	if (console == INVALID_HANDLE_VALUE)
-		console = NULL;
-
-	if (!console)
-		return;
-
-	GetConsoleScreenBufferInfo(console, &sbi);
-	attr = plain_attr = sbi.wAttributes;
-	negative = 0;
-
-	initialized = 1;
+	return FOREGROUND_ALL;
 }
 
 static int is_console(int fd)
 {
-	init();
-	return isatty(fd) && console;
+	if (!plain_attr)
+		plain_attr = get_console_attr();
+	return isatty(fd) && get_console() != INVALID_HANDLE_VALUE;
 }
 
 static int is_console_in(int fd)
 {
-	init();
-	return isatty(fd) && console_in;
+	return isatty(fd) && GetStdHandle(STD_INPUT_HANDLE) != INVALID_HANDLE_VALUE;
 }
 
-static int skip_ansi_emulation(void)
-{
-	static char *var = NULL;
-	static int got_var = FALSE;
+#ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+#endif
 
-	if (!got_var) {
-		var = getenv("BB_SKIP_ANSI_EMULATION");
-		got_var = TRUE;
+#ifndef DISABLE_NEWLINE_AUTO_RETURN
+#define DISABLE_NEWLINE_AUTO_RETURN 0x0008
+#endif
+
+int skip_ansi_emulation(int reset)
+{
+	static int skip = -1;
+
+	if (skip < 0 || reset) {
+		const char *var = getenv(bb_skip_ansi_emulation);
+		skip = var != NULL;
+		if (skip) {
+			switch (xatou(var)) {
+			case 1:
+				break;
+			case 2:
+				skip = 2;
+				break;
+			default:
+				skip = 0;
+				break;
+			}
+		}
+
+		if (is_console(STDOUT_FILENO)) {
+			HANDLE h = get_console();
+			DWORD mode;
+
+			if (GetConsoleMode(h, &mode)) {
+				if (skip)
+					mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+				else
+					mode &= ~ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+				mode &= ~DISABLE_NEWLINE_AUTO_RETURN;
+				if (!SetConsoleMode(h, mode) && skip == 2)
+					skip = 0;
+			}
+		}
 	}
 
-	return var != NULL;
+	return skip;
 }
 
-
-#define FOREGROUND_ALL (FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE)
-#define BACKGROUND_ALL (BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE)
-
-static void set_console_attr(void)
+void set_title(const char *str)
 {
-	WORD attributes = attr;
-	if (negative) {
+	if (is_console(STDOUT_FILENO))
+		SetConsoleTitle(str);
+}
+
+static HANDLE dup_handle(HANDLE h)
+{
+	HANDLE h2;
+
+	if (!DuplicateHandle(GetCurrentProcess(), h, GetCurrentProcess(),
+							&h2, 0, TRUE, DUPLICATE_SAME_ACCESS))
+		return INVALID_HANDLE_VALUE;
+	return h2;
+}
+
+static void use_alt_buffer(int flag)
+{
+	static HANDLE console_orig = INVALID_HANDLE_VALUE;
+	HANDLE console, h;
+
+	if (flag) {
+		SECURITY_ATTRIBUTES sa;
+		CONSOLE_SCREEN_BUFFER_INFO sbi;
+
+		if (console_orig != INVALID_HANDLE_VALUE)
+			return;
+
+		console = get_console();
+		console_orig = dup_handle(console);
+
+		// handle should be inheritable
+		memset(&sa, 0, sizeof(sa));
+		sa.nLength = sizeof(sa);
+		/* sa.lpSecurityDescriptor = NULL; - memset did it */
+		sa.bInheritHandle = TRUE;
+
+		// create new alternate buffer
+		h = CreateConsoleScreenBuffer(GENERIC_READ|GENERIC_WRITE,
+					FILE_SHARE_READ|FILE_SHARE_WRITE, &sa,
+					CONSOLE_TEXTMODE_BUFFER, NULL);
+		if (h == INVALID_HANDLE_VALUE)
+			return;
+
+		if (GetConsoleScreenBufferInfo(console, &sbi))
+			SetConsoleScreenBufferSize(h, sbi.dwSize);
+	}
+	else {
+		if (console_orig == INVALID_HANDLE_VALUE)
+			return;
+
+		// revert to original buffer
+		h = dup_handle(console_orig);
+		console_orig = INVALID_HANDLE_VALUE;
+		if (h == INVALID_HANDLE_VALUE)
+			return;
+	}
+
+	console = h;
+	SetConsoleActiveScreenBuffer(console);
+	close(STDOUT_FILENO);
+	_open_osfhandle((intptr_t)console, O_RDWR|O_BINARY);
+}
+
+static void set_console_attr(WORD attributes, int invert)
+{
+	HANDLE console = get_console();
+	if (invert) {
+		WORD save = attributes;
 		attributes &= ~FOREGROUND_ALL;
 		attributes &= ~BACKGROUND_ALL;
 
 		/* This could probably use a bitmask
 		   instead of a series of ifs */
-		if (attr & FOREGROUND_RED)
+		if (save & FOREGROUND_RED)
 			attributes |= BACKGROUND_RED;
-		if (attr & FOREGROUND_GREEN)
+		if (save & FOREGROUND_GREEN)
 			attributes |= BACKGROUND_GREEN;
-		if (attr & FOREGROUND_BLUE)
+		if (save & FOREGROUND_BLUE)
 			attributes |= BACKGROUND_BLUE;
 
-		if (attr & BACKGROUND_RED)
+		if (save & BACKGROUND_RED)
 			attributes |= FOREGROUND_RED;
-		if (attr & BACKGROUND_GREEN)
+		if (save & BACKGROUND_GREEN)
 			attributes |= FOREGROUND_GREEN;
-		if (attr & BACKGROUND_BLUE)
+		if (save & BACKGROUND_BLUE)
 			attributes |= FOREGROUND_BLUE;
 	}
 	SetConsoleTextAttribute(console, attributes);
 }
 
-static void erase_in_line(void)
+static void clear_buffer(DWORD len, COORD pos)
 {
-	CONSOLE_SCREEN_BUFFER_INFO sbi;
-	DWORD dummy; /* Needed for Windows 7 (or Vista) regression */
+	HANDLE console = get_console();
+	DWORD dummy;
 
-	if (!console)
-		return;
-
-	GetConsoleScreenBufferInfo(console, &sbi);
-	FillConsoleOutputCharacterA(console, ' ',
-		sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition,
-		&dummy);
-	FillConsoleOutputAttribute(console, plain_attr,
-		sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition,
-		&dummy);
-}
-
-static void erase_till_end_of_screen(void)
-{
-	CONSOLE_SCREEN_BUFFER_INFO sbi;
-	DWORD dummy, len;
-
-	if (!console)
-		return;
-
-	GetConsoleScreenBufferInfo(console, &sbi);
-	len = sbi.dwSize.X - sbi.dwCursorPosition.X +
-			sbi.dwSize.X * (sbi.srWindow.Bottom - sbi.dwCursorPosition.Y);
-
-	FillConsoleOutputCharacterA(console, ' ', len, sbi.dwCursorPosition,
-		&dummy);
-	FillConsoleOutputAttribute(console, plain_attr, len, sbi.dwCursorPosition,
-		&dummy);
-}
-
-void reset_screen(void)
-{
-	CONSOLE_SCREEN_BUFFER_INFO sbi;
-	COORD pos;
-	DWORD dummy, len;
-
-	if (!console)
-		return;
-
-	/* move to start of screen buffer and clear it all */
-	GetConsoleScreenBufferInfo(console, &sbi);
-	pos.X = 0;
-	pos.Y = 0;
-	SetConsoleCursorPosition(console, pos);
-	len = sbi.dwSize.X * sbi.dwSize.Y;
 	FillConsoleOutputCharacterA(console, ' ', len, pos, &dummy);
 	FillConsoleOutputAttribute(console, plain_attr, len, pos, &dummy);
 }
 
-void move_cursor_row(int n)
+static void erase_in_line(void)
 {
+	HANDLE console = get_console();
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
-	if (!console)
+	if (!GetConsoleScreenBufferInfo(console, &sbi))
 		return;
+	clear_buffer(sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition);
+}
 
-	GetConsoleScreenBufferInfo(console, &sbi);
+static void erase_till_end_of_screen(void)
+{
+	HANDLE console = get_console();
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
+	DWORD len;
+
+	if(!GetConsoleScreenBufferInfo(console, &sbi))
+		return;
+	len = sbi.dwSize.X - sbi.dwCursorPosition.X +
+			sbi.dwSize.X * (sbi.srWindow.Bottom - sbi.dwCursorPosition.Y);
+	clear_buffer(len, sbi.dwCursorPosition);
+}
+
+void reset_screen(void)
+{
+	HANDLE console = get_console();
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
+	COORD pos = { 0, 0 };
+
+	/* move to start of screen buffer and clear it all */
+	if (!GetConsoleScreenBufferInfo(console, &sbi))
+		return;
+	SetConsoleCursorPosition(console, pos);
+	clear_buffer(sbi.dwSize.X * sbi.dwSize.Y, pos);
+}
+
+void move_cursor_row(int n)
+{
+	HANDLE console = get_console();
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
+
+	if(!GetConsoleScreenBufferInfo(console, &sbi))
+		return;
 	sbi.dwCursorPosition.Y += n;
 	SetConsoleCursorPosition(console, sbi.dwCursorPosition);
 }
 
 static void move_cursor_column(int n)
 {
+	HANDLE console = get_console();
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
-	if (!console)
+	if (!GetConsoleScreenBufferInfo(console, &sbi))
 		return;
-
-	GetConsoleScreenBufferInfo(console, &sbi);
 	sbi.dwCursorPosition.X += n;
 	SetConsoleCursorPosition(console, sbi.dwCursorPosition);
 }
 
 static void move_cursor(int x, int y)
 {
+	HANDLE console = get_console();
 	COORD pos;
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
-	if (!console)
+	if (!GetConsoleScreenBufferInfo(console, &sbi))
 		return;
-
-	GetConsoleScreenBufferInfo(console, &sbi);
 	pos.X = sbi.srWindow.Left + x;
 	pos.Y = sbi.srWindow.Top + y;
 	SetConsoleCursorPosition(console, pos);
 }
 
-static const char *set_attr(const char *str)
+/* On input pos points to the start of a suspected escape sequence.
+ * If a valid sequence is found return a pointer to the character
+ * following it, otherwise return the original pointer. */
+static char *process_escape(char *pos)
 {
-	const char *func;
-	size_t len = strspn(str, "0123456789;");
-	func = str + len;
+	const char *str, *func;
+	char *bel;
+	size_t len;
+	WORD attr = get_console_attr();
+	int invert = FALSE;
+	static int inverse = 0;
 
+	switch (pos[1]) {
+	case '[':
+		/* go ahead and process "\033[" sequence */
+		break;
+	case ']':
+		if ((pos[2] == '0' || pos[2] == '2') && pos[3] == ';' &&
+				(bel=strchr(pos+4, '\007')) && bel - pos < 260) {
+			/* set console title */
+			*bel++ = '\0';
+			CharToOem(pos+4, pos+4);
+			SetConsoleTitle(pos+4);
+			return bel;
+		}
+		/* invalid "\033]" sequence, fall through */
+	default:
+		return pos;
+	}
+
+	str = pos + 2;
+	len = strspn(str, "0123456789;");
+	func = str + len;
 	switch (*func) {
 	case 'm':
 		do {
@@ -220,7 +311,7 @@ static const char *set_attr(const char *str)
 			switch (val) {
 			case 0: /* reset */
 				attr = plain_attr;
-				negative = 0;
+				inverse = 0;
 				break;
 			case 1: /* bold */
 				attr |= FOREGROUND_INTENSITY;
@@ -250,11 +341,13 @@ static const char *set_attr(const char *str)
 			case 25: /* no blink */
 				attr &= ~BACKGROUND_INTENSITY;
 				break;
-			case 7:  /* negative */
-				negative = 1;
+			case 7:  /* inverse on */
+				invert = !inverse;
+				inverse = 1;
 				break;
-			case 27: /* positive */
-				negative = 0;
+			case 27: /* inverse off */
+				invert = inverse;
+				inverse = 0;
 				break;
 			case 8:  /* conceal */
 			case 28: /* reveal */
@@ -338,12 +431,12 @@ static const char *set_attr(const char *str)
 				break;
 			default:
 				/* Unsupported code */
-				break;
+				return pos;
 			}
 			str++;
 		} while (*(str-1) == ';');
 
-		set_console_attr();
+		set_console_attr(attr, invert);
 		break;
 	case 'A': /* up */
 		move_cursor_row(-strtol(str, (char **)&str, 10));
@@ -377,19 +470,88 @@ static const char *set_attr(const char *str)
 		erase_in_line();
 		break;
 	case '?':
-		/* skip this to avoid ugliness when vi is shut down */
-		++str;
-		while (isdigit(*str))
-			++str;
-		func = str;
-		break;
+		if (strncmp(str+1, "1049", 4) == 0 &&
+				(str[5] == 'h' || str[5] == 'l') ) {
+			use_alt_buffer(str[5] == 'h');
+			func = str + 5;
+			break;
+		}
+		/* fall through */
 	default:
 		/* Unsupported code */
-		break;
+		return pos;
 	}
 
-	return func + 1;
+	return (char *)func + 1;
 }
+
+#if ENABLE_FEATURE_EURO
+void init_codepage(void)
+{
+	if (GetConsoleCP() == 850 && GetConsoleOutputCP() == 850) {
+		SetConsoleCP(858);
+		SetConsoleOutputCP(858);
+	}
+}
+
+static BOOL winansi_CharToOemBuff(LPCSTR s, LPSTR d, DWORD len)
+{
+	WCHAR *buf;
+	int i;
+
+	if (!s || !d)
+		return FALSE;
+
+	buf = xmalloc(len*sizeof(WCHAR));
+	MultiByteToWideChar(CP_ACP, 0, s, len, buf, len);
+	WideCharToMultiByte(CP_OEMCP, 0, buf, len, d, len, NULL, NULL);
+	if (GetConsoleOutputCP() == 858) {
+		for (i=0; i<len; ++i) {
+			if (buf[i] == 0x20ac) {
+				d[i] = 0xd5;
+			}
+		}
+	}
+	free(buf);
+	return TRUE;
+}
+
+static BOOL winansi_CharToOem(LPCSTR s, LPSTR d)
+{
+	if (!s || !d)
+		return FALSE;
+	return winansi_CharToOemBuff(s, d, strlen(s)+1);
+}
+
+static BOOL winansi_OemToCharBuff(LPCSTR s, LPSTR d, DWORD len)
+{
+	WCHAR *buf;
+	int i;
+
+	if (!s || !d)
+		return FALSE;
+
+	buf = xmalloc(len*sizeof(WCHAR));
+	MultiByteToWideChar(CP_OEMCP, 0, s, len, buf, len);
+	WideCharToMultiByte(CP_ACP, 0, buf, len, d, len, NULL, NULL);
+	if (GetConsoleOutputCP() == 858) {
+		for (i=0; i<len; ++i) {
+			if (buf[i] == 0x0131) {
+				d[i] = 0x80;
+			}
+		}
+	}
+	free(buf);
+	return TRUE;
+}
+
+# undef CharToOemBuff
+# undef CharToOem
+# undef OemToCharBuff
+# define CharToOemBuff winansi_CharToOemBuff
+# define CharToOem winansi_CharToOem
+# define OemToCharBuff winansi_OemToCharBuff
+#endif
 
 static int ansi_emulate(const char *s, FILE *stream)
 {
@@ -428,27 +590,33 @@ static int ansi_emulate(const char *s, FILE *stream)
 	pos = str = mem;
 
 	while (*pos) {
-		pos = strstr(str, "\033[");
-		if (pos && !skip_ansi_emulation()) {
+		pos = strchr(str, '\033');
+		if (pos && !skip_ansi_emulation(FALSE)) {
 			size_t len = pos - str;
 
 			if (len) {
-				*pos = '\0';
+				*pos = '\0';	/* NB, '\033' has been overwritten */
 				CharToOem(str, str);
 				if (fputs(str, stream) == EOF)
 					return EOF;
 				rv += len;
 			}
 
-			str = pos + 2;
-			rv += 2;
+			if (fflush(stream) == EOF)
+				return EOF;
+
+			str = process_escape(pos);
+			if (str == pos) {
+				if (fputc('\033', stream) == EOF)
+					return EOF;
+				++str;
+			}
+			rv += str - pos;
+			pos = str;
 
 			if (fflush(stream) == EOF)
 				return EOF;
 
-			pos = (char *)set_attr(str);
-			rv += pos - str;
-			str = pos;
 		} else {
 			rv += strlen(str);
 			CharToOem(str, str);
@@ -475,12 +643,32 @@ int winansi_puts(const char *s)
 	return (winansi_fputs(s, stdout) == EOF || putchar('\n') == EOF) ? EOF : 0;
 }
 
+static sighandler_t sigpipe_handler = SIG_DFL;
+
+#undef signal
+sighandler_t winansi_signal(int signum, sighandler_t handler)
+{
+	sighandler_t old;
+
+	if (signum == SIGPIPE) {
+		old = sigpipe_handler;
+		sigpipe_handler = handler;
+		return old;
+	}
+	return signal(signum, handler);
+}
+
 static void check_pipe_fd(int fd)
 {
-	if (GetLastError() == ERROR_NO_DATA) {
-		if (GetFileType((HANDLE)_get_osfhandle(fd)) == FILE_TYPE_PIPE) {
+	int error = GetLastError();
+
+	if ((error == ERROR_NO_DATA &&
+			GetFileType((HANDLE)_get_osfhandle(fd)) == FILE_TYPE_PIPE) ||
+			error == ERROR_BROKEN_PIPE) {
+		if (sigpipe_handler == SIG_DFL)
+			exit(128+SIGPIPE);
+		else /* SIG_IGN */
 			errno = EPIPE;
-		}
 	}
 }
 
@@ -531,6 +719,27 @@ int winansi_fputs(const char *str, FILE *stream)
 
 	return ansi_emulate(str, stream) == EOF ? EOF : 0;
 }
+
+#if !defined(__USE_MINGW_ANSI_STDIO) || !__USE_MINGW_ANSI_STDIO
+/*
+ * Prior to Windows 10 vsnprintf was incompatible with the C99 standard.
+ * Implement a replacement using _vsnprintf.
+ */
+int winansi_vsnprintf(char *buf, size_t size, const char *format, va_list list)
+{
+	size_t len;
+	va_list list2;
+
+	va_copy(list2, list);
+	len = _vsnprintf(NULL, 0, format, list2);
+	if (len < 0)
+		return -1;
+
+	_vsnprintf(buf, size, format, list);
+	buf[size-1] = '\0';
+	return len;
+}
+#endif
 
 int winansi_vfprintf(FILE *stream, const char *format, va_list list)
 {
@@ -596,23 +805,6 @@ int winansi_printf(const char *format, ...)
 	return rv;
 }
 
-int winansi_get_terminal_width_height(struct winsize *win)
-{
-	BOOL ret;
-	CONSOLE_SCREEN_BUFFER_INFO sbi;
-
-	init();
-
-	win->ws_row = 0;
-	win->ws_col = 0;
-	if ((ret=GetConsoleScreenBufferInfo(console, &sbi)) != 0) {
-		win->ws_row = sbi.srWindow.Bottom - sbi.srWindow.Top + 1;
-		win->ws_col = sbi.srWindow.Right - sbi.srWindow.Left + 1;
-	}
-
-	return ret ? 0 : -1;
-}
-
 static int ansi_emulate_write(int fd, const void *buf, size_t count)
 {
 	int rv = 0, i;
@@ -652,8 +844,8 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 
 	/* we've checked the data doesn't contain any NULs */
 	while (*pos) {
-		pos = strstr(str, "\033[");
-		if (pos && !skip_ansi_emulation()) {
+		pos = strchr(str, '\033');
+		if (pos && !skip_ansi_emulation(FALSE)) {
 			len = pos - str;
 
 			if (len) {
@@ -664,12 +856,14 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 				rv += out_len;
 			}
 
-			str = pos + 2;
-			rv += 2;
-
-			pos = (char *)set_attr(str);
-			rv += pos - str;
-			str = pos;
+			str = process_escape(pos);
+			if (str == pos) {
+				if (write(fd, pos, 1) == -1)
+					return -1;
+				++str;
+			}
+			rv += str - pos;
+			pos = str;
 		} else {
 			len = strlen(str);
 			CharToOem(str, str);
@@ -735,7 +929,6 @@ int mingw_isatty(int fd)
 
 	if (result) {
 		HANDLE handle = (HANDLE) _get_osfhandle(fd);
-		CONSOLE_SCREEN_BUFFER_INFO sbi;
 		DWORD mode;
 
 		if (handle == INVALID_HANDLE_VALUE)
@@ -745,10 +938,7 @@ int mingw_isatty(int fd)
 		if (GetFileType(handle) != FILE_TYPE_CHAR)
 			return 0;
 
-		if (!fd) {
-			if (!GetConsoleMode(handle, &mode))
-				return 0;
-		} else if (!GetConsoleScreenBufferInfo(handle, &sbi))
+		if (!GetConsoleMode(handle, &mode))
 			return 0;
 	}
 

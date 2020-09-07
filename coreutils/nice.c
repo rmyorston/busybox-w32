@@ -7,7 +7,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config NICE
-//config:	bool "nice (1.8 kb)"
+//config:	bool "nice (2.1 kb)"
 //config:	default y
 //config:	help
 //config:	nice runs a program with modified scheduling priority.
@@ -22,7 +22,6 @@
 //usage:       "Change scheduling priority, run PROG\n"
 //usage:     "\n	-n ADJUST	Adjust priority by ADJUST"
 
-#include <sys/resource.h>
 #include "libbb.h"
 
 int nice_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;

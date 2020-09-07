@@ -4,7 +4,7 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config HEXEDIT
-//config:	bool "hexedit (20 kb)"
+//config:	bool "hexedit (21 kb)"
 //config:	default y
 //config:	help
 //config:	Edit file in hexadecimal.
@@ -153,7 +153,8 @@ static void redraw(unsigned cursor)
 		i++;
 	}
 
-	printf(ESC"[%u;%uH", 1 + cursor / 16, 1 + pos + (cursor & 0xf) * 3);
+	G.row = cursor / 16;
+	printf(ESC"[%u;%uH", 1 + G.row, 1 + pos + (cursor & 0xf) * 3);
 }
 
 static void redraw_cur_line(void)
@@ -192,7 +193,7 @@ static int remap(unsigned cur_pos)
 	);
 	if (G.baseaddr == MAP_FAILED) {
 		restore_term();
-		bb_perror_msg_and_die("mmap");
+		bb_simple_perror_msg_and_die("mmap");
 	}
 
 	G.current_byte = G.baseaddr + cur_pos;
@@ -367,6 +368,8 @@ int hexedit_main(int argc UNUSED_PARAM, char **argv)
 				if (G.current_byte > G.eof_byte) {
 					/* _after_ eof - don't allow this */
 					G.current_byte -= 16;
+					if (G.current_byte < G.baseaddr)
+						move_mapping_lower();
 					break;
 				}
 			}

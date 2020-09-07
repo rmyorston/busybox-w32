@@ -214,20 +214,12 @@ ssize_t get_random_bytes(void *buf, ssize_t count)
 	ptr = (unsigned char *)t->randrsl;
 	while (count > 0) {
 		int bytes_left = RAND_BYTES - rand_index;
+		ssize_t delta = MIN(bytes_left, count);
 
-		if (bytes_left >= count) {
-			/* we have enough random bytes */
-			memcpy(buf, ptr+rand_index, count);
-			rand_index += count;
-			count = 0;
-		}
-		else {
-			/* insufficient bytes, use what we have */
-			memcpy(buf, ptr+rand_index, bytes_left);
-			buf += bytes_left;
-			count -= bytes_left;
-			rand_index += bytes_left;
-		}
+		memcpy(buf, ptr+rand_index, delta);
+		buf += delta;
+		count -= delta;
+		rand_index += delta;
 
 		if (rand_index >= RAND_BYTES) {
 			/* generate more */

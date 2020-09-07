@@ -7,9 +7,8 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config LOADKMAP
-//config:	bool "loadkmap (1.5 kb)"
+//config:	bool "loadkmap (1.8 kb)"
 //config:	default y
-//config:	select PLATFORM_LINUX
 //config:	help
 //config:	This program loads a keyboard translation table from
 //config:	standard input.
@@ -69,7 +68,7 @@ int loadkmap_main(int argc UNUSED_PARAM, char **argv)
 
 	xread(STDIN_FILENO, flags, 7);
 	if (!is_prefixed_with(flags, BINARY_KEYMAP_MAGIC))
-		bb_error_msg_and_die("not a valid binary keymap");
+		bb_simple_error_msg_and_die("not a valid binary keymap");
 
 	xread(STDIN_FILENO, flags, MAX_NR_KEYMAPS);
 
