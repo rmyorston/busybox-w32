@@ -656,10 +656,9 @@ static void load_pattern_list(llist_t **lst, char *pattern)
 		llist_add_to(lst, new_grep_list_data(p, 0));
 }
 
-static int FAST_FUNC file_action_grep(const char *filename,
-			struct stat *statbuf,
-			void* matched,
-			int depth UNUSED_PARAM)
+static int FAST_FUNC file_action_grep(struct recursive_state *state UNUSED_PARAM,
+		const char *filename,
+		struct stat *statbuf)
 {
 	FILE *file;
 
@@ -686,7 +685,7 @@ static int FAST_FUNC file_action_grep(const char *filename,
 		return 0;
 	}
 	cur_file = filename;
-	*(int*)matched |= grep_file(file);
+	*(int*)state->userData |= grep_file(file);
 	fclose(file);
 	return 1;
 }
@@ -694,15 +693,16 @@ static int FAST_FUNC file_action_grep(const char *filename,
 static int grep_dir(const char *dir)
 {
 	int matched = 0;
-	recursive_action(dir,
-		/* recurse=yes */ ACTION_RECURSE |
-		/* followLinks=always */ ((option_mask32 & OPT_R) ? ACTION_FOLLOWLINKS : 0) |
-		/* followLinks=command line only */ ACTION_FOLLOWLINKS_L0 |
-		/* depthFirst=yes */ ACTION_DEPTHFIRST,
+	recursive_action(dir, 0
+		| ACTION_RECURSE
+		| ((option_mask32 & OPT_R) ? ACTION_FOLLOWLINKS : 0)
+		| ACTION_FOLLOWLINKS_L0 /* grep -r ... SYMLINK follows it */
+		| ACTION_DEPTHFIRST
+		| 0,
 		/* fileAction= */ file_action_grep,
 		/* dirAction= */ NULL,
-		/* userData= */ &matched,
-		/* depth= */ 0);
+		/* userData= */ &matched
+	);
 	return matched;
 }
 

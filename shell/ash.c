@@ -240,17 +240,17 @@
 #define IF_BASH_SUBSTR              IF_ASH_BASH_COMPAT
 /* BASH_TEST2: [[ EXPR ]]
  * Status of [[ support:
- * We replace && and || with -a and -o
+ *   && and || work as they should
+ *   = is glob match operator, not equality operator: STR = GLOB
+ *   == same as =
+ *   =~ is regex match operator: STR =~ REGEX
  * TODO:
  * singleword+noglob expansion:
  *   v='a b'; [[ $v = 'a b' ]]; echo 0:$?
  *   [[ /bin/n* ]]; echo 0:$?
- * -a/-o are not AND/OR ops! (they are just strings)
  * quoting needs to be considered (-f is an operator, "-f" and ""-f are not; etc)
- * = is glob match operator, not equality operator: STR = GLOB
- * (in GLOB, quoting is significant on char-by-char basis: a*cd"*")
- * == same as =
- * add =~ regex match operator: STR =~ REGEX
+ * ( ) < > should not have special meaning (IOW: should not require quoting)
+ * in word = GLOB, quoting should be significant on char-by-char basis: a*cd"*"
  */
 #define    BASH_TEST2           (ENABLE_ASH_BASH_COMPAT * ENABLE_ASH_TEST)
 #define    BASH_SOURCE          ENABLE_ASH_BASH_COMPAT
@@ -3173,7 +3173,7 @@ updatepwd(const char *dir)
 			lim++;
 		}
 	}
-	p = strtok(cdcomppath, "/");
+	p = strtok_r(cdcomppath, "/", &cdcomppath);
 	while (p) {
 		switch (*p) {
 		case '.':
@@ -3192,7 +3192,7 @@ updatepwd(const char *dir)
 			new = stack_putstr(p, new);
 			USTPUTC('/', new);
 		}
-		p = strtok(NULL, "/");
+		p = strtok_r(NULL, "/", &cdcomppath);
 	}
 	if (new > lim)
 		STUNPUTC(new);
@@ -4780,53 +4780,6 @@ waitpid_child(int *status, int wait_flags)
 	return pid;
 }
 #define waitpid(p, s, f) waitpid_child(s, f)
-#define wait_block_or_sig(s) waitpid_child(s, 0)
-
-#else
-
-static int
-wait_block_or_sig(int *status)
-{
-	int pid;
-
-	do {
-		sigset_t mask;
-
-		/* Poll all children for changes in their state */
-		got_sigchld = 0;
-		/* if job control is active, accept stopped processes too */
-		pid = waitpid(-1, status, doing_jobctl ? (WNOHANG|WUNTRACED) : WNOHANG);
-		if (pid != 0)
-			break; /* Error (e.g. EINTR, ECHILD) or pid */
-
-		/* Children exist, but none are ready. Sleep until interesting signal */
-#if 1
-		sigfillset(&mask);
-		sigprocmask2(SIG_SETMASK, &mask); /* mask is updated */
-		while (!got_sigchld && !pending_sig) {
-			sigsuspend(&mask);
-			/* ^^^ add "sigdelset(&mask, SIGCHLD);" before sigsuspend
-			 * to make sure SIGCHLD is not masked off?
-			 * It was reported that this:
-			 *	fn() { : | return; }
-			 *	shopt -s lastpipe
-			 *	fn
-			 *	exec ash SCRIPT
-			 * under bash 4.4.23 runs SCRIPT with SIGCHLD masked,
-			 * making "wait" commands in SCRIPT block forever.
-			 */
-		}
-		sigprocmask(SIG_SETMASK, &mask, NULL);
-#else /* unsafe: a signal can set pending_sig after check, but before pause() */
-		while (!got_sigchld && !pending_sig)
-			pause();
-#endif
-
-		/* If it was SIGCHLD, poll children again */
-	} while (got_sigchld);
-
-	return pid;
-}
 #endif
 
 #define DOWAIT_NONBLOCK 0
@@ -4837,12 +4790,52 @@ wait_block_or_sig(int *status)
 #endif
 
 static int
+waitproc(int block, int *status)
+{
+#if !ENABLE_PLATFORM_MINGW32
+	sigset_t oldmask;
+	int flags = block == DOWAIT_BLOCK ? 0 : WNOHANG;
+	int err;
+
+#if JOBS
+	if (doing_jobctl)
+		flags |= WUNTRACED;
+#endif
+
+	do {
+		got_sigchld = 0;
+		do
+			err = waitpid(-1, status, flags);
+		while (err < 0 && errno == EINTR);
+
+		if (err || (err = -!block))
+			break;
+
+		sigfillset(&oldmask);
+		sigprocmask2(SIG_SETMASK, &oldmask); /* mask is updated */
+		while (!got_sigchld && !pending_sig)
+			sigsuspend(&oldmask);
+		sigprocmask(SIG_SETMASK, &oldmask, NULL);
+		//simpler, but unsafe: a signal can set pending_sig after check, but before pause():
+		//while (!got_sigchld && !pending_sig)
+		//	pause();
+
+	} while (got_sigchld);
+
+	return err;
+#else
+	int flags = block == DOWAIT_BLOCK ? 0 : WNOHANG;
+	return waitpid(-1, status, flags);
+#endif
+}
+
+static int
 waitone(int block, struct job *job)
 {
 	int pid;
 	int status;
 	struct job *jp;
-	struct job *thisjob;
+	struct job *thisjob = NULL;
 #if BASH_WAIT_N
 	bool want_jobexitstatus = (block & DOWAIT_JOBSTATUS);
 	block = (block & ~DOWAIT_JOBSTATUS);
@@ -4869,21 +4862,8 @@ waitone(int block, struct job *job)
 	 * SIG_DFL handler does not wake sigsuspend().
 	 */
 	INT_OFF;
-	if (block == DOWAIT_BLOCK_OR_SIG) {
-		pid = wait_block_or_sig(&status);
-	} else {
-		int wait_flags = 0;
-		if (block == DOWAIT_NONBLOCK)
-			wait_flags = WNOHANG;
-		/* if job control is active, accept stopped processes too */
-		if (doing_jobctl)
-			wait_flags |= WUNTRACED;
-		/* NB: _not_ safe_waitpid, we need to detect EINTR */
-		pid = waitpid(-1, &status, wait_flags);
-	}
-	TRACE(("wait returns pid=%d, status=0x%x, errno=%d(%s)\n",
-				pid, status, errno, strerror(errno)));
-	thisjob = NULL;
+	pid = waitproc(block, &status);
+	TRACE(("wait returns pid %d, status=%d\n", pid, status));
 	if (pid <= 0)
 		goto out;
 
@@ -4971,21 +4951,35 @@ static int
 dowait(int block, struct job *jp)
 {
 #if !ENABLE_PLATFORM_MINGW32
-	int pid = block == DOWAIT_NONBLOCK ? got_sigchld : 1;
+	smallint gotchld = *(volatile smallint *)&got_sigchld;
+	int rpid;
+	int pid;
 
-	while (jp ? jp->state == JOBRUNNING : pid > 0) {
-		if (!jp)
-			got_sigchld = 0;
+	if (jp && jp->state != JOBRUNNING)
+		block = DOWAIT_NONBLOCK;
+
+	if (block == DOWAIT_NONBLOCK && !gotchld)
+		return 1;
+
+	rpid = 1;
+
+	do {
 		pid = waitone(block, jp);
-	}
+		rpid &= !!pid;
+
+		if (!pid || (jp && jp->state != JOBRUNNING))
+			block = DOWAIT_NONBLOCK;
+	} while (pid >= 0);
+
+	return rpid;
 #else
 	int pid = 1;
 
 	while (jp ? jp->state == JOBRUNNING : pid > 0)
 		pid = waitone(block, jp);
-#endif
 
 	return pid;
+#endif
 }
 
 #if JOBS
@@ -5232,7 +5226,7 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 			job = getjob(*argv, 0);
 		}
 		/* loop until process terminated or stopped */
-		dowait(DOWAIT_BLOCK_OR_SIG, NULL);
+		dowait(DOWAIT_BLOCK_OR_SIG, job);
 		if (pending_sig)
 			goto sigout;
 		job->waited = 1;
@@ -12622,7 +12616,8 @@ simplecmd(void)
 				tokpushback = 1;
 				goto out;
 			}
-			wordtext = (char *) (t == TAND ? "-a" : "-o");
+			/* pass "&&" or "||" to [[ ]] as literal args */
+			wordtext = (char *) (t == TAND ? "&&" : "||");
 #endif
 		case TWORD:
 			n = stzalloc(sizeof(struct narg));
@@ -13600,7 +13595,7 @@ parsebackq: {
 				goto done;
 
 			case '\\':
-				pc = pgetc(); /* or pgetc_eatbnl()? why (example)? */
+				pc = pgetc(); /* not pgetc_eatbnl! */
 				if (pc != '\\' && pc != '`' && pc != '$'
 				 && (!synstack->dblquote || pc != '"')
 				) {

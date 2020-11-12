@@ -357,12 +357,13 @@ struct BUG_off_t_size_is_misdetected {
 #endif
 #endif
 
-#if defined(__GLIBC__)
-/* glibc uses __errno_location() to get a ptr to errno */
-/* We can just memorize it once - no multithreading in busybox :) */
+#if defined(errno)
+/* If errno is a define, assume it's "define errno (*__errno_location())"
+ * and we will cache it's result in this variable */
 extern int *const bb_errno;
 #undef errno
 #define errno (*bb_errno)
+#define bb_cached_errno_ptr 1
 #endif
 
 #if !(ULONG_MAX > 0xffffffff)
@@ -454,15 +455,23 @@ enum {
 	ACTION_FOLLOWLINKS    = (1 << 1),
 	ACTION_FOLLOWLINKS_L0 = (1 << 2),
 	ACTION_DEPTHFIRST     = (1 << 3),
-	/*ACTION_REVERSE      = (1 << 4), - unused */
-	ACTION_QUIET          = (1 << 5),
-	ACTION_DANGLING_OK    = (1 << 6),
+	ACTION_QUIET          = (1 << 4),
+	ACTION_DANGLING_OK    = (1 << 5),
 };
 typedef uint8_t recurse_flags_t;
-extern int recursive_action(const char *fileName, unsigned flags,
-	int FAST_FUNC (*fileAction)(const char *fileName, struct stat* statbuf, void* userData, int depth),
-	int FAST_FUNC (*dirAction)(const char *fileName, struct stat* statbuf, void* userData, int depth),
-	void* userData, unsigned depth) FAST_FUNC;
+typedef struct recursive_state {
+	unsigned flags;
+	unsigned depth;
+	void *userData;
+	int FAST_FUNC (*fileAction)(struct recursive_state *state, const char *fileName, struct stat* statbuf);
+	int FAST_FUNC  (*dirAction)(struct recursive_state *state, const char *fileName, struct stat* statbuf);
+} recursive_state_t;
+int recursive_action(const char *fileName, unsigned flags,
+	int FAST_FUNC (*fileAction)(struct recursive_state *state, const char *fileName, struct stat* statbuf),
+	int FAST_FUNC  (*dirAction)(struct recursive_state *state, const char *fileName, struct stat* statbuf),
+	void *userData
+) FAST_FUNC;
+
 extern int device_open(const char *device, int mode) FAST_FUNC;
 enum { GETPTY_BUFSIZE = 16 }; /* more than enough for "/dev/ttyXXX" */
 extern int xgetpty(char *line) FAST_FUNC;
@@ -856,7 +865,7 @@ ssize_t recv_from_to(int fd, void *buf, size_t len, int flags,
 		struct sockaddr *to,
 		socklen_t sa_size) FAST_FUNC;
 
-uint16_t inet_cksum(uint16_t *addr, int len) FAST_FUNC;
+uint16_t inet_cksum(const void *addr, int len) FAST_FUNC;
 int parse_pasv_epsv(char *buf) FAST_FUNC;
 
 /* 0 if argv[0] is NULL: */
@@ -1558,7 +1567,8 @@ int del_loop(const char *device) FAST_FUNC;
  * malloc and return it in *devname.
  * return value is the opened fd to the loop device, or < on error
  */
-int set_loop(char **devname, const char *file, unsigned long long offset, unsigned flags) FAST_FUNC;
+int set_loop(char **devname, const char *file, unsigned long long offset,
+		unsigned long long sizelimit, unsigned flags) FAST_FUNC;
 /* These constants match linux/loop.h (without BB_ prefix): */
 #define BB_LO_FLAGS_READ_ONLY 1
 #define BB_LO_FLAGS_AUTOCLEAR 4

@@ -299,7 +299,8 @@ static void writeLongname(int fd, int type, const char *name, int dir)
 	header.typeflag = type;
 	strcpy(header.name, "././@LongLink");
 	/* This sets mode/uid/gid/mtime to "00...00<NUL>" strings */
-	memset(header.mode, '0', sizeof(struct prefilled));
+	memset((char*)&header + offsetof(struct tar_header_t, mode), /* make gcc-9.x happy */
+			'0', sizeof(struct prefilled));
 	header.mode [sizeof(header.mode ) - 1] = '\0';
 	header.uid  [sizeof(header.uid  ) - 1] = '\0';
 	header.gid  [sizeof(header.gid  ) - 1] = '\0';
@@ -492,10 +493,11 @@ static int exclude_file(const llist_t *excluded_files, const char *file)
 #  define exclude_file(excluded_files, file) 0
 # endif
 
-static int FAST_FUNC writeFileToTarball(const char *fileName, struct stat *statbuf,
-			void *userData, int depth UNUSED_PARAM)
+static int FAST_FUNC writeFileToTarball(struct recursive_state *state,
+		const char *fileName,
+		struct stat *statbuf)
 {
-	struct TarBallInfo *tbInfo = (struct TarBallInfo *) userData;
+	struct TarBallInfo *tbInfo = (struct TarBallInfo *) state->userData;
 	const char *header_name;
 	int inputFileFd = -1;
 
@@ -714,7 +716,7 @@ static NOINLINE int writeTarFile(
 	/* Read the directory/files and iterate over them one at a time */
 	while (filelist) {
 		if (!recursive_action(filelist->data, recurseFlags,
-				writeFileToTarball, writeFileToTarball, tbInfo, 0)
+				writeFileToTarball, writeFileToTarball, tbInfo)
 		) {
 			errorFlag = TRUE;
 		}
