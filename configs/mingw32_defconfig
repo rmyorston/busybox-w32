@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.33.0.git
-# Sun Aug 23 11:07:13 2020
+# Thu Nov 12 08:15:02 2020
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -637,7 +637,6 @@ CONFIG_CAL=y
 CONFIG_GETOPT=y
 CONFIG_FEATURE_GETOPT_LONG=y
 CONFIG_HEXDUMP=y
-CONFIG_FEATURE_HEXDUMP_REVERSE=y
 CONFIG_HD=y
 CONFIG_XXD=y
 # CONFIG_HWCLOCK is not set
