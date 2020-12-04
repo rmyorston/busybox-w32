@@ -1,4 +1,6 @@
-
+#ifdef __WATCOMC__ 
+# include "watcom_win32.h"
+#else
 #define NOIMPL(name,...) static inline int name(__VA_ARGS__) { errno = ENOSYS; return -1; }
 #define IMPL(name,ret,retval,...) static inline ret name(__VA_ARGS__) { return retval; }
 
@@ -499,6 +501,8 @@ int mingw_execve(const char *cmd, char *const *argv, char *const *envp);
 int kill_SIGTERM_by_handle(HANDLE process);
 
 #define find_mount_point(n, s) find_mount_point(n)
+
+#endif /* __WATCOMC__ */
 
 char *is_prefixed_with_case(const char *string, const char *key) FAST_FUNC;
 char *is_suffixed_with_case(const char *string, const char *key) FAST_FUNC;

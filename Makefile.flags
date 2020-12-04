@@ -2,10 +2,26 @@
 # Build system
 # ==========================================================================
 
+ifeq ($(CONFIG_COMPILER_WATCOM),y)
+EXTRAVERSION = ".watcom2"
+endif
+
 BB_VER = $(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
 export BB_VER
 SKIP_STRIP ?= n
 
+ifeq ($(CONFIG_COMPILER_WATCOM),y)
+# -Wc,-ez gives phar lap object format... 
+# -Wc,-zu does not assume stack in data segment, injects __far
+# -Wc,-s do not do stack checks
+# -Wc,-sg grow stack
+CPPFLAGS = -std=c99 -Wc,-aa -Wc,-ai -Wc,-aq -Wc,-sg -Wc,-zev -D+ \
+	-Iinclude -Ilibbb \
+	$(if $(KBUILD_SRC),-Iinclude2 -I$(srctree)/include -I$(srctree)/libbb) \
+	-include include/autoconf.h \
+	$(if $(CONFIG_LFS),-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64) \
+	-D"BB_VER=\"$(BB_VER)\""
+else
 # -std=gnu99 needed for [U]LLONG_MAX on some systems
 CPPFLAGS += $(call cc-option,-std=gnu99,)
 
@@ -31,6 +47,7 @@ CFLAGS += $(call cc-option,-Wno-format-security,)
 CFLAGS += $(call cc-option,-Wdeclaration-after-statement,)
 # If you want to add more -Wsomething above, make sure that it is
 # still possible to build bbox without warnings.
+endif #not watcom
 
 ifeq ($(CONFIG_WERROR),y)
 CFLAGS += $(call cc-option,-Werror,)
@@ -151,11 +168,57 @@ EXEEXT = .exe
 LDLIBS += ws2_32 mingwex -l:libssp.a
 endif
 
-ifneq ($(CONFIG_PLATFORM_MINGW32),y)
+ifeq ($(CONFIG_COMPILER_WATCOM),y)
+# Overide GCC/binutils-assumptions made in the Makefile
+# CFLAGS define NT (win32) as build target
+# make sure that the WATCOM variable is set to the root
+# of your watcom install.
+CC 		= owcc
+CPP 		= owcc -E
+AS 		= wasm
+AR 		= wlib
+LD 		= owcc
+# INCLUDE is defined in specific makefile templates
+# to alow for watcom to be used as a host compiler
+# also when cross-compiling
+# could not find something like nm, use host binutils
+NM 		= nm
+STRIP 		= wstrip
+SKIP_STRIP	= y
+#we do not want binutils to mess with object
+#format, let script believe it succeeded
+OBJCOPY 	= true
+OBJDUMP 	= dmpobj
+# character encoding: use tchar.h wherever possible
+# several options: none, -D_UNICODE, -D_MBCS
+ARFLAGS		= -q
+endif
+
+ifeq ($(CONFIG_PLATFORM_WATCOM386_WIN32),y)
+CFLAGS 		= -bnt -mthreads -mtune=i686 -fptune=i686 -D_UNICODE
+CXXFLAGS 	= -bnt -mthreads -mtune=i686 -fptune=i686 -D_UNICODE
+AFLAGS 		= 
+LIBPATH		= $(WATCOM)/lib386:$(WATCOM)/lib386/nt:$(WATCOM)/binnt
+LIBRARY		= ncrypt crypt32 userenv ws2_32
+CFLAGS += -Iwin32 -Iwatcom -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -D_ENABLE_AUTODEPEND
+EXEEXT = .exe
+endif
+
+ifeq ($(CONFIG_PLATFORM_WATCOM386_LINUX),y)
+CFLAGS 		= -blinux -mthreads -mtune=i686 -fptune=i686 -D_UNICODE
+CXXFLAGS 	= -blinux -mthreads -mtune=i686 -fptune=i686 -D_UNICODE
+AFLAGS 		= 
+LIBPATH		= $(WATCOM)/lib386:$(WATCOM)/lib386/linux
+LIBRARY		= 
+CFLAGS += -Iwatcom -Iinclude -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -D_ENABLE_AUTODEPEND
+endif
+
+
 # Android has no separate crypt library
 # gcc-4.2.1 fails if we try to feed C source on stdin:
 #  echo 'int main(void){return 0;}' | $(CC) $(CFLAGS) -lcrypt -o /dev/null -xc -
 # fall back to using a temp file:
+ifneq ($(CONFIG_COMPILER_WATCOM),y)
 CRYPT_AVAILABLE := $(shell echo 'int main(void){return 0;}' >crypttest.c; $(CC) $(CFLAGS) -lcrypt -o /dev/null crypttest.c >/dev/null 2>&1 && echo "y"; rm crypttest.c)
 ifeq ($(CRYPT_AVAILABLE),y)
 LDLIBS += m rt crypt
@@ -165,6 +228,7 @@ endif
 # libm may be needed for dc, awk, ntpd
 # librt may be needed for clock_gettime()
 endif
+endif #watcom does not have any of these
 
 # libpam may use libpthread, libdl and/or libaudit.
 # On some platforms that requires an explicit -lpthread, -ldl, -laudit.

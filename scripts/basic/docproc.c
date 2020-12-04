@@ -88,7 +88,7 @@ void exec_kernel_doc(char **svec)
 	int rflen;
 
 	/* Make sure output generated so far are flushed */
-#ifdef __MINGW32__
+#if defined(__MINGW32__) || defined(__WATCOMC__)
 	fflush(stdout);
 	rflen  = strlen(getenv("SRCTREE"));
 	rflen += strlen(KERNELDOCPATH KERNELDOC);

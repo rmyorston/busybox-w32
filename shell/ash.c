@@ -2937,7 +2937,7 @@ putprompt(const char *s)
 }
 #endif
 
-/* expandstr() needs parsing machinery, so it is far away ahead... */
+/* expandstr() needs parsing machinery, so it is far away ahead0... */
 static const char *expandstr(const char *ps, int syntax_type);
 /* Values for syntax param */
 #define BASESYNTAX 0    /* not in quotes */
@@ -15568,7 +15568,9 @@ static void
 forkshell_evalbackcmd(struct forkshell *fs)
 {
 	union node *n = fs->n;
-	int pip[2] = {fs->fd[0], fs->fd[1]};
+	int pip[2]; 
+    pip[0] = fs->fd[0]; 
+    pip[1] = fs->fd[1];
 
 	FORCE_INT_ON;
 	close(pip[0]);
@@ -15604,8 +15606,10 @@ forkshell_evalpipe(struct forkshell *fs)
 	union node *n = fs->n;
 	int flags = fs->flags;
 	int prevfd = fs->fd[2];
-	int pip[2] = {fs->fd[0], fs->fd[1]};
-
+	int pip[2]; 
+    pip[0] = fs->fd[0]; 
+    pip[1] = fs->fd[1];
+    
 	TRACE(("ash: subshell: %s\n",__PRETTY_FUNCTION__));
 	INT_ON;
 	if (pip[1] >= 0) {

@@ -7,7 +7,7 @@
 #ifndef BB_PLATFORM_H
 #define BB_PLATFORM_H 1
 
-#if ENABLE_PLATFORM_MINGW32
+#if defined(ENABLE_PLATFORM_MINGW32)
 # if !defined(__MINGW32__) /* HOSTCC is called */
 #  undef ENABLE_PLATFORM_MINGW32
 # endif
@@ -15,6 +15,29 @@
 # if defined(__MINGW32__)
 #  error "You must select target platform MS Windows, or it won't build"
 # endif
+#endif
+
+#if  defined(__LINUX__) || defined(__linux__)
+/* somehow an upstream expression contaminates normal GCC 
+ (linux target) with ENABLE_PLATFORM_MINGW32 despite the check above */
+#undef ENABLE_PLATFORM_MINGW32
+#endif
+
+#if defined(__WATCOMC__) && defined(__NT__)
+#define ENABLE_PLATFORM_MINGW32 1
+#endif
+
+#if !defined(ENABLE_PLATFORM_MINGW32)
+#define MINGW_TEST 0
+#else
+#define MINGW_TEST 1
+#endif
+
+#if !defined(__WATCOMC__)
+/* undefined variables do not work in if() statements */
+#define WATCOM_TEST 0
+#else
+#define WATCOM_TEST 1
 #endif
 
 /* Convenience macros to test the version of gcc. */
@@ -56,7 +79,11 @@
 # define __const const
 #endif
 
-#define UNUSED_PARAM __attribute__ ((__unused__))
+#ifndef __WATCOMC__
+# define UNUSED_PARAM __attribute__ ((__unused__))
+#else
+# define UNUSED_PARAM /*nothing*/
+#endif
 #define NORETURN __attribute__ ((__noreturn__))
 
 #if __GNUC_PREREQ(4,5)
@@ -144,7 +171,7 @@
 
 /* Make all declarations hidden (-fvisibility flag only affects definitions) */
 /* (don't include system headers after this until corresponding pop!) */
-#if __GNUC_PREREQ(4,1) && !defined(__CYGWIN__) && !ENABLE_PLATFORM_MINGW32
+#if __GNUC_PREREQ(4,1) && !defined(__CYGWIN__) && !defined(ENABLE_PLATFORM_MINGW32)
 # define PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN _Pragma("GCC visibility push(hidden)")
 # define POP_SAVED_FUNCTION_VISIBILITY              _Pragma("GCC visibility pop")
 #else
@@ -173,7 +200,7 @@
 # define bswap_64 __bswap64
 # define bswap_32 __bswap32
 # define bswap_16 __bswap16
-#elif ENABLE_PLATFORM_MINGW32
+#elif defined(ENABLE_PLATFORM_MINGW32) || defined(__WATCOMC__)
 # define __BIG_ENDIAN 0
 # define __LITTLE_ENDIAN 1
 # define __BYTE_ORDER __LITTLE_ENDIAN
@@ -449,6 +476,7 @@ typedef unsigned smalluint;
 # endif
 #endif
 
+
 #if ENABLE_PLATFORM_MINGW32
 # undef HAVE_FDATASYNC
 # undef HAVE_DPRINTF
@@ -471,6 +499,7 @@ typedef unsigned smalluint;
 #endif
 
 #if defined(__WATCOMC__)
+void *mempcpy(void *dest, const void *src, size_t len);
 # undef HAVE_DPRINTF
 # undef HAVE_GETLINE
 # undef HAVE_MEMRCHR
@@ -618,7 +647,7 @@ extern char *stpcpy(char *p, const char *to_add) FAST_FUNC;
 #define mempcpy bb__mempcpy
 static ALWAYS_INLINE void *mempcpy(void *dest, const void *src, size_t len)
 {
-	return memcpy(dest, src, len) + len;
+	return memcpy(dest, src, len) + len; 
 }
 #endif
 

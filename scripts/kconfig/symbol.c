@@ -6,9 +6,17 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
-#ifndef __MINGW32__
+
+#ifndef __WATCOMC__
 #include <regex.h>
+#else
+#include "../../watcom/regex.h"
+#endif
+
+#if !defined(__WATCOMC__) && !defined(__NT__)
 #include <sys/utsname.h>
+#else
+#include "../../win32/sys/utsname.h"
 #endif
 
 #define LKC_DIRECT_LINK

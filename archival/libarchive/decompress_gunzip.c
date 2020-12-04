@@ -1135,6 +1135,9 @@ static uint32_t buffer_read_le_u32(STATE_PARAM_ONLY)
 #endif
 static int check_header_gzip(STATE_PARAM transformer_state_t *xstate)
 {
+#ifdef __WATCOMC__
+#pragma pack(1)
+#endif
 	union {
 		unsigned char raw[8];
 		struct {
@@ -1148,6 +1151,10 @@ static int check_header_gzip(STATE_PARAM transformer_state_t *xstate)
 
 	BUILD_BUG_ON(sizeof(header) != 8);
 
+#ifdef __WATCOMC__
+#pragma pack()
+#endif
+    
 	/*
 	 * Rewind bytebuffer. We use the beginning because the header has 8
 	 * bytes, leaving enough for unwinding afterwards.

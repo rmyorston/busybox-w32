@@ -74,7 +74,7 @@
 
 //kbuild:lib-$(CONFIG_XARGS) += xargs.o
 
-#if ENABLE_PLATFORM_MINGW32
+#if defined(ENABLE_PLATFORM_MINGW32) && !defined(__linux__)
 #include <conio.h>
 #endif
 #include "libbb.h"
@@ -316,7 +316,11 @@ static int xargs_exec(void)
 /* In POSIX/C locale isspace is only these chars: "\t\n\v\f\r" and space.
  * "\t\n\v\f\r" happen to have ASCII codes 9,10,11,12,13.
  */
+#ifndef __WATCOMC__
 #define ISSPACE(a) ({ unsigned char xargs__isspace = (a) - 9; xargs__isspace == (' ' - 9) || xargs__isspace <= (13 - 9); })
+#else
+#define ISSPACE(a) (((a) - 9) == (' ' - 9) || ((a) - 9) <= (13 - 9))
+#endif
 
 static void store_param(char *s)
 {

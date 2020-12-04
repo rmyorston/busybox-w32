@@ -38,6 +38,11 @@
 #define LKC_DIRECT_LINK
 #include "lkc.h"
 
+#if defined __WATCOMC__
+#undef N_
+#define N_(x) {x}
+#endif
+
 static char menu_backtitle[128];
 static const char mconf_readme[] = N_(
 "Overview\n"
@@ -329,8 +334,10 @@ static void init_wsize(void)
 	}
 
 	if (rows < 19 || cols < 80) {
+#ifndef __WATCOMC__ /* something with fprintf */
 		fprintf(stderr, N_("Your display is too small to run Menuconfig!\n"));
 		fprintf(stderr, N_("It must be at least 19 lines by 80 columns.\n"));
+#endif
 		exit(1);
 	}
 
@@ -473,7 +480,7 @@ static void winch_handler(int sig)
 
 static int exec_conf(void)
 {
-#ifdef __MINGW32__
+#if defined(__MINGW32__) || defined(__WATCOMC__)
 	fprintf(stderr, "exec_conf not implemented\n");
 	exit(1);
 #else

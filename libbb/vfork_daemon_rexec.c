@@ -17,6 +17,7 @@
 #include "busybox.h" /* uses applet tables */
 #include "NUM_APPLETS.h"
 
+
 #define NOFORK_SUPPORT ((NUM_APPLETS > 1) && (ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_NOFORK))
 #define NOEXEC_SUPPORT ((NUM_APPLETS > 1) && (ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE))
 
@@ -106,7 +107,12 @@ int FAST_FUNC run_nofork_applet(int applet_no, char **argv)
 	if (!rc) {
 		/* Some callers (xargs)
 		 * need argv untouched because they free argv[i]! */
+#ifndef __WATCOMC__
 		char *tmp_argv[argc+1];
+#else
+		/* no idea what an appropriate size of the array would be */
+		char *tmp_argv[64];
+#endif
 		memcpy(tmp_argv, argv, (argc+1) * sizeof(tmp_argv[0]));
 		applet_name = tmp_argv[0];
 		/* Finally we can call NOFORK applet's main() */

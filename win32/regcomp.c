@@ -18,7 +18,11 @@
    Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301 USA.  */
 
-#define UNUSED_PARAM __attribute__ ((__unused__))
+#ifdef __WATCOMC__
+# define UNUSED_PARAM /*nothing*/
+#else
+# define UNUSED_PARAM __attribute__ ((__unused__))
+#endif
 
 static reg_errcode_t re_compile_internal (regex_t *preg, const char * pattern,
 					  size_t length, reg_syntax_t syntax);

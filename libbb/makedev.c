@@ -11,7 +11,7 @@
 
 /* Different Unixes want different headers for makedev */
 #if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) \
- || defined(__APPLE__)
+ || defined(__APPLE__) || defined(__WATCOMC__)
 # include <sys/types.h>
 #else
 # include <features.h>

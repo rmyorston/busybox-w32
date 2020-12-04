@@ -626,11 +626,11 @@ re_search_internal (const regex_t *preg,
   int fl_longest_match, match_first, match_kind, match_last = -1;
   int extra_nmatch;
   int sb, ch;
-#if defined _LIBC || (defined __STDC_VERSION__ && __STDC_VERSION__ >= 199901L)
-  re_match_context_t mctx = { .dfa = dfa };
-#else
+//#if !defined(__WATCOMC__) || defined _LIBC || (defined __STDC_VERSION__ && __STDC_VERSION__ >= 199901L)
+//  re_match_context_t mctx = { .dfa = dfa };
+//#else
   re_match_context_t mctx;
-#endif
+//#endif
   char *fastmap = (preg->fastmap != NULL && preg->fastmap_accurate
 		   && range && !preg->can_be_null) ? preg->fastmap : NULL;
   RE_TRANSLATE_TYPE t = preg->translate;

@@ -197,7 +197,11 @@ int main(int argc, const char * argv [])
      * So by having an initial \n, strstr will find exact matches.
      */
 
+#if defined __WATCOMC__
+    fp_find = _popen("find * -type f -name *.h -print", "r");
+#else
     fp_find = popen("find * -type f -name \"*.h\" -print", "r");
+#endif
     if (fp_find == 0)
 	ERROR_EXIT( "find" );
 
@@ -227,9 +231,11 @@ int main(int argc, const char * argv [])
 	    }
 	}
     }
-
+#if defined __WATCOMC__
+    if (_pclose(fp_find) != 0)
+#else
     if (pclose(fp_find) != 0)
-	ERROR_EXIT("find");
-
+#endif
+    ERROR_EXIT("find");
     return 0;
 }

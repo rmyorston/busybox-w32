@@ -20,8 +20,16 @@
 //usage:#define rev_full_usage "\n\n"
 //usage:	"Reverse lines of FILE"
 
+#ifdef __WATCOMC__
+#define strrev Watcom_strrev
+#endif
+
 #include "libbb.h"
 #include "unicode.h"
+
+#ifdef __WATCOMC__
+#undef strrev
+#endif
 
 #undef CHAR_T
 #if ENABLE_UNICODE_SUPPORT
@@ -39,7 +47,7 @@ static void strrev(CHAR_T *s, int len)
 		len--;
 		if (len != 0 && s[len] == '\n')
 			len--;
-#if ENABLE_PLATFORM_MINGW32
+#if defined(ENABLE_PLATFORM_MINGW32)
 		if (len != 0 && s[len] == '\r')
 			len--;
 #endif

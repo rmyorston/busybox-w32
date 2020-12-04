@@ -2168,7 +2168,10 @@ static void cmdedit_setwidth(void)
 	redraw((new_y >= cmdedit_y ? new_y : cmdedit_y), command_len - cursor);
 }
 
-static void win_changed(int nsig UNUSED_PARAM)
+#if !defined(__WATCOMC__) && !defined(__NT__) 
+static
+#endif
+void win_changed(int nsig UNUSED_PARAM)
 {
 	if (S.ok_to_redraw) {
 		/* We are in read_key(), safe to redraw immediately */
@@ -2565,6 +2568,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	S.SIGWINCH_handler.sa_flags = SA_RESTART;
 	sigaction2(SIGWINCH, &S.SIGWINCH_handler);
 #endif
+
 	read_key_buffer[0] = 0;
 	while (1) {
 		/*
@@ -3039,7 +3043,8 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	/* restore SIGWINCH handler */
 	sigaction_set(SIGWINCH, &S.SIGWINCH_handler);
 #endif
-	fflush_all();
+
+    fflush_all();
 
 	len = command_len;
 	DEINIT_S();

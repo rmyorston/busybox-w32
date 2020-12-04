@@ -18,7 +18,7 @@
 
 int FAST_FUNC setsockopt_int(int fd, int level, int optname, int optval)
 {
-	return setsockopt(fd, level, optname, &optval, sizeof(int));
+	return setsockopt(fd, level, optname, (const char *) &optval, sizeof(int));
 }
 int FAST_FUNC setsockopt_1(int fd, int level, int optname)
 {
@@ -93,12 +93,12 @@ static len_and_sockaddr* get_lsa(int fd, int (*get_name)(int fd, struct sockaddr
 
 len_and_sockaddr* FAST_FUNC get_sock_lsa(int fd)
 {
-	return get_lsa(fd, getsockname);
+	return get_lsa(fd, (int) getsockname);
 }
 
 len_and_sockaddr* FAST_FUNC get_peer_lsa(int fd)
 {
-	return get_lsa(fd, getpeername);
+	return get_lsa(fd, (int) getpeername);
 }
 #endif
 
@@ -177,9 +177,11 @@ void FAST_FUNC set_nport(struct sockaddr *sa, unsigned port)
 	/* What? UNIX socket? IPX?? :) */
 }
 
+
 /* We hijack this constant to mean something else */
 /* It doesn't hurt because we will remove this bit anyway */
 #define DIE_ON_ERROR AI_CANONNAME
+
 
 /* host: "1.2.3.4[:port]", "www.google.com[:port]"
  * port: if neither of above specifies port # */
@@ -360,7 +362,7 @@ int FAST_FUNC xsocket_type(len_and_sockaddr **lsap, int family, int sock_type)
 		if (fd >= 0) {
 #if ENABLE_PLATFORM_MINGW32
 			DWORD buffer = 0;
-			setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &buffer, sizeof(DWORD));
+			setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, (const char*) &buffer, sizeof(DWORD));
 #endif
 			family = AF_INET6;
 			goto done;

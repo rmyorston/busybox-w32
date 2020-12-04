@@ -14,9 +14,13 @@
 #define LKC_DIRECT_LINK
 #include "lkc.h"
 
+#ifndef __WATCOMC__
 static void conf_warning(const char *fmt, ...)
 	__attribute__ ((format (printf, 1, 2)));
-
+#else
+static void conf_warning(const char *fmt, ...);
+#endif
+	
 static const char *conf_filename;
 static int conf_lineno, conf_warnings, conf_unsaved;
 
@@ -98,8 +102,9 @@ int conf_read_simple(const char *name)
 		const char **names = conf_confnames;
 		while ((name = *names++)) {
 			name = conf_expand_value(name);
-			in = zconf_fopen(name);
-			if (in) {
+                        if (name) {
+                        in = zconf_fopen(name);
+                        } if (in) {
 				printf(_("#\n"
 				         "# using defaults found in %s\n"
 				         "#\n"), name);

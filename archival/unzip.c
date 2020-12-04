@@ -70,7 +70,7 @@
 
 #include "libbb.h"
 #include "bb_archive.h"
-#if ENABLE_PLATFORM_MINGW32 && __GNUC__
+#if defined(ENABLE_PLATFORM_MINGW32) && __GNUC__
 #pragma pack(2)
 #endif
 
@@ -96,6 +96,9 @@ enum {
 
 #define ZIP_HEADER_LEN 26
 
+#ifdef __WATCOMC__
+#pragma pack(1)
+#endif
 typedef union {
 	uint8_t raw[ZIP_HEADER_LEN];
 	struct {
@@ -114,6 +117,7 @@ typedef union {
 		/* data follows */
 	} fmt PACKED;
 } zip_header_t; /* PACKED - gcc 4.2.1 doesn't like it (spews warning) */
+
 
 #define FIX_ENDIANNESS_ZIP(zip) \
 do { if (BB_BIG_ENDIAN) { \
@@ -205,6 +209,9 @@ struct BUG {
 	char BUG_cde_must_be_16_bytes[
 		sizeof(cde_t) == CDE_LEN ? 1 : -1];
 };
+#ifdef __WATCOMC__
+#pragma pack()
+#endif
 
 
 enum { zip_fd = 3 };

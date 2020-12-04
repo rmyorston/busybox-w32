@@ -18,6 +18,10 @@
    Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301 USA.  */
 
+#if defined __WATCOMC__
+#include <malloc.h>
+#endif
+
 #define HAVE_LIBINTL_H 0
 #define ENABLE_NLS 0
 #define HAVE_ALLOCA 0
@@ -88,3 +92,4 @@ link_warning (re_max_failures, "the 're_max_failures' variable is obsolete and w
 int re_max_failures = 2000;
 # endif
 #endif
+

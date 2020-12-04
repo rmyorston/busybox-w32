@@ -2,7 +2,11 @@
 
 int mingw_system(const char *cmd)
 {
-	const char *argv[4] = { "sh", "-c", cmd, NULL };
+	const char *argv[4];
+    argv[0] = "sh";
+    argv[1] = "-c";
+    argv[2] = cmd; 
+    argv[3] = NULL;
 	intptr_t proc;
 	HANDLE h;
 	DWORD ret = 0;

@@ -12,7 +12,8 @@ You need a MinGW compiler and a POSIX environment.  I cross-compile on Linux.  O
 
 `dnf install mingw64-gcc mingw64-windows-default-manifest` (for a 64-bit build)
 
-To start, run `make mingw32_defconfig` or `make mingw64_defconfig`.  You can then customize your build with `make menuconfig` or by editing `.config`, if you know what you're doing.
+To start, run `make mingw32_defconfig` or `make mingw64_defconfig`.  You can then customize your build with `make menuconfig`. Alternatively, to build using Open Watcom, run `make watcom386_win32_defconfig`. For more details
+     about Open Watcom, see watcom/README.
 
 In particular you may need to adjust the compiler by going to Busybox Settings -> Build Options -> Cross Compiler Prefix
 

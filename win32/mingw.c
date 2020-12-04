@@ -162,6 +162,7 @@ int err_win_to_posix(void)
 	return error;
 }
 
+
 static int zero_fd = -1;
 static int rand_fd = -1;
 
@@ -186,6 +187,7 @@ void update_dev_fd(int dev, int fd)
 		rand_fd = fd;
 }
 
+#ifndef __WATCOMC__
 #undef open
 int mingw_open (const char *filename, int oflags, ...)
 {
@@ -268,6 +270,8 @@ int mingw_dup2 (int fd, int fdto)
 	int ret = dup2(fd, fdto);
 	return ret != -1 ? fdto : -1;
 }
+
+#endif /* use native open, fopen, dup2 on Watcom */
 
 /*
  * The unit of FILETIME is 100-nanoseconds since January 1, 1601, UTC.
@@ -758,6 +762,7 @@ int nanosleep(const struct timespec *req, struct timespec *rem)
  * Windows' mktemp returns NULL on error whereas POSIX always returns the
  * template and signals an error by making it an empty string.
  */
+#ifndef __WATCOMC__
 #undef mktemp
 char *mingw_mktemp(char *template)
 {
@@ -768,6 +773,7 @@ char *mingw_mktemp(char *template)
 	return template;
 }
 
+
 int mkstemp(char *template)
 {
 	char *filename = mktemp(template);
@@ -775,8 +781,13 @@ int mkstemp(char *template)
 		return -1;
 	return open(filename, O_RDWR | O_CREAT, 0600);
 }
+#endif
 
+#ifndef __WATCOMC__
 int gettimeofday(struct timeval *tv, void *tz UNUSED_PARAM)
+#else
+int gettimeofday(struct timeval *tv, struct timezone *tz )
+#endif
 {
 	FILETIME ft;
 	long long hnsec;
@@ -787,6 +798,8 @@ int gettimeofday(struct timeval *tv, void *tz UNUSED_PARAM)
 	tv->tv_usec = (hnsec % 10000000) / 10;
 	return 0;
 }
+
+
 
 int pipe(int filedes[2])
 {
@@ -900,6 +913,7 @@ static char *get_user_name(void)
 	return user_name;
 }
 
+#ifndef __WATCOMC__
 int getuid(void)
 {
 	int ret = DEFAULT_UID;
@@ -933,6 +947,7 @@ struct passwd *getpwnam(const char *name)
 
 	return NULL;
 }
+#endif
 
 struct passwd *getpwuid(uid_t uid)
 {
@@ -967,6 +982,7 @@ struct passwd *getpwuid(uid_t uid)
 	return &p;
 }
 
+#ifndef __WATCOMC__
 struct group *getgrgid(gid_t gid)
 {
 	static char *members[2] = { NULL, NULL };
@@ -985,6 +1001,7 @@ struct group *getgrgid(gid_t gid)
 
 	return &g;
 }
+#endif
 
 int getgrouplist(const char *user UNUSED_PARAM, gid_t group,
 					gid_t *groups, int *ngroups)
@@ -1010,6 +1027,7 @@ int getgroups(int n, gid_t *groups)
 }
 
 int getlogin_r(char *buf, size_t len)
+
 {
 	char *name;
 

@@ -495,6 +495,7 @@ libs-y		:= \
 		sysklogd/ \
 		util-linux/ \
 		util-linux/volume_id/ \
+		watcom/ \
 		win32/ \
 
 endif # KBUILD_EXTMOD
@@ -608,6 +609,13 @@ busybox-all  := $(core-y) $(libs-y)
 # Rule to link busybox - also used during CONFIG_KALLSYMS
 # May be overridden by arch/$(ARCH)/Makefile
 quiet_cmd_busybox__ ?= LINK    $@
+ifeq ($(CONFIG_COMPILER_WATCOM),y)
+	ifeq ($(CONFIG_PLATFORM_WATCOM386_WIN32),y)
+		cmd_busybox__ = wlink @"$(srctree)/scripts/wlink-win32.lnk"
+	else
+		cmd_busybox__ = wlink @"$(srctree)/scripts/wlink-linux.lnk"
+	endif
+else
       cmd_busybox__ ?= $(srctree)/scripts/trylink \
       "$@" \
       "$(CC)" \
@@ -617,6 +625,7 @@ quiet_cmd_busybox__ ?= LINK    $@
       "$(libs-y)" \
       "$(LDLIBS)" \
       && $(srctree)/scripts/generate_BUFSIZ.sh --post include/common_bufsiz.h
+endif
 
 # Generate System.map
 quiet_cmd_sysmap = SYSMAP
@@ -1305,10 +1314,11 @@ quiet_cmd_rmdirs = $(if $(wildcard $(rm-dirs)),CLEAN   $(wildcard $(rm-dirs)))
 quiet_cmd_rmfiles = $(if $(wildcard $(rm-files)),CLEAN   $(wildcard $(rm-files)))
       cmd_rmfiles = rm -f $(rm-files)
 
-
+ifneq ($(CONFIG_COMPILER_WATCOM),y)
 a_flags = -Wp,-MD,$(depfile) $(AFLAGS) $(AFLAGS_KERNEL) \
 	  $(NOSTDINC_FLAGS) $(CPPFLAGS) \
 	  $(modkern_aflags) $(EXTRA_AFLAGS) $(AFLAGS_$(*F).o)
+endif
 
 quiet_cmd_as_o_S = AS      $@
 cmd_as_o_S       = $(CC) $(a_flags) -c -o $@ $<

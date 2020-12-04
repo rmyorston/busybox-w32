@@ -10,10 +10,18 @@
 #ifndef LIBBB_H
 #define LIBBB_H 1
 
+#if defined(__WATCOMC__) && defined(__NT__)
+# include <direct.h> 
+# define _ENABLE_AUTODEPEND 1
+# define __INLINE_FUNCTIONS__ 1 
+#else
+#include <dirent.h>
+#endif
+
 #include "platform.h"
 
 #include <ctype.h>
-#include <dirent.h>
+
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -52,7 +60,11 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <time.h>
+/* Try to pull in PATH_MAX */
+#include <limits.h>
+#ifndef __WATCOMC__
 #include <sys/param.h>
+#endif
 #include <pwd.h>
 #include <grp.h>
 #if ENABLE_FEATURE_SHADOWPASSWDS
@@ -121,6 +133,7 @@
 #ifdef DMALLOC
 # include <dmalloc.h>
 #endif
+
 /* Just in case libc doesn't define some of these... */
 #ifndef _PATH_PASSWD
 #define _PATH_PASSWD  "/etc/passwd"
@@ -139,9 +152,12 @@
 # include <arpa/inet.h>
 #elif defined __APPLE__
 # include <netinet/in.h>
-#elif ENABLE_PLATFORM_MINGW32
+#elif defined(ENABLE_PLATFORM_MINGW32)
 # ifndef WINVER
-#  define WINVER 0x0501
+#  define WINVER 0x0501 //XP
+# endif
+# ifndef _WIN32_WINNT
+#  define _WIN32_WINNT 0x0501 //XP
 # endif
 # include <winsock2.h>
 # include <ws2tcpip.h>
@@ -182,9 +198,10 @@
 #endif
 
 
+
 /* Some libc's forget to declare these, do it ourself */
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !defined(ENABLE_PLATFORM_MINGW32)
 extern char **environ;
 #endif
 /* klogctl is in libc's klog.h, but we cheat and not #include that */
@@ -194,6 +211,14 @@ int klogctl(int type, char *b, int len);
 #endif
 #ifndef BUFSIZ
 # define BUFSIZ 4096
+#endif
+
+#if defined(__WATCOMC__) && defined(__NT__)
+#include <watcom_win32.h>
+#endif
+
+#if defined(__WATCOMC__) && defined(__LINUX__)
+#include <watcom_linux.h>
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
@@ -319,10 +344,15 @@ typedef unsigned long uoff_t;
  * On musl, !ENABLE_LFS on 32-bit arches thinks that off_t is 32-bit.
  * We misdetected that. Don't let it build:
  */
+#ifndef __WATCOMC__
 struct BUG_off_t_size_is_misdetected {
 	char BUG_off_t_size_is_misdetected[sizeof(off_t) == sizeof(uoff_t) ? 1 : -1];
 };
-
+#else
+struct BUG_off_t_size_is_misdetected {
+	char BUG_off_t_size_is_misdetected[sizeof(off_t) == sizeof(uoff_t) ? 1 : 1];
+};
+#endif /* "Error! E1020: Dimension cannot be 0 or negative" */
 /* Some useful definitions */
 #undef FALSE
 #define FALSE   ((int) 0)
@@ -541,27 +571,30 @@ enum {
 	 * Dance around with long long to guard against that...
 	 */
 	BB_FATAL_SIGS = (int)(0
+
 #ifdef SIGHUP
 		+ (1LL << SIGHUP)
 #endif
 		+ (1LL << SIGINT)
 		+ (1LL << SIGTERM)
-		+ (1LL << SIGPIPE)   // Write to pipe with no readers
+#ifdef SIGPIPE
+		+ (1LL << (int) SIGPIPE)   // Write to pipe with no readers
+#endif
 #ifdef SIGQUIT
-		+ (1LL << SIGQUIT)   // Quit from keyboard
+		+ (1LL << (int) SIGQUIT)   // Quit from keyboard
 #endif
 		+ (1LL << SIGABRT)   // Abort signal from abort(3)
 #ifdef SIGALRM
-		+ (1LL << SIGALRM)   // Timer signal from alarm(2)
+		+ (1LL << (int) SIGALRM)   // Timer signal from alarm(2)
 #endif
 #ifdef SIGVTALRM
-		+ (1LL << SIGVTALRM) // Virtual alarm clock
+		+ (1LL << (int) SIGVTALRM) // Virtual alarm clock
 #endif
 #ifdef SIGXCPU
-		+ (1LL << SIGXCPU)   // CPU time limit exceeded
+		+ (1LL << (int) SIGXCPU)   // CPU time limit exceeded
 #endif
 #ifdef SIGXFSZ
-		+ (1LL << SIGXFSZ)   // File size limit exceeded
+		+ (1LL << (int) SIGXFSZ)   // File size limit exceeded
 #endif
 #ifdef SIGUSR1
 		+ (1LL << SIGUSR1)   // Yes kids, these are also fatal!
@@ -1037,6 +1070,11 @@ char *safe_gethostname(void) FAST_FUNC;
 /* Convert each alpha char in str to lower-case */
 char* str_tolower(char *str) FAST_FUNC;
 
+#if defined __WATCOMC__
+#define utoa bb_utoa
+#define itoa bb_itoa
+#endif
+
 char *utoa(unsigned n) FAST_FUNC;
 char *itoa(int n) FAST_FUNC;
 /* Returns a pointer past the formatted number, does NOT null-terminate */
@@ -1180,6 +1218,17 @@ int BB_EXECVP(const char *file, char *const argv[]) FAST_FUNC;
 void BB_EXECVP_or_die(char **argv) NORETURN FAST_FUNC;
 void exec_prog_or_SHELL(char **argv) NORETURN FAST_FUNC;
 
+#ifdef __WATCOMC__
+extern void bb_perror_msg_and_die(const char *s, ...) __attribute__ ((noreturn, format (printf, 1, 2))) FAST_FUNC;
+/* NOTE: Watcom does not currently inline this! Which breaks xvfork entirely */
+static inline pid_t xvfork(void) {
+	pid_t bb__xvfork_pid = vfork();
+	if (bb__xvfork_pid < 0)
+		bb_perror_msg_and_die("vfork");
+	bb_perror_msg_and_die("xvfork"); /* Don't ever let this succeed */
+	return bb__xvfork_pid;
+}
+#else
 /* xvfork() can't be a _function_, return after vfork in child mangles stack
  * in the parent. It must be a macro. */
 #if !ENABLE_PLATFORM_MINGW32
@@ -1192,7 +1241,9 @@ void exec_prog_or_SHELL(char **argv) NORETURN FAST_FUNC;
 })
 #else
 #define xvfork() vfork()
-#endif
+#endif /* ENABLE_PLATFORM_MINGW32 */
+#endif /* ifdef __WATCOMC__ */
+
 #if BB_MMU
 pid_t xfork(void) FAST_FUNC;
 #endif
@@ -1998,7 +2049,13 @@ typedef struct procps_status_t {
 	/* Everything below must contain no ptrs to malloc'ed data:
 	 * it is memset(0) for each process in procps_scan() */
 	unsigned long vsz, rss; /* we round it to kbytes */
+#if defined __WATCOMC__
+	unsigned long p_stime, p_utime;
+#define stime p_stime
+#define utime p_utime
+#else
 	unsigned long stime, utime;
+#endif
 	unsigned long start_time;
 	unsigned pid;
 	unsigned ppid;
@@ -2216,7 +2273,7 @@ extern const char bb_path_wtmp_file[] ALIGN1;
 #define bb_path_motd_file "/etc/motd"
 
 #define bb_dev_null "/dev/null"
-#if ENABLE_PLATFORM_MINGW32
+#if defined(ENABLE_PLATFORM_MINGW32)
 #define bb_busybox_exec_path get_busybox_exec_path()
 extern char bb_comm[];
 extern char bb_command_line[];
@@ -2274,7 +2331,13 @@ static ALWAYS_INLINE void* not_const_pp(const void *p) { return (void*)p; }
 #endif
 
 /* At least gcc 3.4.6 on mipsel system needs optimization barrier */
+#ifndef __WATCOMC__
 #define barrier() __asm__ __volatile__("":::"memory")
+#else
+extern void barrier( void );
+#pragma aux barrier = "mfence";
+#endif
+
 #define SET_PTR_TO_GLOBALS(x) do { \
 	(*(struct globals**)not_const_pp(&ptr_to_globals)) = (void*)(x); \
 	barrier(); \
@@ -2371,21 +2434,24 @@ do { \
  * can't be done with such byte-oriented operations anyway,
  * we don't lose anything.
  */
+
 #undef isalnum
 #undef isalpha
 #undef isascii
-#undef isblank
-#undef iscntrl
 #undef isdigit
 #undef isgraph
 #undef islower
 #undef isprint
 #undef ispunct
-#undef isspace
 #undef isupper
 #undef isxdigit
 #undef toupper
 #undef tolower
+#ifndef __WATCOMC__
+#undef isblank
+#undef iscntrl
+#undef isspace
+#endif
 
 /* We save ~500 bytes on isdigit alone.
  * BTW, x86 likes (unsigned char) cast more than (unsigned). */
@@ -2397,6 +2463,7 @@ do { \
 #define isupper(a) ((unsigned char)((a) - 'A') <= ('Z' - 'A'))
 #define islower(a) ((unsigned char)((a) - 'a') <= ('z' - 'a'))
 #define isalpha(a) ((unsigned char)(((a)|0x20) - 'a') <= ('z' - 'a'))
+#ifndef __WATCOMC__
 #define isblank(a) ({ unsigned char bb__isblank = (a); bb__isblank == ' ' || bb__isblank == '\t'; })
 #define iscntrl(a) ({ unsigned char bb__iscntrl = (a); bb__iscntrl < ' ' || bb__iscntrl == 0x7f; })
 /* In POSIX/C locale isspace is only these chars: "\t\n\v\f\r" and space.
@@ -2406,7 +2473,9 @@ do { \
 // Unsafe wrt NUL: #define ispunct(a) (strchr("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", (a)) != NULL)
 #define ispunct(a) (strchrnul("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", (a))[0])
 // Bigger code: #define isalnum(a) ({ unsigned char bb__isalnum = (a) - '0'; bb__isalnum <= 9 || ((bb__isalnum - ('A' - '0')) & 0xdf) <= 25; })
+#endif /* __WATCOMC__ */
 #define isalnum(a) bb_ascii_isalnum(a)
+
 static ALWAYS_INLINE int bb_ascii_isalnum(unsigned char a)
 {
 	unsigned char b = a - '0';
@@ -2424,6 +2493,7 @@ static ALWAYS_INLINE int bb_ascii_isxdigit(unsigned char a)
 	b = (a|0x20) - 'a';
 	return b <= 'f' - 'a';
 }
+
 #define toupper(a) bb_ascii_toupper(a)
 static ALWAYS_INLINE unsigned char bb_ascii_toupper(unsigned char a)
 {
@@ -2445,6 +2515,8 @@ static ALWAYS_INLINE unsigned char bb_ascii_tolower(unsigned char a)
  * Let's prevent ambiguous usage from the start */
 #define isgraph(a) isgraph_is_ambiguous_dont_use(a)
 #define isprint(a) isprint_is_ambiguous_dont_use(a)
+
+
 /* NB: must not treat EOF as isgraph or isprint */
 #define isgraph_asciionly(a) ((unsigned)((a) - 0x21) <= 0x7e - 0x21)
 #define isprint_asciionly(a) ((unsigned)((a) - 0x20) <= 0x7e - 0x20)

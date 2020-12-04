@@ -89,6 +89,13 @@ lib-y += xgetcwd.o
 lib-y += xreadlink.o
 lib-y += xrealloc_vector.o
 
+lib-$(CONFIG_PLATFORM_WATCOM386_WIN32) += read_key.o
+
+ifeq ($(CONFIG_PLATFORM_WATCOM386_LINUX),y)
+CONFIG_PLATFORM_POSIX = y
+CONFIG_PLATFORM_LINUX = y
+endif
+
 lib-$(CONFIG_PLATFORM_POSIX) += bb_askpass.o
 lib-$(CONFIG_PLATFORM_POSIX) += bb_do_delay.o
 lib-$(CONFIG_PLATFORM_POSIX) += change_identity.o

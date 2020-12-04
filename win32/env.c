@@ -1,5 +1,7 @@
 #include "libbb.h"
 
+
+#ifndef __WATCOMC__
 #undef getenv
 #undef putenv
 
@@ -31,9 +33,11 @@ int setenv(const char *name, const char *value, int replace)
 
 	return out;
 }
+#endif /* getenv setenv already present in watcom */
 
+#ifndef __WATCOMC__
 /*
- * Removing an environment variable with WIN32 _putenv requires an argument
+ * Removing an environment variable with WIN32 putenv requires an argument
  * like "NAME="; glibc omits the '='.  The implementations of unsetenv and
  * clearenv allow for this.
  *
@@ -105,3 +109,28 @@ int mingw_putenv(const char *env)
 
 	return ret;
 }
+
+void unsetenv(const char *env)
+{
+	env_setenv(environ, env);
+}
+
+
+int clearenv(void)
+{
+	char **env = environ;
+	if (!env)
+		return 0;
+	while (*env) {
+		free(*env);
+		env++;
+	}
+	free(env);
+	environ = NULL;
+	return 0;
+}
+#endif /* unsetenv clearenv already present in watcom */
+
+
+
+

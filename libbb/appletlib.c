@@ -33,7 +33,7 @@ static inline int *get_perrno(void) { return &errno; }
 #include "busybox.h"
 
 #if !(defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) \
-    || defined(__APPLE__) \
+    || defined(__APPLE__) || defined(__WATCOMC__) \
     )
 # include <malloc.h> /* for mallopt */
 #endif
@@ -331,6 +331,10 @@ void lbb_prepare(const char *applet
 
 	if (ENABLE_LOCALE_SUPPORT)
 		setlocale(LC_ALL, "");
+
+#if defined(ENABLE_PLATFORM_MINGW32)
+	init_winsock();
+#endif
 
 #if ENABLE_FEATURE_INDIVIDUAL
 	/* Redundant for busybox (run_applet_and_exit covers that case)
