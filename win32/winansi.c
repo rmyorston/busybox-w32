@@ -14,6 +14,7 @@
 #undef printf
 #undef fprintf
 #undef fputs
+#undef fputc
 #undef putchar
 #undef fwrite
 #undef puts
@@ -635,7 +636,7 @@ int winansi_putchar(int c)
 		return putchar(c);
 
 	CharToOemBuff(s, s, 1);
-	return putchar(t) == EOF ? EOF : c;
+	return putchar(t) == EOF ? EOF : (unsigned char)c;
 }
 
 int winansi_puts(const char *s)
@@ -718,6 +719,23 @@ int winansi_fputs(const char *str, FILE *stream)
 	}
 
 	return ansi_emulate(str, stream) == EOF ? EOF : 0;
+}
+
+int winansi_fputc(int c, FILE *stream)
+{
+	int ret;
+	char t = c;
+	char *s = &t;
+
+	if (!is_console(fileno(stream))) {
+		SetLastError(0);
+		if ((ret=fputc(c, stream)) == EOF)
+			check_pipe(stream);
+		return ret;
+	}
+
+	CharToOemBuff(s, s, 1);
+	return fputc(t, stream) == EOF ? EOF : (unsigned char )c;
 }
 
 #if !defined(__USE_MINGW_ANSI_STDIO) || !__USE_MINGW_ANSI_STDIO
