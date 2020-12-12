@@ -1088,7 +1088,6 @@ static char *resolve_symlinks(char *path)
 				FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (h != INVALID_HANDLE_VALUE) {
 		if (!INIT_PROC_ADDR(kernel32.dll, GetFinalPathNameByHandleA)) {
-			ptr = path;
 			goto end;
 		}
 
