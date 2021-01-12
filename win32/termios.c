@@ -61,9 +61,7 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 				case VK_END:
 				case VK_DOWN:
 				case VK_NEXT:
-				case VK_LEFT:
 				case VK_CLEAR:
-				case VK_RIGHT:
 				case VK_HOME:
 				case VK_UP:
 				case VK_PRIOR:
@@ -82,11 +80,19 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 					ret = KEYCODE_CTRL_RIGHT;
 					goto done;
 				}
+				if (state & (RIGHT_ALT_PRESSED|LEFT_ALT_PRESSED)) {
+					ret = KEYCODE_ALT_RIGHT;
+					goto done;
+				}
 				ret = KEYCODE_RIGHT;
 				goto done;
 			case VK_LEFT:
 				if (state & (RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED)) {
 					ret = KEYCODE_CTRL_LEFT;
+					goto done;
+				}
+				if (state & (RIGHT_ALT_PRESSED|LEFT_ALT_PRESSED)) {
+					ret = KEYCODE_ALT_LEFT;
 					goto done;
 				}
 				ret = KEYCODE_LEFT;
@@ -111,6 +117,14 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 		}
 		ret = record.Event.KeyEvent.uChar.AsciiChar;
 #endif
+		if (state & (RIGHT_ALT_PRESSED|LEFT_ALT_PRESSED)) {
+			switch (ret) {
+			case '\b': ret = KEYCODE_ALT_BACKSPACE; goto done;
+			case 'b': ret = KEYCODE_ALT_LEFT; goto done;
+			case 'd': ret = KEYCODE_ALT_D; goto done;
+			case 'f': ret = KEYCODE_ALT_RIGHT; goto done;
+			}
+		}
 		break;
 	}
  done:
