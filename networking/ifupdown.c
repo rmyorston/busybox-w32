@@ -113,30 +113,30 @@
 //kbuild:lib-$(CONFIG_IFDOWN) += ifupdown.o
 
 //usage:#define ifup_trivial_usage
-//usage:       "[-an"IF_FEATURE_IFUPDOWN_MAPPING("m")"vf] [-i FILE] IFACE..."
+//usage:       "[-n"IF_FEATURE_IFUPDOWN_MAPPING("m")"vf] [-i FILE] -a | IFACE..."
 //usage:#define ifup_full_usage "\n\n"
 //usage:       "	-a	Configure all interfaces"
 //usage:     "\n	-i FILE	Use FILE instead of /etc/network/interfaces"
-//usage:     "\n	-n	Print out what would happen, but don't do it"
+//usage:     "\n	-n	Dry run"
 //usage:	IF_FEATURE_IFUPDOWN_MAPPING(
 //usage:     "\n		(note: doesn't disable mappings)"
 //usage:     "\n	-m	Don't run any mappings"
 //usage:	)
 //usage:     "\n	-v	Print out what would happen before doing it"
-//usage:     "\n	-f	Force configuration"
+//usage:     "\n	-f	Force"
 //usage:
 //usage:#define ifdown_trivial_usage
-//usage:       "[-an"IF_FEATURE_IFUPDOWN_MAPPING("m")"vf] [-i FILE] IFACE..."
+//usage:       "[-n"IF_FEATURE_IFUPDOWN_MAPPING("m")"vf] [-i FILE] -a | IFACE..."
 //usage:#define ifdown_full_usage "\n\n"
 //usage:       "	-a	Deconfigure all interfaces"
-//usage:     "\n	-i FILE	Use FILE for interface definitions"
-//usage:     "\n	-n	Print out what would happen, but don't do it"
+//usage:     "\n	-i FILE	Use FILE instead of /etc/network/interfaces"
+//usage:     "\n	-n	Dry run"
 //usage:	IF_FEATURE_IFUPDOWN_MAPPING(
 //usage:     "\n		(note: doesn't disable mappings)"
 //usage:     "\n	-m	Don't run any mappings"
 //usage:	)
 //usage:     "\n	-v	Print out what would happen before doing it"
-//usage:     "\n	-f	Force deconfiguration"
+//usage:     "\n	-f	Force"
 
 #include <net/if.h>
 #include "libbb.h"
@@ -1357,15 +1357,15 @@ static FILE *open_new_state_file(void)
 					IFSTATE_FILE_PATH".new");
 		}
 		/* Someone else created the .new file */
-		if (cnt > 30 * 1000) {
+		if (cnt > 30) {
 			/* Waited for 30*30/2 = 450 milliseconds, still EEXIST.
 			 * Assuming a stale file, rewriting it.
 			 */
 			flags = (O_WRONLY | O_CREAT | O_TRUNC);
 			continue;
 		}
-		usleep(cnt);
-		cnt += 1000;
+		msleep(cnt);
+		cnt++;
 	}
 
 	return xfdopen_for_write(fd);

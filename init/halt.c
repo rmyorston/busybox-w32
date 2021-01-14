@@ -65,7 +65,7 @@
 //kbuild:lib-$(CONFIG_REBOOT) += halt.o
 
 //usage:#define halt_trivial_usage
-//usage:       "[-d DELAY] [-n] [-f]" IF_FEATURE_WTMP(" [-w]")
+//usage:       "[-d DELAY] [-nf"IF_FEATURE_WTMP("w")"]"
 //usage:#define halt_full_usage "\n\n"
 //usage:       "Halt the system\n"
 //usage:     "\n	-d SEC	Delay interval"
@@ -76,7 +76,7 @@
 //usage:	)
 //usage:
 //usage:#define poweroff_trivial_usage
-//usage:       "[-d DELAY] [-n] [-f]"
+//usage:       "[-d DELAY] [-nf]"
 //usage:#define poweroff_full_usage "\n\n"
 //usage:       "Halt and shut off power\n"
 //usage:     "\n	-d SEC	Delay interval"
@@ -84,7 +84,7 @@
 //usage:     "\n	-f	Force (don't go through init)"
 //usage:
 //usage:#define reboot_trivial_usage
-//usage:       "[-d DELAY] [-n] [-f]"
+//usage:       "[-d DELAY] [-nf]"
 //usage:#define reboot_full_usage "\n\n"
 //usage:       "Reboot the system\n"
 //usage:     "\n	-d SEC	Delay interval"
@@ -144,14 +144,14 @@ static int init_was_not_there(void)
 	 */
 #if 0
 	while (kill(1, 0) != 0 && --cnt >= 0)
-		sleep(1);
+		sleep1();
 #endif
 	/* ... so let's wait for some evidence a usual startup event,
 	 * mounting of /proc, happened. By that time init should be ready
 	 * for signals.
 	 */
 	while (access("/proc/meminfo", F_OK) != 0 && --cnt >= 0)
-		sleep(1);
+		sleep1();
 
 	/* Does it look like init wasn't there? */
 	return (cnt != initial - 1);

@@ -1445,7 +1445,7 @@ static action*** parse_params(char **argv)
 #else
 #define XATOU_SFX xatoul_sfx
 #endif
-			static const struct suffix_mult find_suffixes[] = {
+			static const struct suffix_mult find_suffixes[] ALIGN_SUFFIX = {
 				{ "c", 1 },
 				{ "w", 2 },
 				{ "", 512 },
@@ -1526,7 +1526,7 @@ int find_main(int argc UNUSED_PARAM, char **argv)
 	}
 	*past_HLP = NULL;
 	/* "+": stop on first non-option */
-	i = getopt32(argv, "+HLP");
+	i = getopt32(argv, "+""HLP");
 	if (i & (1<<0))
 		G.recurse_flags |= ACTION_FOLLOWLINKS_L0 | ACTION_DANGLING_OK;
 	if (i & (1<<1))

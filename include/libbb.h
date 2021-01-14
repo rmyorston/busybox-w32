@@ -106,7 +106,11 @@
 #  define updwtmpx updwtmp
 #  define _PATH_UTMPX _PATH_UTMP
 # else
-#  include <utmp.h>
+#  if !defined(__FreeBSD__)
+#   include <utmp.h>
+#  else
+#   define _PATH_UTMPX "/var/run/utx.active"
+#  endif
 #  include <utmpx.h>
 #  if defined _PATH_UTMP && !defined _PATH_UTMPX
 #   define _PATH_UTMPX _PATH_UTMP
@@ -405,6 +409,32 @@ void* xrealloc_vector_helper(void *vector, unsigned sizeof_and_shift, int idx) F
 char *xstrdup(const char *s) FAST_FUNC RETURNS_MALLOC;
 char *xstrndup(const char *s, int n) FAST_FUNC RETURNS_MALLOC;
 void *xmemdup(const void *s, int n) FAST_FUNC RETURNS_MALLOC;
+void *mmap_read(int fd, size_t size) FAST_FUNC;
+void *mmap_anon(size_t size) FAST_FUNC;
+void *xmmap_anon(size_t size) FAST_FUNC;
+
+#if defined(__x86_64__) || defined(i386)
+# define BB_ARCH_FIXED_PAGESIZE 4096
+#elif defined(__arm__) /* only 32bit, 64bit ARM has variable page size */
+# define BB_ARCH_FIXED_PAGESIZE 4096
+#else /* if defined(ARCH) */
+/* add you favorite arch today! */
+//From Linux kernel inspection:
+//xtenza,s390[x],riscv,nios2,csky,sparc32: fixed 4k pages
+//sparc64,alpha,openrisc: fixed 8k pages
+#endif
+
+#if defined BB_ARCH_FIXED_PAGESIZE
+# define IF_VARIABLE_ARCH_PAGESIZE(...) /*nothing*/
+# define bb_getpagesize()     BB_ARCH_FIXED_PAGESIZE
+# define INIT_PAGESIZE(var)   ((void)0)
+# define cached_pagesize(var) BB_ARCH_FIXED_PAGESIZE
+#else
+# define IF_VARIABLE_ARCH_PAGESIZE(...) __VA_ARGS__
+# define bb_getpagesize()     getpagesize()
+# define INIT_PAGESIZE(var)   ((var) = getpagesize())
+# define cached_pagesize(var) (var)
+#endif
 
 
 //TODO: supply a pointer to char[11] buffer (avoid statics)?
@@ -670,6 +700,9 @@ void parse_datestr(const char *date_str, struct tm *ptm) FAST_FUNC;
 time_t validate_tm_time(const char *date_str, struct tm *ptm) FAST_FUNC;
 char *strftime_HHMMSS(char *buf, unsigned len, time_t *tp) FAST_FUNC;
 char *strftime_YYYYMMDDHHMMSS(char *buf, unsigned len, time_t *tp) FAST_FUNC;
+void xgettimeofday(struct timeval *tv) FAST_FUNC;
+void xsettimeofday(const struct timeval *tv) FAST_FUNC;
+
 
 int xsocket(int domain, int type, int protocol) FAST_FUNC;
 void xbind(int sockfd, struct sockaddr *my_addr, socklen_t addrlen) FAST_FUNC;
@@ -1065,8 +1098,9 @@ void generate_uuid(uint8_t *buf) FAST_FUNC;
 /* Last element is marked by mult == 0 */
 struct suffix_mult {
 	char suffix[4];
-	unsigned mult;
+	uint32_t mult;
 };
+#define ALIGN_SUFFIX ALIGN4
 extern const struct suffix_mult bkm_suffixes[];
 #define km_suffixes (bkm_suffixes + 1)
 extern const struct suffix_mult cwbkMG_suffixes[];
@@ -1178,7 +1212,6 @@ int BB_EXECVP(const char *file, char *const argv[]) FAST_FUNC;
 #define BB_EXECLP(prog,cmd,...) execlp(prog,cmd,__VA_ARGS__)
 #endif
 void BB_EXECVP_or_die(char **argv) NORETURN FAST_FUNC;
-void exec_prog_or_SHELL(char **argv) NORETURN FAST_FUNC;
 
 /* xvfork() can't be a _function_, return after vfork in child mangles stack
  * in the parent. It must be a macro. */
@@ -1644,12 +1677,14 @@ char *bb_simplify_path(const char *path) FAST_FUNC;
 /* Returns ptr to NUL */
 char *bb_simplify_abs_path_inplace(char *path) FAST_FUNC;
 
-#ifndef LOGIN_FAIL_DELAY
-#define LOGIN_FAIL_DELAY 3
-#endif
-extern void bb_do_delay(int seconds) FAST_FUNC;
-extern void change_identity(const struct passwd *pw) FAST_FUNC;
-extern void run_shell(const char *shell, int loginshell, const char **args) NORETURN FAST_FUNC;
+void pause_after_failed_login(void) FAST_FUNC;
+void bb_do_delay(unsigned seconds) FAST_FUNC;
+void msleep(unsigned ms) FAST_FUNC;
+void sleep1(void) FAST_FUNC;
+void change_identity(const struct passwd *pw) FAST_FUNC;
+void exec_shell(const char *shell, int loginshell, const char **args) NORETURN FAST_FUNC;
+void exec_login_shell(const char *shell) NORETURN FAST_FUNC;
+void exec_prog_or_SHELL(char **argv) NORETURN FAST_FUNC;
 
 /* Returns $SHELL, getpwuid(getuid())->pw_shell, or DEFAULT_SHELL.
  * Note that getpwuid result might need xstrdup'ing
@@ -1884,14 +1919,20 @@ typedef const char *get_exe_name_t(int i) FAST_FUNC;
 typedef struct line_input_t {
 	int flags;
 	int timeout;
+# if ENABLE_FEATURE_TAB_COMPLETION
+#  if ENABLE_SHELL_ASH
 	const char *path_lookup;
-# if ENABLE_FEATURE_TAB_COMPLETION \
-&& (ENABLE_ASH  || ENABLE_SH_IS_ASH  || ENABLE_BASH_IS_ASH \
-||  ENABLE_HUSH || ENABLE_SH_IS_HUSH || ENABLE_BASH_IS_HUSH \
-)
+#   define EDITING_HAS_path_lookup 1
+#  else
+#   define EDITING_HAS_path_lookup 0
+#  endif
+#  if ENABLE_SHELL_ASH || ENABLE_SHELL_HUSH
 	/* function to fetch additional application-specific names to match */
 	get_exe_name_t *get_exe_name;
-#  define EDITING_HAS_get_exe_name 1
+#   define EDITING_HAS_get_exe_name 1
+#  else
+#   define EDITING_HAS_get_exe_name 0
+#  endif
 # endif
 # if MAX_HISTORY
 	int cnt_history;
@@ -1919,7 +1960,11 @@ enum {
 	FOR_SHELL        = DO_HISTORY | TAB_COMPLETION | USERNAME_COMPLETION,
 };
 line_input_t *new_line_input_t(int flags) FAST_FUNC;
+#if ENABLE_FEATURE_EDITING_SAVEHISTORY
 void free_line_input_t(line_input_t *n) FAST_FUNC;
+#else
+# define free_line_input_t(n) free(n)
+#endif
 /*
  * maxsize must be >= 2.
  * Returns:
@@ -2079,14 +2124,17 @@ char *percent_decode_in_place(char *str, int strict) FAST_FUNC;
 
 
 extern const char bb_uuenc_tbl_base64[] ALIGN1;
+extern const char bb_uuenc_tbl_base32[] ALIGN1;
 extern const char bb_uuenc_tbl_std[] ALIGN1;
 void bb_uuencode(char *store, const void *s, int length, const char *tbl) FAST_FUNC;
 enum {
 	BASE64_FLAG_UU_STOP = 0x100,
+	BASE64_32           = 0x200, /* base32 */
 	/* Sign-extends to a value which never matches fgetc result: */
 	BASE64_FLAG_NO_STOP_CHAR = 0x80,
 };
-const char *decode_base64(char **pp_dst, const char *src) FAST_FUNC;
+char *decode_base64(char *dst, const char **pp_src) FAST_FUNC;
+char *decode_base32(char *dst, const char **pp_src) FAST_FUNC;
 void read_base64(FILE *src_stream, FILE *dst_stream, int flags) FAST_FUNC;
 
 typedef struct md5_ctx_t {

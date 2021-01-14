@@ -57,12 +57,23 @@
 #if ENABLE_FEATURE_EDITING
 
 
+#if !ENABLE_SHELL_ASH && !ENABLE_SHELL_HUSH
+/* so far only shells use these features */
+# undef ENABLE_FEATURE_EDITING_FANCY_PROMPT
+# undef ENABLE_FEATURE_TAB_COMPLETION
+# undef ENABLE_FEATURE_USERNAME_COMPLETION
+# define ENABLE_FEATURE_EDITING_FANCY_PROMPT 0
+# define ENABLE_FEATURE_TAB_COMPLETION       0
+# define ENABLE_FEATURE_USERNAME_COMPLETION  0
+#endif
+
+
 #define ENABLE_USERNAME_OR_HOMEDIR \
 	(ENABLE_FEATURE_USERNAME_COMPLETION || ENABLE_FEATURE_EDITING_FANCY_PROMPT)
-#define IF_USERNAME_OR_HOMEDIR(...)
 #if ENABLE_USERNAME_OR_HOMEDIR
-# undef IF_USERNAME_OR_HOMEDIR
 # define IF_USERNAME_OR_HOMEDIR(...) __VA_ARGS__
+#else
+# define IF_USERNAME_OR_HOMEDIR(...) /*nothing*/
 #endif
 
 
@@ -205,9 +216,6 @@ extern struct lineedit_statics *const lineedit_ptr_to_statics;
 #define INIT_S() do { \
 	(*(struct lineedit_statics**)not_const_pp(&lineedit_ptr_to_statics)) = xzalloc(sizeof(S)); \
 	barrier(); \
-	cmdedit_termw = 80; \
-	IF_USERNAME_OR_HOMEDIR(home_pwd_buf = (char*)null_str;) \
-	IF_FEATURE_EDITING_VI(delptr = delbuf;) \
 } while (0)
 
 static void deinit_S(void)
@@ -796,16 +804,18 @@ enum {
 	FIND_FILE_ONLY = 2,
 };
 
-static int path_parse(char ***p)
+static unsigned path_parse(char ***p)
 {
-	int npth;
+	unsigned npth;
 	const char *pth;
 	char *tmp;
 	char **res;
 
+# if EDITING_HAS_path_lookup
 	if (state->flags & WITH_PATH_LOOKUP)
 		pth = state->path_lookup;
 	else
+# endif
 		pth = getenv("PATH");
 
 	/* PATH="" or PATH=":"? */
@@ -824,7 +834,7 @@ static int path_parse(char ***p)
 		npth++;
 	}
 
-	*p = res = xmalloc(npth * sizeof(res[0]));
+	*p = res = xzalloc((npth + 1) * sizeof(res[0]));
 	res[0] = tmp = xstrdup(pth);
 	npth = 1;
 	while (1) {
@@ -836,6 +846,8 @@ static int path_parse(char ***p)
 			break; /* :<empty> */
 		res[npth++] = tmp;
 	}
+	/* special case: "match subdirectories of the current directory" */
+	/*res[npth++] = NULL; - filled by xzalloc() */
 	return npth;
 }
 
@@ -846,49 +858,49 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 {
 	char *path1[1];
 	char **paths = path1;
-	int npaths;
-	int i;
-	unsigned pf_len;
-	const char *pfind;
+	unsigned npaths;
+	unsigned i;
+	unsigned baselen;
+	const char *basecmd;
 	char *dirbuf = NULL;
 
 	npaths = 1;
 	path1[0] = (char*)".";
 
-	pfind = strrchr(command, '/');
+	basecmd = strrchr(command, '/');
 #if ENABLE_PLATFORM_MINGW32
-	if (!pfind && has_dos_drive_prefix(command) && command[2] != '\0') {
+	if (!basecmd && has_dos_drive_prefix(command) && command[2] != '\0') {
 		char buffer[PATH_MAX];
 
 		/* path is of form c:path with no '/' */
 		if (get_drive_cwd(command, buffer, PATH_MAX)) {
-			pfind = command + 2;
+			basecmd = command + 2;
 			path1[0] = dirbuf = xstrdup(buffer);
 		}
 	} else
 #endif
-	if (!pfind) {
+	if (!basecmd) {
 		if (type == FIND_EXE_ONLY)
 			npaths = path_parse(&paths);
-		pfind = command;
+		basecmd = command;
 	} else {
 		/* point to 'l' in "..../last_component" */
-		pfind++;
+		basecmd++;
 		/* dirbuf = ".../.../.../" */
-		dirbuf = xstrndup(command, pfind - command);
+		dirbuf = xstrndup(command, basecmd - command);
 # if ENABLE_FEATURE_USERNAME_COMPLETION
 		if (dirbuf[0] == '~')   /* ~/... or ~user/... */
 			dirbuf = username_path_completion(dirbuf);
 # endif
 		path1[0] = dirbuf;
 	}
-	pf_len = strlen(pfind);
+	baselen = strlen(basecmd);
 
 	if (type == FIND_EXE_ONLY && !dirbuf) {
 # if ENABLE_FEATURE_SH_STANDALONE && NUM_APPLETS != 1
 		const char *p = applet_names;
 		while (*p) {
-			if (strncmp(pfind, p, pf_len) == 0)
+			if (strncmp(basecmd, p, baselen) == 0)
 				add_match(xstrdup(p));
 			while (*p++ != '\0')
 				continue;
@@ -901,7 +913,7 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 				const char *b = state->get_exe_name(i++);
 				if (!b)
 					break;
-				if (strncmp(pfind, b, pf_len) == 0)
+				if (strncmp(basecmd, b, baselen) == 0)
 					add_match(xstrdup(b));
 			}
 		}
@@ -913,9 +925,20 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 		struct dirent *next;
 		struct stat st;
 		char *found;
+#if ENABLE_PLATFORM_MINGW32
+		char *lpath;
+#endif
+
+		if (paths[i] == NULL) { /* path_parse()'s last component? */
+			/* in PATH completion, current dir's subdir names
+			 * can be completions (but only subdirs, not files).
+			 */
+			type = FIND_DIR_ONLY;
+			paths[i] = (char *)".";
+		}
 
 #if ENABLE_PLATFORM_MINGW32
-		char *lpath = auto_string(alloc_system_drive(paths[i]));
+		lpath = auto_string(alloc_system_drive(paths[i]));
 		dir = opendir(lpath);
 #else
 		dir = opendir(paths[i]);
@@ -928,10 +951,10 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 			const char *name_found = next->d_name;
 
 			/* .../<tab>: bash 3.2.0 shows dotfiles, but not . and .. */
-			if (!pfind[0] && DOT_OR_DOTDOT(name_found))
+			if (!basecmd[0] && DOT_OR_DOTDOT(name_found))
 				continue;
 			/* match? */
-			if (!is_prefixed_with(name_found, pfind))
+			if (strncmp(basecmd, name_found, baselen) != 0)
 				continue; /* no */
 
 #if ENABLE_PLATFORM_MINGW32
@@ -957,6 +980,9 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 			strcpy(found, name_found);
 
 			if (S_ISDIR(st.st_mode)) {
+				/* skip directories if searching PATH */
+				if (type == FIND_EXE_ONLY && !dirbuf)
+					goto cont;
 				/* name is a directory, add slash */
 				found[len] = '/';
 				found[len + 1] = '\0';
@@ -980,7 +1006,7 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 	}
 	free(dirbuf);
 
-	return pf_len;
+	return baselen;
 }
 
 /* build_match_prefix:
@@ -1492,15 +1518,19 @@ void FAST_FUNC show_history(const line_input_t *st)
 		printf("%4d %s\n", i, st->history[i]);
 }
 
+# if ENABLE_FEATURE_EDITING_SAVEHISTORY
 void FAST_FUNC free_line_input_t(line_input_t *n)
 {
-# if ENABLE_FEATURE_EDITING_SAVEHISTORY
-	int i = n->cnt_history;
-	while (i > 0)
-		free(n->history[--i]);
-#endif
-	free(n);
+	if (n) {
+		int i = n->cnt_history;
+		while (i > 0)
+			free(n->history[--i]);
+		free(n);
+	}
 }
+# else
+/* #defined to free() in libbb.h */
+# endif
 
 # if ENABLE_FEATURE_EDITING_SAVEHISTORY
 /* We try to ensure that concurrent additions to the history
@@ -1581,7 +1611,7 @@ void save_history(line_input_t *st)
 {
 	FILE *fp;
 
-	if (!st->hist_file)
+	if (!st || !st->hist_file)
 		return;
 	if (st->cnt_history <= st->cnt_history_in_file)
 		return;
@@ -1971,9 +2001,7 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 {
 	int prmt_size = 0;
 	char *prmt_mem_ptr = xzalloc(1);
-# if ENABLE_USERNAME_OR_HOMEDIR
 	char *cwd_buf = NULL;
-# endif
 	char flg_not_length = '[';
 	char cbuf[2];
 
@@ -2040,11 +2068,9 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 				c = *prmt_ptr++;
 
 				switch (c) {
-# if ENABLE_USERNAME_OR_HOMEDIR
 				case 'u':
 					pbuf = user_buf ? user_buf : (char*)"";
 					break;
-# endif
 				case 'H':
 				case 'h':
 					pbuf = free_me = safe_gethostname();
@@ -2062,7 +2088,6 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 					strftime_HHMMSS(timebuf, sizeof(timebuf), NULL)[-3] = '\0';
 					pbuf = timebuf;
 					break;
-# if ENABLE_USERNAME_OR_HOMEDIR
 				case 'w': /* current dir */
 				case 'W': /* basename of cur dir */
 					if (!cwd_buf) {
@@ -2089,7 +2114,6 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 					if (cp)
 						pbuf = (char*)cp + 1;
 					break;
-# endif
 // bb_process_escape_sequence does this now:
 //				case 'e': case 'E':     /* \e \E = \033 */
 //					c = '\033';
@@ -2130,10 +2154,17 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 			if (c == '\n')
 				cmdedit_prmt_len = 0;
 			else if (flg_not_length != ']') {
-#if 0 /*ENABLE_UNICODE_SUPPORT*/
-/* Won't work, pbuf is one BYTE string here instead of an one Unicode char string. */
-/* FIXME */
-				cmdedit_prmt_len += unicode_strwidth(pbuf);
+#if ENABLE_UNICODE_SUPPORT
+				if (n == 1) {
+					/* Only count single-byte characters and the first of multi-byte characters */
+					if ((unsigned char)*pbuf < 0x80  /* single byte character */
+					 || (unsigned char)*pbuf >= 0xc0 /* first of multi-byte characters */
+					) {
+						cmdedit_prmt_len += n;
+					}
+				} else {
+					cmdedit_prmt_len += unicode_strwidth(pbuf);
+				}
 #else
 				cmdedit_prmt_len += n;
 #endif
@@ -2143,10 +2174,8 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 		free(free_me);
 	} /* while */
 
-# if ENABLE_USERNAME_OR_HOMEDIR
 	if (cwd_buf != (char *)bb_msg_unknown)
 		free(cwd_buf);
-# endif
 	/* see comment (above this function) about multiline prompt redrawing */
 	cmdedit_prompt = prompt_last_line = prmt_mem_ptr;
 	prmt_ptr = strrchr(cmdedit_prompt, '\n');
@@ -2154,7 +2183,7 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 		prompt_last_line = prmt_ptr + 1;
 	put_prompt();
 }
-#endif
+#endif /* FEATURE_EDITING_FANCY_PROMPT */
 
 #if ENABLE_FEATURE_EDITING_WINCH
 static void cmdedit_setwidth(void)
@@ -2467,6 +2496,11 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	char read_key_buffer[KEYCODE_BUFFER_SIZE];
 
 	INIT_S();
+	//command_len = 0; - done by INIT_S()
+	//cmdedit_y = 0;  /* quasireal y, not true if line > xt*yt */
+	cmdedit_termw = 80;
+	IF_USERNAME_OR_HOMEDIR(home_pwd_buf = (char*)null_str;)
+	IF_FEATURE_EDITING_VI(delptr = delbuf;)
 
 #if !ENABLE_PLATFORM_MINGW32
 	n = get_termios_and_make_raw(STDIN_FILENO, &new_settings, &initial_settings, 0
@@ -2521,8 +2555,6 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 #endif
 
 	/* prepare before init handlers */
-	cmdedit_y = 0;  /* quasireal y, not true if line > xt*yt */
-	command_len = 0;
 #if ENABLE_UNICODE_SUPPORT
 	command_ps = xzalloc(maxsize * sizeof(command_ps[0]));
 #else
@@ -3005,6 +3037,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 		 * before it comes in. UGLY!
 		 */
 		usleep(20*1000);
+// MAYBE? tcflush(STDIN_FILENO, TCIFLUSH); /* flushes data received but not read */
 	}
 #endif
 

@@ -34,14 +34,6 @@
 
 //kbuild:lib-$(CONFIG_ROUTE) += route.o
 
-//usage:#define route_trivial_usage
-//usage:       "[{add|del|delete}]"
-//usage:#define route_full_usage "\n\n"
-//usage:       "Edit kernel routing tables\n"
-//usage:     "\n	-n	Don't resolve names"
-//usage:     "\n	-e	Display other/more information"
-//usage:     "\n	-A inet" IF_FEATURE_IPV6("{6}") "	Select address family"
-
 #include <net/route.h>
 #include <net/if.h>
 
@@ -83,17 +75,15 @@
 #define RTACTION_ADD 1
 #define RTACTION_DEL 2
 
-/* For the various tbl_*[] arrays, the 1st byte is the offset to
- * the next entry and the 2nd byte is return value. */
+/* For the various tbl_*[] arrays, the 1st byte is return value. */
 
 #define NET_FLAG  1
 #define HOST_FLAG 2
 
 /* We remap '-' to '#' to avoid problems with getopt. */
 static const char tbl_hash_net_host[] ALIGN1 =
-	"\007\001#net\0"
-/*	"\010\002#host\0" */
-	"\007\002#host"				/* Since last, we can save a byte. */
+	"\001#net\0"
+	"\002#host\0"
 ;
 
 #define KW_TAKES_ARG            020
@@ -116,29 +106,28 @@ static const char tbl_hash_net_host[] ALIGN1 =
 static const char tbl_ipvx[] ALIGN1 =
 	/* 020 is the "takes an arg" bit */
 #if HAVE_NEW_ADDRT
-	"\011\020metric\0"
+	"\020metric\0"
 #endif
-	"\012\021netmask\0"
-	"\005\022gw\0"
-	"\012\022gateway\0"
-	"\006\023mss\0"
-	"\011\024window\0"
+	"\021netmask\0"
+	"\022gw\0"
+	"\022gateway\0"
+	"\023mss\0"
+	"\024window\0"
 #ifdef RTF_IRTT
-	"\007\025irtt\0"
+	"\025irtt\0"
 #endif
-	"\006\026dev\0"
-	"\011\026device\0"
+	"\026dev\0"
+	"\026device\0"
 	/* 040 is the "sets a flag" bit - MUST match flags_ipvx[] values below. */
 #ifdef RTF_REJECT
-	"\011\040reject\0"
+	"\040reject\0"
 #endif
-	"\006\041mod\0"
-	"\006\042dyn\0"
-/*	"\014\043reinstate\0" */
-	"\013\043reinstate"			/* Since last, we can save a byte. */
+	"\041mod\0"
+	"\042dyn\0"
+	"\043reinstate\0"
 ;
 
-static const uint16_t flags_ipvx[] = { /* MUST match tbl_ipvx[] values above. */
+static const uint16_t flags_ipvx[] ALIGN2 = { /* MUST match tbl_ipvx[] values above. */
 #ifdef RTF_REJECT
 	RTF_REJECT,
 #endif
@@ -151,17 +140,17 @@ static int kw_lookup(const char *kwtbl, char ***pargs)
 {
 	if (**pargs) {
 		do {
-			if (strcmp(kwtbl+2, **pargs) == 0) { /* Found a match. */
+			if (strcmp(kwtbl + 1, **pargs) == 0) { /* Found a match. */
 				*pargs += 1;
-				if (kwtbl[1] & KW_TAKES_ARG) {
+				if (kwtbl[0] & KW_TAKES_ARG) {
 					if (!**pargs) {	/* No more args! */
 						bb_show_usage();
 					}
 					*pargs += 1; /* Calling routine will use args[-1]. */
 				}
-				return kwtbl[1];
+				return kwtbl[0];
 			}
-			kwtbl += *kwtbl;
+			kwtbl += strlen(kwtbl) + 1;
 		} while (*kwtbl);
 	}
 	return 0;
@@ -208,7 +197,7 @@ static NOINLINE void INET_setroute(int action, char **args)
 			/* Default netmask. */
 			netmask = "default";
 		}
-		/* Prefer hostname lookup is -host flag (xflag==1) was given. */
+		/* Prefer hostname lookup if -host flag (xflag==1) was given. */
 		isnet = INET_resolve(target, (struct sockaddr_in *) &rt->rt_dst,
 							 (xflag & HOST_FLAG));
 		if (isnet < 0) {
@@ -460,9 +449,9 @@ static NOINLINE void INET6_setroute(int action, char **args)
 #endif
 
 static const
-IF_NOT_FEATURE_IPV6(uint16_t)
-IF_FEATURE_IPV6(unsigned)
-flagvals[] = { /* Must agree with flagchars[]. */
+IF_NOT_FEATURE_IPV6(uint16_t flagvals[] ALIGN2 = )
+IF_FEATURE_IPV6(uint32_t flagvals[] ALIGN4 = )
+{ /* Must agree with flagchars[]. */
 	RTF_UP,
 	RTF_GATEWAY,
 	RTF_HOST,
@@ -544,7 +533,6 @@ void FAST_FUNC bb_displayroutes(int noresolve, int netstatfmt)
 			flags[0] = '!';
 		}
 #endif
-
 		memset(&s_addr, 0, sizeof(struct sockaddr_in));
 		s_addr.sin_family = AF_INET;
 		s_addr.sin_addr.s_addr = d;
@@ -634,7 +622,6 @@ static void INET6_displayroutes(void)
 			naddr6 = INET6_rresolve((struct sockaddr_in6 *) &snaddr6,
 						0x0fff /* Apparently, upstream never resolves. */
 						);
-
 			if (!r) {			/* 1st pass */
 				snprintf(addr6, sizeof(addr6), "%s/%d", naddr6, prefix_len);
 				r += 40;
@@ -653,18 +640,27 @@ static void INET6_displayroutes(void)
 
 #endif
 
+//usage:#define route_trivial_usage
+///////:       "[-ne]"IF_FEATURE_IPV6(" [-A inet[6]]")" [{add|del|delete} [-net|-host] TARGET [netmask MASK] [gw GATEWAY] [metric N] [mss BYTES] [window BYTES] [irtt MSEC] [reject] [mod] [dyn] [reinstate] [[dev] IFACE]]"
+///////too wordy
+//usage:       "[-ne]"IF_FEATURE_IPV6(" [-A inet[6]]")" [{add|del} [-net|-host] TARGET [netmask MASK]\n"
+//usage:       "	[gw GATEWAY] [metric N] [mss BYTES] [window BYTES] [reject] [IFACE]]"
+//usage:#define route_full_usage "\n\n"
+//usage:       "Show or edit kernel routing tables\n"
+//usage:     "\n	-n	Don't resolve names"
+//usage:     "\n	-e	Display other/more information"
+//usage:     "\n	-A inet" IF_FEATURE_IPV6("[6]") "	Select address family"
+
 #define ROUTE_OPT_A     0x01
 #define ROUTE_OPT_n     0x02
 #define ROUTE_OPT_e     0x04
 #define ROUTE_OPT_INET6 0x08 /* Not an actual option. See below. */
 
-/* 1st byte is offset to next entry offset.  2nd byte is return value. */
-/* 2nd byte matches RTACTION_* code */
+/* 1st byte is return value, matches RTACTION_* code */
 static const char tbl_verb[] ALIGN1 =
-	"\006\001add\0"
-	"\006\002del\0"
-/*	"\011\002delete\0" */
-	"\010\002delete"  /* Since it's last, we can save a byte. */
+	"\001add\0"
+	"\002del\0"
+	"\002delete\0"
 ;
 
 int route_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;

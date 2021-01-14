@@ -8,8 +8,18 @@
  */
 #include "libbb.h"
 
-/* Conversion table.  for base 64 */
-const char bb_uuenc_tbl_base64[65 + 1] ALIGN1 = {
+/* Conversion tables */
+#if ENABLE_BASE32
+const char bb_uuenc_tbl_base32[] ALIGN1 = {
+	'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
+	'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
+	'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
+	'Y', 'Z', '2', '3', '4', '5', '6', '7',
+	/* unused: '=', */
+};
+#endif
+/* for base 64 */
+const char bb_uuenc_tbl_base64[] ALIGN1 = {
 	'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
 	'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
 	'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
@@ -18,11 +28,9 @@ const char bb_uuenc_tbl_base64[65 + 1] ALIGN1 = {
 	'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
 	'w', 'x', 'y', 'z', '0', '1', '2', '3',
 	'4', '5', '6', '7', '8', '9', '+', '/',
-	'=' /* termination character */,
-	'\0' /* needed for uudecode.c only */
+	'=' /* termination character */
 };
-
-const char bb_uuenc_tbl_std[65] ALIGN1 = {
+const char bb_uuenc_tbl_std[] ALIGN1 = {
 	'`', '!', '"', '#', '$', '%', '&', '\'',
 	'(', ')', '*', '+', ',', '-', '.', '/',
 	'0', '1', '2', '3', '4', '5', '6', '7',
@@ -30,7 +38,7 @@ const char bb_uuenc_tbl_std[65] ALIGN1 = {
 	'@', 'A', 'B', 'C', 'D', 'E', 'F', 'G',
 	'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O',
 	'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W',
-	'X', 'Y', 'Z', '[', '\\', ']', '^', '_',
+	'X', 'Y', 'Z', '[', '\\',']', '^', '_',
 	'`' /* termination character */
 };
 
@@ -72,86 +80,124 @@ void FAST_FUNC bb_uuencode(char *p, const void *src, int length, const char *tbl
 }
 
 /*
- * Decode base64 encoded string. Stops on '\0'.
+ * Decode base64 encoded string.
  *
- * Returns: pointer to the undecoded part of source.
+ * Returns: pointer past the last written output byte,
+ * the result is not NUL-terminated.
+ * (*pp_src) is advanced past the last read byte.
  * If points to '\0', then the source was fully decoded.
- * (*pp_dst): advanced past the last written byte.
  */
-const char* FAST_FUNC decode_base64(char **pp_dst, const char *src)
+char* FAST_FUNC decode_base64(char *dst, const char **pp_src)
 {
-	char *dst = *pp_dst;
-	const char *src_tail;
+	const char *src = pp_src ? *pp_src : dst; /* for httpd.c, support NULL 2nd param */
+	unsigned ch = 0;
+	unsigned t;
+	int i = 0;
 
-	while (1) {
-		unsigned char six_bit[4];
-		int count = 0;
+	while ((t = (unsigned char)*src) != '\0') {
+		src++;
 
-		/* Fetch up to four 6-bit values */
-		src_tail = src;
-		while (count < 4) {
-			char *table_ptr;
-			int ch;
-
-			/* Get next _valid_ character.
-			 * bb_uuenc_tbl_base64[] contains this string:
-			 *  0         1         2         3         4         5         6
-			 *  01234567890123456789012345678901234567890123456789012345678901234
-			 * "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
-			 */
-			do {
-				ch = *src;
-				if (ch == '\0') {
-					if (count == 0) {
-						/* Example:
-						 * If we decode "QUJD <NUL>", we want
-						 * to return ptr to NUL, not to ' ',
-						 * because we did fully decode
-						 * the string (to "ABC").
-						 */
-						src_tail = src;
-					}
-					goto ret;
-				}
-				src++;
-				table_ptr = strchr(bb_uuenc_tbl_base64, ch);
+		/* "if" forest is faster than strchr(bb_uuenc_tbl_base64, t) */
+		if (t >= '0' && t <= '9')
+			t = t - '0' + 52;
+		else if (t >= 'A' && t <= 'Z')
+			t = t - 'A';
+		else if (t >= 'a' && t <= 'z')
+			t = t - 'a' + 26;
+		else if (t == '+')
+			t = 62;
+		else if (t == '/')
+			t = 63;
+		else if (t == '=' && (i == 3 || (i == 2 && *src == '=')))
+			/* the above disallows "==AA", "A===", "AA=A" etc */
+			t = 0x1000000;
+		else
 //TODO: add BASE64_FLAG_foo to die on bad char?
-			} while (!table_ptr);
+			continue;
 
-			/* Convert encoded character to decimal */
-			ch = table_ptr - bb_uuenc_tbl_base64;
-
-			/* ch is 64 if char was '=', otherwise 0..63 */
-			if (ch == 64)
+		ch = (ch << 6) | t;
+		i = (i + 1) & 3;
+		if (i == 0) {
+			*dst++ = (char) (ch >> 16);
+			*dst++ = (char) (ch >> 8);
+			*dst++ = (char) ch;
+			if (ch & 0x1000000) { /* was last input char '='? */
+				dst--;
+				if (ch & (0x1000000 << 6)) /* was it "=="? */
+					dst--;
 				break;
-			six_bit[count] = ch;
-			count++;
+			}
+			ch = 0;
+		}
+	}
+	/* i is zero here if full 4-char block was decoded */
+	if (pp_src)
+		*pp_src = src - i; /* -i signals truncation: e.g. "MQ" and "MQ=" (correct encoding is "MQ==" -> "1") */
+	return dst;
+}
+
+#if ENABLE_BASE32
+char* FAST_FUNC decode_base32(char *dst, const char **pp_src)
+{
+	const char *src = *pp_src;
+	uint64_t ch = 0;
+	unsigned t;
+	int i = 0;
+
+	while ((t = (unsigned char)*src) != '\0') {
+		src++;
+
+		/* "if" forest is faster than strchr(bb_uuenc_tbl_base32, t) */
+		if (t >= '2' && t <= '7')
+			t = t - '2' + 26;
+		else if (t == '=' && i > 1)
+			t = 0;
+		else {
+			t = (t | 0x20) - 'a';
+			if (t > 25)
+//TODO: add BASE64_FLAG_foo to die on bad char?
+				continue;
 		}
 
-		/* Transform 6-bit values to 8-bit ones.
-		 * count can be < 4 when we decode the tail:
-		 * "eQ==" -> "y", not "y NUL NUL".
-		 * Note that (count > 1) is always true,
-		 * "x===" encoding is not valid:
-		 * even a single zero byte encodes as "AA==".
-		 * However, with current logic we come here with count == 1
-		 * when we decode "==" tail.
+		ch = (ch << 5) | t;
+		i = (i + 1) & 7;
+		if (i == 0) {
+			*dst++ = (char) (ch >> 32);
+			if (src[-1] == '=') /* was last input char '='? */
+				goto tail;
+			*dst++ = (char) (ch >> 24);
+			*dst++ = (char) (ch >> 16);
+			*dst++ = (char) (ch >> 8);
+			*dst++ = (char) ch;
+		}
+	}
+	/* i is zero here if full 8-char block was decoded */
+	*pp_src = src - i;
+	return dst;
+ tail:
+	{
+		const char *s = src;
+		while (*--s == '=')
+			i++;
+		/* Why duplicate the below code? Testcase:
+		 * echo ' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18' | base32 | base32 -d
+		 * IOW, decoding of
+		 * EAYSAMRAGMQDIIBVEA3CANZAHAQDSIBRGAQDCMJAGEZCAMJTEAYTIIBRGUQDCNRAGE3SAMJYBI==
+		 * ====
+		 * must correctly stitch together the tail, must not overwrite
+		 * the tail before it is analyzed! (we can be decoding in-place)
+		 * Else testcase fails, prints trailing extra NUL bytes.
 		 */
-		if (count > 1)
-			*dst++ = six_bit[0] << 2 | six_bit[1] >> 4;
-		if (count > 2)
-			*dst++ = six_bit[1] << 4 | six_bit[2] >> 2;
-		if (count > 3)
-			*dst++ = six_bit[2] << 6 | six_bit[3];
-		/* Note that if we decode "AA==" and ate first '=',
-		 * we just decoded one char (count == 2) and now we'll
-		 * do the loop once more to decode second '='.
-		 */
-	} /* while (1) */
- ret:
-	*pp_dst = dst;
-	return src_tail;
+		*dst++ = (char) (ch >> 24);
+		*dst++ = (char) (ch >> 16);
+		*dst++ = (char) (ch >> 8);
+		*dst++ = (char) ch;
+		dst -= (i+1) * 2 / 3; /* discard last 1, 2, 3 or 4 bytes */
+	}
+	*pp_src = src;
+	return dst;
 }
+#endif
 
 /*
  * Decode base64 encoded stream.
@@ -163,20 +209,22 @@ void FAST_FUNC read_base64(FILE *src_stream, FILE *dst_stream, int flags)
 /* Note that EOF _can_ be passed as exit_char too */
 #define exit_char    ((int)(signed char)flags)
 #define uu_style_end (flags & BASE64_FLAG_UU_STOP)
+#define base32       (flags & BASE64_32)
 
-	/* uuencoded files have 61 byte lines. Use 64 byte buffer
-	 * to process line at a time.
+	/* uuencoded files have 61 byte lines.
+	 * base32/64 have 76 byte lines by default.
+	 * Use 80 byte buffer to process one line at a time.
 	 */
-	enum { BUFFER_SIZE = 64 };
-
-	char in_buf[BUFFER_SIZE + 2];
-	char out_buf[BUFFER_SIZE / 4 * 3 + 2];
-	char *out_tail;
-	const char *in_tail;
+	enum { BUFFER_SIZE = 80 };
+	/* decoded data is shorter than input, can use single buffer for both */
+	char buf[BUFFER_SIZE + 2];
 	int term_seen = 0;
 	int in_count = 0;
 
 	while (1) {
+		char *out_tail;
+		const char *in_tail;
+
 		while (in_count < BUFFER_SIZE) {
 			int ch = fgetc(src_stream);
 			if (ch == exit_char) {
@@ -195,29 +243,34 @@ void FAST_FUNC read_base64(FILE *src_stream, FILE *dst_stream, int flags)
 			 */
 			if (ch <= ' ')
 				break;
-			in_buf[in_count++] = ch;
+			buf[in_count++] = ch;
 		}
-		in_buf[in_count] = '\0';
+		buf[in_count] = '\0';
 
 		/* Did we encounter "====" line? */
-		if (uu_style_end && strcmp(in_buf, "====") == 0)
+		if (uu_style_end && strcmp(buf, "====") == 0)
 			return;
 
-		out_tail = out_buf;
-		in_tail = decode_base64(&out_tail, in_buf);
+		in_tail = buf;
+#if ENABLE_BASE32
+		if (base32)
+			out_tail = decode_base32(buf, &in_tail);
+		else
+#endif
+			out_tail = decode_base64(buf, &in_tail);
 
-		fwrite(out_buf, (out_tail - out_buf), 1, dst_stream);
+		fwrite(buf, (out_tail - buf), 1, dst_stream);
 
 		if (term_seen) {
 			/* Did we consume ALL characters? */
 			if (*in_tail == '\0')
 				return;
 			/* No */
-			bb_simple_error_msg_and_die("truncated base64 input");
+			bb_simple_error_msg_and_die("truncated input");
 		}
 
 		/* It was partial decode */
 		in_count = strlen(in_tail);
-		memmove(in_buf, in_tail, in_count);
+		memmove(buf, in_tail, in_count);
 	}
 }

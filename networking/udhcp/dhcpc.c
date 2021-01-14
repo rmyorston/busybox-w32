@@ -702,7 +702,8 @@ static int bcast_or_ucast(struct dhcp_packet *packet, uint32_t ciaddr, uint32_t 
 	if (server)
 		return udhcp_send_kernel_packet(packet,
 			ciaddr, CLIENT_PORT,
-			server, SERVER_PORT);
+			server, SERVER_PORT,
+			client_data.interface);
 	return raw_bcast_from_client_data_ifindex(packet, ciaddr);
 }
 
@@ -1195,7 +1196,7 @@ static void client_background(void)
 //usage:       "	[-i IFACE]"IF_FEATURE_UDHCP_PORT(" [-P PORT]")" [-s PROG] [-p PIDFILE]\n"
 //usage:       "	[-oC] [-r IP] [-V VENDOR] [-F NAME] [-x OPT:VAL]... [-O OPT]..."
 //usage:#define udhcpc_full_usage "\n"
-//usage:     "\n	-i IFACE	Interface to use (default eth0)"
+//usage:     "\n	-i IFACE	Interface to use (default "CONFIG_UDHCPC_DEFAULT_INTERFACE")"
 //usage:	IF_FEATURE_UDHCP_PORT(
 //usage:     "\n	-P PORT		Use PORT (default 68)"
 //usage:	)
@@ -1264,7 +1265,7 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 	/* Default options */
 	IF_FEATURE_UDHCP_PORT(SERVER_PORT = 67;)
 	IF_FEATURE_UDHCP_PORT(CLIENT_PORT = 68;)
-	client_data.interface = "eth0";
+	client_data.interface = CONFIG_UDHCPC_DEFAULT_INTERFACE;
 	client_data.script = CONFIG_UDHCPC_DEFAULT_SCRIPT;
 	client_data.sockfd = -1;
 	str_V = "udhcp "BB_VER;

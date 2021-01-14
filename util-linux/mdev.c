@@ -80,12 +80,14 @@
 //kbuild:lib-$(CONFIG_MDEV) += mdev.o
 
 //usage:#define mdev_trivial_usage
-//usage:       "[-s]" IF_FEATURE_MDEV_DAEMON(" | [-df]")
+//usage:       "[-vS] " IF_FEATURE_MDEV_DAEMON("{ ") "[-s]" IF_FEATURE_MDEV_DAEMON(" | [-df] }")
 //usage:#define mdev_full_usage "\n\n"
-//usage:       "mdev -s is to be run during boot to scan /sys and populate /dev.\n"
+//usage:       "	-v	verbose\n"
+//usage:       "	-S	log to syslog too\n"
+//usage:       "	-s	scan /sys and populate /dev\n"
 //usage:	IF_FEATURE_MDEV_DAEMON(
-//usage:       "mdev -d[f]: daemon, listen on netlink.\n"
-//usage:       "	-f: stay in foreground.\n"
+//usage:       "	-d	daemon, listen on netlink\n"
+//usage:       "	-f	stay in foreground\n"
 //usage:	)
 //usage:       "\n"
 //usage:       "Bare mdev is a kernel hotplug helper. To activate it:\n"
@@ -113,6 +115,7 @@
 #include "common_bufsiz.h"
 #include "xregex.h"
 #include <linux/netlink.h>
+#include <syslog.h>
 
 /* "mdev -s" scans /sys/class/xxx, looking for directories which have dev
  * file (it is of the form "M:m\n"). Example: /sys/class/tty/tty0/dev
@@ -269,10 +272,6 @@
 # define dbg3s(msg) ((void)0)
 #endif
 
-
-#ifndef SO_RCVBUFFORCE
-#define SO_RCVBUFFORCE 33
-#endif
 static const char keywords[] ALIGN1 = "add\0remove\0"; // "change\0"
 enum { OP_add, OP_remove };
 
@@ -297,7 +296,7 @@ struct rule {
 
 struct globals {
 	int root_major, root_minor;
-	smallint verbose;
+	int verbose;
 	char *subsystem;
 	char *subsys_env; /* for putenv("SUBSYSTEM=subsystem") */
 #if ENABLE_FEATURE_MDEV_CONF
@@ -921,7 +920,7 @@ static void load_firmware(const char *firmware, const char *sysfs_path)
 		loading_fd = open("loading", O_WRONLY);
 		if (loading_fd >= 0)
 			goto loading;
-		sleep(1);
+		sleep1();
 	}
 	goto out;
 
@@ -964,7 +963,7 @@ static void load_firmware(const char *firmware, const char *sysfs_path)
 static char *curtime(void)
 {
 	struct timeval tv;
-	gettimeofday(&tv, NULL);
+	xgettimeofday(&tv);
 	sprintf(
 		strftime_HHMMSS(G.timestr, sizeof(G.timestr), &tv.tv_sec),
 		".%06u",
@@ -1152,15 +1151,50 @@ static void initial_scan(char *temp)
 
 #if ENABLE_FEATURE_MDEV_DAEMON
 
-/* uevent applet uses 16k buffer, and mmaps it before every read */
-# define BUFFER_SIZE (2 * 1024)
-# define RCVBUF (2 * 1024 * 1024)
+/*
+ * The kernel (as of v5.4) will pass up to 32 environment variables with a
+ * total of 2kiB on each event. On top of that the action string and device
+ * path are added. Using a 3kiB buffer for the event should suffice in any
+ * case.
+ *
+ * As far as the socket receive buffer size is concerned 2MiB proved to be too
+ * small (see [1]). Udevd seems to use a whooping 128MiB. The socket receive
+ * buffer size is just a resource limit. The buffers are allocated lazily so
+ * the memory is not wasted.
+ *
+ * [1] http://lists.busybox.net/pipermail/busybox/2019-December/087665.html
+ */
+# define USER_RCVBUF (3 * 1024)
+# define KERN_RCVBUF (128 * 1024 * 1024)
 # define MAX_ENV 32
+
+static int daemon_init(char *temp)
+{
+	int fd;
+
+	/* Subscribe for UEVENT kernel messages */
+	/* Without a sufficiently big RCVBUF, a ton of simultaneous events
+	 * can trigger ENOBUFS on read, which is unrecoverable.
+	 * Reproducer:
+	 *	mdev -d
+	 *	find /sys -name uevent -exec sh -c 'echo add >"{}"' ';'
+	 */
+	fd = create_and_bind_to_netlink(NETLINK_KOBJECT_UEVENT, 1 << 0, KERN_RCVBUF);
+
+	/*
+	 * Make inital scan after the uevent socket is alive and
+	 * _before_ we fork away. Already open mdev.log because we work
+	 * in daemon mode.
+	 */
+	initial_scan(temp);
+
+	return fd;
+}
 
 static void daemon_loop(char *temp, int fd)
 {
 	for (;;) {
-		char netbuf[BUFFER_SIZE];
+		char netbuf[USER_RCVBUF];
 		char *env[MAX_ENV];
 		char *s, *end;
 		ssize_t len;
@@ -1168,6 +1202,16 @@ static void daemon_loop(char *temp, int fd)
 
 		len = safe_read(fd, netbuf, sizeof(netbuf) - 1);
 		if (len < 0) {
+			if (errno == ENOBUFS) {
+				/*
+				 * We ran out of socket receive buffer space.
+				 * Start from scratch.
+				 */
+				dbg1s("uevent overrun, rescanning");
+				close(fd);
+				fd = daemon_init(temp);
+				continue;
+			}
 			bb_simple_perror_msg_and_die("read");
 		}
 		end = netbuf + len;
@@ -1196,8 +1240,9 @@ int mdev_main(int argc UNUSED_PARAM, char **argv)
 {
 	enum {
 		MDEV_OPT_SCAN       = 1 << 0,
-		MDEV_OPT_DAEMON     = 1 << 1,
-		MDEV_OPT_FOREGROUND = 1 << 2,
+		MDEV_OPT_SYSLOG     = 1 << 1,
+		MDEV_OPT_DAEMON     = 1 << 2,
+		MDEV_OPT_FOREGROUND = 1 << 3,
 	};
 	int opt;
 	RESERVE_CONFIG_BUFFER(temp, PATH_MAX + SCRATCH_SIZE);
@@ -1213,7 +1258,11 @@ int mdev_main(int argc UNUSED_PARAM, char **argv)
 
 	xchdir("/dev");
 
-	opt = getopt32(argv, "s" IF_FEATURE_MDEV_DAEMON("df"));
+	opt = getopt32(argv, "^"
+		"sS" IF_FEATURE_MDEV_DAEMON("df") "v"
+		"\0"
+		"vv",
+		&G.verbose);
 
 #if ENABLE_FEATURE_MDEV_CONF
 	G.filename = "/etc/mdev.conf";
@@ -1223,32 +1272,24 @@ int mdev_main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 
+	if (opt & MDEV_OPT_SYSLOG) {
+		openlog(applet_name, LOG_PID, LOG_DAEMON);
+		logmode |= LOGMODE_SYSLOG;
+	}
+
 #if ENABLE_FEATURE_MDEV_DAEMON
 	if (opt & MDEV_OPT_DAEMON) {
-		/*
-		 * Daemon mode listening on uevent netlink socket.
+		/* Daemon mode listening on uevent netlink socket. Fork away
+		 * after initial scan so that caller can be sure everything
+		 * is up-to-date when mdev process returns.
 		 */
-		int fd;
+		int fd = daemon_init(temp);
 
-		/* Subscribe for UEVENT kernel messages */
-		/* Without a sufficiently big RCVBUF, a ton of simultaneous events
-		 * can trigger ENOBUFS on read, which is unrecoverable.
-		 * Reproducer:
-		 *	mdev -d
-		 *	find /sys -name uevent -exec sh -c 'echo add >"{}"' ';'
-		 */
-		fd = create_and_bind_to_netlink(NETLINK_KOBJECT_UEVENT, 1 << 0, RCVBUF);
-
-		/*
-		 * Make inital scan after the uevent socket is alive and
-		 * _before_ we fork away.
-		 */
-		initial_scan(temp);
-
-		if (!(opt & MDEV_OPT_FOREGROUND))
+		if (!(opt & MDEV_OPT_FOREGROUND)) {
+			/* there is no point in logging to /dev/null */
+			logmode &= ~LOGMODE_STDIO;
 			bb_daemonize_or_rexec(0, argv);
-
-		open_mdev_log(NULL, getpid());
+		}
 
 		daemon_loop(temp, fd);
 	}

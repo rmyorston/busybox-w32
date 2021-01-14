@@ -185,8 +185,11 @@ struct hd_geometry {
 
 #define HDIO_GETGEO     0x0301  /* get device geometry */
 
-/* TODO: #if ENABLE_FEATURE_FDISK_WRITABLE */
+/* TODO: just #if ENABLE_FEATURE_FDISK_WRITABLE */
 /* (currently fdisk_sun/sgi.c do not have proper WRITABLE #ifs) */
+#if ENABLE_FEATURE_FDISK_WRITABLE \
+ || ENABLE_FEATURE_SGI_LABEL \
+ || ENABLE_FEATURE_SUN_LABEL
 static const char msg_building_new_label[] ALIGN1 =
 "Building a new %s. Changes will remain in memory only,\n"
 "until you decide to write them. After that the previous content\n"
@@ -194,7 +197,7 @@ static const char msg_building_new_label[] ALIGN1 =
 
 static const char msg_part_already_defined[] ALIGN1 =
 "Partition %u is already defined, delete it before re-adding\n";
-/* #endif */
+#endif
 
 
 struct partition {
@@ -303,7 +306,7 @@ static sector_t get_nr_sects(const struct partition *p);
 
 /* DOS partition types */
 
-static const char *const i386_sys_types[] = {
+static const char *const i386_sys_types[] ALIGN_PTR = {
 	"\x00" "Empty",
 	"\x01" "FAT12",
 	"\x04" "FAT16 <32M",
@@ -2667,7 +2670,7 @@ reread_partition_table(int leave)
 	/* Users with slow external USB disks on a 320MHz ARM system (year 2011)
 	 * report that sleep is needed, otherwise BLKRRPART may fail with -EIO:
 	 */
-	sleep(1);
+	sleep1();
 	i = ioctl_or_perror(dev_fd, BLKRRPART, NULL,
 			"WARNING: rereading partition table "
 			"failed, kernel still uses old table");

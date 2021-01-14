@@ -41,7 +41,7 @@
 //usage:#define timeout_trivial_usage
 //usage:       "[-s SIG] SECS PROG ARGS"
 //usage:#define timeout_full_usage "\n\n"
-//usage:       "Runs PROG. Sends SIG to it if it is not gone in SECS seconds.\n"
+//usage:       "Run PROG. Send SIG to it if it is not gone in SECS seconds.\n"
 //usage:       "Default SIG: TERM."
 
 #include "libbb.h"
@@ -130,7 +130,7 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
  grandchild:
 		/* Just sleep(HUGE_NUM); kill(parent) may kill wrong process! */
 		while (1) {
-			sleep(1);
+			sleep1();
 			if (--timeout <= 0)
 				break;
 			if (kill(parent, 0)) {

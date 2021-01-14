@@ -27,7 +27,6 @@ int FAST_FUNC usleep(unsigned usec)
 	 * If a signal has non-default handler, nanosleep returns early.
 	 * Our version of usleep doesn't return early
 	 * if interrupted by such signals:
-	 *
 	 */
 	while (nanosleep(&ts, &ts) != 0)
 		continue;
@@ -107,7 +106,8 @@ void* FAST_FUNC memrchr(const void *s, int c, size_t n)
 /* This is now actually part of POSIX.1, but was only added in 2008 */
 char* FAST_FUNC mkdtemp(char *template)
 {
-	if (mktemp(template) == NULL || mkdir(template, 0700) != 0)
+	/* NB: on error, mktemp returns an empty string, not NULL */
+	if (mktemp(template)[0] == '\0' || mkdir(template, 0700) != 0)
 		return NULL;
 	return template;
 }

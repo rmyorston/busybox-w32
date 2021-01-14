@@ -273,7 +273,7 @@ static int i2c_bus_lookup(const char *bus_str)
 	return xstrtou_range(bus_str, 10, 0, 0xfffff);
 }
 
-#if ENABLE_I2CGET || ENABLE_I2CSET || ENABLE_I2CDUMP || ENABLE_I2CTRANSFER
+#if ENABLE_I2CGET || ENABLE_I2CSET || ENABLE_I2CDUMP
 static int i2c_parse_bus_addr(const char *addr_str)
 {
 	/* Slave address must be in range 0x03 - 0x77. */
@@ -286,14 +286,16 @@ static void i2c_set_pec(int fd, int pec)
 				itoptr(pec ? 1 : 0),
 				"can't set PEC");
 }
+#endif
 
+#if ENABLE_I2CGET || ENABLE_I2CSET || ENABLE_I2CDUMP || ENABLE_I2CTRANSFER
 static void i2c_set_slave_addr(int fd, int addr, int force)
 {
 	ioctl_or_perror_and_die(fd, force ? I2C_SLAVE_FORCE : I2C_SLAVE,
 				itoptr(addr),
 				"can't set address to 0x%02x", addr);
 }
-#endif /* ENABLE_I2CGET || ENABLE_I2CSET || ENABLE_I2CDUMP */
+#endif
 
 #if ENABLE_I2CGET || ENABLE_I2CSET
 static int i2c_parse_data_addr(const char *data_addr)
@@ -1052,24 +1054,19 @@ struct adap_desc {
 	const char *algo;
 };
 
-static const struct adap_desc adap_descs[] = {
-	{ .funcs	= "dummy",
-	  .algo		= "Dummy bus", },
-	{ .funcs	= "isa",
-	  .algo		= "ISA bus", },
-	{ .funcs	= "i2c",
-	  .algo		= "I2C adapter", },
-	{ .funcs	= "smbus",
-	  .algo		= "SMBus adapter", },
+static const struct adap_desc adap_descs[] ALIGN_PTR = {
+	{ .funcs = "dummy", .algo = "Dummy bus", },
+	{ .funcs = "isa",   .algo = "ISA bus", },
+	{ .funcs = "i2c",   .algo = "I2C adapter", },
+	{ .funcs = "smbus", .algo = "SMBus adapter", },
 };
 
-struct i2c_func
-{
+struct i2c_func {
 	long value;
 	const char* name;
 };
 
-static const struct i2c_func i2c_funcs_tab[] = {
+static const struct i2c_func i2c_funcs_tab[] ALIGN_PTR = {
 	{ .value = I2C_FUNC_I2C,
 	  .name = "I2C" },
 	{ .value = I2C_FUNC_SMBUS_QUICK,
@@ -1152,12 +1149,12 @@ static void NORETURN list_i2c_busses_and_exit(void)
 		/* Simple version for ISA chips. */
 		snprintf(path, NAME_MAX, "%s/%s/name",
 			 i2cdev_path, de->d_name);
-		fp = fopen(path, "r");
+		fp = fopen_for_read(path);
 		if (fp == NULL) {
 			snprintf(path, NAME_MAX,
 				 "%s/%s/device/name",
 				 i2cdev_path, de->d_name);
-			fp = fopen(path, "r");
+			fp = fopen_for_read(path);
 		}
 
 		/* Non-ISA chips require the hard-way. */
@@ -1178,7 +1175,7 @@ static void NORETURN list_i2c_busses_and_exit(void)
 						 "%s/%s/device/%s/name",
 						 i2cdev_path, de->d_name,
 						 subde->d_name);
-					fp = fopen(path, "r");
+					fp = fopen_for_read(path);
 					break;
 				}
 			}

@@ -231,7 +231,7 @@ typedef struct BcNum {
 #define BC_NUM_MAX_IBASE        36
 // larger value might speed up BIGNUM calculations a bit:
 #define BC_NUM_DEF_SIZE         16
-#define BC_NUM_PRINT_WIDTH      69
+#define BC_NUM_PRINT_WIDTH      70
 
 #define BC_NUM_KARATSUBA_LEN    32
 
@@ -517,7 +517,7 @@ struct BcLexKeyword {
 };
 #define LEX_KW_ENTRY(a, b) \
 	{ .name8 = a /*, .posix = b */ }
-static const struct BcLexKeyword bc_lex_kws[20] = {
+static const struct BcLexKeyword bc_lex_kws[20] ALIGN8 = {
 	LEX_KW_ENTRY("auto"    , 1), // 0
 	LEX_KW_ENTRY("break"   , 1), // 1
 	LEX_KW_ENTRY("continue", 0), // 2 note: this one has no terminating NUL
@@ -1827,7 +1827,7 @@ static FAST_FUNC BC_STATUS zbc_num_k(BcNum *restrict a, BcNum *restrict b,
 #define zbc_num_k(...) (zbc_num_k(__VA_ARGS__) COMMA_SUCCESS)
 {
 	BcStatus s;
-	size_t max = BC_MAX(a->len, b->len), max2 = (max + 1) / 2;
+	size_t max, max2;
 	BcNum l1, h1, l2, h2, m2, m1, z0, z1, z2, temp;
 	bool aone;
 
@@ -1841,9 +1841,9 @@ static FAST_FUNC BC_STATUS zbc_num_k(BcNum *restrict a, BcNum *restrict b,
 		RETURN_STATUS(BC_STATUS_SUCCESS);
 	}
 
-	if (a->len + b->len < BC_NUM_KARATSUBA_LEN
-	 || a->len < BC_NUM_KARATSUBA_LEN
+	if (a->len < BC_NUM_KARATSUBA_LEN
 	 || b->len < BC_NUM_KARATSUBA_LEN
+	/* || a->len + b->len < BC_NUM_KARATSUBA_LEN - redundant check */
 	) {
 		size_t i, j, len;
 
@@ -1877,6 +1877,7 @@ static FAST_FUNC BC_STATUS zbc_num_k(BcNum *restrict a, BcNum *restrict b,
 		RETURN_STATUS(BC_STATUS_SUCCESS);
 	}
 
+	max = BC_MAX(a->len, b->len);
 	bc_num_init(&l1, max);
 	bc_num_init(&h1, max);
 	bc_num_init(&l2, max);
@@ -1888,6 +1889,7 @@ static FAST_FUNC BC_STATUS zbc_num_k(BcNum *restrict a, BcNum *restrict b,
 	bc_num_init(&z2, max);
 	bc_num_init(&temp, max + max);
 
+	max2 = (max + 1) / 2;
 	bc_num_split(a, max2, &l1, &h1);
 	bc_num_split(b, max2, &l2, &h2);
 
@@ -2201,8 +2203,8 @@ static BC_STATUS zbc_num_sqrt(BcNum *a, BcNum *restrict b, size_t scale)
 	BcStatus s;
 	BcNum num1, num2, half, f, fprime, *x0, *x1, *temp;
 	BcDig half_digs[1];
-	size_t pow, len, digs, digs1, resrdx, req, times = 0;
-	ssize_t cmp = 1, cmp1 = SSIZE_MAX, cmp2 = SSIZE_MAX;
+	size_t pow, len, digs, digs1, resrdx, req, times;
+	ssize_t cmp, cmp1, cmp2;
 
 	req = BC_MAX(scale, a->rdx) + ((BC_NUM_INT(a) + 1) >> 1) + 1;
 	bc_num_expand(b, req);
@@ -2255,11 +2257,12 @@ static BC_STATUS zbc_num_sqrt(BcNum *a, BcNum *restrict b, size_t scale)
 		x0->rdx -= pow;
 	}
 
-	x0->rdx = digs = digs1 = 0;
+	x0->rdx = digs = digs1 = times = 0;
 	resrdx = scale + 2;
-	len = BC_NUM_INT(x0) + resrdx - 1;
-
-	while (cmp != 0 || digs < len) {
+	len = x0->len + resrdx - 1;
+	cmp = 1;
+	cmp1 = cmp2 = SSIZE_MAX;
+	do {
 		s = zbc_num_div(a, x0, &f, resrdx);
 		if (s) goto err;
 		s = zbc_num_add(x0, &f, &fprime, resrdx);
@@ -2284,11 +2287,12 @@ static BC_STATUS zbc_num_sqrt(BcNum *a, BcNum *restrict b, size_t scale)
 		temp = x0;
 		x0 = x1;
 		x1 = temp;
-	}
+	} while (cmp != 0 || digs < len);
 
 	bc_num_copy(b, x0);
 	scale -= 1;
-	if (b->rdx > scale) bc_num_truncate(b, b->rdx - scale);
+	if (b->rdx > scale)
+		bc_num_truncate(b, b->rdx - scale);
  err:
 	bc_num_free(&fprime);
 	bc_num_free(&f);
@@ -2522,9 +2526,6 @@ static void xc_read_line(BcVec *vec, FILE *fp)
 
 #if ENABLE_FEATURE_BC_INTERACTIVE
 	if (G_interrupt) { // ^C was pressed
-# if ENABLE_FEATURE_EDITING
- intr:
-# endif
 		if (fp != stdin) {
 			// ^C while running a script (bc SCRIPT): die.
 			// We do not return to interactive prompt:
@@ -2535,22 +2536,25 @@ static void xc_read_line(BcVec *vec, FILE *fp)
 			// the shell would be unexpected.
 			xfunc_die();
 		}
-		// ^C while interactive input
+		// There was ^C while running calculations
 		G_interrupt = 0;
-		// GNU bc says "interrupted execution."
+		// GNU bc says "interrupted execution." (to stdout, not stderr)
 		// GNU dc says "Interrupt!"
-		fputs("\ninterrupted execution\n", stderr);
+		puts("\ninterrupted execution");
 	}
 
 # if ENABLE_FEATURE_EDITING
 	if (G_ttyin && fp == stdin) {
 		int n, i;
+		if (!G.line_input_state)
+			G.line_input_state = new_line_input_t(DO_HISTORY);
 #  define line_buf bb_common_bufsiz1
 		n = read_line_input(G.line_input_state, "", line_buf, COMMON_BUFSIZE);
 		if (n <= 0) { // read errors or EOF, or ^D, or ^C
-			if (n == 0) // ^C
-				goto intr;
-			bc_vec_pushZeroByte(vec); // ^D or EOF (or error)
+			//GNU bc prints this on ^C:
+			//if (n == 0) // ^C
+			//	puts("(interrupt) Exiting bc.");
+			bc_vec_pushZeroByte(vec);
 			return;
 		}
 		i = 0;
@@ -6872,22 +6876,6 @@ static BC_STATUS zxc_program_exec(void)
 }
 #define zxc_program_exec(...) (zxc_program_exec(__VA_ARGS__) COMMA_SUCCESS)
 
-static unsigned xc_vm_envLen(const char *var)
-{
-	char *lenv;
-	unsigned len;
-
-	lenv = getenv(var);
-	len = BC_NUM_PRINT_WIDTH;
-	if (!lenv) return len;
-
-	len = bb_strtou(lenv, NULL, 10) - 1;
-	if (errno || len < 2 || len >= INT_MAX)
-		len = BC_NUM_PRINT_WIDTH;
-
-	return len;
-}
-
 static BC_STATUS zxc_vm_process(const char *text)
 {
 	BcStatus s;
@@ -7377,12 +7365,43 @@ static void xc_program_init(void)
 	bc_char_vec_init(&G.input_buffer);
 }
 
+static unsigned xc_vm_envLen(const char *var)
+{
+	char *lenv;
+	unsigned len;
+
+	lenv = getenv(var);
+	len = BC_NUM_PRINT_WIDTH;
+	if (lenv) {
+		len = bb_strtou(lenv, NULL, 10);
+		if (len == 0 || len > INT_MAX)
+			len = INT_MAX;
+		if (errno)
+			len = BC_NUM_PRINT_WIDTH;
+	}
+
+	// dc (GNU bc 1.07.1) 1.4.1 seems to use width
+	// 1 char wider than bc from the same package.
+	// Both default width, and xC_LINE_LENGTH=N are wider:
+	// "DC_LINE_LENGTH=5 dc -e'123456 p'" prints:
+	//	|1234\   |
+	//	|56      |
+	// "echo '123456' | BC_LINE_LENGTH=5 bc" prints:
+	//	|123\    |
+	//	|456     |
+	// Do the same, but it might be a bug in GNU package
+	if (IS_BC)
+		len--;
+
+	if (len < 2)
+		len = IS_BC ? BC_NUM_PRINT_WIDTH - 1 : BC_NUM_PRINT_WIDTH;
+
+	return len;
+}
+
 static int xc_vm_init(const char *env_len)
 {
 	G.prog.len = xc_vm_envLen(env_len);
-#if ENABLE_FEATURE_EDITING
-	G.line_input_state = new_line_input_t(DO_HISTORY);
-#endif
 	bc_vec_init(&G.files, sizeof(char *), NULL);
 
 	xc_program_init();
@@ -7466,16 +7485,6 @@ int dc_main(int argc UNUSED_PARAM, char **argv)
 
 	INIT_G();
 
-	// TODO: dc (GNU bc 1.07.1) 1.4.1 seems to use width
-	// 1 char wider than bc from the same package.
-	// Both default width, and xC_LINE_LENGTH=N are wider:
-	// "DC_LINE_LENGTH=5 dc -e'123456 p'" prints:
-	//	|1234\   |
-	//	|56      |
-	// "echo '123456' | BC_LINE_LENGTH=5 bc" prints:
-	//	|123\    |
-	//	|456     |
-	// Do the same, or it's a bug?
 	xc_vm_init("DC_LINE_LENGTH");
 
 	// Run -e'SCRIPT' and -fFILE in order of appearance, then handle FILEs

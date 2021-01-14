@@ -168,9 +168,11 @@ int uudecode_main(int argc UNUSED_PARAM, char **argv)
 }
 #endif
 
-//applet:IF_BASE64(APPLET(base64, BB_DIR_BIN, BB_SUID_DROP))
-
-//kbuild:lib-$(CONFIG_BASE64) += uudecode.o
+//config:config BASE32
+//config:	bool "base32 (4.9 kb)"
+//config:	default y
+//config:	help
+//config:	Base32 encode and decode
 
 //config:config BASE64
 //config:	bool "base64 (4.9 kb)"
@@ -178,49 +180,165 @@ int uudecode_main(int argc UNUSED_PARAM, char **argv)
 //config:	help
 //config:	Base64 encode and decode
 
+//usage:#define base32_trivial_usage
+//usage:	"[-d] [-w COL] [FILE]"
+//usage:#define base32_full_usage "\n\n"
+//usage:       "Base32 encode or decode FILE to standard output"
+//usage:     "\n	-d	Decode data"
+//usage:     "\n	-w COL	Wrap lines at COL (default 76, 0 disables)"
+////usage:     "\n	-i	When decoding, ignore non-alphabet characters"
+
 //usage:#define base64_trivial_usage
-//usage:	"[-d] [FILE]"
+//usage:	"[-d] [-w COL] [FILE]"
 //usage:#define base64_full_usage "\n\n"
 //usage:       "Base64 encode or decode FILE to standard output"
 //usage:     "\n	-d	Decode data"
-////usage:     "\n	-w COL	Wrap lines at COL (default 76, 0 disables)"
+//usage:     "\n	-w COL	Wrap lines at COL (default 76, 0 disables)"
 ////usage:     "\n	-i	When decoding, ignore non-alphabet characters"
 
-#if ENABLE_BASE64
-int base64_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
-int base64_main(int argc UNUSED_PARAM, char **argv)
+//                 APPLET_ODDNAME:name    main     location    suid_type     help
+//applet:IF_BASE32(APPLET_ODDNAME(base32, baseNUM, BB_DIR_BIN, BB_SUID_DROP, base32))
+//applet:IF_BASE64(APPLET_ODDNAME(base64, baseNUM, BB_DIR_BIN, BB_SUID_DROP, base64))
+
+//kbuild:lib-$(CONFIG_BASE64) += uudecode.o
+//kbuild:lib-$(CONFIG_BASE32) += uudecode.o
+
+#if ENABLE_BASE32 || ENABLE_BASE64
+
+# if ENABLE_BASE32
+static void bb_b32encode(char *p, const void *src, int length)
+{
+#define tbl bb_uuenc_tbl_base32
+	const unsigned char *s = src;
+
+	/* Transform 5x8 bits to 8x5 bits */
+	while (length > 0) {
+		unsigned cur, next;
+
+		length--;
+		cur = *s++;
+		*p++ = tbl[cur >> 3];			// xxxxx--- -------- -------- -------- --------
+		cur &= 7;
+
+		next = 0;
+		if (--length >= 0)
+			next = *s++;
+		*p++ = tbl[(cur << 2) + (next >> 6)];	// -----xxx xx------ -------- -------- --------
+		cur = next & 0x3f;
+
+		*p++ = tbl[cur >> 1];			// -------- --xxxxx- -------- -------- --------
+		cur &= 1;
+
+		next = 0;
+		if (--length >= 0)
+			next = *s++;
+		*p++ = tbl[(cur << 4) + (next >> 4)];	// -------- -------x xxxx---- -------- --------
+		cur = next & 0xf;
+
+		next = 0;
+		if (--length >= 0)
+			next = *s++;
+		*p++ = tbl[(cur << 1) + (next >> 7)];	// -------- -------- ----xxxx x------- --------
+		cur = next & 0x7f;
+
+		*p++ = tbl[cur >> 2];			// -------- -------- -------- -xxxxx-- --------
+		cur &= 3;
+
+		next = 0;
+		if (--length >= 0)
+			next = *s++;
+		*p++ = tbl[(cur << 3) + (next >> 5)];	// -------- -------- -------- ------xx xxx-----
+		cur = next & 0x1f;
+
+		*p++ = tbl[cur];			// -------- -------- -------- -------- ---xxxxx
+	}
+#undef tbl
+	/* Zero-terminate */
+	*p = '\0';
+	/* Pad as necessary */
+	length = ((-length) * 3) >> 1; /* -4 => 6 pad chars, -3 => 4, -2 => 3, -1 => 1 */
+	while (length--) {
+		*--p = '=';
+	}
+}
+# else
+void bb_b32encode(char *p, const void *src, int length); /* undefined */
+# endif
+
+int baseNUM_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+int baseNUM_main(int argc UNUSED_PARAM, char **argv)
 {
 	FILE *src_stream;
 	unsigned opts;
+	unsigned col = 76;
 
-	opts = getopt32(argv, "^" "d" "\0" "?1"/* 1 arg max*/);
+	opts = getopt32(argv, "^" "dw:+" "\0" "?1"/* 1 arg max*/, &col);
 	argv += optind;
 
 	if (!argv[0])
 		*--argv = (char*)"-";
 	src_stream = xfopen_stdin(argv[0]);
-	if (opts) {
-		read_base64(src_stream, stdout, /*flags:*/ (unsigned char)EOF);
+	if (opts & 1) {
+		/* -d: decode */
+		int flags = (unsigned char)EOF;
+		if (ENABLE_BASE32 && (!ENABLE_BASE64 || applet_name[4] == '3'))
+			flags = ((unsigned char)EOF) | BASE64_32;
+		read_base64(src_stream, stdout, flags);
 	} else {
 		enum {
-			SRC_BUF_SIZE = 76 / 4 * 3, /* this *MUST* be a multiple of 3 */
-			DST_BUF_SIZE = 4 * ((SRC_BUF_SIZE + 2) / 3),
+			SRC_BUF_SIZE = 3 * 5 * 32, /* this *MUST* be a multiple of 3 and 5 */
+			DST_BUF_SIZE = 8 * ((SRC_BUF_SIZE + 4) / 5), /* max growth on encode (base32 case) */
 		};
-		char src_buf[SRC_BUF_SIZE];
-		char dst_buf[DST_BUF_SIZE + 1];
-		int src_fd = fileno(src_stream);
+		/* Use one buffer for both input and output:
+		 * encoding reads input "left-to-right",
+		 * it's safe to place source at the end of the buffer and
+		 * overwrite it while encoding, just be careful to have a gap.
+		 */
+		char dst_buf[((DST_BUF_SIZE + /*gap:*/ 16) /*round up to 16:*/ | 0xf) + 1];
+#define src_buf (dst_buf + sizeof(dst_buf) - SRC_BUF_SIZE)
+		int src_fd, rem;
+
+		src_fd = fileno(src_stream);
+		rem = 0;
 		while (1) {
 			size_t size = full_read(src_fd, src_buf, SRC_BUF_SIZE);
-			if (!size)
-				break;
 			if ((ssize_t)size < 0)
 				bb_simple_perror_msg_and_die(bb_msg_read_error);
+			if (size == 0) {
+				if (rem != 0) bb_putchar('\n');
+				break;
+			}
+
 			/* Encode the buffer we just read in */
-			bb_uuencode(dst_buf, src_buf, size, bb_uuenc_tbl_base64);
-			xwrite(STDOUT_FILENO, dst_buf, 4 * ((size + 2) / 3));
-			bb_putchar('\n');
-			fflush(stdout);
+			if (ENABLE_BASE32 && (!ENABLE_BASE64 || applet_name[4] == '3')) {
+				bb_b32encode(dst_buf, src_buf, size);
+				size = 8 * ((size + 4) / 5);
+			} else {
+				bb_uuencode(dst_buf, src_buf, size, bb_uuenc_tbl_base64);
+				size = 4 * ((size + 2) / 3);
+			}
+
+			if (col == 0) {
+				fputs(dst_buf, stdout);
+			} else {
+				char *result = dst_buf;
+				if (rem == 0)
+					rem = col;
+				while (1) {
+					int out = size < rem ? size : rem;
+					rem -= out;
+					printf(rem != 0 ? "%.*s" : "%.*s\n", out, result);
+					if (rem != 0)
+						break;
+					size -= out;
+					if (size == 0)
+						break;
+					result += out;
+					rem = col;
+				}
+			}
 		}
+#undef src_buf
 	}
 
 	fflush_stdout_and_exit(EXIT_SUCCESS);

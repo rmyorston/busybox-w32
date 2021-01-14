@@ -100,7 +100,7 @@ static void mod(void)
 	 * 0
 	 */
 	if (d == 0) {
-		bb_error_msg("remainder by zero");
+		bb_simple_error_msg("remainder by zero");
 		pop();
 		push(0);
 		return;
@@ -195,7 +195,7 @@ struct op {
 	void (*function) (void);
 };
 
-static const struct op operators[] = {
+static const struct op operators[] ALIGN_PTR = {
 #if ENABLE_FEATURE_DC_LIBM
 	{"^",   power},
 //	{"exp", power},

@@ -361,7 +361,7 @@ struct builtin {
 	void (*bi_dgram_fn)(int, servtab_t *) FAST_FUNC;
 };
 
-static const struct builtin builtins[] = {
+static const struct builtin builtins[] ALIGN_PTR = {
 #if ENABLE_FEATURE_INETD_SUPPORT_BUILTIN_ECHO
 	{ "echo", 1, echo_stream, echo_dg },
 #endif
@@ -1305,7 +1305,7 @@ int inetd_main(int argc UNUSED_PARAM, char **argv)
 		if (ready_fd_cnt < 0) {
 			if (errno != EINTR) {
 				bb_simple_perror_msg("select");
-				sleep(1);
+				sleep1();
 			}
 			continue;
 		}
@@ -1406,7 +1406,7 @@ int inetd_main(int argc UNUSED_PARAM, char **argv)
 
 				if (pid < 0) { /* fork error */
 					bb_simple_perror_msg("vfork"+1);
-					sleep(1);
+					sleep1();
 					restore_sigmask(&omask);
 					maybe_close(new_udp_fd);
 					maybe_close(accepted_fd);
@@ -1701,7 +1701,7 @@ static uint32_t machtime(void)
 {
 	struct timeval tv;
 
-	gettimeofday(&tv, NULL);
+	xgettimeofday(&tv);
 	return htonl((uint32_t)(tv.tv_sec + 2208988800U));
 }
 /* ARGSUSED */

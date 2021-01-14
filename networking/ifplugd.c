@@ -304,7 +304,7 @@ static const char api_modes[] ALIGN1 = "empwia";
 static const struct {
 	const char *name;
 	smallint (*func)(void);
-} method_table[] = {
+} method_table[] ALIGN_PTR = {
 	{ "SIOCETHTOOL"       , &detect_link_ethtool },
 	{ "SIOCGMIIPHY"       , &detect_link_mii     },
 	{ "SIOCDEVPRIVATE"    , &detect_link_priv    },
@@ -735,7 +735,7 @@ int ifplugd_main(int argc UNUSED_PARAM, char **argv)
 					delay_time += G.delay_down;
 #if 0  /* if you are back in 1970... */
 				if (delay_time == 0) {
-					sleep(1);
+					sleep1();
 					delay_time = 1;
 				}
 #endif

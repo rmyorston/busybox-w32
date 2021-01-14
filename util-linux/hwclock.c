@@ -36,6 +36,19 @@
 #include <sys/utsname.h>
 #include "rtc_.h"
 
+
+//musl has no __MUSL__ or similar define to check for,
+//but its <sys/types.h> has these lines:
+// #define __NEED_fsblkcnt_t
+// #define __NEED_fsfilcnt_t
+#if defined(__linux__) && defined(__NEED_fsblkcnt_t) && defined(__NEED_fsfilcnt_t)
+# define LIBC_IS_MUSL 1
+# include <sys/syscall.h>
+#else
+# define LIBC_IS_MUSL 0
+#endif
+
+
 /* diff code is disabled: it's not sys/hw clock diff, it's some useless
  * "time between hwclock was started and we saw CMOS tick" quantity.
  * It's useless since hwclock is started at a random moment,
@@ -66,7 +79,7 @@ static time_t read_rtc(const char **pp_rtcname, struct timeval *sys_tv, int utc)
 		int before = tm_time.tm_sec;
 		while (1) {
 			rtc_read_tm(&tm_time, fd);
-			gettimeofday(sys_tv, NULL);
+			xgettimeofday(sys_tv);
 			if (before != (int)tm_time.tm_sec)
 				break;
 		}
@@ -116,26 +129,72 @@ static void show_clock(const char **pp_rtcname, int utc)
 #endif
 }
 
+static void set_kernel_tz(const struct timezone *tz)
+{
+#if LIBC_IS_MUSL
+	/* musl libc does not pass tz argument to syscall
+	 * because "it's deprecated by POSIX, therefore it's fine
+	 * if we gratuitously break stuff" :(
+	 */
+#if !defined(SYS_settimeofday) && defined(SYS_settimeofday_time32)
+# define SYS_settimeofday SYS_settimeofday_time32
+#endif
+	int ret = syscall(SYS_settimeofday, NULL, tz);
+#else
+	int ret = settimeofday(NULL, tz);
+#endif
+	if (ret)
+		bb_simple_perror_msg_and_die("settimeofday");
+}
+
+/*
+ * At system boot, kernel may set system time from RTC,
+ * but it knows nothing about timezones. If RTC is in local time,
+ * then system time is wrong - it is offset by timezone.
+ * --systz option corrects system time if RTC is in local time,
+ * and (always) sets in-kernel timezone.
+ * (Unlike --hctosys, it does not read the RTC).
+ *
+ * util-linux's code has this comment:
+ *  RTC   | settimeofday calls
+ *  ------|-------------------------------------------------
+ *  Local | 1st) warps system time*, sets PCIL* and kernel tz
+ *  UTC   | 1st) locks warp_clock 2nd) sets kernel tz
+ *               * only on first call after boot
+ * (PCIL is "persistent_clock_is_local" kernel internal flag,
+ * it makes kernel save RTC in local time, not UTC.)
+ */
+static void set_kernel_timezone_and_clock(int utc, const struct timeval *hctosys)
+{
+	time_t cur;
+	struct tm *broken;
+	struct timezone tz = { 0 };
+
+	/* if --utc, prevent kernel's warp_clock() with a dummy call */
+	if (utc)
+		set_kernel_tz(&tz);
+
+	/* Set kernel's timezone offset based on userspace one */
+//It's tempting to call tzset() and use libc global "timezone" variable
+//...but it does NOT include DST shift (IOW: it's WRONG, usually by one hour,
+//if DST is in effect!) Thus this ridiculous dance:
+	cur = time(NULL);
+	broken = localtime(&cur);
+	tz.tz_minuteswest = -broken->tm_gmtoff / 60;
+	/*tz.tz_dsttime = 0; already is */
+	set_kernel_tz(&tz); /* MIGHT warp_clock() if 1st call since boot */
+
+	if (hctosys) /* it's --hctosys: set time too */
+		xsettimeofday(hctosys);
+}
+
 static void to_sys_clock(const char **pp_rtcname, int utc)
 {
 	struct timeval tv;
-	struct timezone tz;
-
-	tz.tz_minuteswest = timezone / 60;
-	/* ^^^ used to also subtract 60*daylight, but it's wrong:
-	 * daylight!=0 means "this timezone has some DST
-	 * during the year", not "DST is in effect now".
-	 */
-	tz.tz_dsttime = 0;
-
-	/* glibc v2.31+ returns an error if both args are non-NULL */
-	if (settimeofday(NULL, &tz))
-		bb_simple_perror_msg_and_die("settimeofday");
 
 	tv.tv_sec = read_rtc(pp_rtcname, NULL, utc);
 	tv.tv_usec = 0;
-	if (settimeofday(&tv, NULL))
-		bb_simple_perror_msg_and_die("settimeofday");
+	return set_kernel_timezone_and_clock(utc, &tv);
 }
 
 static void from_sys_clock(const char **pp_rtcname, int utc)
@@ -146,7 +205,7 @@ static void from_sys_clock(const char **pp_rtcname, int utc)
 	int rtc;
 
 	rtc = rtc_xopen(pp_rtcname, O_WRONLY);
-	gettimeofday(&tv, NULL);
+	xgettimeofday(&tv);
 	/* Prepare tm_time */
 	if (sizeof(time_t) == sizeof(tv.tv_sec)) {
 		if (utc)
@@ -194,7 +253,7 @@ static void from_sys_clock(const char **pp_rtcname, int utc)
 		unsigned rem_usec;
 		time_t t;
 
-		gettimeofday(&tv, NULL);
+		xgettimeofday(&tv);
 
 		t = tv.tv_sec;
 		rem_usec = 1000000 - tv.tv_usec;
@@ -215,7 +274,7 @@ static void from_sys_clock(const char **pp_rtcname, int utc)
 		}
 
 		/* gmtime/localtime took some time, re-get cur time */
-		gettimeofday(&tv, NULL);
+		xgettimeofday(&tv);
 
 		if (tv.tv_sec < t /* we are still in old second */
 		 || (tv.tv_sec == t && tv.tv_usec < adj) /* not too far into next second */
@@ -261,64 +320,53 @@ static void from_sys_clock(const char **pp_rtcname, int utc)
 		close(rtc);
 }
 
-/*
- * At system boot, kernel may set system time from RTC,
- * but it knows nothing about timezones. If RTC is in local time,
- * then system time is wrong - it is offset by timezone.
- * This option corrects system time if RTC is in local time,
- * and (always) sets in-kernel timezone.
- *
- * This is an alternate option to --hctosys that does not read the
- * hardware clock.
- */
-static void set_system_clock_timezone(int utc)
-{
-	struct timeval tv;
-	struct tm *broken;
-	struct timezone tz;
-
-	gettimeofday(&tv, NULL);
-	broken = localtime(&tv.tv_sec);
-	tz.tz_minuteswest = timezone / 60;
-	if (broken->tm_isdst > 0)
-		tz.tz_minuteswest -= 60;
-	tz.tz_dsttime = 0;
-	gettimeofday(&tv, NULL);
-	if (!utc)
-		tv.tv_sec += tz.tz_minuteswest * 60;
-
-	/* glibc v2.31+ returns an error if both args are non-NULL */
-	if (settimeofday(NULL, &tz))
-		bb_simple_perror_msg_and_die("settimeofday");
-	if (settimeofday(&tv, NULL))
-		bb_simple_perror_msg_and_die("settimeofday");
-}
+// hwclock from util-linux 2.36.1
+// hwclock [function] [option...]
+//Functions:
+// -r, --show           display the RTC time
+//     --get            display drift corrected RTC time
+//     --set            set the RTC according to --date
+// -s, --hctosys        set the system time from the RTC
+// -w, --systohc        set the RTC from the system time
+//     --systz          send timescale configurations to the kernel
+// -a, --adjust         adjust the RTC to account for systematic drift
+//     --predict        predict the drifted RTC time according to --date
+//Options:
+// -u, --utc            the RTC timescale is UTC
+// -l, --localtime      the RTC timescale is Local
+// -f, --rtc <file>     use an alternate file to /dev/rtc0
+//     --directisa      use the ISA bus instead of /dev/rtc0 access
+//     --date <time>    date/time input for --set and --predict
+//     --delay <sec>    delay used when set new RTC time
+//     --update-drift   update the RTC drift factor
+//     --noadjfile      do not use /etc/adjtime
+//     --adjfile <file> use an alternate file to /etc/adjtime
+//     --test           dry run; implies --verbose
+// -v, --verbose        display more details
 
 //usage:#define hwclock_trivial_usage
 //usage:	IF_LONG_OPTS(
-//usage:       "[-r|--show] [-s|--hctosys] [-w|--systohc] [--systz]"
-//usage:       " [--localtime] [-u|--utc]"
-//usage:       " [-f|--rtc FILE]"
+//usage:       "[-swul] [--systz] [-f DEV]"
 //usage:	)
 //usage:	IF_NOT_LONG_OPTS(
-//usage:       "[-r] [-s] [-w] [-t] [-l] [-u] [-f FILE]"
+//usage:       "[-swult] [-f DEV]"
 //usage:	)
 //usage:#define hwclock_full_usage "\n\n"
-//usage:       "Query and set hardware clock (RTC)\n"
-//usage:     "\n	-r	Show hardware clock time"
-//usage:     "\n	-s	Set system time from hardware clock"
-//usage:     "\n	-w	Set hardware clock from system time"
+//usage:       "Show or set hardware clock (RTC)\n"
+///////:     "\n	-r	Show RTC time"
+///////-r is default, don't bother showing it in help
+//usage:     "\n	-s	Set system time from RTC"
+//usage:     "\n	-w	Set RTC from system time"
 //usage:	IF_LONG_OPTS(
 //usage:     "\n	--systz	Set in-kernel timezone, correct system time"
+//usage:     "\n		if RTC is kept in local time"
 //usage:	)
-//usage:     "\n		if hardware clock is in local time"
-//usage:     "\n	-u	Assume hardware clock is kept in UTC"
-//usage:	IF_LONG_OPTS(
-//usage:     "\n	--localtime	Assume hardware clock is kept in local time"
-//usage:	)
-//usage:     "\n	-f FILE	Use specified device (e.g. /dev/rtc2)"
+//usage:     "\n	-f DEV	Use specified device (e.g. /dev/rtc2)"
+//usage:     "\n	-u	Assume RTC is kept in UTC"
+//usage:     "\n	-l	Assume RTC is kept in local time"
+//usage:     "\n		(if neither is given, read from "ADJTIME_PATH")"
 
-//TODO: get rid of incompatible -t and -l aliases to --systz and --localtime
+//TODO: get rid of incompatible -t alias to --systz?
 
 #define HWCLOCK_OPT_LOCALTIME   0x01
 #define HWCLOCK_OPT_UTC         0x02
@@ -334,10 +382,9 @@ int hwclock_main(int argc UNUSED_PARAM, char **argv)
 	const char *rtcname = NULL;
 	unsigned opt;
 	int utc;
-
 #if ENABLE_LONG_OPTS
 	static const char hwclock_longopts[] ALIGN1 =
-		"localtime\0" No_argument "l" /* short opt is non-standard */
+		"localtime\0" No_argument "l"
 		"utc\0"       No_argument "u"
 		"show\0"      No_argument "r"
 		"hctosys\0"   No_argument "s"
@@ -346,17 +393,15 @@ int hwclock_main(int argc UNUSED_PARAM, char **argv)
 		"rtc\0"       Required_argument "f"
 		;
 #endif
-
-	/* Initialize "timezone" (libc global variable) */
-	tzset();
-
 	opt = getopt32long(argv,
-		"^lurswtf:" "\0" "r--wst:w--rst:s--wrt:t--rsw:l--u:u--l",
+		"^""lurswtf:v" /* -v is accepted and ignored */
+		"\0"
+		"r--wst:w--rst:s--wrt:t--rsw:l--u:u--l",
 		hwclock_longopts,
 		&rtcname
 	);
 
-	/* If -u or -l wasn't given check if we are using utc */
+	/* If -u or -l wasn't given, check if we are using utc */
 	if (opt & (HWCLOCK_OPT_UTC | HWCLOCK_OPT_LOCALTIME))
 		utc = (opt & HWCLOCK_OPT_UTC);
 	else
@@ -367,7 +412,7 @@ int hwclock_main(int argc UNUSED_PARAM, char **argv)
 	else if (opt & HWCLOCK_OPT_SYSTOHC)
 		from_sys_clock(&rtcname, utc);
 	else if (opt & HWCLOCK_OPT_SYSTZ)
-		set_system_clock_timezone(utc);
+		set_kernel_timezone_and_clock(utc, NULL);
 	else
 		/* default HWCLOCK_OPT_SHOW */
 		show_clock(&rtcname, utc);

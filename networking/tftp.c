@@ -104,7 +104,7 @@
 //usage:     "\n	-p	Put file"
 //usage:	)
 //usage:	IF_FEATURE_TFTP_BLOCKSIZE(
-//usage:     "\n	-b SIZE	Transfer blocks of SIZE octets"
+//usage:     "\n	-b SIZE	Transfer blocks in bytes"
 //usage:	)
 ///////:     "\n	-m STR	Accepted and ignored ('-m binary' compat with tftp-hpa 5.2)"
 //usage:
@@ -120,7 +120,7 @@
 //usage:       "	udpsvd -vE 0.0.0.0 69 tftpd /files/to/serve\n"
 //usage:     "\n	-r	Prohibit upload"
 //usage:     "\n	-c	Allow file creation via upload"
-//usage:     "\n	-u	Access files as USER"
+//usage:     "\n	-u USER	Access files as USER"
 //usage:     "\n	-l	Log to syslog (inetd mode requires this)"
 
 #include "libbb.h"

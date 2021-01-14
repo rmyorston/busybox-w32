@@ -28,7 +28,7 @@
 //kbuild:lib-$(CONFIG_PASSWD) += passwd.o
 
 //usage:#define passwd_trivial_usage
-//usage:       "[OPTIONS] [USER]"
+//usage:       "[-a ALG] [-dlu] [USER]"
 //usage:#define passwd_full_usage "\n\n"
 //usage:       "Change USER's password (default: current user)"
 //usage:     "\n"
@@ -57,7 +57,7 @@ static char* new_password(const struct passwd *pw, uid_t myuid, const char *algo
 		encrypted = pw_encrypt(orig, pw->pw_passwd, 1); /* returns malloced str */
 		if (strcmp(encrypted, pw->pw_passwd) != 0) {
 			syslog(LOG_WARNING, "incorrect password for %s", pw->pw_name);
-			bb_do_delay(LOGIN_FAIL_DELAY);
+			pause_after_failed_login();
 			puts("Incorrect password");
 			goto err_ret;
 		}

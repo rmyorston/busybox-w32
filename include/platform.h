@@ -335,7 +335,7 @@ typedef unsigned smalluint;
 #endif
 
 /* Define bb_setpgrp */
-#if defined(__digital__) && defined(__unix__)
+#if (defined(__digital__) && defined(__unix__)) || defined(__FreeBSD__)
 /* use legacy setpgrp(pid_t, pid_t) for now.  move to platform.c */
 # define bb_setpgrp() do { pid_t __me = getpid(); setpgrp(__me, __me); } while (0)
 #else
@@ -358,6 +358,8 @@ typedef unsigned smalluint;
 # define ALIGN2
 # define ALIGN4
 #endif
+#define ALIGN8     __attribute__((aligned(8)))
+#define ALIGN_PTR  __attribute__((aligned(sizeof(void*))))
 
 /*
  * For 0.9.29 and svn, __ARCH_USE_MMU__ indicates no-mmu reliably.

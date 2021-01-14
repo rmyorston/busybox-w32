@@ -58,11 +58,19 @@ static void gettimeofday_ns(struct timespec *ts)
 #else
 static void gettimeofday_ns(struct timespec *ts)
 {
-	BUILD_BUG_ON(sizeof(struct timeval) != sizeof(struct timespec));
-	BUILD_BUG_ON(sizeof(((struct timeval*)ts)->tv_usec) != sizeof(ts->tv_nsec));
-	/* Cheat */
-	gettimeofday((void*)ts, NULL);
-	ts->tv_nsec *= 1000;
+	if (sizeof(struct timeval) == sizeof(struct timespec)
+	 && sizeof(((struct timeval*)ts)->tv_usec) == sizeof(ts->tv_nsec)
+	) {
+		/* Cheat */
+		xgettimeofday((void*)ts);
+		ts->tv_nsec *= 1000;
+	} else {
+		/* For example, musl has "incompatible" layouts */
+		struct timeval tv;
+		xgettimeofday(&tv);
+		ts->tv_sec = tv.tv_sec;
+		ts->tv_nsec = tv.tv_usec * 1000;
+	}
 }
 #endif
 
@@ -651,7 +659,7 @@ int runsv_main(int argc UNUSED_PARAM, char **argv)
 				gettimeofday_ns(&svd[0].start);
 				update_status(&svd[0]);
 				if (LESS(svd[0].start.tv_sec, deadline))
-					sleep(1);
+					sleep1();
 			}
 			if (haslog) {
 				if (child == svd[1].pid) {
@@ -664,7 +672,7 @@ int runsv_main(int argc UNUSED_PARAM, char **argv)
 					gettimeofday_ns(&svd[1].start);
 					update_status(&svd[1]);
 					if (LESS(svd[1].start.tv_sec, deadline))
-						sleep(1);
+						sleep1();
 				}
 			}
 		} /* for (;;) */

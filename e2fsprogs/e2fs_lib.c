@@ -159,7 +159,7 @@ int fgetsetflags(const char *name, unsigned long *get_flags, unsigned long set_f
 
 #if !ENABLE_PLATFORM_MINGW32
 /* Print file attributes on an ext2 file system */
-const uint32_t e2attr_flags_value[] = {
+const uint32_t e2attr_flags_value[] ALIGN4 = {
 #ifdef ENABLE_COMPRESSION
 	EXT2_COMPRBLK_FL,
 	EXT2_DIRTY_FL,

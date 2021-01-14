@@ -74,7 +74,7 @@ int sulogin_main(int argc UNUSED_PARAM, char **argv)
 		if (r > 0) {
 			break;
 		}
-		bb_do_delay(LOGIN_FAIL_DELAY);
+		pause_after_failed_login();
 		bb_simple_info_msg("Login incorrect");
 	}
 
@@ -89,5 +89,5 @@ int sulogin_main(int argc UNUSED_PARAM, char **argv)
 		shell = pwd->pw_shell;
 
 	/* Exec login shell with no additional parameters. Never returns. */
-	run_shell(shell, 1, NULL);
+	exec_login_shell(shell);
 }

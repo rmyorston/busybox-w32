@@ -21,6 +21,17 @@
 #define IFF_LOWER_UP  0x10000  /* driver signals L1 up */
 #endif
 
+/* for old uclibc */
+#ifndef IFA_F_NOPREFIXROUTE
+# define IFA_FLAGS           8
+# define IFA_F_NOPREFIXROUTE 0x200
+enum { /* can't do this with preporcessor, IFA_MAX is an (enum - 1), not preprocessor constant */
+	REAL_IFA_MAX = (IFA_MAX >= IFA_FLAGS) ? IFA_MAX : IFA_FLAGS,
+};
+# undef IFA_MAX
+# define IFA_MAX REAL_IFA_MAX
+#endif
+
 struct filter_t {
 	char *label;
 	/* Flush cmd buf. If !NULL, print_addrinfo() constructs flush commands in it */

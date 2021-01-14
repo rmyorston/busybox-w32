@@ -90,7 +90,11 @@ void FAST_FUNC parse_datestr(const char *date_str, struct tm *ptm)
 		ptm->tm_mon -= 1; /* Adjust month from 1-12 to 0-11 */
 	} else
 	if (date_str[0] == '@') {
-		time_t t = bb_strtol(date_str + 1, NULL, 10);
+		time_t t;
+		if (sizeof(t) <= sizeof(long))
+			t = bb_strtol(date_str + 1, NULL, 10);
+		else /* time_t is 64 bits but longs are smaller */
+			t = bb_strtoll(date_str + 1, NULL, 10);
 		if (!errno) {
 			struct tm *lt = localtime(&t);
 			if (lt) {
@@ -246,7 +250,6 @@ char* FAST_FUNC strftime_YYYYMMDDHHMMSS(char *buf, unsigned len, time_t *tp)
 
 #if ENABLE_MONOTONIC_SYSCALL
 
-#include <sys/syscall.h>
 /* Old glibc (< 2.3.4) does not provide this constant. We use syscall
  * directly so this definition is safe. */
 #ifndef CLOCK_MONOTONIC
@@ -288,19 +291,19 @@ unsigned FAST_FUNC monotonic_sec(void)
 unsigned long long FAST_FUNC monotonic_ns(void)
 {
 	struct timeval tv;
-	gettimeofday(&tv, NULL);
+	xgettimeofday(&tv);
 	return tv.tv_sec * 1000000000ULL + tv.tv_usec * 1000;
 }
 unsigned long long FAST_FUNC monotonic_us(void)
 {
 	struct timeval tv;
-	gettimeofday(&tv, NULL);
+	xgettimeofday(&tv);
 	return tv.tv_sec * 1000000ULL + tv.tv_usec;
 }
 unsigned long long FAST_FUNC monotonic_ms(void)
 {
 	struct timeval tv;
-	gettimeofday(&tv, NULL);
+	xgettimeofday(&tv);
 	return tv.tv_sec * 1000ULL + tv.tv_usec / 1000;
 }
 unsigned FAST_FUNC monotonic_sec(void)

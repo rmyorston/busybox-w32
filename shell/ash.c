@@ -418,9 +418,12 @@ static void forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 
 /* ============ Shell options */
 
+/* If you add/change options hare, update --help text too */
 static const char *const optletters_optnames[] = {
 	"e"   "errexit",
 	"f"   "noglob",
+/* bash has '-o ignoreeof', but no short synonym -I for it */
+/* (in bash, set -I disables invisible variables (what's that?)) */
 	"I"   "ignoreeof",
 /* The below allowed this invocation:
  * ash -c 'set -i; echo $-; sleep 5; echo $-'
@@ -429,9 +432,10 @@ static const char *const optletters_optnames[] = {
  * In our code, this is denoted by empty long name:
  */
 	"i"   "",
+/* (removing "i" altogether would remove it from "$-", not good) */
 	"m"   "monitor",
 	"n"   "noexec",
-/* Ditto: bash has no "set -s" */
+/* Ditto: bash has no "set -s", "set -c" */
 #if !ENABLE_PLATFORM_MINGW32
 	"s"   "",
 #else
@@ -705,6 +709,63 @@ var_end(const char *var)
 			break;
 	return var;
 }
+
+
+/* ============ Parser data */
+
+/*
+ * ash_vmsg() needs parsefile->fd, hence parsefile definition is moved up.
+ */
+struct strlist {
+	struct strlist *next;
+	char *text;
+};
+
+struct alias;
+
+struct strpush {
+	struct strpush *prev;   /* preceding string on stack */
+	char *prev_string;
+	int prev_left_in_line;
+#if ENABLE_ASH_ALIAS
+	struct alias *ap;       /* if push was associated with an alias */
+#endif
+	char *string;           /* remember the string since it may change */
+
+	/* Remember last two characters for pungetc. */
+	int lastc[2];
+
+	/* Number of outstanding calls to pungetc. */
+	int unget;
+};
+
+/*
+ * The parsefile structure pointed to by the global variable parsefile
+ * contains information about the current file being read.
+ */
+struct parsefile {
+	struct parsefile *prev; /* preceding file on stack */
+	int linno;              /* current line */
+	int pf_fd;              /* file descriptor (or -1 if string) */
+	int left_in_line;       /* number of chars left in this line */
+	int left_in_buffer;     /* number of chars left in this buffer past the line */
+	char *next_to_pgetc;    /* next char in buffer */
+	char *buf;              /* input buffer */
+	struct strpush *strpush; /* for pushing strings at this level */
+	struct strpush basestrpush; /* so pushing one is fast */
+
+	/* Remember last two characters for pungetc. */
+	int lastc[2];
+
+	/* Number of outstanding calls to pungetc. */
+	int unget;
+};
+
+static struct parsefile basepf;        /* top level input file */
+static struct parsefile *g_parsefile = &basepf;  /* current input file */
+#if ENABLE_PLATFORM_POSIX
+static char *commandname;              /* currently executing command */
+#endif
 
 
 /* ============ Interrupts / exceptions */
@@ -1464,63 +1525,6 @@ showtree(union node *n)
 }
 
 #endif /* DEBUG */
-
-
-/* ============ Parser data */
-
-/*
- * ash_vmsg() needs parsefile->fd, hence parsefile definition is moved up.
- */
-struct strlist {
-	struct strlist *next;
-	char *text;
-};
-
-struct alias;
-
-struct strpush {
-	struct strpush *prev;   /* preceding string on stack */
-	char *prev_string;
-	int prev_left_in_line;
-#if ENABLE_ASH_ALIAS
-	struct alias *ap;       /* if push was associated with an alias */
-#endif
-	char *string;           /* remember the string since it may change */
-
-	/* Remember last two characters for pungetc. */
-	int lastc[2];
-
-	/* Number of outstanding calls to pungetc. */
-	int unget;
-};
-
-/*
- * The parsefile structure pointed to by the global variable parsefile
- * contains information about the current file being read.
- */
-struct parsefile {
-	struct parsefile *prev; /* preceding file on stack */
-	int linno;              /* current line */
-	int pf_fd;              /* file descriptor (or -1 if string) */
-	int left_in_line;       /* number of chars left in this line */
-	int left_in_buffer;     /* number of chars left in this buffer past the line */
-	char *next_to_pgetc;    /* next char in buffer */
-	char *buf;              /* input buffer */
-	struct strpush *strpush; /* for pushing strings at this level */
-	struct strpush basestrpush; /* so pushing one is fast */
-
-	/* Remember last two characters for pungetc. */
-	int lastc[2];
-
-	/* Number of outstanding calls to pungetc. */
-	int unget;
-};
-
-static struct parsefile basepf;        /* top level input file */
-static struct parsefile *g_parsefile = &basepf;  /* current input file */
-#if ENABLE_PLATFORM_POSIX
-static char *commandname;              /* currently executing command */
-#endif
 
 
 /* ============ Message printing */
@@ -2284,7 +2288,7 @@ static const struct {
 	int flags;
 	const char *var_text;
 	void (*var_func)(const char *) FAST_FUNC;
-} varinit_data[] = {
+} varinit_data[] ALIGN_PTR = {
 	/*
 	 * Note: VEXPORT would not work correctly here for NOFORK applets:
 	 * some environment strings may be constant.
@@ -5137,7 +5141,7 @@ getstatus(struct job *job)
 				job->sigint = 1;
 #endif
 		}
-		retval += 128;
+		retval |= 128;
 	}
 	TRACE(("getstatus: job %d, nproc %d, status 0x%x, retval 0x%x\n",
 		jobno(job), job->nprocs, status, retval));
@@ -5203,7 +5207,7 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 				if (status != -1 && !WIFSTOPPED(status)) {
 					retval = WEXITSTATUS(status);
 					if (WIFSIGNALED(status))
-						retval = WTERMSIG(status) + 128;
+						retval = 128 | WTERMSIG(status);
 					goto ret;
 				}
 			}
@@ -5238,7 +5242,7 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
  ret:
 	return retval;
  sigout:
-	retval = 128 + pending_sig;
+	retval = 128 | pending_sig;
 	return retval;
 }
 
@@ -5340,7 +5344,7 @@ static char *cmdnextc;
 static void
 cmdputs(const char *s)
 {
-	static const char vstype[VSTYPE + 1][3] = {
+	static const char vstype[VSTYPE + 1][3] ALIGN1 = {
 		"", "}", "-", "+", "?", "=",
 		"%", "%%", "#", "##"
 		IF_BASH_SUBSTR(, ":")
@@ -7578,7 +7582,8 @@ subevalvar(char *start, char *str, int strloc,
 	slash_pos = -1;
 	if (repl) {
 		slash_pos = expdest - ((char *)stackblock() + strloc);
-		STPUTC('/', expdest);
+		if (!(flag & EXP_DISCARD))
+			STPUTC('/', expdest);
 		//bb_error_msg("repl+1:'%s'", repl + 1);
 		p = argstr(repl + 1, (flag & EXP_DISCARD) | EXP_TILDE); /* EXP_TILDE: echo "${v/x/~}" expands ~ ! */
 		*repl = '/';
@@ -7740,7 +7745,7 @@ subevalvar(char *start, char *str, int strloc,
 		len = 0;
 		idx = startp;
 		end = str - 1;
-		while (idx < end) {
+		while (idx <= end) {
  try_to_match:
 			loc = scanright(idx, rmesc, rmescend, str, quotes, 1);
 			//bb_error_msg("scanright('%s'):'%s'", str, loc);
@@ -7748,6 +7753,8 @@ subevalvar(char *start, char *str, int strloc,
 				/* No match, advance */
 				char *restart_detect = stackblock();
  skip_matching:
+				if (idx >= end)
+					break;
 				STPUTC(*idx, expdest);
 				if (quotes && (unsigned char)*idx == CTLESC) {
 					idx++;
@@ -7760,8 +7767,6 @@ subevalvar(char *start, char *str, int strloc,
 				len++;
 				rmesc++;
 				/* continue; - prone to quadratic behavior, smarter code: */
-				if (idx >= end)
-					break;
 				if (str[0] == '*') {
 					/* Pattern is "*foo". If "*foo" does not match "long_string",
 					 * it would never match "ong_string" etc, no point in trying.
@@ -7844,7 +7849,9 @@ subevalvar(char *start, char *str, int strloc,
  out:
 	amount = loc - expdest;
 	STADJUST(amount, expdest);
+#if BASH_PATTERN_SUBST
  out1:
+#endif
 	/* Remove any recorded regions beyond start of variable */
 	removerecordregions(startloc);
 
@@ -9127,7 +9134,7 @@ enum {
 	, /* thus far 29 bits used */
 };
 
-static const char *const tokname_array[] = {
+static const char *const tokname_array[] ALIGN_PTR = {
 	"end of file",
 	"newline",
 	"redirection",
@@ -11360,7 +11367,7 @@ preadfd(void)
 
 	g_parsefile->next_to_pgetc = buf;
 #if ENABLE_FEATURE_EDITING
- retry:
+ /* retry: */
 	if (!iflag || g_parsefile->pf_fd != STDIN_FILENO)
 		nr = nonblock_immune_read(g_parsefile->pf_fd, buf, IBUFSIZ - 1);
 	else {
@@ -11382,17 +11389,16 @@ preadfd(void)
 		if (nr == 0) {
 			/* ^C pressed, "convert" to SIGINT */
 			write(STDOUT_FILENO, "^C", 2);
+# if !ENABLE_PLATFORM_MINGW32
+			raise(SIGINT);
+# endif
 			if (trap[SIGINT]) {
 				buf[0] = '\n';
 				buf[1] = '\0';
-# if !ENABLE_PLATFORM_MINGW32
-				raise(SIGINT);
-# endif
 				return 1;
 			}
 			exitstatus = 128 + SIGINT;
-			bb_putchar('\n');
-			goto retry;
+			return -1;
 		}
 		if (nr < 0) {
 			if (errno == 0) {
@@ -12164,10 +12170,10 @@ static void FAST_FUNC
 change_epoch(struct var *vepoch, const char *fmt)
 {
 	struct timeval tv;
-	char buffer[sizeof("%lu.nnnnnn") + sizeof(long)*3];
+	char buffer[sizeof("%llu.nnnnnn") + sizeof(long long)*3];
 
-	gettimeofday(&tv, NULL);
-	sprintf(buffer, fmt, (unsigned long)tv.tv_sec, (unsigned)tv.tv_usec);
+	xgettimeofday(&tv);
+	sprintf(buffer, fmt, (unsigned long long)tv.tv_sec, (unsigned)tv.tv_usec);
 	setvar(vepoch->var_text, buffer, VNOFUNC);
 	vepoch->flags &= ~VNOFUNC;
 }
@@ -12175,13 +12181,13 @@ change_epoch(struct var *vepoch, const char *fmt)
 static void FAST_FUNC
 change_seconds(const char *value UNUSED_PARAM)
 {
-	change_epoch(&vepochs, "%lu");
+	change_epoch(&vepochs, "%llu");
 }
 
 static void FAST_FUNC
 change_realtime(const char *value UNUSED_PARAM)
 {
-	change_epoch(&vepochr, "%lu.%06u");
+	change_epoch(&vepochr, "%llu.%06u");
 }
 #endif
 
@@ -15001,6 +15007,7 @@ reset(void)
 	/* from input.c: */
 	g_parsefile->left_in_buffer = 0;
 	g_parsefile->left_in_line = 0;      /* clear input buffer */
+	g_parsefile->unget = 0;
 	popallfiles();
 
 	/* from var.c: */
@@ -15017,8 +15024,7 @@ exitshell(void)
 	char *p;
 
 #if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
-	if (line_input_state)
-		save_history(line_input_state);
+	save_history(line_input_state); /* may be NULL */
 #endif
 	savestatus = exitstatus;
 	TRACE(("pid %d, exitshell(%d)\n", getpid(), savestatus));
@@ -15197,7 +15203,8 @@ init(void)
 
 
 //usage:#define ash_trivial_usage
-//usage:	"[-/+OPTIONS] [-/+o OPT]... [-c 'SCRIPT' [ARG0 [ARGS]] / FILE [ARGS] / -s [ARGS]]"
+//usage:	"[-il] [-/+Cabefmnuvx] [-/+o OPT]... [-c 'SCRIPT' [ARG0 [ARGS]] / FILE [ARGS] / -s [ARGS]]"
+////////	comes from ^^^^^^^^^^optletters
 //usage:#define ash_full_usage "\n\n"
 //usage:	"Unix shell interpreter"
 
@@ -15246,9 +15253,9 @@ procargs(char **argv)
 	}
 	if (mflag == 2)
 		mflag = iflag;
+	/* Unset options which weren't explicitly set or unset */
 	for (i = 0; i < NOPTS; i++)
-		if (optlist[i] == 2)
-			optlist[i] = 0;
+		optlist[i] &= 1; /* same effect as "if (optlist[i] == 2) optlist[i] = 0;" */
 #if DEBUG == 2
 	debug = 1;
 #endif
@@ -15277,6 +15284,19 @@ procargs(char **argv)
 		shellparam.nparam++;
 		xargv++;
 	}
+
+	/* Interactive bash re-enables SIGHUP which is SIG_IGNed on entry.
+	 * Try:
+	 * trap '' hup; bash; echo RET	# type "kill -hup $$", see SIGHUP having effect
+	 * trap '' hup; bash -c 'kill -hup $$; echo ALIVE'  # here SIGHUP is SIG_IGNed
+	 * NB: must do it before setting up signals (in optschanged())
+	 * and reading .profile etc (after we return from here):
+	 */
+#if !ENABLE_PLATFORM_MINGW32
+	if (iflag)
+		signal(SIGHUP, SIG_DFL);
+#endif
+
 	optschanged();
 
 	return login_sh;
@@ -15493,7 +15513,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 
 	if (sflag || minusc == NULL) {
 #if MAX_HISTORY > 0 && ENABLE_FEATURE_EDITING_SAVEHISTORY
-		if (iflag) {
+		if (line_input_state) {
 			const char *hp = lookupvar("HISTFILE");
 			if (!hp) {
 				hp = lookupvar("HOME");
@@ -15507,7 +15527,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 				}
 			}
 			if (hp)
-				line_input_state->hist_file = hp;
+				line_input_state->hist_file = xstrdup(hp);
 # if ENABLE_FEATURE_SH_HISTFILESIZE
 			hp = lookupvar("HISTFILESIZE");
 			line_input_state->max_history = size_from_HISTFILESIZE(hp);
@@ -15515,16 +15535,6 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		}
 #endif
  state4: /* XXX ??? - why isn't this before the "if" statement */
-
-		/* Interactive bash re-enables SIGHUP which is SIG_IGNed on entry.
-		 * Try:
-		 * trap '' hup; bash; echo RET	# type "kill -hup $$", see SIGHUP having effect
-		 * trap '' hup; bash -c 'kill -hup $$; echo ALIVE'  # here SIGHUP is SIG_IGNed
-		 */
-#if !ENABLE_PLATFORM_MINGW32
-		signal(SIGHUP, SIG_DFL);
-#endif
-
 		cmdloop(1);
 	}
 #if PROFILE

@@ -31,6 +31,7 @@ int inet_pton(int af, const char *src, void *dst);
 #define O_NONBLOCK 0
 #define O_NOFOLLOW 0
 #define O_NOCTTY 0
+#define O_DIRECT 0
 #define O_SPECIAL 0x800000
 
 /*

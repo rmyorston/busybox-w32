@@ -111,6 +111,29 @@ void* FAST_FUNC xmemdup(const void *s, int n)
 	return memcpy(xmalloc(n), s, n);
 }
 
+#if !ENABLE_PLATFORM_MINGW32
+void* FAST_FUNC mmap_read(int fd, size_t size)
+{
+	return mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+}
+
+void* FAST_FUNC mmap_anon(size_t size)
+{
+	return mmap(NULL, size,
+			PROT_READ | PROT_WRITE,
+			MAP_PRIVATE | MAP_ANONYMOUS,
+			/* ignored: */ -1, 0);
+}
+
+void* FAST_FUNC xmmap_anon(size_t size)
+{
+	void *p = mmap_anon(size);
+	if (p == MAP_FAILED)
+		bb_die_memory_exhausted();
+	return p;
+}
+#endif
+
 // Die if we can't open a file and return a FILE* to it.
 // Notice we haven't got xfread(), This is for use with fscanf() and friends.
 FILE* FAST_FUNC xfopen(const char *path, const char *mode)
@@ -502,22 +525,22 @@ void FAST_FUNC xfstat(int fd, struct stat *stat_buf, const char *errmsg)
 		bb_simple_perror_msg_and_die(errmsg);
 }
 
-#if !ENABLE_PLATFORM_MINGW32
+#if ENABLE_SELINUX
 // selinux_or_die() - die if SELinux is disabled.
 void FAST_FUNC selinux_or_die(void)
 {
-#if ENABLE_SELINUX
 	int rc = is_selinux_enabled();
 	if (rc == 0) {
 		bb_simple_error_msg_and_die("SELinux is disabled");
 	} else if (rc < 0) {
 		bb_simple_error_msg_and_die("is_selinux_enabled() failed");
 	}
-#else
-	bb_simple_error_msg_and_die("SELinux support is disabled");
-#endif
 }
+#else
+/* not defined, other code must have no calls to it */
+#endif
 
+#if !ENABLE_PLATFORM_MINGW32
 int FAST_FUNC ioctl_or_perror_and_die(int fd, unsigned request, void *argp, const char *fmt,...)
 {
 	int ret;
@@ -634,14 +657,11 @@ void FAST_FUNC generate_uuid(uint8_t *buf)
 	pid_t pid;
 	int i;
 
-	i = open("/dev/urandom", O_RDONLY);
-	if (i >= 0) {
-		read(i, buf, 16);
-		close(i);
-	}
+	open_read_close("/dev/urandom", buf, 16);
 	/* Paranoia. /dev/urandom may be missing.
 	 * rand() is guaranteed to generate at least [0, 2^15) range,
-	 * but lowest bits in some libc are not so "random".  */
+	 * but lowest bits in some libc are not so "random".
+	 */
 	srand(monotonic_us()); /* pulls in printf */
 	pid = getpid();
 	while (1) {
@@ -686,3 +706,34 @@ void FAST_FUNC xvfork_parent_waits_and_exits(void)
 	/* Child continues */
 }
 #endif /* !ENABLE_PLATFORM_MINGW32 */
+
+// Useful when we do know that pid is valid, and we just want to wait
+// for it to exit. Not existing pid is fatal. waitpid() status is not returned.
+int FAST_FUNC wait_for_exitstatus(pid_t pid)
+{
+	int exit_status, n;
+
+	n = safe_waitpid(pid, &exit_status, 0);
+	if (n < 0)
+		bb_simple_perror_msg_and_die("waitpid");
+	return exit_status;
+}
+
+#if !ENABLE_PLATFORM_MINGW32
+void FAST_FUNC xsettimeofday(const struct timeval *tv)
+{
+	if (settimeofday(tv, NULL))
+		bb_simple_perror_msg_and_die("settimeofday");
+}
+#endif
+
+void FAST_FUNC xgettimeofday(struct timeval *tv)
+{
+#if 0
+	if (gettimeofday(tv, NULL))
+		bb_simple_perror_msg_and_die("gettimeofday");
+#else
+	/* Never fails on Linux */
+	gettimeofday(tv, NULL);
+#endif
+}

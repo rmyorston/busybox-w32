@@ -404,7 +404,7 @@ static void finalize_tty_attrs(void)
 	set_tty_attrs();
 
 	/* Now the newline character should be properly written */
-	full_write(STDOUT_FILENO, "\n", 1);
+	full_write1_str("\n");
 }
 
 /* extract baud rate from modem status message */
@@ -434,7 +434,7 @@ static void auto_baud(void)
 	 * Wait for a while, then read everything the modem has said so far and
 	 * try to extract the speed of the dial-in call.
 	 */
-	sleep(1);
+	sleep1();
 	nread = safe_read(STDIN_FILENO, G.line_buf, sizeof(G.line_buf) - 1);
 	if (nread > 0) {
 		int speed;
@@ -498,13 +498,13 @@ static char *get_logname(void)
 			case 0x7f:
 				G.tty_attrs.c_cc[VERASE] = c;
 				if (bp > G.line_buf) {
-					full_write(STDOUT_FILENO, "\010 \010", 3);
+					full_write1_str("\010 \010");
 					bp--;
 				}
 				break;
 			case CTL('U'):
 				while (bp > G.line_buf) {
-					full_write(STDOUT_FILENO, "\010 \010", 3);
+					full_write1_str("\010 \010");
 					bp--;
 				}
 				break;

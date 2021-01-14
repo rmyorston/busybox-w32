@@ -77,7 +77,7 @@
 //usage:	IF_FEATURE_NTP_AUTH(" [-k KEYFILE] [-p [keyno:N:]PEER]...")
 //usage:#define ntpd_full_usage "\n\n"
 //usage:       "NTP client/server\n"
-//usage:     "\n	-d	Verbose (may be repeated)"
+//usage:     "\n	-d[d]	Verbose"
 //usage:     "\n	-n	Do not daemonize"
 //usage:     "\n	-q	Quit after clock is set"
 //usage:     "\n	-N	Run at high priority"
@@ -113,6 +113,13 @@
 # define IPTOS_DSCP_AF21 0x48
 #endif
 
+#if defined(__FreeBSD__)
+/* see sys/timex.h */
+# define adjtimex ntp_adjtime
+# define ADJ_OFFSET     MOD_OFFSET
+# define ADJ_STATUS     MOD_STATUS
+# define ADJ_TIMECONST  MOD_TIMECONST
+#endif
 
 /* Verbosity control (max level of -dddd options accepted).
  * max 6 is very talkative (and bloated). 3 is non-bloated,
@@ -560,7 +567,7 @@ static double
 gettime1900d(void)
 {
 	struct timeval tv;
-	gettimeofday(&tv, NULL); /* never fails */
+	xgettimeofday(&tv);
 	G.cur_time = tv.tv_sec + (1.0e-6 * tv.tv_usec) + OFFSET_1900_1970;
 	return G.cur_time;
 }
@@ -1144,11 +1151,10 @@ step_time(double offset)
 	char buf[sizeof("yyyy-mm-dd hh:mm:ss") + /*paranoia:*/ 4];
 	time_t tval;
 
-	gettimeofday(&tvc, NULL); /* never fails */
+	xgettimeofday(&tvc);
 	dtime = tvc.tv_sec + (1.0e-6 * tvc.tv_usec) + offset;
 	d_to_tv(dtime, &tvn);
-	if (settimeofday(&tvn, NULL) == -1)
-		bb_simple_perror_msg_and_die("settimeofday");
+	xsettimeofday(&tvn);
 
 	VERB2 {
 		tval = tvc.tv_sec;
@@ -2461,9 +2467,6 @@ static NOINLINE void ntp_init(char **argv)
 #endif
 
 	srand(getpid());
-
-	if (getuid())
-		bb_simple_error_msg_and_die(bb_msg_you_must_be_root);
 
 	/* Set some globals */
 	G.discipline_jitter = G_precision_sec;

@@ -6,39 +6,45 @@
  *
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
-#include <sys/prctl.h>
+#if defined(__linux__)
+# include <sys/prctl.h>
+# define PRCTL
+#elif defined(__FreeBSD__)
+# include <sys/procctl.h>
+# define PROCCTL
+#endif
 #include "libbb.h"
 #include "mail.h"
 
-// generic signal handler
+// common signal handler
 static void signal_handler(int signo)
 {
-#define err signo
 	if (SIGALRM == signo) {
 		bb_simple_error_msg_and_die("timed out");
 	}
 
-	// SIGCHLD. reap zombies
-	if (safe_waitpid(G.helper_pid, &err, WNOHANG) > 0) {
-		if (WIFSIGNALED(err))
-			bb_error_msg_and_die("helper killed by signal %u", WTERMSIG(err));
-		if (WIFEXITED(err)) {
-			G.helper_pid = 0;
-			if (WEXITSTATUS(err))
-				bb_error_msg_and_die("helper exited (%u)", WEXITSTATUS(err));
-		}
+	// SIGCHLD. reap the zombie if we expect one
+	if (G.helper_pid == 0)
+		return;
+#define status signo
+	if (safe_waitpid(G.helper_pid, &status, WNOHANG) > 0) {
+		G.helper_pid = 0;
+		if (WIFSIGNALED(status))
+			bb_error_msg_and_die("helper killed by signal %u", WTERMSIG(status));
+		if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
+			bb_error_msg_and_die("helper exited (%u)", WEXITSTATUS(status));
 	}
-#undef err
+#undef status
 }
 
 void FAST_FUNC launch_helper(const char **argv)
 {
-	// setup vanilla unidirectional pipes interchange
-	int i;
-	int pipes[4];
+	pid_t pid;
+	struct fd_pair child_out;
+	struct fd_pair child_in;
 
-	xpipe(pipes);
-	xpipe(pipes + 2);
+	xpiped_pair(child_out);
+	xpiped_pair(child_in);
 
 	// NB: handler must be installed before vfork
 	bb_signals(0
@@ -46,40 +52,52 @@ void FAST_FUNC launch_helper(const char **argv)
 		+ (1 << SIGALRM)
 		, signal_handler);
 
-	G.helper_pid = xvfork();
-
-	i = (!G.helper_pid) * 2; // for parent:0, for child:2
-	close(pipes[i + 1]);     // 1 or 3 - closing one write end
-	close(pipes[2 - i]);     // 2 or 0 - closing one read end
-	xmove_fd(pipes[i], STDIN_FILENO);      // 0 or 2 - using other read end
-	xmove_fd(pipes[3 - i], STDOUT_FILENO); // 3 or 1 - using other write end
-	// End result:
-	// parent stdout [3] -> child stdin [2]
-	// child stdout [1] -> parent stdin [0]
-
-	if (!G.helper_pid) {
+	fflush_all();
+	pid = xvfork();
+	if (pid == 0) {
 		// child
+		close(child_in.wr);
+		close(child_out.rd);
+		xmove_fd(child_in.rd, STDIN_FILENO);
+		xmove_fd(child_out.wr, STDOUT_FILENO);
 		// if parent dies, get SIGTERM
+#if defined(PRCTL)
 		prctl(PR_SET_PDEATHSIG, SIGTERM, 0, 0, 0);
+#elif defined(PROCCTL)
+		{
+			int signum = SIGTERM;
+			procctl(P_PID, 0, PROC_PDEATHSIG_CTL, &signum);
+		}
+#endif
 		// try to execute connection helper
 		// NB: SIGCHLD & SIGALRM revert to SIG_DFL on exec
 		BB_EXECVP_or_die((char**)argv);
 	}
+	G.helper_pid = pid;
+	close(child_out.wr);
+	close(child_in.rd);
+	xmove_fd(child_out.rd, STDIN_FILENO);
+	xmove_fd(child_in.wr, STDOUT_FILENO);
 
 	// parent goes on
+}
+
+void FAST_FUNC send_r_n(const char *s)
+{
+	if (G.verbose)
+		bb_error_msg("send:'%s'", s);
+	printf("%s\r\n", s);
 }
 
 char* FAST_FUNC send_mail_command(const char *fmt, const char *param)
 {
 	char *msg;
-	if (timeout)
-		alarm(timeout);
+	if (G.timeout)
+		alarm(G.timeout);
 	msg = (char*)fmt;
 	if (fmt) {
 		msg = xasprintf(fmt, param);
-		if (verbose)
-			bb_error_msg("send:'%s'", msg);
-		printf("%s\r\n", msg);
+		send_r_n(msg);
 	}
 	fflush_all();
 	return msg;

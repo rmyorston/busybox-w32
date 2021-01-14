@@ -405,7 +405,7 @@ static const char tokenlist[] ALIGN1 =
 
 #define OC_B  OC_BUILTIN
 
-static const uint32_t tokeninfo[] = {
+static const uint32_t tokeninfo[] ALIGN4 = {
 	0,
 	0,
 	OC_REGEXP,
@@ -1767,12 +1767,34 @@ static void fsrealloc(int size)
 	nfields = size;
 }
 
+static int regexec1_nonempty(const regex_t *preg, const char *s, regmatch_t pmatch[])
+{
+	int r = regexec(preg, s, 1, pmatch, 0);
+	if (r == 0 && pmatch[0].rm_eo == 0) {
+		/* For example, happens when FS can match
+		 * an empty string (awk -F ' *'). Logically,
+		 * this should split into one-char fields.
+		 * However, gawk 5.0.1 searches for first
+		 * _non-empty_ separator string match:
+		 */
+		size_t ofs = 0;
+		do {
+			ofs++;
+			if (!s[ofs])
+				return REG_NOMATCH;
+			regexec(preg, s + ofs, 1, pmatch, 0);
+		} while (pmatch[0].rm_eo == 0);
+		pmatch[0].rm_so += ofs;
+		pmatch[0].rm_eo += ofs;
+	}
+	return r;
+}
+
 static int awk_split(const char *s, node *spl, char **slist)
 {
-	int l, n;
+	int n;
 	char c[4];
 	char *s1;
-	regmatch_t pmatch[2]; // TODO: why [2]? [1] is enough...
 
 	/* in worst case, each char would be a separate field */
 	*slist = s1 = xzalloc(strlen(s) * 2 + 3);
@@ -1789,29 +1811,31 @@ static int awk_split(const char *s, node *spl, char **slist)
 			return n; /* "": zero fields */
 		n++; /* at least one field will be there */
 		do {
+			int l;
+			regmatch_t pmatch[2]; // TODO: why [2]? [1] is enough...
+
 			l = strcspn(s, c+2); /* len till next NUL or \n */
-			if (regexec(icase ? spl->r.ire : spl->l.re, s, 1, pmatch, 0) == 0
+			if (regexec1_nonempty(icase ? spl->r.ire : spl->l.re, s, pmatch) == 0
 			 && pmatch[0].rm_so <= l
 			) {
+				/* if (pmatch[0].rm_eo == 0) ... - impossible */
 				l = pmatch[0].rm_so;
-				if (pmatch[0].rm_eo == 0) {
-					l++;
-					pmatch[0].rm_eo++;
-				}
 				n++; /* we saw yet another delimiter */
 			} else {
 				pmatch[0].rm_eo = l;
 				if (s[l])
 					pmatch[0].rm_eo++;
 			}
-			memcpy(s1, s, l);
-			/* make sure we remove *all* of the separator chars */
-			do {
-				s1[l] = '\0';
-			} while (++l < pmatch[0].rm_eo);
-			nextword(&s1);
+			s1 = mempcpy(s1, s, l);
+			*s1++ = '\0';
 			s += pmatch[0].rm_eo;
 		} while (*s);
+
+		/* echo a-- | awk -F-- '{ print NF, length($NF), $NF }'
+		 * should print "2 0 ":
+		 */
+		*s1 = '\0';
+
 		return n;
 	}
 	if (c[0] == '\0') {  /* null split */
@@ -2030,7 +2054,7 @@ static ssize_t FAST_FUNC safe_read_strip_cr(int fd, void *buf, size_t count)
 static int awk_getline(rstream *rsm, var *v)
 {
 	char *b;
-	regmatch_t pmatch[2];
+	regmatch_t pmatch[2]; // TODO: why [2]? [1] is enough...
 	int size, a, p, pp = 0;
 	int fd, so, eo, r, rp;
 	char c, *m, *s;

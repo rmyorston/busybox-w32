@@ -351,7 +351,7 @@ static void fmt_time_human_30nul(char *s, char dt_delim)
 	struct tm *ptm;
 	struct timeval tv;
 
-	gettimeofday(&tv, NULL);
+	xgettimeofday(&tv);
 	ptm = gmtime_r(&tv.tv_sec, &tm);
 	/* ^^^ using gmtime_r() instead of gmtime() to not use static data */
 	sprintf(s, "%04u-%02u-%02u%c%02u:%02u:%02u.%06u000",
@@ -376,7 +376,7 @@ static void fmt_time_bernstein_25(char *s)
 	struct timeval tv;
 	unsigned sec_hi;
 
-	gettimeofday(&tv, NULL);
+	xgettimeofday(&tv);
 	sec_hi = (0x400000000000000aULL + tv.tv_sec) >> 32;
 	tv.tv_sec = (time_t)(0x400000000000000aULL) + tv.tv_sec;
 	tv.tv_usec *= 1000;
@@ -775,7 +775,7 @@ static NOINLINE unsigned logdir_open(struct logdir *ld, const char *fn)
 				ld->nmin = xatoi_positive(&s[1]);
 				break;
 			case 't': {
-				static const struct suffix_mult mh_suffixes[] = {
+				static const struct suffix_mult mh_suffixes[] ALIGN_SUFFIX = {
 					{ "m", 60 },
 					{ "h", 60*60 },
 					/*{ "d", 24*60*60 },*/

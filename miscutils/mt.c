@@ -15,7 +15,7 @@
 //kbuild:lib-$(CONFIG_MT) += mt.o
 
 //usage:#define mt_trivial_usage
-//usage:       "[-f device] opcode value"
+//usage:       "[-f DEVICE] OPCODE VALUE"
 //usage:#define mt_full_usage "\n\n"
 //usage:       "Control magnetic tape drive operation\n"
 //usage:       "\n"
@@ -30,7 +30,7 @@
 #include <sys/mtio.h>
 
 /* missing: eod/seod, stoptions, stwrthreshold, densities */
-static const short opcode_value[] = {
+static const short opcode_value[] ALIGN2 = {
 	MTBSF,
 	MTBSFM,
 	MTBSR,

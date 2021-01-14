@@ -341,6 +341,7 @@ int login_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_LOGIN_SESSION_AS_CHILD
 	pid_t child_pid;
 #endif
+	IF_FEATURE_UTMP(pid_t my_pid;)
 
 	INIT_G();
 
@@ -504,16 +505,14 @@ int login_main(int argc UNUSED_PARAM, char **argv)
 #endif /* ENABLE_PAM */
  auth_failed:
 		opt &= ~LOGIN_OPT_f;
-		bb_do_delay(LOGIN_FAIL_DELAY);
+		pause_after_failed_login();
 		/* TODO: doesn't sound like correct English phrase to me */
 		puts("Login incorrect");
+		syslog(LOG_WARNING, "invalid password for '%s'%s",
+					username, fromhost);
 		if (++count == 3) {
-			syslog(LOG_WARNING, "invalid password for '%s'%s",
-						username, fromhost);
-
 			if (ENABLE_FEATURE_CLEAN_UP)
 				free(fromhost);
-
 			return EXIT_FAILURE;
 		}
 		username[0] = '\0';
@@ -525,6 +524,9 @@ int login_main(int argc UNUSED_PARAM, char **argv)
 	if (pw->pw_uid != 0)
 		die_if_nologin();
 
+	IF_FEATURE_UTMP(my_pid = getpid();)
+	update_utmp(my_pid, USER_PROCESS, short_tty, username, run_by_root ? opt_host : NULL);
+
 #if ENABLE_LOGIN_SESSION_AS_CHILD
 	child_pid = vfork();
 	if (child_pid != 0) {
@@ -532,8 +534,8 @@ int login_main(int argc UNUSED_PARAM, char **argv)
 			bb_simple_perror_msg("vfork");
 		else {
 			wait_for_exitstatus(child_pid);
-			update_utmp_DEAD_PROCESS(child_pid);
 		}
+		update_utmp_DEAD_PROCESS(my_pid);
 		login_pam_end(pamh);
 		return 0;
 	}
@@ -545,8 +547,6 @@ int login_main(int argc UNUSED_PARAM, char **argv)
 	 * _f_chown is safe wrt race t=ttyname(0);...;chown(t); */
 	fchown(0, pw->pw_uid, pw->pw_gid);
 	fchmod(0, 0600);
-
-	update_utmp(getpid(), USER_PROCESS, short_tty, username, run_by_root ? opt_host : NULL);
 
 	/* We trust environment only if we run by root */
 	if (ENABLE_LOGIN_SCRIPTS && run_by_root)
@@ -602,7 +602,7 @@ int login_main(int argc UNUSED_PARAM, char **argv)
 	signal(SIGINT, SIG_DFL);
 
 	/* Exec login shell with no additional parameters */
-	run_shell(pw->pw_shell, 1, NULL);
+	exec_login_shell(pw->pw_shell);
 
 	/* return EXIT_FAILURE; - not reached */
 }

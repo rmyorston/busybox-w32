@@ -48,10 +48,10 @@ void FAST_FUNC set_current_security_context(security_context_t sid)
 
 #endif
 
-/* Run SHELL, or DEFAULT_SHELL if SHELL is "" or NULL.
+/* Exec SHELL, or DEFAULT_SHELL if SHELL is "" or NULL.
  * If ADDITIONAL_ARGS is not NULL, pass them to the shell.
  */
-void FAST_FUNC run_shell(const char *shell, int loginshell, const char **additional_args)
+void FAST_FUNC exec_shell(const char *shell, int loginshell, const char **additional_args)
 {
 	const char **args;
 
@@ -59,7 +59,7 @@ void FAST_FUNC run_shell(const char *shell, int loginshell, const char **additio
 	while (args && *args)
 		args++;
 
-	args = xmalloc(sizeof(char*) * (2 + (args - additional_args)));
+	args = xzalloc(sizeof(args[0]) * (2 + (args - additional_args)));
 
 	if (!shell || !shell[0])
 		shell = DEFAULT_SHELL;
@@ -67,12 +67,11 @@ void FAST_FUNC run_shell(const char *shell, int loginshell, const char **additio
 	args[0] = bb_get_last_path_component_nostrip(shell);
 	if (loginshell)
 		args[0] = xasprintf("-%s", args[0]);
-	args[1] = NULL;
+	/*args[1] = NULL; - already is */
 	if (additional_args) {
-		int cnt = 1;
-		for (;;)
-			if ((args[cnt++] = *additional_args++) == NULL)
-				break;
+		int cnt = 0;
+		while (*additional_args)
+			args[++cnt] = *additional_args++;
 	}
 
 #if ENABLE_SELINUX
@@ -83,4 +82,21 @@ void FAST_FUNC run_shell(const char *shell, int loginshell, const char **additio
 #endif
 	execv(shell, (char **) args);
 	bb_perror_msg_and_die("can't execute '%s'", shell);
+}
+
+void FAST_FUNC exec_login_shell(const char *shell)
+{
+	exec_shell(shell, 1, NULL);
+}
+
+/* Typical idiom for applets which exec *optional* PROG [ARGS] */
+void FAST_FUNC exec_prog_or_SHELL(char **argv)
+{
+	if (argv[0]) {
+		BB_EXECVP_or_die(argv);
+	}
+	/* Both users (nsenter and unshare) do indeed exec
+	 * a _login_ shell (with dash in argv[0])!
+	 */
+	exec_login_shell(getenv("SHELL"));
 }

@@ -305,6 +305,11 @@
 # include <sys/sendfile.h>
 #endif
 
+/* see sys/netinet6/in6.h */
+#if defined(__FreeBSD__)
+# define s6_addr32 __u6_addr.__u6_addr32
+#endif
+
 #define DEBUG 0
 
 #define IOBUF_SIZE 8192
@@ -1036,48 +1041,9 @@ static char *encodeString(const char *string)
  * Parameter: a pointer to a base64 encoded string.
  * Decoded data is stored in-place.
  */
-static void decodeBase64(char *Data)
+static void decodeBase64(char *data)
 {
-# if ENABLE_BASE64 || ENABLE_UUDECODE
-	/* Call decode_base64() from uuencode.c */
-	char *eptr = Data;
-	decode_base64(&eptr, Data);
-	*eptr = '\0';
-# else
-	const unsigned char *in = (const unsigned char *)Data;
-	/* The decoded size will be at most 3/4 the size of the encoded */
-	unsigned ch = 0;
-	int i = 0;
-
-	while (*in) {
-		int t = *in++;
-
-		if (t >= '0' && t <= '9')
-			t = t - '0' + 52;
-		else if (t >= 'A' && t <= 'Z')
-			t = t - 'A';
-		else if (t >= 'a' && t <= 'z')
-			t = t - 'a' + 26;
-		else if (t == '+')
-			t = 62;
-		else if (t == '/')
-			t = 63;
-		else if (t == '=')
-			t = 0;
-		else
-			continue;
-
-		ch = (ch << 6) | t;
-		i++;
-		if (i == 4) {
-			*Data++ = (char) (ch >> 16);
-			*Data++ = (char) (ch >> 8);
-			*Data++ = (char) ch;
-			i = 0;
-		}
-	}
-	*Data = '\0';
-# endif
+	decode_base64(data, NULL)[0] = '\0';
 }
 #endif
 
@@ -1945,7 +1911,7 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 		send_headers(HTTP_OK);
 #if ENABLE_FEATURE_USE_SENDFILE
 	{
-		off_t offset = range_start;
+		off_t offset = (range_start < 0) ? 0 : range_start;
 		while (1) {
 			/* sz is rounded down to 64k */
 			ssize_t sz = MAXINT(ssize_t) - 0xffff;
@@ -2590,8 +2556,8 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 		if (STRNCASECMP(iobuf, "Range:") == 0) {
 			/* We know only bytes=NNN-[MMM] */
 			char *s = skip_whitespace(iobuf + sizeof("Range:")-1);
-			if (is_prefixed_with(s, "bytes=")) {
-				s += sizeof("bytes=")-1;
+			s = is_prefixed_with(s, "bytes=");
+			if (s) {
 				range_start = BB_STRTOOFF(s, &s, 10);
 				if (s[0] != '-' || range_start < 0) {
 					range_start = -1;

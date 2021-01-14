@@ -1366,7 +1366,7 @@ static NOINLINE void dump_identity(const struct hd_driveid *id)
 	}
 	if (id->capability & 1) {
 		if (id->dma_1word | id->dma_mword) {
-			static const int dma_wmode_masks[] = { 0x100, 1, 0x200, 2, 0x400, 4, 0xf800, 0xf8 };
+			static const int dma_wmode_masks[] ALIGN4 = { 0x100, 1, 0x200, 2, 0x400, 4, 0xf800, 0xf8 };
 			printf("\n DMA modes:  ");
 			print_flags_separated(dma_wmode_masks,
 				"*\0""sdma0 \0""*\0""sdma1 \0""*\0""sdma2 \0""*\0""sdma? \0",
@@ -1436,7 +1436,7 @@ static void flush_buffer_cache(/*int fd*/ void)
 	fsync(fd);				/* flush buffers */
 	ioctl_or_warn(fd, BLKFLSBUF, NULL); /* do it again, big time */
 #ifdef HDIO_DRIVE_CMD
-	sleep(1);
+	sleep1();
 	if (ioctl(fd, HDIO_DRIVE_CMD, NULL) && errno != EINVAL) {	/* await completion */
 		if (ENABLE_IOCTL_HEX2STR_ERROR) /* To be coherent with ioctl_or_warn */
 			bb_simple_perror_msg("HDIO_DRIVE_CMD");
@@ -1511,7 +1511,7 @@ static void do_time(int cache /*,int fd*/)
 	 * NB: *small* delay. User is expected to have a clue and to not run
 	 * heavy io in parallel with measurements. */
 	sync();
-	sleep(1);
+	sleep1();
 	if (cache) { /* Time cache */
 		seek_to_zero();
 		read_big_block(buf);

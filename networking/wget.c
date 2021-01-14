@@ -128,19 +128,14 @@
 
 //usage:#define wget_trivial_usage
 //usage:	IF_FEATURE_WGET_LONG_OPTIONS(
-//usage:       "[-c|--continue] [--spider] [-q|--quiet] [-O|--output-document FILE]\n"
-//usage:       "	[-o|--output-file FILE] [--header 'header: value'] [-Y|--proxy on/off]\n"
-//usage:	IF_FEATURE_WGET_OPENSSL(
-//usage:       "	[--no-check-certificate]\n"
-//usage:	)
+//usage:       "[-cqS] [--spider] [-O FILE] [-o LOGFILE] [--header 'HEADER: VALUE'] [-Y on/off]\n"
 /* Since we ignore these opts, we don't show them in --help */
 /* //usage:    "	[--no-cache] [--passive-ftp] [-t TRIES]" */
 /* //usage:    "	[-nv] [-nc] [-nH] [-np]" */
-//usage:       "	[-P DIR] [-S|--server-response] [-U|--user-agent AGENT]" IF_FEATURE_WGET_TIMEOUT(" [-T SEC]") " URL..."
+//usage:       "	"IF_FEATURE_WGET_OPENSSL("[--no-check-certificate] ")"[-P DIR] [-U AGENT]"IF_FEATURE_WGET_TIMEOUT(" [-T SEC]")" URL..."
 //usage:	)
 //usage:	IF_NOT_FEATURE_WGET_LONG_OPTIONS(
-//usage:       "[-cq] [-O FILE] [-o FILE] [-Y on/off] [-P DIR] [-S] [-U AGENT]"
-//usage:			IF_FEATURE_WGET_TIMEOUT(" [-T SEC]") " URL..."
+//usage:       "[-cqS] [-O FILE] [-o LOGFILE] [-Y on/off] [-P DIR] [-U AGENT]"IF_FEATURE_WGET_TIMEOUT(" [-T SEC]")" URL..."
 //usage:	)
 //usage:#define wget_full_usage "\n\n"
 //usage:       "Retrieve files via HTTP or FTP\n"
@@ -158,7 +153,7 @@
 //usage:     "\n	-T SEC		Network read timeout is SEC seconds"
 //usage:	)
 //usage:     "\n	-O FILE		Save to FILE ('-' for stdout)"
-//usage:     "\n	-o FILE		Log messages to FILE"
+//usage:     "\n	-o LOGFILE	Log messages to FILE"
 //usage:     "\n	-U STR		Use STR for User-Agent header"
 //usage:     "\n	-Y on/off	Use proxy"
 
@@ -287,6 +282,8 @@ enum {
 	WGET_OPT_POST_DATA  = (1 << 12) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
 	WGET_OPT_SPIDER     = (1 << 13) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
 	WGET_OPT_NO_CHECK_CERT = (1 << 14) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
+	/* hijack this bit for other than opts purposes: */
+	WGET_NO_FTRUNCATE   = (1 << 31)
 };
 
 enum {
@@ -1085,8 +1082,13 @@ static void NOINLINE retrieve_file_data(FILE *dfp)
 	 */
 	{
 		off_t pos = lseek(G.output_fd, 0, SEEK_CUR);
-		if (pos != (off_t)-1)
-			ftruncate(G.output_fd, pos);
+		if (pos != (off_t)-1) {
+			/* do not truncate if -O- is in use, a user complained about
+			 * "wget -qO- 'http://example.com/empty' >>FILE" truncating FILE.
+			 */
+			if (!(option_mask32 & WGET_NO_FTRUNCATE))
+				ftruncate(G.output_fd, pos);
+		}
 	}
 
 	if (!(option_mask32 & WGET_OPT_QUIET)) {
@@ -1599,7 +1601,7 @@ IF_DESKTOP(	"no-parent\0"        No_argument       "\xf0")
 	if (G.fname_out) { /* -O FILE ? */
 		if (LONE_DASH(G.fname_out)) { /* -O - ? */
 			G.output_fd = 1;
-			option_mask32 &= ~WGET_OPT_CONTINUE;
+			option_mask32 = (option_mask32 & (~WGET_OPT_CONTINUE)) | WGET_NO_FTRUNCATE;
 		}
 		/* compat with wget: -O FILE can overwrite */
 		G.o_flags = O_WRONLY | O_CREAT | O_TRUNC;

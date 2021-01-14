@@ -68,10 +68,11 @@
 static void pop3_checkr(const char *fmt, const char *param, char **ret)
 {
 	char *msg = send_mail_command(fmt, param);
+//FIXME: limit max len!!!
 	char *answer = xmalloc_fgetline(stdin);
 	if (answer && '+' == answer[0]) {
 		free(msg);
-		if (timeout)
+		if (G.timeout)
 			alarm(0);
 		if (ret) {
 			// skip "+OK "
@@ -92,6 +93,7 @@ static void pop3_check(const char *fmt, const char *param)
 int popmaildir_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int popmaildir_main(int argc UNUSED_PARAM, char **argv)
 {
+	unsigned opts;
 	char *buf;
 	unsigned nmsg;
 	char *hostname;
@@ -128,7 +130,7 @@ int popmaildir_main(int argc UNUSED_PARAM, char **argv)
 	opts = getopt32(argv, "^"
 		"bdmVcasTkt:+" "R:+Z:L:+H:+" IF_FEATURE_POPMAILDIR_DELIVERY("M:F:")
 		"\0" "-1:dd",
-		&timeout, NULL, NULL, NULL, &opt_nlines
+		&G.timeout, NULL, NULL, NULL, &opt_nlines
 		IF_FEATURE_POPMAILDIR_DELIVERY(, &delivery, &delivery) // we treat -M and -F the same
 	);
 	//argc -= optind;

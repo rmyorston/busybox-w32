@@ -558,11 +558,10 @@ static int d6_mcast_from_client_data_ifindex(struct d6_packet *packet, uint8_t *
 		0x33, 0x33, 0x00, 0x01, 0x00, 0x02,
 	};
 
-	return d6_send_raw_packet(
+	return d6_send_raw_packet_from_client_data_ifindex(
 		packet, (end - (uint8_t*) packet),
 		/*src*/ &client6_data.ll_ip6, CLIENT_PORT6,
-		/*dst*/ (struct in6_addr*)FF02__1_2, SERVER_PORT6, MAC_DHCP6MCAST_ADDR,
-		client_data.ifindex
+		/*dst*/ (struct in6_addr*)FF02__1_2, SERVER_PORT6, MAC_DHCP6MCAST_ADDR
 	);
 }
 
@@ -864,11 +863,10 @@ static NOINLINE int send_d6_renew(uint32_t xid, struct in6_addr *server_ipv6, st
 
 	bb_info_msg("sending %s", "renew");
 	if (server_ipv6)
-		return d6_send_kernel_packet(
+		return d6_send_kernel_packet_from_client_data_ifindex(
 			&packet, (opt_ptr - (uint8_t*) &packet),
 			our_cur_ipv6, CLIENT_PORT6,
-			server_ipv6, SERVER_PORT6,
-			client_data.ifindex
+			server_ipv6, SERVER_PORT6
 		);
 	return d6_mcast_from_client_data_ifindex(&packet, opt_ptr);
 }
@@ -893,11 +891,10 @@ int send_d6_release(struct in6_addr *server_ipv6, struct in6_addr *our_cur_ipv6)
 		opt_ptr = mempcpy(opt_ptr, client6_data.ia_pd, client6_data.ia_pd->len + 2+2);
 
 	bb_info_msg("sending %s", "release");
-	return d6_send_kernel_packet(
+	return d6_send_kernel_packet_from_client_data_ifindex(
 		&packet, (opt_ptr - (uint8_t*) &packet),
 		our_cur_ipv6, CLIENT_PORT6,
-		server_ipv6, SERVER_PORT6,
-		client_data.ifindex
+		server_ipv6, SERVER_PORT6
 	);
 }
 
@@ -1164,9 +1161,9 @@ static void client_background(void)
 //usage:#endif
 //usage:#define udhcpc6_trivial_usage
 //usage:       "[-fbnq"IF_UDHCP_VERBOSE("v")"odR] [-i IFACE] [-r IPv6] [-s PROG] [-p PIDFILE]\n"
-//usage:       "	[-x OPT:VAL]... [-O OPT]..." IF_FEATURE_UDHCP_PORT(" [-P N]")
+//usage:       "	[-x OPT:VAL]... [-O OPT]..." IF_FEATURE_UDHCP_PORT(" [-P PORT]")
 //usage:#define udhcpc6_full_usage "\n"
-//usage:     "\n	-i IFACE	Interface to use (default eth0)"
+//usage:     "\n	-i IFACE	Interface to use (default "CONFIG_UDHCPC_DEFAULT_INTERFACE")"
 //usage:     "\n	-p FILE		Create pidfile"
 //usage:     "\n	-s PROG		Run PROG at DHCP events (default "CONFIG_UDHCPC_DEFAULT_SCRIPT")"
 //usage:     "\n	-B		Request broadcast replies"
@@ -1182,7 +1179,7 @@ static void client_background(void)
 //usage:     "\n	-R		Release IP on exit"
 //usage:     "\n	-S		Log to syslog too"
 //usage:	IF_FEATURE_UDHCP_PORT(
-//usage:     "\n	-P N		Use port N (default 546)"
+//usage:     "\n	-P PORT		Use PORT (default 546)"
 //usage:	)
 ////usage:	IF_FEATURE_UDHCPC_ARPING(
 ////usage:     "\n	-a		Use arping to validate offered address"
@@ -1234,7 +1231,7 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 	/* Default options */
 	IF_FEATURE_UDHCP_PORT(SERVER_PORT6 = 547;)
 	IF_FEATURE_UDHCP_PORT(CLIENT_PORT6 = 546;)
-	client_data.interface = "eth0";
+	client_data.interface = CONFIG_UDHCPC_DEFAULT_INTERFACE;
 	client_data.script = CONFIG_UDHCPC_DEFAULT_SCRIPT;
 	client_data.sockfd = -1;
 
