@@ -11388,9 +11388,11 @@ preadfd(void)
 		nr = read_line_input(line_input_state, cmdedit_prompt, buf, IBUFSIZ);
 		if (nr == 0) {
 			/* ^C pressed, "convert" to SIGINT */
-			write(STDOUT_FILENO, "^C", 2);
 # if !ENABLE_PLATFORM_MINGW32
+			write(STDOUT_FILENO, "^C", 2);
 			raise(SIGINT);
+# else
+			raise_interrupt();
 # endif
 			if (trap[SIGINT]) {
 				buf[0] = '\n';
