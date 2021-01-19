@@ -213,18 +213,11 @@ void seek_by_jump(int fd, off_t amount) FAST_FUNC;
 void seek_by_read(int fd, off_t amount) FAST_FUNC;
 
 const char *strip_unsafe_prefix(const char *str) FAST_FUNC;
-#if ENABLE_PLATFORM_MINGW32
-#define create_or_remember_link(lp, t, ln, hl) create_or_remember_link(t, ln)
-#endif
 void create_or_remember_link(llist_t **link_placeholders,
 		const char *target,
 		const char *linkname,
 		int hard_link) FAST_FUNC;
-#if !ENABLE_PLATFORM_MINGW32
 void create_links_from_list(llist_t *list) FAST_FUNC;
-#else
-#define create_links_from_list(l) (void)0
-#endif
 
 void data_align(archive_handle_t *archive_handle, unsigned boundary) FAST_FUNC;
 const llist_t *find_list_entry(const llist_t *list, const char *filename) FAST_FUNC;
