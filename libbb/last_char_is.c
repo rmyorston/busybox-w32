@@ -11,7 +11,7 @@
 /* Find out if the last character of a string matches the one given */
 char* FAST_FUNC last_char_is(const char *s, int c)
 {
-	if (IF_PLATFORM_MINGW32(!s ||) !s[0])
+	if (!s[0])
 		return NULL;
 	while (s[1])
 		s++;
