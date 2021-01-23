@@ -39,9 +39,6 @@ char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 	 * following the rest of the list.
 	 */
 	char *p, *n;
-#if ENABLE_PLATFORM_MINGW32
-	char *w;
-#endif
 
 	p = *PATHp;
 	while (p) {
@@ -53,14 +50,16 @@ char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 			p[0] ? p : ".", /* handle "::" case */
 			filename
 		);
-		if (n) *n++ = PATH_SEP;
 #if ENABLE_PLATFORM_MINGW32
-		w = alloc_system_drive(p);
-		add_win32_extension(w);
-		free(p);
-		p = w;
+		{
+			char *w = alloc_system_drive(p);
+			add_win32_extension(w);
+			free(p);
+			p = w;
+		}
 #endif
 		ex = file_is_executable(p);
+		if (n) *n++ = PATH_SEP;
 		if (ex) {
 			*PATHp = n;
 			return p;
