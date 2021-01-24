@@ -73,7 +73,14 @@ ssize_t FAST_FUNC read_close(int fd, void *buf, size_t size)
 
 ssize_t FAST_FUNC open_read_close(const char *filename, void *buf, size_t size)
 {
+#if !ENABLE_PLATFORM_MINGW32
 	int fd = open(filename, O_RDONLY);
+#else
+	int fd, flag;
+
+	flag = O_RDONLY | (get_dev_type(filename) == DEV_URANDOM ? O_SPECIAL : 0);
+	fd = mingw_open(filename, flag);
+#endif
 	if (fd < 0)
 		return fd;
 	return read_close(fd, buf, size);

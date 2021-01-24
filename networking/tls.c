@@ -349,14 +349,8 @@ static void dump_tls_record(const void *vp, int len)
 
 void FAST_FUNC tls_get_random(void *buf, unsigned len)
 {
-#if !ENABLE_PLATFORM_MINGW32
 	if (len != open_read_close("/dev/urandom", buf, len))
 		xfunc_die();
-#else
-	int fd = mingw_open("/dev/urandom", O_RDONLY|O_SPECIAL);
-	if (fd < 0 || len != read_close(fd, buf, len))
-		xfunc_die();
-#endif
 }
 
 static void xorbuf3(void *dst, const void *src1, const void *src2, unsigned count)
