@@ -200,9 +200,10 @@ static int write_ar_archive(archive_handle_t *handle)
 	}
 
 #if ENABLE_PLATFORM_MINGW32
-	if ( temp_fn != NULL ) {
+	if (temp_fn != NULL) {
 		xrename(temp_fn, handle->ar__name);
-		free(temp_fn);
+		if (ENABLE_FEATURE_CLEAN_UP)
+			free(temp_fn);
 	}
 #endif
 
