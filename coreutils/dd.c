@@ -505,10 +505,8 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 		if (G.flags & FLAG_IDIRECT)
 			iflag |= O_DIRECT;
 #endif
-#if !ENABLE_PLATFORM_MINGW32
-		xmove_fd(xopen(infile, iflag), ifd);
-#else
-		xmove_fd(mingw_xopen(infile, iflag), ifd);
+		xmove_fd(MINGW_SPECIAL(xopen)(infile, iflag), ifd);
+#if ENABLE_PLATFORM_MINGW32
 		update_dev_fd(get_dev_type(infile), ifd);
 #endif
 	} else {

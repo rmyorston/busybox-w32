@@ -349,7 +349,7 @@ static void dump_tls_record(const void *vp, int len)
 
 void FAST_FUNC tls_get_random(void *buf, unsigned len)
 {
-	if (len != open_read_close("/dev/urandom", buf, len))
+	if (len != MINGW_SPECIAL(open_read_close)("/dev/urandom", buf, len))
 		xfunc_die();
 }
 

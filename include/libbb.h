@@ -202,6 +202,9 @@ int klogctl(int type, char *b, int len);
 
 #if ENABLE_PLATFORM_MINGW32
 # include "mingw.h"
+# define MINGW_SPECIAL(a) mingw_ ## a
+#else
+# define MINGW_SPECIAL(a) a
 #endif
 
 /* Busybox does not use threads, we can speed up stdio. */

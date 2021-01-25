@@ -229,6 +229,15 @@ int mingw_xopen(const char *pathname, int flags)
 	return ret;
 }
 
+ssize_t FAST_FUNC mingw_open_read_close(const char *fn, void *buf, size_t size)
+{
+	/* allow use of special devices */
+	int fd = mingw_open(fn, O_RDONLY|O_SPECIAL);
+	if (fd < 0)
+		return fd;
+	return read_close(fd, buf, size);
+}
+
 #undef fopen
 FILE *mingw_fopen (const char *filename, const char *otype)
 {

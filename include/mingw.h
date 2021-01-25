@@ -429,7 +429,11 @@ enum {DEV_NULL, DEV_ZERO, DEV_URANDOM, NOT_DEVICE = -1};
 int get_dev_type(const char *filename);
 void update_dev_fd(int dev, int fd);
 int mingw_open (const char *filename, int oflags, ...);
+
+/* functions which add O_SPECIAL to open(2) to allow access to devices */
 int mingw_xopen(const char *filename, int oflags);
+ssize_t mingw_open_read_close(const char *fn, void *buf, size_t size) FAST_FUNC;
+
 ssize_t mingw_read(int fd, void *buf, size_t count);
 int mingw_close(int fd);
 int pipe(int filedes[2]);

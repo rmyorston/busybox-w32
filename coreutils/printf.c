@@ -151,10 +151,12 @@ static double my_xstrtod(const char *arg)
 	return result;
 }
 
+#if ENABLE_PLATFORM_MINGW32
 static int fputs_stdout(const char *s)
 {
 	return fputs(s, stdout);
 }
+#endif
 
 /* Handles %b; return 1 if output is to be short-circuited by \c */
 static int print_esc_string(const char *str)

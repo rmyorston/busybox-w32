@@ -38,10 +38,6 @@
 
 #include "libbb.h"
 
-#if ENABLE_PLATFORM_MINGW32
-#define xopen mingw_xopen
-#endif
-
 int shred_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int shred_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -61,9 +57,9 @@ int shred_main(int argc UNUSED_PARAM, char **argv)
 	opt = getopt32(argv, "fuzn:+vx", &num_iter);
 	argv += optind;
 
-	zero_fd = xopen("/dev/zero", O_RDONLY);
+	zero_fd = MINGW_SPECIAL(xopen)("/dev/zero", O_RDONLY);
 	if (num_iter != 0)
-		rand_fd = xopen("/dev/urandom", O_RDONLY);
+		rand_fd = MINGW_SPECIAL(xopen)("/dev/urandom", O_RDONLY);
 
 	if (!*argv)
 		bb_show_usage();
