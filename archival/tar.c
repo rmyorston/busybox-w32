@@ -698,20 +698,22 @@ static NOINLINE int writeTarFile(
 	const char *gzip)
 {
 	int errorFlag = FALSE;
-	IF_PLATFORM_MINGW32(pid_t pid = 0;)
+# if SEAMLESS_COMPRESSION && ENABLE_PLATFORM_MINGW32
+	pid_t pid = 0;
+# endif
 
 	/*tbInfo->hlInfoHead = NULL; - already is */
 
-#if ENABLE_PLATFORM_POSIX || ENABLE_FEATURE_EXTRA_FILE_DATA
+# if ENABLE_PLATFORM_POSIX || ENABLE_FEATURE_EXTRA_FILE_DATA
 	/* Store the stat info for the tarball's file, so
 	 * can avoid including the tarball into itself....  */
 	xfstat(tbInfo->tarFd, &tbInfo->tarFileStatBuf, "can't stat tar file");
-#endif
+# endif
 
 # if SEAMLESS_COMPRESSION
 	if (gzip)
 		IF_PLATFORM_MINGW32(pid = )vfork_compressor(tbInfo->tarFd, gzip);
-#endif
+# endif
 
 	/* Read the directory/files and iterate over them one at a time */
 	while (filelist) {
