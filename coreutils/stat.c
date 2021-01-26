@@ -314,11 +314,11 @@ static void FAST_FUNC print_stat(char *pformat, const char m,
 	struct passwd *pw_ent;
 	struct group *gw_ent;
 
+#if ENABLE_PLATFORM_POSIX || ENABLE_FEATURE_READLINK2
 	if (m == 'n') {
 		printfs(pformat, filename);
 	} else if (m == 'N') {
 		strcatc(pformat, 's');
-#if ENABLE_PLATFORM_POSIX || ENABLE_FEATURE_READLINK2
 		if (S_ISLNK(statbuf->st_mode)) {
 			char *linkname = xmalloc_readlink_or_warn(filename);
 			if (linkname == NULL)
@@ -329,7 +329,8 @@ static void FAST_FUNC print_stat(char *pformat, const char m,
 			printf(pformat, filename);
 		}
 #else
-		printf(pformat, filename);
+	if (m == 'n' || m == 'N') {
+		printfs(pformat, filename);
 #endif
 	} else if (m == 'd') {
 		strcat(pformat, "llu");
@@ -717,15 +718,13 @@ static bool do_stat(const char *filename, const char *format)
 #if ENABLE_PLATFORM_POSIX || ENABLE_FEATURE_READLINK2
 		if (S_ISLNK(statbuf.st_mode))
 			linkname = xmalloc_readlink_or_warn(filename);
+#endif
 		if (linkname) {
 			printf("  File: '%s' -> '%s'\n", filename, linkname);
 			free(linkname);
 		} else {
 			printf("  File: '%s'\n", filename);
 		}
-#else
-		printf("  File: '%s'\n", filename);
-#endif
 
 		printf("  Size: %-10llu\tBlocks: %-10llu IO Block: %-6lu %s\n"
 		       "Device: %llxh/%llud\tInode: %-10llu  Links: %-5lu",
