@@ -152,9 +152,9 @@ static double my_xstrtod(const char *arg)
 }
 
 #if ENABLE_PLATFORM_MINGW32
-static int fputs_stdout(const char *s)
+static size_t fwrite_stdout(const char *s, const char *t)
 {
-	return fputs(s, stdout);
+	return fwrite(s, t - s, 1, stdout);
 }
 #endif
 
@@ -202,8 +202,7 @@ static int print_esc_string(const char *str)
 	}
 #if ENABLE_PLATFORM_MINGW32
  finish:
-	*t = '\0';
-	fputs_stdout(s);
+	fwrite_stdout(s, t);
 	free(s);
 	return ret;
 #else
@@ -331,8 +330,7 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 		switch (*f) {
 		case '%':
 #if ENABLE_PLATFORM_MINGW32
-			*t = '\0';
-			fputs_stdout(s);
+			fwrite_stdout(s, t);
 			t = s;
 #endif
 			direc_start = f++;
@@ -426,19 +424,10 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 #if ENABLE_PLATFORM_MINGW32
 		case '\\':
 			if (*++f == 'c') {
-				*t = '\0';
-				fputs_stdout(s);
+				fwrite_stdout(s, t);
 				return saved_argv; /* causes main() to exit */
 			}
-			*t = bb_process_escape_sequence((const char **)&f);
-			if (*t == '\0') {
-				fputs_stdout(s);
-				bb_putchar(*t);
-				t = s;
-			}
-			else {
-				++t;
-			}
+			*t++ = bb_process_escape_sequence((const char **)&f);
 			f--;
 			break;
 		default:
@@ -457,8 +446,7 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 		}
 	}
 #if ENABLE_PLATFORM_MINGW32
-	*t = '\0';
-	fputs_stdout(s);
+	fwrite_stdout(s, t);
 #endif
 
 	return argv;
