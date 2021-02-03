@@ -152,22 +152,70 @@ static double my_xstrtod(const char *arg)
 }
 
 #if ENABLE_PLATFORM_MINGW32
-static size_t fwrite_stdout(const char *s, const char *t)
+static int buflen = 0;
+static int bufmax = 0;
+static char *buffer = NULL;
+
+static void my_flush(void)
 {
-	return fwrite(s, t - s, 1, stdout);
+	if (buffer)
+		full_write(STDOUT_FILENO, buffer, buflen);
+	free(buffer);
+	buffer = NULL;
+	buflen = bufmax = 0;
 }
+
+static int my_putchar(int ch)
+{
+	if (buflen + 1 >= bufmax) {
+		bufmax += 256;
+		buffer = xrealloc(buffer, bufmax);
+	}
+	buffer[buflen++] = ch;
+	if (buflen > 40 && ch == '\n')
+		my_flush();
+	return ch;
+}
+
+static int my_printf(const char *format, ...)
+{
+	va_list list;
+	char *str;
+	int len;
+
+	va_start(list, format);
+	len = vasprintf(&str, format, list);
+	va_end(list);
+
+	if (len < 0)
+		bb_die_memory_exhausted();
+
+	if (buflen + len >= bufmax) {
+		bufmax += 256 + len;
+		buffer = xrealloc(buffer, bufmax);
+	}
+	memcpy(buffer + buflen, str, len);
+	buflen += len;
+	free(str);
+
+	if (buflen > 40 && buffer[buflen-1] == '\n')
+		my_flush();
+
+	return len;
+}
+
+#undef bb_putchar
+#undef putchar
+#undef printf
+#define bb_putchar(c) my_putchar(c)
+#define putchar(c) my_putchar(c)
+#define printf(...) my_printf(__VA_ARGS__)
 #endif
 
 /* Handles %b; return 1 if output is to be short-circuited by \c */
 static int print_esc_string(const char *str)
 {
 	char c;
-#if ENABLE_PLATFORM_MINGW32
-	char *s, *t;
-	int ret = 0;
-
-	s = t = xstrdup(str);
-#endif
 	while ((c = *str) != '\0') {
 		str++;
 		if (c == '\\') {
@@ -179,12 +227,7 @@ static int print_esc_string(const char *str)
 				}
 			}
 			else if (*str == 'c') {
-#if ENABLE_PLATFORM_MINGW32
-				ret = 1;
-				goto finish;
-#else
 				return 1;
-#endif
 			}
 			{
 				/* optimization: don't force arg to be on-stack,
@@ -194,20 +237,10 @@ static int print_esc_string(const char *str)
 				str = z;
 			}
 		}
-#if ENABLE_PLATFORM_MINGW32
-		*t++ = c;
-#else
 		putchar(c);
-#endif
 	}
-#if ENABLE_PLATFORM_MINGW32
- finish:
-	fwrite_stdout(s, t);
-	free(s);
-	return ret;
-#else
+
 	return 0;
-#endif
 }
 
 static void print_direc(char *format, unsigned fmt_length,
@@ -321,18 +354,10 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 	int field_width;        /* Arg to first '*' */
 	int precision;          /* Arg to second '*' */
 	char **saved_argv = argv;
-#if ENABLE_PLATFORM_MINGW32
-	char *s, *t;
-	s = t = auto_string(xstrdup(f));
-#endif
 
 	for (; *f; ++f) {
 		switch (*f) {
 		case '%':
-#if ENABLE_PLATFORM_MINGW32
-			fwrite_stdout(s, t);
-			t = s;
-#endif
 			direc_start = f++;
 			direc_length = 1;
 			field_width = precision = 0;
@@ -421,18 +446,6 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 				free(p);
 			}
 			break;
-#if ENABLE_PLATFORM_MINGW32
-		case '\\':
-			if (*++f == 'c') {
-				fwrite_stdout(s, t);
-				return saved_argv; /* causes main() to exit */
-			}
-			*t++ = bb_process_escape_sequence((const char **)&f);
-			f--;
-			break;
-		default:
-			*t++ = *f;
-#else
 		case '\\':
 			if (*++f == 'c') {
 				return saved_argv; /* causes main() to exit */
@@ -442,12 +455,8 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 			break;
 		default:
 			putchar(*f);
-#endif
 		}
 	}
-#if ENABLE_PLATFORM_MINGW32
-	fwrite_stdout(s, t);
-#endif
 
 	return argv;
 }
@@ -495,6 +504,9 @@ int printf_main(int argc UNUSED_PARAM, char **argv)
 	do {
 		argv = argv2;
 		argv2 = print_formatted(format, argv, &conv_err);
+#if ENABLE_PLATFORM_MINGW32
+		my_flush();
+#endif
 	} while (argv2 > argv && *argv2);
 
 	/* coreutils compat (bash doesn't do this):
