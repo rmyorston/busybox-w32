@@ -455,6 +455,23 @@ config FEATURE_EURO
 	requires the OEM code page to be 858.  If the OEM code page of
 	the console is 850 when BusyBox starts it's changed to 858.
 
+config SKIP_ANSI_EMULATION_DEFAULT
+	int "Default setting for ANSI escape sequences"
+	default 2
+	range 0 2
+	depends on PLATFORM_MINGW32
+	help
+	Control how ANSI escape sequences are handled.  Possible values
+	are:
+
+	0  Always emulate escape sequences.
+	1  Always emit escape sequences.
+	2  Emit escape sequences if the terminal supports them, otherwise
+	   emulate them.
+
+	Setting the environment variable BB_SKIP_ANSI_EMULATION overrides
+	this default.
+
 config FEATURE_EXTRA_FILE_DATA
 	bool "Read additional file metadata (2.1 kb)"
 	default y

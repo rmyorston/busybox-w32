@@ -68,19 +68,9 @@ int skip_ansi_emulation(int reset)
 
 	if (skip < 0 || reset) {
 		const char *var = getenv(bb_skip_ansi_emulation);
-		skip = var != NULL;
-		if (skip) {
-			switch (xatou(var)) {
-			case 1:
-				break;
-			case 2:
-				skip = 2;
-				break;
-			default:
-				skip = 0;
-				break;
-			}
-		}
+		skip = var == NULL ? CONFIG_SKIP_ANSI_EMULATION_DEFAULT : atoi(var);
+		if (skip < 0 || skip > 2)
+			skip = 0;
 
 		if (is_console(STDOUT_FILENO)) {
 			HANDLE h = get_console();
