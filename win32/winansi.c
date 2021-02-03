@@ -262,12 +262,174 @@ static void move_cursor(int x, int y)
 	SetConsoleCursorPosition(console, pos);
 }
 
+/* 24-bit colour */
+static char *process_fg_24bit(char *str, WORD *attr)
+{
+	int count = 0;
+	int val[3] = {0, 0, 0};
+	int dark, bright = 0;
+
+	do {
+		val[count++] = strtol(str, (char **)&str, 10);
+		++str;
+	} while (*(str-1) == ';' && count < 3);
+
+	*attr &= ~(FOREGROUND_ALL|FOREGROUND_INTENSITY);
+	if (val[0] > 127) {
+		*attr |= FOREGROUND_RED;
+		++bright;
+	}
+	if (val[1] > 127) {
+		*attr |= FOREGROUND_GREEN;
+		++bright;
+	}
+	if (val[2] > 127) {
+		*attr |= FOREGROUND_BLUE;
+		++bright;
+	}
+
+	/* increase intensity if all components are either bright or
+	 * dark and at least one is bright */
+	dark = (val[0] <= 63) + (val[1] <= 63) + (val[2] <= 63);
+	if (bright + dark == 3 && dark != 3) {
+		*attr |= FOREGROUND_INTENSITY;
+	}
+
+	return str;
+}
+
+static char *process_bg_24bit(char *str, WORD *attr)
+{
+	WORD t = 0;
+	char *s = process_fg_24bit(str, &t);
+
+	*attr &= ~(BACKGROUND_ALL|BACKGROUND_INTENSITY);
+	*attr |= t << 4;
+
+	return s;
+}
+
+static unsigned char colour_1bit[8] = {
+	/* Black */   0,
+	/* Red   */   FOREGROUND_RED,
+	/* Green */   FOREGROUND_GREEN,
+	/* Yellow */  FOREGROUND_RED | FOREGROUND_GREEN,
+	/* Blue */    FOREGROUND_BLUE,
+	/* Magenta */ FOREGROUND_RED | FOREGROUND_BLUE,
+	/* Cyan */    FOREGROUND_GREEN | FOREGROUND_BLUE,
+	/* White */   FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE
+};
+
+/* 8-bit colour */
+static char *process_fg_8bit(char *str, WORD *attr)
+{
+	int dark, bright = 0;
+	int val = strtol(str, &str, 10);
+	int r, g, b;
+
+	*attr &= ~(FOREGROUND_ALL|FOREGROUND_INTENSITY);
+	if (val < 16) {
+		*attr |= colour_1bit[val % 8];
+		if (val > 8)
+			*attr |= FOREGROUND_INTENSITY;
+	}
+	else if (val < 232) {
+		val -= 16;
+		r = val / 36 % 6;
+		g = val / 6 % 6;
+		b = val % 6;
+
+		if (r >= 3) {
+			*attr |= FOREGROUND_RED;
+			++bright;
+		}
+		if (g >= 3) {
+			*attr |= FOREGROUND_GREEN;
+			++bright;
+		}
+		if (b >= 3) {
+			*attr |= FOREGROUND_BLUE;
+			++bright;
+		}
+
+		/* increase intensity if all components are either bright or
+		 * dark and at least one is bright */
+		dark = (r <= 1) + (g <= 1) + (b <= 1);
+		if (bright + dark == 3 && dark != 3) {
+			*attr |= FOREGROUND_INTENSITY;
+		}
+	}
+	else if (val < 238) {
+		/* black */
+	}
+	else if (val < 244) {
+		/* bright black */
+		*attr |= FOREGROUND_INTENSITY;
+	}
+	else if (val < 250) {
+		/* white */
+		*attr |= FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
+	}
+	else {
+		/* bright white */
+		*attr |= FOREGROUND_INTENSITY;
+		*attr |= FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
+	}
+
+	return str;
+}
+
+static char *process_bg_8bit(char *str, WORD *attr)
+{
+	WORD t = 0;
+	char *s = process_fg_8bit(str, &t);
+
+	*attr &= ~(BACKGROUND_ALL|BACKGROUND_INTENSITY);
+	*attr |= t << 4;
+
+	return s;
+}
+
+static char *process_fg(char *str, WORD *attr)
+{
+	long val = strtol(str, (char **)&str, 10);
+	switch (val) {
+	case 2:
+		str = process_fg_24bit(++str, attr);
+		break;
+	case 5:
+		str = process_fg_8bit(++str, attr);
+		break;
+	default:
+		break;
+	}
+
+	return str;
+}
+
+static char *process_bg(char *str, WORD *attr)
+{
+	long val = strtol(str, (char **)&str, 10);
+	switch (val) {
+	case 2:
+		str = process_bg_24bit(++str, attr);
+		break;
+	case 5:
+		str = process_bg_8bit(++str, attr);
+		break;
+	default:
+		break;
+	}
+
+	return str;
+}
+
 /* On input pos points to the start of a suspected escape sequence.
  * If a valid sequence is found return a pointer to the character
  * following it, otherwise return the original pointer. */
 static char *process_escape(char *pos)
 {
-	const char *str, *func;
+	char *str, *func;
 	char *bel;
 	size_t len;
 	WORD attr = get_console_attr();
@@ -341,85 +503,51 @@ static char *process_escape(char *pos)
 				inverse = 0;
 				break;
 			case 8:  /* conceal */
+			case 9:  /* strike through */
 			case 28: /* reveal */
 				/* Unsupported */
 				break;
+
+			/* Foreground colours */
 			case 30: /* Black */
-				attr &= ~FOREGROUND_ALL;
-				break;
 			case 31: /* Red */
-				attr &= ~FOREGROUND_ALL;
-				attr |= FOREGROUND_RED;
-				break;
 			case 32: /* Green */
-				attr &= ~FOREGROUND_ALL;
-				attr |= FOREGROUND_GREEN;
-				break;
 			case 33: /* Yellow */
-				attr &= ~FOREGROUND_ALL;
-				attr |= FOREGROUND_RED | FOREGROUND_GREEN;
-				break;
 			case 34: /* Blue */
-				attr &= ~FOREGROUND_ALL;
-				attr |= FOREGROUND_BLUE;
-				break;
 			case 35: /* Magenta */
-				attr &= ~FOREGROUND_ALL;
-				attr |= FOREGROUND_RED | FOREGROUND_BLUE;
-				break;
 			case 36: /* Cyan */
-				attr &= ~FOREGROUND_ALL;
-				attr |= FOREGROUND_GREEN | FOREGROUND_BLUE;
-				break;
 			case 37: /* White */
-				attr |= FOREGROUND_RED |
-					FOREGROUND_GREEN |
-					FOREGROUND_BLUE;
+				attr &= ~FOREGROUND_ALL;
+				attr |= colour_1bit[val - 30];
 				break;
-			case 38: /* Unknown */
+			case 38: /* 8/24 bit */
+				str = process_fg(++str, &attr);
 				break;
 			case 39: /* reset */
 				attr &= ~FOREGROUND_ALL;
 				attr |= (plain_attr & FOREGROUND_ALL);
 				break;
+
+			/* Background colours */
 			case 40: /* Black */
-				attr &= ~BACKGROUND_ALL;
-				break;
 			case 41: /* Red */
-				attr &= ~BACKGROUND_ALL;
-				attr |= BACKGROUND_RED;
-				break;
 			case 42: /* Green */
-				attr &= ~BACKGROUND_ALL;
-				attr |= BACKGROUND_GREEN;
-				break;
 			case 43: /* Yellow */
-				attr &= ~BACKGROUND_ALL;
-				attr |= BACKGROUND_RED | BACKGROUND_GREEN;
-				break;
 			case 44: /* Blue */
-				attr &= ~BACKGROUND_ALL;
-				attr |= BACKGROUND_BLUE;
-				break;
 			case 45: /* Magenta */
-				attr &= ~BACKGROUND_ALL;
-				attr |= BACKGROUND_RED | BACKGROUND_BLUE;
-				break;
 			case 46: /* Cyan */
-				attr &= ~BACKGROUND_ALL;
-				attr |= BACKGROUND_GREEN | BACKGROUND_BLUE;
-				break;
 			case 47: /* White */
-				attr |= BACKGROUND_RED |
-					BACKGROUND_GREEN |
-					BACKGROUND_BLUE;
+				attr &= ~BACKGROUND_ALL;
+				attr |= colour_1bit[val - 40] << 4;
 				break;
-			case 48: /* Unknown */
+			case 48: /* 8/24 bit */
+				str = process_bg(++str, &attr);
 				break;
 			case 49: /* reset */
 				attr &= ~BACKGROUND_ALL;
 				attr |= (plain_attr & BACKGROUND_ALL);
 				break;
+
 			default:
 				/* Unsupported code */
 				return pos;
