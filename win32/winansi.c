@@ -275,22 +275,17 @@ static char *process_fg_24bit(char *str, WORD *attr)
 	} while (*(str-1) == ';' && count < 3);
 
 	*attr &= ~(FOREGROUND_ALL|FOREGROUND_INTENSITY);
-	if (val[0] > 127) {
+	if (val[0] > 85)
 		*attr |= FOREGROUND_RED;
-		++bright;
-	}
-	if (val[1] > 127) {
+	if (val[1] > 85)
 		*attr |= FOREGROUND_GREEN;
-		++bright;
-	}
-	if (val[2] > 127) {
+	if (val[2] > 85)
 		*attr |= FOREGROUND_BLUE;
-		++bright;
-	}
 
 	/* increase intensity if all components are either bright or
 	 * dark and at least one is bright */
-	dark = (val[0] <= 63) + (val[1] <= 63) + (val[2] <= 63);
+	dark = (val[0] <= 85) + (val[1] <= 85) + (val[2] <= 85);
+	bright = (val[0] > 171) + (val[1] > 171) + (val[2] > 171);
 	if (bright + dark == 3 && dark != 3) {
 		*attr |= FOREGROUND_INTENSITY;
 	}
@@ -339,22 +334,17 @@ static char *process_fg_8bit(char *str, WORD *attr)
 		g = val / 6 % 6;
 		b = val % 6;
 
-		if (r >= 3) {
+		if (r > 1)
 			*attr |= FOREGROUND_RED;
-			++bright;
-		}
-		if (g >= 3) {
+		if (g > 1)
 			*attr |= FOREGROUND_GREEN;
-			++bright;
-		}
-		if (b >= 3) {
+		if (b > 1)
 			*attr |= FOREGROUND_BLUE;
-			++bright;
-		}
 
 		/* increase intensity if all components are either bright or
 		 * dark and at least one is bright */
 		dark = (r <= 1) + (g <= 1) + (b <= 1);
+		bright = (r >= 4) + (g >= 4) + (b >= 4);
 		if (bright + dark == 3 && dark != 3) {
 			*attr |= FOREGROUND_INTENSITY;
 		}
