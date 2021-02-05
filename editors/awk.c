@@ -2174,7 +2174,10 @@ static int fmt_num(char *b, int size, const char *format, double n, int int_as_i
 }
 
 /* formatted output into an allocated buffer, return ptr to buffer */
-static char *awk_printf(node *n)
+#if !ENABLE_FEATURE_AWK_GNU_EXTENSIONS
+# define awk_printf(a, b) awk_printf(a)
+#endif
+static char *awk_printf(node *n, int *len)
 {
 	char *b = NULL;
 	char *fmt, *s, *f;
@@ -2228,6 +2231,10 @@ static char *awk_printf(node *n)
 	nvfree(v);
 	b = xrealloc(b, i + 1);
 	b[i] = '\0';
+#if ENABLE_FEATURE_AWK_GNU_EXTENSIONS
+	if (len)
+		*len = i;
+#endif
 	return b;
 }
 
@@ -2685,6 +2692,7 @@ static var *evaluate(node *op, var *res)
 		case XC( OC_PRINT ):
 		case XC( OC_PRINTF ): {
 			FILE *F = stdout;
+			IF_FEATURE_AWK_GNU_EXTENSIONS(int len;)
 
 			if (op->r.n) {
 				rstream *rsm = newfile(R.s);
@@ -2722,8 +2730,12 @@ static var *evaluate(node *op, var *res)
 				fputs(getvar_s(intvar[ORS]), F);
 
 			} else {	/* OC_PRINTF */
-				char *s = awk_printf(op1);
+				char *s = awk_printf(op1, &len);
+#if ENABLE_FEATURE_AWK_GNU_EXTENSIONS
+				fwrite(s, len, 1, F);
+#else
 				fputs(s, F);
+#endif
 				free(s);
 			}
 			fflush(F);
@@ -2997,7 +3009,7 @@ static var *evaluate(node *op, var *res)
 			break;
 
 		case XC( OC_SPRINTF ):
-			setvar_p(res, awk_printf(op1));
+			setvar_p(res, awk_printf(op1, NULL));
 			break;
 
 		case XC( OC_UNARY ): {

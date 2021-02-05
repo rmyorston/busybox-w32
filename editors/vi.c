@@ -524,7 +524,7 @@ static void show_help(void)
 
 static void write1(const char *out)
 {
-	fputs(out, stdout);
+	fputs_stdout(out);
 }
 
 #if ENABLE_FEATURE_VI_WIN_RESIZE
@@ -3113,12 +3113,15 @@ static int find_range(char **start, char **stop, char c)
 		do_cmd(c);		// execute movement cmd
 		dot_end();		// find NL
 		q = dot;
-	} else {
-		// nothing -- this causes any other values of c to
-		// represent the one-character range under the
-		// cursor.  this is correct for ' ' and 'l', but
-		// perhaps no others.
-		//
+	} else /* if (c == ' ' || c == 'l') */ {
+		// forward motion by character
+		int tmpcnt = (cmdcnt ?: 1);
+		do_cmd(c);		// execute movement cmd
+		// exclude last char unless range isn't what we expected
+		// this indicates we've hit EOL
+		if (tmpcnt == dot - p)
+			dot--;
+		q = dot;
 	}
 	if (q < p) {
 		t = q;

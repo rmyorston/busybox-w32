@@ -445,7 +445,7 @@ static void print_it(const char *masterformat,
 
 		/* print preceding string */
 		*p = '\0';
-		fputs(b, stdout);
+		fputs_stdout(b);
 
 		p += len;
 		b = p + 1;

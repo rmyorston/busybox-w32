@@ -152,7 +152,7 @@ static int catv(unsigned opts, char **argv)
 				eol_seen = (c == eol_char);
 #endif
 				visible(c, buf, opts);
-				fputs(buf, stdout);
+				fputs_stdout(buf);
 			}
 		}
 		if (ENABLE_FEATURE_CLEAN_UP && fd)
@@ -201,7 +201,7 @@ int cat_main(int argc UNUSED_PARAM, char **argv)
 		ns.start = 1;
 		ns.inc = 1;
 		ns.sep = "\t";
-		ns.empty_str = "\n";
+		ns.empty_str = NULL;
 		ns.all = !(opts & CAT_OPT_b); /* -n without -b */
 		ns.nonempty = (opts & CAT_OPT_b); /* -b (with or without -n) */
 		exitcode = EXIT_SUCCESS;

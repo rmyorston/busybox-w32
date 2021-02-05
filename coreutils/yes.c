@@ -47,7 +47,7 @@ int yes_main(int argc UNUSED_PARAM, char **argv)
 #endif
 		pp = argv;
 		while (1) {
-			fputs(*pp, stdout);
+			fputs_stdout(*pp);
 			if (!*++pp)
 				break;
 			putchar(' ');
