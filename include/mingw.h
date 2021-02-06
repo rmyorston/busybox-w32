@@ -114,7 +114,6 @@ IMPL(getpwent,struct passwd *,NULL,void)
 
 #define SIG_UNBLOCK 1
 
-NOIMPL(FAST_FUNC sigprocmask_allsigs, int how UNUSED_PARAM);
 typedef void (*sighandler_t)(int);
 sighandler_t winansi_signal(int signum, sighandler_t handler);
 #define signal(s, h) winansi_signal(s, h)
@@ -243,11 +242,8 @@ int mingw_getaddrinfo(const char *node, const char *service,
 			const struct addrinfo *hints, struct addrinfo **res);
 struct hostent *mingw_gethostbyaddr(const void *addr, socklen_t len, int type);
 
-NOIMPL(mingw_sendto,SOCKET s UNUSED_PARAM, const char *buf UNUSED_PARAM, int len UNUSED_PARAM, int flags UNUSED_PARAM, const struct sockaddr *sa UNUSED_PARAM, int salen UNUSED_PARAM);
-
 #define socket mingw_socket
 #define connect mingw_connect
-#define sendto mingw_sendto
 #define listen mingw_listen
 #define bind mingw_bind
 #define setsockopt mingw_setsockopt

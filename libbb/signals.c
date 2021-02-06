@@ -18,6 +18,7 @@ void record_signo(int signo)
 	bb_got_signal = signo;
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 /* Saves 2 bytes on x86! Oh my... */
 int FAST_FUNC sigaction_set(int signum, const struct sigaction *act)
 {
@@ -40,6 +41,7 @@ int FAST_FUNC sigprocmask2(int how, sigset_t *set)
 	oset = set;
 	return sigprocmask(how, set, oset);
 }
+#endif
 
 void FAST_FUNC bb_signals(int sigs, void (*f)(int))
 {

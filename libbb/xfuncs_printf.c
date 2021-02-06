@@ -499,6 +499,7 @@ void FAST_FUNC xlisten(int s, int backlog)
 	if (listen(s, backlog)) bb_simple_perror_msg_and_die("listen");
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 /* Die with an error message if sendto failed.
  * Return bytes sent otherwise  */
 ssize_t FAST_FUNC xsendto(int s, const void *buf, size_t len, const struct sockaddr *to,
@@ -512,6 +513,7 @@ ssize_t FAST_FUNC xsendto(int s, const void *buf, size_t len, const struct socka
 	}
 	return ret;
 }
+#endif
 
 // xstat() - a stat() which dies on failure with meaningful error message
 void FAST_FUNC xstat(const char *name, struct stat *stat_buf)

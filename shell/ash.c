@@ -827,9 +827,11 @@ static void
 raise_interrupt(void)
 {
 	pending_int = 0;
+#if !ENABLE_PLATFORM_MINGW32
 	/* Signal is not automatically unmasked after it is raised,
 	 * do it ourself - unmask all signals */
 	sigprocmask_allsigs(SIG_UNBLOCK);
+#endif
 	/* pending_sig = 0; - now done in signal_handler() */
 
 	if (!(rootshell && iflag)) {
