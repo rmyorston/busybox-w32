@@ -262,6 +262,27 @@ static void move_cursor(int x, int y)
 	SetConsoleCursorPosition(console, pos);
 }
 
+static const unsigned char colour_1bit[16] = {
+	/* Black */   0,
+	/* Red   */   FOREGROUND_RED,
+	/* Green */   FOREGROUND_GREEN,
+	/* Yellow */  FOREGROUND_RED | FOREGROUND_GREEN,
+	/* Blue */    FOREGROUND_BLUE,
+	/* Magenta */ FOREGROUND_RED | FOREGROUND_BLUE,
+	/* Cyan */    FOREGROUND_GREEN | FOREGROUND_BLUE,
+	/* White */   FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE,
+	/* ... and again but brighter */
+	FOREGROUND_INTENSITY,
+	FOREGROUND_RED | FOREGROUND_INTENSITY,
+	FOREGROUND_GREEN | FOREGROUND_INTENSITY,
+	FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY,
+	FOREGROUND_BLUE | FOREGROUND_INTENSITY,
+	FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_INTENSITY,
+	FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY,
+	FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY
+};
+
+#if !ENABLE_FEATURE_IMPROVED_COLOUR_MAPPING
 static WORD rgb_to_console(int *rgb)
 {
 	int dark = 0, bright;
@@ -291,6 +312,84 @@ static WORD rgb_to_console(int *rgb)
 
 	return attr;
 }
+#else
+#include <math.h>
+
+/* Standard console colours in LAB colour space */
+static float colour_lab[16][3] = {
+	{-0.000000, 0.000000, 0.000000},
+	{25.530788, 48.055233, 38.059635},
+	{46.228817, -51.699638, 49.897949},
+	{51.868336, -12.930751, 56.677288},
+	{12.975313, 47.507763, -64.704285},
+	{29.782101, 58.939846, -36.497940},
+	{48.256081, -28.841570, -8.481050},
+	{77.704361, 0.004262, -0.008416},
+	{53.585018, 0.003129, -0.006235},
+	{53.232883, 80.109299, 67.220078},
+	{87.737038, -86.184654, 83.181168},
+	{97.138245, -21.555901, 94.482483},
+	{32.302586, 79.196678, -107.863686},
+	{60.319931, 98.254234, -60.842991},
+	{91.116524, -48.079609, -14.138126},
+	{100.000000, 0.005245, -0.010419},
+};
+
+/* Convert RGB to XYZ and XYZ to LAB.  See:
+ * http://www.easyrgb.com/en/math.php#text1 */
+static void rgb2lab(const int *rgb, float *lab)
+{
+	float var_RGB[3], var_XYZ[3];
+	int i;
+
+	for (i = 0; i < 3; ++i) {
+		var_RGB[i] = rgb[i]/255.0;
+		if (var_RGB[i] > 0.04045)
+			var_RGB[i] = pow(((var_RGB[i] + 0.055) / 1.055), 2.4);
+		else
+			var_RGB[i] /= 12.92;
+	}
+
+	/* use equal energy reference values */
+	var_XYZ[0] = var_RGB[0]*0.4124 + var_RGB[1]*0.3576 + var_RGB[2]*0.1805;
+	var_XYZ[1] = var_RGB[0]*0.2126 + var_RGB[1]*0.7152 + var_RGB[2]*0.0722;
+	var_XYZ[2] = var_RGB[0]*0.0193 + var_RGB[1]*0.1192 + var_RGB[2]*0.9505;
+
+	for (i = 0; i < 3; ++i) {
+		if (var_XYZ[i] > 0.008856)
+			var_XYZ[i] = pow(var_XYZ[i], 1.0 / 3.0);
+		else
+			var_XYZ[i] = 7.787 * var_XYZ[i] + 16.0 / 116.0;
+	}
+
+	lab[0] = 116.0 * var_XYZ[1] - 16.0;
+	lab[1] = 500.0 * (var_XYZ[0] - var_XYZ[1]);
+	lab[2] = 200.0 * (var_XYZ[1] - var_XYZ[2]);
+}
+
+static WORD rgb_to_console(int *rgb)
+{
+	int i, imin = 0;
+	float deltamin = 1.0e20;
+
+	/* Use 1976 CIE deltaE to find closest console colour.  See:
+	 * https://zschuessler.github.io/DeltaE/learn */
+	for (i = 0; i < 16; ++i) {
+		float lab[3], dl, da, db, delta;
+
+		rgb2lab(rgb, lab);
+		dl = colour_lab[i][0] - lab[0];
+		da = colour_lab[i][1] - lab[1];
+		db = colour_lab[i][2] - lab[2];
+		delta = dl * dl + da * da + db *db;
+		if (delta < deltamin) {
+			imin = i;
+			deltamin = delta;
+		}
+	}
+	return colour_1bit[imin];
+}
+#endif
 
 /* 24-bit colour */
 static char *process_24bit(char *str, WORD *attr)
@@ -307,26 +406,6 @@ static char *process_24bit(char *str, WORD *attr)
 
 	return str;
 }
-
-static const unsigned char colour_1bit[16] = {
-	/* Black */   0,
-	/* Red   */   FOREGROUND_RED,
-	/* Green */   FOREGROUND_GREEN,
-	/* Yellow */  FOREGROUND_RED | FOREGROUND_GREEN,
-	/* Blue */    FOREGROUND_BLUE,
-	/* Magenta */ FOREGROUND_RED | FOREGROUND_BLUE,
-	/* Cyan */    FOREGROUND_GREEN | FOREGROUND_BLUE,
-	/* White */   FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE,
-	/* ... and again but brighter */
-	FOREGROUND_INTENSITY,
-	FOREGROUND_RED | FOREGROUND_INTENSITY,
-	FOREGROUND_GREEN | FOREGROUND_INTENSITY,
-	FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY,
-	FOREGROUND_BLUE | FOREGROUND_INTENSITY,
-	FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_INTENSITY,
-	FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY,
-	FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY
-};
 
 /* 8-bit colour */
 static char *process_8bit(char *str, WORD *attr)

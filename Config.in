@@ -472,6 +472,14 @@ config SKIP_ANSI_EMULATION_DEFAULT
 	Setting the environment variable BB_SKIP_ANSI_EMULATION overrides
 	this default.
 
+config FEATURE_IMPROVED_COLOUR_MAPPING
+	bool "More accurate colour mapping for ANSI emulation (0.6 kb)"
+	default y
+	depends on PLATFORM_MINGW32
+	help
+	Use a more accurate technique to map RGB colours to the standard
+	Windows console colours.
+
 config FEATURE_EXTRA_FILE_DATA
 	bool "Read additional file metadata (2.1 kb)"
 	default y
