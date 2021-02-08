@@ -343,28 +343,28 @@ static void rgb2lab(const int *rgb, float *lab)
 	int i;
 
 	for (i = 0; i < 3; ++i) {
-		var_RGB[i] = rgb[i]/255.0;
-		if (var_RGB[i] > 0.04045)
-			var_RGB[i] = pow(((var_RGB[i] + 0.055) / 1.055), 2.4);
+		var_RGB[i] = rgb[i]/255.0f;
+		if (var_RGB[i] > 0.04045f)
+			var_RGB[i] = pow((var_RGB[i] + 0.055f) / 1.055f, 2.4f);
 		else
-			var_RGB[i] /= 12.92;
+			var_RGB[i] /= 12.92f;
 	}
 
 	/* use equal energy reference values */
-	var_XYZ[0] = var_RGB[0]*0.4124 + var_RGB[1]*0.3576 + var_RGB[2]*0.1805;
-	var_XYZ[1] = var_RGB[0]*0.2126 + var_RGB[1]*0.7152 + var_RGB[2]*0.0722;
-	var_XYZ[2] = var_RGB[0]*0.0193 + var_RGB[1]*0.1192 + var_RGB[2]*0.9505;
+	var_XYZ[0] = var_RGB[0]*0.4124f + var_RGB[1]*0.3576f + var_RGB[2]*0.1805f;
+	var_XYZ[1] = var_RGB[0]*0.2126f + var_RGB[1]*0.7152f + var_RGB[2]*0.0722f;
+	var_XYZ[2] = var_RGB[0]*0.0193f + var_RGB[1]*0.1192f + var_RGB[2]*0.9505f;
 
 	for (i = 0; i < 3; ++i) {
-		if (var_XYZ[i] > 0.008856)
-			var_XYZ[i] = pow(var_XYZ[i], 1.0 / 3.0);
+		if (var_XYZ[i] > 0.008856f)
+			var_XYZ[i] = pow(var_XYZ[i], 1.0f / 3.0f);
 		else
-			var_XYZ[i] = 7.787 * var_XYZ[i] + 16.0 / 116.0;
+			var_XYZ[i] = 7.787f * var_XYZ[i] + 16.0f / 116.0f;
 	}
 
-	lab[0] = 116.0 * var_XYZ[1] - 16.0;
-	lab[1] = 500.0 * (var_XYZ[0] - var_XYZ[1]);
-	lab[2] = 200.0 * (var_XYZ[1] - var_XYZ[2]);
+	lab[0] = 116.0f * var_XYZ[1] - 16.0f;
+	lab[1] = 500.0f * (var_XYZ[0] - var_XYZ[1]);
+	lab[2] = 200.0f * (var_XYZ[1] - var_XYZ[2]);
 }
 
 static WORD rgb_to_console(int *rgb)
