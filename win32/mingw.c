@@ -1063,6 +1063,41 @@ int link(const char *oldpath, const char *newpath)
 	return 0;
 }
 
+#ifndef SYMBOLIC_LINK_FLAG_DIRECTORY
+# define SYMBOLIC_LINK_FLAG_DIRECTORY (0x1)
+#endif
+#ifndef SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+# define SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE (0x2)
+#endif
+
+int symlink(const char *target, const char *linkpath)
+{
+	DWORD flag = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
+	struct stat st;
+	DECLARE_PROC_ADDR(BOOL, CreateSymbolicLinkA, LPCSTR, LPCSTR, DWORD);
+
+	if (!INIT_PROC_ADDR(kernel32.dll, CreateSymbolicLinkA)) {
+		return -1;
+	}
+
+	if (stat(target, &st) != -1 && S_ISDIR(st.st_mode))
+		flag |= SYMBOLIC_LINK_FLAG_DIRECTORY;
+
+ retry:
+	if (!CreateSymbolicLinkA(linkpath, target, flag)) {
+		/* Old Windows versions see 'UNPRIVILEGED_CREATE' as an invalid
+		 * parameter.  Retry without it. */
+		if ((flag & SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE) &&
+				GetLastError() == ERROR_INVALID_PARAMETER) {
+			flag &= ~SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
+			goto retry;
+		}
+		errno = err_win_to_posix();
+		return -1;
+	}
+	return 0;
+}
+
 static char *normalize_ntpathA(char *buf)
 {
 	/* fix absolute path prefixes */

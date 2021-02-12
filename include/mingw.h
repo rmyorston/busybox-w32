@@ -440,7 +440,7 @@ NOIMPL(setsid,void);
 NOIMPL(setuid,uid_t gid UNUSED_PARAM);
 NOIMPL(seteuid,uid_t gid UNUSED_PARAM);
 unsigned int sleep(unsigned int seconds);
-NOIMPL(symlink,const char *oldpath UNUSED_PARAM, const char *newpath UNUSED_PARAM);
+int symlink(const char *target, const char *linkpath);
 static inline void sync(void) {}
 long sysconf(int name);
 IMPL(getpagesize,int,4096,void);
