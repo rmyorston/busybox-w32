@@ -1249,6 +1249,9 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 	size_t len_found;
 	/* Length of string used for matching */
 	unsigned match_pfx_len = match_pfx_len;
+#if ENABLE_PLATFORM_MINGW32
+	unsigned orig_pfx_len;
+#endif
 	int find_type;
 # if ENABLE_UNICODE_SUPPORT
 	/* cursor pos in command converted to multibyte form */
@@ -1313,6 +1316,9 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 	{
 		const char *e = match_buf + strlen(match_buf);
 		const char *s = e - match_pfx_len;
+#if ENABLE_PLATFORM_MINGW32
+		orig_pfx_len = match_pfx_len;
+#endif
 		while (s < e)
 			if (is_special_char(*s++))
 				match_pfx_len++;
@@ -1388,10 +1394,12 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 		strcpy(match_buf, &command_ps[cursor]);
 		/* add match and tail */
 #if ENABLE_PLATFORM_MINGW32
-		sprintf(&command_ps[cursor-match_pfx_len], "%s%s", chosen_match, match_buf);
-#else
-		sprintf(&command_ps[cursor], "%s%s", chosen_match + match_pfx_len, match_buf);
+		if (match_pfx_len == orig_pfx_len) {
+			sprintf(&command_ps[cursor-match_pfx_len], "%s%s",
+					chosen_match, match_buf);
+		} else
 #endif
+		sprintf(&command_ps[cursor], "%s%s", chosen_match + match_pfx_len, match_buf);
 		command_len = strlen(command_ps);
 		/* new pos */
 		pos = cursor + len_found - match_pfx_len;
