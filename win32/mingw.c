@@ -1316,9 +1316,21 @@ int fcntl(int fd, int cmd, ...)
 #undef unlink
 int mingw_unlink(const char *pathname)
 {
+	int ret;
+	struct stat st;
+
 	/* read-only files cannot be removed */
 	chmod(pathname, 0666);
-	return unlink(pathname);
+
+	ret = unlink(pathname);
+	if (ret == -1 && errno == EACCES) {
+		/* a symlink to a directory needs to be removed by calling rmdir */
+		if (lstat(pathname, &st) == 0 && S_ISLNK(st.st_mode)) {
+			return rmdir(pathname);
+		}
+		errno = EACCES;
+	}
+	return ret;
 }
 
 #undef strftime
