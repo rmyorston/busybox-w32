@@ -433,11 +433,7 @@ ssize_t mingw_open_read_close(const char *fn, void *buf, size_t size) FAST_FUNC;
 ssize_t mingw_read(int fd, void *buf, size_t count);
 int mingw_close(int fd);
 int pipe(int filedes[2]);
-#if ENABLE_FEATURE_READLINK2
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz);
-#else
-NOIMPL(readlink,const char *path UNUSED_PARAM, char *buf UNUSED_PARAM, size_t bufsiz UNUSED_PARAM);
-#endif
 NOIMPL(setgid,gid_t gid UNUSED_PARAM);
 NOIMPL(setegid,gid_t gid UNUSED_PARAM);
 NOIMPL(setsid,void);

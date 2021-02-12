@@ -314,7 +314,6 @@ static void FAST_FUNC print_stat(char *pformat, const char m,
 	struct passwd *pw_ent;
 	struct group *gw_ent;
 
-#if ENABLE_PLATFORM_POSIX || ENABLE_FEATURE_READLINK2
 	if (m == 'n') {
 		printfs(pformat, filename);
 	} else if (m == 'N') {
@@ -328,10 +327,6 @@ static void FAST_FUNC print_stat(char *pformat, const char m,
 		} else {
 			printf(pformat, filename);
 		}
-#else
-	if (m == 'n' || m == 'N') {
-		printfs(pformat, filename);
-#endif
 	} else if (m == 'd') {
 		strcat(pformat, "llu");
 		printf(pformat, (unsigned long long) statbuf->st_dev);
@@ -715,10 +710,8 @@ static bool do_stat(const char *filename, const char *format)
 		gw_ent = getgrgid(statbuf.st_gid);
 		pw_ent = getpwuid(statbuf.st_uid);
 
-#if ENABLE_PLATFORM_POSIX || ENABLE_FEATURE_READLINK2
 		if (S_ISLNK(statbuf.st_mode))
 			linkname = xmalloc_readlink_or_warn(filename);
-#endif
 		if (linkname) {
 			printf("  File: '%s' -> '%s'\n", filename, linkname);
 			free(linkname);

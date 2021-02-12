@@ -492,16 +492,6 @@ config FEATURE_EXTRA_FILE_DATA
 	determine the ownership of files so that, for example, 'ls' can
 	distinguish files belonging to the current user.
 
-config FEATURE_READLINK2
-	bool "Read the contents of symbolic links (1.1 kb)"
-	default y
-	depends on PLATFORM_MINGW32
-	help
-	Implement the readlink(2) system call to allow applets to read
-	the contents of symbolic links.  With this feature ls and stat
-	can display the target of symbolic links and it makes sense to
-	enable the readlink applet.
-
 comment 'Build Options'
 
 config STATIC

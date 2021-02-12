@@ -4,9 +4,7 @@
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
 #include <aclapi.h>
 #endif
-#if ENABLE_FEATURE_READLINK2
 #include <ntdef.h>
-#endif
 
 #if defined(__MINGW64_VERSION_MAJOR)
 #if ENABLE_GLOBBING
@@ -1146,7 +1144,6 @@ char *realpath(const char *path, char *resolved_path)
 	return NULL;
 }
 
-#if ENABLE_FEATURE_READLINK2
 static wchar_t *normalize_ntpath(wchar_t *wbuf)
 {
 	int i;
@@ -1206,7 +1203,6 @@ ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 	errno = err_win_to_posix();
 	return -1;
 }
-#endif
 
 const char *get_busybox_exec_path(void)
 {
