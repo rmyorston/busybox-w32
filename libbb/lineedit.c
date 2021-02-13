@@ -1251,6 +1251,8 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 	unsigned match_pfx_len = match_pfx_len;
 #if ENABLE_PLATFORM_MINGW32
 	unsigned orig_pfx_len;
+	char *target;
+	const char *source;
 #endif
 	int find_type;
 # if ENABLE_UNICODE_SUPPORT
@@ -1393,13 +1395,21 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 		/* save tail */
 		strcpy(match_buf, &command_ps[cursor]);
 		/* add match and tail */
-#if ENABLE_PLATFORM_MINGW32
+#  if ENABLE_PLATFORM_MINGW32
 		if (match_pfx_len == orig_pfx_len) {
-			sprintf(&command_ps[cursor-match_pfx_len], "%s%s",
-					chosen_match, match_buf);
-		} else
-#endif
+			/* replace match prefix to allow for altered case */
+			target = &command_ps[cursor-match_pfx_len];
+			source = chosen_match;
+		}
+		else {
+			/* only replace tail of match if special characters are quoted */
+			target = &command_ps[cursor];
+			source = chosen_match + match_pfx_len;
+		}
+		strcpy(stpcpy(target, source), match_buf);
+#  else
 		sprintf(&command_ps[cursor], "%s%s", chosen_match + match_pfx_len, match_buf);
+#  endif
 		command_len = strlen(command_ps);
 		/* new pos */
 		pos = cursor + len_found - match_pfx_len;

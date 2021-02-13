@@ -2119,7 +2119,7 @@ stack_add_system_drive(const char *path)
 	const char *sd = need_system_drive(path);
 	char *p = growstackto(strlen(path) + 5 + (sd ? strlen(sd) : 0));
 
-	sprintf(p, "%s%s", sd ?: "", path);
+	strcpy(stpcpy(p, sd ?: ""), path);
 	return p;
 }
 #endif

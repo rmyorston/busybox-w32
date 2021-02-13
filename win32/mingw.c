@@ -1729,7 +1729,7 @@ char *alloc_system_drive(const char *path)
 {
 	const char *sd = need_system_drive(path);
 	char *s = xmalloc(strlen(path) + 5 + (sd ? strlen(sd) : 0));
-	sprintf(s, "%s%s", sd ?: "", path);
+	strcpy(stpcpy(s, sd ?: ""), path);
 	return s;
 }
 
