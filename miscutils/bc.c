@@ -7424,7 +7424,9 @@ static int xc_vm_init(const char *env_len)
 		// from stdin is not interrupted by ^C either,
 		// it restarts, thus fgetc() does not return on ^C.
 		// (This problem manifests only if line editing is disabled)
+# if !ENABLE_PLATFORM_MINGW32
 		signal_SA_RESTART_empty_mask(SIGINT, record_signo);
+# endif
 
 		// Without SA_RESTART, this exhibits a bug:
 		// "while (1) print 1" and try ^C-ing it.
