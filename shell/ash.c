@@ -15713,7 +15713,7 @@ spawn_forkshell(struct forkshell *fs, struct job *jp, union node *n, int mode)
 	new->nprocs = jp == NULL ? 0 : jp->nprocs;
 	sprintf(buf, "%p", new->hMapFile);
 	argv[2] = buf;
-	ret = mingw_spawn_forkshell(argv);
+	ret = spawnve(P_NOWAIT, bb_busybox_exec_path, (char *const *)argv, environ);
 	CloseHandle(new->hMapFile);
 	UnmapViewOfFile(new);
 	if (ret == -1) {

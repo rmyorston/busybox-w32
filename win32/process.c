@@ -400,15 +400,6 @@ mingw_spawn_proc(const char **argv)
 	return mingw_spawn_1(P_NOWAIT, argv[0], (char *const *)argv, environ);
 }
 
-#if ENABLE_ASH || ENABLE_SH_IS_ASH || ENABLE_BASH_IS_ASH
-intptr_t FAST_FUNC
-mingw_spawn_forkshell(const char **argv)
-{
-   return spawnve(P_NOWAIT, bb_busybox_exec_path, (char *const *)argv,
-					environ);
-}
-#endif
-
 int
 mingw_execvp(const char *cmd, char *const *argv)
 {
