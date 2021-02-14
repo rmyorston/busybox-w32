@@ -7399,6 +7399,17 @@ static unsigned xc_vm_envLen(const char *var)
 	return len;
 }
 
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_BC_INTERACTIVE
+static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
+{
+	if (dwCtrlType == CTRL_C_EVENT || dwCtrlType == CTRL_BREAK_EVENT) {
+		bb_got_signal = SIGINT;
+		return TRUE;
+	}
+	return FALSE;
+}
+#endif
+
 static int xc_vm_init(const char *env_len)
 {
 	G.prog.len = xc_vm_envLen(env_len);
@@ -7426,6 +7437,8 @@ static int xc_vm_init(const char *env_len)
 		// (This problem manifests only if line editing is disabled)
 # if !ENABLE_PLATFORM_MINGW32
 		signal_SA_RESTART_empty_mask(SIGINT, record_signo);
+# else
+		SetConsoleCtrlHandler(ctrl_handler, TRUE);
 # endif
 
 		// Without SA_RESTART, this exhibits a bug:
