@@ -110,7 +110,14 @@ static HANDLE dup_handle(HANDLE h)
 static void use_alt_buffer(int flag)
 {
 	static HANDLE console_orig = INVALID_HANDLE_VALUE;
+	const char *var;
 	HANDLE console, h;
+
+	var = getenv("BB_ALT_BUFFER");
+	if (var && strcmp(var, "0") == 0) {
+		reset_screen();
+		return;
+	}
 
 	if (flag) {
 		SECURITY_ATTRIBUTES sa;
