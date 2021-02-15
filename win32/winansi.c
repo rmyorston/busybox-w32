@@ -750,7 +750,7 @@ static int ansi_emulate(const char *s, FILE *stream)
 	cur_len = strlen(s);
 	if ( cur_len > max_len ) {
 		free(mem);
-		mem = strdup(s);
+		mem = xstrdup(s);
 		max_len = cur_len;
 	}
 	else {
@@ -942,7 +942,7 @@ int winansi_vfprintf(FILE *stream, const char *format, va_list list)
 	va_end(cp);
 
 	if (len > sizeof(small_buf) - 1) {
-		buf = malloc(len + 1);
+		buf = xmalloc(len + 1);
 		if (!buf)
 			goto abort;
 
@@ -962,7 +962,7 @@ int winansi_vfprintf(FILE *stream, const char *format, va_list list)
 
 abort:
 	SetLastError(0);
-	if ((rv=vfprintf(stream, format, list)) == EOF)
+	if ((rv=vfprintf(stream, format, list)) == EOF || ferror(stream) != 0)
 		check_pipe(stream);
 	return rv;
 }
