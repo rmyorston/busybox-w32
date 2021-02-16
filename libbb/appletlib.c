@@ -166,7 +166,7 @@ void FAST_FUNC bb_show_usage(void)
 		}
 		full_write2_str(bb_banner);
 #if ENABLE_PLATFORM_MINGW32
-		full_write2_str(" multi-call binary\n");
+		full_write2_str("\n");
 #else
 		full_write2_str(" multi-call binary.\n"); /* common string */
 #endif
@@ -828,7 +828,7 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 		dup2(1, 2);
 		full_write2_str(bb_banner); /* reuse const string */
 #if ENABLE_PLATFORM_MINGW32
-		full_write2_str(" multi-call binary\n"); /* reuse */
+		full_write2_str("\n");
 #else
 		full_write2_str(" multi-call binary.\n"); /* reuse */
 #endif
