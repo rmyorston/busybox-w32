@@ -950,9 +950,6 @@ int winansi_vfprintf(FILE *stream, const char *format, va_list list)
 
 	if (len > sizeof(small_buf) - 1) {
 		buf = xmalloc(len + 1);
-		if (!buf)
-			goto abort;
-
 		va_copy(cp, list);
 		len = vsnprintf(buf, len + 1, format, cp);
 		va_end(cp);
