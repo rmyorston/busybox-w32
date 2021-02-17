@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.34.0.git
-# Sat Feb 13 10:37:01 2021
+# Wed Feb 17 13:34:38 2021
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -295,7 +295,7 @@ CONFIG_MV=y
 # CONFIG_NICE is not set
 CONFIG_NL=y
 # CONFIG_NOHUP is not set
-# CONFIG_NPROC is not set
+CONFIG_NPROC=y
 CONFIG_OD=y
 CONFIG_PASTE=y
 CONFIG_PRINTENV=y

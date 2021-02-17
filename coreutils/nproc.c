@@ -29,6 +29,7 @@
 int nproc_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int nproc_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 {
+#if !ENABLE_PLATFORM_MINGW32
 	unsigned long mask[1024];
 	int count = 0;
 #if ENABLE_LONG_OPTS
@@ -63,6 +64,35 @@ int nproc_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 			}
 		}
 	}
+#else /* ENABLE_PLATFORM_MINGW32 */
+	int count = 0;
+	DWORD_PTR process_affinity, system_affinity;
+#if ENABLE_LONG_OPTS
+	int ignore = 0;
+	int opts = getopt32long(argv, "\xfe:+",
+			"ignore\0" Required_argument "\xfe"
+			"all\0"    No_argument       "\xff"
+			, &ignore
+	);
+#endif
+	if (!GetProcessAffinityMask(GetCurrentProcess(), &process_affinity,
+					&system_affinity)) {
+		process_affinity = system_affinity = 0;
+	}
+
+#if ENABLE_LONG_OPTS
+	if (opts & (1 << 1)) {
+		for (count = 0; system_affinity; system_affinity >>= 1) {
+			count += system_affinity & 1;
+		}
+	} else
+#endif
+	{
+		for (count = 0; process_affinity; process_affinity >>= 1) {
+			count += process_affinity & 1;
+		}
+	}
+#endif /* ENABLE_PLATFORM_MINGW32 */
 
 	IF_LONG_OPTS(count -= ignore;)
 	if (count <= 0)
