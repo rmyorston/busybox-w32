@@ -25,7 +25,8 @@
 #define FOREGROUND_ALL (FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE)
 #define BACKGROUND_ALL (BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE)
 
-static WORD plain_attr = 0;
+static WORD plain_attr = 0xffff;
+static WORD current_attr;
 
 static HANDLE get_console(void)
 {
@@ -44,8 +45,8 @@ static WORD get_console_attr(void)
 
 static int is_console(int fd)
 {
-	if (!plain_attr)
-		plain_attr = get_console_attr();
+	if (plain_attr == 0xffff)
+		current_attr = plain_attr = get_console_attr();
 	return isatty(fd) && get_console() != INVALID_HANDLE_VALUE;
 }
 
@@ -160,33 +161,6 @@ static void use_alt_buffer(int flag)
 	SetConsoleActiveScreenBuffer(console);
 	close(STDOUT_FILENO);
 	_open_osfhandle((intptr_t)console, O_RDWR|O_BINARY);
-}
-
-static void set_console_attr(WORD attributes, int invert)
-{
-	HANDLE console = get_console();
-	if (invert) {
-		WORD save = attributes;
-		attributes &= ~FOREGROUND_ALL;
-		attributes &= ~BACKGROUND_ALL;
-
-		/* This could probably use a bitmask
-		   instead of a series of ifs */
-		if (save & FOREGROUND_RED)
-			attributes |= BACKGROUND_RED;
-		if (save & FOREGROUND_GREEN)
-			attributes |= BACKGROUND_GREEN;
-		if (save & FOREGROUND_BLUE)
-			attributes |= BACKGROUND_BLUE;
-
-		if (save & BACKGROUND_RED)
-			attributes |= FOREGROUND_RED;
-		if (save & BACKGROUND_GREEN)
-			attributes |= FOREGROUND_GREEN;
-		if (save & BACKGROUND_BLUE)
-			attributes |= FOREGROUND_BLUE;
-	}
-	SetConsoleTextAttribute(console, attributes);
 }
 
 static void clear_buffer(DWORD len, COORD pos)
@@ -481,9 +455,8 @@ static char *process_escape(char *pos)
 	char *str, *func;
 	char *bel;
 	size_t len;
-	WORD t, attr = get_console_attr();
-	int invert = FALSE;
-	static int inverse = 0;
+	WORD t, attr = current_attr;
+	static int reverse = 0;
 
 	switch (pos[1]) {
 	case '[':
@@ -513,7 +486,7 @@ static char *process_escape(char *pos)
 			switch (val) {
 			case 0: /* reset */
 				attr = plain_attr;
-				inverse = 0;
+				reverse = 0;
 				break;
 			case 1: /* bold */
 				attr |= FOREGROUND_INTENSITY;
@@ -543,13 +516,11 @@ static char *process_escape(char *pos)
 			case 25: /* no blink */
 				attr &= ~BACKGROUND_INTENSITY;
 				break;
-			case 7:  /* inverse on */
-				invert = !inverse;
-				inverse = 1;
+			case 7:  /* reverse video on */
+				reverse = 1;
 				break;
-			case 27: /* inverse off */
-				invert = inverse;
-				inverse = 0;
+			case 27: /* reverse video off */
+				reverse = 0;
 				break;
 			case 8:  /* conceal */
 			case 9:  /* strike through */
@@ -612,7 +583,10 @@ static char *process_escape(char *pos)
 			str++;
 		} while (*(str-1) == ';');
 
-		set_console_attr(attr, invert);
+		current_attr = attr;
+		if (reverse)
+			attr = ((attr >> 4) & 0xf) | ((attr << 4) & 0xf0);
+		SetConsoleTextAttribute(get_console(), attr);
 		break;
 	case 'A': /* up */
 		move_cursor_row(-strtol(str, (char **)&str, 10));
