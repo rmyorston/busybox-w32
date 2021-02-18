@@ -1368,6 +1368,30 @@ int mingw_unlink(const char *pathname)
 	return ret;
 }
 
+int sysinfo(struct sysinfo *info)
+{
+	DECLARE_PROC_ADDR(BOOL, GlobalMemoryStatusEx, LPMEMORYSTATUSEX);
+	MEMORYSTATUSEX mem;
+
+	memset((void *)info, 0, sizeof(struct sysinfo));
+
+	if (!INIT_PROC_ADDR(kernel32.dll, GlobalMemoryStatusEx)) {
+		return -1;
+	}
+
+	mem.dwLength = sizeof(MEMORYSTATUSEX);
+	if (!GlobalMemoryStatusEx(&mem))
+		return -1;
+
+	info->mem_unit = 1;
+	info->totalram = mem.ullTotalPhys;
+	info->freeram = mem.ullAvailPhys;
+	info->totalswap = mem.ullTotalPageFile - mem.ullTotalPhys;
+	info->freeswap = mem.ullAvailPageFile - mem.ullAvailPhys;
+
+	return 0;
+}
+
 #undef strftime
 size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm *tm)
 {

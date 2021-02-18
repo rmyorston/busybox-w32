@@ -52,6 +52,7 @@ static unsigned long long scale(struct globals *g, unsigned long d)
 	return ((unsigned long long)d * g->mem_unit) >> G_unit_steps;
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 /* NOINLINE reduces main() stack usage, which makes code smaller (on x86 at least) */
 static NOINLINE unsigned int parse_meminfo(struct globals *g)
 {
@@ -78,6 +79,14 @@ static NOINLINE unsigned int parse_meminfo(struct globals *g)
 
 	return seen_cached_and_available_and_reclaimable == 0;
 }
+#else
+static NOINLINE unsigned int parse_meminfo(struct globals *g)
+{
+	g->cached_kb = g->available_kb = g->reclaimable_kb = 0;
+
+	return 1;
+}
+#endif
 
 int free_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int free_main(int argc UNUSED_PARAM, char **argv IF_NOT_DESKTOP(UNUSED_PARAM))
@@ -135,9 +144,15 @@ int free_main(int argc UNUSED_PARAM, char **argv IF_NOT_DESKTOP(UNUSED_PARAM))
 	}
 #endif
 
+#if !ENABLE_PLATFORM_MINGW32
 #define FIELDS_6 "%12llu %11llu %11llu %11llu %11llu %11llu\n"
 #define FIELDS_3 (FIELDS_6 + 6 + 7 + 7)
 #define FIELDS_2 (FIELDS_6 + 6 + 7 + 7 + 7)
+#else
+#define FIELDS_6 "%12I64u %11I64u %11I64u %11I64u %11I64u %11I64u\n"
+#define FIELDS_3 (FIELDS_6 + 7 + 8 + 8)
+#define FIELDS_2 (FIELDS_6 + 8 + 8 + 8 + 8)
+#endif
 
 	printf(FIELDS_6,
 		scale(&G, info.totalram),                //total
