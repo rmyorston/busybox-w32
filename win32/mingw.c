@@ -5,6 +5,7 @@
 #include <aclapi.h>
 #endif
 #include <ntdef.h>
+#include <psapi.h>
 
 #if defined(__MINGW64_VERSION_MAJOR)
 #if ENABLE_GLOBBING
@@ -1371,25 +1372,34 @@ int mingw_unlink(const char *pathname)
 int sysinfo(struct sysinfo *info)
 {
 	DECLARE_PROC_ADDR(BOOL, GlobalMemoryStatusEx, LPMEMORYSTATUSEX);
+	DECLARE_PROC_ADDR(BOOL, GetPerformanceInfo, PPERFORMANCE_INFORMATION, DWORD);
 	MEMORYSTATUSEX mem;
+	PERFORMANCE_INFORMATION perf;
 
 	memset((void *)info, 0, sizeof(struct sysinfo));
+	memset((void *)&perf, 0, sizeof(PERFORMANCE_INFORMATION));
+	info->mem_unit = 4096;
 
-	if (!INIT_PROC_ADDR(kernel32.dll, GlobalMemoryStatusEx)) {
-		return -1;
+	if (INIT_PROC_ADDR(psapi.dll, GetPerformanceInfo)) {
+		perf.cb = sizeof(PERFORMANCE_INFORMATION);
+		GetPerformanceInfo(&perf, perf.cb);
 	}
 
-	mem.dwLength = sizeof(MEMORYSTATUSEX);
-	if (!GlobalMemoryStatusEx(&mem))
-		return -1;
-
-	info->mem_unit = 1;
-	info->totalram = mem.ullTotalPhys;
-	info->freeram = mem.ullAvailPhys;
-	info->totalswap = mem.ullTotalPageFile - mem.ullTotalPhys;
-	info->freeswap = mem.ullAvailPageFile - mem.ullAvailPhys;
+	if (INIT_PROC_ADDR(kernel32.dll, GlobalMemoryStatusEx)) {
+		mem.dwLength = sizeof(MEMORYSTATUSEX);
+		if (GlobalMemoryStatusEx(&mem)) {
+			info->totalram = mem.ullTotalPhys >> 12;
+			info->bufferram = (perf.SystemCache * perf.PageSize) >> 12;
+			if ((mem.ullAvailPhys >> 12) > info->bufferram)
+				info->freeram = (mem.ullAvailPhys >> 12) - info->bufferram;
+			info->totalswap = (mem.ullTotalPageFile - mem.ullTotalPhys) >> 12;
+			if (mem.ullAvailPageFile > mem.ullAvailPhys)
+				info->freeswap = (mem.ullAvailPageFile-mem.ullAvailPhys) >> 12;
+		}
+	}
 
 	info->uptime = GetTickCount64() / 1000;
+	info->procs = perf.ProcessCount;
 
 	return 0;
 }

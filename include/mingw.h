@@ -364,8 +364,6 @@ struct sysinfo {
 	unsigned long totalhigh; /* Total high memory size */
 	unsigned long freehigh;  /* Available high memory size */
 	unsigned int mem_unit;   /* Memory unit size in bytes */
-	char _f[20-2*sizeof(long)-sizeof(int)];
-	/* Padding to 64 bytes */
 };
 
 int sysinfo(struct sysinfo *info);
