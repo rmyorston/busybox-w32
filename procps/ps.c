@@ -120,13 +120,11 @@ enum { MAX_WIDTH = 2*1024 };
 #if ENABLE_FEATURE_PS_TIME || ENABLE_FEATURE_PS_LONG
 static unsigned long get_uptime(void)
 {
-#ifdef __linux__
+#if defined __linux__ || ENABLE_PLATFORM_MINGW32
 	struct sysinfo info;
 	if (sysinfo(&info) < 0)
 		return 0;
 	return info.uptime;
-#elif ENABLE_PLATFORM_MINGW32
-	return GetTickCount64()/1000;
 #elif 1
 	unsigned long uptime;
 	char buf[sizeof(uptime)*3 + 2];

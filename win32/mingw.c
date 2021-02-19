@@ -1389,6 +1389,8 @@ int sysinfo(struct sysinfo *info)
 	info->totalswap = mem.ullTotalPageFile - mem.ullTotalPhys;
 	info->freeswap = mem.ullAvailPageFile - mem.ullAvailPhys;
 
+	info->uptime = GetTickCount64() / 1000;
+
 	return 0;
 }
 
@@ -1617,9 +1619,7 @@ off_t mingw_lseek(int fd, off_t offset, int whence)
 	return _lseeki64(fd, offset, whence);
 }
 
-#if ENABLE_FEATURE_PS_TIME || ENABLE_FEATURE_PS_LONG
 #undef GetTickCount64
-
 ULONGLONG CompatGetTickCount64(void)
 {
 	DECLARE_PROC_ADDR(ULONGLONG, GetTickCount64, void);
@@ -1630,7 +1630,6 @@ ULONGLONG CompatGetTickCount64(void)
 
 	return GetTickCount64();
 }
-#endif
 
 #if ENABLE_FEATURE_INSTALLER
 /*
