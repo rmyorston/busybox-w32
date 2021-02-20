@@ -144,9 +144,6 @@
 #elif defined __APPLE__
 # include <netinet/in.h>
 #elif ENABLE_PLATFORM_MINGW32
-# ifndef WINVER
-#  define WINVER 0x0501
-# endif
 # include <winsock2.h>
 # include <ws2tcpip.h>
 #else

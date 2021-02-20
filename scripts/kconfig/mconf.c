@@ -31,8 +31,10 @@
 #include <unistd.h>
 #include <locale.h>
 
+#ifndef __MINGW32__
 #ifndef SIGWINCH
 #define SIGWINCH 28
+#endif
 #endif
 
 #define LKC_DIRECT_LINK

@@ -23,6 +23,7 @@
 # pragma GCC diagnostic ignored "-Wtype-limits"
 #endif
 
+#include "libbb.h"
 #include <malloc.h>
 
 #include <sys/types.h>
@@ -37,9 +38,6 @@
 #if (defined _WIN32 || defined __WIN32__) && ! defined __CYGWIN__
 # define WINDOWS_NATIVE
 # define WIN32_NATIVE
-# if defined (_MSC_VER)
-#  define _WIN32_WINNT 0x0502
-# endif
 # include <winsock2.h>
 # include <windows.h>
 # include <io.h>

@@ -10,6 +10,11 @@
 #if ENABLE_PLATFORM_MINGW32
 # if !defined(__MINGW32__) /* HOSTCC is called */
 #  undef ENABLE_PLATFORM_MINGW32
+# else
+#  undef __USE_MINGW_ANSI_STDIO
+#  define __USE_MINGW_ANSI_STDIO 0
+#  undef _WIN32_WINNT
+#  define _WIN32_WINNT 0x502
 # endif
 #else
 # if defined(__MINGW32__)
