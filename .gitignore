@@ -12,6 +12,7 @@ Config.in
 #
 # Never ignore these
 #
+!.github
 !.gitignore
 
 #

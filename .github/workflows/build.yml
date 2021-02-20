@@ -1,0 +1,31 @@
+name: build
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    if: github.repository == 'rmyorston/busybox-w32' || github.repository == 'dscho/busybox-w32'
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: git-for-windows/setup-git-for-windows-sdk@v0
+      with:
+        flavor: build-installers # this includes all the required tools
+    - name: restrict PATH to Git for Windows' SDK (and Windows)
+      shell: bash
+      run: echo 'PATH=/mingw64/bin:/usr/bin/:/c/Windows/system32' >>$GITHUB_ENV
+    - name: mingw64_defconfig
+      shell: bash
+      run: |
+        # We do not _actually_ cross-compile
+        sed -i 's/^\(CONFIG_CROSS_COMPILER_PREFIX=\).*/\1""/' configs/mingw*
+
+        make -j$(nproc) mingw64_defconfig
+    - name: build busybox.exe
+      shell: bash
+      run: make -j$(nproc) busybox.exe
+    - name: upload busybox artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: busybox
+        path: busybox.exe
