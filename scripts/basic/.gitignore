@@ -2,3 +2,6 @@ hash
 fixdep
 docproc
 split-include
+/docproc.exe
+/fixdep.exe
+/split-include.exe
