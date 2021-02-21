@@ -306,6 +306,15 @@ KALLSYMS	= scripts/kallsyms
 PERL		= perl
 CHECK		= sparse
 
+# Handle MSYS2 weirdness
+ifneq ($(CROSS_COMPILE),)
+ifeq ($(shell command -v $(AR)),)
+AR := $(CROSS_COMPILE)gcc-ar
+STRIP := strip
+WINDRES := windres
+endif
+endif
+
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ -Wbitwise $(CF)
 MODFLAGS	= -DMODULE
 CFLAGS_MODULE   = $(MODFLAGS)
