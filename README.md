@@ -8,13 +8,17 @@ You need a MinGW compiler and a POSIX environment.  I cross-compile on Linux.  O
 
 `dnf install gcc make ncurses-devel perl-Pod-Html`
 
-`dnf install mingw32-gcc mingw32-windows-default-manifest` (for a 32-bit build)
-
 `dnf install mingw64-gcc mingw64-windows-default-manifest` (for a 64-bit build)
 
-To start, run `make mingw32_defconfig` or `make mingw64_defconfig`.  You can then customize your build with `make menuconfig` or by editing `.config`, if you know what you're doing.
+`dnf install mingw32-gcc mingw32-windows-default-manifest` (for a 32-bit build)
 
-In particular you may need to adjust the compiler by going to Busybox Settings -> Build Options -> Cross Compiler Prefix
+On Microsoft Windows you can install MSYS2 and a 64-bit toolchain by following [these instructions](https://www.msys2.org/#installation).  To obtain a 32-bit toolchain run:
+
+`pacman -S --needed mingw-w64-i686-toolchain`
+
+Run `mingw64.exe` or `mingw32.exe` from the installation directory.
+
+On either Linux or Windows the commands `make mingw64_defconfig` or `make mingw32_defconfig` will pick up the default configuration.  You can then customize your build with `make menuconfig` (Linux only) or by editing `.config`, if you know what you're doing.
 
 Then just `make`.
 
