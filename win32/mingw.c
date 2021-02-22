@@ -829,16 +829,19 @@ char *mingw_getcwd(char *pointer, int len)
 #undef rename
 int mingw_rename(const char *pold, const char *pnew)
 {
+	struct mingw_stat st;
 	DWORD attrs;
 
 	/*
-	 * Try native rename() first to get errno right.
+	 * For non-symlinks, try native rename() first to get errno right.
 	 * It is based on MoveFile(), which cannot overwrite existing files.
 	 */
-	if (!rename(pold, pnew))
-		return 0;
-	if (errno != EEXIST)
-		return -1;
+	if (mingw_lstat(pold, &st) || !S_ISLNK(st.st_mode)) {
+		if (!rename(pold, pnew))
+			return 0;
+		if (errno != EEXIST)
+			return -1;
+	}
 	if (MoveFileEx(pold, pnew, MOVEFILE_REPLACE_EXISTING))
 		return 0;
 	/* TODO: translate more errors */
