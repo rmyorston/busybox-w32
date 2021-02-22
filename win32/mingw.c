@@ -842,7 +842,8 @@ int mingw_rename(const char *pold, const char *pnew)
 		if (errno != EEXIST)
 			return -1;
 	}
-	if (MoveFileEx(pold, pnew, MOVEFILE_REPLACE_EXISTING))
+	if (MoveFileEx(pold, pnew,
+		       MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED))
 		return 0;
 	/* TODO: translate more errors */
 	if (GetLastError() == ERROR_ACCESS_DENIED &&
