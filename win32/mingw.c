@@ -1369,15 +1369,33 @@ int mingw_unlink(const char *pathname)
 	return ret;
 }
 
+struct pagefile_info {
+	SIZE_T total;
+	SIZE_T in_use;
+};
+
+static BOOL CALLBACK
+pagefile_cb(LPVOID context, PENUM_PAGE_FILE_INFORMATION info,
+				LPCSTR name UNUSED_PARAM)
+{
+	struct pagefile_info *pfinfo = (struct pagefile_info *)context;
+
+	pfinfo->total += info->TotalSize;
+	pfinfo->in_use += info->TotalInUse;
+	return TRUE;
+}
+
 int sysinfo(struct sysinfo *info)
 {
-	DECLARE_PROC_ADDR(BOOL, GlobalMemoryStatusEx, LPMEMORYSTATUSEX);
-	DECLARE_PROC_ADDR(BOOL, GetPerformanceInfo, PPERFORMANCE_INFORMATION, DWORD);
-	MEMORYSTATUSEX mem;
 	PERFORMANCE_INFORMATION perf;
+	struct pagefile_info pfinfo;
+	DECLARE_PROC_ADDR(BOOL, GetPerformanceInfo, PPERFORMANCE_INFORMATION,
+						DWORD);
+	DECLARE_PROC_ADDR(BOOL, EnumPageFilesA, PENUM_PAGE_FILE_CALLBACKA, LPVOID);
 
 	memset((void *)info, 0, sizeof(struct sysinfo));
 	memset((void *)&perf, 0, sizeof(PERFORMANCE_INFORMATION));
+	memset((void *)&pfinfo, 0, sizeof(struct pagefile_info));
 	info->mem_unit = 4096;
 
 	if (INIT_PROC_ADDR(psapi.dll, GetPerformanceInfo)) {
@@ -1385,18 +1403,17 @@ int sysinfo(struct sysinfo *info)
 		GetPerformanceInfo(&perf, perf.cb);
 	}
 
-	if (INIT_PROC_ADDR(kernel32.dll, GlobalMemoryStatusEx)) {
-		mem.dwLength = sizeof(MEMORYSTATUSEX);
-		if (GlobalMemoryStatusEx(&mem)) {
-			info->totalram = mem.ullTotalPhys >> 12;
-			info->bufferram = (perf.SystemCache * perf.PageSize) >> 12;
-			if ((mem.ullAvailPhys >> 12) > info->bufferram)
-				info->freeram = (mem.ullAvailPhys >> 12) - info->bufferram;
-			info->totalswap = (mem.ullTotalPageFile - mem.ullTotalPhys) >> 12;
-			if (mem.ullAvailPageFile > mem.ullAvailPhys)
-				info->freeswap = (mem.ullAvailPageFile-mem.ullAvailPhys) >> 12;
-		}
+	if (INIT_PROC_ADDR(psapi.dll, EnumPageFilesA)) {
+		EnumPageFilesA((PENUM_PAGE_FILE_CALLBACK)pagefile_cb, (LPVOID)&pfinfo);
 	}
+
+	info->totalram = perf.PhysicalTotal * perf.PageSize / 4096;
+	info->bufferram = perf.SystemCache * perf.PageSize / 4096;
+	if (perf.PhysicalAvailable > perf.SystemCache)
+		info->freeram = perf.PhysicalAvailable * perf.PageSize / 4096 -
+							info->bufferram;
+	info->totalswap = pfinfo.total * perf.PageSize / 4096;
+	info->freeswap = (pfinfo.total - pfinfo.in_use) * perf.PageSize / 4096;
 
 	info->uptime = GetTickCount64() / 1000;
 	info->procs = perf.ProcessCount;
