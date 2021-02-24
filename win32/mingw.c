@@ -1134,9 +1134,16 @@ static char *resolve_symlinks(char *path)
 	char *ptr = NULL;
 	DECLARE_PROC_ADDR(DWORD, GetFinalPathNameByHandleA, HANDLE,
 						LPSTR, DWORD, DWORD);
+	char *resolve = NULL;
+
+	if (GetFileAttributesA(path) & FILE_ATTRIBUTE_REPARSE_POINT) {
+		resolve = xmalloc_follow_symlinks(path);
+		if (!resolve)
+			return NULL;
+	}
 
 	/* need a file handle to resolve symlinks */
-	h = CreateFileA(path, 0, 0, NULL, OPEN_EXISTING,
+	h = CreateFileA(resolve ?: path, 0, 0, NULL, OPEN_EXISTING,
 				FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (h != INVALID_HANDLE_VALUE) {
 		if (!INIT_PROC_ADDR(kernel32.dll, GetFinalPathNameByHandleA)) {
@@ -1155,6 +1162,7 @@ static char *resolve_symlinks(char *path)
 	errno = err_win_to_posix();
  end:
 	CloseHandle(h);
+	free(resolve);
 	return ptr;
 }
 
