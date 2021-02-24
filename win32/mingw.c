@@ -1238,9 +1238,10 @@ ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 			name[len] = 0;
 			name = normalize_ntpath(name);
 			len = wcslen(name);
-			if (len > bufsiz)
-				len = bufsiz;
+			if (len >= bufsiz)
+				len = bufsiz - 1;
 			if (WideCharToMultiByte(CP_ACP, 0, name, len, buf, bufsiz, 0, 0)) {
+				buf[len] = '\0';
 				return len;
 			}
 		}
