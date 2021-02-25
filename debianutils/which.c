@@ -34,6 +34,11 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 	int status = 0;
 	/* This sizeof(): bb_default_root_path is shorter than BB_PATH_ROOT_PATH */
 	char buf[sizeof(BB_PATH_ROOT_PATH)];
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
+	/* If we were run as 'which.exe' skip standalone shell behaviour */
+	int sh_standalone =
+			is_suffixed_with_case(bb_busybox_exec_path, "which.exe") == NULL;
+#endif
 
 	env_path = getenv("PATH");
 	if (!env_path)
@@ -47,19 +52,21 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 		int missing = 1;
 
 #if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-		if (strcmp(*argv, "busybox") == 0 &&
-				is_suffixed_with(bb_busybox_exec_path, "busybox.exe")) {
-			missing = 0;
-			puts(bb_busybox_exec_path);
-			if (!option_mask32) /* -a not set */
-				break;
-		}
-		else if (find_applet_by_name(*argv) >= 0 ||
-				is_prefixed_with(*argv, "busybox")) {
-			missing = 0;
-			puts(*argv);
-			if (!option_mask32) /* -a not set */
-				break;
+		if (sh_standalone) {
+			if (strcmp(*argv, "busybox") == 0 &&
+					is_prefixed_with_case(bb_basename(bb_busybox_exec_path),
+								"busybox")) {
+				missing = 0;
+				puts(bb_busybox_exec_path);
+				if (!option_mask32) /* -a not set */
+					break;
+			}
+			else if (find_applet_by_name(*argv) >= 0) {
+				missing = 0;
+				puts(*argv);
+				if (!option_mask32) /* -a not set */
+					break;
+			}
 		}
 #endif
 
@@ -72,9 +79,6 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 			}
 #else
 		if (has_path(*argv)) {
-# if ENABLE_FEATURE_SH_STANDALONE
-			const char *name = bb_basename(*argv);
-# endif
 			char *path = alloc_system_drive(*argv);
 
 			if (add_win32_extension(path) || file_is_executable(path)) {
@@ -82,9 +86,13 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 				puts(bs_to_slash(path));
 			}
 # if ENABLE_FEATURE_SH_STANDALONE
-			else if (unix_path(*argv) && find_applet_by_name(name) >= 0) {
-				missing = 0;
-				puts(name);
+			else if (sh_standalone) {
+				const char *name = bb_basename(*argv);
+
+				if (unix_path(*argv) && find_applet_by_name(name) >= 0) {
+					missing = 0;
+					puts(name);
+				}
 			}
 # endif
 #endif
