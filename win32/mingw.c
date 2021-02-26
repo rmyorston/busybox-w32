@@ -1076,13 +1076,22 @@ int symlink(const char *target, const char *linkpath)
 	DWORD flag = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
 	struct stat st;
 	DECLARE_PROC_ADDR(BOOL, CreateSymbolicLinkA, LPCSTR, LPCSTR, DWORD);
+	char *relative = NULL;
 
 	if (!INIT_PROC_ADDR(kernel32.dll, CreateSymbolicLinkA)) {
 		return -1;
 	}
 
-	if (stat(target, &st) != -1 && S_ISDIR(st.st_mode))
+	if (!is_absolute_path(target) && has_path(linkpath)) {
+		/* make target's path relative to current directory */
+		const char *name = bb_get_last_path_component_nostrip(linkpath);
+		relative = xasprintf("%.*s%s",
+						(int)(name - linkpath), linkpath, target);
+	}
+
+	if (stat(relative ?: target, &st) != -1 && S_ISDIR(st.st_mode))
 		flag |= SYMBOLIC_LINK_FLAG_DIRECTORY;
+	free(relative);
 
  retry:
 	if (!CreateSymbolicLinkA(linkpath, target, flag)) {
