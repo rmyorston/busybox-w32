@@ -138,11 +138,54 @@
 //usage:
 //usage:#define dc_full_usage "\n"
 //usage:     "\nTiny RPN calculator. Operations:"
-//usage:     "\n+, -, *, /, %, ~, ^," IF_FEATURE_DC_BIG(" |,")
+//usage:     "\nArithmetic: + - * / % ^"
+//usage:	IF_FEATURE_DC_BIG(
+//usage:     "\n~ - divide with remainder"
+//usage:     "\n| - modular exponentiation"
+//usage:     "\nv - square root"
+////////     "\nA-F -                   digits 10..15
+////////     "\n_NNN -                  push negative number -NNN
+////////     "\n[string] -              push string (in FreeBSD, \[, \] and \\ are escapes, not implemented here and in GNU)
+////////     "\nR - DC_LEX_POP          pop and discard
+////////     "\nc - DC_LEX_CLEAR_STACK  clear stack
+////////     "\nd - DC_LEX_DUPLICATE    duplicate top-of-stack
+////////     "\nr - DC_LEX_SWAP         swap top-of-stack
+////////     "\n:r - DC_LEX_COLON       pop index, pop value, store to array 'r'
+////////     "\n;r - DC_LEX_SCOLON      pop index, fetch from array 'r', push
+////////     "\nLr - DC_LEX_LOAD_POP    pop register 'r', push
+////////     "\nSr - DC_LEX_STORE_PUSH  pop, push to register 'r'
+////////     "\nlr - DC_LEX_LOAD        read register 'r', push
+////////     "\nsr - DC_LEX_OP_ASSIGN   pop, assign to register 'r'
+////////     "\n? - DC_LEX_READ         read line and execute
+////////     "\nx - DC_LEX_EXECUTE      pop string and execute
+////////     "\n<r - XC_LEX_OP_REL_GT   pop, pop, execute register 'r' if top-of-stack was less
+////////     "\n>r - XC_LEX_OP_REL_LT   pop, pop, execute register 'r' if top-of-stack was greater
+////////     "\n=r - XC_LEX_OP_REL_EQ   pop, pop, execute register 'r' if equal
+////////     "\n                        !<r !>r !=r - negated forms
+////////     "\n                        >tef - "if greater execute register 't' else execute 'f'"
+////////     "\nQ - DC_LEX_NQUIT        pop, "break N" from macro invocations
+////////     "\nq - DC_LEX_QUIT         "break 2" (if less than 2 levels of macros, exit dc)
+////////     "\nX - DC_LEX_SCALE_FACTOR pop, push number of fractional digits
+////////     "\nZ - DC_LEX_LENGTH       pop, push number of digits it has (or number of characters in string)
+////////     "\na - DC_LEX_ASCIIFY      pop, push low-order byte as char or 1st char of string
+////////     "\n( - DC_LEX_LPAREN       (FreeBSD, not in GNU) pop, pop, if top-of-stack was less push 1 else push 0
+////////     "\n{ - DC_LEX_LBRACE       (FreeBSD, not in GNU) pop, pop, if top-of-stack was less-or-equal push 1 else push 0
+////////     "\nG - DC_LEX_EQ_NO_REG    (FreeBSD, not in GNU) pop, pop, if equal push 1 else push 0
+////////     "\nN - DC_LEX_OP_BOOL_NOT  (FreeBSD, not in GNU) pop, if 0 push 1 else push 0
+////////                                FreeBSD also has J and M commands, used internally by bc
+////////     "\nn - DC_LEX_PRINT_POP    pop, print without newline
+////////     "\nP - DC_LEX_PRINT_STREAM pop, print string or hex bytes
+//usage:	)
 //usage:     "\np - print top of the stack without popping"
 //usage:     "\nf - print entire stack"
-//usage:     "\nk - pop the value and set the precision"
+////////     "\nz - DC_LEX_STACK_LEVEL  push stack depth
+////////     "\nK - DC_LEX_SCALE        push precision
+////////     "\nI - DC_LEX_IBASE        push input radix
+////////     "\nO - DC_LEX_OBASE        push output radix
+//usage:	IF_FEATURE_DC_BIG(
+//usage:     "\nk - pop the value and set precision"
 //usage:     "\ni - pop the value and set input radix"
+//usage:	)
 //usage:     "\no - pop the value and set output radix"
 //usage:     "\nExamples: dc -e'2 2 + p' -> 4, dc -e'8 8 * 2 2 + / p' -> 16"
 //usage:
@@ -6217,13 +6260,20 @@ static unsigned long xc_program_len(BcNum *n)
 {
 	size_t len = n->len;
 
-	if (n->rdx != len) return len;
+	if (n->rdx != len)
+		// length(100): rdx 0 len 3, return 3
+		// length(0.01-0.01): rdx 2 len 0, return 2
+		// dc: 0.01 0.01 - Zp: rdx 2 len 0, return 1
+		return len != 0 ? len : (IS_BC ? n->rdx : 1);
+
+	// length(0): return 1
+	// length(0.000nnn): count nnn
 	for (;;) {
 		if (len == 0) break;
 		len--;
 		if (n->num[len] != 0) break;
 	}
-	return len;
+	return len + 1;
 }
 
 static BC_STATUS zxc_program_builtin(char inst)
@@ -6251,12 +6301,12 @@ static BC_STATUS zxc_program_builtin(char inst)
 	if (inst == XC_INST_SQRT)
 		s = zbc_num_sqrt(num, &res.d.n, G.prog.scale);
 #if ENABLE_BC
-	else if (len != 0 && opnd->t == XC_RESULT_ARRAY) {
+	else if (len && opnd->t == XC_RESULT_ARRAY) {
 		bc_num_ulong2num(&res.d.n, (unsigned long) ((BcVec *) num)->len);
 	}
 #endif
 #if ENABLE_DC
-	else if (len != 0 && !BC_PROG_NUM(opnd, num)) {
+	else if (len && !BC_PROG_NUM(opnd, num)) {
 		char **str;
 		size_t idx = opnd->t == XC_RESULT_STR ? opnd->d.id.idx : num->rdx;
 
@@ -6265,6 +6315,8 @@ static BC_STATUS zxc_program_builtin(char inst)
 	}
 #endif
 	else {
+//TODO: length(.00) and scale(.00) should return 2, they return 1 and 0 now
+//(don't forget to check that dc Z and X commands do not break)
 		bc_num_ulong2num(&res.d.n, len ? xc_program_len(num) : xc_program_scale(num));
 	}
 

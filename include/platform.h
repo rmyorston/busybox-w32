@@ -428,6 +428,7 @@ typedef unsigned smalluint;
 #define HAVE_SETBIT 1
 #define HAVE_SIGHANDLER_T 1
 #define HAVE_STPCPY 1
+#define HAVE_STPNCPY 1
 #define HAVE_MEMPCPY 1
 #define HAVE_STRCASESTR 1
 #define HAVE_STRCHRNUL 1
@@ -484,6 +485,7 @@ typedef unsigned smalluint;
 # undef HAVE_MKDTEMP
 # undef HAVE_SETBIT
 # undef HAVE_STPCPY
+# undef HAVE_STPNCPY
 # undef HAVE_STRCASESTR
 # undef HAVE_STRCHRNUL
 # undef HAVE_STRSEP
@@ -556,6 +558,7 @@ typedef unsigned smalluint;
 
 #if defined(__digital__) && defined(__unix__)
 # undef HAVE_STPCPY
+# undef HAVE_STPNCPY
 #endif
 
 #if defined(ANDROID) || defined(__ANDROID__)
@@ -572,6 +575,7 @@ typedef unsigned smalluint;
 #  undef HAVE_TTYNAME_R
 #  undef HAVE_GETLINE
 #  undef HAVE_STPCPY
+#  undef HAVE_STPNCPY
 # endif
 # undef HAVE_MEMPCPY
 # undef HAVE_STRCHRNUL
@@ -615,6 +619,10 @@ typedef void (*sighandler_t)(int);
 
 #ifndef HAVE_STPCPY
 extern char *stpcpy(char *p, const char *to_add) FAST_FUNC;
+#endif
+
+#ifndef HAVE_STPNCPY
+extern char *stpncpy(char *p, const char *to_add, size_t n) FAST_FUNC;
 #endif
 
 #ifndef HAVE_MEMPCPY

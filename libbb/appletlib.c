@@ -1034,43 +1034,8 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 # endif
 
 # if NUM_APPLETS > 0
-
-#  if ENABLE_PLATFORM_MINGW32
-static int interp = 0;
-char bb_comm[COMM_LEN];
-char bb_command_line[128];
-#  endif
-
-void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **argv)
+void FAST_FUNC show_usage_if_dash_dash_help(int applet_no, char **argv)
 {
-	int argc = string_array_len(argv);
-#  if ENABLE_PLATFORM_MINGW32
-	int i;
-	const char *vmask;
-	unsigned int mask;
-#  endif
-
-	/*
-	 * We do not use argv[0]: do not want to repeat massaging of
-	 * "-/sbin/halt" -> "halt", for example.
-	 */
-	applet_name = name;
-#  if ENABLE_PLATFORM_MINGW32
-	safe_strncpy(bb_comm,
-					interp ? bb_basename(argv[interp]) : applet_name,
-					sizeof(bb_comm));
-
-	safe_strncpy(bb_command_line, applet_name, sizeof(bb_command_line));
-	for (i=1; i < argc && argv[i] &&
-			strlen(bb_command_line) + strlen(argv[i]) + 2 < 128; ++i) {
-		strcat(strcat(bb_command_line, " "), argv[i]);
-	}
-
-	vmask = getenv("BB_UMASK");
-	if (vmask && sscanf(vmask, "%o", &mask) == 1)
-		umask((mode_t)(mask&0777));
-#  endif
-
 	/* Special case. POSIX says "test --help"
 	 * should be no different from e.g. "test --foo".
 	 * Thus for "test", we skip --help check.
@@ -1090,16 +1055,61 @@ void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **ar
 	 && applet_no != APPLET_NO_busybox
 #  endif
 	) {
-		if (argc == 2 && strcmp(argv[1], "--help") == 0) {
+		if (argv[1] && !argv[2] && strcmp(argv[1], "--help") == 0) {
 			/* Make "foo --help" exit with 0: */
 			xfunc_error_retval = 0;
 			bb_show_usage();
 		}
 	}
+}
+
+#  if ENABLE_PLATFORM_MINGW32
+static int interp = 0;
+char bb_comm[COMM_LEN];
+char bb_command_line[128];
+#  endif
+
+void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **argv)
+{
+#  if ENABLE_PLATFORM_MINGW32
+	int argc = string_array_len(argv);
+	int i;
+	const char *vmask;
+	unsigned int mask;
+#  else
+	int argc;
+#  endif
+
+	/*
+	 * We do not use argv[0]: do not want to repeat massaging of
+	 * "-/sbin/halt" -> "halt", for example.
+	 */
+	applet_name = name;
+
+	show_usage_if_dash_dash_help(applet_no, argv);
+
 	if (ENABLE_FEATURE_SUID)
 		check_suid(applet_no);
 
+#  if ENABLE_PLATFORM_MINGW32
+	safe_strncpy(bb_comm,
+					interp ? bb_basename(argv[interp]) : applet_name,
+					sizeof(bb_comm));
+
+	safe_strncpy(bb_command_line, applet_name, sizeof(bb_command_line));
+	for (i=1; i < argc && argv[i] &&
+			strlen(bb_command_line) + strlen(argv[i]) + 2 < 128; ++i) {
+		strcat(strcat(bb_command_line, " "), argv[i]);
+	}
+
+	vmask = getenv("BB_UMASK");
+	if (vmask && sscanf(vmask, "%o", &mask) == 1)
+		umask((mode_t)(mask&0777));
+#  else
+	argc = string_array_len(argv);
+#  endif
 	xfunc_error_retval = applet_main[applet_no](argc, argv);
+
 	/* Note: applet_main() may also not return (die on a xfunc or such) */
 	xfunc_die();
 }

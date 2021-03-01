@@ -373,8 +373,7 @@ typedef struct {
 } peer_t;
 
 
-#define USING_KERNEL_PLL_LOOP          1
-#define USING_INITIAL_FREQ_ESTIMATION  0
+#define USING_KERNEL_PLL_LOOP 1
 
 enum {
 	OPT_n = (1 << 0),
@@ -462,12 +461,7 @@ struct globals {
 #define G_precision_sec  0.002
 	uint8_t  stratum;
 
-#define STATE_NSET      0       /* initial state, "nothing is set" */
-//#define STATE_FSET    1       /* frequency set from file */
-//#define STATE_SPIK    2       /* spike detected */
-//#define STATE_FREQ    3       /* initial frequency */
-#define STATE_SYNC      4       /* clock synchronized (normal operation) */
-	uint8_t  discipline_state;      // doc calls it c.state
+	//uint8_t  discipline_state;      // doc calls it c.state
 	uint8_t  poll_exp;              // s.poll
 	int      polladj_count;         // c.count
 	int      FREQHOLD_cnt;
@@ -657,104 +651,11 @@ filter_datapoints(peer_t *p)
 	double sum, wavg;
 	datapoint_t *fdp;
 
-#if 0
 /* Simulations have shown that use of *averaged* offset for p->filter_offset
  * is in fact worse than simply using last received one: with large poll intervals
  * (>= 2048) averaging code uses offset values which are outdated by hours,
  * and time/frequency correction goes totally wrong when fed essentially bogus offsets.
  */
-	int got_newest;
-	double minoff, maxoff, w;
-	double x = x; /* for compiler */
-	double oldest_off = oldest_off;
-	double oldest_age = oldest_age;
-	double newest_off = newest_off;
-	double newest_age = newest_age;
-
-	fdp = p->filter_datapoint;
-
-	minoff = maxoff = fdp[0].d_offset;
-	for (i = 1; i < NUM_DATAPOINTS; i++) {
-		if (minoff > fdp[i].d_offset)
-			minoff = fdp[i].d_offset;
-		if (maxoff < fdp[i].d_offset)
-			maxoff = fdp[i].d_offset;
-	}
-
-	idx = p->datapoint_idx; /* most recent datapoint's index */
-	/* Average offset:
-	 * Drop two outliers and take weighted average of the rest:
-	 * most_recent/2 + older1/4 + older2/8 ... + older5/32 + older6/32
-	 * we use older6/32, not older6/64 since sum of weights should be 1:
-	 * 1/2 + 1/4 + 1/8 + 1/16 + 1/32 + 1/32 = 1
-	 */
-	wavg = 0;
-	w = 0.5;
-	/*                     n-1
-	 *                     ---    dispersion(i)
-	 * filter_dispersion =  \     -------------
-	 *                      /       (i+1)
-	 *                     ---     2
-	 *                     i=0
-	 */
-	got_newest = 0;
-	sum = 0;
-	for (i = 0; i < NUM_DATAPOINTS; i++) {
-		VERB5 {
-			bb_error_msg("datapoint[%d]: off:%f disp:%f(%f) age:%f%s",
-				i,
-				fdp[idx].d_offset,
-				fdp[idx].d_dispersion, dispersion(&fdp[idx]),
-				G.cur_time - fdp[idx].d_recv_time,
-				(minoff == fdp[idx].d_offset || maxoff == fdp[idx].d_offset)
-					? " (outlier by offset)" : ""
-			);
-		}
-
-		sum += dispersion(&fdp[idx]) / (2 << i);
-
-		if (minoff == fdp[idx].d_offset) {
-			minoff -= 1; /* so that we don't match it ever again */
-		} else
-		if (maxoff == fdp[idx].d_offset) {
-			maxoff += 1;
-		} else {
-			oldest_off = fdp[idx].d_offset;
-			oldest_age = G.cur_time - fdp[idx].d_recv_time;
-			if (!got_newest) {
-				got_newest = 1;
-				newest_off = oldest_off;
-				newest_age = oldest_age;
-			}
-			x = oldest_off * w;
-			wavg += x;
-			w /= 2;
-		}
-
-		idx = (idx - 1) & (NUM_DATAPOINTS - 1);
-	}
-	p->filter_dispersion = sum;
-	wavg += x; /* add another older6/64 to form older6/32 */
-	/* Fix systematic underestimation with large poll intervals.
-	 * Imagine that we still have a bit of uncorrected drift,
-	 * and poll interval is big (say, 100 sec). Offsets form a progression:
-	 * 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 - 0.7 is most recent.
-	 * The algorithm above drops 0.0 and 0.7 as outliers,
-	 * and then we have this estimation, ~25% off from 0.7:
-	 * 0.1/32 + 0.2/32 + 0.3/16 + 0.4/8 + 0.5/4 + 0.6/2 = 0.503125
-	 */
-	x = oldest_age - newest_age;
-	if (x != 0) {
-		x = newest_age / x; /* in above example, 100 / (600 - 100) */
-		if (x < 1) { /* paranoia check */
-			x = (newest_off - oldest_off) * x; /* 0.5 * 100/500 = 0.1 */
-			wavg += x;
-		}
-	}
-	p->filter_offset = wavg;
-
-#else
-
 	fdp = p->filter_datapoint;
 	idx = p->datapoint_idx; /* most recent datapoint's index */
 
@@ -777,7 +678,6 @@ filter_datapoints(peer_t *p)
 	}
 	wavg /= NUM_DATAPOINTS;
 	p->filter_dispersion = sum;
-#endif
 
 	/*                  +-----                 -----+ ^ 1/2
 	 *                  |       n-1                 |
@@ -1548,15 +1448,14 @@ select_and_cluster(void)
  * Local clock discipline and its helpers
  */
 static void
-set_new_values(int disc_state, double offset, double recv_time)
+set_new_values(double offset, double recv_time)
 {
 	/* Enter new state and set state variables. Note we use the time
 	 * of the last clock filter sample, which must be earlier than
 	 * the current time.
 	 */
-	VERB4 bb_error_msg("disc_state=%d last update offset=%f recv_time=%f",
-			disc_state, offset, recv_time);
-	G.discipline_state = disc_state;
+	VERB4 bb_error_msg("last update offset=%f recv_time=%f",
+			offset, recv_time);
 	G.last_update_offset = offset;
 	G.last_update_recv_time = recv_time;
 }
@@ -1572,8 +1471,6 @@ update_local_clock(peer_t *p)
 	double abs_offset;
 #if !USING_KERNEL_PLL_LOOP
 	double freq_drift;
-#endif
-#if !USING_KERNEL_PLL_LOOP || USING_INITIAL_FREQ_ESTIMATION
 	double since_last_update;
 #endif
 	double etemp, dtemp;
@@ -1603,63 +1500,15 @@ update_local_clock(peer_t *p)
 	 * action is and defines how the system reacts to large time
 	 * and frequency errors.
 	 */
-#if !USING_KERNEL_PLL_LOOP || USING_INITIAL_FREQ_ESTIMATION
-	since_last_update = recv_time - G.reftime;
-#endif
 #if !USING_KERNEL_PLL_LOOP
+	since_last_update = recv_time - G.reftime;
 	freq_drift = 0;
-#endif
-#if USING_INITIAL_FREQ_ESTIMATION
-	if (G.discipline_state == STATE_FREQ) {
-		/* Ignore updates until the stepout threshold */
-		if (since_last_update < WATCH_THRESHOLD) {
-			VERB4 bb_error_msg("measuring drift, datapoint ignored, %f sec remains",
-					WATCH_THRESHOLD - since_last_update);
-			return 0; /* "leave poll interval as is" */
-		}
-# if !USING_KERNEL_PLL_LOOP
-		freq_drift = (offset - G.last_update_offset) / since_last_update;
-# endif
-	}
 #endif
 
 	/* There are two main regimes: when the
 	 * offset exceeds the step threshold and when it does not.
 	 */
 	if (abs_offset > STEP_THRESHOLD) {
-#if 0
-		double remains;
-
-// This "spike state" seems to be useless, peer selection already drops
-// occassional "bad" datapoints. If we are here, there were _many_
-// large offsets. When a few first large offsets are seen,
-// we end up in "no valid datapoints, no peer selected" state.
-// Only when enough of them are seen (which means it's not a fluke),
-// we end up here. Looks like _our_ clock is off.
-		switch (G.discipline_state) {
-		case STATE_SYNC:
-			/* The first outlyer: ignore it, switch to SPIK state */
-			VERB3 bb_error_msg("update from %s: offset:%+f, spike%s",
-				p->p_dotted, offset,
-				"");
-			G.discipline_state = STATE_SPIK;
-			return -1; /* "decrease poll interval" */
-
-		case STATE_SPIK:
-			/* Ignore succeeding outlyers until either an inlyer
-			 * is found or the stepout threshold is exceeded.
-			 */
-			remains = WATCH_THRESHOLD - since_last_update;
-			if (remains > 0) {
-				VERB3 bb_error_msg("update from %s: offset:%+f, spike%s",
-					p->p_dotted, offset,
-					", datapoint ignored");
-				return -1; /* "decrease poll interval" */
-			}
-			/* fall through: we need to step */
-		} /* switch */
-#endif
-
 		/* Step the time and clamp down the poll interval.
 		 *
 		 * In NSET state an initial frequency correction is
@@ -1694,15 +1543,16 @@ update_local_clock(peer_t *p)
 
 		recv_time += offset;
 
-#if USING_INITIAL_FREQ_ESTIMATION
-		if (G.discipline_state == STATE_NSET) {
-			set_new_values(STATE_FREQ, /*offset:*/ 0, recv_time);
-			return 1; /* "ok to increase poll interval" */
-		}
-#endif
 		abs_offset = offset = 0;
-		set_new_values(STATE_SYNC, offset, recv_time);
+		set_new_values(offset, recv_time);
 	} else { /* abs_offset <= STEP_THRESHOLD */
+
+		if (option_mask32 & OPT_q) {
+			/* We were only asked to set time once.
+			 * The clock is precise enough, no need to step.
+			 */
+			exit(0);
+		}
 
 		/* The ratio is calculated before jitter is updated to make
 		 * poll adjust code more sensitive to large offsets.
@@ -1718,75 +1568,31 @@ update_local_clock(peer_t *p)
 		if (G.discipline_jitter < G_precision_sec)
 			G.discipline_jitter = G_precision_sec;
 
-		switch (G.discipline_state) {
-		case STATE_NSET:
-			if (option_mask32 & OPT_q) {
-				/* We were only asked to set time once.
-				 * The clock is precise enough, no need to step.
-				 */
-				exit(0);
-			}
-#if USING_INITIAL_FREQ_ESTIMATION
-			/* This is the first update received and the frequency
-			 * has not been initialized. The first thing to do
-			 * is directly measure the oscillator frequency.
-			 */
-			set_new_values(STATE_FREQ, offset, recv_time);
-#else
-			set_new_values(STATE_SYNC, offset, recv_time);
-#endif
-			VERB4 bb_simple_error_msg("transitioning to FREQ, datapoint ignored");
-			return 0; /* "leave poll interval as is" */
-
-#if 0 /* this is dead code for now */
-		case STATE_FSET:
-			/* This is the first update and the frequency
-			 * has been initialized. Adjust the phase, but
-			 * don't adjust the frequency until the next update.
-			 */
-			set_new_values(STATE_SYNC, offset, recv_time);
-			/* freq_drift remains 0 */
-			break;
-#endif
-
-#if USING_INITIAL_FREQ_ESTIMATION
-		case STATE_FREQ:
-			/* since_last_update >= WATCH_THRESHOLD, we waited enough.
-			 * Correct the phase and frequency and switch to SYNC state.
-			 * freq_drift was already estimated (see code above)
-			 */
-			set_new_values(STATE_SYNC, offset, recv_time);
-			break;
-#endif
-
-		default:
 #if !USING_KERNEL_PLL_LOOP
-			/* Compute freq_drift due to PLL and FLL contributions.
-			 *
-			 * The FLL and PLL frequency gain constants
-			 * depend on the poll interval and Allan
-			 * intercept. The FLL is not used below one-half
-			 * the Allan intercept. Above that the loop gain
-			 * increases in steps to 1 / AVG.
-			 */
-			if ((1 << G.poll_exp) > ALLAN / 2) {
-				etemp = FLL - G.poll_exp;
-				if (etemp < AVG)
-					etemp = AVG;
-				freq_drift += (offset - G.last_update_offset) / (MAXD(since_last_update, ALLAN) * etemp);
-			}
-			/* For the PLL the integration interval
-			 * (numerator) is the minimum of the update
-			 * interval and poll interval. This allows
-			 * oversampling, but not undersampling.
-			 */
-			etemp = MIND(since_last_update, (1 << G.poll_exp));
-			dtemp = (4 * PLL) << G.poll_exp;
-			freq_drift += offset * etemp / SQUARE(dtemp);
-#endif
-			set_new_values(STATE_SYNC, offset, recv_time);
-			break;
+		/* Compute freq_drift due to PLL and FLL contributions.
+		 *
+		 * The FLL and PLL frequency gain constants
+		 * depend on the poll interval and Allan
+		 * intercept. The FLL is not used below one-half
+		 * the Allan intercept. Above that the loop gain
+		 * increases in steps to 1 / AVG.
+		 */
+		if ((1 << G.poll_exp) > ALLAN / 2) {
+			etemp = FLL - G.poll_exp;
+			if (etemp < AVG)
+				etemp = AVG;
+			freq_drift += (offset - G.last_update_offset) / (MAXD(since_last_update, ALLAN) * etemp);
 		}
+		/* For the PLL the integration interval
+		 * (numerator) is the minimum of the update
+		 * interval and poll interval. This allows
+		 * oversampling, but not undersampling.
+		 */
+		etemp = MIND(since_last_update, (1 << G.poll_exp));
+		dtemp = (4 * PLL) << G.poll_exp;
+		freq_drift += offset * etemp / SQUARE(dtemp);
+#endif
+		set_new_values(offset, recv_time);
 		if (G.stratum != p->lastpkt_stratum + 1) {
 			G.stratum = p->lastpkt_stratum + 1;
 			run_script("stratum", offset);
@@ -1805,9 +1611,7 @@ update_local_clock(peer_t *p)
 	G.rootdisp = p->lastpkt_rootdisp + dtemp;
 	VERB4 bb_error_msg("updating leap/refid/reftime/rootdisp from peer %s", p->p_dotted);
 
-	/* We are in STATE_SYNC now, but did not do adjtimex yet.
-	 * (Any other state does not reach this, they all return earlier)
-	 * By this time, freq_drift and offset are set
+	/* By this time, freq_drift and offset are set
 	 * to values suitable for adjtimex.
 	 */
 #if !USING_KERNEL_PLL_LOOP
@@ -2349,6 +2153,12 @@ recv_and_process_client_pkt(void /*int fd*/)
 	do_sendto(G_listen_fd,
 		/*from:*/ &to->u.sa, /*to:*/ from, /*addrlen:*/ to->len,
 		&msg, size);
+	VERB3 {
+		char *addr;
+		addr = xmalloc_sockaddr2dotted_noport(from);
+		bb_error_msg("responded to query from %s", addr);
+		free(addr);
+	}
 
  bail:
 	free(to);
@@ -2767,7 +2577,7 @@ int ntpd_main(int argc UNUSED_PARAM, char **argv)
 		timeout++; /* (nextaction - G.cur_time) rounds down, compensating */
 
 		/* Here we may block */
-		VERB2 {
+		VERB3 {
 			if (i > (ENABLE_FEATURE_NTPD_SERVER && G_listen_fd != -1)) {
 				/* We wait for at least one reply.
 				 * Poll for it, without wasting time for message.

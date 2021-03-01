@@ -829,8 +829,6 @@ static unsigned path_parse(char ***p)
 		if (!tmp)
 			break;
 		tmp++;
-		if (*tmp == '\0')
-			break;  /* :<empty> */
 		npth++;
 	}
 
@@ -842,8 +840,6 @@ static unsigned path_parse(char ***p)
 		if (!tmp)
 			break;
 		*tmp++ = '\0'; /* ':' -> '\0' */
-		if (*tmp == '\0')
-			break; /* :<empty> */
 		res[npth++] = tmp;
 	}
 	/* special case: "match subdirectories of the current directory" */
@@ -925,9 +921,7 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 		struct dirent *next;
 		struct stat st;
 		char *found;
-#if ENABLE_PLATFORM_MINGW32
-		char *lpath;
-#endif
+		const char *lpath;
 
 		if (paths[i] == NULL) { /* path_parse()'s last component? */
 			/* in PATH completion, current dir's subdir names
@@ -937,12 +931,11 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 			paths[i] = (char *)".";
 		}
 
+		lpath = *paths[i] ? paths[i] : ".";
 #if ENABLE_PLATFORM_MINGW32
-		lpath = auto_string(alloc_system_drive(paths[i]));
-		dir = opendir(lpath);
-#else
-		dir = opendir(paths[i]);
+		lpath = auto_string(alloc_system_drive(lpath));
 #endif
+		dir = opendir(lpath);
 		if (!dir)
 			continue; /* don't print an error */
 
@@ -957,11 +950,7 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 			if (strncmp(basecmd, name_found, baselen) != 0)
 				continue; /* no */
 
-#if ENABLE_PLATFORM_MINGW32
 			found = concat_path_file(lpath, name_found);
-#else
-			found = concat_path_file(paths[i], name_found);
-#endif
 			/* NB: stat() first so that we see is it a directory;
 			 * but if that fails, use lstat() so that
 			 * we still match dangling links */

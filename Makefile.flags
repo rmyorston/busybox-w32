@@ -190,7 +190,7 @@ LDLIBS += $(if $(SELINUX_LIBS),$(SELINUX_LIBS:-l%=%),$(SELINUX_PC_MODULES:lib%=%
 endif
 
 ifeq ($(CONFIG_FEATURE_NSLOOKUP_BIG),y)
-ifeq ($(CONFIG_UNAME_OSNAME),Linux)
+ifneq (,$(findstring linux,$(shell $(CC) $(CFLAGS) -dumpmachine)))
 LDLIBS += resolv
 endif
 endif
@@ -215,11 +215,6 @@ endif
 
 ifneq ($(CONFIG_EXTRA_LDFLAGS),)
 LDFLAGS += $(strip $(subst ",,$(CONFIG_EXTRA_LDFLAGS)))
-#"))
-endif
-
-ifneq ($(CONFIG_EXTRA_LDLIBS),)
-LDLIBS += $(strip $(subst ",,$(CONFIG_EXTRA_LDLIBS)))
 #"))
 endif
 
