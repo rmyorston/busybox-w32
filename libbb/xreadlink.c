@@ -76,7 +76,11 @@ char* FAST_FUNC xmalloc_follow_symlinks(const char *path)
 			return NULL;
 		}
 
+#if ENABLE_PLATFORM_MINGW32
+		if (!is_absolute_path(linkpath)) {
+#else
 		if (*linkpath != '/') {
+#endif
 			bufsize += strlen(linkpath);
 			buf = xrealloc(buf, bufsize);
 			lpc = bb_get_last_path_component_strip(buf);
