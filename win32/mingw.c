@@ -1878,6 +1878,20 @@ void *get_proc_addr(const char *dll, const char *function,
 	/* only do this once */
 	if (!proc->initialized) {
 		HANDLE hnd = LoadLibraryExA(dll, NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+
+		/* The documentation for LoadLibraryEx says the above may fail
+		 * on Windows 7.  If it does, retry using LoadLibrary with an
+		 * explicit, backslash-separated path. */
+		if (!hnd) {
+			char dir[PATH_MAX], *path;
+
+			GetSystemDirectory(dir, PATH_MAX);
+			path = concat_path_file(dir, dll);
+			slash_to_bs(path);
+			hnd = LoadLibrary(path);
+			free(path);
+		}
+
 		if (hnd)
 			proc->pfunction = GetProcAddress(hnd, function);
 		proc->initialized = 1;
