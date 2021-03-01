@@ -147,7 +147,7 @@ export SYSROOT=$(CONFIG_SYSROOT)
 endif
 
 ifeq ($(CONFIG_PLATFORM_MINGW32),y)
-CFLAGS += -Iwin32 -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -fno-builtin-stpcpy -fno-ident -fno-builtin-strndup
+CFLAGS += -Iwin32 -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -fno-builtin-stpcpy -fno-builtin-stpncpy -fno-ident -fno-builtin-strndup
 EXEEXT = .exe
 LDLIBS += ws2_32 mingwex -l:libssp.a
 endif
