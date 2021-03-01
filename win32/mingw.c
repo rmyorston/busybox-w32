@@ -1922,3 +1922,12 @@ int has_path(const char *file)
 	return strchr(file, '/') || strchr(file, '\\') ||
 				has_dos_drive_prefix(file);
 }
+
+/* This function is misnamed.  It's actually a test for 'is not a path
+ * relative to the current working directory'.  On Unix this is the
+ * same as 'is an absolute path' but Windows also has paths relative to
+ * current root and relative to current directory of another drive. */
+int is_absolute_path(const char *path)
+{
+	return path[0] == '/' || path[0] == '\\' || has_dos_drive_prefix(path);
+}

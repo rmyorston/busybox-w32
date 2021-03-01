@@ -322,8 +322,6 @@ typedef long arith_t;
 
 #if !ENABLE_PLATFORM_MINGW32
 # define is_absolute_path(path) ((path)[0] == '/')
-#else
-# define is_absolute_path(path) ((path)[0] == '/' || (path)[0] == '\\' || has_dos_drive_prefix(path))
 #endif
 
 #if !BB_MMU
@@ -3028,7 +3026,6 @@ updatepwd(const char *dir)
 {
 #if ENABLE_PLATFORM_MINGW32
 # define is_path_sep(x) ((x) == '/' || (x) == '\\')
-# define is_root(x) (is_path_sep(x[0]) && x[1] == '\0')
 	/*
 	 * Due to Windows drive notion, getting pwd is a completely
 	 * different thing. Handle it in a separate routine
