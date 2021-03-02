@@ -8689,6 +8689,8 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 		struct forkshell *fs = (struct forkshell *)sticky_mem_start;
 		if (applet_main[applet_no] != ash_main ||
 				(fs && fs->fpid == FS_SHELLEXEC)) {
+			/* mingw-w64's getopt() uses __argv[0] as the program name */
+			__argv[0] = (char *)cmd;
 # else
 		if (APPLET_IS_NOEXEC(applet_no)) {
 # endif
