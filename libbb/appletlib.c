@@ -672,7 +672,6 @@ static const char *const install_dir[] = {
 #  endif
 };
 
-#  if !ENABLE_PLATFORM_MINGW32
 /* create (sym)links for each applet */
 static void install_links(const char *busybox, int use_symbolic_links,
 		char *custom_install_dir)
@@ -685,34 +684,8 @@ static void install_links(const char *busybox, int use_symbolic_links,
 	const char *appname = applet_names;
 	unsigned i;
 	int rc;
-
-	lf = link;
-	if (use_symbolic_links)
-		lf = symlink;
-
-	for (i = 0; i < ARRAY_SIZE(applet_main); i++) {
-		fpc = concat_path_file(
-				custom_install_dir ? custom_install_dir : install_dir[APPLET_INSTALL_LOC(i)],
-				appname);
-		// debug: bb_error_msg("%slinking %s to busybox",
-		//		use_symbolic_links ? "sym" : "", fpc);
-		rc = lf(busybox, fpc);
-		if (rc != 0 && errno != EEXIST) {
-			bb_simple_perror_msg(fpc);
-		}
-		free(fpc);
-		while (*appname++ != '\0')
-			continue;
-	}
-}
-#  else /* ENABLE_PLATFORM_MINGW32 */
-static void install_links(const char *busybox,
-		int use_symbolic_links UNUSED_PARAM, char *custom_install_dir)
-{
-	char *fpc;
-	const char *appname = applet_names;
+#  if ENABLE_PLATFORM_MINGW32
 	const char *sd = NULL;
-	int i, rc;
 
 	if (custom_install_dir != NULL) {
 		bb_make_directory(custom_install_dir, 0755, FILEUTILS_RECUR);
@@ -725,14 +698,26 @@ static void install_links(const char *busybox,
 			free(fpc);
 		}
 	}
+#  endif
+
+	lf = link;
+	if (use_symbolic_links)
+		lf = symlink;
 
 	for (i = 0; i < ARRAY_SIZE(applet_main); i++) {
+#  if ENABLE_PLATFORM_MINGW32
 		fpc = xasprintf("%s%s/%s.exe", sd ?: "",
 				custom_install_dir ?: install_dir[APPLET_INSTALL_LOC(i)],
 				appname);
-		rc = link(busybox, fpc);
-		if (rc != 0 && (errno != EEXIST ||
-				strcmp("busybox.exe", bb_basename(fpc)) != 0)) {
+#  else
+		fpc = concat_path_file(
+				custom_install_dir ? custom_install_dir : install_dir[APPLET_INSTALL_LOC(i)],
+				appname);
+#  endif
+		// debug: bb_error_msg("%slinking %s to busybox",
+		//		use_symbolic_links ? "sym" : "", fpc);
+		rc = lf(busybox, fpc);
+		if (rc != 0 && errno != EEXIST) {
 			bb_simple_perror_msg(fpc);
 		}
 		free(fpc);
@@ -740,7 +725,6 @@ static void install_links(const char *busybox,
 			continue;
 	}
 }
-#  endif
 # elif ENABLE_BUSYBOX
 static void install_links(const char *busybox UNUSED_PARAM,
 		int use_symbolic_links UNUSED_PARAM,
@@ -852,7 +836,7 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 			"   or: busybox --install [-s] [DIR]\n"
 			)
 			IF_PLATFORM_MINGW32(
-			"   or: busybox --install [-u|DIR]\n"
+			"   or: busybox --install [-s] [-u|DIR]\n"
 			"   or: busybox --uninstall [-n] file\n"
 			)
 			)
@@ -949,8 +933,8 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	if (ENABLE_FEATURE_INSTALLER && strcmp(argv[1], "--install") == 0) {
-#if !ENABLE_PLATFORM_MINGW32
 		int use_symbolic_links;
+#if !ENABLE_PLATFORM_MINGW32
 		const char *busybox;
 
 		busybox = xmalloc_readlink(bb_busybox_exec_path);
@@ -971,23 +955,35 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 		use_symbolic_links = (argv[2] && strcmp(argv[2], "-s") == 0 && ++argv);
 		install_links(busybox, use_symbolic_links, argv[2]);
 #else
-		char *target = NULL;
+		char *target;
+		uint32_t opt;
+		enum { OPT_s = (1 << 0), OPT_u = (1 << 1) };
 
-		/* busybox --install [-u|DIR]
+		/* busybox --install [-s] [-u|DIR]
+		 * -s: make symlinks
 		 * -u: install to Unix-style directories in system drive
 		 * DIR: directory to install links to
 		 * If no argument is provided put the links in the same directory
 		 * as busybox.
 		 */
-		if (argv[2]) {
-			if (strcmp(argv[2], "-u") != 0)
-				target = argv[2];
-		}
-		else {
+		argv += 1;
+		opt = getopt32(argv, "!su");
+		argv += optind;
+
+		if (opt == (uint32_t)-1 ||
+				(*argv != NULL && (opt & OPT_u || *(argv + 1) != NULL)))
+			bb_simple_error_msg_and_die("busybox --install [-s] [-u|DIR]");
+
+		if (opt & OPT_u)
+			target = NULL;
+		else if (*argv != NULL)
+			target = *argv;
+		else
 			target = dirname(xstrdup(bb_busybox_exec_path));
-		}
+
+		use_symbolic_links = opt & OPT_s;
 		/* NULL target -> install to Unix-style dirs */
-		install_links(bb_busybox_exec_path, FALSE, target);
+		install_links(bb_busybox_exec_path, use_symbolic_links, target);
 #endif
 		return 0;
 	}
