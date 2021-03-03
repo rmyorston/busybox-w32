@@ -308,7 +308,7 @@ CHECK		= sparse
 
 # Handle MSYS2 weirdness
 ifneq ($(CROSS_COMPILE),)
-ifeq ($(shell command -v $(AR)),)
+ifeq ($(shell _= command -v $(AR)),)
 AR := $(CROSS_COMPILE)gcc-ar
 STRIP := strip
 WINDRES := windres
