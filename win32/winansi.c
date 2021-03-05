@@ -375,17 +375,18 @@ static WORD rgb_to_console(int *rgb)
 /* 24-bit colour */
 static char *process_24bit(char *str, WORD *attr)
 {
-	int count = 0;
-	int rgb[3] = {0, 0, 0};
+	int count;
+	int rgb[3];
 
-	do {
-		rgb[count++] = strtol(str, (char **)&str, 10);
-		++str;
-	} while (*(str-1) == ';' && count < 3);
+	for (count = 0; count < 3; ++count) {
+		rgb[count] = strtol(str, (char **)&str, 10);
+		if (*str == ';')
+			++str;
+	}
 
 	*attr = rgb_to_console(rgb);
 
-	return str;
+	return *(str - 1) == ';' ? str - 1 : str;
 }
 
 /* 8-bit colour */
@@ -435,10 +436,10 @@ static char *process_colour(char *str, WORD *attr)
 	*attr = -1;	/* error return */
 	switch (val) {
 	case 2:
-		str = process_24bit(++str, attr);
+		str = process_24bit(str + 1, attr);
 		break;
 	case 5:
-		str = process_8bit(++str, attr);
+		str = process_8bit(str + 1, attr);
 		break;
 	default:
 		break;
@@ -541,7 +542,7 @@ static char *process_escape(char *pos)
 				attr |= colour_1bit[val - 30];
 				break;
 			case 38: /* 8/24 bit */
-				str = process_colour(++str, &t);
+				str = process_colour(str + 1, &t);
 				if (t != -1) {
 					attr &= ~(FOREGROUND_ALL|FOREGROUND_INTENSITY);
 					attr |= t;
@@ -565,7 +566,7 @@ static char *process_escape(char *pos)
 				attr |= colour_1bit[val - 40] << 4;
 				break;
 			case 48: /* 8/24 bit */
-				str = process_colour(++str, &t);
+				str = process_colour(str + 1, &t);
 				if (t != -1) {
 					attr &= ~(BACKGROUND_ALL|BACKGROUND_INTENSITY);
 					attr |= t << 4;
@@ -581,7 +582,7 @@ static char *process_escape(char *pos)
 				return pos;
 			}
 			str++;
-		} while (*(str-1) == ';');
+		} while (str < func);
 
 		current_attr = attr;
 		if (reverse)
