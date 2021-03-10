@@ -43,6 +43,8 @@ if f1 is None or f2 is None:
 
 sym_args = " ".join(sys.argv[3 + flag_timing + dashes:])
 def getsizes(file):
+    if file.endswith(".exe"):
+        return getsizes_pe(file)
     sym, alias, lut, section = {}, {}, {}, {}
     for l in os.popen("readelf -W -S " + file).readlines():
         x = l.replace("[ ", "[", 1).split()
@@ -78,6 +80,29 @@ def getsizes(file):
             # If this non-GLOBAL sym does not have an implementation at
             # another address, then treat it as a normal symbol.
             sym[alias[(addr, sz)]["name"]] = {"addr" : addr, "size": sz}
+    return sym
+
+def getsizes_pe(file):
+    sym, sections = {}, {}
+    prefix = os.getenv("CROSS_COMPILE", "")
+    for l in os.popen(prefix + "objdump -h " + file).readlines():
+        x = l.split()
+        if len(x) != 7: continue
+        sections[x[1]] = 1
+        if x[1] not in [".rdata"]: continue
+        sym[x[1]] = {"addr" : int(x[3], 16), "size" : int(x[2], 16)}
+    for l in os.popen(prefix + "nm -S --size-sort %s %s" % (sym_args, file)).readlines():
+        if len(l.split()) != 4: continue
+        value, size, typ, name = l.split()
+        if typ in ["N"]: continue # skip debug symbols
+        if name in sections: continue # bare reference to section
+        value = int(value, 16)
+        size = int(size, 16)
+        if "$" in name:
+            section, name = name.split("$")
+            if section in sym:
+                sym[section]["size"] -= size
+        sym[name] = {"addr" : value, "size":  size}
     return sym
 
 if flag_timing:

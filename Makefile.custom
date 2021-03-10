@@ -104,29 +104,29 @@ checkhelp:
 		$(patsubst %,$(srctree)/%,$(wildcard $(patsubst %,%/Config.in,$(busybox-dirs) ./)))
 
 .PHONY: sizes
-sizes: busybox_unstripped
+sizes: busybox_unstripped$(EXEEXT)
 	$(NM) --size-sort $(<)
 
 .PHONY: bloatcheck
-bloatcheck: busybox_old busybox_unstripped
-	@$(srctree)/scripts/bloat-o-meter busybox_old busybox_unstripped
-	@$(CROSS_COMPILE)size busybox_old busybox_unstripped
+bloatcheck: busybox_old$(EXEEXT) busybox_unstripped$(EXEEXT)
+	@$(srctree)/scripts/bloat-o-meter busybox_old$(EXEEXT) busybox_unstripped$(EXEEXT)
+	@$(CROSS_COMPILE)size busybox_old$(EXEEXT) busybox_unstripped$(EXEEXT)
 
 .PHONY: baseline
-baseline: busybox_unstripped
-	@mv busybox_unstripped busybox_old
+baseline: busybox_unstripped$(EXEEXT)
+	@mv busybox_unstripped$(EXEEXT) busybox_old$(EXEEXT)
 
 .PHONY: objsizes
-objsizes: busybox_unstripped
+objsizes: busybox_unstripped$(EXEEXT)
 	$(srctree)/scripts/objsizes
 
 .PHONY: stksizes
-stksizes: busybox_unstripped
-	$(CROSS_COMPILE)objdump -d busybox_unstripped | $(srctree)/scripts/checkstack.pl $(ARCH) | uniq
+stksizes: busybox_unstripped$(EXEEXT)
+	$(CROSS_COMPILE)objdump -d busybox_unstripped$(EXEEXT) | $(srctree)/scripts/checkstack.pl $(ARCH) | uniq
 
 .PHONY: bigdata
-bigdata: busybox_unstripped
-	$(CROSS_COMPILE)nm --size-sort busybox_unstripped | grep -vi ' [trw] '
+bigdata: busybox_unstripped$(EXEEXT)
+	$(CROSS_COMPILE)nm --size-sort busybox_unstripped$(EXEEXT) | grep -vi ' [trw] '
 
 # Documentation Targets
 .PHONY: doc

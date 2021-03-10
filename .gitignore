@@ -20,6 +20,7 @@ Config.in
 /busybox
 /busybox.exe
 /busybox_old
+/busybox_old.exe
 /busybox_unstripped*
 win32/resources/busybox-w32.manifest
 
