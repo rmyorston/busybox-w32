@@ -299,6 +299,11 @@ const char *applet_name;
 #if !BB_MMU
 bool re_execed;
 #endif
+#if ENABLE_PLATFORM_MINGW32
+static int interp = 0;
+char bb_comm[COMM_LEN];
+char bb_command_line[128];
+#endif
 
 
 /* If not built as a single-applet executable... */
@@ -1059,12 +1064,6 @@ void FAST_FUNC show_usage_if_dash_dash_help(int applet_no, char **argv)
 	}
 }
 
-#  if ENABLE_PLATFORM_MINGW32
-static int interp = 0;
-char bb_comm[COMM_LEN];
-char bb_command_line[128];
-#  endif
-
 void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **argv)
 {
 #  if ENABLE_PLATFORM_MINGW32
@@ -1170,9 +1169,6 @@ int lbb_main(char **argv)
 int main(int argc UNUSED_PARAM, char **argv)
 #endif
 {
-#if ENABLE_PLATFORM_MINGW32
-	char *s;
-#endif
 #if 0
 	/* TODO: find a use for a block of memory between end of .bss
 	 * and end of page. For example, I'm getting "_end:0x812e698 2408 bytes"
@@ -1287,8 +1283,11 @@ int main(int argc UNUSED_PARAM, char **argv)
 # if ENABLE_PLATFORM_MINGW32
 	str_tolower(argv[0]);
 	bs_to_slash(argv[0]);
-	if (has_exe_suffix_or_dot(argv[0]) && (s=strrchr(argv[0], '.')))
-		*s = '\0';
+	if (has_exe_suffix_or_dot(argv[0])) {
+		char *s = strrchr(argv[0], '.');
+		if (s)
+			*s = '\0';
+	}
 # endif
 	applet_name = bb_basename(applet_name);
 
