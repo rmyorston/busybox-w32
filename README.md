@@ -20,7 +20,7 @@ Run `mingw64.exe` or `mingw32.exe` from the installation directory.
 
 On either Linux or Windows the commands `make mingw64_defconfig` or `make mingw32_defconfig` will pick up the default configuration.  You can then customize your build with `make menuconfig` (Linux only) or by editing `.config`, if you know what you're doing.
 
-Then just `make`.
+Then just `make` or `make CROSS_COMPILE=""` on Windows.
 
 ### Limitations
 
