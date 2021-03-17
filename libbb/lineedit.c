@@ -1046,7 +1046,13 @@ static NOINLINE int build_match_prefix(char *match_buf)
 
 	/* Mark every \c as "quoted c" */
 	for (i = 0; int_buf[i]; i++) {
+#if ENABLE_PLATFORM_MINGW32
+		/* Trailing backslash is effectively removed which confuses
+		 * the code to display case-preserved filenames. */
+		if (int_buf[i] == '\\' && int_buf[i+1] != '\0') {
+#else
 		if (int_buf[i] == '\\') {
+#endif
 			remove_chunk(int_buf, i, i + 1);
 			int_buf[i] |= QUOT;
 		}
