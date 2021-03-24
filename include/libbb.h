@@ -45,7 +45,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#ifndef major
+#if !defined(major) || defined(__GLIBC__)
 # include <sys/sysmacros.h>
 #endif
 #include <sys/wait.h>
@@ -81,8 +81,6 @@
 #if ENABLE_SELINUX
 # include <selinux/selinux.h>
 # include <selinux/context.h>
-# include <selinux/flask.h>
-# include <selinux/av_permissions.h>
 #endif
 #if ENABLE_FEATURE_UTMP
 # if defined __UCLIBC__ && ( \
@@ -944,6 +942,7 @@ extern const struct suffix_mult bkm_suffixes[];
 #define km_suffixes (bkm_suffixes + 1)
 extern const struct suffix_mult cwbkMG_suffixes[];
 #define kMG_suffixes (cwbkMG_suffixes + 3)
+extern const struct suffix_mult kmg_i_suffixes[];
 
 #include "xatonum.h"
 /* Specialized: */
@@ -1210,8 +1209,16 @@ int bb_cat(char** argv);
 /* If shell needs them, they exist even if not enabled as applets */
 int echo_main(int argc, char** argv) IF_ECHO(MAIN_EXTERNALLY_VISIBLE);
 int printf_main(int argc, char **argv) IF_PRINTF(MAIN_EXTERNALLY_VISIBLE);
-int test_main(int argc, char **argv) IF_TEST(MAIN_EXTERNALLY_VISIBLE);
-int kill_main(int argc, char **argv) IF_KILL(MAIN_EXTERNALLY_VISIBLE);
+int test_main(int argc, char **argv)
+#if ENABLE_TEST || ENABLE_TEST1 || ENABLE_TEST2
+		MAIN_EXTERNALLY_VISIBLE
+#endif
+;
+int kill_main(int argc, char **argv)
+#if ENABLE_KILL || ENABLE_KILLALL || ENABLE_KILLALL5
+		MAIN_EXTERNALLY_VISIBLE
+#endif
+;
 /* Similar, but used by chgrp, not shell */
 int chown_main(int argc, char **argv) IF_CHOWN(MAIN_EXTERNALLY_VISIBLE);
 /* Used by ftpd */
