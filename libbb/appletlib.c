@@ -1052,7 +1052,7 @@ void FAST_FUNC show_usage_if_dash_dash_help(int applet_no, char **argv)
 #  if defined APPLET_NO_false
 	 && applet_no != APPLET_NO_false
 #  endif
-#  if defined APPLET_NO_busybox
+#  if ENABLE_PLATFORM_MINGW32 && defined APPLET_NO_busybox
 	 && applet_no != APPLET_NO_busybox
 #  endif
 	) {
