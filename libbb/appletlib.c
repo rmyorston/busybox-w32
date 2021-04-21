@@ -787,6 +787,15 @@ get_script_content(unsigned n)
 }
 # endif /* NUM_SCRIPTS > 0 */
 
+static void busybox_version() {
+	full_write2_str(bb_banner); /* reuse const string */
+#if ENABLE_PLATFORM_MINGW32
+	full_write2_str("\n");
+#else
+	full_write2_str(" multi-call binary.\n"); /* reuse */
+#endif
+}
+
 # if ENABLE_BUSYBOX
 #  if ENABLE_FEATURE_SH_STANDALONE && ENABLE_FEATURE_TAB_COMPLETION
     /*
@@ -815,12 +824,7 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 		output_width = get_terminal_width(2);
 
 		dup2(1, 2);
-		full_write2_str(bb_banner); /* reuse const string */
-#if ENABLE_PLATFORM_MINGW32
-		full_write2_str("\n");
-#else
-		full_write2_str(" multi-call binary.\n"); /* reuse */
-#endif
+		busybox_version();
 #if defined(MINGW_VER)
 		if (sizeof(MINGW_VER) > 5) {
 			full_write2_str(MINGW_VER "\n\n");
@@ -832,6 +836,7 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 			"copyright notices.\n"
 			"\n"
 			"Usage: busybox [function [arguments]...]\n"
+			"   or: busybox --version\n"
 			"   or: busybox --list"IF_FULL_LIST_OPTION("[-full]")"\n"
 #  if ENABLE_FEATURE_SHOW_SCRIPT && NUM_SCRIPTS > 0
 			"   or: busybox --show SCRIPT\n"
@@ -884,6 +889,11 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 			a += len2 - 1;
 		}
 		full_write2_str("\n");
+		return 0;
+	}
+
+	if (strcmp(argv[1], "--version") == 0) {
+		busybox_version();
 		return 0;
 	}
 
