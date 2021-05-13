@@ -1079,7 +1079,7 @@ int symlink(const char *target, const char *linkpath)
 {
 	DWORD flag = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
 	struct stat st;
-	DECLARE_PROC_ADDR(BOOL, CreateSymbolicLinkA, LPCSTR, LPCSTR, DWORD);
+	DECLARE_PROC_ADDR(BOOLEAN, CreateSymbolicLinkA, LPCSTR, LPCSTR, DWORD);
 	char *relative = NULL;
 
 	if (!INIT_PROC_ADDR(kernel32.dll, CreateSymbolicLinkA)) {
