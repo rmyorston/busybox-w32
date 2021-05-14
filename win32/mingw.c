@@ -708,6 +708,14 @@ static inline void timeval_to_filetime(const struct timeval tv, FILETIME *ft)
 	ft->dwHighDateTime = winTime >> 32;
 }
 
+static inline void timespec_to_filetime(const struct timespec tv, FILETIME *ft)
+{
+	long long winTime = (tv.tv_sec * 10000000LL) + tv.tv_nsec / 100LL +
+							116444736000000000LL;
+	ft->dwLowDateTime = winTime;
+	ft->dwHighDateTime = winTime >> 32;
+}
+
 int utimes(const char *file_name, const struct timeval tims[2])
 {
 	FILETIME mft, aft;
@@ -731,9 +739,81 @@ int utimes(const char *file_name, const struct timeval tims[2])
 	}
 
 	if (!SetFileTime(fh, NULL, &aft, &mft)) {
-		errno = EINVAL;
+		errno = err_win_to_posix();
 		rc = -1;
 	}
+	CloseHandle(fh);
+	return rc;
+}
+
+static int hutimens(HANDLE fh, const struct timespec times[2])
+{
+	FILETIME now, aft, mft;
+	FILETIME *pft[2] = {&aft, &mft};
+	int i;
+
+	GetSystemTimeAsFileTime(&now);
+
+	if (times) {
+		for (i = 0; i < 2; ++i) {
+			if (times[i].tv_nsec == UTIME_NOW)
+				*pft[i] = now;
+			else if (times[i].tv_nsec == UTIME_OMIT)
+				pft[i] = NULL;
+			else if (times[i].tv_nsec >= 0 && times[i].tv_nsec < 1000000000L)
+				timespec_to_filetime(times[i], pft[i]);
+			else {
+				errno = EINVAL;
+				return -1;
+			}
+		}
+	} else {
+		aft = mft = now;
+	}
+
+	if (!SetFileTime(fh, NULL, pft[0], pft[1])) {
+		errno = err_win_to_posix();
+		return -1;
+	}
+	return 0;
+}
+
+int futimens(int fd, const struct timespec times[2])
+{
+	HANDLE fh;
+
+	fh = (HANDLE)_get_osfhandle(fd);
+	if (fh == INVALID_HANDLE_VALUE) {
+		errno = EBADF;
+		return -1;
+	}
+
+	return hutimens(fh, times);
+}
+
+int utimensat(int fd, const char *path, const struct timespec times[2],
+                int flags)
+{
+	int rc = -1;
+	HANDLE fh;
+	DWORD cflag = FILE_FLAG_BACKUP_SEMANTICS;
+
+	if (!is_absolute_path(path) && fd != AT_FDCWD) {
+		errno = ENOSYS;	// partial implementation
+		return rc;
+	}
+
+	if (flags & AT_SYMLINK_NOFOLLOW)
+		cflag |= FILE_FLAG_OPEN_REPARSE_POINT;
+
+	fh = CreateFile(path, FILE_WRITE_ATTRIBUTES, 0, NULL, OPEN_EXISTING,
+					cflag, NULL);
+	if (fh == INVALID_HANDLE_VALUE) {
+		errno = err_win_to_posix();
+		return rc;
+	}
+
+	rc = hutimens(fh, times);
 	CloseHandle(fh);
 	return rc;
 }

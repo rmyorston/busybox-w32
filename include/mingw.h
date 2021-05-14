@@ -34,6 +34,9 @@ int inet_pton(int af, const char *src, void *dst);
 #define O_DIRECT 0
 #define O_SPECIAL 0x800000
 
+#define AT_FDCWD -100
+#define AT_SYMLINK_NOFOLLOW 0x100
+
 /*
  * grp.h
  */
@@ -347,6 +350,13 @@ int mingw_fstat(int fd, struct mingw_stat *buf);
 #define lstat mingw_lstat
 #define stat mingw_stat
 #define fstat mingw_fstat
+
+#define UTIME_NOW  ((1l << 30) - 1l)
+#define UTIME_OMIT ((1l << 30) - 2l)
+
+int utimensat(int fd, const char *path, const struct timespec times[2],
+				int flags);
+int futimens(int fd, const struct timespec times[2]);
 
 /*
  * sys/sysinfo.h
