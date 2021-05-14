@@ -118,7 +118,7 @@ int main(int argc, const char * argv [])
 	/* We found #define CONFIG_foo or #undef CONFIG_foo.
 	 * Make the output file name. */
 	str_config += sizeof(" CONFIG_") - 1;
-	for (itarget = 0; !isspace(str_config[itarget]); itarget++)
+	for (itarget = 0; !isspace((unsigned char)str_config[itarget]); itarget++)
 	{
 	    int c = (unsigned char) str_config[itarget];
 	    if (isupper(c)) c = tolower(c);
@@ -133,7 +133,7 @@ int main(int argc, const char * argv [])
 	is_same = 0;
 	if ((fp_target = fopen(ptarget, "r")) != NULL)
 	{
-	    if (!fgets(old_line, buffer_size, fp_target))
+	    if (!fgets(old_line, buffer_size, fp_target) && ferror(fp_target))
 		ERROR_EXIT(ptarget);
 	    if (fclose(fp_target) != 0)
 		ERROR_EXIT(ptarget);

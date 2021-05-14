@@ -1157,7 +1157,7 @@ static NOINLINE int build_match_prefix(char *match_buf)
 		continue;
 	for (--i; i >= 0; i--) {
 		int cur = int_buf[i];
-		if (cur == ' ' || cur == '<' || cur == '>' || cur == '|' || cur == '&') {
+		if (cur == ' ' || cur == '<' || cur == '>' || cur == '|' || cur == '&' || cur == '=') {
 			remove_chunk(int_buf, 0, i + 1);
 			break;
 		}
@@ -1426,7 +1426,7 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 			strcpy(&command[cursor_mb], chosen_match + match_pfx_len);
 			len = load_string(command);
 			/* add match and tail */
-			sprintf(&command[cursor_mb], "%s%s", chosen_match + match_pfx_len, match_buf);
+			stpcpy(stpcpy(&command[cursor_mb], chosen_match + match_pfx_len), match_buf);
 			command_len = load_string(command);
 			/* write out the matched command */
 			/* paranoia: load_string can return 0 on conv error,

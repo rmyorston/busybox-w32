@@ -153,18 +153,21 @@ LDLIBS += ws2_32 mingwex -l:libssp.a
 endif
 
 ifneq ($(CONFIG_PLATFORM_MINGW32),y)
+# libm may be needed for dc, awk, ntpd
+LDLIBS += m
 # Android has no separate crypt library
 # gcc-4.2.1 fails if we try to feed C source on stdin:
 #  echo 'int main(void){return 0;}' | $(CC) $(CFLAGS) -lcrypt -o /dev/null -xc -
 # fall back to using a temp file:
-CRYPT_AVAILABLE := $(shell echo 'int main(void){return 0;}' >crypttest.c; $(CC) $(CFLAGS) -lcrypt -o /dev/null crypttest.c >/dev/null 2>&1 && echo "y"; rm crypttest.c)
+CRYPT_AVAILABLE := $(shell echo 'int main(void){return 0;}' >bb_libtest.c; $(CC) $(CFLAGS) -lcrypt -o /dev/null bb_libtest.c >/dev/null 2>&1 && echo "y"; rm bb_libtest.c)
+RT_AVAILABLE    := $(shell echo 'int main(void){return 0;}' >bb_libtest.c; $(CC) $(CFLAGS) -lrt    -o /dev/null bb_libtest.c >/dev/null 2>&1 && echo "y"; rm bb_libtest.c)
 ifeq ($(CRYPT_AVAILABLE),y)
-LDLIBS += m rt crypt
-else
-LDLIBS += m rt
+LDLIBS += crypt
 endif
-# libm may be needed for dc, awk, ntpd
 # librt may be needed for clock_gettime()
+ifeq ($(RT_AVAILABLE),y)
+LDLIBS += rt
+endif
 endif
 
 # libpam may use libpthread, libdl and/or libaudit.

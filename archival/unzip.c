@@ -64,6 +64,7 @@
 //usage:     "\n	-o	Overwrite"
 //usage:     "\n	-j	Do not restore paths"
 //usage:     "\n	-p	Print to stdout"
+//usage:     "\n	-t	Test"
 //usage:     "\n	-q	Quiet"
 //usage:     "\n	-x FILE	Exclude FILEs"
 //usage:     "\n	-d DIR	Extract into DIR"
@@ -85,11 +86,13 @@ enum {
 	ZIP_FILEHEADER_MAGIC = 0x504b0304,
 	ZIP_CDF_MAGIC        = 0x504b0102, /* CDF item */
 	ZIP_CDE_MAGIC        = 0x504b0506, /* End of CDF */
+	ZIP64_CDE_MAGIC      = 0x504b0606, /* End of Zip64 CDF */
 	ZIP_DD_MAGIC         = 0x504b0708,
 #else
 	ZIP_FILEHEADER_MAGIC = 0x04034b50,
 	ZIP_CDF_MAGIC        = 0x02014b50,
 	ZIP_CDE_MAGIC        = 0x06054b50,
+	ZIP64_CDE_MAGIC      = 0x06064b50,
 	ZIP_DD_MAGIC         = 0x08074b50,
 #endif
 };
@@ -263,6 +266,12 @@ static uint32_t find_cdf_offset(void)
 			continue;
 		/* we found CDE! */
 		memcpy(cde.raw, p + 1, CDE_LEN);
+		dbg("cde.this_disk_no:%d",             cde.fmt.this_disk_no            );
+		dbg("cde.disk_with_cdf_no:%d",         cde.fmt.disk_with_cdf_no        );
+		dbg("cde.cdf_entries_on_this_disk:%d", cde.fmt.cdf_entries_on_this_disk);
+		dbg("cde.cdf_entries_total:%d",        cde.fmt.cdf_entries_total       );
+		dbg("cde.cdf_size:%d",                 cde.fmt.cdf_size                );
+		dbg("cde.cdf_offset:%x",               cde.fmt.cdf_offset              );
 		FIX_ENDIANNESS_CDE(cde);
 		/*
 		 * I've seen .ZIP files with seemingly valid CDEs
@@ -305,19 +314,27 @@ static uint32_t read_next_cdf(uint32_t cdf_offset, cdf_header_t *cdf)
 		dbg("got ZIP_CDE_MAGIC");
 		return 0; /* EOF */
 	}
+	if (magic == ZIP64_CDE_MAGIC) { /* seen in .zip with >4GB files */
+		dbg("got ZIP64_CDE_MAGIC");
+		return 0; /* EOF */
+	}
 	xread(zip_fd, cdf->raw, CDF_HEADER_LEN);
 
 	FIX_ENDIANNESS_CDF(*cdf);
-	dbg("  filename_len:%u extra_len:%u file_comment_length:%u",
+	dbg("  magic:%08x filename_len:%u extra_len:%u file_comment_length:%u",
+		magic,
 		(unsigned)cdf->fmt.filename_len,
 		(unsigned)cdf->fmt.extra_len,
 		(unsigned)cdf->fmt.file_comment_length
 	);
+//TODO: require that magic == ZIP_CDF_MAGIC?
+
 	cdf_offset += 4 + CDF_HEADER_LEN
 		+ cdf->fmt.filename_len
 		+ cdf->fmt.extra_len
 		+ cdf->fmt.file_comment_length;
 
+	dbg("Next cdf_offset 0x%x", cdf_offset);
 	return cdf_offset;
 };
 #endif
@@ -439,7 +456,9 @@ static void unzip_extract(zip_header_t *zip, int dst_fd)
 	}
 
 	/* Validate decompression - size */
-	if (zip->fmt.ucmpsize != xstate.bytes_out) {
+	if (zip->fmt.ucmpsize != 0xffffffff /* seen on files with >4GB uncompressed data */
+	 && zip->fmt.ucmpsize != xstate.bytes_out
+	) {
 		/* Don't die. Who knows, maybe len calculation
 		 * was botched somewhere. After all, crc matched! */
 		bb_simple_error_msg("bad length");
@@ -541,7 +560,7 @@ int unzip_main(int argc, char **argv)
 
 	opts = 0;
 	/* '-' makes getopt return 1 for non-options */
-	while ((i = getopt(argc, argv, "-d:lnopqxjv")) != -1) {
+	while ((i = getopt(argc, argv, "-d:lnotpqxjv")) != -1) {
 		switch (i) {
 		case 'd':  /* Extract to base directory */
 			base_dir = optarg;
@@ -559,8 +578,13 @@ int unzip_main(int argc, char **argv)
 			overwrite = O_ALWAYS;
 			break;
 
-		case 'p': /* Extract files to stdout and fall through to set verbosity */
+		case 't': /* Extract files to /dev/null */
+			xmove_fd(xopen("/dev/null", O_WRONLY), STDOUT_FILENO);
+			/*fallthrough*/
+
+		case 'p': /* Extract files to stdout */
 			dst_fd = STDOUT_FILENO;
+			/*fallthrough*/
 
 		case 'q': /* Be quiet */
 			quiet++;
@@ -969,7 +993,6 @@ int unzip_main(int argc, char **argv)
 			/* O_NOFOLLOW defends against symlink attacks */
 			dst_fd = xopen(dst_fn, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW);
 #endif
- do_extract:
 			if (!quiet) {
 				printf(/* zip.fmt.method == 0
 					? " extracting: %s\n"
@@ -977,6 +1000,7 @@ int unzip_main(int argc, char **argv)
 					printable_string(dst_fn)
 				);
 			}
+ do_extract:
 #if ENABLE_FEATURE_UNZIP_CDF
 			if (S_ISLNK(file_mode)) {
 				if (dst_fd != STDOUT_FILENO) /* not -p? */

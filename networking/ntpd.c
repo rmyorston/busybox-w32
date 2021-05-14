@@ -127,24 +127,15 @@
  */
 #define MAX_VERBOSE     3
 
-
 /* High-level description of the algorithm:
  *
  * We start running with very small poll_exp, BURSTPOLL,
  * in order to quickly accumulate INITIAL_SAMPLES datapoints
  * for each peer. Then, time is stepped if the offset is larger
- * than STEP_THRESHOLD, otherwise it isn't; anyway, we enlarge
- * poll_exp to MINPOLL and enter frequency measurement step:
- * we collect new datapoints but ignore them for WATCH_THRESHOLD
- * seconds. After WATCH_THRESHOLD seconds we look at accumulated
- * offset and estimate frequency drift.
+ * than STEP_THRESHOLD, otherwise it isn't stepped.
  *
- * (frequency measurement step seems to not be strictly needed,
- * it is conditionally disabled with USING_INITIAL_FREQ_ESTIMATION
- * define set to 0)
- *
- * After this, we enter "steady state": we collect a datapoint,
- * we select the best peer, if this datapoint is not a new one
+ * Then poll_exp is set to MINPOLL, and we enter "steady state": we collect
+ * a datapoint, we select the best peer, if this datapoint is not a new one
  * (IOW: if this datapoint isn't for selected peer), sleep
  * and collect another one; otherwise, use its offset to update
  * frequency drift, if offset is somewhat large, reduce poll_exp,
@@ -169,7 +160,7 @@
  *   datapoints after the step.
  */
 
-#define INITIAL_SAMPLES    4    /* how many samples do we want for init */
+#define INITIAL_SAMPLES    3    /* how many samples do we want for init */
 #define MIN_FREQHOLD      10    /* adjust offset, but not freq in this many first adjustments */
 #define BAD_DELAY_GROWTH   4    /* drop packet if its delay grew by more than this factor */
 
@@ -189,13 +180,10 @@
 // ^^^^ used to be 0.125.
 // Since Linux 2.6.26 (circa 2006), kernel accepts (-0.5s, +0.5s) range
 
-/* Stepout threshold (sec). std ntpd uses 900 (11 mins (!)) */
-//UNUSED: #define WATCH_THRESHOLD  128
-/* NB: set WATCH_THRESHOLD to ~60 when debugging to save time) */
-//UNUSED: #define PANIC_THRESHOLD 1000    /* panic threshold (sec) */
 
-/*
- * If we got |offset| > BIGOFF from a peer, cap next query interval
+// #define PANIC_THRESHOLD 1000    /* panic threshold (sec) */
+
+/* If we got |offset| > BIGOFF from a peer, cap next query interval
  * for this peer by this many seconds:
  */
 #define BIGOFF          STEP_THRESHOLD
@@ -204,18 +192,16 @@
 #define FREQ_TOLERANCE  0.000015 /* frequency tolerance (15 PPM) */
 #define BURSTPOLL       0       /* initial poll */
 #define MINPOLL         5       /* minimum poll interval. std ntpd uses 6 (6: 64 sec) */
-/*
- * If offset > discipline_jitter * POLLADJ_GATE, and poll interval is > 2^BIGPOLL,
+/* If offset > discipline_jitter * POLLADJ_GATE, and poll interval is > 2^BIGPOLL,
  * then it is decreased _at once_. (If <= 2^BIGPOLL, it will be decreased _eventually_).
  */
 #define BIGPOLL         9       /* 2^9 sec ~= 8.5 min */
 #define MAXPOLL         12      /* maximum poll interval (12: 1.1h, 17: 36.4h). std ntpd uses 17 */
-/*
- * Actively lower poll when we see such big offsets.
+/* Actively lower poll when we see such big offsets.
  * With SLEW_THRESHOLD = 0.125, it means we try to sync more aggressively
  * if offset increases over ~0.04 sec
  */
-//#define POLLDOWN_OFFSET (SLEW_THRESHOLD / 3)
+// #define POLLDOWN_OFFSET (SLEW_THRESHOLD / 3)
 #define MINDISP         0.01    /* minimum dispersion (sec) */
 #define MAXDISP         16      /* maximum dispersion (sec) */
 #define MAXSTRAT        16      /* maximum stratum (infinity metric) */
@@ -223,7 +209,16 @@
 #define MIN_SELECTED    1       /* minimum intersection survivors */
 #define MIN_CLUSTERED   3       /* minimum cluster survivors */
 
-#define MAXDRIFT        0.000500 /* frequency drift we can correct (500 PPM) */
+/* Correct frequency ourself (0) or let kernel do it (1)? */
+#define USING_KERNEL_PLL_LOOP 1
+// /* frequency drift we can correct (500 PPM) */
+// #define MAXDRIFT        0.000500
+// /* Compromise Allan intercept (sec). doc uses 1500, std ntpd uses 512 */
+// #define ALLAN           512
+// /* PLL loop gain */
+// #define PLL             65536
+// /* FLL loop gain [why it depends on MAXPOLL??] */
+// #define FLL             (MAXPOLL + 1)
 
 /* Poll-adjust threshold.
  * When we see that offset is small enough compared to discipline jitter,
@@ -239,12 +234,6 @@
  */
 #define POLLADJ_GATE    4
 #define TIMECONST_HACK_GATE 2
-/* Compromise Allan intercept (sec). doc uses 1500, std ntpd uses 512 */
-#define ALLAN           512
-/* PLL loop gain */
-#define PLL             65536
-/* FLL loop gain [why it depends on MAXPOLL??] */
-#define FLL             (MAXPOLL + 1)
 /* Parameter averaging constant */
 #define AVG             4
 
@@ -372,9 +361,6 @@ typedef struct {
 	char             p_hostname[1];
 } peer_t;
 
-
-#define USING_KERNEL_PLL_LOOP 1
-
 enum {
 	OPT_n = (1 << 0),
 	OPT_q = (1 << 1),
@@ -453,7 +439,7 @@ struct globals {
 	 */
 #define G_precision_exp  -9
 	/*
-	 * G_precision_exp is used only for construction outgoing packets.
+	 * G_precision_exp is used only for constructing outgoing packets.
 	 * It's ok to set G_precision_sec to a slightly different value
 	 * (One which is "nicer looking" in logs).
 	 * Exact value would be (1.0 / (1 << (- G_precision_exp))):
@@ -483,7 +469,6 @@ struct globals {
 #endif
 };
 #define G (*ptr_to_globals)
-
 
 #define VERB1 if (MAX_VERBOSE && G.verbose)
 #define VERB2 if (MAX_VERBOSE >= 2 && G.verbose >= 2)
@@ -567,13 +552,13 @@ gettime1900d(void)
 }
 
 static void
-d_to_tv(double d, struct timeval *tv)
+d_to_tv(struct timeval *tv, double d)
 {
 	tv->tv_sec = (long)d;
 	tv->tv_usec = (d - tv->tv_sec) * 1000000;
 }
 
-static double
+static NOINLINE double
 lfp_to_d(l_fixedpt_t lfp)
 {
 	double ret;
@@ -582,7 +567,7 @@ lfp_to_d(l_fixedpt_t lfp)
 	ret = (double)lfp.int_partl + ((double)lfp.fractionl / UINT_MAX);
 	return ret;
 }
-static double
+static NOINLINE double
 sfp_to_d(s_fixedpt_t sfp)
 {
 	double ret;
@@ -592,25 +577,25 @@ sfp_to_d(s_fixedpt_t sfp)
 	return ret;
 }
 #if ENABLE_FEATURE_NTPD_SERVER
-static l_fixedpt_t
-d_to_lfp(double d)
+static NOINLINE void
+d_to_lfp(l_fixedpt_t *lfp, double d)
 {
-	l_fixedpt_t lfp;
-	lfp.int_partl = (uint32_t)d;
-	lfp.fractionl = (uint32_t)((d - lfp.int_partl) * UINT_MAX);
-	lfp.int_partl = htonl(lfp.int_partl);
-	lfp.fractionl = htonl(lfp.fractionl);
-	return lfp;
+	uint32_t intl;
+	uint32_t frac;
+	intl = (uint32_t)d;
+	frac = (uint32_t)((d - intl) * UINT_MAX);
+	lfp->int_partl = htonl(intl);
+	lfp->fractionl = htonl(frac);
 }
-static s_fixedpt_t
-d_to_sfp(double d)
+static NOINLINE void
+d_to_sfp(s_fixedpt_t *sfp, double d)
 {
-	s_fixedpt_t sfp;
-	sfp.int_parts = (uint16_t)d;
-	sfp.fractions = (uint16_t)((d - sfp.int_parts) * USHRT_MAX);
-	sfp.int_parts = htons(sfp.int_parts);
-	sfp.fractions = htons(sfp.fractions);
-	return sfp;
+	uint16_t ints;
+	uint16_t frac;
+	ints = (uint16_t)d;
+	frac = (uint16_t)((d - ints) * USHRT_MAX);
+	sfp->int_parts = htons(ints);
+	sfp->fractions = htons(frac);
 }
 #endif
 
@@ -989,7 +974,6 @@ send_query_to_peer(peer_t *p)
 	set_next(p, RESPONSE_INTERVAL);
 }
 
-
 /* Note that there is no provision to prevent several run_scripts
  * to be started in quick succession. In fact, it happens rather often
  * if initial syncronization results in a step.
@@ -1053,7 +1037,7 @@ step_time(double offset)
 
 	xgettimeofday(&tvc);
 	dtime = tvc.tv_sec + (1.0e-6 * tvc.tv_usec) + offset;
-	d_to_tv(dtime, &tvn);
+	d_to_tv(&tvn, dtime);
 	xsettimeofday(&tvn);
 
 	VERB2 {
@@ -1767,7 +1751,6 @@ update_local_clock(peer_t *p)
 	return 1; /* "ok to increase poll interval" */
 }
 
-
 /*
  * We've got a new reply packet from a peer, process it
  * (helpers first)
@@ -2134,17 +2117,17 @@ recv_and_process_client_pkt(void /*int fd*/)
 	msg.m_ppoll = G.poll_exp;
 	msg.m_precision_exp = G_precision_exp;
 	/* this time was obtained between poll() and recv() */
-	msg.m_rectime = d_to_lfp(G.cur_time);
-	msg.m_xmttime = d_to_lfp(gettime1900d()); /* this instant */
+	d_to_lfp(&msg.m_rectime, G.cur_time);
+	d_to_lfp(&msg.m_xmttime, gettime1900d()); /* this instant */
 	if (G.peer_cnt == 0) {
 		/* we have no peers: "stratum 1 server" mode. reftime = our own time */
 		G.reftime = G.cur_time;
 	}
-	msg.m_reftime = d_to_lfp(G.reftime);
+	d_to_lfp(&msg.m_reftime, G.reftime);
 	msg.m_orgtime = query_xmttime;
-	msg.m_rootdelay = d_to_sfp(G.rootdelay);
+	d_to_sfp(&msg.m_rootdelay, G.rootdelay);
 //simple code does not do this, fix simple code!
-	msg.m_rootdisp = d_to_sfp(G.rootdisp);
+	d_to_sfp(&msg.m_rootdisp, G.rootdisp);
 	//version = (query_status & VERSION_MASK); /* ... >> VERSION_SHIFT - done below instead */
 	msg.m_refid = G.refid; // (version > (3 << VERSION_SHIFT)) ? G.refid : G.refid3;
 

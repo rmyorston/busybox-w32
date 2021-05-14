@@ -216,6 +216,7 @@
 #endif
 
 #if ULONG_MAX > 0xffffffff
+/* inline 64-bit bswap only on 64-bit arches */
 # define bb_bswap_64(x) bswap_64(x)
 #endif
 
@@ -445,6 +446,7 @@ typedef unsigned smalluint;
 #define HAVE_NET_ETHERNET_H 1
 #define HAVE_SYS_STATFS_H 1
 #define HAVE_PRINTF_PERCENTM 1
+#define HAVE_WAIT3 1
 
 #if defined(__UCLIBC__)
 # if UCLIBC_VERSION < KERNEL_VERSION(0, 9, 32)
@@ -577,6 +579,9 @@ typedef unsigned smalluint;
 #  undef HAVE_GETLINE
 #  undef HAVE_STPCPY
 #  undef HAVE_STPNCPY
+# endif
+# if __ANDROID_API__ >= 21
+#  undef HAVE_WAIT3
 # endif
 # undef HAVE_MEMPCPY
 # undef HAVE_STRCHRNUL
