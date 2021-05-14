@@ -1025,6 +1025,10 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 		/* "busybox --help [<applet>]" */
 		if (!argv[2])
 			goto help;
+#if ENABLE_PLATFORM_MINGW32
+		if (strcmp(argv[2], "busybox") == 0)
+			goto help;
+#endif
 		/* convert to "<applet> --help" */
 		applet_name = argv[0] = argv[2];
 		argv[2] = NULL;
