@@ -37,6 +37,9 @@ typedef struct priv_dumper_t {
 	off_t address;           /* address/offset in stream */
 	int blocksize;
 	smallint exitval;        /* final exit value */
+#if ENABLE_PLATFORM_MINGW32
+	FILE *fd;
+#endif
 
 	/* former statics */
 	smallint next__done;
@@ -58,6 +61,9 @@ dumper_t* FAST_FUNC alloc_dumper(void)
 	dumper->pub.dump_length = -1;
 	dumper->pub.dump_vflag = FIRST;
 	dumper->get__ateof = 1;
+#if ENABLE_PLATFORM_MINGW32
+	dumper->fd = stdin;
+#endif
 	return &dumper->pub;
 }
 
@@ -328,7 +334,11 @@ static void do_skip(priv_dumper_t *dumper, const char *fname)
 {
 	struct stat sbuf;
 
+#if ENABLE_PLATFORM_MINGW32
+	xfstat(fileno(dumper->fd), &sbuf, fname);
+#else
 	xfstat(STDIN_FILENO, &sbuf, fname);
+#endif
 	if (S_ISREG(sbuf.st_mode)
 	 && dumper->pub.dump_skip >= sbuf.st_size
 	) {
@@ -337,7 +347,11 @@ static void do_skip(priv_dumper_t *dumper, const char *fname)
 		dumper->address += sbuf.st_size;
 		return;
 	}
+#if ENABLE_PLATFORM_MINGW32
+	if (fseeko(dumper->fd, dumper->pub.dump_skip, SEEK_SET)) {
+#else
 	if (fseeko(stdin, dumper->pub.dump_skip, SEEK_SET)) {
+#endif
 		bb_simple_perror_msg_and_die(fname);
 	}
 	dumper->address += dumper->pub.dump_skip;
@@ -353,12 +367,22 @@ static NOINLINE int next(priv_dumper_t *dumper)
 		if (fname) {
 			dumper->argv++;
 			if (NOT_LONE_DASH(fname)) {
+#if ENABLE_PLATFORM_MINGW32
+				dumper->fd = fopen(fname, "r");
+				if (!dumper->fd) {
+#else
 				if (!freopen(fname, "r", stdin)) {
+#endif
 					bb_simple_perror_msg(fname);
 					dumper->exitval = 1;
 					continue;
 				}
 			}
+#if ENABLE_PLATFORM_MINGW32
+			else {
+				dumper->fd = stdin;
+			}
+#endif
 		} else {
 			if (dumper->next__done)
 				return 0; /* no next file */
@@ -413,13 +437,25 @@ static unsigned char *get(priv_dumper_t *dumper)
 			dumper->eaddress = dumper->address + nread;
 			return dumper->get__curp;
 		}
+#if ENABLE_PLATFORM_MINGW32
+		n = fread(dumper->get__curp + nread, sizeof(unsigned char),
+				dumper->pub.dump_length == -1 ? need : MIN(dumper->pub.dump_length, need), dumper->fd);
+#else
 		n = fread(dumper->get__curp + nread, sizeof(unsigned char),
 				dumper->pub.dump_length == -1 ? need : MIN(dumper->pub.dump_length, need), stdin);
+#endif
 		if (n == 0) {
+#if ENABLE_PLATFORM_MINGW32
+			if (ferror(dumper->fd)) {
+#else
 			if (ferror(stdin)) {
+#endif
 				bb_simple_perror_msg(dumper->argv[-1]);
 			}
 			dumper->get__ateof = 1;
+#if ENABLE_PLATFORM_MINGW32
+			fclose(dumper->fd);
+#endif
 			continue;
 		}
 		dumper->get__ateof = 0;
