@@ -511,7 +511,7 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 		xmove_fd(MINGW_SPECIAL(xopen)(infile, iflag), ifd);
 #if ENABLE_PLATFORM_MINGW32
-		update_dev_fd(get_dev_type(infile), ifd);
+		update_special_fd(get_dev_type(infile), ifd);
 #endif
 	} else {
 		infile = bb_msg_standard_input;

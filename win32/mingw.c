@@ -177,7 +177,7 @@ int get_dev_type(const char *filename)
 	return NOT_DEVICE;
 }
 
-void update_dev_fd(int dev, int fd)
+void update_special_fd(int dev, int fd)
 {
 	if (dev == DEV_ZERO)
 		zero_fd = fd;
@@ -206,7 +206,7 @@ int mingw_open (const char *filename, int oflags, ...)
 
 	fd = open(filename, oflags&~O_SPECIAL, mode);
 	if (fd >= 0) {
-		update_dev_fd(dev, fd);
+		update_special_fd(dev, fd);
 	}
 	else if ((oflags & O_ACCMODE) != O_RDONLY && errno == EACCES) {
 		DWORD attrs = GetFileAttributes(filename);

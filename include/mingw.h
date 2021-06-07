@@ -453,7 +453,7 @@ NOIMPL(mknod,const char *name UNUSED_PARAM, mode_t mode UNUSED_PARAM, dev_t devi
 /* order of devices must match that in get_dev_type */
 enum {DEV_NULL, DEV_ZERO, DEV_URANDOM, NOT_DEVICE = -1};
 int get_dev_type(const char *filename);
-void update_dev_fd(int dev, int fd);
+void update_special_fd(int dev, int fd);
 int mingw_open (const char *filename, int oflags, ...);
 
 /* functions which add O_SPECIAL to open(2) to allow access to devices */
