@@ -78,6 +78,7 @@ lib-y += u_signal_names.o
 lib-y += uuencode.o
 lib-y += verror_msg.o
 lib-y += vfork_daemon_rexec.o
+lib-y += warn_ignoring_args.o
 lib-y += wfopen.o
 lib-y += wfopen_input.o
 lib-y += xatonum.o
@@ -112,7 +113,6 @@ lib-$(CONFIG_PLATFORM_POSIX) += setup_environment.o
 lib-$(CONFIG_PLATFORM_POSIX) += signals.o
 lib-$(CONFIG_PLATFORM_POSIX) += speed_table.o
 lib-$(CONFIG_PLATFORM_POSIX) += udp_io.o
-lib-$(CONFIG_PLATFORM_POSIX) += warn_ignoring_args.o
 lib-$(CONFIG_PLATFORM_POSIX) += write.o
 lib-$(CONFIG_PLATFORM_POSIX) += xgethostbyname.o
 
