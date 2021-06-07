@@ -1666,6 +1666,29 @@ int mingw_rmdir(const char *path)
 	return rmdir(path);
 }
 
+void mingw_sync(void)
+{
+	HANDLE h;
+	FILE *mnt;
+	struct mntent *entry;
+	char name[] = "\\\\.\\C:";
+
+	mnt = setmntent(bb_path_mtab_file, "r");
+	if (mnt) {
+		while ((entry=getmntent(mnt)) != NULL) {
+			name[4] = entry->mnt_dir[0];
+			h = CreateFile(name, GENERIC_READ | GENERIC_WRITE,
+						FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+						OPEN_EXISTING, 0, NULL);
+			if (h != INVALID_HANDLE_VALUE) {
+				FlushFileBuffers(h);
+				CloseHandle(h);
+			}
+		}
+		endmntent(mnt);
+	}
+}
+
 #define NUMEXT 5
 static const char win_suffix[NUMEXT][4] = { "sh", "com", "exe", "bat", "cmd" };
 

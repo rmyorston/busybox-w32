@@ -471,7 +471,6 @@ NOIMPL(setuid,uid_t gid UNUSED_PARAM);
 NOIMPL(seteuid,uid_t gid UNUSED_PARAM);
 unsigned int sleep(unsigned int seconds);
 int symlink(const char *target, const char *linkpath);
-static inline void sync(void) { sleep(2); }
 long sysconf(int name);
 IMPL(getpagesize,int,4096,void);
 NOIMPL(ttyname_r,int fd UNUSED_PARAM, char *buf UNUSED_PARAM, int sz UNUSED_PARAM);
@@ -479,6 +478,7 @@ int mingw_unlink(const char *pathname);
 pid_t vfork(void);
 int mingw_access(const char *name, int mode);
 int mingw_rmdir(const char *name);
+void mingw_sync(void);
 int mingw_isatty(int fd);
 
 #define dup2 mingw_dup2
@@ -488,6 +488,7 @@ int mingw_isatty(int fd);
 #define close mingw_close
 #define unlink mingw_unlink
 #define rmdir mingw_rmdir
+#define sync mingw_sync
 #undef lseek
 #define lseek mingw_lseek
 
