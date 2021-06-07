@@ -49,6 +49,7 @@ const struct dhcp_optflag dhcp_optflags[] = {
 	{ OPTION_U32                              , 0x33 }, /* DHCP_LEASE_TIME    */
 	{ OPTION_IP                               , 0x36 }, /* DHCP_SERVER_ID     */
 	{ OPTION_STRING                           , 0x38 }, /* DHCP_ERR_MESSAGE   */
+	{ OPTION_STRING                           , 0x3c }, /* DHCP_VENDOR        */
 //TODO: must be combined with 'sname' and 'file' handling:
 	{ OPTION_STRING_HOST                      , 0x42 }, /* DHCP_TFTP_SERVER_NAME */
 	{ OPTION_STRING                           , 0x43 }, /* DHCP_BOOT_FILE     */
@@ -83,7 +84,6 @@ const struct dhcp_optflag dhcp_optflags[] = {
 	{ OPTION_U8                               , 0x35 }, /* DHCP_MESSAGE_TYPE  */
 	{ OPTION_U16                              , 0x39 }, /* DHCP_MAX_SIZE      */
 //looks like these opts will work just fine even without these defs:
-//	{ OPTION_STRING                           , 0x3c }, /* DHCP_VENDOR        */
 //	/* not really a string: */
 //	{ OPTION_STRING                           , 0x3d }, /* DHCP_CLIENT_ID     */
 	{ 0, 0 } /* zeroed terminating entry */
@@ -120,6 +120,7 @@ const char dhcp_option_strings[] ALIGN1 =
 	"lease" "\0"            /* DHCP_LEASE_TIME      */
 	"serverid" "\0"         /* DHCP_SERVER_ID       */
 	"message" "\0"          /* DHCP_ERR_MESSAGE     */
+	"vendor" "\0"           /* DHCP_VENDOR          */
 	"tftp" "\0"             /* DHCP_TFTP_SERVER_NAME*/
 	"bootfile" "\0"         /* DHCP_BOOT_FILE       */
 //	"userclass" "\0"        /* DHCP_USER_CLASS      */
@@ -184,6 +185,13 @@ const uint8_t dhcp_option_lengths[] ALIGN1 = {
 	 */
 };
 
+#if defined CONFIG_UDHCP_DEBUG && CONFIG_UDHCP_DEBUG >= 1
+void FAST_FUNC log1s(const char *msg)
+{
+	if (dhcp_verbose >= 1)
+		bb_simple_info_msg(msg);
+}
+#endif
 
 #if defined CONFIG_UDHCP_DEBUG && CONFIG_UDHCP_DEBUG >= 2
 static void log_option(const char *pfx, const uint8_t *opt)
@@ -420,6 +428,40 @@ int FAST_FUNC udhcp_str2nip(const char *str, void *arg)
 	return 1;
 }
 
+void* FAST_FUNC udhcp_insert_new_option(
+		struct option_set **opt_list,
+		unsigned code,
+		unsigned length,
+		bool dhcpv6)
+{
+	IF_NOT_UDHCPC6(bool dhcpv6 = 0;)
+	struct option_set *new, **curr;
+
+	log2("attaching option %02x to list", code);
+	new = xmalloc(sizeof(*new));
+	if (!dhcpv6) {
+		new->data = xzalloc(length + OPT_DATA);
+		new->data[OPT_CODE] = code;
+		new->data[OPT_LEN] = length;
+	} else {
+		new->data = xzalloc(length + D6_OPT_DATA);
+		new->data[D6_OPT_CODE] = code >> 8;
+		new->data[D6_OPT_CODE + 1] = code & 0xff;
+		new->data[D6_OPT_LEN] = length >> 8;
+		new->data[D6_OPT_LEN + 1] = length & 0xff;
+	}
+
+	curr = opt_list;
+//FIXME: DHCP6 codes > 255!!
+	while (*curr && (*curr)->data[OPT_CODE] < code)
+		curr = &(*curr)->next;
+
+	new->next = *curr;
+	*curr = new;
+
+	return new->data;
+}
+
 /* udhcp_str2optset:
  * Parse string option representation to binary form and add it to opt_list.
  * Called to parse "udhcpc -x OPTNAME:OPTVAL"
@@ -459,32 +501,12 @@ static NOINLINE void attach_option(
 
 	existing = udhcp_find_option(*opt_list, optflag->code);
 	if (!existing) {
-		struct option_set *new, **curr;
-
 		/* make a new option */
-		log2("attaching option %02x to list", optflag->code);
-		new = xmalloc(sizeof(*new));
-		if (!dhcpv6) {
-			new->data = xmalloc(length + OPT_DATA);
-			new->data[OPT_CODE] = optflag->code;
-			new->data[OPT_LEN] = length;
-			memcpy(new->data + OPT_DATA, buffer, length);
-		} else {
-			new->data = xmalloc(length + D6_OPT_DATA);
-			new->data[D6_OPT_CODE] = optflag->code >> 8;
-			new->data[D6_OPT_CODE + 1] = optflag->code & 0xff;
-			new->data[D6_OPT_LEN] = length >> 8;
-			new->data[D6_OPT_LEN + 1] = length & 0xff;
-			memcpy(new->data + D6_OPT_DATA, buffer,
-					length);
-		}
-
-		curr = opt_list;
-		while (*curr && (*curr)->data[OPT_CODE] < optflag->code)
-			curr = &(*curr)->next;
-
-		new->next = *curr;
-		*curr = new;
+		uint8_t *p = udhcp_insert_new_option(opt_list, optflag->code, length, dhcpv6);
+		if (!dhcpv6)
+			memcpy(p + OPT_DATA, buffer, length);
+		else
+			memcpy(p + D6_OPT_DATA, buffer, length);
 		goto ret;
 	}
 

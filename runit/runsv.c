@@ -149,15 +149,16 @@ static void warn_cannot(const char *m)
 	warn2_cannot(m, "");
 }
 
-static void s_child(int sig_no UNUSED_PARAM)
+/* SIGCHLD/TERM handler is reentrancy-safe because they are unmasked
+ * only over poll() call, not over memory allocations
+ * or printouts. Do not need to save/restore errno either,
+ * as poll() error is not checked there.
+ */
+static void s_chld_term(int sig_no)
 {
+	if (sig_no == SIGTERM)
+		sigterm = 1;
 	write(selfpipe.wr, "", 1);
-}
-
-static void s_term(int sig_no UNUSED_PARAM)
-{
-	sigterm = 1;
-	write(selfpipe.wr, "", 1); /* XXX */
 }
 
 static int open_trunc_or_warn(const char *name)
@@ -380,11 +381,14 @@ static void startservice(struct svdir *s)
 				xdup2(logpipe.wr, 1);
 			}
 		}
-		/* Non-ignored signals revert to SIG_DFL on exec anyway */
-		/*bb_signals(0
-			+ (1 << SIGCHLD)
-			+ (1 << SIGTERM)
-			, SIG_DFL);*/
+		/* Non-ignored signals revert to SIG_DFL on exec.
+		 * But we can get signals BEFORE execl(), unlikely as that may be.
+		 * SIGCHLD is safe (would merely write to selfpipe),
+		 * but SIGTERM would set sigterm = 1 (with vfork, we affect parent).
+		 * Avoid that.
+		 */
+		/*signal(SIGCHLD, SIG_DFL);*/
+		signal(SIGTERM, SIG_DFL);
 		sig_unblock(SIGCHLD);
 		sig_unblock(SIGTERM);
 		execv(arg[0], (char**) arg);
@@ -511,9 +515,15 @@ int runsv_main(int argc UNUSED_PARAM, char **argv)
 	ndelay_on(selfpipe.wr);
 
 	sig_block(SIGCHLD);
-	bb_signals_recursive_norestart(1 << SIGCHLD, s_child);
 	sig_block(SIGTERM);
-	bb_signals_recursive_norestart(1 << SIGTERM, s_term);
+	/* No particular reason why we don't set SA_RESTART
+	 * (poll() wouldn't restart regardless of that flag),
+	 * we just follow what runit-2.1.2 does:
+	 */
+	bb_signals_norestart(0
+			+ (1 << SIGCHLD)
+			+ (1 << SIGTERM)
+			, s_chld_term);
 
 	xchdir(dir);
 	/* bss: svd[0].pid = 0; */
@@ -625,6 +635,7 @@ int runsv_main(int argc UNUSED_PARAM, char **argv)
 		sig_unblock(SIGTERM);
 		sig_unblock(SIGCHLD);
 		poll(x, 2 + haslog, 3600*1000);
+		/* NB: signal handlers can trash errno of poll() */
 		sig_block(SIGTERM);
 		sig_block(SIGCHLD);
 
