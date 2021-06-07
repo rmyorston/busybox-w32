@@ -185,6 +185,19 @@ void update_special_fd(int dev, int fd)
 		rand_fd = fd;
 }
 
+#define PREFIX_LEN (sizeof(DEV_FD_PREFIX)-1)
+static int get_dev_fd(const char *filename)
+{
+	int fd;
+
+	if (filename && is_prefixed_with(filename, DEV_FD_PREFIX)) {
+		fd = bb_strtou(filename+PREFIX_LEN, NULL, 10);
+		if (errno == 0 && (HANDLE)_get_osfhandle(fd) != INVALID_HANDLE_VALUE)
+			return fd;
+	}
+	return -1;
+}
+
 #undef open
 int mingw_open (const char *filename, int oflags, ...)
 {
@@ -198,6 +211,9 @@ int mingw_open (const char *filename, int oflags, ...)
 	if (dev == DEV_NULL || (special && dev != NOT_DEVICE)) {
 		filename = "nul";
 		oflags = O_RDWR;
+	}
+	else if ((fd=get_dev_fd(filename)) >= 0) {
+		return fd;
 	}
 
 	va_start(args, oflags);
@@ -240,8 +256,12 @@ ssize_t FAST_FUNC mingw_open_read_close(const char *fn, void *buf, size_t size)
 #undef fopen
 FILE *mingw_fopen (const char *filename, const char *otype)
 {
+	int fd;
+
 	if (get_dev_type(filename) == DEV_NULL)
 		filename = "nul";
+	else if ((fd=get_dev_fd(filename)) >= 0)
+		return fdopen(fd, otype);
 	return fopen(filename, otype);
 }
 
