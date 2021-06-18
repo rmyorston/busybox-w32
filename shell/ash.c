@@ -10815,11 +10815,34 @@ static int ulimitcmd(int, char **) FAST_FUNC;
 #define BUILTIN_SPEC_REG_ASSG   "7"
 
 /* Stubs for calling non-FAST_FUNC's */
+#if !ENABLE_PLATFORM_MINGW32
 #if ENABLE_ASH_ECHO
 static int FAST_FUNC echocmd(int argc, char **argv)   { return echo_main(argc, argv); }
 #endif
 #if ENABLE_ASH_PRINTF
 static int FAST_FUNC printfcmd(int argc, char **argv) { return printf_main(argc, argv); }
+#endif
+#else
+#if ENABLE_ASH_ECHO
+static int FAST_FUNC echocmd(int argc, char **argv)
+{
+	int ret;
+	INT_OFF;
+	ret = echo_main(argc, argv);
+	INT_ON;
+	return ret;
+}
+#endif
+#if ENABLE_ASH_PRINTF
+static int FAST_FUNC printfcmd(int argc, char **argv)
+{
+	int ret;
+	INT_OFF;
+	ret = printf_main(argc, argv);
+	INT_ON;
+	return ret;
+}
+#endif
 #endif
 #if ENABLE_ASH_TEST || BASH_TEST2
 static int FAST_FUNC testcmd(int argc, char **argv)   { return test_main(argc, argv); }
