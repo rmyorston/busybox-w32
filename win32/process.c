@@ -268,6 +268,7 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 		new_path = xasprintf("%s.", path);
 	}
 
+	errno = 0;
 	ret = spawnve(mode, new_path ? new_path : path, new_argv, env);
 
  done:
@@ -404,7 +405,7 @@ int
 mingw_execvp(const char *cmd, char *const *argv)
 {
 	int ret = (int)mingw_spawn_1(P_WAIT, cmd, argv, environ);
-	if (ret != -1)
+	if (ret != -1 || errno == 0)
 		exit(ret);
 	return ret;
 }
@@ -413,7 +414,7 @@ int
 mingw_execve(const char *cmd, char *const *argv, char *const *envp)
 {
 	int ret = (int)mingw_spawn_interpreter(P_WAIT, cmd, argv, envp, 0);
-	if (ret != -1)
+	if (ret != -1 || errno == 0)
 		exit(ret);
 	return ret;
 }
