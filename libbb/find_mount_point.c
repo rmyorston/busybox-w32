@@ -6,6 +6,9 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+#if ENABLE_PLATFORM_MINGW32
+# define MNTENT_PRIVATE
+#endif
 #include "libbb.h"
 #include <mntent.h>
 
@@ -25,13 +28,7 @@ struct mntent* FAST_FUNC find_mount_point(const char *name, int subdir_too)
 	dev_t devno_of_name;
 	bool block_dev;
 #else
-	static char mnt_fsname[4];
-	static char mnt_dir[4];
-	static char mnt_type[1];
-	static char mnt_opts[1];
-	static struct mntent my_mount_entry = {
-		mnt_fsname, mnt_dir, mnt_type, mnt_opts, 0, 0
-	};
+	static struct mntdata *data = NULL;
 	char *current;
 	const char *path;
 	DWORD len;
@@ -105,15 +102,11 @@ struct mntent* FAST_FUNC find_mount_point(const char *name, int subdir_too)
 	}
 
 	if ( path && isalpha(path[0]) && path[1] == ':' ) {
-		mnt_fsname[0] = path[0];
-		mnt_fsname[1] = path[1];
-		mnt_fsname[2] = '\0';
-		mnt_dir[0] = path[0];
-		mnt_dir[1] = path[1];
-		mnt_dir[2] = '\\';
-		mnt_dir[3] = '\0';
+		if (data == NULL)
+			data = xmalloc(sizeof(*data));
 
-		mountEntry = &my_mount_entry;
+		fill_mntdata(data, toupper(path[0]) - 'A');
+		mountEntry = &data->me;
 	}
 	free(current);
 #endif

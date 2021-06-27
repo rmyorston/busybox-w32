@@ -16,6 +16,18 @@ extern FILE *mingw_setmntent(void);
 extern struct mntent *getmntent(FILE *stream);
 extern int endmntent(FILE *stream);
 
+# if defined(MNTENT_PRIVATE)
+struct mntdata {
+	struct mntent me;
+	char mnt_fsname[PATH_MAX];
+	char mnt_dir[4];
+	char mnt_type[100];
+	char mnt_opts[4];
+};
+
+extern int fill_mntdata(struct mntdata *data, int index);
+# endif
+
 #define setmntent(f, m) mingw_setmntent()
 
 #endif
