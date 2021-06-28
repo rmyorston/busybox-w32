@@ -22,7 +22,7 @@
 
 //usage:#define lsattr_trivial_usage
 //usage:     IF_NOT_PLATFORM_MINGW32(
-//usage:       "[-Radlv] [FILE]..."
+//usage:       "[-Radlpv] [FILE]..."
 //usage:     )
 //usage:     IF_PLATFORM_MINGW32(
 //usage:       "[-Radl] [FILE]..."
@@ -30,10 +30,12 @@
 //usage:#define lsattr_full_usage "\n\n"
 //usage:       "List ext2 file attributes\n"
 //usage:     "\n	-R	Recurse"
-//usage:     "\n	-a	Don't hide entries starting with ."
-//usage:     "\n	-d	List directory entries instead of contents"
+//usage:     "\n	-a	Include names starting with ."
+//usage:     "\n	-d	List directory names, not contents"
+// -a,-d text should match ls --help
 //usage:     "\n	-l	List long flag names"
 //usage:     IF_NOT_PLATFORM_MINGW32(
+//usage:     "\n	-p	List project ID"
 //usage:     "\n	-v	List version/generation number"
 //usage:     )
 
@@ -41,43 +43,71 @@
 #include "e2fs_lib.h"
 
 enum {
-	OPT_RECUR      = 0x1,
-	OPT_ALL        = 0x2,
-	OPT_DIRS_OPT   = 0x4,
-	OPT_PF_LONG    = 0x8,
-	OPT_GENERATION = 0x10,
+	OPT_RECUR      = 1 << 0,
+	OPT_ALL        = 1 << 1,
+	OPT_DIRS_OPT   = 1 << 2,
+	OPT_PF_LONG    = 1 << 3,
+	OPT_GENERATION = 1 << 4,
+	OPT_PROJID     = 1 << 5,
 };
 
 static void list_attributes(const char *name)
 {
-	unsigned long fsflags;
+	unsigned fsflags;
 #if !ENABLE_PLATFORM_MINGW32
-	unsigned long generation;
-#endif
+	int fd, r;
 
-	if (fgetflags(name, &fsflags) != 0)
+	/* There is no way to run needed ioctls on a symlink.
+	 * open(O_PATH | O_NOFOLLOW) _can_ be used to get a fd referring to the symlink,
+	 * but ioctls fail on such a fd (tried on 4.12.0 kernel).
+	 * e2fsprogs-1.46.2 uses open(O_NOFOLLOW), it fails on symlinks.
+	 */
+	fd = open_or_warn(name, O_RDONLY | O_NONBLOCK | O_NOCTTY | O_NOFOLLOW);
+	if (fd < 0)
+		return;
+
+	if (option_mask32 & OPT_PROJID) {
+		struct ext2_fsxattr fsxattr;
+		r = ioctl(fd, EXT2_IOC_FSGETXATTR, &fsxattr);
+		/* note: ^^^ may fail in 32-bit userspace on 64-bit kernel (seen on 4.12.0) */
+		if (r != 0)
+			goto read_err;
+		printf("%5u ", (unsigned)fsxattr.fsx_projid);
+	}
+
+	if (option_mask32 & OPT_GENERATION) {
+		unsigned generation;
+		r = ioctl(fd, EXT2_IOC_GETVERSION, &generation);
+		if (r != 0)
+			goto read_err;
+		printf("%-10u ", generation);
+	}
+
+	r = ioctl(fd, EXT2_IOC_GETFLAGS, &fsflags);
+	if (r != 0)
 		goto read_err;
 
-#if !ENABLE_PLATFORM_MINGW32
-	if (option_mask32 & OPT_GENERATION) {
-		if (fgetversion(name, &generation) != 0)
-			goto read_err;
-		printf("%5lu ", generation);
-	}
+	close(fd);
+#else /* ENABLE_PLATFORM_MINGW32 */
+	if (fgetflags(name, &fsflags) != 0)
+		goto read_err;
 #endif
 
 	if (option_mask32 & OPT_PF_LONG) {
 		printf("%-28s ", name);
-		print_e2flags(stdout, fsflags, PFOPT_LONG);
+		print_e2flags_long(fsflags);
 		bb_putchar('\n');
 	} else {
-		print_e2flags(stdout, fsflags, 0);
+		print_e2flags(fsflags);
 		printf(" %s\n", name);
 	}
 
 	return;
  read_err:
 	bb_perror_msg("reading %s", name);
+#if !ENABLE_PLATFORM_MINGW32
+	close(fd);
+#endif
 }
 
 static int FAST_FUNC lsattr_dir_proc(const char *dir_name,
@@ -90,9 +120,13 @@ static int FAST_FUNC lsattr_dir_proc(const char *dir_name,
 	path = concat_path_file(dir_name, de->d_name);
 
 	if (lstat(path, &st) != 0)
-		bb_perror_msg("stat %s", path);
+		bb_perror_msg("can't stat '%s'", path);
+
 	else if (de->d_name[0] != '.' || (option_mask32 & OPT_ALL)) {
-		list_attributes(path);
+	        /* Don't try to open device files, fifos etc */
+		if (S_ISREG(st.st_mode) || S_ISLNK(st.st_mode) || S_ISDIR(st.st_mode))
+			list_attributes(path);
+
 		if (S_ISDIR(st.st_mode) && (option_mask32 & OPT_RECUR)
 		 && !DOT_OR_DOTDOT(de->d_name)
 		) {
@@ -111,7 +145,7 @@ static void lsattr_args(const char *name)
 	struct stat st;
 
 	if (lstat(name, &st) == -1) {
-		bb_perror_msg("stat %s", name);
+		bb_perror_msg("can't stat '%s'", name);
 	} else if (S_ISDIR(st.st_mode) && !(option_mask32 & OPT_DIRS_OPT)) {
 		iterate_on_dir(name, lsattr_dir_proc, NULL);
 	} else {
@@ -125,7 +159,7 @@ int lsattr_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_PLATFORM_MINGW32
 	getopt32(argv, "Radl");
 #else
-	getopt32(argv, "Radlv");
+	getopt32(argv, "Radlvp");
 #endif
 	argv += optind;
 

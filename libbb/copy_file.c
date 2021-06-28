@@ -117,6 +117,8 @@ int FAST_FUNC copy_file(const char *source, const char *dest, int flags)
 			return -1;
 		}
 #endif
+		if (flags & FILEUTILS_NO_OVERWRITE) /* cp -n */
+			return 0;
 		dest_exists = 1;
 	}
 

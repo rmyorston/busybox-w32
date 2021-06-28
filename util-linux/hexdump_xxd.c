@@ -41,15 +41,17 @@
 //    -u          use upper case hex letters.
 
 //usage:#define xxd_trivial_usage
-//usage:       "[-pr] [-g N] [-c N] [-n LEN] [-s OFS] [FILE]"
+//usage:       "[-pri] [-g N] [-c N] [-n LEN] [-s OFS] [-o OFS] [FILE]"
 //usage:#define xxd_full_usage "\n\n"
 //usage:       "Hex dump FILE (or stdin)\n"
 //usage:     "\n	-g N		Bytes per group"
 //usage:     "\n	-c N		Bytes per line"
 //usage:     "\n	-p		Show only hex bytes, assumes -c30"
+//usage:     "\n	-i		C include file style"
 // exactly the same help text lines in hexdump and xxd:
 //usage:     "\n	-l LENGTH	Show only first LENGTH bytes"
 //usage:     "\n	-s OFFSET	Skip OFFSET bytes"
+//usage:     "\n	-o OFFSET	Add OFFSET to displayed offset"
 //usage:     "\n	-r		Reverse (with -p, assumes no offsets in input)"
 
 #include "libbb.h"
@@ -61,7 +63,11 @@
 #define OPT_s (1 << 1)
 #define OPT_a (1 << 2)
 #define OPT_p (1 << 3)
-#define OPT_r (1 << 4)
+#define OPT_i (1 << 4)
+#define OPT_r (1 << 5)
+#define OPT_g (1 << 6)
+#define OPT_c (1 << 7)
+#define OPT_o (1 << 8)
 
 static void reverse(unsigned opt, unsigned cols, const char *filename)
 {
@@ -122,20 +128,30 @@ static void reverse(unsigned opt, unsigned cols, const char *filename)
 	fflush_stdout_and_exit(EXIT_SUCCESS);
 }
 
+static void print_C_style(const char *p, const char *hdr)
+{
+	printf(hdr, isdigit(p[0]) ? "__" : "");
+	while (*p) {
+		bb_putchar(isalnum(*p) ? *p : '_');
+		p++;
+	}
+}
+
 int xxd_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int xxd_main(int argc UNUSED_PARAM, char **argv)
 {
 	char buf[80];
 	dumper_t *dumper;
-	char *opt_l, *opt_s;
+	char *opt_l, *opt_s, *opt_o;
 	unsigned bytes = 2;
 	unsigned cols = 0;
 	unsigned opt;
+	int r;
 
 	dumper = alloc_dumper();
 
-	opt = getopt32(argv, "^" "l:s:aprg:+c:+" "\0" "?1" /* 1 argument max */,
-			&opt_l, &opt_s, &bytes, &cols
+	opt = getopt32(argv, "^" "l:s:apirg:+c:+o:" "\0" "?1" /* 1 argument max */,
+			&opt_l, &opt_s, &bytes, &cols, &opt_o
 	);
 	argv += optind;
 
@@ -158,14 +174,24 @@ int xxd_main(int argc UNUSED_PARAM, char **argv)
 		//BUGGY for /proc/version (unseekable?)
 	}
 
+	if (opt & OPT_o) {
+		/* -o accepts negative numbers too */
+		dumper->xxd_displayoff = xstrtoll(opt_o, /*base:*/ 0);
+	}
+
 	if (opt & OPT_p) {
 		if (cols == 0)
 			cols = 30;
 		bytes = cols; /* -p ignores -gN */
 	} else {
 		if (cols == 0)
-			cols = 16;
-		bb_dump_add(dumper, "\"%08.8_ax: \""); // "address: "
+			cols = (opt & OPT_i) ? 12 : 16;
+		if (opt & OPT_i) {
+			bytes = 1; // -i ignores -gN
+			// output is "  0xXX, 0xXX, 0xXX...", add leading space
+			bb_dump_add(dumper, "\" \"");
+		} else
+			bb_dump_add(dumper, "\"%08.8_ax: \""); // "address: "
 	}
 
 	if (opt & OPT_r) {
@@ -173,11 +199,15 @@ int xxd_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	if (bytes < 1 || bytes >= cols) {
-		sprintf(buf, "%u/1 \"%%02x\"", cols); // cols * "xx"
+		sprintf(buf, "%u/1 \"%%02x\"", cols); // cols * "XX"
 		bb_dump_add(dumper, buf);
 	}
 	else if (bytes == 1) {
-		sprintf(buf, "%u/1 \"%%02x \"", cols); // cols * "xx "
+		if (opt & OPT_i)
+			sprintf(buf, "%u/1 \" 0x%%02x,\"", cols); // cols * " 0xXX,"
+//TODO: compat: omit the last comma after the very last byte
+		else
+			sprintf(buf, "%u/1 \"%%02x \"", cols); // cols * "XX "
 		bb_dump_add(dumper, buf);
 	}
 	else {
@@ -201,13 +231,22 @@ int xxd_main(int argc UNUSED_PARAM, char **argv)
 		free(bigbuf);
 	}
 
-	if (!(opt & OPT_p)) {
+	if (!(opt & (OPT_p|OPT_i))) {
 		sprintf(buf, "\"  \"%u/1 \"%%_p\"\"\n\"", cols); // "  ASCII\n"
 		bb_dump_add(dumper, buf);
 	} else {
 		bb_dump_add(dumper, "\"\n\"");
-		dumper->eofstring = "\n";
+		dumper->xxd_eofstring = "\n";
 	}
 
-	return bb_dump_dump(dumper, argv);
+	if ((opt & OPT_i) && argv[0]) {
+		print_C_style(argv[0], "unsigned char %s");
+		printf("[] = {\n");
+	}
+	r = bb_dump_dump(dumper, argv);
+	if (r == 0 && (opt & OPT_i) && argv[0]) {
+		print_C_style(argv[0], "};\nunsigned int %s");
+		printf("_len = %"OFF_FMT"u;\n", dumper->address);
+	}
+	return r;
 }

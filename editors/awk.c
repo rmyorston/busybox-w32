@@ -66,6 +66,8 @@
 #endif
 #ifndef debug_printf_parse
 # define debug_printf_parse(...) (fprintf(stderr, __VA_ARGS__))
+#else
+# define debug_parse_print_tc(...) ((void)0)
 #endif
 
 
@@ -210,13 +212,13 @@ typedef struct tsplitter_s {
 #define	TC_SEQTERM	(1 << 1)		/* ) */
 #define	TC_REGEXP	(1 << 2)		/* /.../ */
 #define	TC_OUTRDR	(1 << 3)		/* | > >> */
-#define	TC_UOPPOST	(1 << 4)		/* unary postfix operator */
-#define	TC_UOPPRE1	(1 << 5)		/* unary prefix operator */
+#define	TC_UOPPOST	(1 << 4)		/* unary postfix operator ++ -- */
+#define	TC_UOPPRE1	(1 << 5)		/* unary prefix operator ++ -- $ */
 #define	TC_BINOPX	(1 << 6)		/* two-opnd operator */
 #define	TC_IN		(1 << 7)
 #define	TC_COMMA	(1 << 8)
 #define	TC_PIPE		(1 << 9)		/* input redirection pipe */
-#define	TC_UOPPRE2	(1 << 10)		/* unary prefix operator */
+#define	TC_UOPPRE2	(1 << 10)		/* unary prefix operator + - ! */
 #define	TC_ARRTERM	(1 << 11)		/* ] */
 #define	TC_GRPSTART	(1 << 12)		/* { */
 #define	TC_GRPTERM	(1 << 13)		/* } */
@@ -243,14 +245,51 @@ typedef struct tsplitter_s {
 #define	TC_STRING	(1 << 29)
 #define	TC_NUMBER	(1 << 30)
 
-#define	TC_UOPPRE  (TC_UOPPRE1 | TC_UOPPRE2)
+#ifndef debug_parse_print_tc
+#define debug_parse_print_tc(n) do { \
+if ((n) & TC_SEQSTART) debug_printf_parse(" SEQSTART"); \
+if ((n) & TC_SEQTERM ) debug_printf_parse(" SEQTERM" ); \
+if ((n) & TC_REGEXP  ) debug_printf_parse(" REGEXP"  ); \
+if ((n) & TC_OUTRDR  ) debug_printf_parse(" OUTRDR"  ); \
+if ((n) & TC_UOPPOST ) debug_printf_parse(" UOPPOST" ); \
+if ((n) & TC_UOPPRE1 ) debug_printf_parse(" UOPPRE1" ); \
+if ((n) & TC_BINOPX  ) debug_printf_parse(" BINOPX"  ); \
+if ((n) & TC_IN      ) debug_printf_parse(" IN"      ); \
+if ((n) & TC_COMMA   ) debug_printf_parse(" COMMA"   ); \
+if ((n) & TC_PIPE    ) debug_printf_parse(" PIPE"    ); \
+if ((n) & TC_UOPPRE2 ) debug_printf_parse(" UOPPRE2" ); \
+if ((n) & TC_ARRTERM ) debug_printf_parse(" ARRTERM" ); \
+if ((n) & TC_GRPSTART) debug_printf_parse(" GRPSTART"); \
+if ((n) & TC_GRPTERM ) debug_printf_parse(" GRPTERM" ); \
+if ((n) & TC_SEMICOL ) debug_printf_parse(" SEMICOL" ); \
+if ((n) & TC_NEWLINE ) debug_printf_parse(" NEWLINE" ); \
+if ((n) & TC_STATX   ) debug_printf_parse(" STATX"   ); \
+if ((n) & TC_WHILE   ) debug_printf_parse(" WHILE"   ); \
+if ((n) & TC_ELSE    ) debug_printf_parse(" ELSE"    ); \
+if ((n) & TC_BUILTIN ) debug_printf_parse(" BUILTIN" ); \
+if ((n) & TC_LENGTH  ) debug_printf_parse(" LENGTH"  ); \
+if ((n) & TC_GETLINE ) debug_printf_parse(" GETLINE" ); \
+if ((n) & TC_FUNCDECL) debug_printf_parse(" FUNCDECL"); \
+if ((n) & TC_BEGIN   ) debug_printf_parse(" BEGIN"   ); \
+if ((n) & TC_END     ) debug_printf_parse(" END"     ); \
+if ((n) & TC_EOF     ) debug_printf_parse(" EOF"     ); \
+if ((n) & TC_VARIABLE) debug_printf_parse(" VARIABLE"); \
+if ((n) & TC_ARRAY   ) debug_printf_parse(" ARRAY"   ); \
+if ((n) & TC_FUNCTION) debug_printf_parse(" FUNCTION"); \
+if ((n) & TC_STRING  ) debug_printf_parse(" STRING"  ); \
+if ((n) & TC_NUMBER  ) debug_printf_parse(" NUMBER"  ); \
+} while (0)
+#endif
 
 /* combined token classes */
+#define	TC_UOPPRE  (TC_UOPPRE1 | TC_UOPPRE2)
+
 #define	TC_BINOP   (TC_BINOPX | TC_COMMA | TC_PIPE | TC_IN)
 //#define	TC_UNARYOP (TC_UOPPRE | TC_UOPPOST)
 #define	TC_OPERAND (TC_VARIABLE | TC_ARRAY | TC_FUNCTION \
                    | TC_BUILTIN | TC_LENGTH | TC_GETLINE \
                    | TC_SEQSTART | TC_STRING | TC_NUMBER)
+#define	TC_LVALUE (TC_VARIABLE | TC_ARRAY)
 
 #define	TC_STATEMNT (TC_STATX | TC_WHILE)
 #define	TC_OPTERM  (TC_SEMICOL | TC_NEWLINE)
@@ -284,7 +323,6 @@ typedef struct tsplitter_s {
 #define	OF_CHECKED  0x200000
 #define	OF_REQUIRED 0x400000
 
-
 /* combined operator flags */
 #define	xx	0
 #define	xV	OF_RES2
@@ -313,10 +351,8 @@ typedef struct tsplitter_s {
 #define PRIMASK2  0x7E000000
 
 /* Operation classes */
-
 #define	SHIFT_TIL_THIS	0x0600
 #define	RECUR_FROM_THIS	0x1000
-
 enum {
 	OC_DELETE = 0x0100,     OC_EXEC = 0x0200,       OC_NEWSOURCE = 0x0300,
 	OC_PRINT = 0x0400,      OC_PRINTF = 0x0500,     OC_WALKINIT = 0x0600,
@@ -411,13 +447,16 @@ static const uint32_t tokeninfo[] ALIGN4 = {
 	OC_REGEXP,
 	xS|'a',                  xS|'w',                  xS|'|',
 	OC_UNARY|xV|P(9)|'p',    OC_UNARY|xV|P(9)|'m',
-	OC_UNARY|xV|P(9)|'P',    OC_UNARY|xV|P(9)|'M',    OC_FIELD|xV|P(5),
+#define TI_PREINC (OC_UNARY|xV|P(9)|'P')
+#define TI_PREDEC (OC_UNARY|xV|P(9)|'M')
+	TI_PREINC,               TI_PREDEC,               OC_FIELD|xV|P(5),
 	OC_COMPARE|VV|P(39)|5,   OC_MOVE|VV|P(74),        OC_REPLACE|NV|P(74)|'+', OC_REPLACE|NV|P(74)|'-',
 	OC_REPLACE|NV|P(74)|'*', OC_REPLACE|NV|P(74)|'/', OC_REPLACE|NV|P(74)|'%', OC_REPLACE|NV|P(74)|'&',
 	OC_BINARY|NV|P(29)|'+',  OC_BINARY|NV|P(29)|'-',  OC_REPLACE|NV|P(74)|'&', OC_BINARY|NV|P(15)|'&',
 	OC_BINARY|NV|P(25)|'/',  OC_BINARY|NV|P(25)|'%',  OC_BINARY|NV|P(15)|'&',  OC_BINARY|NV|P(25)|'*',
 	OC_COMPARE|VV|P(39)|4,   OC_COMPARE|VV|P(39)|3,   OC_COMPARE|VV|P(39)|0,   OC_COMPARE|VV|P(39)|1,
-	OC_COMPARE|VV|P(39)|2,   OC_MATCH|Sx|P(45)|'!',   OC_MATCH|Sx|P(45)|'~',   OC_LAND|Vx|P(55),
+#define TI_LESS (OC_COMPARE|VV|P(39)|2)
+	TI_LESS,                 OC_MATCH|Sx|P(45)|'!',   OC_MATCH|Sx|P(45)|'~',   OC_LAND|Vx|P(55),
 	OC_LOR|Vx|P(59),         OC_TERNARY|Vx|P(64)|'?', OC_COLON|xx|P(67)|':',
 	OC_IN|SV|P(49), /* TC_IN */
 	OC_COMMA|SS|P(80),
@@ -1074,6 +1113,10 @@ static uint32_t next_token(uint32_t expected)
 	uint32_t tc;
 	const uint32_t *ti;
 
+	debug_printf_parse("%s() expected(%x):", __func__, expected);
+	debug_parse_print_tc(expected);
+	debug_printf_parse("\n");
+
 	if (t_rollback) {
 		debug_printf_parse("%s: using rolled-back token\n", __func__);
 		t_rollback = FALSE;
@@ -1178,6 +1221,8 @@ static uint32_t next_token(uint32_t expected)
 			if (!isalnum_(*p))
 				syntax_error(EMSG_UNEXP_TOKEN); /* no */
 			/* yes */
+/* "move name one char back" trick: we need a byte for NUL terminator */
+/* NB: this results in argv[i][-1] being used (!!!) in e.g. "awk -e 'NAME'" case */
 			t_string = --p;
 			while (isalnum_(*++p)) {
 				p[-1] = *p;
@@ -1230,7 +1275,9 @@ static uint32_t next_token(uint32_t expected)
 				EMSG_UNEXP_EOS : EMSG_UNEXP_TOKEN);
 	}
 
-	debug_printf_parse("%s: returning, ltclass:%x t_double:%f\n", __func__, ltclass, t_double);
+	debug_printf_parse("%s: returning, t_double:%f ltclass:", __func__, t_double);
+	debug_parse_print_tc(ltclass);
+	debug_printf_parse("\n");
 	return ltclass;
 #undef concat_inserted
 #undef save_tclass
@@ -1270,7 +1317,7 @@ static node *condition(void)
 
 /* parse expression terminated by given argument, return ptr
  * to built subtree. Terminator is eaten by parse_expr */
-static node *parse_expr(uint32_t iexp)
+static node *parse_expr(uint32_t term_tc)
 {
 	node sn;
 	node *cn = &sn;
@@ -1278,15 +1325,17 @@ static node *parse_expr(uint32_t iexp)
 	uint32_t tc, xtc;
 	var *v;
 
-	debug_printf_parse("%s(%x)\n", __func__, iexp);
+	debug_printf_parse("%s() term_tc(%x):", __func__, term_tc);
+	debug_parse_print_tc(term_tc);
+	debug_printf_parse("\n");
 
 	sn.info = PRIMASK;
 	sn.r.n = sn.a.n = glptr = NULL;
-	xtc = TC_OPERAND | TC_UOPPRE | TC_REGEXP | iexp;
+	xtc = TC_OPERAND | TC_UOPPRE | TC_REGEXP | term_tc;
 
-	while (!((tc = next_token(xtc)) & iexp)) {
+	while (!((tc = next_token(xtc)) & term_tc)) {
 
-		if (glptr && (t_info == (OC_COMPARE | VV | P(39) | 2))) {
+		if (glptr && (t_info == TI_LESS)) {
 			/* input redirection (<) attached to glptr node */
 			debug_printf_parse("%s: input redir\n", __func__);
 			cn = glptr->l.n = new_node(OC_CONCAT | SS | P(37));
@@ -1317,25 +1366,28 @@ static node *parse_expr(uint32_t iexp)
 					next_token(TC_GETLINE);
 					/* give maximum priority to this pipe */
 					cn->info &= ~PRIMASK;
-					xtc = TC_OPERAND | TC_UOPPRE | TC_BINOP | iexp;
+					xtc = TC_OPERAND | TC_UOPPRE | TC_BINOP | term_tc;
 				}
 			} else {
 				cn->r.n = vn;
-				xtc = TC_OPERAND | TC_UOPPRE | TC_BINOP | iexp;
+				xtc = TC_OPERAND | TC_UOPPRE | TC_BINOP | term_tc;
 			}
 			vn->a.n = cn;
 
 		} else {
-			debug_printf_parse("%s: other\n", __func__);
+			debug_printf_parse("%s: other, t_info:%x\n", __func__, t_info);
 			/* for operands and prefix-unary operators, attach them
 			 * to last node */
 			vn = cn;
 			cn = vn->r.n = new_node(t_info);
 			cn->a.n = vn;
+
 			xtc = TC_OPERAND | TC_UOPPRE | TC_REGEXP;
+			if (t_info == TI_PREINC || t_info == TI_PREDEC)
+				xtc = TC_LVALUE | TC_UOPPRE1;
 			if (tc & (TC_OPERAND | TC_REGEXP)) {
 				debug_printf_parse("%s: TC_OPERAND | TC_REGEXP\n", __func__);
-				xtc = TC_UOPPRE | TC_UOPPOST | TC_BINOP | TC_OPERAND | iexp;
+				xtc = TC_UOPPRE | TC_UOPPOST | TC_BINOP | TC_OPERAND | term_tc;
 				/* one should be very careful with switch on tclass -
 				 * only simple tclasses should be used! */
 				switch (tc) {
@@ -1392,7 +1444,7 @@ static node *parse_expr(uint32_t iexp)
 				case TC_GETLINE:
 					debug_printf_parse("%s: TC_GETLINE\n", __func__);
 					glptr = cn;
-					xtc = TC_OPERAND | TC_UOPPRE | TC_BINOP | iexp;
+					xtc = TC_OPERAND | TC_UOPPRE | TC_BINOP | term_tc;
 					break;
 
 				case TC_BUILTIN:
@@ -1607,6 +1659,8 @@ static void parse_program(char *p)
 	func *f;
 	var *v;
 
+	debug_printf_parse("%s()\n", __func__);
+
 	g_pos = p;
 	t_lineno = 1;
 	while ((tclass = next_token(TC_EOF | TC_OPSEQ | TC_GRPSTART |
@@ -1749,12 +1803,22 @@ static char* qrealloc(char *b, int n, int *size)
 /* resize field storage space */
 static void fsrealloc(int size)
 {
-	int i;
+	int i, newsize;
 
 	if (size >= maxfields) {
+		/* Sanity cap, easier than catering for overflows */
+		if (size > 0xffffff)
+			bb_die_memory_exhausted();
+
 		i = maxfields;
 		maxfields = size + 16;
-		Fields = xrealloc(Fields, maxfields * sizeof(Fields[0]));
+
+		newsize = maxfields * sizeof(Fields[0]);
+		debug_printf_eval("fsrealloc: xrealloc(%p, %u)\n", Fields, newsize);
+		Fields = xrealloc(Fields, newsize);
+		debug_printf_eval("fsrealloc: Fields=%p..%p\n", Fields, (char*)Fields + newsize - 1);
+		/* ^^^ did Fields[] move? debug aid for L.v getting "upstaged" by R.v in evaluate() */
+
 		for (; i < maxfields; i++) {
 			Fields[i].type = VF_SPECIAL;
 			Fields[i].string = NULL;
@@ -2633,19 +2697,29 @@ static var *evaluate(node *op, var *res)
 		/* execute inevitable things */
 		if (opinfo & OF_RES1)
 			L.v = evaluate(op1, v1);
-		if (opinfo & OF_RES2)
-			R.v = evaluate(op->r.n, v1+1);
 		if (opinfo & OF_STR1) {
 			L.s = getvar_s(L.v);
 			debug_printf_eval("L.s:'%s'\n", L.s);
 		}
-		if (opinfo & OF_STR2) {
-			R.s = getvar_s(R.v);
-			debug_printf_eval("R.s:'%s'\n", R.s);
-		}
 		if (opinfo & OF_NUM1) {
 			L_d = getvar_i(L.v);
 			debug_printf_eval("L_d:%f\n", L_d);
+		}
+		/* NB: Must get string/numeric values of L (done above)
+		 * _before_ evaluate()'ing R.v: if both L and R are $NNNs,
+		 * and right one is large, then L.v points to Fields[NNN1],
+		 * second evaluate() reallocates and moves (!) Fields[],
+		 * R.v points to Fields[NNN2] but L.v now points to freed mem!
+		 * (Seen trying to evaluate "$444 $44444")
+		 */
+		if (opinfo & OF_RES2) {
+			R.v = evaluate(op->r.n, v1+1);
+			//TODO: L.v may be invalid now, set L.v to NULL to catch bugs?
+			//L.v = NULL;
+		}
+		if (opinfo & OF_STR2) {
+			R.s = getvar_s(R.v);
+			debug_printf_eval("R.s:'%s'\n", R.s);
 		}
 
 		debug_printf_eval("switch(0x%x)\n", XC(opinfo & OPCLSMASK));
@@ -2655,6 +2729,7 @@ static var *evaluate(node *op, var *res)
 
 		/* test pattern */
 		case XC( OC_TEST ):
+			debug_printf_eval("TEST\n");
 			if ((op1->info & OPCLSMASK) == OC_COMMA) {
 				/* it's range pattern */
 				if ((opinfo & OF_CHECKED) || ptest(op1->l.n)) {
@@ -2672,25 +2747,32 @@ static var *evaluate(node *op, var *res)
 
 		/* just evaluate an expression, also used as unconditional jump */
 		case XC( OC_EXEC ):
+			debug_printf_eval("EXEC\n");
 			break;
 
 		/* branch, used in if-else and various loops */
 		case XC( OC_BR ):
+			debug_printf_eval("BR\n");
 			op = istrue(L.v) ? op->a.n : op->r.n;
 			break;
 
 		/* initialize for-in loop */
 		case XC( OC_WALKINIT ):
+			debug_printf_eval("WALKINIT\n");
 			hashwalk_init(L.v, iamarray(R.v));
 			break;
 
 		/* get next array item */
 		case XC( OC_WALKNEXT ):
+			debug_printf_eval("WALKNEXT\n");
 			op = hashwalk_next(L.v) ? op->a.n : op->r.n;
 			break;
 
 		case XC( OC_PRINT ):
-		case XC( OC_PRINTF ): {
+			debug_printf_eval("PRINT /\n");
+		case XC( OC_PRINTF ):
+			debug_printf_eval("PRINTF\n");
+		{
 			FILE *F = stdout;
 			IF_FEATURE_AWK_GNU_EXTENSIONS(int len;)
 
@@ -2745,22 +2827,28 @@ static var *evaluate(node *op, var *res)
 		/* case XC( OC_DELETE ): - moved to happen before arg evaluation */
 
 		case XC( OC_NEWSOURCE ):
+			debug_printf_eval("NEWSOURCE\n");
 			g_progname = op->l.new_progname;
 			break;
 
 		case XC( OC_RETURN ):
+			debug_printf_eval("RETURN\n");
 			copyvar(res, L.v);
 			break;
 
 		case XC( OC_NEXTFILE ):
+			debug_printf_eval("NEXTFILE\n");
 			nextfile = TRUE;
 		case XC( OC_NEXT ):
+			debug_printf_eval("NEXT\n");
 			nextrec = TRUE;
 		case XC( OC_DONE ):
+			debug_printf_eval("DONE\n");
 			clrvar(res);
 			break;
 
 		case XC( OC_EXIT ):
+			debug_printf_eval("EXIT\n");
 			awk_exit(L_d);
 
 		/* -- recursive node type -- */
@@ -2780,15 +2868,18 @@ static var *evaluate(node *op, var *res)
 			break;
 
 		case XC( OC_IN ):
+			debug_printf_eval("IN\n");
 			setvar_i(res, hash_search(iamarray(R.v), L.s) ? 1 : 0);
 			break;
 
 		case XC( OC_REGEXP ):
+			debug_printf_eval("REGEXP\n");
 			op1 = op;
 			L.s = getvar_s(intvar[F0]);
 			goto re_cont;
 
 		case XC( OC_MATCH ):
+			debug_printf_eval("MATCH\n");
 			op1 = op->r.n;
  re_cont:
 			{
@@ -2814,6 +2905,7 @@ static var *evaluate(node *op, var *res)
 			break;
 
 		case XC( OC_TERNARY ):
+			debug_printf_eval("TERNARY\n");
 			if ((op->r.n->info & OPCLSMASK) != OC_COLON)
 				syntax_error(EMSG_POSSIBLE_ERROR);
 			res = evaluate(istrue(L.v) ? op->r.n->l.n : op->r.n->r.n, res);
@@ -2822,6 +2914,7 @@ static var *evaluate(node *op, var *res)
 		case XC( OC_FUNC ): {
 			var *vbeg, *v;
 			const char *sv_progname;
+			debug_printf_eval("FUNC\n");
 
 			/* The body might be empty, still has to eval the args */
 			if (!op->r.n->info && !op->r.f->body.first)
@@ -2851,7 +2944,10 @@ static var *evaluate(node *op, var *res)
 		}
 
 		case XC( OC_GETLINE ):
-		case XC( OC_PGETLINE ): {
+			debug_printf_eval("GETLINE /\n");
+		case XC( OC_PGETLINE ):
+			debug_printf_eval("PGETLINE\n");
+		{
 			rstream *rsm;
 			int i;
 
@@ -2892,6 +2988,7 @@ static var *evaluate(node *op, var *res)
 		/* simple builtins */
 		case XC( OC_FBLTIN ): {
 			double R_d = R_d; /* for compiler */
+			debug_printf_eval("FBLTIN\n");
 
 			switch (opn) {
 			case F_in:
@@ -3005,14 +3102,18 @@ static var *evaluate(node *op, var *res)
 		}
 
 		case XC( OC_BUILTIN ):
+			debug_printf_eval("BUILTIN\n");
 			res = exec_builtin(op, res);
 			break;
 
 		case XC( OC_SPRINTF ):
+			debug_printf_eval("SPRINTF\n");
 			setvar_p(res, awk_printf(op1, NULL));
 			break;
 
-		case XC( OC_UNARY ): {
+		case XC( OC_UNARY ):
+			debug_printf_eval("UNARY\n");
+		{
 			double Ld, R_d;
 
 			Ld = R_d = getvar_i(R.v);
@@ -3042,7 +3143,9 @@ static var *evaluate(node *op, var *res)
 			break;
 		}
 
-		case XC( OC_FIELD ): {
+		case XC( OC_FIELD ):
+			debug_printf_eval("FIELD\n");
+		{
 			int i = (int)getvar_i(R.v);
 			if (i < 0)
 				syntax_error(EMSG_NEGATIVE_FIELD);
@@ -3059,8 +3162,10 @@ static var *evaluate(node *op, var *res)
 
 		/* concatenation (" ") and index joining (",") */
 		case XC( OC_CONCAT ):
+			debug_printf_eval("CONCAT /\n");
 		case XC( OC_COMMA ): {
 			const char *sep = "";
+			debug_printf_eval("COMMA\n");
 			if ((opinfo & OPCLSMASK) == OC_COMMA)
 				sep = getvar_s(intvar[SUBSEP]);
 			setvar_p(res, xasprintf("%s%s%s", L.s, sep, R.s));
@@ -3068,17 +3173,22 @@ static var *evaluate(node *op, var *res)
 		}
 
 		case XC( OC_LAND ):
+			debug_printf_eval("LAND\n");
 			setvar_i(res, istrue(L.v) ? ptest(op->r.n) : 0);
 			break;
 
 		case XC( OC_LOR ):
+			debug_printf_eval("LOR\n");
 			setvar_i(res, istrue(L.v) ? 1 : ptest(op->r.n));
 			break;
 
 		case XC( OC_BINARY ):
-		case XC( OC_REPLACE ): {
+			debug_printf_eval("BINARY /\n");
+		case XC( OC_REPLACE ):
+			debug_printf_eval("REPLACE\n");
+		{
 			double R_d = getvar_i(R.v);
-			debug_printf_eval("BINARY/REPLACE: R_d:%f opn:%c\n", R_d, opn);
+			debug_printf_eval("R_d:%f opn:%c\n", R_d, opn);
 			switch (opn) {
 			case '+':
 				L_d += R_d;
@@ -3114,6 +3224,7 @@ static var *evaluate(node *op, var *res)
 		case XC( OC_COMPARE ): {
 			int i = i; /* for compiler */
 			double Ld;
+			debug_printf_eval("COMPARE\n");
 
 			if (is_numeric(L.v) && is_numeric(R.v)) {
 				Ld = getvar_i(L.v) - getvar_i(R.v);
@@ -3162,20 +3273,19 @@ static var *evaluate(node *op, var *res)
 
 static int awk_exit(int r)
 {
-	var tv;
 	unsigned i;
-	hash_item *hi;
-
-	zero_out_var(&tv);
 
 	if (!exiting) {
+		var tv;
 		exiting = TRUE;
 		nextrec = FALSE;
+		zero_out_var(&tv);
 		evaluate(endseq.first, &tv);
 	}
 
 	/* waiting for children */
 	for (i = 0; i < fdhash->csize; i++) {
+		hash_item *hi;
 		hi = fdhash->items[i];
 		while (hi) {
 			if (hi->data.rs.F && hi->data.rs.is_pipe)
@@ -3255,12 +3365,8 @@ int awk_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_FEATURE_AWK_GNU_EXTENSIONS
 	llist_t *list_e = NULL;
 #endif
-	int i, j;
-	var *v;
+	int i;
 	var tv;
-	char **envp;
-	char *vnames = (char *)vNames; /* cheat */
-	char *vvalues = (char *)vValues;
 
 	INIT_G();
 
@@ -3268,8 +3374,6 @@ int awk_main(int argc UNUSED_PARAM, char **argv)
 	 * $1,$2 == '$1,' '$2', NOT '$1' ',' '$2' */
 	if (ENABLE_LOCALE_SUPPORT)
 		setlocale(LC_NUMERIC, "C");
-
-	zero_out_var(&tv);
 
 	/* allocate global buffer */
 	g_buf = xmalloc(MAXVARFMT + 1);
@@ -3280,16 +3384,21 @@ int awk_main(int argc UNUSED_PARAM, char **argv)
 	fnhash = hash_init();
 
 	/* initialize variables */
-	for (i = 0; *vnames; i++) {
-		intvar[i] = v = newvar(nextword(&vnames));
-		if (*vvalues != '\377')
-			setvar_s(v, nextword(&vvalues));
-		else
-			setvar_i(v, 0);
+	{
+		char *vnames = (char *)vNames; /* cheat */
+		char *vvalues = (char *)vValues;
+		for (i = 0; *vnames; i++) {
+			var *v;
+			intvar[i] = v = newvar(nextword(&vnames));
+			if (*vvalues != '\377')
+				setvar_s(v, nextword(&vvalues));
+			else
+				setvar_i(v, 0);
 
-		if (*vnames == '*') {
-			v->type |= VF_SPECIAL;
-			vnames++;
+			if (*vnames == '*') {
+				v->type |= VF_SPECIAL;
+				vnames++;
+			}
 		}
 	}
 
@@ -3301,16 +3410,19 @@ int awk_main(int argc UNUSED_PARAM, char **argv)
 	newfile("/dev/stderr")->F = stderr;
 
 	/* Huh, people report that sometimes environ is NULL. Oh well. */
-	if (environ) for (envp = environ; *envp; envp++) {
-		/* environ is writable, thus we don't strdup it needlessly */
-		char *s = *envp;
-		char *s1 = strchr(s, '=');
-		if (s1) {
-			*s1 = '\0';
-			/* Both findvar and setvar_u take const char*
-			 * as 2nd arg -> environment is not trashed */
-			setvar_u(findvar(iamarray(intvar[ENVIRON]), s), s1 + 1);
-			*s1 = '=';
+	if (environ) {
+		char **envp;
+		for (envp = environ; *envp; envp++) {
+			/* environ is writable, thus we don't strdup it needlessly */
+			char *s = *envp;
+			char *s1 = strchr(s, '=');
+			if (s1) {
+				*s1 = '\0';
+				/* Both findvar and setvar_u take const char*
+				 * as 2nd arg -> environment is not trashed */
+				setvar_u(findvar(iamarray(intvar[ENVIRON]), s), s1 + 1);
+				*s1 = '=';
+			}
 		}
 	}
 	opt = getopt32(argv, OPTSTR_AWK, &opt_F, &list_v, &list_f, IF_FEATURE_AWK_GNU_EXTENSIONS(&list_e,) NULL);
@@ -3327,30 +3439,43 @@ int awk_main(int argc UNUSED_PARAM, char **argv)
 			bb_show_usage();
 	}
 	while (list_f) {
-		char *s = NULL;
-		FILE *from_file;
+		int fd;
+		char *s;
 
 		g_progname = llist_pop(&list_f);
-		from_file = xfopen_stdin(g_progname);
-		/* one byte is reserved for some trick in next_token */
-		for (i = j = 1; j > 0; i += j) {
-			s = xrealloc(s, i + 4096);
-			j = fread(s + i, 1, 4094, from_file);
+		fd = xopen_stdin(g_progname);
+		/* 1st byte is reserved for "move name one char back" trick in next_token */
+		i = 1;
+		s = NULL;
+		for (;;) {
+			int sz;
+			s = xrealloc(s, i + 1000);
+			sz = safe_read(fd, s + i, 1000);
+			if (sz <= 0)
+				break;
+			i += sz;
 		}
+		s = xrealloc(s, i + 1); /* trim unused 999 bytes */
 		s[i] = '\0';
-		fclose(from_file);
+		close(fd);
 		parse_program(s + 1);
 		free(s);
 	}
 	g_progname = "cmd. line";
 #if ENABLE_FEATURE_AWK_GNU_EXTENSIONS
 	while (list_e) {
+		/* NB: "move name one char back" trick in next_token
+		 * can use argv[i][-1] here.
+		 */
 		parse_program(llist_pop(&list_e));
 	}
 #endif
 	if (!(opt & (OPT_f | OPT_e))) {
 		if (!*argv)
 			bb_show_usage();
+		/* NB: "move name one char back" trick in next_token
+		 * can use argv[i][-1] here.
+		 */
 		parse_program(*argv++);
 	}
 
@@ -3361,6 +3486,7 @@ int awk_main(int argc UNUSED_PARAM, char **argv)
 		setari_u(intvar[ARGV], ++i, *argv++);
 	setvar_i(intvar[ARGC], i + 1);
 
+	zero_out_var(&tv);
 	evaluate(beginseq.first, &tv);
 	if (!mainseq.first && !endseq.first)
 		awk_exit(EXIT_SUCCESS);

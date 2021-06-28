@@ -5,7 +5,7 @@
  * Original code copyright (c) 2018 Gavin D. Howard and contributors.
  */
 //TODO:
-// maybe implement a^b for non-integer b?
+// maybe implement a^b for non-integer b? (see zbc_num_p())
 
 #define DEBUG_LEXER   0
 #define DEBUG_COMPILE 0
@@ -108,7 +108,7 @@
 
 //See www.gnu.org/software/bc/manual/bc.html
 //usage:#define bc_trivial_usage
-//usage:       "[-sqlw] [FILE...]"
+//usage:       "[-sqlw] [FILE]..."
 //usage:
 //usage:#define bc_full_usage "\n"
 //usage:     "\nArbitrary precision calculator"
@@ -1386,6 +1386,12 @@ static void bc_num_copy(BcNum *d, BcNum *s)
 	}
 }
 
+static void bc_num_init_and_copy(BcNum *d, BcNum *s)
+{
+	bc_num_init(d, s->len);
+	bc_num_copy(d, s);
+}
+
 static BC_STATUS zbc_num_ulong_abs(BcNum *n, unsigned long *result_p)
 {
 	size_t i;
@@ -1985,11 +1991,8 @@ static FAST_FUNC BC_STATUS zbc_num_m(BcNum *a, BcNum *b, BcNum *restrict c, size
 	scale = BC_MIN(a->rdx + b->rdx, scale);
 	maxrdx = BC_MAX(maxrdx, scale);
 
-	bc_num_init(&cpa, a->len);
-	bc_num_init(&cpb, b->len);
-
-	bc_num_copy(&cpa, a);
-	bc_num_copy(&cpb, b);
+	bc_num_init_and_copy(&cpa, a);
+	bc_num_init_and_copy(&cpb, b);
 	cpa.neg = cpb.neg = false;
 
 	s = zbc_num_shift(&cpa, maxrdx);
@@ -2152,12 +2155,16 @@ static FAST_FUNC BC_STATUS zbc_num_p(BcNum *a, BcNum *b, BcNum *restrict c, size
 	BcNum copy;
 	unsigned long pow;
 	size_t i, powrdx, resrdx;
+	size_t a_rdx;
 	bool neg;
 
 	// GNU bc does not allow 2^2.0 - we do
 	for (i = 0; i < b->rdx; i++)
 		if (b->num[i] != 0)
 			RETURN_STATUS(bc_error("not an integer"));
+
+// a^b for non-integer b (for a>0) can be implemented as exp(ln(a)*b).
+// Possibly better precision would be given by a^int(b) * exp(ln(a)*frac(b)).
 
 	if (b->len == 0) {
 		bc_num_one(c);
@@ -2180,18 +2187,31 @@ static FAST_FUNC BC_STATUS zbc_num_p(BcNum *a, BcNum *b, BcNum *restrict c, size
 	if (s) RETURN_STATUS(s);
 	// b is not used beyond this point
 
-	bc_num_init(&copy, a->len);
-	bc_num_copy(&copy, a);
+	bc_num_init_and_copy(&copy, a);
+	a_rdx = a->rdx; // pull it into a CPU register (hopefully)
+	// a is not used beyond this point
 
 	if (!neg) {
-		if (a->rdx > scale)
-			scale = a->rdx;
-		if (a->rdx * pow < scale)
-			scale = a->rdx * pow;
+		unsigned long new_scale;
+		if (a_rdx > scale)
+			scale = a_rdx;
+		new_scale = a_rdx * pow;
+		// Don't fall for multiplication overflow. Example:
+		// 0.01^2147483648 a_rdx:2 pow:0x80000000, 32bit mul is 0.
+//not that it matters with current algorithm, it would OOM on such large powers,
+//but it can be improved to detect zero results etc. Example: with scale=0,
+//result of 0.01^N for any N>1 is 0: 0.01^2 = 0.0001 ~= 0.00 (trunc to scale)
+//then this would matter:
+		// if a_rdx != 0 and new_scale < pow, we had overflow,
+		// correct "new_scale" value is larger than ULONG_MAX,
+		// thus larger than any possible current value of "scale",
+		// thus "scale = new_scale" should not be done:
+		if (a_rdx == 0 || new_scale >= pow)
+			if (new_scale < scale)
+				scale = new_scale;
 	}
 
-
-	for (powrdx = a->rdx; !(pow & 1); pow >>= 1) {
+	for (powrdx = a_rdx; !(pow & 1); pow >>= 1) {
 		powrdx <<= 1;
 		s = zbc_num_mul(&copy, &copy, &copy, powrdx);
 		if (s) goto err;
@@ -2493,8 +2513,7 @@ static void bc_array_copy(BcVec *d, const BcVec *s)
 	dnum = (void*)d->v;
 	snum = (void*)s->v;
 	for (i = 0; i < s->len; i++, dnum++, snum++) {
-		bc_num_init(dnum, snum->len);
-		bc_num_copy(dnum, snum);
+		bc_num_init_and_copy(dnum, snum);
 	}
 }
 
@@ -2508,8 +2527,7 @@ static void dc_result_copy(BcResult *d, BcResult *src)
 		case XC_RESULT_IBASE:
 		case XC_RESULT_SCALE:
 		case XC_RESULT_OBASE:
-			bc_num_init(&d->d.n, src->d.n.len);
-			bc_num_copy(&d->d.n, &src->d.n);
+			bc_num_init_and_copy(&d->d.n, &src->d.n);
 			break;
 		case XC_RESULT_VAR:
 		case XC_RESULT_ARRAY:
@@ -5611,11 +5629,10 @@ static BC_STATUS zxc_num_printNum(BcNum *n, unsigned base_t, size_t width, BcNum
 	}
 
 	bc_vec_init(&stack, sizeof(long), NULL);
-	bc_num_init(&intp, n->len);
+	bc_num_init_and_copy(&intp, n);
 	bc_num_init(&fracp, n->rdx);
 	bc_num_init(&digit, width);
 	bc_num_init(&frac_len, BC_NUM_INT(n));
-	bc_num_copy(&intp, n);
 	bc_num_one(&frac_len);
 	base.cap = ARRAY_SIZE(base_digs);
 	base.num = base_digs;
@@ -5784,8 +5801,7 @@ static BC_STATUS zxc_program_negate(void)
 	s = zxc_program_prep(&ptr, &num);
 	if (s) RETURN_STATUS(s);
 
-	bc_num_init(&res.d.n, num->len);
-	bc_num_copy(&res.d.n, num);
+	bc_num_init_and_copy(&res.d.n, num);
 	if (res.d.n.len) res.d.n.neg = !res.d.n.neg;
 
 	xc_program_retire(&res, XC_RESULT_TEMP);
@@ -6024,8 +6040,7 @@ static BC_STATUS zxc_program_assign(char inst)
 		s = BC_STATUS_SUCCESS;
 	}
 
-	bc_num_init(&res.d.n, l->len);
-	bc_num_copy(&res.d.n, l);
+	bc_num_init_and_copy(&res.d.n, l);
 	xc_program_binOpRetire(&res);
 
 	RETURN_STATUS(s);
@@ -6122,8 +6137,7 @@ static BC_STATUS zbc_program_incdec(char inst)
 
 	if (inst == BC_INST_INC_POST || inst == BC_INST_DEC_POST) {
 		copy.t = XC_RESULT_TEMP;
-		bc_num_init(&copy.d.n, num->len);
-		bc_num_copy(&copy.d.n, num);
+		bc_num_init_and_copy(&copy.d.n, num);
 	}
 
 	res.t = BC_RESULT_ONE;
@@ -6225,8 +6239,7 @@ static BC_STATUS zbc_program_return(char inst)
 
 		s = zxc_program_num(operand, &num);
 		if (s) RETURN_STATUS(s);
-		bc_num_init(&res.d.n, num->len);
-		bc_num_copy(&res.d.n, num);
+		bc_num_init_and_copy(&res.d.n, num);
 		bc_vec_pop(&G.prog.results);
 	} else {
 		if (f->voidfunc)

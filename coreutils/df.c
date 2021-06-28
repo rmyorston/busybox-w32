@@ -45,7 +45,7 @@
 //usage:	IF_FEATURE_HUMAN_READABLE("mh")
 //usage:	"T"
 //usage:	IF_FEATURE_DF_FANCY("ai] [-B SIZE")
-//usage:	"] [FILESYSTEM]..."
+//usage:	"] [-t TYPE] [FILESYSTEM]..."
 //usage:#define df_full_usage "\n\n"
 //usage:       "Print filesystem usage statistics\n"
 //usage:     "\n	-P	POSIX output format"
@@ -55,6 +55,7 @@
 //usage:     "\n	-h	Human readable (e.g. 1K 243M 2G)"
 //usage:	)
 //usage:     "\n	-T	Print filesystem type"
+//usage:     "\n	-t TYPE	Print only mounts of this type"
 //usage:	IF_FEATURE_DF_FANCY(
 //usage:     "\n	-a	Show all filesystems"
 //usage:     "\n	-i	Inodes"
@@ -97,24 +98,31 @@ int df_main(int argc UNUSED_PARAM, char **argv)
 	FILE *mount_table;
 	struct mntent *mount_entry;
 	struct statvfs s;
-
 	enum {
-		OPT_KILO  = (1 << 0),
-		OPT_POSIX = (1 << 1),
-		OPT_FSTYPE  = (1 << 2),
-		OPT_ALL   = (1 << 3) * ENABLE_FEATURE_DF_FANCY,
-		OPT_INODE = (1 << 4) * ENABLE_FEATURE_DF_FANCY,
-		OPT_BSIZE = (1 << 5) * ENABLE_FEATURE_DF_FANCY,
-		OPT_HUMAN = (1 << (3 + 3*ENABLE_FEATURE_DF_FANCY)) * ENABLE_FEATURE_HUMAN_READABLE,
-		OPT_MEGA  = (1 << (4 + 3*ENABLE_FEATURE_DF_FANCY)) * ENABLE_FEATURE_HUMAN_READABLE,
+		OPT_KILO   = (1 << 0),
+		OPT_POSIX  = (1 << 1),
+		OPT_FSTYPE = (1 << 2),
+		OPT_t      = (1 << 3),
+		OPT_ALL    = (1 << 4) * ENABLE_FEATURE_DF_FANCY,
+		OPT_INODE  = (1 << 5) * ENABLE_FEATURE_DF_FANCY,
+		OPT_BSIZE  = (1 << 6) * ENABLE_FEATURE_DF_FANCY,
+		OPT_HUMAN  = (1 << (4 + 3*ENABLE_FEATURE_DF_FANCY)) * ENABLE_FEATURE_HUMAN_READABLE,
+		OPT_MEGA   = (1 << (5 + 3*ENABLE_FEATURE_DF_FANCY)) * ENABLE_FEATURE_HUMAN_READABLE,
 	};
 	const char *disp_units_hdr = NULL;
-	char *chp;
+	char *chp, *opt_t;
 
 	init_unicode();
 
+	/* From the manpage of df from coreutils-6.10:
+	 * Disk space is shown in 1K blocks by default, unless the environment
+	 * variable POSIXLY_CORRECT is set, in which case 512-byte blocks are used.
+	 */
+	if (getenv("POSIXLY_CORRECT")) /* TODO - a new libbb function? */
+		df_disp_hr = 512;
+
 	opt = getopt32(argv, "^"
-			"kPT"
+			"kPTt:"
 			IF_FEATURE_DF_FANCY("aiB:")
 			IF_FEATURE_HUMAN_READABLE("hm")
 			"\0"
@@ -123,6 +131,7 @@ int df_main(int argc UNUSED_PARAM, char **argv)
 #elif ENABLE_FEATURE_HUMAN_READABLE
 			"k-m:m-k"
 #endif
+			, &opt_t
 			IF_FEATURE_DF_FANCY(, &chp)
 	);
 	if (opt & OPT_MEGA)
@@ -141,13 +150,6 @@ int df_main(int argc UNUSED_PARAM, char **argv)
 		df_disp_hr = xatoul_range_sfx(chp, 1, ULONG_MAX, kmg_i_suffixes);
  got_it: ;
 	}
-
-	/* From the manpage of df from coreutils-6.10:
-	 * Disk space is shown in 1K blocks by default, unless the environment
-	 * variable POSIXLY_CORRECT is set, in which case 512-byte blocks are used.
-	 */
-	if (getenv("POSIXLY_CORRECT")) /* TODO - a new libbb function? */
-		df_disp_hr = 512;
 
 	if (opt & OPT_HUMAN) {
 		df_disp_hr = 0;
@@ -213,6 +215,11 @@ int df_main(int argc UNUSED_PARAM, char **argv)
 
 		mount_point = mount_entry->mnt_dir;
 		fs_type = mount_entry->mnt_type;
+
+		if (opt & OPT_t) {
+			if (strcmp(fs_type, opt_t) != 0)
+				continue;
+		}
 
 		if (statvfs(mount_point, &s) != 0) {
 			bb_simple_perror_msg(mount_point);

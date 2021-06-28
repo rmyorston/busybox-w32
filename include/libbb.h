@@ -469,23 +469,29 @@ enum {	/* cp.c, mv.c, install.c depend on these values. CAREFUL when changing th
 	FILEUTILS_RECUR           = 1 << 2, /* -R */
 	FILEUTILS_FORCE           = 1 << 3, /* -f */
 	FILEUTILS_INTERACTIVE     = 1 << 4, /* -i */
-	FILEUTILS_MAKE_HARDLINK   = 1 << 5, /* -l */
-	FILEUTILS_MAKE_SOFTLINK   = 1 << 6, /* -s */
-	FILEUTILS_DEREF_SOFTLINK  = 1 << 7, /* -L */
-	FILEUTILS_DEREFERENCE_L0  = 1 << 8, /* -H */
+	FILEUTILS_NO_OVERWRITE    = 1 << 5, /* -n */
+	FILEUTILS_MAKE_HARDLINK   = 1 << 6, /* -l */
+	FILEUTILS_MAKE_SOFTLINK   = 1 << 7, /* -s */
+	FILEUTILS_DEREF_SOFTLINK  = 1 << 8, /* -L */
+	FILEUTILS_DEREFERENCE_L0  = 1 << 9, /* -H */
 	/* -a = -pdR (mapped in cp.c) */
 	/* -r = -dR  (mapped in cp.c) */
 	/* -P = -d   (mapped in cp.c) */
-	FILEUTILS_VERBOSE         = (1 << 12) * ENABLE_FEATURE_VERBOSE,	/* -v */
-	FILEUTILS_UPDATE          = 1 << 13, /* -u */
-	FILEUTILS_NO_TARGET_DIR	  = 1 << 14, /* -T */
+	FILEUTILS_VERBOSE         = (1 << 13) * ENABLE_FEATURE_VERBOSE,	/* -v */
+	FILEUTILS_UPDATE          = 1 << 14, /* -u */
+	FILEUTILS_NO_TARGET_DIR	  = 1 << 15, /* -T */
+	FILEUTILS_TARGET_DIR	  = 1 << 16, /* -t DIR */
 #if ENABLE_SELINUX
-	FILEUTILS_PRESERVE_SECURITY_CONTEXT = 1 << 15, /* -c */
+	FILEUTILS_PRESERVE_SECURITY_CONTEXT = 1 << 17, /* -c */
 #endif
-	FILEUTILS_RMDEST          = 1 << (16 - !ENABLE_SELINUX), /* --remove-destination */
-	/* bit 17 skipped for "cp --parents" */
-	FILEUTILS_REFLINK         = 1 << (18 - !ENABLE_SELINUX), /* cp --reflink=auto */
-	FILEUTILS_REFLINK_ALWAYS  = 1 << (19 - !ENABLE_SELINUX), /* cp --reflink[=always] */
+#define FILEUTILS_CP_OPTSTR "pdRfinlsLHarPvuTt:" IF_SELINUX("c")
+/* How many bits in FILEUTILS_CP_OPTSTR? */
+	FILEUTILS_CP_OPTBITS      = 18 - !ENABLE_SELINUX,
+
+	FILEUTILS_RMDEST          = 1 << (19 - !ENABLE_SELINUX), /* cp --remove-destination */
+	/* bit 18 skipped for "cp --parents" */
+	FILEUTILS_REFLINK         = 1 << (20 - !ENABLE_SELINUX), /* cp --reflink=auto */
+	FILEUTILS_REFLINK_ALWAYS  = 1 << (21 - !ENABLE_SELINUX), /* cp --reflink[=always] */
 	/*
 	 * Hole. cp may have some bits set here,
 	 * they should not affect remove_file()/copy_file()
@@ -495,7 +501,7 @@ enum {	/* cp.c, mv.c, install.c depend on these values. CAREFUL when changing th
 #endif
 	FILEUTILS_IGNORE_CHMOD_ERR = 1 << 31,
 };
-#define FILEUTILS_CP_OPTSTR "pdRfilsLHarPvuT" IF_SELINUX("c")
+
 extern int remove_file(const char *path, int flags) FAST_FUNC;
 /* NB: without FILEUTILS_RECUR in flags, it will basically "cat"
  * the source, not copy (unless "source" is a directory).
@@ -524,6 +530,11 @@ int recursive_action(const char *fileName, unsigned flags,
 	int FAST_FUNC  (*dirAction)(struct recursive_state *state, const char *fileName, struct stat* statbuf),
 	void *userData
 ) FAST_FUNC;
+
+/* Simpler version: call a function on each dirent in a directory */
+int iterate_on_dir(const char *dir_name,
+		int FAST_FUNC (*func)(const char *, struct dirent *, void *),
+		void *private) FAST_FUNC;
 
 extern int device_open(const char *device, int mode) FAST_FUNC;
 enum { GETPTY_BUFSIZE = 16 }; /* more than enough for "/dev/ttyXXX" */
@@ -1105,10 +1116,10 @@ char *smart_ulltoa5(unsigned long long ul, char buf[5], const char *scale) FAST_
 /* If block_size == 0, display size without fractional part,
  * else display (size * block_size) with one decimal digit.
  * If display_unit == 0, show value no bigger than 1024 with suffix (K,M,G...),
- * else divide by display_unit and do not use suffix. */
+ * else divide by display_unit and do not use suffix.
+ * Returns "auto pointer" */
 #define HUMAN_READABLE_MAX_WIDTH      7  /* "1024.0G" */
 #define HUMAN_READABLE_MAX_WIDTH_STR "7"
-//TODO: provide pointer to buf (avoid statics)?
 const char *make_human_readable_str(unsigned long long size,
 		unsigned long block_size, unsigned long display_unit) FAST_FUNC;
 /* Put a string of hex bytes ("1b2e66fe"...), return advanced pointer */

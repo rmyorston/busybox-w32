@@ -13572,7 +13572,7 @@ parsesub: {
 			do {
 				STPUTC(c, out);
 				c = pgetc_eatbnl();
-			} while (!subtype && isdigit(c));
+			} while ((subtype == 0 || subtype == VSLENGTH) && isdigit(c));
 		} else if (c != '}') {
 			/* $[{[#]]<specialchar>[}] */
 			int cc = c;
@@ -13601,11 +13601,6 @@ parsesub: {
 			USTPUTC(cc, out);
 		} else
 			goto badsub;
-
-		if (c != '}' && subtype == VSLENGTH) {
-			/* ${#VAR didn't end with } */
-			goto badsub;
-		}
 
 		if (subtype == 0) {
 			static const char types[] ALIGN1 = "}-+?=";
@@ -13663,6 +13658,8 @@ parsesub: {
 #endif
 			}
 		} else {
+			if (subtype == VSLENGTH && c != '}')
+				subtype = 0;
  badsub:
 			pungetc();
 		}
@@ -15358,7 +15355,7 @@ init(void)
 
 
 //usage:#define ash_trivial_usage
-//usage:	"[-il] [-/+Cabefmnuvx] [-/+o OPT]... [-c 'SCRIPT' [ARG0 [ARGS]] / FILE [ARGS] / -s [ARGS]]"
+//usage:	"[-il] [-|+Cabefmnuvx] [-|+o OPT]... [-c 'SCRIPT' [ARG0 ARGS] | FILE [ARGS] | -s [ARGS]]"
 ////////	comes from ^^^^^^^^^^optletters
 //usage:#define ash_full_usage "\n\n"
 //usage:	"Unix shell interpreter"
