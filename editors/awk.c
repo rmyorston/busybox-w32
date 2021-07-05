@@ -915,7 +915,7 @@ static int fmt_num(char *b, int size, const char *format, double n, int int_as_i
 	const char *s = format;
 
 	if (int_as_int && n == (long long)n) {
-		r = snprintf(b, size, "%lld", (long long)n);
+		r = snprintf(b, size, "%"LL_FMT"d", (long long)n);
 	} else {
 		do { c = *s; } while (c && *++s);
 		if (strchr("diouxX", c)) {
@@ -3205,6 +3205,12 @@ static var *evaluate(node *op, var *res)
 # if RAND_MAX > 0x7fffffff
 				v &= 0x7fffffffffffffffULL;
 # endif
+				R_d = (double)v / 0x8000000000000000ULL;
+#elif ENABLE_PLATFORM_MINGW32 && RAND_MAX == 0x7fff
+				/* 45 bits of randomness ought to be enough for anyone */
+				uint64_t v = ((uint64_t)rand() << 48) |
+								((uint64_t)rand() << 33) |
+								((uint64_t)rand() << 18);
 				R_d = (double)v / 0x8000000000000000ULL;
 #else
 # error Not implemented for this value of RAND_MAX
