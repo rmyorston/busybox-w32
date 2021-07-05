@@ -45,6 +45,16 @@ testing "awk handles empty function f(arg){}" \
 	"" ""
 
 prg='
+function empty_fun(){}
+END {empty_fun()
+  print "Ok"
+}'
+testing "awk handles empty function f(){}" \
+	"awk '$prg'" \
+	"Ok\n" \
+	"" ""
+
+prg='
 function outer_fun() {
   return 1
 }
@@ -69,6 +79,23 @@ END {
 testing "awk properly handles undefined function" \
 	"awk '$prg' 2>&1" \
 	"L1\n\nawk: cmd. line:5: Call to undefined function\n" \
+	"" ""
+
+prg='
+BEGIN {
+  v=1
+  a=2
+  print v (a)
+}'
+testing "awk 'v (a)' is not a function call, it is a concatenation" \
+	"awk '$prg' 2>&1" \
+	"12\n" \
+	"" ""
+
+prg='func f(){print"F"};func g(){print"G"};BEGIN{f(g(),g())}'
+testing "awk unused function args are evaluated" \
+	"awk '$prg' 2>&1" \
+	"G\nG\nF\n" \
 	"" ""
 
 
@@ -417,5 +444,10 @@ testing 'awk $NF is empty' \
 	"\n" \
 	'' \
 	'a=====123='
+
+testing "awk exit N propagates through END's exit" \
+	"awk 'BEGIN { exit 42 } END { exit }'; echo \$?" \
+	"42\n" \
+	'' ''
 
 exit $FAILCOUNT
