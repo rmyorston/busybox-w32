@@ -900,6 +900,7 @@ int winansi_vsnprintf(char *buf, size_t size, const char *format, va_list list)
 
 	va_copy(list2, list);
 	len = _vsnprintf(NULL, 0, format, list2);
+	va_end(list2);
 	if (len < 0)
 		return -1;
 
