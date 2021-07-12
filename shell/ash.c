@@ -15899,21 +15899,11 @@ spawn_forkshell(struct forkshell *fs, struct job *jp, union node *n, int mode)
  * When this memory is mapped elsewhere, pointer fixup will be needed
  */
 
-/* redefine without test that relocate is non-NULL */
+/* redefine without test that fs_size is nonzero */
 #undef SAVE_PTR
 #undef SAVE_PTR2
 #undef SAVE_PTR3
-# define SAVE_PTR(dst,note,flag) { \
-		MARK_PTR(dst,flag); ANNOT(dst,note); \
-}
-# define SAVE_PTR2(dst1,note1,flag1,dst2,note2,flag2) { \
-		MARK_PTR(dst1,flag1); MARK_PTR(dst2,flag2); \
-		ANNOT(dst1,note1); ANNOT(dst2,note2); \
-}
-# define SAVE_PTR3(dst1,note1,flag1,dst2,note2,flag2,dst3,note3,flag3) { \
-		MARK_PTR(dst1,flag1); MARK_PTR(dst2,flag2); MARK_PTR(dst3,flag3); \
-		ANNOT(dst1,note1); ANNOT(dst2,note2); ANNOT(dst3,note3); \
-}
+#define SAVE_PTR(dst,note,flag) {MARK_PTR(dst,flag); ANNOT(dst,note);}
 
 static int align_len(const char *s)
 {
@@ -16270,13 +16260,13 @@ globals_misc_copy(struct globals_misc *p)
 	new->physdir = p->physdir != p->nullstr ? nodeckstrdup(p->physdir) : new->nullstr;
 	new->arg0 = nodeckstrdup(p->arg0);
 	new->commandname = nodeckstrdup(p->commandname);
-	SAVE_PTR3(
-		new->minusc, xasprintf("minusc '%s'", p->minusc ?: "NULL"), FREE,
-		new->curdir, xasprintf("curdir '%s'", new->curdir ?: "NULL"), FREE,
-		new->physdir, xasprintf("physdir '%s'", new->physdir ?: "NULL"), FREE);
-	SAVE_PTR2(
-		new->arg0, xasprintf("arg0 '%s'", p->arg0 ?: "NULL"), FREE,
-		new->commandname,
+	SAVE_PTR(new->minusc, xasprintf("minusc '%s'", p->minusc ?: "NULL"), FREE);
+	SAVE_PTR(new->curdir,
+			xasprintf("curdir '%s'", new->curdir ?: "NULL"), FREE);
+	SAVE_PTR(new->physdir,
+			xasprintf("physdir '%s'", new->physdir ?: "NULL"), FREE);
+	SAVE_PTR(new->arg0, xasprintf("arg0 '%s'", p->arg0 ?: "NULL"), FREE);
+	SAVE_PTR(new->commandname,
 			xasprintf("commandname '%s'", p->commandname ?: "NULL"), FREE);
 	return new;
 }
@@ -16322,14 +16312,14 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 	new->gvp = globals_var_copy(ash_ptr_to_globals_var);
 	new->gmp = globals_misc_copy(ash_ptr_to_globals_misc);
 	new->cmdtable = cmdtable_copy(cmdtable);
-	SAVE_PTR3(new->gvp, "gvp", NO_FREE,
-		new->gmp, "gmp", NO_FREE,
-		new->cmdtable, "cmdtable", NO_FREE);
+	SAVE_PTR(new->gvp, "gvp", NO_FREE);
+	SAVE_PTR(new->gmp, "gmp", NO_FREE);
+	SAVE_PTR(new->cmdtable, "cmdtable", NO_FREE);
 
 	new->n = copynode(fs->n);
 	new->argv = argv_copy(fs->argv);
-	SAVE_PTR2( new->n, "n", NO_FREE,
-		new->argv, "argv", NO_FREE);
+	SAVE_PTR(new->n, "n", NO_FREE);
+	SAVE_PTR(new->argv, "argv", NO_FREE);
 
 	if ((ENABLE_ASH_ALIAS || MAX_HISTORY) && fs->fpid != FS_SHELLEXEC) {
 #if ENABLE_ASH_ALIAS
