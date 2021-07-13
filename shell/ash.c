@@ -349,8 +349,9 @@ typedef long arith_t;
 # define BB_GLOBAL_CONST const
 #endif
 
-#define FORKSHELL_DEBUG 0
 #if ENABLE_PLATFORM_MINGW32
+# define FORKSHELL_DEBUG 0
+
 union node;
 struct strlist;
 struct job;
@@ -9660,17 +9661,20 @@ nodeckstrdup(const char *s)
 
 static union node *copynode(union node *);
 
-#if ENABLE_PLATFORM_MINGW32 && FORKSHELL_DEBUG
-# define FREE 1
-# define NO_FREE 2
-# define ANNOT(dst,note) {if (annot) annot[(char *)&dst - (char *)fs_start] = note;}
-#else
-# define FREE 1
-# define NO_FREE 1
-# define ANNOT(dst,note)
-#endif
-
 #if ENABLE_PLATFORM_MINGW32
+# if FORKSHELL_DEBUG
+#  define FREE 1
+#  define NO_FREE 2
+#  define ANNOT(dst,note) { \
+		if (annot) \
+			annot[(char *)&dst - (char *)fs_start] = note; \
+	}
+# else
+#  define FREE 1
+#  define NO_FREE 1
+#  define ANNOT(dst,note)
+# endif
+
 /* The relocation map is offset from the start of the forkshell data
  * block by 'fs_size' bytes.  The flag relating to a particular destination
  * pointer is thus at (dst+fs_size). */

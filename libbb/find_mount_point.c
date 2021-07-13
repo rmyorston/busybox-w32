@@ -22,12 +22,13 @@
 struct mntent* FAST_FUNC find_mount_point(const char *name, int subdir_too)
 {
 	struct stat s;
-	struct mntent *mountEntry;
 #if !ENABLE_PLATFORM_MINGW32
 	FILE *mtab_fp;
+	struct mntent *mountEntry;
 	dev_t devno_of_name;
 	bool block_dev;
 #else
+	struct mntent *mountEntry;
 	static struct mntdata *data = NULL;
 	char *current;
 	const char *path;
