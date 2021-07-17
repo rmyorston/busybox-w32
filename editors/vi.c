@@ -2444,12 +2444,14 @@ static char *char_search(char *p, const char *pat, int dir_and_range)
 	char *q;
 	int i, size, range, start;
 
-	re_syntax_options = RE_SYNTAX_POSIX_EXTENDED;
+	re_syntax_options = RE_SYNTAX_POSIX_BASIC & (~RE_DOT_NEWLINE);
 	if (ignorecase)
-		re_syntax_options = RE_SYNTAX_POSIX_EXTENDED | RE_ICASE;
+		re_syntax_options |= RE_ICASE;
 
 	memset(&preg, 0, sizeof(preg));
 	err = re_compile_pattern(pat, strlen(pat), &preg);
+	preg.not_bol = p != text;
+	preg.not_eol = p != end - 1;
 	if (err != NULL) {
 		status_line_bold("bad search pattern '%s': %s", pat, err);
 		return p;
@@ -2740,6 +2742,75 @@ static char *expand_args(char *args)
 #  define expand_args(a) (a)
 # endif
 #endif /* FEATURE_VI_COLON */
+
+#if ENABLE_FEATURE_VI_REGEX_SEARCH
+# define MAX_SUBPATTERN 10	// subpatterns \0 .. \9
+
+// Like strchr() but skipping backslash-escaped characters
+static char *strchr_backslash(const char *s, int c)
+{
+	while (*s) {
+		if (*s == c)
+			return (char *)s;
+		if (*s == '\\')
+			if (*++s == '\0')
+				break;
+		s++;
+	}
+	return NULL;
+}
+
+// If the return value is not NULL the caller should free R
+static char *regex_search(char *q, regex_t *preg, const char *Rorig,
+				size_t *len_F, size_t *len_R, char **R)
+{
+	regmatch_t regmatch[MAX_SUBPATTERN], *cur_match;
+	char *found = NULL;
+	const char *t;
+	char *r;
+
+	regmatch[0].rm_so = 0;
+	regmatch[0].rm_eo = end_line(q) - q;
+	if (regexec(preg, q, MAX_SUBPATTERN, regmatch, REG_STARTEND) != 0)
+		return found;
+
+	found = q + regmatch[0].rm_so;
+	*len_F = regmatch[0].rm_eo - regmatch[0].rm_so;
+	*R = NULL;
+
+ fill_result:
+	// first pass calculates len_R, second fills R
+	*len_R = 0;
+	for (t = Rorig, r = *R; *t; t++) {
+		size_t len = 1;	// default is to copy one char from replace pattern
+		const char *from = t;
+		if (*t == '\\') {
+			from = ++t;	// skip backslash
+			if (*t >= '0' && *t < '0' + MAX_SUBPATTERN) {
+				cur_match = regmatch + (*t - '0');
+				if (cur_match->rm_so >= 0) {
+					len = cur_match->rm_eo - cur_match->rm_so;
+					from = q + cur_match->rm_so;
+				}
+			}
+		}
+		*len_R += len;
+		if (*R) {
+			memcpy(r, from, len);
+			r += len;
+			/* *r = '\0'; - xzalloc did it */
+		}
+	}
+	if (*R == NULL) {
+		*R = xzalloc(*len_R + 1);
+		goto fill_result;
+	}
+
+	return found;
+}
+#else /* !ENABLE_FEATURE_VI_REGEX_SEARCH */
+# define strchr_backslash(s, c) strchr(s, c)
+#endif /* ENABLE_FEATURE_VI_REGEX_SEARCH */
 
 // buf must be no longer than MAX_INPUT_LEN!
 static void colon(char *buf)
@@ -3148,23 +3219,30 @@ static void colon(char *buf)
 #  if ENABLE_FEATURE_VI_VERBOSE_STATUS
 		int last_line = 0, lines = 0;
 #  endif
+#  if ENABLE_FEATURE_VI_REGEX_SEARCH
+		regex_t preg;
+		int cflags;
+		char *Rorig;
+#   if ENABLE_FEATURE_VI_UNDO
+		int undo = 0;
+#   endif
+#  endif
 
 		// F points to the "find" pattern
 		// R points to the "replace" pattern
 		// replace the cmd line delimiters "/" with NULs
 		c = buf[1];	// what is the delimiter
 		F = buf + 2;	// start of "find"
-		R = strchr(F, c);	// middle delimiter
+		R = strchr_backslash(F, c);	// middle delimiter
 		if (!R)
 			goto colon_s_fail;
 		len_F = R - F;
 		*R++ = '\0';	// terminate "find"
-		flags = strchr(R, c);
+		flags = strchr_backslash(R, c);
 		if (flags) {
 			*flags++ = '\0';	// terminate "replace"
 			gflag = *flags;
 		}
-		len_R = strlen(R);
 
 		if (len_F) {	// save "find" as last search pattern
 			free(last_search_pattern);
@@ -3186,31 +3264,67 @@ static void colon(char *buf)
 			b = e;
 		}
 
+#  if ENABLE_FEATURE_VI_REGEX_SEARCH
+		Rorig = R;
+		cflags = 0;
+		if (ignorecase)
+			cflags = REG_ICASE;
+		memset(&preg, 0, sizeof(preg));
+		if (regcomp(&preg, F, cflags) != 0) {
+			status_line(":s bad search pattern");
+			goto regex_search_end;
+		}
+#  else
+		len_R = strlen(R);
+#  endif
+
 		for (i = b; i <= e; i++) {	// so, :20,23 s \0 find \0 replace \0
 			char *ls = q;		// orig line start
 			char *found;
  vc4:
+#  if ENABLE_FEATURE_VI_REGEX_SEARCH
+			found = regex_search(q, &preg, Rorig, &len_F, &len_R, &R);
+#  else
 			found = char_search(q, F, (FORWARD << 1) | LIMITED);	// search cur line only for "find"
+#  endif
 			if (found) {
 				uintptr_t bias;
 				// we found the "find" pattern - delete it
 				// For undo support, the first item should not be chained
-				text_hole_delete(found, found + len_F - 1,
-							subs ? ALLOW_UNDO_CHAIN: ALLOW_UNDO);
-				// can't do this above, no undo => no third argument
-				subs++;
-#  if ENABLE_FEATURE_VI_VERBOSE_STATUS
-				if (last_line != i) {
-					last_line = i;
-					++lines;
-				}
+				// This needs to be handled differently depending on
+				// whether or not regex support is enabled.
+#  if ENABLE_FEATURE_VI_REGEX_SEARCH
+#   define TEST_LEN_F len_F	// len_F may be zero
+#   define TEST_UNDO1 undo++
+#   define TEST_UNDO2 undo++
+#  else
+#   define TEST_LEN_F 1		// len_F is never zero
+#   define TEST_UNDO1 subs
+#   define TEST_UNDO2 1
 #  endif
-				// insert the "replace" patern
-				bias = string_insert(found, R, ALLOW_UNDO_CHAIN);
-				found += bias;
-				ls += bias;
-				dot = ls;
-				//q += bias; - recalculated anyway
+				if (TEST_LEN_F)	// match can be empty, no delete needed
+					text_hole_delete(found, found + len_F - 1,
+								TEST_UNDO1 ? ALLOW_UNDO_CHAIN : ALLOW_UNDO);
+				if (len_R != 0) {	// insert the "replace" pattern, if required
+					bias = string_insert(found, R,
+								TEST_UNDO2 ? ALLOW_UNDO_CHAIN : ALLOW_UNDO);
+					found += bias;
+					ls += bias;
+					//q += bias; - recalculated anyway
+				}
+#  if ENABLE_FEATURE_VI_REGEX_SEARCH
+				free(R);
+#  endif
+				if (TEST_LEN_F || len_R != 0) {
+					dot = ls;
+					subs++;
+#  if ENABLE_FEATURE_VI_VERBOSE_STATUS
+					if (last_line != i) {
+						last_line = i;
+						++lines;
+					}
+#  endif
+				}
 				// check for "global"  :s/foo/bar/g
 				if (gflag == 'g') {
 					if ((found + len_R) < end_line(ls)) {
@@ -3230,6 +3344,10 @@ static void colon(char *buf)
 				status_line("%d substitutions on %d lines", subs, lines);
 #  endif
 		}
+#  if ENABLE_FEATURE_VI_REGEX_SEARCH
+ regex_search_end:
+		regfree(&preg);
+#  endif
 # endif /* FEATURE_VI_SEARCH */
 	} else if (strncmp(cmd, "version", i) == 0) {  // show software version
 		status_line(BB_VER);
@@ -3503,7 +3621,7 @@ static int find_range(char **start, char **stop, int cmd)
 		// for non-change operations WS after NL is not part of word
 		if (cmd != 'c' && dot != t && *dot != '\n')
 			dot = t;
-	} else if (strchr("GHL+-jk'\r\n", c)) {
+	} else if (strchr("GHL+-gjk'\r\n", c)) {
 		// these operate on whole lines
 		buftype = WHOLE;
 		do_cmd(c);		// execute movement cmd
@@ -4093,6 +4211,7 @@ static void do_cmd(int c)
 			buf[1] = (c1 >= 0 ? c1 : '*');
 			buf[2] = '\0';
 			not_implemented(buf);
+			cmd_error = TRUE;
 			break;
 		}
 		if (cmdcnt == 0)

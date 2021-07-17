@@ -379,19 +379,14 @@ testing "awk -e and ARGC" \
 	""
 SKIP=
 
-# The examples are in fact not valid awk programs (break/continue
-# can only be used inside loops).
-# But we do accept them outside of loops.
-# We had a bug with misparsing "break ; else" sequence.
-# Test that *that* bug is fixed, using simplest possible scripts:
 testing "awk break" \
 	"awk -f - 2>&1; echo \$?" \
-	"0\n" \
+	"awk: -:1: 'break' not in a loop\n1\n" \
 	"" \
 	'BEGIN { if (1) break; else a = 1 }'
 testing "awk continue" \
 	"awk -f - 2>&1; echo \$?" \
-	"0\n" \
+	"awk: -:1: 'continue' not in a loop\n1\n" \
 	"" \
 	'BEGIN { if (1) continue; else a = 1 }'
 
@@ -413,6 +408,14 @@ SKIP=
 optional FEATURE_AWK_GNU_EXTENSIONS
 testing "awk printf('%c') can output NUL" \
 	"awk '{printf(\"hello%c null\n\", 0)}'" "hello\0 null\n" "" "\n"
+SKIP=
+
+optional FEATURE_AWK_GNU_EXTENSIONS
+testing "awk printf('%-10c') can output NUL" \
+	"awk 'BEGIN { printf \"[%-10c]\n\", 0 }' | od -tx1" "\
+0000000 5b 00 20 20 20 20 20 20 20 20 20 5d 0a
+0000015
+" "" ""
 SKIP=
 
 # testing "description" "command" "result" "infile" "stdin"
@@ -448,6 +451,16 @@ testing 'awk $NF is empty' \
 testing "awk exit N propagates through END's exit" \
 	"awk 'BEGIN { exit 42 } END { exit }'; echo \$?" \
 	"42\n" \
+	'' ''
+
+testing "awk print + redirect" \
+	"awk 'BEGIN { print \"STDERR %s\" >\"/dev/stderr\" }' 2>&1" \
+	"STDERR %s\n" \
+	'' ''
+
+testing "awk \"cmd\" | getline" \
+	"awk 'BEGIN { \"echo HELLO\" | getline; print }'" \
+	"HELLO\n" \
 	'' ''
 
 exit $FAILCOUNT

@@ -199,77 +199,78 @@ typedef struct tsplitter_s {
 
 /* simple token classes */
 /* order and hex values are very important!!!  See next_token() */
-#define	TC_LPAREN	(1 << 0)		/* ( */
-#define	TC_RPAREN	(1 << 1)		/* ) */
-#define	TC_REGEXP	(1 << 2)		/* /.../ */
-#define	TC_OUTRDR	(1 << 3)		/* | > >> */
-#define	TC_UOPPOST	(1 << 4)		/* unary postfix operator ++ -- */
-#define	TC_UOPPRE1	(1 << 5)		/* unary prefix operator ++ -- $ */
-#define	TC_BINOPX	(1 << 6)		/* two-opnd operator */
-#define	TC_IN		(1 << 7)		/* 'in' */
-#define	TC_COMMA	(1 << 8)		/* , */
-#define	TC_PIPE		(1 << 9)		/* input redirection pipe | */
-#define	TC_UOPPRE2	(1 << 10)		/* unary prefix operator + - ! */
-#define	TC_ARRTERM	(1 << 11)		/* ] */
-#define	TC_LBRACE	(1 << 12)		/* { */
-#define	TC_RBRACE	(1 << 13)		/* } */
-#define	TC_SEMICOL	(1 << 14)		/* ; */
-#define	TC_NEWLINE	(1 << 15)
-#define	TC_STATX	(1 << 16)		/* ctl statement (for, next...) */
-#define	TC_WHILE	(1 << 17)		/* 'while' */
-#define	TC_ELSE		(1 << 18)		/* 'else' */
-#define	TC_BUILTIN	(1 << 19)
+#define TC_LPAREN       (1 << 0)        /* ( */
+#define TC_RPAREN       (1 << 1)        /* ) */
+#define TC_REGEXP       (1 << 2)        /* /.../ */
+#define TC_OUTRDR       (1 << 3)        /* | > >> */
+#define TC_UOPPOST      (1 << 4)        /* unary postfix operator ++ -- */
+#define TC_UOPPRE1      (1 << 5)        /* unary prefix operator ++ -- $ */
+#define TC_BINOPX       (1 << 6)        /* two-opnd operator */
+#define TC_IN           (1 << 7)        /* 'in' */
+#define TC_COMMA        (1 << 8)        /* , */
+#define TC_PIPE         (1 << 9)        /* input redirection pipe | */
+#define TC_UOPPRE2      (1 << 10)       /* unary prefix operator + - ! */
+#define TC_ARRTERM      (1 << 11)       /* ] */
+#define TC_LBRACE       (1 << 12)       /* { */
+#define TC_RBRACE       (1 << 13)       /* } */
+#define TC_SEMICOL      (1 << 14)       /* ; */
+#define TC_NEWLINE      (1 << 15)
+#define TC_STATX        (1 << 16)       /* ctl statement (for, next...) */
+#define TC_WHILE        (1 << 17)       /* 'while' */
+#define TC_ELSE         (1 << 18)       /* 'else' */
+#define TC_BUILTIN      (1 << 19)
 /* This costs ~50 bytes of code.
  * A separate class to support deprecated "length" form. If we don't need that
  * (i.e. if we demand that only "length()" with () is valid), then TC_LENGTH
  * can be merged with TC_BUILTIN:
  */
-#define	TC_LENGTH	(1 << 20)		/* 'length' */
-#define	TC_GETLINE	(1 << 21)		/* 'getline' */
-#define	TC_FUNCDECL	(1 << 22)		/* 'function' 'func' */
-#define	TC_BEGIN	(1 << 23)		/* 'BEGIN' */
-#define	TC_END		(1 << 24)		/* 'END' */
-#define	TC_EOF		(1 << 25)
-#define	TC_VARIABLE	(1 << 26)		/* name */
-#define	TC_ARRAY	(1 << 27)		/* name[ */
-#define	TC_FUNCTION	(1 << 28)		/* name( */
-#define	TC_STRING	(1 << 29)		/* "..." */
-#define	TC_NUMBER	(1 << 30)
+#define TC_LENGTH       (1 << 20)       /* 'length' */
+#define TC_GETLINE      (1 << 21)       /* 'getline' */
+#define TC_FUNCDECL     (1 << 22)       /* 'function' 'func' */
+#define TC_BEGIN        (1 << 23)       /* 'BEGIN' */
+#define TC_END          (1 << 24)       /* 'END' */
+#define TC_EOF          (1 << 25)
+#define TC_VARIABLE     (1 << 26)       /* name */
+#define TC_ARRAY        (1 << 27)       /* name[ */
+#define TC_FUNCTION     (1 << 28)       /* name( */
+#define TC_STRING       (1 << 29)       /* "..." */
+#define TC_NUMBER       (1 << 30)
 
 #ifndef debug_parse_print_tc
-#define debug_parse_print_tc(n) do { \
-if ((n) & TC_LPAREN  ) debug_printf_parse(" LPAREN"  ); \
-if ((n) & TC_RPAREN  ) debug_printf_parse(" RPAREN"  ); \
-if ((n) & TC_REGEXP  ) debug_printf_parse(" REGEXP"  ); \
-if ((n) & TC_OUTRDR  ) debug_printf_parse(" OUTRDR"  ); \
-if ((n) & TC_UOPPOST ) debug_printf_parse(" UOPPOST" ); \
-if ((n) & TC_UOPPRE1 ) debug_printf_parse(" UOPPRE1" ); \
-if ((n) & TC_BINOPX  ) debug_printf_parse(" BINOPX"  ); \
-if ((n) & TC_IN      ) debug_printf_parse(" IN"      ); \
-if ((n) & TC_COMMA   ) debug_printf_parse(" COMMA"   ); \
-if ((n) & TC_PIPE    ) debug_printf_parse(" PIPE"    ); \
-if ((n) & TC_UOPPRE2 ) debug_printf_parse(" UOPPRE2" ); \
-if ((n) & TC_ARRTERM ) debug_printf_parse(" ARRTERM" ); \
-if ((n) & TC_LBRACE  ) debug_printf_parse(" LBRACE"  ); \
-if ((n) & TC_RBRACE  ) debug_printf_parse(" RBRACE"  ); \
-if ((n) & TC_SEMICOL ) debug_printf_parse(" SEMICOL" ); \
-if ((n) & TC_NEWLINE ) debug_printf_parse(" NEWLINE" ); \
-if ((n) & TC_STATX   ) debug_printf_parse(" STATX"   ); \
-if ((n) & TC_WHILE   ) debug_printf_parse(" WHILE"   ); \
-if ((n) & TC_ELSE    ) debug_printf_parse(" ELSE"    ); \
-if ((n) & TC_BUILTIN ) debug_printf_parse(" BUILTIN" ); \
-if ((n) & TC_LENGTH  ) debug_printf_parse(" LENGTH"  ); \
-if ((n) & TC_GETLINE ) debug_printf_parse(" GETLINE" ); \
-if ((n) & TC_FUNCDECL) debug_printf_parse(" FUNCDECL"); \
-if ((n) & TC_BEGIN   ) debug_printf_parse(" BEGIN"   ); \
-if ((n) & TC_END     ) debug_printf_parse(" END"     ); \
-if ((n) & TC_EOF     ) debug_printf_parse(" EOF"     ); \
-if ((n) & TC_VARIABLE) debug_printf_parse(" VARIABLE"); \
-if ((n) & TC_ARRAY   ) debug_printf_parse(" ARRAY"   ); \
-if ((n) & TC_FUNCTION) debug_printf_parse(" FUNCTION"); \
-if ((n) & TC_STRING  ) debug_printf_parse(" STRING"  ); \
-if ((n) & TC_NUMBER  ) debug_printf_parse(" NUMBER"  ); \
-} while (0)
+static void debug_parse_print_tc(uint32_t n)
+{
+	if (n & TC_LPAREN  ) debug_printf_parse(" LPAREN"  );
+	if (n & TC_RPAREN  ) debug_printf_parse(" RPAREN"  );
+	if (n & TC_REGEXP  ) debug_printf_parse(" REGEXP"  );
+	if (n & TC_OUTRDR  ) debug_printf_parse(" OUTRDR"  );
+	if (n & TC_UOPPOST ) debug_printf_parse(" UOPPOST" );
+	if (n & TC_UOPPRE1 ) debug_printf_parse(" UOPPRE1" );
+	if (n & TC_BINOPX  ) debug_printf_parse(" BINOPX"  );
+	if (n & TC_IN      ) debug_printf_parse(" IN"      );
+	if (n & TC_COMMA   ) debug_printf_parse(" COMMA"   );
+	if (n & TC_PIPE    ) debug_printf_parse(" PIPE"    );
+	if (n & TC_UOPPRE2 ) debug_printf_parse(" UOPPRE2" );
+	if (n & TC_ARRTERM ) debug_printf_parse(" ARRTERM" );
+	if (n & TC_LBRACE  ) debug_printf_parse(" LBRACE"  );
+	if (n & TC_RBRACE  ) debug_printf_parse(" RBRACE"  );
+	if (n & TC_SEMICOL ) debug_printf_parse(" SEMICOL" );
+	if (n & TC_NEWLINE ) debug_printf_parse(" NEWLINE" );
+	if (n & TC_STATX   ) debug_printf_parse(" STATX"   );
+	if (n & TC_WHILE   ) debug_printf_parse(" WHILE"   );
+	if (n & TC_ELSE    ) debug_printf_parse(" ELSE"    );
+	if (n & TC_BUILTIN ) debug_printf_parse(" BUILTIN" );
+	if (n & TC_LENGTH  ) debug_printf_parse(" LENGTH"  );
+	if (n & TC_GETLINE ) debug_printf_parse(" GETLINE" );
+	if (n & TC_FUNCDECL) debug_printf_parse(" FUNCDECL");
+	if (n & TC_BEGIN   ) debug_printf_parse(" BEGIN"   );
+	if (n & TC_END     ) debug_printf_parse(" END"     );
+	if (n & TC_EOF     ) debug_printf_parse(" EOF"     );
+	if (n & TC_VARIABLE) debug_printf_parse(" VARIABLE");
+	if (n & TC_ARRAY   ) debug_printf_parse(" ARRAY"   );
+	if (n & TC_FUNCTION) debug_printf_parse(" FUNCTION");
+	if (n & TC_STRING  ) debug_printf_parse(" STRING"  );
+	if (n & TC_NUMBER  ) debug_printf_parse(" NUMBER"  );
+}
 #endif
 
 /* combined token classes ("token [class] sets") */
@@ -417,7 +418,7 @@ static const char tokenlist[] ALIGN1 =
 	"\5close"     "\6system"    "\6fflush"  "\5atan2"
 	"\3cos"       "\3exp"       "\3int"     "\3log"
 	"\4rand"      "\3sin"       "\4sqrt"    "\5srand"
-	"\6gensub"    "\4gsub"      "\5index"	/* "\6length" was here */
+	"\6gensub"    "\4gsub"      "\5index"   /* "\6length" was here */
 	"\5match"     "\5split"     "\7sprintf" "\3sub"
 	"\6substr"    "\7systime"   "\10strftime" "\6mktime"
 	"\7tolower"   "\7toupper"   NTC
@@ -462,8 +463,7 @@ static const uint32_t tokeninfo[] ALIGN4 = {
 	0,
 	0, /* \n */
 	ST_IF,        ST_DO,        ST_FOR,      OC_BREAK,
-#define TI_PRINT OC_PRINT
-	OC_CONTINUE,  OC_DELETE|Rx, TI_PRINT,
+	OC_CONTINUE,  OC_DELETE|Rx, OC_PRINT,
 	OC_PRINTF,    OC_NEXT,      OC_NEXTFILE,
 	OC_RETURN|Vx, OC_EXIT|Nx,
 	ST_WHILE,
@@ -908,25 +908,23 @@ static double my_strtod(char **pp)
 
 /* -------- working with variables (set/get/copy/etc) -------- */
 
-static int fmt_num(char *b, int size, const char *format, double n, int int_as_int)
+static void fmt_num(const char *format, double n)
 {
-	int r = 0;
-	char c;
-	const char *s = format;
-
-	if (int_as_int && n == (long long)n) {
-		r = snprintf(b, size, "%"LL_FMT"d", (long long)n);
+	if (n == (long long)n) {
+		snprintf(g_buf, MAXVARFMT, "%"LL_FMT"d", (long long)n);
 	} else {
+		const char *s = format;
+		char c;
+
 		do { c = *s; } while (c && *++s);
 		if (strchr("diouxX", c)) {
-			r = snprintf(b, size, format, (int)n);
+			snprintf(g_buf, MAXVARFMT, format, (int)n);
 		} else if (strchr("eEfFgGaA", c)) {
-			r = snprintf(b, size, format, n);
+			snprintf(g_buf, MAXVARFMT, format, n);
 		} else {
 			syntax_error(EMSG_INV_FMT);
 		}
 	}
-	return r;
 }
 
 static xhash *iamarray(var *a)
@@ -1003,7 +1001,7 @@ static const char *getvar_s(var *v)
 {
 	/* if v is numeric and has no cached string, convert it to string */
 	if ((v->type & (VF_NUMBER | VF_CACHED)) == VF_NUMBER) {
-		fmt_num(g_buf, MAXVARFMT, getvar_s(intvar[CONVFMT]), v->number, TRUE);
+		fmt_num(getvar_s(intvar[CONVFMT]), v->number);
 		v->string = xstrdup(g_buf);
 		v->type |= VF_CACHED;
 	}
@@ -1596,8 +1594,8 @@ static void chain_group(void)
 		chain_until_rbrace();
 		return;
 	}
-	if (tc & (TS_OPSEQ | TC_SEMICOL | TC_NEWLINE)) {
-		debug_printf_parse("%s: TS_OPSEQ | TC_SEMICOL | TC_NEWLINE\n", __func__);
+	if (tc & (TS_OPSEQ | TC_SEMICOL)) {
+		debug_printf_parse("%s: TS_OPSEQ | TC_SEMICOL\n", __func__);
 		rollback_token();
 		chain_expr(OC_EXEC | Vx);
 		return;
@@ -1641,7 +1639,7 @@ static void chain_group(void)
 		debug_printf_parse("%s: ST_FOR\n", __func__);
 		next_token(TC_LPAREN);
 		n2 = parse_expr(TC_SEMICOL | TC_RPAREN);
-		if (t_tclass & TC_RPAREN) {	/* for-in */
+		if (t_tclass & TC_RPAREN) {	/* for (I in ARRAY) */
 			if (!n2 || n2->info != TI_IN)
 				syntax_error(EMSG_UNEXP_TOKEN);
 			n = chain_node(OC_WALKINIT | VV);
@@ -1678,16 +1676,18 @@ static void chain_group(void)
 	case OC_BREAK:
 		debug_printf_parse("%s: OC_BREAK\n", __func__);
 		n = chain_node(OC_EXEC);
+		if (!break_ptr)
+			syntax_error("'break' not in a loop");
 		n->a.n = break_ptr;
-//TODO: if break_ptr is NULL, syntax error (not in the loop)?
 		chain_expr(t_info);
 		break;
 
 	case OC_CONTINUE:
 		debug_printf_parse("%s: OC_CONTINUE\n", __func__);
 		n = chain_node(OC_EXEC);
+		if (!continue_ptr)
+			syntax_error("'continue' not in a loop");
 		n->a.n = continue_ptr;
-//TODO: if continue_ptr is NULL, syntax error (not in the loop)?
 		chain_expr(t_info);
 		break;
 
@@ -1707,20 +1707,15 @@ static void parse_program(char *p)
 	for (;;) {
 		uint32_t tclass;
 
-		tclass = next_token(TC_EOF | TS_OPSEQ | TC_LBRACE |
-			TC_SEMICOL | TC_NEWLINE | TC_BEGIN | TC_END | TC_FUNCDECL);
-
+		tclass = next_token(TS_OPSEQ | TC_LBRACE | TC_BEGIN | TC_END | TC_FUNCDECL
+			| TC_EOF | TC_NEWLINE /* but not TC_SEMICOL */);
+ got_tok:
 		if (tclass == TC_EOF) {
 			debug_printf_parse("%s: TC_EOF\n", __func__);
 			break;
 		}
-		if (tclass & (TC_SEMICOL | TC_NEWLINE)) {
-			debug_printf_parse("%s: TC_SEMICOL | TC_NEWLINE\n", __func__);
-//NB: gawk allows many newlines, but does not allow more than one semicolon:
-//  BEGIN {...}<newline>;<newline>;
-//would complain "each rule must have a pattern or an action part".
-//Same message for
-//  ; BEGIN {...}
+		if (tclass == TC_NEWLINE) {
+			debug_printf_parse("%s: TC_NEWLINE\n", __func__);
 			continue;
 		}
 		if (tclass == TC_BEGIN) {
@@ -1729,7 +1724,7 @@ static void parse_program(char *p)
 			/* ensure there is no newline between BEGIN and { */
 			next_token(TC_LBRACE);
 			chain_until_rbrace();
-			continue;
+			goto next_tok;
 		}
 		if (tclass == TC_END) {
 			debug_printf_parse("%s: TC_END\n", __func__);
@@ -1737,7 +1732,7 @@ static void parse_program(char *p)
 			/* ensure there is no newline between END and { */
 			next_token(TC_LBRACE);
 			chain_until_rbrace();
-			continue;
+			goto next_tok;
 		}
 		if (tclass == TC_FUNCDECL) {
 			func *f;
@@ -1772,7 +1767,7 @@ static void parse_program(char *p)
 				continue;
 			chain_until_rbrace();
 			hash_clear(ahash);
-			continue;
+			goto next_tok;
 		}
 		seq = &mainseq;
 		if (tclass & TS_OPSEQ) {
@@ -1784,22 +1779,33 @@ static void parse_program(char *p)
 			cn->l.n = parse_expr(TC_SEMICOL | TC_NEWLINE | TC_EOF | TC_LBRACE);
 			if (t_tclass == TC_LBRACE) {
 				debug_printf_parse("%s: TC_LBRACE\n", __func__);
-				rollback_token();
-				chain_group();
+				chain_until_rbrace();
 			} else {
 				/* no action, assume default "{ print }" */
 				debug_printf_parse("%s: !TC_LBRACE\n", __func__);
 				chain_node(OC_PRINT);
 			}
 			cn->r.n = mainseq.last;
-			continue;
+			goto next_tok;
 		}
 		/* tclass == TC_LBRACE */
 		debug_printf_parse("%s: TC_LBRACE(?)\n", __func__);
 		chain_until_rbrace();
-	}
+ next_tok:
+		/* Same as next_token() at the top of the loop, + TC_SEMICOL */
+		tclass = next_token(TS_OPSEQ | TC_LBRACE | TC_BEGIN | TC_END | TC_FUNCDECL
+			| TC_EOF | TC_NEWLINE | TC_SEMICOL);
+		/* gawk allows many newlines, but does not allow more than one semicolon:
+		 *  BEGIN {...}<newline>;<newline>;
+		 * would complain "each rule must have a pattern or an action part".
+		 * Same message for
+		 *  ; BEGIN {...}
+		 */
+		if (tclass != TC_SEMICOL)
+			goto got_tok; /* use this token */
+		/* else: loop back - ate the semicolon, get and use _next_ token */
+	} /* for (;;) */
 }
-
 
 /* -------- program execution part -------- */
 
@@ -2332,14 +2338,11 @@ static int awk_getline(rstream *rsm, var *v)
 #if !ENABLE_FEATURE_AWK_GNU_EXTENSIONS
 # define awk_printf(a, b) awk_printf(a)
 #endif
-static char *awk_printf(node *n, int *len)
+static char *awk_printf(node *n, size_t *len)
 {
-	char *b = NULL;
-	char *fmt, *s, *f;
-	const char *s1;
-	int i, j, incr, bsize;
-	char c, c1;
-	var *arg;
+	char *b;
+	char *fmt, *f;
+	size_t i;
 
 	//tmpvar = nvalloc(1);
 #define TMPVAR (&G.awk_printf__tmpvar)
@@ -2352,8 +2355,15 @@ static char *awk_printf(node *n, int *len)
 	// to evaluate() potentially recursing into another awk_printf() can't
 	// mangle the value.
 
+	b = NULL;
 	i = 0;
-	while (*f) {
+	while (*f) { /* "print one format spec" loop */
+		char *s;
+		char c;
+		char sv;
+		var *arg;
+		size_t slen;
+
 		s = f;
 		while (*f && (*f != '%' || *++f == '%'))
 			f++;
@@ -2362,40 +2372,64 @@ static char *awk_printf(node *n, int *len)
 				syntax_error("%*x formats are not supported");
 			f++;
 		}
-
-		incr = (f - s) + MAXVARFMT;
-		b = qrealloc(b, incr + i, &bsize);
 		c = *f;
-		if (c != '\0')
-			f++;
-		c1 = *f;
+		if (!c) {
+			/* Tail of fmt with no percent chars,
+			 * or "....%" (percent seen, but no format specifier char found)
+			 */
+			slen = strlen(s);
+			goto tail;
+		}
+		sv = *++f;
 		*f = '\0';
 		arg = evaluate(nextarg(&n), TMPVAR);
 
-		j = i;
-		if (c == 'c' || !c) {
-			i += sprintf(b+i, s, is_numeric(arg) ?
-					(char)getvar_i(arg) : *getvar_s(arg));
-		} else if (c == 's') {
-			s1 = getvar_s(arg);
-			b = qrealloc(b, incr+i+strlen(s1), &bsize);
-			i += sprintf(b+i, s, s1);
+		/* Result can be arbitrarily long. Example:
+		 *  printf "%99999s", "BOOM"
+		 */
+		if (c == 'c') {
+			char cc = is_numeric(arg) ? getvar_i(arg) : *getvar_s(arg);
+			char *r = xasprintf(s, cc ? cc : '^' /* else strlen will be wrong */);
+			slen = strlen(r);
+			if (cc == '\0') /* if cc is NUL, re-format the string with it */
+				sprintf(r, s, cc);
+			s = r;
 		} else {
-			i += fmt_num(b+i, incr, s, getvar_i(arg), FALSE);
+			if (c == 's') {
+				s = xasprintf(s, getvar_s(arg));
+			} else {
+				double d = getvar_i(arg);
+				if (strchr("diouxX", c)) {
+//TODO: make it wider here (%x -> %llx etc)?
+					s = xasprintf(s, (int)d);
+				} else if (strchr("eEfFgGaA", c)) {
+					s = xasprintf(s, d);
+				} else {
+					syntax_error(EMSG_INV_FMT);
+				}
+			}
+			slen = strlen(s);
 		}
-		*f = c1;
+		*f = sv;
 
-		/* if there was an error while sprintf, return value is negative */
-		if (i < j)
-			i = j;
+		if (i == 0) {
+			b = s;
+			i = slen;
+			continue;
+		}
+ tail:
+		b = xrealloc(b, i + slen + 1);
+		strcpy(b + i, s);
+		i += slen;
+		if (!c) /* tail? */
+			break;
+		free(s);
 	}
 
 	free(fmt);
 	//nvfree(tmpvar, 1);
 #undef TMPVAR
 
-	b = xrealloc(b, i + 1);
-	b[i] = '\0';
 #if ENABLE_FEATURE_AWK_GNU_EXTENSIONS
 	if (len)
 		*len = i;
@@ -2577,10 +2611,11 @@ static NOINLINE var *exec_builtin(node *op, var *res)
 	av[2] = av[3] = NULL;
 	for (i = 0; i < 4 && op; i++) {
 		an[i] = nextarg(&op);
-		if (isr & 0x09000000)
+		if (isr & 0x09000000) {
 			av[i] = evaluate(an[i], TMPVAR(i));
-		if (isr & 0x08000000)
-			as[i] = getvar_s(av[i]);
+			if (isr & 0x08000000)
+				as[i] = getvar_s(av[i]);
+		}
 		isr >>= 1;
 	}
 
@@ -2931,7 +2966,6 @@ static var *evaluate(node *op, var *res)
 			debug_printf_eval("PRINTF\n");
 		{
 			FILE *F = stdout;
-			IF_FEATURE_AWK_GNU_EXTENSIONS(int len;)
 
 			if (op->r.n) {
 				rstream *rsm = newfile(R.s);
@@ -2948,15 +2982,18 @@ static var *evaluate(node *op, var *res)
 				F = rsm->F;
 			}
 
-			if (opinfo == TI_PRINT) {
+			/* Can't just check 'opinfo == OC_PRINT' here, parser ORs
+			 * additional bits to opinfos of print/printf with redirects
+			 */
+			if ((opinfo & OPCLSMASK) == OC_PRINT) {
 				if (!op1) {
 					fputs(getvar_s(intvar[F0]), F);
 				} else {
 					for (;;) {
 						var *v = evaluate(nextarg(&op1), TMPVAR0);
 						if (v->type & VF_NUMBER) {
-							fmt_num(g_buf, MAXVARFMT, getvar_s(intvar[OFMT]),
-									getvar_i(v), TRUE);
+							fmt_num(getvar_s(intvar[OFMT]),
+									getvar_i(v));
 							fputs(g_buf, F);
 						} else {
 							fputs(getvar_s(v), F);
@@ -2968,6 +3005,7 @@ static var *evaluate(node *op, var *res)
 				}
 				fputs(getvar_s(intvar[ORS]), F);
 			} else {	/* PRINTF */
+				IF_FEATURE_AWK_GNU_EXTENSIONS(size_t len;)
 				char *s = awk_printf(op1, &len);
 #if ENABLE_FEATURE_AWK_GNU_EXTENSIONS
 				fwrite(s, len, 1, F);
@@ -3149,7 +3187,8 @@ static var *evaluate(node *op, var *res)
 			if (op1) {
 				rsm = newfile(L.s);
 				if (!rsm->F) {
-					if (opinfo == TI_PGETLINE) {
+					/* NB: can't use "opinfo == TI_PGETLINE", would break "cmd" | getline */
+					if ((opinfo & OPCLSMASK) == OC_PGETLINE) {
 						rsm->F = popen(L.s, "r");
 						rsm->is_pipe = TRUE;
 					} else {
@@ -3495,7 +3534,6 @@ static var *evaluate(node *op, var *res)
 #undef seed
 #undef sreg
 }
-
 
 /* -------- main & co. -------- */
 
