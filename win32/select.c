@@ -1,30 +1,33 @@
 /* Emulation for select(2)
    Contributed by Paolo Bonzini.
 
-   Copyright 2008-2015 Free Software Foundation, Inc.
+   Copyright 2008-2021 Free Software Foundation, Inc.
 
    This file is part of gnulib.
 
-   This program is free software; you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2, or (at your option)
-   any later version.
+   This file is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Lesser General Public License as
+   published by the Free Software Foundation; either version 2.1 of the
+   License, or (at your option) any later version.
 
-   This program is distributed in the hope that it will be useful,
+   This file is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-   GNU General Public License for more details.
+   GNU Lesser General Public License for more details.
 
-   You should have received a copy of the GNU General Public License along
-   with this program; if not, see <http://www.gnu.org/licenses/>.  */
+   You should have received a copy of the GNU Lesser General Public License
+   along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "libbb.h"
-#include <malloc.h>
-#include <assert.h>
 
-#if (defined _WIN32 || defined __WIN32__) && ! defined __CYGWIN__
+/* Specification.  */
+#include <sys/select.h>
+
+#if defined _WIN32 && ! defined __CYGWIN__
 /* Native Windows.  */
 
+#include <malloc.h>
+#include <assert.h>
 #include <sys/types.h>
 #include <errno.h>
 #include <limits.h>
@@ -37,9 +40,24 @@
 #include <time.h>
 
 /* Get the overridden 'struct timeval'.  */
-#include <sys/time.h>
 
 #undef select
+
+/* Don't assume that UNICODE is not defined.  */
+#undef GetModuleHandle
+#define GetModuleHandle GetModuleHandleA
+#undef PeekConsoleInput
+#define PeekConsoleInput PeekConsoleInputA
+#undef CreateEvent
+#define CreateEvent CreateEventA
+#undef PeekMessage
+#define PeekMessage PeekMessageA
+#undef DispatchMessage
+#define DispatchMessage DispatchMessageA
+
+/* Avoid warnings from gcc -Wcast-function-type.  */
+#define GetProcAddress \
+  (void *) GetProcAddress
 
 struct bitset {
   unsigned char in[FD_SETSIZE / CHAR_BIT];
@@ -506,12 +524,13 @@ restart:
       if (h != handle_array[nhandles])
         {
           /* Perform handle->descriptor mapping.  */
-          WSAEventSelect ((SOCKET) h, NULL, 0);
-          if (FD_ISSET (h, &handle_rfds))
+          SOCKET s = (SOCKET) h;
+          WSAEventSelect (s, NULL, 0);
+          if (FD_ISSET (s, &handle_rfds))
             FD_SET (i, rfds);
-          if (FD_ISSET (h, &handle_wfds))
+          if (FD_ISSET (s, &handle_wfds))
             FD_SET (i, wfds);
-          if (FD_ISSET (h, &handle_xfds))
+          if (FD_ISSET (s, &handle_xfds))
             FD_SET (i, xfds);
         }
       else
@@ -532,7 +551,6 @@ restart:
 
 #else /* ! Native Windows.  */
 
-#include <sys/select.h>
 #include <stddef.h> /* NULL */
 #include <errno.h>
 #include <unistd.h>
