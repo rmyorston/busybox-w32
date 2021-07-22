@@ -315,11 +315,17 @@ pid_t mingw_fork_compressor(int fd, const char *compressor, const char *mode)
 	int fd1;
 	pid_t pid;
 
-	if (find_applet_by_name(compressor) >= 0)
+	if (find_applet_by_name(compressor) < 0
+#if ENABLE_XZ || ENABLE_LZMA
+		/* xz and lzma applets don't support compression, try using
+		 * an external program */
+		|| (mode[0] == 'w' && index_in_strings("lzma\0xz\0", compressor) >= 0)
+#endif
+		)
+		cmd = xasprintf("%s -cf -", compressor);
+	else
 		cmd = xasprintf("%s --busybox %s -cf -", bb_busybox_exec_path,
 					compressor);
-	else
-		cmd = xasprintf("%s -cf -", compressor);
 
 	if ((fd1 = mingw_popen_fd(cmd, mode, fd, &pid)) == -1)
 		bb_perror_msg_and_die("can't execute '%s'", compressor);
