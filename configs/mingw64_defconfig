@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.34.0.git
-# Sat Jul 17 10:37:11 2021
+# Sat Jul 24 10:37:11 2021
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -1119,7 +1119,7 @@ CONFIG_BASH_IS_ASH=y
 # CONFIG_BASH_IS_NONE is not set
 CONFIG_SHELL_ASH=y
 CONFIG_ASH=y
-CONFIG_ASH_OPTIMIZE_FOR_SIZE=y
+# CONFIG_ASH_OPTIMIZE_FOR_SIZE is not set
 CONFIG_ASH_INTERNAL_GLOB=y
 CONFIG_ASH_BASH_COMPAT=y
 # CONFIG_ASH_BASH_SOURCE_CURDIR is not set
