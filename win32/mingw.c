@@ -328,11 +328,11 @@ static inline mode_t file_attr_to_st_mode(DWORD attr)
 {
 	mode_t fMode = S_IRUSR|S_IRGRP|S_IROTH;
 	if (attr & FILE_ATTRIBUTE_DIRECTORY)
-		fMode |= S_IFDIR|S_IWUSR|S_IWGRP|S_IXUSR|S_IXGRP|S_IXOTH;
+		fMode |= S_IFDIR|S_IXUSR|S_IXGRP|S_IXOTH;
 	else
 		fMode |= S_IFREG;
 	if (!(attr & FILE_ATTRIBUTE_READONLY))
-		fMode |= S_IWUSR|S_IWGRP;
+		fMode |= S_IWUSR|S_IWGRP|(attr & FILE_ATTRIBUTE_DEVICE ? S_IWOTH : 0);
 	return fMode;
 }
 
@@ -340,15 +340,28 @@ static inline int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fd
 {
 	size_t len;
 
-	if (GetFileAttributesExA(fname, GetFileExInfoStandard, fdata))
+	if (get_dev_type(fname) != NOT_DEVICE || get_dev_fd(fname) >= 0) {
+		/* Fake attributes for special devices */
+		FILETIME epoch = {0xd53e8000, 0x019db1de};	// Unix epoch as FILETIME
+		fdata->dwFileAttributes = FILE_ATTRIBUTE_DEVICE;
+		fdata->ftCreationTime = fdata->ftLastAccessTime =
+				fdata->ftLastWriteTime = epoch;
+		fdata->nFileSizeHigh = fdata->nFileSizeLow = 0;
 		return 0;
+	}
+
+	if (GetFileAttributesExA(fname, GetFileExInfoStandard, fdata)) {
+		fdata->dwFileAttributes &= ~FILE_ATTRIBUTE_DEVICE;
+		return 0;
+	}
 
 	if (GetLastError() == ERROR_SHARING_VIOLATION) {
 		HANDLE hnd;
 		WIN32_FIND_DATA fd;
 
 		if ((hnd=FindFirstFile(fname, &fd)) != INVALID_HANDLE_VALUE) {
-			fdata->dwFileAttributes = fd.dwFileAttributes;
+			fdata->dwFileAttributes =
+					fd.dwFileAttributes & ~FILE_ATTRIBUTE_DEVICE;
 			fdata->ftCreationTime = fd.ftCreationTime;
 			fdata->ftLastAccessTime = fd.ftLastAccessTime;
 			fdata->ftLastWriteTime = fd.ftLastWriteTime;
@@ -586,6 +599,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 			buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
 			buf->st_attr = fdata.dwFileAttributes;
 			if (S_ISREG(buf->st_mode) &&
+					!(buf->st_attr & FILE_ATTRIBUTE_DEVICE) &&
 					(has_exe_suffix(file_name) || has_exec_format(file_name)))
 				buf->st_mode |= S_IXUSR|S_IXGRP|S_IXOTH;
 			buf->st_size = fdata.nFileSizeLow |
@@ -616,7 +630,8 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		else {
 			buf->st_uid = 0;
 			buf->st_gid = 0;
-			buf->st_mode &= ~(S_IROTH|S_IWOTH|S_IXOTH);
+			if (!(buf->st_attr & FILE_ATTRIBUTE_DEVICE))
+				buf->st_mode &= ~(S_IROTH|S_IWOTH|S_IXOTH);
 		}
 #endif
 
