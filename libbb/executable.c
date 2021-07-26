@@ -15,7 +15,12 @@
 int FAST_FUNC file_is_executable(const char *name)
 {
 	struct stat s;
+#if !ENABLE_PLATFORM_MINGW32
 	return (!access(name, X_OK) && !stat(name, &s) && S_ISREG(s.st_mode));
+#else
+	/* expand WIN32 implementation of access(2) */
+	return (!stat(name, &s) && S_ISREG(s.st_mode) && (s.st_mode & S_IXUSR));
+#endif
 }
 
 /* search (*PATHp) for an executable file;
@@ -53,12 +58,13 @@ char* FAST_FUNC find_executable(const char *filename, char **PATHp)
 #if ENABLE_PLATFORM_MINGW32
 		{
 			char *w = alloc_system_drive(p);
-			add_win32_extension(w);
+			ex = add_win32_extension(w) || file_is_executable(w);
 			free(p);
 			p = w;
 		}
-#endif
+#else
 		ex = file_is_executable(p);
+#endif
 		if (n) *n++ = PATH_SEP;
 		if (ex) {
 			*PATHp = n;

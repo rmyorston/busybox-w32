@@ -958,8 +958,8 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 				goto cont; /* hmm, remove in progress? */
 
 # if ENABLE_PLATFORM_MINGW32
-			if (type == FIND_EXE_ONLY && !S_ISDIR(st.st_mode) &&
-					!file_is_executable(found))
+			if (type == FIND_EXE_ONLY && S_ISREG(st.st_mode) &&
+					!(st.st_mode & S_IXUSR))
 				goto cont;
 # endif
 
