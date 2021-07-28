@@ -557,7 +557,12 @@ enum {
 } while (0)
 
 
+#if !ENABLE_PLATFORM_MINGW32
 #define STRNCASECMP(a, str) strncasecmp((a), (str), sizeof(str)-1)
+#else
+/* Not exactly equivalent to strncasecmp(), but OK for its use here */
+#define STRNCASECMP(a, str) (!is_prefixed_with_case((a), (str)))
+#endif
 
 /* Prototypes */
 enum {

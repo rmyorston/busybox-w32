@@ -15269,8 +15269,8 @@ init(void)
 		 * because it appears first.
 		 */
 		for (envp = environ; envp && *envp; envp++) {
-			if (strncasecmp(*envp, "PATH=", 5) == 0 &&
-			    strncmp(*envp, "PATH=", 5) != 0) {
+			if (is_prefixed_with_case(*envp, "PATH=") &&
+					!is_prefixed_with(*envp, "PATH=")) {
 				break;
 			}
 		}
@@ -15295,8 +15295,8 @@ init(void)
 				/* Convert backslashes to forward slashes in value but
 				 * not if we're on Windows XP or for variables known to
 				 * cause problems */
-				if ( !winxp && strncmp(*envp, "SYSTEMROOT=", 11) != 0 &&
-						strncmp(*envp, "COMSPEC=", 8) != 0 ) {
+				if (!winxp && !is_prefixed_with(*envp, "SYSTEMROOT=") &&
+						!is_prefixed_with(*envp, "COMSPEC=")) {
 					bs_to_slash(end+1);
 				}
 

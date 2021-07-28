@@ -171,7 +171,7 @@ static int rand_fd = -1;
  */
 int get_dev_type(const char *filename)
 {
-	if (filename && !strncmp(filename, "/dev/", 5))
+	if (filename && is_prefixed_with(filename, "/dev/"))
 		return index_in_strings("null\0zero\0urandom\0", filename+5);
 
 	return NOT_DEVICE;
@@ -414,7 +414,8 @@ mode_t mingw_umask(mode_t new_mode)
  */
 static int has_exec_format(const char *name)
 {
-	int n;
+	int n, sig;
+	unsigned int offset;
 	unsigned char buf[1024];
 
 	/* special case: skip DLLs, there are thousands of them! */
@@ -435,19 +436,20 @@ static int has_exec_format(const char *name)
 	 * the magic from the file command.
 	 */
 	if (buf[0] == 'M' && buf[1] == 'Z') {
-		unsigned int offset = (buf[0x19] << 8) | buf[0x18];
+		offset = (buf[0x19] << 8) + buf[0x18];
 		if (offset > 0x3f) {
-			offset = (buf[0x3f] << 24) | (buf[0x3e] << 16) |
-						(buf[0x3d] << 8) | buf[0x3c];
-			if (offset + 100 < n) {
-				unsigned char *ptr = buf + offset;
-				if (memcmp(ptr, "PE\0\0", 4) == 0) {
-					unsigned int sig = (ptr[25] << 8) | ptr[24];
+			offset = (buf[0x3f] << 24) + (buf[0x3e] << 16) +
+						(buf[0x3d] << 8) + buf[0x3c];
+			if (offset < sizeof(buf)-100) {
+				if (memcmp(buf+offset, "PE\0\0", 4) == 0) {
+					sig = (buf[offset+25] << 8) + buf[offset+24];
 					if (sig == 0x10b || sig == 0x20b) {
-						sig = (ptr[23] << 8) | ptr[22];
-						if ((sig & 0x2000) != 0)	// DLL
+						sig = (buf[offset+23] << 8) + buf[offset+22];
+						if ((sig & 0x2000) != 0) {
+							/* DLL */
 							return 0;
-						sig = ptr[92];
+						}
+						sig = buf[offset+92];
 						return (sig == 1 || sig == 2 || sig == 3 || sig == 7);
 					}
 				}
@@ -1230,13 +1232,13 @@ static char *normalize_ntpathA(char *buf)
 	/* fix absolute path prefixes */
 	if (buf[0] == '\\') {
 		/* strip NT namespace prefixes */
-		if (!strncmp(buf, "\\??\\", 4) ||
-		    !strncmp(buf, "\\\\?\\", 4))
+		if (is_prefixed_with(buf, "\\??\\") ||
+				is_prefixed_with(buf, "\\\\?\\"))
 			buf += 4;
-		else if (!strncasecmp(buf, "\\DosDevices\\", 12))
+		else if (is_prefixed_with_case(buf, "\\DosDevices\\"))
 			buf += 12;
 		/* replace remaining '...UNC\' with '\\' */
-		if (!strncasecmp(buf, "UNC\\", 4)) {
+		if (is_prefixed_with_case(buf, "UNC\\")) {
 			buf += 2;
 			*buf = '\\';
 		}
