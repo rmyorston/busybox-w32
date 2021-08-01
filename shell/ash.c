@@ -3005,6 +3005,9 @@ setprompt_if(smallint do_set, int whichprompt)
 	default:                        /* 0 */
 		prompt = nullstr;
 	}
+#if ENABLE_PLATFORM_MINGW32
+	skip_ansi_emulation(TRUE);
+#endif
 #if ENABLE_ASH_EXPAND_PRMT
 	pushstackmark(&smark, stackblocksize());
 	putprompt(expandstr(prompt, PSSYNTAX));
