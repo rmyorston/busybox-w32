@@ -40,7 +40,8 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 		state = record.Event.KeyEvent.dwControlKeyState;
 		if (!record.Event.KeyEvent.bKeyDown) {
 			/* ignore all key up events except Alt */
-			if (alt_pressed && !(state & LEFT_ALT_PRESSED))
+			if (alt_pressed && !(state & LEFT_ALT_PRESSED) &&
+					record.Event.KeyEvent.wVirtualKeyCode == VK_MENU)
 				alt_pressed = FALSE;
 			else
 				continue;
