@@ -78,8 +78,10 @@ static char *next_file(char *old, unsigned suffix_len)
 	return old;
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 #define read_buffer bb_common_bufsiz1
 enum { READ_BUFFER_SIZE = COMMON_BUFSIZE - 1 };
+#endif
 
 #define SPLIT_OPT_l (1<<0)
 #define SPLIT_OPT_b (1<<1)
@@ -97,8 +99,12 @@ int split_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opt;
 	ssize_t bytes_read, to_write;
 	char *src;
-
+#if ENABLE_PLATFORM_MINGW32
+	size_t READ_BUFFER_SIZE = 16*1024;
+	char *read_buffer = xmalloc(16*1024);
+#else
 	setup_common_bufsiz();
+#endif
 
 	opt = getopt32(argv, "^"
 			"l:b:a:+" /* -a N */
