@@ -9,10 +9,8 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 #if ENABLE_FEATURE_EURO
 	wchar_t uchar;
 	char achar;
-#else
-	char *s;
 #endif
-	int alt_pressed = FALSE;
+	DWORD alt_pressed = FALSE;
 	DWORD state;
 
 	if (fd != 0)
@@ -40,15 +38,11 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 		state = record.Event.KeyEvent.dwControlKeyState;
 		if (!record.Event.KeyEvent.bKeyDown) {
 			/* ignore all key up events except Alt */
-			if (alt_pressed && !(state & LEFT_ALT_PRESSED) &&
-					record.Event.KeyEvent.wVirtualKeyCode == VK_MENU)
-				alt_pressed = FALSE;
-			else
+			if (!(alt_pressed && (state & LEFT_ALT_PRESSED) == 0 &&
+					record.Event.KeyEvent.wVirtualKeyCode == VK_MENU))
 				continue;
 		}
-		else {
-			alt_pressed = ((state & LEFT_ALT_PRESSED) != 0);
-		}
+		alt_pressed = state & LEFT_ALT_PRESSED;
 
 #if ENABLE_FEATURE_EURO
 		if (!record.Event.KeyEvent.uChar.UnicodeChar) {
@@ -113,7 +107,7 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 		ret = achar;
 #else
 		if ( (record.Event.KeyEvent.uChar.AsciiChar & 0x80) == 0x80 ) {
-			s = &record.Event.KeyEvent.uChar.AsciiChar;
+			char *s = &record.Event.KeyEvent.uChar.AsciiChar;
 			OemToCharBuff(s, s, 1);
 		}
 		ret = record.Event.KeyEvent.uChar.AsciiChar;
