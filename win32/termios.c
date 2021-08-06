@@ -49,55 +49,46 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 #else
 		if (!record.Event.KeyEvent.uChar.AsciiChar) {
 #endif
-			if (alt_pressed) {
+			if (alt_pressed && !(state & ENHANCED_KEY)) {
+				/* keys on numeric pad used to enter character codes */
 				switch (record.Event.KeyEvent.wVirtualKeyCode) {
-				case VK_MENU:
-				case VK_INSERT:
-				case VK_END:
-				case VK_DOWN:
-				case VK_NEXT:
-				case VK_CLEAR:
-				case VK_HOME:
-				case VK_UP:
-				case VK_PRIOR:
-				case VK_KANA:
+				case VK_NUMPAD0: case VK_INSERT:
+				case VK_NUMPAD1: case VK_END:
+				case VK_NUMPAD2: case VK_DOWN:
+				case VK_NUMPAD3: case VK_NEXT:
+				case VK_NUMPAD4: case VK_LEFT:
+				case VK_NUMPAD5: case VK_CLEAR:
+				case VK_NUMPAD6: case VK_RIGHT:
+				case VK_NUMPAD7: case VK_HOME:
+				case VK_NUMPAD8: case VK_UP:
+				case VK_NUMPAD9: case VK_PRIOR:
 					continue;
 				}
 			}
 
 			switch (record.Event.KeyEvent.wVirtualKeyCode) {
-			case VK_DELETE: ret = KEYCODE_DELETE; goto done;
-			case VK_INSERT: ret = KEYCODE_INSERT; goto done;
-			case VK_UP: ret = KEYCODE_UP; goto done;
-			case VK_DOWN: ret = KEYCODE_DOWN; goto done;
-			case VK_RIGHT:
-				if (state & (RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED)) {
-					ret = KEYCODE_CTRL_RIGHT;
-					goto done;
-				}
-				if (state & (RIGHT_ALT_PRESSED|LEFT_ALT_PRESSED)) {
-					ret = KEYCODE_ALT_RIGHT;
-					goto done;
-				}
-				ret = KEYCODE_RIGHT;
-				goto done;
-			case VK_LEFT:
-				if (state & (RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED)) {
-					ret = KEYCODE_CTRL_LEFT;
-					goto done;
-				}
-				if (state & (RIGHT_ALT_PRESSED|LEFT_ALT_PRESSED)) {
-					ret = KEYCODE_ALT_LEFT;
-					goto done;
-				}
-				ret = KEYCODE_LEFT;
-				goto done;
-			case VK_HOME: ret = KEYCODE_HOME; goto done;
-			case VK_END: ret = KEYCODE_END; goto done;
-			case VK_PRIOR: ret = KEYCODE_PAGEUP; goto done;
-			case VK_NEXT: ret = KEYCODE_PAGEDOWN; goto done;
+			case VK_DELETE: ret = KEYCODE_DELETE; break;
+			case VK_INSERT: ret = KEYCODE_INSERT; break;
+			case VK_UP: ret = KEYCODE_UP; break;
+			case VK_DOWN: ret = KEYCODE_DOWN; break;
+			case VK_RIGHT: ret = KEYCODE_RIGHT; break;
+			case VK_LEFT: ret = KEYCODE_LEFT; break;
+			case VK_HOME: ret = KEYCODE_HOME; break;
+			case VK_END: ret = KEYCODE_END; break;
+			case VK_PRIOR: ret = KEYCODE_PAGEUP; break;
+			case VK_NEXT: ret = KEYCODE_PAGEDOWN; break;
+			default:
+				alt_pressed = FALSE;
+				continue;
 			}
-			continue;
+
+			if (state & (RIGHT_ALT_PRESSED|LEFT_ALT_PRESSED))
+				ret &= ~0x20;
+			if (state & (RIGHT_CTRL_PRESSED|LEFT_CTRL_PRESSED))
+				ret &= ~0x40;
+			if (state & SHIFT_PRESSED)
+				ret &= ~0x80;
+			goto done;
 		}
 #if ENABLE_FEATURE_EURO
 		uchar = record.Event.KeyEvent.uChar.UnicodeChar;
