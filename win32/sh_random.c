@@ -17,18 +17,18 @@
 static void get_entropy(uint32_t state[2])
 {
 	int i, j;
-	SYSTEMTIME tm;
+	FILETIME tm;
 	MEMORYSTATUS ms;
 	SYSTEM_INFO si;
 	LARGE_INTEGER pc;
 	uint32_t *u;
 
 	i = 0;
-	state[i++%2] ^= (uint32_t)GetCurrentProcessId();
+	state[i++%2] ^= (uint32_t)GetProcessId(GetCurrentProcess());
 	state[i++%2] ^= (uint32_t)GetCurrentThreadId();
 	state[i++%2] ^= (uint32_t)GetTickCount();
 
-	GET_DATA(GetLocalTime, tm)
+	GET_DATA(GetSystemTimeAsFileTime, tm)
 	GET_DATA(GlobalMemoryStatus, ms)
 	GET_DATA(GetSystemInfo, si)
 	GET_DATA(QueryPerformanceCounter, pc)

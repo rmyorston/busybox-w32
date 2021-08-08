@@ -129,7 +129,7 @@ static void randinit(isaac_t *t, int flag)
 static void get_entropy(isaac_t *t)
 {
 	int i, j, len;
-	SYSTEMTIME tm;
+	FILETIME tm;
 	MEMORYSTATUS ms;
 	SYSTEM_INFO si;
 	LARGE_INTEGER pc;
@@ -139,11 +139,11 @@ static void get_entropy(isaac_t *t)
 	unsigned char buf[16];
 
 	i = 0;
-	t->randrsl[i++] = (uint32_t)GetCurrentProcessId();
+	t->randrsl[i++] = (uint32_t)GetProcessId(GetCurrentProcess());
 	t->randrsl[i++] = (uint32_t)GetCurrentThreadId();
 	t->randrsl[i++] = (uint32_t)GetTickCount();
 
-	GET_DATA(GetLocalTime, tm)
+	GET_DATA(GetSystemTimeAsFileTime, tm)
 	GET_DATA(GlobalMemoryStatus, ms)
 	GET_DATA(GetSystemInfo, si)
 	GET_DATA(QueryPerformanceCounter, pc)

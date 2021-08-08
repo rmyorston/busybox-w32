@@ -17,12 +17,13 @@ int uname(struct utsname *name)
 	memset(&os_info, 0, sizeof(OSVERSIONINFO));
 	os_info.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
 
-	strcpy(name->release, unk);
-	strcpy(name->version, unk);
 	if (GetVersionEx(&os_info)) {
 		sprintf(name->release, "%u.%u", (unsigned int)os_info.dwMajorVersion,
 				(unsigned int)os_info.dwMinorVersion);
 		sprintf(name->version, "%u", (unsigned int)os_info.dwBuildNumber);
+	} else {
+		strcpy(name->release, unk);
+		strcpy(name->version, unk);
 	}
 
 	GetSystemInfo(&sys_info);
@@ -31,11 +32,9 @@ int uname(struct utsname *name)
 		strcpy(name->machine, "x86_64");
 		break;
 	case PROCESSOR_ARCHITECTURE_INTEL:
+		strcpy(name->machine, "i686");
 		if (sys_info.wProcessorLevel < 6) {
-			strcpy(name->machine, "i386");
-		}
-		else {
-			strcpy(name->machine, "i686");
+			name->machine[1] = '3';
 		}
 		break;
 	default:
