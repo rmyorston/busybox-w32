@@ -108,7 +108,7 @@ int index_in_strings(const char *strings, const char *key) FAST_FUNC;
 #   define IS_CHAR_CLASS(string) wctype (string)
 #  endif
 # else
-#  define CHAR_CLASS_MAX_LENGTH  6 /* Namely, `xdigit'.  */
+#  define CHAR_CLASS_MAX_LENGTH  7 /* Namely, `xdigit'.  */
 
 #  define IS_CHAR_CLASS(string)						      \
    (STREQ (string, "alpha") || STREQ (string, "upper")			      \
