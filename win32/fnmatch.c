@@ -17,7 +17,7 @@
    Boston, MA 02111-1307, USA.  */
 
 #include <platform.h>
-int index_in_strings(const char *strings, const char *key) FAST_FUNC;
+#include "match_class.h"
 
 #if HAVE_CONFIG_H
 # include <config.h>
@@ -373,56 +373,52 @@ internal_fnmatch (const char *pattern, const char *string,
 		    if (__iswctype (__btowc ((unsigned char) *n), wt))
 		      goto matched;
 # else
-#define CHAR_CLASSES \
-		    "alnum\0alpha\0blank\0cntrl\0digit\0graph\0" \
-			"lower\0print\0punct\0space\0upper\0xdigit\0"
-
-			switch (index_in_strings(CHAR_CLASSES, str)) {
-		    case 0:
+			switch (match_class(str)) {
+		    case CCLASS_ALNUM:
 				if (ISALNUM ((unsigned char) *n))
 					goto matched;
 				break;
-			case 1:
+			case CCLASS_ALPHA:
 				if (ISALPHA ((unsigned char) *n))
 					goto matched;
 				break;
-			case 2:
+			case CCLASS_BLANK:
 				if (ISBLANK ((unsigned char) *n))
 					goto matched;
 				break;
-			case 3:
+			case CCLASS_CNTRL:
 				if (ISCNTRL ((unsigned char) *n))
 					goto matched;
 				break;
-			case 4:
+			case CCLASS_DIGIT:
 				if (ISDIGIT ((unsigned char) *n))
 					goto matched;
 				break;
-			case 5:
+			case CCLASS_GRAPH:
 				if (ISGRAPH ((unsigned char) *n))
 					goto matched;
 				break;
-			case 6:
+			case CCLASS_LOWER:
 				if (ISLOWER ((unsigned char) *n))
 					goto matched;
 				break;
-			case 7:
+			case CCLASS_PRINT:
 				if (ISPRINT ((unsigned char) *n))
 					goto matched;
 				break;
-			case 8:
+			case CCLASS_PUNCT:
 				if (ISPUNCT ((unsigned char) *n))
 					goto matched;
 				break;
-			case 9:
+			case CCLASS_SPACE:
 				if (ISSPACE ((unsigned char) *n))
 					goto matched;
 				break;
-			case 10:
+			case CCLASS_UPPER:
 				if (ISUPPER ((unsigned char) *n))
 					goto matched;
 				break;
-			case 11:
+			case CCLASS_XDIGIT:
 				if (ISXDIGIT ((unsigned char) *n))
 					goto matched;
 				break;
