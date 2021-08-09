@@ -308,11 +308,6 @@ static inline long long filetime_to_hnsec(const FILETIME *ft)
 	return winTime - 116444736000000000LL;
 }
 
-static inline time_t filetime_to_time_t(const FILETIME *ft)
-{
-	return (time_t)(filetime_to_hnsec(ft) / 10000000);
-}
-
 static inline struct timespec filetime_to_timespec(const FILETIME *ft)
 {
 	struct timespec ts;
@@ -738,14 +733,15 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 
 static inline void timeval_to_filetime(const struct timeval tv, FILETIME *ft)
 {
-	long long winTime = ((tv.tv_sec * 1000000LL) + tv.tv_usec) * 10LL + 116444736000000000LL;
+	long long winTime = tv.tv_sec * 10000000LL + tv.tv_usec * 10LL +
+							116444736000000000LL;
 	ft->dwLowDateTime = winTime;
 	ft->dwHighDateTime = winTime >> 32;
 }
 
 static inline void timespec_to_filetime(const struct timespec tv, FILETIME *ft)
 {
-	long long winTime = (tv.tv_sec * 10000000LL) + tv.tv_nsec / 100LL +
+	long long winTime = tv.tv_sec * 10000000LL + tv.tv_nsec / 100LL +
 							116444736000000000LL;
 	ft->dwLowDateTime = winTime;
 	ft->dwHighDateTime = winTime >> 32;
