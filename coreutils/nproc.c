@@ -31,6 +31,9 @@ int nproc_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 {
 #if !ENABLE_PLATFORM_MINGW32
 	unsigned long mask[1024];
+#else
+	DWORD_PTR affinity, process_affinity, system_affinity;
+#endif
 	int count = 0;
 #if ENABLE_LONG_OPTS
 	int ignore = 0;
@@ -39,7 +42,10 @@ int nproc_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 			"all\0"    No_argument       "\xff"
 			, &ignore
 	);
+#endif
 
+#if !ENABLE_PLATFORM_MINGW32
+#if ENABLE_LONG_OPTS
 	if (opts & (1 << 1)) {
 		DIR *cpusd = opendir("/sys/devices/system/cpu");
 		if (cpusd) {
@@ -65,31 +71,13 @@ int nproc_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		}
 	}
 #else /* ENABLE_PLATFORM_MINGW32 */
-	int count = 0;
-	DWORD_PTR process_affinity, system_affinity;
-#if ENABLE_LONG_OPTS
-	int ignore = 0;
-	int opts = getopt32long(argv, "\xfe:+",
-			"ignore\0" Required_argument "\xfe"
-			"all\0"    No_argument       "\xff"
-			, &ignore
-	);
-#endif
-	if (!GetProcessAffinityMask(GetCurrentProcess(), &process_affinity,
+	if (GetProcessAffinityMask(GetCurrentProcess(), &process_affinity,
 					&system_affinity)) {
-		process_affinity = system_affinity = 0;
-	}
-
-#if ENABLE_LONG_OPTS
-	if (opts & (1 << 1)) {
-		for (count = 0; system_affinity; system_affinity >>= 1) {
-			count += system_affinity & 1;
-		}
-	} else
-#endif
-	{
-		for (count = 0; process_affinity; process_affinity >>= 1) {
-			count += process_affinity & 1;
+		affinity = (ENABLE_LONG_OPTS && opts & (1 << 1)) ?
+						system_affinity : process_affinity;
+		while (affinity) {
+			count += affinity & 1;
+			affinity >>= 1;
 		}
 	}
 #endif /* ENABLE_PLATFORM_MINGW32 */
