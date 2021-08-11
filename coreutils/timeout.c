@@ -47,7 +47,7 @@
 #include "libbb.h"
 
 #if ENABLE_PLATFORM_MINGW32
-HANDLE child = INVALID_HANDLE_VALUE;
+static HANDLE child = INVALID_HANDLE_VALUE;
 
 static void kill_child(void)
 {
