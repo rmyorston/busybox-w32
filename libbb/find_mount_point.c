@@ -32,7 +32,6 @@ struct mntent* FAST_FUNC find_mount_point(const char *name, int subdir_too)
 	static struct mntdata *data = NULL;
 	char *current;
 	const char *path;
-	DWORD len;
 #endif
 
 	if (stat(name, &s) != 0)
@@ -93,13 +92,8 @@ struct mntent* FAST_FUNC find_mount_point(const char *name, int subdir_too)
 
 	if ( isalpha(name[0]) && name[1] == ':' ) {
 		path = name;
-	}
-	else {
-		if ( (len=GetCurrentDirectory(0, NULL)) > 0 &&
-				(current=malloc(len+1)) != NULL &&
-				GetCurrentDirectory(len, current) ) {
-			path = current;
-		}
+	} else {
+		path = current = xrealloc_getcwd_or_warn(NULL);
 	}
 
 	if ( path && isalpha(path[0]) && path[1] == ':' ) {
