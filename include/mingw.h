@@ -209,6 +209,9 @@ int unsetenv(const char *env);
  * string.h
  */
 char *strndup(char const *s, size_t n);
+char *mingw_strerror(int errnum);
+
+#define strerror mingw_strerror
 
 /*
  * strings.h

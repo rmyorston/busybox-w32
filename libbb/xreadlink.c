@@ -70,6 +70,9 @@ char* FAST_FUNC xmalloc_follow_symlinks(const char *path)
 		}
 
 		if (!--looping) {
+#if ENABLE_PLATFORM_MINGW32
+			errno = ELOOP;
+#endif
 			free(linkpath);
  free_buf_ret_null:
 			free(buf);

@@ -161,6 +161,14 @@ int err_win_to_posix(void)
 	return error;
 }
 
+#undef strerror
+char *mingw_strerror(int errnum)
+{
+	if (errnum == ELOOP)
+		return (char *)"Too many levels of symbolic links";
+	return strerror(errnum);
+}
+
 static int zero_fd = -1;
 static int rand_fd = -1;
 
