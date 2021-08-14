@@ -486,8 +486,7 @@ static uid_t file_owner(HANDLE fh)
 		DWORD ret = 0;
 
 		initialised = 1;
-		if (OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, TRUE, &token) ||
-				OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+		if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
 			GetTokenInformation(token, TokenUser, NULL, 0, &ret);
 			if (ret <= 0 || (user=malloc(ret)) == NULL ||
 					!GetTokenInformation(token, TokenUser, user, ret, &ret)) {
@@ -988,21 +987,22 @@ int mingw_rename(const char *pold, const char *pnew)
 static char *gethomedir(void)
 {
 	static char *buf = NULL;
-	DWORD len = PATH_MAX;
-	HANDLE h;
 	DECLARE_PROC_ADDR(BOOL, GetUserProfileDirectoryA, HANDLE, LPSTR, LPDWORD);
 
-	if (buf)
-		return buf;
+	if (!buf) {
+		DWORD len = PATH_MAX;
+		HANDLE h;
 
-	buf = xzalloc(PATH_MAX);
-	if ( !OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &h) )
-		return buf;
-
-	if (INIT_PROC_ADDR(userenv.dll, GetUserProfileDirectoryA))
-		GetUserProfileDirectoryA(h, buf, &len);
-	CloseHandle(h);
-	return bs_to_slash(buf);
+		buf = xzalloc(len);
+		if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &h)) {
+			if (INIT_PROC_ADDR(userenv.dll, GetUserProfileDirectoryA)) {
+				GetUserProfileDirectoryA(h, buf, &len);
+				bs_to_slash(buf);
+			}
+			CloseHandle(h);
+		}
+	}
+	return buf;
 }
 
 #define NAME_LEN 100
