@@ -1005,6 +1005,19 @@ static char *gethomedir(void)
 	return buf;
 }
 
+static char *getsysdir(void)
+{
+	static char *buf = NULL;
+	char dir[PATH_MAX];
+
+	if (!buf) {
+		buf = xzalloc(PATH_MAX);
+		GetSystemDirectory(dir, PATH_MAX);
+		realpath(dir, buf);
+	}
+	return buf;
+}
+
 #define NAME_LEN 100
 static char *get_user_name(void)
 {
@@ -1072,17 +1085,8 @@ struct passwd *getpwuid(uid_t uid)
 	static struct passwd p;
 
 	if (uid == 0) {
-		static char *buf = NULL;
-		char dir[PATH_MAX];
-
-		if (!buf) {
-			buf = xzalloc(PATH_MAX);
-			GetSystemDirectory(dir, PATH_MAX);
-			realpath(dir, buf);
-		}
-
 		p.pw_name = (char *)"root";
-		p.pw_dir = buf;
+		p.pw_dir = getsysdir();
 	}
 	else if (uid == DEFAULT_UID && (p.pw_name=get_user_name()) != NULL) {
 		p.pw_dir = gethomedir();
@@ -1917,14 +1921,13 @@ int root_len(const char *path)
 
 const char *get_system_drive(void)
 {
-	struct passwd *pwd;
 	static char *drive = NULL;
 	int len;
 
 	if (drive == NULL) {
-		pwd = getpwuid(0);
-		if (pwd != NULL && (len=root_len(pwd->pw_dir))) {
-			drive = xstrndup(pwd->pw_dir, len);
+		const char *sysdir = getsysdir();
+		if ((len=root_len(sysdir))) {
+			drive = xstrndup(sysdir, len);
 		}
 	}
 
