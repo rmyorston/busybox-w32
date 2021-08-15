@@ -166,15 +166,29 @@ static void my_flush(void)
 	buflen = bufmax = 0;
 }
 
+static void copy_to_buffer(const char *str, int len)
+{
+	char *newbuf;
+
+	if (buflen + len >= bufmax) {
+		bufmax += 256 + len;
+		if ((newbuf = realloc(buffer, bufmax)) == NULL) {
+			my_flush();
+			return;
+		}
+		buffer = newbuf;
+	}
+	memcpy(buffer + buflen, str, len);
+	buflen += len;
+
+	if (buflen > 40 && buffer[buflen-1] == '\n')
+		my_flush();
+}
+
 static int my_putchar(int ch)
 {
-	if (buflen + 1 >= bufmax) {
-		bufmax += 256;
-		buffer = xrealloc(buffer, bufmax);
-	}
-	buffer[buflen++] = ch;
-	if (buflen > 40 && ch == '\n')
-		my_flush();
+	char str[1] = { (char)ch };
+	copy_to_buffer(str, 1);
 	return ch;
 }
 
@@ -188,20 +202,10 @@ static int my_printf(const char *format, ...)
 	len = vasprintf(&str, format, list);
 	va_end(list);
 
-	if (len < 0)
-		bb_die_memory_exhausted();
-
-	if (buflen + len >= bufmax) {
-		bufmax += 256 + len;
-		buffer = xrealloc(buffer, bufmax);
+	if (len >= 0) {
+		copy_to_buffer(str, len);
+		free(str);
 	}
-	memcpy(buffer + buflen, str, len);
-	buflen += len;
-	free(str);
-
-	if (buflen > 40 && buffer[buflen-1] == '\n')
-		my_flush();
-
 	return len;
 }
 
