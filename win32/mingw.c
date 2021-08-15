@@ -740,50 +740,12 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 	return -1;
 }
 
-static inline void timeval_to_filetime(const struct timeval tv, FILETIME *ft)
-{
-	long long winTime = tv.tv_sec * 10000000LL + tv.tv_usec * 10LL +
-							116444736000000000LL;
-	ft->dwLowDateTime = winTime;
-	ft->dwHighDateTime = winTime >> 32;
-}
-
 static inline void timespec_to_filetime(const struct timespec tv, FILETIME *ft)
 {
 	long long winTime = tv.tv_sec * 10000000LL + tv.tv_nsec / 100LL +
 							116444736000000000LL;
 	ft->dwLowDateTime = winTime;
 	ft->dwHighDateTime = winTime >> 32;
-}
-
-int utimes(const char *file_name, const struct timeval tims[2])
-{
-	FILETIME mft, aft;
-	HANDLE fh;
-	int rc = 0;
-
-	fh = CreateFile(file_name, FILE_WRITE_ATTRIBUTES, 0,
-				NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
-	if ( fh == INVALID_HANDLE_VALUE ) {
-		errno = err_win_to_posix();
-		return -1;
-	}
-
-	if (tims) {
-		timeval_to_filetime(tims[0], &aft);
-		timeval_to_filetime(tims[1], &mft);
-	}
-	else {
-		GetSystemTimeAsFileTime(&mft);
-		aft = mft;
-	}
-
-	if (!SetFileTime(fh, NULL, &aft, &mft)) {
-		errno = err_win_to_posix();
-		rc = -1;
-	}
-	CloseHandle(fh);
-	return rc;
 }
 
 static int hutimens(HANDLE fh, const struct timespec times[2])
@@ -856,6 +818,24 @@ int utimensat(int fd, const char *path, const struct timespec times[2],
 	rc = hutimens(fh, times);
 	CloseHandle(fh);
 	return rc;
+}
+
+int utimes(const char *file_name, const struct timeval tv[2])
+{
+	struct timespec ts[2];
+
+	if (tv) {
+		if (tv[0].tv_usec < 0 || tv[0].tv_usec >= 1000000 ||
+				tv[1].tv_usec < 0 || tv[1].tv_usec >= 1000000) {
+			errno = EINVAL;
+			return -1;
+		}
+		ts[0].tv_sec = tv[0].tv_sec;
+		ts[0].tv_nsec = tv[0].tv_usec * 1000;
+		ts[1].tv_sec = tv[1].tv_sec;
+		ts[1].tv_nsec = tv[1].tv_usec * 1000;
+	}
+	return utimensat(AT_FDCWD, file_name, tv ? ts : NULL, 0);
 }
 
 unsigned int sleep (unsigned int seconds)
