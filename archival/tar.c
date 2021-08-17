@@ -509,6 +509,9 @@ static int FAST_FUNC writeFileToTarball(struct recursive_state *state,
 	if (header_name[0] == '\0')
 		return TRUE;
 
+	if (exclude_file(tbInfo->excludeList, header_name))
+		return SKIP; /* "do not recurse on this directory", no error message printed */
+
 	/* It is against the rules to archive a socket */
 	if (S_ISSOCK(statbuf->st_mode)) {
 		bb_error_msg("%s: socket ignored", fileName);
@@ -548,9 +551,6 @@ static int FAST_FUNC writeFileToTarball(struct recursive_state *state,
 	}
 #endif
 
-	if (exclude_file(tbInfo->excludeList, header_name))
-		return SKIP;
-
 # if !ENABLE_FEATURE_TAR_GNU_EXTENSIONS
 	if (strlen(header_name) >= NAME_SIZE) {
 		bb_simple_error_msg("names longer than "NAME_SIZE_STR" chars not supported");
@@ -563,13 +563,13 @@ static int FAST_FUNC writeFileToTarball(struct recursive_state *state,
 		/* open the file we want to archive, and make sure all is well */
 		inputFileFd = open_or_warn(fileName, O_RDONLY);
 		if (inputFileFd < 0) {
-			return FALSE;
+			return FALSE; /* make recursive_action() return FALSE */
 		}
 	}
 
 	/* Add an entry to the tarball */
 	if (writeTarHeader(tbInfo, header_name, fileName, statbuf) == FALSE) {
-		return FALSE;
+		return FALSE; /* make recursive_action() return FALSE */
 	}
 
 	/* If it was a regular file, write out the body */
@@ -1153,14 +1153,15 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 		tar_handle->ah_flags &= ~ARCHIVE_RESTORE_DATE;
 
 #if ENABLE_FEATURE_TAR_FROM
+	/* Convert each -X EXCLFILE to list of to-be-rejected glob patterns */
 	tar_handle->reject = append_file_list_to_list(tar_handle->reject);
 # if ENABLE_FEATURE_TAR_LONG_OPTIONS
-	/* Append excludes to reject */
-	while (excludes) {
-		llist_t *next = excludes->link;
-		excludes->link = tar_handle->reject;
-		tar_handle->reject = excludes;
-		excludes = next;
+	/* Append --exclude=GLOBPATTERNs to reject */
+	if (excludes) {
+		llist_t **p2next = &tar_handle->reject;
+		while (*p2next)
+			p2next = &((*p2next)->link);
+		*p2next = excludes;
 	}
 # endif
 	tar_handle->accept = append_file_list_to_list(tar_handle->accept);
