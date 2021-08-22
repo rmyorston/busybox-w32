@@ -4999,7 +4999,11 @@ int vi_main(int argc, char **argv)
 
 				// .exrc must belong to and only be writable by user
 				if (stat(exrc, &st) == 0) {
+# if !ENABLE_PLATFORM_MINGW32
 					if ((st.st_mode & (S_IWGRP|S_IWOTH)) == 0
+# else
+					if (1
+# endif
 					 && st.st_uid == getuid()
 					) {
 						cmds = xmalloc_open_read_close(exrc, NULL);
