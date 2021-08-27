@@ -46,6 +46,7 @@ unsigned int _CRT_fmode = _O_BINARY;
 
 smallint bb_got_signal;
 
+#pragma GCC optimize ("no-if-conversion")
 int err_win_to_posix(void)
 {
 	int error = ENOSYS;
@@ -160,6 +161,7 @@ int err_win_to_posix(void)
 	}
 	return error;
 }
+#pragma GCC reset_options
 
 #undef strerror
 char *mingw_strerror(int errnum)
