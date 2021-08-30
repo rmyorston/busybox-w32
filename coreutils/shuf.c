@@ -169,7 +169,7 @@ int shuf_main(int argc, char **argv)
 			else if (sizeof(lines[0]) == sizeof(long))
 				printf("%lu%c", (unsigned long)(uintptr_t)lines[i], eol);
 			else
-				printf("%llu%c", (unsigned long long)(uintptr_t)lines[i], eol);
+				printf("%"LL_FMT"u%c", (unsigned long long)(uintptr_t)lines[i], eol);
 		} else
 			printf("%s%c", lines[i], eol);
 	}
