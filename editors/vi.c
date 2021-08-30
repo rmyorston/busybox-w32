@@ -112,6 +112,15 @@
 //config:	help
 //config:	Enable the editor to set some (ai, ic, showmatch) options.
 //config:
+//config:config FEATURE_VI_FILE_FORMAT
+//config:	bool "Enable detection of file format"
+//config:	default y
+//config:	depends on VI && FEATURE_VI_SETOPTS && PLATFORM_MINGW32
+//config:	help
+//config:	Enable the editor to detect the format of files it reads
+//config:	so they can be written out with the appropriate line
+//config:	endings. Enable the 'fileformats' option.
+//config:
 //config:config FEATURE_VI_SET
 //config:	bool "Support :set"
 //config:	default y
@@ -297,6 +306,7 @@ struct globals {
 
 	// the rest
 #if ENABLE_FEATURE_VI_SETOPTS
+#if !ENABLE_FEATURE_VI_FILE_FORMAT
 	smallint vi_setops;     // set by setops()
 #define VI_AUTOINDENT (1 << 0)
 #define VI_EXPANDTAB  (1 << 1)
@@ -304,6 +314,17 @@ struct globals {
 #define VI_IGNORECASE (1 << 3)
 #define VI_SHOWMATCH  (1 << 4)
 #define VI_TABSTOP    (1 << 5)
+#else
+	smalluint vi_setops;     // set by setops()
+#define VI_AUTOINDENT (1 << 0)
+#define VI_EXPANDTAB  (1 << 1)
+#define VI_FILEFORMAT (1 << 2)
+#define VI_FILEFORMATS (1 << 3)
+#define VI_ERR_METHOD (1 << 4)
+#define VI_IGNORECASE (1 << 5)
+#define VI_SHOWMATCH  (1 << 6)
+#define VI_TABSTOP    (1 << 7)
+#endif
 #define autoindent (vi_setops & VI_AUTOINDENT)
 #define expandtab  (vi_setops & VI_EXPANDTAB )
 #define err_method (vi_setops & VI_ERR_METHOD) // indicate error with beep or flash
@@ -313,10 +334,18 @@ struct globals {
 #define OPTS_STR \
 		"ai\0""autoindent\0" \
 		"et\0""expandtab\0" \
+		IF_FEATURE_VI_FILE_FORMAT("ff\0""fileformat\0") \
+		IF_FEATURE_VI_FILE_FORMAT("ffs\0""fileformats\0") \
 		"fl\0""flash\0" \
 		"ic\0""ignorecase\0" \
 		"sm\0""showmatch\0" \
 		"ts\0""tabstop\0"
+
+#define FF_DOS_UNIX 0
+#define FF_UNIX_DOS 1
+#define FORMATS_STR \
+		"dos,unix\0" \
+		"unix,dos\0"
 #else
 #define autoindent (0)
 #define expandtab  (0)
@@ -379,6 +408,10 @@ struct globals {
 #endif
 #if ENABLE_FEATURE_VI_SETOPTS
 	int indentcol;		// column of recently autoindent, 0 or -1
+#endif
+#if ENABLE_FEATURE_VI_FILE_FORMAT
+	smallint fileformat;
+	smallint fileformats;
 #endif
 	smallint cmd_error;
 
@@ -507,6 +540,8 @@ struct globals {
 #define dotcnt                  (G.dotcnt             )
 #define last_search_pattern     (G.last_search_pattern)
 #define indentcol               (G.indentcol          )
+#define fileformat              (G.fileformat         )
+#define fileformats             (G.fileformats        )
 #define cmd_error               (G.cmd_error          )
 
 #define edit_file__cur_line     (G.edit_file__cur_line)
@@ -2066,6 +2101,10 @@ static int file_insert(const char *fn, char *p, int initial)
 		undo_push_insert(p, size, ALLOW_UNDO);
 	}
 # endif
+#if ENABLE_FEATURE_VI_FILE_FORMAT
+	if (initial && cnt > 0)
+		fileformat = cnt == size ? FF_UNIX_DOS : FF_DOS_UNIX;
+#endif
  fi:
 	close(fd);
 
@@ -2342,6 +2381,9 @@ static int init_text_buffer(char *fn)
 	free(text);
 	text_size = 10240;
 	screenbegin = dot = end = text = xzalloc(text_size);
+#if ENABLE_FEATURE_VI_FILE_FORMAT
+	fileformat = fileformats;
+#endif
 
 	update_filename(fn);
 	rc = file_insert(fn, text, 1);
@@ -2387,6 +2429,13 @@ static uintptr_t string_insert(char *p, const char *s, int undo) // insert the s
 static int file_write(char *fn, char *first, char *last)
 {
 	int fd, cnt, charcnt;
+#if ENABLE_PLATFORM_MINGW32
+# if ENABLE_FEATURE_VI_FILE_FORMAT
+#  define dos (fileformat == FF_DOS_UNIX)
+# else
+#  define dos (1)
+# endif
+#endif
 
 	if (fn == 0) {
 		status_line_bold("No current filename");
@@ -2398,7 +2447,7 @@ static int file_write(char *fn, char *first, char *last)
 #if !ENABLE_PLATFORM_MINGW32
 	fd = open(fn, (O_WRONLY | O_CREAT), 0666);
 #else
-	fd = open(fn, (O_WRONLY | O_CREAT | _O_TEXT), 0666);
+	fd = open(fn, (O_WRONLY | O_CREAT | (dos ? _O_TEXT : 0)), 0666);
 #endif
 	if (fd < 0)
 		return -1;
@@ -2407,9 +2456,9 @@ static int file_write(char *fn, char *first, char *last)
 #if !ENABLE_PLATFORM_MINGW32
 	ftruncate(fd, charcnt);
 #else
-	// File was written in text mode; this makes it bigger so adjust
+	// If file was written in text mode it will be bigger so adjust
 	// the truncation to match.
-	ftruncate(fd, charcnt + count_cr(first, cnt));
+	ftruncate(fd, charcnt + (dos ? count_cr(first, cnt) : 0));
 #endif
 	if (charcnt == cnt) {
 		// good write
@@ -2699,6 +2748,7 @@ static void setops(char *args, int flg_no)
 
 	index = 1 << (index >> 1); // convert to VI_bit
 
+#if !ENABLE_FEATURE_VI_FILE_FORMAT
 	if (index & VI_TABSTOP) {
 		int t;
 		if (!eq || flg_no) // no "=NNN" or it is "notabstop"?
@@ -2709,6 +2759,27 @@ static void setops(char *args, int flg_no)
 		tabstop = t;
 		return;
 	}
+#else
+	if (index & VI_FILEFORMAT)
+		goto bad;
+	if (index & (VI_TABSTOP | VI_FILEFORMATS)) {
+		if (!eq || flg_no) // no "=NNN" or it is "notabstop"?
+			goto bad;
+		if (index & VI_TABSTOP) {
+			int t = bb_strtou(eq + 1, NULL, 10);
+			if (t <= 0 || t > MAX_TABSTOP)
+				goto bad;
+			tabstop = t;
+			return;
+		} else { // VI_FILEFORMATS
+			int t = index_in_strings(FORMATS_STR, eq + 1);
+			if (t < 0)
+				goto bad;
+			fileformats = t;
+			return;
+		}
+	}
+#endif
 	if (eq)	goto bad; // boolean option has "="?
 	if (flg_no) {
 		vi_setops &= ~index;
@@ -3205,6 +3276,7 @@ static void colon(char *buf)
 		if (!args[0] || strcmp(args, "all") == 0) {
 			// print out values of all options
 #  if ENABLE_FEATURE_VI_SETOPTS
+#   if !ENABLE_FEATURE_VI_FILE_FORMAT
 			status_line_bold(
 				"%sautoindent "
 				"%sexpandtab "
@@ -3219,6 +3291,28 @@ static void colon(char *buf)
 				showmatch ? "" : "no",
 				tabstop
 			);
+#   else // ENABLE_FEATURE_VI_FILE_FORMAT
+			unsigned int mask = 1, j = 0;
+			go_bottom_and_clear_to_eol();
+			for (;;) {
+				const char *name = nth_string(OPTS_STR, 2 * j + 1);
+				if (!name[0])
+					break;
+				if (mask == VI_FILEFORMAT)
+					printf("%s=%s ", name, nth_string("dos\0unix\0", fileformat));
+				else if (mask == VI_FILEFORMATS)
+					printf("%s=%s ", name, nth_string(FORMATS_STR, fileformats));
+				else if (mask == VI_TABSTOP)
+					printf("%s=%u ", name, tabstop);
+				else
+					printf("%s%s ", vi_setops & mask ? "" : "no", name);
+				if (j++ == 4)
+					bb_putchar('\n');
+				mask <<= 1;
+			}
+			bb_putchar('\n');
+			Hit_Return();
+#   endif
 #  endif
 			goto ret;
 		}
