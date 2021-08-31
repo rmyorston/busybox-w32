@@ -90,7 +90,7 @@ CONFIG_PREFIX=""
 #
 # Debugging Options
 #
-CONFIG_DEBUG=y
+# CONFIG_DEBUG is not set
 # CONFIG_DEBUG_PESSIMIZE is not set
 # CONFIG_DEBUG_SANITIZE is not set
 # CONFIG_UNIT_TEST is not set
