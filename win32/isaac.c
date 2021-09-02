@@ -118,7 +118,7 @@ static void randinit(isaac_t *t, int flag)
 	fn(&dt); \
 	u = (uint32_t *)&dt; \
 	for (j=0; j<sizeof(dt)/sizeof(uint32_t); ++j) { \
-		t->randrsl[i++] = *u++; \
+		t->randrsl[i++ % 256] = *u++; \
 	}
 
 /*
@@ -128,15 +128,14 @@ static void randinit(isaac_t *t, int flag)
  */
 static void get_entropy(isaac_t *t)
 {
-	int i, j, len;
+	int i, j;
 	FILETIME tm;
 	MEMORYSTATUS ms;
 	SYSTEM_INFO si;
 	LARGE_INTEGER pc;
 	uint32_t *u;
 	char *env, *s;
-	md5_ctx_t ctx;
-	unsigned char buf[16];
+	unsigned char *p;
 
 	i = 0;
 	t->randrsl[i++] = (uint32_t)GetProcessId(GetCurrentProcess());
@@ -150,27 +149,18 @@ static void get_entropy(isaac_t *t)
 
 	env = GetEnvironmentStringsA();
 
-	/* get length of environment:  it ends with two nuls */
-	for (s=env,len=0; *s && *(s+1); ++s,++len)
-		;
-
-	md5_begin(&ctx);
-	md5_hash(&ctx, env, len);
-	md5_end(&ctx, buf);
+	/* environment ends with two nuls */
+	p = (unsigned char *)t->randrsl;
+	i *= sizeof(uint32_t);
+	for (s=env; *s || *(s+1); ++s)
+		p[i++ % (256 * sizeof(uint32_t))] ^= *s;
 
 	FreeEnvironmentStringsA(env);
 
-	u = (uint32_t *)buf;
-	for (j=0; j<sizeof(buf)/sizeof(uint32_t); ++j) {
-		t->randrsl[i++] = *u++;
-	}
-
 #if 0
 	{
-		unsigned char *p = (unsigned char *)t->randrsl;
-
-		for (j=0; j<i*sizeof(uint32_t); ++j) {
-			fprintf(stderr, "%02x", *p++);
+		for (j=0; j<256; ++j) {
+			fprintf(stderr, "%02x", p[j]);
 			if ((j&31) == 31) {
 				fprintf(stderr, "\n");
 			}
