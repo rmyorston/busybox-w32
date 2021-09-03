@@ -31,10 +31,19 @@
 # undef SIGPIPE
 #endif
 
+#if ENABLE_PLATFORM_POSIX || defined(SIGSTKFLT) || defined(SIGVTALRM)
+# define SIGLEN 7
+#elif defined(SIGWINCH) || (ENABLE_FEATURE_RTMINMAX && \
+		!ENABLE_FEATURE_RTMINMAX_USE_LIBC_DEFINITIONS && defined(__SIGRTMIN))
+# define SIGLEN 6
+#else
+# define SIGLEN 5
+#endif
+
 /* Believe it or not, but some arches have more than 32 SIGs!
  * HPPA: SIGSTKFLT == 36. */
 
-static const char signals[][7] ALIGN1 = {
+static const char signals[][SIGLEN] ALIGN1 = {
 	// SUSv3 says kill must support these, and specifies the numerical values,
 	// http://www.opengroup.org/onlinepubs/009695399/utilities/kill.html
 	// {0, "EXIT"}, {1, "HUP"}, {2, "INT"}, {3, "QUIT"},
