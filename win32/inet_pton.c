@@ -1,203 +1,95 @@
 /*
- * Copyright (C) 1996-2005, 2007, 2013, 2014, 2016, 2017  Internet Systems Consortium, Inc. ("ISC")
- *
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- */
+	inet_pton from musl (https://www.musl-libc.org/).
 
+	MIT licensed:
+
+----------------------------------------------------------------------
+Copyright © 2005-2020 Rich Felker, et al.
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+----------------------------------------------------------------------
+*/
 #include "libbb.h"
 
-#include <errno.h>
-#include <string.h>
+static int hexval(unsigned c)
+{
+	if (c-'0'<10) return c-'0';
+	c |= 32;
+	if (c-'a'<6) return c-'a'+10;
+	return -1;
+}
 
-/*% INT16 Size */
-#define NS_INT16SZ	 2
-/*% IPv4 Address Size */
-#define NS_INADDRSZ	 4
-/*% IPv6 Address Size */
-#define NS_IN6ADDRSZ	16
+int inet_pton(int af, const char *restrict s, void *restrict a0)
+{
+	uint16_t ip[8];
+	unsigned char *a = a0;
+	int i, j, v, d, brk=-1, need_v4=0;
 
-/*
- * WARNING: Don't even consider trying to compile this on a system where
- * sizeof(int) < 4.  sizeof(int) > 4 is fine; all the world's not a VAX.
- */
-
-static int inet_pton4(const char *src, unsigned char *dst);
-#if ENABLE_FEATURE_IPV6
-static int inet_pton6(const char *src, unsigned char *dst);
-#endif
-
-/*%
- *	convert from presentation format (which usually means ASCII printable)
- *	to network format (which is usually some kind of binary format).
- * \return
- *	1 if the address was valid for the specified address family
- *	0 if the address wasn't valid (`dst' is untouched in this case)
- *	-1 if some other error occurred (`dst' is untouched in this case, too)
- * \author
- *	Paul Vixie, 1996.
- */
-int
-inet_pton(int af, const char *src, void *dst) {
-	switch (af) {
-	case AF_INET:
-		return (inet_pton4(src, dst));
-#if ENABLE_FEATURE_IPV6
-	case AF_INET6:
-		return (inet_pton6(src, dst));
-#endif
-	default:
+	if (af==AF_INET) {
+		for (i=0; i<4; i++) {
+			for (v=j=0; j<3 && isdigit(s[j]); j++)
+				v = 10*v + s[j]-'0';
+			if (j==0 || (j>1 && s[0]=='0') || v>255) return 0;
+			a[i] = v;
+			if (s[j]==0 && i==3) return 1;
+			if (s[j]!='.') return 0;
+			s += j+1;
+		}
+		return 0;
+	} else if (af!=AF_INET6) {
 		errno = EAFNOSUPPORT;
-		return (-1);
+		return -1;
 	}
-	/* NOTREACHED */
-}
 
-/*!\fn static int inet_pton4(const char *src, unsigned char *dst)
- * \brief
- *	like inet_aton() but without all the hexadecimal and shorthand.
- * \return
- *	1 if `src' is a valid dotted quad, else 0.
- * \note
- *	does not touch `dst' unless it's returning 1.
- * \author
- *	Paul Vixie, 1996.
- */
-static int
-inet_pton4(const char *src, unsigned char *dst) {
-	static const char digits[] = "0123456789";
-	int saw_digit, octets, ch;
-	unsigned char tmp[NS_INADDRSZ], *tp;
+	if (*s==':' && *++s!=':') return 0;
 
-	saw_digit = 0;
-	octets = 0;
-	*(tp = tmp) = 0;
-	while ((ch = *src++) != '\0') {
-		const char *pch;
-
-		if ((pch = strchr(digits, ch)) != NULL) {
-			unsigned int byte = *tp * 10;
-
-			byte += (int)(pch - digits);
-			if (saw_digit && *tp == 0)
-				return (0);
-			if (byte > 255)
-				return (0);
-			*tp = byte;
-			if (!saw_digit) {
-				if (++octets > 4)
-					return (0);
-				saw_digit = 1;
-			}
-		} else if (ch == '.' && saw_digit) {
-			if (octets == 4)
-				return (0);
-			*++tp = 0;
-			saw_digit = 0;
-		} else
-			return (0);
-	}
-	if (octets < 4)
-		return (0);
-	memmove(dst, tmp, NS_INADDRSZ);
-	return (1);
-}
-
-/*%
- *	convert presentation level address to network order binary form.
- * \return
- *	1 if `src' is a valid [RFC1884 2.2] address, else 0.
- * \note
- *	(1) does not touch `dst' unless it's returning 1.
- * \note
- *	(2) :: in a full address is silently ignored.
- * \author
- *	inspired by Mark Andrews.
- * \author
- *	Paul Vixie, 1996.
- */
-#if ENABLE_FEATURE_IPV6
-static int
-inet_pton6(const char *src, unsigned char *dst) {
-	static const char xdigits_l[] = "0123456789abcdef",
-			  xdigits_u[] = "0123456789ABCDEF";
-	unsigned char tmp[NS_IN6ADDRSZ], *tp, *endp, *colonp;
-	const char *xdigits, *curtok;
-	int ch, seen_xdigits;
-	unsigned int val;
-
-	memset((tp = tmp), '\0', NS_IN6ADDRSZ);
-	endp = tp + NS_IN6ADDRSZ;
-	colonp = NULL;
-	/* Leading :: requires some special handling. */
-	if (*src == ':')
-		if (*++src != ':')
-			return (0);
-	curtok = src;
-	seen_xdigits = 0;
-	val = 0;
-	while ((ch = *src++) != '\0') {
-		const char *pch;
-
-		if ((pch = strchr((xdigits = xdigits_l), ch)) == NULL)
-			pch = strchr((xdigits = xdigits_u), ch);
-		if (pch != NULL) {
-			val <<= 4;
-			val |= (pch - xdigits);
-			if (++seen_xdigits > 4)
-				return (0);
+	for (i=0; ; i++) {
+		if (s[0]==':' && brk<0) {
+			brk=i;
+			ip[i&7]=0;
+			if (!*++s) break;
+			if (i==7) return 0;
 			continue;
 		}
-		if (ch == ':') {
-			curtok = src;
-			if (!seen_xdigits) {
-				if (colonp)
-					return (0);
-				colonp = tp;
-				continue;
-			}
-			if (tp + NS_INT16SZ > endp)
-				return (0);
-			*tp++ = (unsigned char) (val >> 8) & 0xff;
-			*tp++ = (unsigned char) val & 0xff;
-			seen_xdigits = 0;
-			val = 0;
-			continue;
+		for (v=j=0; j<4 && (d=hexval(s[j]))>=0; j++)
+			v=16*v+d;
+		if (j==0) return 0;
+		ip[i&7] = v;
+		if (!s[j] && (brk>=0 || i==7)) break;
+		if (i==7) return 0;
+		if (s[j]!=':') {
+			if (s[j]!='.' || (i<6 && brk<0)) return 0;
+			need_v4=1;
+			i++;
+			break;
 		}
-		if (ch == '.' && ((tp + NS_INADDRSZ) <= endp) &&
-		    inet_pton4(curtok, tp) > 0) {
-			tp += NS_INADDRSZ;
-			seen_xdigits = 0;
-			break;	/* '\0' was seen by inet_pton4(). */
-		}
-		return (0);
+		s += j+1;
 	}
-	if (seen_xdigits) {
-		if (tp + NS_INT16SZ > endp)
-			return (0);
-		*tp++ = (unsigned char) (val >> 8) & 0xff;
-		*tp++ = (unsigned char) val & 0xff;
+	if (brk>=0) {
+		memmove(ip+brk+7-i, ip+brk, 2*(i+1-brk));
+		for (j=0; j<7-i; j++) ip[brk+j] = 0;
 	}
-	if (colonp != NULL) {
-		/*
-		 * Since some memmove()'s erroneously fail to handle
-		 * overlapping regions, we'll do the shift by hand.
-		 */
-		const int n = (int)(tp - colonp);
-		int i;
-
-		if (tp == endp)
-			return (0);
-		for (i = 1; i <= n; i++) {
-			endp[- i] = colonp[n - i];
-			colonp[n - i] = 0;
-		}
-		tp = endp;
+	for (j=0; j<8; j++) {
+		*a++ = ip[j]>>8;
+		*a++ = ip[j];
 	}
-	if (tp != endp)
-		return (0);
-	memmove(dst, tmp, NS_IN6ADDRSZ);
-	return (1);
+	if (need_v4 && inet_pton(AF_INET, (void *)s, a-4) <= 0) return 0;
+	return 1;
 }
-#endif
