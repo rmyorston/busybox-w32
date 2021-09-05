@@ -4411,12 +4411,16 @@ static struct job *
 getjob(const char *name, int getctl)
 {
 	struct job *jp;
+#if !ENABLE_PLATFORM_MINGW32
 	struct job *found;
+#endif
 	const char *err_msg = "%s: no such job";
 	unsigned num;
 	int c;
 	const char *p;
+#if !ENABLE_PLATFORM_MINGW32
 	char *(*match)(const char *, const char *);
+#endif
 
 	jp = curjob;
 	p = name;
@@ -4457,6 +4461,7 @@ getjob(const char *name, int getctl)
 		}
 	}
 
+#if !ENABLE_PLATFORM_MINGW32
 	match = prefix;
 	if (*p == '?') {
 		match = strstr;
@@ -4476,6 +4481,9 @@ getjob(const char *name, int getctl)
 	if (!found)
 		goto err;
 	jp = found;
+#else
+	goto err;
+#endif
 
  gotit:
 #if JOBS
