@@ -24,7 +24,8 @@
  * - command without ".exe" extension is still understood as executable
  * - shell scripts on the path are detected by the presence of '#!'
  * - both / and \ are supported in PATH. Usually you must use /
- * - trap/job does not work
+ * - job control doesn't work
+ * - trap doesn't work for signals, only EXIT
  * - /dev/null is supported for redirection
  * - fake $PPID
  */
@@ -514,7 +515,9 @@ struct jmploc {
 struct globals_misc {
 	uint8_t exitstatus;     /* exit status of last command */
 	uint8_t back_exitstatus;/* exit status of backquoted command */
+#if !ENABLE_PLATFORM_MINGW32
 	smallint job_warning;   /* user was warned about stopped jobs (can be 2, 1 or 0). */
+#endif
 	int savestatus;         /* exit status of last command outside traps */
 	int rootpid;            /* pid of main shell */
 	/* shell level: 0 for the main shell, 1 for its children, and so on */
@@ -5997,6 +6000,7 @@ waitforjob(struct job *jp)
 /*
  * return 1 if there are stopped jobs, otherwise 0
  */
+#if !ENABLE_PLATFORM_MINGW32
 static int
 stoppedjobs(void)
 {
@@ -6015,6 +6019,9 @@ stoppedjobs(void)
  out:
 	return retval;
 }
+#else
+# define stoppedjobs() 0
+#endif
 
 
 /*
@@ -14337,8 +14344,10 @@ cmdloop(int top)
 		} else if (nflag == 0) {
 			int i;
 
+#if !ENABLE_PLATFORM_MINGW32
 			/* job_warning can only be 2,1,0. Here 2->1, 1/0->0 */
 			job_warning >>= 1;
+#endif
 			numeof = 0;
 			i = evaltree(n, 0);
 			if (n)
