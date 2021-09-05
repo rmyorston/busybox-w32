@@ -15542,9 +15542,8 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	struct jmploc jmploc;
 	struct stackmark smark;
 	int login_sh;
-#if ENABLE_PLATFORM_MINGW32
-	const char *sd;
 
+#if ENABLE_PLATFORM_MINGW32
 	INIT_G_memstack();
 
 	/* from init() */
@@ -15660,15 +15659,12 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 
 		state = 1;
 #if ENABLE_PLATFORM_MINGW32
-		sd = get_system_drive();
-		if (sd) {
-			char *path = xasprintf("%s/etc/profile", sd);
-			read_profile(path);
-			free(path);
-		}
-		else
-#endif
+		hp = xasprintf("%s/etc/profile", get_system_drive() ?: "");
+		read_profile(hp);
+		free((void *)hp);
+#else
 		read_profile("/etc/profile");
+#endif
  state1:
 		state = 2;
 		hp = lookupvar("HOME");
