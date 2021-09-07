@@ -4065,11 +4065,12 @@ unaliascmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
  */
 struct procstat {
 	pid_t   ps_pid;         /* process id */
-#if ENABLE_PLATFORM_MINGW32
+	int     ps_status;      /* last process status from wait() */
+#if !ENABLE_PLATFORM_MINGW32
+	char    *ps_cmd;        /* text of command being run */
+#else
 	HANDLE  ps_proc;
 #endif
-	int     ps_status;      /* last process status from wait() */
-	char    *ps_cmd;        /* text of command being run */
 };
 
 struct job {
@@ -4502,14 +4503,18 @@ getjob(const char *name, int getctl)
 static void
 freejob(struct job *jp)
 {
+#if !ENABLE_PLATFORM_MINGW32
 	struct procstat *ps;
 	int i;
+#endif
 
 	INT_OFF;
+#if !ENABLE_PLATFORM_MINGW32
 	for (i = jp->nprocs, ps = jp->ps; --i >= 0; ps++) {
 		if (ps->ps_cmd != nullstr)
 			free(ps->ps_cmd);
 	}
+#endif
 	if (jp->ps != &jp->ps0)
 		free(jp->ps);
 	jp->used = 0;
@@ -5884,11 +5889,12 @@ forkparent(struct job *jp, union node *n, int mode, HANDLE proc)
 	if (jp) {
 		struct procstat *ps = &jp->ps[jp->nprocs++];
 		ps->ps_pid = pid;
-#if ENABLE_PLATFORM_MINGW32
+		ps->ps_status = -1;
+#if !ENABLE_PLATFORM_MINGW32
+		ps->ps_cmd = nullstr;
+#else
 		ps->ps_proc = proc;
 #endif
-		ps->ps_status = -1;
-		ps->ps_cmd = nullstr;
 #if JOBS
 		if (doing_jobctl && n)
 			ps->ps_cmd = commandtext(n);
