@@ -2753,6 +2753,12 @@ static int i_getch(struct in_str *i)
 		if (ch != '\0') {
 			i->p++;
 			i->last_char = ch;
+#if ENABLE_HUSH_LINENO_VAR
+			if (ch == '\n') {
+				G.parse_lineno++;
+				debug_printf_parse("G.parse_lineno++ = %u\n", G.parse_lineno);
+			}
+#endif
 			return ch;
 		}
 		return EOF;
@@ -7540,11 +7546,11 @@ static void parse_and_run_stream(struct in_str *inp, int end_trigger)
 static void parse_and_run_string(const char *s)
 {
 	struct in_str input;
-	//IF_HUSH_LINENO_VAR(unsigned sv = G.parse_lineno;)
+	IF_HUSH_LINENO_VAR(unsigned sv = G.parse_lineno;)
 
 	setup_string_in_str(&input, s);
 	parse_and_run_stream(&input, '\0');
-	//IF_HUSH_LINENO_VAR(G.parse_lineno = sv;)
+	IF_HUSH_LINENO_VAR(G.parse_lineno = sv;)
 }
 
 static void parse_and_run_file(HFILE *fp)
@@ -9898,7 +9904,8 @@ static int run_list(struct pipe *pi)
 #if ENABLE_HUSH_LOOPS
 		G.flag_break_continue = 0;
 #endif
-		rcode = r = run_pipe(pi); /* NB: rcode is a smalluint, r is int */
+		rcode = r = G.o_opt[OPT_O_NOEXEC] ? 0 : run_pipe(pi);
+		/* NB: rcode is a smalluint, r is int */
 		if (r != -1) {
 			/* We ran a builtin, function, or group.
 			 * rcode is already known
@@ -10137,7 +10144,10 @@ static int set_mode(int state, char mode, const char *o_opt)
 	int idx;
 	switch (mode) {
 	case 'n':
-		G.o_opt[OPT_O_NOEXEC] = state;
+		/* set -n has no effect in interactive shell */
+		/* Try: while set -n; do echo $-; done */
+		if (!G_interactive_fd)
+			G.o_opt[OPT_O_NOEXEC] = state;
 		break;
 	case 'x':
 		IF_HUSH_MODE_X(G_x_mode = state;)

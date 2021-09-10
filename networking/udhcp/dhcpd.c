@@ -27,7 +27,7 @@
 //kbuild:lib-$(CONFIG_FEATURE_UDHCP_RFC3397) += domain_codec.o
 
 //usage:#define udhcpd_trivial_usage
-//usage:       "[-fS] [-I ADDR]" IF_FEATURE_UDHCP_PORT(" [-P PORT]") " [CONFFILE]"
+//usage:       "[-fS] [-I ADDR] [-a MSEC]" IF_FEATURE_UDHCP_PORT(" [-P PORT]") " [CONFFILE]"
 //usage:#define udhcpd_full_usage "\n\n"
 //usage:       "DHCP server\n"
 //usage:     "\n	-f	Run in foreground"
@@ -451,6 +451,8 @@ static NOINLINE void read_config(const char *file)
 
 	server_data.start_ip = ntohl(server_data.start_ip);
 	server_data.end_ip = ntohl(server_data.end_ip);
+	if (server_data.start_ip > server_data.end_ip)
+		bb_error_msg_and_die("bad start/end IP range in %s", file);
 }
 
 static void write_leases(void)
@@ -612,6 +614,10 @@ static void send_packet_to_relay(struct dhcp_packet *dhcp_pkt)
 	udhcp_send_kernel_packet(dhcp_pkt,
 			server_data.server_nip, SERVER_PORT,
 			dhcp_pkt->gateway_nip, SERVER_PORT,
+	/* Yes, relay agents receive (and send) all their packets on SERVER_PORT,
+	 * even those which are clients' requests and would normally
+	 * (i.e. without relay) use CLIENT_PORT. See RFC 1542.
+	 */
 			server_data.interface);
 }
 
@@ -858,7 +864,6 @@ int udhcpd_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int udhcpd_main(int argc UNUSED_PARAM, char **argv)
 {
 	int server_socket = -1, retval;
-	uint8_t *state;
 	unsigned timeout_end;
 	unsigned num_ips;
 	unsigned opt;
@@ -877,6 +882,12 @@ int udhcpd_main(int argc UNUSED_PARAM, char **argv)
 	/* Setup the signal pipe on fds 3,4 - must be before openlog() */
 	udhcp_sp_setup();
 
+#define OPT_f (1 << 0)
+#define OPT_S (1 << 1)
+#define OPT_I (1 << 2)
+#define OPT_v (1 << 3)
+#define OPT_a (1 << 4)
+#define OPT_P (1 << 5)
 	opt = getopt32(argv, "^"
 		"fSI:va:"IF_FEATURE_UDHCP_PORT("P:")
 		"\0"
@@ -887,24 +898,24 @@ int udhcpd_main(int argc UNUSED_PARAM, char **argv)
 		, &str_a
 		IF_FEATURE_UDHCP_PORT(, &str_P)
 		IF_UDHCP_VERBOSE(, &dhcp_verbose)
-		);
-	if (!(opt & 1)) { /* no -f */
+	);
+	if (!(opt & OPT_f)) { /* no -f */
 		bb_daemonize_or_rexec(0, argv);
 		logmode = LOGMODE_NONE;
 	}
 	/* update argv after the possible vfork+exec in daemonize */
 	argv += optind;
-	if (opt & 2) { /* -S */
+	if (opt & OPT_S) {
 		openlog(applet_name, LOG_PID, LOG_DAEMON);
 		logmode |= LOGMODE_SYSLOG;
 	}
-	if (opt & 4) { /* -I */
+	if (opt & OPT_I) {
 		len_and_sockaddr *lsa = xhost_and_af2sockaddr(str_I, 0, AF_INET);
 		server_data.server_nip = lsa->u.sin.sin_addr.s_addr;
 		free(lsa);
 	}
 #if ENABLE_FEATURE_UDHCP_PORT
-	if (opt & 32) { /* -P */
+	if (opt & OPT_P) {
 		SERVER_PORT = xatou16(str_P);
 		CLIENT_PORT = SERVER_PORT + 1;
 	}
@@ -960,6 +971,7 @@ int udhcpd_main(int argc UNUSED_PARAM, char **argv)
 		struct dhcp_packet packet;
 		int bytes;
 		int tv;
+		uint8_t *msg_type;
 		uint8_t *server_id_opt;
 		uint8_t *requested_ip_opt;
 		uint32_t requested_nip;
@@ -1017,6 +1029,9 @@ int udhcpd_main(int argc UNUSED_PARAM, char **argv)
 		 * socket read inside this call is restarted on caught signals.
 		 */
 		bytes = udhcp_recv_kernel_packet(&packet, server_socket);
+//NB: we do not check source port here. Should we?
+//It should be CLIENT_PORT for clients,
+//or SERVER_PORT for relay agents (in which case giaddr must be != 0.0.0.0)
 		if (bytes < 0) {
 			/* bytes can also be -2 ("bad packet data") */
 			if (bytes == -1 && errno != EINTR) {
@@ -1034,8 +1049,8 @@ int udhcpd_main(int argc UNUSED_PARAM, char **argv)
 			bb_info_msg("not a REQUEST%s", ", ignoring packet");
 			continue;
 		}
-		state = udhcp_get_option(&packet, DHCP_MESSAGE_TYPE);
-		if (state == NULL || state[0] < DHCP_MINTYPE || state[0] > DHCP_MAXTYPE) {
+		msg_type = udhcp_get_option(&packet, DHCP_MESSAGE_TYPE);
+		if (!msg_type || msg_type[0] < DHCP_MINTYPE || msg_type[0] > DHCP_MAXTYPE) {
 			bb_info_msg("no or bad message type option%s", ", ignoring packet");
 			continue;
 		}
@@ -1071,7 +1086,7 @@ int udhcpd_main(int argc UNUSED_PARAM, char **argv)
 			move_from_unaligned32(requested_nip, requested_ip_opt);
 		}
 
-		switch (state[0]) {
+		switch (msg_type[0]) {
 
 		case DHCPDISCOVER:
 			log1("received %s", "DISCOVER");

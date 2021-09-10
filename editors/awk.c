@@ -2357,36 +2357,55 @@ static char *awk_printf(node *n, size_t *len)
 
 	b = NULL;
 	i = 0;
-	while (*f) { /* "print one format spec" loop */
+	while (1) { /* "print one format spec" loop */
 		char *s;
 		char c;
 		char sv;
 		var *arg;
 		size_t slen;
 
+		/* Find end of the next format spec, or end of line */
 		s = f;
-		while (*f && (*f != '%' || *++f == '%'))
+		while (1) {
+			c = *f;
+			if (!c) /* no percent chars found at all */
+				goto nul;
 			f++;
-		while (*f && !isalpha(*f)) {
-			if (*f == '*')
-				syntax_error("%*x formats are not supported");
-			f++;
+			if (c == '%')
+				break;
 		}
+		/* we are past % in "....%..." */
 		c = *f;
-		if (!c) {
-			/* Tail of fmt with no percent chars,
-			 * or "....%" (percent seen, but no format specifier char found)
-			 */
-			slen = strlen(s);
-			goto tail;
+		if (!c) /* "....%" */
+			goto nul;
+		if (c == '%') { /* "....%%...." */
+			slen = f - s;
+			s = xstrndup(s, slen);
+			f++;
+			goto append; /* print "....%" part verbatim */
 		}
-		sv = *++f;
-		*f = '\0';
+		while (1) {
+			if (isalpha(c))
+				break;
+			if (c == '*')
+				syntax_error("%*x formats are not supported");
+			c = *++f;
+			if (!c) { /* "....%...." and no letter found after % */
+				/* Example: awk 'BEGIN { printf "^^^%^^^\n"; }' */
+ nul:
+				slen = f - s;
+				goto tail; /* print remaining string, exit loop */
+			}
+		}
+		/* we are at A in "....%...A..." */
+
 		arg = evaluate(nextarg(&n), TMPVAR);
 
 		/* Result can be arbitrarily long. Example:
 		 *  printf "%99999s", "BOOM"
 		 */
+		sv = *++f;
+		*f = '\0';
 		if (c == 'c') {
 			char cc = is_numeric(arg) ? getvar_i(arg) : *getvar_s(arg);
 			char *r = xasprintf(s, cc ? cc : '^' /* else strlen will be wrong */);
@@ -2405,13 +2424,14 @@ static char *awk_printf(node *n, size_t *len)
 				} else if (strchr("eEfFgGaA", c)) {
 					s = xasprintf(s, d);
 				} else {
+//TODO: GNU Awk 5.0.1: printf "%W" prints "%W", does not error out
 					syntax_error(EMSG_INV_FMT);
 				}
 			}
 			slen = strlen(s);
 		}
 		*f = sv;
-
+ append:
 		if (i == 0) {
 			b = s;
 			i = slen;
@@ -2421,7 +2441,7 @@ static char *awk_printf(node *n, size_t *len)
 		b = xrealloc(b, i + slen + 1);
 		strcpy(b + i, s);
 		i += slen;
-		if (!c) /* tail? */
+		if (!c) /* s is NOT allocated and this is the last part of string? */
 			break;
 		free(s);
 	}

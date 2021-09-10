@@ -44,21 +44,25 @@
  */
 static void shuffle_lines(char **lines, unsigned numlines, unsigned outlines)
 {
-	unsigned i;
-	unsigned r;
-	char *tmp;
-
 	srand(monotonic_us());
 
-	for (i = numlines - 1; outlines > 0; i--, outlines--) {
-		r = rand();
+	while (outlines != 0) {
+		char *tmp;
+		unsigned r = rand();
 		/* RAND_MAX can be as small as 32767 */
-		if (i > RAND_MAX)
+		if (numlines > RAND_MAX)
 			r ^= rand() << 15;
-		r %= i + 1;
-		tmp = lines[i];
-		lines[i] = lines[r];
+		r %= numlines;
+//TODO: the above method is seriously non-uniform when numlines is very large.
+//For example, with numlines of   0xf0000000,
+//values of (r % numlines) in [0, 0x0fffffff] range
+//are more likely: e.g. r=1 and r=0xf0000001 both map to 1,
+//whereas only one value, r=0xefffffff, maps to 0xefffffff.
+		numlines--;
+		tmp = lines[numlines];
+		lines[numlines] = lines[r];
 		lines[r] = tmp;
+		outlines--;
 	}
 }
 
@@ -67,9 +71,10 @@ int shuf_main(int argc, char **argv)
 {
 	unsigned opts;
 	char *opt_i_str, *opt_n_str, *opt_o_str;
-	unsigned i;
 	char **lines;
+	unsigned long long lo = lo;
 	unsigned numlines, outlines;
+	unsigned i;
 	char eol;
 
 	opts = getopt32(argv, "^"
@@ -89,8 +94,8 @@ int shuf_main(int argc, char **argv)
 	} else
 	if (opts & OPT_i) {
 		/* create a range of numbers */
+		unsigned long long hi;
 		char *dash;
-		uintptr_t lo, hi;
 
 		if (argv[0])
 			bb_show_usage();
@@ -100,27 +105,24 @@ int shuf_main(int argc, char **argv)
 			bb_error_msg_and_die("bad range '%s'", opt_i_str);
 		}
 		*dash = '\0';
-		if (sizeof(lo) == sizeof(int)) {
-			lo = xatou(opt_i_str);
-			hi = xatou(dash + 1);
-		} else
-		if (sizeof(lo) == sizeof(long)) {
-			lo = xatoul(opt_i_str);
-			hi = xatoul(dash + 1);
-		} else {
-			lo = xatoull(opt_i_str);
-			hi = xatoull(dash + 1);
-		}
+		lo = xatoull(opt_i_str);
+		hi = xatoull(dash + 1);
 		*dash = '-';
-		if (hi < lo) {
+		if (hi < lo)
 			bb_error_msg_and_die("bad range '%s'", opt_i_str);
+		hi -= lo;
+		if (sizeof(size_t) > sizeof(numlines)) {
+			if (hi >= UINT_MAX)
+				bb_error_msg_and_die("bad range '%s'", opt_i_str);
+		} else {
+			if (hi >= UINT_MAX / sizeof(lines[0]))
+				bb_error_msg_and_die("bad range '%s'", opt_i_str);
 		}
 
-		numlines = (hi+1) - lo;
-		lines = xmalloc(numlines * sizeof(lines[0]));
+		numlines = hi + 1;
+		lines = xmalloc((size_t)numlines * sizeof(lines[0]));
 		for (i = 0; i < numlines; i++) {
-			lines[i] = (char*)lo;
-			lo++;
+			lines[i] = (char*)(uintptr_t)i;
 		}
 	} else {
 		/* default - read lines from stdin or the input file */
@@ -163,14 +165,9 @@ int shuf_main(int argc, char **argv)
 		eol = '\0';
 
 	for (i = numlines - outlines; i < numlines; i++) {
-		if (opts & OPT_i) {
-			if (sizeof(lines[0]) == sizeof(int))
-				printf("%u%c", (unsigned)(uintptr_t)lines[i], eol);
-			else if (sizeof(lines[0]) == sizeof(long))
-				printf("%lu%c", (unsigned long)(uintptr_t)lines[i], eol);
-			else
-				printf("%"LL_FMT"u%c", (unsigned long long)(uintptr_t)lines[i], eol);
-		} else
+		if (opts & OPT_i)
+			printf("%"LL_FMT"u%c", lo + (uintptr_t)lines[i], eol);
+		else
 			printf("%s%c", lines[i], eol);
 	}
 
