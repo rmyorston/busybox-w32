@@ -2331,6 +2331,9 @@ change_skip_ansi(const char *newval UNUSED_PARAM)
 {
 	skip_ansi_emulation(TRUE);
 }
+
+# define LINENO_INDEX (5 + 2 * ENABLE_ASH_MAIL + ENABLE_ASH_GETOPTS)
+# define FUNCNAME_INDEX (LINENO_INDEX + 1)
 #endif
 
 static const struct {
@@ -15939,7 +15942,12 @@ reinitvar(void)
 	struct var **vpp, **old;
 
 	for (i=0; i<ARRAY_SIZE(varinit); ++i) {
-		name = varinit_data[i].var_text ? varinit_data[i].var_text : "LINENO=";
+		if (i == LINENO_INDEX)
+			name = "LINENO=";
+		else if (i == FUNCNAME_INDEX)
+			name = "FUNCNAME=";
+		else
+			name = varinit_data[i].var_text;
 		vpp = hashvar(name);
 		if ( (old=findvar(vpp, name)) != NULL ) {
 			varinit[i] = **old;
@@ -15948,6 +15956,7 @@ reinitvar(void)
 		varinit[i].var_func = varinit_data[i].var_func;
 	}
 	vlineno.var_text = linenovar;
+	vfuncname.var_text = funcnamevar;
 }
 
 static void
