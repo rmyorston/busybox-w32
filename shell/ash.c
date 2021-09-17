@@ -591,12 +591,12 @@ struct globals_misc {
 # define debug optlist[17 + BASH_PIPEFAIL]
 #endif
 #if ENABLE_PLATFORM_MINGW32
-# define winxp optlist[16 + BASH_PIPEFAIL + 2*DEBUG]
+# define winxp optlist[16 + BASH_PIPEFAIL + 2*(DEBUG != 0)]
 # if ENABLE_ASH_NOCONSOLE
-#  define noconsole optlist[17 + BASH_PIPEFAIL + 2*DEBUG]
+#  define noconsole optlist[17 + BASH_PIPEFAIL + 2*(DEBUG != 0)]
 # endif
 # if ENABLE_ASH_NOCASEGLOB
-#  define nocaseglob optlist[17 + BASH_PIPEFAIL + 2*DEBUG+ENABLE_ASH_NOCONSOLE]
+#  define nocaseglob optlist[17 + BASH_PIPEFAIL + 2*(DEBUG != 0) + ENABLE_ASH_NOCONSOLE]
 # endif
 #endif
 
@@ -698,6 +698,9 @@ static void trace_printf(const char *fmt, ...);
 static void trace_vprintf(const char *fmt, va_list va);
 # define TRACE(param)    trace_printf param
 # define TRACEV(param)   trace_vprintf param
+# if ENABLE_PLATFORM_MINGW32 && defined(close)
+#  undef close
+# endif
 # define close(fd) do { \
 	int dfd = (fd); \
 	if (close(dfd) < 0) \
