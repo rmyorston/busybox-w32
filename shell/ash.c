@@ -2355,6 +2355,7 @@ static const struct {
 	{ VSTRFIXED|VTEXTFIXED       , defoptindvar, getoptsreset    },
 #endif
 	{ VSTRFIXED|VTEXTFIXED       , NULL /* inited to linenovar */, NULL },
+	{ VSTRFIXED|VTEXTFIXED       , NULL /* inited to funcnamevar */, NULL },
 #if ENABLE_ASH_RANDOM_SUPPORT
 	{ VSTRFIXED|VTEXTFIXED|VUNSET|VDYNAMIC, "RANDOM", change_random },
 #endif
@@ -2384,6 +2385,8 @@ struct globals_var {
 	struct var varinit[ARRAY_SIZE(varinit_data)];
 	int lineno;
 	char linenovar[sizeof("LINENO=") + sizeof(int)*3];
+	char funcnamevar[sizeof("FUNCNAME=") + 64];
+	char *funcname;
 	unsigned trap_depth;
 	bool in_trap_ERR; /* ERR cannot recurse, no need to be a counter */
 };
@@ -2396,6 +2399,8 @@ extern struct globals_var *BB_GLOBAL_CONST ash_ptr_to_globals_var;
 #define varinit       (G_var.varinit      )
 #define lineno        (G_var.lineno       )
 #define linenovar     (G_var.linenovar    )
+#define funcnamevar   (G_var.funcnamevar  )
+#define funcname      (G_var.funcname     )
 #define trap_depth    (G_var.trap_depth   )
 #define in_trap_ERR   (G_var.in_trap_ERR  )
 #define vifs      varinit[0]
@@ -2413,13 +2418,14 @@ extern struct globals_var *BB_GLOBAL_CONST ash_ptr_to_globals_var;
 #endif
 #define VAR_OFFSET2 (VAR_OFFSET1 + ENABLE_ASH_GETOPTS)
 #define vlineno   varinit[VAR_OFFSET2 + 5]
+#define vfuncname varinit[VAR_OFFSET2 + 6]
 #if ENABLE_ASH_RANDOM_SUPPORT
-# define vrandom  varinit[VAR_OFFSET2 + 6]
+# define vrandom  varinit[VAR_OFFSET2 + 7]
 #endif
 #define VAR_OFFSET3 (VAR_OFFSET2 + ENABLE_ASH_RANDOM_SUPPORT)
 #if BASH_EPOCH_VARS
-# define vepochs  varinit[VAR_OFFSET3 + 6]
-# define vepochr  varinit[VAR_OFFSET3 + 7]
+# define vepochs  varinit[VAR_OFFSET3 + 7]
+# define vepochr  varinit[VAR_OFFSET3 + 8]
 #endif
 #define INIT_G_var() do { \
 	unsigned i; \
@@ -2432,6 +2438,8 @@ extern struct globals_var *BB_GLOBAL_CONST ash_ptr_to_globals_var;
 	} \
 	strcpy(linenovar, "LINENO="); \
 	vlineno.var_text = linenovar; \
+	strcpy(funcnamevar, "FUNCNAME="); \
+	vfuncname.var_text = funcnamevar; \
 } while (0)
 
 /*
@@ -2571,6 +2579,9 @@ lookupvar(const char *name)
 		if (!(v->flags & VUNSET)) {
 			if (v->var_text == linenovar) {
 				fmtstr(linenovar+7, sizeof(linenovar)-7, "%d", lineno);
+			} else
+			if (v->var_text == funcnamevar) {
+				safe_strncpy(funcnamevar+9, funcname ? funcname : "", sizeof(funcnamevar)-9);
 			}
 			return var_end(v->var_text);
 		}
@@ -6015,7 +6026,7 @@ stoppedjobs(void)
 	int retval;
 
 	retval = 0;
-	if (job_warning)
+	if (!iflag || job_warning)
 		goto out;
 	jp = curjob;
 	if (jp && jp->state == JOBSTOPPED) {
@@ -10654,6 +10665,7 @@ evalfun(struct funcnode *func, int argc, char **argv, int flags)
 	int e;
 	int savelineno;
 	int savefuncline;
+	char *savefuncname;
 	char *savetrap = NULL;
 
 	if (!Eflag) {
@@ -10663,6 +10675,7 @@ evalfun(struct funcnode *func, int argc, char **argv, int flags)
 	savelineno = lineno;
 	saveparam = shellparam;
 	savefuncline = funcline;
+	savefuncname = funcname;
 	savehandler = exception_handler;
 	e = setjmp(jmploc.loc);
 	if (e) {
@@ -10672,6 +10685,7 @@ evalfun(struct funcnode *func, int argc, char **argv, int flags)
 	exception_handler = &jmploc;
 	shellparam.malloced = 0;
 	func->count++;
+	funcname = func->n.ndefun.text;
 	funcline = func->n.ndefun.linno;
 	INT_ON;
 	shellparam.nparam = argc - 1;
@@ -10683,6 +10697,7 @@ evalfun(struct funcnode *func, int argc, char **argv, int flags)
 	evaltree(func->n.ndefun.body, flags & EV_TESTED);
  funcdone:
 	INT_OFF;
+	funcname = savefuncname;
 	if (savetrap) {
 		if (!trap[NTRAP_ERR])
 			trap[NTRAP_ERR] = savetrap;
@@ -11650,9 +11665,7 @@ preadfd(void)
  * Refill the input buffer and return the next input character:
  *
  * 1) If a string was pushed back on the input, pop it;
- * 2) If an EOF was pushed back (g_parsefile->left_in_line < -BIGNUM)
- *    or we are reading from a string so we can't refill the buffer,
- *    return EOF.
+ * 2) If we are reading from a string we can't refill the buffer, return EOF.
  * 3) If there is more stuff in this buffer, use it else call read to fill it.
  * 4) Process input up to the next newline, deleting nul characters.
  */
@@ -11669,21 +11682,9 @@ preadbuffer(void)
 		popstring();
 		return __pgetc();
 	}
-	/* on both branches above g_parsefile->left_in_line < 0.
-	 * "pgetc" needs refilling.
-	 */
 
-	/* -90 is our -BIGNUM. Below we use -99 to mark "EOF on read",
-	 * pungetc() may increment it a few times.
-	 * Assuming it won't increment it to less than -90.
-	 */
-	if (g_parsefile->left_in_line < -90 || g_parsefile->buf == NULL) {
+	if (g_parsefile->buf == NULL) {
 		pgetc_debug("preadbuffer PEOF1");
-		/* even in failure keep left_in_line and next_to_pgetc
-		 * in lock step, for correct multi-layer pungetc.
-		 * left_in_line was decremented before preadbuffer(),
-		 * must inc next_to_pgetc: */
-		g_parsefile->next_to_pgetc++;
 		return PEOF;
 	}
 
@@ -11693,10 +11694,8 @@ preadbuffer(void)
  again:
 		more = preadfd();
 		if (more <= 0) {
-			/* don't try reading again */
-			g_parsefile->left_in_line = -99;
+			g_parsefile->left_in_buffer = g_parsefile->left_in_line = 0;
 			pgetc_debug("preadbuffer PEOF2");
-			g_parsefile->next_to_pgetc++;
 			return PEOF;
 		}
 	}
@@ -14376,12 +14375,13 @@ cmdloop(int top)
 			if (!top || numeof >= 50)
 				break;
 			if (!stoppedjobs()) {
+				if (!iflag)
+					break;
 				if (!Iflag) {
-					if (iflag) {
-						newline_and_flush(stderr);
-					}
+					newline_and_flush(stderr);
 					break;
 				}
+				/* "set -o ignoreeof" active, do not exit command loop on ^D */
 				out2str("\nUse \"exit\" to leave shell.\n");
 			}
 			numeof++;
@@ -14508,6 +14508,12 @@ exitcmd(int argc UNUSED_PARAM, char **argv)
 	if (argv[1])
 		savestatus = number(argv[1]);
 
+//TODO: this script
+// trap 'echo trap:$FUNCNAME' EXIT
+// f() { exit; }
+// f
+//prints "trap:f" in bash. We can call exitshell() here to achieve this.
+//For now, keeping dash code:
 	raise_exception(EXEXIT);
 	/* NOTREACHED */
 }
