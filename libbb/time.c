@@ -43,7 +43,12 @@ int FAST_FUNC parse_datestr(const char *date_str, struct tm *ptm)
 	save = *ptm;
 	fmt = fmt_str;
 	while (*fmt) {
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_TIMEZONE
+		long gmtoff;
+		endp = mingw_strptime(date_str, fmt, ptm, &gmtoff);
+#else
 		endp = strptime(date_str, fmt, ptm);
+#endif
 		if (endp && *endp == '\0') {
 #if ENABLE_FEATURE_TIMEZONE
 			if (strchr(fmt, 'z')) {
@@ -51,7 +56,11 @@ int FAST_FUNC parse_datestr(const char *date_str, struct tm *ptm)
 				struct tm *utm;
 
 				/* we have timezone offset: obtain Unix time_t */
+#if ENABLE_PLATFORM_MINGW32
+				ptm->tm_sec -= gmtoff;
+#else
 				ptm->tm_sec -= ptm->tm_gmtoff;
+#endif
 				ptm->tm_isdst = 0;
 				t = timegm(ptm);
 				if (t == (time_t)-1)

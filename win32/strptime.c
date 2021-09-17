@@ -19,6 +19,8 @@
  * File from gnulib (https://www.gnu.org/software/gnulib/), processed with
  *    coan source -U_LIBC -U_NL_CURRENT -UHAVE_TM_GMTOFF strptime.c
  * and lightly edited.
+ *
+ * A form of support for tm_gmtoff was later restored.
  */
 
 #include "libbb.h"
@@ -62,7 +64,7 @@ enum ptime_locale_status { not, loc, raw };
 #define recursive(new_fmt) \
   (*(new_fmt) != '\0'                                                         \
    && (rp = __strptime_internal (rp, (new_fmt), tm,                           \
-                                 decided, era_cnt)) != NULL)
+                                 decided, era_cnt, gmtoff)) != NULL)
 
 
 static char const weekday_name[][10] =
@@ -141,7 +143,8 @@ day_of_the_year (struct tm *tm)
 
 static char *
 __strptime_internal (const char *rp, const char *fmt, struct tm *tm,
-                     enum ptime_locale_status *decided, int era_cnt)
+                     enum ptime_locale_status *decided, int era_cnt,
+                     long *gmtoff)
 {
 
   int cnt;
@@ -426,16 +429,25 @@ __strptime_internal (const char *rp, const char *fmt, struct tm *tm,
         case 'z':
           /* We recognize two formats: if two digits are given, these
              specify hours.  If fours digits are used, minutes are
-             also specified.  */
+             also specified.  And 'Z'.
+
+             Three formats!  We recognize three formats...  */
           {
+            bool neg;
             int n;
 
             val = 0;
             while (*rp == ' ')
               ++rp;
+            if (*rp == 'Z') {
+              ++rp;
+              if (gmtoff)
+                *gmtoff = 0;
+              break;
+            }
             if (*rp != '+' && *rp != '-')
               return NULL;
-            ++rp;
+            neg = *rp++ == '-';
             n = 0;
             while (n < 4 && *rp >= '0' && *rp <= '9')
               {
@@ -456,6 +468,11 @@ __strptime_internal (const char *rp, const char *fmt, struct tm *tm,
               }
             if (val > 1200)
               return NULL;
+            if (gmtoff) {
+              *gmtoff = (val * 3600) / 100;
+              if (neg)
+                *gmtoff = -*gmtoff;
+            }
           }
           break;
         case 'E':
@@ -571,6 +588,16 @@ strptime (const char *buf, const char *format, struct tm *tm)
   enum ptime_locale_status decided;
 
   decided = raw;
-  return __strptime_internal (buf, format, tm, &decided, -1);
+  return __strptime_internal (buf, format, tm, &decided, -1, NULL);
+}
+
+char *
+mingw_strptime (const char *buf, const char *format, struct tm *tm,
+                long *gmtoff)
+{
+  enum ptime_locale_status decided;
+
+  decided = raw;
+  return __strptime_internal (buf, format, tm, &decided, -1, gmtoff);
 }
 

@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.35.0.git
-# Fri Sep 10 14:50:08 2021
+# Fri Sep 17 09:17:23 2021
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -147,7 +147,7 @@ CONFIG_FEATURE_COPYBUF_KB=4
 # CONFIG_MONOTONIC_SYSCALL is not set
 # CONFIG_IOCTL_HEX2STR_ERROR is not set
 # CONFIG_FEATURE_HWIB is not set
-# CONFIG_FEATURE_TIMEZONE is not set
+CONFIG_FEATURE_TIMEZONE=y
 
 #
 # Applets

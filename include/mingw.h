@@ -272,6 +272,8 @@ struct timespec {
 };
 #endif
 
+time_t timegm(struct tm *tm);
+
 int nanosleep(const struct timespec *req, struct timespec *rem);
 
 /*
@@ -402,6 +404,7 @@ pid_t mingw_wait3(pid_t pid, int *status, int options, struct rusage *rusage);
 struct tm *gmtime_r(const time_t *timep, struct tm *result);
 struct tm *localtime_r(const time_t *timep, struct tm *result);
 char *strptime(const char *s, const char *format, struct tm *tm);
+char *mingw_strptime(const char *s, const char *format, struct tm *tm, long *gmt);
 size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm *tm);
 
 #define strftime mingw_strftime
