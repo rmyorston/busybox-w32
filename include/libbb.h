@@ -459,9 +459,8 @@ void *xmmap_anon(size_t size) FAST_FUNC;
 # define cached_pagesize(var) (var)
 #endif
 
-
-//TODO: supply a pointer to char[11] buffer (avoid statics)?
-extern const char *bb_mode_string(mode_t mode) FAST_FUNC;
+/* Generate ls-style "mode string" like "-rwsr-xr-x" or "drwxrwxrwt" */
+extern char *bb_mode_string(char buf[11], mode_t mode) FAST_FUNC;
 extern int is_directory(const char *name, int followLinks) FAST_FUNC;
 enum {	/* cp.c, mv.c, install.c depend on these values. CAREFUL when changing them! */
 	FILEUTILS_PRESERVE_STATUS = 1 << 0, /* -p */
@@ -1651,7 +1650,7 @@ char *bb_ask_noecho_stdin(const char *prompt) FAST_FUNC;
 int bb_ask_y_confirmation_FILE(FILE *fp) FAST_FUNC;
 int bb_ask_y_confirmation(void) FAST_FUNC;
 
-/* Returns -1 if input is invalid. current_mode is a base for e.g. "u+rw" */
+/* Returns -1 if input is invalid. cur_mode is a base for e.g. "u+rw" */
 int bb_parse_mode(const char* s, unsigned cur_mode) FAST_FUNC;
 
 /*
