@@ -4835,6 +4835,8 @@ waitpid_child(int *status, int wait_flags)
 	if (idx < pid_nr) {
 		GetExitCodeProcess(proclist[idx], &win_status);
 		*status = (int)win_status << 8;
+		if (win_status == 128 + SIGTERM || win_status == 128 + SIGKILL)
+			*status += win_status - 128;
 		pid = pidlist[idx];
 	}
  done:

@@ -171,6 +171,15 @@ char *mingw_strerror(int errnum)
 	return strerror(errnum);
 }
 
+char *strsignal(int sig)
+{
+	if (sig == SIGTERM)
+		return (char *)"Terminated";
+	else if (sig == SIGKILL)
+		return (char *)"Killed";
+	return (char *)get_signame(sig);
+}
+
 static int zero_fd = -1;
 static int rand_fd = -1;
 
