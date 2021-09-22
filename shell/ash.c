@@ -16292,6 +16292,7 @@ redirtab_copy(struct redirtab *rdtp)
 	return start;
 }
 
+#undef funcname
 #undef shellparam
 #undef redirlist
 #undef vartab
@@ -16301,6 +16302,7 @@ globals_var_size(struct datasize ds, struct globals_var *gvp)
 	int i;
 
 	ds.funcblocksize += sizeof(struct globals_var);
+	ds.funcstringsize += align_len(gvp->funcname);
 	ds = argv_size(ds, gvp->shellparam.p);
 	ds.funcblocksize = redirtab_size(ds.funcblocksize, gvp->redirlist);
 	for (i = 0; i < VTABSIZE; i++)
@@ -16317,6 +16319,9 @@ globals_var_copy(struct globals_var *gvp)
 	new = funcblock;
 	funcblock = (char *) funcblock + sizeof(struct globals_var);
 	memcpy(new, gvp, sizeof(struct globals_var));
+
+	new->funcname = nodeckstrdup(gvp->funcname);
+	SAVE_PTR(new->funcname, xasprintf("funcname '%s'", gvp->funcname ?: "NULL"), FREE);
 
 	/* shparam */
 	new->shellparam.malloced = 0;
