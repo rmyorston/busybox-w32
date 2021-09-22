@@ -292,6 +292,7 @@ enum {
 	WGET_OPT_POST_DATA  = (1 << 12) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
 	WGET_OPT_SPIDER     = (1 << 13) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
 	WGET_OPT_NO_CHECK_CERT = (1 << 14) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
+	WGET_OPT_POST_FILE  = ((1 << 15) | WGET_OPT_POST_DATA) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
 	/* hijack this bit for other than opts purposes: */
 	WGET_NO_FTRUNCATE   = (1 << 31)
 };
@@ -1279,6 +1280,12 @@ static void download_one_url(const char *url)
 			fputs(G.extra_headers, sfp);
 		}
 
+		if ( option_mask32 & WGET_OPT_POST_FILE ) {
+			int fd = xopen_stdin(G.post_file);
+			G.post_data = xmalloc_read(fd, NULL);
+			close(fd);
+		}
+
 		if (option_mask32 & WGET_OPT_POST_DATA) {
 			SENDFMT(sfp,
 				"Content-Type: application/x-www-form-urlencoded\r\n"
@@ -1522,6 +1529,7 @@ IF_DESKTOP(	"tries\0"            Required_argument "t")
 		"post-data\0"        Required_argument "\xfe"
 		"spider\0"           No_argument       "\xfd"
 		"no-check-certificate\0" No_argument   "\xfc"
+		"post-file\0"        Required_argument "\xfb"
 		/* Ignored (we always use PASV): */
 IF_DESKTOP(	"passive-ftp\0"      No_argument       "\xf0")
 		/* Ignored (we don't support caching) */
@@ -1580,6 +1588,7 @@ IF_DESKTOP(	"no-parent\0"        No_argument       "\xf0")
 	if (option_mask32 & WGET_OPT_nsomething) bb_error_msg("-nsomething");
 	if (option_mask32 & WGET_OPT_HEADER) bb_error_msg("--header");
 	if (option_mask32 & WGET_OPT_POST_DATA) bb_error_msg("--post-data");
+	if (option_mask32 & WGET_OPT_POST_FILE) bb_error_msg("--post-file");
 	if (option_mask32 & WGET_OPT_SPIDER) bb_error_msg("--spider");
 	if (option_mask32 & WGET_OPT_NO_CHECK_CERT) bb_error_msg("--no-check-certificate");
 	exit(0);
