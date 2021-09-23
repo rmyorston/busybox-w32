@@ -1629,6 +1629,9 @@ IF_DESKTOP(	"no-parent\0"        No_argument       "\xf0")
 			hdr += size;
 		}
 	}
+	if (G.post_data && G.post_file) {
+		bb_simple_error_msg_and_die("You cannot specify both --post-data and --post-file");
+	}
 #endif
 
 	G.output_fd = -1;
