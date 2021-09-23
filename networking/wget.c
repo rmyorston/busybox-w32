@@ -244,6 +244,7 @@ struct globals {
 	char *dir_prefix;
 #if ENABLE_FEATURE_WGET_LONG_OPTIONS
 	char *post_data;
+	char *post_file;
 	char *extra_headers;
 	unsigned char user_headers; /* Headers mentioned by the user */
 #endif
@@ -292,10 +293,12 @@ enum {
 	WGET_OPT_POST_DATA  = (1 << 12) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
 	WGET_OPT_SPIDER     = (1 << 13) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
 	WGET_OPT_NO_CHECK_CERT = (1 << 14) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
-	WGET_OPT_POST_FILE  = ((1 << 15) | WGET_OPT_POST_DATA) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
+	WGET_OPT_POST_FILE  = (1 << 15) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
 	/* hijack this bit for other than opts purposes: */
 	WGET_NO_FTRUNCATE   = (1 << 31)
 };
+
+#define WGET_OPT_POST (WGET_OPT_POST_DATA | WGET_OPT_POST_FILE)
 
 enum {
 	PROGRESS_START = -1,
@@ -1247,7 +1250,7 @@ static void download_one_url(const char *url)
 				target.path);
 		} else {
 			SENDFMT(sfp, "%s /%s HTTP/1.1\r\n",
-				(option_mask32 & WGET_OPT_POST_DATA) ? "POST" : "GET",
+				(option_mask32 & WGET_OPT_POST) ? "POST" : "GET",
 				target.path);
 		}
 		if (!USR_HEADER_HOST)
@@ -1280,7 +1283,7 @@ static void download_one_url(const char *url)
 			fputs(G.extra_headers, sfp);
 		}
 
-		if ( option_mask32 & WGET_OPT_POST_FILE ) {
+		if (option_mask32 & WGET_OPT_POST_FILE) {
 			int fd = xopen_stdin(G.post_file);
 			G.post_data = xmalloc_read(fd, NULL);
 			close(fd);
@@ -1582,15 +1585,16 @@ IF_DESKTOP(	"no-parent\0"        No_argument       "\xf0")
 		NULL  /* -n[ARG] */
 		IF_FEATURE_WGET_LONG_OPTIONS(, &headers_llist)
 		IF_FEATURE_WGET_LONG_OPTIONS(, &G.post_data)
+		IF_FEATURE_WGET_LONG_OPTIONS(, &G.post_file)
 	);
 #if 0 /* option bits debug */
 	if (option_mask32 & WGET_OPT_RETRIES) bb_error_msg("-t NUM");
 	if (option_mask32 & WGET_OPT_nsomething) bb_error_msg("-nsomething");
 	if (option_mask32 & WGET_OPT_HEADER) bb_error_msg("--header");
 	if (option_mask32 & WGET_OPT_POST_DATA) bb_error_msg("--post-data");
-	if (option_mask32 & WGET_OPT_POST_FILE) bb_error_msg("--post-file");
 	if (option_mask32 & WGET_OPT_SPIDER) bb_error_msg("--spider");
 	if (option_mask32 & WGET_OPT_NO_CHECK_CERT) bb_error_msg("--no-check-certificate");
+	if (option_mask32 & WGET_OPT_POST_FILE) bb_error_msg("--post-file");
 	exit(0);
 #endif
 	argv += optind;
