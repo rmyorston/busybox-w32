@@ -6077,7 +6077,15 @@ stoppedjobs(void)
 	return retval;
 }
 #else
-# define stoppedjobs() 0
+static int
+stoppedjobs(void)
+{
+	if (iflag && curjob) {
+		out2str("You have background jobs.\n");
+		return 1;
+	}
+	return 0;
+}
 #endif
 
 
