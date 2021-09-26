@@ -421,7 +421,7 @@ static void forkshell_init(const char *idstr);
 static void *sticky_mem_start, *sticky_mem_end;
 static void sticky_free(void *p);
 # define free(p) sticky_free(p)
-#if !JOBS
+#if !JOBS && !JOBS_WIN32
 #define spawn_forkshell(fs, jp, n, mode) spawn_forkshell(fs, jp, mode)
 #endif
 static void spawn_forkshell(struct forkshell *fs, struct job *jp,
@@ -4086,9 +4086,10 @@ unaliascmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 struct procstat {
 	pid_t   ps_pid;         /* process id */
 	int     ps_status;      /* last process status from wait() */
-#if !ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_POSIX || JOBS_WIN32
 	char    *ps_cmd;        /* text of command being run */
-#else
+#endif
+#if ENABLE_PLATFORM_MINGW32
 	HANDLE  ps_proc;
 #endif
 };
@@ -4435,14 +4436,14 @@ static struct job *
 getjob(const char *name, int getctl)
 {
 	struct job *jp;
-#if !ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_POSIX || JOBS_WIN32
 	struct job *found;
 #endif
 	const char *err_msg = "%s: no such job";
 	unsigned num;
 	int c;
 	const char *p;
-#if !ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_POSIX || JOBS_WIN32
 	char *(*match)(const char *, const char *);
 #endif
 
@@ -4485,7 +4486,7 @@ getjob(const char *name, int getctl)
 		}
 	}
 
-#if !ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_POSIX || JOBS_WIN32
 	match = prefix;
 	if (*p == '?') {
 		match = strstr;
@@ -4526,13 +4527,13 @@ getjob(const char *name, int getctl)
 static void
 freejob(struct job *jp)
 {
-#if !ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_POSIX || JOBS_WIN32
 	struct procstat *ps;
 	int i;
 #endif
 
 	INT_OFF;
-#if !ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_POSIX || JOBS_WIN32
 	for (i = jp->nprocs, ps = jp->ps; --i >= 0; ps++) {
 		if (ps->ps_cmd != nullstr)
 			free(ps->ps_cmd);
@@ -5132,7 +5133,7 @@ showjob(struct job *jp, int mode)
 		if (mode & SHOW_PIDS)
 			col = fmtstr(s, 48, "\n%*c%d ", indent_col, ' ', ps->ps_pid) - 1;
  start:
-#if !ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_POSIX || JOBS_WIN32
 		fprintf(out, "%s%*c%s%s",
 				s,
 				33 - col >= 0 ? 33 - col : 0, ' ',
@@ -5424,7 +5425,7 @@ makejob(/*union node *node,*/ int nprocs)
 	return jp;
 }
 
-#if JOBS
+#if JOBS || JOBS_WIN32
 /*
  * Return a string identifying a command (to be printed by the
  * jobs command).
@@ -5895,7 +5896,7 @@ forkchild(struct job *jp, union node *n, int mode)
 #endif
 
 /* Called after fork(), in parent */
-#if !JOBS
+#if !JOBS && !JOBS_WIN32
 #define forkparent(jp, n, mode, pid) forkparent(jp, mode, pid)
 #endif
 static void
@@ -5931,12 +5932,13 @@ forkparent(struct job *jp, union node *n, int mode, HANDLE proc)
 		struct procstat *ps = &jp->ps[jp->nprocs++];
 		ps->ps_pid = pid;
 		ps->ps_status = -1;
-#if !ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_POSIX || JOBS_WIN32
 		ps->ps_cmd = nullstr;
-#else
+#endif
+#if ENABLE_PLATFORM_MINGW32
 		ps->ps_proc = proc;
 #endif
-#if JOBS
+#if JOBS || JOBS_WIN32
 		if (doing_jobctl && n)
 			ps->ps_cmd = commandtext(n);
 #endif
