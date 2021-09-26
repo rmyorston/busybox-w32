@@ -24,7 +24,7 @@
  * - command without ".exe" extension is still understood as executable
  * - shell scripts on the path are detected by the presence of '#!'
  * - both / and \ are supported in PATH. Usually you must use /
- * - job control doesn't work
+ * - job control doesn't work, though the jobs builtin is available
  * - trap doesn't work for signals, only EXIT
  * - /dev/null is supported for redirection
  * - fake $PPID
@@ -212,7 +212,17 @@
 
 #define PROFILE 0
 
+/*
+ * Only one of JOBS or JOBS_WIN32 is enabled at a time (or neither).
+ * JOBS_WIN32 doesn't enable job control, just some job-related features.
+ */
+#if ENABLE_PLATFORM_MINGW32
+#define JOBS_WIN32 ENABLE_ASH_JOB_CONTROL
+#define JOBS 0
+#else
+#define JOBS_WIN32 0
 #define JOBS ENABLE_ASH_JOB_CONTROL
+#endif
 
 #include <fnmatch.h>
 #include <sys/times.h>
@@ -4112,10 +4122,13 @@ static int forkshell(struct job *, union node *, int);
 #endif
 static int waitforjob(struct job *);
 
-#if !JOBS
+#if !JOBS && !JOBS_WIN32
 enum { doing_jobctl = 0 };
 #define setjobctl(on) do {} while (0)
-#else
+#elif JOBS_WIN32
+static smallint doing_jobctl; //references:8
+#define setjobctl(on) do { if (rootshell) doing_jobctl = on; } while (0)
+#else /* JOBS */
 static smallint doing_jobctl; //references:8
 static void setjobctl(int);
 #endif
@@ -4404,7 +4417,7 @@ set_curjob(struct job *jp, unsigned mode)
 	}
 }
 
-#if JOBS || DEBUG
+#if JOBS || JOBS_WIN32 || DEBUG
 static int
 jobno(const struct job *jp)
 {
@@ -4617,7 +4630,9 @@ setjobctl(int on)
 	ttyfd = fd;
 	doing_jobctl = on;
 }
+#endif
 
+#if JOBS || JOBS_WIN32
 static int FAST_FUNC
 killcmd(int argc, char **argv)
 {
@@ -4647,8 +4662,10 @@ killcmd(int argc, char **argv)
 				 * sh -c 'true|sleep 1 & sleep 2; kill %1'
 				 */
 				n = jp->nprocs; /* can't be 0 (I hope) */
+#if !ENABLE_PLATFORM_MINGW32
 				if (jp->jobctl)
 					n = 1;
+#endif
 				dst = alloca(n * sizeof(int)*4);
 				argv[i] = dst;
 				for (j = 0; j < n; j++) {
@@ -4663,7 +4680,11 @@ killcmd(int argc, char **argv)
 					 * leading space. Needed to not confuse
 					 * negative pids with "kill -SIGNAL_NO" syntax
 					 */
+#if !ENABLE_PLATFORM_MINGW32
 					dst += sprintf(dst, jp->jobctl ? " -%u" : " %u", (int)ps->ps_pid);
+#else
+					dst += sprintf(dst, " -%u", (int)ps->ps_pid);
+#endif
 				}
 				*dst = '\0';
 			}
@@ -4671,7 +4692,9 @@ killcmd(int argc, char **argv)
 	}
 	return kill_main(argc, argv);
 }
+#endif
 
+#if JOBS
 static void
 showpipe(struct job *jp /*, FILE *out*/)
 {
@@ -5048,7 +5071,7 @@ dowait(int block, struct job *jp)
 #endif
 }
 
-#if JOBS
+#if JOBS || JOBS_WIN32
 static void
 showjob(struct job *jp, int mode)
 {
@@ -5085,8 +5108,10 @@ showjob(struct job *jp, int mode)
 		col += sizeof("Running") - 1;
 	} else {
 		int status = psend[-1].ps_status;
+#if !ENABLE_PLATFORM_MINGW32
 		if (jp->state == JOBSTOPPED)
 			status = jp->stopstatus;
+#endif
 		col += sprint_status48(s + col, status, 0);
 	}
 	/* By now, "[JOBID]*  [maybe PID] STATUS" is printed */
@@ -5107,12 +5132,16 @@ showjob(struct job *jp, int mode)
 		if (mode & SHOW_PIDS)
 			col = fmtstr(s, 48, "\n%*c%d ", indent_col, ' ', ps->ps_pid) - 1;
  start:
+#if !ENABLE_PLATFORM_MINGW32
 		fprintf(out, "%s%*c%s%s",
 				s,
 				33 - col >= 0 ? 33 - col : 0, ' ',
 				ps == jp->ps ? "" : "| ",
 				ps->ps_cmd
 		);
+#else
+		fprintf(out, "%s", s);
+#endif
 	} while (++ps != psend);
 	newline_and_flush(out);
 
@@ -5369,7 +5398,7 @@ makejob(/*union node *node,*/ int nprocs)
 			break;
 		if (jp->state != JOBDONE || !jp->waited)
 			continue;
-#if JOBS
+#if JOBS || JOBS_WIN32
 		if (doing_jobctl)
 			continue;
 #endif
@@ -10997,7 +11026,7 @@ static const struct builtincmd builtintab[] = {
 #if MAX_HISTORY
 	{ BUILTIN_NOSPEC        "history" , historycmd },
 #endif
-#if JOBS
+#if JOBS || JOBS_WIN32
 	{ BUILTIN_REGULAR       "jobs"    , jobscmd    },
 	{ BUILTIN_REGULAR       "kill"    , killcmd    },
 #endif
@@ -11039,7 +11068,7 @@ static const struct builtincmd builtintab[] = {
 	/* [ */		1 * ENABLE_ASH_TEST + \
 	/* [[ */	1 * BASH_TEST2 + \
 	/* alias */	1 * ENABLE_ASH_ALIAS + \
-	/* bg */	1 * ENABLE_ASH_JOB_CONTROL + \
+	/* bg */	1 * JOBS + \
 	/* break cd cddir  */	3)
 #define EVALCMD (COMMANDCMD + \
 	/* command */	1 * ENABLE_ASH_CMDCMD + \
@@ -14365,7 +14394,7 @@ cmdloop(int top)
 		int skip;
 
 		setstackmark(&smark);
-#if JOBS
+#if JOBS || JOBS_WIN32
 		if (doing_jobctl)
 			showjobs(SHOW_CHANGED|SHOW_STDERR);
 #endif
@@ -16735,6 +16764,10 @@ forkshell_init(const char *idstr)
 	else {
 		SetConsoleCtrlHandler(ctrl_handler, TRUE);
 	}
+#if JOBS_WIN32
+	/* do job control only in root shell */
+	doing_jobctl = 0;
+#endif
  end:
 	forkshell_child(fs);
 }
