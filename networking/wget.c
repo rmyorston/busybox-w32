@@ -1670,6 +1670,8 @@ IF_DESKTOP(	"no-parent\0"        No_argument       "\xf0")
 
 #if ENABLE_FEATURE_CLEAN_UP && ENABLE_FEATURE_WGET_LONG_OPTIONS
 	free(G.extra_headers);
+	free(G.post_data);
+	free(G.post_file);
 #endif
 	FINI_G();
 
