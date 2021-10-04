@@ -209,7 +209,7 @@ enum {
 	HDR_RANGE         = (1<<2),
 	HDR_AUTH          = (1<<3) * ENABLE_FEATURE_WGET_AUTHENTICATION,
 	HDR_PROXY_AUTH    = (1<<4) * ENABLE_FEATURE_WGET_AUTHENTICATION,
-	HDR_CONTENT_TYPE  = (1<<5) * ENABLE_FEATURE_WGET_AUTHENTICATION,
+	HDR_CONTENT_TYPE  = (1<<5),
 };
 static const char wget_user_headers[] ALIGN1 =
 	"Host:\0"
