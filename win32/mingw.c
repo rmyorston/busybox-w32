@@ -1874,9 +1874,8 @@ void hide_console(void)
 }
 #endif
 
-#define is_path_sep(x) ((x) == '/' || (x) == '\\')
-#define is_unc_path(x) (strlen(x) > 4 && is_path_sep(x[0]) && \
-							is_path_sep(x[1]) && !is_path_sep(x[2]))
+#define is_unc_path(x) (strlen(x) > 4 && is_dir_sep(x[0]) && \
+							is_dir_sep(x[1]) && !is_dir_sep(x[2]))
 
 /* Return the length of the root of a UNC path, i.e. the '//host/share'
  * component, or 0 if the path doesn't look like that. */
@@ -2009,7 +2008,7 @@ void fix_path_case(char *path)
 		*path = toupper(*path);
 	}
 	else if (len != 0) {
-		for (path+=2; !is_path_sep(*path); ++path) {
+		for (path+=2; !is_dir_sep(*path); ++path) {
 			*path = toupper(*path);
 		}
 	}

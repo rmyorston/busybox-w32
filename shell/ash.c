@@ -3108,7 +3108,6 @@ static const char *
 updatepwd(const char *dir)
 {
 #if ENABLE_PLATFORM_MINGW32
-# define is_path_sep(x) ((x) == '/' || (x) == '\\')
 	/*
 	 * Due to Windows drive notion, getting pwd is a completely
 	 * different thing. Handle it in a separate routine
@@ -3139,17 +3138,17 @@ updatepwd(const char *dir)
 	enum {ABS_DRIVE, ABS_SHARE, REL_OTHER, REL_ROOT, REL_CWD} target;
 
 	/* skip multiple leading separators unless dir is a UNC path */
-	if (is_path_sep(*dir) && unc_root_len(dir) == 0) {
-		while (is_path_sep(dir[1]))
+	if (is_dir_sep(*dir) && unc_root_len(dir) == 0) {
+		while (is_dir_sep(dir[1]))
 			++dir;
 	}
 
 	len = strlen(dir);
 	if (len >= 2 && has_dos_drive_prefix(dir))
-		target = len >= 3 && is_path_sep(dir[2]) ? ABS_DRIVE : REL_OTHER;
+		target = len >= 3 && is_dir_sep(dir[2]) ? ABS_DRIVE : REL_OTHER;
 	else if (unc_root_len(dir) != 0)
 		target = ABS_SHARE;
-	else if (is_path_sep(*dir))
+	else if (is_dir_sep(*dir))
 		target = REL_ROOT;
 	else
 		target = REL_CWD;
@@ -3190,15 +3189,15 @@ updatepwd(const char *dir)
 	new = makestrspace(strlen(dir) + 2, new);
 	lim = (char *)stackblock() + len + 1;
 
-	if (!is_path_sep(*dir)) {
-		if (!is_path_sep(new[-1]))
+	if (!is_dir_sep(*dir)) {
+		if (!is_dir_sep(new[-1]))
 			USTPUTC('/', new);
-		if (new > lim && is_path_sep(*lim))
+		if (new > lim && is_dir_sep(*lim))
 			lim++;
 	} else {
 		USTPUTC('/', new);
 		cdcomppath++;
-		if (is_path_sep(dir[1]) && !is_path_sep(dir[2])) {
+		if (is_dir_sep(dir[1]) && !is_dir_sep(dir[2])) {
 			USTPUTC('/', new);
 			cdcomppath++;
 			lim++;
@@ -3211,7 +3210,7 @@ updatepwd(const char *dir)
 			if (p[1] == '.' && p[2] == '\0') {
 				while (new > lim) {
 					STUNPUTC(new);
-					if (is_path_sep(new[-1]))
+					if (is_dir_sep(new[-1]))
 						break;
 				}
 				break;
