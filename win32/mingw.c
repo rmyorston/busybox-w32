@@ -811,7 +811,7 @@ int utimensat(int fd, const char *path, const struct timespec times[2],
 	HANDLE fh;
 	DWORD cflag = FILE_FLAG_BACKUP_SEMANTICS;
 
-	if (!is_absolute_path(path) && fd != AT_FDCWD) {
+	if (is_relative_path(path) && fd != AT_FDCWD) {
 		errno = ENOSYS;	// partial implementation
 		return rc;
 	}
@@ -1202,7 +1202,7 @@ int symlink(const char *target, const char *linkpath)
 		return -1;
 	}
 
-	if (!is_absolute_path(target) && has_path(linkpath)) {
+	if (is_relative_path(target) && has_path(linkpath)) {
 		/* make target's path relative to current directory */
 		const char *name = bb_get_last_path_component_nostrip(linkpath);
 		relative = xasprintf("%.*s%s",
@@ -2082,11 +2082,11 @@ int has_path(const char *file)
 				has_dos_drive_prefix(file);
 }
 
-/* This function is misnamed.  It's actually a test for 'is not a path
- * relative to the current working directory'.  On Unix this is the
- * same as 'is an absolute path' but Windows also has paths relative to
- * current root and relative to current directory of another drive. */
-int is_absolute_path(const char *path)
+/* Test whether a path is relative to a known location (usually the
+ * current working directory or a symlink).  On Unix this is a path
+ * that doesn't start with a slash but on Windows we also need to
+ * exclude paths that start with a backslash or a drive letter. */
+int is_relative_path(const char *path)
 {
-	return path[0] == '/' || path[0] == '\\' || has_dos_drive_prefix(path);
+	return !is_dir_sep(path[0]) && !has_dos_drive_prefix(path);
 }

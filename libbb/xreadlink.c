@@ -80,7 +80,7 @@ char* FAST_FUNC xmalloc_follow_symlinks(const char *path)
 		}
 
 #if ENABLE_PLATFORM_MINGW32
-		if (!is_absolute_path(linkpath)) {
+		if (is_relative_path(linkpath)) {
 #else
 		if (*linkpath != '/') {
 #endif

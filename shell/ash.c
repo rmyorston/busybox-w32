@@ -344,7 +344,7 @@ typedef long arith_t;
 #endif
 
 #if !ENABLE_PLATFORM_MINGW32
-# define is_absolute_path(path) ((path)[0] == '/')
+# define is_relative_path(path) ((path)[0] != '/')
 #endif
 
 #if !BB_MMU
@@ -3379,7 +3379,7 @@ cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	}
 	if (!dest)
 		dest = nullstr;
-	if (is_absolute_path(dest))
+	if (!is_relative_path(dest))
 		goto step6;
 	if (*dest == '.') {
 		c = dest[1];
@@ -14728,7 +14728,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			}
 		}
 		/* if rehash, don't redo absolute path names */
-		if (is_absolute_path(fullname) && idx <= prev) {
+		if (!is_relative_path(fullname) && idx <= prev) {
 			if (idx < prev)
 				continue;
 			TRACE(("searchexec \"%s\": no change\n", name));
