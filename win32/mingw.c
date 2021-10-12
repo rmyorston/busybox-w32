@@ -1196,7 +1196,7 @@ int symlink(const char *target, const char *linkpath)
 	DWORD flag = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
 	struct stat st;
 	DECLARE_PROC_ADDR(BOOLEAN, CreateSymbolicLinkA, LPCSTR, LPCSTR, DWORD);
-	char *relative = NULL;
+	char *targ, *relative = NULL;
 
 	if (!INIT_PROC_ADDR(kernel32.dll, CreateSymbolicLinkA)) {
 		return -1;
@@ -1213,8 +1213,11 @@ int symlink(const char *target, const char *linkpath)
 		flag |= SYMBOLIC_LINK_FLAG_DIRECTORY;
 	free(relative);
 
+	targ = auto_string(strdup(target));
+	slash_to_bs(targ);
+
  retry:
-	if (!CreateSymbolicLinkA(linkpath, target, flag)) {
+	if (!CreateSymbolicLinkA(linkpath, targ, flag)) {
 		/* Old Windows versions see 'UNPRIVILEGED_CREATE' as an invalid
 		 * parameter.  Retry without it. */
 		if ((flag & SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE) &&
