@@ -31,17 +31,23 @@ const char* FAST_FUNC bb_basename(const char *name)
  */
 char* FAST_FUNC bb_get_last_path_component_nostrip(const char *path)
 {
-	char *slash = strrchr(path, '/');
-
 #if ENABLE_PLATFORM_MINGW32
-	const char *start = has_dos_drive_prefix(path) ? path+2 : path;
+	const char *start = path + root_len(path);
+	char *slash = strrchr(start, '/');
+	char *bslash = strrchr(start, '\\');
 
-	if (!slash)
-		slash = strrchr(path, '\\');
+	if (slash && bslash)
+		slash = MAX(slash, bslash);
+	else if (!slash)
+		slash = bslash;
 
+	if (!slash && has_dos_drive_prefix(path) && path[2] != '\0')
+		return (char *)path + 2;
 	if (!slash || (slash == start && !slash[1]))
 		return (char*)path;
 #else
+	char *slash = strrchr(path, '/');
+
 	if (!slash || (slash == path && !slash[1]))
 		return (char*)path;
 #endif
