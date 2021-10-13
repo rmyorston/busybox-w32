@@ -101,7 +101,6 @@ void xorbuf_aligned_AES_BLOCK_SIZE(void* buf, const void* mask) FAST_FUNC;
 
 
 #include "tls_pstm.h"
-#include "tls_symmetric.h"
 #include "tls_aes.h"
 #include "tls_aesgcm.h"
 #include "tls_rsa.h"
@@ -115,5 +114,9 @@ void curve_x25519_compute_pubkey_and_premaster(
 		const uint8_t *peerkey32) FAST_FUNC;
 
 void curve_P256_compute_pubkey_and_premaster(
+		uint8_t *pubkey2x32, uint8_t *premaster32,
+		const uint8_t *peerkey2x32) FAST_FUNC;
+
+void curve_P256_compute_pubkey_and_premaster_NEW(
 		uint8_t *pubkey2x32, uint8_t *premaster32,
 		const uint8_t *peerkey2x32) FAST_FUNC;
