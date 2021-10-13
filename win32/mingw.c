@@ -64,6 +64,8 @@ int err_win_to_posix(void)
 	case ERROR_BAD_FORMAT: error = ENOEXEC; break;
 	case ERROR_BAD_LENGTH: error = EINVAL; break;
 	case ERROR_BAD_PATHNAME: error = ENOENT; break;
+	case ERROR_BAD_NET_NAME: error = ENOENT; break;
+	case ERROR_BAD_NETPATH: error = ENOENT; break;
 	case ERROR_BAD_PIPE: error = EPIPE; break;
 	case ERROR_BAD_UNIT: error = ENODEV; break;
 	case ERROR_BAD_USERNAME: error = EINVAL; break;
@@ -1876,9 +1878,6 @@ void hide_console(void)
 	}
 }
 #endif
-
-#define is_unc_path(x) (strlen(x) > 4 && is_dir_sep(x[0]) && \
-							is_dir_sep(x[1]) && !is_dir_sep(x[2]))
 
 /* Return the length of the root of a UNC path, i.e. the '//host/share'
  * component, or 0 if the path doesn't look like that. */

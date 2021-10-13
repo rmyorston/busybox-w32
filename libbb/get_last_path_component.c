@@ -23,6 +23,21 @@ const char* FAST_FUNC bb_basename(const char *name)
 	return name;
 }
 
+#if ENABLE_PLATFORM_MINGW32
+char *get_last_slash(const char *path)
+{
+	const char *start = path + root_len(path);
+	char *slash = strrchr(start, '/');
+	char *bslash = strrchr(start, '\\');
+
+	if (slash && bslash)
+		slash = MAX(slash, bslash);
+	else if (!slash)
+		slash = bslash;
+	return slash;
+}
+#endif
+
 /*
  * "/"        -> "/"
  * "abc"      -> "abc"
@@ -33,13 +48,7 @@ char* FAST_FUNC bb_get_last_path_component_nostrip(const char *path)
 {
 #if ENABLE_PLATFORM_MINGW32
 	const char *start = path + root_len(path);
-	char *slash = strrchr(start, '/');
-	char *bslash = strrchr(start, '\\');
-
-	if (slash && bslash)
-		slash = MAX(slash, bslash);
-	else if (!slash)
-		slash = bslash;
+	char *slash = get_last_slash(path);
 
 	if (!slash && has_dos_drive_prefix(path) && path[2] != '\0')
 		return (char *)path + 2;

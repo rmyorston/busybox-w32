@@ -156,7 +156,11 @@ char* FAST_FUNC xmalloc_realpath_coreutils(char *path)
 			 * $ realpath symlink
 			 * /usr/bin/qwe
 			 */
+#if ENABLE_PLATFORM_MINGW32
+			if (is_relative_path(target)) {
+#else
 			if (target[0] != '/') {
+#endif
 				/*
 				 * $ ln -s target_does_not_exist symlink
 				 * $ readlink -f symlink
@@ -175,6 +179,35 @@ char* FAST_FUNC xmalloc_realpath_coreutils(char *path)
 			return buf;
 		}
 
+#if ENABLE_PLATFORM_MINGW32
+		/* ignore leading and trailing slashes */
+		/* but keep leading slashes of UNC path */
+		if (!is_unc_path(path)) {
+			while (is_dir_sep(path[0]) && is_dir_sep(path[1]))
+				++path;
+		}
+		i = strlen(path) - 1;
+		while (i > 0 && is_dir_sep(path[i]))
+			i--;
+		c = path[i + 1];
+		path[i + 1] = '\0';
+
+		last_slash = get_last_slash(path);
+		if (last_slash == path + root_len(path))
+			buf = xstrdup(path);
+		else if (last_slash) {
+			char c2 = *last_slash;
+			*last_slash = '\0';
+			buf = xmalloc_realpath(path);
+			*last_slash++ = c2;
+			if (buf) {
+				unsigned len = strlen(buf);
+				buf = xrealloc(buf, len + strlen(last_slash) + 2);
+				buf[len++] = c2;
+				strcpy(buf + len, last_slash);
+			}
+		}
+#else
 		/* ignore leading and trailing slashes */
 		while (path[0] == '/' && path[1] == '/')
 			++path;
@@ -198,6 +231,7 @@ char* FAST_FUNC xmalloc_realpath_coreutils(char *path)
 				strcpy(buf + len, last_slash);
 			}
 		}
+#endif
 		path[i + 1] = c;
 	}
 
