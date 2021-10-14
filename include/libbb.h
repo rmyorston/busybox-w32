@@ -295,6 +295,12 @@ PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 #define LL_FMT "ll"
 #endif
 
+#if ENABLE_PLATFORM_MINGW32 && defined(_WIN64)
+#define PID_FMT "I64"
+#else
+#define PID_FMT
+#endif
+
 /* Large file support */
 /* Note that CONFIG_LFS=y forces bbox to be built with all common ops
  * (stat, lseek etc) mapped to "largefile" variants by libc.

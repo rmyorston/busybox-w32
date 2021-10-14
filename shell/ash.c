@@ -5070,7 +5070,7 @@ showjob(struct job *jp, int mode)
 
 	if (mode & SHOW_ONLY_PGID) { /* jobs -p */
 		/* just output process (group) id of pipeline */
-		fprintf(out, "%d\n", ps->ps_pid);
+		fprintf(out, "%"PID_FMT"d\n", ps->ps_pid);
 		return;
 	}
 
@@ -5083,7 +5083,7 @@ showjob(struct job *jp, int mode)
 		s[col - 3] = '-';
 
 	if (mode & SHOW_PIDS)
-		col += fmtstr(s + col, 16, "%d ", ps->ps_pid);
+		col += fmtstr(s + col, 16, "%"PID_FMT"d ", ps->ps_pid);
 
 	psend = ps + jp->nprocs;
 
@@ -5114,7 +5114,7 @@ showjob(struct job *jp, int mode)
 		s[0] = '\0';
 		col = 33;
 		if (mode & SHOW_PIDS)
-			col = fmtstr(s, 48, "\n%*c%d ", indent_col, ' ', ps->ps_pid) - 1;
+			col = fmtstr(s, 48, "\n%*c%"PID_FMT"d ", indent_col, ' ', ps->ps_pid) - 1;
  start:
 #if ENABLE_PLATFORM_POSIX || JOBS_WIN32
 		fprintf(out, "%s%*c%s%s",
