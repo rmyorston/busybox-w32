@@ -4401,7 +4401,7 @@ set_curjob(struct job *jp, unsigned mode)
 	}
 }
 
-#if JOBS || JOBS_WIN32 || DEBUG
+#if JOBS || ENABLE_PLATFORM_MINGW32 || DEBUG
 static int
 jobno(const struct job *jp)
 {
@@ -5910,6 +5910,10 @@ forkparent(struct job *jp, union node *n, int mode, HANDLE proc)
 	if (mode == FORK_BG) {
 		backgndpid = pid;               /* set $! */
 		set_curjob(jp, CUR_RUNNING);
+#if ENABLE_PLATFORM_MINGW32
+		if (iflag && jp && jp->nprocs == 0)
+			fprintf(stderr, "[%d] %"PID_FMT"d\n", jobno(jp), pid);
+#endif
 	}
 	if (jp) {
 		struct procstat *ps = &jp->ps[jp->nprocs++];
