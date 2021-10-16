@@ -557,7 +557,8 @@ static uid_t file_owner(HANDLE fh)
 }
 #endif
 
-static int is_symlink(DWORD attr, const char *pathname, WIN32_FIND_DATAA *fbuf)
+static int get_symlink_data(DWORD attr, const char *pathname,
+					WIN32_FIND_DATAA *fbuf)
 {
 	if (attr & FILE_ATTRIBUTE_REPARSE_POINT) {
 		HANDLE handle = FindFirstFileA(pathname, fbuf);
@@ -567,6 +568,16 @@ static int is_symlink(DWORD attr, const char *pathname, WIN32_FIND_DATAA *fbuf)
 					fbuf->dwReserved0 == IO_REPARSE_TAG_SYMLINK);
 		}
 	}
+	return 0;
+}
+
+static int is_symlink(const char *pathname)
+{
+	WIN32_FILE_ATTRIBUTE_DATA fdata;
+	WIN32_FIND_DATAA fbuf;
+
+	if (!get_file_attr(pathname, &fdata))
+		return get_symlink_data(fdata.dwFileAttributes, pathname, &fbuf);
 	return 0;
 }
 
@@ -592,7 +603,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		buf->st_gid = DEFAULT_GID;
 		buf->st_dev = buf->st_rdev = 0;
 
-		if (is_symlink(fdata.dwFileAttributes, file_name, &findbuf)) {
+		if (get_symlink_data(fdata.dwFileAttributes, file_name, &findbuf)) {
 			char *name = auto_string(xmalloc_realpath(file_name));
 
 			if (follow) {
@@ -942,14 +953,13 @@ char *mingw_getcwd(char *pointer, int len)
 #undef rename
 int mingw_rename(const char *pold, const char *pnew)
 {
-	struct mingw_stat st;
 	DWORD attrs;
 
 	/*
 	 * For non-symlinks, try native rename() first to get errno right.
 	 * It is based on MoveFile(), which cannot overwrite existing files.
 	 */
-	if (mingw_lstat(pold, &st) || !S_ISLNK(st.st_mode)) {
+	if (!is_symlink(pold)) {
 		if (!rename(pold, pnew))
 			return 0;
 		if (errno != EEXIST)
@@ -1420,11 +1430,10 @@ int mingw_mkdir(const char *path, int mode UNUSED_PARAM)
 #undef chdir
 int mingw_chdir(const char *dirname)
 {
-	struct stat st;
 	int ret = -1;
 	const char *realdir = dirname;
 
-	if (lstat(dirname, &st) == 0 && S_ISLNK(st.st_mode)) {
+	if (is_symlink(dirname)) {
 		realdir = auto_string(xmalloc_readlink(dirname));
 		if (realdir)
 			fix_path_case((char *)realdir);
@@ -1496,7 +1505,6 @@ int fcntl(int fd, int cmd, ...)
 int mingw_unlink(const char *pathname)
 {
 	int ret;
-	struct stat st;
 
 	/* read-only files cannot be removed */
 	chmod(pathname, 0666);
@@ -1504,10 +1512,9 @@ int mingw_unlink(const char *pathname)
 	ret = unlink(pathname);
 	if (ret == -1 && errno == EACCES) {
 		/* a symlink to a directory needs to be removed by calling rmdir */
-		if (lstat(pathname, &st) == 0 && S_ISLNK(st.st_mode)) {
+		if (is_symlink(pathname)) {
 			return rmdir(pathname);
 		}
-		errno = EACCES;
 	}
 	return ret;
 }
