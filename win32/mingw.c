@@ -1502,6 +1502,7 @@ int fcntl(int fd, int cmd, ...)
 }
 
 #undef unlink
+#undef rmdir
 int mingw_unlink(const char *pathname)
 {
 	int ret;
@@ -1512,6 +1513,7 @@ int mingw_unlink(const char *pathname)
 	ret = unlink(pathname);
 	if (ret == -1 && errno == EACCES) {
 		/* a symlink to a directory needs to be removed by calling rmdir */
+		/* (the *real* Windows rmdir, not mingw_rmdir) */
 		if (is_symlink(pathname)) {
 			return rmdir(pathname);
 		}
@@ -1686,9 +1688,14 @@ int mingw_access(const char *name, int mode)
 	return -1;
 }
 
-#undef rmdir
 int mingw_rmdir(const char *path)
 {
+	/* On Linux rmdir(2) doesn't remove symlinks */
+	if (is_symlink(path)) {
+		errno = ENOTDIR;
+		return -1;
+	}
+
 	/* read-only directories cannot be removed */
 	chmod(path, 0666);
 	return rmdir(path);
