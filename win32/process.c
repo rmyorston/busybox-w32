@@ -378,7 +378,7 @@ mingw_spawn_pid(int mode, char **argv)
 {
 	intptr_t ret;
 
-	ret = mingw_spawn_1(mode, argv[0], (char *const *)argv, environ);
+	ret = mingw_spawn_1(mode, argv[0], (char *const *)argv, NULL);
 
 	return ret == -1 ? (pid_t)-1 : (pid_t)GetProcessId((HANDLE)ret);
 }
@@ -398,13 +398,13 @@ mingw_spawn_detach(char **argv)
 intptr_t FAST_FUNC
 mingw_spawn_proc(const char **argv)
 {
-	return mingw_spawn_1(P_NOWAIT, argv[0], (char *const *)argv, environ);
+	return mingw_spawn_1(P_NOWAIT, argv[0], (char *const *)argv, NULL);
 }
 
 int
 mingw_execvp(const char *cmd, char *const *argv)
 {
-	int ret = (int)mingw_spawn_1(P_WAIT, cmd, argv, environ);
+	int ret = (int)mingw_spawn_1(P_WAIT, cmd, argv, NULL);
 	if (ret != -1 || errno == 0)
 		exit(ret);
 	return ret;
@@ -422,7 +422,7 @@ mingw_execve(const char *cmd, char *const *argv, char *const *envp)
 int
 mingw_execv(const char *cmd, char *const *argv)
 {
-	return mingw_execve(cmd, argv, environ);
+	return mingw_execve(cmd, argv, NULL);
 }
 
 static inline long long filetime_to_ticks(const FILETIME *ft)
