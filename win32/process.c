@@ -340,31 +340,31 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
 }
 
 static intptr_t
-mingw_spawn_1(int mode, const char *cmd, char *const *argv, char *const *envp)
+mingw_spawnvp(int mode, const char *cmd, char *const *argv)
 {
 	char *prog;
 	intptr_t ret;
 
 #if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
 	if (find_applet_by_name(cmd) >= 0)
-		return mingw_spawn_applet(mode, argv, envp);
+		return mingw_spawn_applet(mode, argv, NULL);
 	else
 #endif
 	if (has_path(cmd)) {
 		char *path = alloc_system_drive(cmd);
 		add_win32_extension(path);
-		ret = mingw_spawn_interpreter(mode, path, argv, envp, 0);
+		ret = mingw_spawn_interpreter(mode, path, argv, NULL, 0);
 		free(path);
 #if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
 		if (ret == -1 && unix_path(cmd) &&
 				find_applet_by_name(bb_basename(cmd)) >= 0) {
-			return mingw_spawn_applet(mode, argv, envp);
+			return mingw_spawn_applet(mode, argv, NULL);
 		}
 #endif
 		return ret;
 	}
 	else if ((prog=find_first_executable(cmd)) != NULL) {
-		ret = mingw_spawn_interpreter(mode, prog, argv, envp, 0);
+		ret = mingw_spawn_interpreter(mode, prog, argv, NULL, 0);
 		free(prog);
 		return ret;
 	}
@@ -378,7 +378,7 @@ mingw_spawn_pid(int mode, char **argv)
 {
 	intptr_t ret;
 
-	ret = mingw_spawn_1(mode, argv[0], (char *const *)argv, NULL);
+	ret = mingw_spawnvp(mode, argv[0], (char *const *)argv);
 
 	return ret == -1 ? (pid_t)-1 : (pid_t)GetProcessId((HANDLE)ret);
 }
@@ -398,13 +398,13 @@ mingw_spawn_detach(char **argv)
 intptr_t FAST_FUNC
 mingw_spawn_proc(const char **argv)
 {
-	return mingw_spawn_1(P_NOWAIT, argv[0], (char *const *)argv, NULL);
+	return mingw_spawnvp(P_NOWAIT, argv[0], (char *const *)argv);
 }
 
 int
 mingw_execvp(const char *cmd, char *const *argv)
 {
-	int ret = (int)mingw_spawn_1(P_WAIT, cmd, argv, NULL);
+	int ret = (int)mingw_spawnvp(P_WAIT, cmd, argv);
 	if (ret != -1 || errno == 0)
 		exit(ret);
 	return ret;
