@@ -1248,9 +1248,6 @@ int main(int argc UNUSED_PARAM, char **argv)
 	/* Ignore critical errors, such as calling GetVolumeInformation() on
 	 * a floppy or CDROM drive with no media. */
 	SetErrorMode(SEM_FAILCRITICALERRORS);
-# ifdef _UCRT
-	SetEnvironmentVariable("BB_HELLO", "world");
-# endif
 #endif
 
 #if defined(__MINGW64_VERSION_MAJOR)

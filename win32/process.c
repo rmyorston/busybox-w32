@@ -268,6 +268,14 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 		new_path = xasprintf("%s.", path);
 	}
 
+#if defined(_UCRT)
+	if (env) {
+		char buffer[64];
+
+		sprintf(buffer, "BB_HELLO_%d", getpid());
+		SetEnvironmentVariable(buffer, "1");
+	}
+#endif
 	errno = 0;
 	ret = spawnve(mode, new_path ? new_path : path, new_argv, env);
 
