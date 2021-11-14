@@ -249,6 +249,7 @@ static void fileaction_dobackup(char *filename, int fileref)
 	}
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 static void fileaction_setowngrp(char *filename, int fileref)
 {
 	/* real rpm warns: "user foo does not exist - using <you>" */
@@ -258,6 +259,7 @@ static void fileaction_setowngrp(char *filename, int fileref)
 	int gid = gr ? gr->gr_gid : getgid();
 	chown(filename, uid, gid);
 }
+#endif
 
 static void loop_through_files(int filetag, void (*fileaction)(char *filename, int fileref))
 {
@@ -422,8 +424,10 @@ int rpm_main(int argc, char **argv)
 			loop_through_files(TAG_BASENAMES, fileaction_dobackup);
 			/* Extact the archive */
 			extract_cpio(rpm_fd, source_rpm);
+#if !ENABLE_PLATFORM_MINGW32
 			/* Set the correct file uid/gid's */
 			loop_through_files(TAG_BASENAMES, fileaction_setowngrp);
+#endif
 		}
 		else
 		if ((func & (rpm_query|rpm_query_package)) == (rpm_query|rpm_query_package)) {
