@@ -72,7 +72,8 @@ parse_interpreter(const char *cmd, interp_t *interp)
 
 		/*
 		 * See http://www.in-ulm.de/~mascheck/various/shebang/ for trivia
-		 * relating to '#!'.
+		 * relating to '#!'.  See also https://lwn.net/Articles/630727/
+		 * for Linux-specific details.
 		 */
 		if (interp->buf[0] != '#' || interp->buf[1] != '!')
 			break;
