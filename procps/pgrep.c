@@ -42,6 +42,8 @@
 //usage:     "\n	-x	Match whole name (not substring)"
 //usage:     "\n	-s	Match session ID (0 for current)"
 //usage:     "\n	-P	Match parent process ID"
+//usage:     "\n	-u EUID Match against effective UID"
+//usage:     "\n	-U UID  Match against UID"
 //usage:
 //usage:#define pkill_trivial_usage
 //usage:       "[-l|-SIGNAL] [-xfvnoe] [-s SID|-P PPID|PATTERN]"
@@ -56,6 +58,8 @@
 //usage:     "\n	-n	Signal the newest process only"
 //usage:     "\n	-o	Signal the oldest process only"
 //usage:     "\n	-e	Display name and PID of the process being killed"
+//usage:     "\n	-u EUID Match against effective UID"
+//usage:     "\n	-U UID  Match against UID"
 
 #include "libbb.h"
 #include "xregex.h"
@@ -65,7 +69,7 @@
 #define pkill (ENABLE_PKILL && (!ENABLE_PGREP || applet_name[1] == 'k'))
 
 enum {
-	/* "vlafxones:+P:+" */
+	/* "vlafxoneu:U:s:+P:+" */
 	OPTBIT_V = 0, /* must be first, we need OPT_INVERT = 0/1 */
 	OPTBIT_L,
 	OPTBIT_A,
@@ -74,6 +78,8 @@ enum {
 	OPTBIT_O,
 	OPTBIT_N,
 	OPTBIT_E, /* should be pkill-only, do we care? */
+	OPTBIT_U,
+	OPTBIT_UL,
 	OPTBIT_S,
 	OPTBIT_P,
 };
@@ -88,6 +94,8 @@ enum {
 #define OPT_ECHO	(opt & (1 << OPTBIT_E))
 #define OPT_SID		(opt & (1 << OPTBIT_S))
 #define OPT_PPID	(opt & (1 << OPTBIT_P))
+#define OPT_EUID	(opt & (1 << OPTBIT_UL))
+#define OPT_RUID	(opt & (1 << OPTBIT_U))
 
 static void act(unsigned pid, char *cmd, int signo)
 {
@@ -112,7 +120,8 @@ int pgrep_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opt;
 	int scan_mask;
 	int matched_pid;
-	int sid2match, ppid2match;
+	int sid2match, ppid2match, uid2match, euid2match;
+	char *uid_arg = NULL, *euid_arg = NULL;
 	char *cmd_last;
 	procps_status_t *proc;
 	/* These are initialized to 0 */
@@ -138,7 +147,9 @@ int pgrep_main(int argc UNUSED_PARAM, char **argv)
 	/* Parse remaining options */
 	ppid2match = -1;
 	sid2match = -1;
-	opt = getopt32(argv, "vlafxones:+P:+", &sid2match, &ppid2match);
+	uid2match = -1;
+	euid2match = -1;
+	opt = getopt32(argv, "vlafxoneu:U:s:+P:+", &euid_arg, &uid_arg, &sid2match, &ppid2match);
 	argv += optind;
 
 	if (pkill && OPT_LIST) { /* -l: print the whole signal list */
@@ -154,8 +165,18 @@ int pgrep_main(int argc UNUSED_PARAM, char **argv)
 	if (OPT_FULL)
 		scan_mask |= PSSCAN_ARGVN;
 
+	if (euid_arg) {
+		scan_mask |= PSSCAN_UIDGID;
+		euid2match = get_ug_id(euid_arg, xuname2uid);
+	}
+
+	if (uid_arg) {
+		scan_mask |= PSSCAN_RUIDGID;
+		uid2match = get_ug_id(uid_arg, xuname2uid);
+	}
+
 	/* One pattern is required, if no -s and no -P */
-	if ((sid2match & ppid2match) < 0 && (!argv[0] || argv[1]))
+	if ((sid2match & ppid2match) < 0 && uid2match < 0 && euid2match < 0 && (!argv[0] || argv[1]))
 		bb_show_usage();
 
 	if (argv[0])
@@ -176,6 +197,10 @@ int pgrep_main(int argc UNUSED_PARAM, char **argv)
 			if (ppid2match >= 0 && ppid2match != proc->ppid)
 				continue;
 			if (sid2match >= 0 && sid2match != proc->sid)
+				continue;
+			if (euid2match >= 0 && euid2match != proc->uid)
+				continue;
+			if (uid2match >= 0 && uid2match != proc->ruid)
 				continue;
 		}
 
@@ -208,6 +233,10 @@ int pgrep_main(int argc UNUSED_PARAM, char **argv)
 			if (ppid2match >= 0 && ppid2match != proc->ppid)
 				goto got_it;
 			if (sid2match >= 0 && sid2match != proc->sid)
+				goto got_it;
+			if (euid2match >= 0 && euid2match != proc->uid)
+				goto got_it;
+			if (uid2match >= 0 && uid2match != proc->ruid)
 				goto got_it;
 		}
 
