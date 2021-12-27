@@ -29,20 +29,39 @@ static void dump_hex(const char *fmt, const void *vp, int len)
 typedef uint32_t sp_digit;
 typedef int32_t signed_sp_digit;
 
+/* 64-bit optimizations:
+ * if BB_UNALIGNED_MEMACCESS_OK && ULONG_MAX > 0xffffffff,
+ * then loads and stores can be done in 64-bit chunks.
+ *
+ * A narrower case is when arch is also little-endian (such as x86_64),
+ * then "LSW first", uint32[8] and uint64[4] representations are equivalent,
+ * and arithmetic can be done in 64 bits too.
+ */
+#if defined(__GNUC__) && defined(__x86_64__)
+# define UNALIGNED_LE_64BIT 1
+#else
+# define UNALIGNED_LE_64BIT 0
+#endif
+
 /* The code below is taken from parts of
  *  wolfssl-3.15.3/wolfcrypt/src/sp_c32.c
  * and heavily modified.
  */
 
 typedef struct sp_point {
-	sp_digit x[2 * 8];
-	sp_digit y[2 * 8];
-	sp_digit z[2 * 8];
+	sp_digit x[8]
+#if ULONG_MAX > 0xffffffff
+		/* Make sp_point[] arrays to not be 64-bit misaligned */
+		ALIGNED(8)
+#endif
+	;
+	sp_digit y[8];
+	sp_digit z[8];
 	int infinity;
 } sp_point;
 
 /* The modulus (prime) of the curve P256. */
-static const sp_digit p256_mod[8] = {
+static const sp_digit p256_mod[8] ALIGNED(8) = {
 	0xffffffff,0xffffffff,0xffffffff,0x00000000,
 	0x00000000,0x00000000,0x00000001,0xffffffff,
 };
@@ -58,6 +77,22 @@ static const sp_digit p256_mod[8] = {
  * r  A single precision integer.
  * a  Byte array.
  */
+#if BB_UNALIGNED_MEMACCESS_OK && ULONG_MAX > 0xffffffff
+static void sp_256_to_bin_8(const sp_digit* rr, uint8_t* a)
+{
+	int i;
+	const uint64_t* r = (void*)rr;
+
+	sp_256_norm_8(rr);
+
+	r += 4;
+	for (i = 0; i < 4; i++) {
+		r--;
+		move_to_unaligned64(a, SWAP_BE64(*r));
+		a += 8;
+	}
+}
+#else
 static void sp_256_to_bin_8(const sp_digit* r, uint8_t* a)
 {
 	int i;
@@ -71,6 +106,7 @@ static void sp_256_to_bin_8(const sp_digit* r, uint8_t* a)
 		a += 4;
 	}
 }
+#endif
 
 /* Read big endian unsigned byte array into r.
  *
@@ -78,6 +114,21 @@ static void sp_256_to_bin_8(const sp_digit* r, uint8_t* a)
  * a  Byte array.
  * n  Number of bytes in array to read.
  */
+#if BB_UNALIGNED_MEMACCESS_OK && ULONG_MAX > 0xffffffff
+static void sp_256_from_bin_8(sp_digit* rr, const uint8_t* a)
+{
+	int i;
+	uint64_t* r = (void*)rr;
+
+	r += 4;
+	for (i = 0; i < 4; i++) {
+		uint64_t v;
+		move_from_unaligned64(v, a);
+		*--r = SWAP_BE64(v);
+		a += 8;
+	}
+}
+#else
 static void sp_256_from_bin_8(sp_digit* r, const uint8_t* a)
 {
 	int i;
@@ -90,6 +141,7 @@ static void sp_256_from_bin_8(sp_digit* r, const uint8_t* a)
 		a += 4;
 	}
 }
+#endif
 
 #if SP_DEBUG
 static void dump_256(const char *fmt, const sp_digit* r)
@@ -125,6 +177,20 @@ static void sp_256_point_from_bin2x32(sp_point* p, const uint8_t *bin2x32)
  * return -ve, 0 or +ve if a is less than, equal to or greater than b
  * respectively.
  */
+#if UNALIGNED_LE_64BIT
+static signed_sp_digit sp_256_cmp_8(const sp_digit* aa, const sp_digit* bb)
+{
+	const uint64_t* a = (void*)aa;
+	const uint64_t* b = (void*)bb;
+	int i;
+	for (i = 3; i >= 0; i--) {
+		if (a[i] == b[i])
+			continue;
+		return (a[i] > b[i]) * 2 - 1;
+	}
+	return 0;
+}
+#else
 static signed_sp_digit sp_256_cmp_8(const sp_digit* a, const sp_digit* b)
 {
 	int i;
@@ -140,6 +206,7 @@ static signed_sp_digit sp_256_cmp_8(const sp_digit* a, const sp_digit* b)
 	}
 	return 0;
 }
+#endif
 
 /* Compare two numbers to determine if they are equal.
  *
@@ -196,8 +263,6 @@ static int sp_256_add_8(sp_digit* r, const sp_digit* a, const sp_digit* b)
 	);
 	return reg;
 #elif ALLOW_ASM && defined(__GNUC__) && defined(__x86_64__)
-	/* x86_64 has no alignment restrictions, and is little-endian,
-	 * so 64-bit and 32-bit representations are identical */
 	uint64_t reg;
 	asm volatile (
 "\n		movq	(%0), %3"
@@ -294,8 +359,6 @@ static int sp_256_sub_8(sp_digit* r, const sp_digit* a, const sp_digit* b)
 	);
 	return reg;
 #elif ALLOW_ASM && defined(__GNUC__) && defined(__x86_64__)
-	/* x86_64 has no alignment restrictions, and is little-endian,
-	 * so 64-bit and 32-bit representations are identical */
 	uint64_t reg;
 	asm volatile (
 "\n		movq	(%0), %3"
@@ -397,11 +460,12 @@ static void sp_256_sub_8_p256_mod(sp_digit* r)
 }
 #endif
 
-/* Multiply a and b into r. (r = a * b) */
-static void sp_256_mul_8(sp_digit* r, const sp_digit* a, const sp_digit* b)
+/* Multiply a and b into r. (r = a * b)
+ * r should be [16] array (512 bits), and must not coincide with a or b.
+ */
+static void sp_256to512_mul_8(sp_digit* r, const sp_digit* a, const sp_digit* b)
 {
 #if ALLOW_ASM && defined(__GNUC__) && defined(__i386__)
-	sp_digit rr[15]; /* in case r coincides with a or b */
 	int k;
 	uint32_t accl;
 	uint32_t acch;
@@ -433,18 +497,15 @@ static void sp_256_mul_8(sp_digit* r, const sp_digit* a, const sp_digit* b)
 		        j--;
 			i++;
 		} while (i != 8 && i <= k);
-		rr[k] = accl;
+		r[k] = accl;
 		accl = acch;
 		acch = acc_hi;
 	}
 	r[15] = accl;
-	memcpy(r, rr, sizeof(rr));
 #elif ALLOW_ASM && defined(__GNUC__) && defined(__x86_64__)
-	/* x86_64 has no alignment restrictions, and is little-endian,
-	 * so 64-bit and 32-bit representations are identical */
 	const uint64_t* aa = (const void*)a;
 	const uint64_t* bb = (const void*)b;
-	uint64_t rr[8];
+	uint64_t* rr = (void*)r;
 	int k;
 	uint64_t accl;
 	uint64_t acch;
@@ -481,11 +542,8 @@ static void sp_256_mul_8(sp_digit* r, const sp_digit* a, const sp_digit* b)
 		acch = acc_hi;
 	}
 	rr[7] = accl;
-	memcpy(r, rr, sizeof(rr));
 #elif 0
 	//TODO: arm assembly (untested)
-	sp_digit tmp[16];
-
 	asm volatile (
 "\n		mov	r5, #0"
 "\n		mov	r6, #0"
@@ -517,12 +575,10 @@ static void sp_256_mul_8(sp_digit* r, const sp_digit* a, const sp_digit* b)
 "\n		cmp	r5, #56"
 "\n		ble	1b"
 "\n		str	r6, [%[r], r5]"
-		: [r] "r" (tmp), [a] "r" (a), [b] "r" (b)
+		: [r] "r" (r), [a] "r" (a), [b] "r" (b)
 		: "memory", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r12", "r14"
 	);
-	memcpy(r, tmp, sizeof(tmp));
 #else
-	sp_digit rr[15]; /* in case r coincides with a or b */
 	int i, j, k;
 	uint64_t acc;
 
@@ -542,35 +598,51 @@ static void sp_256_mul_8(sp_digit* r, const sp_digit* a, const sp_digit* b)
 		        j--;
 			i++;
 		} while (i != 8 && i <= k);
-		rr[k] = acc;
+		r[k] = acc;
 		acc = (acc >> 32) | ((uint64_t)acc_hi << 32);
 	}
 	r[15] = acc;
-	memcpy(r, rr, sizeof(rr));
 #endif
 }
 
 /* Shift number right one bit. Bottom bit is lost. */
-static void sp_256_rshift1_8(sp_digit* r, sp_digit* a, sp_digit carry)
+#if UNALIGNED_LE_64BIT
+static void sp_256_rshift1_8(sp_digit* rr, uint64_t carry)
 {
+	uint64_t *r = (void*)rr;
 	int i;
 
-	carry = (!!carry << 31);
-	for (i = 7; i >= 0; i--) {
-		sp_digit c = a[i] << 31;
-		r[i] = (a[i] >> 1) | carry;
+	carry = (((uint64_t)!!carry) << 63);
+	for (i = 3; i >= 0; i--) {
+		uint64_t c = r[i] << 63;
+		r[i] = (r[i] >> 1) | carry;
 		carry = c;
 	}
 }
-
-/* Divide the number by 2 mod the modulus (prime). (r = a / 2 % m) */
-static void sp_256_div2_8(sp_digit* r, const sp_digit* a, const sp_digit* m)
+#else
+static void sp_256_rshift1_8(sp_digit* r, sp_digit carry)
 {
+	int i;
+
+	carry = (((sp_digit)!!carry) << 31);
+	for (i = 7; i >= 0; i--) {
+		sp_digit c = r[i] << 31;
+		r[i] = (r[i] >> 1) | carry;
+		carry = c;
+	}
+}
+#endif
+
+/* Divide the number by 2 mod the modulus (prime). (r = (r / 2) % m) */
+static void sp_256_div2_8(sp_digit* r /*, const sp_digit* m*/)
+{
+	const sp_digit* m = p256_mod;
+
 	int carry = 0;
-	if (a[0] & 1)
-		carry = sp_256_add_8(r, a, m);
+	if (r[0] & 1)
+		carry = sp_256_add_8(r, r, m);
 	sp_256_norm_8(r);
-	sp_256_rshift1_8(r, r, carry);
+	sp_256_rshift1_8(r, carry);
 }
 
 /* Add two Montgomery form numbers (r = a + b % m) */
@@ -634,36 +706,174 @@ static void sp_256_mont_tpl_8(sp_digit* r, const sp_digit* a /*, const sp_digit*
 }
 
 /* Shift the result in the high 256 bits down to the bottom. */
-static void sp_256_mont_shift_8(sp_digit* r, const sp_digit* a)
+static void sp_512to256_mont_shift_8(sp_digit* r, sp_digit* a)
 {
-	int i;
-
-	for (i = 0; i < 8; i++) {
-		r[i] = a[i+8];
-		r[i+8] = 0;
-	}
+	memcpy(r, a + 8, sizeof(*r) * 8);
 }
 
-/* Mul a by scalar b and add into r. (r += a * b) */
+#if UNALIGNED_LE_64BIT
+/* 64-bit little-endian optimized version.
+ * See generic 32-bit version below for explanation.
+ * The benefit of this version is: even though r[3] calculation is atrocious,
+ * we call sp_256_mul_add_4() four times, not 8.
+ * Measured run time improvement of curve_P256_compute_pubkey_and_premaster()
+ * call on x86-64: from ~1500us to ~900us. Code size +32 bytes.
+ */
+static int sp_256_mul_add_4(uint64_t *r /*, const uint64_t* a, uint64_t b*/)
+{
+	uint64_t b = r[0];
+
+# if 0
+	const uint64_t* a = (const void*)p256_mod;
+//a[3..0] = ffffffff00000001 0000000000000000 00000000ffffffff ffffffffffffffff
+	uint128_t t;
+	int i;
+	t = 0;
+	for (i = 0; i < 4; i++) {
+		uint32_t t_hi;
+		uint128_t m = ((uint128_t)b * a[i]) + r[i];
+		t += m;
+		t_hi = (t < m);
+		r[i] = (uint64_t)t;
+		t = (t >> 64) | ((uint128_t)t_hi << 64);
+	}
+	r[4] += (uint64_t)t;
+	return (r[4] < (uint64_t)t); /* 1 if addition overflowed */
+# else
+	// Unroll, then optimize the above loop:
+		//uint32_t t_hi;
+		//uint128_t m;
+		uint64_t t64, t64u;
+
+		//m = ((uint128_t)b * a[0]) + r[0];
+		//  Since b is r[0] and a[0] is ffffffffffffffff, the above optimizes to:
+		//  m = r[0] * ffffffffffffffff + r[0] = (r[0] << 64 - r[0]) + r[0] = r[0] << 64;
+		//t += m;
+		//  t = r[0] << 64 = b << 64;
+		//t_hi = (t < m);
+		//  t_hi = 0;
+		//r[0] = (uint64_t)t;
+//		r[0] = 0;
+//the store can be eliminated since caller won't look at lower 256 bits of the result
+		//t = (t >> 64) | ((uint128_t)t_hi << 64);
+		//  t = b;
+
+		//m = ((uint128_t)b * a[1]) + r[1];
+		//  Since a[1] is 00000000ffffffff, the above optimizes to:
+		//  m = b * ffffffff + r[1] = (b * 100000000 - b) + r[1] = (b << 32) - b + r[1];
+		//t += m;
+		//  t = b + (b << 32) - b + r[1] = (b << 32) + r[1];
+		//t_hi = (t < m);
+		//  t_hi = 0;
+		//r[1] = (uint64_t)t;
+		r[1] += (b << 32);
+		//t = (t >> 64) | ((uint128_t)t_hi << 64);
+		t64 = (r[1] < (b << 32));
+		t64 += (b >> 32);
+
+		//m = ((uint128_t)b * a[2]) + r[2];
+		//  Since a[2] is 0000000000000000, the above optimizes to:
+		//  m = b * 0 + r[2] = r[2];
+		//t += m;
+		//  t = t64 + r[2];
+		//t_hi = (t < m);
+		//  t_hi = 0;
+		//r[2] = (uint64_t)t;
+		r[2] += t64;
+		//t = (t >> 64) | ((uint128_t)t_hi << 64);
+		t64 = (r[2] < t64);
+
+		//m = ((uint128_t)b * a[3]) + r[3];
+		//  Since a[3] is ffffffff00000001, the above optimizes to:
+		//  m = b * ffffffff00000001 + r[3];
+		//  m = b +  b*ffffffff00000000 + r[3]
+		//  m = b + (b*ffffffff << 32) + r[3]
+		//  m = b + (((b<<32) - b) << 32) + r[3]
+		//t += m;
+		//  t = t64 + (uint128_t)b + ((((uint128_t)b << 32) - b) << 32) + r[3];
+		t64 += b;
+		t64u = (t64 < b);
+		t64 += r[3];
+		t64u += (t64 < r[3]);
+		{ // add ((((uint128_t)b << 32) - b) << 32):
+			uint64_t lo, hi;
+			//lo = (((b << 32) - b) << 32
+			//hi = (((uint128_t)b << 32) - b) >> 32
+			//but without uint128_t:
+			hi = (b << 32) - b; /* make lower 32 bits of "hi", part 1 */
+			b = (b >> 32) - (/*borrowed above?*/(b << 32) < b); /* upper 32 bits of "hi" are in b */
+			lo = hi << 32;      /* (use "hi" value to calculate "lo",... */
+			t64 += lo;          /* ...consume... */
+			t64u += (t64 < lo); /* ..."lo") */
+			hi >>= 32;          /* make lower 32 bits of "hi", part 2 */
+			hi |= (b << 32);    /* combine lower and upper 32 bits */
+			t64u += hi;         /* consume "hi" */
+		}
+		//t_hi = (t < m);
+		//  t_hi = 0;
+		//r[3] = (uint64_t)t;
+		r[3] = t64;
+		//t = (t >> 64) | ((uint128_t)t_hi << 64);
+		//  t = t64u;
+
+	r[4] += t64u;
+	return (r[4] < t64u); /* 1 if addition overflowed */
+# endif
+}
+
+static void sp_512to256_mont_reduce_8(sp_digit* r, sp_digit* aa/*, const sp_digit* m, sp_digit mp*/)
+{
+//	const sp_digit* m = p256_mod;
+	int i;
+	uint64_t *a = (void*)aa;
+
+	sp_digit carry = 0;
+	for (i = 0; i < 4; i++) {
+//		mu = a[i];
+		if (sp_256_mul_add_4(a+i /*, m, mu*/)) {
+			int j = i + 4;
+ inc_next_word:
+			if (++j > 7) { /* a[8] array has no more words? */
+				carry++;
+				continue;
+			}
+			if (++a[j] == 0) /* did this overflow too? */
+				goto inc_next_word;
+		}
+	}
+	sp_512to256_mont_shift_8(r, aa);
+	if (carry != 0)
+		sp_256_sub_8_p256_mod(r);
+	sp_256_norm_8(r);
+}
+
+#else /* Generic 32-bit version */
+
+/* Mul a by scalar b and add into r. (r += a * b)
+ * a = p256_mod
+ * b = r[0]
+ */
 static int sp_256_mul_add_8(sp_digit* r /*, const sp_digit* a, sp_digit b*/)
 {
-//	const sp_digit* a = p256_mod;
-//a[7..0] = ffffffff 00000001 00000000 00000000 00000000 ffffffff ffffffff ffffffff
 	sp_digit b = r[0];
-
 	uint64_t t;
 
-//	t = 0;
-//	for (i = 0; i < 8; i++) {
-//		uint32_t t_hi;
-//		uint64_t m = ((uint64_t)b * a[i]) + r[i];
-//		t += m;
-//		t_hi = (t < m);
-//		r[i] = (sp_digit)t;
-//		t = (t >> 32) | ((uint64_t)t_hi << 32);
-//	}
-//	r[8] += (sp_digit)t;
-
+# if 0
+	const sp_digit* a = p256_mod;
+//a[7..0] = ffffffff 00000001 00000000 00000000 00000000 ffffffff ffffffff ffffffff
+	int i;
+	t = 0;
+	for (i = 0; i < 8; i++) {
+		uint32_t t_hi;
+		uint64_t m = ((uint64_t)b * a[i]) + r[i];
+		t += m;
+		t_hi = (t < m);
+		r[i] = (sp_digit)t;
+		t = (t >> 32) | ((uint64_t)t_hi << 32);
+	}
+	r[8] += (sp_digit)t;
+	return (r[8] < (sp_digit)t); /* 1 if addition overflowed */
+# else
 	// Unroll, then optimize the above loop:
 		//uint32_t t_hi;
 		uint64_t m;
@@ -677,7 +887,8 @@ static int sp_256_mul_add_8(sp_digit* r /*, const sp_digit* a, sp_digit b*/)
 		//t_hi = (t < m);
 		//  t_hi = 0;
 		//r[0] = (sp_digit)t;
-		r[0] = 0;
+//		r[0] = 0;
+//the store can be eliminated since caller won't look at lower 256 bits of the result
 		//t = (t >> 32) | ((uint64_t)t_hi << 32);
 		//  t = b;
 
@@ -769,15 +980,33 @@ static int sp_256_mul_add_8(sp_digit* r /*, const sp_digit* a, sp_digit b*/)
 
 	r[8] += (sp_digit)t;
 	return (r[8] < (sp_digit)t); /* 1 if addition overflowed */
+# endif
 }
 
 /* Reduce the number back to 256 bits using Montgomery reduction.
+ * Note: the result is NOT guaranteed to be less than p256_mod!
+ * (it is only guaranteed to fit into 256 bits).
  *
- * a   A single precision number to reduce in place.
+ * r   Result.
+ * a   Double-wide number to reduce. Clobbered.
  * m   The single precision number representing the modulus.
  * mp  The digit representing the negative inverse of m mod 2^n.
+ *
+ * Montgomery reduction on multiprecision integers:
+ * Montgomery reduction requires products modulo R.
+ * When R is a power of B [in our case R=2^128, B=2^32], there is a variant
+ * of Montgomery reduction which requires products only of machine word sized
+ * integers. T is stored as an little-endian word array a[0..n]. The algorithm
+ * reduces it one word at a time. First an appropriate multiple of modulus
+ * is added to make T divisible by B. [In our case, it is p256_mp_mod * a[0].]
+ * Then a multiple of modulus is added to make T divisible by B^2.
+ * [In our case, it is (p256_mp_mod * a[1]) << 32.]
+ * And so on. Eventually T is divisible by R, and after division by R
+ * the algorithm is in the same place as the usual Montgomery reduction.
+ *
+ * TODO: Can conditionally use 64-bit (if bit-little-endian arch) logic?
  */
-static void sp_256_mont_reduce_8(sp_digit* a/*, const sp_digit* m, sp_digit mp*/)
+static void sp_512to256_mont_reduce_8(sp_digit* r, sp_digit* a/*, const sp_digit* m, sp_digit mp*/)
 {
 //	const sp_digit* m = p256_mod;
 	sp_digit mp = p256_mp_mod;
@@ -800,15 +1029,15 @@ static void sp_256_mont_reduce_8(sp_digit* a/*, const sp_digit* m, sp_digit mp*/
 					goto inc_next_word0;
 			}
 		}
-		sp_256_mont_shift_8(a, a);
+		sp_512to256_mont_shift_8(r, a);
 		if (word16th != 0)
-			sp_256_sub_8_p256_mod(a);
-		sp_256_norm_8(a);
+			sp_256_sub_8_p256_mod(r);
+		sp_256_norm_8(r);
 	}
 	else { /* Same code for explicit mp == 1 (which is always the case for P256) */
 		sp_digit word16th = 0;
 		for (i = 0; i < 8; i++) {
-			/*mu = a[i];*/
+//			mu = a[i];
 			if (sp_256_mul_add_8(a+i /*, m, mu*/)) {
 				int j = i + 8;
  inc_next_word:
@@ -820,114 +1049,11 @@ static void sp_256_mont_reduce_8(sp_digit* a/*, const sp_digit* m, sp_digit mp*/
 					goto inc_next_word;
 			}
 		}
-		sp_256_mont_shift_8(a, a);
+		sp_512to256_mont_shift_8(r, a);
 		if (word16th != 0)
-			sp_256_sub_8_p256_mod(a);
-		sp_256_norm_8(a);
+			sp_256_sub_8_p256_mod(r);
+		sp_256_norm_8(r);
 	}
-}
-#if 0
-//TODO: arm32 asm (also adapt for x86?)
-static void sp_256_mont_reduce_8(sp_digit* a, sp_digit* m, sp_digit mp)
-{
-	sp_digit ca = 0;
-
-	asm volatile (
-	# i = 0
-	mov	r12, #0
-	ldr	r10, [%[a], #0]
-	ldr	r14, [%[a], #4]
-1:
-	# mu = a[i] * mp
-	mul	r8, %[mp], r10
-	# a[i+0] += m[0] * mu
-	ldr	r7, [%[m], #0]
-	ldr	r9, [%[a], #0]
-	umull	r6, r7, r8, r7
-	adds	r10, r10, r6
-	adc	r5, r7, #0
-	# a[i+1] += m[1] * mu
-	ldr	r7, [%[m], #4]
-	ldr	r9, [%[a], #4]
-	umull	r6, r7, r8, r7
-	adds	r10, r14, r6
-	adc	r4, r7, #0
-	adds	r10, r10, r5
-	adc	r4, r4, #0
-	# a[i+2] += m[2] * mu
-	ldr	r7, [%[m], #8]
-	ldr	r14, [%[a], #8]
-	umull	r6, r7, r8, r7
-	adds	r14, r14, r6
-	adc	r5, r7, #0
-	adds	r14, r14, r4
-	adc	r5, r5, #0
-	# a[i+3] += m[3] * mu
-	ldr	r7, [%[m], #12]
-	ldr	r9, [%[a], #12]
-	umull	r6, r7, r8, r7
-	adds	r9, r9, r6
-	adc	r4, r7, #0
-	adds	r9, r9, r5
-	str	r9, [%[a], #12]
-	adc	r4, r4, #0
-	# a[i+4] += m[4] * mu
-	ldr	r7, [%[m], #16]
-	ldr	r9, [%[a], #16]
-	umull	r6, r7, r8, r7
-	adds	r9, r9, r6
-	adc	r5, r7, #0
-	adds	r9, r9, r4
-	str	r9, [%[a], #16]
-	adc	r5, r5, #0
-	# a[i+5] += m[5] * mu
-	ldr	r7, [%[m], #20]
-	ldr	r9, [%[a], #20]
-	umull	r6, r7, r8, r7
-	adds	r9, r9, r6
-	adc	r4, r7, #0
-	adds	r9, r9, r5
-	str	r9, [%[a], #20]
-	adc	r4, r4, #0
-	# a[i+6] += m[6] * mu
-	ldr	r7, [%[m], #24]
-	ldr	r9, [%[a], #24]
-	umull	r6, r7, r8, r7
-	adds	r9, r9, r6
-	adc	r5, r7, #0
-	adds	r9, r9, r4
-	str	r9, [%[a], #24]
-	adc	r5, r5, #0
-	# a[i+7] += m[7] * mu
-	ldr	r7, [%[m], #28]
-	ldr	r9, [%[a], #28]
-	umull	r6, r7, r8, r7
-	adds	r5, r5, r6
-	adcs	r7, r7, %[ca]
-	mov	%[ca], #0
-	adc	%[ca], %[ca], %[ca]
-	adds	r9, r9, r5
-	str	r9, [%[a], #28]
-	ldr	r9, [%[a], #32]
-	adcs	r9, r9, r7
-	str	r9, [%[a], #32]
-	adc	%[ca], %[ca], #0
-	# i += 1
-	add	%[a], %[a], #4
-	add	r12, r12, #4
-	cmp	r12, #32
-	blt	1b
-
-	str	r10, [%[a], #0]
-	str	r14, [%[a], #4]
-	: [ca] "+r" (ca), [a] "+r" (a)
-	: [m] "r" (m), [mp] "r" (mp)
-	: "memory", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r12", "r14"
-	);
-
-	memcpy(a, a + 8, 32);
-	if (ca)
-		a -= m;
 }
 #endif
 
@@ -938,15 +1064,16 @@ static void sp_256_mont_reduce_8(sp_digit* a, sp_digit* m, sp_digit mp)
  * a   First number to multiply in Montogmery form.
  * b   Second number to multiply in Montogmery form.
  * m   Modulus (prime).
- * mp  Montogmery mulitplier.
+ * mp  Montogmery multiplier.
  */
 static void sp_256_mont_mul_8(sp_digit* r, const sp_digit* a, const sp_digit* b
 		/*, const sp_digit* m, sp_digit mp*/)
 {
 	//const sp_digit* m = p256_mod;
 	//sp_digit mp = p256_mp_mod;
-	sp_256_mul_8(r, a, b);
-	sp_256_mont_reduce_8(r /*, m, mp*/);
+	sp_digit t[2 * 8];
+	sp_256to512_mul_8(t, a, b);
+	sp_512to256_mont_reduce_8(r, t /*, m, mp*/);
 }
 
 /* Square the Montgomery form number. (r = a * a mod m)
@@ -954,7 +1081,7 @@ static void sp_256_mont_mul_8(sp_digit* r, const sp_digit* a, const sp_digit* b
  * r   Result of squaring.
  * a   Number to square in Montogmery form.
  * m   Modulus (prime).
- * mp  Montogmery mulitplier.
+ * mp  Montogmery multiplier.
  */
 static void sp_256_mont_sqr_8(sp_digit* r, const sp_digit* a
 		/*, const sp_digit* m, sp_digit mp*/)
@@ -964,37 +1091,42 @@ static void sp_256_mont_sqr_8(sp_digit* r, const sp_digit* a
 	sp_256_mont_mul_8(r, a, a /*, m, mp*/);
 }
 
+static NOINLINE void sp_256_mont_mul_and_reduce_8(sp_digit* r,
+		const sp_digit* a, const sp_digit* b
+		/*, const sp_digit* m, sp_digit mp*/)
+{
+	sp_digit rr[2 * 8];
+
+	sp_256_mont_mul_8(rr, a, b /*, p256_mod, p256_mp_mod*/);
+	memset(rr + 8, 0, sizeof(rr) / 2);
+	sp_512to256_mont_reduce_8(r, rr /*, p256_mod, p256_mp_mod*/);
+}
+
 /* Invert the number, in Montgomery form, modulo the modulus (prime) of the
  * P256 curve. (r = 1 / a mod m)
  *
- * r   Inverse result.
+ * r   Inverse result. Must not coincide with a.
  * a   Number to invert.
  */
-#if 0
-/* Mod-2 for the P256 curve. */
-static const uint32_t p256_mod_2[8] = {
-	0xfffffffd,0xffffffff,0xffffffff,0x00000000,
-	0x00000000,0x00000000,0x00000001,0xffffffff,
-};
-//Bit pattern:
-//2    2         2         2         2         2         2         1...1
-//5    5         4         3         2         1         0         9...0         9...1
-//543210987654321098765432109876543210987654321098765432109876543210...09876543210...09876543210
-//111111111111111111111111111111110000000000000000000000000000000100...00000111111...11111111101
-#endif
 static void sp_256_mont_inv_8(sp_digit* r, sp_digit* a)
 {
-	sp_digit t[2*8]; //can be just [8]?
 	int i;
 
-	memcpy(t, a, sizeof(sp_digit) * 8);
+	memcpy(r, a, sizeof(sp_digit) * 8);
 	for (i = 254; i >= 0; i--) {
-		sp_256_mont_sqr_8(t, t /*, p256_mod, p256_mp_mod*/);
-		/*if (p256_mod_2[i / 32] & ((sp_digit)1 << (i % 32)))*/
+		sp_256_mont_sqr_8(r, r /*, p256_mod, p256_mp_mod*/);
+/* p256_mod - 2:
+ * ffffffff 00000001 00000000 00000000 00000000 ffffffff ffffffff ffffffff - 2
+ * Bit pattern:
+ * 2    2         2         2         2         2         2         1...1
+ * 5    5         4         3         2         1         0         9...0         9...1
+ * 543210987654321098765432109876543210987654321098765432109876543210...09876543210...09876543210
+ * 111111111111111111111111111111110000000000000000000000000000000100...00000111111...11111111101
+ */
+		/*if (p256_mod_minus_2[i / 32] & ((sp_digit)1 << (i % 32)))*/
 		if (i >= 224 || i == 192 || (i <= 95 && i != 1))
-			sp_256_mont_mul_8(t, t, a /*, p256_mod, p256_mp_mod*/);
+			sp_256_mont_mul_8(r, r, a /*, p256_mod, p256_mp_mod*/);
 	}
-	memcpy(r, t, sizeof(sp_digit) * 8);
 }
 
 /* Multiply a number by Montogmery normalizer mod modulus (prime).
@@ -1063,8 +1195,8 @@ static void sp_256_mod_mul_norm_8(sp_digit* r, const sp_digit* a)
  */
 static void sp_256_map_8(sp_point* r, sp_point* p)
 {
-	sp_digit t1[2*8];
-	sp_digit t2[2*8];
+	sp_digit t1[8];
+	sp_digit t2[8];
 
 	sp_256_mont_inv_8(t1, p->z);
 
@@ -1072,18 +1204,14 @@ static void sp_256_map_8(sp_point* r, sp_point* p)
 	sp_256_mont_mul_8(t1, t2, t1 /*, p256_mod, p256_mp_mod*/);
 
 	/* x /= z^2 */
-	sp_256_mont_mul_8(r->x, p->x, t2 /*, p256_mod, p256_mp_mod*/);
-	memset(r->x + 8, 0, sizeof(r->x) / 2);
-	sp_256_mont_reduce_8(r->x /*, p256_mod, p256_mp_mod*/);
+	sp_256_mont_mul_and_reduce_8(r->x, p->x, t2 /*, p256_mod, p256_mp_mod*/);
 	/* Reduce x to less than modulus */
 	if (sp_256_cmp_8(r->x, p256_mod) >= 0)
 		sp_256_sub_8_p256_mod(r->x);
 	sp_256_norm_8(r->x);
 
 	/* y /= z^3 */
-	sp_256_mont_mul_8(r->y, p->y, t1 /*, p256_mod, p256_mp_mod*/);
-	memset(r->y + 8, 0, sizeof(r->y) / 2);
-	sp_256_mont_reduce_8(r->y /*, p256_mod, p256_mp_mod*/);
+	sp_256_mont_mul_and_reduce_8(r->y, p->y, t1 /*, p256_mod, p256_mp_mod*/);
 	/* Reduce y to less than modulus */
 	if (sp_256_cmp_8(r->y, p256_mod) >= 0)
 		sp_256_sub_8_p256_mod(r->y);
@@ -1100,8 +1228,8 @@ static void sp_256_map_8(sp_point* r, sp_point* p)
  */
 static void sp_256_proj_point_dbl_8(sp_point* r, sp_point* p)
 {
-	sp_digit t1[2*8];
-	sp_digit t2[2*8];
+	sp_digit t1[8];
+	sp_digit t2[8];
 
 	/* Put point to double into result */
 	if (r != p)
@@ -1109,13 +1237,6 @@ static void sp_256_proj_point_dbl_8(sp_point* r, sp_point* p)
 
 	if (r->infinity)
 		return;
-
-	if (SP_DEBUG) {
-		/* unused part of t2, may result in spurios
-		 * differences in debug output. Clear it.
-		 */
-		memset(t2, 0, sizeof(t2));
-	}
 
 	/* T1 = Z * Z */
 	sp_256_mont_sqr_8(t1, r->z /*, p256_mod, p256_mp_mod*/);
@@ -1138,7 +1259,7 @@ static void sp_256_proj_point_dbl_8(sp_point* r, sp_point* p)
 	/* T2 = Y * Y */
 	sp_256_mont_sqr_8(t2, r->y /*, p256_mod, p256_mp_mod*/);
 	/* T2 = T2/2 */
-	sp_256_div2_8(t2, t2, p256_mod);
+	sp_256_div2_8(t2 /*, p256_mod*/);
 	/* Y = Y * X */
 	sp_256_mont_mul_8(r->y, r->y, r->x /*, p256_mod, p256_mp_mod*/);
 	/* X = T1 * T1 */
@@ -1164,11 +1285,11 @@ static void sp_256_proj_point_dbl_8(sp_point* r, sp_point* p)
  */
 static NOINLINE void sp_256_proj_point_add_8(sp_point* r, sp_point* p, sp_point* q)
 {
-	sp_digit t1[2*8];
-	sp_digit t2[2*8];
-	sp_digit t3[2*8];
-	sp_digit t4[2*8];
-	sp_digit t5[2*8];
+	sp_digit t1[8];
+	sp_digit t2[8];
+	sp_digit t3[8];
+	sp_digit t4[8];
+	sp_digit t5[8];
 
 	/* Ensure only the first point is the same as the result. */
 	if (q == r) {
@@ -1185,52 +1306,46 @@ static NOINLINE void sp_256_proj_point_add_8(sp_point* r, sp_point* p, sp_point*
 	 && (sp_256_cmp_equal_8(p->y, q->y) || sp_256_cmp_equal_8(p->y, t1))
 	) {
 		sp_256_proj_point_dbl_8(r, p);
+		return;
 	}
-	else {
-		sp_point tp;
-		sp_point *v;
 
-		v = r;
-		if (p->infinity | q->infinity) {
-			memset(&tp, 0, sizeof(tp));
-			v = &tp;
-		}
-
+	if (p->infinity || q->infinity) {
 		*r = p->infinity ? *q : *p; /* struct copy */
-
-		/* U1 = X1*Z2^2 */
-		sp_256_mont_sqr_8(t1, q->z /*, p256_mod, p256_mp_mod*/);
-		sp_256_mont_mul_8(t3, t1, q->z /*, p256_mod, p256_mp_mod*/);
-		sp_256_mont_mul_8(t1, t1, v->x /*, p256_mod, p256_mp_mod*/);
-		/* U2 = X2*Z1^2 */
-		sp_256_mont_sqr_8(t2, v->z /*, p256_mod, p256_mp_mod*/);
-		sp_256_mont_mul_8(t4, t2, v->z /*, p256_mod, p256_mp_mod*/);
-		sp_256_mont_mul_8(t2, t2, q->x /*, p256_mod, p256_mp_mod*/);
-		/* S1 = Y1*Z2^3 */
-		sp_256_mont_mul_8(t3, t3, v->y /*, p256_mod, p256_mp_mod*/);
-		/* S2 = Y2*Z1^3 */
-		sp_256_mont_mul_8(t4, t4, q->y /*, p256_mod, p256_mp_mod*/);
-		/* H = U2 - U1 */
-		sp_256_mont_sub_8(t2, t2, t1 /*, p256_mod*/);
-		/* R = S2 - S1 */
-		sp_256_mont_sub_8(t4, t4, t3 /*, p256_mod*/);
-		/* Z3 = H*Z1*Z2 */
-		sp_256_mont_mul_8(v->z, v->z, q->z /*, p256_mod, p256_mp_mod*/);
-		sp_256_mont_mul_8(v->z, v->z, t2 /*, p256_mod, p256_mp_mod*/);
-		/* X3 = R^2 - H^3 - 2*U1*H^2 */
-		sp_256_mont_sqr_8(v->x, t4 /*, p256_mod, p256_mp_mod*/);
-		sp_256_mont_sqr_8(t5, t2 /*, p256_mod, p256_mp_mod*/);
-		sp_256_mont_mul_8(v->y, t1, t5 /*, p256_mod, p256_mp_mod*/);
-		sp_256_mont_mul_8(t5, t5, t2 /*, p256_mod, p256_mp_mod*/);
-		sp_256_mont_sub_8(v->x, v->x, t5 /*, p256_mod*/);
-		sp_256_mont_dbl_8(t1, v->y /*, p256_mod*/);
-		sp_256_mont_sub_8(v->x, v->x, t1 /*, p256_mod*/);
-		/* Y3 = R*(U1*H^2 - X3) - S1*H^3 */
-		sp_256_mont_sub_8(v->y, v->y, v->x /*, p256_mod*/);
-		sp_256_mont_mul_8(v->y, v->y, t4 /*, p256_mod, p256_mp_mod*/);
-		sp_256_mont_mul_8(t5, t5, t3 /*, p256_mod, p256_mp_mod*/);
-		sp_256_mont_sub_8(v->y, v->y, t5 /*, p256_mod*/);
+		return;
 	}
+
+	/* U1 = X1*Z2^2 */
+	sp_256_mont_sqr_8(t1, q->z /*, p256_mod, p256_mp_mod*/);
+	sp_256_mont_mul_8(t3, t1, q->z /*, p256_mod, p256_mp_mod*/);
+	sp_256_mont_mul_8(t1, t1, r->x /*, p256_mod, p256_mp_mod*/);
+	/* U2 = X2*Z1^2 */
+	sp_256_mont_sqr_8(t2, r->z /*, p256_mod, p256_mp_mod*/);
+	sp_256_mont_mul_8(t4, t2, r->z /*, p256_mod, p256_mp_mod*/);
+	sp_256_mont_mul_8(t2, t2, q->x /*, p256_mod, p256_mp_mod*/);
+	/* S1 = Y1*Z2^3 */
+	sp_256_mont_mul_8(t3, t3, r->y /*, p256_mod, p256_mp_mod*/);
+	/* S2 = Y2*Z1^3 */
+	sp_256_mont_mul_8(t4, t4, q->y /*, p256_mod, p256_mp_mod*/);
+	/* H = U2 - U1 */
+	sp_256_mont_sub_8(t2, t2, t1 /*, p256_mod*/);
+	/* R = S2 - S1 */
+	sp_256_mont_sub_8(t4, t4, t3 /*, p256_mod*/);
+	/* Z3 = H*Z1*Z2 */
+	sp_256_mont_mul_8(r->z, r->z, q->z /*, p256_mod, p256_mp_mod*/);
+	sp_256_mont_mul_8(r->z, r->z, t2 /*, p256_mod, p256_mp_mod*/);
+	/* X3 = R^2 - H^3 - 2*U1*H^2 */
+	sp_256_mont_sqr_8(r->x, t4 /*, p256_mod, p256_mp_mod*/);
+	sp_256_mont_sqr_8(t5, t2 /*, p256_mod, p256_mp_mod*/);
+	sp_256_mont_mul_8(r->y, t1, t5 /*, p256_mod, p256_mp_mod*/);
+	sp_256_mont_mul_8(t5, t5, t2 /*, p256_mod, p256_mp_mod*/);
+	sp_256_mont_sub_8(r->x, r->x, t5 /*, p256_mod*/);
+	sp_256_mont_dbl_8(t1, r->y /*, p256_mod*/);
+	sp_256_mont_sub_8(r->x, r->x, t1 /*, p256_mod*/);
+	/* Y3 = R*(U1*H^2 - X3) - S1*H^3 */
+	sp_256_mont_sub_8(r->y, r->y, r->x /*, p256_mod*/);
+	sp_256_mont_mul_8(r->y, r->y, t4 /*, p256_mod, p256_mp_mod*/);
+	sp_256_mont_mul_8(t5, t5, t3 /*, p256_mod, p256_mp_mod*/);
+	sp_256_mont_sub_8(r->y, r->y, t5 /*, p256_mod*/);
 }
 
 /* Multiply the point by the scalar and return the result.
@@ -1277,13 +1392,13 @@ static void sp_256_ecc_mulmod_8(sp_point* r, const sp_point* g, const sp_digit* 
 		dump_512("t[1].y %s\n", t[1].y);
 		dump_512("t[1].z %s\n", t[1].z);
 		dbg("t[2] = t[%d]\n", y);
-		memcpy(&t[2], &t[y], sizeof(sp_point));
+		t[2] = t[y]; /* struct copy */
 		dbg("t[2] *= 2\n");
 		sp_256_proj_point_dbl_8(&t[2], &t[2]);
 		dump_512("t[2].x %s\n", t[2].x);
 		dump_512("t[2].y %s\n", t[2].y);
 		dump_512("t[2].z %s\n", t[2].z);
-		memcpy(&t[y], &t[2], sizeof(sp_point));
+		t[y] = t[2]; /* struct copy */
 
 		n <<= 1;
 		c--;
@@ -1292,7 +1407,7 @@ static void sp_256_ecc_mulmod_8(sp_point* r, const sp_point* g, const sp_digit* 
 	if (map)
 		sp_256_map_8(r, &t[0]);
 	else
-		memcpy(r, &t[0], sizeof(sp_point));
+		*r = t[0]; /* struct copy */
 
 	memset(t, 0, sizeof(t)); //paranoia
 }

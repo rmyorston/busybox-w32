@@ -13,6 +13,7 @@ INSERT
 lib-y += appletlib.o
 lib-y += ask_confirmation.o
 lib-y += bb_bswap_64.o
+lib-y += bb_do_delay.o
 lib-y += bb_pwd.o
 lib-y += bb_qsort.o
 #lib-y += bb_strtod.o
@@ -92,7 +93,6 @@ lib-y += xreadlink.o
 lib-y += xrealloc_vector.o
 
 lib-$(CONFIG_PLATFORM_POSIX) += bb_askpass.o
-lib-$(CONFIG_PLATFORM_POSIX) += bb_do_delay.o
 lib-$(CONFIG_PLATFORM_POSIX) += change_identity.o
 lib-$(CONFIG_PLATFORM_POSIX) += device_open.o
 lib-$(CONFIG_PLATFORM_POSIX) += find_root_device.o
