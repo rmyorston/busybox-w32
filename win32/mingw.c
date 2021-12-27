@@ -64,6 +64,8 @@ int err_win_to_posix(void)
 	case ERROR_BAD_FORMAT: error = ENOEXEC; break;
 	case ERROR_BAD_LENGTH: error = EINVAL; break;
 	case ERROR_BAD_PATHNAME: error = ENOENT; break;
+	case ERROR_BAD_NET_NAME: error = ENOENT; break;
+	case ERROR_BAD_NETPATH: error = ENOENT; break;
 	case ERROR_BAD_PIPE: error = EPIPE; break;
 	case ERROR_BAD_UNIT: error = ENODEV; break;
 	case ERROR_BAD_USERNAME: error = EINVAL; break;
@@ -555,7 +557,8 @@ static uid_t file_owner(HANDLE fh)
 }
 #endif
 
-static int is_symlink(DWORD attr, const char *pathname, WIN32_FIND_DATAA *fbuf)
+static int get_symlink_data(DWORD attr, const char *pathname,
+					WIN32_FIND_DATAA *fbuf)
 {
 	if (attr & FILE_ATTRIBUTE_REPARSE_POINT) {
 		HANDLE handle = FindFirstFileA(pathname, fbuf);
@@ -565,6 +568,16 @@ static int is_symlink(DWORD attr, const char *pathname, WIN32_FIND_DATAA *fbuf)
 					fbuf->dwReserved0 == IO_REPARSE_TAG_SYMLINK);
 		}
 	}
+	return 0;
+}
+
+static int is_symlink(const char *pathname)
+{
+	WIN32_FILE_ATTRIBUTE_DATA fdata;
+	WIN32_FIND_DATAA fbuf;
+
+	if (!get_file_attr(pathname, &fdata))
+		return get_symlink_data(fdata.dwFileAttributes, pathname, &fbuf);
 	return 0;
 }
 
@@ -590,7 +603,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		buf->st_gid = DEFAULT_GID;
 		buf->st_dev = buf->st_rdev = 0;
 
-		if (is_symlink(fdata.dwFileAttributes, file_name, &findbuf)) {
+		if (get_symlink_data(fdata.dwFileAttributes, file_name, &findbuf)) {
 			char *name = auto_string(xmalloc_realpath(file_name));
 
 			if (follow) {
@@ -811,7 +824,7 @@ int utimensat(int fd, const char *path, const struct timespec times[2],
 	HANDLE fh;
 	DWORD cflag = FILE_FLAG_BACKUP_SEMANTICS;
 
-	if (!is_absolute_path(path) && fd != AT_FDCWD) {
+	if (is_relative_path(path) && fd != AT_FDCWD) {
 		errno = ENOSYS;	// partial implementation
 		return rc;
 	}
@@ -940,14 +953,13 @@ char *mingw_getcwd(char *pointer, int len)
 #undef rename
 int mingw_rename(const char *pold, const char *pnew)
 {
-	struct mingw_stat st;
 	DWORD attrs;
 
 	/*
 	 * For non-symlinks, try native rename() first to get errno right.
 	 * It is based on MoveFile(), which cannot overwrite existing files.
 	 */
-	if (mingw_lstat(pold, &st) || !S_ISLNK(st.st_mode)) {
+	if (!is_symlink(pold)) {
 		if (!rename(pold, pnew))
 			return 0;
 		if (errno != EEXIST)
@@ -1196,13 +1208,13 @@ int symlink(const char *target, const char *linkpath)
 	DWORD flag = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
 	struct stat st;
 	DECLARE_PROC_ADDR(BOOLEAN, CreateSymbolicLinkA, LPCSTR, LPCSTR, DWORD);
-	char *relative = NULL;
+	char *targ, *relative = NULL;
 
 	if (!INIT_PROC_ADDR(kernel32.dll, CreateSymbolicLinkA)) {
 		return -1;
 	}
 
-	if (!is_absolute_path(target) && has_path(linkpath)) {
+	if (is_relative_path(target) && has_path(linkpath)) {
 		/* make target's path relative to current directory */
 		const char *name = bb_get_last_path_component_nostrip(linkpath);
 		relative = xasprintf("%.*s%s",
@@ -1213,8 +1225,11 @@ int symlink(const char *target, const char *linkpath)
 		flag |= SYMBOLIC_LINK_FLAG_DIRECTORY;
 	free(relative);
 
+	targ = auto_string(strdup(target));
+	slash_to_bs(targ);
+
  retry:
-	if (!CreateSymbolicLinkA(linkpath, target, flag)) {
+	if (!CreateSymbolicLinkA(linkpath, targ, flag)) {
 		/* Old Windows versions see 'UNPRIVILEGED_CREATE' as an invalid
 		 * parameter.  Retry without it. */
 		if ((flag & SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE) &&
@@ -1366,10 +1381,9 @@ ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 			name[len] = 0;
 			name = normalize_ntpath(name);
 			len = wcslen(name);
-			if (len >= bufsiz)
-				len = bufsiz - 1;
+			if (len > bufsiz)
+				len = bufsiz;
 			if (WideCharToMultiByte(CP_ACP, 0, name, len, buf, bufsiz, 0, 0)) {
-				buf[len] = '\0';
 				return len;
 			}
 		}
@@ -1415,11 +1429,10 @@ int mingw_mkdir(const char *path, int mode UNUSED_PARAM)
 #undef chdir
 int mingw_chdir(const char *dirname)
 {
-	struct stat st;
 	int ret = -1;
 	const char *realdir = dirname;
 
-	if (lstat(dirname, &st) == 0 && S_ISLNK(st.st_mode)) {
+	if (is_symlink(dirname)) {
 		realdir = auto_string(xmalloc_readlink(dirname));
 		if (realdir)
 			fix_path_case((char *)realdir);
@@ -1488,10 +1501,10 @@ int fcntl(int fd, int cmd, ...)
 }
 
 #undef unlink
+#undef rmdir
 int mingw_unlink(const char *pathname)
 {
 	int ret;
-	struct stat st;
 
 	/* read-only files cannot be removed */
 	chmod(pathname, 0666);
@@ -1499,10 +1512,10 @@ int mingw_unlink(const char *pathname)
 	ret = unlink(pathname);
 	if (ret == -1 && errno == EACCES) {
 		/* a symlink to a directory needs to be removed by calling rmdir */
-		if (lstat(pathname, &st) == 0 && S_ISLNK(st.st_mode)) {
+		/* (the *real* Windows rmdir, not mingw_rmdir) */
+		if (is_symlink(pathname)) {
 			return rmdir(pathname);
 		}
-		errno = EACCES;
 	}
 	return ret;
 }
@@ -1674,9 +1687,14 @@ int mingw_access(const char *name, int mode)
 	return -1;
 }
 
-#undef rmdir
 int mingw_rmdir(const char *path)
 {
+	/* On Linux rmdir(2) doesn't remove symlinks */
+	if (is_symlink(path)) {
+		errno = ENOTDIR;
+		return -1;
+	}
+
 	/* read-only directories cannot be removed */
 	chmod(path, 0666);
 	return rmdir(path);
@@ -1874,10 +1892,6 @@ void hide_console(void)
 }
 #endif
 
-#define is_path_sep(x) ((x) == '/' || (x) == '\\')
-#define is_unc_path(x) (strlen(x) > 4 && is_path_sep(x[0]) && \
-							is_path_sep(x[1]) && !is_path_sep(x[2]))
-
 /* Return the length of the root of a UNC path, i.e. the '//host/share'
  * component, or 0 if the path doesn't look like that. */
 int unc_root_len(const char *dir)
@@ -2009,7 +2023,7 @@ void fix_path_case(char *path)
 		*path = toupper(*path);
 	}
 	else if (len != 0) {
-		for (path+=2; !is_path_sep(*path); ++path) {
+		for (path+=2; !is_dir_sep(*path); ++path) {
 			*path = toupper(*path);
 		}
 	}
@@ -2083,11 +2097,11 @@ int has_path(const char *file)
 				has_dos_drive_prefix(file);
 }
 
-/* This function is misnamed.  It's actually a test for 'is not a path
- * relative to the current working directory'.  On Unix this is the
- * same as 'is an absolute path' but Windows also has paths relative to
- * current root and relative to current directory of another drive. */
-int is_absolute_path(const char *path)
+/* Test whether a path is relative to a known location (usually the
+ * current working directory or a symlink).  On Unix this is a path
+ * that doesn't start with a slash but on Windows we also need to
+ * exclude paths that start with a backslash or a drive letter. */
+int is_relative_path(const char *path)
 {
-	return path[0] == '/' || path[0] == '\\' || has_dos_drive_prefix(path);
+	return !is_dir_sep(path[0]) && !has_dos_drive_prefix(path);
 }

@@ -518,6 +518,8 @@ int utimes(const char *file_name, const struct timeval times[2]);
  * MinGW specific
  */
 #define is_dir_sep(c) ((c) == '/' || (c) == '\\')
+#define is_unc_path(x) (strlen(x) > 4 && is_dir_sep(x[0]) && \
+							is_dir_sep(x[1]) && !is_dir_sep(x[2]))
 
 pid_t FAST_FUNC mingw_spawn(char **argv);
 pid_t FAST_FUNC mingw_spawn_detach(char **argv);
@@ -579,4 +581,5 @@ void make_sparse(int fd, off_t start, off_t end);
 int skip_ansi_emulation(int reset);
 int unix_path(const char *path);
 int has_path(const char *file);
-int is_absolute_path(const char *path);
+int is_relative_path(const char *path);
+char *get_last_slash(const char *path);

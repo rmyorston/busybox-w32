@@ -78,7 +78,7 @@
 //usage:#define ntpd_full_usage "\n\n"
 //usage:       "NTP client/server\n"
 //usage:     "\n	-d[d]	Verbose"
-//usage:     "\n	-n	Do not daemonize"
+//usage:     "\n	-n	Run in foreground"
 //usage:     "\n	-q	Quit after clock is set"
 //usage:     "\n	-N	Run at high priority"
 //usage:     "\n	-w	Do not set time (only query peers), implies -n"
@@ -1152,7 +1152,7 @@ fit(peer_t *p, double rd)
 //		return 0;
 	return 1;
 }
-static peer_t*
+static NOINLINE peer_t*
 select_and_cluster(void)
 {
 	peer_t     *p;

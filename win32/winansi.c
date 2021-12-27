@@ -4,6 +4,7 @@
 
 #include "libbb.h"
 #include <windows.h>
+#include "lazyload.h"
 #undef PACKED
 
 /*
@@ -55,6 +56,13 @@ static int is_console_in(int fd)
 	return isatty(fd) && GetStdHandle(STD_INPUT_HANDLE) != INVALID_HANDLE_VALUE;
 }
 
+static int is_wine(void)
+{
+	DECLARE_PROC_ADDR(const char *, wine_get_version, void);
+
+	return INIT_PROC_ADDR(ntdll.dll, wine_get_version) != NULL;
+}
+
 #ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
 #define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
 #endif
@@ -69,7 +77,8 @@ int skip_ansi_emulation(int reset)
 
 	if (skip < 0 || reset) {
 		const char *var = getenv(bb_skip_ansi_emulation);
-		skip = var == NULL ? CONFIG_SKIP_ANSI_EMULATION_DEFAULT : atoi(var);
+		int dflt = is_wine() ? 0 : CONFIG_SKIP_ANSI_EMULATION_DEFAULT;
+		skip = var == NULL ? dflt : atoi(var);
 		if (skip < 0 || skip > 2)
 			skip = 0;
 
@@ -115,7 +124,7 @@ static void use_alt_buffer(int flag)
 	HANDLE console, h;
 
 	var = getenv("BB_ALT_BUFFER");
-	if (var && strcmp(var, "0") == 0) {
+	if (var ? strcmp(var, "0") == 0 : is_wine()) {
 		reset_screen();
 		return;
 	}

@@ -295,6 +295,12 @@ PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 #define LL_FMT "ll"
 #endif
 
+#if ENABLE_PLATFORM_MINGW32 && defined(_WIN64)
+#define PID_FMT "I64"
+#else
+#define PID_FMT
+#endif
+
 /* Large file support */
 /* Note that CONFIG_LFS=y forces bbox to be built with all common ops
  * (stat, lseek etc) mapped to "largefile" variants by libc.
@@ -324,9 +330,13 @@ typedef unsigned long long uoff_t;
 # endif
 #else
 /* CONFIG_LFS is off */
-# if UINT_MAX == 0xffffffff
-/* While sizeof(off_t) == sizeof(int), off_t is typedef'ed to long anyway.
- * gcc will throw warnings on printf("%d", off_t). Crap... */
+/* sizeof(off_t) == sizeof(long).
+ * May or may not be == sizeof(int). If it is, use xatoi_positive()
+ * and bb_strtou() instead of xatoul_range() and bb_strtoul().
+ * Even if sizeof(off_t) == sizeof(int), off_t is typedef'ed to long anyway.
+ * gcc will throw warnings on printf("%d", off_t)... Have to use %ld etc.
+ */
+# if UINT_MAX == ULONG_MAX
 typedef unsigned long uoff_t;
 #  define XATOOFF(a) xatoi_positive(a)
 #  define BB_STRTOOFF bb_strtou
@@ -384,13 +394,27 @@ struct BUG_off_t_size_is_misdetected {
 #endif
 #endif
 
+/* We use a trick to have more optimized code (fewer pointer reloads
+ * and reduced binary size by a few kilobytes) like:
+ *  ash.c:   extern struct globals *const ash_ptr_to_globals;
+ *  ash_ptr_hack.c: struct globals *ash_ptr_to_globals;
+ * This way, compiler in ash.c knows the pointer can not change.
+ *
+ * However, this may break on weird arches or toolchains. In this case,
+ * set "-DBB_GLOBAL_CONST=''" in CONFIG_EXTRA_CFLAGS to disable
+ * this optimization.
+ */
+#ifndef BB_GLOBAL_CONST
+# define BB_GLOBAL_CONST const
+#endif
+
 #if defined(errno)
 /* If errno is a define, assume it's "define errno (*__errno_location())"
  * and we will cache it's result in this variable */
-extern int *const bb_errno;
-#undef errno
-#define errno (*bb_errno)
-#define bb_cached_errno_ptr 1
+extern int *BB_GLOBAL_CONST bb_errno;
+# undef errno
+# define errno (*bb_errno)
+# define bb_cached_errno_ptr 1
 #endif
 
 #if !(ULONG_MAX > 0xffffffff)
@@ -579,7 +603,7 @@ DIR *xopendir(const char *path) FAST_FUNC;
 DIR *warn_opendir(const char *path) FAST_FUNC;
 
 char *xmalloc_realpath(const char *path) FAST_FUNC RETURNS_MALLOC;
-char *xmalloc_realpath_coreutils(const char *path) FAST_FUNC RETURNS_MALLOC;
+char *xmalloc_realpath_coreutils(char *path) FAST_FUNC RETURNS_MALLOC;
 char *xmalloc_readlink(const char *path) FAST_FUNC RETURNS_MALLOC;
 char *xmalloc_readlink_or_warn(const char *path) FAST_FUNC RETURNS_MALLOC;
 /* !RETURNS_MALLOC: it's a realloc-like function */
@@ -1297,8 +1321,10 @@ void run_applet_no_and_exit(int a, const char *name, char **argv) NORETURN FAST_
 #endif
 void show_usage_if_dash_dash_help(int applet_no, char **argv) FAST_FUNC;
 #if defined(__linux__)
+int re_execed_comm(void) FAST_FUNC;
 void set_task_comm(const char *comm) FAST_FUNC;
 #else
+# define re_execed_comm() 0
 # define set_task_comm(name) ((void)0)
 #endif
 
@@ -1526,16 +1552,8 @@ int scripted_main(int argc, char** argv) MAIN_EXTERNALLY_VISIBLE;
 
 /* Applets which are useful from another applets */
 int bb_cat(char** argv) FAST_FUNC;
-int ash_main(int argc, char** argv)
-#if ENABLE_ASH || ENABLE_SH_IS_ASH || ENABLE_BASH_IS_ASH
-		MAIN_EXTERNALLY_VISIBLE
-#endif
-;
-int hush_main(int argc, char** argv)
-#if ENABLE_HUSH || ENABLE_SH_IS_HUSH || ENABLE_BASH_IS_HUSH
-		MAIN_EXTERNALLY_VISIBLE
-#endif
-;
+int ash_main(int argc, char** argv) IF_SHELL_ASH(MAIN_EXTERNALLY_VISIBLE);
+int hush_main(int argc, char** argv) IF_SHELL_HUSH(MAIN_EXTERNALLY_VISIBLE);
 /* If shell needs them, they exist even if not enabled as applets */
 int echo_main(int argc, char** argv) IF_ECHO(MAIN_EXTERNALLY_VISIBLE);
 int printf_main(int argc, char **argv) IF_PRINTF(MAIN_EXTERNALLY_VISIBLE);
@@ -2331,6 +2349,7 @@ extern const char bb_PATH_root_path[] ALIGN1; /* BB_PATH_ROOT_PATH */
 extern const int const_int_0;
 //extern const int const_int_1;
 
+
 /* This struct is deliberately not defined. */
 /* See docs/keep_data_small.txt */
 struct globals;
@@ -2339,6 +2358,8 @@ struct globals;
  * If you want to assign a value, use SET_PTR_TO_GLOBALS(x) */
 extern struct globals *const ptr_to_globals;
 
+#define barrier() asm volatile ("":::"memory")
+
 #if defined(__clang_major__) && __clang_major__ >= 9
 /* Clang/llvm drops assignment to "constant" storage. Silently.
  * Needs serious convincing to not eliminate the store.
@@ -2346,29 +2367,37 @@ extern struct globals *const ptr_to_globals;
 static ALWAYS_INLINE void* not_const_pp(const void *p)
 {
 	void *pp;
-	__asm__ __volatile__(
+	asm volatile (
 		"# forget that p points to const"
 		: /*outputs*/ "=r" (pp)
 		: /*inputs*/ "0" (p)
 	);
 	return pp;
 }
-#else
-static ALWAYS_INLINE void* not_const_pp(const void *p) { return (void*)p; }
-#endif
-
-/* At least gcc 3.4.6 on mipsel system needs optimization barrier */
-#define barrier() __asm__ __volatile__("":::"memory")
-#define SET_PTR_TO_GLOBALS(x) do { \
-	(*(struct globals**)not_const_pp(&ptr_to_globals)) = (void*)(x); \
+# define ASSIGN_CONST_PTR(pptr, v) do { \
+	*(void**)not_const_pp(pptr) = (void*)(v); \
 	barrier(); \
 } while (0)
+/* XZALLOC_CONST_PTR() is an out-of-line function to prevent
+ * clang from reading pointer before it is assigned.
+ */
+void XZALLOC_CONST_PTR(const void *pptr, size_t size) FAST_FUNC;
+#else
+# define ASSIGN_CONST_PTR(pptr, v) do { \
+	*(void**)(pptr) = (void*)(v); \
+	/* At least gcc 3.4.6 on mipsel needs optimization barrier */ \
+	barrier(); \
+} while (0)
+# define XZALLOC_CONST_PTR(pptr, size) ASSIGN_CONST_PTR(pptr, xzalloc(size))
+#endif
 
+#define SET_PTR_TO_GLOBALS(x) ASSIGN_CONST_PTR(&ptr_to_globals, x)
 #define FREE_PTR_TO_GLOBALS() do { \
 	if (ENABLE_FEATURE_CLEAN_UP) { \
 		free(ptr_to_globals); \
 	} \
 } while (0)
+
 
 /* You can change LIBBB_DEFAULT_LOGIN_SHELL, but don't use it,
  * use bb_default_login_shell and following defines.

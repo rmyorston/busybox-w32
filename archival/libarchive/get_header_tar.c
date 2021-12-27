@@ -147,6 +147,12 @@ static void process_pax_hdr(archive_handle_t *archive_handle, unsigned sz, int g
 #endif
 }
 
+static void die_if_bad_fnamesize(off_t sz)
+{
+	if ((uoff_t)sz > 0xfff) /* more than 4k?! no funny business please */
+		bb_simple_error_msg_and_die("bad archive");
+}
+
 char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 {
 	file_header_t *file_header = archive_handle->file_header;
@@ -331,8 +337,6 @@ char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 			file_header->name = xstrdup(tar.name);
 	}
 
-	/* Set bits 12-15 of the files mode */
-	/* (typeflag was not trashed because chksum does not use getOctal) */
 	switch (tar_typeflag) {
 	case '1': /* hardlink */
 		/* we mark hardlinks as regular files with zero size and a link name */
@@ -341,7 +345,7 @@ char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 		 * ... For tar archives written by pre POSIX.1-1988
 		 * implementations, the size field usually contains the size of
 		 * the file and needs to be ignored as no data may follow this
-		 * header type.  For POSIX.1- 1988 compliant archives, the size
+		 * header type.  For POSIX.1-1988 compliant archives, the size
 		 * field needs to be 0.  For POSIX.1-2001 compliant archives,
 		 * the size field may be non zero, indicating that file data is
 		 * included in the archive.
@@ -390,6 +394,7 @@ char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 		/* free: paranoia: tar with several consecutive longnames */
 		free(p_longname);
 		/* For paranoia reasons we allocate extra NUL char */
+		die_if_bad_fnamesize(file_header->size);
 		p_longname = xzalloc(file_header->size + 1);
 		/* We read ASCIZ string, including NUL */
 		xread(archive_handle->src_fd, p_longname, file_header->size);
@@ -400,6 +405,7 @@ char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 		goto again;
 	case 'K':
 		free(p_linkname);
+		die_if_bad_fnamesize(file_header->size);
 		p_linkname = xzalloc(file_header->size + 1);
 		xread(archive_handle->src_fd, p_linkname, file_header->size);
 		archive_handle->offset += file_header->size;

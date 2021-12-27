@@ -344,24 +344,11 @@ typedef long arith_t;
 #endif
 
 #if !ENABLE_PLATFORM_MINGW32
-# define is_absolute_path(path) ((path)[0] == '/')
+# define is_relative_path(path) ((path)[0] != '/')
 #endif
 
 #if !BB_MMU
 # error "Do not even bother, ash will not run on NOMMU machine"
-#endif
-
-/* We use a trick to have more optimized code (fewer pointer reloads):
- *  ash.c:   extern struct globals *const ash_ptr_to_globals;
- *  ash_ptr_hack.c: struct globals *ash_ptr_to_globals;
- * This way, compiler in ash.c knows the pointer can not change.
- *
- * However, this may break on weird arches or toolchains. In this case,
- * set "-DBB_GLOBAL_CONST=''" in CONFIG_EXTRA_CFLAGS to disable
- * this optimization.
- */
-#ifndef BB_GLOBAL_CONST
-# define BB_GLOBAL_CONST const
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
@@ -693,8 +680,7 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #endif
 
 #define INIT_G_misc() do { \
-	(*(struct globals_misc**)not_const_pp(&ash_ptr_to_globals_misc)) = xzalloc(sizeof(G_misc)); \
-	barrier(); \
+	XZALLOC_CONST_PTR(&ash_ptr_to_globals_misc, sizeof(G_misc)); \
 	savestatus = -1; \
 	curdir = nullstr; \
 	physdir = nullstr; \
@@ -1783,8 +1769,7 @@ extern struct globals_memstack *BB_GLOBAL_CONST ash_ptr_to_globals_memstack;
 #define g_stacknleft (G_memstack.g_stacknleft)
 #define stackbase    (G_memstack.stackbase   )
 #define INIT_G_memstack() do { \
-	(*(struct globals_memstack**)not_const_pp(&ash_ptr_to_globals_memstack)) = xzalloc(sizeof(G_memstack)); \
-	barrier(); \
+	XZALLOC_CONST_PTR(&ash_ptr_to_globals_memstack, sizeof(G_memstack)); \
 	g_stackp = &stackbase; \
 	g_stacknxt = stackbase.space; \
 	g_stacknleft = MINSIZE; \
@@ -2445,8 +2430,7 @@ extern struct globals_var *BB_GLOBAL_CONST ash_ptr_to_globals_var;
 #endif
 #define INIT_G_var() do { \
 	unsigned i; \
-	(*(struct globals_var**)not_const_pp(&ash_ptr_to_globals_var)) = xzalloc(sizeof(G_var)); \
-	barrier(); \
+	XZALLOC_CONST_PTR(&ash_ptr_to_globals_var, sizeof(G_var)); \
 	for (i = 0; i < ARRAY_SIZE(varinit_data); i++) { \
 		varinit[i].flags    = varinit_data[i].flags; \
 		varinit[i].var_text = varinit_data[i].var_text; \
@@ -3108,7 +3092,6 @@ static const char *
 updatepwd(const char *dir)
 {
 #if ENABLE_PLATFORM_MINGW32
-# define is_path_sep(x) ((x) == '/' || (x) == '\\')
 	/*
 	 * Due to Windows drive notion, getting pwd is a completely
 	 * different thing. Handle it in a separate routine
@@ -3139,17 +3122,17 @@ updatepwd(const char *dir)
 	enum {ABS_DRIVE, ABS_SHARE, REL_OTHER, REL_ROOT, REL_CWD} target;
 
 	/* skip multiple leading separators unless dir is a UNC path */
-	if (is_path_sep(*dir) && unc_root_len(dir) == 0) {
-		while (is_path_sep(dir[1]))
+	if (is_dir_sep(*dir) && unc_root_len(dir) == 0) {
+		while (is_dir_sep(dir[1]))
 			++dir;
 	}
 
 	len = strlen(dir);
 	if (len >= 2 && has_dos_drive_prefix(dir))
-		target = len >= 3 && is_path_sep(dir[2]) ? ABS_DRIVE : REL_OTHER;
+		target = len >= 3 && is_dir_sep(dir[2]) ? ABS_DRIVE : REL_OTHER;
 	else if (unc_root_len(dir) != 0)
 		target = ABS_SHARE;
-	else if (is_path_sep(*dir))
+	else if (is_dir_sep(*dir))
 		target = REL_ROOT;
 	else
 		target = REL_CWD;
@@ -3190,15 +3173,15 @@ updatepwd(const char *dir)
 	new = makestrspace(strlen(dir) + 2, new);
 	lim = (char *)stackblock() + len + 1;
 
-	if (!is_path_sep(*dir)) {
-		if (!is_path_sep(new[-1]))
+	if (!is_dir_sep(*dir)) {
+		if (!is_dir_sep(new[-1]))
 			USTPUTC('/', new);
-		if (new > lim && is_path_sep(*lim))
+		if (new > lim && is_dir_sep(*lim))
 			lim++;
 	} else {
 		USTPUTC('/', new);
 		cdcomppath++;
-		if (is_path_sep(dir[1]) && !is_path_sep(dir[2])) {
+		if (is_dir_sep(dir[1]) && !is_dir_sep(dir[2])) {
 			USTPUTC('/', new);
 			cdcomppath++;
 			lim++;
@@ -3211,7 +3194,7 @@ updatepwd(const char *dir)
 			if (p[1] == '.' && p[2] == '\0') {
 				while (new > lim) {
 					STUNPUTC(new);
-					if (is_path_sep(new[-1]))
+					if (is_dir_sep(new[-1]))
 						break;
 				}
 				break;
@@ -3380,7 +3363,7 @@ cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	}
 	if (!dest)
 		dest = nullstr;
-	if (is_absolute_path(dest))
+	if (!is_relative_path(dest))
 		goto step6;
 	if (*dest == '.') {
 		c = dest[1];
@@ -4418,7 +4401,7 @@ set_curjob(struct job *jp, unsigned mode)
 	}
 }
 
-#if JOBS || JOBS_WIN32 || DEBUG
+#if JOBS || ENABLE_PLATFORM_MINGW32 || DEBUG
 static int
 jobno(const struct job *jp)
 {
@@ -5087,7 +5070,7 @@ showjob(struct job *jp, int mode)
 
 	if (mode & SHOW_ONLY_PGID) { /* jobs -p */
 		/* just output process (group) id of pipeline */
-		fprintf(out, "%d\n", ps->ps_pid);
+		fprintf(out, "%"PID_FMT"d\n", ps->ps_pid);
 		return;
 	}
 
@@ -5100,7 +5083,7 @@ showjob(struct job *jp, int mode)
 		s[col - 3] = '-';
 
 	if (mode & SHOW_PIDS)
-		col += fmtstr(s + col, 16, "%d ", ps->ps_pid);
+		col += fmtstr(s + col, 16, "%"PID_FMT"d ", ps->ps_pid);
 
 	psend = ps + jp->nprocs;
 
@@ -5131,7 +5114,7 @@ showjob(struct job *jp, int mode)
 		s[0] = '\0';
 		col = 33;
 		if (mode & SHOW_PIDS)
-			col = fmtstr(s, 48, "\n%*c%d ", indent_col, ' ', ps->ps_pid) - 1;
+			col = fmtstr(s, 48, "\n%*c%"PID_FMT"d ", indent_col, ' ', ps->ps_pid) - 1;
  start:
 #if ENABLE_PLATFORM_POSIX || JOBS_WIN32
 		fprintf(out, "%s%*c%s%s",
@@ -5927,6 +5910,10 @@ forkparent(struct job *jp, union node *n, int mode, HANDLE proc)
 	if (mode == FORK_BG) {
 		backgndpid = pid;               /* set $! */
 		set_curjob(jp, CUR_RUNNING);
+#if ENABLE_PLATFORM_MINGW32
+		if (iflag && jp && jp->nprocs == 0)
+			fprintf(stderr, "[%d] %"PID_FMT"d\n", jobno(jp), pid);
+#endif
 	}
 	if (jp) {
 		struct procstat *ps = &jp->ps[jp->nprocs++];
@@ -7841,14 +7828,19 @@ subevalvar(char *start, char *str, int strloc,
 		if ((unsigned)len > (orig_len - pos))
 			len = orig_len - pos;
 
-		for (vstr = startp; pos; vstr++, pos--) {
-			if (quotes && (unsigned char)*vstr == CTLESC)
+		if (!quotes) {
+			loc = mempcpy(startp, startp + pos, len);
+		} else {
+			for (vstr = startp; pos != 0; pos--) {
+				if ((unsigned char)*vstr == CTLESC)
+					vstr++;
 				vstr++;
-		}
-		for (loc = startp; len; len--) {
-			if (quotes && (unsigned char)*vstr == CTLESC)
+			}
+			for (loc = startp; len != 0; len--) {
+				if ((unsigned char)*vstr == CTLESC)
+					*loc++ = *vstr++;
 				*loc++ = *vstr++;
-			*loc++ = *vstr++;
+			}
 		}
 		*loc = '\0';
 		goto out;
@@ -7902,7 +7894,7 @@ subevalvar(char *start, char *str, int strloc,
 #if BASH_PATTERN_SUBST
 	workloc = expdest - (char *)stackblock();
 	if (subtype == VSREPLACE || subtype == VSREPLACEALL) {
-		size_t no_meta_len;
+		size_t no_meta_len, first_escaped;
 		int len;
 		char *idx, *end;
 
@@ -7920,28 +7912,34 @@ subevalvar(char *start, char *str, int strloc,
 		if (str[0] == '\0')
 			goto out1;
 
-		no_meta_len = (ENABLE_ASH_OPTIMIZE_FOR_SIZE || strpbrk(str, "*?[\\")) ? 0 : strlen(str);
+		first_escaped = (str[0] == '\\' && str[1]);
+		/* "first_escaped" trick allows to treat e.g. "\*no_glob_chars"
+		 * as literal too (as it is semi-common, and easy to accomodate
+		 * by just using str + 1).
+		 */
+		no_meta_len = strpbrk(str + first_escaped * 2, "*?[\\") ? 0 : strlen(str);
 		len = 0;
 		idx = startp;
 		end = str - 1;
 		while (idx <= end) {
  try_to_match:
 			if (no_meta_len == 0) {
-				/* pattern has meta chars, have to glob; or ENABLE_ASH_OPTIMIZE_FOR_SIZE */
+				/* pattern has meta chars, have to glob */
 				loc = scanright(idx, rmesc, rmescend, str, quotes, /*match_at_start:*/ 1);
 			} else {
 				/* Testcase for very slow replace (performs about 22k replaces):
 				 * x=::::::::::::::::::::::
 				 * x=$x$x;x=$x$x;x=$x$x;x=$x$x;x=$x$x;x=$x$x;x=$x$x;x=$x$x;x=$x$x;x=$x$x;echo ${#x}
 				 * echo "${x//:/|}"
+				 * To test "first_escaped" logic, replace : with *.
 				 */
-				if (strncmp(rmesc, str, no_meta_len) != 0)
+				if (strncmp(rmesc, str + first_escaped, no_meta_len - first_escaped) != 0)
 					goto no_match;
 				loc = idx;
 				if (!quotes) {
-					loc += no_meta_len;
+					loc += no_meta_len - first_escaped;
 				} else {
-					size_t n = no_meta_len;
+					size_t n = no_meta_len - first_escaped;
 					do {
 						if ((unsigned char)*loc == CTLESC)
 							loc++;
@@ -11812,14 +11810,14 @@ static void freestrings(struct strpush *sp)
 	INT_OFF;
 	do {
 		struct strpush *psp;
-
+#if ENABLE_ASH_ALIAS
 		if (sp->ap) {
 			sp->ap->flag &= ~ALIASINUSE;
 			if (sp->ap->flag & ALIASDEAD) {
 				unalias(sp->ap->name);
 			}
 		}
-
+#endif
 		psp = sp;
 		sp = sp->spfree;
 
@@ -14729,7 +14727,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			}
 		}
 		/* if rehash, don't redo absolute path names */
-		if (is_absolute_path(fullname) && idx <= prev) {
+		if (!is_relative_path(fullname) && idx <= prev) {
 			if (idx < prev)
 				continue;
 			TRACE(("searchexec \"%s\": no change\n", name));
@@ -15498,7 +15496,7 @@ init(void)
 
 
 //usage:#define ash_trivial_usage
-//usage:	"[-il] [-|+Cabefmnuvx] [-|+o OPT]... [-c 'SCRIPT' [ARG0 ARGS] | FILE [ARGS] | -s [ARGS]]"
+//usage:	"[-il] [-|+Cabefmnuvx] [-|+o OPT]... [-c 'SCRIPT' [ARG0 ARGS] | FILE ARGS | -s ARGS]"
 ////////	comes from ^^^^^^^^^^optletters
 //usage:#define ash_full_usage "\n\n"
 //usage:	"Unix shell interpreter"
@@ -15765,13 +15763,12 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	}
  state2:
 	state = 3;
-	if (
+	if (iflag
 #if ENABLE_PLATFORM_POSIX
 #ifndef linux
-	 getuid() == geteuid() && getgid() == getegid() &&
+	 && getuid() == geteuid() && getgid() == getegid()
 #endif
 #endif
-	 iflag
 	) {
 		const char *shinit = lookupvar("ENV");
 		if (shinit != NULL && *shinit != '\0')
@@ -16019,7 +16016,7 @@ spawn_forkshell(struct forkshell *fs, struct job *jp, union node *n, int mode)
 	new->nprocs = jp == NULL ? 0 : jp->nprocs;
 	sprintf(buf, "%p", new->hMapFile);
 	argv[2] = buf;
-	ret = spawnve(P_NOWAIT, bb_busybox_exec_path, (char *const *)argv, environ);
+	ret = spawnve(P_NOWAIT, bb_busybox_exec_path, (char *const *)argv, NULL);
 	CloseHandle(new->hMapFile);
 	UnmapViewOfFile(new);
 	if (ret == -1) {
