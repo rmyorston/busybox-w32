@@ -454,8 +454,8 @@ void *xrealloc(void *old, size_t size) FAST_FUNC;
 	xrealloc_vector_helper((vector), (sizeof((vector)[0]) << 8) + (shift), (idx))
 void* xrealloc_vector_helper(void *vector, unsigned sizeof_and_shift, int idx) FAST_FUNC;
 char *xstrdup(const char *s) FAST_FUNC RETURNS_MALLOC;
-char *xstrndup(const char *s, int n) FAST_FUNC RETURNS_MALLOC;
-void *xmemdup(const void *s, int n) FAST_FUNC RETURNS_MALLOC;
+char *xstrndup(const char *s, size_t n) FAST_FUNC RETURNS_MALLOC;
+void *xmemdup(const void *s, size_t n) FAST_FUNC RETURNS_MALLOC;
 void *mmap_read(int fd, size_t size) FAST_FUNC;
 void *mmap_anon(size_t size) FAST_FUNC;
 void *xmmap_anon(size_t size) FAST_FUNC;
@@ -1100,6 +1100,7 @@ void die_if_ferror(FILE *file, const char *msg) FAST_FUNC;
 void die_if_ferror_stdout(void) FAST_FUNC;
 int fflush_all(void) FAST_FUNC;
 void fflush_stdout_and_exit(int retval) NORETURN FAST_FUNC;
+void fflush_stdout_and_exit_SUCCESS(void) NORETURN FAST_FUNC;
 int fclose_if_not_stdin(FILE *file) FAST_FUNC;
 FILE* xfopen(const char *filename, const char *mode) FAST_FUNC;
 /* Prints warning to stderr and returns NULL on failure: */
@@ -1327,6 +1328,8 @@ void set_task_comm(const char *comm) FAST_FUNC;
 # define re_execed_comm() 0
 # define set_task_comm(name) ((void)0)
 #endif
+void exit_SUCCESS(void) NORETURN FAST_FUNC;
+void _exit_SUCCESS(void) NORETURN FAST_FUNC;
 
 /* Helpers for daemonization.
  *

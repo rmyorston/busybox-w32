@@ -6132,7 +6132,7 @@ openhere(union node *redir)
 		ignoresig(SIGTSTP); //signal(SIGTSTP, SIG_IGN);
 		signal(SIGPIPE, SIG_DFL);
 		xwrite(pip[1], p, len);
-		_exit(EXIT_SUCCESS);
+		_exit_SUCCESS();
 	}
 #endif
  out:
@@ -15860,7 +15860,7 @@ forkshell_openhere(struct forkshell *fs)
 	ignoresig(SIGTSTP); //signal(SIGTSTP, SIG_IGN);
 	signal(SIGPIPE, SIG_DFL);
 	xwrite(pip[1], p, len);
-	_exit(EXIT_SUCCESS);
+	_exit_SUCCESS();
 }
 
 static void

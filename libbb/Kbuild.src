@@ -45,6 +45,7 @@ lib-y += lineedit.o lineedit_ptr_hack.o
 lib-y += llist.o
 lib-y += make_directory.o
 lib-y += hash_md5_sha.o
+lib-y += hash_md5_sha_x86-64.o
 # Alternative (disabled) MD5 implementation
 #lib-y += hash_md5prime.o
 lib-y += messages.o

@@ -2865,7 +2865,7 @@ static void mingw_daemonize(char **argv)
 	close(fd);
 
 	if (mingw_spawn_detach(new_argv))
-		exit(EXIT_SUCCESS); /* parent */
+		exit_SUCCESS(); /* parent */
 	exit(EXIT_FAILURE); /* parent */
 }
 #endif

@@ -333,7 +333,7 @@ static void print_statusline(const char *str)
 }
 
 /* Exit the program gracefully */
-static void less_exit(int code)
+static void restore_tty(void)
 {
 	set_tty_cooked();
 	if (!(G.kbd_fd_orig_flags & O_NONBLOCK))
@@ -343,9 +343,12 @@ static void less_exit(int code)
 #else
 	printf(ESC"[?1049l");
 #endif
-	if (code < 0)
-		kill_myself_with_sig(- code); /* does not return */
-	exit(code);
+}
+
+static NOINLINE void less_exit(void)
+{
+	restore_tty();
+	exit_SUCCESS();
 }
 
 #if (ENABLE_FEATURE_LESS_DASHCMD && ENABLE_FEATURE_LESS_LINENUMS) \
@@ -949,7 +952,7 @@ static void buffer_print(void)
 	) {
 		i = option_mask32 & FLAG_F ? 0 : cur_fline;
 		if (max_fline - i <= max_displayed_line)
-			less_exit(EXIT_SUCCESS);
+			less_exit();
 	}
 	status_print();
 }
@@ -1186,7 +1189,7 @@ static int64_t getch_nowait(void)
 			goto again;
 		}
 		/* EOF/error (ssh session got killed etc) */
-		less_exit(EXIT_SUCCESS);
+		less_exit();
 	}
 	set_tty_cooked();
 	return key64;
@@ -1377,7 +1380,7 @@ static void colon_process(void)
 		change_file(-1);
 		break;
 	case 'q':
-		less_exit(EXIT_SUCCESS);
+		less_exit();
 		break;
 	case 'x':
 		change_file(0);
@@ -1795,7 +1798,7 @@ static void keypress_process(int keypress)
 		buffer_line(cur_fline);
 		break;
 	case 'q': case 'Q':
-		less_exit(EXIT_SUCCESS);
+		less_exit();
 		break;
 #if ENABLE_FEATURE_LESS_MARKS
 	case 'm':
@@ -1874,7 +1877,8 @@ static void keypress_process(int keypress)
 #if !ENABLE_PLATFORM_MINGW32
 static void sig_catcher(int sig)
 {
-	less_exit(- sig);
+	restore_tty();
+	kill_myself_with_sig(sig); /* does not return */
 }
 #endif
 
