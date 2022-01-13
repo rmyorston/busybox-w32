@@ -852,7 +852,7 @@ static char *nextword(char **s)
 static char nextchar(char **s)
 {
 	char c, *pps;
-
+ again:
 	c = *(*s)++;
 	pps = *s;
 	if (c == '\\')
@@ -863,8 +863,11 @@ static char nextchar(char **s)
 	 */
 	if (c == '\\' && *s == pps) { /* unrecognized \z? */
 		c = *(*s); /* yes, fetch z */
-		if (c)
-			(*s)++; /* advance unless z = NUL */
+		if (c) { /* advance unless z = NUL */
+			(*s)++;
+			if (c == '\n') /* \<newline>? eat it */
+				goto again;
+		}
 	}
 	return c;
 }
@@ -886,7 +889,13 @@ static ALWAYS_INLINE int isalnum_(int c)
 static double my_strtod(char **pp)
 {
 	char *cp = *pp;
-	if (ENABLE_DESKTOP && cp[0] == '0') {
+	return strtod(cp, pp);
+}
+#if ENABLE_DESKTOP
+static double my_strtod_or_hexoct(char **pp)
+{
+	char *cp = *pp;
+	if (cp[0] == '0') {
 		/* Might be hex or octal integer: 0x123abc or 07777 */
 		char c = (cp[1] | 0x20);
 		if (c == 'x' || isdigit(cp[1])) {
@@ -905,6 +914,9 @@ static double my_strtod(char **pp)
 	}
 	return strtod(cp, pp);
 }
+#else
+# define my_strtod_or_hexoct(p) my_strtod(p)
+#endif
 
 /* -------- working with variables (set/get/copy/etc) -------- */
 
@@ -1018,6 +1030,7 @@ static double getvar_i(var *v)
 		if (s && *s) {
 			debug_printf_eval("getvar_i: '%s'->", s);
 			v->number = my_strtod(&s);
+			/* ^^^ hex/oct NOT allowed here! */
 			debug_printf_eval("%f (s:'%s')\n", v->number, s);
 			if (v->type & VF_USER) {
 //TODO: skip_spaces() also skips backslash+newline, is it intended here?
@@ -1129,10 +1142,10 @@ static uint32_t next_token(uint32_t expected)
 		if (*p == '\0') {
 			tc = TC_EOF;
 			debug_printf_parse("%s: token found: TC_EOF\n", __func__);
-		} else if (*p == '\"') {
+		} else if (*p == '"') {
 			/* it's a string */
 			char *s = t_string = ++p;
-			while (*p != '\"') {
+			while (*p != '"') {
 				char *pp;
 				if (*p == '\0' || *p == '\n')
 					syntax_error(EMSG_UNEXP_EOS);
@@ -1170,7 +1183,8 @@ static uint32_t next_token(uint32_t expected)
 		} else if (*p == '.' || isdigit(*p)) {
 			/* it's a number */
 			char *pp = p;
-			t_double = my_strtod(&pp);
+			t_double = my_strtod_or_hexoct(&pp);
+			/* ^^^ awk only allows hex/oct consts in _program_, not in _input_ */
 			p = pp;
 			if (*p == '.')
 				syntax_error(EMSG_UNEXP_TOKEN);
@@ -3528,6 +3542,7 @@ static var *evaluate(node *op, var *res)
 				i = (Ld == 0);
 				break;
 			}
+			debug_printf_eval("COMPARE result: %d\n", (i == 0) ^ (opn & 1));
 			setvar_i(res, (i == 0) ^ (opn & 1));
 			break;
 		}

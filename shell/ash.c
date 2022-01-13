@@ -11655,12 +11655,16 @@ preadfd(void)
 		line_input_state->path_lookup = pathval();
 # endif
 		reinit_unicode_for_ash();
+ again:
 		nr = read_line_input(line_input_state, cmdedit_prompt, buf, IBUFSIZ);
 		if (nr == 0) {
 			/* ^C pressed, "convert" to SIGINT */
 # if !ENABLE_PLATFORM_MINGW32
 			write(STDOUT_FILENO, "^C", 2);
 			raise(SIGINT);
+			/* raise(SIGINT) did not work! (e.g. if SIGINT
+			 * is SIG_INGed on startup, it stays SIG_IGNed)
+			 */
 # else
 			raise_interrupt();
 # endif
@@ -11670,7 +11674,9 @@ preadfd(void)
 				return 1;
 			}
 			exitstatus = 128 + SIGINT;
-			return -1;
+			/* bash behavior on ^C + ignored SIGINT: */
+			write(STDOUT_FILENO, "\n", 1);
+			goto again;
 		}
 		if (nr < 0) {
 			if (errno == 0) {
@@ -12235,7 +12241,7 @@ options(int *login_sh)
 	int val;
 	int c;
 
-	if (login_sh) {
+	if (login_sh != NULL) { /* if we came from startup code */
 		minusc = NULL;
 #if ENABLE_PLATFORM_MINGW32
 		dirarg = NULL;
@@ -12251,7 +12257,7 @@ options(int *login_sh)
 		if (c == '-') {
 			val = 1;
 			if (p[0] == '\0' || LONE_DASH(p)) {
-				if (!login_sh) {
+				if (login_sh == NULL) { /* we came from setcmd() */
 					/* "-" means turn off -x and -v */
 					if (p[0] == '\0')
 						xflag = vflag = 0;
@@ -12264,7 +12270,7 @@ options(int *login_sh)
 		}
 		/* first char was + or - */
 		while ((c = *p++) != '\0') {
-			if (login_sh) {
+			if (login_sh != NULL) { /* if we came from startup code */
 				/* bash 3.2 indeed handles -c CMD and +c CMD the same */
 				if (c == 'c') {
 					minusc = p; /* command is after shell args */
@@ -12306,6 +12312,9 @@ options(int *login_sh)
 					if (strcmp(p, "login") == 0) {
 						*login_sh = 1;
 					}
+/* TODO: --noprofile: e.g. if I want to run emergency shell from sulogin,
+ * I want minimal/no shell init scripts - but it insists on running it as "-ash"...
+ */
 					break;
 				}
 			}

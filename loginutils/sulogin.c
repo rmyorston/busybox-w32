@@ -20,7 +20,8 @@
 //usage:       "[-t N] [TTY]"
 //usage:#define sulogin_full_usage "\n\n"
 //usage:       "Single user login\n"
-//usage:     "\n	-t N	Timeout"
+//usage:     "\n	-p	Start a login shell"
+//usage:     "\n	-t SEC	Timeout"
 
 #include "libbb.h"
 #include <syslog.h>
@@ -28,7 +29,9 @@
 int sulogin_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int sulogin_main(int argc UNUSED_PARAM, char **argv)
 {
+	int tsid;
 	int timeout = 0;
+	unsigned opts;
 	struct passwd *pwd;
 	const char *shell;
 
@@ -43,7 +46,7 @@ int sulogin_main(int argc UNUSED_PARAM, char **argv)
 	logmode = LOGMODE_BOTH;
 	openlog(applet_name, 0, LOG_AUTH);
 
-	getopt32(argv, "t:+", &timeout);
+	opts = getopt32(argv, "pt:+", &timeout);
 	argv += optind;
 
 	if (argv[0]) {
@@ -63,12 +66,13 @@ int sulogin_main(int argc UNUSED_PARAM, char **argv)
 		int r;
 
 		r = ask_and_check_password_extended(pwd, timeout,
-			"Give root password for system maintenance\n"
-			"(or type Control-D for normal startup):"
+			"Give root password for maintenance\n"
+			"(or type Ctrl-D to continue): "
 		);
 		if (r < 0) {
 			/* ^D, ^C, timeout, or read error */
-			bb_simple_info_msg("normal startup");
+			/* util-linux 2.36.1 compat: no message */
+			/*bb_simple_info_msg("normal startup");*/
 			return 0;
 		}
 		if (r > 0) {
@@ -78,7 +82,8 @@ int sulogin_main(int argc UNUSED_PARAM, char **argv)
 		bb_simple_info_msg("Login incorrect");
 	}
 
-	bb_simple_info_msg("starting shell for system maintenance");
+	/* util-linux 2.36.1 compat: no message */
+	/*bb_simple_info_msg("starting shell for system maintenance");*/
 
 	IF_SELINUX(renew_current_security_context());
 
@@ -88,6 +93,33 @@ int sulogin_main(int argc UNUSED_PARAM, char **argv)
 	if (!shell)
 		shell = pwd->pw_shell;
 
-	/* Exec login shell with no additional parameters. Never returns. */
-	exec_login_shell(shell);
+	/* util-linux 2.36.1 compat: cd to root's HOME, set a few envvars */
+	setup_environment(shell, SETUP_ENV_CHANGEENV | SETUP_ENV_CHANGEENV_LOGNAME, pwd);
+	// no SETUP_ENV_CLEARENV
+	// SETUP_ENV_CHANGEENV[+LOGNAME] - set HOME, SHELL, USER,and LOGNAME
+	// no SETUP_ENV_NO_CHDIR - IOW: cd to $HOME
+
+	/* util-linux 2.36.1 compat: steal ctty if we don't have it yet
+	 * (yes, util-linux uses force=1)  */
+	tsid = tcgetsid(STDIN_FILENO);
+	if (tsid < 0 || getpid() != tsid) {
+		if (ioctl(STDIN_FILENO, TIOCSCTTY, /*force:*/ (long)1) != 0) {
+//			bb_perror_msg("TIOCSCTTY1 tsid:%d", tsid);
+			if (setsid() > 0) {
+//				bb_error_msg("done setsid()");
+				/* If it still does not work, ignore */
+				if (ioctl(STDIN_FILENO, TIOCSCTTY, /*force:*/ (long)1) != 0) {
+//					bb_perror_msg("TIOCSCTTY2 tsid:%d", tsid);
+				}
+			}
+		}
+	}
+
+	/*
+	 * Note: login does this (should we do it too?):
+	 */
+	/*signal(SIGINT, SIG_DFL);*/
+
+	/* Exec shell with no additional parameters. Never returns. */
+	exec_shell(shell, /* -p? then shell is login:*/(opts & 1), NULL);
 }
