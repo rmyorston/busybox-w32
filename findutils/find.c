@@ -158,7 +158,7 @@
 //config:config FEATURE_FIND_SAMEFILE
 //config:	bool "Enable -samefile: reference file matching"
 //config:	default y
-//config:	depends on FIND
+//config:	depends on FIND && (PLATFORM_POSIX || FEATURE_EXTRA_FILE_DATA)
 //config:	help
 //config:	Support the 'find -samefile' option for searching by a reference file.
 //config:
