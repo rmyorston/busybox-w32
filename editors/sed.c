@@ -252,7 +252,6 @@ static void cleanup_outname(void)
 }
 
 /* strcpy, replacing "\from" with 'to'. If to is NUL, replacing "\any" with 'any' */
-
 static unsigned parse_escapes(char *dest, const char *string, int len, char from, char to)
 {
 	char *d = dest;
@@ -282,7 +281,7 @@ static unsigned parse_escapes(char *dest, const char *string, int len, char from
 	return d - dest;
 }
 
-static char *copy_parsing_escapes(const char *string, int len)
+static char *copy_parsing_escapes(const char *string, int len, char delim)
 {
 	const char *s;
 	char *dest = xmalloc(len + 1);
@@ -293,9 +292,14 @@ static char *copy_parsing_escapes(const char *string, int len)
 		len = parse_escapes(dest, string, len, s[1], s[0]);
 		string = dest;
 	}
+	if (delim) {
+		/* we additionally unescape any instances of escaped delimiter.
+		 * For example, in 's+9\++X+' the pattern is "9+", not "9\+".
+		 */
+		len = parse_escapes(dest, string, len, delim, delim);
+	}
 	return dest;
 }
-
 
 /*
  * index_of_next_unescaped_regexp_delim - walks left to right through a string
@@ -353,12 +357,14 @@ static int parse_regex_delim(const char *cmdstr, char **match, char **replace)
 
 	/* save the match string */
 	idx = index_of_next_unescaped_regexp_delim(delimiter, cmdstr_ptr);
-	*match = copy_parsing_escapes(cmdstr_ptr, idx);
-
+	*match = copy_parsing_escapes(cmdstr_ptr, idx, delimiter);
 	/* save the replacement string */
 	cmdstr_ptr += idx + 1;
 	idx = index_of_next_unescaped_regexp_delim(- (int)delimiter, cmdstr_ptr);
-	*replace = copy_parsing_escapes(cmdstr_ptr, idx);
+//GNU sed 4.8:
+// echo 789 | sed 's&8&\&&'       - 7&9  ("\&" remained "\&")
+// echo 789 | sed 's1\(8\)1\1\11' - 7119 ("\1\1" become "11")
+	*replace = copy_parsing_escapes(cmdstr_ptr, idx, delimiter != '&' ? delimiter : 0);
 
 	return ((cmdstr_ptr - cmdstr) + idx);
 }
@@ -386,7 +392,7 @@ static int get_address(const char *my_str, int *linenum, regex_t ** regex)
 			delimiter = *++pos;
 		next = index_of_next_unescaped_regexp_delim(delimiter, ++pos);
 		if (next != 0) {
-			temp = copy_parsing_escapes(pos, next);
+			temp = copy_parsing_escapes(pos, next, 0);
 			G.previous_regex_ptr = *regex = xzalloc(sizeof(regex_t));
 			xregcomp(*regex, temp, G.regex_type);
 			free(temp);
@@ -581,7 +587,7 @@ static const char *parse_cmd_args(sed_cmd_t *sed_cmd, const char *cmdstr)
 			cmdstr++;
 		}
 		len = strlen(cmdstr);
-		sed_cmd->string = copy_parsing_escapes(cmdstr, len);
+		sed_cmd->string = copy_parsing_escapes(cmdstr, len, 0);
 		cmdstr += len;
 		/* "\anychar" -> "anychar" */
 		parse_escapes(sed_cmd->string, sed_cmd->string, -1, '\0', '\0');

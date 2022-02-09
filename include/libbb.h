@@ -691,6 +691,7 @@ void xsetgid(gid_t gid) FAST_FUNC;
 void xsetuid(uid_t uid) FAST_FUNC;
 void xsetegid(gid_t egid) FAST_FUNC;
 void xseteuid(uid_t euid) FAST_FUNC;
+int chdir_or_warn(const char *path) FAST_FUNC;
 void xchdir(const char *path) FAST_FUNC;
 void xfchdir(int fd) FAST_FUNC;
 void xchroot(const char *path) FAST_FUNC;
@@ -1776,7 +1777,7 @@ extern void selinux_or_die(void) FAST_FUNC;
 
 
 /* setup_environment:
- * if !SETUP_ENV_NO_CHDIR:
+ * if SETUP_ENV_CHDIR:
  *   if cd(pw->pw_dir): ok: else if SETUP_ENV_TO_TMP: cd(/tmp) else: cd(/) or die
  * if SETUP_ENV_CLEARENV: cd(pw->pw_dir), clear environment, then set
  *   TERM=(old value)
@@ -1784,7 +1785,7 @@ extern void selinux_or_die(void) FAST_FUNC;
  *   PATH=bb_default_[root_]path
  *   HOME=pw->pw_dir
  *   SHELL=shell
- * else if SETUP_ENV_CHANGEENV:
+ * else if SETUP_ENV_CHANGEENV | SETUP_ENV_CHANGEENV_LOGNAME:
  *   if not root (if pw->pw_uid != 0) or if SETUP_ENV_CHANGEENV_LOGNAME:
  *     USER=pw->pw_name, LOGNAME=pw->pw_name
  *   HOME=pw->pw_dir
@@ -1798,7 +1799,7 @@ extern void selinux_or_die(void) FAST_FUNC;
 #define SETUP_ENV_CHANGEENV_LOGNAME (1 << 1)
 #define SETUP_ENV_CLEARENV          (1 << 2)
 #define SETUP_ENV_TO_TMP            (1 << 3)
-#define SETUP_ENV_NO_CHDIR          (1 << 4)
+#define SETUP_ENV_CHDIR             (1 << 4)
 void setup_environment(const char *shell, int flags, const struct passwd *pw) FAST_FUNC;
 void nuke_str(char *str) FAST_FUNC;
 #if ENABLE_FEATURE_SECURETTY && !ENABLE_PAM
@@ -1955,6 +1956,8 @@ enum {
  * (unless fd is in non-blocking mode),
  * subsequent reads will time out after a few milliseconds.
  * Return of -1 means EOF or error (errno == 0 on EOF).
+ * Nonzero errno is not preserved across the call:
+ * if there was no error, errno will be cleared to 0.
  * buffer[0] is used as a counter of buffered chars and must be 0
  * on first call.
  * timeout:
@@ -1963,6 +1966,12 @@ enum {
  * >=0: poll() for TIMEOUT milliseconds, return -1/EAGAIN on timeout
  */
 int64_t read_key(int fd, char *buffer, int timeout) FAST_FUNC;
+#if ENABLE_PLATFORM_MINGW32
+#define safe_read_key(f, b, t) read_key(f, b, t)
+#else
+/* This version loops on EINTR: */
+int64_t safe_read_key(int fd, char *buffer, int timeout) FAST_FUNC;
+#endif
 void read_key_ungets(char *buffer, const char *str, unsigned len) FAST_FUNC;
 
 
@@ -2016,7 +2025,8 @@ enum {
 	USERNAME_COMPLETION = 4 * ENABLE_FEATURE_USERNAME_COMPLETION,
 	VI_MODE          = 8 * ENABLE_FEATURE_EDITING_VI,
 	WITH_PATH_LOOKUP = 0x10,
-	FOR_SHELL        = DO_HISTORY | TAB_COMPLETION | USERNAME_COMPLETION,
+	LI_INTERRUPTIBLE = 0x20,
+	FOR_SHELL        = DO_HISTORY | TAB_COMPLETION | USERNAME_COMPLETION | LI_INTERRUPTIBLE,
 };
 line_input_t *new_line_input_t(int flags) FAST_FUNC;
 #if ENABLE_FEATURE_EDITING_SAVEHISTORY
@@ -2361,7 +2371,7 @@ struct globals;
 /* '*const' ptr makes gcc optimize code much better.
  * Magic prevents ptr_to_globals from going into rodata.
  * If you want to assign a value, use SET_PTR_TO_GLOBALS(x) */
-extern struct globals *const ptr_to_globals;
+extern struct globals *BB_GLOBAL_CONST ptr_to_globals;
 
 #define barrier() asm volatile ("":::"memory")
 

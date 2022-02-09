@@ -328,7 +328,7 @@ int man_main(int argc UNUSED_PARAM, char **argv)
 	}
 #else
 	if (!man_path_list) {
-		static const char *const mpl[] = { "/usr/man", "/usr/share/man", NULL };
+		static const char *const mpl[] ALIGN_PTR = { "/usr/man", "/usr/share/man", NULL };
 		man_path_list = (char**)mpl;
 		/*count_mp = 2; - not used below anyway */
 	}

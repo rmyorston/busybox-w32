@@ -2274,17 +2274,41 @@ static int lineedit_read_key(char *read_key_buffer, int timeout)
 #endif
 
 	fflush_all();
-	while (1) {
+	for (;;) {
 		/* Wait for input. TIMEOUT = -1 makes read_key wait even
 		 * on nonblocking stdin, TIMEOUT = 50 makes sure we won't
 		 * insist on full MB_CUR_MAX buffer to declare input like
 		 * "\xff\n",pause,"ls\n" invalid and thus won't lose "ls".
 		 *
+		 * If LI_INTERRUPTIBLE, return -1 if got EINTR in poll()
+		 * inside read_key, or if bb_got_signal != 0 (IOW: if signal
+		 * arrived before poll() is reached).
+		 *
 		 * Note: read_key sets errno to 0 on success.
 		 */
-		IF_FEATURE_EDITING_WINCH(S.ok_to_redraw = 1;)
-		ic = read_key(STDIN_FILENO, read_key_buffer, timeout);
-		IF_FEATURE_EDITING_WINCH(S.ok_to_redraw = 0;)
+		for (;;) {
+			if ((state->flags & LI_INTERRUPTIBLE) && bb_got_signal) {
+				errno = EINTR;
+				return -1;
+			}
+//FIXME: still races here with signals, but small window to poll() inside read_key
+			IF_FEATURE_EDITING_WINCH(S.ok_to_redraw = 1;)
+			/* errno = 0; - read_key does this itself */
+			ic = read_key(STDIN_FILENO, read_key_buffer, timeout);
+			IF_FEATURE_EDITING_WINCH(S.ok_to_redraw = 0;)
+			if (errno != EINTR)
+				break;
+			if (state->flags & LI_INTERRUPTIBLE) {
+				/* LI_INTERRUPTIBLE bails out on EINTR,
+				 * but nothing really guarantees that bb_got_signal
+				 * is nonzero. Follow the least surprise principle:
+				 */
+				if (bb_got_signal == 0)
+					bb_got_signal = 255;
+				goto ret;
+			}
+		}
+
 		if (errno) {
 #if ENABLE_UNICODE_SUPPORT
 			if (errno == EAGAIN && unicode_idx != 0)
@@ -2352,7 +2376,7 @@ static int lineedit_read_key(char *read_key_buffer, int timeout)
 #endif
 		break;
 	}
-
+ ret:
 	return ic;
 }
 

@@ -428,7 +428,7 @@ static void forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 /* ============ Shell options */
 
 /* If you add/change options hare, update --help text too */
-static const char *const optletters_optnames[] = {
+static const char *const optletters_optnames[] ALIGN_PTR = {
 	"e"   "errexit",
 	"f"   "noglob",
 /* bash has '-o ignoreeof', but no short synonym -I for it */
@@ -845,7 +845,7 @@ raise_exception(int e)
 /*
  * Called when a SIGINT is received.  (If the user specifies
  * that SIGINT is to be trapped or ignored using the trap builtin, then
- * this routine is not called.)  Suppressint is nonzero when interrupts
+ * this routine is not called.)  suppress_int is nonzero when interrupts
  * are held using the INT_OFF macro.  (The test for iflag is just
  * defensive programming.)
  */
@@ -882,13 +882,12 @@ raise_interrupt(void)
 } while (0)
 #endif
 
-static IF_ASH_OPTIMIZE_FOR_SIZE(inline) void
+static IF_NOT_ASH_OPTIMIZE_FOR_SIZE(inline) void
 int_on(void)
 {
 	barrier();
-	if (--suppress_int == 0 && pending_int) {
+	if (--suppress_int == 0 && pending_int)
 		raise_interrupt();
-	}
 }
 #if DEBUG_INTONOFF
 # define INT_ON do { \
@@ -898,7 +897,7 @@ int_on(void)
 #else
 # define INT_ON int_on()
 #endif
-static IF_ASH_OPTIMIZE_FOR_SIZE(inline) void
+static IF_NOT_ASH_OPTIMIZE_FOR_SIZE(inline) void
 force_int_on(void)
 {
 	barrier();
@@ -4143,7 +4142,9 @@ signal_handler(int signo)
 		if (!trap[SIGCHLD])
 			return;
 	}
-
+#if ENABLE_FEATURE_EDITING
+	bb_got_signal = signo; /* for read_line_input: "we got a signal" */
+#endif
 	gotsig[signo - 1] = 1;
 	pending_sig = signo;
 
@@ -11656,32 +11657,55 @@ preadfd(void)
 # endif
 		reinit_unicode_for_ash();
  again:
+		/* For shell, LI_INTERRUPTIBLE is set:
+		 * read_line_input will abort on either
+		 * getting EINTR in poll(), or if it sees bb_got_signal != 0
+		 * (IOW: if signal arrives before poll() is reached).
+		 * Interactive testcases:
+		 * (while kill -INT $$; do sleep 1; done) &
+		 * #^^^ prints ^C, prints prompt, repeats
+		 * trap 'echo I' int; (while kill -INT $$; do sleep 1; done) &
+		 * #^^^ prints ^C, prints "I", prints prompt, repeats
+		 * trap 'echo T' term; (while kill $$; do sleep 1; done) &
+		 * #^^^ prints "T", prints prompt, repeats
+		 * #(bash 5.0.17 exits after first "T", looks like a bug)
+		 */
+		bb_got_signal = 0;
+		INT_OFF; /* no longjmp'ing out of read_line_input please */
 		nr = read_line_input(line_input_state, cmdedit_prompt, buf, IBUFSIZ);
+		if (bb_got_signal == SIGINT)
+			write(STDOUT_FILENO, "^C\n", 3);
+		INT_ON; /* here non-blocked SIGINT will longjmp */
 		if (nr == 0) {
 			/* ^C pressed, "convert" to SIGINT */
 # if !ENABLE_PLATFORM_MINGW32
-			write(STDOUT_FILENO, "^C", 2);
-			raise(SIGINT);
+			write(STDOUT_FILENO, "^C\n", 3);
+			raise(SIGINT); /* here non-blocked SIGINT will longjmp */
 			/* raise(SIGINT) did not work! (e.g. if SIGINT
-			 * is SIG_INGed on startup, it stays SIG_IGNed)
+			 * is SIG_IGNed on startup, it stays SIG_IGNed)
 			 */
 # else
 			raise_interrupt();
 # endif
 			if (trap[SIGINT]) {
+ empty_line_input:
 				buf[0] = '\n';
 				buf[1] = '\0';
 				return 1;
 			}
 			exitstatus = 128 + SIGINT;
 			/* bash behavior on ^C + ignored SIGINT: */
-			write(STDOUT_FILENO, "\n", 1);
 			goto again;
 		}
 		if (nr < 0) {
 			if (errno == 0) {
-				/* Ctrl+D pressed */
+				/* ^D pressed */
 				nr = 0;
+			}
+			else if (errno == EINTR) { /* got signal? */
+				if (bb_got_signal != SIGINT)
+					write(STDOUT_FILENO, "\n", 1);
+				goto empty_line_input;
 			}
 # if ENABLE_ASH_IDLE_TIMEOUT
 			else if (errno == EAGAIN && timeout > 0) {

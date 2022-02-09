@@ -20,7 +20,7 @@
 #define extr128_32 pextrd
 //#define extr128_32 extractps	# not shorter
 
-	.section	.text.sha1_process_block64_shaNI,"ax",@progbits
+	.section	.text.sha1_process_block64_shaNI, "ax", @progbits
 	.globl	sha1_process_block64_shaNI
 	.hidden	sha1_process_block64_shaNI
 	.type	sha1_process_block64_shaNI, @function
@@ -32,45 +32,42 @@
 #define MSG1		%xmm4
 #define MSG2		%xmm5
 #define MSG3		%xmm6
-#define SHUF_MASK	%xmm7
 
-	.balign	8	# allow decoders to fetch at least 3 first insns
+	.balign	8	# allow decoders to fetch at least 2 first insns
 sha1_process_block64_shaNI:
-	pushl		%ebp
-	movl		%esp, %ebp
-	subl		$32, %esp
-	andl		$~0xF, %esp	# paddd needs aligned memory operand
-
 	/* load initial hash values */
-	xor128		E0, E0
 	movu128		76(%eax), ABCD
+	xor128		E0, E0
 	pinsrd		$3, 76+4*4(%eax), E0	# load to uppermost 32-bit word
 	shuf128_32	$0x1B, ABCD, ABCD	# DCBA -> ABCD
 
-	mova128		PSHUFFLE_BYTE_FLIP_MASK, SHUF_MASK
+	mova128		PSHUFFLE_BYTE_FLIP_MASK, %xmm7
+
+	movu128		0*16(%eax), MSG0
+	pshufb		%xmm7, MSG0
+	movu128		1*16(%eax), MSG1
+	pshufb		%xmm7, MSG1
+	movu128		2*16(%eax), MSG2
+	pshufb		%xmm7, MSG2
+	movu128		3*16(%eax), MSG3
+	pshufb		%xmm7, MSG3
 
 	/* Save hash values for addition after rounds */
-	movu128		E0, 16(%esp)
-	movu128		ABCD, (%esp)
+	mova128		E0, %xmm7
+	/*mova128	ABCD, %xmm8 - NOPE, 32bit has no xmm8 */
 
 	/* Rounds 0-3 */
-	movu128		0*16(%eax), MSG0
-	pshufb		SHUF_MASK, MSG0
 		paddd		MSG0, E0
 		mova128		ABCD, E1
 		sha1rnds4	$0, E0, ABCD
 
 	/* Rounds 4-7 */
-	movu128		1*16(%eax), MSG1
-	pshufb		SHUF_MASK, MSG1
 		sha1nexte	MSG1, E1
 		mova128		ABCD, E0
 		sha1rnds4	$0, E1, ABCD
 	sha1msg1	MSG1, MSG0
 
 	/* Rounds 8-11 */
-	movu128		2*16(%eax), MSG2
-	pshufb		SHUF_MASK, MSG2
 		sha1nexte	MSG2, E0
 		mova128		ABCD, E1
 		sha1rnds4	$0, E0, ABCD
@@ -78,8 +75,6 @@ sha1_process_block64_shaNI:
 	xor128		MSG2, MSG0
 
 	/* Rounds 12-15 */
-	movu128		3*16(%eax), MSG3
-	pshufb		SHUF_MASK, MSG3
 		sha1nexte	MSG3, E1
 		mova128		ABCD, E0
 	sha1msg2	MSG3, MSG0
@@ -210,21 +205,21 @@ sha1_process_block64_shaNI:
 		sha1rnds4	$3, E1, ABCD
 
 	/* Add current hash values with previously saved */
-	sha1nexte	16(%esp), E0
-	paddd		(%esp), ABCD
+	sha1nexte	%xmm7, E0
+	/*paddd		%xmm8, ABCD - 32-bit mode has no xmm8 */
+	movu128		76(%eax), %xmm7	# get original ABCD (not shuffled)...
 
 	/* Write hash values back in the correct order */
 	shuf128_32	$0x1B, ABCD, ABCD
+	paddd		%xmm7, ABCD	# ...add it to final ABCD
 	movu128		ABCD, 76(%eax)
 	extr128_32	$3, E0, 76+4*4(%eax)
 
-	movl	%ebp, %esp
-	popl	%ebp
 	ret
 	.size	sha1_process_block64_shaNI, .-sha1_process_block64_shaNI
 
-.section	.rodata.cst16.PSHUFFLE_BYTE_FLIP_MASK, "aM", @progbits, 16
-.align 16
+	.section	.rodata.cst16.PSHUFFLE_BYTE_FLIP_MASK, "aM", @progbits, 16
+	.balign 16
 PSHUFFLE_BYTE_FLIP_MASK:
 	.octa 0x000102030405060708090a0b0c0d0e0f
 
