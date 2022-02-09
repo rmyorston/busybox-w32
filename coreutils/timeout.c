@@ -42,7 +42,8 @@
 //usage:       "[-s SIG] [-k KILL_SECS] SECS PROG ARGS"
 //usage:#define timeout_full_usage "\n\n"
 //usage:       "Run PROG. Send SIG to it if it is not gone in SECS seconds.\n"
-//usage:       "Default SIG: TERM.\n"
+//usage:       IF_NOT_PLATFORM_MINGW32("Default SIG: TERM.")
+//usage:       IF_PLATFORM_MINGW32("Default SIG: TERM.\n")
 //usage:       "If it still exists in KILL_SECS seconds, send KILL.\n"
 
 #include "libbb.h"
