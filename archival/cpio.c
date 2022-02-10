@@ -49,7 +49,7 @@
 //config:config FEATURE_CPIO_RENUMBER_INODES
 //config:	bool "Support --renumber-inodes like GNU cpio"
 //config:	default y
-//config:	depends on FEATURE_CPIO_O && LONG_OPTS
+//config:	depends on FEATURE_CPIO_O && LONG_OPTS && (PLATFORM_POSIX || FEATURE_EXTRA_FILE_DATA)
 //config:	help
 //config:	Optionally renumber inodes when creating archives.
 
@@ -275,6 +275,7 @@ static NOINLINE int cpio_o(void)
 			if (!(S_ISLNK(st.st_mode) || S_ISREG(st.st_mode)))
 				st.st_size = 0; /* paranoia */
 
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
 			/* Store hardlinks for later processing, dont output them */
 			if (!S_ISDIR(st.st_mode) && st.st_nlink > 1) {
 				struct name_s *n;
@@ -310,6 +311,7 @@ static NOINLINE int cpio_o(void)
 				free(line);
 				continue;
 			}
+#endif
 #if ENABLE_FEATURE_CPIO_RENUMBER_INODES
 			else if (option_mask32 & OPT_RENUMBER_INODES) {
 				st.st_ino = ++G.next_inode;
@@ -345,9 +347,11 @@ static NOINLINE int cpio_o(void)
 			}
 		}
 
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
 #if ENABLE_FEATURE_CPIO_IGNORE_DEVNO
 		if (option_mask32 & OPT_IGNORE_DEVNO)
 			st.st_dev = st.st_rdev = 0;
+#endif
 #endif
 
 		bytes += printf("070701"

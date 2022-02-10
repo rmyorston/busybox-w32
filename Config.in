@@ -481,7 +481,7 @@ config FEATURE_IMPROVED_COLOUR_MAPPING
 	Windows console colours.
 
 config FEATURE_EXTRA_FILE_DATA
-	bool "Read additional file metadata (2.1 kb)"
+	bool "Read additional file metadata (2.7 kb)"
 	default y
 	depends on PLATFORM_MINGW32
 	help
