@@ -8899,9 +8899,13 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 # else
 		if (APPLET_IS_NOEXEC(applet_no)) {
 # endif
+#if ENABLE_PLATFORM_MINGW32 && !defined(_UCRT)
+			/* If building for UCRT move this up into shellexec() to
+			 * work around a bug. */
 			clearenv();
 			while (*envp)
 				putenv(*envp++);
+#endif
 			popredir(/*drop:*/ 1);
 			run_noexec_applet_and_exit(applet_no, cmd, argv);
 		}
@@ -8971,6 +8975,14 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 	int applet_no = -1; /* used only by FEATURE_SH_STANDALONE */
 
 	envp = listvars(VEXPORT, VUNSET, /*strlist:*/ NULL, /*end:*/ NULL);
+#if ENABLE_PLATFORM_MINGW32 && defined(_UCRT)
+	/* Avoid UCRT bug by updating parent's environment and passing a
+	 * NULL environment pointer to execve(). */
+	clearenv();
+	while (*envp)
+		putenv(*envp++);
+	envp = NULL;
+#endif
 #if !ENABLE_PLATFORM_MINGW32
 	if (strchr(prog, '/') != NULL
 #else
