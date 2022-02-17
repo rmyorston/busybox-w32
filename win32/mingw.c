@@ -488,9 +488,14 @@ static uid_t file_owner(HANDLE fh)
 	uid_t uid = 0;
 	DWORD *ptr;
 	unsigned char prefix[] = {
-			0x01, 0x05, 0x00, 0x00,
-			0x00, 0x00, 0x00, 0x05,
-			0x15, 0x00, 0x00, 0x00
+		0x01, 0x05, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x05,
+		0x15, 0x00, 0x00, 0x00
+	};
+	unsigned char nullsid[] = {
+		0x01, 0x01, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x01,
+		0x00, 0x00, 0x00, 0x00
 	};
 
 	/*  get SID of current user */
@@ -520,8 +525,9 @@ static uid_t file_owner(HANDLE fh)
 
 	if (EqualSid(pSidOwner, user->User.Sid)) {
 		uid = DEFAULT_UID;
-	}
-	else if (memcmp(pSidOwner, prefix, sizeof(prefix)) == 0) {
+	} else if (memcmp(pSidOwner, nullsid, sizeof(nullsid)) == 0) {
+		uid = DEFAULT_UID;
+	} else if (memcmp(pSidOwner, prefix, sizeof(prefix)) == 0) {
 		/* for local or domain users use the RID as uid */
 		ptr = (DWORD *)pSidOwner;
 		if (ptr[6] >= 500 && ptr[6] < DEFAULT_UID)
