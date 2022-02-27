@@ -275,7 +275,7 @@ static NOINLINE int cpio_o(void)
 			if (!(S_ISLNK(st.st_mode) || S_ISREG(st.st_mode)))
 				st.st_size = 0; /* paranoia */
 
-#if ENABLE_FEATURE_EXTRA_FILE_DATA
+#if ENABLE_PLATFORM_POSIX || ENABLE_FEATURE_EXTRA_FILE_DATA
 			/* Store hardlinks for later processing, dont output them */
 			if (!S_ISDIR(st.st_mode) && st.st_nlink > 1) {
 				struct name_s *n;
@@ -347,7 +347,7 @@ static NOINLINE int cpio_o(void)
 			}
 		}
 
-#if ENABLE_FEATURE_EXTRA_FILE_DATA
+#if ENABLE_PLATFORM_POSIX || ENABLE_FEATURE_EXTRA_FILE_DATA
 #if ENABLE_FEATURE_CPIO_IGNORE_DEVNO
 		if (option_mask32 & OPT_IGNORE_DEVNO)
 			st.st_dev = st.st_rdev = 0;
