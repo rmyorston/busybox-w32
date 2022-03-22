@@ -15764,7 +15764,10 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 
 #if ENABLE_PLATFORM_MINGW32
 		if (!dirarg) {
-			chdir(xgetpwuid(getuid())->pw_dir);
+			hp = lookupvar("HOME");
+			if (hp == NULL || *hp == '\0')
+				hp = xgetpwuid(getuid())->pw_dir;
+			chdir(hp);
 			setpwd(NULL, 0);
 		}
 #endif
