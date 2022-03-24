@@ -10554,7 +10554,7 @@ evalpipe(union node *n, int flags)
 }
 
 /* setinteractive needs this forward reference */
-#if EDITING_HAS_get_exe_name
+#if ENABLE_FEATURE_EDITING
 static const char *get_builtin_name(int i) FAST_FUNC;
 #endif
 
@@ -10591,9 +10591,8 @@ setinteractive(int on)
 #if ENABLE_FEATURE_EDITING
 		if (!line_input_state) {
 			line_input_state = new_line_input_t(FOR_SHELL | WITH_PATH_LOOKUP);
-# if EDITING_HAS_get_exe_name
 			line_input_state->get_exe_name = get_builtin_name;
-# endif
+			line_input_state->sh_get_var = lookupvar;
 		}
 #endif
 	}
@@ -11096,7 +11095,7 @@ find_builtin(const char *name)
 	return bp;
 }
 
-#if EDITING_HAS_get_exe_name
+#if ENABLE_FEATURE_EDITING
 static const char * FAST_FUNC
 get_builtin_name(int i)
 {
