@@ -7163,9 +7163,7 @@ exptilde(char *startp, int flag)
 		home = lookupvar("HOME");
 	} else {
 		pw = getpwnam(name);
-		if (pw == NULL)
-			goto lose;
-		home = pw->pw_dir;
+		home = pw ? pw->pw_dir : NULL;
 	}
 	*p = c;
 	if (!home)
@@ -7724,6 +7722,10 @@ subevalvar(char *start, char *str, int strloc,
 				*repl = '\0';
 				break;
 			}
+			if ((unsigned char)*repl == CTLENDVAR) { /* ${v/pattern} (no trailing /, no repl) */
+				repl = NULL;
+				break;
+			}
 			/* Handle escaped slashes, e.g. "${v/\//_}" (they are CTLESC'ed by this point) */
 			if ((unsigned char)*repl == CTLESC && repl[1])
 				repl++;
@@ -7830,7 +7832,13 @@ subevalvar(char *start, char *str, int strloc,
 			len = orig_len - pos;
 
 		if (!quotes) {
-			loc = mempcpy(startp, startp + pos, len);
+			/* want: loc = mempcpy(startp, startp + pos, len)
+			 * but it does not allow overlapping arguments */
+			loc = startp;
+			while (--len >= 0) {
+				*loc = loc[pos];
+				loc++;
+			}
 		} else {
 			for (vstr = startp; pos != 0; pos--) {
 				if ((unsigned char)*vstr == CTLESC)

@@ -4,7 +4,7 @@
 // We use shorter insns, even though they are for "wrong"
 // data type (fp, not int).
 // For Intel, there is no penalty for doing it at all
-// (CPUs which do have such penalty do not support SHA1 insns).
+// (CPUs which do have such penalty do not support SHA insns).
 // For AMD, the penalty is one extra cycle
 // (allegedly: I failed to find measurable difference).
 
@@ -19,6 +19,11 @@
 
 #define extr128_32 pextrd
 //#define extr128_32 extractps	# not shorter
+
+// pshufb is a SSSE3 insn.
+// pinsrd, pextrd, extractps are SSE4.1 insns.
+// We do not check SSSE3/SSE4.1 in cpuid,
+// all SHA-capable CPUs support them as well.
 
 	.section	.text.sha1_process_block64_shaNI, "ax", @progbits
 	.globl	sha1_process_block64_shaNI
@@ -217,8 +222,8 @@ sha1_process_block64_shaNI:
 	.size	sha1_process_block64_shaNI, .-sha1_process_block64_shaNI
 
 	.section	.rodata.cst16.PSHUFFLE_BYTE_FLIP_MASK, "aM", @progbits, 16
-	.balign 16
+	.balign	16
 PSHUFFLE_BYTE_FLIP_MASK:
-	.octa 0x000102030405060708090a0b0c0d0e0f
+	.octa	0x000102030405060708090a0b0c0d0e0f
 
 #endif
