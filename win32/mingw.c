@@ -45,6 +45,7 @@ unsigned int _CRT_fmode = _O_BINARY;
 #endif
 
 smallint bb_got_signal;
+static mode_t current_umask = DEFAULT_UMASK;
 
 #pragma GCC optimize ("no-if-conversion")
 int err_win_to_posix(void)
@@ -346,11 +347,11 @@ static inline mode_t file_attr_to_st_mode(DWORD attr)
 	if (attr & FILE_ATTRIBUTE_DIRECTORY)
 		fMode |= S_IFDIR|S_IXUSR|S_IXGRP|S_IXOTH;
 	else if (attr & FILE_ATTRIBUTE_DEVICE)
-		fMode |= S_IFCHR|S_IWOTH;
+		fMode |= S_IFCHR|S_IWUSR|S_IWGRP|S_IWOTH;
 	else
 		fMode |= S_IFREG;
-	if (!(attr & FILE_ATTRIBUTE_READONLY))
-		fMode |= S_IWUSR|S_IWGRP;
+	if (!(attr & (FILE_ATTRIBUTE_READONLY|FILE_ATTRIBUTE_DEVICE)))
+		fMode |= (S_IWUSR|S_IWGRP|S_IWOTH) & ~(current_umask & 0022);
 	return fMode;
 }
 
@@ -412,11 +413,10 @@ static inline int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fd
 #undef umask
 mode_t mingw_umask(mode_t new_mode)
 {
-	static mode_t old_mode = DEFAULT_UMASK;
 	mode_t tmp_mode;
 
-	tmp_mode = old_mode;
-	old_mode = new_mode;
+	tmp_mode = current_umask;
+	current_umask = new_mode & 0777;
 
 	umask((new_mode & S_IWUSR) ? _S_IWRITE : 0);
 
@@ -720,7 +720,8 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 		if ( _fstati64(fd, &buf64) != 0 )  {
 			return -1;
 		}
-		buf->st_mode = S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH;
+		buf->st_mode = (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)
+							& ~(current_umask & 0022);
 		buf->st_attr = FILE_ATTRIBUTE_NORMAL;
 		buf->st_size = buf64.st_size;
 		buf->st_atim.tv_sec = buf64.st_atime;
@@ -733,7 +734,7 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
 		buf->st_dev = 0;
 		buf->st_ino = 0;
-		buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : 1;
+		buf->st_nlink = 1;
 #endif
 		goto success;
 	}

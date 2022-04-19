@@ -1116,7 +1116,7 @@ void FAST_FUNC run_applet_no_and_exit(int applet_no, const char *name, char **ar
 
 	vmask = getenv("BB_UMASK");
 	if (vmask && sscanf(vmask, "%o", &mask) == 1)
-		umask((mode_t)(mask&0777));
+		umask((mode_t)mask);
 #  else
 	argc = string_array_len(argv);
 #  endif
