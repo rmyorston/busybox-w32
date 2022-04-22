@@ -927,6 +927,19 @@ int gettimeofday(struct timeval *tv, void *tz UNUSED_PARAM)
 	return 0;
 }
 
+int clock_gettime(clockid_t clockid, struct timespec *tp)
+{
+	FILETIME ft;
+
+	if (clockid != CLOCK_REALTIME) {
+		errno = ENOSYS;
+		return -1;
+	}
+	GetSystemTimeAsFileTime(&ft);
+	*tp = filetime_to_timespec(&ft);
+	return 0;
+}
+
 int pipe(int filedes[2])
 {
 	if (_pipe(filedes, PIPE_BUF, 0) < 0)

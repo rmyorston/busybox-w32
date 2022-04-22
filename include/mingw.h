@@ -276,6 +276,7 @@ struct timespec {
 time_t timegm(struct tm *tm);
 
 int nanosleep(const struct timespec *req, struct timespec *rem);
+int clock_gettime(clockid_t clockid, struct timespec *tp);
 
 /*
  * sys/stat.h
