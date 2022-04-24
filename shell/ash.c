@@ -9454,7 +9454,7 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 		int j = entry.u.index;
 		char *p;
 #if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-		if (j == INT_MIN) {
+		if (j < -1) {
 			p = (char *)bb_basename(command);
 			goto describe;
 		}
