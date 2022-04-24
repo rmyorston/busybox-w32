@@ -2,6 +2,7 @@
 #include <tlhelp32.h>
 #include <psapi.h>
 #include "lazyload.h"
+#include "NUM_APPLETS.h"
 
 pid_t waitpid(pid_t pid, int *status, int options)
 #if ENABLE_TIME
@@ -282,7 +283,7 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 	return ret;
 }
 
-#if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
+#if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
 static intptr_t
 mingw_spawn_applet(int mode,
 		   char *const *argv,
@@ -318,19 +319,18 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
 	new_argv[nopts+1] = (char *)prog; /* pass absolute path */
 	memcpy(new_argv+nopts+2, argv+1, sizeof(*argv)*argc);
 
-	fullpath = alloc_system_drive(interp.path);
-	if (add_win32_extension(fullpath) || file_is_executable(fullpath)) {
-		new_argv[0] = fullpath;
-		ret = mingw_spawn_interpreter(mode, new_argv[0], new_argv, envp, level);
-	} else
-#if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
+#if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
 	if (find_applet_by_name(interp.name) >= 0) {
 		/* the fake path indicates the index of the script */
 		new_argv[0] = fullpath = xasprintf("%d:/%s", nopts+1, interp.name);
 		ret = mingw_spawn_applet(mode, new_argv, envp);
 	} else
 #endif
-	{
+	if ((fullpath = alloc_system_drive(interp.path)) &&
+			(add_win32_extension(fullpath) || file_is_executable(fullpath))) {
+		new_argv[0] = fullpath;
+		ret = mingw_spawn_interpreter(mode, new_argv[0], new_argv, envp, level);
+	} else {
 		errno = ENOENT;
 		ret = -1;
 	}
@@ -346,7 +346,7 @@ mingw_spawnvp(int mode, const char *cmd, char *const *argv)
 	char *prog;
 	intptr_t ret;
 
-#if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
+#if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
 	if (find_applet_by_name(cmd) >= 0)
 		return mingw_spawn_applet(mode, argv, NULL);
 	else
@@ -356,7 +356,7 @@ mingw_spawnvp(int mode, const char *cmd, char *const *argv)
 		add_win32_extension(path);
 		ret = mingw_spawn_interpreter(mode, path, argv, NULL, 0);
 		free(path);
-#if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
+#if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
 		if (ret == -1 && unix_path(cmd) &&
 				find_applet_by_name(bb_basename(cmd)) >= 0) {
 			return mingw_spawn_applet(mode, argv, NULL);
