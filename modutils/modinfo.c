@@ -38,17 +38,18 @@ static const char *const shortcuts[] ALIGN_PTR = {
 
 enum {
 	OPT_0 = (1 << 0), /* \0 as separator */
-	OPT_F = (1 << 1), /* field name */
+	OPT_k = (1 << 1), /* kernel version */
+	OPT_F = (1 << 2), /* field name */
 	/* first bits are for -nadlp options, the rest are for
 	 * fields not selectable with "shortcut" options
 	 */
-	OPT_n = (1 << 2),
-	OPT_TAGS = ((1 << ARRAY_SIZE(shortcuts)) - 1) << 2,
+	OPT_n = (1 << 3),
+	OPT_TAGS = ((1 << ARRAY_SIZE(shortcuts)) - 1) << 3,
 };
 
 static void display(const char *data, const char *pattern)
 {
-	int flag = option_mask32 >> 1; /* shift out -0 bit */
+	int flag = option_mask32 >> 2; /* shift out -0 and -k bits */
 	if (flag & (flag-1)) {
 		/* more than one field to show: print "FIELD:" pfx */
 		int n = printf("%s:", pattern);
@@ -82,7 +83,8 @@ static void modinfo(const char *path, const char *version,
 		}
 	}
 
-	for (j = 1; (1<<j) & (OPT_TAGS|OPT_F); j++) {
+	/* skip initial -0 and -k option bits */
+	for (j = 2; (1<<j) & (OPT_TAGS|OPT_F); j++) {
 		const char *pattern;
 
 		if (!((1<<j) & tags))
@@ -90,7 +92,7 @@ static void modinfo(const char *path, const char *version,
 
 		pattern = field;
 		if ((1<<j) & OPT_TAGS)
-			pattern = shortcuts[j-2];
+			pattern = shortcuts[j-3];
 
 		if (strcmp(pattern, shortcuts[0]) == 0) {
 			/* "-n" or "-F filename" */
@@ -123,7 +125,7 @@ static void modinfo(const char *path, const char *version,
 }
 
 //usage:#define modinfo_trivial_usage
-//usage:       "[-adlpn0] [-F keyword] MODULE"
+//usage:       "[-adlpn0] [-F keyword] [-k kernel] MODULE"
 //usage:#define modinfo_full_usage "\n\n"
 //usage:       "	-a		Shortcut for '-F author'"
 //usage:     "\n	-d		Shortcut for '-F description'"
@@ -131,6 +133,7 @@ static void modinfo(const char *path, const char *version,
 //usage:     "\n	-p		Shortcut for '-F parm'"
 ////usage:     "\n	-n		Shortcut for '-F filename'"
 //usage:     "\n	-F keyword	Keyword to look for"
+//usage:     "\n	-k kernel	kernel version"
 //usage:     "\n	-0		NUL terminated output"
 //usage:#define modinfo_example_usage
 //usage:       "$ modinfo -F vermagic loop\n"
@@ -139,6 +142,7 @@ int modinfo_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int modinfo_main(int argc UNUSED_PARAM, char **argv)
 {
 	const char *field;
+	const char *kernel;
 	char name[MODULE_NAME_LEN];
 	struct utsname uts;
 	parser_t *parser;
@@ -147,15 +151,17 @@ int modinfo_main(int argc UNUSED_PARAM, char **argv)
 	unsigned i;
 
 	field = NULL;
-	opts = getopt32(argv, "^" "0F:nadlp" "\0" "-1"/*minimum one arg*/, &field);
+	uname(&uts);
+	kernel = uts.release;
+	opts = getopt32(argv, "^" "0k:F:nadlp" "\0" "-1"/*minimum one arg*/, &kernel, &field);
 	/* If no field selected, show all */
 	if (!(opts & (OPT_TAGS|OPT_F)))
 		option_mask32 |= OPT_TAGS;
+
 	argv += optind;
 
-	uname(&uts);
 	parser = config_open2(
-		xasprintf("%s/%s/%s", CONFIG_DEFAULT_MODULES_DIR, uts.release, CONFIG_DEFAULT_DEPMOD_FILE),
+		xasprintf("%s/%s/%s", CONFIG_DEFAULT_MODULES_DIR, kernel, CONFIG_DEFAULT_DEPMOD_FILE),
 		xfopen_for_read
 	);
 
@@ -167,7 +173,7 @@ int modinfo_main(int argc UNUSED_PARAM, char **argv)
 		filename2modname(bb_basename(tokens[0]), name);
 		for (i = 0; argv[i]; i++) {
 			if (fnmatch(argv[i], name, 0) == 0) {
-				modinfo(tokens[0], uts.release, field);
+				modinfo(tokens[0], kernel, field);
 				argv[i] = (char *) "";
 			}
 		}
@@ -177,7 +183,7 @@ int modinfo_main(int argc UNUSED_PARAM, char **argv)
 
 	for (i = 0; argv[i]; i++) {
 		if (argv[i][0]) {
-			modinfo(argv[i], uts.release, field);
+			modinfo(argv[i], kernel, field);
 		}
 	}
 
