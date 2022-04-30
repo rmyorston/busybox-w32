@@ -2117,10 +2117,15 @@ int has_path(const char *file)
 				has_dos_drive_prefix(file);
 }
 
-/* Test whether a path is relative to a known location (usually the
+/*
+ * Test whether a path is relative to a known location (usually the
  * current working directory or a symlink).  On Unix this is a path
- * that doesn't start with a slash but on Windows we also need to
- * exclude paths that start with a backslash or a drive letter. */
+ * that doesn't start with a slash but on Windows it also includes
+ * paths that don't start with a backslash or a drive letter.
+ *
+ * Paths of the form /dir/file or c:dir/file aren't relative by this
+ * definition.
+ */
 int is_relative_path(const char *path)
 {
 	return !is_dir_sep(path[0]) && !has_dos_drive_prefix(path);
