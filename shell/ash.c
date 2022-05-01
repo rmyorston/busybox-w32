@@ -8904,6 +8904,16 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 				(fs && fs->fpid == FS_SHELLEXEC)) {
 			/* mingw-w64's getopt() uses __argv[0] as the program name */
 			__argv[0] = (char *)cmd;
+			/* 'which' wants to know if it was invoked from a standalone
+			 * shell.  Use the spare element of argv to add a flag, but
+			 * not if the first argument is '--help', that's a special
+			 * case. */
+			if (strcmp(argv[0], "which") == 0 &&
+					(argv[1] == NULL || strcmp(argv[1], "--help") != 0)) {
+				--argv;
+				argv[0] = argv[1];
+				argv[1] = (char *)"-s";
+			}
 # else
 		if (APPLET_IS_NOEXEC(applet_no)) {
 # endif
@@ -9456,7 +9466,12 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 #if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
 		if (j < -1) {
 			p = (char *)bb_basename(command);
-			goto describe;
+			if (describe_command_verbose) {
+				out1fmt(" is a builtin applet");
+			} else {
+				out1str(applet_to_exe(p));
+			}
+			break;
 		}
 #endif
 		if (j < 0) {
@@ -9474,7 +9489,6 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 #if ENABLE_PLATFORM_MINGW32
 		add_win32_extension(p);
 		bs_to_slash(p);
- IF_FEATURE_SH_STANDALONE(describe:)
 #endif
 		if (describe_command_verbose) {
 			out1fmt(" is %s", p);

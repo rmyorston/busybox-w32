@@ -2130,3 +2130,24 @@ int is_relative_path(const char *path)
 {
 	return !is_dir_sep(path[0]) && !has_dos_drive_prefix(path);
 }
+
+#if ENABLE_FEATURE_SH_STANDALONE
+/*
+ * In standalone shell mode it's possible there's no binary file
+ * corresponding to an applet name.  There's one case where it's
+ * easy to determine the corresponding binary:  if the applet name
+ * matches the file name from bb_busybox_exec_path (with appropriate
+ * allowance for 'busybox*.exe').
+ */
+const char *applet_to_exe(const char *name)
+{
+	const char *exefile = bb_basename(bb_busybox_exec_path);
+	const char *exesuff = is_prefixed_with_case(exefile, name);
+
+	if (exesuff && (strcmp(name, "busybox") == 0 ||
+						strcasecmp(exesuff, ".exe") == 0)) {
+		return bb_busybox_exec_path;
+	}
+	return name;
+}
+#endif

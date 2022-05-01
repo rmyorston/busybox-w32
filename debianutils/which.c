@@ -12,7 +12,12 @@
 //config:	which is used to find programs in your PATH and
 //config:	print out their pathnames.
 
-//applet:IF_WHICH(APPLET_NOFORK(which, which, BB_DIR_USR_BIN, BB_SUID_DROP, which))
+// NOTE: For WIN32 this applet is NOEXEC as alloc_system_drive() and
+//       find_executable() both allocate memory.  And find_executable()
+//       calls alloc_system_drive().
+
+//applet:IF_PLATFORM_MINGW32(IF_WHICH(APPLET_NOEXEC(which, which, BB_DIR_USR_BIN, BB_SUID_DROP, which)))
+//applet:IF_PLATFORM_POSIX(IF_WHICH(APPLET_NOFORK(which, which, BB_DIR_USR_BIN, BB_SUID_DROP, which)))
 
 //kbuild:lib-$(CONFIG_WHICH) += which.o
 
@@ -28,6 +33,13 @@
 
 #include "libbb.h"
 
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
+enum {
+	OPT_a = (1 << 0),
+	OPT_s = (1 << 1)
+};
+#endif
+
 int which_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int which_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -36,9 +48,7 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 	/* This sizeof(): bb_default_root_path is shorter than BB_PATH_ROOT_PATH */
 	char buf[sizeof(BB_PATH_ROOT_PATH)];
 #if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-	/* If we were run as 'which.exe' skip standalone shell behaviour */
-	int sh_standalone =
-			is_suffixed_with_case(bb_busybox_exec_path, "which.exe") == NULL;
+	int sh_standalone;
 #endif
 
 	env_path = getenv("PATH");
@@ -46,28 +56,25 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 		/* env_path must be writable, and must not alloc, so... */
 		env_path = strcpy(buf, bb_default_root_path);
 
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
+	/* '-s' option indicates we were run from a standalone shell */
+	getopt32(argv, "^" "as" "\0" "-1"/*at least one arg*/);
+	sh_standalone = option_mask32 & OPT_s;
+	option_mask32 &= ~OPT_s;
+#else
 	getopt32(argv, "^" "a" "\0" "-1"/*at least one arg*/);
+#endif
 	argv += optind;
 
 	do {
 		int missing = 1;
 
 #if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-		if (sh_standalone) {
-			if (strcmp(*argv, "busybox") == 0 &&
-					is_prefixed_with_case(bb_basename(bb_busybox_exec_path),
-								"busybox")) {
-				missing = 0;
-				puts(bb_busybox_exec_path);
-				if (!option_mask32) /* -a not set */
-					break;
-			}
-			else if (find_applet_by_name(*argv) >= 0) {
-				missing = 0;
-				puts(*argv);
-				if (!option_mask32) /* -a not set */
-					break;
-			}
+		if (sh_standalone && find_applet_by_name(*argv) >= 0) {
+			missing = 0;
+			puts(applet_to_exe(*argv));
+			if (!option_mask32) /* -a not set */
+				break;
 		}
 #endif
 
@@ -87,15 +94,16 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 				puts(bs_to_slash(path));
 			}
 # if ENABLE_FEATURE_SH_STANDALONE
-			else if (sh_standalone) {
+			else if (sh_standalone && unix_path(*argv)) {
 				const char *name = bb_basename(*argv);
 
-				if (unix_path(*argv) && find_applet_by_name(name) >= 0) {
+				if (find_applet_by_name(name) >= 0) {
 					missing = 0;
 					puts(name);
 				}
 			}
 # endif
+			free(path);
 #endif
 		} else {
 			char *path;
