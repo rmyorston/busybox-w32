@@ -78,7 +78,7 @@ int clearenv(void)
 
 int mingw_putenv(const char *env)
 {
-	char *s, **envp;
+	char *s;
 	int ret = 0;
 
 	if ( (s=strchr(env, '=')) == NULL ) {
@@ -90,17 +90,13 @@ int mingw_putenv(const char *env)
 		return _putenv(env);
 	}
 	else {
-		/* set empty value by setting a non-empty one then truncating */
-		char *envstr = xasprintf("%s0", env);
-		ret = _putenv(envstr);
-
-		for (envp = environ; *envp; ++envp) {
-			if (strcmp(*envp, envstr) == 0) {
-				(*envp)[s - env + 1] = '\0';
-				break;
-			}
-		}
-		free(envstr);
+		/* set empty value using WIN32 API*/
+		char *name = xstrdup(env);
+		name[s - env] = '\0';
+		SetEnvironmentVariable(name, "");
+		free(name);
+		/* set a dummy variable to force CRT housekeeping */
+		_putenv("BB_DUMMY=0");
 	}
 
 	return ret;
