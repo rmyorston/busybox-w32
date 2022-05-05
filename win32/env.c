@@ -100,6 +100,10 @@ int mingw_putenv(const char *env)
 				break;
 			}
 		}
+
+		/* tell the OS environment about the change */
+		envstr[s - env] = '\0';
+		SetEnvironmentVariable(envstr, "");
 		free(envstr);
 	}
 

@@ -345,32 +345,27 @@ mingw_spawnvp(int mode, const char *cmd, char *const *argv)
 {
 	char *prog;
 	intptr_t ret;
-#if !defined(_UCRT)
-	char *const *envp = environ;
-#else
-	char *const *envp = NULL;
-#endif
 
 #if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
 	if (find_applet_by_name(cmd) >= 0)
-		return mingw_spawn_applet(mode, argv, envp);
+		return mingw_spawn_applet(mode, argv, NULL);
 	else
 #endif
 	if (has_path(cmd)) {
 		char *path = alloc_system_drive(cmd);
 		add_win32_extension(path);
-		ret = mingw_spawn_interpreter(mode, path, argv, envp, 0);
+		ret = mingw_spawn_interpreter(mode, path, argv, NULL, 0);
 		free(path);
 #if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
 		if (ret == -1 && unix_path(cmd) &&
 				find_applet_by_name(bb_basename(cmd)) >= 0) {
-			return mingw_spawn_applet(mode, argv, envp);
+			return mingw_spawn_applet(mode, argv, NULL);
 		}
 #endif
 		return ret;
 	}
 	else if ((prog=find_first_executable(cmd)) != NULL) {
-		ret = mingw_spawn_interpreter(mode, prog, argv, envp, 0);
+		ret = mingw_spawn_interpreter(mode, prog, argv, NULL, 0);
 		free(prog);
 		return ret;
 	}
