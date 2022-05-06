@@ -297,12 +297,12 @@ static intptr_t
 mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
 			char *const *envp, int level)
 {
-	intptr_t ret;
+	intptr_t ret = -1;
 	int nopts;
 	interp_t interp;
 	char **new_argv;
 	int argc;
-	char *fullpath = NULL;
+	char *path = NULL;
 
 	if (!parse_interpreter(prog, &interp))
 		return spawnveq(mode, prog, argv, envp);
@@ -320,22 +320,33 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
 	memcpy(new_argv+nopts+2, argv+1, sizeof(*argv)*argc);
 
 #if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
-	if (find_applet_by_name(interp.name) >= 0) {
+	if (unix_path(interp.path) && find_applet_by_name(interp.name) >= 0) {
 		/* the fake path indicates the index of the script */
-		new_argv[0] = fullpath = xasprintf("%d:/%s", nopts+1, interp.name);
+		new_argv[0] = path = xasprintf("%d:/%s", nopts+1, interp.name);
 		ret = mingw_spawn_applet(mode, new_argv, envp);
-	} else
-#endif
-	if ((fullpath = alloc_system_drive(interp.path)) &&
-			(add_win32_extension(fullpath) || file_is_executable(fullpath))) {
-		new_argv[0] = fullpath;
-		ret = mingw_spawn_interpreter(mode, new_argv[0], new_argv, envp, level);
-	} else {
-		errno = ENOENT;
-		ret = -1;
+		goto done;
 	}
+#endif
 
-	free(fullpath);
+	path = alloc_system_drive(interp.path);
+	if ((add_win32_extension(path) || file_is_executable(path))) {
+		new_argv[0] = path;
+		ret = mingw_spawn_interpreter(mode, path, new_argv, envp, level);
+		goto done;
+	}
+	free(path);
+	path = NULL;
+
+	if (unix_path(interp.path)) {
+		if ((path = find_first_executable(interp.name)) != NULL) {
+			new_argv[0] = path;
+			ret = mingw_spawn_interpreter(mode, path, new_argv, envp, level);
+			goto done;
+		}
+	}
+	errno = ENOENT;
+ done:
+	free(path);
 	free(new_argv);
 	return ret;
 }
@@ -343,30 +354,29 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
 static intptr_t
 mingw_spawnvp(int mode, const char *cmd, char *const *argv)
 {
-	char *prog;
+	char *path;
 	intptr_t ret;
 
 #if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
-	if (find_applet_by_name(cmd) >= 0)
+	if ((!has_path(cmd) || unix_path(cmd)) &&
+			find_applet_by_name(bb_basename(cmd)) >= 0)
 		return mingw_spawn_applet(mode, argv, NULL);
-	else
 #endif
 	if (has_path(cmd)) {
-		char *path = alloc_system_drive(cmd);
-		add_win32_extension(path);
+		path = alloc_system_drive(cmd);
+		if (add_win32_extension(path) || file_is_executable(path)) {
+			ret = mingw_spawn_interpreter(mode, path, argv, NULL, 0);
+			free(path);
+			return ret;
+		}
+		free(path);
+		if (unix_path(cmd))
+			cmd = bb_basename(cmd);
+	}
+
+	if ((path = find_first_executable(cmd)) != NULL) {
 		ret = mingw_spawn_interpreter(mode, path, argv, NULL, 0);
 		free(path);
-#if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
-		if (ret == -1 && unix_path(cmd) &&
-				find_applet_by_name(bb_basename(cmd)) >= 0) {
-			return mingw_spawn_applet(mode, argv, NULL);
-		}
-#endif
-		return ret;
-	}
-	else if ((prog=find_first_executable(cmd)) != NULL) {
-		ret = mingw_spawn_interpreter(mode, prog, argv, NULL, 0);
-		free(prog);
 		return ret;
 	}
 

@@ -2096,7 +2096,6 @@ void *get_proc_addr(const char *dll, const char *function,
 	return proc->pfunction;
 }
 
-#if ENABLE_FEATURE_SH_STANDALONE || ENABLE_FEATURE_PREFER_APPLETS
 int unix_path(const char *path)
 {
 	int i;
@@ -2107,7 +2106,6 @@ int unix_path(const char *path)
 	free(p);
 	return i >= 0;
 }
-#endif
 
 /* Return true if file is referenced using a path.  This means a path
  * look-up isn't required. */

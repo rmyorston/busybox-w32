@@ -93,22 +93,29 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 				missing = 0;
 				puts(bs_to_slash(path));
 			}
-# if ENABLE_FEATURE_SH_STANDALONE
-			else if (sh_standalone && unix_path(*argv)) {
+			else if (unix_path(*argv)) {
 				const char *name = bb_basename(*argv);
-
-				if (find_applet_by_name(name) >= 0) {
+# if ENABLE_FEATURE_SH_STANDALONE
+				if (sh_standalone && find_applet_by_name(name) >= 0) {
 					missing = 0;
 					puts(name);
+				} else
+# endif
+				{
+					argv[0] = (char *)name;
+					free(path);
+					goto try_PATH;
 				}
 			}
-# endif
 			free(path);
 #endif
 		} else {
 			char *path;
 			char *p;
 
+#if ENABLE_PLATFORM_MINGW32
+ try_PATH:
+#endif
 			path = env_path;
 			/* NOFORK NB: xmalloc inside find_executable(), must have no allocs above! */
 			while ((p = find_executable(*argv, &path)) != NULL) {

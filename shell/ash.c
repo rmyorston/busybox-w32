@@ -8983,6 +8983,7 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
  * have to change the find_command routine as well.
  * argv[-1] must exist and be writable! See tryexec() for why.
  */
+static struct builtincmd *find_builtin(const char *name);
 static void shellexec(char *prog, char **argv, const char *path, int idx) NORETURN;
 static void shellexec(char *prog, char **argv, const char *path, int idx)
 {
@@ -9011,9 +9012,7 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 #endif
 	) {
 #if ENABLE_PLATFORM_MINGW32
-# if ENABLE_FEATURE_SH_STANDALONE
 		char *oldprog = prog;
-# endif
 		prog = stack_add_system_drive(prog);
 #endif
 		tryexec(IF_FEATURE_SH_STANDALONE(applet_no,) prog, argv, envp);
@@ -9025,16 +9024,17 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 			goto try_PATH;
 		}
 		e = errno;
-#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-		if (unix_path(oldprog)) {
+#if ENABLE_PLATFORM_MINGW32
+		if (unix_path(oldprog) && !find_builtin(bb_basename(oldprog))) {
+# if ENABLE_FEATURE_SH_STANDALONE
 			const char *name = bb_basename(oldprog);
 			if ((applet_no = find_applet_by_name(name)) >= 0) {
 				tryexec(applet_no, name, argv, envp);
 				e = errno;
 			}
-			else {
-				e = ENOENT;
-			}
+# endif
+			argv[0] = (char *)bb_basename(oldprog);
+			goto try_PATH;
 		}
 #endif
 	} else {
@@ -9481,6 +9481,10 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 			p = command;
 #endif
 		} else {
+#if ENABLE_PLATFORM_MINGW32
+			if (unix_path(command))
+				command = (char *)bb_basename(command);
+#endif
 			do {
 				padvance(&path, command);
 			} while (--j >= 0);
@@ -14658,24 +14662,20 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 #else /* ENABLE_PLATFORM_MINGW32 */
 	/* If name contains a slash or drive prefix, don't use PATH or hash table */
 	if (has_path(name)) {
-		fullname = stack_add_system_drive(name);
 		entry->u.index = -1;
-		if (act & DO_ABS) {
-			if (!add_win32_extension(fullname) && stat(fullname, &statb) < 0) {
-# if ENABLE_FEATURE_SH_STANDALONE
-				if (unix_path(name) &&
-						find_applet_by_name(bb_basename(name)) >= 0) {
-					entry->cmdtype = CMDNORMAL;
-					entry->u.index = INT_MIN;
-					return;
-				}
-# endif
-				entry->cmdtype = CMDUNKNOWN;
-				return;
-			}
-		}
 		entry->cmdtype = CMDNORMAL;
-		return;
+		fullname = stack_add_system_drive(name);
+		if (add_win32_extension(fullname) || file_is_executable(fullname)) {
+			return;
+		} else if (unix_path(name) && !find_builtin(bb_basename(name))) {
+			name = (char *)bb_basename(name);
+			act |= DO_NOFUNC;
+		} else if (act & DO_ABS) {
+			entry->cmdtype = CMDUNKNOWN;
+			return;
+		} else {
+			return;
+		}
 	}
 #endif /* ENABLE_PLATFORM_MINGW32 */
 
