@@ -76,6 +76,13 @@ static inline int *get_perrno(void) { return &errno; }
 static const char packed_scripts[] ALIGN1 = { PACKED_SCRIPTS };
 #endif
 
+#if defined(find_applet_by_name)
+# undef find_applet_by_name
+#endif
+#if defined(is_applet_preferred)
+# undef is_applet_preferred
+#endif
+
 /* "Do not compress usage text if uncompressed text is small
  *  and we don't include bunzip2 code for other reasons"
  *
@@ -253,6 +260,45 @@ int FAST_FUNC find_applet_by_name(const char *name)
 	}
 	return -1;
 }
+
+#if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1 && \
+		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
+int FAST_FUNC is_applet_preferred(const char *name)
+{
+	const char *var, *s;
+	size_t len;
+
+	var = getenv("BB_OVERRIDE_APPLETS");
+	if (var && *var) {
+		/* '-' overrides all applets */
+		if (var[0] == '-' && var[1] == '\0')
+			return FALSE;
+
+		/* Override applets from a space-separated list */
+		len = strlen(name);
+		s = var - 1;
+		while (1) {
+			s = strstr(s + 1, name);
+			if (!s)
+				break;
+			/* neither "name.." nor "xxx,name.."? */
+			if (s != var && s[-1] != ' ')
+				continue;
+			/* neither "..name" nor "..name,xxx"? */
+			if (s[len] != '\0' && s[len] != ' ')
+				continue;
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+
+int FAST_FUNC find_preferred_applet_by_name(const char *name)
+{
+	int applet_no = find_applet_by_name(name);
+	return applet_no >= 0 && is_applet_preferred(name) ? applet_no : -1;
+}
+#endif
 
 
 void lbb_prepare(const char *applet

@@ -14961,10 +14961,12 @@ helpcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	{
 		const char *a = applet_names;
 		while (*a) {
-			col += out1fmt("%c%s", ((col == 0) ? '\t' : ' '), a);
-			if (col > 60) {
-				out1fmt("\n");
-				col = 0;
+			if (is_applet_preferred(a)) {
+				col += out1fmt("%c%s", ((col == 0) ? '\t' : ' '), a);
+				if (col > 60) {
+					out1fmt("\n");
+					col = 0;
+				}
 			}
 			while (*a++ != '\0')
 				continue;
