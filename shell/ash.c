@@ -15774,7 +15774,8 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	else if (!login_sh && iflag) {
 		char *cwd = getcwd(NULL, 0);
 		if (cwd) {
-			docd(cwd, 0);
+			chdir(cwd);
+			setpwd(NULL, 0);
 			free(cwd);
 		}
 	}
