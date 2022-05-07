@@ -1453,7 +1453,7 @@ int mingw_chdir(const char *dirname)
 	const char *realdir = dirname;
 
 	if (is_symlink(dirname)) {
-		realdir = auto_string(xmalloc_readlink(dirname));
+		realdir = auto_string(xmalloc_realpath(dirname));
 		if (realdir)
 			fix_path_case((char *)realdir);
 	}
