@@ -76,7 +76,7 @@ int skip_ansi_emulation(int reset)
 	static int skip = -1;
 
 	if (skip < 0 || reset) {
-		const char *var = getenv(bb_skip_ansi_emulation);
+		const char *var = getenv(BB_SKIP_ANSI_EMULATION);
 		int dflt = is_wine() ? 0 : CONFIG_SKIP_ANSI_EMULATION_DEFAULT;
 		skip = var == NULL ? dflt : atoi(var);
 		if (skip < 0 || skip > 2)

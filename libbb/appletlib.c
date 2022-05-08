@@ -268,7 +268,7 @@ int FAST_FUNC is_applet_preferred(const char *name)
 	const char *var, *s;
 	size_t len;
 
-	var = getenv("BB_OVERRIDE_APPLETS");
+	var = getenv(BB_OVERRIDE_APPLETS);
 	if (var && *var) {
 		/* '-' overrides all applets */
 		if (var[0] == '-' && var[1] == '\0')

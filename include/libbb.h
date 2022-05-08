@@ -2360,7 +2360,11 @@ extern const char bb_busybox_exec_path[] ALIGN1;
 #define BB_PATH_ROOT_PATH "PATH=/sbin;/usr/sbin;/bin;/usr/bin" BB_ADDITIONAL_PATH
 #define PATH_SEP ';'
 #define PATH_SEP_STR ";"
-extern const char bb_skip_ansi_emulation[] ALIGN1;
+extern const char bbvar[] ALIGN1;
+#define bbafter(p) (p + sizeof(#p))
+#define BB_OVERRIDE_APPLETS bbvar
+#define BB_SKIP_ANSI_EMULATION bbafter(BB_OVERRIDE_APPLETS)
+#define BB_SYSTEMROOT bbafter(BB_SKIP_ANSI_EMULATION)
 #endif
 extern const char bb_PATH_root_path[] ALIGN1; /* BB_PATH_ROOT_PATH */
 #define bb_default_root_path (bb_PATH_root_path + sizeof("PATH"))

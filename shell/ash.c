@@ -2371,7 +2371,7 @@ static const struct {
 	{ VSTRFIXED|VTEXTFIXED|VUNSET, "HISTFILE"  , NULL            },
 #endif
 #if ENABLE_PLATFORM_MINGW32
-	{ VSTRFIXED|VTEXTFIXED|VUNSET, bb_skip_ansi_emulation, change_skip_ansi },
+	{ VSTRFIXED|VTEXTFIXED|VUNSET, BB_SKIP_ANSI_EMULATION, change_skip_ansi },
 #endif
 };
 
@@ -2652,6 +2652,29 @@ fix_pathvar(const char *path, int len)
 	}
 	return newpath;
 }
+
+#define BB_VAR_EXACT	1	/* exact match for name */
+#define BB_VAR_ASSIGN	2	/* matches name followed by '=' */
+
+/* Match variables that should be placed in the environment immediately
+ * they're exported and removed immediately they're no longer exported */
+static int
+is_bb_var(const char *s)
+{
+	const char *p;
+	int len;
+
+	for (p = bbvar; *p; p += len + 1) {
+		len = strlen(p);
+		if (strncmp(s, p, len) == 0) {
+			if (s[len] == '\0')
+				return BB_VAR_EXACT;
+			else if (s[len] == '=')
+				return BB_VAR_ASSIGN;
+		}
+	}
+	return FALSE;
+}
 #endif
 
 /*
@@ -2711,6 +2734,11 @@ setvareq(char *s, int flags)
 		if (!(vp->flags & (VTEXTFIXED|VSTACK)))
 			free((char*)vp->var_text);
 
+#if ENABLE_PLATFORM_MINGW32
+		if ((flags & VUNSET) && (vp->flags & VEXPORT) &&
+				is_bb_var(s) == BB_VAR_EXACT)
+			unsetenv(s);
+#endif
 		if (((flags & (VEXPORT|VREADONLY|VSTRFIXED|VUNSET)) | (vp->flags & VSTRFIXED)) == VUNSET) {
 			*vpp = vp->next;
 			free(vp);
@@ -2740,6 +2768,10 @@ setvareq(char *s, int flags)
 		s = ckstrdup(s);
 	vp->var_text = s;
 	vp->flags = flags;
+#if ENABLE_PLATFORM_MINGW32
+	if ((flags & VEXPORT) && is_bb_var(s) == BB_VAR_ASSIGN)
+		putenv(s);
+#endif
 
  out:
 	return vp;
@@ -15028,6 +15060,14 @@ exportcmd(int argc UNUSED_PARAM, char **argv)
 				} else {
 					vp = *findvar(hashvar(name), name);
 					if (vp) {
+#if ENABLE_PLATFORM_MINGW32
+						if (is_bb_var(name) == BB_VAR_EXACT) {
+							if (flag_off == ~VEXPORT)
+								unsetenv(name);
+							else if (flag == VEXPORT && !(vp->flags & VUNSET))
+								putenv(vp->var_text);
+						}
+#endif
 						vp->flags = ((vp->flags | flag) & flag_off);
 						continue;
 					}

@@ -30,7 +30,17 @@ const char bb_hexdigits_upcase[] ALIGN1 = "0123456789ABCDEF";
 #if !ENABLE_PLATFORM_MINGW32
 const char bb_busybox_exec_path[] ALIGN1 = CONFIG_BUSYBOX_EXEC_PATH;
 #else
-const char bb_skip_ansi_emulation[] ALIGN1 = "BB_SKIP_ANSI_EMULATION";
+/* Some special shell variables are placed in the environment immediately
+ * when they're exported.
+ *
+ * BB_GLOBBING and BB_UMASK are excluded because users shouln't be
+ * messing with them; BB_ALT_BUFFER and BB_FIX_BACKSLASH are excluded
+ * because they only affect particular applets, not the shell itself.
+ */
+const char bbvar[] ALIGN1 =
+		"BB_OVERRIDE_APPLETS\0" \
+		"BB_SKIP_ANSI_EMULATION\0" \
+		"BB_SYSTEMROOT\0";
 #endif
 const char bb_default_login_shell[] ALIGN1 = LIBBB_DEFAULT_LOGIN_SHELL;
 /* util-linux manpage says /sbin:/bin:/usr/sbin:/usr/bin,
