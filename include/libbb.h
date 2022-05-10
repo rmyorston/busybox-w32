@@ -2354,10 +2354,19 @@ extern const char bb_busybox_exec_path[] ALIGN1;
 #endif
 #if !ENABLE_PLATFORM_MINGW32
 #define BB_PATH_ROOT_PATH "PATH=/sbin:/usr/sbin:/bin:/usr/bin" BB_ADDITIONAL_PATH
+extern const char bb_PATH_root_path[] ALIGN1; /* BB_PATH_ROOT_PATH */
+#define bb_default_root_path (bb_PATH_root_path + sizeof("PATH"))
+/* util-linux manpage says /sbin:/bin:/usr/sbin:/usr/bin,
+ * but I want to save a few bytes here:
+ */
+#define bb_default_path      (bb_PATH_root_path + sizeof("PATH=/sbin:/usr/sbin"))
 #define PATH_SEP ':'
 #define PATH_SEP_STR ":"
 #else
-#define BB_PATH_ROOT_PATH "PATH=/sbin;/usr/sbin;/bin;/usr/bin" BB_ADDITIONAL_PATH
+#define BB_PATH_ROOT_PATH "PATH=C:/Windows/System32;C:/Windows" BB_ADDITIONAL_PATH
+extern const char bb_PATH_root_path[] ALIGN1; /* BB_PATH_ROOT_PATH */
+#define bb_default_root_path (bb_PATH_root_path + sizeof("PATH"))
+#define bb_default_path      (bb_PATH_root_path + sizeof("PATH"))
 #define PATH_SEP ';'
 #define PATH_SEP_STR ";"
 extern const char bbvar[] ALIGN1;
@@ -2366,12 +2375,6 @@ extern const char bbvar[] ALIGN1;
 #define BB_SKIP_ANSI_EMULATION bbafter(BB_OVERRIDE_APPLETS)
 #define BB_SYSTEMROOT bbafter(BB_SKIP_ANSI_EMULATION)
 #endif
-extern const char bb_PATH_root_path[] ALIGN1; /* BB_PATH_ROOT_PATH */
-#define bb_default_root_path (bb_PATH_root_path + sizeof("PATH"))
-/* util-linux manpage says /sbin:/bin:/usr/sbin:/usr/bin,
- * but I want to save a few bytes here:
- */
-#define bb_default_path      (bb_PATH_root_path + sizeof("PATH=/sbin:/usr/sbin"))
 
 extern const int const_int_0;
 //extern const int const_int_1;
