@@ -2654,7 +2654,7 @@ fix_pathvar(const char *path, int len)
 }
 
 #define BB_VAR_EXACT	1	/* exact match for name */
-#define BB_VAR_ASSIGN	2	/* matches name followed by '=' */
+#define BB_VAR_ASSIGN	-1	/* matches name followed by '=' */
 
 /* Match variables that should be placed in the environment immediately
  * they're exported and removed immediately they're no longer exported */
@@ -2688,7 +2688,6 @@ static struct var *
 setvareq(char *s, int flags)
 {
 	struct var *vp, **vpp;
-
 #if ENABLE_PLATFORM_MINGW32
 	const char *paths = "PATH=\0""CDPATH=\0""MANPATH=\0";
 	const char *p;
