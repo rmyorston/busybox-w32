@@ -2151,7 +2151,11 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 							char *after_home_user;
 
 							/* /home/user[/something] -> ~[/something] */
+#if !ENABLE_PLATFORM_MINGW32
 							after_home_user = is_prefixed_with(cwd_buf, home);
+#else
+							after_home_user = is_prefixed_with_case(cwd_buf, home);
+#endif
 							if (after_home_user
 							 && (*after_home_user == '/' || *after_home_user == '\0')
 							) {
