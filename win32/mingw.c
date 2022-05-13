@@ -571,7 +571,8 @@ static int get_symlink_data(DWORD attr, const char *pathname,
 		if (handle != INVALID_HANDLE_VALUE) {
 			FindClose(handle);
 			return ((fbuf->dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
-					fbuf->dwReserved0 == IO_REPARSE_TAG_SYMLINK);
+					(fbuf->dwReserved0 == IO_REPARSE_TAG_SYMLINK ||
+					fbuf->dwReserved0 ==  IO_REPARSE_TAG_MOUNT_POINT));
 		}
 	}
 	return 0;
@@ -1377,6 +1378,7 @@ static wchar_t *normalize_ntpath(wchar_t *wbuf)
 }
 
 #define SRPB rptr->SymbolicLinkReparseBuffer
+#define MRPB rptr->MountPointReparseBuffer
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 {
 	HANDLE h;
@@ -1388,24 +1390,29 @@ ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 		BYTE rbuf[MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
 		PREPARSE_DATA_BUFFER rptr = (PREPARSE_DATA_BUFFER)rbuf;
 		BOOL status;
+		size_t len;
+		WCHAR *name = NULL;
 
 		status = DeviceIoControl(h, FSCTL_GET_REPARSE_POINT, NULL, 0,
 					rptr, sizeof(rbuf), &nbytes, NULL);
 		CloseHandle(h);
 
 		if (status && rptr->ReparseTag == IO_REPARSE_TAG_SYMLINK) {
-			size_t len = SRPB.SubstituteNameLength/sizeof(WCHAR);
-			WCHAR *name = SRPB.PathBuffer +
-							SRPB.SubstituteNameOffset/sizeof(WCHAR);
+			len = SRPB.SubstituteNameLength/sizeof(WCHAR);
+			name = SRPB.PathBuffer + SRPB.SubstituteNameOffset/sizeof(WCHAR);
+		} else if (status && rptr->ReparseTag == IO_REPARSE_TAG_MOUNT_POINT) {
+			len = MRPB.SubstituteNameLength/sizeof(WCHAR);
+			name = MRPB.PathBuffer + MRPB.SubstituteNameOffset/sizeof(WCHAR);
+		}
 
+		if (name) {
 			name[len] = 0;
 			name = normalize_ntpath(name);
 			len = wcslen(name);
 			if (len > bufsiz)
 				len = bufsiz;
-			if (WideCharToMultiByte(CP_ACP, 0, name, len, buf, bufsiz, 0, 0)) {
+			if (WideCharToMultiByte(CP_ACP, 0, name, len, buf, bufsiz, 0, 0))
 				return len;
-			}
 		}
 	}
 	errno = err_win_to_posix();
