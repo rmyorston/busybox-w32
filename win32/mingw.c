@@ -588,6 +588,26 @@ static int is_symlink(const char *pathname)
 	return 0;
 }
 
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
+static int count_subdirs(const char *pathname)
+{
+	int count = 0;
+	DIR *dirp = opendir(pathname);
+	struct dirent *dp;
+
+	if (dirp) {
+		while ((dp = readdir(dirp)) != NULL) {
+			if (dp->d_type == DT_DIR)
+				count++;
+		}
+		closedir(dirp);
+	} else {
+		count = 2;
+	}
+	return count;
+}
+#endif
+
 /* If follow is true then act like stat() and report on the link
  * target. Otherwise report on the link itself.
  */
@@ -656,7 +676,8 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 				buf->st_dev = hdata.dwVolumeSerialNumber;
 				buf->st_ino = hdata.nFileIndexLow |
 						(((ino_t)hdata.nFileIndexHigh)<<32);
-				buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 :
+				buf->st_nlink = S_ISDIR(buf->st_mode) ?
+							count_subdirs(file_name) :
 							hdata.nNumberOfLinks;
 			}
 			buf->st_uid = buf->st_gid = file_owner(fh);

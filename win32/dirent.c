@@ -10,6 +10,17 @@ static inline void finddata2dirent(struct dirent *ent, WIN32_FIND_DATAA *fdata)
 {
 	/* copy file name from WIN32_FIND_DATA to dirent */
 	strcpy(ent->d_name, fdata->cFileName);
+
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
+	if ((fdata->dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+			(fdata->dwReserved0 == IO_REPARSE_TAG_SYMLINK ||
+			fdata->dwReserved0 ==  IO_REPARSE_TAG_MOUNT_POINT))
+		ent->d_type = DT_LNK;
+	else if (fdata->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+		ent->d_type = DT_DIR;
+	else
+		ent->d_type = DT_REG;
+#endif
 }
 
 DIR *opendir(const char *name)
