@@ -479,6 +479,7 @@ NOIMPL(setuid,uid_t gid UNUSED_PARAM);
 NOIMPL(seteuid,uid_t gid UNUSED_PARAM);
 unsigned int sleep(unsigned int seconds);
 int symlink(const char *target, const char *linkpath);
+int create_junction(const char *oldpath, const char *newpath);
 long sysconf(int name);
 IMPL(getpagesize,int,4096,void);
 NOIMPL(ttyname_r,int fd UNUSED_PARAM, char *buf UNUSED_PARAM, int sz UNUSED_PARAM);

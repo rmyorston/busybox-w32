@@ -1285,6 +1285,138 @@ int symlink(const char *target, const char *linkpath)
 	return 0;
 }
 
+/* Create a directory junction */
+#define MRPB rptr->MountPointReparseBuffer
+#if 0
+static void print_junction(REPARSE_DATA_BUFFER *rptr)
+{
+	int i;
+#define MRPB_HEADER_SIZE \
+	(FIELD_OFFSET(REPARSE_DATA_BUFFER, MountPointReparseBuffer.PathBuffer) - \
+	FIELD_OFFSET(REPARSE_DATA_BUFFER, MountPointReparseBuffer))
+
+	fprintf(stderr, "---\n");
+	fprintf(stderr, "Tag: %lx\n", rptr->ReparseTag);
+	fprintf(stderr, "ReparseDataLength: %d (%d + %d + %d + %d + %d = %d)\n",
+			rptr->ReparseDataLength, MRPB_HEADER_SIZE,
+			MRPB.SubstituteNameLength, sizeof(WCHAR),
+			MRPB.PrintNameLength, sizeof(WCHAR),
+			MRPB_HEADER_SIZE + MRPB.SubstituteNameLength + sizeof(WCHAR) +
+				MRPB.PrintNameLength + sizeof(WCHAR));
+	fprintf(stderr, "Reserved: %d\n", rptr->Reserved);
+	fprintf(stderr, "---\n");
+	fprintf(stderr, "SubstituteNameOffset: %d\n", MRPB.SubstituteNameOffset);
+	fprintf(stderr, "SubstituteNameLength: %d\n", MRPB.SubstituteNameLength);
+	fprintf(stderr, "PrintNameOffset: %d\n", MRPB.PrintNameOffset);
+	fprintf(stderr, "PrintNameLength: %d\n", MRPB.PrintNameLength);
+	fprintf(stderr, "SubstituteName: ");
+	for (i = 0; i < MRPB.SubstituteNameLength/sizeof(WCHAR); i++)
+		fprintf(stderr, "%c",
+			MRPB.PathBuffer[MRPB.SubstituteNameOffset/sizeof(WCHAR) + i]);
+	fprintf(stderr, " (%x)",
+		MRPB.PathBuffer[MRPB.SubstituteNameOffset/sizeof(WCHAR) + i]);
+	fprintf(stderr, "\n");
+	fprintf(stderr, "PrintName:      ");
+	for (i = 0; i < MRPB.PrintNameLength/sizeof(WCHAR); i++)
+		fprintf(stderr, "%c",
+			MRPB.PathBuffer[MRPB.PrintNameOffset/sizeof(WCHAR) + i]);
+	fprintf(stderr, " (%x)",
+		MRPB.PathBuffer[MRPB.PrintNameOffset/sizeof(WCHAR) + i]);
+	fprintf(stderr, "\n");
+	fprintf(stderr, "---\n");
+}
+#endif
+
+static REPARSE_DATA_BUFFER *make_junction_data_buffer(char *rpath)
+{
+	WCHAR pbuf[PATH_MAX];
+	int plen, slen, rbufsize;
+	REPARSE_DATA_BUFFER *rptr;
+
+	/* We need two strings for the reparse data.  The PrintName is the
+	 * target path in Win32 format, the SubstituteName is the same in
+	 * NT format. */
+	slash_to_bs(rpath);
+	plen = MultiByteToWideChar(CP_ACP, 0, rpath, -1, pbuf, PATH_MAX);
+	if (plen == 0) {
+		errno = err_win_to_posix();
+		return NULL;
+	}
+	slen = plen + 4;
+
+	rbufsize = (slen + plen + 2) * sizeof(WCHAR) +
+		FIELD_OFFSET(REPARSE_DATA_BUFFER, MountPointReparseBuffer.PathBuffer);
+	rptr = xzalloc(rbufsize);
+
+	rptr->ReparseTag = IO_REPARSE_TAG_MOUNT_POINT;
+	rptr->ReparseDataLength = rbufsize -
+		FIELD_OFFSET(REPARSE_DATA_BUFFER, MountPointReparseBuffer);
+	/* rptr->Reserved = 0; */
+	/* MRPB.SubstituteNameOffset = 0; */
+	MRPB.SubstituteNameLength = slen * sizeof(WCHAR);
+	MRPB.PrintNameOffset = MRPB.SubstituteNameLength + sizeof(WCHAR);
+	MRPB.PrintNameLength = plen * sizeof(WCHAR);
+
+	wcscpy(MRPB.PathBuffer, L"\\??\\");
+	wcscpy(MRPB.PathBuffer + 4, pbuf);
+	wcscpy(MRPB.PathBuffer + slen + 1, pbuf);
+	return rptr;
+}
+
+int create_junction(const char *oldpath, const char *newpath)
+{
+	char rpath[PATH_MAX];
+	struct stat statbuf;
+	REPARSE_DATA_BUFFER *rptr = NULL;
+	HANDLE h;
+	int error = 0;
+	DWORD bytes;
+
+	if (realpath(oldpath, rpath) == NULL || stat(rpath, &statbuf) < 0)
+		return -1;
+
+	if (!has_dos_drive_prefix(rpath)) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	if (!S_ISDIR(statbuf.st_mode)) {
+		errno = ENOTDIR;
+		return -1;
+	}
+
+	if (!(rptr = make_junction_data_buffer(rpath))) {
+		return -1;
+	}
+
+	if (mkdir(newpath, 0777) < 0) {
+		free(rptr);
+		return -1;
+	}
+
+	h = CreateFileA(newpath, GENERIC_READ | GENERIC_WRITE, 0, NULL,
+			OPEN_EXISTING,
+			FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, NULL);
+	if (h != INVALID_HANDLE_VALUE) {
+		if (DeviceIoControl(h, FSCTL_SET_REPARSE_POINT, rptr,
+				rptr->ReparseDataLength + REPARSE_DATA_BUFFER_HEADER_SIZE,
+				NULL, 0, &bytes, NULL) != 0) {
+			CloseHandle(h);
+			free(rptr);
+			return 0;
+		}
+		error = err_win_to_posix();
+		CloseHandle(h);
+	} else {
+		error = err_win_to_posix();
+	}
+
+	rmdir(newpath);
+	free(rptr);
+	errno = error;
+	return -1;
+}
+
 static char *normalize_ntpathA(char *buf)
 {
 	/* fix absolute path prefixes */
@@ -1399,7 +1531,6 @@ static wchar_t *normalize_ntpath(wchar_t *wbuf)
 }
 
 #define SRPB rptr->SymbolicLinkReparseBuffer
-#define MRPB rptr->MountPointReparseBuffer
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 {
 	HANDLE h;
