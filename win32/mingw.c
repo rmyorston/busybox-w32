@@ -1335,7 +1335,11 @@ static REPARSE_DATA_BUFFER *make_junction_data_buffer(char *rpath)
 
 	/* We need two strings for the reparse data.  The PrintName is the
 	 * target path in Win32 format, the SubstituteName is the same in
-	 * NT format. */
+	 * NT format.
+	 *
+	 * The return value from MultiByteToWideChar includes the trailing
+	 * L'\0' character.
+	 */
 	slash_to_bs(rpath);
 	plen = MultiByteToWideChar(CP_ACP, 0, rpath, -1, pbuf, PATH_MAX);
 	if (plen == 0) {
@@ -1344,7 +1348,7 @@ static REPARSE_DATA_BUFFER *make_junction_data_buffer(char *rpath)
 	}
 	slen = plen + 4;
 
-	rbufsize = (slen + plen + 2) * sizeof(WCHAR) +
+	rbufsize = (slen + plen) * sizeof(WCHAR) +
 		FIELD_OFFSET(REPARSE_DATA_BUFFER, MountPointReparseBuffer.PathBuffer);
 	rptr = xzalloc(rbufsize);
 
@@ -1353,13 +1357,13 @@ static REPARSE_DATA_BUFFER *make_junction_data_buffer(char *rpath)
 		FIELD_OFFSET(REPARSE_DATA_BUFFER, MountPointReparseBuffer);
 	/* rptr->Reserved = 0; */
 	/* MRPB.SubstituteNameOffset = 0; */
-	MRPB.SubstituteNameLength = slen * sizeof(WCHAR);
+	MRPB.SubstituteNameLength = (slen - 1) * sizeof(WCHAR);
 	MRPB.PrintNameOffset = MRPB.SubstituteNameLength + sizeof(WCHAR);
-	MRPB.PrintNameLength = plen * sizeof(WCHAR);
+	MRPB.PrintNameLength = (plen - 1) * sizeof(WCHAR);
 
 	wcscpy(MRPB.PathBuffer, L"\\??\\");
 	wcscpy(MRPB.PathBuffer + 4, pbuf);
-	wcscpy(MRPB.PathBuffer + slen + 1, pbuf);
+	wcscpy(MRPB.PathBuffer + slen, pbuf);
 	return rptr;
 }
 
