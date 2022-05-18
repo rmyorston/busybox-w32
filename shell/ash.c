@@ -10735,6 +10735,10 @@ poplocalvars(int keep)
 				free((char*)vp->var_text);
 			vp->flags = lvp->flags;
 			vp->var_text = lvp->text;
+#if ENABLE_PLATFORM_MINGW32
+			if (is_bb_var(lvp->text) == BB_VAR_ASSIGN)
+				putenv(lvp->text);
+#endif
 		}
 		free(lvp);
 	}
