@@ -16,11 +16,16 @@ PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 #define CHATTR_MASK (FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_HIDDEN | \
 			FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE | \
 			FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED)
-#endif
+
+/* Print file attributes on an NTFS file system */
+void print_e2flags_long(struct stat *sb);
+void print_e2flags(struct stat *sb);
+#else
 
 /* Print file attributes on an ext2 file system */
 void print_e2flags_long(unsigned flags);
 void print_e2flags(unsigned flags);
+#endif
 
 extern const uint32_t e2attr_flags_value[];
 extern const char e2attr_flags_sname[];

@@ -105,10 +105,18 @@ static const char e2attr_flags_lname[] ALIGN1 =
 	/* Another trailing NUL is added by compiler */;
 #endif
 
+#if !ENABLE_PLATFORM_MINGW32
 void print_e2flags_long(unsigned flags)
+#else
+#define flags sb->st_attr
+void print_e2flags_long(struct stat *sb)
+#endif
 {
 	const uint32_t *fv;
 	const char *fn;
+#if ENABLE_PLATFORM_MINGW32
+	const char *ln;
+#endif
 	int first = 1;
 
 	fv = e2attr_flags_value;
@@ -117,7 +125,22 @@ void print_e2flags_long(unsigned flags)
 		if (flags & *fv) {
 			if (!first)
 				fputs(", ", stdout);
+#if ENABLE_PLATFORM_MINGW32
+			ln = fn;
+			if (*fv == FILE_ATTRIBUTE_REPARSE_POINT) {
+				switch (sb->st_tag) {
+				case IO_REPARSE_TAG_SYMLINK:
+					ln = "Symbolic_Link";
+					break;
+				case IO_REPARSE_TAG_MOUNT_POINT:
+					ln = "Junction";
+					break;
+				}
+			}
+			fputs(ln, stdout);
+#else
 			fputs(fn, stdout);
+#endif
 			first = 0;
 		}
 		fv++;
@@ -127,7 +150,11 @@ void print_e2flags_long(unsigned flags)
 		fputs("---", stdout);
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 void print_e2flags(unsigned flags)
+#else
+void print_e2flags(struct stat *sb)
+#endif
 {
 	const uint32_t *fv;
 	const char *fn;
@@ -138,6 +165,18 @@ void print_e2flags(unsigned flags)
 		char c = '-';
 		if (flags & *fv)
 			c = *fn;
+#if ENABLE_PLATFORM_MINGW32
+		if (*fv == FILE_ATTRIBUTE_REPARSE_POINT) {
+			switch (sb->st_tag) {
+			case IO_REPARSE_TAG_SYMLINK:
+				c = 'l';
+				break;
+			case IO_REPARSE_TAG_MOUNT_POINT:
+				c = 'j';
+				break;
+			}
+		}
+#endif
 		putchar(c);
 		fv++;
 		fn++;

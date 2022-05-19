@@ -53,8 +53,8 @@ enum {
 
 static void list_attributes(const char *name)
 {
-	unsigned fsflags;
 #if !ENABLE_PLATFORM_MINGW32
+	unsigned fsflags;
 	int fd, r;
 
 	/* There is no way to run needed ioctls on a symlink.
@@ -95,7 +95,7 @@ static void list_attributes(const char *name)
 				S_ISDIR(st.st_mode) || S_ISLNK(st.st_mode)))
 		goto read_err;
 
-	fsflags = st.st_attr;
+#define fsflags &st
 #endif
 
 	if (option_mask32 & OPT_PF_LONG) {
