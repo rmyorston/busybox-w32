@@ -12,10 +12,10 @@
 PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 
 #if ENABLE_PLATFORM_MINGW32
-/* Get/set a file flags */
-int fgetsetflags(const char *name, unsigned *get_flags, unsigned set_flags);
-#define fgetflags(name, flags) fgetsetflags(name, flags, 0)
-#define fsetflags(name, flags) fgetsetflags(name, NULL, flags)
+/* Only certain attributes can be set using SetFileAttributes() */
+#define CHATTR_MASK (FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_HIDDEN | \
+			FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE | \
+			FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED)
 #endif
 
 /* Print file attributes on an ext2 file system */

@@ -89,8 +89,13 @@ static void list_attributes(const char *name)
 
 	close(fd);
 #else /* ENABLE_PLATFORM_MINGW32 */
-	if (fgetflags(name, &fsflags) != 0)
+	struct stat st;
+
+	if (lstat(name, &st) == 0 && !(S_ISREG(st.st_mode) ||
+				S_ISDIR(st.st_mode) || S_ISLNK(st.st_mode)))
 		goto read_err;
+
+	fsflags = st.st_attr;
 #endif
 
 	if (option_mask32 & OPT_PF_LONG) {

@@ -190,8 +190,8 @@ static int FAST_FUNC chattr_dir_proc(const char *dir_name, struct dirent *de, vo
 
 static void change_attributes(const char *name, struct globals *gp)
 {
-	unsigned fsflags;
 #if !ENABLE_PLATFORM_MINGW32
+	unsigned fsflags;
 	int fd;
 #endif
 	struct stat st;
@@ -261,22 +261,14 @@ static void change_attributes(const char *name, struct globals *gp)
 		close(fd);
 	}
 #else /* ENABLE_PLATFORM_MINGW32 */
-	if (gp->flags & OPT_SET) {
-		fsflags = gp->af;
-	} else {
-		if (fgetflags(name, &fsflags) != 0) {
-			bb_perror_msg("reading flags on %s", name);
-			goto skip_setflags;
-		}
-		/*if (gp->flags & OPT_REM) - not needed, rf is zero otherwise */
-			fsflags &= ~gp->rf;
-		/*if (gp->flags & OPT_ADD) - not needed, af is zero otherwise */
-			fsflags |= gp->af;
-	}
-	if (fsetflags(name, fsflags) != 0)
+	/*if (gp->flags & OPT_REM) - not needed, rf is zero otherwise */
+		st.st_attr &= ~gp->rf;
+	/*if (gp->flags & OPT_ADD) - not needed, af is zero otherwise */
+		st.st_attr |= gp->af;
+	if (!SetFileAttributes(name, st.st_attr & CHATTR_MASK)) {
+		errno = err_win_to_posix();
 		bb_perror_msg("setting flags on %s", name);
-
- skip_setflags:
+	}
 #endif
 
 	if (gp->recursive && S_ISDIR(st.st_mode))
@@ -307,8 +299,10 @@ int chattr_main(int argc UNUSED_PARAM, char **argv)
 	/* note: on loop exit, remaining argv[] is never empty */
 
 	/* run sanity checks on all the arguments given us */
+#if !ENABLE_PLATFORM_MINGW32
 	if ((g.flags & OPT_SET) && (g.flags & (OPT_ADD|OPT_REM)))
 		bb_simple_error_msg_and_die("= is incompatible with - and +");
+#endif
 	if (g.rf & g.af)
 		bb_simple_error_msg_and_die("can't set and unset a flag");
 	if (!g.flags)

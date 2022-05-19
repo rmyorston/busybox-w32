@@ -8,36 +8,6 @@
 #include "libbb.h"
 #include "e2fs_lib.h"
 
-#if ENABLE_PLATFORM_MINGW32
-/* Only certain attributes can be set using SetFileAttributes() */
-#define CHATTR_MASK (FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_HIDDEN | \
-			FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE | \
-			FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED | \
-			FILE_ATTRIBUTE_OFFLINE)
-
-/* Get/set file attributes on a Windows file system */
-int fgetsetflags(const char *name, unsigned *get_flags, unsigned set_flags)
-{
-	struct stat buf;
-
-	if (stat(name, &buf) == 0 /* stat is ok */
-	 && !S_ISREG(buf.st_mode) && !S_ISDIR(buf.st_mode)
-	) {
-		errno = EOPNOTSUPP;
-		return -1;
-	}
-
-	if (get_flags) {
-		*get_flags = (unsigned long)buf.st_attr;
-	}
-	else if (!SetFileAttributes(name, set_flags & CHATTR_MASK)) {
-		errno = err_win_to_posix();
-		return -1;
-	}
-	return 0;
-}
-#endif
-
 #if !ENABLE_PLATFORM_MINGW32
 /* Print file attributes on an ext2 file system */
 const uint32_t e2attr_flags_value[] ALIGN4 = {
