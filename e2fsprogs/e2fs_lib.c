@@ -88,20 +88,20 @@ const uint32_t e2attr_flags_value[] = {
 };
 
 const char e2attr_flags_sname[] ALIGN1 =
-	"roecSrhsatn";
+	"RoecSrhsatn";
 
 static const char e2attr_flags_lname[] ALIGN1 =
-	"Reparse" "\0"
+	"Reparse_Point" "\0"
 	"Offline" "\0"
 	"Encrypted" "\0"
 	"Compressed" "\0"
 	"Sparse" "\0"
-	"Readonly" "\0"
+	"Read_Only" "\0"
 	"Hidden" "\0"
 	"System" "\0"
 	"Archive" "\0"
 	"Temporary" "\0"
-	"Notindexed" "\0"
+	"Not_Indexed" "\0"
 	/* Another trailing NUL is added by compiler */;
 #endif
 

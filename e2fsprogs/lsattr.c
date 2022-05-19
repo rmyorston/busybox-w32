@@ -28,7 +28,12 @@
 //usage:       "[-Radl] [FILE]..."
 //usage:     )
 //usage:#define lsattr_full_usage "\n\n"
+//usage:     IF_NOT_PLATFORM_MINGW32(
 //usage:       "List ext2 file attributes\n"
+//usage:     )
+//usage:     IF_PLATFORM_MINGW32(
+//usage:       "List file attributes\n"
+//usage:     )
 //usage:     "\n	-R	Recurse"
 //usage:     "\n	-a	Include names starting with ."
 //usage:     "\n	-d	List directory names, not contents"
@@ -37,6 +42,22 @@
 //usage:     IF_NOT_PLATFORM_MINGW32(
 //usage:     "\n	-p	List project ID"
 //usage:     "\n	-v	List version/generation number"
+//usage:     )
+//usage:     IF_PLATFORM_MINGW32(
+//usage:     "\n\nAttributes:\n"
+//usage:     "\n	j	Junction"
+//usage:     "\n	l	Symbolic link"
+//usage:     "\n	R	Reparse point"
+//usage:     "\n	o	Offline"
+//usage:     "\n	e	Encrypted"
+//usage:     "\n	c	Compressed"
+//usage:     "\n	S	Sparse"
+//usage:     "\n	r	Read only"
+//usage:     "\n	h	Hidden"
+//usage:     "\n	s	System"
+//usage:     "\n	a	Archive"
+//usage:     "\n	t	Temporary"
+//usage:     "\n	n	Not indexed"
 //usage:     )
 
 #include "libbb.h"

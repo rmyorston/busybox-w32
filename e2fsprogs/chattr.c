@@ -39,8 +39,8 @@
 //usage:     "\n	-p NUM	Set project number"
 //usage:     )
 //-V, -f accepted but ignored
-//usage:     "\nModifiers:"
 //usage:     IF_NOT_PLATFORM_MINGW32(
+//usage:     "\nModifiers:"
 //usage:     "\n	-,+,=	Remove/add/set attributes"
 //usage:     "\nAttributes:"
 //usage:     "\n	A	No atime"
@@ -66,7 +66,6 @@
 //usage:     )
 //usage:     IF_PLATFORM_MINGW32(
 //usage:     "\n	-,+	Remove/add attributes"
-//usage:     "\nAttributes:"
 //usage:     "\n	r	Read only"
 //usage:     "\n	h	Hidden"
 //usage:     "\n	s	System"
