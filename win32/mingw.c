@@ -563,22 +563,26 @@ static uid_t file_owner(HANDLE fh)
 }
 #endif
 
-static int get_symlink_data(DWORD attr, const char *pathname,
+static DWORD get_symlink_data(DWORD attr, const char *pathname,
 					WIN32_FIND_DATAA *fbuf)
 {
 	if (attr & FILE_ATTRIBUTE_REPARSE_POINT) {
 		HANDLE handle = FindFirstFileA(pathname, fbuf);
 		if (handle != INVALID_HANDLE_VALUE) {
 			FindClose(handle);
-			return ((fbuf->dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
-					(fbuf->dwReserved0 == IO_REPARSE_TAG_SYMLINK ||
-					fbuf->dwReserved0 ==  IO_REPARSE_TAG_MOUNT_POINT));
+			if ((fbuf->dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+				switch (fbuf->dwReserved0) {
+				case IO_REPARSE_TAG_SYMLINK:
+				case IO_REPARSE_TAG_MOUNT_POINT:
+					return fbuf->dwReserved0;
+				}
+			}
 		}
 	}
 	return 0;
 }
 
-static int is_symlink(const char *pathname)
+static DWORD is_symlink(const char *pathname)
 {
 	WIN32_FILE_ATTRIBUTE_DATA fdata;
 	WIN32_FIND_DATAA fbuf;
@@ -629,8 +633,10 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		buf->st_uid = DEFAULT_UID;
 		buf->st_gid = DEFAULT_GID;
 		buf->st_dev = buf->st_rdev = 0;
+		buf->st_tag =
+			get_symlink_data(fdata.dwFileAttributes, file_name, &findbuf);
 
-		if (get_symlink_data(fdata.dwFileAttributes, file_name, &findbuf)) {
+		if (buf->st_tag) {
 			char *name = auto_string(xmalloc_realpath(file_name));
 
 			if (follow) {
@@ -745,6 +751,7 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 		buf->st_mode = (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)
 							& ~(current_umask & 0022);
 		buf->st_attr = FILE_ATTRIBUTE_NORMAL;
+		buf->st_tag = 0;
 		buf->st_size = buf64.st_size;
 		buf->st_atim.tv_sec = buf64.st_atime;
 		buf->st_atim.tv_nsec = 0;
@@ -764,6 +771,7 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 	if (GetFileInformationByHandle(fh, &fdata)) {
 		buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
 		buf->st_attr = fdata.dwFileAttributes;
+		buf->st_tag = 0;
 		buf->st_size = fdata.nFileSizeLow |
 			(((off64_t)fdata.nFileSizeHigh)<<32);
 		buf->st_atim = filetime_to_timespec(&(fdata.ftLastAccessTime));
