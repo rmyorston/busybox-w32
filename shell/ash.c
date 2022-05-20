@@ -16253,24 +16253,24 @@ tblentry_copy(struct tblentry *tep)
 }
 
 static struct datasize
-cmdtable_size(struct datasize ds, struct tblentry **cmdtablep)
+cmdtable_size(struct datasize ds)
 {
 	int i;
 	ds.funcblocksize += sizeof(struct tblentry *)*CMDTABLESIZE;
 	for (i = 0; i < CMDTABLESIZE; i++)
-		ds = tblentry_size(ds, cmdtablep[i]);
+		ds = tblentry_size(ds, cmdtable[i]);
 	return ds;
 }
 
 static struct tblentry **
-cmdtable_copy(struct tblentry **cmdtablep)
+cmdtable_copy(void)
 {
 	struct tblentry **new = funcblock;
 	int i;
 
 	funcblock = (char *) funcblock + sizeof(struct tblentry *)*CMDTABLESIZE;
 	for (i = 0; i < CMDTABLESIZE; i++) {
-		new[i] = tblentry_copy(cmdtablep[i]);
+		new[i] = tblentry_copy(cmdtable[i]);
 		SAVE_PTR(new[i], xasprintf("cmdtable[%d]", i), FREE);
 	}
 	return new;
@@ -16294,24 +16294,24 @@ SAVE_PTR((*vpp)->val, xasprintf("(*vpp)->val '%s'", vp->val ?: "NULL"), FREE);
 SLIST_COPY_END()
 
 static struct datasize
-atab_size(struct datasize ds, struct alias **atabp)
+atab_size(struct datasize ds)
 {
 	int i;
 	ds.funcblocksize += sizeof(struct alias *)*ATABSIZE;
 	for (i = 0; i < ATABSIZE; i++)
-		ds = alias_size(ds, atabp[i]);
+		ds = alias_size(ds, atab[i]);
 	return ds;
 }
 
 static struct alias **
-atab_copy(struct alias **atabp)
+atab_copy(void)
 {
 	struct alias **new = funcblock;
 	int i;
 
 	funcblock = (char *) funcblock + sizeof(struct alias *)*ATABSIZE;
 	for (i = 0; i < ATABSIZE; i++) {
-		new[i] = alias_copy(atabp[i]);
+		new[i] = alias_copy(atab[i]);
 		SAVE_PTR(new[i], xasprintf("atab[%d]", i), FREE);
 	}
 	return new;
@@ -16361,9 +16361,10 @@ argv_copy(char **p)
 
 #if MAX_HISTORY
 static struct datasize
-history_size(struct datasize ds, line_input_t *st)
+history_size(struct datasize ds)
 {
 	int i;
+	line_input_t *st = line_input_state;
 
 	ds.funcblocksize += sizeof(char *) * st->cnt_history;
 	for (i = 0; i < st->cnt_history; i++) {
@@ -16373,8 +16374,9 @@ history_size(struct datasize ds, line_input_t *st)
 }
 
 static char **
-history_copy(line_input_t *st)
+history_copy(void)
 {
+	line_input_t *st = line_input_state;
 	char **new = funcblock;
 	int i;
 
@@ -16421,30 +16423,31 @@ redirtab_copy(struct redirtab *rdtp)
 	return start;
 }
 
-#undef funcname
-#undef shellparam
-#undef redirlist
-#undef vartab
 static struct datasize
-globals_var_size(struct datasize ds, struct globals_var *gvp)
+globals_var_size(struct datasize ds)
 {
 	int i;
 
 	ds.funcblocksize += sizeof(struct globals_var);
-	ds.funcstringsize += align_len(gvp->funcname);
-	ds = argv_size(ds, gvp->shellparam.p);
-	ds.funcblocksize = redirtab_size(ds.funcblocksize, gvp->redirlist);
+	ds.funcstringsize += align_len(funcname);
+	ds = argv_size(ds, shellparam.p);
+	ds.funcblocksize = redirtab_size(ds.funcblocksize, redirlist);
 	for (i = 0; i < VTABSIZE; i++)
-		ds = var_size(ds, gvp->vartab[i]);
+		ds = var_size(ds, vartab[i]);
 	return ds;
 }
 
+#undef funcname
+#undef shellparam
+#undef redirlist
+#undef vartab
 static struct globals_var *
-globals_var_copy(struct globals_var *gvp)
+globals_var_copy(void)
 {
 	int i;
-	struct globals_var *new;
+	struct globals_var *gvp, *new;
 
+	gvp = ash_ptr_to_globals_var;
 	new = funcblock;
 	funcblock = (char *) funcblock + sizeof(struct globals_var);
 	memcpy(new, gvp, sizeof(struct globals_var));
@@ -16468,29 +16471,30 @@ globals_var_copy(struct globals_var *gvp)
 	return new;
 }
 
+static struct datasize
+globals_misc_size(struct datasize ds)
+{
+	ds.funcblocksize += sizeof(struct globals_misc);
+	ds.funcstringsize += align_len(minusc);
+	if (curdir != nullstr)
+		ds.funcstringsize += align_len(curdir);
+	if (physdir != nullstr)
+		ds.funcstringsize += align_len(physdir);
+	ds.funcstringsize += align_len(arg0);
+	ds.funcstringsize += align_len(commandname);
+	return ds;
+}
+
 #undef minusc
 #undef curdir
 #undef physdir
 #undef arg0
 #undef commandname
 #undef nullstr
-static struct datasize
-globals_misc_size(struct datasize ds, struct globals_misc *p)
-{
-	ds.funcblocksize += sizeof(struct globals_misc);
-	ds.funcstringsize += align_len(p->minusc);
-	if (p->curdir != p->nullstr)
-		ds.funcstringsize += align_len(p->curdir);
-	if (p->physdir != p->nullstr)
-		ds.funcstringsize += align_len(p->physdir);
-	ds.funcstringsize += align_len(p->arg0);
-	ds.funcstringsize += align_len(p->commandname);
-	return ds;
-}
-
 static struct globals_misc *
-globals_misc_copy(struct globals_misc *p)
+globals_misc_copy(void)
 {
+	struct globals_misc *p = ash_ptr_to_globals_misc;
 	struct globals_misc *new = funcblock;
 
 	funcblock = (char *) funcblock + sizeof(struct globals_misc);
@@ -16521,20 +16525,20 @@ forkshell_size(struct forkshell *fs)
 	if (fs->fpid == FS_OPENHERE)
 		return ds;
 
-	ds = globals_var_size(ds, ash_ptr_to_globals_var);
-	ds = globals_misc_size(ds, ash_ptr_to_globals_misc);
-	ds = cmdtable_size(ds, cmdtable);
+	ds = globals_var_size(ds);
+	ds = globals_misc_size(ds);
+	ds = cmdtable_size(ds);
 
 	ds.funcblocksize = calcsize(ds.funcblocksize, fs->n);
 	ds = argv_size(ds, fs->argv);
 
 	if ((ENABLE_ASH_ALIAS || MAX_HISTORY) && fs->fpid != FS_SHELLEXEC) {
 #if ENABLE_ASH_ALIAS
-		ds = atab_size(ds, atab);
+		ds = atab_size(ds);
 #endif
 #if MAX_HISTORY
 		if (line_input_state)
-			ds = history_size(ds, line_input_state);
+			ds = history_size(ds);
 #endif
 	}
 	return ds;
@@ -16550,9 +16554,9 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 	if (fs->fpid == FS_OPENHERE)
 		return;
 
-	new->gvp = globals_var_copy(ash_ptr_to_globals_var);
-	new->gmp = globals_misc_copy(ash_ptr_to_globals_misc);
-	new->cmdtable = cmdtable_copy(cmdtable);
+	new->gvp = globals_var_copy();
+	new->gmp = globals_misc_copy();
+	new->cmdtable = cmdtable_copy();
 	SAVE_PTR(new->gvp, "gvp", NO_FREE);
 	SAVE_PTR(new->gmp, "gmp", NO_FREE);
 	SAVE_PTR(new->cmdtable, "cmdtable", NO_FREE);
@@ -16564,12 +16568,12 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 
 	if ((ENABLE_ASH_ALIAS || MAX_HISTORY) && fs->fpid != FS_SHELLEXEC) {
 #if ENABLE_ASH_ALIAS
-		new->atab = atab_copy(atab);
+		new->atab = atab_copy();
 		SAVE_PTR(new->atab, "atab", NO_FREE);
 #endif
 #if MAX_HISTORY
 		if (line_input_state) {
-			new->history = history_copy(line_input_state);
+			new->history = history_copy();
 			SAVE_PTR(new->history, "history", NO_FREE);
 			new->cnt_history = line_input_state->cnt_history;
 		}
