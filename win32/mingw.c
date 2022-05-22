@@ -630,6 +630,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 	WIN32_FIND_DATAA findbuf;
 	DWORD low, high;
 	off64_t size;
+	ssize_t len;
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
 	DWORD flags;
 	BY_HANDLE_FILE_INFORMATION hdata;
@@ -645,20 +646,19 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 			get_symlink_data(fdata.dwFileAttributes, file_name, &findbuf);
 
 		if (buf->st_tag) {
-			char *name = auto_string(xmalloc_realpath(file_name));
-
 			if (follow) {
 				/* The file size and times are wrong when Windows follows
-				 * a symlink.  Use the canonicalized path to try again. */
+				 * a symlink.  Use the canonicalized path instead. */
 				err = errno;
-				file_name = name;
+				file_name = auto_string(xmalloc_realpath(file_name));
 				continue;
 			}
 
 			/* Get the contents of a symlink, not its target. */
 			buf->st_mode = S_IFLNK|S_IRWXU|S_IRWXG|S_IRWXO;
 			buf->st_attr = fdata.dwFileAttributes;
-			buf->st_size = name ? strlen(name) : 0; /* should use readlink */
+			len = readlink(file_name, NULL, 0);
+			buf->st_size = len == -1 ? 0 : len;
 			buf->st_atim = filetime_to_timespec(&(findbuf.ftLastAccessTime));
 			buf->st_mtim = filetime_to_timespec(&(findbuf.ftLastWriteTime));
 			buf->st_ctim = filetime_to_timespec(&(findbuf.ftCreationTime));
@@ -1527,6 +1527,7 @@ char *realpath(const char *path, char *resolved_path)
 }
 
 #define SRPB rptr->SymbolicLinkReparseBuffer
+/* Non-standard feature:  if buf is NULL just return the length. */
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 {
 	HANDLE h;
@@ -1554,6 +1555,8 @@ ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 		}
 
 		if (name) {
+			if (buf == NULL)
+				return len;
 			if (len > bufsiz)
 				len = bufsiz;
 			len = WideCharToMultiByte(CP_ACP, 0, name, len, buf, bufsiz, 0, 0);
