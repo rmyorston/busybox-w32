@@ -220,6 +220,7 @@ static int get_dev_fd(const char *filename)
 	return -1;
 }
 
+static int mingw_is_directory(const char *path);
 #undef open
 int mingw_open (const char *filename, int oflags, ...)
 {
@@ -247,8 +248,7 @@ int mingw_open (const char *filename, int oflags, ...)
 		update_special_fd(dev, fd);
 	}
 	else if ((oflags & O_ACCMODE) != O_RDONLY && errno == EACCES) {
-		DWORD attrs = GetFileAttributes(filename);
-		if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY))
+		if (mingw_is_directory(filename))
 			errno = EISDIR;
 	}
 	return fd;
@@ -355,7 +355,7 @@ static inline mode_t file_attr_to_st_mode(DWORD attr)
 	return fMode;
 }
 
-static inline int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
+static int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
 {
 	size_t len;
 
@@ -592,6 +592,14 @@ static DWORD is_symlink(const char *pathname)
 	return 0;
 }
 
+static int mingw_is_directory(const char *path)
+{
+	WIN32_FILE_ATTRIBUTE_DATA fdata;
+
+	return get_file_attr(path, &fdata) == 0 &&
+				(fdata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+}
+
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
 static int count_subdirs(const char *pathname)
 {
@@ -669,7 +677,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 			buf->st_mtim = filetime_to_timespec(&(fdata.ftLastWriteTime));
 			buf->st_ctim = filetime_to_timespec(&(fdata.ftCreationTime));
 		}
-		buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : 1;
+		buf->st_nlink = (buf->st_attr & FILE_ATTRIBUTE_DIRECTORY) ? 2 : 1;
 
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
 		flags = FILE_FLAG_BACKUP_SEMANTICS;
@@ -682,7 +690,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 				buf->st_dev = hdata.dwVolumeSerialNumber;
 				buf->st_ino = hdata.nFileIndexLow |
 						(((ino_t)hdata.nFileIndexHigh)<<32);
-				buf->st_nlink = S_ISDIR(buf->st_mode) ?
+				buf->st_nlink = (buf->st_attr & FILE_ATTRIBUTE_DIRECTORY) ?
 							count_subdirs(file_name) :
 							hdata.nNumberOfLinks;
 			}
@@ -700,7 +708,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		/* Get actual size of compressed/sparse files */
 		low = GetCompressedFileSize(file_name, &high);
 		if ((low == INVALID_FILE_SIZE && GetLastError() != NO_ERROR) ||
-				S_ISDIR(buf->st_mode)) {
+				(buf->st_attr & FILE_ATTRIBUTE_DIRECTORY)) {
 			size = buf->st_size;
 		}
 		else {
@@ -782,13 +790,14 @@ int mingw_fstat(int fd, struct mingw_stat *buf)
 		buf->st_dev = fdata.dwVolumeSerialNumber;
 		buf->st_ino = fdata.nFileIndexLow |
 			(((uint64_t)fdata.nFileIndexHigh)<<32);
-		buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : fdata.nNumberOfLinks;
+		buf->st_nlink = (buf->st_attr & FILE_ATTRIBUTE_DIRECTORY) ?
+			2 : fdata.nNumberOfLinks;
 #endif
  success:
 #if !ENABLE_FEATURE_EXTRA_FILE_DATA
 		buf->st_dev = 0;
 		buf->st_ino = 0;
-		buf->st_nlink = S_ISDIR(buf->st_mode) ? 2 : 1;
+		buf->st_nlink = (buf->st_attr & FILE_ATTRIBUTE_DIRECTORY) ? 2 : 1;
 #endif
 		buf->st_rdev = 0;
 		buf->st_uid = DEFAULT_UID;
@@ -1256,7 +1265,6 @@ int link(const char *oldpath, const char *newpath)
 int symlink(const char *target, const char *linkpath)
 {
 	DWORD flag = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
-	struct stat st;
 	DECLARE_PROC_ADDR(BOOLEAN, CreateSymbolicLinkA, LPCSTR, LPCSTR, DWORD);
 	char *targ, *relative = NULL;
 
@@ -1271,7 +1279,7 @@ int symlink(const char *target, const char *linkpath)
 						(int)(name - linkpath), linkpath, target);
 	}
 
-	if (stat(relative ?: target, &st) != -1 && S_ISDIR(st.st_mode))
+	if (mingw_is_directory(relative ?: target))
 		flag |= SYMBOLIC_LINK_FLAG_DIRECTORY;
 	free(relative);
 
@@ -1638,12 +1646,8 @@ int mingw_chdir(const char *dirname)
 #undef chmod
 int mingw_chmod(const char *path, int mode)
 {
-	WIN32_FILE_ATTRIBUTE_DATA fdata;
-
-	if ( get_file_attr(path, &fdata) == 0 &&
-			fdata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
+	if (mingw_is_directory(path))
 		mode |= 0222;
-	}
 
 	return chmod(path, mode);
 }
