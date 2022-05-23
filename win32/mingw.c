@@ -625,40 +625,51 @@ static int count_subdirs(const char *pathname)
  */
 static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 {
-	int err = EINVAL;
+	int err;
 	WIN32_FILE_ATTRIBUTE_DATA fdata;
 	WIN32_FIND_DATAA findbuf;
 	DWORD low, high;
 	off64_t size;
-	ssize_t len;
+	char lname[PATH_MAX];
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
 	DWORD flags;
 	BY_HANDLE_FILE_INFORMATION hdata;
 	HANDLE fh;
 #endif
 
-	while (file_name && !(err=get_file_attr(file_name, &fdata))) {
+	while (!(err=get_file_attr(file_name, &fdata))) {
 		buf->st_ino = 0;
 		buf->st_uid = DEFAULT_UID;
 		buf->st_gid = DEFAULT_GID;
 		buf->st_dev = buf->st_rdev = 0;
-		buf->st_tag =
-			get_symlink_data(fdata.dwFileAttributes, file_name, &findbuf);
+		buf->st_attr = fdata.dwFileAttributes;
+		buf->st_tag = get_symlink_data(buf->st_attr, file_name, &findbuf);
 
 		if (buf->st_tag) {
+			ssize_t len = readlink(file_name, lname, PATH_MAX);
+			if (len < 0) {
+				err = errno;
+				break;
+			} else if (len == PATH_MAX) {
+				errno = ENAMETOOLONG;
+				break;
+			}
+
 			if (follow) {
 				/* The file size and times are wrong when Windows follows
-				 * a symlink.  Use the canonicalized path instead. */
-				err = errno;
-				file_name = auto_string(xmalloc_realpath(file_name));
+				 * a symlink.  Use the symlink target instead. */
+				if (follow++ > MAXSYMLINKS) {
+					err = ELOOP;
+					break;
+				}
+				lname[len] = '\0';
+				file_name = lname;
 				continue;
 			}
 
 			/* Get the contents of a symlink, not its target. */
 			buf->st_mode = S_IFLNK|S_IRWXU|S_IRWXG|S_IRWXO;
-			buf->st_attr = fdata.dwFileAttributes;
-			len = readlink(file_name, NULL, 0);
-			buf->st_size = len == -1 ? 0 : len;
+			buf->st_size = len;
 			buf->st_atim = filetime_to_timespec(&(findbuf.ftLastAccessTime));
 			buf->st_mtim = filetime_to_timespec(&(findbuf.ftLastWriteTime));
 			buf->st_ctim = filetime_to_timespec(&(findbuf.ftCreationTime));
@@ -666,7 +677,6 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		else {
 			/* The file is not a symlink. */
 			buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
-			buf->st_attr = fdata.dwFileAttributes;
 			if (S_ISREG(buf->st_mode) &&
 					!(buf->st_attr & FILE_ATTRIBUTE_DEVICE) &&
 					(has_exe_suffix(file_name) || has_exec_format(file_name)))
@@ -1524,7 +1534,6 @@ char *realpath(const char *path, char *resolved_path)
 }
 
 #define SRPB rptr->SymbolicLinkReparseBuffer
-/* Non-standard feature:  if buf is NULL just return the length. */
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 {
 	HANDLE h;
@@ -1552,8 +1561,6 @@ ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 		}
 
 		if (name) {
-			if (buf == NULL)
-				return len;
 			if (len > bufsiz)
 				len = bufsiz;
 			len = WideCharToMultiByte(CP_ACP, 0, name, len, buf, bufsiz, 0, 0);
