@@ -423,6 +423,7 @@ internal_fnmatch (const char *pattern, const char *string,
 					goto matched;
 				break;
 			}
+			c = *p++;
 # endif
 		  }
 		else if (c == '\0')
@@ -463,13 +464,14 @@ internal_fnmatch (const char *pattern, const char *string,
 
 	  matched:
 	    /* Skip the rest of the [...] that already matched.  */
-	    while (c != ']')
+	    do
 	      {
+		c = *p++;
+
 		if (c == '\0')
 		  /* [... (unterminated) loses.  */
 		  return FNM_NOMATCH;
 
-		c = *p++;
 		if (!(flags & FNM_NOESCAPE) && c == '\\')
 		  {
 		    if (*p == '\0')
@@ -487,6 +489,7 @@ internal_fnmatch (const char *pattern, const char *string,
 		    c = *p;
 		  }
 	      }
+		while (c != ']');
 	    if (not)
 	      return FNM_NOMATCH;
 	  }
