@@ -1533,6 +1533,30 @@ char *realpath(const char *path, char *resolved_path)
 	return NULL;
 }
 
+static wchar_t *normalize_ntpath(wchar_t *wbuf)
+{
+	int i;
+	/* fix absolute path prefixes */
+	if (wbuf[0] == '\\') {
+		/* strip NT namespace prefixes */
+		if (!wcsncmp(wbuf, L"\\??\\", 4) ||
+		    !wcsncmp(wbuf, L"\\\\?\\", 4))
+			wbuf += 4;
+		else if (!wcsnicmp(wbuf, L"\\DosDevices\\", 12))
+			wbuf += 12;
+		/* replace remaining '...UNC\' with '\\' */
+		if (!wcsnicmp(wbuf, L"UNC\\", 4)) {
+			wbuf += 2;
+			*wbuf = '\\';
+		}
+	}
+	/* convert backslashes to slashes */
+	for (i = 0; wbuf[i]; i++)
+		if (wbuf[i] == '\\')
+			wbuf[i] = '/';
+	return wbuf;
+}
+
 #define SRPB rptr->SymbolicLinkReparseBuffer
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 {
@@ -1553,25 +1577,21 @@ ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 		CloseHandle(h);
 
 		if (status && rptr->ReparseTag == IO_REPARSE_TAG_SYMLINK) {
-			len = SRPB.PrintNameLength/sizeof(WCHAR);
-			name = SRPB.PathBuffer + SRPB.PrintNameOffset/sizeof(WCHAR);
+			len = SRPB.SubstituteNameLength/sizeof(WCHAR);
+			name = SRPB.PathBuffer + SRPB.SubstituteNameOffset/sizeof(WCHAR);
 		} else if (status && rptr->ReparseTag == IO_REPARSE_TAG_MOUNT_POINT) {
-			len = MRPB.PrintNameLength/sizeof(WCHAR);
-			name = MRPB.PathBuffer + MRPB.PrintNameOffset/sizeof(WCHAR);
+			len = MRPB.SubstituteNameLength/sizeof(WCHAR);
+			name = MRPB.PathBuffer + MRPB.SubstituteNameOffset/sizeof(WCHAR);
 		}
 
 		if (name) {
+			name[len] = 0;
+			name = normalize_ntpath(name);
+			len = wcslen(name);
 			if (len > bufsiz)
 				len = bufsiz;
-			len = WideCharToMultiByte(CP_ACP, 0, name, len, buf, bufsiz, 0, 0);
-			if (len) {
-				int i;
-
-				for (i = 0; i < len; i++)
-					if (buf[i] == '\\')
-						buf[i] = '/';
+			if (WideCharToMultiByte(CP_ACP, 0, name, len, buf, bufsiz, 0, 0))
 				return len;
-			}
 		}
 	}
 	errno = err_win_to_posix();
