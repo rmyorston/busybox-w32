@@ -1992,6 +1992,7 @@ unsigned size_from_HISTFILESIZE(const char *hp) FAST_FUNC;
 #  define MAX_HISTORY 0
 # endif
 typedef const char *get_exe_name_t(int i) FAST_FUNC;
+typedef const char *sh_get_var_t(const char *name) FAST_FUNC;
 typedef struct line_input_t {
 	int flags;
 	int timeout;
@@ -2005,9 +2006,8 @@ typedef struct line_input_t {
 #  if ENABLE_SHELL_ASH || ENABLE_SHELL_HUSH
 	/* function to fetch additional application-specific names to match */
 	get_exe_name_t *get_exe_name;
-#   define EDITING_HAS_get_exe_name 1
-#  else
-#   define EDITING_HAS_get_exe_name 0
+	/* function to fetch value of shell variable */
+	sh_get_var_t *sh_get_var;
 #  endif
 # endif
 # if MAX_HISTORY
@@ -2060,11 +2060,6 @@ int read_line_input(const char* prompt, char* command, int maxsize) FAST_FUNC;
 #define read_line_input(state, prompt, command, maxsize) \
 	read_line_input(prompt, command, maxsize)
 #endif
-
-#ifndef EDITING_HAS_get_exe_name
-# define EDITING_HAS_get_exe_name 0
-#endif
-
 
 #ifndef COMM_LEN
 # ifdef TASK_COMM_LEN
