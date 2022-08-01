@@ -1,0 +1,413 @@
+#!/bin/sh
+
+. ./testing.sh
+
+# testing "test name" "command" "expected result" "file input" "stdin"
+
+testing "Basic makefile" \
+	"make -f -" "target\n" "" '
+target:
+	@echo target
+'
+
+# .DEFAULT rules with no commands or some prerequisites are ignored.
+# .DEFAULT rules with commands can be redefined.
+testing ".DEFAULT rule" \
+	"make -f - default" "default2\n" "" '
+.DEFAULT: ignored
+.DEFAULT:
+	@echo default1
+.DEFAULT:
+	@echo default2
+target:
+'
+
+# Macros should be expanded before suffix substitution.  The suffixes
+# can be obtained by macro expansion.
+testing "Macro expansion and suffix substitution" \
+	"make -f -" "src1.o src2.o\n" "" '
+DOTC = .c
+DOTO = .o
+SRC1 = src1.c
+SRCS = $(SRC1) src2.c
+target:
+	@echo $(SRCS:$(DOTC)=$(DOTO))
+'
+
+# Indeed, everything after the <colon> can be obtained by macro
+# macro expansion.
+testing "Macro expansion and suffix substitution 2" \
+	"make -f -" "src1.o src2.o\n" "" '
+DOTS = .c=.o
+SRC1 = src1.c
+SRCS = $(SRC1) src2.c
+target:
+	@echo $(SRCS:$(DOTS))
+'
+
+# It should be possible for an inference rule to determine that a
+# prerequisite can be created using an explicit rule.
+mkdir make.tempdir && cd make.tempdir || exit 1
+testing "Inference rule with explicit rule for prerequisite" \
+	"make -f -" "touch x.p\ncat x.p >x.q\n" "" '
+.SUFFIXES: .p .q
+x.q:
+x.p:
+	touch $@
+.p.q:
+	cat $< >$@
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
+# A macro created using ::= remembers it's of type immediate-expansion.
+# Immediate expansion also occurs when += is used to append to such a macro.
+testing "Appending to immediate-expansion macro" \
+	"make -f -" \
+	"hello 1 2 3\nhello 4 4\n" "" '
+world = 1
+hello ::= hello $(world)
+world = 2
+hello += $(world)
+world = 3
+hello += $(world)
+world = 4
+
+world = 1
+reset ::= hello $(world)
+world = 2
+# No longer immediate-expansion
+reset = hello $(world)
+world = 3
+reset += $(world)
+world = 4
+
+target:
+	@echo $(hello)
+	@echo $(reset)
+'
+
+# basic pattern macro expansion
+testing "Basic pattern macro expansion" \
+	"make -f -" \
+	"obj/util.o obj/main.o\n" "" '
+SRC = src/util.c src/main.c
+OBJ = $(SRC:src/%.c=obj/%.o)
+
+target:
+	@echo $(OBJ)
+'
+
+# pattern macro expansion; match any value
+testing "Pattern macro expansion; match any value" \
+	"make -f -" \
+	"any_value.o\n" "" '
+SRC = any_value
+OBJ = $(SRC:%=%.o)
+
+target:
+	@echo $(OBJ)
+'
+
+# pattern macro expansion with empty rvalue
+testing "Pattern macro expansion with empty rvalue" \
+	"make -f -" \
+	"\n" "" '
+SRC = util.c main.c
+OBJ = $(SRC:%.c=)
+
+target:
+	@echo $(OBJ)
+'
+
+# pattern macro expansion with multiple <percent> in rvalue
+# POSIX requires the first <percent> to be expanded, others
+# may or may not be expanded.  Permit either case.
+testing "Pattern macro expansion with multiple <percent> in rvalue" \
+	"make -f - | sed 's/mainmainmain/main%%/'" \
+	"main%%\n" "" '
+SRC = main.c
+OBJ = $(SRC:%.c=%%%)
+
+target:
+	@echo $(OBJ)
+'
+
+# pattern macro expansion; zero match
+testing "Pattern macro expansion; zero match" \
+	"make -f -" \
+	"nsnp\n" "" '
+WORD = osop
+REPL = $(WORD:os%op=ns%np)
+
+target:
+	@echo $(REPL)
+'
+
+# Check that MAKE will contain argv[0], e.g make in this case
+testing "Basic MAKE macro expansion" \
+	"make -f -" \
+	"make\n" "" '
+target:
+	@echo $(MAKE)
+'
+
+# Check that MAKE defined as environment variable will overwrite default MAKE
+testing "MAKE macro expansion; overwrite with env macro" \
+	"MAKE=hello make -f -" \
+	"hello\n" "" '
+target:
+	@echo $(MAKE)
+'
+
+# Check that MAKE defined on the command-line will overwrite MAKE defined in
+# Makefile
+testing "MAKE macro expansion; overwrite with command-line macro" \
+	"make -f - MAKE=hello" \
+	"hello\n" "" '
+MAKE = test
+
+target:
+	@echo $(MAKE)
+'
+
+# POSIX draft states that if make was invoked using relative path, MAKE must
+# contain absolute path, not just argv[0]
+testing "MAKE macro expansion; turn relative path into absolute" \
+	"../runtest-tempdir-links/make -f -" \
+	"ok\n" "" '
+target:
+	@test -e "$(MAKE)" && test "$(MAKE)" = "$$(env which make)" && echo ok
+'
+
+# $? contains prerequisites newer than target, file2 in this case
+# $^ has all prerequisites, file1 and file2
+touch -t 202206171200 file1
+touch -t 202206171201 target
+touch -t 202206171202 file2
+testing "Compare \$? and \$^ internal macros" \
+	"make -f -" \
+	"file2\nfile1 file2\n" "" '
+target: file1 file2
+	@echo $?
+	@echo $^
+'
+rm -f target file1 file2
+
+# Phony targets are executed (once) even if a matching file exists.
+# A .PHONY target with no prerequisites is ignored.
+touch -t 202206171201 target
+testing "Phony target" \
+	"make -f -" \
+	"phony\n" "" '
+.PHONY: target
+.PHONY:
+target:
+	@echo phony
+'
+rm -f target
+
+# Phony targets aren't touched with -t
+testing "Phony target not touched" \
+	"make -t -f - >/dev/null && test -f target && echo target" \
+	"" "" '
+.PHONY: target
+target:
+	@:
+'
+rm -f target
+
+# Include files are created or brought up-to-date
+mkdir make.tempdir && cd make.tempdir || exit 1
+testing "Create include file" \
+	"make -f -" \
+	"made\n" "" '
+target:
+	@echo $(VAR)
+mk:
+	@echo "VAR = made" >mk
+include mk
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
+# Include files are created or brought up-to-date even when the -n
+# option is given.
+mkdir make.tempdir && cd make.tempdir || exit 1
+testing "Create include file even with -n" \
+	"make -n -f -" \
+	"echo made\n" "" '
+target:
+	@echo $(VAR)
+mk:
+	@echo "VAR = made" >mk
+include mk
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
+# Failure to create an include file isn't an error.  (Provided the
+# include line is ignoring non-existent files.)
+testing "Failure to create include file is OK" \
+	"make -f -" \
+	"OK\n" "" '
+target:
+	@echo OK
+mk:
+	@:
+-include mk
+'
+
+# Nested macro expansion is allowed.  This should be compatible
+# with other implementations.
+testing "Nested macro expansion" \
+	"make -f -" "0 bc\n1 d\n2\n3\n4 bcd\n5 bcd\n" "" '
+a = b
+b = c
+c = d
+$(a:.q=.v)$(b:.z=.v) = bc
+bcd = bcd
+target:
+	@echo 0 $(bc)
+	@echo 1 $($($(a)))
+	@echo 2 $($(a) $(b) $(c))
+	@echo 3 $($a $b $c)
+	@echo 4 $($(a)$(b)$(c))
+	@echo 5 $($a$b$c)
+'
+
+testing "Double-colon rule" \
+	"make -f -" "target1\ntarget2\n" "" '
+target::
+	@echo target1
+target::
+	@echo target2
+'
+
+# There was a bug whereby the modification time of a file created by
+# double-colon rules wasn't correctly updated.  This test checks that
+# the bug is now fixed.
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch -t 202206171200 file1
+touch -t 202206171201 intermediate
+touch -t 202206171202 target
+touch -t 202206171203 file2
+testing "Target depends on prerequisite updated by double-colon rule" \
+	"make -f -" \
+	"file2\n" "" '
+target: intermediate
+	@cat intermediate
+intermediate:: file1
+	@echo file1 >>intermediate
+intermediate:: file2
+	@echo file2 >>intermediate
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
+# Use chained inference rules to determine prerequisites.
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch target.p
+testing "Chained inference rules" \
+	"make -s -f - target.s" \
+	"target.q\ntarget.r\ntarget.s\n" "" '
+.SUFFIXES: .p .q .r .s
+.p.q:
+	@cp $< $*.q
+	@echo $*.q
+.q.r:
+	@cp $< $*.r
+	@echo $*.r
+.r.s:
+	@cp $< $*.s
+	@echo $*.s
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
+# Assign the output of a shell command to a macro.
+testing "Shell assignment" \
+	"make -f -" \
+	"1 2 3   4\n" "" '
+hello != echo 1; echo 2; echo 3; echo; echo
+
+target:
+	@echo "$(hello) 4"
+'
+
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+# make supports *, ? and [] wildcards in targets and prerequisites
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch -t 202206171201 t1a t2aa t3b
+touch s1a s2aa s3b
+testing "Expand wildcards in filenames" \
+	"make -f - t1a t2aa t3b" \
+	"t1a s1a s2aa s3b\nt2aa s1a s2aa s3b\nt3b s1a s2aa s3b\n" "" '
+t1? t2* t3[abc]: s1? s2* s3[abc]
+	@echo $@ $?
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
+# Skip duplicate entries in $? and $^
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch -t 202206171200 file1 file3
+touch -t 202206171201 target
+touch -t 202206171202 file2
+testing "Skip duplicate entries in \$? and \$^" \
+	"make -f -" \
+	"file2\nfile1 file2 file3\n" "" '
+target: file1 file2 file2 file3 file3
+	@echo $?
+	@echo $^
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
+# Skip duplicate entries in $? and $^, with each double-colon rule
+# handled separately
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch -t 202206171200 file1 file3
+touch -t 202206171201 target
+touch -t 202206171202 file2
+testing "Skip duplicate entries: double-colon rules" \
+	"make -f -" \
+	"file2\nfile1 file3 file2\nfile2\nfile2 file3\n" "" '
+target:: file1 file3 file1 file2 file3
+	@echo $?
+	@echo $^
+target:: file2 file3 file3
+	@echo $?
+	@echo $^
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
+# Skip duplicate entries in $? and $^, with each double-colon rule
+# handled separately.  No prerequisites out-of-date in the first.
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch -t 202206171200 file1 file3
+touch -t 202206171201 target
+touch -t 202206171202 file2
+testing "Skip duplicate entries: double-colon rules, only second invoked" \
+	"make -f -" \
+	"file2\nfile2 file3\n" "" '
+target:: file1 file3 file1 file3
+	@echo $?
+	@echo $^
+target:: file2 file3 file3
+	@echo $?
+	@echo $^
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
+# Double-colon rules didn't work properly if their target was phony:
+# - they didn't ignore the presence of a file matching the target name;
+# - they were also invoked as if they were a single-colon rule.
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch -t 202206171200 file1
+touch -t 202206171201 target
+testing "Phony target of double-colon rule" \
+	"make -f - 2>&1" \
+	"unconditional\nconditional\n" "" '
+.PHONY: target
+target::
+	@echo unconditional
+target:: file1
+	@echo conditional
+file1:
+	@touch file1
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null

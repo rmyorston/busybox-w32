@@ -30,12 +30,12 @@
 //config:config FEATURE_AR_LONG_FILENAMES
 //config:	bool "Support long filenames (not needed for debs)"
 //config:	default y
-//config:	depends on AR
+//config:	depends on AR || MAKE
 //config:	help
 //config:	By default the ar format can only store the first 15 characters
 //config:	of the filename, this option removes that limitation.
 //config:	It supports the GNU ar long filename method which moves multiple long
-//config:	filenames into a the data section of a new ar entry.
+//config:	filenames into the data section of a new ar entry.
 //config:
 //config:config FEATURE_AR_CREATE
 //config:	bool "Support archive creation"

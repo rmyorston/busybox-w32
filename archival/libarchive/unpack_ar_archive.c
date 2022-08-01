@@ -16,6 +16,10 @@ void FAST_FUNC unpack_ar_archive(archive_handle_t *ar_archive)
 	}
 	ar_archive->offset += AR_MAGIC_LEN;
 
-	while (get_header_ar(ar_archive) == EXIT_SUCCESS)
-		continue;
+	while (get_header_ar(ar_archive) == EXIT_SUCCESS) {
+#if ENABLE_MAKE
+		free(ar_archive->file_header->name);
+		ar_archive->file_header->name = NULL;
+#endif
+	}
 }

@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.36.0.git
-# Thu May 12 08:13:00 2022
+# Thu Jul  7 08:08:14 2022
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -831,6 +831,8 @@ CONFIG_FEATURE_LESS_LINENUMS=y
 CONFIG_FEATURE_LESS_RAW=y
 CONFIG_FEATURE_LESS_ENV=y
 # CONFIG_LSSCSI is not set
+CONFIG_MAKE=y
+CONFIG_FEATURE_MAKE_POSIX=y
 # CONFIG_MAKEDEVS is not set
 # CONFIG_FEATURE_MAKEDEVS_LEAF is not set
 # CONFIG_FEATURE_MAKEDEVS_TABLE is not set
