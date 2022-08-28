@@ -1402,11 +1402,10 @@ process_command(char *s)
 	// Remove tab following escaped newline.  Stop processing at a
 	// non-escaped newline.
 	for (t = u = s; *u && *u != '\n'; u++) {
-		if (u[0] == '\\' && u[1] == '\n' && u[2] == '\t') {
-			*t++ = *u++;
-			*t++ = *u++;
-		} else {
-			*t++ = *u;
+		*t++ = *u;
+		if (u[0] == '\\' && u[1] == '\n') {
+			*t++ = '\n';
+			u += (u[2] == '\t') ? 2 : 1;
 		}
 	}
 	*t = '\0';
