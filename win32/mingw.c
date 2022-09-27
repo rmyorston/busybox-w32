@@ -630,7 +630,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 	WIN32_FIND_DATAA findbuf;
 	DWORD low, high;
 	off64_t size;
-	char lname[PATH_MAX];
+	char *lname = NULL;
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
 	DWORD flags;
 	BY_HANDLE_FILE_INFORMATION hdata;
@@ -646,30 +646,22 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		buf->st_tag = get_symlink_data(buf->st_attr, file_name, &findbuf);
 
 		if (buf->st_tag) {
-			ssize_t len = readlink(file_name, lname, PATH_MAX);
-			if (len < 0) {
-				err = errno;
-				break;
-			} else if (len == PATH_MAX) {
-				errno = ENAMETOOLONG;
-				break;
-			}
+			ssize_t len;
+			char content[PATH_MAX];
 
 			if (follow) {
 				/* The file size and times are wrong when Windows follows
 				 * a symlink.  Use the symlink target instead. */
-				if (follow++ > MAXSYMLINKS) {
-					err = ELOOP;
-					break;
-				}
-				lname[len] = '\0';
-				file_name = lname;
+				file_name = lname = xmalloc_follow_symlinks(file_name);
+				if (!lname)
+					return -1;
 				continue;
 			}
 
 			/* Get the contents of a symlink, not its target. */
 			buf->st_mode = S_IFLNK|S_IRWXU|S_IRWXG|S_IRWXO;
-			buf->st_size = len;
+			len = readlink(file_name, content, PATH_MAX);
+			buf->st_size = (len < 0 || len == PATH_MAX) ? 0 : len;
 			buf->st_atim = filetime_to_timespec(&(findbuf.ftLastAccessTime));
 			buf->st_mtim = filetime_to_timespec(&(findbuf.ftLastWriteTime));
 			buf->st_ctim = filetime_to_timespec(&(findbuf.ftCreationTime));
@@ -733,6 +725,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		buf->st_blocks = ((size+4095)>>12)<<3;
 		return 0;
 	}
+	free(lname);
 	errno = err;
 	return -1;
 }
