@@ -149,6 +149,11 @@
 //config:	default y
 //config:	depends on SHELL_ASH
 //config:
+//config:config ASH_SLEEP
+//config:	bool "sleep builtin"
+//config:	default y
+//config:	depends on SHELL_ASH
+//config:
 //config:config ASH_HELP
 //config:	bool "help builtin"
 //config:	default y
@@ -7702,6 +7707,7 @@ varunset(const char *end, const char *var, const char *umsg, int varflags)
 			msg = umsg;
 		}
 	}
+	ifsfree();
 	ash_msg_and_raise_error("%.*s: %s%s", (int)(end - var - 1), var, msg, tail);
 }
 
@@ -7997,13 +8003,15 @@ subevalvar(char *start, char *str, int strloc,
 				if (idx >= end)
 					break;
 				STPUTC(*idx, expdest);
+				if (stackblock() != restart_detect)
+					goto restart;
 				if (quotes && (unsigned char)*idx == CTLESC) {
 					idx++;
 					len++;
 					STPUTC(*idx, expdest);
+					if (stackblock() != restart_detect)
+						goto restart;
 				}
-				if (stackblock() != restart_detect)
-					goto restart;
 				idx++;
 				len++;
 				rmesc++;
@@ -8027,6 +8035,13 @@ subevalvar(char *start, char *str, int strloc,
 			} else {
 				idx = loc;
 			}
+
+			/* The STPUTC invocations above may resize and move the
+			 * stack via realloc(3). Since repl is a pointer into the
+			 * stack, we need to reconstruct it relative to stackblock().
+			 */
+			if (slash_pos >= 0)
+				repl = (char *)stackblock() + strloc + slash_pos + 1;
 
 			//bb_error_msg("repl:'%s'", repl);
 			for (loc = (char*)repl; *loc; loc++) {
@@ -8127,6 +8142,7 @@ varvalue(char *name, int varflags, int flags, int quoted)
 		if (discard)
 			return -1;
 
+		ifsfree();
 		raise_error_syntax("bad substitution");
 	}
 
@@ -11039,6 +11055,9 @@ static int FAST_FUNC printfcmd(int argc, char **argv) { return printf_main(argc,
 #if ENABLE_ASH_TEST || BASH_TEST2
 static int FAST_FUNC testcmd(int argc, char **argv)   { return test_main(argc, argv); }
 #endif
+#if ENABLE_ASH_SLEEP
+static int FAST_FUNC sleepcmd(int argc, char **argv)  { return sleep_main(argc, argv); }
+#endif
 
 /* Keep these in proper order since it is searched via bsearch() */
 static const struct builtincmd builtintab[] = {
@@ -11101,6 +11120,9 @@ static const struct builtincmd builtintab[] = {
 	{ BUILTIN_SPEC_REG      "return"  , returncmd  },
 	{ BUILTIN_SPEC_REG      "set"     , setcmd     },
 	{ BUILTIN_SPEC_REG      "shift"   , shiftcmd   },
+#if ENABLE_ASH_SLEEP
+	{ BUILTIN_REGULAR       "sleep"   , sleepcmd   },
+#endif
 #if BASH_SOURCE
 	{ BUILTIN_SPEC_REG      "source"  , dotcmd     },
 #endif

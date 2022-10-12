@@ -219,4 +219,25 @@ testing "sort -h" \
 
 # testing "description" "command(s)" "result" "infile" "stdin"
 
+testing "sort -k2,2M" \
+"sort -k2,2M input" "\
+3 March
+2 April
+1  May
+" "\
+2 April
+1  May
+3 March
+" ""
+
+testing "sort -s -u" \
+"sort -s -u -k 2 input" "\
+z a
+z b
+" "\
+z b
+a b
+z a
+a a" ""
+
 exit $FAILCOUNT

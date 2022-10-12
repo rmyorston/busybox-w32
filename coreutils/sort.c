@@ -357,9 +357,9 @@ static int compare_keys(const void *xarg, const void *yarg)
 			int dx;
 			char *xx, *yy;
 
-			xx = strptime(x, "%b", &thyme);
+			xx = strptime(skip_whitespace(x), "%b", &thyme);
 			dx = thyme.tm_mon;
-			yy = strptime(y, "%b", &thyme);
+			yy = strptime(skip_whitespace(y), "%b", &thyme);
 			if (!xx)
 				retval = (!yy) ? 0 : -1;
 			else if (!yy)
@@ -652,11 +652,12 @@ int sort_main(int argc UNUSED_PARAM, char **argv)
 	/* Handle -u */
 	if (option_mask32 & FLAG_u) {
 		int j = 0;
-		/* coreutils 6.3 drop lines for which only key is the same
-		 * -- disabling last-resort compare, or else compare_keys()
-		 * will be the same only for completely identical lines.
+		/* coreutils 6.3 drop lines for which only key is the same:
+		 * - disabling last-resort compare, or else compare_keys()
+		 * will be the same only for completely identical lines
+		 * - disabling -s (same reasons)
 		 */
-		option_mask32 |= FLAG_no_tie_break;
+		option_mask32 = (option_mask32 | FLAG_no_tie_break) & (~FLAG_s);
 		for (i = 1; i < linecount; i++) {
 			if (compare_keys(&lines[j], &lines[i]) == 0)
 				free(lines[i]);
