@@ -229,7 +229,11 @@ int xxd_main(int argc UNUSED_PARAM, char **argv)
 {
 	char buf[80];
 	dumper_t *dumper;
+#if !ENABLE_PLATFORM_MINGW32
 	char *opt_l, *opt_s, *opt_o;
+#else
+	char *opt_l, *opt_s = NULL, *opt_o;
+#endif
 	unsigned bytes = 2;
 	unsigned cols = 0;
 	unsigned opt;
