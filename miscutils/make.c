@@ -1927,15 +1927,17 @@ touch(struct name *np)
 
 static int
 make1(struct name *np, struct cmd *cp, char *oodate, char *allsrc,
-		struct name *implicit)
+		char *dedup, struct name *implicit)
 {
 	int estat = 0;	// 0 exit status is success
 	char *name, *member = NULL, *base;
 
 	name = splitlib(np->n_name, &member);
 	setmacro("?", oodate, 0 | M_VALID);
-	if (!posix)
-		setmacro("^", allsrc, 0 | M_VALID);
+	if (!posix) {
+		setmacro("+", allsrc, 0 | M_VALID);
+		setmacro("^", dedup, 0 | M_VALID);
+	}
 	setmacro("%", member, 0 | M_VALID);
 	setmacro("@", name, 0 | M_VALID);
 	if (implicit) {
@@ -1993,6 +1995,7 @@ make(struct name *np, int level)
 	struct cmd *sc_cmd = NULL;	// commands for single-colon rule
 	char *oodate = NULL;
 	char *allsrc = NULL;
+	char *dedup = NULL;
 	struct timespec dtim = {1, 0};
 	bool didsomething = 0;
 	bool estat = 0;	// 0 exit status is success
@@ -2080,17 +2083,17 @@ make(struct name *np, int level)
 			// Make prerequisite
 			estat |= make(dp->d_name, level + 1);
 
-			// Make strings of out-of-date prerequisites (for $?)
-			// and all prerequisites (for $^).  But not if we were
-			// invoked with -q.
-			if (!quest
-					// Skip duplicate entries.
-					&& (posix || !(dp->d_name->n_flag & N_MARK))
-			) {
+			// Make strings of out-of-date prerequisites (for $?),
+			// all prerequisites (for $+) and deduplicated prerequisites
+			// (for $^).  But not if we were invoked with -q.
+			if (!quest) {
 				if (timespec_le(&np->n_tim, &dp->d_name->n_tim)) {
-					oodate = xappendword(oodate, dp->d_name->n_name);
+					if (posix || !(dp->d_name->n_flag & N_MARK))
+						oodate = xappendword(oodate, dp->d_name->n_name);
 				}
 				allsrc = xappendword(allsrc, dp->d_name->n_name);
+				if (!(dp->d_name->n_flag & N_MARK))
+					dedup = xappendword(dedup, dp->d_name->n_name);
 				dp->d_name->n_flag |= N_MARK;
 			}
 			dtim = *timespec_max(&dtim, &dp->d_name->n_tim);
@@ -2099,7 +2102,7 @@ make(struct name *np, int level)
 			if (!quest && ((np->n_flag & N_PHONY) ||
 							timespec_le(&np->n_tim, &dtim))) {
 				if (estat == 0) {
-					estat = make1(np, rp->r_cmd, oodate, allsrc, locdep);
+					estat = make1(np, rp->r_cmd, oodate, allsrc, dedup, locdep);
 					dtim = (struct timespec){1, 0};
 					didsomething = 1;
 				}
@@ -2107,7 +2110,8 @@ make(struct name *np, int level)
 				oodate = NULL;
 			}
 			free(allsrc);
-			allsrc = NULL;
+			free(dedup);
+			allsrc = dedup = NULL;
 			if (locdep) {
 				rp->r_dep = rp->r_dep->d_next;
 				rp->r_cmd = NULL;
@@ -2132,7 +2136,7 @@ make(struct name *np, int level)
 				if (!doinclude)
 					bb_error_msg("nothing to be done for %s", np->n_name);
 			} else {
-				estat = make1(np, sc_cmd, oodate, allsrc, impdep);
+				estat = make1(np, sc_cmd, oodate, allsrc, dedup, impdep);
 				clock_gettime(CLOCK_REALTIME, &np->n_tim);
 			}
 		} else if (!doinclude) {
@@ -2145,6 +2149,7 @@ make(struct name *np, int level)
 		printf("%s: '%s' is up to date\n", applet_name, np->n_name);
 	}
 	free(allsrc);
+	free(dedup);
 	return estat;
 }
 

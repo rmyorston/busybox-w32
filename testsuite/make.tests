@@ -255,6 +255,18 @@ mk:
 -include mk
 '
 
+# $^ skips duplicate prerequisites, $+ doesn't
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch file1 file2 file3
+testing "make skip duplicate entries in \$^ but not \$+" \
+	"make -f -" \
+	"file1 file2 file3\nfile1 file2 file2 file3 file3\n" "" '
+target: file1 file2 file2 file3 file3
+	@echo $^
+	@echo $+
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
 # Nested macro expansion is allowed.  This should be compatible
 # with other implementations.
 testing "make nested macro expansion" \
