@@ -267,6 +267,18 @@ target: file1 file2 file2 file3 file3
 '
 cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
 
+# Assign the output of a shell command to a macro.
+testing "make shell assignment" \
+	"make -f -" \
+	"1 2 3   4\n" "" '
+hello != echo 1; echo 2; echo 3; echo; echo
+
+target:
+	@echo "$(hello) 4"
+'
+
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
 # Nested macro expansion is allowed.  This should be compatible
 # with other implementations.
 testing "make nested macro expansion" \
@@ -332,17 +344,6 @@ testing "make chained inference rules" \
 '
 cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
 
-# Assign the output of a shell command to a macro.
-testing "make shell assignment" \
-	"make -f -" \
-	"1 2 3   4\n" "" '
-hello != echo 1; echo 2; echo 3; echo; echo
-
-target:
-	@echo "$(hello) 4"
-'
-
-cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
 # make supports *, ? and [] wildcards in targets and prerequisites
 mkdir make.tempdir && cd make.tempdir || exit 1
 touch -t 202206171201 t1a t2aa t3b

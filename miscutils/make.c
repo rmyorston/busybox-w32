@@ -1609,11 +1609,11 @@ input(FILE *fd, int ilevel)
 						}
 						break;
 					}
-				case '!':
-					// ':=' and '!=' are non-POSIX extensions.
+					// ':=' is a non-POSIX extension.
 				case '+':
 				case '?':
-					// '+=' and '?=' are from POSIX 202X.
+				case '!':
+					// '+=', '?=' and '!=' are from POSIX 202X.
 					if (posix)
 						break;
 					eq = q[-1];
@@ -1662,8 +1662,7 @@ input(FILE *fd, int ilevel)
 				if (rhs != q)
 					free(rhs);
 				q = newq;
-			}
-			else if (eq == '!') {
+			} else if (eq == '!') {
 				char *cmd = expand_macros(q, FALSE);
 				q = newq = run_command(cmd);
 				free(cmd);
