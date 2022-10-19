@@ -277,8 +277,6 @@ target:
 	@echo "$(hello) 4"
 '
 
-cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
-
 # Nested macro expansion is allowed.  This should be compatible
 # with other implementations.
 testing "make nested macro expansion" \
@@ -296,6 +294,18 @@ target:
 	@echo 4 $($(a)$(b)$(c))
 	@echo 5 $($a$b$c)
 '
+
+# .WAIT is allowed as a prerequisite.  Since parallel builds aren't
+# implemented it doesn't have any effect.
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch file1 file2
+testing "make .WAIT is allowed as a prerequisite" \
+	"make -f -" \
+	"file1 file2\n" "" '
+target: file1 .WAIT file2
+	@echo $^
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
 
 testing "make double-colon rule" \
 	"make -f -" "target1\ntarget2\n" "" '

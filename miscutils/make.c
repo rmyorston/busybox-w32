@@ -1358,6 +1358,8 @@ target_type(char *s)
 		".SILENT",
 		".SUFFIXES",
 		".PHONY",
+		".NOTPARALLEL",
+		".WAIT",
 	};
 
 	if (*s != '.')
@@ -1738,6 +1740,8 @@ input(FILE *fd, int ilevel)
 				files = gd.gl_pathv;
 			}
 			for (i = 0; i < nfile; ++i) {
+				if (!posix && strcmp(files[i], ".WAIT") == 0)
+					continue;
 				np = newname(files[i]);
 				newdep(&dp, np);
 			}
