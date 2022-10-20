@@ -1051,6 +1051,7 @@ expand_macros(const char *str, int except_dollar)
 			modifier = '\0';
 			switch (name[0]) {
 			case '^':
+			case '+':
 				if (posix)
 					break;
 				// fall through
