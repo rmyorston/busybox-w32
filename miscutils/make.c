@@ -17,7 +17,7 @@
 //config:	default n
 //config:	depends on MAKE
 //config:	help
-//config:	Allow strict enforcement of POSIX mode at runtime by:
+//config:	Allow strict enforcement of POSIX 2017 at runtime by:
 //config:	- .POSIX special target in makefile
 //config:	- '--posix' command line option
 //config:	- PDPMAKE_POSIXLY_CORRECT environment variable
@@ -1583,8 +1583,13 @@ input(FILE *fd, int ilevel)
 				if (posix)
 					break;
 			}
-			if (posix && (p == NULL || gettok(&q)))
-				error("one include file per line");
+			if (posix) {
+				// In POSIX 2017 zero or more than one include file is
+				// unspecified behaviour.
+				if (p == NULL || gettok(&q)) {
+					error("one include file per line");
+				}
+			}
 
 			makefile = old_makefile;
 			lineno = old_lineno;
