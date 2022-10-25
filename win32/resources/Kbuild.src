@@ -12,7 +12,7 @@ obj-$(CONFIG_FEATURE_RESOURCES) += dummy.o
 # return commit level if available or 0
 bb_level = $(or $(word 2,$(subst -, ,$1)),0)
 
-WRFLAGS := -D"KBUILD_STR(s)=\#s" -D"BB_VER=KBUILD_STR($(BB_VER))" \
+WRFLAGS := -D"BB_VER=$(BB_VER)" \
 	-D"BB_VERSION=$(VERSION)" -D"BB_PATCHLEVEL=$(PATCHLEVEL)" \
 	-D"BB_SUBLEVEL=$(SUBLEVEL)" \
 	-D"BB_EXTRAVERSION=$(call bb_level,$(EXTRAVERSION))" \

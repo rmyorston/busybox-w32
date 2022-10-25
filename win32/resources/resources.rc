@@ -1,4 +1,6 @@
 #include <autoconf.h>
+#define xstr(s) str(s)
+#define str(s) #s
 
 #if ENABLE_FEATURE_ICON_ATERM || ENABLE_FEATURE_ICON_ALL
 1 ICON "aterm.ico"
@@ -18,12 +20,12 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "frippery.org"
       VALUE "FileDescription", "BusyBox multi-call binary"
-      VALUE "FileVersion", BB_VER
+      VALUE "FileVersion", xstr(BB_VER)
       VALUE "InternalName", "busybox"
       VALUE "LegalCopyright", "(C) 1998-2022 Many authors"
       VALUE "OriginalFilename", "busybox.exe"
       VALUE "ProductName", "busybox-w32"
-      VALUE "ProductVersion", BB_VER
+      VALUE "ProductVersion", xstr(BB_VER)
     END
   END
   BLOCK "VarFileInfo"
