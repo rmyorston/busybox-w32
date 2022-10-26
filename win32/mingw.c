@@ -2142,13 +2142,12 @@ const char *need_system_drive(const char *path)
 	return NULL;
 }
 
-/* Allocate a string long enough to allow a system drive prefix and
- * file extension to be added to path.  Add the prefix if necessary. */
-char *alloc_system_drive(const char *path)
+/* Copy path to an allocated string long enough to allow a file extension
+ * to be added. */
+char *alloc_ext_space(const char *path)
 {
-	const char *sd = need_system_drive(path);
-	char *s = xmalloc(strlen(path) + 5 + (sd ? strlen(sd) : 0));
-	strcpy(stpcpy(s, sd ?: ""), path);
+	char *s = xmalloc(strlen(path) + 5);
+	strcpy(s, path);
 	return s;
 }
 

@@ -972,9 +972,6 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 		}
 
 		lpath = *paths[i] ? paths[i] : ".";
-#if ENABLE_PLATFORM_MINGW32
-		lpath = auto_string(alloc_system_drive(lpath));
-#endif
 		dir = opendir(lpath);
 		if (!dir)
 			continue; /* don't print an error */

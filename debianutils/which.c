@@ -12,9 +12,9 @@
 //config:	which is used to find programs in your PATH and
 //config:	print out their pathnames.
 
-// NOTE: For WIN32 this applet is NOEXEC as alloc_system_drive() and
+// NOTE: For WIN32 this applet is NOEXEC as alloc_ext_space() and
 //       find_executable() both allocate memory.  And find_executable()
-//       calls alloc_system_drive().
+//       calls alloc_ext_space().
 
 //applet:IF_PLATFORM_MINGW32(IF_WHICH(APPLET_NOEXEC(which, which, BB_DIR_USR_BIN, BB_SUID_DROP, which)))
 //applet:IF_PLATFORM_POSIX(IF_WHICH(APPLET_NOFORK(which, which, BB_DIR_USR_BIN, BB_SUID_DROP, which)))
@@ -87,7 +87,7 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 			}
 #else
 		if (has_path(*argv)) {
-			char *path = alloc_system_drive(*argv);
+			char *path = alloc_ext_space(*argv);
 
 			if (add_win32_extension(path) || file_is_executable(path)) {
 				missing = 0;

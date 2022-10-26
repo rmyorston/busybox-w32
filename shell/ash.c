@@ -2158,17 +2158,13 @@ maybe_single_quote(const char *s)
 }
 
 #if ENABLE_PLATFORM_MINGW32
-/*
- * Place 'path' in a string on the stack, adding the system drive prefix
- * if necessary and leaving room for an optional extension.
- */
+/* Copy path to a string on the stack long enough to allow a file extension
+ * to be added. */
 static char *
-stack_add_system_drive(const char *path)
+stack_add_ext_space(const char *path)
 {
-	const char *sd = need_system_drive(path);
-	char *p = growstackto(strlen(path) + 5 + (sd ? strlen(sd) : 0));
-
-	strcpy(stpcpy(p, sd ?: ""), path);
+	char *p = growstackto(strlen(path) + 5);
+	strcpy(p, path);
 	return p;
 }
 #endif
@@ -2947,10 +2943,6 @@ padvance_magic(const char **path, const char *name, int magic)
 	const char *start;
 	size_t qlen;
 	size_t len;
-#if ENABLE_PLATFORM_MINGW32
-	size_t sdlen = 0;
-	const char *sd;
-#endif
 
 	if (*path == NULL)
 		return -1;
@@ -2982,20 +2974,11 @@ padvance_magic(const char **path, const char *name, int magic)
 	*path = *p == PATH_SEP ? p + 1 : NULL;
 
 	/* "2" is for '/' and '\0' */
-	qlen = len + strlen(name) + 2;
-#if ENABLE_PLATFORM_MINGW32
-	/* reserve space for system drive prefix and extension */
-	sd = need_system_drive(start);
-	if (sd != NULL)
-		sdlen = strlen(sd);
-	qlen += 4 + sdlen;
-#endif
+	/* reserve space for suffix on WIN32 */
+	qlen = len + strlen(name) + 2 IF_PLATFORM_MINGW32(+ 4);
 	q = growstackto(qlen);
 
 	if (len) {
-#if ENABLE_PLATFORM_MINGW32
-		q = mempcpy(q, sd, sdlen);
-#endif
 		q = mempcpy(q, start, len);
 #if ENABLE_PLATFORM_MINGW32
 		if (q[-1] != '/' && q[-1] != '\\')
@@ -9058,10 +9041,6 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 	 || (applet_no = find_applet_by_name(prog)) >= 0
 #endif
 	) {
-#if ENABLE_PLATFORM_MINGW32
-		char *oldprog = prog;
-		prog = stack_add_system_drive(prog);
-#endif
 		tryexec(IF_FEATURE_SH_STANDALONE(applet_no,) prog, argv, envp);
 		if (applet_no >= 0) {
 			/* We tried execing ourself, but it didn't work.
@@ -9072,15 +9051,15 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 		}
 		e = errno;
 #if ENABLE_PLATFORM_MINGW32
-		if (unix_path(oldprog) && !find_builtin(bb_basename(oldprog))) {
+		if (unix_path(prog) && !find_builtin(bb_basename(prog))) {
 # if ENABLE_FEATURE_SH_STANDALONE
-			const char *name = bb_basename(oldprog);
+			const char *name = bb_basename(prog);
 			if ((applet_no = find_applet_by_name(name)) >= 0) {
 				tryexec(applet_no, name, argv, envp);
 				e = errno;
 			}
 # endif
-			argv[0] = (char *)bb_basename(oldprog);
+			argv[0] = (char *)bb_basename(prog);
 			goto try_PATH;
 		}
 #endif
@@ -9523,7 +9502,7 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 #endif
 		if (j < 0) {
 #if ENABLE_PLATFORM_MINGW32
-			p = stack_add_system_drive(command);
+			p = stack_add_ext_space(command);
 #else
 			p = command;
 #endif
@@ -14720,7 +14699,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	if (has_path(name)) {
 		entry->u.index = -1;
 		entry->cmdtype = CMDNORMAL;
-		fullname = stack_add_system_drive(name);
+		fullname = stack_add_ext_space(name);
 		if (add_win32_extension(fullname) || file_is_executable(fullname)) {
 			return;
 		} else if (unix_path(name) && !find_builtin(bb_basename(name))) {

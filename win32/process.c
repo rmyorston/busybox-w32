@@ -328,7 +328,7 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
 	}
 #endif
 
-	path = alloc_system_drive(interp.path);
+	path = alloc_ext_space(interp.path);
 	if ((add_win32_extension(path) || file_is_executable(path))) {
 		new_argv[0] = path;
 		ret = mingw_spawn_interpreter(mode, path, new_argv, envp, level);
@@ -363,7 +363,7 @@ mingw_spawnvp(int mode, const char *cmd, char *const *argv)
 		return mingw_spawn_applet(mode, argv, NULL);
 #endif
 	if (has_path(cmd)) {
-		path = alloc_system_drive(cmd);
+		path = alloc_ext_space(cmd);
 		if (add_win32_extension(path) || file_is_executable(path)) {
 			ret = mingw_spawn_interpreter(mode, path, argv, NULL, 0);
 			free(path);
