@@ -33,8 +33,8 @@ if test $? != 0; then
 	echo 'od tool is not installed or cannot accept "-v -b" options'
 	exit 1
 fi
-bzip2 </dev/null >/dev/null
-if test $? != 0; then
+bzip2 </dev/null >/dev/null 2>&1
+if test $? = 127; then
 	echo 'bzip2 is not installed'
 	exit 1
 fi
