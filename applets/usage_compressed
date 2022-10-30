@@ -16,6 +16,7 @@ if test $? != 0; then
 	exit 1
 fi
 
+(
 exec >"$target.$$"
 
 echo '#define UNPACKED_USAGE "" \'
@@ -58,5 +59,6 @@ echo '#define PACKED_USAGE \'
 	-e 's/\(...\)/0\1,/g' \
 	-e 's/$/ \\/'
 echo ''
+)
 
 mv -- "$target.$$" "$target"

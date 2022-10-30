@@ -92,13 +92,30 @@ endif
 hostc_flags    = -Wp,-MD,$(depfile) $(__hostc_flags)
 hostcxx_flags  = -Wp,-MD,$(depfile) $(__hostcxx_flags)
 
+# Programs built for use on the host are defined without a suffix
+# (usually '.exe' on Windows).  Rather than adjust all the makefiles
+# force a suffix of '.' if the host platform is mingw32.  This will
+# result in binaries with no suffix.
+#
+# It's not a big deal if this doesn't work.  MSYS2 doesn't need it
+# and the downside is just that the programs will be rebuilt more
+# often than really needed.
+#
+host_target := $(shell $(HOSTCC) -v 2>&1 | grep ^Target:)
+host_platform := $(lastword $(subst -, ,$(host_target)))
+ifeq ($(host_platform),mingw32)
+dot := .
+else
+dot :=
+endif
+
 #####
 # Compile programs on the host
 
 # Create executable from a single .c file
 # host-csingle -> Executable
 quiet_cmd_host-csingle 	= HOSTCC  $@
-      cmd_host-csingle	= $(HOSTCC) $(hostc_flags) -o $@ $< \
+      cmd_host-csingle	= $(HOSTCC) $(hostc_flags) -o $@$(dot) $< \
 			  $(HOST_LOADLIBES) $(HOSTLOADLIBES_$(@F))
 $(host-csingle): %: %.c FORCE
 	$(call if_changed_dep,host-csingle)
@@ -106,7 +123,7 @@ $(host-csingle): %: %.c FORCE
 # Link an executable based on list of .o files, all plain c
 # host-cmulti -> executable
 quiet_cmd_host-cmulti	= HOSTLD  $@
-      cmd_host-cmulti	= $(HOSTCC) $(HOSTLDFLAGS) -o $@ \
+      cmd_host-cmulti	= $(HOSTCC) $(HOSTLDFLAGS) -o $@$(dot) \
 			  $(addprefix $(obj)/,$($(@F)-objs)) \
 			  $(HOST_LOADLIBES) $(HOSTLOADLIBES_$(@F))
 $(host-cmulti): %: $(host-cobjs) $(host-cshlib) FORCE

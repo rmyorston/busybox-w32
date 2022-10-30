@@ -90,6 +90,7 @@ concatenate_scripts() {
 	done
 }
 
+(
 exec >"$target.$$"
 
 if [ $n -ne 0 ]
@@ -127,5 +128,6 @@ then
 		-e 's/$/ \\/'
 	printf '\n'
 fi
+)
 
 mv -- "$target.$$" "$target"

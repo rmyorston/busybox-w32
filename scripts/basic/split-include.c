@@ -197,13 +197,21 @@ int main(int argc, const char * argv [])
      * So by having an initial \n, strstr will find exact matches.
      */
 
+#ifdef __MINGW32__
+    fp_find = popen("find . -type f -name \"*.h\" -print", "r");
+#else
     fp_find = popen("find * -type f -name \"*.h\" -print", "r");
+#endif
     if (fp_find == 0)
 	ERROR_EXIT( "find" );
 
     line[0] = '\n';
     while (fgets(line+1, buffer_size, fp_find))
     {
+#ifdef __MINGW32__
+	line[2] = '\n';
+# define line (line + 2)
+#endif
 	if (strstr(list_target, line) == NULL)
 	{
 	    /*
@@ -226,6 +234,9 @@ int main(int argc, const char * argv [])
 		    ERROR_EXIT(line);
 	    }
 	}
+#ifdef __MINGW32__
+# undef line
+#endif
     }
 
     if (pclose(fp_find) != 0)

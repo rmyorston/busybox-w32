@@ -4,6 +4,10 @@ SUBLEVEL = 0
 EXTRAVERSION = .git
 NAME = Unnamed
 
+# Colon is used as a separator in makefiles.  Strip any drive prefix
+# from the current directory to avoid confusion.
+CURDIR := $(lastword $(subst :, ,$(CURDIR)))
+
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
 # More info can be located in ./README
