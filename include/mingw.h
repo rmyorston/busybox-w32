@@ -485,7 +485,6 @@ long sysconf(int name);
 IMPL(getpagesize,int,4096,void);
 NOIMPL(ttyname_r,int fd UNUSED_PARAM, char *buf UNUSED_PARAM, int sz UNUSED_PARAM);
 int mingw_unlink(const char *pathname);
-pid_t vfork(void);
 int mingw_access(const char *name, int mode);
 int mingw_rmdir(const char *name);
 void mingw_sync(void);
