@@ -303,7 +303,7 @@ testing "make .WAIT is allowed as a prerequisite" \
 	"make -f -" \
 	"file1 file2\n" "" '
 target: file1 .WAIT file2
-	@echo $^
+	@echo $?
 '
 cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
 
