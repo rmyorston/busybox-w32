@@ -1120,7 +1120,11 @@ process_line(char *s)
 	r = s;
 
 	// Strip comment
-	t = strchr(s, '#');
+	// don't treat '#' in macro expansion as a comment
+	if (!posix)
+		t = find_char(s, '#');
+	else
+		t = strchr(s, '#');
 	if (t)
 		*t = '\0';
 
@@ -1401,9 +1405,18 @@ static char *
 process_command(char *s)
 {
 	char *t, *u;
-	int len = strlen(s) + 1;
-	char *outside = xzalloc(len);
+	int len;
+	char *outside;
 
+	if (posix) {
+		// POSIX strips comments from command lines
+		t = strchr(s, '#');
+		if (t)
+			*t = '\0';
+	}
+
+	len = strlen(s) + 1;
+	outside = xzalloc(len);
 	for (t = skip_macro(s); *t; t = skip_macro(t + 1)) {
 		outside[t - s] = 1;
 	}

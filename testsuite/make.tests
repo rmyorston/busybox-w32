@@ -379,6 +379,24 @@ t1? t2* t3[abc]: s1? s2* s3[abc]
 '
 cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
 
+# A '#' character in a macro expansion doesn't start a comment
+testing "make hash in macro expansion isn't a comment" \
+	"make -f -" \
+	": hash # hash\n" "" '
+HASH = hash
+hash = $(HASH:hash=#)
+target:
+	: hash $(hash) hash
+'
+
+# A '#' character in a command line doesn't start a comment
+testing "make hash in command line isn't a comment" \
+	"make -f -" \
+	": hash # hash\n" "" '
+target:
+	: hash # hash
+'
+
 # Skip duplicate entries in $? and $^
 mkdir make.tempdir && cd make.tempdir || exit 1
 touch -t 202206171200 file1 file3
