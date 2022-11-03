@@ -397,6 +397,45 @@ target:
 	: hash # hash
 '
 
+# Austin Group defect report 875 clarifies certain aspects of the
+# behaviour of inference rules.  Study of this resulted in a number
+# of changes to pdpmake.  Since the issue at hand involves the use
+# of chained inference rules it doesn't affect POSIX mode.
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch test.j test.k
+testing "make proper handling of inference rules 1" \
+	"make -f -" \
+	".j.l\n" "" '
+.SUFFIXES: .j .k .l
+.j.l:
+	@echo .j.l
+.k.l:
+	@echo .k.l
+test.l: test.k
+test.j:
+test.k:
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
+# The actual test in the above-mentioned defect report was actually
+# more demanding.  It used the suffixes '.a .b .c'.  This results in
+# the built-in '.c.a' inference rule being introduced into the mix.
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch test.a test.b
+testing "make proper handling of inference rules 2" \
+	"make -f -" \
+	".a.c\n" "" '
+.SUFFIXES: .a .b .c
+.a.c:
+	@echo .a.c
+.b.c:
+	@echo .b.c
+test.c: test.b
+test.a:
+test.b:
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
 # Skip duplicate entries in $? and $^
 mkdir make.tempdir && cd make.tempdir || exit 1
 touch -t 202206171200 file1 file3

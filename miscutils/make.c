@@ -717,21 +717,23 @@ dyndep(struct name *np, struct rule *imprule)
 			sp = findname(auto_concat(newsuff, suff));
 			if (sp && sp->n_rule) {
 				// Generate a name for an implicit prerequisite
-				pp = newname(auto_concat(base, newsuff));
-				if (!pp->n_tim.tv_sec)
-					modtime(pp);
-				if ((!chain && (pp->n_tim.tv_sec || getcmd(pp))) ||
-						(chain && dyndep(pp, NULL))) {
+				struct name *ip = newname(auto_concat(base, newsuff));
+				if ((ip->n_flag & N_DOING))
+					continue;
+				if (!ip->n_tim.tv_sec)
+					modtime(ip);
+				if (chain ? ip->n_tim.tv_sec || (ip->n_flag & N_TARGET) :
+							dyndep(ip, NULL) != NULL) {
 					// Prerequisite exists or we know how to make it
 					if (imprule) {
 						dp = NULL;
-						newdep(&dp, pp);
+						newdep(&dp, ip);
 						imprule->r_dep = dp;
 						imprule->r_cmd = sp->n_rule->r_cmd;
 					}
+					pp = ip;
 					goto finish;
 				}
-				pp = NULL;
 			}
 		}
 	}
@@ -2121,6 +2123,7 @@ make(struct name *np, int level)
 		}
 		for (dp = rp->r_dep; dp; dp = dp->d_next) {
 			// Make prerequisite
+			dp->d_name->n_flag |= N_TARGET;
 			estat |= make(dp->d_name, level + 1);
 
 			// Make strings of out-of-date prerequisites (for $?),
@@ -2166,28 +2169,28 @@ make(struct name *np, int level)
 
 	if (quest) {
 		if (timespec_le(&np->n_tim, &dtim)) {
-			clock_gettime(CLOCK_REALTIME, &np->n_tim);
-			return 1;	// 1 means rebuild is needed
+			didsomething = 1;
+			estat = 1;	// 1 means rebuild is needed
 		}
 	} else if (!(np->n_flag & N_DOUBLE) &&
 				((np->n_flag & N_PHONY) || (timespec_le(&np->n_tim, &dtim)))) {
 		if (estat == 0) {
-			if (!sc_cmd) {
-				if (!doinclude)
-					bb_error_msg("nothing to be done for %s", np->n_name);
-			} else {
+			if (sc_cmd)
 				estat = make1(np, sc_cmd, oodate, allsrc, dedup, impdep);
-				clock_gettime(CLOCK_REALTIME, &np->n_tim);
-			}
+			else if (!doinclude)
+				bb_error_msg("nothing to be done for %s", np->n_name);
+			didsomething = 1;
 		} else if (!doinclude) {
 			bb_error_msg("'%s' not built due to errors", np->n_name);
 		}
 		free(oodate);
-	} else if (didsomething) {
-		clock_gettime(CLOCK_REALTIME, &np->n_tim);
-	} else if (level == 0) {
-		printf("%s: '%s' is up to date\n", applet_name, np->n_name);
 	}
+
+	if (didsomething)
+		clock_gettime(CLOCK_REALTIME, &np->n_tim);
+	else if (!quest && level == 0)
+		printf("%s: '%s' is up to date\n", applet_name, np->n_name);
+
 	free(allsrc);
 	free(dedup);
 	return estat;
