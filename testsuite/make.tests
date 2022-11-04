@@ -59,6 +59,25 @@ x.p:
 '
 cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
 
+# Austin Group defect report 875 clarifies certain aspects of the
+# behaviour of inference rules.  Study of this resulted in a number
+# of changes to pdpmake, though this test passed anyway.
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch test.j test.k
+testing "make proper handling of inference rules 1" \
+	"make -f -" \
+	".j.l\n" "" '
+.SUFFIXES: .j .k .l
+.j.l:
+	@echo .j.l
+.k.l:
+	@echo .k.l
+test.l: test.k
+test.j:
+test.k:
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
 # A macro created using ::= remembers it's of type immediate-expansion.
 # Immediate expansion also occurs when += is used to append to such a macro.
 testing "make appending to immediate-expansion macro" \
@@ -397,29 +416,11 @@ target:
 	: hash # hash
 '
 
-# Austin Group defect report 875 clarifies certain aspects of the
-# behaviour of inference rules.  Study of this resulted in a number
-# of changes to pdpmake.  Since the issue at hand involves the use
-# of chained inference rules it doesn't affect POSIX mode.
-mkdir make.tempdir && cd make.tempdir || exit 1
-touch test.j test.k
-testing "make proper handling of inference rules 1" \
-	"make -f -" \
-	".j.l\n" "" '
-.SUFFIXES: .j .k .l
-.j.l:
-	@echo .j.l
-.k.l:
-	@echo .k.l
-test.l: test.k
-test.j:
-test.k:
-'
-cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
-
-# The actual test in the above-mentioned defect report was actually
-# more demanding.  It used the suffixes '.a .b .c'.  This results in
-# the built-in '.c.a' inference rule being introduced into the mix.
+# Austin Group defect report 875 (mentioned above) actually used
+# suffixes '.a .b .c'.  This doesn't matter in POSIX mode but it
+# caused a failure (now fixed) when chained inference rules were
+# allowed.  The '.a.c' and the built-in '.c.a' inference rules
+# resulted in a loop.
 mkdir make.tempdir && cd make.tempdir || exit 1
 touch test.a test.b
 testing "make proper handling of inference rules 2" \

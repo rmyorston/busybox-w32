@@ -722,7 +722,7 @@ dyndep(struct name *np, struct rule *imprule)
 					continue;
 				if (!ip->n_tim.tv_sec)
 					modtime(ip);
-				if (chain ? ip->n_tim.tv_sec || (ip->n_flag & N_TARGET) :
+				if (!chain ? ip->n_tim.tv_sec || (ip->n_flag & N_TARGET) :
 							dyndep(ip, NULL) != NULL) {
 					// Prerequisite exists or we know how to make it
 					if (imprule) {
