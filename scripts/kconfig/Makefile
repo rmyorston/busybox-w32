@@ -11,6 +11,9 @@ gconfig: $(obj)/gconf
 	$< Config.in
 
 menuconfig: $(obj)/mconf
+ifdef W64DEVKIT
+	$(Q)$(MAKE) $(build)=scripts/kconfig/libcurses
+endif
 	$(Q)$(MAKE) $(build)=scripts/kconfig/lxdialog
 	$< Config.in
 
