@@ -15,6 +15,8 @@
 #ifndef __MINGW32__
 #include <sys/ioctl.h>
 #include <sys/wait.h>
+#else
+#include <windows.h>
 #endif
 #include <ctype.h>
 #include <errno.h>
@@ -302,15 +304,45 @@ static int cprint1(const char *fmt, ...);
 static void cprint_done(void);
 static int cprint(const char *fmt, ...);
 
+#ifdef __MINGW32__
+struct winsize {
+	unsigned short ws_row, ws_col;
+	unsigned short ws_xpixel, ws_ypixel;
+};
+
+static int mingw_get_terminal_width_height(struct winsize *win)
+{
+	int fd;
+	HANDLE handle;
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
+
+	win->ws_row = 0;
+	win->ws_col = 0;
+
+	for (fd=STDOUT_FILENO; fd<=STDERR_FILENO; ++fd) {
+		handle = (HANDLE)_get_osfhandle(fd);
+		if (handle != INVALID_HANDLE_VALUE &&
+				GetConsoleScreenBufferInfo(handle, &sbi) != 0) {
+			win->ws_row = sbi.srWindow.Bottom - sbi.srWindow.Top + 1;
+			win->ws_col = sbi.srWindow.Right - sbi.srWindow.Left + 1;
+			return 0;
+		}
+	}
+
+	return -1;
+}
+#endif
+
 static void init_wsize(void)
 {
-#ifdef __MINGW32__
-	fprintf(stderr, "Skipping attempt to change window size\n");
-#else
 	struct winsize ws;
 	char *env;
 
+#ifndef __MINGW32__
 	if (!ioctl(STDIN_FILENO, TIOCGWINSZ, &ws)) {
+#else
+	if (mingw_get_terminal_width_height(&ws) == 0) {
+#endif
 		rows = ws.ws_row;
 		cols = ws.ws_col;
 	}
@@ -338,7 +370,6 @@ static void init_wsize(void)
 
 	rows -= 4;
 	cols -= 5;
-#endif
 }
 
 static void cprint_init(void)
@@ -473,11 +504,197 @@ static void winch_handler(int sig)
 }
 #endif
 
+#ifdef __MINGW32__
+static char *
+quote_arg(const char *arg)
+{
+	int len = 0, n = 0;
+	int force_quotes = 0;
+	char *q, *d;
+	const char *p = arg;
+
+	/* empty arguments must be quoted */
+	if (!*p) {
+		force_quotes = 1;
+	}
+
+	while (*p) {
+		if (isspace(*p)) {
+			/* arguments containing whitespace must be quoted */
+			force_quotes = 1;
+		}
+		else if (*p == '"') {
+			/* double quotes in arguments need to be escaped */
+			n++;
+		}
+		else if (*p == '\\') {
+			/* count contiguous backslashes */
+			int count = 0;
+			while (*p == '\\') {
+				count++;
+				p++;
+				len++;
+			}
+
+			/*
+			 * Only escape backslashes before explicit double quotes or
+			 * or where the backslashes are at the end of an argument
+			 * that is scheduled to be quoted.
+			 */
+			if (*p == '"' || (force_quotes && *p == '\0')) {
+				n += count*2 + 1;
+			}
+
+			if (*p == '\0') {
+				break;
+			}
+			continue;
+		}
+		len++;
+		p++;
+	}
+
+	if (!force_quotes && n == 0) {
+		return (char*)strdup(arg);
+	}
+
+	/* insert double quotes and backslashes where necessary */
+	d = q = malloc(len+n+3);
+	if (q == NULL)
+		return NULL;
+	if (force_quotes) {
+		*d++ = '"';
+	}
+
+	while (*arg) {
+		if (*arg == '"') {
+			*d++ = '\\';
+		}
+		else if (*arg == '\\') {
+			int count = 0;
+			while (*arg == '\\') {
+				count++;
+				*d++ = *arg++;
+			}
+
+			if (*arg == '"' || (force_quotes && *arg == '\0')) {
+				while (count-- > 0) {
+					*d++ = '\\';
+				}
+				if (*arg == '"') {
+					*d++ = '\\';
+				}
+			}
+		}
+		if (*arg != '\0') {
+			*d++ = *arg++;
+		}
+	}
+	if (force_quotes) {
+		*d++ = '"';
+	}
+	*d = '\0';
+
+	return q;
+}
+
+static int mingw_pipe(HANDLE *pipe)
+{
+	SECURITY_ATTRIBUTES sa;
+
+	sa.nLength = sizeof(sa);          /* Length in bytes */
+	sa.bInheritHandle = 1;            /* the child must inherit these handles */
+	sa.lpSecurityDescriptor = NULL;
+
+	/* pipe[0] is the read handle, pipe[i] the write handle */
+	if ( !CreatePipe (&pipe[0], &pipe[1], &sa, 1 << 13) ) {
+		return -1;
+	}
+
+	return (pipe[0] == INVALID_HANDLE_VALUE ||
+				pipe[1] == INVALID_HANDLE_VALUE) ? -1 : 0;
+}
+#endif
+
 static int exec_conf(void)
 {
 #ifdef __MINGW32__
-	fprintf(stderr, "exec_conf not implemented\n");
-	exit(1);
+	char **a, *cmd;
+	int fd, size, len = 0;
+	STARTUPINFO siStartInfo;
+	PROCESS_INFORMATION piProcInfo;
+	HANDLE hPipe[2];
+	DWORD stat = 0;
+
+	// Quote each argument if necessary
+	*argptr++ = NULL;
+	for (a = args; *a; a++) {
+		*a = quote_arg(*a);
+		if (*a == NULL)
+			_exit(EXIT_FAILURE);
+		len += strlen(*a) + 1;
+	}
+
+	// Make a command line from the arguments
+	cmd = malloc(len + 1);
+	if (cmd == NULL)
+		_exit(EXIT_FAILURE);
+	for (a = args; *a; a++) {
+		if (a == args) {
+			strcpy(cmd, *a);
+		} else {
+			strcat(cmd, " ");
+			strcat(cmd, *a);
+		}
+		free(*a);
+	}
+
+	// Create a pipe to communicate with the dialog
+	if (mingw_pipe(hPipe) == -1)
+		_exit(EXIT_FAILURE);
+
+	// Make the parent end of the pipe non-inheritable
+	SetHandleInformation(hPipe[0], HANDLE_FLAG_INHERIT, 0);
+
+	ZeroMemory(&siStartInfo, sizeof(STARTUPINFO));
+	siStartInfo.cb = sizeof(STARTUPINFO);
+	siStartInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+	siStartInfo.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+	siStartInfo.hStdError = hPipe[1];
+	siStartInfo.dwFlags = STARTF_USESTDHANDLES;
+	CreateProcess(NULL, (LPSTR)cmd, NULL, NULL, TRUE, 0, NULL, NULL,
+					&siStartInfo, &piProcInfo);
+	free(cmd);
+
+	// Close child end of pipe
+	CloseHandle(hPipe[1]);
+	hPipe[1] = INVALID_HANDLE_VALUE;
+
+	fd = _open_osfhandle((intptr_t)hPipe[0], _O_RDONLY | _O_BINARY);
+	if (fd == -1)
+		_exit(EXIT_FAILURE);
+
+	bufptr = input_buf;
+	while (1) {
+		size = input_buf + sizeof(input_buf) - bufptr;
+		size = _read(fd, bufptr, size);
+		if (size <= 0) {
+			if (size < 0) {
+				if (errno == EINTR || errno == EAGAIN)
+					continue;
+				perror("read");
+			}
+			break;
+		}
+		bufptr += size;
+	}
+	*bufptr++ = 0;
+	close(fd);
+
+	WaitForSingleObject(piProcInfo.hProcess, INFINITE);
+	GetExitCodeProcess(piProcInfo.hProcess, &stat);
+
+	return (int)stat;
 #else
 	int pipefd[2], stat, size;
 	sigset_t sset, osset;
