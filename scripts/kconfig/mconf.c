@@ -694,7 +694,7 @@ static int exec_conf(void)
 	WaitForSingleObject(piProcInfo.hProcess, INFINITE);
 	GetExitCodeProcess(piProcInfo.hProcess, &stat);
 
-	return (int)stat;
+	return (int)(stat &0xff);
 #else
 	int pipefd[2], stat, size;
 	sigset_t sset, osset;
