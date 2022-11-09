@@ -14,15 +14,11 @@ You need a MinGW compiler and a POSIX environment.  I cross-compile on Linux.  O
 
 `dnf install mingw32-gcc mingw32-windows-default-manifest` (for a 32-bit build)
 
-On Microsoft Windows you can install MSYS2 and a 64-bit toolchain by following [these instructions](https://www.msys2.org/#installation).  To obtain a 32-bit toolchain run:
+On Microsoft Windows you can install [w64devkit](https://github.com/skeeto/w64devkit/releases).  The `-mini` variant is sufficient.  Get the `-i686` variant for a 32-bit build.  Unzip the file and run `w64devkit/w64devkit.exe`.
 
-`pacman -S --needed mingw-w64-i686-toolchain`
+On either Linux or Windows the commands `make mingw64_defconfig` or `make mingw32_defconfig` will pick up the default configuration.  You can then customize your build with `make menuconfig` or by editing `.config`, if you know what you're doing.
 
-Run `mingw64.exe` or `mingw32.exe` from the installation directory.
-
-On either Linux or Windows the commands `make mingw64_defconfig` or `make mingw32_defconfig` will pick up the default configuration.  You can then customize your build with `make menuconfig` (Linux only) or by editing `.config`, if you know what you're doing.
-
-Then just `make` or `make CROSS_COMPILE=""` on Windows.
+Then just `make`.
 
 ### Limitations
 
