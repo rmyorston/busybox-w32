@@ -12,10 +12,16 @@
 //config:	other files. Normally it's used to build programs from source
 //config:	code but it can be used in other situations too.
 //config:
+//config:config PDPMAKE
+//config:	bool "pdpmake (18 kb)"
+//config:	default n
+//config:	help
+//config:	Alias for "make"
+//config:
 //config:config FEATURE_MAKE_POSIX
 //config:	bool "Runtime enforcement of POSIX"
 //config:	default n
-//config:	depends on MAKE
+//config:	depends on MAKE || PDPMAKE
 //config:	help
 //config:	Allow strict enforcement of POSIX 2017 at runtime by:
 //config:	- .POSIX special target in makefile
@@ -25,6 +31,7 @@
 //config:	POSIX compliant.  This adds about 500 bytes.
 
 //applet:IF_MAKE(APPLET(make, BB_DIR_USR_BIN, BB_SUID_DROP))
+//applet:IF_PDPMAKE(APPLET_ODDNAME(pdpmake, make, BB_DIR_USR_BIN, BB_SUID_DROP, make))
 
 //kbuild:lib-$(CONFIG_MAKE) += make.o
 
