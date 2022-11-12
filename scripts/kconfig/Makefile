@@ -2,6 +2,17 @@
 # Kernel configuration targets
 # These targets are used from top-level makefile
 
+# If w64devkit isn't run via w64devkit.exe W64DEVKIT won't be
+# defined.  If HOSTCC targets the mingw32 platform set W64DEVKIT.
+ifndef W64DEVKIT
+	host_target := $(shell $(HOSTCC) -v 2>&1 | grep ^Target:)
+	host_platform := $(lastword $(subst -, ,$(host_target)))
+	ifeq ($(host_platform),mingw32)
+		W64DEVKIT := 1
+		export W64DEVKIT
+	endif
+endif
+
 PHONY += oldconfig xconfig gconfig menuconfig config silentoldconfig update-po-config
 
 xconfig: $(obj)/qconf
