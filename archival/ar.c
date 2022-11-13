@@ -30,7 +30,7 @@
 //config:config FEATURE_AR_LONG_FILENAMES
 //config:	bool "Support long filenames (not needed for debs)"
 //config:	default y
-//config:	depends on AR || MAKE
+//config:	depends on AR || MAKE || PDPMAKE
 //config:	help
 //config:	By default the ar format can only store the first 15 characters
 //config:	of the filename, this option removes that limitation.
