@@ -728,28 +728,43 @@ struct symbol *sym_find(const char *name)
 	return symbol;
 }
 
+#if !defined HAVE_RE && !defined __MINGW32__
+#define HAVE_RE 1
+#endif
+
 struct symbol **sym_re_search(const char *pattern)
 {
-#ifdef __MINGW32__
-	fprintf(stderr, "NOTIMPL: sym_re_search\n");
-	exit(1);
-#else
 	struct symbol *sym, **sym_arr = NULL;
 	int i, cnt, size;
+#if HAVE_RE
 	regex_t re;
+#else
+	/* without re support use: strstr(sym->name, upper(pattern)) */
+	/* sym->name is a config, e.g. "SHELL_ASH" or "FEATURE_UTMP" */
+	char upat[256] = {0};
+	for (i = 0; i < 255 && pattern[i]; ++i)
+		upat[i] = toupper(pattern[i]);
+#endif
 
 	cnt = size = 0;
 	/* Skip if empty */
 	if (strlen(pattern) == 0)
 		return NULL;
+#if HAVE_RE
 	if (regcomp(&re, pattern, REG_EXTENDED|REG_NOSUB|REG_ICASE))
 		return NULL;
+#endif
 
 	for_all_symbols(i, sym) {
 		if (sym->flags & SYMBOL_CONST || !sym->name)
 			continue;
+#if HAVE_RE
 		if (regexec(&re, sym->name, 0, NULL, 0))
 			continue;
+#else
+		if (!strstr(sym->name, upat))
+			continue;
+#endif
 		if (cnt + 1 >= size) {
 			void *tmp = sym_arr;
 			size += 16;
@@ -763,10 +778,11 @@ struct symbol **sym_re_search(const char *pattern)
 	}
 	if (sym_arr)
 		sym_arr[cnt] = NULL;
+#if HAVE_RE
 	regfree(&re);
+#endif
 
 	return sym_arr;
-#endif
 }
 
 
