@@ -339,6 +339,19 @@ target:
 b}
 '
 
+# POSIX 202X permits additional characters in macro and target names
+testing "make allow - and / in target names, - in macro names" \
+	"make -f -" \
+	"/hello\nhel-lo\nmac-ro\n" "" '
+target: ./hello hel-lo
+	@echo $(mac-ro)
+./hello:
+	@echo /hello
+hel-lo:
+	@echo hel-lo
+mac-ro = mac-ro
+'
+
 testing "make double-colon rule" \
 	"make -f -" "target1\ntarget2\n" "" '
 target::

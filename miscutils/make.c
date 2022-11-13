@@ -520,7 +520,7 @@ is_valid_macro(const char *name)
 	for (s = name; *s; ++s) {
 		// In POSIX mode only a limited set of characters are guaranteed
 		// to be allowed in macro names.
-		if (posix && !isfname(*s))
+		if (posix && !ispname(*s))
 			return FALSE;
 		// As an extension allow anything that can get through the
 		// input parser, apart from the following.
