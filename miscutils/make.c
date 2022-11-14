@@ -37,10 +37,10 @@
 
 //usage:#define make_trivial_usage
 //usage:	IF_FEATURE_MAKE_POSIX(
-//usage:       "[--posix] [-C DIR] [-f FILE] [j NUM] [-eiknpqrsSt] [MACRO[::]=VAL]... [TARGET]..."
+//usage:       "[--posix] [-C DIR] [-f FILE] [-j NUM] [-eiknpqrsSt] [MACRO[::]=VAL]... [TARGET]..."
 //usage:	)
 //usage:	IF_NOT_FEATURE_MAKE_POSIX(
-//usage:       "[-C DIR] [-f FILE] [j NUM] [-eiknpqrsSt] [MACRO[::]=VAL]... [TARGET]..."
+//usage:       "[-C DIR] [-f FILE] [-j NUM] [-eiknpqrsSt] [MACRO[::]=VAL]... [TARGET]..."
 //usage:	)
 //usage:#define make_full_usage "\n\n"
 //usage:       "Maintain files based on their dependencies\n"
