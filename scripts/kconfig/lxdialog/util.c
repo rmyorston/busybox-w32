@@ -138,6 +138,9 @@ void dialog_clear(void)
  */
 void init_dialog(void)
 {
+	char *colors = getenv("COLORS");
+	use_colors = !(colors && *colors == '0');
+
 	initscr();		/* Init curses */
 	keypad(stdscr, TRUE);
 	cbreak();
