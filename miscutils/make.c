@@ -913,14 +913,14 @@ skip_macro(const char *s)
  * Returns an allocated string or NULL if the input is unmodified.
  */
 static char *
-modify_words(const char *val, int modifier, size_t lenf,
+modify_words(const char *val, int modifier, size_t lenf, size_t lenr,
 				const char *find_pref, const char *repl_pref,
 				const char *find_suff, const char *repl_suff)
 {
 	char *s, *copy, *word, *sep, *buf = NULL;
 	size_t find_pref_len = 0, find_suff_len = 0;
 
-	if (!modifier && !lenf)
+	if (!modifier && lenf == 0 && lenr == 0)
 		return buf;
 
 	if (find_pref) {
@@ -948,14 +948,18 @@ modify_words(const char *val, int modifier, size_t lenf,
 				word = sep + 1;
 			}
 		}
-		if (lenf) {
+		if (find_pref != NULL || lenf != 0 || lenr != 0) {
 			size_t lenw = strlen(word);
 			// This code implements pattern macro expansions:
 			//    https://austingroupbugs.net/view.php?id=519
 			//
 			// find: <prefix>%<suffix>
 			// example: src/%.c
-			if (lenw >= lenf - 1 && find_pref) {
+			//
+			// For a pattern of the form:
+			//    $(string1:[op]%[os]=[np][%][ns])
+			// lenf is the length of [op]%[os].  So lenf >= 1.
+			if (find_pref != NULL && lenw + 1 >= lenf) {
 				// If prefix and suffix of word match find_pref and
 				// find_suff, then do substitution.
 				if (strncmp(word, find_pref, find_pref_len) == 0 &&
@@ -1011,7 +1015,7 @@ expand_macros(const char *str, int except_dollar)
 	char *find, *replace, *modified;
 	char *expval, *expfind, *find_suff, *repl_suff;
 	char *find_pref = NULL, *repl_pref = NULL;
-	size_t lenf;
+	size_t lenf, lenr;
 	char modifier;
 	struct macro *mp;
 
@@ -1041,11 +1045,13 @@ expand_macros(const char *str, int except_dollar)
 			}
 
 			// Only do suffix replacement or pattern macro expansion
-			// if both ':' and '=' are found.  This is indicated by
-			// lenf != 0.
+			// if both ':' and '=' are found, plus a '%' for the latter.
+			// Suffix replacement is indicated by
+			// find_pref == NULL && (lenf != 0 || lenr != 0);
+			// pattern macro expansion by find_pref != NULL.
 			expfind = NULL;
 			find_suff = repl_suff = NULL;
-			lenf = 0;
+			lenf = lenr = 0;
 			if ((find = find_char(name, ':'))) {
 				*find++ = '\0';
 				expfind = expand_macros(find, FALSE);
@@ -1059,8 +1065,11 @@ expand_macros(const char *str, int except_dollar)
 						if ((repl_suff = strchr(replace, '%')))
 							*repl_suff++ = '\0';
 					} else {
+						if (posix && lenf == 0)
+							error("empty suffix");
 						find_suff = expfind;
 						repl_suff = replace;
+						lenr = strlen(repl_suff);
 					}
 				}
 			}
@@ -1105,7 +1114,7 @@ expand_macros(const char *str, int except_dollar)
 				mp->m_flag = TRUE;
 				expval = expand_macros(mp->m_val, FALSE);
 				mp->m_flag = FALSE;
-				modified = modify_words(expval, modifier, lenf,
+				modified = modify_words(expval, modifier, lenf, lenr,
 								find_pref, repl_pref, find_suff, repl_suff);
 				if (modified)
 					free(expval);

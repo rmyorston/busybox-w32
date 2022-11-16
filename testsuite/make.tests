@@ -450,6 +450,17 @@ test.b:
 '
 cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
 
+# An empty original suffix indicates that every word should have
+# the new suffix added.  If neither suffix is provided the words
+# remain unchanged.
+testing "make macro expansion and suffix substitution 3" \
+	"make -f -" "src1.c src2.c\nsrc1 src2\n" "" '
+SRCS = src1 src2
+target:
+	@echo $(SRCS:=.c)
+	@echo $(SRCS:=)
+'
+
 # Skip duplicate entries in $? and $^
 mkdir make.tempdir && cd make.tempdir || exit 1
 touch -t 202206171200 file1 file3
