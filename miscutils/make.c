@@ -149,6 +149,8 @@ struct cmd {
 	struct cmd *c_next;		// Next command line
 	char *c_cmd;			// Text of command line
 	int c_refcnt;			// Reference count
+	const char *c_makefile;	// Makefile in which command was defined
+	int c_dispno;			// Line number within makefile
 };
 
 // Macro storage
@@ -229,7 +231,23 @@ static int make(struct name *np, int level);
  */
 
 /*
- * Error handler.  Print message, with line number, and exit.
+ * Print message, with makefile and line number if possible.
+ */
+static void
+vwarning(const char *msg, va_list list)
+{
+	const char *old_applet_name = applet_name;
+
+	if (makefile) {
+		fprintf(stderr, "%s: (%s:%d)", applet_name, makefile, dispno);
+		applet_name = "";
+	}
+	bb_verror_msg(msg, list, NULL);
+	applet_name = old_applet_name;
+}
+
+/*
+ * Error handler.  Print message and exit.
  */
 static void error(const char *msg, ...) NORETURN;
 static void
@@ -237,16 +255,8 @@ error(const char *msg, ...)
 {
 	va_list list;
 
-	if (makefile) {
-		const char *num = itoa(dispno);
-		char *s = malloc(strlen(makefile) + strlen(num) + 2);
-		if (s) {
-			sprintf(s, "%s:%s", makefile, num);
-			applet_name = s;
-		}
-	}
 	va_start(list, msg);
-	bb_verror_msg(msg, list, NULL);
+	vwarning(msg, list);
 	va_end(list);
 	exit(2);
 }
@@ -263,6 +273,16 @@ static void
 error_in_inference_rule(const char *s)
 {
 	error("%s in inference rule", s);
+}
+
+static void
+warning(const char *msg, ...)
+{
+	va_list list;
+
+	va_start(list, msg);
+	vwarning(msg, list);
+	va_end(list);
 }
 
 static char *
@@ -334,6 +354,8 @@ newcmd(struct cmd **cphead, char *str)
 	/*(*cphead)->c_next = NULL; - xzalloc did it */
 	(*cphead)->c_cmd = xstrdup(str);
 	/*(*cphead)->c_refcnt = 0; */
+	(*cphead)->c_makefile = makefile;
+	(*cphead)->c_dispno = dispno;
 }
 
 static void
@@ -1875,7 +1897,7 @@ remove_target(void)
 	if (!dryrun && !print && !precious &&
 			target && !(target->n_flag & (N_PRECIOUS | N_PHONY)) &&
 			unlink(target->n_name) == 0) {
-		bb_error_msg("'%s' removed", target->n_name);
+		warning("'%s' removed", target->n_name);
 	}
 }
 
@@ -1891,6 +1913,9 @@ docmds(struct name *np, struct cmd *cp)
 	for (; cp; cp = cp->c_next) {
 		uint8_t ssilent, signore, sdomake;
 
+		// Location of command in makefile (for use in error messages)
+		makefile = cp->c_makefile;
+		dispno = cp->c_dispno;
 		opts &= ~OPT_make;	// We want to know if $(MAKE) is expanded
 		q = command = expand_macros(cp->c_cmd, FALSE);
 		ssilent = silent || (np->n_flag & N_SILENT) || dotouch;
@@ -1933,7 +1958,7 @@ docmds(struct name *np, struct cmd *cp)
 				error("couldn't execute '%s'", q);
 			} else if (status != 0 && !signore) {
 				if (!doinclude)
-					bb_error_msg("failed to build '%s'", np->n_name);
+					warning("failed to build '%s'", np->n_name);
 #if !ENABLE_PLATFORM_MINGW32
 				if (status == SIGINT || status == SIGQUIT)
 #endif
@@ -1946,6 +1971,7 @@ docmds(struct name *np, struct cmd *cp)
 		}
 		free(command);
 	}
+	makefile = NULL;
 	return estat;
 }
 
@@ -1969,7 +1995,7 @@ touch(struct name *np)
 					return;
 				}
 			}
-			bb_perror_msg("touch %s failed", np->n_name);
+			warning("touch %s failed", np->n_name);
 		}
 	}
 }
@@ -2185,10 +2211,10 @@ make(struct name *np, int level)
 			if (sc_cmd)
 				estat = make1(np, sc_cmd, oodate, allsrc, dedup, impdep);
 			else if (!doinclude)
-				bb_error_msg("nothing to be done for %s", np->n_name);
+				warning("nothing to be done for %s", np->n_name);
 			didsomething = 1;
 		} else if (!doinclude) {
-			bb_error_msg("'%s' not built due to errors", np->n_name);
+			warning("'%s' not built due to errors", np->n_name);
 		}
 		free(oodate);
 	}
