@@ -23,12 +23,12 @@
 //config:	default n
 //config:	depends on MAKE || PDPMAKE
 //config:	help
-//config:	Allow strict enforcement of POSIX 2017 at runtime by:
+//config:	Allow strict enforcement of POSIX compliance at runtime by:
 //config:	- .POSIX special target in makefile
 //config:	- '--posix' command line option
 //config:	- PDPMAKE_POSIXLY_CORRECT environment variable
 //config:	Enable this if you want to check whether your makefiles are
-//config:	POSIX compliant.  This adds about 500 bytes.
+//config:	POSIX compliant.  This adds about 1.6 kb.
 
 //applet:IF_MAKE(APPLET(make, BB_DIR_USR_BIN, BB_SUID_DROP))
 //applet:IF_PDPMAKE(APPLET_ODDNAME(pdpmake, make, BB_DIR_USR_BIN, BB_SUID_DROP, make))
@@ -65,6 +65,8 @@
 #include "bb_archive.h"
 #include "common_bufsiz.h"
 #include <glob.h>
+
+#define POSIX_2017 (posix && !(pragma & P_POSIX_202X))
 
 #define OPTSTR1 "eij:+knqrsSt"
 #define OPTSTR2 "pf:*C:*"
@@ -167,6 +169,13 @@ struct macro {
 #define M_IMMEDIATE  8		// immediate-expansion macro is being defined
 #define M_VALID     16		// assert macro name is valid
 
+// Constants for PRAGMA.  Order must match strings in addrule().
+#define P_MACRO_NAME			0x01
+#define P_TARGET_NAME			0x02
+#define P_COMMAND_COMMENT		0x04
+#define P_EMPTY_SUFFIX			0x08
+#define P_POSIX_202X			0x10
+
 #define HTABSIZE 39
 
 struct globals {
@@ -190,6 +199,9 @@ struct globals {
 	bool seen_first;
 #endif
 	int numjobs;
+#if ENABLE_FEATURE_MAKE_POSIX
+	unsigned char pragma;
+#endif
 } FIX_ALIASING;
 
 #define G (*(struct globals*)bb_common_bufsiz1)
@@ -218,6 +230,11 @@ struct globals {
 #define posix		0
 #endif
 #define numjobs		(G.numjobs)
+#if ENABLE_FEATURE_MAKE_POSIX
+#define pragma		(G.pragma)
+#else
+#define pragma		0
+#endif
 
 static int make(struct name *np, int level);
 
@@ -377,11 +394,28 @@ is_valid_target(const char *name)
 {
 	const char *s;
 	for (s = name; *s; ++s) {
-		if (posix && !ispname(*s))
+		if (posix &&
+				((pragma & P_TARGET_NAME) || !POSIX_2017 ?
+					!(isfname(*s) || *s == '/') : !ispname(*s)))
 			return FALSE;
 	}
 	return TRUE;
 }
+
+#if ENABLE_FEATURE_MAKE_POSIX
+static int
+potentially_valid_target(const char *name)
+{
+	int ret = FALSE;
+
+	if (!(pragma & P_TARGET_NAME)) {
+		pragma |= P_TARGET_NAME;
+		ret = is_valid_target(name);
+		pragma &= ~P_TARGET_NAME;
+	}
+	return ret;
+}
+#endif
 
 /*
  * Intern a name.  Return a pointer to the name struct
@@ -395,7 +429,13 @@ newname(const char *name)
 		unsigned int bucket;
 
 		if (!is_valid_target(name))
-			error("invalid target name '%s'", name);
+#if ENABLE_FEATURE_MAKE_POSIX
+			error("invalid target name '%s'%s", name,
+					potentially_valid_target(name) ?
+						".  Allow with .PRAGMA: target_name" : "");
+#else
+			error("invalid target name '%s'");
+#endif
 
 		bucket = getbucket(name);
 		np = xzalloc(sizeof(struct name));
@@ -496,6 +536,10 @@ addrule(struct name *np, struct depend *dp, struct cmd *cp, int flag)
 	if ((np->n_flag & N_SPECIAL) && !dp && !cp) {
 		if (strcmp(np->n_name, ".PHONY") == 0)
 			return;
+#if ENABLE_FEATURE_MAKE_POSIX
+		if (strcmp(np->n_name, ".PRAGMA") == 0)
+			pragma = 0;
+#endif
 		freerules(np->n_rule);
 		np->n_rule = NULL;
 		return;
@@ -523,6 +567,26 @@ addrule(struct name *np, struct depend *dp, struct cmd *cp, int flag)
 	np->n_flag |= N_TARGET;
 	if (flag)
 		np->n_flag |= N_DOUBLE;
+#if ENABLE_FEATURE_MAKE_POSIX
+	if (strcmp(np->n_name, ".PRAGMA") == 0) {
+		// Order must match constants above
+		static const char *p_name =
+			"macro_name\0"
+			"target_name\0"
+			"command_comment\0"
+			"empty_suffix\0"
+			"posix_202x\0"
+		;
+
+		for (; dp; dp = dp->d_next) {
+			int idx = index_in_strings(p_name, dp->d_name->n_name);
+			if (idx != -1)
+				pragma |= 1 << idx;
+			else
+				warning("invalid .PRAGMA %s", dp->d_name->n_name);
+		}
+	}
+#endif
 }
 
 /*
@@ -542,7 +606,9 @@ is_valid_macro(const char *name)
 	for (s = name; *s; ++s) {
 		// In POSIX mode only a limited set of characters are guaranteed
 		// to be allowed in macro names.
-		if (posix && !ispname(*s))
+		if (posix &&
+				((pragma & P_MACRO_NAME) || !POSIX_2017 ?
+					!isfname(*s) : !ispname(*s)))
 			return FALSE;
 		// As an extension allow anything that can get through the
 		// input parser, apart from the following.
@@ -551,6 +617,21 @@ is_valid_macro(const char *name)
 	}
 	return TRUE;
 }
+
+#if ENABLE_FEATURE_MAKE_POSIX
+static int
+potentially_valid_macro(const char *name)
+{
+	int ret = FALSE;
+
+	if (!(pragma & P_MACRO_NAME)) {
+		pragma |= P_MACRO_NAME;
+		ret = is_valid_macro(name);
+		pragma &= ~P_MACRO_NAME;
+	}
+	return ret;
+}
+#endif
 
 static void
 setmacro(const char *name, const char *val, int level)
@@ -573,7 +654,13 @@ setmacro(const char *name, const char *val, int level)
 		unsigned int bucket;
 
 		if (!valid && !is_valid_macro(name))
+#if ENABLE_FEATURE_MAKE_POSIX
+			error("invalid macro name '%s'%s", name,
+					potentially_valid_macro(name) ?
+					".  Allow with .PRAGMA: macro_name" : "");
+#else
 			error("invalid macro name '%s'", name);
+#endif
 
 		bucket = getbucket(name);
 		mp = xzalloc(sizeof(struct macro));
@@ -1058,15 +1145,17 @@ expand_macros(const char *str, int except_dollar)
 				if ((replace = find_char(expfind, '='))) {
 					*replace++ = '\0';
 					lenf = strlen(expfind);
-					if (!posix && (find_suff = strchr(expfind, '%'))) {
+					if (!POSIX_2017 && (find_suff = strchr(expfind, '%'))) {
 						find_pref = expfind;
 						repl_pref = replace;
 						*find_suff++ = '\0';
 						if ((repl_suff = strchr(replace, '%')))
 							*repl_suff++ = '\0';
 					} else {
-						if (posix && lenf == 0)
-							error("empty suffix");
+						if (posix && !(pragma & P_EMPTY_SUFFIX) && lenf == 0)
+							error("empty suffix%s",
+								!ENABLE_FEATURE_MAKE_POSIX ? "" :
+									".  Allow with .PRAGMA: empty_suffix");
 						find_suff = expfind;
 						repl_suff = replace;
 						lenr = strlen(repl_suff);
@@ -1076,7 +1165,7 @@ expand_macros(const char *str, int except_dollar)
 
 			p = q = name;
 			// If not in POSIX mode expand macros in the name.
-			if (!posix) {
+			if (!POSIX_2017) {
 				char *expname = expand_macros(name, FALSE);
 				free(name);
 				name = expname;
@@ -1092,7 +1181,7 @@ expand_macros(const char *str, int except_dollar)
 			switch (name[0]) {
 			case '^':
 			case '+':
-				if (posix)
+				if (POSIX_2017)
 					break;
 				// fall through
 			case '@': case '%': case '?': case '<': case '*':
@@ -1395,25 +1484,27 @@ target_type(char *s)
 {
 	char *sfx;
 	int ret;
-	static const char *s_name[] = {
-		".DEFAULT",
-		".POSIX",
-		".IGNORE",
-		".PRECIOUS",
-		".SILENT",
-		".SUFFIXES",
-		".PHONY",
-		".NOTPARALLEL",
-		".WAIT",
-	};
+	static const char *s_name =
+		".DEFAULT\0"
+		".POSIX\0"
+		".IGNORE\0"
+		".PRECIOUS\0"
+		".SILENT\0"
+		".SUFFIXES\0"
+		".PHONY\0"
+		".NOTPARALLEL\0"
+		".WAIT\0"
+#if ENABLE_FEATURE_MAKE_POSIX
+		".PRAGMA\0"
+#endif
+	;
 
 	if (*s != '.')
 		return T_NORMAL;
 
 	// Check for one of the known special targets
-	for (ret = 0; ret < ARRAY_SIZE(s_name); ret++)
-		if (strcmp(s_name[ret], s) == 0)
-			return T_SPECIAL;
+	if (index_in_strings(s_name, s) >= 0)
+		return T_SPECIAL;
 
 	// Check for an inference rule
 	ret = T_NORMAL;
@@ -1448,11 +1539,13 @@ process_command(char *s)
 	int len;
 	char *outside;
 
-	if (posix) {
+	if (!(pragma & P_COMMAND_COMMENT) && posix) {
 		// POSIX strips comments from command lines
 		t = strchr(s, '#');
-		if (t)
+		if (t) {
 			*t = '\0';
+			warning("comment in command.  Allow with .PRAGMA: command_comment");
+		}
 	}
 
 	len = strlen(s) + 1;
@@ -1464,7 +1557,7 @@ process_command(char *s)
 	// Process escaped newlines.  Stop at first non-escaped newline.
 	for (t = u = s; *u && *u != '\n'; ) {
 		if (u[0] == '\\' && u[1] == '\n') {
-			if (posix || outside[u - s]) {
+			if (POSIX_2017 || outside[u - s]) {
 				// Outside macro: remove tab following escaped newline.
 				*t++ = *u++;
 				*t++ = *u++;
@@ -1624,7 +1717,7 @@ input(FILE *fd, int ilevel)
 		str = process_line(str1);
 
 		// Check for an include line
-		minus = !posix && *str == '-';
+		minus = !POSIX_2017 && *str == '-';
 		p = str + minus;
 		if (strncmp(p, "include", 7) == 0 && isblank(p[7])) {
 			const char *old_makefile = makefile;
@@ -1637,7 +1730,7 @@ input(FILE *fd, int ilevel)
 			while ((p = gettok(&q)) != NULL) {
 				FILE *ifd;
 
-				if (!posix) {
+				if (!POSIX_2017) {
 					// Try to create include file or bring it up-to-date
 					opts |= OPT_include;
 					make(newname(p), 1);
@@ -1651,10 +1744,10 @@ input(FILE *fd, int ilevel)
 					input(ifd, ilevel + 1);
 					fclose(ifd);
 				}
-				if (posix)
+				if (POSIX_2017)
 					break;
 			}
-			if (posix) {
+			if (POSIX_2017) {
 				// In POSIX 2017 zero or more than one include file is
 				// unspecified behaviour.
 				if (p == NULL || gettok(&q)) {
@@ -1678,7 +1771,7 @@ input(FILE *fd, int ilevel)
 				switch (q[-1]) {
 				case ':':
 					// '::=' and ':::=' are from POSIX 202X.
-					if (!posix && q - 2 > str && q[-2] == ':') {
+					if (!POSIX_2017 && q - 2 > str && q[-2] == ':') {
 						if (q - 3 > str && q[-3] == ':') {
 							eq = 'B';	// BSD-style ':='
 							q[-3] = '\0';
@@ -1689,12 +1782,16 @@ input(FILE *fd, int ilevel)
 						break;
 					}
 					// ':=' is a non-POSIX extension.
+					if (posix)
+						break;
+					goto set_eq;
 				case '+':
 				case '?':
 				case '!':
 					// '+=', '?=' and '!=' are from POSIX 202X.
-					if (posix)
+					if (POSIX_2017)
 						break;
+ set_eq:
 					eq = q[-1];
 					q[-1] = '\0';
 					break;
@@ -1817,7 +1914,7 @@ input(FILE *fd, int ilevel)
 				files = gd.gl_pathv;
 			}
 			for (i = 0; i < nfile; ++i) {
-				if (!posix && strcmp(files[i], ".WAIT") == 0)
+				if (!POSIX_2017 && strcmp(files[i], ".WAIT") == 0)
 					continue;
 				np = newname(files[i]);
 				newdep(&dp, np);
@@ -2018,7 +2115,7 @@ make1(struct name *np, struct cmd *cp, char *oodate, char *allsrc,
 
 	name = splitlib(np->n_name, &member);
 	setmacro("?", oodate, 0 | M_VALID);
-	if (!posix) {
+	if (!POSIX_2017) {
 		setmacro("+", allsrc, 0 | M_VALID);
 		setmacro("^", dedup, 0 | M_VALID);
 	}
@@ -2414,7 +2511,7 @@ process_macros(char **argv, int level)
 		int immediate = 0;
 
 		if (p - 2 > *argv && p[-1] == ':' && p[-2] == ':') {
-			if (posix)
+			if (POSIX_2017)
 				error("invalid macro assignment");
 			immediate = M_IMMEDIATE;
 			p[-2] = '\0';
@@ -2577,7 +2674,7 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 
-	if (!posix) {
+	if (!POSIX_2017) {
 		path = argv[0];
 #if ENABLE_PLATFORM_MINGW32
 		if (has_path(argv[0])) {
@@ -2686,7 +2783,7 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 	mark_special(".SILENT", OPT_s, N_SILENT);
 	mark_special(".IGNORE", OPT_i, N_IGNORE);
 	mark_special(".PRECIOUS", OPT_precious, N_PRECIOUS);
-	if (!posix)
+	if (!POSIX_2017)
 		mark_special(".PHONY", OPT_phony, N_PHONY);
 
 	estat = 0;
