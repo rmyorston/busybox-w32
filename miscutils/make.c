@@ -28,7 +28,7 @@
 //config:	- '--posix' command line option
 //config:	- PDPMAKE_POSIXLY_CORRECT environment variable
 //config:	Enable this if you want to check whether your makefiles are
-//config:	POSIX compliant.  This adds about 1.6 kb.
+//config:	POSIX compliant.  This adds about 1.7 kb.
 
 //applet:IF_MAKE(APPLET(make, BB_DIR_USR_BIN, BB_SUID_DROP))
 //applet:IF_PDPMAKE(APPLET_ODDNAME(pdpmake, make, BB_DIR_USR_BIN, BB_SUID_DROP, make))
@@ -37,7 +37,7 @@
 
 //usage:#define make_trivial_usage
 //usage:	IF_FEATURE_MAKE_POSIX(
-//usage:       "[--posix] [-C DIR] [-f FILE] [-j NUM] [-eiknpqrsSt] [MACRO[::]=VAL]... [TARGET]..."
+//usage:       "[--posix] [-C DIR] [-f FILE] [-j NUM] [-x PRAG] [-eiknpqrsSt] [MACRO[::]=VAL]... [TARGET]..."
 //usage:	)
 //usage:	IF_NOT_FEATURE_MAKE_POSIX(
 //usage:       "[-C DIR] [-f FILE] [-j NUM] [-eiknpqrsSt] [MACRO[::]=VAL]... [TARGET]..."
@@ -50,6 +50,9 @@
 //usage:     "\n    -C DIR   Change to DIR"
 //usage:     "\n    -f FILE  Makefile"
 //usage:     "\n    -j NUM   Jobs to run in parallel (not implemented)"
+//usage:	IF_FEATURE_MAKE_POSIX(
+//usage:     "\n    -x PRAG  Make POSIX mode less strict"
+//usage:	)
 //usage:     "\n    -e       Environment variables override macros in makefiles"
 //usage:     "\n    -i       Ignore exit status"
 //usage:     "\n    -k       Continue on error"
@@ -69,28 +72,52 @@
 #define POSIX_2017 (posix && !(pragma & P_POSIX_202X))
 
 #define OPTSTR1 "eij:+knqrsSt"
+#if ENABLE_FEATURE_MAKE_POSIX
+#define OPTSTR2 "pf:*C:*x:*"
+#else
 #define OPTSTR2 "pf:*C:*"
+#endif
 
 enum {
-	OPT_e = (1 << 0),
-	OPT_i = (1 << 1),
-	OPT_j = (1 << 2),
-	OPT_k = (1 << 3),
-	OPT_n = (1 << 4),
-	OPT_q = (1 << 5),
-	OPT_r = (1 << 6),
-	OPT_s = (1 << 7),
-	OPT_S = (1 << 8),
-	OPT_t = (1 << 9),
+	OPTBIT_e = 0,
+	OPTBIT_i,
+	OPTBIT_j,
+	OPTBIT_k,
+	OPTBIT_n,
+	OPTBIT_q,
+	OPTBIT_r,
+	OPTBIT_s,
+	OPTBIT_S,
+	OPTBIT_t,
+	OPTBIT_p,
+	OPTBIT_f,
+	OPTBIT_C,
+	IF_FEATURE_MAKE_POSIX(OPTBIT_x,)
+	OPTBIT_precious,
+	OPTBIT_phony,
+	OPTBIT_include,
+	OPTBIT_make,
+
+	OPT_e = (1 << OPTBIT_e),
+	OPT_i = (1 << OPTBIT_i),
+	OPT_j = (1 << OPTBIT_j),
+	OPT_k = (1 << OPTBIT_k),
+	OPT_n = (1 << OPTBIT_n),
+	OPT_q = (1 << OPTBIT_q),
+	OPT_r = (1 << OPTBIT_r),
+	OPT_s = (1 << OPTBIT_s),
+	OPT_S = (1 << OPTBIT_S),
+	OPT_t = (1 << OPTBIT_t),
 	// These options aren't allowed in MAKEFLAGS
-	OPT_p = (1 << 10),
-	OPT_f = (1 << 11),
-	OPT_C = (1 << 12),
+	OPT_p = (1 << OPTBIT_p),
+	OPT_f = (1 << OPTBIT_f),
+	OPT_C = (1 << OPTBIT_C),
+	OPT_x = IF_FEATURE_MAKE_POSIX((1 << OPTBIT_x)) + 0,
 	// The following aren't command line options and must be last
-	OPT_precious = (1 << 13),
-	OPT_phony = (1 << 14),
-	OPT_include = (1 << 15),
-	OPT_make = (1 << 16),
+	OPT_precious = (1 << OPTBIT_precious),
+	OPT_phony = (1 << OPTBIT_phony),
+	OPT_include = (1 << OPTBIT_include),
+	OPT_make = (1 << OPTBIT_make),
 };
 
 // Options in OPTSTR1 that aren't included in MAKEFLAGS
@@ -169,7 +196,7 @@ struct macro {
 #define M_IMMEDIATE  8		// immediate-expansion macro is being defined
 #define M_VALID     16		// assert macro name is valid
 
-// Constants for PRAGMA.  Order must match strings in addrule().
+// Constants for PRAGMA.  Order must match strings in set_pragma().
 #define P_MACRO_NAME			0x01
 #define P_TARGET_NAME			0x02
 #define P_COMMAND_COMMENT		0x04
@@ -194,12 +221,11 @@ struct globals {
 #define IF_MAX 10
 	uint8_t clevel;
 	uint8_t cstate[IF_MAX + 1];
+	int numjobs;
 #if ENABLE_FEATURE_MAKE_POSIX
 	bool posix;
 	bool seen_first;
-#endif
-	int numjobs;
-#if ENABLE_FEATURE_MAKE_POSIX
+	llist_t *pragmas;
 	unsigned char pragma;
 #endif
 } FIX_ALIASING;
@@ -223,16 +249,14 @@ struct globals {
 #define rulepos		(G.rulepos)
 #define clevel		(G.clevel)
 #define cstate		(G.cstate)
+#define numjobs		(G.numjobs)
 #if ENABLE_FEATURE_MAKE_POSIX
 #define posix		(G.posix)
 #define seen_first	(G.seen_first)
-#else
-#define posix		0
-#endif
-#define numjobs		(G.numjobs)
-#if ENABLE_FEATURE_MAKE_POSIX
+#define pragmas		(G.pragmas)
 #define pragma		(G.pragma)
 #else
+#define posix		0
 #define pragma		0
 #endif
 
@@ -432,9 +456,9 @@ newname(const char *name)
 #if ENABLE_FEATURE_MAKE_POSIX
 			error("invalid target name '%s'%s", name,
 					potentially_valid_target(name) ?
-						".  Allow with .PRAGMA: target_name" : "");
+						": allow with pragma target_name" : "");
 #else
-			error("invalid target name '%s'");
+			error("invalid target name '%s'", name);
 #endif
 
 		bucket = getbucket(name);
@@ -509,6 +533,28 @@ inc_ref(void *vp)
 	return vp;
 }
 
+#if ENABLE_FEATURE_MAKE_POSIX
+static void
+set_pragma(const char *name)
+{
+	// Order must match constants above.
+	static const char *p_name =
+		"macro_name\0"
+		"target_name\0"
+		"command_comment\0"
+		"empty_suffix\0"
+		"posix_202x\0"
+	;
+	int idx = index_in_strings(p_name, name);
+
+	if (idx != -1) {
+		pragma |= 1 << idx;
+		return;
+	}
+	warning("invalid pragma '%s'", name);
+}
+#endif
+
 /*
  * Add a new rule to a target.  This checks to see if commands already
  * exist for the target.  If flag is TRUE the target can have multiple
@@ -569,21 +615,8 @@ addrule(struct name *np, struct depend *dp, struct cmd *cp, int flag)
 		np->n_flag |= N_DOUBLE;
 #if ENABLE_FEATURE_MAKE_POSIX
 	if (strcmp(np->n_name, ".PRAGMA") == 0) {
-		// Order must match constants above
-		static const char *p_name =
-			"macro_name\0"
-			"target_name\0"
-			"command_comment\0"
-			"empty_suffix\0"
-			"posix_202x\0"
-		;
-
 		for (; dp; dp = dp->d_next) {
-			int idx = index_in_strings(p_name, dp->d_name->n_name);
-			if (idx != -1)
-				pragma |= 1 << idx;
-			else
-				warning("invalid .PRAGMA %s", dp->d_name->n_name);
+			set_pragma(dp->d_name->n_name);
 		}
 	}
 #endif
@@ -657,7 +690,7 @@ setmacro(const char *name, const char *val, int level)
 #if ENABLE_FEATURE_MAKE_POSIX
 			error("invalid macro name '%s'%s", name,
 					potentially_valid_macro(name) ?
-					".  Allow with .PRAGMA: macro_name" : "");
+					": allow with pragma macro_name" : "");
 #else
 			error("invalid macro name '%s'", name);
 #endif
@@ -1155,7 +1188,7 @@ expand_macros(const char *str, int except_dollar)
 						if (posix && !(pragma & P_EMPTY_SUFFIX) && lenf == 0)
 							error("empty suffix%s",
 								!ENABLE_FEATURE_MAKE_POSIX ? "" :
-									".  Allow with .PRAGMA: empty_suffix");
+									": allow with pragma empty_suffix");
 						find_suff = expfind;
 						repl_suff = replace;
 						lenr = strlen(repl_suff);
@@ -1544,7 +1577,7 @@ process_command(char *s)
 		t = strchr(s, '#');
 		if (t) {
 			*t = '\0';
-			warning("comment in command.  Allow with .PRAGMA: command_comment");
+			warning("comment in command removed: keep with pragma command_comment");
 		}
 	}
 
@@ -2409,7 +2442,7 @@ print_details(void)
 
 /*
  * Process options from an argv array.  If from_env is non-zero we're
- * handling options from MAKEFLAGS so skip '-C', '-f' and '-p'.
+ * handling options from MAKEFLAGS so skip '-C', '-f', '-p' and '-x'.
  */
 static uint32_t
 process_options(char **argv, int from_env)
@@ -2417,8 +2450,9 @@ process_options(char **argv, int from_env)
 	uint32_t flags;
 
 	flags = getopt32(argv, "^" OPTSTR1 OPTSTR2 "\0k-S:S-k",
-						&numjobs, &makefiles, &dirs);
-	if (from_env && (flags & (OPT_C | OPT_f | OPT_p)))
+						&numjobs, &makefiles, &dirs
+						IF_FEATURE_MAKE_POSIX(, &pragmas));
+	if (from_env && (flags & (OPT_C | OPT_f | OPT_p | OPT_x)))
 		error("invalid MAKEFLAGS");
 	if (posix && (flags & OPT_C))
 		error("-C not allowed");
@@ -2656,6 +2690,9 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 	const char *path, *newpath = NULL;
 	char **fargv, **fargv0;
 	const char *dir, *file;
+#if ENABLE_FEATURE_MAKE_POSIX
+	const char *prag;
+#endif
 	char def_make[] = "makefile";
 	int estat;
 	FILE *ifd;
@@ -2718,6 +2755,11 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 			bb_perror_msg("can't chdir to %s", dir);
 		}
 	}
+
+#if ENABLE_FEATURE_MAKE_POSIX
+	while ((prag = llist_pop(&pragmas)))
+		set_pragma(prag);
+#endif
 
 #if !ENABLE_PLATFORM_MINGW32
 	init_signal(SIGHUP);
