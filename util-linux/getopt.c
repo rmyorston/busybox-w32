@@ -412,6 +412,11 @@ int getopt_main(int argc, char **argv)
 			bb_simple_error_msg_and_die("missing optstring argument");
 	}
 
+#if ENABLE_PLATFORM_MINGW32
+	// Mingw-w64 getopt(3) uses __argv[0] in error messages, not the
+	// first element of its argument array.
+	__argv[0] =
+#endif
 	argv[n] = name ? name : argv[0];
 	return generate_output(argv + n, argc - n, optstr, long_options);
 }
