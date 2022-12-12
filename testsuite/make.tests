@@ -1,6 +1,7 @@
 #!/bin/sh
 
 . ./testing.sh
+unset MAKEFLAGS
 
 # testing "test name" "command" "expected result" "file input" "stdin"
 
@@ -529,3 +530,5 @@ file1:
 	@touch file1
 '
 cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
+exit $FAILCOUNT
