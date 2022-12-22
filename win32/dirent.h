@@ -9,9 +9,7 @@ typedef struct DIR DIR;
 #define DT_LNK     3
 
 struct dirent {
-#if ENABLE_FEATURE_EXTRA_FILE_DATA
 	unsigned char d_type;
-#endif
 	char d_name[PATH_MAX];	// file name
 };
 
