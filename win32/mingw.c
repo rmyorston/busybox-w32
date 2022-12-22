@@ -432,7 +432,10 @@ mode_t mingw_umask(mode_t new_mode)
  */
 static int has_exec_format(const char *name)
 {
-	int n, sig;
+	HANDLE fh;
+	int fd = -1;
+	ssize_t n;
+	int sig;
 	unsigned int offset;
 	unsigned char buf[1024];
 
@@ -440,8 +443,20 @@ static int has_exec_format(const char *name)
 	if (is_suffixed_with_case(name, ".dll"))
 		return 0;
 
-	n = open_read_close(name, buf, sizeof(buf));
-	if (n < 4)	/* at least '#!/x' and not error */
+	/* Open file and try to avoid updating access time */
+	fh = CreateFileA(name, GENERIC_ALL, 0, NULL, OPEN_EXISTING, 0, NULL);
+	if (fh != INVALID_HANDLE_VALUE) {
+		FILETIME last_access = { 0xffffffff, 0xffffffff };
+
+		SetFileTime(fh, NULL, &last_access, NULL);
+		fd = _open_osfhandle((intptr_t)fh, O_RDONLY);
+	}
+
+	if (fd < 0)
+		return 0;
+
+	n = read_close(fd, buf, sizeof(buf));
+	if (n < 4) /* Need at least a few bytes and no error */
 		return 0;
 
 	/* shell script */
@@ -453,7 +468,7 @@ static int has_exec_format(const char *name)
 	 * Poke about in file to see if it's a PE binary.  I've just copied
 	 * the magic from the file command.
 	 */
-	if (buf[0] == 'M' && buf[1] == 'Z') {
+	if (buf[0] == 'M' && buf[1] == 'Z' && n > 0x3f) {
 		offset = (buf[0x19] << 8) + buf[0x18];
 		if (offset > 0x3f) {
 			offset = (buf[0x3f] << 24) + (buf[0x3e] << 16) +
