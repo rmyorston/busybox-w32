@@ -51,7 +51,7 @@ static int is_console(int fd)
 	return isatty(fd) && get_console() != INVALID_HANDLE_VALUE;
 }
 
-static int is_console_in(int fd)
+static ALWAYS_INLINE int is_console_in(int fd)
 {
 	return isatty(fd) && GetStdHandle(STD_INPUT_HANDLE) != INVALID_HANDLE_VALUE;
 }
@@ -1083,7 +1083,7 @@ int winansi_getc(FILE *stream)
 {
 	int rv;
 
-	rv = getc(stream);
+	rv = _getc_nolock(stream);
 	if (!is_console_in(fileno(stream)))
 		return rv;
 
