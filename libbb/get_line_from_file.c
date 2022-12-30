@@ -16,7 +16,11 @@ char* FAST_FUNC bb_get_chunk_from_file(FILE *file, size_t *end)
 	size_t idx = 0;
 	char *linebuf = NULL;
 
+#if ENABLE_PLATFORM_MINGW32
+	while ((ch = _getc_nolock(file)) != EOF) {
+#else
 	while ((ch = getc(file)) != EOF) {
+#endif
 		/* grow the line buffer as necessary */
 		if (!(idx & 0xff)) {
 			if (idx == ((size_t)-1) - 0xff)
@@ -41,6 +45,11 @@ char* FAST_FUNC bb_get_chunk_from_file(FILE *file, size_t *end)
 		linebuf = xrealloc(linebuf, idx + 1);
 		linebuf[idx] = '\0';
 	}
+#if ENABLE_PLATFORM_MINGW32
+	if (idx && isatty(fileno(file)) &&
+			GetStdHandle(STD_INPUT_HANDLE) != INVALID_HANDLE_VALUE)
+		OemToCharBuff(linebuf, linebuf, idx);
+#endif
 	return linebuf;
 }
 
