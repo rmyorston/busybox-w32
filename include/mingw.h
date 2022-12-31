@@ -142,7 +142,7 @@ pid_t mingw_fork_compressor(int fd, const char *compressor, const char *mode);
 #define popen mingw_popen
 #define pclose mingw_pclose
 
-#define setlinebuf(fd) setvbuf(fd, (char *) NULL, _IOLBF, 0)
+IMPL(setlinebuf, void, ,FILE * UNUSED_PARAM)
 
 /*
  * ANSI emulation wrappers
