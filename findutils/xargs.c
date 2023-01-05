@@ -114,8 +114,10 @@ struct globals {
 #endif
 	const char *eof_str;
 	int idx;
+#if !ENABLE_PLATFORM_MINGW32
 	int fd_tty;
 	int fd_stdin;
+#endif
 #if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
 	int running_procs;
 	int max_procs;
@@ -157,7 +159,7 @@ enum {
 	OPTBIT_UPTO_SIZE,
 	OPTBIT_EOF_STRING,
 	OPTBIT_EOF_STRING1,
-	OPTBIT_STDIN_TTY,
+	IF_NOT_PLATFORM_MINGW32(              OPTBIT_STDIN_TTY  ,)
 	IF_FEATURE_XARGS_SUPPORT_CONFIRMATION(OPTBIT_INTERACTIVE,)
 	IF_FEATURE_XARGS_SUPPORT_TERMOPT(     OPTBIT_TERMINATE  ,)
 	IF_FEATURE_XARGS_SUPPORT_ZERO_TERM(   OPTBIT_ZEROTERM   ,)
@@ -170,14 +172,15 @@ enum {
 	OPT_UPTO_SIZE   = 1 << OPTBIT_UPTO_SIZE  ,
 	OPT_EOF_STRING  = 1 << OPTBIT_EOF_STRING , /* GNU: -e[<param>] */
 	OPT_EOF_STRING1 = 1 << OPTBIT_EOF_STRING1, /* SUS: -E<param> */
-	OPT_STDIN_TTY   = 1 << OPTBIT_STDIN_TTY,
+	OPT_STDIN_TTY   = IF_NOT_PLATFORM_MINGW32(              (1 << OPTBIT_STDIN_TTY  )) + 0,
 	OPT_INTERACTIVE = IF_FEATURE_XARGS_SUPPORT_CONFIRMATION((1 << OPTBIT_INTERACTIVE)) + 0,
 	OPT_TERMINATE   = IF_FEATURE_XARGS_SUPPORT_TERMOPT(     (1 << OPTBIT_TERMINATE  )) + 0,
 	OPT_ZEROTERM    = IF_FEATURE_XARGS_SUPPORT_ZERO_TERM(   (1 << OPTBIT_ZEROTERM   )) + 0,
 	OPT_REPLSTR     = IF_FEATURE_XARGS_SUPPORT_REPL_STR(    (1 << OPTBIT_REPLSTR    )) + 0,
 	OPT_REPLSTR1    = IF_FEATURE_XARGS_SUPPORT_REPL_STR(    (1 << OPTBIT_REPLSTR1   )) + 0,
 };
-#define OPTION_STR "+trn:s:e::E:o" \
+#define OPTION_STR "+trn:s:e::E:" \
+	IF_NOT_PLATFORM_MINGW32(              "o") \
 	IF_FEATURE_XARGS_SUPPORT_CONFIRMATION("p") \
 	IF_FEATURE_XARGS_SUPPORT_TERMOPT(     "x") \
 	IF_FEATURE_XARGS_SUPPORT_ZERO_TERM(   "0") \
@@ -244,8 +247,10 @@ static int xargs_exec(void)
 {
 	int status;
 
+#if !ENABLE_PLATFORM_MINGW32
 	if (option_mask32 & OPT_STDIN_TTY)
 		xdup2(G.fd_tty, STDIN_FILENO);
+#endif
 
 #if !ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
 	status = spawn_and_wait(G.args);
@@ -351,8 +356,10 @@ static int xargs_exec(void)
  ret:
 	if (status != 0)
 		G.xargs_exitcode = status;
+#if !ENABLE_PLATFORM_MINGW32
 	if (option_mask32 & OPT_STDIN_TTY)
 		xdup2(G.fd_stdin, STDIN_FILENO);
+#endif
 	return status;
 }
 
@@ -671,7 +678,9 @@ static int xargs_ask_confirmation(void)
 //usage:	IF_FEATURE_XARGS_SUPPORT_ARGS_FILE(
 //usage:     "\n	-a FILE	Read from FILE instead of stdin"
 //usage:	)
+//usage:	IF_NOT_PLATFORM_MINGW32(
 //usage:     "\n	-o	Reopen stdin as /dev/tty"
+//usage:	)
 //usage:     "\n	-r	Don't run command if input is empty"
 //usage:     "\n	-t	Print the command on stderr before execution"
 //usage:	IF_FEATURE_XARGS_SUPPORT_CONFIRMATION(
@@ -827,12 +836,14 @@ int xargs_main(int argc UNUSED_PARAM, char **argv)
 			store_param(argv[i]);
 	}
 
+#if !ENABLE_PLATFORM_MINGW32
 	if (opt & OPT_STDIN_TTY) {
 		G.fd_tty = xopen(CURRENT_TTY, O_RDONLY);
 		close_on_exec_on(G.fd_tty);
 		G.fd_stdin = dup(STDIN_FILENO);
 		close_on_exec_on(G.fd_stdin);
 	}
+#endif
 
 	initial_idx = G.idx;
 	while (1) {
