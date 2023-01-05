@@ -2460,10 +2460,15 @@ static int set_local_var(char *str, unsigned flags)
 	return retval;
 }
 
+static int set_local_var0(char *str)
+{
+	return set_local_var(str, 0);
+}
+
 static void FAST_FUNC set_local_var_from_halves(const char *name, const char *val)
 {
 	char *var = xasprintf("%s=%s", name, val);
-	set_local_var(var, /*flag:*/ 0);
+	set_local_var0(var);
 }
 
 /* Used at startup and after each cd */
@@ -6964,7 +6969,7 @@ static NOINLINE int expand_one_var(o_string *output, int n,
 							val = NULL;
 						} else {
 							char *new_var = xasprintf("%s=%s", var, val);
-							set_local_var(new_var, /*flag:*/ 0);
+							set_local_var0(new_var);
 						}
 					}
 				}
@@ -8188,7 +8193,7 @@ static const struct built_in_command *find_builtin(const char *name)
 	return find_builtin_helper(name, bltins2, &bltins2[ARRAY_SIZE(bltins2)]);
 }
 
-#if ENABLE_HUSH_JOB && ENABLE_FEATURE_EDITING
+#if ENABLE_HUSH_JOB && ENABLE_FEATURE_TAB_COMPLETION
 static const char * FAST_FUNC get_builtin_name(int i)
 {
 	if (/*i >= 0 && */ i < ARRAY_SIZE(bltins1)) {
@@ -9373,7 +9378,7 @@ static NOINLINE int run_pipe(struct pipe *pi)
 				}
 #endif
 				debug_printf_env("set shell var:'%s'->'%s'\n", *argv, p);
-				if (set_local_var(p, /*flag:*/ 0)) {
+				if (set_local_var0(p)) {
 					/* assignment to readonly var / putenv error? */
 					rcode = 1;
 				}
@@ -9856,7 +9861,7 @@ static int run_list(struct pipe *pi)
 			}
 			/* Insert next value from for_lcur */
 			/* note: *for_lcur already has quotes removed, $var expanded, etc */
-			set_local_var(xasprintf("%s=%s", pi->cmds[0].argv[0], *for_lcur++), /*flag:*/ 0);
+			set_local_var_from_halves(pi->cmds[0].argv[0], *for_lcur++);
 			continue;
 		}
 		if (rword == RES_IN) {
@@ -10668,8 +10673,12 @@ int hush_main(int argc, char **argv)
 
 # if ENABLE_FEATURE_EDITING
 		G.line_input_state = new_line_input_t(FOR_SHELL);
+#  if ENABLE_FEATURE_TAB_COMPLETION
 		G.line_input_state->get_exe_name = get_builtin_name;
+#  endif
+#  if EDITING_HAS_sh_get_var
 		G.line_input_state->sh_get_var = get_local_var_value;
+#  endif
 # endif
 # if ENABLE_HUSH_SAVEHISTORY && MAX_HISTORY > 0
 		{

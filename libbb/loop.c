@@ -71,7 +71,7 @@ int FAST_FUNC del_loop(const char *device)
 
 	fd = open(device, O_RDONLY);
 	if (fd < 0)
-		return 1;
+		return fd; /* -1 */
 	rc = ioctl(fd, LOOP_CLR_FD, 0);
 	close(fd);
 
@@ -96,6 +96,97 @@ int FAST_FUNC get_free_loop(void)
 	return loopdevno; /* can be -1 if error */
 }
 
+static int get_next_free_loop(char *dev, int id)
+{
+	int loopdevno;
+
+	loopdevno = get_free_loop();
+	if (loopdevno != -1) {
+		/* loopdevno is -2 (use id) or >= 0 (use id = loopdevno): */
+		if (loopdevno >= 0)
+			id = loopdevno;
+		sprintf(dev, LOOP_FORMAT, id);
+	}
+	return loopdevno;
+}
+
+#if ENABLE_TRY_LOOP_CONFIGURE || ENABLE_LOOP_CONFIGURE
+# define LOOP_CONFIGURE 0x4C0A
+struct bb_loop_config {
+	uint32_t fd;
+	uint32_t block_size;
+	struct loop_info64 info;
+	uint64_t __reserved[8];
+};
+#endif
+
+static int set_loopdev_params(int lfd,
+		int ffd, const char *file,
+		unsigned long long offset,
+		unsigned long long sizelimit,
+		unsigned flags)
+{
+	int rc;
+#if ENABLE_TRY_LOOP_CONFIGURE || ENABLE_LOOP_CONFIGURE
+	struct bb_loop_config lconfig;
+# define loopinfo lconfig.info
+#else
+	bb_loop_info loopinfo;
+#endif
+
+	rc = ioctl(lfd, BB_LOOP_GET_STATUS, &loopinfo);
+
+	/* If device is free, try to claim it */
+	if (rc && errno == ENXIO) {
+#if ENABLE_TRY_LOOP_CONFIGURE || ENABLE_LOOP_CONFIGURE
+		memset(&lconfig, 0, sizeof(lconfig));
+#else
+		memset(&loopinfo, 0, sizeof(loopinfo));
+#endif
+		safe_strncpy((char *)loopinfo.lo_file_name, file, LO_NAME_SIZE);
+		loopinfo.lo_offset = offset;
+		loopinfo.lo_sizelimit = sizelimit;
+		/*
+		 * LO_FLAGS_READ_ONLY is not set because RO is controlled
+		 * by open type of the lfd.
+		 */
+		loopinfo.lo_flags = (flags & ~BB_LO_FLAGS_READ_ONLY);
+
+#if ENABLE_TRY_LOOP_CONFIGURE || ENABLE_LOOP_CONFIGURE
+		lconfig.fd = ffd;
+		rc = ioctl(lfd, LOOP_CONFIGURE, &lconfig);
+		if (rc == 0)
+			return rc; /* SUCCESS! */
+# if ENABLE_TRY_LOOP_CONFIGURE
+		if (errno != EINVAL)
+			return rc; /* error other than old kernel */
+		/* Old kernel, fall through into old way to do it: */
+# endif
+#endif
+#if ENABLE_TRY_LOOP_CONFIGURE || ENABLE_NO_LOOP_CONFIGURE
+		/* Associate free loop device with file */
+		rc = ioctl(lfd, LOOP_SET_FD, ffd);
+		if (rc != 0) {
+			/* Ouch... race: the device already has a fd */
+			return rc;
+		}
+		rc = ioctl(lfd, BB_LOOP_SET_STATUS, &loopinfo);
+		if (rc != 0 && (loopinfo.lo_flags & BB_LO_FLAGS_AUTOCLEAR)) {
+			/* Old kernel, does not support LO_FLAGS_AUTOCLEAR? */
+			/* (this code path is not tested) */
+			loopinfo.lo_flags -= BB_LO_FLAGS_AUTOCLEAR;
+			rc = ioctl(lfd, BB_LOOP_SET_STATUS, &loopinfo);
+		}
+		if (rc == 0)
+			return rc; /* SUCCESS! */
+		/* failure, undo LOOP_SET_FD */
+		ioctl(lfd, LOOP_CLR_FD, 0); // actually, 0 param is unnecessary
+#endif
+	}
+	return -1;
+#undef loopinfo
+}
+
 /* Returns opened fd to the loop device, <0 on error.
  * *device is loop device to use, or if *device==NULL finds a loop device to
  * mount it on and sets *device to a strdup of that loop device name.
@@ -105,7 +196,6 @@ int FAST_FUNC set_loop(char **device, const char *file, unsigned long long offse
 {
 	char dev[LOOP_NAMESIZE];
 	char *try;
-	bb_loop_info loopinfo;
 	struct stat statbuf;
 	int i, lfd, ffd, mode, rc;
 
@@ -123,30 +213,27 @@ int FAST_FUNC set_loop(char **device, const char *file, unsigned long long offse
 
 	try = *device;
 	if (!try) {
- get_free_loopN:
-		i = get_free_loop();
-		if (i == -1) {
-			close(ffd);
-			return -1; /* no free loop devices */
-		}
-		if (i >= 0) {
-			try = xasprintf(LOOP_FORMAT, i);
-			goto open_lfd;
-		}
-		/* i == -2: no /dev/loop-control. Do an old-style search for a free device */
 		try = dev;
 	}
 
 	/* Find a loop device */
 	/* 0xfffff is a max possible minor number in Linux circa 2010 */
 	for (i = 0; i <= 0xfffff; i++) {
-		sprintf(dev, LOOP_FORMAT, i);
+		if (!*device) {
+			rc = get_next_free_loop(dev, i);
+			if (rc == -1)
+				break; /* no free loop devices (or other error in LOOP_CTL_GET_FREE) */
+			if (rc >= 0)
+				/* /dev/loop-control gave us the next free /dev/loopN */
+				goto open_lfd;
+			/* else: sequential /dev/loopN, needs to be tested/maybe_created */
+		}
 
 		IF_FEATURE_MOUNT_LOOP_CREATE(errno = 0;)
 		if (stat(try, &statbuf) != 0 || !S_ISBLK(statbuf.st_mode)) {
 			if (ENABLE_FEATURE_MOUNT_LOOP_CREATE
 			 && errno == ENOENT
-			 && try == dev
+			 && (!*device)
 			) {
 				/* Node doesn't exist, try to create it */
 				if (mknod(dev, S_IFBLK|0644, makedev(7, i)) == 0)
@@ -172,55 +259,19 @@ int FAST_FUNC set_loop(char **device, const char *file, unsigned long long offse
 			goto try_next_loopN;
 		}
 
-		rc = ioctl(lfd, BB_LOOP_GET_STATUS, &loopinfo);
-
-		/* If device is free, try to claim it */
-		if (rc && errno == ENXIO) {
-			/* Associate free loop device with file */
-			if (ioctl(lfd, LOOP_SET_FD, ffd)) {
-				/* Ouch. Are we racing with other mount? */
-				if (!*device   /* yes */
-				 && try != dev /* tried a _kernel-offered_ loopN? */
-				) {
-					free(try);
-					close(lfd);
-//TODO: add "if (--failcount != 0) ..."?
-					goto get_free_loopN;
-				}
-				goto close_and_try_next_loopN;
-			}
-			memset(&loopinfo, 0, sizeof(loopinfo));
-			safe_strncpy((char *)loopinfo.lo_file_name, file, LO_NAME_SIZE);
-			loopinfo.lo_offset = offset;
-			loopinfo.lo_sizelimit = sizelimit;
-			/*
-			 * Used by mount to set LO_FLAGS_AUTOCLEAR.
-			 * LO_FLAGS_READ_ONLY is not set because RO is controlled by open type of the file.
-			 * Note that closing LO_FLAGS_AUTOCLEARed lfd before mount
-			 * is wrong (would free the loop device!)
+		rc = set_loopdev_params(lfd, ffd, file, offset, sizelimit, flags);
+		if (rc == 0) {
+			/* SUCCESS! */
+			if (!*device)
+				*device = xstrdup(dev);
+			/* Note: mount asks for LO_FLAGS_AUTOCLEAR loopdev.
+			 * Closing LO_FLAGS_AUTOCLEARed lfd before mount
+			 * is wrong (would free the loop device!),
+			 * this is why we return without closing it.
 			 */
-			loopinfo.lo_flags = (flags & ~BB_LO_FLAGS_READ_ONLY);
-			rc = ioctl(lfd, BB_LOOP_SET_STATUS, &loopinfo);
-			if (rc != 0 && (loopinfo.lo_flags & BB_LO_FLAGS_AUTOCLEAR)) {
-				/* Old kernel, does not support LO_FLAGS_AUTOCLEAR? */
-				/* (this code path is not tested) */
-				loopinfo.lo_flags -= BB_LO_FLAGS_AUTOCLEAR;
-				rc = ioctl(lfd, BB_LOOP_SET_STATUS, &loopinfo);
-			}
-			if (rc == 0) {
-				/* SUCCESS! */
-				if (try != dev) /* tried a kernel-offered free loopN? */
-					*device = try; /* malloced */
-				if (!*device)   /* was looping in search of free "/dev/loopN"? */
-					*device = xstrdup(dev);
-				rc = lfd; /* return this */
-				break;
-			}
-			/* failure, undo LOOP_SET_FD */
-			ioctl(lfd, LOOP_CLR_FD, 0); // actually, 0 param is unnecessary
+			rc = lfd; /* return this */
+			break;
 		}
-		/* else: device is not free (rc == 0) or error other than ENXIO */
- close_and_try_next_loopN:
 		close(lfd);
  try_next_loopN:
 		rc = -1;

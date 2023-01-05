@@ -518,7 +518,13 @@ int fbset_main(int argc, char **argv)
 			case CMD_DEPTH:
 				var_set.bits_per_pixel = xatou32(argv[1]);
 				break;
+			case CMD_PIXCLOCK:
+				var_set.pixclock = xatou32(argv[1]);
+				break;
 #endif
+			default:
+				bb_perror_msg_and_die("option '%s' not handled",
+						      g_cmdoptions[i].name);
 			}
 			switch (g_cmdoptions[i].code) {
 			case CMD_FB:

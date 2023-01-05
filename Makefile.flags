@@ -196,6 +196,9 @@ ifeq ($(CONFIG_FEATURE_NSLOOKUP_BIG),y)
 ifneq (,$(findstring linux,$(shell $(CC) $(CFLAGS) -dumpmachine)))
 LDLIBS += resolv
 endif
+ifneq (,$(findstring gnu,$(shell $(CC) $(CFLAGS) -dumpmachine)))
+LDLIBS += resolv
+endif
 endif
 
 ifeq ($(CONFIG_EFENCE),y)
