@@ -3284,9 +3284,9 @@ static var *evaluate(node *op, var *res)
 				R_d = (double)v / 0x8000000000000000ULL;
 #elif ENABLE_PLATFORM_MINGW32 && RAND_MAX == 0x7fff
 				/* 45 bits of randomness ought to be enough for anyone */
-				uint64_t v = ((uint64_t)rand() << 48) |
+				uint64_t v = ((uint64_t)rand() << 18) |
 								((uint64_t)rand() << 33) |
-								((uint64_t)rand() << 18);
+								((uint64_t)rand() << 48);
 				R_d = (double)v / 0x8000000000000000ULL;
 #else
 # error Not implemented for this value of RAND_MAX
