@@ -2870,6 +2870,17 @@ static rstream *next_input_file(void)
 #undef files_happen
 }
 
+#if ENABLE_PLATFORM_MINGW32
+static unsigned triple32(unsigned x)
+{
+	x ^= x >> 17; x *= 0xed5ad4bb;
+	x ^= x >> 11; x *= 0xac4c1b51;
+	x ^= x >> 15; x *= 0x31848bab;
+	x ^= x >> 14;
+	return x;
+}
+#endif
+
 /*
  * Evaluate node - the heart of the program. Supplied with subtree
  * and "res" variable to assign the result to if we evaluate an expression.
@@ -3329,7 +3340,11 @@ static var *evaluate(node *op, var *res)
 			case F_sr:
 				R_d = (double)seed;
 				seed = op1 ? (unsigned)L_d : (unsigned)time(NULL);
+#if ENABLE_PLATFORM_MINGW32
+				srand(seed == 1 ? 1 : triple32(seed));
+#else
 				srand(seed);
+#endif
 				break;
 
 			case F_ti: /*systime*/
