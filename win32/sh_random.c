@@ -1,13 +1,6 @@
 #include "libbb.h"
+#include <ntsecapi.h>
 #include "../shell/random.h"
-
-/* call 'fn' to put data in 'dt' then copy it to generator state */
-#define GET_DATA(fn, dt) \
-	fn(&dt); \
-	u = (uint32_t *)&dt; \
-	for (j=0; j<sizeof(dt)/sizeof(uint32_t); ++j) { \
-		state[i++%2] ^= *u++; \
-	}
 
 /*
  * Obtain a few bytes of random-ish data to initialise the generator.
@@ -16,26 +9,13 @@
  */
 static void get_entropy(uint32_t state[2])
 {
-	int i, j;
-	FILETIME tm;
-	MEMORYSTATUS ms;
-	SYSTEM_INFO si;
-	LARGE_INTEGER pc;
-	uint32_t *u;
-
-	i = 0;
-	state[i++%2] ^= (uint32_t)GetProcessId(GetCurrentProcess());
-	state[i++%2] ^= (uint32_t)GetCurrentThreadId();
-	state[i++%2] ^= (uint32_t)GetTickCount();
-
-	GET_DATA(GetSystemTimeAsFileTime, tm)
-	GET_DATA(GlobalMemoryStatus, ms)
-	GET_DATA(GetSystemInfo, si)
-	GET_DATA(QueryPerformanceCounter, pc)
+	if (!RtlGenRandom(state, sizeof(state[0])*2))
+		GetSystemTimeAsFileTime((FILETIME *)state);
 
 #if 0
 	{
 		unsigned char *p = (unsigned char *)state;
+		int j;
 
 		for (j=0; j<8; ++j) {
 			fprintf(stderr, "%02x", *p++);

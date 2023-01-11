@@ -18,6 +18,7 @@ You may use this code in any way you wish, and it is free.  No warrantee.
   public domain.
 */
 #include "libbb.h"
+#include <ntsecapi.h>
 
 typedef struct {
 	/* external results */
@@ -113,14 +114,6 @@ static void randinit(isaac_t *t, int flag)
    isaac(t);            /* fill in the first set of results */
 }
 
-/* call 'fn' to put data in 'dt' then copy it to generator state */
-#define GET_DATA(fn, dt) \
-	fn(&dt); \
-	u = (uint32_t *)&dt; \
-	for (j=0; j<sizeof(dt)/sizeof(uint32_t); ++j) { \
-		t->randrsl[i++ % 256] = *u++; \
-	}
-
 /*
  * Stuff a few bytes of random-ish data into the generator state.
  * This is unlikely to be very robust:  don't rely on it for
@@ -128,37 +121,14 @@ static void randinit(isaac_t *t, int flag)
  */
 static void get_entropy(isaac_t *t)
 {
-	int i, j;
-	FILETIME tm;
-	MEMORYSTATUS ms;
-	SYSTEM_INFO si;
-	LARGE_INTEGER pc;
-	uint32_t *u;
-	char *env, *s;
-	unsigned char *p;
-
-	i = 0;
-	t->randrsl[i++] = (uint32_t)GetProcessId(GetCurrentProcess());
-	t->randrsl[i++] = (uint32_t)GetCurrentThreadId();
-	t->randrsl[i++] = (uint32_t)GetTickCount();
-
-	GET_DATA(GetSystemTimeAsFileTime, tm)
-	GET_DATA(GlobalMemoryStatus, ms)
-	GET_DATA(GetSystemInfo, si)
-	GET_DATA(QueryPerformanceCounter, pc)
-
-	env = GetEnvironmentStringsA();
-
-	/* environment ends with two nuls */
-	p = (unsigned char *)t->randrsl;
-	i *= sizeof(uint32_t);
-	for (s=env; *s || *(s+1); ++s)
-		p[i++ % (256 * sizeof(uint32_t))] ^= *s;
-
-	FreeEnvironmentStringsA(env);
+	if (!RtlGenRandom(t->randrsl, sizeof(uint32_t)*256))
+		GetSystemTimeAsFileTime((FILETIME *)t->randrsl);
 
 #if 0
 	{
+		unsigned char *p = (unsigned char *)t->randrsl;
+		int j;
+
 		for (j=0; j<256; ++j) {
 			fprintf(stderr, "%02x", p[j]);
 			if ((j&31) == 31) {
