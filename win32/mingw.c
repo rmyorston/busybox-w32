@@ -494,11 +494,13 @@ static int has_exec_format(const char *name)
 }
 
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
-static uid_t file_owner(HANDLE fh)
+static uid_t file_owner(HANDLE fh, struct mingw_stat *buf)
 {
 	PSID pSidOwner;
+	PACL pDACL;
 	PSECURITY_DESCRIPTOR pSD;
 	static PTOKEN_USER user = NULL;
+	static HANDLE impersonate = INVALID_HANDLE_VALUE;
 	static int initialised = 0;
 	uid_t uid = 0;
 	DWORD *ptr;
@@ -519,13 +521,16 @@ static uid_t file_owner(HANDLE fh)
 		DWORD ret = 0;
 
 		initialised = 1;
-		if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+		if (OpenProcessToken(GetCurrentProcess(),
+				TOKEN_IMPERSONATE | TOKEN_QUERY | TOKEN_DUPLICATE |
+					STANDARD_RIGHTS_READ, &token)) {
 			GetTokenInformation(token, TokenUser, NULL, 0, &ret);
 			if (ret <= 0 || (user=malloc(ret)) == NULL ||
 					!GetTokenInformation(token, TokenUser, user, ret, &ret)) {
 				free(user);
 				user = NULL;
 			}
+			DuplicateToken(token, SecurityImpersonation, &impersonate);
 			CloseHandle(token);
 		}
 	}
@@ -534,8 +539,10 @@ static uid_t file_owner(HANDLE fh)
 		return DEFAULT_UID;
 
 	/* get SID of file's owner */
-	if (GetSecurityInfo(fh, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION,
-			&pSidOwner, NULL, NULL, NULL, &pSD) != ERROR_SUCCESS)
+	if (GetSecurityInfo(fh, SE_FILE_OBJECT,
+			OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION |
+				DACL_SECURITY_INFORMATION,
+			&pSidOwner, NULL, &pDACL, NULL, &pSD) != ERROR_SUCCESS)
 		return 0;
 
 	if (EqualSid(pSidOwner, user->User.Sid)) {
@@ -548,33 +555,28 @@ static uid_t file_owner(HANDLE fh)
 		if (ptr[6] >= 500 && ptr[6] < DEFAULT_UID)
 			uid = (uid_t)ptr[6];
 	}
-	LocalFree(pSD);
-	return uid;
 
-#if 0
-	/* this is how it would be done properly using the API */
-	{
-		PSID_IDENTIFIER_AUTHORITY auth;
-		unsigned char *count;
-		PDWORD subauth;
-		unsigned char nt_auth[] = {
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x05
+	if (uid != DEFAULT_UID && impersonate != INVALID_HANDLE_VALUE) {
+		static GENERIC_MAPPING mapping = {
+			FILE_GENERIC_READ, FILE_GENERIC_WRITE,
+			FILE_GENERIC_EXECUTE, FILE_ALL_ACCESS
 		};
+		PRIVILEGE_SET privileges;
+		DWORD grantedAccess;
+		DWORD privilegesLength = sizeof(privileges);
+		DWORD genericAccessRights = MAXIMUM_ALLOWED;
+		BOOL result;
 
-		if (IsValidSid(pSidOwner) ) {
-			auth = GetSidIdentifierAuthority(pSidOwner);
-			count = GetSidSubAuthorityCount(pSidOwner);
-			subauth = GetSidSubAuthority(pSidOwner, 0);
-			if (memcmp(auth, nt_auth, sizeof(nt_auth)) == 0 &&
-					*count == 5 && *subauth == 21) {
-				subauth = GetSidSubAuthority(pSidOwner, 4);
-				if (*subauth >= 500 && *subauth < DEFAULT_UID)
-					uid = (uid_t)*subauth;
+		if (AccessCheck(pSD, impersonate, genericAccessRights,
+				&mapping, &privileges, &privilegesLength,
+				&grantedAccess, &result)) {
+			if (result && (grantedAccess & 0x1200af) == 0x1200af) {
+				buf->st_mode |= (buf->st_mode & S_IRWXU) >> 6;
 			}
 		}
-		return uid;
 	}
-#endif
+	LocalFree(pSD);
+	return uid;
 }
 #endif
 
@@ -711,7 +713,8 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 							count_subdirs(file_name) :
 							hdata.nNumberOfLinks;
 			}
-			buf->st_uid = buf->st_gid = file_owner(fh);
+
+			buf->st_uid = buf->st_gid = file_owner(fh, buf);
 			CloseHandle(fh);
 		}
 		else {
