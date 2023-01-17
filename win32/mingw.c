@@ -444,7 +444,7 @@ static int has_exec_format(const char *name)
 		return 0;
 
 	/* Open file and try to avoid updating access time */
-	fh = CreateFileA(name, GENERIC_ALL, 0, NULL, OPEN_EXISTING, 0, NULL);
+	fh = CreateFileA(name, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
 	if (fh != INVALID_HANDLE_VALUE) {
 		FILETIME last_access = { 0xffffffff, 0xffffffff };
 
@@ -725,14 +725,14 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		}
 #endif
 
-		/* Get actual size of compressed/sparse files */
-		low = GetCompressedFileSize(file_name, &high);
-		if ((low == INVALID_FILE_SIZE && GetLastError() != NO_ERROR) ||
-				(buf->st_attr & FILE_ATTRIBUTE_DIRECTORY)) {
-			size = buf->st_size;
-		}
-		else {
-			size = low | (((off64_t)high)<<32);
+		/* Get actual size of compressed/sparse files.  Only regular
+		 * files need to be considered. */
+		size = buf->st_size;
+		if (S_ISREG(buf->st_mode)) {
+			low = GetCompressedFileSize(file_name, &high);
+			if (low != INVALID_FILE_SIZE || GetLastError() == NO_ERROR) {
+				size = low | (((off64_t)high)<<32);
+			}
 		}
 
 		/*
