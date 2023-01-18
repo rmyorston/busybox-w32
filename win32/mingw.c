@@ -444,7 +444,8 @@ static int has_exec_format(const char *name)
 		return 0;
 
 	/* Open file and try to avoid updating access time */
-	fh = CreateFileA(name, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
+	fh = CreateFileA(name, GENERIC_READ | FILE_WRITE_ATTRIBUTES,
+						0, NULL, OPEN_EXISTING, 0, NULL);
 	if (fh != INVALID_HANDLE_VALUE) {
 		FILETIME last_access = { 0xffffffff, 0xffffffff };
 
@@ -648,11 +649,6 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 	DWORD low, high;
 	off64_t size;
 	char *lname = NULL;
-#if ENABLE_FEATURE_EXTRA_FILE_DATA
-	DWORD flags;
-	BY_HANDLE_FILE_INFORMATION hdata;
-	HANDLE fh;
-#endif
 
 	while (!(err=get_file_attr(file_name, &fdata))) {
 		buf->st_ino = 0;
@@ -687,7 +683,6 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 			/* The file is not a symlink. */
 			buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
 			if (S_ISREG(buf->st_mode) &&
-					!(buf->st_attr & FILE_ATTRIBUTE_DEVICE) &&
 					(has_exe_suffix(file_name) || has_exec_format(file_name)))
 				buf->st_mode |= S_IXUSR|S_IXGRP|S_IXOTH;
 			buf->st_size = fdata.nFileSizeLow |
@@ -699,29 +694,31 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		buf->st_nlink = (buf->st_attr & FILE_ATTRIBUTE_DIRECTORY) ? 2 : 1;
 
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
-		flags = FILE_FLAG_BACKUP_SEMANTICS;
-		if (S_ISLNK(buf->st_mode))
-			flags |= FILE_FLAG_OPEN_REPARSE_POINT;
-		fh = CreateFile(file_name, READ_CONTROL, 0, NULL,
-							OPEN_EXISTING, flags, NULL);
-		if (fh != INVALID_HANDLE_VALUE) {
-			if (GetFileInformationByHandle(fh, &hdata)) {
-				buf->st_dev = hdata.dwVolumeSerialNumber;
-				buf->st_ino = hdata.nFileIndexLow |
-						(((ino_t)hdata.nFileIndexHigh)<<32);
-				buf->st_nlink = (buf->st_attr & FILE_ATTRIBUTE_DIRECTORY) ?
-							count_subdirs(file_name) :
-							hdata.nNumberOfLinks;
-			}
+		if (!(buf->st_attr & FILE_ATTRIBUTE_DEVICE)) {
+			DWORD flags;
+			HANDLE fh;
+			BY_HANDLE_FILE_INFORMATION hdata;
 
-			buf->st_uid = buf->st_gid = file_owner(fh, buf);
-			CloseHandle(fh);
-		}
-		else {
-			buf->st_uid = 0;
-			buf->st_gid = 0;
-			if (!(buf->st_attr & FILE_ATTRIBUTE_DEVICE))
-				buf->st_mode &= ~(S_IROTH|S_IWOTH|S_IXOTH);
+			flags = FILE_FLAG_BACKUP_SEMANTICS;
+			if (S_ISLNK(buf->st_mode))
+				flags |= FILE_FLAG_OPEN_REPARSE_POINT;
+			fh = CreateFile(file_name, READ_CONTROL, 0, NULL,
+								OPEN_EXISTING, flags, NULL);
+			if (fh != INVALID_HANDLE_VALUE) {
+				if (GetFileInformationByHandle(fh, &hdata)) {
+					buf->st_dev = hdata.dwVolumeSerialNumber;
+					buf->st_ino = hdata.nFileIndexLow |
+							(((ino_t)hdata.nFileIndexHigh)<<32);
+					buf->st_nlink = (buf->st_attr & FILE_ATTRIBUTE_DIRECTORY) ?
+								count_subdirs(file_name) :
+								hdata.nNumberOfLinks;
+				}
+				buf->st_uid = buf->st_gid = file_owner(fh, buf);
+				CloseHandle(fh);
+			} else {
+				buf->st_uid = buf->st_gid = 0;
+				buf->st_mode &= ~S_IRWXO;
+			}
 		}
 #endif
 
