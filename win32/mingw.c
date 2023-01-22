@@ -1261,6 +1261,7 @@ int link(const char *oldpath, const char *newpath)
 						LPSECURITY_ATTRIBUTES);
 
 	if (!INIT_PROC_ADDR(kernel32.dll, CreateHardLinkA)) {
+		errno = ENOSYS;
 		return -1;
 	}
 	if (!CreateHardLinkA(newpath, oldpath, NULL)) {
@@ -1284,6 +1285,7 @@ int symlink(const char *target, const char *linkpath)
 	char *targ, *relative = NULL;
 
 	if (!INIT_PROC_ADDR(kernel32.dll, CreateSymbolicLinkA)) {
+		errno = ENOSYS;
 		return -1;
 	}
 
@@ -1491,6 +1493,7 @@ static char *resolve_symlinks(char *path)
 				FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (h != INVALID_HANDLE_VALUE) {
 		if (!INIT_PROC_ADDR(kernel32.dll, GetFinalPathNameByHandleA)) {
+			errno = ENOSYS;
 			goto end;
 		}
 
@@ -2279,9 +2282,6 @@ void *get_proc_addr(const char *dll, const char *function,
 			proc->pfunction = GetProcAddress(hnd, function);
 		proc->initialized = 1;
 	}
-	/* set ENOSYS if DLL or function was not found */
-	if (!proc->pfunction)
-		errno = ENOSYS;
 	return proc->pfunction;
 }
 
