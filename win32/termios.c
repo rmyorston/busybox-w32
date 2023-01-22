@@ -21,6 +21,7 @@ int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 	SetConsoleMode(cin, 0);
 
 	while (1) {
+		errno = 0;
 		if (timeout > 0) {
 			if (WaitForSingleObject(cin, timeout) != WAIT_OBJECT_0)
 				goto done;
