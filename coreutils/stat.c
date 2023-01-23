@@ -785,6 +785,10 @@ int stat_main(int argc UNUSED_PARAM, char **argv)
 		selinux_or_die();
 	}
 #endif
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
+	/* Enable accurate link counts for directories */
+	count_subdirs(NULL);
+#endif
 	ok = 1;
 	argv += optind;
 	for (i = 0; argv[i]; ++i)

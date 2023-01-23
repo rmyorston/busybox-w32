@@ -1241,6 +1241,12 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 		option_mask32 |= OPT_dirs_first;
 	}
 
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
+	/* Enable accurate link counts for directories */
+	if (opt & OPT_l)
+		count_subdirs(NULL);
+#endif
+
 	argv += optind;
 	if (!argv[0])
 		*--argv = (char*)".";

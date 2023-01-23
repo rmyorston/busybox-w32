@@ -619,13 +619,25 @@ static int mingw_is_directory(const char *path)
 }
 
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
-static int count_subdirs(const char *pathname)
+/*
+ * By default we don't count subdirectories.  Counting can be enabled
+ * in specific cases by calling 'count_subdirs(NULL)' before making
+ * any calls to stat(2) or lstat(2) that require accurate values of
+ * st_nlink for directories.
+ */
+int count_subdirs(const char *pathname)
 {
 	int count = 0;
-	DIR *dirp = opendir(pathname);
+	DIR *dirp;
 	struct dirent *dp;
+	static int do_count = FALSE;
 
-	if (dirp) {
+	if (pathname == NULL) {
+		do_count = TRUE;
+		return 0;
+	}
+
+	if (do_count && (dirp = opendir(pathname))) {
 		while ((dp = readdir(dirp)) != NULL) {
 			if (dp->d_type == DT_DIR)
 				count++;
