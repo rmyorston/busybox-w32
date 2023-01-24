@@ -34,6 +34,7 @@
 //applet:IF_PDPMAKE(APPLET_ODDNAME(pdpmake, make, BB_DIR_USR_BIN, BB_SUID_DROP, make))
 
 //kbuild:lib-$(CONFIG_MAKE) += make.o
+//kbuild:lib-$(CONFIG_PDPMAKE) += make.o
 
 //usage:#define make_trivial_usage
 //usage:	IF_FEATURE_MAKE_POSIX(
