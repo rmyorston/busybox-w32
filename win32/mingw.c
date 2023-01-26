@@ -445,7 +445,7 @@ static int has_exec_format(const char *name)
 
 	/* Open file and try to avoid updating access time */
 	fh = CreateFileA(name, GENERIC_READ | FILE_WRITE_ATTRIBUTES,
-						0, NULL, OPEN_EXISTING, 0, NULL);
+						FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
 	if (fh != INVALID_HANDLE_VALUE) {
 		FILETIME last_access = { 0xffffffff, 0xffffffff };
 
