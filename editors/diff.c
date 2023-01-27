@@ -119,6 +119,9 @@
 //usage:     "\n	-t	Expand tabs to spaces in output"
 //usage:     "\n	-U	Output LINES lines of context"
 //usage:     "\n	-w	Ignore all whitespace"
+//usage:	IF_PLATFORM_MINGW32(IF_FEATURE_DIFF_LONG_OPTIONS(
+//usage:     "\n	--binary  Treat input as binary, not text"
+//usage:	))
 
 #include "libbb.h"
 #include "common_bufsiz.h"
@@ -154,6 +157,9 @@ enum {                  /* Commandline flags */
 	FLAG_p,         /* not implemented */
 	FLAG_B,
 	FLAG_E,         /* not implemented */
+#if ENABLE_PLATFORM_MINGW32
+	FLAG_binary,
+#endif
 };
 #define FLAG(x) (1 << FLAG_##x)
 
@@ -720,7 +726,12 @@ static int diffreg(char *file[2])
 		int fd = STDIN_FILENO;
 		if (!LONE_DASH(file[i])) {
 			if (!(option_mask32 & FLAG(N))) {
+#if ENABLE_PLATFORM_MINGW32
+				int flag = (option_mask32 & FLAG(binary)) ? 0 : _O_TEXT;
+				fd = open_or_warn(file[i], O_RDONLY | flag);
+#else
 				fd = open_or_warn(file[i], O_RDONLY);
+#endif
 				if (fd == -1)
 					goto out;
 			} else {
@@ -751,10 +762,21 @@ static int diffreg(char *file[2])
 				xfunc_die();
 			if (fd != STDIN_FILENO)
 				close(fd);
+#if ENABLE_PLATFORM_MINGW32
+			if (!(option_mask32 & FLAG(binary))) {
+				/* Close and reopen tmpfile to get text mode */
+				close(fd_tmp);
+				fd_tmp = xopen(tmpfile[i], O_RDONLY | _O_TEXT);
+			}
+#endif
 			fd = fd_tmp;
 			xlseek(fd, 0, SEEK_SET);
 		}
+#if ENABLE_PLATFORM_MINGW32
+		fp[i] = fdopen(fd, (option_mask32 & FLAG(binary)) ? "r" : "rt");
+#else
 		fp[i] = fdopen(fd, "r");
+#endif
 	}
 
 	setup_common_bufsiz();
@@ -985,6 +1007,9 @@ static const char diff_longopts[] ALIGN1 =
 	"report-identical-files\0"   No_argument       "s"
 	"starting-file\0"            Required_argument "S"
 	"minimal\0"                  No_argument       "d"
+#if ENABLE_PLATFORM_MINGW32
+	"binary\0"                   No_argument       "\xff"
+#endif
 	;
 # define GETOPT32 getopt32long
 # define LONGOPTS ,diff_longopts
