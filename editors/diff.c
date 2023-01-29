@@ -718,6 +718,7 @@ static int diffreg(char *file[2])
 #if ENABLE_PLATFORM_MINGW32
 	char *tmpfile[2] = { NULL, NULL };
 	char *tmpdir;
+	const char *mode;
 #endif
 
 	fp[0] = stdin;
@@ -726,12 +727,7 @@ static int diffreg(char *file[2])
 		int fd = STDIN_FILENO;
 		if (!LONE_DASH(file[i])) {
 			if (!(option_mask32 & FLAG(N))) {
-#if ENABLE_PLATFORM_MINGW32
-				int flag = (option_mask32 & FLAG(binary)) ? 0 : _O_TEXT;
-				fd = open_or_warn(file[i], O_RDONLY | flag);
-#else
 				fd = open_or_warn(file[i], O_RDONLY);
-#endif
 				if (fd == -1)
 					goto out;
 			} else {
@@ -762,18 +758,16 @@ static int diffreg(char *file[2])
 				xfunc_die();
 			if (fd != STDIN_FILENO)
 				close(fd);
-#if ENABLE_PLATFORM_MINGW32
-			if (!(option_mask32 & FLAG(binary))) {
-				/* Close and reopen tmpfile to get text mode */
-				close(fd_tmp);
-				fd_tmp = xopen(tmpfile[i], O_RDONLY | _O_TEXT);
-			}
-#endif
 			fd = fd_tmp;
 			xlseek(fd, 0, SEEK_SET);
 		}
 #if ENABLE_PLATFORM_MINGW32
-		fp[i] = fdopen(fd, (option_mask32 & FLAG(binary)) ? "r" : "rt");
+		mode = "r";
+		if (!(option_mask32 & FLAG(binary))) {
+			_setmode(fd, _O_TEXT);
+			mode = "rt";
+		}
+		fp[i] = fdopen(fd, mode);
 #else
 		fp[i] = fdopen(fd, "r");
 #endif
