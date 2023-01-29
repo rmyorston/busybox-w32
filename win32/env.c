@@ -6,11 +6,17 @@
 char *mingw_getenv(const char *name)
 {
 	char *result = getenv(name);
-	if (!result && !strcmp(name, "TMPDIR")) {
-		/* on Windows it is TMP and TEMP */
-		result = getenv("TMP");
-		if (!result)
-			result = getenv("TEMP");
+	if (!result) {
+		if (!strcmp(name, "TMPDIR")) {
+			/* on Windows it is TMP and TEMP */
+			result = getenv("TMP");
+			if (!result)
+				result = getenv("TEMP");
+		} else if (!strcmp(name, "HOME")) {
+			struct passwd *p = getpwuid(getuid());
+			if (p)
+				result = p->pw_dir;
+		}
 	}
 	return result;
 }

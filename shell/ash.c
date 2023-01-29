@@ -15437,6 +15437,8 @@ exitshell(void)
 }
 
 #if ENABLE_PLATFORM_MINGW32
+/* We need to see if HOME is *really* unset */
+# undef getenv
 static void xsetenv_if_unset(const char *key, const char *value)
 {
 	if (!getenv(key))
@@ -15531,10 +15533,12 @@ init(void)
 
 			/* Initialise some variables normally set at login, but
 			 * only if someone hasn't already set them. */
-			pw = xgetpwuid(getuid());
-			xsetenv_if_unset("USER",    pw->pw_name);
-			xsetenv_if_unset("LOGNAME", pw->pw_name);
-			xsetenv_if_unset("HOME",    pw->pw_dir);
+			pw = getpwuid(getuid());
+			if (pw) {
+				xsetenv_if_unset("USER",    pw->pw_name);
+				xsetenv_if_unset("LOGNAME", pw->pw_name);
+				xsetenv_if_unset("HOME",    pw->pw_dir);
+			}
 			xsetenv_if_unset("SHELL",   DEFAULT_SHELL);
 		}
 #endif
