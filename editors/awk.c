@@ -826,11 +826,7 @@ static char *skip_spaces(char *p)
 		if (*p == '\\' && p[1] == '\n') {
 			p++;
 			t_lineno++;
-#if !ENABLE_PLATFORM_MINGW32
 		} else if (*p != ' ' && *p != '\t') {
-#else
-		} else if (*p != ' ' && *p != '\t' && *p != '\r') {
-#endif
 			break;
 		}
 		p++;
@@ -2231,21 +2227,6 @@ static int ptest(node *pattern)
 	return istrue(evaluate(pattern, &G.ptest__tmpvar));
 }
 
-#if ENABLE_PLATFORM_MINGW32
-static ssize_t FAST_FUNC safe_read_strip_cr(int fd, void *buf, size_t count)
-{
-	ssize_t n;
-
-	do {
-		n = safe_read(fd, buf, count);
-	} while (n > 0 && (n=remove_cr((char *)buf, n)) == 0);
-
-	return n;
-}
-
-#define safe_read safe_read_strip_cr
-#endif
-
 /* read next record from stream rsm into a variable v */
 static int awk_getline(rstream *rsm, var *v)
 {
@@ -2834,6 +2815,15 @@ static int is_assignment(const char *expr)
 	return TRUE;
 }
 
+
+#if ENABLE_PLATFORM_MINGW32
+static void set_text_mode(FILE *f)
+{
+	if (f)
+		_setmode(fileno(f), _O_TEXT);
+}
+#endif
+
 /* switch to next input file */
 static rstream *next_input_file(void)
 {
@@ -2862,6 +2852,9 @@ static rstream *next_input_file(void)
 			break;
 		}
 	}
+#if ENABLE_PLATFORM_MINGW32
+	set_text_mode(rsm.F);
+#endif
 
 	files_happen = TRUE;
 	setvar_s(intvar[FILENAME], fname);
@@ -3242,6 +3235,9 @@ static var *evaluate(node *op, var *res)
 					} else {
 						rsm->F = fopen_for_read(L.s);  /* not xfopen! */
 					}
+#if ENABLE_PLATFORM_MINGW32
+					set_text_mode(rsm->F);
+#endif
 				}
 			} else {
 				if (!iF)
@@ -3695,6 +3691,9 @@ int awk_main(int argc UNUSED_PARAM, char **argv)
 
 		g_progname = llist_pop(&list_f);
 		fd = xopen_stdin(g_progname);
+#if ENABLE_PLATFORM_MINGW32
+		_setmode(fd, _O_TEXT);
+#endif
 		s = xmalloc_read(fd, NULL); /* it's NUL-terminated */
 		close(fd);
 		parse_program(s);

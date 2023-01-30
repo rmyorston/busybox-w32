@@ -485,4 +485,18 @@ testing 'awk assign while test' \
 	"" \
 	"foo"
 
+optional PLATFORM_MINGW32
+testing 'awk match line ending' \
+	"awk '/world$/'" \
+	"world\n" \
+	"" \
+	"hello\r\nworld\r\n"
+
+testing 'awk backslash+CRLF eaten with no trace' \
+	"awk -f -" \
+	"Hello world\n" \
+	'' \
+	'BEGIN { printf "Hello\\\r\n world\\n" }\n'
+SKIP=
+
 exit $FAILCOUNT
