@@ -2030,8 +2030,9 @@ size_t FAST_FUNC remove_cr(char *p, size_t len)
 	ssize_t i, j;
 
 	for (i=j=0; i<len; ++i) {
-		if (p[i] != '\r')
-			p[j++] = p[i];
+		if (p[i] == '\r' && i < len - 1 && p[i+1] == '\n')
+			continue;
+		p[j++] = p[i];
 	}
 	return j;
 }

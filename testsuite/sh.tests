@@ -88,3 +88,9 @@ IyEvYmluL3NoICAtIAplY2hvICJIZWxsbyB3b3JsZCIK
 ====
 "
 rm -f shebang_leading_argument_trailing_space.sh
+
+testing "remove CRs from string being evaluated" \
+	"sh -c \"$(printf 'set -e\r\necho Hello world\r\n')\"" \
+	"Hello world\n" "" ""
+
+exit $FAILCOUNT
