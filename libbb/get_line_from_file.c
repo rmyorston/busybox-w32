@@ -66,11 +66,16 @@ char* FAST_FUNC xmalloc_fgetline(FILE *file)
 	size_t i;
 	char *c = bb_get_chunk_from_file(file, &i);
 
+#if !ENABLE_PLATFORM_MINGW32
 	if (i && c[--i] == '\n')
 		c[i] = '\0';
-#if ENABLE_PLATFORM_MINGW32
-	if (i && c[--i] == '\r')
+#else
+	if (i && c[--i] == '\n') {
 		c[i] = '\0';
+		if (i && c[--i] == '\r') {
+			c[i] = '\0';
+		}
+	}
 #endif
 
 	return c;
