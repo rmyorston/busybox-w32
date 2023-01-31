@@ -7366,9 +7366,14 @@ expbackq(union node *cmd, int flag IF_BASH_PROCESS_SUBST(, int ctl))
 
 	/* Eat all trailing newlines */
 	dest = expdest;
-	for (; dest > ((char *)stackblock() + startloc) && (dest[-1] == '\n'
-				IF_PLATFORM_MINGW32(|| dest[-1] == '\r'));)
+	for (; dest > ((char *)stackblock() + startloc) && dest[-1] == '\n';) {
 		STUNPUTC(dest);
+#if ENABLE_PLATFORM_MINGW32
+		if (dest > ((char *)stackblock() + startloc) && dest[-1] == '\r') {
+			STUNPUTC(dest);
+		}
+	}
+#endif
 	expdest = dest;
 
 	if (!(flag & EXP_QUOTED))
