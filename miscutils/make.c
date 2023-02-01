@@ -1636,22 +1636,39 @@ run_command(const char *cmd)
 	}
 	pclose(fd);
 
-	if (val) {
-#if ENABLE_PLATFORM_MINGW32
-		len = remove_cr(val, len + 1) - 1;
+	if (val == NULL)
+		return NULL;
+
+	// Strip leading whitespace in POSIX 202X mode
+	if (posix) {
+		s = val;
+		while (isspace(*s)) {
+			++s;
+			--len;
+		}
+
 		if (len == 0) {
 			free(val);
 			return NULL;
 		}
+		memmove(val, s, len + 1);
+	}
+
+#if ENABLE_PLATFORM_MINGW32
+	len = remove_cr(val, len + 1) - 1;
+	if (len == 0) {
+		free(val);
+		return NULL;
+	}
 #endif
-		// Remove one newline from the end (BSD compatibility)
-		if (val[len - 1] == '\n')
-			val[len - 1] = '\0';
-		// Other newlines are changed to spaces
-		for (s = val; *s; ++s) {
-			if (*s == '\n')
-				*s = ' ';
-		}
+
+	// Remove one newline from the end (BSD compatibility)
+	if (val[len - 1] == '\n')
+		val[len - 1] = '\0';
+	// Other newlines are changed to spaces
+	for (s = val; *s; ++s) {
+		if (*s == '\n')
+			*s = ' ';
 	}
 	return val;
 }
