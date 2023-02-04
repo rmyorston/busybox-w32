@@ -7372,8 +7372,8 @@ expbackq(union node *cmd, int flag IF_BASH_PROCESS_SUBST(, int ctl))
 		if (dest > ((char *)stackblock() + startloc) && dest[-1] == '\r') {
 			STUNPUTC(dest);
 		}
-	}
 #endif
+	}
 	expdest = dest;
 
 	if (!(flag & EXP_QUOTED))

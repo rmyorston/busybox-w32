@@ -113,7 +113,7 @@ static int get_line_with_continuation(parser_t *parser)
 	line = parser->line;
 	for (;;) {
 		parser->lineno++;
-#if ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32
 		if (line[len - 1] == '\n')
 			len--;
 #else
