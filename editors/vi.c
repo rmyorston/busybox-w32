@@ -119,7 +119,11 @@
 //config:	help
 //config:	Enable the editor to detect the format of files it reads
 //config:	so they can be written out with the appropriate line
-//config:	endings. Enable the 'fileformat' and 'fileformats' options.
+//config:	endings. Also allow files to be edited in binary mode.
+//config:
+//config:	This enables the 'fileformat', 'fileformats' and 'binary'
+//config:	options and the '-b' command line flag.
+//config:
 //config:
 //config:config FEATURE_VI_SET
 //config:	bool "Support :set"
@@ -190,9 +194,12 @@
 //kbuild:lib-$(CONFIG_VI) += vi.o
 
 //usage:#define vi_trivial_usage
-//usage:       IF_FEATURE_VI_COLON("[-c CMD] ")IF_FEATURE_VI_READONLY("[-R] ")"[-H] [FILE]..."
+//usage:       IF_FEATURE_VI_FILE_FORMAT("[-b] ")IF_FEATURE_VI_COLON("[-c CMD] ")IF_FEATURE_VI_READONLY("[-R] ")"[-H] [FILE]..."
 //usage:#define vi_full_usage "\n\n"
 //usage:       "Edit FILE\n"
+//usage:	IF_FEATURE_VI_FILE_FORMAT(
+//usage:     "\n	-b	Edit file in binary mode"
+//usage:	)
 //usage:	IF_FEATURE_VI_COLON(
 //usage:     "\n	-c CMD	Initial command to run ($EXINIT and ~/.exrc also available)"
 //usage:	)
@@ -320,15 +327,17 @@ struct globals {
 #define VI_SHOWMATCH  (1 << 4)
 #define VI_TABSTOP    (1 << 5)
 #else
-	smalluint vi_setops;     // set by setops()
+	int vi_setops;     // set by setops()
 #define VI_AUTOINDENT (1 << 0)
-#define VI_EXPANDTAB  (1 << 1)
-#define VI_FILEFORMAT (1 << 2)
-#define VI_FILEFORMATS (1 << 3)
-#define VI_ERR_METHOD (1 << 4)
-#define VI_IGNORECASE (1 << 5)
-#define VI_SHOWMATCH  (1 << 6)
-#define VI_TABSTOP    (1 << 7)
+#define VI_BINARY     (1 << 1)
+#define VI_EXPANDTAB  (1 << 2)
+#define VI_FILEFORMAT (1 << 3)
+#define VI_FILEFORMATS (1 << 4)
+#define VI_ERR_METHOD (1 << 5)
+#define VI_IGNORECASE (1 << 6)
+#define VI_SHOWMATCH  (1 << 7)
+#define VI_TABSTOP    (1 << 8)
+#define binary     (vi_setops & VI_BINARY    )
 #endif
 #define autoindent (vi_setops & VI_AUTOINDENT)
 #define expandtab  (vi_setops & VI_EXPANDTAB )
@@ -338,6 +347,7 @@ struct globals {
 // order of constants and strings must match
 #define OPTS_STR \
 		"ai\0""autoindent\0" \
+		IF_FEATURE_VI_FILE_FORMAT("bin\0""binary\0") \
 		"et\0""expandtab\0" \
 		IF_FEATURE_VI_FILE_FORMAT("ff\0""fileformat\0") \
 		IF_FEATURE_VI_FILE_FORMAT("ffs\0""fileformats\0") \
@@ -2073,6 +2083,8 @@ static int file_insert(const char *fn, char *p, int initial)
 
 #if !ENABLE_PLATFORM_MINGW32
 	fd = open(fn, O_RDONLY);
+#elif ENABLE_FEATURE_VI_FILE_FORMAT
+	fd = open(fn, O_RDONLY | (!binary ? _O_TEXT : 0));
 #else
 	fd = open(fn, O_RDONLY | _O_TEXT);
 #endif
@@ -2458,7 +2470,7 @@ static int file_write(char *fn, char *first, char *last)
 	int fd, cnt, charcnt;
 #if ENABLE_PLATFORM_MINGW32
 # if ENABLE_FEATURE_VI_FILE_FORMAT
-#  define dos (fileformat == FF_DOS)
+#  define dos (!binary && fileformat == FF_DOS)
 # else
 #  define dos (1)
 # endif
@@ -2818,6 +2830,11 @@ static void setops(char *args, int flg_no)
 		vi_setops &= ~index;
 	} else {
 		vi_setops |= index;
+#if ENABLE_FEATURE_VI_FILE_FORMAT
+		if (index == VI_BINARY) {
+			vi_setops &= ~VI_EXPANDTAB;
+		}
+#endif
 	}
 }
 # endif
@@ -5100,17 +5117,20 @@ static void edit_file(char *fn)
 }
 
 #define VI_OPTSTR \
+	IF_FEATURE_VI_FILE_FORMAT("b") \
 	IF_FEATURE_VI_CRASHME("C") \
 	IF_FEATURE_VI_COLON("c:*") \
 	"Hh" \
 	IF_FEATURE_VI_READONLY("R")
 
 enum {
+	IF_FEATURE_VI_FILE_FORMAT(OPTBIT_b,)
 	IF_FEATURE_VI_CRASHME(OPTBIT_C,)
 	IF_FEATURE_VI_COLON(OPTBIT_c,)
 	OPTBIT_H,
 	OPTBIT_h,
 	IF_FEATURE_VI_READONLY(OPTBIT_R,)
+	OPT_b = IF_FEATURE_VI_FILE_FORMAT(	(1 << OPTBIT_b)) + 0,
 	OPT_C = IF_FEATURE_VI_CRASHME(	(1 << OPTBIT_C)) + 0,
 	OPT_c = IF_FEATURE_VI_COLON(	(1 << OPTBIT_c)) + 0,
 	OPT_H = 1 << OPTBIT_H,
@@ -5147,6 +5167,10 @@ int vi_main(int argc, char **argv)
 	//vi_setops = 0;
 	opts = getopt32(argv, VI_OPTSTR IF_FEATURE_VI_COLON(, &initial_cmds));
 
+#if ENABLE_FEATURE_VI_FILE_FORMAT
+	if (opts & OPT_b)
+		vi_setops |= VI_BINARY;
+#endif
 #if ENABLE_FEATURE_VI_CRASHME
 	if (opts & OPT_C)
 		crashme = 1;
