@@ -119,7 +119,7 @@
 //config:	help
 //config:	Enable the editor to detect the format of files it reads
 //config:	so they can be written out with the appropriate line
-//config:	endings. Enable the 'fileformats' option.
+//config:	endings. Enable the 'fileformat' and 'fileformats' options.
 //config:
 //config:config FEATURE_VI_SET
 //config:	bool "Support :set"
@@ -346,9 +346,14 @@ struct globals {
 		"sm\0""showmatch\0" \
 		"ts\0""tabstop\0"
 
-#define FF_DOS_UNIX 0
-#define FF_UNIX_DOS 1
-#define FORMATS_STR \
+#define FF_DOS  0
+#define FF_UNIX 1
+
+#define FF_STR \
+		"dos\0" \
+		"unix\0"
+
+#define FFS_STR \
 		"dos,unix\0" \
 		"unix,dos\0"
 #else
@@ -2111,7 +2116,7 @@ static int file_insert(const char *fn, char *p, int initial)
 # endif
 #if ENABLE_FEATURE_VI_FILE_FORMAT
 	if (initial && cnt > 0)
-		fileformat = cnt == size ? FF_UNIX_DOS : FF_DOS_UNIX;
+		fileformat = cnt == size ? FF_UNIX : FF_DOS;
 #endif
  fi:
 	close(fd);
@@ -2453,7 +2458,7 @@ static int file_write(char *fn, char *first, char *last)
 	int fd, cnt, charcnt;
 #if ENABLE_PLATFORM_MINGW32
 # if ENABLE_FEATURE_VI_FILE_FORMAT
-#  define dos (fileformat == FF_DOS_UNIX)
+#  define dos (fileformat == FF_DOS)
 # else
 #  define dos (1)
 # endif
@@ -2782,9 +2787,7 @@ static void setops(char *args, int flg_no)
 		return;
 	}
 #else
-	if (index & VI_FILEFORMAT)
-		goto bad;
-	if (index & (VI_TABSTOP | VI_FILEFORMATS)) {
+	if (index & (VI_TABSTOP | VI_FILEFORMAT | VI_FILEFORMATS)) {
 		if (!eq || flg_no) // no "=NNN" or it is "notabstop"?
 			goto bad;
 		if (index & VI_TABSTOP) {
@@ -2793,8 +2796,16 @@ static void setops(char *args, int flg_no)
 				goto bad;
 			tabstop = t;
 			return;
+		} else if (index & VI_FILEFORMAT) {
+			int t = index_in_strings(FF_STR, eq + 1);
+			if (t < 0)
+				goto bad;
+			if (fileformat != t)
+				modified_count++;
+			fileformat = t;
+			return;
 		} else { // VI_FILEFORMATS
-			int t = index_in_strings(FORMATS_STR, eq + 1);
+			int t = index_in_strings(FFS_STR, eq + 1);
 			if (t < 0)
 				goto bad;
 			fileformats = t;
@@ -3321,9 +3332,9 @@ static void colon(char *buf)
 				if (!name[0])
 					break;
 				if (mask == VI_FILEFORMAT)
-					printf("%s=%s ", name, nth_string("dos\0unix\0", fileformat));
+					printf("%s=%s ", name, nth_string(FF_STR, fileformat));
 				else if (mask == VI_FILEFORMATS)
-					printf("%s=%s ", name, nth_string(FORMATS_STR, fileformats));
+					printf("%s=%s ", name, nth_string(FFS_STR, fileformats));
 				else if (mask == VI_TABSTOP)
 					printf("%s=%u ", name, tabstop);
 				else
