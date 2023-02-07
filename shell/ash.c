@@ -192,6 +192,14 @@
 //config:	Enable support for the 'nocaseglob' option, which allows
 //config:	case-insensitive filename globbing.
 //config:
+//config:config ASH_IGNORE_CR
+//config:	bool "Ignore CR in scripts"
+//config:	default y
+//config:	depends on (ASH || SH_IS_ASH || BASH_IS_ASH) && PLATFORM_MINGW32
+//config:	help
+//config:	Allow CRs to be ignored when shell scripts are parsed.  This
+//config:	makes it possible to run scripts with CRLF line endings.
+//config:
 //config:endif # ash options
 
 //applet:IF_ASH(APPLET(ash, BB_DIR_BIN, BB_SUID_DROP))
@@ -762,7 +770,11 @@ struct strpush {
 	struct strpush *spfree;
 
 	/* Remember last two characters for pungetc. */
+#if ENABLE_ASH_IGNORE_CR
+	int lastc[3];	/* Ignoring CRs needs more pungetc. */
+#else
 	int lastc[2];
+#endif
 
 	/* Number of outstanding calls to pungetc. */
 	int unget;
@@ -787,7 +799,11 @@ struct parsefile {
 	struct strpush *spfree;
 
 	/* Remember last two characters for pungetc. */
+#if ENABLE_ASH_IGNORE_CR
+	int lastc[3];	/* Ignoring CRs needs more pungetc. */
+#else
 	int lastc[2];
+#endif
 
 	/* Number of outstanding calls to pungetc. */
 	int unget;
@@ -3596,7 +3612,11 @@ static const uint8_t syntax_index_table[] ALIGN1 = {
 	/*  10 "\n" */ CNL_CNL_CNL_CNL,
 	/*  11      */ CWORD_CWORD_CWORD_CWORD,
 	/*  12      */ CWORD_CWORD_CWORD_CWORD,
+#if ENABLE_ASH_IGNORE_CR
+	/*  13      */ CSPCL_CWORD_CWORD_CWORD,
+#else
 	/*  13      */ CWORD_CWORD_CWORD_CWORD,
+#endif
 	/*  14      */ CWORD_CWORD_CWORD_CWORD,
 	/*  15      */ CWORD_CWORD_CWORD_CWORD,
 	/*  16      */ CWORD_CWORD_CWORD_CWORD,
@@ -11846,7 +11866,9 @@ preadbuffer(void)
 		more--;
 
 		c = *q;
-		if (c == '\0' || (ENABLE_PLATFORM_MINGW32 && c == '\r')) {
+		/* Remove CR from input buffer as an alternative to ASH_IGNORE_CR. */
+		if (c == '\0' || (c == '\r' &&
+					ENABLE_PLATFORM_MINGW32 && !ENABLE_ASH_IGNORE_CR)) {
 			memmove(q, q + 1, more);
 		} else {
 			q++;
@@ -11934,6 +11956,9 @@ static int __pgetc(void)
 	else
 		c = preadbuffer();
 
+#if ENABLE_ASH_IGNORE_CR
+	g_parsefile->lastc[2] = g_parsefile->lastc[1];
+#endif
 	g_parsefile->lastc[1] = g_parsefile->lastc[0];
 	g_parsefile->lastc[0] = c;
 
@@ -11971,11 +11996,24 @@ pgetc_eatbnl(void)
 	int c;
 
 	while ((c = pgetc()) == '\\') {
+#if !ENABLE_ASH_IGNORE_CR
 		if (pgetc() != '\n') {
 			pungetc();
 			break;
 		}
-
+#else
+		int c2 = pgetc();
+		if (c2 == '\r') {
+			if (pgetc() == '\n')
+				goto eatbnl;
+			pungetc();
+		}
+		if (c2 != '\n') {
+			pungetc();
+			break;
+		}
+ eatbnl:
+#endif
 		nlprompt();
 	}
 
@@ -14114,7 +14152,7 @@ xxreadtoken(void)
 	setprompt_if(needprompt, 2);
 	for (;;) {                      /* until token or start of word found */
 		c = pgetc_eatbnl();
-		if (c == ' ' || c == '\t')
+		if (c == ' ' || c == '\t' || (ENABLE_ASH_IGNORE_CR && c == '\r'))
 			continue;
 
 		if (c == '#') {
