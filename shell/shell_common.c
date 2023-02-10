@@ -19,7 +19,7 @@
 #include "libbb.h"
 #include "shell_common.h"
 
-#if !ENABLE_PLATFORM_MINGW32
+#if !ENABLE_PLATFORM_MINGW32 || ENABLE_ASH_IGNORE_CR
 const char defifsvar[] ALIGN1 = "IFS= \t\n";
 #else
 const char defifsvar[] ALIGN1 = "IFS= \t\n\r";

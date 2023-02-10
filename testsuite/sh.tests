@@ -89,8 +89,12 @@ IyEvYmluL3NoICAtIAplY2hvICJIZWxsbyB3b3JsZCIK
 "
 rm -f shebang_leading_argument_trailing_space.sh
 
-testing "remove CRs from string being evaluated" \
+testing "sh remove CRs from string being evaluated" \
 	"sh -c \"$(printf 'set -e\r\necho Hello world\r\n')\"" \
 	"Hello world\n" "" ""
+
+testing "sh preserve lone CRs during field splitting" \
+	"sh input" \
+	"Hello\r world\n" "echo \$(printf \"Hello\\\\r\\\\r\\\\nworld\\\\r\\\\n\")" ""
 
 exit $FAILCOUNT

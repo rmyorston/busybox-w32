@@ -193,12 +193,14 @@
 //config:	case-insensitive filename globbing.
 //config:
 //config:config ASH_IGNORE_CR
-//config:	bool "Ignore CR in scripts"
+//config:	bool "Ignore CR in CRLF line endings"
 //config:	default y
 //config:	depends on (ASH || SH_IS_ASH || BASH_IS_ASH) && PLATFORM_MINGW32
 //config:	help
-//config:	Allow CRs to be ignored when shell scripts are parsed.  This
-//config:	makes it possible to run scripts with CRLF line endings.
+//config:	Allow CRs to be ignored when they appear in CRLF line endings
+//config:	but not in other circumstances.  This isn't a general-purpose
+//config:	option:  it only covers certain new cases which are under test.
+//config:	Enabled by default.  May be removed in future.
 //config:
 //config:endif # ash options
 
@@ -6806,6 +6808,9 @@ ifsbreakup(char *string, struct arglist *arglist)
 	const char *ifs, *realifs;
 	int ifsspc;
 	int nulonly;
+#if ENABLE_ASH_IGNORE_CR
+	int lshift = 0;
+#endif
 
 	start = string;
 	if (ifslastp != NULL) {
@@ -6816,7 +6821,33 @@ ifsbreakup(char *string, struct arglist *arglist)
 		do {
 			int afternul;
 
+#if ENABLE_ASH_IGNORE_CR
+			/* Adjust region offsets for left-shifted string. */
+			ifsp->begoff -= lshift;
+			ifsp->endoff -= lshift;
+#endif
 			p = string + ifsp->begoff;
+#if ENABLE_ASH_IGNORE_CR
+			if (ifsp->endoff > ifsp->begoff + 1) {
+				/* Transform CRLF to LF.  Skip regions having zero or
+				 * one characters:  they can't contain CRLF.  If the
+				 * region shrinks shift the rest of the string left. */
+				int oldlen = ifsp->endoff - ifsp->begoff;
+				int newlen = remove_cr(p, oldlen);
+				int delta = oldlen - newlen;
+
+				if (delta > 0) {
+					char *t = string + ifsp->endoff;
+					char *s = string + ifsp->endoff - delta;
+
+					while (*t)
+						*s++ = *t++;
+					*s = '\0';
+					lshift += delta;
+					ifsp->endoff -= delta;
+				}
+			}
+#endif
 			afternul = nulonly;
 			nulonly = ifsp->nulonly;
 			ifs = nulonly ? nullstr : realifs;
