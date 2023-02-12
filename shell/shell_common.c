@@ -273,11 +273,35 @@ shell_builtin_read(struct builtin_read_params *params)
 
 		c = buffer[bufpos];
 #if ENABLE_PLATFORM_MINGW32
+# if !ENABLE_ASH_IGNORE_CR
 		if (c == '\r')
 			continue;
+# else
+		if (c == '\n') {
+			if (backslash == 2 || (bufpos > 0 && buffer[bufpos - 1] == '\r')) {
+				/* We saw either:
+				 * - BS CR LF: remove CR, fall through to ignore escaped LF
+				 *   and exit BS context.
+				 * - CR LF not in BS context: replace CR with LF */
+				buffer[--bufpos] = c;
+				++nchars;
+			}
+		} else if (backslash == 2) {
+			/* We saw BS CR ??, keep escaped CR, exit BS context,
+			 * process ?? */
+			backslash = 0;
+		}
+# endif
 #endif
 		if (!(read_flags & BUILTIN_READ_RAW)) {
 			if (backslash) {
+#if ENABLE_ASH_IGNORE_CR
+				if (c == '\r') {
+					/* We have BS CR, keep CR for now, might see LF next */
+					backslash = 2;
+					goto put;
+				}
+#endif
 				backslash = 0;
 				if (c != '\n')
 					goto put;

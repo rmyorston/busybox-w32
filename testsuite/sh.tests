@@ -97,4 +97,20 @@ testing "sh preserve lone CRs during field splitting" \
 	"sh input" \
 	"Hello\r world\n" "echo \$(printf \"Hello\\\\r\\\\r\\\\nworld\\\\r\\\\n\")" ""
 
+testing "sh read with CRLF" \
+	"printf '1 2\\r\\n' | { read var; printf \"\${var}\\\\n\"; }" \
+	"1 2\n" "" ""
+
+testing "sh read with CR" \
+	"printf '1\\r2\\r\\n' | { read var; printf \"\${var}\\\\n\"; }" \
+	"1\r2\n" "" ""
+
+testing "sh read with \\CRLF" \
+	"printf '1\\\\\r\\n2\\r\\n' | { read var; printf \"\${var}\\\\n\"; }" \
+	"12\n" "" ""
+
+testing "sh read with \\CR" \
+	"printf '1\\\\\r2\\r\\n' | { read var; printf \"\${var}\\\\n\"; }" \
+	"1\r2\n" "" ""
+
 exit $FAILCOUNT
