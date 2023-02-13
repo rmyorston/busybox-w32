@@ -557,7 +557,8 @@ static uid_t file_owner(HANDLE fh, struct mingw_stat *buf)
 			uid = (uid_t)ptr[6];
 	}
 
-	if (uid != DEFAULT_UID && impersonate != INVALID_HANDLE_VALUE) {
+	if (uid != DEFAULT_UID && impersonate != INVALID_HANDLE_VALUE &&
+				getuid() != 0) {
 		static GENERIC_MAPPING mapping = {
 			FILE_GENERIC_READ, FILE_GENERIC_WRITE,
 			FILE_GENERIC_EXECUTE, FILE_ALL_ACCESS
