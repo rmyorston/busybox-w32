@@ -551,20 +551,21 @@ gettime1900d(void)
 	return G.cur_time;
 }
 
-static void
-d_to_tv(struct timeval *tv, double d)
-{
-	tv->tv_sec = (long)d;
-	tv->tv_usec = (d - tv->tv_sec) * 1000000;
-}
-
 static NOINLINE double
 lfp_to_d(l_fixedpt_t lfp)
 {
 	double ret;
 	lfp.int_partl = ntohl(lfp.int_partl);
 	lfp.fractionl = ntohl(lfp.fractionl);
-	ret = (double)lfp.int_partl + ((double)lfp.fractionl / UINT_MAX);
+	ret = (double)lfp.int_partl + ((double)lfp.fractionl / (1ULL << 32));
+	/*
+	 * Shift timestamps before 1970 to the second NTP era (2036-2106):
+	 * int_partl value of OFFSET_1900_1970 (2208988800) is interpreted as
+	 * the start of year 1970 and it is the minimal representable time,
+	 * all values form the sequence 2208988800..0xffffffff,0..2208988799.
+	 */
+	if (lfp.int_partl < OFFSET_1900_1970)
+		ret += (double)(1ULL << 32); /* because int_partl is 32-bit wide */
 	return ret;
 }
 static NOINLINE double
@@ -573,7 +574,7 @@ sfp_to_d(s_fixedpt_t sfp)
 	double ret;
 	sfp.int_parts = ntohs(sfp.int_parts);
 	sfp.fractions = ntohs(sfp.fractions);
-	ret = (double)sfp.int_parts + ((double)sfp.fractions / USHRT_MAX);
+	ret = (double)sfp.int_parts + ((double)sfp.fractions / (1 << 16));
 	return ret;
 }
 #if ENABLE_FEATURE_NTPD_SERVER
@@ -582,8 +583,8 @@ d_to_lfp(l_fixedpt_t *lfp, double d)
 {
 	uint32_t intl;
 	uint32_t frac;
-	intl = (uint32_t)d;
-	frac = (uint32_t)((d - intl) * UINT_MAX);
+	intl = (uint32_t)(time_t)d;
+	frac = (uint32_t)((d - (time_t)d) * 0xffffffff);
 	lfp->int_partl = htonl(intl);
 	lfp->fractionl = htonl(frac);
 }
@@ -593,7 +594,7 @@ d_to_sfp(s_fixedpt_t *sfp, double d)
 	uint16_t ints;
 	uint16_t frac;
 	ints = (uint16_t)d;
-	frac = (uint16_t)((d - ints) * USHRT_MAX);
+	frac = (uint16_t)((d - ints) * 0xffff);
 	sfp->int_parts = htons(ints);
 	sfp->fractions = htons(frac);
 }
@@ -1036,8 +1037,17 @@ step_time(double offset)
 	time_t tval;
 
 	xgettimeofday(&tvc);
+	/* This code adds floating point value on the order of 1.0
+	 * to a value of ~4 billion (as of years 203x).
+	 * With 52-bit mantissa, "only" 20 bits of offset's precision
+	 * are used (~1 microsecond), the rest is lost.
+	 * Some 200 billion years later, when tvc.tv_sec would have
+	 * 63 significant bits, the precision loss would be catastrophic,
+	 * a more complex code would be needed.
+	 */
 	dtime = tvc.tv_sec + (1.0e-6 * tvc.tv_usec) + offset;
-	d_to_tv(&tvn, dtime);
+	tvn.tv_sec = (time_t)dtime;
+	tvn.tv_usec = (dtime - tvn.tv_sec) * 1000000;
 	xsettimeofday(&tvn);
 
 	VERB2 {
