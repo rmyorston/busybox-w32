@@ -13708,7 +13708,7 @@ checkend: {
 			c = pgetc();
 		}
 
-		if (c == '\n' || c == PEOF) {
+		if (c == '\n' || c == PEOF || (ENABLE_ASH_IGNORE_CR && c == '\r')) {
 			c = PEOF;
 			if (trap_depth == 0)
 				g_parsefile->linno++;
