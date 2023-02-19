@@ -77,12 +77,14 @@ int skip_ansi_emulation(int reset)
 
 	if (skip < 0 || reset) {
 		const char *var = getenv(BB_SKIP_ANSI_EMULATION);
-		int dflt = CONFIG_SKIP_ANSI_EMULATION_DEFAULT;
-		if (is_wine() || getenv("CONEMUPID") != NULL)
-			dflt = 0;
-		skip = var == NULL ? dflt : atoi(var);
-		if (skip < 0 || skip > 2)
-			skip = 0;
+		if (var) {
+			skip = atoi(var);
+			if (skip < 0 || skip > 2)
+				skip = 0;
+		} else {
+			skip = (getenv("CONEMUPID") != NULL || is_wine()) ? 0 :
+						CONFIG_SKIP_ANSI_EMULATION_DEFAULT;
+		}
 
 		if (is_console(STDOUT_FILENO)) {
 			HANDLE h = get_console();
