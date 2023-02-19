@@ -84,16 +84,19 @@ int skip_ansi_emulation(int reset)
 
 		if (is_console(STDOUT_FILENO)) {
 			HANDLE h = get_console();
-			DWORD mode;
+			DWORD oldmode, newmode;
 
-			if (GetConsoleMode(h, &mode)) {
+			if (GetConsoleMode(h, &oldmode)) {
+				newmode = oldmode;
 				if (skip)
-					mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+					newmode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
 				else
-					mode &= ~ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-				mode &= ~DISABLE_NEWLINE_AUTO_RETURN;
-				if (!SetConsoleMode(h, mode) && skip == 2)
-					skip = 0;
+					newmode &= ~ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+				newmode &= ~DISABLE_NEWLINE_AUTO_RETURN;
+				if (newmode != oldmode) {
+					if (!SetConsoleMode(h, newmode) && skip == 2)
+						skip = 0;
+				}
 			}
 		}
 	}
