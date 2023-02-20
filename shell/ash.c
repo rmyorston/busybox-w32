@@ -14569,10 +14569,10 @@ cmdloop(int top)
 		if (iflag && top) {
 			inter++;
 			chkmail();
-		}
 #if ENABLE_PLATFORM_MINGW32
-		skip_ansi_emulation(TRUE);
+			skip_ansi_emulation(TRUE);
 #endif
+		}
 		n = parsecmd(inter);
 #if DEBUG
 		if (DEBUG > 2 && debug && (n != NODE_EOF))
