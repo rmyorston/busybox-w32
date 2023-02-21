@@ -801,6 +801,11 @@ struct parsefile {
 
 	/* Number of outstanding calls to pungetc. */
 	int unget;
+
+#if ENABLE_PLATFORM_MINGW32
+	/* True if a trailing CR from a previous read was left unprocessed. */
+	int cr;
+#endif
 };
 
 static struct parsefile basepf;        /* top level input file */
@@ -11725,6 +11730,54 @@ static void popstring(void)
 	INT_ON;
 }
 
+#if ENABLE_ASH_IGNORE_CR
+/*
+ * Wrapper around nonblock_immune_read() to remove CRs, but only from
+ * CRLF pairs.  The tricky part is handling a CR at the end of the buffer.
+ */
+static inline ssize_t
+nonblock_immune_wrapper(struct parsefile *pf, char *buffer, size_t count)
+{
+	int nr, injected_cr;
+
+	// Inject unprocessed CR from previous read into the buffer.
+	if (pf->cr)
+		*buffer = '\r';
+ retry:
+	nr = nonblock_immune_read(pf->pf_fd, buffer + pf->cr, count - pf->cr);
+	if (nr < 0)
+		return nr;
+
+	injected_cr = pf->cr;
+	nr += pf->cr;
+	pf->cr = 0;
+
+	if (nr > 0) {
+		nr = remove_cr(buffer, nr);
+		// remove_cr() won't reduce size to zero, so [nr - 1] is OK.
+		if (buffer[nr - 1] == '\r') {
+			if (nr > 1) {
+				// Ignore trailing CR for now: we'll deal with it later.
+				pf->cr = 1;
+				--nr;
+			} else if (injected_cr) {	// nr == 1
+				// Buffer only contains an injected CR.  This means the
+				// read returned EOF.  Return the buffer as-is.  The
+				// next call will detect EOF.
+			} else {
+				// Buffer only contains a CR from the most recent read.
+				// Try another read, treating the CR as injected.  We'll
+				// either get more characters or EOF.  Either way we
+				// won't end up here again.
+				pf->cr = 1;
+				goto retry;
+			}
+		}
+	}
+	return nr;
+}
+#endif
+
 static int
 preadfd(void)
 {
@@ -11735,7 +11788,11 @@ preadfd(void)
 #if ENABLE_FEATURE_EDITING
  /* retry: */
 	if (!iflag || g_parsefile->pf_fd != STDIN_FILENO)
+#if ENABLE_ASH_IGNORE_CR
+		nr = nonblock_immune_wrapper(g_parsefile, buf, IBUFSIZ - 1);
+#else
 		nr = nonblock_immune_read(g_parsefile->pf_fd, buf, IBUFSIZ - 1);
+#endif
 	else {
 # if ENABLE_ASH_IDLE_TIMEOUT
 		int timeout = -1;
@@ -11812,7 +11869,11 @@ preadfd(void)
 		}
 	}
 #else
+# if ENABLE_ASH_IGNORE_CR
+	nr = nonblock_immune_wrapper(g_parsefile, buf, IBUFSIZ - 1);
+# else
 	nr = nonblock_immune_read(g_parsefile->pf_fd, buf, IBUFSIZ - 1);
+# endif
 #endif
 
 #if 0 /* disabled: nonblock_immune_read() handles this problem */
@@ -11883,7 +11944,9 @@ preadbuffer(void)
 		more--;
 
 		c = *q;
-		if (c == '\0' || (ENABLE_PLATFORM_MINGW32 && c == '\r')) {
+		/* Remove CR from input buffer as an alternative to ASH_IGNORE_CR. */
+		if (c == '\0' || (c == '\r' &&
+					ENABLE_PLATFORM_MINGW32 && !ENABLE_ASH_IGNORE_CR)) {
 			memmove(q, q + 1, more);
 		} else {
 			q++;
