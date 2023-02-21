@@ -76,7 +76,10 @@ int skip_ansi_emulation(int reset)
 	static int skip = -1;
 
 	if (skip < 0 || reset) {
+		HANDLE h;
+		DWORD oldmode, newmode;
 		const char *var = getenv(BB_SKIP_ANSI_EMULATION);
+
 		if (var) {
 			skip = atoi(var);
 			if (skip < 0 || skip > 2)
@@ -87,11 +90,10 @@ int skip_ansi_emulation(int reset)
 		}
 
 		if (is_console(STDOUT_FILENO)) {
-			HANDLE h = get_console();
-			DWORD oldmode, newmode;
-
+			h = get_console();
 			if (GetConsoleMode(h, &oldmode)) {
-				newmode = oldmode;
+				// Try to recover from mode 0 induced by SSH.
+				newmode = oldmode == 0 ? 3 : oldmode;
 				if (skip)
 					newmode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
 				else
@@ -101,6 +103,14 @@ int skip_ansi_emulation(int reset)
 					if (!SetConsoleMode(h, newmode) && skip == 2)
 						skip = 0;
 				}
+			}
+		}
+
+		// Try to recover from mode 0 induced by SSH.
+		if (reset && is_console_in(STDIN_FILENO)) {
+			h = GetStdHandle(STD_INPUT_HANDLE);
+			if (GetConsoleMode(h, &oldmode) && oldmode == 0) {
+				SetConsoleMode(h, 0x1f7);
 			}
 		}
 	}
