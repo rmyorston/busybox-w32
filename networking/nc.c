@@ -30,7 +30,7 @@
 //config:config NC_EXTRA
 //config:	bool "Netcat extensions (-eiw and -f FILE)"
 //config:	default y
-//config:	depends on NC || NETCAT
+//config:	depends on (NC || NETCAT) && PLATFORM_POSIX
 //config:	help
 //config:	Add -e (support for executing the rest of the command line after
 //config:	making or receiving a successful connection), -i (delay interval for
@@ -127,13 +127,11 @@ int nc_main(int argc, char **argv)
 	IF_NOT_NC_SERVER(const) unsigned do_listen = 0;
 #if !ENABLE_PLATFORM_MINGW32
 	IF_NOT_NC_EXTRA (const) unsigned wsecs = 0;
+#endif
 	IF_NOT_NC_EXTRA (const) unsigned delay = 0;
 	IF_NOT_NC_EXTRA (const int execparam = 0;)
 	IF_NC_EXTRA     (char **execparam = NULL;)
 	struct pollfd pfds[2];
-#else
-	fd_set readfds, testfds;
-#endif
 	int opt; /* must be signed (getopt returns -1) */
 
 	if (ENABLE_NC_SERVER || ENABLE_NC_EXTRA) {
@@ -220,9 +218,7 @@ int nc_main(int argc, char **argv)
 			cfd = accept(sfd, NULL, 0);
 			if (cfd < 0)
 				bb_simple_perror_msg_and_die("accept");
-#if !ENABLE_PLATFORM_MINGW32
 			if (!execparam)
-#endif
 				close(sfd);
 		} else {
 			cfd = create_and_connect_stream_or_die(argv[0],
@@ -259,20 +255,13 @@ int nc_main(int argc, char **argv)
 
 	/* loop copying stdin to cfd, and cfd to stdout */
 
-#if !ENABLE_PLATFORM_MINGW32
 	pfds[0].fd = STDIN_FILENO;
 	pfds[0].events = POLLIN;
 	pfds[1].fd = cfd;
 	pfds[1].events = POLLIN;
-#else
-	FD_ZERO(&readfds);
-	FD_SET(cfd, &readfds);
-	FD_SET(STDIN_FILENO, &readfds);
-#endif
 
 #define iobuf bb_common_bufsiz1
 	setup_common_bufsiz();
-#if !ENABLE_PLATFORM_MINGW32
 	for (;;) {
 		int fdidx;
 		int ofd;
@@ -307,41 +296,5 @@ int nc_main(int argc, char **argv)
 			fdidx++;
 		}
 	}
-#else
-	for (;;) {
-		int fd;
-		int ofd;
-		int nread;
-
-		testfds = readfds;
-
-		if (select(cfd + 1, &testfds, NULL, NULL, NULL) < 0)
-			bb_simple_perror_msg_and_die("select");
-
-		fd = STDIN_FILENO;
-		while (1) {
-			if (FD_ISSET(fd, &testfds)) {
-				nread = safe_read(fd, iobuf, COMMON_BUFSIZE);
-				if (fd == cfd) {
-					if (nread < 1)
-						exit_SUCCESS();
-					ofd = STDOUT_FILENO;
-				} else {
-					if (nread < 1) {
-						/* Close outgoing half-connection so they get EOF,
-						 * but leave incoming alone so we can see response */
-						shutdown(cfd, SHUT_WR);
-						FD_CLR(STDIN_FILENO, &readfds);
-					}
-					ofd = cfd;
-				}
-				xwrite(ofd, iobuf, nread);
-			}
-			if (fd == cfd)
-				break;
-			fd = cfd;
-		}
-	}
-#endif
 }
 #endif
