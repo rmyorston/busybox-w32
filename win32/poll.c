@@ -219,10 +219,8 @@ windows_compute_revents (HANDLE h, int *p_sought)
       return happened;
 
     case FILE_TYPE_CHAR:
-      ret = WaitForSingleObject (h, 0);
-      if (!IsConsoleHandle (h))
-        return ret == WAIT_OBJECT_0 ? *p_sought & ~(POLLPRI | POLLRDBAND) : 0;
-
+      // Fall through to default case for non-console, e.g. /dev/null.
+      if (IsConsoleHandle (h)) {
       nbuffer = avail = 0;
       bRet = GetNumberOfConsoleInputEvents (h, &nbuffer);
       if (bRet)
@@ -230,7 +228,8 @@ windows_compute_revents (HANDLE h, int *p_sought)
           /* Input buffer.  */
           *p_sought &= POLLIN | POLLRDNORM;
           if (nbuffer == 0)
-            return POLLHUP;
+            // Having no unread events isn't an error condition.
+            return 0 /* was POLLHUP */;
           if (!*p_sought)
             return 0;
 
@@ -240,7 +239,9 @@ windows_compute_revents (HANDLE h, int *p_sought)
             return POLLHUP;
 
           for (i = 0; i < avail; i++)
-            if (irbuffer[i].EventType == KEY_EVENT)
+            // Ignore key release.
+            if (irbuffer[i].EventType == KEY_EVENT &&
+                irbuffer[i].Event.KeyEvent.bKeyDown)
               return *p_sought;
           return 0;
         }
@@ -250,13 +251,16 @@ windows_compute_revents (HANDLE h, int *p_sought)
           *p_sought &= POLLOUT | POLLWRNORM | POLLWRBAND;
           return *p_sought;
         }
+      }
+      /* fall through */
 
     default:
       ret = WaitForSingleObject (h, 0);
       if (ret == WAIT_OBJECT_0)
         return *p_sought & ~(POLLPRI | POLLRDBAND);
 
-      return *p_sought & (POLLOUT | POLLWRNORM | POLLWRBAND);
+      // Add (POLLIN | POLLRDNORM).  Why only support write?
+      return *p_sought & (POLLIN | POLLRDNORM | POLLOUT | POLLWRNORM | POLLWRBAND);
     }
 }
 
