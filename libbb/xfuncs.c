@@ -311,13 +311,12 @@ int FAST_FUNC is_TERM_dumb(void)
 	return term && strcmp(term, "dumb") == 0;
 }
 
-#if !ENABLE_PLATFORM_MINGW32
 int FAST_FUNC tcsetattr_stdin_TCSANOW(const struct termios *tp)
 {
 	return tcsetattr(STDIN_FILENO, TCSANOW, tp);
 }
 
-int FAST_FUNC get_termios_and_make_raw(int fd, struct termios *newterm, struct termios *oldterm, int flags)
+int FAST_FUNC get_termios_and_make_raw(int fd, struct termios *newterm, struct termios *oldterm, int flags IF_PLATFORM_MINGW32(UNUSED_PARAM))
 {
 //TODO: slattach, shell read might be adapted to use this too: grep for "tcsetattr", "[VTIME] = 0"
 	int r;
@@ -326,6 +325,9 @@ int FAST_FUNC get_termios_and_make_raw(int fd, struct termios *newterm, struct t
 	r = tcgetattr(fd, oldterm);
 	*newterm = *oldterm;
 
+#if ENABLE_PLATFORM_MINGW32
+	newterm->imode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT);
+#else
 	/* Turn off buffered input (ICANON)
 	 * Turn off echoing (ECHO)
 	 * and separate echoing of newline (ECHONL, normally off anyway)
@@ -382,6 +384,7 @@ int FAST_FUNC get_termios_and_make_raw(int fd, struct termios *newterm, struct t
 		 */
 		newterm->c_iflag &= ~(IXOFF|IXON|IXANY|BRKINT|INLCR|ICRNL|IUCLC|IMAXBEL);
 	}
+#endif
 	return r;
 }
 
@@ -392,7 +395,6 @@ int FAST_FUNC set_termios_to_raw(int fd, struct termios *oldterm, int flags)
 	get_termios_and_make_raw(fd, &newterm, oldterm, flags);
 	return tcsetattr(fd, TCSANOW, &newterm);
 }
-#endif
 
 pid_t FAST_FUNC safe_waitpid(pid_t pid, int *wstat, int options)
 {

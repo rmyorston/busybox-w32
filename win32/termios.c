@@ -1,5 +1,33 @@
 #include "libbb.h"
 
+int tcsetattr(int fd, int mode UNUSED_PARAM, const struct termios *t)
+{
+	if (terminal_mode(FALSE) & VT_INPUT) {
+		HANDLE h = (HANDLE)_get_osfhandle(fd);
+		if (!SetConsoleMode(h, t->imode)) {
+			errno = err_win_to_posix();
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+int tcgetattr(int fd, struct termios *t)
+{
+	if (terminal_mode(FALSE) & VT_INPUT) {
+		HANDLE h = (HANDLE)_get_osfhandle(fd);
+		if (!GetConsoleMode(h, &t->imode)) {
+			errno = err_win_to_posix();
+			return -1;
+		}
+	}
+	t->c_cc[VINTR] = 3;	// ctrl-c
+	t->c_cc[VEOF] = 4;	// ctrl-d
+
+	return 0;
+}
+
 int64_t FAST_FUNC read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 {
 	HANDLE cin = GetStdHandle(STD_INPUT_HANDLE);
