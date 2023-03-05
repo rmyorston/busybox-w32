@@ -129,18 +129,6 @@ shell_builtin_read(struct builtin_read_params *params)
 		 * bash seems to ignore -p PROMPT for this use case.
 		 */
 		int r;
-#if ENABLE_PLATFORM_MINGW32
-		HANDLE handle = (HANDLE)_get_osfhandle(fd);
-		DWORD filetype = FILE_TYPE_UNKNOWN;
-
-		if (handle != INVALID_HANDLE_VALUE)
-			filetype = GetFileType(handle);
-		/* poll uses WaitForSingleObject which can't handle disk files */
-		if (filetype == FILE_TYPE_DISK || filetype == FILE_TYPE_UNKNOWN)
-			return (const char *)(uintptr_t)(0);
-		if (isatty(fd))
-			return (const char *)(uintptr_t)(1);
-#endif
 		pfd[0].events = POLLIN;
 		r = poll(pfd, 1, /*timeout:*/ 0);
 		/* Return 0 only if poll returns 1 ("one fd ready"), else return 1: */
