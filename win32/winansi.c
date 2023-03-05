@@ -71,22 +71,38 @@ static int is_wine(void)
 #define DISABLE_NEWLINE_AUTO_RETURN 0x0008
 #endif
 
-int skip_ansi_emulation(int reset)
+int terminal_mode(int reset)
 {
-	static int skip = -1;
+	static int mode = -1;
 
-	if (skip < 0 || reset) {
+	if (mode < 0 || reset) {
+		int prefer;
 		HANDLE h;
 		DWORD oldmode, newmode;
-		const char *var = getenv(BB_SKIP_ANSI_EMULATION);
+		const char *term = getenv(BB_TERMINAL_MODE);
+		const char *skip = getenv(BB_SKIP_ANSI_EMULATION);
 
-		if (var) {
-			skip = atoi(var);
-			if (skip < 0 || skip > 2)
-				skip = 0;
+		if (term) {
+			mode = atoi(term);
+		} else if (skip) {
+			mode = atoi(skip);
+			if (mode == 2)
+				mode = 5;
+			else if (mode != 1)
+				mode = 0;
 		} else {
-			skip = (getenv("CONEMUPID") != NULL || is_wine()) ? 0 :
-						CONFIG_SKIP_ANSI_EMULATION_DEFAULT;
+			mode = (getenv("CONEMUPID") != NULL || is_wine()) ? 0 :
+						CONFIG_TERMINAL_MODE;
+		}
+
+		if (mode < 0 || mode > 7) {
+			prefer = mode = 0;
+		} else if (mode > 3) {
+			// Try to get requested mode, fall back to console on failure.
+			prefer = mode = mode - 4;
+		} else {
+			// Force the requested mode, even if we can't get it.
+			prefer = 0;
 		}
 
 		if (is_console(STDOUT_FILENO)) {
@@ -94,28 +110,48 @@ int skip_ansi_emulation(int reset)
 			if (GetConsoleMode(h, &oldmode)) {
 				// Try to recover from mode 0 induced by SSH.
 				newmode = oldmode == 0 ? 3 : oldmode;
-				if (skip)
+				if ((mode & VT_OUTPUT))
 					newmode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
 				else
 					newmode &= ~ENABLE_VIRTUAL_TERMINAL_PROCESSING;
 				newmode &= ~DISABLE_NEWLINE_AUTO_RETURN;
+
 				if (newmode != oldmode) {
-					if (!SetConsoleMode(h, newmode) && skip == 2)
-						skip = 0;
+					if (!SetConsoleMode(h, newmode)) {
+						if ((prefer & VT_OUTPUT))
+							mode &= ~VT_OUTPUT;
+						newmode &= ~ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+						SetConsoleMode(h, newmode);
+					}
 				}
 			}
 		}
 
-		// Try to recover from mode 0 induced by SSH.
-		if (reset && is_console_in(STDIN_FILENO)) {
+		if (is_console_in(STDIN_FILENO)) {
 			h = GetStdHandle(STD_INPUT_HANDLE);
-			if (GetConsoleMode(h, &oldmode) && oldmode == 0) {
-				SetConsoleMode(h, 0x1f7);
+			if (GetConsoleMode(h, &oldmode)) {
+				// Try to recover from mode 0 induced by SSH.
+				newmode = oldmode == 0 ? 0x1f7 : oldmode;
+				if ((mode & VT_INPUT))
+					newmode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+				else
+					newmode &= ~ENABLE_VIRTUAL_TERMINAL_INPUT;
+
+				if (newmode != oldmode) {
+					if (!SetConsoleMode(h, newmode)) {
+						if ((prefer & VT_INPUT))
+							mode &= ~VT_INPUT;
+						// Failure to set the new mode seems to leave
+						// the flag set.  Forcibly unset it.
+						newmode &= ~ENABLE_VIRTUAL_TERMINAL_INPUT;
+						SetConsoleMode(h, newmode);
+					}
+				}
 			}
 		}
 	}
 
-	return skip;
+	return mode;
 }
 
 void set_title(const char *str)
@@ -768,7 +804,7 @@ static int ansi_emulate(const char *s, FILE *stream)
 
 	while (*pos) {
 		pos = strchr(str, '\033');
-		if (pos && !skip_ansi_emulation(FALSE)) {
+		if (pos && !(terminal_mode(FALSE) & VT_OUTPUT)) {
 			size_t len = pos - str;
 
 			if (len) {
@@ -1037,7 +1073,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 	/* we've checked the data doesn't contain any NULs */
 	while (*pos) {
 		pos = strchr(str, '\033');
-		if (pos && !skip_ansi_emulation(FALSE)) {
+		if (pos && !(terminal_mode(FALSE) & VT_OUTPUT)) {
 			len = pos - str;
 
 			if (len) {

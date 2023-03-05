@@ -545,6 +545,9 @@ char *is_prefixed_with_case(const char *string, const char *key) FAST_FUNC;
 char *is_suffixed_with_case(const char *string, const char *key) FAST_FUNC;
 void qsort_string_vector_case(char **sv, unsigned count) FAST_FUNC;
 
+#define VT_OUTPUT	1
+#define VT_INPUT	2
+
 /*
  * helpers
  */
@@ -581,7 +584,7 @@ char *xabsolute_path(char *path);
 char *get_drive_cwd(const char *path, char *buffer, int size);
 void fix_path_case(char *path);
 void make_sparse(int fd, off_t start, off_t end);
-int skip_ansi_emulation(int reset);
+int terminal_mode(int reset);
 int unix_path(const char *path);
 int has_path(const char *file);
 int is_relative_path(const char *path);

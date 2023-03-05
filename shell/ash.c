@@ -2340,9 +2340,9 @@ static void change_realtime(const char *) FAST_FUNC;
 
 #if ENABLE_PLATFORM_MINGW32
 static void FAST_FUNC
-change_skip_ansi(const char *newval UNUSED_PARAM)
+change_terminal_mode(const char *newval UNUSED_PARAM)
 {
-	skip_ansi_emulation(TRUE);
+	terminal_mode(TRUE);
 }
 
 # define LINENO_INDEX (5 + 2 * ENABLE_ASH_MAIL + ENABLE_ASH_GETOPTS)
@@ -2387,7 +2387,8 @@ static const struct {
 	{ VSTRFIXED|VTEXTFIXED|VUNSET, "HISTFILE"  , NULL            },
 #endif
 #if ENABLE_PLATFORM_MINGW32
-	{ VSTRFIXED|VTEXTFIXED|VUNSET, BB_SKIP_ANSI_EMULATION, change_skip_ansi },
+	{ VSTRFIXED|VTEXTFIXED|VUNSET, BB_SKIP_ANSI_EMULATION, change_terminal_mode },
+	{ VSTRFIXED|VTEXTFIXED|VUNSET, BB_TERMINAL_MODE, change_terminal_mode },
 #endif
 };
 
@@ -14603,7 +14604,7 @@ cmdloop(int top)
 			inter++;
 			chkmail();
 #if ENABLE_PLATFORM_MINGW32
-			skip_ansi_emulation(TRUE);
+			terminal_mode(TRUE);
 #endif
 		}
 		n = parsecmd(inter);

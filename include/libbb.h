@@ -2375,7 +2375,8 @@ extern const char bbvar[] ALIGN1;
 #define bbafter(p) (p + sizeof(#p))
 #define BB_OVERRIDE_APPLETS bbvar
 #define BB_SKIP_ANSI_EMULATION bbafter(BB_OVERRIDE_APPLETS)
-#define BB_SYSTEMROOT bbafter(BB_SKIP_ANSI_EMULATION)
+#define BB_TERMINAL_MODE bbafter(BB_SKIP_ANSI_EMULATION)
+#define BB_SYSTEMROOT bbafter(BB_TERMINAL_MODE)
 #endif
 
 extern const int const_int_0;

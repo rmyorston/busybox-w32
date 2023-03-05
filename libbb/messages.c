@@ -36,10 +36,14 @@ const char bb_busybox_exec_path[] ALIGN1 = CONFIG_BUSYBOX_EXEC_PATH;
  * BB_GLOBBING and BB_UMASK are excluded because users shouln't be
  * messing with them; BB_ALT_BUFFER and BB_FIX_BACKSLASH are excluded
  * because they only affect particular applets, not the shell itself.
+ *
+ * If you change any of these you should also update the definitions in
+ * include/libbb.h.
  */
 const char bbvar[] ALIGN1 =
 		"BB_OVERRIDE_APPLETS\0" \
 		"BB_SKIP_ANSI_EMULATION\0" \
+		"BB_TERMINAL_MODE\0" \
 		"BB_SYSTEMROOT\0";
 #endif
 const char bb_default_login_shell[] ALIGN1 = LIBBB_DEFAULT_LOGIN_SHELL;
