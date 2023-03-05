@@ -9,7 +9,11 @@
  */
 #include "libbb.h"
 
+#if ENABLE_PLATFORM_MINGW32
+int64_t FAST_FUNC unix_read_key(int fd, char *buffer, int timeout)
+#else
 int64_t FAST_FUNC read_key(int fd, char *buffer, int timeout)
+#endif
 {
 	struct pollfd pfd;
 	const char *seq;
