@@ -62,6 +62,7 @@ static void tcsetattr_tty_TCSANOW(struct termios *settings)
 	tcsetattr(G.tty_fileno, TCSANOW, settings);
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 static void gotsig(int sig UNUSED_PARAM)
 {
 	/* bb_putchar_stderr doesn't use stdio buffering,
@@ -70,6 +71,7 @@ static void gotsig(int sig UNUSED_PARAM)
 	tcsetattr_tty_TCSANOW(&G.initial_settings);
 	_exit(EXIT_FAILURE);
 }
+#endif
 
 #define CONVERTED_TAB_SIZE 8
 
@@ -159,12 +161,13 @@ int more_main(int argc UNUSED_PARAM, char **argv)
 				 * to get input from the user.
 				 */
 				for (;;) {
-#if !ENABLE_PLATFORM_MINGW32
 					fflush_all();
-					input = getc(tty);
-#else
-					input = _getch();
+#if ENABLE_PLATFORM_MINGW32
+					if (!(terminal_mode(FALSE) & VT_INPUT))
+						input = _getch();
+					else
 #endif
+					input = getc(tty);
 					input = tolower(input);
 					/* Erase the last message */
 					printf("\r%*s\r", len, "");

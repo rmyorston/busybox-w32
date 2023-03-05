@@ -726,7 +726,12 @@ static void input_forward(void)
 #if !ENABLE_PLATFORM_MINGW32
 		put_cur_glyph_and_inc_cursor();
 #else
-		inc_cursor();
+	{
+		if (terminal_mode(FALSE) & VT_INPUT)
+			put_cur_glyph_and_inc_cursor();
+		else
+			inc_cursor();
+	}
 #endif
 }
 
@@ -2579,7 +2584,7 @@ static void sigaction2(int sig, struct sigaction *act)
  */
 int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *command, int maxsize)
 {
-	int len IF_NOT_PLATFORM_MINGW32(, n);
+	int len, n;
 	int timeout;
 #if ENABLE_FEATURE_TAB_COMPLETION
 	smallint lastWasTab = 0;
@@ -2589,9 +2594,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	smallint vi_cmdmode = 0;
 #endif
 	struct termios initial_settings;
-#if !ENABLE_PLATFORM_MINGW32
 	struct termios new_settings;
-#endif
 	char read_key_buffer[KEYCODE_BUFFER_SIZE];
 
 	INIT_S();
@@ -2600,15 +2603,13 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	cmdedit_termw = 80;
 	IF_FEATURE_EDITING_VI(delptr = delbuf;)
 
-#if !ENABLE_PLATFORM_MINGW32
 	n = get_termios_and_make_raw(STDIN_FILENO, &new_settings, &initial_settings, 0
 		| TERMIOS_CLEAR_ISIG /* turn off INTR (ctrl-C), QUIT, SUSP */
 	);
+#if !ENABLE_PLATFORM_MINGW32
 	if (n != 0 || (initial_settings.c_lflag & (ECHO|ICANON)) == ICANON) {
 #else
-	initial_settings.c_cc[VINTR] = CTRL('C');
-	initial_settings.c_cc[VEOF] = CTRL('D');
-	if (!isatty(0) || !isatty(1)) {
+	if (n != 0 || !isatty(0) || !isatty(1)) {
 #endif
 		/* Happens when e.g. stty -echo was run before.
 		 * But if ICANON is not set, we don't come here.
@@ -2661,9 +2662,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 #endif
 #define command command_must_not_be_used
 
-#if !ENABLE_PLATFORM_MINGW32
 	tcsetattr_stdin_TCSANOW(&new_settings);
-#endif
 
 #if 0
 	for (i = 0; i <= state->max_history; i++)
@@ -3150,10 +3149,8 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 	free_tab_completion_data();
 #endif
 
-#if !ENABLE_PLATFORM_MINGW32
 	/* restore initial_settings */
 	tcsetattr_stdin_TCSANOW(&initial_settings);
-#endif
 #if ENABLE_FEATURE_EDITING_WINCH
 	/* restore SIGWINCH handler */
 	sigaction_set(SIGWINCH, &S.SIGWINCH_handler);

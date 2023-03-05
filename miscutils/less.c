@@ -240,9 +240,7 @@ struct globals {
 	smallint winsize_err;
 #endif
 	smallint terminated;
-#if !ENABLE_PLATFORM_MINGW32
 	struct termios term_orig, term_less;
-#endif
 	char kbd_input[KEYCODE_BUFFER_SIZE];
 };
 #define G (*ptr_to_globals)
@@ -304,9 +302,7 @@ struct globals {
 static void set_tty_cooked(void)
 {
 	fflush_all();
-#if !ENABLE_PLATFORM_MINGW32
 	tcsetattr(kbd_fd, TCSANOW, &term_orig);
-#endif
 }
 
 /* Move the cursor to a position (x,y), where (0,0) is the
@@ -1132,8 +1128,11 @@ static void reinitialize(void)
 	buffer_fill_and_print();
 }
 
-#if !ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32
+static int64_t unix_getch_nowait(void)
+#else
 static int64_t getch_nowait(void)
+#endif
 {
 	int rd;
 	int64_t key64;
@@ -1194,10 +1193,14 @@ static int64_t getch_nowait(void)
 	set_tty_cooked();
 	return key64;
 }
-#else
+
+#if ENABLE_PLATFORM_MINGW32
 static int64_t getch_nowait(void)
 {
 	int64_t c;
+
+	if (terminal_mode(FALSE) & VT_INPUT)
+		return unix_getch_nowait();
 
 retry:
 	c = _getch();
@@ -1894,6 +1897,8 @@ int less_main(int argc, char **argv)
 {
 #if !ENABLE_PLATFORM_MINGW32
 	char *tty_name;
+#else
+	HANDLE h;
 #endif
 	int tty_fd;
 
@@ -1980,12 +1985,16 @@ int less_main(int argc, char **argv)
 	G.kbd_fd_orig_flags = ndelay_on(tty_fd);
 	kbd_fd = tty_fd; /* save in a global */
 #else
-	kbd_fd = tty_fd = 0;
+	h = CreateFileA("CONIN$", GENERIC_READ | GENERIC_WRITE,
+					FILE_SHARE_READ, NULL, OPEN_EXISTING,
+					FILE_ATTRIBUTE_NORMAL, NULL);
+	if (h == INVALID_HANDLE_VALUE)
+		bb_simple_error_msg_and_die("unable to open console");
+
+	kbd_fd = tty_fd = _open_osfhandle((intptr_t)h, O_BINARY);
 #endif
 
-#if !ENABLE_PLATFORM_MINGW32
 	get_termios_and_make_raw(tty_fd, &term_less, &term_orig, TERMIOS_RAW_CRNL_INPUT);
-#endif
 
 	IF_FEATURE_LESS_ASK_TERMINAL(G.winsize_err =) get_terminal_width_height(tty_fd, &width, &max_displayed_line);
 	/* 20: two tabstops + 4 */

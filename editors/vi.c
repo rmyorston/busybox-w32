@@ -456,9 +456,7 @@ struct globals {
 #if ENABLE_FEATURE_VI_USE_SIGNALS
 	sigjmp_buf restart;     // int_handler() jumps to location remembered here
 #endif
-#if !ENABLE_PLATFORM_MINGW32
 	struct termios term_orig; // remember what the cooked mode was
-#endif
 	int cindex;               // saved character index for up/down motion
 	smallint keep_index;      // retain saved character index
 #if ENABLE_FEATURE_VI_COLON
@@ -700,7 +698,6 @@ static int mysleep(int hund)
 }
 
 //----- Set terminal attributes --------------------------------
-#if !ENABLE_PLATFORM_MINGW32
 static void rawmode(void)
 {
 	// no TERMIOS_CLEAR_ISIG: leave ISIG on - allow signals
@@ -712,10 +709,6 @@ static void cookmode(void)
 	fflush_all();
 	tcsetattr_stdin_TCSANOW(&term_orig);
 }
-#else
-#define rawmode() ((void)0)
-#define cookmode fflush_all
-#endif
 
 //----- Terminal Drawing ---------------------------------------
 // The terminal is made up of 'rows' line of 'columns' columns.
