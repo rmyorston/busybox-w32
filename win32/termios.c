@@ -28,7 +28,7 @@ int tcgetattr(int fd, struct termios *t)
 	return 0;
 }
 
-int64_t FAST_FUNC read_key(int fd, char *buf, int timeout)
+int64_t FAST_FUNC windows_read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 {
 	HANDLE cin = GetStdHandle(STD_INPUT_HANDLE);
 	INPUT_RECORD record;
@@ -40,9 +40,6 @@ int64_t FAST_FUNC read_key(int fd, char *buf, int timeout)
 #endif
 	DWORD alt_pressed = FALSE;
 	DWORD state;
-
-	if (terminal_mode(FALSE) & VT_INPUT)
-		return unix_read_key(fd, buf, timeout);
 
 	if (fd != 0)
 		bb_error_msg_and_die("read_key only works on stdin");

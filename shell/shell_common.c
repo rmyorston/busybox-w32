@@ -223,7 +223,7 @@ shell_builtin_read(struct builtin_read_params *params)
 		if (isatty(fd)) {
 			int64_t key;
 
-			key = read_key(fd, NULL, timeout);
+			key = windows_read_key(fd, NULL, timeout);
 			if (key == 0x03) {
 				/* ^C pressed */
 				retval = (const char *)(uintptr_t)2;

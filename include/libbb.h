@@ -1976,7 +1976,7 @@ enum {
  */
 int64_t read_key(int fd, char *buffer, int timeout) FAST_FUNC;
 #if ENABLE_PLATFORM_MINGW32
-int64_t unix_read_key(int fd, char *buffer, int timeout) FAST_FUNC;
+int64_t windows_read_key(int fd, char *buffer, int timeout) FAST_FUNC;
 #endif
 /* This version loops on EINTR: */
 int64_t safe_read_key(int fd, char *buffer, int timeout) FAST_FUNC;

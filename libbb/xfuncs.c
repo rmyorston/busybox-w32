@@ -326,7 +326,8 @@ int FAST_FUNC get_termios_and_make_raw(int fd, struct termios *newterm, struct t
 	*newterm = *oldterm;
 
 #if ENABLE_PLATFORM_MINGW32
-	newterm->imode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT);
+	newterm->imode &=
+		~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
 #else
 	/* Turn off buffered input (ICANON)
 	 * Turn off echoing (ECHO)
