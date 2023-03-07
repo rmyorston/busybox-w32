@@ -76,7 +76,6 @@ int terminal_mode(int reset)
 	static int mode = -1;
 
 	if (mode < 0 || reset) {
-		int prefer;
 		HANDLE h;
 		DWORD oldmode, newmode;
 		const char *term = getenv(BB_TERMINAL_MODE);
@@ -95,30 +94,26 @@ int terminal_mode(int reset)
 						CONFIG_TERMINAL_MODE;
 		}
 
-		if (mode < 0 || mode > 7) {
-			prefer = mode = 0;
-		} else if (mode > 3) {
-			// Try to get requested mode, fall back to console on failure.
-			prefer = mode = mode - 4;
-		} else {
-			// Force the requested mode, even if we can't get it.
-			prefer = 0;
-		}
+		if (mode < 0 || mode > 6)
+			mode = CONFIG_TERMINAL_MODE;
 
 		if (is_console(STDOUT_FILENO)) {
 			h = get_console();
 			if (GetConsoleMode(h, &oldmode)) {
 				// Try to recover from mode 0 induced by SSH.
 				newmode = oldmode == 0 ? 3 : oldmode;
-				if ((mode & VT_OUTPUT))
+
+				if ((mode & VT_OUTPUT)) {
 					newmode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-				else
+				} else if (mode < 4) {
 					newmode &= ~ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-				newmode &= ~DISABLE_NEWLINE_AUTO_RETURN;
+				} else if ((oldmode & ENABLE_VIRTUAL_TERMINAL_PROCESSING)) {
+					mode |= VT_OUTPUT;
+				}
 
 				if (newmode != oldmode) {
 					if (!SetConsoleMode(h, newmode)) {
-						if ((prefer & VT_OUTPUT))
+						if (mode >= 4)
 							mode &= ~VT_OUTPUT;
 						newmode &= ~ENABLE_VIRTUAL_TERMINAL_PROCESSING;
 						SetConsoleMode(h, newmode);
@@ -132,14 +127,19 @@ int terminal_mode(int reset)
 			if (GetConsoleMode(h, &oldmode)) {
 				// Try to recover from mode 0 induced by SSH.
 				newmode = oldmode == 0 ? 0x1f7 : oldmode;
-				if ((mode & VT_INPUT))
-					newmode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
-				else
-					newmode &= ~ENABLE_VIRTUAL_TERMINAL_INPUT;
+
+				if (mode < 4) {
+					if ((mode & VT_INPUT))
+						newmode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+					else
+						newmode &= ~ENABLE_VIRTUAL_TERMINAL_INPUT;
+				} else if ((oldmode & ENABLE_VIRTUAL_TERMINAL_INPUT)) {
+					mode |= VT_INPUT;
+				}
 
 				if (newmode != oldmode) {
 					if (!SetConsoleMode(h, newmode)) {
-						if ((prefer & VT_INPUT))
+						if (mode >= 4)
 							mode &= ~VT_INPUT;
 						// Failure to set the new mode seems to leave
 						// the flag set.  Forcibly unset it.

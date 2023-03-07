@@ -458,24 +458,23 @@ config FEATURE_EURO
 config TERMINAL_MODE
 	int "Default setting for terminal mode"
 	default 5
-	range 0 7
+	range 0 5
 	depends on PLATFORM_MINGW32
 	help
-	Control I/O mode of the Windows console/terminal.  Possible
-	values are:
+	Set the default input/output modes of the Windows console/terminal.
+	Possible values are:
 
-	0  Console mode.
-	1  Force terminal mode output.
-	2  Force terminal mode input.
-	3  Force terminal mode input and output.
+	0  Force console mode.
+	1  Force virtual terminal mode for output.
+	2  Force virtual terminal mode for input.
+	3  Force virtual terminal mode for input and output.
 
-	4  Console mode.
-	5  Prefer terminal mode output, fall back to console mode.
-	6  Prefer terminal mode input, fall back to console mode.
-	7  Prefer terminal mode input and output, fall back to console.
+	4  Support virtual terminal input if enabled.  Don't alter mode.
+	5  Support virtual terminal input if enabled.  Set virtual terminal
+	   mode for output, if possible.
 
-	Setting the environment variable BB_TERMINAL_MODE overrides this
-	default.
+	Values 0-3 are for testing only.  The default is 5.  The environment
+	variable BB_TERMINAL_MODE overrides this.
 
 config FEATURE_IMPROVED_COLOUR_MAPPING
 	bool "More accurate colour mapping for ANSI emulation (0.6 kb)"
