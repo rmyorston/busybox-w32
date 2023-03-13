@@ -590,3 +590,5 @@ int has_path(const char *file);
 int is_relative_path(const char *path);
 char *get_last_slash(const char *path);
 const char *applet_to_exe(const char *name);
+char *get_user_name(void);
+char *quote_arg(const char *arg);

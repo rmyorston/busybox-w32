@@ -113,7 +113,7 @@ parse_interpreter(const char *cmd, interp_t *interp)
  * See https://docs.microsoft.com/en-us/cpp/cpp/main-function-command-line-args?view=vs-2019#parsing-c-command-line-arguments
  * (Parsing C++ Command-Line Arguments)
  */
-static char *
+char *
 quote_arg(const char *arg)
 {
 	int len = 0, n = 0;
