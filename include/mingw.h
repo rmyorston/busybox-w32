@@ -559,7 +559,9 @@ void init_codepage(void);
 int has_bat_suffix(const char *p);
 int has_exe_suffix(const char *p);
 int has_exe_suffix_or_dot(const char *name);
+char *alloc_ext_space(const char *path);
 int add_win32_extension(char *p);
+char *file_is_win32_exe(const char *name);
 
 char *bs_to_slash(char *p) FAST_FUNC;
 void slash_to_bs(char *p) FAST_FUNC;
@@ -578,7 +580,6 @@ int unc_root_len(const char *dir);
 int root_len(const char *path);
 const char *get_system_drive(void);
 const char *need_system_drive(const char *path);
-char *alloc_ext_space(const char *path);
 int chdir_system_drive(void);
 char *xabsolute_path(char *path);
 char *get_drive_cwd(const char *path, char *buffer, int size);

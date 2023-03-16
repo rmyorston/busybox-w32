@@ -328,14 +328,12 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
 	}
 #endif
 
-	path = alloc_ext_space(interp.path);
-	if ((add_win32_extension(path) || file_is_executable(path))) {
+	path = file_is_win32_exe(interp.path);
+	if (path) {
 		new_argv[0] = path;
 		ret = mingw_spawn_interpreter(mode, path, new_argv, envp, level);
 		goto done;
 	}
-	free(path);
-	path = NULL;
 
 	if (unix_path(interp.path)) {
 		if ((path = find_first_executable(interp.name)) != NULL) {
@@ -363,13 +361,12 @@ mingw_spawnvp(int mode, const char *cmd, char *const *argv)
 		return mingw_spawn_applet(mode, argv, NULL);
 #endif
 	if (has_path(cmd)) {
-		path = alloc_ext_space(cmd);
-		if (add_win32_extension(path) || file_is_executable(path)) {
+		path = file_is_win32_exe(cmd);
+		if (path) {
 			ret = mingw_spawn_interpreter(mode, path, argv, NULL, 0);
 			free(path);
 			return ret;
 		}
-		free(path);
 		if (unix_path(cmd))
 			cmd = bb_basename(cmd);
 	}

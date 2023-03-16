@@ -2001,6 +2001,15 @@ int has_exe_suffix_or_dot(const char *name)
 	return last_char_is(name, '.') || has_win_suffix(name, 0);
 }
 
+/* Copy path to an allocated string long enough to allow a file extension
+ * to be added. */
+char *alloc_ext_space(const char *path)
+{
+	char *s = xmalloc(strlen(path) + 5);
+	strcpy(s, path);
+	return s;
+}
+
 /* Check if path can be made into an executable by adding a suffix.
  * The suffix is added to the end of the argument which must be
  * long enough to allow this.
@@ -2022,6 +2031,22 @@ int add_win32_extension(char *p)
 		p[len] = '\0';
 	}
 	return FALSE;
+}
+
+/*
+ * Determine if a path represents a WIN32 executable, adding a suffix
+ * if necessary.  Returns an allocated string if it does, NULL if not.
+ */
+char *
+file_is_win32_exe(const char *name)
+{
+	char *path = alloc_ext_space(name);
+
+	if ((add_win32_extension(path) || file_is_executable(path)))
+		return path;
+
+	free(path);
+	return NULL;
 }
 
 char * FAST_FUNC bs_to_slash(char *str)
@@ -2191,15 +2216,6 @@ const char *need_system_drive(const char *path)
 	if (root_len(path) == 0 && (path[0] == '/' || path[0] == '\\'))
 		return get_system_drive();
 	return NULL;
-}
-
-/* Copy path to an allocated string long enough to allow a file extension
- * to be added. */
-char *alloc_ext_space(const char *path)
-{
-	char *s = xmalloc(strlen(path) + 5);
-	strcpy(s, path);
-	return s;
 }
 
 int chdir_system_drive(void)
