@@ -204,7 +204,7 @@ quote_arg(const char *arg)
 	return q;
 }
 
-static char *
+char *
 find_first_executable(const char *name)
 {
 	char *tmp, *path = getenv("PATH");
