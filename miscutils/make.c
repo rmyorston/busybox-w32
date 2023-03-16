@@ -2734,8 +2734,8 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_PLATFORM_MINGW32
 		if (has_path(argv[0])) {
 			// Add extension if necessary, else realpath() will fail
-			char *p = xmalloc(strlen(argv[0]) + 5);
-			add_win32_extension(strcpy(p, argv[0]));
+			char *p = alloc_ext_space(argv[0]);
+			add_win32_extension(p);
 			path = newpath = xmalloc_realpath(p);
 			free(p);
 			if (!path) {
