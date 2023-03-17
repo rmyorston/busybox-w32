@@ -554,7 +554,6 @@ void qsort_string_vector_case(char **sv, unsigned count) FAST_FUNC;
 
 const char *get_busybox_exec_path(void);
 void init_winsock(void);
-void init_codepage(void);
 
 int has_bat_suffix(const char *p);
 int has_exe_suffix(const char *p);

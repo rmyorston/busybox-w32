@@ -1290,9 +1290,7 @@ int main(int argc UNUSED_PARAM, char **argv)
 			break;
 		}
 	}
-# if ENABLE_FEATURE_EURO
-	init_codepage();
-# endif
+
 	/* Ignore critical errors, such as calling GetVolumeInformation() on
 	 * a floppy or CDROM drive with no media. */
 	SetErrorMode(SEM_FAILCRITICALERRORS);

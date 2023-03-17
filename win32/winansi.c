@@ -29,6 +29,10 @@
 static WORD plain_attr = 0xffff;
 static WORD current_attr;
 
+#if ENABLE_FEATURE_EURO
+static void init_codepage(void);
+#endif
+
 static HANDLE get_console(void)
 {
 	return GetStdHandle(STD_OUTPUT_HANDLE);
@@ -74,6 +78,11 @@ static int is_wine(void)
 int terminal_mode(int reset)
 {
 	static int mode = -1;
+
+#if ENABLE_FEATURE_EURO
+	if (mode < 0)
+		init_codepage();
+#endif
 
 	if (mode < 0 || reset) {
 		HANDLE h;
@@ -699,7 +708,7 @@ static char *process_escape(char *pos)
 }
 
 #if ENABLE_FEATURE_EURO
-void init_codepage(void)
+static void init_codepage(void)
 {
 	if (GetConsoleCP() == 850 && GetConsoleOutputCP() == 850) {
 		SetConsoleCP(858);
@@ -715,6 +724,7 @@ static BOOL winansi_CharToOemBuff(LPCSTR s, LPSTR d, DWORD len)
 	if (!s || !d)
 		return FALSE;
 
+	terminal_mode(FALSE);
 	buf = xmalloc(len*sizeof(WCHAR));
 	MultiByteToWideChar(CP_ACP, 0, s, len, buf, len);
 	WideCharToMultiByte(CP_OEMCP, 0, buf, len, d, len, NULL, NULL);
@@ -744,6 +754,7 @@ static BOOL winansi_OemToCharBuff(LPCSTR s, LPSTR d, DWORD len)
 	if (!s || !d)
 		return FALSE;
 
+	terminal_mode(FALSE);
 	buf = xmalloc(len*sizeof(WCHAR));
 	MultiByteToWideChar(CP_OEMCP, 0, s, len, buf, len);
 	WideCharToMultiByte(CP_ACP, 0, buf, len, d, len, NULL, NULL);
