@@ -1136,7 +1136,7 @@ char *get_user_name(void)
 	return user_name;
 }
 
-#if ENABLE_DROP
+#if ENABLE_DROP || ENABLE_CDROP || ENABLE_PDROP
 /*
  * When runuser drops privileges TokenIsElevated still returns TRUE.
  * Use other means to determine if we're actually unprivileged.

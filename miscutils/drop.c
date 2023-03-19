@@ -13,15 +13,45 @@
 //config:	help
 //config:	Run a command without elevated privileges
 
+//config:config CDROP
+//config:	bool "cdrop"
+//config:	default y
+//config:	depends on PLATFORM_MINGW32 && SH_IS_ASH
+//config:	help
+//config:	Run a command without elevated privileges using cmd.exe
+
+//config:config PDROP
+//config:	bool "pdrop"
+//config:	default y
+//config:	depends on PLATFORM_MINGW32 && SH_IS_ASH
+//config:	help
+//config:	Run a command without elevated privileges using PowerShell
+
 //applet:IF_DROP(APPLET(drop, BB_DIR_USR_BIN, BB_SUID_DROP))
+//applet:IF_CDROP(APPLET_ODDNAME(cdrop, drop, BB_DIR_USR_BIN, BB_SUID_DROP, cdrop))
+//applet:IF_PDROP(APPLET_ODDNAME(pdrop, drop, BB_DIR_USR_BIN, BB_SUID_DROP, pdrop))
 
 //kbuild:lib-$(CONFIG_DROP) += drop.o
+//kbuild:lib-$(CONFIG_CDROP) += drop.o
+//kbuild:lib-$(CONFIG_PDROP) += drop.o
 
 //usage:#define drop_trivial_usage
 //usage:	"[COMMAND | -c [ARG...]]"
 //usage:#define drop_full_usage "\n\n"
 //usage:	"Drop elevated privileges and run a command. If no COMMAND\n"
 //usage:	"is provided run the BusyBox shell.\n"
+
+//usage:#define cdrop_trivial_usage
+//usage:	"[COMMAND | /c [ARG...]]"
+//usage:#define cdrop_full_usage "\n\n"
+//usage:	"Drop elevated privileges and run a command. If no COMMAND\n"
+//usage:	"is provided run cmd.exe.\n"
+
+//usage:#define pdrop_trivial_usage
+//usage:	"[COMMAND | -c [ARG...]]"
+//usage:#define pdrop_full_usage "\n\n"
+//usage:	"Drop elevated privileges and run a command. If no COMMAND\n"
+//usage:	"is provided run PowerShell.\n"
 
 #include "libbb.h"
 #include <winsafer.h>
@@ -69,9 +99,24 @@ int drop_main(int argc, char **argv)
 						sizeof(TOKEN_MANDATORY_LABEL))) {
 			int skip = 1;
 
-			if (argc == 1 || strcmp(argv[1], "-c") == 0) {
-				exe = bb_busybox_exec_path;
-				cmd = xstrdup("sh");
+			if (argc == 1 || strcmp(argv[1], "-c") == 0
+						IF_CDROP(|| strcmp(argv[1], "/c") == 0)) {
+#if ENABLE_PDROP
+				if (*applet_name == 'p') {
+					exe = "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
+					cmd = xstrdup("powershell");
+				} else
+#endif
+#if ENABLE_CDROP
+				if (*applet_name == 'c') {
+					exe = "C:/Windows/System32/cmd.exe";
+					cmd = xstrdup("cmd");
+				} else
+#endif
+				{
+					exe = bb_busybox_exec_path;
+					cmd = xstrdup("sh");
+				}
 				skip = 0;
 			} else {
 				char *file;
