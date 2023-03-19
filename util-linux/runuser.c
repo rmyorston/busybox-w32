@@ -66,7 +66,7 @@ int runuser_main(int argc, char **argv)
 		0x00, 0x00, 0x00, 0x10,
 		0x00, 0x20, 0x00, 0x00
 	};
-	char *cmd, **a;
+	char *cmd, *q, *newcmd, **a;
 	DWORD code;
 	// This shouldn't be necessary but without it the binary complains
 	// it can't find CreateProcessAsUserA on older versions of Windows.
@@ -113,13 +113,12 @@ int runuser_main(int argc, char **argv)
 #if ENABLE_FEATURE_PREFER_APPLETS
 				if (!has_path(argv[1]) && find_applet_by_name(argv[1]) >= 0) {
 					file = xstrdup(bb_busybox_exec_path);
-					cmd = argv[1];
 				} else
 #endif
 				if (has_path(argv[1])) {
-					file = cmd = file_is_win32_exe(argv[1]);
+					file = file_is_win32_exe(argv[1]);
 				} else {
-					file = cmd = find_first_executable(argv[1]);
+					file = find_first_executable(argv[1]);
 				}
 
 				if (file == NULL) {
@@ -129,19 +128,14 @@ int runuser_main(int argc, char **argv)
 
 				slash_to_bs(file);
 				exe = file;
-				cmd = xstrdup(cmd);
-				file = quote_arg(cmd);
-				if (file != cmd)
-					free(cmd);
-				cmd = file;
+				cmd = quote_arg(argv[1]);
 			}
 
 			// Build the command line
 			for (a = argv + 1 + (argc != 1); *a; ++a) {
-				char *q = quote_arg(*a);
-				char *newcmd = xasprintf("%s %s", cmd, q);
-				if (q != *a)
-					free(q);
+				q = quote_arg(*a);
+				newcmd = xasprintf("%s %s", cmd, q);
+				free(q);
 				free(cmd);
 				cmd = newcmd;
 			}

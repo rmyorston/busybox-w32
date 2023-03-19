@@ -163,7 +163,7 @@ quote_arg(const char *arg)
 	}
 
 	if (!force_quotes && n == 0) {
-		return (char*)arg;
+		return xstrdup(arg);
 	}
 
 	/* insert double quotes and backslashes where necessary */
@@ -275,8 +275,7 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 
  done:
 	for (i = 0;i < argc;i++)
-		if (new_argv[i] != argv[i])
-			free(new_argv[i]);
+		free(new_argv[i]);
 	free(new_argv);
 	free(new_path);
 
