@@ -1,20 +1,11 @@
 /* vi: set sw=4 ts=4: */
 /*
- * runuser - run a shell without elevated privileges.
- * This is a much restricted, Windows-specific reimplementation of
- * runuser from util-linux.
+ * drop - run a command without elevated privileges.
  *
  * Copyright (c) 2023 Ronald M Yorston
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-//config:config RUNUSER
-//config:	bool "runuser"
-//config:	default y
-//config:	depends on PLATFORM_MINGW32 && SH_IS_ASH
-//config:	help
-//config:	Run a shell without elevated privileges
-//config:
 //config:config DROP
 //config:	bool "drop"
 //config:	default y
@@ -22,39 +13,24 @@
 //config:	help
 //config:	Run a command without elevated privileges
 
-//applet:IF_RUNUSER(APPLET(runuser, BB_DIR_USR_BIN, BB_SUID_DROP))
-//applet:IF_DROP(APPLET_ODDNAME(drop, runuser, BB_DIR_USR_BIN, BB_SUID_DROP, drop))
+//applet:IF_DROP(APPLET(drop, BB_DIR_USR_BIN, BB_SUID_DROP))
 
-//kbuild:lib-$(CONFIG_RUNUSER) += runuser.o
-//kbuild:lib-$(CONFIG_DROP) += runuser.o
-
-//usage:#define runuser_trivial_usage
-//usage:	"USER [ARG...]"
-//usage:#define runuser_full_usage "\n\n"
-//usage:	"Run a shell without elevated privileges. The user name\n"
-//usage:	"must be that of the user who was granted those privileges.\n"
-//usage:	"Any arguments are passed to the shell.\n"
+//kbuild:lib-$(CONFIG_DROP) += drop.o
 
 //usage:#define drop_trivial_usage
-//usage:	"[COMMAND [ARG...]]"
+//usage:	"[COMMAND | -c [ARG...]]"
 //usage:#define drop_full_usage "\n\n"
-//usage:	"Run a command without elevated privileges. Run the BusyBox\n"
-//usage:	"shell if no COMMAND is provided. Any arguments are passed\n"
-//usage:	"to the command.\n"
+//usage:	"Drop elevated privileges and run a command. If no COMMAND\n"
+//usage:	"is provided run the BusyBox shell.\n"
 
 #include "libbb.h"
 #include <winsafer.h>
 #include <lazyload.h>
 
-int runuser_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
-int runuser_main(int argc, char **argv)
+int drop_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+int drop_main(int argc, char **argv)
 {
-#if ENABLE_RUNUSER && ENABLE_DROP
-	int is_runuser = strcmp(applet_name, "runuser") == 0;
-#else
-	const int is_runuser = ENABLE_RUNUSER;
-#endif
-	const char *user, *exe;
+	const char *exe;
 	SAFER_LEVEL_HANDLE safer;
 	HANDLE token;
 	STARTUPINFO si;
@@ -77,18 +53,6 @@ int runuser_main(int argc, char **argv)
 	if (!INIT_PROC_ADDR(advapi32.dll, CreateProcessAsUserA))
 		bb_simple_error_msg_and_die("not supported");
 
-	if (is_runuser) {
-		if (getuid() != 0)
-			bb_simple_error_msg_and_die("may not be used by non-root users");
-
-		if (argc < 2)
-			bb_show_usage();
-
-		user = get_user_name();
-		if (user == NULL || strcmp(argv[1], user) != 0)
-			bb_simple_error_msg_and_die("invalid user");
-	}
-
 	/*
 	 * Run a shell using a token with reduced privilege.  Hints from:
 	 *
@@ -103,10 +67,12 @@ int runuser_main(int argc, char **argv)
 		TIL.Label.Attributes = SE_GROUP_INTEGRITY;
 		if (SetTokenInformation(token, TokenIntegrityLevel, &TIL,
 						sizeof(TOKEN_MANDATORY_LABEL))) {
+			int skip = 1;
 
-			if (is_runuser || argc == 1) {
+			if (argc == 1 || strcmp(argv[1], "-c") == 0) {
 				exe = bb_busybox_exec_path;
 				cmd = xstrdup("sh");
+				skip = 0;
 			} else {
 				char *file;
 
@@ -132,7 +98,7 @@ int runuser_main(int argc, char **argv)
 			}
 
 			// Build the command line
-			for (a = argv + 1 + (argc != 1); *a; ++a) {
+			for (a = argv + 1 + skip; *a; ++a) {
 				q = quote_arg(*a);
 				newcmd = xasprintf("%s %s", cmd, q);
 				free(q);

@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.37.0.git
-# Sun Mar 12 09:41:00 2023
+# Sun Mar 19 09:51:34 2023
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -707,7 +707,7 @@ CONFIG_XXD=y
 # CONFIG_RENICE is not set
 CONFIG_REV=y
 # CONFIG_RTCWAKE is not set
-CONFIG_RUNUSER=y
+CONFIG_DROP=y
 # CONFIG_SCRIPT is not set
 # CONFIG_SCRIPTREPLAY is not set
 # CONFIG_SETARCH is not set
