@@ -16,14 +16,14 @@
 //config:config CDROP
 //config:	bool "cdrop"
 //config:	default y
-//config:	depends on PLATFORM_MINGW32 && SH_IS_ASH
+//config:	depends on PLATFORM_MINGW32
 //config:	help
 //config:	Run a command without elevated privileges using cmd.exe
 
 //config:config PDROP
 //config:	bool "pdrop"
 //config:	default y
-//config:	depends on PLATFORM_MINGW32 && SH_IS_ASH
+//config:	depends on PLATFORM_MINGW32
 //config:	help
 //config:	Run a command without elevated privileges using PowerShell
 
@@ -56,6 +56,7 @@
 #include "libbb.h"
 #include <winsafer.h>
 #include <lazyload.h>
+#include "NUM_APPLETS.h"
 
 int drop_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int drop_main(int argc, char **argv)
@@ -101,26 +102,35 @@ int drop_main(int argc, char **argv)
 
 			if (argc == 1 || strcmp(argv[1], "-c") == 0
 						IF_CDROP(|| strcmp(argv[1], "/c") == 0)) {
+				switch (*applet_name) {
 #if ENABLE_PDROP
-				if (*applet_name == 'p') {
+				case 'p':
 					arg = "powershell.exe";
 					exe = find_first_executable(arg);
-				} else
+					break;
 #endif
 #if ENABLE_CDROP
-				if (*applet_name == 'c') {
+				case 'c':
 					arg = "cmd.exe";
 					exe = find_first_executable(arg);
-				} else
+					break;
 #endif
-				{
+#if ENABLE_DROP
+				case 'd':
 					arg = "sh";
 					exe = xstrdup(bb_busybox_exec_path);
+					break;
+#endif
+				default:
+					// Never executed, just to silence warnings.
+					arg = argv[0];
+					exe = NULL;
+					break;
 				}
 			} else {
 				arg = *a++;
 
-#if ENABLE_FEATURE_PREFER_APPLETS
+#if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
 				if (!has_path(arg) && find_applet_by_name(arg) >= 0) {
 					exe = xstrdup(bb_busybox_exec_path);
 				} else
