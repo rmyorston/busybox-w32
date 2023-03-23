@@ -60,7 +60,6 @@
 int drop_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int drop_main(int argc, char **argv)
 {
-	const char *exe;
 	SAFER_LEVEL_HANDLE safer;
 	HANDLE token;
 	STARTUPINFO si;
@@ -72,7 +71,6 @@ int drop_main(int argc, char **argv)
 		0x00, 0x00, 0x00, 0x10,
 		0x00, 0x20, 0x00, 0x00
 	};
-	char *cmd, *q, *newcmd, **a;
 	DWORD code;
 	// This shouldn't be necessary but without it the binary complains
 	// it can't find CreateProcessAsUserA on older versions of Windows.
@@ -97,55 +95,55 @@ int drop_main(int argc, char **argv)
 		TIL.Label.Attributes = SE_GROUP_INTEGRITY;
 		if (SetTokenInformation(token, TokenIntegrityLevel, &TIL,
 						sizeof(TOKEN_MANDATORY_LABEL))) {
-			int skip = 1;
+			char **a = argv + 1;
+			const char *arg;
+			char *exe, *cmd;
 
 			if (argc == 1 || strcmp(argv[1], "-c") == 0
 						IF_CDROP(|| strcmp(argv[1], "/c") == 0)) {
 #if ENABLE_PDROP
 				if (*applet_name == 'p') {
-					exe = "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
-					cmd = xstrdup("powershell");
+					arg = "powershell.exe";
+					exe = find_first_executable(arg);
 				} else
 #endif
 #if ENABLE_CDROP
 				if (*applet_name == 'c') {
-					exe = "C:/Windows/System32/cmd.exe";
-					cmd = xstrdup("cmd");
+					arg = "cmd.exe";
+					exe = find_first_executable(arg);
 				} else
 #endif
 				{
-					exe = bb_busybox_exec_path;
-					cmd = xstrdup("sh");
+					arg = "sh";
+					exe = xstrdup(bb_busybox_exec_path);
 				}
-				skip = 0;
 			} else {
-				char *file;
+				arg = *a++;
 
 #if ENABLE_FEATURE_PREFER_APPLETS
-				if (!has_path(argv[1]) && find_applet_by_name(argv[1]) >= 0) {
-					file = xstrdup(bb_busybox_exec_path);
+				if (!has_path(arg) && find_applet_by_name(arg) >= 0) {
+					exe = xstrdup(bb_busybox_exec_path);
 				} else
 #endif
-				if (has_path(argv[1])) {
-					file = file_is_win32_exe(argv[1]);
+				if (has_path(arg)) {
+					exe = file_is_win32_exe(arg);
 				} else {
-					file = find_first_executable(argv[1]);
+					exe = find_first_executable(arg);
 				}
-
-				if (file == NULL) {
-					xfunc_error_retval = 127;
-					bb_error_msg_and_die("can't find '%s'", argv[1]);
-				}
-
-				slash_to_bs(file);
-				exe = file;
-				cmd = quote_arg(argv[1]);
 			}
 
+			if (exe == NULL) {
+				xfunc_error_retval = 127;
+				bb_error_msg_and_die("can't find '%s'", arg);
+			}
+
+			slash_to_bs(exe);
+			cmd = quote_arg(arg);
+
 			// Build the command line
-			for (a = argv + 1 + skip; *a; ++a) {
-				q = quote_arg(*a);
-				newcmd = xasprintf("%s %s", cmd, q);
+			while (*a) {
+				char *q = quote_arg(*a++);
+				char *newcmd = xasprintf("%s %s", cmd, q);
 				free(q);
 				free(cmd);
 				cmd = newcmd;
