@@ -890,8 +890,8 @@ static unsigned path_parse(char ***p)
 		res[npth++] = tmp;
 	}
 	/* special case: "match subdirectories of the current directory" */
-	/*res[npth++] = NULL; - filled by xzalloc() */
-	return npth;
+	/*res[npth] = NULL; - filled by xzalloc() */
+	return npth + 1;
 }
 
 /* Complete command, directory or file name.
