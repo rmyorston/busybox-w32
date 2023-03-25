@@ -1234,6 +1234,10 @@ int lbb_main(char **argv)
 int main(int argc UNUSED_PARAM, char **argv)
 #endif
 {
+#ifdef _WIN32
+	SetConsoleCP(65001);
+	SetConsoleOutputCP(65001);
+#endif
 #if 0
 	/* TODO: find a use for a block of memory between end of .bss
 	 * and end of page. For example, I'm getting "_end:0x812e698 2408 bytes"
