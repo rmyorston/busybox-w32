@@ -1235,8 +1235,11 @@ int main(int argc UNUSED_PARAM, char **argv)
 #endif
 {
 #ifdef _WIN32
-	SetConsoleCP(65001);
-	SetConsoleOutputCP(65001);
+	UINT cp = GetConsoleCP();
+	UINT output_cp = GetConsoleOutputCP();
+	if (cp != output_cp) {
+		SetConsoleOutputCP(cp);
+	}
 #endif
 #if 0
 	/* TODO: find a use for a block of memory between end of .bss
