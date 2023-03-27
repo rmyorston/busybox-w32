@@ -58,6 +58,18 @@
 #include <lazyload.h>
 #include "NUM_APPLETS.h"
 
+// Set an environment variable to the name of the unprivileged user,
+// but only if it was previously unset or contained "root".
+static void setenv_name(const char *key)
+{
+	const char *name = get_user_name();
+	const char *oldname = getenv(key);
+
+	if (name && (!oldname || strcmp(oldname, "root") == 0)) {
+		setenv(key, name, 1);
+	}
+}
+
 int drop_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int drop_main(int argc, char **argv)
 {
@@ -165,6 +177,10 @@ int drop_main(int argc, char **argv)
 			si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
 			si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
 			si.dwFlags = STARTF_USESTDHANDLES;
+
+			setenv_name("USER");
+			setenv_name("USERNAME");
+			setenv_name("LOGNAME");
 
 			if (!CreateProcessAsUserA(token, exe, cmd, NULL, NULL, TRUE,
 						0, NULL, NULL, &si, &pi)) {

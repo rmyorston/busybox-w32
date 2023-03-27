@@ -15550,7 +15550,7 @@ exitshell(void)
 # undef getenv
 static void xsetenv_if_unset(const char *key, const char *value)
 {
-	if (!getenv(key))
+	if (!getenv(key) || getuid() == 0)
 		xsetenv(key, value);
 }
 #endif
@@ -15641,12 +15641,13 @@ init(void)
 			}
 
 			/* Initialise some variables normally set at login, but
-			 * only if someone hasn't already set them. */
+			 * only if someone hasn't already set them or we're root. */
 			pw = getpwuid(getuid());
 			if (pw) {
-				xsetenv_if_unset("USER",    pw->pw_name);
-				xsetenv_if_unset("LOGNAME", pw->pw_name);
-				xsetenv_if_unset("HOME",    pw->pw_dir);
+				xsetenv_if_unset("USER",     pw->pw_name);
+				xsetenv_if_unset("USERNAME", pw->pw_name);
+				xsetenv_if_unset("LOGNAME",  pw->pw_name);
+				xsetenv_if_unset("HOME",     pw->pw_dir);
 			}
 			xsetenv_if_unset("SHELL",   DEFAULT_SHELL);
 		}
