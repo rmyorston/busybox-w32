@@ -10473,9 +10473,18 @@ evalsubshell(union node *n, int flags)
 
 	errlinno = lineno = n->nredir.linno;
 
+#if ENABLE_PLATFORM_MINGW32
+	if (!backgnd && (flags & EV_EXIT) && !may_have_traps) {
+		expredir(n->nredir.redirect);
+		redirect(n->nredir.redirect, 0);
+		evaltreenr(n->nredir.n, flags);
+		/* never returns */
+	}
+#else
 	expredir(n->nredir.redirect);
 	if (!backgnd && (flags & EV_EXIT) && !may_have_traps)
 		goto nofork;
+#endif
 	INT_OFF;
 	if (backgnd == FORK_FG)
 		get_tty_state();
@@ -10486,7 +10495,6 @@ evalsubshell(union node *n, int flags)
 	fs.n = n;
 	fs.flags = flags;
 	spawn_forkshell(&fs, jp, n, backgnd);
-	if ( 0 ) {
 #else
 	if (forkshell(jp, n, backgnd) == 0) {
 		/* child */
@@ -10494,12 +10502,12 @@ evalsubshell(union node *n, int flags)
 		flags |= EV_EXIT;
 		if (backgnd)
 			flags &= ~EV_TESTED;
-#endif
  nofork:
 		redirect(n->nredir.redirect, 0);
 		evaltreenr(n->nredir.n, flags);
 		/* never returns */
 	}
+#endif
 	/* parent */
 	status = 0;
 	if (backgnd == FORK_FG)
@@ -16114,6 +16122,8 @@ forkshell_evalsubshell(struct forkshell *fs)
 	TRACE(("ash: subshell: %s\n",__PRETTY_FUNCTION__));
 	INT_ON;
 	flags |= EV_EXIT;
+	if (fs->mode)
+		flags &= ~EV_TESTED;
 	expredir(n->nredir.redirect);
 	redirect(n->nredir.redirect, 0);
 	evaltreenr(n->nredir.n, flags);
