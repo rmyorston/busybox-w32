@@ -9088,6 +9088,7 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 	 || (applet_no = find_applet_by_name(prog)) >= 0
 #endif
 	) {
+		prog = stack_add_ext_space(prog);
 		tryexec(IF_FEATURE_SH_STANDALONE(applet_no,) prog, argv, envp);
 		if (applet_no >= 0) {
 			/* We tried execing ourself, but it didn't work.
@@ -9098,7 +9099,7 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 		}
 		e = errno;
 #if ENABLE_PLATFORM_MINGW32
-		if (unix_path(prog) && !find_builtin(bb_basename(prog))) {
+		if (unix_path(prog)) {
 # if ENABLE_FEATURE_SH_STANDALONE
 			const char *name = bb_basename(prog);
 			if ((applet_no = find_applet_by_name(name)) >= 0) {
@@ -9106,8 +9107,10 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 				e = errno;
 			}
 # endif
-			argv[0] = (char *)bb_basename(prog);
-			goto try_PATH;
+			if (!find_builtin(bb_basename(prog))) {
+				argv[0] = (char *)bb_basename(prog);
+				goto try_PATH;
+			}
 		}
 #endif
 	} else {
