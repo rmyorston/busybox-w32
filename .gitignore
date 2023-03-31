@@ -13,6 +13,7 @@ Config.in
 # Never ignore these
 #
 !.gitignore
+!.github
 
 #
 # Normal output

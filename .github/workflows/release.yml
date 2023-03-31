@@ -1,0 +1,28 @@
+name: release
+on:
+  release:
+    types: [created]
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Build
+        run: |
+          cat >ci.sh<<EOF
+            rm -rf \`find /etc/yum.repos.d -not -name 'fedora.repo' -not -name 'fedora-updates.repo' -not -name 'yum.repos.d'\`
+            dnf install mingw32-gcc mingw32-windows-default-manifest diffutils gcc make ncurses-devel perl-Pod-Html bzip2 -y --setopt=install_weak_deps=False --setopt=max_parallel_downloads=8 --setopt=fastestmirror=True
+            cd busybox-w32
+            make mingw32_defconfig
+            make -j`nproc`
+          EOF
+          docker run --name hi -d fedora:37 sleep infinity
+          docker cp ./ci.sh hi:/ci.sh
+          docker cp . hi:/busybox-w32
+          docker exec hi sh -c 'chmod +x /ci.sh ; /ci.sh'
+          docker cp hi:/busybox-w32/busybox.exe busybox.exe
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: busybox.exe
