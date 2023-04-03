@@ -2869,7 +2869,7 @@ static void mingw_daemonize(char **argv)
 }
 #endif
 
-#ifdef SIGHUP
+#if !ENABLE_PLATFORM_MINGW32
 static void sighup_handler(int sig UNUSED_PARAM)
 {
 	int sv = errno;
@@ -3034,7 +3034,7 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	parse_conf(DEFAULT_PATH_HTTPD_CONF, FIRST_PARSE);
-#ifdef SIGHUP
+#if !ENABLE_PLATFORM_MINGW32
 	if (!(opt & OPT_INETD))
 		signal(SIGHUP, sighup_handler);
 #endif

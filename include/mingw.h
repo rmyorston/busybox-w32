@@ -112,6 +112,8 @@ IMPL(getpwent,struct passwd *,NULL,void)
 /*
  * signal.h
  */
+#define SIGHUP  1
+#define SIGQUIT 3
 #define SIGKILL 9
 #define SIGPIPE 13
 
