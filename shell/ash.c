@@ -627,8 +627,8 @@ struct globals_misc {
 
 	/* indicates specified signal received */
 	uint8_t gotsig[NSIG - 1]; /* offset by 1: "signal" 0 is meaningless */
-	uint8_t may_have_traps; /* 0: definitely no traps are set, 1: some traps may be set */
 #endif
+	uint8_t may_have_traps; /* 0: definitely no traps are set, 1: some traps may be set */
 	char *trap[NSIG + 1];
 /* trap[0] is EXIT trap, trap[NTRAP_ERR] is ERR trap, other trap[i] are signal traps */
 #define NTRAP_ERR  NSIG
@@ -687,10 +687,8 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #if ENABLE_PLATFORM_MINGW32
 #undef got_sigchld
 #undef pending_sig
-#undef may_have_traps
 #undef trap_ptr
 #define pending_sig       (0)
-#define may_have_traps    (0)
 #define trap_ptr          trap
 #endif
 
@@ -869,10 +867,17 @@ raise_exception(int e)
  * are held using the INT_OFF macro.  (The test for iflag is just
  * defensive programming.)
  */
-static void raise_interrupt(void) NORETURN;
+static void raise_interrupt(void) IF_NOT_PLATFORM_MINGW32(NORETURN);
 static void
 raise_interrupt(void)
 {
+#if ENABLE_PLATFORM_MINGW32
+	/* Contrary to the comment above on Windows raise_interrupt() is
+	 * called when SIGINT is trapped or ignored.  We detect this here
+	 * and return without doing anything. */
+	if (trap[SIGINT])
+		return;
+#endif
 	pending_int = 0;
 #if !ENABLE_PLATFORM_MINGW32
 	/* Signal is not automatically unmasked after it is raised,
@@ -4820,8 +4825,11 @@ sprint_status48(char *os, int status, int sigonly)
 static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
 {
 	if (dwCtrlType == CTRL_C_EVENT || dwCtrlType == CTRL_BREAK_EVENT) {
-		if (!suppress_int && !(rootshell && iflag))
-			raise_interrupt(); /* does not return */
+# if ENABLE_FEATURE_EDITING
+		bb_got_signal = SIGINT; /* for read_line_input: "we got a signal" */
+# endif
+		if (!suppress_int)
+			raise_interrupt();
 		pending_int = 1;
 		return TRUE;
 	}
@@ -10184,7 +10192,43 @@ dotrap(void)
 	TRACE(("dotrap returns\n"));
 }
 #else
-# define dotrap()
+static void
+dotrap(void)
+{
+	int status, last_status;
+	char *p;
+
+	if (!pending_int)
+		return;
+
+	status = savestatus;
+	last_status = status;
+	if (status < 0) {
+		status = exitstatus;
+		savestatus = status;
+	}
+	pending_int = 0;
+	barrier();
+
+	TRACE(("dotrap entered\n"));
+	if (evalskip) {
+		pending_int = 1;
+		return;
+	}
+
+	p = trap[SIGINT];
+	if (p) {
+		TRACE(("sig %d is active, will run handler '%s'\n", SIGINT, p));
+		trap_depth++;
+		evalstring(p, 0);
+		trap_depth--;
+		if (evalskip != SKIPFUNC)
+			exitstatus = status;
+	}
+
+	savestatus = last_status;
+	TRACE(("dotrap returns\n"));
+}
 #endif
 
 /* forward declarations - evaluation is fairly recursive business... */
@@ -11853,8 +11897,13 @@ preadfd(void)
 			 */
 # else
 			raise_interrupt();
+			write(STDOUT_FILENO, "^C\n", 3);
 # endif
 			if (trap[SIGINT]) {
+# if ENABLE_PLATFORM_MINGW32
+				pending_int = 1;
+				dotrap();
+# endif
  empty_line_input:
 				buf[0] = '\n';
 				buf[1] = '\0';
@@ -15088,12 +15137,30 @@ trapcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		}
 		free(trap[signo]);
 		trap[signo] = action;
+#if ENABLE_PLATFORM_MINGW32
+		if (signo == SIGINT) {
+			// trap '' INT disables Ctrl-C, anything else enables it
+			if (action && action[0] == '\0') {
+				SetConsoleCtrlHandler(NULL, TRUE);
+				if (line_input_state) {
+					line_input_state->flags |= IGNORE_CTRL_C;
+				}
+			} else {
+				SetConsoleCtrlHandler(NULL, FALSE);
+				if (line_input_state) {
+					line_input_state->flags &= ~IGNORE_CTRL_C;
+				}
+			}
+		}
+#else
 		if (signo != 0 && signo < NSIG)
 			setsignal(signo);
+#endif
 		INT_ON;
  next:
 		ap++;
 	}
+	may_have_traps = trap[SIGINT] && trap[SIGINT][0] != '\0';
 	return exitcode;
 }
 
@@ -15391,10 +15458,14 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 #if ENABLE_PLATFORM_MINGW32
 	if ((uintptr_t)r == 2) {
 		/* ^C pressed, propagate event */
-		if (iflag) {
+		if (trap[SIGINT]) {
+			write(STDOUT_FILENO, "^C", 2);
+			pending_int = 1;
+			dotrap();
+			goto again;
+		} else if (iflag) {
 			raise_interrupt();
-		}
-		else {
+		} else {
 			GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0);
 			exitshell();
 		}

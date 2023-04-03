@@ -3030,6 +3030,10 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 			 && ic_raw == initial_settings.c_cc[VINTR]
 			) {
 				/* Ctrl-C (usually) - stop gathering input */
+#if ENABLE_PLATFORM_MINGW32
+				if (state->flags & IGNORE_CTRL_C)
+					break;
+#endif
 				command_len = 0;
 				break_out = -1; /* "do not append '\n'" */
 				break;
