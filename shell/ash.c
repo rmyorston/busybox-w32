@@ -9088,7 +9088,9 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 	 || (applet_no = find_applet_by_name(prog)) >= 0
 #endif
 	) {
+#if ENABLE_PLATFORM_MINGW32
 		prog = stack_add_ext_space(prog);
+#endif
 		tryexec(IF_FEATURE_SH_STANDALONE(applet_no,) prog, argv, envp);
 		if (applet_no >= 0) {
 			/* We tried execing ourself, but it didn't work.
