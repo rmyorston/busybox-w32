@@ -408,21 +408,31 @@ mingw_spawn_proc(const char **argv)
 	return mingw_spawnvp(P_NOWAIT, argv[0], (char *const *)argv);
 }
 
+static NORETURN void wait_for_child(HANDLE child)
+{
+	DWORD code;
+
+	SetConsoleCtrlHandler(NULL, TRUE);
+	WaitForSingleObject(child, INFINITE);
+	GetExitCodeProcess(child, &code);
+	exit((int)code);
+}
+
 int
 mingw_execvp(const char *cmd, char *const *argv)
 {
-	int ret = (int)mingw_spawnvp(P_WAIT, cmd, argv);
+	intptr_t ret = mingw_spawnvp(P_NOWAIT, cmd, argv);
 	if (ret != -1 || errno == 0)
-		exit(ret);
+		wait_for_child((HANDLE)ret);
 	return ret;
 }
 
 int
 mingw_execve(const char *cmd, char *const *argv, char *const *envp)
 {
-	int ret = (int)mingw_spawn_interpreter(P_WAIT, cmd, argv, envp, 0);
+	intptr_t ret = mingw_spawn_interpreter(P_NOWAIT, cmd, argv, envp, 0);
 	if (ret != -1 || errno == 0)
-		exit(ret);
+		wait_for_child((HANDLE)ret);
 	return ret;
 }
 
