@@ -4828,7 +4828,7 @@ static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
 # if ENABLE_FEATURE_EDITING
 		bb_got_signal = SIGINT; /* for read_line_input: "we got a signal" */
 # endif
-		if (!suppress_int)
+		if (!suppress_int && !(rootshell && iflag))
 			raise_interrupt();
 		pending_int = 1;
 		return TRUE;
