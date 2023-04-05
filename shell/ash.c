@@ -15462,7 +15462,10 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 			write(STDOUT_FILENO, "^C", 2);
 			pending_int = 1;
 			dotrap();
-			goto again;
+			if (!(rootshell && iflag))
+				return (uintptr_t)0;
+			else
+				goto again;
 		} else if (iflag) {
 			raise_interrupt();
 		} else {
