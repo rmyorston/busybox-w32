@@ -121,9 +121,12 @@ struct globals {
 #if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
 	int running_procs;
 	int max_procs;
-#if ENABLE_PLATFORM_MINGW32
+# if ENABLE_PLATFORM_MINGW32
 	HANDLE *procs;
+# endif
 #endif
+#if ENABLE_PLATFORM_MINGW32
+	pid_t pid;
 #endif
 	smalluint xargs_exitcode;
 #if ENABLE_FEATURE_XARGS_SUPPORT_QUOTES
@@ -188,6 +191,35 @@ enum {
 	IF_FEATURE_XARGS_SUPPORT_PARALLEL(    "P:+") \
 	IF_FEATURE_XARGS_SUPPORT_ARGS_FILE(   "a:")
 
+
+#if ENABLE_PLATFORM_MINGW32
+static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
+{
+	if (dwCtrlType == CTRL_C_EVENT || dwCtrlType == CTRL_BREAK_EVENT) {
+# if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
+		if (G.max_procs == 1)
+# endif
+		{
+			if (G.pid > 0)
+				kill(-G.pid, SIGTERM);
+		}
+# if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
+		else {
+			int i;
+
+			for (i = 0; i < G.running_procs; ++i) {
+				pid_t pid = GetProcessId(G.procs[i]);
+				if (pid > 0)
+					kill(-pid, SIGTERM);
+			}
+		}
+# endif
+		exit(128 + SIGINT);
+		return TRUE;
+	}
+	return FALSE;
+}
+#endif
 
 #if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL && ENABLE_PLATFORM_MINGW32
 static int wait_for_slot(int *idx)
@@ -255,10 +287,11 @@ static int xargs_exec(void)
 #if !ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
 	status = spawn_and_wait(G.args);
 #else
-	if (G.max_procs == 1) {
-		status = spawn_and_wait(G.args);
-	} else {
 #if ENABLE_PLATFORM_MINGW32
+	if (G.max_procs == 1) {
+		G.pid = spawn(G.args);
+		status = G.pid < 0 ? -1 : wait4pid(G.pid);
+	} else {
 		int idx;
 		status = !G.running_procs && !G.max_procs ? 0 : wait_for_slot(&idx);
 		if (G.max_procs) {
@@ -275,6 +308,9 @@ static int xargs_exec(void)
 			}
 		}
 #else
+	if (G.max_procs == 1) {
+		status = spawn_and_wait(G.args);
+	} else {
 		pid_t pid;
 		int wstat;
  again:
@@ -723,6 +759,9 @@ int xargs_main(int argc UNUSED_PARAM, char **argv)
 
 	INIT_G();
 
+#if ENABLE_PLATFORM_MINGW32
+	SetConsoleCtrlHandler(ctrl_handler, TRUE);
+#endif
 	opt = getopt32long(argv, OPTION_STR,
 		"no-run-if-empty\0" No_argument "r",
 		&max_args, &max_chars, &G.eof_str, &G.eof_str
