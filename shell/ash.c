@@ -2049,16 +2049,18 @@ _STPUTC(int c, char *p)
 /*
  * prefix -- see if pfx is a prefix of string.
  */
-static char *
+static ALWAYS_INLINE char *
 prefix(const char *string, const char *pfx)
 {
+	return is_prefixed_with(string, pfx);
+#if 0  /* dash implementation: */
 	while (*pfx) {
 		if (*pfx++ != *string++)
 			return NULL;
 	}
 	return (char *) string;
+#endif
 }
-
 /*
  * Check for a valid number.  This should be elsewhere.
  */
@@ -2296,7 +2298,7 @@ struct localvar {
 #define VNOFUNC         0x40    /* don't call the callback function */
 #define VNOSET          0x80    /* do not set variable - just readonly test */
 #define VNOSAVE         0x100   /* when text is on the heap before setvareq */
-#if ENABLE_ASH_RANDOM_SUPPORT
+#if ENABLE_ASH_RANDOM_SUPPORT || BASH_EPOCH_VARS
 # define VDYNAMIC       0x200   /* dynamic variable */
 #else
 # define VDYNAMIC       0
@@ -2319,10 +2321,7 @@ change_lc_ctype(const char *value)
 }
 #endif
 #if ENABLE_ASH_MAIL
-static void chkmail(void);
 static void changemail(const char *var_value) FAST_FUNC;
-#else
-# define chkmail()  ((void)0)
 #endif
 static void changepath(const char *) FAST_FUNC;
 #if ENABLE_ASH_RANDOM_SUPPORT
@@ -3407,7 +3406,7 @@ cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	if (!*dest)
 		dest = ".";
 	path = bltinlookup("CDPATH");
-	while (p = path, (len = padvance(&path, dest)) >= 0) {
+	while (p = path, (len = padvance_magic(&path, dest, 0)) >= 0) {
 		c = *p;
 		p = stalloc(len);
 
@@ -4454,9 +4453,6 @@ getjob(const char *name, int getctl)
 	unsigned num;
 	int c;
 	const char *p;
-#if ENABLE_PLATFORM_POSIX || JOBS_WIN32
-	char *(*match)(const char *, const char *);
-#endif
 
 	jp = curjob;
 	p = name;
@@ -4498,15 +4494,12 @@ getjob(const char *name, int getctl)
 	}
 
 #if ENABLE_PLATFORM_POSIX || JOBS_WIN32
-	match = prefix;
-	if (*p == '?') {
-		match = strstr;
-		p++;
-	}
-
 	found = NULL;
 	while (jp) {
-		if (match(jp->ps[0].ps_cmd, p)) {
+		if (*p == '?'
+		 ? strstr(jp->ps[0].ps_cmd, p + 1)
+		 : prefix(jp->ps[0].ps_cmd, p)
+		) {
 			if (found)
 				goto err;
 			found = jp;
@@ -5802,8 +5795,7 @@ forkchild(struct job *jp, union node *n, int mode)
 
 	closescript();
 
-	if (mode == FORK_NOJOB          /* is it `xxx` ? */
-	 && n && n->type == NCMD        /* is it single cmd? */
+	if (n && n->type == NCMD        /* is it single cmd? */
 	/* && n->ncmd.args->type == NARG - always true? */
 	 && n->ncmd.args && strcmp(n->ncmd.args->narg.text, "trap") == 0
 	 && n->ncmd.args->narg.next == NULL /* "trap" with no arguments */
@@ -5897,10 +5889,12 @@ forkchild(struct job *jp, union node *n, int mode)
 	) {
 		TRACE(("Job hack\n"));
 		/* "jobs": we do not want to clear job list for it,
-		 * instead we remove only _its_ own_ job from job list.
+		 * instead we remove only _its_ own_ job from job list
+		 * (if it has one).
 		 * This makes "jobs .... | cat" more useful.
 		 */
-		freejob(curjob);
+		if (jp)
+			freejob(curjob);
 		return;
 	}
 #endif
@@ -7293,7 +7287,7 @@ evalbackcmd(union node *n, struct backcmd *result
 
 	if (pipe(pip) < 0)
 		ash_msg_and_raise_perror("can't create pipe");
-	/* process substitution uses NULL job/node, like openhere() */
+	/* process substitution uses NULL job, like openhere() */
 	jp = (ctl == CTLBACKQ) ? makejob(/*n,*/ 1) : NULL;
 #if ENABLE_PLATFORM_MINGW32
 	memset(&fs, 0, sizeof(fs));
@@ -7302,9 +7296,9 @@ evalbackcmd(union node *n, struct backcmd *result
 	fs.fd[0] = pip[0];
 	fs.fd[1] = pip[1];
 	fs.fd[2] = ctl;
-	spawn_forkshell(&fs, jp, (ctl == CTLBACKQ) ? n : NULL, FORK_NOJOB);
+	spawn_forkshell(&fs, jp, n, FORK_NOJOB);
 #else
-	if (forkshell(jp, (ctl == CTLBACKQ) ? n : NULL, FORK_NOJOB) == 0) {
+	if (forkshell(jp, n, FORK_NOJOB) == 0) {
 		/* child */
 		FORCE_INT_ON;
 		close(pip[ip]);
@@ -9507,8 +9501,6 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 	const struct alias *ap;
 #endif
 
-	path = path ? path : pathval();
-
 	if (describe_command_verbose) {
 		out1str(command);
 	}
@@ -9533,6 +9525,7 @@ describe_command(char *command, const char *path, int describe_command_verbose)
 	}
 #endif
 	/* Brute force */
+	path = path ? path : pathval();
 	find_command(command, &entry, DO_ABS, path);
 
 	switch (entry.cmdtype) {
@@ -12311,15 +12304,14 @@ setinputstring(char *string)
 #if ENABLE_ASH_MAIL
 
 /* Hash of mtimes of mailboxes */
+/* Cleared to 0 if MAIL or MAILPATH is changed */
 static unsigned mailtime_hash;
-/* Set if MAIL or MAILPATH is changed. */
-static smallint mail_var_path_changed;
 
 /*
  * Print appropriate message(s) if mail has arrived.
- * If mail_var_path_changed is set,
- * then the value of MAIL has mail_var_path_changed,
- * so we just update the values.
+ * If mailtime_hash is zero,
+ * then the value of MAIL has changed,
+ * so we just update the hash value.
  */
 static void
 chkmail(void)
@@ -12338,10 +12330,9 @@ chkmail(void)
 		int len;
 
 		len = padvance_magic(&mpath, nullstr, 2);
-		if (!len)
+		if (len < 0)
 			break;
 		p = stackblock();
-			break;
 		if (*p == '\0')
 			continue;
 		for (q = p; *q; q++)
@@ -12357,20 +12348,23 @@ chkmail(void)
 		/* Very simplistic "hash": just a sum of all mtimes */
 		new_hash += (unsigned)statb.st_mtime;
 	}
-	if (!mail_var_path_changed && mailtime_hash != new_hash) {
+	if (mailtime_hash != new_hash) {
 		if (mailtime_hash != 0)
 			out2str("you have mail\n");
 		mailtime_hash = new_hash;
 	}
-	mail_var_path_changed = 0;
 	popstackmark(&smark);
 }
 
 static void FAST_FUNC
 changemail(const char *val UNUSED_PARAM)
 {
-	mail_var_path_changed = 1;
+	mailtime_hash = 0;
 }
+
+#else
+
+# define chkmail()  ((void)0)
 
 #endif /* ASH_MAIL */
 
@@ -14707,7 +14701,7 @@ static char *
 find_dot_file(char *basename)
 {
 	char *fullname;
-	const char *path = pathval();
+	const char *path;
 	struct stat statb;
 	int len;
 
@@ -14715,6 +14709,7 @@ find_dot_file(char *basename)
 	if (strchr(basename, '/') IF_PLATFORM_MINGW32(|| strchr(basename, '\\')))
 		return basename;
 
+	path = pathval();
 	while ((len = padvance(&path, basename)) >= 0) {
 		fullname = stackblock();
 		if ((!pathopt || *pathopt == 'f')

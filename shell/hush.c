@@ -7468,6 +7468,9 @@ static void re_execute_shell(char ***to_free, const char *s,
 		if (!cur->flg_export || cur->flg_read_only)
 			cnt += 2;
 	}
+# if ENABLE_HUSH_LINENO_VAR
+	cnt += 2;
+# endif
 # if ENABLE_HUSH_FUNCTIONS
 	for (funcp = G.top_func; funcp; funcp = funcp->next)
 		cnt += 3;
@@ -7489,6 +7492,10 @@ static void re_execute_shell(char ***to_free, const char *s,
 			*pp++ = cur->varstr;
 		}
 	}
+# if ENABLE_HUSH_LINENO_VAR
+	*pp++ = (char *) "-L";
+	*pp++ = utoa(G.execute_lineno);
+# endif
 # if ENABLE_HUSH_FUNCTIONS
 	for (funcp = G.top_func; funcp; funcp = funcp->next) {
 		*pp++ = (char *) "-F";
@@ -10260,6 +10267,20 @@ int hush_main(int argc, char **argv)
 	INIT_G();
 	if (EXIT_SUCCESS != 0) /* if EXIT_SUCCESS == 0, it is already done */
 		G.last_exitcode = EXIT_SUCCESS;
+#if !BB_MMU
+	/* "Big heredoc" support via "sh -< STRING" invocation.
+	 * Check it first (do not bother to run the usual init code,
+	 * it is not needed for this case).
+	 */
+	if (argv[1]
+	 && argv[1][0] == '-' && argv[1][1] == '<' /*&& !argv[1][2]*/
+	 /*&& argv[2] && !argv[3] - we don't check some conditions */
+	) {
+		full_write1_str(argv[2]);
+		_exit(0);
+	}
+	G.argv0_for_re_execing = argv[0];
+#endif
 #if ENABLE_HUSH_TRAP
 # if ENABLE_HUSH_FUNCTIONS
 	G.return_exitcode = -1;
@@ -10269,9 +10290,6 @@ int hush_main(int argc, char **argv)
 
 #if ENABLE_HUSH_FAST
 	G.count_SIGCHLD++; /* ensure it is != G.handled_SIGCHLD */
-#endif
-#if !BB_MMU
-	G.argv0_for_re_execing = argv[0];
 #endif
 
 	cached_getpid = getpid();   /* for tcsetpgrp() during init */
@@ -10388,7 +10406,10 @@ int hush_main(int argc, char **argv)
 		int opt = getopt(argc, argv, "+" /* stop at 1st non-option */
 				"cexinsl"
 #if !BB_MMU
-				"<:$:R:V:"
+				"$:R:V:"
+# if ENABLE_HUSH_LINENO_VAR
+				"L:"
+# endif
 # if ENABLE_HUSH_FUNCTIONS
 				"F:"
 # endif
@@ -10438,9 +10459,6 @@ int hush_main(int argc, char **argv)
 			flags |= OPT_login;
 			break;
 #if !BB_MMU
-		case '<': /* "big heredoc" support */
-			full_write1_str(optarg);
-			_exit(0);
 		case '$': {
 			unsigned long long empty_trap_mask;
 
@@ -10490,6 +10508,11 @@ int hush_main(int argc, char **argv)
 		case 'V':
 			set_local_var(xstrdup(optarg), opt == 'R' ? SETFLAG_MAKE_RO : 0);
 			break;
+# if ENABLE_HUSH_LINENO_VAR
+		case 'L':
+			G.parse_lineno = xatou(optarg);
+			break;
+# endif
 # if ENABLE_HUSH_FUNCTIONS
 		case 'F': {
 			struct function *funcp = new_function(optarg);
@@ -11276,6 +11299,9 @@ static int FAST_FUNC builtin_local(char **argv)
 		bb_error_msg("%s: not in a function", argv[0]);
 		return EXIT_FAILURE; /* bash compat */
 	}
+//TODO? ash and bash support "local -" special form,
+//which saves/restores $- around function call (including async returns, such as ^C)
+//(IOW: it makes "set +/-..." effects local)
 	argv++;
 	/* Since all builtins run in a nested variable level,
 	 * need to use level - 1 here. Or else the variable will be removed at once

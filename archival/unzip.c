@@ -56,7 +56,7 @@
 //kbuild:lib-$(CONFIG_UNZIP) += unzip.o
 
 //usage:#define unzip_trivial_usage
-//usage:       "[-lnojpq] FILE[.zip] [FILE]... [-x FILE]... [-d DIR]"
+//usage:       "[-lnojpqK] FILE[.zip] [FILE]... [-x FILE]... [-d DIR]"
 //usage:#define unzip_full_usage "\n\n"
 //usage:       "Extract FILEs from ZIP archive\n"
 //usage:     "\n	-l	List contents (with -q for short form)"
@@ -66,6 +66,7 @@
 //usage:     "\n	-p	Write to stdout"
 //usage:     "\n	-t	Test"
 //usage:     "\n	-q	Quiet"
+//usage:     "\n	-K	Do not clear SUID bit"
 //usage:     "\n	-x FILE	Exclude FILEs"
 //usage:     "\n	-d DIR	Extract into DIR"
 
@@ -497,6 +498,7 @@ int unzip_main(int argc, char **argv)
 		OPT_l = (1 << 0),
 		OPT_x = (1 << 1),
 		OPT_j = (1 << 2),
+		OPT_K = (1 << 3),
 	};
 	unsigned opts;
 	smallint quiet = 0;
@@ -560,9 +562,14 @@ int unzip_main(int argc, char **argv)
  *    204372                   1 file
  */
 
+//TODO: accept and ignore these?
+// -a	convert to text files with 't' label, -aa: all files
+// -b	do not convert to text - bbox: we don't convert anything
+// -D	skip restoration of timestamps for extracted items - bbox: we don't restore these (yet?)
+// -X	restore user:group ownership
 	opts = 0;
 	/* '-' makes getopt return 1 for non-options */
-	while ((i = getopt(argc, argv, "-d:lnotpqxjv")) != -1) {
+	while ((i = getopt(argc, argv, "-d:lnotpqxjvK")) != -1) {
 		switch (i) {
 		case 'd':  /* Extract to base directory */
 			base_dir = optarg;
@@ -584,6 +591,7 @@ int unzip_main(int argc, char **argv)
 			xmove_fd(xopen("/dev/null", O_WRONLY), STDOUT_FILENO);
 			/*fallthrough*/
 
+// NB: -c extract files to stdout/screen (unlike -p, also prints .zip and file names to stdout)
 		case 'p': /* Extract files to stdout */
 			dst_fd = STDOUT_FILENO;
 			/*fallthrough*/
@@ -603,6 +611,10 @@ int unzip_main(int argc, char **argv)
 
 		case 'j':
 			opts |= OPT_j;
+			break;
+
+		case 'K':
+			opts |= OPT_K;
 			break;
 
 		case 1:
@@ -822,7 +834,10 @@ int unzip_main(int argc, char **argv)
 # endif
 			if ((cdf.fmt.version_made_by >> 8) == 3) {
 				/* This archive is created on Unix */
-				dir_mode = file_mode = (cdf.fmt.external_attributes >> 16);
+				file_mode = (cdf.fmt.external_attributes >> 16);
+				if (!(opts & OPT_K))
+					file_mode &= ~(mode_t)(S_ISUID | S_ISGID);
+				dir_mode = file_mode;
 			}
 		}
 #endif
@@ -847,6 +862,7 @@ int unzip_main(int argc, char **argv)
 		unzip_skip(zip.fmt.extra_len);
 
 		/* Guard against "/abspath", "/../" and similar attacks */
+// NB: UnZip 6.00 has option -: to disable this
 		overlapping_strcpy(dst_fn, strip_unsafe_prefix(dst_fn));
 
 		/* Filter zip entries */
