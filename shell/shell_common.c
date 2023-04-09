@@ -19,11 +19,7 @@
 #include "libbb.h"
 #include "shell_common.h"
 
-#if !ENABLE_PLATFORM_MINGW32 || ENABLE_ASH_IGNORE_CR
 const char defifsvar[] ALIGN1 = "IFS= \t\n";
-#else
-const char defifsvar[] ALIGN1 = "IFS= \t\n\r";
-#endif
 const char defoptindvar[] ALIGN1 = "OPTIND=1";
 
 /* read builtin */
@@ -261,10 +257,6 @@ shell_builtin_read(struct builtin_read_params *params)
 
 		c = buffer[bufpos];
 #if ENABLE_PLATFORM_MINGW32
-# if !ENABLE_ASH_IGNORE_CR
-		if (c == '\r')
-			continue;
-# else
 		if (c == '\n') {
 			if (backslash == 2 || (bufpos > 0 && buffer[bufpos - 1] == '\r')) {
 				/* We saw either:
@@ -279,11 +271,10 @@ shell_builtin_read(struct builtin_read_params *params)
 			 * process ?? */
 			backslash = 0;
 		}
-# endif
 #endif
 		if (!(read_flags & BUILTIN_READ_RAW)) {
 			if (backslash) {
-#if ENABLE_ASH_IGNORE_CR
+#if ENABLE_PLATFORM_MINGW32
 				if (c == '\r') {
 					/* We have BS CR, keep CR for now, might see LF next */
 					backslash = 2;

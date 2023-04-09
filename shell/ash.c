@@ -192,16 +192,6 @@
 //config:	Enable support for the 'nocaseglob' option, which allows
 //config:	case-insensitive filename globbing.
 //config:
-//config:config ASH_IGNORE_CR
-//config:	bool "Ignore CR in CRLF line endings"
-//config:	default y
-//config:	depends on (ASH || SH_IS_ASH || BASH_IS_ASH) && PLATFORM_MINGW32
-//config:	help
-//config:	Allow CRs to be ignored when they appear in CRLF line endings
-//config:	but not in other circumstances.  This isn't a general-purpose
-//config:	option:  it only covers certain new cases which are under test.
-//config:	Enabled by default.  May be removed in future.
-//config:
 //config:endif # ash options
 
 //applet:IF_ASH(APPLET(ash, BB_DIR_BIN, BB_SUID_DROP))
@@ -6807,7 +6797,7 @@ ifsbreakup(char *string, struct arglist *arglist)
 	const char *ifs, *realifs;
 	int ifsspc;
 	int nulonly;
-#if ENABLE_ASH_IGNORE_CR
+#if ENABLE_PLATFORM_MINGW32
 	int lshift = 0;
 #endif
 
@@ -6820,13 +6810,13 @@ ifsbreakup(char *string, struct arglist *arglist)
 		do {
 			int afternul;
 
-#if ENABLE_ASH_IGNORE_CR
+#if ENABLE_PLATFORM_MINGW32
 			/* Adjust region offsets for left-shifted string. */
 			ifsp->begoff -= lshift;
 			ifsp->endoff -= lshift;
 #endif
 			p = string + ifsp->begoff;
-#if ENABLE_ASH_IGNORE_CR
+#if ENABLE_PLATFORM_MINGW32
 			if (ifsp->endoff > ifsp->begoff + 1) {
 				/* Transform CRLF to LF.  Skip regions having zero or
 				 * one characters:  they can't contain CRLF.  If the
@@ -11788,7 +11778,7 @@ static void popstring(void)
 	INT_ON;
 }
 
-#if ENABLE_ASH_IGNORE_CR
+#if ENABLE_PLATFORM_MINGW32
 /*
  * Wrapper around nonblock_immune_read() to remove CRs, but only from
  * CRLF pairs.  The tricky part is handling a CR at the end of the buffer.
@@ -11846,7 +11836,7 @@ preadfd(void)
 #if ENABLE_FEATURE_EDITING
  /* retry: */
 	if (!iflag || g_parsefile->pf_fd != STDIN_FILENO)
-#if ENABLE_ASH_IGNORE_CR
+#if ENABLE_PLATFORM_MINGW32
 		nr = nonblock_immune_wrapper(g_parsefile, buf, IBUFSIZ - 1);
 #else
 		nr = nonblock_immune_read(g_parsefile->pf_fd, buf, IBUFSIZ - 1);
@@ -11932,7 +11922,7 @@ preadfd(void)
 		}
 	}
 #else
-# if ENABLE_ASH_IGNORE_CR
+# if ENABLE_PLATFORM_MINGW32
 	nr = nonblock_immune_wrapper(g_parsefile, buf, IBUFSIZ - 1);
 # else
 	nr = nonblock_immune_read(g_parsefile->pf_fd, buf, IBUFSIZ - 1);
@@ -12007,9 +11997,7 @@ preadbuffer(void)
 		more--;
 
 		c = *q;
-		/* Remove CR from input buffer as an alternative to ASH_IGNORE_CR. */
-		if (c == '\0' || (c == '\r' &&
-					ENABLE_PLATFORM_MINGW32 && !ENABLE_ASH_IGNORE_CR)) {
+		if (c == '\0') {
 			memmove(q, q + 1, more);
 		} else {
 			q++;
@@ -15160,7 +15148,9 @@ trapcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
  next:
 		ap++;
 	}
+#if ENABLE_PLATFORM_MINGW32
 	may_have_traps = trap[SIGINT] && trap[SIGINT][0] != '\0';
+#endif
 	return exitcode;
 }
 
