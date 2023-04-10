@@ -875,9 +875,13 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 # endif
 # if ENABLE_SHELL_ASH || ENABLE_SHELL_HUSH
 		if (state->get_exe_name) {
-			i = 0;
+#  if ENABLE_SHELL_ASH || (ENABLE_SHELL_HUSH && ENABLE_HUSH_FUNCTIONS)
+			exe_state e = { 0, 0, NULL };
+#  else
+			exe_state e = { 0, 0 };
+#  endif
 			for (;;) {
-				const char *b = state->get_exe_name(i++);
+				const char *b = state->get_exe_name(&e);
 				if (!b)
 					break;
 				if (strncmp(basecmd, b, baselen) == 0)

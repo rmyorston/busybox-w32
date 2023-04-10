@@ -1924,7 +1924,14 @@ unsigned size_from_HISTFILESIZE(const char *hp) FAST_FUNC;
 # else
 #  define MAX_HISTORY 0
 # endif
-typedef const char *get_exe_name_t(int i) FAST_FUNC;
+typedef struct exe_state {
+	int e_type;		/* type of tab completion:  builtin, alias, function */
+	int e_index;	/* index of current table entry or hash bucket */
+# if ENABLE_SHELL_ASH || (ENABLE_SHELL_HUSH && ENABLE_HUSH_FUNCTIONS)
+	void *e_ptr;	/* current position in linked list */
+# endif
+} exe_state;
+typedef const char *get_exe_name_t(exe_state *e) FAST_FUNC;
 typedef const char *sh_get_var_t(const char *name) FAST_FUNC;
 typedef struct line_input_t {
 	int flags;
