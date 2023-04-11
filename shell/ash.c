@@ -10298,7 +10298,7 @@ ash_command_name(struct exe_state *e)
 		if (index < ARRAY_SIZE(builtintab))
 			return builtintab[e->e_index++].name + 1;
 		e->e_type++;
-		index = 0;
+		index = -1;
 		/* e->e_ptr = NULL; */
 		/* fall through */
 	case 1:
@@ -10318,7 +10318,7 @@ ash_command_name(struct exe_state *e)
 		}
 # if ENABLE_ASH_ALIAS
 		e->e_type++;
-		index = 0;
+		index = -1;
 		e->e_ptr = NULL;
 		/* fall through */
 	case 2:
