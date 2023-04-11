@@ -10286,44 +10286,56 @@ find_builtin(const char *name)
 static const char * FAST_FUNC
 ash_command_name(struct exe_state *e)
 {
-	if (e->e_type == 0) {
-		if (/*e->e_index >= 0 &&*/ e->e_index < ARRAY_SIZE(builtintab)) {
+	int index;
+	struct tblentry *cmdp;
+# if ENABLE_ASH_ALIAS
+	struct alias *ap;
+# endif
+
+	index = e->e_index;
+	switch (e->e_type) {
+	case 0:
+		if (index < ARRAY_SIZE(builtintab))
 			return builtintab[e->e_index++].name + 1;
-		}
 		e->e_type++;
-		e->e_index = 0;
-		e->e_ptr = cmdtable[0];
-	}
-	if (e->e_type == 1) {
-		struct tblentry *cmdp = (struct tblentry *)e->e_ptr;
-		while (e->e_index < CMDTABLESIZE) {
+		index = 0;
+		/* e->e_ptr = NULL; */
+		/* fall through */
+	case 1:
+		cmdp = (struct tblentry *)e->e_ptr;
+		for (;;) {
 			while (cmdp) {
 				if (cmdp->cmdtype == CMDFUNCTION) {
+					e->e_index = index;
 					e->e_ptr = cmdp->next;
 					return cmdp->cmdname;
 				}
 				cmdp = cmdp->next;
 			}
-			cmdp = cmdtable[++e->e_index];
+			if (++index == CMDTABLESIZE)
+				break;
+			cmdp = cmdtable[index];
 		}
 # if ENABLE_ASH_ALIAS
 		e->e_type++;
-		e->e_index = 0;
-		e->e_ptr = atab[0];
-# endif
-	}
-# if ENABLE_ASH_ALIAS
-	if (e->e_type == 2) {
-		struct alias *ap = (struct alias *)e->e_ptr;
-		while (e->e_index < ATABSIZE) {
-			while (ap) {
+		index = 0;
+		e->e_ptr = NULL;
+		/* fall through */
+	case 2:
+		ap = (struct alias *)e->e_ptr;
+		for (;;) {
+			if (ap) {
+				e->e_index = index;
 				e->e_ptr = ap->next;
 				return ap->name;
 			}
-			ap = atab[++e->e_index];
+			if (++index == ATABSIZE)
+				break;
+			ap = atab[index];
 		}
-	}
 # endif
+		break;
+	}
 	return NULL;
 }
 #endif

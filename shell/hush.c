@@ -8222,33 +8222,31 @@ static const struct built_in_command *find_builtin(const char *name)
 #if ENABLE_HUSH_JOB && ENABLE_FEATURE_TAB_COMPLETION
 static const char * FAST_FUNC hush_command_name(exe_state *e)
 {
-	if (e->e_type == 0) {
-		if (/*e->e_index >= 0 && */ e->e_index < ARRAY_SIZE(bltins1)) {
+	switch (e->e_type) {
+	case 0:
+		if (e->e_index < ARRAY_SIZE(bltins1))
 			return bltins1[e->e_index++].b_cmd;
-		}
 		e->e_type++;
 		e->e_index = 0;
 		/* e->e_ptr = NULL; */
-	}
-	if (e->e_type == 1) {
-		if (e->e_index < ARRAY_SIZE(bltins2)) {
+		/* fall through */
+	case 1:
+		if (e->e_index < ARRAY_SIZE(bltins2))
 			return bltins2[e->e_index++].b_cmd;
-		}
 # if ENABLE_HUSH_FUNCTIONS
 		e->e_type++;
 		/* e->e_index = 0; */
 		e->e_ptr = G.top_func;
-# endif
-	}
-# if ENABLE_HUSH_FUNCTIONS
-	if (e->e_type == 2) {
-		struct function *funcp = (struct function *)e->e_ptr;
-		while (funcp) {
+		/* fall through */
+	case 2:
+		if (e->e_ptr) {
+			struct function *funcp = (struct function *)e->e_ptr;
 			e->e_ptr = funcp->next;
 			return funcp->name;
 		}
-	}
 # endif
+		break;
+	}
 	return NULL;
 }
 #endif
