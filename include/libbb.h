@@ -1925,9 +1925,9 @@ unsigned size_from_HISTFILESIZE(const char *hp) FAST_FUNC;
 #  define MAX_HISTORY 0
 # endif
 typedef struct exe_state {
-	int e_type;		/* type of tab completion:  builtin, alias, function */
 	int e_index;	/* index of current table entry or hash bucket */
 # if ENABLE_SHELL_ASH || (ENABLE_SHELL_HUSH && ENABLE_HUSH_FUNCTIONS)
+	int e_type;		/* type of tab completion:  builtin, alias, function */
 	void *e_ptr;	/* current position in linked list */
 # endif
 } exe_state;
