@@ -368,9 +368,7 @@ mingw_spawnvp(int mode, const char *cmd, char *const *argv)
 		}
 		if (unix_path(cmd))
 			cmd = bb_basename(cmd);
-	}
-
-	if ((path = find_first_executable(cmd)) != NULL) {
+	} else if ((path = find_first_executable(cmd)) != NULL) {
 		ret = mingw_spawn_interpreter(mode, path, argv, NULL, 0);
 		free(path);
 		return ret;
