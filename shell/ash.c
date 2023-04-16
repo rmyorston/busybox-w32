@@ -9081,9 +9081,11 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 #endif
 	) {
 #if ENABLE_PLATFORM_MINGW32
-		prog = stack_add_ext_space(prog);
-#endif
+		char *progext = stack_add_ext_space(prog);
+		tryexec(IF_FEATURE_SH_STANDALONE(applet_no,) progext, argv, envp);
+#else
 		tryexec(IF_FEATURE_SH_STANDALONE(applet_no,) prog, argv, envp);
+#endif
 		if (applet_no >= 0) {
 			/* We tried execing ourself, but it didn't work.
 			 * Maybe /proc/self/exe doesn't exist?
@@ -9094,15 +9096,15 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 		e = errno;
 #if ENABLE_PLATFORM_MINGW32
 		if (unix_path(prog)) {
-# if ENABLE_FEATURE_SH_STANDALONE
 			const char *name = bb_basename(prog);
+# if ENABLE_FEATURE_SH_STANDALONE
 			if ((applet_no = find_applet_by_name(name)) >= 0) {
 				tryexec(applet_no, name, argv, envp);
 				e = errno;
 			}
 # endif
-			if (!find_builtin(bb_basename(prog))) {
-				argv[0] = (char *)bb_basename(prog);
+			if (!find_builtin(name)) {
+				argv[0] = (char *)name;
 				goto try_PATH;
 			}
 		}
@@ -14860,9 +14862,19 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 		fullname = stack_add_ext_space(name);
 		if (add_win32_extension(fullname) || file_is_executable(fullname)) {
 			return;
-		} else if (unix_path(name) && !find_builtin(bb_basename(name))) {
+		} else if (unix_path(name)) {
 			name = (char *)bb_basename(name);
-			act |= DO_NOFUNC;
+			if (
+# if ENABLE_FEATURE_SH_STANDALONE
+					find_applet_by_name(name) >= 0 ||
+# endif
+					!find_builtin(bb_basename(name))
+			) {
+				act |= DO_NOFUNC;
+			} else if (act & DO_ABS) {
+				entry->cmdtype = CMDUNKNOWN;
+				return;
+			}
 		} else if (act & DO_ABS) {
 			entry->cmdtype = CMDUNKNOWN;
 			return;
