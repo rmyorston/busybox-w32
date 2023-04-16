@@ -23,6 +23,7 @@
 #include "libbb.h"
 
 /* Turn on nonblocking I/O on a fd */
+#if !ENABLE_PLATFORM_MINGW32
 int FAST_FUNC ndelay_on(int fd)
 {
 	int flags = fcntl(fd, F_GETFL);
@@ -45,6 +46,7 @@ void FAST_FUNC close_on_exec_on(int fd)
 {
 	fcntl(fd, F_SETFD, FD_CLOEXEC);
 }
+#endif
 
 char* FAST_FUNC strncpy_IFNAMSIZ(char *dst, const char *src)
 {
