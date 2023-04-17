@@ -8220,7 +8220,7 @@ static const struct built_in_command *find_builtin(const char *name)
 }
 
 #if ENABLE_HUSH_JOB && ENABLE_FEATURE_TAB_COMPLETION
-static const char * FAST_FUNC get_builtin_name(int i)
+static const char * FAST_FUNC hush_command_name(int i)
 {
 	if (/*i >= 0 && */ i < ARRAY_SIZE(bltins1)) {
 		return bltins1[i].b_cmd;
@@ -8229,6 +8229,16 @@ static const char * FAST_FUNC get_builtin_name(int i)
 	if (i < ARRAY_SIZE(bltins2)) {
 		return bltins2[i].b_cmd;
 	}
+# if ENABLE_HUSH_FUNCTIONS
+	{
+		struct function *funcp;
+		i -= ARRAY_SIZE(bltins2);
+		for (funcp = G.top_func; funcp; funcp = funcp->next) {
+			if (--i < 0)
+				return funcp->name;
+		}
+	}
+# endif
 	return NULL;
 }
 #endif
@@ -10716,7 +10726,7 @@ int hush_main(int argc, char **argv)
 # if ENABLE_FEATURE_EDITING
 		G.line_input_state = new_line_input_t(FOR_SHELL);
 #  if ENABLE_FEATURE_TAB_COMPLETION
-		G.line_input_state->get_exe_name = get_builtin_name;
+		G.line_input_state->get_exe_name = hush_command_name;
 #  endif
 #  if EDITING_HAS_sh_get_var
 		G.line_input_state->sh_get_var = get_local_var_value;
@@ -11147,6 +11157,12 @@ static int FAST_FUNC builtin_umask(char **argv)
 #if ENABLE_HUSH_EXPORT || ENABLE_HUSH_TRAP
 static void print_escaped(const char *s)
 {
+//TODO? bash "set" does not quote variables which contain only alnums and "%+,-./:=@_~",
+// (but "export" quotes all variables, even with only these chars).
+// I think quoting strings with %+,=~ looks better
+// (example: "set" printing var== instead of var='=' looks strange)
+// IOW: do not quote "-./:@_": / is used in pathnames, : in PATH, -._ often in file names, @ in emails
+
 	if (*s == '\'')
 		goto squote;
 	do {
@@ -11401,8 +11417,17 @@ static int FAST_FUNC builtin_set(char **argv)
 
 	if (arg == NULL) {
 		struct variable *e;
-		for (e = G.top_var; e; e = e->next)
-			puts(e->varstr);
+		for (e = G.top_var; e; e = e->next) {
+			const char *s = e->varstr;
+			const char *p = strchr(s, '=');
+
+			if (!p) /* wtf? take next variable */
+				continue;
+			/* var= */
+			printf("%.*s", (int)(p - s) + 1, s);
+			print_escaped(p + 1);
+			putchar('\n');
+		}
 		return EXIT_SUCCESS;
 	}
 
