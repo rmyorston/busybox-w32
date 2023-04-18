@@ -59,7 +59,12 @@
 //usage:       "[if=FILE] [of=FILE] [" IF_FEATURE_DD_IBS_OBS("ibs=N obs=N/") "bs=N] [count=N] [skip=N] [seek=N]"
 //usage:	IF_FEATURE_DD_IBS_OBS("\n"
 //usage:       "	[conv=notrunc|noerror|sync|fsync]\n"
+//usage:	IF_NOT_PLATFORM_MINGW32(
 //usage:       "	[iflag=skip_bytes|count_bytes|fullblock|direct] [oflag=seek_bytes|append|direct]"
+//usage:	)
+//usage:	IF_PLATFORM_MINGW32(
+//usage:       "	[iflag=skip_bytes|count_bytes|fullblock] [oflag=seek_bytes|append]"
+//usage:	)
 //usage:	)
 //usage:#define dd_full_usage "\n\n"
 //usage:       "Copy a file with converting and formatting\n"
@@ -84,8 +89,10 @@
 //usage:     "\n	iflag=skip_bytes	skip=N is in bytes"
 //usage:     "\n	iflag=count_bytes	count=N is in bytes"
 //usage:     "\n	oflag=seek_bytes	seek=N is in bytes"
+//usage:	IF_NOT_PLATFORM_MINGW32(
 //usage:     "\n	iflag=direct	O_DIRECT input"
 //usage:     "\n	oflag=direct	O_DIRECT output"
+//usage:	)
 //usage:     "\n	iflag=fullblock	Read full blocks"
 //usage:     "\n	oflag=append	Open output in append mode"
 //usage:	)
@@ -106,6 +113,10 @@
 
 #include "libbb.h"
 #include "common_bufsiz.h"
+
+#if ENABLE_PLATFORM_MINGW32
+# undef O_DIRECT
+#endif
 
 /* This is a NOEXEC applet. Be very careful! */
 
@@ -144,13 +155,13 @@ enum {
 	FLAG_SKIP_BYTES    = (1 << 5) * ENABLE_FEATURE_DD_IBS_OBS,
 	FLAG_COUNT_BYTES   = (1 << 6) * ENABLE_FEATURE_DD_IBS_OBS,
 	FLAG_FULLBLOCK     = (1 << 7) * ENABLE_FEATURE_DD_IBS_OBS,
-	FLAG_IDIRECT       = (1 << 8) * ENABLE_FEATURE_DD_IBS_OBS,
+	FLAG_IDIRECT       = (1 << 8) * ENABLE_FEATURE_DD_IBS_OBS * ENABLE_PLATFORM_POSIX,
 	/* end of input flags */
 	/* start of output flags */
 	FLAG_OFLAG_SHIFT   = 9,
 	FLAG_SEEK_BYTES    = (1 << 9) * ENABLE_FEATURE_DD_IBS_OBS,
 	FLAG_APPEND        = (1 << 10) * ENABLE_FEATURE_DD_IBS_OBS,
-	FLAG_ODIRECT       = (1 << 11) * ENABLE_FEATURE_DD_IBS_OBS,
+	FLAG_ODIRECT       = (1 << 11) * ENABLE_FEATURE_DD_IBS_OBS * ENABLE_PLATFORM_POSIX,
 	/* end of output flags */
 	FLAG_TWOBUFS       = (1 << 12) * ENABLE_FEATURE_DD_IBS_OBS,
 	FLAG_COUNT         = 1 << 13,
@@ -223,7 +234,9 @@ static ssize_t dd_read(void *ibuf, size_t ibs)
 	ssize_t n;
 
 #if ENABLE_FEATURE_DD_IBS_OBS
+# if !ENABLE_PLATFORM_MINGW32
  read_again:
+# endif
 	if (G.flags & FLAG_FULLBLOCK)
 		n = full_read(ifd, ibuf, ibs);
 	else
@@ -243,7 +256,9 @@ static bool write_and_stats(const void *buf, size_t len, size_t obs,
 {
 	ssize_t n;
 
+#if !ENABLE_PLATFORM_MINGW32
  IF_FEATURE_DD_IBS_OBS(write_again:)
+#endif
 	n = full_write(ofd, buf, len);
 #if ENABLE_FEATURE_DD_IBS_OBS
 # ifdef O_DIRECT
@@ -331,9 +346,9 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 	static const char conv_words[] ALIGN1 =
 		"notrunc\0""sync\0""noerror\0""fsync\0""swab\0";
 	static const char iflag_words[] ALIGN1 =
-		"skip_bytes\0""count_bytes\0""fullblock\0""direct\0";
+		"skip_bytes\0""count_bytes\0""fullblock\0"IF_PLATFORM_POSIX("direct\0");
 	static const char oflag_words[] ALIGN1 =
-		"seek_bytes\0append\0""direct\0";
+		"seek_bytes\0append\0"IF_PLATFORM_POSIX("direct\0");
 #endif
 #if ENABLE_FEATURE_DD_STATUS
 	static const char status_words[] ALIGN1 =
