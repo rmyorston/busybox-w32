@@ -743,14 +743,6 @@ static void input_forward(void)
 //Also, perhaps "foo b<TAB> needs to complete to "foo bar" <cursor>,
 //not "foo bar <cursor>...
 
-# if ENABLE_PLATFORM_MINGW32
-/* use case-insensitive comparisons for filenames */
-#  define is_prefixed_with(s, k) is_prefixed_with_case(s, k)
-#  define qsort_string_vector(s, c) qsort_string_vector_case(s, c)
-#  define strcmp(s, t) strcasecmp(s, t)
-#  define strncmp(s, t, n) strncasecmp(s, t, n)
-# endif
-
 static void free_tab_completion_data(void)
 {
 	if (matches) {
@@ -761,8 +753,15 @@ static void free_tab_completion_data(void)
 	}
 }
 
-static void add_match(char *matched)
+#if !ENABLE_PLATFORM_MINGW32
+# define add_match(m, s) add_match(m)
+#endif
+
+static void add_match(char *matched, int sensitive)
 {
+# if ENABLE_PLATFORM_MINGW32
+	size_t len;
+# endif
 	unsigned char *p = (unsigned char*)matched;
 	while (*p) {
 		/* ESC attack fix: drop any string with control chars */
@@ -779,10 +778,25 @@ static void add_match(char *matched)
 		}
 		p++;
 	}
+# if ENABLE_PLATFORM_MINGW32
+	/* The case-sensitivity flag is stored after NUL terminator */
+	len = strlen(matched);
+	matched = xrealloc(matched, len + 2);
+	matched[len + 1] = sensitive;
+# endif
 	matches = xrealloc_vector(matches, 4, num_matches);
 	matches[num_matches] = matched;
 	num_matches++;
 }
+
+# if ENABLE_PLATFORM_MINGW32
+static int is_case_sensitive(const char *p)
+{
+	while (*p++)
+		;
+	return *p;
+}
+# endif
 
 # if ENABLE_FEATURE_USERNAME_COMPLETION
 /* Replace "~user/..." with "/homedir/...".
@@ -835,7 +849,7 @@ static NOINLINE unsigned complete_username(const char *ud)
 	while ((pw = getpwent()) != NULL) {
 		/* Null usernames should result in all users as possible completions. */
 		if (/* !ud[0] || */ is_prefixed_with(pw->pw_name, ud)) {
-			add_match(xasprintf("~%s/", pw->pw_name));
+			add_match(xasprintf("~%s/", pw->pw_name), TRUE);
 		}
 	}
 	endpwent(); /* don't keep password file open */
@@ -944,7 +958,7 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 		const char *p = applet_names;
 		while (*p) {
 			if (strncmp(basecmd, p, baselen) == 0 && is_applet_preferred(p))
-				add_match(xstrdup(p));
+				add_match(xstrdup(p), TRUE);
 			while (*p++ != '\0')
 				continue;
 		}
@@ -957,7 +971,7 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 				if (!b)
 					break;
 				if (strncmp(basecmd, b, baselen) == 0)
-					add_match(xstrdup(b));
+					add_match(xstrdup(b), TRUE);
 			}
 		}
 # endif
@@ -991,7 +1005,11 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 			if (!basecmd[0] && DOT_OR_DOTDOT(name_found))
 				continue;
 			/* match? */
+# if ENABLE_PLATFORM_MINGW32
+			if (strncasecmp(basecmd, name_found, baselen) != 0)
+# else
 			if (strncmp(basecmd, name_found, baselen) != 0)
+# endif
 				continue; /* no */
 
 			found = concat_path_file(lpath, name_found);
@@ -1025,7 +1043,7 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 					goto cont;
 			}
 			/* add it to the list */
-			add_match(found);
+			add_match(found, FALSE);
 			continue;
  cont:
 			free(found);
@@ -1297,11 +1315,17 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 	size_t len_found;
 	/* Length of string used for matching */
 	unsigned match_pfx_len = match_pfx_len;
-#if ENABLE_PLATFORM_MINGW32
+# if ENABLE_PLATFORM_MINGW32
+	int chosen_index = 0;
+	int chosen_sens = FALSE;
 	unsigned orig_pfx_len;
 	char *target;
 	const char *source;
-#endif
+#  define first_match 0
+# else
+#  define chosen_index 0
+#  define first_match 1
+# endif
 	int find_type;
 # if ENABLE_UNICODE_SUPPORT
 	/* cursor pos in command converted to multibyte form */
@@ -1366,9 +1390,9 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 	{
 		const char *e = match_buf + strlen(match_buf);
 		const char *s = e - match_pfx_len;
-#if ENABLE_PLATFORM_MINGW32
+# if ENABLE_PLATFORM_MINGW32
 		orig_pfx_len = match_pfx_len;
-#endif
+# endif
 		while (s < e)
 			if (is_special_char(*s++))
 				match_pfx_len++;
@@ -1399,15 +1423,30 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 		if (!matches)
 			goto ret; /* no matches at all */
 		/* Find common prefix */
-		chosen_match = xstrdup(matches[0]);
+# if ENABLE_PLATFORM_MINGW32
+		/* Any comparison involving a filename must be case-insensitive.
+		 * The chosen match should be case-sensitive, if possible */
+		for (unsigned i = 0; i < num_matches; ++i) {
+			if (is_case_sensitive(matches[i])) {
+				chosen_index = i;
+				chosen_sens = TRUE;
+				break;
+			}
+		}
+# endif
+		chosen_match = xstrdup(matches[chosen_index]);
 		for (cp = chosen_match; *cp; cp++) {
 			unsigned n;
-			for (n = 1; n < num_matches; n++) {
-# if !ENABLE_PLATFORM_MINGW32
-				if (matches[n][cp - chosen_match] != *cp) {
-# else
-				if (tolower(matches[n][cp - chosen_match]) != tolower(*cp)) {
+			for (n = first_match; n < num_matches; n++) {
+# if ENABLE_PLATFORM_MINGW32
+				if (!is_case_sensitive(matches[n]) || !chosen_sens) {
+					if (tolower(matches[n][cp - chosen_match]) !=
+							tolower(*cp)) {
+						goto stop;
+					}
+				} else
 # endif
+				if (matches[n][cp - chosen_match] != *cp) {
 					goto stop;
 				}
 			}
@@ -1493,14 +1532,6 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 	free(chosen_match);
 	free(match_buf);
 }
-
-# if ENABLE_PLATFORM_MINGW32
-#  undef is_prefixed_with
-#  undef qsort_string_vector
-#  undef strcmp
-#  undef strncmp
-# endif
-
 #endif  /* FEATURE_TAB_COMPLETION */
 
 

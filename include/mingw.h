@@ -545,7 +545,6 @@ int kill_SIGTERM_by_handle(HANDLE process);
 
 char *is_prefixed_with_case(const char *string, const char *key) FAST_FUNC;
 char *is_suffixed_with_case(const char *string, const char *key) FAST_FUNC;
-void qsort_string_vector_case(char **sv, unsigned count) FAST_FUNC;
 
 #define VT_OUTPUT	1
 #define VT_INPUT	2
