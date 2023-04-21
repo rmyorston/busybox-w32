@@ -333,19 +333,6 @@ auto_concat(const char *s1, const char *s2)
 	return auto_string(xasprintf("%s%s", s1, s2));
 }
 
-/*
- * Append a word to a space-separated string of words.  The first
- * call should use a NULL pointer for str, subsequent calls should
- * pass an allocated string which will be freed.
- */
-static char *
-xappendword(const char *str, const char *word)
-{
-	char *newstr = str ? xasprintf("%s %s", str, word) : xstrdup(word);
-	free((void *)str);
-	return newstr;
-}
-
 static unsigned int
 getbucket(const char *name)
 {

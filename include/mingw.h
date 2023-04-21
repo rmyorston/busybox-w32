@@ -594,3 +594,4 @@ const char *applet_to_exe(const char *name);
 char *get_user_name(void);
 char *quote_arg(const char *arg);
 char *find_first_executable(const char *name);
+char *xappendword(const char *str, const char *word);
