@@ -24,6 +24,41 @@
 #include "libbb.h"
 #include "lazyload.h"
 
+// Windows (single) argument quoting
+// MS docs:
+//   https://learn.microsoft.com/en-us/cpp/c-language/parsing-c-command-line-arguments
+// TL;DR (DQ: double-quote, BS: backslash):
+// - Enclosing in DQ is always allowed.
+// - N consecutive BS are taken literally, unless followed by DQ, at which case
+//   they become N/2 literal BS, and, if N is odd - the DQ becomes literal too.
+// - ^ is literal, and, inside DQ: presumably also all other non DQ/BS.
+static char *xwinq(const char *arg)
+{
+	char *r = xmalloc(2 * strlen(arg) + 3);  // max-esc, enclosing DQ, \0
+	char *o = r;
+	int nbs = 0;  // n consecutive BS right before current char
+
+	for (*o++ = '"'; *arg; *o++ = *arg++) {
+		switch (*arg) {
+		case '\\':
+			++nbs;
+			break;
+		case '"':  // double consecutive-BS, plus one to escape the DQ
+			for (++nbs; nbs; --nbs)
+				*o++ = '\\';
+			break;
+		default:  // reset count if followed by not-DQ
+			nbs = 0;
+		}
+	}
+
+	while (nbs--)  // double consecutive-BS before the closing DQ
+		*o++ = '\\';
+	*o++ = '"';
+	*o++ = 0;
+	return xrealloc(r, o - r);
+}
+
 int suw32_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int suw32_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -61,7 +96,7 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 		xasprintf("--busybox ash -d \"%s\" -t \"BusyBox ash (Admin)\" ", cwd);
 	if (opt_command)
 		info.lpParameters =
-			xasprintf("%s -s -c \"%s\"", info.lpParameters, opt_command);
+			xasprintf("%s -s -c %s", info.lpParameters, xwinq(opt_command));
 	/* info.lpDirectory = NULL; */
 	info.nShow = SW_SHOWNORMAL;
 
