@@ -16,10 +16,10 @@
 //kbuild:lib-$(CONFIG_SUW32) += suw32.o
 
 //usage:#define suw32_trivial_usage
-//usage:       "[-c \"CMD\"]"
+//usage:       "[-c \"CMD\" [ARG...]]"
 //usage:#define suw32_full_usage "\n\n"
 //usage:       "Run shell with elevated privileges\n"
-//usage:     "\n    -c CMD  Command to pass to 'sh -c'"
+//usage:     "\n    -c CMD [ARG...]  Command [args] to pass to 'sh -c'"
 
 #include "libbb.h"
 #include "lazyload.h"
@@ -59,17 +59,26 @@ static char *xwinq(const char *arg)
 	return xrealloc(r, o - r);
 }
 
+static char *xappend(char *a, const char *b)
+{
+	int alen = a ? strlen(a) : 0, blen = strlen(b);
+	a = xrealloc(a, alen + blen + 1);
+	memcpy(a + alen, b, blen + 1);
+	return a;
+}
+
 int suw32_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int suw32_main(int argc UNUSED_PARAM, char **argv)
 {
-	char *opt_command = NULL;
 	SHELLEXECUTEINFO info;
+	unsigned opts, c_opt;
 	char *bb_path, *cwd;
 	DECLARE_PROC_ADDR(BOOL, ShellExecuteExA, SHELLEXECUTEINFOA *);
 
-	getopt32(argv, "c:", &opt_command);
-	if (argv[optind])
-		bb_show_usage();
+	opts = getopt32(argv, "c");
+	c_opt = opts & 1;
+	if (!c_opt != !argv[optind])
+		bb_show_usage();  // -c witout CMD, or operand without -c
 
 	/* ShellExecuteEx() needs backslash as separator in UNC paths. */
 	bb_path = xstrdup(bb_busybox_exec_path);
@@ -94,9 +103,17 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	cwd = xmalloc_realpath(getcwd(NULL, 0));
 	info.lpParameters =
 		xasprintf("--busybox ash -d \"%s\" -t \"BusyBox ash (Admin)\" ", cwd);
-	if (opt_command)
-		info.lpParameters =
-			xasprintf("%s -s -c %s", info.lpParameters, xwinq(opt_command));
+
+	if (c_opt) {
+		info.lpParameters = xappend((char *)info.lpParameters, "-s -c --");
+		while (argv[optind]) {
+			char *a = xwinq(argv[optind++]);
+			info.lpParameters = xappend((char *)info.lpParameters, " ");
+			info.lpParameters = xappend((char *)info.lpParameters, a);
+			free(a);
+		}
+	}
+
 	/* info.lpDirectory = NULL; */
 	info.nShow = SW_SHOWNORMAL;
 
