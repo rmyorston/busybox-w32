@@ -61,7 +61,7 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 		xasprintf("--busybox ash -d \"%s\" -t \"BusyBox ash (Admin)\" ", cwd);
 	if (opt_command)
 		info.lpParameters =
-			xasprintf("%s -s -c \"%s\"", info.lpParameters, opt_command);
+			xasprintf("%s -s -c %s", info.lpParameters, quote_arg(opt_command));
 	/* info.lpDirectory = NULL; */
 	info.nShow = SW_SHOWNORMAL;
 
