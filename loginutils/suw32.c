@@ -11,15 +11,31 @@
 //config:	help
 //config:	su runs a shell with elevated privileges.
 
+//config:config SUSH
+//config:	bool "sush"
+//config:	default y
+//config:	depends on PLATFORM_MINGW32 && ASH
+//config:	help
+//config:	Run a shell with elevated privileges
+
 //applet:IF_SUW32(APPLET_ODDNAME(su, suw32, BB_DIR_BIN, BB_SUID_DROP, suw32))
+//applet:IF_SUSH(APPLET_ODDNAME(sush, suw32, BB_DIR_USR_BIN, BB_SUID_DROP, sush))
 
 //kbuild:lib-$(CONFIG_SUW32) += suw32.o
+//kbuild:lib-$(CONFIG_SUSH) += suw32.o
 
 //usage:#define suw32_trivial_usage
 //usage:       "[-c \"CMD\"]"
 //usage:#define suw32_full_usage "\n\n"
 //usage:       "Run shell with elevated privileges\n"
 //usage:     "\n    -c CMD  Command to pass to 'sh -c'"
+
+//usage:#define sush_trivial_usage
+//usage:       "[-c \"CMD\" [ARG...] | FILE [ARG...]]"
+//usage:#define sush_full_usage "\n\n"
+//usage:       "Run shell with elevated privileges\n"
+//usage:     "\n    -c CMD [ARG...]  Script [args] to pass to 'sh -c'"
+//usage:     "\n    FILE [ARG...]    Command file [args] to pass to 'sh'"
 
 #include "libbb.h"
 #include "lazyload.h"
@@ -31,12 +47,17 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opts, c_opt;
 	char *command, *bb_path, *cwd;
 	DECLARE_PROC_ADDR(BOOL, ShellExecuteExA, SHELLEXECUTEINFOA *);
+#if ENABLE_SUSH
+	int is_sush = applet_name[2];
+#else
+	const int is_sush = 0;
+#endif
 
 	opts = getopt32(argv, "c");
 	c_opt = opts & 1;
 	argv += optind;
 	command = c_opt ? *argv++ : NULL;
-	if ((c_opt && !command) || (!c_opt && command) || *argv) {
+	if ((c_opt && !command) || (!c_opt && command) || (!is_sush && *argv)) {
 		// -c without CMD, operand without -c , or surplus arguments
 		bb_show_usage();
 	}
@@ -69,6 +90,13 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 		info.lpParameters = xappendword(info.lpParameters, "-s -c --");
 		info.lpParameters = xappendword(info.lpParameters, quote_arg(command));
 	}
+#if ENABLE_SUSH
+	while (*argv) {
+		char *a = quote_arg(*argv++);
+		info.lpParameters = xappendword(info.lpParameters, a);
+		free(a);
+	}
+#endif
 	/* info.lpDirectory = NULL; */
 	info.nShow = SW_SHOWNORMAL;
 
