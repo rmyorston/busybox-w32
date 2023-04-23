@@ -165,10 +165,8 @@ int drop_main(int argc, char **argv)
 			// Build the command line
 			while (*a) {
 				char *q = quote_arg(*a++);
-				char *newcmd = xasprintf("%s %s", cmd, q);
+				cmd = xappendword(cmd, q);
 				free(q);
-				free(cmd);
-				cmd = newcmd;
 			}
 
 			ZeroMemory(&si, sizeof(STARTUPINFO));

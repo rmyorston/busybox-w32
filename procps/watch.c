@@ -71,9 +71,16 @@ int watch_main(int argc UNUSED_PARAM, char **argv)
 
 	// watch from both procps 2.x and 3.x does concatenation. Example:
 	// watch ls -l "a /tmp" "2>&1" - ls won't see "a /tmp" as one param
+#if ENABLE_PLATFORM_MINGW32
+	cmd = NULL;
+	do {
+		cmd = xappendword(cmd, *argv);
+	} while (*++argv);
+#else
 	cmd = *argv;
 	while (*++argv)
 		cmd = xasprintf("%s %s", cmd, *argv); // leaks cmd
+#endif
 
 	period = parse_duration_str(period_str);
 	width = (unsigned)-1; // make sure first time new_width != width

@@ -2389,3 +2389,15 @@ const char *applet_to_exe(const char *name)
 	return name;
 }
 #endif
+
+/*
+ * Append a word to a space-separated string of words.  The first
+ * call should use a NULL pointer for str, subsequent calls should
+ * pass an allocated string which will be freed.
+ */
+char *xappendword(const char *str, const char *word)
+{
+	char *newstr = str ? xasprintf("%s %s", str, word) : xstrdup(word);
+	free((void *)str);
+	return newstr;
+}
