@@ -27,14 +27,19 @@
 int suw32_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int suw32_main(int argc UNUSED_PARAM, char **argv)
 {
-	char *opt_command = NULL;
 	SHELLEXECUTEINFO info;
-	char *bb_path, *cwd;
+	unsigned opts, c_opt;
+	char *command, *bb_path, *cwd;
 	DECLARE_PROC_ADDR(BOOL, ShellExecuteExA, SHELLEXECUTEINFOA *);
 
-	getopt32(argv, "c:", &opt_command);
-	if (argv[optind])
+	opts = getopt32(argv, "c");
+	c_opt = opts & 1;
+	argv += optind;
+	command = c_opt ? *argv++ : NULL;
+	if ((c_opt && !command) || (!c_opt && command) || *argv) {
+		// -c without CMD, operand without -c , or surplus arguments
 		bb_show_usage();
+	}
 
 	/* ShellExecuteEx() needs backslash as separator in UNC paths. */
 	bb_path = xstrdup(bb_busybox_exec_path);
@@ -58,10 +63,12 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	 */
 	cwd = xmalloc_realpath(getcwd(NULL, 0));
 	info.lpParameters =
-		xasprintf("--busybox ash -d \"%s\" -t \"BusyBox ash (Admin)\" ", cwd);
-	if (opt_command)
-		info.lpParameters =
-			xasprintf("%s -s -c \"%s\"", info.lpParameters, opt_command);
+		xasprintf("--busybox ash -d %s -t \"BusyBox ash (Admin)\"",
+						quote_arg(cwd));
+	if (c_opt) {
+		info.lpParameters = xappendword(info.lpParameters, "-s -c --");
+		info.lpParameters = xappendword(info.lpParameters, quote_arg(command));
+	}
 	/* info.lpDirectory = NULL; */
 	info.nShow = SW_SHOWNORMAL;
 
