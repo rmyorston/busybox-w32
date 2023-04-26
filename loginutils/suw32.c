@@ -16,7 +16,7 @@
 //kbuild:lib-$(CONFIG_SUW32) += suw32.o
 
 //usage:#define suw32_trivial_usage
-//usage:       "[-c \"CMD\"]"
+//usage:       "[-c 'CMD'] [root [FILE ARGS | ARG0 ARGS]]"
 //usage:#define suw32_full_usage "\n\n"
 //usage:       "Run shell with elevated privileges\n"
 //usage:     "\n    -c CMD  Command to pass to 'sh -c'"
@@ -29,12 +29,17 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 {
 	char *opt_command = NULL;
 	SHELLEXECUTEINFO info;
-	char *bb_path, *cwd;
+	char *bb_path, *cwd, *q, *args;
 	DECLARE_PROC_ADDR(BOOL, ShellExecuteExA, SHELLEXECUTEINFOA *);
 
 	getopt32(argv, "c:", &opt_command);
-	if (argv[optind])
-		bb_show_usage();
+	argv += optind;
+	if (argv[0]) {
+		if (strcmp(argv[0], "root") != 0) {
+			bb_error_msg_and_die("unknown user '%s'", argv[0]);
+		}
+		++argv;
+	}
 
 	/* ShellExecuteEx() needs backslash as separator in UNC paths. */
 	bb_path = xstrdup(bb_busybox_exec_path);
@@ -57,11 +62,25 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	 * privileges.
 	 */
 	cwd = xmalloc_realpath(getcwd(NULL, 0));
-	info.lpParameters =
-		xasprintf("--busybox ash -d \"%s\" -t \"BusyBox ash (Admin)\" ", cwd);
-	if (opt_command)
-		info.lpParameters =
-			xasprintf("%s -s -c \"%s\"", info.lpParameters, opt_command);
+	q = quote_arg(cwd);
+	args = xasprintf("--busybox ash -d %s -t \"BusyBox ash (Admin)\"", q);
+	free(q);
+	free(cwd);
+
+	if (opt_command) {
+		args = xappendword(args, "-s -c");
+		q = quote_arg(opt_command);
+		args = xappendword(args, q);
+		free(q);
+	}
+
+	while (*argv) {
+		q = quote_arg(*argv++);
+		args = xappendword(args, q);
+		free(q);
+	}
+
+	info.lpParameters = args;
 	/* info.lpDirectory = NULL; */
 	info.nShow = SW_SHOWNORMAL;
 
