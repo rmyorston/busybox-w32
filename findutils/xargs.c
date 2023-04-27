@@ -76,6 +76,8 @@
 
 #if ENABLE_PLATFORM_MINGW32
 #include <conio.h>
+#include "busybox.h"
+#include "NUM_APPLETS.h"
 #endif
 #include "libbb.h"
 #include "common_bufsiz.h"
@@ -282,31 +284,9 @@ static int xargs_exec(void)
 #if !ENABLE_PLATFORM_MINGW32
 	if (option_mask32 & OPT_STDIN_TTY)
 		xdup2(G.fd_tty, STDIN_FILENO);
-#endif
 
 #if !ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
 	status = spawn_and_wait(G.args);
-#else
-#if ENABLE_PLATFORM_MINGW32
-	if (G.max_procs == 1) {
-		G.pid = spawn(G.args);
-		status = G.pid < 0 ? -1 : wait4pid(G.pid);
-	} else {
-		int idx;
-		status = !G.running_procs && !G.max_procs ? 0 : wait_for_slot(&idx);
-		if (G.max_procs) {
-			HANDLE p = (HANDLE)mingw_spawn_proc((const char **)G.args);
-			if (p < 0)
-				status = -1;
-			else
-				G.procs[idx] = p;
-		} else {
-			while (G.running_procs) {
-				int status2 = wait_for_slot(&idx);
-				if (status2 && !status)
-					status = status2;
-			}
-		}
 #else
 	if (G.max_procs == 1) {
 		status = spawn_and_wait(G.args);
@@ -351,8 +331,44 @@ static int xargs_exec(void)
 			/* final waitpid() loop: must be ECHILD "no more children" */
 			status = 0;
 		}
-#endif
 	}
+#endif
+#endif
+
+#if ENABLE_PLATFORM_MINGW32
+# if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
+	if (G.max_procs == 1) {
+# endif
+# if ENABLE_FEATURE_PREFER_APPLETS && (NUM_APPLETS > 1)
+		int applet = find_applet_by_name(G.args[0]);
+		if (applet >= 0 && APPLET_IS_NOFORK(applet)) {
+			status = run_nofork_applet(applet, G.args);
+		} else
+# endif
+		{
+			G.pid = spawn(G.args);
+			status = G.pid < 0 ? -1 : wait4pid(G.pid);
+		}
+# if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
+	}
+	else {
+		int idx;
+		status = !G.running_procs && !G.max_procs ? 0 : wait_for_slot(&idx);
+		if (G.max_procs) {
+			HANDLE p = (HANDLE)mingw_spawn_proc((const char **)G.args);
+			if (p < 0)
+				status = -1;
+			else
+				G.procs[idx] = p;
+		} else {
+			while (G.running_procs) {
+				int status2 = wait_for_slot(&idx);
+				if (status2 && !status)
+					status = status2;
+			}
+		}
+	}
+# endif
 #endif
 	/* Manpage:
 	 * """xargs exits with the following status:
