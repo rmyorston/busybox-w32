@@ -189,6 +189,7 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 	int i, argc;
 	intptr_t ret;
 	struct stat st;
+	size_t len = 0;
 
 	/*
 	 * Require that the file exists, is a regular file and is executable.
@@ -206,8 +207,10 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 
 	argc = string_array_len((char **)argv);
 	new_argv = xzalloc(sizeof(*argv)*(argc+1));
-	for (i = 0;i < argc;i++)
+	for (i = 0; i < argc; i++) {
 		new_argv[i] = quote_arg(argv[i]);
+		len += strlen(new_argv[i]) + 1;
+	}
 
 	/* Special case:  spawnve won't execute a batch file if the first
 	 * argument is a relative path containing forward slashes.  Absolute
@@ -234,6 +237,8 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 
 	errno = 0;
 	ret = spawnve(mode, new_path ? new_path : path, new_argv, env);
+	if (errno == EINVAL && len > bb_arg_max())
+		errno = E2BIG;
 
  done:
 	for (i = 0;i < argc;i++)
