@@ -31,6 +31,11 @@
 
 #include "libbb.h"
 
+#if ENABLE_PLATFORM_MINGW32
+# undef putchar
+# define putchar(c) winansi_fputc(c, stdout)
+#endif
+
 int yes_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int yes_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -41,10 +46,6 @@ int yes_main(int argc UNUSED_PARAM, char **argv)
 		++argv;
 
 	do {
-#if ENABLE_PLATFORM_MINGW32
-		if (ferror(stdout) != 0)
-			break;
-#endif
 		pp = argv;
 		while (1) {
 			fputs_stdout(*pp);
