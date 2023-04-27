@@ -116,9 +116,10 @@ parse_interpreter(const char *cmd, interp_t *interp)
 char *
 quote_arg(const char *arg)
 {
-	int len = 0, n = 0;
 	int force_quotes = 0;
-	char *q, *d;
+	char *r = xmalloc(2 * strlen(arg) + 3);  // max-esc, enclosing DQ, \0
+	char *d = r;
+	int nbs = 0;  // n consecutive BS right before current char
 	const char *p = arg;
 
 	/* empty arguments must be quoted */
@@ -130,78 +131,39 @@ quote_arg(const char *arg)
 		if (isspace(*p)) {
 			/* arguments containing whitespace must be quoted */
 			force_quotes = 1;
+			break;
 		}
-		else if (*p == '"') {
-			/* double quotes in arguments need to be escaped */
-			n++;
-		}
-		else if (*p == '\\') {
-			/* count contiguous backslashes */
-			int count = 0;
-			while (*p == '\\') {
-				count++;
-				p++;
-				len++;
-			}
-
-			/*
-			 * Only escape backslashes before explicit double quotes or
-			 * or where the backslashes are at the end of an argument
-			 * that is scheduled to be quoted.
-			 */
-			if (*p == '"' || (force_quotes && *p == '\0')) {
-				n += count*2 + 1;
-			}
-
-			if (*p == '\0') {
-				break;
-			}
-			continue;
-		}
-		len++;
 		p++;
 	}
 
-	if (!force_quotes && n == 0) {
-		return xstrdup(arg);
-	}
-
 	/* insert double quotes and backslashes where necessary */
-	d = q = xmalloc(len+n+3);
 	if (force_quotes) {
 		*d++ = '"';
 	}
 
 	while (*arg) {
-		if (*arg == '"') {
-			*d++ = '\\';
+		switch (*arg) {
+		case '\\':
+			++nbs;
+			break;
+		case '"':  // double consecutive-BS, plus one to escape the DQ
+			for (++nbs; nbs; --nbs)
+				*d++ = '\\';
+			break;
+		default:  // reset count if followed by not-DQ
+			nbs = 0;
 		}
-		else if (*arg == '\\') {
-			int count = 0;
-			while (*arg == '\\') {
-				count++;
-				*d++ = *arg++;
-			}
-
-			if (*arg == '"' || (force_quotes && *arg == '\0')) {
-				while (count-- > 0) {
-					*d++ = '\\';
-				}
-				if (*arg == '"') {
-					*d++ = '\\';
-				}
-			}
-		}
-		if (*arg != '\0') {
-			*d++ = *arg++;
-		}
+		*d++ = *arg++;
 	}
+
 	if (force_quotes) {
+		while (nbs--)  // double consecutive-BS before the closing DQ
+			*d++ = '\\';
 		*d++ = '"';
 	}
-	*d = '\0';
+	*d++ = '\0';
 
-	return q;
+	return xrealloc(r, d - r);
 }
 
 char *
