@@ -1717,6 +1717,7 @@ int iconv_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int iconv_main(int argc, char **argv)
 {
 	const char *fromcode = "", *tocode = "", *outfile;
+	char *tmpname = NULL;
 	int i, opt;
 	iconv_t cd;
 	FILE *in;
@@ -1733,8 +1734,11 @@ int iconv_main(int argc, char **argv)
 		return 0;
 	}
 
-	if (opt & OPT_o)
-		out = xfopen(outfile, "wb");
+	if (opt & OPT_o) {
+		tmpname = xasprintf("%sXXXXXX", outfile);
+		mktemp(tmpname);
+		out = xfopen(tmpname, "wb");
+	}
 
 	if (opt & OPT_c)
 		tocode = xasprintf("%s//IGNORE", tocode);
@@ -1753,6 +1757,11 @@ int iconv_main(int argc, char **argv)
 			in = xfopen(argv[optind], "rb");
 		process_file(cd, in, out);
 		fclose(in);
+	}
+
+	if (tmpname) {
+		fclose(out);
+		xrename(tmpname, outfile);
 	}
 
 	if (ENABLE_FEATURE_CLEAN_UP)
