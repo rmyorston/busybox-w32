@@ -526,6 +526,7 @@ int utimes(const char *file_name, const struct timeval times[2]);
 #define is_unc_path(x) (strlen(x) > 4 && is_dir_sep(x[0]) && \
 							is_dir_sep(x[1]) && !is_dir_sep(x[2]))
 
+char ** FAST_FUNC grow_argv(char **argv, int n);
 pid_t FAST_FUNC mingw_spawn(char **argv);
 pid_t FAST_FUNC mingw_spawn_detach(char **argv);
 intptr_t FAST_FUNC mingw_spawn_proc(const char **argv);

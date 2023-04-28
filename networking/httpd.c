@@ -2804,7 +2804,7 @@ static void mini_httpd_win32(int fg, int sock, int argc, char **argv)
 
 	argv_copy[0] = (char *)bb_busybox_exec_path;
 	argv_copy[1] = (char *)"--busybox";
-	argv_copy[2] = (char *)"httpd";
+	argv_copy[2] = (char *)"-httpd" + 1;	// skip '-'
 	argv_copy[3] = (char *)"-I";
 	memcpy(&argv_copy[5], &argv[1], argc * sizeof(argv[0]));
 
@@ -2850,14 +2850,12 @@ static void mini_httpd_inetd(void)
 static void mingw_daemonize(char **argv)
 {
 	char **new_argv;
-	int argc, fd;
+	int fd;
 
-	argc = string_array_len((char **)argv);
-	new_argv = xmalloc(sizeof(*argv)*(argc+3));
+	new_argv = grow_argv(argv + 1, 3);
 	new_argv[0] = (char *)bb_busybox_exec_path;
 	new_argv[1] = (char *)"--busybox";
-	new_argv[2] = (char *)"-httpd";
-	memcpy(&new_argv[3], &argv[1], sizeof(*argv)*argc);
+	new_argv[2] = (char *)"-httpd";	// '-' marks the daemonised process
 
 	fd = xopen(bb_dev_null, O_RDWR);
 	xdup2(fd, 0);
