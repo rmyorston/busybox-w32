@@ -116,28 +116,12 @@ parse_interpreter(const char *cmd, interp_t *interp)
 char *
 quote_arg(const char *arg)
 {
-	int force_quotes = 0;
 	char *r = xmalloc(2 * strlen(arg) + 3);  // max-esc, enclosing DQ, \0
 	char *d = r;
 	int nbs = 0;  // n consecutive BS right before current char
-	const char *p = arg;
 
-	/* empty arguments must be quoted */
-	if (!*p) {
-		force_quotes = 1;
-	}
-
-	while (*p) {
-		if (isspace(*p)) {
-			/* arguments containing whitespace must be quoted */
-			force_quotes = 1;
-			break;
-		}
-		p++;
-	}
-
-	/* insert double quotes and backslashes where necessary */
-	if (force_quotes) {
+	/* empty arguments and those containing tab/space must be quoted */
+	if (!*arg || strpbrk(arg, " \t")) {
 		*d++ = '"';
 	}
 
@@ -156,7 +140,7 @@ quote_arg(const char *arg)
 		*d++ = *arg++;
 	}
 
-	if (force_quotes) {
+	if (*r == '"') {
 		while (nbs--)  // double consecutive-BS before the closing DQ
 			*d++ = '\\';
 		*d++ = '"';
