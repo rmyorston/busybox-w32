@@ -16,23 +16,32 @@
 //kbuild:lib-$(CONFIG_SUW32) += suw32.o
 
 //usage:#define suw32_trivial_usage
-//usage:       "[-c 'CMD'] [root [FILE ARGS | ARG0 ARGS]]"
+//usage:       "[-W] [root]\n"
+//usage:       "or:    su [-W] -c CMD_STRING [[--] root [ARG0 [ARG...]]\n"
+//usage:       "or:    su [-W] [--] root [arbitrary sh arguments]"
 //usage:#define suw32_full_usage "\n\n"
 //usage:       "Run shell with elevated privileges\n"
 //usage:     "\n    -c CMD  Command to pass to 'sh -c'"
+//usage:     "\n    -W      Wait for shell exit code"
 
 #include "libbb.h"
 #include "lazyload.h"
 
+enum {
+	OPT_c = (1 << 0),
+	OPT_W = (1 << 1)
+};
+
 int suw32_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int suw32_main(int argc UNUSED_PARAM, char **argv)
 {
+	unsigned opt;
 	char *opt_command = NULL;
 	SHELLEXECUTEINFO info;
 	char *bb_path, *cwd, *q, *args;
 	DECLARE_PROC_ADDR(BOOL, ShellExecuteExA, SHELLEXECUTEINFOA *);
 
-	getopt32(argv, "c:", &opt_command);
+	opt = getopt32(argv, "c:W", &opt_command);
 	argv += optind;
 	if (argv[0]) {
 		if (strcmp(argv[0], "root") != 0) {
@@ -48,6 +57,8 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	memset(&info, 0, sizeof(SHELLEXECUTEINFO));
 	info.cbSize = sizeof(SHELLEXECUTEINFO);
 	/* info.fMask = SEE_MASK_DEFAULT; */
+	if (opt & OPT_W)
+		info.fMask |= SEE_MASK_NOCLOSEPROCESS;
 	/* info.hwnd = NULL; */
 	info.lpVerb = "runas";
 	info.lpFile = bb_path;
@@ -87,5 +98,18 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	if (!INIT_PROC_ADDR(shell32.dll, ShellExecuteExA))
 		return -1;
 
-	return !ShellExecuteExA(&info);
+	if (!ShellExecuteExA(&info))
+		return 1;
+
+	if (opt & OPT_W) {
+		DWORD r;
+
+		WaitForSingleObject(info.hProcess, INFINITE);
+		if (!GetExitCodeProcess(info.hProcess, &r))
+			r = 1;
+		CloseHandle(info.hProcess);
+		return r;
+	}
+
+	return 0;
 }
