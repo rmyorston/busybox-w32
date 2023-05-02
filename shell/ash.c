@@ -238,6 +238,9 @@
 #else
 # define NUM_SCRIPTS 0
 #endif
+#if ENABLE_PLATFORM_MINGW32
+# include <conio.h>
+#endif
 
 /* So far, all bash compat is controlled by one config option */
 /* Separate defines document which part of code implements what */
@@ -540,6 +543,9 @@ struct globals_misc {
 #if ENABLE_PLATFORM_MINGW32
 	char *dirarg;  /* argument to -d option */
 	char *title;   /* argument to -t option */
+#if ENABLE_SUW32
+	int delayexit; /* set by -N option */
+# endif
 #endif
 
 	char *curdir; // = nullstr;     /* current working directory */
@@ -651,6 +657,7 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #if ENABLE_PLATFORM_MINGW32
 #define dirarg      (G_misc.dirarg     )
 #define title       (G_misc.title      )
+#define delayexit   (G_misc.delayexit  )
 #endif
 #define curdir      (G_misc.curdir     )
 #define physdir     (G_misc.physdir    )
@@ -11556,7 +11563,7 @@ evalcommand(union node *cmd, int flags)
 		 * we can just exec it.
 		 */
 #if ENABLE_PLATFORM_MINGW32
-		if (!(flags & EV_EXIT) || may_have_traps) {
+		if (!(flags & EV_EXIT) || may_have_traps IF_SUW32(|| delayexit)) {
 			/* No, forking off a child is necessary */
 			struct forkshell fs;
 
@@ -12500,6 +12507,9 @@ options(int *login_sh)
 #if ENABLE_PLATFORM_MINGW32
 		dirarg = NULL;
 		title = NULL;
+# if ENABLE_SUW32
+		delayexit = 0;
+# endif
 #endif
 	}
 	while ((p = *argptr) != NULL) {
@@ -12535,6 +12545,7 @@ options(int *login_sh)
 				/* Undocumented flags;
 				 *   -d force current directory
 				 *   -t title to display in console window
+				 *   -N prompt user before exit
 				 * Must appear before -s or -c. */
 				if (c == 'd' && val == 1) {
 					if (*argptr == NULL)
@@ -12548,6 +12559,12 @@ options(int *login_sh)
 					title = *argptr++;
 					continue;
 				}
+# if ENABLE_SUW32
+				if (c == 'N' && val == 1) {
+					delayexit = 1;
+					continue;
+				}
+# endif
 #endif
 				if (c == 's') { /* -s, +s */
 					sflag = 1;
@@ -15643,6 +15660,13 @@ exitshell(void)
 		/*free(p); - we'll exit soon */
 	}
  out:
+#if ENABLE_SUW32
+	if (delayexit) {
+		freopen("CONOUT$", "w", stdout);
+		fputs_stdout("Press any key to exit...");
+		_getch();
+	}
+#endif
 	exitreset();
 	/* dash wraps setjobctl(0) in "if (setjmp(loc.loc) == 0) {...}".
 	 * our setjobctl(0) does not panic if tcsetpgrp fails inside it.
