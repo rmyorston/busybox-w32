@@ -36,21 +36,21 @@
 //kbuild:lib-$(CONFIG_PDROP) += drop.o
 
 //usage:#define drop_trivial_usage
-//usage:	"[COMMAND | -c [ARG...]]"
+//usage:	"[COMMAND [ARG...] | -c CMD_STRING [ARG...]]"
 //usage:#define drop_full_usage "\n\n"
-//usage:	"Drop elevated privileges and run a command. If no COMMAND\n"
+//usage:	"Drop elevated privileges and run a command. If no command\n"
 //usage:	"is provided run the BusyBox shell.\n"
 
 //usage:#define cdrop_trivial_usage
-//usage:	"[COMMAND | /c [ARG...]]"
+//usage:	"[COMMAND [ARG...] | -c CMD_STRING [ARG...]]"
 //usage:#define cdrop_full_usage "\n\n"
-//usage:	"Drop elevated privileges and run a command. If no COMMAND\n"
+//usage:	"Drop elevated privileges and run a command. If no command\n"
 //usage:	"is provided run cmd.exe.\n"
 
 //usage:#define pdrop_trivial_usage
-//usage:	"[COMMAND | -c [ARG...]]"
+//usage:	"[COMMAND [ARG...] | -c CMD_STRING [ARG...]]"
 //usage:#define pdrop_full_usage "\n\n"
-//usage:	"Drop elevated privileges and run a command. If no COMMAND\n"
+//usage:	"Drop elevated privileges and run a command. If no command\n"
 //usage:	"is provided run PowerShell.\n"
 
 #include "libbb.h"
@@ -108,12 +108,16 @@ int drop_main(int argc, char **argv)
 		TIL.Label.Attributes = SE_GROUP_INTEGRITY;
 		if (SetTokenInformation(token, TokenIntegrityLevel, &TIL,
 						sizeof(TOKEN_MANDATORY_LABEL))) {
-			char **a = argv + 1;
-			const char *arg;
-			char *exe, *cmd;
+			char *opt_command = NULL;
+			char **a;
+			const char *opt, *arg;
+			char *exe, *cmd, *q;
 
-			if (argc == 1 || strcmp(argv[1], "-c") == 0
-						IF_CDROP(|| strcmp(argv[1], "/c") == 0)) {
+			getopt32(argv, "c:", &opt_command);
+			a = argv + optind;
+			opt = "-c";
+
+			if (argc == 1 || opt_command) {
 				switch (*applet_name) {
 #if ENABLE_PDROP
 				case 'p':
@@ -123,6 +127,7 @@ int drop_main(int argc, char **argv)
 #endif
 #if ENABLE_CDROP
 				case 'c':
+					opt = "/c";
 					arg = "cmd.exe";
 					exe = find_first_executable(arg);
 					break;
@@ -161,10 +166,16 @@ int drop_main(int argc, char **argv)
 
 			slash_to_bs(exe);
 			cmd = quote_arg(arg);
+			if (opt_command) {
+				cmd = xappendword(cmd, opt);
+				q = quote_arg(opt_command);
+				cmd = xappendword(cmd, q);
+				free(q);
+			}
 
 			// Build the command line
 			while (*a) {
-				char *q = quote_arg(*a++);
+				q = quote_arg(*a++);
 				cmd = xappendword(cmd, q);
 				free(q);
 			}
@@ -186,6 +197,8 @@ int drop_main(int argc, char **argv)
 				bb_error_msg_and_die("can't execute '%s'", exe);
 			}
 
+			kill_child_ctrl_handler(pi.dwProcessId);
+			SetConsoleCtrlHandler(kill_child_ctrl_handler, TRUE);
 			WaitForSingleObject(pi.hProcess, INFINITE);
 			if (GetExitCodeProcess(pi.hProcess, &code)) {
 				return (int)code;
