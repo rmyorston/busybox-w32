@@ -369,11 +369,46 @@ mingw_spawn_proc(const char **argv)
 	return mingw_spawnvp(P_NOWAIT, argv[0], (char *const *)argv);
 }
 
+BOOL WINAPI kill_child_ctrl_handler(DWORD dwCtrlType)
+{
+	static pid_t child_pid = 0;
+	DWORD dummy, *procs, count, rcount, i;
+
+	if (child_pid == 0) {
+		// First call sets child pid
+		child_pid = dwCtrlType;
+		return FALSE;
+	}
+
+	if (dwCtrlType == CTRL_C_EVENT || dwCtrlType == CTRL_BREAK_EVENT) {
+		count = GetConsoleProcessList(&dummy, 1) + 16;
+		procs = malloc(sizeof(DWORD) * count);
+		rcount = GetConsoleProcessList(procs, count);
+		if (rcount != 0 && rcount <= count) {
+			for (i = 0; i < rcount; i++) {
+				if (procs[i] == child_pid) {
+					// Child is attached to our console
+					break;
+				}
+			}
+			if (i == rcount) {
+				// Kill non-console child; console children can
+				// handle Ctrl-C as they see fit.
+				kill(-child_pid, SIGINT);
+			}
+		}
+		free(procs);
+		return TRUE;
+	}
+	return FALSE;
+}
+
 static NORETURN void wait_for_child(HANDLE child)
 {
 	DWORD code;
 
-	SetConsoleCtrlHandler(NULL, TRUE);
+	kill_child_ctrl_handler(GetProcessId(child));
+	SetConsoleCtrlHandler(kill_child_ctrl_handler, TRUE);
 	WaitForSingleObject(child, INFINITE);
 	GetExitCodeProcess(child, &code);
 	exit((int)code);
