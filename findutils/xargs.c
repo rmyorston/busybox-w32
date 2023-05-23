@@ -216,7 +216,7 @@ static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
 			}
 		}
 # endif
-		exit(128 + SIGINT);
+		exit(SIGINT << 24);
 		return TRUE;
 	}
 	return FALSE;

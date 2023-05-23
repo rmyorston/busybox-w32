@@ -705,14 +705,14 @@ static inline int process_architecture_matches_current(HANDLE process)
  * http://www.drdobbs.com/a-safer-alternative-to-terminateprocess/184416547
  *
  */
-int kill_SIGTERM_by_handle(HANDLE process)
+int kill_signal_by_handle(HANDLE process, int sig)
 {
 	DWORD code;
 	int ret = 0;
 
 	if (GetExitCodeProcess(process, &code) && code == STILL_ACTIVE) {
 		DECLARE_PROC_ADDR(DWORD, ExitProcess, LPVOID);
-		PVOID arg = (PVOID)(intptr_t)(128 + SIGTERM);
+		PVOID arg = (PVOID)(intptr_t)(sig << 24);
 		DWORD thread_id;
 		HANDLE thread;
 
@@ -734,7 +734,7 @@ int kill_SIGTERM_by_handle(HANDLE process)
 	return ret;
 }
 
-static int kill_SIGTERM(pid_t pid, int sig UNUSED_PARAM)
+static int kill_signal(pid_t pid, int sig)
 {
 	HANDLE process;
 
@@ -745,7 +745,7 @@ static int kill_SIGTERM(pid_t pid, int sig UNUSED_PARAM)
 		return -1;
 	}
 
-	return kill_SIGTERM_by_handle(process);
+	return kill_signal_by_handle(process, sig);
 }
 
 /*
@@ -765,18 +765,23 @@ static int kill_SIGKILL(pid_t pid, int sig)
 	}
 
 	if (sig == SIGKILL)
-		ret = !TerminateProcess(process, 128 + SIGKILL);
+		ret = !TerminateProcess(process, SIGKILL << 24);
 	CloseHandle(process);
 
 	return ret;
 }
 
+int FAST_FUNC is_valid_signal(int number)
+{
+	return isalpha(*get_signame(number));
+}
+
 int kill(pid_t pid, int sig)
 {
-	if (sig == SIGTERM)
-		return kill_pids(pid, sig, kill_SIGTERM);
-	else if (sig == SIGKILL || sig == 0)
+	if (sig == SIGKILL || sig == 0)
 		return kill_pids(pid, sig, kill_SIGKILL);
+	else if (is_valid_signal(sig))
+		return kill_pids(pid, sig, kill_signal);
 
 	errno = EINVAL;
 	return -1;

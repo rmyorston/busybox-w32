@@ -54,7 +54,7 @@ static HANDLE child = INVALID_HANDLE_VALUE;
 static void kill_child(void)
 {
 	if (child != INVALID_HANDLE_VALUE) {
-		kill_SIGTERM_by_handle(child);
+		kill_signal_by_handle(child, SIGTERM);
 	}
 }
 
@@ -130,7 +130,7 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 #if !ENABLE_PLATFORM_MINGW32
 	if (signo < 0)
 #else
-	if (signo != SIGTERM && signo != SIGKILL && signo != 0)
+	if (!is_valid_signal(signo))
 #endif
 		bb_error_msg_and_die("unknown signal '%s'", opt_s);
 

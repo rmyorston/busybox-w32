@@ -884,9 +884,13 @@ raise_interrupt(void)
 	/* pending_sig = 0; - now done in signal_handler() */
 
 	if (!(rootshell && iflag)) {
+#if !ENABLE_PLATFORM_MINGW32
 		/* Kill ourself with SIGINT */
 		signal(SIGINT, SIG_DFL);
 		raise(SIGINT);
+#else
+		exit(SIGINT << 24);
+#endif
 	}
 #if ENABLE_PLATFORM_MINGW32
 	if (iflag)
@@ -4122,8 +4126,10 @@ struct job {
 #define JOBDONE         2       /* all procs are completed */
 	unsigned
 		state: 8,
-#if JOBS
+#if JOBS || ENABLE_PLATFORM_MINGW32
 		sigint: 1,      /* job was killed by SIGINT */
+#endif
+#if JOBS
 		jobctl: 1,      /* job running under job control */
 #endif
 		waited: 1,      /* true if this entry has been waited for */
@@ -4840,7 +4846,7 @@ waitpid_child(int *status, int wait_flags)
 	HANDLE *proclist;
 	pid_t pid = -1;
 	DWORD win_status, idx;
-	int i;
+	int i, sig;
 
 	for (jb = curjob; jb; jb = jb->prev_job) {
 		if (jb->state != JOBDONE)
@@ -4872,9 +4878,18 @@ waitpid_child(int *status, int wait_flags)
 				wait_flags&WNOHANG ? 1 : INFINITE);
 	if (idx < pid_nr) {
 		GetExitCodeProcess(proclist[idx], &win_status);
-		*status = (int)win_status << 8;
-		if (win_status == 128 + SIGTERM || win_status == 128 + SIGKILL)
-			*status += win_status - 128;
+		if (win_status == 0xc0000005)
+			win_status = SIGSEGV << 24;
+		else if (win_status == 0xc000013a)
+			win_status = SIGINT << 24;
+
+		// When a process is terminated as if by a signal the exit
+		// code is zero apart from the signal in its topmost byte.
+		sig = win_status >> 24;
+		if (sig != 0 && win_status == sig << 24 && is_valid_signal(sig))
+			*status = sig;
+		else
+			*status = (int)win_status << 8;
 		pid = pidlist[idx];
 	}
  done:
@@ -5241,7 +5256,7 @@ getstatus(struct job *job)
 		{
 			/* XXX: limits number of signals */
 			retval = WTERMSIG(status);
-#if JOBS
+#if JOBS || ENABLE_PLATFORM_MINGW32
 			if (retval == SIGINT)
 				job->sigint = 1;
 #endif
@@ -6051,6 +6066,10 @@ waitforjob(struct job *jp)
 		return exitstatus;
 
 	st = getstatus(jp);
+#if ENABLE_PLATFORM_MINGW32
+	if (!jp->sigint && iflag && rootshell)
+		pending_int = 0;
+#endif
 #if JOBS
 	if (jp->jobctl) {
 		xtcsetpgrp(ttyfd, rootpid);
