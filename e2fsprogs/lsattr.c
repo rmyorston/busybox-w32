@@ -47,6 +47,7 @@
 //usage:     "\n\nAttributes:\n"
 //usage:     "\n	j	Junction"
 //usage:     "\n	l	Symbolic link"
+//usage:     "\n	A	App exec link"
 //usage:     "\n	R	Reparse point"
 //usage:     "\n	o	Offline"
 //usage:     "\n	e	Encrypted"

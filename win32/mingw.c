@@ -593,6 +593,7 @@ static DWORD get_symlink_data(DWORD attr, const char *pathname,
 				switch (fbuf->dwReserved0) {
 				case IO_REPARSE_TAG_SYMLINK:
 				case IO_REPARSE_TAG_MOUNT_POINT:
+				case IO_REPARSE_TAG_APPEXECLINK:
 					return fbuf->dwReserved0;
 				}
 			}
@@ -1602,6 +1603,23 @@ static wchar_t *normalize_ntpath(wchar_t *wbuf)
 	return wbuf;
 }
 
+/*
+ * This is the stucture required for reparse points with the tag
+ * IO_REPARSE_TAG_APPEXECLINK.  The Buffer member contains four
+ * NUL-terminated, concatentated strings:
+ *
+ *  package id, entry point, executable path and application type.
+ *
+ *  https://www.tiraniddo.dev/2019/09/overview-of-windows-execution-aliases.html
+ */
+typedef struct {
+	DWORD	ReparseTag;
+	USHORT	ReparseDataLength;
+	USHORT	Reserved;
+	ULONG	Version;
+	WCHAR	Buffer[1];
+} APPEXECLINK_BUFFER;
+
 #define SRPB rptr->SymbolicLinkReparseBuffer
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 {
@@ -1613,9 +1631,11 @@ ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 		DWORD nbytes;
 		BYTE rbuf[MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
 		PREPARSE_DATA_BUFFER rptr = (PREPARSE_DATA_BUFFER)rbuf;
+		APPEXECLINK_BUFFER *aptr = (APPEXECLINK_BUFFER *)rptr;
 		BOOL status;
 		size_t len;
-		WCHAR *name = NULL;
+		WCHAR *name = NULL, *str[4], *s;
+		int i;
 
 		status = DeviceIoControl(h, FSCTL_GET_REPARSE_POINT, NULL, 0,
 					rptr, sizeof(rbuf), &nbytes, NULL);
@@ -1627,6 +1647,21 @@ ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 		} else if (status && rptr->ReparseTag == IO_REPARSE_TAG_MOUNT_POINT) {
 			len = MRPB.SubstituteNameLength/sizeof(WCHAR);
 			name = MRPB.PathBuffer + MRPB.SubstituteNameOffset/sizeof(WCHAR);
+		} else if (status && rptr->ReparseTag == IO_REPARSE_TAG_APPEXECLINK) {
+			// We only need the executable path but we determine all of
+			// the strings as a sanity check.
+			i = 0;
+			s = aptr->Buffer;
+			do {
+				str[i] = s;
+				while (*s++)
+					;
+			} while (++i < 4);
+
+			if (s - aptr->Buffer < MAXIMUM_REPARSE_DATA_BUFFER_SIZE) {
+				len = wcslen(str[2]);
+				name = str[2];
+			}
 		}
 
 		if (name) {

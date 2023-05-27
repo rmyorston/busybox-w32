@@ -135,6 +135,9 @@ void print_e2flags_long(struct stat *sb)
 				case IO_REPARSE_TAG_MOUNT_POINT:
 					ln = "Junction";
 					break;
+				case IO_REPARSE_TAG_APPEXECLINK:
+					ln = "App_Exec_Link";
+					break;
 				}
 			}
 			fputs(ln, stdout);
@@ -173,6 +176,9 @@ void print_e2flags(struct stat *sb)
 				break;
 			case IO_REPARSE_TAG_MOUNT_POINT:
 				c = 'j';
+				break;
+			case IO_REPARSE_TAG_APPEXECLINK:
+				c = 'A';
 				break;
 			}
 		}
