@@ -17,7 +17,7 @@
 
 //usage:#define suw32_trivial_usage
 //usage:       "[-NW] [root]\n"
-//usage:       "or:    su [-NW] -c CMD_STRING [[--] root [ARG0 [ARG...]]\n"
+//usage:       "or:    su [-NW] -c CMD_STRING [[--] root [ARG0 [ARG...]]]\n"
 //usage:       "or:    su [-NW] [--] root [arbitrary sh arguments]"
 //usage:#define suw32_full_usage "\n\n"
 //usage:       "Run shell with elevated privileges\n"
