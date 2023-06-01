@@ -2185,17 +2185,15 @@ int enumerate_links(const char *file, char *name)
 #endif
 
 #if ENABLE_ASH_NOCONSOLE
-void hide_console(void)
+void hide_console(int hide)
 {
-	DWORD dummy;
-	DECLARE_PROC_ADDR(DWORD, GetConsoleProcessList, LPDWORD, DWORD);
 	DECLARE_PROC_ADDR(BOOL, ShowWindow, HWND, int);
+	DECLARE_PROC_ADDR(BOOL, IsIconic, HWND);
 
-	if (INIT_PROC_ADDR(kernel32.dll, GetConsoleProcessList) &&
-			INIT_PROC_ADDR(user32.dll, ShowWindow)) {
-		if (GetConsoleProcessList(&dummy, 1) == 1) {
-			ShowWindow(GetConsoleWindow(), SW_HIDE);
-		}
+	if (INIT_PROC_ADDR(user32.dll, ShowWindow) &&
+			INIT_PROC_ADDR(user32.dll, IsIconic)) {
+		if (IsIconic(GetConsoleWindow()) == !hide)
+			ShowWindow(GetConsoleWindow(), hide ? SW_MINIMIZE : SW_NORMAL);
 	}
 }
 #endif

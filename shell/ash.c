@@ -10789,6 +10789,9 @@ optschanged(void)
 #else
 	viflag = 0; /* forcibly keep the option off */
 #endif
+#if ENABLE_ASH_NOCONSOLE
+	hide_console(noconsole);
+#endif
 }
 
 struct localvar_list {
@@ -16073,11 +16076,6 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 #if DEBUG
 	TRACE(("Shell args: "));
 	trace_puts_args(argv);
-#endif
-
-#if ENABLE_ASH_NOCONSOLE
-	if (noconsole)
-		hide_console();
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
