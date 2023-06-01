@@ -109,8 +109,11 @@
 //usage:#define ls_full_usage "\n\n"
 //usage:       "List directory contents\n"
 //usage:     "\n	-1	One column output"
-//usage:     "\n	-a	Include names starting with ."
+//usage:     "\n	-a	Include names starting with ." IF_PLATFORM_MINGW32(" and hidden files")
 //usage:     "\n	-A	Like -a, but exclude . and .."
+//usage:	IF_PLATFORM_MINGW32(
+//usage:     "\n	-aa,-AA	Like -a,-A but omit hidden system files"
+//usage:	)
 ////usage:     "\n	-C	List by columns" - don't show, this is a default anyway
 //usage:     "\n	-x	List by lines"
 //usage:     "\n	-d	List directory names, not contents"
@@ -339,6 +342,10 @@ struct globals {
 #if ENABLE_FEATURE_LS_TIMESTAMPS
 	/* Do time() just once. Saves one syscall per file for "ls -l" */
 	time_t current_time_t;
+#endif
+#if ENABLE_PLATFORM_MINGW32
+	int a_count, A_count;
+# define HIDSYS (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)
 #endif
 } FIX_ALIASING;
 #define G (*(struct globals*)bb_common_bufsiz1)
@@ -974,7 +981,10 @@ static struct dnode **scan_one_dir(const char *path, unsigned *nfiles_p)
 		if (!cur) {
 #else
 		if (!cur || ((cur->dn_attr & FILE_ATTRIBUTE_HIDDEN) &&
-						!(option_mask32 & (OPT_a|OPT_A)))) {
+						!(option_mask32 & (OPT_a|OPT_A))) ||
+				(((cur->dn_attr & HIDSYS) == HIDSYS) &&
+						MAX(G.a_count, G.A_count) > 1)
+			) {
 			/* skip invalid or hidden files */
 #endif
 			free(fullname);
@@ -1166,9 +1176,11 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 			IF_FEATURE_LS_TIMESTAMPS(":c-u:u-c") /* mtime/atime */
 			/* -w NUM: */
 			IF_FEATURE_LS_WIDTH(":w+")
+			IF_PLATFORM_MINGW32(":aa:AA")
 		, ls_longopts
 		IF_FEATURE_LS_WIDTH(, /*-T*/ NULL, /*-w*/ &G_terminal_width)
 		IF_FEATURE_LS_COLOR(, &color_opt)
+		IF_PLATFORM_MINGW32(, &G.a_count, &G.A_count)
 	);
 #if 0 /* option bits debug */
 	bb_error_msg("opt:0x%08x l:%x H:%x color:%x dirs:%x", opt, OPT_l, OPT_H, OPT_color, OPT_dirs_first);
