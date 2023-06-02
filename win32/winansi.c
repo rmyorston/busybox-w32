@@ -746,7 +746,7 @@ static BOOL winansi_CharToOem(LPCSTR s, LPSTR d)
 	return winansi_CharToOemBuff(s, d, strlen(s)+1);
 }
 
-static BOOL winansi_OemToCharBuff(LPCSTR s, LPSTR d, DWORD len)
+BOOL winansi_OemToCharBuff(LPCSTR s, LPSTR d, DWORD len)
 {
 	WCHAR *buf;
 	int i;
@@ -771,10 +771,8 @@ static BOOL winansi_OemToCharBuff(LPCSTR s, LPSTR d, DWORD len)
 
 # undef CharToOemBuff
 # undef CharToOem
-# undef OemToCharBuff
 # define CharToOemBuff winansi_CharToOemBuff
 # define CharToOem winansi_CharToOem
-# define OemToCharBuff winansi_OemToCharBuff
 #endif
 
 static int ansi_emulate(const char *s, FILE *stream)
