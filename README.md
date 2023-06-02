@@ -20,16 +20,17 @@ On either Linux or Windows the commands `make mingw64_defconfig` or `make mingw3
 
 Then just `make`.
 
-### Limitations
+### Hints
 
  - Use forward slashes in paths:  Windows doesn't mind and the shell will be happier.
  - Windows paths are different from Unix ([more detail](https://frippery.org/busybox/paths.html)):
-   * Absolute paths: `c:/path` or `//host/share`
+   * Absolute paths: `c:/path` or `//host/share/path`
    * Relative to current directory of other drive: `c:path`
    * Relative to current root (drive or share): `/path`
    * Relative to current directory of current root (drive or share): `path`
- - Handling of users, groups and permissions is totally bogus.  The system only admits to knowing about the current user and always returns the same hardcoded uid, gid and permission values.
+ - Handling of users, groups and permissions is totally bogus.  The system only admits to knowing about the current user and employs various heuristics to synthesise uid, gid and permission values.
  - Some crufty old Windows code (Windows XP, cmd.exe) doesn't like forward slashes in environment variables.  The -X shell option (which must be the first argument) prevents busybox-w32 from changing backslashes to forward slashes.  If Windows programs don't run from the shell it's worth trying it.
  - If you want to install 32-bit BusyBox in a system directory on a 64-bit version of Windows you should put it in `C:\Windows\SysWOW64`, not `C:\Windows\System32` as you might expect.  On 64-bit systems the latter is for 64-bit binaries.
  - The system tries to detect the best way to handle the terminal being used.  If this doesn't work you can try setting the environment variable `BB_TERMINAL_MODE=1` to force the use of literal ANSI escapes or `BB_TERMINAL_MODE=0` to emulate them using the Windows console API.
- - It's possible to obtain pseudo-random numbers using `if=/dev/urandom` as the input file to `dd`.  The same emulation of `/dev/urandom` is used internally by the `shred` utility and to support https in `wget`.  Since the pseudo-random number generator isn't being seeded with sufficient entropy the randomness shouldn't be relied on for any serious use.
+ - busybox-w32 prefers built-in applets to external programs when running commands. This preference can be overridden by setting the environment variable `BB_OVERRIDE_APPLETS` to a space-separated list of applet names. Thus, to use an external `make` in preference to the built-in applet set `BB_OVERRIDE_APPLETS="make"`.
+ - It's possible to obtain pseudo-random numbers using `if=/dev/urandom` as the input file to `dd`.  The same emulation of `/dev/urandom` is used internally by the `shred` utility and to support https in `wget`.  Serious users of random numbers may, of course, wish to make alternative arrangements.
