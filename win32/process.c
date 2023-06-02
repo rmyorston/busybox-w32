@@ -153,16 +153,8 @@ quote_arg(const char *arg)
 char *
 find_first_executable(const char *name)
 {
-	char *tmp, *path = getenv("PATH");
-	char *exe_path = NULL;
-
-	if (path) {
-		tmp = path = xstrdup(path);
-		exe_path = find_executable(name, &tmp);
-		free(path);
-	}
-
-	return exe_path;
+	char *path = getenv("PATH");
+	return find_executable(name, &path);
 }
 
 static intptr_t
