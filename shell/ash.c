@@ -2350,6 +2350,13 @@ change_terminal_mode(const char *newval UNUSED_PARAM)
 	terminal_mode(TRUE);
 }
 
+static void clearcmdentry(void);
+static void FAST_FUNC
+change_override_applets(const char *newval UNUSED_PARAM)
+{
+	clearcmdentry();
+}
+
 # define LINENO_INDEX (5 + 2 * ENABLE_ASH_MAIL + ENABLE_ASH_GETOPTS)
 # define FUNCNAME_INDEX (LINENO_INDEX + 1)
 #endif
@@ -2394,6 +2401,7 @@ static const struct {
 #if ENABLE_PLATFORM_MINGW32
 	{ VSTRFIXED|VTEXTFIXED|VUNSET, BB_SKIP_ANSI_EMULATION, change_terminal_mode },
 	{ VSTRFIXED|VTEXTFIXED|VUNSET, BB_TERMINAL_MODE, change_terminal_mode },
+	{ VSTRFIXED|VTEXTFIXED|VUNSET, BB_OVERRIDE_APPLETS, change_override_applets },
 #endif
 };
 
