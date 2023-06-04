@@ -263,9 +263,16 @@ int FAST_FUNC find_applet_by_name(const char *name)
 
 #if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1 && \
 		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
+# if ENABLE_ASH
+const char *ash_path = NULL;
+# else
+#  define ash_path NULL
+# endif
+
 static int external_exists(const char *name)
 {
-	char *ret = find_first_executable(name);
+	char *path = ash_path ? auto_string(xstrdup(ash_path)) : getenv("PATH");
+	char *ret = find_executable(name, &path);
 	free(ret);
 	return ret != NULL;
 }

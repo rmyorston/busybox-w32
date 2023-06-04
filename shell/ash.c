@@ -426,6 +426,38 @@ static void forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 # endif
 #endif
 
+#if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1 && \
+		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
+static int
+ash_preferred_applet_by_name(const char *name, const char *path)
+{
+	int ret;
+
+	ash_path = path;
+	ret = find_preferred_applet_by_name(name);
+	ash_path = NULL;
+
+	return ret;
+}
+
+static int
+ash_applet_preferred(const char *name, const char *path)
+{
+	int ret;
+
+	ash_path = path;
+	ret = is_applet_preferred(name);
+	ash_path = NULL;
+
+	return ret;
+}
+# undef find_applet_by_name
+# define find_applet_by_name(n, p) ash_preferred_applet_by_name(n, p)
+# define is_applet_preferred(n, p) ash_applet_preferred(n, p)
+#else
+# define find_applet_by_name(n, p) find_applet_by_name(n)
+#endif
+
 /* ============ Hash table sizes. Configurable. */
 
 #define VTABSIZE 39
@@ -9113,7 +9145,7 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 	if (has_path(prog)
 #endif
 #if ENABLE_FEATURE_SH_STANDALONE
-	 || (applet_no = find_applet_by_name(prog)) >= 0
+	 || (applet_no = find_applet_by_name(prog, path)) >= 0
 #endif
 	) {
 #if ENABLE_PLATFORM_MINGW32
@@ -9134,7 +9166,7 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 		if (unix_path(prog)) {
 			const char *name = bb_basename(prog);
 # if ENABLE_FEATURE_SH_STANDALONE
-			if ((applet_no = find_applet_by_name(name)) >= 0) {
+			if ((applet_no = find_applet_by_name(name, path)) >= 0) {
 				tryexec(applet_no, name, argv, envp);
 				e = errno;
 			}
@@ -14939,7 +14971,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			name = (char *)bb_basename(name);
 			if (
 # if ENABLE_FEATURE_SH_STANDALONE
-					find_applet_by_name(name) >= 0 ||
+					find_applet_by_name(name, path) >= 0 ||
 # endif
 					!find_builtin(bb_basename(name))
 			) {
@@ -15010,7 +15042,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 
 #if ENABLE_FEATURE_SH_STANDALONE
 	{
-		int applet_no = find_applet_by_name(name);
+		int applet_no = find_applet_by_name(name, path);
 		if (applet_no >= 0) {
 			entry->cmdtype = CMDNORMAL;
 			entry->u.index = -2 - applet_no;
@@ -15259,7 +15291,7 @@ helpcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	{
 		const char *a = applet_names;
 		while (*a) {
-			if (is_applet_preferred(a)) {
+			if (is_applet_preferred(a, pathval())) {
 				col += out1fmt("%c%s", ((col == 0) ? '\t' : ' '), a);
 				if (col > 60) {
 					out1fmt("\n");

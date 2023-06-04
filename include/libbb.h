@@ -1330,6 +1330,9 @@ int find_preferred_applet_by_name(const char *name) FAST_FUNC;
 int is_applet_preferred(const char *name) FAST_FUNC;
 # if ENABLE_PLATFORM_MINGW32 && \
 		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
+#  if ENABLE_ASH
+extern const char *ash_path;
+#  endif
 #  define find_applet_by_name(n) find_preferred_applet_by_name(n)
 # else
 #  define is_applet_preferred(n) (1)
