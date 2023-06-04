@@ -15242,14 +15242,18 @@ trapcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 			// trap '' INT disables Ctrl-C, anything else enables it
 			if (action && action[0] == '\0') {
 				SetConsoleCtrlHandler(NULL, TRUE);
+# if ENABLE_FEATURE_EDITING
 				if (line_input_state) {
 					line_input_state->flags |= IGNORE_CTRL_C;
 				}
+# endif
 			} else {
 				SetConsoleCtrlHandler(NULL, FALSE);
+# if ENABLE_FEATURE_EDITING
 				if (line_input_state) {
 					line_input_state->flags &= ~IGNORE_CTRL_C;
 				}
+# endif
 			}
 		}
 #else
