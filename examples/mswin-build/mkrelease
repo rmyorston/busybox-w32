@@ -1,0 +1,70 @@
+#!/bin/sh
+#
+# Build 32- and 64-bit busybox binaries for release
+#
+TARGETS="build_32 build_64"
+
+if [ ! -d busybox-w32 ]
+then
+	echo "busybox-w32 doesn't exist"
+	exit 0
+fi
+
+# remove old and make new build directories
+for i in $TARGETS
+do
+	rm -rf $i
+	cp -rp busybox-w32 $i
+done
+
+# apply default configuration
+for i in $TARGETS
+do
+	BITS=32
+	if [ $i = "build_64" ]
+	then
+		BITS=64;
+	fi
+
+	(
+		cd $i
+		make mingw${BITS}_defconfig
+		# link time optimisation, fortify, stack protection
+		sed -e 's/^CONFIG_EXTRA_CFLAGS="\(.*\)"$/CONFIG_EXTRA_CFLAGS="\1 -flto -fstack-protector --param=ssp-buffer-size=4"/' \
+			-e 's/^CONFIG_EXTRA_CFLAGS=" /CONFIG_EXTRA_CFLAGS="/' \
+			-e 's/^CONFIG_EXTRA_LDLIBS="\(.*\)"$/CONFIG_EXTRA_LDLIBS="\1 -l:libssp.a"/' \
+			-e 's/^CONFIG_EXTRA_LDLIBS=" /CONFIG_EXTRA_LDLIBS="/' \
+			-i .config 
+		# does ld support --disable-reloc-section?
+		eval $(grep CONFIG_CROSS_COMPILER_PREFIX .config)
+		[ $BITS -eq 32 ] && [ -n "$CONFIG_CROSS_COMPILER_PREFIX" ] && \
+			${CONFIG_CROSS_COMPILER_PREFIX}ld --help | \
+				grep -q disable-reloc-section &&
+					sed -e 's/^CONFIG_EXTRA_LDFLAGS="\(.*\)"$/CONFIG_EXTRA_LDFLAGS="\1 -Wl,--disable-reloc-section"/' \
+						-e 's/^CONFIG_EXTRA_LDFLAGS=" /CONFIG_EXTRA_LDFLAGS="/' \
+						-i .config
+	)
+done
+
+# perform build
+for i in $TARGETS
+do
+	BITS=32
+	if [ $i = "build_64" ]
+	then
+		BITS=64;
+	fi
+
+	(
+	cd $i
+	GCCV=`rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-gcc`
+	CRTV=`rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-crt`
+	GLOB="; noglob"
+	if grep -q ^CONFIG_GLOBBING=y .config
+	then
+		GLOB="; glob"
+	fi
+	VER="($GCCV; $CRTV$GLOB)"
+	make -j $(nproc) EXTRAVERSION="-`git describe --match=FRP`" MINGW_VER="$VER"
+	)
+done

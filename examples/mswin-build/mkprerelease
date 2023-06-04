@@ -1,0 +1,48 @@
+#!/bin/sh
+#
+# Build busybox prerelease binaries
+#
+TARGETS="build_pre_32 build_pre_64"
+
+# If an argument is supplied it overrides the default source directory.
+SRC=busybox-w32
+if [ $# -eq 1 ]
+then
+	SRC=$1
+fi
+
+if [ ! -d $SRC ]
+then
+	echo "$SRC doesn't exist"
+	exit 0
+fi
+
+# remove old and make new build directories
+for i in $TARGETS
+do
+	rm -rf $i
+	cp -rp $SRC $i
+done
+
+# apply default configuration
+for i in $TARGETS
+do
+	if [ $i = "build_pre_64" ]
+	then
+		CONFIG=mingw64_defconfig;
+	elif [ $i = "build_pre_32" ]
+	then
+		CONFIG=mingw32_defconfig;
+	fi
+
+	(cd $i; git checkout master; make ${CONFIG})
+done
+
+# perform build
+for i in $TARGETS
+do
+	(
+	cd $i
+	make -j $(nproc) EXTRAVERSION="-$(git describe --match=FRP | sed 's/FRP/PRE/')"
+	)
+done

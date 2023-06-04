@@ -1,0 +1,6 @@
+These are the scripts used to cross-compile busybox-w32.
+
+The release build performs some additional optimisation and is
+slightly slower as a result.  It also includes information about
+the build platform in the help message.  This assumes the build is
+done on a Fedora Linux system.
