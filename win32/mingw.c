@@ -1099,12 +1099,10 @@ static char *gethomedir(void)
 static char *getsysdir(void)
 {
 	static char *buf = NULL;
-	char dir[PATH_MAX];
 
 	if (!buf) {
 		buf = xzalloc(PATH_MAX);
-		GetSystemDirectory(dir, PATH_MAX);
-		realpath(dir, buf);
+		GetSystemDirectory(buf, PATH_MAX);
 	}
 	return buf;
 }
@@ -2353,10 +2351,7 @@ void *get_proc_addr(const char *dll, const char *function,
 		 * on Windows 7.  If it does, retry using LoadLibrary with an
 		 * explicit, backslash-separated path. */
 		if (!hnd) {
-			char dir[PATH_MAX], *path;
-
-			GetSystemDirectory(dir, PATH_MAX);
-			path = concat_path_file(dir, dll);
+			char *path = concat_path_file(getsysdir(), dll);
 			slash_to_bs(path);
 			hnd = LoadLibrary(path);
 			free(path);
