@@ -15854,7 +15854,6 @@ init(void)
 			pw = getpwuid(getuid());
 			if (pw) {
 				xsetenv_if_unset("USER",     pw->pw_name);
-				xsetenv_if_unset("USERNAME", pw->pw_name);
 				xsetenv_if_unset("LOGNAME",  pw->pw_name);
 				xsetenv_if_unset("HOME",     pw->pw_dir);
 			}

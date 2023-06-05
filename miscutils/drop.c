@@ -188,7 +188,6 @@ int drop_main(int argc, char **argv)
 			si.dwFlags = STARTF_USESTDHANDLES;
 
 			setenv_name("USER");
-			setenv_name("USERNAME");
 			setenv_name("LOGNAME");
 
 			if (!CreateProcessAsUserA(token, exe, cmd, NULL, NULL, TRUE,
