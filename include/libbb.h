@@ -1326,16 +1326,13 @@ void run_noexec_applet_and_exit(int a, const char *name, char **argv) NORETURN F
 #ifndef BUILD_INDIVIDUAL
 int find_applet_by_name(const char *name) FAST_FUNC;
 void run_applet_no_and_exit(int a, const char *name, char **argv) NORETURN FAST_FUNC;
-int find_preferred_applet_by_name(const char *name) FAST_FUNC;
-int is_applet_preferred(const char *name) FAST_FUNC;
 # if ENABLE_PLATFORM_MINGW32 && \
 		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
-#  if ENABLE_ASH
-extern const char *ash_path;
-#  endif
-#  define find_applet_by_name(n) find_preferred_applet_by_name(n)
+int is_applet_preferred(const char *name) FAST_FUNC;
+const char *get_ash_path(void);
 # else
 #  define is_applet_preferred(n) (1)
+#  define get_ash_path() (NULL)
 # endif
 #endif
 void show_usage_if_dash_dash_help(int applet_no, char **argv) FAST_FUNC;

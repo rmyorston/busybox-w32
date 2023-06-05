@@ -428,13 +428,21 @@ static void forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 
 #if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1 && \
 		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
-static int
-ash_preferred_applet_by_name(const char *name, const char *path)
+static const char *ash_path;
+
+const char *
+get_ash_path(void)
+{
+	return ash_path;
+}
+
+static int NOINLINE
+ash_applet_by_name(const char *name, const char *path)
 {
 	int ret;
 
 	ash_path = path;
-	ret = find_preferred_applet_by_name(name);
+	ret = find_applet_by_name(name);
 	ash_path = NULL;
 
 	return ret;
@@ -451,11 +459,12 @@ ash_applet_preferred(const char *name, const char *path)
 
 	return ret;
 }
-# undef find_applet_by_name
-# define find_applet_by_name(n, p) ash_preferred_applet_by_name(n, p)
+# define find_applet_by_name(n, p) ash_applet_by_name(n, p)
 # define is_applet_preferred(n, p) ash_applet_preferred(n, p)
 #else
 # define find_applet_by_name(n, p) find_applet_by_name(n)
+# undef is_applet_preferred
+# define is_applet_preferred(n, p) (1)
 #endif
 
 /* ============ Hash table sizes. Configurable. */
