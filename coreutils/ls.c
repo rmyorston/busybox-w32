@@ -948,6 +948,9 @@ static struct dnode **scan_one_dir(const char *path, unsigned *nfiles_p)
 	struct dirent *entry;
 	DIR *dir;
 	unsigned i, nfiles;
+#if ENABLE_PLATFORM_MINGW32
+	struct stat statbuf;
+#endif
 
 	*nfiles_p = 0;
 	dir = warn_opendir(path);
@@ -976,6 +979,20 @@ static struct dnode **scan_one_dir(const char *path, unsigned *nfiles_p)
 		else
 #endif
 		fullname = concat_path_file(path, entry->d_name);
+#if ENABLE_PLATFORM_MINGW32
+		/* When showing link targets we must first check the
+		 * attributes of the link itself to see if it's hidden. */
+		if ((option_mask32 & OPT_L) && !lstat(fullname, &statbuf)) {
+			if (((statbuf.st_attr & FILE_ATTRIBUTE_HIDDEN) &&
+					!(option_mask32 & (OPT_a|OPT_A))) ||
+				(((statbuf.st_attr & HIDSYS) == HIDSYS) &&
+					MAX(G.a_count, G.A_count) > 1)
+			) {
+				free(fullname);
+				continue;
+			}
+		}
+#endif
 		cur = my_stat(fullname, bb_basename(fullname), 0);
 #if !ENABLE_PLATFORM_MINGW32
 		if (!cur) {
