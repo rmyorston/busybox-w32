@@ -941,6 +941,15 @@ static void sort_and_display_files(struct dnode **dn, unsigned nfiles)
 # define sort_and_display_files(dn, nfiles) display_files(dn, nfiles)
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+static int hide_file(DWORD attr)
+{
+	return
+		((attr & FILE_ATTRIBUTE_HIDDEN) && !(option_mask32 & (OPT_a|OPT_A))) ||
+		(((attr & HIDSYS) == HIDSYS) && MAX(G.a_count, G.A_count) > 1);
+}
+#endif
+
 /* Returns NULL-terminated malloced vector of pointers (or NULL) */
 static struct dnode **scan_one_dir(const char *path, unsigned *nfiles_p)
 {
@@ -983,11 +992,7 @@ static struct dnode **scan_one_dir(const char *path, unsigned *nfiles_p)
 		/* When showing link targets we must first check the
 		 * attributes of the link itself to see if it's hidden. */
 		if ((option_mask32 & OPT_L) && !lstat(fullname, &statbuf)) {
-			if (((statbuf.st_attr & FILE_ATTRIBUTE_HIDDEN) &&
-					!(option_mask32 & (OPT_a|OPT_A))) ||
-				(((statbuf.st_attr & HIDSYS) == HIDSYS) &&
-					MAX(G.a_count, G.A_count) > 1)
-			) {
+			if (hide_file(statbuf.st_attr)) {
 				free(fullname);
 				continue;
 			}
@@ -997,11 +1002,7 @@ static struct dnode **scan_one_dir(const char *path, unsigned *nfiles_p)
 #if !ENABLE_PLATFORM_MINGW32
 		if (!cur) {
 #else
-		if (!cur || ((cur->dn_attr & FILE_ATTRIBUTE_HIDDEN) &&
-						!(option_mask32 & (OPT_a|OPT_A))) ||
-				(((cur->dn_attr & HIDSYS) == HIDSYS) &&
-						MAX(G.a_count, G.A_count) > 1)
-			) {
+		if (!cur || hide_file(cur->dn_attr)) {
 			/* skip invalid or hidden files */
 #endif
 			free(fullname);
