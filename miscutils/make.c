@@ -2813,7 +2813,7 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 	// Read built-in rules
 	input(NULL, 0);
 
-	setmacro("SHELL", "/bin/sh", 4);
+	setmacro("SHELL", DEFAULT_SHELL, 4);
 	setmacro("MAKE", path, 4);
 	free((void *)newpath);
 
