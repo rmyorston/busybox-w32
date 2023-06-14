@@ -75,6 +75,10 @@ static int is_wine(void)
 #define DISABLE_NEWLINE_AUTO_RETURN 0x0008
 #endif
 
+#ifndef ENABLE_VIRTUAL_TERMINAL_INPUT
+#define ENABLE_VIRTUAL_TERMINAL_INPUT 0x0200
+#endif
+
 int terminal_mode(int reset)
 {
 	static int mode = -1;

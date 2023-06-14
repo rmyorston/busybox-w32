@@ -144,7 +144,7 @@ pid_t mingw_fork_compressor(int fd, const char *compressor, const char *mode);
 #define popen mingw_popen
 #define pclose mingw_pclose
 
-IMPL(setlinebuf, void, ,FILE * UNUSED_PARAM)
+IMPL(setlinebuf, void, ,FILE *fd UNUSED_PARAM)
 
 /*
  * ANSI emulation wrappers
@@ -476,6 +476,10 @@ int mingw_open (const char *filename, int oflags, ...);
 /* functions which add O_SPECIAL to open(2) to allow access to devices */
 int mingw_xopen(const char *filename, int oflags);
 ssize_t mingw_open_read_close(const char *fn, void *buf, size_t size) FAST_FUNC;
+
+#ifndef IO_REPARSE_TAG_APPEXECLINK
+# define IO_REPARSE_TAG_APPEXECLINK 0x8000001b
+#endif
 
 ssize_t mingw_read(int fd, void *buf, size_t count);
 int mingw_close(int fd);

@@ -212,7 +212,7 @@ int shuf_main(int argc, char **argv)
 				printf("%.*s%0*llu%c", pfx_len, pfx, padding_width, lo + (uintptr_t)lines[i], eol);
 			else
 #endif
-				printf("%llu%c", lo + (uintptr_t)lines[i], eol);
+				printf("%"LL_FMT"u%c", lo + (uintptr_t)lines[i], eol);
 		} else
 			printf("%s%c", lines[i], eol);
 	}
