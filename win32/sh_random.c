@@ -9,7 +9,10 @@
  */
 static void get_entropy(uint32_t state[2])
 {
+#if defined(__MINGW64_VERSION_MAJOR) && \
+		(__MINGW64_VERSION_MAJOR >= 7 || defined(__MINGW64__))
 	if (!RtlGenRandom(state, sizeof(state[0])*2))
+#endif
 		GetSystemTimeAsFileTime((FILETIME *)state);
 
 #if 0
