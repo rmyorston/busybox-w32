@@ -22,7 +22,9 @@
 
 //usage:#if !ENABLE_DESKTOP
 //usage:#define od_trivial_usage
-//usage:       "[-aBbcDdeFfHhIiLlOovXx] [FILE]"
+//usage:       "[-abcdeFfhiloxsv] [FILE]"
+// We also support -BDOHXIL, but they are not documented in coreutils 9.1
+// manpage/help, so don't show them either.
 //usage:#define od_full_usage "\n\n"
 //usage:       "Print FILE (or stdin) unambiguously, as octal bytes by default"
 //usage:#endif
@@ -144,29 +146,50 @@ odoffset(dumper_t *dumper, int argc, char ***argvp)
 	}
 }
 
+// bb_dump_add():
+// A format string contains format units separated by [optional] whitespace.
+// A format unit contains up to three items: an iteration count, a byte count,
+// and a format.
+// The iteration count is an optional integer (default 1).
+// Each format is applied iteration count times.
+// The byte count is an optional integer. It defines the number
+// of bytes to be interpreted by each iteration of the format.
+// If an iteration count and/or a byte count is specified, a slash must be
+// placed after the iteration count and/or before the byte count
+// to disambiguate them.
+// The printf-style format is required and must be surrounded by " "s.
+// (Below, each string contains two format units)
 static const char *const add_strings[] ALIGN_PTR = {
-	"16/1 \"%3_u \" \"\\n\"",              /* a */
-	"8/2 \" %06o \" \"\\n\"",              /* B, o */
-	"16/1 \"%03o \" \"\\n\"",              /* b */
-	"16/1 \"%3_c \" \"\\n\"",              /* c */
-	"8/2 \"  %05u \" \"\\n\"",             /* d */
-	"4/4 \"     %010u \" \"\\n\"",         /* D */
-	"2/8 \"          %21.14e \" \"\\n\"",  /* e (undocumented in od), F */
-	"4/4 \" %14.7e \" \"\\n\"",            /* f */
-	"4/4 \"       %08x \" \"\\n\"",        /* H, X */
-	"8/2 \"   %04x \" \"\\n\"",            /* h, x */
-	"4/4 \"    %11d \" \"\\n\"",           /* I, L, l */
-	"8/2 \" %6d \" \"\\n\"",               /* i */
-	"4/4 \"    %011o \" \"\\n\"",          /* O */
+	"16/1 \" %3_u\""   "\"\n\"",            /* 0: a */
+	"8/2 \" %06o\""    "\"\n\"",            /* 1: B (undocumented in od), o */
+	"16/1 \" %03o\""   "\"\n\"",            /* 2: b */
+	"16/1 \" %3_c\""   "\"\n\"",            /* 3: c */
+	"8/2 \" %5u\""     "\"\n\"",            /* 4: d */
+	"4/4 \" %10u\""    "\"\n\"",            /* 5: D */
+	"2/8 \" %24.14e\"" "\"\n\"",            /* 6: e (undocumented in od), F */
+	"4/4 \" %15.7e\""  "\"\n\"",            /* 7: f */
+	"4/4 \" %08x\""    "\"\n\"",            /* 8: H, X */
+	"8/2 \" %04x\""    "\"\n\"",            /* 9: h, x */
+	"4/4 \" %11d\""    "\"\n\"",            /* 10: i */
+	"4/4 \" %011o\""   "\"\n\"",            /* 11: O */
+	"8/2 \" %6d\""     "\"\n\"",            /* 12: s */
+	/* -I,L,l: depend on word width of the arch (what is "long"?) */
+#if ULONG_MAX > 0xffffffff
+	"2/8 \" %20lld\""  "\"\n\"",            /* 13: I, L, l */
+#define L_ 13
+#else
+	/* 32-bit arch: -I,L,l are the same as -i */
+#define L_ 10
+#endif
 };
 
-static const char od_opts[] ALIGN1 = "aBbcDdeFfHhIiLlOoXxv";
+static const char od_opts[] ALIGN1 = "aBbcDdeFfHhIiLlOoXxsv";
 
 static const char od_o2si[] ALIGN1 = {
-	0, 1, 2, 3, 5,
-	4, 6, 6, 7, 8,
-	9, 0xa, 0xb, 0xa, 0xa,
-	0xb, 1, 8, 9,
+	0, 1, 2, 3, 5,     /* aBbcD */
+	4, 6, 6, 7, 8,     /* deFfH */
+	9, L_, 10, L_, L_, /* hIiLl */
+	11, 1, 8, 9, 12    /* OoXxs */
 };
 
 int od_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -184,19 +207,21 @@ int od_main(int argc, char **argv)
 			if (first) {
 				first = 0;
 				bb_dump_add(dumper, "\"%07.7_Ao\n\"");
-				bb_dump_add(dumper, "\"%07.7_ao  \"");
+				bb_dump_add(dumper, "\"%07.7_ao\"");
 			} else {
-				bb_dump_add(dumper, "\"         \"");
+				bb_dump_add(dumper, "\"       \"");
 			}
 			bb_dump_add(dumper, add_strings[(int)od_o2si[(p - od_opts)]]);
-		} else {  /* P, p, s, w, or other unhandled */
+		} else {  /* P, p, w, or other unhandled */
 			bb_show_usage();
 		}
 	}
 	if (!dumper->fshead) {
 		bb_dump_add(dumper, "\"%07.7_Ao\n\"");
-		bb_dump_add(dumper, "\"%07.7_ao  \" 8/2 \"%06o \" \"\\n\"");
+		bb_dump_add(dumper, "\"%07.7_ao\"");
+		bb_dump_add(dumper, add_strings[1]); /* -o format is default */
 	}
+	dumper->od_eofstring = "\n";
 
 	argc -= optind;
 	argv += optind;
@@ -205,7 +230,7 @@ int od_main(int argc, char **argv)
 
 	return bb_dump_dump(dumper, argv);
 }
-#endif /* ENABLE_DESKTOP */
+#endif /* !ENABLE_DESKTOP */
 
 /*-
  * Copyright (c) 1990 The Regents of the University of California.

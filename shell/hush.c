@@ -1061,6 +1061,7 @@ static int builtin_export(char **argv) FAST_FUNC;
 #if ENABLE_HUSH_READONLY
 static int builtin_readonly(char **argv) FAST_FUNC;
 #endif
+static int builtin_false(char **argv) FAST_FUNC;
 #if ENABLE_HUSH_JOB
 static int builtin_fg_bg(char **argv) FAST_FUNC;
 static int builtin_jobs(char **argv) FAST_FUNC;
@@ -1161,6 +1162,7 @@ static const struct built_in_command bltins1[] ALIGN_PTR = {
 #if ENABLE_HUSH_EXPORT
 	BLTIN("export"   , builtin_export  , "Set environment variables"),
 #endif
+	BLTIN("false"    , builtin_false   , NULL),
 #if ENABLE_HUSH_JOB
 	BLTIN("fg"       , builtin_fg_bg   , "Bring job to foreground"),
 #endif
@@ -9758,7 +9760,7 @@ static int run_list(struct pipe *pi)
 	smallint last_rword; /* ditto */
 #endif
 
-	debug_printf_exec("run_list start lvl %d\n", G.run_list_level);
+	debug_printf_exec("run_list lvl %d start\n", G.run_list_level);
 	debug_enter();
 
 #if ENABLE_HUSH_LOOPS
@@ -9817,7 +9819,7 @@ static int run_list(struct pipe *pi)
 			break;
 
 		IF_HAS_KEYWORDS(rword = pi->res_word;)
-		debug_printf_exec(": rword=%d cond_code=%d last_rword=%d\n",
+		debug_printf_exec(": rword:%d cond_code:%d last_rword:%d\n",
 				rword, cond_code, last_rword);
 
 		sv_errexit_depth = G.errexit_depth;
@@ -9851,23 +9853,29 @@ static int run_list(struct pipe *pi)
 			}
 		}
 		last_followup = pi->followup;
-		IF_HAS_KEYWORDS(last_rword = rword;)
 #if ENABLE_HUSH_IF
-		if (cond_code) {
+		if (cond_code != 0) {
 			if (rword == RES_THEN) {
 				/* if false; then ... fi has exitcode 0! */
 				G.last_exitcode = rcode = EXIT_SUCCESS;
 				/* "if <false> THEN cmd": skip cmd */
+				debug_printf_exec("skipped THEN cmd because IF condition was false\n");
+				last_rword = rword;
 				continue;
 			}
 		} else {
-			if (rword == RES_ELSE || rword == RES_ELIF) {
+			if (rword == RES_ELSE
+			 || (rword == RES_ELIF && last_rword != RES_ELIF)
+			) {
 				/* "if <true> then ... ELSE/ELIF cmd":
 				 * skip cmd and all following ones */
+				debug_printf_exec("skipped ELSE/ELIF branch because IF condition was true\n");
 				break;
 			}
+			//if (rword == RES_THEN): "if <true> THEN cmd", run cmd (fall through)
 		}
 #endif
+		IF_HAS_KEYWORDS(last_rword = rword;)
 #if ENABLE_HUSH_LOOPS
 		if (rword == RES_FOR) { /* && pi->num_cmds - always == 1 */
 			if (!for_lcur) {
@@ -9943,7 +9951,7 @@ static int run_list(struct pipe *pi)
 				);
 				/* TODO: which FNM_xxx flags to use? */
 				cond_code = (fnmatch(pattern, case_word, /*flags:*/ 0) != 0);
-				debug_printf_exec("fnmatch(pattern:'%s',str:'%s'):%d\n",
+				debug_printf_exec("cond_code=fnmatch(pattern:'%s',str:'%s'):%d\n",
 						pattern, case_word, cond_code);
 				free(pattern);
 				if (cond_code == 0) {
@@ -10069,8 +10077,10 @@ static int run_list(struct pipe *pi)
 
 		/* Analyze how result affects subsequent commands */
 #if ENABLE_HUSH_IF
-		if (rword == RES_IF || rword == RES_ELIF)
+		if (rword == RES_IF || rword == RES_ELIF) {
+			debug_printf_exec("cond_code=rcode:%d\n", rcode);
 			cond_code = rcode;
+		}
 #endif
  check_jobs_and_continue:
 		checkjobs(NULL, 0 /*(no pid to wait for)*/);
@@ -10111,7 +10121,7 @@ static int run_list(struct pipe *pi)
 	free(case_word);
 #endif
 	debug_leave();
-	debug_printf_exec("run_list lvl %d return %d\n", G.run_list_level + 1, rcode);
+	debug_printf_exec("run_list lvl %d return %d\n", G.run_list_level, rcode);
 	return rcode;
 }
 
@@ -10821,6 +10831,11 @@ int hush_main(int argc, char **argv)
 static int FAST_FUNC builtin_true(char **argv UNUSED_PARAM)
 {
 	return 0;
+}
+
+static int FAST_FUNC builtin_false(char **argv UNUSED_PARAM)
+{
+	return 1;
 }
 
 #if ENABLE_HUSH_TEST || ENABLE_HUSH_ECHO || ENABLE_HUSH_PRINTF || ENABLE_HUSH_KILL

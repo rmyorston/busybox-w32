@@ -337,7 +337,9 @@ static void debug_parse_print_tc(uint32_t n)
 #undef P
 #undef PRIMASK
 #undef PRIMASK2
-#define P(x)      (x << 24)
+/* Smaller 'x' means _higher_ operator precedence */
+#define PRECEDENCE(x) (x << 24)
+#define P(x)      PRECEDENCE(x)
 #define PRIMASK   0x7F000000
 #define PRIMASK2  0x7E000000
 
@@ -360,7 +362,7 @@ enum {
 	OC_MOVE = 0x1f00,       OC_PGETLINE = 0x2000,   OC_REGEXP = 0x2100,
 	OC_REPLACE = 0x2200,    OC_RETURN = 0x2300,     OC_SPRINTF = 0x2400,
 	OC_TERNARY = 0x2500,    OC_UNARY = 0x2600,      OC_VAR = 0x2700,
-	OC_DONE = 0x2800,
+	OC_CONST = 0x2800,      OC_DONE = 0x2900,
 
 	ST_IF = 0x3000,         ST_DO = 0x3100,         ST_FOR = 0x3200,
 	ST_WHILE = 0x3300
@@ -440,9 +442,9 @@ static const uint32_t tokeninfo[] ALIGN4 = {
 #define TI_PREINC (OC_UNARY|xV|P(9)|'P')
 #define TI_PREDEC (OC_UNARY|xV|P(9)|'M')
 	TI_PREINC,               TI_PREDEC,               OC_FIELD|xV|P(5),
-	OC_COMPARE|VV|P(39)|5,   OC_MOVE|VV|P(74),        OC_REPLACE|NV|P(74)|'+', OC_REPLACE|NV|P(74)|'-',
-	OC_REPLACE|NV|P(74)|'*', OC_REPLACE|NV|P(74)|'/', OC_REPLACE|NV|P(74)|'%', OC_REPLACE|NV|P(74)|'&',
-	OC_BINARY|NV|P(29)|'+',  OC_BINARY|NV|P(29)|'-',  OC_REPLACE|NV|P(74)|'&', OC_BINARY|NV|P(15)|'&',
+	OC_COMPARE|VV|P(39)|5,   OC_MOVE|VV|P(38),        OC_REPLACE|NV|P(38)|'+', OC_REPLACE|NV|P(38)|'-',
+	OC_REPLACE|NV|P(38)|'*', OC_REPLACE|NV|P(38)|'/', OC_REPLACE|NV|P(38)|'%', OC_REPLACE|NV|P(38)|'&',
+	OC_BINARY|NV|P(29)|'+',  OC_BINARY|NV|P(29)|'-',  OC_REPLACE|NV|P(38)|'&', OC_BINARY|NV|P(15)|'&',
 	OC_BINARY|NV|P(25)|'/',  OC_BINARY|NV|P(25)|'%',  OC_BINARY|NV|P(15)|'&',  OC_BINARY|NV|P(25)|'*',
 	OC_COMPARE|VV|P(39)|4,   OC_COMPARE|VV|P(39)|3,   OC_COMPARE|VV|P(39)|0,   OC_COMPARE|VV|P(39)|1,
 #define TI_LESS     (OC_COMPARE|VV|P(39)|2)
@@ -546,7 +548,6 @@ struct globals {
 	chain beginseq, mainseq, endseq;
 	chain *seq;
 	node *break_ptr, *continue_ptr;
-	rstream *iF;
 	xhash *ahash;  /* argument names, used only while parsing function bodies */
 	xhash *fnhash; /* function names, used only in parsing stage */
 	xhash *vhash;  /* variables and arrays */
@@ -555,7 +556,7 @@ struct globals {
 	const char *g_progname;
 	int g_lineno;
 	int nfields;
-	int maxfields; /* used in fsrealloc() only */
+	unsigned maxfields;
 	var *Fields;
 	char *g_pos;
 	char g_saved_ch;
@@ -579,11 +580,13 @@ struct globals2 {
 
 	var *intvar[NUM_INTERNAL_VARS]; /* often used */
 
+	rstream iF;
+
 	/* former statics from various functions */
 	char *split_f0__fstrings;
 
-	rstream next_input_file__rsm;
-	smallint next_input_file__files_happen;
+	unsigned next_input_file__argind;
+	smallint next_input_file__input_file_seen;
 
 	smalluint exitcode;
 
@@ -618,7 +621,6 @@ struct globals2 {
 #define seq          (G1.seq         )
 #define break_ptr    (G1.break_ptr   )
 #define continue_ptr (G1.continue_ptr)
-#define iF           (G1.iF          )
 #define ahash        (G1.ahash       )
 #define fnhash       (G1.fnhash      )
 #define vhash        (G1.vhash       )
@@ -644,6 +646,7 @@ struct globals2 {
 #define t_string     (G.t_string    )
 #define t_lineno     (G.t_lineno    )
 #define intvar       (G.intvar      )
+#define iF           (G.iF          )
 #define fsplitter    (G.fsplitter   )
 #define rsplitter    (G.rsplitter   )
 #define g_buf        (G.g_buf       )
@@ -978,6 +981,11 @@ static var *setvar_s(var *v, const char *value)
 	return setvar_p(v, (value && *value) ? xstrdup(value) : NULL);
 }
 
+static var *setvar_sn(var *v, const char *value, int len)
+{
+	return setvar_p(v, (value && *value && len > 0) ? xstrndup(value, len) : NULL);
+}
+
 /* same as setvar_s but sets USER flag */
 static var *setvar_u(var *v, const char *value)
 {
@@ -1003,6 +1011,11 @@ static var *setvar_i(var *v, double value)
 	v->number = value;
 	handle_special(v);
 	return v;
+}
+
+static void setvar_ERRNO(void)
+{
+	setvar_i(intvar[ERRNO], errno);
 }
 
 static const char *getvar_s(var *v)
@@ -1290,7 +1303,7 @@ static uint32_t next_token(uint32_t expected)
 			save_tclass = tc;
 			save_info = t_info;
 			tc = TC_BINOPX;
-			t_info = OC_CONCAT | SS | P(35);
+			t_info = OC_CONCAT | SS | PRECEDENCE(35);
 		}
 
 		t_tclass = tc;
@@ -1350,9 +1363,8 @@ static node *parse_expr(uint32_t term_tc)
 {
 	node sn;
 	node *cn = &sn;
-	node *vn, *glptr;
+	node *glptr;
 	uint32_t tc, expected_tc;
-	var *v;
 
 	debug_printf_parse("%s() term_tc(%x):", __func__, term_tc);
 	debug_parse_print_tc(term_tc);
@@ -1363,11 +1375,12 @@ static node *parse_expr(uint32_t term_tc)
 	expected_tc = TS_OPERAND | TS_UOPPRE | TC_REGEXP | term_tc;
 
 	while (!((tc = next_token(expected_tc)) & term_tc)) {
+		node *vn;
 
 		if (glptr && (t_info == TI_LESS)) {
 			/* input redirection (<) attached to glptr node */
 			debug_printf_parse("%s: input redir\n", __func__);
-			cn = glptr->l.n = new_node(OC_CONCAT | SS | P(37));
+			cn = glptr->l.n = new_node(OC_CONCAT | SS | PRECEDENCE(37));
 			cn->a.n = glptr;
 			expected_tc = TS_OPERAND | TS_UOPPRE;
 			glptr = NULL;
@@ -1379,24 +1392,42 @@ static node *parse_expr(uint32_t term_tc)
 			 * previous operators with higher priority */
 			vn = cn;
 			while (((t_info & PRIMASK) > (vn->a.n->info & PRIMASK2))
-			    || ((t_info == vn->info) && t_info == TI_COLON)
+			    || (t_info == vn->info && t_info == TI_COLON)
 			) {
 				vn = vn->a.n;
 				if (!vn->a.n) syntax_error(EMSG_UNEXP_TOKEN);
 			}
 			if (t_info == TI_TERNARY)
 //TODO: why?
-				t_info += P(6);
+				t_info += PRECEDENCE(6);
 			cn = vn->a.n->r.n = new_node(t_info);
 			cn->a.n = vn->a.n;
 			if (tc & TS_BINOP) {
 				cn->l.n = vn;
-//FIXME: this is the place to detect and reject assignments to non-lvalues.
-//Currently we allow "assignments" to consts and temporaries, nonsense like this:
-// awk 'BEGIN { "qwe" = 1 }'
-// awk 'BEGIN { 7 *= 7 }'
-// awk 'BEGIN { length("qwe") = 1 }'
-// awk 'BEGIN { (1+1) += 3 }'
+
+				/* Prevent:
+				 * awk 'BEGIN { "qwe" = 1 }'
+				 * awk 'BEGIN { 7 *= 7 }'
+				 * awk 'BEGIN { length("qwe") = 1 }'
+				 * awk 'BEGIN { (1+1) += 3 }'
+				 */
+				/* Assignment? (including *= and friends) */
+				if (((t_info & OPCLSMASK) == OC_MOVE)
+				 || ((t_info & OPCLSMASK) == OC_REPLACE)
+				) {
+					debug_printf_parse("%s: MOVE/REPLACE vn->info:%08x\n", __func__, vn->info);
+					/* Left side is a (variable or array element)
+					 * or function argument
+					 * or $FIELD ?
+					 */
+					if ((vn->info & OPCLSMASK) != OC_VAR
+					 && (vn->info & OPCLSMASK) != OC_FNARG
+					 && (vn->info & OPCLSMASK) != OC_FIELD
+					) {
+						syntax_error(EMSG_UNEXP_TOKEN); /* no. bad */
+					}
+				}
+
 				expected_tc = TS_OPERAND | TS_UOPPRE | TC_REGEXP;
 				if (t_info == TI_PGETLINE) {
 					/* it's a pipe */
@@ -1432,6 +1463,8 @@ static node *parse_expr(uint32_t term_tc)
 		/* one should be very careful with switch on tclass -
 		 * only simple tclasses should be used (TC_xyz, not TS_xyz) */
 		switch (tc) {
+			var *v;
+
 		case TC_VARIABLE:
 		case TC_ARRAY:
 			debug_printf_parse("%s: TC_VARIABLE | TC_ARRAY\n", __func__);
@@ -1452,14 +1485,14 @@ static node *parse_expr(uint32_t term_tc)
 		case TC_NUMBER:
 		case TC_STRING:
 			debug_printf_parse("%s: TC_NUMBER | TC_STRING\n", __func__);
-			cn->info = OC_VAR;
+			cn->info = OC_CONST;
 			v = cn->l.v = xzalloc(sizeof(var));
-			if (tc & TC_NUMBER)
+			if (tc & TC_NUMBER) {
 				setvar_i(v, t_double);
-			else {
+			 } else {
 				setvar_s(v, t_string);
-				expected_tc &= ~TC_UOPPOST; /* "str"++ is not allowed */
 			}
+			expected_tc &= ~TC_UOPPOST; /* NUM++, "str"++ not allowed */
 			break;
 
 		case TC_REGEXP:
@@ -1931,9 +1964,9 @@ static void fsrealloc(int size)
 {
 	int i, newsize;
 
-	if (size >= maxfields) {
-		/* Sanity cap, easier than catering for overflows */
-		if (size > 0xffffff)
+	if ((unsigned)size >= maxfields) {
+		/* Sanity cap, easier than catering for over/underflows */
+		if ((unsigned)size > 0xffffff)
 			bb_die_memory_exhausted();
 
 		i = maxfields;
@@ -2049,13 +2082,17 @@ static int awk_split(const char *s, node *spl, char **slist)
 		}
 		return n;
 	}
-	/* space split */
+	/* space split: "In the special case that FS is a single space,
+	 * fields are separated by runs of spaces and/or tabs and/or newlines"
+	 */
 	while (*s) {
-		s = skip_whitespace(s);
+		/* s = skip_whitespace(s); -- WRONG (also skips \v \f \r) */
+		while (*s == ' ' || *s == '\t' || *s == '\n')
+			s++;
 		if (!*s)
 			break;
 		n++;
-		while (*s && !isspace(*s))
+		while (*s && !(*s == ' ' || *s == '\t' || *s == '\n'))
 			*s1++ = *s++;
 		*s1++ = '\0';
 	}
@@ -2232,9 +2269,9 @@ static int awk_getline(rstream *rsm, var *v)
 {
 	char *b;
 	regmatch_t pmatch[1];
-	int size, a, p, pp = 0;
-	int fd, so, eo, r, rp;
-	char c, *m, *s;
+	int p, pp;
+	int fd, so, eo, retval, rp;
+	char *m, *s;
 
 	debug_printf_eval("entered %s()\n", __func__);
 
@@ -2243,23 +2280,22 @@ static int awk_getline(rstream *rsm, var *v)
 	 */
 	fd = fileno(rsm->F);
 	m = rsm->buffer;
-	a = rsm->adv;
-	p = rsm->pos;
-	size = rsm->size;
-	c = (char) rsplitter.n.info;
-	rp = 0;
-
 	if (!m)
-		m = qrealloc(m, 256, &size);
+		m = qrealloc(m, 256, &rsm->size);
+	p = rsm->pos;
+	rp = 0;
+	pp = 0;
 
 	do {
-		b = m + a;
+		b = m + rsm->adv;
 		so = eo = p;
-		r = 1;
+		retval = 1;
 		if (p > 0) {
+			char c = (char) rsplitter.n.info;
 			if (rsplitter.n.info == TI_REGEXP) {
 				if (regexec(icase ? rsplitter.n.r.ire : rsplitter.n.l.re,
-							b, 1, pmatch, 0) == 0) {
+							b, 1, pmatch, 0) == 0
+				) {
 					so = pmatch[0].rm_so;
 					eo = pmatch[0].rm_eo;
 					if (b[eo] != '\0')
@@ -2288,45 +2324,38 @@ static int awk_getline(rstream *rsm, var *v)
 			}
 		}
 
-		if (a > 0) {
-			memmove(m, m+a, p+1);
+		if (rsm->adv > 0) {
+			memmove(m, m+rsm->adv, p+1);
 			b = m;
-			a = 0;
+			rsm->adv = 0;
 		}
 
-		m = qrealloc(m, a+p+128, &size);
-		b = m + a;
+		b = m = qrealloc(m, p+128, &rsm->size);
 		pp = p;
-		p += safe_read(fd, b+p, size-p-1);
+		p += safe_read(fd, b+p, rsm->size - p - 1);
 		if (p < pp) {
 			p = 0;
-			r = 0;
-			setvar_i(intvar[ERRNO], errno);
+			retval = 0;
+			setvar_ERRNO();
 		}
 		b[p] = '\0';
-
 	} while (p > pp);
 
 	if (p == 0) {
-		r--;
+		retval--;
 	} else {
-		c = b[so]; b[so] = '\0';
-		setvar_s(v, b+rp);
+		setvar_sn(v, b+rp, so-rp);
 		v->type |= VF_USER;
-		b[so] = c;
-		c = b[eo]; b[eo] = '\0';
-		setvar_s(intvar[RT], b+so);
-		b[eo] = c;
+		setvar_sn(intvar[RT], b+so, eo-so);
 	}
 
 	rsm->buffer = m;
-	rsm->adv = a + eo;
+	rsm->adv += eo;
 	rsm->pos = p - eo;
-	rsm->size = size;
 
-	debug_printf_eval("returning from %s(): %d\n", __func__, r);
+	debug_printf_eval("returning from %s(): %d\n", __func__, retval);
 
-	return r;
+	return retval;
 }
 
 /* formatted output into an allocated buffer, return ptr to buffer */
@@ -2382,7 +2411,7 @@ static char *awk_printf(node *n, size_t *len)
 		while (1) {
 			if (isalpha(c))
 				break;
-			if (c == '*')
+			if (c == '*') /* gawk supports %*d and %*.*f, we don't... */
 				syntax_error("%*x formats are not supported");
 			c = *++f;
 			if (!c) { /* "....%...." and no letter found after % */
@@ -2415,12 +2444,18 @@ static char *awk_printf(node *n, size_t *len)
 				double d = getvar_i(arg);
 				if (strchr("diouxX", c)) {
 //TODO: make it wider here (%x -> %llx etc)?
+//Can even print the value into a temp string with %.0f,
+//then replace diouxX with s and print that string.
+//This will correctly print even very large numbers,
+//but some replacements are not equivalent:
+//%09d -> %09s: breaks zero-padding;
+//%+d -> %+s: won't prepend +; etc
 					s = xasprintf(s, (int)d);
 				} else if (strchr("eEfFgGaA", c)) {
 					s = xasprintf(s, d);
 				} else {
-//TODO: GNU Awk 5.0.1: printf "%W" prints "%W", does not error out
-					syntax_error(EMSG_INV_FMT);
+					/* gawk 5.1.1 printf("%W") prints "%W", does not error out */
+					s = xstrndup(s, f - s);
 				}
 			}
 			slen = strlen(s);
@@ -2457,9 +2492,9 @@ static char *awk_printf(node *n, size_t *len)
  * store result into (dest), return number of substitutions.
  * If nm = 0, replace all matches.
  * If src or dst is NULL, use $0.
- * If subexp != 0, enable subexpression matching (\1-\9).
+ * If subexp != 0, enable subexpression matching (\0-\9).
  */
-static int awk_sub(node *rn, const char *repl, int nm, var *src, var *dest, int subexp)
+static int awk_sub(node *rn, const char *repl, int nm, var *src, var *dest /*,int subexp*/)
 {
 	char *resbuf;
 	const char *sp;
@@ -2467,17 +2502,48 @@ static int awk_sub(node *rn, const char *repl, int nm, var *src, var *dest, int 
 	int regexec_flags;
 	regmatch_t pmatch[10];
 	regex_t sreg, *regex;
-
+	/* True only if called to implement gensub(): */
+	int subexp = (src != dest);
+#if defined(REG_STARTEND)
+	const char *src_string;
+	size_t src_strlen;
+	regexec_flags = REG_STARTEND;
+#else
+	regexec_flags = 0;
+#endif
 	resbuf = NULL;
 	residx = 0;
 	match_no = 0;
-	regexec_flags = 0;
 	regex = as_regex(rn, &sreg);
 	sp = getvar_s(src ? src : intvar[F0]);
+#if defined(REG_STARTEND)
+	src_string = sp;
+	src_strlen = strlen(src_string);
+#endif
 	replen = strlen(repl);
-	while (regexec(regex, sp, 10, pmatch, regexec_flags) == 0) {
-		int so = pmatch[0].rm_so;
-		int eo = pmatch[0].rm_eo;
+	for (;;) {
+		int so, eo;
+
+#if defined(REG_STARTEND)
+// REG_STARTEND: "This flag is a BSD extension, not present in POSIX"
+		size_t start_ofs = sp - src_string;
+		pmatch[0].rm_so = start_ofs;
+		pmatch[0].rm_eo = src_strlen;
+		if (regexec(regex, src_string, 10, pmatch, regexec_flags) != 0)
+			break;
+		eo = pmatch[0].rm_eo - start_ofs;
+		so = pmatch[0].rm_so - start_ofs;
+#else
+// BUG:
+// gsub(/\<b*/,"") on "abc" matches empty string at "a...",
+// advances sp one char (see "Empty match" comment later) to "bc"
+// ... and erroneously matches "b" even though it is NOT at the word start.
+		enum { start_ofs = 0 };
+		if (regexec(regex, sp, 10, pmatch, regexec_flags) != 0)
+			break;
+		so = pmatch[0].rm_so;
+		eo = pmatch[0].rm_eo;
+#endif
 
 		//bb_error_msg("match %u: [%u,%u] '%s'%p", match_no+1, so, eo, sp,sp);
 		resbuf = qrealloc(resbuf, residx + eo + replen, &resbufsize);
@@ -2485,51 +2551,41 @@ static int awk_sub(node *rn, const char *repl, int nm, var *src, var *dest, int 
 		residx += eo;
 		if (++match_no >= nm) {
 			const char *s;
-			int nbs;
+			int bslash;
 
 			/* replace */
 			residx -= (eo - so);
-			nbs = 0;
+			bslash = 0;
 			for (s = repl; *s; s++) {
-				char c = resbuf[residx++] = *s;
-				if (c == '\\') {
-					nbs++;
-					continue;
+				char c = *s;
+				if (c == '\\' && s[1]) {
+					bslash ^= 1;
+					if (bslash)
+						continue;
 				}
-				if (c == '&' || (subexp && c >= '0' && c <= '9')) {
-					int j;
-					residx -= ((nbs + 3) >> 1);
-					j = 0;
+				if ((!bslash && c == '&')
+				 || (subexp && bslash && c >= '0' && c <= '9')
+				) {
+					int n, j = 0;
 					if (c != '&') {
 						j = c - '0';
-						nbs++;
 					}
-					if (nbs % 2) {
-						resbuf[residx++] = c;
-					} else {
-						int n = pmatch[j].rm_eo - pmatch[j].rm_so;
-						resbuf = qrealloc(resbuf, residx + replen + n, &resbufsize);
-						memcpy(resbuf + residx, sp + pmatch[j].rm_so, n);
-						residx += n;
-					}
-				}
-				nbs = 0;
+					n = pmatch[j].rm_eo - pmatch[j].rm_so;
+					resbuf = qrealloc(resbuf, residx + replen + n, &resbufsize);
+					memcpy(resbuf + residx, sp + pmatch[j].rm_so - start_ofs, n);
+					residx += n;
+				} else
+					resbuf[residx++] = c;
+				bslash = 0;
 			}
 		}
 
-		regexec_flags = REG_NOTBOL;
 		sp += eo;
 		if (match_no == nm)
 			break;
 		if (eo == so) {
 			/* Empty match (e.g. "b*" will match anywhere).
 			 * Advance by one char. */
-//BUG (bug 1333):
-//gsub(/\<b*/,"") on "abc" will reach this point, advance to "bc"
-//... and will erroneously match "b" even though it is NOT at the word start.
-//we need REG_NOTBOW but it does not exist...
-//TODO: if EXTRA_COMPAT=y, use GNU matching and re_search,
-//it should be able to do it correctly.
 			/* Subtle: this is safe only because
 			 * qrealloc allocated at least one extra byte */
 			resbuf[residx] = *sp;
@@ -2538,6 +2594,7 @@ static int awk_sub(node *rn, const char *repl, int nm, var *src, var *dest, int 
 			sp++;
 			residx++;
 		}
+		regexec_flags |= REG_NOTBOL;
 	}
 
 	resbuf = qrealloc(resbuf, residx + strlen(sp), &resbufsize);
@@ -2669,8 +2726,6 @@ static NOINLINE var *exec_builtin(node *op, var *res)
 	}
 
 	case B_ss: {
-		char *s;
-
 		l = strlen(as[0]);
 		i = getvar_i(av[1]) - 1;
 		if (i > l)
@@ -2680,8 +2735,7 @@ static NOINLINE var *exec_builtin(node *op, var *res)
 		n = (nargs > 2) ? getvar_i(av[2]) : l-i;
 		if (n < 0)
 			n = 0;
-		s = xstrndup(as[0]+i, n);
-		setvar_p(res, s);
+		setvar_sn(res, as[0]+i, n);
 		break;
 	}
 
@@ -2758,8 +2812,7 @@ static NOINLINE var *exec_builtin(node *op, var *res)
 		i = strftime(g_buf, MAXVARFMT,
 			((nargs > 0) ? as[0] : "%a %b %d %H:%M:%S %Z %Y"),
 			localtime(&tt));
-		g_buf[i] = '\0';
-		setvar_s(res, g_buf);
+		setvar_sn(res, g_buf, i);
 		break;
 
 	case B_mt:
@@ -2770,16 +2823,16 @@ static NOINLINE var *exec_builtin(node *op, var *res)
 		res = do_match(an[1], as[0]);
 		break;
 
-	case B_ge:
-		awk_sub(an[0], as[1], getvar_i(av[2]), av[3], res, TRUE);
+	case B_ge: /* gensub(regex, repl, matchnum, string) */
+		awk_sub(an[0], as[1], /*matchnum:*/getvar_i(av[2]), /*src:*/av[3], /*dst:*/res/*, TRUE*/);
 		break;
 
-	case B_gs:
-		setvar_i(res, awk_sub(an[0], as[1], 0, av[2], av[2], FALSE));
+	case B_gs: /* gsub(regex, repl, string) */
+		setvar_i(res, awk_sub(an[0], as[1], /*matchnum:all*/0, /*src:*/av[2], /*dst:*/av[2]/*, FALSE*/));
 		break;
 
-	case B_su:
-		setvar_i(res, awk_sub(an[0], as[1], 1, av[2], av[2], FALSE));
+	case B_su: /* sub(regex, repl, string) */
+		setvar_i(res, awk_sub(an[0], as[1], /*matchnum:first*/1, /*src:*/av[2], /*dst:*/av[2]/*, FALSE*/));
 		break;
 	}
 
@@ -2796,7 +2849,7 @@ static NOINLINE var *exec_builtin(node *op, var *res)
 
 /* if expr looks like "var=value", perform assignment and return 1,
  * otherwise return 0 */
-static int is_assignment(const char *expr)
+static int try_to_assign(const char *expr)
 {
 	char *exprc, *val;
 
@@ -2825,42 +2878,55 @@ static void set_text_mode(FILE *f)
 #endif
 
 /* switch to next input file */
-static rstream *next_input_file(void)
+static int next_input_file(void)
 {
-#define rsm          (G.next_input_file__rsm)
-#define files_happen (G.next_input_file__files_happen)
+#define input_file_seen (G.next_input_file__input_file_seen)
+#define argind (G.next_input_file__argind)
+	const char *fname;
 
-	const char *fname, *ind;
-
-	if (rsm.F)
-		fclose(rsm.F);
-	rsm.F = NULL;
-	rsm.pos = rsm.adv = 0;
+	if (iF.F) {
+		fclose(iF.F);
+		iF.F = NULL;
+		iF.pos = iF.adv = 0;
+	}
 
 	for (;;) {
-		if (getvar_i(intvar[ARGIND])+1 >= getvar_i(intvar[ARGC])) {
-			if (files_happen)
-				return NULL;
+		/* GNU Awk 5.1.1 does not _read_ ARGIND (but does read ARGC).
+		 * It only sets ARGIND to 1, 2, 3... for every command-line filename
+		 * (VAR=VAL params cause a gap in numbering).
+		 * If there are none and stdin is used, then ARGIND is not modified:
+		 * if it is set by e.g. 'BEGIN { ARGIND="foo" }', that value will
+		 * still be there.
+		 */
+		argind++;
+		if (argind >= getvar_i(intvar[ARGC])) {
+			if (input_file_seen)
+				return FALSE;
 			fname = "-";
-			rsm.F = stdin;
+			iF.F = stdin;
 			break;
 		}
-		ind = getvar_s(incvar(intvar[ARGIND]));
-		fname = getvar_s(findvar(iamarray(intvar[ARGV]), ind));
-		if (fname && *fname && !is_assignment(fname)) {
-			rsm.F = xfopen_stdin(fname);
+		fname = getvar_s(findvar(iamarray(intvar[ARGV]), utoa(argind)));
+		if (fname && *fname) {
+			/* "If a filename on the command line has the form
+			 * var=val it is treated as a variable assignment"
+			 */
+			if (try_to_assign(fname))
+				continue;
+			iF.F = xfopen_stdin(fname);
+			setvar_i(intvar[ARGIND], argind);
 			break;
 		}
 	}
 #if ENABLE_PLATFORM_MINGW32
-	set_text_mode(rsm.F);
+	set_text_mode(iF.F);
 #endif
 
-	files_happen = TRUE;
 	setvar_s(intvar[FILENAME], fname);
-	return &rsm;
-#undef rsm
-#undef files_happen
+	input_file_seen = TRUE;
+	return TRUE;
+#undef argind
+#undef input_file_seen
 }
 
 #if ENABLE_PLATFORM_MINGW32
@@ -2914,6 +2980,7 @@ static var *evaluate(node *op, var *res)
 		uint32_t opinfo;
 		int opn;
 		node *op1;
+		var *old_Fields_ptr;
 
 		opinfo = op->info;
 		opn = (opinfo & OPNMASK);
@@ -2922,10 +2989,16 @@ static var *evaluate(node *op, var *res)
 		debug_printf_eval("opinfo:%08x opn:%08x\n", opinfo, opn);
 
 		/* execute inevitable things */
+		old_Fields_ptr = NULL;
 		if (opinfo & OF_RES1) {
 			if ((opinfo & OF_REQUIRED) && !op1)
 				syntax_error(EMSG_TOO_FEW_ARGS);
 			L.v = evaluate(op1, TMPVAR0);
+			/* Does L.v point to $n variable? */
+			if ((size_t)(L.v - Fields) < maxfields) {
+				/* yes, remember where Fields[] is */
+				old_Fields_ptr = Fields;
+			}
 			if (opinfo & OF_STR1) {
 				L.s = getvar_s(L.v);
 				debug_printf_eval("L.s:'%s'\n", L.s);
@@ -2944,8 +3017,15 @@ static var *evaluate(node *op, var *res)
 		 */
 		if (opinfo & OF_RES2) {
 			R.v = evaluate(op->r.n, TMPVAR1);
-			//TODO: L.v may be invalid now, set L.v to NULL to catch bugs?
-			//L.v = NULL;
+			/* Seen in $5=$$5=$0:
+			 * Evaluation of R.v ($$5=$0 expression)
+			 * made L.v ($5) invalid. It's detected here.
+			 */
+			if (old_Fields_ptr) {
+				//if (old_Fields_ptr != Fields)
+				//	debug_printf_eval("L.v moved\n");
+				L.v += Fields - old_Fields_ptr;
+			}
 			if (opinfo & OF_STR2) {
 				R.s = getvar_s(R.v);
 				debug_printf_eval("R.s:'%s'\n", R.s);
@@ -3111,6 +3191,8 @@ static var *evaluate(node *op, var *res)
 
 		/* -- recursive node type -- */
 
+		case XC( OC_CONST ):
+			debug_printf_eval("CONST ");
 		case XC( OC_VAR ):
 			debug_printf_eval("VAR\n");
 			L.v = op->l.v;
@@ -3154,7 +3236,7 @@ static var *evaluate(node *op, var *res)
 			/* make sure that we never return a temp var */
 			if (L.v == TMPVAR0)
 				L.v = res;
-			/* if source is a temporary string, jusk relink it to dest */
+			/* if source is a temporary string, just relink it to dest */
 			if (R.v == TMPVAR1
 			 && !(R.v->type & VF_NUMBER)
 				/* Why check !NUMBER? if R.v is a number but has cached R.v->string,
@@ -3240,13 +3322,13 @@ static var *evaluate(node *op, var *res)
 #endif
 				}
 			} else {
-				if (!iF)
-					iF = next_input_file();
-				rsm = iF;
+				if (!iF.F)
+					next_input_file();
+				rsm = &iF;
 			}
 
-			if (!rsm || !rsm->F) {
-				setvar_i(intvar[ERRNO], errno);
+			if (!rsm->F) {
+				setvar_ERRNO();
 				setvar_i(res, -1);
 				break;
 			}
@@ -3395,16 +3477,18 @@ static var *evaluate(node *op, var *res)
 					 */
 					if (rsm->F)
 						err = rsm->is_pipe ? pclose(rsm->F) : fclose(rsm->F);
-//TODO: fix this case:
-// $ awk 'BEGIN { print close(""); print ERRNO }'
-// -1
-// close of redirection that was never opened
-// (we print 0, 0)
 					free(rsm->buffer);
 					hash_remove(fdhash, L.s);
+				} else {
+					err = -1;
+					/* gawk 'BEGIN { print close(""); print ERRNO }'
+					 * -1
+					 * close of redirection that was never opened
+					 */
+					errno = ENOENT;
 				}
 				if (err)
-					setvar_i(intvar[ERRNO], errno);
+					setvar_ERRNO();
 				R_d = (double)err;
 				break;
 			}
@@ -3584,8 +3668,6 @@ static var *evaluate(node *op, var *res)
 #undef sreg
 }
 
-/* -------- main & co. -------- */
-
 static int awk_exit(void)
 {
 	unsigned i;
@@ -3678,7 +3760,7 @@ int awk_main(int argc UNUSED_PARAM, char **argv)
 		setvar_s(intvar[FS], opt_F);
 	}
 	while (list_v) {
-		if (!is_assignment(llist_pop(&list_v)))
+		if (!try_to_assign(llist_pop(&list_v)))
 			bb_show_usage();
 	}
 
@@ -3695,6 +3777,8 @@ int awk_main(int argc UNUSED_PARAM, char **argv)
 		_setmode(fd, _O_TEXT);
 #endif
 		s = xmalloc_read(fd, NULL); /* it's NUL-terminated */
+		if (!s)
+			bb_perror_msg_and_die("read error from '%s'", g_progname);
 		close(fd);
 		parse_program(s);
 		free(s);
@@ -3740,15 +3824,14 @@ int awk_main(int argc UNUSED_PARAM, char **argv)
 		awk_exit();
 
 	/* input file could already be opened in BEGIN block */
-	if (!iF)
-		iF = next_input_file();
-
-	/* passing through input files */
-	while (iF) {
+	if (!iF.F)
+		goto next_file; /* no, it wasn't, go try opening */
+	/* Iterate over input files */
+	for (;;) {
 		nextfile = FALSE;
 		setvar_i(intvar[FNR], 0);
 
-		while ((i = awk_getline(iF, intvar[F0])) > 0) {
+		while ((i = awk_getline(&iF, intvar[F0])) > 0) {
 			nextrec = FALSE;
 			incvar(intvar[NR]);
 			incvar(intvar[FNR]);
@@ -3757,11 +3840,11 @@ int awk_main(int argc UNUSED_PARAM, char **argv)
 			if (nextfile)
 				break;
 		}
-
 		if (i < 0)
 			syntax_error(strerror(errno));
-
-		iF = next_input_file();
+ next_file:
+		if (!next_input_file())
+			break;
 	}
 
 	awk_exit();
