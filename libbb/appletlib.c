@@ -100,6 +100,11 @@ static const char packed_scripts[] ALIGN1 = { PACKED_SCRIPTS };
 # define ENABLE_FEATURE_COMPRESS_USAGE 0
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+static int really_find_applet_by_name(const char *name);
+#else
+#define really_find_applet_by_name(n) find_applet_by_name(n)
+#endif
 
 unsigned FAST_FUNC string_array_len(char **argv)
 {
@@ -156,7 +161,7 @@ void FAST_FUNC bb_show_usage(void)
 #else
 		const char *p;
 		const char *usage_string = p = unpack_usage_messages();
-		int ap = find_applet_by_name(applet_name);
+		int ap = really_find_applet_by_name(applet_name);
 
 		if (ap < 0 || usage_string == NULL)
 			xfunc_die();
@@ -189,7 +194,11 @@ void FAST_FUNC bb_show_usage(void)
 	xfunc_die();
 }
 
+#if ENABLE_PLATFORM_MINGW32
+static int really_find_applet_by_name(const char *name)
+#else
 int FAST_FUNC find_applet_by_name(const char *name)
+#endif
 {
 	unsigned i;
 	int j;
@@ -238,7 +247,7 @@ int FAST_FUNC find_applet_by_name(const char *name)
 		for (j = 0; *p == name[j]; ++j) {
 			if (*p++ == '\0') {
 				//bb_error_msg("found:'%s' i:%u", name, i);
-				return is_applet_preferred(name) ? i : -1; /* yes */
+				return i; /* yes */
 			}
 		}
 		/* No. Have we gone too far, alphabetically? */
@@ -253,6 +262,14 @@ int FAST_FUNC find_applet_by_name(const char *name)
 	}
 	return -1;
 }
+
+#if ENABLE_PLATFORM_MINGW32
+int FAST_FUNC find_applet_by_name(const char *name)
+{
+	int applet_no = really_find_applet_by_name(name);
+	return applet_no >= 0 && is_applet_preferred(name) ? applet_no : -1;
+}
+#endif
 
 #if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1 && \
 		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
@@ -1080,7 +1097,7 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 		/* convert to "<applet> --help" */
 		applet_name = argv[0] = argv[2];
 		argv[2] = NULL;
-		if (find_applet_by_name(applet_name) >= 0) {
+		if (really_find_applet_by_name(applet_name) >= 0) {
 			/* Make "--help foo" exit with 0: */
 			xfunc_error_retval = 0;
 			bb_show_usage();
@@ -1189,7 +1206,7 @@ static NORETURN void run_applet_and_exit(const char *name, char **argv)
 #  if NUM_APPLETS > 0
 	/* find_applet_by_name() search is more expensive, so goes second */
 	{
-		int applet = find_applet_by_name(name);
+		int applet = really_find_applet_by_name(name);
 		if (applet >= 0)
 			run_applet_no_and_exit(applet, name, argv);
 	}
