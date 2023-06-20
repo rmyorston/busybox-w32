@@ -26,3 +26,4 @@ quiet_cmd_windres = WINDRES $@
 
 win32/resources/resources.o: win32/resources/resources.rc .config
 win32/resources/resources.o: win32/resources/aterm.ico win32/resources/sterm.ico
+win32/resources/resources.o: win32/resources/utf8.manifest

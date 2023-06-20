@@ -432,6 +432,13 @@ config FEATURE_VERSIONINFO
 	help
 	Include version information in the application.
 
+config FEATURE_UTF8_MANIFEST
+	bool "Include UTF-8 manifest in binary"
+	default n
+	depends on FEATURE_RESOURCES
+	help
+	Include a manifest which sets the process code page to UTF-8.
+
 config FEATURE_ICON
 	bool "Include application icon in binary"
 	default y
