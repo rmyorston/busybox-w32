@@ -15757,10 +15757,10 @@ exitshell(void)
 #if ENABLE_PLATFORM_MINGW32
 /* We need to see if HOME is *really* unset */
 # undef getenv
-static void xsetenv_if_unset(const char *key, const char *value)
+static void setvar_if_unset(const char *key, const char *value)
 {
 	if (!getenv(key) || getuid() == 0)
-		xsetenv(key, value);
+		setvar(key, value, VEXPORT);
 }
 #endif
 
@@ -15814,6 +15814,20 @@ init(void)
 				if (!(end=strchr(*envp, '=')))
 					continue;
 
+				/* check for invalid characters in name */
+				start = (char *)endofname(*envp);
+				if (*start != '=') {
+					/* Make a copy of the original variable */
+					setvareq(xstrdup(*envp), VEXPORT|VNOSAVE);
+
+					/* Replace invalid characters with underscores */
+					for (; start < end; start++) {
+						if (!isalnum(*start)) {
+							*start = '_';
+						}
+					}
+				}
+
 				/* make all variable names uppercase */
 				for (start = *envp;start < end;start++)
 					*start = toupper(*start);
@@ -15825,39 +15839,17 @@ init(void)
 						!is_prefixed_with(*envp, "COMSPEC=")) {
 					bs_to_slash(end+1);
 				}
-
-				/* check for invalid characters in name */
-				for (start = *envp;start < end;start++) {
-					if (!isdigit(*start) && !isalpha(*start) && *start != '_') {
-						break;
-					}
-				}
-
-				if (start != end) {
-					/*
-					 * Make a copy of the variable, replacing invalid
-					 * characters in the name with underscores.
-					 */
-					char *var = xstrdup(*envp);
-
-					for (start = var;*start != '=';start++) {
-						if (!isdigit(*start) && !isalpha(*start)) {
-							*start = '_';
-						}
-					}
-					setvareq(var, VEXPORT|VNOSAVE);
-				}
 			}
 
 			/* Initialise some variables normally set at login, but
 			 * only if someone hasn't already set them or we're root. */
 			pw = getpwuid(getuid());
 			if (pw) {
-				xsetenv_if_unset("USER",     pw->pw_name);
-				xsetenv_if_unset("LOGNAME",  pw->pw_name);
-				xsetenv_if_unset("HOME",     pw->pw_dir);
+				setvar_if_unset("USER",     pw->pw_name);
+				setvar_if_unset("LOGNAME",  pw->pw_name);
+				setvar_if_unset("HOME",     pw->pw_dir);
 			}
-			xsetenv_if_unset("SHELL",   DEFAULT_SHELL);
+			setvar_if_unset("SHELL",   DEFAULT_SHELL);
 		}
 #endif
 		for (envp = environ; envp && *envp; envp++) {
