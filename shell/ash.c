@@ -15814,9 +15814,11 @@ init(void)
 				if (!(end=strchr(*envp, '=')))
 					continue;
 
-				/* make all variable names uppercase */
-				for (start = *envp;start < end;start++)
-					*start = toupper(*start);
+				/* make only the "Path" variable uppercase */
+				if (strncasecmp(*envp, "PATH=", 5) == 0) {
+					for (start = *envp;start < end;start++)
+						*start = toupper(*start);
+				}
 
 				/* Convert backslashes to forward slashes in value but
 				 * not if we're on Windows XP or for variables known to
