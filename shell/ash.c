@@ -2355,6 +2355,9 @@ struct localvar {
 #else
 # define VDYNAMIC       0
 #endif
+#if ENABLE_PLATFORM_MINGW32
+# define VIMPORT        0x400   /* variable was imported from environment */
+#endif
 
 
 /* Need to be before varinit_data[] */
@@ -2962,6 +2965,36 @@ listvars(int on, int off, struct strlist *lp, char ***end)
 	*ep++ = NULL;
 	return grabstackstr(ep);
 }
+
+#if ENABLE_PLATFORM_MINGW32
+/* Adjust directory separator in variables imported from the environment */
+static void
+setwinxp(int on)
+{
+	static smallint is_winxp;
+	struct var **vpp;
+	struct var *vp;
+
+	if (++on == is_winxp)
+		return;
+	is_winxp = on;
+
+	for (vpp = vartab; vpp < vartab + VTABSIZE; vpp++) {
+		for (vp = *vpp; vp; vp = vp->next) {
+			if ((vp->flags & VIMPORT)) {
+				char *end = strchr(vp->var_text, '=');
+				if (!end || is_prefixed_with(vp->var_text, "COMSPEC=") ||
+						is_prefixed_with(vp->var_text, "SYSTEMROOT="))
+					continue;
+				if (!winxp)
+					bs_to_slash(end + 1);
+				else
+					slash_to_bs(end + 1);
+			}
+		}
+	}
+}
+#endif
 
 
 /* ============ Path search helper */
@@ -10841,6 +10874,9 @@ optschanged(void)
 #if ENABLE_ASH_NOCONSOLE
 	hide_console(noconsole);
 #endif
+#if ENABLE_PLATFORM_MINGW32
+	setwinxp(winxp);
+#endif
 }
 
 struct localvar_list {
@@ -15768,7 +15804,9 @@ static void setvar_if_unset(const char *key, const char *value)
 static NOINLINE void
 init(void)
 {
-#if !ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32
+	int import = 0;
+#else
 	/* we will never free this */
 	basepf.next_to_pgetc = basepf.buf = ckmalloc(IBUFSIZ);
 	basepf.linno = 1;
@@ -15810,6 +15848,7 @@ init(void)
 			char *start, *end;
 			struct passwd *pw;
 
+			import = VIMPORT;
 			for (envp = environ; envp && *envp; envp++) {
 				if (!(end=strchr(*envp, '=')))
 					continue;
@@ -15831,14 +15870,6 @@ init(void)
 				/* make all variable names uppercase */
 				for (start = *envp;start < end;start++)
 					*start = toupper(*start);
-
-				/* Convert backslashes to forward slashes in value but
-				 * not if we're on Windows XP or for variables known to
-				 * cause problems */
-				if (!winxp && !is_prefixed_with(*envp, "SYSTEMROOT=") &&
-						!is_prefixed_with(*envp, "COMSPEC=")) {
-					bs_to_slash(end+1);
-				}
 			}
 
 			/* Initialise some variables normally set at login, but
@@ -15868,7 +15899,7 @@ init(void)
 #if !ENABLE_PLATFORM_MINGW32
 				setvareq(*envp, VEXPORT|VTEXTFIXED);
 #else
-				setvareq(*envp, VEXPORT);
+				setvareq(*envp, VEXPORT|import);
 #endif
 			}
 		}
@@ -16101,9 +16132,6 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	exception_handler = &jmploc;
 	rootpid = getpid();
 
-#if ENABLE_PLATFORM_MINGW32
-	winxp = (argv[1] != NULL && strcmp(argv[1], "-X") == 0);
-#endif
 	init();
 	setstackmark(&smark);
 
