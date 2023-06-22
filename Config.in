@@ -473,6 +473,15 @@ config FEATURE_EURO
 	requires the OEM code page to be 858.  If the OEM code page of
 	the console is 850 when BusyBox starts it's changed to 858.
 
+config FEATURE_EURO_INPUT
+	bool "Allow euro on input, even in code pages without euro support"
+	default n
+	depends on PLATFORM_MINGW32 && FEATURE_EURO
+	help
+	Allow the euro character to be entered in the console even if the
+	current code page doesn't support it.  It isn't necessary to
+	enable this setting if the code page in use has euro support.
+
 config TERMINAL_MODE
 	int "Default setting for terminal mode"
 	default 5
