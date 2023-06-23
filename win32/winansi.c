@@ -725,6 +725,9 @@ static BOOL winansi_CharToOemBuff(LPCSTR s, LPSTR d, DWORD len)
 	WCHAR *buf;
 	int i;
 
+	if (GetConsoleOutputCP() != 858)
+		return CharToOemBuff(s, d, len);
+
 	if (!s || !d)
 		return FALSE;
 
@@ -732,11 +735,9 @@ static BOOL winansi_CharToOemBuff(LPCSTR s, LPSTR d, DWORD len)
 	buf = xmalloc(len*sizeof(WCHAR));
 	MultiByteToWideChar(CP_ACP, 0, s, len, buf, len);
 	WideCharToMultiByte(CP_OEMCP, 0, buf, len, d, len, NULL, NULL);
-	if (GetConsoleOutputCP() == 858) {
-		for (i=0; i<len; ++i) {
-			if (buf[i] == 0x20ac) {
-				d[i] = 0xd5;
-			}
+	for (i=0; i<len; ++i) {
+		if (buf[i] == 0x20ac) {
+			d[i] = 0xd5;
 		}
 	}
 	free(buf);
@@ -755,6 +756,9 @@ BOOL winansi_OemToCharBuff(LPCSTR s, LPSTR d, DWORD len)
 	WCHAR *buf;
 	int i;
 
+	if (GetConsoleCP() != 858)
+		return OemToCharBuff(s, d, len);
+
 	if (!s || !d)
 		return FALSE;
 
@@ -762,11 +766,9 @@ BOOL winansi_OemToCharBuff(LPCSTR s, LPSTR d, DWORD len)
 	buf = xmalloc(len*sizeof(WCHAR));
 	MultiByteToWideChar(CP_OEMCP, 0, s, len, buf, len);
 	WideCharToMultiByte(CP_ACP, 0, buf, len, d, len, NULL, NULL);
-	if (GetConsoleOutputCP() == 858) {
-		for (i=0; i<len; ++i) {
-			if (buf[i] == 0x0131) {
-				d[i] = 0x80;
-			}
+	for (i=0; i<len; ++i) {
+		if (buf[i] == 0x0131) {
+			d[i] = 0x80;
 		}
 	}
 	free(buf);
