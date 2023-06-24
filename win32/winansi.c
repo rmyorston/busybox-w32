@@ -758,7 +758,8 @@ BOOL conToCharBuffA(LPSTR s, DWORD len)
 	CPINFO acp_info, con_info;
 	WCHAR *buf;
 
-	if (acp == conicp)
+	// if acp is UTF8 then we got UTF8 via readConsoleInput_utf8
+	if (acp == conicp || acp == CP_UTF8)
 		return TRUE;
 
 	if (!s || !GetCPInfo(acp, &acp_info) || !GetCPInfo(conicp, &con_info) ||
@@ -1188,4 +1189,161 @@ int mingw_isatty(int fd)
 	}
 
 	return result;
+}
+
+// intentionally also converts invalid values (surrogate halfs, too big)
+static int toutf8(DWORD cp, unsigned char *buf) {
+	if (cp <= 0x7f) {
+		*buf = cp;
+		return 1;
+	}
+	if (cp <= 0x7ff) {
+		*buf++ = 0xc0 |  (cp >>  6);
+		*buf   = 0x80 |  (cp        & 0x3f);
+		return 2;
+	}
+	if (cp <= 0xffff) {
+		*buf++ = 0xe0 |  (cp >> 12);
+		*buf++ = 0x80 | ((cp >>  6) & 0x3f);
+		*buf   = 0x80 |  (cp        & 0x3f);
+		return 3;
+	}
+	if (cp <= 0x10ffff) {
+		*buf++ = 0xf0 |  (cp >> 18);
+		*buf++ = 0x80 | ((cp >> 12) & 0x3f);
+		*buf++ = 0x80 | ((cp >>  6) & 0x3f);
+		*buf   = 0x80 |  (cp        & 0x3f);
+		return 4;
+	}
+	// invalid. returning 0 works in our context because it's delivered
+	// as a key event, where 0 values are typically ignored by the caller
+	*buf = 0;
+	return 1;
+}
+
+// peek into the console input queue and try to find a key-up event of
+// a surrugate-2nd-half, at which case eat the console events up to this
+// one, and combine the pair values into *ph1
+static void maybeEatUpto2ndHalfUp(HANDLE h, DWORD *ph1)
+{
+	// Peek into the queue arbitrary 16 records deep
+	INPUT_RECORD r[16];
+	DWORD got;
+	int i;
+
+	if (!PeekConsoleInputW(h, r, 16, &got))
+		return;
+
+	// we're conservative, and abort the search on anything which
+	// seems out of place, like non-key event, non-2nd-half, etc.
+	for (i = 0; i < got; ++i) {
+		DWORD h2;
+		int is2nd, isdown;
+
+		if (r[i].EventType != KEY_EVENT)
+			return;
+
+		isdown = r[i].Event.KeyEvent.bKeyDown;
+		h2 = r[i].Event.KeyEvent.uChar.UnicodeChar;
+		is2nd = h2 >= 0xDC00 && h2 <= 0xDFFF;
+
+		// skip 0 values, keyup of 1st half, and keydown of a 2nd half, if any
+		if (!h2 || (h2 == *ph1 && !isdown) || (is2nd && isdown))
+			continue;
+
+		if (!is2nd)
+			return;
+
+		// got 2nd-half-up. eat the events up to this, combine the values
+		ReadConsoleInputW(h, r, i + 1, &got);
+		*ph1 = 0x10000 | ((*ph1 & ~0xD800) << 10) | (h2 & ~0xDC00);
+		return;
+	}
+}
+
+
+/*
+ * readConsoleInput_utf8 behaves similar enough to ReadConsoleInputA when
+ * the console (input) CP is UTF8, but addressed two issues:
+ * - It depend on the console CP, while we use ReadConsoleInputW internally.
+ * - ReadConsoleInputA with Console CP of UTF8 (65001) is buggy:
+ *   - Doesn't work on Windows 7 (reads 0 or '?' for non-ASCII codepoints).
+ *   - When used at the cmd.exe console - but not Windows Terminal:
+ *     sometimes only key-up events arrive without the expected prior key-down.
+ *     Seems to depend both on the console CP and the entered/pasted codepoint.
+ *   - If reading one record at a time (which is how we use it), then input
+ *     codepoints of U+0800 or higher crash the console/terminal window.
+ *     (tested on Windows 10.0.19045.3086: console and Windows Terminal 1.17)
+ *     Example: U+0C80 (UTF8: 0xE0 0xB2 0x80): "ಀ"
+ *     Example: U+1F600 (UTF8: 0xF0 0x9F 0x98 0x80): "😀"
+ *   - If reading more than one record at a time:
+ *     - Unknown whether it can still crash in some cases (was not observed).
+ *     - Codepoints above U+FFFF are broken, and arrive as
+ *       U+FFFD REPLACEMENT CHARACTER "�"
+ * - Few more codepoints to test the issues above (and below):
+ *   - U+0500 (UTF8: 0xD4, 0x80): "Ԁ"  (OK in UTF8 CP, else maybe no key-down)
+ *   - U+07C0 (UTF8: 0xDF, 0x80): "߀"  (might exhibit missing key-down)
+ *
+ * So this function uses ReadConsoleInputW and then delivers it as UTF8:
+ * - Works with any console CP, in Windows terminal and Windows 7/10 console.
+ * - Surrogate pairs are combined and delivered as a single UTF8 codepoint.
+ *   - Ignore occasional intermediate control events between the halfs.
+ *   - If we can't find the 2nd half, or if for some reason we get a 2nd half
+ *     wiithout the 1st, deliver the half we got as UTF8 (a-la WTF8).
+ * - The "sometimes key-down is missing" issue at the cmd.exe console happens
+ *   also when using ReadConsoleInputW (for U+0080 or higher), so handle it.
+ *   This can also happen with surrogate pairs.
+ * - Up to 4-bytes state is maintained for a single UTF8 codepoint buffer.
+ *
+ * Gotchas (could be solved, but currently there's no need):
+ * - We support reading one record at a time, else fail - to make it obvious.
+ * - We have a state which is hidden from PeekConsoleInput - so not in sync.
+ * - We don't deliver key-up events in some cases: when working around
+ *   the "missing key-down" issue, and with combined surrogate halfs value.
+ */
+BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
+{
+	static unsigned char u8buf[4];  // any single codepoint in UTF8
+	static int u8pos = 0, u8len = 0;
+	static INPUT_RECORD srec;
+
+	if (len != 1)
+		return FALSE;
+
+	if (u8pos == u8len) {
+		DWORD codepoint;
+
+		if (!ReadConsoleInputW(h, r, 1, got))
+			return FALSE;
+		if (*got == 0 || r->EventType != KEY_EVENT)
+			return TRUE;
+
+		srec = *r;
+		codepoint = srec.Event.KeyEvent.uChar.UnicodeChar;
+
+		// At the cmd.exe console (but not windows terminal) we sometimes
+		// get key-up without the prior expected key-down event, sometimes
+		// with UnicodeChar of 0 instead the key-down event. work around it.
+		if (codepoint) {
+			static wchar_t last_down = 0;
+
+			if (srec.Event.KeyEvent.bKeyDown)
+				last_down = codepoint;
+			else if (codepoint > 127 && codepoint != last_down)
+				srec.Event.KeyEvent.bKeyDown = TRUE;
+		}
+
+		// if it's a 1st (high) surrogate pair half, try to eat upto and
+		// including the 2nd (low) half, and combine them into codepoint.
+		if (codepoint >= 0xD800 && codepoint <= 0xDBFF)
+			maybeEatUpto2ndHalfUp(h, &codepoint);
+
+		u8len = toutf8(codepoint, u8buf);
+		u8pos = 0;
+	}
+
+	*r = srec;
+	r->Event.KeyEvent.uChar.AsciiChar = (char)u8buf[u8pos++];
+	*got = 1;
+	return TRUE;
 }
