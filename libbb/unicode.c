@@ -69,8 +69,14 @@ void FAST_FUNC init_unicode(void)
 void FAST_FUNC reinit_unicode(const char *LANG)
 {
 	unicode_status = UNICODE_OFF;
+#if ENABLE_PLATFORM_MINGW32
+	/* enable unicode only when ACP is UTF8 and the env var is not 'C' */
+	if (GetACP() != CP_UTF8 || (LANG && LANG[0] == 'C' && LANG[1] == 0))
+		return;
+#else
 	if (!LANG || !(strstr(LANG, ".utf") || strstr(LANG, ".UTF")))
 		return;
+#endif
 	unicode_status = UNICODE_ON;
 }
 
