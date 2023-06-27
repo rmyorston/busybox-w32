@@ -1223,7 +1223,7 @@ static int toutf8(DWORD cp, unsigned char *buf) {
 
 // peek into the console input queue and try to find a key-up event of
 // a surrugate-2nd-half, at which case eat the console events up to this
-// one, and combine the pair values into *ph1
+// one (excluding), and combine the pair values into *ph1
 static void maybeEatUpto2ndHalfUp(HANDLE h, DWORD *ph1)
 {
 	// Peek into the queue arbitrary 16 records deep
@@ -1236,7 +1236,8 @@ static void maybeEatUpto2ndHalfUp(HANDLE h, DWORD *ph1)
 
 	// we're conservative, and abort the search on anything which
 	// seems out of place, like non-key event, non-2nd-half, etc.
-	for (i = 0; i < got; ++i) {
+	// search from 1 because i==0 is still the 1st half down record.
+	for (i = 1; i < got; ++i) {
 		DWORD h2;
 		int is2nd, isdown;
 
@@ -1255,7 +1256,7 @@ static void maybeEatUpto2ndHalfUp(HANDLE h, DWORD *ph1)
 			return;
 
 		// got 2nd-half-up. eat the events up to this, combine the values
-		ReadConsoleInputW(h, r, i + 1, &got);
+		ReadConsoleInputW(h, r, i, &got);
 		*ph1 = 0x10000 | ((*ph1 & ~0xD800) << 10) | (h2 & ~0xDC00);
 		return;
 	}
@@ -1313,10 +1314,15 @@ BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
 	if (u8pos == u8len) {
 		DWORD codepoint;
 
-		if (!ReadConsoleInputW(h, r, 1, got))
+		// peek rather than read to keep the last processed record at
+		// the console queue until we deliver all of its products, so
+		// that WaitForSingleObject(handle) shows there's data ready.
+		if (!PeekConsoleInputW(h, r, 1, got))
 			return FALSE;
-		if (*got == 0 || r->EventType != KEY_EVENT)
+		if (*got == 0)
 			return TRUE;
+		if (r->EventType != KEY_EVENT)
+			return ReadConsoleInput(h, r, 1, got);
 
 		srec = *r;
 		codepoint = srec.Event.KeyEvent.uChar.UnicodeChar;
@@ -1334,7 +1340,7 @@ BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
 		}
 
 		// if it's a 1st (high) surrogate pair half, try to eat upto and
-		// including the 2nd (low) half, and combine them into codepoint.
+		// excluding the 2nd (low) half, and combine them into codepoint.
 		if (codepoint >= 0xD800 && codepoint <= 0xDBFF)
 			maybeEatUpto2ndHalfUp(h, &codepoint);
 
@@ -1344,6 +1350,8 @@ BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
 
 	*r = srec;
 	r->Event.KeyEvent.uChar.AsciiChar = (char)u8buf[u8pos++];
+	if (u8pos == u8len)  // consume the record which generated this buffer
+		ReadConsoleInputW(h, &srec, 1, got);
 	*got = 1;
 	return TRUE;
 }
