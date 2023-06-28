@@ -7,6 +7,9 @@
 #include "lazyload.h"
 #undef PACKED
 
+static BOOL charToConBuffA(LPSTR s, DWORD len);
+static BOOL charToConA(LPSTR s);
+
 /*
  Functions to be wrapped:
 */
@@ -28,10 +31,6 @@
 
 static WORD plain_attr = 0xffff;
 static WORD current_attr;
-
-#if ENABLE_FEATURE_EURO
-static void init_codepage(void);
-#endif
 
 static HANDLE get_console(void)
 {
@@ -84,8 +83,12 @@ int terminal_mode(int reset)
 	static int mode = -1;
 
 #if ENABLE_FEATURE_EURO
-	if (mode < 0)
-		init_codepage();
+	if (mode < 0) {
+		if (GetConsoleCP() == 850 && GetConsoleOutputCP() == 850) {
+			SetConsoleCP(858);
+			SetConsoleOutputCP(858);
+		}
+	}
 #endif
 
 	if (mode < 0 || reset) {
@@ -543,7 +546,7 @@ static char *process_escape(char *pos)
 				(bel=strchr(pos+4, '\007')) && bel - pos < 260) {
 			/* set console title */
 			*bel++ = '\0';
-			CharToOem(pos+4, pos+4);
+			charToConA(pos+4);
 			SetConsoleTitle(pos+4);
 			return bel;
 		}
@@ -711,77 +714,74 @@ static char *process_escape(char *pos)
 	return (char *)func + 1;
 }
 
-#if ENABLE_FEATURE_EURO
-static void init_codepage(void)
+static BOOL charToConBuffA(LPSTR s, DWORD len)
 {
-	if (GetConsoleCP() == 850 && GetConsoleOutputCP() == 850) {
-		SetConsoleCP(858);
-		SetConsoleOutputCP(858);
-	}
-}
-
-static BOOL winansi_CharToOemBuff(LPCSTR s, LPSTR d, DWORD len)
-{
+	UINT acp = GetACP(), conocp = GetConsoleOutputCP();
+	CPINFO acp_info, con_info;
 	WCHAR *buf;
-	int i;
 
-	if (GetConsoleOutputCP() != 858)
-		return CharToOemBuff(s, d, len);
+	if (acp == conocp)
+		return TRUE;
 
-	if (!s || !d)
+	if (!s || !GetCPInfo(acp, &acp_info) || !GetCPInfo(conocp, &con_info) ||
+			con_info.MaxCharSize > acp_info.MaxCharSize ||
+			(len == 1 && acp_info.MaxCharSize != 1))
 		return FALSE;
 
 	terminal_mode(FALSE);
 	buf = xmalloc(len*sizeof(WCHAR));
 	MultiByteToWideChar(CP_ACP, 0, s, len, buf, len);
-	WideCharToMultiByte(CP_OEMCP, 0, buf, len, d, len, NULL, NULL);
-	for (i=0; i<len; ++i) {
-		if (buf[i] == 0x20ac) {
-			d[i] = 0xd5;
+	WideCharToMultiByte(conocp, 0, buf, len, s, len, NULL, NULL);
+#if ENABLE_FEATURE_EURO
+	if (conocp == 858) {
+		for (int i = 0; i < len; ++i) {
+			if (buf[i] == 0x20ac) {
+				s[i] = 0xd5;
+			}
 		}
 	}
+#endif
 	free(buf);
 	return TRUE;
 }
 
-static BOOL winansi_CharToOem(LPCSTR s, LPSTR d)
+static BOOL charToConA(LPSTR s)
 {
-	if (!s || !d)
+	if (!s)
 		return FALSE;
-	return winansi_CharToOemBuff(s, d, strlen(s)+1);
+	return charToConBuffA(s, strlen(s)+1);
 }
 
-#undef OemToCharBuff
-BOOL winansi_OemToCharBuff(LPCSTR s, LPSTR d, DWORD len)
+BOOL conToCharBuffA(LPSTR s, DWORD len)
 {
+	UINT acp = GetACP(), conicp = GetConsoleCP();
+	CPINFO acp_info, con_info;
 	WCHAR *buf;
-	int i;
 
-	if (GetConsoleCP() != 858)
-		return OemToCharBuffA(s, d, len);
+	if (acp == conicp)
+		return TRUE;
 
-	if (!s || !d)
+	if (!s || !GetCPInfo(acp, &acp_info) || !GetCPInfo(conicp, &con_info) ||
+			acp_info.MaxCharSize > con_info.MaxCharSize ||
+			(len == 1 && con_info.MaxCharSize != 1))
 		return FALSE;
 
 	terminal_mode(FALSE);
 	buf = xmalloc(len*sizeof(WCHAR));
-	MultiByteToWideChar(CP_OEMCP, 0, s, len, buf, len);
-	WideCharToMultiByte(CP_ACP, 0, buf, len, d, len, NULL, NULL);
-	for (i=0; i<len; ++i) {
-		if (buf[i] == 0x0131) {
-			d[i] = 0x80;
+	MultiByteToWideChar(conicp, 0, s, len, buf, len);
+	WideCharToMultiByte(CP_ACP, 0, buf, len, s, len, NULL, NULL);
+#if ENABLE_FEATURE_EURO
+	if (conicp == 858) {
+		for (int i = 0; i < len; ++i) {
+			if (buf[i] == 0x0131) {
+				s[i] = 0x80;
+			}
 		}
 	}
+#endif
 	free(buf);
 	return TRUE;
 }
-
-# undef CharToOemBuff
-# undef CharToOem
-# define CharToOemBuff winansi_CharToOemBuff
-# define CharToOem winansi_CharToOem
-# define OemToCharBuff winansi_OemToCharBuff
-#endif
 
 static int ansi_emulate(const char *s, FILE *stream)
 {
@@ -826,7 +826,7 @@ static int ansi_emulate(const char *s, FILE *stream)
 
 			if (len) {
 				*pos = '\0';	/* NB, '\033' has been overwritten */
-				CharToOem(str, str);
+				charToConA(str);
 				if (fputs(str, stream) == EOF)
 					return EOF;
 				rv += len;
@@ -849,7 +849,7 @@ static int ansi_emulate(const char *s, FILE *stream)
 
 		} else {
 			rv += strlen(str);
-			CharToOem(str, str);
+			charToConA(str);
 			return fputs(str, stream) == EOF ? EOF : rv;
 		}
 	}
@@ -864,7 +864,7 @@ int winansi_putchar(int c)
 	if (!is_console(STDOUT_FILENO))
 		return putchar(c);
 
-	CharToOemBuff(s, s, 1);
+	charToConBuffA(s, 1);
 	return putchar(t) == EOF ? EOF : (unsigned char)c;
 }
 
@@ -963,7 +963,7 @@ int winansi_fputc(int c, FILE *stream)
 		return ret;
 	}
 
-	CharToOemBuff(s, s, 1);
+	charToConBuffA(s, 1);
 	return fputc(t, stream) == EOF ? EOF : (unsigned char )c;
 }
 
@@ -1094,7 +1094,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 			len = pos - str;
 
 			if (len) {
-				CharToOemBuff(str, str, len);
+				charToConBuffA(str, len);
 				out_len = write(fd, str, len);
 				if (out_len == -1)
 					return -1;
@@ -1111,7 +1111,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 			pos = str;
 		} else {
 			len = strlen(str);
-			CharToOem(str, str);
+			charToConA(str);
 			out_len = write(fd, str, len);
 			return (out_len == -1) ? -1 : rv+out_len;
 		}
@@ -1143,7 +1143,7 @@ int winansi_read(int fd, void *buf, size_t count)
 		return rv;
 
 	if ( rv > 0 ) {
-		OemToCharBuff(buf, buf, rv);
+		conToCharBuffA(buf, rv);
 	}
 
 	return rv;
@@ -1160,7 +1160,7 @@ int winansi_getc(FILE *stream)
 	if ( rv != EOF ) {
 		unsigned char c = (unsigned char)rv;
 		char *s = (char *)&c;
-		OemToCharBuff(s, s, 1);
+		conToCharBuffA(s, 1);
 		rv = (int)c;
 	}
 

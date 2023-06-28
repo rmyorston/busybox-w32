@@ -128,7 +128,7 @@ int64_t FAST_FUNC windows_read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 #else
 		if ( (record.Event.KeyEvent.uChar.AsciiChar & 0x80) == 0x80 ) {
 			char *s = &record.Event.KeyEvent.uChar.AsciiChar;
-			OemToCharBuff(s, s, 1);
+			conToCharBuffA(s, 1);
 		}
 		ret = record.Event.KeyEvent.uChar.AsciiChar;
 #endif

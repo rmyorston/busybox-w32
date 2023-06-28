@@ -465,7 +465,7 @@ config FEATURE_ICON_ALL
 endchoice
 
 config FEATURE_EURO
-	bool "Support the euro currency symbol (0.5 kb)"
+	bool "Support the euro currency symbol"
 	default y
 	depends on PLATFORM_MINGW32
 	help

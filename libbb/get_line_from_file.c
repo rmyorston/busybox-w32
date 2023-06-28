@@ -48,7 +48,7 @@ char* FAST_FUNC bb_get_chunk_from_file(FILE *file, size_t *end)
 #if ENABLE_PLATFORM_MINGW32
 	if (idx && isatty(fileno(file)) &&
 			GetStdHandle(STD_INPUT_HANDLE) != INVALID_HANDLE_VALUE)
-		OemToCharBuff(linebuf, linebuf, idx);
+		conToCharBuffA(linebuf, idx);
 #endif
 	return linebuf;
 }
