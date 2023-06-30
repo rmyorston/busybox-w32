@@ -153,6 +153,9 @@ IMPL(setlinebuf, void, ,FILE *fd UNUSED_PARAM)
 BOOL conToCharBuffA(LPSTR d, DWORD len);
 BOOL conToCharA(LPSTR d);
 
+// same as ReadConsoleInputA, but delivers UTF8 regardless of console CP
+BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got);
+
 void set_title(const char *str);
 void move_cursor_row(int n);
 void reset_screen(void);
