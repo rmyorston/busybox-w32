@@ -1293,6 +1293,10 @@ BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
 	if (len != 1)
 		return FALSE;
 
+	// if ACP is UTF8 then we read UTF8 regardless of console (in) CP
+	if (GetConsoleCP() != CP_UTF8 && GetACP() != CP_UTF8)
+		return ReadConsoleInput(h, r, len, got);
+
 	if (u8pos == u8len) {
 		DWORD codepoint;
 

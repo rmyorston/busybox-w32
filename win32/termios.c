@@ -57,10 +57,7 @@ int64_t FAST_FUNC windows_read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 #if ENABLE_FEATURE_EURO_INPUT
 		if (!ReadConsoleInputW(cin, &record, 1, &nevent_out))
 #else
-		// if ACP is UTF8 then we read UTF8 regardless of console (in) CP
-		if (GetConsoleCP() == CP_UTF8 || GetACP() == CP_UTF8
-		    ? !readConsoleInput_utf8(cin, &record, 1, &nevent_out)
-		    : !ReadConsoleInput(cin, &record, 1, &nevent_out))
+		if (!readConsoleInput_utf8(cin, &record, 1, &nevent_out))
 #endif
 			goto done;
 
