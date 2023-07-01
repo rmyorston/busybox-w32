@@ -1314,9 +1314,11 @@ BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
 	if (u8pos == u8len) {
 		DWORD codepoint;
 
-		// peek rather than read to keep the last processed record at
-		// the console queue until we deliver all of its products, so
-		// that WaitForSingleObject(handle) shows there's data ready.
+		// wait-and-peek rather than read to keep the last processed record
+		// at the console queue until we deliver all of its products, so
+		// that external WaitForSingleObject(h) shows there's data ready.
+		if (WaitForSingleObject(h, INFINITE) != WAIT_OBJECT_0)
+			return FALSE;
 		if (!PeekConsoleInputW(h, r, 1, got))
 			return FALSE;
 		if (*got == 0)
