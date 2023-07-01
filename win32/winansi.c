@@ -732,15 +732,6 @@ static BOOL charToConBuffA(LPSTR s, DWORD len)
 	buf = xmalloc(len*sizeof(WCHAR));
 	MultiByteToWideChar(CP_ACP, 0, s, len, buf, len);
 	WideCharToMultiByte(conocp, 0, buf, len, s, len, NULL, NULL);
-#if ENABLE_FEATURE_EURO
-	if (conocp == 858) {
-		for (int i = 0; i < len; ++i) {
-			if (buf[i] == 0x20ac) {
-				s[i] = 0xd5;
-			}
-		}
-	}
-#endif
 	free(buf);
 	return TRUE;
 }
@@ -771,15 +762,6 @@ BOOL conToCharBuffA(LPSTR s, DWORD len)
 	buf = xmalloc(len*sizeof(WCHAR));
 	MultiByteToWideChar(conicp, 0, s, len, buf, len);
 	WideCharToMultiByte(CP_ACP, 0, buf, len, s, len, NULL, NULL);
-#if ENABLE_FEATURE_EURO
-	if (conicp == 858) {
-		for (int i = 0; i < len; ++i) {
-			if (buf[i] == 0x0131) {
-				s[i] = 0x80;
-			}
-		}
-	}
-#endif
 	free(buf);
 	return TRUE;
 }
