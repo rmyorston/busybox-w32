@@ -34,7 +34,7 @@ int64_t FAST_FUNC windows_read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 	INPUT_RECORD record;
 	DWORD nevent_out, mode;
 	int ret = -1;
-#if ENABLE_FEATURE_EURO_INPUT
+#if !ENABLE_FEATURE_UTF8_INPUT
 	wchar_t uchar;
 	char achar;
 #endif
@@ -54,7 +54,7 @@ int64_t FAST_FUNC windows_read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 			if (WaitForSingleObject(cin, timeout) != WAIT_OBJECT_0)
 				goto done;
 		}
-#if ENABLE_FEATURE_EURO_INPUT
+#if !ENABLE_FEATURE_UTF8_INPUT
 		if (!ReadConsoleInputW(cin, &record, 1, &nevent_out))
 #else
 		if (!readConsoleInput_utf8(cin, &record, 1, &nevent_out))
@@ -73,7 +73,7 @@ int64_t FAST_FUNC windows_read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 		}
 		alt_pressed = state & LEFT_ALT_PRESSED;
 
-#if ENABLE_FEATURE_EURO_INPUT
+#if !ENABLE_FEATURE_UTF8_INPUT
 		if (!record.Event.KeyEvent.uChar.UnicodeChar) {
 #else
 		if (!record.Event.KeyEvent.uChar.AsciiChar) {
@@ -119,7 +119,7 @@ int64_t FAST_FUNC windows_read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 				ret &= ~0x80;
 			goto done;
 		}
-#if ENABLE_FEATURE_EURO_INPUT
+#if !ENABLE_FEATURE_UTF8_INPUT
 		uchar = record.Event.KeyEvent.uChar.UnicodeChar;
 		achar = uchar & 0x7f;
 		if (achar != uchar)

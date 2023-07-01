@@ -749,8 +749,12 @@ BOOL conToCharBuffA(LPSTR s, DWORD len)
 	CPINFO acp_info, con_info;
 	WCHAR *buf;
 
-	// if acp is UTF8 then we got UTF8 via readConsoleInput_utf8
-	if (acp == conicp || acp == CP_UTF8)
+	if (acp == conicp
+#if ENABLE_FEATURE_UTF8_INPUT
+			// if acp is UTF8 then we got UTF8 via readConsoleInput_utf8
+			|| acp == CP_UTF8
+#endif
+		)
 		return TRUE;
 
 	if (!s || !GetCPInfo(acp, &acp_info) || !GetCPInfo(conicp, &con_info) ||
@@ -1173,6 +1177,7 @@ int mingw_isatty(int fd)
 	return result;
 }
 
+#if ENABLE_FEATURE_UTF8_INPUT
 // intentionally also converts invalid values (surrogate halfs, too big)
 static int toutf8(DWORD cp, unsigned char *buf) {
 	if (cp <= 0x7f) {
@@ -1343,3 +1348,4 @@ BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
 	*got = 1;
 	return TRUE;
 }
+#endif
