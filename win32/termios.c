@@ -34,10 +34,6 @@ int64_t FAST_FUNC windows_read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 	INPUT_RECORD record;
 	DWORD nevent_out, mode;
 	int ret = -1;
-#if !ENABLE_FEATURE_UTF8_INPUT
-	wchar_t uchar;
-	char achar;
-#endif
 	DWORD alt_pressed = FALSE;
 	DWORD state;
 
@@ -54,11 +50,7 @@ int64_t FAST_FUNC windows_read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 			if (WaitForSingleObject(cin, timeout) != WAIT_OBJECT_0)
 				goto done;
 		}
-#if !ENABLE_FEATURE_UTF8_INPUT
-		if (!ReadConsoleInputW(cin, &record, 1, &nevent_out))
-#else
 		if (!readConsoleInput_utf8(cin, &record, 1, &nevent_out))
-#endif
 			goto done;
 
 		if (record.EventType != KEY_EVENT)
@@ -73,11 +65,7 @@ int64_t FAST_FUNC windows_read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 		}
 		alt_pressed = state & LEFT_ALT_PRESSED;
 
-#if !ENABLE_FEATURE_UTF8_INPUT
-		if (!record.Event.KeyEvent.uChar.UnicodeChar) {
-#else
 		if (!record.Event.KeyEvent.uChar.AsciiChar) {
-#endif
 			if (alt_pressed && !(state & ENHANCED_KEY)) {
 				/* keys on numeric pad used to enter character codes */
 				switch (record.Event.KeyEvent.wVirtualKeyCode) {
@@ -119,19 +107,11 @@ int64_t FAST_FUNC windows_read_key(int fd, char *buf UNUSED_PARAM, int timeout)
 				ret &= ~0x80;
 			goto done;
 		}
-#if !ENABLE_FEATURE_UTF8_INPUT
-		uchar = record.Event.KeyEvent.uChar.UnicodeChar;
-		achar = uchar & 0x7f;
-		if (achar != uchar)
-			WideCharToMultiByte(CP_ACP, 0, &uchar, 1, &achar, 1, NULL, NULL);
-		ret = achar;
-#else
 		if ( (record.Event.KeyEvent.uChar.AsciiChar & 0x80) == 0x80 ) {
 			char *s = &record.Event.KeyEvent.uChar.AsciiChar;
 			conToCharBuffA(s, 1);
 		}
 		ret = record.Event.KeyEvent.uChar.AsciiChar;
-#endif
 		if (state & (RIGHT_ALT_PRESSED|LEFT_ALT_PRESSED)) {
 			switch (ret) {
 			case '\b': ret = KEYCODE_ALT_BACKSPACE; goto done;

@@ -1348,4 +1348,25 @@ BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
 	*got = 1;
 	return TRUE;
 }
+#else
+/*
+ * In Windows 10 and 11 using ReadConsoleInputA() with a console input
+ * code page of CP_UTF8 can crash the console/terminal.  Avoid this by
+ * using ReadConsoleInputW() in that case.
+ */
+BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
+{
+	if (GetConsoleCP() != CP_UTF8)
+		return ReadConsoleInput(h, r, len, got);
+
+	if (ReadConsoleInputW(h, r, len, got)) {
+		wchar_t uchar = r->Event.KeyEvent.uChar.UnicodeChar;
+		char achar = uchar & 0x7f;
+		if (achar != uchar)
+			achar = '?';
+		r->Event.KeyEvent.uChar.AsciiChar = achar;
+		return TRUE;
+	}
+	return FALSE;
+}
 #endif
