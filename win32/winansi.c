@@ -24,6 +24,7 @@ static BOOL charToConA(LPSTR s);
 #undef puts
 #undef write
 #undef read
+#undef fread
 #undef getc
 
 #define FOREGROUND_ALL (FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE)
@@ -1132,6 +1133,20 @@ int winansi_read(int fd, void *buf, size_t count)
 	if ( rv > 0 ) {
 		conToCharBuffA(buf, rv);
 	}
+
+	return rv;
+}
+
+size_t winansi_fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
+{
+	int rv;
+
+	rv = fread(ptr, size, nmemb, stream);
+	if (!is_console_in(fileno(stream)))
+		return rv;
+
+	if (rv > 0)
+		conToCharBuffA(ptr, rv * size);
 
 	return rv;
 }

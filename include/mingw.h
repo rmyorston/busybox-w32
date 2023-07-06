@@ -170,6 +170,7 @@ int winansi_printf(const char *format, ...) __attribute__((format (printf, 1, 2)
 int winansi_fprintf(FILE *stream, const char *format, ...) __attribute__((format (printf, 2, 3)));
 int winansi_write(int fd, const void *buf, size_t count);
 int winansi_read(int fd, void *buf, size_t count);
+size_t winansi_fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 int winansi_getc(FILE *stream);
 
 #define putchar winansi_putchar
@@ -186,6 +187,7 @@ int winansi_getc(FILE *stream);
 #define fprintf(...) winansi_fprintf(__VA_ARGS__)
 #define write winansi_write
 #define read winansi_read
+#define fread winansi_fread
 #define getc winansi_getc
 
 /*
