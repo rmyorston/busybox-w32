@@ -26,6 +26,7 @@ static BOOL charToConA(LPSTR s);
 #undef read
 #undef fread
 #undef getc
+#undef fgets
 
 #define FOREGROUND_ALL (FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE)
 #define BACKGROUND_ALL (BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE)
@@ -1165,6 +1166,25 @@ int winansi_getc(FILE *stream)
 		conToCharBuffA(s, 1);
 		rv = (int)c;
 	}
+
+	return rv;
+}
+
+int winansi_getchar(void)
+{
+	return winansi_getc(stdin);
+}
+
+char *winansi_fgets(char *s, int size, FILE *stream)
+{
+	char *rv;
+
+	rv = fgets(s, size, stream);
+	if (!is_console_in(fileno(stream)))
+		return rv;
+
+	if (rv)
+		conToCharBuffA(s, strlen(s));
 
 	return rv;
 }

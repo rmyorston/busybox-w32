@@ -172,6 +172,8 @@ int winansi_write(int fd, const void *buf, size_t count);
 int winansi_read(int fd, void *buf, size_t count);
 size_t winansi_fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 int winansi_getc(FILE *stream);
+int winansi_getchar(void);
+char *winansi_fgets(char *s, int size, FILE *stream);
 
 #define putchar winansi_putchar
 #define puts winansi_puts
@@ -189,6 +191,9 @@ int winansi_getc(FILE *stream);
 #define read winansi_read
 #define fread winansi_fread
 #define getc winansi_getc
+#define fgetc winansi_getc
+#define getchar winansi_getchar
+#define fgets winansi_fgets
 
 /*
  * stdlib.h
