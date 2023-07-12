@@ -195,7 +195,6 @@ shell_builtin_read(struct builtin_read_params *params)
 			}
 		}
 
-#if !ENABLE_PLATFORM_MINGW32
 		/* We must poll even if timeout is -1:
 		 * we want to be interrupted if signal arrives,
 		 * regardless of SA_RESTART-ness of that signal!
@@ -209,13 +208,7 @@ shell_builtin_read(struct builtin_read_params *params)
 			retval = (const char *)(uintptr_t)1;
 			goto ret;
 		}
-		if (read(fd, &buffer[bufpos], 1) != 1) {
-			err = errno;
-			retval = (const char *)(uintptr_t)1;
-			break;
-		}
-#else
-		errno = 0;
+#if ENABLE_PLATFORM_MINGW32
 		if (isatty(fd)) {
 			int64_t key;
 
@@ -245,15 +238,13 @@ shell_builtin_read(struct builtin_read_params *params)
 				/* echo input if not in silent mode */
 				console_write(buffer + bufpos, 1);
 			}
-		}
-		else {
-			if (read(fd, &buffer[bufpos], 1) != 1) {
-				err = errno;
-				retval = (const char *)(uintptr_t)1;
-				break;
-			}
-		}
+		} else
 #endif
+		if (read(fd, &buffer[bufpos], 1) != 1) {
+			err = errno;
+			retval = (const char *)(uintptr_t)1;
+			break;
+		}
 
 		c = buffer[bufpos];
 #if ENABLE_PLATFORM_MINGW32
