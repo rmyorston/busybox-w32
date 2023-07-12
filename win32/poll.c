@@ -469,6 +469,9 @@ poll (struct pollfd *pfd, nfds_t nfd, int timeout)
   MSG msg;
   int rc = 0;
   nfds_t i;
+  DWORD real_timeout = 0;
+  int save_timeout = timeout;
+  clock_t tend = clock () + timeout;
 
   if (nfd > INT_MAX || timeout < -1)
     {
@@ -480,6 +483,14 @@ poll (struct pollfd *pfd, nfds_t nfd, int timeout)
     hEvent = CreateEvent (NULL, FALSE, FALSE, NULL);
 
 restart:
+  /* How much is left to wait? */
+  timeout = save_timeout;
+  if (timeout != INFTIM)
+    {
+      clock_t now = clock ();
+      real_timeout = tend > now ? tend - now : 0;
+    }
+
   handle_array[0] = hEvent;
   nhandles = 1;
   FD_ZERO (&rfds);
@@ -620,7 +631,7 @@ restart:
         rc++;
     }
 
-  if (!rc && timeout == INFTIM)
+  if (!rc && (save_timeout == INFTIM || (real_timeout != 0 && nhandles > 1)))
     {
       SleepEx (1, TRUE);
       goto restart;
