@@ -235,7 +235,7 @@ shell_builtin_read(struct builtin_read_params *params)
 					--bufpos;
 					++nchars;
 					if (!(read_flags & BUILTIN_READ_SILENT)) {
-						printf("\b \b");
+						console_write("\b \b", 3);
 					}
 				}
 				goto loop;
@@ -243,7 +243,7 @@ shell_builtin_read(struct builtin_read_params *params)
 			buffer[bufpos] = key == '\r' ? '\n' : key;
 			if (!(read_flags & BUILTIN_READ_SILENT)) {
 				/* echo input if not in silent mode */
-				putchar(buffer[bufpos]);
+				console_write(buffer + bufpos, 1);
 			}
 		}
 		else {

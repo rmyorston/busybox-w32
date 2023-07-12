@@ -1405,3 +1405,14 @@ BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
 	return FALSE;
 }
 #endif
+
+void console_write(const char *str, int len)
+{
+	char *buf = xmemdup(str, len);
+	int fd = _open("CONOUT$", _O_WRONLY);
+	HANDLE fh = (HANDLE)_get_osfhandle(fd);
+	charToConBuffA(buf, len);
+	WriteConsole(fh, buf, len, NULL, NULL);
+	close(fd);
+	free(buf);
+}

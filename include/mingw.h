@@ -174,6 +174,7 @@ size_t winansi_fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 int winansi_getc(FILE *stream);
 int winansi_getchar(void);
 char *winansi_fgets(char *s, int size, FILE *stream);
+void console_write(const char *str, int len);
 
 #define putchar winansi_putchar
 #define puts winansi_puts

@@ -15775,8 +15775,8 @@ exitshell(void)
  out:
 #if ENABLE_SUW32
 	if (delayexit) {
-		freopen("CONOUT$", "w", stdout);
-		fputs_stdout("Press any key to exit...");
+#define EXIT_MSG "Press any key to exit..."
+		console_write(EXIT_MSG, sizeof(EXIT_MSG) - 1);
 		_getch();
 	}
 #endif
