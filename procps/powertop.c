@@ -9,7 +9,7 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config POWERTOP
-//config:	bool "powertop (9.6 kb)"
+//config:	bool "powertop (9.9 kb)"
 //config:	default y
 //config:	help
 //config:	Analyze power consumption on Intel-based laptops
@@ -109,7 +109,7 @@ static void reset_term(void)
 static void sig_handler(int signo UNUSED_PARAM)
 {
 	reset_term();
-	_exit(EXIT_FAILURE);
+	_exit_FAILURE();
 }
 #endif
 

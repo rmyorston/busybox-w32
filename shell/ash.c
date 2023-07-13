@@ -35,7 +35,7 @@
 //config:	depends on !NOMMU
 //config:
 //config:config ASH
-//config:	bool "ash (78 kb)"
+//config:	bool "ash (80 kb)"
 //config:	default y
 //config:	depends on !NOMMU
 //config:	select SHELL_ASH
@@ -149,11 +149,23 @@
 //config:	default y
 //config:	depends on SHELL_ASH
 //config:
-//config:config ASH_SLEEP
-//config:	bool "sleep builtin"
-//config:	default y
-//config:	depends on SHELL_ASH
-//config:
+//
+////config:config ASH_SLEEP
+////config:	bool "sleep builtin"
+////config:	default y
+////config:	depends on SHELL_ASH
+////config:
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//Disabled for now. Has a few annoying problems:
+// * sleepcmd() -> sleep_main(), the parsing of bad arguments exits the shell.
+// * sleep_for_duration() in sleep_main() has to be interruptible for
+//   ^C traps to work, which may be a problem for other users
+//   of sleep_for_duration().
+// * BUT, if sleep_for_duration() is interruptible, then SIGCHLD interrupts it
+//   as well (try "/bin/sleep 1 & sleep 10").
+// * sleep_main() must not allocate anything as ^C in ash longjmp's.
+//   (currently, allocations are only on error paths, in message printing).
+//
 //config:config ASH_HELP
 //config:	bool "help builtin"
 //config:	default y
@@ -599,7 +611,12 @@ struct globals_misc {
 
 	struct jmploc *exception_handler;
 
-	volatile int suppress_int; /* counter */
+	/*volatile*/ int suppress_int; /* counter */
+	/* ^^^^^^^ removed "volatile" since on x86, gcc turns suppress_int++
+	 * into ridiculous 3-insn sequence otherwise.
+	 * We don't change suppress_int asyncronously (in a signal handler),
+	 * but we do read it async.
+	 */
 	volatile /*sig_atomic_t*/ smallint pending_int; /* 1 = got SIGINT */
 #if !ENABLE_PLATFORM_MINGW32
 	volatile /*sig_atomic_t*/ smallint got_sigchld; /* 1 = got SIGCHLD */
@@ -954,7 +971,8 @@ int_on(void)
 {
 	barrier();
 	if (--suppress_int == 0 && pending_int)
-		raise_interrupt();
+		raise_interrupt(); /* does not return */
+	barrier();
 }
 #if DEBUG_INTONOFF
 # define INT_ON do { \
@@ -970,7 +988,8 @@ force_int_on(void)
 	barrier();
 	suppress_int = 0;
 	if (pending_int)
-		raise_interrupt();
+		raise_interrupt(); /* does not return */
+	barrier();
 }
 #define FORCE_INT_ON force_int_on()
 
@@ -980,7 +999,8 @@ force_int_on(void)
 	barrier(); \
 	suppress_int = (v); \
 	if (suppress_int == 0 && pending_int) \
-		raise_interrupt(); \
+		raise_interrupt(); /* does not return */ \
+	barrier(); \
 } while (0)
 
 
@@ -2547,30 +2567,6 @@ getoptsreset(const char *value)
 #endif
 
 /*
- * Compares two strings up to the first = or '\0'.  The first
- * string must be terminated by '='; the second may be terminated by
- * either '=' or '\0'.
- */
-static int
-varcmp(const char *p, const char *q)
-{
-	int c, d;
-
-	while ((c = *p) == (d = *q)) {
-		if (c == '\0' || c == '=')
-			goto out;
-		p++;
-		q++;
-	}
-	if (c == '=')
-		c = '\0';
-	if (d == '=')
-		d = '\0';
- out:
-	return c - d;
-}
-
-/*
  * Find the appropriate entry in the hash table from the name.
  */
 static struct var **
@@ -2881,7 +2877,7 @@ setvar(const char *name, const char *val, int flags)
 	p = mempcpy(nameeq, name, namelen);
 	if (val) {
 		*p++ = '=';
-		memcpy(p, val, vallen);
+		strcpy(p, val);
 	}
 	vp = setvareq(nameeq, flags | VNOSAVE);
 	INT_ON;
@@ -10485,7 +10481,7 @@ evaltree(union node *n, int flags)
 	}
 	if (flags & EV_EXIT) {
  exexit:
-		raise_exception(EXEND);
+		raise_exception(EXEND); /* does not return */
 	}
 
 	popstackmark(&smark);
@@ -11554,7 +11550,7 @@ evalcommand(union node *cmd, int flags)
 
 		/* We have a redirection error. */
 		if (spclbltin > 0)
-			raise_exception(EXERROR);
+			raise_exception(EXERROR); /* does not return */
 
 		goto out;
 	}
@@ -13347,18 +13343,19 @@ simplecmd(void)
 			if (args && app == &args->narg.next
 			 && !vars && !redir
 			) {
-				struct builtincmd *bcmd;
-				const char *name;
+//				struct builtincmd *bcmd;
+//				const char *name;
 
 				/* We have a function */
 				if (IF_BASH_FUNCTION(!function_flag &&) readtoken() != TRP)
 					raise_error_unexpected_syntax(TRP);
-				name = n->narg.text;
-				if (!goodname(name)
-				 || ((bcmd = find_builtin(name)) && IS_BUILTIN_SPECIAL(bcmd))
-				) {
-					raise_error_syntax("bad function name");
-				}
+//bash allows functions named "123", "..", "return"!
+//				name = n->narg.text;
+//				if (!goodname(name)
+//				 || ((bcmd = find_builtin(name)) && IS_BUILTIN_SPECIAL(bcmd))
+//				) {
+//					raise_error_syntax("bad function name");
+//				}
 				n->type = NDEFUN;
 				checkkwd = CHKNL | CHKKWD | CHKALIAS;
 				n->ndefun.text = n->narg.text;
@@ -15964,7 +15961,7 @@ procargs(char **argv)
 		optlist[i] = 2;
 	if (options(&login_sh)) {
 		/* it already printed err message */
-		raise_exception(EXERROR);
+		raise_exception(EXERROR); /* does not return */
 	}
 	xargv = argptr;
 	xminusc = minusc;

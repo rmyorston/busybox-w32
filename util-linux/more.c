@@ -14,7 +14,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config MORE
-//config:	bool "more (7 kb)"
+//config:	bool "more (7.2 kb)"
 //config:	default y
 //config:	help
 //config:	more is a simple utility which allows you to read text one screen
@@ -69,7 +69,7 @@ static void gotsig(int sig UNUSED_PARAM)
 	 * therefore it is safe in signal handler */
 	bb_putchar_stderr('\n');
 	tcsetattr_tty_TCSANOW(&G.initial_settings);
-	_exit(EXIT_FAILURE);
+	_exit_FAILURE();
 }
 #endif
 

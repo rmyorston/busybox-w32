@@ -80,8 +80,9 @@ other bases
 62 62
 63 63
 missing number after base
-0 0
+./arith.tests: line 161: arithmetic syntax error
 ./arith.tests: line 162: arithmetic syntax error
+./arith.tests: line 163: arithmetic syntax error
 ./arith.tests: line 164: divide by zero
 ./arith.tests: let: line 165: arithmetic syntax error
 ./arith.tests: line 166: arithmetic syntax error
@@ -92,7 +93,7 @@ ghi
 ./arith.tests: line 190: arithmetic syntax error
 16 16
 ./arith.tests: line 195: arithmetic syntax error
-./arith.tests: line 196: malformed ?: operator
+./arith.tests: line 196: arithmetic syntax error
 ./arith.tests: line 197: arithmetic syntax error
 9 9
 ./arith.tests: line 204: arithmetic syntax error

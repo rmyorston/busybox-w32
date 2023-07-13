@@ -7,7 +7,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config RESIZE
-//config:	bool "resize (903 bytes)"
+//config:	bool "resize (1.2 kb)"
 //config:	default y
 //config:	help
 //config:	This program is used to (re)set the width and height of your current
@@ -45,7 +45,7 @@ static void
 onintr(int sig UNUSED_PARAM)
 {
 	tcsetattr(STDERR_FILENO, TCSANOW, old_termios_p);
-	_exit(EXIT_FAILURE);
+	_exit_FAILURE();
 }
 
 int resize_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;

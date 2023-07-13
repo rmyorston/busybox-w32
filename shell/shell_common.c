@@ -22,6 +22,25 @@
 const char defifsvar[] ALIGN1 = "IFS= \t\n";
 const char defoptindvar[] ALIGN1 = "OPTIND=1";
 
+/* Compare two strings up to the first '=' or '\0'. */
+int FAST_FUNC varcmp(const char *p, const char *q)
+{
+	int c, d;
+
+	while ((c = *p) == (d = *q)) {
+		if (c == '\0' || c == '=')
+			goto out;
+		p++;
+		q++;
+	}
+	if (c == '=')
+		c = '\0';
+	if (d == '=')
+		d = '\0';
+ out:
+	return c - d;
+}
+
 /* read builtin */
 
 /* Needs to be interruptible: shell must handle traps and shell-special signals
@@ -59,7 +78,7 @@ shell_builtin_read(struct builtin_read_params *params)
 	argv = params->argv;
 	pp = argv;
 	while (*pp) {
-		if (endofname(*pp)[0] != '\0') {
+		if (!*pp[0] || endofname(*pp)[0] != '\0') {
 			/* Mimic bash message */
 			bb_error_msg("read: '%s': bad variable name", *pp);
 			return (const char *)(uintptr_t)1;

@@ -9,31 +9,31 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config I2CGET
-//config:	bool "i2cget (5.5 kb)"
+//config:	bool "i2cget (5.7 kb)"
 //config:	default y
 //config:	help
 //config:	Read from I2C/SMBus chip registers.
 //config:
 //config:config I2CSET
-//config:	bool "i2cset (6.7 kb)"
+//config:	bool "i2cset (6.9 kb)"
 //config:	default y
 //config:	help
 //config:	Set I2C registers.
 //config:
 //config:config I2CDUMP
-//config:	bool "i2cdump (7.1 kb)"
+//config:	bool "i2cdump (7.2 kb)"
 //config:	default y
 //config:	help
 //config:	Examine I2C registers.
 //config:
 //config:config I2CDETECT
-//config:	bool "i2cdetect (7.1 kb)"
+//config:	bool "i2cdetect (7.3 kb)"
 //config:	default y
 //config:	help
 //config:	Detect I2C chips.
 //config:
 //config:config I2CTRANSFER
-//config:	bool "i2ctransfer (4.0 kb)"
+//config:	bool "i2ctransfer (5.5 kb)"
 //config:	default y
 //config:	help
 //config:	Send user-defined I2C messages in one transfer.
@@ -107,6 +107,7 @@ static ALWAYS_INLINE void *itoptr(int i)
 	return (void*)(intptr_t)i;
 }
 
+#if ENABLE_I2CGET || ENABLE_I2CSET || ENABLE_I2CDUMP || ENABLE_I2CDETECT
 static int32_t i2c_smbus_access(int fd, char read_write, uint8_t cmd,
 				int size, union i2c_smbus_data *data)
 {
@@ -120,7 +121,6 @@ static int32_t i2c_smbus_access(int fd, char read_write, uint8_t cmd,
 	return ioctl(fd, I2C_SMBUS, &args);
 }
 
-#if ENABLE_I2CGET || ENABLE_I2CSET || ENABLE_I2CDUMP || ENABLE_I2CDETECT
 static int32_t i2c_smbus_read_byte(int fd)
 {
 	union i2c_smbus_data data;

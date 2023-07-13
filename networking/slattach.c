@@ -13,7 +13,7 @@
  * - The -F options allows disabling of RTS/CTS flow control.
  */
 //config:config SLATTACH
-//config:	bool "slattach (6.2 kb)"
+//config:	bool "slattach (6.3 kb)"
 //config:	default y
 //config:	help
 //config:	slattach configures serial line as SLIP network interface.
@@ -80,7 +80,7 @@ static void restore_state_and_exit(int exitcode)
 
 	/* Restore line status */
 	if (tcsetattr_serial_or_warn(&G.saved_state))
-		exit(EXIT_FAILURE);
+		exit_FAILURE();
 
 	if (ENABLE_FEATURE_CLEAN_UP)
 		close(serial_fd);

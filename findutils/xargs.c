@@ -15,7 +15,7 @@
  * http://www.opengroup.org/onlinepubs/007904975/utilities/xargs.html
  */
 //config:config XARGS
-//config:	bool "xargs (7.2 kb)"
+//config:	bool "xargs (7.6 kb)"
 //config:	default y
 //config:	help
 //config:	xargs is used to execute a specified command for
@@ -961,7 +961,7 @@ void bb_show_usage(void)
 {
 	fprintf(stderr, "Usage: %s [-p] [-r] [-t] -[x] [-n max_arg] [-s max_chars]\n",
 		applet_name);
-	exit(EXIT_FAILURE);
+	exit_FAILURE();
 }
 
 int main(int argc, char **argv)

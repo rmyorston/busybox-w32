@@ -417,7 +417,7 @@ int gunzip_main(int argc UNUSED_PARAM, char **argv)
 //usage:       "Decompress to stdout"
 
 //config:config BUNZIP2
-//config:	bool "bunzip2 (8.7 kb)"
+//config:	bool "bunzip2 (9.1 kb)"
 //config:	default y
 //config:	select FEATURE_BZIP2_DECOMPRESS
 //config:	help
@@ -431,7 +431,7 @@ int gunzip_main(int argc UNUSED_PARAM, char **argv)
 //config:	should probably say N here.
 //config:
 //config:config BZCAT
-//config:	bool "bzcat (8.7 kb)"
+//config:	bool "bzcat (9 kb)"
 //config:	default y
 //config:	select FEATURE_BZIP2_DECOMPRESS
 //config:	help
@@ -487,7 +487,7 @@ int bunzip2_main(int argc UNUSED_PARAM, char **argv)
 //usage:       "Decompress to stdout"
 
 //config:config UNLZMA
-//config:	bool "unlzma (7.5 kb)"
+//config:	bool "unlzma (7.8 kb)"
 //config:	default y
 //config:	help
 //config:	unlzma is a compression utility using the Lempel-Ziv-Markov chain
@@ -496,7 +496,7 @@ int bunzip2_main(int argc UNUSED_PARAM, char **argv)
 //config:	compressors.
 //config:
 //config:config LZCAT
-//config:	bool "lzcat (7.5 kb)"
+//config:	bool "lzcat (7.8 kb)"
 //config:	default y
 //config:	help
 //config:	Alias to "unlzma -c".
