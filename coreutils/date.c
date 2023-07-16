@@ -97,9 +97,7 @@
 //usage:#define date_full_usage "\n\n"
 //usage:       "Display time (using +FMT), or set time\n"
 //usage:     "\n	-u		Work in UTC (don't convert to local time)"
-//usage:	IF_NOT_PLATFORM_MINGW32(
 //usage:     "\n	[-s] TIME	Set time to TIME"
-//usage:	)
 //usage:     "\n	-d TIME		Display TIME, not 'now'"
 //usage:	IF_FEATURE_DATE_ISOFMT(
 //usage:     "\n	-D FMT		FMT (strptime format) for -s/-d TIME conversion"
@@ -134,30 +132,19 @@
 
 enum {
 	OPT_RFC2822   = (1 << 0), /* R */
-#if !ENABLE_PLATFORM_MINGW32
 	OPT_SET       = (1 << 1), /* s */
 	OPT_UTC       = (1 << 2), /* u */
 	OPT_DATE      = (1 << 3), /* d */
 	OPT_REFERENCE = (1 << 4), /* r */
 	OPT_ISO8601   = (1 << 5) * ENABLE_FEATURE_DATE_ISOFMT, /* I */
 	OPT_STR2DT    = (1 << 6) * ENABLE_FEATURE_DATE_ISOFMT, /* D */
-#else
-	OPT_SET       = (0),      /* s */
-	OPT_UTC       = (1 << 1), /* u */
-	OPT_DATE      = (1 << 2), /* d */
-	OPT_REFERENCE = (1 << 3), /* r */
-	OPT_ISO8601   = (1 << 4) * ENABLE_FEATURE_DATE_ISOFMT, /* I */
-	OPT_STR2DT    = (1 << 5) * ENABLE_FEATURE_DATE_ISOFMT, /* D */
-#endif
 };
 
 #if ENABLE_LONG_OPTS
 static const char date_longopts[] ALIGN1 =
 		"rfc-822\0"   No_argument       "R"
 		"rfc-2822\0"  No_argument       "R"
-#if !ENABLE_PLATFORM_MINGW32
 		"set\0"       Required_argument "s"
-#endif
 		"utc\0"       No_argument       "u"
 	/*	"universal\0" No_argument       "u" */
 		"date\0"      Required_argument "d"
@@ -187,25 +174,13 @@ int date_main(int argc UNUSED_PARAM, char **argv)
 	char *isofmt_arg = NULL;
 
 	opt = getopt32long(argv, "^"
-#if !ENABLE_PLATFORM_MINGW32
 			"Rs:ud:r:"
-#else
-			"Rud:r:"
-#endif
 			IF_FEATURE_DATE_ISOFMT("I::D:")
-#if !ENABLE_PLATFORM_MINGW32
 			"\0"
 			"d--s:s--d"
 			IF_FEATURE_DATE_ISOFMT(":R--I:I--R"),
-#else
-			IF_FEATURE_DATE_ISOFMT("\0R--I:I--R"),
-#endif
 			date_longopts,
-#if !ENABLE_PLATFORM_MINGW32
 			&date_str, &date_str, &filename
-#else
-			&date_str, &filename
-#endif
 			IF_FEATURE_DATE_ISOFMT(, &isofmt_arg, &fmt_str2dt)
 	);
 	argv += optind;
