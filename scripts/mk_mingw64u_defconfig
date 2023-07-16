@@ -1,0 +1,35 @@
+#!/bin/sh
+
+configs=$(dirname -- "$0")/../configs
+
+# replace each FOO=bar argument with -e 's/.*FOO.*/FOO=bar/', then sed "$@"
+set_build_opts() {
+    for v; do
+        set -- "$@" -e "s/.*${v%%=*}.*/$v/"
+        shift
+    done
+    sed "$@"
+}
+
+
+# Create unicode configs/mingw64u_defconfig from configs/mingw64_defconfig
+# by flipping some build options to enable:
+# - UTF8 manifest to support unicode on win 10 (filenames, etc).
+# - UTF8 terminal input (shell prompt, read).
+# - UTF8 editing - codepoint awareness (prompt, read):
+#   - Builtin libc unicode functions (mbstowcs etc - no UNICODE_USING_LOCALE).
+#   - Dynamic unicode based on ANSI codepage and ENV (CHECK_UNICODE_IN_ENV).
+#   - Screen-width awareness (COMBINING_WCHARS, WIDE_WCHARS)
+#   - Full unicode range (U+10FFFF - LAST_SUPPORTED_WCHAR=1114111)
+
+set_build_opts \
+    CONFIG_FEATURE_UTF8_MANIFEST=y \
+    CONFIG_FEATURE_UTF8_INPUT=y \
+    CONFIG_UNICODE_SUPPORT=y \
+    CONFIG_FEATURE_CHECK_UNICODE_IN_ENV=y \
+    CONFIG_SUBST_WCHAR=63 \
+    CONFIG_LAST_SUPPORTED_WCHAR=1114111 \
+    CONFIG_UNICODE_COMBINING_WCHARS=y \
+    CONFIG_UNICODE_WIDE_WCHARS=y \
+    < "$configs"/mingw64_defconfig \
+    > "$configs"/mingw64u_defconfig
