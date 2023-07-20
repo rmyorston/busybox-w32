@@ -1284,6 +1284,44 @@ static void maybeEatUpto2ndHalfUp(HANDLE h, DWORD *ph1)
 	}
 }
 
+// if the codepoint is a key-down event, remember it, else if
+// it's a key-up event with matching prior down - forget the down,
+// else (up without matching prior key-down) - change it to down.
+// We remember few prior key-down events so that a sequence
+// like X-down Y-down X-up Y-up won't trigger this hack for Y-up.
+// When up is changed into down there won't be further key-up event,
+// but that's OK because the caller ignores key-up events anyway.
+static void maybe_change_up_to_down(wchar_t key, BOOL *isdown)
+{
+	#define DOWN_BUF_SIZ 8
+	static wchar_t downbuf[DOWN_BUF_SIZ] = {0};
+	static int pos = 0;
+
+	if (*isdown) {
+		downbuf[pos++] = key;
+		pos = pos % DOWN_BUF_SIZ;
+		return;
+	}
+
+	// the missing-key-down issue was only observed with unicode values,
+	// so limit this hack to non-ASCII-7 values.
+	// also, launching a new shell/read process from CLI captures
+	// an ENTER-up event without prior down at this new process, which
+	// would otherwise change it to down - creating a wrong ENTER keypress.
+	if (key <= 127)
+		return;
+
+	// key up, try to match a prior down
+	for (int i = 0; i < DOWN_BUF_SIZ; ++i) {
+		if (downbuf[i] == key) {
+			downbuf[i] = 0;  // "forget" this down
+			return;
+		}
+	}
+
+	// no prior key-down - replace the up with down
+	*isdown = TRUE;
+}
 
 /*
  * readConsoleInput_utf8 behaves similar enough to ReadConsoleInputA when
@@ -1355,20 +1393,18 @@ BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
 		srec = *r;
 		codepoint = srec.Event.KeyEvent.uChar.UnicodeChar;
 
-		// At the cmd.exe console (but not windows terminal) we sometimes
-		// get key-up without the prior expected key-down event, sometimes
-		// with UnicodeChar of 0 instead the key-down event. work around it.
-		if (codepoint) {
-			static wchar_t last_down = 0;
-
-			if (srec.Event.KeyEvent.bKeyDown)
-				last_down = codepoint;
-			else if (codepoint > 127 && codepoint != last_down)
-				srec.Event.KeyEvent.bKeyDown = TRUE;
-		}
+		// Observed when pasting unicode at cmd.exe console (but not
+		// windows terminal), we sometimes get key-up event without
+		// a prior matching key-down (or with key-down codepoint 0),
+		// so this call would change the up into down in such case.
+		// E.g. pastes fixed by this hack: U+1F600 "😀", or U+0C80 "ಀ"
+		if (codepoint)
+			maybe_change_up_to_down(codepoint, &srec.Event.KeyEvent.bKeyDown);
 
 		// if it's a 1st (high) surrogate pair half, try to eat upto and
 		// excluding the 2nd (low) half, and combine them into codepoint.
+		// this does not interfere with the missing-key-down workaround
+		// (no issue if the down-buffer has 1st-half-down without up).
 		if (codepoint >= 0xD800 && codepoint <= 0xDBFF)
 			maybeEatUpto2ndHalfUp(h, &codepoint);
 
