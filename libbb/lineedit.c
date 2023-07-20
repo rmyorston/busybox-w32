@@ -730,15 +730,11 @@ static void input_forward(void)
 	 * inc_cursor improves forward cursor movement appearance on
 	 * win 7/8 console, but it's broken with unicode wide-glyphs,
 	 * e.g. paste and move forward over: echo 开开心心过每一天
-	 * so disable inc_corsor when unicode is active (which is only
+	 * so disable inc_cursor when unicode is active (which is only
 	 * windows 10+, where inc_cursor is not needed anyway).
-	 *
-	 * FIXME: the VT_INPUT condition is not required, because other
-	 * than the wide-glyphs issue, inc_cursor works correctly
-	 * regardless of the VT mode.
 	 */
 	{
-		if (terminal_mode(FALSE) & VT_INPUT || unicode_status == UNICODE_ON)
+		if (unicode_status == UNICODE_ON)
 			put_cur_glyph_and_inc_cursor();
 		else
 			inc_cursor();
