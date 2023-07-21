@@ -1,3 +1,12 @@
+### Download
+
+| Type | Windows 64 bit | Windows 32 bit | History |
+|------|----------------|----------------|---------|
+| Stable | [Stable 64 bit](https://frippery.org/files/busybox/busybox64.exe) | [Stable 32 bit](https://frippery.org/files/busybox/busybox.exe) | [Browse](https://frippery.org/files/busybox/?C=M;O=D) |
+| Pre-Release | [Pre-Release 64 bit](https://frippery.org/files/busybox/prerelease/busybox_pre64.exe) | [Pre-Release 32 bit](https://frippery.org/files/busybox/prerelease/busybox_pre.exe) | [Browse](https://frippery.org/files/busybox/prerelease/?C=M;O=D) |
+
+
+
 ### Status
 
 Things may work for you, or may not.  Things may never work because of huge differences between Linux and Windows.  Or things may work in future, if you report the problem on [GitHub](https://github.com/rmyorston/busybox-w32) or [GitLab](https://gitlab.com/rmyorston/busybox-w32).  If you don't have an account on one of those or you'd prefer to communicate privately you can email [rmy@pobox.com](mailto:rmy@pobox.com).
