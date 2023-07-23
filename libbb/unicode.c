@@ -69,8 +69,14 @@ void FAST_FUNC init_unicode(void)
 void FAST_FUNC reinit_unicode(const char *LANG)
 {
 	unicode_status = UNICODE_OFF;
+#if ENABLE_PLATFORM_MINGW32
+	/* enable unicode only when ACP is UTF8 and the env var is not 'C' */
+	if (GetACP() != CP_UTF8 || (LANG && LANG[0] == 'C' && LANG[1] == 0))
+		return;
+#else
 	if (!LANG || !(strstr(LANG, ".utf") || strstr(LANG, ".UTF")))
 		return;
+#endif
 	unicode_status = UNICODE_ON;
 }
 
@@ -653,6 +659,9 @@ int FAST_FUNC wcwidth(unsigned ucs)
 			{ 0x0A38, 0x0A3A }, { 0x0A3F, 0x0A3F }, { 0xD167, 0xD169 },
 			{ 0xD173, 0xD182 }, { 0xD185, 0xD18B }, { 0xD1AA, 0xD1AD },
 			{ 0xD242, 0xD244 }
+#if ENABLE_PLATFORM_MINGW32
+			, { 0xF3FB, 0xF3FF }
+#endif
 		};
 		/* Binary search in table of non-spacing characters in Supplementary Multilingual Plane */
 		if (in_interval_table(ucs ^ 0x10000, combining0x10000, ARRAY_SIZE(combining0x10000) - 1))
@@ -689,6 +698,11 @@ int FAST_FUNC wcwidth(unsigned ucs)
 		|| (ucs >= 0xff00 && ucs <= 0xff60) /* Fullwidth Forms */
 		|| (ucs >= 0xffe0 && ucs <= 0xffe6)
 #   endif
+#if ENABLE_PLATFORM_MINGW32
+#   if CONFIG_LAST_SUPPORTED_WCHAR >= 0x10000
+		|| (ucs >= 0x1f600 && ucs <= 0x1f64f) /* Emoticons */
+#   endif
+#endif
 #   if CONFIG_LAST_SUPPORTED_WCHAR >= 0x20000
 		|| ((ucs >> 17) == (2 >> 1)) /* 20000..3ffff: Supplementary and Tertiary Ideographic Planes */
 #   endif

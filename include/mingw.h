@@ -586,6 +586,18 @@ char *alloc_ext_space(const char *path);
 int add_win32_extension(char *p);
 char *file_is_win32_exe(const char *name);
 
+#if ENABLE_UNICODE_SUPPORT
+/*
+ * windows wchar_t is 16 bit, while linux (and busybox expectation) is 32.
+ * so when (busybox) unicode.h is included, wchar_t is 32 bit.
+ * Without unicode.h, MINGW_BB_WCHAR_T is busybox wide char (32),
+ * and wchar_t is Windows wide char (16).
+ */
+#define MINGW_BB_WCHAR_T uint32_t  /* keep in sync with unicode.h */
+
+MINGW_BB_WCHAR_T *bs_to_slash_u(MINGW_BB_WCHAR_T *p) FAST_FUNC;
+#endif
+
 char *bs_to_slash(char *p) FAST_FUNC;
 void slash_to_bs(char *p) FAST_FUNC;
 size_t remove_cr(char *p, size_t len) FAST_FUNC;

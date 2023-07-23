@@ -726,8 +726,15 @@ static void input_forward(void)
 #if !ENABLE_PLATFORM_MINGW32
 		put_cur_glyph_and_inc_cursor();
 #else
+	/*
+	 * inc_cursor improves forward cursor movement appearance on
+	 * win 7/8 console, but it's broken with unicode wide-glyphs,
+	 * e.g. paste and move forward over: echo 开开心心过每一天
+	 * so disable inc_cursor when unicode is active (which is only
+	 * windows 10+, where inc_cursor is not needed anyway).
+	 */
 	{
-		if (terminal_mode(FALSE) & VT_INPUT)
+		if (unicode_status == UNICODE_ON)
 			put_cur_glyph_and_inc_cursor();
 		else
 			inc_cursor();
@@ -770,6 +777,11 @@ static void add_match(char *matched, int sensitive)
 		 || (!ENABLE_UNICODE_SUPPORT && *p >= 0x7f)
 		 || (ENABLE_UNICODE_SUPPORT && *p == 0x7f)
 # else
+		/*
+		 * on Windows, *p > 0x7f is never control:
+		 * without unicode active: these are normal codepage chars.
+		 * with unicode active: these are UTF8 continuation bytes.
+		 */
 		 || *p == 0x7f
 # endif
 		) {
@@ -1318,6 +1330,12 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 # if ENABLE_PLATFORM_MINGW32
 	int chosen_index = 0;
 	int chosen_sens = FALSE;
+	/*
+	 * FIXME: the next three vars are unused with ENABLE_UNICODE_SUPPORT
+	 * because the mingw code which uses them to update a tab-completion
+	 * prefix to the correct case (e.g. ~/desk<tab> to ~/Desktop/) is
+	 * not compiled, and so e.g. ~/desk<tab> completes to ~/desktop/ .
+	 */
 	unsigned orig_pfx_len;
 	char *target;
 	const char *source;
@@ -2803,7 +2821,11 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 #if ENABLE_PLATFORM_MINGW32
 		case CTRL('Z'):
 			command_ps[command_len] = '\0';
+		#if ENABLE_UNICODE_SUPPORT
+			bs_to_slash_u(command_ps);
+		#else
 			bs_to_slash(command_ps);
+		#endif
 			redraw(cmdedit_y, 0);
 			break;
 #endif

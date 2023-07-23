@@ -2119,6 +2119,20 @@ char * FAST_FUNC bs_to_slash(char *str)
 	return str;
 }
 
+#if ENABLE_UNICODE_SUPPORT
+MINGW_BB_WCHAR_T * FAST_FUNC bs_to_slash_u(MINGW_BB_WCHAR_T *str)
+{
+	MINGW_BB_WCHAR_T *p;
+
+	for (p=str; *p; ++p) {
+		if ( *p == '\\' ) {
+			*p = '/';
+		}
+	}
+	return str;
+}
+#endif
+
 void FAST_FUNC slash_to_bs(char *p)
 {
 	for (; *p; ++p) {

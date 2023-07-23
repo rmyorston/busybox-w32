@@ -87,6 +87,21 @@ void reinit_unicode(const char *LANG) FAST_FUNC;
 #  undef MB_CUR_MAX
 #  define MB_CUR_MAX 6
 
+#if ENABLE_PLATFORM_MINGW32
+  #undef wint_t
+  #undef mbstate_t
+  #undef mbstowcs
+  #undef wcstombs
+  #undef wcrtomb
+  #undef iswspace
+  #undef iswalnum
+  #undef iswpunct
+  #undef wcwidth
+
+  #undef wchar_t
+  #define wchar_t uint32_t  /* keep in sync with MINGW_BB_WCHAR_T */
+#endif
+
 /* Prevent name collisions */
 #  define wint_t    bb_wint_t
 #  define mbstate_t bb_mbstate_t
