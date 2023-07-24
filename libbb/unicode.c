@@ -276,6 +276,7 @@ int FAST_FUNC iswpunct(wint_t wc)
 	return (unsigned)wc <= 0x7f && ispunct(wc);
 }
 
+# if !ENABLE_PLATFORM_MINGW32 || CONFIG_LAST_SUPPORTED_WCHAR < 0x30000
 
 # if CONFIG_LAST_SUPPORTED_WCHAR >= 0x300
 struct interval {
@@ -711,6 +712,9 @@ int FAST_FUNC wcwidth(unsigned ucs)
 # endif /* >= 0x300 */
 }
 
+# else /* ENABLE_PLATFORM_MINGW32 && CONFIG_LAST_SUPPORTED_WCHAR >= 0x30000 */
+# include "wcwidth_alt.c"  /* simpler and more up-to-date implementation */
+# endif
 
 # if ENABLE_UNICODE_BIDI_SUPPORT
 int FAST_FUNC unicode_bidi_isrtl(wint_t wc)
