@@ -887,6 +887,10 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 		dup2(1, 2);
 		full_write2_str(bb_banner); /* reuse const string */
 #if ENABLE_PLATFORM_MINGW32
+# if ENABLE_FEATURE_UTF8_MANIFEST
+		full_write2_str(GetACP() == CP_UTF8 ? " (Unicode on)"
+		                                    : " (Unicode off)");
+# endif
 		full_write2_str("\n");
 #else
 		full_write2_str(" multi-call binary.\n"); /* reuse */
