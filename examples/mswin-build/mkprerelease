@@ -2,7 +2,7 @@
 #
 # Build busybox prerelease binaries
 #
-TARGETS="build_pre_32 build_pre_64"
+TARGETS="build_pre_32 build_pre_64 build_pre_64u"
 
 # If an argument is supplied it overrides the default source directory.
 SRC=busybox-w32
@@ -30,6 +30,9 @@ do
 	if [ $i = "build_pre_64" ]
 	then
 		CONFIG=mingw64_defconfig;
+	elif [ $i = "build_pre_64u" ]
+	then
+		CONFIG=mingw64u_defconfig;
 	elif [ $i = "build_pre_32" ]
 	then
 		CONFIG=mingw32_defconfig;
