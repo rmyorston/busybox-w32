@@ -2,7 +2,7 @@
 #
 # Build 32- and 64-bit busybox binaries for release
 #
-TARGETS="build_32 build_64"
+TARGETS="build_32 build_64 build_64u"
 
 if [ ! -d busybox-w32 ]
 then
@@ -20,15 +20,23 @@ done
 # apply default configuration
 for i in $TARGETS
 do
-	BITS=32
 	if [ $i = "build_64" ]
 	then
-		BITS=64;
+		CONFIG=mingw64_defconfig
+		BITS=64
+	elif [ $i = "build_64u" ]
+	then
+		CONFIG=mingw64u_defconfig
+		BITS=64
+	elif [ $i = "build_32" ]
+	then
+		CONFIG=mingw32_defconfig
+		BITS=32
 	fi
 
 	(
 		cd $i
-		make mingw${BITS}_defconfig
+		make ${CONFIG}
 		# link time optimisation, fortify, stack protection
 		sed -e 's/^CONFIG_EXTRA_CFLAGS="\(.*\)"$/CONFIG_EXTRA_CFLAGS="\1 -flto -fstack-protector --param=ssp-buffer-size=4"/' \
 			-e 's/^CONFIG_EXTRA_CFLAGS=" /CONFIG_EXTRA_CFLAGS="/' \
@@ -49,22 +57,16 @@ done
 # perform build
 for i in $TARGETS
 do
-	BITS=32
-	if [ $i = "build_64" ]
+	BITS=64
+	if [ $i = "build_32" ]
 	then
-		BITS=64;
+		BITS=32
 	fi
 
 	(
 	cd $i
-	GCCV=`rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-gcc`
-	CRTV=`rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-crt`
-	GLOB="; noglob"
-	if grep -q ^CONFIG_GLOBBING=y .config
-	then
-		GLOB="; glob"
-	fi
-	VER="($GCCV; $CRTV$GLOB)"
-	make -j $(nproc) EXTRAVERSION="-`git describe --match=FRP`" MINGW_VER="$VER"
+	GCCV=$(rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-gcc)
+	CRTV=$(rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-crt)
+	make -j $(nproc) EXTRAVERSION="-`git describe --match=FRP`" MINGW_VER="$GCCV; $CRTV"
 	)
 done

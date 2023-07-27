@@ -29,13 +29,13 @@ for i in $TARGETS
 do
 	if [ $i = "build_pre_64" ]
 	then
-		CONFIG=mingw64_defconfig;
+		CONFIG=mingw64_defconfig
 	elif [ $i = "build_pre_64u" ]
 	then
-		CONFIG=mingw64u_defconfig;
+		CONFIG=mingw64u_defconfig
 	elif [ $i = "build_pre_32" ]
 	then
-		CONFIG=mingw32_defconfig;
+		CONFIG=mingw32_defconfig
 	fi
 
 	(cd $i; git checkout master; make ${CONFIG})
@@ -44,8 +44,16 @@ done
 # perform build
 for i in $TARGETS
 do
+	BITS=64
+	if [ $i = "build_pre_32" ]
+	then
+		BITS=32;
+	fi
+
 	(
 	cd $i
-	make -j $(nproc) EXTRAVERSION="-$(git describe --match=FRP | sed 's/FRP/PRE/')"
+	GCCV=$(rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-gcc)
+	CRTV=$(rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-crt)
+	make -j $(nproc) EXTRAVERSION="-$(git describe --match=FRP | sed 's/FRP/PRE/')" MINGW_VER="$GCCV; $CRTV"
 	)
 done

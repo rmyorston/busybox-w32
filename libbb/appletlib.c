@@ -886,19 +886,20 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 
 		dup2(1, 2);
 		full_write2_str(bb_banner); /* reuse const string */
-#if ENABLE_PLATFORM_MINGW32
-# if ENABLE_FEATURE_UTF8_MANIFEST
-		full_write2_str(GetACP() == CP_UTF8 ? " (Unicode on)"
-		                                    : " (Unicode off)");
-# endif
-		full_write2_str("\n");
-#else
-		full_write2_str(" multi-call binary.\n"); /* reuse */
-#endif
-#if defined(MINGW_VER)
+#  if ENABLE_PLATFORM_MINGW32
+		full_write2_str("\n(");
+#   if defined(MINGW_VER)
 		if (sizeof(MINGW_VER) > 5) {
-			full_write2_str(MINGW_VER "\n\n");
+			full_write2_str(MINGW_VER "; ");
 		}
+#   endif
+		full_write2_str(ENABLE_GLOBBING ? "glob" : "noglob");
+#   if ENABLE_FEATURE_UTF8_MANIFEST
+		full_write2_str("; Unicode");
+#   endif
+		full_write2_str(")\n\n");
+#  else
+		full_write2_str(" multi-call binary.\n"); /* reuse */
 #endif
 		full_write2_str(
 			"BusyBox is copyrighted by many authors between 1998-2023.\n"
@@ -1303,6 +1304,14 @@ int main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 #if ENABLE_PLATFORM_MINGW32
+# if ENABLE_FEATURE_UTF8_MANIFEST
+	if (GetACP() != CP_UTF8) {
+		full_write2_str(bb_basename(argv[0]));
+		full_write2_str(": needs UTF8 code page\n");
+		return 1;
+	}
+# endif
+
 	/* detect if we're running an interpreted script */
 	if (argv[0][1] == ':' && argv[0][2] == '/') {
 		switch (argv[0][0]) {
