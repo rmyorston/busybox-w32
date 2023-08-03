@@ -10,6 +10,9 @@
 static BOOL charToConBuffA(LPSTR s, DWORD len);
 static BOOL charToConA(LPSTR s);
 
+static int conv_fwriteCon(FILE *stream, char *buf, size_t siz);
+static int conv_writeCon(int fd, char *buf, size_t siz);
+
 /*
  Functions to be wrapped:
 */
@@ -814,9 +817,7 @@ static int ansi_emulate(const char *s, FILE *stream)
 			size_t len = pos - str;
 
 			if (len) {
-				*pos = '\0';	/* NB, '\033' has been overwritten */
-				charToConA(str);
-				if (fputs(str, stream) == EOF)
+				if (conv_fwriteCon(stream, str, len) == EOF)
 					return EOF;
 				rv += len;
 			}
@@ -837,9 +838,9 @@ static int ansi_emulate(const char *s, FILE *stream)
 				return EOF;
 
 		} else {
-			rv += strlen(str);
-			charToConA(str);
-			return fputs(str, stream) == EOF ? EOF : rv;
+			size_t len = strlen(str);
+			rv += len;
+			return conv_fwriteCon(stream, str, len) == EOF ? EOF : rv;
 		}
 	}
 	return rv;
@@ -853,8 +854,7 @@ int winansi_putchar(int c)
 	if (!is_console(STDOUT_FILENO))
 		return putchar(c);
 
-	charToConBuffA(s, 1);
-	return putchar(t) == EOF ? EOF : (unsigned char)c;
+	return conv_fwriteCon(stdout, s, 1) == EOF ? EOF : (unsigned char)c;
 }
 
 int winansi_puts(const char *s)
@@ -952,8 +952,7 @@ int winansi_fputc(int c, FILE *stream)
 		return ret;
 	}
 
-	charToConBuffA(s, 1);
-	return fputc(t, stream) == EOF ? EOF : (unsigned char )c;
+	return conv_fwriteCon(stream, s, 1) == EOF ? EOF : (unsigned char )c;
 }
 
 #if !defined(__USE_MINGW_ANSI_STDIO) || !__USE_MINGW_ANSI_STDIO
@@ -1083,8 +1082,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 			len = pos - str;
 
 			if (len) {
-				charToConBuffA(str, len);
-				out_len = write(fd, str, len);
+				out_len = conv_writeCon(fd, str, len);
 				if (out_len == -1)
 					return -1;
 				rv += out_len;
@@ -1100,8 +1098,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 			pos = str;
 		} else {
 			len = strlen(str);
-			charToConA(str);
-			out_len = write(fd, str, len);
+			out_len = conv_writeCon(fd, str, len);
 			return (out_len == -1) ? -1 : rv+out_len;
 		}
 	}
@@ -1446,9 +1443,39 @@ void console_write(const char *str, int len)
 {
 	char *buf = xmemdup(str, len);
 	int fd = _open("CONOUT$", _O_WRONLY);
-	HANDLE fh = (HANDLE)_get_osfhandle(fd);
-	charToConBuffA(buf, len);
-	WriteConsole(fh, buf, len, NULL, NULL);
+	conv_writeCon(fd, buf, len);
 	close(fd);
 	free(buf);
+}
+
+// TODO: improvements:
+//
+// 1. currently conv_[f]writeCon modify buf inplace, which means the caller
+// typically has to make a writable copy first just for this.
+// Sometimes it allocates a big copy once, and calls us with substrings.
+// Instead, we could make a writable copy here - it's not used later anyway.
+// To avoid the performance hit of many small allocations, we could use
+// a local buffer for short strings, and allocate only if it doesn't fit
+// (or maybe just reuse the local buffer with substring iterations).
+//
+// 2. Instead of converting from ACP to the console out CP - which guarantees
+// potential data-loss if they differ, we could convert it to wchar_t and
+// write it using WriteConsoleW. This should prevent all output data-loss.
+// care should be taken with DBCS codepages (e.g. 936) or other multi-byte
+// because then converting on arbitrary substring boundaries can fail.
+
+// convert buf inplace from ACP to console out CP and write it to stream
+// returns EOF on error, 0 on success
+static int conv_fwriteCon(FILE *stream, char *buf, size_t siz)
+{
+	charToConBuffA(buf, siz);
+	return fwrite(buf, 1, siz, stream) < siz ? EOF : 0;
+}
+
+// similar to above, but using lower level write
+// returns -1 on error, actually-written bytes on suceess
+static int conv_writeCon(int fd, char *buf, size_t siz)
+{
+	charToConBuffA(buf, siz);
+	return write(fd, buf, siz);
 }
