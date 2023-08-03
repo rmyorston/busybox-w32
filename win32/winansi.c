@@ -1534,6 +1534,25 @@ void console_write(const char *str, int len)
 	free(buf);
 }
 
+// LC_ALL=C disables console output conversion, so that the source
+// data is interpreted only by the console according to its output CP.
+static int conout_conv_enabled(void)
+{
+	static int enabled, tested;  /* = 0 */
+
+	if (!tested) {
+		// keep in sync with [re]init_unicode at libbb/unicode.c
+		char *s = getenv("LC_ALL");
+		if (!s) s = getenv("LC_CTYPE");
+		if (!s) s = getenv("LANG");
+
+		enabled = !(s && s[0] == 'C' && s[1] == 0);
+		tested = 1;
+	}
+
+	return enabled;
+}
+
 // TODO: improvements:
 //
 // 1. currently conv_[f]writeCon modify buf inplace, which means the caller
@@ -1554,12 +1573,14 @@ void console_write(const char *str, int len)
 // returns EOF on error, 0 on success
 static int conv_fwriteCon(FILE *stream, char *buf, size_t siz)
 {
+	if (conout_conv_enabled()) {
 #if ENABLE_FEATURE_UTF8_OUTPUT
-	if (GetConsoleOutputCP() != CP_UTF8)
-		return writeCon_utf8(fileno(stream), buf, siz) ? EOF : 0;
+		if (GetConsoleOutputCP() != CP_UTF8)
+			return writeCon_utf8(fileno(stream), buf, siz) ? EOF : 0;
 #else
-	charToConBuffA(buf, siz);
+		charToConBuffA(buf, siz);
 #endif
+	}
 	return fwrite(buf, 1, siz, stream) < siz ? EOF : 0;
 }
 
@@ -1567,11 +1588,13 @@ static int conv_fwriteCon(FILE *stream, char *buf, size_t siz)
 // returns -1 on error, actually-written bytes on suceess
 static int conv_writeCon(int fd, char *buf, size_t siz)
 {
+	if (conout_conv_enabled()) {
 #if ENABLE_FEATURE_UTF8_OUTPUT
-	if (GetConsoleOutputCP() != CP_UTF8)
-		return writeCon_utf8(fd, buf, siz) ? -1 : siz;
+		if (GetConsoleOutputCP() != CP_UTF8)
+			return writeCon_utf8(fd, buf, siz) ? -1 : siz;
 #else
-	charToConBuffA(buf, siz);
+		charToConBuffA(buf, siz);
 #endif
+	}
 	return write(fd, buf, siz);
 }
