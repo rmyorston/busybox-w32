@@ -1439,6 +1439,92 @@ BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
 }
 #endif
 
+#if ENABLE_FEATURE_UTF8_OUTPUT
+// Write u8buf as if the console output CP is UTF8 - regardless of the CP.
+// fd should be associated with a console output.
+// Return: 0 on successful write[s], else -1 (e.g. if fd is not a console).
+//
+// Up to 3 bytes of an incomplete codepoint may be buffered from prior call[s].
+// All the completed codepoints in one call are written using WriteConsoleW.
+// Bad sequence of any length (till ASCII7 or UTF8 lead) prints 1 subst wchar.
+//
+// note: one console is assumed, and the (3 bytes) buffer is shared regardless
+//       of the original output stream (stdout/err), or even if the handle is
+//       of a different console. This can result in invalid codepoints output
+//       if streams are multiplexed mid-codepoint (same as elsewhere?)
+static int writeCon_utf8(int fd, const char *u8buf, size_t u8siz)
+{
+	static int state = 0;  // -1: bad, 0-3: remaining cp bytes (0: done/new)
+	static uint32_t codepoint = 0;  // accumulated from up to 4 UTF8 bytes
+
+	HANDLE h = (HANDLE)_get_osfhandle(fd);
+	wchar_t wbuf[256];
+	int wlen = 0;
+
+	// ASCII7 uses least logic, then UTF8 continuations, UTF8 lead, errors
+	while (u8siz--) {
+		unsigned char c = *u8buf++;
+		int topbits = 0;
+
+		while (c & (0x80 >> topbits))
+			++topbits;
+
+	process_byte:
+		if (state == 0 && topbits == 0) {
+			// valid ASCII7, state remains 0
+			codepoint = c;
+
+		} else if (state > 0 && topbits == 1) {
+			// valid continuation byte
+			codepoint = (codepoint << 6) | (c & 0x3f);
+			if (--state)
+				continue;
+
+		} else if (state == 0 && topbits >= 2 && topbits <= 4) {
+			// valid UTF8 lead of 2/3/4 bytes codepoint
+			codepoint = c & (0x7f >> topbits);
+			state = topbits - 1;  // remaining bytes after lead
+			continue;
+
+		} else if (state >= 0) {
+			// invalid byte at state 0/1/2/3, add placeholder once
+			codepoint = CONFIG_SUBST_WCHAR;
+			state = -1;
+
+		} else {
+			// inside bad sequence (placeholder char already added)
+			if (topbits == 1 || topbits > 4)
+				continue;  // still bad
+			// c is valid for state 0, process it with clean slate
+			state = 0;
+			goto process_byte;
+		}
+
+		// codepoint is complete
+		// we don't reject surrogate halves, reserved, etc
+		if (codepoint < 0x10000) {
+			wbuf[wlen++] = codepoint;
+		} else {
+			// generate a surrogates pair (wbuf has room for 2+)
+			codepoint -= 0x10000;
+			wbuf[wlen++] = 0xd800 | (codepoint >> 10);
+			wbuf[wlen++] = 0xdc00 | (codepoint & 0x3ff);
+		}
+
+		// flush if we have less than two empty spaces
+		if (wlen > ARRAY_SIZE(wbuf) - 2) {
+			if (!WriteConsoleW(h, wbuf, wlen, 0, 0))
+				return -1;
+			wlen = 0;
+		}
+	}
+
+	if (wlen && !WriteConsoleW(h, wbuf, wlen, 0, 0))
+		return -1;
+	return 0;
+}
+#endif
+
 void console_write(const char *str, int len)
 {
 	char *buf = xmemdup(str, len);
@@ -1468,7 +1554,12 @@ void console_write(const char *str, int len)
 // returns EOF on error, 0 on success
 static int conv_fwriteCon(FILE *stream, char *buf, size_t siz)
 {
+#if ENABLE_FEATURE_UTF8_OUTPUT
+	if (GetConsoleOutputCP() != CP_UTF8)
+		return writeCon_utf8(fileno(stream), buf, siz) ? EOF : 0;
+#else
 	charToConBuffA(buf, siz);
+#endif
 	return fwrite(buf, 1, siz, stream) < siz ? EOF : 0;
 }
 
@@ -1476,6 +1567,11 @@ static int conv_fwriteCon(FILE *stream, char *buf, size_t siz)
 // returns -1 on error, actually-written bytes on suceess
 static int conv_writeCon(int fd, char *buf, size_t siz)
 {
+#if ENABLE_FEATURE_UTF8_OUTPUT
+	if (GetConsoleOutputCP() != CP_UTF8)
+		return writeCon_utf8(fd, buf, siz) ? -1 : siz;
+#else
 	charToConBuffA(buf, siz);
+#endif
 	return write(fd, buf, siz);
 }
