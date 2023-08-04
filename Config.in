@@ -438,7 +438,8 @@ config FEATURE_UTF8_MANIFEST
 	depends on FEATURE_RESOURCES
 	help
 	Include a manifest which sets the process code page to UTF-8.
-	Users who enable this may also wish to enable FEATURE_UTF8_INPUT.
+	Users who enable this may also wish to enable FEATURE_UTF8_INPUT
+	and/or FEATURE_UTF8_OUTPUT.
 
 config FEATURE_ICON
 	bool "Include application icon in binary"
@@ -480,6 +481,16 @@ config FEATURE_UTF8_INPUT
 	depends on PLATFORM_MINGW32
 	help
 	Allow characters entered in the console to be encoded as UTF8.
+	This may be useful in conjunction with the UTF8 manifest which
+	is supported in Window 10 and 11.
+
+config FEATURE_UTF8_OUTPUT
+	bool "Allow UTF8 console output"
+	default n
+	depends on PLATFORM_MINGW32 && FEATURE_UTF8_MANIFEST
+	help
+	Print UTF8 output correctly even if the console (output) codepage
+	is not UTF8.
 	This may be useful in conjunction with the UTF8 manifest which
 	is supported in Window 10 and 11.
 
