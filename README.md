@@ -14,7 +14,7 @@ You need a MinGW compiler and a POSIX environment.  I cross-compile on Linux.  O
 
 `dnf install mingw32-gcc mingw32-windows-default-manifest` (for a 32-bit build)
 
-On Microsoft Windows you can install [w64devkit](https://github.com/skeeto/w64devkit/releases).  The `-mini` variant is sufficient.  Get the `-i686` variant for a 32-bit build.  Unzip the file and run `w64devkit/w64devkit.exe`.
+On Microsoft Windows you can install [w64devkit](https://github.com/skeeto/w64devkit/releases).  Get the `-i686` variant for a 32-bit build.  Unzip the file and run `w64devkit/w64devkit.exe`.
 
 On either Linux or Windows the commands `make mingw64_defconfig` or `make mingw32_defconfig` will pick up the default configuration.  You can then customize your build with `make menuconfig` or by editing `.config`, if you know what you're doing.
 
