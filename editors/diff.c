@@ -157,7 +157,7 @@ enum {                  /* Commandline flags */
 	FLAG_p,         /* not implemented */
 	FLAG_B,
 	FLAG_E,         /* not implemented */
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_DIFF_LONG_OPTIONS
 	FLAG_binary,
 #endif
 };
@@ -223,6 +223,9 @@ static int read_token(FILE_and_pos_t *ft, token_t tok)
 		int t;
 
 		t = fgetc(ft->ft_fp);
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_DIFF_LONG_OPTIONS
+ newline:
+#endif
 		if (t != EOF)
 			ft->ft_pos++;
 		is_space = (t == EOF || isspace(t));
@@ -238,6 +241,16 @@ static int read_token(FILE_and_pos_t *ft, token_t tok)
 
 		if ((option_mask32 & FLAG(w)) && is_space)
 			continue;
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_DIFF_LONG_OPTIONS
+		if (!(option_mask32 & FLAG(binary)) && t == '\r') {
+			int t2 = fgetc(ft->ft_fp);
+			if (t2 == '\n') {
+				t = t2;
+				goto newline;
+			}
+			ungetc(t2, ft->ft_fp);
+		}
+#endif
 
 		/* Trim char value to low 9 bits */
 		t &= CHAR_MASK;
@@ -718,7 +731,6 @@ static int diffreg(char *file[2])
 #if ENABLE_PLATFORM_MINGW32
 	char *tmpfile[2] = { NULL, NULL };
 	char *tmpdir;
-	const char *mode;
 #endif
 
 	fp[0] = stdin;
@@ -761,16 +773,7 @@ static int diffreg(char *file[2])
 			fd = fd_tmp;
 			xlseek(fd, 0, SEEK_SET);
 		}
-#if ENABLE_PLATFORM_MINGW32
-		mode = "r";
-		if (!(option_mask32 & FLAG(binary))) {
-			_setmode(fd, _O_TEXT);
-			mode = "rt";
-		}
-		fp[i] = fdopen(fd, mode);
-#else
 		fp[i] = fdopen(fd, "r");
-#endif
 	}
 
 	setup_common_bufsiz();

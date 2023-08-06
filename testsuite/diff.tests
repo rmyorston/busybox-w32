@@ -123,6 +123,69 @@ testing "diff always takes context from old file" \
 	"abc\na  c\ndef\n" \
 	"a c\n"
 
+optional PLATFORM_MINGW32 LONG_OPTS
+testing "diff LF line endings" \
+	'diff -u - input' \
+"\
+--- -
++++ input
+@@ -1,4 +1,4 @@
+ a
+ b
++c
+ d
+-e
+" \
+	"a\nb\nc\nd\n" \
+	"a\nb\nd\ne\n"
+
+testing "diff --binary LF line endings" \
+	'diff --binary -u - input' \
+"\
+--- -
++++ input
+@@ -1,4 +1,4 @@
+ a
+ b
++c
+ d
+-e
+" \
+	"a\nb\nc\nd\n" \
+	"a\nb\nd\ne\n"
+
+testing "diff CRLF line endings" \
+	'diff -u - input' \
+"\
+--- -
++++ input
+@@ -1,4 +1,4 @@
+ a
+ b
++c
+ d
+-e
+" \
+	"a\r\nb\r\nc\r\nd\r\n" \
+	"a\r\nb\r\nd\r\ne\r\n"
+
+testing "diff --binary CRLF line endings" \
+	'diff --binary -u - input' \
+"\
+--- -
++++ input
+@@ -1,4 +1,4 @@
+ a
+ b
++c
+ d
+-e
+" \
+	"a\r\nb\r\nc\r\nd\r\n" \
+	"a\r\nb\r\nd\r\ne\r\n"
+
+SKIP=
+
 # testing "test name" "commands" "expected result" "file input" "stdin"
 
 # clean up
