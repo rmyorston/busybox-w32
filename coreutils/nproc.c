@@ -73,8 +73,8 @@ int nproc_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 #else /* ENABLE_PLATFORM_MINGW32 */
 	if (GetProcessAffinityMask(GetCurrentProcess(), &process_affinity,
 					&system_affinity)) {
-		affinity = (ENABLE_LONG_OPTS && opts & (1 << 1)) ?
-						system_affinity : process_affinity;
+		affinity = IF_LONG_OPTS((opts & (1 << 1)) ? system_affinity :)
+						process_affinity;
 		while (affinity) {
 			count += affinity & 1;
 			affinity >>= 1;
