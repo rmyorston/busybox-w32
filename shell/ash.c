@@ -390,6 +390,11 @@ struct forkshell {
 	char **history;
 	int cnt_history;
 #endif
+#if JOBS_WIN32
+	struct job *jobtab;
+	unsigned njobs;
+	struct job *curjob;
+#endif
 	/* struct parsefile *g_parsefile; */
 	HANDLE hMapFile;
 	char *old_base;
@@ -406,6 +411,9 @@ struct forkshell {
 	/* generic data, used by forkshell_child */
 	int mode;
 	int nprocs;
+#if JOBS_WIN32
+	int jpnull;
+#endif
 
 	/* optional data, used by forkshell_child */
 	int flags;
@@ -16447,6 +16455,9 @@ spawn_forkshell(struct forkshell *fs, struct job *jp, union node *n, int mode)
 
 	new->mode = mode;
 	new->nprocs = jp == NULL ? 0 : jp->nprocs;
+#if JOBS_WIN32
+	new->jpnull = jp == NULL;
+#endif
 	sprintf(buf, "%p", new->hMapFile);
 	argv[2] = buf;
 	ret = spawnve(P_NOWAIT, bb_busybox_exec_path, (char *const *)argv, NULL);
@@ -16730,6 +16741,94 @@ history_copy(void)
 }
 #endif
 
+#if JOBS_WIN32
+/*
+ * struct procstat
+ */
+static struct datasize
+procstat_size(struct datasize ds, int nj)
+{
+	struct job *jp = jobtab + nj;
+
+	ds.funcblocksize += sizeof(struct procstat) * jp->nprocs;
+	for (int i = 0; i < jp->nprocs; i++)
+		ds.funcstringsize += align_len(jp->ps[i].ps_cmd);
+	return ds;
+}
+
+static struct procstat *
+procstat_copy(int nj)
+{
+	struct job *jp = jobtab + nj;
+	struct procstat *new = funcblock;
+
+	funcblock = (char *)funcblock + sizeof(struct procstat) * jp->nprocs;
+	memcpy(new, jp->ps, sizeof(struct procstat) * jp->nprocs);
+
+	for (int i = 0; i < jp->nprocs; i++) {
+		new[i].ps_cmd = nodeckstrdup(jp->ps[i].ps_cmd);
+		SAVE_PTR(new[i].ps_cmd,
+				xasprintf("jobtab[%d].ps[%d].ps_cmd '%s'",
+							nj, i, jp->ps[i].ps_cmd), FREE);
+	}
+	return new;
+}
+
+/*
+ * struct jobs
+ */
+static struct datasize
+jobtab_size(struct datasize ds)
+{
+	int i;
+
+	ds.funcblocksize += sizeof(struct job) * njobs;
+	for (i = 0; i < njobs; i++) {
+		if (!jobtab[i].used)
+			continue;
+
+		if (jobtab[i].ps == &jobtab[i].ps0)
+			ds.funcstringsize += align_len(jobtab[i].ps0.ps_cmd);
+		else
+			ds = procstat_size(ds, i);
+	}
+	return ds;
+}
+
+static struct job *
+jobtab_copy(void)
+{
+	struct job *new = funcblock;
+	int i;
+
+	funcblock = (char *)funcblock + sizeof(struct job) * njobs;
+	memcpy(new, jobtab, sizeof(struct job) * njobs);
+
+	for (i = 0; i < njobs; i++) {
+		if (!jobtab[i].used)
+			continue;
+
+		if (jobtab[i].ps == &jobtab[i].ps0) {
+			new[i].ps0.ps_cmd = nodeckstrdup(jobtab[i].ps0.ps_cmd);
+			SAVE_PTR(new[i].ps0.ps_cmd,
+					xasprintf("jobtab[%d].ps0.ps_cmd '%s'",
+								i, jobtab[i].ps0.ps_cmd), FREE);
+			new[i].ps = &new[i].ps0;
+		} else {
+			new[i].ps = procstat_copy(i);
+		}
+		SAVE_PTR(new[i].ps, xasprintf("jobtab[%d].ps", i), FREE);
+
+		if (jobtab[i].prev_job) {
+			new[i].prev_job = new + (jobtab[i].prev_job - jobtab);
+			SAVE_PTR(new[i].prev_job,
+						xasprintf("jobtab[%d].prev_job", i), FREE);
+		}
+	}
+	return new;
+}
+#endif
+
 /*
  * struct redirtab
  */
@@ -16872,13 +16971,17 @@ forkshell_size(struct forkshell *fs)
 	ds.funcblocksize = calcsize(ds.funcblocksize, fs->n);
 	ds = argv_size(ds, fs->argv);
 
-	if ((ENABLE_ASH_ALIAS || MAX_HISTORY) && fs->fpid != FS_SHELLEXEC) {
+	if ((ENABLE_ASH_ALIAS || MAX_HISTORY || JOBS_WIN32) &&
+				fs->fpid != FS_SHELLEXEC) {
 #if ENABLE_ASH_ALIAS
 		ds = atab_size(ds);
 #endif
 #if MAX_HISTORY
 		if (line_input_state)
 			ds = history_size(ds);
+#endif
+#if JOBS_WIN32
+		ds = jobtab_size(ds);
 #endif
 	}
 	return ds;
@@ -16906,7 +17009,8 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 	SAVE_PTR(new->n, "n", NO_FREE);
 	SAVE_PTR(new->argv, "argv", NO_FREE);
 
-	if ((ENABLE_ASH_ALIAS || MAX_HISTORY) && fs->fpid != FS_SHELLEXEC) {
+	if ((ENABLE_ASH_ALIAS || MAX_HISTORY || JOBS_WIN32) &&
+					fs->fpid != FS_SHELLEXEC) {
 #if ENABLE_ASH_ALIAS
 		new->atab = atab_copy();
 		SAVE_PTR(new->atab, "atab", NO_FREE);
@@ -16918,12 +17022,23 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 			new->cnt_history = line_input_state->cnt_history;
 		}
 #endif
+#if JOBS_WIN32
+		new->jobtab = jobtab_copy();
+		SAVE_PTR(new->jobtab, "jobtab", NO_FREE);
+		new->njobs = njobs;
+		if (curjob) {
+			new->curjob = new->jobtab + (curjob - jobtab);
+			SAVE_PTR(new->curjob, "curjob", NO_FREE);
+		}
+#endif
 	}
 }
 
 #if FORKSHELL_DEBUG
-/* fp and notes can each be NULL */
-#define NUM_BLOCKS 7
+#define NUM_BLOCKS FUNCSTRING
+enum {GVP, GMP, CMDTABLE, NODE, ARGV, ATAB, HISTORY, JOBTAB, FUNCSTRING};
+
+/* fp0 and notes can each be NULL */
 static void
 forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 {
@@ -16935,7 +17050,6 @@ forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 	int count, i, total;
 	int size[NUM_BLOCKS];
 	char *lptr[NUM_BLOCKS+1];
-	enum {GVP, GMP, CMDTABLE, NODE, ARGV, ATAB, HISTORY, FUNCSTRING};
 	const char *fsname[] = {
 		"FS_OPENHERE",
 		"FS_EVALBACKCMD",
@@ -16972,10 +17086,15 @@ forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 		/* Depending on the configuration and the type of forkshell
 		 * some items may not be present. */
 		lptr[FUNCSTRING] = lfuncstring;
-#if MAX_HISTORY
-		lptr[HISTORY] = fs->history ? (char *)fs->history : lptr[FUNCSTRING];
+#if JOBS_WIN32
+		lptr[JOBTAB] = fs->jobtab ? (char *)fs->jobtab : lptr[FUNCSTRING];
 #else
-		lptr[HISTORY] = lptr[FUNCSTRING];
+		lptr[JOBTAB] = lptr[FUNCSTRING];
+#endif
+#if MAX_HISTORY
+		lptr[HISTORY] = fs->history ? (char *)fs->history : lptr[JOBTAB];
+#else
+		lptr[HISTORY] = lptr[JOBTAB];
 #endif
 		lptr[ATAB] = IF_ASH_ALIAS(fs->atab ? (char *)fs->atab :) lptr[HISTORY];
 		lptr[ARGV] = fs->argv ? (char *)fs->argv : lptr[ATAB];
@@ -17185,6 +17304,11 @@ forkshell_init(const char *idstr)
 			line_input_state->history[i] = fs->history[i];
 	}
 #endif
+#if JOBS_WIN32
+	jobtab = fs->jobtab;
+	njobs = fs->njobs;
+	curjob = fs->curjob;
+#endif
 
 	CLEAR_RANDOM_T(&random_gen); /* or else $RANDOM repeats in child */
 
@@ -17211,6 +17335,16 @@ forkshell_init(const char *idstr)
 #if JOBS_WIN32
 	/* do job control only in root shell */
 	doing_jobctl = 0;
+
+	if (fs->n && fs->n->type == NCMD && fs->n->ncmd.args &&
+			strcmp(fs->n->ncmd.args->narg.text, "jobs") == 0) {
+		TRACE(("Job hack\n"));
+		if (!fs->jpnull)
+			freejob(curjob);
+		goto end;
+	}
+	for (struct job *jp = curjob; jp; jp = jp->prev_job)
+		freejob(jp);
 #endif
  end:
 	forkshell_child(fs);
