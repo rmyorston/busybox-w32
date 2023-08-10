@@ -1330,6 +1330,7 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 # if ENABLE_PLATFORM_MINGW32
 	int chosen_index = 0;
 	int chosen_sens = FALSE;
+#  if !ENABLE_UNICODE_SUPPORT
 	/*
 	 * FIXME: the next three vars are unused with ENABLE_UNICODE_SUPPORT
 	 * because the mingw code which uses them to update a tab-completion
@@ -1339,6 +1340,7 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 	unsigned orig_pfx_len;
 	char *target;
 	const char *source;
+#  endif
 #  define first_match 0
 # else
 #  define chosen_index 0
@@ -1408,7 +1410,7 @@ static NOINLINE void input_tab(smallint *lastWasTab)
 	{
 		const char *e = match_buf + strlen(match_buf);
 		const char *s = e - match_pfx_len;
-# if ENABLE_PLATFORM_MINGW32
+# if ENABLE_PLATFORM_MINGW32 && !ENABLE_UNICODE_SUPPORT
 		orig_pfx_len = match_pfx_len;
 # endif
 		while (s < e)
