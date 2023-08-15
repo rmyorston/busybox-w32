@@ -16750,9 +16750,12 @@ procstat_size(struct datasize ds, int nj)
 {
 	struct job *jp = jobtab + nj;
 
-	ds.funcblocksize += sizeof(struct procstat) * jp->nprocs;
+	if (jp->ps != &jp->ps0)
+		ds.funcblocksize += sizeof(struct procstat) * jp->nprocs;
+
 	for (int i = 0; i < jp->nprocs; i++)
 		ds.funcstringsize += align_len(jp->ps[i].ps_cmd);
+
 	return ds;
 }
 
@@ -16780,16 +16783,9 @@ procstat_copy(int nj)
 static struct datasize
 jobtab_size(struct datasize ds)
 {
-	int i;
-
 	ds.funcblocksize += sizeof(struct job) * njobs;
-	for (i = 0; i < njobs; i++) {
-		if (!jobtab[i].used)
-			continue;
-
-		if (jobtab[i].ps == &jobtab[i].ps0)
-			ds.funcstringsize += align_len(jobtab[i].ps0.ps_cmd);
-		else
+	for (int i = 0; i < njobs; i++) {
+		if (jobtab[i].used)
 			ds = procstat_size(ds, i);
 	}
 	return ds;
