@@ -696,9 +696,7 @@ struct globals_misc {
 #define NTRAP_ERR  NSIG
 #define NTRAP_LAST NSIG
 
-#if !ENABLE_PLATFORM_MINGW32
 	char **trap_ptr;        /* used only by "trap hack" */
-#endif
 
 	/* Rarely referenced stuff */
 #if ENABLE_ASH_RANDOM_SUPPORT
@@ -750,9 +748,7 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #if ENABLE_PLATFORM_MINGW32
 #undef got_sigchld
 #undef pending_sig
-#undef trap_ptr
 #define pending_sig       (0)
-#define trap_ptr          trap
 #endif
 
 #define INIT_G_misc() do { \
@@ -760,7 +756,7 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 	savestatus = -1; \
 	curdir = nullstr; \
 	physdir = nullstr; \
-	IF_NOT_PLATFORM_MINGW32(trap_ptr = trap;) \
+	trap_ptr = trap; \
 } while (0)
 
 
@@ -5859,7 +5855,6 @@ commandtext(union node *n)
  *
  * Called with interrupts off.
  */
-#if !ENABLE_PLATFORM_MINGW32
 /*
  * Clear traps on a fork.
  */
@@ -5883,6 +5878,7 @@ clear_traps(void)
 	INT_ON;
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 /* Lives far away from here, needed for forkchild */
 static void closescript(void);
 
@@ -16917,6 +16913,8 @@ globals_misc_size(struct datasize ds)
 		ds.funcstringsize += align_len(physdir);
 	ds.funcstringsize += align_len(arg0);
 	ds.funcstringsize += align_len(commandname);
+	for (int i = 0; i < ARRAY_SIZE(trap); i++)
+		ds.funcstringsize += align_len(trap[i]);
 	return ds;
 }
 
@@ -16926,6 +16924,7 @@ globals_misc_size(struct datasize ds)
 #undef arg0
 #undef commandname
 #undef nullstr
+#undef trap
 static struct globals_misc *
 globals_misc_copy(void)
 {
@@ -16948,6 +16947,10 @@ globals_misc_copy(void)
 	SAVE_PTR(new->arg0, xasprintf("arg0 '%s'", p->arg0 ?: "NULL"), FREE);
 	SAVE_PTR(new->commandname,
 			xasprintf("commandname '%s'", p->commandname ?: "NULL"), FREE);
+	for (int i = 0; i < ARRAY_SIZE(p->trap); i++) {
+		new->trap[i] = nodeckstrdup(p->trap[i]);
+		SAVE_PTR(new->trap[i], xasprintf("trap[%d]", i), FREE);
+	}
 	return new;
 }
 
@@ -17231,7 +17234,6 @@ forkshell_prepare(struct forkshell *fs)
 	return new;
 }
 
-#undef trap
 #undef trap_ptr
 static void
 forkshell_init(const char *idstr)
@@ -17280,8 +17282,7 @@ forkshell_init(const char *idstr)
 			e = e->next;
 		}
 	}
-	memset(fs->gmp->trap, 0, sizeof(fs->gmp->trap[0])*NSIG);
-	/* fs->gmp->trap_ptr = fs->gmp->trap; */
+	fs->gmp->trap_ptr = fs->gmp->trap;
 
 	/* Set global variables */
 	gvpp = (struct globals_var **)&ash_ptr_to_globals_var;
@@ -17328,6 +17329,19 @@ forkshell_init(const char *idstr)
 	else {
 		SetConsoleCtrlHandler(ctrl_handler, TRUE);
 	}
+
+	if (fs->n && fs->n->type == NCMD        /* is it single cmd? */
+	/* && n->ncmd.args->type == NARG - always true? */
+	 && fs->n->ncmd.args && strcmp(fs->n->ncmd.args->narg.text, "trap") == 0
+	 && fs->n->ncmd.args->narg.next == NULL /* "trap" with no arguments */
+	/* && n->ncmd.args->narg.backquote == NULL - do we need to check this? */
+	) {
+		TRACE(("Trap hack\n"));
+		/* Save trap handler strings for trap builtin to print */
+		fs->gmp->trap_ptr = xmemdup(fs->gmp->trap, sizeof(fs->gmp->trap));
+		/* Fall through into clearing traps */
+	}
+	clear_traps();
 #if JOBS_WIN32
 	/* do job control only in root shell */
 	doing_jobctl = 0;
