@@ -15801,6 +15801,23 @@ static void setvar_if_unset(const char *key, const char *value)
 }
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+static int mixed_case_special_name(const char *envp)
+{
+	const char *names = "PATH=\0""COMSPEC=\0";
+	const char *n;
+
+	for (n = names; *n; ) {
+		if (is_prefixed_with_case(envp, n) && !is_prefixed_with(envp, n)) {
+			return TRUE;
+		}
+		while (*n++)
+			;
+	}
+	return FALSE;
+}
+#endif
+
 /* Don't inline: conserve stack of caller from having our locals too */
 static NOINLINE void
 init(void)
@@ -15834,8 +15851,7 @@ init(void)
 		 * because it appears first.
 		 */
 		for (envp = environ; envp && *envp; envp++) {
-			if (is_prefixed_with_case(*envp, "PATH=") &&
-					!is_prefixed_with(*envp, "PATH=")) {
+			if (mixed_case_special_name(*envp)) {
 				break;
 			}
 		}
