@@ -1307,7 +1307,7 @@ int main(int argc UNUSED_PARAM, char **argv)
 # if ENABLE_FEATURE_UTF8_MANIFEST
 	if (GetACP() != CP_UTF8) {
 		full_write2_str(bb_basename(argv[0]));
-		full_write2_str(": needs UTF8 code page\n");
+		full_write2_str(": UTF8 manifest not supported\n");
 		return 1;
 	}
 # endif
