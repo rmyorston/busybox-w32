@@ -11,6 +11,7 @@ test -f "$bindir/.config" && . "$bindir/.config"
 
 # testing "test name" "options" "expected result" "file input" "stdin"
 
+optional PLATFORM_MINGW32
 # Test case
 testing "shebang" \
 	"uudecode; sh -c './shebang.sh'; echo \$?" \
@@ -112,5 +113,6 @@ testing "sh read with \\CRLF" \
 testing "sh read with \\CR" \
 	"printf '1\\\\\r2\\r\\n' | { read var; printf \"\${var}\\\\n\"; }" \
 	"1\r2\n" "" ""
+SKIP=
 
 exit $FAILCOUNT
