@@ -252,6 +252,7 @@
 #endif
 #if ENABLE_PLATFORM_MINGW32
 # include <conio.h>
+# include "lazyload.h"
 #endif
 
 /* So far, all bash compat is controlled by one config option */
@@ -2994,6 +2995,33 @@ setwinxp(int on)
 		}
 	}
 }
+
+# if ENABLE_ASH_NOCONSOLE
+/*
+ * Console state is either:
+ *  0 normal
+ *  1 iconified
+ *  2 unknown
+ */
+static int console_state(void)
+{
+	DECLARE_PROC_ADDR(BOOL, ShowWindow, HWND, int);
+	DECLARE_PROC_ADDR(BOOL, IsIconic, HWND);
+
+	if (INIT_PROC_ADDR(user32.dll, ShowWindow) &&
+			INIT_PROC_ADDR(user32.dll, IsIconic)) {
+		return IsIconic(GetConsoleWindow()) != 0;
+	}
+	return 2;
+}
+
+static void hide_console(int hide)
+{
+	// Switch console state if it's known and isn't the required state
+	if (console_state() == !hide)
+		ShowWindow(GetConsoleWindow(), hide ? SW_MINIMIZE : SW_NORMAL);
+}
+# endif
 #endif
 
 
@@ -12616,6 +12644,9 @@ options(int *login_sh)
 #if ENABLE_PLATFORM_MINGW32
 		dirarg = NULL;
 		title = NULL;
+# if ENABLE_ASH_NOCONSOLE
+		noconsole = console_state();
+# endif
 # if ENABLE_SUW32
 		delayexit = 0;
 # endif

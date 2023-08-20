@@ -2219,20 +2219,6 @@ int enumerate_links(const char *file, char *name)
 }
 #endif
 
-#if ENABLE_ASH_NOCONSOLE
-void hide_console(int hide)
-{
-	DECLARE_PROC_ADDR(BOOL, ShowWindow, HWND, int);
-	DECLARE_PROC_ADDR(BOOL, IsIconic, HWND);
-
-	if (INIT_PROC_ADDR(user32.dll, ShowWindow) &&
-			INIT_PROC_ADDR(user32.dll, IsIconic)) {
-		if (IsIconic(GetConsoleWindow()) == !hide)
-			ShowWindow(GetConsoleWindow(), hide ? SW_MINIMIZE : SW_NORMAL);
-	}
-}
-#endif
-
 /* Return the length of the root of a UNC path, i.e. the '//host/share'
  * component, or 0 if the path doesn't look like that. */
 int unc_root_len(const char *dir)
