@@ -17,6 +17,7 @@
  * NOTE: This function returns a malloced char* that you will have to free
  * yourself.
  */
+#if !ENABLE_PLATFORM_MINGW32
 char* FAST_FUNC xmalloc_readlink(const char *path)
 {
 	enum { GROWBY = 80 }; /* how large we will grow strings by */
@@ -38,6 +39,7 @@ char* FAST_FUNC xmalloc_readlink(const char *path)
 
 	return buf;
 }
+#endif
 
 /*
  * This routine is not the same as realpath(), which

@@ -673,8 +673,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		buf->st_tag = get_symlink_data(buf->st_attr, file_name, &findbuf);
 
 		if (buf->st_tag) {
-			ssize_t len;
-			char content[PATH_MAX];
+			char *content;
 
 			if (follow) {
 				/* The file size and times are wrong when Windows follows
@@ -687,8 +686,9 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 
 			/* Get the contents of a symlink, not its target. */
 			buf->st_mode = S_IFLNK|S_IRWXU|S_IRWXG|S_IRWXO;
-			len = readlink(file_name, content, PATH_MAX);
-			buf->st_size = (len < 0 || len == PATH_MAX) ? 0 : len;
+			content = xmalloc_readlink(file_name);
+			buf->st_size = content ? strlen(content) : 0;
+			free(content);
 			buf->st_atim = filetime_to_timespec(&(findbuf.ftLastAccessTime));
 			buf->st_mtim = filetime_to_timespec(&(findbuf.ftLastWriteTime));
 			buf->st_ctim = filetime_to_timespec(&(findbuf.ftCreationTime));
@@ -1642,9 +1642,11 @@ typedef struct {
 } APPEXECLINK_BUFFER;
 
 #define SRPB rptr->SymbolicLinkReparseBuffer
-ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
+char * FAST_FUNC xmalloc_readlink(const char *pathname)
 {
 	HANDLE h;
+	char *buf;
+	int bufsiz;
 
 	h = CreateFile(pathname, 0, 0, NULL, OPEN_EXISTING,
 				FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_BACKUP_SEMANTICS, NULL);
@@ -1688,15 +1690,17 @@ ssize_t readlink(const char *pathname, char *buf, size_t bufsiz)
 		if (name) {
 			name[len] = 0;
 			name = normalize_ntpath(name);
-			len = wcslen(name);
-			if (len > bufsiz)
-				len = bufsiz;
-			if (WideCharToMultiByte(CP_ACP, 0, name, len, buf, bufsiz, 0, 0))
-				return len;
+			bufsiz = WideCharToMultiByte(CP_ACP, 0, name, -1, NULL, 0, 0, 0);
+			if (bufsiz) {
+				buf = xmalloc(bufsiz);
+				if (WideCharToMultiByte(CP_ACP, 0, name, -1, buf, bufsiz, 0, 0))
+					return buf;
+				free(buf);
+			}
 		}
 	}
 	errno = err_win_to_posix();
-	return -1;
+	return NULL;
 }
 
 const char *get_busybox_exec_path(void)

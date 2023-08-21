@@ -495,7 +495,6 @@ ssize_t mingw_open_read_close(const char *fn, void *buf, size_t size) FAST_FUNC;
 ssize_t mingw_read(int fd, void *buf, size_t count);
 int mingw_close(int fd);
 int pipe(int filedes[2]);
-ssize_t readlink(const char *pathname, char *buf, size_t bufsiz);
 NOIMPL(setgid,gid_t gid UNUSED_PARAM);
 NOIMPL(setegid,gid_t gid UNUSED_PARAM);
 NOIMPL(setsid,void);
