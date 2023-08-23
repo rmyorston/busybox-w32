@@ -203,6 +203,9 @@ struct macro {
 #define P_COMMAND_COMMENT		0x04
 #define P_EMPTY_SUFFIX			0x08
 #define P_POSIX_202X			0x10
+#if ENABLE_PLATFORM_MINGW32
+# define P_WINDOWS				0x20
+#endif
 
 #define HTABSIZE 39
 
@@ -410,6 +413,10 @@ check_name(const char *name)
 		return TRUE;
 
 	for (s = name; *s; ++s) {
+#if ENABLE_PLATFORM_MINGW32
+		if ((pragma & P_WINDOWS) && *s == ':')
+			continue;
+#endif
 		if ((pragma & P_TARGET_NAME) || !POSIX_2017 ?
 				!(isfname(*s) || *s == '/') : !ispname(*s))
 			return FALSE;
@@ -553,6 +560,9 @@ set_pragma(const char *name)
 		"command_comment\0"
 		"empty_suffix\0"
 		"posix_202x\0"
+#if ENABLE_PLATFORM_MINGW32
+		"windows\0"
+#endif
 	;
 	int idx = index_in_strings(p_name, name);
 
@@ -1133,6 +1143,29 @@ find_char(const char *str, int c)
 	}
 	return NULL;
 }
+
+#if ENABLE_PLATFORM_MINGW32
+/*
+ * Ignore colons in targets of the form c:/path when looking for a
+ * target rule.
+ */
+static char *
+find_colon(const char *str)
+{
+	const char *s = str;
+
+	while ((s = find_char(s, ':'))) {
+		if (posix && !(pragma & P_WINDOWS))
+			break;
+		if (s[1] != '/')
+			break;
+		++s;
+	}
+	return (char *)s;
+}
+#else
+# define find_colon(s) find_char(s, ':')
+#endif
 
 /*
  * Recursively expand any macros in str to an allocated string.
@@ -1911,7 +1944,7 @@ input(FILE *fd, int ilevel)
 		p = expanded = expand_macros(str, FALSE);
 
 		// Look for colon separator
-		q = find_char(p, ':');
+		q = find_colon(p);
 		if (q == NULL)
 			error("expected separator");
 
@@ -1928,7 +1961,7 @@ input(FILE *fd, int ilevel)
 		if (s) {
 			*s = '\0';
 			// Retrieve command from copy of line
-			if ((p = find_char(copy, ':')) && (p = strchr(p, ';')))
+			if ((p = find_colon(copy)) && (p = strchr(p, ';')))
 				newcmd(&cp, process_command(p + 1));
 		}
 		semicolon_cmd = cp != NULL;
