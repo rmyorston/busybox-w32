@@ -2369,7 +2369,6 @@ make(struct name *np, int level)
 		}
 		for (dp = rp->r_dep; dp; dp = dp->d_next) {
 			// Make prerequisite
-			dp->d_name->n_flag |= N_TARGET;
 			estat |= make(dp->d_name, level + 1);
 
 			// Make strings of out-of-date prerequisites (for $?),
