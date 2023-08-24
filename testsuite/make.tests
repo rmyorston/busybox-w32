@@ -23,6 +23,13 @@ testing "make .DEFAULT rule" \
 target:
 '
 
+testing "make .DEFAULT rule for prerequisite" \
+	"make -f - 2>/dev/null" "source\n" "" '
+.DEFAULT:
+	@echo $@
+target: source
+'
+
 # Macros should be expanded before suffix substitution.  The suffixes
 # can be obtained by macro expansion.
 testing "make macro expansion and suffix substitution" \
