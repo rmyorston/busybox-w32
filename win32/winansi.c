@@ -1457,9 +1457,15 @@ static int writeCon_utf8(int fd, const char *u8buf, size_t u8siz)
 	static int state = 0;  // -1: bad, 0-3: remaining cp bytes (0: done/new)
 	static uint32_t codepoint = 0;  // accumulated from up to 4 UTF8 bytes
 
+	// not a state, only avoids re-alloc on every call
+	static const int wbufwsiz = 4096;
+	static wchar_t *wbuf = 0;
+
 	HANDLE h = (HANDLE)_get_osfhandle(fd);
-	wchar_t wbuf[256];
 	int wlen = 0;
+
+	if (!wbuf)
+		wbuf = xmalloc(wbufwsiz * sizeof(wchar_t));
 
 	// ASCII7 uses least logic, then UTF8 continuations, UTF8 lead, errors
 	while (u8siz--) {
@@ -1512,7 +1518,7 @@ static int writeCon_utf8(int fd, const char *u8buf, size_t u8siz)
 		}
 
 		// flush if we have less than two empty spaces
-		if (wlen > ARRAY_SIZE(wbuf) - 2) {
+		if (wlen > wbufwsiz - 2) {
 			if (!WriteConsoleW(h, wbuf, wlen, 0, 0))
 				return -1;
 			wlen = 0;
