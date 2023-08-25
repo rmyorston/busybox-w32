@@ -207,6 +207,10 @@ struct macro {
 # define P_WINDOWS				0x20
 #endif
 
+// Status of make()
+#define MAKE_FAILURE		0x01
+#define MAKE_DIDSOMETHING	0x02
+
 #define HTABSIZE 39
 
 struct globals {
@@ -279,16 +283,13 @@ static int make(struct name *np, int level);
  * Print message, with makefile and line number if possible.
  */
 static void
-vwarning(const char *msg, va_list list)
+vwarning(FILE *stream, const char *msg, va_list list)
 {
-	const char *old_applet_name = applet_name;
-
-	if (makefile) {
-		fprintf(stderr, "%s: (%s:%d)", applet_name, makefile, dispno);
-		applet_name = "";
-	}
-	bb_verror_msg(msg, list, NULL);
-	applet_name = old_applet_name;
+	fprintf(stream, "%s: ", applet_name);
+	if (makefile)
+		fprintf(stream, "(%s:%d): ", makefile, dispno);
+	vfprintf(stream, msg, list);
+	fputc('\n', stream);
 }
 
 /*
@@ -301,7 +302,7 @@ error(const char *msg, ...)
 	va_list list;
 
 	va_start(list, msg);
-	vwarning(msg, list);
+	vwarning(stderr, msg, list);
 	va_end(list);
 	exit(2);
 }
@@ -326,7 +327,7 @@ warning(const char *msg, ...)
 	va_list list;
 
 	va_start(list, msg);
-	vwarning(msg, list);
+	vwarning(stdout, msg, list);
 	va_end(list);
 }
 
@@ -2120,7 +2121,7 @@ remove_target(void)
 static int
 docmds(struct name *np, struct cmd *cp)
 {
-	int estat = 0;	// 0 exit status is success
+	int estat = 0;
 	char *q, *command;
 
 	for (; cp; cp = cp->c_next) {
@@ -2164,6 +2165,7 @@ docmds(struct name *np, struct cmd *cp)
 			target = np;
 			status = system(cmd);
 			target = NULL;
+			estat = MAKE_DIDSOMETHING;
 			// If this command was being run to create an include file
 			// or bring it up-to-date errors should be ignored and a
 			// failure status returned.
@@ -2177,7 +2179,7 @@ docmds(struct name *np, struct cmd *cp)
 #endif
 					remove_target();
 				if (errcont || doinclude)
-					estat = 1;	// 1 exit status is failure
+					estat |= MAKE_FAILURE;
 				else
 					exit(status);
 			}
@@ -2217,7 +2219,7 @@ static int
 make1(struct name *np, struct cmd *cp, char *oodate, char *allsrc,
 		char *dedup, struct name *implicit)
 {
-	int estat = 0;	// 0 exit status is success
+	int estat;
 	char *name, *member = NULL, *base;
 
 	name = splitlib(np->n_name, &member);
@@ -2285,8 +2287,7 @@ make(struct name *np, int level)
 	char *allsrc = NULL;
 	char *dedup = NULL;
 	struct timespec dtim = {1, 0};
-	bool didsomething = 0;
-	bool estat = 0;	// 0 exit status is success
+	int estat = 0;
 
 	if (np->n_flag & N_DONE)
 		return 0;
@@ -2389,10 +2390,10 @@ make(struct name *np, int level)
 		if ((np->n_flag & N_DOUBLE)) {
 			if (!quest && ((np->n_flag & N_PHONY) ||
 							timespec_le(&np->n_tim, &dtim))) {
-				if (estat == 0) {
-					estat = make1(np, rp->r_cmd, oodate, allsrc, dedup, locdep);
+				if (!(estat & MAKE_FAILURE)) {
+					estat |= make1(np, rp->r_cmd, oodate, allsrc,
+										dedup, locdep);
 					dtim = (struct timespec){1, 0};
-					didsomething = 1;
 				}
 				free(oodate);
 				oodate = NULL;
@@ -2414,26 +2415,25 @@ make(struct name *np, int level)
 
 	if (quest) {
 		if (timespec_le(&np->n_tim, &dtim)) {
-			didsomething = 1;
-			estat = 1;	// 1 means rebuild is needed
+			// MAKE_FAILURE means rebuild is needed
+			estat = MAKE_FAILURE | MAKE_DIDSOMETHING;
 		}
 	} else if (!(np->n_flag & N_DOUBLE) &&
 				((np->n_flag & N_PHONY) || (timespec_le(&np->n_tim, &dtim)))) {
-		if (estat == 0) {
+		if (!(estat & MAKE_FAILURE)) {
 			if (sc_cmd)
-				estat = make1(np, sc_cmd, oodate, allsrc, dedup, impdep);
-			else if (!doinclude)
+				estat |= make1(np, sc_cmd, oodate, allsrc, dedup, impdep);
+			else if (!doinclude && level == 0 && !(estat & MAKE_DIDSOMETHING))
 				warning("nothing to be done for %s", np->n_name);
-			didsomething = 1;
 		} else if (!doinclude) {
 			warning("'%s' not built due to errors", np->n_name);
 		}
 		free(oodate);
 	}
 
-	if (didsomething)
+	if (estat & MAKE_DIDSOMETHING)
 		clock_gettime(CLOCK_REALTIME, &np->n_tim);
-	else if (!quest && level == 0)
+	else if (!quest && level == 0 && !timespec_le(&np->n_tim, &dtim))
 		printf("%s: '%s' is up to date\n", applet_name, np->n_name);
 
 	free(allsrc);
@@ -2918,5 +2918,5 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 	llist_free(dirs, NULL);
 #endif
 
-	return estat;
+	return estat & MAKE_FAILURE;
 }
