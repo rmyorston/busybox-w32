@@ -288,7 +288,8 @@ PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 	: ((T)1 << (sizeof(T)*8-1)) \
 	)
 
-#if ENABLE_PLATFORM_MINGW32 && \
+// UCRT supports both "ll" and "I64", but gcc warns on "I64" with UCRT mingw
+#if ENABLE_PLATFORM_MINGW32 && !defined(_UCRT) && \
 	(!defined(__USE_MINGW_ANSI_STDIO) || !__USE_MINGW_ANSI_STDIO)
 #define LL_FMT "I64"
 #else
@@ -296,7 +297,7 @@ PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 #endif
 
 #if ENABLE_PLATFORM_MINGW32 && defined(_WIN64)
-#define PID_FMT "I64"
+#define PID_FMT LL_FMT
 #else
 #define PID_FMT
 #endif
