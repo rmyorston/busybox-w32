@@ -1113,6 +1113,10 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 		/* We support "busybox /a/path/to/applet args..." too. Allows for
 		 * "#!/bin/busybox"-style wrappers
 		 */
+#  if ENABLE_PLATFORM_MINGW32
+		if (interp)
+			--interp;
+#  endif
 		applet_name = bb_get_last_path_component_nostrip(argv[0]);
 	}
 	run_applet_and_exit(applet_name, argv);
