@@ -2088,6 +2088,10 @@ int read_line_input(const char* prompt, char* command, int maxsize) FAST_FUNC;
 	read_line_input(prompt, command, maxsize)
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+# undef COMM_LEN
+# define COMM_LEN 32
+#endif
 #ifndef COMM_LEN
 # ifdef TASK_COMM_LEN
 enum { COMM_LEN = TASK_COMM_LEN };
