@@ -209,6 +209,9 @@
 //applet:IF_ASH(APPLET(ash, BB_DIR_BIN, BB_SUID_DROP))
 //                      APPLET_ODDNAME:name  main location    suid_type     help
 //applet:IF_SH_IS_ASH(  APPLET_ODDNAME(sh,   ash, BB_DIR_BIN, BB_SUID_DROP, ash))
+//applet:IF_PLATFORM_MINGW32(
+//applet:IF_SH_IS_ASH(  APPLET_ODDNAME(lash, ash, BB_DIR_BIN, BB_SUID_DROP, ash))
+//applet:)
 //applet:IF_BASH_IS_ASH(APPLET_ODDNAME(bash, ash, BB_DIR_BIN, BB_SUID_DROP, ash))
 
 //kbuild:lib-$(CONFIG_SHELL_ASH) += ash.o ash_ptr_hack.o shell_common.o
@@ -15999,7 +16002,11 @@ procargs(char **argv)
 	int login_sh;
 
 	xargv = argv;
+#if ENABLE_PLATFORM_MINGW32
+	login_sh = applet_name[0] == 'l';
+#else
 	login_sh = xargv[0] && xargv[0][0] == '-';
+#endif
 #if NUM_SCRIPTS > 0
 	if (minusc)
 		goto setarg0;

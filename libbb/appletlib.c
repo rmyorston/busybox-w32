@@ -1379,9 +1379,10 @@ int main(int argc UNUSED_PARAM, char **argv)
 		argv++;
 # endif
 	applet_name = argv[0];
+# if !ENABLE_PLATFORM_MINGW32
 	if (applet_name[0] == '-')
 		applet_name++;
-# if ENABLE_PLATFORM_MINGW32
+# else
 	str_tolower(argv[0]);
 	bs_to_slash(argv[0]);
 	if (has_exe_suffix_or_dot(argv[0])) {
