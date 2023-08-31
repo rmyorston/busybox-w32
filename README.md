@@ -29,7 +29,7 @@ Then just `make`.
    * Relative to current root (drive or share): `/path`
    * Relative to current directory of current root (drive or share): `path`
  - Handling of users, groups and permissions is totally bogus.  The system only admits to knowing about the current user and employs various heuristics to synthesise uid, gid and permission values.
- - Some crufty old Windows code (Windows XP, cmd.exe) doesn't like forward slashes in environment variables.  The -X shell option (which must be the first argument) prevents busybox-w32 from changing backslashes to forward slashes.  If Windows programs don't run from the shell it's worth trying it.
+ - Some crufty old Windows code (Windows XP, cmd.exe) doesn't like forward slashes in environment variables.  The -X shell option prevents busybox-w32 from changing backslashes to forward slashes.  If Windows programs don't run from the shell it's worth trying it.
  - If you want to install 32-bit BusyBox in a system directory on a 64-bit version of Windows you should put it in `C:\Windows\SysWOW64`, not `C:\Windows\System32` as you might expect.  On 64-bit systems the latter is for 64-bit binaries.
  - The system tries to detect the best way to handle the terminal being used.  If this doesn't work you can try setting the environment variable `BB_TERMINAL_MODE=1` to force the use of literal ANSI escapes or `BB_TERMINAL_MODE=0` to emulate them using the Windows console API.
  - busybox-w32 prefers built-in applets to external programs when running commands. This preference can be overridden by setting the environment variable `BB_OVERRIDE_APPLETS` to a space-separated list of applet names. Thus, to use an external `make` in preference to the built-in applet set `BB_OVERRIDE_APPLETS="make"`.
