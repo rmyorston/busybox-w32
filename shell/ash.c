@@ -15860,7 +15860,7 @@ init(void)
 	int import = 0;
 #else
 	/* we will never free this */
-	basepf.next_to_pgetc = basepf.buf = ckmalloc(IBUFSIZ);
+	basepf.next_to_pgetc = basepf.buf = ckzalloc(IBUFSIZ);
 	basepf.linno = 1;
 
 	sigmode[SIGCHLD - 1] = S_DFL; /* ensure we install handler even if it is SIG_IGNed */
