@@ -16130,7 +16130,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	INIT_G_memstack();
 
 	/* from init() */
-	basepf.next_to_pgetc = basepf.buf = ckmalloc(IBUFSIZ);
+	basepf.next_to_pgetc = basepf.buf = ckzalloc(IBUFSIZ);
 	basepf.linno = 1;
 
 	if (argc == 3 && !strcmp(argv[1], "--fs")) {
