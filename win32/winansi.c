@@ -1276,7 +1276,7 @@ static void maybeEatUpto2ndHalfUp(HANDLE h, DWORD *ph1)
 
 		// got 2nd-half-up. eat the events up to this, combine the values
 		ReadConsoleInputW(h, r, i, &got);
-		*ph1 = 0x10000 | ((*ph1 & ~0xD800) << 10) | (h2 & ~0xDC00);
+		*ph1 = 0x10000 + (((*ph1 & ~0xD800) << 10) | (h2 & ~0xDC00));
 		return;
 	}
 }
