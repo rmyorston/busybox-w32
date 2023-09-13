@@ -955,7 +955,8 @@ raise_interrupt(void)
 		signal(SIGINT, SIG_DFL);
 		raise(SIGINT);
 #else
-		exit(SIGINT << 24);
+		fflush_all();
+		_exit(SIGINT << 24);
 #endif
 	}
 #if ENABLE_PLATFORM_MINGW32
