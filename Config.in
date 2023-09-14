@@ -432,14 +432,35 @@ config FEATURE_VERSIONINFO
 	help
 	Include version information in the application.
 
-config FEATURE_UTF8_MANIFEST
-	bool "Include UTF-8 manifest in binary"
-	default n
+choice
+	prompt "Manifest"
+	default FEATURE_TOOLCHAIN_MANIFEST
 	depends on FEATURE_RESOURCES
 	help
+	  Manifest to include in resources.
+
+config FEATURE_TOOLCHAIN_MANIFEST
+	bool "Toolchain default"
+	help
+	Include the default application manifest provided by the build
+	toolchain, if any.
+
+config FEATURE_APP_MANIFEST
+	bool "Application"
+	help
+	Include a manifest which declares privileges required by the
+	application and supported versions of Windows.  Enable this
+	if your build toolchain doesn't include it by default.
+
+config FEATURE_UTF8_MANIFEST
+	bool "UTF-8"
+	help
 	Include a manifest which sets the process code page to UTF-8.
+	This also includes details from the standard application manifest.
 	Users who enable this may also wish to enable FEATURE_UTF8_INPUT
 	and/or FEATURE_UTF8_OUTPUT.
+
+endchoice
 
 config FEATURE_ICON
 	bool "Include application icon in binary"
