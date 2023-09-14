@@ -4960,7 +4960,7 @@ waitpid_child(int *status, int wait_flags)
 	HANDLE *proclist;
 	pid_t pid = -1;
 	DWORD win_status, idx;
-	int i, sig;
+	int i;
 
 	for (jb = curjob; jb; jb = jb->prev_job) {
 		if (jb->state != JOBDONE)
@@ -4992,18 +4992,7 @@ waitpid_child(int *status, int wait_flags)
 				wait_flags&WNOHANG ? 1 : INFINITE);
 	if (idx < pid_nr) {
 		GetExitCodeProcess(proclist[idx], &win_status);
-		if (win_status == 0xc0000005)
-			win_status = SIGSEGV << 24;
-		else if (win_status == 0xc000013a)
-			win_status = SIGINT << 24;
-
-		// When a process is terminated as if by a signal the exit
-		// code is zero apart from the signal in its topmost byte.
-		sig = win_status >> 24;
-		if (sig != 0 && win_status == sig << 24 && is_valid_signal(sig))
-			*status = sig;
-		else
-			*status = (int)win_status << 8;
+		*status = exit_code_to_wait_status(win_status);
 		pid = pidlist[idx];
 	}
  done:

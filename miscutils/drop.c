@@ -200,7 +200,7 @@ int drop_main(int argc, char **argv)
 			SetConsoleCtrlHandler(kill_child_ctrl_handler, TRUE);
 			WaitForSingleObject(pi.hProcess, INFINITE);
 			if (GetExitCodeProcess(pi.hProcess, &code)) {
-				return (int)code;
+				return exit_code_to_posix(code);
 			}
 		}
 	}

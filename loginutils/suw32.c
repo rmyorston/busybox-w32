@@ -112,6 +112,8 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 		WaitForSingleObject(info.hProcess, INFINITE);
 		if (!GetExitCodeProcess(info.hProcess, &r))
 			r = 1;
+		else
+			r = exit_code_to_posix(r);
 		CloseHandle(info.hProcess);
 		return r;
 	}

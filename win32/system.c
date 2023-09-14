@@ -6,7 +6,6 @@ int mingw_system(const char *cmd)
 	intptr_t proc;
 	HANDLE h;
 	DWORD ret = 0;
-	int sig;
 
 	if (cmd == NULL)
 		return 1;
@@ -19,9 +18,5 @@ int mingw_system(const char *cmd)
 	GetExitCodeProcess(h, &ret);
 	CloseHandle(h);
 
-	// Was process terminated as if by a signal?
-	sig = ret >> 24;
-	if (sig != 0 && ret == sig << 24 && is_valid_signal(sig))
-		return sig;
-	return ret << 8;
+	return exit_code_to_wait_status(ret);
 }

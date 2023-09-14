@@ -45,7 +45,7 @@ pid_t mingw_wait3(pid_t pid, int *status, int options, struct rusage *rusage)
 			}
 #endif
 			CloseHandle(proc);
-			*status = code << 8;
+			*status = exit_code_to_wait_status(code);
 			return pid;
 		}
 	}
@@ -407,7 +407,7 @@ static NORETURN void wait_for_child(HANDLE child)
 	SetConsoleCtrlHandler(kill_child_ctrl_handler, TRUE);
 	WaitForSingleObject(child, INFINITE);
 	GetExitCodeProcess(child, &code);
-	exit((int)code);
+	exit(exit_code_to_posix(code));
 }
 
 int
@@ -805,6 +805,39 @@ static int kill_SIGKILL(pid_t pid, int sig)
 int FAST_FUNC is_valid_signal(int number)
 {
 	return isalpha(*get_signame(number));
+}
+
+int exit_code_to_wait_status(DWORD exit_code)
+{
+	int sig, status;
+
+	if (exit_code == 0xc0000005)
+		return SIGSEGV;
+	else if (exit_code == 0xc000013a)
+		return SIGINT;
+
+	// When a process is terminated as if by a signal the Windows
+	// exit code is zero apart from the signal in its topmost byte.
+	// This is a busybox-w32 convention.
+	sig = exit_code >> 24;
+	if (sig != 0 && exit_code == sig << 24 && is_valid_signal(sig))
+		return sig;
+
+	// Use least significant byte as exit code, but not if it's zero
+	// and the Windows exit code as a whole is non-zero.
+	status = exit_code & 0xff;
+	if (exit_code != 0 && status == 0)
+		status = 255;
+	return status << 8;
+}
+
+int exit_code_to_posix(DWORD exit_code)
+{
+	int status = exit_code_to_wait_status(exit_code);
+
+	if (WIFSIGNALED(status))
+		return 128 + WTERMSIG(status);
+	return WEXITSTATUS(status);
 }
 
 int kill(pid_t pid, int sig)
