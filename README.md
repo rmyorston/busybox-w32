@@ -10,9 +10,9 @@ You need a MinGW compiler and a POSIX environment.  I cross-compile on Linux.  O
 
 `dnf install gcc make ncurses-devel perl-Pod-Html`
 
-`dnf install mingw64-gcc mingw64-windows-default-manifest` (for a 64-bit build)
+`dnf install mingw64-gcc (for a 64-bit build)
 
-`dnf install mingw32-gcc mingw32-windows-default-manifest` (for a 32-bit build)
+`dnf install mingw32-gcc (for a 32-bit build)
 
 On Microsoft Windows you can install [w64devkit](https://github.com/skeeto/w64devkit/releases).  Get the `-i686` variant for a 32-bit build.  Unzip the file and run `w64devkit/w64devkit.exe`.
 

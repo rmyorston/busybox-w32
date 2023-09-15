@@ -34,3 +34,5 @@ set_build_opts \
     CONFIG_UNICODE_WIDE_WCHARS=y \
     < "$configs"/mingw64_defconfig \
     > "$configs"/mingw64u_defconfig
+
+sed -i 's/CONFIG_FEATURE_APP_MANIFEST=y/# CONFIG_FEATURE_APP_MANIFEST is not set/' "$configs"/mingw64u_defconfig

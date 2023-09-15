@@ -434,7 +434,7 @@ config FEATURE_VERSIONINFO
 
 choice
 	prompt "Manifest"
-	default FEATURE_TOOLCHAIN_MANIFEST
+	default FEATURE_APP_MANIFEST
 	depends on FEATURE_RESOURCES
 	help
 	  Manifest to include in resources.
@@ -443,14 +443,14 @@ config FEATURE_TOOLCHAIN_MANIFEST
 	bool "Toolchain default"
 	help
 	Include the default application manifest provided by the build
-	toolchain, if any.
+	toolchain, if any.  Enable this if your build toolchain includes
+	a suitable manifest.
 
 config FEATURE_APP_MANIFEST
 	bool "Application"
 	help
 	Include a manifest which declares privileges required by the
-	application and supported versions of Windows.  Enable this
-	if your build toolchain doesn't include it by default.
+	application and supported versions of Windows.
 
 config FEATURE_UTF8_MANIFEST
 	bool "UTF-8"
