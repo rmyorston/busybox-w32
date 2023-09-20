@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.37.0.git
-# Fri Sep 15 08:35:20 2023
+# Wed Sep 20 08:30:38 2023
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -1177,7 +1177,7 @@ CONFIG_ASH_HELP=y
 CONFIG_ASH_GETOPTS=y
 CONFIG_ASH_CMDCMD=y
 CONFIG_ASH_NOCONSOLE=y
-CONFIG_ASH_NOCASEGLOB=y
+CONFIG_ASH_GLOB_OPTIONS=y
 # CONFIG_CTTYHACK is not set
 # CONFIG_HUSH is not set
 # CONFIG_SHELL_HUSH is not set

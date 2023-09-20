@@ -2011,6 +2011,7 @@ unsigned size_from_HISTFILESIZE(const char *hp) FAST_FUNC;
 # endif
 typedef const char *get_exe_name_t(int i) FAST_FUNC;
 typedef const char *sh_get_var_t(const char *name) FAST_FUNC;
+typedef int sh_accept_glob_t(const char *name) FAST_FUNC;
 typedef struct line_input_t {
 	int flags;
 	int timeout;
@@ -2024,6 +2025,9 @@ typedef struct line_input_t {
 #  if ENABLE_SHELL_ASH || ENABLE_SHELL_HUSH
 	/* function to fetch additional application-specific names to match */
 	get_exe_name_t *get_exe_name;
+#   if ENABLE_ASH_GLOB_OPTIONS
+	sh_accept_glob_t *sh_accept_glob;
+#   endif
 #  endif
 # endif
 # if (ENABLE_FEATURE_USERNAME_COMPLETION || ENABLE_FEATURE_EDITING_FANCY_PROMPT) \

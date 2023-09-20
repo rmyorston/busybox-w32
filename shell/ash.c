@@ -196,13 +196,15 @@
 //config:	application.  This may be useful when running a shell script
 //config:	from a GUI application.
 //config:
-//config:config ASH_NOCASEGLOB
-//config:	bool "'nocaseglob' option"
+//config:config ASH_GLOB_OPTIONS
+//config:	bool "Globbing options"
 //config:	default y
 //config:	depends on (ASH || SH_IS_ASH || BASH_IS_ASH) && PLATFORM_MINGW32
 //config:	help
-//config:	Enable support for the 'nocaseglob' option, which allows
-//config:	case-insensitive filename globbing.
+//config:	Enable support for options to control globbing:
+//config:	- 'nocaseglob' allows case-insensitive filename globbing
+//config:	- 'nohiddenglob' allows hidden files to be omitted from globbing
+//config:	- 'nohidsysglob' allows hidden system files to be omitted
 //config:
 //config:endif # ash options
 
@@ -545,8 +547,10 @@ static const char *const optletters_optnames[] ALIGN_PTR = {
 #if ENABLE_ASH_NOCONSOLE
 	,"\0"  "noconsole"
 #endif
-#if ENABLE_ASH_NOCASEGLOB
+#if ENABLE_ASH_GLOB_OPTIONS
 	,"\0"  "nocaseglob"
+	,"\0"  "nohiddenglob"
+	,"\0"  "nohidsysglob"
 #endif
 };
 //bash 4.4.23 also has these opts (with these defaults):
@@ -673,8 +677,10 @@ struct globals_misc {
 # if ENABLE_ASH_NOCONSOLE
 #  define noconsole optlist[17 + BASH_PIPEFAIL + 2*(DEBUG != 0)]
 # endif
-# if ENABLE_ASH_NOCASEGLOB
+# if ENABLE_ASH_GLOB_OPTIONS
 #  define nocaseglob optlist[17 + BASH_PIPEFAIL + 2*(DEBUG != 0) + ENABLE_ASH_NOCONSOLE]
+#  define nohiddenglob optlist[18 + BASH_PIPEFAIL + 2*(DEBUG != 0) + ENABLE_ASH_NOCONSOLE]
+#  define nohidsysglob optlist[19 + BASH_PIPEFAIL + 2*(DEBUG != 0) + ENABLE_ASH_NOCONSOLE]
 # endif
 #endif
 
@@ -8678,6 +8684,26 @@ expandmeta(struct strlist *str /*, int flag*/)
 #else
 /* ENABLE_ASH_INTERNAL_GLOB: Homegrown globbing code. (dash also has both, uses homegrown one.) */
 
+#if ENABLE_ASH_GLOB_OPTIONS
+static int FAST_FUNC
+ash_accept_glob(const char *name)
+{
+	struct stat st;
+
+	if (nohiddenglob || nohidsysglob) {
+		if (!lstat(name, &st)) {
+			if ((st.st_attr & FILE_ATTRIBUTE_HIDDEN)) {
+				if (nohiddenglob ||
+						(st.st_attr & FILE_ATTRIBUTE_SYSTEM)) {
+					return FALSE;
+				}
+			}
+		}
+	}
+	return TRUE;
+}
+#endif
+
 /*
  * Do metacharacter (i.e. *, ?, [...]) expansion.
  */
@@ -8783,12 +8809,16 @@ expmeta(exp_t *exp, char *name, unsigned name_len, unsigned expdir_len)
 	while (!pending_int && (dp = readdir(dirp)) != NULL) {
 		if (dp->d_name[0] == '.' && !matchdot)
 			continue;
-#if ENABLE_ASH_NOCASEGLOB
+#if ENABLE_ASH_GLOB_OPTIONS
 # undef pmatch
 # define pmatch(a, b) !fnmatch((a), (b), nocaseglob ? FNM_CASEFOLD : 0)
 #endif
 		if (pmatch(start, dp->d_name)) {
 			if (atend) {
+#if ENABLE_ASH_GLOB_OPTIONS
+				if (!ash_accept_glob(dp->d_name))
+					continue;
+#endif
 				strcpy(enddir, dp->d_name);
 				addfname(expdir);
 			} else {
@@ -8816,7 +8846,7 @@ expmeta(exp_t *exp, char *name, unsigned name_len, unsigned expdir_len)
 		endname[-esc - 1] = esc ? '\\' : '/';
 #undef expdir
 #undef expdir_max
-#if ENABLE_ASH_NOCASEGLOB
+#if ENABLE_ASH_GLOB_OPTIONS
 # undef pmatch
 # define pmatch(a, b) !fnmatch((a), (b), 0)
 #endif
@@ -10865,6 +10895,9 @@ setinteractive(int on)
 			line_input_state = new_line_input_t(FOR_SHELL | WITH_PATH_LOOKUP);
 # if ENABLE_FEATURE_TAB_COMPLETION
 			line_input_state->get_exe_name = ash_command_name;
+#  if ENABLE_ASH_GLOB_OPTIONS
+			line_input_state->sh_accept_glob = ash_accept_glob;
+#  endif
 # endif
 # if EDITING_HAS_sh_get_var
 			line_input_state->sh_get_var = lookupvar;
