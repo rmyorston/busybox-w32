@@ -228,6 +228,7 @@ int unsetenv(const char *env);
 char *strndup(char const *s, size_t n);
 char *mingw_strerror(int errnum);
 char *strsignal(int sig);
+int strverscmp(const char *s1, const char *s2);
 
 #define strerror mingw_strerror
 

@@ -25,6 +25,7 @@ lib-$(CONFIG_FEATURE_PRNG_SHELL) += sh_random.o
 lib-$(CONFIG_PLATFORM_MINGW32) += statfs.o
 lib-$(CONFIG_PLATFORM_MINGW32) += strndup.o
 lib-$(CONFIG_PLATFORM_MINGW32) += strptime.o
+lib-$(CONFIG_PLATFORM_MINGW32) += strverscmp.o
 lib-$(CONFIG_PLATFORM_MINGW32) += system.o
 lib-$(CONFIG_PLATFORM_MINGW32) += termios.o
 lib-$(CONFIG_PLATFORM_MINGW32) += timegm.o
