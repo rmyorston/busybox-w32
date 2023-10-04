@@ -2292,28 +2292,19 @@ int chdir_system_drive(void)
  * This function is used to make relative paths absolute before a call
  * to chdir_system_drive().  It's unlikely to be useful in other cases.
  *
- * If the argument is an absolute path or a relative path which resolves
- * to a path on the system drive return 'path'.  If it's a relative path
- * which resolves to a path that isn't on the system drive return an
- * allocated string containing the resolved path.  Die on failure,
+ * If the argument is an absolute path return 'path', otherwise return
+ * an allocated string containing the resolved path.  Die on failure,
  * which is most likely because the file doesn't exist.
  */
 char *xabsolute_path(char *path)
 {
 	char *rpath;
-	const char *sd;
 
 	if (root_len(path) != 0)
 		return path;	// absolute path
 	rpath = xmalloc_realpath(path);
-	if (rpath) {
-		sd = get_system_drive();
-		if (sd && is_prefixed_with_case(rpath, sd)) {
-			free(rpath);
-			return path;	// resolved path is on system drive
-		}
+	if (rpath)
 		return rpath;
-	}
 	bb_perror_msg_and_die("can't open '%s'", path);
 }
 
