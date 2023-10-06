@@ -2820,7 +2820,10 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 			path = newpath = xmalloc_realpath(p);
 			free(p);
 			if (!path) {
-				bb_perror_msg("can't resolve path for %s", argv[0]);
+				if (unix_path(argv[0]))
+					path = argv[0];
+				else
+					bb_perror_msg("can't resolve path for %s", argv[0]);
 			}
 		}
 #else
