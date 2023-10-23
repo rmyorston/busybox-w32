@@ -94,6 +94,14 @@ target:
 	@exit 42
 '
 
+# An equal sign in a command on a target rule was detected as a
+# macro assignment.
+testing "make equal sign in inline command" \
+	"make -f -" "a = a\n" "" '
+a = a
+target:;@echo a = $(a)
+'
+
 # A macro created using ::= remembers it's of type immediate-expansion.
 # Immediate expansion also occurs when += is used to append to such a macro.
 testing "make appending to immediate-expansion macro" \
