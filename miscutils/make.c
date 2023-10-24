@@ -438,6 +438,13 @@ check_name(const char *name)
 {
 	const char *s;
 
+#if ENABLE_PLATFORM_MINGW32
+	if (!posix || (pragma & P_WINDOWS)) {
+		if (isalpha(name[0]) && name[1] == ':' && name[2] == '/') {
+			name += 3;
+		}
+	}
+#endif
 	if (!posix) {
 		for (s = name; *s; ++s) {
 			if (*s == '=')
@@ -447,10 +454,6 @@ check_name(const char *name)
 	}
 
 	for (s = name; *s; ++s) {
-#if ENABLE_PLATFORM_MINGW32
-		if ((pragma & P_WINDOWS) && *s == ':')
-			continue;
-#endif
 		if ((pragma & P_TARGET_NAME) || !POSIX_2017 ?
 				!(isfname(*s) || *s == '/') : !ispname(*s))
 			return FALSE;
@@ -1175,7 +1178,7 @@ find_colon(char *p)
 	for (q = p; (q = strchr(q, ':')); ++q) {
 		if (posix && !(pragma & P_WINDOWS))
 			break;
-		if (q[1] != '/')
+		if (q == p || !isalpha(q[-1]) || q[1] != '/')
 			break;
 	}
 	if (q != NULL) {
@@ -2123,7 +2126,7 @@ input(FILE *fd, int ilevel)
 			setmacro(a, q, level);
 			free(newq);
 		} else {
-			error("expected macro definition");
+			error("missing separator");
 		}
 
  end_loop:
