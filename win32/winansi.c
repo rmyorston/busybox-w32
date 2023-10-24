@@ -121,10 +121,10 @@ int terminal_mode(int reset)
 		if (is_console(STDOUT_FILENO)) {
 			h = get_console();
 			if (GetConsoleMode(h, &oldmode)) {
-				// Turn off DISABLE_NEWLINE_AUTO_RETURN induced by Gradle?
-				oldmode &= ~DISABLE_NEWLINE_AUTO_RETURN;
 				// Try to recover from mode 0 induced by SSH.
 				newmode = oldmode == 0 ? 3 : oldmode;
+				// Turn off DISABLE_NEWLINE_AUTO_RETURN induced by Gradle?
+				newmode &= ~DISABLE_NEWLINE_AUTO_RETURN;
 
 				if ((mode & VT_OUTPUT)) {
 					newmode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
