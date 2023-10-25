@@ -258,8 +258,14 @@ static NOINLINE const char *get_homedir_or_NULL(void)
 # else
 	home = getenv("HOME");
 # endif
-	if (home != NULL && home[0] != '\0')
+	if (home != NULL && home[0] != '\0') {
+# if ENABLE_PLATFORM_MINGW32
+		char *t = auto_string(xstrdup(home));
+		bs_to_slash(t);
+		home = t;
+# endif
 		return home;
+	}
 
 	if (!got_user_strings)
 		get_user_strings();
