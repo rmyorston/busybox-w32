@@ -501,7 +501,6 @@ struct globals {
 #endif
 	action ***actions;
 	smallint need_print;
-	smallint xdev_on;
 	smalluint exitstatus;
 	recurse_flags_t recurse_flags;
 	IF_FEATURE_FIND_EXEC_PLUS(unsigned max_argv_len;)
@@ -1015,26 +1014,10 @@ static int FAST_FUNC fileAction(
 		struct stat *statbuf)
 {
 	int r;
-	int same_fs = 1;
-
-#if ENABLE_FEATURE_FIND_XDEV
-	if (S_ISDIR(statbuf->st_mode) && G.xdev_count) {
-		int i;
-		for (i = 0; i < G.xdev_count; i++) {
-			if (G.xdev_dev[i] == statbuf->st_dev)
-				goto found;
-		}
-		//bb_error_msg("'%s': not same fs", fileName);
-		same_fs = 0;
- found: ;
-	}
-#endif
 
 #if ENABLE_FEATURE_FIND_MAXDEPTH
 	if (state->depth < G.minmaxdepth[0]) {
-		if (same_fs)
-			return TRUE; /* skip this, continue recursing */
-		return SKIP; /* stop recursing */
+		return TRUE; /* skip this, continue recursing */
 	}
 	if (state->depth > G.minmaxdepth[1])
 		return SKIP; /* stop recursing */
@@ -1051,11 +1034,6 @@ static int FAST_FUNC fileAction(
 			return SKIP;
 	}
 #endif
-	/* -xdev stops on mountpoints, but AFTER mountpoit itself
-	 * is processed as usual */
-	if (!same_fs) {
-		return SKIP;
-	}
 
 	/* Cannot return 0: our caller, recursive_action(),
 	 * will perror() and skip dirs (if called on dir) */
@@ -1295,7 +1273,7 @@ static action*** parse_params(char **argv)
 #if ENABLE_FEATURE_FIND_XDEV
 		else if (parm == OPT_XDEV) {
 			dbg("%d", __LINE__);
-			G.xdev_on = 1;
+			G.recurse_flags |= ACTION_XDEV;
 		}
 #endif
 #if ENABLE_FEATURE_FIND_MAXDEPTH
@@ -1717,24 +1695,6 @@ int find_main(int argc UNUSED_PARAM, char **argv)
 
 	G.actions = parse_params(&argv[firstopt]);
 	argv[firstopt] = NULL;
-
-#if ENABLE_FEATURE_FIND_XDEV
-	if (G.xdev_on) {
-		struct stat stbuf;
-
-		G.xdev_count = firstopt;
-		G.xdev_dev = xzalloc(G.xdev_count * sizeof(G.xdev_dev[0]));
-		for (i = 0; argv[i]; i++) {
-			/* not xstat(): shouldn't bomb out on
-			 * "find not_exist exist -xdev" */
-			if (stat(argv[i], &stbuf) == 0)
-				G.xdev_dev[i] = stbuf.st_dev;
-			/* else G.xdev_dev[i] stays 0 and
-			 * won't match any real device dev_t
-			 */
-		}
-	}
-#endif
 
 	for (i = 0; argv[i]; i++) {
 		if (!recursive_action(argv[i],
