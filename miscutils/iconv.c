@@ -1677,25 +1677,26 @@ static void process_file(iconv_t cd, FILE *in, FILE *out)
 	char outbuf[BUFSIZ];
 	const char *pin;
 	char *pout;
-	size_t inbytesleft = 0;
+	size_t inbytesleft;
 	size_t outbytesleft;
 	size_t rest = 0;
 	size_t r;
 
-	while ((!feof(in) &&
-			(inbytesleft=fread(inbuf+rest, 1, sizeof(inbuf)-rest, in)) != 0)
+	while ((inbytesleft=fread(inbuf+rest, 1, sizeof(inbuf)-rest, in)) != 0
 				|| rest != 0) {
 		inbytesleft += rest;
 		pin = inbuf;
 		pout = outbuf;
 		outbytesleft = sizeof(outbuf);
 		r = iconv(cd, &pin, &inbytesleft, &pout, &outbytesleft);
+		fwrite(outbuf, 1, sizeof(outbuf) - outbytesleft, out);
 		if (r == (size_t)(-1) && errno != E2BIG &&
 				(errno != EINVAL || feof(in)))
 			bb_perror_msg_and_die("conversion error");
-		fwrite(outbuf, 1, sizeof(outbuf) - outbytesleft, out);
 		memmove(inbuf, pin, inbytesleft);
 		rest = inbytesleft;
+		if (rest == 0 && feof(in))
+			break;
 	}
 	pout = outbuf;
 	outbytesleft = sizeof(outbuf);
