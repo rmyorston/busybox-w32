@@ -844,7 +844,7 @@ static void spawn_ssl_client(const char *host, int network_fd, int flags)
 					(void *)_get_osfhandle(network_fd), servername,
 					flags & TLSLOOP_EXIT_ON_LOCAL_EOF ? " -e" : "");
 
-	if ( (fd1=mingw_popen_fd(cmd, "b", -1, NULL)) == -1 ) {
+	if ( (fd1=mingw_popen_fd(NULL, cmd, "b", -1, NULL)) == -1 ) {
 		bb_perror_msg_and_die("can't execute ssl_client");
 	}
 

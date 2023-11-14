@@ -11,8 +11,8 @@ typedef struct {
 static pipe_data *pipes = NULL;
 static int num_pipes = 0;
 
-static int mingw_popen_internal(pipe_data *p, const char *cmd,
-					const char *mode, int fd0, pid_t *pid);
+static int mingw_popen_internal(pipe_data *p, const char *exe,
+					const char *cmd, const char *mode, int fd0, pid_t *pid);
 
 static int mingw_pipe(pipe_data *p, int bidi)
 {
@@ -162,7 +162,7 @@ FILE *mingw_popen(const char *cmd, const char *mode)
 	*t = '\0';
 
 	/* Create the pipe */
-	if ((fd=mingw_popen_internal(p, cmd_buff, mode, -1, NULL)) != -1) {
+	if ((fd=mingw_popen_internal(p, NULL, cmd_buff, mode, -1, NULL)) != -1) {
 		fptr = _fdopen(fd, *mode == 'r' ? "rb" : "wb");
 	}
 
@@ -182,8 +182,8 @@ FILE *mingw_popen(const char *cmd, const char *mode)
  * - the pid of the command is returned in the variable pid, which
  *   can be NULL if the pid is not required.
  */
-static int mingw_popen_internal(pipe_data *p, const char *cmd,
-					const char *mode, int fd0, pid_t *pid)
+static int mingw_popen_internal(pipe_data *p, const char *exe,
+					const char *cmd, const char *mode, int fd0, pid_t *pid)
 {
 	pipe_data pd;
 	STARTUPINFO siStartInfo;
@@ -245,8 +245,8 @@ static int mingw_popen_internal(pipe_data *p, const char *cmd,
 	siStartInfo.wShowWindow = SW_HIDE;
 	siStartInfo.dwFlags = STARTF_USESTDHANDLES|STARTF_USESHOWWINDOW;
 
-	success = CreateProcess(NULL,
-				(LPTSTR)cmd,       /* command line */
+	success = CreateProcess((LPCSTR)exe,
+				(LPSTR)cmd,        /* command line */
 				NULL,              /* process security attributes */
 				NULL,              /* primary thread security attributes */
 				TRUE,              /* handles are inherited */
@@ -280,9 +280,10 @@ finito:
 	return fd;
 }
 
-int mingw_popen_fd(const char *cmd, const char *mode, int fd0, pid_t *pid)
+int mingw_popen_fd(const char *exe, const char *cmd, const char *mode,
+					int fd0, pid_t *pid)
 {
-	return mingw_popen_internal(NULL, cmd, mode, fd0, pid);
+	return mingw_popen_internal(NULL, exe, cmd, mode, fd0, pid);
 }
 
 int mingw_pclose(FILE *fp)
@@ -310,7 +311,7 @@ int mingw_pclose(FILE *fp)
  * file; with mode "r" and a decompressor in open_transformer. */
 pid_t mingw_fork_compressor(int fd, const char *compressor, const char *mode)
 {
-	char *cmd;
+	char *cmd, *exe = NULL;
 	int fd1;
 	pid_t pid;
 
@@ -322,20 +323,25 @@ pid_t mingw_fork_compressor(int fd, const char *compressor, const char *mode)
 		&& !(mode[0] == 'w' && index_in_strings("lzma\0xz\0", compressor) >= 0)
 # endif
 		) {
+		// shared format string
 		cmd = xasprintf("%s --busybox %s -cf -", bb_busybox_exec_path,
 					compressor);
 	} else {
-		// share format string
+		// Look up compressor on PATH
+		exe = find_first_executable(compressor);
+		if (exe == NULL)
+			bb_perror_msg_and_die("can't execute '%s'", compressor);
 		cmd = xasprintf("%s --busybox %s -cf -" + 13, compressor);
 	}
 #else
 	cmd = xasprintf("%s -cf -", compressor);
 #endif
 
-	if ((fd1 = mingw_popen_fd(cmd, mode, fd, &pid)) == -1)
+	if ((fd1 = mingw_popen_fd(exe, cmd, mode, fd, &pid)) == -1)
 		bb_perror_msg_and_die("can't execute '%s'", compressor);
 
 	free(cmd);
+	free(exe);
 	xmove_fd(fd1, fd);
 	return pid;
 }
