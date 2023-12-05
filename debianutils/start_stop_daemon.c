@@ -11,11 +11,16 @@
 /*
 This is how it is supposed to work:
 
-start-stop-daemon [OPTIONS] [--start|--stop] [[--] arguments...]
+start-stop-daemon [OPTIONS] [--start|--stop] [[--] ARGS]
 
 One (only) of these must be given:
         -S,--start              Start
         -K,--stop               Stop
+        -T,--status             Check for the existence of a process, return exitcode (since version 1.16.1)
+                                0 - program is running
+                                1 - program is not running and the pid file exists
+                                3 - program is not running
+                                4 - can't determine program status
 
 Search for matching processes.
 If --stop is given, stop all matching processes (by sending a signal).
@@ -36,20 +41,49 @@ with /proc/$PID/exe or argv[0] (comm can't be matched, it never contains path)]
                                 Unlike -n, we match against the full path:
                                 "ntpd" != "./ntpd" != "/path/to/ntpd"
         -p,--pidfile PID_FILE   Look for processes with PID from this file
+        --pid PID               Look for process with this pid (since version 1.17.6)
+        --ppid PPID             Look for processes with parent pid (since version 1.17.7)
 
 Options which are valid for --start only:
-        -x,--exec EXECUTABLE    Program to run (1st arg of execvp). Mandatory.
+        -x,--exec EXECUTABLE    Program to run (1st arg of execvp).
+                                If no -x, EXECUTABLE is taken from ARGS[0]
         -a,--startas NAME       argv[0] (defaults to EXECUTABLE)
         -b,--background         Put process into background
+        -O,--output FILE        Redirect stdout and stderr to FILE when forcing the
+                                daemon into the background (since version 1.20.6).
+                                Requires --background and absolute pathname (tested with 1.21.22).
+                                Uses O_CREAT|O_APPEND!
+                                If execv fails, error message goes to FILE.
         -N,--nicelevel N        Add N to process' nice level
         -c,--chuid USER[:[GRP]] Change to specified user [and group]
         -m,--make-pidfile       Write PID to the pidfile
                                 (both -m and -p must be given!)
+        -P,--procsched policy:priority
+                                This alters the process scheduler policy and priority of the
+                                process before starting it (since version 1.15.0).  The
+                                priority can be optionally specified by appending a :
+                                followed by the value. The default priority is 0. The
+                                currently supported policy values are other, fifo and rr.
+        -r,--chroot DIR         Change directory and chroot to DIR before starting the
+                                process. Please note that the pidfile is also written after
+                                the chroot.
+        -d,--chdir DIR          Change directory to DIR before starting the process. This is
+                                done after the chroot if the -r|--chroot option is set.
+                                When not specified, start-stop-daemon will change directory to the
+                                root directory before starting the process.
+                                ^^^^ Gentoo does not have the default chdir("/"). Debian does.
+        Tested -S with 1.21.22:
+        "start-stop-daemon -S -x /bin/pwd" is the minimum needed to run pwd.
+        "start-stop-daemon -S -a /bin/pwd -n pwd" works too.
+        "start-stop-daemon -S -a /bin/pwd" does NOT work.
+        Earlier versions were less picky (which? Or is it only Gentoo's clone?)
 
 Options which are valid for --stop only:
         -s,--signal SIG         Signal to send (default:TERM)
         -t,--test               Exit with status 0 if process is found
                                 (we don't actually start or stop daemons)
+        --remove-pidfile        Used when stopping a program that does not remove its own pid
+                                file (since version 1.17.19). Requires -p PIDFILE?
 
 Misc options:
         -o,--oknodo             Exit with status 0 if nothing is done
@@ -84,11 +118,11 @@ Misc options:
 //kbuild:lib-$(CONFIG_START_STOP_DAEMON) += start_stop_daemon.o
 
 //usage:#define start_stop_daemon_trivial_usage
-//usage:       "[OPTIONS] [-S|-K] ... [-- ARGS...]"
+//usage:       "-S|-K [OPTIONS] [-- ARGS]"
 //usage:#define start_stop_daemon_full_usage "\n\n"
 //usage:       "Search for matching processes, and then\n"
-//usage:       "-K: stop all matching processes\n"
 //usage:       "-S: start a process unless a matching process is found\n"
+//usage:       "-K: stop all matching processes\n"
 //usage:     "\nProcess matching:"
 //usage:     "\n	-u USERNAME|UID	Match only this user's processes"
 //usage:     "\n	-n NAME		Match processes with NAME"
@@ -101,10 +135,12 @@ Misc options:
 //usage:     "\n	-x EXECUTABLE	Program to run"
 //usage:     "\n	-a NAME		Zeroth argument"
 //usage:     "\n	-b		Background"
+//usage:     "\n	-O FILE		Append stdout and stderr to FILE"
 //usage:	IF_FEATURE_START_STOP_DAEMON_FANCY(
 //usage:     "\n	-N N		Change nice level"
 //usage:	)
 //usage:     "\n	-c USER[:[GRP]]	Change user/group"
+//usage:     "\n	-d DIR		Change to DIR"
 //usage:     "\n	-m		Write PID to pidfile specified by -p"
 //usage:     "\n-K only:"
 //usage:     "\n	-s SIG		Signal to send"
@@ -113,8 +149,8 @@ Misc options:
 //usage:	IF_FEATURE_START_STOP_DAEMON_FANCY(
 //usage:     "\n	-o		Exit with status 0 if nothing is done"
 //usage:     "\n	-v		Verbose"
-//usage:	)
 //usage:     "\n	-q		Quiet"
+//usage:	)
 
 /* Override ENABLE_FEATURE_PIDFILE */
 #define WANT_PIDFILE 1
@@ -138,21 +174,23 @@ enum {
 	OPT_s          = (1 <<  8), // -s
 	OPT_u          = (1 <<  9), // -u
 	OPT_c          = (1 << 10), // -c
-	OPT_x          = (1 << 11), // -x
-	OPT_p          = (1 << 12), // -p
-	OPT_OKNODO     = (1 << 13) * ENABLE_FEATURE_START_STOP_DAEMON_FANCY, // -o
-	OPT_VERBOSE    = (1 << 14) * ENABLE_FEATURE_START_STOP_DAEMON_FANCY, // -v
-	OPT_NICELEVEL  = (1 << 15) * ENABLE_FEATURE_START_STOP_DAEMON_FANCY, // -N
+	OPT_d          = (1 << 11), // -d
+	OPT_x          = (1 << 12), // -x
+	OPT_p          = (1 << 13), // -p
+	OPT_OUTPUT     = (1 << 14), // -O
+	OPT_OKNODO     = (1 << 15) * ENABLE_FEATURE_START_STOP_DAEMON_FANCY, // -o
+	OPT_VERBOSE    = (1 << 16) * ENABLE_FEATURE_START_STOP_DAEMON_FANCY, // -v
+	OPT_NICELEVEL  = (1 << 17) * ENABLE_FEATURE_START_STOP_DAEMON_FANCY, // -N
 };
 #define QUIET (option_mask32 & OPT_QUIET)
 #define TEST  (option_mask32 & OPT_TEST)
 
 struct globals {
 	struct pid_list *found_procs;
-	char *userspec;
-	char *cmdname;
-	char *execname;
-	char *pidfile;
+	const char *userspec;
+	const char *cmdname;
+	const char *execname;
+	const char *pidfile;
 	char *execname_cmpbuf;
 	unsigned execname_sizeof;
 	int user_id;
@@ -322,7 +360,7 @@ static void do_procinit(void)
 
 static int do_stop(void)
 {
-	char *what;
+	const char *what;
 	struct pid_list *p;
 	int killed = 0;
 
@@ -369,7 +407,7 @@ static int do_stop(void)
 	}
  ret:
 	if (ENABLE_FEATURE_CLEAN_UP)
-		free(what);
+		free((char *)what);
 	return killed;
 }
 
@@ -381,6 +419,7 @@ static const char start_stop_daemon_longopts[] ALIGN1 =
 	"quiet\0"        No_argument       "q"
 	"test\0"         No_argument       "t"
 	"make-pidfile\0" No_argument       "m"
+	"output\0"       Required_argument "O"
 # if ENABLE_FEATURE_START_STOP_DAEMON_FANCY
 	"oknodo\0"       No_argument       "o"
 	"verbose\0"      No_argument       "v"
@@ -391,6 +430,7 @@ static const char start_stop_daemon_longopts[] ALIGN1 =
 	"signal\0"       Required_argument "s"
 	"user\0"         Required_argument "u"
 	"chuid\0"        Required_argument "c"
+	"chdir\0"        Required_argument "d"
 	"exec\0"         Required_argument "x"
 	"pidfile\0"      Required_argument "p"
 # if ENABLE_FEATURE_START_STOP_DAEMON_FANCY
@@ -408,35 +448,48 @@ int start_stop_daemon_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int start_stop_daemon_main(int argc UNUSED_PARAM, char **argv)
 {
 	unsigned opt;
-	char *signame;
-	char *startas = NULL;
+	const char *signame;
+	const char *startas = NULL;
 	char *chuid;
+	const char *chdir;
+	const char *output = NULL;
 #if ENABLE_FEATURE_START_STOP_DAEMON_FANCY
-//	char *retry_arg = NULL;
+//	const char *retry_arg = NULL;
 //	int retries = -1;
-	char *opt_N;
+	const char *opt_N;
 #endif
 
 	INIT_G();
 
 	opt = GETOPT32(argv, "^"
-		"KSbqtma:n:s:u:c:x:p:"
+		"KSbqtma:n:s:u:c:d:x:p:O:"
 		IF_FEATURE_START_STOP_DAEMON_FANCY("ovN:R:")
-			/* -K or -S is required; they are mutually exclusive */
-			/* -p is required if -m is given */
-			/* -xpun (at least one) is required if -K is given */
-//			/* -xa (at least one) is required if -S is given */
-//WRONG: "start-stop-daemon -S -- sleep 5" is a valid invocation
-			/* -q turns off -v */
 			"\0"
-			"K:S:K--S:S--K:m?p:K?xpun"
-			IF_FEATURE_START_STOP_DAEMON_FANCY("q-v"),
+			"K:S:K--S:S--K"
+			/* -K or -S is required; they are mutually exclusive */
+			":m?p"    /* -p is required if -m is given */
+			":K?xpun" /* -xpun (at least one) is required if -K is given */
+			/* (the above does not seem to be enforced by Gentoo, it does nothing
+			 * if no matching is specified with -K, and it ignores ARGS
+			 * - does not take ARGS[0] as program name to kill)
+			 */
+//			":S?xa"   /* -xa (at least one) is required if -S is given */
+//Gentoo clone: "start-stop-daemon -S -- sleep 5" is a valid invocation
+			IF_FEATURE_START_STOP_DAEMON_FANCY(":q-v") /* -q turns off -v */
+			,
 		LONGOPTS
-		&startas, &cmdname, &signame, &userspec, &chuid, &execname, &pidfile
+		&startas, &cmdname, &signame, &userspec, &chuid, &chdir, &execname, &pidfile, &output
 		IF_FEATURE_START_STOP_DAEMON_FANCY(,&opt_N)
 		/* We accept and ignore -R <param> / --retry <param> */
 		IF_FEATURE_START_STOP_DAEMON_FANCY(,NULL)
 	);
+
+//-O requires --background and absolute pathname (tested with 1.21.22).
+//We don't bother requiring that (smaller code):
+//#if ENABLE_FEATURE_START_STOP_DAEMON_FANCY
+//	if ((opt & OPT_OUTPUT) && !(opt & OPT_BACKGROUND))
+//		bb_show_usage();
+//#endif
 
 	if (opt & OPT_s) {
 		signal_nr = get_signum(signame);
@@ -464,7 +517,7 @@ int start_stop_daemon_main(int argc UNUSED_PARAM, char **argv)
 		}
 		if (!startas) /* -a is not given: use -x EXECUTABLE or argv[0] */
 			startas = execname;
-		*--argv = startas;
+		*--argv = (char *)startas;
 	}
 	if (execname) {
 		G.execname_sizeof = strlen(execname) + 1;
@@ -523,8 +576,11 @@ int start_stop_daemon_main(int argc UNUSED_PARAM, char **argv)
 		}
 		/* Child */
 		setsid(); /* detach from controlling tty */
-		/* Redirect stdio to /dev/null, close extra FDs */
-		bb_daemon_helper(DAEMON_DEVNULL_STDIO + DAEMON_CLOSE_EXTRA_FDS);
+		/* Redirect stdin to /dev/null, close extra FDs */
+		/* Testcase: "start-stop-daemon -Sb -d /does/not/exist usleep 1" should not eat error message */
+		bb_daemon_helper(DAEMON_DEVNULL_STDIN + DAEMON_CLOSE_EXTRA_FDS);
+		if (!output)
+			output = bb_dev_null; /* redirect output just before execv */
 		/* On Linux, session leader can acquire ctty
 		 * unknowingly, by opening a tty.
 		 * Prevent this: stop being a session leader.
@@ -559,6 +615,15 @@ int start_stop_daemon_main(int argc UNUSED_PARAM, char **argv)
 			xsetgid(ugid.gid);
 			setgroups(1, &ugid.gid);
 		}
+	}
+	if (opt & OPT_d) {
+		xchdir(chdir);
+	}
+	if (output) {
+		int outfd = xopen(output, O_WRONLY | O_CREAT | O_APPEND);
+		xmove_fd(outfd, STDOUT_FILENO);
+		xdup2(STDOUT_FILENO, STDERR_FILENO);
+		/* on execv error, the message goes to -O file. This is intended */
 	}
 	/* Try:
 	 * strace -oLOG start-stop-daemon -S -x /bin/usleep -a qwerty 500000

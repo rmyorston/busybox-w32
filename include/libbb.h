@@ -1374,10 +1374,12 @@ void _exit_FAILURE(void) NORETURN FAST_FUNC;
  */
 enum {
 	DAEMON_CHDIR_ROOT      = 1 << 0,
-	DAEMON_DEVNULL_STDIO   = 1 << 1,
-	DAEMON_CLOSE_EXTRA_FDS = 1 << 2,
-	DAEMON_ONLY_SANITIZE   = 1 << 3, /* internal use */
-	//DAEMON_DOUBLE_FORK     = 1 << 4, /* double fork to avoid controlling tty */
+	DAEMON_DEVNULL_STDIN   = 1 << 1,
+	DAEMON_DEVNULL_OUTERR  = 2 << 1,
+	DAEMON_DEVNULL_STDIO   = 3 << 1,
+	DAEMON_CLOSE_EXTRA_FDS = 1 << 3,
+	DAEMON_ONLY_SANITIZE   = 1 << 4, /* internal use */
+	//DAEMON_DOUBLE_FORK     = 1 << 5, /* double fork to avoid controlling tty */
 };
 #if BB_MMU
   enum { re_execed = 0 };
@@ -1400,6 +1402,7 @@ enum {
 # define bb_daemonize(a) BUG_bb_daemonize_is_unavailable_on_nommu()
 #endif
 void bb_daemonize_or_rexec(int flags, char **argv) FAST_FUNC;
+/* Unlike bb_daemonize_or_rexec, these two helpers do not setsid: */
 void bb_sanitize_stdio(void) FAST_FUNC;
 #define bb_daemon_helper(arg) bb_daemonize_or_rexec((arg) | DAEMON_ONLY_SANITIZE, NULL)
 /* Clear dangerous stuff, set PATH. Return 1 if was run by different user. */
@@ -1409,6 +1412,7 @@ int sanitize_env_if_suid(void) FAST_FUNC;
 /* For top, ps. Some argv[i] are replaced by malloced "-opt" strings */
 void make_all_argv_opts(char **argv) FAST_FUNC;
 char* single_argv(char **argv) FAST_FUNC;
+char **skip_dash_dash(char **argv) FAST_FUNC;
 extern const char *const bb_argv_dash[]; /* { "-", NULL } */
 extern uint32_t option_mask32;
 uint32_t getopt32(char **argv, const char *applet_opts, ...) FAST_FUNC;

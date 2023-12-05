@@ -17,14 +17,15 @@
 //config:	default y
 //config:	help
 //config:	sleep is used to pause for a specified number of seconds.
-//config:	It comes in 3 versions:
+//config:	It comes in 2 versions:
 //config:	- small: takes one integer parameter
-//config:	- fancy: takes multiple integer arguments with suffixes:
-//config:		sleep 1d 2h 3m 15s
-//config:	- fancy with fractional numbers:
-//config:		sleep 2.3s 4.5h sleeps for 16202.3 seconds
-//config:	Last one is "the most compatible" with coreutils sleep,
-//config:	but it adds around 1k of code.
+//config:	- fancy:
+//config:		* takes multiple integer arguments with suffixes:
+//config:			sleep 1d 2h 3m 15s
+//config:		* allows fractional numbers:
+//config:			sleep 2.3s 4.5h sleeps for 16202.3 seconds
+//config:	fancy is more compatible with coreutils sleep, but it adds around
+//config:	1k of code.
 //config:
 //config:config FEATURE_FANCY_SLEEP
 //config:	bool "Enable multiple arguments and s/m/h/d suffixes"
@@ -71,8 +72,8 @@ int sleep_main(int argc UNUSED_PARAM, char **argv)
 	 * + we can't use bb_show_usage
 	 * + applet_name can be the name of the shell
 	 */
-	++argv;
-	if (!*argv) {
+	argv = skip_dash_dash(argv);
+	if (!argv[0]) {
 		/* Without this, bare "sleep" in ash shows _ash_ --help */
 		/* (ash can be the "sh" applet as well, so check 2nd char) */
 		if (ENABLE_ASH_SLEEP && applet_name[1] != 'l') {
