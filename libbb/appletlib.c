@@ -282,12 +282,11 @@ static int external_exists(const char *name)
 	return ret != NULL;
 }
 
-int FAST_FUNC is_applet_preferred(const char *name)
+static int is_applet_preferred_by_var(const char *name, const char *var)
 {
-	const char *var, *s, *sep;
+	const char *s, *sep;
 	size_t len;
 
-	var = getenv(BB_OVERRIDE_APPLETS);
 	if (var && *var) {
 		/* '-' disables all applets */
 		if (var[0] == '-' && var[1] == '\0')
@@ -318,6 +317,14 @@ int FAST_FUNC is_applet_preferred(const char *name)
 		}
 	}
 	return TRUE;
+}
+
+int FAST_FUNC is_applet_preferred(const char *name)
+{
+	int ret = is_applet_preferred_by_var(name, getenv(BB_OVERRIDE_APPLETS));
+	if (sizeof(CONFIG_OVERRIDE_APPLETS) > 1 && ret)
+		ret = is_applet_preferred_by_var(name, CONFIG_OVERRIDE_APPLETS);
+	return ret;
 }
 #endif
 

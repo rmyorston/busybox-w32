@@ -556,6 +556,16 @@ config FEATURE_EXTRA_FILE_DATA
 	determine the ownership of files so that, for example, 'ls' can
 	distinguish files belonging to the current user.
 
+config OVERRIDE_APPLETS
+	string "Override applets"
+	default ""
+	depends on PLATFORM_MINGW32 && (FEATURE_PREFER_APPLETS || FEATURE_SH_STANDALONE)
+	help
+	A list of applets to be ignored in standalone shell mode.  The
+	format is the same as that used by the BB_OVERRIDE_APPLETS
+	environment variable.  BB_OVERRIDE_APPLETS is checked first, if it
+	allows the applet and this list is non-empty it is checked too.
+
 comment 'Build Options'
 
 config STATIC

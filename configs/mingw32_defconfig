@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.37.0.git
-# Wed Sep 20 08:30:38 2023
+# Sat Dec  9 09:38:58 2023
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -61,6 +61,7 @@ CONFIG_FEATURE_EURO=y
 CONFIG_TERMINAL_MODE=5
 CONFIG_FEATURE_IMPROVED_COLOUR_MAPPING=y
 CONFIG_FEATURE_EXTRA_FILE_DATA=y
+CONFIG_OVERRIDE_APPLETS=""
 
 #
 # Build Options
