@@ -264,25 +264,32 @@ int FAST_FUNC find_applet_by_name(const char *name)
 }
 
 #if ENABLE_PLATFORM_MINGW32
-int FAST_FUNC find_applet_by_name(const char *name)
+# undef find_applet_by_name_with_path
+int FAST_FUNC find_applet_by_name_with_path(const char *name, const char *path)
 {
 	int applet_no = really_find_applet_by_name(name);
-	return applet_no >= 0 && is_applet_preferred(name) ? applet_no : -1;
+	return applet_no >= 0 && is_applet_preferred(name, path) ? applet_no : -1;
+}
+
+int FAST_FUNC find_applet_by_name(const char *name)
+{
+	return find_applet_by_name_with_path(name, NULL);
 }
 #endif
 
 #if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1 && \
 		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
-static int external_exists(const char *name)
+static int external_exists(const char *name, const char *path)
 {
-	const char *ash_path = get_ash_path();
-	char *path = ash_path ? auto_string(xstrdup(ash_path)) : getenv("PATH");
-	char *ret = find_executable(name, &path);
+	char *path1 = xstrdup(path ?: getenv("PATH"));
+	char *ret = find_executable(name, &path1);
 	free(ret);
+	free(path1);
 	return ret != NULL;
 }
 
-static int is_applet_preferred_by_var(const char *name, const char *var)
+static int is_applet_preferred_by_var(const char *name, const char *path,
+										const char *var)
 {
 	const char *s, *sep;
 	size_t len;
@@ -294,7 +301,7 @@ static int is_applet_preferred_by_var(const char *name, const char *var)
 
 		/* '+' each applet is overridden if an external command exists */
 		if (var[0] == '+' && var[1] == '\0')
-			return !external_exists(name);
+			return !external_exists(name, path);
 
 		/* Handle applets from a list separated by spaces, commas or
 		 * semicolons.  Applets before the first semicolon are disabled.
@@ -313,17 +320,20 @@ static int is_applet_preferred_by_var(const char *name, const char *var)
 			/* neither "..name" nor "..name,xxx"? */
 			if (s[len] != '\0' && !strchr(" ,;", s[len]))
 				continue;
-			return (sep == NULL || s < sep) ? FALSE : !external_exists(name);
+			return (sep == NULL || s < sep) ?
+						FALSE : !external_exists(name, path);
 		}
 	}
 	return TRUE;
 }
 
-int FAST_FUNC is_applet_preferred(const char *name)
+int FAST_FUNC is_applet_preferred(const char *name, const char *path)
 {
-	int ret = is_applet_preferred_by_var(name, getenv(BB_OVERRIDE_APPLETS));
+	int ret;
+
+	ret = is_applet_preferred_by_var(name, path, getenv(BB_OVERRIDE_APPLETS));
 	if (sizeof(CONFIG_OVERRIDE_APPLETS) > 1 && ret)
-		ret = is_applet_preferred_by_var(name, CONFIG_OVERRIDE_APPLETS);
+		ret = is_applet_preferred_by_var(name, path, CONFIG_OVERRIDE_APPLETS);
 	return ret;
 }
 #endif

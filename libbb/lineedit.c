@@ -975,7 +975,8 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 # if ENABLE_FEATURE_SH_STANDALONE && NUM_APPLETS != 1
 		const char *p = applet_names;
 		while (*p) {
-			if (strncmp(basecmd, p, baselen) == 0 && is_applet_preferred(p))
+			if (strncmp(basecmd, p, baselen) == 0 &&
+					is_applet_preferred(p, NULL))
 				add_match(xstrdup(p), TRUE);
 			while (*p++ != '\0')
 				continue;

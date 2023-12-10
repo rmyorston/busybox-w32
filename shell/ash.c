@@ -452,47 +452,6 @@ static void forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 # endif
 #endif
 
-#if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1 && \
-		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
-static const char *ash_path;
-
-const char *
-get_ash_path(void)
-{
-	return ash_path;
-}
-
-static int NOINLINE
-ash_applet_by_name(const char *name, const char *path)
-{
-	int ret;
-
-	ash_path = path;
-	ret = find_applet_by_name(name);
-	ash_path = NULL;
-
-	return ret;
-}
-
-static int
-ash_applet_preferred(const char *name, const char *path)
-{
-	int ret;
-
-	ash_path = path;
-	ret = is_applet_preferred(name);
-	ash_path = NULL;
-
-	return ret;
-}
-# define find_applet_by_name(n, p) ash_applet_by_name(n, p)
-# define is_applet_preferred(n, p) ash_applet_preferred(n, p)
-#else
-# define find_applet_by_name(n, p) find_applet_by_name(n)
-# undef is_applet_preferred
-# define is_applet_preferred(n, p) (1)
-#endif
-
 /* ============ Hash table sizes. Configurable. */
 
 #define VTABSIZE 39
@@ -9238,7 +9197,7 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 	if (has_path(prog)
 #endif
 #if ENABLE_FEATURE_SH_STANDALONE
-	 || (applet_no = find_applet_by_name(prog, path)) >= 0
+	 || (applet_no = find_applet_by_name_with_path(prog, path)) >= 0
 #endif
 	) {
 #if ENABLE_PLATFORM_MINGW32
@@ -9259,7 +9218,7 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 		if (unix_path(prog)) {
 			const char *name = bb_basename(prog);
 # if ENABLE_FEATURE_SH_STANDALONE
-			if ((applet_no = find_applet_by_name(name, path)) >= 0) {
+			if ((applet_no = find_applet_by_name_with_path(name, path)) >= 0) {
 				tryexec(applet_no, name, argv, envp);
 				e = errno;
 			}
@@ -15074,7 +15033,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			name = (char *)bb_basename(name);
 			if (
 # if ENABLE_FEATURE_SH_STANDALONE
-					find_applet_by_name(name, path) >= 0 ||
+					find_applet_by_name_with_path(name, path) >= 0 ||
 # endif
 					!find_builtin(bb_basename(name))
 			) {
@@ -15145,7 +15104,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 
 #if ENABLE_FEATURE_SH_STANDALONE
 	{
-		int applet_no = find_applet_by_name(name, path);
+		int applet_no = find_applet_by_name_with_path(name, path);
 		if (applet_no >= 0) {
 			entry->cmdtype = CMDNORMAL;
 			entry->u.index = -2 - applet_no;
