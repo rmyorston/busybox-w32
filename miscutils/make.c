@@ -2201,8 +2201,10 @@ docmds(struct name *np, struct cmd *cp)
 		} else if (!sdomake)
 			ssilent = dotouch;
 
-		if (!ssilent)
+		if (!ssilent) {
 			puts(q);
+			fflush_all();
+		}
 
 		if (sdomake) {
 			// Get the shell to execute it
