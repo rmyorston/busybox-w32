@@ -100,7 +100,8 @@ static const char packed_scripts[] ALIGN1 = { PACKED_SCRIPTS };
 # define ENABLE_FEATURE_COMPRESS_USAGE 0
 #endif
 
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1 && \
+		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
 static int really_find_applet_by_name(const char *name);
 #else
 #define really_find_applet_by_name(n) find_applet_by_name(n)
@@ -194,7 +195,8 @@ void FAST_FUNC bb_show_usage(void)
 	xfunc_die();
 }
 
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1 && \
+		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
 static int really_find_applet_by_name(const char *name)
 #else
 int FAST_FUNC find_applet_by_name(const char *name)
@@ -263,8 +265,8 @@ int FAST_FUNC find_applet_by_name(const char *name)
 	return -1;
 }
 
-#if ENABLE_PLATFORM_MINGW32
-# undef find_applet_by_name_with_path
+#if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1 && \
+		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
 int FAST_FUNC find_applet_by_name_with_path(const char *name, const char *path)
 {
 	int applet_no = really_find_applet_by_name(name);
@@ -275,10 +277,7 @@ int FAST_FUNC find_applet_by_name(const char *name)
 {
 	return find_applet_by_name_with_path(name, NULL);
 }
-#endif
 
-#if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1 && \
-		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
 static int external_exists(const char *name, const char *path)
 {
 	char *path1 = xstrdup(path ?: getenv("PATH"));
