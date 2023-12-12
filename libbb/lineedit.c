@@ -974,9 +974,11 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 	if (type == FIND_EXE_ONLY && !dirbuf) {
 # if ENABLE_FEATURE_SH_STANDALONE && NUM_APPLETS != 1
 		const char *p = applet_names;
+		const char *shpath = state->flags & WITH_PATH_LOOKUP ?
+								state->path_lookup : NULL;
 		while (*p) {
 			if (strncmp(basecmd, p, baselen) == 0 &&
-					is_applet_preferred(p, NULL))
+					is_applet_preferred(p, shpath))
 				add_match(xstrdup(p), TRUE);
 			while (*p++ != '\0')
 				continue;
