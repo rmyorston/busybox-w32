@@ -549,7 +549,7 @@ int utimes(const char *file_name, const struct timeval times[2]);
 
 char ** FAST_FUNC grow_argv(char **argv, int n);
 pid_t FAST_FUNC mingw_spawn(char **argv);
-pid_t FAST_FUNC mingw_spawn_detach(char **argv);
+intptr_t FAST_FUNC mingw_spawn_detach(char **argv);
 intptr_t FAST_FUNC mingw_spawn_proc(const char **argv);
 int mingw_execv(const char *cmd, char *const *argv);
 int mingw_execvp(const char *cmd, char *const *argv);

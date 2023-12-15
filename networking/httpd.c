@@ -2863,9 +2863,7 @@ static void mingw_daemonize(char **argv)
 	xdup2(fd, 2);
 	close(fd);
 
-	if (mingw_spawn_detach(new_argv))
-		exit_SUCCESS(); /* parent */
-	exit(EXIT_FAILURE); /* parent */
+	exit(mingw_spawn_detach(new_argv) == -1 ? EXIT_FAILURE : EXIT_SUCCESS);
 }
 #endif
 

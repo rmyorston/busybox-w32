@@ -333,26 +333,20 @@ mingw_spawnvp(int mode, const char *cmd, char *const *argv)
 	return -1;
 }
 
-static pid_t
-mingw_spawn_pid(int mode, char **argv)
+pid_t FAST_FUNC
+mingw_spawn(char **argv)
 {
 	intptr_t ret;
 
-	ret = mingw_spawnvp(mode, argv[0], (char *const *)argv);
+	ret = mingw_spawnvp(P_NOWAIT, argv[0], (char *const *)argv);
 
 	return ret == -1 ? (pid_t)-1 : (pid_t)GetProcessId((HANDLE)ret);
 }
 
-pid_t FAST_FUNC
-mingw_spawn(char **argv)
-{
-	return mingw_spawn_pid(P_NOWAIT, argv);
-}
-
-pid_t FAST_FUNC
+intptr_t FAST_FUNC
 mingw_spawn_detach(char **argv)
 {
-	return mingw_spawn_pid(P_DETACH, argv);
+	return mingw_spawnvp(P_DETACH, argv[0], argv);
 }
 
 intptr_t FAST_FUNC
