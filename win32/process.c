@@ -408,7 +408,7 @@ int
 mingw_execvp(const char *cmd, char *const *argv)
 {
 	intptr_t ret = mingw_spawnvp(P_NOWAIT, cmd, argv);
-	if (ret != -1 || errno == 0)
+	if (ret != -1)
 		wait_for_child((HANDLE)ret);
 	return ret;
 }
@@ -417,7 +417,7 @@ int
 mingw_execve(const char *cmd, char *const *argv, char *const *envp)
 {
 	intptr_t ret = mingw_spawn_interpreter(P_NOWAIT, cmd, argv, envp, 0);
-	if (ret != -1 || errno == 0)
+	if (ret != -1)
 		wait_for_child((HANDLE)ret);
 	return ret;
 }
