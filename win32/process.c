@@ -248,6 +248,51 @@ grow_argv(char **argv, int n)
 	return new_argv;
 }
 
+#if ENABLE_FEATURE_HTTPD_CGI
+static int
+create_detached_process(const char *prog, char *const *argv)
+{
+	int argc, i;
+	char *command = NULL;
+	STARTUPINFO siStartInfo;
+	PROCESS_INFORMATION piProcInfo;
+	int success;
+
+	argc = string_array_len((char **)argv);
+	for (i = 0; i < argc; i++)
+		command = xappendword(command, quote_arg(argv[i]));
+
+	ZeroMemory(&siStartInfo, sizeof(STARTUPINFO));
+	siStartInfo.cb = sizeof(STARTUPINFO);
+	siStartInfo.hStdInput = (HANDLE)_get_osfhandle(STDIN_FILENO);
+	siStartInfo.hStdOutput = (HANDLE)_get_osfhandle(STDOUT_FILENO);
+	siStartInfo.dwFlags = STARTF_USESTDHANDLES;
+
+	success = CreateProcess((LPCSTR)prog,
+				(LPSTR)command,    /* command line */
+				NULL,              /* process security attributes */
+				NULL,              /* primary thread security attributes */
+				TRUE,              /* handles are inherited */
+				DETACHED_PROCESS,  /* creation flags */
+				NULL,              /* use parent's environment */
+				NULL,              /* use parent's current directory */
+				&siStartInfo,      /* STARTUPINFO pointer */
+				&piProcInfo);      /* receives PROCESS_INFORMATION */
+
+	free(command);
+
+	if (!success)
+		return -1;
+	exit(0);
+}
+
+# define SPAWNVEQ(m, p, a, e) \
+	((m != HTTPD_DETACH) ? spawnveq(m, p, a, e) : \
+		create_detached_process(p, a))
+#else
+# define SPAWNVEQ(m, p, a, e) spawnveq(m, p, a, e)
+#endif
+
 static intptr_t
 mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
 			char *const *envp, int level)
@@ -259,7 +304,7 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
 	char *path = NULL;
 
 	if (!parse_interpreter(prog, &interp))
-		return spawnveq(mode, prog, argv, envp);
+		return SPAWNVEQ(mode, prog, argv, envp);
 
 	if (++level > 4) {
 		errno = ELOOP;
@@ -275,7 +320,7 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
 	if (unix_path(interp.path) && find_applet_by_name(interp.name) >= 0) {
 		/* the fake path indicates the index of the script */
 		new_argv[0] = path = xasprintf("%d:/%s", nopts+1, interp.name);
-		ret = mingw_spawn_applet(mode, new_argv, envp);
+		ret = SPAWNVEQ(mode, bb_busybox_exec_path, new_argv, envp);
 		goto done;
 	}
 #endif
@@ -427,6 +472,17 @@ mingw_execv(const char *cmd, char *const *argv)
 {
 	return mingw_execve(cmd, argv, NULL);
 }
+
+#if ENABLE_FEATURE_HTTPD_CGI
+int httpd_execv_detach(const char *script, char *const *argv)
+{
+	intptr_t ret = mingw_spawn_interpreter(HTTPD_DETACH, script,
+							(char *const *)argv, NULL, 0);
+	if (ret != -1)
+		exit(0);
+	return ret;
+}
+#endif
 
 static inline long long filetime_to_ticks(const FILETIME *ft)
 {

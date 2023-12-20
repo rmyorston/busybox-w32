@@ -461,6 +461,13 @@ static const struct {
 
 struct globals {
 	int verbose;            /* must be int (used by getopt32) */
+#if ENABLE_PLATFORM_MINGW32
+	smallint foreground;
+# if ENABLE_FEATURE_HTTPD_CGI
+	int server_argc;
+	char **server_argv;
+# endif
+#endif
 	smallint flg_deny_all;
 #if ENABLE_FEATURE_HTTPD_GZIP
 	/* client can handle gzip / we are going to send gzip */
@@ -518,6 +525,11 @@ struct globals {
 };
 #define G (*ptr_to_globals)
 #define verbose           (G.verbose          )
+#if ENABLE_PLATFORM_MINGW32
+#define foreground        (G.foreground       )
+#define server_argc       (G.server_argc      )
+#define server_argv       (G.server_argv      )
+#endif
 #define flg_deny_all      (G.flg_deny_all     )
 #if ENABLE_FEATURE_HTTPD_GZIP
 # define content_gzip     (G.content_gzip     )
@@ -1563,6 +1575,52 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 #endif
 
 #if ENABLE_FEATURE_HTTPD_CGI
+# if ENABLE_PLATFORM_MINGW32
+static void cgi_handler(char **argv)
+{
+	struct fd_pair fromCgi;  /* CGI -> httpd pipe */
+	struct fd_pair toCgi;    /* httpd -> CGI pipe */
+	char *dir, *script;
+
+	xfunc_error_retval = 242;
+
+	if (sscanf(argv[0], "%d:%d:%d:%d", &toCgi.wr, &toCgi.rd,
+	                        &fromCgi.wr, &fromCgi.rd) != 4) {
+		exit(242);
+	}
+
+	/* NB: close _first_, then move fds! */
+	close(toCgi.wr);
+	close(fromCgi.rd);
+	xmove_fd(toCgi.rd, 0);  /* replace stdin with the pipe */
+	xmove_fd(fromCgi.wr, 1);  /* replace stdout with the pipe */
+
+	dir = argv[1];
+	script = argv[2];
+
+	if (chdir_or_warn(dir) != 0) {
+		goto error_execing_cgi;
+	}
+
+	/* set argv[0] to name without path */
+	argv[0] = script;
+	argv[1] = NULL;
+
+	/* _NOT_ execvp. We do not search PATH. argv[0] is a filename
+	 * without any dir components and will only match a file
+	 * in the current directory */
+	if (foreground)
+		execv(argv[0], argv);
+	else
+		httpd_execv_detach(argv[0], argv);
+	if (verbose)
+		bb_perror_msg("can't execute '%s'", argv[0]);
+ error_execing_cgi:
+	/* send to stdout */
+	iobuf = xmalloc(IOBUF_SIZE);
+	send_headers_and_exit(HTTP_NOT_FOUND);
+}
+# endif
 
 static void setenv1(const char *name, const char *value)
 {
@@ -1596,6 +1654,10 @@ static void send_cgi_and_exit(
 	struct fd_pair toCgi;    /* httpd -> CGI pipe */
 	char *script, *last_slash;
 	int pid;
+#if ENABLE_PLATFORM_MINGW32
+	char **argv;
+	int i;
+#endif
 
 	/* Make a copy. NB: caller guarantees:
 	 * url[0] == '/', url[1] != '/' */
@@ -1682,6 +1744,32 @@ static void send_cgi_and_exit(
 	xpiped_pair(fromCgi);
 	xpiped_pair(toCgi);
 
+#if ENABLE_PLATFORM_MINGW32
+	/* Find script's dir */
+	script = last_slash;
+	if (script != url) { /* paranoia */
+		*script = '\0';
+	}
+	script++;
+
+	argv = xzalloc((server_argc + 9) * sizeof(char *));
+	argv[0] = (char *)bb_busybox_exec_path;
+	argv[1] = (char *)"--busybox";
+	argv[2] = (char *)"-httpd" + 1;		// skip '-'
+	argv[3] = (char *)"-I";
+	argv[4] = (char *)"0";
+	for (i = 0; i < server_argc; ++i)
+		argv[i + 5] = server_argv[i];
+	argv[server_argc + 5] = xasprintf("%d:%d:%d:%d", toCgi.wr, toCgi.rd,
+						fromCgi.wr, fromCgi.rd);
+	argv[server_argc + 6] = (char *)url + 1;	// script directory
+	argv[server_argc + 7] = (char *)script;	// script name
+	/* argv[server_argc + 8] = NULL; - xzalloc did it */
+
+	pid = foreground ? mingw_spawn(argv) : mingw_spawn_detach(argv);
+	if (pid == -1)
+		log_and_exit();
+#else
 	pid = vfork();
 	if (pid < 0) {
 		/* TODO: log perror? */
@@ -1759,6 +1847,7 @@ static void send_cgi_and_exit(
 
 	/* Restore variables possibly changed by child */
 	xfunc_error_retval = 0;
+#endif
 
 	/* Pump data */
 	close(fromCgi.wr);
@@ -2797,8 +2886,8 @@ static void mini_httpd_nommu(int server_socket, int argc, char **argv)
 }
 #endif
 #else /* ENABLE_PLATFORM_MINGW32 */
-static void mini_httpd_win32(int fg, int sock, int argc, char **argv) NORETURN;
-static void mini_httpd_win32(int fg, int sock, int argc, char **argv)
+static void mini_httpd_win32(int sock, int argc, char **argv) NORETURN;
+static void mini_httpd_win32(int sock, int argc, char **argv)
 {
 	char *argv_copy[argc + 5];
 
@@ -2820,7 +2909,8 @@ static void mini_httpd_win32(int fg, int sock, int argc, char **argv)
 		setsockopt_keepalive(n);
 
 		argv_copy[4] = itoa(n);
-		if ((fg ? spawn(argv_copy) : mingw_spawn_detach(argv_copy)) == -1)
+		if ((foreground ?
+				spawn(argv_copy) : mingw_spawn_detach(argv_copy)) == -1)
 			bb_perror_msg_and_die("can't execute 'httpd'");
 
 		/* parent, or spawn failed */
@@ -2936,7 +3026,7 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 			"\0"
 			/* -v counts, -i implies -f */
 			IF_NOT_PLATFORM_MINGW32("vv:if",)
-			IF_PLATFORM_MINGW32("vv:If",)
+			IF_PLATFORM_MINGW32("vv:",)
 			&opt_c_configFile, &url_for_decode, &home_httpd
 			IF_FEATURE_HTTPD_ENCODE_URL_STR(, &url_for_encode)
 			IF_FEATURE_HTTPD_BASIC_AUTH(, &g_realm)
@@ -2981,7 +3071,8 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 #else /* ENABLE_PLATFORM_MINGW32 */
-	if (!(opt & OPT_FOREGROUND) && argv[0][0] != '-')
+	foreground = (opt & OPT_FOREGROUND) == OPT_FOREGROUND;
+	if (!foreground && argv[0][0] != '-')
 		mingw_daemonize(argv);
 #endif
 
@@ -3032,7 +3123,14 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	parse_conf(DEFAULT_PATH_HTTPD_CONF, FIRST_PARSE);
-#if !ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32
+# if ENABLE_FEATURE_HTTPD_CGI
+	if ((opt & OPT_INETD) && fd == 0) {
+		cgi_handler(argv + optind);
+		return 0;
+	}
+# endif
+#else
 	if (!(opt & OPT_INETD))
 		signal(SIGHUP, sighup_handler);
 #endif
@@ -3044,6 +3142,11 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 		xdup2(0, 1);
 		while (--fd > 2)
 			close(fd);
+# if ENABLE_FEATURE_HTTPD_CGI
+		/* Skip 'httpd -I N' and omit any non-option arguments */
+		server_argc = optind - 3;
+		server_argv = argv + 3;
+# endif
 	}
 #endif
 	if (opt & OPT_INETD)
@@ -3057,7 +3160,7 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 	mini_httpd_nommu(server_socket, argc, argv); /* never returns */
 #endif
 #else /* ENABLE_PLATFORM_MINGW32 */
-	mini_httpd_win32(opt & OPT_FOREGROUND, server_socket, argc, argv);
+	mini_httpd_win32(server_socket, argc, argv);
 #endif
 	/* return 0; */
 }

@@ -552,12 +552,14 @@ pid_t FAST_FUNC mingw_spawn(char **argv);
 intptr_t FAST_FUNC mingw_spawn_detach(char **argv);
 intptr_t FAST_FUNC mingw_spawn_proc(const char **argv);
 int mingw_execv(const char *cmd, char *const *argv);
+int httpd_execv_detach(const char *cmd, char *const *argv);
 int mingw_execvp(const char *cmd, char *const *argv);
 int mingw_execve(const char *cmd, char *const *argv, char *const *envp);
 #define spawn mingw_spawn
 #define execvp mingw_execvp
 #define execve mingw_execve
 #define execv mingw_execv
+#define HTTPD_DETACH (8)
 
 #define has_dos_drive_prefix(path) (isalpha(*(path)) && (path)[1] == ':')
 
