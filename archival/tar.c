@@ -43,7 +43,7 @@
 //config:config FEATURE_TAR_AUTODETECT
 //config:	bool "Autodetect compressed tarballs"
 //config:	default y
-//config:	depends on TAR && (FEATURE_SEAMLESS_Z || FEATURE_SEAMLESS_GZ || FEATURE_SEAMLESS_BZ2 || FEATURE_SEAMLESS_LZMA || FEATURE_SEAMLESS_XZ)
+//config:	depends on TAR && (FEATURE_SEAMLESS_Z || FEATURE_SEAMLESS_GZ || FEATURE_SEAMLESS_BZ2 || FEATURE_SEAMLESS_LZMA || FEATURE_SEAMLESS_XZ || FEATURE_SEAMLESS_ZSTD)
 //config:	help
 //config:	With this option tar can automatically detect compressed
 //config:	tarballs. Currently it works only on files (not pipes etc).
@@ -811,6 +811,11 @@ static llist_t *append_file_list_to_list(llist_t *list)
 //usage:     "\n	--lzma	(De)compress using lzma"
 //usage:	)
 //usage:	)
+//usage:	IF_FEATURE_SEAMLESS_ZSTD(
+//usage:	IF_FEATURE_TAR_LONG_OPTIONS(
+//usage:     "\n	--zstd	(De)compress using zstd"
+//usage:	)
+//usage:	)
 //usage:     "\n	-a	(De)compress based on extension"
 //usage:	IF_FEATURE_TAR_CREATE(
 //usage:     "\n	-h	Follow symlinks"
@@ -852,6 +857,7 @@ enum {
 #if ENABLE_FEATURE_TAR_LONG_OPTIONS
 	OPTBIT_STRIP_COMPONENTS,
 	IF_FEATURE_SEAMLESS_LZMA(OPTBIT_LZMA        ,)
+	IF_FEATURE_SEAMLESS_ZSTD(OPTBIT_ZSTD        ,)
 	OPTBIT_NORECURSION,
 	IF_FEATURE_TAR_TO_COMMAND(OPTBIT_2COMMAND   ,)
 	OPTBIT_NUMERIC_OWNER,
@@ -879,6 +885,7 @@ enum {
 	OPT_NOPRESERVE_TIME  = IF_FEATURE_TAR_NOPRESERVE_TIME((1 << OPTBIT_NOPRESERVE_TIME)) + 0, // m
 	OPT_STRIP_COMPONENTS = IF_FEATURE_TAR_LONG_OPTIONS((1 << OPTBIT_STRIP_COMPONENTS)) + 0, // strip-components
 	OPT_LZMA             = IF_FEATURE_TAR_LONG_OPTIONS(IF_FEATURE_SEAMLESS_LZMA((1 << OPTBIT_LZMA))) + 0, // lzma
+	OPT_ZSTD             = IF_FEATURE_TAR_LONG_OPTIONS(IF_FEATURE_SEAMLESS_ZSTD((1 << OPTBIT_ZSTD))) + 0, // zstd
 	OPT_NORECURSION      = IF_FEATURE_TAR_LONG_OPTIONS((1 << OPTBIT_NORECURSION    )) + 0, // no-recursion
 	OPT_2COMMAND         = IF_FEATURE_TAR_TO_COMMAND(  (1 << OPTBIT_2COMMAND       )) + 0, // to-command
 	OPT_NUMERIC_OWNER    = IF_FEATURE_TAR_LONG_OPTIONS((1 << OPTBIT_NUMERIC_OWNER  )) + 0, // numeric-owner
@@ -925,9 +932,12 @@ static const char tar_longopts[] ALIGN1 =
 # if ENABLE_FEATURE_TAR_NOPRESERVE_TIME
 	"touch\0"               No_argument       "m"
 # endif
-	"strip-components\0"	Required_argument "\xf8"
+	"strip-components\0"	Required_argument "\xf7"
 # if ENABLE_FEATURE_SEAMLESS_LZMA
-	"lzma\0"                No_argument       "\xf9"
+	"lzma\0"                No_argument       "\xf8"
+# endif
+# if ENABLE_FEATURE_SEAMLESS_ZSTD
+	"zstd\0"                No_argument       "\xf9"
 # endif
 	"no-recursion\0"	No_argument       "\xfa"
 # if ENABLE_FEATURE_TAR_TO_COMMAND
@@ -1074,6 +1084,7 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 	showopt(OPT_NOPRESERVE_TIME );
 	showopt(OPT_STRIP_COMPONENTS);
 	showopt(OPT_LZMA            );
+	showopt(OPT_ZSTD            );
 	showopt(OPT_NORECURSION     );
 	showopt(OPT_2COMMAND        );
 	showopt(OPT_NUMERIC_OWNER   );
@@ -1230,6 +1241,8 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 			zipMode = "lzma";
 		if (opt & OPT_XZ)
 			zipMode = "xz";
+		if (opt & OPT_ZSTD)
+			zipMode = "zstd";
 # endif
 		tbInfo = xzalloc(sizeof(*tbInfo));
 		tbInfo->tarFd = tar_handle->src_fd;
@@ -1269,6 +1282,10 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 		if (opt & OPT_XZ) {
 			USE_FOR_MMU(IF_FEATURE_SEAMLESS_XZ(xformer = unpack_xz_stream;))
 			USE_FOR_NOMMU(xformer_prog = "unxz";)
+		}
+		if (opt & OPT_ZSTD) {
+			USE_FOR_MMU(IF_FEATURE_SEAMLESS_XZ(xformer = unpack_zstd_stream;))
+			USE_FOR_NOMMU(xformer_prog = "unzstd";)
 		}
 
 		fork_transformer_with_sig(tar_handle->src_fd, xformer, xformer_prog);

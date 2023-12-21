@@ -209,12 +209,26 @@ static transformer_state_t *setup_transformer_on_fd(int fd, int fail_if_not_comp
 			goto found_magic;
 		}
 	}
+	if (ENABLE_FEATURE_SEAMLESS_ZSTD
+	 && xstate->magic.b16[0] == ZSTD_MAGIC1
+	) {
+		uint16_t v16;
+		xstate->signature_skipped = 4;
+		xread(fd, &xstate->magic.b16[1], 2);
+		move_from_unaligned16(v16, &xstate->magic.b16[1]);
+		if (v16 == ZSTD_MAGIC2) {
+			xstate->xformer = unpack_zstd_stream;
+			USE_FOR_NOMMU(xstate->xformer_prog = "unzstd";)
+			goto found_magic;
+		}
+	}
 
 	/* No known magic seen */
 	if (fail_if_not_compressed)
 		bb_simple_error_msg_and_die("no gzip"
 			IF_FEATURE_SEAMLESS_BZ2("/bzip2")
 			IF_FEATURE_SEAMLESS_XZ("/xz")
+			IF_FEATURE_SEAMLESS_ZSTD("/zstd")
 			" magic");
 
 	/* Some callers expect this function to "consume" fd

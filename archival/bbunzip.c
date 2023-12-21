@@ -197,7 +197,8 @@ int FAST_FUNC bbunpack(char **argv,
 #if ENABLE_UNCOMPRESS \
  || ENABLE_FEATURE_BZIP2_DECOMPRESS \
  || ENABLE_UNLZMA || ENABLE_LZCAT || ENABLE_LZMA \
- || ENABLE_UNXZ || ENABLE_XZCAT || ENABLE_XZ
+ || ENABLE_UNXZ || ENABLE_XZCAT || ENABLE_XZ \
+ || ENABLE_UNZSTD || ENABLE_ZSTDCAT || ENABLE_ZSTD
 static
 char* FAST_FUNC make_new_name_generic(char *filename, const char *expected_ext)
 {
@@ -601,5 +602,82 @@ int unxz_main(int argc UNUSED_PARAM, char **argv)
 
 	argv += optind;
 	return bbunpack(argv, unpack_xz_stream, make_new_name_generic, "xz");
+}
+#endif
+
+
+/*
+ * Small zstd implementation.
+ *
+ * Based on bunzip.c from busybox
+ *
+ * Licensed under GPLv2, see file LICENSE in this source tree.
+ */
+//usage:#define unzstd_trivial_usage
+//usage:       "[-cfk] [FILE]..."
+//usage:#define unzstd_full_usage "\n\n"
+//usage:       "Decompress FILEs (or stdin)\n"
+//usage:     "\n	-c	Write to stdout"
+//usage:     "\n	-f	Force"
+//usage:     "\n	-k	Keep input files"
+//usage:     "\n	-t	Test integrity"
+//usage:
+//usage:#define zstd_trivial_usage
+//usage:       "-d [-cfk] [FILE]..."
+//usage:#define zstd_full_usage "\n\n"
+//usage:       "Decompress FILEs (or stdin)\n"
+//usage:     "\n	-d	Decompress"
+//usage:     "\n	-c	Write to stdout"
+//usage:     "\n	-f	Force"
+//usage:     "\n	-k	Keep input files"
+//usage:     "\n	-t	Test integrity"
+//usage:
+//usage:#define zstdcat_trivial_usage
+//usage:       "[FILE]..."
+//usage:#define zstdcat_full_usage "\n\n"
+//usage:       "Decompress to stdout"
+
+//config:config UNZSTD
+//config:	bool "unzstd (ZSTD_UNKNOWN_SIZE kb)"
+//config:	default y
+//config:	help
+//config:	zstd is a fast compression utility with high compression ratios.
+//config:
+//config:config ZSTDCAT
+//config:	bool "zstdcat (ZSTD_UNKNOWN_SIZE kb)"
+//config:	default y
+//config:	help
+//config:	Alias to "unzstd -c".
+//config:
+//config:config ZSTD
+//config:	bool "zstd -d"
+//config:	default y
+//config:	help
+//config:	Enable this option if you want commands like "zstd -d" to work.
+//config:	IOW: you'll get zstd applet, but it will always require -d option.
+
+//applet:IF_UNZSTD(APPLET(unzstd, BB_DIR_USR_BIN, BB_SUID_DROP))
+//                  APPLET_ODDNAME:name     main    location        suid_type     help
+//applet:IF_ZSTDCAT(APPLET_ODDNAME(zstdcat, unzstd, BB_DIR_USR_BIN, BB_SUID_DROP, zstdcat))
+//applet:IF_ZSTD(   APPLET_ODDNAME(zstd,    unzstd, BB_DIR_USR_BIN, BB_SUID_DROP, zstd))
+//kbuild:lib-$(CONFIG_UNZSTD) += bbunzip.o
+//kbuild:lib-$(CONFIG_ZSTDCAT) += bbunzip.o
+//kbuild:lib-$(CONFIG_ZSTD) += bbunzip.o
+#if ENABLE_UNZSTD || ENABLE_ZSTDCAT || ENABLE_ZSTD
+int unzstd_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+int unzstd_main(int argc UNUSED_PARAM, char **argv)
+{
+	IF_ZSTD(int opts =) getopt32(argv, BBUNPK_OPTSTR "dt");
+# if ENABLE_ZSTD
+	/* zstd without -d or -t? */
+	if (applet_name[2] == 'm' && !(opts & (BBUNPK_OPT_DECOMPRESS|BBUNPK_OPT_TEST)))
+		bb_show_usage();
+# endif
+	/* zstdcat? */
+	if (ENABLE_ZSTDCAT && applet_name[4] == 'c')
+		option_mask32 |= BBUNPK_OPT_STDOUT;
+
+	argv += optind;
+	return bbunpack(argv, unpack_zstd_stream, make_new_name_generic, "zst");
 }
 #endif

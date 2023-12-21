@@ -39,6 +39,7 @@ DPKG_FILES:= \
 	get_header_tar_bz2.o \
 	get_header_tar_lzma.o \
 	get_header_tar_xz.o \
+	get_header_tar_zstd.o \
 
 INSERT
 
@@ -65,6 +66,10 @@ lib-$(CONFIG_UNXZ)                      += open_transformer.o decompress_unxz.o
 lib-$(CONFIG_XZCAT)                     += open_transformer.o decompress_unxz.o
 lib-$(CONFIG_XZ)                        += open_transformer.o decompress_unxz.o
 lib-$(CONFIG_FEATURE_UNZIP_XZ)          += open_transformer.o decompress_unxz.o
+lib-$(CONFIG_UNZSTD)                    += open_transformer.o decompress_unzstd.o
+lib-$(CONFIG_ZSTDCAT)                   += open_transformer.o decompress_unzstd.o
+lib-$(CONFIG_ZSTD)                      += open_transformer.o decompress_unzstd.o
+lib-$(CONFIG_FEATURE_UNZIP_ZSTD)        += open_transformer.o decompress_unzstd.o
 # 'gzip -d', gunzip or zcat selects FEATURE_GZIP_DECOMPRESS
 lib-$(CONFIG_FEATURE_GZIP_DECOMPRESS)   += open_transformer.o decompress_gunzip.o
 lib-$(CONFIG_UNCOMPRESS)                += open_transformer.o decompress_uncompress.o
@@ -90,6 +95,7 @@ lib-$(CONFIG_FEATURE_SEAMLESS_GZ)       += open_transformer.o decompress_gunzip.
 lib-$(CONFIG_FEATURE_SEAMLESS_BZ2)      += open_transformer.o decompress_bunzip2.o
 lib-$(CONFIG_FEATURE_SEAMLESS_LZMA)     += open_transformer.o decompress_unlzma.o
 lib-$(CONFIG_FEATURE_SEAMLESS_XZ)       += open_transformer.o decompress_unxz.o
+lib-$(CONFIG_FEATURE_SEAMLESS_ZSTD)     += open_transformer.o decompress_unzstd.o
 lib-$(CONFIG_FEATURE_COMPRESS_USAGE)    += open_transformer.o decompress_bunzip2.o
 lib-$(CONFIG_FEATURE_COMPRESS_BBCONFIG) += open_transformer.o decompress_bunzip2.o
 lib-$(CONFIG_FEATURE_SH_EMBEDDED_SCRIPTS) += open_transformer.o decompress_bunzip2.o

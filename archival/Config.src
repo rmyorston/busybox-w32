@@ -5,6 +5,10 @@
 
 menu "Archival Utilities"
 
+config FEATURE_SEAMLESS_ZSTD
+	bool "Make tar, rpm, modprobe etc understand .zstd data"
+	default y
+
 config FEATURE_SEAMLESS_XZ
 	bool "Make tar, rpm, modprobe etc understand .xz data"
 	default y

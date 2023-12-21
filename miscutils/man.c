@@ -180,6 +180,11 @@ static int show_manpage(char *man_filename, int man, int level)
 	if (run_pipe(filename_with_zext, man, level))
 		return 1;
 #endif
+#if ENABLE_FEATURE_SEAMLESS_ZSTD
+	strcpy(ext, "zst");
+	if (run_pipe(filename_with_zext, man, level))
+		return 1;
+#endif
 #if ENABLE_FEATURE_SEAMLESS_BZ2
 	strcpy(ext, "bz2");
 	if (run_pipe(filename_with_zext, man, level))

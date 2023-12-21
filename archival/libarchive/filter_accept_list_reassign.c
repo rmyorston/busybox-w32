@@ -55,6 +55,12 @@ char FAST_FUNC filter_accept_list_reassign(archive_handle_t *archive_handle)
 			archive_handle->dpkg__action_data_subarchive = get_header_tar_xz;
 			return EXIT_SUCCESS;
 		}
+		if (ENABLE_FEATURE_SEAMLESS_ZSTD
+		 && strcmp(name_ptr, "zst") == 0
+		) {
+			archive_handle->dpkg__action_data_subarchive = get_header_tar_zstd;
+			return EXIT_SUCCESS;
+		}
 	}
 	return EXIT_FAILURE;
 }
