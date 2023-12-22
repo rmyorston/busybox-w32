@@ -102,6 +102,20 @@ a = a
 target:;@echo a = $(a)
 '
 
+# When a build command fails and the '-k' option has been provided
+# (continue execution on error) no further commands should be executed
+# for the current target.
+testing "make failure of build command with -k" \
+	"make -k -f - 2>/dev/null" "OK\n" "" '
+all: bar baz
+bar:
+	@echo OK
+	@false
+	@echo Not reached
+baz:
+	@:
+'
+
 # A macro created using ::= remembers it's of type immediate-expansion.
 # Immediate expansion also occurs when += is used to append to such a macro.
 testing "make appending to immediate-expansion macro" \

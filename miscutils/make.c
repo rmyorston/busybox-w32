@@ -2221,9 +2221,14 @@ docmds(struct name *np, struct cmd *cp)
 			} else if (status != 0 && !signore) {
 				if (!posix && WIFSIGNALED(status))
 					remove_target();
-				if (errcont || doinclude) {
-					warning("failed to build '%s'", np->n_name);
+				if (errcont) {
+					diagnostic("failed to build '%s'", np->n_name);
 					estat |= MAKE_FAILURE;
+					free(command);
+					free(cmd);
+					break;
+				} else if (doinclude) {
+					warning("failed to build '%s'", np->n_name);
 				} else {
 					const char *err_type = NULL;
 					int err_value;
@@ -2488,7 +2493,7 @@ make(struct name *np, int level)
 			else if (!doinclude && level == 0 && !(estat & MAKE_DIDSOMETHING))
 				warning("nothing to be done for %s", np->n_name);
 		} else if (!doinclude) {
-			warning("'%s' not built due to errors", np->n_name);
+			diagnostic("'%s' not built due to errors", np->n_name);
 		}
 		free(oodate);
 	}
