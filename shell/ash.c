@@ -17058,12 +17058,14 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 		}
 #endif
 #if JOBS_WIN32
-		new->jobtab = jobtab_copy();
-		SAVE_PTR(new->jobtab, "jobtab", NO_FREE);
-		new->njobs = njobs;
-		if (curjob) {
-			new->curjob = new->jobtab + (curjob - jobtab);
-			SAVE_PTR(new->curjob, "curjob", NO_FREE);
+		if (njobs) {
+			new->jobtab = jobtab_copy();
+			SAVE_PTR(new->jobtab, "jobtab", NO_FREE);
+			new->njobs = njobs;
+			if (curjob) {
+				new->curjob = new->jobtab + (curjob - jobtab);
+				SAVE_PTR(new->curjob, "curjob", NO_FREE);
+			}
 		}
 #endif
 	}
