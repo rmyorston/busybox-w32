@@ -518,7 +518,7 @@ static char *process_colour(char *str, WORD *attr)
 {
 	long val = strtol(str, (char **)&str, 10);
 
-	*attr = -1;	/* error return */
+	*attr = 0xffff;	/* error return */
 	switch (val) {
 	case 2:
 		str = process_24bit(str + 1, attr);
@@ -628,7 +628,7 @@ static char *process_escape(char *pos)
 				break;
 			case 38: /* 8/24 bit */
 				str = process_colour(str + 1, &t);
-				if (t != -1) {
+				if (t != 0xffff) {
 					attr &= ~(FOREGROUND_ALL|FOREGROUND_INTENSITY);
 					attr |= t;
 				}
@@ -652,7 +652,7 @@ static char *process_escape(char *pos)
 				break;
 			case 48: /* 8/24 bit */
 				str = process_colour(str + 1, &t);
-				if (t != -1) {
+				if (t != 0xffff) {
 					attr &= ~(BACKGROUND_ALL|BACKGROUND_INTENSITY);
 					attr |= t << 4;
 				}
