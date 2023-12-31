@@ -656,7 +656,7 @@ UNUSED_PARAM
 	sp->pid = pe.th32ProcessID;
 	sp->ppid = pe.th32ParentProcessID;
 
-	if (sp->pid == GetProcessId(GetCurrentProcess())) {
+	if (sp->pid == getpid()) {
 		comm = applet_name;
 	}
 	else if ((name=get_bb_string(sp->pid, pe.szExeFile, bb_comm)) != NULL) {
@@ -675,7 +675,7 @@ void FAST_FUNC read_cmdline(char *buf, int col, unsigned pid, const char *comm)
 	const char *str, *cmdline;
 
 	*buf = '\0';
-	if (pid == GetProcessId(GetCurrentProcess()))
+	if (pid == getpid())
 		cmdline = bb_command_line;
 	else if ((str=get_bb_string(pid, NULL, bb_command_line)) != NULL)
 		cmdline = str;
