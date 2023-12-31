@@ -259,8 +259,12 @@ create_detached_process(const char *prog, char *const *argv)
 	int success;
 
 	argc = string_array_len((char **)argv);
-	for (i = 0; i < argc; i++)
-		command = xappendword(command, quote_arg(argv[i]));
+	for (i = 0; i < argc; i++) {
+		char *qarg = quote_arg(argv[i]);
+		command = xappendword(command, qarg);
+		if (ENABLE_FEATURE_CLEAN_UP)
+			free(qarg);
+	}
 
 	ZeroMemory(&siStartInfo, sizeof(STARTUPINFO));
 	siStartInfo.cb = sizeof(STARTUPINFO);
@@ -279,7 +283,8 @@ create_detached_process(const char *prog, char *const *argv)
 				&siStartInfo,      /* STARTUPINFO pointer */
 				&piProcInfo);      /* receives PROCESS_INFORMATION */
 
-	free(command);
+	if (ENABLE_FEATURE_CLEAN_UP)
+		free(command);
 
 	if (!success)
 		return -1;
