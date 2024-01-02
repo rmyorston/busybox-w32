@@ -102,11 +102,13 @@ hostcxx_flags  = -Wp,-MD,$(depfile) $(__hostcxx_flags)
 # often than really needed.
 #
 host_target := $(shell $(HOSTCC) -v 2>&1 | grep ^Target:)
-host_platform := $(lastword $(subst -, ,$(host_target)))
+host_platform := $(word 4,$(subst -, ,$(host_target)))
+dot :=
 ifeq ($(host_platform),mingw32)
 dot := .
-else
-dot :=
+endif
+ifeq ($(host_platform),windows)
+dot := .
 endif
 
 #####
