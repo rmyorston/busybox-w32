@@ -595,7 +595,7 @@ vgetopt32(char **argv, const char *applet_opts, const char *applet_long_options,
 	return (int32_t)-1;
 }
 
-uint32_t FAST_FUNC
+uint32_t
 getopt32(char **argv, const char *applet_opts, ...)
 {
 	uint32_t opt;
@@ -608,7 +608,7 @@ getopt32(char **argv, const char *applet_opts, ...)
 }
 
 #if ENABLE_LONG_OPTS
-uint32_t FAST_FUNC
+uint32_t
 getopt32long(char **argv, const char *applet_opts, const char *longopts, ...)
 {
 	uint32_t opt;

@@ -336,7 +336,7 @@ void FAST_FUNC xprint_and_close_file(FILE *file)
 
 // Die with an error message if we can't malloc() enough space and do an
 // sprintf() into that space.
-char* FAST_FUNC xasprintf(const char *format, ...)
+char* xasprintf(const char *format, ...)
 {
 	va_list p;
 	int r;
@@ -552,7 +552,7 @@ void FAST_FUNC selinux_or_die(void)
 #endif
 
 #if !ENABLE_PLATFORM_MINGW32
-int FAST_FUNC ioctl_or_perror_and_die(int fd, unsigned request, void *argp, const char *fmt,...)
+int ioctl_or_perror_and_die(int fd, unsigned request, void *argp, const char *fmt,...)
 {
 	int ret;
 	va_list p;
@@ -568,7 +568,7 @@ int FAST_FUNC ioctl_or_perror_and_die(int fd, unsigned request, void *argp, cons
 	return ret;
 }
 
-int FAST_FUNC ioctl_or_perror(int fd, unsigned request, void *argp, const char *fmt,...)
+int ioctl_or_perror(int fd, unsigned request, void *argp, const char *fmt,...)
 {
 	va_list p;
 	int ret = ioctl(fd, request, argp);

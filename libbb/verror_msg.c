@@ -156,7 +156,7 @@ void FAST_FUNC bb_verror_msg(const char *s, va_list p, const char* strerr)
 #endif
 
 
-void FAST_FUNC bb_error_msg_and_die(const char *s, ...)
+void bb_error_msg_and_die(const char *s, ...)
 {
 	va_list p;
 
@@ -166,7 +166,7 @@ void FAST_FUNC bb_error_msg_and_die(const char *s, ...)
 	xfunc_die();
 }
 
-void FAST_FUNC bb_error_msg(const char *s, ...)
+void bb_error_msg(const char *s, ...)
 {
 	va_list p;
 
@@ -183,7 +183,7 @@ void FAST_FUNC bb_vinfo_msg(const char *s, va_list p)
 	syslog_level = LOG_ERR;
 }
 
-void FAST_FUNC bb_info_msg(const char *s, ...)
+void bb_info_msg(const char *s, ...)
 {
 	va_list p;
 

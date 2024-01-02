@@ -980,7 +980,7 @@ int bb_putchar(int ch) FAST_FUNC;
 /* Note: does not use stdio, writes to fd 2 directly */
 int bb_putchar_stderr(char ch) FAST_FUNC;
 int fputs_stdout(const char *s) FAST_FUNC;
-char *xasprintf(const char *format, ...) __attribute__ ((format(printf, 1, 2))) FAST_FUNC RETURNS_MALLOC;
+char *xasprintf(const char *format, ...) __attribute__ ((format(printf, 1, 2))) RETURNS_MALLOC;
 char *auto_string(char *str) FAST_FUNC;
 // gcc-4.1.1 still isn't good enough at optimizing it
 // (+200 bytes compared to macro)
@@ -1416,12 +1416,12 @@ char* single_argv(char **argv) FAST_FUNC;
 char **skip_dash_dash(char **argv) FAST_FUNC;
 extern const char *const bb_argv_dash[]; /* { "-", NULL } */
 extern uint32_t option_mask32;
-uint32_t getopt32(char **argv, const char *applet_opts, ...) FAST_FUNC;
+uint32_t getopt32(char **argv, const char *applet_opts, ...);
 # define No_argument "\0"
 # define Required_argument "\001"
 # define Optional_argument "\002"
 #if ENABLE_LONG_OPTS
-uint32_t getopt32long(char **argv, const char *optstring, const char *longopts, ...) FAST_FUNC;
+uint32_t getopt32long(char **argv, const char *optstring, const char *longopts, ...);
 #else
 #define getopt32long(argv,optstring,longopts,...) \
 	getopt32(argv,optstring,##__VA_ARGS__)
@@ -1496,17 +1496,17 @@ extern uint8_t xfunc_error_retval;
 extern void (*die_func)(void);
 void xfunc_die(void) NORETURN FAST_FUNC;
 void bb_show_usage(void) NORETURN FAST_FUNC;
-void bb_error_msg(const char *s, ...) __attribute__ ((format (printf, 1, 2))) FAST_FUNC;
+void bb_error_msg(const char *s, ...) __attribute__ ((format (printf, 1, 2)));
 void bb_simple_error_msg(const char *s) FAST_FUNC;
-void bb_error_msg_and_die(const char *s, ...) __attribute__ ((noreturn, format (printf, 1, 2))) FAST_FUNC;
+void bb_error_msg_and_die(const char *s, ...) __attribute__ ((noreturn, format (printf, 1, 2)));
 void bb_simple_error_msg_and_die(const char *s) NORETURN FAST_FUNC;
-void bb_perror_msg(const char *s, ...) __attribute__ ((format (printf, 1, 2))) FAST_FUNC;
+void bb_perror_msg(const char *s, ...) __attribute__ ((format (printf, 1, 2)));
 void bb_simple_perror_msg(const char *s) FAST_FUNC;
-void bb_perror_msg_and_die(const char *s, ...) __attribute__ ((noreturn, format (printf, 1, 2))) FAST_FUNC;
+void bb_perror_msg_and_die(const char *s, ...) __attribute__ ((noreturn, format (printf, 1, 2)));
 void bb_simple_perror_msg_and_die(const char *s) NORETURN FAST_FUNC;
-void bb_herror_msg(const char *s, ...) __attribute__ ((format (printf, 1, 2))) FAST_FUNC;
+void bb_herror_msg(const char *s, ...) __attribute__ ((format (printf, 1, 2)));
 void bb_simple_herror_msg(const char *s) FAST_FUNC;
-void bb_herror_msg_and_die(const char *s, ...) __attribute__ ((noreturn, format (printf, 1, 2))) FAST_FUNC;
+void bb_herror_msg_and_die(const char *s, ...) __attribute__ ((noreturn, format (printf, 1, 2)));
 void bb_simple_herror_msg_and_die(const char *s) NORETURN FAST_FUNC;
 void bb_perror_nomsg_and_die(void) NORETURN FAST_FUNC;
 void bb_perror_nomsg(void) FAST_FUNC;
@@ -1522,7 +1522,7 @@ void bb_logenv_override(void) FAST_FUNC;
 typedef smalluint exitcode_t;
 
 #if ENABLE_FEATURE_SYSLOG_INFO
-void bb_info_msg(const char *s, ...) __attribute__ ((format (printf, 1, 2))) FAST_FUNC;
+void bb_info_msg(const char *s, ...) __attribute__ ((format (printf, 1, 2)));
 void bb_simple_info_msg(const char *s) FAST_FUNC;
 void bb_vinfo_msg(const char *s, va_list p) FAST_FUNC;
 #else
@@ -1898,8 +1898,8 @@ int get_termios_and_make_raw(int fd, struct termios *newterm, struct termios *ol
 int set_termios_to_raw(int fd, struct termios *oldterm, int flags) FAST_FUNC;
 
 /* NB: "unsigned request" is crucial! "int request" will break some arches! */
-int ioctl_or_perror(int fd, unsigned request, void *argp, const char *fmt,...) __attribute__ ((format (printf, 4, 5))) FAST_FUNC;
-int ioctl_or_perror_and_die(int fd, unsigned request, void *argp, const char *fmt,...) __attribute__ ((format (printf, 4, 5))) FAST_FUNC;
+int ioctl_or_perror(int fd, unsigned request, void *argp, const char *fmt,...) __attribute__ ((format (printf, 4, 5)));
+int ioctl_or_perror_and_die(int fd, unsigned request, void *argp, const char *fmt,...) __attribute__ ((format (printf, 4, 5)));
 #if ENABLE_IOCTL_HEX2STR_ERROR
 int bb_ioctl_or_warn(int fd, unsigned request, void *argp, const char *ioctl_name) FAST_FUNC;
 int bb_xioctl(int fd, unsigned request, void *argp, const char *ioctl_name) FAST_FUNC;

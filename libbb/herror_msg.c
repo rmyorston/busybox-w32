@@ -8,7 +8,7 @@
  */
 #include "libbb.h"
 
-void FAST_FUNC bb_herror_msg(const char *s, ...)
+void bb_herror_msg(const char *s, ...)
 {
 	va_list p;
 
@@ -17,7 +17,7 @@ void FAST_FUNC bb_herror_msg(const char *s, ...)
 	va_end(p);
 }
 
-void FAST_FUNC bb_herror_msg_and_die(const char *s, ...)
+void bb_herror_msg_and_die(const char *s, ...)
 {
 	va_list p;
 
