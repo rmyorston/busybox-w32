@@ -13,4 +13,14 @@ void FAST_FUNC XZALLOC_CONST_PTR(const void *pptr, size_t size)
 {
 	ASSIGN_CONST_PTR(pptr, xzalloc(size));
 }
+
+# if ENABLE_PLATFORM_MINGW32
+void FAST_FUNC ASSIGN_CONST_PTR(const void *pptr, const void *v)
+{
+	do {
+		*(void**)not_const_pp(pptr) = (void*)(v);
+		barrier();
+	} while (0);
+}
+# endif
 #endif

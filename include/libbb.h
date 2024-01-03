@@ -2439,10 +2439,15 @@ static ALWAYS_INLINE void* not_const_pp(const void *p)
 	);
 	return pp;
 }
+# if !ENABLE_PLATFORM_MINGW32
 # define ASSIGN_CONST_PTR(pptr, v) do { \
 	*(void**)not_const_pp(pptr) = (void*)(v); \
 	barrier(); \
 } while (0)
+#else
+/* On Windows it seems necessary for this to be a function too. */
+void ASSIGN_CONST_PTR(const void *pptr, const void *ptr) FAST_FUNC;
+#endif
 /* XZALLOC_CONST_PTR() is an out-of-line function to prevent
  * clang from reading pointer before it is assigned.
  */

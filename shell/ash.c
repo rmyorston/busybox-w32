@@ -17279,8 +17279,6 @@ forkshell_init(const char *idstr)
 	struct forkshell *fs;
 	void *map_handle;
 	HANDLE h;
-	struct globals_var **gvpp;
-	struct globals_misc **gmpp;
 	int i;
 	char **ptr;
 	char *lrelocate;
@@ -17323,10 +17321,8 @@ forkshell_init(const char *idstr)
 	fs->gmp->trap_ptr = fs->gmp->trap;
 
 	/* Set global variables */
-	gvpp = (struct globals_var **)&ash_ptr_to_globals_var;
-	*gvpp = fs->gvp;
-	gmpp = (struct globals_misc **)&ash_ptr_to_globals_misc;
-	*gmpp = fs->gmp;
+	ASSIGN_CONST_PTR(&ash_ptr_to_globals_var, fs->gvp);
+	ASSIGN_CONST_PTR(&ash_ptr_to_globals_misc, fs->gmp);
 	cmdtable = fs->cmdtable;
 #if ENABLE_ASH_ALIAS
 	atab = fs->atab;	/* will be NULL for FS_SHELLEXEC */
