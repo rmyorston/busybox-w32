@@ -72,18 +72,16 @@ char* FAST_FUNC bb_get_last_path_component_nostrip(const char *path)
  */
 char* FAST_FUNC bb_get_last_path_component_strip(char *path)
 {
-	char *slash = last_char_is(path, '/');
-
 #if ENABLE_PLATFORM_MINGW32
+	char *slash = last_char_is_dir_sep(path);
 	const char *start = has_dos_drive_prefix(path) ? path+2 : path;
 
-	if (!slash)
-		slash = last_char_is(path, '\\');
-
 	if (slash)
-		while ((*slash == '/' || *slash == '\\') && slash != start)
+		while (is_dir_sep(*slash) && slash != start)
 			*slash-- = '\0';
 #else
+	char *slash = last_char_is(path, '/');
+
 	if (slash)
 		while (*slash == '/' && slash != path)
 			*slash-- = '\0';
