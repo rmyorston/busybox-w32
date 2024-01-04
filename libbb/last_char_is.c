@@ -17,3 +17,14 @@ char* FAST_FUNC last_char_is(const char *s, int c)
 		s++;
 	return (*s == (char)c) ? (char *) s : NULL;
 }
+
+#if ENABLE_PLATFORM_MINGW32
+char* FAST_FUNC last_char_is_dir_sep(const char *s)
+{
+	if (!s[0])
+		return NULL;
+	while (s[1])
+		s++;
+	return is_dir_sep(*s)? (char *) s : NULL;
+}
+#endif

@@ -589,6 +589,7 @@ char *bb_get_last_path_component_nostrip(const char *path) FAST_FUNC;
 const char *bb_basename(const char *name) FAST_FUNC;
 /* NB: can violate const-ness (similarly to strchr) */
 char *last_char_is(const char *s, int c) FAST_FUNC;
+char *last_char_is_dir_sep(const char *s) FAST_FUNC;
 const char* endofname(const char *name) FAST_FUNC;
 char *is_prefixed_with(const char *string, const char *key) FAST_FUNC;
 char *is_suffixed_with(const char *string, const char *key) FAST_FUNC;
