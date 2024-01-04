@@ -357,7 +357,7 @@ static inline mode_t file_attr_to_st_mode(DWORD attr)
 
 static int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
 {
-	size_t len;
+	char *want_dir;
 
 	if (get_dev_type(fname) != NOT_DEVICE || get_dev_fd(fname) >= 0) {
 		/* Fake attributes for special devices */
@@ -369,7 +369,10 @@ static int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
 		return 0;
 	}
 
+	want_dir = last_char_is_dir_sep(fname);
 	if (GetFileAttributesExA(fname, GetFileExInfoStandard, fdata)) {
+		if (!(fdata->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && want_dir)
+			return ENOTDIR;
 		fdata->dwFileAttributes &= ~FILE_ATTRIBUTE_DEVICE;
 		return 0;
 	}
@@ -402,8 +405,7 @@ static int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
 	case ERROR_NOT_ENOUGH_MEMORY:
 		return ENOMEM;
 	case ERROR_INVALID_NAME:
-		len = strlen(fname);
-		if (len > 1 && (fname[len-1] == '/' || fname[len-1] == '\\'))
+		if (want_dir)
 			return ENOTDIR;
 	default:
 		return ENOENT;
