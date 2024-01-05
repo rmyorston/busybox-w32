@@ -26,7 +26,7 @@
 //usage:       "[-vpa] [-o FILE] PROG ARGS"
 //usage:     )
 //usage:     IF_PLATFORM_MINGW32(
-//usage:       "[-pa] [-o FILE] PROG ARGS"
+//usage:       "[-pa] [-f FMT] [-o FILE] PROG ARGS"
 //usage:     )
 //usage:#define time_full_usage "\n\n"
 //usage:       "Run PROG, display resource usage when it exits\n"
@@ -34,9 +34,7 @@
 //usage:     "\n	-v	Verbose"
 //usage:     )
 //usage:     "\n	-p	POSIX output format"
-//usage:     IF_NOT_PLATFORM_MINGW32(
 //usage:     "\n	-f FMT	Custom format"
-//usage:     )
 //usage:     "\n	-o FILE	Write result to FILE"
 //usage:     "\n	-a	Append (else overwrite)"
 
@@ -117,7 +115,6 @@ static void resuse_end(pid_t pid, resource_t *resp)
 	resp->elapsed_ms = monotonic_ms() - resp->elapsed_ms;
 }
 
-#if !ENABLE_PLATFORM_MINGW32
 static void printargv(char *const *argv)
 {
 	const char *fmt = " %s" + 1;
@@ -154,7 +151,6 @@ static unsigned long ptok(const unsigned pagesize, const unsigned long pages)
 }
 #undef pagesize
 #endif /* UNUSED */
-#endif /* !ENABLE_PLATFORM_MINGW32 */
 
 /* summarize: Report on the system use of a command.
 
@@ -204,10 +200,6 @@ static unsigned long ptok(const unsigned pagesize, const unsigned long pages)
 #define TICKS_PER_SEC 100
 #endif
 
-#if ENABLE_PLATFORM_MINGW32
-#define summarize(f, c, r) summarize(f, r)
-#endif
-
 static void summarize(const char *fmt, char **command, resource_t *resp)
 {
 #if !ENABLE_PLATFORM_MINGW32
@@ -253,7 +245,6 @@ static void summarize(const char *fmt, char **command, resource_t *resp)
 		switch (*fmt) {
 		case '%':
 			switch (*++fmt) {
-#if !ENABLE_PLATFORM_MINGW32
 			default:
 				/* Unknown %<char> is printed as "?<char>" */
 				bb_putchar('?');
@@ -268,6 +259,7 @@ static void summarize(const char *fmt, char **command, resource_t *resp)
 			case 'C':	/* The command that got timed.  */
 				printargv(command);
 				break;
+#if !ENABLE_PLATFORM_MINGW32
 			case 'D':	/* Average unshared data size.  */
 				/* (linux kernel sets ru_idrss/isrss/ixrss to 0,
 				 * docs say the value is in kbytes, so ptok() is wrong) */
@@ -398,14 +390,13 @@ static void summarize(const char *fmt, char **command, resource_t *resp)
 			case 'w':	/* Voluntary context switches.  */
 				printf("%lu", resp->ru.ru_nvcsw);
 				break;
+#endif
 			case 'x':	/* Exit status.  */
 				printf("%u", WEXITSTATUS(resp->waitstatus));
 				break;
-#endif
 			}
 			break;
 
-#if !ENABLE_PLATFORM_MINGW32
 		default: /* *fmt is '\': format escape */
 			switch (*++fmt) {
 			default:
@@ -431,14 +422,11 @@ static void summarize(const char *fmt, char **command, resource_t *resp)
 				break;
 			}
 			break;
-#endif
 		}
 		++fmt;
 	}
 	bb_putchar('\n');
-#if !ENABLE_PLATFORM_MINGW32
  ret: ;
-#endif
 }
 
 /* Run command CMD and return statistics on it.
@@ -497,6 +485,7 @@ int time_main(int argc UNUSED_PARAM, char **argv)
 		OPT_p = (1 << 0),
 		OPT_a = (1 << 1),
 		OPT_o = (1 << 2),
+		OPT_f = (1 << 3),
 #endif
 	};
 
@@ -506,8 +495,8 @@ int time_main(int argc UNUSED_PARAM, char **argv)
 				&output_filename, &output_format
 	);
 #else
-	opt = getopt32(argv, "^+" "pao:" "\0" "-1"/*at least one arg*/,
-				&output_filename
+	opt = getopt32(argv, "^+" "pao:f:" "\0" "-1"/*at least one arg*/,
+				&output_filename, &output_format
 	);
 #endif
 	argv += optind;
