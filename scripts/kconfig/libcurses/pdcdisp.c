@@ -153,7 +153,7 @@ void _new_packet(attr_t attr, int lineno, int x, int len, const chtype *srcp)
         return;
     }
 
-    PDC_pair_content(PAIR_NUMBER(attr), &fore, &back);
+    pair_content(PAIR_NUMBER(attr), &fore, &back);
     ansi = pdc_ansi || (fore >= 16 || back >= 16);
     blink = (SP->termattrs & A_BLINK) && (attr & A_BLINK);
 
@@ -181,7 +181,12 @@ void _new_packet(attr_t attr, int lineno, int x, int len, const chtype *srcp)
             chtype ch = srcp[j];
 
             if (ch & A_ALTCHARSET && !(ch & 0xff80))
+            {
                 ch = acs_map[ch & 0x7f];
+
+                if (pdc_wt && (ch & A_CHARTEXT) < ' ')
+                    goto NONANSI;
+            }
 
             if (blink && blinked_off)
                 ch = ' ';
@@ -198,6 +203,7 @@ void _new_packet(attr_t attr, int lineno, int x, int len, const chtype *srcp)
 #endif
     }
     else
+NONANSI:
     {
         CHAR_INFO buffer[512];
         COORD bufSize, bufPos;
@@ -276,7 +282,17 @@ void PDC_transform_line(int lineno, int x, int len, const chtype *srcp)
 
 void PDC_blink_text(void)
 {
+    CONSOLE_CURSOR_INFO cci;
     int i, j, k;
+    bool oldvis;
+
+    GetConsoleCursorInfo(pdc_con_out, &cci);
+    oldvis = cci.bVisible;
+    if (oldvis)
+    {
+        cci.bVisible = FALSE;
+        SetConsoleCursorInfo(pdc_con_out, &cci);
+    }
 
     if (!(SP->termattrs & A_BLINK))
         blinked_off = FALSE;
@@ -299,5 +315,15 @@ void PDC_blink_text(void)
     }
 
     PDC_gotoyx(SP->cursrow, SP->curscol);
+    if (oldvis)
+    {
+        cci.bVisible = TRUE;
+        SetConsoleCursorInfo(pdc_con_out, &cci);
+    }
+
     pdc_last_blink = GetTickCount();
+}
+
+void PDC_doupdate(void)
+{
 }

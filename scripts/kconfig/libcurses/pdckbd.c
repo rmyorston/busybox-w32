@@ -2,26 +2,6 @@
 
 #include "pdcwin.h"
 
-/*man-start**************************************************************
-
-pdckbd
-------
-
-### Synopsis
-
-    unsigned long PDC_get_input_fd(void);
-
-### Description
-
-   PDC_get_input_fd() returns the file descriptor that PDCurses reads
-   its input from. It can be used for select().
-
-### Portability
-                             X/Open  ncurses  NetBSD
-    PDC_get_input_fd            -       -       -
-
-**man-end****************************************************************/
-
 /* These variables are used to store information about the next
    Input Event. */
 
@@ -210,7 +190,37 @@ static KPTAB kptab[] =
    {0,          0,         0x27,        ALT_FQUOTE, 0   }, /* 222 */
    {0,          0,         0,           0,          0   }, /* 223 */
    {0,          0,         0,           0,          0   }, /* 224 */
-   {0,          0,         0,           0,          0   }  /* 225 */
+   {0,          0,         0,           0,          0   }, /* 225 */
+   {0,          0,         0,           0,          0   }, /* 226 */
+   {0,          0,         0,           0,          0   }, /* 227 */
+   {0,          0,         0,           0,          0   }, /* 228 */
+   {0,          0,         0,           0,          0   }, /* 229 */
+   {0,          0,         0,           0,          0   }, /* 230 */
+   {0,          0,         0,           0,          0   }, /* 231 */
+   {0,          0,         0,           0,          0   }, /* 232 */
+   {0,          0,         0,           0,          0   }, /* 233 */
+   {0,          0,         0,           0,          0   }, /* 234 */
+   {0,          0,         0,           0,          0   }, /* 235 */
+   {0,          0,         0,           0,          0   }, /* 236 */
+   {0,          0,         0,           0,          0   }, /* 237 */
+   {0,          0,         0,           0,          0   }, /* 238 */
+   {0,          0,         0,           0,          0   }, /* 239 */
+   {0,          0,         0,           0,          0   }, /* 240 */
+   {0,          0,         0,           0,          0   }, /* 241 */
+   {0,          0,         0,           0,          0   }, /* 242 */
+   {0,          0,         0,           0,          0   }, /* 243 */
+   {0,          0,         0,           0,          0   }, /* 244 */
+   {0,          0,         0,           0,          0   }, /* 245 */
+   {0,          0,         0,           0,          0   }, /* 246 */
+   {0,          0,         0,           0,          0   }, /* 247 */
+   {0,          0,         0,           0,          0   }, /* 248 */
+   {0,          0,         0,           0,          0   }, /* 249 */
+   {0,          0,         0,           0,          0   }, /* 250 */
+   {0,          0,         0,           0,          0   }, /* 251 */
+   {0,          0,         0,           0,          0   }, /* 252 */
+   {0,          0,         0,           0,          0   }, /* 253 */
+   {0,          0,         0,           0,          0   }, /* 254 */
+   {0,          0,         0,           0,          0   }  /* 255 */
 };
 
 static KPTAB ext_kptab[] =
@@ -233,16 +243,15 @@ static KPTAB ext_kptab[] =
 
 /* End of kptab[] */
 
-unsigned long PDC_get_input_fd(void)
-{
-    PDC_LOG(("PDC_get_input_fd() - called\n"));
-
-    return 0L;
-}
-
 void PDC_set_keyboard_binary(bool on)
 {
+    DWORD mode;
+
     PDC_LOG(("PDC_set_keyboard_binary() - called\n"));
+
+    GetConsoleMode(pdc_con_in, &mode);
+    SetConsoleMode(pdc_con_in, !on ? (mode | ENABLE_PROCESSED_INPUT) :
+                                    (mode & ~ENABLE_PROCESSED_INPUT));
 }
 
 /* check if a key or mouse event is waiting */
@@ -352,7 +361,12 @@ static int _get_key_count(void)
 
 static int _process_key_event(void)
 {
-    int key = (unsigned short)KEV.uChar.UnicodeChar;
+    int key =
+#ifdef PDC_WIDE
+        KEV.uChar.UnicodeChar;
+#else
+        KEV.uChar.AsciiChar;
+#endif
     WORD vk = KEV.wVirtualKeyCode;
     DWORD state = KEV.dwControlKeyState;
 
@@ -466,15 +480,15 @@ static int _process_mouse_event(void)
 
     memset(&SP->mouse_status, 0, sizeof(MOUSE_STATUS));
 
+    SP->mouse_status.x = MEV.dwMousePosition.X;
+    SP->mouse_status.y = MEV.dwMousePosition.Y;
+
     /* Handle scroll wheel */
 
     if (MEV.dwEventFlags == 4)
     {
         SP->mouse_status.changes = (MEV.dwButtonState & 0xFF000000) ?
             PDC_MOUSE_WHEEL_DOWN : PDC_MOUSE_WHEEL_UP;
-
-        SP->mouse_status.x = -1;
-        SP->mouse_status.y = -1;
 
         memset(&old_mouse_status, 0, sizeof(old_mouse_status));
 
@@ -485,9 +499,6 @@ static int _process_mouse_event(void)
     {
         SP->mouse_status.changes = (MEV.dwButtonState & 0xFF000000) ?
             PDC_MOUSE_WHEEL_RIGHT : PDC_MOUSE_WHEEL_LEFT;
-
-        SP->mouse_status.x = -1;
-        SP->mouse_status.y = -1;
 
         memset(&old_mouse_status, 0, sizeof(old_mouse_status));
 
@@ -536,9 +547,6 @@ static int _process_mouse_event(void)
                 ReadConsoleInput(pdc_con_in, &ip, 1, &count);
         }
     }
-
-    SP->mouse_status.x = MEV.dwMousePosition.X;
-    SP->mouse_status.y = MEV.dwMousePosition.Y;
 
     SP->mouse_status.changes = 0;
 
@@ -662,13 +670,17 @@ bool PDC_has_mouse(void)
 
 int PDC_mouse_set(void)
 {
-    /* If turning on mouse input: Set ENABLE_MOUSE_INPUT, and clear
-       all other flags, including the extended flags;
-       If turning off the mouse: Set QuickEdit Mode to the status it
-       had on startup, and clear all other flags */
+    DWORD mode;
 
-    SetConsoleMode(pdc_con_in, SP->_trap_mbe ?
-                   (ENABLE_MOUSE_INPUT|0x0088) : (pdc_quick_edit|0x0088));
+    /* If turning on mouse input: Set ENABLE_MOUSE_INPUT, and clear
+       all other flags, except processed input mode;
+       If turning off the mouse: Set QuickEdit Mode to the status it
+       had on startup, and clear all other flags, except etc. */
+
+    GetConsoleMode(pdc_con_in, &mode);
+    mode = (mode & 1) | 0x0088;
+    SetConsoleMode(pdc_con_in, mode | (SP->_trap_mbe ?
+                   ENABLE_MOUSE_INPUT : pdc_quick_edit));
 
     memset(&old_mouse_status, 0, sizeof(old_mouse_status));
 

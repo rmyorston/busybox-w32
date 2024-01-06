@@ -64,8 +64,16 @@ int wnoutrefresh(WINDOW *win)
 
     PDC_LOG(("wnoutrefresh() - called: win=%p\n", win));
 
-    if ( !win || (win->_flags & (_PAD|_SUBPAD)) )
+    if (!win)
         return ERR;
+    if (is_pad(win))
+        return pnoutrefresh(win,
+				win->_pad._pad_y,
+				win->_pad._pad_x,
+				win->_pad._pad_top,
+				win->_pad._pad_left,
+				win->_pad._pad_bottom,
+				win->_pad._pad_right);
 
     begy = win->_begy;
     begx = win->_begx;
@@ -214,6 +222,8 @@ int doupdate(void)
 
     SP->cursrow = curscr->_cury;
     SP->curscol = curscr->_curx;
+
+    PDC_doupdate();
 
     return OK;
 }
