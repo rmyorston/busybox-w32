@@ -2673,7 +2673,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 #if !ENABLE_PLATFORM_MINGW32
 	if (n != 0 || (initial_settings.c_lflag & (ECHO|ICANON)) == ICANON) {
 #else
-	if (n != 0 || !isatty(0) || !isatty(1)) {
+	if (n != 0 || !isatty(0)) {
 #endif
 		/* Happens when e.g. stty -echo was run before.
 		 * But if ICANON is not set, we don't come here.
@@ -2684,8 +2684,12 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 		fflush_all();
 		if (fgets(command, maxsize, stdin) == NULL)
 			len = -1; /* EOF or error */
-		else
+		else {
 			len = strlen(command);
+#if ENABLE_PLATFORM_MINGW32
+			len = remove_cr(command, len);
+#endif
+		}
 		DEINIT_S();
 		return len;
 	}
