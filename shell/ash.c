@@ -16842,8 +16842,10 @@ jobtab_copy(void)
 					xasprintf("jobtab[%d].ps0.ps_cmd '%s'",
 								i, jobtab[i].ps0.ps_cmd), FREE);
 			new[i].ps = &new[i].ps0;
-		} else {
+		} else if (jobtab[i].nprocs) {
 			new[i].ps = procstat_copy(i);
+		} else {
+			new[i].ps = NULL;
 		}
 		SAVE_PTR(new[i].ps, xasprintf("jobtab[%d].ps", i), FREE);
 
