@@ -9844,6 +9844,7 @@ static char *funcstring_end;    /* end of block to allocate strings from */
 static int fs_size;
 # if FORKSHELL_DEBUG
 static void *fs_start;
+static void *fs_funcstring;
 static const char **annot;
 # endif
 #endif
@@ -9995,36 +9996,55 @@ static union node *copynode(union node *);
 # if FORKSHELL_DEBUG
 #  define FREE 1
 #  define NO_FREE 2
-#  define ANNOT(dst,note) { \
-		if (annot) \
-			annot[(char *)&dst - (char *)fs_start] = note; \
-	}
+#  define MARK_PTR(dst,note,flag) forkshell_mark_ptr((void *)&dst, note, flag)
 # else
 #  define FREE 1
 #  define NO_FREE 1
-#  define ANNOT(dst,note)
+#  define MARK_PTR(dst,note,flag) forkshell_mark_ptr((void *)&dst, flag)
 # endif
 
-/* The relocation map is offset from the start of the forkshell data
- * block by 'fs_size' bytes.  The flag relating to a particular destination
- * pointer is thus at (dst+fs_size). */
-# define MARK_PTR(dst,flag) {*((char *)&dst + fs_size) = flag;}
+#if FORKSHELL_DEBUG
+static void forkshell_mark_ptr(void *dst, const char *note, int flag)
+#else
+static void forkshell_mark_ptr(void *dst, int flag)
+#endif
+{
+	/* The relocation map is offset from the start of the forkshell data
+	 * block by 'fs_size' bytes.  The flag relating to a particular
+	 * destination pointer is thus at (dst+fs_size). */
+	*((char *)dst + fs_size) = flag;
+
+#if FORKSHELL_DEBUG
+	if (dst < fs_start || dst >= fs_funcstring) {
+		fprintf(stderr, "dst (%p) out of range (%p %p)\n",
+				dst, fs_start, fs_funcstring);
+	}
+	if (annot) {
+		if (annot[(char *)dst - (char *)fs_start]) {
+			fprintf(stderr, "duplicate annotation: %s %s\n",
+						annot[(char *)dst - (char *)fs_start], note);
+		}
+		annot[(char *)dst - (char *)fs_start] = note;
+	}
+#endif
+}
 
 # define SAVE_PTR(dst,note,flag) { \
 	if (fs_size) { \
-		MARK_PTR(dst,flag); ANNOT(dst,note); \
+		MARK_PTR(dst,note,flag); \
 	} \
 }
 # define SAVE_PTR2(dst1,note1,flag1,dst2,note2,flag2) { \
 	if (fs_size) { \
-		MARK_PTR(dst1,flag1); MARK_PTR(dst2,flag2); \
-		ANNOT(dst1,note1); ANNOT(dst2,note2); \
+		MARK_PTR(dst1,note1,flag1); \
+		MARK_PTR(dst2,note2,flag2); \
 	} \
 }
 # define SAVE_PTR3(dst1,note1,flag1,dst2,note2,flag2,dst3,note3,flag3) { \
 	if (fs_size) { \
-		MARK_PTR(dst1,flag1); MARK_PTR(dst2,flag2); MARK_PTR(dst3,flag3); \
-		ANNOT(dst1,note1); ANNOT(dst2,note2); ANNOT(dst3,note3); \
+		MARK_PTR(dst1,note1,flag1); \
+		MARK_PTR(dst2,note2,flag2); \
+		MARK_PTR(dst3,note3,flag3); \
 	} \
 }
 #else
@@ -16522,7 +16542,7 @@ spawn_forkshell(struct forkshell *fs, struct job *jp, union node *n, int mode)
 #undef SAVE_PTR
 #undef SAVE_PTR2
 #undef SAVE_PTR3
-#define SAVE_PTR(dst,note,flag) {MARK_PTR(dst,flag); ANNOT(dst,note);}
+#define SAVE_PTR(dst,note,flag) {MARK_PTR(dst,note,flag);}
 
 static int align_len(const char *s)
 {
@@ -17224,6 +17244,7 @@ forkshell_prepare(struct forkshell *fs)
 	funcstring_end = (char *)new + size;
 #if FORKSHELL_DEBUG
 	fs_start = new;
+	fs_funcstring = (char *)new + sizeof(struct forkshell) + ds.funcblocksize;
 	relocate = (char *)new + size;
 	annot = (const char **)xzalloc(sizeof(char *)*relocatesize);
 #endif
