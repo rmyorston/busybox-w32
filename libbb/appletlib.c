@@ -918,7 +918,7 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 		full_write2_str(" multi-call binary.\n"); /* reuse */
 #endif
 		full_write2_str(
-			"BusyBox is copyrighted by many authors between 1998-2023.\n"
+			"BusyBox is copyrighted by many authors between 1998-2024.\n"
 			"Licensed under GPLv2. See source distribution for detailed\n"
 			"copyright notices.\n"
 			"\n"
