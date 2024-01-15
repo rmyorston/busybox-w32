@@ -9842,8 +9842,8 @@ static void *funcblock;         /* block to allocate function from */
 static char *funcstring_end;    /* end of block to allocate strings from */
 #if ENABLE_PLATFORM_MINGW32
 static int fs_size;
-# if FORKSHELL_DEBUG
 static void *fs_start;
+# if FORKSHELL_DEBUG
 static void *fs_funcstring;
 static const char **annot;
 # endif
@@ -10009,10 +10009,10 @@ static void forkshell_mark_ptr(void *dst, const char *note, int flag)
 static void forkshell_mark_ptr(void *dst, int flag)
 #endif
 {
-	/* The relocation map is offset from the start of the forkshell data
-	 * block by 'fs_size' bytes.  The flag relating to a particular
-	 * destination pointer is thus at (dst+fs_size). */
-	*((char *)dst + fs_size) = flag;
+	char *lrelocate = (char *)fs_start + fs_size;
+	int index = ((char *)dst - (char *)fs_start)/sizeof(char *);
+
+	lrelocate[index] = flag;
 
 #if FORKSHELL_DEBUG
 	if (dst < fs_start || dst >= fs_funcstring) {
@@ -10020,11 +10020,11 @@ static void forkshell_mark_ptr(void *dst, int flag)
 				dst, fs_start, fs_funcstring);
 	}
 	if (annot) {
-		if (annot[(char *)dst - (char *)fs_start]) {
+		if (annot[index]) {
 			fprintf(stderr, "duplicate annotation: %s %s\n",
-						annot[(char *)dst - (char *)fs_start], note);
+						annot[index], note);
 		}
-		annot[(char *)dst - (char *)fs_start] = note;
+		annot[index] = note;
 	}
 #endif
 }
@@ -17180,7 +17180,7 @@ forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 	count = 0;
 	for (i = 0; i < fs->relocatesize; ++i) {
 		if (lrelocate[i]) {
-			char **ptr = (char **)((char *)fs + i);
+			char **ptr = (char **)((char *)fs + i * sizeof(char *));
 			fprintf(fp, "%p %p %s\n", ptr, *ptr,
 					notes && notes[i] ? notes[i] : "");
 			++count;
@@ -17225,7 +17225,7 @@ forkshell_prepare(struct forkshell *fs)
 	/* calculate size of structure, funcblock and funcstring */
 	ds = forkshell_size(fs);
 	size = sizeof(struct forkshell) + ds.funcblocksize + ds.funcstringsize;
-	relocatesize = sizeof(struct forkshell) + ds.funcblocksize;
+	relocatesize = (sizeof(struct forkshell) + ds.funcblocksize)/sizeof(char *);
 
 	/* Allocate shared memory region */
 	memset(&sa, 0, sizeof(sa));
@@ -17240,10 +17240,10 @@ forkshell_prepare(struct forkshell *fs)
 	if (new == NULL)
 		return NULL;
 	fs_size = size;
+	fs_start = new;
 	funcblock = (char *)(new + 1);
 	funcstring_end = (char *)new + size;
 #if FORKSHELL_DEBUG
-	fs_start = new;
 	fs_funcstring = (char *)new + sizeof(struct forkshell) + ds.funcblocksize;
 	relocate = (char *)new + size;
 	annot = (const char **)xzalloc(sizeof(char *)*relocatesize);
@@ -17317,7 +17317,7 @@ forkshell_init(const char *idstr)
 	lrelocate = (char *)fs + fs->size;
 	for (i = 0; i < fs->relocatesize; i++) {
 		if (lrelocate[i]) {
-			ptr = (char **)((char *)fs + i);
+			ptr = (char **)((char *)fs + i * sizeof(char *));
 			if (*ptr)
 				*ptr = (char *)fs + (*ptr - fs->old_base);
 		}
