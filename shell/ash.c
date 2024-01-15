@@ -17277,12 +17277,6 @@ forkshell_prepare(struct forkshell *fs)
 		forkshell_print(fp, new, annot);
 
 		for (i = 0; i < relocatesize; ++i) {
-			/* check relocations are only present for structure and funcblock */
-			if (i >= sizeof(*new)+new->funcblocksize && annot[i] != NULL) {
-				fprintf(fp, "\nnon-NULL annotation at offset %d (> %d) %s\n",
-						i, (int)sizeof(*new)+new->funcblocksize, annot[i]);
-				break;
-			}
 			if (relocate[i] == FREE) {
 				free((void *)annot[i]);
 			}
