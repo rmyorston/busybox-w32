@@ -9846,6 +9846,7 @@ static void *fs_start;
 # if FORKSHELL_DEBUG
 static void *fs_funcstring;
 static const char **annot;
+static char *annot_free;
 # endif
 #endif
 
@@ -9994,25 +9995,24 @@ static union node *copynode(union node *);
 
 #if ENABLE_PLATFORM_MINGW32
 # if FORKSHELL_DEBUG
-#  define FREE 1
-#  define NO_FREE 2
 #  define MARK_PTR(dst,note,flag) forkshell_mark_ptr((void *)&dst, note, flag)
 # else
-#  define FREE 1
-#  define NO_FREE 1
-#  define MARK_PTR(dst,note,flag) forkshell_mark_ptr((void *)&dst, flag)
+#  define MARK_PTR(dst,note,flag) forkshell_mark_ptr((void *)&dst)
 # endif
+
+#define NO_FREE 0
+#define FREE 1
 
 #if FORKSHELL_DEBUG
 static void forkshell_mark_ptr(void *dst, const char *note, int flag)
 #else
-static void forkshell_mark_ptr(void *dst, int flag)
+static void forkshell_mark_ptr(void *dst)
 #endif
 {
 	char *lrelocate = (char *)fs_start + fs_size;
 	int index = ((char *)dst - (char *)fs_start)/sizeof(char *);
 
-	lrelocate[index] = flag;
+	lrelocate[index/8] |= 1 << (index % 8);
 
 #if FORKSHELL_DEBUG
 	if (dst < fs_start || dst >= fs_funcstring) {
@@ -10025,6 +10025,7 @@ static void forkshell_mark_ptr(void *dst, int flag)
 						annot[index], note);
 		}
 		annot[index] = note;
+		annot_free[index] = flag;
 	}
 #endif
 }
@@ -17106,7 +17107,7 @@ forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 	char *lfuncstring;
 	char *lrelocate;
 	char *s;
-	int count, i, total;
+	int count, i, total, bitmapsize;
 	int size[NUM_BLOCKS];
 	char *lptr[NUM_BLOCKS+1];
 	const char *fsname[] = {
@@ -17129,12 +17130,13 @@ forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 			return;
 	}
 
+	bitmapsize = (fs->relocatesize + 7)/8;
 	total = sizeof(struct forkshell) + fs->funcblocksize +
-				fs->funcstringsize + fs->relocatesize;
+				fs->funcstringsize + bitmapsize;
 	fprintf(fp, "total size    %6d = %d + %d + %d + %d = %d\n",
-				fs->size + fs->relocatesize,
+				fs->size + bitmapsize,
 				(int)sizeof(struct forkshell), fs->funcblocksize,
-				fs->funcstringsize, fs->relocatesize, total);
+				fs->funcstringsize, bitmapsize, total);
 
 	lfuncblock = (char *)(fs + 1);
 	lfuncstring = (char *)lfuncblock + fs->funcblocksize;
@@ -17179,7 +17181,7 @@ forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 	fprintf(fp, "--- relocate ---\n");
 	count = 0;
 	for (i = 0; i < fs->relocatesize; ++i) {
-		if (lrelocate[i]) {
+		if (lrelocate[i/8] & (1 << i % 8)) {
 			char **ptr = (char **)((char *)fs + i * sizeof(char *));
 			fprintf(fp, "%p %p %s\n", ptr, *ptr,
 					notes && notes[i] ? notes[i] : "");
@@ -17212,7 +17214,7 @@ forkshell_prepare(struct forkshell *fs)
 {
 	struct forkshell *new;
 	struct datasize ds;
-	int size, relocatesize;
+	int size, relocatesize, bitmapsize;
 	HANDLE h;
 	SECURITY_ATTRIBUTES sa;
 #if FORKSHELL_DEBUG
@@ -17226,6 +17228,7 @@ forkshell_prepare(struct forkshell *fs)
 	ds = forkshell_size(fs);
 	size = sizeof(struct forkshell) + ds.funcblocksize + ds.funcstringsize;
 	relocatesize = (sizeof(struct forkshell) + ds.funcblocksize)/sizeof(char *);
+	bitmapsize = (relocatesize + 7)/8;
 
 	/* Allocate shared memory region */
 	memset(&sa, 0, sizeof(sa));
@@ -17233,7 +17236,7 @@ forkshell_prepare(struct forkshell *fs)
 	sa.lpSecurityDescriptor = NULL;
 	sa.bInheritHandle = TRUE;
 	h = CreateFileMapping(INVALID_HANDLE_VALUE, &sa, PAGE_READWRITE, 0,
-			size+relocatesize, NULL);
+			size+bitmapsize, NULL);
 
 	/* Initialise pointers */
 	new = (struct forkshell *)MapViewOfFile(h, FILE_MAP_WRITE, 0,0, 0);
@@ -17247,6 +17250,7 @@ forkshell_prepare(struct forkshell *fs)
 	fs_funcstring = (char *)new + sizeof(struct forkshell) + ds.funcblocksize;
 	relocate = (char *)new + size;
 	annot = (const char **)xzalloc(sizeof(char *)*relocatesize);
+	annot_free = xzalloc(relocatesize);
 #endif
 
 	/* Now pack them all */
@@ -17272,16 +17276,17 @@ forkshell_prepare(struct forkshell *fs)
 				new->funcstringsize);
 		if ((char *)funcblock != funcstring_end)
 			fprintf(fp, "   funcstring != end funcblock + 1 %p\n", funcblock);
-		fprintf(fp, "relocate    %p  %6d\n\n", relocate, new->relocatesize);
+		fprintf(fp, "relocate    %p  %6d\n\n", relocate, bitmapsize);
 
 		forkshell_print(fp, new, annot);
 
 		for (i = 0; i < relocatesize; ++i) {
-			if (relocate[i] == FREE) {
+			if (annot_free[i]) {
 				free((void *)annot[i]);
 			}
 		}
 		free(annot);
+		free(annot_free);
 		annot = NULL;
 		fclose(fp);
 	}
@@ -17316,7 +17321,7 @@ forkshell_init(const char *idstr)
 	/* pointer fixup */
 	lrelocate = (char *)fs + fs->size;
 	for (i = 0; i < fs->relocatesize; i++) {
-		if (lrelocate[i]) {
+		if (lrelocate[i/8] & (1 << i % 8)) {
 			ptr = (char **)((char *)fs + i * sizeof(char *));
 			if (*ptr)
 				*ptr = (char *)fs + (*ptr - fs->old_base);
