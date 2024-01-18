@@ -254,11 +254,22 @@ $(sort $(subdir-obj-y)): $(subdir-ym) ;
 #
 ifdef builtin-target
 quiet_cmd_link_o_target = LD      $@
+ifeq ($(CONFIG_PLATFORM_POSIX),y)
 # If the list of objects to link is empty, just create an empty built-in.o
 # -nostdlib is added to make "make LD=gcc ..." work (some people use that)
 cmd_link_o_target = $(if $(strip $(obj-y)),\
 		$(LD) -nostdlib $(ld_flags) -r -o $@ $(filter $(obj-y), $^),\
 		rm -f $@; $(AR) rcs $@)
+else
+# In default builds of busybox-w32 all builtin targets have either
+# zero or one object files.  In the latter case copy the object to
+# the target.  This avoids the need to use the linker:  the llvm
+# linker doesn't support the -r option.
+cmd_link_o_target = $(intcmp $(words $(obj-y)),1,\
+		rm -f $@; $(AR) rcs $@,\
+		cp $(obj-y) $@,\
+		$(LD) -nostdlib $(ld_flags) -r -o $@ $(filter $(obj-y), $^))
+endif
 
 $(builtin-target): $(obj-y) FORCE
 	$(call if_changed,link_o_target)
