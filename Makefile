@@ -196,6 +196,28 @@ ARCH ?= $(SUBARCH)
 # Architecture as present in compile.h
 UTS_MACHINE := $(ARCH)
 
+HOST_COMPILER ?=
+ifeq ($(HOST_COMPILER),)
+HOST_COMPILER := $(shell grep ^CONFIG_HOST_COMPILER= .config 2>/dev/null)
+HOST_COMPILER := $(subst CONFIG_HOST_COMPILER=,,$(HOST_COMPILER))
+HOST_COMPILER := $(subst ",,$(HOST_COMPILER))
+#")
+endif
+ifeq ($(HOST_COMPILER),)
+HOST_COMPILER := gcc
+endif
+
+CROSS_COMPILER ?=
+ifeq ($(CROSS_COMPILER),)
+CROSS_COMPILER := $(shell grep ^CONFIG_CROSS_COMPILER= .config 2>/dev/null)
+CROSS_COMPILER := $(subst CONFIG_CROSS_COMPILER=,,$(CROSS_COMPILER))
+CROSS_COMPILER := $(subst ",,$(CROSS_COMPILER))
+#")
+endif
+ifeq ($(CROSS_COMPILER),)
+CROSS_COMPILER := gcc
+endif
+
 # SHELL used by kbuild
 CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 	  else if [ -x /bin/bash ]; then echo /bin/bash; \
@@ -275,7 +297,7 @@ export quiet Q KBUILD_VERBOSE
 # Look for make include files relative to root of kernel src
 MAKEFLAGS += --include-dir=$(srctree)
 
-HOSTCC  	= gcc
+HOSTCC  	= $(HOST_COMPILER)
 HOSTCXX  	= g++
 HOSTCFLAGS	:=
 HOSTCXXFLAGS	:=
@@ -293,7 +315,7 @@ MAKEFLAGS += -rR
 # Make variables (CC, etc...)
 
 AS		= $(CROSS_COMPILE)as
-CC		= $(CROSS_COMPILE)gcc
+CC		= $(CROSS_COMPILE)$(CROSS_COMPILER)
 LD		= $(CC) -nostdlib
 CPP		= $(CC) -E
 AR		= $(CROSS_COMPILE)ar

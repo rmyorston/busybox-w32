@@ -689,6 +689,18 @@ config CROSS_COMPILER_PREFIX
 
 	Native builds leave this empty.
 
+config HOST_COMPILER
+	string "Host compiler"
+	default "gcc"
+	help
+	Name of the compiler to use for host binaries.
+
+config CROSS_COMPILER
+	string "Cross compiler"
+	default "gcc"
+	help
+	Name of the compiler to use for cross compilation.
+
 config SYSROOT
 	string "Path to sysroot"
 	default ""
