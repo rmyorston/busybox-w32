@@ -2,7 +2,7 @@
 #
 # Build busybox prerelease binaries
 #
-TARGETS="build_pre_32 build_pre_64 build_pre_64u"
+TARGETS="build_pre_32 build_pre_64 build_pre_64a build_pre_64u"
 
 # If an argument is supplied it overrides the default source directory.
 SRC=busybox-w32
@@ -27,18 +27,26 @@ done
 # apply default configuration
 for i in $TARGETS
 do
-	if [ $i = "build_pre_64" ]
-	then
-		CONFIG=mingw64_defconfig
-	elif [ $i = "build_pre_64u" ]
-	then
-		CONFIG=mingw64u_defconfig
-	elif [ $i = "build_pre_32" ]
-	then
-		CONFIG=mingw32_defconfig
-	fi
+	(
+		if [ $i = "build_pre_64" ]
+		then
+			CONFIG=mingw64_defconfig
+		elif [ $i = "build_pre_64u" ]
+		then
+			CONFIG=mingw64u_defconfig
+		elif [ $i = "build_pre_64a" ]
+		then
+			CONFIG=mingw64a_defconfig
+			PATH="/data2/llvm/current/bin:$PATH"
+		elif [ $i = "build_pre_32" ]
+		then
+			CONFIG=mingw32_defconfig
+		fi
 
-	(cd $i; git checkout master; make ${CONFIG})
+		cd $i
+		git checkout master
+		make ${CONFIG}
+	)
 done
 
 # perform build
@@ -52,8 +60,23 @@ do
 
 	(
 	cd $i
-	GCCV=$(rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-gcc)
-	CRTV=$(rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-crt)
-	make -j $(nproc) EXTRAVERSION="-$(git describe --match=FRP | sed 's/FRP/PRE/')" MINGW_VER="$GCCV; $CRTV"
+	if [ $i = "build_pre_64a" ]
+	then
+		# /data2/llvm/current should be a symlink
+		PATH="/data2/llvm/current/bin:$PATH"
+		VERSION=$(readlink /data2/llvm/current)
+	else
+		GCCV=$(rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-gcc)
+		CRTV=$(rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-crt)
+		VERSION="$GCCV; $CRTV"
+	fi
+	make -j $(nproc) EXTRAVERSION="-$(git describe --match=FRP | sed 's/FRP/PRE/')" MINGW_VER="$VERSION"
 	)
+done
+
+# Check the expected binaries exist
+echo
+for i in $TARGETS
+do
+	ls -l $i/busybox.exe
 done
