@@ -93,10 +93,16 @@ if ! check_cc "-Wl,--sort-section,alignment"; then
     SORT_SECTION=""
 fi
 
+WARN_COMMON="-Wl,--warn-common"
+if ! check_cc "-Wl,--warn-common"; then
+    echo "Your linker does not support --warn-common"
+    WARN_COMMON=""
+fi
+
 START_GROUP="-Wl,--start-group"
 END_GROUP="-Wl,--end-group"
 INFO_OPTS() {
-	echo "$SORT_COMMON -Wl,-Map,$EXE.map -Wl,--verbose"
+	echo "$WARN_COMMON -Wl,-Map,$EXE.map -Wl,--verbose"
 }
 
 # gold may not support --sort-common (yet)
