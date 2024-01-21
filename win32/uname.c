@@ -33,6 +33,9 @@ int uname(struct utsname *name)
 			name->machine[1] = '3';
 		}
 		break;
+	case PROCESSOR_ARCHITECTURE_ARM64:
+		strcpy(name->machine, "aarch64");
+		break;
 	default:
 		strcpy(name->machine, unk);
 		break;
