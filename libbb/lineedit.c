@@ -974,8 +974,10 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 	if (type == FIND_EXE_ONLY && !dirbuf) {
 # if ENABLE_FEATURE_SH_STANDALONE && NUM_APPLETS != 1
 		const char *p = applet_names;
+#  if ENABLE_PLATFORM_MINGW32
 		const char *shpath = state->flags & WITH_PATH_LOOKUP ?
 								state->path_lookup : NULL;
+#  endif
 		while (*p) {
 			if (strncmp(basecmd, p, baselen) == 0 &&
 					is_applet_preferred(p, shpath))

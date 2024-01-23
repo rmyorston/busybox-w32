@@ -1332,9 +1332,10 @@ void run_applet_no_and_exit(int a, const char *name, char **argv) NORETURN FAST_
 #  if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
 int is_applet_preferred(const char *name, const char *path) FAST_FUNC;
 int find_applet_by_name_with_path(const char *name, const char *path) FAST_FUNC;
-#  else
-#   define is_applet_preferred(n, p) (1)
 #  endif
+# else
+#  define is_applet_preferred(n, p) (1)
+#  define find_applet_by_name_with_path(n, p) find_applet_by_name(n)
 # endif
 #endif
 void show_usage_if_dash_dash_help(int applet_no, char **argv) FAST_FUNC;
