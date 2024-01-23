@@ -35,10 +35,11 @@ BEGIN
 END
 #endif
 
+/* Hardcode numeric value for MANIFEST for llvm windres */
 #if ENABLE_FEATURE_UTF8_MANIFEST
-1 MANIFEST "utf8.manifest"
+1 24 "utf8.manifest"
 #endif
 
 #if ENABLE_FEATURE_APP_MANIFEST
-1 MANIFEST "app.manifest"
+1 24 "app.manifest"
 #endif
