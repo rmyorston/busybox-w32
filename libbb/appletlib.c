@@ -280,10 +280,12 @@ int FAST_FUNC find_applet_by_name(const char *name)
 
 static int external_exists(const char *name, const char *path)
 {
-	char *path1 = xstrdup(path ?: getenv("PATH"));
-	char *ret = find_executable(name, &path1);
+	char *path0, *path1, *ret;
+
+	path0 = path1 = xstrdup(path ?: getenv("PATH"));
+	ret = find_executable(name, &path1);
 	free(ret);
-	free(path1);
+	free(path0);
 	return ret != NULL;
 }
 
