@@ -1477,7 +1477,6 @@ static int writeCon_utf8(int fd, const char *u8buf, size_t u8siz)
 		while (c & (0x80 >> topbits))
 			++topbits;
 
-	process_byte:
 		if (state == 0 && topbits == 0) {
 			// valid ASCII7, state remains 0
 			codepoint = c;
@@ -1494,18 +1493,26 @@ static int writeCon_utf8(int fd, const char *u8buf, size_t u8siz)
 			state = topbits - 1;  // remaining bytes after lead
 			continue;
 
-		} else if (state >= 0) {
-			// invalid byte at state 0/1/2/3, add placeholder once
-			codepoint = CONFIG_SUBST_WCHAR;
-			state = -1;
-
 		} else {
-			// inside bad sequence (placeholder char already added)
-			if (topbits == 1 || topbits > 4)
-				continue;  // still bad
-			// c is valid for state 0, process it with clean slate
-			state = 0;
-			goto process_byte;
+			// already bad (state<0), or unexpected c at state 0-3.
+			// placeholder is added only at the 1st (state>=0).
+			// regardless, c may be valid to reprocess as state 0
+			// (even when it's the 1st unexpected in state 1/2/3)
+			int placeholder_done = state < 0;
+
+			if (topbits < 5 && topbits != 1) {
+				--u8buf;  // valid for state 0, reprocess
+				++u8siz;
+				state = 0;
+			} else {
+				state = -1;  // set/keep bad state
+			}
+
+			if (placeholder_done)
+				continue;
+
+			// 1st unexpected char, add placeholder
+			codepoint = CONFIG_SUBST_WCHAR;
 		}
 
 		// codepoint is complete
