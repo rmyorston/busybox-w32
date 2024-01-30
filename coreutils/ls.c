@@ -1222,6 +1222,11 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 	/* set G_show_color = 1/0 */
 	if (ENABLE_FEATURE_LS_COLOR_IS_DEFAULT && !is_TERM_dumb()) {
 		char *p = getenv("LS_COLORS");
+# if ENABLE_PLATFORM_MINGW32
+		/* No colour if unset or empty: https://no-color.org */
+		char *no_c = getenv("NO_COLOR");
+		if (!no_c || no_c[0] == '\0')
+# endif
 		/* LS_COLORS is unset, or (not empty && not "none") ? */
 		if (!p || (p[0] && strcmp(p, "none") != 0)) {
 			if (isatty(STDOUT_FILENO)) {
