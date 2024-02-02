@@ -979,8 +979,7 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 								state->path_lookup : NULL;
 #  endif
 		while (*p) {
-			if (strncmp(basecmd, p, baselen) == 0 &&
-					is_applet_preferred(p, shpath))
+			if (strncmp(basecmd, p, baselen) == 0 && prefer_applet(p, shpath))
 				add_match(xstrdup(p), TRUE);
 			while (*p++ != '\0')
 				continue;

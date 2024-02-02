@@ -1330,12 +1330,12 @@ int find_applet_by_name(const char *name) FAST_FUNC;
 void run_applet_no_and_exit(int a, const char *name, char **argv) NORETURN FAST_FUNC;
 # if ENABLE_PLATFORM_MINGW32
 #  if ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE
-int is_applet_preferred(const char *name, const char *path) FAST_FUNC;
-int find_applet_by_name_with_path(const char *name, const char *path) FAST_FUNC;
+int prefer_applet(const char *name, const char *path) FAST_FUNC;
+int find_applet_by_name_for_sh(const char *name, const char *path) FAST_FUNC;
 #  endif
 # else
-#  define is_applet_preferred(n, p) (1)
-#  define find_applet_by_name_with_path(n, p) find_applet_by_name(n)
+#  define prefer_applet(n, p) (1)
+#  define find_applet_by_name_for_sh(n, p) find_applet_by_name(n)
 # endif
 #endif
 void show_usage_if_dash_dash_help(int applet_no, char **argv) FAST_FUNC;

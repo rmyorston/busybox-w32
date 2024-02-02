@@ -101,10 +101,10 @@ static const char packed_scripts[] ALIGN1 = { PACKED_SCRIPTS };
 #endif
 
 #if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1 && \
-		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
-static int really_find_applet_by_name(const char *name);
+		ENABLE_FEATURE_SH_STANDALONE
+static int find_applet_by_name_internal(const char *name);
 #else
-#define really_find_applet_by_name(n) find_applet_by_name(n)
+# define find_applet_by_name_internal(n) find_applet_by_name(n)
 #endif
 
 unsigned FAST_FUNC string_array_len(char **argv)
@@ -162,7 +162,7 @@ void FAST_FUNC bb_show_usage(void)
 #else
 		const char *p;
 		const char *usage_string = p = unpack_usage_messages();
-		int ap = really_find_applet_by_name(applet_name);
+		int ap = find_applet_by_name_internal(applet_name);
 
 		if (ap < 0 || usage_string == NULL)
 			xfunc_die();
@@ -196,8 +196,8 @@ void FAST_FUNC bb_show_usage(void)
 }
 
 #if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1 && \
-		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
-static int really_find_applet_by_name(const char *name)
+		ENABLE_FEATURE_SH_STANDALONE
+static int find_applet_by_name_internal(const char *name)
 #else
 int FAST_FUNC find_applet_by_name(const char *name)
 #endif
@@ -265,19 +265,21 @@ int FAST_FUNC find_applet_by_name(const char *name)
 	return -1;
 }
 
-#if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1 && \
-		(ENABLE_FEATURE_PREFER_APPLETS || ENABLE_FEATURE_SH_STANDALONE)
-int FAST_FUNC find_applet_by_name_with_path(const char *name, const char *path)
+#if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1
+# if ENABLE_FEATURE_SH_STANDALONE
+int FAST_FUNC find_applet_by_name_for_sh(const char *name, const char *path)
 {
-	int applet_no = really_find_applet_by_name(name);
-	return applet_no >= 0 && is_applet_preferred(name, path) ? applet_no : -1;
+	int applet_no = find_applet_by_name_internal(name);
+	return applet_no >= 0 && prefer_applet(name, path) ? applet_no : -1;
 }
 
 int FAST_FUNC find_applet_by_name(const char *name)
 {
-	return find_applet_by_name_with_path(name, NULL);
+	return find_applet_by_name_for_sh(name, NULL);
 }
+# endif
 
+# if ENABLE_FEATURE_SH_STANDALONE || ENABLE_FEATURE_PREFER_APPLETS
 static int external_exists(const char *name, const char *path)
 {
 	char *path0, *path1, *ret;
@@ -289,34 +291,34 @@ static int external_exists(const char *name, const char *path)
 	return ret != NULL;
 }
 
-static int is_applet_preferred_by_var(const char *name, const char *path,
-										const char *var)
+static int prefer_applet_internal(const char *name, const char *path,
+										const char *override)
 {
 	const char *s, *sep;
 	size_t len;
 
-	if (var && *var) {
+	if (override && *override) {
 		/* '-' disables all applets */
-		if (var[0] == '-' && var[1] == '\0')
+		if (override[0] == '-' && override[1] == '\0')
 			return FALSE;
 
 		/* '+' each applet is overridden if an external command exists */
-		if (var[0] == '+' && var[1] == '\0')
+		if (override[0] == '+' && override[1] == '\0')
 			return !external_exists(name, path);
 
 		/* Handle applets from a list separated by spaces, commas or
 		 * semicolons.  Applets before the first semicolon are disabled.
 		 * Applets after the first semicolon are overridden if a
 		 * corresponding external command exists. */
-		sep = strchr(var, ';');
+		sep = strchr(override, ';');
 		len = strlen(name);
-		s = var - 1;
+		s = override - 1;
 		while (1) {
 			s = strstr(s + 1, name);
 			if (!s)
 				break;
 			/* neither "name.." nor "xxx,name.."? */
-			if (s != var && !strchr(" ,;", s[-1]))
+			if (s != override && !strchr(" ,;", s[-1]))
 				continue;
 			/* neither "..name" nor "..name,xxx"? */
 			if (s[len] != '\0' && !strchr(" ,;", s[len]))
@@ -328,15 +330,16 @@ static int is_applet_preferred_by_var(const char *name, const char *path,
 	return TRUE;
 }
 
-int FAST_FUNC is_applet_preferred(const char *name, const char *path)
+int FAST_FUNC prefer_applet(const char *name, const char *path)
 {
 	int ret;
 
-	ret = is_applet_preferred_by_var(name, path, getenv(BB_OVERRIDE_APPLETS));
+	ret = prefer_applet_internal(name, path, getenv(BB_OVERRIDE_APPLETS));
 	if (sizeof(CONFIG_OVERRIDE_APPLETS) > 1 && ret)
-		ret = is_applet_preferred_by_var(name, path, CONFIG_OVERRIDE_APPLETS);
+		ret = prefer_applet_internal(name, path, CONFIG_OVERRIDE_APPLETS);
 	return ret;
 }
+# endif
 #endif
 
 
@@ -1120,7 +1123,7 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 		/* convert to "<applet> --help" */
 		applet_name = argv[0] = argv[2];
 		argv[2] = NULL;
-		if (really_find_applet_by_name(applet_name) >= 0) {
+		if (find_applet_by_name_internal(applet_name) >= 0) {
 			/* Make "--help foo" exit with 0: */
 			xfunc_error_retval = 0;
 			bb_show_usage();
@@ -1233,7 +1236,7 @@ static NORETURN void run_applet_and_exit(const char *name, char **argv)
 #  if NUM_APPLETS > 0
 	/* find_applet_by_name() search is more expensive, so goes second */
 	{
-		int applet = really_find_applet_by_name(name);
+		int applet = find_applet_by_name_internal(name);
 		if (applet >= 0)
 			run_applet_no_and_exit(applet, name, argv);
 	}
