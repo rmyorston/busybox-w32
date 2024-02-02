@@ -173,6 +173,7 @@ lib-$(CONFIG_MKE2FS) += find_mount_point.o
 lib-$(CONFIG_MKFS_REISER) += find_mount_point.o
 lib-$(CONFIG_FSCK_MINIX) += find_mount_point.o
 lib-$(CONFIG_MOUNT) += find_mount_point.o
+lib-$(CONFIG_STAT) += find_mount_point.o
 
 lib-$(CONFIG_HWCLOCK) += rtc.o
 lib-$(CONFIG_RTCWAKE) += rtc.o
