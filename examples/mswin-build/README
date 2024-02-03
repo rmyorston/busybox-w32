@@ -1,6 +1,13 @@
-These are the scripts used to cross-compile busybox-w32.
+These scripts can be used to cross-compile busybox-w32 on a
+Fedora Linux system with mingw-w64 and llvm-mingw toolchains.
+The former are available from the Fedora repositories; the
+latter needs to be downloaded and installed from:
+
+   https://github.com/mstorsjo/llvm-mingw
 
 The release build performs some additional optimisation and is
-slightly slower as a result.  It also includes information about
-the build platform in the help message.  This assumes the build is
-done on a Fedora Linux system.
+slightly slower as a result.
+
+The busybox-w32 help message includes information about the build
+platform.  Obtaining this information is very specific to the
+platform used.

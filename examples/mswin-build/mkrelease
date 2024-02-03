@@ -2,7 +2,7 @@
 #
 # Build 32- and 64-bit busybox binaries for release
 #
-TARGETS="build_32 build_64 build_64u"
+TARGETS="build_32 build_64 build_64a build_64u"
 
 if [ ! -d busybox-w32 ]
 then
@@ -20,37 +20,46 @@ done
 # apply default configuration
 for i in $TARGETS
 do
-	if [ $i = "build_64" ]
-	then
-		CONFIG=mingw64_defconfig
-		BITS=64
-	elif [ $i = "build_64u" ]
-	then
-		CONFIG=mingw64u_defconfig
-		BITS=64
-	elif [ $i = "build_32" ]
-	then
-		CONFIG=mingw32_defconfig
-		BITS=32
-	fi
-
 	(
+		if [ $i = "build_64" ]
+		then
+			CONFIG=mingw64_defconfig
+			BITS=64
+		elif [ $i = "build_64a" ]
+		then
+			PATH="/data2/llvm/current/bin:$PATH"
+			CONFIG=mingw64a_defconfig
+			BITS=64
+		elif [ $i = "build_64u" ]
+		then
+			CONFIG=mingw64u_defconfig
+			BITS=64
+		elif [ $i = "build_32" ]
+		then
+			CONFIG=mingw32_defconfig
+			BITS=32
+		fi
+
 		cd $i
 		make ${CONFIG}
-		# link time optimisation, fortify, stack protection
-		sed -e 's/^CONFIG_EXTRA_CFLAGS="\(.*\)"$/CONFIG_EXTRA_CFLAGS="\1 -flto -fstack-protector --param=ssp-buffer-size=4"/' \
-			-e 's/^CONFIG_EXTRA_CFLAGS=" /CONFIG_EXTRA_CFLAGS="/' \
-			-e 's/^CONFIG_EXTRA_LDLIBS="\(.*\)"$/CONFIG_EXTRA_LDLIBS="\1 -l:libssp.a"/' \
-			-e 's/^CONFIG_EXTRA_LDLIBS=" /CONFIG_EXTRA_LDLIBS="/' \
-			-i .config 
-		# does ld support --disable-reloc-section?
-		eval $(grep CONFIG_CROSS_COMPILER_PREFIX .config)
-		[ $BITS -eq 32 ] && [ -n "$CONFIG_CROSS_COMPILER_PREFIX" ] && \
-			${CONFIG_CROSS_COMPILER_PREFIX}ld --help | \
-				grep -q disable-reloc-section &&
-					sed -e 's/^CONFIG_EXTRA_LDFLAGS="\(.*\)"$/CONFIG_EXTRA_LDFLAGS="\1 -Wl,--disable-reloc-section"/' \
-						-e 's/^CONFIG_EXTRA_LDFLAGS=" /CONFIG_EXTRA_LDFLAGS="/' \
-						-i .config
+		# TODO:  add optimisations for clang/aarch64 build
+		if [ $i != "build_64a" ]
+		then
+			# link time optimisation, fortify, stack protection
+			sed -e 's/^CONFIG_EXTRA_CFLAGS="\(.*\)"$/CONFIG_EXTRA_CFLAGS="\1 -flto -fstack-protector --param=ssp-buffer-size=4"/' \
+				-e 's/^CONFIG_EXTRA_CFLAGS=" /CONFIG_EXTRA_CFLAGS="/' \
+				-e 's/^CONFIG_EXTRA_LDLIBS="\(.*\)"$/CONFIG_EXTRA_LDLIBS="\1 -l:libssp.a"/' \
+				-e 's/^CONFIG_EXTRA_LDLIBS=" /CONFIG_EXTRA_LDLIBS="/' \
+				-i .config
+			# does ld support --disable-reloc-section?
+			eval $(grep CONFIG_CROSS_COMPILER_PREFIX .config)
+			[ $BITS -eq 32 ] && [ -n "$CONFIG_CROSS_COMPILER_PREFIX" ] && \
+				${CONFIG_CROSS_COMPILER_PREFIX}ld --help | \
+					grep -q disable-reloc-section &&
+						sed -e 's/^CONFIG_EXTRA_LDFLAGS="\(.*\)"$/CONFIG_EXTRA_LDFLAGS="\1 -Wl,--disable-reloc-section"/' \
+							-e 's/^CONFIG_EXTRA_LDFLAGS=" /CONFIG_EXTRA_LDFLAGS="/' \
+							-i .config
+		fi
 	)
 done
 
@@ -65,8 +74,23 @@ do
 
 	(
 	cd $i
-	GCCV=$(rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-gcc)
-	CRTV=$(rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-crt)
-	make -j $(nproc) EXTRAVERSION="-`git describe --match=FRP`" MINGW_VER="$GCCV; $CRTV"
+	if [ $i = "build_64a" ]
+	then
+		# /data2/llvm/current should be a symlink
+		PATH="/data2/llvm/current/bin:$PATH"
+		VERSION=$(readlink /data2/llvm/current)
+	else
+		GCCV=$(rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-gcc)
+		CRTV=$(rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-crt)
+		VERSION="$GCCV; $CRTV"
+	fi
+	make -j $(nproc) EXTRAVERSION="-`git describe --match=FRP`" MINGW_VER="$VERSION"
 	)
+done
+
+# Check the expected binaries exist
+echo
+for i in $TARGETS
+do
+	ls -l $i/busybox.exe
 done
