@@ -277,7 +277,7 @@ create_detached_process(const char *prog, char *const *argv)
 				NULL,              /* process security attributes */
 				NULL,              /* primary thread security attributes */
 				TRUE,              /* handles are inherited */
-				DETACHED_PROCESS,  /* creation flags */
+				CREATE_NO_WINDOW,  /* creation flags */
 				NULL,              /* use parent's environment */
 				NULL,              /* use parent's current directory */
 				&siStartInfo,      /* STARTUPINFO pointer */
