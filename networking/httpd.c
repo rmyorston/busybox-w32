@@ -1755,7 +1755,7 @@ static void send_cgi_and_exit(
 	argv = xzalloc((server_argc + 9) * sizeof(char *));
 	argv[0] = (char *)bb_busybox_exec_path;
 	argv[1] = (char *)"--busybox";
-	argv[2] = (char *)"-httpd" + 1;		// skip '-'
+	argv[2] = (char *)"-httpd";		// don't daemonise in main()
 	argv[3] = (char *)"-I";
 	argv[4] = (char *)"0";
 	for (i = 0; i < server_argc; ++i)
@@ -2893,7 +2893,7 @@ static void mini_httpd_win32(int sock, int argc, char **argv)
 
 	argv_copy[0] = (char *)bb_busybox_exec_path;
 	argv_copy[1] = (char *)"--busybox";
-	argv_copy[2] = (char *)"-httpd" + 1;	// skip '-'
+	argv_copy[2] = (char *)"-httpd";	// don't daemonise in main()
 	argv_copy[3] = (char *)"-I";
 	memcpy(&argv_copy[5], &argv[1], argc * sizeof(argv[0]));
 
@@ -2945,7 +2945,8 @@ static void mingw_daemonize(char **argv)
 	new_argv = grow_argv(argv + 1, 3);
 	new_argv[0] = (char *)bb_busybox_exec_path;
 	new_argv[1] = (char *)"--busybox";
-	new_argv[2] = (char *)"-httpd";	// '-' marks the daemonised process
+	// don't daemonise in main(), we explicitly detach below
+	new_argv[2] = (char *)"-httpd";
 
 	fd = xopen(bb_dev_null, O_RDWR);
 	xdup2(fd, 0);
