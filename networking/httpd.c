@@ -1656,7 +1656,6 @@ static void send_cgi_and_exit(
 	int pid;
 #if ENABLE_PLATFORM_MINGW32
 	char **argv;
-	int i;
 #endif
 
 	/* Make a copy. NB: caller guarantees:
@@ -1752,19 +1751,17 @@ static void send_cgi_and_exit(
 	}
 	script++;
 
-	argv = xzalloc((server_argc + 9) * sizeof(char *));
+	argv = xzalloc((server_argc + 8) * sizeof(char *));
 	argv[0] = (char *)bb_busybox_exec_path;
 	argv[1] = (char *)"--busybox";
 	argv[2] = (char *)"-httpd";		// don't daemonise in main()
-	argv[3] = (char *)"-I";
-	argv[4] = (char *)"0";
-	for (i = 0; i < server_argc; ++i)
-		argv[i + 5] = server_argv[i];
-	argv[server_argc + 5] = xasprintf("%d:%d:%d:%d", toCgi.wr, toCgi.rd,
+	argv[3] = (char *)"-I0";
+	memcpy(argv + 4, server_argv, sizeof(*argv) * server_argc);
+	argv[server_argc + 4] = xasprintf("%d:%d:%d:%d", toCgi.wr, toCgi.rd,
 						fromCgi.wr, fromCgi.rd);
-	argv[server_argc + 6] = (char *)url + 1;	// script directory
-	argv[server_argc + 7] = (char *)script;	// script name
-	/* argv[server_argc + 8] = NULL; - xzalloc did it */
+	argv[server_argc + 5] = (char *)url + 1;	// script directory
+	argv[server_argc + 6] = (char *)script;	// script name
+	/* argv[server_argc + 7] = NULL; - xzalloc did it */
 
 	pid = foreground ? mingw_spawn(argv) : mingw_spawn_detach(argv);
 	if (pid == -1)
