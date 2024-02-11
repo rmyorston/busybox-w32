@@ -1580,7 +1580,6 @@ static void cgi_handler(char **argv)
 {
 	struct fd_pair fromCgi;  /* CGI -> httpd pipe */
 	struct fd_pair toCgi;    /* httpd -> CGI pipe */
-	char *dir, *script;
 
 	xfunc_error_retval = 242;
 
@@ -1595,16 +1594,12 @@ static void cgi_handler(char **argv)
 	xmove_fd(toCgi.rd, 0);  /* replace stdin with the pipe */
 	xmove_fd(fromCgi.wr, 1);  /* replace stdout with the pipe */
 
-	dir = argv[1];
-	script = argv[2];
-
-	if (chdir_or_warn(dir) != 0) {
+	if (argv[1][0] && chdir_or_warn(argv[1]) != 0) {
 		goto error_execing_cgi;
 	}
 
 	/* set argv[0] to name without path */
-	argv[0] = script;
-	argv[1] = NULL;
+	argv += 2;
 
 	/* _NOT_ execvp. We do not search PATH. argv[0] is a filename
 	 * without any dir components and will only match a file
@@ -1655,6 +1650,7 @@ static void send_cgi_and_exit(
 	char *script, *last_slash;
 	int pid;
 #if ENABLE_PLATFORM_MINGW32
+	const char *script_dir;
 	char **argv;
 #endif
 
@@ -1693,7 +1689,11 @@ static void send_cgi_and_exit(
 		*script = '\0';         /* cut off /PATH_INFO */
 
 	/* SCRIPT_FILENAME is required by PHP in CGI mode */
+#if ENABLE_PLATFORM_MINGW32
+	if (!is_relative_path(home_httpd)) {
+#else
 	if (home_httpd[0] == '/') {
+#endif
 		char *fullpath = concat_path_file(home_httpd, url);
 		setenv1("SCRIPT_FILENAME", fullpath);
 	}
@@ -1745,13 +1745,15 @@ static void send_cgi_and_exit(
 
 #if ENABLE_PLATFORM_MINGW32
 	/* Find script's dir */
+	script_dir = "";
 	script = last_slash;
 	if (script != url) { /* paranoia */
 		*script = '\0';
+		script_dir = url + 1;
 	}
 	script++;
 
-	argv = xzalloc((server_argc + 8) * sizeof(char *));
+	argv = xzalloc((server_argc + 9) * sizeof(char *));
 	argv[0] = (char *)bb_busybox_exec_path;
 	argv[1] = (char *)"--busybox";
 	argv[2] = (char *)"-httpd";		// don't daemonise in main()
@@ -1759,9 +1761,27 @@ static void send_cgi_and_exit(
 	memcpy(argv + 4, server_argv, sizeof(*argv) * server_argc);
 	argv[server_argc + 4] = xasprintf("%d:%d:%d:%d", toCgi.wr, toCgi.rd,
 						fromCgi.wr, fromCgi.rd);
-	argv[server_argc + 5] = (char *)url + 1;	// script directory
+	argv[server_argc + 5] = (char *)script_dir;	// script directory
 	argv[server_argc + 6] = (char *)script;	// script name
-	/* argv[server_argc + 7] = NULL; - xzalloc did it */
+
+#if ENABLE_FEATURE_HTTPD_CONFIG_WITH_SCRIPT_INTERPR
+	{
+		char *suffix = strrchr(script, '.');
+
+		if (suffix) {
+			Htaccess *cur;
+			for (cur = script_i; cur; cur = cur->next) {
+				if (strcmp(cur->before_colon + 1, suffix) == 0) {
+					/* found interpreter name */
+					argv[server_argc + 6] = (char *)cur->after_colon;
+					argv[server_argc + 7] = (char *)script;
+					break;
+				}
+			}
+		}
+	}
+#endif
+	/* argv[server_argc + N] = NULL; - xzalloc did it */
 
 	pid = foreground ? mingw_spawn(argv) : mingw_spawn_detach(argv);
 	if (pid == -1)
