@@ -63,3 +63,8 @@ TAGS
 # user-supplied scripts
 #
 /embed
+
+#
+# release description for tarball
+#
+.frp_describe

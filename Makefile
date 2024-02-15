@@ -368,6 +368,35 @@ AFLAGS		:= $(AFLAGS)
 LDFLAGS		:= $(LDFLAGS)
 LDLIBS		:=
 
+CONFIG_PLATFORM_MINGW32 ?=
+ifeq ($(CONFIG_PLATFORM_MINGW32),)
+CONFIG_PLATFORM_MINGW32 := $(shell grep ^CONFIG_PLATFORM_MINGW32= .config 2>/dev/null)
+CONFIG_PLATFORM_MINGW32 := $(subst CONFIG_PLATFORM_MINGW32=,,$(CONFIG_PLATFORM_MINGW32))
+CONFIG_PLATFORM_MINGW32 := $(subst ",,$(CONFIG_PLATFORM_MINGW32))
+#")
+endif
+
+# Try various methods to get a more specific EXTRAVERSION
+ifeq ($(CONFIG_PLATFORM_MINGW32),y)
+# Ask git
+extraversion = $(shell git describe --match FRP 2>/dev/null)
+ifeq ($(strip $(extraversion)),)
+# That didn't work, look for a .frp_describe file
+extraversion = $(shell cat .frp_describe 2>/dev/null | grep '^FRP-')
+ifeq ($(strip $(extraversion)),)
+# That didn't work either, look at current directory name
+e1 = $(shell basename `pwd` | grep '^busybox-w32-FRP-')
+ifneq ($(strip $(e1)),)
+extraversion = $(subst busybox-w32-,,$(e1))
+endif
+endif
+endif
+
+ifneq ($(strip $(extraversion)),)
+EXTRAVERSION = .$(subst FRP,git,$(extraversion))
+endif
+endif
+
 # Read KERNELRELEASE from .kernelrelease (if it exists)
 KERNELRELEASE = $(shell cat .kernelrelease 2> /dev/null)
 KERNELVERSION = $(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
