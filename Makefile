@@ -376,24 +376,25 @@ CONFIG_PLATFORM_MINGW32 := $(subst ",,$(CONFIG_PLATFORM_MINGW32))
 #")
 endif
 
-# Try various methods to get a more specific EXTRAVERSION
-ifeq ($(CONFIG_PLATFORM_MINGW32),y)
+# Try various methods to get a more specific EXTRAVERSION, but only
+# for MINGW32 platform and if EXTRAVERSION is default '.git'
+ifeq ($(CONFIG_PLATFORM_MINGW32)$(EXTRAVERSION),y.git)
 # Ask git
-extraversion = $(shell git describe --match FRP 2>/dev/null)
+extraversion := $(shell cd $(srctree) && git describe --match FRP 2>/dev/null)
 ifeq ($(strip $(extraversion)),)
 # That didn't work, look for a .frp_describe file
-extraversion = $(shell cat .frp_describe 2>/dev/null | grep '^FRP-')
+extraversion := $(shell grep '^FRP-' $(srctree)/.frp_describe 2>/dev/null)
 ifeq ($(strip $(extraversion)),)
-# That didn't work either, look at current directory name
-e1 = $(shell basename `pwd` | grep '^busybox-w32-FRP-')
+# That didn't work either, look at name of source directory
+e1 := $(shell basename $(srctree) | grep '^busybox-w32-FRP-')
 ifneq ($(strip $(e1)),)
-extraversion = $(subst busybox-w32-,,$(e1))
+extraversion := $(subst busybox-w32-,,$(e1))
 endif
 endif
 endif
 
 ifneq ($(strip $(extraversion)),)
-EXTRAVERSION = .$(subst FRP,git,$(extraversion))
+EXTRAVERSION := .$(subst FRP,git,$(extraversion))
 endif
 endif
 
