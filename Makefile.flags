@@ -17,7 +17,7 @@ CPPFLAGS += \
 	$(if $(CONFIG_LFS),-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64) \
 	$(if $(CONFIG_TIME64),-D_TIME_BITS=64) \
 	-DMINGW_VER=$(squote)$(quote)$(MINGW_VER)$(quote)$(squote) \
-	-DBB_VER=$(squote)$(quote)$(BB_VER)$(quote)$(squote)
+	$(if $(CONFIG_PLATFORM_MINGW32),,-DBB_VER=$(squote)$(quote)$(BB_VER)$(quote)$(squote))
 
 CFLAGS += $(call cc-option,-Wall,)
 CFLAGS += $(call cc-option,-Wshadow,)

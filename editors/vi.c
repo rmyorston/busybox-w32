@@ -214,6 +214,9 @@
 #if ENABLE_FEATURE_VI_REGEX_SEARCH
 # include <regex.h>
 #endif
+#if ENABLE_PLATFORM_MINGW32
+# include "BB_VER.h"
+#endif
 
 // the CRASHME code is unmaintained, and doesn't currently build
 #define ENABLE_FEATURE_VI_CRASHME 0

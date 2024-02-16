@@ -892,7 +892,7 @@ endif
 # prepare2 creates a makefile if using a separate output directory
 prepare2: prepare3 outputmakefile
 
-prepare1: prepare2 include/config/MARKER
+prepare1: prepare2 include/config/MARKER include/BB_VER.h
 ifneq ($(KBUILD_MODULES),)
 	$(Q)mkdir -p $(MODVERDIR)
 	$(Q)rm -f $(MODVERDIR)/*
@@ -955,6 +955,13 @@ define filechk_version.h
 	 echo '#define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))'; \
 	)
 endef
+
+define filechk_BB_VER.h
+	(echo \#define BB_VER \"$(KERNELRELEASE)\";)
+endef
+
+include/BB_VER.h: $(srctree)/Makefile .config .kernelrelease FORCE
+	$(call filechk,BB_VER.h)
 
 # ---------------------------------------------------------------------------
 
@@ -1051,6 +1058,7 @@ CLEAN_FILES +=	busybox$(EXEEXT) busybox_unstripped* busybox.links \
 MRPROPER_DIRS  += include/config include2
 MRPROPER_FILES += .config .config.old include/asm .version .old_version \
 		  include/NUM_APPLETS.h \
+		  include/BB_VER.h \
 		  include/common_bufsiz.h \
 		  include/autoconf.h \
 		  include/bbconfigopts.h \

@@ -299,6 +299,9 @@
 
 #include "libbb.h"
 #include "common_bufsiz.h"
+#if ENABLE_PLATFORM_MINGW32
+# include "BB_VER.h"
+#endif
 #if ENABLE_PAM
 /* PAM may include <locale.h>. We may need to undefine bbox's stub define: */
 # undef setlocale

@@ -203,6 +203,9 @@
 
 #include "libbb.h"
 #include "common_bufsiz.h"
+#if ENABLE_PLATFORM_MINGW32
+# include "BB_VER.h"
+#endif
 
 #if !ENABLE_BC && !ENABLE_FEATURE_DC_BIG
 # include "dc.c"

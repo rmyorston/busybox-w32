@@ -5,6 +5,9 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 #include "libbb.h"
+#if ENABLE_PLATFORM_MINGW32
+# include "BB_VER.h"
+#endif
 
 /* allow version to be extended, via CFLAGS */
 #ifndef BB_EXTRA_VERSION

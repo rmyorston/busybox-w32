@@ -119,6 +119,9 @@
 #include "libbb.h"
 #include "common_bufsiz.h"
 #include "bb_archive.h"
+#if ENABLE_PLATFORM_MINGW32
+# include "BB_VER.h"
+#endif
 /* FIXME: Stop using this non-standard feature */
 #ifndef FNM_LEADING_DIR
 # define FNM_LEADING_DIR 0
