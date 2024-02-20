@@ -265,10 +265,16 @@ else
 # zero or one object files.  In the latter case copy the object to
 # the target.  This avoids the need to use the linker:  the llvm
 # linker doesn't support the -r option.
-cmd_link_o_target = $(intcmp $(words $(obj-y)),1,\
-		rm -f $@; $(AR) rcs $@,\
-		cp $(obj-y) $@,\
+ifeq ($(words $(obj-y)),0)
+cmd_link_o_target = rm -f $@; $(AR) rcs $@
+else
+ifeq ($(words $(obj-y)),1)
+cmd_link_o_target = cp $(obj-y) $@
+else
+cmd_link_o_target = \
 		$(LD) -nostdlib $(ld_flags) -r -o $@ $(filter $(obj-y), $^))
+endif
+endif
 endif
 
 $(builtin-target): $(obj-y) FORCE
