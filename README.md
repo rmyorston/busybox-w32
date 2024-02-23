@@ -2,11 +2,14 @@
 
 Things may work for you, or may not.  Things may never work because of huge differences between Linux and Windows.  Or things may work in future, if you report the problem on [GitHub](https://github.com/rmyorston/busybox-w32) or [GitLab](https://gitlab.com/rmyorston/busybox-w32).  If you don't have an account on one of those or you'd prefer to communicate privately you can email [rmy@pobox.com](mailto:rmy@pobox.com).
 
-Additional information and downloads of precompiled binaries are available from [frippery.org](https://frippery.org/busybox).
+Additional information is available from the [BusyBox for Windows](https://frippery.org/busybox/index.html) web page.  In particular:
+
+- There are [downloads](https://frippery.org/busybox/index.html#downloads) of precompiled binaries for i686, x86_64 and aarch64.
+- Release notes for the [current](https://frippery.org/busybox/release-notes/current.html) and [previous](https://frippery.org/busybox/release-notes/index.html) releases are available.
 
 ### Building
 
-You need a MinGW compiler and a POSIX environment.  I cross-compile on Linux.  On Fedora the following should pull in everything required:
+You need a MinGW toolchain and a POSIX environment.  I cross-compile on Linux.  On Fedora the following should pull in everything required:
 
 `dnf install gcc make ncurses-devel perl-Pod-Html`
 
@@ -19,6 +22,8 @@ On Microsoft Windows you can install [w64devkit](https://github.com/skeeto/w64de
 On either Linux or Windows the commands `make mingw64_defconfig` or `make mingw32_defconfig` will pick up the default configuration.  You can then customize your build with `make menuconfig` or by editing `.config`, if you know what you're doing.
 
 Then just `make`.
+
+See the [Building busybox-w32](https://frippery.org/busybox/build.html) web page for additional information.
 
 ### Hints
 
