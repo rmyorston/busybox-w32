@@ -3,6 +3,7 @@
 /applets.h
 /applet_tables.h
 /autoconf.h
+/BB_VER.h
 /bbconfigopts_bz2.h
 /bbconfigopts.h
 /embedded_scripts.h
