@@ -42,10 +42,15 @@ do
 
 		cd $i
 		make ${CONFIG}
-		# TODO:  add optimisations for clang/aarch64 build
+
+		# The clang/aarch64 build is not subject to optimisation.  The
+		# '-flto' option increased the size of the binary slightly (0.23%)
+		# and decreased the time to run the testsuite slightly (0.33%).
+		# It hardly seems worth bothering about.
+		#
 		if [ $i != "build_64a" ]
 		then
-			# link time optimisation, fortify, stack protection
+			# link time optimisation, stack protection
 			sed -e 's/^CONFIG_EXTRA_CFLAGS="\(.*\)"$/CONFIG_EXTRA_CFLAGS="\1 -flto -fstack-protector --param=ssp-buffer-size=4"/' \
 				-e 's/^CONFIG_EXTRA_CFLAGS=" /CONFIG_EXTRA_CFLAGS="/' \
 				-e 's/^CONFIG_EXTRA_LDLIBS="\(.*\)"$/CONFIG_EXTRA_LDLIBS="\1 -l:libssp.a"/' \
