@@ -422,7 +422,7 @@ static void sp_256_sub_8_p256_mod(sp_digit* r)
 		: "memory"
 	);
 }
-#elif ALLOW_ASM && defined(__GNUC__) && defined(__x86_64__)
+#elif ALLOW_ASM && defined(__GNUC__) && defined(__x86_64__) && ENABLE_PLATFORM_POSIX
 static void sp_256_sub_8_p256_mod(sp_digit* r)
 {
 	uint64_t reg;
