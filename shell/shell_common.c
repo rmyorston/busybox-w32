@@ -221,6 +221,10 @@ shell_builtin_read(struct builtin_read_params *params)
 		errno = 0;
 		pfd[0].events = POLLIN;
 //TODO race with a signal arriving just before the poll!
+#if ENABLE_PLATFORM_MINGW32
+		/* Don't poll if timeout is -1, it hurts performance. */
+		if (timeout >= 0)
+#endif
 		if (poll(pfd, 1, timeout) <= 0) {
 			/* timed out, or EINTR */
 			err = errno;
