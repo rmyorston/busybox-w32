@@ -40,7 +40,7 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opt;
 	char *opt_command = NULL;
 	SHELLEXECUTEINFO info;
-	char *bb_path, *cwd, *q, *args;
+	char *bb_path, *cwd, *realcwd, *q, *args;
 	DECLARE_PROC_ADDR(BOOL, ShellExecuteExA, SHELLEXECUTEINFOA *);
 
 	opt = getopt32(argv, "c:NW", &opt_command);
@@ -74,11 +74,16 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	 * a network share it may not be available once we have elevated
 	 * privileges.
 	 */
-	cwd = xmalloc_realpath(getcwd(NULL, 0));
-	q = quote_arg(cwd);
-	args = xasprintf("--busybox ash -d %s -t \"BusyBox ash (Admin)\"", q);
-	free(q);
-	free(cwd);
+	args = xasprintf("--busybox ash -t \"BusyBox ash (Admin)\"");
+
+	cwd = getcwd(NULL, 0);
+	realcwd = cwd ? xmalloc_realpath(cwd) : NULL;
+	if (realcwd || cwd) {
+		args = xappendword(args, "-d");
+		q = quote_arg(realcwd ?: cwd);
+		args = xappendword(args, q);
+		free(q);
+	}
 
 	if (opt & OPT_N)
 		args = xappendword(args, "-N");
@@ -105,6 +110,13 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 
 	if (!ShellExecuteExA(&info))
 		return 1;
+
+	if (ENABLE_FEATURE_CLEAN_UP) {
+		free(bb_path);
+		free(cwd);
+		free(realcwd);
+		free(args);
+	}
 
 	if (opt & OPT_W) {
 		DWORD r;
