@@ -37,6 +37,7 @@ enum {
 int suw32_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int suw32_main(int argc UNUSED_PARAM, char **argv)
 {
+	int ret = 0;
 	unsigned opt;
 	char *opt_command = NULL;
 	SHELLEXECUTEINFO info;
@@ -105,17 +106,14 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	/* info.lpDirectory = NULL; */
 	info.nShow = SW_SHOWNORMAL;
 
-	if (!INIT_PROC_ADDR(shell32.dll, ShellExecuteExA))
-		return -1;
+	if (!INIT_PROC_ADDR(shell32.dll, ShellExecuteExA)) {
+		ret = -1;
+		goto end;
+	}
 
-	if (!ShellExecuteExA(&info))
-		return 1;
-
-	if (ENABLE_FEATURE_CLEAN_UP) {
-		free(bb_path);
-		free(cwd);
-		free(realcwd);
-		free(args);
+	if (!ShellExecuteExA(&info)) {
+		ret = 1;
+		goto end;
 	}
 
 	if (opt & OPT_W) {
@@ -123,12 +121,18 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 
 		WaitForSingleObject(info.hProcess, INFINITE);
 		if (!GetExitCodeProcess(info.hProcess, &r))
-			r = 1;
+			ret = 1;
 		else
-			r = exit_code_to_posix(r);
+			ret = exit_code_to_posix(r);
 		CloseHandle(info.hProcess);
-		return r;
+	}
+ end:
+	if (ENABLE_FEATURE_CLEAN_UP) {
+		free(bb_path);
+		free(cwd);
+		free(realcwd);
+		free(args);
 	}
 
-	return 0;
+	return ret;
 }
