@@ -1561,6 +1561,9 @@ static char *resolve_symlinks(char *path)
 		if (status != 0 && status < MAX_PATH) {
 			ptr = normalize_ntpathA(path);
 			goto end;
+		} else if (err_win_to_posix() == ENOSYS) {
+			ptr = xstrdup(path);
+			goto end;
 		}
 	}
 
