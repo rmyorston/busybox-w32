@@ -1551,7 +1551,9 @@ static char *resolve_symlinks(char *path)
 				FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (h != INVALID_HANDLE_VALUE) {
 		if (!INIT_PROC_ADDR(kernel32.dll, GetFinalPathNameByHandleA)) {
-			errno = ENOSYS;
+			if (resolve)
+				strcpy(path, resolve);
+			ptr = path;
 			goto end;
 		}
 
@@ -1562,7 +1564,9 @@ static char *resolve_symlinks(char *path)
 			ptr = normalize_ntpathA(path);
 			goto end;
 		} else if (err_win_to_posix() == ENOSYS) {
-			ptr = xstrdup(path);
+			if (resolve)
+				strcpy(path, resolve);
+			ptr = path;
 			goto end;
 		}
 	}
