@@ -217,14 +217,16 @@ enum {
 	HDR_USER_AGENT    = (1<<1),
 	HDR_RANGE         = (1<<2),
 	HDR_CONTENT_TYPE  = (1<<3),
-	HDR_AUTH          = (1<<4) * ENABLE_FEATURE_WGET_AUTHENTICATION,
-	HDR_PROXY_AUTH    = (1<<5) * ENABLE_FEATURE_WGET_AUTHENTICATION,
+	HDR_ACCEPT        = (1<<4),
+	HDR_AUTH          = (1<<5) * ENABLE_FEATURE_WGET_AUTHENTICATION,
+	HDR_PROXY_AUTH    = (1<<6) * ENABLE_FEATURE_WGET_AUTHENTICATION,
 };
 static const char wget_user_headers[] ALIGN1 =
 	"Host:\0"
 	"User-Agent:\0"
 	"Range:\0"
 	"Content-Type:\0"
+	"Accept:\0"
 # if ENABLE_FEATURE_WGET_AUTHENTICATION
 	"Authorization:\0"
 	"Proxy-Authorization:\0"
@@ -234,6 +236,7 @@ static const char wget_user_headers[] ALIGN1 =
 # define USR_HEADER_USER_AGENT   (G.user_headers & HDR_USER_AGENT)
 # define USR_HEADER_RANGE        (G.user_headers & HDR_RANGE)
 # define USR_HEADER_CONTENT_TYPE (G.user_headers & HDR_CONTENT_TYPE)
+# define USR_HEADER_ACCEPT       (G.user_headers & HDR_ACCEPT)
 # define USR_HEADER_AUTH         (G.user_headers & HDR_AUTH)
 # define USR_HEADER_PROXY_AUTH   (G.user_headers & HDR_PROXY_AUTH)
 #else /* No long options, no user-headers :( */
@@ -241,6 +244,7 @@ static const char wget_user_headers[] ALIGN1 =
 # define USR_HEADER_USER_AGENT   0
 # define USR_HEADER_RANGE        0
 # define USR_HEADER_CONTENT_TYPE 0
+# define USR_HEADER_ACCEPT       0
 # define USR_HEADER_AUTH         0
 # define USR_HEADER_PROXY_AUTH   0
 #endif
@@ -1255,6 +1259,8 @@ static void download_one_url(const char *url)
 			SENDFMT(sfp, "Host: %s\r\n", target.host);
 		if (!USR_HEADER_USER_AGENT)
 			SENDFMT(sfp, "User-Agent: %s\r\n", G.user_agent);
+		if (!USR_HEADER_ACCEPT)
+			SENDFMT(sfp, "Accept: */*\r\n");
 
 		/* Ask server to close the connection as soon as we are done
 		 * (IOW: we do not intend to send more requests)
