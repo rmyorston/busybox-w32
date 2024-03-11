@@ -1373,9 +1373,17 @@ process_line(char *s)
 
 	// Strip comment
 	// don't treat '#' in macro expansion as a comment
-	if (!posix)
-		t = find_char(s, '#');
-	else
+	// nor '#' outside macro expansion preceded by backslash
+	if (!posix) {
+		char *u = s;
+		while ((t = find_char(u, '#')) && t > u && t[-1] == '\\') {
+			for (u = t; *u; ++u) {
+				u[-1] = u[0];
+			}
+			*u = '\0';
+			u = t;
+		}
+	} else
 		t = strchr(s, '#');
 	if (t)
 		*t = '\0';
