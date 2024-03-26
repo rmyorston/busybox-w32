@@ -11688,6 +11688,9 @@ evalcommand(union node *cmd, int flags)
 			 * and/or wait for user input ineligible for NOFORK:
 			 * for example, "yes" or "rm" (rm -i waits for input).
 			 */
+#if ENABLE_PLATFORM_MINGW32
+			argv[0] = (char *)bb_basename(argv[0]);
+#endif
 			exitstatus = run_nofork_applet(applet_no, argv);
 			environ = sv_environ;
 			/*
