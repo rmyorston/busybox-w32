@@ -276,8 +276,9 @@ int FAST_FUNC iswpunct(wint_t wc)
 	return (unsigned)wc <= 0x7f && ispunct(wc);
 }
 
-# if !ENABLE_PLATFORM_MINGW32 || CONFIG_LAST_SUPPORTED_WCHAR < 0x30000
+#define WCWIDTH_ALT (ENABLE_PLATFORM_MINGW32 && CONFIG_LAST_SUPPORTED_WCHAR >= 0x30000)
 
+# if !WCWIDTH_ALT || ENABLE_UNICODE_BIDI_SUPPORT
 # if CONFIG_LAST_SUPPORTED_WCHAR >= 0x300
 struct interval {
 	uint16_t first;
@@ -334,7 +335,9 @@ static int in_uint16_table(unsigned ucs, const uint16_t *table, unsigned max)
 	return 0;
 }
 # endif
+# endif /* !WCWIDTH_ALT || ENABLE_UNICODE_BIDI_SUPPORT */
 
+# if !WCWIDTH_ALT
 
 /*
  * This is an implementation of wcwidth() and wcswidth() (defined in
@@ -704,7 +707,7 @@ int FAST_FUNC wcwidth(unsigned ucs)
 # endif /* >= 0x300 */
 }
 
-# else /* ENABLE_PLATFORM_MINGW32 && CONFIG_LAST_SUPPORTED_WCHAR >= 0x30000 */
+# else /* WCWIDTH_ALT */
 # include "wcwidth_alt.c"  /* simpler and more up-to-date implementation */
 # endif
 
