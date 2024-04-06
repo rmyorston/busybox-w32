@@ -1590,8 +1590,10 @@ static int conv_fwriteCon(FILE *stream, char *buf, size_t siz)
 {
 	if (conout_conv_enabled()) {
 #if ENABLE_FEATURE_UTF8_OUTPUT
-		if (GetConsoleOutputCP() != CP_UTF8)
+		if (GetConsoleOutputCP() != CP_UTF8) {
+			fflush(stream);  // writeCon_utf8 is unbuffered
 			return writeCon_utf8(fileno(stream), buf, siz) ? EOF : 0;
+		}
 #else
 		charToConBuffA(buf, siz);
 #endif
