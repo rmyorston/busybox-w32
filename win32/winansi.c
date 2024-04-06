@@ -850,13 +850,7 @@ static int ansi_emulate(const char *s, FILE *stream)
 
 int winansi_putchar(int c)
 {
-	char t = c;
-	char *s = &t;
-
-	if (!is_console(STDOUT_FILENO))
-		return putchar(c);
-
-	return conv_fwriteCon(stdout, s, 1) == EOF ? EOF : (unsigned char)c;
+	return winansi_fputc(c, stdout);
 }
 
 int winansi_puts(const char *s)
@@ -947,7 +941,7 @@ int winansi_fputc(int c, FILE *stream)
 	char t = c;
 	char *s = &t;
 
-	if (!is_console(fileno(stream))) {
+	if ((unsigned char)c <= 0x7f || !is_console(fileno(stream))) {
 		SetLastError(0);
 		if ((ret=fputc(c, stream)) == EOF)
 			check_pipe(stream);
