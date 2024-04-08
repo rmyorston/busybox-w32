@@ -59,18 +59,13 @@ static void kill_child(void)
 }
 
 /* Return TRUE if child exits before timeout expires */
+/* NB timeout is in milliseconds */
 static NOINLINE int timeout_wait(int timeout, HANDLE proc, DWORD *status)
 {
-	/* Just sleep(HUGE_NUM); kill(parent) may kill wrong process! */
-	while (1) {
-		sleep1();
-		if (--timeout <= 0)
-			break;
-		if (WaitForSingleObject(proc, 0) == WAIT_OBJECT_0) {
-			/* process is gone */
-			GetExitCodeProcess(proc, status);
-			return TRUE;
-		}
+	if (WaitForSingleObject(proc, timeout) == WAIT_OBJECT_0) {
+		/* process is gone */
+		GetExitCodeProcess(proc, status);
+		return TRUE;
 	}
 	return FALSE;
 }
@@ -136,11 +131,11 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 
 	kill_timeout = 0;
 	if (opt_k)
-		kill_timeout = parse_duration_str(opt_k);
+		kill_timeout = parse_duration_str(opt_k) IF_PLATFORM_MINGW32(* 1000);
 
 	if (!argv[optind])
 		bb_show_usage();
-	timeout = parse_duration_str(argv[optind++]);
+	timeout = parse_duration_str(argv[optind++]) IF_PLATFORM_MINGW32(* 1000);
 	if (!argv[optind]) /* no PROG? */
 		bb_show_usage();
 
