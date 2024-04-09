@@ -158,6 +158,7 @@ BOOL conToCharA(LPSTR d);
 BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got);
 
 void set_title(const char *str);
+int get_title(char *buf, int len);
 void move_cursor_row(int n);
 void reset_screen(void);
 int winansi_putchar(int c);

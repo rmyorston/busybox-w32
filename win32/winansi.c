@@ -179,8 +179,12 @@ int terminal_mode(int reset)
 
 void set_title(const char *str)
 {
-	if (is_console(STDOUT_FILENO))
-		SetConsoleTitle(str);
+	SetConsoleTitle(str);
+}
+
+int get_title(char *buf, int len)
+{
+	return GetConsoleTitle(buf, len);
 }
 
 static HANDLE dup_handle(HANDLE h)

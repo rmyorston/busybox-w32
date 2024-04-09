@@ -11253,6 +11253,9 @@ static int readcmd(int, char **) FAST_FUNC;
 static int setcmd(int, char **) FAST_FUNC;
 static int shiftcmd(int, char **) FAST_FUNC;
 static int timescmd(int, char **) FAST_FUNC;
+#if ENABLE_PLATFORM_MINGW32
+static int titlecmd(int, char **) FAST_FUNC;
+#endif
 static int trapcmd(int, char **) FAST_FUNC;
 static int umaskcmd(int, char **) FAST_FUNC;
 static int unsetcmd(int, char **) FAST_FUNC;
@@ -11352,6 +11355,9 @@ static const struct builtincmd builtintab[] = {
 	{ BUILTIN_REGULAR       "test"    , testcmd    },
 #endif
 	{ BUILTIN_SPEC_REG      "times"   , timescmd   },
+#if ENABLE_PLATFORM_MINGW32
+	{ BUILTIN_REGULAR       "title"   , titlecmd   },
+#endif
 	{ BUILTIN_SPEC_REG      "trap"    , trapcmd    },
 	{ BUILTIN_REGULAR       "true"    , truecmd    },
 	{ BUILTIN_REGULAR       "type"    , typecmd    },
@@ -15548,6 +15554,21 @@ timescmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 
 	return 0;
 }
+
+#if ENABLE_PLATFORM_MINGW32
+static int FAST_FUNC
+titlecmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+{
+	if (*argptr == NULL) {
+		char buffer[256];
+		if (get_title(buffer, sizeof(buffer)))
+			puts(buffer);
+	} else {
+		set_title(*argptr);
+	}
+	return 0;
+}
+#endif
 
 #if ENABLE_FEATURE_SH_MATH
 /*
