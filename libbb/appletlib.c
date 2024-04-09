@@ -776,10 +776,9 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
  help:
 		output_width = get_terminal_width(2);
 
-		dup2(1, 2);
-		full_write2_str(bb_banner); /* reuse const string */
-		full_write2_str(" multi-call binary.\n"); /* reuse */
-		full_write2_str(
+		full_write1_str(bb_banner); /* reuse const string */
+		full_write1_str(" multi-call binary.\n"); /* reuse */
+		full_write1_str(
 			"BusyBox is copyrighted by many authors between 1998-2015.\n"
 			"Licensed under GPLv2. See source distribution for detailed\n"
 			"copyright notices.\n"
@@ -817,20 +816,20 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 		while (*a) {
 			int len2 = strlen(a) + 2;
 			if (col >= (int)output_width - len2) {
-				full_write2_str(",\n");
+				full_write1_str(",\n");
 				col = 0;
 			}
 			if (col == 0) {
 				col = 6;
-				full_write2_str("\t");
+				full_write1_str("\t");
 			} else {
-				full_write2_str(", ");
+				full_write1_str(", ");
 			}
-			full_write2_str(a);
+			full_write1_str(a);
 			col += len2;
 			a += len2 - 1;
 		}
-		full_write2_str("\n");
+		full_write1_str("\n");
 		return 0;
 	}
 
@@ -850,14 +849,13 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 	if (is_prefixed_with(argv[1], "--list")) {
 		unsigned i = 0;
 		const char *a = applet_names;
-		dup2(1, 2);
 		while (*a) {
 #  if ENABLE_FEATURE_INSTALLER
 			if (argv[1][6]) /* --list-full? */
-				full_write2_str(install_dir[APPLET_INSTALL_LOC(i)] + 1);
+				full_write1_str(install_dir[APPLET_INSTALL_LOC(i)] + 1);
 #  endif
-			full_write2_str(a);
-			full_write2_str("\n");
+			full_write1_str(a);
+			full_write1_str("\n");
 			i++;
 			while (*a++ != '\0')
 				continue;
