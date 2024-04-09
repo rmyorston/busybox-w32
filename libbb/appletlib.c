@@ -127,17 +127,19 @@ static const char packed_usage[] ALIGN1 = { PACKED_USAGE };
 void FAST_FUNC bb_show_usage(void)
 {
 	if (ENABLE_SHOW_USAGE) {
+		ssize_t FAST_FUNC (*full_write_fn)(const char *) =
+				xfunc_error_retval ? full_write2_str : full_write1_str;
 #ifdef SINGLE_APPLET_STR
 		/* Imagine that this applet is "true". Dont link in printf! */
 		const char *usage_string = unpack_usage_messages();
 
 		if (usage_string) {
 			if (*usage_string == '\b') {
-				full_write2_str("No help available\n");
+				full_write_fn("No help available\n");
 			} else {
-				full_write2_str("Usage: "SINGLE_APPLET_STR" ");
-				full_write2_str(usage_string);
-				full_write2_str("\n");
+				full_write_fn("Usage: "SINGLE_APPLET_STR" ");
+				full_write_fn(usage_string);
+				full_write_fn("\n");
 			}
 			if (ENABLE_FEATURE_CLEAN_UP)
 				dealloc_usage_messages((char*)usage_string);
@@ -153,19 +155,19 @@ void FAST_FUNC bb_show_usage(void)
 			while (*p++) continue;
 			ap--;
 		}
-		full_write2_str(bb_banner);
-		full_write2_str(" multi-call binary.\n"); /* common string */
+		full_write_fn(bb_banner);
+		full_write_fn(" multi-call binary.\n"); /* common string */
 		if (*p == '\b')
-			full_write2_str("\nNo help available\n");
+			full_write_fn("\nNo help available\n");
 		else {
-			full_write2_str("\nUsage: ");
-			full_write2_str(applet_name);
+			full_write_fn("\nUsage: ");
+			full_write_fn(applet_name);
 			if (p[0]) {
 				if (p[0] != '\n')
-					full_write2_str(" ");
-				full_write2_str(p);
+					full_write_fn(" ");
+				full_write_fn(p);
 			}
-			full_write2_str("\n");
+			full_write_fn("\n");
 		}
 		if (ENABLE_FEATURE_CLEAN_UP)
 			dealloc_usage_messages((char*)usage_string);
@@ -268,8 +270,10 @@ void lbb_prepare(const char *applet
 		 && !(ENABLE_TRUE && strcmp(applet_name, "true") == 0)
 		 && !(ENABLE_FALSE && strcmp(applet_name, "false") == 0)
 		 && !(ENABLE_ECHO && strcmp(applet_name, "echo") == 0)
-		)
+		) {
+			xfunc_error_retval = 0;
 			bb_show_usage();
+		}
 	}
 #endif
 }
