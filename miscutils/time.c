@@ -471,9 +471,6 @@ int time_main(int argc UNUSED_PARAM, char **argv)
 	/* $TIME has lowest prio (-v,-p,-f FMT override it) */
 	const char *output_format = getenv("TIME") ? : default_format;
 	char *output_filename;
-#if ENABLE_PLATFORM_MINGW32
-	char buffer[256];
-#endif
 	int output_fd;
 	int opt;
 	int ex;
@@ -528,7 +525,7 @@ int time_main(int argc UNUSED_PARAM, char **argv)
 	/* Cheat. printf's are shorter :) */
 	xdup2(output_fd, STDOUT_FILENO);
 #if ENABLE_PLATFORM_MINGW32
-	setvbuf(stdout, buffer, _IOFBF, sizeof(buffer));
+	setvbuf(stdout, NULL, _IOFBF, 256);
 #endif
 	summarize(output_format, argv, &res);
 
