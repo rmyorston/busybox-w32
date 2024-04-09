@@ -16235,11 +16235,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
-	if (dirarg) {
-		chdir(dirarg);
-		setpwd(NULL, 0);
-	}
-	else if (!login_sh && iflag) {
+	if (!dirarg && !login_sh && iflag) {
 		char *cwd = getcwd(NULL, 0);
 		if (cwd) {
 			chdir(cwd);
@@ -16281,6 +16277,12 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	}
  state2:
 	state = 3;
+#if ENABLE_PLATFORM_MINGW32
+	if (dirarg) {
+		chdir(dirarg);
+		setpwd(NULL, 0);
+	}
+#endif
 	if (iflag
 #if ENABLE_PLATFORM_POSIX
 #ifndef linux
