@@ -31,11 +31,6 @@
 
 #include "libbb.h"
 
-#if ENABLE_PLATFORM_MINGW32
-# undef putchar
-# define putchar(c) winansi_fputc(c, stdout)
-#endif
-
 int yes_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int yes_main(int argc UNUSED_PARAM, char **argv)
 {
