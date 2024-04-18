@@ -105,7 +105,7 @@ static NOINLINE unsigned int parse_meminfo(struct globals *g)
 	return seen_cached_and_available_and_reclaimable == 0;
 }
 #else
-static NOINLINE unsigned int parse_meminfo(struct globals *g)
+static unsigned int parse_meminfo(struct globals *g)
 {
 	g->cached_kb = g->available_kb = g->reclaimable_kb = 0;
 
