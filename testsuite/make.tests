@@ -497,6 +497,13 @@ test.b:
 '
 cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
 
+# Don't use the shell -e option when running commands.
+testing "make no shell -e option when running commands" \
+	"make -f -" "OK\n" "" '
+target:
+	@false; echo OK
+'
+
 # An empty original suffix indicates that every word should have
 # the new suffix added.  If neither suffix is provided the words
 # remain unchanged.

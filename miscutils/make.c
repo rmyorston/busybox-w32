@@ -2217,7 +2217,7 @@ docmds(struct name *np, struct cmd *cp)
 		if (sdomake) {
 			// Get the shell to execute it
 			int status;
-			char *cmd = !signore ? auto_concat("set -e;", q) : q;
+			char *cmd = !signore && posix ? auto_concat("set -e;", q) : q;
 
 			target = np;
 			status = system(cmd);
@@ -2233,7 +2233,6 @@ docmds(struct name *np, struct cmd *cp)
 					diagnostic("failed to build '%s'", np->n_name);
 					estat |= MAKE_FAILURE;
 					free(command);
-					free(cmd);
 					break;
 				} else if (doinclude) {
 					warning("failed to build '%s'", np->n_name);
