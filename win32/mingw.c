@@ -359,8 +359,9 @@ static int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
 {
 	char *want_dir;
 
-	if (get_dev_type(fname) != NOT_DEVICE || get_dev_fd(fname) >= 0) {
+	if (get_dev_type(fname) == DEV_NULL || get_dev_fd(fname) >= 0) {
 		/* Fake attributes for special devices */
+		/* Though not /dev/zero or /dev/urandom */
 		FILETIME epoch = {0xd53e8000, 0x019db1de};	// Unix epoch as FILETIME
 		fdata->dwFileAttributes = FILE_ATTRIBUTE_DEVICE;
 		fdata->ftCreationTime = fdata->ftLastAccessTime =
