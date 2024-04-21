@@ -504,6 +504,17 @@ target:
 	@false; echo OK
 '
 
+# Macros and targets may be mixed on the command line
+testing "make allow mixed macros and targets" \
+	"make -f - FOO=foo foo BAR=bar bar" "foo\nbar\nfoo\nbar\n" "" '
+foo:
+	@echo $(FOO)
+	@echo $(BAR)
+bar:
+	@echo $(FOO)
+	@echo $(BAR)
+'
+
 # An empty original suffix indicates that every word should have
 # the new suffix added.  If neither suffix is provided the words
 # remain unchanged.

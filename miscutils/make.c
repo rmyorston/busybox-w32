@@ -2686,14 +2686,25 @@ expand_makeflags(void)
 /*
  * Instantiate all macros in an argv-style array of pointers.  Stop
  * processing at the first string that doesn't contain an equal sign.
+ * As an extension, target arguments on the command line (level 1)
+ * are skipped and will be processed later.
  */
 static char **
 process_macros(char **argv, int level)
 {
 	char *p;
 
-	while (*argv && (p = strchr(*argv, '=')) != NULL) {
+	for (; *argv; argv++) {
 		int immediate = 0;
+
+		if (!(p = strchr(*argv, '='))) {
+			// Skip targets on the command line
+			if (!posix && level == 1)
+				continue;
+			else
+				// Stop at first target
+				break;
+		}
 
 		if (p - 2 > *argv && p[-1] == ':' && p[-2] == ':') {
 			if (POSIX_2017)
@@ -2714,8 +2725,6 @@ process_macros(char **argv, int level)
 		*p = '=';
 		if (immediate)
 			p[-2] = ':';
-
-		argv++;
 	}
 	return argv;
 }
@@ -2846,6 +2855,7 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	char def_make[] = "makefile";
 	int estat;
+	bool found_target;
 	FILE *ifd;
 
 	INIT_G();
@@ -2923,7 +2933,12 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 	setmacro("$", "$", 0 | M_VALID);
 
 	// Process macro definitions from the command line
-	argv = process_macros(argv, 1);
+	if (posix)
+		// In POSIX mode macros must appear before targets.
+		// argv should now point to targets only.
+		argv = process_macros(argv, 1);
+	else
+		process_macros(argv, 1);
 
 	// Process macro definitions from MAKEFLAGS
 	if (fargv) {
@@ -2983,13 +2998,20 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 		mark_special(".PHONY", OPT_phony, N_PHONY);
 
 	estat = 0;
-	if (*argv == NULL) {
+	found_target = FALSE;
+	for (; *argv; argv++) {
+		// In POSIX mode only targets should now be in argv.
+		// As an extension macros may still be present: skip them.
+		if (posix || !strchr(*argv, '='))
+		{
+			found_target = TRUE;
+			estat |= make(newname(*argv), 0);
+		}
+	}
+	if (!found_target) {
 		if (!firstname)
 			error("no targets defined");
 		estat = make(firstname, 0);
-	} else {
-		while (*argv != NULL)
-			estat |= make(newname(*argv++), 0);
 	}
 
 #if ENABLE_FEATURE_CLEAN_UP
