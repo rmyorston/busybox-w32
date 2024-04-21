@@ -742,7 +742,10 @@ setmacro(const char *name, const char *val, int level)
 		// If not defined, allocate space for new
 		unsigned int bucket;
 
-		if (!valid && !is_valid_macro(name))
+		if (!valid && !is_valid_macro(name)) {
+			// Silently drop invalid names from the environment
+			if (level == 3)
+				return;
 #if ENABLE_FEATURE_MAKE_POSIX
 			error("invalid macro name '%s'%s", name,
 					potentially_valid_macro(name) ?
@@ -750,6 +753,7 @@ setmacro(const char *name, const char *val, int level)
 #else
 			error("invalid macro name '%s'", name);
 #endif
+		}
 
 		bucket = getbucket(name);
 		mp = xzalloc(sizeof(struct macro));
@@ -2929,7 +2933,7 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	// Process macro definitions from the environment
-	process_macros(environ, 3 | M_VALID);
+	process_macros(environ, 3);
 
 	// Update MAKEFLAGS and environment
 	update_makeflags();
