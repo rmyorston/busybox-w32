@@ -2041,7 +2041,7 @@ void mingw_sync(void)
 }
 
 #define NUMEXT 5
-static const char win_suffix[NUMEXT][4] = { "sh", "com", "exe", "bat", "cmd" };
+static const char win_suffix[NUMEXT][4] = { "com", "exe", "sh", "bat", "cmd" };
 
 static int has_win_suffix(const char *name, int start)
 {
@@ -2082,21 +2082,25 @@ char *alloc_ext_space(const char *path)
 	return s;
 }
 
-/* Check if path can be made into an executable by adding a suffix.
- * The suffix is added to the end of the argument which must be
- * long enough to allow this.
+/* Check if path is an executable or can be made into one by adding
+ * a suffix.  The suffix is added to the end of the argument which
+ * must be long enough to allow this.
  *
  * If the return value is TRUE the argument contains the new path,
  * if FALSE the argument is unchanged.
  */
-int add_win32_extension(char *p)
+int
+add_win32_extension(char *p)
 {
+	if (file_is_executable(p))
+		return TRUE;
+
 	if (!has_exe_suffix_or_dot(p)) {
 		int i, len = strlen(p);
 
 		p[len] = '.';
-		for (i=0; i<NUMEXT; ++i) {
-			strcpy(p+len+1, win_suffix[i]);
+		for (i = 0; i < NUMEXT; ++i) {
+			strcpy(p + len + 1, win_suffix[i]);
 			if (file_is_executable(p))
 				return TRUE;
 		}
@@ -2114,7 +2118,7 @@ file_is_win32_exe(const char *name)
 {
 	char *path = alloc_ext_space(name);
 
-	if ((add_win32_extension(path) || file_is_executable(path)))
+	if (add_win32_extension(path))
 		return path;
 
 	free(path);

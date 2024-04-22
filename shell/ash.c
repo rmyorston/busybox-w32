@@ -15059,7 +15059,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 		entry->u.index = -1;
 		entry->cmdtype = CMDNORMAL;
 		fullname = stack_add_ext_space(name);
-		if (add_win32_extension(fullname) || file_is_executable(fullname)) {
+		if (add_win32_extension(fullname)) {
 			return;
 		} else if (unix_path(name)) {
 			name = (char *)bb_basename(name);
