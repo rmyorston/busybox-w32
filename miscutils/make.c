@@ -2509,9 +2509,11 @@ make(struct name *np, int level)
 		free(oodate);
 	}
 
-	if (estat & MAKE_DIDSOMETHING)
-		clock_gettime(CLOCK_REALTIME, &np->n_tim);
-	else if (!quest && level == 0 && !timespec_le(&np->n_tim, &dtim))
+	if (estat & MAKE_DIDSOMETHING) {
+		modtime(np);
+		if (np->n_tim.tv_sec == 0 && np->n_tim.tv_nsec == 0)
+			clock_gettime(CLOCK_REALTIME, &np->n_tim);
+	} else if (!quest && level == 0 && !timespec_le(&np->n_tim, &dtim))
 		printf("%s: '%s' is up to date\n", applet_name, np->n_name);
 
 	free(allsrc);
