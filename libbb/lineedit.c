@@ -1585,8 +1585,8 @@ line_input_t* FAST_FUNC new_line_input_t(int flags)
 
 unsigned FAST_FUNC size_from_HISTFILESIZE(const char *hp)
 {
-# if ENABLE_PLATFORM_MINGW32 && MAX_HISTORY > 511
-	int size = 384;
+# if ENABLE_PLATFORM_MINGW32 && DEFAULT_HISTORY > 0 && DEFAULT_HISTORY <= MAX_HISTORY
+	int size = DEFAULT_HISTORY;
 # else
 	int size = MAX_HISTORY;
 # endif

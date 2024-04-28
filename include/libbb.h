@@ -2015,6 +2015,11 @@ unsigned size_from_HISTFILESIZE(const char *hp) FAST_FUNC;
 # else
 #  define MAX_HISTORY 0
 # endif
+# if defined CONFIG_FEATURE_EDITING_HISTORY_DEFAULT && CONFIG_FEATURE_EDITING_HISTORY_DEFAULT > 0
+#  define DEFAULT_HISTORY (CONFIG_FEATURE_EDITING_HISTORY_DEFAULT + 0)
+# else
+#  define DEFAULT_HISTORY 0
+# endif
 typedef const char *get_exe_name_t(int i) FAST_FUNC;
 typedef const char *sh_get_var_t(const char *name) FAST_FUNC;
 typedef int sh_accept_glob_t(const char *name) FAST_FUNC;

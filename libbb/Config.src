@@ -188,6 +188,16 @@ config FEATURE_EDITING_HISTORY
 	help
 	Specify command history size (0 - disable).
 
+config FEATURE_EDITING_HISTORY_DEFAULT
+	int "Default history size"
+	range 0 FEATURE_EDITING_HISTORY
+	default 255
+	depends on PLATFORM_MINGW32 && FEATURE_EDITING && FEATURE_SH_HISTFILESIZE
+	help
+	Specify default command history size. This may be smaller than
+	FEATURE_EDITING_HISTORY, in which case the user may increase
+	the history size by setting HISTFILESIZE.
+
 config FEATURE_EDITING_SAVEHISTORY
 	bool "History saving"
 	default y
