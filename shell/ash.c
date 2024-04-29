@@ -12656,14 +12656,14 @@ options(int *login_sh)
 	int val;
 	int c;
 
+#if ENABLE_ASH_NOCONSOLE
+	noconsole = console_state();
+#endif
 	if (login_sh != NULL) { /* if we came from startup code */
 		minusc = NULL;
 #if ENABLE_PLATFORM_MINGW32
 		dirarg = NULL;
 		title = NULL;
-# if ENABLE_ASH_NOCONSOLE
-		noconsole = console_state();
-# endif
 # if ENABLE_SUW32
 		delayexit = 0;
 # endif
