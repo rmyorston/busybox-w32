@@ -192,9 +192,10 @@
 //config:	depends on (ASH || SH_IS_ASH || BASH_IS_ASH) && PLATFORM_MINGW32
 //config:	help
 //config:	Enable support for the 'noconsole' option, which attempts to
-//config:	hide the console normally associated with a command line
+//config:	conceal the console normally associated with a command line
 //config:	application.  This may be useful when running a shell script
-//config:	from a GUI application.
+//config:	from a GUI application.  Also the 'noiconify' option, which
+//config:	controls whether the console is iconfified or hidden.
 //config:
 //config:config ASH_GLOB_OPTIONS
 //config:	bool "Globbing options"
@@ -505,6 +506,7 @@ static const char *const optletters_optnames[] ALIGN_PTR = {
 #endif
 #if ENABLE_ASH_NOCONSOLE
 	,"\0"  "noconsole"
+	,"\0"  "noiconify"
 #endif
 #if ENABLE_ASH_GLOB_OPTIONS
 	,"\0"  "nocaseglob"
@@ -635,11 +637,12 @@ struct globals_misc {
 # define winxp optlist[16 + BASH_PIPEFAIL + 2*(DEBUG != 0)]
 # if ENABLE_ASH_NOCONSOLE
 #  define noconsole optlist[17 + BASH_PIPEFAIL + 2*(DEBUG != 0)]
+#  define noiconify optlist[18 + BASH_PIPEFAIL + 2*(DEBUG != 0)]
 # endif
 # if ENABLE_ASH_GLOB_OPTIONS
-#  define nocaseglob optlist[17 + BASH_PIPEFAIL + 2*(DEBUG != 0) + ENABLE_ASH_NOCONSOLE]
-#  define nohiddenglob optlist[18 + BASH_PIPEFAIL + 2*(DEBUG != 0) + ENABLE_ASH_NOCONSOLE]
-#  define nohidsysglob optlist[19 + BASH_PIPEFAIL + 2*(DEBUG != 0) + ENABLE_ASH_NOCONSOLE]
+#  define nocaseglob optlist[17 + BASH_PIPEFAIL + 2*(DEBUG != 0) + 2*ENABLE_ASH_NOCONSOLE]
+#  define nohiddenglob optlist[18 + BASH_PIPEFAIL + 2*(DEBUG != 0) + 2*ENABLE_ASH_NOCONSOLE]
+#  define nohidsysglob optlist[19 + BASH_PIPEFAIL + 2*(DEBUG != 0) + 2*ENABLE_ASH_NOCONSOLE]
 # endif
 #endif
 
@@ -2969,17 +2972,25 @@ setwinxp(int on)
 /*
  * Console state is either:
  *  0 normal
- *  1 iconified
+ *  1 iconified/hidden
  *  2 unknown
  */
 static int console_state(void)
 {
 	DECLARE_PROC_ADDR(BOOL, ShowWindow, HWND, int);
-	DECLARE_PROC_ADDR(BOOL, IsIconic, HWND);
 
-	if (INIT_PROC_ADDR(user32.dll, ShowWindow) &&
-			INIT_PROC_ADDR(user32.dll, IsIconic)) {
-		return IsIconic(GetConsoleWindow()) != 0;
+	if (INIT_PROC_ADDR(user32.dll, ShowWindow)) {
+		BOOL state;
+
+		if (noiconify) {
+			state = IsWindowVisible(GetConsoleWindow());
+			if (state >= 0)
+				return state == 0;
+		} else {
+			state = IsIconic(GetConsoleWindow());
+			if (state >= 0)
+				return state != 0;
+		}
 	}
 	return 2;
 }
@@ -2988,7 +2999,8 @@ static void hide_console(int hide)
 {
 	// Switch console state if it's known and isn't the required state
 	if (console_state() == !hide)
-		ShowWindow(GetConsoleWindow(), hide ? SW_MINIMIZE : SW_NORMAL);
+		ShowWindow(GetConsoleWindow(), hide ?
+						(noiconify ? SW_HIDE : SW_MINIMIZE) : SW_NORMAL);
 }
 # endif
 #endif
