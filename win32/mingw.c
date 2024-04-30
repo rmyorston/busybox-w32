@@ -700,7 +700,9 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 			/* The file is not a symlink. */
 			buf->st_mode = file_attr_to_st_mode(fdata.dwFileAttributes);
 			if (S_ISREG(buf->st_mode) &&
-					(has_exe_suffix(file_name) || has_exec_format(file_name)))
+					(has_exe_suffix(file_name) ||
+					(!(buf->st_attr & FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS) &&
+						has_exec_format(file_name))))
 				buf->st_mode |= S_IXUSR|S_IXGRP|S_IXOTH;
 			buf->st_size = fdata.nFileSizeLow |
 				(((off64_t)fdata.nFileSizeHigh)<<32);
@@ -711,7 +713,8 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		buf->st_nlink = (buf->st_attr & FILE_ATTRIBUTE_DIRECTORY) ? 2 : 1;
 
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
-		if (!(buf->st_attr & FILE_ATTRIBUTE_DEVICE)) {
+		if (!(buf->st_attr &
+			(FILE_ATTRIBUTE_DEVICE | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS))) {
 			DWORD flags;
 			HANDLE fh;
 			BY_HANDLE_FILE_INFORMATION hdata;
