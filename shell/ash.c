@@ -195,7 +195,7 @@
 //config:	conceal the console normally associated with a command line
 //config:	application.  This may be useful when running a shell script
 //config:	from a GUI application.  Also the 'noiconify' option, which
-//config:	controls whether the console is iconfified or hidden.
+//config:	controls whether the console is iconified or hidden.
 //config:
 //config:config ASH_GLOB_OPTIONS
 //config:	bool "Globbing options"
