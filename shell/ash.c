@@ -2944,11 +2944,11 @@ listvars(int on, int off, struct strlist *lp, char ***end)
 static void
 setwinxp(int on)
 {
-	static smallint is_winxp;
+	static smallint is_winxp = 1;
 	struct var **vpp;
 	struct var *vp;
 
-	if (++on == is_winxp)
+	if (on == is_winxp)
 		return;
 	is_winxp = on;
 
@@ -2959,7 +2959,7 @@ setwinxp(int on)
 				if (!end || is_prefixed_with(vp->var_text, "COMSPEC=") ||
 						is_prefixed_with(vp->var_text, "SYSTEMROOT="))
 					continue;
-				if (!winxp)
+				if (!on)
 					bs_to_slash(end + 1);
 				else
 					slash_to_bs(end + 1);
