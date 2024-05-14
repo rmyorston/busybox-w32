@@ -583,6 +583,8 @@ static char *get_bb_string(DWORD pid, const char *exe, char *string)
 	return name;
 }
 
+#define NPIDS 128
+
 /* POSIX version in libbb/procps.c */
 procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags
 #if !ENABLE_FEATURE_PS_TIME && !ENABLE_FEATURE_PS_LONG
@@ -603,6 +605,8 @@ UNUSED_PARAM
 			free(sp);
 			return NULL;
 		}
+		sp->pids = xmalloc(sizeof(unsigned) * NPIDS);
+		sp->maxpids = NPIDS;
 		ret = Process32First(sp->snapshot, &pe);
 	}
 	else {
@@ -611,6 +615,7 @@ UNUSED_PARAM
 
 	if (!ret) {
 		CloseHandle(sp->snapshot);
+		free(sp->pids);
 		free(sp);
 		return NULL;
 	}
@@ -653,8 +658,21 @@ UNUSED_PARAM
 		}
 	}
 
-	sp->pid = pe.th32ProcessID;
-	sp->ppid = pe.th32ParentProcessID;
+	/* The parent of PID 0 is 0.  If the parent is a PID we haven't
+	 * seen set PPID to 1. */
+	sp->ppid = pe.th32ProcessID != 0;
+	for (int i = 0; i < sp->npids; ++i) {
+		if (sp->pids[i] == pe.th32ParentProcessID) {
+			sp->ppid = pe.th32ParentProcessID;
+			break;
+		}
+	}
+
+	if (sp->npids == sp->maxpids) {
+		sp->maxpids += NPIDS;
+		sp->pids = xrealloc(sp->pids, sizeof(unsigned) * sp->maxpids);
+	}
+	sp->pids[sp->npids++] = sp->pid = pe.th32ProcessID;
 
 	if (sp->pid == getpid()) {
 		comm = applet_name;

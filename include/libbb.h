@@ -2148,6 +2148,9 @@ typedef struct procps_status_t {
 	DIR *dir;
 #else
 	HANDLE snapshot;
+	unsigned *pids;
+	int npids;
+	int maxpids;
 #endif
 	IF_FEATURE_SHOW_THREADS(DIR *task_dir;)
 	uint8_t shift_pages_to_bytes;
