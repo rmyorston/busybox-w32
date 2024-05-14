@@ -54,7 +54,9 @@ static HANDLE child = INVALID_HANDLE_VALUE;
 static void kill_child(void)
 {
 	if (child != INVALID_HANDLE_VALUE) {
-		kill_signal_by_handle(child, SIGTERM);
+		pid_t pid = (pid_t)GetProcessId(child);
+		if (pid)
+			kill(pid, SIGTERM);
 	}
 }
 
@@ -206,13 +208,15 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 	status = signo == SIGKILL ? 137 : 124;
 
 	pid = (pid_t)GetProcessId(child);
-	kill(pid, signo);
+	if (pid) {
+		kill(pid, signo);
 
-	if (kill_timeout > 0) {
-		if (timeout_wait(kill_timeout, child, &status))
-			goto finish;
-		kill(pid, SIGKILL);
-		status = 137;
+		if (kill_timeout > 0) {
+			if (timeout_wait(kill_timeout, child, &status))
+				goto finish;
+			kill(pid, SIGKILL);
+			status = 137;
+		}
 	}
  finish:
 	CloseHandle(child);

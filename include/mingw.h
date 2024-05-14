@@ -569,7 +569,6 @@ int mingw_execve(const char *cmd, char *const *argv, char *const *envp);
 #define has_dos_drive_prefix(path) (isalpha(*(path)) && (path)[1] == ':')
 
 BOOL WINAPI kill_child_ctrl_handler(DWORD dwCtrlType);
-int kill_signal_by_handle(HANDLE process, int sig);
 int FAST_FUNC is_valid_signal(int number);
 int exit_code_to_wait_status(DWORD win_exit_code);
 int exit_code_to_posix(DWORD win_exit_code);

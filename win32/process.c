@@ -685,14 +685,98 @@ void FAST_FUNC read_cmdline(char *buf, int col, unsigned pid, const char *comm)
 }
 
 /**
+ * Determine whether a process runs in the same architecture as the current
+ * one. That test is required before we assume that GetProcAddress() returns
+ * a valid address *for the target process*.
+ */
+static inline int process_architecture_matches_current(HANDLE process)
+{
+	static BOOL current_is_wow = -1;
+	BOOL is_wow;
+
+	if (current_is_wow == -1 &&
+	    !IsWow64Process (GetCurrentProcess(), &current_is_wow))
+		current_is_wow = -2;
+	if (current_is_wow == -2)
+		return 0; /* could not determine current process' WoW-ness */
+	if (!IsWow64Process (process, &is_wow))
+		return 0; /* cannot determine */
+	return is_wow == current_is_wow;
+}
+
+/**
+ * This function tries to terminate a Win32 process, as gently as possible,
+ * by injecting a thread that calls ExitProcess().
+ *
+ * Note: as kernel32.dll is loaded before any process, the other process and
+ * this process will have ExitProcess() at the same address.
+ *
+ * The idea comes from the Dr Dobb's article "A Safer Alternative to
+ * TerminateProcess()" by Andrew Tucker (July 1, 1999),
+ * http://www.drdobbs.com/a-safer-alternative-to-terminateprocess/184416547
+ *
+ */
+static int kill_signal_by_handle(HANDLE process, int sig)
+{
+	DECLARE_PROC_ADDR(DWORD, ExitProcess, LPVOID);
+	PVOID arg = (PVOID)(intptr_t)(sig << 24);
+	DWORD thread_id;
+	HANDLE thread;
+
+	if (!INIT_PROC_ADDR(kernel32, ExitProcess) ||
+			!process_architecture_matches_current(process)) {
+		SetLastError(ERROR_ACCESS_DENIED);
+		return -1;
+	}
+
+	if (sig != 0 && (thread = CreateRemoteThread(process, NULL, 0,
+					   ExitProcess, arg, 0, &thread_id))) {
+		CloseHandle(thread);
+	}
+	return 0;
+}
+
+static int kill_signal(pid_t pid, int sig)
+{
+	HANDLE process;
+	int ret = 0;
+	DWORD code;
+
+	if (sig == SIGKILL)
+		process = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+	else
+		process = OpenProcess(SYNCHRONIZE | PROCESS_CREATE_THREAD |
+			PROCESS_QUERY_INFORMATION |
+			PROCESS_VM_OPERATION | PROCESS_VM_WRITE |
+			PROCESS_VM_READ, FALSE, pid);
+
+	if (!process)
+		return -1;
+
+	if (!GetExitCodeProcess(process, &code) || code != STILL_ACTIVE) {
+		SetLastError(ERROR_INVALID_PARAMETER);
+		ret = -1;
+	} else if (sig == SIGKILL) {
+		/* This way of terminating processes is not gentle: they get no
+		 * chance to clean up after themselves (closing file handles,
+		 * removing .lock files, terminating spawned processes (if any),
+		 * etc). */
+		ret = !TerminateProcess(process, SIGKILL << 24);
+	} else {
+		ret = kill_signal_by_handle(process, sig);
+	}
+	CloseHandle(process);
+
+	return ret;
+}
+
+/**
  * If the process ID is positive invoke the callback for that process
  * only.  If negative or zero invoke the callback for all descendants
  * of the indicated process.  Zero indicates the current process; negative
  * indicates the process with process ID -pid.
  */
-typedef int (*kill_callback)(pid_t pid, int sig);
-
-static int kill_pids(pid_t pid, int sig, kill_callback killer)
+static int kill_pids(pid_t pid, int sig)
 {
 	DWORD pids[16384];
 	int max_len = sizeof(pids) / sizeof(*pids), i, len, ret = 0;
@@ -750,109 +834,11 @@ static int kill_pids(pid_t pid, int sig, kill_callback killer)
 
 	for (i = len - 1; i >= 0; i--) {
 		SetLastError(0);
-		if (killer(pids[i], sig)) {
+		if (kill_signal(pids[i], sig)) {
 			errno = err_win_to_posix();
 			ret = -1;
 		}
 	}
-
-	return ret;
-}
-
-/**
- * Determine whether a process runs in the same architecture as the current
- * one. That test is required before we assume that GetProcAddress() returns
- * a valid address *for the target process*.
- */
-static inline int process_architecture_matches_current(HANDLE process)
-{
-	static BOOL current_is_wow = -1;
-	BOOL is_wow;
-
-	if (current_is_wow == -1 &&
-	    !IsWow64Process (GetCurrentProcess(), &current_is_wow))
-		current_is_wow = -2;
-	if (current_is_wow == -2)
-		return 0; /* could not determine current process' WoW-ness */
-	if (!IsWow64Process (process, &is_wow))
-		return 0; /* cannot determine */
-	return is_wow == current_is_wow;
-}
-
-/**
- * This function tries to terminate a Win32 process, as gently as possible,
- * by injecting a thread that calls ExitProcess().
- *
- * Note: as kernel32.dll is loaded before any process, the other process and
- * this process will have ExitProcess() at the same address.
- *
- * The idea comes from the Dr Dobb's article "A Safer Alternative to
- * TerminateProcess()" by Andrew Tucker (July 1, 1999),
- * http://www.drdobbs.com/a-safer-alternative-to-terminateprocess/184416547
- *
- */
-int kill_signal_by_handle(HANDLE process, int sig)
-{
-	DWORD code;
-	int ret = 0;
-
-	if (GetExitCodeProcess(process, &code) && code == STILL_ACTIVE) {
-		DECLARE_PROC_ADDR(DWORD, ExitProcess, LPVOID);
-		PVOID arg = (PVOID)(intptr_t)(sig << 24);
-		DWORD thread_id;
-		HANDLE thread;
-
-		if (!INIT_PROC_ADDR(kernel32, ExitProcess) ||
-				!process_architecture_matches_current(process)) {
-			SetLastError(ERROR_ACCESS_DENIED);
-			ret = -1;
-			goto finish;
-		}
-
-		if ((thread = CreateRemoteThread(process, NULL, 0,
-					    ExitProcess, arg, 0, &thread_id))) {
-			CloseHandle(thread);
-		}
-	}
-
- finish:
-	CloseHandle(process);
-	return ret;
-}
-
-static int kill_signal(pid_t pid, int sig)
-{
-	HANDLE process;
-
-	if (!(process = OpenProcess(SYNCHRONIZE | PROCESS_CREATE_THREAD |
-			PROCESS_QUERY_INFORMATION |
-			PROCESS_VM_OPERATION | PROCESS_VM_WRITE |
-			PROCESS_VM_READ, FALSE, pid))) {
-		return -1;
-	}
-
-	return kill_signal_by_handle(process, sig);
-}
-
-/*
- * This way of terminating processes is not gentle: they get no chance to
- * clean up after themselves (closing file handles, removing .lock files,
- * terminating spawned processes (if any), etc).
- *
- * If the signal isn't SIGKILL just check if the target process exists.
- */
-static int kill_SIGKILL(pid_t pid, int sig)
-{
-	HANDLE process;
-	int ret = 0;
-
-	if (!(process=OpenProcess(PROCESS_TERMINATE, FALSE, pid))) {
-		return -1;
-	}
-
-	if (sig == SIGKILL)
-		ret = !TerminateProcess(process, SIGKILL << 24);
-	CloseHandle(process);
 
 	return ret;
 }
@@ -897,10 +883,8 @@ int exit_code_to_posix(DWORD exit_code)
 
 int kill(pid_t pid, int sig)
 {
-	if (sig == SIGKILL || sig == 0)
-		return kill_pids(pid, sig, kill_SIGKILL);
-	else if (is_valid_signal(sig))
-		return kill_pids(pid, sig, kill_signal);
+	if (is_valid_signal(sig))
+		return kill_pids(pid, sig);
 
 	errno = EINVAL;
 	return -1;
