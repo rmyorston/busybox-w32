@@ -605,8 +605,6 @@ UNUSED_PARAM
 			free(sp);
 			return NULL;
 		}
-		sp->pids = xmalloc(sizeof(unsigned) * NPIDS);
-		sp->maxpids = NPIDS;
 		ret = Process32First(sp->snapshot, &pe);
 	}
 	else {
