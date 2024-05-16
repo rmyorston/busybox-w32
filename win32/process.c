@@ -605,6 +605,16 @@ UNUSED_PARAM
 			free(sp);
 			return NULL;
 		}
+		if (Process32First(sp->snapshot, &pe)) {
+			int maxpids = 0;
+			do {
+				if (sp->npids == maxpids) {
+					maxpids += NPIDS;
+					sp->pids = xrealloc(sp->pids, sizeof(DWORD) * maxpids);
+				}
+				sp->pids[sp->npids++] = pe.th32ProcessID;
+			} while (Process32Next(sp->snapshot, &pe));
+		}
 		ret = Process32First(sp->snapshot, &pe);
 	}
 	else {
@@ -665,12 +675,7 @@ UNUSED_PARAM
 			break;
 		}
 	}
-
-	if (sp->npids == sp->maxpids) {
-		sp->maxpids += NPIDS;
-		sp->pids = xrealloc(sp->pids, sizeof(unsigned) * sp->maxpids);
-	}
-	sp->pids[sp->npids++] = sp->pid = pe.th32ProcessID;
+	sp->pid = pe.th32ProcessID;
 
 	if (sp->pid == getpid()) {
 		comm = applet_name;
@@ -787,10 +792,10 @@ static int kill_signal(pid_t pid, int sig)
 }
 
 /**
- * If the process ID is positive invoke the callback for that process
- * only.  If negative or zero invoke the callback for all descendants
- * of the indicated process.  Zero indicates the current process; negative
- * indicates the process with process ID -pid.
+ * If the process ID is positive signal that process only.  If negative
+ * or zero signal all descendants of the indicated process.  Zero
+ * indicates the current process; negative indicates the process with
+ * process ID -pid.
  */
 static int kill_pids(pid_t pid, int sig)
 {
