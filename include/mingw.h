@@ -477,7 +477,7 @@ int getuid(void);
 #define geteuid getuid
 #define getegid getuid
 int getgroups(int n, gid_t *groups);
-IMPL(getppid,int,1,void);
+pid_t getppid(void);
 NOIMPL(getsid,pid_t pid UNUSED_PARAM);
 int getlogin_r(char *buf, size_t len);
 int fcntl(int fd, int cmd, ...);

@@ -583,6 +583,19 @@ static char *get_bb_string(DWORD pid, const char *exe, char *string)
 	return name;
 }
 
+pid_t getppid(void)
+{
+	procps_status_t *sp = NULL;
+	int my_pid = getpid();
+
+	while ((sp = procps_scan(sp, 0)) != NULL) {
+		if (sp->pid == my_pid) {
+			return sp->ppid;
+		}
+	}
+	return 1;
+}
+
 #define NPIDS 128
 
 /* POSIX version in libbb/procps.c */
@@ -677,16 +690,18 @@ UNUSED_PARAM
 	}
 	sp->pid = pe.th32ProcessID;
 
-	if (sp->pid == getpid()) {
-		comm = applet_name;
+	if (flags & PSSCAN_COMM) {
+		if (sp->pid == getpid()) {
+			comm = applet_name;
+		}
+		else if ((name=get_bb_string(sp->pid, pe.szExeFile, bb_comm)) != NULL) {
+			comm = name;
+		}
+		else {
+			comm = pe.szExeFile;
+		}
+		safe_strncpy(sp->comm, comm, COMM_LEN);
 	}
-	else if ((name=get_bb_string(sp->pid, pe.szExeFile, bb_comm)) != NULL) {
-		comm = name;
-	}
-	else {
-		comm = pe.szExeFile;
-	}
-	safe_strncpy(sp->comm, comm, COMM_LEN);
 
 	return sp;
 }
