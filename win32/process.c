@@ -812,10 +812,18 @@ static int kill_signal(pid_t pid, int sig)
  * indicates the current process; negative indicates the process with
  * process ID -pid.
  */
-static int kill_pids(pid_t pid, int sig)
+int kill(pid_t pid, int sig)
 {
-	DWORD pids[16384];
-	int max_len = sizeof(pids) / sizeof(*pids), i, len, ret = 0;
+	DWORD *pids;
+	int max_len, i, len, ret = 0;
+
+	if (!is_valid_signal(sig)) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	max_len = NPIDS;
+	pids = xmalloc(sizeof(*pids) * max_len);
 
 	if(pid > 0)
 		pids[0] = (DWORD)pid;
@@ -836,33 +844,34 @@ static int kill_pids(pid_t pid, int sig)
 	 */
 	if (pid <= 0) {
 		HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+		PROCESSENTRY32 entry;
+		int pid_added;
 
 		if (snapshot == INVALID_HANDLE_VALUE) {
 			errno = err_win_to_posix();
+			free(pids);
 			return -1;
 		}
 
-		for (;;) {
-			PROCESSENTRY32 entry;
-			int orig_len = len;
-
-			memset(&entry, 0, sizeof(entry));
-			entry.dwSize = sizeof(entry);
-
-			if (!Process32First(snapshot, &entry))
-				break;
+		entry.dwSize = sizeof(entry);
+		pid_added = TRUE;
+		while (pid_added && Process32First(snapshot, &entry)) {
+			pid_added = FALSE;
 
 			do {
 				for (i = len - 1; i >= 0; i--) {
 					if (pids[i] == entry.th32ProcessID)
 						break;
-					if (pids[i] == entry.th32ParentProcessID)
+					if (pids[i] == entry.th32ParentProcessID) {
+						if (len == max_len) {
+							max_len += NPIDS;
+							pids = xrealloc(pids, sizeof(*pids) * max_len);
+						}
 						pids[len++] = entry.th32ProcessID;
+						pid_added = TRUE;
+					}
 				}
-			} while (len < max_len && Process32Next(snapshot, &entry));
-
-			if (orig_len == len || len >= max_len)
-				break;
+			} while (Process32Next(snapshot, &entry));
 		}
 
 		CloseHandle(snapshot);
@@ -875,6 +884,7 @@ static int kill_pids(pid_t pid, int sig)
 			ret = -1;
 		}
 	}
+	free(pids);
 
 	return ret;
 }
@@ -915,13 +925,4 @@ int exit_code_to_posix(DWORD exit_code)
 	if (WIFSIGNALED(status))
 		return 128 + WTERMSIG(status);
 	return WEXITSTATUS(status);
-}
-
-int kill(pid_t pid, int sig)
-{
-	if (is_valid_signal(sig))
-		return kill_pids(pid, sig);
-
-	errno = EINVAL;
-	return -1;
 }
