@@ -15886,9 +15886,16 @@ static void setvar_if_unset(const char *key, const char *value)
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
+/*
+ * Detect if the environment contains certain mixed-case names:
+ *
+ *   Home          is present in a standard Windows environment
+ *   ComSpec       is present in WINE
+ *   ProgramData   is present in Cygwin/MSYS2
+ */
 static int mixed_case_special_name(const char *envp)
 {
-	const char *names = "PATH=\0""COMSPEC=\0";
+	const char *names = "PATH=\0""COMSPEC=\0""PROGRAMDATA=\0";
 	const char *n;
 
 	for (n = names; *n; ) {
@@ -15936,6 +15943,11 @@ init(void)
 		 */
 		for (envp = environ; envp && *envp; envp++) {
 			if (mixed_case_special_name(*envp)) {
+				/* mintty sets HOME:  unset it */
+				const char *tty = getenv("TERM_PROGRAM");
+				if (tty && strcmp(tty, "mintty") == 0) {
+					unsetenv("HOME");
+				}
 				break;
 			}
 		}
