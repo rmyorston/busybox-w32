@@ -377,6 +377,31 @@ target:
 b}
 '
 
+# The CURDIR macro is supported in POSIX 202X.
+testing "make CURDIR macro" \
+	"make -f -" \
+	"OK\n" "" '
+target:
+	@test "$(CURDIR)" = "$$(pwd)" && echo OK
+'
+# The CURDIR environment variable doesn't affect the macro
+export CURDIR=/you/are/here
+testing "make CURDIR macro not affected by environment" \
+	"make -f -" \
+	"OK\n" "" '
+target:
+	@test "$(CURDIR)" != "/you/are/here" && echo OK
+'
+
+# The -e option makes the CURDIR macro match the environment
+testing "make with -e CURDIR macro is affected by the environment" \
+	"make -e -f -" \
+	"/you/are/here\n" "" '
+target:
+	@echo $(CURDIR)
+'
+unset CURDIR
+
 # POSIX 202X permits additional characters in macro and target names
 testing "make allow - and / in target names, - in macro names" \
 	"make -f -" \

@@ -2681,9 +2681,10 @@ expand_makeflags(void)
 }
 
 // These macros require special treatment
-#define MAKEFLAGS_SHELL "MAKEFLAGS\0SHELL\0"
+#define SPECIAL_MACROS "MAKEFLAGS\0SHELL\0CURDIR\0"
 #define MAKEFLAGS 0
 #define SHELL 1
+#define CURDIR 2
 
 /*
  * Instantiate all macros in an argv-style array of pointers.  Stop
@@ -2697,7 +2698,7 @@ process_macros(char **argv, int level)
 	char *p;
 
 	for (; *argv; argv++) {
-		int immediate = 0;
+		int idx, immediate = 0;
 
 		if (!(p = strchr(*argv, '='))) {
 			// Skip targets on the command line
@@ -2714,8 +2715,15 @@ process_macros(char **argv, int level)
 			immediate = M_IMMEDIATE;
 			p[-2] = '\0';
 		} else
-		*p = '\0';
-		if (level != 3 || index_in_strings(MAKEFLAGS_SHELL, *argv) < 0) {
+			*p = '\0';
+
+		/* We want to process _most_ macro assignments.
+		 * There are exceptions for particular values from the
+		 * environment (level 3). */
+		idx = index_in_strings(SPECIAL_MACROS, *argv);
+		if (!(level == 3 &&
+				(idx == MAKEFLAGS || idx == SHELL ||
+					(idx == CURDIR && !useenv && !POSIX_2017)))) {
 			if (immediate) {
 				char *exp = expand_macros(p + 1, FALSE);
 				setmacro(*argv, exp, level | immediate);
@@ -2724,6 +2732,7 @@ process_macros(char **argv, int level)
 				setmacro(*argv, p + 1, level);
 			}
 		}
+
 		*p = '=';
 		if (immediate)
 			p[-2] = ':';
@@ -2766,7 +2775,7 @@ update_makeflags(void)
 	for (i = 0; i < HTABSIZE; ++i) {
 		for (mp = macrohead[i]; mp; mp = mp->m_next) {
 			if (mp->m_level == 1 || mp->m_level == 2) {
-				int idx = index_in_strings(MAKEFLAGS_SHELL, mp->m_name);
+				int idx = index_in_strings(SPECIAL_MACROS, mp->m_name);
 				if (idx == MAKEFLAGS)
 					continue;
 				macro = xzalloc(strlen(mp->m_name) + 2 * strlen(mp->m_val) + 1);
@@ -2960,6 +2969,20 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 
 	setmacro("SHELL", DEFAULT_SHELL, 4);
 	setmacro("MAKE", path, 4);
+	if (!POSIX_2017) {
+		char *cwd = xrealloc_getcwd_or_warn(NULL);
+
+		if (cwd) {
+			if (!useenv) {
+				// Export cwd to environment, if necessary
+				char *envcwd = getenv("CURDIR");
+				if (envcwd && strcmp(cwd, envcwd) != 0)
+					setenv("CURDIR", cwd, 1);
+			}
+			setmacro("CURDIR", cwd, 4);
+		}
+		free(cwd);
+	}
 	free((void *)newpath);
 
 	if (!makefiles) {	// Look for a default Makefile
