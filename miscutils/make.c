@@ -2298,7 +2298,7 @@ make1(struct name *np, struct cmd *cp, char *oodate, char *allsrc,
 		char *dedup, struct name *implicit)
 {
 	int estat;
-	char *name, *member = NULL, *base;
+	char *name, *member = NULL, *base = NULL, *prereq = NULL;
 
 	name = splitlib(np->n_name, &member);
 	setmacro("?", oodate, 0 | M_VALID);
@@ -2308,12 +2308,33 @@ make1(struct name *np, struct cmd *cp, char *oodate, char *allsrc,
 	}
 	setmacro("%", member, 0 | M_VALID);
 	setmacro("@", name, 0 | M_VALID);
-	if (implicit) {
-		setmacro("<", implicit->n_name, 0 | M_VALID);
+	if (implicit || !posix) {
+		char *s;
+
+		// As an extension, if we're not dealing with an implicit
+		// rule set $< to the first out-of-date prerequisite.
+		if (implicit == NULL) {
+			if (oodate) {
+				s = strchr(oodate, ' ');
+				if (s)
+					*s = '\0';
+				prereq = oodate;
+			}
+		} else
+			prereq = implicit->n_name;
+
 		base = member ? member : name;
-		*suffix(base) = '\0';
-		setmacro("*", base, 0 | M_VALID);
+		s = suffix(base);
+		// As an extension, if we're not dealing with an implicit
+		// rule and the target ends with a known suffix, remove it
+		// and set $* to the stem, else to an empty string.
+		if (implicit == NULL && !is_suffix(s))
+			base = NULL;
+		else
+			*s = '\0';
 	}
+	setmacro("<", prereq, 0 | M_VALID);
+	setmacro("*", base, 0 | M_VALID);
 	free(name);
 
 	estat = docmds(np, cp);

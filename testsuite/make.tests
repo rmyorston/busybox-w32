@@ -540,6 +540,19 @@ bar:
 	@echo $(BAR)
 '
 
+# $* and $< are supported for target rules
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch src.c src.h
+testing 'make support $* and $< for target rules' \
+	"make -f -" "src.c src.h\nsrc.o\nsrc\nsrc.c\n" "" '
+src.o: src.c src.h
+	@echo "$?"
+	@echo "$@"
+	@echo "$*"
+	@echo "$<"
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
 # An empty original suffix indicates that every word should have
 # the new suffix added.  If neither suffix is provided the words
 # remain unchanged.
