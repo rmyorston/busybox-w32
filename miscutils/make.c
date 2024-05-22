@@ -1419,8 +1419,65 @@ enum {
 
 #define IFDEF	0
 #define IFNDEF	1
+#define IFEQ	2
+#define IFNEQ	3
 #define ELSE	0
 #define ENDIF	1
+
+/*
+ * Extract strings following ifeq/ifneq and compare them.
+ * Return -1 on error.
+ */
+static int
+compare_strings(char *arg1)
+{
+	char *arg2, *end, term, *t1, *t2;
+	int ret;
+
+	// Get first string terminator.
+	if (arg1[0] == '(')
+		term = ',';
+	else if (arg1[0] == '"' || arg1[0] == '\'')
+		term =  arg1[0];
+	else
+		return -1;
+
+	arg2 = find_char(++arg1, term);
+	if (arg2 == NULL)
+		return -1;
+	*arg2++ = '\0';
+
+	// Get second string terminator.
+	if (term == ',') {
+		term = ')';
+	} else {
+		// Skip spaces between quoted strings.
+		while (isspace(arg2[0]))
+			arg2++;
+		if (arg2[0] == '"' || arg2[0] == '\'')
+			term = arg2[0];
+		else
+			return -1;
+		++arg2;
+	}
+
+	end = find_char(arg2, term);
+	if (end == NULL)
+		return -1;
+	*end++ = '\0';
+
+	if (gettok(&end) != NULL) {
+		warning("unexpected text");
+	}
+
+	t1 = expand_macros(arg1, FALSE);
+	t2 = expand_macros(arg2, FALSE);
+
+	ret = strcmp(t1, t2) == 0;
+	free(t1);
+	free(t2);
+	return ret;
+}
 
 /*
  * Process conditional directives and return TRUE if the current line
@@ -1429,7 +1486,7 @@ enum {
 static int
 skip_line(const char *str1)
 {
-	char *copy, *q, *token, *next_token;
+	char *copy, *q, *token;
 	bool new_level = TRUE;
 	// Default is to return skip flag for current level
 	int ret = cstate[clevel] & SKIP_LINE;
@@ -1441,11 +1498,9 @@ skip_line(const char *str1)
 	copy = xstrdup(str1);
 	q = process_line(copy);
 	if ((token = gettok(&q)) != NULL) {
-		next_token = gettok(&q);
-
 		switch (index_in_strings("else\0endif\0", token)) {
 		case ENDIF:
-			if (next_token != NULL)
+			if (gettok(&q) != NULL)
 				error_unexpected("text");
 			if (clevel == 0)
 				error_unexpected(token);
@@ -1463,23 +1518,39 @@ skip_line(const char *str1)
 			else
 				cstate[clevel] &= ~SKIP_LINE;
 
-			if (next_token == NULL) {
+			token = gettok(&q);
+			if (token == NULL) {
 				// Simple else with no conditional directive
 				cstate[clevel] &= ~EXPECT_ELSE;
 				ret = TRUE;
 				goto end;
 			} else {
 				// A conditional directive is now required ('else if').
-				token = next_token;
-				next_token = gettok(&q);
 				new_level = FALSE;
 			}
-			break;
 		}
 
-		key = index_in_strings("ifdef\0ifndef\0", token);
+		key = index_in_strings("ifdef\0ifndef\0ifeq\0ifneq\0", token);
 		if (key != -1) {
-			if (next_token != NULL && gettok(&q) == NULL) {
+			int match;
+
+			if (key == IFDEF || key == IFNDEF) {
+				// ifdef/ifndef: find out if macro is defined.
+				char *name = gettok(&q);
+				if (name != NULL && gettok(&q) == NULL) {
+					char *t = expand_macros(name, FALSE);
+					struct macro *mp = getmp(t);
+					match = mp != NULL && mp->m_val[0] != '\0';
+					free(t);
+				} else {
+					match = -1;
+				}
+			} else {
+				// ifeq/ifneq: compare strings.
+				match = compare_strings(q);
+			}
+
+			if (match >= 0) {
 				if (new_level) {
 					// Start a new level.
 					if (clevel == IF_MAX)
@@ -1494,17 +1565,12 @@ skip_line(const char *str1)
 				}
 
 				if (!(cstate[clevel] & GOT_MATCH)) {
-					char *t = expand_macros(next_token, FALSE);
-					struct macro *mp = getmp(t);
-					int match = mp != NULL && mp->m_val[0] != '\0';
-
-					if (key == IFNDEF)
+					if (key == IFNDEF || key == IFNEQ)
 						match = !match;
 					if (match) {
 						cstate[clevel] &= ~SKIP_LINE;
 						cstate[clevel] |= GOT_MATCH;
 					}
-					free(t);
 				}
 			} else {
 				error("invalid condition");

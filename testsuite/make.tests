@@ -553,6 +553,20 @@ src.o: src.c src.h
 '
 cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
 
+# ifeq/ifneq conditionals are supported
+testing 'make support ifeq and ifneq conditionals' \
+	"make -f -" "A OK\nB OK\n" "" '
+A = a
+B = b
+target:
+ifeq ($(A),a)
+	@echo A OK
+endif
+ifneq "a" "$B"
+	@echo B OK
+endif
+'
+
 # An empty original suffix indicates that every word should have
 # the new suffix added.  If neither suffix is provided the words
 # remain unchanged.
