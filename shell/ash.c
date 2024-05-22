@@ -15889,7 +15889,7 @@ static void setvar_if_unset(const char *key, const char *value)
 /*
  * Detect if the environment contains certain mixed-case names:
  *
- *   Home          is present in a standard Windows environment
+ *   Path          is present in a standard Windows environment
  *   ComSpec       is present in WINE
  *   ProgramData   is present in Cygwin/MSYS2
  */
