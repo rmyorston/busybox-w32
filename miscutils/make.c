@@ -70,7 +70,15 @@
 #include "common_bufsiz.h"
 #include <glob.h>
 
-#define POSIX_2017 (posix && !(pragma & P_POSIX_202X))
+// Supported POSIX levels
+#define STD_POSIX_2017 0
+#define STD_POSIX_202X 1
+
+#define POSIX_2017 (posix && posix_level == STD_POSIX_2017)
+
+#ifndef DEFAULT_POSIX_LEVEL
+# define DEFAULT_POSIX_LEVEL STD_POSIX_2017
+#endif
 
 #define OPTSTR1 "eij:+knqrsSt"
 #if ENABLE_FEATURE_MAKE_POSIX
@@ -198,14 +206,25 @@ struct macro {
 #define M_VALID     16		// assert macro name is valid
 
 // Constants for PRAGMA.  Order must match strings in set_pragma().
-#define P_MACRO_NAME			0x01
-#define P_TARGET_NAME			0x02
-#define P_COMMAND_COMMENT		0x04
-#define P_EMPTY_SUFFIX			0x08
-#define P_POSIX_202X			0x10
+enum {
+	BIT_MACRO_NAME = 0,
+	BIT_TARGET_NAME,
+	BIT_COMMAND_COMMENT,
+	BIT_EMPTY_SUFFIX,
 #if ENABLE_PLATFORM_MINGW32
-# define P_WINDOWS				0x20
+	BIT_WINDOWS,
 #endif
+	BIT_POSIX_2017,
+	BIT_POSIX_202X,
+
+	P_MACRO_NAME = (1 << BIT_MACRO_NAME),
+	P_TARGET_NAME = (1 << BIT_TARGET_NAME),
+	P_COMMAND_COMMENT = (1 << BIT_COMMAND_COMMENT),
+	P_EMPTY_SUFFIX = (1 << BIT_EMPTY_SUFFIX),
+#if ENABLE_PLATFORM_MINGW32
+	P_WINDOWS = (1 << BIT_WINDOWS)
+#endif
+};
 
 // Status of make()
 #define MAKE_FAILURE		0x01
@@ -235,6 +254,7 @@ struct globals {
 	bool seen_first;
 	llist_t *pragmas;
 	unsigned char pragma;
+	unsigned char posix_level;
 #endif
 } FIX_ALIASING;
 
@@ -263,9 +283,11 @@ struct globals {
 #define seen_first	(G.seen_first)
 #define pragmas		(G.pragmas)
 #define pragma		(G.pragma)
+#define posix_level	(G.posix_level)
 #else
 #define posix		0
 #define pragma		0
+#define posix_level	DEFAULT_POSIX_LEVEL
 #endif
 
 static int make(struct name *np, int level);
@@ -591,20 +613,28 @@ static void
 set_pragma(const char *name)
 {
 	// Order must match constants above.
+	// POSIX levels must be last and in increasing order
 	static const char *p_name =
 		"macro_name\0"
 		"target_name\0"
 		"command_comment\0"
 		"empty_suffix\0"
-		"posix_202x\0"
 #if ENABLE_PLATFORM_MINGW32
 		"windows\0"
 #endif
+		"posix_2017\0"
+		"posix_202x\0"
 	;
 	int idx = index_in_strings(p_name, name);
 
 	if (idx != -1) {
-		pragma |= 1 << idx;
+		if (idx >= BIT_POSIX_2017) {
+			// POSIX level is stored in a separate variable.
+			// No bits in 'pragma' are used.
+			posix_level = idx - BIT_POSIX_2017;
+		} else {
+			pragma |= 1 << idx;
+		}
 		return;
 	}
 	warning("invalid pragma '%s'", name);
@@ -2968,6 +2998,7 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 	} else {
 		posix = getenv("PDPMAKE_POSIXLY_CORRECT") != NULL;
 	}
+	posix_level = DEFAULT_POSIX_LEVEL;
 #endif
 
 	if (!POSIX_2017) {
