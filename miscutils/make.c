@@ -29,6 +29,19 @@
 //config:	- PDPMAKE_POSIXLY_CORRECT environment variable
 //config:	Enable this if you want to check whether your makefiles are
 //config:	POSIX compliant.  This adds about 1.7 kb.
+//config:
+//config:choice
+//config:	prompt "Default POSIX level to enforce"
+//config:	depends on FEATURE_MAKE_POSIX
+//config:	default FEATURE_MAKE_POSIX_2017
+//config:
+//config:config FEATURE_MAKE_POSIX_2017
+//config:	bool "2017"
+//config:
+//config:config FEATURE_MAKE_POSIX_202X
+//config:	bool "202X"
+//config:
+//config:endchoice
 
 //applet:IF_MAKE(APPLET(make, BB_DIR_USR_BIN, BB_SUID_DROP))
 //applet:IF_PDPMAKE(APPLET_ODDNAME(pdpmake, make, BB_DIR_USR_BIN, BB_SUID_DROP, make))
@@ -64,6 +77,15 @@
 //usage:     "\n    -s       Make silently"
 //usage:     "\n    -S       Stop on error"
 //usage:     "\n    -t       Touch files instead of making them"
+//usage:	IF_FEATURE_MAKE_POSIX(
+//usage:     "\n\nThis build supports: non-POSIX extensions, POSIX 202X, POSIX 2017"
+//usage:	)
+//usage:	IF_FEATURE_MAKE_POSIX_2017(
+//usage:     "\nIn strict POSIX mode the 2017 standard is enforced by default"
+//usage:	)
+//usage:	IF_FEATURE_MAKE_POSIX_202X(
+//usage:     "\nIn strict POSIX mode the 202X standard is enforced by default"
+//usage:	)
 
 #include "libbb.h"
 #include "bb_archive.h"
@@ -76,8 +98,10 @@
 
 #define POSIX_2017 (posix && posix_level == STD_POSIX_2017)
 
-#ifndef DEFAULT_POSIX_LEVEL
+#if ENABLE_FEATURE_MAKE_POSIX_2017
 # define DEFAULT_POSIX_LEVEL STD_POSIX_2017
+#else
+# define DEFAULT_POSIX_LEVEL STD_POSIX_202X
 #endif
 
 #define OPTSTR1 "eij:+knqrsSt"
