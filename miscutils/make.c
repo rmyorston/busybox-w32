@@ -2363,6 +2363,12 @@ docmds(struct name *np, struct cmd *cp)
 			fflush_all();
 		}
 
+		if (quest && sdomake != TRUE + 1) {
+			// MAKE_FAILURE means rebuild is needed
+			estat |= MAKE_FAILURE | MAKE_DIDSOMETHING;
+			continue;
+		}
+
 		if (sdomake) {
 			// Get the shell to execute it
 			int status;
@@ -2378,16 +2384,11 @@ docmds(struct name *np, struct cmd *cp)
 			} else if (status != 0 && !signore) {
 				if (!posix && WIFSIGNALED(status))
 					remove_target();
-				if (errcont) {
-					diagnostic("failed to build '%s'", np->n_name);
-					estat |= MAKE_FAILURE;
-					free(command);
-					break;
-				} else if (doinclude) {
+				if (doinclude) {
 					warning("failed to build '%s'", np->n_name);
 				} else {
 					const char *err_type = NULL;
-					int err_value;
+					int err_value = 1;
 
 					if (WIFEXITED(status)) {
 						err_type = "exit";
@@ -2397,11 +2398,20 @@ docmds(struct name *np, struct cmd *cp)
 						err_value = WTERMSIG(status);
 					}
 
-					if (err_type)
-						error("failed to build '%s' %s %d", np->n_name,
-								err_type, err_value);
-					else
-						error("failed to build '%s'", np->n_name);
+					if (!quest || err_value == 127) {
+						if (err_type)
+							diagnostic("failed to build '%s' %s %d",
+									np->n_name, err_type, err_value);
+						else
+							diagnostic("failed to build '%s'", np->n_name);
+					}
+
+					if (errcont) {
+						estat |= MAKE_FAILURE;
+						free(command);
+						break;
+					}
+					exit(2);
 				}
 			}
 		}
@@ -2558,7 +2568,7 @@ make(struct name *np, int level)
 	}
 
 	// Reset flag to detect duplicate prerequisites
-	if (!quest && !(np->n_flag & N_DOUBLE)) {
+	if (!(np->n_flag & N_DOUBLE)) {
 		for (rp = np->n_rule; rp; rp = rp->r_next) {
 			for (dp = rp->r_dep; dp; dp = dp->d_next) {
 				dp->d_name->n_flag &= ~N_MARK;
@@ -2582,10 +2592,8 @@ make(struct name *np, int level)
 			if (!rp->r_dep)
 				dtim = np->n_tim;
 			// Reset flag to detect duplicate prerequisites
-			if (!quest) {
-				for (dp = rp->r_dep; dp; dp = dp->d_next) {
-					dp->d_name->n_flag &= ~N_MARK;
-				}
+			for (dp = rp->r_dep; dp; dp = dp->d_next) {
+				dp->d_name->n_flag &= ~N_MARK;
 			}
 		}
 		for (dp = rp->r_dep; dp; dp = dp->d_next) {
@@ -2594,22 +2602,19 @@ make(struct name *np, int level)
 
 			// Make strings of out-of-date prerequisites (for $?),
 			// all prerequisites (for $+) and deduplicated prerequisites
-			// (for $^).  But not if we were invoked with -q.
-			if (!quest) {
-				if (timespec_le(&np->n_tim, &dp->d_name->n_tim)) {
-					if (posix || !(dp->d_name->n_flag & N_MARK))
-						oodate = xappendword(oodate, dp->d_name->n_name);
-				}
-				allsrc = xappendword(allsrc, dp->d_name->n_name);
-				if (!(dp->d_name->n_flag & N_MARK))
-					dedup = xappendword(dedup, dp->d_name->n_name);
-				dp->d_name->n_flag |= N_MARK;
+			// (for $^).
+			if (timespec_le(&np->n_tim, &dp->d_name->n_tim)) {
+				if (posix || !(dp->d_name->n_flag & N_MARK))
+					oodate = xappendword(oodate, dp->d_name->n_name);
 			}
+			allsrc = xappendword(allsrc, dp->d_name->n_name);
+			if (!(dp->d_name->n_flag & N_MARK))
+				dedup = xappendword(dedup, dp->d_name->n_name);
+			dp->d_name->n_flag |= N_MARK;
 			dtim = *timespec_max(&dtim, &dp->d_name->n_tim);
 		}
 		if ((np->n_flag & N_DOUBLE)) {
-			if (!quest && ((np->n_flag & N_PHONY) ||
-							timespec_le(&np->n_tim, &dtim))) {
+			if (((np->n_flag & N_PHONY) || timespec_le(&np->n_tim, &dtim))) {
 				if (!(estat & MAKE_FAILURE)) {
 					estat |= make1(np, rp->r_cmd, oodate, allsrc,
 										dedup, locdep);
@@ -2633,19 +2638,14 @@ make(struct name *np, int level)
 	np->n_flag |= N_DONE;
 	np->n_flag &= ~N_DOING;
 
-	if (quest) {
-		if (timespec_le(&np->n_tim, &dtim)) {
-			// MAKE_FAILURE means rebuild is needed
-			estat = MAKE_FAILURE | MAKE_DIDSOMETHING;
-		}
-	} else if (!(np->n_flag & N_DOUBLE) &&
+	if (!(np->n_flag & N_DOUBLE) &&
 				((np->n_flag & N_PHONY) || (timespec_le(&np->n_tim, &dtim)))) {
 		if (!(estat & MAKE_FAILURE)) {
 			if (sc_cmd)
 				estat |= make1(np, sc_cmd, oodate, allsrc, dedup, impdep);
 			else if (!doinclude && level == 0 && !(estat & MAKE_DIDSOMETHING))
 				warning("nothing to be done for %s", np->n_name);
-		} else if (!doinclude) {
+		} else if (!doinclude && !quest) {
 			diagnostic("'%s' not built due to errors", np->n_name);
 		}
 		free(oodate);

@@ -116,6 +116,13 @@ bar:
 baz:
 	@:
 '
+# Build commands with a '+' prefix are executed even with the -q option.
+testing "make execute build command with + prefix and -q" \
+	"make -q -f - 2>/dev/null" "OK\n" "" '
+all: bar
+bar:
+	@+echo OK
+'
 
 # The -t option touches files that are out-of-date unless the target
 # has no commands or they're already up-to-date.
