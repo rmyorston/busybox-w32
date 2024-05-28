@@ -2295,6 +2295,31 @@ remove_target(void)
 }
 
 /*
+ * Update the modification time of a file to now.
+ */
+static void
+touch(struct name *np)
+{
+	if (dryrun || !silent)
+		printf("touch %s\n", np->n_name);
+
+	if (!dryrun) {
+		const struct timespec timebuf[2] = {{0, UTIME_NOW}, {0, UTIME_NOW}};
+
+		if (utimensat(AT_FDCWD, np->n_name, timebuf, 0) < 0) {
+			if (errno == ENOENT) {
+				int fd = open(np->n_name, O_RDWR | O_CREAT, 0666);
+				if (fd >= 0) {
+					close(fd);
+					return;
+				}
+			}
+			warning("touch %s failed", np->n_name);
+		}
+	}
+}
+
+/*
  * Do commands to make a target
  */
 static int
@@ -2304,7 +2329,7 @@ docmds(struct name *np, struct cmd *cp)
 	char *q, *command;
 
 	for (; cp; cp = cp->c_next) {
-		uint8_t ssilent, signore, sdomake;
+		uint32_t ssilent, signore, sdomake;
 
 		// Location of command in makefile (for use in error messages)
 		makefile = cp->c_makefile;
@@ -2380,44 +2405,24 @@ docmds(struct name *np, struct cmd *cp)
 				}
 			}
 		}
-		if (sdomake || dryrun || dotouch)
+		if (sdomake || dryrun)
 			estat = MAKE_DIDSOMETHING;
 		free(command);
 	}
+
+	if (dotouch && !(np->n_flag & N_PHONY) && !(estat & MAKE_DIDSOMETHING)) {
+		touch(np);
+		estat = MAKE_DIDSOMETHING;
+	}
+
 	makefile = NULL;
 	return estat;
-}
-
-/*
- * Update the modification time of a file to now.
- */
-static void
-touch(struct name *np)
-{
-	if (dryrun || !silent)
-		printf("touch %s\n", np->n_name);
-
-	if (!dryrun) {
-		const struct timespec timebuf[2] = {{0, UTIME_NOW}, {0, UTIME_NOW}};
-
-		if (utimensat(AT_FDCWD, np->n_name, timebuf, 0) < 0) {
-			if (errno == ENOENT) {
-				int fd = open(np->n_name, O_RDWR | O_CREAT, 0666);
-				if (fd >= 0) {
-					close(fd);
-					return;
-				}
-			}
-			warning("touch %s failed", np->n_name);
-		}
-	}
 }
 
 static int
 make1(struct name *np, struct cmd *cp, char *oodate, char *allsrc,
 		char *dedup, struct name *implicit)
 {
-	int estat;
 	char *name, *member = NULL, *base = NULL, *prereq = NULL;
 
 	name = splitlib(np->n_name, &member);
@@ -2457,11 +2462,7 @@ make1(struct name *np, struct cmd *cp, char *oodate, char *allsrc,
 	setmacro("*", base, 0 | M_VALID);
 	free(name);
 
-	estat = docmds(np, cp);
-	if (dotouch && !(np->n_flag & N_PHONY))
-		touch(np);
-
-	return estat;
+	return docmds(np, cp);
 }
 
 /*

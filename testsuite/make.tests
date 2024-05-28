@@ -2,6 +2,7 @@
 
 . ./testing.sh
 unset MAKEFLAGS
+rm -rf make.tempdir
 
 # testing "test name" "command" "expected result" "file input" "stdin"
 
@@ -115,6 +116,31 @@ bar:
 baz:
 	@:
 '
+
+# The -t option touches files that are out-of-date unless the target
+# has no commands or they're already up-to-date.
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch baz
+testing "make check -t option" \
+	"make -t -f - 2>/dev/null" "touch bar\n" "" '
+all: foo bar baz
+foo:
+bar:
+	@echo bar
+baz:
+	@echo baz
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
+# Build commands with a '+' prefix are executed even with the -t option.
+mkdir make.tempdir && cd make.tempdir || exit 1
+testing "make execute build command with + prefix and -t" \
+	"make -t -f - 2>/dev/null" "OK\n" "" '
+all: bar
+bar:
+	@+echo OK
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
 
 # A macro created using ::= remembers it's of type immediate-expansion.
 # Immediate expansion also occurs when += is used to append to such a macro.
