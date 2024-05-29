@@ -176,6 +176,30 @@ target:
 	@echo $(reset)
 '
 
+# Since GNU make and bmake interpret := macro assignments differently,
+# POSIX has ::= for the GNU variant and :::= for BSD.
+testing "make different styles of := macro assignment" \
+	"make -f -" \
+	'65 a a $A\n' "" '
+A = a
+GNU ::= $A
+BSD1 :::= $A
+BSD2 :::= $$A
+A = 65
+
+target:
+	@echo '\''$(A) $(GNU) $(BSD1) $(BSD2)'\''
+'
+
+# Similar to the above but for macro assignments on the command line.
+# POSIX has ::= for the GNU variant and :::= for BSD.
+testing "make := macro assignment on command line" \
+	"make -f - A=a 'GNU::=\$A' 'BSD1:::=\$A' 'BSD2:::=\$\$A' A=65" \
+	'65 a a $A\n' "" '
+target:
+	@echo '\''$(A) $(GNU) $(BSD1) $(BSD2)'\''
+'
+
 # basic pattern macro expansion
 testing "make basic pattern macro expansion" \
 	"make -f -" \

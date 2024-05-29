@@ -51,10 +51,10 @@
 
 //usage:#define make_trivial_usage
 //usage:	IF_FEATURE_MAKE_POSIX(
-//usage:       "[--posix] [-C DIR] [-f FILE] [-j NUM] [-x PRAG] [-eiknpqrsSt] [MACRO[::]=VAL]... [TARGET]..."
+//usage:       "[--posix] [-C DIR] [-f FILE] [-j NUM] [-x PRAG] [-eiknpqrsSt] [MACRO[::[:]]=VAL]... [TARGET]..."
 //usage:	)
 //usage:	IF_NOT_FEATURE_MAKE_POSIX(
-//usage:       "[-C DIR] [-f FILE] [-j NUM] [-eiknpqrsSt] [MACRO[::]=VAL]... [TARGET]..."
+//usage:       "[-C DIR] [-f FILE] [-j NUM] [-eiknpqrsSt] [MACRO[::[:]]=VAL]... [TARGET]..."
 //usage:	)
 //usage:#define make_full_usage "\n\n"
 //usage:       "Maintain files based on their dependencies\n"
@@ -2837,12 +2837,14 @@ expand_makeflags(void)
 static char **
 process_macros(char **argv, int level)
 {
-	char *p;
+	char *equal;
 
 	for (; *argv; argv++) {
+		char *colon = NULL;
 		int idx, immediate = 0;
+		int except_dollar = FALSE;
 
-		if (!(p = strchr(*argv, '='))) {
+		if (!(equal = strchr(*argv, '='))) {
 			// Skip targets on the command line
 			if (!posix && level == 1)
 				continue;
@@ -2851,13 +2853,23 @@ process_macros(char **argv, int level)
 				break;
 		}
 
-		if (p - 2 > *argv && p[-1] == ':' && p[-2] == ':') {
+		if (equal - 2 > *argv && equal[-1] == ':' && equal[-2] == ':') {
 			if (POSIX_2017)
 				error("invalid macro assignment");
-			immediate = M_IMMEDIATE;
-			p[-2] = '\0';
+			if (equal - 3 > *argv  && equal[-3] == ':') {
+				// BSD-style ':='.  Expand RHS, but not '$$',
+				// resulting macro is delayed expansion.
+				colon = equal - 3;
+				except_dollar = TRUE;
+			} else {
+				// GNU-style ':='. Expand RHS, including '$$',
+				// resulting macro is immediate expansion.
+				colon = equal - 2;
+				immediate = M_IMMEDIATE;
+			}
+			*colon = '\0';
 		} else
-			*p = '\0';
+			*equal = '\0';
 
 		/* We want to process _most_ macro assignments.
 		 * There are exceptions for particular values from the
@@ -2866,18 +2878,18 @@ process_macros(char **argv, int level)
 		if (!(level == 3 &&
 				(idx == MAKEFLAGS || idx == SHELL ||
 					(idx == CURDIR && !useenv && !POSIX_2017)))) {
-			if (immediate) {
-				char *exp = expand_macros(p + 1, FALSE);
+			if (colon) {
+				char *exp = expand_macros(equal + 1, except_dollar);
 				setmacro(*argv, exp, level | immediate);
 				free(exp);
-			} else {
-				setmacro(*argv, p + 1, level);
-			}
+			} else
+				setmacro(*argv, equal + 1, level);
 		}
 
-		*p = '=';
-		if (immediate)
-			p[-2] = ':';
+		if (colon)
+			*colon = ':';
+		else
+			*equal = '=';
 	}
 	return argv;
 }
