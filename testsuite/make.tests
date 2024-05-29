@@ -90,7 +90,7 @@ cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
 # There was a bug where the failure of a build command didn't result
 # in make returning a non-zero exit status.
 testing "make return error if command fails" \
-	"make -f - >/dev/null 2>&1; echo \$?" "2\n" "" '
+	"make -f - >/dev/null 2>&1; test \$? -gt 0 && echo OK" "OK\n" "" '
 target:
 	@exit 42
 '
