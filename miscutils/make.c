@@ -750,10 +750,12 @@ is_valid_macro(const char *name)
 	for (s = name; *s; ++s) {
 		// In POSIX mode only a limited set of characters are guaranteed
 		// to be allowed in macro names.
-		if (posix &&
-				((pragma & P_MACRO_NAME) || !POSIX_2017 ?
-					!isfname(*s) : !ispname(*s)))
+		if (posix) {
+			// Find the appropriate character set
+			if ((pragma & P_MACRO_NAME) || !POSIX_2017 ?
+				!isfname(*s) : !ispname(*s))
 			return FALSE;
+		}
 		// As an extension allow anything that can get through the
 		// input parser, apart from the following.
 		if (*s == '=' || isblank(*s) || iscntrl(*s))
@@ -1993,6 +1995,10 @@ input(FILE *fd, int ilevel)
 				if (p == NULL || gettok(&q)) {
 					error("one include file per line");
 				}
+			} else if (makefile == old_makefile) {
+				// In POSIX 202X no include file is unspecified behaviour.
+				if (posix)
+					error("no include file");
 			}
 
 			makefile = old_makefile;
@@ -3071,12 +3077,12 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 	setmacro("$", "$", 0 | M_VALID);
 
 	// Process macro definitions from the command line
-	if (posix)
+	if (!posix)
+		process_macros(argv, 1);
+	else
 		// In POSIX mode macros must appear before targets.
 		// argv should now point to targets only.
 		argv = process_macros(argv, 1);
-	else
-		process_macros(argv, 1);
 
 	// Process macro definitions from MAKEFLAGS
 	if (fargv) {
