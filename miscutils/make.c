@@ -1627,23 +1627,24 @@ make_fgets(char *s, int size, FILE *fd)
 static char *
 readline(FILE *fd)
 {
-	char *p, *str;
+	char *p, *str = NULL;
 	int pos = 0;
-	int len = 256;
-
-	str = xmalloc(len);
+	int len = 0;
 
 	for (;;) {
-		if (make_fgets(str + pos, len - pos, fd) == NULL) {
+		// We need room for at least one character and a NUL terminator
+		if (len - pos > 1 &&
+				make_fgets(str + pos, len - pos, fd) == NULL) {
 			if (pos)
 				return str;
 			free(str);
 			return NULL;	// EOF
 		}
 
-		if ((p = strchr(str + pos, '\n')) == NULL) {
+		if (len - pos < 2 || (p = strchr(str + pos, '\n')) == NULL) {
 			// Need more room
-			pos = len - 1;
+			if (len)
+				pos = len - 1;
 			len += 256;
 			str = xrealloc(str, len);
 			continue;
