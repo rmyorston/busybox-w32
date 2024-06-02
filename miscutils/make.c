@@ -226,8 +226,9 @@ struct macro {
 };
 
 // Flags passed to setmacro()
-#define M_IMMEDIATE  8		// immediate-expansion macro is being defined
-#define M_VALID     16		// assert macro name is valid
+#define M_IMMEDIATE  0x08	// immediate-expansion macro is being defined
+#define M_VALID      0x10	// assert macro name is valid
+#define M_ENVIRON    0x20	// macro imported from environment
 
 // Constants for PRAGMA.  Order must match strings in set_pragma().
 enum {
@@ -781,9 +782,10 @@ setmacro(const char *name, const char *val, int level)
 {
 	struct macro *mp;
 	bool valid = level & M_VALID;
+	bool from_env = level & M_ENVIRON;
 	bool immediate = level & M_IMMEDIATE;
 
-	level &= ~(M_IMMEDIATE | M_VALID);
+	level &= ~(M_IMMEDIATE | M_VALID | M_ENVIRON);
 	mp = getmp(name);
 	if (mp) {
 		// Don't replace existing macro from a lower level
@@ -798,7 +800,7 @@ setmacro(const char *name, const char *val, int level)
 
 		if (!valid && !is_valid_macro(name)) {
 			// Silently drop invalid names from the environment
-			if (level == 3)
+			if (from_env)
 				return;
 #if ENABLE_FEATURE_MAKE_POSIX
 			error("invalid macro name '%s'%s", name,
@@ -2843,9 +2845,9 @@ process_macros(char **argv, int level)
 
 		/* We want to process _most_ macro assignments.
 		 * There are exceptions for particular values from the
-		 * environment (level 3). */
+		 * environment. */
 		idx = index_in_strings(SPECIAL_MACROS, *argv);
-		if (!(level == 3 &&
+		if (!((level & M_ENVIRON) &&
 				(idx == MAKEFLAGS || idx == SHELL ||
 					(idx == CURDIR && !useenv && !POSIX_2017)))) {
 			if (colon) {
@@ -3084,7 +3086,7 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	// Process macro definitions from the environment
-	process_macros(environ, 3);
+	process_macros(environ, 3 | M_ENVIRON);
 
 	// Update MAKEFLAGS and environment
 	update_makeflags();
