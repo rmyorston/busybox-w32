@@ -3051,9 +3051,9 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 	if (fargv0) {
 		opts = process_options(fargv, TRUE);
 		fargv = fargv0 + optind;
+		// Reset getopt(3) so we can call it again
+		GETOPT_RESET();
 	}
-	// Reset getopt(3) so we can call it again
-	GETOPT_RESET();
 
 	// Process options from the command line
 	opts |= process_options(argv, FALSE);
