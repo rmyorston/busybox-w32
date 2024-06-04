@@ -3156,16 +3156,25 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 	if (!POSIX_2017)
 		mark_special(".PHONY", OPT_phony, N_PHONY);
 
+	if (posix) {
+		// In POSIX mode only targets should now be in argv.
+		found_target = FALSE;
+		for (char **a = argv; *a; a++) {
+			if (!strchr(*a, '='))
+				found_target = TRUE;
+			else if (found_target)
+				error("macro assignments must precede targets");
+		}
+	}
+
 	estat = 0;
 	found_target = FALSE;
 	for (; *argv; argv++) {
-		// In POSIX mode only targets should now be in argv.
-		// As an extension macros may still be present: skip them.
-		if (posix || !strchr(*argv, '='))
-		{
-			found_target = TRUE;
-			estat |= make(newname(*argv), 0);
-		}
+		// Skip macro assignments.
+		if (strchr(*argv, '='))
+			continue;
+		found_target = TRUE;
+		estat |= make(newname(*argv), 0);
 	}
 	if (!found_target) {
 		if (!firstname)
