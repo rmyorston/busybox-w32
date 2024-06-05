@@ -247,7 +247,7 @@ enum {
 	P_COMMAND_COMMENT = (1 << BIT_COMMAND_COMMENT),
 	P_EMPTY_SUFFIX = (1 << BIT_EMPTY_SUFFIX),
 #if ENABLE_PLATFORM_MINGW32
-	P_WINDOWS = (1 << BIT_WINDOWS)
+	P_WINDOWS = (1 << BIT_WINDOWS),
 #endif
 };
 
@@ -1229,7 +1229,8 @@ modify_words(const char *val, int modifier, size_t lenf, size_t lenr,
 /*
  * Return a pointer to the next instance of a given character.  Macro
  * expansions are skipped so the ':' and '=' in $(VAR:.s1=.s2) aren't
- * detected as separators for rules or macro definitions.
+ * detected as separators in macro definitions.  Some other situations
+ * also require skipping the internals of a macro expansion.
  */
 static char *
 find_char(const char *str, int c)
@@ -1262,7 +1263,7 @@ find_colon(char *p)
 	return q;
 }
 #else
-# define find_colon(s) find_char(s, ':')
+# define find_colon(s) strchr(s, ':')
 #endif
 
 /*
@@ -2154,7 +2155,7 @@ input(FILE *fd, int ilevel)
 		if (s) {
 			// Retrieve command from expanded copy of line
 			char *copy3 = expand_macros(copy, FALSE);
-			if ((p = find_char(copy3, ':')) && (p = strchr(p, ';')))
+			if ((p = find_colon(copy3)) && (p = strchr(p, ';')))
 				newcmd(&cp, process_command(p + 1));
 			free(copy3);
 			*s = '\0';
