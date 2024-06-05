@@ -1243,6 +1243,28 @@ find_char(const char *str, int c)
 	return NULL;
 }
 
+#if ENABLE_PLATFORM_MINGW32
+/*
+ * Check for a target rule by searching for a colon that isn't
+ * part of a Windows path.  Return a pointer to the colon or NULL.
+ */
+static char *
+find_colon(char *p)
+{
+	char *q;
+
+	for (q = p; (q = strchr(q, ':')); ++q) {
+		if (posix && !(pragma & P_WINDOWS))
+			break;
+		if (q == p || !isalpha(q[-1]) || q[1] != '/')
+			break;
+	}
+	return q;
+}
+#else
+# define find_colon(s) find_char(s, ':')
+#endif
+
 /*
  * Recursively expand any macros in str to an allocated string.
  */
@@ -2115,7 +2137,7 @@ input(FILE *fd, int ilevel)
 		p = expanded = expand_macros(str, FALSE);
 
 		// Look for colon separator
-		q = find_char(p, ':');
+		q = find_colon(p);
 		if (q == NULL)
 			error("expected separator");
 
