@@ -51,10 +51,10 @@
 
 //usage:#define make_trivial_usage
 //usage:	IF_FEATURE_MAKE_POSIX(
-//usage:       "[--posix] [-C DIR] [-f FILE] [-j NUM] [-x PRAG] [-eiknpqrsSt] [MACRO[::[:]]=VAL]... [TARGET]..."
+//usage:       "[--posix] [-C DIR] [-f FILE] [-j NUM] [-x PRAG] [-eiknpqrsSt] [MACRO[:[:[:]]]=VAL]... [TARGET]..."
 //usage:	)
 //usage:	IF_NOT_FEATURE_MAKE_POSIX(
-//usage:       "[-C DIR] [-f FILE] [-j NUM] [-eiknpqrsSt] [MACRO[::[:]]=VAL]... [TARGET]..."
+//usage:       "[-C DIR] [-f FILE] [-j NUM] [-eiknpqrsSt] [MACRO[:[:[:]]]=VAL]... [TARGET]..."
 //usage:	)
 //usage:#define make_full_usage "\n\n"
 //usage:       "Maintain files based on their dependencies\n"
@@ -2855,21 +2855,29 @@ process_macros(char **argv, int level)
 				break;
 		}
 
-		if (equal - 2 > *argv && equal[-1] == ':' && equal[-2] == ':') {
-			if (POSIX_2017)
-				error("invalid macro assignment");
-			if (equal - 3 > *argv  && equal[-3] == ':') {
-				// BSD-style ':='.  Expand RHS, but not '$$',
-				// resulting macro is delayed expansion.
-				colon = equal - 3;
-				except_dollar = TRUE;
+		if (equal - 1 > *argv && equal[-1] == ':') {
+			if (equal - 2 > *argv && equal[-2] == ':') {
+				if (POSIX_2017)
+					error("invalid macro assignment");
+				if (equal - 3 > *argv  && equal[-3] == ':') {
+					// BSD-style ':='.  Expand RHS, but not '$$',
+					// resulting macro is delayed expansion.
+					colon = equal - 3;
+					except_dollar = TRUE;
+				} else {
+					// GNU-style ':='. Expand RHS, including '$$',
+					// resulting macro is immediate expansion.
+					colon = equal - 2;
+					immediate = M_IMMEDIATE;
+				}
+				*colon = '\0';
 			} else {
-				// GNU-style ':='. Expand RHS, including '$$',
-				// resulting macro is immediate expansion.
-				colon = equal - 2;
+				if (posix)
+					error("invalid macro assignment");
+				colon = equal - 1;
 				immediate = M_IMMEDIATE;
+				*colon = '\0';
 			}
-			*colon = '\0';
 		} else
 			*equal = '\0';
 
