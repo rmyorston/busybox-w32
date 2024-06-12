@@ -2464,3 +2464,29 @@ char *xappendword(const char *str, const char *word)
 	free((void *)str);
 	return newstr;
 }
+
+/*
+ * Detect if the environment contains certain mixed-case names:
+ *
+ *   Path          is present in a standard Windows environment
+ *   ComSpec       is present in WINE
+ *   ProgramData   is present in Cygwin/MSYS2
+ */
+int
+windows_env(void)
+{
+	const char *names = "PATH=\0""COMSPEC=\0""PROGRAMDATA=\0";
+	const char *n;
+
+	for (char **envp = environ; envp && *envp; envp++) {
+		for (n = names; *n; ) {
+			if (is_prefixed_with_case(*envp, n) &&
+						!is_prefixed_with(*envp, n)) {
+				return TRUE;
+			}
+			while (*n++)
+				;
+		}
+	}
+	return FALSE;
+}

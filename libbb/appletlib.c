@@ -1410,6 +1410,18 @@ int main(int argc UNUSED_PARAM, char **argv)
 		if (s)
 			*s = '\0';
 	}
+
+	if (windows_env()) {
+		/* remove single trailing separator from PATH */
+		for (char **envp = environ; envp && *envp; envp++) {
+			if (is_prefixed_with_case(*envp, "PATH=")) {
+				char *end = last_char_is(*envp, ';');
+				if (end && end[-1] != ';')
+					*end = '\0';
+				break;
+			}
+		}
+	}
 # endif
 	applet_name = bb_basename(applet_name);
 
