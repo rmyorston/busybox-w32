@@ -15885,30 +15885,6 @@ static void setvar_if_unset(const char *key, const char *value)
 }
 #endif
 
-#if ENABLE_PLATFORM_MINGW32
-/*
- * Detect if the environment contains certain mixed-case names:
- *
- *   Path          is present in a standard Windows environment
- *   ComSpec       is present in WINE
- *   ProgramData   is present in Cygwin/MSYS2
- */
-static int mixed_case_special_name(const char *envp)
-{
-	const char *names = "PATH=\0""COMSPEC=\0""PROGRAMDATA=\0";
-	const char *n;
-
-	for (n = names; *n; ) {
-		if (is_prefixed_with_case(envp, n) && !is_prefixed_with(envp, n)) {
-			return TRUE;
-		}
-		while (*n++)
-			;
-	}
-	return FALSE;
-}
-#endif
-
 /* Don't inline: conserve stack of caller from having our locals too */
 static NOINLINE void
 init(void)
@@ -15941,25 +15917,19 @@ init(void)
 		 * We may end up having both Path and PATH. Then Path will be chosen
 		 * because it appears first.
 		 */
-		for (envp = environ; envp && *envp; envp++) {
-			if (mixed_case_special_name(*envp)) {
-				/* mintty sets HOME:  unset it */
-				const char *tty = getenv("TERM_PROGRAM");
-				if (tty && strcmp(tty, "mintty") == 0) {
-					unsetenv("HOME");
-				}
-				break;
-			}
-		}
-
-		if (envp && *envp) {
+		if (windows_env()) {
 			/*
-			 * If we get here it's because the environment contains a path
-			 * variable called something other than PATH.  This suggests we
+			 * If we get here it's because the environment suggests we
 			 * haven't been invoked from an earlier instance of BusyBox.
 			 */
 			char *start, *end;
 			struct passwd *pw;
+
+			/* mintty sets HOME:  unset it */
+			const char *tty = getenv("TERM_PROGRAM");
+			if (tty && strcmp(tty, "mintty") == 0) {
+				unsetenv("HOME");
+			}
 
 			import = VIMPORT;
 			for (envp = environ; envp && *envp; envp++) {
