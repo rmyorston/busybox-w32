@@ -443,7 +443,7 @@ target:
 b}
 '
 
-# The CURDIR macro is supported in POSIX 202X.
+# The CURDIR macro is supported in POSIX 2024.
 testing "make CURDIR macro" \
 	"make -f -" \
 	"OK\n" "" '
@@ -482,7 +482,7 @@ target:
 	@echo $(MYFLAG)
 '
 
-# POSIX 202X permits additional characters in macro and target names
+# POSIX 2024 permits additional characters in macro and target names
 testing "make allow - and / in target names, - in macro names" \
 	"make -f -" \
 	"/hello\nhel-lo\nmac-ro\n" "" '

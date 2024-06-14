@@ -38,8 +38,8 @@
 //config:config FEATURE_MAKE_POSIX_2017
 //config:	bool "2017"
 //config:
-//config:config FEATURE_MAKE_POSIX_202X
-//config:	bool "202X"
+//config:config FEATURE_MAKE_POSIX_2024
+//config:	bool "2024"
 //config:
 //config:endchoice
 
@@ -78,13 +78,13 @@
 //usage:     "\n    -S       Stop on error"
 //usage:     "\n    -t       Touch files instead of making them"
 //usage:	IF_FEATURE_MAKE_POSIX(
-//usage:     "\n\nThis build supports: non-POSIX extensions, POSIX 202X, POSIX 2017"
+//usage:     "\n\nThis build supports: non-POSIX extensions, POSIX 2024, POSIX 2017"
 //usage:	)
 //usage:	IF_FEATURE_MAKE_POSIX_2017(
 //usage:     "\nIn strict POSIX mode the 2017 standard is enforced by default"
 //usage:	)
-//usage:	IF_FEATURE_MAKE_POSIX_202X(
-//usage:     "\nIn strict POSIX mode the 202X standard is enforced by default"
+//usage:	IF_FEATURE_MAKE_POSIX_2024(
+//usage:     "\nIn strict POSIX mode the 2024 standard is enforced by default"
 //usage:	)
 
 #include "libbb.h"
@@ -94,14 +94,14 @@
 
 // Supported POSIX levels
 #define STD_POSIX_2017 0
-#define STD_POSIX_202X 1
+#define STD_POSIX_2024 1
 
 #define POSIX_2017 (posix && posix_level == STD_POSIX_2017)
 
 #if ENABLE_FEATURE_MAKE_POSIX_2017
 # define DEFAULT_POSIX_LEVEL STD_POSIX_2017
 #else
-# define DEFAULT_POSIX_LEVEL STD_POSIX_202X
+# define DEFAULT_POSIX_LEVEL STD_POSIX_2024
 #endif
 
 #define OPTSTR1 "eij:+knqrsSt"
@@ -240,6 +240,7 @@ enum {
 	BIT_WINDOWS,
 #endif
 	BIT_POSIX_2017,
+	BIT_POSIX_2024,
 	BIT_POSIX_202X,
 
 	P_MACRO_NAME = (1 << BIT_MACRO_NAME),
@@ -648,6 +649,7 @@ set_pragma(const char *name)
 		"windows\0"
 #endif
 		"posix_2017\0"
+		"posix_2024\0"
 		"posix_202x\0"
 	;
 	int idx = index_in_strings(p_name, name);
@@ -656,9 +658,11 @@ set_pragma(const char *name)
 		if (idx >= BIT_POSIX_2017) {
 			// POSIX level is stored in a separate variable.
 			// No bits in 'pragma' are used.
-			if (posix_level == DEFAULT_POSIX_LEVEL)
+			if (posix_level == DEFAULT_POSIX_LEVEL) {
 				posix_level = idx - BIT_POSIX_2017;
-			else if (posix_level != idx - BIT_POSIX_2017)
+				if (posix_level > STD_POSIX_2024)
+					posix_level = STD_POSIX_2024;
+			} else if (posix_level != idx - BIT_POSIX_2017)
 				warning("unable to change POSIX level");
 		} else {
 			pragma |= 1 << idx;
@@ -1853,7 +1857,7 @@ run_command(const char *cmd)
 	if (val == NULL)
 		return NULL;
 
-	// Strip leading whitespace in POSIX 202X mode
+	// Strip leading whitespace in POSIX 2024 mode
 	if (posix) {
 		s = val;
 		while (isspace(*s)) {
@@ -2019,7 +2023,7 @@ input(FILE *fd, int ilevel)
 					error("one include file per line");
 				}
 			} else if (makefile == old_makefile) {
-				// In POSIX 202X no include file is unspecified behaviour.
+				// In POSIX 2024 no include file is unspecified behaviour.
 				if (posix)
 					error("no include file");
 			}
@@ -2042,7 +2046,7 @@ input(FILE *fd, int ilevel)
 			if (q - 1 > copy2) {
 				switch (q[-1]) {
 				case ':':
-					// '::=' and ':::=' are from POSIX 202X.
+					// '::=' and ':::=' are from POSIX 2024.
 					if (!POSIX_2017 && q - 2 > copy2 && q[-2] == ':') {
 						if (q - 3 > copy2 && q[-3] == ':') {
 							eq = 'B';	// BSD-style ':='
@@ -2060,7 +2064,7 @@ input(FILE *fd, int ilevel)
 				case '+':
 				case '?':
 				case '!':
-					// '+=', '?=' and '!=' are from POSIX 202X.
+					// '+=', '?=' and '!=' are from POSIX 2024.
 					if (POSIX_2017)
 						break;
  set_eq:
