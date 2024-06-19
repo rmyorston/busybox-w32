@@ -473,16 +473,20 @@ static int has_exec_format(const char *name)
 	 * the magic from the file command.
 	 */
 	if (buf[0] == 'M' && buf[1] == 'Z') {
+/* Convert four unsigned bytes to an unsigned int (little-endian) */
+#define LE4(b, o) (((unsigned)b[o+3] << 24) + (b[o+2] << 16) + \
+						(b[o+1] << 8) + b[o])
+
 		/* Actually Portable Executable */
 		/* See ape/ape.S at https://github.com/jart/cosmopolitan */
-		if (n > 9 && memcmp(buf + 2, "qFpD='\n", 7) == 0)
+		const unsigned char *qFpD = (unsigned char *)"qFpD";
+		if (n > 6 && LE4(buf, 2) == LE4(qFpD, 0))
 			return 1;
 
 		if (n > 0x3f) {
 			offset = (buf[0x19] << 8) + buf[0x18];
 			if (offset > 0x3f) {
-				offset = (buf[0x3f] << 24) + (buf[0x3e] << 16) +
-							(buf[0x3d] << 8) + buf[0x3c];
+				offset = LE4(buf, 0x3c);
 				if (offset < sizeof(buf)-100) {
 					if (memcmp(buf+offset, "PE\0\0", 4) == 0) {
 						sig = (buf[offset+25] << 8) + buf[offset+24];
