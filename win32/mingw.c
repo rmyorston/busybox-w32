@@ -225,7 +225,7 @@ static int mingw_is_directory(const char *path);
 int mingw_open (const char *filename, int oflags, ...)
 {
 	va_list args;
-	unsigned mode;
+	int pmode, mode = 0666;
 	int fd;
 	int special = (oflags & O_SPECIAL);
 	int dev = get_dev_type(filename);
@@ -243,7 +243,10 @@ int mingw_open (const char *filename, int oflags, ...)
 	mode = va_arg(args, int);
 	va_end(args);
 
-	fd = open(filename, oflags&~O_SPECIAL, mode);
+	pmode = ((mode & S_IWUSR) ? _S_IWRITE : 0) |
+					((mode & S_IRUSR) ? _S_IREAD : 0);
+
+	fd = open(filename, oflags&~O_SPECIAL, pmode);
 	if (fd >= 0) {
 		update_special_fd(dev, fd);
 	}
@@ -2189,12 +2192,14 @@ size_t FAST_FUNC remove_cr(char *p, size_t len)
 
 off_t mingw_lseek(int fd, off_t offset, int whence)
 {
+	DWORD ftype;
 	HANDLE h = (HANDLE)_get_osfhandle(fd);
 	if (h == INVALID_HANDLE_VALUE) {
 		errno = EBADF;
 		return -1;
 	}
-	if (GetFileType(h) != FILE_TYPE_DISK) {
+	ftype = GetFileType(h);
+	if (ftype != FILE_TYPE_DISK && ftype != FILE_TYPE_CHAR) {
 		errno = ESPIPE;
 		return -1;
 	}
