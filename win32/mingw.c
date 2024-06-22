@@ -2507,3 +2507,9 @@ windows_env(void)
 	}
 	return FALSE;
 }
+
+void FAST_FUNC
+change_critical_error_dialogs(const char *newval)
+{
+	SetErrorMode(strcmp(newval, "1") == 0 ? 0 : SEM_FAILCRITICALERRORS);
+}

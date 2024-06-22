@@ -2443,6 +2443,7 @@ static const struct {
 	{ VSTRFIXED|VTEXTFIXED|VUNSET, BB_SKIP_ANSI_EMULATION, change_terminal_mode },
 	{ VSTRFIXED|VTEXTFIXED|VUNSET, BB_TERMINAL_MODE, change_terminal_mode },
 	{ VSTRFIXED|VTEXTFIXED|VUNSET, BB_OVERRIDE_APPLETS, change_override_applets },
+	{ VSTRFIXED|VTEXTFIXED|VUNSET, BB_CRITICAL_ERROR_DIALOGS, change_critical_error_dialogs },
 #endif
 };
 

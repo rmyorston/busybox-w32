@@ -639,3 +639,4 @@ char *quote_arg(const char *arg);
 char *find_first_executable(const char *name);
 char *xappendword(const char *str, const char *word);
 int windows_env(void);
+void change_critical_error_dialogs(const char *newval) FAST_FUNC;

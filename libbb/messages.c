@@ -47,7 +47,8 @@ const char bbvar[] ALIGN1 =
 		"BB_OVERRIDE_APPLETS\0" \
 		"BB_SKIP_ANSI_EMULATION\0" \
 		"BB_TERMINAL_MODE\0" \
-		"BB_SYSTEMROOT\0";
+		"BB_SYSTEMROOT\0" \
+		"BB_CRITICAL_ERROR_DIALOGS\0";
 #endif
 const char bb_default_login_shell[] ALIGN1 = LIBBB_DEFAULT_LOGIN_SHELL;
 /* util-linux manpage says /sbin:/bin:/usr/sbin:/usr/bin,
