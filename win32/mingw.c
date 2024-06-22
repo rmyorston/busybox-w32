@@ -239,9 +239,11 @@ int mingw_open (const char *filename, int oflags, ...)
 		return fd;
 	}
 
-	va_start(args, oflags);
-	mode = va_arg(args, int);
-	va_end(args);
+	if ((oflags & O_CREAT)) {
+		va_start(args, oflags);
+		mode = va_arg(args, int);
+		va_end(args);
+	}
 
 	pmode = ((mode & S_IWUSR) ? _S_IWRITE : 0) |
 					((mode & S_IRUSR) ? _S_IREAD : 0);
