@@ -1349,6 +1349,10 @@ int main(int argc UNUSED_PARAM, char **argv)
 			break;
 		}
 	}
+
+	/* Have this process handle critical errors itself:  the default
+	 * system-generated error dialogs may be inconvenient. */
+	SetErrorMode(SEM_FAILCRITICALERRORS);
 #endif
 
 #if defined(__MINGW64_VERSION_MAJOR)

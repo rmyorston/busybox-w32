@@ -443,7 +443,65 @@ BOOL WINAPI kill_child_ctrl_handler(DWORD dwCtrlType)
 	return FALSE;
 }
 
-static NORETURN void wait_for_child(HANDLE child)
+static int exit_code_to_wait_status_cmd(DWORD exit_code, const char *cmd)
+{
+	int sig, status;
+	DECLARE_PROC_ADDR(ULONG, RtlNtStatusToDosError, NTSTATUS);
+	DWORD flags, code;
+	char *msg = NULL;
+
+	if (exit_code == 0xc0000005)
+		return SIGSEGV;
+	else if (exit_code == 0xc000013a)
+		return SIGINT;
+
+	// When a process is terminated as if by a signal the Windows
+	// exit code is zero apart from the signal in its topmost byte.
+	// This is a busybox-w32 convention.
+	sig = exit_code >> 24;
+	if (sig != 0 && exit_code == sig << 24 && is_valid_signal(sig))
+		return sig;
+
+	// The exit code may be an NTSTATUS code.  Try to obtain a
+	// descriptive message for it.
+	if (exit_code > 0xff) {
+		flags = FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM;
+		if (INIT_PROC_ADDR(ntdll.dll, RtlNtStatusToDosError)) {
+			code = RtlNtStatusToDosError(exit_code);
+			if (FormatMessage(flags, NULL, code, 0, (char *)&msg, 0, NULL)) {
+				char *cr = strrchr(msg, '\r');
+				if (cr) {		// Replace CRLF with a space
+					cr[0] = ' ';
+					cr[1] = '\0';
+				}
+			}
+		}
+
+		if (cmd)
+			bb_error_msg("%s: %sError 0x%lx", cmd, msg ?: "", exit_code);
+		else
+			bb_error_msg("%s: %sError 0x%lx" + 4, msg ?: "", exit_code);
+		LocalFree(msg);
+	}
+
+	// Use least significant byte as exit code, but not if it's zero
+	// and the Windows exit code as a whole is non-zero.
+	status = exit_code & 0xff;
+	if (exit_code != 0 && status == 0)
+		status = 255;
+	return status << 8;
+}
+
+static int exit_code_to_posix_cmd(DWORD exit_code, const char *cmd)
+{
+	int status = exit_code_to_wait_status_cmd(exit_code, cmd);
+
+	if (WIFSIGNALED(status))
+		return 128 + WTERMSIG(status);
+	return WEXITSTATUS(status);
+}
+
+static NORETURN void wait_for_child(HANDLE child, const char *cmd)
 {
 	DWORD code;
 
@@ -451,7 +509,7 @@ static NORETURN void wait_for_child(HANDLE child)
 	SetConsoleCtrlHandler(kill_child_ctrl_handler, TRUE);
 	WaitForSingleObject(child, INFINITE);
 	GetExitCodeProcess(child, &code);
-	exit(exit_code_to_posix(code));
+	exit(exit_code_to_posix_cmd(code, cmd));
 }
 
 int
@@ -459,7 +517,7 @@ mingw_execvp(const char *cmd, char *const *argv)
 {
 	intptr_t ret = mingw_spawnvp(P_NOWAIT, cmd, argv);
 	if (ret != -1)
-		wait_for_child((HANDLE)ret);
+		wait_for_child((HANDLE)ret, cmd);
 	return ret;
 }
 
@@ -468,7 +526,7 @@ mingw_execve(const char *cmd, char *const *argv, char *const *envp)
 {
 	intptr_t ret = mingw_spawn_interpreter(P_NOWAIT, cmd, argv, envp, 0);
 	if (ret != -1)
-		wait_for_child((HANDLE)ret);
+		wait_for_child((HANDLE)ret, cmd);
 	return ret;
 }
 
@@ -896,33 +954,10 @@ int FAST_FUNC is_valid_signal(int number)
 
 int exit_code_to_wait_status(DWORD exit_code)
 {
-	int sig, status;
-
-	if (exit_code == 0xc0000005)
-		return SIGSEGV;
-	else if (exit_code == 0xc000013a)
-		return SIGINT;
-
-	// When a process is terminated as if by a signal the Windows
-	// exit code is zero apart from the signal in its topmost byte.
-	// This is a busybox-w32 convention.
-	sig = exit_code >> 24;
-	if (sig != 0 && exit_code == sig << 24 && is_valid_signal(sig))
-		return sig;
-
-	// Use least significant byte as exit code, but not if it's zero
-	// and the Windows exit code as a whole is non-zero.
-	status = exit_code & 0xff;
-	if (exit_code != 0 && status == 0)
-		status = 255;
-	return status << 8;
+	return exit_code_to_wait_status_cmd(exit_code, NULL);
 }
 
 int exit_code_to_posix(DWORD exit_code)
 {
-	int status = exit_code_to_wait_status(exit_code);
-
-	if (WIFSIGNALED(status))
-		return 128 + WTERMSIG(status);
-	return WEXITSTATUS(status);
+	return exit_code_to_posix_cmd(exit_code, NULL);
 }
