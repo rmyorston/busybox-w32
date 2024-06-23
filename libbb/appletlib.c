@@ -1352,7 +1352,7 @@ int main(int argc UNUSED_PARAM, char **argv)
 
 	/* Have this process handle critical errors itself:  the default
 	 * system-generated error dialogs may be inconvenient. */
-	change_critical_error_dialogs(getenv(BB_CRITICAL_ERROR_DIALOGS) ?: "");
+	change_critical_error_dialogs(getenv(BB_CRITICAL_ERROR_DIALOGS));
 #endif
 
 #if defined(__MINGW64_VERSION_MAJOR)
