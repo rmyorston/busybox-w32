@@ -3029,11 +3029,7 @@ static var *evaluate(node *op, var *res)
 			if (old_Fields_ptr) {
 				//if (old_Fields_ptr != Fields)
 				//	debug_printf_eval("L.v moved\n");
-#if !ENABLE_PLATFORM_MINGW32
-				L.v += Fields - old_Fields_ptr;
-#else
 				L.v = Fields + (L.v - old_Fields_ptr);
-#endif
 			}
 			if (opinfo & OF_STR2) {
 				R.s = getvar_s(R.v);
