@@ -449,6 +449,7 @@ static int exit_code_to_wait_status_cmd(DWORD exit_code, const char *cmd)
 	DECLARE_PROC_ADDR(ULONG, RtlNtStatusToDosError, NTSTATUS);
 	DWORD flags, code;
 	char *msg = NULL;
+	const char *sep = ": ";
 
 	if (exit_code == 0xc0000005)
 		return SIGSEGV;
@@ -477,10 +478,9 @@ static int exit_code_to_wait_status_cmd(DWORD exit_code, const char *cmd)
 			}
 		}
 
-		if (cmd)
-			bb_error_msg("%s: %sError 0x%lx", cmd, msg ?: "", exit_code);
-		else
-			bb_error_msg("%s: %sError 0x%lx" + 4, msg ?: "", exit_code);
+		if (!cmd)
+			cmd = sep = "";
+		bb_error_msg("%s%s%sError 0x%lx", cmd, sep, msg ?: "", exit_code);
 		LocalFree(msg);
 	}
 
