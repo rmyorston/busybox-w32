@@ -672,6 +672,10 @@ int count_subdirs(const char *pathname)
 }
 #endif
 
+#ifndef FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
+# define FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS 0x00400000
+#endif
+
 /* If follow is true then act like stat() and report on the link
  * target. Otherwise report on the link itself.
  */
