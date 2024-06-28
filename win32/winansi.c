@@ -115,7 +115,7 @@ int terminal_mode(int reset)
 						CONFIG_TERMINAL_MODE;
 		}
 
-		if (mode < 0 || mode > 6)
+		if (mode < 0 || mode > 5)
 			mode = CONFIG_TERMINAL_MODE;
 
 		if (is_console(STDOUT_FILENO)) {
