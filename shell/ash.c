@@ -10948,6 +10948,9 @@ poplocalvars(int keep)
 	struct localvar_list *ll;
 	struct localvar *lvp, *next;
 	struct var *vp;
+#if ENABLE_PLATFORM_MINGW32
+	int var_type;
+#endif
 
 	INT_OFF;
 	ll = localvar_stack;
@@ -10991,8 +10994,15 @@ poplocalvars(int keep)
 			vp->flags = lvp->flags;
 			vp->var_text = lvp->text;
 #if ENABLE_PLATFORM_MINGW32
-			if (is_bb_var(lvp->text) == BB_VAR_ASSIGN)
+			var_type = is_bb_var(lvp->text);
+			if (var_type == BB_VAR_ASSIGN && (lvp->flags & VEXPORT))
 				putenv(lvp->text);
+			else if (var_type) {
+				char *var = xstrdup(lvp->text);
+				*strchrnul(var, '=') = '\0';
+				unsetenv(var);
+				free(var);
+			}
 #endif
 		}
 		free(lvp);
