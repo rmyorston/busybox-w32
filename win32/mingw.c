@@ -2306,7 +2306,7 @@ int chdir_system_drive(void)
 	const char *sd = get_system_drive();
 	int ret = -1;
 
-	if (sd)
+	if (*sd)
 		ret = chdir(auto_string(concat_path_file(sd, "")));
 	return ret;
 }
