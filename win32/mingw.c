@@ -1146,17 +1146,6 @@ static char *gethomedir(void)
 	return buf;
 }
 
-static char *getsysdir(void)
-{
-	static char *buf = NULL;
-
-	if (!buf) {
-		buf = xzalloc(PATH_MAX);
-		GetSystemDirectory(buf, PATH_MAX);
-	}
-	return buf;
-}
-
 #define NAME_LEN 100
 char *get_user_name(void)
 {
@@ -2297,25 +2286,19 @@ int root_len(const char *path)
 
 const char *get_system_drive(void)
 {
-	static char *drive = NULL;
+	static const char *drive = NULL;
+	char sysdir[PATH_MAX];
 	int len;
 
 	if (drive == NULL) {
-		const char *sysdir = getsysdir();
-		if ((len=root_len(sysdir))) {
+		UINT ret = GetSystemDirectory(sysdir, PATH_MAX);
+		if ((ret != 0 && ret < PATH_MAX) && (len=root_len(sysdir)))
 			drive = xstrndup(sysdir, len);
-		}
+		else
+			drive = "";
 	}
 
 	return getenv(BB_SYSTEMROOT) ?: drive;
-}
-
-/* Return pointer to system drive if path is of form '/file', else NULL */
-const char *need_system_drive(const char *path)
-{
-	if (root_len(path) == 0 && (path[0] == '/' || path[0] == '\\'))
-		return get_system_drive();
-	return NULL;
 }
 
 int chdir_system_drive(void)
@@ -2409,10 +2392,14 @@ void *get_proc_addr(const char *dll, const char *function,
 		 * on Windows 7.  If it does, retry using LoadLibrary with an
 		 * explicit, backslash-separated path. */
 		if (!hnd) {
-			char *path = concat_path_file(getsysdir(), dll);
-			slash_to_bs(path);
-			hnd = LoadLibrary(path);
-			free(path);
+			char buf[PATH_MAX];
+			UINT ret = GetSystemDirectory(buf, PATH_MAX);
+			if (ret != 0 && ret < PATH_MAX) {
+				char *path = concat_path_file(buf, dll);
+				slash_to_bs(path);
+				hnd = LoadLibrary(path);
+				free(path);
+			}
 		}
 
 		if (hnd)

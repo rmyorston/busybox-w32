@@ -754,10 +754,11 @@ static int parse_conf(const char *path, int flag)
 		filename = alloca(strlen(path) + sizeof(HTTPD_CONF) + 2);
 		sprintf((char *)filename, "%s/%s", path, HTTPD_CONF);
 #else
-		const char *sd = need_system_drive(path);
+		const char *sd = "";
+		if (root_len(path) == 0 && (path[0] == '/' || path[0] == '\\'))
+			sd = get_system_drive();
 
-		filename = auto_string(xasprintf("%s%s/%s", sd ? sd : "",
-				path, HTTPD_CONF));
+		filename = auto_string(xasprintf("%s%s/%s", sd, path, HTTPD_CONF));
 #endif
 	}
 

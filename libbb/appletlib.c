@@ -781,7 +781,7 @@ static void install_links(const char *busybox, int use_symbolic_links,
 	unsigned i;
 	int rc;
 #  if ENABLE_PLATFORM_MINGW32
-	const char *sd = NULL;
+	const char *sd = "";
 
 	if (custom_install_dir != NULL) {
 		bb_make_directory(custom_install_dir, 0755, FILEUTILS_RECUR);
@@ -789,7 +789,7 @@ static void install_links(const char *busybox, int use_symbolic_links,
 	else {
 		sd = get_system_drive();
 		for (i=1; i<ARRAY_SIZE(install_dir); ++i) {
-			fpc = xasprintf("%s%s", sd ?: "", install_dir[i]);
+			fpc = concat_path_file(sd, install_dir[i]);
 			bb_make_directory(fpc, 0755, FILEUTILS_RECUR);
 			free(fpc);
 		}
@@ -802,7 +802,7 @@ static void install_links(const char *busybox, int use_symbolic_links,
 
 	for (i = 0; i < ARRAY_SIZE(applet_main); i++) {
 #  if ENABLE_PLATFORM_MINGW32
-		fpc = xasprintf("%s%s/%s.exe", sd ?: "",
+		fpc = xasprintf("%s%s/%s.exe", sd,
 				custom_install_dir ?: install_dir[APPLET_INSTALL_LOC(i)],
 				appname);
 #  else

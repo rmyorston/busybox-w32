@@ -16292,7 +16292,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 
 		state = 1;
 #if ENABLE_PLATFORM_MINGW32
-		hp = xasprintf("%s/etc/profile", get_system_drive() ?: "");
+		hp = concat_path_file(get_system_drive(), "/etc/profile");
 		read_profile(hp);
 		free((void *)hp);
 #else
