@@ -2507,3 +2507,11 @@ change_critical_error_dialogs(const char *newval)
 	SetErrorMode(newval && newval[0] == '1' && newval[1] == '\0' ?
 					0 : SEM_FAILCRITICALERRORS);
 }
+
+char *exe_relative_path(const char *tail)
+{
+	char *exepath = xstrdup(bb_busybox_exec_path);
+	char *relpath = concat_path_file(dirname(exepath), tail);
+	free(exepath);
+	return relpath;
+}

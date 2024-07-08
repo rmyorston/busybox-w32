@@ -16295,6 +16295,10 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		hp = concat_path_file(get_system_drive(), "/etc/profile");
 		read_profile(hp);
 		free((void *)hp);
+
+		hp = exe_relative_path("/etc/profile");
+		read_profile(hp);
+		free((void *)hp);
 #else
 		read_profile("/etc/profile");
 #endif

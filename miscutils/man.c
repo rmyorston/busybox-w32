@@ -261,7 +261,7 @@ int man_main(int argc UNUSED_PARAM, char **argv)
 	char *token[2];
 #if ENABLE_PLATFORM_MINGW32
 	char **ptr;
-	char *exepath, *relpath;
+	char *relpath;
 	const char *mpl[] = { "/usr/man", "/usr/share/man", NULL, NULL };
 #endif
 
@@ -316,8 +316,7 @@ int man_main(int argc UNUSED_PARAM, char **argv)
 
 #if ENABLE_PLATFORM_MINGW32
 	/* allow man pages to be stored relative to the executable */
-	exepath = xstrdup(bb_busybox_exec_path);
-	relpath = concat_path_file(dirname(exepath), "man");
+	relpath = exe_relative_path("man");
 
 	if (!man_path_list) {
 		mpl[2] = relpath;
