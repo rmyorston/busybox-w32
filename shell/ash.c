@@ -15512,6 +15512,15 @@ exportcmd(int argc UNUSED_PARAM, char **argv)
 						}
 #endif
 						vp->flags = ((vp->flags | flag) & flag_off);
+#if ENABLE_PLATFORM_MINGW32
+						/* Unexporting a variable imported from the
+						 * environment restores its original value and
+						 * removes the VIMPORT flag. */
+						if ((vp->flags & VIMPORT) && (flag_off == ~VEXPORT)) {
+							vp->flags &= ~VIMPORT;
+							p = getenv(name);
+						} else
+#endif
 						continue;
 					}
 				}
