@@ -180,11 +180,11 @@ typedef struct node_s {
 		var *v;
 		int aidx;
 		const char *new_progname;
+		/* if TI_REGEXP node, points to regex_t[2] array (case sensitive and insensitive) */
 		regex_t *re;
 	} l;
 	union {
 		struct node_s *n;
-		regex_t *ire;
 		func *f;
 	} r;
 	union {
@@ -307,13 +307,13 @@ static void debug_parse_print_tc(uint32_t n)
                    | TC_LENGTH)
 #define	TS_CONCAT_R (TS_OPERAND | TS_UOPPRE)
 
-#define	OF_RES1     0x010000
-#define	OF_RES2     0x020000
-#define	OF_STR1     0x040000
-#define	OF_STR2     0x080000
-#define	OF_NUM1     0x100000
-#define	OF_CHECKED  0x200000
-#define	OF_REQUIRED 0x400000
+#define	OF_RES1     0x010000    /* evaluate(left_node) */
+#define	OF_RES2     0x020000    /* evaluate(right_node) */
+#define	OF_STR1     0x040000    /* ...and use its string value */
+#define	OF_STR2     0x080000    /* ...and use its string value */
+#define	OF_NUM1     0x100000    /* ...and use its numeric value */
+#define	OF_REQUIRED 0x200000    /* left_node must not be NULL */
+#define	OF_CHECKED  0x400000    /* range pattern flip-flop bit */
 
 /* combined operator flags */
 #define	xx	0
@@ -331,17 +331,18 @@ static void debug_parse_print_tc(uint32_t n)
 #define	OPCLSMASK 0xFF00
 #define	OPNMASK   0x007F
 
-/* operator priority is a highest byte (even: r->l, odd: l->r grouping)
- * (for builtins it has different meaning)
+/* operator precedence is the highest byte (even: r->l, odd: l->r grouping)
+ * (for builtins the byte has a different meaning)
  */
 #undef P
 #undef PRIMASK
 #undef PRIMASK2
+#define PRIMASK   0x7F000000
+#define PRIMASK2  0x7E000000
 /* Smaller 'x' means _higher_ operator precedence */
 #define PRECEDENCE(x) (x << 24)
 #define P(x)      PRECEDENCE(x)
-#define PRIMASK   0x7F000000
-#define PRIMASK2  0x7E000000
+#define LOWEST_PRECEDENCE PRIMASK
 
 /* Operation classes */
 #define	SHIFT_TIL_THIS	0x0600
@@ -433,36 +434,47 @@ static const char tokenlist[] ALIGN1 =
 	;
 
 static const uint32_t tokeninfo[] ALIGN4 = {
-	0,
-	0,
+	0, /* ( */
+	0, /* ) */
 #define TI_REGEXP OC_REGEXP
-	TI_REGEXP,
+	TI_REGEXP, /* / */
+	/* >> > | */
 	xS|'a',                  xS|'w',                  xS|'|',
+	/* ++ -- */
 	OC_UNARY|xV|P(9)|'p',    OC_UNARY|xV|P(9)|'m',
 #define TI_PREINC (OC_UNARY|xV|P(9)|'P')
 #define TI_PREDEC (OC_UNARY|xV|P(9)|'M')
+	/* ++ -- $ */
 	TI_PREINC,               TI_PREDEC,               OC_FIELD|xV|P(5),
-	OC_COMPARE|VV|P(39)|5,   OC_MOVE|VV|P(38),        OC_REPLACE|NV|P(38)|'+', OC_REPLACE|NV|P(38)|'-',
-	OC_REPLACE|NV|P(38)|'*', OC_REPLACE|NV|P(38)|'/', OC_REPLACE|NV|P(38)|'%', OC_REPLACE|NV|P(38)|'&',
-	OC_BINARY|NV|P(29)|'+',  OC_BINARY|NV|P(29)|'-',  OC_REPLACE|NV|P(38)|'&', OC_BINARY|NV|P(15)|'&',
+	/* == = += -= */
+	OC_COMPARE|VV|P(39)|5,   OC_MOVE|VV|P(74),        OC_REPLACE|NV|P(74)|'+', OC_REPLACE|NV|P(74)|'-',
+	/* *= /= %= ^= (^ is exponentiation, NOT xor) */
+	OC_REPLACE|NV|P(74)|'*', OC_REPLACE|NV|P(74)|'/', OC_REPLACE|NV|P(74)|'%', OC_REPLACE|NV|P(74)|'&',
+	/* + - **= ** */
+	OC_BINARY|NV|P(29)|'+',  OC_BINARY|NV|P(29)|'-',  OC_REPLACE|NV|P(74)|'&', OC_BINARY|NV|P(15)|'&',
+	/* / % ^ * */
 	OC_BINARY|NV|P(25)|'/',  OC_BINARY|NV|P(25)|'%',  OC_BINARY|NV|P(15)|'&',  OC_BINARY|NV|P(25)|'*',
+	/* != >= <= > */
 	OC_COMPARE|VV|P(39)|4,   OC_COMPARE|VV|P(39)|3,   OC_COMPARE|VV|P(39)|0,   OC_COMPARE|VV|P(39)|1,
 #define TI_LESS     (OC_COMPARE|VV|P(39)|2)
+	/* < !~ ~ && */
 	TI_LESS,                 OC_MATCH|Sx|P(45)|'!',   OC_MATCH|Sx|P(45)|'~',   OC_LAND|Vx|P(55),
 #define TI_TERNARY  (OC_TERNARY|Vx|P(64)|'?')
 #define TI_COLON    (OC_COLON|xx|P(67)|':')
+	/* || ? : */
 	OC_LOR|Vx|P(59),         TI_TERNARY,              TI_COLON,
 #define TI_IN       (OC_IN|SV|P(49))
 	TI_IN,
 #define TI_COMMA    (OC_COMMA|SS|P(80))
 	TI_COMMA,
 #define TI_PGETLINE (OC_PGETLINE|SV|P(37))
-	TI_PGETLINE,
+	TI_PGETLINE, /* | */
+	/* + - ! */
 	OC_UNARY|xV|P(19)|'+',   OC_UNARY|xV|P(19)|'-',   OC_UNARY|xV|P(19)|'!',
 	0, /* ] */
-	0,
-	0,
-	0,
+	0, /* { */
+	0, /* } */
+	0, /* ; */
 	0, /* \n */
 	ST_IF,        ST_DO,        ST_FOR,      OC_BREAK,
 	OC_CONTINUE,  OC_DELETE|Rx, OC_PRINT,
@@ -497,7 +509,7 @@ static const uint32_t tokeninfo[] ALIGN4 = {
 	OC_F|F_rn,          OC_F|F_si|Nx|Rx,    OC_F|F_sq|Nx|Rx,    OC_F|F_sr|Nx,       // rand   sin     sqrt     srand
 	OC_B|B_ge|_s_vv_|A3,OC_B|B_gs|ss_vv_|A2,OC_B|B_ix|_ss_vv|A2,                    // gensub gsub    index  /*length was here*/
 	OC_B|B_ma|__s__v|A2,OC_B|B_sp|__s_vv|A2,OC_SPRINTF,         OC_B|B_su|ss_vv_|A2,// match  split   sprintf  sub
-	OC_B|B_ss|__svvv|A2,OC_F|F_ti,          OC_B|B_ti|__s_vv,   OC_B|B_mt|__s_vv,   // substr systime strftime mktime
+	OC_B|B_ss|__svvv|A2,OC_F|F_ti,          OC_B|B_ti|__s_vv,   OC_B|B_mt|__s_vv|A1,// substr systime strftime mktime
 	OC_B|B_lo|__s__v|A1,OC_B|B_up|__s__v|A1,                                        // tolower toupper
 	OC_F|F_le|Sx,   // length
 	OC_GETLINE|SV,  // getline
@@ -510,6 +522,38 @@ static const uint32_t tokeninfo[] ALIGN4 = {
 #undef OC_B
 #undef OC_F
 };
+
+/* gawk 5.1.1 manpage says the precedence of comparisons and assignments are as follows:
+ *  ......
+ *  < > <= >= == !=
+ *  ~ !~
+ *  in
+ *  &&
+ *  ||
+ *  ?:
+ *  = += -= *= /= %= ^=
+ * But there are some abnormalities:
+ * awk 'BEGIN { print v=3==3,v }' - ok:
+ * 1 1
+ * awk 'BEGIN { print 3==v=3,v }' - wrong, (3==v)=3 is not a valid assignment:
+ * 1 3
+ * This also unexpectedly works: echo "foo" | awk '$1==$1="foo" {print $1}'
+ * More than one comparison op fails to parse:
+ * awk 'BEGIN { print 3==3==3 }' - syntax error (wrong, should work)
+ * awk 'BEGIN { print 3==3!=3 }' - syntax error (wrong, should work)
+ *
+ * The ternary a?b:c works as follows in gawk: "a" can't be assignment
+ * ("= has lower precedence than ?") but inside "b" or "c", assignment
+ * is higher precedence:
+ * awk 'BEGIN { u=v=w=1; print u=0?v=4:w=5; print u,v,w }'
+ * 5
+ * 5 1 5
+ * This differs from C and shell's "test" rules for ?: which have implicit ()
+ * around "b" in ?:, but not around "c" - they would barf on "w=5" above.
+ * gawk allows nesting of ?: - this works:
+ * u=0?v=4?5:6:w=7?8:9 means u=0?(v=4?5:6):(w=7?8:9)
+ * bbox is buggy here, requires parens: "u=0?(v=4):(w=5)"
+ */
 
 /* internal variable names and their initial values       */
 /* asterisk marks SPECIAL vars; $ is just no-named Field0 */
@@ -532,6 +576,7 @@ static const char vValues[] ALIGN1 =
 	"%.6g\0"    "%.6g\0"    " \0"       " \0"
 	"\n\0"      "\n\0"      "\0"        "\0"
 	"\034\0"    "\0"        "\377";
+#define str_percent_dot_6g vValues
 
 /* hash size may grow to these values */
 #define FIRST_PRIME 61
@@ -922,7 +967,7 @@ static double my_strtod_or_hexoct(char **pp)
 
 /* -------- working with variables (set/get/copy/etc) -------- */
 
-static void fmt_num(const char *format, double n)
+static const char *fmt_num(const char *format, double n)
 {
 	if (n == (long long)n) {
 		snprintf(g_buf, MAXVARFMT, "%"LL_FMT"d", (long long)n);
@@ -939,6 +984,7 @@ static void fmt_num(const char *format, double n)
 			syntax_error(EMSG_INV_FMT);
 		}
 	}
+	return g_buf;
 }
 
 static xhash *iamarray(var *a)
@@ -1025,8 +1071,15 @@ static const char *getvar_s(var *v)
 {
 	/* if v is numeric and has no cached string, convert it to string */
 	if ((v->type & (VF_NUMBER | VF_CACHED)) == VF_NUMBER) {
-		fmt_num(getvar_s(intvar[CONVFMT]), v->number);
-		v->string = xstrdup(g_buf);
+		const char *convfmt = str_percent_dot_6g; /* "%.6g" */
+		/* Get CONVFMT, unless we already recursed on it:
+		 * someone might try to cause stack overflow by setting
+		 * CONVFMT=9 (a numeric, not string, value)
+		 */
+		if (v != intvar[CONVFMT])
+			convfmt = getvar_s(intvar[CONVFMT]);
+		/* Convert the value */
+		v->string = xstrdup(fmt_num(convfmt, v->number));
 		v->type |= VF_CACHED;
 	}
 	return (v->string == NULL) ? "" : v->string;
@@ -1347,7 +1400,6 @@ static void mk_re_node(const char *s, node *n, regex_t *re)
 {
 	n->info = TI_REGEXP;
 	n->l.re = re;
-	n->r.ire = re + 1;
 	xregcomp(re, s, REG_EXTENDED);
 	xregcomp(re + 1, s, REG_EXTENDED | REG_ICASE);
 }
@@ -1360,39 +1412,39 @@ static node *parse_lrparen_list(void)
 	return parse_expr(TC_RPAREN);
 }
 
-/* parse expression terminated by given argument, return ptr
+/* Parse expression terminated by given token, return ptr
  * to built subtree. Terminator is eaten by parse_expr */
 static node *parse_expr(uint32_t term_tc)
 {
 	node sn;
 	node *cn = &sn;
-	node *glptr;
+	node *getline_node;
 	uint32_t tc, expected_tc;
 
 	debug_printf_parse("%s() term_tc(%x):", __func__, term_tc);
 	debug_parse_print_tc(term_tc);
 	debug_printf_parse("\n");
 
-	sn.info = PRIMASK;
-	sn.r.n = sn.a.n = glptr = NULL;
+	sn.info = LOWEST_PRECEDENCE;
+	sn.r.n = sn.a.n = getline_node = NULL;
 	expected_tc = TS_OPERAND | TS_UOPPRE | TC_REGEXP | term_tc;
 
 	while (!((tc = next_token(expected_tc)) & term_tc)) {
 		node *vn;
 
-		if (glptr && (t_info == TI_LESS)) {
-			/* input redirection (<) attached to glptr node */
+		if (getline_node && (t_info == TI_LESS)) {
+			/* Attach input redirection (<) to getline node */
 			debug_printf_parse("%s: input redir\n", __func__);
-			cn = glptr->l.n = new_node(OC_CONCAT | SS | PRECEDENCE(37));
-			cn->a.n = glptr;
+			cn = getline_node->l.n = new_node(OC_CONCAT | SS | PRECEDENCE(37));
+			cn->a.n = getline_node;
 			expected_tc = TS_OPERAND | TS_UOPPRE;
-			glptr = NULL;
+			getline_node = NULL;
 			continue;
 		}
 		if (tc & (TS_BINOP | TC_UOPPOST)) {
 			debug_printf_parse("%s: TS_BINOP | TC_UOPPOST tc:%x\n", __func__, tc);
 			/* for binary and postfix-unary operators, jump back over
-			 * previous operators with higher priority */
+			 * previous operators with higher precedence */
 			vn = cn;
 			while (((t_info & PRIMASK) > (vn->a.n->info & PRIMASK2))
 			    || (t_info == vn->info && t_info == TI_COLON)
@@ -1400,7 +1452,7 @@ static node *parse_expr(uint32_t term_tc)
 				vn = vn->a.n;
 				if (!vn->a.n) syntax_error(EMSG_UNEXP_TOKEN);
 			}
-			if (t_info == TI_TERNARY)
+			if (t_info == TI_TERNARY) /* "?" token */
 //TODO: why?
 				t_info += PRECEDENCE(6);
 			cn = vn->a.n->r.n = new_node(t_info);
@@ -1432,20 +1484,21 @@ static node *parse_expr(uint32_t term_tc)
 				}
 
 				expected_tc = TS_OPERAND | TS_UOPPRE | TC_REGEXP;
-				if (t_info == TI_PGETLINE) {
-					/* it's a pipe */
-					next_token(TC_GETLINE);
-					/* give maximum priority to this pipe */
-					cn->info &= ~PRIMASK;
+				if (t_info == TI_PGETLINE) { /* "|" token */
+					next_token(TC_GETLINE); /* must be folowed by "getline" */
+					/* give maximum precedence to this pipe */
+					cn->info &= ~PRIMASK; /* sets PRECEDENCE(0) */
 					expected_tc = TS_OPERAND | TS_UOPPRE | TS_BINOP | term_tc;
 				}
 			} else {
+				/* It was an unary postfix operator */
 				cn->r.n = vn;
 				expected_tc = TS_OPERAND | TS_UOPPRE | TS_BINOP | term_tc;
 			}
 			vn->a.n = cn;
 			continue;
 		}
+		/* It wasn't a binary or postfix-unary operator */
 
 		debug_printf_parse("%s: other, t_info:%x\n", __func__, t_info);
 		/* for operands and prefix-unary operators, attach them
@@ -1519,8 +1572,15 @@ static node *parse_expr(uint32_t term_tc)
 			break;
 
 		case TC_GETLINE:
+			/* "getline" is a function, not a statement.
+			 * Works in gawk:
+			 *  r = ["SHELL CMD" | ] getline [VAR] [<"FILE"]
+			 *  if (getline <"FILE" < 0) print "Can't read FILE"
+			 *  while ("SHELL CMD" | getline > 0) ...
+			 * Returns: 1 successful read, 0 EOF, -1 error (sets ERRNO)
+			 */
 			debug_printf_parse("%s: TC_GETLINE\n", __func__);
-			glptr = cn;
+			getline_node = cn;
 			expected_tc = TS_OPERAND | TS_UOPPRE | TS_BINOP | term_tc;
 			break;
 
@@ -1892,15 +1952,14 @@ static void nvfree(var *v, int sz)
 
 static node *mk_splitter(const char *s, tsplitter *spl)
 {
-	regex_t *re, *ire;
+	regex_t *re;
 	node *n;
 
-	re = &spl->re[0];
-	ire = &spl->re[1];
+	re = spl->re;
 	n = &spl->n;
 	if (n->info == TI_REGEXP) {
 		regfree(re);
-		regfree(ire); // TODO: nuke ire, use re+1?
+		regfree(re + 1);
 	}
 	if (s[0] && s[1]) { /* strlen(s) > 1 */
 		mk_re_node(s, n, re);
@@ -1923,7 +1982,7 @@ static regex_t *as_regex(node *op, regex_t *preg)
 	const char *s;
 
 	if (op->info == TI_REGEXP) {
-		return icase ? op->r.ire : op->l.re;
+		return &op->l.re[icase];
 	}
 
 	//tmpvar = nvalloc(1);
@@ -2041,7 +2100,7 @@ static int awk_split(const char *s, node *spl, char **slist)
 			regmatch_t pmatch[1];
 
 			l = strcspn(s, c+2); /* len till next NUL or \n */
-			if (regexec1_nonempty(icase ? spl->r.ire : spl->l.re, s, pmatch) == 0
+			if (regexec1_nonempty(&spl->l.re[icase], s, pmatch) == 0
 			 && pmatch[0].rm_so <= l
 			) {
 				/* if (pmatch[0].rm_eo == 0) ... - impossible */
@@ -2296,7 +2355,7 @@ static int awk_getline(rstream *rsm, var *v)
 		if (p > 0) {
 			char c = (char) rsplitter.n.info;
 			if (rsplitter.n.info == TI_REGEXP) {
-				if (regexec(icase ? rsplitter.n.r.ire : rsplitter.n.l.re,
+				if (regexec(&rsplitter.n.l.re[icase],
 							b, 1, pmatch, 0) == 0
 				) {
 					so = pmatch[0].rm_so;
@@ -2811,7 +2870,6 @@ static NOINLINE var *exec_builtin(node *op, var *res)
 			tt = getvar_i(av[1]);
 		else
 			time(&tt);
-		//s = (nargs > 0) ? as[0] : "%a %b %d %H:%M:%S %Z %Y";
 		i = strftime(g_buf, MAXVARFMT,
 			((nargs > 0) ? as[0] : "%a %b %d %H:%M:%S %Z %Y"),
 			localtime(&tt));
@@ -3004,19 +3062,14 @@ static var *evaluate(node *op, var *res)
 				/* yes, remember where Fields[] is */
 				old_Fields_ptr = Fields;
 			}
-			if (opinfo & OF_STR1) {
-				L.s = getvar_s(L.v);
-				debug_printf_eval("L.s:'%s'\n", L.s);
-			}
 			if (opinfo & OF_NUM1) {
 				L_d = getvar_i(L.v);
 				debug_printf_eval("L_d:%f\n", L_d);
 			}
 		}
-		/* NB: Must get string/numeric values of L (done above)
-		 * _before_ evaluate()'ing R.v: if both L and R are $NNNs,
-		 * and right one is large, then L.v points to Fields[NNN1],
-		 * second evaluate() reallocates and moves (!) Fields[],
+		/* NB: if both L and R are $NNNs, and right one is large,
+		 * then at this pint L.v points to Fields[NNN1], second
+		 * evaluate() below reallocates and moves (!) Fields[],
 		 * R.v points to Fields[NNN2] but L.v now points to freed mem!
 		 * (Seen trying to evaluate "$444 $44444")
 		 */
@@ -3034,6 +3087,16 @@ static var *evaluate(node *op, var *res)
 			if (opinfo & OF_STR2) {
 				R.s = getvar_s(R.v);
 				debug_printf_eval("R.s:'%s'\n", R.s);
+			}
+		}
+		/* Get L.s _after_ R.v is evaluated: it may have realloc'd L.v
+		 * so we must get the string after "old_Fields_ptr" correction
+		 * above. Testcase: x = (v = "abc", gsub("b", "X", v));
+		 */
+		if (opinfo & OF_RES1) {
+			if (opinfo & OF_STR1) {
+				L.s = getvar_s(L.v);
+				debug_printf_eval("L.s:'%s'\n", L.s);
 			}
 		}
 
@@ -3115,9 +3178,8 @@ static var *evaluate(node *op, var *res)
 					for (;;) {
 						var *v = evaluate(nextarg(&op1), TMPVAR0);
 						if (v->type & VF_NUMBER) {
-							fmt_num(getvar_s(intvar[OFMT]),
-									getvar_i(v));
-							fputs(g_buf, F);
+							fputs(fmt_num(getvar_s(intvar[OFMT]), getvar_i(v)),
+								F);
 						} else {
 							fputs(getvar_s(v), F);
 						}
