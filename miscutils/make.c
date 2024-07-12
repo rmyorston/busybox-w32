@@ -637,23 +637,23 @@ inc_ref(void *vp)
 }
 
 #if ENABLE_FEATURE_MAKE_POSIX
+// Order must match constants above.
+// POSIX levels must be last and in increasing order
+static const char *p_name =
+	"macro_name\0"
+	"target_name\0"
+	"command_comment\0"
+	"empty_suffix\0"
+#if ENABLE_PLATFORM_MINGW32
+	"windows\0"
+#endif
+	"posix_2017\0"
+	"posix_2024\0"
+	"posix_202x\0";
+
 static void
 set_pragma(const char *name)
 {
-	// Order must match constants above.
-	// POSIX levels must be last and in increasing order
-	static const char *p_name =
-		"macro_name\0"
-		"target_name\0"
-		"command_comment\0"
-		"empty_suffix\0"
-#if ENABLE_PLATFORM_MINGW32
-		"windows\0"
-#endif
-		"posix_2017\0"
-		"posix_2024\0"
-		"posix_202x\0"
-	;
 	int idx = index_in_strings(p_name, name);
 
 	if (idx != -1) {
@@ -672,6 +672,27 @@ set_pragma(const char *name)
 		return;
 	}
 	warning("invalid pragma '%s'", name);
+}
+
+static void
+pragmas_to_env(void)
+{
+	int i;
+	char *val = NULL;
+
+	for (i = 0; i < BIT_POSIX_2017; ++i) {
+		if ((pragma & (1 << i)))
+			val = xappendword(val, nth_string(p_name, i));
+	}
+
+	if (posix_level != DEFAULT_POSIX_LEVEL)
+		val = xappendword(val,
+					nth_string(p_name, BIT_POSIX_2017 + posix_level));
+
+	if (val) {
+		setenv("PDPMAKE_PRAGMAS", val, 1);
+		free(val);
+	}
 }
 #endif
 
@@ -734,6 +755,7 @@ addrule(struct name *np, struct depend *dp, struct cmd *cp, int flag)
 		for (; dp; dp = dp->d_next) {
 			set_pragma(dp->d_name->n_name);
 		}
+		pragmas_to_env();
 	}
 #endif
 }
@@ -1982,6 +2004,23 @@ wildcard(char *p, glob_t *gd)
 	return 1;
 }
 
+#if ENABLE_FEATURE_MAKE_POSIX
+static void
+pragmas_from_env(void)
+{
+	char *p, *q, *var;
+	const char *env = getenv("PDPMAKE_PRAGMAS");
+
+	if (env == NULL)
+		return;
+
+	q = var = xstrdup(env);
+	while ((p = gettok(&q)) != NULL)
+		set_pragma(p);
+	free(var);
+}
+#endif
+
 /*
  * Parse input from the makefile and construct a tree structure of it.
  */
@@ -3084,6 +3123,7 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 		posix = getenv("PDPMAKE_POSIXLY_CORRECT") != NULL;
 	}
 	posix_level = DEFAULT_POSIX_LEVEL;
+	pragmas_from_env();
 #endif
 
 	if (!POSIX_2017) {
@@ -3137,6 +3177,7 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_FEATURE_MAKE_POSIX
 	while ((prag = llist_pop(&pragmas)))
 		set_pragma(prag);
+	pragmas_to_env();
 #endif
 
 #if !ENABLE_PLATFORM_MINGW32
