@@ -411,10 +411,10 @@ static void sp_256_sub_8_p256_mod(sp_digit* r)
 "\n		subl	$0xffffffff, (%0)"
 "\n		sbbl	$0xffffffff, 1*4(%0)"
 "\n		sbbl	$0xffffffff, 2*4(%0)"
-"\n		sbbl	$0, 3*4(%0)"
-"\n		sbbl	$0, 4*4(%0)"
-"\n		sbbl	$0, 5*4(%0)"
-"\n		sbbl	$1, 6*4(%0)"
+"\n		sbbl	$0x00000000, 3*4(%0)"
+"\n		sbbl	$0x00000000, 4*4(%0)"
+"\n		sbbl	$0x00000000, 5*4(%0)"
+"\n		sbbl	$0x00000001, 6*4(%0)"
 "\n		sbbl	$0xffffffff, 7*4(%0)"
 "\n"
 		: "=r" (r)
@@ -422,29 +422,48 @@ static void sp_256_sub_8_p256_mod(sp_digit* r)
 		: "memory"
 	);
 }
-#elif ALLOW_ASM && defined(__GNUC__) && defined(__x86_64__) && ENABLE_PLATFORM_POSIX
+#elif ALLOW_ASM && defined(__GNUC__) && defined(__x86_64__)
 static void sp_256_sub_8_p256_mod(sp_digit* r)
 {
+//p256_mod[3..0] = ffffffff00000001 0000000000000000 00000000ffffffff ffffffffffffffff
+# if 0
+	// gcc -Oz bug (?) https://gcc.gnu.org/bugzilla/show_bug.cgi?id=115875
+	// uses buggy "push $-1; pop %rax" insns to load 00000000ffffffff
 	uint64_t reg;
 	uint64_t ooff;
-//p256_mod[3..0] = ffffffff00000001 0000000000000000 00000000ffffffff ffffffffffffffff
 	asm volatile (
-"\n		addq	$1, (%0)"	// adding 1 is the same as subtracting ffffffffffffffff
-"\n		cmc"			// only carry bit needs inverting
-"\n"
-"\n		sbbq	%1, 1*8(%0)"	// %1 holds 00000000ffffffff
-"\n"
-"\n		sbbq	$0, 2*8(%0)"
-"\n"
+"\n		subq	$0xffffffffffffffff, (%0)"
+"\n		sbbq	%1, 1*8(%0)" // %1 = 00000000ffffffff
+"\n		sbbq	$0x0000000000000000, 2*8(%0)"
 "\n		movq	3*8(%0), %2"
-"\n		sbbq	$0, %2"		// adding 00000000ffffffff (in %1)
-"\n		addq	%1, %2"		// is the same as subtracting ffffffff00000001
+"\n		sbbq	$0x0, %2" // subtract carry
+"\n		addq	%1, %2" // adding 00000000ffffffff (in %1)
+"\n"		// is the same as subtracting ffffffff00000001
 "\n		movq	%2, 3*8(%0)"
 "\n"
 		: "=r" (r), "=r" (ooff), "=r" (reg)
-		: "0" (r), "1" (0x00000000ffffffff)
+		: "0" (r), "1" (0x00000000ffffffffUL) /* UL is important! */
 		: "memory"
 	);
+# else // let's do it by hand:
+	uint64_t reg;
+	uint64_t rax;
+	asm volatile (
+"\n		orl	$0xffffffff, %%eax" // %1 (rax) = 00000000ffffffff
+"\n		subq	$0xffffffffffffffff, (%0)"
+"\n		sbbq	%1, 1*8(%0)"
+"\n		sbbq	$0x0000000000000000, 2*8(%0)"
+"\n		movq	3*8(%0), %2"
+"\n		sbbq	$0x0, %2" // subtract carry
+"\n		addq	%1, %2" // adding 00000000ffffffff (in %1)
+"\n"		// is the same as subtracting ffffffff00000001
+"\n		movq	%2, 3*8(%0)"
+"\n"
+		: "=r" (r), "=&a" (rax), "=r" (reg)
+		: "0" (r)
+		: "memory"
+	);
+# endif
 }
 #else
 static void sp_256_sub_8_p256_mod(sp_digit* r)
@@ -476,15 +495,23 @@ static void sp_256to512_mul_8(sp_digit* r, const sp_digit* a, const sp_digit* b)
 ////////////////////////
 //			uint64_t m = ((uint64_t)a[i]) * b[j];
 //			acc_hi:acch:accl += m;
+			long eax_clobbered;
 			asm volatile (
 			// a[i] is already loaded in %%eax
-"\n			mull	%7"
+"\n			mull	%8"
 "\n			addl	%%eax, %0"
 "\n			adcl	%%edx, %1"
-"\n			adcl	$0, %2"
-			: "=rm" (accl), "=rm" (acch), "=rm" (acc_hi)
-			: "0" (accl), "1" (acch), "2" (acc_hi), "a" (a[i]), "m" (b[j])
+"\n			adcl	$0x0, %2"
+			: "=rm" (accl), "=rm" (acch), "=rm" (acc_hi), "=a" (eax_clobbered)
+			: "0"   (accl), "1"   (acch), "2"   (acc_hi), "3"  (a[i]), "m" (b[j])
 			: "cc", "dx"
+// What is "eax_clobbered"? gcc.gnu.org/onlinedocs/gcc/Extended-Asm.html:
+// "Do not modify the contents of input-only operands (except for inputs tied
+// to outputs). The compiler assumes that on exit from the asm statement these
+// operands contain the same values as they had before executing the statement.
+// It is not possible to use clobbers to inform the compiler that the values
+// in these inputs are changing. One common work-around is to tie the changing
+// input variable to an output variable that never gets used."
 			);
 ////////////////////////
 		        j--;
@@ -500,15 +527,20 @@ static void sp_256to512_mul_8(sp_digit* r, const sp_digit* a, const sp_digit* b)
 	const uint64_t* bb = (const void*)b;
 	uint64_t* rr = (void*)r;
 	int k;
-	uint64_t accl;
-	uint64_t acch;
+	register uint64_t accl asm("r8");
+	register uint64_t acch asm("r9");
+	/* ^^^ ask gcc to not use rax/rdx/input arg regs for accumulator variables */
+	/* (or else it may generate lots of silly mov's and even xchg's!) */
 
 	acch = accl = 0;
 	for (k = 0; k < 7; k++) {
-		int i, j;
-		uint64_t acc_hi;
+		unsigned i, j;
+		/* ^^^^^ not signed "int",
+		 * or gcc can use a temp register to sign-extend i,j for aa[i],bb[j] */
+		register uint64_t acc_hi asm("r10");
+		/* ^^^ ask gcc to not use rax/rdx/input arg regs for accumulators */
 		i = k - 3;
-		if (i < 0)
+		if ((int)i < 0)
 			i = 0;
 		j = k - i;
 		acc_hi = 0;
@@ -516,14 +548,15 @@ static void sp_256to512_mul_8(sp_digit* r, const sp_digit* a, const sp_digit* b)
 ////////////////////////
 //			uint128_t m = ((uint128_t)a[i]) * b[j];
 //			acc_hi:acch:accl += m;
+			long rax_clobbered;
 			asm volatile (
 			// aa[i] is already loaded in %%rax
-"\n			mulq	%7"
+"\n			mulq	%8"
 "\n			addq	%%rax, %0"
 "\n			adcq	%%rdx, %1"
-"\n			adcq	$0, %2"
-			: "=rm" (accl), "=rm" (acch), "=rm" (acc_hi)
-			: "0" (accl), "1" (acch), "2" (acc_hi), "a" (aa[i]), "m" (bb[j])
+"\n			adcq	$0x0, %2"
+			: "=rm" (accl), "=rm" (acch), "=rm" (acc_hi), "=a" (rax_clobbered)
+			: "0"   (accl), "1"   (acch), "2"   (acc_hi), "3"  (aa[i]), "m" (bb[j])
 			: "cc", "dx"
 			);
 ////////////////////////
