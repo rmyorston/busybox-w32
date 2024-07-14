@@ -307,6 +307,7 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
 	interp_t interp;
 	char **new_argv;
 	char *path = NULL;
+	int is_unix_path;
 
 	if (!parse_interpreter(prog, &interp))
 		return SPAWNVEQ(mode, prog, argv, envp);
@@ -321,8 +322,9 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
 	new_argv[1] = interp.opts;
 	new_argv[nopts+1] = (char *)prog; /* pass absolute path */
 
+	is_unix_path = unix_path(interp.path);
 #if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
-	if (unix_path(interp.path) && find_applet_by_name(interp.name) >= 0) {
+	if (is_unix_path && find_applet_by_name(interp.name) >= 0) {
 		/* the fake path indicates the index of the script */
 		new_argv[0] = path = xasprintf("%d:/%s", nopts+1, interp.name);
 		ret = SPAWNVEQ(mode, bb_busybox_exec_path, new_argv, envp);
@@ -331,20 +333,15 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
 #endif
 
 	path = file_is_win32_exe(interp.path);
+	if (!path && is_unix_path)
+		path = find_first_executable(interp.name);
+
 	if (path) {
 		new_argv[0] = path;
 		ret = mingw_spawn_interpreter(mode, path, new_argv, envp, level);
-		goto done;
+	} else {
+		errno = ENOENT;
 	}
-
-	if (unix_path(interp.path)) {
-		if ((path = find_first_executable(interp.name)) != NULL) {
-			new_argv[0] = path;
-			ret = mingw_spawn_interpreter(mode, path, new_argv, envp, level);
-			goto done;
-		}
-	}
-	errno = ENOENT;
  done:
 	free(path);
 	free(new_argv);
