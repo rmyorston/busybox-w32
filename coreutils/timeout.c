@@ -61,10 +61,10 @@ static void kill_child(void)
 }
 
 /* Return TRUE if child exits before timeout expires */
-/* NB timeout is in milliseconds */
-static NOINLINE int timeout_wait(int timeout, HANDLE proc, DWORD *status)
+static NOINLINE int timeout_wait(duration_t timeout, HANDLE proc, DWORD *status)
 {
-	if (WaitForSingleObject(proc, timeout) == WAIT_OBJECT_0) {
+	DWORD t = (DWORD)(timeout * 1000);
+	if (WaitForSingleObject(proc, t) == WAIT_OBJECT_0) {
 		/* process is gone */
 		GetExitCodeProcess(proc, status);
 		return TRUE;
@@ -72,11 +72,16 @@ static NOINLINE int timeout_wait(int timeout, HANDLE proc, DWORD *status)
 	return FALSE;
 }
 #else
-static NOINLINE int timeout_wait(int timeout, pid_t pid)
+static NOINLINE int timeout_wait(duration_t timeout, pid_t pid)
 {
 	/* Just sleep(HUGE_NUM); kill(parent) may kill wrong process! */
 	while (1) {
-		sleep1();
+#if ENABLE_FLOAT_DURATION
+		if (timeout < 1)
+			sleep_for_duration(timeout);
+		else
+#endif
+			sleep1();
 		if (--timeout <= 0)
 			break;
 		if (kill(pid, 0)) {
@@ -99,8 +104,8 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 	intptr_t ret;
 	DWORD status = EXIT_SUCCESS;
 #endif
-	int timeout;
-	int kill_timeout;
+	duration_t timeout;
+	duration_t kill_timeout;
 	pid_t pid;
 #if !BB_MMU
 	char *sv1, *sv2;
@@ -133,11 +138,11 @@ int timeout_main(int argc UNUSED_PARAM, char **argv)
 
 	kill_timeout = 0;
 	if (opt_k)
-		kill_timeout = parse_duration_str(opt_k) IF_PLATFORM_MINGW32(* 1000);
+		kill_timeout = parse_duration_str(opt_k);
 
 	if (!argv[optind])
 		bb_show_usage();
-	timeout = parse_duration_str(argv[optind++]) IF_PLATFORM_MINGW32(* 1000);
+	timeout = parse_duration_str(argv[optind++]);
 	if (!argv[optind]) /* no PROG? */
 		bb_show_usage();
 

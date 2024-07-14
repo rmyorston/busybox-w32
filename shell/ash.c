@@ -2592,9 +2592,11 @@ initvar(void)
 }
 
 static struct var **
-findvar(struct var **vpp, const char *name)
+findvar(const char *name)
 {
-	for (; *vpp; vpp = &(*vpp)->next) {
+	struct var **vpp;
+
+	for (vpp = hashvar(name); *vpp; vpp = &(*vpp)->next) {
 		if (varcmp((*vpp)->var_text, name) == 0) {
 			break;
 		}
@@ -2610,7 +2612,7 @@ lookupvar(const char *name)
 {
 	struct var *v;
 
-	v = *findvar(hashvar(name), name);
+	v = *findvar(name);
 	if (v) {
 #if ENABLE_ASH_RANDOM_SUPPORT || BASH_EPOCH_VARS
 	/*
@@ -2756,9 +2758,8 @@ setvareq(char *s, int flags)
 	}
 #endif
 
-	vpp = hashvar(s);
 	flags |= (VEXPORT & (((unsigned) (1 - aflag)) - 1));
-	vpp = findvar(vpp, s);
+	vpp = findvar(s);
 	vp = *vpp;
 	if (vp) {
 		if ((vp->flags & (VREADONLY|VDYNAMIC)) == VREADONLY) {
@@ -11131,7 +11132,6 @@ static void
 mklocal(char *name, int flags)
 {
 	struct localvar *lvp;
-	struct var **vpp;
 	struct var *vp;
 	char *eq = strchr(name, '=');
 
@@ -11160,8 +11160,7 @@ mklocal(char *name, int flags)
 		lvp->text = memcpy(p, optlist, sizeof(optlist));
 		vp = NULL;
 	} else {
-		vpp = hashvar(name);
-		vp = *findvar(vpp, name);
+		vp = *findvar(name);
 		if (vp == NULL) {
 			/* variable did not exist yet */
 			if (eq)
@@ -15510,7 +15509,7 @@ exportcmd(int argc UNUSED_PARAM, char **argv)
 				if (p != NULL) {
 					p++;
 				} else {
-					vp = *findvar(hashvar(name), name);
+					vp = *findvar(name);
 					if (vp) {
 #if ENABLE_PLATFORM_MINGW32
 						if (is_bb_var(name) == BB_VAR_EXACT) {
@@ -16553,7 +16552,7 @@ reinitvar(void)
 {
 	int i;
 	const char *name;
-	struct var **vpp, **old;
+	struct var **old;
 
 	for (i=0; i<ARRAY_SIZE(varinit); ++i) {
 		if (i == LINENO_INDEX)
@@ -16562,8 +16561,7 @@ reinitvar(void)
 			name = "FUNCNAME=";
 		else
 			name = varinit_data[i].var_text;
-		vpp = hashvar(name);
-		if ( (old=findvar(vpp, name)) != NULL ) {
+		if ((old = findvar(name)) != NULL) {
 			varinit[i] = **old;
 			*old = varinit+i;
 		}
