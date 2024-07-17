@@ -152,11 +152,18 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 			unsigned uu = 0, start = 0, end = 0, out = 0;
 			int dcount = 0;
 
+			/* Blank line? Check -s (later check for -s does not catch empty lines) */
+			if (linelen == 0) {
+				if (option_mask32 & CUT_OPT_SUPPRESS_FLGS)
+					goto next_line;
+			}
+
 			/* Loop through bytes, finding next delimiter */
 			for (;;) {
 				/* End of current range? */
 				if (end == linelen || dcount > cut_lists[cl_pos].endpos) {
-					if (++cl_pos >= nlists) break;
+					if (++cl_pos >= nlists)
+						break;
 					if (option_mask32 & CUT_OPT_NOSORT_FLGS)
 						start = dcount = uu = 0;
 					end = 0;
@@ -175,15 +182,18 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 					if (shoe) {
 						regmatch_t rr = {-1, -1};
 
-						if (!regexec(&reg, line+uu, 1, &rr, REG_NOTBOL|REG_NOTEOL)) {
+						if (!regexec(&reg, line + uu, 1, &rr, REG_NOTBOL|REG_NOTEOL)) {
 							end = uu + rr.rm_so;
 							uu += rr.rm_eo;
 						} else {
 							uu = linelen;
 							continue;
 						}
-					} else if (line[end = uu++] != *delim)
-						continue;
+					} else {
+						end = uu++;
+						if (line[end] != *delim)
+							continue;
+					}
 
 					/* Got delimiter. Loop if not yet within range. */
 					if (dcount++ < cut_lists[cl_pos].startpos) {
@@ -192,7 +202,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 					}
 				}
 				if (end != start || !shoe)
-					printf("%s%.*s", out++ ? odelim : "", end-start, line + start);
+					printf("%s%.*s", out++ ? odelim : "", end - start, line + start);
 				start = uu;
 				if (!dcount)
 					break;
