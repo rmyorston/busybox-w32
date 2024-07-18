@@ -2981,17 +2981,10 @@ static int console_state(void)
 	DECLARE_PROC_ADDR(BOOL, ShowWindow, HWND, int);
 
 	if (INIT_PROC_ADDR(user32.dll, ShowWindow)) {
-		BOOL state;
+		BOOL visible = IsWindowVisible(GetConsoleWindow());
+		BOOL iconified = IsIconic(GetConsoleWindow());
 
-		if (noiconify) {
-			state = IsWindowVisible(GetConsoleWindow());
-			if (state >= 0)
-				return state == 0;
-		} else {
-			state = IsIconic(GetConsoleWindow());
-			if (state >= 0)
-				return state != 0;
-		}
+		return !visible || iconified;
 	}
 	return 2;
 }
