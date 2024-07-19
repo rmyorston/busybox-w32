@@ -115,10 +115,8 @@ FILE *mingw_popen(const char *cmd, const char *mode)
 	pipe_data *p;
 	FILE *fptr = NULL;
 	int fd;
-	int len, count;
-	char *cmd_buff = NULL;
-	const char *s;
-	char *t;
+	char *arg, *cmd_buff;
+	const char *exe = NULL;
 
 	if ( cmd == NULL || *cmd == '\0' || mode == NULL ||
 			(*mode != 'r' && *mode != 'w') ) {
@@ -130,43 +128,21 @@ FILE *mingw_popen(const char *cmd, const char *mode)
 		return NULL;
 	}
 
-	/* count double quotes */
-	count = 0;
-	for ( s=cmd; *s; ++s ) {
-		if ( *s == '"' ) {
-			++count;
-		}
-	}
-
-	len = strlen(bb_busybox_exec_path) + strlen(cmd) + 32 + count;
-	if ( (cmd_buff=malloc(len)) == NULL ) {
-		return NULL;
-	}
-	cmd_buff[0] = '\0';
-
 #if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
 	if (find_applet_by_name("sh") >= 0) {
-		sprintf(cmd_buff, "%s --busybox ", bb_busybox_exec_path);
+		exe = bb_busybox_exec_path;
 	}
 #endif
-	strcat(cmd_buff, "sh -c \"");
-
-	/* escape double quotes */
-	for ( s=cmd,t=cmd_buff+strlen(cmd_buff); *s; ++s ) {
-		if ( *s == '"' ) {
-			*t++ = '\\';
-		}
-		*t++ = *s;
-	}
-	*t++ = '"';
-	*t = '\0';
+	arg = quote_arg(cmd);
+	cmd_buff = xasprintf("sh -c %s", arg);
 
 	/* Create the pipe */
-	if ((fd=mingw_popen_internal(p, NULL, cmd_buff, mode, -1, NULL)) != -1) {
+	if ((fd=mingw_popen_internal(p, exe, cmd_buff, mode, -1, NULL)) != -1) {
 		fptr = _fdopen(fd, *mode == 'r' ? "rb" : "wb");
 	}
 
 	free(cmd_buff);
+	free(arg);
 
 	return fptr;
 }
@@ -311,7 +287,8 @@ int mingw_pclose(FILE *fp)
  * file; with mode "r" and a decompressor in open_transformer. */
 pid_t mingw_fork_compressor(int fd, const char *compressor, const char *mode)
 {
-	char *cmd, *exe = NULL;
+	char *cmd, *freeme = NULL;
+	const char *exe = NULL;
 	int fd1;
 	pid_t pid;
 
@@ -323,25 +300,21 @@ pid_t mingw_fork_compressor(int fd, const char *compressor, const char *mode)
 		&& !(mode[0] == 'w' && index_in_strings("lzma\0xz\0", compressor) >= 0)
 # endif
 		) {
-		// shared format string
-		cmd = xasprintf("%s --busybox %s -cf -", bb_busybox_exec_path,
-					compressor);
+		exe = bb_busybox_exec_path;
 	} else {
 		// Look up compressor on PATH
-		exe = find_first_executable(compressor);
+		exe = freeme = find_first_executable(compressor);
 		if (exe == NULL)
 			bb_perror_msg_and_die("can't execute '%s'", compressor);
-		cmd = xasprintf("%s --busybox %s -cf -" + 13, compressor);
 	}
-#else
-	cmd = xasprintf("%s -cf -", compressor);
 #endif
+	cmd = xasprintf("%s -cf -", compressor);
 
 	if ((fd1 = mingw_popen_fd(exe, cmd, mode, fd, &pid)) == -1)
 		bb_perror_msg_and_die("can't execute '%s'", compressor);
 
 	free(cmd);
-	free(exe);
+	free(freeme);
 	xmove_fd(fd1, fd);
 	return pid;
 }
