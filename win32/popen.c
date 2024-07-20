@@ -116,7 +116,6 @@ FILE *mingw_popen(const char *cmd, const char *mode)
 	FILE *fptr = NULL;
 	int fd;
 	char *arg, *cmd_buff;
-	const char *exe = NULL;
 
 	if ( cmd == NULL || *cmd == '\0' || mode == NULL ||
 			(*mode != 'r' && *mode != 'w') ) {
@@ -128,16 +127,11 @@ FILE *mingw_popen(const char *cmd, const char *mode)
 		return NULL;
 	}
 
-#if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
-	if (find_applet_by_name("sh") >= 0) {
-		exe = bb_busybox_exec_path;
-	}
-#endif
 	arg = quote_arg(cmd);
 	cmd_buff = xasprintf("sh -c %s", arg);
 
 	/* Create the pipe */
-	if ((fd=mingw_popen_internal(p, exe, cmd_buff, mode, -1, NULL)) != -1) {
+	if ((fd=mingw_popen_internal(p, "sh", cmd_buff, mode, -1, NULL)) != -1) {
 		fptr = _fdopen(fd, *mode == 'r' ? "rb" : "wb");
 	}
 
@@ -157,6 +151,8 @@ FILE *mingw_popen(const char *cmd, const char *mode)
  *   command ("w").  Otherwise (and if not "b") use stdin or stdout.
  * - the pid of the command is returned in the variable pid, which
  *   can be NULL if the pid is not required.
+ * - mode "w+" forces the use of an external program.  This is required
+ *   for xz and lzma compression.
  */
 static int mingw_popen_internal(pipe_data *p, const char *exe,
 					const char *cmd, const char *mode, int fd0, pid_t *pid)
@@ -166,10 +162,7 @@ static int mingw_popen_internal(pipe_data *p, const char *exe,
 	int success;
 	int fd = -1;
 	int ip, ic, flags;
-
-	if ( cmd == NULL || *cmd == '\0' || mode == NULL ) {
-		return -1;
-	}
+	char *freeme = NULL;
 
 	switch (*mode) {
 	case 'r':
@@ -197,6 +190,20 @@ static int mingw_popen_internal(pipe_data *p, const char *exe,
 	/* Create the pipe */
 	if ( mingw_pipe(p, *mode == 'b') == -1 ) {
 		goto finito;
+	}
+
+#if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
+	// "w+" mode forces a path lookup
+	if (mode[1] != '+' && find_applet_by_name(exe) >= 0) {
+		exe = bb_busybox_exec_path;
+	} else
+#endif
+	{
+		// Look up executable on PATH
+		freeme = find_first_executable(exe);
+		if (freeme == NULL)
+			bb_perror_msg_and_die("can't execute '%s'", exe);
+		exe = freeme;
 	}
 
 	/* Make the parent end of the pipe non-inheritable */
@@ -243,6 +250,7 @@ static int mingw_popen_internal(pipe_data *p, const char *exe,
 	fd = _open_osfhandle((intptr_t)p->pipe[ip], flags);
 
 finito:
+	free(freeme);
 	if ( fd == -1 ) {
 		close_pipe_data(p);
 	}
@@ -287,34 +295,22 @@ int mingw_pclose(FILE *fp)
  * file; with mode "r" and a decompressor in open_transformer. */
 pid_t mingw_fork_compressor(int fd, const char *compressor, const char *mode)
 {
-	char *cmd, *freeme = NULL;
-	const char *exe = NULL;
+	char *cmd;
 	int fd1;
 	pid_t pid;
 
-#if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
-	if (find_applet_by_name(compressor) >= 0
-# if ENABLE_XZ || ENABLE_LZMA
-		/* xz and lzma applets don't support compression, try using
-		 * an external program */
-		&& !(mode[0] == 'w' && index_in_strings("lzma\0xz\0", compressor) >= 0)
-# endif
-		) {
-		exe = bb_busybox_exec_path;
-	} else {
-		// Look up compressor on PATH
-		exe = freeme = find_first_executable(compressor);
-		if (exe == NULL)
-			bb_perror_msg_and_die("can't execute '%s'", compressor);
-	}
-#endif
 	cmd = xasprintf("%s -cf -", compressor);
+#if ENABLE_FEATURE_SEAMLESS_XZ || ENABLE_FEATURE_SEAMLESS_LZMA
+	// xz and lzma applets don't support compression, we must use
+	// an external command.
+	if (mode[0] == 'w' && index_in_strings("lzma\0xz\0", compressor) >= 0)
+		mode = "w+";
+#endif
 
-	if ((fd1 = mingw_popen_fd(exe, cmd, mode, fd, &pid)) == -1)
+	if ((fd1 = mingw_popen_fd(compressor, cmd, mode, fd, &pid)) == -1)
 		bb_perror_msg_and_die("can't execute '%s'", compressor);
 
 	free(cmd);
-	free(freeme);
 	xmove_fd(fd1, fd);
 	return pid;
 }
