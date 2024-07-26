@@ -214,6 +214,9 @@ enum {
 	HDR_CONTENT_TYPE  = (1<<3),
 	HDR_AUTH          = (1<<4) * ENABLE_FEATURE_WGET_AUTHENTICATION,
 	HDR_PROXY_AUTH    = (1<<5) * ENABLE_FEATURE_WGET_AUTHENTICATION,
+# if ENABLE_PLATFORM_MINGW32
+	HDR_CONTENT_LENGTH = (1<<(4 + 2 * ENABLE_FEATURE_WGET_AUTHENTICATION)),
+# endif
 };
 static const char wget_user_headers[] ALIGN1 =
 	"Host:\0"
@@ -224,6 +227,9 @@ static const char wget_user_headers[] ALIGN1 =
 	"Authorization:\0"
 	"Proxy-Authorization:\0"
 # endif
+# if ENABLE_PLATFORM_MINGW32
+	"Content-Length:\0"
+# endif
 	;
 # define USR_HEADER_HOST         (G.user_headers & HDR_HOST)
 # define USR_HEADER_USER_AGENT   (G.user_headers & HDR_USER_AGENT)
@@ -231,6 +237,7 @@ static const char wget_user_headers[] ALIGN1 =
 # define USR_HEADER_CONTENT_TYPE (G.user_headers & HDR_CONTENT_TYPE)
 # define USR_HEADER_AUTH         (G.user_headers & HDR_AUTH)
 # define USR_HEADER_PROXY_AUTH   (G.user_headers & HDR_PROXY_AUTH)
+# define USR_HEADER_CONTENT_LENGTH (G.user_headers & HDR_CONTENT_LENGTH)
 #else /* No long options, no user-headers :( */
 # define USR_HEADER_HOST         0
 # define USR_HEADER_USER_AGENT   0
@@ -238,6 +245,7 @@ static const char wget_user_headers[] ALIGN1 =
 # define USR_HEADER_CONTENT_TYPE 0
 # define USR_HEADER_AUTH         0
 # define USR_HEADER_PROXY_AUTH   0
+# define USR_HEADER_CONTENT_LENGTH 0
 #endif
 
 /* Globals */
@@ -1303,6 +1311,18 @@ static void download_one_url(const char *url)
 					"Content-Type: application/x-www-form-urlencoded\r\n"
 				);
 			}
+# if ENABLE_PLATFORM_MINGW32
+			if (!USR_HEADER_CONTENT_LENGTH)
+				SENDFMT(sfp, "Content-Length: %u\r\n",
+					(int)strlen(G.post_data)
+				);
+			SENDFMT(sfp,
+				"\r\n"
+				"%s",
+				G.post_data
+			);
+		} else
+# else
 			SENDFMT(sfp,
 				"Content-Length: %u\r\n"
 				"\r\n"
@@ -1310,6 +1330,7 @@ static void download_one_url(const char *url)
 				(int) strlen(G.post_data), G.post_data
 			);
 		} else
+# endif
 #endif
 		{
 			SENDFMT(sfp, "\r\n");
