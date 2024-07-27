@@ -1463,7 +1463,7 @@ void FAST_FUNC show_history(const line_input_t *st)
 	if (!st)
 		return;
 	for (i = 0; i < st->cnt_history; i++)
-		fprintf(stderr, "%4d %s\n", i, st->history[i]);
+		printf("%4d %s\n", i, st->history[i]);
 }
 
 # if ENABLE_FEATURE_EDITING_SAVEHISTORY
