@@ -4960,7 +4960,7 @@ waitpid_child(int *status, int wait_flags)
 		goto done;
 
 	idx = WaitForMultipleObjects(pid_nr, proclist, FALSE,
-				wait_flags&WNOHANG ? 1 : INFINITE);
+				wait_flags & WNOHANG ? 0 : INFINITE);
 	if (idx < pid_nr) {
 		GetExitCodeProcess(proclist[idx], &win_status);
 		*status = exit_code_to_wait_status(win_status);
