@@ -4925,50 +4925,37 @@ static pid_t
 waitpid_child(int *status, int wait_flags)
 {
 	struct job *jb;
-	struct procstat *ps;
 	int pid_nr = 0;
-	pid_t *pidlist;
-	HANDLE *proclist;
+	static HANDLE *proclist = NULL;
+	static int pid_max = 0;
 	pid_t pid = -1;
 	DWORD win_status, idx;
 	int i;
 
 	for (jb = curjob; jb; jb = jb->prev_job) {
-		if (jb->state != JOBDONE)
-			pid_nr += jb->nprocs;
-	}
-	if (pid_nr == 0)
-		return -1;
+		if (jb->state != JOBDONE) {
+			if (pid_nr + jb->nprocs > pid_max) {
+				pid_max = pid_nr + jb->nprocs;
+				proclist = ckrealloc(proclist, sizeof(*proclist) * pid_max);
+			}
 
-	pidlist = ckmalloc(sizeof(*pidlist)*pid_nr);
-	proclist = ckmalloc(sizeof(*proclist)*pid_nr);
-
-	pid_nr = 0;
-	for (jb = curjob; jb; jb = jb->prev_job) {
-		if (jb->state == JOBDONE)
-			continue;
-		ps = jb->ps;
-		for (i = 0; i < jb->nprocs; ++i) {
-			if (ps[i].ps_proc) {
-				pidlist[pid_nr] = ps[i].ps_pid;
-				proclist[pid_nr++] = ps[i].ps_proc;
+			for (i = 0; i < jb->nprocs; ++i) {
+				if (jb->ps[i].ps_proc) {
+					proclist[pid_nr++] = jb->ps[i].ps_proc;
+				}
 			}
 		}
 	}
 
-	if (pid_nr == 0)
-		goto done;
-
-	idx = WaitForMultipleObjects(pid_nr, proclist, FALSE,
-				wait_flags & WNOHANG ? 0 : INFINITE);
-	if (idx < pid_nr) {
-		GetExitCodeProcess(proclist[idx], &win_status);
-		*status = exit_code_to_wait_status(win_status);
-		pid = pidlist[idx];
+	if (pid_nr) {
+		idx = WaitForMultipleObjects(pid_nr, proclist, FALSE,
+					wait_flags & WNOHANG ? 0 : INFINITE);
+		if (idx < pid_nr) {
+			GetExitCodeProcess(proclist[idx], &win_status);
+			*status = exit_code_to_wait_status(win_status);
+			pid = GetProcessId(proclist[idx]);
+		}
 	}
- done:
-	free(pidlist);
-	free(proclist);
 	return pid;
 }
 #define waitpid(p, s, f) waitpid_child(s, f)
