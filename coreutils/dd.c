@@ -333,6 +333,17 @@ static void *alloc_buf(size_t size)
 	return xmalloc(size);
 }
 
+#if ENABLE_PLATFORM_MINGW32
+// Does 'path' refer to a physical drive in the win32 device namespace?
+static int is_drive_path(const char *path)
+{
+	char *s = auto_string(strdup(path));
+
+	bs_to_slash(s);
+	return strncasecmp(s, "//./PhysicalDrive", 17) == 0;
+}
+#endif
+
 int dd_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int dd_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -556,6 +567,12 @@ int dd_main(int argc UNUSED_PARAM, char **argv)
 # else
 			bb_error_msg_and_die("O_DIRECT not supported on this platform");
 # endif
+		}
+#endif
+#if ENABLE_PLATFORM_MINGW32
+		if (is_drive_path(outfile)) {
+			// Turn off options not supported by Windows device files.
+			oflag &= ~(O_CREAT | O_TRUNC);
 		}
 #endif
 		xmove_fd(xopen(outfile, oflag), ofd);
