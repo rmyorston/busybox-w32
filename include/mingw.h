@@ -640,3 +640,8 @@ char *xappendword(const char *str, const char *word);
 int windows_env(void);
 void change_critical_error_dialogs(const char *newval) FAST_FUNC;
 char *exe_relative_path(const char *tail);
+enum {
+	ELEVATED_PRIVILEGE = 1,
+	ADMIN_ENABLED = 2
+};
+int elevation_state(void);

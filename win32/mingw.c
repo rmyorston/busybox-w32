@@ -1174,49 +1174,49 @@ char *get_user_name(void)
 	return user_name;
 }
 
-#if ENABLE_DROP || ENABLE_CDROP || ENABLE_PDROP
 /*
  * When 'drop' drops privileges TokenIsElevated is still TRUE.
  * Find out if we're really privileged by checking if the group
  * BUILTIN\Administrators is enabled.
  */
-static int
-really_privileged(void)
+int
+elevation_state(void)
 {
-	BOOL admin_enabled;
+	int elevated = FALSE;
+	int enabled = TRUE;
+	HANDLE h;
+#if ENABLE_DROP || ENABLE_CDROP || ENABLE_PDROP
+	BOOL admin_enabled = TRUE;
 	unsigned char admin[16] = {
 		0x01, 0x02, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x05,
 		0x20, 0x00, 0x00, 0x00,
 		0x20, 0x02, 0x00, 0x00
 	};
-
-	if (CheckTokenMembership(NULL, (PSID)admin, &admin_enabled))
-		return admin_enabled;
-
-	return TRUE;
-}
-#else
-# define really_privileged() (TRUE)
 #endif
-
-int getuid(void)
-{
-	int ret = DEFAULT_UID;
-	HANDLE h;
 
 	if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &h)) {
 		TOKEN_ELEVATION elevation = { 0 };
 		DWORD size;
 
 		if (GetTokenInformation(h, TokenElevation, &elevation,
-					sizeof(elevation), &size)) {
-			if (elevation.TokenIsElevated && really_privileged())
-				ret = 0;
-		}
+					sizeof(elevation), &size))
+			elevated = elevation.TokenIsElevated != 0;
 		CloseHandle(h);
 	}
-	return ret;
+
+#if ENABLE_DROP || ENABLE_CDROP || ENABLE_PDROP
+	if (CheckTokenMembership(NULL, (PSID)admin, &admin_enabled))
+		enabled = admin_enabled != 0;
+#endif
+
+	return elevated | (enabled << 1);
+}
+
+int getuid(void)
+{
+	return elevation_state() == (ELEVATED_PRIVILEGE | ADMIN_ENABLED) ?
+				0 : DEFAULT_UID;
 }
 
 struct passwd *getpwnam(const char *name)

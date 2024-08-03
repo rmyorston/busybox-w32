@@ -44,6 +44,16 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	char *bb_path, *cwd, *realcwd, *q, *args;
 	DECLARE_PROC_ADDR(BOOL, ShellExecuteExA, SHELLEXECUTEINFOA *);
 
+#if ENABLE_DROP || ENABLE_CDROP || ENABLE_PDROP
+	// If privilege has been dropped (ELEVATED_PRIVILEGE but not
+	// ADMIN_ENABLED) ShellExecuteEx() thinks we already have elevated
+	// privilege and doesn't raise privilege.  In that case, give up.
+	if (elevation_state() == ELEVATED_PRIVILEGE) {
+		xfunc_error_retval = 2;
+		bb_error_msg_and_die("unable to restore privilege");
+	}
+#endif
+
 	opt = getopt32(argv, "c:NW", &opt_command);
 	argv += optind;
 	if (argv[0]) {
