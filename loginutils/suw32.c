@@ -16,22 +16,24 @@
 //kbuild:lib-$(CONFIG_SUW32) += suw32.o
 
 //usage:#define suw32_trivial_usage
-//usage:       "[-NW] [root]\n"
-//usage:       "or:    su [-NW] -c CMD_STRING [[--] root [ARG0 [ARG...]]]\n"
-//usage:       "or:    su [-NW] [--] root [arbitrary sh arguments]"
+//usage:       "[-W] [-N|-s SHELL] [root]\n"
+//usage:       "or:    su [-W] [-N|-s SHELL] -c CMD_STRING [[--] root [ARG0 [ARG...]]]\n"
+//usage:       "or:    su [-W] [-N|-s SHELL] [--] root [arbitrary sh arguments]"
 //usage:#define suw32_full_usage "\n\n"
 //usage:       "Run shell with elevated privileges\n"
-//usage:     "\n    -c CMD  Command to pass to 'sh -c'"
-//usage:     "\n    -N      Don't close console when shell exits"
-//usage:     "\n    -W      Wait for shell exit code"
+//usage:     "\n    -c CMD    Command to pass to 'sh -c'"
+//usage:     "\n    -s SHELL  Use specified shell"
+//usage:     "\n    -N        Don't close console when shell exits"
+//usage:     "\n    -W        Wait for shell exit code"
 
 #include "libbb.h"
 #include "lazyload.h"
 
 enum {
 	OPT_c = (1 << 0),
-	OPT_N = (1 << 1),
-	OPT_W = (1 << 2)
+	OPT_s = (1 << 1),
+	OPT_N = (1 << 2),
+	OPT_W = (1 << 3)
 };
 
 int suw32_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -40,6 +42,7 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	int ret = 0;
 	unsigned opt;
 	char *opt_command = NULL;
+	char *opt_shell = NULL;
 	SHELLEXECUTEINFO info;
 	char *bb_path, *cwd, *realcwd, *q, *args;
 	DECLARE_PROC_ADDR(BOOL, ShellExecuteExA, SHELLEXECUTEINFOA *);
@@ -54,7 +57,7 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 
-	opt = getopt32(argv, "c:NW", &opt_command);
+	opt = getopt32(argv, "^c:s:NW" "\0" "s--N:N--s", &opt_command, &opt_shell);
 	argv += optind;
 	if (argv[0]) {
 		if (strcmp(argv[0], "root") != 0) {
@@ -64,7 +67,15 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	/* ShellExecuteEx() needs backslash as separator in UNC paths. */
-	bb_path = xstrdup(bb_busybox_exec_path);
+	if (opt_shell) {
+		bb_path = file_is_win32_exe(opt_shell);
+		if (!bb_path)
+			bb_error_msg_and_die("%s: Not found", opt_shell);
+		args = NULL;
+	} else {
+		bb_path = xstrdup(bb_busybox_exec_path);
+		args = xasprintf("--busybox ash -t \"BusyBox ash (Admin)\"");
+	}
 	slash_to_bs(bb_path);
 
 	memset(&info, 0, sizeof(SHELLEXECUTEINFO));
@@ -85,15 +96,15 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	 * a network share it may not be available once we have elevated
 	 * privileges.
 	 */
-	args = xasprintf("--busybox ash -t \"BusyBox ash (Admin)\"");
-
-	cwd = getcwd(NULL, 0);
-	realcwd = cwd ? xmalloc_realpath(cwd) : NULL;
-	if (realcwd || cwd) {
-		args = xappendword(args, "-d");
-		q = quote_arg(realcwd ?: cwd);
-		args = xappendword(args, q);
-		free(q);
+	if (opt_shell == NULL) {
+		cwd = getcwd(NULL, 0);
+		realcwd = cwd ? xmalloc_realpath(cwd) : NULL;
+		if (realcwd || cwd) {
+			args = xappendword(args, "-d");
+			q = quote_arg(realcwd ?: cwd);
+			args = xappendword(args, q);
+			free(q);
+		}
 	}
 
 	if (opt & OPT_N)
