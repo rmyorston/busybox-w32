@@ -36,10 +36,10 @@
 //kbuild:lib-$(CONFIG_PDROP) += drop.o
 
 //usage:#define drop_trivial_usage
-//usage:	"[COMMAND [ARG...] | -c CMD_STRING [ARG...]]"
+//usage:	"[COMMAND [ARG...] | [-s SHELL] -c CMD_STRING [ARG...]]"
 //usage:#define drop_full_usage "\n\n"
 //usage:	"Drop elevated privileges and run a command. If no command\n"
-//usage:	"is provided run the BusyBox shell.\n"
+//usage:	"is provided run a shell (by default, the BusyBox shell).\n"
 
 //usage:#define cdrop_trivial_usage
 //usage:	"[COMMAND [ARG...] | -c CMD_STRING [ARG...]]"
@@ -71,7 +71,7 @@ static void setenv_name(const char *key)
 }
 
 int drop_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
-int drop_main(int argc, char **argv)
+int drop_main(int argc UNUSED_PARAM, char **argv)
 {
 	SAFER_LEVEL_HANDLE safer;
 	HANDLE token;
@@ -109,15 +109,19 @@ int drop_main(int argc, char **argv)
 		if (SetTokenInformation(token, TokenIntegrityLevel, &TIL,
 						sizeof(TOKEN_MANDATORY_LABEL))) {
 			char *opt_command = NULL;
+			char *opt_shell = NULL;
 			char **a;
 			const char *opt, *arg;
 			char *exe, *cmd, *q;
 
-			getopt32(argv, "c:", &opt_command);
+			if (*applet_name == 'd')
+				getopt32(argv, "c:s:", &opt_command, &opt_shell);
+			else
+				getopt32(argv, "c:", &opt_command);
 			a = argv + optind;
 			opt = "-c";
 
-			if (argc == 1 || opt_command) {
+			if (*a == NULL || opt_command) {
 				switch (*applet_name) {
 #if ENABLE_PDROP
 				case 'p':
@@ -134,8 +138,13 @@ int drop_main(int argc, char **argv)
 #endif
 #if ENABLE_DROP
 				case 'd':
-					arg = "sh";
-					exe = xstrdup(bb_busybox_exec_path);
+					if (opt_shell) {
+						arg = bb_basename(opt_shell);
+						exe = file_is_win32_exe(opt_shell);
+					} else {
+						arg = "sh";
+						exe = xstrdup(bb_busybox_exec_path);
+					}
 					break;
 #endif
 				default:
