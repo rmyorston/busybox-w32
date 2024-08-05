@@ -111,7 +111,9 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 		args = xappendword(args, "-N");
 
 	if (opt_command) {
-		args = xappendword(args, "-c");
+		args = xappendword(args,
+			(opt_shell && strcasecmp(bb_basename(bb_path), "cmd.exe") == 0) ?
+			"/c" : "-c");
 		q = quote_arg(opt_command);
 		args = xappendword(args, q);
 		free(q);
