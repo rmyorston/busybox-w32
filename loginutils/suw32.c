@@ -24,7 +24,7 @@
 //usage:     "\n    -c CMD    Command to pass to 'sh -c'"
 //usage:     "\n    -s SHELL  Use specified shell"
 //usage:     "\n    -N        Don't close console when shell exits"
-//usage:     "\n    -t        Test mode, no elevation"
+//usage:     "\n    -t        Test mode, no elevation, implies -W"
 //usage:     "\n    -W        Wait for shell exit code"
 
 #include "libbb.h"
