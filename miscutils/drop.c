@@ -140,6 +140,8 @@ int drop_main(int argc UNUSED_PARAM, char **argv)
 				case 'd':
 					if (opt_shell) {
 						arg = bb_basename(opt_shell);
+						if (strcasecmp(arg, "cmd.exe") == 0)
+							opt = "/c";
 						exe = file_is_win32_exe(opt_shell);
 					} else {
 						arg = "sh";
