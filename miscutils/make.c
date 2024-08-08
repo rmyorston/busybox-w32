@@ -456,9 +456,6 @@ newcmd(struct cmd **cphead, char *str)
 	while (isspace(*str))
 		str++;
 
-	if (*str == '\0')		// No command, leave current head unchanged
-		return;
-
 	while (*cphead)
 		cphead = &(*cphead)->c_next;
 	*cphead = xzalloc(sizeof(struct cmd));
@@ -1708,7 +1705,7 @@ make_fgets(char *s, int size, FILE *fd)
  * Ignore comment lines.  Return NULL on EOF.
  */
 static char *
-readline(FILE *fd)
+readline(FILE *fd, int want_command)
 {
 	char *p, *str = NULL;
 	int pos = 0;
@@ -1747,6 +1744,9 @@ readline(FILE *fd)
 			continue;
 		}
 		dispno = lineno;
+
+		if (want_command && *str == '\t')
+			return str;
 
 		// Check for comment lines and lines that are conditionally skipped.
 		p = str;
@@ -2043,7 +2043,7 @@ input(FILE *fd, int ilevel)
 	bool minus;
 
 	lineno = 0;
-	str1 = readline(fd);
+	str1 = readline(fd, FALSE);
 	while (str1) {
 		str2 = NULL;
 		if (*str1 == '\t')	// Command without target
@@ -2292,7 +2292,7 @@ input(FILE *fd, int ilevel)
 
 		// Create list of commands
 		startno = dispno;
-		while ((str2 = readline(fd)) && *str2 == '\t') {
+		while ((str2 = readline(fd, TRUE)) && *str2 == '\t') {
 			newcmd(&cp, process_command(str2));
 			free(str2);
 		}
@@ -2343,7 +2343,7 @@ input(FILE *fd, int ilevel)
  end_loop:
 		free(str1);
 		dispno = lineno;
-		str1 = str2 ? str2 : readline(fd);
+		str1 = str2 ? str2 : readline(fd, FALSE);
 		free(copy);
 		free(expanded);
 #if ENABLE_FEATURE_MAKE_POSIX
@@ -2427,7 +2427,9 @@ docmds(struct name *np, struct cmd *cp)
 				sdomake = TRUE + 1;
 			else
 				break;
-			q++;
+			do {
+				q++;
+			} while (isblank(*q));
 		}
 
 		if (sdomake > TRUE) {
@@ -2437,7 +2439,7 @@ docmds(struct name *np, struct cmd *cp)
 		} else if (!sdomake)
 			ssilent = dotouch;
 
-		if (!ssilent) {
+		if (!ssilent && *q != '\0') {	// Ignore empty commands
 			puts(q);
 			fflush_all();
 		}
@@ -2448,7 +2450,7 @@ docmds(struct name *np, struct cmd *cp)
 			continue;
 		}
 
-		if (sdomake) {
+		if (sdomake && *q != '\0') {	// Ignore empty commands
 			// Get the shell to execute it
 			int status;
 			char *cmd = !signore && posix ? auto_concat("set -e;", q) : q;

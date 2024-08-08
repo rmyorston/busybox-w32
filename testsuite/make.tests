@@ -31,6 +31,17 @@ testing "make .DEFAULT rule for prerequisite" \
 target: source
 '
 
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch target.xyz
+testing "make empty command overrides inference rule" \
+	"make -f - target 2>/dev/null" "" "" '
+.SUFFIXES: .xyz
+.xyz:
+	@echo xyz
+target: ;
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
 # Macros should be expanded before suffix substitution.  The suffixes
 # can be obtained by macro expansion.
 testing "make macro expansion and suffix substitution" \
