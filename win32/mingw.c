@@ -462,9 +462,10 @@ static int has_exec_format(const char *name)
 	}
 
 	if (fd < 0)
-		return 0;
+		n = open_read_close(name, buf, sizeof(buf));
+	else
+		n = read_close(fd, buf, sizeof(buf));
 
-	n = read_close(fd, buf, sizeof(buf));
 	if (n < 4) /* Need at least a few bytes and no error */
 		return 0;
 
