@@ -2611,9 +2611,10 @@ make(struct name *np, int level)
 
 	if (!(np->n_flag & N_DOUBLE)) {
 		// Find the commands needed for a single-colon rule, using
-		// an inference rule or .DEFAULT rule if necessary
+		// an inference rule or .DEFAULT rule if necessary (but,
+		// as an extension, not for phony targets)
 		sc_cmd = getcmd(np);
-		if (!sc_cmd) {
+		if (!sc_cmd && (posix || !(np->n_flag & N_PHONY))) {
 			impdep = dyndep(np, &imprule);
 			if (impdep) {
 				sc_cmd = imprule.r_cmd;
@@ -2623,7 +2624,8 @@ make(struct name *np, int level)
 
 		// As a last resort check for a default rule
 		if (!(np->n_flag & N_TARGET) && np->n_tim.tv_sec == 0) {
-			sc_cmd = getcmd(findname(".DEFAULT"));
+			if (posix || !(np->n_flag & N_PHONY))
+				sc_cmd = getcmd(findname(".DEFAULT"));
 			if (!sc_cmd) {
 				if (doinclude)
 					return 1;
@@ -2634,10 +2636,11 @@ make(struct name *np, int level)
 	}
 	else {
 		// If any double-colon rule has no commands we need
-		// an inference rule
+		// an inference rule (but, as an extension, not for phony targets)
 		for (rp = np->n_rule; rp; rp = rp->r_next) {
 			if (!rp->r_cmd) {
-				impdep = dyndep(np, &imprule);
+				if (posix || !(np->n_flag & N_PHONY))
+					impdep = dyndep(np, &imprule);
 				if (!impdep) {
 					if (doinclude)
 						return 1;

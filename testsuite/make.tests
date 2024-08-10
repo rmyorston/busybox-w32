@@ -738,4 +738,18 @@ file1:
 '
 cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
 
+# GNU make and BSD make don't allow the use of inference rules
+# for phony targets.  In POSIX mode the output is "phony.xyz\n".
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch phony.xyz
+testing "make don't use inference rule for phony target" \
+	"make -f -" "make: nothing to be done for phony\n" "" '
+.PHONY: phony
+.SUFFIXES: .xyz
+.xyz:
+	@echo $<
+phony:
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
 exit $FAILCOUNT
