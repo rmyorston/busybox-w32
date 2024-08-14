@@ -1936,7 +1936,7 @@ size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm
 			}
 			else if ( t[1] == 's' ) {
 				tm2 = *tm;
-				sprintf(buffer, "%d", (int)mktime(&tm2));
+				sprintf(buffer, "%"LL_FMT"d", (long long)mktime(&tm2));
 				replace = buffer;
 			}
 			else if ( t[1] == 'T' ) {
