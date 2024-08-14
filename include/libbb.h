@@ -10,6 +10,12 @@
 #ifndef LIBBB_H
 #define LIBBB_H 1
 
+#if ENABLE_PLATFORM_MINGW32
+/* We have our own nanosleep(), clock_gettime() and clock_settime(). */
+/* Skip the Windows include file that declares them. */
+# define WIN_PTHREADS_TIME_H
+#endif
+
 #include "platform.h"
 
 #include <ctype.h>

@@ -25,7 +25,7 @@ int ts_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int ts_main(int argc UNUSED_PARAM, char **argv)
 {
 	struct timeval base;
-#if ENABLE_PLATFORM_MINGW32 && !defined(_USE_32BIT_TIME_T)
+#if ENABLE_PLATFORM_MINGW32
 	time_t t;
 #endif
 	unsigned opt;
@@ -76,7 +76,7 @@ int ts_main(int argc UNUSED_PARAM, char **argv)
 			if (opt & 1) /* -i */
 				base = ts1;
 		}
-#if ENABLE_PLATFORM_MINGW32 && !defined(_USE_32BIT_TIME_T)
+#if ENABLE_PLATFORM_MINGW32
 		t = ts.tv_sec;
 		localtime_r(&t, &tm_time);
 #else

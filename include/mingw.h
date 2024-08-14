@@ -2,6 +2,17 @@
 #define NOIMPL(name,...) static inline int name(__VA_ARGS__) { errno = ENOSYS; return -1; }
 #define IMPL(name,ret,retval,...) static inline ret name(__VA_ARGS__) { return retval; }
 
+/* Use 64-bit time on 32-bit platforms. */
+#if !defined(_WIN64)
+# define time_t __time64_t
+# define ctime(t) _ctime64(t)
+# define localtime(t) _localtime64(t)
+# define time(t) _time64(t)
+# define gmtime(t) _gmtime64(t)
+# define mktime(t) _mktime64(t)
+# define timespec _timespec64
+#endif
+
 /*
  * sys/types.h
  */
@@ -296,6 +307,9 @@ struct timespec {
 	long int tv_nsec;
 };
 #endif
+
+typedef int clockid_t;
+#define CLOCK_REALTIME 0
 
 time_t timegm(struct tm *tm);
 
