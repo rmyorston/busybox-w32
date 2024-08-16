@@ -16791,7 +16791,8 @@ argv_size(struct datasize ds, char **p)
 			ds.funcstringsize += align_len(*p);
 			p++;
 		}
-		ds.funcblocksize += sizeof(char *);
+		// Allow for argv[-1] used by tryexec().
+		ds.funcblocksize += 2 * sizeof(char *);
 	}
 	return ds;
 }
@@ -16805,6 +16806,8 @@ argv_copy(char **p)
 #endif
 
 	if (p) {
+		// argv[-1] for tryexec()
+		funcblock = (char *) funcblock + sizeof(char *);
 		while (*p) {
 			new = funcblock;
 			funcblock = (char *) funcblock + sizeof(char *);
@@ -16815,7 +16818,7 @@ argv_copy(char **p)
 		new = funcblock;
 		funcblock = (char *) funcblock + sizeof(char *);
 		*new = NULL;
-		return start;
+		return start + 1;
 	}
 	return NULL;
 }
