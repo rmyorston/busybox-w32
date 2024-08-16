@@ -83,7 +83,7 @@ static int is_wine(void)
 #define ENABLE_VIRTUAL_TERMINAL_INPUT 0x0200
 #endif
 
-int terminal_mode(int reset)
+int FAST_FUNC terminal_mode(int reset)
 {
 	static int mode = -1;
 

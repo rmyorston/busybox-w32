@@ -2255,7 +2255,7 @@ int enumerate_links(const char *file, char *name)
 
 /* Return the length of the root of a UNC path, i.e. the '//host/share'
  * component, or 0 if the path doesn't look like that. */
-int unc_root_len(const char *dir)
+int FAST_FUNC unc_root_len(const char *dir)
 {
 	const char *s = dir + 2;
 	int len;
@@ -2276,7 +2276,7 @@ int unc_root_len(const char *dir)
 
 /* Return the length of the root of a path, i.e. either the drive or
  * UNC '//host/share', or 0 if the path doesn't look like that. */
-int root_len(const char *path)
+int FAST_FUNC root_len(const char *path)
 {
 	if (path == NULL)
 		return 0;
@@ -2285,7 +2285,7 @@ int root_len(const char *path)
 	return unc_root_len(path);
 }
 
-const char *get_system_drive(void)
+const char * FAST_FUNC get_system_drive(void)
 {
 	static const char *drive = NULL;
 	char sysdir[PATH_MAX];
@@ -2320,7 +2320,7 @@ int chdir_system_drive(void)
  * an allocated string containing the resolved path.  Die on failure,
  * which is most likely because the file doesn't exist.
  */
-char *xabsolute_path(char *path)
+char * FAST_FUNC xabsolute_path(char *path)
 {
 	char *rpath;
 
@@ -2332,7 +2332,7 @@ char *xabsolute_path(char *path)
 	bb_perror_msg_and_die("can't open '%s'", path);
 }
 
-char *get_drive_cwd(const char *path, char *buffer, int size)
+char * FAST_FUNC get_drive_cwd(const char *path, char *buffer, int size)
 {
 	char drive[3] = { *path, ':', '\0' };
 	DWORD ret;
@@ -2343,7 +2343,7 @@ char *get_drive_cwd(const char *path, char *buffer, int size)
 	return bs_to_slash(buffer);
 }
 
-void fix_path_case(char *path)
+void FAST_FUNC fix_path_case(char *path)
 {
 	char resolved[PATH_MAX];
 	int len;
@@ -2365,7 +2365,7 @@ void fix_path_case(char *path)
 	}
 }
 
-void make_sparse(int fd, off_t start, off_t end)
+void FAST_FUNC make_sparse(int fd, off_t start, off_t end)
 {
 	DWORD dwTemp;
 	HANDLE fh;
@@ -2410,7 +2410,7 @@ void *get_proc_addr(const char *dll, const char *function,
 	return proc->pfunction;
 }
 
-int unix_path(const char *path)
+int FAST_FUNC unix_path(const char *path)
 {
 	int i;
 	char *p = xstrdup(path);
@@ -2423,7 +2423,7 @@ int unix_path(const char *path)
 
 /* Return true if file is referenced using a path.  This means a path
  * look-up isn't required. */
-int has_path(const char *file)
+int FAST_FUNC has_path(const char *file)
 {
 	return strchr(file, '/') || strchr(file, '\\') ||
 				has_dos_drive_prefix(file);
@@ -2438,7 +2438,7 @@ int has_path(const char *file)
  * Paths of the form /dir/file or c:dir/file aren't relative by this
  * definition.
  */
-int is_relative_path(const char *path)
+int FAST_FUNC is_relative_path(const char *path)
 {
 	return !is_dir_sep(path[0]) && !has_dos_drive_prefix(path);
 }
@@ -2451,7 +2451,7 @@ int is_relative_path(const char *path)
  * matches the file name from bb_busybox_exec_path (with appropriate
  * allowance for 'busybox*.exe').
  */
-const char *applet_to_exe(const char *name)
+const char * FAST_FUNC applet_to_exe(const char *name)
 {
 	const char *exefile = bb_basename(bb_busybox_exec_path);
 	const char *exesuff = is_prefixed_with_case(exefile, name);
@@ -2469,7 +2469,7 @@ const char *applet_to_exe(const char *name)
  * call should use a NULL pointer for str, subsequent calls should
  * pass an allocated string which will be freed.
  */
-char *xappendword(const char *str, const char *word)
+char * FAST_FUNC xappendword(const char *str, const char *word)
 {
 	char *newstr = str ? xasprintf("%s %s", str, word) : xstrdup(word);
 	free((void *)str);
@@ -2509,7 +2509,7 @@ change_critical_error_dialogs(const char *newval)
 					0 : SEM_FAILCRITICALERRORS);
 }
 
-char *exe_relative_path(const char *tail)
+char * FAST_FUNC exe_relative_path(const char *tail)
 {
 	char *exepath = xstrdup(bb_busybox_exec_path);
 	char *relpath = concat_path_file(dirname(exepath), tail);

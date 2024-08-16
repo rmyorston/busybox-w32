@@ -633,27 +633,27 @@ ULONGLONG CompatGetTickCount64(void);
 ssize_t get_random_bytes(void *buf, ssize_t count);
 int enumerate_links(const char *file, char *name);
 
-int unc_root_len(const char *dir);
-int root_len(const char *path);
-const char *get_system_drive(void);
+int unc_root_len(const char *dir) FAST_FUNC;
+int root_len(const char *path) FAST_FUNC;
+const char *get_system_drive(void) FAST_FUNC;
 int chdir_system_drive(void);
-char *xabsolute_path(char *path);
-char *get_drive_cwd(const char *path, char *buffer, int size);
-void fix_path_case(char *path);
-void make_sparse(int fd, off_t start, off_t end);
-int terminal_mode(int reset);
-int unix_path(const char *path);
-int has_path(const char *file);
-int is_relative_path(const char *path);
-char *get_last_slash(const char *path);
-const char *applet_to_exe(const char *name);
+char *xabsolute_path(char *path) FAST_FUNC;
+char *get_drive_cwd(const char *path, char *buffer, int size) FAST_FUNC;
+void fix_path_case(char *path) FAST_FUNC;
+void make_sparse(int fd, off_t start, off_t end) FAST_FUNC;
+int terminal_mode(int reset) FAST_FUNC;
+int unix_path(const char *path) FAST_FUNC;
+int has_path(const char *file) FAST_FUNC;
+int is_relative_path(const char *path) FAST_FUNC;
+char *get_last_slash(const char *path) FAST_FUNC;
+const char *applet_to_exe(const char *name) FAST_FUNC;
 char *get_user_name(void);
-char *quote_arg(const char *arg);
-char *find_first_executable(const char *name);
-char *xappendword(const char *str, const char *word);
+char *quote_arg(const char *arg) FAST_FUNC;
+char *find_first_executable(const char *name) FAST_FUNC;
+char *xappendword(const char *str, const char *word) FAST_FUNC;
 int windows_env(void);
 void change_critical_error_dialogs(const char *newval) FAST_FUNC;
-char *exe_relative_path(const char *tail);
+char *exe_relative_path(const char *tail) FAST_FUNC;
 enum {
 	ELEVATED_PRIVILEGE = 1,
 	ADMIN_ENABLED = 2

@@ -113,7 +113,7 @@ parse_interpreter(const char *cmd, interp_t *interp)
  * See https://docs.microsoft.com/en-us/cpp/cpp/main-function-command-line-args?view=vs-2019#parsing-c-command-line-arguments
  * (Parsing C++ Command-Line Arguments)
  */
-char *
+char * FAST_FUNC
 quote_arg(const char *arg)
 {
 	char *r = xmalloc(2 * strlen(arg) + 3);  // max-esc, enclosing DQ, \0
@@ -150,7 +150,7 @@ quote_arg(const char *arg)
 	return xrealloc(r, d - r);
 }
 
-char *
+char * FAST_FUNC
 find_first_executable(const char *name)
 {
 	char *path = getenv("PATH");

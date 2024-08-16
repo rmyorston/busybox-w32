@@ -24,7 +24,7 @@ const char* FAST_FUNC bb_basename(const char *name)
 }
 
 #if ENABLE_PLATFORM_MINGW32
-char *get_last_slash(const char *path)
+char * FAST_FUNC get_last_slash(const char *path)
 {
 	const char *start = path + root_len(path);
 	char *slash = strrchr(start, '/');
