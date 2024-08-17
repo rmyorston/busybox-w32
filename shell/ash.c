@@ -9104,14 +9104,9 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 			/* mingw-w64's getopt() uses __argv[0] as the program name */
 			__argv[0] = (char *)cmd;
 			/* 'which' wants to know if it was invoked from a standalone
-			 * shell.  Use the spare element of argv to add a flag, but
-			 * not if the first argument is '--help', that's a special
-			 * case. */
-			if (strcmp(argv[0], "which") == 0 &&
-					(argv[1] == NULL || strcmp(argv[1], "--help") != 0)) {
-				--argv;
-				argv[0] = argv[1];
-				argv[1] = (char *)"-s";
+			 * shell.  'Which' in argv[0] indicates this. */
+			if (strcmp(argv[0], "which") == 0) {
+				argv[0] = (char *)"Which";
 			}
 # else
 		if (APPLET_IS_NOEXEC(applet_no)) {
@@ -11585,9 +11580,13 @@ evalcommand(union node *cmd, int flags)
 
 	localvar_stop = pushlocalvars(vlocal);
 
+#if ENABLE_PLATFORM_MINGW32
+	argv = nargv = stalloc(sizeof(char *) * (argc + 1));
+#else
 	/* Reserve one extra spot at the front for shellexec. */
 	nargv = stalloc(sizeof(char *) * (argc + 2));
 	argv = ++nargv;
+#endif
 	for (sp = arglist.list; sp; sp = sp->next) {
 		TRACE(("evalcommand arg: %s\n", sp->text));
 		*nargv++ = sp->text;
@@ -16791,8 +16790,7 @@ argv_size(struct datasize ds, char **p)
 			ds.funcstringsize += align_len(*p);
 			p++;
 		}
-		// Allow for argv[-1] used by tryexec().
-		ds.funcblocksize += 2 * sizeof(char *);
+		ds.funcblocksize += sizeof(char *);
 	}
 	return ds;
 }
@@ -16806,8 +16804,6 @@ argv_copy(char **p)
 #endif
 
 	if (p) {
-		// argv[-1] for tryexec()
-		funcblock = (char *) funcblock + sizeof(char *);
 		while (*p) {
 			new = funcblock;
 			funcblock = (char *) funcblock + sizeof(char *);
@@ -16818,7 +16814,7 @@ argv_copy(char **p)
 		new = funcblock;
 		funcblock = (char *) funcblock + sizeof(char *);
 		*new = NULL;
-		return start + 1;
+		return start;
 	}
 	return NULL;
 }

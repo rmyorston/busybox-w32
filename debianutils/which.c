@@ -32,13 +32,6 @@
 
 #include "libbb.h"
 
-#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-enum {
-	OPT_a = (1 << 0),
-	OPT_s = (1 << 1)
-};
-#endif
-
 int which_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int which_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -47,7 +40,8 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 	/* This sizeof(): bb_default_root_path is shorter than BB_PATH_ROOT_PATH */
 	char buf[sizeof(BB_PATH_ROOT_PATH)];
 #if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-	int sh_standalone;
+	/* 'Which' in argv[0] indicates we were run from a standalone shell */
+	int sh_standalone = argv[0][0] == 'W';
 #endif
 
 	env_path = getenv("PATH");
@@ -55,14 +49,7 @@ int which_main(int argc UNUSED_PARAM, char **argv)
 		/* env_path must be writable, and must not alloc, so... */
 		env_path = strcpy(buf, bb_default_root_path);
 
-#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-	/* '-s' option indicates we were run from a standalone shell */
-	getopt32(argv, "^" "as" "\0" "-1"/*at least one arg*/);
-	sh_standalone = option_mask32 & OPT_s;
-	option_mask32 &= ~OPT_s;
-#else
 	getopt32(argv, "^" "a" "\0" "-1"/*at least one arg*/);
-#endif
 	argv += optind;
 
 	do {
