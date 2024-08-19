@@ -53,14 +53,7 @@ pid_t mingw_wait3(pid_t pid, int *status, int options, struct rusage *rusage)
 	return -1;
 }
 
-typedef struct {
-	char *path;
-	char *name;
-	char *opts;
-	char buf[100];
-} interp_t;
-
-static int
+int FAST_FUNC
 parse_interpreter(const char *cmd, interp_t *interp)
 {
 	char *path, *t;
