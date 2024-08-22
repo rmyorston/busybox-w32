@@ -462,15 +462,24 @@ newcmd(struct cmd **cphead, char *str)
 	/*(*cphead)->c_next = NULL; - xzalloc did it */
 	(*cphead)->c_cmd = xstrdup(str);
 	/*(*cphead)->c_refcnt = 0; */
-	(*cphead)->c_makefile = makefile;
+	if (makefile)
+		(*cphead)->c_makefile = xstrdup(makefile);
 	(*cphead)->c_dispno = dispno;
 }
 
 static void
 freecmds(struct cmd *cp)
 {
-	if (cp && --cp->c_refcnt <= 0)
-		llist_free((llist_t *)cp, free);
+	struct cmd *nextcp;
+
+	if (cp && --cp->c_refcnt <= 0) {
+		for (; cp; cp = nextcp) {
+			nextcp = cp->c_next;
+			free(cp->c_cmd);
+			free((void *)cp->c_makefile);
+			free(cp);
+		}
+	}
 }
 
 static struct name *
