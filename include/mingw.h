@@ -667,3 +667,4 @@ enum {
 	ADMIN_ENABLED = 2
 };
 int elevation_state(void);
+void set_interp(int i) FAST_FUNC;

@@ -394,6 +394,13 @@ bool re_execed;
 static int interp = 0;
 char bb_comm[COMM_LEN];
 char bb_command_line[128];
+
+# if ENABLE_FEATURE_SH_STANDALONE
+void FAST_FUNC set_interp(int i)
+{
+	interp = i;
+}
+# endif
 #endif
 
 

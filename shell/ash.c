@@ -9099,6 +9099,7 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 #endif
 {
 #if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
+	struct forkshell *fs = (struct forkshell *)sticky_mem_start;
 	interp_t interp;
 #endif
 #if ENABLE_FEATURE_SH_STANDALONE
@@ -9106,7 +9107,6 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 # if ENABLE_PLATFORM_MINGW32
 		/* Treat all applets as NOEXEC, including the shell itself if
 		 * this is a FS_SHELLEXEC shell. */
-		struct forkshell *fs = (struct forkshell *)sticky_mem_start;
 		if (applet_main[applet_no] != ash_main ||
 				(fs && fs->fpid == FS_SHELLEXEC)) {
  run_noexec:
@@ -9152,21 +9152,28 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 	add_win32_extension((char *)cmd);
 
 # if ENABLE_FEATURE_SH_STANDALONE
-	/* If nfpath is non-NULL, evalcommand() has determined this
-	 * command doesn't need a fork().  If the command is a script
-	 * with an interpreter which is an applet we can run it as if
-	 * it were a noexec applet. */
+	/* If nfpath is non-NULL evalcommand() has determined this
+	 * command doesn't need a fork().  Even it's NULL we can
+	 * possibly avoid a fork if this is a FS_SHELLEXEC shell. */
+	if (nfpath == NULL && (fs && fs->fpid == FS_SHELLEXEC))
+		nfpath = pathval();
+
+	/* If nfpath is non-NULL and the command is a script with an
+	 * interpreter which is an applet, we can run it as if it
+	 * were a noexec applet. */
 	if (nfpath && parse_interpreter(cmd, &interp)) {
 		applet_no = find_applet_by_name_for_sh(interp.name, nfpath);
 		if (applet_no >= 0) {
 			argv[0] = (char *)cmd;
-			/* evalcommand() has added two elements before argv */
+			/* evalcommand()/spawn_forkshell() add two elements before argv */
 			if (interp.opts) {
 				argv--;
 				argv[0] = (char *)interp.opts;
 			}
 			argv--;
 			cmd = argv[0] = (char *)interp.name;
+			/* Identify the index of the script file in argv */
+			set_interp(1 + (interp.opts != NULL));
 			goto run_noexec;
 		}
 	}
@@ -16842,7 +16849,8 @@ argv_size(struct datasize ds, char **p)
 			ds.funcstringsize += align_len(*p);
 			p++;
 		}
-		ds.funcblocksize += sizeof(char *);
+		// Allow two extra elements for tryexec().
+		ds.funcblocksize += 3 * sizeof(char *);
 	}
 	return ds;
 }
@@ -16856,6 +16864,8 @@ argv_copy(char **p)
 #endif
 
 	if (p) {
+		// Allow two extra elements for tryexec().
+		funcblock = (char *) funcblock + 2 * sizeof(char *);
 		while (*p) {
 			new = funcblock;
 			funcblock = (char *) funcblock + sizeof(char *);
@@ -16866,7 +16876,7 @@ argv_copy(char **p)
 		new = funcblock;
 		funcblock = (char *) funcblock + sizeof(char *);
 		*new = NULL;
-		return start;
+		return start + 2;
 	}
 	return NULL;
 }
