@@ -652,6 +652,8 @@ B = b
 target:
 ifeq ($(A),a)
 	@echo A OK
+else
+	@echo A not OK
 endif
 ifneq "a" "$B"
 	@echo B OK

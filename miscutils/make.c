@@ -1605,9 +1605,6 @@ skip_line(const char *str1)
 	int ret = cstate[clevel] & SKIP_LINE;
 	int key;
 
-	if (*str1 == '\t')
-		return ret;
-
 	copy = xstrdup(str1);
 	q = process_line(copy);
 	if ((token = gettok(&q)) != NULL) {
@@ -1754,16 +1751,19 @@ readline(FILE *fd, int want_command)
 		}
 		dispno = lineno;
 
-		if (want_command && *str == '\t')
-			return str;
+		// Check for lines that are conditionally skipped.
+		if (posix || !skip_line(str)) {
+			if (want_command && *str == '\t')
+				return str;
 
-		// Check for comment lines and lines that are conditionally skipped.
-		p = str;
-		while (isblank(*p))
-			p++;
+			// Check for comment lines
+			p = str;
+			while (isblank(*p))
+				p++;
 
-		if (*p != '\n' && *str != '#' && (posix || !skip_line(str)))
-			return str;
+			if (*p != '\n' && *str != '#')
+				return str;
+		}
 
 		pos = 0;
 	}
