@@ -2083,11 +2083,11 @@ input(FILE *fd, int ilevel)
 					make(newname(p), 1);
 					opts &= ~OPT_include;
 				}
+				makefile = p;
 				if ((ifd = fopen(p, "r")) == NULL) {
 					if (!minus)
 						error("can't open include file '%s'", p);
 				} else {
-					makefile = p;
 					input(ifd, ilevel + 1);
 					fclose(ifd);
 				}
