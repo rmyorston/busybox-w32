@@ -2073,23 +2073,27 @@ input(FILE *fd, int ilevel)
 			if (ilevel > 16)
 				error("too many includes");
 
+			count = 0;
 			q = expanded = expand_macros(p + 7, FALSE);
 			while ((p = gettok(&q)) != NULL) {
 				FILE *ifd;
 
+				++count;
 				if (!POSIX_2017) {
 					// Try to create include file or bring it up-to-date
 					opts |= OPT_include;
 					make(newname(p), 1);
 					opts &= ~OPT_include;
 				}
-				makefile = p;
 				if ((ifd = fopen(p, "r")) == NULL) {
 					if (!minus)
 						error("can't open include file '%s'", p);
 				} else {
+					makefile = p;
 					input(ifd, ilevel + 1);
 					fclose(ifd);
+					makefile = old_makefile;
+					lineno = old_lineno;
 				}
 				if (POSIX_2017)
 					break;
@@ -2100,14 +2104,11 @@ input(FILE *fd, int ilevel)
 				if (p == NULL || gettok(&q)) {
 					error("one include file per line");
 				}
-			} else if (makefile == old_makefile) {
+			} else if (count == 0) {
 				// In POSIX 2024 no include file is unspecified behaviour.
 				if (posix)
 					error("no include file");
 			}
-
-			makefile = old_makefile;
-			lineno = old_lineno;
 			goto end_loop;
 		}
 
