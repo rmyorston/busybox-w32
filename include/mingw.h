@@ -248,7 +248,7 @@ int strverscmp(const char *s1, const char *s2);
 /*
  * strings.h
  */
-#if !defined(__clang__)
+#if !defined(__GNUC__)
 int ffs(int i);
 #else
 # define ffs(i) __builtin_ffs(i)
