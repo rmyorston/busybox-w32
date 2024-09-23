@@ -152,6 +152,11 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 			unsigned uu = 0, start = 0, end = 0, out = 0;
 			int dcount = 0;
 
+#if ENABLE_PLATFORM_MINGW32
+			/* An empty line can't contain a delimiter */
+			if (linelen == 0 && (option_mask32 & CUT_OPT_SUPPRESS_FLGS))
+				goto next_line;
+#endif
 			/* Loop through bytes, finding next delimiter */
 			for (;;) {
 				/* End of current range? */
