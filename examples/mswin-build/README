@@ -5,9 +5,22 @@ latter needs to be downloaded and installed from:
 
    https://github.com/mstorsjo/llvm-mingw
 
-The release build performs some additional optimisation and is
-slightly slower as a result.
+The script should be run from the directory above a git repository
+named busybox-w32.  The builds are performed in the directories
+named in the TARGETS variable in the scripts.  Previous copies of
+these directories are deleted.
+
+The scripts check out the master branch of the git repository.  You
+should edit the script if you wish to build from a different commit.
+
+The build time recorded in the executables is the time of the checked
+out commit.  This may not result in a perfectly reproducible build
+but it's a step in that direction.
+
+The release build performs some additional optimisation and takes
+slightly longer as a result.
 
 The busybox-w32 help message includes information about the build
 platform.  Obtaining this information is very specific to the
-platform used.
+platform used:  you may need to adjust this if building on something
+other than Fedora.

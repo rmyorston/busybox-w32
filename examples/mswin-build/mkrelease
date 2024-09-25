@@ -41,7 +41,9 @@ do
 		fi
 
 		cd $i
-		make ${CONFIG}
+		git checkout master
+		SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct) TZ=UTC0 \
+			make ${CONFIG}
 
 		# The clang/aarch64 build is not subject to optimisation.  The
 		# '-flto' option increased the size of the binary slightly (0.23%)
@@ -89,7 +91,8 @@ do
 		CRTV=$(rpm -q --qf '%{name} %{version}-%{release}\n' mingw${BITS}-crt)
 		VERSION="$GCCV; $CRTV"
 	fi
-	make -j $(nproc) EXTRAVERSION="-`git describe --match=FRP`" MINGW_VER="$VERSION"
+	SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct) TZ=UTC0 \
+		make -j $(nproc) EXTRAVERSION="-`git describe --match=FRP`" MINGW_VER="$VERSION"
 	)
 done
 
