@@ -1555,7 +1555,7 @@ static void load_history(line_input_t *st_parm)
 }
 
 #  if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
-void save_history(line_input_t *st)
+void FAST_FUNC save_history(line_input_t *st)
 {
 	FILE *fp;
 

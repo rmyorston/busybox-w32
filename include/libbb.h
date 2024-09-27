@@ -1998,11 +1998,11 @@ enum {
 	FOR_SHELL        = DO_HISTORY | TAB_COMPLETION | USERNAME_COMPLETION | LI_INTERRUPTIBLE,
 };
 line_input_t *new_line_input_t(int flags) FAST_FUNC;
-#if ENABLE_FEATURE_EDITING_SAVEHISTORY
+# if ENABLE_FEATURE_EDITING_SAVEHISTORY
 void free_line_input_t(line_input_t *n) FAST_FUNC;
-#else
-# define free_line_input_t(n) free(n)
-#endif
+# else
+#  define free_line_input_t(n) free(n)
+# endif
 /*
  * maxsize must be >= 2.
  * Returns:
@@ -2013,7 +2013,7 @@ void free_line_input_t(line_input_t *n) FAST_FUNC;
 int read_line_input(line_input_t *st, const char *prompt, char *command, int maxsize) FAST_FUNC;
 void show_history(const line_input_t *st) FAST_FUNC;
 # if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
-void save_history(line_input_t *st);
+void save_history(line_input_t *st) FAST_FUNC;
 # endif
 #else
 #define MAX_HISTORY 0
