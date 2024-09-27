@@ -36,9 +36,9 @@ const char bb_busybox_exec_path[] ALIGN1 = CONFIG_BUSYBOX_EXEC_PATH;
 /* Some special shell variables are placed in the environment immediately
  * when they're exported.
  *
- * BB_GLOBBING and BB_UMASK are excluded because users shouln't be
- * messing with them; BB_ALT_BUFFER and BB_FIX_BACKSLASH are excluded
- * because they only affect particular applets, not the shell itself.
+ * BB_GLOBBING and BB_UMASK are excluded because users shouldn't be
+ * messing with them; BB_FIX_BACKSLASH is excluded because it only
+ * affects particular applets, not the shell itself.
  *
  * If you change any of these you should also update the definitions in
  * include/libbb.h.
