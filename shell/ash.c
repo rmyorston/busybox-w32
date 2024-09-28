@@ -12821,16 +12821,12 @@ options(int *login_sh)
 				if (val && (c == '-')) { /* long options */
 					if (strcmp(p, "login") == 0) {
 						*login_sh = 1;
-#if ENABLE_PLATFORM_MINGW32
 						break;
-#endif
 					}
 /* TODO: --noprofile: e.g. if I want to run emergency shell from sulogin,
  * I want minimal/no shell init scripts - but it insists on running it as "-ash"...
  */
-#if !ENABLE_PLATFORM_MINGW32
-					break;
-#endif
+					ash_msg_and_raise_error("bad option '%s'", p - 2);
 				}
 			}
 			if (c == 'o') {

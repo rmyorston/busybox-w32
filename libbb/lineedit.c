@@ -1653,12 +1653,7 @@ void FAST_FUNC show_history(const line_input_t *st)
 	if (!st)
 		return;
 	for (i = 0; i < st->cnt_history; i++)
-#if ENABLE_PLATFORM_MINGW32
-		/* Upstream erred, a patch has been submitted */
 		printf("%4d %s\n", i, st->history[i]);
-#else
-		fprintf(stderr, "%4d %s\n", i, st->history[i]);
-#endif
 }
 
 # if ENABLE_FEATURE_EDITING_SAVEHISTORY
@@ -1750,7 +1745,7 @@ static void load_history(line_input_t *st_parm)
 }
 
 #  if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
-void save_history(line_input_t *st)
+void FAST_FUNC save_history(line_input_t *st)
 {
 	FILE *fp;
 

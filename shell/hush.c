@@ -390,7 +390,6 @@
 #define BASH_TEST2         (ENABLE_HUSH_BASH_COMPAT && ENABLE_HUSH_TEST)
 #define BASH_READ_D        ENABLE_HUSH_BASH_COMPAT
 
-
 /* Build knobs */
 #define LEAK_HUNTING 0
 #define BUILD_AS_NOMMU 0
@@ -410,7 +409,6 @@
  * So far ${var%...} ops are always enabled:
  */
 #define ENABLE_HUSH_DOLLAR_OPS 1
-
 
 #if BUILD_AS_NOMMU
 # undef BB_MMU
@@ -640,7 +638,6 @@ typedef enum redir_type {
 	HEREDOC_QUOTED   = 2,
 } redir_type;
 
-
 struct command {
 	pid_t pid;                  /* 0 if exited */
 	unsigned assignment_cnt;    /* how many argv[i] are assignments? */
@@ -797,7 +794,6 @@ struct function {
 # endif
 };
 #endif
-
 
 /* set -/+o OPT support. (TODO: make it optional)
  * bash supports the following opts:
@@ -1046,7 +1042,6 @@ struct globals {
 	G.sa.sa_flags = SA_RESTART; \
 } while (0)
 
-
 /* Function prototypes for builtins */
 static int builtin_cd(char **argv) FAST_FUNC;
 #if ENABLE_HUSH_ECHO
@@ -1248,8 +1243,8 @@ static const struct built_in_command bltins2[] ALIGN_PTR = {
 #endif
 };
 
-
-/* Debug printouts.
+/*
+ * Debug printouts.
  */
 #if HUSH_DEBUG >= 2
 /* prevent disasters with G.debug_indent < 0 */
@@ -1342,8 +1337,8 @@ static void debug_print_strings(const char *prefix, char **vv)
 # define debug_print_strings(prefix, vv) ((void)0)
 #endif
 
-
-/* Leak hunting. Use hush_leaktool.sh for post-processing.
+/*
+ * Leak hunting. Use hush_leaktool.sh for post-processing.
  */
 #if LEAK_HUNTING
 static void *xxmalloc(int lineno, size_t size)
@@ -1375,8 +1370,8 @@ static void xxfree(void *ptr)
 # define free(p)        xxfree(p)
 #endif
 
-
-/* Syntax and runtime errors. They always abort scripts.
+/*
+ * Syntax and runtime errors. They always abort scripts.
  * In interactive use they usually discard unparsed and/or unexecuted commands
  * and return to the prompt.
  * HUSH_DEBUG >= 2 prints line number in this file where it was detected.
@@ -1469,8 +1464,8 @@ static void syntax_error_unexpected_ch(unsigned lineno UNUSED_PARAM, int ch)
 # define syntax_error_unexpected_ch(ch) syntax_error_unexpected_ch(__LINE__, ch)
 #endif
 
-
-/* Utility functions
+/*
+ * Utility functions
  */
 /* Replace each \x with x in place, return ptr past NUL. */
 static char *unbackslash(char *src)
@@ -1616,8 +1611,9 @@ static int xdup_CLOEXEC_and_close(int fd, int avoid_fd)
 	return newfd;
 }
 
-
-/* Manipulating HFILEs */
+/*
+ * Manipulating HFILEs
+ */
 static HFILE *hfopen(const char *name)
 {
 	HFILE *fp;
@@ -1763,8 +1759,8 @@ static int fd_in_HFILEs(int fd)
 	return 0;
 }
 
-
-/* Helpers for setting new $n and restoring them back
+/*
+ * Helpers for setting new $n and restoring them back
  */
 typedef struct save_arg_t {
 	char *sv_argv0;
@@ -1804,8 +1800,8 @@ static void restore_G_args(save_arg_t *sv, char **argv)
 	IF_HUSH_SET(G.global_args_malloced = sv->sv_g_malloced;)
 }
 
-
-/* Basic theory of signal handling in shell
+/*
+ * Basic theory of signal handling in shell
  * ========================================
  * This does not describe what hush does, rather, it is current understanding
  * what it _should_ do. If it doesn't, it's a bug.
@@ -2246,7 +2242,9 @@ static int check_and_run_traps(void)
 	return last_sig;
 }
 
-
+/*
+ * Shell and environment variable support
+ */
 static const char *get_cwd(int force)
 {
 	if (force || G.cwd == NULL) {
@@ -2261,10 +2259,6 @@ static const char *get_cwd(int force)
 	return G.cwd;
 }
 
-
-/*
- * Shell and environment variable support
- */
 static struct variable **get_ptr_to_local_var(const char *name)
 {
 	struct variable **pp;
@@ -2538,7 +2532,6 @@ static int unset_local_var(const char *name)
 }
 #endif
 
-
 /*
  * Helpers for "var1=val1 var2=val2 cmd" feature
  */
@@ -2611,7 +2604,6 @@ static void set_vars_and_save_old(char **strings)
 	}
 	free(strings);
 }
-
 
 /*
  * Unicode helper
@@ -2970,7 +2962,6 @@ static void setup_string_in_str(struct in_str *i, const char *s)
 	/*i->file = NULL */;
 	i->p = s;
 }
-
 
 /*
  * o_string support
@@ -3703,9 +3694,9 @@ static void free_pipe_list(struct pipe *pi)
 	}
 }
 
-
-/*** Parsing routines ***/
-
+/*
+ * Parsing routines
+ */
 #ifndef debug_print_tree
 static void debug_print_tree(struct pipe *pi, int lvl)
 {
@@ -4339,7 +4330,6 @@ static int done_word(struct parse_context *ctx)
 	return 0;
 }
 
-
 /* Peek ahead in the input to find out if we have a "&n" construct,
  * as in "2>&1", that represents duplicating a file descriptor.
  * Return:
@@ -4634,7 +4624,6 @@ static int fetch_heredocs(o_string *as_string, struct pipe *pi, int heredoc_cnt,
 	}
 	return heredoc_cnt;
 }
-
 
 static int run_list(struct pipe *pi);
 #if BB_MMU
@@ -6082,9 +6071,9 @@ static struct pipe *parse_stream(char **pstring,
 	}
 }
 
-
-/*** Execution routines ***/
-
+/*
+ * Execution routines
+ */
 /* Expansion can recurse, need forward decls: */
 #if !BASH_PATTERN_SUBST && !ENABLE_HUSH_CASE
 #define expand_string_to_string(str, EXP_flags, do_unbackslash) \
@@ -7347,7 +7336,6 @@ static char **expand_assignments(char **argv, int count)
 	return p;
 }
 
-
 static void switch_off_special_sigs(unsigned mask)
 {
 	unsigned sig = 0;
@@ -7564,7 +7552,6 @@ static void re_execute_shell(char ***to_free, const char *s,
 	bb_simple_error_msg_and_die("can't re-execute the shell");
 }
 #endif  /* !BB_MMU */
-
 
 static int run_and_free_list(struct pipe *pi);
 
@@ -7795,7 +7782,6 @@ static int process_command_subs(o_string *dest, const char *s)
 	return WEXITSTATUS(status);
 }
 #endif /* ENABLE_HUSH_TICK */
-
 
 static void setup_heredoc(struct redir_struct *redir)
 {
@@ -8524,7 +8510,6 @@ static int run_function(const struct function *funcp, char **argv)
 }
 #endif /* ENABLE_HUSH_FUNCTIONS */
 
-
 #if BB_MMU
 #define exec_builtin(to_free, x, argv) \
 	exec_builtin(x, argv)
@@ -8557,7 +8542,6 @@ static void exec_builtin(char ***to_free,
 			argv);
 #endif
 }
-
 
 static void execvp_or_die(char **argv) NORETURN;
 static void execvp_or_die(char **argv)
@@ -10184,7 +10168,9 @@ static int run_and_free_list(struct pipe *pi)
 	return rcode;
 }
 
-
+/*
+ * Initialization and main
+ */
 static void install_sighandlers(unsigned mask)
 {
 	sighandler_t old_handler;
@@ -10860,7 +10846,6 @@ int hush_main(int argc, char **argv)
  final_return:
 	hush_exit(G.last_exitcode);
 }
-
 
 /*
  * Built-ins
@@ -12339,7 +12324,6 @@ static int FAST_FUNC builtin_memleak(char **argv UNUSED_PARAM)
 	p = malloc(3400);
 	if (l < (unsigned long)p) l = (unsigned long)p;
 	free(p);
-
 
 # if 0  /* debug */
 	{

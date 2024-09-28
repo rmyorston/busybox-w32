@@ -107,6 +107,7 @@
 #ifndef __MINGW32__
 #include <sys/mman.h>
 #endif
+#include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
@@ -347,7 +348,10 @@ void do_config_file(char *filename)
 		perror(filename);
 		exit(2);
 	}
-	fstat(fd, &st);
+	if (fstat(fd, &st) < 0) {
+		fprintf(stderr, "fixdep: fstat %s %s\n", filename, strerror(errno));
+		exit(2);
+	}
 	if (st.st_size == 0) {
 		close(fd);
 		return;
@@ -425,7 +429,10 @@ void print_deps(void)
 		perror(depfile);
 		exit(2);
 	}
-	fstat(fd, &st);
+	if (fstat(fd, &st) < 0) {
+		fprintf(stderr, "fixdep: fstat %s %s\n", depfile, strerror(errno));
+		exit(2);
+	}
 	if (st.st_size == 0) {
 		fprintf(stderr,"fixdep: %s is empty\n",depfile);
 		close(fd);

@@ -144,17 +144,19 @@ static const char packed_usage[] ALIGN1 = { PACKED_USAGE };
 void FAST_FUNC bb_show_usage(void)
 {
 	if (ENABLE_SHOW_USAGE) {
+		ssize_t FAST_FUNC (*full_write_fn)(const char *) =
+				xfunc_error_retval ? full_write2_str : full_write1_str;
 #ifdef SINGLE_APPLET_STR
 		/* Imagine that this applet is "true". Dont link in printf! */
 		const char *usage_string = unpack_usage_messages();
 
 		if (usage_string) {
 			if (*usage_string == '\b') {
-				full_write2_str("No help available\n");
+				full_write_fn("No help available\n");
 			} else {
-				full_write2_str("Usage: "SINGLE_APPLET_STR" ");
-				full_write2_str(usage_string);
-				full_write2_str("\n");
+				full_write_fn("Usage: "SINGLE_APPLET_STR" ");
+				full_write_fn(usage_string);
+				full_write_fn("\n");
 			}
 			if (ENABLE_FEATURE_CLEAN_UP)
 				dealloc_usage_messages((char*)usage_string);
@@ -170,23 +172,23 @@ void FAST_FUNC bb_show_usage(void)
 			while (*p++) continue;
 			ap--;
 		}
-		full_write2_str(bb_banner);
+		full_write_fn(bb_banner);
 #if ENABLE_PLATFORM_MINGW32
-		full_write2_str("\n");
+		full_write_fn("\n");
 #else
-		full_write2_str(" multi-call binary.\n"); /* common string */
+		full_write_fn(" multi-call binary.\n"); /* common string */
 #endif
 		if (*p == '\b')
-			full_write2_str("\nNo help available\n");
+			full_write_fn("\nNo help available\n");
 		else {
-			full_write2_str("\nUsage: ");
-			full_write2_str(applet_name);
+			full_write_fn("\nUsage: ");
+			full_write_fn(applet_name);
 			if (p[0]) {
 				if (p[0] != '\n')
-					full_write2_str(" ");
-				full_write2_str(p);
+					full_write_fn(" ");
+				full_write_fn(p);
 			}
-			full_write2_str("\n");
+			full_write_fn("\n");
 		}
 		if (ENABLE_FEATURE_CLEAN_UP)
 			dealloc_usage_messages((char*)usage_string);
@@ -371,8 +373,10 @@ void lbb_prepare(const char *applet
 		 && !(ENABLE_TRUE && strcmp(applet_name, "true") == 0)
 		 && !(ENABLE_FALSE && strcmp(applet_name, "false") == 0)
 		 && !(ENABLE_ECHO && strcmp(applet_name, "echo") == 0)
-		)
+		) {
+			xfunc_error_retval = 0;
 			bb_show_usage();
+		}
 	}
 #endif
 }
@@ -912,24 +916,23 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
  help:
 		output_width = get_terminal_width(2);
 
-		dup2(1, 2);
-		full_write2_str(bb_banner); /* reuse const string */
+		full_write1_str(bb_banner); /* reuse const string */
 #  if ENABLE_PLATFORM_MINGW32
-		full_write2_str("\n(");
+		full_write1_str("\n(");
 #   if defined(MINGW_VER)
 		if (sizeof(MINGW_VER) > 5) {
-			full_write2_str(MINGW_VER "; ");
+			full_write1_str(MINGW_VER "; ");
 		}
 #   endif
-		full_write2_str(ENABLE_GLOBBING ? "glob" : "noglob");
+		full_write1_str(ENABLE_GLOBBING ? "glob" : "noglob");
 #   if ENABLE_FEATURE_UTF8_MANIFEST
-		full_write2_str("; Unicode");
+		full_write1_str("; Unicode");
 #   endif
-		full_write2_str(")\n\n");
+		full_write1_str(")\n\n");
 #  else
-		full_write2_str(" multi-call binary.\n"); /* reuse */
+		full_write1_str(" multi-call binary.\n"); /* reuse */
 #endif
-		full_write2_str(
+		full_write1_str(
 			"BusyBox is copyrighted by many authors between 1998-2024.\n"
 			"Licensed under GPLv2. See source distribution for detailed\n"
 			"copyright notices.\n"
@@ -973,20 +976,20 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 		while (*a) {
 			int len2 = strlen(a) + 2;
 			if (col >= (int)output_width - len2) {
-				full_write2_str(",\n");
+				full_write1_str(",\n");
 				col = 0;
 			}
 			if (col == 0) {
 				col = 6;
-				full_write2_str("\t");
+				full_write1_str("\t");
 			} else {
-				full_write2_str(", ");
+				full_write1_str(", ");
 			}
-			full_write2_str(a);
+			full_write1_str(a);
 			col += len2;
 			a += len2 - 1;
 		}
-		full_write2_str("\n");
+		full_write1_str("\n");
 		return 0;
 	}
 
@@ -1006,11 +1009,10 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 	if (is_prefixed_with(argv[1], "--list")) {
 		unsigned i = 0;
 		const char *a = applet_names;
-		dup2(1, 2);
 		while (*a) {
 #  if ENABLE_FEATURE_INSTALLER && !ENABLE_PLATFORM_MINGW32
 			if (argv[1][6]) /* --list-full? */
-				full_write2_str(install_dir[APPLET_INSTALL_LOC(i)] + 1);
+				full_write1_str(install_dir[APPLET_INSTALL_LOC(i)] + 1);
 #  elif ENABLE_PLATFORM_MINGW32 && (ENABLE_FEATURE_PREFER_APPLETS \
 		|| ENABLE_FEATURE_SH_STANDALONE \
 		|| ENABLE_FEATURE_SH_NOFORK)
@@ -1027,12 +1029,12 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 #   endif
 				else
 					str = "        ";
-				full_write2_str(str);
-				full_write2_str(install_dir[APPLET_INSTALL_LOC(i)] + 1);
+				full_write1_str(str);
+				full_write1_str(install_dir[APPLET_INSTALL_LOC(i)] + 1);
 			}
 #  endif
-			full_write2_str(a);
-			full_write2_str("\n");
+			full_write1_str(a);
+			full_write1_str("\n");
 			i++;
 			while (*a++ != '\0')
 				continue;
