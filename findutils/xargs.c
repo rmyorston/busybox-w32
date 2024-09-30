@@ -924,11 +924,7 @@ int xargs_main(int argc UNUSED_PARAM, char **argv)
 				fmt = " %s";
 			}
 			if (!(opt & OPT_INTERACTIVE))
-#if !ENABLE_PLATFORM_MINGW32
 				bb_putchar_stderr('\n');
-#else
-				fprintf(stderr, "\n");
-#endif
 		}
 
 		if (!(opt & OPT_INTERACTIVE) || xargs_ask_confirmation()) {

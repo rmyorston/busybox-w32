@@ -221,7 +221,12 @@ off_t FAST_FUNC fdlength(int fd)
 
 int FAST_FUNC bb_putchar_stderr(char ch)
 {
+#if ENABLE_PLATFORM_MINGW32 && !defined(_UCRT)
+	// Workaround for problems with stderr in MSVCRT
+	return fputc(ch, stderr);
+#else
 	return write(STDERR_FILENO, &ch, 1);
+#endif
 }
 
 ssize_t FAST_FUNC full_write1_str(const char *str)
