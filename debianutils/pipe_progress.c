@@ -18,7 +18,7 @@
 
 //usage:#define pipe_progress_trivial_usage IF_PLATFORM_POSIX(NOUSAGE_STR)
 //usage:	IF_PLATFORM_MINGW32("")
-//usage:#define pipe_progress_full_usage IF_PLATFORM_POSIX("")
+//usage:#define pipe_progress_full_usage ""
 //usage:	IF_PLATFORM_MINGW32("\n\n")
 //usage:	IF_PLATFORM_MINGW32("Display a dot to indicate pipe activity")
 
