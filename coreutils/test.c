@@ -760,7 +760,7 @@ static int filstat(char *nm, enum token mode)
 		return ((s.st_mode & i) != 0);
 	}
 	if (mode == FILGZ)
-		return s.st_size > 0L;
+		return s.st_size != 0L; /* shorter than "> 0" test */
 	if (mode == FILUID)
 		return s.st_uid == geteuid();
 	if (mode == FILGID)
