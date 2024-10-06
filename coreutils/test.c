@@ -665,34 +665,29 @@ static int is_a_group_member(gid_t gid)
 	return 0;
 }
 
-
-/* Do the same thing access(2) does, but use the effective uid and gid,
-   and don't make the mistake of telling root that any file is
-   executable. */
-static int test_eaccess(struct stat *st, int mode)
+/*
+ * Similar to what access(2) does, but uses the effective uid and gid.
+ * Doesn't make the mistake of telling root that any file is executable.
+ * Returns non-zero if the file is accessible.
+ */
+static int test_st_mode(struct stat *st, int mode)
 {
 	unsigned int euid = geteuid();
 
 	if (euid == 0) {
 		/* Root can read or write any file. */
 		if (mode != X_OK)
-			return 0;
+			return 1;
 
 		/* Root can execute any file that has any one of the execute
 		 * bits set. */
-		if (st->st_mode & (S_IXUSR | S_IXGRP | S_IXOTH))
-			return 0;
-	}
-
-	if (st->st_uid == euid)  /* owner */
+		mode = S_IXUSR | S_IXGRP | S_IXOTH;
+	} else if (st->st_uid == euid)  /* owner */
 		mode <<= 6;
 	else if (is_a_group_member(st->st_gid))
 		mode <<= 3;
 
-	if (st->st_mode & mode)
-		return 0;
-
-	return -1;
+	return st->st_mode & mode;
 }
 
 
@@ -722,7 +717,7 @@ static int filstat(char *nm, enum token mode)
 			i = W_OK;
 		if (mode == FILEX)
 			i = X_OK;
-		return test_eaccess(&s, i) == 0;
+		return test_st_mode(&s, i);
 	}
 	if (is_file_type(mode)) {
 		if (mode == FILREG)
