@@ -637,32 +637,14 @@ static int binop(void)
 	/*return 1; - NOTREACHED */
 }
 
-static void initialize_group_array(void)
-{
-	group_array = bb_getgroups(&ngroups, NULL);
-}
-
 /* Return non-zero if GID is one that we have in our groups list. */
-//XXX: FIXME: duplicate of existing libbb function?
-// see toplevel TODO file:
-// possible code duplication ingroup() and is_a_group_member()
 static int is_a_group_member(gid_t gid)
 {
-	int i;
-
 	/* Short-circuit if possible, maybe saving a call to getgroups(). */
 	if (gid == getgid() || gid == getegid())
 		return 1;
 
-	if (ngroups == 0)
-		initialize_group_array();
-
-	/* Search through the list looking for GID. */
-	for (i = 0; i < ngroups; i++)
-		if (gid == group_array[i])
-			return 1;
-
-	return 0;
+	return is_in_supplementary_groups(&ngroups, &group_array, gid);
 }
 
 /*

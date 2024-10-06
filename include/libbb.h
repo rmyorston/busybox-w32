@@ -1201,6 +1201,11 @@ void die_if_bad_username(const char* name) FAST_FUNC;
  * Dies on errors (on Linux, only xrealloc can cause this, not internal getgroups call).
  */
 gid_t *bb_getgroups(int *ngroups, gid_t *group_array) FAST_FUNC;
+/*
+ * True if GID is in our getgroups() result.
+ * getgroups() is cached in group_array[], to makse successive calls faster.
+ */
+int FAST_FUNC is_in_supplementary_groups(int *pngroups, gid_t **pgroup_array, gid_t gid);
 
 #if ENABLE_FEATURE_UTMP
 void FAST_FUNC write_new_utmp(pid_t pid, int new_type, const char *tty_name, const char *username, const char *hostname);

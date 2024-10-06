@@ -45,3 +45,23 @@ gid_t* FAST_FUNC bb_getgroups(int *ngroups, gid_t *group_array)
 		*ngroups = n;
 	return group_array;
 }
+
+/* Return non-zero if GID is in our supplementary group list. */
+int FAST_FUNC is_in_supplementary_groups(int *pngroups, gid_t **pgroup_array, gid_t gid)
+{
+	int i;
+	int ngroups;
+	gid_t *group_array;
+
+	if (*pngroups == 0)
+		*pgroup_array = bb_getgroups(pngroups, NULL);
+	ngroups = *pngroups;
+	group_array = *pgroup_array;
+
+	/* Search through the list looking for GID. */
+	for (i = 0; i < ngroups; i++)
+		if (gid == group_array[i])
+			return 1;
+
+	return 0;
+}
