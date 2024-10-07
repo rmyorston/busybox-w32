@@ -1022,6 +1022,13 @@ struct globals {
 #if HUSH_DEBUG >= 2
 	int debug_indent;
 #endif
+#if ENABLE_HUSH_TEST || BASH_TEST2
+	/* Cached supplementary group array (for testing executable'ity of files) */
+	struct cached_groupinfo groupinfo;
+# define GROUPINFO_INIT { G.groupinfo.euid = -1; G.groupinfo.egid = -1; }
+#else
+# define GROUPINFO_INIT /* nothing */
+#endif
 	struct sigaction sa;
 	char optstring_buf[sizeof("eixcs")];
 #if BASH_EPOCH_VARS
@@ -1040,6 +1047,7 @@ struct globals {
 	/* memset(&G.sa, 0, sizeof(G.sa)); */  \
 	sigfillset(&G.sa.sa_mask); \
 	G.sa.sa_flags = SA_RESTART; \
+	GROUPINFO_INIT; \
 } while (0)
 
 /* Function prototypes for builtins */
@@ -8193,6 +8201,8 @@ static int setup_redirects(struct command *prog, struct squirrel **sqp)
 	return 0;
 }
 
+/* Find a file in PATH, not necessarily executable */
+//TODO: shares code with find_executable() in libbb, factor out?
 static char *find_in_path(const char *arg)
 {
 	char *ret = NULL;
@@ -8635,7 +8645,7 @@ static void if_command_vV_print_and_exit(char opt_vV, char *cmd, const char *exp
 
 	to_free = NULL;
 	if (!explanation) {
-		char *path = getenv("PATH");
+		char *path = (char*)get_local_var_value("PATH");
 		explanation = to_free = find_executable(cmd, &path); /* path == NULL is ok */
 		if (!explanation)
 			_exit(1); /* PROG was not found */
@@ -10870,7 +10880,8 @@ static NOINLINE int run_applet_main(char **argv, int (*applet_main_func)(int arg
 #if ENABLE_HUSH_TEST || BASH_TEST2
 static int FAST_FUNC builtin_test(char **argv)
 {
-	return run_applet_main(argv, test_main);
+	int argc = string_array_len(argv);
+	return test_main2(&G.groupinfo, argc, argv);
 }
 #endif
 #if ENABLE_HUSH_ECHO
@@ -11063,12 +11074,16 @@ static int FAST_FUNC builtin_type(char **argv)
 # endif
 		else if (find_builtin(*argv))
 			type = "a shell builtin";
-		else if ((path = find_in_path(*argv)) != NULL)
-			type = path;
 		else {
-			bb_error_msg("type: %s: not found", *argv);
-			ret = EXIT_FAILURE;
-			continue;
+			char *pathvar = (char*)get_local_var_value("PATH");
+			path = find_executable(*argv, &pathvar);
+			if (path)
+				type = path;
+			else {
+				bb_error_msg("type: %s: not found", *argv);
+				ret = EXIT_FAILURE;
+				continue;
+			}
 		}
 
 		printf("%s is %s\n", *argv, type);
