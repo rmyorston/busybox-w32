@@ -654,16 +654,16 @@ static int test_st_mode(struct stat *st, int mode)
 	enum { ANY_IX = S_IXUSR | S_IXGRP | S_IXOTH };
 	unsigned euid;
 
-//TODO	if (mode == X_OK) {
-//		/* Do we already know with no extra syscalls? */
-//		//if (!S_ISREG(st->st_mode))
-//		//	return 0; /* not a regular file */
-//		// ^^^ bash does not check this
-//		if ((st->st_mode & ANY_IX) == 0)
-//			return 0; /* no one can execute */
-//		if ((st->st_mode & ANY_IX) == ANY_IX)
-//			return 1; /* anyone can execute */
-//	}
+	if (mode == X_OK) {
+		/* Do we already know with no extra syscalls? */
+		//if (!S_ISREG(st->st_mode))
+		//	return 0; /* not a regular file */
+		// ^^^ bash 5.2.15 "test -x" does not check this!
+		if ((st->st_mode & ANY_IX) == 0)
+			return 0; /* no one can execute */
+		if ((st->st_mode & ANY_IX) == ANY_IX)
+			return 1; /* anyone can execute */
+	}
 
 	euid = get_cached_euid(&groupinfo->euid);
 	if (euid == 0) {
