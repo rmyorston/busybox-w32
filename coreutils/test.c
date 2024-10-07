@@ -426,7 +426,7 @@ struct test_statics {
 	/* set only by check_operator(), either to bogus struct
 	 * or points to matching operator_t struct. Never NULL. */
 	const struct operator_t *last_operator;
-	struct cached_groupinfo groupinfo;
+	struct cached_groupinfo *groupinfo;
 #if BASH_TEST2
 	bool bash_test2;
 #endif
@@ -447,7 +447,6 @@ extern struct test_statics *BB_GLOBAL_CONST test_ptr_to_statics;
 	XZALLOC_CONST_PTR(&test_ptr_to_statics, sizeof(S)); \
 } while (0)
 #define DEINIT_S() do { \
-	free(groupinfo.supplementary_array); \
 	free(test_ptr_to_statics); \
 } while (0)
 
@@ -642,7 +641,7 @@ static int is_a_group_member(gid_t gid)
 	if (gid == getgid() || gid == getegid())
 		return 1;
 
-	return is_in_supplementary_groups(&groupinfo, gid);
+	return is_in_supplementary_groups(groupinfo, gid);
 }
 
 /*
@@ -878,7 +877,7 @@ static number_t primary(enum token n)
 }
 
 
-int test_main(int argc, char **argv)
+int FAST_FUNC test_main2(struct cached_groupinfo *pgroupinfo, int argc, char **argv)
 {
 	int res;
 	const char *arg0;
@@ -911,6 +910,7 @@ int test_main(int argc, char **argv)
 
 	/* We must do DEINIT_S() prior to returning */
 	INIT_S();
+	groupinfo = pgroupinfo;
 
 #if BASH_TEST2
 	bash_test2 = bt2;
@@ -1012,4 +1012,17 @@ int test_main(int argc, char **argv)
  ret:
 	DEINIT_S();
 	return res;
+}
+
+int test_main(int argc, char **argv)
+{
+	struct cached_groupinfo info;
+	int r;
+
+	info.ngroups = 0;
+	info.supplementary_array = NULL;
+	r = test_main2(&info, argc, argv);
+	free(info.supplementary_array);
+
+	return r;
 }

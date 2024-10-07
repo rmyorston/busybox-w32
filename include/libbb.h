@@ -1550,6 +1550,7 @@ int test_main(int argc, char **argv)
 		MAIN_EXTERNALLY_VISIBLE
 #endif
 ;
+int FAST_FUNC test_main2(struct cached_groupinfo *pgroupinfo, int argc, char **argv);
 int kill_main(int argc, char **argv)
 #if ENABLE_KILL || ENABLE_KILLALL || ENABLE_KILLALL5
 		MAIN_EXTERNALLY_VISIBLE

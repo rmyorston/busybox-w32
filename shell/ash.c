@@ -10175,8 +10175,7 @@ static int FAST_FUNC echocmd(int argc, char **argv)   { return echo_main(argc, a
 static int FAST_FUNC printfcmd(int argc, char **argv) { return printf_main(argc, argv); }
 #endif
 #if ENABLE_ASH_TEST || BASH_TEST2
-static int FAST_FUNC testcmd(int argc, char **argv)   { return test_main(argc, argv); }
-// TODO: pass &ngroups and &group_array addresses to test_main to use cached supplementary groups
+static int FAST_FUNC testcmd(int argc, char **argv)   { return test_main2(&groupinfo, argc, argv); }
 #endif
 #if ENABLE_ASH_SLEEP
 static int FAST_FUNC sleepcmd(int argc, char **argv)  { return sleep_main(argc, argv); }
