@@ -493,8 +493,7 @@ struct globals_misc {
 	/* Rarely referenced stuff */
 
 	/* Cached supplementary group array (for testing executable'ity of files) */
-	int ngroups;
-	gid_t *group_array;
+	struct cached_groupinfo groupinfo;
 
 #if ENABLE_ASH_RANDOM_SUPPORT
 	random_t random_gen;
@@ -528,8 +527,7 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define may_have_traps    (G_misc.may_have_traps   )
 #define trap        (G_misc.trap       )
 #define trap_ptr    (G_misc.trap_ptr   )
-#define ngroups     (G_misc.ngroups    )
-#define group_array (G_misc.group_array)
+#define groupinfo   (G_misc.groupinfo  )
 #define random_gen  (G_misc.random_gen )
 #define backgndpid  (G_misc.backgndpid )
 #define INIT_G_misc() do { \
@@ -13821,7 +13819,7 @@ static int test_exec(/*const char *fullname,*/ struct stat *statb)
 		stmode = S_IXUSR;
 	else if (statb->st_gid == getegid())
 		stmode = S_IXGRP;
-	else if (is_in_supplementary_groups(&ngroups, &group_array, statb->st_gid))
+	else if (is_in_supplementary_groups(&groupinfo, statb->st_gid))
 		stmode = S_IXGRP;
 
 	return statb->st_mode & stmode;

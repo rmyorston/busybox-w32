@@ -1203,9 +1203,15 @@ void die_if_bad_username(const char* name) FAST_FUNC;
 gid_t *bb_getgroups(int *ngroups, gid_t *group_array) FAST_FUNC;
 /*
  * True if GID is in our getgroups() result.
- * getgroups() is cached in group_array[], to makse successive calls faster.
+ * getgroups() is cached in supplementary_array[], to make successive calls faster.
  */
-int FAST_FUNC is_in_supplementary_groups(int *pngroups, gid_t **pgroup_array, gid_t gid);
+struct cached_groupinfo {
+	//TODO? gid_t egid;
+	int ngroups;
+	gid_t *supplementary_array;
+};
+//TODO? int FAST_FUNC get_cached_egid(gid_t *egid);
+int FAST_FUNC is_in_supplementary_groups(struct cached_groupinfo *groupinfo, gid_t gid);
 
 #if ENABLE_FEATURE_UTMP
 void FAST_FUNC write_new_utmp(pid_t pid, int new_type, const char *tty_name, const char *username, const char *hostname);

@@ -426,8 +426,7 @@ struct test_statics {
 	/* set only by check_operator(), either to bogus struct
 	 * or points to matching operator_t struct. Never NULL. */
 	const struct operator_t *last_operator;
-	gid_t *group_array;
-	int ngroups;
+	struct cached_groupinfo groupinfo;
 #if BASH_TEST2
 	bool bash_test2;
 #endif
@@ -440,8 +439,7 @@ extern struct test_statics *BB_GLOBAL_CONST test_ptr_to_statics;
 #define S (*test_ptr_to_statics)
 #define args            (S.args         )
 #define last_operator   (S.last_operator)
-#define group_array     (S.group_array  )
-#define ngroups         (S.ngroups      )
+#define groupinfo       (S.groupinfo    )
 #define bash_test2      (S.bash_test2   )
 #define leaving         (S.leaving      )
 
@@ -449,7 +447,7 @@ extern struct test_statics *BB_GLOBAL_CONST test_ptr_to_statics;
 	XZALLOC_CONST_PTR(&test_ptr_to_statics, sizeof(S)); \
 } while (0)
 #define DEINIT_S() do { \
-	free(group_array); \
+	free(groupinfo.supplementary_array); \
 	free(test_ptr_to_statics); \
 } while (0)
 
@@ -644,7 +642,7 @@ static int is_a_group_member(gid_t gid)
 	if (gid == getgid() || gid == getegid())
 		return 1;
 
-	return is_in_supplementary_groups(&ngroups, &group_array, gid);
+	return is_in_supplementary_groups(&groupinfo, gid);
 }
 
 /*
@@ -654,8 +652,20 @@ static int is_a_group_member(gid_t gid)
  */
 static int test_st_mode(struct stat *st, int mode)
 {
-	unsigned int euid = geteuid();
+	enum { ANY_IX = S_IXUSR | S_IXGRP | S_IXOTH };
+	unsigned euid;
 
+//TODO	if (mode == X_OK) {
+//		/* Do we already know with no extra syscalls? */
+//		if (!S_ISREG(st->st_mode))
+//			return 0; /* not a regular file */
+//		if ((st->st_mode & ANY_IX) == 0)
+//			return 0; /* no one can execute */
+//		if ((st->st_mode & ANY_IX) == ANY_IX)
+//			return 1; /* anyone can execute */
+//	}
+
+	euid = geteuid();
 	if (euid == 0) {
 		/* Root can read or write any file. */
 		if (mode != X_OK)
