@@ -8201,27 +8201,29 @@ static int setup_redirects(struct command *prog, struct squirrel **sqp)
 	return 0;
 }
 
-/* Find a file in PATH, not necessarily executable */
+/* Find a file in PATH, not necessarily executable
+ * Name is known to not contain '/'.
+ */
 //TODO: shares code with find_executable() in libbb, factor out?
-static char *find_in_path(const char *arg)
+static char *find_in_PATH(const char *name)
 {
-	char *ret = NULL;
+	char *ret;
 	const char *PATH = get_local_var_value("PATH");
 
 	if (!PATH)
 		return NULL;
-
+	ret = NULL;
 	while (1) {
 		const char *end = strchrnul(PATH, ':');
 		int sz = end - PATH; /* must be int! */
 
 		free(ret);
 		if (sz != 0) {
-			ret = xasprintf("%.*s/%s", sz, PATH, arg);
+			ret = xasprintf("%.*s/%s", sz, PATH, name);
 		} else {
 			/* We have xxx::yyyy in $PATH,
 			 * it means "use current dir" */
-			ret = xstrdup(arg);
+			ret = xstrdup(name);
 		}
 		if (access(ret, F_OK) == 0)
 			break;
@@ -8235,6 +8237,24 @@ static char *find_in_path(const char *arg)
 
 	return ret;
 }
+
+#if ENABLE_HUSH_TYPE || ENABLE_HUSH_COMMAND
+static char *find_executable_in_PATH(const char *name)
+{
+	char *PATH;
+	if (strchr(name, '/')) {
+		/* Name with '/' is tested verbatim, with no PATH traversal:
+		 * "cd /bin; type ./cat" should print "./cat is ./cat",
+		 * NOT "./cat is /bin/./cat"
+		 */
+		if (file_is_executable(name))
+			return xstrdup(name);
+		return NULL;
+	}
+	PATH = (char*)get_local_var_value("PATH");
+	return find_executable(name, &PATH); /* path == NULL is ok */
+}
+#endif
 
 static const struct built_in_command *find_builtin_helper(const char *name,
 		const struct built_in_command *x,
@@ -8645,10 +8665,11 @@ static void if_command_vV_print_and_exit(char opt_vV, char *cmd, const char *exp
 
 	to_free = NULL;
 	if (!explanation) {
-		char *path = (char*)get_local_var_value("PATH");
-		explanation = to_free = find_executable(cmd, &path); /* path == NULL is ok */
-		if (!explanation)
+		explanation = to_free = find_executable_in_PATH(cmd);
+		if (!explanation) {
+			bb_error_msg("%s: %s: not found", "command", cmd);
 			_exit(1); /* PROG was not found */
+		}
 		if (opt_vV != 'V')
 			cmd = to_free; /* -v PROG prints "/path/to/PROG" */
 	}
@@ -11075,12 +11096,11 @@ static int FAST_FUNC builtin_type(char **argv)
 		else if (find_builtin(*argv))
 			type = "a shell builtin";
 		else {
-			char *pathvar = (char*)get_local_var_value("PATH");
-			path = find_executable(*argv, &pathvar);
+			path = find_executable_in_PATH(*argv);
 			if (path)
 				type = path;
 			else {
-				bb_error_msg("type: %s: not found", *argv);
+				bb_error_msg("%s: %s: not found", "type", *argv);
 				ret = EXIT_FAILURE;
 				continue;
 			}
@@ -11710,7 +11730,7 @@ static int FAST_FUNC builtin_source(char **argv)
 	}
 	arg_path = NULL;
 	if (!strchr(filename, '/')) {
-		arg_path = find_in_path(filename);
+		arg_path = find_in_PATH(filename);
 		if (arg_path)
 			filename = arg_path;
 		else if (!ENABLE_HUSH_BASH_SOURCE_CURDIR) {
