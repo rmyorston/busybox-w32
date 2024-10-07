@@ -46,6 +46,20 @@ gid_t* FAST_FUNC bb_getgroups(int *ngroups, gid_t *group_array)
 	return group_array;
 }
 
+uid_t FAST_FUNC get_cached_euid(uid_t *euid)
+{
+	if (*euid == (uid_t)-1)
+		*euid = geteuid();
+	return *euid;
+}
+
+gid_t FAST_FUNC get_cached_egid(gid_t *egid)
+{
+	if (*egid == (gid_t)-1)
+		*egid = getegid();
+	return *egid;
+}
+
 /* Return non-zero if GID is in our supplementary group list. */
 int FAST_FUNC is_in_supplementary_groups(struct cached_groupinfo *groupinfo, gid_t gid)
 {

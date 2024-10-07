@@ -536,6 +536,8 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 	curdir = nullstr; \
 	physdir = nullstr; \
 	trap_ptr = trap; \
+	groupinfo.euid = -1; \
+	groupinfo.egid = -1; \
 } while (0)
 
 
@@ -2319,7 +2321,7 @@ initvar(void)
 #if ENABLE_FEATURE_EDITING && ENABLE_FEATURE_EDITING_FANCY_PROMPT
 	vps1.var_text = "PS1=\\w \\$ ";
 #else
-	if (!geteuid())
+	if (!get_cached_euid(&groupinfo.euid));
 		vps1.var_text = "PS1=# ";
 #endif
 	vp = varinit;
@@ -13809,14 +13811,13 @@ static int test_exec(/*const char *fullname,*/ struct stat *statb)
 
 	/* Executability depends on our euid/egid/supplementary groups */
 	stmode = S_IXOTH;
-	euid = geteuid();
-//TODO: cache euid?
+	euid = get_cached_euid(&groupinfo.euid);
 	if (euid == 0)
 		/* for root user, any X bit is good enough */
 		stmode = ANY_IX;
 	else if (statb->st_uid == euid)
 		stmode = S_IXUSR;
-	else if (statb->st_gid == getegid())
+	else if (statb->st_gid == get_cached_egid(&groupinfo.egid))
 		stmode = S_IXGRP;
 	else if (is_in_supplementary_groups(&groupinfo, statb->st_gid))
 		stmode = S_IXGRP;

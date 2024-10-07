@@ -1206,11 +1206,13 @@ gid_t *bb_getgroups(int *ngroups, gid_t *group_array) FAST_FUNC;
  * getgroups() is cached in supplementary_array[], to make successive calls faster.
  */
 struct cached_groupinfo {
-	//TODO? gid_t egid;
+	uid_t euid;
+	gid_t egid;
 	int ngroups;
 	gid_t *supplementary_array;
 };
-//TODO? int FAST_FUNC get_cached_egid(gid_t *egid);
+uid_t FAST_FUNC get_cached_euid(uid_t *euid);
+gid_t FAST_FUNC get_cached_egid(gid_t *egid);
 int FAST_FUNC is_in_supplementary_groups(struct cached_groupinfo *groupinfo, gid_t gid);
 
 #if ENABLE_FEATURE_UTMP

@@ -638,7 +638,7 @@ static int binop(void)
 static int is_a_group_member(gid_t gid)
 {
 	/* Short-circuit if possible, maybe saving a call to getgroups(). */
-	if (gid == getgid() || gid == getegid())
+	if (gid == get_cached_egid(&groupinfo->egid))
 		return 1;
 
 	return is_in_supplementary_groups(groupinfo, gid);
@@ -656,15 +656,16 @@ static int test_st_mode(struct stat *st, int mode)
 
 //TODO	if (mode == X_OK) {
 //		/* Do we already know with no extra syscalls? */
-//		if (!S_ISREG(st->st_mode))
-//			return 0; /* not a regular file */
+//		//if (!S_ISREG(st->st_mode))
+//		//	return 0; /* not a regular file */
+//		// ^^^ bash does not check this
 //		if ((st->st_mode & ANY_IX) == 0)
 //			return 0; /* no one can execute */
 //		if ((st->st_mode & ANY_IX) == ANY_IX)
 //			return 1; /* anyone can execute */
 //	}
 
-	euid = geteuid();
+	euid = get_cached_euid(&groupinfo->euid);
 	if (euid == 0) {
 		/* Root can read or write any file. */
 		if (mode != X_OK)
@@ -1019,6 +1020,8 @@ int test_main(int argc, char **argv)
 	struct cached_groupinfo info;
 	int r;
 
+	info.euid = -1;
+	info.egid = -1;
 	info.ngroups = 0;
 	info.supplementary_array = NULL;
 	r = test_main2(&info, argc, argv);
