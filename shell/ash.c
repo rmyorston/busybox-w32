@@ -9090,28 +9090,24 @@ static struct tblentry **cmdtable;
 static int builtinloc = -1;     /* index in path of %builtin, or -1 */
 
 
-#if ENABLE_PLATFORM_MINGW32
-# define EXEC_FLAG 2
-
 static void
-tryexec(IF_FEATURE_SH_STANDALONE(int applet_no, const char *nfpath, int flags,)
+#if ENABLE_PLATFORM_MINGW32
+tryexec(IF_FEATURE_SH_STANDALONE(int applet_no, const char *path, int noexec,)
 			const char *cmd, char **argv, char **envp)
 #else
-static void
 tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, char **envp)
 #endif
 {
 #if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-	struct forkshell *fs = (struct forkshell *)sticky_mem_start;
 	interp_t interp;
 #endif
 #if ENABLE_FEATURE_SH_STANDALONE
 	if (applet_no >= 0) {
 # if ENABLE_PLATFORM_MINGW32
 		/* Treat all applets as NOEXEC, including the shell itself
-		 * unless it was invoked by the exec builtin. */
-		if (applet_main[applet_no] != ash_main || !(flags & EXEC_FLAG)) {
+		 * if we were called from forkshell_shellexec(). */
  run_noexec:
+		if (applet_main[applet_no] != ash_main || noexec) {
 			/* mingw-w64's getopt() uses __argv[0] as the program name */
 			__argv[0] = (char *)cmd;
 			/* 'which' wants to know if it was invoked from a standalone
@@ -9154,17 +9150,10 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 	add_win32_extension((char *)cmd);
 
 # if ENABLE_FEATURE_SH_STANDALONE
-	/* If nfpath is non-NULL evalcommand() has determined this
-	 * command doesn't need a fork().  Even it's NULL we can
-	 * possibly avoid a fork if this is a FS_SHELLEXEC shell. */
-	if (nfpath == NULL && (fs && fs->fpid == FS_SHELLEXEC))
-		nfpath = pathval();
-
-	/* If nfpath is non-NULL and the command is a script with an
-	 * interpreter which is an applet, we can run it as if it
-	 * were a noexec applet. */
-	if (nfpath && parse_interpreter(cmd, &interp)) {
-		applet_no = find_applet_by_name_for_sh(interp.name, nfpath);
+	/* If the command is a script with an interpreter which is an
+	 * applet, we can run it as if it were a noexec applet. */
+	if (parse_interpreter(cmd, &interp)) {
+		applet_no = find_applet_by_name_for_sh(interp.name, path);
 		if (applet_no >= 0) {
 			argv[0] = (char *)cmd;
 			/* evalcommand()/spawn_forkshell() add two elements before argv */
@@ -9233,18 +9222,15 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
  */
 static struct builtincmd *find_builtin(const char *name);
 static void shellexec(char *prog, char **argv, const char *path, int idx,
-						int nofork) NORETURN;
+						int noexec) NORETURN;
 static void shellexec(char *prog, char **argv, const char *path, int idx,
-						int nofork)
+						int noexec)
 {
 	char *cmdname;
 	int e;
 	char **envp;
 	int exerrno;
 	int applet_no = -1; /* used only by FEATURE_SH_STANDALONE */
-#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-	const char *nfpath = (nofork & ~EXEC_FLAG) ? path : NULL;
-#endif
 
 	envp = listvars(VEXPORT, VUNSET, /*strlist:*/ NULL, /*end:*/ NULL);
 #if ENABLE_FEATURE_SH_STANDALONE && ENABLE_PLATFORM_MINGW32 && defined(_UCRT)
@@ -9266,7 +9252,7 @@ static void shellexec(char *prog, char **argv, const char *path, int idx,
 	) {
 #if ENABLE_PLATFORM_MINGW32
 		char *progext = stack_add_ext_space(prog);
-		tryexec(IF_FEATURE_SH_STANDALONE(applet_no, nfpath, nofork,)
+		tryexec(IF_FEATURE_SH_STANDALONE(applet_no, path, noexec,)
 				progext, argv, envp);
 #else
 		tryexec(IF_FEATURE_SH_STANDALONE(applet_no,) prog, argv, envp);
@@ -9284,7 +9270,7 @@ static void shellexec(char *prog, char **argv, const char *path, int idx,
 			const char *name = bb_basename(prog);
 # if ENABLE_FEATURE_SH_STANDALONE
 			if ((applet_no = find_applet_by_name_for_sh(name, path)) >= 0) {
-				tryexec(applet_no, nfpath, nofork, name, argv, envp);
+				tryexec(applet_no, path, noexec, name, argv, envp);
 				e = errno;
 			}
 # endif
@@ -9301,7 +9287,7 @@ static void shellexec(char *prog, char **argv, const char *path, int idx,
 			cmdname = stackblock();
 			if (--idx < 0 && pathopt == NULL) {
 #if ENABLE_PLATFORM_MINGW32
-				tryexec(IF_FEATURE_SH_STANDALONE(-1, nfpath, nofork,)
+				tryexec(IF_FEATURE_SH_STANDALONE(-1, path, noexec,)
 						cmdname, argv, envp);
 #else
 				tryexec(IF_FEATURE_SH_STANDALONE(-1,) cmdname, argv, envp);
@@ -11278,7 +11264,7 @@ execcmd(int argc UNUSED_PARAM, char **argv)
 		prog = argv[0];
 		if (optionarg)
 			argv[0] = optionarg;
-		shellexec(prog, argv, pathval(), 0, EXEC_FLAG);
+		shellexec(prog, argv, pathval(), 0, FALSE);
 		/* NOTREACHED */
 	}
 	return 0;
@@ -11834,7 +11820,7 @@ evalcommand(union node *cmd, int flags)
 			/* fall through to exec'ing external program */
 		}
 #endif
-		shellexec(argv[0], argv, path, cmdentry.u.index, TRUE);
+		shellexec(argv[0], argv, path, cmdentry.u.index, FALSE);
 		/* NOTREACHED */
 	} /* default */
 	case CMDBUILTIN:
@@ -16554,7 +16540,7 @@ forkshell_shellexec(struct forkshell *fs)
 	char *path = fs->path;
 
 	FORCE_INT_ON;
-	shellexec(argv[0], argv, path, idx, FALSE);
+	shellexec(argv[0], argv, path, idx, TRUE);
 }
 
 static void
