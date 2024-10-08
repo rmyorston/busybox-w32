@@ -60,6 +60,11 @@ gid_t FAST_FUNC get_cached_egid(gid_t *egid)
 	return *egid;
 }
 
+#if !ENABLE_PLATFORM_MINGW32
+// Both current callers of is_in_supplementary_groups() check the gid
+// first.  Our implementation of getgroups() provides no additional
+// information so there's no reason to call it.
+
 /* Return non-zero if GID is in our supplementary group list. */
 int FAST_FUNC is_in_supplementary_groups(struct cached_groupinfo *groupinfo, gid_t gid)
 {
@@ -79,3 +84,4 @@ int FAST_FUNC is_in_supplementary_groups(struct cached_groupinfo *groupinfo, gid
 
 	return 0;
 }
+#endif

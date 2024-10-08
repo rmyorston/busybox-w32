@@ -1273,7 +1273,11 @@ struct cached_groupinfo {
 };
 uid_t FAST_FUNC get_cached_euid(uid_t *euid);
 gid_t FAST_FUNC get_cached_egid(gid_t *egid);
+#if !ENABLE_PLATFORM_MINGW32
 int FAST_FUNC is_in_supplementary_groups(struct cached_groupinfo *groupinfo, gid_t gid);
+#else
+# define is_in_supplementary_groups(g, i) (FALSE)
+#endif
 
 #if ENABLE_FEATURE_UTMP
 void FAST_FUNC write_new_utmp(pid_t pid, int new_type, const char *tty_name, const char *username, const char *hostname);
