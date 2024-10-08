@@ -1022,6 +1022,13 @@ struct globals {
 #if HUSH_DEBUG >= 2
 	int debug_indent;
 #endif
+#if ENABLE_HUSH_TEST || BASH_TEST2
+	/* Cached supplementary group array (for testing executable'ity of files) */
+	struct cached_groupinfo groupinfo;
+# define GROUPINFO_INIT { G.groupinfo.euid = -1; G.groupinfo.egid = -1; }
+#else
+# define GROUPINFO_INIT /* nothing */
+#endif
 	struct sigaction sa;
 	char optstring_buf[sizeof("eixcs")];
 #if BASH_EPOCH_VARS
@@ -1040,6 +1047,7 @@ struct globals {
 	/* memset(&G.sa, 0, sizeof(G.sa)); */  \
 	sigfillset(&G.sa.sa_mask); \
 	G.sa.sa_flags = SA_RESTART; \
+	GROUPINFO_INIT; \
 } while (0)
 
 /* Function prototypes for builtins */
@@ -8193,38 +8201,53 @@ static int setup_redirects(struct command *prog, struct squirrel **sqp)
 	return 0;
 }
 
-static char *find_in_path(const char *arg)
+/* Find a file in PATH, not necessarily executable
+ * Name is known to not contain '/'.
+ */
+//TODO: shares code with find_executable() in libbb, factor out?
+static char *find_in_PATH(const char *name)
 {
-	char *ret = NULL;
-	const char *PATH = get_local_var_value("PATH");
+	char *p = (char*) get_local_var_value("PATH");
 
-	if (!PATH)
+	if (!p)
 		return NULL;
-
 	while (1) {
-		const char *end = strchrnul(PATH, ':');
-		int sz = end - PATH; /* must be int! */
+		const char *end = strchrnul(p, ':');
+		int sz = end - p; /* must be int! */
 
-		free(ret);
 		if (sz != 0) {
-			ret = xasprintf("%.*s/%s", sz, PATH, arg);
+			p = xasprintf("%.*s/%s", sz, p, name);
 		} else {
-			/* We have xxx::yyyy in $PATH,
+			/* We have xxx::yyy in $PATH,
 			 * it means "use current dir" */
-			ret = xstrdup(arg);
+			p = xstrdup(name);
 		}
-		if (access(ret, F_OK) == 0)
-			break;
-
-		if (*end == '\0') {
-			free(ret);
+		if (access(p, F_OK) == 0)
+			return p;
+		free(p);
+		if (*end == '\0')
 			return NULL;
-		}
-		PATH = end + 1;
+		p = (char *) end + 1;
 	}
-
-	return ret;
 }
+
+#if ENABLE_HUSH_TYPE || ENABLE_HUSH_COMMAND
+static char *find_executable_in_PATH(const char *name)
+{
+	const char *PATH;
+	if (strchr(name, '/')) {
+		/* Name with '/' is tested verbatim, with no PATH traversal:
+		 * "cd /bin; type ./cat" should print "./cat is ./cat",
+		 * NOT "./cat is /bin/./cat"
+		 */
+		if (file_is_executable(name))
+			return xstrdup(name);
+		return NULL;
+	}
+	PATH = get_local_var_value("PATH");
+	return find_executable(name, &PATH); /* path == NULL is ok */
+}
+#endif
 
 static const struct built_in_command *find_builtin_helper(const char *name,
 		const struct built_in_command *x,
@@ -8635,10 +8658,11 @@ static void if_command_vV_print_and_exit(char opt_vV, char *cmd, const char *exp
 
 	to_free = NULL;
 	if (!explanation) {
-		char *path = getenv("PATH");
-		explanation = to_free = find_executable(cmd, &path); /* path == NULL is ok */
-		if (!explanation)
+		explanation = to_free = find_executable_in_PATH(cmd);
+		if (!explanation) {
+			bb_error_msg("%s: %s: not found", "command", cmd);
 			_exit(1); /* PROG was not found */
+		}
 		if (opt_vV != 'V')
 			cmd = to_free; /* -v PROG prints "/path/to/PROG" */
 	}
@@ -10870,7 +10894,8 @@ static NOINLINE int run_applet_main(char **argv, int (*applet_main_func)(int arg
 #if ENABLE_HUSH_TEST || BASH_TEST2
 static int FAST_FUNC builtin_test(char **argv)
 {
-	return run_applet_main(argv, test_main);
+	int argc = string_array_len(argv);
+	return test_main2(&G.groupinfo, argc, argv);
 }
 #endif
 #if ENABLE_HUSH_ECHO
@@ -11063,12 +11088,15 @@ static int FAST_FUNC builtin_type(char **argv)
 # endif
 		else if (find_builtin(*argv))
 			type = "a shell builtin";
-		else if ((path = find_in_path(*argv)) != NULL)
-			type = path;
 		else {
-			bb_error_msg("type: %s: not found", *argv);
-			ret = EXIT_FAILURE;
-			continue;
+			path = find_executable_in_PATH(*argv);
+			if (path)
+				type = path;
+			else {
+				bb_error_msg("%s: %s: not found", "type", *argv);
+				ret = EXIT_FAILURE;
+				continue;
+			}
 		}
 
 		printf("%s is %s\n", *argv, type);
@@ -11695,7 +11723,7 @@ static int FAST_FUNC builtin_source(char **argv)
 	}
 	arg_path = NULL;
 	if (!strchr(filename, '/')) {
-		arg_path = find_in_path(filename);
+		arg_path = find_in_PATH(filename);
 		if (arg_path)
 			filename = arg_path;
 		else if (!ENABLE_HUSH_BASH_SOURCE_CURDIR) {

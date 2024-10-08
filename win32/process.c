@@ -146,7 +146,7 @@ quote_arg(const char *arg)
 char * FAST_FUNC
 find_first_executable(const char *name)
 {
-	char *path = getenv("PATH");
+	const char *path = getenv("PATH");
 	return find_executable(name, &path);
 }
 
