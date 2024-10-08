@@ -1261,6 +1261,19 @@ void die_if_bad_username(const char* name) FAST_FUNC;
  * Dies on errors (on Linux, only xrealloc can cause this, not internal getgroups call).
  */
 gid_t *bb_getgroups(int *ngroups, gid_t *group_array) FAST_FUNC;
+/*
+ * True if GID is in our getgroups() result.
+ * getgroups() is cached in supplementary_array[], to make successive calls faster.
+ */
+struct cached_groupinfo {
+	uid_t euid;
+	gid_t egid;
+	int ngroups;
+	gid_t *supplementary_array;
+};
+uid_t FAST_FUNC get_cached_euid(uid_t *euid);
+gid_t FAST_FUNC get_cached_egid(gid_t *egid);
+int FAST_FUNC is_in_supplementary_groups(struct cached_groupinfo *groupinfo, gid_t gid);
 
 #if ENABLE_FEATURE_UTMP
 void FAST_FUNC write_new_utmp(pid_t pid, int new_type, const char *tty_name, const char *username, const char *hostname);
@@ -1612,6 +1625,7 @@ int test_main(int argc, char **argv)
 		MAIN_EXTERNALLY_VISIBLE
 #endif
 ;
+int FAST_FUNC test_main2(struct cached_groupinfo *pgroupinfo, int argc, char **argv);
 int kill_main(int argc, char **argv)
 #if ENABLE_KILL || ENABLE_KILLALL || ENABLE_KILLALL5
 		MAIN_EXTERNALLY_VISIBLE

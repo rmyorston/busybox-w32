@@ -671,6 +671,10 @@ struct globals_misc {
 	char **trap_ptr;        /* used only by "trap hack" */
 
 	/* Rarely referenced stuff */
+
+	/* Cached supplementary group array (for testing executable'ity of files) */
+	struct cached_groupinfo groupinfo;
+
 #if ENABLE_ASH_RANDOM_SUPPORT
 	random_t random_gen;
 #endif
@@ -714,6 +718,7 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define may_have_traps    (G_misc.may_have_traps   )
 #define trap        (G_misc.trap       )
 #define trap_ptr    (G_misc.trap_ptr   )
+#define groupinfo   (G_misc.groupinfo  )
 #define random_gen  (G_misc.random_gen )
 #define backgndpid  (G_misc.backgndpid )
 
@@ -729,6 +734,8 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 	curdir = nullstr; \
 	physdir = nullstr; \
 	trap_ptr = trap; \
+	groupinfo.euid = -1; \
+	groupinfo.egid = -1; \
 } while (0)
 
 
@@ -2579,7 +2586,7 @@ initvar(void)
 #if ENABLE_FEATURE_EDITING && ENABLE_FEATURE_EDITING_FANCY_PROMPT
 	vps1.var_text = "PS1=\\w \\$ ";
 #else
-	if (!geteuid())
+	if (!get_cached_euid(&groupinfo.euid));
 		vps1.var_text = "PS1=# ";
 #endif
 	vp = varinit;
@@ -11342,7 +11349,7 @@ static int FAST_FUNC echocmd(int argc, char **argv)   { return echo_main(argc, a
 static int FAST_FUNC printfcmd(int argc, char **argv) { return printf_main(argc, argv); }
 #endif
 #if ENABLE_ASH_TEST || BASH_TEST2
-static int FAST_FUNC testcmd(int argc, char **argv)   { return test_main(argc, argv); }
+static int FAST_FUNC testcmd(int argc, char **argv)   { return test_main2(&groupinfo, argc, argv); }
 #endif
 #if ENABLE_ASH_SLEEP
 static int FAST_FUNC sleepcmd(int argc, char **argv)  { return sleep_main(argc, argv); }
@@ -15101,6 +15108,42 @@ readcmdfile(char *name)
 
 /* ============ find_command inplementation */
 
+static int test_exec(/*const char *fullname,*/ struct stat *statb)
+{
+	/*
+	 * TODO: use faccessat(AT_FDCWD, fullname, X_OK, AT_EACCESS)
+	 * instead: executability may depend on ACLs, capabilities
+	 * and who knows what else, not just mode bits.
+	 * (faccessat2 syscall was added to Linux in May 14 2020)
+	 */
+	mode_t stmode;
+	uid_t euid;
+	enum { ANY_IX = S_IXUSR | S_IXGRP | S_IXOTH };
+
+	/* Do we already know with no extra syscalls? */
+	if (!S_ISREG(statb->st_mode))
+		return 0; /* not a regular file */
+	if ((statb->st_mode & ANY_IX) == 0)
+		return 0; /* no one can execute */
+	if ((statb->st_mode & ANY_IX) == ANY_IX)
+		return 1; /* anyone can execute */
+
+	/* Executability depends on our euid/egid/supplementary groups */
+	stmode = S_IXOTH;
+	euid = get_cached_euid(&groupinfo.euid);
+	if (euid == 0)
+		/* for root user, any X bit is good enough */
+		stmode = ANY_IX;
+	else if (statb->st_uid == euid)
+		stmode = S_IXUSR;
+	else if (statb->st_gid == get_cached_egid(&groupinfo.egid))
+		stmode = S_IXGRP;
+	else if (is_in_supplementary_groups(&groupinfo, statb->st_gid))
+		stmode = S_IXGRP;
+
+	return statb->st_mode & stmode;
+}
+
 /*
  * Resolve a command name.  If you change this routine, you may have to
  * change the shellexec routine as well.
@@ -15128,9 +15171,12 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 				if (errno == EINTR)
 					continue;
 #endif
+ absfail:
 				entry->cmdtype = CMDUNKNOWN;
 				return;
 			}
+			if (!test_exec(/*name,*/ &statb))
+				goto absfail;
 		}
 		entry->cmdtype = CMDNORMAL;
 		return;
@@ -15275,9 +15321,6 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 				e = errno;
 			goto loop;
 		}
-		e = EACCES;     /* if we fail, this will be the error */
-		if (!S_ISREG(statb.st_mode))
-			continue;
 		if (lpathopt) {          /* this is a %func directory */
 			stalloc(len);
 			/* NB: stalloc will return space pointed by fullname
@@ -15290,6 +15333,9 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			stunalloc(fullname);
 			goto success;
 		}
+		e = EACCES;     /* if we fail, this will be the error */
+		if (!test_exec(/*fullname,*/ &statb))
+			continue;
 		TRACE(("searchexec \"%s\" returns \"%s\"\n", name, fullname));
 		if (!updatetbl) {
 			entry->cmdtype = CMDNORMAL;
