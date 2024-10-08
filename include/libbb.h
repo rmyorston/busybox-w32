@@ -1227,7 +1227,7 @@ void FAST_FUNC update_utmp_DEAD_PROCESS(pid_t pid);
 
 
 int file_is_executable(const char *name) FAST_FUNC;
-char *find_executable(const char *filename, char **PATHp) FAST_FUNC;
+char *find_executable(const char *filename, const char **PATHp) FAST_FUNC;
 int executable_exists(const char *filename) FAST_FUNC;
 
 /* BB_EXECxx always execs (it's not doing NOFORK/NOEXEC stuff),

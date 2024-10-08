@@ -8207,41 +8207,34 @@ static int setup_redirects(struct command *prog, struct squirrel **sqp)
 //TODO: shares code with find_executable() in libbb, factor out?
 static char *find_in_PATH(const char *name)
 {
-	char *ret;
-	const char *PATH = get_local_var_value("PATH");
+	char *p = (char*) get_local_var_value("PATH");
 
-	if (!PATH)
+	if (!p)
 		return NULL;
-	ret = NULL;
 	while (1) {
-		const char *end = strchrnul(PATH, ':');
-		int sz = end - PATH; /* must be int! */
+		const char *end = strchrnul(p, ':');
+		int sz = end - p; /* must be int! */
 
-		free(ret);
 		if (sz != 0) {
-			ret = xasprintf("%.*s/%s", sz, PATH, name);
+			p = xasprintf("%.*s/%s", sz, p, name);
 		} else {
-			/* We have xxx::yyyy in $PATH,
+			/* We have xxx::yyy in $PATH,
 			 * it means "use current dir" */
-			ret = xstrdup(name);
+			p = xstrdup(name);
 		}
-		if (access(ret, F_OK) == 0)
-			break;
-
-		if (*end == '\0') {
-			free(ret);
+		if (access(p, F_OK) == 0)
+			return p;
+		free(p);
+		if (*end == '\0')
 			return NULL;
-		}
-		PATH = end + 1;
+		p = (char *) end + 1;
 	}
-
-	return ret;
 }
 
 #if ENABLE_HUSH_TYPE || ENABLE_HUSH_COMMAND
 static char *find_executable_in_PATH(const char *name)
 {
-	char *PATH;
+	const char *PATH;
 	if (strchr(name, '/')) {
 		/* Name with '/' is tested verbatim, with no PATH traversal:
 		 * "cd /bin; type ./cat" should print "./cat is ./cat",
@@ -8251,7 +8244,7 @@ static char *find_executable_in_PATH(const char *name)
 			return xstrdup(name);
 		return NULL;
 	}
-	PATH = (char*)get_local_var_value("PATH");
+	PATH = get_local_var_value("PATH");
 	return find_executable(name, &PATH); /* path == NULL is ok */
 }
 #endif
