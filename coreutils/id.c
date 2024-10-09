@@ -112,6 +112,7 @@ static int print_user(uid_t id, const char *prefix)
 	return print_common(id, uid2uname(id), prefix);
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 /* On error set *n < 0 and return >= 0
  * If *n is too small, update it and return < 0
  * (ok to trash groups[] in both cases)
@@ -142,6 +143,7 @@ static int get_groups(const char *username, gid_t rgid, gid_t *groups, int *n)
 	/* if *n >= 0, return -1 (got new *n), else return 0 (error): */
 	return -(*n >= 0);
 }
+#endif
 
 int id_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int id_main(int argc UNUSED_PARAM, char **argv)
@@ -184,16 +186,26 @@ int id_main(int argc UNUSED_PARAM, char **argv)
 		euid = ruid = p->pw_uid;
 		egid = rgid = p->pw_gid;
 	} else {
+#if ENABLE_PLATFORM_MINGW32
+		// We don't distinguish real/effective ids on Windows.
+		euid = ruid = getuid();
+		egid = rgid = getegid();
+#else
 		egid = getegid();
 		rgid = getgid();
 		euid = geteuid();
 		ruid = getuid();
+#endif
 	}
 	/* JUST_ALL_GROUPS ignores -r PRINT_REAL flag even if man page for */
 	/* id says: print the real ID instead of the effective ID, with -ugG */
 	/* in fact in this case egid is always printed if egid != rgid */
 	if (!opt || (opt & JUST_ALL_GROUPS)) {
+#if ENABLE_PLATFORM_MINGW32
+		gid_t groups[1];
+#else
 		gid_t *groups;
+#endif
 		int n;
 
 		if (!opt) {
@@ -210,6 +222,11 @@ int id_main(int argc UNUSED_PARAM, char **argv)
 			if (egid != rgid)
 				status |= print_group(egid, " ");
 		}
+#if ENABLE_PLATFORM_MINGW32
+		// We only admit to having one group id on Windows.
+		n = 1;
+		groups[0] = rgid;
+#else
 		/* We are supplying largish buffer, trying
 		 * to not run get_groups() twice. That might be slow
 		 * ("user database in remote SQL server" case) */
@@ -220,6 +237,7 @@ int id_main(int argc UNUSED_PARAM, char **argv)
 			groups = xrealloc(groups, n * sizeof(groups[0]));
 			get_groups(username, rgid, groups, &n);
 		}
+#endif
 		if (n > 0) {
 			/* Print the list */
 			prefix = " groups=";
@@ -234,7 +252,7 @@ int id_main(int argc UNUSED_PARAM, char **argv)
 				bb_simple_error_msg_and_die("can't get groups");
 			return EXIT_FAILURE;
 		}
-		if (ENABLE_FEATURE_CLEAN_UP)
+		if (ENABLE_FEATURE_CLEAN_UP && !ENABLE_PLATFORM_MINGW32)
 			free(groups);
 #if ENABLE_SELINUX
 		if (is_selinux_enabled()) {

@@ -1273,6 +1273,7 @@ struct group *getgrgid(gid_t gid)
 	return &g;
 }
 
+#if 0
 int getgrouplist(const char *user UNUSED_PARAM, gid_t group,
 					gid_t *groups, int *ngroups)
 {
@@ -1295,6 +1296,7 @@ int getgroups(int n, gid_t *groups)
 	groups[0] = getgid();
 	return 1;
 }
+#endif
 
 int getlogin_r(char *buf, size_t len)
 {

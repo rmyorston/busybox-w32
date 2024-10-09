@@ -10,6 +10,7 @@
 
 #include "libbb.h"
 
+#if !ENABLE_PLATFORM_MINGW32
 gid_t* FAST_FUNC bb_getgroups(int *ngroups, gid_t *group_array)
 {
 	int n = ngroups ? *ngroups : 0;
@@ -45,6 +46,7 @@ gid_t* FAST_FUNC bb_getgroups(int *ngroups, gid_t *group_array)
 		*ngroups = n;
 	return group_array;
 }
+#endif
 
 uid_t FAST_FUNC get_cached_euid(uid_t *euid)
 {
