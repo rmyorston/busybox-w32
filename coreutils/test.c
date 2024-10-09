@@ -1022,10 +1022,14 @@ int test_main(int argc, char **argv)
 
 	info.euid = -1;
 	info.egid = -1;
+#if !ENABLE_PLATFORM_MINGW32
 	info.ngroups = 0;
 	info.supplementary_array = NULL;
+#endif
 	r = test_main2(&info, argc, argv);
+#if !ENABLE_PLATFORM_MINGW32
 	free(info.supplementary_array);
+#endif
 
 	return r;
 }

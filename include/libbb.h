@@ -1268,8 +1268,12 @@ gid_t *bb_getgroups(int *ngroups, gid_t *group_array) FAST_FUNC;
 struct cached_groupinfo {
 	uid_t euid;
 	gid_t egid;
+#if !ENABLE_PLATFORM_MINGW32
+	// If these are ever restored on Windows it will be necessary to alter
+	// globals_misc_size()/globals_misc_copy() in ash.
 	int ngroups;
 	gid_t *supplementary_array;
+#endif
 };
 uid_t FAST_FUNC get_cached_euid(uid_t *euid);
 gid_t FAST_FUNC get_cached_egid(gid_t *egid);
