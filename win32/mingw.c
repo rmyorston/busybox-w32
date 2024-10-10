@@ -1767,16 +1767,18 @@ int mingw_mkdir(const char *path, int mode UNUSED_PARAM)
 int mingw_chdir(const char *dirname)
 {
 	int ret = -1;
-	const char *realdir = dirname;
+	char *realdir;
 
-	if (is_symlink(dirname)) {
-		realdir = auto_string(xmalloc_realpath(dirname));
-		if (realdir)
-			fix_path_case((char *)realdir);
-	}
+	if (is_symlink(dirname))
+		realdir = xmalloc_realpath(dirname);
+	else
+		realdir = xstrdup(dirname);
 
-	if (realdir)
+	if (realdir) {
+		fix_path_case(realdir);
 		ret = chdir(realdir);
+	}
+	free(realdir);
 
 	return ret;
 }
