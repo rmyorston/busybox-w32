@@ -482,24 +482,22 @@ static int exit_code_to_wait_status_cmd(DWORD exit_code, const char *cmd)
 	return status << 8;
 }
 
-static int exit_code_to_posix_cmd(DWORD exit_code, const char *cmd)
-{
-	int status = exit_code_to_wait_status_cmd(exit_code, cmd);
-
-	if (WIFSIGNALED(status))
-		return 128 + WTERMSIG(status);
-	return WEXITSTATUS(status);
-}
-
 static NORETURN void wait_for_child(HANDLE child, const char *cmd)
 {
 	DWORD code;
+	int status;
 
 	kill_child_ctrl_handler(GetProcessId(child));
 	SetConsoleCtrlHandler(kill_child_ctrl_handler, TRUE);
 	WaitForSingleObject(child, INFINITE);
 	GetExitCodeProcess(child, &code);
-	exit(exit_code_to_posix_cmd(code, cmd));
+	// We don't need the wait status, but get it anyway so the error
+	// message can include the command.  In such cases we pass the
+	// exit status to exit() so our caller won't repeat the message.
+	status = exit_code_to_wait_status_cmd(code, cmd);
+	if (!WIFSIGNALED(status) && code > 0xff)
+		code = WEXITSTATUS(status);
+	exit((int)code);
 }
 
 int
@@ -949,5 +947,9 @@ int exit_code_to_wait_status(DWORD exit_code)
 
 int exit_code_to_posix(DWORD exit_code)
 {
-	return exit_code_to_posix_cmd(exit_code, NULL);
+	int status = exit_code_to_wait_status(exit_code);
+
+	if (WIFSIGNALED(status))
+		return 128 + WTERMSIG(status);
+	return WEXITSTATUS(status);
 }
