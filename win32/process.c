@@ -822,15 +822,16 @@ static int kill_signal(pid_t pid, int sig)
 {
 	HANDLE process;
 	int ret = 0;
-	DWORD code;
+	DWORD code, flags;
 
 	if (sig == SIGKILL)
-		process = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+		flags = PROCESS_TERMINATE | PROCESS_QUERY_INFORMATION;
 	else
-		process = OpenProcess(SYNCHRONIZE | PROCESS_CREATE_THREAD |
-			PROCESS_QUERY_INFORMATION |
-			PROCESS_VM_OPERATION | PROCESS_VM_WRITE |
-			PROCESS_VM_READ, FALSE, pid);
+		flags = SYNCHRONIZE | PROCESS_CREATE_THREAD |
+					PROCESS_QUERY_INFORMATION |
+					PROCESS_VM_OPERATION | PROCESS_VM_WRITE |
+					PROCESS_VM_READ;
+	process = OpenProcess(flags, FALSE, pid);
 
 	if (!process)
 		return -1;
