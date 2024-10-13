@@ -27,7 +27,6 @@
  * - job control doesn't work, though the jobs builtin is available
  * - trap doesn't work for signals, only EXIT
  * - /dev/null is supported for redirection
- * - fake $PPID
  */
 
 //config:config SHELL_ASH
