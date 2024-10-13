@@ -487,6 +487,9 @@ static NORETURN void wait_for_child(HANDLE child, const char *cmd)
 	DWORD code;
 	int status;
 
+	if (getppid() == 1)
+		exit(0);
+
 	kill_child_ctrl_handler(GetProcessId(child));
 	SetConsoleCtrlHandler(kill_child_ctrl_handler, TRUE);
 	WaitForSingleObject(child, INFINITE);
