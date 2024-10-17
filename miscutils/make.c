@@ -1016,14 +1016,30 @@ dyndep(struct name *np, struct rule *imprule)
 			newsuff = dp->d_name->n_name;
 			sp = findname(auto_concat(newsuff, suff));
 			if (sp && sp->n_rule) {
+				struct name *ip;
+				int got_ip;
+
+				// Has rule already been used in this chain?
+				if ((sp->n_flag & N_MARK))
+					continue;
+
 				// Generate a name for an implicit prerequisite
-				struct name *ip = newname(auto_concat(base, newsuff));
+				ip = newname(auto_concat(base, newsuff));
 				if ((ip->n_flag & N_DOING))
 					continue;
+
 				if (!ip->n_tim.tv_sec)
 					modtime(ip);
-				if (!chain ? ip->n_tim.tv_sec || (ip->n_flag & N_TARGET) :
-							dyndep(ip, NULL) != NULL) {
+
+				if (!chain) {
+					got_ip = ip->n_tim.tv_sec || (ip->n_flag & N_TARGET);
+				} else {
+					sp->n_flag |= N_MARK;
+					got_ip = dyndep(ip, NULL) != NULL;
+					sp->n_flag &= ~N_MARK;
+				}
+
+				if (got_ip) {
 					// Prerequisite exists or we know how to make it
 					if (imprule) {
 						dp = NULL;
