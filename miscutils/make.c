@@ -1770,7 +1770,7 @@ readline(FILE *fd, int want_command)
 			while (isblank(*p))
 				p++;
 
-			if (*p != '\n' && *str != '#')
+			if (*p != '\n' && (posix ? *str != '#' : *p != '#'))
 				return str;
 		}
 
