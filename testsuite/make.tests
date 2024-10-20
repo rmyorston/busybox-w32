@@ -12,18 +12,6 @@ target:
 	@echo target
 '
 
-# .DEFAULT rules with no commands or some prerequisites are ignored.
-# .DEFAULT rules with commands can be redefined.
-testing "make .DEFAULT rule" \
-	"make -f - default" "default2\n" "" '
-.DEFAULT: ignored
-.DEFAULT:
-	@echo default1
-.DEFAULT:
-	@echo default2
-target:
-'
-
 testing "make .DEFAULT rule for prerequisite" \
 	"make -f - 2>/dev/null" "source\n" "" '
 .DEFAULT:
@@ -720,6 +708,26 @@ target:: file2 file3 file3
 	@echo $^
 '
 cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
+# .DEFAULT rules with no commands or some prerequisites are ignored.
+# .DEFAULT rules with commands can be redefined.
+testing "make: .DEFAULT rule" \
+	"make -f - default" "default2\n" "" '
+.DEFAULT: ignored
+.DEFAULT:
+	@echo default1
+.DEFAULT:
+	@echo default2
+target:
+'
+
+testing "make: double-colon rule" \
+	"make -f -" "target1\ntarget2\n" "" '
+target::
+	@echo target1
+target::
+	@echo target2
+'
 
 # Double-colon rules didn't work properly if their target was phony:
 # - they didn't ignore the presence of a file matching the target name;

@@ -188,6 +188,7 @@ struct name {
 #define N_SPECIAL	0x80	// Special target
 #define N_MARK		0x100	// Mark for deduplication
 #define N_PHONY		0x200	// Name is a phony target
+#define N_INFERENCE	0x400	// Inference rule
 
 // List of rules to build a target
 struct rule {
@@ -736,7 +737,10 @@ addrule(struct name *np, struct depend *dp, struct cmd *cp, int flag)
 
 	if (cp && !(np->n_flag & N_DOUBLE) && getcmd(np)) {
 		// Handle the inference rule redefinition case
-		if ((np->n_flag & N_SPECIAL) && !dp) {
+		// .DEFAULT rule can also be redefined (as an extension).
+		if ((np->n_flag & N_INFERENCE)
+				&& !(posix && (np->n_flag & N_SPECIAL))
+		) {
 			freerules(np->n_rule);
 			np->n_rule = NULL;
 		} else {
@@ -2343,12 +2347,19 @@ input(FILE *fd, int ilevel)
 
 				np = newname(files[i]);
 				if (ttype != T_NORMAL) {
-					if (ttype == T_INFERENCE && posix) {
-						if (semicolon_cmd)
-							error_in_inference_rule("'; command'");
-						seen_inference = TRUE;
+					if (ttype == T_INFERENCE) {
+						if (posix) {
+							if (semicolon_cmd)
+								error_in_inference_rule("'; command'");
+							seen_inference = TRUE;
+						}
+						np->n_flag |= N_INFERENCE;
+					} else if (strcmp(p, ".DEFAULT") == 0) {
+						// .DEFAULT rule is a special case
+						np->n_flag |= N_SPECIAL | N_INFERENCE;
+					} else {
+						np->n_flag |= N_SPECIAL;
 					}
-					np->n_flag |= N_SPECIAL;
 				} else if (!firstname) {
 					firstname = np;
 				}
@@ -2358,7 +2369,7 @@ input(FILE *fd, int ilevel)
 			if (files != &p)
 				globfree(&gd);
 		}
-		if (seen_inference && count != 1)
+		if (posix && seen_inference && count != 1)
 			error_in_inference_rule("multiple targets");
 
 		// Prerequisites and commands will be unused if there were
