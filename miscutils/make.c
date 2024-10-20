@@ -386,6 +386,12 @@ error_in_inference_rule(const char *s)
 }
 
 static void
+error_not_allowed(const char *s, const char *t)
+{
+	error("%s not allowed for %s", s, t);
+}
+
+static void
 warning(const char *msg, ...)
 {
 	va_list list;
@@ -1803,9 +1809,14 @@ is_suffix(const char *s)
 	return FALSE;
 }
 
-#define T_NORMAL 0
-#define T_SPECIAL 1
-#define T_INFERENCE 2
+enum {
+	T_NORMAL    =  0,
+	T_SPECIAL   = (1 << 0),
+	T_INFERENCE = (1 << 1), // Inference rule
+	T_NOPREREQ  = (1 << 2), // If set must not have prerequisites
+	T_COMMAND   = (1 << 3), // If set must have commands, if unset must not
+};
+
 /*
  * Determine if the argument is a special target and return a set
  * of flags indicating its properties.
@@ -1830,24 +1841,38 @@ target_type(char *s)
 #endif
 	;
 
+	static const uint8_t s_type[] = {
+		T_SPECIAL | T_NOPREREQ | T_COMMAND,
+		T_SPECIAL | T_NOPREREQ,
+		T_SPECIAL,
+		T_SPECIAL,
+		T_SPECIAL,
+		T_SPECIAL,
+		T_SPECIAL,
+		T_SPECIAL | T_NOPREREQ,
+		T_SPECIAL,
+		T_SPECIAL,
+	};
+
 	if (*s != '.')
 		return T_NORMAL;
 
 	// Check for one of the known special targets
-	if (index_in_strings(s_name, s) >= 0)
-		return T_SPECIAL;
+	ret = index_in_strings(s_name, s);
+	if (ret >= 0)
+		return s_type[ret];
 
 	// Check for an inference rule
 	ret = T_NORMAL;
 	sfx = suffix(s);
 	if (is_suffix(sfx)) {
 		if (s == sfx) {	// Single suffix rule
-			ret = T_INFERENCE;
+			ret = T_INFERENCE | T_NOPREREQ | T_COMMAND;
 		} else {
 			// Suffix is valid, check that prefix is too
 			*sfx = '\0';
 			if (is_suffix(s))
-				ret = T_INFERENCE;
+				ret = T_INFERENCE | T_NOPREREQ | T_COMMAND;
 			*sfx = '.';
 		}
 	}
@@ -2347,12 +2372,23 @@ input(FILE *fd, int ilevel)
 
 				np = newname(files[i]);
 				if (ttype != T_NORMAL) {
-					if (ttype == T_INFERENCE) {
-						if (posix) {
+					// Enforce prerequisites/commands in POSIX mode
+					if (posix) {
+						if ((ttype & T_NOPREREQ) && dp)
+							error_not_allowed("prerequisites", p);
+						if ((ttype & T_INFERENCE)) {
 							if (semicolon_cmd)
 								error_in_inference_rule("'; command'");
 							seen_inference = TRUE;
 						}
+						if ((ttype & T_COMMAND) && !cp &&
+								!((ttype & T_INFERENCE) && !semicolon_cmd))
+							error("commands required for %s", p);
+						if (!(ttype & T_COMMAND) && cp)
+							error_not_allowed("commands", p);
+					}
+
+					if ((ttype & T_INFERENCE)) {
 						np->n_flag |= N_INFERENCE;
 					} else if (strcmp(p, ".DEFAULT") == 0) {
 						// .DEFAULT rule is a special case
