@@ -2265,7 +2265,7 @@ input(FILE *fd, int ilevel)
 			free(copy3);
 			*s = '\0';
 		}
-		semicolon_cmd = cp != NULL;
+		semicolon_cmd = cp != NULL && cp->c_cmd[0] != '\0';
 
 		// Create list of prerequisites
 		dp = NULL;
