@@ -291,9 +291,16 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 				 * that means "til the end of the line" */
 				if (!*ltok)
 					e = INT_MAX;
+#if !ENABLE_PLATFORM_MINGW32
 				else if (e < s)
 					bb_error_msg_and_die("%d<%d", e, s);
 				e--;	/* again, arrays are zero based, lines are 1 based */
+#else
+				else if (e != 0)
+					e--;	/* again, zero based arrays, one based lines */
+				if (e < s)
+					bb_error_msg_and_die("%d<%d", e, s);
+#endif
 			}
 
 			/* add the new list */

@@ -31,7 +31,10 @@ testing "-b encapsulated" "cut -b 3-8,4-6 input" "e:two:\npha:be\ne quic\n" \
 #testing "cut -bO overlaps" \
 #  "cut --output-delimiter ' ' -b 1-3,2-5,7-9,9-10 input" \
 #  "one:t o:th\nalpha beta\nthe q ick \n" "$abc" ""
-testing "cut high-low error" "cut -b 8-3 abc.txt 2>/dev/null || echo err" "err\n" \
+testing "cut high-low error" "cut -b 8-3 input 2>/dev/null || echo err" "err\n" \
+  "$abc" ""
+
+testing "cut -b 2-1 error" "cut -b 2-1 input 2>/dev/null || echo err" "err\n" \
   "$abc" ""
 
 testing "cut -c a-b" "cut -c 4-10 input" ":two:th\nha:beta\n quick \n" "$abc" ""
