@@ -1850,7 +1850,7 @@ target_type(char *s)
 		T_SPECIAL,
 		T_SPECIAL,
 		T_SPECIAL | T_NOPREREQ,
-		T_SPECIAL,
+		T_SPECIAL | T_NOPREREQ,
 		T_SPECIAL,
 	};
 
