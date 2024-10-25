@@ -170,14 +170,17 @@ windows_compute_revents (HANDLE h, int *p_sought)
   INPUT_RECORD *irbuffer;
   DWORD avail, nbuffer;
   BOOL bRet;
+#if 0
   IO_STATUS_BLOCK iosb;
   FILE_PIPE_LOCAL_INFORMATION fpli;
   static PNtQueryInformationFile NtQueryInformationFile;
   static BOOL once_only;
+#endif
 
   switch (GetFileType (h))
     {
     case FILE_TYPE_PIPE:
+#if 0
       if (!once_only)
         {
           NtQueryInformationFile = (PNtQueryInformationFile)
@@ -185,6 +188,7 @@ windows_compute_revents (HANDLE h, int *p_sought)
                             "NtQueryInformationFile");
           once_only = TRUE;
         }
+#endif
 
       happened = 0;
       if (PeekNamedPipe (h, NULL, 0, NULL, &avail, NULL) != 0)
@@ -197,6 +201,14 @@ windows_compute_revents (HANDLE h, int *p_sought)
 
       else
         {
+		/* The writability of a pipe can't be detected reliably on Windows.
+		 * Just say it's OK.
+		 *
+		 * Details:
+		 *
+		 *    https://github.com/git-for-windows/git/commit/94f4d01932279c419844aa708bec31a26056bc6b
+		 */
+#if 0
           /* It was the write-end of the pipe.  Check if it is writable.
              If NtQueryInformationFile fails, optimistically assume the pipe is
              writable.  This could happen on Windows 9x, where
@@ -214,6 +226,7 @@ windows_compute_revents (HANDLE h, int *p_sought)
               || fpli.WriteQuotaAvailable >= PIPE_BUF
               || (fpli.OutboundQuota < PIPE_BUF &&
                   fpli.WriteQuotaAvailable == fpli.OutboundQuota))
+#endif
             happened |= *p_sought & (POLLOUT | POLLWRNORM | POLLWRBAND);
         }
       return happened;
