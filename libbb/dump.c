@@ -198,9 +198,11 @@ static NOINLINE void rewrite(priv_dumper_t *dumper, FS *fs)
 				if (!e)
 					goto DO_BAD_CONV_CHAR;
 				pr->flags = F_INT;
-				if (e > int_convs + 1) /* not d or i? */
-					pr->flags = F_UINT;
 				byte_count_str = "\010\004\002\001";
+				if (e > int_convs + 1) { /* not d or i? */
+					pr->flags = F_UINT;
+					byte_count_str++;
+				}
 				goto DO_BYTE_COUNT;
 			} else
 			if (strchr(int_convs, *p1)) { /* %d etc */
