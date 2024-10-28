@@ -276,8 +276,12 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 				s = xatoi_positive(ntok);
 				/* account for the fact that arrays are zero based, while
 				 * the user expects the first char on the line to be char #1 */
+#if !ENABLE_PLATFORM_MINGW32
 				if (s != 0)
 					s--;
+#else
+				s--;
+#endif
 			}
 
 			/* get the end pos */
@@ -287,21 +291,20 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 				e = INT_MAX;
 			} else {
 				e = xatoi_positive(ltok);
-				/* if the user specified and end position of 0,
+				/* if the user specified no end position,
 				 * that means "til the end of the line" */
+#if !ENABLE_PLATFORM_MINGW32
 				if (!*ltok)
 					e = INT_MAX;
-#if !ENABLE_PLATFORM_MINGW32
 				else if (e < s)
 					bb_error_msg_and_die("%d<%d", e, s);
-				e--;	/* again, arrays are zero based, lines are 1 based */
-#else
-				else if (e != 0)
-					e--;	/* again, zero based arrays, one based lines */
-				if (e < s)
-					bb_error_msg_and_die("%d<%d", e, s);
 #endif
+				e--;	/* again, arrays are zero based, lines are 1 based */
 			}
+#if ENABLE_PLATFORM_MINGW32
+			if (s < 0 || e < s)
+				bb_error_msg_and_die("invalid range %s-%s", ntok, ltok ?: ntok);
+#endif
 
 			/* add the new list */
 			cut_lists = xrealloc_vector(cut_lists, 4, nlists);
