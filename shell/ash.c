@@ -11762,6 +11762,9 @@ evalcommand(union node *cmd, int flags)
 		int applet_no = (- cmdentry.u.index - 2);
 		if (applet_no >= 0 && APPLET_IS_NOFORK(applet_no)) {
 			char **sv_environ;
+#if ENABLE_PLATFORM_MINGW32
+			char *sv_argv0;
+#endif
 
 			INT_OFF;
 			sv_environ = environ;
@@ -11775,10 +11778,15 @@ evalcommand(union node *cmd, int flags)
 			 * for example, "yes" or "rm" (rm -i waits for input).
 			 */
 #if ENABLE_PLATFORM_MINGW32
+			sv_argv0 = __argv[0];
 			argv[0] = (char *)bb_basename(argv[0]);
+			__argv[0] = argv[0];
 #endif
 			exitstatus = run_nofork_applet(applet_no, argv);
 			environ = sv_environ;
+#if ENABLE_PLATFORM_MINGW32
+			__argv[0] = sv_argv0;
+#endif
 			/*
 			 * Try enabling NOFORK for "yes" applet.
 			 * ^C _will_ stop it (write returns EINTR),
