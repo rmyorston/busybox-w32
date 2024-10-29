@@ -6643,7 +6643,6 @@ redirect(union node *redir, int flags)
 					fclose(stdout);
 				else if (fd == fileno(stderr))
 					fclose(stderr);
-				else
 #endif
 				close(fd);
 			}
