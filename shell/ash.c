@@ -6635,15 +6635,6 @@ redirect(union node *redir, int flags)
 			if (!closed) {
 				/* ^^^ optimization: saving may already
 				 * have closed it. If not... */
-#if ENABLE_PLATFORM_MINGW32 && !defined(_UCRT) && !defined(_WIN64)
-				// Workaround for problems with streams in 32-bit MSVCRT
-				if (fd == fileno(stdin))
-					fclose(stdin);
-				else if (fd == fileno(stdout))
-					fclose(stdout);
-				else if (fd == fileno(stderr))
-					fclose(stderr);
-#endif
 				close(fd);
 			}
 		} else {
