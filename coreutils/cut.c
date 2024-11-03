@@ -278,28 +278,25 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 			if (!ntok[0]) {
 				s = 0;
 			} else {
-				s = xatoi_positive(ntok);
 				/* account for the fact that arrays are zero based, while
 				 * the user expects the first char on the line to be char #1 */
-				if (s != 0)
-					s--;
+				s = xatoi_positive(ntok) - 1;
 			}
 
 			/* get the end pos */
 			if (ltok == NULL) {
 				e = s;
 			} else if (!ltok[0]) {
+				/* if the user specified no end position,
+				 * that means "til the end of the line" */
 				e = INT_MAX;
 			} else {
-				e = xatoi_positive(ltok);
-				/* if the user specified and end position of 0,
-				 * that means "til the end of the line" */
-				if (!*ltok)
-					e = INT_MAX;
-				else if (e < s)
-					bb_error_msg_and_die("%d<%d", e, s);
-				e--;	/* again, arrays are zero based, lines are 1 based */
+				/* again, arrays are zero based, lines are 1 based */
+				e = xatoi_positive(ltok) - 1;
 			}
+
+			if (s < 0 || e < s)
+				bb_error_msg_and_die("invalid range %s-%s", ntok, ltok ?: ntok);
 
 			/* add the new list */
 			cut_lists = xrealloc_vector(cut_lists, 4, nlists);
