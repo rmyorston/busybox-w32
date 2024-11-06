@@ -348,9 +348,6 @@ vgetopt32(char **argv, const char *applet_opts, const char *applet_long_options,
 	unsigned trigger;
 	int min_arg = 0;
 	int max_arg = -1;
-	int spec_flgs = 0;
-
-#define SHOW_USAGE_IF_ERROR     1
 
 	on_off = complementary;
 	memset(on_off, 0, sizeof(complementary));
@@ -449,9 +446,7 @@ vgetopt32(char **argv, const char *applet_opts, const char *applet_long_options,
 			continue;
 		c = s[1];
 		if (*s == '?') {
-			if (c < '0' || c > '9') {
-				spec_flgs |= SHOW_USAGE_IF_ERROR;
-			} else {
+			if (c >= '0' && c <= '9') {
 				max_arg = c - '0';
 				s++;
 			}
@@ -465,8 +460,10 @@ vgetopt32(char **argv, const char *applet_opts, const char *applet_long_options,
 			continue;
 		}
 		if (*s == '=') {
-			min_arg = max_arg = c - '0';
-			s++;
+			if (c >= '0' && c <= '9') {
+				min_arg = max_arg = c - '0';
+				s++;
+			}
 			continue;
 		}
 		for (on_off = complementary; on_off->opt_char; on_off++)
