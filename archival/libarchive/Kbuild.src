@@ -48,6 +48,7 @@ lib-$(CONFIG_DPKG_DEB)                  += $(DPKG_FILES)
 lib-$(CONFIG_AR)                        += get_header_ar.o unpack_ar_archive.o
 lib-$(CONFIG_CPIO)                      += get_header_cpio.o
 lib-$(CONFIG_MAKE)                      += get_header_ar.o unpack_ar_archive.o
+lib-$(CONFIG_PDPMAKE)                   += get_header_ar.o unpack_ar_archive.o
 lib-$(CONFIG_TAR)                       += get_header_tar.o unsafe_prefix.o
 lib-$(CONFIG_FEATURE_TAR_TO_COMMAND)    += data_extract_to_command.o
 lib-$(CONFIG_LZOP)                      += lzo1x_1.o lzo1x_1o.o lzo1x_d.o
