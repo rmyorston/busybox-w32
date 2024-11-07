@@ -28,9 +28,7 @@
 int nproc_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int nproc_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 {
-#if !ENABLE_PLATFORM_MINGW32
-	unsigned long mask[1024];
-#else
+#if ENABLE_PLATFORM_MINGW32
 	DWORD_PTR affinity, process_affinity, system_affinity;
 #endif
 	int count = 0;
