@@ -239,8 +239,13 @@ char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 	/* Check header has valid magic, "ustar" is for the proper tar,
 	 * five NULs are for the old tar format  */
 	if (!is_prefixed_with(tar.magic, "ustar")
+#if !ENABLE_PLATFORM_MINGW32
 	 && (!ENABLE_FEATURE_TAR_OLDGNU_COMPATIBILITY
 	     || memcmp(tar.magic, "\0\0\0\0", 5) != 0)
+#else
+	 && (!ENABLE_FEATURE_TAR_OLDGNU_COMPATIBILITY
+	     || memcmp(tar.magic, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 16) != 0)
+#endif
 	) {
 #if ENABLE_FEATURE_TAR_AUTODETECT
  autodetect:
