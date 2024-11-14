@@ -711,4 +711,121 @@ test x"$SKIP_KNOWN_BUG_AWK_WORDMATCH" = x"" \
 	'abc\n' \
 	'' ''
 
+# gawk 5.3.0 warns:
+# awk: cmd. line:1: warning: escape sequence `\z' treated as plain `z'
+testing 'awk sub backslash + z in replacement' \
+	'awk '$sq'sub(/b/, "_\z_")'$sq \
+	'a_z_c\n' \
+	'' 'abc\n'
+# no warning
+testing 'awk sub backslash*2 + z in replacement' \
+	'awk '$sq'sub(/b/, "_\\z_")'$sq \
+	'a_\\z_c\n' \
+	'' 'abc\n'
+# awk: cmd. line:1: warning: escape sequence `\z' treated as plain `z'
+testing 'awk sub backslash*3 + z in replacement' \
+	'awk '$sq'sub(/b/, "_\\\z_")'$sq \
+	'a_\\z_c\n' \
+	'' 'abc\n'
+# (skipping odd numbers from now on) no warning
+testing 'awk sub backslash*4 + z in replacement'  'awk '$sq'sub(/b/, "_\\\\z_")'$sq                     'a_\\\\z_c\n'           '' 'abc\n' # +1
+testing 'awk sub backslash*6 + z in replacement'  'awk '$sq'sub(/b/, "_\\\\\\z_")'$sq                   'a_\\\\\\z_c\n'         '' 'abc\n' # +1
+testing 'awk sub backslash*8 + z in replacement'  'awk '$sq'sub(/b/, "_\\\\\\\\z_")'$sq                 'a_\\\\z_c\n'           '' 'abc\n'
+testing 'awk sub backslash*10 + z in replacement' 'awk '$sq'sub(/b/, "_\\\\\\\\\\z_")'$sq               'a_\\\\\\z_c\n'         '' 'abc\n'
+testing 'awk sub backslash*12 + z in replacement' 'awk '$sq'sub(/b/, "_\\\\\\\\\\\\z_")'$sq             'a_\\\\\\\\z_c\n'       '' 'abc\n' # +1
+testing 'awk sub backslash*14 + z in replacement' 'awk '$sq'sub(/b/, "_\\\\\\\\\\\\\\z_")'$sq           'a_\\\\\\\\\\z_c\n'     '' 'abc\n' # +1
+testing 'awk sub backslash*16 + z in replacement' 'awk '$sq'sub(/b/, "_\\\\\\\\\\\\\\\\z_")'$sq         'a_\\\\\\\\z_c\n'       '' 'abc\n'
+testing 'awk sub backslash*18 + z in replacement' 'awk '$sq'sub(/b/, "_\\\\\\\\\\\\\\\\\\z_")'$sq       'a_\\\\\\\\\\z_c\n'     '' 'abc\n'
+testing 'awk sub backslash*20 + z in replacement' 'awk '$sq'sub(/b/, "_\\\\\\\\\\\\\\\\\\\\z_")'$sq     'a_\\\\\\\\\\\\z_c\n'   '' 'abc\n' # +1
+testing 'awk sub backslash*22 + z in replacement' 'awk '$sq'sub(/b/, "_\\\\\\\\\\\\\\\\\\\\\\z_")'$sq   'a_\\\\\\\\\\\\\\z_c\n' '' 'abc\n' # +1
+testing 'awk sub backslash*24 + z in replacement' 'awk '$sq'sub(/b/, "_\\\\\\\\\\\\\\\\\\\\\\\\z_")'$sq 'a_\\\\\\\\\\\\z_c\n'   '' 'abc\n'
+# Keep in mind that results as seen above are shell-escaped (doubled \\).
+# Looks crazy isn't it?
+# See https://www.gnu.org/software/gawk/manual/html_node/Gory-Details.html
+# Allegedly, only "two bslashes" case is special-cased, but actual (YES, REALLY, I TESTED IT) gawk-5.3.0 behavior is:
+# if number of bslashes is (2 mod 4) or (3 mod 4) [!!!], emit extra bslash (marked as +1 above).
+# This causes absurd "sawtooth" pattern in the results.
+# If you remove extra bslash (extra \\ due to shell-escaping) in +1 columns, it looks much more sane.
+
+# awk: cmd. line:1: warning: escape sequence `\z' treated as plain `z'
+testing 'awk gensub backslash + z in replacement' \
+	'awk '$sq'{ print gensub(/b/, "_\z_", 1) }'$sq \
+	'a_z_c\n' \
+	'' 'abc\n'
+# no warning
+testing 'awk gensub backslash*2 + z in replacement' \
+	'awk '$sq'{ print gensub(/b/, "_\\z_", 1) }'$sq \
+	'a_z_c\n' \
+	'' 'abc\n'
+# awk: cmd. line:1: warning: escape sequence `\z' treated as plain `z'
+testing 'awk gensub backslash*3 + z in replacement' \
+	'awk '$sq'{ print gensub(/b/, "_\\\z_", 1) }'$sq \
+	'a_z_c\n' \
+	'' 'abc\n'
+# no warning
+testing 'awk gensub backslash*4 + z in replacement'  'awk '$sq'{ print gensub(/b/, "_\\\\z_", 1) }'$sq                'a_\\z_c\n'       '' 'abc\n'
+testing 'awk gensub backslash*6 + z in replacement'  'awk '$sq'{ print gensub(/b/, "_\\\\\\z_", 1) }'$sq              'a_\\z_c\n'       '' 'abc\n'
+testing 'awk gensub backslash*8 + z in replacement'  'awk '$sq'{ print gensub(/b/, "_\\\\\\\\z_", 1) }'$sq            'a_\\\\z_c\n'     '' 'abc\n'
+testing 'awk gensub backslash*10 + z in replacement' 'awk '$sq'{ print gensub(/b/, "_\\\\\\\\\\z_", 1) }'$sq          'a_\\\\z_c\n'     '' 'abc\n'
+testing 'awk gensub backslash*12 + z in replacement' 'awk '$sq'{ print gensub(/b/, "_\\\\\\\\\\\\z_", 1) }'$sq        'a_\\\\\\z_c\n'   '' 'abc\n'
+testing 'awk gensub backslash*14 + z in replacement' 'awk '$sq'{ print gensub(/b/, "_\\\\\\\\\\\\\\z_", 1) }'$sq      'a_\\\\\\z_c\n'   '' 'abc\n'
+testing 'awk gensub backslash*16 + z in replacement' 'awk '$sq'{ print gensub(/b/, "_\\\\\\\\\\\\\\\\z_", 1) }'$sq    'a_\\\\\\\\z_c\n' '' 'abc\n'
+testing 'awk gensub backslash*18 + z in replacement' 'awk '$sq'{ print gensub(/b/, "_\\\\\\\\\\\\\\\\\\z_", 1) }'$sq  'a_\\\\\\\\z_c\n' '' 'abc\n'
+# In comparison to the above, this looks sane
+
+# no warning
+testing 'awk sub & in replacement' \
+	'awk '$sq'sub(/b/, "_&_")'$sq \
+	'a_b_c\n' \
+	'' 'abc\n'
+# awk: cmd. line:1: warning: escape sequence `\&' treated as plain `&'
+# (HOW IS THIS A "PLAIN" &, GNU AWK??? IT *WAS* SUBST'ED!)
+testing 'awk sub backslash + & in replacement' \
+	'awk '$sq'sub(/b/, "_\&_")'$sq \
+	'a_b_c\n' \
+	'' 'abc\n'
+# no warning
+testing 'awk sub backslash*2 + & in replacement' \
+	'awk '$sq'sub(/b/, "_\\&_")'$sq \
+	'a_&_c\n' \
+	'' 'abc\n'
+# awk: cmd. line:1: warning: escape sequence `\&' treated as plain `&'
+testing 'awk sub backslash*3 + & in replacement' \
+	'awk '$sq'sub(/b/, "_\\\&_")'$sq \
+	'a_&_c\n' \
+	'' 'abc\n'
+# no warning
+testing 'awk sub backslash*4 + & in replacement'  'awk '$sq'sub(/b/, "_\\\\&_")'$sq          'a_\\b_c\n'     '' 'abc\n'
+testing 'awk sub backslash*6 + & in replacement'  'awk '$sq'sub(/b/, "_\\\\\\&_")'$sq        'a_\\&_c\n'     '' 'abc\n'
+testing 'awk sub backslash*8 + & in replacement'  'awk '$sq'sub(/b/, "_\\\\\\\\&_")'$sq      'a_\\\\b_c\n'   '' 'abc\n'
+testing 'awk sub backslash*10 + & in replacement' 'awk '$sq'sub(/b/, "_\\\\\\\\\\&_")'$sq    'a_\\\\&_c\n'   '' 'abc\n'
+testing 'awk sub backslash*12 + & in replacement' 'awk '$sq'sub(/b/, "_\\\\\\\\\\\\&_")'$sq  'a_\\\\\\b_c\n' '' 'abc\n'
+
+# no warning
+testing 'awk gensub & in replacement' \
+	'awk '$sq'{ print gensub(/b/, "_&_", 1) }'$sq \
+	'a_b_c\n' \
+	'' 'abc\n'
+# awk: cmd. line:1: warning: escape sequence `\&' treated as plain `&'
+testing 'awk gensub backslash + & in replacement' \
+	'awk '$sq'{ print gensub(/b/, "_\&_", 1) }'$sq \
+	'a_b_c\n' \
+	'' 'abc\n'
+# no warning
+testing 'awk gensub backslash*2 + & in replacement' \
+	'awk '$sq'{ print gensub(/b/, "_\\&_", 1) }'$sq \
+	'a_&_c\n' \
+	'' 'abc\n'
+# awk: cmd. line:1: warning: escape sequence `\&' treated as plain `&'
+testing 'awk gensub backslash*3 + & in replacement' \
+	'awk '$sq'{ print gensub(/b/, "_\\\&_", 1) }'$sq \
+	'a_&_c\n' \
+	'' 'abc\n'
+# no warning
+testing 'awk gensub backslash*4 + & in replacement'  'awk '$sq'{ print gensub(/b/, "_\\\\&_", 1) }'$sq 	       'a_\\b_c\n' 	'' 'abc\n'
+testing 'awk gensub backslash*6 + & in replacement'  'awk '$sq'{ print gensub(/b/, "_\\\\\\&_", 1) }'$sq       'a_\\&_c\n' 	'' 'abc\n'
+testing 'awk gensub backslash*8 + & in replacement'  'awk '$sq'{ print gensub(/b/, "_\\\\\\\\&_", 1) }'$sq     'a_\\\\b_c\n' 	'' 'abc\n'
+testing 'awk gensub backslash*10 + & in replacement' 'awk '$sq'{ print gensub(/b/, "_\\\\\\\\\\&_", 1) }'$sq   'a_\\\\&_c\n' 	'' 'abc\n'
+testing 'awk gensub backslash*12 + & in replacement' 'awk '$sq'{ print gensub(/b/, "_\\\\\\\\\\\\&_", 1) }'$sq 'a_\\\\\\b_c\n' 	'' 'abc\n'
+
 exit $FAILCOUNT
