@@ -3338,6 +3338,7 @@ updatepwd(const char *dir)
 	if (new > lim)
 		STUNPUTC(new);
 	*new = 0;
+	strip_dot_space((char *)stackblock());
 	fix_path_case((char *)stackblock());
 	return bs_to_slash((char *)stackblock());
 #else

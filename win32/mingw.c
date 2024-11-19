@@ -2178,6 +2178,19 @@ void FAST_FUNC slash_to_bs(char *p)
 	}
 }
 
+/* Windows strips trailing dots and spaces from the last component of
+ * a file path.  This routine emulates that behaviour so we can preempt
+ * Windows if necessary. */
+void FAST_FUNC strip_dot_space(char *p)
+{
+	char *start = (char *)bb_basename(p);
+	char *end = start + strlen(start);
+
+	while (end > start && (end[-1] == '.' || end[-1] == ' ')) {
+		*--end = '\0';
+	}
+}
+
 size_t FAST_FUNC remove_cr(char *p, size_t len)
 {
 	ssize_t i, j;

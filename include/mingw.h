@@ -631,6 +631,7 @@ MINGW_BB_WCHAR_T *bs_to_slash_u(MINGW_BB_WCHAR_T *p) FAST_FUNC;
 
 char *bs_to_slash(char *p) FAST_FUNC;
 void slash_to_bs(char *p) FAST_FUNC;
+void strip_dot_space(char *p) FAST_FUNC;
 size_t remove_cr(char *p, size_t len) FAST_FUNC;
 
 int err_win_to_posix(void);
