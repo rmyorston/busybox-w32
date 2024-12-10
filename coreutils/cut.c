@@ -34,6 +34,7 @@
 //usage:     "\n	-c LIST	Output only characters from LIST"
 //usage:     "\n	-d SEP	Field delimiter for input (default -f TAB, -F run of whitespace)"
 //usage:     "\n	-O SEP	Field delimeter for output (default = -d for -f, one space for -F)"
+//TODO: --output-delimiter=SEP
 //usage:     "\n	-D	Don't sort/collate sections or match -fF lines without delimeter"
 //usage:     "\n	-f LIST	Print only these fields (-d is single char)"
 //usage:     IF_FEATURE_CUT_REGEX(
@@ -53,11 +54,6 @@
 
 #if ENABLE_FEATURE_CUT_REGEX
 #include "xregex.h"
-#else
-#define regex_t int
-typedef struct { int rm_eo, rm_so; } regmatch_t;
-#define xregcomp(x, ...) *(x) = 0
-#define regexec(...)     0
 #endif
 
 /* This is a NOEXEC applet. Be very careful! */
@@ -74,6 +70,8 @@ typedef struct { int rm_eo, rm_so; } regmatch_t;
 #define OPT_NOSORT   (1 << 6)
 #define OPT_REGEX    ((1 << 7) * ENABLE_FEATURE_CUT_REGEX)
 
+#define opt_REGEX (option_mask32 & OPT_REGEX)
+
 struct cut_list {
 	int startpos;
 	int endpos;
@@ -88,13 +86,8 @@ static int cmpfunc(const void *a, const void *b)
 static void cut_file(FILE *file, const char *delim, const char *odelim,
 		const struct cut_list *cut_list, unsigned nlists)
 {
-#define opt_REGEX (option_mask32 & OPT_REGEX)
 	char *line;
 	unsigned linenum = 0;	/* keep these zero-based to be consistent */
-	regex_t reg;
-
-	if (opt_REGEX)
-		xregcomp(&reg, delim, REG_EXTENDED);
 
 	/* go through every line in the file */
 	while ((line = xmalloc_fgetline(file)) != NULL) {
@@ -121,7 +114,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 				}
 			}
 			free(printed);
-		} else if (*delim == '\n') {	/* cut by lines */
+		} else if (!opt_REGEX && *delim == '\n') {	/* cut by lines */
 			int spos = cut_list[cl_pos].startpos;
 
 			/* get out if we have no more lists to process or if the lines
@@ -181,20 +174,24 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 						/* else: will print entire line */
 					} else if (dcount < cut_list[cl_pos].startpos)
 						start = linelen; /* do not print */
-					end = linelen;
+					end = linelen; /* print up to end */
 				} else {
 					/* Find next delimiter */
+#if ENABLE_FEATURE_CUT_REGEX
 					if (opt_REGEX) {
 						regmatch_t rr = {-1, -1};
+						regex_t *reg = (void*) delim;
 
-						if (!regexec(&reg, line + next, 1, &rr, REG_NOTBOL|REG_NOTEOL)) {
-							end = next + rr.rm_so;
-							next += rr.rm_eo;
-						} else {
+						if (regexec(reg, line + next, 1, &rr, REG_NOTBOL|REG_NOTEOL) != 0) {
+							/* not found, go to "end of line" logic */
 							next = linelen;
 							continue;
 						}
-					} else {
+						end = next + rr.rm_so;
+						next += rr.rm_eo;
+					} else
+#endif
+					{
 						end = next++;
 						if (line[end] != *delim)
 							continue;
@@ -224,7 +221,6 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 		linenum++;
 		free(line);
 	} /* while (got line) */
-#undef opt_REGEX
 }
 
 int cut_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -237,6 +233,9 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 	const char *delim = NULL;
 	const char *odelim = NULL;
 	unsigned opt;
+#if ENABLE_FEATURE_CUT_REGEX
+	regex_t reg;
+#endif
 
 #define ARG "bcf"IF_FEATURE_CUT_REGEX("F")
 	opt = getopt32(argv, "^"
@@ -327,6 +326,13 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 		if (!(opt & OPT_NOSORT))
 			qsort(cut_list, nlists, sizeof(cut_list[0]), cmpfunc);
 	}
+
+#if ENABLE_FEATURE_CUT_REGEX
+	if (opt & OPT_REGEX) {
+		xregcomp(&reg, delim, REG_EXTENDED);
+		delim = (void*) &reg;
+	}
+#endif
 
 	{
 		exitcode_t retval = EXIT_SUCCESS;
