@@ -33,14 +33,14 @@
 //usage:     "\n	-b LIST	Output only bytes from LIST"
 //usage:     "\n	-c LIST	Output only characters from LIST"
 //usage:     "\n	-d SEP	Field delimiter for input (default -f TAB, -F run of whitespace)"
+//usage:     "\n	-s	Drop lines with no delimiter"
 //usage:     "\n	-O SEP	Field delimeter for output (default = -d for -f, one space for -F)"
 //TODO: --output-delimiter=SEP
-//usage:     "\n	-D	Don't sort/collate sections or match -fF lines without delimeter"
 //usage:     "\n	-f LIST	Print only these fields (-d is single char)"
 //usage:     IF_FEATURE_CUT_REGEX(
 //usage:     "\n	-F LIST	Print only these fields (-d is regex)"
 //usage:     )
-//usage:     "\n	-s	Output only lines containing delimiter"
+//usage:     "\n	-D	Don't sort/collate sections or match -fF lines without delimeter"
 //usage:     "\n	-n	Ignored"
 //(manpage:-n	with -b: don't split multibyte characters)
 //usage:
@@ -148,7 +148,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 		/* Cut by fields */
 		} else {
 			unsigned next = 0, start = 0, end = 0;
-			int dcount = 0; /* Nth delimiter we saw (0 - didn't see any yet) */
+			int dcount = 0; /* we saw Nth delimiter (0 - didn't see any yet) */
 			int first_print = 1;
 
 			/* Blank line? Check -s (later check for -s does not catch empty lines) */
@@ -209,9 +209,9 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 						if (line[end] != *delim)
 							continue;
 					}
-
-					/* Got delimiter. Loop if not yet within range. */
+					/* Got delimiter */
 					if (dcount++ < cut_list[cl_pos].startpos) {
+						/* Not yet within range - loop */
 						start = next;
 						continue;
 					}
@@ -224,8 +224,8 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 						printf("%s%.*s", odelim, end - start, line + start);
 				}
 				start = next;
-				if (dcount == 0)
-					break;
+				//if (dcount == 0)
+				//	break; - why?
 			} /* byte loop */
 		}
 		/* if we printed anything, finish with newline */
