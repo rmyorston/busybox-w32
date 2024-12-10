@@ -92,7 +92,6 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 	char *line;
 	unsigned linenum = 0;	/* keep these zero-based to be consistent */
 	regex_t reg;
-	int spos;
 
 	if (opt_REGEX)
 		xregcomp(&reg, delim, REG_EXTENDED);
@@ -110,6 +109,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 		if (option_mask32 & (OPT_CHAR | OPT_BYTE)) {
 			/* print the chars specified in each cut list */
 			for (; cl_pos < nlists; cl_pos++) {
+				int spos;
 				for (spos = cut_lists[cl_pos].startpos; spos < linelen;) {
 					if (!printed[spos]) {
 						printed[spos] = 'X';
@@ -121,7 +121,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 				}
 			}
 		} else if (*delim == '\n') {	/* cut by lines */
-			spos = cut_lists[cl_pos].startpos;
+			int spos = cut_lists[cl_pos].startpos;
 
 			/* get out if we have no more lists to process or if the lines
 			 * are lower than what we're interested in */
@@ -173,7 +173,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 				/* End of current line? */
 				if (uu == linelen) {
 					/* If we've seen no delimiters, check -s */
-					if (!cl_pos && !dcount && !opt_REGEX) {
+					if (cl_pos == 0 && dcount == 0 && !opt_REGEX) {
 						if (option_mask32 & OPT_SUPPRESS)
 							goto next_line;
 					} else if (dcount < cut_lists[cl_pos].startpos)
@@ -206,7 +206,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 				if (end != start || !opt_REGEX)
 					printf("%s%.*s", out++ ? odelim : "", end - start, line + start);
 				start = uu;
-				if (!dcount)
+				if (dcount == 0)
 					break;
 			}
 		}
@@ -239,7 +239,8 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 	);
 	if (!delim || !*delim)
 		delim = (opt & OPT_REGEX) ? "[[:space:]]+" : "\t";
-	if (!odelim) odelim = (opt & OPT_REGEX) ? " " : delim;
+	if (!odelim)
+		odelim = (opt & OPT_REGEX) ? " " : delim;
 
 //	argc -= optind;
 	argv += optind;
