@@ -107,6 +107,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 		/* cut based on chars/bytes XXX: only works when sizeof(char) == byte */
 		if (option_mask32 & (OPT_CHAR | OPT_BYTE)) {
 			char *printed = xzalloc(linelen + 1);
+			int need_odelim = 0;
 
 			/* print the chars specified in each cut list */
 			for (; cl_pos < nlists; cl_pos++) {
@@ -114,9 +115,14 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 				for (spos = cut_list[cl_pos].startpos; spos < linelen;) {
 					if (!printed[spos]) {
 						printed[spos] = 'X';
+						if (need_odelim && spos != 0 && !printed[spos-1]) {
+							need_odelim = 0;
+							fputs_stdout(odelim);
+						}
 						putchar(line[spos]);
 					}
 					if (++spos > cut_list[cl_pos].endpos) {
+						need_odelim = (odelim && odelim[0]); /* will print OSEP (if not empty) */
 						break;
 					}
 				}
@@ -164,6 +170,9 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 				if (option_mask32 & OPT_SUPPRESS)
 					goto next_line;
 			}
+
+			if (!odelim)
+				odelim = "\t";
 
 			/* Loop through bytes, finding next delimiter */
 			for (;;) {
@@ -257,17 +266,31 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_FEATURE_CUT_REGEX
 	regex_t reg;
 #endif
+#if ENABLE_LONG_OPTS
+        static const char cut_longopts[] ALIGN1 =
+                "output-delimiter\0" Required_argument "O"
+                ;
+#endif
 
 #define ARG "bcf"IF_FEATURE_CUT_REGEX("F")
+#if !ENABLE_LONG_OPTS
 	opt = getopt32(argv, "^"
 			OPT_STR  // = "b:c:f:d:O:sD"IF_FEATURE_CUT_REGEX("F:")"n"
 			"\0" "b--"ARG":c--"ARG":f--"ARG IF_FEATURE_CUT_REGEX("F--"ARG),
 			&sopt, &sopt, &sopt, &delim, &odelim IF_FEATURE_CUT_REGEX(, &sopt)
 	);
-	if (!delim || !*delim)
-		delim = (opt & OPT_REGEX) ? "[[:space:]]+" : "\t";
+#else
+	opt = getopt32long(argv, "^"
+			OPT_STR  // = "b:c:f:d:O:sD"IF_FEATURE_CUT_REGEX("F:")"n"
+			"\0" "b--"ARG":c--"ARG":f--"ARG IF_FEATURE_CUT_REGEX("F--"ARG),
+			cut_longopts,
+			&sopt, &sopt, &sopt, &delim, &odelim IF_FEATURE_CUT_REGEX(, &sopt)
+	);
+#endif
 	if (!odelim)
 		odelim = (opt & OPT_REGEX) ? " " : delim;
+	if (!delim || !*delim)
+		delim = (opt & OPT_REGEX) ? "[[:space:]]+" : "\t";
 
 //	argc -= optind;
 	argv += optind;

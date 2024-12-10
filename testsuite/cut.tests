@@ -23,14 +23,30 @@ the quick brown fox jumps over the lazy dog
 
 testing "cut -b a,a,a" "cut -b 3,3,3 input" "e\np\ne\n" "$abc" ""
 
-testing "cut -b overlaps" "cut -b 1-3,2-5,7-9,9-10 input" \
-  "one:to:th\nalphabeta\nthe qick \n" "$abc" ""
-testing "-b encapsulated" "cut -b 3-8,4-6 input" "e:two:\npha:be\ne quic\n" \
-  "$abc" ""
-# --output-delimiter not implemnted (yet?)
-#testing "cut -bO overlaps" \
-#  "cut --output-delimiter ' ' -b 1-3,2-5,7-9,9-10 input" \
-#  "one:t o:th\nalpha beta\nthe q ick \n" "$abc" ""
+testing "cut -b overlaps" \
+	"cut -b 1-3,2-5,7-9,9-10 input" \
+	"\
+one:to:th
+alphabeta
+the qick \n" \
+	"$abc" ""
+testing "-b encapsulated" \
+	"cut -b 3-8,4-6 input" \
+	"\
+e:two:
+pha:be
+e quic\n" \
+	"$abc" ""
+optional LONG_OPTS
+testing "cut -b --output-delimiter overlaps" \
+	"cut --output-delimiter='^' -b 1-3,2-5,7-9,9-10 input" \
+	"\
+one:t^o:th
+alpha^beta
+the q^ick \n" \
+	"$abc" ""
+SKIP=
+
 testing "cut high-low error" "cut -b 8-3 input 2>/dev/null || echo err" "err\n" \
   "$abc" ""
 
