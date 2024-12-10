@@ -101,12 +101,13 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 
 		/* set up a list so we can keep track of what's been printed */
 		int linelen = strlen(line);
-		char *printed = xzalloc(linelen + 1);
 		char *orig_line = line;
 		unsigned cl_pos = 0;
 
 		/* cut based on chars/bytes XXX: only works when sizeof(char) == byte */
 		if (option_mask32 & (OPT_CHAR | OPT_BYTE)) {
+			char *printed = xzalloc(linelen + 1);
+
 			/* print the chars specified in each cut list */
 			for (; cl_pos < nlists; cl_pos++) {
 				int spos;
@@ -120,6 +121,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 					}
 				}
 			}
+			free(printed);
 		} else if (*delim == '\n') {	/* cut by lines */
 			int spos = cut_lists[cl_pos].startpos;
 
@@ -214,9 +216,8 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 		putchar('\n');
  next_line:
 		linenum++;
-		free(printed);
 		free(orig_line);
-	}
+	} /* while (got line) */
 #undef opt_REGEX
 }
 
