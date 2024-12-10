@@ -86,7 +86,7 @@ static int cmpfunc(const void *a, const void *b)
 }
 
 static void cut_file(FILE *file, const char *delim, const char *odelim,
-		const struct cut_list *cut_lists, unsigned nlists)
+		const struct cut_list *cut_list, unsigned nlists)
 {
 #define opt_REGEX (option_mask32 & OPT_REGEX)
 	char *line;
@@ -110,19 +110,19 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 			/* print the chars specified in each cut list */
 			for (; cl_pos < nlists; cl_pos++) {
 				int spos;
-				for (spos = cut_lists[cl_pos].startpos; spos < linelen;) {
+				for (spos = cut_list[cl_pos].startpos; spos < linelen;) {
 					if (!printed[spos]) {
 						printed[spos] = 'X';
 						putchar(line[spos]);
 					}
-					if (++spos > cut_lists[cl_pos].endpos) {
+					if (++spos > cut_list[cl_pos].endpos) {
 						break;
 					}
 				}
 			}
 			free(printed);
 		} else if (*delim == '\n') {	/* cut by lines */
-			int spos = cut_lists[cl_pos].startpos;
+			int spos = cut_list[cl_pos].startpos;
 
 			/* get out if we have no more lists to process or if the lines
 			 * are lower than what we're interested in */
@@ -134,12 +134,12 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 			while (spos < (int)linenum) {
 				spos++;
 				/* go to the next list if we're at the end of this one */
-				if (spos > cut_lists[cl_pos].endpos) {
+				if (spos > cut_list[cl_pos].endpos) {
 					cl_pos++;
 					/* get out if there's no more lists to process */
 					if (cl_pos >= nlists)
 						goto next_line;
-					spos = cut_lists[cl_pos].startpos;
+					spos = cut_list[cl_pos].startpos;
 					/* get out if the current line is lower than the one
 					 * we just became interested in */
 					if ((int)linenum < spos)
@@ -153,8 +153,8 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 			goto next_line;
 		} else {		/* cut by fields */
 			unsigned next = 0, start = 0, end = 0;
+			int dcount = 0; /* Nth delimiter we saw (0 - didn't see any yet) */
 			int first_print = 1;
-			int dcount = 0;
 
 			/* Blank line? Check -s (later check for -s does not catch empty lines) */
 			if (linelen == 0) {
@@ -165,12 +165,12 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 			/* Loop through bytes, finding next delimiter */
 			for (;;) {
 				/* End of current range? */
-				if (end == linelen || dcount > cut_lists[cl_pos].endpos) {
+				if (end == linelen || dcount > cut_list[cl_pos].endpos) {
 					if (++cl_pos >= nlists)
 						break;
 					if (option_mask32 & OPT_NOSORT)
 						start = dcount = next = 0;
-					end = 0;
+					end = 0; /* (why?) */
 				}
 				/* End of current line? */
 				if (next == linelen) {
@@ -178,8 +178,9 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 					if (cl_pos == 0 && dcount == 0 && !opt_REGEX) {
 						if (option_mask32 & OPT_SUPPRESS)
 							goto next_line;
-					} else if (dcount < cut_lists[cl_pos].startpos)
-						start = linelen;
+						/* else: will print entire line */
+					} else if (dcount < cut_list[cl_pos].startpos)
+						start = linelen; /* do not print */
 					end = linelen;
 				} else {
 					/* Find next delimiter */
@@ -200,7 +201,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 					}
 
 					/* Got delimiter. Loop if not yet within range. */
-					if (dcount++ < cut_lists[cl_pos].startpos) {
+					if (dcount++ < cut_list[cl_pos].startpos) {
 						start = next;
 						continue;
 					}
@@ -230,7 +231,7 @@ int cut_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int cut_main(int argc UNUSED_PARAM, char **argv)
 {
 	/* growable array holding a series of lists */
-	struct cut_list *cut_lists = NULL;
+	struct cut_list *cut_list = NULL;
 	unsigned nlists = 0;	/* number of elements in above list */
 	char *sopt, *ltok;
 	const char *delim = NULL;
@@ -309,10 +310,10 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 				bb_error_msg_and_die("invalid range %s-%s", ntok, ltok ?: ntok);
 
 			/* add the new list */
-			cut_lists = xrealloc_vector(cut_lists, 4, nlists);
+			cut_list = xrealloc_vector(cut_list, 4, nlists);
 			/* NB: startpos is always >= 0 */
-			cut_lists[nlists].startpos = s;
-			cut_lists[nlists].endpos = e;
+			cut_list[nlists].startpos = s;
+			cut_list[nlists].endpos = e;
 			nlists++;
 		}
 
@@ -324,7 +325,7 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 		 * easier on us when it comes time to print the chars / fields / lines
 		 */
 		if (!(opt & OPT_NOSORT))
-			qsort(cut_lists, nlists, sizeof(cut_lists[0]), cmpfunc);
+			qsort(cut_list, nlists, sizeof(cut_list[0]), cmpfunc);
 	}
 
 	{
@@ -339,12 +340,12 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 				retval = EXIT_FAILURE;
 				continue;
 			}
-			cut_file(file, delim, odelim, cut_lists, nlists);
+			cut_file(file, delim, odelim, cut_list, nlists);
 			fclose_if_not_stdin(file);
 		} while (*++argv);
 
 		if (ENABLE_FEATURE_CLEAN_UP)
-			free(cut_lists);
+			free(cut_list);
 		fflush_stdout_and_exit(retval);
 	}
 }
