@@ -114,7 +114,8 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 				}
 			}
 			free(printed);
-		} else if (!opt_REGEX && *delim == '\n') {	/* cut by lines */
+		/* Cut by lines */
+		} else if (!opt_REGEX && *delim == '\n') {
 			int spos = cut_list[cl_pos].startpos;
 
 			/* get out if we have no more lists to process or if the lines
@@ -144,7 +145,8 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 			 * looking for, so print it */
 			puts(line);
 			goto next_line;
-		} else {		/* cut by fields */
+		/* Cut by fields */
+		} else {
 			unsigned next = 0, start = 0, end = 0;
 			int dcount = 0; /* Nth delimiter we saw (0 - didn't see any yet) */
 			int first_print = 1;
@@ -159,22 +161,33 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 			for (;;) {
 				/* End of current range? */
 				if (end == linelen || dcount > cut_list[cl_pos].endpos) {
+ end_of_range:
 					if (++cl_pos >= nlists)
 						break;
 					if (option_mask32 & OPT_NOSORT)
 						start = dcount = next = 0;
 					end = 0; /* (why?) */
+					//bb_error_msg("End of current range");
 				}
 				/* End of current line? */
 				if (next == linelen) {
+					end = linelen; /* print up to end */
 					/* If we've seen no delimiters, check -s */
 					if (cl_pos == 0 && dcount == 0 && !opt_REGEX) {
 						if (option_mask32 & OPT_SUPPRESS)
 							goto next_line;
 						/* else: will print entire line */
-					} else if (dcount < cut_list[cl_pos].startpos)
-						start = linelen; /* do not print */
-					end = linelen; /* print up to end */
+					} else if (dcount < cut_list[cl_pos].startpos) {
+						/* echo 1.2 | cut -d. -f1,3: prints "1", not "1." */
+						//break;
+						/* ^^^ this fails a case with -D:
+						 * echo 1 2 | cut -DF 1,3,2:
+						 * do not end line processing when didn't find field#3
+						 */
+						//if (option_mask32 & OPT_NOSORT) - no, just do it always
+						goto end_of_range;
+					}
+					//bb_error_msg("End of current line: s:%d e:%d", start, end);
 				} else {
 					/* Find next delimiter */
 #if ENABLE_FEATURE_CUT_REGEX
