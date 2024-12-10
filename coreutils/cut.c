@@ -101,7 +101,6 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 
 		/* set up a list so we can keep track of what's been printed */
 		int linelen = strlen(line);
-		char *orig_line = line;
 		unsigned cl_pos = 0;
 
 		/* cut based on chars/bytes XXX: only works when sizeof(char) == byte */
@@ -216,7 +215,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 		putchar('\n');
  next_line:
 		linenum++;
-		free(orig_line);
+		free(line);
 	} /* while (got line) */
 #undef opt_REGEX
 }
