@@ -43,10 +43,18 @@
 //usage:     )
 //usage:     "\n	-s	Drop lines with no delimiter (else print them in full)"
 //usage:     "\n	-D	Don't sort/collate sections or match -f"IF_FEATURE_CUT_REGEX("F")" lines without delimeter"
+//usage:     IF_LONG_OPTS(
+//usage:     IF_FEATURE_CUT_REGEX(
+//usage:     "\n	--output-delimiter SEP Output field delimeter (default = -d for -f, one space for -F)"
+//usage:     ) IF_NOT_FEATURE_CUT_REGEX(
+//usage:     "\n	--output-delimiter SEP Output field delimeter (default = -d)"
+//usage:     )
+//usage:     ) IF_NOT_LONG_OPTS(
 //usage:     IF_FEATURE_CUT_REGEX(
 //usage:     "\n	-O SEP	Output field delimeter (default = -d for -f, one space for -F)"
 //usage:     ) IF_NOT_FEATURE_CUT_REGEX(
 //usage:     "\n	-O SEP	Output field delimeter (default = -d)"
+//usage:     )
 //usage:     )
 //TODO: --output-delimiter=SEP
 //usage:     "\n	-n	Ignored"
@@ -96,6 +104,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 {
 	char *line;
 	unsigned linenum = 0;	/* keep these zero-based to be consistent */
+	int first_print = 1;
 
 	/* go through every line in the file */
 	while ((line = xmalloc_fgetline(file)) != NULL) {
@@ -130,16 +139,16 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 			free(printed);
 		/* Cut by lines */
 		} else if (!opt_REGEX && *delim == '\n') {
-			int spos = cut_list[cl_pos].startpos;
+			unsigned spos = cut_list[cl_pos].startpos;
 
 			/* get out if we have no more lists to process or if the lines
 			 * are lower than what we're interested in */
-			if (((int)linenum < spos) || (cl_pos >= nlists))
+			if ((linenum < spos) || (cl_pos >= nlists))
 				goto next_line;
 
 			/* if the line we're looking for is lower than the one we were
 			 * passed, it means we displayed it already, so move on */
-			while (spos < (int)linenum) {
+			while (spos < linenum) {
 				spos++;
 				/* go to the next list if we're at the end of this one */
 				if (spos > cut_list[cl_pos].endpos) {
@@ -150,20 +159,23 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 					spos = cut_list[cl_pos].startpos;
 					/* get out if the current line is lower than the one
 					 * we just became interested in */
-					if ((int)linenum < spos)
+					if (linenum < spos)
 						goto next_line;
 				}
 			}
 
 			/* If we made it here, it means we've found the line we're
 			 * looking for, so print it */
-			puts(line);
+			if (first_print) {
+				first_print = 0;
+				fputs_stdout(line);
+			} else
+				printf("%s%s", odelim, line);
 			goto next_line;
 		/* Cut by fields */
 		} else {
 			unsigned next = 0, start = 0, end = 0;
 			int dcount = 0; /* we saw Nth delimiter (0 - didn't see any yet) */
-			int first_print = 1;
 
 			/* Blank line? Check -s (later check for -s does not catch empty lines) */
 			if (linelen == 0) {
@@ -173,6 +185,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 
 			if (!odelim)
 				odelim = "\t";
+			first_print = 1;
 
 			/* Loop through bytes, finding next delimiter */
 			for (;;) {
@@ -233,7 +246,10 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 						continue;
 					}
 				}
-				if (end != start || !opt_REGEX) {
+#if ENABLE_FEATURE_CUT_REGEX
+				if (end != start || !opt_REGEX)
+#endif
+				{
 					if (first_print) {
 						first_print = 0;
 						printf("%.*s", end - start, line + start);
@@ -251,6 +267,10 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 		linenum++;
 		free(line);
 	} /* while (got line) */
+
+	/* For -d$'\n' --output-delimiter=^, the overall output is still terminated with \n, not ^ */
+	if (!opt_REGEX && *delim == '\n' && !first_print)
+		putchar('\n');
 }
 
 int cut_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;

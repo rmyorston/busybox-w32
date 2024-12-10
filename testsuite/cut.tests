@@ -116,4 +116,30 @@ testing "cut non-existing field" "cut -d ':' -f1,3" \
 	"1\n" \
 	"" "1:\n"
 
+# cut -d$'\n' has a special meaning: "select input lines".
+# I didn't find any documentation for this feature.
+testing "cut -dNEWLINE" \
+	"cut -d'
+' -f4,2,6-8" \
+	"2\n4\n6\n7\n" \
+	"" "1\n2\n3\n4\n5\n6\n7"
+
+testing "cut -dNEWLINE --output-delimiter" \
+	"cut -d'
+' -O@@ -f4,2,6-8" \
+	"2@@4@@6@@7\n" \
+	"" "1\n2\n3\n4\n5\n6\n7"
+
+testing "cut -dNEWLINE --output-delimiter 2" \
+	"cut -d'
+' -O@@ -f4,2,6-8" \
+	"2@@4@@6@@7\n" \
+	"" "1\n2\n3\n4\n5\n6\n7\n"
+
+testing "cut -dNEWLINE --output-delimiter EMPTY_INPUT" \
+	"cut -d'
+' -O@@ -f4,2,6-8" \
+	"" \
+	"" ""
+
 exit $FAILCOUNT
