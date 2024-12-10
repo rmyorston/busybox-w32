@@ -152,7 +152,8 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 			puts(line);
 			goto next_line;
 		} else {		/* cut by fields */
-			unsigned uu = 0, start = 0, end = 0, out = 0;
+			unsigned next = 0, start = 0, end = 0;
+			int first_print = 1;
 			int dcount = 0;
 
 			/* Blank line? Check -s (later check for -s does not catch empty lines) */
@@ -168,11 +169,11 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 					if (++cl_pos >= nlists)
 						break;
 					if (option_mask32 & OPT_NOSORT)
-						start = dcount = uu = 0;
+						start = dcount = next = 0;
 					end = 0;
 				}
 				/* End of current line? */
-				if (uu == linelen) {
+				if (next == linelen) {
 					/* If we've seen no delimiters, check -s */
 					if (cl_pos == 0 && dcount == 0 && !opt_REGEX) {
 						if (option_mask32 & OPT_SUPPRESS)
@@ -185,31 +186,36 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 					if (opt_REGEX) {
 						regmatch_t rr = {-1, -1};
 
-						if (!regexec(&reg, line + uu, 1, &rr, REG_NOTBOL|REG_NOTEOL)) {
-							end = uu + rr.rm_so;
-							uu += rr.rm_eo;
+						if (!regexec(&reg, line + next, 1, &rr, REG_NOTBOL|REG_NOTEOL)) {
+							end = next + rr.rm_so;
+							next += rr.rm_eo;
 						} else {
-							uu = linelen;
+							next = linelen;
 							continue;
 						}
 					} else {
-						end = uu++;
+						end = next++;
 						if (line[end] != *delim)
 							continue;
 					}
 
 					/* Got delimiter. Loop if not yet within range. */
 					if (dcount++ < cut_lists[cl_pos].startpos) {
-						start = uu;
+						start = next;
 						continue;
 					}
 				}
-				if (end != start || !opt_REGEX)
-					printf("%s%.*s", out++ ? odelim : "", end - start, line + start);
-				start = uu;
+				if (end != start || !opt_REGEX) {
+					if (first_print) {
+						first_print = 0;
+						printf("%.*s", end - start, line + start);
+					} else
+						printf("%s%.*s", odelim, end - start, line + start);
+				}
+				start = next;
 				if (dcount == 0)
 					break;
-			}
+			} /* byte loop */
 		}
 		/* if we printed anything, finish with newline */
 		putchar('\n');
