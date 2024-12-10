@@ -32,15 +32,23 @@
 //usage:       "Print selected fields from FILEs to stdout\n"
 //usage:     "\n	-b LIST	Output only bytes from LIST"
 //usage:     "\n	-c LIST	Output only characters from LIST"
-//usage:     "\n	-d SEP	Field delimiter for input (default -f TAB, -F run of whitespace)"
-//usage:     "\n	-s	Drop lines with no delimiter"
-//usage:     "\n	-O SEP	Field delimeter for output (default = -d for -f, one space for -F)"
-//TODO: --output-delimiter=SEP
+//usage:     IF_FEATURE_CUT_REGEX(
+//usage:     "\n	-d SEP	Input field delimiter (default -f TAB, -F run of whitespace)"
+//usage:     ) IF_NOT_FEATURE_CUT_REGEX(
+//usage:     "\n	-d SEP	Input field delimiter (default TAB)"
+//usage:     )
 //usage:     "\n	-f LIST	Print only these fields (-d is single char)"
 //usage:     IF_FEATURE_CUT_REGEX(
 //usage:     "\n	-F LIST	Print only these fields (-d is regex)"
 //usage:     )
-//usage:     "\n	-D	Don't sort/collate sections or match -fF lines without delimeter"
+//usage:     "\n	-s	Drop lines with no delimiter (else print them in full)"
+//usage:     "\n	-D	Don't sort/collate sections or match -f"IF_FEATURE_CUT_REGEX("F")" lines without delimeter"
+//usage:     IF_FEATURE_CUT_REGEX(
+//usage:     "\n	-O SEP	Output field delimeter (default = -d for -f, one space for -F)"
+//usage:     ) IF_NOT_FEATURE_CUT_REGEX(
+//usage:     "\n	-O SEP	Output field delimeter (default = -d)"
+//usage:     )
+//TODO: --output-delimiter=SEP
 //usage:     "\n	-n	Ignored"
 //(manpage:-n	with -b: don't split multibyte characters)
 //usage:
