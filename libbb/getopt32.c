@@ -93,7 +93,7 @@ getopt32(char **argv, const char *applet_opts, ...)
 
  "!"    If the first character in the applet_opts string is a '!',
         report bad options, missing required options,
-        inconsistent options with all-ones return value (instead of abort.
+        inconsistent options with all-ones return value instead of aborting.
 
  "+"    If the first character in the applet_opts string is a plus,
         then option processing will stop as soon as a non-option is
@@ -265,7 +265,7 @@ Special characters:
         for "long options only" cases, such as tar --exclude=PATTERN,
         wget --header=HDR cases.
 
- "a?b"  A "?" between an option and a group of options means that
+ "a?bc" A "?" between an option and a group of options means that
         at least one of them is required to occur if the first option
         occurs in preceding command line arguments.
 

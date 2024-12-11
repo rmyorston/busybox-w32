@@ -27,7 +27,8 @@
 //kbuild:lib-$(CONFIG_CUT) += cut.o
 
 //usage:#define cut_trivial_usage
-//usage:       "[OPTIONS] [FILE]..."
+//usage:       "{-b|c LIST | -f"IF_FEATURE_CUT_REGEX("|F")" LIST [-d SEP] [-s]} [-D] [-O SEP] [FILE]..."
+//  --output-delimiter SEP is too long to fit into 80 char-wide help ----------------^^^^^^^^
 //usage:#define cut_full_usage "\n\n"
 //usage:       "Print selected fields from FILEs to stdout\n"
 //usage:     "\n	-b LIST	Output only bytes from LIST"
@@ -44,11 +45,7 @@
 //usage:     "\n	-s	Drop lines with no delimiter (else print them in full)"
 //usage:     "\n	-D	Don't sort/collate sections or match -f"IF_FEATURE_CUT_REGEX("F")" lines without delimeter"
 //usage:     IF_LONG_OPTS(
-//usage:     IF_FEATURE_CUT_REGEX(
-//usage:     "\n	--output-delimiter SEP Output field delimeter (default = -d for -f, one space for -F)"
-//usage:     ) IF_NOT_FEATURE_CUT_REGEX(
-//usage:     "\n	--output-delimiter SEP Output field delimeter (default = -d)"
-//usage:     )
+//usage:     "\n	--output-delimiter SEP	Output field delimeter"
 //usage:     ) IF_NOT_LONG_OPTS(
 //usage:     IF_FEATURE_CUT_REGEX(
 //usage:     "\n	-O SEP	Output field delimeter (default = -d for -f, one space for -F)"
@@ -302,7 +299,8 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 #else
 	opt = getopt32long(argv, "^"
 			OPT_STR  // = "b:c:f:d:O:sD"IF_FEATURE_CUT_REGEX("F:")"n"
-			"\0" "b--"ARG":c--"ARG":f--"ARG IF_FEATURE_CUT_REGEX("F--"ARG),
+			"\0" "b:c:f:"IF_FEATURE_CUT_REGEX("F:") /* one of -bcfF is required */
+			"b--"ARG":c--"ARG":f--"ARG IF_FEATURE_CUT_REGEX(":F--"ARG), /* they are mutually exclusive */
 			cut_longopts,
 			&sopt, &sopt, &sopt, &delim, &odelim IF_FEATURE_CUT_REGEX(, &sopt)
 	);
@@ -314,8 +312,9 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 
 //	argc -= optind;
 	argv += optind;
-	if (!(opt & (OPT_BYTE | OPT_CHAR | OPT_FIELDS | OPT_REGEX)))
-		bb_simple_error_msg_and_die("expected a list of bytes, characters, or fields");
+	//if (!(opt & (OPT_BYTE | OPT_CHAR | OPT_FIELDS | OPT_REGEX)))
+	//	bb_simple_error_msg_and_die("expected a list of bytes, characters, or fields");
+	// ^^^ handled by getopt32
 
 	/*  non-field (char or byte) cutting has some special handling */
 	if (!(opt & (OPT_FIELDS|OPT_REGEX))) {
