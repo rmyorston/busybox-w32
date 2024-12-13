@@ -285,9 +285,9 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 	regex_t reg;
 #endif
 #if ENABLE_LONG_OPTS
-        static const char cut_longopts[] ALIGN1 =
-                "output-delimiter\0" Required_argument "O"
-                ;
+	static const char cut_longopts[] ALIGN1 =
+		"output-delimiter\0" Required_argument "O"
+		;
 #endif
 
 #define ARG "bcf"IF_FEATURE_CUT_REGEX("F")
