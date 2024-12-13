@@ -336,60 +336,58 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 	 * valid list formats: N, N-, N-M, -M
 	 * more than one list can be separated by commas
 	 */
-	{
+	/* take apart the lists, one by one (they are separated with commas) */
+	while ((ltok = strsep(&sopt, ",")) != NULL) {
 		char *ntok;
-		int s = 0, e = 0;
+		int s, e;
 
-		/* take apart the lists, one by one (they are separated with commas) */
-		while ((ltok = strsep(&sopt, ",")) != NULL) {
+		/* it's actually legal to pass an empty list */
+		//if (!ltok[0])
+		//	continue;
+		//^^^ testcase?
 
-			/* it's actually legal to pass an empty list */
-			if (!ltok[0])
-				continue;
-
-			/* get the start pos */
-			ntok = strsep(&ltok, "-");
-			if (!ntok[0]) {
-				s = 0;
-			} else {
-				/* account for the fact that arrays are zero based, while
-				 * the user expects the first char on the line to be char #1 */
-				s = xatoi_positive(ntok) - 1;
-			}
-
-			/* get the end pos */
-			if (ltok == NULL) {
-				e = s;
-			} else if (!ltok[0]) {
-				/* if the user specified no end position,
-				 * that means "til the end of the line" */
-				e = INT_MAX;
-			} else {
-				/* again, arrays are zero based, lines are 1 based */
-				e = xatoi_positive(ltok) - 1;
-			}
-
-			if (s < 0 || e < s)
-				bb_error_msg_and_die("invalid range %s-%s", ntok, ltok ?: ntok);
-
-			/* add the new list */
-			cut_list = xrealloc_vector(cut_list, 4, nlists);
-			/* NB: startpos is always >= 0 */
-			cut_list[nlists].startpos = s;
-			cut_list[nlists].endpos = e;
-			nlists++;
+		/* get the start pos */
+		ntok = strsep(&ltok, "-");
+		if (!ntok[0]) {
+			s = 0;
+		} else {
+			/* account for the fact that arrays are zero based, while
+			 * the user expects the first char on the line to be char #1 */
+			s = xatoi_positive(ntok) - 1;
 		}
 
-		/* make sure we got some cut positions out of all that */
-		if (nlists == 0)
-			bb_simple_error_msg_and_die("missing list of positions");
+		/* get the end pos */
+		if (ltok == NULL) {
+			e = s;
+		} else if (!ltok[0]) {
+			/* if the user specified no end position,
+			 * that means "til the end of the line" */
+			e = INT_MAX;
+		} else {
+			/* again, arrays are zero based, lines are 1 based */
+			e = xatoi_positive(ltok) - 1;
+		}
 
-		/* now that the lists are parsed, we need to sort them to make life
-		 * easier on us when it comes time to print the chars / fields / lines
-		 */
-		if (!(opt & OPT_NOSORT))
-			qsort(cut_list, nlists, sizeof(cut_list[0]), cmpfunc);
+		if (s < 0 || e < s)
+			bb_error_msg_and_die("invalid range %s-%s", ntok, ltok ?: ntok);
+
+		/* add the new list */
+		cut_list = xrealloc_vector(cut_list, 4, nlists);
+		/* NB: startpos is always >= 0 */
+		cut_list[nlists].startpos = s;
+		cut_list[nlists].endpos = e;
+		nlists++;
 	}
+
+	/* make sure we got some cut positions out of all that */
+	if (nlists == 0)
+		bb_simple_error_msg_and_die("missing list of positions");
+
+	/* now that the lists are parsed, we need to sort them to make life
+	 * easier on us when it comes time to print the chars / fields / lines
+	 */
+	if (!(opt & OPT_NOSORT))
+		qsort(cut_list, nlists, sizeof(cut_list[0]), cmpfunc);
 
 #if ENABLE_FEATURE_CUT_REGEX
 	if (opt & OPT_REGEX) {
