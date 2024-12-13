@@ -142,4 +142,16 @@ testing "cut -dNEWLINE --output-delimiter EMPTY_INPUT" \
 	"" \
 	"" ""
 
+# This seems to work as if delimiter is never found.
+# We test here that -d '' does *not* operate as if there was no -d
+# and delimiter has defaulted to TAB:
+testing "cut -d EMPTY" \
+	"cut -d '' -f2-" \
+	"1 2\t3 4 5\n" \
+	"" "1 2\t3 4 5\n"
+testing "cut -d EMPTY -s" \
+	"cut -d '' -f2- -s" \
+	"" \
+	"" "1 2\t3 4 5\n"
+
 exit $FAILCOUNT

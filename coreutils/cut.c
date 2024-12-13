@@ -309,7 +309,7 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	if (!odelim)
 		odelim = (opt & OPT_REGEX) ? " " : delim;
-	if (!delim || !*delim)
+	if (!delim)
 		delim = (opt & OPT_REGEX) ? "[[:space:]]+" : "\t";
 
 //	argc -= optind;
