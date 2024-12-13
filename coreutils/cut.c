@@ -228,7 +228,9 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 							continue;
 						}
 						end = next + rr.rm_so;
-						next += rr.rm_eo;
+						next += (rr.rm_eo ? rr.rm_eo : 1);
+						/* ^^^ advancing by at least 1 prevents infinite loops */
+						/* testcase: echo "no at sign" | cut -d'@*' -F 1- */
 					} else
 #endif
 					{
