@@ -291,21 +291,18 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 #define ARG "bcf"IF_FEATURE_CUT_REGEX("F")
-#if !ENABLE_LONG_OPTS
-	opt = getopt32(argv, "^"
-			OPT_STR  // = "b:c:f:d:O:sD"IF_FEATURE_CUT_REGEX("F:")"n"
-			"\0" "b--"ARG":c--"ARG":f--"ARG IF_FEATURE_CUT_REGEX("F--"ARG),
-			&sopt, &sopt, &sopt, &delim, &odelim IF_FEATURE_CUT_REGEX(, &sopt)
-	);
+#if ENABLE_LONG_OPTS
+	opt = getopt32long
 #else
-	opt = getopt32long(argv, "^"
-			OPT_STR  // = "b:c:f:d:O:sD"IF_FEATURE_CUT_REGEX("F:")"n"
-			"\0" "b:c:f:"IF_FEATURE_CUT_REGEX("F:") /* one of -bcfF is required */
-			"b--"ARG":c--"ARG":f--"ARG IF_FEATURE_CUT_REGEX(":F--"ARG), /* they are mutually exclusive */
-			cut_longopts,
-			&sopt, &sopt, &sopt, &delim, &odelim IF_FEATURE_CUT_REGEX(, &sopt)
-	);
+	opt = getopt32
 #endif
+		(argv, "^"
+			OPT_STR  // = "b:c:f:d:O:sD"IF_FEATURE_CUT_REGEX("F:")"n"
+			"\0" "b:c:f:" IF_FEATURE_CUT_REGEX("F:") /* one of -bcfF is required */
+			"b--"ARG":c--"ARG":f--"ARG IF_FEATURE_CUT_REGEX(":F--"ARG), /* they are mutually exclusive */
+		IF_LONG_OPTS(cut_longopts,)
+			&sopt, &sopt, &sopt, &delim, &odelim IF_FEATURE_CUT_REGEX(, &sopt)
+		);
 	if (!odelim)
 		odelim = (opt & OPT_REGEX) ? " " : delim;
 	if (!delim)
