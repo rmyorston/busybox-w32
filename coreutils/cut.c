@@ -53,9 +53,8 @@
 //usage:     "\n	-O SEP	Output field delimeter (default = -d)"
 //usage:     )
 //usage:     )
-//TODO: --output-delimiter=SEP
 //usage:     "\n	-n	Ignored"
-//(manpage:-n	with -b: don't split multibyte characters)
+//(manpage:-n with -b: don't split multibyte characters)
 //usage:
 //usage:#define cut_example_usage
 //usage:       "$ echo \"Hello world\" | cut -f 1 -d ' '\n"
@@ -318,7 +317,7 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 	//	bb_simple_error_msg_and_die("expected a list of bytes, characters, or fields");
 	// ^^^ handled by getopt32
 
-	/*  non-field (char or byte) cutting has some special handling */
+	/* non-field (char or byte) cutting has some special handling */
 	if (!(opt & (OPT_FIELDS|OPT_REGEX))) {
 		static const char _op_on_field[] ALIGN1 = " only when operating on fields";
 
