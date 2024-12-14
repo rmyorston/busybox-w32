@@ -243,6 +243,16 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 						start = next;
 						continue;
 					}
+					/* -F N-M preserves intermediate delimiters: */
+					//printf "1 2  3  4  5  6  7\n" | toybox cut -O: -F2,4-6,7
+					//2:4  5  6:7
+					if (opt_REGEX && dcount <= cut_list[cl_pos].endpos)
+						continue;
+// NB: toybox does the above for -f too, but it's a compatibility bug:
+//printf "1 2 3 4 5 6 7 8\n" | toybox cut -d' ' -O: -f2,4-6,7
+//2:4 5 6:7  // WRONG!
+//printf "1 2 3 4 5 6 7 8\n" | cut -d' ' --output-delimiter=: -f2,4-6,7
+//2:4:5:6:7  // GNU coreutils 9.1
 				}
 #if ENABLE_FEATURE_CUT_REGEX
 				if (end != start || !opt_REGEX)
