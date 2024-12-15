@@ -84,19 +84,22 @@
 
 #define opt_REGEX (option_mask32 & OPT_REGEX)
 
-struct cut_list {
+struct cut_range {
 	unsigned startpos;
 	unsigned endpos;
 };
 
 static int cmpfunc(const void *a, const void *b)
 {
-	return (((struct cut_list *) a)->startpos -
-			((struct cut_list *) b)->startpos);
+	return (((struct cut_range *) a)->startpos -
+			((struct cut_range *) b)->startpos);
 }
 
+#define END_OF_LIST(list_elem)     ((list_elem).startpos == UINT_MAX)
+#define NOT_END_OF_LIST(list_elem) ((list_elem).startpos != UINT_MAX)
+
 static void cut_file(FILE *file, const char *delim, const char *odelim,
-		const struct cut_list *cut_list, unsigned nlists)
+		const struct cut_range *cut_list)
 {
 	char *line;
 	unsigned linenum = 0;	/* keep these zero-based to be consistent */
@@ -115,7 +118,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 			int need_odelim = 0;
 
 			/* print the chars specified in each cut list */
-			for (; cl_pos < nlists; cl_pos++) {
+			for (; NOT_END_OF_LIST(cut_list[cl_pos]); cl_pos++) {
 				unsigned spos;
 				for (spos = cut_list[cl_pos].startpos; spos < linelen;) {
 					if (!printed[spos]) {
@@ -137,9 +140,9 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 		} else if (!opt_REGEX && *delim == '\n') {
 			unsigned spos = cut_list[cl_pos].startpos;
 
-			/* get out if we have no more lists to process or if the lines
+			/* get out if we have no more ranges to process or if the lines
 			 * are lower than what we're interested in */
-			if ((linenum < spos) || (cl_pos >= nlists))
+			if ((linenum < spos) || END_OF_LIST(cut_list[cl_pos]))
 				goto next_line;
 
 			/* if the line we're looking for is lower than the one we were
@@ -149,8 +152,8 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 				/* go to the next list if we're at the end of this one */
 				if (spos > cut_list[cl_pos].endpos) {
 					cl_pos++;
-					/* get out if there's no more lists to process */
-					if (cl_pos >= nlists)
+					/* get out if there's no more ranges to process */
+					if (END_OF_LIST(cut_list[cl_pos]))
 						goto next_line;
 					spos = cut_list[cl_pos].startpos;
 					/* get out if the current line is lower than the one
@@ -188,7 +191,8 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 				/* End of current range? */
 				if (end == linelen || dcount > cut_list[cl_pos].endpos) {
  end_of_range:
-					if (++cl_pos >= nlists)
+					cl_pos++;
+					if (END_OF_LIST(cut_list[cl_pos]))
 						break;
 					if (option_mask32 & OPT_NOSORT)
 						start = dcount = next = 0;
@@ -284,9 +288,9 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 int cut_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int cut_main(int argc UNUSED_PARAM, char **argv)
 {
-	/* growable array holding a series of lists */
-	struct cut_list *cut_list = NULL;
-	unsigned nlists = 0;	/* number of elements in above list */
+	/* growable array holding a series of ranges */
+	struct cut_range *cut_list = NULL;
+	unsigned nranges = 0;	/* number of elements in above list */
 	char *LIST, *ltok;
 	const char *delim = NULL;
 	const char *odelim = NULL;
@@ -383,15 +387,16 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 			bb_error_msg_and_die("invalid range %s-%s", ntok, ltok ?: ntok);
 
 		/* add the new range */
-		cut_list = xrealloc_vector(cut_list, 4, nlists);
+		cut_list = xrealloc_vector(cut_list, 4, nranges);
 		/* NB: s is always >= 0 */
-		cut_list[nlists].startpos = s;
-		cut_list[nlists].endpos = e;
-		nlists++;
+		cut_list[nranges].startpos = s;
+		cut_list[nranges].endpos = e;
+		nranges++;
 	}
+	cut_list[nranges].startpos = UINT_MAX; /* end indicator */
 
 	/* make sure we got some cut positions out of all that */
-	//if (nlists == 0)
+	//if (nranges == 0)
 	//	bb_simple_error_msg_and_die("missing list of positions");
 	//^^^ this is impossible since one of -bcfF is required,
 	// they populate LIST with non-empty string and when it is parsed,
@@ -401,7 +406,7 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 	 * easier on us when it comes time to print the chars / fields / lines
 	 */
 	if (!(opt & OPT_NOSORT))
-		qsort(cut_list, nlists, sizeof(cut_list[0]), cmpfunc);
+		qsort(cut_list, nranges, sizeof(cut_list[0]), cmpfunc);
 
 #if ENABLE_FEATURE_CUT_REGEX
 	if (opt & OPT_REGEX) {
@@ -422,7 +427,7 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 				retval = EXIT_FAILURE;
 				continue;
 			}
-			cut_file(file, delim, odelim, cut_list, nlists);
+			cut_file(file, delim, odelim, cut_list);
 			fclose_if_not_stdin(file);
 		} while (*++argv);
 
