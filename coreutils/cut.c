@@ -287,7 +287,7 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 	/* growable array holding a series of lists */
 	struct cut_list *cut_list = NULL;
 	unsigned nlists = 0;	/* number of elements in above list */
-	char *sopt, *ltok;
+	char *LIST, *ltok;
 	const char *delim = NULL;
 	const char *odelim = NULL;
 	unsigned opt;
@@ -311,7 +311,7 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 			"\0" "b:c:f:" IF_FEATURE_CUT_REGEX("F:") /* one of -bcfF is required */
 			"b--"ARG":c--"ARG":f--"ARG IF_FEATURE_CUT_REGEX(":F--"ARG), /* they are mutually exclusive */
 		IF_LONG_OPTS(cut_longopts,)
-			&sopt, &sopt, &sopt, &delim, &odelim IF_FEATURE_CUT_REGEX(, &sopt)
+			&LIST, &LIST, &LIST, &delim, &odelim IF_FEATURE_CUT_REGEX(, &LIST)
 		);
 	if (!odelim)
 		odelim = (opt & OPT_REGEX) ? " " : delim;
@@ -322,7 +322,7 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 	argv += optind;
 	//if (!(opt & (OPT_BYTE | OPT_CHAR | OPT_FIELDS | OPT_REGEX)))
 	//	bb_simple_error_msg_and_die("expected a list of bytes, characters, or fields");
-	// ^^^ handled by getopt32
+	//^^^ handled by getopt32
 
 	/* non-field (char or byte) cutting has some special handling */
 	if (!(opt & (OPT_FIELDS|OPT_REGEX))) {
@@ -344,7 +344,7 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 	 * more than one range can be separated by commas
 	 */
 	/* take apart the ranges, one by one (separated with commas) */
-	while ((ltok = strsep(&sopt, ",")) != NULL) {
+	while ((ltok = strsep(&LIST, ",")) != NULL) {
 		char *ntok;
 		int s, e;
 
@@ -382,17 +382,20 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 		if (s < 0 || e < s)
 			bb_error_msg_and_die("invalid range %s-%s", ntok, ltok ?: ntok);
 
-		/* add the new list */
+		/* add the new range */
 		cut_list = xrealloc_vector(cut_list, 4, nlists);
-		/* NB: startpos is always >= 0 */
+		/* NB: s is always >= 0 */
 		cut_list[nlists].startpos = s;
 		cut_list[nlists].endpos = e;
 		nlists++;
 	}
 
 	/* make sure we got some cut positions out of all that */
-	if (nlists == 0)
-		bb_simple_error_msg_and_die("missing list of positions");
+	//if (nlists == 0)
+	//	bb_simple_error_msg_and_die("missing list of positions");
+	//^^^ this is impossible since one of -bcfF is required,
+	// they populate LIST with non-empty string and when it is parsed,
+	// cut_list[] gets at least one element.
 
 	/* now that the lists are parsed, we need to sort them to make life
 	 * easier on us when it comes time to print the chars / fields / lines
