@@ -85,8 +85,8 @@
 #define opt_REGEX (option_mask32 & OPT_REGEX)
 
 struct cut_list {
-	int startpos;
-	int endpos;
+	unsigned startpos;
+	unsigned endpos;
 };
 
 static int cmpfunc(const void *a, const void *b)
@@ -116,7 +116,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 
 			/* print the chars specified in each cut list */
 			for (; cl_pos < nlists; cl_pos++) {
-				int spos;
+				unsigned spos;
 				for (spos = cut_list[cl_pos].startpos; spos < linelen;) {
 					if (!printed[spos]) {
 						printed[spos] = 'X';
@@ -171,7 +171,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 		/* Cut by fields */
 		} else {
 			unsigned next = 0, start = 0, end = 0;
-			int dcount = 0; /* we saw Nth delimiter (0 - didn't see any yet) */
+			unsigned dcount = 0; /* we saw Nth delimiter (0 - didn't see any yet) */
 
 			/* Blank line? Check -s (later check for -s does not catch empty lines) */
 			if (linelen == 0) {
@@ -340,10 +340,10 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 
 	/*
 	 * parse list and put values into startpos and endpos.
-	 * valid list formats: N, N-, N-M, -M
-	 * more than one list can be separated by commas
+	 * valid range formats: N, N-, N-M, -M
+	 * more than one range can be separated by commas
 	 */
-	/* take apart the lists, one by one (they are separated with commas) */
+	/* take apart the ranges, one by one (separated with commas) */
 	while ((ltok = strsep(&sopt, ",")) != NULL) {
 		char *ntok;
 		int s, e;
@@ -356,22 +356,26 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 		/* get the start pos */
 		ntok = strsep(&ltok, "-");
 		if (!ntok[0]) {
-			s = 0;
+			if (!ltok) /* testcase: -f '' */
+				bb_show_usage();
+			if (!ltok[0]) /* testcase: -f - */
+				bb_show_usage();
+			s = 0; /* "-M" means "1-M" */
 		} else {
-			/* account for the fact that arrays are zero based, while
-			 * the user expects the first char on the line to be char #1 */
+			/* "N" or "N-[M]" */
+			/* arrays are zero based, while the user expects
+			 * the first field/char on the line to be char #1 */
 			s = xatoi_positive(ntok) - 1;
 		}
 
 		/* get the end pos */
-		if (ltok == NULL) {
-			e = s;
+		if (!ltok) {
+			e = s; /* "N" means "N-N" */
 		} else if (!ltok[0]) {
-			/* if the user specified no end position,
-			 * that means "til the end of the line" */
+			/* "N-" means "until the end of the line" */
 			e = INT_MAX;
 		} else {
-			/* again, arrays are zero based, lines are 1 based */
+			/* again, arrays are zero based, fields are 1 based */
 			e = xatoi_positive(ltok) - 1;
 		}
 
