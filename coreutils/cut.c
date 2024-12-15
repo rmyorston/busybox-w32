@@ -330,15 +330,15 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 
 	/* non-field (char or byte) cutting has some special handling */
 	if (!(opt & (OPT_FIELDS|OPT_REGEX))) {
-		static const char _op_on_field[] ALIGN1 = " only when operating on fields";
+		static const char _op_on_field[] ALIGN1 = " makes sense only with -f"IF_FEATURE_CUT_REGEX(" or -F");
 
 		if (opt & OPT_SUPPRESS) {
 			bb_error_msg_and_die
-				("suppressing non-delimited lines makes sense%s", _op_on_field);
+				("-s%s", _op_on_field);
 		}
 		if (opt & OPT_DELIM) {
 			bb_error_msg_and_die
-				("a delimiter may be specified%s", _op_on_field);
+				("-d DELIM%s", _op_on_field);
 		}
 	}
 
