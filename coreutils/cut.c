@@ -330,16 +330,12 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 
 	/* non-field (char or byte) cutting has some special handling */
 	if (!(opt & (OPT_FIELDS|OPT_REGEX))) {
-		static const char _op_on_field[] ALIGN1 = " makes sense only with -f"IF_FEATURE_CUT_REGEX(" or -F");
-
-		if (opt & OPT_SUPPRESS) {
-			bb_error_msg_and_die
-				("-s%s", _op_on_field);
-		}
-		if (opt & OPT_DELIM) {
-			bb_error_msg_and_die
-				("-d DELIM%s", _op_on_field);
-		}
+		static const char requires_f[] ALIGN1 = " requires -f"
+					IF_FEATURE_CUT_REGEX(" or -F");
+		if (opt & OPT_SUPPRESS)
+			bb_error_msg_and_die("-s%s", requires_f);
+		if (opt & OPT_DELIM)
+			bb_error_msg_and_die("-d DELIM%s", requires_f);
 	}
 
 	/*
