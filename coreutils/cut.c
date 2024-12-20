@@ -91,8 +91,9 @@ struct cut_range {
 
 static int cmpfunc(const void *a, const void *b)
 {
-	return (((struct cut_range *) a)->startpos -
-			((struct cut_range *) b)->startpos);
+	const struct cut_range *aa = a;
+	const struct cut_range *bb = b;
+	return aa->startpos - bb->startpos;
 }
 
 #define END_OF_LIST(list_elem)     ((list_elem).startpos == UINT_MAX)
@@ -109,18 +110,18 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 	while ((line = xmalloc_fgetline(file)) != NULL) {
 
 		/* set up a list so we can keep track of what's been printed */
-		int linelen = strlen(line);
+		unsigned linelen = strlen(line);
 		unsigned cl_pos = 0;
 
-		/* cut based on chars/bytes XXX: only works when sizeof(char) == byte */
+		/* Cut based on chars/bytes XXX: only works when sizeof(char) == byte */
 		if (option_mask32 & (OPT_CHAR | OPT_BYTE)) {
 			char *printed = xzalloc(linelen + 1);
 			int need_odelim = 0;
 
 			/* print the chars specified in each cut list */
 			for (; NOT_END_OF_LIST(cut_list[cl_pos]); cl_pos++) {
-				unsigned spos;
-				for (spos = cut_list[cl_pos].startpos; spos < linelen;) {
+				unsigned spos = cut_list[cl_pos].startpos;
+				while (spos < linelen) {
 					if (!printed[spos]) {
 						printed[spos] = 'X';
 						if (need_odelim && spos != 0 && !printed[spos-1]) {
@@ -129,8 +130,10 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 						}
 						putchar(line[spos]);
 					}
-					if (++spos > cut_list[cl_pos].endpos) {
-						need_odelim = (odelim && odelim[0]); /* will print OSEP (if not empty) */
+					spos++;
+					if (spos > cut_list[cl_pos].endpos) {
+						/* will print OSEP (if not empty) */
+						need_odelim = (odelim && odelim[0]);
 						break;
 					}
 				}
@@ -242,7 +245,8 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 							continue;
 					}
 					/* Got delimiter */
-					if (dcount++ < cut_list[cl_pos].startpos) {
+					dcount++;
+					if (dcount <= cut_list[cl_pos].startpos) {
 						/* Not yet within range - loop */
 						start = next;
 						continue;
