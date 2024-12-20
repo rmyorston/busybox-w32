@@ -95,8 +95,16 @@ testing "cut with -d -s omits blank lines" "cut -d' ' -f2 -s input" "bar\nbong\n
 
 # substitute for awk
 optional FEATURE_CUT_REGEX
-testing "cut -DF" "cut -DF 2,7,5" \
-  "said and your\nare\nis demand. supply\nforecast :\nyou you better,\n\nEm: Took hate\n" "" \
+testing "cut -DF unordered" "cut -DF 2,7,5" \
+	"\
+said and your
+are
+is demand. supply
+forecast :
+you you better,
+
+Em: Took hate
+" "" \
 "Bother, said Pooh. It's your husband, and he has a gun.
 Cheerios are donut seeds.
 Talk is cheap because supply exceeds demand.
@@ -104,6 +112,29 @@ Weather forecast for tonight : dark.
 Apple: you can buy better, but you can't pay more.
 Subcalifragilisticexpialidocious.
 Auntie Em: Hate you, hate Kansas. Took the dog. Dorothy."
+
+# No delimiter found: print entire line regardless of -F RANGES
+testing "cut -F1" "cut -d: -F1" \
+	"the_only_field\n" "" \
+	"the_only_field\n"
+testing "cut -F2" "cut -d: -F2" \
+	"the_only_field\n" "" \
+	"the_only_field\n"
+# No delimiter found and -s: skip entire line
+testing "cut -sF1" "cut -d: -sF1" \
+	"" "" \
+	"the_only_field\n"
+#^^^ the above is probably mishandled by toybox, it prints the line
+testing "cut -sF2" "cut -d: -sF2" \
+	"" "" \
+	"the_only_field\n"
+# -D disables special handling of lines with no delimiters, the line is treated as the 1st field
+testing "cut -DF1" "cut -d: -DF1" \
+	"the_only_field\n" "" \
+	"the_only_field\n"
+testing "cut -DF2" "cut -d: -DF2" \
+	"\n" "" \
+	"the_only_field\n"
 
 optional FEATURE_CUT_REGEX LONG_OPTS
 testing "cut -F preserves intermediate delimiters" \

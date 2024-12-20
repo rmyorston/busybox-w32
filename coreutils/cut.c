@@ -43,7 +43,7 @@
 //usage:     "\n	-F LIST	Print only these fields (-d is regex)"
 //usage:     )
 //usage:     "\n	-s	Drop lines with no delimiter (else print them in full)"
-//usage:     "\n	-D	Don't sort/collate sections or match -f"IF_FEATURE_CUT_REGEX("F")" lines without delimeter"
+//usage:     "\n	-D	Don't sort ranges; line without delimiters has one field"
 //usage:     IF_LONG_OPTS(
 //usage:     "\n	--output-delimiter SEP	Output field delimeter"
 //usage:     ) IF_NOT_LONG_OPTS(
@@ -202,8 +202,8 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 				/* End of current line? */
 				if (next == linelen) {
 					end = linelen; /* print up to end */
-					/* If we've seen no delimiters, check -s */
-					if (cl_pos == 0 && dcount == 0 && !opt_REGEX) {
+					/* If we've seen no delimiters, and no -D, check -s */
+					if (!(option_mask32 & OPT_NOSORT) && cl_pos == 0 && dcount == 0) {
 						if (option_mask32 & OPT_SUPPRESS)
 							goto next_line;
 						/* else: will print entire line */
