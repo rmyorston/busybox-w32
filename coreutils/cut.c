@@ -222,7 +222,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 					/* Find next delimiter */
 #if ENABLE_FEATURE_CUT_REGEX
 					if (opt_REGEX) {
-						regmatch_t rr = {-1, -1};
+						regmatch_t rr;
 						regex_t *reg = (void*) delim;
 
 						if (regexec(reg, line + next, 1, &rr, REG_NOTBOL|REG_NOTEOL) != 0) {
