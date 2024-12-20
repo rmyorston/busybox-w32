@@ -143,15 +143,15 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 		} else if (!opt_REGEX && *delim == '\n') {
 			unsigned spos = cut_list[cl_pos].startpos;
 
+			linenum++;
 			/* get out if we have no more ranges to process or if the lines
 			 * are lower than what we're interested in */
-			if ((linenum < spos) || END_OF_LIST(cut_list[cl_pos]))
+			if (linenum <= spos || END_OF_LIST(cut_list[cl_pos]))
 				goto next_line;
 
 			/* if the line we're looking for is lower than the one we were
 			 * passed, it means we displayed it already, so move on */
-			while (spos < linenum) {
-				spos++;
+			while (++spos < linenum) {
 				/* go to the next list if we're at the end of this one */
 				if (spos > cut_list[cl_pos].endpos) {
 					cl_pos++;
@@ -161,7 +161,7 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 					spos = cut_list[cl_pos].startpos;
 					/* get out if the current line is lower than the one
 					 * we just became interested in */
-					if (linenum < spos)
+					if (linenum <= spos)
 						goto next_line;
 				}
 			}
@@ -280,7 +280,6 @@ static void cut_file(FILE *file, const char *delim, const char *odelim,
 		/* if we printed anything, finish with newline */
 		putchar('\n');
  next_line:
-		linenum++;
 		free(line);
 	} /* while (got line) */
 
@@ -399,7 +398,7 @@ int cut_main(int argc UNUSED_PARAM, char **argv)
 	//if (nranges == 0)
 	//	bb_simple_error_msg_and_die("missing list of positions");
 	//^^^ this is impossible since one of -bcfF is required,
-	// they populate LIST with non-empty string and when it is parsed,
+	// they populate LIST with non-NULL string and when it is parsed,
 	// cut_list[] gets at least one element.
 
 	/* now that the lists are parsed, we need to sort them to make life
