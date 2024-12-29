@@ -2189,6 +2189,11 @@ void FAST_FUNC strip_dot_space(char *p)
 	while (end > start && (end[-1] == '.' || end[-1] == ' ')) {
 		*--end = '\0';
 	}
+
+	// Strip trailing slash, but not from a drive root (C:/)
+	if (--end != start && (*end == '/' || *end == '\\') &&
+			!(end == p + 2 && root_len(p) == 2))
+		*end = '\0';
 }
 
 size_t FAST_FUNC remove_cr(char *p, size_t len)
