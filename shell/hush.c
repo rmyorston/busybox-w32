@@ -10361,6 +10361,9 @@ int hush_main(int argc, char **argv)
 		_exit(0);
 	}
 	G.argv0_for_re_execing = argv[0];
+	if (G.argv0_for_re_execing[0] == '-')
+		/* reexeced hush should never be a login shell */
+		G.argv0_for_re_execing++;
 #endif
 #if ENABLE_HUSH_TRAP
 # if ENABLE_HUSH_FUNCTIONS

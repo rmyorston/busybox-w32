@@ -466,7 +466,8 @@ int chpst_main(int argc UNUSED_PARAM, char **argv)
 	/* nice should be done before xsetuid */
 	if (opt & OPT_n) {
 		errno = 0;
-		if (nice(xatoi(nicestr)) == -1)
+		nice(xatoi(nicestr));
+		if (errno)
 			bb_simple_perror_msg_and_die("nice");
 	}
 
