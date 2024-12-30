@@ -109,38 +109,34 @@ parse_interpreter(const char *cmd, interp_t *interp)
 char * FAST_FUNC
 quote_arg(const char *arg)
 {
-	char *r = xmalloc(2 * strlen(arg) + 3);  // max-esc, enclosing DQ, \0
-	char *d = r;
-	int nbs = 0;  // n consecutive BS right before current char
+	char *d, *r = xmalloc(2 * strlen(arg) + 3);	// max-esc, quotes, \0
+	size_t nbs = 0; // consecutive backslashes before current char
+	int quoted = !*arg;
 
-	/* empty arguments and those containing tab/space must be quoted */
-	if (!*arg || strpbrk(arg, " \t")) {
-		*d++ = '"';
-	}
+	for (d = r; *arg; *d++ = *arg++) {
+		if (*arg == ' ' || *arg == '\t')
+			quoted = 1;
 
-	while (*arg) {
-		switch (*arg) {
-		case '\\':
-			++nbs;
-			break;
-		case '"':  // double consecutive-BS, plus one to escape the DQ
-			for (++nbs; nbs; --nbs)
-				*d++ = '\\';
-			break;
-		default:  // reset count if followed by not-DQ
-			nbs = 0;
-		}
-		*d++ = *arg++;
-	}
-
-	if (*r == '"') {
-		while (nbs--)  // double consecutive-BS before the closing DQ
+		if (*arg == '\\' || *arg == '"')
 			*d++ = '\\';
-		*d++ = '"';
-	}
-	*d++ = '\0';
+		else
+			d -= nbs; // undo nbs escapes, if any (not followed by DQ)
 
-	return xrealloc(r, d - r);
+		if (*arg == '\\')
+			++nbs;
+		else
+			nbs = 0;
+	}
+
+	if (quoted) {
+		memmove(r + 1, r, d++ - r);
+		*r = *d++ = '"';
+	} else {
+		d -= nbs;
+	}
+
+	*d = 0;
+	return r;
 }
 
 char * FAST_FUNC
