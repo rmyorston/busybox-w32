@@ -336,6 +336,8 @@ static int xargs_exec(void)
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
+	/* Any change to the logic for NOFORK applets must be duplicated
+	 * in xargs_main() below. */
 # if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
 	if (G.max_procs == 1) {
 # endif
@@ -720,6 +722,20 @@ static int xargs_ask_confirmation(void)
 # define xargs_ask_confirmation() 1
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+// Maximum command length (less a few bytes)
+# define WIN32_MAX_CHARS (32750)
+
+static size_t quote_len(const char *arg)
+{
+	char *s = quote_arg(arg);
+	size_t len = strlen(s);
+
+	free(s);
+	return len;
+}
+#endif
+
 //usage:#define xargs_trivial_usage
 //usage:       "[OPTIONS] [PROG ARGS]"
 //usage:#define xargs_full_usage "\n\n"
@@ -765,6 +781,11 @@ int xargs_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opt;
 	int n_max_chars;
 	int n_max_arg;
+#if ENABLE_PLATFORM_MINGW32
+	int delta = 0;
+	int quote = TRUE;
+	char *old_buf = NULL;
+#endif
 #if ENABLE_FEATURE_XARGS_SUPPORT_ZERO_TERM \
  || ENABLE_FEATURE_XARGS_SUPPORT_REPL_STR
 	char* FAST_FUNC (*read_args)(int, int, char*) = process_stdin;
@@ -820,6 +841,24 @@ int xargs_main(int argc UNUSED_PARAM, char **argv)
 		//argc++;
 	}
 
+#if ENABLE_PLATFORM_MINGW32
+	/* On Windows the command line may be expanded by the need to quote
+	 * arguments, but not if the command is a NOFORK applet.  If the rules
+	 * to detect this situation change xargs_exec() above will also need
+	 * to be updated. */
+# if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
+	if (G.max_procs == 1)
+# endif
+	{
+# if ENABLE_FEATURE_PREFER_APPLETS && (NUM_APPLETS > 1)
+		int applet = find_applet_by_name(argv[0]);
+		if (applet >= 0 && APPLET_IS_NOFORK(applet)) {
+			quote = FALSE;
+		}
+	}
+# endif
+#endif
+
 	/*
 	 * The Open Group Base Specifications Issue 6:
 	 * "The xargs utility shall limit the command line length such that
@@ -844,7 +883,12 @@ int xargs_main(int argc UNUSED_PARAM, char **argv)
 	{
 		size_t n_chars = 0;
 		for (i = 0; argv[i]; i++) {
-			n_chars += strlen(argv[i]) + 1;
+#if ENABLE_PLATFORM_MINGW32
+			if (quote)
+				n_chars += quote_len(argv[i]) + 1;
+			else
+#endif
+				n_chars += strlen(argv[i]) + 1;
 		}
 		n_max_chars -= n_chars;
 	}
@@ -903,10 +947,35 @@ int xargs_main(int argc UNUSED_PARAM, char **argv)
 	initial_idx = G.idx;
 	while (1) {
 		char *rem;
+#if ENABLE_PLATFORM_MINGW32
+		char **args;
+		char **tail = NULL;
+		char *saved_arg = NULL;
+		size_t n_chars;
+#endif
 
-		G.idx = initial_idx;
+		G.idx = initial_idx IF_PLATFORM_MINGW32(+ delta);
 		rem = read_args(n_max_chars, n_max_arg, buf);
 		store_param(NULL);
+
+#if ENABLE_PLATFORM_MINGW32
+		/* Check if quoting expands the command line.  If it does we
+		 * truncate args[] and preserve the tail for processing later. */
+		args = G.args;
+		if (quote) {
+ skip_read:
+			n_chars = 0;
+			for (i = initial_idx; args[i]; i++) {
+				n_chars += quote_len(args[i]) + 1;
+				if (n_chars > WIN32_MAX_CHARS) {
+					tail = args + i;
+					saved_arg = *tail;
+					*tail = NULL;
+					break;
+				}
+			}
+		}
+#endif
 
 		if (!G.args[initial_idx]) { /* not even one ARG was added? */
 			if (*rem != '\0')
@@ -918,7 +987,9 @@ int xargs_main(int argc UNUSED_PARAM, char **argv)
 
 		if (opt & (OPT_INTERACTIVE | OPT_VERBOSE)) {
 			const char *fmt = " %s" + 1;
+#if !ENABLE_PLATFORM_MINGW32
 			char **args = G.args;
+#endif
 			for (i = 0; args[i]; i++) {
 				fprintf(stderr, fmt, args[i]);
 				fmt = " %s";
@@ -932,6 +1003,33 @@ int xargs_main(int argc UNUSED_PARAM, char **argv)
 				break; /* G.xargs_exitcode is set by xargs_exec() */
 		}
 
+#if ENABLE_PLATFORM_MINGW32
+		delta = 0;
+		if (quote && tail) {
+			/* The command line was truncated.  Preload args[] with
+			 * the tail we saved earlier. */
+			*tail = saved_arg;
+			n_chars = 0;
+			for (i = 0; tail[i]; i++) {
+				args[initial_idx + i] = tail[i];
+				n_chars += quote_len(tail[i]) + 1;
+			}
+			args[initial_idx + i] = NULL;
+			delta = i;
+
+			/* The command line still overflows after quoting.
+			 * Truncate the new args[] and exec it. */
+			if (n_chars > WIN32_MAX_CHARS)
+				goto skip_read;
+
+			/* The first elements of args[] point to strings in the
+			 * current buf, so we need to preserve it.  Allocate a
+			 * new buf for future use. */
+			free(old_buf);
+			old_buf = buf;
+			buf = xzalloc(n_max_chars + 1);
+		}
+#endif
 		overlapping_strcpy(buf, rem);
 	} /* while */
 
@@ -939,6 +1037,9 @@ int xargs_main(int argc UNUSED_PARAM, char **argv)
 		free(G.args);
 		free(buf);
 	}
+#if ENABLE_FEATURE_CLEAN_UP && ENABLE_PLATFORM_MINGW32
+	free(old_buf);
+#endif
 
 #if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
 	G.max_procs = 0;
