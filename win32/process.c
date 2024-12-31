@@ -331,7 +331,9 @@ mingw_spawn_interpreter(int mode, const char *prog, char *const *argv,
 	} else {
 		errno = ENOENT;
 	}
+#if ENABLE_FEATURE_PREFER_APPLETS && NUM_APPLETS > 1
  done:
+#endif
 	free(path);
 	free(new_argv);
 	return ret;

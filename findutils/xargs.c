@@ -846,11 +846,11 @@ int xargs_main(int argc UNUSED_PARAM, char **argv)
 	 * arguments, but not if the command is a NOFORK applet.  If the rules
 	 * to detect this situation change xargs_exec() above will also need
 	 * to be updated. */
-# if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
-	if (G.max_procs == 1)
-# endif
-	{
 # if ENABLE_FEATURE_PREFER_APPLETS && (NUM_APPLETS > 1)
+#  if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
+	if (G.max_procs == 1)
+#  endif
+	{
 		int applet = find_applet_by_name(argv[0]);
 		if (applet >= 0 && APPLET_IS_NOFORK(applet)) {
 			quote = FALSE;
