@@ -257,6 +257,11 @@ enum {
 #define MAKE_FAILURE		0x01
 #define MAKE_DIDSOMETHING	0x02
 
+// Return TRUE if c is allowed in a POSIX 2017 macro or target name
+#define ispname(c) (isalpha(c) || isdigit(c) || c == '.' || c == '_')
+// Return TRUE if c is in the POSIX 'portable filename character set'
+#define isfname(c) (ispname(c) || c == '-')
+
 #define HTABSIZE 39
 
 struct globals {
@@ -320,11 +325,8 @@ struct globals {
 #endif
 
 static int make(struct name *np, int level);
-
-// Return TRUE if c is allowed in a POSIX 2017 macro or target name
-#define ispname(c) (isalpha(c) || isdigit(c) || c == '.' || c == '_')
-// Return TRUE if c is in the POSIX 'portable filename character set'
-#define isfname(c) (ispname(c) || c == '-')
+static struct name *dyndep(struct name *np, struct rule *infrule,
+								const char **ptsuff);
 
 /*
  * Utility functions.
@@ -993,38 +995,27 @@ suffix(const char *name)
 }
 
 /*
- * Dynamic dependency.  This routine applies the suffix rules
- * to try and find a source and a set of rules for a missing
- * target.  NULL is returned on failure.  On success the name of
- * the implicit prerequisite is returned and the details are
- * placed in the imprule structure provided by the caller.
+ * Search for an inference rule to convert some suffix ('psuff')
+ * to the target suffix 'tsuff'.  The basename of the prerequisite
+ * is 'base'.
  */
 static struct name *
-dyndep(struct name *np, struct rule *imprule)
+dyndep0(char *base, const char *tsuff, struct rule *infrule)
 {
-	char *suff, *newsuff;
-	char *base, *name, *member;
+	char *psuff;
 	struct name *xp;		// Suffixes
 	struct name *sp;		// Suffix rule
-	struct name *pp = NULL;	// Implicit prerequisite
 	struct rule *rp;
 	struct depend *dp;
 	bool chain = FALSE;
-
-	member = NULL;
-	name = splitlib(np->n_name, &member);
-
-	suff = xstrdup(suffix(name));
-	base = member ? member : name;
-	*suffix(base) = '\0';
 
 	xp = newname(".SUFFIXES");
  retry:
 	for (rp = xp->n_rule; rp; rp = rp->r_next) {
 		for (dp = rp->r_dep; dp; dp = dp->d_next) {
 			// Generate new suffix rule to try
-			newsuff = dp->d_name->n_name;
-			sp = findname(auto_concat(newsuff, suff));
+			psuff = dp->d_name->n_name;
+			sp = findname(auto_concat(psuff, tsuff));
 			if (sp && sp->n_rule) {
 				struct name *ip;
 				int got_ip;
@@ -1032,9 +1023,8 @@ dyndep(struct name *np, struct rule *imprule)
 				// Has rule already been used in this chain?
 				if ((sp->n_flag & N_MARK))
 					continue;
-
 				// Generate a name for an implicit prerequisite
-				ip = newname(auto_concat(base, newsuff));
+				ip = newname(auto_concat(base, psuff));
 				if ((ip->n_flag & N_DOING))
 					continue;
 
@@ -1045,20 +1035,19 @@ dyndep(struct name *np, struct rule *imprule)
 					got_ip = ip->n_tim.tv_sec || (ip->n_flag & N_TARGET);
 				} else {
 					sp->n_flag |= N_MARK;
-					got_ip = dyndep(ip, NULL) != NULL;
+					got_ip = dyndep(ip, NULL, NULL) != NULL;
 					sp->n_flag &= ~N_MARK;
 				}
 
 				if (got_ip) {
 					// Prerequisite exists or we know how to make it
-					if (imprule) {
+					if (infrule) {
 						dp = NULL;
 						newdep(&dp, ip);
-						imprule->r_dep = dp;
-						imprule->r_cmd = sp->n_rule->r_cmd;
+						infrule->r_dep = dp;
+						infrule->r_cmd = sp->n_rule->r_cmd;
 					}
-					pp = ip;
-					goto finish;
+					return ip;
 				}
 			}
 		}
@@ -1069,9 +1058,77 @@ dyndep(struct name *np, struct rule *imprule)
 		chain = TRUE;
 		goto retry;
 	}
- finish:
-	free(suff);
+	return NULL;
+}
+
+/*
+ * If 'name' ends with 'suffix' return an allocated string containing
+ * the name with the suffix removed, else return NULL.
+ */
+static char *
+has_suffix(const char *name, const char *suffix)
+{
+	ssize_t delta = strlen(name) - strlen(suffix);
+	char *base = NULL;
+
+	if (delta > 0 && strcmp(name + delta, suffix) == 0) {
+		base = xstrdup(name);
+		base[delta] = '\0';
+	}
+
+	return base;
+}
+
+/*
+ * Dynamic dependency.  This routine applies the suffix rules
+ * to try and find a source and a set of rules for a missing
+ * target.  NULL is returned on failure.  On success the name of
+ * the implicit prerequisite is returned and the rule used is
+ * placed in the infrule structure provided by the caller.
+ */
+static struct name *
+dyndep(struct name *np, struct rule *infrule, const char **ptsuff)
+{
+	const char *tsuff;
+	char *base, *name, *member;
+	struct name *pp = NULL;	// Implicit prerequisite
+
+	member = NULL;
+	name = splitlib(np->n_name, &member);
+
+	// POSIX only allows inference rules with one or two periods.
+	// As an extension this restriction is lifted, but not for
+	// targets of the form lib.a(member.o).
+	if (!posix && member == NULL) {
+		struct name *xp = newname(".SUFFIXES");
+		for (struct rule *rp = xp->n_rule; rp; rp = rp->r_next) {
+			for (struct depend *dp = rp->r_dep; dp; dp = dp->d_next) {
+				tsuff = dp->d_name->n_name;
+				base = has_suffix(name, tsuff);
+				if (base) {
+					pp = dyndep0(base, tsuff, infrule);
+					free(base);
+					if (pp) {
+						if (ptsuff)
+							*ptsuff = tsuff;
+						goto done;
+					}
+				}
+			}
+		}
+
+	} else
+	{
+		tsuff = xstrdup(suffix(name));
+		base = member ? member : name;
+		*suffix(base) = '\0';
+
+		pp = dyndep0(base, tsuff, infrule);
+		free((void *)tsuff);
+	}
+ done:
 	free(name);
+
 	return pp;
 }
 
@@ -1789,9 +1846,10 @@ readline(FILE *fd, int want_command)
 }
 
 /*
- * Return TRUE if the argument is a known suffix.
+ * Return a pointer to the suffix name if the argument is a known suffix
+ * or NULL if it isn't.
  */
-static int
+static const char *
 is_suffix(const char *s)
 {
 	struct name *np;
@@ -1802,7 +1860,39 @@ is_suffix(const char *s)
 	for (rp = np->n_rule; rp; rp = rp->r_next) {
 		for (dp = rp->r_dep; dp; dp = dp->d_next) {
 			if (strcmp(s, dp->d_name->n_name) == 0) {
-				return TRUE;
+				return dp->d_name->n_name;
+			}
+		}
+	}
+	return NULL;
+}
+
+/*
+ * Return TRUE if the argument is formed by concatenating two
+ * known suffixes.
+ */
+static int
+is_inference_target(const char *s)
+{
+	struct name *np;
+	struct rule *rp1, *rp2;
+	struct depend *dp1, *dp2;
+
+	np = newname(".SUFFIXES");
+	for (rp1 = np->n_rule; rp1; rp1 = rp1->r_next) {
+		for (dp1 = rp1->r_dep; dp1; dp1 = dp1->d_next) {
+			const char *suff1 = dp1->d_name->n_name;
+			size_t len = strlen(suff1);
+
+			if (strncmp(s, suff1, len) == 0) {
+				for (rp2 = np->n_rule; rp2; rp2 = rp2->r_next) {
+					for (dp2 = rp2->r_dep; dp2; dp2 = dp2->d_next) {
+						const char *suff2 = dp2->d_name->n_name;
+						if (strcmp(s + len, suff2) == 0) {
+							return TRUE;
+						}
+					}
+				}
 			}
 		}
 	}
@@ -1824,7 +1914,6 @@ enum {
 static int
 target_type(char *s)
 {
-	char *sfx;
 	int ret;
 	static const char *s_name =
 		".DEFAULT\0"
@@ -1854,9 +1943,6 @@ target_type(char *s)
 		T_SPECIAL,
 	};
 
-	if (*s != '.')
-		return T_NORMAL;
-
 	// Check for one of the known special targets
 	ret = index_in_strings(s_name, s);
 	if (ret >= 0)
@@ -1864,16 +1950,24 @@ target_type(char *s)
 
 	// Check for an inference rule
 	ret = T_NORMAL;
-	sfx = suffix(s);
-	if (is_suffix(sfx)) {
-		if (s == sfx) {	// Single suffix rule
+	if (!posix) {
+		if (is_suffix(s) || is_inference_target(s)) {
 			ret = T_INFERENCE | T_NOPREREQ | T_COMMAND;
-		} else {
-			// Suffix is valid, check that prefix is too
-			*sfx = '\0';
-			if (is_suffix(s))
+		}
+	} else
+	{
+		// In POSIX inference rule targets must contain one or two dots
+		char *sfx = suffix(s);
+		if (*s == '.' && is_suffix(sfx)) {
+			if (s == sfx) {	// Single suffix rule
 				ret = T_INFERENCE | T_NOPREREQ | T_COMMAND;
-			*sfx = '.';
+			} else {
+				// Suffix is valid, check that prefix is too
+				*sfx = '\0';
+				if (is_suffix(s))
+					ret = T_INFERENCE | T_NOPREREQ | T_COMMAND;
+				*sfx = '.';
+			}
 		}
 	}
 	return ret;
@@ -2587,7 +2681,7 @@ docmds(struct name *np, struct cmd *cp)
 
 static int
 make1(struct name *np, struct cmd *cp, char *oodate, char *allsrc,
-		char *dedup, struct name *implicit)
+		char *dedup, struct name *implicit, const char *tsuff)
 {
 	char *name, *member = NULL, *base = NULL, *prereq = NULL;
 
@@ -2603,7 +2697,7 @@ make1(struct name *np, struct cmd *cp, char *oodate, char *allsrc,
 		char *s;
 
 		// As an extension, if we're not dealing with an implicit
-		// rule set $< to the first out-of-date prerequisite.
+		// prerequisite set $< to the first out-of-date prerequisite.
 		if (implicit == NULL) {
 			if (oodate) {
 				s = strchr(oodate, ' ');
@@ -2614,16 +2708,43 @@ make1(struct name *np, struct cmd *cp, char *oodate, char *allsrc,
 		} else
 			prereq = implicit->n_name;
 
-		base = member ? member : name;
-		s = suffix(base);
-		// As an extension, if we're not dealing with an implicit
-		// rule and the target ends with a known suffix, remove it
-		// and set $* to the stem, else to an empty string.
-		if (implicit == NULL && !is_suffix(s))
-			base = NULL;
-		else
-			*s = '\0';
+		if (!posix && member == NULL) {
+			// As an extension remove the suffix from a target, either
+			// that obtained by an inference rule or one of the known
+			// suffixes.  Not for targets of the form lib.a(member.o).
+			if (tsuff != NULL) {
+				base = has_suffix(name, tsuff);
+				if (base) {
+					free(name);
+					name = base;
+				}
+			} else {
+				struct name *xp = newname(".SUFFIXES");
+				for (struct rule *rp = xp->n_rule; rp; rp = rp->r_next) {
+					for (struct depend *dp = rp->r_dep; dp; dp = dp->d_next) {
+						base = has_suffix(name, dp->d_name->n_name);
+						if (base) {
+							free(name);
+							name = base;
+							goto done;
+						}
+					}
+				}
+			}
+		} else
+		{
+			base = member ? member : name;
+			s = suffix(base);
+			// As an extension, if we're not dealing with an implicit
+			// prerequisite and the target ends with a known suffix,
+			// remove it and set $* to the stem, else to an empty string.
+			if (implicit == NULL && !is_suffix(s))
+				base = NULL;
+			else
+				*s = '\0';
+		}
 	}
+ done:
 	setmacro("<", prereq, 0 | M_VALID);
 	setmacro("*", base, 0 | M_VALID);
 	free(name);
@@ -2667,11 +2788,12 @@ make(struct name *np, int level)
 	struct depend *dp;
 	struct rule *rp;
 	struct name *impdep = NULL;	// implicit prerequisite
-	struct rule imprule;
+	struct rule infrule;
 	struct cmd *sc_cmd = NULL;	// commands for single-colon rule
 	char *oodate = NULL;
 	char *allsrc = NULL;
 	char *dedup = NULL;
+	const char *tsuff = NULL;
 	struct timespec dtim = {1, 0};
 	int estat = 0;
 
@@ -2690,10 +2812,10 @@ make(struct name *np, int level)
 		// as an extension, not for phony targets)
 		sc_cmd = getcmd(np);
 		if (!sc_cmd && (posix || !(np->n_flag & N_PHONY))) {
-			impdep = dyndep(np, &imprule);
+			impdep = dyndep(np, &infrule, &tsuff);
 			if (impdep) {
-				sc_cmd = imprule.r_cmd;
-				addrule(np, imprule.r_dep, NULL, FALSE);
+				sc_cmd = infrule.r_cmd;
+				addrule(np, infrule.r_dep, NULL, FALSE);
 			}
 		}
 
@@ -2715,7 +2837,7 @@ make(struct name *np, int level)
 		for (rp = np->n_rule; rp; rp = rp->r_next) {
 			if (!rp->r_cmd) {
 				if (posix || !(np->n_flag & N_PHONY))
-					impdep = dyndep(np, &imprule);
+					impdep = dyndep(np, &infrule, &tsuff);
 				if (!impdep) {
 					if (doinclude)
 						return 1;
@@ -2743,9 +2865,9 @@ make(struct name *np, int level)
 			// If the rule has no commands use the inference rule.
 			if (!rp->r_cmd) {
 				locdep = impdep;
-				imprule.r_dep->d_next = rp->r_dep;
-				rp->r_dep = imprule.r_dep;
-				rp->r_cmd = imprule.r_cmd;
+				infrule.r_dep->d_next = rp->r_dep;
+				rp->r_dep = infrule.r_dep;
+				rp->r_cmd = infrule.r_cmd;
 			}
 			// A rule with no prerequisities is executed unconditionally.
 			if (!rp->r_dep)
@@ -2776,7 +2898,7 @@ make(struct name *np, int level)
 			if (((np->n_flag & N_PHONY) || timespec_le(&np->n_tim, &dtim))) {
 				if (!(estat & MAKE_FAILURE)) {
 					estat |= make1(np, rp->r_cmd, oodate, allsrc,
-										dedup, locdep);
+										dedup, locdep, tsuff);
 					dtim = (struct timespec){1, 0};
 				}
 				free(oodate);
@@ -2792,7 +2914,7 @@ make(struct name *np, int level)
 		}
 	}
 	if ((np->n_flag & N_DOUBLE) && impdep)
-		free(imprule.r_dep);
+		free(infrule.r_dep);
 
 	np->n_flag |= N_DONE;
 	np->n_flag &= ~N_DOING;
@@ -2801,7 +2923,8 @@ make(struct name *np, int level)
 				((np->n_flag & N_PHONY) || (timespec_le(&np->n_tim, &dtim)))) {
 		if (!(estat & MAKE_FAILURE)) {
 			if (sc_cmd)
-				estat |= make1(np, sc_cmd, oodate, allsrc, dedup, impdep);
+				estat |= make1(np, sc_cmd, oodate, allsrc, dedup,
+								impdep, tsuff);
 			else if (!doinclude && level == 0 && !(estat & MAKE_DIDSOMETHING))
 				warning("nothing to be done for %s", np->n_name);
 		} else if (!doinclude && !quest) {

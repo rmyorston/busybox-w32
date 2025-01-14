@@ -541,6 +541,36 @@ testing "make chained inference rules" \
 '
 cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
 
+# Suffixes with multiple periods are supported
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch x.c.c
+testing "make support multi-period suffixes" \
+	"make -f -" "cat x.c.c >x.o.o\nx\n" "" '
+.SUFFIXES: .c.c .o.o
+x.o.o:
+.c.c.o.o:
+	cat $< >$@
+	@echo $*
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
+# Suffixes with no periods are supported
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch filex
+testing "make support suffixes without any periods" \
+	"make -f -" "cp filex fileh\nfile\ncp filex filez\nfile\n" "" '
+.SUFFIXES: x h z
+all: fileh filez
+fileh:
+filez: filex
+	cp filex filez
+	@echo $*
+xh:
+	cp $< $@
+	@echo $*
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
 # make supports *, ? and [] wildcards in targets and prerequisites
 mkdir make.tempdir && cd make.tempdir || exit 1
 touch -t 202206171201 t1a t2aa t3b
