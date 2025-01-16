@@ -27,6 +27,8 @@ CFLAGS += $(call cc-option,-Wunused -Wunused-parameter,)
 CFLAGS += $(call cc-option,-Wunused-function -Wunused-value,)
 CFLAGS += $(call cc-option,-Wmissing-prototypes -Wmissing-declarations,)
 CFLAGS += $(call cc-option,-Wno-format-security,)
+# we use "" format in ioctl_or_perror_and_die(a, b, c, "")
+CFLAGS += $(call cc-option,-Wno-format-zero-length,)
 # warn about C99 declaration after statement
 CFLAGS += $(call cc-option,-Wdeclaration-after-statement,)
 # If you want to add more -Wsomething above, make sure that it is
