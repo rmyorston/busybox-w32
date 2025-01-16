@@ -471,8 +471,7 @@ newcmd(struct cmd **cphead, char *str)
 	/*(*cphead)->c_next = NULL; - xzalloc did it */
 	(*cphead)->c_cmd = xstrdup(str);
 	/*(*cphead)->c_refcnt = 0; */
-	if (makefile)
-		(*cphead)->c_makefile = xstrdup(makefile);
+	(*cphead)->c_makefile = xstrdup(makefile);
 	(*cphead)->c_dispno = dispno;
 }
 
@@ -1117,8 +1116,7 @@ dyndep(struct name *np, struct rule *infrule, const char **ptsuff)
 			}
 		}
 
-	} else
-	{
+	} else {
 		tsuff = xstrdup(suffix(name));
 		base = member ? member : name;
 		*suffix(base) = '\0';
@@ -1954,8 +1952,7 @@ target_type(char *s)
 		if (is_suffix(s) || is_inference_target(s)) {
 			ret = T_INFERENCE | T_NOPREREQ | T_COMMAND;
 		}
-	} else
-	{
+	} else {
 		// In POSIX inference rule targets must contain one or two dots
 		char *sfx = suffix(s);
 		if (*s == '.' && is_suffix(sfx)) {
@@ -2679,6 +2676,31 @@ docmds(struct name *np, struct cmd *cp)
 	return estat;
 }
 
+/*
+ * Remove the suffix from a name, either the one provided in 'tsuff'
+ * or, if 'tsuff' is NULL, one of the known suffixes.
+ */
+static char *
+remove_suffix(const char *name, const char *tsuff)
+{
+	char *base = NULL;
+
+	if (tsuff != NULL) {
+		base = has_suffix(name, tsuff);
+	} else {
+		struct name *xp = newname(".SUFFIXES");
+		for (struct rule *rp = xp->n_rule; rp; rp = rp->r_next) {
+			for (struct depend *dp = rp->r_dep; dp; dp = dp->d_next) {
+				base = has_suffix(name, dp->d_name->n_name);
+				if (base) {
+					return base;
+				}
+			}
+		}
+	}
+	return base;
+}
+
 static int
 make1(struct name *np, struct cmd *cp, char *oodate, char *allsrc,
 		char *dedup, struct name *implicit, const char *tsuff)
@@ -2709,30 +2731,15 @@ make1(struct name *np, struct cmd *cp, char *oodate, char *allsrc,
 			prereq = implicit->n_name;
 
 		if (!posix && member == NULL) {
-			// As an extension remove the suffix from a target, either
-			// that obtained by an inference rule or one of the known
-			// suffixes.  Not for targets of the form lib.a(member.o).
-			if (tsuff != NULL) {
-				base = has_suffix(name, tsuff);
-				if (base) {
-					free(name);
-					name = base;
-				}
-			} else {
-				struct name *xp = newname(".SUFFIXES");
-				for (struct rule *rp = xp->n_rule; rp; rp = rp->r_next) {
-					for (struct depend *dp = rp->r_dep; dp; dp = dp->d_next) {
-						base = has_suffix(name, dp->d_name->n_name);
-						if (base) {
-							free(name);
-							name = base;
-							goto done;
-						}
-					}
-				}
+			// As an extension remove a suffix that doesn't necessarily
+			// start with a period from a target, but not for targets
+			// of the form lib.a(member.o).
+			base = remove_suffix(name, tsuff);
+			if (base) {
+				free(name);
+				name = base;
 			}
-		} else
-		{
+		} else {
 			base = member ? member : name;
 			s = suffix(base);
 			// As an extension, if we're not dealing with an implicit
@@ -2744,7 +2751,6 @@ make1(struct name *np, struct cmd *cp, char *oodate, char *allsrc,
 				*s = '\0';
 		}
 	}
- done:
 	setmacro("<", prereq, 0 | M_VALID);
 	setmacro("*", base, 0 | M_VALID);
 	free(name);
@@ -2830,8 +2836,7 @@ make(struct name *np, int level)
 			}
 			impdep = np;
 		}
-	}
-	else {
+	} else {
 		// If any double-colon rule has no commands we need
 		// an inference rule (but, as an extension, not for phony targets)
 		for (rp = np->n_rule; rp; rp = rp->r_next) {
