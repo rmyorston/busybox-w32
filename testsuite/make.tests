@@ -86,6 +86,16 @@ test.k:
 '
 cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
 
+# Check that single-suffix inference rules work.
+mkdir make.tempdir && cd make.tempdir || exit 1
+touch test.sh
+testing "make single-suffix inference rule works" \
+	"make -f - -s; echo $?" \
+	"0\n" "" '
+test:
+'
+cd .. || exit 1; rm -rf make.tempdir 2>/dev/null
+
 # There was a bug where the failure of a build command didn't result
 # in make returning a non-zero exit status.
 testing "make return error if command fails" \

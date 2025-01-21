@@ -1100,22 +1100,34 @@ dyndep(struct name *np, struct rule *infrule, const char **ptsuff)
 	// targets of the form lib.a(member.o).
 	if (!posix && member == NULL) {
 		struct name *xp = newname(".SUFFIXES");
+		int found_suffix = FALSE;
+
 		for (struct rule *rp = xp->n_rule; rp; rp = rp->r_next) {
 			for (struct depend *dp = rp->r_dep; dp; dp = dp->d_next) {
 				tsuff = dp->d_name->n_name;
 				base = has_suffix(name, tsuff);
 				if (base) {
+					found_suffix = TRUE;
 					pp = dyndep0(base, tsuff, infrule);
 					free(base);
 					if (pp) {
-						if (ptsuff)
-							*ptsuff = tsuff;
 						goto done;
 					}
 				}
 			}
 		}
 
+		if (!found_suffix) {
+			// The name didn't have a known suffix. Try single-suffix rule.
+			tsuff = "";
+			pp = dyndep0(name, tsuff, infrule);
+			if (pp) {
+ done:
+				if (ptsuff) {
+					*ptsuff = tsuff;
+				}
+			}
+		}
 	} else {
 		tsuff = xstrdup(suffix(name));
 		base = member ? member : name;
@@ -1124,7 +1136,6 @@ dyndep(struct name *np, struct rule *infrule, const char **ptsuff)
 		pp = dyndep0(base, tsuff, infrule);
 		free((void *)tsuff);
 	}
- done:
 	free(name);
 
 	return pp;
