@@ -2171,6 +2171,20 @@ pragmas_from_env(void)
 #endif
 
 /*
+ * Determine if a line is a target rule with an inline command.
+ * Return a pointer to the semicolon separator if it is, else NULL.
+ */
+static char *
+inline_command(char *line)
+{
+	char *p = find_char(line, ':');
+
+	if (p)
+		p = strchr(p, ';');
+	return p;
+}
+
+/*
  * Parse input from the makefile and construct a tree structure of it.
  */
 static void
@@ -2389,9 +2403,9 @@ input(FILE *fd, int ilevel)
 		cp = NULL;
 		s = strchr(q, ';');
 		if (s) {
-			// Retrieve command from expanded copy of line
+			// Retrieve command from original or expanded copy of line
 			char *copy3 = expand_macros(copy, FALSE);
-			if ((p = find_colon(copy3)) && (p = strchr(p, ';')))
+			if ((p = inline_command(copy)) || (p = inline_command(copy3)))
 				newcmd(&cp, process_command(p + 1));
 			free(copy3);
 			*s = '\0';
