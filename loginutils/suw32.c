@@ -48,8 +48,8 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	char *opt_command = NULL;
 	char *opt_shell = NULL;
 	SHELLEXECUTEINFO info;
-	char *bb_path, *cwd, *realcwd, *q, *args;
-	DECLARE_PROC_ADDR(BOOL, ShellExecuteExA, SHELLEXECUTEINFOA *);
+	const char *bb_path;
+	char *cwd, *realcwd, *q, *args;
 
 	opt = getopt32(argv, "^c:s:tNW" "\0" "s--N:N--s", &opt_command, &opt_shell);
 	argv += optind;
@@ -70,19 +70,17 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 
-	/* ShellExecuteEx() needs backslash as separator in UNC paths. */
 	if (opt_shell) {
 		bb_path = file_is_win32_exe(opt_shell);
 		if (!bb_path)
 			bb_error_msg_and_die("%s: Not found", opt_shell);
 		args = NULL;
 	} else {
-		bb_path = xstrdup(bb_busybox_exec_path);
+		bb_path = bb_busybox_exec_path;
 		args = xstrdup("--busybox ash");
 		if (!test_mode)
 			args = xappendword(args, "-t \"BusyBox ash (Admin)\"");
 	}
-	slash_to_bs(bb_path);
 
 	memset(&info, 0, sizeof(SHELLEXECUTEINFO));
 	info.cbSize = sizeof(SHELLEXECUTEINFO);
@@ -137,12 +135,7 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	/* info.lpDirectory = NULL; */
 	info.nShow = SW_SHOWNORMAL;
 
-	if (!INIT_PROC_ADDR(shell32.dll, ShellExecuteExA)) {
-		ret = -1;
-		goto end;
-	}
-
-	if (!ShellExecuteExA(&info)) {
+	if (!mingw_shell_execute(&info)) {
 		ret = 1;
 		goto end;
 	}
@@ -159,7 +152,8 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 	}
  end:
 	if (ENABLE_FEATURE_CLEAN_UP) {
-		free(bb_path);
+		if (bb_path != bb_busybox_exec_path)
+			free((void *)bb_path);
 		free(cwd);
 		free(realcwd);
 		free(args);

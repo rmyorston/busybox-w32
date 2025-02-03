@@ -2538,3 +2538,25 @@ char * FAST_FUNC exe_relative_path(const char *tail)
 	free(exepath);
 	return relpath;
 }
+
+int mingw_shell_execute(SHELLEXECUTEINFO *info)
+{
+	DECLARE_PROC_ADDR(BOOL, ShellExecuteExA, SHELLEXECUTEINFOA *);
+	char *lpath;
+	int ret;
+
+	if (!INIT_PROC_ADDR(shell32.dll, ShellExecuteExA)) {
+		errno = ENOSYS;
+		return FALSE;
+	}
+
+	// ShellExecuteEx() needs backslash as separator in UNC paths.
+	lpath = xstrdup(info->lpFile);
+	slash_to_bs(lpath);
+	info->lpFile = lpath;
+
+	ret = ShellExecuteExA(info);
+
+	free(lpath);
+	return ret;
+}

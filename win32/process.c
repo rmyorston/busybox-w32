@@ -501,6 +501,38 @@ static NORETURN void wait_for_child(HANDLE child, const char *cmd)
 	exit((int)code);
 }
 
+static intptr_t
+shell_execute(const char *path, char *const *argv)
+{
+	SHELLEXECUTEINFO info;
+	char *args;
+
+	memset(&info, 0, sizeof(SHELLEXECUTEINFO));
+	info.cbSize = sizeof(SHELLEXECUTEINFO);
+	info.fMask = SEE_MASK_NOCLOSEPROCESS;
+	/* info.hwnd = NULL; */
+	info.lpVerb = "runas";
+	info.lpFile = path;
+
+	args = NULL;
+	if (*argv++) {
+		while (*argv) {
+			char *q = quote_arg(*argv++);
+			args = xappendword(args, q);
+			free(q);
+		}
+	}
+
+	info.lpParameters = args;
+	/* info.lpDirectory = NULL; */
+	info.nShow = SW_SHOWNORMAL;
+
+	mingw_shell_execute(&info);
+
+	free(args);
+	return info.hProcess ? (intptr_t)info.hProcess : -1;
+}
+
 int
 mingw_execvp(const char *cmd, char *const *argv)
 {
@@ -514,6 +546,16 @@ int
 mingw_execve(const char *cmd, char *const *argv, char *const *envp)
 {
 	intptr_t ret = mingw_spawn_interpreter(P_NOWAIT, cmd, argv, envp, 0);
+
+	if (ret == -1 && GetLastError() == ERROR_ELEVATION_REQUIRED) {
+		// Command exists but failed because it wants elevated privileges.
+		// Try again using ShellExecuteEx().
+		SetLastError(0);
+		ret = shell_execute(cmd, argv);
+		if (GetLastError())
+			exit(1);
+	}
+
 	if (ret != -1)
 		wait_for_child((HANDLE)ret, cmd);
 	return ret;
