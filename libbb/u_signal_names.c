@@ -27,10 +27,6 @@
 
 #include "libbb.h"
 
-#if ENABLE_PLATFORM_MINGW32
-# undef SIGPIPE
-#endif
-
 #if ENABLE_PLATFORM_POSIX || defined(SIGSTKFLT) || defined(SIGVTALRM)
 # define SIGLEN 7
 #elif defined(SIGWINCH) || (ENABLE_FEATURE_RTMINMAX && \
