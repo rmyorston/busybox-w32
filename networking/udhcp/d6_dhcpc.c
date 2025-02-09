@@ -764,7 +764,7 @@ static NOINLINE int send_d6_discover(struct in6_addr *requested_ipv6)
 		client6_data.ia_pd = xzalloc(len);
 		client6_data.ia_pd->code = D6_OPT_IA_PD;
 		client6_data.ia_pd->len = len - 4;
-		generate_iaid(client6_data.ia_na->data); /* IAID */
+		generate_iaid(client6_data.ia_pd->data); /* IAID */
 		opt_ptr = mempcpy(opt_ptr, client6_data.ia_pd, len);
 	}
 
