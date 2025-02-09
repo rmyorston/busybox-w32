@@ -148,10 +148,11 @@ enum {
 	OPT_o = 1 << 12,
 	OPT_x = 1 << 13,
 	OPT_f = 1 << 14,
-	OPT_l = 1 << 15,
-	OPT_d = 1 << 16,
+	OPT_m = 1 << 15,
+	OPT_l = 1 << 16,
+	OPT_d = 1 << 17,
 /* The rest has variable bit positions, need to be clever */
-	OPTBIT_d = 16,
+	OPTBIT_d = 17,
 	USE_FOR_MMU(             OPTBIT_b,)
 	///IF_FEATURE_UDHCPC_ARPING(OPTBIT_a,)
 	IF_FEATURE_UDHCP_PORT(   OPTBIT_P,)
@@ -268,6 +269,23 @@ static void option_to_env(const uint8_t *option, const uint8_t *option_end)
 		//case D6_OPT_SERVERID:
 		case D6_OPT_IA_NA:
 		case D6_OPT_IA_PD:
+/*  0                   1                   2                   3
+ *  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ * |         OPTION_IA_PD          |         option-length         |
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ * |                         IAID (4 octets)                       |
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ * |                              T1                               |
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ * |                              T2                               |
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ * .                                                               .
+ * .                          IA_PD-options                        .
+ * .                                                               .
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ */
+			/* recurse to handle "IA_PD-options" field */
 			option_to_env(option + 16, option + 4 + option[3]);
 			break;
 		//case D6_OPT_IA_TA:
@@ -1131,12 +1149,11 @@ static void client_background(void)
 //usage:#endif
 //usage:#define udhcpc6_trivial_usage
 //usage:       "[-fbq"IF_UDHCP_VERBOSE("v")"R] [-t N] [-T SEC] [-A SEC|-n] [-i IFACE] [-s PROG]\n"
-//usage:       "	[-p PIDFILE]"IF_FEATURE_UDHCP_PORT(" [-P PORT]")" [-ldo] [-r IPv6] [-x OPT:VAL]... [-O OPT]..."
+//usage:       "	[-p PIDFILE]"IF_FEATURE_UDHCP_PORT(" [-P PORT]")" [-mldo] [-r IPv6] [-x OPT:VAL]... [-O OPT]..."
 //usage:#define udhcpc6_full_usage "\n"
 //usage:     "\n	-i IFACE	Interface to use (default "CONFIG_UDHCPC_DEFAULT_INTERFACE")"
 //usage:     "\n	-p FILE		Create pidfile"
 //usage:     "\n	-s PROG		Run PROG at DHCP events (default "CONFIG_UDHCPC6_DEFAULT_SCRIPT")"
-//usage:     "\n	-B		Request broadcast replies"
 //usage:     "\n	-t N		Send up to N discover packets"
 //usage:     "\n	-T SEC		Pause between packets (default 3)"
 //usage:     "\n	-A SEC		Wait if lease is not obtained (default 20)"
@@ -1154,6 +1171,7 @@ static void client_background(void)
 ////usage:	IF_FEATURE_UDHCPC_ARPING(
 ////usage:     "\n	-a		Use arping to validate offered address"
 ////usage:	)
+//usage:     "\n	-m		Send multicast renew requests rather than unicast ones"
 //usage:     "\n	-l		Send 'information request' instead of 'solicit'"
 //usage:     "\n			(used for servers which do not assign IPv6 addresses)"
 //usage:     "\n	-r IPv6		Request this address ('no' to not request any IP)"
@@ -1211,7 +1229,7 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 	/* Parse command line */
 	opt = getopt32long(argv, "^"
 		/* O,x: list; -T,-t,-A take numeric param */
-		"i:np:qRr:s:T:+t:+SA:+O:*ox:*fld"
+		"i:np:qRr:s:T:+t:+SA:+O:*ox:*fmld"
 		USE_FOR_MMU("b")
 		///IF_FEATURE_UDHCPC_ARPING("a")
 		IF_FEATURE_UDHCP_PORT("P:")
@@ -1464,7 +1482,7 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 					if (opt & OPT_l)
 						send_d6_info_request();
 					else
-						send_d6_renew(&srv6_buf, requested_ipv6);
+						send_d6_renew(OPT_m ? NULL : &srv6_buf, requested_ipv6);
 					timeout = discover_timeout;
 					packet_num++;
 					continue;
@@ -1617,8 +1635,7 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 				address_timeout = 0;
 				prefix_timeout = 0;
 				option = d6_find_option(packet.d6_options, packet_end, D6_OPT_STATUS_CODE);
-				if (option && (option->data[0] | option->data[1]) != 0) {
-///FIXME:
+				if (option) {
 //    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //    |       OPTION_STATUS_CODE      |         option-len            |
 //    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -1626,21 +1643,28 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 //    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               |
 //    .                        status-message                         .
 //    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-// so why do we think it's NAK if data[0] is zero but data[1] is not? That's wrong...
-// we should also check that option->len is ok (i.e. not 0), right?
-					/* return to init state */
-					bb_info_msg("received DHCP NAK (%u)", option->data[4]);
-					d6_run_script(packet.d6_options,
-							packet_end, "nak");
-					if (client_data.state != REQUESTING)
-						d6_run_script_no_option("deconfig");
-					sleep(3); /* avoid excessive network traffic */
-					client_data.state = INIT_SELECTING;
-					client_data.first_secs = 0; /* make secs field count from 0 */
-					requested_ipv6 = NULL;
-					timeout = 0;
-					packet_num = 0;
-					continue;
+					unsigned len, status;
+					len = ((unsigned)option->len_hi << 8) + option->len;
+					if (len < 2) {
+						bb_simple_error_msg("invalid OPTION_STATUS_CODE, ignoring packet");
+						continue;
+					}
+					status = ((unsigned)option->data[0] << 8) + option->data[1];
+					if (status != 0) {
+//TODO: handle status == 5 (UseMulticast)?
+						/* return to init state */
+						bb_info_msg("received DHCP NAK: %u '%.*s'", status, len - 2, option->data + 2);
+						d6_run_script(packet.d6_options, packet_end, "nak");
+						if (client_data.state != REQUESTING)
+							d6_run_script_no_option("deconfig");
+						sleep(3); /* avoid excessive network traffic */
+						client_data.state = INIT_SELECTING;
+						client_data.first_secs = 0; /* make secs field count from 0 */
+						requested_ipv6 = NULL;
+						timeout = 0;
+						packet_num = 0;
+						continue;
+					}
 				}
 				option = d6_copy_option(packet.d6_options, packet_end, D6_OPT_SERVERID);
 				if (!option) {
@@ -1661,7 +1685,6 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 					packet_num = 0;
 					continue;
 				}
-				/* It's a D6_MSG_REPLY */
 /*
  * RFC 3315 18.1.8. Receipt of Reply Messages
  *
@@ -1790,6 +1813,21 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 
 					free(client6_data.ia_pd);
 					client6_data.ia_pd = d6_copy_option(packet.d6_options, packet_end, D6_OPT_IA_PD);
+//  0                   1                   2                   3
+//  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |         OPTION_IA_PD          |         option-length         |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                         IAID (4 octets)                       |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                              T1                               |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                              T2                               |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// .                                                               .
+// .                          IA_PD-options                        .
+// .                                                               .
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 					if (!client6_data.ia_pd) {
 						bb_info_msg("no %s option%s", "IA_PD", ", ignoring packet");
 						continue;
