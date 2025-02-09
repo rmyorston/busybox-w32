@@ -622,6 +622,31 @@ static NOINLINE int send_d6_info_request(void)
 	return d6_mcast_from_client_data_ifindex(&packet, opt_ptr);
 }
 
+/*
+ * RFC 3315 10. Identity Association
+ *
+ * An "identity-association" (IA) is a construct through which a server
+ * and a client can identify, group, and manage a set of related IPv6
+ * addresses.  Each IA consists of an IAID and associated configuration
+ * information.
+ *
+ * A client must associate at least one distinct IA with each of its
+ * network interfaces for which it is to request the assignment of IPv6
+ * addresses from a DHCP server.  The client uses the IAs assigned to an
+ * interface to obtain configuration information from a server for that
+ * interface.  Each IA must be associated with exactly one interface.
+ *
+ * The IAID uniquely identifies the IA and must be chosen to be unique
+ * among the IAIDs on the client.  The IAID is chosen by the client.
+ * For any given use of an IA by the client, the IAID for that IA MUST
+ * be consistent across restarts of the DHCP client...
+ */
+/* Generate IAID. We base it on our MAC address' last 4 bytes */
+static void generate_iaid(uint8_t *iaid)
+{
+	memcpy(iaid, &client_data.client_mac[2], 4);
+}
+
 /* Multicast a DHCPv6 Solicit packet to the network, with an optionally requested IP.
  *
  * RFC 3315 17.1.1. Creation of Solicit Messages
@@ -721,7 +746,7 @@ static NOINLINE int send_d6_discover(struct in6_addr *requested_ipv6)
 		client6_data.ia_na = xzalloc(len);
 		client6_data.ia_na->code = D6_OPT_IA_NA;
 		client6_data.ia_na->len = len - 4;
-		*(bb__aliased_uint32_t*)client6_data.ia_na->data = rand(); /* IAID */
+		generate_iaid(client6_data.ia_na->data); /* IAID */
 		if (requested_ipv6) {
 			struct d6_option *iaaddr = (void*)(client6_data.ia_na->data + 4+4+4);
 			iaaddr->code = D6_OPT_IAADDR;
@@ -739,7 +764,7 @@ static NOINLINE int send_d6_discover(struct in6_addr *requested_ipv6)
 		client6_data.ia_pd = xzalloc(len);
 		client6_data.ia_pd->code = D6_OPT_IA_PD;
 		client6_data.ia_pd->len = len - 4;
-		*(bb__aliased_uint32_t*)client6_data.ia_pd->data = rand(); /* IAID */
+		generate_iaid(client6_data.ia_na->data); /* IAID */
 		opt_ptr = mempcpy(opt_ptr, client6_data.ia_pd, len);
 	}
 
