@@ -1624,67 +1624,6 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 		case RENEW_REQUESTED:
 		case REBINDING:
 			if (packet.d6_msg_type == D6_MSG_REPLY) {
-				unsigned start;
-				uint32_t lease_seconds;
-				struct d6_option *option;
-				unsigned address_timeout;
-				unsigned prefix_timeout;
- type_is_ok:
-				change_listen_mode(LISTEN_NONE);
-
-				address_timeout = 0;
-				prefix_timeout = 0;
-				option = d6_find_option(packet.d6_options, packet_end, D6_OPT_STATUS_CODE);
-				if (option) {
-//    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//    |       OPTION_STATUS_CODE      |         option-len            |
-//    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-//    |          status-code          |                               |
-//    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               |
-//    .                        status-message                         .
-//    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-					unsigned len, status;
-					len = ((unsigned)option->len_hi << 8) + option->len;
-					if (len < 2) {
-						bb_simple_error_msg("invalid OPTION_STATUS_CODE, ignoring packet");
-						continue;
-					}
-					status = ((unsigned)option->data[0] << 8) + option->data[1];
-					if (status != 0) {
-//TODO: handle status == 5 (UseMulticast)?
-						/* return to init state */
-						bb_info_msg("received DHCP NAK: %u '%.*s'", status, len - 2, option->data + 2);
-						d6_run_script(packet.d6_options, packet_end, "nak");
-						if (client_data.state != REQUESTING)
-							d6_run_script_no_option("deconfig");
-						sleep(3); /* avoid excessive network traffic */
-						client_data.state = INIT_SELECTING;
-						client_data.first_secs = 0; /* make secs field count from 0 */
-						requested_ipv6 = NULL;
-						timeout = 0;
-						packet_num = 0;
-						continue;
-					}
-				}
-				option = d6_copy_option(packet.d6_options, packet_end, D6_OPT_SERVERID);
-				if (!option) {
-					bb_simple_info_msg("no server ID, ignoring packet");
-					continue;
-					/* still selecting - this server looks bad */
-				}
-//Note: we do not bother comparing server IDs in Advertise and Reply msgs.
-//server_id variable is used solely for creation of proper server_id option
-//in outgoing packets. (why DHCPv6 even introduced it is a mystery).
-				free(client6_data.server_id);
-				client6_data.server_id = option;
-				if (packet.d6_msg_type == D6_MSG_ADVERTISE) {
-					/* enter requesting state */
-					change_listen_mode(LISTEN_RAW);
-					client_data.state = REQUESTING;
-					timeout = 0;
-					packet_num = 0;
-					continue;
-				}
 /*
  * RFC 3315 18.1.8. Receipt of Reply Messages
  *
@@ -1770,6 +1709,67 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
  * .                                                               .
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  */
+				unsigned start;
+				uint32_t lease_seconds;
+				struct d6_option *option;
+				unsigned address_timeout;
+				unsigned prefix_timeout;
+ type_is_ok:
+				change_listen_mode(LISTEN_NONE);
+
+				address_timeout = 0;
+				prefix_timeout = 0;
+				option = d6_find_option(packet.d6_options, packet_end, D6_OPT_STATUS_CODE);
+				if (option) {
+//    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//    |       OPTION_STATUS_CODE      |         option-len            |
+//    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//    |          status-code          |                               |
+//    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               |
+//    .                        status-message                         .
+//    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+					unsigned len, status;
+					len = ((unsigned)option->len_hi << 8) + option->len;
+					if (len < 2) {
+						bb_simple_error_msg("invalid OPTION_STATUS_CODE, ignoring packet");
+						continue;
+					}
+					status = ((unsigned)option->data[0] << 8) + option->data[1];
+					if (status != 0) {
+//TODO: handle status == 5 (UseMulticast)?
+						/* return to init state */
+						bb_info_msg("received DHCP NAK: %u '%.*s'", status, len - 2, option->data + 2);
+						d6_run_script(packet.d6_options, packet_end, "nak");
+						if (client_data.state != REQUESTING)
+							d6_run_script_no_option("deconfig");
+						sleep(3); /* avoid excessive network traffic */
+						client_data.state = INIT_SELECTING;
+						client_data.first_secs = 0; /* make secs field count from 0 */
+						requested_ipv6 = NULL;
+						timeout = 0;
+						packet_num = 0;
+						continue;
+					}
+				}
+				option = d6_copy_option(packet.d6_options, packet_end, D6_OPT_SERVERID);
+				if (!option) {
+					bb_simple_info_msg("no server ID, ignoring packet");
+					continue;
+					/* still selecting - this server looks bad */
+				}
+//Note: we do not bother comparing server IDs in Advertise and Reply msgs.
+//server_id variable is used solely for creation of proper server_id option
+//in outgoing packets. (why DHCPv6 even introduced it is a mystery).
+				free(client6_data.server_id);
+				client6_data.server_id = option;
+				if (packet.d6_msg_type == D6_MSG_ADVERTISE) {
+					/* enter requesting state */
+					change_listen_mode(LISTEN_RAW);
+					client_data.state = REQUESTING;
+					timeout = 0;
+					packet_num = 0;
+					continue;
+				}
 				if (option_mask32 & OPT_r) {
 					struct d6_option *iaaddr;
 
