@@ -46,12 +46,12 @@ slk
    slk_init() requires a single parameter which describes the format of
    the SLKs as follows:
 
-   0       3-2-3 format
-   1       4-4 format
-   2       4-4-4 format (ncurses extension)
-   3       4-4-4 format with index line (ncurses extension)
-   2 lines used
-   55      5-5 format (pdcurses format)
+    0       3-2-3 format
+    1       4-4 format
+    2       4-4-4 format (ncurses extension)
+    3       4-4-4 format with index line (ncurses extension)
+    2 lines used
+    55      5-5 format (pdcurses format)
 
    slk_refresh(), slk_noutrefresh() and slk_touch() are analogous to
    refresh(), noutrefresh() and touch().
@@ -61,26 +61,28 @@ slk
    All functions return OK on success and ERR on error.
 
 ### Portability
-                             X/Open  ncurses  NetBSD
-    slk_init                    Y       Y       Y
-    slk_set                     Y       Y       Y
-    slk_refresh                 Y       Y       Y
-    slk_noutrefresh             Y       Y       Y
-    slk_label                   Y       Y       Y
-    slk_clear                   Y       Y       Y
-    slk_restore                 Y       Y       Y
-    slk_touch                   Y       Y       Y
-    slk_attron                  Y       Y       Y
-    slk_attrset                 Y       Y       Y
-    slk_attroff                 Y       Y       Y
-    slk_attr_on                 Y       Y       Y
-    slk_attr_set                Y       Y       Y
-    slk_attr_off                Y       Y       Y
-    slk_wset                    Y       Y       Y
-    PDC_mouse_in_slk            -       -       -
-    PDC_slk_free                -       -       -
-    PDC_slk_initialize          -       -       -
-    slk_wlabel                  -       -       -
+
+   Function              | X/Open | ncurses | NetBSD
+   :---------------------|:------:|:-------:|:------:
+   slk_init              |    Y   |    Y    |   Y
+   slk_set               |    Y   |    Y    |   Y
+   slk_refresh           |    Y   |    Y    |   Y
+   slk_noutrefresh       |    Y   |    Y    |   Y
+   slk_label             |    Y   |    Y    |   Y
+   slk_clear             |    Y   |    Y    |   Y
+   slk_restore           |    Y   |    Y    |   Y
+   slk_touch             |    Y   |    Y    |   Y
+   slk_attron            |    Y   |    Y    |   Y
+   slk_attrset           |    Y   |    Y    |   Y
+   slk_attroff           |    Y   |    Y    |   Y
+   slk_attr_on           |    Y   |    Y    |   Y
+   slk_attr_set          |    Y   |    Y    |   Y
+   slk_attr_off          |    Y   |    Y    |   Y
+   slk_wset              |    Y   |    Y    |   Y
+   PDC_mouse_in_slk      |    -   |    -    |   -
+   PDC_slk_free          |    -   |    -    |   -
+   PDC_slk_initialize    |    -   |    -    |   -
+   slk_wlabel            |    -   |    -    |   -
 
 **man-end****************************************************************/
 

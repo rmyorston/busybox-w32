@@ -46,14 +46,16 @@ border
    border(), wborder(), and box() draw a border around the edge of the
    window. If any argument is zero, an appropriate default is used:
 
-    ls    left side of border             ACS_VLINE
-    rs    right side of border            ACS_VLINE
-    ts    top side of border              ACS_HLINE
-    bs    bottom side of border           ACS_HLINE
-    tl    top left corner of border       ACS_ULCORNER
-    tr    top right corner of border      ACS_URCORNER
-    bl    bottom left corner of border    ACS_LLCORNER
-    br    bottom right corner of border   ACS_LRCORNER
+   Name | Element                       | Default
+   :----|:------------------------------|:------------
+   ls   | left side of border           | ACS_VLINE
+   rs   | right side of border          | ACS_VLINE
+   ts   | top side of border            | ACS_HLINE
+   bs   | bottom side of border         | ACS_HLINE
+   tl   | top left corner of border     | ACS_ULCORNER
+   tr   | top right corner of border    | ACS_URCORNER
+   bl   | bottom left corner of border  | ACS_LLCORNER
+   br   | bottom right corner of border | ACS_LRCORNER
 
    hline() and whline() draw a horizontal line, using ch, starting from
    the current cursor position. The cursor position does not change. The
@@ -74,29 +76,31 @@ border
    These functions return OK on success and ERR on error.
 
 ### Portability
-                             X/Open  ncurses  NetBSD
-    border                      Y       Y       Y
-    wborder                     Y       Y       Y
-    box                         Y       Y       Y
-    hline                       Y       Y       Y
-    vline                       Y       Y       Y
-    whline                      Y       Y       Y
-    wvline                      Y       Y       Y
-    mvhline                     Y       Y       Y
-    mvvline                     Y       Y       Y
-    mvwhline                    Y       Y       Y
-    mvwvline                    Y       Y       Y
-    border_set                  Y       Y       Y
-    wborder_set                 Y       Y       Y
-    box_set                     Y       Y       Y
-    hline_set                   Y       Y       Y
-    vline_set                   Y       Y       Y
-    whline_set                  Y       Y       Y
-    wvline_set                  Y       Y       Y
-    mvhline_set                 Y       Y       Y
-    mvvline_set                 Y       Y       Y
-    mvwhline_set                Y       Y       Y
-    mvwvline_set                Y       Y       Y
+
+   Function              | X/Open | ncurses | NetBSD
+   :---------------------|:------:|:-------:|:------:
+   border                |    Y   |    Y    |   Y
+   wborder               |    Y   |    Y    |   Y
+   box                   |    Y   |    Y    |   Y
+   hline                 |    Y   |    Y    |   Y
+   vline                 |    Y   |    Y    |   Y
+   whline                |    Y   |    Y    |   Y
+   wvline                |    Y   |    Y    |   Y
+   mvhline               |    Y   |    Y    |   Y
+   mvvline               |    Y   |    Y    |   Y
+   mvwhline              |    Y   |    Y    |   Y
+   mvwvline              |    Y   |    Y    |   Y
+   border_set            |    Y   |    Y    |   Y
+   wborder_set           |    Y   |    Y    |   Y
+   box_set               |    Y   |    Y    |   Y
+   hline_set             |    Y   |    Y    |   Y
+   vline_set             |    Y   |    Y    |   Y
+   whline_set            |    Y   |    Y    |   Y
+   wvline_set            |    Y   |    Y    |   Y
+   mvhline_set           |    Y   |    Y    |   Y
+   mvvline_set           |    Y   |    Y    |   Y
+   mvwhline_set          |    Y   |    Y    |   Y
+   mvwvline_set          |    Y   |    Y    |   Y
 
 **man-end****************************************************************/
 
