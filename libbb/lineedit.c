@@ -1170,9 +1170,10 @@ static void showfiles(void)
 			);
 		}
 		if (ENABLE_UNICODE_SUPPORT)
-			puts(printable_string(matches[n]));
+			fputs(printable_string(matches[n]), stderr);
 		else
-			puts(matches[n]);
+			fputs(matches[n], stderr);
+		bb_putchar_stderr('\n');
 	}
 }
 
