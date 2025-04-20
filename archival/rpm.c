@@ -316,7 +316,7 @@ static void extract_cpio(int fd, const char *source_rpm)
 	archive_handle->src_fd = fd;
 	/*archive_handle->offset = 0; - init_handle() did it */
 
-	setup_unzip_on_fd(archive_handle->src_fd, /*fail_if_not_compressed:*/ 1);
+	setup_unzip_on_fd(archive_handle->src_fd, /*die_if_not_compressed:*/ 1);
 	while (get_header_cpio(archive_handle) == EXIT_SUCCESS)
 		continue;
 }
@@ -541,7 +541,7 @@ int rpm2cpio_main(int argc UNUSED_PARAM, char **argv)
 		// set up decompressor without detection
 		setup_lzma_on_fd(rpm_fd);
 	} else {
-		setup_unzip_on_fd(rpm_fd, /*fail_if_not_compressed:*/ 1);
+		setup_unzip_on_fd(rpm_fd, /*die_if_not_compressed:*/ 1);
 	}
 
 	if (bb_copyfd_eof(rpm_fd, STDOUT_FILENO) < 0)
