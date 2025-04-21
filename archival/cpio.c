@@ -350,6 +350,12 @@ static NOINLINE int cpio_o(void)
 			st.st_dev = st.st_rdev = 0;
 #endif
 
+		if (sizeof(st.st_size) > 4
+		 && st.st_size > (off_t)0xffffffff
+		) {
+			bb_error_msg_and_die("error: file '%s' is larger than 4GB", name);
+		}
+
 		bytes += printf("070701"
 				"%08X%08X%08X%08X%08X%08X%08X"
 				"%08X%08X%08X%08X" /* GNU cpio uses uppercase hex */
