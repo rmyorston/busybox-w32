@@ -73,8 +73,13 @@ CFLAGS += $(call cc-option,-falign-jumps=1 -falign-labels=1 -falign-loops=1,)
 endif
 
 # Defeat .eh_frame bloat (gcc 4.6.3 x86-32 defconfig: 20% smaller busybox binary):
+ifneq ($(CONFIG_UNWIND_TABLES),y)
 CFLAGS += $(call cc-option,-fno-unwind-tables,)
 CFLAGS += $(call cc-option,-fno-asynchronous-unwind-tables,)
+else
+CFLAGS += $(call cc-option,-funwind-tables,)
+CFLAGS += $(call cc-option,-fasynchronous-unwind-tables,)
+endif
 # No automatic printf->puts,putchar conversions
 # (try disabling this and comparing assembly, it's instructive)
 CFLAGS += $(call cc-option,-fno-builtin-printf,)
@@ -151,7 +156,11 @@ ifeq ($(CONFIG_PLATFORM_MINGW32),y)
 CFLAGS += -Iwin32 -DHAVE_STRING_H=1 -DHAVE_CONFIG_H=0 -fno-builtin-stpcpy -fno-builtin-stpncpy -fno-ident -fno-builtin-strndup
 # this seems to be necessary for setjmp/longjmp to work with clang
 ifeq ($(lastword $(subst -, ,$(CC))),clang)
+ifeq ($(CONFIG_UNWIND_TABLES),y)
+CFLAGS += $(call cc-option,-fexceptions,)
+else
 CFLAGS += $(call cc-option,-fsjlj-exceptions,)
+endif
 endif
 
 EXEEXT = .exe

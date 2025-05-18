@@ -566,6 +566,15 @@ config OVERRIDE_APPLETS
 	environment variable.  BB_OVERRIDE_APPLETS is checked first, if it
 	allows the applet and this list is non-empty it is checked too.
 
+config UNWIND_TABLES
+	bool "Include stack unwind tables in the binary"
+	default y
+	depends on PLATFORM_MINGW32
+	help
+	Binaries can include support for stack unwinding.  This isn't
+	normally required in BusyBox, but Windows' Control Flow Guard
+	needs it.  Disabling this reduces the size of the binaries.
+
 comment 'Build Options'
 
 config STATIC
