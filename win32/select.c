@@ -273,8 +273,11 @@ mingw_select (int nfds, fd_set *rfds, fd_set *wfds, fd_set *xfds,
   int i, fd, rc;
   clock_t tend = 0;
 
-  if (nfds > FD_SETSIZE)
-    nfds = FD_SETSIZE;
+  if (nfds < 0 || nfds > FD_SETSIZE)
+    {
+      errno = EINVAL;
+      return -1;
+    }
 
   if (!timeout)
     wait_timeout = INFINITE;
