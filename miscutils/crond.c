@@ -1001,6 +1001,10 @@ static int check_completions(void)
 			/* else: r == 0: "process is still running" */
 			file->cf_has_running = 1;
 		}
+
+		/* Reap any other children we don't actively track */
+		while (waitpid(-1, NULL, WNOHANG) > 0);
+
 //FIXME: if !file->cf_has_running && file->deleted: delete it!
 //otherwise deleted entries will stay forever, right?
 		num_still_running += file->cf_has_running;
