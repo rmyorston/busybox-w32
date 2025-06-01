@@ -2337,26 +2337,10 @@ extern struct globals *BB_GLOBAL_CONST ptr_to_globals;
 #define barrier() asm volatile ("":::"memory")
 
 #if defined(__clang_major__) && __clang_major__ >= 9
-/* Clang/llvm drops assignment to "constant" storage. Silently.
- * Needs serious convincing to not eliminate the store.
+/* {ASSIGN,XZALLOC}_CONST_PTR() are out-of-line functions
+ * to prevent clang from reading pointer before it is assigned.
  */
-static ALWAYS_INLINE void* not_const_pp(const void *p)
-{
-	void *pp;
-	asm volatile (
-		"# forget that p points to const"
-		: /*outputs*/ "=r" (pp)
-		: /*inputs*/ "0" (p)
-	);
-	return pp;
-}
-# define ASSIGN_CONST_PTR(pptr, v) do { \
-	*(void**)not_const_pp(pptr) = (void*)(v); \
-	barrier(); \
-} while (0)
-/* XZALLOC_CONST_PTR() is an out-of-line function to prevent
- * clang from reading pointer before it is assigned.
- */
+void ASSIGN_CONST_PTR(const void *pptr, void *v) FAST_FUNC;
 void XZALLOC_CONST_PTR(const void *pptr, size_t size) FAST_FUNC;
 #else
 # define ASSIGN_CONST_PTR(pptr, v) do { \
