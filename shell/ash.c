@@ -16286,6 +16286,10 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	struct jmploc jmploc;
 	struct stackmark smark;
 	int login_sh;
+#if ENABLE_PLATFORM_MINGW32
+	HANDLE hJob;
+	JOBOBJECT_EXTENDED_LIMIT_INFORMATION jeli = { 0 };
+#endif
 
 #if ENABLE_PLATFORM_MINGW32
 	INIT_G_memstack();
@@ -16299,6 +16303,12 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		/* only reached in case of error */
 		bb_error_msg_and_die("forkshell failed");
 	}
+
+	/* Kill children when the process quits. */
+	hJob = CreateJobObject(NULL, NULL);
+	jeli.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+	SetInformationJobObject(hJob, JobObjectExtendedLimitInformation, &jeli, sizeof(jeli));
+	AssignProcessToJobObject(hJob, GetCurrentProcess());
 #endif
 
 	/* Initialize global data */
