@@ -32,6 +32,7 @@ set_build_opts \
     CONFIG_LAST_SUPPORTED_WCHAR=1114111 \
     CONFIG_UNICODE_COMBINING_WCHARS=y \
     CONFIG_UNICODE_WIDE_WCHARS=y \
+    CONFIG_FEATURE_USE_CNG_API=y \
     < "$configs"/mingw64_defconfig \
     > "$configs"/mingw64u_defconfig
 

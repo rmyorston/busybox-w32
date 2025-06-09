@@ -37,6 +37,14 @@ config PASSWORD_MINLEN
 	help
 	Minimum allowable password length.
 
+config FEATURE_USE_CNG_API
+	bool "Use the Windows CNG API for checksums (Windows 10+ only)"
+	default n
+	depends on PLATFORM_MINGW32
+	help
+	Use the in-built Windows CNG API for checksums.
+	This reduces code size, but is only supported on Windows 10+.
+
 config MD5_SMALL
 	int "MD5: Trade bytes for speed (0:fast, 3:slow)"
 	default 1  # all "fast or small" options default to small
@@ -67,6 +75,7 @@ config SHA1_SMALL
 config SHA1_HWACCEL
 	bool "SHA1: Use hardware accelerated instructions if possible"
 	default y
+	depends on !FEATURE_USE_CNG_API
 	help
 	On x86, this adds ~590 bytes of code. Throughput
 	is about twice as fast as fully-unrolled generic code.
@@ -74,6 +83,7 @@ config SHA1_HWACCEL
 config SHA256_HWACCEL
 	bool "SHA256: Use hardware accelerated instructions if possible"
 	default y
+	depends on !FEATURE_USE_CNG_API
 	help
 	On x86, this adds ~1k bytes of code.
 

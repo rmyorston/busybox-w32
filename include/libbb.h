@@ -2294,6 +2294,36 @@ char *decode_base64(char *dst, const char **pp_src) FAST_FUNC;
 char *decode_base32(char *dst, const char **pp_src) FAST_FUNC;
 void read_base64(FILE *src_stream, FILE *dst_stream, int flags) FAST_FUNC;
 
+#if defined CONFIG_FEATURE_USE_CNG_API
+struct bcrypt_hash_ctx_t {
+	void *handle;
+	void *hash_obj;
+	unsigned int output_size;
+};
+typedef struct bcrypt_hash_ctx_t md5_ctx_t;
+typedef struct bcrypt_hash_ctx_t sha1_ctx_t;
+typedef struct bcrypt_hash_ctx_t sha256_ctx_t;
+typedef struct bcrypt_hash_ctx_t sha512_ctx_t;
+typedef struct sha3_ctx_t {
+	uint64_t state[25];
+	unsigned bytes_queued;
+	unsigned input_block_bytes;
+} sha3_ctx_t;
+void md5_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
+void sha1_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
+void sha256_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
+void sha512_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
+void generic_hash(struct bcrypt_hash_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
+unsigned generic_end(struct bcrypt_hash_ctx_t *ctx, void *resbuf) FAST_FUNC;
+#define md5_hash generic_hash
+#define sha1_hash generic_hash
+#define sha256_hash generic_hash
+#define sha512_hash generic_hash
+#define md5_end generic_end
+#define sha1_end generic_end
+#define sha256_end generic_end
+#define sha512_end generic_end
+#else
 typedef struct md5_ctx_t {
 	uint8_t wbuffer[64]; /* always correctly aligned for uint64_t */
 	void (*process_block)(struct md5_ctx_t*) FAST_FUNC;
@@ -2324,13 +2354,20 @@ void sha256_begin(sha256_ctx_t *ctx) FAST_FUNC;
 void sha512_begin(sha512_ctx_t *ctx) FAST_FUNC;
 void sha512_hash(sha512_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
 unsigned sha512_end(sha512_ctx_t *ctx, void *resbuf) FAST_FUNC;
+#endif
 void sha3_begin(sha3_ctx_t *ctx) FAST_FUNC;
 void sha3_hash(sha3_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
 unsigned sha3_end(sha3_ctx_t *ctx, void *resbuf) FAST_FUNC;
 /* TLS benefits from knowing that sha1 and sha256 share these. Give them "agnostic" names too */
+#if defined CONFIG_FEATURE_USE_CNG_API
+typedef struct bcrypt_hash_ctx_t md5sha_ctx_t;
+#define md5sha_hash generic_hash
+#define sha_end generic_end
+#else
 typedef struct md5_ctx_t md5sha_ctx_t;
 #define md5sha_hash md5_hash
 #define sha_end sha1_end
+#endif
 enum {
 	MD5_OUTSIZE    = 16,
 	SHA1_OUTSIZE   = 20,
