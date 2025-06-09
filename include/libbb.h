@@ -2315,14 +2315,14 @@ void sha256_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
 void sha512_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
 void generic_hash(struct bcrypt_hash_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
 unsigned generic_end(struct bcrypt_hash_ctx_t *ctx, void *resbuf) FAST_FUNC;
-#define md5_hash generic_hash
-#define sha1_hash generic_hash
-#define sha256_hash generic_hash
-#define sha512_hash generic_hash
-#define md5_end generic_end
-#define sha1_end generic_end
-#define sha256_end generic_end
-#define sha512_end generic_end
+# define md5_hash generic_hash
+# define sha1_hash generic_hash
+# define sha256_hash generic_hash
+# define sha512_hash generic_hash
+# define md5_end generic_end
+# define sha1_end generic_end
+# define sha256_end generic_end
+# define sha512_end generic_end
 #else
 typedef struct md5_ctx_t {
 	uint8_t wbuffer[64]; /* always correctly aligned for uint64_t */
