@@ -929,6 +929,7 @@ raise_interrupt(void)
 		raise(SIGINT);
 #else
 		fflush_all();
+		kill(-getpid(), SIGINT);
 		_exit(SIGINT << 24);
 #endif
 	}
