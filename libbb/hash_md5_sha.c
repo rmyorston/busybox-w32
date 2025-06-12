@@ -13,6 +13,90 @@
 
 #define NEED_SHA512 (ENABLE_SHA512SUM || ENABLE_USE_BB_CRYPT_SHA)
 
+#if ENABLE_FEATURE_USE_CNG_API
+# include <windows.h>
+# include <bcrypt.h>
+
+// these work on Windows >= 10
+# define BCRYPT_MD5_ALG_HANDLE    ((BCRYPT_ALG_HANDLE) 0x00000021)
+# define BCRYPT_SHA1_ALG_HANDLE   ((BCRYPT_ALG_HANDLE) 0x00000031)
+# define BCRYPT_SHA256_ALG_HANDLE ((BCRYPT_ALG_HANDLE) 0x00000041)
+# define BCRYPT_SHA512_ALG_HANDLE ((BCRYPT_ALG_HANDLE) 0x00000061)
+
+# define NT_SUCCESS(Status) ((NTSTATUS)(Status) >= 0)
+
+static void die_if_error(NTSTATUS status, const char *function_name) {
+	if (!NT_SUCCESS(status)) {
+		bb_error_msg_and_die("call to %s failed: 0x%08lX",
+								function_name, (unsigned long)status);
+	}
+}
+
+/* Initialize structure containing state of computation.
+ * (RFC 1321, 3.3: Step 3)
+ */
+
+static void generic_init(struct bcrypt_hash_ctx_t *ctx, BCRYPT_ALG_HANDLE *alg_handle) {
+	DWORD hash_object_length = 0;
+	ULONG _unused;
+	NTSTATUS status;
+
+	status = BCryptGetProperty(alg_handle, BCRYPT_OBJECT_LENGTH, (PUCHAR)&hash_object_length, sizeof(DWORD), &_unused, 0);
+	die_if_error(status, "BCryptGetProperty");
+	status = BCryptGetProperty(alg_handle, BCRYPT_HASH_LENGTH, (PUCHAR)&ctx->output_size, sizeof(DWORD), &_unused, 0);
+	die_if_error(status, "BCryptGetProperty");
+
+
+	ctx->hash_obj = xmalloc(hash_object_length);
+
+	status = BCryptCreateHash(alg_handle, &ctx->handle, ctx->hash_obj, hash_object_length, NULL, 0, 0);
+	die_if_error(status, "BCryptCreateHash");
+}
+
+void FAST_FUNC md5_begin(md5_ctx_t *ctx)
+{
+	generic_init(ctx, BCRYPT_MD5_ALG_HANDLE);
+}
+
+void FAST_FUNC sha1_begin(sha1_ctx_t *ctx)
+{
+	generic_init(ctx, BCRYPT_SHA1_ALG_HANDLE);
+}
+
+/* Initialize structure containing state of computation.
+   (FIPS 180-2:5.3.2)  */
+void FAST_FUNC sha256_begin(sha256_ctx_t *ctx)
+{
+	generic_init(ctx, BCRYPT_SHA256_ALG_HANDLE);
+}
+
+#if NEED_SHA512
+/* Initialize structure containing state of computation.
+   (FIPS 180-2:5.3.3)  */
+void FAST_FUNC sha512_begin(sha512_ctx_t *ctx)
+{
+	generic_init(ctx, BCRYPT_SHA512_ALG_HANDLE);
+}
+#endif /* NEED_SHA512 */
+
+void FAST_FUNC generic_hash(struct bcrypt_hash_ctx_t *ctx, const void *buffer, size_t len)
+{
+	/*
+		for perf, no error checking here
+	*/
+	/*NTSTATUS status = */ BCryptHashData(ctx->handle, (const PUCHAR)buffer, len, 0);
+	// die_if_error(status, "BCryptHashData");
+}
+
+unsigned FAST_FUNC generic_end(struct bcrypt_hash_ctx_t *ctx, void *resbuf)
+{
+	NTSTATUS status = BCryptFinishHash(ctx->handle, resbuf, ctx->output_size, 0);
+	die_if_error(status, "BCryptFinishHash");
+	free(ctx->hash_obj);
+	return ctx->output_size;
+}
+#endif /* !ENABLE_FEATURE_USE_CNG_API */
+
 #if ENABLE_SHA1_HWACCEL || ENABLE_SHA256_HWACCEL
 # if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
 static void cpuid_eax_ebx_ecx(unsigned *eax, unsigned *ebx, unsigned *ecx, unsigned *edx)
@@ -80,6 +164,7 @@ static ALWAYS_INLINE uint64_t rotl64(uint64_t x, unsigned n)
 	return (x << n) | (x >> (64 - n));
 }
 
+#if !ENABLE_FEATURE_USE_CNG_API
 /* Process the remaining bytes in the buffer */
 static void FAST_FUNC common64_end(md5_ctx_t *ctx, int swap_needed)
 {
@@ -1367,6 +1452,7 @@ unsigned FAST_FUNC sha512_end(sha512_ctx_t *ctx, void *resbuf)
 	return sizeof(ctx->hash);
 }
 #endif /* NEED_SHA512 */
+#endif /* !ENABLE_FEATURE_USE_CNG_API */
 
 
 /*

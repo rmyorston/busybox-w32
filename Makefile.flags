@@ -164,7 +164,7 @@ endif
 endif
 
 EXEEXT = .exe
-LDLIBS += ws2_32
+LDLIBS += ws2_32 bcrypt
 endif
 
 ifneq ($(CONFIG_PLATFORM_MINGW32),y)
