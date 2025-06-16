@@ -73,6 +73,12 @@ int truncate_main(int argc UNUSED_PARAM, char **argv)
 			 * do not report error, exitcode is also 0.
 			 */
 		} else {
+#if ENABLE_PLATFORM_MINGW32
+			struct stat st;
+
+			if (fstat(fd, &st) == 0 && size > st.st_size)
+				make_sparse(fd, st.st_size, size);
+#endif
 			if (ftruncate(fd, size) == -1) {
 				bb_perror_msg("%s: truncate", *argv);
 				ret = EXIT_FAILURE;
