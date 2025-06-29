@@ -15812,6 +15812,7 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	r = shell_builtin_read(&params);
 	INT_ON;
 
+#if !ENABLE_PLATFORM_MINGW32
 	if ((uintptr_t)r == 1 && errno == EINTR) {
 		/* To get SIGCHLD: sleep 1 & read x; echo $x
 		 * Correct behavior is to not exit "read"
@@ -15819,9 +15820,11 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		if (pending_sig == 0)
 			goto again;
 	}
-
-#if ENABLE_PLATFORM_MINGW32
+#else /* ENABLE_PLATFORM_MINGW32 */
 	if ((uintptr_t)r == 2) {
+		/* Timeout, return 128 + SIGALRM */
+		return 142;
+	} else if ((uintptr_t)r == 3) {
 		/* ^C pressed, propagate event */
 		if (trap[SIGINT]) {
 			write(STDOUT_FILENO, "^C", 2);

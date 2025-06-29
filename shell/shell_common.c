@@ -209,8 +209,13 @@ shell_builtin_read(struct builtin_read_params *params)
 			 * 32-bit unix time wrapped (year 2038+).
 			 */
 			if (timeout <= 0) { /* already late? */
+#if ENABLE_PLATFORM_MINGW32
+				retval = (const char *)(uintptr_t)2;
+				break;
+#else
 				retval = (const char *)(uintptr_t)1;
 				goto ret;
+#endif
 			}
 		}
 
@@ -228,8 +233,14 @@ shell_builtin_read(struct builtin_read_params *params)
 		if (poll(pfd, 1, timeout) <= 0) {
 			/* timed out, or EINTR */
 			err = errno;
+#if ENABLE_PLATFORM_MINGW32
+			/* Windows poll(2) doesn't do EINTR, we timed out */
+			retval = (const char *)(uintptr_t)2;
+			break;
+#else
 			retval = (const char *)(uintptr_t)1;
 			goto ret;
+#endif
 		}
 #if ENABLE_PLATFORM_MINGW32
 		if (isatty(fd)) {
@@ -238,15 +249,18 @@ shell_builtin_read(struct builtin_read_params *params)
 			key = windows_read_key(fd, NULL, timeout);
 			if (key == 0x03) {
 				/* ^C pressed */
+				retval = (const char *)(uintptr_t)3;
+				goto ret;
+			}
+			else if (key == -1) {
+				/* timeout */
 				retval = (const char *)(uintptr_t)2;
-				goto ret;
-			}
-			else if (key == -1 || (key == 0x1a && bufpos == 0)) {
-				/* timeout or ^Z at start of buffer */
+				break;
+			} else if (key == 0x1a && bufpos == 0) {
+				/* ^Z at start of buffer */
 				retval = (const char *)(uintptr_t)1;
-				goto ret;
-			}
-			else if (key == '\b') {
+				break;
+			} else if (key == '\b') {
 				if (bufpos > 0) {
 					--bufpos;
 					++nchars;
