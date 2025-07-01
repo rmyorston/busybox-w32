@@ -227,20 +227,23 @@ shell_builtin_read(struct builtin_read_params *params)
 		pfd[0].events = POLLIN;
 //TODO race with a signal arriving just before the poll!
 #if ENABLE_PLATFORM_MINGW32
-		/* Don't poll if timeout is -1, it hurts performance. */
+		/* Don't poll if timeout is -1, it hurts performance.  The
+		 * caution above about interrupts isn't relevant on Windows
+		 * where Ctrl-C causes an event, not a signal.
+		 */
 		if (timeout >= 0)
 #endif
 		if (poll(pfd, 1, timeout) <= 0) {
 			/* timed out, or EINTR */
 			err = errno;
 #if ENABLE_PLATFORM_MINGW32
-			/* Windows poll(2) doesn't do EINTR, we timed out */
-			retval = (const char *)(uintptr_t)2;
-			break;
-#else
+			if (!err) {
+				retval = (const char *)(uintptr_t)2;
+				break;
+			}
+#endif
 			retval = (const char *)(uintptr_t)1;
 			goto ret;
-#endif
 		}
 #if ENABLE_PLATFORM_MINGW32
 		if (isatty(fd)) {
