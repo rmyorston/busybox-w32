@@ -11175,6 +11175,11 @@ static int FAST_FUNC builtin_read(char **argv)
 			goto again;
 	}
 
+	if ((uintptr_t)r == 2) /* -t SEC timeout? */
+		/* bash: "The exit status is greater than 128 if the timeout is exceeded." */
+		/* The actual value observed with bash 5.2.15: */
+		return 128 + SIGALRM;
+
 	if ((uintptr_t)r > 1) {
 		bb_simple_error_msg(r);
 		r = (char*)(uintptr_t)1;

@@ -204,8 +204,8 @@ shell_builtin_read(struct builtin_read_params *params)
 			 * 32-bit unix time wrapped (year 2038+).
 			 */
 			if (timeout <= 0) { /* already late? */
-				retval = (const char *)(uintptr_t)1;
-				goto ret;
+				retval = (const char *)(uintptr_t)2;
+				break;
 			}
 		}
 
@@ -217,8 +217,12 @@ shell_builtin_read(struct builtin_read_params *params)
 		pfd[0].events = POLLIN;
 //TODO race with a signal arriving just before the poll!
 		if (poll(pfd, 1, timeout) <= 0) {
-			/* timed out, or EINTR */
+			/* timed out, or some error */
 			err = errno;
+			if (!err) {
+				retval = (const char *)(uintptr_t)2;
+				break;
+			}
 			retval = (const char *)(uintptr_t)1;
 			goto ret;
 		}

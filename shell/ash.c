@@ -14395,6 +14395,11 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 			goto again;
 	}
 
+	if ((uintptr_t)r == 2) /* -t SEC timeout? */
+		/* bash: "The exit status is greater than 128 if the timeout is exceeded." */
+		/* The actual value observed with bash 5.2.15: */
+		return 128 + SIGALRM;
+
 	if ((uintptr_t)r > 1)
 		ash_msg_and_raise_error(r);
 
