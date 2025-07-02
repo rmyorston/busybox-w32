@@ -64,7 +64,9 @@
 //usage:	"[-Pk"
 //usage:	IF_FEATURE_HUMAN_READABLE("mh")
 //usage:	"T"
-//usage:	IF_FEATURE_DF_FANCY("ai] [-B SIZE")
+//usage:	IF_FEATURE_DF_FANCY("a"
+//usage:	IF_PLATFORM_POSIX("i")
+//usage:	"] [-B SIZE")
 //usage:	"] [-t TYPE] [FILESYSTEM]..."
 //usage:#define df_full_usage "\n\n"
 //usage:       "Print filesystem usage statistics\n"
@@ -78,7 +80,9 @@
 //usage:     "\n	-t TYPE	Print only mounts of this type"
 //usage:	IF_FEATURE_DF_FANCY(
 //usage:     "\n	-a	Show all filesystems"
+//usage:	IF_PLATFORM_POSIX(
 //usage:     "\n	-i	Inodes"
+//usage:	)
 //usage:     "\n	-B SIZE	Blocksize"
 //usage:	)
 //usage:
@@ -109,6 +113,12 @@ static unsigned long kscale(unsigned long b, unsigned long bs)
 }
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+# define ENABLE_FEATURE_DF_FANCY_POSIX 0
+#else
+# define ENABLE_FEATURE_DF_FANCY_POSIX ENABLE_FEATURE_DF_FANCY
+#endif
+
 int df_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int df_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -124,11 +134,11 @@ int df_main(int argc UNUSED_PARAM, char **argv)
 		OPT_FSTYPE   = (1 << 2),
 		OPT_t        = (1 << 3),
 		OPT_ALL      = (1 << 4) * ENABLE_FEATURE_DF_FANCY,
-		OPT_INODE    = (1 << 5) * ENABLE_FEATURE_DF_FANCY,
-		OPT_BSIZE    = (1 << 6) * ENABLE_FEATURE_DF_FANCY,
-		OPT_HUMAN    = (1 << (4 + 3*ENABLE_FEATURE_DF_FANCY)) * ENABLE_FEATURE_HUMAN_READABLE,
-		OPT_HUMANDEC = (1 << (5 + 3*ENABLE_FEATURE_DF_FANCY)) * ENABLE_FEATURE_HUMAN_READABLE,
-		OPT_MEGA     = (1 << (6 + 3*ENABLE_FEATURE_DF_FANCY)) * ENABLE_FEATURE_HUMAN_READABLE,
+		OPT_INODE    = (1 << 5) * ENABLE_FEATURE_DF_FANCY_POSIX,
+		OPT_BSIZE    = (1 << (5 + ENABLE_FEATURE_DF_FANCY_POSIX)) * ENABLE_FEATURE_DF_FANCY,
+		OPT_HUMAN    = (1 << (4 + 2*ENABLE_FEATURE_DF_FANCY + ENABLE_FEATURE_DF_FANCY_POSIX)) * ENABLE_FEATURE_HUMAN_READABLE,
+		OPT_HUMANDEC = (1 << (5 + 2*ENABLE_FEATURE_DF_FANCY + ENABLE_FEATURE_DF_FANCY_POSIX)) * ENABLE_FEATURE_HUMAN_READABLE,
+		OPT_MEGA     = (1 << (6 + 2*ENABLE_FEATURE_DF_FANCY + ENABLE_FEATURE_DF_FANCY_POSIX)) * ENABLE_FEATURE_HUMAN_READABLE,
 	};
 	const char *disp_units_hdr = NULL;
 	char *chp, *opt_t;
@@ -144,7 +154,11 @@ int df_main(int argc UNUSED_PARAM, char **argv)
 
 	opt = getopt32(argv, "^"
 			"kPTt:"
+#if ENABLE_PLATFORM_POSIX
 			IF_FEATURE_DF_FANCY("aiB:")
+#else
+			IF_FEATURE_DF_FANCY("aB:")
+#endif
 			IF_FEATURE_HUMAN_READABLE("hHm")
 			"\0"
 #if ENABLE_FEATURE_HUMAN_READABLE && ENABLE_FEATURE_DF_FANCY
