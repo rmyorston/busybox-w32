@@ -214,12 +214,13 @@ shell_builtin_read(struct builtin_read_params *params)
 		 * regardless of SA_RESTART-ness of that signal!
 		 */
 		errno = 0;
-		pfd[0].events = POLLIN;
-//TODO race with a signal arriving just before the poll!
-		if (poll(pfd, 1, timeout) <= 0) {
+		pfd->events = POLLIN;
+
+		/* test bb_got_signal, then poll(), atomically wrt signals */
+		if (check_got_signal_and_poll(pfd, timeout) <= 0) {
 			/* timed out, or some error */
 			err = errno;
-			if (!err) {
+			if (!err) { /* timed out */
 				retval = (const char *)(uintptr_t)2;
 				break;
 			}

@@ -1951,6 +1951,7 @@ int64_t read_key(int fd, char *buffer, int timeout) FAST_FUNC;
 int64_t safe_read_key(int fd, char *buffer, int timeout) FAST_FUNC;
 void read_key_ungets(char *buffer, const char *str, unsigned len) FAST_FUNC;
 
+int check_got_signal_and_poll(struct pollfd pfd[1], int timeout) FAST_FUNC;
 
 #if ENABLE_FEATURE_EDITING
 /* It's NOT just ENABLEd or disabled. It's a number: */

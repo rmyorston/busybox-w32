@@ -1973,7 +1973,7 @@ static void record_pending_signo(int sig)
 	 || (G_traps && G_traps[SIGCHLD] && G_traps[SIGCHLD][0])
 	 /* ^^^ if SIGCHLD, interrupt line reading only if it has a trap */
 	) {
-		bb_got_signal = sig; /* for read_line_input: "we got a signal" */
+		bb_got_signal = sig; /* for read_line_input / read builtin: "we got a signal" */
 	}
 #endif
 #if ENABLE_HUSH_FAST

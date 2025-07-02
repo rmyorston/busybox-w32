@@ -3687,7 +3687,7 @@ signal_handler(int signo)
 			return;
 	}
 #if ENABLE_FEATURE_EDITING
-	bb_got_signal = signo; /* for read_line_input: "we got a signal" */
+	bb_got_signal = signo; /* for read_line_input / read builtin: "we got a signal" */
 #endif
 	gotsig[signo - 1] = 1;
 	pending_sig = signo;

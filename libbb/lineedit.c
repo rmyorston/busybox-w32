@@ -2195,7 +2195,6 @@ static int lineedit_read_key(char *read_key_buffer, int timeout)
 				errno = EINTR;
 				return -1;
 			}
-//FIXME: still races here with signals, but small window to poll() inside read_key
 			IF_FEATURE_EDITING_WINCH(S.ok_to_redraw = 1;)
 			/* errno = 0; - read_key does this itself */
 			ic = read_key(STDIN_FILENO, read_key_buffer, timeout);

@@ -121,12 +121,16 @@ int64_t FAST_FUNC read_key(int fd, char *buffer, int timeout)
 	errno = 0;
 	n = (unsigned char)buffer[-1];
 	if (n == 0) {
-		/* If no data, wait for input.
-		 * If requested, wait TIMEOUT ms. TIMEOUT = -1 is useful
-		 * if fd can be in non-blocking mode.
-		 */
+		/* No data. Wait for input. */
+
+		/* timeout == -2 means "do not poll". Else: */
 		if (timeout >= -1) {
-			n = poll(&pfd, 1, timeout);
+			/* We must poll even if timeout == -1:
+			 * we want to be interrupted if signal arrives,
+			 * regardless of SA_RESTART-ness of that signal!
+			 */
+			/* test bb_got_signal, then poll(), atomically wrt signals */
+			n = check_got_signal_and_poll(pfd, timeout);
 			if (n < 0 && errno == EINTR)
 				return n;
 			if (n == 0) {
