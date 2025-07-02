@@ -55,7 +55,7 @@ const char* FAST_FUNC
 shell_builtin_read(struct builtin_read_params *params)
 {
 	struct pollfd pfd[1];
-#define fd (pfd[0].fd) /* -u FD */
+#define fd (pfd->fd) /* -u FD */
 	unsigned err;
 	unsigned end_ms; /* -t TIMEOUT */
 	int nchars; /* -n NUM */
@@ -142,7 +142,7 @@ shell_builtin_read(struct builtin_read_params *params)
 		 * bash seems to ignore -p PROMPT for this use case.
 		 */
 		int r;
-		pfd[0].events = POLLIN;
+		pfd->events = POLLIN;
 		r = poll(pfd, 1, /*timeout:*/ 0);
 		/* Return 0 only if poll returns 1 ("one fd ready"), else return 1: */
 		return (const char *)(uintptr_t)(r <= 0);
