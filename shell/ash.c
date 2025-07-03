@@ -14525,8 +14525,25 @@ exitshell(void)
 	char *p;
 
 #if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
-	save_history(line_input_state); /* may be NULL */
+	if (line_input_state) {
+		const char *hp;
+# if ENABLE_FEATURE_SH_HISTFILESIZE
+// in bash:
+// HISTFILESIZE controls the on-disk history file size (in lines, 0=no history):
+// "When this variable is assigned a value, the history file is truncated, if necessary"
+// but we do it only at exit, not on assignment:
+		/* Use HISTFILESIZE to limit file size */
+		hp = lookupvar("HISTFILESIZE");
+		if (hp)
+			line_input_state->max_history = size_from_HISTFILESIZE(hp);
+# endif
+		/* HISTFILE: "If unset, the command history is not saved when a shell exits." */
+		hp = lookupvar("HISTFILE");
+		line_input_state->hist_file = hp;
+		save_history(line_input_state); /* no-op if hist_file is NULL */
+	}
 #endif
+
 	savestatus = exitstatus;
 	TRACE(("pid %d, exitshell(%d)\n", getpid(), savestatus));
 	if (setjmp(loc.loc))
@@ -14867,7 +14884,12 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 			if (hp)
 				line_input_state->hist_file = xstrdup(hp);
 # if ENABLE_FEATURE_SH_HISTFILESIZE
-			hp = lookupvar("HISTFILESIZE");
+			hp = lookupvar("HISTSIZE");
+			/* Using HISTFILESIZE above to limit max_history would be WRONG:
+			 * users may set HISTFILESIZE=0 in their profile scripts
+			 * to prevent _saving_ of history files, but still want to have
+			 * non-zero history limit for in-memory list.
+			 */
 			line_input_state->max_history = size_from_HISTFILESIZE(hp);
 # endif
 		}

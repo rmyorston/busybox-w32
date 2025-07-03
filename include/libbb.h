@@ -1989,7 +1989,7 @@ typedef struct line_input_t {
 # if MAX_HISTORY
 	int cnt_history;
 	int cur_history;
-	int max_history; /* must never be <= 0 */
+	int max_history; /* must never be < 0 */
 #  if ENABLE_FEATURE_EDITING_SAVEHISTORY
 	/* meaning of this field depends on FEATURE_EDITING_SAVE_ON_EXIT:
 	 * if !FEATURE_EDITING_SAVE_ON_EXIT: "how many lines are
