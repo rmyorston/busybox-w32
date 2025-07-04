@@ -1563,7 +1563,8 @@ void FAST_FUNC save_history(line_input_t *st)
 {
 	FILE *fp;
 
-	if (!st || !st->hist_file)
+	/* bash compat: HISTFILE="" disables history saving */
+	if (!st || !st->hist_file || !state->hist_file[0])
 		return;
 	if (st->cnt_history <= st->cnt_history_in_file)
 		return; /* no new entries were added */
@@ -1617,7 +1618,8 @@ static void save_history(char *str)
 	int fd;
 	int len, len2;
 
-	if (!state->hist_file)
+	/* bash compat: HISTFILE="" disables history saving */
+	if (!state->hist_file || !state->hist_file[0])
 		return;
 
 	fd = open(state->hist_file, O_WRONLY | O_CREAT | O_APPEND, 0600);

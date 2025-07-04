@@ -14540,7 +14540,7 @@ exitshell(void)
 		/* HISTFILE: "If unset, the command history is not saved when a shell exits." */
 		hp = lookupvar("HISTFILE");
 		line_input_state->hist_file = hp;
-		save_history(line_input_state); /* no-op if hist_file is NULL */
+		save_history(line_input_state); /* no-op if hist_file is NULL or "" */
 	}
 #endif
 

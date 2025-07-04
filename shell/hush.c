@@ -2120,7 +2120,7 @@ static void hush_exit(int exitcode)
 		/* HISTFILE: "If unset, the command history is not saved when a shell exits." */
 		hp = get_local_var_value("HISTFILE");
 		G.line_input_state->hist_file = hp;
-		save_history(G.line_input_state); /* no-op if hist_file is NULL */
+		save_history(G.line_input_state); /* no-op if hist_file is NULL or "" */
 	}
 #endif
 
