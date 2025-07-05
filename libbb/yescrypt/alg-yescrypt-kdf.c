@@ -800,7 +800,7 @@ static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
  * This optimized implementation currently limits N to the range from 4 to
  * 2^31, but other implementations might not.
  */
-static int yescrypt_kdf_body(const yescrypt_shared_t *shared,
+static int yescrypt_kdf_body(
     yescrypt_local_t *local,
     const uint8_t *passwd, size_t passwdlen,
     const uint8_t *salt, size_t saltlen,
@@ -865,23 +865,8 @@ static int yescrypt_kdf_body(const yescrypt_shared_t *shared,
 	}
 
 	VROM = NULL;
-	if (shared) {
-		uint64_t expected_size = (size_t)128 * r * NROM;
-		if ((NROM & (NROM - 1)) != 0 ||
-		    NROM <= 1 || NROM > UINT32_MAX ||
-		    shared->aligned_size < expected_size)
-			goto out_EINVAL;
-		if (!(flags & YESCRYPT_INIT_SHARED)) {
-			uint64_t *tag = (uint64_t *)
-			    ((uint8_t *)shared->aligned + expected_size - 48);
-			if (tag[0] != YESCRYPT_ROM_TAG1 || tag[1] != YESCRYPT_ROM_TAG2)
-				goto out_EINVAL;
-		}
-		VROM = shared->aligned;
-	} else {
-		if (NROM)
-			goto out_EINVAL;
-	}
+	if (NROM)
+		goto out_EINVAL;
 
 	/* Allocate memory */
 	V = NULL;
@@ -1013,7 +998,7 @@ out_EINVAL:
  * to this function are the same as those for yescrypt_kdf_body() above, with
  * the addition of g, which controls hash upgrades (0 for no upgrades so far).
  */
-int yescrypt_kdf(const yescrypt_shared_t *shared,
+int yescrypt_kdf(
 		yescrypt_local_t *local,
 		const uint8_t *passwd, size_t passwdlen,
 		const uint8_t *salt, size_t saltlen,
@@ -1041,7 +1026,7 @@ int yescrypt_kdf(const yescrypt_shared_t *shared,
 	 && N / p >= 0x100
 	 && N / p * r >= 0x20000
 	) {
-		if (yescrypt_kdf_body(shared, local,
+		if (yescrypt_kdf_body(local,
 		    passwd, passwdlen, salt, saltlen,
 		    flags | YESCRYPT_ALLOC_ONLY, N, r, p, t, NROM,
 		    buf, buflen) != -3
@@ -1049,7 +1034,7 @@ int yescrypt_kdf(const yescrypt_shared_t *shared,
 			errno = EINVAL;
 			return -1;
 		}
-		retval = yescrypt_kdf_body(shared, local,
+		retval = yescrypt_kdf_body(local,
 				passwd, passwdlen, salt, saltlen,
 				flags | YESCRYPT_PREHASH, N >> 6, r, p, 0, NROM,
 				dk, sizeof(dk));
@@ -1059,7 +1044,7 @@ int yescrypt_kdf(const yescrypt_shared_t *shared,
 		passwdlen = sizeof(dk);
 	}
 
-	retval = yescrypt_kdf_body(shared, local,
+	retval = yescrypt_kdf_body(local,
 			passwd, passwdlen, salt, saltlen,
 			flags, N, r, p, t, NROM, buf, buflen);
 #ifndef SKIP_MEMZERO

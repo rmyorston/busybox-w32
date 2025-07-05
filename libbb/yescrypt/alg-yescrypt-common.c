@@ -185,7 +185,6 @@ fail:
 }
 
 uint8_t *yescrypt_r(
-		const yescrypt_shared_t *shared,
 		yescrypt_local_t *local,
 		const uint8_t *passwd, size_t passwdlen,
 		const uint8_t *setting,
@@ -309,7 +308,7 @@ uint8_t *yescrypt_r(
 	if (need > buflen || need < saltstrlen)
 		goto fail;
 
-	if (yescrypt_kdf(shared, local, passwd, passwdlen, salt, saltlen,
+	if (yescrypt_kdf(local, passwd, passwdlen, salt, saltlen,
 	    &params, hashbin, sizeof(hashbin)))
 		goto fail;
 
@@ -331,11 +330,6 @@ fail:
 	explicit_bzero(saltbin, sizeof(saltbin));
 	explicit_bzero(hashbin, sizeof(hashbin));
 	return NULL;
-}
-
-int yescrypt_free_shared(yescrypt_shared_t *shared)
-{
-	return free_region(shared);
 }
 
 int yescrypt_init_local(yescrypt_local_t *local)

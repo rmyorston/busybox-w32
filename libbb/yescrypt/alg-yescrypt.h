@@ -41,7 +41,6 @@ typedef struct {
 /**
  * Types for shared (ROM) and thread-local (RAM) data structures.
  */
-typedef yescrypt_region_t yescrypt_shared_t;
 typedef yescrypt_region_t yescrypt_local_t;
 
 /**
@@ -80,8 +79,6 @@ typedef uint32_t yescrypt_flags_t;
 #define YESCRYPT_SBOX_192K		0x280
 #define YESCRYPT_SBOX_384K		0x300
 #define YESCRYPT_SBOX_768K		0x380
-/* Only valid for yescrypt_init_shared() */
-#define YESCRYPT_SHARED_PREALLOCATED	0x10000
 #ifdef YESCRYPT_INTERNAL
 /* Private */
 #define YESCRYPT_MODE_MASK		0x003
@@ -101,7 +98,6 @@ typedef uint32_t yescrypt_flags_t;
 #ifdef YESCRYPT_INTERNAL
 #define YESCRYPT_KNOWN_FLAGS \
 	(YESCRYPT_MODE_MASK | YESCRYPT_RW_FLAVOR_MASK | \
-	YESCRYPT_SHARED_PREALLOCATED | \
 	YESCRYPT_INIT_SHARED | YESCRYPT_ALLOC_ONLY | YESCRYPT_PREHASH)
 #endif
 
@@ -138,47 +134,6 @@ typedef union {
 
 #define HASH_SIZE sizeof(yescrypt_binary_t) /* bytes */
 #define HASH_LEN  BYTES2CHARS(HASH_SIZE)
-
-
-/**
- * yescrypt_init_shared(shared, seed, seedlen, params):
- * Optionally allocate memory for and initialize the shared (ROM) data
- * structure.  The parameters flags, NROM, r, p, and t specify how the ROM is
- * to be initialized, and seed and seedlen specify the initial seed affecting
- * the data with which the ROM is filled.
- *
- * Return 0 on success; or -1 on error.
- *
- * If bit YESCRYPT_SHARED_PREALLOCATED in flags is set, then memory for the
- * ROM is assumed to have been preallocated by the caller, with shared->aligned
- * being the start address of the ROM and shared->aligned_size being its size
- * (which must be sufficient for NROM, r, p).  This may be used e.g. when the
- * ROM is to be placed in a SysV shared memory segment allocated by the caller.
- *
- * MT-safe as long as shared is local to the thread.
- */
-extern int yescrypt_init_shared(yescrypt_shared_t *shared,
-    const uint8_t *seed, size_t seedlen, const yescrypt_params_t *params);
-
-/**
- * yescrypt_digest_shared(shared):
- * Extract the previously stored message digest of the provided yescrypt ROM.
- *
- * Return pointer to the message digest on success; or NULL on error.
- *
- * MT-unsafe.
- */
-extern yescrypt_binary_t *yescrypt_digest_shared(yescrypt_shared_t *shared);
-
-/**
- * yescrypt_free_shared(shared):
- * Free memory that had been allocated with yescrypt_init_shared().
- *
- * Return 0 on success; or -1 on error.
- *
- * MT-safe as long as shared is local to the thread.
- */
-extern int yescrypt_free_shared(yescrypt_shared_t *shared);
 
 /**
  * yescrypt_init_local(local):
@@ -239,7 +194,7 @@ extern int yescrypt_free_local(yescrypt_local_t *local);
  *
  * MT-safe as long as local and buf are local to the thread.
  */
-extern int yescrypt_kdf(const yescrypt_shared_t *shared,
+extern int yescrypt_kdf(
     yescrypt_local_t *local,
     const uint8_t *passwd, size_t passwdlen,
     const uint8_t *salt, size_t saltlen,
@@ -261,11 +216,10 @@ extern int yescrypt_kdf(const yescrypt_shared_t *shared,
  *
  * MT-safe as long as local and buf are local to the thread.
  */
-extern uint8_t *yescrypt_r(const yescrypt_shared_t *shared,
+extern uint8_t *yescrypt_r(
     yescrypt_local_t *local,
     const uint8_t *passwd, size_t passwdlen,
     const uint8_t *setting,
-    //KEY: const yescrypt_binary_t *key,
     uint8_t *buf, size_t buflen);
 
 extern const uint8_t *decode64(uint8_t *dst, size_t *dstlen,
