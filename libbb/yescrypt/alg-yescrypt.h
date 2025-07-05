@@ -112,15 +112,6 @@ typedef struct {
 	uint64_t NROM;
 } yescrypt_params_t;
 
-/**
- * A 256-bit yescrypt hash, or a hash encryption key (which may itself have
- * been derived as a yescrypt hash of a human-specified key string).
- */
-typedef union {
-	unsigned char uc[32];
-	uint64_t u64[4];
-} yescrypt_binary_t;
-
 /* How many chars base-64 encoded bytes require? */
 #define BYTES2CHARS(bytes) ((((bytes) * 8) + 5) / 6)
 /* The /etc/passwd-style hash is "<prefix>$<hash><NUL>" */
@@ -131,7 +122,7 @@ typedef union {
  */
 #define PREFIX_LEN (3 + 8 * 6 + 1 + BYTES2CHARS(32))
 
-#define HASH_SIZE sizeof(yescrypt_binary_t) /* bytes */
+#define HASH_SIZE 32
 #define HASH_LEN  BYTES2CHARS(HASH_SIZE)
 
 /**
