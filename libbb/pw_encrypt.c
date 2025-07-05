@@ -31,7 +31,7 @@ static int i64c(int i)
 	return ('a' - 38 + i);
 }
 
-int FAST_FUNC crypt_make_salt(char *p, int cnt /*, int x */)
+int FAST_FUNC crypt_make_rand64encoded(char *p, int cnt /*, int x */)
 {
 	/* was: x += ... */
 	unsigned x = getpid() + monotonic_us();
@@ -68,11 +68,49 @@ char* FAST_FUNC crypt_make_pw_salt(char salt[MAX_PW_SALT_LEN], const char *algo)
 #if !ENABLE_USE_BB_CRYPT || ENABLE_USE_BB_CRYPT_SHA
 		if ((algo[0]|0x20) == 's') { /* sha */
 			salt[1] = '5' + (strcasecmp(algo, "sha512") == 0);
-			len = 16/2;
+			len = 16 / 2;
+		}
+#endif
+#if !ENABLE_USE_BB_CRYPT || ENABLE_USE_BB_CRYPT_YES
+		if ((algo[0]|0x20) == 'y') { /* yescrypt */
+			salt[1] = 'y';
+			len = 24 / 2;
+// The "j9T$" below is the default "yescrypt parameters" encoded by yescrypt_encode_params_r():
+//
+//shadow-4.17.4/src/passwd.c
+//	salt = crypt_make_rand64encoded(NULL, NULL);
+//shadow-4.17.4/lib/salt.c
+//const char *crypt_make_rand64encoded(const char *meth, void *arg)
+//      if (streq(method, "YESCRYPT")) {
+//              MAGNUM(result, 'y');
+//              salt_len = YESCRYPT_SALT_SIZE; // 24
+//              rounds = YESCRYPT_get_salt_cost(arg);  // always Y_COST_DEFAULT == 5 for NULL arg
+//              YESCRYPT_salt_cost_to_buf(result, rounds); // always "j9T$"
+//      char *retval = crypt_gensalt(result, rounds, NULL, 0);
+//libxcrypt-4.4.38/lib/crypt-yescrypt.c
+//void gensalt_yescrypt_rn (unsigned long count,
+//                     const uint8_t *rbytes, size_t nrbytes,
+//                     uint8_t *output, size_t o_size)
+//  yescrypt_params_t params = {
+//    .flags = YESCRYPT_DEFAULTS,
+//    .p = 1,
+//  };
+//  if (count < 3) ... else
+//      params.r = 32;                  // N in 4KiB
+//      params.N = 1ULL << (count + 7); // 3 -> 1024, 4 -> 2048, ... 11 -> 262144
+//  yescrypt_encode_params_r(&params, rbytes, nrbytes, outbuf, o_size) // always "$y$j9T$<random>"
+			salt_ptr = stpcpy(salt_ptr, "j9T$");
+			crypt_make_rand64encoded(salt_ptr, len); /* appends 2*len random chars */
+			/* For "mkpasswd -m yescrypt PASS j9T$<salt>" use case,
+			 * "j9T$" is considered part of salt,
+			 * need to return pointer to 'j'. Without -4,
+			 * we'd end up using "j9T$j9T$<salt>" as salt.
+			 */
+			return salt_ptr - 4;
 		}
 #endif
 	}
-	crypt_make_salt(salt_ptr, len);
+	crypt_make_rand64encoded(salt_ptr, len); /* appends 2*len random chars */
 	return salt_ptr;
 }
 
@@ -99,6 +137,9 @@ to64(char *s, unsigned v, int n)
 #if ENABLE_USE_BB_CRYPT_SHA
 #include "pw_encrypt_sha.c"
 #endif
+#if ENABLE_USE_BB_CRYPT_YES
+#include "pw_encrypt_yes.c"
+#endif
 
 /* Other advanced crypt ids (TODO?): */
 /* $2$ or $2a$: Blowfish */
@@ -109,10 +150,14 @@ static struct des_ctx *des_ctx;
 /* my_crypt returns malloc'ed data */
 static char *my_crypt(const char *key, const char *salt)
 {
-	/* MD5 or SHA? */
+	/* "$x$...." string? */
 	if (salt[0] == '$' && salt[1] && salt[2] == '$') {
 		if (salt[1] == '1')
 			return md5_crypt(xzalloc(MD5_OUT_BUFSIZE), (unsigned char*)key, (unsigned char*)salt);
+#if ENABLE_USE_BB_CRYPT_YES
+		if (salt[1] == 'y')
+			return yes_crypt(key, salt);
+#endif
 #if ENABLE_USE_BB_CRYPT_SHA
 		if (salt[1] == '5' || salt[1] == '6')
 			return sha_crypt((char*)key, (char*)salt);

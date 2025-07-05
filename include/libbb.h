@@ -1806,17 +1806,23 @@ extern char *pw_encrypt(const char *clear, const char *salt, int cleanup) FAST_F
 extern int obscure(const char *old, const char *newval, const struct passwd *pwdp) FAST_FUNC;
 /*
  * rnd is additional random input. New one is returned.
- * Useful if you call crypt_make_salt many times in a row:
- * rnd = crypt_make_salt(buf1, 4, 0);
- * rnd = crypt_make_salt(buf2, 4, rnd);
- * rnd = crypt_make_salt(buf3, 4, rnd);
+ * Useful if you call crypt_make_rand64encoded many times in a row:
+ * rnd = crypt_make_rand64encoded(buf1, 4, 0);
+ * rnd = crypt_make_rand64encoded(buf2, 4, rnd);
+ * rnd = crypt_make_rand64encoded(buf3, 4, rnd);
  * (otherwise we risk having same salt generated)
  */
-extern int crypt_make_salt(char *p, int cnt /*, int rnd*/) FAST_FUNC;
-/* "$N$" + sha_salt_16_bytes + NUL */
-#define MAX_PW_SALT_LEN (3 + 16 + 1)
+extern int crypt_make_rand64encoded(char *p, int cnt /*, int rnd*/) FAST_FUNC;
+/* Size of char salt[] to hold randomly-generated salt string
+ * sha256/512:
+ * "$5$<sha_salt_16_chars><NUL>"
+ * "$6$<sha_salt_16_chars><NUL>"
+ * #define MAX_PW_SALT_LEN (3 + 16 + 1)
+ * yescrypt:
+ * "$y$j9T$<yescrypt_salt_24_chars><NUL>"
+ */
+#define MAX_PW_SALT_LEN (7 + 24 + 1)
 extern char* crypt_make_pw_salt(char p[MAX_PW_SALT_LEN], const char *algo) FAST_FUNC;
-
 
 /* Returns number of lines changed, or -1 on error */
 #if !(ENABLE_FEATURE_ADDUSER_TO_GROUP || ENABLE_FEATURE_DEL_USER_FROM_GROUP)
