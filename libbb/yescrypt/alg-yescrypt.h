@@ -28,23 +28,6 @@
  * online backup system.
  */
 
-#if 0 //UNUSED
-/**
- * crypto_scrypt(passwd, passwdlen, salt, saltlen, N, r, p, buf, buflen):
- * Compute scrypt(passwd[0 .. passwdlen - 1], salt[0 .. saltlen - 1], N, r,
- * p, buflen) and write the result into buf.  The parameters r, p, and buflen
- * must satisfy r * p < 2^30 and buflen <= (2^32 - 1) * 32.  The parameter N
- * must be a power of 2 greater than 1.
- *
- * Return 0 on success; or -1 on error.
- *
- * MT-safe as long as buf is local to the thread.
- */
-extern int crypto_scrypt(const uint8_t *passwd, size_t passwdlen,
-    const uint8_t *salt, size_t saltlen,
-    uint64_t N, uint32_t r, uint32_t p, uint8_t *buf, size_t buflen);
-#endif
-
 /**
  * Internal type used by the memory allocator.  Please do not use it directly.
  * Use yescrypt_shared_t and yescrypt_local_t as appropriate instead, since
@@ -284,70 +267,6 @@ extern uint8_t *yescrypt_r(const yescrypt_shared_t *shared,
     const uint8_t *setting,
     //KEY: const yescrypt_binary_t *key,
     uint8_t *buf, size_t buflen);
-
-#if 0 //UNUSED
-/**
- * yescrypt(passwd, setting):
- * Compute and encode an scrypt or enhanced scrypt hash of passwd given the
- * parameters and salt value encoded in setting.  Whether to compute classic
- * scrypt, YESCRYPT_WORM (a slight deviation from classic scrypt), or
- * YESCRYPT_RW (time-memory tradeoff discouraging modification) is determined
- * by the setting string.
- *
- * Return the encoded hash string on success; or NULL on error.
- *
- * This is a crypt(3)-like interface, which is simpler to use than
- * yescrypt_r(), but it is not MT-safe, it does not allow for the use of a ROM,
- * and it is slower than yescrypt_r() for repeated calls because it allocates
- * and frees memory on each call.
- *
- * MT-unsafe.
- */
-extern uint8_t *yescrypt(const uint8_t *passwd, const uint8_t *setting);
-
-/**
- * yescrypt_reencrypt(hash, from_key, to_key):
- * Re-encrypt a yescrypt hash from one key to another.  Either key may be NULL
- * to indicate unencrypted hash.  The encoded hash string is modified in-place.
- *
- * Return the hash pointer on success; or NULL on error (in which case the hash
- * string is left unmodified).
- *
- * MT-safe as long as hash is local to the thread.
- */
-extern uint8_t *yescrypt_reencrypt(uint8_t *hash,
-    const yescrypt_binary_t *from_key,
-    const yescrypt_binary_t *to_key);
-
-/**
- * yescrypt_encode_params_r(params, src, srclen, buf, buflen):
- * Generate a setting string for use with yescrypt_r() and yescrypt() by
- * encoding into it the parameters flags, N, r, p, t, g, and a salt given by
- * src (of srclen bytes).  buf must be large enough (as indicated by buflen)
- * to hold the setting string.
- *
- * Return the setting string on success; or NULL on error.
- *
- * MT-safe as long as buf is local to the thread.
- */
-extern uint8_t *yescrypt_encode_params_r(const yescrypt_params_t *params,
-    const uint8_t *src, size_t srclen,
-    uint8_t *buf, size_t buflen);
-
-
-/**
- * yescrypt_encode_params(params, src, srclen):
- * Generate a setting string for use with yescrypt_r() and yescrypt().  This
- * function is the same as yescrypt_encode_params_r() except that it uses a
- * static buffer and thus is not MT-safe.
- *
- * Return the setting string on success; or NULL on error.
- *
- * MT-unsafe.
- */
-extern uint8_t *yescrypt_encode_params(const yescrypt_params_t *params,
-    const uint8_t *src, size_t srclen);
-#endif
 
 extern const uint8_t *decode64(uint8_t *dst, size_t *dstlen,
     const uint8_t *src, size_t srclen);
