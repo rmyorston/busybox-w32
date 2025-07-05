@@ -731,9 +731,7 @@ static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
 	}
 
 	Nloop_rw = 0;
-	if (flags & YESCRYPT_INIT_SHARED)
-		Nloop_rw = Nloop_all;
-	else if (flags & YESCRYPT_RW)
+	if (flags & YESCRYPT_RW)
 		Nloop_rw = Nloop_all / p;
 
 	Nchunk &= ~(uint32_t)1; /* round down to even */
@@ -872,19 +870,6 @@ static int yescrypt_kdf_body(
 	V = NULL;
 	V_size = (size_t)128 * r * N;
 	need = V_size;
-	if (flags & YESCRYPT_INIT_SHARED) {
-		if (local->aligned_size < need) {
-			if (local->base || local->aligned ||
-			    local->base_size || local->aligned_size)
-				goto out_EINVAL;
-			if (!alloc_region(local, need))
-				return -1;
-		}
-		if (flags & YESCRYPT_ALLOC_ONLY)
-			return -2; /* expected "failure" */
-		V = (salsa20_blk_t *)local->aligned;
-		need = 0;
-	}
 	B_size = (size_t)128 * r * p;
 	need += B_size;
 	if (need < B_size)
@@ -899,25 +884,18 @@ static int yescrypt_kdf_body(
 		if (need < S_size)
 			goto out_EINVAL;
 	}
-	if (flags & YESCRYPT_INIT_SHARED) {
-		if (!alloc_region(&tmp, need))
+	init_region(&tmp);
+	if (local->aligned_size < need) {
+		if (free_region(local))
 			return -1;
-		B = (uint8_t *)tmp.aligned;
-		XY = (salsa20_blk_t *)((uint8_t *)B + B_size);
-	} else {
-		init_region(&tmp);
-		if (local->aligned_size < need) {
-			if (free_region(local))
-				return -1;
-			if (!alloc_region(local, need))
-				return -1;
-		}
-		if (flags & YESCRYPT_ALLOC_ONLY)
-			return -3; /* expected "failure" */
-		B = (uint8_t *)local->aligned;
-		V = (salsa20_blk_t *)((uint8_t *)B + B_size);
-		XY = (salsa20_blk_t *)((uint8_t *)V + V_size);
+		if (!alloc_region(local, need))
+			return -1;
 	}
+	if (flags & YESCRYPT_ALLOC_ONLY)
+		return -3; /* expected "failure" */
+	B = (uint8_t *)local->aligned;
+	V = (salsa20_blk_t *)((uint8_t *)B + B_size);
+	XY = (salsa20_blk_t *)((uint8_t *)V + V_size);
 	S = NULL;
 	if (flags & YESCRYPT_RW)
 		S = (uint8_t *)XY + XY_size;
@@ -1021,7 +999,7 @@ int yescrypt_kdf(
 		return -1;
 	}
 
-	if ((flags & (YESCRYPT_RW | YESCRYPT_INIT_SHARED)) == YESCRYPT_RW
+	if ((flags & YESCRYPT_RW)
 	 && p >= 1
 	 && N / p >= 0x100
 	 && N / p * r >= 0x20000
