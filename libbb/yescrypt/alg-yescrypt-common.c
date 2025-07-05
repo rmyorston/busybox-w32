@@ -118,24 +118,6 @@ uint8_t *encode64(uint8_t *dst, size_t dstlen,
 	return dst;
 }
 
-static const uint8_t *decode64_uint32_fixed(uint32_t *dst, uint32_t dstbits,
-    const uint8_t *src)
-{
-	uint32_t bits;
-
-	*dst = 0;
-	for (bits = 0; bits < dstbits; bits += 6) {
-		uint32_t c = atoi64(*src++);
-		if (c > 63) {
-			*dst = 0;
-			return NULL;
-		}
-		*dst |= c << bits;
-	}
-
-	return src;
-}
-
 const uint8_t *decode64(uint8_t *dst, size_t *dstlen,
     const uint8_t *src, size_t srclen)
 {
@@ -192,90 +174,72 @@ uint8_t *yescrypt_r(
 {
 	unsigned char saltbin[64], hashbin[32];
 	const uint8_t *src, *saltstr, *salt;
+	const uint8_t *saltend;
 	uint8_t *dst;
 	size_t need, prefixlen, saltstrlen, saltlen;
+	uint32_t flavor, N_log2;
 	yescrypt_params_t params = { .p = 1 };
 
-	if (setting[0] != '$' ||
-	    (setting[1] != '7' && setting[1] != 'y') ||
-	    setting[2] != '$')
-		return NULL;
+	/* we assume setting starts with "$y$" (caller must ensure this) */
 	src = setting + 3;
 
-	if (setting[1] == '7') {
-		uint32_t N_log2 = atoi64(*src++);
-		if (N_log2 < 1 || N_log2 > 63)
-			return NULL;
-		params.N = (uint64_t)1 << N_log2;
+	src = decode64_uint32(&flavor, src, 0);
+	if (!src)
+		return NULL;
 
-		src = decode64_uint32_fixed(&params.r, 30, src);
-		if (!src)
-			return NULL;
-
-		src = decode64_uint32_fixed(&params.p, 30, src);
-		if (!src)
-			return NULL;
+	if (flavor < YESCRYPT_RW) {
+		params.flags = flavor;
+	} else if (flavor <= YESCRYPT_RW + (YESCRYPT_RW_FLAVOR_MASK >> 2)) {
+		params.flags = YESCRYPT_RW + ((flavor - YESCRYPT_RW) << 2);
 	} else {
-		uint32_t flavor, N_log2;
+		return NULL;
+	}
 
-		src = decode64_uint32(&flavor, src, 0);
+	src = decode64_uint32(&N_log2, src, 1);
+	if (!src || N_log2 > 63)
+		return NULL;
+	params.N = (uint64_t)1 << N_log2;
+
+	src = decode64_uint32(&params.r, src, 1);
+	if (!src)
+		return NULL;
+
+	if (*src != '$') {
+		uint32_t have;
+
+		src = decode64_uint32(&have, src, 1);
 		if (!src)
 			return NULL;
 
-		if (flavor < YESCRYPT_RW) {
-			params.flags = flavor;
-		} else if (flavor <= YESCRYPT_RW + (YESCRYPT_RW_FLAVOR_MASK >> 2)) {
-			params.flags = YESCRYPT_RW + ((flavor - YESCRYPT_RW) << 2);
-		} else {
-			return NULL;
-		}
-
-		src = decode64_uint32(&N_log2, src, 1);
-		if (!src || N_log2 > 63)
-			return NULL;
-		params.N = (uint64_t)1 << N_log2;
-
-		src = decode64_uint32(&params.r, src, 1);
-		if (!src)
-			return NULL;
-
-		if (*src != '$') {
-			uint32_t have;
-
-			src = decode64_uint32(&have, src, 1);
+		if (have & 1) {
+			src = decode64_uint32(&params.p, src, 2);
 			if (!src)
 				return NULL;
-
-			if (have & 1) {
-				src = decode64_uint32(&params.p, src, 2);
-				if (!src)
-					return NULL;
-			}
-
-			if (have & 2) {
-				src = decode64_uint32(&params.t, src, 1);
-				if (!src)
-					return NULL;
-			}
-
-			if (have & 4) {
-				src = decode64_uint32(&params.g, src, 1);
-				if (!src)
-					return NULL;
-			}
-
-			if (have & 8) {
-				uint32_t NROM_log2;
-				src = decode64_uint32(&NROM_log2, src, 1);
-				if (!src || NROM_log2 > 63)
-					return NULL;
-				params.NROM = (uint64_t)1 << NROM_log2;
-			}
 		}
 
-		if (*src++ != '$')
-			return NULL;
+		if (have & 2) {
+			src = decode64_uint32(&params.t, src, 1);
+			if (!src)
+				return NULL;
+		}
+
+		if (have & 4) {
+			src = decode64_uint32(&params.g, src, 1);
+			if (!src)
+				return NULL;
+		}
+
+		if (have & 8) {
+			uint32_t NROM_log2;
+			src = decode64_uint32(&NROM_log2, src, 1);
+			if (!src || NROM_log2 > 63)
+				return NULL;
+			params.NROM = (uint64_t)1 << NROM_log2;
+		}
 	}
+
+	if (*src++ != '$')
+		return NULL;
 
 	prefixlen = src - setting;
 
@@ -286,23 +250,13 @@ uint8_t *yescrypt_r(
 	else
 		saltstrlen = strlen((char *)saltstr);
 
-	if (setting[1] == '7') {
-		salt = saltstr;
-		saltlen = saltstrlen;
-	} else {
-		const uint8_t *saltend;
+	saltlen = sizeof(saltbin);
+	saltend = decode64(saltbin, &saltlen, saltstr, saltstrlen);
 
-		saltlen = sizeof(saltbin);
-		saltend = decode64(saltbin, &saltlen, saltstr, saltstrlen);
+	if (!saltend || (size_t)(saltend - saltstr) != saltstrlen)
+		goto fail;
 
-		if (!saltend || (size_t)(saltend - saltstr) != saltstrlen)
-			goto fail;
-
-		salt = saltbin;
-
-		//KEY:if (key)
-		//KEY:	yescrypt_sha256_cipher(saltbin, saltlen, key, ENC);
-	}
+	salt = saltbin;
 
 	need = prefixlen + saltstrlen + 1 + HASH_LEN + 1;
 	if (need > buflen || need < saltstrlen)
