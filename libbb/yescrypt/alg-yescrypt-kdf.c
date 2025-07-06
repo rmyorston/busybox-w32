@@ -887,7 +887,8 @@ static int yescrypt_kdf32_body(
 	if (yctx->local->aligned_size < need) {
 		free_region(yctx->local);
 		alloc_region(yctx->local, need);
-		dbg("allocated local:%u", need);
+		dbg("allocated local:%u 0x%x", need, need);
+		/* standard "j9T" params allocate 16Mbytes here */
 	}
 	if (flags & YESCRYPT_ALLOC_ONLY)
 		return -3; /* expected "failure" */

@@ -20,39 +20,26 @@
 
 static void alloc_region(yescrypt_region_t *region, size_t size)
 {
-	size_t base_size = size;
-	uint8_t *base, *aligned;
-
-#if 0 //def MAP_ANON - use mmap, possibly
-//(if defined(MAP_HUGETLB) && defined(MAP_HUGE_2MB)) using 2MB pages
-#else /* mmap not available */
-	base = aligned = NULL;
-	if (size + 63 < size)
+	int flags =
+# ifdef MAP_NOCORE /* huh? */
+		MAP_NOCORE |
+# endif
+		MAP_ANON | MAP_PRIVATE;
+	uint8_t *base = mmap(NULL, size, PROT_READ | PROT_WRITE, flags, -1, 0);
+	if (base == MAP_FAILED)
 		bb_die_memory_exhausted();
-	base = malloc(size + 63);
-	if (base) {
-		aligned = base + 63;
-		aligned -= (uintptr_t)aligned & 63;
-	}
-#endif
-	region->base = base;
-	region->aligned = aligned;
-	region->base_size = base ? base_size : 0;
-	region->aligned_size = base ? size : 0;
+	//region->base = base;
+	//region->base_size = size;
+	region->aligned = base;
+	region->aligned_size = size;
 }
 
 static void free_region(yescrypt_region_t *region)
 {
-#if 0 //def MAP_ANON
-	if (region->base) {
-		if (munmap(region->base, region->base_size))
-			return -1;
-	}
-#else
-	free(region->base);
-#endif
-	region->base = NULL;
+	if (region->aligned)
+		munmap(region->aligned, region->aligned_size);
+	//region->base = NULL;
+	//region->base_size = 0;
 	region->aligned = NULL;
-	region->base_size = 0;
 	region->aligned_size = 0;
 }

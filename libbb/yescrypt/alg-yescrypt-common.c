@@ -197,6 +197,9 @@ uint8_t *yescrypt_r(
 	src = setting + 3;
 
 	src = decode64_uint32(&flavor, src, 0);
+	dbg("yescrypt flavor=0x%x YESCRYPT_RW:%u",
+		(unsigned)flavor, !!(flavor & YESCRYPT_RW)
+	);
 	//if (!src)
 	//	goto fail;
 
@@ -204,6 +207,22 @@ uint8_t *yescrypt_r(
 		yctx->param.flags = flavor;
 	} else if (flavor <= YESCRYPT_RW + (YESCRYPT_RW_FLAVOR_MASK >> 2)) {
 		yctx->param.flags = YESCRYPT_RW + ((flavor - YESCRYPT_RW) << 2);
+		dbg("yctx->param.flags=0x%x", (unsigned)yctx->param.flags);
+		dbg(" YESCRYPT_RW:%u"       , !!(yctx->param.flags & YESCRYPT_RW       ));
+		dbg(" YESCRYPT_ROUNDS_6:%u" , !!(yctx->param.flags & YESCRYPT_ROUNDS_6 ));
+		dbg(" YESCRYPT_GATHER_2:%u" , !!(yctx->param.flags & YESCRYPT_GATHER_2 ));
+		dbg(" YESCRYPT_GATHER_4:%u" , !!(yctx->param.flags & YESCRYPT_GATHER_4 ));
+		dbg(" YESCRYPT_GATHER_8:%u" , !!(yctx->param.flags & YESCRYPT_GATHER_8 ));
+		dbg(" YESCRYPT_SIMPLE_2:%u" , !!(yctx->param.flags & YESCRYPT_SIMPLE_2 ));
+		dbg(" YESCRYPT_SIMPLE_4:%u" , !!(yctx->param.flags & YESCRYPT_SIMPLE_4 ));
+		dbg(" YESCRYPT_SIMPLE_8:%u" , !!(yctx->param.flags & YESCRYPT_SIMPLE_8 ));
+		dbg(" YESCRYPT_SBOX_12K:%u" , !!(yctx->param.flags & YESCRYPT_SBOX_12K ));
+		dbg(" YESCRYPT_SBOX_24K:%u" , !!(yctx->param.flags & YESCRYPT_SBOX_24K ));
+		dbg(" YESCRYPT_SBOX_48K:%u" , !!(yctx->param.flags & YESCRYPT_SBOX_48K ));
+		dbg(" YESCRYPT_SBOX_96K:%u" , !!(yctx->param.flags & YESCRYPT_SBOX_96K ));
+		dbg(" YESCRYPT_SBOX_192K:%u", !!(yctx->param.flags & YESCRYPT_SBOX_192K));
+		dbg(" YESCRYPT_SBOX_384K:%u", !!(yctx->param.flags & YESCRYPT_SBOX_384K));
+		dbg(" YESCRYPT_SBOX_768K:%u", !!(yctx->param.flags & YESCRYPT_SBOX_768K));
 	} else {
 		goto fail;
 	}
@@ -212,13 +231,16 @@ uint8_t *yescrypt_r(
 	if (/*!src ||*/ N_log2 > 63)
 		goto fail;
 	yctx->param.N = (uint64_t)1 << N_log2;
+	dbg("yctx->param.N=%llu (1<<%u)", (unsigned long long)yctx->param.N, (unsigned)N_log2);
 
 	src = decode64_uint32(&yctx->param.r, src, 1);
 	if (!src)
 		goto fail;
+	dbg("yctx->param.r=%u", yctx->param.r);
 	if (*src != '$') {
 		uint32_t have;
 		src = decode64_uint32(&have, src, 1);
+		dbg("yescrypt has extended params:0x%x", (unsigned)have);
 		if (have & 1)
 			src = decode64_uint32(&yctx->param.p, src, 2);
 		if (have & 2)

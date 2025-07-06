@@ -36,13 +36,6 @@
 #endif
 
 /**
- * Two 64-bit tags placed 48 bytes to the end of a ROM in host byte endianness
- * (and followed by 32 bytes of the ROM digest).
- */
-#define YESCRYPT_ROM_TAG1 0x7470797263736579 /* "yescrypt" */
-#define YESCRYPT_ROM_TAG2 0x687361684d4f522d /* "-ROMhash" */
-
-/**
  * Type and possible values for the flags argument of yescrypt_kdf(),
  * yescrypt_encode_params_r(), yescrypt_encode_params().  Most of these may be
  * OR'ed together, except that YESCRYPT_WORM stands on its own.
@@ -98,8 +91,10 @@ typedef uint32_t yescrypt_flags_t;
  * they might differ from each other in a future version.
  */
 typedef struct {
-	void *base, *aligned;
-	size_t base_size, aligned_size;
+//	void *base;
+	void *aligned;
+//	size_t base_size;
+	size_t aligned_size;
 } yescrypt_region_t;
 
 /**
