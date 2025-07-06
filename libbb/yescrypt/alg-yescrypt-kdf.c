@@ -806,7 +806,6 @@ static int yescrypt_kdf_body(
     uint64_t NROM,
     uint8_t *buf, size_t buflen)
 {
-	yescrypt_region_t tmp;
 	const salsa20_blk_t *VROM;
 	size_t B_size, V_size, XY_size, need;
 	uint8_t *B, *S;
@@ -884,7 +883,6 @@ static int yescrypt_kdf_body(
 		if (need < S_size)
 			goto out_EINVAL;
 	}
-	init_region(&tmp);
 	if (local->aligned_size < need) {
 		if (free_region(local))
 			return -1;
@@ -954,11 +952,6 @@ static int yescrypt_kdf_body(
 	if (flags) {
 		explicit_bzero(sha256, sizeof(sha256));
 		explicit_bzero(dk, sizeof(dk));
-	}
-
-	if (free_region(&tmp)) {
-		explicit_bzero(buf, buflen); /* must preserve errno */
-		return -1;
 	}
 
 	/* Success! */
