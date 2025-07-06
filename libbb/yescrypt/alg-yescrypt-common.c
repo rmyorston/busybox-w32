@@ -233,33 +233,29 @@ uint8_t *yescrypt_r(
 	}
 	if (!src)
 		return NULL;
-	if (*src++ != '$')
+	if (*src != '$')
 		return NULL;
 
-	prefixlen = src - setting;
-
-	saltstr = src;
-	src = (uint8_t *)strrchr((char *)saltstr, '$');
-	if (src)
-		saltstrlen = src - saltstr;
-	else
-		saltstrlen = strlen((char *)saltstr);
+	saltstr = src + 1;
+	src = (uint8_t *)strchrnul((char *)saltstr, '$');
+	prefixlen = src - setting;  /* len("$y$<params>$<salt>") */
+	saltstrlen = src - saltstr; /* len("<salt>") */
+	/* src points to end of salt ('$' or NUL byte), won't be used past this point */
 
 	saltlen = sizeof(saltbin);
 	saltend = decode64(saltbin, &saltlen, saltstr, saltstrlen);
+	if (saltend != saltstr + saltstrlen)
+		goto fail; /* saltbin[] is too small, or bad char during decode */
 
-	if (!saltend || (size_t)(saltend - saltstr) != saltstrlen)
-		goto fail;
-
-	need = prefixlen + saltstrlen + 1 + HASH_LEN + 1;
-	if (need > buflen || need < saltstrlen)
+	need = prefixlen + 1 + HASH_LEN + 1;
+	if (need > buflen || need < prefixlen)
 		goto fail;
 
 	if (yescrypt_kdf(local, passwd, passwdlen, saltbin, saltlen,
 	    &params, hashbin, sizeof(hashbin)))
 		goto fail;
 
-	dst = mempcpy(buf, setting, prefixlen + saltstrlen);
+	dst = mempcpy(buf, setting, prefixlen);
 	*dst++ = '$';
 	dst = encode64(dst, buflen - (dst - buf), hashbin, sizeof(hashbin));
 	explicit_bzero(hashbin, sizeof(hashbin));
