@@ -26,37 +26,21 @@
  */
 
 /**
- * SHA256_Buf(in, len, digest):
- * Compute the SHA256 hash of ${len} bytes from ${in} and write it to ${digest}.
- */
-void
-SHA256_Buf(const void * in, size_t len, uint8_t digest[32])
-{
-	sha256_ctx_t ctx;
-	sha256_begin(&ctx);
-	sha256_hash(&ctx, in, len);
-	sha256_end(&ctx, digest);
-}
-
-/**
  * HMAC_SHA256_Init(ctx, K, Klen):
  * Initialize the HMAC-SHA256 context ${ctx} with ${Klen} bytes of key from
  * ${K}.
  */
 static void
-HMAC_SHA256_Init(HMAC_SHA256_CTX * ctx, const void * _K, size_t Klen)
+HMAC_SHA256_Init(HMAC_SHA256_CTX *ctx, const void *_K, size_t Klen)
 {
 	uint8_t pad[64];
 	uint8_t khash[32];
-	const uint8_t * K = _K;
+	const uint8_t *K = _K;
 	size_t i;
 
 	/* If Klen > 64, the key is really SHA256(K). */
 	if (Klen > 64) {
-//		SHA256_Init(&ctx->ictx);
-//		_SHA256_Update(&ctx->ictx, K, Klen, tmp32);
-//		_SHA256_Final(khash, &ctx->ictx, tmp32);
-		SHA256_Buf(K, Klen, khash);
+		sha256_block(K, Klen, khash);
 		K = khash;
 		Klen = 32;
 	}
@@ -81,7 +65,7 @@ HMAC_SHA256_Init(HMAC_SHA256_CTX * ctx, const void * _K, size_t Klen)
  * Input ${len} bytes from ${in} into the HMAC-SHA256 context ${ctx}.
  */
 static void
-HMAC_SHA256_Update(HMAC_SHA256_CTX * ctx, const void * in, size_t len)
+HMAC_SHA256_Update(HMAC_SHA256_CTX *ctx, const void *in, size_t len)
 {
 	/* Feed data to the inner SHA256 operation. */
 	sha256_hash(&ctx->ictx, in, len);
@@ -93,7 +77,7 @@ HMAC_SHA256_Update(HMAC_SHA256_CTX * ctx, const void * in, size_t len)
  * buffer ${digest}.
  */
 static void
-HMAC_SHA256_Final(uint8_t digest[32], HMAC_SHA256_CTX * ctx)
+HMAC_SHA256_Final(uint8_t digest[32], HMAC_SHA256_CTX *ctx)
 {
 	uint8_t ihash[32];
 

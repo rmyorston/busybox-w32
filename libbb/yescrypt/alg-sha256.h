@@ -34,12 +34,6 @@
 #define HMAC_SHA256_Buf libcperciva_HMAC_SHA256_Buf
 #define HMAC_SHA256_CTX libcperciva_HMAC_SHA256_CTX
 
-/**
- * SHA256_Buf(in, len, digest):
- * Compute the SHA256 hash of ${len} bytes from ${in} and write it to ${digest}.
- */
-extern void SHA256_Buf(const void *, size_t, uint8_t[32]);
-
 /* Context structure for HMAC-SHA256 operations. */
 typedef struct {
 	sha256_ctx_t ictx;

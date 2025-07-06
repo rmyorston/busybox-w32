@@ -945,7 +945,7 @@ static int yescrypt_kdf32_body(
 			size_t clen = /*buflen:*/32;
 			if (clen > sizeof(dk))
 				clen = sizeof(dk);
-			SHA256_Buf(sha256, sizeof(sha256), dk);
+			sha256_block(sha256, sizeof(sha256), dk);
 			memcpy(buf32, dk, clen);
 		}
 	}

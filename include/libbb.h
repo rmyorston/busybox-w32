@@ -2233,6 +2233,7 @@ enum {
 	SHA512_OUTSIZE = 64,
 	SHA3_OUTSIZE   = 28,
 };
+void FAST_FUNC sha256_block(const void *in, size_t len, uint8_t hash[32]);
 
 extern uint32_t *global_crc32_table;
 uint32_t *crc32_filltable(uint32_t *tbl256, int endian) FAST_FUNC;
