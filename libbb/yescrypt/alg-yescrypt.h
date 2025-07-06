@@ -113,7 +113,7 @@ typedef struct {
 	yescrypt_params_t param;
 
 	/* salt in binary form */
-	/* stored here to cut down on the amont of function paramaters */
+	/* stored here to cut down on the amount of function paramaters */
 	unsigned char salt[64];
 	size_t saltlen;
 

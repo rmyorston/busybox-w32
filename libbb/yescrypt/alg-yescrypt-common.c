@@ -197,15 +197,15 @@ uint8_t *yescrypt_r(
 	src = setting + 3;
 
 	src = decode64_uint32(&flavor, src, 0);
-	dbg("yescrypt flavor=0x%x YESCRYPT_RW:%u",
-		(unsigned)flavor, !!(flavor & YESCRYPT_RW)
-	);
+	/* "j9T" returns: 0x2f */
+	dbg("yescrypt flavor=0x%x YESCRYPT_RW:%u", (unsigned)flavor, !!(flavor & YESCRYPT_RW));
 	//if (!src)
 	//	goto fail;
 
 	if (flavor < YESCRYPT_RW) {
 		yctx->param.flags = flavor;
 	} else if (flavor <= YESCRYPT_RW + (YESCRYPT_RW_FLAVOR_MASK >> 2)) {
+		/* "j9T" sets flags to 0xb6 */
 		yctx->param.flags = YESCRYPT_RW + ((flavor - YESCRYPT_RW) << 2);
 		dbg("yctx->param.flags=0x%x", (unsigned)yctx->param.flags);
 		dbg(" YESCRYPT_RW:%u"       , !!(yctx->param.flags & YESCRYPT_RW       ));
@@ -231,12 +231,15 @@ uint8_t *yescrypt_r(
 	if (/*!src ||*/ N_log2 > 63)
 		goto fail;
 	yctx->param.N = (uint64_t)1 << N_log2;
+	/* "j9T" sets to 4096 (1<<12) */
 	dbg("yctx->param.N=%llu (1<<%u)", (unsigned long long)yctx->param.N, (unsigned)N_log2);
 
 	src = decode64_uint32(&yctx->param.r, src, 1);
+	/* "j9T" sets to 32 */
+	dbg("yctx->param.r=%u", yctx->param.r);
+
 	if (!src)
 		goto fail;
-	dbg("yctx->param.r=%u", yctx->param.r);
 	if (*src != '$') {
 		uint32_t have;
 		src = decode64_uint32(&have, src, 1);
@@ -269,7 +272,7 @@ uint8_t *yescrypt_r(
 	yctx->saltlen = sizeof(yctx->salt);
 	saltend = decode64(yctx->salt, &yctx->saltlen, saltstr, saltstrlen);
 	if (saltend != saltstr + saltstrlen)
-		goto fail; /* saltbin[] is too small, or bad char during decode */
+		goto fail; /* salt[] is too small, or bad char during decode */
 
 	need = prefixlen + 1 + HASH_LEN + 1;
 	if (need > buflen || need < prefixlen)
