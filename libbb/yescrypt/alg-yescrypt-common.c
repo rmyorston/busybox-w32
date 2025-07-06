@@ -182,8 +182,7 @@ uint8_t *yescrypt_r(
 		uint8_t *buf, size_t buflen)
 {
 	unsigned char saltbin[64], hashbin[32];
-	const uint8_t *src, *saltstr, *salt;
-	const uint8_t *saltend;
+	const uint8_t *src, *saltstr, *saltend;
 	uint8_t *dst;
 	size_t need, prefixlen, saltstrlen, saltlen;
 	uint32_t flavor, N_log2;
@@ -265,19 +264,15 @@ uint8_t *yescrypt_r(
 	if (!saltend || (size_t)(saltend - saltstr) != saltstrlen)
 		goto fail;
 
-	salt = saltbin;
-
 	need = prefixlen + saltstrlen + 1 + HASH_LEN + 1;
 	if (need > buflen || need < saltstrlen)
 		goto fail;
 
-	if (yescrypt_kdf(local, passwd, passwdlen, salt, saltlen,
+	if (yescrypt_kdf(local, passwd, passwdlen, saltbin, saltlen,
 	    &params, hashbin, sizeof(hashbin)))
 		goto fail;
 
-	dst = buf;
-	memcpy(dst, setting, prefixlen + saltstrlen);
-	dst += prefixlen + saltstrlen;
+	dst = mempcpy(buf, setting, prefixlen + saltstrlen);
 	*dst++ = '$';
 
 	dst = encode64(dst, buflen - (dst - buf), hashbin, sizeof(hashbin));
