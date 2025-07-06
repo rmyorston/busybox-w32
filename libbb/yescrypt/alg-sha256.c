@@ -77,7 +77,7 @@ HMAC_SHA256_Update(HMAC_SHA256_CTX *ctx, const void *in, size_t len)
  * buffer ${digest}.
  */
 static void
-HMAC_SHA256_Final(HMAC_SHA256_CTX *ctx, uint8_t digest[32])
+HMAC_SHA256_Final(HMAC_SHA256_CTX *ctx, void *digest)
 {
 	/* Finish the inner SHA256 operation. */
 	sha256_end(&ctx->ictx, digest); /* using digest[] as scratch space */
@@ -93,8 +93,7 @@ HMAC_SHA256_Final(HMAC_SHA256_CTX *ctx, uint8_t digest[32])
  * length ${Klen}, and write the result to ${digest}.
  */
 static void
-HMAC_SHA256_Buf(const void *K, size_t Klen, const void *in, size_t len,
-		uint8_t digest[32])
+HMAC_SHA256_Buf(const void *K, size_t Klen, const void *in, size_t len, void *digest)
 {
 	HMAC_SHA256_CTX ctx;
 	HMAC_SHA256_Init(&ctx, K, Klen);
@@ -114,11 +113,6 @@ PBKDF2_SHA256(const uint8_t *passwd, size_t passwdlen,
 {
 	HMAC_SHA256_CTX Phctx, PShctx, hctx;
 	size_t i;
-	uint8_t U[32];
-	uint8_t T[32];
-	uint64_t j;
-	int k;
-	size_t clen;
 
 	/* Compute HMAC state after processing P. */
 	HMAC_SHA256_Init(&Phctx, passwd, passwdlen);
@@ -128,14 +122,19 @@ PBKDF2_SHA256(const uint8_t *passwd, size_t passwdlen,
 	HMAC_SHA256_Update(&PShctx, salt, saltlen);
 
 	/* Iterate through the blocks. */
-	for (i = 0; i * 32 < dkLen; i++) {
+	for (i = 0; dkLen != 0; i++) {
+		uint64_t U[32 / 8];
+		uint64_t T[32 / 8];
+		uint64_t j;
 		uint32_t ivec;
+		size_t clen;
+		int k;
 
 		/* Generate INT(i + 1). */
 		ivec = SWAP_BE32((uint32_t)(i + 1));
 
 		/* Compute U_1 = PRF(P, S || INT(i)). */
-		memcpy(&hctx, &PShctx, sizeof(HMAC_SHA256_CTX));
+		hctx = PShctx;
 		HMAC_SHA256_Update(&hctx, &ivec, 4);
 		HMAC_SHA256_Final(&hctx, T);
 
@@ -144,19 +143,20 @@ PBKDF2_SHA256(const uint8_t *passwd, size_t passwdlen,
 			memcpy(U, T, 32);
 			for (j = 2; j <= c; j++) {
 				/* Compute U_j. */
-				memcpy(&hctx, &Phctx, sizeof(HMAC_SHA256_CTX));
+				hctx = Phctx;
 				HMAC_SHA256_Update(&hctx, U, 32);
 				HMAC_SHA256_Final(&hctx, U);
 				/* ... xor U_j ... */
-				for (k = 0; k < 32; k++)
+				for (k = 0; k < 32 / 8; k++)
 					T[k] ^= U[k];
 			}
 		}
 
 		/* Copy as many bytes as necessary into buf. */
-		clen = dkLen - i * 32;
+		clen = dkLen;
 		if (clen > 32)
 			clen = 32;
-		memcpy(&buf[i * 32], T, clen);
+		buf = mempcpy(buf, T, clen);
+		dkLen -= clen;
 	}
 }
