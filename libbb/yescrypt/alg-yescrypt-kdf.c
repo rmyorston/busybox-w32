@@ -976,6 +976,7 @@ out_EINVAL:
  * to this function are the same as those for yescrypt_kdf_body() above, with
  * the addition of g, which controls hash upgrades (0 for no upgrades so far).
  */
+static
 int yescrypt_kdf(
 		yescrypt_local_t *local,
 		const uint8_t *passwd, size_t passwdlen,

@@ -184,12 +184,14 @@ extern int yescrypt_free_local(yescrypt_local_t *local);
  *
  * MT-safe as long as local and buf are local to the thread.
  */
-extern int yescrypt_kdf(
+#ifdef YESCRYPT_INTERNAL
+static int yescrypt_kdf(
     yescrypt_local_t *local,
     const uint8_t *passwd, size_t passwdlen,
     const uint8_t *salt, size_t saltlen,
     const yescrypt_params_t *params,
     uint8_t *buf, size_t buflen);
+#endif
 
 /**
  * yescrypt_r(shared, local, passwd, passwdlen, setting, key, buf, buflen):
@@ -211,8 +213,3 @@ extern uint8_t *yescrypt_r(
     const uint8_t *passwd, size_t passwdlen,
     const uint8_t *setting,
     uint8_t *buf, size_t buflen);
-
-extern const uint8_t *decode64(uint8_t *dst, size_t *dstlen,
-    const uint8_t *src, size_t srclen);
-extern uint8_t *encode64(uint8_t *dst, size_t dstlen,
-    const uint8_t *src, size_t srclen);

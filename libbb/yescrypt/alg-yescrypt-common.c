@@ -18,7 +18,12 @@
  * SUCH DAMAGE.
  */
 
-static inline uint32_t atoi64(uint8_t src)
+/* Not inlining:
+ * decode64 fuinctions are only used to read
+ * yescrypt_params_t field, and convert salt ti binary -
+ * both of these are negligible compared to main hashing operation
+ */
+static NOINLINE uint32_t atoi64(uint8_t src)
 {
 	static const uint8_t atoi64_partial[77] = {
 		0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
@@ -34,8 +39,9 @@ static inline uint32_t atoi64(uint8_t src)
 	return 64;
 }
 
-static const uint8_t *decode64_uint32(uint32_t *dst,
-    const uint8_t *src, uint32_t min)
+static NOINLINE const uint8_t *decode64_uint32(
+		uint32_t *dst,
+		const uint8_t *src, uint32_t min)
 {
 	uint32_t start = 0, end = 47, chars = 1, bits = 0;
 	uint32_t c;
@@ -70,8 +76,9 @@ fail:
 	return NULL;
 }
 
-static uint8_t *encode64_uint32_fixed(uint8_t *dst, size_t dstlen,
-    uint32_t src, uint32_t srcbits)
+static uint8_t *encode64_uint32_fixed(
+		uint8_t *dst, size_t dstlen,
+		uint32_t src, uint32_t srcbits)
 {
 	uint32_t bits;
 
@@ -91,8 +98,9 @@ static uint8_t *encode64_uint32_fixed(uint8_t *dst, size_t dstlen,
 	return dst;
 }
 
-uint8_t *encode64(uint8_t *dst, size_t dstlen,
-    const uint8_t *src, size_t srclen)
+static uint8_t *encode64(
+		uint8_t *dst, size_t dstlen,
+		const uint8_t *src, size_t srclen)
 {
 	size_t i;
 
@@ -118,8 +126,9 @@ uint8_t *encode64(uint8_t *dst, size_t dstlen,
 	return dst;
 }
 
-const uint8_t *decode64(uint8_t *dst, size_t *dstlen,
-    const uint8_t *src, size_t srclen)
+static const uint8_t *decode64(
+		uint8_t *dst, size_t *dstlen,
+		const uint8_t *src, size_t srclen)
 {
 	size_t dstpos = 0;
 
