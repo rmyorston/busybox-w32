@@ -41,33 +41,36 @@ static NOINLINE uint32_t atoi64(uint8_t src)
 
 static NOINLINE const uint8_t *decode64_uint32(
 		uint32_t *dst,
-		const uint8_t *src, uint32_t min)
+		const uint8_t *src, uint32_t val)
 {
 	uint32_t start = 0, end = 47, chars = 1, bits = 0;
 	uint32_t c;
+
+	if (!src) /* prevous decode failed already? */
+		goto fail;
 
 	c = atoi64(*src++);
 	if (c > 63)
 		goto fail;
 
-	*dst = min;
 	while (c > end) {
-		*dst += (end + 1 - start) << bits;
+		val += (end + 1 - start) << bits;
 		start = end + 1;
 		end = start + (62 - end) / 2;
 		chars++;
 		bits += 6;
 	}
 
-	*dst += (c - start) << bits;
+	val += (c - start) << bits;
 
 	while (--chars) {
 		c = atoi64(*src++);
 		if (c > 63)
 			goto fail;
 		bits -= 6;
-		*dst += c << bits;
+		val += c << bits;
 	}
+	*dst = val;
 
 	return src;
 
@@ -192,8 +195,8 @@ uint8_t *yescrypt_r(
 	src = setting + 3;
 
 	src = decode64_uint32(&flavor, src, 0);
-	if (!src)
-		return NULL;
+	//if (!src)
+	//	return NULL;
 
 	if (flavor < YESCRYPT_RW) {
 		params.flags = flavor;
@@ -204,48 +207,32 @@ uint8_t *yescrypt_r(
 	}
 
 	src = decode64_uint32(&N_log2, src, 1);
-	if (!src || N_log2 > 63)
+	if (/*!src ||*/ N_log2 > 63)
 		return NULL;
 	params.N = (uint64_t)1 << N_log2;
 
 	src = decode64_uint32(&params.r, src, 1);
 	if (!src)
 		return NULL;
-
 	if (*src != '$') {
 		uint32_t have;
-
 		src = decode64_uint32(&have, src, 1);
-		if (!src)
-			return NULL;
-
-		if (have & 1) {
+		if (have & 1)
 			src = decode64_uint32(&params.p, src, 2);
-			if (!src)
-				return NULL;
-		}
-
-		if (have & 2) {
+		if (have & 2)
 			src = decode64_uint32(&params.t, src, 1);
-			if (!src)
-				return NULL;
-		}
-
-		if (have & 4) {
+		if (have & 4)
 			src = decode64_uint32(&params.g, src, 1);
-			if (!src)
-				return NULL;
-		}
-
 		if (have & 8) {
 			uint32_t NROM_log2;
 			src = decode64_uint32(&NROM_log2, src, 1);
-			if (!src || NROM_log2 > 63)
+			if (/*!src ||*/ NROM_log2 > 63)
 				return NULL;
 			params.NROM = (uint64_t)1 << NROM_log2;
 		}
 	}
-
+	if (!src)
+		return NULL;
 	if (*src++ != '$')
 		return NULL;
 
@@ -274,7 +261,6 @@ uint8_t *yescrypt_r(
 
 	dst = mempcpy(buf, setting, prefixlen + saltstrlen);
 	*dst++ = '$';
-
 	dst = encode64(dst, buflen - (dst - buf), hashbin, sizeof(hashbin));
 	explicit_bzero(hashbin, sizeof(hashbin));
 	if (!dst || dst >= buf + buflen)
