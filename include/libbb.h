@@ -2191,6 +2191,7 @@ void read_base64(FILE *src_stream, FILE *dst_stream, int flags) FAST_FUNC;
 
 int FAST_FUNC i2a64(int i);
 int FAST_FUNC a2i64(char c);
+char* FAST_FUNC num2str64_lsb_first(char *s, unsigned v, int n);
 
 typedef struct md5_ctx_t {
 	uint8_t wbuffer[64]; /* always correctly aligned for uint64_t */

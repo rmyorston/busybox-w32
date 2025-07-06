@@ -19,8 +19,8 @@
  */
 
 /* Not inlining:
- * decode64 fuinctions are only used to read
- * yescrypt_params_t field, and convert salt ti binary -
+ * de/encode64 functions are only used to read
+ * yescrypt_params_t field, and convert salt to binary -
  * both of these are negligible compared to main hashing operation
  */
 static NOINLINE const uint8_t *decode64_uint32(
@@ -61,56 +61,6 @@ static NOINLINE const uint8_t *decode64_uint32(
 fail:
 	*dst = 0;
 	return NULL;
-}
-
-static uint8_t *encode64_uint32_fixed(
-		uint8_t *dst, size_t dstlen,
-		uint32_t src, uint32_t srcbits)
-{
-	uint32_t bits;
-
-	for (bits = 0; bits < srcbits; bits += 6) {
-		if (dstlen < 2)
-			return NULL;
-		*dst++ = i2a64(src);
-		dstlen--;
-		src >>= 6;
-	}
-
-	if (src || dstlen < 1)
-		return NULL;
-
-	*dst = 0; /* NUL terminate just in case */
-
-	return dst;
-}
-
-static uint8_t *encode64(
-		uint8_t *dst, size_t dstlen,
-		const uint8_t *src, size_t srclen)
-{
-	size_t i;
-
-	for (i = 0; i < srclen; ) {
-		uint8_t *dnext;
-		uint32_t value = 0, bits = 0;
-		do {
-			value |= (uint32_t)src[i++] << bits;
-			bits += 8;
-		} while (bits < 24 && i < srclen);
-		dnext = encode64_uint32_fixed(dst, dstlen, value, bits);
-		if (!dnext)
-			return NULL;
-		dstlen -= dnext - dst;
-		dst = dnext;
-	}
-
-	if (dstlen < 1)
-		return NULL;
-
-	*dst = 0; /* NUL terminate just in case */
-
-	return dst;
 }
 
 static const uint8_t *decode64(
@@ -156,21 +106,43 @@ static const uint8_t *decode64(
 		*dstlen = dstpos;
 		return src;
 	}
-
 fail:
 	*dstlen = 0;
 	return NULL;
 }
 
-uint8_t *yescrypt_r(
+static char *encode64(
+		char *dst, size_t dstlen,
+		const uint8_t *src, size_t srclen)
+{
+	while (srclen) {
+		uint32_t value = 0, b = 0;
+		do {
+			value |= (uint32_t)(*src++ << b);
+			b += 8;
+			srclen--;
+		} while (srclen && b < 24);
+
+		b >>= 3; /* number of bits to number of bytes */
+		b++; /* 1, 2 or 3 bytes will become 2, 3 or 4 ascii64 chars */
+		dstlen -= b;
+		if ((ssize_t)dstlen <= 0)
+			return NULL;
+		dst = num2str64_lsb_first(dst, value, b);
+	}
+	*dst = '\0';
+	return dst;
+}
+
+char *yescrypt_r(
 		const uint8_t *passwd, size_t passwdlen,
 		const uint8_t *setting,
-		uint8_t *buf, size_t buflen)
+		char *buf, size_t buflen)
 {
 	yescrypt_ctx_t yctx[1];
 	unsigned char hashbin32[32];
+	char *dst;
 	const uint8_t *src, *saltstr, *saltend;
-	uint8_t *dst;
 	size_t need, prefixlen, saltstrlen;
 	uint32_t flavor, N_log2;
 
@@ -241,11 +213,11 @@ uint8_t *yescrypt_r(
 				goto fail;
 			yctx->param.NROM = (uint64_t)1 << NROM_log2;
 		}
+		if (!src)
+			goto fail;
+		if (*src != '$')
+			goto fail;
 	}
-	if (!src)
-		goto fail;
-	if (*src != '$')
-		goto fail;
 
 	saltstr = src + 1;
 	src = (uint8_t *)strchrnul((char *)saltstr, '$');
@@ -268,16 +240,14 @@ uint8_t *yescrypt_r(
 	dst = mempcpy(buf, setting, prefixlen);
 	*dst++ = '$';
 	dst = encode64(dst, buflen - (dst - buf), hashbin32, sizeof(hashbin32));
-	if (!dst || dst >= buf + buflen)
+	if (!dst)
 		goto fail;
-
-	*dst = 0; /* NUL termination */
  ret:
 	free_region(yctx->local);
 	explicit_bzero(yctx, sizeof(yctx));
 	explicit_bzero(hashbin32, sizeof(hashbin32));
 	return buf;
-fail:
+ fail:
 	buf = NULL;
 	goto ret;
 }

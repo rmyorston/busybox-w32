@@ -151,8 +151,8 @@ typedef struct {
  *
  * MT-safe as long as local and buf are local to the thread.
  */
-extern uint8_t *yescrypt_r(
+extern char *yescrypt_r(
 	    const uint8_t *passwd, size_t passwdlen,
 	    const uint8_t *setting,
-	    uint8_t *buf, size_t buflen
+	    char *buf, size_t buflen
 );
