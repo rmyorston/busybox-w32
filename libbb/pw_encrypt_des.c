@@ -703,10 +703,10 @@ to64_msb_first(char *s, unsigned v)
 	*s++ = ascii64[(v >> 6) & 0x3f]; /* bits 11..6 */
 	*s   = ascii64[v & 0x3f]; /* bits 5..0 */
 #endif
-	*s++ = i64c(v >> 18); /* bits 23..18 */
-	*s++ = i64c(v >> 12); /* bits 17..12 */
-	*s++ = i64c(v >> 6); /* bits 11..6 */
-	*s   = i64c(v); /* bits 5..0 */
+	*s++ = i2a64(v >> 18); /* bits 23..18 */
+	*s++ = i2a64(v >> 12); /* bits 17..12 */
+	*s++ = i2a64(v >> 6); /* bits 11..6 */
+	*s   = i2a64(v); /* bits 5..0 */
 }
 
 static char *

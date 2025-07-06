@@ -88,7 +88,7 @@ static uint8_t *encode64_uint32_fixed(
 	for (bits = 0; bits < srcbits; bits += 6) {
 		if (dstlen < 2)
 			return NULL;
-		*dst++ = itoa64[src & 0x3f];
+		*dst++ = i2a64(src);
 		dstlen--;
 		src >>= 6;
 	}

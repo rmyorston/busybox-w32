@@ -2189,6 +2189,8 @@ char *decode_base64(char *dst, const char **pp_src) FAST_FUNC;
 char *decode_base32(char *dst, const char **pp_src) FAST_FUNC;
 void read_base64(FILE *src_stream, FILE *dst_stream, int flags) FAST_FUNC;
 
+int FAST_FUNC i2a64(int i);
+
 typedef struct md5_ctx_t {
 	uint8_t wbuffer[64]; /* always correctly aligned for uint64_t */
 	void (*process_block)(struct md5_ctx_t*) FAST_FUNC;

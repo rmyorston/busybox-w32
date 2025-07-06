@@ -107,7 +107,7 @@ HMAC_SHA256_Buf(const void *K, size_t Klen, const void *in, size_t len,
  * Compute PBKDF2(passwd, salt, c, dkLen) using HMAC-SHA256 as the PRF, and
  * write the output to buf.  The value dkLen must be at most 32 * (2^32 - 1).
  */
-void
+static void
 PBKDF2_SHA256(const uint8_t *passwd, size_t passwdlen,
 		const uint8_t *salt, size_t saltlen,
 		uint64_t c, uint8_t *buf, size_t dkLen)

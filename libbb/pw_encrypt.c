@@ -13,11 +13,10 @@
 #endif
 #include "libbb.h"
 
-/* static const uint8_t ascii64[] ALIGN1 =
+/* 0..63 ->
  * "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
  */
-
-static int i64c(int i)
+int FAST_FUNC i2a64(int i)
 {
 	i &= 0x3f;
 	if (i == 0)
@@ -45,8 +44,8 @@ int FAST_FUNC crypt_make_rand64encoded(char *p, int cnt /*, int x */)
 		 * It has no problem with visibly alternating lowest bit
 		 * but is also weak in cryptographic sense + needs div,
 		 * which needs more code (and slower) on many CPUs */
-		*p++ = i64c(x >> 16);
-		*p++ = i64c(x >> 22);
+		*p++ = i2a64(x >> 16);
+		*p++ = i2a64(x >> 22);
 	} while (--cnt);
 	*p = '\0';
 	return x;
@@ -120,8 +119,7 @@ static char*
 to64(char *s, unsigned v, int n)
 {
 	while (--n >= 0) {
-		/* *s++ = ascii64[v & 0x3f]; */
-		*s++ = i64c(v);
+		*s++ = i2a64(v);
 		v >>= 6;
 	}
 	return s;
