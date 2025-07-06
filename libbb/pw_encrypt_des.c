@@ -200,25 +200,6 @@ static const uint32_t bits32[32] ALIGN4 = {
 static const uint8_t bits8[8] ALIGN1 = { 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };
 
 
-static int
-ascii_to_bin(char ch)
-{
-	if (ch > 'z')
-		return 0;
-	if (ch >= 'a')
-		return (ch - 'a' + 38);
-	if (ch > 'Z')
-		return 0;
-	if (ch >= 'A')
-		return (ch - 'A' + 12);
-	if (ch > '9')
-		return 0;
-	if (ch >= '.')
-		return (ch - '.');
-	return 0;
-}
-
-
 /* Static stuff that stays resident and doesn't change after
  * being initialized, and therefore doesn't need to be made
  * reentrant. */
@@ -740,8 +721,8 @@ des_crypt(struct des_ctx *ctx, char output[DES_OUT_BUFSIZE],
 	 */
 	output[0] = salt_str[0];
 	output[1] = salt_str[1];
-	salt = (ascii_to_bin(salt_str[1]) << 6)
-	     |  ascii_to_bin(salt_str[0]);
+	salt = (a2i64(salt_str[1]) << 6)
+	     |  a2i64(salt_str[0]);
 	setup_salt(ctx, salt); /* set ctx->saltbits for do_des() */
 
 	/* Do it. */

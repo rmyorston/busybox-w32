@@ -30,6 +30,31 @@ int FAST_FUNC i2a64(int i)
 	return ('a' - 38 + i);
 }
 
+/* Returns >=64 for invalid chars */
+int FAST_FUNC a2i64(char c)
+{
+	unsigned char ch = c;
+	if (ch >= 'a')
+		/* "a..z" to 38..63 */
+		/* anything after "z": positive int >= 64 */
+		return (ch - 'a' + 38);
+
+	if (ch > 'Z')
+		/* after "Z" but before "a": positive byte >= 64 */
+		return ch;
+
+	if (ch >= 'A')
+		/* "A..Z" to 12..37 */
+		return (ch - 'A' + 12);
+
+	if (ch > '9')
+		return 64;
+
+	/* "./0123456789" to 0,1,2..11 */
+	/* anything before "." becomes positive byte >= 64 */
+	return (unsigned char)(ch - '.');
+}
+
 int FAST_FUNC crypt_make_rand64encoded(char *p, int cnt /*, int x */)
 {
 	/* was: x += ... */

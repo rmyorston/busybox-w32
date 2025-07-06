@@ -23,22 +23,6 @@
  * yescrypt_params_t field, and convert salt ti binary -
  * both of these are negligible compared to main hashing operation
  */
-static NOINLINE uint32_t atoi64(uint8_t src)
-{
-	static const uint8_t atoi64_partial[77] = {
-		0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-		64, 64, 64, 64, 64, 64, 64,
-		12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-		25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
-		64, 64, 64, 64, 64, 64,
-		38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
-		51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63
-	};
-	if (src >= '.' && src <= 'z')
-		return atoi64_partial[src - '.'];
-	return 64;
-}
-
 static NOINLINE const uint8_t *decode64_uint32(
 		uint32_t *dst,
 		const uint8_t *src, uint32_t val)
@@ -49,7 +33,7 @@ static NOINLINE const uint8_t *decode64_uint32(
 	if (!src) /* prevous decode failed already? */
 		goto fail;
 
-	c = atoi64(*src++);
+	c = a2i64(*src++);
 	if (c > 63)
 		goto fail;
 
@@ -64,7 +48,7 @@ static NOINLINE const uint8_t *decode64_uint32(
 	val += (c - start) << bits;
 
 	while (--chars) {
-		c = atoi64(*src++);
+		c = a2i64(*src++);
 		if (c > 63)
 			goto fail;
 		bits -= 6;
@@ -138,7 +122,7 @@ static const uint8_t *decode64(
 	while (dstpos <= *dstlen && srclen) {
 		uint32_t value = 0, bits = 0;
 		while (srclen--) {
-			uint32_t c = atoi64(*src);
+			uint32_t c = a2i64(*src);
 			if (c > 63) {
 				srclen = 0;
 				break;
