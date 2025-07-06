@@ -258,7 +258,7 @@ uint8_t *yescrypt_r(
 	if (saltend != saltstr + saltstrlen)
 		goto fail; /* salt[] is too small, or bad char during decode */
 
-	need = prefixlen + 1 + HASH_LEN + 1;
+	need = prefixlen + 1 + YESCRYPT_HASH_LEN + 1;
 	if (need > buflen || need < prefixlen)
 		goto fail;
 

@@ -759,6 +759,33 @@ static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
 	}
 }
 
+/* Allocator code */
+
+static void alloc_region(yescrypt_region_t *region, size_t size)
+{
+	int flags =
+# ifdef MAP_NOCORE /* huh? */
+		MAP_NOCORE |
+# endif
+		MAP_ANON | MAP_PRIVATE;
+	uint8_t *base = mmap(NULL, size, PROT_READ | PROT_WRITE, flags, -1, 0);
+	if (base == MAP_FAILED)
+		bb_die_memory_exhausted();
+	//region->base = base;
+	//region->base_size = size;
+	region->aligned = base;
+	region->aligned_size = size;
+}
+
+static void free_region(yescrypt_region_t *region)
+{
+	if (region->aligned)
+		munmap(region->aligned, region->aligned_size);
+	//region->base = NULL;
+	//region->base_size = 0;
+	region->aligned = NULL;
+	region->aligned_size = 0;
+}
 /**
  * yescrypt_kdf_body(shared, local, passwd, passwdlen, salt, saltlen,
  *     flags, N, r, p, t, NROM, buf, buflen):

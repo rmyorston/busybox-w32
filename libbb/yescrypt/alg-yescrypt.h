@@ -64,6 +64,7 @@ typedef uint32_t yescrypt_flags_t;
 #define YESCRYPT_SBOX_192K		0x280
 #define YESCRYPT_SBOX_384K		0x300
 #define YESCRYPT_SBOX_768K		0x380
+
 #ifdef YESCRYPT_INTERNAL
 /* Private */
 #define YESCRYPT_MODE_MASK		0x003
@@ -123,59 +124,17 @@ typedef struct {
 } yescrypt_ctx_t;
 
 /* How many chars base-64 encoded bytes require? */
-#define BYTES2CHARS(bytes) ((((bytes) * 8) + 5) / 6)
+#define YESCRYPT_BYTES2CHARS(bytes) ((((bytes) * 8) + 5) / 6)
 /* The /etc/passwd-style hash is "<prefix>$<hash><NUL>" */
 /*
  * "$y$", up to 8 params of up to 6 chars each, '$', salt
  * Alternatively, but that's smaller:
  * "$7$", 3 params encoded as 1+5+5 chars, salt
  */
-#define PREFIX_LEN (3 + 8 * 6 + 1 + BYTES2CHARS(32))
+#define YESCRYPT_PREFIX_LEN (3 + 8 * 6 + 1 + YESCRYPT_BYTES2CHARS(32))
 
-#define HASH_SIZE 32
-#define HASH_LEN  BYTES2CHARS(HASH_SIZE)
-
-/**
- * yescrypt_kdf(shared, local, passwd, passwdlen, salt, saltlen, params,
- *     buf, buflen):
- * Compute scrypt(passwd[0 .. passwdlen - 1], salt[0 .. saltlen - 1], N, r,
- * p, buflen), or a revision of scrypt as requested by flags and shared, and
- * write the result into buf.  The parameters N, r, p, and buflen must satisfy
- * the same conditions as with crypto_scrypt().  t controls computation time
- * while not affecting peak memory usage (t = 0 is optimal unless higher N*r
- * is not affordable while higher t is).  g controls hash upgrades (g = 0 for
- * no upgrades so far).  shared and flags may request special modes.  local is
- * the thread-local data structure, allowing to preserve and reuse a memory
- * allocation across calls, thereby reducing processing overhead.
- *
- * Return 0 on success; or -1 on error.
- *
- * Classic scrypt is available by setting shared = NULL, flags = 0, and t = 0.
- *
- * Setting YESCRYPT_WORM enables only minimal deviations from classic scrypt:
- * support for the t parameter, and pre- and post-hashing.
- *
- * Setting YESCRYPT_RW fully enables yescrypt.  As a side effect of differences
- * between the algorithms, it also prevents p > 1 from growing the threads'
- * combined processing time and memory allocation (like it did with classic
- * scrypt and YESCRYPT_WORM), treating p as a divider rather than a multiplier.
- *
- * Passing a shared structure, with ROM contents previously computed by
- * yescrypt_init_shared(), enables the use of ROM and requires YESCRYPT_RW.
- *
- * In order to allow for initialization of the ROM to be split into a separate
- * program (or separate invocation of the same program), the shared->aligned
- * and shared->aligned_size fields may optionally be set by the caller directly
- * (e.g., to a mapped SysV shm segment), without using yescrypt_init_shared().
- *
- * MT-safe as long as local and buf are local to the thread.
- */
-#ifdef YESCRYPT_INTERNAL
-static int yescrypt_kdf32(
-		yescrypt_ctx_t *yctx,
-		const uint8_t *passwd, size_t passwdlen,
-		uint8_t *buf32);
-#endif
+#define YESCRYPT_HASH_SIZE 32
+#define YESCRYPT_HASH_LEN  YESCRYPT_BYTES2CHARS(YESCRYPT_HASH_SIZE)
 
 /**
  * yescrypt_r(shared, local, passwd, passwdlen, setting, key, buf, buflen):
