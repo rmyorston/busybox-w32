@@ -674,12 +674,6 @@ do_des(struct des_ctx *ctx, /*uint32_t l_in, uint32_t r_in,*/ uint32_t *l_out, u
 static void
 to64_msb_first(char *s, unsigned v)
 {
-#if 0
-	*s++ = ascii64[(v >> 18) & 0x3f]; /* bits 23..18 */
-	*s++ = ascii64[(v >> 12) & 0x3f]; /* bits 17..12 */
-	*s++ = ascii64[(v >> 6) & 0x3f]; /* bits 11..6 */
-	*s   = ascii64[v & 0x3f]; /* bits 5..0 */
-#endif
 	*s++ = i2a64(v >> 18); /* bits 23..18 */
 	*s++ = i2a64(v >> 12); /* bits 17..12 */
 	*s++ = i2a64(v >> 6); /* bits 11..6 */
@@ -717,34 +711,19 @@ des_crypt(struct des_ctx *ctx, char output[DES_OUT_BUFSIZE],
 	 */
 	output[0] = salt_str[0];
 	output[1] = salt_str[1];
-	salt = (a2i64(salt_str[1]) << 6)
-	     |  a2i64(salt_str[0]);
+
+	salt = a2i64(salt_str[0]);
+	if (salt >= 64)
+		return NULL; /* bad salt char */
+	salt |= (a2i64(salt_str[1]) << 6);
+	if (salt >= (64 << 6))
+		return NULL; /* bad salt char */
 	setup_salt(ctx, salt); /* set ctx->saltbits for do_des() */
 
 	/* Do it. */
 	do_des(ctx, /*0, 0,*/ &r0, &r1, 25 /* count */);
 
 	/* Now encode the result. */
-#if 0
-{
-	uint32_t l = (r0 >> 8);
-	q = (uint8_t *)output + 2;
-	*q++ = ascii64[(l >> 18) & 0x3f]; /* bits 31..26 of r0 */
-	*q++ = ascii64[(l >> 12) & 0x3f]; /* bits 25..20 of r0 */
-	*q++ = ascii64[(l >> 6) & 0x3f]; /* bits 19..14 of r0 */
-	*q++ = ascii64[l & 0x3f]; /* bits 13..8 of r0 */
-	l = ((r0 << 16) | (r1 >> 16));
-	*q++ = ascii64[(l >> 18) & 0x3f]; /* bits 7..2 of r0 */
-	*q++ = ascii64[(l >> 12) & 0x3f]; /* bits 1..2 of r0 and 31..28 of r1 */
-	*q++ = ascii64[(l >> 6) & 0x3f]; /* bits 27..22 of r1 */
-	*q++ = ascii64[l & 0x3f]; /* bits 21..16 of r1 */
-	l = r1 << 2;
-	*q++ = ascii64[(l >> 12) & 0x3f]; /* bits 15..10 of r1 */
-	*q++ = ascii64[(l >> 6) & 0x3f]; /* bits 9..4 of r1 */
-	*q++ = ascii64[l & 0x3f]; /* bits 3..0 of r1 + 00 */
-	*q = 0;
-}
-#else
 	/* Each call takes low-order 24 bits and stores 4 chars */
 	/* bits 31..8 of r0 */
 	to64_msb_first(output + 2, (r0 >> 8));
@@ -754,7 +733,6 @@ des_crypt(struct des_ctx *ctx, char output[DES_OUT_BUFSIZE],
 	to64_msb_first(output + 10, (r1 << 8));
 	/* extra zero byte is encoded as '.', fixing it */
 	output[13] = '\0';
-#endif
 
 	return output;
 }
