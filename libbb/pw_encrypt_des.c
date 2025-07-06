@@ -186,17 +186,6 @@ static const uint8_t pbox[32] ALIGN1 = {
 	 2,  8, 24, 14, 32, 27,  3,  9, 19, 13, 30,  6, 22, 11,  4, 25
 };
 
-static const uint32_t bits32[32] ALIGN4 = {
-	0x80000000, 0x40000000, 0x20000000, 0x10000000,
-	0x08000000, 0x04000000, 0x02000000, 0x01000000,
-	0x00800000, 0x00400000, 0x00200000, 0x00100000,
-	0x00080000, 0x00040000, 0x00020000, 0x00010000,
-	0x00008000, 0x00004000, 0x00002000, 0x00001000,
-	0x00000800, 0x00000400, 0x00000200, 0x00000100,
-	0x00000080, 0x00000040, 0x00000020, 0x00000010,
-	0x00000008, 0x00000004, 0x00000002, 0x00000001
-};
-
 static const uint8_t bits8[8] ALIGN1 = { 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };
 
 
@@ -335,10 +324,17 @@ des_init(struct des_ctx *ctx, const struct const_des_ctx *cctx)
 	int i, j, b, k, inbit, obit;
 	uint32_t p;
 	const uint32_t *bits28, *bits24;
+	uint32_t bits32[32];
 
 	if (!ctx)
 		ctx = xmalloc(sizeof(*ctx));
 	const_ctx = cctx;
+
+	p = 0x80000000U;
+	for (i = 0; p; i++) {
+		bits32[i] = p;
+		p >>= 1;
+	}
 
 #if USE_REPETITIVE_SPEEDUP
 	old_rawkey0 = old_rawkey1 = 0;
