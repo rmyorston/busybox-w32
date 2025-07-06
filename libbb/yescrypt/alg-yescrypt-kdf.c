@@ -501,7 +501,7 @@ static void smix1(uint8_t *B, size_t r, uint32_t N, yescrypt_flags_t flags,
 		salsa20_blk_t *dst = &X[i];
 		size_t k;
 		for (k = 0; k < 16; k++)
-			tmp->w[k] = le32dec((const uint8_t *) &src->w[k]);
+			tmp->w[k] = SWAP_LE32(src->w[k]);
 		salsa20_simd_shuffle(tmp, dst);
 	}
 
@@ -591,7 +591,7 @@ static void smix1(uint8_t *B, size_t r, uint32_t N, yescrypt_flags_t flags,
 		salsa20_blk_t *dst = (salsa20_blk_t *)&B[i * 64];
 		size_t k;
 		for (k = 0; k < 16; k++)
-			le32enc((uint8_t *)&tmp->w[k], src->w[k]);
+			tmp->w[k] = SWAP_LE32(src->w[k]);
 		salsa20_simd_unshuffle(tmp, dst);
 	}
 }
@@ -621,7 +621,7 @@ static void smix2(uint8_t *B, size_t r, uint32_t N, uint64_t Nloop,
 		salsa20_blk_t *dst = &X[i];
 		size_t k;
 		for (k = 0; k < 16; k++)
-			tmp->w[k] = le32dec((const uint8_t *)&src->w[k]);
+			tmp->w[k] = SWAP_LE32(src->w[k]);
 		salsa20_simd_shuffle(tmp, dst);
 	}
 
@@ -676,7 +676,7 @@ static void smix2(uint8_t *B, size_t r, uint32_t N, uint64_t Nloop,
 		salsa20_blk_t *dst = (salsa20_blk_t *)&B[i * 64];
 		size_t k;
 		for (k = 0; k < 16; k++)
-			le32enc((uint8_t *)&tmp->w[k], src->w[k]);
+			tmp->w[k] = SWAP_LE32(src->w[k]);
 		salsa20_simd_unshuffle(tmp, dst);
 	}
 }
