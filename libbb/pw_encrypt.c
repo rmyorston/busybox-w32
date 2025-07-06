@@ -77,9 +77,9 @@ char* FAST_FUNC crypt_make_pw_salt(char salt[MAX_PW_SALT_LEN], const char *algo)
 // The "j9T$" below is the default "yescrypt parameters" encoded by yescrypt_encode_params_r():
 //
 //shadow-4.17.4/src/passwd.c
-//	salt = crypt_make_rand64encoded(NULL, NULL);
+//	salt = crypt_make_salt(NULL, NULL);
 //shadow-4.17.4/lib/salt.c
-//const char *crypt_make_rand64encoded(const char *meth, void *arg)
+//const char *crypt_make_salt(const char *meth, void *arg)
 //      if (streq(method, "YESCRYPT")) {
 //              MAGNUM(result, 'y');
 //              salt_len = YESCRYPT_SALT_SIZE; // 24
