@@ -179,62 +179,64 @@ fail:
 }
 
 uint8_t *yescrypt_r(
-		yescrypt_local_t *local,
 		const uint8_t *passwd, size_t passwdlen,
 		const uint8_t *setting,
 		uint8_t *buf, size_t buflen)
 {
-	unsigned char saltbin[64], hashbin[32];
+	yescrypt_ctx_t yctx[1];
+	unsigned char hashbin32[32];
 	const uint8_t *src, *saltstr, *saltend;
 	uint8_t *dst;
-	size_t need, prefixlen, saltstrlen, saltlen;
+	size_t need, prefixlen, saltstrlen;
 	uint32_t flavor, N_log2;
-	yescrypt_params_t params = { .p = 1 };
+
+	memset(yctx, 0, sizeof(yctx));
+	yctx->param.p = 1;
 
 	/* we assume setting starts with "$y$" (caller must ensure this) */
 	src = setting + 3;
 
 	src = decode64_uint32(&flavor, src, 0);
 	//if (!src)
-	//	return NULL;
+	//	goto fail;
 
 	if (flavor < YESCRYPT_RW) {
-		params.flags = flavor;
+		yctx->param.flags = flavor;
 	} else if (flavor <= YESCRYPT_RW + (YESCRYPT_RW_FLAVOR_MASK >> 2)) {
-		params.flags = YESCRYPT_RW + ((flavor - YESCRYPT_RW) << 2);
+		yctx->param.flags = YESCRYPT_RW + ((flavor - YESCRYPT_RW) << 2);
 	} else {
-		return NULL;
+		goto fail;
 	}
 
 	src = decode64_uint32(&N_log2, src, 1);
 	if (/*!src ||*/ N_log2 > 63)
-		return NULL;
-	params.N = (uint64_t)1 << N_log2;
+		goto fail;
+	yctx->param.N = (uint64_t)1 << N_log2;
 
-	src = decode64_uint32(&params.r, src, 1);
+	src = decode64_uint32(&yctx->param.r, src, 1);
 	if (!src)
-		return NULL;
+		goto fail;
 	if (*src != '$') {
 		uint32_t have;
 		src = decode64_uint32(&have, src, 1);
 		if (have & 1)
-			src = decode64_uint32(&params.p, src, 2);
+			src = decode64_uint32(&yctx->param.p, src, 2);
 		if (have & 2)
-			src = decode64_uint32(&params.t, src, 1);
+			src = decode64_uint32(&yctx->param.t, src, 1);
 		if (have & 4)
-			src = decode64_uint32(&params.g, src, 1);
+			src = decode64_uint32(&yctx->param.g, src, 1);
 		if (have & 8) {
 			uint32_t NROM_log2;
 			src = decode64_uint32(&NROM_log2, src, 1);
 			if (/*!src ||*/ NROM_log2 > 63)
-				return NULL;
-			params.NROM = (uint64_t)1 << NROM_log2;
+				goto fail;
+			yctx->param.NROM = (uint64_t)1 << NROM_log2;
 		}
 	}
 	if (!src)
-		return NULL;
+		goto fail;
 	if (*src != '$')
-		return NULL;
+		goto fail;
 
 	saltstr = src + 1;
 	src = (uint8_t *)strchrnul((char *)saltstr, '$');
@@ -242,8 +244,8 @@ uint8_t *yescrypt_r(
 	saltstrlen = src - saltstr; /* len("<salt>") */
 	/* src points to end of salt ('$' or NUL byte), won't be used past this point */
 
-	saltlen = sizeof(saltbin);
-	saltend = decode64(saltbin, &saltlen, saltstr, saltstrlen);
+	yctx->saltlen = sizeof(yctx->salt);
+	saltend = decode64(yctx->salt, &yctx->saltlen, saltstr, saltstrlen);
 	if (saltend != saltstr + saltstrlen)
 		goto fail; /* saltbin[] is too small, or bad char during decode */
 
@@ -251,34 +253,22 @@ uint8_t *yescrypt_r(
 	if (need > buflen || need < prefixlen)
 		goto fail;
 
-	if (yescrypt_kdf(local, passwd, passwdlen, saltbin, saltlen,
-	    &params, hashbin, sizeof(hashbin)))
+	if (yescrypt_kdf32(yctx, passwd, passwdlen, hashbin32))
 		goto fail;
 
 	dst = mempcpy(buf, setting, prefixlen);
 	*dst++ = '$';
-	dst = encode64(dst, buflen - (dst - buf), hashbin, sizeof(hashbin));
-	explicit_bzero(hashbin, sizeof(hashbin));
+	dst = encode64(dst, buflen - (dst - buf), hashbin32, sizeof(hashbin32));
 	if (!dst || dst >= buf + buflen)
-		return NULL;
+		goto fail;
 
 	*dst = 0; /* NUL termination */
-
+ ret:
+	free_region(yctx->local);
+	explicit_bzero(yctx, sizeof(yctx));
+	explicit_bzero(hashbin32, sizeof(hashbin32));
 	return buf;
-
 fail:
-	explicit_bzero(saltbin, sizeof(saltbin));
-	explicit_bzero(hashbin, sizeof(hashbin));
-	return NULL;
-}
-
-int yescrypt_init_local(yescrypt_local_t *local)
-{
-	init_region(local);
-	return 0;
-}
-
-int yescrypt_free_local(yescrypt_local_t *local)
-{
-	return free_region(local);
+	buf = NULL;
+	goto ret;
 }

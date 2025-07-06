@@ -798,29 +798,27 @@ static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
  * This optimized implementation currently limits N to the range from 4 to
  * 2^31, but other implementations might not.
  */
-static int yescrypt_kdf_body(
-    yescrypt_local_t *local,
-    const uint8_t *passwd, size_t passwdlen,
-    const uint8_t *salt, size_t saltlen,
-    yescrypt_flags_t flags, uint64_t N, uint32_t r, uint32_t p, uint32_t t,
-    uint64_t NROM,
-    uint8_t *buf, size_t buflen)
+static int yescrypt_kdf32_body(
+		yescrypt_ctx_t *yctx,
+		const uint8_t *passwd, size_t passwdlen,
+		yescrypt_flags_t flags, uint64_t N, uint32_t t,
+		uint8_t *buf32)
 {
 	const salsa20_blk_t *VROM;
 	size_t B_size, V_size, XY_size, need;
 	uint8_t *B, *S;
 	salsa20_blk_t *V, *XY;
 	uint8_t sha256[32];
-	uint8_t dk[sizeof(sha256)], *dkp = buf;
+	uint8_t dk[sizeof(sha256)], *dkp = buf32;
 
 	/* Sanity-check parameters */
 	switch (flags & YESCRYPT_MODE_MASK) {
 	case 0: /* classic scrypt - can't have anything non-standard */
-		if (flags || t || NROM)
+		if (flags || t || yctx->param.NROM)
 			goto out_EINVAL;
 		break;
 	case YESCRYPT_WORM:
-		if (flags != YESCRYPT_WORM || NROM)
+		if (flags != YESCRYPT_WORM || yctx->param.NROM)
 			goto out_EINVAL;
 		break;
 	case YESCRYPT_RW:
@@ -842,6 +840,9 @@ static int yescrypt_kdf_body(
 	if (buflen > (((uint64_t)1 << 32) - 1) * 32)
 		goto out_EINVAL;
 #endif
+    {
+	const uint32_t r = yctx->param.r;
+	const uint32_t p = yctx->param.p;
 	if ((uint64_t)r * (uint64_t)p >= 1 << 30)
 		goto out_EINVAL;
 	if (N > UINT32_MAX)
@@ -862,7 +863,7 @@ static int yescrypt_kdf_body(
 	}
 
 	VROM = NULL;
-	if (NROM)
+	if (yctx->param.NROM)
 		goto out_EINVAL;
 
 	/* Allocate memory */
@@ -883,15 +884,14 @@ static int yescrypt_kdf_body(
 		if (need < S_size)
 			goto out_EINVAL;
 	}
-	if (local->aligned_size < need) {
-		if (free_region(local))
-			return -1;
-		if (!alloc_region(local, need))
-			return -1;
+	if (yctx->local->aligned_size < need) {
+		free_region(yctx->local);
+		alloc_region(yctx->local, need);
+		dbg("allocated local:%u", need);
 	}
 	if (flags & YESCRYPT_ALLOC_ONLY)
 		return -3; /* expected "failure" */
-	B = (uint8_t *)local->aligned;
+	B = (uint8_t *)yctx->local->aligned;
 	V = (salsa20_blk_t *)((uint8_t *)B + B_size);
 	XY = (salsa20_blk_t *)((uint8_t *)V + V_size);
 	S = NULL;
@@ -906,28 +906,28 @@ static int yescrypt_kdf_body(
 		passwdlen = sizeof(sha256);
 	}
 
-	PBKDF2_SHA256(passwd, passwdlen, salt, saltlen, 1, B, B_size);
+	PBKDF2_SHA256(passwd, passwdlen, yctx->salt, yctx->saltlen, 1, B, B_size);
 
 	if (flags)
 		memcpy(sha256, B, sizeof(sha256));
 
 	if (p == 1 || (flags & YESCRYPT_RW)) {
-		smix(B, r, N, p, t, flags, V, NROM, VROM, XY, S, sha256);
+		smix(B, r, N, p, t, flags, V, yctx->param.NROM, VROM, XY, S, sha256);
 	} else {
 		uint32_t i;
 		for (i = 0; i < p; i++) {
 			smix(&B[(size_t)128 * r * i], r, N, 1, t, flags, V,
-			    NROM, VROM, XY, NULL, NULL);
+			    yctx->param.NROM, VROM, XY, NULL, NULL);
 		}
 	}
 
-	dkp = buf;
-	if (flags && buflen < sizeof(dk)) {
+	dkp = buf32;
+	if (flags && /*buflen:*/32 < sizeof(dk)) {
 		PBKDF2_SHA256(passwd, passwdlen, B, B_size, 1, dk, sizeof(dk));
 		dkp = dk;
 	}
 
-	PBKDF2_SHA256(passwd, passwdlen, B, B_size, 1, buf, buflen);
+	PBKDF2_SHA256(passwd, passwdlen, B, B_size, 1, buf32, /*buflen:*/32);
 
 	/*
 	 * Except when computing classic scrypt, allow all computation so far
@@ -941,11 +941,11 @@ static int yescrypt_kdf_body(
 		HMAC_SHA256_Buf(dkp, sizeof(dk), "Client Key", 10, sha256);
 		/* Compute StoredKey */
 		{
-			size_t clen = buflen;
+			size_t clen = /*buflen:*/32;
 			if (clen > sizeof(dk))
 				clen = sizeof(dk);
 			SHA256_Buf(sha256, sizeof(sha256), dk);
-			memcpy(buf, dk, clen);
+			memcpy(buf32, dk, clen);
 		}
 	}
 
@@ -960,6 +960,7 @@ static int yescrypt_kdf_body(
 out_EINVAL:
 	errno = EINVAL;
 	return -1;
+    }
 }
 
 /**
@@ -970,21 +971,18 @@ out_EINVAL:
  * the addition of g, which controls hash upgrades (0 for no upgrades so far).
  */
 static
-int yescrypt_kdf(
-		yescrypt_local_t *local,
+int yescrypt_kdf32(
+		yescrypt_ctx_t *yctx,
 		const uint8_t *passwd, size_t passwdlen,
-		const uint8_t *salt, size_t saltlen,
-		const yescrypt_params_t *params,
-		uint8_t *buf, size_t buflen)
+		uint8_t *buf32)
 {
-	yescrypt_flags_t flags = params->flags;
-	uint64_t N = params->N;
-	uint32_t r = params->r;
-	uint32_t p = params->p;
-	uint32_t t = params->t;
-	uint32_t g = params->g;
-	uint64_t NROM = params->NROM;
-	uint8_t dk[32];
+	yescrypt_flags_t flags = yctx->param.flags;
+	uint64_t N = yctx->param.N;
+	uint32_t r = yctx->param.r;
+	uint32_t p = yctx->param.p;
+	uint32_t t = yctx->param.t;
+	uint32_t g = yctx->param.g;
+	uint8_t dk32[32];
 	int retval;
 
 	/* Support for hash upgrades has been temporarily removed */
@@ -998,30 +996,30 @@ int yescrypt_kdf(
 	 && N / p >= 0x100
 	 && N / p * r >= 0x20000
 	) {
-		if (yescrypt_kdf_body(local,
-		    passwd, passwdlen, salt, saltlen,
-		    flags | YESCRYPT_ALLOC_ONLY, N, r, p, t, NROM,
-		    buf, buflen) != -3
+		if (yescrypt_kdf32_body(yctx,
+		    passwd, passwdlen,
+		    flags | YESCRYPT_ALLOC_ONLY, N, t,
+		    buf32) != -3
 		) {
 			errno = EINVAL;
 			return -1;
 		}
-		retval = yescrypt_kdf_body(local,
-				passwd, passwdlen, salt, saltlen,
-				flags | YESCRYPT_PREHASH, N >> 6, r, p, 0, NROM,
-				dk, sizeof(dk));
+		retval = yescrypt_kdf32_body(yctx,
+				passwd, passwdlen,
+				flags | YESCRYPT_PREHASH, N >> 6, 0,
+				dk32);
 		if (retval)
 			return retval;
-		passwd = dk;
-		passwdlen = sizeof(dk);
+		passwd = dk32;
+		passwdlen = sizeof(dk32);
 	}
 
-	retval = yescrypt_kdf_body(local,
-			passwd, passwdlen, salt, saltlen,
-			flags, N, r, p, t, NROM, buf, buflen);
+	retval = yescrypt_kdf32_body(yctx,
+			passwd, passwdlen,
+			flags, N, t, buf32);
 #ifndef SKIP_MEMZERO
-	if (passwd == dk)
-		explicit_bzero(dk, sizeof(dk));
+	if (passwd == dk32)
+		explicit_bzero(dk32, sizeof(dk32));
 #endif
 	return retval;
 }

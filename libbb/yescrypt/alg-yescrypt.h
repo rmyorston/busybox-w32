@@ -27,21 +27,13 @@
  * This file was originally written by Colin Percival as part of the Tarsnap
  * online backup system.
  */
-
-/**
- * Internal type used by the memory allocator.  Please do not use it directly.
- * Use yescrypt_shared_t and yescrypt_local_t as appropriate instead, since
- * they might differ from each other in a future version.
- */
-typedef struct {
-	void *base, *aligned;
-	size_t base_size, aligned_size;
-} yescrypt_region_t;
-
-/**
- * Types for shared (ROM) and thread-local (RAM) data structures.
- */
-typedef yescrypt_region_t yescrypt_local_t;
+#ifdef YESCRYPT_INTERNAL
+# if 1
+#  define dbg(...) ((void)0)
+# else
+#  define dbg(...) bb_error_msg(__VA_ARGS__)
+# endif
+#endif
 
 /**
  * Two 64-bit tags placed 48 bytes to the end of a ROM in host byte endianness
@@ -101,6 +93,16 @@ typedef uint32_t yescrypt_flags_t;
 #endif
 
 /**
+ * Internal type used by the memory allocator.  Please do not use it directly.
+ * Use yescrypt_shared_t and yescrypt_local_t as appropriate instead, since
+ * they might differ from each other in a future version.
+ */
+typedef struct {
+	void *base, *aligned;
+	size_t base_size, aligned_size;
+} yescrypt_region_t;
+
+/**
  * yescrypt parameters combined into one struct.  N, r, p are the same as in
  * classic scrypt, except that the meaning of p changes when YESCRYPT_RW is
  * set.  flags, t, g, NROM are special to yescrypt.
@@ -111,6 +113,19 @@ typedef struct {
 	uint32_t r, p, t, g;
 	uint64_t NROM;
 } yescrypt_params_t;
+
+typedef struct {
+	yescrypt_params_t param;
+
+	/* salt in binary form */
+	/* stored here to cut down on the amont of function paramaters */
+	unsigned char salt[64];
+	size_t saltlen;
+
+	/* used by the memory allocator */
+	//yescrypt_region_t shared[1];
+	yescrypt_region_t local[1];
+} yescrypt_ctx_t;
 
 /* How many chars base-64 encoded bytes require? */
 #define BYTES2CHARS(bytes) ((((bytes) * 8) + 5) / 6)
@@ -124,28 +139,6 @@ typedef struct {
 
 #define HASH_SIZE 32
 #define HASH_LEN  BYTES2CHARS(HASH_SIZE)
-
-/**
- * yescrypt_init_local(local):
- * Initialize the thread-local (RAM) data structure.  Actual memory allocation
- * is currently fully postponed until a call to yescrypt_kdf() or yescrypt_r().
- *
- * Return 0 on success; or -1 on error.
- *
- * MT-safe as long as local is local to the thread.
- */
-extern int yescrypt_init_local(yescrypt_local_t *local);
-
-/**
- * yescrypt_free_local(local):
- * Free memory that may have been allocated for an initialized thread-local
- * (RAM) data structure.
- *
- * Return 0 on success; or -1 on error.
- *
- * MT-safe as long as local is local to the thread.
- */
-extern int yescrypt_free_local(yescrypt_local_t *local);
 
 /**
  * yescrypt_kdf(shared, local, passwd, passwdlen, salt, saltlen, params,
@@ -180,17 +173,13 @@ extern int yescrypt_free_local(yescrypt_local_t *local);
  * and shared->aligned_size fields may optionally be set by the caller directly
  * (e.g., to a mapped SysV shm segment), without using yescrypt_init_shared().
  *
- * local must be initialized with yescrypt_init_local().
- *
  * MT-safe as long as local and buf are local to the thread.
  */
 #ifdef YESCRYPT_INTERNAL
-static int yescrypt_kdf(
-    yescrypt_local_t *local,
-    const uint8_t *passwd, size_t passwdlen,
-    const uint8_t *salt, size_t saltlen,
-    const yescrypt_params_t *params,
-    uint8_t *buf, size_t buflen);
+static int yescrypt_kdf32(
+		yescrypt_ctx_t *yctx,
+		const uint8_t *passwd, size_t passwdlen,
+		uint8_t *buf32);
 #endif
 
 /**
@@ -209,7 +198,7 @@ static int yescrypt_kdf(
  * MT-safe as long as local and buf are local to the thread.
  */
 extern uint8_t *yescrypt_r(
-    yescrypt_local_t *local,
-    const uint8_t *passwd, size_t passwdlen,
-    const uint8_t *setting,
-    uint8_t *buf, size_t buflen);
+	    const uint8_t *passwd, size_t passwdlen,
+	    const uint8_t *setting,
+	    uint8_t *buf, size_t buflen
+);
