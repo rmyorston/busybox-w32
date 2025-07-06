@@ -671,15 +671,6 @@ do_des(struct des_ctx *ctx, /*uint32_t l_in, uint32_t r_in,*/ uint32_t *l_out, u
 
 #define DES_OUT_BUFSIZE 21
 
-static void
-to64_msb_first(char *s, unsigned v)
-{
-	*s++ = i2a64(v >> 18); /* bits 23..18 */
-	*s++ = i2a64(v >> 12); /* bits 17..12 */
-	*s++ = i2a64(v >> 6); /* bits 11..6 */
-	*s   = i2a64(v); /* bits 5..0 */
-}
-
 static char *
 NOINLINE
 des_crypt(struct des_ctx *ctx, char output[DES_OUT_BUFSIZE],
@@ -726,11 +717,11 @@ des_crypt(struct des_ctx *ctx, char output[DES_OUT_BUFSIZE],
 	/* Now encode the result. */
 	/* Each call takes low-order 24 bits and stores 4 chars */
 	/* bits 31..8 of r0 */
-	to64_msb_first(output + 2, (r0 >> 8));
+	num2str64_4chars_msb_first(output + 2, (r0 >> 8));
 	/* bits 7..0 of r0 and 31..16 of r1 */
-	to64_msb_first(output + 6, (r0 << 16) | (r1 >> 16));
+	num2str64_4chars_msb_first(output + 6, (r0 << 16) | (r1 >> 16));
 	/* bits 15..0 of r1 and two zero bits (plus extra zero byte) */
-	to64_msb_first(output + 10, (r1 << 8));
+	num2str64_4chars_msb_first(output + 10, (r1 << 8));
 	/* extra zero byte is encoded as '.', fixing it */
 	output[13] = '\0';
 

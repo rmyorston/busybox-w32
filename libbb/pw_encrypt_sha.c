@@ -198,7 +198,7 @@ sha_crypt(/*const*/ char *key_data, /*const*/ char *salt_data)
 #define b64_from_24bit(B2, B1, B0, N) \
 do { \
 	unsigned w = ((B2) << 16) | ((B1) << 8) | (B0); \
-	resptr = to64(resptr, w, N); \
+	resptr = num2str64_lsb_first(resptr, w, N); \
 } while (0)
 	if (_32or64 == 32) { /* sha256 */
 		unsigned i = 0;

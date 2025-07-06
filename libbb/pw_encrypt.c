@@ -13,68 +13,7 @@
 #endif
 #include "libbb.h"
 
-/* 0..63 ->
- * "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
- */
-int FAST_FUNC i2a64(int i)
-{
-	i &= 0x3f;
-	if (i == 0)
-		return '.';
-	if (i == 1)
-		return '/';
-	if (i < 12)
-		return ('0' - 2 + i);
-	if (i < 38)
-		return ('A' - 12 + i);
-	return ('a' - 38 + i);
-}
-
-/* Returns >=64 for invalid chars */
-int FAST_FUNC a2i64(char c)
-{
-	unsigned char ch = c;
-	if (ch >= 'a')
-		/* "a..z" to 38..63 */
-		/* anything after "z": positive int >= 64 */
-		return (ch - 'a' + 38);
-
-	if (ch > 'Z')
-		/* after "Z" but before "a": positive byte >= 64 */
-		return ch;
-
-	if (ch >= 'A')
-		/* "A..Z" to 12..37 */
-		return (ch - 'A' + 12);
-
-	if (ch > '9')
-		return 64;
-
-	/* "./0123456789" to 0,1,2..11 */
-	/* anything before "." becomes positive byte >= 64 */
-	return (unsigned char)(ch - '.');
-}
-
-int FAST_FUNC crypt_make_rand64encoded(char *p, int cnt /*, int x */)
-{
-	/* was: x += ... */
-	unsigned x = getpid() + monotonic_us();
-	do {
-		/* x = (x*1664525 + 1013904223) % 2^32 generator is lame
-		 * (low-order bit is not "random", etc...),
-		 * but for our purposes it is good enough */
-		x = x*1664525 + 1013904223;
-		/* BTW, Park and Miller's "minimal standard generator" is
-		 * x = x*16807 % ((2^31)-1)
-		 * It has no problem with visibly alternating lowest bit
-		 * but is also weak in cryptographic sense + needs div,
-		 * which needs more code (and slower) on many CPUs */
-		*p++ = i2a64(x >> 16);
-		*p++ = i2a64(x >> 22);
-	} while (--cnt);
-	*p = '\0';
-	return x;
-}
+#include "pw_ascii64.c"
 
 char* FAST_FUNC crypt_make_pw_salt(char salt[MAX_PW_SALT_LEN], const char *algo)
 {
@@ -139,17 +78,6 @@ char* FAST_FUNC crypt_make_pw_salt(char salt[MAX_PW_SALT_LEN], const char *algo)
 }
 
 #if ENABLE_USE_BB_CRYPT
-
-static char*
-to64(char *s, unsigned v, int n)
-{
-	while (--n >= 0) {
-		*s++ = i2a64(v);
-		v >>= 6;
-	}
-	return s;
-}
-
 /*
  * DES and MD5 crypt implementations are taken from uclibc.
  * They were modified to not use static buffers.
