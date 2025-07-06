@@ -42,17 +42,14 @@
 #define unlikely(exp) (exp)
 #endif
 
-#if 0 //def __SSE__
-...
-#else /* !defined(__SSE2__) */
-
 typedef union {
 	uint32_t w[16];
 	uint64_t d[8];
 } salsa20_blk_t;
 
-static inline void salsa20_simd_shuffle(const salsa20_blk_t *Bin,
-    salsa20_blk_t *Bout)
+static void salsa20_simd_shuffle(
+		    const salsa20_blk_t *Bin,
+		    salsa20_blk_t *Bout)
 {
 #define COMBINE(out, in1, in2) \
 	Bout->d[out] = Bin->w[in1 * 2] | ((uint64_t)Bin->w[in2 * 2 + 1] << 32);
@@ -67,8 +64,9 @@ static inline void salsa20_simd_shuffle(const salsa20_blk_t *Bin,
 #undef COMBINE
 }
 
-static inline void salsa20_simd_unshuffle(const salsa20_blk_t *Bin,
-    salsa20_blk_t *Bout)
+static void salsa20_simd_unshuffle(
+		const salsa20_blk_t *Bin,
+		salsa20_blk_t *Bout)
 {
 #define UNCOMBINE(out, in1, in2) \
 	Bout->w[out * 2] = Bin->d[in1]; \
@@ -83,6 +81,7 @@ static inline void salsa20_simd_unshuffle(const salsa20_blk_t *Bin,
 	UNCOMBINE(7, 3, 1)
 #undef UNCOMBINE
 }
+
 #define DECL_X \
 	salsa20_blk_t X;
 #define DECL_Y \
@@ -105,8 +104,9 @@ static inline void salsa20_simd_unshuffle(const salsa20_blk_t *Bin,
  * salsa20(B):
  * Apply the Salsa20 core to the provided block.
  */
-static inline void salsa20(salsa20_blk_t *restrict B,
-    salsa20_blk_t *restrict Bout, uint32_t doublerounds)
+static void salsa20(salsa20_blk_t *restrict B,
+		salsa20_blk_t *restrict Bout,
+		uint32_t doublerounds)
 {
 	salsa20_blk_t X;
 #define x X.w
@@ -193,15 +193,15 @@ static inline void salsa20(salsa20_blk_t *restrict B,
 
 #define INTEGERIFY (uint32_t)X.d[0]
 
-#endif /* !defined(__SSE2__) */
-
 /**
  * blockmix_salsa8(Bin, Bout, r):
  * Compute Bout = BlockMix_{salsa20/8, r}(Bin).  The input Bin must be 128r
  * bytes in length; the output Bout must also be the same size.
  */
-static void blockmix_salsa8(const salsa20_blk_t *restrict Bin,
-    salsa20_blk_t *restrict Bout, size_t r)
+static void blockmix_salsa8(
+		const salsa20_blk_t *restrict Bin,
+		salsa20_blk_t *restrict Bout,
+		size_t r)
 {
 	size_t i;
 	DECL_X
@@ -213,9 +213,11 @@ static void blockmix_salsa8(const salsa20_blk_t *restrict Bin,
 	}
 }
 
-static uint32_t blockmix_salsa8_xor(const salsa20_blk_t *restrict Bin1,
-    const salsa20_blk_t *restrict Bin2, salsa20_blk_t *restrict Bout,
-    size_t r)
+static uint32_t blockmix_salsa8_xor(
+		const salsa20_blk_t *restrict Bin1,
+		const salsa20_blk_t *restrict Bin2,
+		salsa20_blk_t *restrict Bout,
+		size_t r)
 {
 	size_t i;
 	DECL_X
@@ -257,10 +259,6 @@ static uint32_t blockmix_salsa8_xor(const salsa20_blk_t *restrict Bin1,
 #define FORCE_REGALLOC_3 /* empty */
 #define MAYBE_MEMORY_BARRIER /* empty */
 
-#if 0 //def __SSE2__
-...
-#else /* !defined(__SSE2__) */
-
 #define PWXFORM_SIMD(x0, x1) { \
 	uint64_t x = x0 & Smask2; \
 	uint64_t *p0 = (uint64_t *)(S0 + (uint32_t)x); \
@@ -274,7 +272,6 @@ static uint32_t blockmix_salsa8_xor(const salsa20_blk_t *restrict Bin1,
 	PWXFORM_SIMD(X.d[2], X.d[3]) \
 	PWXFORM_SIMD(X.d[4], X.d[5]) \
 	PWXFORM_SIMD(X.d[6], X.d[7])
-#endif
 
 /*
  * This offset helps address the 256-byte write block via the single-byte
@@ -321,8 +318,11 @@ typedef struct {
  * Compute Bout = BlockMix_pwxform{salsa20/2, r, S}(Bin).  The input Bin must
  * be 128r bytes in length; the output Bout must also be the same size.
  */
-static void blockmix(const salsa20_blk_t *restrict Bin,
-    salsa20_blk_t *restrict Bout, size_t r, pwxform_ctx_t *restrict ctx)
+static void blockmix(
+		    const salsa20_blk_t *restrict Bin,
+		    salsa20_blk_t *restrict Bout,
+		    size_t r,
+		    pwxform_ctx_t *restrict ctx)
 {
 	uint8_t *S0 = ctx->S0, *S1 = ctx->S1, *S2 = ctx->S2;
 	size_t w = ctx->w;
@@ -353,8 +353,10 @@ static void blockmix(const salsa20_blk_t *restrict Bin,
 }
 
 static uint32_t blockmix_xor(const salsa20_blk_t *Bin1,
-    const salsa20_blk_t *restrict Bin2, salsa20_blk_t *Bout,
-    size_t r, int Bin2_in_ROM, pwxform_ctx_t *restrict ctx)
+		const salsa20_blk_t *restrict Bin2,
+		salsa20_blk_t *Bout,
+		size_t r, int Bin2_in_ROM,
+		pwxform_ctx_t *restrict ctx)
 {
 	uint8_t *S0 = ctx->S0, *S1 = ctx->S1, *S2 = ctx->S2;
 	size_t w = ctx->w;
@@ -413,9 +415,11 @@ static uint32_t blockmix_xor(const salsa20_blk_t *Bin1,
 	return INTEGERIFY;
 }
 
-static uint32_t blockmix_xor_save(salsa20_blk_t *restrict Bin1out,
-    salsa20_blk_t *restrict Bin2,
-    size_t r, pwxform_ctx_t *restrict ctx)
+static uint32_t blockmix_xor_save(
+		salsa20_blk_t *restrict Bin1out,
+		salsa20_blk_t *restrict Bin2,
+		size_t r,
+		pwxform_ctx_t *restrict ctx)
 {
 	uint8_t *S0 = ctx->S0, *S1 = ctx->S1, *S2 = ctx->S2;
 	size_t w = ctx->w;
@@ -425,13 +429,6 @@ static uint32_t blockmix_xor_save(salsa20_blk_t *restrict Bin1out,
 
 	/* Convert count of 128-byte blocks to max index of 64-byte block */
 	r = r * 2 - 1;
-
-#ifdef PREFETCH
-	PREFETCH(&Bin2[r], _MM_HINT_T0)
-	for (i = 0; i < r; i++) {
-		PREFETCH(&Bin2[i], _MM_HINT_T0)
-	}
-#endif
 
 	XOR_X_2(Bin1out[r], Bin2[r])
 
@@ -487,9 +484,12 @@ static inline uint32_t integerify(const salsa20_blk_t *B, size_t r)
  * The array V must be aligned to a multiple of 64 bytes, and arrays B and XY
  * to a multiple of at least 16 bytes.
  */
-static void smix1(uint8_t *B, size_t r, uint32_t N, yescrypt_flags_t flags,
-    salsa20_blk_t *V, uint32_t NROM, const salsa20_blk_t *VROM,
-    salsa20_blk_t *XY, pwxform_ctx_t *ctx)
+static void smix1(uint8_t *B, size_t r, uint32_t N,
+		yescrypt_flags_t flags,
+		salsa20_blk_t *V,
+		uint32_t NROM, const salsa20_blk_t *VROM,
+		salsa20_blk_t *XY,
+		pwxform_ctx_t *ctx)
 {
 	size_t s = 2 * r;
 	salsa20_blk_t *X = V, *Y = &V[s];
@@ -605,8 +605,11 @@ static void smix1(uint8_t *B, size_t r, uint32_t N, yescrypt_flags_t flags,
  * 64 bytes, and arrays B and XY to a multiple of at least 16 bytes.
  */
 static void smix2(uint8_t *B, size_t r, uint32_t N, uint64_t Nloop,
-    yescrypt_flags_t flags, salsa20_blk_t *V, uint32_t NROM,
-    const salsa20_blk_t *VROM, salsa20_blk_t *XY, pwxform_ctx_t *ctx)
+		yescrypt_flags_t flags,
+		salsa20_blk_t *V,
+		uint32_t NROM, const salsa20_blk_t *VROM,
+		salsa20_blk_t *XY,
+		pwxform_ctx_t *ctx)
 {
 	size_t s = 2 * r;
 	salsa20_blk_t *X = XY, *Y = &XY[s];
@@ -705,9 +708,11 @@ static uint64_t p2floor(uint64_t x)
  * might also result in cache bank conflicts).
  */
 static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
-    yescrypt_flags_t flags,
-    salsa20_blk_t *V, uint32_t NROM, const salsa20_blk_t *VROM,
-    salsa20_blk_t *XY, uint8_t *S, uint8_t *passwd)
+		yescrypt_flags_t flags,
+		salsa20_blk_t *V,
+		uint32_t NROM, const salsa20_blk_t *VROM,
+		salsa20_blk_t *XY,
+		uint8_t *S, uint8_t *passwd)
 {
 	size_t s = 2 * r;
 	uint32_t Nchunk;
