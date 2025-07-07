@@ -126,8 +126,8 @@ static const uint8_t *decode64(
 	*dstlen = dstpos;
 	dbg_dec64("dec64: OK, dst[%d]", (int)dstpos);
 	return src;
-fail:
-	*dstlen = 0;
+ fail:
+	/* *dstlen = 0; - not needed, caller detects error by seeing NULL */
 	return NULL;
 }
 #else
@@ -177,7 +177,7 @@ static const uint8_t *decode64(
 		dbg_dec64("dec64: OK, dst[%d]", (int)dstpos);
 		return src;
 	}
-fail:
+ fail:
 	/* *dstlen = 0; - not needed, caller detects error by seeing NULL */
 	return NULL;
 }
