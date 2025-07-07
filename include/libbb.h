@@ -2253,12 +2253,20 @@ typedef void md5sha_begin_func(md5sha_ctx_t *ctx) FAST_FUNC;
 #define hmac_begin(ctx,key,key_size,begin) \
 	hmac_begin(ctx,key,key_size)
 #endif
-void FAST_FUNC hmac_begin(hmac_ctx_t *ctx, uint8_t *key, unsigned key_size, md5sha_begin_func *begin);
+void FAST_FUNC hmac_begin(hmac_ctx_t *ctx, const uint8_t *key, unsigned key_size, md5sha_begin_func *begin);
 static ALWAYS_INLINE void hmac_hash(hmac_ctx_t *ctx, const void *in, size_t len)
 {
 	md5sha_hash(&ctx->hashed_key_xor_ipad, in, len);
 }
 unsigned FAST_FUNC hmac_end(hmac_ctx_t *ctx, uint8_t *out);
+#if HMAC_ONLY_SHA256
+#define hmac_block(key,key_size,begin,in,sz,out) \
+        hmac_block(key,key_size,in,sz,out)
+#endif
+unsigned FAST_FUNC hmac_block(const uint8_t *key, unsigned key_size,
+		md5sha_begin_func *begin,
+		const void *in, unsigned sz,
+		uint8_t *out);
 /* HMAC helpers for TLS: */
 void FAST_FUNC hmac_hash_v(hmac_ctx_t *ctx, va_list va);
 unsigned FAST_FUNC hmac_peek_hash(hmac_ctx_t *ctx, uint8_t *out, ...);

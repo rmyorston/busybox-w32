@@ -735,8 +735,12 @@ static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
 			ctx_i->S0 = Si + Sbytes / 3 * 2;
 			ctx_i->w = 0;
 			if (i == 0)
-				HMAC_SHA256_Buf(Bp + (128 * r - 64), 64,
-				    passwd, 32, passwd);
+				hmac_block(
+				        /* key,len: */ Bp + (128 * r - 64), 64,
+					/* hash fn: */ sha256_begin,
+					/* in,len: */  passwd, 32,
+					/* outbuf: */  passwd
+				);
 		}
 		smix1(Bp, r, Np, flags, Vp, NROM, VROM, XYp, ctx_i);
 		smix2(Bp, r, p2floor(Np), Nloop_rw, flags, Vp,
@@ -907,9 +911,12 @@ static int yescrypt_kdf32_body(
 		S = (uint8_t *)XY + XY_size;
 
 	if (flags) {
-		HMAC_SHA256_Buf("yescrypt-prehash",
-		    (flags & YESCRYPT_PREHASH) ? 16 : 8,
-		    passwd, passwdlen, sha256);
+		hmac_block(
+			/* key,len: */ (const void*)"yescrypt-prehash", (flags & YESCRYPT_PREHASH) ? 16 : 8,
+			/* hash fn: */ sha256_begin,
+			/* in,len: */  passwd, passwdlen,
+			/* outbuf: */  sha256
+		);
 		passwd = sha256;
 		passwdlen = sizeof(sha256);
 	}
@@ -946,7 +953,12 @@ static int yescrypt_kdf32_body(
 	 */
 	if (flags && !(flags & YESCRYPT_PREHASH)) {
 		/* Compute ClientKey */
-		HMAC_SHA256_Buf(dkp, sizeof(dk), "Client Key", 10, sha256);
+		hmac_block(
+			/* key,len: */ dkp, sizeof(dk),
+			/* hash fn: */ sha256_begin,
+			/* in,len: */  "Client Key", 10,
+			/* outbuf: */  sha256
+		);
 		/* Compute StoredKey */
 		{
 			size_t clen = /*buflen:*/32;

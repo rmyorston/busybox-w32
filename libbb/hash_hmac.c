@@ -18,7 +18,7 @@
 // if we often need HMAC hmac with the same key.
 //
 // text is often given in disjoint pieces.
-void FAST_FUNC hmac_begin(hmac_ctx_t *ctx, uint8_t *key, unsigned key_size, md5sha_begin_func *begin)
+void FAST_FUNC hmac_begin(hmac_ctx_t *ctx, const uint8_t *key, unsigned key_size, md5sha_begin_func *begin)
 {
 #if HMAC_ONLY_SHA256
 #define begin sha256_begin
@@ -62,6 +62,14 @@ unsigned FAST_FUNC hmac_end(hmac_ctx_t *ctx, uint8_t *out)
 	/* out = H((key XOR opad) + out) */
 	md5sha_hash(&ctx->hashed_key_xor_opad, out, len);
 	return sha_end(&ctx->hashed_key_xor_opad, out);
+}
+
+unsigned FAST_FUNC hmac_block(const uint8_t *key, unsigned key_size, md5sha_begin_func *begin, const void *in, unsigned sz, uint8_t *out)
+{
+	hmac_ctx_t ctx;
+	hmac_begin(&ctx, key, key_size, begin);
+	hmac_hash(&ctx, in, sz);
+	return hmac_end(&ctx, out);
 }
 
 /* TLS helpers */

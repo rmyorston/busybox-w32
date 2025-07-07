@@ -533,10 +533,10 @@ static void *tls_get_zeroed_outbuf(tls_state_t *tls, int len)
 
 /* Calculate the HMAC over the list of blocks */
 #if !ENABLE_FEATURE_TLS_SHA1
-#define hmac_block(tls,out,key,key_size,...) \
-	hmac_block(out,key,key_size, __VA_ARGS__)
+#define hmac_blocks(tls,out,key,key_size,...) \
+	hmac_blocks(out,key,key_size, __VA_ARGS__)
 #endif
-static unsigned hmac_block(tls_state_t *tls, uint8_t *out, uint8_t *key, unsigned key_size, ...)
+static unsigned hmac_blocks(tls_state_t *tls, uint8_t *out, uint8_t *key, unsigned key_size, ...)
 {
 	hmac_ctx_t ctx;
 	va_list va;
@@ -575,7 +575,7 @@ static void xwrite_encrypted_and_hmac_signed(tls_state_t *tls, unsigned size, un
 	xhdr->len16_lo = size & 0xff;
 
 	/* Calculate MAC signature */
-	hmac_block(tls, buf + size, /* result */
+	hmac_blocks(tls, buf + size, /* result */
 		tls->client_write_MAC_key, TLS_MAC_SIZE(tls),
 		&tls->write_seq64_be, sizeof(tls->write_seq64_be),
 		xhdr, RECHDR_LEN,

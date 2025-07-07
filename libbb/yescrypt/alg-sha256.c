@@ -26,82 +26,6 @@
  */
 
 /**
- * HMAC_SHA256_Init(ctx, K, Klen):
- * Initialize the HMAC-SHA256 context ${ctx} with ${Klen} bytes of key from
- * ${K}.
- */
-static void
-HMAC_SHA256_Init(HMAC_SHA256_CTX *ctx, const void *_K, size_t Klen)
-{
-	uint8_t pad[64];
-	uint8_t khash[32];
-	const uint8_t *K = _K;
-	size_t i;
-
-	/* If Klen > 64, the key is really SHA256(K). */
-	if (Klen > 64) {
-		sha256_block(K, Klen, khash);
-		K = khash;
-		Klen = 32;
-	}
-
-	/* Inner SHA256 operation is SHA256(K xor [block of 0x36] || data). */
-	sha256_begin(&ctx->ictx);
-	memset(pad, 0x36, 64);
-	for (i = 0; i < Klen; i++)
-		pad[i] ^= K[i];
-	sha256_hash(&ctx->ictx, pad, 64);
-
-	/* Outer SHA256 operation is SHA256(K xor [block of 0x5c] || hash). */
-	sha256_begin(&ctx->octx);
-	memset(pad, 0x5c, 64);
-	for (i = 0; i < Klen; i++)
-		pad[i] ^= K[i];
-	sha256_hash(&ctx->octx, pad, 64);
-}
-
-/**
- * HMAC_SHA256_Update(ctx, in, len):
- * Input ${len} bytes from ${in} into the HMAC-SHA256 context ${ctx}.
- */
-static void
-HMAC_SHA256_Update(HMAC_SHA256_CTX *ctx, const void *in, size_t len)
-{
-	/* Feed data to the inner SHA256 operation. */
-	sha256_hash(&ctx->ictx, in, len);
-}
-
-/**
- * HMAC_SHA256_Final(ctx, digest):
- * Output the HMAC-SHA256 of the data input to the context ${ctx} into the
- * buffer ${digest}.
- */
-static void
-HMAC_SHA256_Final(HMAC_SHA256_CTX *ctx, void *digest)
-{
-	/* Finish the inner SHA256 operation. */
-	sha256_end(&ctx->ictx, digest); /* using digest[] as scratch space */
-	/* Feed the inner hash to the outer SHA256 operation. */
-	sha256_hash(&ctx->octx, digest, 32); /* using digest[] as scratch space */
-	/* Finish the outer SHA256 operation. */
-	sha256_end(&ctx->octx, digest);
-}
-
-/**
- * HMAC_SHA256_Buf(K, Klen, in, len, digest):
- * Compute the HMAC-SHA256 of ${len} bytes from ${in} using the key ${K} of
- * length ${Klen}, and write the result to ${digest}.
- */
-static void
-HMAC_SHA256_Buf(const void *K, size_t Klen, const void *in, size_t len, void *digest)
-{
-	HMAC_SHA256_CTX ctx;
-	HMAC_SHA256_Init(&ctx, K, Klen);
-	HMAC_SHA256_Update(&ctx, in, len);
-	HMAC_SHA256_Final(&ctx, digest);
-}
-
-/**
  * PBKDF2_SHA256(passwd, passwdlen, salt, saltlen, c, buf, dkLen):
  * Compute PBKDF2(passwd, salt, c, dkLen) using HMAC-SHA256 as the PRF, and
  * write the output to buf.  The value dkLen must be at most 32 * (2^32 - 1).
@@ -111,15 +35,15 @@ PBKDF2_SHA256(const uint8_t *passwd, size_t passwdlen,
 		const uint8_t *salt, size_t saltlen,
 		uint64_t c, uint8_t *buf, size_t dkLen)
 {
-	HMAC_SHA256_CTX Phctx, PShctx, hctx;
+	hmac_ctx_t Phctx, PShctx;
 	size_t i;
 
 	/* Compute HMAC state after processing P. */
-	HMAC_SHA256_Init(&Phctx, passwd, passwdlen);
+	hmac_begin(&Phctx, passwd, passwdlen, sha256_begin);
 
 	/* Compute HMAC state after processing P and S. */
-	memcpy(&PShctx, &Phctx, sizeof(HMAC_SHA256_CTX));
-	HMAC_SHA256_Update(&PShctx, salt, saltlen);
+	PShctx = Phctx;
+	hmac_hash(&PShctx, salt, saltlen);
 
 	/* Iterate through the blocks. */
 	for (i = 0; dkLen != 0; i++) {
@@ -134,18 +58,16 @@ PBKDF2_SHA256(const uint8_t *passwd, size_t passwdlen,
 		ivec = SWAP_BE32((uint32_t)(i + 1));
 
 		/* Compute U_1 = PRF(P, S || INT(i)). */
-		hctx = PShctx;
-		HMAC_SHA256_Update(&hctx, &ivec, 4);
-		HMAC_SHA256_Final(&hctx, T);
+		hmac_peek_hash(&PShctx, (void*)T, &ivec, 4, NULL);
+//TODO: the above is a vararg function, might incur some ABI pain
+//does libbb need a non-vararg version with just one (buf,len)?
 
 		if (c > 1) {
 			/* T_i = U_1 ... */
 			memcpy(U, T, 32);
 			for (j = 2; j <= c; j++) {
 				/* Compute U_j. */
-				hctx = Phctx;
-				HMAC_SHA256_Update(&hctx, U, 32);
-				HMAC_SHA256_Final(&hctx, U);
+				hmac_peek_hash(&Phctx, (void*)U, U, 32, NULL);
 				/* ... xor U_j ... */
 				for (k = 0; k < 32 / 8; k++)
 					T[k] ^= U[k];
