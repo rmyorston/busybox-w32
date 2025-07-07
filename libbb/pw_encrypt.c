@@ -30,7 +30,7 @@ char* FAST_FUNC crypt_make_pw_salt(char salt[MAX_PW_SALT_LEN], const char *algo)
 		*salt_ptr++ = '$';
 #if !ENABLE_USE_BB_CRYPT || ENABLE_USE_BB_CRYPT_SHA
 		if ((algo[0]|0x20) == 's') { /* sha */
-			salt[1] = '5' + (strcasecmp(algo, "sha512") == 0);
+			salt[1] = '5' + (strncasecmp(algo, "sha512", 6) == 0);
 			len = 16 / 2;
 		}
 #endif

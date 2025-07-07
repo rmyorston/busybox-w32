@@ -49,6 +49,10 @@ testing 'cryptpw sha512' \
 	'cryptpw -m sha512 QWErty 123456789012345678901234567890' \
 	'$6$1234567890123456$KB7QqxFyqmJSWyQYcCuGeFukgz1bPQoipWZf7.9L7z3k8UNTXa6UikbKcUGDc2ANn7DOGmDaroxDgpK16w/RE0\n' \
 	'' ''
+testing 'cryptpw sha512crypt' \
+	'cryptpw -m sha512crypt QWErty 123456789012345678901234567890' \
+	'$6$1234567890123456$KB7QqxFyqmJSWyQYcCuGeFukgz1bPQoipWZf7.9L7z3k8UNTXa6UikbKcUGDc2ANn7DOGmDaroxDgpK16w/RE0\n' \
+	'' ''
 testing 'cryptpw sha512 rounds=99999' \
 	'cryptpw -m sha512 QWErty rounds=99999\$123456789012345678901234567890' \
 	'$6$rounds=99999$1234567890123456$BfF6gD6ZjUmwawH5QaAglYAxtU./yvsz0fcQ464l49aMI2DZW3j5ri28CrxK7riPWNpLuUpfaIdY751SBYKUH.\n' \
