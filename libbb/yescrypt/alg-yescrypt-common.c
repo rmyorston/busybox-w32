@@ -92,7 +92,7 @@ static const uint8_t *decode64(
  store:
 		dbg_dec64(" storing bits:%d v:%08x", bits, (int)SWAP_BE32(value)); //BE to see lsb first
 		while (dstpos < *dstlen) {
-			if (!(*src && *src != '$') && value == 0 && bits < 8) {
+			if ((!*src || *src == '$') && value == 0 && bits < 8) {
 				/* Example: mkpasswd PWD '$y$j9T$123':
 				 * the "123" is bits:18 value:03,51,00
 				 * is considered to be 2 bytes, not 3!
@@ -120,7 +120,6 @@ static const uint8_t *decode64(
 			break;
 	}
  end:
-	/* here, srclen is 0, no need to check */
 	*dstlen = dstpos;
 	dbg_dec64("dec64: OK, dst[%d]", (int)dstpos);
 	return src;

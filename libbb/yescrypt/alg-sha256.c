@@ -36,7 +36,7 @@ PBKDF2_SHA256(const uint8_t *passwd, size_t passwdlen,
 		uint64_t c, uint8_t *buf, size_t dkLen)
 {
 	hmac_ctx_t Phctx, PShctx;
-	size_t i;
+	uint32_t i;
 
 	/* Compute HMAC state after processing P. */
 	hmac_begin(&Phctx, passwd, passwdlen, sha256_begin);
@@ -46,7 +46,7 @@ PBKDF2_SHA256(const uint8_t *passwd, size_t passwdlen,
 	hmac_hash(&PShctx, salt, saltlen);
 
 	/* Iterate through the blocks. */
-	for (i = 0; dkLen != 0; i++) {
+	for (i = 0; dkLen != 0; ) {
 		uint64_t U[32 / 8];
 		uint64_t T[32 / 8];
 		uint64_t j;
@@ -54,8 +54,9 @@ PBKDF2_SHA256(const uint8_t *passwd, size_t passwdlen,
 		size_t clen;
 		int k;
 
-		/* Generate INT(i + 1). */
-		ivec = SWAP_BE32((uint32_t)(i + 1));
+		/* Generate INT(i). */
+		i++;
+		ivec = SWAP_BE32(i);
 
 		/* Compute U_1 = PRF(P, S || INT(i)). */
 		hmac_peek_hash(&PShctx, (void*)T, &ivec, 4, NULL);
