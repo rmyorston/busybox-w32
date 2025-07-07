@@ -10,7 +10,6 @@
 #include "libbb.h"
 
 #define YESCRYPT_INTERNAL
-#include "alg-sha256.h"
 #include "alg-yescrypt.h"
 #include "alg-sha256.c"
 #include "alg-yescrypt-kdf.c"
