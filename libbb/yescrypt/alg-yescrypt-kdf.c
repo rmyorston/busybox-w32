@@ -927,22 +927,42 @@ static int yescrypt_kdf32_body(
 
 	r = YCTX_param_r;
 	p = YCTX_param_p;
-	if ((uint64_t)r * (uint64_t)p >= 1 << 30)
+	if ((uint64_t)r * (uint64_t)p >= 1 << 30) {
+		dbg("r * n >= 2^30");
 		goto out_EINVAL;
-	if (N > UINT32_MAX)
+	}
+	if (N > UINT32_MAX) {
+		dbg("N > 0x%lx", (long)UINT32_MAX);
 		goto out_EINVAL;
-	if ((N & (N - 1)) != 0 || N <= 3 || r < 1 || p < 1)
+	}
+	if ((N & (N - 1)) != 0
+//TODO: ^^^^^^^^^^^^^^^^^^^^^^ do not check this, code guarantees power-of-2
+	 || N <= 3
+	 || r < 1
+	 || p < 1
+	) {
+		dbg("bad N, r or p");
 		goto out_EINVAL;
-	if (r > SIZE_MAX / 256 / p ||
-	    N > SIZE_MAX / 128 / r)
+	}
+	if (r > SIZE_MAX / 256 / p
+	 || N > SIZE_MAX / 128 / r
+	) {
+		/* 32-bit testcase: mkpasswd qweRTY123@-+ '$y$jHT$123'
+		 * (works on 64-bit, needs buffer > 4Gbytes)
+		 */
+		dbg("r > SIZE_MAX / 256 / p? %c", "NY"[r > SIZE_MAX / 256 / p]);
+		dbg("N > SIZE_MAX / 128 / r? %c", "NY"[N > SIZE_MAX / 128 / r]);
 		goto out_EINVAL;
+	}
 	if (flags___YESCRYPT_RW) {
 		/* p cannot be greater than SIZE_MAX/Salloc on 64-bit systems,
 		   but it can on 32-bit systems.  */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wtype-limits"
-		if (N / p <= 3 || p > SIZE_MAX / Salloc)
+		if (N / p <= 3 || p > SIZE_MAX / Salloc) {
+			dbg("bad p:%ld", (long)p);
 			goto out_EINVAL;
+		}
 #pragma GCC diagnostic pop
 	}
 
@@ -956,17 +976,23 @@ static int yescrypt_kdf32_body(
 	need = V_size;
 	B_size = (size_t)128 * r * p;
 	need += B_size;
-	if (need < B_size)
+	if (need < B_size) {
+		dbg("integer overflow at += B_size(%lu)", (long)B_size);
 		goto out_EINVAL;
+	}
 	XY_size = (size_t)256 * r;
 	need += XY_size;
-	if (need < XY_size)
+	if (need < XY_size) {
+		dbg("integer overflow at += XY_size(%lu)", (long)XY_size);
 		goto out_EINVAL;
+	}
 	if (flags___YESCRYPT_RW) {
 		size_t S_size = (size_t)Salloc * p;
 		need += S_size;
-		if (need < S_size)
+		if (need < S_size) {
+			dbg("integer overflow at += S_size(%lu)", (long)S_size);
 			goto out_EINVAL;
+		}
 	}
 	if (yctx->local->aligned_size < need) {
 		free_region(yctx->local);
@@ -1050,8 +1076,8 @@ static int yescrypt_kdf32_body(
 	/* Success! */
 	return 0;
 
-out_EINVAL:
-	errno = EINVAL;
+ out_EINVAL:
+	//bbox does not need this: errno = EINVAL;
 	return -1;
 }
 
@@ -1079,7 +1105,7 @@ int yescrypt_kdf32(
 
 	/* Support for hash upgrades has been temporarily removed */
 	if (g) {
-		errno = EINVAL;
+		//bbox does not need this: errno = EINVAL;
 		return -1;
 	}
 
@@ -1093,15 +1119,17 @@ int yescrypt_kdf32(
 		    flags | YESCRYPT_ALLOC_ONLY, N, t,
 		    buf32) != -3
 		) {
-			errno = EINVAL;
+			dbg("yescrypt_kdf32_body: not -3");
 			return -1;
 		}
 		retval = yescrypt_kdf32_body(yctx,
 				passwd, passwdlen,
 				flags | YESCRYPT_PREHASH, N >> 6, 0,
 				dk32);
-		if (retval)
+		if (retval) {
+			dbg("yescrypt_kdf32_body(PREHASH):%d", retval);
 			return retval;
+		}
 		passwd = dk32;
 		passwdlen = sizeof(dk32);
 	}
@@ -1109,9 +1137,9 @@ int yescrypt_kdf32(
 	retval = yescrypt_kdf32_body(yctx,
 			passwd, passwdlen,
 			flags, N, t, buf32);
-#ifndef SKIP_MEMZERO
-	if (passwd == dk32)
-		explicit_bzero(dk32, sizeof(dk32));
-#endif
+
+	explicit_bzero(dk32, sizeof(dk32));
+
+	dbg("yescrypt_kdf32_body:%d", retval);
 	return retval;
 }

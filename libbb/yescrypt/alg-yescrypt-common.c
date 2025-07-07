@@ -288,8 +288,10 @@ char *yescrypt_r(
 	if (need > buflen || need < prefixlen)
 		goto fail;
 
-	if (yescrypt_kdf32(yctx, passwd, passwdlen, hashbin32))
+	if (yescrypt_kdf32(yctx, passwd, passwdlen, hashbin32)) {
+		dbg("error in yescrypt_kdf32");
 		goto fail;
+	}
 
 	dst = mempcpy(buf, setting, prefixlen);
 	*dst++ = '$';
