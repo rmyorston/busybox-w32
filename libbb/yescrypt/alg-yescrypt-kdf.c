@@ -832,14 +832,25 @@ static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
 
 static void alloc_region(yescrypt_region_t *region, size_t size)
 {
+	uint8_t *base;
 	int flags =
 # ifdef MAP_NOCORE /* huh? */
 		MAP_NOCORE |
 # endif
 		MAP_ANON | MAP_PRIVATE;
-	uint8_t *base = mmap(NULL, size, PROT_READ | PROT_WRITE, flags, -1, 0);
+
+	base = mmap(NULL, size, PROT_READ | PROT_WRITE, flags, -1, 0);
 	if (base == MAP_FAILED)
 		bb_die_memory_exhausted();
+
+#if defined(MADV_HUGEPAGE)
+	/* Reduces mkpasswd qweRTY123@-+ '$y$jHT$123'
+	 * (which allocates 4 Gbytes)
+	 * run time from 10.543s to 5.635s
+	 * Seen on linux-5.18.0.
+	 */
+	madvise(base, size, MADV_HUGEPAGE);
+#endif
 	//region->base = base;
 	//region->base_size = size;
 	region->aligned = base;
@@ -960,7 +971,7 @@ static int yescrypt_kdf32_body(
 	if (yctx->local->aligned_size < need) {
 		free_region(yctx->local);
 		alloc_region(yctx->local, need);
-		dbg("allocated local:%u 0x%x", need, need);
+		dbg("allocated local:%lu 0x%lx", (long)need, (long)need);
 		/* standard "j9T" params allocate 16Mbytes here */
 	}
 	if (flags & YESCRYPT_ALLOC_ONLY)
