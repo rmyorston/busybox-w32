@@ -66,7 +66,7 @@ fail:
 #if 1
 static const uint8_t *decode64(
 		uint8_t *dst, size_t *dstlen,
-		const uint8_t *src, size_t srclen)
+		const uint8_t *src)
 {
 	size_t dstpos = 0;
 
@@ -74,11 +74,9 @@ static const uint8_t *decode64(
 	for (;;) {
 		uint32_t c, value = 0;
 		int bits = 0;
-		while (srclen != 0) {
-			srclen--;
+		while (*src && *src != '$') {
 			c = a2i64(*src);
 			if (c > 63) { /* bad ascii64 char, stop decoding at it */
-				srclen = 0;
 				break;
 			}
 			src++;
@@ -94,7 +92,7 @@ static const uint8_t *decode64(
  store:
 		dbg_dec64(" storing bits:%d v:%08x", bits, (int)SWAP_BE32(value)); //BE to see lsb first
 		while (dstpos < *dstlen) {
-			if (srclen == 0 && value == 0 && bits < 8) {
+			if (!(*src && *src != '$') && value == 0 && bits < 8) {
 				/* Example: mkpasswd PWD '$y$j9T$123':
 				 * the "123" is bits:18 value:03,51,00
 				 * is considered to be 2 bytes, not 3!
@@ -118,7 +116,7 @@ static const uint8_t *decode64(
 		dbg_dec64(" ERR: bits:%d dst[] is too small", bits);
 		goto fail;
  next:
-		if (srclen == 0)
+		if (!*src || *src == '$')
 			break;
 	}
  end:
@@ -214,8 +212,8 @@ char *yescrypt_r(
 	yescrypt_ctx_t yctx[1];
 	unsigned char hashbin32[32];
 	char *dst;
-	const uint8_t *src, *saltstr, *saltend;
-	size_t need, prefixlen, saltstrlen;
+	const uint8_t *src, *saltend;
+	size_t need, prefixlen;
 	uint32_t u32;
 
 	memset(yctx, 0, sizeof(yctx));
@@ -280,17 +278,13 @@ char *yescrypt_r(
 			goto fail;
 	}
 
-	saltstr = src + 1;
-	src = (uint8_t *)strchrnul((char *)saltstr, '$');
-	prefixlen = src - setting;  /* len("$y$<params>$<salt>") */
-	saltstrlen = src - saltstr; /* len("<salt>") */
-	/* src points to end of salt ('$' or NUL byte), won't be used past this point */
-
 	yctx->saltlen = sizeof(yctx->salt);
-	saltend = decode64(yctx->salt, &yctx->saltlen, saltstr, saltstrlen);
-	if (saltend != saltstr + saltstrlen)
+	src++; /* now points to salt */
+	saltend = decode64(yctx->salt, &yctx->saltlen, src);
+	if (!saltend || (*saltend != '\0' && *saltend != '$'))
 		goto fail; /* salt[] is too small, or bad char during decode */
 
+	prefixlen = saltend - setting;
 	need = prefixlen + 1 + YESCRYPT_HASH_LEN + 1;
 	if (need > buflen || need < prefixlen)
 		goto fail;
