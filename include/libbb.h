@@ -2193,6 +2193,16 @@ int FAST_FUNC i2a64(int i);
 int FAST_FUNC a2i64(char c);
 char* FAST_FUNC num2str64_lsb_first(char *s, unsigned v, int n);
 
+enum {
+	/* how many bytes XYZ_end() fills */
+	MD5_OUTSIZE    = 16,
+	SHA1_OUTSIZE   = 20,
+	SHA256_OUTSIZE = 32,
+	SHA512_OUTSIZE = 64,
+	SHA3_OUTSIZE   = 28,
+	/* size of input block */
+	SHA2_INSIZE     = 64,
+};
 typedef struct md5_ctx_t {
 	uint8_t wbuffer[64]; /* always correctly aligned for uint64_t */
 	void (*process_block)(struct md5_ctx_t*) FAST_FUNC;
@@ -2226,18 +2236,32 @@ unsigned sha512_end(sha512_ctx_t *ctx, void *resbuf) FAST_FUNC;
 void sha3_begin(sha3_ctx_t *ctx) FAST_FUNC;
 void sha3_hash(sha3_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
 unsigned sha3_end(sha3_ctx_t *ctx, void *resbuf) FAST_FUNC;
+void FAST_FUNC sha256_block(const void *in, size_t len, uint8_t hash[32]);
 /* TLS benefits from knowing that sha1 and sha256 share these. Give them "agnostic" names too */
 typedef struct md5_ctx_t md5sha_ctx_t;
 #define md5sha_hash md5_hash
 #define sha_end sha1_end
-enum {
-	MD5_OUTSIZE    = 16,
-	SHA1_OUTSIZE   = 20,
-	SHA256_OUTSIZE = 32,
-	SHA512_OUTSIZE = 64,
-	SHA3_OUTSIZE   = 28,
-};
-void FAST_FUNC sha256_block(const void *in, size_t len, uint8_t hash[32]);
+
+/* RFC 2104 HMAC (hash-based message authentication code) */
+typedef struct hmac_ctx {
+	md5sha_ctx_t hashed_key_xor_ipad;
+	md5sha_ctx_t hashed_key_xor_opad;
+} hmac_ctx_t;
+#define HMAC_ONLY_SHA256 (!ENABLE_FEATURE_TLS_SHA1)
+typedef void md5sha_begin_func(md5sha_ctx_t *ctx) FAST_FUNC;
+#if HMAC_ONLY_SHA256
+#define hmac_begin(ctx,key,key_size,begin) \
+	hmac_begin(ctx,key,key_size)
+#endif
+void FAST_FUNC hmac_begin(hmac_ctx_t *ctx, uint8_t *key, unsigned key_size, md5sha_begin_func *begin);
+static ALWAYS_INLINE void hmac_hash(hmac_ctx_t *ctx, const void *in, size_t len)
+{
+	md5sha_hash(&ctx->hashed_key_xor_ipad, in, len);
+}
+unsigned FAST_FUNC hmac_end(hmac_ctx_t *ctx, uint8_t *out);
+/* HMAC helpers for TLS: */
+void FAST_FUNC hmac_hash_v(hmac_ctx_t *ctx, va_list va);
+unsigned FAST_FUNC hmac_peek_hash(hmac_ctx_t *ctx, uint8_t *out, ...);
 
 extern uint32_t *global_crc32_table;
 uint32_t *crc32_filltable(uint32_t *tbl256, int endian) FAST_FUNC;
