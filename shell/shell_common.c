@@ -295,7 +295,7 @@ shell_builtin_read(struct builtin_read_params *params)
 				 *   and exit BS context.
 				 * - CR LF not in BS context: replace CR with LF */
 				buffer[--bufpos] = c;
-				++nchars;
+				nchars += 1 + (backslash == 2);
 			}
 		} else if (backslash == 2) {
 			/* We saw BS CR ??, keep escaped CR, exit BS context,
@@ -315,6 +315,9 @@ shell_builtin_read(struct builtin_read_params *params)
 				backslash = 0;
 				if (c != '\n')
 					goto put;
+#if ENABLE_PLATFORM_MINGW32
+				++nchars;
+#endif
 				continue;
 			}
 			if (c == '\\') {
@@ -355,7 +358,7 @@ shell_builtin_read(struct builtin_read_params *params)
 		}
  put:
 		bufpos++;
-	} while (--nchars);
+	} while (IF_PLATFORM_MINGW32(backslash ||) --nchars);
 
 	if (argv[0]) {
 		/* Remove trailing space $IFS chars */
