@@ -65,6 +65,9 @@ testing 'cryptpw yescrypt with non-standard N=2048 instead of 4096 (j8T instead 
 	'$y$j8T$123456789012345678901234$JQUUfopCxlfZNE8f.THJwbOkhy.XtB3GIjo9HUVioWB\n' \
 	'' ''
 # mkpasswd-5.6.2 allows short salts for yescrypt
+# ...but there is a catch. Not all of them.
+# The "partial" (not fitting in whole bytes) ascii64-encoded salt
+# is a special case. For example, "$zzz" would not even work in upstream.
 testing 'cryptpw yescrypt with empty salt' \
 	'cryptpw -m yescrypt qweRTY123@-+ j9T\$' \
 	'$y$j9T$$hpeksL94GXNRwnA00L3c8WFy0khFAUbCpBSak.N3Bp.\n' \
@@ -72,6 +75,23 @@ testing 'cryptpw yescrypt with empty salt' \
 testing 'cryptpw yescrypt with 3-char salt' \
 	'cryptpw -m yescrypt qweRTY123@-+ j9T\$123' \
 	'$y$j9T$123$A34DMIGUbUIo3bjx66Wtk2IFoREMIw6d49it25KQh2D\n' \
+	'' ''
+# "." is not allowed in mkpasswd-5.6.2
+# ....................................
+# ".." is decoded into one zero byte (not two)
+testing 'cryptpw yescrypt with 2-char salt ".."' \
+	'cryptpw -m yescrypt qweRTY123@-+ j9T\$..' \
+	'$y$j9T$..$yVHeOayxOGg6cHL3.dg10u7T.qSgySfLN3uhSVSLNn/\n' \
+	'' ''
+# "..." is decoded into two zero bytes (not three, not one)
+testing 'cryptpw yescrypt with 3-char salt "..."' \
+	'cryptpw -m yescrypt qweRTY123@-+ j9T\$...' \
+	'$y$j9T$...$xHvJ5USZ7hFyXYbOijtEOMfZRS23cWIxu2eIBXRymA5\n' \
+	'' ''
+# "...." is decoded into three zero bytes (no surprises here)
+testing 'cryptpw yescrypt with 4-char salt "...."' \
+	'cryptpw -m yescrypt qweRTY123@-+ j9T\$....' \
+	'$y$j9T$....$wOnauYL2/NEtr6YQi9pi8AtV7L57sEbVOAnWJIcP9q2\n' \
 	'' ''
 testing 'cryptpw yescrypt with 84-char salt (max size)' \
 	'cryptpw -m yescrypt qweRTY123@-+ j9T\$123456789012345678901234567890123456789012345678901234567890123456789012345678901234' \
