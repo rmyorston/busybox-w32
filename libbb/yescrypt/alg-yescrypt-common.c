@@ -63,6 +63,75 @@ fail:
 	return NULL;
 }
 
+#if 1
+static const uint8_t *decode64(
+		uint8_t *dst, size_t *dstlen,
+		const uint8_t *src, size_t srclen)
+{
+	size_t dstpos = 0;
+
+	dbg_dec64("src:'%s' len:%d", src, (int)srclen);
+	for (;;) {
+		uint32_t c, value = 0;
+		int bits = 0;
+		while (srclen != 0) {
+			srclen--;
+			c = a2i64(*src);
+			if (c > 63) { /* bad ascii64 char, stop decoding at it */
+				srclen = 0;
+				break;
+			}
+			src++;
+			value |= c << bits;
+			bits += 6;
+			if (bits == 24) /* got 4 chars */
+				goto store;
+		}
+		/* we read entire src, or met a non-ascii64 char (such as "$") */
+		if (bits == 0)
+			break;
+		/* else: we got last, partial bit block - store it */
+ store:
+		dbg_dec64(" storing bits:%d v:%08x", bits, (int)SWAP_BE32(value)); //BE to see lsb first
+		while (dstpos < *dstlen) {
+			if (srclen == 0 && value == 0) {
+				/* Example: mkpasswd PWD '$y$j9T$123':
+				 * the "123" is bits:18 value:03,51,00
+				 * is considered to be 2 bytes, not 3!
+				 *
+				 * '$y$j9T$zzz' in upstream fails outright (3rd byte isn't zero).
+				 * IOW: for upstream, validity of salt depends on VALUE,
+				 * not just size of salt. Which is a bug.
+				 * The '$y$j9T$zzz.' salt is the same
+				 * (it adds 6 zero msbits) but upstream works with it,
+				 * thus '$y$j9T$zzz' should work too and give the same result.
+				 */
+				goto end;
+			}
+			dstpos++;
+			*dst++ = value;
+			value >>= 8;
+			bits -= 8;
+			if (bits <= 0) /* can get negative, if we e.g. had 6 bits */
+				goto next;
+		}
+		dbg_dec64(" ERR: bits:%d dst[] is too small", bits);
+		goto fail;
+ next:
+		if (srclen == 0)
+			break;
+	}
+ end:
+	/* here, srclen is 0, no need to check */
+	*dstlen = dstpos;
+	dbg_dec64("dec64: OK, dst[%d]", (int)dstpos);
+	return src;
+fail:
+	*dstlen = 0;
+	return NULL;
+}
+#else
+/* Buggy (and larger) original code */
 static const uint8_t *decode64(
 		uint8_t *dst, size_t *dstlen,
 		const uint8_t *src, size_t srclen)
@@ -87,6 +156,7 @@ static const uint8_t *decode64(
 			break;
 		if (bits < 12) /* must have at least one full byte */
 			goto fail;
+		dbg_dec64(" storing bits:%d v:%08x", (int)bits, (int)SWAP_BE32(value)); //BE to see lsb first
 		while (dstpos++ < *dstlen) {
 			*dst++ = value;
 			value >>= 8;
@@ -104,12 +174,14 @@ static const uint8_t *decode64(
 
 	if (!srclen && dstpos <= *dstlen) {
 		*dstlen = dstpos;
+		dbg_dec64("dec64: OK, dst[%d]", (int)dstpos);
 		return src;
 	}
 fail:
-	*dstlen = 0;
+	/* *dstlen = 0; - not needed, caller detects error by seeing NULL */
 	return NULL;
 }
+#endif
 
 static char *encode64(
 		char *dst, size_t dstlen,
@@ -189,7 +261,7 @@ char *yescrypt_r(
 		goto fail;
 	if (*src != '$') {
 		src = decode64_uint32(&u32, src, 1);
-		dbg("yescrypt has extended params:0x%x", (unsigned)have);
+		dbg("yescrypt has extended params:0x%x", (unsigned)u32);
 		if (u32 & 1)
 			src = decode64_uint32(&yctx->param.p, src, 2);
 		if (u32 & 2)

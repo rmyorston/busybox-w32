@@ -33,6 +33,11 @@
 # else
 #  define dbg(...) bb_error_msg(__VA_ARGS__)
 # endif
+# if 1
+#  define dbg_dec64(...) ((void)0)
+# else
+#  define dbg_dec64(...) bb_error_msg(__VA_ARGS__)
+# endif
 #endif
 
 /**

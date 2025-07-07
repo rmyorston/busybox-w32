@@ -73,6 +73,10 @@ testing 'cryptpw yescrypt with 3-char salt' \
 	'cryptpw -m yescrypt qweRTY123@-+ j9T\$123' \
 	'$y$j9T$123$A34DMIGUbUIo3bjx66Wtk2IFoREMIw6d49it25KQh2D\n' \
 	'' ''
+testing 'cryptpw yescrypt with 84-char salt (max size)' \
+	'cryptpw -m yescrypt qweRTY123@-+ j9T\$123456789012345678901234567890123456789012345678901234567890123456789012345678901234' \
+	'$y$j9T$123456789012345678901234567890123456789012345678901234567890123456789012345678901234$ubrUuPCpI97LIMlVMt/A0Mhs/kBK2UBJYcQSxEZSlz4\n' \
+	'' ''
 testing 'cryptpw yescrypt implicit' \
 	'cryptpw qweRTY123@-+ \$y\$j9T\$123456789012345678901234' \
 	'$y$j9T$123456789012345678901234$AKxw5OX/T4jD.v./IW.5tE/j7izNjw06fg3OvH1LsN9\n' \
