@@ -460,7 +460,7 @@ static inline uint32_t integerify(const salsa20_blk_t *B, size_t r)
  * to a multiple of at least 16 bytes.
  */
 static void smix1(uint8_t *B, size_t r, uint32_t N,
-		yescrypt_flags_t flags,
+		uint32_t flags,
 		salsa20_blk_t *V,
 		uint32_t NROM, const salsa20_blk_t *VROM,
 		salsa20_blk_t *XY,
@@ -513,6 +513,7 @@ static void smix1(uint8_t *B, size_t r, uint32_t N,
 		V_j = &VROM[j * s];
 		blockmix_xor(Y, V_j, XY, r, ctx);
 	} else if (flags & YESCRYPT_RW) {
+//can't use flags___YESCRYPT_RW, smix1() may be called with flags = 0
 		uint32_t n;
 		salsa20_blk_t *V_j;
 
@@ -580,7 +581,7 @@ static void smix1(uint8_t *B, size_t r, uint32_t N,
  * 64 bytes, and arrays B and XY to a multiple of at least 16 bytes.
  */
 static void smix2(uint8_t *B, size_t r, uint32_t N, uint64_t Nloop,
-		yescrypt_flags_t flags,
+		uint32_t flags,
 		salsa20_blk_t *V,
 		uint32_t NROM, const salsa20_blk_t *VROM,
 		salsa20_blk_t *XY,
@@ -610,6 +611,7 @@ static void smix2(uint8_t *B, size_t r, uint32_t N, uint64_t Nloop,
  * because our SMix resets YESCRYPT_RW for the smix2() calls operating on the
  * entire V when p > 1.
  */
+//and this is why bbox can't use flags___YESCRYPT_RW in this function
 	if (VROM && (flags & YESCRYPT_RW)) {
 		do {
 			salsa20_blk_t *V_j = &V[j * s];
@@ -683,7 +685,7 @@ static uint64_t p2floor(uint64_t x)
  * might also result in cache bank conflicts).
  */
 static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
-		yescrypt_flags_t flags,
+		uint32_t flags,
 		salsa20_blk_t *V,
 		uint32_t NROM, const salsa20_blk_t *VROM,
 		salsa20_blk_t *XY,
@@ -696,7 +698,7 @@ static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
 
 	Nchunk = N / p;
 	Nloop_all = Nchunk;
-	if (flags & YESCRYPT_RW) {
+	if (flags___YESCRYPT_RW) {
 		if (t <= 1) {
 			if (t)
 				Nloop_all *= 2; /* 2/3 */
@@ -711,7 +713,7 @@ static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
 	}
 
 	Nloop_rw = 0;
-	if (flags & YESCRYPT_RW)
+	if (flags___YESCRYPT_RW)
 		Nloop_rw = Nloop_all / p;
 
 	Nchunk &= ~(uint32_t)1; /* round down to even */
@@ -725,7 +727,7 @@ static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
 		salsa20_blk_t *Vp = &V[Vchunk * s];
 		salsa20_blk_t *XYp = XY;
 		pwxform_ctx_t *ctx_i = NULL;
-		if (flags & YESCRYPT_RW) {
+		if (flags___YESCRYPT_RW) {
 			uint8_t *Si = S + i * Salloc;
 			smix1(Bp, 1, Sbytes / 128, 0 /* no flags */,
 			    (salsa20_blk_t *)Si, 0, NULL, XYp, NULL);
@@ -752,12 +754,12 @@ static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
 			uint8_t *Bp = &B[128 * r * i];
 			salsa20_blk_t *XYp = XY;
 			pwxform_ctx_t *ctx_i = NULL;
-			if (flags & YESCRYPT_RW) {
+			if (flags___YESCRYPT_RW) {
 				uint8_t *Si = S + i * Salloc;
 				ctx_i = (pwxform_ctx_t *)(Si + Sbytes);
 			}
 			smix2(Bp, r, N, Nloop_all - Nloop_rw,
-                              flags & (yescrypt_flags_t)~YESCRYPT_RW,
+                              flags & (uint32_t)~YESCRYPT_RW,
                               V, NROM, VROM, XYp, ctx_i);
 		}
 	}
@@ -812,7 +814,7 @@ static void free_region(yescrypt_region_t *region)
 static int yescrypt_kdf32_body(
 		yescrypt_ctx_t *yctx,
 		const uint8_t *passwd, size_t passwdlen,
-		yescrypt_flags_t flags, uint64_t N, uint32_t t,
+		uint32_t flags, uint64_t N, uint32_t t,
 		uint8_t *buf32)
 {
 	const salsa20_blk_t *VROM;
@@ -823,13 +825,13 @@ static int yescrypt_kdf32_body(
 	uint8_t dk[sizeof(sha256)], *dkp = buf32;
 
 	/* Sanity-check parameters */
-	switch (flags & YESCRYPT_MODE_MASK) {
+	switch (flags___YESCRYPT_MODE_MASK) {
 	case 0: /* classic scrypt - can't have anything non-standard */
-		if (flags || t || yctx->param.NROM)
+		if (flags || t || YCTX_param_NROM)
 			goto out_EINVAL;
 		break;
 	case YESCRYPT_WORM:
-		if (flags != YESCRYPT_WORM || yctx->param.NROM)
+		if (flags != YESCRYPT_WORM || YCTX_param_NROM)
 			goto out_EINVAL;
 		break;
 	case YESCRYPT_RW:
@@ -852,8 +854,8 @@ static int yescrypt_kdf32_body(
 		goto out_EINVAL;
 #endif
     {
-	const uint32_t r = yctx->param.r;
-	const uint32_t p = yctx->param.p;
+	const uint32_t r = YCTX_param_r;
+	const uint32_t p = YCTX_param_p;
 	if ((uint64_t)r * (uint64_t)p >= 1 << 30)
 		goto out_EINVAL;
 	if (N > UINT32_MAX)
@@ -863,7 +865,7 @@ static int yescrypt_kdf32_body(
 	if (r > SIZE_MAX / 256 / p ||
 	    N > SIZE_MAX / 128 / r)
 		goto out_EINVAL;
-	if (flags & YESCRYPT_RW) {
+	if (flags___YESCRYPT_RW) {
 		/* p cannot be greater than SIZE_MAX/Salloc on 64-bit systems,
 		   but it can on 32-bit systems.  */
 #pragma GCC diagnostic push
@@ -874,7 +876,7 @@ static int yescrypt_kdf32_body(
 	}
 
 	VROM = NULL;
-	if (yctx->param.NROM)
+	if (YCTX_param_NROM)
 		goto out_EINVAL;
 
 	/* Allocate memory */
@@ -889,7 +891,7 @@ static int yescrypt_kdf32_body(
 	need += XY_size;
 	if (need < XY_size)
 		goto out_EINVAL;
-	if (flags & YESCRYPT_RW) {
+	if (flags___YESCRYPT_RW) {
 		size_t S_size = (size_t)Salloc * p;
 		need += S_size;
 		if (need < S_size)
@@ -907,7 +909,7 @@ static int yescrypt_kdf32_body(
 	V = (salsa20_blk_t *)((uint8_t *)B + B_size);
 	XY = (salsa20_blk_t *)((uint8_t *)V + V_size);
 	S = NULL;
-	if (flags & YESCRYPT_RW)
+	if (flags___YESCRYPT_RW)
 		S = (uint8_t *)XY + XY_size;
 
 	if (flags) {
@@ -926,13 +928,13 @@ static int yescrypt_kdf32_body(
 	if (flags)
 		memcpy(sha256, B, sizeof(sha256));
 
-	if (p == 1 || (flags & YESCRYPT_RW)) {
-		smix(B, r, N, p, t, flags, V, yctx->param.NROM, VROM, XY, S, sha256);
+	if (p == 1 || (flags___YESCRYPT_RW)) {
+		smix(B, r, N, p, t, flags, V, YCTX_param_NROM, VROM, XY, S, sha256);
 	} else {
 		uint32_t i;
 		for (i = 0; i < p; i++) {
 			smix(&B[(size_t)128 * r * i], r, N, 1, t, flags, V,
-			    yctx->param.NROM, VROM, XY, NULL, NULL);
+			    YCTX_param_NROM, VROM, XY, NULL, NULL);
 		}
 	}
 
@@ -996,12 +998,12 @@ int yescrypt_kdf32(
 		const uint8_t *passwd, size_t passwdlen,
 		uint8_t *buf32)
 {
-	yescrypt_flags_t flags = yctx->param.flags;
-	uint64_t N = yctx->param.N;
-	uint32_t r = yctx->param.r;
-	uint32_t p = yctx->param.p;
-	uint32_t t = yctx->param.t;
-	uint32_t g = yctx->param.g;
+	uint32_t flags = YCTX_param_flags;
+	uint64_t N = YCTX_param_N;
+	uint32_t r = YCTX_param_r;
+	uint32_t p = YCTX_param_p;
+	uint32_t t = YCTX_param_t;
+	uint32_t g = YCTX_param_g;
 	uint8_t dk32[32];
 	int retval;
 
@@ -1011,7 +1013,7 @@ int yescrypt_kdf32(
 		return -1;
 	}
 
-	if ((flags & YESCRYPT_RW)
+	if ((flags___YESCRYPT_RW)
 	 && p >= 1
 	 && N / p >= 0x100
 	 && N / p * r >= 0x20000

@@ -144,7 +144,7 @@ char *yescrypt_r(
 	char *dst;
 	const uint8_t *src, *saltstr, *saltend;
 	size_t need, prefixlen, saltstrlen;
-	uint32_t flavor, N_log2;
+	uint32_t u32;
 
 	memset(yctx, 0, sizeof(yctx));
 	yctx->param.p = 1;
@@ -152,43 +152,34 @@ char *yescrypt_r(
 	/* we assume setting starts with "$y$" (caller must ensure this) */
 	src = setting + 3;
 
-	src = decode64_uint32(&flavor, src, 0);
+	src = decode64_uint32(&yctx->param.flags, src, 0);
 	/* "j9T" returns: 0x2f */
-	dbg("yescrypt flavor=0x%x YESCRYPT_RW:%u", (unsigned)flavor, !!(flavor & YESCRYPT_RW));
 	//if (!src)
 	//	goto fail;
 
-	if (flavor < YESCRYPT_RW) {
-		yctx->param.flags = flavor;
-	} else if (flavor <= YESCRYPT_RW + (YESCRYPT_RW_FLAVOR_MASK >> 2)) {
-		/* "j9T" sets flags to 0xb6 */
-		yctx->param.flags = YESCRYPT_RW + ((flavor - YESCRYPT_RW) << 2);
+	if (yctx->param.flags < YESCRYPT_RW) {
 		dbg("yctx->param.flags=0x%x", (unsigned)yctx->param.flags);
-		dbg(" YESCRYPT_RW:%u"       , !!(yctx->param.flags & YESCRYPT_RW       ));
-		dbg(" YESCRYPT_ROUNDS_6:%u" , !!(yctx->param.flags & YESCRYPT_ROUNDS_6 ));
-		dbg(" YESCRYPT_GATHER_2:%u" , !!(yctx->param.flags & YESCRYPT_GATHER_2 ));
-		dbg(" YESCRYPT_GATHER_4:%u" , !!(yctx->param.flags & YESCRYPT_GATHER_4 ));
-		dbg(" YESCRYPT_GATHER_8:%u" , !!(yctx->param.flags & YESCRYPT_GATHER_8 ));
-		dbg(" YESCRYPT_SIMPLE_2:%u" , !!(yctx->param.flags & YESCRYPT_SIMPLE_2 ));
-		dbg(" YESCRYPT_SIMPLE_4:%u" , !!(yctx->param.flags & YESCRYPT_SIMPLE_4 ));
-		dbg(" YESCRYPT_SIMPLE_8:%u" , !!(yctx->param.flags & YESCRYPT_SIMPLE_8 ));
-		dbg(" YESCRYPT_SBOX_12K:%u" , !!(yctx->param.flags & YESCRYPT_SBOX_12K ));
-		dbg(" YESCRYPT_SBOX_24K:%u" , !!(yctx->param.flags & YESCRYPT_SBOX_24K ));
-		dbg(" YESCRYPT_SBOX_48K:%u" , !!(yctx->param.flags & YESCRYPT_SBOX_48K ));
-		dbg(" YESCRYPT_SBOX_96K:%u" , !!(yctx->param.flags & YESCRYPT_SBOX_96K ));
-		dbg(" YESCRYPT_SBOX_192K:%u", !!(yctx->param.flags & YESCRYPT_SBOX_192K));
-		dbg(" YESCRYPT_SBOX_384K:%u", !!(yctx->param.flags & YESCRYPT_SBOX_384K));
-		dbg(" YESCRYPT_SBOX_768K:%u", !!(yctx->param.flags & YESCRYPT_SBOX_768K));
+		goto fail; // bbox: we don't support scrypt - only yescrypt
+	} else if (yctx->param.flags <= YESCRYPT_RW + (YESCRYPT_RW_FLAVOR_MASK >> 2)) {
+		/* "j9T" sets flags to 0xb6 */
+		yctx->param.flags = YESCRYPT_RW + ((yctx->param.flags - YESCRYPT_RW) << 2);
+		dbg("yctx->param.flags=0x%x", (unsigned)yctx->param.flags);
+		dbg(" YESCRYPT_RW:%u", !!(yctx->param.flags & YESCRYPT_RW));
+                dbg((yctx->param.flags & YESCRYPT_RW_FLAVOR_MASK) ==
+                       (YESCRYPT_ROUNDS_6 | YESCRYPT_GATHER_4 | YESCRYPT_SIMPLE_2 | YESCRYPT_SBOX_12K)
+		    ? " YESCRYPT_ROUNDS_6 | YESCRYPT_GATHER_4 | YESCRYPT_SIMPLE_2 | YESCRYPT_SBOX_12K"
+		    : " flags are not standard"
+		);
 	} else {
 		goto fail;
 	}
 
-	src = decode64_uint32(&N_log2, src, 1);
-	if (/*!src ||*/ N_log2 > 63)
+	src = decode64_uint32(&u32, src, 1);
+	if (/*!src ||*/ u32 > 63)
 		goto fail;
-	yctx->param.N = (uint64_t)1 << N_log2;
+	yctx->param.N = (uint64_t)1 << u32;
 	/* "j9T" sets to 4096 (1<<12) */
-	dbg("yctx->param.N=%llu (1<<%u)", (unsigned long long)yctx->param.N, (unsigned)N_log2);
+	dbg("yctx->param.N=%llu (1<<%u)", (unsigned long long)yctx->param.N, (unsigned)u32);
 
 	src = decode64_uint32(&yctx->param.r, src, 1);
 	/* "j9T" sets to 32 */
@@ -197,21 +188,19 @@ char *yescrypt_r(
 	if (!src)
 		goto fail;
 	if (*src != '$') {
-		uint32_t have;
-		src = decode64_uint32(&have, src, 1);
+		src = decode64_uint32(&u32, src, 1);
 		dbg("yescrypt has extended params:0x%x", (unsigned)have);
-		if (have & 1)
+		if (u32 & 1)
 			src = decode64_uint32(&yctx->param.p, src, 2);
-		if (have & 2)
+		if (u32 & 2)
 			src = decode64_uint32(&yctx->param.t, src, 1);
-		if (have & 4)
+		if (u32 & 4)
 			src = decode64_uint32(&yctx->param.g, src, 1);
-		if (have & 8) {
-			uint32_t NROM_log2;
-			src = decode64_uint32(&NROM_log2, src, 1);
-			if (/*!src ||*/ NROM_log2 > 63)
+		if (u32 & 8) {
+			src = decode64_uint32(&u32, src, 1);
+			if (/*!src ||*/ u32 > 63)
 				goto fail;
-			yctx->param.NROM = (uint64_t)1 << NROM_log2;
+			yctx->param.NROM = (uint64_t)1 << u32;
 		}
 		if (!src)
 			goto fail;

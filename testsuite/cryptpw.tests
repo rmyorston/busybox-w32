@@ -60,7 +60,7 @@ testing 'cryptpw yescrypt' \
 	'cryptpw -m yescrypt qweRTY123@-+ j9T\$123456789012345678901234' \
 	'$y$j9T$123456789012345678901234$AKxw5OX/T4jD.v./IW.5tE/j7izNjw06fg3OvH1LsN9\n' \
 	'' ''
-testing 'cryptpw yescrypt with non-standard cost 4 instead of 5 (j8T instead of j9T)' \
+testing 'cryptpw yescrypt with non-standard N=2048 instead of 4096 (j8T instead of j9T)' \
 	'cryptpw -m yescrypt qweRTY123@-+ j8T\$123456789012345678901234' \
 	'$y$j8T$123456789012345678901234$JQUUfopCxlfZNE8f.THJwbOkhy.XtB3GIjo9HUVioWB\n' \
 	'' ''

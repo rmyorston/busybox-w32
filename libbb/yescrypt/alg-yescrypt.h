@@ -42,28 +42,32 @@
  * Please refer to the description of yescrypt_kdf() below for the meaning of
  * these flags.
  */
-typedef uint32_t yescrypt_flags_t;
+/* yescrypt flags:
+ * bits pos: 7654321076543210
+ *                    ss  r w
+ *                sbox  gg y
+ */
 /* Public */
 #define YESCRYPT_WORM			1
 #define YESCRYPT_RW			0x002
-#define YESCRYPT_ROUNDS_3		0x000
-#define YESCRYPT_ROUNDS_6		0x004
-#define YESCRYPT_GATHER_1		0x000
-#define YESCRYPT_GATHER_2		0x008
-#define YESCRYPT_GATHER_4		0x010
-#define YESCRYPT_GATHER_8		0x018
-#define YESCRYPT_SIMPLE_1		0x000
-#define YESCRYPT_SIMPLE_2		0x020
-#define YESCRYPT_SIMPLE_4		0x040
-#define YESCRYPT_SIMPLE_8		0x060
-#define YESCRYPT_SBOX_6K		0x000
-#define YESCRYPT_SBOX_12K		0x080
-#define YESCRYPT_SBOX_24K		0x100
-#define YESCRYPT_SBOX_48K		0x180
-#define YESCRYPT_SBOX_96K		0x200
-#define YESCRYPT_SBOX_192K		0x280
-#define YESCRYPT_SBOX_384K		0x300
-#define YESCRYPT_SBOX_768K		0x380
+#define YESCRYPT_ROUNDS_3		0x000 //r=0
+#define YESCRYPT_ROUNDS_6		0x004 //r=1
+#define YESCRYPT_GATHER_1		0x000 //gg=00
+#define YESCRYPT_GATHER_2		0x008 //gg=01
+#define YESCRYPT_GATHER_4		0x010 //gg=10
+#define YESCRYPT_GATHER_8		0x018 //gg=11
+#define YESCRYPT_SIMPLE_1		0x000 //ss=00
+#define YESCRYPT_SIMPLE_2		0x020 //ss=01
+#define YESCRYPT_SIMPLE_4		0x040 //ss=11
+#define YESCRYPT_SIMPLE_8		0x060 //ss=11
+#define YESCRYPT_SBOX_6K		0x000 //sbox=0000
+#define YESCRYPT_SBOX_12K		0x080 //sbox=0001
+#define YESCRYPT_SBOX_24K		0x100 //sbox=0010
+#define YESCRYPT_SBOX_48K		0x180 //sbox=0011
+#define YESCRYPT_SBOX_96K		0x200 //sbox=0100
+#define YESCRYPT_SBOX_192K		0x280 //sbox=0101
+#define YESCRYPT_SBOX_384K		0x300 //sbox=0110
+#define YESCRYPT_SBOX_768K		0x380 //sbox=0111
 
 #ifdef YESCRYPT_INTERNAL
 /* Private */
@@ -86,6 +90,19 @@ typedef uint32_t yescrypt_flags_t;
 	YESCRYPT_ALLOC_ONLY | YESCRYPT_PREHASH)
 #endif
 
+/* How many chars base-64 encoded bytes require? */
+#define YESCRYPT_BYTES2CHARS(bytes) ((((bytes) * 8) + 5) / 6)
+/* The /etc/passwd-style hash is "<prefix>$<hash><NUL>" */
+/*
+ * "$y$", up to 8 params of up to 6 chars each, '$', salt
+ * Alternatively, but that's smaller:
+ * "$7$", 3 params encoded as 1+5+5 chars, salt
+ */
+#define YESCRYPT_PREFIX_LEN (3 + 8 * 6 + 1 + YESCRYPT_BYTES2CHARS(32))
+
+#define YESCRYPT_HASH_SIZE 32
+#define YESCRYPT_HASH_LEN  YESCRYPT_BYTES2CHARS(YESCRYPT_HASH_SIZE)
+
 /**
  * Internal type used by the memory allocator.  Please do not use it directly.
  * Use yescrypt_shared_t and yescrypt_local_t as appropriate instead, since
@@ -104,7 +121,7 @@ typedef struct {
  * set.  flags, t, g, NROM are special to yescrypt.
  */
 typedef struct {
-	yescrypt_flags_t flags;
+	uint32_t flags;
 	uint64_t N;
 	uint32_t r, p, t, g;
 	uint64_t NROM;
@@ -123,18 +140,56 @@ typedef struct {
 	yescrypt_region_t local[1];
 } yescrypt_ctx_t;
 
-/* How many chars base-64 encoded bytes require? */
-#define YESCRYPT_BYTES2CHARS(bytes) ((((bytes) * 8) + 5) / 6)
-/* The /etc/passwd-style hash is "<prefix>$<hash><NUL>" */
-/*
- * "$y$", up to 8 params of up to 6 chars each, '$', salt
- * Alternatively, but that's smaller:
- * "$7$", 3 params encoded as 1+5+5 chars, salt
- */
-#define YESCRYPT_PREFIX_LEN (3 + 8 * 6 + 1 + YESCRYPT_BYTES2CHARS(32))
+// How much can save by forcing "standard" value by commenting the next line:
+//  160 bytes
+//#define YCTX_param_flags yctx->param.flags
+//  260 bytes
+//#define flags___YESCRYPT_RW (flags & YESCRYPT_RW)
+//  140 bytes
+//#define flags___YESCRYPT_MODE_MASK (flags & YESCRYPT_MODE_MASK)
+// ^^^^ forcing the above since the code already requires (checks for) this
+//   50 bytes
+#define YCTX_param_N     yctx->param.N
+// -100 bytes (negative!!!)
+#define YCTX_param_r     yctx->param.r
+//  400 bytes
+#define YCTX_param_p     yctx->param.p
+//  130 bytes
+#define YCTX_param_t     yctx->param.t
+//    2 bytes
+#define YCTX_param_g     yctx->param.g
+//    1 bytes
+// ^^^^ this looks wrong, compiler should be able to constant-propagate the fact that NROM code is dead
+#define YCTX_param_NROM  yctx->param.NROM
 
-#define YESCRYPT_HASH_SIZE 32
-#define YESCRYPT_HASH_LEN  YESCRYPT_BYTES2CHARS(YESCRYPT_HASH_SIZE)
+// standard ("j9T") values:
+#ifndef YCTX_param_flags
+#define YCTX_param_flags (YESCRYPT_RW | YESCRYPT_ROUNDS_6 | YESCRYPT_GATHER_4 | YESCRYPT_SIMPLE_2 | YESCRYPT_SBOX_12K)
+#endif
+#ifndef flags___YESCRYPT_RW
+#define flags___YESCRYPT_RW ((void)flags, YESCRYPT_RW)
+#endif
+#ifndef flags___YESCRYPT_MODE_MASK
+#define flags___YESCRYPT_MODE_MASK ((void)flags, YESCRYPT_RW)
+#endif
+#ifndef YCTX_param_N
+#define YCTX_param_N     4096
+#endif
+#ifndef YCTX_param_r
+#define YCTX_param_r     32
+#endif
+#ifndef YCTX_param_p
+#define YCTX_param_p     1
+#endif
+#ifndef YCTX_param_t
+#define YCTX_param_t     0
+#endif
+#ifndef YCTX_param_g
+#define YCTX_param_g     0
+#endif
+#ifndef YCTX_param_NROM
+#define YCTX_param_NROM  0
+#endif
 
 /**
  * yescrypt_r(shared, local, passwd, passwdlen, setting, key, buf, buflen):
