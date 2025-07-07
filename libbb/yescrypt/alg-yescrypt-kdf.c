@@ -823,6 +823,7 @@ static int yescrypt_kdf32_body(
 	salsa20_blk_t *V, *XY;
 	uint8_t sha256[32];
 	uint8_t dk[sizeof(sha256)], *dkp = buf32;
+	uint32_t r, p;
 
 	/* Sanity-check parameters */
 	switch (flags___YESCRYPT_MODE_MASK) {
@@ -849,13 +850,9 @@ static int yescrypt_kdf32_body(
 	default:
 		goto out_EINVAL;
 	}
-#if SIZE_MAX > UINT32_MAX
-	if (buflen > (((uint64_t)1 << 32) - 1) * 32)
-		goto out_EINVAL;
-#endif
-    {
-	const uint32_t r = YCTX_param_r;
-	const uint32_t p = YCTX_param_p;
+
+	r = YCTX_param_r;
+	p = YCTX_param_p;
 	if ((uint64_t)r * (uint64_t)p >= 1 << 30)
 		goto out_EINVAL;
 	if (N > UINT32_MAX)
@@ -982,7 +979,6 @@ static int yescrypt_kdf32_body(
 out_EINVAL:
 	errno = EINVAL;
 	return -1;
-    }
 }
 
 /**
