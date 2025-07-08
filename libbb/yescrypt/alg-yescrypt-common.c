@@ -27,41 +27,106 @@ static NOINLINE const uint8_t *decode64_uint32(
 		uint32_t *dst,
 		const uint8_t *src, uint32_t val)
 {
-	uint32_t start = 0, end = 47, chars = 1, bits = 0;
+	uint32_t start = 0, end = 47, bits = 0;
 	uint32_t c;
 
-	if (!src) /* prevous decode failed already? */
+	if (!src) /* previous decode failed already? */
 		goto fail;
 
 	c = a2i64(*src++);
 	if (c > 63)
 		goto fail;
 
+// The encoding of number N:
+// start = 0 end = 47
+// If N < 48, it is encoded verbatim, else
+// N -= 48
+// start = end+1 = 48
+// end += (64-end)/2 = 55
+// If N < (end+1-start)<<6 = 8<<6, it is encoded as 48+(N>>6)|low6bits (that is, 48...55|<6bit>), else
+// N -= 8<<6
+// start = end+1 = 56
+// end += (64-end)/2 = 59
+// If N < (end+1-start)<<2*6 = 4<<12, it is encoded as 56+(N>>2*6)|low12bits (that is, 56...59|<6bit>|<6bit>), else
+// ...same for 60..61|<6bit>|<6bit>|<6bit>
+// .......same for 62|<6bit>|<6bit>|<6bit>|<6bit>
+// .......same for 63|<6bit>|<6bit>|<6bit>|<6bit>|<6bit>
+	dbg_dec64("c:%d val:0x%08x", (int)c, (unsigned)val);
 	while (c > end) {
+		dbg_dec64("c:%d > end:%d", (int)c, (int)end);
 		val += (end + 1 - start) << bits;
+		dbg_dec64("val+=0x%08x", (int)((end + 1 - start) << bits));
+		dbg_dec64(" val:0x%08x", (unsigned)val);
 		start = end + 1;
-		end = start + (62 - end) / 2;
-		chars++;
+		end += (64 - end) / 2;
 		bits += 6;
+		dbg_dec64("start=%d", (int)start);
+		dbg_dec64("end=%d", (int)end);
+		dbg_dec64("bits=%d", (int)bits);
 	}
 
 	val += (c - start) << bits;
+	dbg_dec64("final val+=0x%08x", (int)((c - start) << bits));
+	dbg_dec64("       val:0x%08x", (unsigned)val);
 
-	while (--chars) {
+	while (bits != 0) {
 		c = a2i64(*src++);
 		if (c > 63)
 			goto fail;
 		bits -= 6;
 		val += c << bits;
+		dbg_dec64("low bits val+=0x%08x", (int)(c << bits));
+		dbg_dec64("          val:0x%08x", (unsigned)val);
 	}
+ ret:
 	*dst = val;
-
 	return src;
-
-fail:
-	*dst = 0;
-	return NULL;
+ fail:
+	val = 0;
+	src = NULL;
+	goto ret;
 }
+
+#if TEST_DECODE64
+static void test_decode64_uint32(void)
+{
+	const uint8_t *src, *end;
+	uint32_t u32;
+	int a = 48;
+	int b = 8<<6;  // 0x0200
+	int c = 4<<12; // 0x04000
+	int d = 2<<18; // 0x080000
+	int e = 1<<24; // 0x1000000
+
+	src = (void*)"wzzz";
+	end = decode64_uint32(&u32, src, 0);
+	if (u32 != 0x0003ffff+c+b+a) bb_error_msg_and_die("Incorrect decode '%s':0x%08x", src, (unsigned)u32);
+	if (end != src + 4) bb_error_msg_and_die("Incorrect decode '%s': %p end:%p", src, src, end);
+	src = (void*)"xzzz";
+	end = decode64_uint32(&u32, src, 0);
+	if (u32 != 0x0007ffff+c+b+a) bb_error_msg_and_die("Incorrect decode '%s':0x%08x", src, (unsigned)u32);
+	if (end != src + 4) bb_error_msg_and_die("Incorrect decode '%s': %p end:%p", src, src, end);
+	// Note how the last representable "x---" encoding, 0x7ffff, is exactly d-1!
+	// And if we now increment it, we get:
+	src = (void*)"y....";
+	end = decode64_uint32(&u32, src, 0);
+	if (u32 != 0x00000000+d+c+b+a) bb_error_msg_and_die("Incorrect decode '%s':0x%08x", src, (unsigned)u32);
+	if (end != src + 5) bb_error_msg_and_die("Incorrect decode '%s': %p end:%p", src, src, end);
+	src = (void*)"yzzzz";
+	end = decode64_uint32(&u32, src, 0);
+	if (u32 != 0x00ffffff+d+c+b+a) bb_error_msg_and_die("Incorrect decode '%s':0x%08x", src, (unsigned)u32);
+	if (end != src + 5) bb_error_msg_and_die("Incorrect decode '%s': %p end:%p", src, src, end);
+
+	src = (void*)"zzzzzz";
+	end = decode64_uint32(&u32, src, 0);
+	if (u32 != 0x3fffffff+e+d+c+b+a) bb_error_msg_and_die("Incorrect decode '%s':0x%08x", src, (unsigned)u32);
+	if (end != src + 6) bb_error_msg_and_die("Incorrect decode '%s': %p end:%p", src, src, end);
+
+	bb_error_msg("test_decode64_uint32() OK");
+}
+#else
+# define test_decode64_uint32() ((void)0)
+#endif
 
 #if 1
 static const uint8_t *decode64(
@@ -70,7 +135,7 @@ static const uint8_t *decode64(
 {
 	size_t dstpos = 0;
 
-	dbg_dec64("src:'%s' len:%d", src, (int)srclen);
+	dbg_dec64("src:'%s'", src);
 	for (;;) {
 		uint32_t c, value = 0;
 		int bits = 0;
@@ -214,6 +279,8 @@ char *yescrypt_r(
 	const uint8_t *src, *saltend;
 	size_t need, prefixlen;
 	uint32_t u32;
+
+	test_decode64_uint32();
 
 	memset(yctx, 0, sizeof(yctx));
 	yctx->param.p = 1;

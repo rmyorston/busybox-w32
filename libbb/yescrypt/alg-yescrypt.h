@@ -28,6 +28,7 @@
  * online backup system.
  */
 #ifdef YESCRYPT_INTERNAL
+
 # if 1
 #  define dbg(...) ((void)0)
 # else
@@ -39,6 +40,7 @@
 #  define dbg_dec64(...) bb_error_msg(__VA_ARGS__)
 # endif
 #endif
+#define TEST_DECODE64 0
 
 /**
  * Type and possible values for the flags argument of yescrypt_kdf(),
