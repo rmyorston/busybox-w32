@@ -42,15 +42,6 @@
 #define unlikely(exp) (exp)
 #endif
 
-// Not a size win if 0
-#define UNROLL_COPY 1
-
-// -5324 bytes if 0:
-#define UNROLL_PWXFORM_ROUND 0
-// -4864 bytes if 0:
-#define UNROLL_PWXFORM 0
-// both 0: -7666 bytes
-
 typedef union {
 	uint32_t w[16];
 	uint64_t d[8];
@@ -100,7 +91,7 @@ do { \
 #define DECL_Y \
 	salsa20_blk_t Y
 
-#if UNROLL_COPY
+#if KDF_UNROLL_COPY
 #define COPY(out, in) \
 do { \
 	(out).d[0] = (in).d[0]; \
@@ -287,7 +278,7 @@ do { \
 	x1 = ((x1 >> 32) * (uint32_t)x1 + p0[1]) ^ p1[1]; \
 } while (0)
 
-#if UNROLL_PWXFORM_ROUND
+#if KDF_UNROLL_PWXFORM_ROUND
 #define PWXFORM_ROUND \
 do { \
 	PWXFORM_SIMD(X.d[0], X.d[1]); \
@@ -319,7 +310,7 @@ do { \
 	Sw += 64; \
 } while (0)
 
-#if UNROLL_PWXFORM
+#if KDF_UNROLL_PWXFORM
 #define PWXFORM \
 do { \
 	uint8_t *Sw = S2 + w + PWXFORM_WRITE_OFFSET; \
@@ -522,6 +513,10 @@ static inline uint32_t integerify(const salsa20_blk_t *B, size_t r)
  * The array V must be aligned to a multiple of 64 bytes, and arrays B and XY
  * to a multiple of at least 16 bytes.
  */
+#if DISABLE_NROM_CODE
+#define smix1(B,r,N,flags,V,NROM,VROM,XY,ctx) \
+	smix1(B,r,N,flags,V,XY,ctx)
+#endif
 static void smix1(uint8_t *B, size_t r, uint32_t N,
 		uint32_t flags,
 		salsa20_blk_t *V,
@@ -529,6 +524,10 @@ static void smix1(uint8_t *B, size_t r, uint32_t N,
 		salsa20_blk_t *XY,
 		pwxform_ctx_t *ctx)
 {
+#if DISABLE_NROM_CODE
+	uint32_t NROM = 0;
+	const salsa20_blk_t *VROM = NULL;
+#endif
 	size_t s = 2 * r;
 	salsa20_blk_t *X = V, *Y = &V[s];
 	uint32_t i, j;
@@ -643,6 +642,10 @@ static void smix1(uint8_t *B, size_t r, uint32_t N,
  * least 2.  Nloop must be even.  The array V must be aligned to a multiple of
  * 64 bytes, and arrays B and XY to a multiple of at least 16 bytes.
  */
+#if DISABLE_NROM_CODE
+#define smix2(B,r,N,Nloop,flags,V,NROM,VROM,XY,ctx) \
+	smix2(B,r,N,Nloop,flags,V,XY,ctx)
+#endif
 static void smix2(uint8_t *B, size_t r, uint32_t N, uint64_t Nloop,
 		uint32_t flags,
 		salsa20_blk_t *V,
@@ -650,6 +653,10 @@ static void smix2(uint8_t *B, size_t r, uint32_t N, uint64_t Nloop,
 		salsa20_blk_t *XY,
 		pwxform_ctx_t *ctx)
 {
+#if DISABLE_NROM_CODE
+	uint32_t NROM = 0;
+	const salsa20_blk_t *VROM = NULL;
+#endif
 	size_t s = 2 * r;
 	salsa20_blk_t *X = XY, *Y = &XY[s];
 	uint32_t i, j;
@@ -747,6 +754,10 @@ static uint64_t p2floor(uint64_t x)
  * and helps avoid false sharing in OpenMP-enabled builds when p > 1, but it
  * might also result in cache bank conflicts).
  */
+#if DISABLE_NROM_CODE
+#define smix(B,r,N,p,t,flags,V,NROM,VROM,XY,S,passwd) \
+	smix(B,r,N,p,t,flags,V,XY,S,passwd)
+#endif
 static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
 		uint32_t flags,
 		salsa20_blk_t *V,
@@ -891,7 +902,9 @@ static int yescrypt_kdf32_body(
 		uint32_t flags, uint64_t N, uint32_t t,
 		uint8_t *buf32)
 {
+#if !DISABLE_NROM_CODE
 	const salsa20_blk_t *VROM;
+#endif
 	size_t B_size, V_size, XY_size, need;
 	uint8_t *B, *S;
 	salsa20_blk_t *V, *XY;
@@ -935,9 +948,7 @@ static int yescrypt_kdf32_body(
 		dbg("N > 0x%lx", (long)UINT32_MAX);
 		goto out_EINVAL;
 	}
-	if ((N & (N - 1)) != 0
-//TODO: ^^^^^^^^^^^^^^^^^^^^^^ do not check this, code guarantees power-of-2
-	 || N <= 3
+	if (N <= 3
 	 || r < 1
 	 || p < 1
 	) {
@@ -966,9 +977,11 @@ static int yescrypt_kdf32_body(
 #pragma GCC diagnostic pop
 	}
 
+#if !DISABLE_NROM_CODE
 	VROM = NULL;
 	if (YCTX_param_NROM)
 		goto out_EINVAL;
+#endif
 
 	/* Allocate memory */
 	V = NULL;

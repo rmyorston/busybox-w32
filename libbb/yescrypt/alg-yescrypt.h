@@ -27,10 +27,10 @@
  * This file was originally written by Colin Percival as part of the Tarsnap
  * online backup system.
  */
-#ifdef YESCRYPT_INTERNAL
 
 // busybox debug and size-reduction configuration
 
+#ifdef YESCRYPT_INTERNAL
 # if 1
 #  define dbg(...) ((void)0)
 # else
@@ -41,19 +41,20 @@
 # else
 #  define dbg_dec64(...) bb_error_msg(__VA_ARGS__)
 # endif
+# define TEST_DECODE64  0
 #endif
-#define TEST_DECODE64 0
 
-/* Only accept one-char parameters in hash, and only first three?
- * Almost any reasonable yescrypt hashes in /etc/shadow should
- * only ever use "jXY" parameters which set N and r.
- * Fancy multi-byte-encoded wide integers are not needed for that.
- */
-#define RESTRICTED_PARAMS 1
-/* Note: if you enable the above, please also enable
- * YCTX_param_p, YCTX_param_t, YCTX_param_g, YCTX_param_NROM
- * optimizations.
- */
+
+// Only accept one-char parameters in salt, and only first three?
+// Almost any reasonable yescrypt hashes in /etc/shadow should
+// only ever use "jXY" parameters which set N and r.
+// Fancy multi-byte-encoded wide integers are not needed for that.
+#define RESTRICTED_PARAMS  1
+// Note: if you enable the above, please also enable
+// YCTX_param_p, YCTX_param_t, YCTX_param_g, YCTX_param_NROM
+// optimizations, and DISABLE_NROM_CODE.
+
+#define DISABLE_NROM_CODE  1
 
 // How much we save by forcing "standard" value by commenting the next line:
 //  160 bytes
@@ -105,6 +106,15 @@
 #ifndef YCTX_param_NROM
 #define YCTX_param_NROM  0
 #endif
+
+// "Faster, or smaller code" knobs:
+// Not a size win if disabled, so keeping it 1:
+#define KDF_UNROLL_COPY 1
+// -5324 bytes if 0:
+#define KDF_UNROLL_PWXFORM_ROUND 0
+// -4864 bytes if 0:
+#define KDF_UNROLL_PWXFORM 0
+// both 0: -7666 bytes
 
 /**
  * Type and possible values for the flags argument of yescrypt_kdf(),
