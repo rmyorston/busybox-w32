@@ -4625,6 +4625,11 @@ static int fetch_heredocs(o_string *as_string, struct pipe *pi, int heredoc_cnt,
 
 					redir->rd_type = REDIRECT_HEREDOC2;
 					/* redir->rd_dup is (ab)used to indicate <<- */
+					if (!redir->rd_filename) {
+						/* examples: "echo <<", "echo <<<", "echo <<>" */
+						syntax_error("missing here document terminator");
+						return -1;
+					}
 					p = fetch_till_str(as_string, input,
 							redir->rd_filename, redir->rd_dup);
 					if (!p) {
