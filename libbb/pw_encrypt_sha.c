@@ -84,8 +84,7 @@ sha_crypt(/*const*/ char *key_data, /*const*/ char *salt_data)
 	   as a scratch space later. */
 	salt_data = xstrndup(salt_data, salt_len);
 	/* add "salt$" to result */
-	strcpy(resptr, salt_data);
-	resptr += salt_len;
+	resptr = stpcpy(resptr, salt_data);
 	*resptr++ = '$';
 	/* key data doesn't need much processing */
 	key_len = strlen(key_data);
