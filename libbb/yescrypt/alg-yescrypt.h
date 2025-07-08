@@ -29,6 +29,8 @@
  */
 #ifdef YESCRYPT_INTERNAL
 
+// busybox debug and size-reduction configuration
+
 # if 1
 #  define dbg(...) ((void)0)
 # else
@@ -41,6 +43,68 @@
 # endif
 #endif
 #define TEST_DECODE64 0
+
+/* Only accept one-char parameters in hash, and only first three?
+ * Almost any reasonable yescrypt hashes in /etc/shadow should
+ * only ever use "jXY" parameters which set N and r.
+ * Fancy multi-byte-encoded wide integers are not needed for that.
+ */
+#define RESTRICTED_PARAMS 1
+/* Note: if you enable the above, please also enable
+ * YCTX_param_p, YCTX_param_t, YCTX_param_g, YCTX_param_NROM
+ * optimizations.
+ */
+
+// How much we save by forcing "standard" value by commenting the next line:
+//  160 bytes
+//#define YCTX_param_flags           yctx->param.flags
+//  260 bytes
+//#define flags___YESCRYPT_RW        (flags & YESCRYPT_RW)
+//  140 bytes
+//#define flags___YESCRYPT_MODE_MASK (flags & YESCRYPT_MODE_MASK)
+// ^^^^ forcing the above since the code already requires (checks for) this
+//   50 bytes
+#define YCTX_param_N     yctx->param.N
+// -100 bytes (negative!!!)
+#define YCTX_param_r     yctx->param.r
+//  400 bytes
+//#define YCTX_param_p     yctx->param.p
+//  130 bytes
+//#define YCTX_param_t     yctx->param.t
+//    2 bytes
+//#define YCTX_param_g     yctx->param.g
+//    1 bytes
+// ^^^^ this looks wrong, compiler should be able to constant-propagate the fact that NROM code is dead
+//#define YCTX_param_NROM  yctx->param.NROM
+
+#ifndef YCTX_param_flags
+#define YCTX_param_flags (YESCRYPT_RW | YESCRYPT_ROUNDS_6 | YESCRYPT_GATHER_4 | YESCRYPT_SIMPLE_2 | YESCRYPT_SBOX_12K)
+#endif
+#ifndef flags___YESCRYPT_RW
+#define flags___YESCRYPT_RW ((void)flags, YESCRYPT_RW)
+#endif
+#ifndef flags___YESCRYPT_MODE_MASK
+#define flags___YESCRYPT_MODE_MASK ((void)flags, YESCRYPT_RW)
+#endif
+// standard ("j9T") values:
+#ifndef YCTX_param_N
+#define YCTX_param_N     4096
+#endif
+#ifndef YCTX_param_r
+#define YCTX_param_r     32
+#endif
+#ifndef YCTX_param_p
+#define YCTX_param_p     1
+#endif
+#ifndef YCTX_param_t
+#define YCTX_param_t     0
+#endif
+#ifndef YCTX_param_g
+#define YCTX_param_g     0
+#endif
+#ifndef YCTX_param_NROM
+#define YCTX_param_NROM  0
+#endif
 
 /**
  * Type and possible values for the flags argument of yescrypt_kdf(),
@@ -129,9 +193,12 @@ typedef struct {
  */
 typedef struct {
 	uint32_t flags;
+	uint32_t r;
 	uint64_t N;
-	uint32_t r, p, t, g;
+#if !RESTRICTED_PARAMS
+	uint32_t p, t, g;
 	uint64_t NROM;
+#endif
 } yescrypt_params_t;
 
 typedef struct {
@@ -146,57 +213,6 @@ typedef struct {
 	//yescrypt_region_t shared[1];
 	yescrypt_region_t local[1];
 } yescrypt_ctx_t;
-
-// How much can save by forcing "standard" value by commenting the next line:
-//  160 bytes
-//#define YCTX_param_flags yctx->param.flags
-//  260 bytes
-//#define flags___YESCRYPT_RW (flags & YESCRYPT_RW)
-//  140 bytes
-//#define flags___YESCRYPT_MODE_MASK (flags & YESCRYPT_MODE_MASK)
-// ^^^^ forcing the above since the code already requires (checks for) this
-//   50 bytes
-#define YCTX_param_N     yctx->param.N
-// -100 bytes (negative!!!)
-#define YCTX_param_r     yctx->param.r
-//  400 bytes
-#define YCTX_param_p     yctx->param.p
-//  130 bytes
-#define YCTX_param_t     yctx->param.t
-//    2 bytes
-#define YCTX_param_g     yctx->param.g
-//    1 bytes
-// ^^^^ this looks wrong, compiler should be able to constant-propagate the fact that NROM code is dead
-#define YCTX_param_NROM  yctx->param.NROM
-
-// standard ("j9T") values:
-#ifndef YCTX_param_flags
-#define YCTX_param_flags (YESCRYPT_RW | YESCRYPT_ROUNDS_6 | YESCRYPT_GATHER_4 | YESCRYPT_SIMPLE_2 | YESCRYPT_SBOX_12K)
-#endif
-#ifndef flags___YESCRYPT_RW
-#define flags___YESCRYPT_RW ((void)flags, YESCRYPT_RW)
-#endif
-#ifndef flags___YESCRYPT_MODE_MASK
-#define flags___YESCRYPT_MODE_MASK ((void)flags, YESCRYPT_RW)
-#endif
-#ifndef YCTX_param_N
-#define YCTX_param_N     4096
-#endif
-#ifndef YCTX_param_r
-#define YCTX_param_r     32
-#endif
-#ifndef YCTX_param_p
-#define YCTX_param_p     1
-#endif
-#ifndef YCTX_param_t
-#define YCTX_param_t     0
-#endif
-#ifndef YCTX_param_g
-#define YCTX_param_g     0
-#endif
-#ifndef YCTX_param_NROM
-#define YCTX_param_NROM  0
-#endif
 
 /**
  * yescrypt_r(shared, local, passwd, passwdlen, setting, key, buf, buflen):

@@ -18,6 +18,23 @@
  * SUCH DAMAGE.
  */
 
+#if RESTRICTED_PARAMS
+
+#define decode64_uint32(dst, src, min) \
+({ \
+	uint32_t d32 = a2i64(*(src)); \
+        if (d32 > 47) \
+                goto fail; \
+	*(dst) = d32 + (min); \
+	++src; \
+})
+#define test_decode64_uint32() ((void)0)
+#define FULL_PARAMS(...)
+
+#else
+
+#define FULL_PARAMS(...) __VA_ARGS__
+
 /* Not inlining:
  * de/encode64 functions are only used to read
  * yescrypt_params_t field, and convert salt to binary -
@@ -127,6 +144,8 @@ static void test_decode64_uint32(void)
 #else
 # define test_decode64_uint32() ((void)0)
 #endif
+
+#endif /* !RESTRICTED_PARAMS */
 
 #if 1
 static const uint8_t *decode64(
@@ -283,7 +302,7 @@ char *yescrypt_r(
 	test_decode64_uint32();
 
 	memset(yctx, 0, sizeof(yctx));
-	yctx->param.p = 1;
+	FULL_PARAMS(yctx->param.p = 1;)
 
 	/* we assume setting starts with "$y$" (caller must ensure this) */
 	src = setting + 3;
@@ -324,6 +343,9 @@ char *yescrypt_r(
 	if (!src)
 		goto fail;
 	if (*src != '$') {
+#if RESTRICTED_PARAMS
+		goto fail;
+#else
 		src = decode64_uint32(&u32, src, 1);
 		dbg("yescrypt has extended params:0x%x", (unsigned)u32);
 		if (u32 & 1)
@@ -342,6 +364,7 @@ char *yescrypt_r(
 			goto fail;
 		if (*src != '$')
 			goto fail;
+#endif
 	}
 
 	yctx->saltlen = sizeof(yctx->salt);
