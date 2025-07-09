@@ -36,7 +36,7 @@ static void die_if_error(NTSTATUS status, const char *function_name) {
  * (RFC 1321, 3.3: Step 3)
  */
 
-static void generic_init(struct bcrypt_hash_ctx_t *ctx, BCRYPT_ALG_HANDLE *alg_handle) {
+static void generic_init(struct bcrypt_hash_ctx_t *ctx, BCRYPT_ALG_HANDLE alg_handle) {
 	DWORD hash_object_length = 0;
 	ULONG _unused;
 	NTSTATUS status;

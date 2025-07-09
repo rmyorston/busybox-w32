@@ -22,6 +22,24 @@
 
 #include "tls.h"
 
+#if ENABLE_FEATURE_USE_CNG_API
+# include <windows.h>
+# include <bcrypt.h>
+
+// these work on Windows >= 10
+# define BCRYPT_HMAC_SHA1_ALG_HANDLE   ((BCRYPT_ALG_HANDLE) 0x000000a1)
+# define BCRYPT_HMAC_SHA256_ALG_HANDLE ((BCRYPT_ALG_HANDLE) 0x000000b1)
+
+# define NT_SUCCESS(Status) ((NTSTATUS)(Status) >= 0)
+
+static void die_if_error(NTSTATUS status, const char *function_name) {
+	if (!NT_SUCCESS(status)) {
+		bb_error_msg_and_die("call to %s failed: 0x%08lX",
+								function_name, (unsigned long)status);
+	}
+}
+#endif
+
 // Usually enabled. You can disable some of them to force only
 // specific ciphers to be advertized to server.
 // (this would not exclude code to handle disabled ciphers, no code size win)
@@ -403,17 +421,24 @@ static void hash_handshake(tls_state_t *tls, const char *fmt, const void *buffer
 // if we often need HMAC hmac with the same key.
 //
 // text is often given in disjoint pieces.
+#if !ENABLE_FEATURE_USE_CNG_API
 typedef struct hmac_precomputed {
 	md5sha_ctx_t hashed_key_xor_ipad;
 	md5sha_ctx_t hashed_key_xor_opad;
 } hmac_precomputed_t;
 
 typedef void md5sha_begin_func(md5sha_ctx_t *ctx) FAST_FUNC;
+
+#define sha1_begin_hmac sha1_begin
+#define sha256_begin_hmac sha256_begin
+#define hmac_uninit(...) ((void)0)
+
 #if !ENABLE_FEATURE_TLS_SHA1
 #define hmac_begin(pre,key,key_size,begin) \
 	hmac_begin(pre,key,key_size)
 #define begin sha256_begin
 #endif
+
 static void hmac_begin(hmac_precomputed_t *pre, uint8_t *key, unsigned key_size, md5sha_begin_func *begin)
 {
 	uint8_t key_xor_ipad[SHA_INSIZE];
@@ -478,6 +503,64 @@ static unsigned hmac_sha_precomputed_v(
 	md5sha_hash(&pre->hashed_key_xor_opad, out, len);
 	return sha_end(&pre->hashed_key_xor_opad, out);
 }
+#else
+#define sha1_begin_hmac BCRYPT_HMAC_SHA1_ALG_HANDLE
+#define sha256_begin_hmac BCRYPT_HMAC_SHA256_ALG_HANDLE
+
+#if !ENABLE_FEATURE_TLS_SHA1
+#define hmac_begin(pre,key,key_size,begin) _hmac_begin(pre, key, key_size, sha256_begin_hmac)
+#else
+#define hmac_begin _hmac_begin
+#endif
+
+typedef struct bcrypt_hash_ctx_t hmac_precomputed_t;
+
+static void _hmac_begin(hmac_precomputed_t *pre, uint8_t *key, unsigned key_size, BCRYPT_ALG_HANDLE alg_handle) {
+	DWORD hash_object_length = 0;
+	ULONG _unused;
+	NTSTATUS status;
+
+	status = BCryptGetProperty(alg_handle, BCRYPT_OBJECT_LENGTH, (PUCHAR)&hash_object_length, sizeof(DWORD), &_unused, 0);
+	die_if_error(status, "BCryptGetProperty");
+	status = BCryptGetProperty(alg_handle, BCRYPT_HASH_LENGTH, (PUCHAR)&pre->output_size, sizeof(DWORD), &_unused, 0);
+	die_if_error(status, "BCryptGetProperty");
+
+
+	pre->hash_obj = xmalloc(hash_object_length);
+
+	status = BCryptCreateHash(alg_handle, &pre->handle, pre->hash_obj, hash_object_length, key, key_size, BCRYPT_HASH_REUSABLE_FLAG);
+	die_if_error(status, "BCryptCreateHash");
+}
+
+static unsigned hmac_sha_precomputed_v(
+		hmac_precomputed_t *pre,
+		uint8_t *out,
+		va_list va)
+{
+	uint8_t *text;
+	NTSTATUS status;
+
+	/* pre->hashed_key_xor_ipad contains unclosed "H((key XOR ipad) +" state */
+	/* pre->hashed_key_xor_opad contains unclosed "H((key XOR opad) +" state */
+
+	/* calculate out = H((key XOR ipad) + text) */
+	while ((text = va_arg(va, uint8_t*)) != NULL) {
+		unsigned text_size = va_arg(va, unsigned);
+		/*status = */ BCryptHashData(pre->handle, text, text_size, 0);
+		//die_if_error(status, "BCryptHashData");
+	}
+
+	status = BCryptFinishHash(pre->handle, out, pre->output_size, 0);
+	die_if_error(status, "BCryptFinishHash");
+
+	return pre->output_size;
+}
+
+static void hmac_uninit(hmac_precomputed_t *pre) {
+	free(pre->hash_obj);
+}
+
+#endif
 
 static unsigned hmac_sha_precomputed(hmac_precomputed_t *pre_init, uint8_t *out, ...)
 {
@@ -506,12 +589,13 @@ static unsigned hmac(tls_state_t *tls, uint8_t *out, uint8_t *key, unsigned key_
 
 	hmac_begin(&pre, key, key_size,
 			(ENABLE_FEATURE_TLS_SHA1 && tls->MAC_size == SHA1_OUTSIZE)
-				? sha1_begin
-				: sha256_begin
+				? sha1_begin_hmac
+				: sha256_begin_hmac
 	);
 	len = hmac_sha_precomputed_v(&pre, out, va);
 
 	va_end(va);
+	hmac_uninit(&pre);
 	return len;
 }
 
@@ -569,7 +653,7 @@ static void prf_hmac_sha256(/*tls_state_t *tls,*/
 #define SEED   label, label_size, seed, seed_size
 #define A      a, MAC_size
 
-	hmac_begin(&pre, secret, secret_size, sha256_begin);
+	hmac_begin(&pre, secret, secret_size, sha256_begin_hmac);
 
 	/* A(1) = HMAC_hash(secret, seed) */
 	hmac_sha_precomputed(&pre, a, SEED, NULL);
@@ -590,6 +674,8 @@ static void prf_hmac_sha256(/*tls_state_t *tls,*/
 		/* A(2) = HMAC_hash(secret, A(1)) */
 		hmac_sha_precomputed(&pre, a, A, NULL);
 	}
+
+	hmac_uninit(&pre);
 #undef A
 #undef SECRET
 #undef SEED
