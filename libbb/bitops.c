@@ -58,6 +58,26 @@ void FAST_FUNC xorbuf16_aligned_long(void *dst, const void *src)
 # endif
 #endif
 }
+// The above can be inlined in libbb.h, in a way where compiler
+// is even free to use better addressing modes than (%reg), and
+// to keep the result in a register
+// (to not store it to memory after each XOR):
+//#if defined(__SSE__)
+//#include <xmmintrin.h>
+//^^^ or just: typedef float __m128_u attribute((__vector_size__(16),__may_alias__,__aligned__(1)));
+//static ALWAYS_INLINE void xorbuf16_aligned_long(void *dst, const void *src)
+//{
+//	__m128_u xmm0, xmm1;
+//	asm volatile(
+//"\n		xorps	%1,%0"
+//		: "=x" (xmm0), "=x" (xmm1)
+//		: "0" (*(__m128_u*)dst), "1" (*(__m128_u*)src)
+//	);
+//	*(__m128_u*)dst = xmm0; // this store may be optimized out!
+//}
+//#endif
+// but I don't trust gcc optimizer enough to not generate some monstrosity.
+// See GMULT() function in TLS code as an example.
 
 void FAST_FUNC xorbuf64_3_aligned64(void *dst, const void *src1, const void *src2)
 {
