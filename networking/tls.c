@@ -540,10 +540,6 @@ static unsigned hmac_sha_precomputed_v(
 	uint8_t *text;
 	NTSTATUS status;
 
-	/* pre->hashed_key_xor_ipad contains unclosed "H((key XOR ipad) +" state */
-	/* pre->hashed_key_xor_opad contains unclosed "H((key XOR opad) +" state */
-
-	/* calculate out = H((key XOR ipad) + text) */
 	while ((text = va_arg(va, uint8_t*)) != NULL) {
 		unsigned text_size = va_arg(va, unsigned);
 		/*status = */ BCryptHashData(pre->handle, text, text_size, 0);
