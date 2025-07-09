@@ -333,34 +333,6 @@ void FAST_FUNC tls_get_random(void *buf, unsigned len)
 		xfunc_die();
 }
 
-static void xorbuf3(void *dst, const void *src1, const void *src2, unsigned count)
-{
-	uint8_t *d = dst;
-	const uint8_t *s1 = src1;
-	const uint8_t* s2 = src2;
-	while (count--)
-		*d++ = *s1++ ^ *s2++;
-}
-
-void FAST_FUNC xorbuf(void *dst, const void *src, unsigned count)
-{
-	xorbuf3(dst, dst, src, count);
-}
-
-void FAST_FUNC xorbuf_aligned_AES_BLOCK_SIZE(void *dst, const void *src)
-{
-	unsigned long *d = dst;
-	const unsigned long *s = src;
-	d[0] ^= s[0];
-#if ULONG_MAX <= 0xffffffffffffffff
-	d[1] ^= s[1];
- #if ULONG_MAX == 0xffffffff
-	d[2] ^= s[2];
-	d[3] ^= s[3];
- #endif
-#endif
-}
-
 #if !TLS_DEBUG_HASH
 # define hash_handshake(tls, fmt, buffer, len) \
          hash_handshake(tls, buffer, len)
@@ -764,8 +736,13 @@ static void xwrite_encrypted_aesgcm(tls_state_t *tls, unsigned size, unsigned ty
 		cnt++;
 		COUNTER(nonce) = htonl(cnt); /* yes, first cnt here is 2 (!) */
 		aes_encrypt_one_block(&tls->aes_encrypt, nonce, scratch);
-		n = remaining > AES_BLOCK_SIZE ? AES_BLOCK_SIZE : remaining;
-		xorbuf(buf, scratch, n);
+		if (remaining >= AES_BLOCK_SIZE) {
+			n = AES_BLOCK_SIZE;
+			xorbuf_AES_BLOCK_SIZE(buf, scratch);
+		} else {
+			n = remaining;
+			xorbuf(buf, scratch, n);
+		}
 		buf += n;
 		remaining -= n;
 	}
@@ -923,7 +900,7 @@ static void tls_aesgcm_decrypt(tls_state_t *tls, uint8_t *buf, int size)
 		COUNTER(nonce) = htonl(cnt); /* yes, first cnt here is 2 (!) */
 		aes_encrypt_one_block(&tls->aes_decrypt, nonce, scratch);
 		n = remaining > AES_BLOCK_SIZE ? AES_BLOCK_SIZE : remaining;
-		xorbuf3(buf, scratch, buf + 8, n);
+		xorbuf_3(buf, scratch, buf + 8, n);
 		buf += n;
 		remaining -= n;
 	}

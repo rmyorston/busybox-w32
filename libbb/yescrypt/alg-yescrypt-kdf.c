@@ -180,6 +180,7 @@ static void salsa20(salsa20_blk_t *restrict B,
 #define SALSA20_2(out) \
 	salsa20(&X, &out, 1)
 
+#if 0
 #define XOR(out, in1, in2) \
 do { \
 	(out).d[0] = (in1).d[0] ^ (in2).d[0]; \
@@ -191,6 +192,12 @@ do { \
 	(out).d[6] = (in1).d[6] ^ (in2).d[6]; \
 	(out).d[7] = (in1).d[7] ^ (in2).d[7]; \
 } while (0)
+#else
+#define XOR(out, in1, in2) \
+do { \
+	xorbuf64_3_aligned64(&(out).d, &(in1).d, &(in2).d); \
+} while (0)
+#endif
 
 #define XOR_X(in)         XOR(X, X, in)
 #define XOR_X_2(in1, in2) XOR(X, in1, in2)

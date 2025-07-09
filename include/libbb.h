@@ -1113,6 +1113,16 @@ char *bin2hex(char *dst, const char *src, int count) FAST_FUNC;
 /* Reverse */
 char* hex2bin(char *dst, const char *src, int count) FAST_FUNC;
 
+void FAST_FUNC xorbuf_3(void *dst, const void *src1, const void *src2, unsigned count);
+void FAST_FUNC xorbuf(void* buf, const void* mask, unsigned count);
+void FAST_FUNC xorbuf16_aligned_long(void* buf, const void* mask);
+void FAST_FUNC xorbuf64_3_aligned64(void *dst, const void *src1, const void *src2);
+#if BB_UNALIGNED_MEMACCESS_OK
+# define xorbuf16(buf,mask) xorbuf16_aligned_long(buf,mask)
+#else
+void FAST_FUNC xorbuf16(void* buf, const void* mask);
+#endif
+
 /* Generate a UUID */
 void generate_uuid(uint8_t *buf) FAST_FUNC;
 

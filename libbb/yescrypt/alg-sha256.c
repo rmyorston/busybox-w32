@@ -72,6 +72,7 @@ PBKDF2_SHA256(const uint8_t *passwd, size_t passwdlen,
 				/* ... xor U_j ... */
 				for (k = 0; k < 32 / 8; k++)
 					T[k] ^= U[k];
+				//TODO: xorbuf32_aligned_long(T, U);
 			}
 		}
 
