@@ -915,8 +915,13 @@ static int yescrypt_kdf32_body(
 	size_t B_size, V_size, XY_size, need;
 	uint8_t *B, *S;
 	salsa20_blk_t *V, *XY;
-	uint8_t sha256[32];
-	uint8_t dk[sizeof(sha256)], *dkp = buf32;
+	struct {
+		uint8_t sha256[32];
+		uint8_t dk[32];
+	} u;
+#define sha256 u.sha256
+#define dk     u.dk
+	uint8_t *dkp = buf32;
 	uint32_t r, p;
 
 	/* Sanity-check parameters */
@@ -1083,15 +1088,16 @@ static int yescrypt_kdf32_body(
 			size_t clen = /*buflen:*/32;
 			if (clen > sizeof(dk))
 				clen = sizeof(dk);
-			sha256_block(sha256, sizeof(sha256), dk);
-			memcpy(buf32, dk, clen);
+			if (sizeof(dk) != 32) { /* not true, optimize it out */
+				sha256_block(sha256, sizeof(sha256), dk);
+				memcpy(buf32, dk, clen);
+			} else {
+				sha256_block(sha256, sizeof(sha256), buf32);
+			}
 		}
 	}
 
-	if (flags) {
-		explicit_bzero(sha256, sizeof(sha256));
-		explicit_bzero(dk, sizeof(dk));
-	}
+	explicit_bzero(&u, sizeof(u));
 
 	/* Success! */
 	return 0;
@@ -1099,6 +1105,8 @@ static int yescrypt_kdf32_body(
  out_EINVAL:
 	//bbox does not need this: errno = EINVAL;
 	return -1;
+#undef sha256
+#undef dk
 }
 
 /**

@@ -23,8 +23,8 @@
 #define decode64_uint32(dst, src, min) \
 ({ \
 	uint32_t d32 = a2i64(*(src)); \
-        if (d32 > 47) \
-                goto fail; \
+	if (d32 > 47) \
+		goto fail; \
 	*(dst) = d32 + (min); \
 	++src; \
 })
@@ -292,8 +292,12 @@ char *yescrypt_r(
 		const uint8_t *setting,
 		char *buf, size_t buflen)
 {
-	yescrypt_ctx_t yctx[1];
-	unsigned char hashbin32[32];
+	struct {
+		yescrypt_ctx_t yctx[1];
+		unsigned char hashbin32[32];
+	} u;
+#define yctx      u.yctx
+#define hashbin32 u.hashbin32
 	char *dst;
 	const uint8_t *src, *saltend;
 	size_t need, prefixlen;
@@ -375,7 +379,7 @@ char *yescrypt_r(
 
 	prefixlen = saltend - setting;
 	need = prefixlen + 1 + YESCRYPT_HASH_LEN + 1;
-	if (need > buflen || need < prefixlen)
+	if (need > buflen /*overflow is quite unlikely: || need < prefixlen*/)
 		goto fail;
 
 	if (yescrypt_kdf32(yctx, passwd, passwdlen, hashbin32)) {
@@ -390,10 +394,11 @@ char *yescrypt_r(
 		goto fail;
  ret:
 	free_region(yctx->local);
-	explicit_bzero(yctx, sizeof(yctx));
-	explicit_bzero(hashbin32, sizeof(hashbin32));
+	explicit_bzero(&u, sizeof(u));
 	return buf;
  fail:
 	buf = NULL;
 	goto ret;
+#undef yctx
+#undef hashbin32
 }
