@@ -29,15 +29,6 @@
 // these work on Windows >= 10
 # define BCRYPT_HMAC_SHA1_ALG_HANDLE   ((BCRYPT_ALG_HANDLE) 0x000000a1)
 # define BCRYPT_HMAC_SHA256_ALG_HANDLE ((BCRYPT_ALG_HANDLE) 0x000000b1)
-
-# define NT_SUCCESS(Status) ((NTSTATUS)(Status) >= 0)
-
-static void die_if_error(NTSTATUS status, const char *function_name) {
-	if (!NT_SUCCESS(status)) {
-		bb_error_msg_and_die("call to %s failed: 0x%08lX",
-								function_name, (unsigned long)status);
-	}
-}
 #endif
 
 // Usually enabled. You can disable some of them to force only
@@ -521,15 +512,15 @@ static void _hmac_begin(hmac_precomputed_t *pre, uint8_t *key, unsigned key_size
 	NTSTATUS status;
 
 	status = BCryptGetProperty(alg_handle, BCRYPT_OBJECT_LENGTH, (PUCHAR)&hash_object_length, sizeof(DWORD), &_unused, 0);
-	die_if_error(status, "BCryptGetProperty");
+	mingw_die_if_error(status, "BCryptGetProperty");
 	status = BCryptGetProperty(alg_handle, BCRYPT_HASH_LENGTH, (PUCHAR)&pre->output_size, sizeof(DWORD), &_unused, 0);
-	die_if_error(status, "BCryptGetProperty");
+	mingw_die_if_error(status, "BCryptGetProperty");
 
 
 	pre->hash_obj = xmalloc(hash_object_length);
 
 	status = BCryptCreateHash(alg_handle, &pre->handle, pre->hash_obj, hash_object_length, key, key_size, BCRYPT_HASH_REUSABLE_FLAG);
-	die_if_error(status, "BCryptCreateHash");
+	mingw_die_if_error(status, "BCryptCreateHash");
 }
 
 static unsigned hmac_sha_precomputed_v(
@@ -543,11 +534,11 @@ static unsigned hmac_sha_precomputed_v(
 	while ((text = va_arg(va, uint8_t*)) != NULL) {
 		unsigned text_size = va_arg(va, unsigned);
 		/*status = */ BCryptHashData(pre->handle, text, text_size, 0);
-		//die_if_error(status, "BCryptHashData");
+		//mingw_die_if_error(status, "BCryptHashData");
 	}
 
 	status = BCryptFinishHash(pre->handle, out, pre->output_size, 0);
-	die_if_error(status, "BCryptFinishHash");
+	mingw_die_if_error(status, "BCryptFinishHash");
 
 	return pre->output_size;
 }

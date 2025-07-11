@@ -23,15 +23,6 @@
 # define BCRYPT_SHA256_ALG_HANDLE ((BCRYPT_ALG_HANDLE) 0x00000041)
 # define BCRYPT_SHA512_ALG_HANDLE ((BCRYPT_ALG_HANDLE) 0x00000061)
 
-# define NT_SUCCESS(Status) ((NTSTATUS)(Status) >= 0)
-
-static void die_if_error(NTSTATUS status, const char *function_name) {
-	if (!NT_SUCCESS(status)) {
-		bb_error_msg_and_die("call to %s failed: 0x%08lX",
-								function_name, (unsigned long)status);
-	}
-}
-
 /* Initialize structure containing state of computation.
  * (RFC 1321, 3.3: Step 3)
  */
@@ -42,15 +33,15 @@ static void generic_init(struct bcrypt_hash_ctx_t *ctx, BCRYPT_ALG_HANDLE alg_ha
 	NTSTATUS status;
 
 	status = BCryptGetProperty(alg_handle, BCRYPT_OBJECT_LENGTH, (PUCHAR)&hash_object_length, sizeof(DWORD), &_unused, 0);
-	die_if_error(status, "BCryptGetProperty");
+	mingw_die_if_error(status, "BCryptGetProperty");
 	status = BCryptGetProperty(alg_handle, BCRYPT_HASH_LENGTH, (PUCHAR)&ctx->output_size, sizeof(DWORD), &_unused, 0);
-	die_if_error(status, "BCryptGetProperty");
+	mingw_die_if_error(status, "BCryptGetProperty");
 
 
 	ctx->hash_obj = xmalloc(hash_object_length);
 
 	status = BCryptCreateHash(alg_handle, &ctx->handle, ctx->hash_obj, hash_object_length, NULL, 0, 0);
-	die_if_error(status, "BCryptCreateHash");
+	mingw_die_if_error(status, "BCryptCreateHash");
 }
 
 void FAST_FUNC md5_begin(md5_ctx_t *ctx)
@@ -85,13 +76,13 @@ void FAST_FUNC generic_hash(struct bcrypt_hash_ctx_t *ctx, const void *buffer, s
 		for perf, no error checking here
 	*/
 	/*NTSTATUS status = */ BCryptHashData(ctx->handle, (const PUCHAR)buffer, len, 0);
-	// die_if_error(status, "BCryptHashData");
+	// mingw_die_if_error(status, "BCryptHashData");
 }
 
 unsigned FAST_FUNC generic_end(struct bcrypt_hash_ctx_t *ctx, void *resbuf)
 {
 	NTSTATUS status = BCryptFinishHash(ctx->handle, resbuf, ctx->output_size, 0);
-	die_if_error(status, "BCryptFinishHash");
+	mingw_die_if_error(status, "BCryptFinishHash");
 	free(ctx->hash_obj);
 	return ctx->output_size;
 }

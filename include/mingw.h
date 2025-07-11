@@ -670,3 +670,4 @@ enum {
 int elevation_state(void);
 void set_interp(int i) FAST_FUNC;
 int mingw_shell_execute(SHELLEXECUTEINFO *info);
+void mingw_die_if_error(NTSTATUS status, const char *function_name);

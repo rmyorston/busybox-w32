@@ -2560,3 +2560,12 @@ int mingw_shell_execute(SHELLEXECUTEINFO *info)
 	free(lpath);
 	return ret;
 }
+
+#if ENABLE_FEATURE_USE_CNG_API
+void mingw_die_if_error(NTSTATUS status, const char *function_name) {
+	if (!NT_SUCCESS(status)) {
+		bb_error_msg_and_die("call to %s failed: 0x%08lX",
+								function_name, (unsigned long)status);
+	}
+}
+#endif
