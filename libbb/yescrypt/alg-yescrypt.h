@@ -107,14 +107,14 @@
 #define YCTX_param_NROM  0
 #endif
 
-// "Faster, or smaller code" knobs:
-// Not a size win if disabled, so keeping it 1:
-#define KDF_UNROLL_COPY 1
+// "Faster/smaller code" knobs:
+// -941 bytes:
+#define KDF_UNROLL_COPY 0
 // -5324 bytes if 0:
 #define KDF_UNROLL_PWXFORM_ROUND 0
 // -4864 bytes if 0:
 #define KDF_UNROLL_PWXFORM 0
-// both 0: -7666 bytes
+// if both this ^^^^^^^^^^ and PWXFORM_ROUND set to 0: -7666 bytes
 
 /**
  * Type and possible values for the flags argument of yescrypt_kdf(),

@@ -106,8 +106,7 @@ do { \
 #else
 #define COPY(out, in) \
 do { \
-	for (int copyi=0; copyi<8; copyi++) \
-		(out).d[copyi] = (in).d[copyi]; \
+	memcpy((out).d, (in).d, sizeof((in).d)); \
 } while (0)
 #endif
 
@@ -161,11 +160,9 @@ static void salsa20(salsa20_blk_t *restrict B,
 	{
 		uint32_t i;
 		salsa20_simd_shuffle(&X, Bout);
-		for (i = 0; i < 16; i += 4) {
+		for (i = 0; i < 16; i++) {
+			// bbox: note: was unrolled x4
 			B->w[i] = Bout->w[i] += B->w[i];
-			B->w[i + 1] = Bout->w[i + 1] += B->w[i + 1];
-			B->w[i + 2] = Bout->w[i + 2] += B->w[i + 2];
-			B->w[i + 3] = Bout->w[i + 3] += B->w[i + 3];
 		}
 	}
 #if 0
