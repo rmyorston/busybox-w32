@@ -421,26 +421,19 @@ static uint32_t blockmix_xor(const salsa20_blk_t *Bin1,
 
 	i = 0;
 	r--;
-	do {
+	for (;;) {
 		XOR_X(Bin1[i]);
 		XOR_X(Bin2[i]);
 		PWXFORM;
-		WRITE_X(Bout[i]);
-
-		XOR_X(Bin1[i + 1]);
-		XOR_X(Bin2[i + 1]);
-		PWXFORM;
-
-		if (unlikely(i >= r))
+		if (unlikely(i > r))
 			break;
+		WRITE_X(Bout[i]);
+		i++;
+	}
 
-		WRITE_X(Bout[i + 1]);
-
-		i += 2;
-	} while (1);
-	i++;
-
-	ctx->S0 = S0; ctx->S1 = S1; ctx->S2 = S2;
+	ctx->S0 = S0;
+	ctx->S1 = S1;
+	ctx->S2 = S2;
 	ctx->w = w;
 
 	SALSA20_2(Bout[i]);
