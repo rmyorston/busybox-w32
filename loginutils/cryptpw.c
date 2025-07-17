@@ -84,8 +84,7 @@ to cryptpw. -a option (alias for -m) came from cryptpw.
 int cryptpw_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int cryptpw_main(int argc UNUSED_PARAM, char **argv)
 {
-	/* Supports: cryptpw -m sha256 PASS 'rounds=999999999$SALT' */
-	char salt[MAX_PW_SALT_LEN + sizeof("rounds=999999999$")];
+	char salt[MAX_PW_SALT_LEN];
 	char *salt_ptr;
 	char *password;
 	const char *opt_m, *opt_S;

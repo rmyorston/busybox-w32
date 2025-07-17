@@ -1825,14 +1825,14 @@ extern int obscure(const char *old, const char *newval, const struct passwd *pwd
 extern int crypt_make_rand64encoded(char *p, int cnt /*, int rnd*/) FAST_FUNC;
 /* Size of char salt[] to hold randomly-generated salt string
  * sha256/512:
- * "$5$<sha_salt_16_chars><NUL>"
- * "$6$<sha_salt_16_chars><NUL>"
- * #define MAX_PW_SALT_LEN (3 + 16 + 1)
+ * "$5$" ["rounds=999999999$"] "<sha_salt_16_chars><NUL>"
+ * "$6$" ["rounds=999999999$"] "<sha_salt_16_chars><NUL>"
+ * #define MAX_PW_SALT_LEN (3 + sizeof("rounds=999999999$")-1 + 16 + 1)
  * yescrypt:
- * "$y$" <up to 8 params of up to 6 chars each> "$" <up to 84 chars salt><NUL>
- * (84 chars are ascii64-encoded 64 binary bytes)
+ * "$y$" <up to 8 params of up to 6 chars each> "$" <up to 86 chars salt><NUL>
+ * (86 chars are ascii64-encoded 64 binary bytes)
  */
-#define MAX_PW_SALT_LEN (3 + 8*6 + 1 + 84 + 1)
+#define MAX_PW_SALT_LEN (3 + 8*6 + 1 + 86 + 1)
 extern char* crypt_make_pw_salt(char p[MAX_PW_SALT_LEN], const char *algo) FAST_FUNC;
 
 /* Returns number of lines changed, or -1 on error */
