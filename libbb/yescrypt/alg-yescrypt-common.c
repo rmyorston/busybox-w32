@@ -152,13 +152,13 @@ static const uint8_t *decode64(
 		uint8_t *dst, size_t *dstlen,
 		const uint8_t *src)
 {
-	size_t dstpos = 0;
+	unsigned dstpos = 0;
 
 	dbg_dec64("src:'%s'", src);
 	for (;;) {
 		uint32_t c, value = 0;
 		int bits = 0;
-		while (*src && *src != '$') {
+		while (*src != '\0' && *src != '$') {
 			c = a2i64(*src);
 			if (c > 63) { /* bad ascii64 char, stop decoding at it */
 				break;
@@ -174,9 +174,11 @@ static const uint8_t *decode64(
 			break;
 		/* else: we got last, partial bit block - store it */
  store:
-		dbg_dec64(" storing bits:%d v:%08x", bits, (int)SWAP_BE32(value)); //BE to see lsb first
-		while (dstpos < *dstlen) {
-			if ((!*src || *src == '$') && value == 0 && bits < 8) {
+		dbg_dec64(" storing bits:%d dstpos:%u v:%08x", bits, dstpos, (int)SWAP_BE32(value)); //BE to see lsb first
+		for (;;) {
+			if ((*src == '\0' || *src == '$')
+			 && value == 0 && bits < 8
+			) {
 				/* Example: mkpasswd PWD '$y$j9T$123':
 				 * the "123" is bits:18 value:03,51,00
 				 * is considered to be 2 bytes, not 3!
@@ -190,17 +192,18 @@ static const uint8_t *decode64(
 				 */
 				goto end;
 			}
-			dstpos++;
+			if (dstpos >= *dstlen) {
+				dbg_dec64(" ERR: bits:%d dstpos:%u dst[] is too small", bits, dstpos);
+				goto fail;
+			}
 			*dst++ = value;
+			dstpos++;
 			value >>= 8;
 			bits -= 8;
 			if (bits <= 0) /* can get negative, if we e.g. had 6 bits */
-				goto next;
+				break;
 		}
-		dbg_dec64(" ERR: bits:%d dst[] is too small", bits);
-		goto fail;
- next:
-		if (!*src || *src == '$')
+		if (*src == '\0' || *src == '$')
 			break;
 	}
  end:
@@ -376,6 +379,7 @@ char *yescrypt_r(
 	saltend = decode64(yctx->salt, &yctx->saltlen, src);
 	if (!saltend || (*saltend != '\0' && *saltend != '$'))
 		goto fail; /* salt[] is too small, or bad char during decode */
+	dbg_dec64("salt is %d ascii64 chars -> %d bytes (in binary)", (int)(saltend - src), (int)yctx->saltlen);
 
 	prefixlen = saltend - setting;
 	need = prefixlen + 1 + YESCRYPT_HASH_LEN + 1;
