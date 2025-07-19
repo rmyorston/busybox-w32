@@ -17,7 +17,7 @@
 
 char* FAST_FUNC crypt_make_pw_salt(char salt[MAX_PW_SALT_LEN], const char *algo)
 {
-	int len = 2/2;
+	int len = 2 / 2;
 	char *salt_ptr = salt;
 
 	/* Standard chpasswd uses uppercase algos ("MD5", not "md5").
@@ -36,8 +36,8 @@ char* FAST_FUNC crypt_make_pw_salt(char salt[MAX_PW_SALT_LEN], const char *algo)
 #endif
 #if !ENABLE_USE_BB_CRYPT || ENABLE_USE_BB_CRYPT_YES
 		if ((algo[0]|0x20) == 'y') { /* yescrypt */
+			int rnd;
 			salt[1] = 'y';
-			len = 22 / 2;
 // The "j9T$" below is the default "yescrypt parameters" encoded by yescrypt_encode_params_r():
 //shadow-4.17.4/src/passwd.c
 //	salt = crypt_make_salt(NULL, NULL);
@@ -61,8 +61,16 @@ char* FAST_FUNC crypt_make_pw_salt(char salt[MAX_PW_SALT_LEN], const char *algo)
 //      params.r = 32;                  // N in 4KiB
 //      params.N = 1ULL << (count + 7); // 3 -> 1024, 4 -> 2048, ... 11 -> 262144
 //  yescrypt_encode_params_r(&params, rbytes, nrbytes, outbuf, o_size) // always "$y$j9T$<random>"
+			len = 22 / 2;
 			salt_ptr = stpcpy(salt_ptr, "j9T$");
-			crypt_make_rand64encoded(salt_ptr, len); /* appends 2*len random chars */
+			/* append 2*len random chars */
+			rnd = crypt_make_rand64encoded(salt_ptr, len);
+			/* fix up last char: it must be in 0..3 range (encoded as one of "./01").
+			 * IOW: salt_ptr[20..21] encode 16th random byte, must not be > 0xff.
+			 * Without this, we can generate salts which are rejected
+			 * by implementations with more strict salt length check.
+			 */
+			salt_ptr[21] = i2a64(rnd & 3);
 			/* For "mkpasswd -m yescrypt PASS j9T$<salt>" use case,
 			 * "j9T$" is considered part of salt,
 			 * need to return pointer to 'j'. Without -4,

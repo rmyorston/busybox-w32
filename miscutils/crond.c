@@ -177,7 +177,7 @@ static void crondlog(unsigned level, const char *msg, va_list va)
 {
 	if (level >= G.log_level) {
 		/*
-		 * We are called only for info meesages.
+		 * We are called only for info messages.
 		 * Warnings/errors use plain bb_[p]error_msg's, which
 		 * need not touch syslog_level
 		 * (they are ok with LOG_ERR default).
