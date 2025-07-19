@@ -37,9 +37,8 @@ char* FAST_FUNC crypt_make_pw_salt(char salt[MAX_PW_SALT_LEN], const char *algo)
 #if !ENABLE_USE_BB_CRYPT || ENABLE_USE_BB_CRYPT_YES
 		if ((algo[0]|0x20) == 'y') { /* yescrypt */
 			salt[1] = 'y';
-			len = 24 / 2;
+			len = 22 / 2;
 // The "j9T$" below is the default "yescrypt parameters" encoded by yescrypt_encode_params_r():
-//
 //shadow-4.17.4/src/passwd.c
 //	salt = crypt_make_salt(NULL, NULL);
 //shadow-4.17.4/lib/salt.c
@@ -105,13 +104,13 @@ static char *my_crypt(const char *key, const char *salt)
 	if (salt[0] == '$' && salt[1] && salt[2] == '$') {
 		if (salt[1] == '1')
 			return md5_crypt(xzalloc(MD5_OUT_BUFSIZE), (unsigned char*)key, (unsigned char*)salt);
-#if ENABLE_USE_BB_CRYPT_YES
-		if (salt[1] == 'y')
-			return yes_crypt(key, salt);
-#endif
 #if ENABLE_USE_BB_CRYPT_SHA
 		if (salt[1] == '5' || salt[1] == '6')
 			return sha_crypt((char*)key, (char*)salt);
+#endif
+#if ENABLE_USE_BB_CRYPT_YES
+		if (salt[1] == 'y')
+			return yes_crypt(key, salt);
 #endif
 	}
 
