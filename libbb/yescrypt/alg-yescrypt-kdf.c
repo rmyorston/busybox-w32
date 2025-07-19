@@ -368,10 +368,10 @@ typedef struct {
  * be 128r bytes in length; the output Bout must also be the same size.
  */
 static void blockmix(
-		    const salsa20_blk_t *restrict Bin,
-		    salsa20_blk_t *restrict Bout,
-		    size_t r,
-		    pwxform_ctx_t *restrict ctx)
+		const salsa20_blk_t *restrict Bin,
+		salsa20_blk_t *restrict Bout,
+		size_t r,
+		pwxform_ctx_t *restrict ctx)
 {
 	uint8_t *S0 = ctx->S0, *S1 = ctx->S1, *S2 = ctx->S2;
 	size_t w = ctx->w;
@@ -386,22 +386,25 @@ static void blockmix(
 	DECL_SMASK2REG;
 
 	i = 0;
-	do {
+	for (;;) {
 		XOR_X(Bin[i]);
 		PWXFORM;
 		if (unlikely(i >= r))
 			break;
 		WRITE_X(Bout[i]);
 		i++;
-	} while (1);
+	}
 
-	ctx->S0 = S0; ctx->S1 = S1; ctx->S2 = S2;
+	ctx->S0 = S0;
+	ctx->S1 = S1;
+	ctx->S2 = S2;
 	ctx->w = w;
 
 	SALSA20_2(Bout[i]);
 }
 
-static uint32_t blockmix_xor(const salsa20_blk_t *Bin1,
+static uint32_t blockmix_xor(
+		const salsa20_blk_t *Bin1,
 		const salsa20_blk_t *restrict Bin2,
 		salsa20_blk_t *Bout,
 		size_t r,
@@ -462,24 +465,18 @@ static uint32_t blockmix_xor_save(
 
 	i = 0;
 	r--;
-	do {
+	for (;;) {
 		XOR_X_WRITE_XOR_Y_2(Bin2[i], Bin1out[i]);
 		PWXFORM;
-		WRITE_X(Bin1out[i]);
-
-		XOR_X_WRITE_XOR_Y_2(Bin2[i + 1], Bin1out[i + 1]);
-		PWXFORM;
-
-		if (unlikely(i >= r))
+		if (unlikely(i > r))
 			break;
+		WRITE_X(Bin1out[i]);
+		i++;
+	}
 
-		WRITE_X(Bin1out[i + 1]);
-
-		i += 2;
-	} while (1);
-	i++;
-
-	ctx->S0 = S0; ctx->S1 = S1; ctx->S2 = S2;
+	ctx->S0 = S0;
+	ctx->S1 = S1;
+	ctx->S2 = S2;
 	ctx->w = w;
 
 	SALSA20_2(Bin1out[i]);
@@ -801,7 +798,7 @@ static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
 		if (flags___YESCRYPT_RW) {
 			uint8_t *Si = S + i * Salloc;
 			smix1(Bp, 1, Sbytes / 128, 0 /* no flags */,
-			    (salsa20_blk_t *)Si, 0, NULL, XYp, NULL);
+				(salsa20_blk_t *)Si, 0, NULL, XYp, NULL);
 			ctx_i = (pwxform_ctx_t *)(Si + Sbytes);
 			ctx_i->S2 = Si;
 			ctx_i->S1 = Si + Sbytes / 3;
@@ -809,7 +806,7 @@ static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
 			ctx_i->w = 0;
 			if (i == 0)
 				hmac_block(
-				        /* key,len: */ Bp + (128 * r - 64), 64,
+					/* key,len: */ Bp + (128 * r - 64), 64,
 					/* hash fn: */ sha256_begin,
 					/* in,len: */  passwd, 32,
 					/* outbuf: */  passwd
@@ -817,7 +814,7 @@ static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
 		}
 		smix1(Bp, r, Np, flags, Vp, NROM, VROM, XYp, ctx_i);
 		smix2(Bp, r, p2floor(Np), Nloop_rw, flags, Vp,
-		    NROM, VROM, XYp, ctx_i);
+			NROM, VROM, XYp, ctx_i);
 	}
 
 	if (Nloop_all > Nloop_rw) {
@@ -830,8 +827,8 @@ static void smix(uint8_t *B, size_t r, uint32_t N, uint32_t p, uint32_t t,
 				ctx_i = (pwxform_ctx_t *)(Si + Sbytes);
 			}
 			smix2(Bp, r, N, Nloop_all - Nloop_rw,
-                              flags & (uint32_t)~YESCRYPT_RW,
-                              V, NROM, VROM, XYp, ctx_i);
+				flags & (uint32_t)~YESCRYPT_RW,
+				V, NROM, VROM, XYp, ctx_i);
 		}
 	}
 }
@@ -1046,7 +1043,7 @@ static int yescrypt_kdf32_body(
 		uint32_t i;
 		for (i = 0; i < p; i++) {
 			smix(&B[(size_t)128 * r * i], r, N, 1, t, flags, V,
-			    YCTX_param_NROM, VROM, XY, NULL, NULL);
+				YCTX_param_NROM, VROM, XY, NULL, NULL);
 		}
 	}
 
