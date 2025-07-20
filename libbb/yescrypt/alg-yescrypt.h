@@ -44,7 +44,6 @@
 # define TEST_DECODE64  0
 #endif
 
-
 // Only accept one-char parameters in salt, and only first three?
 // Almost any reasonable yescrypt hashes in /etc/shadow should
 // only ever use "jXY" parameters which set N and r.
@@ -115,6 +114,8 @@
 // -4864 bytes if 0:
 #define KDF_UNROLL_PWXFORM 0
 // if both this ^^^^^^^^^^ and PWXFORM_ROUND set to 0: -7666 bytes
+// -464 bytes:
+#define KDF_UNROLL_SALSA20 0
 
 /**
  * Type and possible values for the flags argument of yescrypt_kdf(),
