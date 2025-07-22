@@ -73,11 +73,13 @@ sha256_process_block64_shaNI:
 // movhlps    MSG, MSG                // abcd -> cdcd (3 bytes of code)
 // shuf128_32 SHUF(2,3,n,n), MSG, MSG // abcd -> cdXX (4 bytes)
 // punpckhqdq MSG, MSG                // abcd -> cdcd (4 bytes)
+// unpckhpd   MSG, MSG                // abcd -> cdcd (4 bytes)
 // psrldq     $8, MSG                 // abcd -> cd00 (5 bytes)
 // palignr    $8, MSG, MSG            // abcd -> cdab (6 bytes, SSSE3 insn)
 #define MOVE_UPPER64_DOWN(reg) movhlps reg, reg
 //#define MOVE_UPPER64_DOWN(reg) shuf128_32 SHUF(2,3,0,0), reg, reg
 //#define MOVE_UPPER64_DOWN(reg) punpckhqdq reg, reg
+//#define MOVE_UPPER64_DOWN(reg) unpckhpd reg, reg
 //#define MOVE_UPPER64_DOWN(reg) psrldq $8, reg
 //#define MOVE_UPPER64_DOWN(reg) palignr $8, reg, reg
 
