@@ -11,7 +11,7 @@
 //config:	help
 //config:	blkdiscard discards sectors on a given device.
 
-//applet:IF_BLKDISCARD(APPLET_NOEXEC(blkdiscard, blkdiscard, BB_DIR_USR_BIN, BB_SUID_DROP, blkdiscard))
+//applet:IF_BLKDISCARD(APPLET_NOEXEC(blkdiscard, blkdiscard, BB_DIR_SBIN, BB_SUID_DROP, blkdiscard))
 
 //kbuild:lib-$(CONFIG_BLKDISCARD) += blkdiscard.o
 
