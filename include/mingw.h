@@ -259,6 +259,7 @@ int ffs(int i);
  */
 
 #define TIOCGWINSZ 0x5413
+#define TIOCSWINSZ 0x5414
 
 int ioctl(int fd, int code, ...);
 

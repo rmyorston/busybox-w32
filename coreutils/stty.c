@@ -20,14 +20,30 @@
 //kbuild:lib-$(CONFIG_STTY) += stty.o
 
 //usage:#define stty_trivial_usage
+//usage:     IF_NOT_PLATFORM_MINGW32(
 //usage:       "[-a|g] [-F DEVICE] [SETTING]..."
+//usage:     )
+//usage:     IF_PLATFORM_MINGW32(
+//usage:       "[-a] [SETTING]..."
+//usage:     )
 //usage:#define stty_full_usage "\n\n"
+//usage:     IF_NOT_PLATFORM_MINGW32(
 //usage:       "Without arguments, prints baud rate, line discipline,\n"
 //usage:       "and deviations from stty sane\n"
 //usage:     "\n	-F DEVICE	Open device instead of stdin"
+//usage:     )
+//usage:     IF_PLATFORM_MINGW32(
+//usage:       "Without arguments, prints deviations from stty sane\n"
+//usage:     )
 //usage:     "\n	-a		Print all current settings in human-readable form"
+//usage:     IF_NOT_PLATFORM_MINGW32(
 //usage:     "\n	-g		Print in stty-readable form"
 //usage:     "\n	[SETTING]	See manpage"
+//usage:     )
+//usage:     IF_PLATFORM_MINGW32(
+//usage:     "\n	[SETTING]	[-]echo [-]cooked [-]raw sane"
+//usage:     "\n	         	cols N  rows N    size"
+//usage:     )
 
 /* If no args are given, write to stdout the baud rate and settings that
  * have been changed from their defaults.  Mode reading and changes
@@ -294,6 +310,7 @@ struct mode_info {
 	const tcflag_t bits;          /* Bits to set for this mode            */
 };
 
+#if !ENABLE_PLATFORM_MINGW32
 enum {
 	/* Must match mode_name[] and mode_info[] order! */
 	IDX_evenp = 0,
@@ -320,19 +337,30 @@ enum {
 	IDX_LCASE,
 #endif
 };
+#else
+enum {
+	/* Must match mode_name[] and mode_info[] order! */
+	IDX_sane = 0,
+	IDX_cooked,
+	IDX_raw,
+};
+#endif
 
 #define MI_ENTRY(N,T,F,B,M) N "\0"
 
 /* Mode names given on command line */
 static const char mode_name[] ALIGN1 =
+#if !ENABLE_PLATFORM_MINGW32
 	MI_ENTRY("evenp",    combination, REV        | OMIT, 0,          0 )
 	MI_ENTRY("parity",   combination, REV        | OMIT, 0,          0 )
 	MI_ENTRY("oddp",     combination, REV        | OMIT, 0,          0 )
 	MI_ENTRY("nl",       combination, REV        | OMIT, 0,          0 )
 	MI_ENTRY("ek",       combination, OMIT,              0,          0 )
+#endif
 	MI_ENTRY("sane",     combination, OMIT,              0,          0 )
 	MI_ENTRY("cooked",   combination, REV        | OMIT, 0,          0 )
 	MI_ENTRY("raw",      combination, REV        | OMIT, 0,          0 )
+#if !ENABLE_PLATFORM_MINGW32
 	MI_ENTRY("pass8",    combination, REV        | OMIT, 0,          0 )
 	MI_ENTRY("litout",   combination, REV        | OMIT, 0,          0 )
 	MI_ENTRY("cbreak",   combination, REV        | OMIT, 0,          0 )
@@ -454,7 +482,9 @@ static const char mode_name[] ALIGN1 =
 #if IEXTEN
 	MI_ENTRY("iexten",   local,       SANE_SET   | REV,  IEXTEN,     0 )
 #endif
+#endif /* !ENABLE_PLATFORM_MINGW32 */
 	MI_ENTRY("echo",     local,       SANE_SET   | REV,  ECHO,       0 )
+#if !ENABLE_PLATFORM_MINGW32
 	MI_ENTRY("echoe",    local,       SANE_SET   | REV,  ECHOE,      0 )
 	MI_ENTRY("crterase", local,       OMIT       | REV,  ECHOE,      0 )
 	MI_ENTRY("echok",    local,       SANE_SET   | REV,  ECHOK,      0 )
@@ -482,6 +512,7 @@ static const char mode_name[] ALIGN1 =
 #ifdef EXTPROC
 	MI_ENTRY("extproc",  local,       SANE_UNSET | REV,  EXTPROC,    0 )
 #endif
+#endif /* !ENABLE_PLATFORM_MINGW32 */
 	;
 
 #undef MI_ENTRY
@@ -489,14 +520,17 @@ static const char mode_name[] ALIGN1 =
 
 static const struct mode_info mode_info[] ALIGN4 = {
 	/* This should be verbatim cut-n-paste copy of the above MI_ENTRYs */
+#if !ENABLE_PLATFORM_MINGW32
 	MI_ENTRY("evenp",    combination, REV        | OMIT, 0,          0 )
 	MI_ENTRY("parity",   combination, REV        | OMIT, 0,          0 )
 	MI_ENTRY("oddp",     combination, REV        | OMIT, 0,          0 )
 	MI_ENTRY("nl",       combination, REV        | OMIT, 0,          0 )
 	MI_ENTRY("ek",       combination, OMIT,              0,          0 )
+#endif
 	MI_ENTRY("sane",     combination, OMIT,              0,          0 )
 	MI_ENTRY("cooked",   combination, REV        | OMIT, 0,          0 )
 	MI_ENTRY("raw",      combination, REV        | OMIT, 0,          0 )
+#if !ENABLE_PLATFORM_MINGW32
 	MI_ENTRY("pass8",    combination, REV        | OMIT, 0,          0 )
 	MI_ENTRY("litout",   combination, REV        | OMIT, 0,          0 )
 	MI_ENTRY("cbreak",   combination, REV        | OMIT, 0,          0 )
@@ -618,7 +652,9 @@ static const struct mode_info mode_info[] ALIGN4 = {
 #if IEXTEN
 	MI_ENTRY("iexten",   local,       SANE_SET   | REV,  IEXTEN,     0 )
 #endif
+#endif /* !ENABLE_PLATFORM_MINGW32 */
 	MI_ENTRY("echo",     local,       SANE_SET   | REV,  ECHO,       0 )
+#if !ENABLE_PLATFORM_MINGW32
 	MI_ENTRY("echoe",    local,       SANE_SET   | REV,  ECHOE,      0 )
 	MI_ENTRY("crterase", local,       OMIT       | REV,  ECHOE,      0 )
 	MI_ENTRY("echok",    local,       SANE_SET   | REV,  ECHOK,      0 )
@@ -646,6 +682,7 @@ static const struct mode_info mode_info[] ALIGN4 = {
 #ifdef EXTPROC
 	MI_ENTRY("extproc",  local,       SANE_UNSET | REV,  EXTPROC,    0 )
 #endif
+#endif /* !ENABLE_PLATFORM_MINGW32 */
 };
 
 enum {
@@ -653,6 +690,7 @@ enum {
 };
 
 
+#if !ENABLE_PLATFORM_MINGW32
 /* Control characters */
 struct control_info {
 	const uint8_t saneval;  /* Value to set for 'stty sane' */
@@ -786,6 +824,7 @@ static const struct control_info control_info[] ALIGN2 = {
 enum {
 	NUM_control_info = ARRAY_SIZE(control_info)
 };
+#endif
 
 
 struct globals {
@@ -803,6 +842,7 @@ struct globals {
 	G.current_col = 0; /* we are noexec, must clear */ \
 } while (0)
 
+#if !ENABLE_PLATFORM_MINGW32
 static void set_speed_or_die(enum speed_setting type, const char *arg,
 					struct termios *mode)
 {
@@ -817,6 +857,7 @@ static void set_speed_or_die(enum speed_setting type, const char *arg,
 		cfsetospeed(mode, baud);
 	}
 }
+#endif
 
 static NORETURN void perror_on_device_and_die(const char *fmt)
 {
@@ -918,6 +959,7 @@ static const struct mode_info *find_mode(const char *name)
 	return i >= 0 ? &mode_info[i] : NULL;
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 static const struct control_info *find_control(const char *name)
 {
 	int i = index_in_strings(control_name, name);
@@ -954,7 +996,32 @@ static int find_param(const char *name)
 		i |= 0x80;
 	return i;
 }
+#else
+enum {
+	param_need_arg = 0x80,
+	param_rows    = 1 | 0x80,
+	param_cols    = 2 | 0x80,
+	param_columns = 3 | 0x80,
+	param_size    = 4,
+};
 
+static int find_param(const char *name)
+{
+	static const char params[] ALIGN1 =
+		"rows\0"    /* 1 */
+		"cols\0"    /* 2 */
+		"columns\0" /* 3 */
+		"size\0";    /* 4 */
+	int i = index_in_strings(params, name) + 1;
+	if (i == 0)
+		return 0;
+	if (i != 4)
+		i |= 0x80;
+	return i;
+}
+#endif
+
+#if !ENABLE_PLATFORM_MINGW32
 static int recover_mode(const char *arg, struct termios *mode)
 {
 	int i, n;
@@ -1013,6 +1080,9 @@ static void display_speed(const struct termios *mode, int fancy)
 	if (fancy) fmt_str += 9;
 	wrapf(fmt_str, tty_baud_to_value(ispeed), tty_baud_to_value(ospeed));
 }
+#else
+# define display_speed(m, f) ((void)0)
+#endif
 
 static void do_display(const struct termios *mode, int all)
 {
@@ -1030,6 +1100,7 @@ static void do_display(const struct termios *mode, int all)
 	newline();
 #endif
 
+#if !ENABLE_PLATFORM_MINGW32
 	for (i = 0; i != CIDX_min; ++i) {
 		char ch;
 		char buf10[10];
@@ -1059,6 +1130,7 @@ static void do_display(const struct termios *mode, int all)
 #endif
 		wrapf("min = %u; time = %u;", mode->c_cc[VMIN], mode->c_cc[VTIME]);
 	newline();
+#endif
 
 	for (i = 0; i < NUM_mode_info; ++i) {
 		if (mode_info[i].flags & OMIT)
@@ -1086,6 +1158,7 @@ static void do_display(const struct termios *mode, int all)
 
 static void sane_mode(struct termios *mode)
 {
+#if !ENABLE_PLATFORM_MINGW32
 	int i;
 
 	for (i = 0; i < NUM_control_info; ++i) {
@@ -1110,6 +1183,11 @@ static void sane_mode(struct termios *mode)
 			*bitsp = val & ~mode_info[i].bits;
 		}
 	}
+#else
+	mode->c_lflag |= ECHO;
+	mode->w_mode |= ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT |
+					ENABLE_PROCESSED_INPUT;
+#endif
 }
 
 static void set_mode(const struct mode_info *info, int reversed,
@@ -1129,6 +1207,7 @@ static void set_mode(const struct mode_info *info, int reversed,
 	}
 
 	/* !bitsp - it's a "combination" mode */
+#if !ENABLE_PLATFORM_MINGW32
 	if (info == &mode_info[IDX_evenp] || info == &mode_info[IDX_parity]) {
 		if (reversed)
 			mode->c_cflag = (mode->c_cflag & ~PARENB & ~CSIZE) | CS8;
@@ -1150,9 +1229,14 @@ static void set_mode(const struct mode_info *info, int reversed,
 	} else if (info == &mode_info[IDX_ek]) {
 		mode->c_cc[VERASE] = CERASE;
 		mode->c_cc[VKILL] = CKILL;
-	} else if (info == &mode_info[IDX_sane]) {
+	}
+	else
+#endif /* !ENABLE_PLATFORM_MINGW32 */
+	if (info == &mode_info[IDX_sane]) {
 		sane_mode(mode);
-	} else if (info == &mode_info[IDX_cbreak]) {
+	}
+#if !ENABLE_PLATFORM_MINGW32
+	else if (info == &mode_info[IDX_cbreak]) {
 		if (reversed)
 			mode->c_lflag |= ICANON;
 		else
@@ -1175,11 +1259,14 @@ static void set_mode(const struct mode_info *info, int reversed,
 			mode->c_iflag &= ~ISTRIP;
 			mode->c_oflag &= ~OPOST;
 		}
-	} else if (info == &mode_info[IDX_raw] || info == &mode_info[IDX_cooked]) {
+	}
+#endif /* !ENABLE_PLATFORM_MINGW32 */
+	else if (info == &mode_info[IDX_raw] || info == &mode_info[IDX_cooked]) {
 		if ((info == &mode_info[IDX_raw] && reversed)
 		 || (info == &mode_info[IDX_cooked] && !reversed)
 		) {
 			/* Cooked mode */
+#if !ENABLE_PLATFORM_MINGW32
 			mode->c_iflag |= BRKINT | IGNPAR | ISTRIP | ICRNL | IXON;
 			mode->c_oflag |= OPOST;
 			mode->c_lflag |= ISIG | ICANON;
@@ -1189,15 +1276,23 @@ static void set_mode(const struct mode_info *info, int reversed,
 #if VTIME == VEOL
 			mode->c_cc[VEOL] = CEOL;
 #endif
+#else
+			mode->w_mode |= ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT;
+#endif
 		} else {
 			/* Raw mode */
+#if !ENABLE_PLATFORM_MINGW32
 			mode->c_iflag = 0;
 			mode->c_oflag &= ~OPOST;
 			mode->c_lflag &= ~(ISIG | ICANON | XCASE);
 			mode->c_cc[VMIN] = 1;
 			mode->c_cc[VTIME] = 0;
+#else
+			mode->w_mode &= ~(ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
+#endif
 		}
 	}
+#if !ENABLE_PLATFORM_MINGW32
 #if IXANY
 	else if (info == &mode_info[IDX_decctlq]) {
 		if (reversed)
@@ -1244,8 +1339,10 @@ static void set_mode(const struct mode_info *info, int reversed,
 		mode->c_lflag |= ECHOE | ECHOCTL | ECHOKE;
 		if (IXANY) mode->c_iflag &= ~IXANY;
 	}
+#endif /*!ENABLE_PLATFORM_MINGW32 */
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 static void set_control_char_or_die(const struct control_info *info,
 			const char *arg, struct termios *mode)
 {
@@ -1265,6 +1362,7 @@ static void set_control_char_or_die(const struct control_info *info,
 		value = xatoul_range_sfx(arg, 0, 0xff, stty_suffixes);
 	mode->c_cc[info->offset] = value;
 }
+#endif
 
 #define STTY_require_set_attr   (1 << 0)
 #define STTY_speed_was_set      (1 << 1)
@@ -1277,7 +1375,9 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 {
 	struct termios mode;
 	void (*output_func)(const struct termios *, int);
+#if !ENABLE_PLATFORM_MINGW32
 	const char *file_name = NULL;
+#endif
 	int display_all = 0;
 	int stty_state;
 	int k;
@@ -1291,7 +1391,9 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 	k = 0;
 	while (argv[++k]) {
 		const struct mode_info *mp;
+#if !ENABLE_PLATFORM_MINGW32
 		const struct control_info *cp;
+#endif
 		const char *arg = argv[k];
 		const char *argnext = argv[k+1];
 		int param;
@@ -1314,6 +1416,7 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 					output_func = do_display;
 					display_all = 1;
 					break;
+#if !ENABLE_PLATFORM_MINGW32
 				case 'g':
 					stty_state |= STTY_recoverable_output;
 					output_func = display_recoverable;
@@ -1334,11 +1437,14 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 						}
 					}
 					goto end_option;
+#endif
 				default:
 					goto invalid_argument;
 				}
 			}
+#if !ENABLE_PLATFORM_MINGW32
  end_option:
+#endif
 			continue;
 		}
 
@@ -1348,6 +1454,7 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 			continue;
 		}
 
+#if !ENABLE_PLATFORM_MINGW32
 		cp = find_control(arg);
 		if (cp) {
 			if (!argnext)
@@ -1358,6 +1465,7 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 			++k;
 			continue;
 		}
+#endif
 
 		param = find_param(arg);
 		if (param & param_need_arg) {
@@ -1381,7 +1489,11 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 			xatoul_range_sfx(argnext, 1, INT_MAX, stty_suffixes);
 			break;
 		case param_size:
+# if ENABLE_PLATFORM_MINGW32
+			break;
+# endif
 #endif
+#if !ENABLE_PLATFORM_MINGW32
 		case param_speed:
 			break;
 		case param_ispeed:
@@ -1392,15 +1504,19 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 			/* called for the side effect of xfunc death only */
 			set_speed_or_die(output_speed, argnext, &mode);
 			break;
+#endif
 		default:
+#if !ENABLE_PLATFORM_MINGW32
 			if (recover_mode(arg, &mode) == 1) break;
 			if (tty_value_to_baud(xatou(arg)) != (speed_t) -1) break;
+#endif
  invalid_argument:
 			bb_error_msg_and_die("invalid argument '%s'", arg);
 		}
 		stty_state &= ~STTY_noargs;
 	}
 
+#if !ENABLE_PLATFORM_MINGW32
 	/* Specifying both -a and -g is an error */
 	if ((stty_state & (STTY_verbose_output | STTY_recoverable_output)) ==
 		(STTY_verbose_output | STTY_recoverable_output)
@@ -1413,13 +1529,22 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 	) {
 		bb_simple_error_msg_and_die("modes may not be set when -a or -g is used");
 	}
+#else
+	/* Specifying -a with non-options is an error */
+	if ((stty_state & STTY_verbose_output) && !(stty_state & STTY_noargs)
+	) {
+		bb_simple_error_msg_and_die("modes may not be set when -a is used");
+	}
+#endif
 
+#if !ENABLE_PLATFORM_MINGW32
 	/* Now it is safe to start doing things */
 	if (file_name) {
 		G.device_name = file_name;
 		xmove_fd(xopen_nonblocking(G.device_name), STDIN_FILENO);
 		ndelay_off(STDIN_FILENO);
 	}
+#endif
 
 	/* Initialize to all zeroes so there is no risk memcmp will report a
 	   spurious difference in an uninitialized portion of the structure */
@@ -1437,7 +1562,9 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 	k = 0;
 	while (argv[++k]) {
 		const struct mode_info *mp;
+#if !ENABLE_PLATFORM_MINGW32
 		const struct control_info *cp;
+#endif
 		const char *arg = argv[k];
 		const char *argnext = argv[k+1];
 		int param;
@@ -1459,6 +1586,7 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 			continue;
 		}
 
+#if !ENABLE_PLATFORM_MINGW32
 		cp = find_control(arg);
 		if (cp) {
 			++k;
@@ -1466,6 +1594,7 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 			stty_state |= STTY_require_set_attr;
 			continue;
 		}
+#endif
 
 		param = find_param(arg);
 		if (param & param_need_arg) {
@@ -1491,6 +1620,7 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 			set_window_size(xatoul_sfx(argnext, stty_suffixes), -1);
 			break;
 #endif
+#if !ENABLE_PLATFORM_MINGW32
 		case param_speed:
 			display_speed(&mode, 0);
 			break;
@@ -1502,7 +1632,9 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 			set_speed_or_die(output_speed, argnext, &mode);
 			stty_state |= (STTY_require_set_attr | STTY_speed_was_set);
 			break;
+#endif
 		default:
+#if !ENABLE_PLATFORM_MINGW32
 			if (recover_mode(arg, &mode) == 1)
 				stty_state |= STTY_require_set_attr;
 			else /* true: if (tty_value_to_baud(xatou(arg)) != (speed_t) -1) */{
@@ -1510,15 +1642,24 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 				stty_state |= (STTY_require_set_attr | STTY_speed_was_set);
 			} /* else - impossible (caught in the first pass):
 				bb_error_msg_and_die("invalid argument '%s'", arg); */
+#endif
 		}
 	}
 
 	if (stty_state & STTY_require_set_attr) {
+#if !ENABLE_PLATFORM_MINGW32
 		struct termios new_mode;
+#else
+		if (mode.c_lflag & ECHO)
+			mode.w_mode |= ENABLE_ECHO_INPUT;
+		else
+			mode.w_mode &= ~ENABLE_ECHO_INPUT;
+#endif
 
 		if (tcsetattr(STDIN_FILENO, TCSADRAIN, &mode))
 			perror_on_device_and_die("%s");
 
+#if !ENABLE_PLATFORM_MINGW32
 		/* POSIX (according to Zlotnick's book) tcsetattr returns zero if
 		   it performs *any* of the requested operations.  This means it
 		   can report 'success' when it has actually failed to perform
@@ -1554,6 +1695,7 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 #endif
 				perror_on_device_and_die("%s: cannot perform all requested operations");
 		}
+#endif
 	}
 
 	return EXIT_SUCCESS;

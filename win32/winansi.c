@@ -160,7 +160,7 @@ int FAST_FUNC terminal_mode(int reset)
 					mode |= VT_INPUT;
 				}
 
-				if (newmode != oldmode) {
+				if (reset && newmode != oldmode) {
 					if (!SetConsoleMode(h, newmode)) {
 						if (mode >= 4)
 							mode &= ~VT_INPUT;

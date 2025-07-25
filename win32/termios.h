@@ -1,23 +1,32 @@
 #ifndef TERMIOS_H
 #define TERMIOS_H
 
-#define VINTR 0
-#define VEOF  1
+#define ECHO	0x0004
 
-#define TCIFLUSH    0
-#define TCSAFLUSH   1
-#define TCSANOW     2
-#define TCSADRAIN   3
-#define TCSADFLUSH  4
+#define VINTR		0
+#define VEOF		1
+
+#define TCIFLUSH	0
+#define TCSAFLUSH	1
+#define TCSANOW		2
+#define TCSADRAIN	3
+#define TCSADFLUSH	4
+
+#define CSIZE	0
 
 typedef unsigned char cc_t;
+typedef unsigned int  tcflag_t;
 typedef unsigned int  speed_t;
 
-#define NCCS		2
+#define NCCS		18
 struct termios {
+	tcflag_t	c_iflag;
+	tcflag_t	c_oflag;
+	tcflag_t	c_cflag;
+	tcflag_t	c_lflag;
+	char		c_line;
 	cc_t		c_cc[NCCS];
-	unsigned long	imode;
-	unsigned long	omode;
+	unsigned long	w_mode;
 };
 
 struct winsize {

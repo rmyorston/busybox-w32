@@ -2,12 +2,10 @@
 
 int tcsetattr(int fd, int mode UNUSED_PARAM, const struct termios *t)
 {
-	if (terminal_mode(FALSE) & VT_INPUT) {
-		HANDLE h = (HANDLE)_get_osfhandle(fd);
-		if (!SetConsoleMode(h, t->imode)) {
-			errno = err_win_to_posix();
-			return -1;
-		}
+	HANDLE h = (HANDLE)_get_osfhandle(fd);
+	if (!SetConsoleMode(h, t->w_mode)) {
+		errno = err_win_to_posix();
+		return -1;
 	}
 
 	return 0;
@@ -15,15 +13,19 @@ int tcsetattr(int fd, int mode UNUSED_PARAM, const struct termios *t)
 
 int tcgetattr(int fd, struct termios *t)
 {
-	if (terminal_mode(FALSE) & VT_INPUT) {
-		HANDLE h = (HANDLE)_get_osfhandle(fd);
-		if (!GetConsoleMode(h, &t->imode)) {
-			errno = err_win_to_posix();
-			return -1;
-		}
+	HANDLE h = (HANDLE)_get_osfhandle(fd);
+	if (!GetConsoleMode(h, &t->w_mode)) {
+		errno = err_win_to_posix();
+		return -1;
 	}
+
 	t->c_cc[VINTR] = 3;	// ctrl-c
 	t->c_cc[VEOF] = 4;	// ctrl-d
+
+	if (t->w_mode & ENABLE_ECHO_INPUT)
+		t->c_lflag |= ECHO;
+	else
+		t->c_lflag &= ~ECHO;
 
 	return 0;
 }
