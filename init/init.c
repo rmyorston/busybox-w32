@@ -1201,7 +1201,7 @@ int init_main(int argc UNUSED_PARAM, char **argv)
 			int status;
 			struct init_action *a;
 
-			wpid = waitpid(-1, &status, WNOHANG);
+			wpid = wait_any_nohang(&status);
 			if (wpid <= 0)
 				break;
 

@@ -989,7 +989,7 @@ static int check_completions(void)
 			if (line->cl_pid <= 0)
 				continue;
 
-			r = waitpid(line->cl_pid, NULL, WNOHANG);
+			r = safe_waitpid(line->cl_pid, NULL, WNOHANG);
 			if (r < 0 || r == line->cl_pid) {
 				process_finished_job(file->cf_username, line);
 				if (line->cl_pid == 0) {
@@ -1002,8 +1002,12 @@ static int check_completions(void)
 			file->cf_has_running = 1;
 		}
 
-		/* Reap any other children we don't actively track */
-		while (waitpid(-1, NULL, WNOHANG) > 0);
+		/* Reap any other children we don't actively track.
+		 * Reportedly, some people run crond as init process!
+		 * Thus, we need to reap orphans, like init does.
+		 */
+		while (wait_any_nohang(NULL) > 0)
+			continue;
 
 //FIXME: if !file->cf_has_running && file->deleted: delete it!
 //otherwise deleted entries will stay forever, right?
