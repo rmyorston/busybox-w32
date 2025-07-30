@@ -257,7 +257,12 @@ static FILE *sed_xfopen_w(const char *fname)
 
 static void cleanup_outname(void)
 {
-	if (G.outname) unlink(G.outname);
+	if (G.outname) {
+#if ENABLE_PLATFORM_MINGW32
+		fclose(G.nonstdout);
+#endif
+		unlink(G.outname);
+	}
 }
 
 /* strcpy, replacing "\from" with 'to'. If to is NUL, replacing "\any" with 'any' */
