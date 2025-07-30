@@ -2209,8 +2209,9 @@ enum {
 	MD5_OUTSIZE    = 16,
 	SHA1_OUTSIZE   = 20,
 	SHA256_OUTSIZE = 32,
+	SHA384_OUTSIZE = 48,
 	SHA512_OUTSIZE = 64,
-	SHA3_OUTSIZE   = 28,
+	//SHA3-224_OUTSIZE = 28,
 	/* size of input block */
 	SHA2_INSIZE     = 64,
 };
@@ -2227,6 +2228,7 @@ typedef struct sha512_ctx_t {
 	uint64_t hash[8];
 	uint8_t wbuffer[128]; /* always correctly aligned for uint64_t */
 } sha512_ctx_t;
+typedef struct sha512_ctx_t sha384_ctx_t;
 typedef struct sha3_ctx_t {
 	uint64_t state[25];
 	unsigned bytes_queued;
@@ -2244,6 +2246,9 @@ void sha256_begin(sha256_ctx_t *ctx) FAST_FUNC;
 void sha512_begin(sha512_ctx_t *ctx) FAST_FUNC;
 void sha512_hash(sha512_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
 unsigned sha512_end(sha512_ctx_t *ctx, void *resbuf) FAST_FUNC;
+void sha384_begin(sha384_ctx_t *ctx) FAST_FUNC;
+#define sha384_hash sha512_hash
+unsigned sha384_end(sha384_ctx_t *ctx, void *resbuf) FAST_FUNC;
 void sha3_begin(sha3_ctx_t *ctx) FAST_FUNC;
 void sha3_hash(sha3_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
 unsigned sha3_end(sha3_ctx_t *ctx, void *resbuf) FAST_FUNC;
