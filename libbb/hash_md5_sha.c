@@ -83,6 +83,7 @@ unsigned FAST_FUNC generic_end(struct bcrypt_hash_ctx_t *ctx, void *resbuf)
 {
 	NTSTATUS status = BCryptFinishHash(ctx->handle, resbuf, ctx->output_size, 0);
 	mingw_die_if_error(status, "BCryptFinishHash");
+	BCryptDestroyHash(ctx->handle);
 	free(ctx->hash_obj);
 	return ctx->output_size;
 }

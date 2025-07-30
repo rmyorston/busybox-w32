@@ -544,6 +544,7 @@ static unsigned hmac_sha_precomputed_v(
 }
 
 static void hmac_uninit(hmac_precomputed_t *pre) {
+	BCryptDestroyHash(pre->handle);
 	free(pre->hash_obj);
 }
 
