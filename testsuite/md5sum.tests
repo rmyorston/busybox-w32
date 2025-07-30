@@ -32,9 +32,9 @@ text=`yes "$text" | head -c 9999`
 result=`(
 n=0
 while test $n -le 999; do
-	echo "$text" | head -c $n | "$sum"
+	echo "$text" | head -c $n | $sum
 	n=$(($n+1))
-done | "$sum"
+done | $sum
 )`
 if test x"$result" != x"$expected  -"; then
 	echo "FAIL: $sum (r:$result exp:$expected)"
@@ -45,7 +45,7 @@ fi
 
 # GNU compat: -c EMPTY must fail (exitcode 1)!
 >EMPTY
-if "$sum" -c EMPTY 2>/dev/null; then
+if $sum -c EMPTY 2>/dev/null; then
 	echo "FAIL: $sum -c EMPTY"
 	: $((FAILCOUNT++))
 else
