@@ -454,16 +454,17 @@ static unsigned calc_name_len(const char *name)
 	unsigned len;
 	uni_stat_t uni_stat;
 
-	if (!(option_mask32 & OPT_q))
+	if (!(option_mask32 & (OPT_q|OPT_Q)))
 		return strlen(name);
 
-	// TODO: quote tab as \t, etc, if -Q
 	name = printable_string2(&uni_stat, name);
 
 	if (!(option_mask32 & OPT_Q)) {
 		return uni_stat.unicode_width;
 	}
 
+	// TODO: quote chars 7..13 as \a,b,t,n,v,f,r
+	// other chars <32 or >127 as \ooo octal
 	len = 2 + uni_stat.unicode_width;
 	while (*name) {
 		if (*name == '"' || *name == '\\') {
@@ -486,12 +487,11 @@ static unsigned print_name(const char *name)
 	unsigned len;
 	uni_stat_t uni_stat;
 
-	if (!(option_mask32 & OPT_q)) {
+	if (!(option_mask32 & (OPT_q|OPT_Q))) {
 		fputs_stdout(name);
 		return strlen(name);
 	}
 
-	// TODO: quote tab as \t, etc, if -Q
 	name = printable_string2(&uni_stat, name);
 
 	if (!(option_mask32 & OPT_Q)) {
@@ -499,6 +499,8 @@ static unsigned print_name(const char *name)
 		return uni_stat.unicode_width;
 	}
 
+	// TODO: quote chars 7..13 as \a,b,t,n,v,f,r
+	// other chars <32 or >127 as \ooo octal
 	len = 2 + uni_stat.unicode_width;
 	putchar('"');
 	while (*name) {
