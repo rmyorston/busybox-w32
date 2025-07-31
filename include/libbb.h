@@ -1113,6 +1113,9 @@ char *bin2hex(char *dst, const char *src, int count) FAST_FUNC;
 /* Reverse */
 char* hex2bin(char *dst, const char *src, int count) FAST_FUNC;
 
+extern const char c_escape_conv_str00[];
+#define c_escape_conv_str07 (c_escape_conv_str00+3)
+
 void FAST_FUNC xorbuf_3(void *dst, const void *src1, const void *src2, unsigned count);
 void FAST_FUNC xorbuf(void* buf, const void* mask, unsigned count);
 void FAST_FUNC xorbuf16_aligned_long(void* buf, const void* mask);

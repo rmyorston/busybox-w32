@@ -457,19 +457,29 @@ static unsigned calc_name_len(const char *name)
 	if (!(option_mask32 & (OPT_q|OPT_Q)))
 		return strlen(name);
 
-	name = printable_string2(&uni_stat, name);
-
 	if (!(option_mask32 & OPT_Q)) {
+		printable_string2(&uni_stat, name);
 		return uni_stat.unicode_width;
 	}
 
-	// TODO: quote chars 7..13 as \a,b,t,n,v,f,r
-	// other chars <32 or >127 as \ooo octal
-	len = 2 + uni_stat.unicode_width;
+	len = 2 + strlen(name);
 	while (*name) {
+	        unsigned char ch = (unsigned char)*name;
+		if (ch < ' ' || ch > 0x7e) {
+			ch -= 7;
+			if ((signed char)ch >= 0 && ch <= 6) {
+				// quote chars 7..13 as \a,b,t,n,v,f,r
+				len++;
+				goto next;
+			}
+			// other chars <32 or >126 as \ooo octal
+			len += 3;
+			goto next;
+		}
 		if (*name == '"' || *name == '\\') {
 			len++;
 		}
+ next:
 		name++;
 	}
 	return len;
@@ -492,23 +502,39 @@ static unsigned print_name(const char *name)
 		return strlen(name);
 	}
 
-	name = printable_string2(&uni_stat, name);
-
 	if (!(option_mask32 & OPT_Q)) {
+		name = printable_string2(&uni_stat, name);
 		fputs_stdout(name);
 		return uni_stat.unicode_width;
 	}
 
-	// TODO: quote chars 7..13 as \a,b,t,n,v,f,r
-	// other chars <32 or >127 as \ooo octal
-	len = 2 + uni_stat.unicode_width;
+	len = 2 + strlen(name);
 	putchar('"');
 	while (*name) {
-		if (*name == '"' || *name == '\\') {
+	        unsigned char ch = (unsigned char)*name;
+		if (ch < ' ' || ch > 0x7e) {
+			putchar('\\');
+			ch -= 7;
+			if ((signed char)ch >= 0 && ch <= 6) {
+				// quote chars 7..13 as \a,b,t,n,v,f,r
+				ch = c_escape_conv_str07[1 + 3 * ch];
+				len++;
+				goto put_ch;
+			}
+			// other chars <32 or >126 as \ooo octal
+			ch = (unsigned char)*name;
+			putchar('0' + ((ch>>6) & 7));
+			putchar('0' + ((ch>>3) & 7));
+			ch = '0' + (ch & 7);
+			len += 3;
+			goto put_ch;
+		}
+		if (ch == '"' || ch == '\\') {
 			putchar('\\');
 			len++;
 		}
-		putchar(*name);
+ put_ch:
+		putchar(ch);
 		name++;
 	}
 	putchar('"');
