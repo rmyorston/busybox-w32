@@ -1206,6 +1206,18 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 	exit(0);
 #endif
 
+	/* ftpd secret backdoor? */
+	if (ENABLE_FTPD && applet_name[0] == 'f') {
+		/* dirs first are much nicer */
+		opt = option_mask32 |= OPT_dirs_first;
+		/* don't show SEcontext */
+		IF_SELINUX(opt = option_mask32 &= ~OPT_Z;)
+		/* do not query stdout about size and tty-ness */
+		IF_FEATURE_LS_WIDTH(G_terminal_width = INT_MAX;)
+		G.tty_out = 1; /* not a tty */
+		goto skip_if_ftpd;
+	}
+
 #if ENABLE_FEATURE_LS_WIDTH
 	if ((int)G_terminal_width < 0) {
 		/* obtain the terminal width */
@@ -1256,6 +1268,7 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 		}
 	}
 #endif
+ skip_if_ftpd:
 
 	/* sort out which command line options take precedence */
 	if (ENABLE_FEATURE_LS_RECURSIVE && (opt & OPT_d))
@@ -1278,11 +1291,6 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 
 	if (!(opt & OPT_q) && G_isatty())
 		opt = option_mask32 |= OPT_q;
-
-	if (ENABLE_FTPD && applet_name[0] == 'f') {
-		/* ftpd secret backdoor. dirs first are much nicer */
-		opt = option_mask32 |= OPT_dirs_first;
-	}
 
 	argv += optind;
 	if (!argv[0])
