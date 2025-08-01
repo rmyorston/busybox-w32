@@ -47,9 +47,12 @@ PBKDF2_SHA256(const uint8_t *passwd, size_t passwdlen,
 
 	/* Iterate through the blocks. */
 	for (i = 0; dkLen != 0; ) {
-		uint64_t U[32 / 8];
-		uint64_t T[32 / 8];
-		uint64_t j;
+		long U[32 / sizeof(long)];
+		long T[32 / sizeof(long)];
+// Do not make these ^^ uint64_t[]. Keep them long[].
+// Even though the XORing loop below is optimized out,
+// gcc is not smart enough to realize that 64-bit alignment of the stack
+// is no longer useful, and generates ~50 more bytes of code on i386...
 		uint32_t ivec;
 		size_t clen;
 		int k;
@@ -64,13 +67,15 @@ PBKDF2_SHA256(const uint8_t *passwd, size_t passwdlen,
 //does libbb need a non-vararg version with just one (buf,len)?
 
 		if (c > 1) {
+//in yescrypt, c is always 1, so this if() branch is optimized out
+			uint64_t j;
 			/* T_i = U_1 ... */
 			memcpy(U, T, 32);
 			for (j = 2; j <= c; j++) {
 				/* Compute U_j. */
 				hmac_peek_hash(&Phctx, (void*)U, U, 32, NULL);
 				/* ... xor U_j ... */
-				for (k = 0; k < 32 / 8; k++)
+				for (k = 0; k < 32 / sizeof(long); k++)
 					T[k] ^= U[k];
 				//TODO: xorbuf32_aligned_long(T, U);
 			}
