@@ -930,6 +930,12 @@ struct globals {
 # define G_flag_return_in_progress 0
 #endif
 	smallint exiting; /* used to prevent EXIT trap recursion */
+#if !BB_MMU
+	smallint reexeced_on_NOMMU;
+# define G_reexeced_on_NOMMU (G.reexeced_on_NOMMU)
+#else
+# define G_reexeced_on_NOMMU 0
+#endif
 	/* These support $? */
 	smalluint last_exitcode;
 	smalluint expand_exitcode;
@@ -2105,7 +2111,9 @@ static const char* FAST_FUNC get_local_var_value(const char *name);
 static void save_history_run_exit_trap_and_exit(int exitcode)
 {
 #if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
-	if (G.line_input_state) {
+	if (G.line_input_state
+	 && getpid() == G.root_pid /* exits in subshells do not save history */
+	) {
 		const char *hp;
 # if ENABLE_FEATURE_SH_HISTFILESIZE
 // in bash:
@@ -10218,6 +10226,53 @@ static int run_and_free_list(struct pipe *pi)
 /*
  * Initialization and main
  */
+#if ENABLE_FEATURE_EDITING
+static void init_line_editing(void)
+{
+	G.line_input_state = new_line_input_t(FOR_SHELL);
+# if ENABLE_FEATURE_TAB_COMPLETION
+	G.line_input_state->get_exe_name = hush_command_name;
+# endif
+# if EDITING_HAS_sh_get_var
+	G.line_input_state->sh_get_var = get_local_var_value;
+# endif
+# if ENABLE_HUSH_SAVEHISTORY && MAX_HISTORY > 0
+	{
+		const char *hp = get_local_var_value("HISTFILE");
+		if (!hp) {
+			hp = get_local_var_value("HOME");
+			if (hp) {
+				hp = concat_path_file(hp, ".hush_history");
+				/* Make HISTFILE set on exit (else history won't be saved) */
+				set_local_var_from_halves("HISTFILE", hp);
+			}
+		} else {
+			hp = xstrdup(hp);
+		}
+		if (hp) {
+			G.line_input_state->hist_file = hp;
+		}
+#  if ENABLE_FEATURE_SH_HISTFILESIZE
+		hp = get_local_var_value("HISTSIZE");
+		/* Using HISTFILESIZE above to limit max_history would be WRONG:
+		 * users may set HISTFILESIZE=0 in their profile scripts
+		 * to prevent _saving_ of history files, but still want to have
+		 * non-zero history limit for in-memory list.
+		 */
+// in bash, runtime history size is controlled by HISTSIZE (0=no history),
+// HISTFILESIZE controls on-disk history file size (in lines, 0=no history):
+		G.line_input_state->max_history = size_from_HISTFILESIZE(hp);
+// HISTFILESIZE: "The shell sets the default value to the value of HISTSIZE after reading any startup files."
+// HISTSIZE: "The shell sets the default value to 500 after reading any startup files."
+// (meaning: if the value wasn't set after startup files, the default value is set as described above)
+#  endif
+	}
+# endif
+}
+#else
+# define init_line_editing() ((void)0)
+#endif
+
 static void install_sighandlers(unsigned mask)
 {
 	sighandler_t old_handler;
@@ -10356,7 +10411,6 @@ static int set_mode(int state, char mode, const char *o_opt)
 int hush_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int hush_main(int argc, char **argv)
 {
-	pid_t cached_getpid;
 	enum {
 		OPT_login = (1 << 0),
 	};
@@ -10384,9 +10438,6 @@ int hush_main(int argc, char **argv)
 		_exit(0);
 	}
 	G.argv0_for_re_execing = argv[0];
-	if (G.argv0_for_re_execing[0] == '-')
-		/* reexeced hush should never be a login shell */
-		G.argv0_for_re_execing++;
 #endif
 #if ENABLE_HUSH_TRAP
 # if ENABLE_HUSH_FUNCTIONS
@@ -10399,9 +10450,8 @@ int hush_main(int argc, char **argv)
 	G.count_SIGCHLD++; /* ensure it is != G.handled_SIGCHLD */
 #endif
 
-	cached_getpid = getpid();   /* for tcsetpgrp() during init */
-	G.root_pid = cached_getpid; /* for $PID  (NOMMU can override via -$HEXPID:HEXPPID:...) */
-	G.root_ppid = getppid();    /* for $PPID (NOMMU can override) */
+	G.root_pid = getpid();   /* for $PID  (NOMMU can override via -$HEXPID:HEXPPID:...) */
+	G.root_ppid = getppid(); /* for $PPID (NOMMU can override) */
 
 	/* Deal with HUSH_VERSION */
 	debug_printf_env("unsetenv '%s'\n", "HUSH_VERSION");
@@ -10568,6 +10618,7 @@ int hush_main(int argc, char **argv)
 		case '$': {
 			unsigned long long empty_trap_mask;
 
+			G.reexeced_on_NOMMU = 1;
 			G.root_pid = bb_strtou(optarg, &optarg, 16);
 			optarg++;
 			G.root_ppid = bb_strtou(optarg, &optarg, 16);
@@ -10647,7 +10698,9 @@ int hush_main(int argc, char **argv)
 	G.global_argv[0] = argv[0];
 
 	/* If we are login shell... */
-	if (flags & OPT_login) {
+	if (!G_reexeced_on_NOMMU /* reexeced hush should never be a login shell */
+	 && (flags & OPT_login)
+	) {
 		const char *hp = NULL;
 		HFILE *input;
 
@@ -10767,7 +10820,9 @@ int hush_main(int argc, char **argv)
 	 * Refer to Posix.2, the description of the 'sh' utility.
 	 */
 #if ENABLE_HUSH_JOB
-	if (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)) {
+	if (!G_reexeced_on_NOMMU
+	 && isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)
+	) {
 		G_saved_tty_pgrp = tcgetpgrp(STDIN_FILENO);
 		debug_printf("saved_tty_pgrp:%d\n", G_saved_tty_pgrp);
 		if (G_saved_tty_pgrp < 0)
@@ -10813,57 +10868,18 @@ int hush_main(int argc, char **argv)
 			 * (bash, too, does this only if ctty is available) */
 			bb_setpgrp(); /* is the same as setpgid(our_pid, our_pid); */
 			/* Grab control of the terminal */
-			tcsetpgrp(G_interactive_fd, cached_getpid);
+			tcsetpgrp(G_interactive_fd, G.root_pid);
 		}
 		enable_restore_tty_pgrp_on_exit();
-
-# if ENABLE_FEATURE_EDITING
-		G.line_input_state = new_line_input_t(FOR_SHELL);
-#  if ENABLE_FEATURE_TAB_COMPLETION
-		G.line_input_state->get_exe_name = hush_command_name;
-#  endif
-#  if EDITING_HAS_sh_get_var
-		G.line_input_state->sh_get_var = get_local_var_value;
-#  endif
-# endif
-# if ENABLE_HUSH_SAVEHISTORY && MAX_HISTORY > 0
-		{
-			const char *hp = get_local_var_value("HISTFILE");
-			if (!hp) {
-				hp = get_local_var_value("HOME");
-				if (hp) {
-					hp = concat_path_file(hp, ".hush_history");
-					/* Make HISTFILE set on exit (else history won't be saved) */
-					set_local_var_from_halves("HISTFILE", hp);
-				}
-			} else {
-				hp = xstrdup(hp);
-			}
-			if (hp) {
-				G.line_input_state->hist_file = hp;
-			}
-#  if ENABLE_FEATURE_SH_HISTFILESIZE
-			hp = get_local_var_value("HISTSIZE");
-			/* Using HISTFILESIZE above to limit max_history would be WRONG:
-			 * users may set HISTFILESIZE=0 in their profile scripts
-			 * to prevent _saving_ of history files, but still want to have
-			 * non-zero history limit for in-memory list.
-			 */
-// in bash, runtime history size is controlled by HISTSIZE (0=no history),
-// HISTFILESIZE controls on-disk history file size (in lines, 0=no history):
-			G.line_input_state->max_history = size_from_HISTFILESIZE(hp);
-// HISTFILESIZE: "The shell sets the default value to the value of HISTSIZE after reading any startup files."
-// HISTSIZE: "The shell sets the default value to 500 after reading any startup files."
-// (meaning: if the value wasn't set after startup files, the default value is set as described above)
-#  endif
-		}
-# endif
+		init_line_editing();
 	} else {
 		install_special_sighandlers();
 	}
 #elif ENABLE_HUSH_INTERACTIVE
 	/* No job control compiled in, only prompt/line editing */
-	if (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)) {
+	if (!G_reexeced_on_NOMMU
+	 && isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)
+	) {
 		G_interactive_fd = dup_CLOEXEC(STDIN_FILENO, 254);
 		if (G_interactive_fd < 0) {
 			/* try to dup to any fd */
@@ -10872,6 +10888,8 @@ int hush_main(int argc, char **argv)
 				/* give up */
 				G_interactive_fd = 0;
 		}
+		if (G_interactive_fd)
+			init_line_editing();
 	}
 	install_special_sighandlers();
 #else
