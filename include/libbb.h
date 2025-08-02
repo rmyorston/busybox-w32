@@ -1113,6 +1113,19 @@ char *bin2hex(char *dst, const char *src, int count) FAST_FUNC;
 /* Reverse */
 char* hex2bin(char *dst, const char *src, int count) FAST_FUNC;
 
+/* Returns strlen as a bonus */
+//size_t replace_char(char *s, char what, char with) FAST_FUNC;
+static inline size_t replace_char(char *str, char from, char to)
+{
+	char *p = str;
+	while (*p) {
+		if (*p == from)
+			*p = to;
+		p++;
+	}
+	return p - str;
+}
+
 extern const char c_escape_conv_str00[];
 #define c_escape_conv_str07 (c_escape_conv_str00+3)
 
