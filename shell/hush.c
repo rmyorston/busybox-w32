@@ -1929,7 +1929,7 @@ static void restore_G_args(save_arg_t *sv, char **argv)
  * "trap - SIGxxx":
  *    if sig is in special_sig_mask, set handler back to:
  *        record_pending_signo, or to IGN if it's a tty stop signal
- *    if sig is in fatal_sig_mask, set handler back to sigexit.
+ *    if sig is in fatal_sig_mask, set handler back to restore_ttypgrp_and_killsig_or__exit.
  *    else: set handler back to SIG_DFL
  * "trap 'cmd' SIGxxx":
  *    set handler to record_pending_signo.
@@ -2002,7 +2002,7 @@ static sighandler_t install_sighandler(int sig, sighandler_t handler)
 	return old_sa.sa_handler;
 }
 
-static void hush_exit(int exitcode) NORETURN;
+static void save_history_run_exit_trap_and_exit(int exitcode) NORETURN;
 
 static void restore_ttypgrp_and__exit(void) NORETURN;
 static void restore_ttypgrp_and__exit(void)
@@ -2010,7 +2010,7 @@ static void restore_ttypgrp_and__exit(void)
 	/* xfunc has failed! die die die */
 	/* no EXIT traps, this is an escape hatch! */
 	G.exiting = 1;
-	hush_exit(xfunc_error_retval);
+	save_history_run_exit_trap_and_exit(xfunc_error_retval);
 }
 
 #if ENABLE_HUSH_JOB
@@ -2046,8 +2046,8 @@ static void fflush_and__exit(void)
  * or called directly with -EXITCODE.
  * We also call it if xfunc is exiting.
  */
-static void sigexit(int sig) NORETURN;
-static void sigexit(int sig)
+static void restore_ttypgrp_and_killsig_or__exit(int sig) NORETURN;
+static void restore_ttypgrp_and_killsig_or__exit(int sig)
 {
 	/* Careful: we can end up here after [v]fork. Do not restore
 	 * tty pgrp then, only top-level shell process does that */
@@ -2081,7 +2081,7 @@ static sighandler_t pick_sighandler(unsigned sig)
 #if ENABLE_HUSH_JOB
 		/* is sig fatal? */
 		if (G_fatal_sig_mask & sigmask)
-			handler = sigexit;
+			handler = restore_ttypgrp_and_killsig_or__exit;
 		else
 #endif
 		/* sig has special handling? */
@@ -2102,7 +2102,7 @@ static sighandler_t pick_sighandler(unsigned sig)
 static const char* FAST_FUNC get_local_var_value(const char *name);
 
 /* Restores tty foreground process group, and exits. */
-static void hush_exit(int exitcode)
+static void save_history_run_exit_trap_and_exit(int exitcode)
 {
 #if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
 	if (G.line_input_state) {
@@ -2155,7 +2155,7 @@ static void hush_exit(int exitcode)
 
 	fflush_all();
 #if ENABLE_HUSH_JOB
-	sigexit(- (exitcode & 0xff));
+	restore_ttypgrp_and_killsig_or__exit(- (exitcode & 0xff));
 #else
 	_exit(exitcode);
 #endif
@@ -2240,7 +2240,7 @@ static int check_and_run_traps(void)
 				}
 			}
 			/* this restores tty pgrp, then kills us with SIGHUP */
-			sigexit(SIGHUP);
+			restore_ttypgrp_and_killsig_or__exit(SIGHUP);
 		}
 #endif
 #if ENABLE_HUSH_FAST
@@ -10144,7 +10144,7 @@ static int run_list(struct pipe *pi)
 		if (rcode != 0 && G.o_opt[OPT_O_ERREXIT]) {
 			debug_printf_exec("ERREXIT:1 errexit_depth:%d\n", G.errexit_depth);
 			if (G.errexit_depth == 0)
-				hush_exit(rcode);
+				save_history_run_exit_trap_and_exit(rcode);
 		}
 		G.errexit_depth = sv_errexit_depth;
 
@@ -10905,7 +10905,7 @@ int hush_main(int argc, char **argv)
 	parse_and_run_file(hfopen(NULL)); /* stdin */
 
  final_return:
-	hush_exit(G.last_exitcode);
+	save_history_run_exit_trap_and_exit(G.last_exitcode);
 }
 
 /*
@@ -11091,19 +11091,19 @@ static int FAST_FUNC builtin_exit(char **argv)
 	 * TODO: we can use G.exiting = -1 as indicator "last cmd was exit"
 	 */
 
-	/* note: EXIT trap is run by hush_exit */
+	/* note: EXIT trap is run by save_history_run_exit_trap_and_exit */
 	argv = skip_dash_dash(argv);
 	if (argv[0] == NULL) {
 #if ENABLE_HUSH_TRAP
 		if (G.pre_trap_exitcode >= 0) /* "exit" in trap uses $? from before the trap */
-			hush_exit(G.pre_trap_exitcode);
+			save_history_run_exit_trap_and_exit(G.pre_trap_exitcode);
 #endif
-		hush_exit(G.last_exitcode);
+		save_history_run_exit_trap_and_exit(G.last_exitcode);
 	}
 	/* mimic bash: exit 123abc == exit 255 + error msg */
 	xfunc_error_retval = 255;
 	/* bash: exit -2 == exit 254, no error msg */
-	hush_exit(xatoi(argv[0]) & 0xff);
+	save_history_run_exit_trap_and_exit(xatoi(argv[0]) & 0xff);
 }
 
 #if ENABLE_HUSH_TYPE
