@@ -392,6 +392,8 @@
 
 /* Build knobs */
 #define LEAK_HUNTING 0
+#define LEAK_PRINTF(...) fdprintf(__VA_ARGS__)
+//#define LEAK_PRINTF(...) do { if (ptr_to_globals && G.root_pid == getpid()) fdprintf(__VA_ARGS__); } while (0)
 #define BUILD_AS_NOMMU 0
 /* Enable/disable sanity checks. Ok to enable in production,
  * only adds a bit of bloat. Set to >1 to get non-production level verbosity.
@@ -1358,30 +1360,67 @@ static void debug_print_strings(const char *prefix, char **vv)
 static void *xxmalloc(int lineno, size_t size)
 {
 	void *ptr = xmalloc((size + 0xff) & ~0xff);
-	fdprintf(2, "line %d: malloc %p\n", lineno, ptr);
+	LEAK_PRINTF(2, "line %d: malloc %p\n", lineno, ptr);
+	return ptr;
+}
+static void *xxzalloc(int lineno, size_t size)
+{
+	void *ptr = xzalloc((size + 0xff) & ~0xff);
+	LEAK_PRINTF(2, "line %d: zalloc %p\n", lineno, ptr);
 	return ptr;
 }
 static void *xxrealloc(int lineno, void *ptr, size_t size)
 {
+	char *p = ptr;
 	ptr = xrealloc(ptr, (size + 0xff) & ~0xff);
-	fdprintf(2, "line %d: realloc %p\n", lineno, ptr);
+	if (p != ptr)
+		LEAK_PRINTF(2, "line %d: realloc %p\n", lineno, ptr);
+	return ptr;
+}
+static void *xxrealloc_getcwd_or_warn(int lineno, char *ptr)
+{
+	char *p = ptr;
+	ptr = xrealloc_getcwd_or_warn(ptr);
+	if (p != ptr)
+		LEAK_PRINTF(2, "line %d: xrealloc_getcwd_or_warn %p\n", lineno, ptr);
 	return ptr;
 }
 static char *xxstrdup(int lineno, const char *str)
 {
 	char *ptr = xstrdup(str);
-	fdprintf(2, "line %d: strdup %p\n", lineno, ptr);
+	LEAK_PRINTF(2, "line %d: strdup %p\n", lineno, ptr);
+	return ptr;
+}
+static char *xxstrndup(int lineno, const char *str, size_t n)
+{
+	char *ptr = xstrndup(str, n);
+	LEAK_PRINTF(2, "line %d: strndup %p\n", lineno, ptr);
+	return ptr;
+}
+static char *xxasprintf(int lineno, const char *f, ...)
+{
+	char *ptr;
+	va_list args;
+	va_start(args, f);
+	if (vasprintf(&ptr, f, args) < 0)
+		bb_die_memory_exhausted();
+	va_end(args);
+	LEAK_PRINTF(2, "line %d: xasprintf %p\n", lineno, ptr);
 	return ptr;
 }
 static void xxfree(void *ptr)
 {
-	fdprintf(2, "free %p\n", ptr);
+	LEAK_PRINTF(2, "free %p\n", ptr);
 	free(ptr);
 }
-# define xmalloc(s)     xxmalloc(__LINE__, s)
-# define xrealloc(p, s) xxrealloc(__LINE__, p, s)
-# define xstrdup(s)     xxstrdup(__LINE__, s)
-# define free(p)        xxfree(p)
+# define xmalloc(s)        xxmalloc(__LINE__, s)
+# define xzalloc(s)        xxzalloc(__LINE__, s)
+# define xrealloc(p, s)    xxrealloc(__LINE__, p, s)
+# define xrealloc_getcwd_or_warn(p) xxrealloc_getcwd_or_warn(__LINE__, p)
+# define xstrdup(s)        xxstrdup(__LINE__, s)
+# define xstrndup(s, n)    xxstrndup(__LINE__, s, n)
+# define xasprintf(f, ...) xxasprintf(__LINE__, f, __VA_ARGS__)
+# define free(p)           xxfree(p)
 #endif
 
 /*
@@ -7393,11 +7432,6 @@ static void switch_off_special_sigs(unsigned mask)
 }
 
 #if BB_MMU
-/* never called */
-void re_execute_shell(char ***to_free, const char *s,
-		char *g_argv0, char **g_argv,
-		char **builtin_argv) NORETURN;
-
 static void reset_traps_to_defaults(void)
 {
 	/* This function is always called in a child shell
@@ -7447,7 +7481,8 @@ static void reset_traps_to_defaults(void)
 
 #else /* !BB_MMU */
 
-static NORETURN void re_execute_shell(char ***to_free, const char *s,
+static NORETURN void re_execute_shell(
+		char * *volatile * to_free, const char *s,
 		char *g_argv0, char **g_argv,
 		char **builtin_argv)
 {
@@ -7677,7 +7712,13 @@ static int generate_stream_from_string(const char *s, pid_t *pid_p)
 	pid_t pid;
 	int channel[2];
 # if !BB_MMU
-	char **to_free = NULL;
+	/* _volatile_ pointer to "char*".
+	 * Or else compiler can peek from inside re_execute_shell()
+	 * and see that this pointer is a local var (i.e. not globally visible),
+	 * and decide to optimize out the store to it. Yes,
+	 * it was seen in the wild.
+	 */
+	char * *volatile to_free = NULL;
 # endif
 
 	xpipe(channel);
@@ -7824,7 +7865,7 @@ static void setup_heredoc(struct redir_struct *redir)
 	const char *heredoc = redir->rd_filename;
 	char *expanded;
 #if !BB_MMU
-	char **to_free;
+	char * *volatile to_free;
 #endif
 
 	expanded = NULL;
@@ -8465,7 +8506,8 @@ static void unset_func(const char *name)
 #define exec_function(to_free, funcp, argv) \
 	exec_function(funcp, argv)
 # endif
-static NORETURN void exec_function(char ***to_free,
+static NORETURN void exec_function(
+		char * *volatile *to_free,
 		const struct function *funcp,
 		char **argv)
 {
@@ -8561,7 +8603,8 @@ static int run_function(const struct function *funcp, char **argv)
 #define exec_builtin(to_free, x, argv) \
 	exec_builtin(to_free, argv)
 #endif
-static NORETURN void exec_builtin(char ***to_free,
+static NORETURN void exec_builtin(
+		char * *volatile *to_free,
 		const struct built_in_command *x,
 		char **argv)
 {
@@ -8705,7 +8748,8 @@ static void if_command_vV_print_and_exit(char opt_vV, char *cmd, const char *exp
  * The at_exit handlers apparently confuse the calling process,
  * in particular stdin handling. Not sure why? -- because of vfork! (vda)
  */
-static NORETURN NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
+static NORETURN NOINLINE void pseudo_exec_argv(
+		volatile nommu_save_t *nommu_save,
 		char **argv, int assignment_cnt,
 		char **argv_expanded)
 {
@@ -8731,7 +8775,8 @@ static NORETURN NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 #if BB_MMU
 	G.shadowed_vars_pp = NULL; /* "don't save, free them instead" */
 #else
-	G.shadowed_vars_pp = &nommu_save->old_vars;
+	/* cast away volatility */
+	G.shadowed_vars_pp = (struct variable **)&nommu_save->old_vars;
 	G.var_nest_level++;
 #endif
 	set_vars_and_save_old(new_env);
@@ -8858,7 +8903,8 @@ static NORETURN NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 
 /* Called after [v]fork() in run_pipe
  */
-static NORETURN void pseudo_exec(nommu_save_t *nommu_save,
+static NORETURN void pseudo_exec(
+		volatile nommu_save_t *nommu_save,
 		struct command *command,
 		char **argv_expanded)
 {
@@ -9743,8 +9789,7 @@ static NOINLINE int run_pipe(struct pipe *pi)
 
 			/* Stores to nommu_save list of env vars putenv'ed
 			 * (NOMMU, on MMU we don't need that) */
-			/* cast away volatility... */
-			pseudo_exec((nommu_save_t*) &nommu_save, command, argv_expanded);
+			pseudo_exec(&nommu_save, command, argv_expanded);
 			/* pseudo_exec() does not return */
 		}
 
