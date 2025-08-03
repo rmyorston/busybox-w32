@@ -2008,19 +2008,6 @@ static sighandler_t install_sighandler(int sig, sighandler_t handler)
 	return old_sa.sa_handler;
 }
 
-static void save_history_run_exit_trap_and_exit(int exitcode) NORETURN;
-
-static void restore_ttypgrp_and__exit(void) NORETURN;
-static void restore_ttypgrp_and__exit(void)
-{
-	/* xfunc has failed! die die die */
-	/* no EXIT traps, this is an escape hatch! */
-	G.exiting = 1;
-	save_history_run_exit_trap_and_exit(xfunc_error_retval);
-}
-
-#if ENABLE_HUSH_JOB
-
 /* Needed only on some libc:
  * It was observed that on exit(), fgetc'ed buffered data
  * gets "unwound" via lseek(fd, -NUM, SEEK_CUR).
@@ -2034,26 +2021,20 @@ static void restore_ttypgrp_and__exit(void)
  * and in `cmd` handling.
  * If set as die_func(), this makes xfunc_die() exit via _exit(), not exit():
  */
-static void fflush_and__exit(void) NORETURN;
-static void fflush_and__exit(void)
+static NORETURN void fflush_and__exit(void)
 {
 	fflush_all();
 	_exit(xfunc_error_retval);
 }
 
-/* After [v]fork, in child: do not restore tty pgrp on xfunc death */
-# define disable_restore_tty_pgrp_on_exit() (die_func = fflush_and__exit)
-/* After [v]fork, in parent: restore tty pgrp on xfunc death */
-# define enable_restore_tty_pgrp_on_exit()  (die_func = restore_ttypgrp_and__exit)
-
+#if ENABLE_HUSH_JOB
 /* Restores tty foreground process group, and exits.
  * May be called as signal handler for fatal signal
  * (will resend signal to itself, producing correct exit state)
  * or called directly with -EXITCODE.
  * We also call it if xfunc is exiting.
  */
-static void restore_ttypgrp_and_killsig_or__exit(int sig) NORETURN;
-static void restore_ttypgrp_and_killsig_or__exit(int sig)
+static NORETURN void restore_ttypgrp_and_killsig_or__exit(int sig)
 {
 	/* Careful: we can end up here after [v]fork. Do not restore
 	 * tty pgrp then, only top-level shell process does that */
@@ -2071,6 +2052,19 @@ static void restore_ttypgrp_and_killsig_or__exit(int sig)
 
 	kill_myself_with_sig(sig); /* does not return */
 }
+
+static NORETURN void fflush_restore_ttypgrp_and__exit(void)
+{
+	/* xfunc has failed! die die die */
+	fflush_all();
+	restore_ttypgrp_and_killsig_or__exit(- xfunc_error_retval);
+}
+
+/* After [v]fork, in child: do not restore tty pgrp on xfunc death */
+# define disable_restore_tty_pgrp_on_exit() (die_func = fflush_and__exit)
+/* After [v]fork, in parent: restore tty pgrp on xfunc death */
+# define enable_restore_tty_pgrp_on_exit()  (die_func = fflush_restore_ttypgrp_and__exit)
+
 #else
 
 # define disable_restore_tty_pgrp_on_exit() ((void)0)
@@ -2107,8 +2101,10 @@ static sighandler_t pick_sighandler(unsigned sig)
 
 static const char* FAST_FUNC get_local_var_value(const char *name);
 
-/* Restores tty foreground process group, and exits. */
-static void save_history_run_exit_trap_and_exit(int exitcode)
+/* Self-explanatory.
+ * Restores tty foreground process group too.
+ */
+static NORETURN void save_history_run_exit_trap_and_exit(int exitcode)
 {
 #if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
 	if (G.line_input_state
@@ -10423,6 +10419,11 @@ int hush_main(int argc, char **argv)
 	struct variable *shell_ver;
 
 	INIT_G();
+#if ENABLE_HUSH_JOB
+	die_func = fflush_restore_ttypgrp_and__exit;
+#else
+	die_func = fflush_and__exit;
+#endif
 	if (EXIT_SUCCESS != 0) /* if EXIT_SUCCESS == 0, it is already done */
 		G.last_exitcode = EXIT_SUCCESS;
 #if !BB_MMU
@@ -10534,26 +10535,23 @@ int hush_main(int argc, char **argv)
 	 * PS4='+ '
 	 */
 
+	/* Shell is non-interactive at first. We need to call
+	 * install_special_sighandlers() if we are going to execute "sh <script>",
+	 * "sh -c <cmds>" or login shell's /etc/profile and friends.
+	 * If we later decide that we are interactive, we run
+	 * install_special_sighandlers() in order to intercept more signals.
+	 */
+	install_special_sighandlers();
+
 #if NUM_SCRIPTS > 0
 	if (argc < 0) {
 		char *script = get_script_content(-argc - 1);
 		G.global_argv = argv;
 		G.global_argc = string_array_len(argv);
-		//install_special_sighandlers(); - needed?
 		parse_and_run_string(script);
 		goto final_return;
 	}
 #endif
-
-	/* Initialize some more globals to non-zero values */
-	die_func = restore_ttypgrp_and__exit;
-
-	/* Shell is non-interactive at first. We need to call
-	 * install_special_sighandlers() if we are going to execute "sh <script>",
-	 * "sh -c <cmds>" or login shell's /etc/profile and friends.
-	 * If we later decide that we are interactive, we run install_special_sighandlers()
-	 * in order to intercept (more) signals.
-	 */
 
 	/* Parse options */
 	/* http://www.opengroup.org/onlinepubs/9699919799/utilities/sh.html */
@@ -10632,7 +10630,6 @@ int hush_main(int argc, char **argv)
 			empty_trap_mask = bb_strtoull(optarg, &optarg, 16);
 			if (empty_trap_mask != 0) {
 				IF_HUSH_TRAP(int sig;)
-				install_special_sighandlers();
 # if ENABLE_HUSH_TRAP
 				G_traps = xzalloc(sizeof(G_traps[0]) * NSIG);
 				for (sig = 1; sig < NSIG; sig++) {
@@ -10708,7 +10705,6 @@ int hush_main(int argc, char **argv)
 		input = hfopen("/etc/profile");
  run_profile:
 		if (input != NULL) {
-			install_special_sighandlers();
 			parse_and_run_file(input);
 			hfclose(input);
 		}
@@ -10744,8 +10740,6 @@ int hush_main(int argc, char **argv)
 		 * sh ... -c 'builtin' BARGV... ""
 		 */
 		char *script;
-
-		install_special_sighandlers();
 
 		G.global_argc--;
 		G.global_argv++;
@@ -10797,7 +10791,6 @@ int hush_main(int argc, char **argv)
 			bb_simple_perror_msg_and_die(G.global_argv[0]);
 		}
 		xfunc_error_retval = 1;
-		install_special_sighandlers();
 		parse_and_run_file(input);
 #if ENABLE_FEATURE_CLEAN_UP
 		hfclose(input);
@@ -10862,7 +10855,7 @@ int hush_main(int argc, char **argv)
 		install_special_sighandlers();
 
 		if (G_saved_tty_pgrp) {
-			/* Set other signals to restore saved_tty_pgrp */
+			/* Set fatal signals to restore saved_tty_pgrp */
 			install_fatal_sighandlers();
 			/* Put ourselves in our own process group
 			 * (bash, too, does this only if ctty is available) */
@@ -10870,10 +10863,7 @@ int hush_main(int argc, char **argv)
 			/* Grab control of the terminal */
 			tcsetpgrp(G_interactive_fd, G.root_pid);
 		}
-		enable_restore_tty_pgrp_on_exit();
 		init_line_editing();
-	} else {
-		install_special_sighandlers();
 	}
 #elif ENABLE_HUSH_INTERACTIVE
 	/* No job control compiled in, only prompt/line editing */
@@ -10888,13 +10878,13 @@ int hush_main(int argc, char **argv)
 				/* give up */
 				G_interactive_fd = 0;
 		}
-		if (G_interactive_fd)
+		if (G_interactive_fd) {
+			install_special_sighandlers();
 			init_line_editing();
+		}
 	}
-	install_special_sighandlers();
 #else
 	/* We have interactiveness code disabled */
-	install_special_sighandlers();
 #endif
 	/* bash:
 	 * if interactive but not a login shell, sources ~/.bashrc
