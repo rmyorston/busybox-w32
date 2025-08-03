@@ -8299,7 +8299,7 @@ static const struct built_in_command *find_builtin(const char *name)
 	return find_builtin_helper(name, bltins2, &bltins2[ARRAY_SIZE(bltins2)]);
 }
 
-#if ENABLE_HUSH_JOB && ENABLE_FEATURE_TAB_COMPLETION
+#if ENABLE_HUSH_INTERACTIVE && ENABLE_FEATURE_TAB_COMPLETION
 static const char * FAST_FUNC hush_command_name(int i)
 {
 	if (/*i >= 0 && */ i < ARRAY_SIZE(bltins1)) {
@@ -10206,7 +10206,7 @@ static int run_and_free_list(struct pipe *pi)
 /*
  * Initialization and main
  */
-#if ENABLE_FEATURE_EDITING
+#if ENABLE_HUSH_INTERACTIVE && ENABLE_FEATURE_EDITING
 static void init_line_editing(void)
 {
 	G.line_input_state = new_line_input_t(FOR_SHELL);
