@@ -10877,7 +10877,7 @@ int hush_main(int argc, char **argv)
 /* Often both pgrps here are set to our pid - but not always!
  * Example: sh -c 'echo $$; hush; echo FIN'
  * Here, the parent shell is not interactive, so it does NOT set up
- * a separate process group for its children, and we (hush) initinally
+ * a separate process group for its children, and we (hush) initially
  * run in parent's process group (until we set up our own a few lines down).
  */
 						//bb_error_msg("process groups tty:%d hush:%d", G_saved_tty_pgrp, shell_pgrp);

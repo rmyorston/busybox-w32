@@ -329,7 +329,7 @@ typedef long arith_t;
 
 /* ============ Shell options */
 
-/* If you add/change options hare, update --help text too */
+/* If you add/change options here, update --help text too */
 static const char *const optletters_optnames[] ALIGN_PTR = {
 	"e"   "errexit",
 	"f"   "noglob",
@@ -1596,7 +1596,6 @@ struct stackmark {
 	size_t stacknleft;
 };
 
-
 struct globals_memstack {
 	struct stack_block *g_stackp; // = &stackbase;
 	char *g_stacknxt; // = stackbase.space;
@@ -1618,7 +1617,6 @@ extern struct globals_memstack *BB_GLOBAL_CONST ash_ptr_to_globals_memstack;
 	g_stacknleft = MINSIZE; \
 	sstrend = stackbase.space + MINSIZE; \
 } while (0)
-
 
 #define stackblock()     ((void *)g_stacknxt)
 #define stackblocksize() g_stacknleft
@@ -2120,7 +2118,6 @@ struct localvar {
 #else
 # define VDYNAMIC       0
 #endif
-
 
 /* Need to be before varinit_data[] */
 #if ENABLE_LOCALE_SUPPORT
@@ -3007,7 +3004,6 @@ pwdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 
 /* ============ ... */
 
-
 #define IBUFSIZ (ENABLE_FEATURE_EDITING ? CONFIG_FEATURE_EDITING_MAX_LEN : 1024)
 
 /* Syntax classes */
@@ -3414,12 +3410,10 @@ struct alias {
 	int flag;
 };
 
-
 static struct alias **atab; // [ATABSIZE];
 #define INIT_G_alias() do { \
 	atab = xzalloc(ATABSIZE * sizeof(atab[0])); \
 } while (0)
-
 
 static struct alias **
 __lookupalias(const char *name)
@@ -3601,7 +3595,6 @@ unaliascmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 }
 
 #endif /* ASH_ALIAS */
-
 
 /* Mode argument to forkshell.  Don't change FORK_FG or FORK_BG. */
 #define FORK_FG    0
@@ -5461,7 +5454,6 @@ stoppedjobs(void)
  out:
 	return retval;
 }
-
 
 /*
  * Code for dealing with input/output redirection.
@@ -8935,7 +8927,6 @@ commandcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 }
 #endif
 
-
 /*static int funcblocksize;     // size of structures in function */
 /*static int funcstringsize;    // size of strings in node */
 static void *funcblock;         /* block to allocate function from */
@@ -10697,7 +10688,6 @@ goodname(const char *p)
 {
 	return endofname(p)[0] == '\0';
 }
-
 
 /*
  * Search for a command.  This is called before we fork so that the
@@ -13448,7 +13438,6 @@ parseheredoc(void)
 	}
 }
 
-
 static const char *
 expandstr(const char *ps, int syntax_type)
 {
@@ -14036,7 +14025,6 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	entry->cmdtype = cmdp->cmdtype;
 	entry->u = cmdp->param;
 }
-
 
 /*
  * The trap builtin.
@@ -14631,7 +14619,6 @@ init(void)
 	}
 }
 
-
 //usage:#define ash_trivial_usage
 //usage:	"[-il] [-|+Cabefmnuvx] [-|+o OPT]... [-c 'SCRIPT' [ARG0 ARGS] | FILE ARGS | -s ARGS]"
 ////////	comes from ^^^^^^^^^^optletters
@@ -14910,7 +14897,6 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	exitshell();
 	/* NOTREACHED */
 }
-
 
 /*-
  * Copyright (c) 1989, 1991, 1993, 1994
