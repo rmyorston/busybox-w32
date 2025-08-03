@@ -10790,100 +10790,86 @@ int hush_main(int argc, char **argv)
 
 	/* A shell is interactive if the '-i' flag was given,
 	 * or if all of the following conditions are met:
-	 *    no -c command
-	 *    no arguments remaining or the -s flag given
+	 *    not -c 'CMD'
+	 *    not running a script (no arguments remaining, or -s flag given)
 	 *    standard input is a terminal
 	 *    standard output is a terminal
 	 * Refer to Posix.2, the description of the 'sh' utility.
 	 */
-#if ENABLE_HUSH_JOB
+#if ENABLE_HUSH_INTERACTIVE
 	if (!G_reexeced_on_NOMMU
 	 && isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)
 	) {
-		G_saved_tty_pgrp = tcgetpgrp(STDIN_FILENO);
-		debug_printf("saved_tty_pgrp:%d\n", G_saved_tty_pgrp);
-		if (G_saved_tty_pgrp < 0)
-			G_saved_tty_pgrp = 0;
-
-		/* try to dup stdin to high fd#, >= 255 */
+		/* Try to dup stdin to high fd#, >= 255 */
 		G_interactive_fd = dup_CLOEXEC(STDIN_FILENO, 254);
 		if (G_interactive_fd < 0) {
-			/* try to dup to any fd */
-			G_interactive_fd = dup_CLOEXEC(STDIN_FILENO, -1);
-			if (G_interactive_fd < 0) {
-				/* give up */
-				G_interactive_fd = 0;
-				G_saved_tty_pgrp = 0;
-			}
-		}
-	}
-	debug_printf("interactive_fd:%d\n", G_interactive_fd);
-	if (G_interactive_fd) {
-		if (G_saved_tty_pgrp) {
-			/* If we were run as 'hush &', sleep until we are
-			 * in the foreground (tty pgrp == our pgrp).
-			 * If we get started under a job aware app (like bash),
-			 * make sure we are now in charge so we don't fight over
-			 * who gets the foreground */
-			while (1) {
-				pid_t shell_pgrp = getpgrp();
-				G_saved_tty_pgrp = tcgetpgrp(G_interactive_fd);
-				if (G_saved_tty_pgrp == shell_pgrp)
-					break;
-				/* send TTIN to ourself (should stop us) */
-				kill(- shell_pgrp, SIGTTIN);
-			}
-		}
-
-		/* Install more signal handlers */
-		install_special_sighandlers();
-
-		if (G_saved_tty_pgrp) {
-			/* Set fatal signals to restore saved_tty_pgrp */
-			install_fatal_sighandlers();
-			/* Put ourselves in our own process group
-			 * (bash, too, does this only if ctty is available) */
-			bb_setpgrp(); /* is the same as setpgid(our_pid, our_pid); */
-			/* Grab control of the terminal */
-			tcsetpgrp(G_interactive_fd, G.root_pid);
-		}
-		init_line_editing();
-	}
-#elif ENABLE_HUSH_INTERACTIVE
-	/* No job control compiled in, only prompt/line editing */
-	if (!G_reexeced_on_NOMMU
-	 && isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)
-	) {
-		G_interactive_fd = dup_CLOEXEC(STDIN_FILENO, 254);
-		if (G_interactive_fd < 0) {
-			/* try to dup to any fd */
+			/* Try to dup to any fd */
 			G_interactive_fd = dup_CLOEXEC(STDIN_FILENO, -1);
 			if (G_interactive_fd < 0)
-				/* give up */
+				/* Give up */
 				G_interactive_fd = 0;
 		}
+		debug_printf("interactive_fd:%d\n", G_interactive_fd);
 		if (G_interactive_fd) {
+// TODO? bash:
+// if interactive but not a login shell, sources ~/.bashrc
+// (--norc turns this off, --rcfile <file> overrides)
+# if ENABLE_HUSH_JOB
+			/* Can we do job control? */
+			G_saved_tty_pgrp = tcgetpgrp(G_interactive_fd);
+			debug_printf("saved_tty_pgrp:%d\n", G_saved_tty_pgrp);
+			if (G_saved_tty_pgrp < 0)
+				G_saved_tty_pgrp = 0; /* no */
+			if (G_saved_tty_pgrp) {
+				/* If we were run as 'hush &', sleep until we are
+				 * in the foreground (tty pgrp == our pgrp).
+				 * If we get started under a job aware app (like bash),
+				 * make sure we are now in charge so we don't fight over
+				 * who gets the foreground */
+				while (1) {
+					pid_t shell_pgrp = getpgrp();
+					if (G_saved_tty_pgrp == shell_pgrp) {
+/* Often both pgrps here are set to our pid - but not always!
+ * Example: sh -c 'echo $$; hush; echo FIN'
+ * Here, the parent shell is not interactive, so it does NOT set up
+ * a separate process group for its children, and we (hush) initinally
+ * run in parent's process group (until we set up our own a few lines down).
+ */
+						//bb_error_msg("process groups tty:%d hush:%d", G_saved_tty_pgrp, shell_pgrp);
+						break;
+					}
+					/* Send TTIN to ourself (should stop us) */
+					kill(- shell_pgrp, SIGTTIN);
+					G_saved_tty_pgrp = tcgetpgrp(G_interactive_fd);
+				}
+			}
+# endif
+			/* Install more signal handlers */
 			install_special_sighandlers();
+# if ENABLE_HUSH_JOB
+			if (G_saved_tty_pgrp) {
+				/* Set fatal signals to restore saved_tty_pgrp */
+				install_fatal_sighandlers();
+				/* (The if() is an optimization: can avoid two redundant syscalls) */
+				if (G_saved_tty_pgrp != G.root_pid) {
+					/* Put ourselves in our own process group
+					 * (bash, too, does this only if ctty is available) */
+					bb_setpgrp(); /* is the same as setpgid(our_pid, our_pid); */
+					/* Grab control of the terminal */
+					tcsetpgrp(G_interactive_fd, G.root_pid);
+				}
+			}
+# endif
+# if ENABLE_FEATURE_EDITING_FANCY_PROMPT
+			/* Set (but not export) PS1/2 unless already set */
+			if (!get_local_var_value("PS1"))
+				set_local_var_from_halves("PS1", "\\w \\$ ");
+			if (!get_local_var_value("PS2"))
+				set_local_var_from_halves("PS2", "> ");
+# endif
 			init_line_editing();
-		}
-	}
-#else
-	/* We have interactiveness code disabled */
-#endif
-	/* bash:
-	 * if interactive but not a login shell, sources ~/.bashrc
-	 * (--norc turns this off, --rcfile <file> overrides)
-	 */
 
-	if (G_interactive_fd) {
-#if ENABLE_HUSH_INTERACTIVE && ENABLE_FEATURE_EDITING_FANCY_PROMPT
-		/* Set (but not export) PS1/2 unless already set */
-		if (!get_local_var_value("PS1"))
-			set_local_var_from_halves("PS1", "\\w \\$ ");
-		if (!get_local_var_value("PS2"))
-			set_local_var_from_halves("PS2", "> ");
-#endif
-		if (!ENABLE_FEATURE_SH_EXTRA_QUIET) {
+# if !ENABLE_FEATURE_SH_EXTRA_QUIET
 			/* note: ash and hush share this string */
 			printf("\n\n%s %s\n"
 				IF_HUSH_HELP("Enter 'help' for a list of built-in commands.\n")
@@ -10891,8 +10877,10 @@ int hush_main(int argc, char **argv)
 				bb_banner,
 				"hush - the humble shell"
 			);
-		}
-	}
+# endif
+		} /* if become interactive */
+	} /* if on tty */
+#endif /* if INTERACTIVE is allowed by build config */
 
 	parse_and_run_file(hfopen(NULL)); /* stdin */
 
