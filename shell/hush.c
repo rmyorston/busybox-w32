@@ -7447,10 +7447,7 @@ static void reset_traps_to_defaults(void)
 
 #else /* !BB_MMU */
 
-static void re_execute_shell(char ***to_free, const char *s,
-		char *g_argv0, char **g_argv,
-		char **builtin_argv) NORETURN;
-static void re_execute_shell(char ***to_free, const char *s,
+static NORETURN void re_execute_shell(char ***to_free, const char *s,
 		char *g_argv0, char **g_argv,
 		char **builtin_argv)
 {
@@ -8468,10 +8465,7 @@ static void unset_func(const char *name)
 #define exec_function(to_free, funcp, argv) \
 	exec_function(funcp, argv)
 # endif
-static void exec_function(char ***to_free,
-		const struct function *funcp,
-		char **argv) NORETURN;
-static void exec_function(char ***to_free,
+static NORETURN void exec_function(char ***to_free,
 		const struct function *funcp,
 		char **argv)
 {
@@ -8567,10 +8561,7 @@ static int run_function(const struct function *funcp, char **argv)
 #define exec_builtin(to_free, x, argv) \
 	exec_builtin(to_free, argv)
 #endif
-static void exec_builtin(char ***to_free,
-		const struct built_in_command *x,
-		char **argv) NORETURN;
-static void exec_builtin(char ***to_free,
+static NORETURN void exec_builtin(char ***to_free,
 		const struct built_in_command *x,
 		char **argv)
 {
@@ -8593,8 +8584,7 @@ static void exec_builtin(char ***to_free,
 #endif
 }
 
-static void execvp_or_die(char **argv) NORETURN;
-static void execvp_or_die(char **argv)
+static NORETURN void execvp_or_die(char **argv)
 {
 	int e;
 	debug_printf_exec("execing '%s'\n", argv[0]);
@@ -8715,10 +8705,7 @@ static void if_command_vV_print_and_exit(char opt_vV, char *cmd, const char *exp
  * The at_exit handlers apparently confuse the calling process,
  * in particular stdin handling. Not sure why? -- because of vfork! (vda)
  */
-static void pseudo_exec_argv(nommu_save_t *nommu_save,
-		char **argv, int assignment_cnt,
-		char **argv_expanded) NORETURN;
-static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
+static NORETURN NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 		char **argv, int assignment_cnt,
 		char **argv_expanded)
 {
@@ -8871,10 +8858,7 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 
 /* Called after [v]fork() in run_pipe
  */
-static void pseudo_exec(nommu_save_t *nommu_save,
-		struct command *command,
-		char **argv_expanded) NORETURN;
-static void pseudo_exec(nommu_save_t *nommu_save,
+static NORETURN void pseudo_exec(nommu_save_t *nommu_save,
 		struct command *command,
 		char **argv_expanded)
 {
