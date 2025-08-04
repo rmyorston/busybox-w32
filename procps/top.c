@@ -1056,8 +1056,10 @@ static unsigned handle_input(unsigned scan_mask, duration_t interval)
 		}
 #  if ENABLE_FEATURE_TOPMEM
 		if (c == 's') {
-			scan_mask = TOPMEM_MASK;
 			sort_field = (sort_field + 1) % NUM_SORT_FIELD;
+			if (scan_mask == TOPMEM_MASK)
+				return NO_RESCAN_MASK;
+			scan_mask = TOPMEM_MASK;
 			free(prev_hist);
 			prev_hist = NULL;
 			prev_hist_count = 0;
