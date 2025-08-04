@@ -54,7 +54,7 @@ char* FAST_FUNC concat_path_file(const char *path, const char *filename)
 	p = mempcpy(buf, path, n1);
 	if (n2)
 		*p++ = '/';
-	p = mempcpy(p, filename, n3);
+	memcpy(p, filename, n3);
 	return buf;
 #endif
 }
@@ -96,7 +96,7 @@ char* FAST_FUNC concat_path_dirent(const char *path, const struct dirent *de)
 	p = mempcpy(buf, path, n1);
 	if (n2)
 		*p++ = '/';
-	p = mempcpy(p, de->d_name, n3);
+	memcpy(p, de->d_name, n3);
 	return buf;
 }
 
