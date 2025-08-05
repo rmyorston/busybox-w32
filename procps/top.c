@@ -976,7 +976,7 @@ static unsigned handle_input(unsigned scan_mask, duration_t interval)
 	}
 
 	while (1) {
-		int32_t c;
+		int32_t c, cc;
 
 		c = safe_read_key(STDIN_FILENO, G.kbd_input, interval * 1000);
 		if (c == -1 && errno != EAGAIN) {
@@ -1021,6 +1021,7 @@ static unsigned handle_input(unsigned scan_mask, duration_t interval)
 			return NO_RESCAN_MASK;
 		}
 
+		cc = c;
 		c |= 0x20; /* lowercase */
 		if (c == 'q')
 			return EXIT_MASK;
@@ -1068,6 +1069,12 @@ static unsigned handle_input(unsigned scan_mask, duration_t interval)
 			continue;
 		}
 #  if ENABLE_FEATURE_TOPMEM
+		if (cc == 'S') {
+			if (--sort_field < 0)
+				sort_field = NUM_SORT_FIELD - 1;
+			if (--sort_field < 0)
+				sort_field = NUM_SORT_FIELD - 1;
+		}
 		if (c == 's') {
 			sort_field = (sort_field + 1) % NUM_SORT_FIELD;
 			if (scan_mask == TOPMEM_MASK)
