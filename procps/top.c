@@ -120,7 +120,7 @@
 #define ESC "\033"
 
 typedef struct top_status_t {
-	unsigned long vsz;
+	unsigned long memsize;
 #if ENABLE_FEATURE_TOP_CPU_USAGE_PERCENTAGE
 	unsigned long ticks;
 	unsigned pcpu; /* delta of ticks */
@@ -241,8 +241,8 @@ static int pid_sort(top_status_t *P, top_status_t *Q)
 static int mem_sort(top_status_t *P, top_status_t *Q)
 {
 	/* We want to avoid unsigned->signed and truncation errors */
-	if (Q->vsz < P->vsz) return -1;
-	return Q->vsz != P->vsz; /* 0 if ==, 1 if > */
+	if (Q->memsize < P->memsize) return -1;
+	return Q->memsize != P->memsize; /* 0 if ==, 1 if > */
 }
 
 
@@ -362,7 +362,7 @@ static void do_stats(void)
 
 	get_jiffy_counts();
 	total_pcpu = 0;
-	/* total_vsz = 0; */
+	/* total_memsize = 0; */
 	new_hist = xmalloc(sizeof(new_hist[0]) * ntop);
 	/*
 	 * Make a pass through the data to get stats.
@@ -394,7 +394,7 @@ static void do_stats(void)
 			i = (i+1) % prev_hist_count;
 			/* hist_iterations++; */
 		} while (i != last_i);
-		/* total_vsz += cur->vsz; */
+		/* total_memsize += cur->memsize; */
 	}
 
 	/*
@@ -609,7 +609,7 @@ static NOINLINE void display_process_list(int lines_rem, int scr_width)
 	};
 
 	top_status_t *s;
-	unsigned long total_memory = display_header(scr_width, &lines_rem); /* or use total_vsz? */
+	unsigned long total_memory = display_header(scr_width, &lines_rem); /* or use total_memsize? */
 	/* xxx_shift and xxx_scale variables allow us to replace
 	 * expensive divides with multiply and shift */
 	unsigned pmem_shift, pmem_scale, pmem_half;
@@ -641,13 +641,13 @@ typedef struct { unsigned quot, rem; } bb_div_t;
 
 	/* what info of the processes is shown */
 	printf(OPT_BATCH_MODE ? "%.*s" : ESC"[7m" "%.*s" ESC"[m", scr_width,
-		"  PID  PPID USER     STAT   VSZ %VSZ"
+		"  PID  PPID USER     STAT   RSS %RSS"
 		IF_FEATURE_TOP_SMP_PROCESS(" CPU")
 		IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE(" %CPU")
 		" COMMAND");
 	lines_rem--;
 
-	/* %VSZ = s->vsz / MemTotal * 100%
+	/* %RSS = s->memsize / MemTotal * 100%
 	 * Calculate this with multiply and shift. Example:
 	 * shift = 12
 	 * scale = 100 * 0x1000 / total_memory
@@ -658,7 +658,7 @@ typedef struct { unsigned quot, rem; } bb_div_t;
 	 */
 	pmem_shift = BITS_PER_INT-11;
 	pmem_scale = UPSCALE*(1U<<(BITS_PER_INT-11)) / total_memory;
-	/* s->vsz is in kb. we want (s->vsz * pmem_scale) to never overflow */
+	/* s->memsize is in kb. we want (s->memsize * pmem_scale) to never overflow */
 	while (pmem_scale >= 512) {
 		pmem_scale /= 4;
 		pmem_shift -= 2;
@@ -707,10 +707,10 @@ typedef struct { unsigned quot, rem; } bb_div_t;
 		int n;
 		char *ppu;
 		char ppubuf[sizeof(int)*3 * 2 + 12];
-		char vsz_str_buf[8];
+		char memsize_str_buf[8];
 		unsigned col;
 
-		CALC_STAT(pmem, (s->vsz*pmem_scale + pmem_half) >> pmem_shift);
+		CALC_STAT(pmem, (s->memsize*pmem_scale + pmem_half) >> pmem_shift);
 #if ENABLE_FEATURE_TOP_CPU_USAGE_PERCENTAGE
 		CALC_STAT(pcpu, (s->pcpu*pcpu_scale + pcpu_half) >> pcpu_shift);
 #endif
@@ -720,7 +720,7 @@ typedef struct { unsigned quot, rem; } bb_div_t;
 		 */
 		SANITIZE(pmem);
 
-		smart_ulltoa5(s->vsz, vsz_str_buf, " mgtpezy");
+		smart_ulltoa5(s->memsize, memsize_str_buf, " mgtpezy");
 		/* PID PPID USER STAT VSZ %VSZ [%CPU] COMMAND */
 		n = sprintf(ppubuf, "%5u %5u %-8.8s", s->pid, s->ppid, get_cached_username(s->uid));
 		ppu = ppubuf;
@@ -755,7 +755,7 @@ typedef struct { unsigned quot, rem; } bb_div_t;
 				IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE(FMT)
 				" ",
 				ppu,
-				s->state, vsz_str_buf,
+				s->state, memsize_str_buf,
 				SHOW_STAT(pmem)
 				IF_FEATURE_TOP_SMP_PROCESS(, s->last_seen_on_cpu)
 				IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE(, SHOW_STAT(pcpu))
@@ -951,7 +951,7 @@ enum {
 	TOP_MASK = 0
 		| PSSCAN_PID
 		| PSSCAN_PPID
-		| PSSCAN_VSZ
+		| PSSCAN_RSS
 		| PSSCAN_STIME
 		| PSSCAN_UTIME
 		| PSSCAN_STATE
@@ -1270,7 +1270,7 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 				top = xrealloc_vector(top, 6, ntop++);
 				top[n].pid = p->pid;
 				top[n].ppid = p->ppid;
-				top[n].vsz = p->vsz;
+				top[n].memsize = p->rss;
 #if ENABLE_FEATURE_TOP_CPU_USAGE_PERCENTAGE
 				top[n].ticks = p->stime + p->utime;
 #endif
