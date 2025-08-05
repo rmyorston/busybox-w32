@@ -602,6 +602,15 @@ static void parse_meminfo(unsigned long meminfo[MI_MAX])
 	fclose(f);
 }
 
+static void cmdline_to_line_buf_and_print(unsigned offset, unsigned pid, const char *comm)
+{
+	int width = G.scr_width - offset;
+	if (width > 1) /* wider than to fit just the NUL? */
+		read_cmdline(G.line_buf + offset, width, pid, comm);
+//TODO: read_cmdline() sanitizes control chars, but not chars above 0x7e
+	print_line_buf();
+}
+
 static unsigned long display_header(void)
 {
 	char *buf;
@@ -789,9 +798,7 @@ static NOINLINE void display_process_list(void)
 				IF_FEATURE_TOP_SMP_PROCESS(, s->last_seen_on_cpu)
 				IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE(, SHOW_STAT(pcpu))
 		);
-		if ((int)(G.scr_width - col) > 1)
-			read_cmdline(G.line_buf + col, G.scr_width - col, s->pid, s->comm);
-		print_line_buf();
+		cmdline_to_line_buf_and_print(col, s->pid, s->comm);
 		/* printf(" %d/%d %lld/%lld", s->pcpu, total_pcpu,
 			cur_jif.busy - prev_jif.busy, cur_jif.total - prev_jif.total); */
 		s++;
@@ -910,14 +917,12 @@ static void ulltoa4_and_space(unsigned long long ul, char buf[5])
 
 static NOINLINE void display_topmem_process_list(void)
 {
-#define HDR_STR "  PID   VSZ VSZRW   RSS (SHR) DIRTY (SHR) STACK"
-#define MIN_WIDTH sizeof(HDR_STR)
 	const topmem_status_t *s = topmem + G_scroll_ofs;
 	char *cp, ch;
 
 	display_topmem_header();
 
-	strcpy(G.line_buf, HDR_STR " COMMAND");
+	strcpy(G.line_buf, "  PID   VSZ VSZRW   RSS (SHR) DIRTY (SHR) STACK COMMAND");
 	/* Mark the ^FIELD^ we sort by */
 	cp = &G.line_buf[5 + sort_field * 6];
 	ch = "^_"[inverted];
@@ -949,13 +954,9 @@ static NOINLINE void display_topmem_process_list(void)
 		ulltoa5_and_space(s->dirty_sh, &G.line_buf[6*6]);
 		ulltoa5_and_space(s->stack   , &G.line_buf[7*6]);
 		G.line_buf[8*6] = '\0';
-		if ((int)(G.scr_width - MIN_WIDTH) > 1)
-			read_cmdline(&G.line_buf[8*6], G.scr_width - MIN_WIDTH, s->pid, s->comm);
-		print_line_buf();
+		cmdline_to_line_buf_and_print(8*6, s->pid, s->comm);
 		s++;
 	}
-#undef HDR_STR
-#undef MIN_WIDTH
 }
 
 #endif /* end TOPMEM support */

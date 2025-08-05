@@ -558,22 +558,29 @@ int FAST_FUNC read_cmdline(char *buf, int col, unsigned pid, const char *comm)
 	if (sz < 0)
 		return sz;
 	if (sz > 0) {
-		const char *base;
+		const char *program_basename;
 		int comm_len;
 
 		buf[sz] = '\0';
 		while (--sz >= 0 && buf[sz] == '\0')
 			continue;
-		/* Prevent basename("process foo/bar") = "bar" */
-		strchrnul(buf, ' ')[0] = '\0';
-		base = bb_basename(buf); /* before we replace argv0's NUL with space */
+
+		/* Find "program" in "[-][/PATH/TO/]program" */
+		strchrnul(buf, ' ')[0] = '\0'; /* prevent basename("program foo/bar") = "bar" */
+		program_basename = bb_basename(buf[0] == '-' ? buf + 1 : buf);
+		/* ^^^ note: must do it *before* replacing argv0's NUL with space */
+
+		/* Prevent stuff like this:
+		 *  echo 'sleep 999; exit' >`printf '\ec'`; sh ?c
+		 * messing up top and ps output (or worse).
+		 * This also replaces NULs with spaces, converting
+		 * list of NUL-strings into one string.
+		 */
 		while (sz >= 0) {
 			if ((unsigned char)(buf[sz]) < ' ')
 				buf[sz] = ' ';
 			sz--;
 		}
-		if (base[0] == '-') /* "-sh" (login shell)? */
-			base++;
 
 		/* If comm differs from argv0, prepend "{comm} ".
 		 * It allows to see thread names set by prctl(PR_SET_NAME).
@@ -587,7 +594,7 @@ int FAST_FUNC read_cmdline(char *buf, int col, unsigned pid, const char *comm)
 		 * I prefer to still treat argv0 "process foo bar"
 		 * as 'equal' to comm "process".
 		 */
-		if (strncmp(base, comm, comm_len) != 0) {
+		if (strncmp(program_basename, comm, comm_len) != 0) {
 			comm_len += 3;
 			if (col > comm_len)
 				memmove(buf + comm_len, buf, col - comm_len);
