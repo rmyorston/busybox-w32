@@ -63,6 +63,9 @@ struct smaprec {
 	char *smap_name;
 };
 
+// How long the filenames and command lines we want to handle?
+#define PMAP_BUFSZ 4096
+
 static void print_smaprec(struct smaprec *currec)
 {
 	printf("%0" AFMTLL "llx ", currec->smap_start);
@@ -84,12 +87,11 @@ static void print_smaprec(struct smaprec *currec)
  * that merging them into one function is not a good idea
  * (unless you feel masochistic today).
  */
-static int read_smaps(pid_t pid, struct smaprec *total)
+static int read_smaps(pid_t pid, char buf[PMAP_BUFSZ], struct smaprec *total)
 {
 	FILE *file;
 	struct smaprec currec;
 	char filename[sizeof("/proc/%u/smaps") + sizeof(int)*3];
-	char buf[4096]; // how long the max filenames we expect?
 
 	sprintf(filename, "/proc/%u/smaps", (int)pid);
 
@@ -98,7 +100,7 @@ static int read_smaps(pid_t pid, struct smaprec *total)
 		return 1;
 
 	memset(&currec, 0, sizeof(currec));
-	while (fgets(buf, sizeof(buf), file)) {
+	while (fgets(buf, PMAP_BUFSZ, file)) {
 		// Each mapping datum has this form:
 		// f7d29000-f7d39000 rw-s FILEOFS M:m INODE FILENAME
 		// Size:                nnn kB
@@ -160,7 +162,7 @@ static int procps_get_maps(pid_t pid, unsigned opt)
 {
 	struct smaprec total;
 	int ret;
-	char buf[256];
+	char buf[PMAP_BUFSZ];
 
 	ret = read_cmdline(buf, sizeof(buf), pid, NULL);
 	if (ret < 0)
@@ -172,7 +174,7 @@ static int procps_get_maps(pid_t pid, unsigned opt)
 		puts("Address" TABS "  Kbytes     PSS   Dirty    Swap  Mode  Mapping");
 
 	memset(&total, 0, sizeof(total));
-	ret = read_smaps(pid, &total);
+	ret = read_smaps(pid, buf, &total);
 	if (ret)
 		return ret;
 
