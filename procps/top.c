@@ -166,12 +166,14 @@ struct globals {
 	top_status_t *top;
 	int ntop;
 	smallint inverted;
+	smallint not_first_line;
 #if ENABLE_FEATURE_TOPMEM
 	smallint sort_field;
 #endif
 #if ENABLE_FEATURE_TOP_SMP_CPU
 	smallint smp_cpu_info; /* one/many cpu info lines? */
 #endif
+	int lines_remaining;
 	unsigned lines;     /* screen height */
 	unsigned scr_width; /* width, clamped <= LINE_BUF_SIZE-2 */
 #if ENABLE_FEATURE_TOP_INTERACTIVE
@@ -218,7 +220,6 @@ struct globals {
 #define cpu_prev_jif     (G.cpu_prev_jif      )
 #define num_cpus         (G.num_cpus          )
 #define total_pcpu       (G.total_pcpu        )
-#define line_buf         (G.line_buf          )
 #define INIT_G() do { \
 	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
 	BUILD_BUG_ON(LINE_BUF_SIZE <= 80); \
@@ -289,9 +290,9 @@ static NOINLINE int read_cpu_jiffy(FILE *fp, jiffy_counts_t *p_jif)
 #endif
 	int ret;
 
-	if (!fgets(line_buf, LINE_BUF_SIZE, fp) || line_buf[0] != 'c' /* not "cpu" */)
+	if (!fgets(G.line_buf, LINE_BUF_SIZE, fp) || G.line_buf[0] != 'c' /* not "cpu" */)
 		return 0;
-	ret = sscanf(line_buf, fmt,
+	ret = sscanf(G.line_buf, fmt,
 			&p_jif->usr, &p_jif->nic, &p_jif->sys, &p_jif->idle,
 			&p_jif->iowait, &p_jif->irq, &p_jif->softirq,
 			&p_jif->steal);
@@ -413,6 +414,38 @@ static void do_stats(void)
 
 #endif /* FEATURE_TOP_CPU_USAGE_PERCENTAGE */
 
+static void print_line_buf(void)
+{
+	const char *fmt;
+
+	G.lines_remaining--;
+	fmt = OPT_BATCH_MODE ? "\n""%.*s" : "\n""%.*s"CLREOL;
+	if (!G.not_first_line) {
+		G.not_first_line = 1;
+		/* Go to top */
+		fmt = OPT_BATCH_MODE ? "%.*s" : HOME"%.*s"CLREOL;
+	}
+	printf(fmt, G.scr_width - 1, G.line_buf);
+}
+
+static void print_line_bold(void)
+{
+	G.lines_remaining--;
+//we never print first line in bold
+//	if (!G.not_first_line) {
+//		printf(OPT_BATCH_MODE ? "%.*s" : HOME"%.*s"CLREOL, G.scr_width - 1, G.line_buf);
+//		G.not_first_line = 1;
+//	} else {
+		printf(OPT_BATCH_MODE ? "\n""%.*s" : "\n"REVERSE"%.*s"NORMAL CLREOL, G.scr_width - 1, G.line_buf);
+//	}
+}
+
+static void print_end(void)
+{
+	fputs_stdout(OPT_BATCH_MODE ? "\n" : CLREOS"\r");
+	G.not_first_line = 0; /* next print will be "first line" (will clear the screen) */
+}
+
 #if ENABLE_FEATURE_TOP_CPU_GLOBAL_PERCENTS && ENABLE_FEATURE_TOP_DECIMALS
 /* formats 7 char string (8 with terminating NUL) */
 static char *fmt_100percent_8(char pbuf[8], unsigned value, unsigned total)
@@ -439,7 +472,7 @@ static char *fmt_100percent_8(char pbuf[8], unsigned value, unsigned total)
 #endif
 
 #if ENABLE_FEATURE_TOP_CPU_GLOBAL_PERCENTS
-static void display_cpus(char *scrbuf, int *lines_rem_p)
+static void display_cpus(void)
 {
 	/*
 	 * xxx% = (cur_jif.xxx - prev_jif.xxx) / (cur_jif.total - prev_jif.total) * 100%
@@ -475,8 +508,8 @@ static void display_cpus(char *scrbuf, int *lines_rem_p)
 # else
 	/* Loop thru CPU(s) */
 	n_cpu_lines = smp_cpu_info ? num_cpus : 1;
-	if (n_cpu_lines > *lines_rem_p)
-		n_cpu_lines = *lines_rem_p;
+	if (n_cpu_lines > G.lines_remaining)
+		n_cpu_lines = G.lines_remaining;
 
 	for (i = 0; i < n_cpu_lines; i++) {
 		p_jif = &cpu_jif[i];
@@ -494,7 +527,7 @@ static void display_cpus(char *scrbuf, int *lines_rem_p)
 			CALC_STAT(softirq);
 			/*CALC_STAT(steal);*/
 
-			snprintf(scrbuf, G.scr_width,
+			sprintf(G.line_buf,
 				/* Barely fits in 79 chars when in "decimals" mode. */
 # if ENABLE_FEATURE_TOP_SMP_CPU
 				"CPU%s:"FMT"usr"FMT"sys"FMT"nic"FMT"idle"FMT"io"FMT"irq"FMT"sirq",
@@ -507,16 +540,15 @@ static void display_cpus(char *scrbuf, int *lines_rem_p)
 				/*, SHOW_STAT(steal) - what is this 'steal' thing? */
 				/* I doubt anyone wants to know it */
 			);
-			printf(OPT_BATCH_MODE ? "%s\n" : "%s"CLREOL"\n", scrbuf);
+			print_line_buf();
 		}
 	}
 # undef SHOW_STAT
 # undef CALC_STAT
 # undef FMT
-	*lines_rem_p -= i;
 }
 #else  /* !ENABLE_FEATURE_TOP_CPU_GLOBAL_PERCENTS */
-# define display_cpus(scrbuf, lines_rem) ((void)0)
+# define display_cpus() ((void)0)
 #endif
 
 enum {
@@ -570,51 +602,46 @@ static void parse_meminfo(unsigned long meminfo[MI_MAX])
 	fclose(f);
 }
 
-static unsigned long display_header(int *lines_rem_p)
+static unsigned long display_header(void)
 {
-	char scrbuf[100]; /* [80] was a bit too low on 8Gb ram box */
 	char *buf;
-	unsigned width;
 	unsigned long meminfo[MI_MAX];
 
 	parse_meminfo(meminfo);
 
 	/* Output memory info */
-	width = (G.scr_width > sizeof(scrbuf)) ? sizeof(scrbuf) : G.scr_width;
-	snprintf(scrbuf, width,
+	sprintf(G.line_buf,
 		"Mem: %luK used, %luK free, %luK shrd, %luK buff, %luK cached",
 		meminfo[MI_MEMTOTAL] - meminfo[MI_MEMFREE],
 		meminfo[MI_MEMFREE],
 		meminfo[MI_MEMSHARED] + meminfo[MI_SHMEM],
 		meminfo[MI_BUFFERS],
 		meminfo[MI_CACHED]);
-	/* Go to top & clear to the end of screen */
-	printf(OPT_BATCH_MODE ? "%s\n" : HOME"%s"CLREOL"\n", scrbuf);
-	(*lines_rem_p)--;
+	print_line_buf();
 
 	/* Display CPU time split as percentage of total time.
 	 * This displays either a cumulative line or one line per CPU.
 	 */
-	display_cpus(scrbuf, lines_rem_p);
+	display_cpus();
 
 	/* Read load average as a string */
-	buf = stpcpy(scrbuf, "Load average: ");
-	open_read_close("loadavg", buf, sizeof(scrbuf) - sizeof("Load average: "));
+	buf = stpcpy(G.line_buf, "Load average: ");
+	open_read_close("loadavg", buf, sizeof(G.line_buf) - sizeof("Load average: "));
+	G.line_buf[sizeof(G.line_buf) - 1] = '\0'; /* paranoia */
 	strchrnul(buf, '\n')[0] = '\0';
-	printf(OPT_BATCH_MODE ? "%.*s\n" : "%.*s"CLREOL"\n", width - 1, scrbuf);
-	(*lines_rem_p)--;
+	print_line_buf();
 
 	return meminfo[MI_MEMTOTAL];
 }
 
-static NOINLINE void display_process_list(int lines_rem)
+static NOINLINE void display_process_list(void)
 {
 	enum {
 		BITS_PER_INT = sizeof(int) * 8
 	};
 
 	top_status_t *s;
-	unsigned long total_memory = display_header(&lines_rem); /* or use total_memsize? */
+	unsigned long total_memory = display_header();
 	/* xxx_shift and xxx_scale variables allow us to replace
 	 * expensive divides with multiply and shift */
 	unsigned pmem_shift, pmem_scale, pmem_half;
@@ -626,7 +653,7 @@ static NOINLINE void display_process_list(int lines_rem)
 
 #if ENABLE_FEATURE_TOP_DECIMALS
 # define UPSCALE 1000
-typedef struct { unsigned quot, rem; } bb_div_t;
+	typedef struct { unsigned quot, rem; } bb_div_t;
 /* Used to have "div_t name = div((val), 10)" here
  * (IOW: intended to use libc-compatible way to divide and use
  * both result and remainder, but musl does not inline div()...)
@@ -644,13 +671,11 @@ typedef struct { unsigned quot, rem; } bb_div_t;
 # define FMT "%4u%%"
 #endif
 
-	/* what info of the processes is shown */
-	printf(OPT_BATCH_MODE ? "%.*s" : REVERSE"%.*s"NORMAL CLREOL, G.scr_width - 1,
-		"  PID  PPID USER     STAT   RSS %RSS"
+	strcpy(G.line_buf, "  PID  PPID USER     STAT   RSS %RSS"
 		IF_FEATURE_TOP_SMP_PROCESS(" CPU")
 		IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE(" %CPU")
 		" COMMAND");
-	lines_rem--;
+	print_line_bold();
 
 	/* %RSS = s->memsize / MemTotal * 100%
 	 * Calculate this with multiply and shift. Example:
@@ -702,12 +727,12 @@ typedef struct { unsigned quot, rem; } bb_div_t;
 	pcpu_half = (1U << pcpu_shift) / (ENABLE_FEATURE_TOP_DECIMALS ? 20 : 2);
 	/* printf(" pmem_scale=%u pcpu_scale=%u ", pmem_scale, pcpu_scale); */
 #endif
-	if (lines_rem > ntop - G_scroll_ofs)
-		lines_rem = ntop - G_scroll_ofs;
+	if (G.lines_remaining > ntop - G_scroll_ofs)
+		G.lines_remaining = ntop - G_scroll_ofs;
 
 	/* Ok, all preliminary data is ready, go through the list */
 	s = top + G_scroll_ofs;
-	while (--lines_rem >= 0) {
+	while (G.lines_remaining > 0) {
 		int n;
 		char *ppu;
 		char ppubuf[sizeof(int)*3 * 2 + 12];
@@ -753,7 +778,7 @@ typedef struct { unsigned quot, rem; } bb_div_t;
 			ppu[6+6+8] = '\0'; /* truncate USER */
 		}
  shortened:
-		col = snprintf(line_buf, G.scr_width,
+		col = sprintf(G.line_buf,
 				"%s %s  %.5s" FMT
 				IF_FEATURE_TOP_SMP_PROCESS(" %3d")
 				IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE(FMT)
@@ -765,14 +790,13 @@ typedef struct { unsigned quot, rem; } bb_div_t;
 				IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE(, SHOW_STAT(pcpu))
 		);
 		if ((int)(G.scr_width - col) > 1)
-			read_cmdline(line_buf + col, G.scr_width - col, s->pid, s->comm);
-		printf(OPT_BATCH_MODE ? "\n""%s" : "\n""%s"CLREOL, line_buf);
+			read_cmdline(G.line_buf + col, G.scr_width - col, s->pid, s->comm);
+		print_line_buf();
 		/* printf(" %d/%d %lld/%lld", s->pcpu, total_pcpu,
 			cur_jif.busy - prev_jif.busy, cur_jif.total - prev_jif.total); */
 		s++;
 	}
 	/* printf(" %d", hist_iterations); */
-	fputs_stdout(OPT_BATCH_MODE ? "\n" : CLREOS"\r");
 }
 #undef UPSCALE
 #undef SHOW_STAT
@@ -844,36 +868,34 @@ static int topmem_sort(char *a, char *b)
 }
 
 /* display header info (meminfo / loadavg) */
-static void display_topmem_header(int *lines_rem_p)
+static void display_topmem_header(void)
 {
 	unsigned long meminfo[MI_MAX];
 
 	parse_meminfo(meminfo);
 
-	snprintf(line_buf, LINE_BUF_SIZE,
+	sprintf(G.line_buf,
 		"Mem total:%lu anon:%lu map:%lu free:%lu",
 		meminfo[MI_MEMTOTAL],
 		meminfo[MI_ANONPAGES],
 		meminfo[MI_MAPPED],
 		meminfo[MI_MEMFREE]);
-	printf(OPT_BATCH_MODE ? "%.*s\n" : HOME"%.*s"CLREOL"\n", G.scr_width - 1, line_buf);
+	print_line_buf();
 
-	snprintf(line_buf, LINE_BUF_SIZE,
+	sprintf(G.line_buf,
 		" slab:%lu buf:%lu cache:%lu dirty:%lu write:%lu",
 		meminfo[MI_SLAB],
 		meminfo[MI_BUFFERS],
 		meminfo[MI_CACHED],
 		meminfo[MI_DIRTY],
 		meminfo[MI_WRITEBACK]);
-	printf(OPT_BATCH_MODE ? "%.*s\n" : "%.*s"CLREOL"\n", G.scr_width - 1, line_buf);
+	print_line_buf();
 
-	snprintf(line_buf, LINE_BUF_SIZE,
+	sprintf(G.line_buf,
 		"Swap total:%lu free:%lu", // TODO: % used?
 		meminfo[MI_SWAPTOTAL],
 		meminfo[MI_SWAPFREE]);
-	printf(OPT_BATCH_MODE ? "%.*s\n" : "%.*s"CLREOL"\n", G.scr_width - 1, line_buf);
-
-	(*lines_rem_p) -= 3;
+	print_line_buf();
 }
 
 /* see http://en.wikipedia.org/wiki/Tera */
@@ -886,67 +908,57 @@ static void ulltoa4_and_space(unsigned long long ul, char buf[5])
 	smart_ulltoa4(ul, buf, " mgtpezy")[0] = ' ';
 }
 
-static NOINLINE void display_topmem_process_list(int lines_rem)
+static NOINLINE void display_topmem_process_list(void)
 {
 #define HDR_STR "  PID   VSZ VSZRW   RSS (SHR) DIRTY (SHR) STACK"
 #define MIN_WIDTH sizeof(HDR_STR)
 	const topmem_status_t *s = topmem + G_scroll_ofs;
 	char *cp, ch;
 
-	display_topmem_header(&lines_rem);
+	display_topmem_header();
 
-	strcpy(line_buf, HDR_STR " COMMAND");
+	strcpy(G.line_buf, HDR_STR " COMMAND");
 	/* Mark the ^FIELD^ we sort by */
-	cp = &line_buf[5 + sort_field * 6];
+	cp = &G.line_buf[5 + sort_field * 6];
 	ch = "^_"[inverted];
 	cp[6] = ch;
 	do *cp++ = ch; while (*cp == ' ');
+	print_line_bold();
 
-	printf(OPT_BATCH_MODE ? "%.*s" : REVERSE"%.*s"NORMAL CLREOL, G.scr_width - 1, line_buf);
-	lines_rem--;
-
-	if (lines_rem > ntop - G_scroll_ofs)
-		lines_rem = ntop - G_scroll_ofs;
-	while (--lines_rem >= 0) {
+	if (G.lines_remaining > ntop - G_scroll_ofs)
+		G.lines_remaining = ntop - G_scroll_ofs;
+	while (G.lines_remaining > 0) {
 		/* PID VSZ VSZRW RSS (SHR) DIRTY (SHR) COMMAND */
-		int n = sprintf(line_buf, "%5u ", s->pid);
+		int n = sprintf(G.line_buf, "%5u ", s->pid);
 		if (n > 7) {
 			/* PID is 7 chars long (up to 4194304) */
-			ulltoa4_and_space(s->vsz  , &line_buf[8]);
-			ulltoa4_and_space(s->vszrw, &line_buf[8+5]);
+			ulltoa4_and_space(s->vsz  , &G.line_buf[8]);
+			ulltoa4_and_space(s->vszrw, &G.line_buf[8+5]);
 			/* the next field (RSS) starts at 8+10 = 3*6 */
 		} else {
 			if (n == 7) /* PID is 6 chars long */
-				ulltoa4_and_space(s->vsz, &line_buf[7]);
+				ulltoa4_and_space(s->vsz, &G.line_buf[7]);
 				/* the next field (VSZRW) starts at 7+5 = 2*6 */
 			else /* PID is 5 chars or less */
-				ulltoa5_and_space(s->vsz, &line_buf[6]);
-			ulltoa5_and_space(s->vszrw, &line_buf[2*6]);
+				ulltoa5_and_space(s->vsz, &G.line_buf[6]);
+			ulltoa5_and_space(s->vszrw, &G.line_buf[2*6]);
 		}
-		ulltoa5_and_space(s->rss     , &line_buf[3*6]);
-		ulltoa5_and_space(s->rss_sh  , &line_buf[4*6]);
-		ulltoa5_and_space(s->dirty   , &line_buf[5*6]);
-		ulltoa5_and_space(s->dirty_sh, &line_buf[6*6]);
-		ulltoa5_and_space(s->stack   , &line_buf[7*6]);
-		line_buf[8*6] = '\0';
+		ulltoa5_and_space(s->rss     , &G.line_buf[3*6]);
+		ulltoa5_and_space(s->rss_sh  , &G.line_buf[4*6]);
+		ulltoa5_and_space(s->dirty   , &G.line_buf[5*6]);
+		ulltoa5_and_space(s->dirty_sh, &G.line_buf[6*6]);
+		ulltoa5_and_space(s->stack   , &G.line_buf[7*6]);
+		G.line_buf[8*6] = '\0';
 		if ((int)(G.scr_width - MIN_WIDTH) > 1)
-			read_cmdline(&line_buf[8*6], G.scr_width - MIN_WIDTH, s->pid, s->comm);
-		printf(OPT_BATCH_MODE ? "\n""%.*s" : "\n""%.*s"CLREOL, G.scr_width, line_buf);
+			read_cmdline(&G.line_buf[8*6], G.scr_width - MIN_WIDTH, s->pid, s->comm);
+		print_line_buf();
 		s++;
 	}
-	fputs_stdout(OPT_BATCH_MODE ? "\n" : CLREOS"\r");
 #undef HDR_STR
 #undef MIN_WIDTH
 }
 
-#else
-//void display_topmem_process_list(int lines_rem);
-//int topmem_sort(char *a, char *b);
-#endif /* TOPMEM */
-
-/*
- * end TOPMEM support
- */
+#endif /* end TOPMEM support */
 
 enum {
 	TOP_MASK = 0
@@ -1228,7 +1240,6 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 
-	/* change to /proc */
 	xchdir("/proc");
 
 #if ENABLE_FEATURE_TOP_CPU_USAGE_PERCENTAGE
@@ -1340,14 +1351,16 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 		}
 #endif
  IF_FEATURE_TOP_INTERACTIVE(redraw:)
+		G.lines_remaining = G.lines;
 		IF_FEATURE_TOPMEM(if (scan_mask != TOPMEM_MASK)) {
-			display_process_list(G.lines);
+			display_process_list();
 		}
 #if ENABLE_FEATURE_TOPMEM
 		else { /* TOPMEM */
-			display_topmem_process_list(G.lines);
+			display_topmem_process_list();
 		}
 #endif
+		print_end();
 		fflush_all();
 		if (iterations >= 0 && !--iterations)
 			break;
@@ -1369,7 +1382,8 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	} /* end of "while (not Q)" */
 
-	bb_putchar('\n');
+	if (!OPT_BATCH_MODE)
+		bb_putchar('\n');
 #if ENABLE_FEATURE_TOP_INTERACTIVE
 	reset_term();
 #endif
