@@ -117,7 +117,12 @@
 
 #include "libbb.h"
 
-#define ESC "\033"
+#define ESC     "\033"
+#define HOME    ESC"[H"
+#define CLREOS  ESC"[J"
+#define CLREOL  ESC"[K"
+#define REVERSE ESC"[7m"
+#define NORMAL  ESC"[m"
 
 typedef struct top_status_t {
 	unsigned long memsize;
@@ -501,7 +506,7 @@ static void display_cpus(int scr_width, char *scrbuf, int *lines_rem_p)
 				/*, SHOW_STAT(steal) - what is this 'steal' thing? */
 				/* I doubt anyone wants to know it */
 			);
-			puts(scrbuf);
+			printf(OPT_BATCH_MODE ? "%s\n" : "%s"CLREOL"\n", scrbuf);
 		}
 	}
 # undef SHOW_STAT
@@ -583,7 +588,7 @@ static unsigned long display_header(int scr_width, int *lines_rem_p)
 		meminfo[MI_BUFFERS],
 		meminfo[MI_CACHED]);
 	/* Go to top & clear to the end of screen */
-	printf(OPT_BATCH_MODE ? "%s\n" : ESC"[H" ESC"[J" "%s\n", scrbuf);
+	printf(OPT_BATCH_MODE ? "%s\n" : HOME"%s"CLREOL"\n", scrbuf);
 	(*lines_rem_p)--;
 
 	/* Display CPU time split as percentage of total time.
@@ -596,7 +601,7 @@ static unsigned long display_header(int scr_width, int *lines_rem_p)
 	open_read_close("loadavg", buf, sizeof(scrbuf) - sizeof("Load average: "));
 	scrbuf[scr_width - 1] = '\0';
 	strchrnul(buf, '\n')[0] = '\0';
-	puts(scrbuf);
+	printf(OPT_BATCH_MODE ? "%s\n" : "%s"CLREOL"\n", scrbuf);
 	(*lines_rem_p)--;
 
 	return meminfo[MI_MEMTOTAL];
@@ -640,7 +645,7 @@ typedef struct { unsigned quot, rem; } bb_div_t;
 #endif
 
 	/* what info of the processes is shown */
-	printf(OPT_BATCH_MODE ? "%.*s" : ESC"[7m" "%.*s" ESC"[m", scr_width,
+	printf(OPT_BATCH_MODE ? "%.*s" : REVERSE"%.*s"NORMAL CLREOL, scr_width,
 		"  PID  PPID USER     STAT   RSS %RSS"
 		IF_FEATURE_TOP_SMP_PROCESS(" CPU")
 		IF_FEATURE_TOP_CPU_USAGE_PERCENTAGE(" %CPU")
@@ -763,13 +768,14 @@ typedef struct { unsigned quot, rem; } bb_div_t;
 		if ((int)(scr_width - col) > 1)
 			read_cmdline(line_buf + col, scr_width - col, s->pid, s->comm);
 		fputs_stdout(line_buf);
+		if (!OPT_BATCH_MODE)
+			printf(CLREOL);
 		/* printf(" %d/%d %lld/%lld", s->pcpu, total_pcpu,
 			cur_jif.busy - prev_jif.busy, cur_jif.total - prev_jif.total); */
 		s++;
 	}
 	/* printf(" %d", hist_iterations); */
-	bb_putchar(OPT_BATCH_MODE ? '\n' : '\r');
-	fflush_all();
+	printf(OPT_BATCH_MODE ? "\n" : CLREOS"\r");
 }
 #undef UPSCALE
 #undef SHOW_STAT
@@ -853,7 +859,7 @@ static void display_topmem_header(int scr_width, int *lines_rem_p)
 		meminfo[MI_ANONPAGES],
 		meminfo[MI_MAPPED],
 		meminfo[MI_MEMFREE]);
-	printf(OPT_BATCH_MODE ? "%.*s\n" : ESC"[H" ESC"[J" "%.*s\n", scr_width, line_buf);
+	printf(OPT_BATCH_MODE ? "%.*s\n" : HOME"%.*s"CLREOL"\n", scr_width, line_buf);
 
 	snprintf(line_buf, LINE_BUF_SIZE,
 		" slab:%lu buf:%lu cache:%lu dirty:%lu write:%lu",
@@ -862,13 +868,13 @@ static void display_topmem_header(int scr_width, int *lines_rem_p)
 		meminfo[MI_CACHED],
 		meminfo[MI_DIRTY],
 		meminfo[MI_WRITEBACK]);
-	printf("%.*s\n", scr_width, line_buf);
+	printf(OPT_BATCH_MODE ? "%.*s\n" : "%.*s"CLREOL"\n", scr_width, line_buf);
 
 	snprintf(line_buf, LINE_BUF_SIZE,
 		"Swap total:%lu free:%lu", // TODO: % used?
 		meminfo[MI_SWAPTOTAL],
 		meminfo[MI_SWAPFREE]);
-	printf("%.*s\n", scr_width, line_buf);
+	printf(OPT_BATCH_MODE ? "%.*s\n" : "%.*s"CLREOL"\n", scr_width, line_buf);
 
 	(*lines_rem_p) -= 3;
 }
@@ -899,7 +905,7 @@ static NOINLINE void display_topmem_process_list(int lines_rem, int scr_width)
 	cp[6] = ch;
 	do *cp++ = ch; while (*cp == ' ');
 
-	printf(OPT_BATCH_MODE ? "%.*s" : ESC"[7m" "%.*s" ESC"[m", scr_width, line_buf);
+	printf(OPT_BATCH_MODE ? "%.*s" : REVERSE"%.*s"NORMAL CLREOL, scr_width, line_buf);
 	lines_rem--;
 
 	if (lines_rem > ntop - G_scroll_ofs)
@@ -929,11 +935,10 @@ static NOINLINE void display_topmem_process_list(int lines_rem, int scr_width)
 		if (scr_width > (int)MIN_WIDTH) {
 			read_cmdline(&line_buf[8*6], scr_width - MIN_WIDTH, s->pid, s->comm);
 		}
-		printf("\n""%.*s", scr_width, line_buf);
+		printf(OPT_BATCH_MODE ? "\n""%.*s" : "\n""%.*s"CLREOL, scr_width, line_buf);
 		s++;
 	}
-	bb_putchar(OPT_BATCH_MODE ? '\n' : '\r');
-	fflush_all();
+	printf(OPT_BATCH_MODE ? "\n" : CLREOS"\r");
 #undef HDR_STR
 #undef MIN_WIDTH
 }
@@ -1341,6 +1346,7 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 			display_topmem_process_list(G.lines, col);
 		}
 #endif
+		fflush_all();
 		if (iterations >= 0 && !--iterations)
 			break;
 #if !ENABLE_FEATURE_TOP_INTERACTIVE
