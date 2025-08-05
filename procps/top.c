@@ -629,10 +629,12 @@ typedef struct { unsigned quot, rem; } bb_div_t;
  */
 # define CALC_STAT(name, val) bb_div_t name = { (val) / 10, (val) % 10 }
 # define SHOW_STAT(name) name.quot, '0'+name.rem
+# define SANITIZE(name)  if (name.quot > 99) name.quot = 99, name.rem = (unsigned char)('+' - '0')
 # define FMT "%3u.%c"
 #else
 # define UPSCALE 100
 # define CALC_STAT(name, val) unsigned name = (val)
+# define SANITIZE(name)  if (name > 99) name = 99
 # define SHOW_STAT(name) name
 # define FMT "%4u%%"
 #endif
@@ -645,8 +647,14 @@ typedef struct { unsigned quot, rem; } bb_div_t;
 		" COMMAND");
 	lines_rem--;
 
-	/*
-	 * %VSZ = s->vsz/MemTotal
+	/* %VSZ = s->vsz / MemTotal * 100%
+	 * Calculate this with multiply and shift. Example:
+	 * shift = 12
+	 * scale = 100 * 0x1000 / total_memory
+	 * percent_mem = (size_mem * scale) >> shift
+	 *            ~= (size_mem >> shift) * scale
+	 *            ~= (size_mem >> shift) * 100 * (1 << shift) / total_memory
+	 *            ~= size_mem * 100 / total_memory
 	 */
 	pmem_shift = BITS_PER_INT-11;
 	pmem_scale = UPSCALE*(1U<<(BITS_PER_INT-11)) / total_memory;
@@ -706,6 +714,11 @@ typedef struct { unsigned quot, rem; } bb_div_t;
 #if ENABLE_FEATURE_TOP_CPU_USAGE_PERCENTAGE
 		CALC_STAT(pcpu, (s->pcpu*pcpu_scale + pcpu_half) >> pcpu_shift);
 #endif
+		/* VSZ can be much larger than total memory
+		 * (seen values close to 2Tbyte), don't try to display
+		 * "uses 12345.6% of MemTotal" (won't fit the column)
+		 */
+		SANITIZE(pmem);
 
 		smart_ulltoa5(s->vsz, vsz_str_buf, " mgtpezy");
 		/* PID PPID USER STAT VSZ %VSZ [%CPU] COMMAND */

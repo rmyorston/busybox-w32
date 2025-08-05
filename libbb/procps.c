@@ -143,6 +143,24 @@ static unsigned long fast_strtoul_10(char **endptr)
 	*endptr = str + 1; /* We skip trailing space! */
 	return n;
 }
+# if LONG_MAX < LLONG_MAX
+/* For VSZ, which can be very large */
+static unsigned long long fast_strtoull_10(char **endptr)
+{
+	unsigned char c;
+	char *str = *endptr;
+	unsigned long long n = *str - '0';
+
+	/* Need to stop on both ' ' and '\n' */
+	while ((c = *++str) > ' ')
+		n = n*10 + (c - '0');
+
+	*endptr = str + 1; /* We skip trailing space! */
+	return n;
+}
+# else
+# define fast_strtoull_10(endptr) fast_strtoul_10(endptr)
+# endif
 
 # if ENABLE_FEATURE_FAST_TOP
 static long fast_strtol_10(char **endptr)
@@ -370,7 +388,8 @@ procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags)
 			char *cp, *comm1;
 			int tty;
 #if !ENABLE_FEATURE_FAST_TOP
-			unsigned long vsz, rss;
+			unsigned long long vsz;
+			unsigned long rss;
 #endif
 			/* see proc(5) for some details on this */
 			strcpy(filename_tail, "stat");
@@ -396,7 +415,7 @@ procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags)
 				"%ld "                 /* nice */
 				"%*s %*s "             /* timeout, it_real_value */
 				"%lu "                 /* start_time */
-				"%lu "                 /* vsize */
+				"%llu "                /* vsize - can be very large */
 				"%lu "                 /* rss */
 # if ENABLE_FEATURE_TOP_SMP_PROCESS
 				"%*s %*s %*s %*s %*s %*s " /*rss_rlim, start_code, end_code, start_stack, kstk_esp, kstk_eip */
@@ -449,7 +468,7 @@ procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags)
 			cp = skip_fields(cp, 2); /* timeout, it_real_value */
 			sp->start_time = fast_strtoul_10(&cp);
 			/* vsz is in bytes and we want kb */
-			sp->vsz = fast_strtoul_10(&cp) >> 10;
+			sp->vsz = fast_strtoull_10(&cp) >> 10;
 			/* vsz is in bytes but rss is in *PAGES*! Can you believe that? */
 			sp->rss = fast_strtoul_10(&cp) << sp->shift_pages_to_kb;
 # if ENABLE_FEATURE_TOP_SMP_PROCESS
