@@ -968,7 +968,7 @@ enum {
 		| PSSCAN_SMAPS
 		| PSSCAN_COMM,
 	EXIT_MASK = 0,
-	NO_RESCAN_MASK = (unsigned)-1,
+	ONLY_REDRAW = (unsigned)-1,
 };
 
 #if ENABLE_FEATURE_TOP_INTERACTIVE
@@ -984,12 +984,19 @@ static unsigned handle_input(unsigned scan_mask, duration_t interval)
 		int32_t c, cc;
 
 		c = safe_read_key(STDIN_FILENO, G.kbd_input, interval * 1000);
-		if (c == -1 && errno != EAGAIN) {
-			/* error/EOF */
-			option_mask32 |= OPT_EOF;
+		if (c == -1) {
+			if (errno != EAGAIN)
+				/* error/EOF */
+				option_mask32 |= OPT_EOF;
+			/* else: timeout - rescan and refresh */
 			break;
 		}
 		interval = 0;
+		/* "continue" statements below return to do one additional
+		 * quick attempt to read a key. This prevents
+		 * long sequence of e.g. "nnnnnnnnnnnnnnnnnnnnnnnnnn"
+		 * to cause lots of rescans.
+		 */
 
 		if (c == initial_settings.c_cc[VINTR])
 			return EXIT_MASK;
@@ -1023,7 +1030,7 @@ static unsigned handle_input(unsigned scan_mask, duration_t interval)
 				G_scroll_ofs = ntop - 1;
 			if (G_scroll_ofs < 0)
 				G_scroll_ofs = 0;
-			return NO_RESCAN_MASK;
+			return ONLY_REDRAW;
 		}
 
 		cc = c;
@@ -1083,7 +1090,7 @@ static unsigned handle_input(unsigned scan_mask, duration_t interval)
 		if (c == 's') {
 			sort_field = (sort_field + 1) % NUM_SORT_FIELD;
 			if (scan_mask == TOPMEM_MASK)
-				return NO_RESCAN_MASK;
+				return ONLY_REDRAW;
 			scan_mask = TOPMEM_MASK;
 			free(prev_hist);
 			prev_hist = NULL;
@@ -1093,7 +1100,7 @@ static unsigned handle_input(unsigned scan_mask, duration_t interval)
 #  endif
 		if (c == 'r') {
 			inverted ^= 1;
-			continue;
+			return ONLY_REDRAW;
 		}
 #  if ENABLE_FEATURE_TOP_SMP_CPU
 		/* procps-2.0.18 uses 'C', 3.2.7 uses '1' */
@@ -1115,8 +1122,8 @@ static unsigned handle_input(unsigned scan_mask, duration_t interval)
 		}
 #  endif
 # endif
-		break; /* unknown key -> force refresh */
-	}
+		/* Unknown key. Eat remaining buffered input (if any) */
+	} /* while (1) */
 
 	return scan_mask;
 }
@@ -1253,7 +1260,7 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	while (scan_mask != EXIT_MASK) {
-		IF_FEATURE_TOP_INTERACTIVE(unsigned new_mask;)
+		IF_FEATURE_TOP_INTERACTIVE(unsigned new_mask = scan_mask;)
 		procps_status_t *p = NULL;
 
 		if (OPT_BATCH_MODE) {
@@ -1337,7 +1344,7 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 			qsort(topmem, ntop, sizeof(topmem_status_t), (void*)topmem_sort);
 		}
 #endif
- IF_FEATURE_TOP_INTERACTIVE(display:)
+ IF_FEATURE_TOP_INTERACTIVE(redraw:)
 		IF_FEATURE_TOPMEM(if (scan_mask != TOPMEM_MASK)) {
 			display_process_list(G.lines, col);
 		}
@@ -1353,9 +1360,15 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 		clearmems();
 		sleep_for_duration(interval);
 #else
-		new_mask = handle_input(scan_mask, interval);
-		if (new_mask == NO_RESCAN_MASK)
-			goto display;
+		new_mask = handle_input(scan_mask,
+			/* After "redraw with no rescan", have one
+			 * key timeout shorter that normal
+			 * (IOW: rescan sooner):
+			 */
+			(new_mask == ONLY_REDRAW ? 1 : interval)
+		);
+		if (new_mask == ONLY_REDRAW)
+			goto redraw;
 		scan_mask = new_mask;
 		clearmems();
 #endif
