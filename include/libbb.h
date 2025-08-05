@@ -2081,33 +2081,6 @@ enum { COMM_LEN = 16 };
 # endif
 #endif
 
-struct smaprec {
-	unsigned long mapped_rw;
-	unsigned long mapped_ro;
-	unsigned long shared_clean;
-	unsigned long shared_dirty;
-	unsigned long private_clean;
-	unsigned long private_dirty;
-	unsigned long stack;
-	unsigned long smap_pss, smap_swap;
-	unsigned long smap_size;
-	// For mixed 32/64 userspace, 32-bit pmap still needs
-	// 64-bit field here to correctly show 64-bit processes:
-	unsigned long long smap_start;
-	// (strictly speaking, other fields need to be wider too,
-	// but they are in kbytes, not bytes, and they hold sizes,
-	// not start addresses, sizes tend to be less than 4 terabytes)
-	char smap_mode[5];
-	char *smap_name;
-};
-
-#if !ENABLE_PMAP
-#define procps_read_smaps(pid, total, cb, data) \
-	procps_read_smaps(pid, total)
-#endif
-int FAST_FUNC procps_read_smaps(pid_t pid, struct smaprec *total,
-		void (*cb)(struct smaprec *, void *), void *data);
-
 typedef struct procps_status_t {
 	DIR *dir;
 	IF_FEATURE_SHOW_THREADS(DIR *task_dir;)
@@ -2137,7 +2110,13 @@ typedef struct procps_status_t {
 #endif
 	unsigned tty_major,tty_minor;
 #if ENABLE_FEATURE_TOPMEM
-	struct smaprec smaps;
+	unsigned long mapped_rw;
+	unsigned long mapped_ro;
+	unsigned long shared_clean;
+	unsigned long shared_dirty;
+	unsigned long private_clean;
+	unsigned long private_dirty;
+	unsigned long stack;
 #endif
 	char state[4];
 	/* basename of executable in exec(2), read from /proc/N/stat
@@ -2186,11 +2165,15 @@ void free_procps_scan(procps_status_t* sp) FAST_FUNC;
 procps_status_t* procps_scan(procps_status_t* sp, int flags) FAST_FUNC;
 /* Format cmdline (up to col chars) into char buf[size] */
 /* Puts [comm] if cmdline is empty (-> process is a kernel thread) */
-void read_cmdline(char *buf, int size, unsigned pid, const char *comm) FAST_FUNC;
+int read_cmdline(char *buf, int size, unsigned pid, const char *comm) FAST_FUNC;
 pid_t *find_pid_by_name(const char* procName) FAST_FUNC;
 pid_t *pidlist_reverse(pid_t *pidList) FAST_FUNC;
 int starts_with_cpu(const char *str) FAST_FUNC;
 unsigned get_cpu_count(void) FAST_FUNC;
+/* Some internals reused by pmap: */
+unsigned long FAST_FUNC fast_strtoul_10(char **endptr);
+unsigned long long FAST_FUNC fast_strtoull_16(char **endptr);
+char* FAST_FUNC skip_fields(char *str, int count);
 
 
 /* Use strict=1 if you process input from untrusted source:
