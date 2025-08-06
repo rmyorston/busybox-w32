@@ -12735,21 +12735,22 @@ checkend: {
 
 		if (striptabs) {
 			while (c == '\t')
-				c = pgetc();
+				c = pgetc_eatbnl();  /* dash does pgetc() */
+				/* (see heredoc_bkslash_newline3a.tests) */
 		}
 
 		markloc = out - (char *)stackblock();
 		for (p = eofmark; STPUTC(c, out), *p; p++) {
 			if (c != *p)
 				goto more_heredoc;
-			/* FIXME: fails for backslash-newlined terminator:
+			/* dash still has this not fixed (as of 2025-08)
 			 * cat <<EOF
 			 * ...
 			 * EO\
 			 * F
 			 * (see heredoc_bkslash_newline2.tests)
 			 */
-			c = pgetc();
+			c = pgetc_eatbnl(); /* dash does pgetc() */
 		}
 
 		if (c == '\n' || c == PEOF) {

@@ -4639,7 +4639,15 @@ static char *fetch_till_str(o_string *as_string,
 					past_EOL = heredoc.length;
 					/* Get 1st char of next line, possibly skipping leading tabs */
 					do {
-						ch = i_getch(input);
+						if (heredoc_flags & HEREDOC_QUOTED)
+							ch = i_getch(input);
+						else { /* see heredoc_bkslash_newline3a.tests:
+							 * cat <<-EOF
+							 * <tab>\
+							 * <tab>EOF
+							 */
+							ch = i_getch_and_eat_bkslash_nl(input);
+						}
 						if (ch != EOF)
 							nommu_addchr(as_string, ch);
 					} while ((heredoc_flags & HEREDOC_SKIPTABS) && ch == '\t');
@@ -4665,7 +4673,7 @@ static char *fetch_till_str(o_string *as_string,
 				prev = 0; /* not '\' */
 				continue;
 			}
-		}
+		} /* if (\n or EOF) */
 		if (ch == EOF) {
 			o_free(&heredoc);
 			return NULL; /* error */
