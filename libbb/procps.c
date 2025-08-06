@@ -195,7 +195,7 @@ static NOINLINE void procps_read_smaps(pid_t pid, procps_status_t *sp)
 
 	FILE *file;
 	char filename[sizeof("/proc/%u/smaps") + sizeof(int)*3];
-	char buf[PROCPS_BUFSIZE];
+	char buf[PROCPS_BUFSIZE] ALIGN4;
 
 	sprintf(filename, "/proc/%u/smaps", (int)pid);
 
@@ -211,20 +211,27 @@ static NOINLINE void procps_read_smaps(pid_t pid, procps_status_t *sp)
 		// .....
 
 		char *tp;
-
-		if (buf[0] == 'S' || buf[0] == 'P') {
+#define bytes4 *(uint32_t*)buf
+#define Priv   PACK32_BYTES('P','r','i','v')
+#define Shar   PACK32_BYTES('S','h','a','r')
 #define SCAN(S, X) \
-			if (memcmp(buf, S, sizeof(S)-1) == 0) { \
-				tp = skip_whitespace(buf + sizeof(S)-1); \
-				sp->X += fast_strtoul_10(&tp); \
-				continue; \
-			}
-			SCAN("Private_Dirty:", private_dirty)
-			SCAN("Private_Clean:", private_clean)
-			SCAN("Shared_Dirty:" , shared_dirty )
-			SCAN("Shared_Clean:" , shared_clean )
-#undef SCAN
+if (memcmp(buf+4, S, sizeof(S)-1) == 0) { \
+	tp = skip_whitespace(buf+4 + sizeof(S)-1); \
+	sp->X += fast_strtoul_10(&tp); \
+	continue; \
+}
+		if (bytes4 == Priv) {
+			SCAN("ate_Dirty:", private_dirty)
+			SCAN("ate_Clean:", private_clean)
 		}
+		if (bytes4 == Shar) {
+			SCAN("ed_Dirty:" , shared_dirty )
+			SCAN("ed_Clean:" , shared_clean )
+		}
+#undef bytes4
+#undef Priv
+#undef Shar
+#undef SCAN
 		tp = strchr(buf, '-');
 		if (tp) {
 			// We reached next mapping - the line of this form:
