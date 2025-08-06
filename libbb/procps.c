@@ -578,7 +578,7 @@ int FAST_FUNC read_cmdline(char *buf, int col, unsigned pid, const char *comm)
 		 */
 		while (sz >= 0) {
 			if ((unsigned char)(buf[sz]) < ' ')
-				buf[sz] = ' ';
+				buf[sz] = (buf[sz] ? /*ctrl*/'?' : /*NUL*/' ');
 			sz--;
 		}
 
