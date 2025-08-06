@@ -231,7 +231,7 @@ static NOINLINE void procps_read_smaps(pid_t pid, procps_status_t *sp)
 			// f7d29000-f7d39000 rw-s FILEOFS M:m INODE FILENAME
 
 			char *rwx;
-			unsigned long sz;
+			unsigned long long sz;
 
 			*tp = ' ';
 			tp = buf;
