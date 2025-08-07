@@ -12454,12 +12454,12 @@ decode_dollar_squote(void)
 #endif
 
 /* Used by expandstr to get here-doc like behaviour. */
-#define FAKEEOFMARK ((char*)(uintptr_t)1)
+#define FAKEEOFMARK ((struct heredoc*)(uintptr_t)1)
 
 static ALWAYS_INLINE int
-realeofmark(const char *eofmark)
+realeofmark(struct heredoc *here)
 {
-	return eofmark && eofmark != FAKEEOFMARK;
+	return here && here != FAKEEOFMARK;
 }
 
 /*
@@ -12481,7 +12481,7 @@ realeofmark(const char *eofmark)
 #define PARSEPROCSUB()  {style = PSUB; goto parsebackq; parsebackq_psreturn:;}
 #define PARSEARITH()    {goto parsearith; parsearith_return:;}
 static int
-readtoken1(int c, int syntax, char *eofmark, int striptabs)
+readtoken1(int c, int syntax, struct heredoc *eofmark)
 {
 	/* NB: syntax parameter fits into smallint */
 	/* c parameter is an unsigned char or PEOF */
@@ -12733,14 +12733,17 @@ checkend: {
 		int markloc;
 		char *p;
 
-		if (striptabs) {
+		if (eofmark->striptabs) {
 			while (c == '\t')
-				c = pgetc_eatbnl();  /* dash does pgetc() */
+				if (eofmark->here->type == NHERE)
+					c = pgetc();  /* dash always does pgetc() */
+				else /* NXHERE */
+					c = pgetc_eatbnl();
 				/* (see heredoc_bkslash_newline3a.tests) */
 		}
 
 		markloc = out - (char *)stackblock();
-		for (p = eofmark; STPUTC(c, out), *p; p++) {
+		for (p = eofmark->eofmark; STPUTC(c, out), *p; p++) {
 			if (c != *p)
 				goto more_heredoc;
 			/* dash still has this not fixed (as of 2025-08)
@@ -12750,7 +12753,10 @@ checkend: {
 			 * F
 			 * (see heredoc_bkslash_newline2.tests)
 			 */
-			c = pgetc_eatbnl(); /* dash does pgetc() */
+			if (eofmark->here->type == NHERE)
+				c = pgetc(); /* dash always does pgetc() */
+			else /* NXHERE */
+				c = pgetc_eatbnl();
 		}
 
 		if (c == '\n' || c == PEOF) {
@@ -12760,7 +12766,6 @@ checkend: {
 			needprompt = doprompt;
 		} else {
 			int len_here;
-
  more_heredoc:
 			p = (char *)stackblock() + markloc + 1;
 			len_here = out - p;
@@ -13269,7 +13274,7 @@ xxreadtoken(void)
 		}
 	} /* for (;;) */
 
-	return readtoken1(c, BASESYNTAX, (char *) NULL, 0);
+	return readtoken1(c, BASESYNTAX, NULL);
 }
 #else /* old xxreadtoken */
 #define RETURN(token)   return lasttoken = token
@@ -13320,7 +13325,7 @@ xxreadtoken(void)
 		}
 		break;
 	}
-	return readtoken1(c, BASESYNTAX, (char *)NULL, 0);
+	return readtoken1(c, BASESYNTAX, NULL);
 #undef RETURN
 }
 #endif /* old xxreadtoken */
@@ -13426,9 +13431,9 @@ parseheredoc(void)
 		tokpushback = 0;
 		setprompt_if(needprompt, 2);
 		if (here->here->type == NHERE)
-			readtoken1(pgetc(), SQSYNTAX, here->eofmark, here->striptabs);
+			readtoken1(pgetc(), SQSYNTAX, here);
 		else
-			readtoken1(pgetc_eatbnl(), DQSYNTAX, here->eofmark, here->striptabs);
+			readtoken1(pgetc_eatbnl(), DQSYNTAX, here);
 		n = stzalloc(sizeof(struct narg));
 		n->narg.type = NARG;
 		/*n->narg.next = NULL; - stzalloc did it */
@@ -13471,8 +13476,7 @@ expandstr(const char *ps, int syntax_type)
 	 * PS1='$(date "+%H:%M:%S) > '
 	 */
 	exception_handler = &jmploc;
-	readtoken1(pgetc_eatbnl(), syntax_type, FAKEEOFMARK, 0);
-
+	readtoken1(pgetc_eatbnl(), syntax_type, FAKEEOFMARK);
 	n.narg.type = NARG;
 	n.narg.next = NULL;
 	n.narg.text = wordtext;
