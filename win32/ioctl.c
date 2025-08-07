@@ -1,4 +1,5 @@
 #include "libbb.h"
+#include "lazyload.h"
 
 #if ENABLE_STTY || ENABLE_TTYSIZE
 static int mingw_get_terminal_width_height(struct winsize *win)
@@ -28,6 +29,15 @@ static int mingw_get_terminal_width_height(struct winsize *win)
 static int mingw_set_terminal_width_height(struct winsize *win)
 {
 	BOOL ret;
+	DECLARE_PROC_ADDR(BOOL, GetConsoleScreenBufferInfoEx, HANDLE,
+				PCONSOLE_SCREEN_BUFFER_INFOEX);
+	DECLARE_PROC_ADDR(BOOL, SetConsoleScreenBufferInfoEx, HANDLE,
+				PCONSOLE_SCREEN_BUFFER_INFOEX);
+
+	if (!INIT_PROC_ADDR(kernel32.dll, GetConsoleScreenBufferInfoEx))
+		return -1;
+	if (!INIT_PROC_ADDR(kernel32.dll, SetConsoleScreenBufferInfoEx))
+		return -1;
 
 	for (int fd = STDOUT_FILENO; fd <= STDERR_FILENO; ++fd) {
 		CONSOLE_SCREEN_BUFFER_INFOEX sbi;
