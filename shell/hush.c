@@ -3386,24 +3386,6 @@ static int o_get_last_ptr(o_string *o, int n)
 /* Helper */
 static int glob_needed(const char *s)
 {
-# if ENABLE_HUSH_NEED_FOR_SPEED
-	char c = *s;
-	if (c == '[' /*|| c == '{'*/) {
-		/* Special-case words consisting entirely of [.
-		 * Optimization to avoid glob()
-		 * on "[ COND ]" and "[[ COND ]]":
-		 *  strace hush -c 'i=0; while [ $((++i)) != 50000 ]; do :; done'
-		 * shouldn't be doing 50000 stat("[").
-		 * (Can do it for "{" too, but it's not a common case).
-		 */
-		const char *p = s;
-		while (*++p == c)
-			continue;
-		if (*p == '\0')
-			return 0;
-	}
-# endif
-
 	while (*s) {
 		if (*s == '\\') {
 			if (!s[1])
@@ -3411,7 +3393,19 @@ static int glob_needed(const char *s)
 			s += 2;
 			continue;
 		}
-		if (*s == '*' || *s == '[' || *s == '?' || *s == '{')
+		if (*s == '*' || *s == '?')
+			return 1;
+		/* Only force glob if "..[..].." detected.
+		 * Not merely "[", "[[", "][" etc.
+		 * Optimization to avoid glob()
+		 * on "[ COND ]" and "[[ COND ]]":
+		 *  strace hush -c 'i=0; while [ $((++i)) != 50000 ]; do :; done'
+		 * shouldn't be doing 50000 stat("[").
+		 * (Can do it for "{" too, but it's not a common case).
+		 */
+		if (*s == '[' && strchr(s+1, ']'))
+			return 1;
+		if (*s == '{' /* && strchr(s+1, '}')*/)
 			return 1;
 		s++;
 	}
@@ -3595,23 +3589,6 @@ static int perform_glob(o_string *o, int n)
 /* Helper */
 static int glob_needed(const char *s)
 {
-# if ENABLE_HUSH_NEED_FOR_SPEED
-	char c = *s;
-	if (c == '[') {
-		/* Special-case words consisting entirely of [.
-		 * Optimization to avoid glob()
-		 * on "[ COND ]" and "[[ COND ]]":
-		 *  strace hush -c 'i=0; while [ $((++i)) != 50000 ]; do :; done'
-		 * shouldn't be doing 50000 stat("[").
-		 */
-		const char *p = s;
-		while (*++p == c)
-			continue;
-		if (*p == '\0')
-			return 0;
-	}
-# endif
-
 	while (*s) {
 		if (*s == '\\') {
 			if (!s[1])
@@ -3619,7 +3596,16 @@ static int glob_needed(const char *s)
 			s += 2;
 			continue;
 		}
-		if (*s == '*' || *s == '[' || *s == '?')
+		if (*s == '*' || *s == '?')
+			return 1;
+		/* Only force glob if "..[..].." detected.
+		 * Not merely "[", "[[", "][" etc.
+		 * Optimization to avoid glob()
+		 * on "[ COND ]" and "[[ COND ]]":
+		 *  strace hush -c 'i=0; while [ $((++i)) != 50000 ]; do :; done'
+		 * shouldn't be doing 50000 stat("[").
+		 */
+		if (*s == '[' && strchr(s+1, ']'))
 			return 1;
 		s++;
 	}
