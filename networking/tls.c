@@ -3015,7 +3015,7 @@ void FAST_FUNC tls_handshake(tls_state_t * state, const char *hostname) {
 										in_buffers[1].cbBuffer),
 					in_buffers[1].cbBuffer);
 			state->in_buffer_size = in_buffers[1].cbBuffer;
-		} else if (in_buffers[1].BufferType != SECBUFFER_MISSING) {
+		} else if (status != SEC_E_INCOMPLETE_MESSAGE) {
 			state->in_buffer_size = 0;
 		}
 
