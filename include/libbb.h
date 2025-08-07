@@ -281,6 +281,12 @@ PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 # endif
 #endif
 
+#if ENABLE_FEATURE_TLS_SCHANNEL
+# define SECURITY_WIN32
+# include <Windows.h>
+# include <security.h>
+#endif
+
 /* Tested to work correctly with all int types (IIRC :]) */
 #define MAXINT(T) (T)( \
 	((T)-1) > 0 \
@@ -899,7 +905,36 @@ struct hostent *xgethostbyname(const char *name) FAST_FUNC;
 // Also mount.c and inetd.c are using gethostbyname(),
 // + inet_common.c has additional IPv4-only stuff
 
+#if defined CONFIG_FEATURE_TLS_SCHANNEL
+typedef struct tls_state {
+	int ofd;
+	int ifd;
 
+    // handles
+    CredHandle cred_handle;
+    CtxtHandle ctx_handle;
+
+    // buffers
+    char in_buffer[16384 + 256]; // input buffer (to read from server)
+    unsigned long in_buffer_size; // amount of data currently in input buffer
+
+    char *out_buffer; // output buffer (for decrypted data), this is essentially the same as input buffer as data is decrypted in place
+    unsigned long out_buffer_size; // amount of data currently in output buffer
+    unsigned long out_buffer_used; // amount of extra data currently in output buffer
+
+    // data
+    char *hostname;
+    SecPkgContext_StreamSizes stream_sizes;
+
+	// booleans
+
+	// context initialized
+    int initialized;
+	
+	// closed by remote peer
+	int closed;
+} tls_state_t;
+#else
 struct tls_aes {
 	uint32_t key[60];
 	unsigned rounds;
@@ -956,12 +991,14 @@ typedef struct tls_state {
 	struct tls_aes aes_decrypt;
 	uint8_t H[16]; //used by AES_GCM
 } tls_state_t;
+#endif
 
 static inline tls_state_t *new_tls_state(void)
 {
 	tls_state_t *tls = xzalloc(sizeof(*tls));
 	return tls;
 }
+
 void tls_handshake(tls_state_t *tls, const char *sni) FAST_FUNC;
 #define TLSLOOP_EXIT_ON_LOCAL_EOF (1 << 0)
 void tls_run_copy_loop(tls_state_t *tls, unsigned flags) FAST_FUNC;

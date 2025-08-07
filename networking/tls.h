@@ -10,7 +10,7 @@
  */
 #include "libbb.h"
 
-
+#if !ENABLE_FEATURE_TLS_SCHANNEL
 /* Config tweaks */
 #define HAVE_NATIVE_INT64
 #undef  USE_1024_KEY_SPEED_OPTIMIZATIONS
@@ -120,3 +120,4 @@ void curve_P256_compute_pubkey_and_premaster(
 void curve_P256_compute_pubkey_and_premaster_NEW(
 		uint8_t *pubkey2x32, uint8_t *premaster32,
 		const uint8_t *peerkey2x32) FAST_FUNC;
+#endif

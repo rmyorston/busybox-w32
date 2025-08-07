@@ -99,8 +99,8 @@ typedef long arith_t;
 
 /* The kinds of value we can have.  */
 enum {
-	INTEGER,
-	STRING
+	BB_INTEGER,
+	BB_STRING
 };
 
 /* A value is.... */
@@ -134,8 +134,8 @@ static VALUE *int_value(arith_t i)
 	VALUE *v;
 
 	v = xzalloc(sizeof(VALUE));
-	if (INTEGER) /* otherwise xzalloc did it already */
-		v->type = INTEGER;
+	if (BB_INTEGER) /* otherwise xzalloc did it already */
+		v->type = BB_INTEGER;
 	v->u.i = i;
 	return v;
 }
@@ -147,8 +147,8 @@ static VALUE *str_value(const char *s)
 	VALUE *v;
 
 	v = xzalloc(sizeof(VALUE));
-	if (STRING) /* otherwise xzalloc did it already */
-		v->type = STRING;
+	if (BB_STRING) /* otherwise xzalloc did it already */
+		v->type = BB_STRING;
 	v->u.s = xstrdup(s);
 	return v;
 }
@@ -157,7 +157,7 @@ static VALUE *str_value(const char *s)
 
 static void freev(VALUE *v)
 {
-	if (v->type == STRING)
+	if (v->type == BB_STRING)
 		free(v->u.s);
 	free(v);
 }
@@ -166,7 +166,7 @@ static void freev(VALUE *v)
 
 static int null(VALUE *v)
 {
-	if (v->type == INTEGER)
+	if (v->type == BB_INTEGER)
 		return v->u.i == 0;
 	/* STRING: */
 	return v->u.s[0] == '\0' || LONE_CHAR(v->u.s, '0');
@@ -176,9 +176,9 @@ static int null(VALUE *v)
 
 static void tostring(VALUE *v)
 {
-	if (v->type == INTEGER) {
+	if (v->type == BB_INTEGER) {
 		v->u.s = xasprintf("%" PF_REZ "d", PF_REZ_TYPE v->u.i);
-		v->type = STRING;
+		v->type = BB_STRING;
 	}
 }
 
@@ -186,7 +186,7 @@ static void tostring(VALUE *v)
 
 static bool toarith(VALUE *v)
 {
-	if (v->type == STRING) {
+	if (v->type == BB_STRING) {
 		arith_t i;
 		char *e;
 
@@ -197,7 +197,7 @@ static bool toarith(VALUE *v)
 			return 0;
 		free(v->u.s);
 		v->u.i = i;
-		v->type = INTEGER;
+		v->type = BB_INTEGER;
 	}
 	return 1;
 }
@@ -220,7 +220,7 @@ static int cmp_common(VALUE *l, VALUE *r, int op)
 
 	ll = l->u.i;
 	rr = r->u.i;
-	if (l->type == STRING || r->type == STRING) {
+	if (l->type == BB_STRING || r->type == BB_STRING) {
 		tostring(l);
 		tostring(r);
 		ll = strcmp(l->u.s, r->u.s);
@@ -390,7 +390,7 @@ static VALUE *eval6(void)
 			v = str_value("");
 		else {
 			v = xmalloc(sizeof(VALUE));
-			v->type = STRING;
+			v->type = BB_STRING;
 			v->u.s = xstrndup(l->u.s + i1->u.i - 1, i2->u.i);
 		}
 		freev(l);
@@ -551,7 +551,7 @@ int expr_main(int argc UNUSED_PARAM, char **argv)
 	v = eval();
 	if (*G.args)
 		bb_simple_error_msg_and_die("syntax error");
-	if (v->type == INTEGER)
+	if (v->type == BB_INTEGER)
 		printf("%" PF_REZ "d\n", PF_REZ_TYPE v->u.i);
 	else
 		puts(v->u.s);
