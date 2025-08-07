@@ -867,6 +867,7 @@ out2str(const char *p)
 #define VSTRIMLEFT      0x8     /* ${var#pattern} */
 #define VSTRIMLEFTMAX   0x9     /* ${var##pattern} */
 #define VSLENGTH        0xa     /* ${#var} */
+// unused yet           0xb     /* unused */
 #if BASH_SUBSTR
 #define VSSUBSTR        0xc     /* ${var:position:length} */
 #endif
@@ -4829,13 +4830,25 @@ static char *cmdnextc;
 static void
 cmdputs(const char *s)
 {
-	static const char vstype[VSTYPE + 1][3] ALIGN1 = {
-		"", "}", "-", "+", "?", "=",
-		"%", "%%", "#", "##"
-		IF_BASH_SUBSTR(, ":")
-		IF_BASH_PATTERN_SUBST(, "/", "//")
+	static const char vstype[][3] ALIGN1 = {
+	[VSNORMAL       - VSNORMAL] = "}", // $var or ${var}
+	[VSMINUS        - VSNORMAL] = "-", // ${var-text}
+	[VSPLUS         - VSNORMAL] = "+", // ${var+text}
+	[VSQUESTION     - VSNORMAL] = "?", // ${var?message}
+	[VSASSIGN       - VSNORMAL] = "=", // ${var=text}
+	[VSTRIMRIGHT    - VSNORMAL] = "%", // ${var%pattern}
+	[VSTRIMRIGHTMAX - VSNORMAL] = "%%",// ${var%%pattern}
+	[VSTRIMLEFT     - VSNORMAL] = "#", // ${var#pattern}
+	[VSTRIMLEFTMAX  - VSNORMAL] = "##",// ${var##pattern}
+	[VSLENGTH       - VSNORMAL] = "",  // ${#var}
+#if BASH_SUBSTR
+	[VSSUBSTR       - VSNORMAL] = ":", // ${var:position:length}
+#endif
+#if BASH_PATTERN_SUBST
+	[VSREPLACE      - VSNORMAL] = "/", // ${var/pattern/replacement}
+	[VSREPLACEALL   - VSNORMAL] = "//",// ${var//pattern/replacement}
+#endif
 	};
-
 	const char *p, *str;
 	char cc[2];
 	char *nextc;
@@ -4898,32 +4911,34 @@ cmdputs(const char *s)
 		case '=':
 			if (subtype == 0)
 				break;
+			/* We are in variable name */
 			if ((subtype & VSTYPE) != VSNORMAL)
 				quoted <<= 1;
-			str = vstype[subtype & VSTYPE];
-			if (subtype & VSNUL)
-				c = ':';
-			else
-				goto checkstr;
+			str = vstype[(subtype & VSTYPE) - VSNORMAL];
+			if (!(subtype & VSNUL))
+				goto dostr;
+			c = ':';
 			break;
-		case '\'':
+		case '$':
+			/* Can happen inside quotes, or in variable name $$ */
+			if (subtype != 0)
+				// Testcase:
+				// $ true $$ &
+				// $ <cr>
+				// [1]+ Done  true ${$} // shows ${\$} without "if (subtype)" check
+				break;
+			/* Not in variable name - show as \$ */
+		case '\'': /* These can only happen inside quotes */
 		case '\\':
 		case '"':
-		case '$':
-			/* These can only happen inside quotes */
 			cc[0] = c;
 			str = cc;
-//FIXME:
-// $ true $$ &
-// $ <cr>
-// [1]+  Done    true ${\$}   <<=== BUG: ${\$} is not a valid way to write $$ (${$} would be ok)
 			c = '\\';
 			break;
 		default:
 			break;
 		}
 		USTPUTC(c, nextc);
- checkstr:
 		if (!str)
 			continue;
  dostr:
@@ -4935,7 +4950,7 @@ cmdputs(const char *s)
 	if (quoted & 1) {
 		USTPUTC('"', nextc);
 	}
-	*nextc = 0;
+	*nextc = '\0';
 	cmdnextc = nextc;
 }
 
