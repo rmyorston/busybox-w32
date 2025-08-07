@@ -96,11 +96,13 @@ typedef long arith_t;
 #endif
 
 /* TODO: use bb_strtol[l]? It's easier to check for errors... */
-
-/* The kinds of value we can have.  */
+ 
+#if ENABLE_PLATFORM_MINGW32
+# define STRING BB_STRING
+#endif
 enum {
-	BB_INTEGER,
-	BB_STRING
+	INTEGER,
+	STRING
 };
 
 /* A value is.... */
@@ -134,8 +136,8 @@ static VALUE *int_value(arith_t i)
 	VALUE *v;
 
 	v = xzalloc(sizeof(VALUE));
-	if (BB_INTEGER) /* otherwise xzalloc did it already */
-		v->type = BB_INTEGER;
+	if (INTEGER) /* otherwise xzalloc did it already */
+		v->type = INTEGER;
 	v->u.i = i;
 	return v;
 }
@@ -147,8 +149,8 @@ static VALUE *str_value(const char *s)
 	VALUE *v;
 
 	v = xzalloc(sizeof(VALUE));
-	if (BB_STRING) /* otherwise xzalloc did it already */
-		v->type = BB_STRING;
+	if (STRING) /* otherwise xzalloc did it already */
+		v->type = STRING;
 	v->u.s = xstrdup(s);
 	return v;
 }
@@ -157,7 +159,7 @@ static VALUE *str_value(const char *s)
 
 static void freev(VALUE *v)
 {
-	if (v->type == BB_STRING)
+	if (v->type == STRING)
 		free(v->u.s);
 	free(v);
 }
@@ -166,7 +168,7 @@ static void freev(VALUE *v)
 
 static int null(VALUE *v)
 {
-	if (v->type == BB_INTEGER)
+	if (v->type == INTEGER)
 		return v->u.i == 0;
 	/* STRING: */
 	return v->u.s[0] == '\0' || LONE_CHAR(v->u.s, '0');
@@ -176,9 +178,9 @@ static int null(VALUE *v)
 
 static void tostring(VALUE *v)
 {
-	if (v->type == BB_INTEGER) {
+	if (v->type == INTEGER) {
 		v->u.s = xasprintf("%" PF_REZ "d", PF_REZ_TYPE v->u.i);
-		v->type = BB_STRING;
+		v->type = STRING;
 	}
 }
 
@@ -186,7 +188,7 @@ static void tostring(VALUE *v)
 
 static bool toarith(VALUE *v)
 {
-	if (v->type == BB_STRING) {
+	if (v->type == STRING) {
 		arith_t i;
 		char *e;
 
@@ -197,7 +199,7 @@ static bool toarith(VALUE *v)
 			return 0;
 		free(v->u.s);
 		v->u.i = i;
-		v->type = BB_INTEGER;
+		v->type = INTEGER;
 	}
 	return 1;
 }
@@ -220,7 +222,7 @@ static int cmp_common(VALUE *l, VALUE *r, int op)
 
 	ll = l->u.i;
 	rr = r->u.i;
-	if (l->type == BB_STRING || r->type == BB_STRING) {
+	if (l->type == STRING || r->type == STRING) {
 		tostring(l);
 		tostring(r);
 		ll = strcmp(l->u.s, r->u.s);
@@ -390,7 +392,7 @@ static VALUE *eval6(void)
 			v = str_value("");
 		else {
 			v = xmalloc(sizeof(VALUE));
-			v->type = BB_STRING;
+			v->type = STRING;
 			v->u.s = xstrndup(l->u.s + i1->u.i - 1, i2->u.i);
 		}
 		freev(l);
@@ -551,7 +553,7 @@ int expr_main(int argc UNUSED_PARAM, char **argv)
 	v = eval();
 	if (*G.args)
 		bb_simple_error_msg_and_die("syntax error");
-	if (v->type == BB_INTEGER)
+	if (v->type == INTEGER)
 		printf("%" PF_REZ "d\n", PF_REZ_TYPE v->u.i);
 	else
 		puts(v->u.s);

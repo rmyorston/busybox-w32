@@ -73,23 +73,21 @@ config FEATURE_HWIB
 	Support for printing infiniband addresses in network applets.
 
 choice
-	prompt "Select which TLS implementation to use"
+	prompt "TLS implementation"
 	default FEATURE_TLS_INTERNAL
 
 config FEATURE_TLS_INTERNAL
-	bool "Internal TLS implementation"
+	bool "Internal"
 	depends on TLS
 	help
 	Use the BusyBox default internal TLS implementation.
 
 config FEATURE_TLS_SCHANNEL
-	bool "Schannel SSP TLS implementation"
+	bool "Schannel SSP"
 	depends on TLS
 	help
 	Use the Schannel SSP to provide TLS support.
-	Majorly reduces code size. Supports up to TLS 1.2
-	on Windows 8+. Support on previous operating systems
-	may vary based on system configuration.
+	Reduces code size and enables certificate checking.
 
 endchoice
 
