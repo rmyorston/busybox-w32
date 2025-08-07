@@ -4,8 +4,8 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config TLS
-//config:   bool #No description makes it a hidden option
-//config:   default n
+//config:	bool #No description makes it a hidden option
+//config:	default n
 //Note:
 //Config.src also defines FEATURE_TLS_SHA1 option
 
