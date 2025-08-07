@@ -72,9 +72,28 @@ config FEATURE_HWIB
 	help
 	Support for printing infiniband addresses in network applets.
 
+choice
+	prompt "TLS implementation"
+	default FEATURE_TLS_INTERNAL
+
+config FEATURE_TLS_INTERNAL
+	bool "Internal"
+	depends on TLS
+	help
+	Use the BusyBox default internal TLS implementation.
+
+config FEATURE_TLS_SCHANNEL
+	bool "Schannel SSP"
+	depends on TLS
+	help
+	Use the Schannel SSP to provide TLS support.
+	Reduces code size and enables certificate checking.
+
+endchoice
+
 config FEATURE_TLS_SHA1
 	bool "In TLS code, support ciphers which use deprecated SHA1"
-	depends on TLS
+	depends on FEATURE_TLS_INTERNAL
 	default n
 	help
 	Selecting this option increases interoperability with very old
@@ -83,7 +102,17 @@ config FEATURE_TLS_SHA1
 	Most TLS servers support SHA256 today (2018), since SHA1 is
 	considered possibly insecure (although not yet definitely broken).
 
+config FEATURE_TLS_SCHANNEL_1_3
+	bool "Enable TLS 1.3 support for Schannel"
+	depends on FEATURE_TLS_SCHANNEL
+	default n
+	help
+	Enable TLS 1.3 support for Schannel.
+	This only works on Windows 11/Server 2022
+	and up.
+
 INSERT
+
 
 source networking/udhcp/Config.in
 
