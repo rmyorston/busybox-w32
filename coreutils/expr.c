@@ -100,6 +100,8 @@ typedef long arith_t;
 #if ENABLE_PLATFORM_MINGW32
 # define STRING BB_STRING
 #endif
+
+/* The kinds of value we can have. */
 enum {
 	INTEGER,
 	STRING
