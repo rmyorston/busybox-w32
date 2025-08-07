@@ -22,9 +22,12 @@
 
 #include "tls.h"
 
+#if ENABLE_FEATURE_TLS_SCHANNEL || ENABLE_FEATURE_USE_CNG_API
+#include <windows.h>
+#endif
+
 #if !ENABLE_FEATURE_TLS_SCHANNEL
 #if ENABLE_FEATURE_USE_CNG_API
-# include <windows.h>
 # include <bcrypt.h>
 
 // these work on Windows >= 10
@@ -2557,7 +2560,6 @@ void FAST_FUNC tls_run_copy_loop(tls_state_t *tls, unsigned flags)
 	}
 }
 #else
-#include <Windows.h>
 
 #if ENABLE_FEATURE_TLS_SCHANNEL_1_3
 #include <subauth.h>
@@ -2824,26 +2826,26 @@ static void tls_write(struct tls_state *state, char *buf, size_t len) {
 
 static void tls_disconnect(tls_state_t * state) {
 	SECURITY_STATUS status;
-
 	DWORD token = SCHANNEL_SHUTDOWN;
-
 	DWORD flags = BB_SCHANNEL_ISC_FLAGS;
 
-	SecBuffer buf_token = {.pvBuffer = &token,.cbBuffer =
-			sizeof(token),.BufferType = SECBUFFER_TOKEN
-	};
+	SecBuffer buf_token;		
 
-	SecBufferDesc buf_token_desc = {.ulVersion = SECBUFFER_VERSION,.pBuffers =
-			&buf_token,.cBuffers = 1
-	};
-
+	SecBufferDesc buf_token_desc;
+	
 	SecBuffer in_buffers[2];
-
 	SecBuffer out_buffers[2];
 
 	SecBufferDesc in_desc;
-
 	SecBufferDesc out_desc;
+
+	buf_token.BufferType = SECBUFFER_TOKEN;
+	buf_token.pvBuffer = &token;
+	buf_token.cbBuffer = sizeof(token);
+
+	buf_token_desc.ulVersion = SECBUFFER_VERSION;
+	buf_token_desc.pBuffers = &buf_token;
+	buf_token_desc.cBuffers = 1;
 
 	ApplyControlToken(&state->ctx_handle, &buf_token_desc);
 
@@ -2900,7 +2902,6 @@ static void tls_disconnect(tls_state_t * state) {
 
 void FAST_FUNC tls_handshake(tls_state_t * state, const char *hostname) {
 	SECURITY_STATUS status;
-
 	int received;
 
 #if ENABLE_FEATURE_TLS_SCHANNEL_1_3
@@ -2964,11 +2965,9 @@ void FAST_FUNC tls_handshake(tls_state_t * state, const char *hostname) {
 		DWORD flags = BB_SCHANNEL_ISC_FLAGS;
 
 		SecBuffer in_buffers[2];
-
 		SecBuffer out_buffers[2];
 
 		SecBufferDesc in_desc;
-
 		SecBufferDesc out_desc;
 
 		in_buffers[0].BufferType = SECBUFFER_TOKEN;

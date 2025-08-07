@@ -283,7 +283,7 @@ PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 
 #if ENABLE_FEATURE_TLS_SCHANNEL
 # define SECURITY_WIN32
-# include <Windows.h>
+# include <windows.h>
 # include <security.h>
 #endif
 
