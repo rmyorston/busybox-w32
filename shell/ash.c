@@ -852,29 +852,47 @@ out2str(const char *p)
 # define CTL_LAST CTLFROMPROC
 #endif
 
-/* variable substitution byte (follows CTLVAR) */
-#define VSTYPE  0x0f            /* type of variable substitution */
-#define VSNUL   0x10            /* colon--treat the empty string as unset */
-
-/* values of VSTYPE field */
-#define VSNORMAL        0x1     /* normal variable:  $var or ${var} */
-#define VSMINUS         0x2     /* ${var-text} */
-#define VSPLUS          0x3     /* ${var+text} */
-#define VSQUESTION      0x4     /* ${var?message} */
-#define VSASSIGN        0x5     /* ${var=text} */
+/* ${VAR[ops]} encoding is CTLVAR,<type_byte>,"VARNAME=",<ops_encoded(details?)>,CTLENDVAR */
+/* variable type byte (follows CTLVAR) */
+#define VSTYPE         0x0f     /* type of variable substitution */
+#define VSNUL          0x10     /* colon: the op is one of :- :+ :? := */
+/* values of VSTYPE field. The first 5 must be in this order, "}-+?=" string is used elsewhere to index into them */
+#define VSNORMAL        0x1     /* $var or ${var} */
+#define VSMINUS         0x2     /* ${var[:]-text} */
+#define VSPLUS          0x3     /* ${var[:]+text} */
+#define VSQUESTION      0x4     /* ${var[:]?message} */
+#define VSASSIGN        0x5     /* ${var[:]=text} */
 #define VSTRIMRIGHT     0x6     /* ${var%pattern} */
 #define VSTRIMRIGHTMAX  0x7     /* ${var%%pattern} */
 #define VSTRIMLEFT      0x8     /* ${var#pattern} */
 #define VSTRIMLEFTMAX   0x9     /* ${var##pattern} */
 #define VSLENGTH        0xa     /* ${#var} */
-// unused yet           0xb     /* unused */
 #if BASH_SUBSTR
-#define VSSUBSTR        0xc     /* ${var:position:length} */
+#define VSSUBSTR        0xb     /* ${var:position:length} */
 #endif
 #if BASH_PATTERN_SUBST
-#define VSREPLACE       0xd     /* ${var/pattern/replacement} */
-#define VSREPLACEALL    0xe     /* ${var//pattern/replacement} */
+#define VSREPLACE       0xc     /* ${var/pattern/replacement} */
+#define VSREPLACEALL    0xd     /* ${var//pattern/replacement} */
 #endif
+static const char vstype_suffix[][3] ALIGN1 = {
+	[VSNORMAL       - VSNORMAL] = "}", // $var or ${var}
+	[VSMINUS        - VSNORMAL] = "-", // ${var-text}
+	[VSPLUS         - VSNORMAL] = "+", // ${var+text}
+	[VSQUESTION     - VSNORMAL] = "?", // ${var?message}
+	[VSASSIGN       - VSNORMAL] = "=", // ${var=text}
+	[VSTRIMRIGHT    - VSNORMAL] = "%", // ${var%pattern}
+	[VSTRIMRIGHTMAX - VSNORMAL] = "%%",// ${var%%pattern}
+	[VSTRIMLEFT     - VSNORMAL] = "#", // ${var#pattern}
+	[VSTRIMLEFTMAX  - VSNORMAL] = "##",// ${var##pattern}
+	[VSLENGTH       - VSNORMAL] = "",  // ${#var}
+#if BASH_SUBSTR
+	[VSSUBSTR       - VSNORMAL] = ":", // ${var:position:length}
+#endif
+#if BASH_PATTERN_SUBST
+	[VSREPLACE      - VSNORMAL] = "/", // ${var/pattern/replacement}
+	[VSREPLACEALL   - VSNORMAL] = "//",// ${var//pattern/replacement}
+#endif
+};
 
 static const char dolatstr[] ALIGN1 = {
 	CTLQUOTEMARK, CTLVAR, VSNORMAL, '@', '=', CTLQUOTEMARK, '\0'
@@ -1248,7 +1266,9 @@ sharg(union node *arg, FILE *fp)
 
 			if (subtype & VSNUL)
 				putc(':', fp);
-
+#if 1
+			fputs(vstype_suffix[(subtype & VSTYPE) - VSNORMAL], fp);
+#else
 			switch (subtype & VSTYPE) {
 			case VSNORMAL:
 				putc('}', fp);
@@ -1284,6 +1304,7 @@ sharg(union node *arg, FILE *fp)
 			default:
 				out1fmt("<subtype %d>", subtype);
 			}
+#endif
 			break;
 		case CTLENDVAR:
 			putc('}', fp);
@@ -4830,25 +4851,6 @@ static char *cmdnextc;
 static void
 cmdputs(const char *s)
 {
-	static const char vstype[][3] ALIGN1 = {
-	[VSNORMAL       - VSNORMAL] = "}", // $var or ${var}
-	[VSMINUS        - VSNORMAL] = "-", // ${var-text}
-	[VSPLUS         - VSNORMAL] = "+", // ${var+text}
-	[VSQUESTION     - VSNORMAL] = "?", // ${var?message}
-	[VSASSIGN       - VSNORMAL] = "=", // ${var=text}
-	[VSTRIMRIGHT    - VSNORMAL] = "%", // ${var%pattern}
-	[VSTRIMRIGHTMAX - VSNORMAL] = "%%",// ${var%%pattern}
-	[VSTRIMLEFT     - VSNORMAL] = "#", // ${var#pattern}
-	[VSTRIMLEFTMAX  - VSNORMAL] = "##",// ${var##pattern}
-	[VSLENGTH       - VSNORMAL] = "",  // ${#var}
-#if BASH_SUBSTR
-	[VSSUBSTR       - VSNORMAL] = ":", // ${var:position:length}
-#endif
-#if BASH_PATTERN_SUBST
-	[VSREPLACE      - VSNORMAL] = "/", // ${var/pattern/replacement}
-	[VSREPLACEALL   - VSNORMAL] = "//",// ${var//pattern/replacement}
-#endif
-	};
 	const char *p, *str;
 	char cc[2];
 	char *nextc;
@@ -4914,7 +4916,7 @@ cmdputs(const char *s)
 			/* We are in variable name */
 			if ((subtype & VSTYPE) != VSNORMAL)
 				quoted <<= 1;
-			str = vstype[(subtype & VSTYPE) - VSNORMAL];
+			str = vstype_suffix[(subtype & VSTYPE) - VSNORMAL];
 			if (!(subtype & VSNUL))
 				goto dostr;
 			c = ':';
