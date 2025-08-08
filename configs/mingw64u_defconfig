@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.38.0.git
-# Mon Jun  9 11:54:15 2025
+# Fri Aug  8 08:27:35 2025
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -901,7 +901,10 @@ CONFIG_FEATURE_PREFER_IPV4_ADDRESS=y
 # CONFIG_FEATURE_ETC_NETWORKS is not set
 # CONFIG_FEATURE_ETC_SERVICES is not set
 # CONFIG_FEATURE_HWIB is not set
+# CONFIG_FEATURE_TLS_INTERNAL is not set
+CONFIG_FEATURE_TLS_SCHANNEL=y
 # CONFIG_FEATURE_TLS_SHA1 is not set
+# CONFIG_FEATURE_TLS_SCHANNEL_1_3 is not set
 # CONFIG_ARP is not set
 # CONFIG_ARPING is not set
 # CONFIG_BRCTL is not set
