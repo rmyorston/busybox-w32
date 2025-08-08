@@ -113,7 +113,6 @@ config FEATURE_TLS_SCHANNEL_1_3
 
 INSERT
 
-
 source networking/udhcp/Config.in
 
 config IFUPDOWN_UDHCPC_CMD_OPTIONS

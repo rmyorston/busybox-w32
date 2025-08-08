@@ -2829,10 +2829,10 @@ static void tls_disconnect(tls_state_t * state) {
 	DWORD token = SCHANNEL_SHUTDOWN;
 	DWORD flags = BB_SCHANNEL_ISC_FLAGS;
 
-	SecBuffer buf_token;		
+	SecBuffer buf_token;
 
 	SecBufferDesc buf_token_desc;
-	
+
 	SecBuffer in_buffers[2];
 	SecBuffer out_buffers[2];
 
@@ -3059,7 +3059,7 @@ void FAST_FUNC tls_handshake(tls_state_t * state, const char *hostname) {
   Success:
 	QueryContextAttributes(&state->ctx_handle, SECPKG_ATTR_STREAM_SIZES,
 						   &state->stream_sizes);
-	
+
 	//SecPkgContext_ConnectionInfo info;
 	//QueryContextAttributes(&state->ctx_handle, SECPKG_ATTR_CONNECTION_INFO,
 	//					   &info);

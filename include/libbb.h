@@ -930,7 +930,7 @@ typedef struct tls_state {
 
 	// context initialized
     int initialized;
-	
+
 	// closed by remote peer
 	int closed;
 } tls_state_t;

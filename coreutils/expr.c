@@ -96,12 +96,12 @@ typedef long arith_t;
 #endif
 
 /* TODO: use bb_strtol[l]? It's easier to check for errors... */
- 
+
 #if ENABLE_PLATFORM_MINGW32
 # define STRING BB_STRING
 #endif
 
-/* The kinds of value we can have. */
+/* The kinds of value we can have.  */
 enum {
 	INTEGER,
 	STRING
