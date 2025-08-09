@@ -643,6 +643,8 @@ int sigaction_set(int sig, const struct sigaction *act) FAST_FUNC;
 int sigprocmask_allsigs(int how) FAST_FUNC;
 /* Return old set in the same set: */
 int sigprocmask2(int how, sigset_t *set) FAST_FUNC;
+/* SIG_BLOCK all signals, return old set: */
+int sigblockall(sigset_t *set) FAST_FUNC;
 /* Standard handler which just records signo */
 extern smallint bb_got_signal;
 void record_signo(int signo); /* not FAST_FUNC! */
