@@ -493,6 +493,8 @@ struct globals_misc {
 
 	/* Rarely referenced stuff */
 
+	struct jmploc main_handler;
+
 	/* Cached supplementary group array (for testing executable'ity of files) */
 	struct cached_groupinfo groupinfo;
 
@@ -529,6 +531,7 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define may_have_traps    (G_misc.may_have_traps   )
 #define trap        (G_misc.trap       )
 #define trap_ptr    (G_misc.trap_ptr   )
+#define main_handler      (G_misc.main_handler     )
 #define groupinfo   (G_misc.groupinfo  )
 #define random_gen  (G_misc.random_gen )
 #define backgndpid  (G_misc.backgndpid )
@@ -593,6 +596,14 @@ sigclearmask(void)
 {
 	sigprocmask_allsigs(SIG_UNBLOCK);
 }
+
+/* Reset handler when entering a subshell */
+static void
+reset_exception_handler(void)
+{
+	exception_handler = &main_handler;
+}
+
 
 /* ============ Parser data */
 
@@ -6720,6 +6731,7 @@ evalbackcmd(union node *n, struct backcmd *result
 	jp = (ctl == CTLBACKQ) ? makejob(1) : NULL;
 	if (forkshell(jp, n, FORK_NOJOB) == 0) {
 		/* child */
+		reset_exception_handler();
 		FORCEINTON;
 		close(pip[ip]);
 		/* ic is index of child end of pipe *and* fd to connect it to */
@@ -9705,6 +9717,7 @@ evalsubshell(union node *n, int flags)
 		if (backgnd)
 			flags &= ~EV_TESTED;
  nofork:
+		reset_exception_handler();
 		redirect(n->nredir.redirect, 0);
 		evaltreenr(n->nredir.n, flags);
 		/* never returns */
@@ -9817,6 +9830,7 @@ evalpipe(union node *n, int flags)
 		}
 		if (forkshell(jp, lp->n, n->npipe.pipe_backgnd) == 0) {
 			/* child */
+			reset_exception_handler();
 			INTON;
 			if (pip[1] >= 0) {
 				close(pip[0]);
@@ -14851,7 +14865,6 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 /* note: 'argc' is used only if embedded scripts are enabled */
 {
 	volatile smallint state;
-	struct jmploc jmploc;
 	struct stackmark smark;
 	int login_sh;
 
@@ -14869,7 +14882,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	state = 0;
-	if (setjmp(jmploc.loc)) {
+	if (setjmp(main_handler.loc)) {
 		smallint e;
 		smallint s;
 
@@ -14897,7 +14910,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 			goto state3;
 		goto state4;
 	}
-	exception_handler = &jmploc;
+	exception_handler = &main_handler;
 	rootpid = getpid();
 
 	init();
