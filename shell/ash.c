@@ -9357,7 +9357,7 @@ evaltree(union node *n, int flags)
 #endif
 	case NNOT:
 		status = !evaltree(n->nnot.com, EV_TESTED);
-		goto setstatus;
+		break;
 	case NREDIR:
 		errlinno = lineno = n->nredir.linno;
 		expredir(n->nredir.redirect);
@@ -9368,7 +9368,7 @@ evaltree(union node *n, int flags)
 		}
 		if (n->nredir.redirect)
 			popredir(/*drop:*/ 0);
-		goto setstatus;
+		break;
 	case NCMD:
 		evalfn = evalcommand;
  checkexit:
@@ -9412,7 +9412,7 @@ evaltree(union node *n, int flags)
 		evalfn = evaltree;
  calleval:
 		status = evalfn(n, flags);
-		goto setstatus;
+		break;
 	}
 	case NIF:
 		status = evaltree(n->nif.test, EV_TESTED);
@@ -9426,17 +9426,18 @@ evaltree(union node *n, int flags)
 			goto evaln;
 		}
 		status = 0;
-		goto setstatus;
+		break;
 	case NDEFUN:
 		defun(n);
 		/* Not necessary. To test it:
 		 * "false; f() { qwerty; }; echo $?" should print 0.
 		 */
 		/* status = 0; */
- setstatus:
-		exitstatus = status;
 		break;
 	}
+
+	exitstatus = status;
+
  out:
 	/* Order of checks below is important:
 	 * signal handlers trigger before exit caused by "set -e".
