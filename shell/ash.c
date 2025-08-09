@@ -4102,7 +4102,22 @@ freejob(struct job *jp)
 static void
 xtcsetpgrp(int fd, pid_t pgrp)
 {
-	if (tcsetpgrp(fd, pgrp))
+	int err;
+
+	sigblockall(NULL);
+	err = tcsetpgrp(fd, pgrp);
+	sigclearmask();
+	// Unmasking signals would cause any arrived signal to trigger, so why?
+	// Generally yes, but there are exceptions. Such as:
+	// """
+	// Attempts to use tcsetpgrp() from a process which is a member of
+	// a background process group on a fd associated with its controlling
+	// terminal shall cause the process group to be sent a SIGTTOU signal.
+	// If the calling thread is blocking SIGTTOU signals or the process
+	// is ignoring SIGTTOU signals, the process shall be allowed
+	// to perform the operation, and no signal is sent."""
+
+	if (err)
 		ash_msg_and_raise_perror("can't set tty process group");
 }
 
