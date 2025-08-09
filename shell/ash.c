@@ -3664,7 +3664,7 @@ struct job {
 	struct job *prev_job;   /* previous job */
 };
 
-static struct job *makejob(/*union node *,*/ int);
+static struct job *makejob(int);
 static int forkshell(struct job *, union node *, int);
 static int waitforjob(struct job *);
 
@@ -4801,7 +4801,7 @@ growjobtab(void)
  * Called with interrupts off.
  */
 static struct job *
-makejob(/*union node *node,*/ int nprocs)
+makejob(int nprocs)
 {
 	int i;
 	struct job *jp;
@@ -6628,7 +6628,7 @@ evalbackcmd(union node *n, struct backcmd *result
 	if (pipe(pip) < 0)
 		ash_msg_and_raise_perror("can't create pipe");
 	/* process substitution uses NULL job, like openhere() */
-	jp = (ctl == CTLBACKQ) ? makejob(/*n,*/ 1) : NULL;
+	jp = (ctl == CTLBACKQ) ? makejob(1) : NULL;
 	if (forkshell(jp, n, FORK_NOJOB) == 0) {
 		/* child */
 		FORCE_INT_ON;
@@ -9608,7 +9608,7 @@ evalsubshell(union node *n, int flags)
 	INT_OFF;
 	if (backgnd == FORK_FG)
 		get_tty_state();
-	jp = makejob(/*n,*/ 1);
+	jp = makejob(1);
 	if (forkshell(jp, n, backgnd) == 0) {
 		/* child */
 		INT_ON;
@@ -9715,7 +9715,7 @@ evalpipe(union node *n, int flags)
 	INT_OFF;
 	if (n->npipe.pipe_backgnd == 0)
 		get_tty_state();
-	jp = makejob(/*n,*/ pipelen);
+	jp = makejob(pipelen);
 	prevfd = -1;
 	for (lp = n->npipe.cmdlist; lp; lp = lp->next) {
 		prehash(lp->n);
@@ -10618,7 +10618,7 @@ evalcommand(union node *cmd, int flags)
 			/* No, forking off a child is necessary */
 			INT_OFF;
 			get_tty_state();
-			jp = makejob(/*cmd,*/ 1);
+			jp = makejob(1);
 			if (forkshell(jp, cmd, FORK_FG) != 0) {
 				/* parent */
 				break;
