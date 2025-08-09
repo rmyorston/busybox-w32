@@ -4,14 +4,15 @@ c='*'
 echo "a is '$a'"
 echo "b is '$b'"
 echo "c is '$c'"
-echo '${a##?*} removes everything:    '"|${a##?*}|"
+echo '${a##?*} removes everything:    '"|${a##?*}|"' - matches one char, then all'
 echo '${a##?"*"} removes \*:          '"|${a##?"*"}|"' - matches one char, then *'
 echo '${a##\*} removes nothing:       '"|${a##\*}|"' - first char is not *'
 echo '${a##\\*} removes everything:   '"|${a##\\*}|"' - matches \, then all'
-echo '${a##\\\*} removes \*:          '"|${a##\\*}|"' - matches \, then *'
+echo '${a##\\\*} removes \*:          '"|${a##\\\*}|"' - matches \, then *'
 echo '${a##?$c} removes everything:   '"|${a##?$c}|"' - matches one char, then all'
 echo '${a##?"$c"} removes \*:         '"|${a##?"$c"}|"' - matches one char, then *'
 echo '${a##\\$c} removes everything:  '"|${a##\\$c}|"' - matches \, then all'
+echo '${a##\\\$c} removes nothing:    '"|${a##\\\$c}|"' - matches \, but then second char is not $'
 echo '${a##\\"$c"} removes \*:        '"|${a##\\"$c"}|"' - matches \, then *'
 echo '${a##$b} removes \:             '"|${a##$b}|"' - matches \'
 echo '${a##"$b"} removes \:           '"|${a##"$b"}|"' - matches \'
