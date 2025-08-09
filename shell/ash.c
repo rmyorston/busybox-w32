@@ -1447,7 +1447,7 @@ ash_vmsg(const char *msg, va_list ap)
 {
 	fprintf(stderr, "%s: ", arg0);
 	if (commandname) {
-		if (strcmp(arg0, commandname))
+		if (strcmp(arg0, commandname) != 0)
 			fprintf(stderr, "%s: ", commandname);
 		if (!iflag || g_parsefile->pf_fd > 0)
 			fprintf(stderr, "line %d: ", errlinno);
@@ -14659,7 +14659,7 @@ procargs(char **argv)
 	int login_sh;
 
 	xargv = argv;
-	login_sh = xargv[0] && xargv[0][0] == '-';
+	login_sh = /*xargv[0] &&*/ xargv[0][0] == '-';
 #if NUM_SCRIPTS > 0
 	if (minusc)
 		goto setarg0;
@@ -14705,7 +14705,6 @@ procargs(char **argv)
 		setinputfile(*xargv, 0);
  setarg0:
 		arg0 = *xargv++;
-		commandname = arg0;
 	}
 
 	shellparam.p = xargv;
