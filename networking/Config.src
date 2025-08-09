@@ -84,7 +84,7 @@ config FEATURE_TLS_INTERNAL
 
 config FEATURE_TLS_SCHANNEL
 	bool "Schannel SSP"
-	depends on TLS
+	depends on TLS && PLATFORM_MINGW32
 	help
 	Use the Schannel SSP to provide TLS support.
 	Reduces code size and enables certificate checking.
