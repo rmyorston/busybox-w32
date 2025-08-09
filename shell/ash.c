@@ -1445,13 +1445,14 @@ showtree(union node *n)
 static void
 ash_vmsg(const char *msg, va_list ap)
 {
+//In dash, the order/format is different:
+// arg0: LINENO: [commandname:] MSG
+//If you fix it, change testsuite to match
 	fprintf(stderr, "%s: ", arg0);
-	if (commandname) {
-		if (strcmp(arg0, commandname) != 0)
-			fprintf(stderr, "%s: ", commandname);
-		if (!iflag || g_parsefile->pf_fd > 0)
-			fprintf(stderr, "line %d: ", errlinno);
-	}
+	if (commandname && strcmp(arg0, commandname) != 0)
+		fprintf(stderr, "%s: ", commandname);
+	if (!iflag || g_parsefile->pf_fd > 0)
+		fprintf(stderr, "line %d: ", errlinno);
 	vfprintf(stderr, msg, ap);
 	newline_and_flush(stderr);
 }
