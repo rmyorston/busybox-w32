@@ -12177,7 +12177,7 @@ static int wait_for_child_or_signal(struct pipe *waitfor_pipe, pid_t waitfor_pid
 			debug_printf_exec("job_exited_or_stopped:%d\n", rcode);
 			if (rcode >= 0) {
 				ret = rcode;
-				sigprocmask(SIG_SETMASK, &oldset, NULL);
+				sigprocmask2(SIG_SETMASK, &oldset);
 				break;
 			}
 		}
@@ -12195,7 +12195,7 @@ static int wait_for_child_or_signal(struct pipe *waitfor_pipe, pid_t waitfor_pid
 				ret = 127;
 			}
 # endif
-			sigprocmask(SIG_SETMASK, &oldset, NULL);
+			sigprocmask2(SIG_SETMASK, &oldset);
 			break;
 		}
 		/* Wait for SIGCHLD or any other signal */
@@ -12213,7 +12213,7 @@ static int wait_for_child_or_signal(struct pipe *waitfor_pipe, pid_t waitfor_pid
 		 * making "wait" commands in SCRIPT block forever.
 		 */
  restore:
-		sigprocmask(SIG_SETMASK, &oldset, NULL);
+		sigprocmask2(SIG_SETMASK, &oldset);
  check_sig:
 		/* So, did we get a signal? */
 		sig = check_and_run_traps();
