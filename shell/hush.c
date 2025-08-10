@@ -1973,7 +1973,7 @@ static void record_pending_signo(int sig)
 	 || (G_traps && G_traps[SIGCHLD] && G_traps[SIGCHLD][0])
 	 /* ^^^ if SIGCHLD, interrupt line reading only if it has a trap */
 	) {
-		bb_got_signal = sig; /* for read_line_input: "we got a signal" */
+		bb_got_signal = sig; /* for read_line_input / read builtin: "we got a signal" */
 	}
 #endif
 #if ENABLE_HUSH_FAST
@@ -2099,11 +2099,29 @@ static sighandler_t pick_sighandler(unsigned sig)
 	return handler;
 }
 
+static const char* FAST_FUNC get_local_var_value(const char *name);
+
 /* Restores tty foreground process group, and exits. */
 static void hush_exit(int exitcode)
 {
 #if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
-	save_history(G.line_input_state); /* may be NULL */
+	if (G.line_input_state) {
+		const char *hp;
+# if ENABLE_FEATURE_SH_HISTFILESIZE
+// in bash:
+// HISTFILESIZE controls the on-disk history file size (in lines, 0=no history):
+// "When this variable is assigned a value, the history file is truncated, if necessary"
+// but we do it only at exit, not on every assignment:
+		/* Use HISTFILESIZE to limit file size */
+		hp = get_local_var_value("HISTFILESIZE");
+		if (hp)
+			G.line_input_state->max_history = size_from_HISTFILESIZE(hp);
+# endif
+		/* HISTFILE: "If unset, the command history is not saved when a shell exits." */
+		hp = get_local_var_value("HISTFILE");
+		G.line_input_state->hist_file = hp;
+		save_history(G.line_input_state); /* no-op if hist_file is NULL or "" */
+	}
 #endif
 
 	fflush_all();
@@ -10427,7 +10445,7 @@ int hush_main(int argc, char **argv)
 	if (!get_local_var_value("PATH"))
 		set_local_var_from_halves("PATH", bb_default_root_path);
 
-	/* PS1/PS2 are set later, if we determine that we are interactive */
+	/* PS1/PS2/HISTFILE are set later, if we determine that we are interactive */
 
 	/* bash also exports SHLVL and _,
 	 * and sets (but doesn't export) the following variables:
@@ -10449,7 +10467,6 @@ int hush_main(int argc, char **argv)
 	 * BASH_SOURCE=()
 	 * DIRSTACK=()
 	 * PIPESTATUS=([0]="0")
-	 * HISTFILE=/<xxx>/.bash_history
 	 * HISTFILESIZE=500
 	 * HISTSIZE=500
 	 * MAILCHECK=60
@@ -10809,18 +10826,30 @@ int hush_main(int argc, char **argv)
 			const char *hp = get_local_var_value("HISTFILE");
 			if (!hp) {
 				hp = get_local_var_value("HOME");
-				if (hp)
+				if (hp) {
 					hp = concat_path_file(hp, ".hush_history");
+					/* Make HISTFILE set on exit (else history won't be saved) */
+					set_local_var_from_halves("HISTFILE", hp);
+				}
 			} else {
 				hp = xstrdup(hp);
 			}
 			if (hp) {
 				G.line_input_state->hist_file = hp;
-				//set_local_var(xasprintf("HISTFILE=%s", ...));
 			}
 #  if ENABLE_FEATURE_SH_HISTFILESIZE
-			hp = get_local_var_value("HISTFILESIZE");
+			hp = get_local_var_value("HISTSIZE");
+			/* Using HISTFILESIZE above to limit max_history would be WRONG:
+			 * users may set HISTFILESIZE=0 in their profile scripts
+			 * to prevent _saving_ of history files, but still want to have
+			 * non-zero history limit for in-memory list.
+			 */
+// in bash, runtime history size is controlled by HISTSIZE (0=no history),
+// HISTFILESIZE controls on-disk history file size (in lines, 0=no history):
 			G.line_input_state->max_history = size_from_HISTFILESIZE(hp);
+// HISTFILESIZE: "The shell sets the default value to the value of HISTSIZE after reading any startup files."
+// HISTSIZE: "The shell sets the default value to 500 after reading any startup files."
+// (meaning: if the value wasn't set after startup files, the default value is set as described above)
 #  endif
 		}
 # endif
@@ -11174,6 +11203,11 @@ static int FAST_FUNC builtin_read(char **argv)
 		if (sig != SIGINT)
 			goto again;
 	}
+
+	if ((uintptr_t)r == 2) /* -t SEC timeout? */
+		/* bash: "The exit status is greater than 128 if the timeout is exceeded." */
+		/* The actual value observed with bash 5.2.15: */
+		return 128 + SIGALRM;
 
 	if ((uintptr_t)r > 1) {
 		bb_simple_error_msg(r);

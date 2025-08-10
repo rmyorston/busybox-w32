@@ -431,6 +431,7 @@ int cpio_main(int argc UNUSED_PARAM, char **argv)
 #endif
 #endif
 		"owner\0"        Required_argument "R"
+		"file\0"         Required_argument "F"
 		"verbose\0"      No_argument       "v"
 		"null\0"         No_argument       "0"
 		"quiet\0"        No_argument       "\xff"

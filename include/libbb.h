@@ -2078,6 +2078,10 @@ int64_t windows_read_key(int fd, char *buffer, int timeout) FAST_FUNC;
 int64_t safe_read_key(int fd, char *buffer, int timeout) FAST_FUNC;
 void read_key_ungets(char *buffer, const char *str, unsigned len) FAST_FUNC;
 
+int check_got_signal_and_poll(struct pollfd pfd[1], int timeout) FAST_FUNC;
+#if ENABLE_PLATFORM_MINGW32
+# define check_got_signal_and_poll(p, t) poll(p, 1, t)
+#endif
 
 #if ENABLE_FEATURE_EDITING
 /* It's NOT just ENABLEd or disabled. It's a number: */
@@ -2124,7 +2128,7 @@ typedef struct line_input_t {
 # if MAX_HISTORY
 	int cnt_history;
 	int cur_history;
-	int max_history; /* must never be <= 0 */
+	int max_history; /* must never be < 0 */
 #  if ENABLE_FEATURE_EDITING_SAVEHISTORY
 	/* meaning of this field depends on FEATURE_EDITING_SAVE_ON_EXIT:
 	 * if !FEATURE_EDITING_SAVE_ON_EXIT: "how many lines are
@@ -2547,31 +2551,10 @@ extern struct globals *BB_GLOBAL_CONST ptr_to_globals;
 #define barrier() asm volatile ("":::"memory")
 
 #if defined(__clang_major__) && __clang_major__ >= 9
-/* Clang/llvm drops assignment to "constant" storage. Silently.
- * Needs serious convincing to not eliminate the store.
+/* {ASSIGN,XZALLOC}_CONST_PTR() are out-of-line functions
+ * to prevent clang from reading pointer before it is assigned.
  */
-static ALWAYS_INLINE void* not_const_pp(const void *p)
-{
-	void *pp;
-	asm volatile (
-		"# forget that p points to const"
-		: /*outputs*/ "=r" (pp)
-		: /*inputs*/ "0" (p)
-	);
-	return pp;
-}
-# if !ENABLE_PLATFORM_MINGW32
-# define ASSIGN_CONST_PTR(pptr, v) do { \
-	*(void**)not_const_pp(pptr) = (void*)(v); \
-	barrier(); \
-} while (0)
-#else
-/* On Windows it seems necessary for this to be a function too. */
-void ASSIGN_CONST_PTR(const void *pptr, const void *ptr) FAST_FUNC;
-#endif
-/* XZALLOC_CONST_PTR() is an out-of-line function to prevent
- * clang from reading pointer before it is assigned.
- */
+void ASSIGN_CONST_PTR(const void *pptr, void *v) FAST_FUNC;
 void XZALLOC_CONST_PTR(const void *pptr, size_t size) FAST_FUNC;
 #else
 # define ASSIGN_CONST_PTR(pptr, v) do { \

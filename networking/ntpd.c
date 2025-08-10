@@ -205,7 +205,7 @@
 #define MINDISP         0.01    /* minimum dispersion (sec) */
 #define MAXDISP         16      /* maximum dispersion (sec) */
 #define MAXSTRAT        16      /* maximum stratum (infinity metric) */
-#define MAXDIST         1       /* distance threshold (sec) */
+#define MAXDIST         3       /* distance threshold (sec): do not use peers who are farther away */
 #define MIN_SELECTED    1       /* minimum intersection survivors */
 #define MIN_CLUSTERED   3       /* minimum cluster survivors */
 

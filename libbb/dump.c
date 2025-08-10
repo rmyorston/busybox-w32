@@ -703,15 +703,21 @@ static NOINLINE void display(priv_dumper_t* dumper)
 							conv_u(pr, bp);
 							break;
 						case F_UINT: {
+							union {
+								uint16_t uval16;
+								uint32_t uval32;
+							} u;
 							unsigned value = (unsigned char)*bp;
 							switch (pr->bcnt) {
 							case 1:
 								break;
 							case 2:
-								move_from_unaligned16(value, bp);
+								move_from_unaligned16(u.uval16, bp);
+								value = u.uval16;
 								break;
 							case 4:
-								move_from_unaligned32(value, bp);
+								move_from_unaligned32(u.uval32, bp);
+								value = u.uval32;
 								break;
 							/* case 8: no users yet */
 							}

@@ -457,7 +457,7 @@ static void put_cur_glyph_and_inc_cursor(void)
 		 * have automargin (IOW: it is moving cursor to next line
 		 * by itself (which is wrong for VT-10x terminals)),
 		 * this will break things: there will be one extra empty line */
-		puts("\r"); /* + implicit '\n' */
+		fputs("\r\n", stderr);
 #else
 		/* VT-10x terminals don't wrap cursor to next line when last char
 		 * on the line is printed - cursor stays "over" this char.
@@ -1302,9 +1302,10 @@ static void showfiles(void)
 			);
 		}
 		if (ENABLE_UNICODE_SUPPORT)
-			puts(printable_string(matches[n]));
+			fputs(printable_string(matches[n]), stderr);
 		else
-			puts(matches[n]);
+			fputs(matches[n], stderr);
+		bb_putchar_stderr('\n');
 	}
 }
 
@@ -1595,8 +1596,8 @@ unsigned FAST_FUNC size_from_HISTFILESIZE(const char *hp)
 # endif
 	if (hp) {
 		size = atoi(hp);
-		if (size <= 0)
-			return 1;
+		if (size < 0)
+			return 0;
 		if (size > MAX_HISTORY)
 			return MAX_HISTORY;
 	}
@@ -1690,18 +1691,21 @@ static void load_history(line_input_t *st_parm)
 	/* NB: do not trash old history if file can't be opened */
 
 	fp = fopen_for_read(st_parm->hist_file);
-	if (fp) {
-		/* clean up old history */
-		for (idx = st_parm->cnt_history; idx > 0;) {
-			idx--;
-			free(st_parm->history[idx]);
-			st_parm->history[idx] = NULL;
-		}
+	if (!fp)
+		return;
 
-		/* fill temp_h[], retaining only last MAX_HISTORY lines */
-		memset(temp_h, 0, sizeof(temp_h));
-		idx = 0;
-		st_parm->cnt_history_in_file = 0;
+	/* clean up old history */
+	for (idx = st_parm->cnt_history; idx > 0;) {
+		idx--;
+		free(st_parm->history[idx]);
+		st_parm->history[idx] = NULL;
+	}
+
+	/* fill temp_h[], retaining only last max_history lines */
+	memset(temp_h, 0, sizeof(temp_h));
+	idx = 0;
+	st_parm->cnt_history_in_file = 0;
+	if (st_parm->max_history != 0) {
 		while ((line = xmalloc_fgetline(fp)) != NULL) {
 			if (line[0] == '\0') {
 				free(line);
@@ -1714,34 +1718,34 @@ static void load_history(line_input_t *st_parm)
 			if (idx == st_parm->max_history)
 				idx = 0;
 		}
-		fclose(fp);
+	}
+	fclose(fp);
 
-		/* find first non-NULL temp_h[], if any */
-		if (st_parm->cnt_history_in_file) {
-			while (temp_h[idx] == NULL) {
-				idx++;
-				if (idx == st_parm->max_history)
-					idx = 0;
-			}
-		}
-
-		/* copy temp_h[] to st_parm->history[] */
-		for (i = 0; i < st_parm->max_history;) {
-			line = temp_h[idx];
-			if (!line)
-				break;
+	/* find first non-NULL temp_h[], if any */
+	if (st_parm->cnt_history_in_file != 0) {
+		while (temp_h[idx] == NULL) {
 			idx++;
 			if (idx == st_parm->max_history)
 				idx = 0;
-			line_len = strlen(line);
-			if (line_len >= MAX_LINELEN)
-				line[MAX_LINELEN-1] = '\0';
-			st_parm->history[i++] = line;
 		}
-		st_parm->cnt_history = i;
-		if (ENABLE_FEATURE_EDITING_SAVE_ON_EXIT)
-			st_parm->cnt_history_in_file = i;
 	}
+
+	/* copy temp_h[] to st_parm->history[] */
+	for (i = 0; i < st_parm->max_history;) {
+		line = temp_h[idx];
+		if (!line)
+			break;
+		idx++;
+		if (idx == st_parm->max_history)
+			idx = 0;
+		line_len = strlen(line);
+		if (line_len >= MAX_LINELEN)
+			line[MAX_LINELEN-1] = '\0';
+		st_parm->history[i++] = line;
+	}
+	st_parm->cnt_history = i;
+	if (ENABLE_FEATURE_EDITING_SAVE_ON_EXIT)
+		st_parm->cnt_history_in_file = i;
 }
 
 #  if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
@@ -1749,16 +1753,26 @@ void FAST_FUNC save_history(line_input_t *st)
 {
 	FILE *fp;
 
-	if (!st || !st->hist_file)
+	/* bash compat: HISTFILE="" disables history saving */
+	if (!st || !st->hist_file || !state->hist_file[0])
 		return;
 	if (st->cnt_history <= st->cnt_history_in_file)
-		return;
+		return; /* no new entries were added */
+	/* note: if st->max_history is 0, we do not abort: we truncate the history to 0 lines */
 
-	fp = fopen(st->hist_file, "a");
+	fp = fopen(st->hist_file, (st->max_history == 0 ? "w" : "a"));
 	if (fp) {
 		int i, fd;
 		char *new_name;
 		line_input_t *st_temp;
+
+		/* max_history==0 needs special-casing in general code,
+		 * just handle it in a simpler way: */
+		if (st->max_history == 0) {
+			/* fopen("w") already truncated it */
+			fclose(fp);
+			return;
+		}
 
 		for (i = st->cnt_history_in_file; i < st->cnt_history; i++)
 			fprintf(fp, "%s\n", st->history[i]);
@@ -1769,6 +1783,8 @@ void FAST_FUNC save_history(line_input_t *st)
 		st_temp = new_line_input_t(st->flags);
 		st_temp->hist_file = st->hist_file;
 		st_temp->max_history = st->max_history;
+		/* load no more than max_history last lines */
+		/* (in unlikely case that file disappeared, st_temp gets empty history) */
 		load_history(st_temp);
 
 		/* write out temp file and replace hist_file atomically */
@@ -1792,13 +1808,13 @@ static void save_history(char *str)
 	int fd;
 	int len, len2;
 
-	if (!state->hist_file)
+	/* bash compat: HISTFILE="" disables history saving */
+	if (!state->hist_file || !state->hist_file[0])
 		return;
 
 	fd = open(state->hist_file, O_WRONLY | O_CREAT | O_APPEND, 0600);
 	if (fd < 0)
 		return;
-	xlseek(fd, 0, SEEK_END); /* paranoia */
 	len = strlen(str);
 	str[len] = '\n'; /* we (try to) do atomic write */
 	len2 = full_write(fd, str, len + 1);
@@ -1853,12 +1869,9 @@ static void remember_in_history(char *str)
 	if (str[0] == '\0')
 		return;
 	i = state->cnt_history;
-	/* Don't save dupes */
-	if (i && strcmp(state->history[i-1], str) == 0)
+	/* Don't save dups */
+	if (i != 0 && strcmp(state->history[i-1], str) == 0)
 		return;
-
-	free(state->history[state->max_history]); /* redundant, paranoia */
-	state->history[state->max_history] = NULL; /* redundant, paranoia */
 
 	/* If history[] is full, remove the oldest command */
 	/* we need to keep history[state->max_history] empty, hence >=, not > */
@@ -1872,7 +1885,7 @@ static void remember_in_history(char *str)
 			state->cnt_history_in_file--;
 # endif
 	}
-	/* i <= state->max_history-1 */
+	/* i < state->max_history */
 	state->history[i++] = xstrdup(str);
 	/* i <= state->max_history */
 	state->cur_history = i;
@@ -2388,7 +2401,6 @@ static int lineedit_read_key(char *read_key_buffer, int timeout)
 				errno = EINTR;
 				return -1;
 			}
-//FIXME: still races here with signals, but small window to poll() inside read_key
 			IF_FEATURE_EDITING_WINCH(S.ok_to_redraw = 1;)
 			/* errno = 0; - read_key does this itself */
 			ic = read_key(STDIN_FILENO, read_key_buffer, timeout);
