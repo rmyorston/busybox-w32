@@ -1445,6 +1445,7 @@ static void xxfree(void *ptr)
 # define syntax_error_unterm_ch(lineno, ch)     syntax_error_unterm_ch(ch)
 # define syntax_error_unterm_str(lineno, s)     syntax_error_unterm_str(s)
 # define syntax_error_unexpected_ch(lineno, ch) syntax_error_unexpected_ch(ch)
+# define syntax_error_unexpected_str(lineno, s) syntax_error_unexpected_str(s)
 #endif
 
 static void die_if_script(void)
@@ -1492,22 +1493,25 @@ static void syntax_error_unterm_str(unsigned lineno UNUSED_PARAM, const char *s)
 //	die_if_script();
 }
 
-static void syntax_error_unterm_ch(unsigned lineno, char ch)
+static void syntax_error_unterm_ch(unsigned lineno, int ch)
 {
 	char msg[2] = { ch, '\0' };
-	syntax_error_unterm_str(lineno, msg);
+	syntax_error_unterm_str(lineno, ch == EOF ? "EOF" : msg);
+}
+
+static void syntax_error_unexpected_str(unsigned lineno UNUSED_PARAM, const char *s)
+{
+#if HUSH_DEBUG >= 2
+	bb_error_msg("hush.c:%u", lineno);
+#endif
+	bb_error_msg("syntax error: unexpected %s", s);
+	die_if_script();
 }
 
 static void syntax_error_unexpected_ch(unsigned lineno UNUSED_PARAM, int ch)
 {
-	char msg[2];
-	msg[0] = ch;
-	msg[1] = '\0';
-#if HUSH_DEBUG >= 2
-	bb_error_msg("hush.c:%u", lineno);
-#endif
-	bb_error_msg("syntax error: unexpected %s", ch == EOF ? "EOF" : msg);
-	die_if_script();
+	char msg[2] = { ch, '\0' };
+	syntax_error_unexpected_str(lineno, ch == EOF ? "EOF" : msg);
 }
 
 #if HUSH_DEBUG < 2
@@ -1517,6 +1521,7 @@ static void syntax_error_unexpected_ch(unsigned lineno UNUSED_PARAM, int ch)
 # undef syntax_error_unterm_ch
 # undef syntax_error_unterm_str
 # undef syntax_error_unexpected_ch
+# undef syntax_error_unexpected_str
 #else
 # define msg_and_die_if_script(...)     msg_and_die_if_script(__LINE__, __VA_ARGS__)
 # define syntax_error(msg)              syntax_error(__LINE__, msg)
@@ -1524,6 +1529,7 @@ static void syntax_error_unexpected_ch(unsigned lineno UNUSED_PARAM, int ch)
 # define syntax_error_unterm_ch(ch)     syntax_error_unterm_ch(__LINE__, ch)
 # define syntax_error_unterm_str(s)     syntax_error_unterm_str(__LINE__, s)
 # define syntax_error_unexpected_ch(ch) syntax_error_unexpected_ch(__LINE__, ch)
+# define syntax_error_unexpected_str(s) syntax_error_unexpected_str(__LINE__, s)
 #endif
 
 /*
@@ -3952,13 +3958,24 @@ static int done_command(struct parse_context *ctx)
 	return pi->num_cmds; /* used only for 0/nonzero check */
 }
 
-static void done_pipe(struct parse_context *ctx, pipe_style type)
+static int done_pipe(struct parse_context *ctx, pipe_style type)
 {
-	int not_null;
+	int not_null_pipe;
+	int oldnum;
+	int nullcommand;
 
 	debug_printf_parse("done_pipe entered, followup %d\n", type);
 	/* Close previous command */
-	not_null = done_command(ctx);
+	oldnum = ctx->pipe->num_cmds;
+	not_null_pipe = done_command(ctx);
+
+	/* This is true if this was a non-empty pipe,
+	 * but done_command didn't add a new member to it.
+	 * Usually it is a syntax error.
+	 * Examples: "date | | ...", "date | ; ..."
+	 */
+	nullcommand = (oldnum && not_null_pipe == oldnum);
+
 #if HAS_KEYWORDS
 	ctx->pipe->pi_inverted = ctx->ctx_inverted;
 	ctx->ctx_inverted = 0;
@@ -4000,7 +4017,7 @@ static void done_pipe(struct parse_context *ctx, pipe_style type)
 		ctx->list_head = ctx->pipe = pi;
 		/* for cases like "cmd && &", do not be tricked by last command
 		 * being null - the entire {...} & is NOT null! */
-		not_null = 1;
+		not_null_pipe = 1;
 	} else {
  no_conv:
 		ctx->pipe->followup = type;
@@ -4009,7 +4026,7 @@ static void done_pipe(struct parse_context *ctx, pipe_style type)
 	/* Without this check, even just <enter> on command line generates
 	 * tree of three NOPs (!). Which is harmless but annoying.
 	 * IOW: it is safe to do it unconditionally. */
-	if (not_null
+	if (not_null_pipe
 #if ENABLE_HUSH_IF
 	 || ctx->ctx_res_w == RES_FI
 #endif
@@ -4024,8 +4041,8 @@ static void done_pipe(struct parse_context *ctx, pipe_style type)
 	) {
 		struct pipe *new_p;
 		debug_printf_parse("done_pipe: adding new pipe: "
-				"not_null:%d ctx->ctx_res_w:%d\n",
-				not_null, ctx->ctx_res_w);
+				"not_null_pipe:%d ctx->ctx_res_w:%d\n",
+				not_null_pipe, ctx->ctx_res_w);
 		new_p = new_pipe();
 		ctx->pipe->next = new_p;
 		ctx->pipe = new_p;
@@ -4054,7 +4071,8 @@ static void done_pipe(struct parse_context *ctx, pipe_style type)
 		done_command(ctx);
 		//debug_print_tree(ctx->list_head, 10);
 	}
-	debug_printf_parse("done_pipe return\n");
+	debug_printf_parse("done_pipe return:%d\n", nullcommand);
+	return nullcommand;
 }
 
 static void initialize_context(struct parse_context *ctx)
@@ -5612,7 +5630,12 @@ static struct pipe *parse_stream(char **pstring,
 				goto parse_error_exitcode1;
 			}
 			o_free_and_set_NULL(&ctx.word);
-			done_pipe(&ctx, PIPE_SEQ);
+			if (done_pipe(&ctx, PIPE_SEQ)) {
+				/* Testcase: sh -c 'date |' */
+				syntax_error_unterm_ch('|');
+				goto parse_error_exitcode1;
+			}
+// TODO: catch 'date &&<whitespace><EOF>' and 'date ||<whitespace><EOF>' too
 
 			/* Do we sit inside of any if's, loops or case's? */
 			if (HAS_KEYWORDS
@@ -5624,8 +5647,6 @@ static struct pipe *parse_stream(char **pstring,
 
 			pi = ctx.list_head;
 			/* If we got nothing... */
-			/* (this makes bare "&" cmd a no-op.
-			 * bash says: "syntax error near unexpected token '&'") */
 			if (pi->num_cmds == 0
 			IF_HAS_KEYWORDS(&& pi->res_word == RES_NONE)
 			) {
@@ -5867,7 +5888,11 @@ static struct pipe *parse_stream(char **pstring,
 			if (done_word(&ctx)) {
 				goto parse_error_exitcode1;
 			}
-			done_pipe(&ctx, PIPE_SEQ);
+			if (done_pipe(&ctx, PIPE_SEQ)) {
+				/* Testcase: sh -c 'date|;not_reached' */
+				syntax_error_unterm_ch('|');
+				goto parse_error_exitcode1;
+			};
 			ctx.is_assignment = MAYBE_ASSIGNMENT;
 			debug_printf_parse("ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
 			/* Do we sit outside of any if's, loops or case's? */
@@ -6077,12 +6102,26 @@ static struct pipe *parse_stream(char **pstring,
 			if (done_word(&ctx)) {
 				goto parse_error_exitcode1;
 			}
+			if (ctx.pipe->num_cmds == 0 && IS_NULL_CMD(ctx.command)) {
+				/* Testcase: sh -c '&& date' */
+				/* Testcase: sh -c '&' */
+				syntax_error_unexpected_str("&&" + (next != '&'));
+				goto parse_error_exitcode1;
+			}
 			if (next == '&') {
 				ch = i_getch(input);
 				nommu_addchr(&ctx.as_string, ch);
-				done_pipe(&ctx, PIPE_AND);
+				if (done_pipe(&ctx, PIPE_AND)) {
+					/* Testcase: sh -c 'date | && date' */
+					syntax_error_unterm_ch('|');
+					goto parse_error_exitcode1;
+				}
 			} else {
-				done_pipe(&ctx, PIPE_BG);
+				if (done_pipe(&ctx, PIPE_BG)) {
+					/* Testcase: sh -c 'date | &' */
+					syntax_error_unterm_ch('|');
+					goto parse_error_exitcode1;
+				}
 			}
 			goto new_cmd;
 		case '|':
@@ -6096,11 +6135,23 @@ static struct pipe *parse_stream(char **pstring,
 			if (next == '|') { /* || */
 				ch = i_getch(input);
 				nommu_addchr(&ctx.as_string, ch);
-				done_pipe(&ctx, PIPE_OR);
+				if (ctx.pipe->num_cmds == 0 && IS_NULL_CMD(ctx.command)) {
+					/* Testcase: sh -c '|| date' */
+					syntax_error_unexpected_str("||");
+					goto parse_error_exitcode1;
+				}
+				if (done_pipe(&ctx, PIPE_OR)) {
+					/* Testcase: sh -c 'date | || date' */
+					syntax_error_unterm_ch('|');
+					goto parse_error_exitcode1;
+				}
 			} else {
-				/* we could pick up a file descriptor choice here
-				 * with redirect_opt_num(), but bash doesn't do it.
-				 * "echo foo 2| cat" yields "foo 2". */
+				if (IS_NULL_CMD(ctx.command)) {
+					/* Example: "| cat" */
+					/* Example: "date | | cat" */
+					syntax_error_unexpected_ch('|');
+					goto parse_error_exitcode1;
+				}
 				done_command(&ctx);
 			}
 			goto new_cmd;
