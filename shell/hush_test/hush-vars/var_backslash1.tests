@@ -17,6 +17,16 @@ echo '${a##\\"$c"} removes \*:        '"|${a##\\"$c"}|"' - matches \, then *'
 echo '${a##$b} removes \:             '"|${a##$b}|"' - matches \'
 echo '${a##"$b"} removes \:           '"|${a##"$b"}|"' - matches \'
 echo
+sq="'"
+echo 'Single quote tests:'
+echo '${a##?'$sq'*'$sq'} removes \*:          '"|${a##?'*'}|"' - matches one char, then *'
+echo '${a##'$sq'\'$sq'*} removes everything:  '"|${a##'\'*}|"' - matches \, then all'
+echo '${a##'$sq'\'$sq'\*} removes \*:         '"|${a##'\'\*}|"' - matches \, then *'
+echo '${a##'$sq'\*'$sq'} removes \*:          '"|${a##'\*'}|"' - matches \, then *'
+echo '${a##'$sq'\'$sq'$c} removes everything: '"|${a##'\'$c}|"' - matches \, then all'
+echo '${a##'$sq'\'$sq'\$c} removes nothing:   '"|${a##'\'\$c}|"' - matches \, but then second char is not $'
+echo '${a##'$sq'\'$sq'"$c"} removes \*:       '"|${a##'\'"$c"}|"' - matches \, then *'
+echo
 ## In bash, this isn't working as expected
 #echo '${a##$b?} removes \*:           '"|${a##$b?}|"' - matches \, then one char'   # bash prints |\*bc|
 #echo '${a##$b*} removes everything:   '"|${a##$b*}|"' - matches \, then all'        # bash prints |\*bc|

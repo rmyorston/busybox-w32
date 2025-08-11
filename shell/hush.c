@@ -559,11 +559,15 @@ typedef struct o_string {
 	smallint ended_in_ifs;
 } o_string;
 enum {
-	EXP_FLAG_SINGLEWORD     = 0x80, /* must be 0x80 */
-	EXP_FLAG_GLOB           = 0x2,
-	/* Protect newly added chars against globbing
-	 * by prepending \ to *, ?, [, \ */
-	EXP_FLAG_ESC_GLOB_CHARS = 0x1,
+	/* Protect all newly added chars against globbing by prepending \ to *, ?, [, -, \ */
+	EXP_FLAG_GLOBPROTECT_CHARS = 0x1,
+	/* Protect quoted vars against globbing */
+	EXP_FLAG_GLOBPROTECT_VARS  = 0x2,
+	/* On word-split, perform globbing (one word may become many) */
+	EXP_FLAG_DO_GLOBBING       = 0x4,
+	/* Do not word-split */
+	EXP_FLAG_SINGLEWORD        = 0x80,
+	/* ^^^^ EXP_FLAG_SINGLEWORD must be 0x80 */
 };
 /* Used for initialization: o_string foo = NULL_O_STRING; */
 #define NULL_O_STRING { NULL }
@@ -3193,7 +3197,7 @@ static void o_addqchr(o_string *o, int ch)
 static void o_addQchr(o_string *o, int ch)
 {
 	int sz = 1;
-	if ((o->o_expflags & EXP_FLAG_ESC_GLOB_CHARS)
+	if ((o->o_expflags & EXP_FLAG_GLOBPROTECT_CHARS)
 	 && strchr("*?[-\\" MAYBE_BRACES, ch)
 	) {
 		sz++;
@@ -3236,7 +3240,7 @@ static void o_addqblock(o_string *o, const char *str, int len)
 
 static void o_addQblock(o_string *o, const char *str, int len)
 {
-	if (!(o->o_expflags & EXP_FLAG_ESC_GLOB_CHARS)) {
+	if (!(o->o_expflags & EXP_FLAG_GLOBPROTECT_CHARS)) {
 		o_addblock(o, str, len);
 		return;
 	}
@@ -3246,6 +3250,11 @@ static void o_addQblock(o_string *o, const char *str, int len)
 static void o_addQstr(o_string *o, const char *str)
 {
 	o_addQblock(o, str, strlen(str));
+}
+
+static void o_addqstr(o_string *o, const char *str)
+{
+	o_addqblock(o, str, strlen(str));
 }
 
 /* A special kind of o_string for $VAR and `cmd` expansion.
@@ -3266,11 +3275,11 @@ static void debug_print_list(const char *prefix, o_string *o, int n)
 	int i = 0;
 
 	indent();
-	fdprintf(2, "%s: list:%p n:%d string_start:%d length:%d maxlen:%d glob:%d quoted:%d escape:%d\n",
+	fdprintf(2, "%s: list:%p n:%d string_start:%d length:%d maxlen:%d do_glob:%d has_quoted:%d globprotect:%d\n",
 			prefix, list, n, string_start, o->length, o->maxlen,
-			!!(o->o_expflags & EXP_FLAG_GLOB),
+			!!(o->o_expflags & EXP_FLAG_DO_GLOBBING),
 			o->has_quoted_part,
-			!!(o->o_expflags & EXP_FLAG_ESC_GLOB_CHARS));
+			!!(o->o_expflags & EXP_FLAG_GLOBPROTECT_CHARS));
 	while (i < n) {
 		indent();
 		fdprintf(2, " list[%d]=%d '%s' %p\n", i, (int)(uintptr_t)list[i],
@@ -3672,11 +3681,11 @@ static int perform_glob(o_string *o, int n)
 
 #endif /* !HUSH_BRACE_EXPANSION */
 
-/* If o->o_expflags & EXP_FLAG_GLOB, glob the string so far remembered.
+/* If o->o_expflags & EXP_FLAG_DO_GLOBBING, glob the string so far remembered.
  * Otherwise, just finish current list[] and start new */
 static int o_save_ptr(o_string *o, int n)
 {
-	if (o->o_expflags & EXP_FLAG_GLOB) {
+	if (o->o_expflags & EXP_FLAG_DO_GLOBBING) {
 		/* If o->has_empty_slot, list[n] was already globbed
 		 * (if it was requested back then when it was filled)
 		 * so don't do that again! */
@@ -5476,8 +5485,8 @@ static int encode_string(o_string *as_string,
 	if (ch != '\n') {
 		next = i_peek(input);
 	}
-	debug_printf_parse("\" ch=%c (%d) escape=%d\n",
-			ch, ch, !!(dest->o_expflags & EXP_FLAG_ESC_GLOB_CHARS));
+	debug_printf_parse("\" ch:%c (%d) globprotect:%d\n",
+			ch, ch, !!(dest->o_expflags & EXP_FLAG_GLOBPROTECT_CHARS));
 	if (ch == '\\') {
 		if (next == EOF) {
 			/* Testcase: in interactive shell a file with
@@ -5581,8 +5590,8 @@ static struct pipe *parse_stream(char **pstring,
 		redir_type redir_style;
 
 		ch = i_getch(input);
-		debug_printf_parse(": ch=%c (%d) escape=%d\n",
-				ch, ch, !!(ctx.word.o_expflags & EXP_FLAG_ESC_GLOB_CHARS));
+		debug_printf_parse(": ch:%c (%d) globprotect:%d\n",
+				ch, ch, !!(ctx.word.o_expflags & EXP_FLAG_GLOBPROTECT_CHARS));
 		if (ch == EOF) {
 			struct pipe *pi;
 
@@ -6011,10 +6020,10 @@ static struct pipe *parse_stream(char **pstring,
 				continue; /* get next char */
 			}
 			if (ctx.is_assignment == NOT_ASSIGNMENT)
-				ctx.word.o_expflags |= EXP_FLAG_ESC_GLOB_CHARS;
+				ctx.word.o_expflags |= EXP_FLAG_GLOBPROTECT_CHARS;
 			if (!encode_string(&ctx.as_string, &ctx.word, input, '"'))
 				goto parse_error_exitcode1;
-			ctx.word.o_expflags &= ~EXP_FLAG_ESC_GLOB_CHARS;
+			ctx.word.o_expflags &= ~EXP_FLAG_GLOBPROTECT_CHARS;
 			continue; /* get next char */
 #if ENABLE_HUSH_TICK
 		case '`': {
@@ -6183,10 +6192,6 @@ static struct pipe *parse_stream(char **pstring,
  * Execution routines
  */
 /* Expansion can recurse, need forward decls: */
-#if !BASH_PATTERN_SUBST && !ENABLE_HUSH_CASE
-#define expand_string_to_string(str, EXP_flags, do_unbackslash) \
-	expand_string_to_string(str)
-#endif
 static char *expand_string_to_string(const char *str, int EXP_flags, int do_unbackslash);
 #if ENABLE_HUSH_TICK
 static int process_command_subs(o_string *dest, const char *s);
@@ -6251,7 +6256,7 @@ static int expand_on_ifs(o_string *output, int n, const char *str)
 		word_len = strcspn(str, G.ifs);
 		if (word_len) {
 			/* We have WORD_LEN leading non-IFS chars */
-			if (!(output->o_expflags & EXP_FLAG_GLOB)) {
+			if (!(output->o_expflags & EXP_FLAG_DO_GLOBBING)) {
 				o_addblock(output, str, word_len);
 			} else {
 				/* Protect backslashes against globbing up :)
@@ -6344,7 +6349,7 @@ static char *encode_then_expand_string(const char *str)
 //TODO: error check (encode_string returns 0 on error)?
 	//bb_error_msg("'%s' -> '%s'", str, dest.data);
 	exp_str = expand_string_to_string(dest.data,
-			EXP_FLAG_ESC_GLOB_CHARS,
+			EXP_FLAG_GLOBPROTECT_CHARS,
 			/*unbackslash:*/ 1
 	);
 	//bb_error_msg("'%s' -> '%s'", dest.data, exp_str);
@@ -6379,15 +6384,11 @@ static const char *first_special_char_in_vararg(const char *cp)
  * a dquoted string: "${var#"zz"}"), the difference only comes later
  * (word splitting and globbing of the ${var...} result).
  */
-#if !BASH_PATTERN_SUBST
-#define encode_then_expand_vararg(str, handle_squotes, do_unbackslash) \
-	encode_then_expand_vararg(str, handle_squotes)
-#endif
-static char *encode_then_expand_vararg(const char *str, int handle_squotes, int do_unbackslash)
-{
-#if !BASH_PATTERN_SUBST && ENABLE_HUSH_CASE
-	const int do_unbackslash = 0;
-#endif
+static char *encode_then_expand_vararg(const char *str,
+		int handle_squotes,  /* 'str' substrings are parsed as literals (unless inside "")*/
+		int protect_vars,    /* glob-protect double-quoted $VARS */
+		int do_unbackslash   /* run unbackslash on result before returning it */
+) {
 	char *exp_str;
 	struct in_str input;
 	o_string dest = NULL_O_STRING;
@@ -6422,7 +6423,7 @@ static char *encode_then_expand_vararg(const char *str, int handle_squotes, int 
 			goto ret; /* error */
 		}
 		if (ch == '"') {
-			dest.o_expflags ^= EXP_FLAG_ESC_GLOB_CHARS;
+			dest.o_expflags ^= EXP_FLAG_GLOBPROTECT_CHARS;
 			continue;
 		}
 		if (ch == '\\') {
@@ -6438,7 +6439,10 @@ static char *encode_then_expand_vararg(const char *str, int handle_squotes, int 
 		if (ch == '$') {
 			if (parse_dollar_squote(NULL, &dest, &input))
 				continue;
-			if (!parse_dollar(NULL, &dest, &input, /*quote_mask:*/ 0x80)) {
+			if (!parse_dollar(NULL, &dest, &input,
+					/*quote_mask:*/ (dest.o_expflags & EXP_FLAG_GLOBPROTECT_CHARS) ? 0x80 : 0
+				)
+			) {
 				debug_printf_parse("%s: error: parse_dollar returned 0 (error)\n", __func__);
 				goto ret;
 			}
@@ -6450,7 +6454,7 @@ static char *encode_then_expand_vararg(const char *str, int handle_squotes, int 
 			o_addchr(&dest, SPECIAL_VAR_SYMBOL);
 			o_addchr(&dest, 0x80 | '`');
 			if (!add_till_backquote(&dest, &input,
-					/*in_dquote:*/ dest.o_expflags /* nonzero if EXP_FLAG_ESC_GLOB_CHARS set */
+					/*in_dquote:*/ (dest.o_expflags & EXP_FLAG_GLOBPROTECT_CHARS)
 				)
 			) {
 				goto ret; /* error */
@@ -6463,9 +6467,12 @@ static char *encode_then_expand_vararg(const char *str, int handle_squotes, int 
 		o_addQchr(&dest, ch);
 	} /* for (;;) */
 
-	debug_printf_parse("encode: '%s' -> '%s'\n", str, dest.data);
+	debug_printf_parse("encode(do_unbackslash:%d): '%s' -> '%s'\n", do_unbackslash, str, dest.data);
 	exp_str = expand_string_to_string(dest.data,
-			do_unbackslash ? EXP_FLAG_ESC_GLOB_CHARS : 0,
+			0
+			| (do_unbackslash ? EXP_FLAG_GLOBPROTECT_CHARS : 0)
+			| (protect_vars ? EXP_FLAG_GLOBPROTECT_VARS : 0)
+			,
 			do_unbackslash
 	);
  ret:
@@ -6549,7 +6556,7 @@ static NOINLINE int encode_then_append_var_plusminus(o_string *output, int n,
 			goto ret; /* error */
 		}
 		if (ch == '"') {
-			dest.o_expflags ^= EXP_FLAG_ESC_GLOB_CHARS;
+			dest.o_expflags ^= EXP_FLAG_GLOBPROTECT_CHARS;
 			if (dest.o_expflags) {
 				o_addchr(&dest, SPECIAL_VAR_SYMBOL);
 				o_addchr(&dest, SPECIAL_VAR_SYMBOL);
@@ -6579,7 +6586,7 @@ static NOINLINE int encode_then_append_var_plusminus(o_string *output, int n,
 			o_addchr(&dest, SPECIAL_VAR_SYMBOL);
 			o_addchr(&dest, (dest.o_expflags || dquoted) ? 0x80 | '`' : '`');
 			if (!add_till_backquote(&dest, &input,
-					/*in_dquote:*/ dest.o_expflags /* nonzero if EXP_FLAG_ESC_GLOB_CHARS set */
+					/*in_dquote:*/ dest.o_expflags /* nonzero if EXP_FLAG_GLOBPROTECT_CHARS set */
 				)
 			) {
 				goto ret; /* error */
@@ -6707,27 +6714,39 @@ static char *replace_pattern(char *val, const char *pattern, const char *repl, c
 #endif /* BASH_PATTERN_SUBST */
 
 static int append_str_maybe_ifs_split(o_string *output, int n,
-		int first_ch, const char *val)
+		int quoted, const char *val)
 {
-	if (!(first_ch & 0x80)) { /* unquoted $VAR */
-		debug_printf_expand("unquoted '%s', output->o_escape:%d\n", val,
-				!!(output->o_expflags & EXP_FLAG_ESC_GLOB_CHARS));
-		if (val && val[0])
+	if (!quoted) { /* unquoted $VAR */
+		debug_printf_expand("unquoted variable value '%s', o_escape:%d o_varescape:%d, singleword:%d\n", val,
+				!!(output->o_expflags & EXP_FLAG_GLOBPROTECT_CHARS),
+				!!(output->o_expflags & EXP_FLAG_GLOBPROTECT_VARS),
+				!!(output->o_expflags & EXP_FLAG_SINGLEWORD)
+		);
+		if (val && val[0]) {
+			if (output->o_expflags & EXP_FLAG_SINGLEWORD)
+				goto singleword;
 			n = expand_on_ifs(output, n, val);
+		}
 	} else { /* quoted "$VAR" */
 		output->has_quoted_part = 1;
-		debug_printf_expand("quoted '%s', output->o_escape:%d\n", val,
-				!!(output->o_expflags & EXP_FLAG_ESC_GLOB_CHARS));
-		if (val && val[0])
-			o_addQstr(output, val);
+		debug_printf_expand("quoted variable value '%s', o_escape:%d o_varescape:%d\n", val,
+				!!(output->o_expflags & EXP_FLAG_GLOBPROTECT_CHARS),
+				!!(output->o_expflags & EXP_FLAG_GLOBPROTECT_VARS)
+		);
+		if (val && val[0]) {
+			if (output->o_expflags & EXP_FLAG_GLOBPROTECT_VARS)
+				o_addqstr(output, val);
+			else
+ singleword:
+				o_addQstr(output, val);
+		}
 	}
 	return n;
 }
 
 /* Handle <SPECIAL_VAR_SYMBOL>varname...<SPECIAL_VAR_SYMBOL> construct.
  */
-static NOINLINE int expand_one_var(o_string *output, int n,
-		int first_ch, char *arg, char **pp)
+static NOINLINE int expand_one_var(o_string *output, int n, char *arg, char **pp)
 {
 	const char *val;
 	char *to_be_freed;
@@ -6863,7 +6882,11 @@ static NOINLINE int expand_one_var(o_string *output, int n,
 				if (exp_op == *exp_word)  /* ## or %% */
 					exp_word++;
 				debug_printf_expand("expand: exp_word:'%s'\n", exp_word);
-				exp_exp_word = encode_then_expand_vararg(exp_word, /*handle_squotes:*/ 1, /*unbackslash:*/ 0);
+				exp_exp_word = encode_then_expand_vararg(exp_word,
+						/*handle_squotes:*/ 1,   /* 'str' are processed (and glob-protected) */
+						/*globprotect_vars:*/ 1, /* value of "$VAR" is not glob-expanded */
+						/*unbackslash:*/ 0
+				);
 				if (exp_exp_word)
 					exp_word = exp_exp_word;
 				debug_printf_expand("expand: exp_word:'%s'\n", exp_word);
@@ -6910,7 +6933,11 @@ static NOINLINE int expand_one_var(o_string *output, int n,
 				 * (note that a*z _pattern_ is never globbed!)
 				 */
 				char *pattern, *repl, *t;
-				pattern = encode_then_expand_vararg(exp_word, /*handle_squotes:*/ 1, /*unbackslash:*/ 0);
+				pattern = encode_then_expand_vararg(exp_word,
+						/*handle_squotes:*/ 1,
+						/*globprotect_vars:*/ 0,
+						/*unbackslash:*/ 0
+				);
 				if (!pattern)
 					pattern = xstrdup(exp_word);
 				debug_printf_varexp("pattern:'%s'->'%s'\n", exp_word, pattern);
@@ -6918,7 +6945,11 @@ static NOINLINE int expand_one_var(o_string *output, int n,
 				exp_word = p;
 				p = strchr(p, SPECIAL_VAR_SYMBOL);
 				*p = '\0';
-				repl = encode_then_expand_vararg(exp_word, /*handle_squotes:*/ 1, /*unbackslash:*/ 1);
+				repl = encode_then_expand_vararg(exp_word,
+						/*handle_squotes:*/ 1,
+						/*globprotect_vars:*/ 0,
+						/*unbackslash:*/ 1
+				);
 				debug_printf_varexp("repl:'%s'->'%s'\n", exp_word, repl);
 				/* HACK ALERT. We depend here on the fact that
 				 * G.global_argv and results of utoa and get_local_var_value
@@ -7071,6 +7102,7 @@ static NOINLINE int expand_one_var(o_string *output, int n,
 					/* ${var=word} - assign and use default value */
 					to_be_freed = encode_then_expand_vararg(exp_word,
 							/*handle_squotes:*/ !(arg0 & 0x80),
+							/*globprotect_vars:*/ 0,
 							/*unbackslash:*/ 0
 					);
 					if (to_be_freed)
@@ -7115,7 +7147,7 @@ static NOINLINE int expand_one_var(o_string *output, int n,
 	arg[0] = arg0;
 	*pp = p;
 
-	n = append_str_maybe_ifs_split(output, n, first_ch, val);
+	n = append_str_maybe_ifs_split(output, n, /*quoted:*/ (arg0 & 0x80), val);
 
 	free(to_be_freed);
 	return n;
@@ -7243,7 +7275,7 @@ static NOINLINE int expand_vars_to_list(o_string *output, int n, char *arg)
 			G.last_exitcode = process_command_subs(&subst_result, arg);
 			G.expand_exitcode = G.last_exitcode;
 			debug_printf_subst("SUBST RES:%d '%s'\n", G.last_exitcode, subst_result.data);
-			n = append_str_maybe_ifs_split(output, n, first_ch, subst_result.data);
+			n = append_str_maybe_ifs_split(output, n, /*quoted:*/(first_ch & 0x80), subst_result.data);
 			o_free(&subst_result);
 			break;
 		}
@@ -7261,7 +7293,7 @@ static NOINLINE int expand_vars_to_list(o_string *output, int n, char *arg)
 			sprintf(arith_buf, ARITH_FMT, res);
 			if (res < 0
 			 && first_ch == (char)('+'|0x80)
-			/* && (output->o_expflags & EXP_FLAG_ESC_GLOB_CHARS) */
+			/* && (output->o_expflags & EXP_FLAG_GLOBPROTECT_CHARS) */
 			) {
 				/* Quoted negative ariths, like filename[0"$((-9))"],
 				 * should not be interpreted as glob ranges.
@@ -7276,7 +7308,7 @@ static NOINLINE int expand_vars_to_list(o_string *output, int n, char *arg)
 #endif
 		default:
 			/* <SPECIAL_VAR_SYMBOL>varname[ops]<SPECIAL_VAR_SYMBOL> */
-			n = expand_one_var(output, n, first_ch, arg, &p);
+			n = expand_one_var(output, n, arg, &p);
 			break;
 		} /* switch (char after <SPECIAL_VAR_SYMBOL>) */
 
@@ -7344,7 +7376,7 @@ static char **expand_variables(char **argv, unsigned expflags)
 
 static char **expand_strvec_to_strvec(char **argv)
 {
-	return expand_variables(argv, EXP_FLAG_GLOB | EXP_FLAG_ESC_GLOB_CHARS);
+	return expand_variables(argv, EXP_FLAG_DO_GLOBBING | EXP_FLAG_GLOBPROTECT_CHARS);
 }
 
 #if defined(CMD_SINGLEWORD_NOGLOB) || defined(CMD_TEST2_SINGLEWORD_NOGLOB)
@@ -7362,10 +7394,6 @@ static char **expand_strvec_to_strvec_singleword_noglob(char **argv)
  */
 static char *expand_string_to_string(const char *str, int EXP_flags, int do_unbackslash)
 {
-#if !BASH_PATTERN_SUBST && !ENABLE_HUSH_CASE
-	const int do_unbackslash = 1;
-	const int EXP_flags = EXP_FLAG_ESC_GLOB_CHARS;
-#endif
 	char *argv[2], **list;
 
 	debug_printf_expand("string_to_string<='%s'\n", str);
@@ -7434,7 +7462,7 @@ static char **expand_assignments(char **argv, int count)
 	for (i = 0; i < count; i++) {
 		p = add_string_to_strings(p,
 			expand_string_to_string(argv[i],
-				EXP_FLAG_ESC_GLOB_CHARS,
+				EXP_FLAG_GLOBPROTECT_CHARS,
 				/*unbackslash:*/ 1
 			)
 		);
@@ -8231,7 +8259,9 @@ static int setup_redirects(struct command *prog, struct squirrel **sqp)
 			}
 			mode = redir_table[redir->rd_type].mode;
 			p = expand_string_to_string(redir->rd_filename,
-				EXP_FLAG_ESC_GLOB_CHARS, /*unbackslash:*/ 1);
+					EXP_FLAG_GLOBPROTECT_CHARS,
+					/*unbackslash:*/ 1
+			);
 			newfd = open_or_warn(p, mode);
 			free(p);
 			if (newfd < 0) {
@@ -9547,7 +9577,7 @@ static NOINLINE int run_pipe(struct pipe *pi)
 			i = 0;
 			while (i < command->assignment_cnt) {
 				char *p = expand_string_to_string(argv[i],
-						EXP_FLAG_ESC_GLOB_CHARS,
+						EXP_FLAG_GLOBPROTECT_CHARS,
 						/*unbackslash:*/ 1
 				);
 #if ENABLE_HUSH_MODE_X
@@ -10068,7 +10098,9 @@ static int run_list(struct pipe *pi)
 		if (rword == RES_CASE) {
 			debug_printf_exec("CASE cond_code:%d\n", cond_code);
 			case_word = expand_string_to_string(pi->cmds->argv[0],
-				EXP_FLAG_ESC_GLOB_CHARS, /*unbackslash:*/ 1);
+					EXP_FLAG_GLOBPROTECT_CHARS,
+					/*unbackslash:*/ 1
+			);
 			debug_printf_exec("CASE word1:'%s'\n", case_word);
 			//unbackslash(case_word);
 			//debug_printf_exec("CASE word2:'%s'\n", case_word);
@@ -10086,7 +10118,7 @@ static int run_list(struct pipe *pi)
 				char *pattern;
 				debug_printf_exec("expand_string_to_string('%s')\n", *argv);
 				pattern = expand_string_to_string(*argv,
-						EXP_FLAG_ESC_GLOB_CHARS,
+						EXP_FLAG_GLOBPROTECT_CHARS,
 						/*unbackslash:*/ 0
 				);
 				/* TODO: which FNM_xxx flags to use? */
