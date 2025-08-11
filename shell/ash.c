@@ -12163,7 +12163,7 @@ fixredir(union node *n, const char *text, int err)
 		 * silently truncate results to word width.
 		 */
 		if (err)
-			raise_error_syntax("bad fd number");
+			ash_msg_and_raise_error("bad fd number");
 		n->ndup.vname = makename();
 	}
 }
