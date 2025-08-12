@@ -1210,6 +1210,16 @@ char *bin2hex(char *dst, const char *src, int count) FAST_FUNC;
 /* Reverse */
 char* hex2bin(char *dst, const char *src, int count) FAST_FUNC;
 
+void FAST_FUNC xorbuf_3(void *dst, const void *src1, const void *src2, unsigned count);
+void FAST_FUNC xorbuf(void* buf, const void* mask, unsigned count);
+void FAST_FUNC xorbuf16_aligned_long(void* buf, const void* mask);
+void FAST_FUNC xorbuf64_3_aligned64(void *dst, const void *src1, const void *src2);
+#if BB_UNALIGNED_MEMACCESS_OK
+# define xorbuf16(buf,mask) xorbuf16_aligned_long(buf,mask)
+#else
+void FAST_FUNC xorbuf16(void* buf, const void* mask);
+#endif
+
 /* Generate a UUID */
 void generate_uuid(uint8_t *buf) FAST_FUNC;
 
@@ -1924,17 +1934,24 @@ extern char *pw_encrypt(const char *clear, const char *salt, int cleanup) FAST_F
 extern int obscure(const char *old, const char *newval, const struct passwd *pwdp) FAST_FUNC;
 /*
  * rnd is additional random input. New one is returned.
- * Useful if you call crypt_make_salt many times in a row:
- * rnd = crypt_make_salt(buf1, 4, 0);
- * rnd = crypt_make_salt(buf2, 4, rnd);
- * rnd = crypt_make_salt(buf3, 4, rnd);
+ * Useful if you call crypt_make_rand64encoded many times in a row:
+ * rnd = crypt_make_rand64encoded(buf1, 4, 0);
+ * rnd = crypt_make_rand64encoded(buf2, 4, rnd);
+ * rnd = crypt_make_rand64encoded(buf3, 4, rnd);
  * (otherwise we risk having same salt generated)
  */
-extern int crypt_make_salt(char *p, int cnt /*, int rnd*/) FAST_FUNC;
-/* "$N$" + sha_salt_16_bytes + NUL */
-#define MAX_PW_SALT_LEN (3 + 16 + 1)
+extern int crypt_make_rand64encoded(char *p, int cnt /*, int rnd*/) FAST_FUNC;
+/* Size of char salt[] to hold randomly-generated salt string
+ * sha256/512:
+ * "$5$" ["rounds=999999999$"] "<sha_salt_16_chars><NUL>"
+ * "$6$" ["rounds=999999999$"] "<sha_salt_16_chars><NUL>"
+ * #define MAX_PW_SALT_LEN (3 + sizeof("rounds=999999999$")-1 + 16 + 1)
+ * yescrypt:
+ * "$y$" <up to 8 params of up to 6 chars each> "$" <up to 86 chars salt><NUL>
+ * (86 chars are ascii64-encoded 64 binary bytes)
+ */
+#define MAX_PW_SALT_LEN (3 + 8*6 + 1 + 86 + 1)
 extern char* crypt_make_pw_salt(char p[MAX_PW_SALT_LEN], const char *algo) FAST_FUNC;
-
 
 /* Returns number of lines changed, or -1 on error */
 #if !(ENABLE_FEATURE_ADDUSER_TO_GROUP || ENABLE_FEATURE_DEL_USER_FROM_GROUP)
@@ -2335,6 +2352,21 @@ char *decode_base64(char *dst, const char **pp_src) FAST_FUNC;
 char *decode_base32(char *dst, const char **pp_src) FAST_FUNC;
 void read_base64(FILE *src_stream, FILE *dst_stream, int flags) FAST_FUNC;
 
+int FAST_FUNC i2a64(int i);
+int FAST_FUNC a2i64(char c);
+char* FAST_FUNC num2str64_lsb_first(char *s, unsigned v, int n);
+
+enum {
+	/* how many bytes XYZ_end() fills */
+	MD5_OUTSIZE    = 16,
+	SHA1_OUTSIZE   = 20,
+	SHA256_OUTSIZE = 32,
+	SHA512_OUTSIZE = 64,
+	SHA3_OUTSIZE   = 28,
+	/* size of input block */
+	SHA2_INSIZE     = 64,
+};
+
 #if defined CONFIG_FEATURE_USE_CNG_API
 struct bcrypt_hash_ctx_t {
 	void *handle;
@@ -2399,6 +2431,7 @@ unsigned sha512_end(sha512_ctx_t *ctx, void *resbuf) FAST_FUNC;
 void sha3_begin(sha3_ctx_t *ctx) FAST_FUNC;
 void sha3_hash(sha3_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
 unsigned sha3_end(sha3_ctx_t *ctx, void *resbuf) FAST_FUNC;
+void FAST_FUNC sha256_block(const void *in, size_t len, uint8_t hash[32]);
 /* TLS benefits from knowing that sha1 and sha256 share these. Give them "agnostic" names too */
 #if defined CONFIG_FEATURE_USE_CNG_API
 typedef struct bcrypt_hash_ctx_t md5sha_ctx_t;
@@ -2409,13 +2442,35 @@ typedef struct md5_ctx_t md5sha_ctx_t;
 #define md5sha_hash md5_hash
 #define sha_end sha1_end
 #endif
-enum {
-	MD5_OUTSIZE    = 16,
-	SHA1_OUTSIZE   = 20,
-	SHA256_OUTSIZE = 32,
-	SHA512_OUTSIZE = 64,
-	SHA3_OUTSIZE   = 28,
-};
+
+/* RFC 2104 HMAC (hash-based message authentication code) */
+typedef struct hmac_ctx {
+	md5sha_ctx_t hashed_key_xor_ipad;
+	md5sha_ctx_t hashed_key_xor_opad;
+} hmac_ctx_t;
+#define HMAC_ONLY_SHA256 (!ENABLE_FEATURE_TLS_SHA1)
+typedef void md5sha_begin_func(md5sha_ctx_t *ctx) FAST_FUNC;
+#if HMAC_ONLY_SHA256
+#define hmac_begin(ctx,key,key_size,begin) \
+	hmac_begin(ctx,key,key_size)
+#endif
+void FAST_FUNC hmac_begin(hmac_ctx_t *ctx, const uint8_t *key, unsigned key_size, md5sha_begin_func *begin);
+static ALWAYS_INLINE void hmac_hash(hmac_ctx_t *ctx, const void *in, size_t len)
+{
+	md5sha_hash(&ctx->hashed_key_xor_ipad, in, len);
+}
+unsigned FAST_FUNC hmac_end(hmac_ctx_t *ctx, uint8_t *out);
+#if HMAC_ONLY_SHA256
+#define hmac_block(key,key_size,begin,in,sz,out) \
+        hmac_block(key,key_size,in,sz,out)
+#endif
+unsigned FAST_FUNC hmac_block(const uint8_t *key, unsigned key_size,
+		md5sha_begin_func *begin,
+		const void *in, unsigned sz,
+		uint8_t *out);
+/* HMAC helpers for TLS: */
+void FAST_FUNC hmac_hash_v(hmac_ctx_t *ctx, va_list va);
+unsigned FAST_FUNC hmac_peek_hash(hmac_ctx_t *ctx, uint8_t *out, ...);
 
 extern uint32_t *global_crc32_table;
 uint32_t *crc32_filltable(uint32_t *tbl256, int endian) FAST_FUNC;
