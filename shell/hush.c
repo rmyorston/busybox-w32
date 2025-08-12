@@ -4190,12 +4190,12 @@ static const struct reserved_combo* reserved_word(struct parse_context *ctx)
 # endif
 	if (r->flag == 0) { /* '!' */
 		if (ctx->pipe->cmds != ctx->command /* bash disallows: nice | ! cat */
-		 || ctx->pipe->pi_inverted          /* bash disallows: ! ! true */
+		/* || ctx->pipe->pi_inverted - bash used to disallow "! ! true" bash 5.2.15 allows it */
 		) {
 			syntax_error_unexpected_ch('!');
 			ctx->ctx_res_w = RES_SNTX;
 		}
-		ctx->pipe->pi_inverted = 1;
+		ctx->pipe->pi_inverted = 1 - ctx->pipe->pi_inverted;
 		return r;
 	}
 	if (r->flag & FLAG_START) {
@@ -5588,6 +5588,7 @@ static struct pipe *parse_stream(char **pstring,
 		struct in_str *input,
 		int end_trigger)
 {
+	struct pipe *pi;
 	struct parse_context ctx;
 	int heredoc_cnt;
 
@@ -5622,64 +5623,8 @@ static struct pipe *parse_stream(char **pstring,
 		ch = i_getch(input);
 		debug_printf_parse(": ch:%c (%d) globprotect:%d\n",
 				ch, ch, !!(ctx.word.o_expflags & EXP_FLAG_GLOBPROTECT_CHARS));
-		if (ch == EOF) {
-			struct pipe *pi;
-
-			if (heredoc_cnt) {
-				syntax_error_unterm_str("here document");
-				goto parse_error_exitcode1;
-			}
-			if (end_trigger == ')') {
-				syntax_error_unterm_ch('(');
-				goto parse_error_exitcode1;
-			}
-			if (end_trigger == '}') {
-				syntax_error_unterm_ch('{');
-				goto parse_error_exitcode1;
-			}
-
-			if (done_word(&ctx)) {
-				goto parse_error_exitcode1;
-			}
-			o_free_and_set_NULL(&ctx.word);
-			if (done_pipe(&ctx, PIPE_SEQ)) {
-				/* Testcase: sh -c 'date |' */
-				syntax_error_unterm_ch('|');
-				goto parse_error_exitcode1;
-			}
-// TODO: catch 'date &&<whitespace><EOF>' and 'date ||<whitespace><EOF>' too
-
-			/* Do we sit inside of any if's, loops or case's? */
-			if (HAS_KEYWORDS
-			IF_HAS_KEYWORDS(&& (ctx.ctx_res_w != RES_NONE || ctx.old_flag != 0))
-			) {
-				syntax_error_unterm_str("compound statement");
-				goto parse_error_exitcode1;
-			}
-
-			pi = ctx.list_head;
-			/* If we got nothing... */
-			if (pi->num_cmds == 0
-			IF_HAS_KEYWORDS(&& pi->res_word == RES_NONE)
-			) {
-				free_pipe_list(pi);
-				pi = NULL;
-			}
-#if !BB_MMU
-			debug_printf_parse("as_string1 '%s'\n", ctx.as_string.data);
-			if (pstring)
-				*pstring = ctx.as_string.data;
-			else
-				o_free(&ctx.as_string);
-#endif
-			// heredoc_cnt must be 0 here anyway
-			//if (heredoc_cnt_ptr)
-			//	*heredoc_cnt_ptr = heredoc_cnt;
-			debug_leave();
-			debug_printf_heredoc("parse_stream return heredoc_cnt:%d\n", heredoc_cnt);
-			debug_printf_parse("parse_stream return %p: EOF\n", pi);
-			return pi;
-		}
+		if (ch == EOF)
+			break;
 
 		/* Handle "'" and "\" first, as they won't play nice with
 		 * i_peek_and_eat_bkslash_nl() anyway:
@@ -5705,7 +5650,7 @@ static struct pipe *parse_stream(char **pstring,
 				/* bash-4.3.43 was removing backslash,
 				 * but 4.4.19 retains it, most other shells too
 				 */
-				continue; /* get next char */
+				break;
 			}
 			/* Example: echo Hello \2>file
 			 * we need to know that word 2 is quoted
@@ -5719,7 +5664,7 @@ static struct pipe *parse_stream(char **pstring,
 		if (ch == '\'') {
 			ctx.word.has_quoted_part = 1;
 			next = i_getch(input);
-			if (next == '\'' && !ctx.pending_redirect)
+			if (next == '\'' && !ctx.pending_redirect/*why?*/)
 				goto insert_empty_quoted_str_marker;
 
 			ch = next;
@@ -5835,7 +5780,7 @@ static struct pipe *parse_stream(char **pstring,
 					 * a "cmd1 && <nl> cmd2 &" construct,
 					 * cmd1 may need to run in BG).
 					 */
-					struct pipe *pi = ctx.list_head;
+					pi = ctx.list_head;
 					if (pi->num_cmds != 0       /* check #1 */
 					 && pi->followup != PIPE_BG /* check #2 */
 					) {
@@ -6206,12 +6151,66 @@ static struct pipe *parse_stream(char **pstring,
 		}
 	} /* while (1) */
 
+	/* Reached EOF */
+	if (heredoc_cnt) {
+		syntax_error_unterm_str("here document");
+		goto parse_error_exitcode1;
+	}
+	if (end_trigger == ')') {
+		syntax_error_unterm_ch('(');
+		goto parse_error_exitcode1;
+	}
+	if (end_trigger == '}') {
+		syntax_error_unterm_ch('{');
+		goto parse_error_exitcode1;
+	}
+
+	if (done_word(&ctx)) {
+		goto parse_error_exitcode1;
+	}
+	o_free_and_set_NULL(&ctx.word);
+	if (done_pipe(&ctx, PIPE_SEQ)) {
+		/* Testcase: sh -c 'date |' */
+		syntax_error_unterm_ch('|');
+		goto parse_error_exitcode1;
+	}
+// TODO: catch 'date &&<whitespace><EOF>' and 'date ||<whitespace><EOF>' too
+
+#if HAS_KEYWORDS
+	/* Do we sit inside of any if's, loops or case's? */
+	if (ctx.ctx_res_w != RES_NONE || ctx.old_flag != 0) {
+		syntax_error_unterm_str("compound statement");
+		goto parse_error_exitcode1;
+	}
+#endif
+	pi = ctx.list_head;
+	/* If we got nothing... */
+	if (pi->num_cmds == 0
+	IF_HAS_KEYWORDS(&& pi->res_word == RES_NONE)
+	) {
+		free_pipe_list(pi);
+		pi = NULL;
+	}
+#if !BB_MMU
+	debug_printf_parse("as_string1 '%s'\n", ctx.as_string.data);
+	if (pstring)
+		*pstring = ctx.as_string.data;
+	else
+		o_free(&ctx.as_string);
+#endif
+	// heredoc_cnt must be 0 here anyway
+	//if (heredoc_cnt_ptr)
+	//	*heredoc_cnt_ptr = heredoc_cnt;
+	debug_leave();
+	debug_printf_heredoc("parse_stream return heredoc_cnt:%d\n", heredoc_cnt);
+	debug_printf_parse("parse_stream return %p: EOF\n", pi);
+	return pi;
+
  parse_error_exitcode1:
 	G.last_exitcode = 1;
  parse_error:
 	{
-		struct parse_context *pctx;
-		IF_HAS_KEYWORDS(struct parse_context *p2;)
+		struct parse_context *pctx IF_HAS_KEYWORDS(, *p2;);
 
 		/* Clean up allocated tree.
 		 * Sample for finding leaks on syntax error recovery path.
@@ -6226,8 +6225,7 @@ static struct pipe *parse_stream(char **pstring,
 			/* Update pipe/command counts,
 			 * otherwise freeing may miss some */
 			done_pipe(pctx, PIPE_SEQ);
-			debug_printf_clean("freeing list %p from ctx %p\n",
-					pctx->list_head, pctx);
+			debug_printf_clean("freeing list %p from ctx %p\n", pctx->list_head, pctx);
 			debug_print_tree(pctx->list_head, 0);
 			free_pipe_list(pctx->list_head);
 			debug_printf_clean("freed list %p\n", pctx->list_head);
@@ -6235,9 +6233,8 @@ static struct pipe *parse_stream(char **pstring,
 			o_free(&pctx->as_string);
 #endif
 			IF_HAS_KEYWORDS(p2 = pctx->stack;)
-			if (pctx != &ctx) {
+			if (pctx != &ctx)
 				free(pctx);
-			}
 			IF_HAS_KEYWORDS(pctx = p2;)
 		} while (HAS_KEYWORDS && pctx);
 
