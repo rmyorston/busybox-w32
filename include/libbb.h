@@ -281,10 +281,24 @@ PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 # endif
 #endif
 
-#if ENABLE_FEATURE_TLS_SCHANNEL
+#if ENABLE_FEATURE_TLS_SCHANNEL || ENABLE_FEATURE_USE_CNG_API
 # define SECURITY_WIN32
 # include <windows.h>
 # include <security.h>
+#endif
+
+#if ENABLE_FEATURE_USE_CNG_API
+# include <bcrypt.h>
+
+// these work on Windows >= 10
+# define BCRYPT_HMAC_SHA1_ALG_HANDLE   ((BCRYPT_ALG_HANDLE) 0x000000a1)
+# define BCRYPT_HMAC_SHA256_ALG_HANDLE ((BCRYPT_ALG_HANDLE) 0x000000b1)
+# define sha1_begin_hmac BCRYPT_HMAC_SHA1_ALG_HANDLE
+# define sha256_begin_hmac BCRYPT_HMAC_SHA256_ALG_HANDLE
+#else
+# define sha1_begin_hmac sha1_begin
+# define sha256_begin_hmac sha256_begin
+# define hmac_uninit(...) ((void)0)
 #endif
 
 /* Tested to work correctly with all int types (IIRC :]) */
@@ -2444,12 +2458,17 @@ typedef struct md5_ctx_t md5sha_ctx_t;
 #endif
 
 /* RFC 2104 HMAC (hash-based message authentication code) */
+#if !ENABLE_FEATURE_USE_CNG_API
 typedef struct hmac_ctx {
 	md5sha_ctx_t hashed_key_xor_ipad;
 	md5sha_ctx_t hashed_key_xor_opad;
 } hmac_ctx_t;
+#else
+typedef struct bcrypt_hash_ctx_t hmac_ctx_t;
+#endif
 #define HMAC_ONLY_SHA256 (!ENABLE_FEATURE_TLS_SHA1)
 typedef void md5sha_begin_func(md5sha_ctx_t *ctx) FAST_FUNC;
+#if !ENABLE_FEATURE_USE_CNG_API
 #if HMAC_ONLY_SHA256
 #define hmac_begin(ctx,key,key_size,begin) \
 	hmac_begin(ctx,key,key_size)
@@ -2459,6 +2478,17 @@ static ALWAYS_INLINE void hmac_hash(hmac_ctx_t *ctx, const void *in, size_t len)
 {
 	md5sha_hash(&ctx->hashed_key_xor_ipad, in, len);
 }
+#else
+# if HMAC_ONLY_SHA256
+#  define hmac_begin(pre,key,key_size,begin) \
+	_hmac_begin(pre, key, key_size, sha256_begin_hmac)
+# else
+#  define hmac_begin _hmac_begin
+# endif
+void _hmac_begin(hmac_ctx_t *pre, uint8_t *key, unsigned key_size,
+	BCRYPT_ALG_HANDLE alg_handle);
+void hmac_uninit(hmac_ctx_t *pre);
+#endif
 unsigned FAST_FUNC hmac_end(hmac_ctx_t *ctx, uint8_t *out);
 #if HMAC_ONLY_SHA256
 #define hmac_block(key,key_size,begin,in,sz,out) \
@@ -2470,7 +2500,7 @@ unsigned FAST_FUNC hmac_block(const uint8_t *key, unsigned key_size,
 		uint8_t *out);
 /* HMAC helpers for TLS: */
 void FAST_FUNC hmac_hash_v(hmac_ctx_t *ctx, va_list va);
-unsigned FAST_FUNC hmac_peek_hash(hmac_ctx_t *ctx, uint8_t *out, ...);
+unsigned hmac_peek_hash(hmac_ctx_t *ctx, uint8_t *out, ...);
 
 extern uint32_t *global_crc32_table;
 uint32_t *crc32_filltable(uint32_t *tbl256, int endian) FAST_FUNC;

@@ -18,6 +18,7 @@
 // if we often need HMAC hmac with the same key.
 //
 // text is often given in disjoint pieces.
+#if !ENABLE_FEATURE_USE_CNG_API
 void FAST_FUNC hmac_begin(hmac_ctx_t *ctx, const uint8_t *key, unsigned key_size, md5sha_begin_func *begin)
 {
 #if HMAC_ONLY_SHA256
@@ -89,12 +90,58 @@ void FAST_FUNC hmac_hash_v(
 		md5sha_hash(&ctx->hashed_key_xor_ipad, in, size);
 	}
 }
+#else
+void _hmac_begin(hmac_ctx_t *ctx, uint8_t *key, unsigned key_size,
+					BCRYPT_ALG_HANDLE alg_handle) {
+	DWORD hash_object_length = 0;
+	ULONG _unused;
+	NTSTATUS status;
+
+	status = BCryptGetProperty(alg_handle, BCRYPT_OBJECT_LENGTH,
+				(PUCHAR)&hash_object_length, sizeof(DWORD), &_unused, 0);
+	mingw_die_if_error(status, "BCryptGetProperty");
+	status = BCryptGetProperty(alg_handle, BCRYPT_HASH_LENGTH,
+				(PUCHAR)&ctx->output_size, sizeof(DWORD), &_unused, 0);
+	mingw_die_if_error(status, "BCryptGetProperty");
+
+	ctx->hash_obj = xmalloc(hash_object_length);
+
+	status = BCryptCreateHash(alg_handle, &ctx->handle, ctx->hash_obj,
+				hash_object_length, key, key_size, BCRYPT_HASH_REUSABLE_FLAG);
+	mingw_die_if_error(status, "BCryptCreateHash");
+}
+
+unsigned FAST_FUNC hmac_end(hmac_ctx_t *ctx, uint8_t *out)
+{
+	NTSTATUS status;
+
+	status = BCryptFinishHash(ctx->handle, out, ctx->output_size, 0);
+	mingw_die_if_error(status, "BCryptFinishHash");
+
+	return ctx->output_size;
+}
+
+void FAST_FUNC hmac_hash_v(hmac_ctx_t *ctx, va_list va)
+{
+	uint8_t *in;
+
+	while ((in = va_arg(va, uint8_t*)) != NULL) {
+		unsigned size = va_arg(va, unsigned);
+		BCryptHashData(ctx->handle, in, size, 0);
+	}
+}
+
+void hmac_uninit(hmac_ctx_t *ctx) {
+	BCryptDestroyHash(ctx->handle);
+	free(ctx->hash_obj);
+}
+#endif
 
 /* Using HMAC state, make a copy of it (IOW: without affecting this state!)
  * hash in the list of (ptr,size) blocks, and finish the HMAC to out[] buffer.
  * This function is useful for TLS PRF.
  */
-unsigned FAST_FUNC hmac_peek_hash(hmac_ctx_t *ctx, uint8_t *out, ...)
+unsigned hmac_peek_hash(hmac_ctx_t *ctx, uint8_t *out, ...)
 {
 	hmac_ctx_t tmpctx = *ctx; /* struct copy */
 	va_list va;

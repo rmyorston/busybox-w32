@@ -418,7 +418,7 @@ static void prf_hmac_sha256(/*tls_state_t *tls,*/
 #define SEED   label, label_size, seed, seed_size
 #define A      a, MAC_size
 
-	hmac_begin(&ctx, secret, secret_size, sha256_begin);
+	hmac_begin(&ctx, secret, secret_size, sha256_begin_hmac);
 
 	/* A(1) = HMAC_hash(secret, seed) */
 	hmac_peek_hash(&ctx, a, SEED, NULL);
@@ -430,6 +430,7 @@ static void prf_hmac_sha256(/*tls_state_t *tls,*/
 			/* (use a[] as temp buffer) */
 			hmac_peek_hash(&ctx, a, A, SEED, NULL);
 			memcpy(out_p, a, outbuf_size);
+			hmac_uninit(&ctx);
 			return;
 		}
 		/* Not last block. Store directly to result buffer */
@@ -513,18 +514,21 @@ static unsigned hmac_blocks(tls_state_t *tls, uint8_t *out, uint8_t *key, unsign
 {
 	hmac_ctx_t ctx;
 	va_list va;
+	unsigned len;
 
 	hmac_begin(&ctx, key, key_size,
 			(ENABLE_FEATURE_TLS_SHA1 && tls->MAC_size == SHA1_OUTSIZE)
-				? sha1_begin
-				: sha256_begin
+				? sha1_begin_hmac
+				: sha256_begin_hmac
 	);
 
 	va_start(va, key_size);
 	hmac_hash_v(&ctx, va);
 	va_end(va);
 
-	return hmac_end(&ctx, out);
+	len = hmac_end(&ctx, out);
+	hmac_uninit(&ctx);
+	return len;
 }
 
 static void xwrite_encrypted_and_hmac_signed(tls_state_t *tls, unsigned size, unsigned type)
