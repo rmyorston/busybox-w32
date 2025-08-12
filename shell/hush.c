@@ -748,9 +748,6 @@ struct parse_context {
 	smallint is_assignment; /* 0:maybe, 1:yes, 2:no, 3:keyword */
 #if HAS_KEYWORDS
 	smallint ctx_res_w;
-#if ENABLE_HUSH_CASE
-	smallint ctx_dsemicolon; /* ";;" seen */
-#endif
 	/* bitmask of FLAG_xxx, for figuring out valid reserved words */
 	int old_flag;
 	/* group we are enclosed in:
@@ -4170,7 +4167,7 @@ static const struct reserved_combo* reserved_word(struct parse_context *ctx)
 {
 # if ENABLE_HUSH_CASE
 	static const struct reserved_combo reserved_match = {
-		"", RES_MATCH, NOT_ASSIGNMENT , FLAG_MATCH | FLAG_ESAC
+		"", RES_MATCH, NOT_ASSIGNMENT, FLAG_MATCH | FLAG_ESAC
 	};
 # endif
 	const struct reserved_combo *r;
@@ -4266,7 +4263,7 @@ static const struct reserved_combo* reserved_word(struct parse_context *ctx)
  * Look at it and update current command:
  * update current command's argv/cmd_type/etc, fill in redirect name and type,
  * check reserved-ness and assignment-ness, etc...
- * Normal return is 0. Syntax errors return 1.
+ * Normal return is 0. Syntax errors print error message and return 1.
  * Note: on return, word is reset, but not o_free'd!
  */
 static int done_word(struct parse_context *ctx)
@@ -4324,15 +4321,16 @@ static int done_word(struct parse_context *ctx)
 
 #if HAS_KEYWORDS
 # if ENABLE_HUSH_CASE
-
-	if (ctx->ctx_dsemicolon
+	if (ctx->ctx_res_w == RES_MATCH
 	 && (ctx->word.has_quoted_part
 	    || strcmp(ctx->word.data, "esac") != 0
 	    )
-	) { /* ";; WORD" but not "... PATTERN) CMD;; esac" */
-		/* already done when ctx_dsemicolon was set to 1: */
-		/* ctx->ctx_res_w = RES_MATCH; */
-		ctx->ctx_dsemicolon = 0;
+	) { /* ";; WORD" but not ";; esac" */
+		/* Do not match WORD as keyword:
+		 * the WORD is a case match, can be keyword-like:
+		 *  if) echo got_if;;
+		 * is allowed.
+		 */
 	} else
 # endif
 # if defined(CMD_TEST2_SINGLEWORD_NOGLOB)
@@ -4345,13 +4343,13 @@ static int done_word(struct parse_context *ctx)
 	} else
 # endif
 	if (!command->argv      /* if it's the first word of command... */
-	 && !command->redirects /* no redirects yet... disallows: </dev/null ! true; echo $? */
+	 && !command->redirects /* no redirects yet... disallows: </dev/null if true; then... */
 # if ENABLE_HUSH_LOOPS
 	 && ctx->ctx_res_w != RES_FOR /* not after FOR or IN */
 	 && ctx->ctx_res_w != RES_IN
 # endif
 # if ENABLE_HUSH_CASE
-	 && ctx->ctx_res_w != RES_CASE /* not after CASE */
+	 && ctx->ctx_res_w != RES_CASE  /* not after CASE */
 # endif
 	) {
 		const struct reserved_combo *reserved;
@@ -5648,7 +5646,7 @@ static struct pipe *parse_stream(char **pstring,
 			if (ch == EOF) {
 				/* Testcase: eval 'echo Ok\' */
 				/* bash-4.3.43 was removing backslash,
-				 * but 4.4.19 retains it, most other shells too
+				 * but 4.4.19 retains it, most other shells retain too
 				 */
 				break;
 			}
@@ -5749,9 +5747,8 @@ static struct pipe *parse_stream(char **pstring,
 			}
 			/* ch == last eaten whitespace char */
 #endif
-			if (done_word(&ctx)) {
+			if (done_word(&ctx))
 				goto parse_error_exitcode1;
-			}
 			if (ch == '\n') {
 				/* Is this a case when newline is simply ignored?
 				 * Some examples:
@@ -5784,10 +5781,10 @@ static struct pipe *parse_stream(char **pstring,
 					if (pi->num_cmds != 0       /* check #1 */
 					 && pi->followup != PIPE_BG /* check #2 */
 					) {
-						continue;
+						continue; /* ignore newline */
 					}
 				}
-				/* Treat newline as a command separator. */
+				/* Treat newline as a command separator */
 				done_pipe(&ctx, PIPE_SEQ);
 				debug_printf_heredoc("heredoc_cnt:%d\n", heredoc_cnt);
 				if (heredoc_cnt) {
@@ -5805,11 +5802,11 @@ static struct pipe *parse_stream(char **pstring,
 
 		/* "cmd}" or "cmd }..." without semicolon or &:
 		 * } is an ordinary char in this case, even inside { cmd; }
-		 * Pathological example: { ""}; } should exec "}" cmd
+		 * Pathological example: { ""}; } should run "}" command.
 		 */
 		if (ch == '}') {
-			if (ctx.word.length != 0 /* word} */
-			 || ctx.word.has_quoted_part    /* ""} */
+			if (ctx.word.length != 0     /* word} */
+			 || ctx.word.has_quoted_part /* ""} */
 			) {
 				goto ordinary_char;
 			}
@@ -5842,9 +5839,8 @@ static struct pipe *parse_stream(char **pstring,
 		    )
 #endif
 		) {
-			if (done_word(&ctx)) {
+			if (done_word(&ctx))
 				goto parse_error_exitcode1;
-			}
 			if (done_pipe(&ctx, PIPE_SEQ)) {
 				/* Testcase: sh -c 'date|;not_reached' */
 				syntax_error_unterm_ch('|');
@@ -5889,9 +5885,8 @@ static struct pipe *parse_stream(char **pstring,
 		switch (ch) {
 		case '>':
 			redir_fd = redirect_opt_num(&ctx.word);
-			if (done_word(&ctx)) {
+			if (done_word(&ctx))
 				goto parse_error_exitcode1;
-			}
 			redir_style = REDIRECT_OVERWRITE;
 			if (next == '>') {
 				redir_style = REDIRECT_APPEND;
@@ -5909,9 +5904,8 @@ static struct pipe *parse_stream(char **pstring,
 			continue; /* get next char */
 		case '<':
 			redir_fd = redirect_opt_num(&ctx.word);
-			if (done_word(&ctx)) {
+			if (done_word(&ctx))
 				goto parse_error_exitcode1;
-			}
 			redir_style = REDIRECT_INPUT;
 			if (next == '<') {
 				redir_style = REDIRECT_HEREDOC;
@@ -5951,7 +5945,7 @@ static struct pipe *parse_stream(char **pstring,
 					}
 					ch = i_getch(input);
 					if (ch == EOF)
-						break;
+						goto eof;
 				}
 				continue; /* get next char */
 			}
@@ -6026,27 +6020,17 @@ static struct pipe *parse_stream(char **pstring,
 		}
 #endif
 		case ';':
-#if ENABLE_HUSH_CASE
- case_semi:
-#endif
-			if (done_word(&ctx)) {
+			if (done_word(&ctx))
 				goto parse_error_exitcode1;
-			}
 			done_pipe(&ctx, PIPE_SEQ);
 #if ENABLE_HUSH_CASE
-			/* Eat multiple semicolons, detect
-			 * whether it means something special */
-			while (1) {
-				ch = i_peek_and_eat_bkslash_nl(input);
-				if (ch != ';')
-					break;
+			if (ctx.ctx_res_w == RES_CASE_BODY
+			 && !is_blank /* is it really actual semicolon? */
+			 && i_peek_and_eat_bkslash_nl(input) == ';' /* and next char is ';' too? */
+			) {
 				ch = i_getch(input);
 				nommu_addchr(&ctx.as_string, ch);
-				if (ctx.ctx_res_w == RES_CASE_BODY) {
-					ctx.ctx_dsemicolon = 1;
-					ctx.ctx_res_w = RES_MATCH;
-					break;
-				}
+				ctx.ctx_res_w = RES_MATCH; /* "we are in PATTERN)" */
 			}
 #endif
  new_cmd:
@@ -6056,9 +6040,8 @@ static struct pipe *parse_stream(char **pstring,
 			debug_printf_parse("ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
 			continue; /* get next char */
 		case '&':
-			if (done_word(&ctx)) {
+			if (done_word(&ctx))
 				goto parse_error_exitcode1;
-			}
 			if (ctx.pipe->num_cmds == 0 && IS_NULL_CMD(ctx.command)) {
 				/* Testcase: sh -c '&& date' */
 				/* Testcase: sh -c '&' */
@@ -6082,9 +6065,8 @@ static struct pipe *parse_stream(char **pstring,
 			}
 			goto new_cmd;
 		case '|':
-			if (done_word(&ctx)) {
+			if (done_word(&ctx))
 				goto parse_error_exitcode1;
-			}
 #if ENABLE_HUSH_CASE
 			if (ctx.ctx_res_w == RES_MATCH)
 				break; /* we are in case's "word | word)" */
@@ -6135,8 +6117,12 @@ static struct pipe *parse_stream(char **pstring,
 		}
 		case ')':
 #if ENABLE_HUSH_CASE
-			if (ctx.ctx_res_w == RES_MATCH)
-				goto case_semi;
+			if (ctx.ctx_res_w == RES_MATCH) {
+				if (done_word(&ctx))
+					goto parse_error_exitcode1;
+				done_pipe(&ctx, PIPE_SEQ);
+				goto new_cmd;
+			}
 #endif
 		case '}':
 			/* proper use of this character is caught by end_trigger:
@@ -6150,7 +6136,7 @@ static struct pipe *parse_stream(char **pstring,
 				bb_error_msg_and_die("BUG: unexpected %c", ch);
 		}
 	} /* while (1) */
-
+ eof:
 	/* Reached EOF */
 	if (heredoc_cnt) {
 		syntax_error_unterm_str("here document");
@@ -6165,9 +6151,8 @@ static struct pipe *parse_stream(char **pstring,
 		goto parse_error_exitcode1;
 	}
 
-	if (done_word(&ctx)) {
+	if (done_word(&ctx))
 		goto parse_error_exitcode1;
-	}
 	o_free_and_set_NULL(&ctx.word);
 	if (done_pipe(&ctx, PIPE_SEQ)) {
 		/* Testcase: sh -c 'date |' */
