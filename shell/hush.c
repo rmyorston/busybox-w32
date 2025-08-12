@@ -748,7 +748,6 @@ struct parse_context {
 	smallint is_assignment; /* 0:maybe, 1:yes, 2:no, 3:keyword */
 #if HAS_KEYWORDS
 	smallint ctx_res_w;
-	smallint ctx_inverted; /* "! cmd | cmd" */
 #if ENABLE_HUSH_CASE
 	smallint ctx_dsemicolon; /* ";;" seen */
 #endif
@@ -3960,9 +3959,10 @@ static int done_command(struct parse_context *ctx)
 }
 
 /* Parsing of a pipe is completed.
- * Finish prsing current command via done_command().
+ * Finish parsing current command via done_command().
  * (If the pipe is not empty, but done_command() did not change the number
  * of commands in pipe, return value is 1. Used for catching syntax errors)
+ * Then append a new pipe with one empty command.
  */
 static int done_pipe(struct parse_context *ctx, pipe_style type)
 {
@@ -3983,8 +3983,6 @@ static int done_pipe(struct parse_context *ctx, pipe_style type)
 	last_cmd_is_null = (oldnum != 0 && num_cmds == oldnum);
 
 #if HAS_KEYWORDS
-	ctx->pipe->pi_inverted = ctx->ctx_inverted;
-	ctx->ctx_inverted = 0;
 	ctx->pipe->res_word = ctx->ctx_res_w;
 #endif
 	if (type == PIPE_BG && ctx->list_head != ctx->pipe) {
@@ -4031,7 +4029,7 @@ static int done_pipe(struct parse_context *ctx, pipe_style type)
 
 	/* Without this check, even just <enter> on command line generates
 	 * tree of three NOPs (!). Which is harmless but annoying.
-	 * IOW: it is safe to do it unconditionally. */
+	 * IOW: it is safe to do the following unconditionally. */
 	if (num_cmds != 0
 #if ENABLE_HUSH_IF
 	 || ctx->ctx_res_w == RES_FI
@@ -4055,10 +4053,11 @@ static int done_pipe(struct parse_context *ctx, pipe_style type)
 		/* RES_THEN, RES_DO etc are "sticky" -
 		 * they remain set for pipes inside if/while.
 		 * This is used to control execution.
-		 * RES_FOR and RES_IN are NOT sticky (needed to support
-		 * cases where variable or value happens to match a keyword):
 		 */
 #if ENABLE_HUSH_LOOPS
+		/* RES_FOR and RES_IN are NOT sticky (needed to support
+		 * cases where variable or value happens to match a keyword):
+		 */
 		if (ctx->ctx_res_w == RES_FOR
 		 || ctx->ctx_res_w == RES_IN)
 			ctx->ctx_res_w = RES_NONE;
@@ -4069,11 +4068,11 @@ static int done_pipe(struct parse_context *ctx, pipe_style type)
 		if (ctx->ctx_res_w == RES_CASE)
 			ctx->ctx_res_w = RES_CASE_IN;
 #endif
-		ctx->command = NULL; /* trick done_command below */
 		/* Create the memory for command, roughly:
 		 * ctx->pipe->cmds = new struct command;
 		 * ctx->command = &ctx->pipe->cmds[0];
 		 */
+		ctx->command = NULL;
 		done_command(ctx);
 		//debug_print_tree(ctx->list_head, 10);
 	}
@@ -4171,7 +4170,7 @@ static const struct reserved_combo* reserved_word(struct parse_context *ctx)
 {
 # if ENABLE_HUSH_CASE
 	static const struct reserved_combo reserved_match = {
-		"",        RES_MATCH, NOT_ASSIGNMENT , FLAG_MATCH | FLAG_ESAC
+		"", RES_MATCH, NOT_ASSIGNMENT , FLAG_MATCH | FLAG_ESAC
 	};
 # endif
 	const struct reserved_combo *r;
@@ -4190,11 +4189,13 @@ static const struct reserved_combo* reserved_word(struct parse_context *ctx)
 	} else
 # endif
 	if (r->flag == 0) { /* '!' */
-		if (ctx->ctx_inverted) { /* bash doesn't accept '! ! true' */
-			syntax_error("! ! command");
+		if (ctx->pipe->cmds != ctx->command /* bash disallows: nice | ! cat */
+		 || ctx->pipe->pi_inverted          /* bash disallows: ! ! true */
+		) {
+			syntax_error_unexpected_ch('!');
 			ctx->ctx_res_w = RES_SNTX;
 		}
-		ctx->ctx_inverted = 1;
+		ctx->pipe->pi_inverted = 1;
 		return r;
 	}
 	if (r->flag & FLAG_START) {
@@ -4274,7 +4275,7 @@ static int done_word(struct parse_context *ctx)
 
 	debug_printf_parse("done_word entered: '%s' %p\n", ctx->word.data, command);
 	if (ctx->word.length == 0 && !ctx->word.has_quoted_part) {
-		debug_printf_parse("done_word return 0: true null, ignored\n");
+		debug_printf_parse("done_word return 0: no word, ignored\n");
 		return 0;
 	}
 
@@ -4323,9 +4324,12 @@ static int done_word(struct parse_context *ctx)
 
 #if HAS_KEYWORDS
 # if ENABLE_HUSH_CASE
+
 	if (ctx->ctx_dsemicolon
-	 && strcmp(ctx->word.data, "esac") != 0 /* not "... pattern) cmd;; esac" */
-	) {
+	 && (ctx->word.has_quoted_part
+	    || strcmp(ctx->word.data, "esac") != 0
+	    )
+	) { /* ";; WORD" but not "... PATTERN) CMD;; esac" */
 		/* already done when ctx_dsemicolon was set to 1: */
 		/* ctx->ctx_res_w = RES_MATCH; */
 		ctx->ctx_dsemicolon = 0;
@@ -4333,20 +4337,21 @@ static int done_word(struct parse_context *ctx)
 # endif
 # if defined(CMD_TEST2_SINGLEWORD_NOGLOB)
 	if (command->cmd_type == CMD_TEST2_SINGLEWORD_NOGLOB
+	 && !ctx->word.has_quoted_part
 	 && strcmp(ctx->word.data, "]]") == 0
 	) {
 		/* allow "[[ ]] >file" etc */
 		command->cmd_type = CMD_SINGLEWORD_NOGLOB;
 	} else
 # endif
-	if (!command->argv      /* if it's the first word... */
-	 && !command->redirects /* and no redirects yet... try: </dev/null ! true; echo $? */
+	if (!command->argv      /* if it's the first word of command... */
+	 && !command->redirects /* no redirects yet... disallows: </dev/null ! true; echo $? */
 # if ENABLE_HUSH_LOOPS
-	 && ctx->ctx_res_w != RES_FOR /* ...not after FOR or IN */
+	 && ctx->ctx_res_w != RES_FOR /* not after FOR or IN */
 	 && ctx->ctx_res_w != RES_IN
 # endif
 # if ENABLE_HUSH_CASE
-	 && ctx->ctx_res_w != RES_CASE
+	 && ctx->ctx_res_w != RES_CASE /* not after CASE */
 # endif
 	) {
 		const struct reserved_combo *reserved;
