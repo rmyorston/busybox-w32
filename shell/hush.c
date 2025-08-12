@@ -3914,9 +3914,11 @@ static struct pipe *new_pipe(void)
 	return pi;
 }
 
-/* Command (member of a pipe) is complete, or we start a new pipe
- * if ctx->command is NULL.
- * No errors possible here.
+/* Parsing of command (member of a pipe) is completed.
+ * If it's not null, a new empty command structure is added
+ * to the current pipe, and ctx->command is set to it.
+ * Return the current number of already parsed commands in the pipe.
+ * No errors are possible here.
  */
 static int done_command(struct parse_context *ctx)
 {
@@ -3932,17 +3934,16 @@ static int done_command(struct parse_context *ctx)
 		ctx->pending_redirect = NULL;
 	}
 #endif
-
 	if (command) {
 		if (IS_NULL_CMD(command)) {
-			debug_printf_parse("done_command: skipping null cmd, num_cmds=%d\n", pi->num_cmds);
+			debug_printf_parse("done_command: skipping null cmd, num_cmds:%d\n", pi->num_cmds);
 			goto clear_and_ret;
 		}
 		pi->num_cmds++;
 		debug_printf_parse("done_command: ++num_cmds=%d\n", pi->num_cmds);
 		//debug_print_tree(ctx->list_head, 20);
 	} else {
-		debug_printf_parse("done_command: initializing, num_cmds=%d\n", pi->num_cmds);
+		debug_printf_parse("done_command: initializing, num_cmds:%d\n", pi->num_cmds);
 	}
 
 	/* Only real trickiness here is that the uncommitted
@@ -3953,28 +3954,33 @@ static int done_command(struct parse_context *ctx)
 	memset(command, 0, sizeof(*command));
 #if ENABLE_HUSH_LINENO_VAR
 	command->lineno = G.parse_lineno;
-	debug_printf_parse("command->lineno = G.parse_lineno (%u)\n", G.parse_lineno);
+	debug_printf_parse("command->lineno=G.parse_lineno (%u)\n", G.parse_lineno);
 #endif
-	return pi->num_cmds; /* used only for 0/nonzero check */
+	return pi->num_cmds;
 }
 
+/* Parsing of a pipe is completed.
+ * Finish prsing current command via done_command().
+ * (If the pipe is not empty, but done_command() did not change the number
+ * of commands in pipe, return value is 1. Used for catching syntax errors)
+ */
 static int done_pipe(struct parse_context *ctx, pipe_style type)
 {
-	int not_null_pipe;
+	int num_cmds;
 	int oldnum;
-	int nullcommand;
+	int last_cmd_is_null;
 
 	debug_printf_parse("done_pipe entered, followup %d\n", type);
 	/* Close previous command */
 	oldnum = ctx->pipe->num_cmds;
-	not_null_pipe = done_command(ctx);
+	num_cmds = done_command(ctx);
 
 	/* This is true if this was a non-empty pipe,
 	 * but done_command didn't add a new member to it.
 	 * Usually it is a syntax error.
 	 * Examples: "date | | ...", "date | ; ..."
 	 */
-	nullcommand = (oldnum && not_null_pipe == oldnum);
+	last_cmd_is_null = (oldnum != 0 && num_cmds == oldnum);
 
 #if HAS_KEYWORDS
 	ctx->pipe->pi_inverted = ctx->ctx_inverted;
@@ -4017,7 +4023,7 @@ static int done_pipe(struct parse_context *ctx, pipe_style type)
 		ctx->list_head = ctx->pipe = pi;
 		/* for cases like "cmd && &", do not be tricked by last command
 		 * being null - the entire {...} & is NOT null! */
-		not_null_pipe = 1;
+		num_cmds = 1;
 	} else {
  no_conv:
 		ctx->pipe->followup = type;
@@ -4026,7 +4032,7 @@ static int done_pipe(struct parse_context *ctx, pipe_style type)
 	/* Without this check, even just <enter> on command line generates
 	 * tree of three NOPs (!). Which is harmless but annoying.
 	 * IOW: it is safe to do it unconditionally. */
-	if (not_null_pipe
+	if (num_cmds != 0
 #if ENABLE_HUSH_IF
 	 || ctx->ctx_res_w == RES_FI
 #endif
@@ -4041,8 +4047,8 @@ static int done_pipe(struct parse_context *ctx, pipe_style type)
 	) {
 		struct pipe *new_p;
 		debug_printf_parse("done_pipe: adding new pipe: "
-				"not_null_pipe:%d ctx->ctx_res_w:%d\n",
-				not_null_pipe, ctx->ctx_res_w);
+				"num_cmds:%d ctx->ctx_res_w:%d\n",
+				num_cmds, ctx->ctx_res_w);
 		new_p = new_pipe();
 		ctx->pipe->next = new_p;
 		ctx->pipe = new_p;
@@ -4071,8 +4077,8 @@ static int done_pipe(struct parse_context *ctx, pipe_style type)
 		done_command(ctx);
 		//debug_print_tree(ctx->list_head, 10);
 	}
-	debug_printf_parse("done_pipe return:%d\n", nullcommand);
-	return nullcommand;
+	debug_printf_parse("done_pipe return: last_cmd_is_null:%d\n", last_cmd_is_null);
+	return last_cmd_is_null;
 }
 
 static void initialize_context(struct parse_context *ctx)
@@ -4255,7 +4261,10 @@ static const struct reserved_combo* reserved_word(struct parse_context *ctx)
 }
 #endif /* HAS_KEYWORDS */
 
-/* Word is complete, look at it and update parsing context.
+/* Parsing of a word is complete.
+ * Look at it and update current command:
+ * update current command's argv/cmd_type/etc, fill in redirect name and type,
+ * check reserved-ness and assignment-ness, etc...
  * Normal return is 0. Syntax errors return 1.
  * Note: on return, word is reset, but not o_free'd!
  */
@@ -4292,7 +4301,7 @@ static int done_word(struct parse_context *ctx)
 // as written:
 // <<EOF$t
 // <<EOF$((1))
-// <<EOF`true`  [this case also makes heredoc "quoted", a-la <<"EOF". Probably bash-4.3.43 bug]
+// <<EOF`true`  [bash 4.3.43 bug: this case also makes heredoc "quoted", a-la <<"EOF". Fixed by 5.2.15]
 
 		ctx->pending_redirect->rd_filename = xstrdup(ctx->word.data);
 		/* Cater for >\file case:
@@ -4309,38 +4318,41 @@ static int done_word(struct parse_context *ctx)
 		}
 		debug_printf_parse("word stored in rd_filename: '%s'\n", ctx->word.data);
 		ctx->pending_redirect = NULL;
-	} else {
+		goto ret;
+	}
+
 #if HAS_KEYWORDS
 # if ENABLE_HUSH_CASE
-		if (ctx->ctx_dsemicolon
-		 && strcmp(ctx->word.data, "esac") != 0 /* not "... pattern) cmd;; esac" */
-		) {
-			/* already done when ctx_dsemicolon was set to 1: */
-			/* ctx->ctx_res_w = RES_MATCH; */
-			ctx->ctx_dsemicolon = 0;
-		} else
+	if (ctx->ctx_dsemicolon
+	 && strcmp(ctx->word.data, "esac") != 0 /* not "... pattern) cmd;; esac" */
+	) {
+		/* already done when ctx_dsemicolon was set to 1: */
+		/* ctx->ctx_res_w = RES_MATCH; */
+		ctx->ctx_dsemicolon = 0;
+	} else
 # endif
 # if defined(CMD_TEST2_SINGLEWORD_NOGLOB)
-		if (command->cmd_type == CMD_TEST2_SINGLEWORD_NOGLOB
-		 && strcmp(ctx->word.data, "]]") == 0
-		) {
-			/* allow "[[ ]] >file" etc */
-			command->cmd_type = CMD_SINGLEWORD_NOGLOB;
-		} else
+	if (command->cmd_type == CMD_TEST2_SINGLEWORD_NOGLOB
+	 && strcmp(ctx->word.data, "]]") == 0
+	) {
+		/* allow "[[ ]] >file" etc */
+		command->cmd_type = CMD_SINGLEWORD_NOGLOB;
+	} else
 # endif
-		if (!command->argv /* if it's the first word... */
+	if (!command->argv      /* if it's the first word... */
+	 && !command->redirects /* and no redirects yet... try: </dev/null ! true; echo $? */
 # if ENABLE_HUSH_LOOPS
-		 && ctx->ctx_res_w != RES_FOR /* ...not after FOR or IN */
-		 && ctx->ctx_res_w != RES_IN
+	 && ctx->ctx_res_w != RES_FOR /* ...not after FOR or IN */
+	 && ctx->ctx_res_w != RES_IN
 # endif
 # if ENABLE_HUSH_CASE
-		 && ctx->ctx_res_w != RES_CASE
+	 && ctx->ctx_res_w != RES_CASE
 # endif
-		) {
-			const struct reserved_combo *reserved;
-			reserved = reserved_word(ctx);
-			debug_printf_parse("checking for reserved-ness: %d\n", !!reserved);
-			if (reserved) {
+	) {
+		const struct reserved_combo *reserved;
+		reserved = reserved_word(ctx);
+		debug_printf_parse("checking for reserved-ness: %d\n", !!reserved);
+		if (reserved) {
 # if ENABLE_HUSH_LINENO_VAR
 /* Case:
  * "while ...; do
@@ -4348,80 +4360,79 @@ static int done_word(struct parse_context *ctx)
  * If we don't close the pipe _now_, immediately after "do", lineno logic
  * sees "cmd" as starting at "do" - i.e., at the previous line.
  */
-				if (0
-				 IF_HUSH_IF(|| reserved->res == RES_THEN)
-				 IF_HUSH_IF(|| reserved->res == RES_ELIF)
-				 IF_HUSH_IF(|| reserved->res == RES_ELSE)
-				 IF_HUSH_LOOPS(|| reserved->res == RES_DO)
-				) {
-					done_pipe(ctx, PIPE_SEQ);
-				}
-# endif
-				o_reset_to_empty_unquoted(&ctx->word);
-				debug_printf_parse("done_word return %d\n",
-						(ctx->ctx_res_w == RES_SNTX));
-				return (ctx->ctx_res_w == RES_SNTX);
+			if (0
+			 IF_HUSH_IF(|| reserved->res == RES_THEN)
+			 IF_HUSH_IF(|| reserved->res == RES_ELIF)
+			 IF_HUSH_IF(|| reserved->res == RES_ELSE)
+			 IF_HUSH_LOOPS(|| reserved->res == RES_DO)
+			) {
+				done_pipe(ctx, PIPE_SEQ);
 			}
+# endif
+			o_reset_to_empty_unquoted(&ctx->word);
+			debug_printf_parse("done_word return %d\n",
+					(ctx->ctx_res_w == RES_SNTX));
+			return (ctx->ctx_res_w == RES_SNTX);
+		}
 # if defined(CMD_TEST2_SINGLEWORD_NOGLOB)
-			if (strcmp(ctx->word.data, "[[") == 0) {
-				command->cmd_type = CMD_TEST2_SINGLEWORD_NOGLOB;
-			} else
+		if (strcmp(ctx->word.data, "[[") == 0) {
+			command->cmd_type = CMD_TEST2_SINGLEWORD_NOGLOB;
+		} else
 # endif
 # if defined(CMD_SINGLEWORD_NOGLOB)
-			if (0
-			/* In bash, local/export/readonly are special, args
-			 * are assignments and therefore expansion of them
-			 * should be "one-word" expansion:
-			 *  $ export i=`echo 'a  b'` # one arg: "i=a  b"
-			 * compare with:
-			 *  $ ls i=`echo 'a  b'`     # two args: "i=a" and "b"
-			 *  ls: cannot access i=a: No such file or directory
-			 *  ls: cannot access b: No such file or directory
-			 * Note: bash 3.2.33(1) does this only if export word
-			 * itself is not quoted:
-			 *  $ export i=`echo 'aaa  bbb'`; echo "$i"
-			 *  aaa  bbb
-			 *  $ "export" i=`echo 'aaa  bbb'`; echo "$i"
-			 *  aaa
-			 */
-			 IF_HUSH_LOCAL(   || strcmp(ctx->word.data, "local") == 0)
-			 IF_HUSH_EXPORT(  || strcmp(ctx->word.data, "export") == 0)
-			 IF_HUSH_READONLY(|| strcmp(ctx->word.data, "readonly") == 0)
-			) {
-				command->cmd_type = CMD_SINGLEWORD_NOGLOB;
-			}
-# else
-			{ /* empty block to pair "if ... else" */ }
-# endif
+		if (0
+		/* In bash, local/export/readonly are special, args
+		 * are assignments and therefore expansion of them
+		 * should be "one-word" expansion:
+		 *  $ export i=`echo 'a  b'` # one arg: "i=a  b"
+		 * compare with:
+		 *  $ ls i=`echo 'a  b'`     # two args: "i=a" and "b"
+		 *  ls: cannot access i=a: No such file or directory
+		 *  ls: cannot access b: No such file or directory
+		 * Note: bash 3.2.33(1) does this only if export word
+		 * itself is not quoted:
+		 *  $ export i=`echo 'aaa  bbb'`; echo "$i"
+		 *  aaa  bbb
+		 *  $ "export" i=`echo 'aaa  bbb'`; echo "$i"
+		 *  aaa
+		 */
+		 IF_HUSH_LOCAL(   || strcmp(ctx->word.data, "local") == 0)
+		 IF_HUSH_EXPORT(  || strcmp(ctx->word.data, "export") == 0)
+		 IF_HUSH_READONLY(|| strcmp(ctx->word.data, "readonly") == 0)
+		) {
+			command->cmd_type = CMD_SINGLEWORD_NOGLOB;
 		}
+# else
+		{ /* empty block to pair "if ... else" */ }
+# endif
+	}
 #endif /* HAS_KEYWORDS */
 
-		if (command->group) {
-			/* "{ echo foo; } echo bar" - bad */
-			syntax_error_at(ctx->word.data);
-			debug_printf_parse("done_word return 1: syntax error, "
-					"groups and arglists don't mix\n");
-			return 1;
-		}
-
-		/* If this word wasn't an assignment, next ones definitely
-		 * can't be assignments. Even if they look like ones. */
-		if (ctx->is_assignment != DEFINITELY_ASSIGNMENT
-		 && ctx->is_assignment != WORD_IS_KEYWORD
-		) {
-			ctx->is_assignment = NOT_ASSIGNMENT;
-		} else {
-			if (ctx->is_assignment == DEFINITELY_ASSIGNMENT) {
-				command->assignment_cnt++;
-				debug_printf_parse("++assignment_cnt=%d\n", command->assignment_cnt);
-			}
-			debug_printf_parse("ctx->is_assignment was:'%s'\n", assignment_flag[ctx->is_assignment]);
-			ctx->is_assignment = MAYBE_ASSIGNMENT;
-		}
-		debug_printf_parse("ctx->is_assignment='%s'\n", assignment_flag[ctx->is_assignment]);
-		command->argv = add_string_to_strings(command->argv, xstrdup(ctx->word.data));
-		debug_print_strings("word appended to argv", command->argv);
+	if (command->group) {
+		/* "{ echo foo; } echo bar" - bad */
+		syntax_error_at(ctx->word.data);
+		debug_printf_parse("done_word return 1: syntax error, "
+				"groups and arglists don't mix\n");
+		return 1;
 	}
+
+	/* If this word wasn't an assignment, next ones definitely
+	 * can't be assignments. Even if they look like ones. */
+	if (ctx->is_assignment != DEFINITELY_ASSIGNMENT
+	 && ctx->is_assignment != WORD_IS_KEYWORD
+	) {
+		ctx->is_assignment = NOT_ASSIGNMENT;
+	} else {
+		if (ctx->is_assignment == DEFINITELY_ASSIGNMENT) {
+			command->assignment_cnt++;
+			debug_printf_parse("++assignment_cnt=%d\n", command->assignment_cnt);
+		}
+		debug_printf_parse("ctx->is_assignment was:'%s'\n", assignment_flag[ctx->is_assignment]);
+		ctx->is_assignment = MAYBE_ASSIGNMENT;
+	}
+	debug_printf_parse("ctx->is_assignment='%s'\n", assignment_flag[ctx->is_assignment]);
+	command->argv = add_string_to_strings(command->argv, xstrdup(ctx->word.data));
+	debug_print_strings("word appended to argv", command->argv);
 
 #if ENABLE_HUSH_LOOPS
 	if (ctx->ctx_res_w == RES_FOR) {
@@ -4446,8 +4457,8 @@ static int done_word(struct parse_context *ctx)
 	}
 #endif
 
+ ret:
 	o_reset_to_empty_unquoted(&ctx->word);
-
 	debug_printf_parse("done_word return 0\n");
 	return 0;
 }
@@ -4770,8 +4781,7 @@ static struct pipe *parse_stream(char **pstring,
 		struct in_str *input,
 		int end_trigger);
 
-/* Returns number of heredocs not yet consumed,
- * or -1 on error.
+/* Returns number of heredocs not yet consumed, or -1 on error.
  */
 static int parse_group(struct parse_context *ctx,
 		struct in_str *input, int ch)
@@ -4832,12 +4842,9 @@ static int parse_group(struct parse_context *ctx,
 	if (command->argv /* word [word]{... */
 	 || ctx->word.length /* word{... */
 	 || ctx->word.has_quoted_part /* ""{... */
-	) {
-		syntax_error(NULL);
+	)
 		debug_printf_parse("parse_group return -1: "
 			"syntax error, groups and arglists don't mix\n");
-		return -1;
-	}
 #endif
 
  IF_HUSH_FUNCTIONS(skip:)
