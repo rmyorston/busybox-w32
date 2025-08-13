@@ -5125,10 +5125,11 @@ static int parse_dollar_squote(o_string *as_string, o_string *dest, struct in_st
 {
 	int start;
 	int ch = i_peek_and_eat_bkslash_nl(input);  /* first character after the $ */
-	debug_printf_parse("parse_dollar_squote entered: ch='%c'\n", ch);
+
 	if (ch != '\'')
 		return 0;
 
+	debug_printf_parse("parse_dollar_squote entered: ch='%c'\n", ch);
 	dest->has_quoted_part = 1;
 	start = dest->length;
 
@@ -5537,8 +5538,6 @@ static int encode_string(o_string *as_string,
 		goto again;
 	}
 	if (ch == '$') {
-		//if (parse_dollar_squote(as_string, dest, input))
-		//	goto again;
 		if (!parse_dollar(as_string, dest, input, /*quote_mask:*/ 0x80)) {
 			debug_printf_parse("encode_string return 0: "
 					"parse_dollar returned 0 (error)\n");
@@ -5977,8 +5976,8 @@ static struct pipe *parse_stream(char **pstring,
 			o_addchr(&ctx.word, ch);
 			continue; /* get next char */
 		case '$':
-			if (parse_dollar_squote(&ctx.as_string, &ctx.word, input))
-				continue; /* get next char */
+			if (next == '\'' && parse_dollar_squote(&ctx.as_string, &ctx.word, input))
+				continue; /* ate $'...', get next char */
 			if (!parse_dollar(&ctx.as_string, &ctx.word, input, /*quote_mask:*/ 0)) {
 				debug_printf_parse("parse_stream parse error: "
 					"parse_dollar returned 0 (error)\n");
