@@ -558,6 +558,8 @@ typedef struct o_string {
 	smallint has_empty_slot;
 	smallint ended_in_ifs;
 } o_string;
+#define IS_NULL_WORD(str) \
+	((str).length == 0 && !(str).has_quoted_part)
 enum {
 	/* Protect all newly added chars against globbing by prepending \ to *, ?, [, -, \ */
 	EXP_FLAG_GLOBPROTECT_CHARS = 0x1,
@@ -4271,7 +4273,7 @@ static int done_word(struct parse_context *ctx)
 	struct command *command = ctx->command;
 
 	debug_printf_parse("done_word entered: '%s' %p\n", ctx->word.data, command);
-	if (ctx->word.length == 0 && !ctx->word.has_quoted_part) {
+	if (IS_NULL_WORD(ctx->word)) {
 		debug_printf_parse("done_word return 0: no word, ignored\n");
 		return 0;
 	}
@@ -4843,11 +4845,11 @@ static int parse_group(struct parse_context *ctx,
 
 #if 0 /* Prevented by caller */
 	if (command->argv /* word [word]{... */
-	 || ctx->word.length /* word{... */
-	 || ctx->word.has_quoted_part /* ""{... */
-	)
+	 || !IS_NULL_WORD(ctx->word) /* word{... or ""{... */
+	) {
 		debug_printf_parse("parse_group return -1: "
 			"syntax error, groups and arglists don't mix\n");
+	}
 #endif
 
  IF_HUSH_FUNCTIONS(skip:)
@@ -5700,8 +5702,7 @@ static struct pipe *parse_stream(char **pstring,
 #endif
 		/* Are { and } special here? */
 		if (ctx.command->argv /* word [word]{... - non-special */
-		 || ctx.word.length       /* word{... - non-special */
-		 || ctx.word.has_quoted_part     /* ""{... - non-special */
+		 || !IS_NULL_WORD(ctx.word)  /* word{... ""{... - non-special */
 		 || (next != ';'             /* }; - special */
 		    && next != ')'           /* }) - special */
 		    && next != '('           /* {( - special */
@@ -5756,8 +5757,7 @@ static struct pipe *parse_stream(char **pstring,
 				 * "case ... in <newline> word) ..."
 				 */
 				if (IS_NULL_CMD(ctx.command)
-				 && ctx.word.length == 0
-				 && !ctx.word.has_quoted_part
+				 && IS_NULL_WORD(ctx.word)
 				 && heredoc_cnt == 0
 				) {
 					/* This newline can be ignored. But...
@@ -5805,9 +5805,8 @@ static struct pipe *parse_stream(char **pstring,
 		 * Pathological example: { ""}; } should run "}" command.
 		 */
 		if (ch == '}') {
-			if (ctx.word.length != 0     /* word} */
-			 || ctx.word.has_quoted_part /* ""} */
-			) {
+			if (!IS_NULL_WORD(ctx.word)) {
+				/* word} or ""} */
 				goto ordinary_char;
 			}
 			if (!IS_NULL_CMD(ctx.command)) { /* cmd } */
@@ -5928,7 +5927,7 @@ static struct pipe *parse_stream(char **pstring,
 				goto parse_error_exitcode1;
 			continue; /* get next char */
 		case '#':
-			if (ctx.word.length == 0 && !ctx.word.has_quoted_part) {
+			if (IS_NULL_WORD(ctx.word)) {
 				/* skip "#comment" */
 				/* note: we do not add it to &ctx.as_string */
 /* TODO: in bash:
@@ -6086,8 +6085,8 @@ static struct pipe *parse_stream(char **pstring,
 				}
 			} else {
 				if (IS_NULL_CMD(ctx.command)) {
-					/* Example: "| cat" */
-					/* Example: "date | | cat" */
+					/* Testcase: sh -c '| cat' */
+					/* Testcase: sh -c 'date | | cat' */
 					syntax_error_unexpected_ch('|');
 					goto parse_error_exitcode1;
 				}
@@ -6099,8 +6098,7 @@ static struct pipe *parse_stream(char **pstring,
 			/* "case... in [(]word)..." - skip '(' */
 			if (ctx.ctx_res_w == RES_MATCH
 			 && ctx.command->argv == NULL /* not (word|(... */
-			 && ctx.word.length == 0 /* not word(... */
-			 && ctx.word.has_quoted_part == 0 /* not ""(... */
+			 && IS_NULL_WORD(ctx.word)    /* not word(... or ""(... */
 			) {
 				continue; /* get next char */
 			}
