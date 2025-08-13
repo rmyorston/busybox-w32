@@ -2743,7 +2743,7 @@ static const char *setup_prompt_string(void)
 	debug_printf("prompt_str '%s'\n", prompt_str);
 	return prompt_str;
 }
-static int get_user_input(struct in_str *i)
+static int get_interactive_input(struct in_str *i)
 {
 # if ENABLE_FEATURE_EDITING
 	/* In EDITING case, this function reads next input line,
@@ -2853,7 +2853,7 @@ static int fgetc_interactive(struct in_str *i)
 	/* If it's interactive stdin, get new line. */
 	if (G_interactive_fd && i->file == G.HFILE_stdin) {
 		/* Returns first char (or EOF), the rest is in i->p[] */
-		ch = get_user_input(i);
+		ch = get_interactive_input(i);
 		G.promptmode = 1; /* PS2 */
 		debug_printf_prompt("%s promptmode=%d\n", __func__, G.promptmode);
 	} else {
@@ -2880,14 +2880,7 @@ static int i_getch(struct in_str *i)
 		ch = (unsigned char)*i->p;
 		if (ch != '\0') {
 			i->p++;
-			i->last_char = ch;
-#if ENABLE_HUSH_LINENO_VAR
-			if (ch == '\n') {
-				G.parse_lineno++;
-				debug_printf_parse("G.parse_lineno++ = %u\n", G.parse_lineno);
-			}
-#endif
-			return ch;
+			goto out1;
 		}
 		return EOF;
 	}
@@ -2915,13 +2908,14 @@ static int i_getch(struct in_str *i)
 	ch = fgetc_interactive(i);
  out:
 	debug_printf("file_get: got '%c' %d\n", ch, ch);
-	i->last_char = ch;
+ out1:
 #if ENABLE_HUSH_LINENO_VAR
 	if (ch == '\n') {
 		G.parse_lineno++;
 		debug_printf_parse("G.parse_lineno++ = %u\n", G.parse_lineno);
 	}
 #endif
+	i->last_char = ch;
 	return ch;
 }
 
@@ -3077,7 +3071,7 @@ static void o_grow_by(o_string *o, int len)
 	}
 }
 
-static void o_addchr(o_string *o, int ch)
+static ALWAYS_INLINE void INLINED_o_addchr(o_string *o, int ch)
 {
 	debug_printf("o_addchr: '%c' o->length=%d o=%p\n", ch, o->length, o);
 	if (o->length < o->maxlen) {
@@ -3090,6 +3084,10 @@ static void o_addchr(o_string *o, int ch)
 	}
 	o_grow_by(o, 1);
 	goto add;
+}
+static void o_addchr(o_string *o, int ch)
+{
+	INLINED_o_addchr(o, ch);
 }
 
 #if 0
@@ -5623,6 +5621,14 @@ static struct pipe *parse_stream(char **pstring,
 		ch = i_getch(input);
 		debug_printf_parse(": ch:%c (%d) globprotect:%d\n",
 				ch, ch, !!(ctx.word.o_expflags & EXP_FLAG_GLOBPROTECT_CHARS));
+# if ENABLE_HUSH_NEED_FOR_SPEED
+		if (isalnum(ch)) {
+			/* 0-9A-Za-z are never special and just go into the current word */
+			/* ~5% faster parsing of typical shell scripts */
+			INLINED_o_addchr(&ctx.word, ch);
+			continue;
+		}
+#endif
 		if (ch == EOF)
 			break;
 
@@ -8223,7 +8229,7 @@ static void restore_redirects(struct squirrel *sq)
 		 * Redirect moves ->fd to e.g. 10,
 		 * and it is not restored above (we do not restore script fds
 		 * after redirects, we just use new, "moved" fds).
-		 * However for stdin, get_user_input() -> read_line_input(),
+		 * However for stdin, get_interactive_input() -> read_line_input(),
 		 * and read builtin, depend on fd == STDIN_FILENO.
 		 */
 		debug_printf_redir("restoring %d to stdin\n", G.HFILE_stdin->fd);
