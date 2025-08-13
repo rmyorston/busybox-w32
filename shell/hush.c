@@ -2743,20 +2743,16 @@ static const char *setup_prompt_string(void)
 	debug_printf("prompt_str '%s'\n", prompt_str);
 	return prompt_str;
 }
-static int get_interactive_input(struct in_str *i)
+static int show_prompt_and_get_stdin(struct in_str *i)
 {
 # if ENABLE_FEATURE_EDITING
 	/* In EDITING case, this function reads next input line,
 	 * saves it in i->p, then returns 1st char of it.
 	 */
-	int r;
-	const char *prompt_str;
-
-	prompt_str = setup_prompt_string();
 	for (;;) {
-		reinit_unicode_for_hush();
-		G.flag_SIGINT = 0;
+		int r;
 
+		G.flag_SIGINT = 0;
 		bb_got_signal = 0;
 		if (!sigisemptyset(&G.pending_set)) {
 			/* Whoops, already got a signal, do not call read_line_input */
@@ -2776,6 +2772,8 @@ static int get_interactive_input(struct in_str *i)
 			 * #^^^ prints "T", prints prompt, repeats
 			 * #(bash 5.0.17 exits after first "T", looks like a bug)
 			 */
+			const char *prompt_str = setup_prompt_string();
+			reinit_unicode_for_hush();
 			r = read_line_input(G.line_input_state, prompt_str,
 				G.user_input_buf, CONFIG_FEATURE_EDITING_MAX_LEN-1
 			);
@@ -2806,7 +2804,7 @@ static int get_interactive_input(struct in_str *i)
 		/* it was a signal: go back, read another input line */
 	}
 	i->p = G.user_input_buf;
-	return (unsigned char)*i->p++;
+	return (unsigned char)*i->p++; /* can't be NUL */
 # else
 	/* In !EDITING case, this function gets called for every char.
 	 * Buffering happens deeper in the call chain, in hfgetc(i->file).
@@ -2847,13 +2845,13 @@ static int get_interactive_input(struct in_str *i)
 }
 /* This is the magic location that prints prompts
  * and gets data back from the user */
-static int fgetc_interactive(struct in_str *i)
+static int i_getch_interactive(struct in_str *i)
 {
 	int ch;
 	/* If it's interactive stdin, get new line. */
 	if (G_interactive_fd && i->file == G.HFILE_stdin) {
 		/* Returns first char (or EOF), the rest is in i->p[] */
-		ch = get_interactive_input(i);
+		ch = show_prompt_and_get_stdin(i);
 		G.promptmode = 1; /* PS2 */
 		debug_printf_prompt("%s promptmode=%d\n", __func__, G.promptmode);
 	} else {
@@ -2863,7 +2861,7 @@ static int fgetc_interactive(struct in_str *i)
 	return ch;
 }
 #else  /* !INTERACTIVE */
-static ALWAYS_INLINE int fgetc_interactive(struct in_str *i)
+static ALWAYS_INLINE int i_getch_interactive(struct in_str *i)
 {
 	int ch;
 	do ch = hfgetc(i->file); while (ch == '\0');
@@ -2875,26 +2873,24 @@ static int i_getch(struct in_str *i)
 {
 	int ch;
 
-	if (!i->file) {
-		/* string-based in_str */
+	if (i->p) {
+		/* string-based in_str, or line editing buffer */
 		ch = (unsigned char)*i->p;
 		if (ch != '\0') {
 			i->p++;
-			goto out1;
+			goto out;
 		}
-		return EOF;
+		/* If string-based in_str, end-of-string is EOF */
+		if (!i->file) {
+			debug_printf("i_getch: got EOF from string\n");
+			return EOF;
+		}
 	}
 
 	/* FILE-based in_str */
 
-#if ENABLE_FEATURE_EDITING
-	/* This can be stdin, check line editing char[] buffer */
-	if (i->p && *i->p != '\0') {
-		ch = (unsigned char)*i->p++;
-		goto out;
-	}
-#endif
-	/* peek_buf[] is an int array, not char. Can contain EOF. */
+	/* Use what i_peek / i_peek2 saved (if anything) */
+	/* peek_buf[] is an int array, not char - can contain EOF */
 	ch = i->peek_buf[0];
 	if (ch != 0) {
 		int ch2 = i->peek_buf[1];
@@ -2905,10 +2901,9 @@ static int i_getch(struct in_str *i)
 		goto out;
 	}
 
-	ch = fgetc_interactive(i);
+	ch = i_getch_interactive(i);
  out:
-	debug_printf("file_get: got '%c' %d\n", ch, ch);
- out1:
+	debug_printf("i_getch: got '%c' %d\n", ch, ch);
 #if ENABLE_HUSH_LINENO_VAR
 	if (ch == '\n') {
 		G.parse_lineno++;
@@ -2942,7 +2937,7 @@ static int i_peek(struct in_str *i)
 		return ch;
 
 	/* Need to get a new char */
-	ch = fgetc_interactive(i);
+	ch = i_getch_interactive(i);
 	debug_printf("file_peek: got '%c' %d\n", ch, ch);
 
 	/* Save it by either rolling back line editing buffer, or in i->peek_buf[0] */
@@ -8229,7 +8224,7 @@ static void restore_redirects(struct squirrel *sq)
 		 * Redirect moves ->fd to e.g. 10,
 		 * and it is not restored above (we do not restore script fds
 		 * after redirects, we just use new, "moved" fds).
-		 * However for stdin, get_interactive_input() -> read_line_input(),
+		 * However for stdin, show_prompt_and_get_stdin() -> read_line_input(),
 		 * and read builtin, depend on fd == STDIN_FILENO.
 		 */
 		debug_printf_redir("restoring %d to stdin\n", G.HFILE_stdin->fd);
