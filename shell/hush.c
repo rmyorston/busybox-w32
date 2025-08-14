@@ -5601,7 +5601,6 @@ static struct pipe *parse_stream(char **pstring,
 
 	heredoc_cnt = 0;
 	while (1) {
-		int is_blank;
 		int ch;
 		int next;
 		int redir_fd;
@@ -5680,16 +5679,7 @@ static struct pipe *parse_stream(char **pstring,
 			continue; /* get next char */
 		}
 
-		next = '\0';
-		is_blank = 1;
-		/* If '\n', must not peek (peeking past '\n' provokes line editing) */
-		if (ch == '\n')
-			/* had to test for '\n' anyway, can also jump directly to newline handling */
-			goto ch_is_newline;
-		next = i_peek_and_eat_bkslash_nl(input);
-
-		is_blank = (ch == ' ' || ch == '\t');
-		if (is_blank) {
+		if (ch == ' ' || ch == '\t') {
 #if ENABLE_HUSH_LINENO_VAR
 /* "while ...; do<whitespace><newline>
  *     CMD"
@@ -5698,67 +5688,73 @@ static struct pipe *parse_stream(char **pstring,
  * Need to skip whitespace up to next newline (and eat it)
  * or not-whitespace (and do not eat it).
  */
-			do {
+			for (;;) {
 				next = i_peek(input);
 				if (next != ' ' && next != '\t' && next != '\n')
 					break; /* next char is not ws */
 				ch = i_getch(input);
-			} while (ch != '\n');
+				if (ch == '\n')
+					goto ch_is_newline;
+			}
 #endif
- ch_is_newline:
 			if (done_word(&ctx))
 				goto parse_error_exitcode1;
-			if (ch == '\n') {
-				/* Is this a case when newline is simply ignored?
-				 * Some examples:
-				 * "CMD | <newline> CMD ..."
-				 * "case ... in <newline> PATTERN) ..."
+			continue;  /* get next char */
+		}
+
+		if (ch == '\n') {
+ IF_HUSH_LINENO_VAR(ch_is_newline:)
+			if (done_word(&ctx))
+				goto parse_error_exitcode1;
+			/* Is this a case when newline is simply ignored?
+			 * Some examples:
+			 * "CMD | <newline> CMD ..."
+			 * "case ... in <newline> PATTERN) ..."
+			 */
+			if (IS_NULL_CMD(ctx.command)
+			 && IS_NULL_WORD(ctx.word)
+			 && heredoc_cnt == 0
+			) {
+				/* This newline can be ignored. But...
+				 * Without check #1, interactive shell
+				 * ignores even bare <newline>,
+				 * and shows the continuation prompt:
+				 * ps1$ <enter>
+				 * ps2> _   <=== wrong, should be ps1
+				 * Without check #2, "CMD & <newline>"
+				 * is similarly mistreated.
+				 * (BTW, this makes "CMD & CMD"
+				 * and "CMD && CMD" non-orthogonal.
+				 * Really, ask yourself, why
+				 * "CMD && <newline>" doesn't start
+				 * CMD but waits for more input?
+				 * The only reason is that it might be
+				 * a "CMD1 && <nl> CMD2 &" construct:
+				 * CMD1 may need to run in BG).
 				 */
-				if (IS_NULL_CMD(ctx.command)
-				 && IS_NULL_WORD(ctx.word)
-				 && heredoc_cnt == 0
+				pi = ctx.list_head;
+				if (pi->num_cmds != 0       /* check #1 */
+				 && pi->followup != PIPE_BG /* check #2 */
 				) {
-					/* This newline can be ignored. But...
-					 * Without check #1, interactive shell
-					 * ignores even bare <newline>,
-					 * and shows the continuation prompt:
-					 * ps1$ <enter>
-					 * ps2> _   <=== wrong, should be ps1
-					 * Without check #2, "CMD & <newline>"
-					 * is similarly mistreated.
-					 * (BTW, this makes "CMD & CMD"
-					 * and "CMD && CMD" non-orthogonal.
-					 * Really, ask yourself, why
-					 * "CMD && <newline>" doesn't start
-					 * CMD but waits for more input?
-					 * The only reason is that it might be
-					 * a "CMD1 && <nl> CMD2 &" construct:
-					 * CMD1 may need to run in BG).
-					 */
-					pi = ctx.list_head;
-					if (pi->num_cmds != 0       /* check #1 */
-					 && pi->followup != PIPE_BG /* check #2 */
-					) {
-						continue; /* ignore newline */
-					}
+					continue; /* ignore newline */
 				}
-				/* Treat newline as a command separator */
-				done_pipe(&ctx, PIPE_SEQ);
-				debug_printf_heredoc("heredoc_cnt:%d\n", heredoc_cnt);
-				if (heredoc_cnt) {
-					heredoc_cnt = fetch_heredocs(&ctx.as_string, ctx.list_head, heredoc_cnt, input);
-					if (heredoc_cnt != 0)
-						goto parse_error_exitcode1;
-				}
-				ctx.is_assignment = MAYBE_ASSIGNMENT;
-				debug_printf_parse("ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
-				ch = ';';
-				/* note: if (is_blank) continue;
-				 * will still trigger for us */
-			} /* if ch == '\n */
+			}
+			/* Treat newline as a command separator */
+			done_pipe(&ctx, PIPE_SEQ);
+			debug_printf_heredoc("heredoc_cnt:%d\n", heredoc_cnt);
+			if (heredoc_cnt) {
+				heredoc_cnt = fetch_heredocs(&ctx.as_string, ctx.list_head, heredoc_cnt, input);
+				if (heredoc_cnt != 0)
+					goto parse_error_exitcode1;
+			}
+			ctx.is_assignment = MAYBE_ASSIGNMENT;
+			debug_printf_parse("ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
+			next = '\0';
+			ch = ';';
 		} else {
 			const char *is_special;
 
+			next = i_peek_and_eat_bkslash_nl(input);
 			is_special = "{}<>&|();#" /* special outside of "str" */
 				"$\"" IF_HUSH_TICK("`") /* always special */
 				SPECIAL_VAR_SYMBOL_STR;
@@ -5782,8 +5778,7 @@ static struct pipe *parse_stream(char **pstring,
 				/* They are not special, skip "{}" */
 				is_special += 2;
 			}
-			is_special = strchr(is_special, ch);
-			if (!is_special) { /* ordinary char */
+			if (!strchr(is_special, ch)) { /* ordinary char? */
  ordinary_char:
 				o_addQchr(&ctx.word, ch);
 				if ((ctx.is_assignment == MAYBE_ASSIGNMENT
@@ -5794,7 +5789,7 @@ static struct pipe *parse_stream(char **pstring,
 					ctx.is_assignment = DEFINITELY_ASSIGNMENT;
 					debug_printf_parse("ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
 				}
-				continue;
+				continue; /* get next char */
 			}
 		}
 
@@ -5873,9 +5868,6 @@ static struct pipe *parse_stream(char **pstring,
 				return ctx.list_head;
 			}
 		}
-
-		if (is_blank) /* space, tab or newline? */
-			continue;
 
 		/* Catch <, > before deciding whether this word is
 		 * an assignment. a=1 2>z b=2: b=2 is still assignment */
@@ -6022,8 +6014,7 @@ static struct pipe *parse_stream(char **pstring,
 			done_pipe(&ctx, PIPE_SEQ);
 #if ENABLE_HUSH_CASE
 			if (ctx.ctx_res_w == RES_CASE_BODY
-			 && !is_blank /* is it really actual semicolon? */
-			 && i_peek_and_eat_bkslash_nl(input) == ';' /* and next char is ';' too? */
+			 && next == ';' /* and next char is ';' too? */
 			) {
 				ch = i_getch(input);
 				nommu_addchr(&ctx.as_string, ch);
