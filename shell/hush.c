@@ -574,15 +574,6 @@ enum {
 /* Used for initialization: o_string foo = NULL_O_STRING; */
 #define NULL_O_STRING { NULL }
 
-#ifndef debug_printf_parse
-static const char *const assignment_flag[] ALIGN_PTR = {
-	"MAYBE_ASSIGNMENT",
-	"DEFINITELY_ASSIGNMENT",
-	"NOT_ASSIGNMENT",
-	"WORD_IS_KEYWORD",
-};
-#endif
-
 /* We almost can use standard FILE api, but we need an ability to move
  * its fd when redirects coincide with it. No api exists for that
  * (RFE for it at https://sourceware.org/bugzilla/show_bug.cgi?id=21902).
@@ -768,9 +759,14 @@ enum {
 	MAYBE_ASSIGNMENT      = 0,
 	DEFINITELY_ASSIGNMENT = 1,
 	NOT_ASSIGNMENT        = 2,
-	/* Not an assignment, but next word may be: "if v=xyz cmd;" */
-	WORD_IS_KEYWORD       = 3,
 };
+#ifndef debug_printf_parse
+static const char *const assignment_flag[] ALIGN_PTR = {
+	"MAYBE_ASSIGNMENT",
+	"DEFINITELY_ASSIGNMENT",
+	"NOT_ASSIGNMENT",
+};
+#endif
 
 /* On program start, environ points to initial environment.
  * putenv adds new pointers into it, unsetenv removes them.
@@ -4416,16 +4412,11 @@ static int done_word(struct parse_context *ctx)
 
 	/* If this word wasn't an assignment, next ones definitely
 	 * can't be assignments. Even if they look like ones. */
-	if (ctx->is_assignment != DEFINITELY_ASSIGNMENT
-	 && ctx->is_assignment != WORD_IS_KEYWORD
-	) {
+	if (ctx->is_assignment != DEFINITELY_ASSIGNMENT) {
 		ctx->is_assignment = NOT_ASSIGNMENT;
 	} else {
-		if (ctx->is_assignment == DEFINITELY_ASSIGNMENT) {
-			command->assignment_cnt++;
-			debug_printf_parse("++assignment_cnt=%d\n", command->assignment_cnt);
-		}
-		debug_printf_parse("ctx->is_assignment was:'%s'\n", assignment_flag[ctx->is_assignment]);
+		command->assignment_cnt++;
+		debug_printf_parse("++assignment_cnt=%d\n", command->assignment_cnt);
 		ctx->is_assignment = MAYBE_ASSIGNMENT;
 	}
 	debug_printf_parse("ctx->is_assignment='%s'\n", assignment_flag[ctx->is_assignment]);
@@ -5791,10 +5782,9 @@ static struct pipe *parse_stream(char **pstring,
 			if (!strchr(is_special, ch)) { /* ordinary char? */
  ordinary_char:
 				o_addQchr(&ctx.word, ch);
-				if ((ctx.is_assignment == MAYBE_ASSIGNMENT
-				    || ctx.is_assignment == WORD_IS_KEYWORD)
+				if (ctx.is_assignment == MAYBE_ASSIGNMENT
 				 && ch == '='
-				// && !ctx.word.has_quoted_part // unnecessary, "empty quoted str marker" trick handles this too
+				 && !ctx.word.has_quoted_part  /* a''=b a'b'c=d: not assignments */
 				 && endofname(ctx.word.data)[0] == '='
 				) {
 					ctx.is_assignment = DEFINITELY_ASSIGNMENT;
