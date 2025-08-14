@@ -5605,8 +5605,13 @@ static struct pipe *parse_stream(char **pstring,
 		debug_printf_parse(": ch:%c (%d) globprotect:%d\n",
 				ch, ch, !!(ctx.word.o_expflags & EXP_FLAG_GLOBPROTECT_CHARS));
 # if ENABLE_HUSH_NEED_FOR_SPEED
-		if (isalnum(ch)) {
-			/* 0-9A-Za-z are never special and just go into the current word */
+		if ((ch >= '.' && ch <= ':') /* ASCII "./0123456789:" */
+			/* can't include preceding "+,-" above: "-" needs glob-escaping (example?) */
+		 || (ch >= '@' && ch <= 'Z') /* ASCII "@A..Z" */
+		 || (ch >= 'a' && ch <= 'z') /* ASCII "a..Z" */
+			/* can't include preceding "^_`" above because of "`". Pity. "_" is relatively common */
+		) {
+			/* These are never special and just go into the current word */
 			/* ~5% faster parsing of typical shell scripts */
 			INLINED_o_addchr(&ctx.word, ch);
 			continue;
