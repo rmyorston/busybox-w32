@@ -596,17 +596,18 @@ typedef struct in_str {
 	HFILE *file;
 } in_str;
 
-/* The descrip member of this structure is only used to make
+/* The descrip3 member of this structure is only used to make
  * debugging output pretty */
 static const struct {
 	int32_t mode;
 	signed char default_fd;
-	char descrip[3];
+	char descrip3[3];
 } redir_table[] ALIGN4 = {
 	{ O_RDONLY,                  0, "<"  },
 	{ O_CREAT|O_TRUNC|O_WRONLY,  1, ">"  },
 	{ O_CREAT|O_APPEND|O_WRONLY, 1, ">>" },
 	{ O_CREAT|O_RDWR,            1, "<>" },
+	{ O_RDONLY,                  0, "<<<" },
 	{ O_RDONLY,                  0, "<<" },
 /* Should not be needed. Bogus default_fd helps in debugging */
 /*	{ O_RDONLY,                 77, "<<" }, */
@@ -626,12 +627,13 @@ struct redir_struct {
 	 */
 };
 typedef enum redir_type {
-	REDIRECT_INPUT     = 0,
-	REDIRECT_OVERWRITE = 1,
-	REDIRECT_APPEND    = 2,
-	REDIRECT_IO        = 3,
-	REDIRECT_HEREDOC   = 4,
-	REDIRECT_HEREDOC2  = 5, /* REDIRECT_HEREDOC after heredoc is loaded */
+	REDIRECT_INPUT      = 0,
+	REDIRECT_OVERWRITE  = 1,
+	REDIRECT_APPEND     = 2,
+	REDIRECT_IO         = 3,
+	REDIRECT_HERESTRING = 4,
+	REDIRECT_HEREDOC    = 5,
+	REDIRECT_HEREDOC2   = 6, /* REDIRECT_HEREDOC after heredoc is loaded */
 
 	REDIRFD_CLOSE      = -3,
 	REDIRFD_SYNTAX_ERR = -2,
@@ -3754,8 +3756,8 @@ static struct pipe *free_pipe(struct pipe *pi)
 		//command->group_as_string = NULL;
 #endif
 		for (r = command->redirects; r; r = rnext) {
-			debug_printf_clean("   redirect %d%s",
-					r->rd_fd, redir_table[r->rd_type].descrip);
+			debug_printf_clean("   redirect %d%.3s",
+					r->rd_fd, redir_table[r->rd_type].descrip3);
 			/* guard against the case >$FOO, where foo is unset or blank */
 			if (r->rd_filename) {
 				debug_printf_clean(" fname:'%s'\n", r->rd_filename);
@@ -4514,31 +4516,31 @@ static int parse_redirect(struct parse_context *ctx,
 	int dup_num;
 
 	dup_num = REDIRFD_TO_FILE;
-	if (style != REDIRECT_HEREDOC) {
+	if (style != REDIRECT_HEREDOC && style != REDIRECT_HERESTRING) {
 		/* Check for a '>&1' type redirect */
 		dup_num = parse_redir_right_fd(&ctx->as_string, input);
 		if (dup_num == REDIRFD_SYNTAX_ERR)
 			return 1;
-	} else {
+		if (style == REDIRECT_OVERWRITE && dup_num == REDIRFD_TO_FILE) {
+			int ch = i_peek_and_eat_bkslash_nl(input);
+			if (ch == '|') {
+				/* >|FILE redirect ("clobbering" >).
+				 * Since we do not support "set -o noclobber" yet,
+				 * >| and > are the same for now. Just eat |.
+				 */
+				ch = i_getch(input);
+				nommu_addchr(&ctx->as_string, ch);
+			}
+		}
+	} else if (style == REDIRECT_HEREDOC) {
 		int ch = i_peek_and_eat_bkslash_nl(input);
 		dup_num = (ch == '-'); /* HEREDOC_SKIPTABS bit is 1 */
-		if (dup_num) { /* <<-... */
-			ch = i_getch(input);
-			nommu_addchr(&ctx->as_string, ch);
-			ch = i_peek(input);
-		}
-	}
-
-	if (style == REDIRECT_OVERWRITE && dup_num == REDIRFD_TO_FILE) {
-		int ch = i_peek_and_eat_bkslash_nl(input);
-		if (ch == '|') {
-			/* >|FILE redirect ("clobbering" >).
-			 * Since we do not support "set -o noclobber" yet,
-			 * >| and > are the same for now. Just eat |.
-			 */
+		if (dup_num) { /* "<<-HEREDOC"? */
 			ch = i_getch(input);
 			nommu_addchr(&ctx->as_string, ch);
 		}
+	} else { /* REDIRECT_HERESTRING */
+		dup_num  = 0; /* make sure no bits like HEREDOC_QUOTED are set */
 	}
 
 	/* Create a new redir_struct and append it to the linked list */
@@ -4552,11 +4554,14 @@ static int parse_redirect(struct parse_context *ctx,
 	redir->rd_type = style;
 	redir->rd_fd = (fd == -1) ? redir_table[style].default_fd : fd;
 
-	debug_printf_parse("redirect type %d %s\n", redir->rd_fd,
-				redir_table[style].descrip);
+	debug_printf_parse("redirect type %d %.3s\n", redir->rd_fd,
+				redir_table[style].descrip3);
 
 	redir->rd_dup = dup_num;
-	if (style != REDIRECT_HEREDOC && dup_num != REDIRFD_TO_FILE) {
+	if (style != REDIRECT_HEREDOC
+	 && style != REDIRECT_HERESTRING
+	 && dup_num != REDIRFD_TO_FILE
+	) {
 		/* Erik had a check here that the file descriptor in question
 		 * is legit; I postpone that to "run time"
 		 * A "-" representation of "close me" shows up as a -3 here */
@@ -4565,7 +4570,7 @@ static int parse_redirect(struct parse_context *ctx,
 	} else {
 #if 0		/* Instead we emit error message at run time */
 		if (ctx->pending_redirect) {
-			/* For example, "cmd > <file" */
+			/* For example, "CMD > <FILE" */
 			syntax_error("invalid redirect");
 		}
 #endif
@@ -4580,10 +4585,10 @@ static int parse_redirect(struct parse_context *ctx,
  * supposed to tell which file descriptor to redirect.  This routine
  * looks for such preceding numbers.  In an ideal world this routine
  * needs to handle all the following classes of redirects...
- *     echo 2>foo     # redirects fd  2 to file "foo", nothing passed to echo
- *     echo 49>foo    # redirects fd 49 to file "foo", nothing passed to echo
- *     echo -2>foo    # redirects fd  1 to file "foo",    "-2" passed to echo
- *     echo 49x>foo   # redirects fd  1 to file "foo",   "49x" passed to echo
+ *     echo 2>FILE     # redirects fd  2 to FILE, nothing passed to echo
+ *     echo 49>FILE    # redirects fd 49 to FILE, nothing passed to echo
+ *     echo -2>FILE    # redirects fd  1 to FILE,    "-2" passed to echo
+ *     echo 49x>FILE   # redirects fd  1 to FILE,   "49x" passed to echo
  *
  * http://www.opengroup.org/onlinepubs/009695399/utilities/xcu_chap02.html
  * "2.7 Redirection
@@ -4620,7 +4625,7 @@ static char *fetch_till_str(o_string *as_string,
 {
 	o_string heredoc = NULL_O_STRING;
 	unsigned past_EOL;
-	int prev = 0; /* not \ */
+	int prev = 0; /* not '\' */
 	int ch;
 
 	/* Starting with "" is necessary for this case:
@@ -5913,6 +5918,14 @@ static struct pipe *parse_stream(char **pstring,
 				debug_printf_heredoc("++heredoc_cnt=%d\n", heredoc_cnt);
 				ch = i_getch(input);
 				nommu_addchr(&ctx.as_string, ch);
+				/* Check for here-string (<<<) */
+				next = i_peek(input);
+				if (next == '<') {
+					redir_style = REDIRECT_HERESTRING;
+					ch = i_getch(input);
+					nommu_addchr(&ctx.as_string, ch);
+					heredoc_cnt--; /* here-strings don't use heredoc lines */
+				}
 			} else if (next == '>') {
 				redir_style = REDIRECT_IO;
 				ch = i_getch(input);
@@ -6405,7 +6418,7 @@ static char *encode_then_expand_string(const char *str)
 //TODO: error check (encode_string returns 0 on error)?
 	//bb_error_msg("'%s' -> '%s'", str, dest.data);
 	exp_str = expand_string_to_string(dest.data,
-			EXP_FLAG_GLOBPROTECT_CHARS,
+			EXP_FLAG_GLOBPROTECT_CHARS, /* example: `echo '_\t_\\_\"_'` in heredoc */
 			/*unbackslash:*/ 1
 	);
 	//bb_error_msg("'%s' -> '%s'", dest.data, exp_str);
@@ -7990,12 +8003,25 @@ static void setup_heredoc(struct redir_struct *redir)
 #endif
 
 	expanded = NULL;
-	if (!(redir->rd_dup & HEREDOC_QUOTED)) {
+	if (redir->rd_type == REDIRECT_HERESTRING) {
+		heredoc = expanded = expand_string_to_string(heredoc,
+			EXP_FLAG_GLOBPROTECT_CHARS,
+			/* ^^^^why? testcases:
+			 * cat <<<`echo '_\t_\\_\"_'`   prints _\t_\_\"_<newline>
+			 * cat <<<"`echo '_\t_\\_\"_'`" prints _\t_\_"_<newline>
+			 */
+			/*unbackslash:*/ 1
+			/* ^^^^^^^^^^ cat <<<\_  prints _<newline> */
+		);
+	} else if (!(redir->rd_dup & HEREDOC_QUOTED)) {
 		expanded = encode_then_expand_string(heredoc);
 		if (expanded)
 			heredoc = expanded;
 	}
+
 	len = strlen(heredoc);
+	if (redir->rd_type == REDIRECT_HERESTRING)
+		expanded[len++] = '\n';
 
 	close(redir->rd_fd); /* often saves dup2+close in xmove_fd */
 	xpiped_pair(pair);
@@ -8291,12 +8317,14 @@ static int setup_redirects(struct command *prog, struct squirrel **sqp)
 		int newfd;
 		int closed;
 
-		if (redir->rd_type == REDIRECT_HEREDOC2) {
-			/* "rd_fd<<HERE" case */
+		if (redir->rd_type == REDIRECT_HEREDOC2
+		 || redir->rd_type == REDIRECT_HERESTRING
+		) {
+			/* "rd_fd<<HEREDOC_EOF" and "rd_fd<<<WORD" cases */
 			if (save_fd_on_redirect(redir->rd_fd, /*avoid:*/ 0, sqp) < 0)
 				return 1;
-			/* for REDIRECT_HEREDOC2, rd_filename holds _contents_
-			 * of the heredoc */
+			/* for REDIRECT_HEREDOC2, rd_filename holds _contents_ of the heredoc */
+			/* for REDIRECT_HERESTRING, rd_filename holds "WORD" */
 			debug_printf_redir("set heredoc '%s'\n",
 					redir->rd_filename);
 			setup_heredoc(redir);
