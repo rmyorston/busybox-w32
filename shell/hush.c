@@ -738,7 +738,7 @@ struct parse_context {
 #if !BB_MMU
 	o_string as_string;
 #endif
-	smallint is_assignment; /* 0:maybe, 1:yes, 2:no, 3:keyword */
+	smallint is_assignment;
 #if HAS_KEYWORDS
 	smallint ctx_res_w;
 	/* bitmask of FLAG_xxx, for figuring out valid reserved words */
@@ -4051,10 +4051,10 @@ static int done_pipe(struct parse_context *ctx, pipe_style type)
 			ctx->ctx_res_w = RES_NONE;
 #endif
 #if ENABLE_HUSH_CASE
-		if (ctx->ctx_res_w == RES_MATCH)
-			ctx->ctx_res_w = RES_CASE_BODY;
 		if (ctx->ctx_res_w == RES_CASE)
 			ctx->ctx_res_w = RES_CASE_IN;
+		if (ctx->ctx_res_w == RES_MATCH)
+			ctx->ctx_res_w = RES_CASE_BODY;
 #endif
 		/* Create the memory for command, roughly:
 		 * ctx->pipe->cmds = new struct command;
@@ -4415,6 +4415,7 @@ static int done_word(struct parse_context *ctx)
 	if (ctx->is_assignment != DEFINITELY_ASSIGNMENT) {
 		ctx->is_assignment = NOT_ASSIGNMENT;
 	} else {
+		/* This was an assignment word, next one maybe will be too */
 		command->assignment_cnt++;
 		debug_printf_parse("++assignment_cnt=%d\n", command->assignment_cnt);
 		ctx->is_assignment = MAYBE_ASSIGNMENT;
@@ -4426,7 +4427,7 @@ static int done_word(struct parse_context *ctx)
 #if ENABLE_HUSH_LOOPS
 	if (ctx->ctx_res_w == RES_FOR) {
 		if (ctx->word.has_quoted_part
-		 || endofname(command->argv[0])[0] != '\0'
+		 || endofname(ctx->word.data)[0] != '\0'
 		) {
 			/* bash says just "not a valid identifier" */
 			syntax_error("bad for loop variable");
@@ -4441,9 +4442,12 @@ static int done_word(struct parse_context *ctx)
 #endif
 #if ENABLE_HUSH_CASE
 	/* Force CASE to have just one word */
-	if (ctx->ctx_res_w == RES_CASE) {
+	if (ctx->ctx_res_w == RES_CASE)
 		done_pipe(ctx, PIPE_SEQ);
-	}
+//TODO syntax check?
+//	if (ctx->ctx_res_w == RES_MATCH)
+//		eat all following spaces and tabs (but not newlines),
+//		check that next char is | or )
 #endif
 
  ret:
@@ -5800,7 +5804,7 @@ static struct pipe *parse_stream(char **pstring,
 		 */
 		if (ch == '}') {
 			if (!IS_NULL_WORD(ctx.word)) {
-				/* word} or ""} */
+				/* WORD} or ""} */
 				goto ordinary_char;
 			}
 			if (!IS_NULL_CMD(ctx.command)) { /* CMD } */
@@ -5924,8 +5928,8 @@ static struct pipe *parse_stream(char **pstring,
 				/* note: we do not add it to &ctx.as_string */
 /* TODO: in bash:
  * comment inside $() goes to the next \n, even inside quoted string (!):
- * cmd "$(cmd2 #comment)" - syntax error
- * cmd "`cmd2 #comment`" - ok
+ * CMD "$(CMD2 #COMMENT)" - syntax error
+ * CMD "`CMD2 #COMMENT`" - ok
  * We accept both (comment ends where command subst ends, in both cases).
  */
 				while (1) {
@@ -5945,7 +5949,7 @@ static struct pipe *parse_stream(char **pstring,
  rbrace_skips_end_trigger:
 
 		if (ctx.is_assignment == MAYBE_ASSIGNMENT
-		 /* check that we are not in word in "a=1 2>word b=1": */
+		 /* check that we are not in WORD in "a=1 2>WORD b=1": */
 		 && !ctx.pending_redirect
 		) {
 			/* ch is a special char and thus this word
@@ -6019,7 +6023,7 @@ static struct pipe *parse_stream(char **pstring,
 				ctx.ctx_res_w = RES_MATCH; /* "we are in PATTERN)" */
 			}
 #endif
- new_cmd:
+ finished_cmd:
 			/* We just finished a cmd. New one may start
 			 * with an assignment */
 			ctx.is_assignment = MAYBE_ASSIGNMENT;
@@ -6049,14 +6053,24 @@ static struct pipe *parse_stream(char **pstring,
 					goto parse_error_exitcode1;
 				}
 			}
-			goto new_cmd;
+			goto finished_cmd;
 		case '|':
+#if ENABLE_HUSH_CASE
+			if (ctx.ctx_res_w == RES_MATCH) {
+//				if (IS_NULL_WORD(ctx.word)) {
+//					/* Testcase: sh -c 'case w in |w) nice; esac' */
+//					/* Testcase: sh -c 'case w in v||w) nice; esac' */
+//also rejects valid: sh -c 'case w in v |w) nice; esac'
+//					syntax_error_unexpected_ch(ch);
+//					goto parse_error_exitcode1;
+//				}
+				if (done_word(&ctx))
+					goto parse_error_exitcode1;
+				continue; /* get next char */
+			}
+#endif
 			if (done_word(&ctx))
 				goto parse_error_exitcode1;
-#if ENABLE_HUSH_CASE
-			if (ctx.ctx_res_w == RES_MATCH)
-				break; /* we are in case's "WORD | WORD)" */
-#endif
 			if (next == '|') { /* || */
 				ch = i_getch(input);
 				nommu_addchr(&ctx.as_string, ch);
@@ -6079,45 +6093,55 @@ static struct pipe *parse_stream(char **pstring,
 				}
 				done_command(&ctx);
 			}
-			goto new_cmd;
+			goto finished_cmd;
 		case '(':
 #if ENABLE_HUSH_CASE
-			/* "case... in [(]PATTERN)..." - skip '(' */
+			/* "case... in (PATTERNS)..."? */
 			if (ctx.ctx_res_w == RES_MATCH
-			 && ctx.command->argv == NULL /* not (PATTERN|(... */
-			 && IS_NULL_WORD(ctx.word)    /* not PATTERN(... or ""(... */
+			 && ctx.command->argv == NULL /* not WORD (... */
+			 && IS_NULL_WORD(ctx.word)    /* not WORD(... or ""(... */
 			) {
-				continue; /* get next char */
+				continue; /* skip '(',  get next char */
 			}
 #endif
 			/* fall through */
 		case '{': {
+			/* Try to parse as { CMDS; } or (CMDS) */
 			int n = parse_group(&ctx, input, ch);
 			if (n < 0)
 				goto parse_error_exitcode1;
 			debug_printf_heredoc("parse_group done, needs heredocs:%d\n", n);
 			heredoc_cnt += n;
-			goto new_cmd;
+			goto finished_cmd;
 		}
 		case ')':
 #if ENABLE_HUSH_CASE
 			if (ctx.ctx_res_w == RES_MATCH) {
+//				if (IS_NULL_WORD(ctx.word)) {
+//					/* Testcase: sh -c 'case w in w|) nice; esac' */
+//also rejects valid: sh -c 'case w in w ) nice; esac'
+//					syntax_error_unexpected_ch(ch);
+//					goto parse_error_exitcode1;
+//				}
 				if (done_word(&ctx))
 					goto parse_error_exitcode1;
+//FIXME: accepts "W1 W2) CMD;;" as if it was "W1|W2) CMD;;", should not allow this syntax at all
 				done_pipe(&ctx, PIPE_SEQ);
-				goto new_cmd;
+				goto finished_cmd;
 			}
 #endif
-		case '}':
+		/* case ')' and !RES_MATCH: falls through to the error: */
+			/* Testcase for bad ')' ? */
+		/* case '}': */
 			/* Proper use of this character is caught by end_trigger:
 			 * if we see {, we call parse_group(..., end_trigger='}')
-			 * and it will match } earlier (not here). */
+			 * and it will match } earlier (not here).
+			 */
+			/* Testcase for bad '}' ? */
+		default: /* all other chars should not ever reach this... */
 			G.last_exitcode = 2;
 			syntax_error_unexpected_ch(ch);
 			goto parse_error;
-		default:
-			if (HUSH_DEBUG)
-				bb_error_msg_and_die("BUG: unexpected %c", ch);
 		}
 	} /* while (1) */
  eof:
