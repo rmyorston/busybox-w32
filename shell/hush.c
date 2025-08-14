@@ -5657,8 +5657,13 @@ static struct pipe *parse_stream(char **pstring,
 		if (ch == '\'') {
 			ctx.word.has_quoted_part = 1;
 			next = i_getch(input);
-			if (next == '\'' && !ctx.pending_redirect/*why?*/)
-				goto insert_empty_quoted_str_marker;
+			if (next == '\'' && !ctx.pending_redirect/*why?*/) {
+ insert_empty_quoted_str_marker:
+				nommu_addchr(&ctx.as_string, next);
+				o_addchr(&ctx.word, SPECIAL_VAR_SYMBOL);
+				o_addchr(&ctx.word, SPECIAL_VAR_SYMBOL);
+				continue; /* get next char */
+			}
 			ch = next;
 			while (1) {
 				if (ch == EOF) {
@@ -5818,7 +5823,7 @@ static struct pipe *parse_stream(char **pstring,
 			}
 			if (!IS_NULL_PIPE(ctx.pipe)) /* CMD | } */
 				/* Can't be an end of {CMD}, skip the check */
-				goto skip_end_trigger;
+				goto rbrace_skips_end_trigger;
 			/* else: } does terminate a group */
 		}
  term_group:
@@ -5841,6 +5846,7 @@ static struct pipe *parse_stream(char **pstring,
 			ctx.is_assignment = MAYBE_ASSIGNMENT;
 			debug_printf_parse("ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
 			/* Do we sit outside of any if's, loops or case's? */
+//TODO? just check ctx.stack != NULL instead?
 			if (!HAS_KEYWORDS
 			IF_HAS_KEYWORDS(|| (ctx.ctx_res_w == RES_NONE && ctx.old_flag == 0))
 			) {
@@ -5940,7 +5946,7 @@ static struct pipe *parse_stream(char **pstring,
 			}
 			break;
 		}
- skip_end_trigger:
+ rbrace_skips_end_trigger:
 
 		if (ctx.is_assignment == MAYBE_ASSIGNMENT
 		 /* check that we are not in word in "a=1 2>word b=1": */
@@ -5978,11 +5984,7 @@ static struct pipe *parse_stream(char **pstring,
 			ctx.word.has_quoted_part = 1;
 			if (next == '"' && !ctx.pending_redirect) {
 				i_getch(input); /* eat second " */
- insert_empty_quoted_str_marker:
-				nommu_addchr(&ctx.as_string, next);
-				o_addchr(&ctx.word, SPECIAL_VAR_SYMBOL);
-				o_addchr(&ctx.word, SPECIAL_VAR_SYMBOL);
-				continue; /* get next char */
+				goto insert_empty_quoted_str_marker;
 			}
 			if (ctx.is_assignment == NOT_ASSIGNMENT)
 				ctx.word.o_expflags |= EXP_FLAG_GLOBPROTECT_CHARS;
@@ -6181,8 +6183,6 @@ static struct pipe *parse_stream(char **pstring,
 	G.last_exitcode = 1;
  parse_error:
 	{
-		struct parse_context *pctx IF_HAS_KEYWORDS(, *p2;);
-
 		/* Clean up allocated tree.
 		 * Sample for finding leaks on syntax error recovery path.
 		 * Run it from interactive shell, watch pmap `pidof hush`.
@@ -6191,7 +6191,8 @@ static struct pipe *parse_stream(char **pstring,
 		 * while if (true | { true;}); then echo ok; fi; do break; done
 		 * while if (true | { true;}); then echo ok; fi; do (if echo ok; break; then :; fi) | cat; break; done
 		 */
-		pctx = &ctx;
+		IF_HAS_KEYWORDS(struct parse_context *stk;)
+		struct parse_context *pctx = &ctx;
 		do {
 			/* Update pipe/command counts,
 			 * otherwise freeing may miss some */
@@ -6203,20 +6204,19 @@ static struct pipe *parse_stream(char **pstring,
 #if !BB_MMU
 			o_free(&pctx->as_string);
 #endif
-			IF_HAS_KEYWORDS(p2 = pctx->stack;)
+			IF_HAS_KEYWORDS(stk = pctx->stack;)
 			if (pctx != &ctx)
 				free(pctx);
-			IF_HAS_KEYWORDS(pctx = p2;)
+			IF_HAS_KEYWORDS(pctx = stk;)
 		} while (HAS_KEYWORDS && pctx);
-
-		o_free(&ctx.word);
-#if !BB_MMU
-		if (pstring)
-			*pstring = NULL;
-#endif
-		debug_leave();
-		return ERR_PTR;
 	}
+	o_free(&ctx.word);
+#if !BB_MMU
+	if (pstring)
+		*pstring = NULL;
+#endif
+	debug_leave();
+	return ERR_PTR;
 }
 
 /*
@@ -6547,7 +6547,10 @@ static NOINLINE int encode_then_append_var_plusminus(o_string *output, int n,
 		if (!dest.o_expflags) {
 			if (ch == EOF)
 				break;
-			if (!dquoted && !(output->o_expflags & EXP_FLAG_SINGLEWORD) && strchr(G.ifs, ch)) {
+			if (!dquoted
+			 && !(output->o_expflags & EXP_FLAG_SINGLEWORD)
+			 && strchr(G.ifs, ch)
+			) {
 				/* PREFIX${x:d${e}f ...} and we met space: expand "d${e}f" and start new word.
 				 * do not assume we are at the start of the word (PREFIX above).
 				 */
