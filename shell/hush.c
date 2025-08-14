@@ -5656,15 +5656,20 @@ static struct pipe *parse_stream(char **pstring,
 		nommu_addchr(&ctx.as_string, ch);
 		if (ch == '\'') {
 			ctx.word.has_quoted_part = 1;
-			next = i_getch(input);
-			if (next == '\'' && !ctx.pending_redirect/*why?*/) {
+			ch = i_getch(input);
+			if (ch == '\'' && !ctx.pending_redirect/*why?*/) {
  insert_empty_quoted_str_marker:
-				nommu_addchr(&ctx.as_string, next);
+				nommu_addchr(&ctx.as_string, ch);
+//Just inserting nothing doesn't work: consider
+// CMD $EMPTYVAR
+// CMD ''
+//At execution time both will expand argv[1] to empty string
+//and thus the argument will "vanish".
+//But for second CMD, it should not vanish!
 				o_addchr(&ctx.word, SPECIAL_VAR_SYMBOL);
 				o_addchr(&ctx.word, SPECIAL_VAR_SYMBOL);
 				continue; /* get next char */
 			}
-			ch = next;
 			while (1) {
 				if (ch == EOF) {
 					syntax_error_unterm_ch('\'');
@@ -5789,6 +5794,7 @@ static struct pipe *parse_stream(char **pstring,
 				if ((ctx.is_assignment == MAYBE_ASSIGNMENT
 				    || ctx.is_assignment == WORD_IS_KEYWORD)
 				 && ch == '='
+				// && !ctx.word.has_quoted_part // unnecessary, "empty quoted str marker" trick handles this too
 				 && endofname(ctx.word.data)[0] == '='
 				) {
 					ctx.is_assignment = DEFINITELY_ASSIGNMENT;
@@ -5983,7 +5989,7 @@ static struct pipe *parse_stream(char **pstring,
 		case '"':
 			ctx.word.has_quoted_part = 1;
 			if (next == '"' && !ctx.pending_redirect) {
-				i_getch(input); /* eat second " */
+				ch = i_getch(input); /* eat second " */
 				goto insert_empty_quoted_str_marker;
 			}
 			if (ctx.is_assignment == NOT_ASSIGNMENT)
