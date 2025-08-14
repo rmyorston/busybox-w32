@@ -5119,7 +5119,6 @@ static int add_till_closing_bracket(o_string *dest, struct in_str *input, unsign
 # if BB_MMU
 #define parse_dollar_squote(as_string, dest, input) \
 	parse_dollar_squote(dest, input)
-#define as_string NULL
 # endif
 static int parse_dollar_squote(o_string *as_string, o_string *dest, struct in_str *input)
 {
@@ -5204,7 +5203,6 @@ static int parse_dollar_squote(o_string *as_string, o_string *dest, struct in_st
 	}
 
 	return 1;
-# undef as_string
 }
 #else
 # define parse_dollar_squote(as_string, dest, input) 0
@@ -5482,7 +5480,6 @@ static int parse_dollar(o_string *as_string,
 #if BB_MMU
 #define encode_string(as_string, dest, input, dquote_end) \
 	encode_string(dest, input, dquote_end)
-#define as_string NULL
 #endif
 static int encode_string(o_string *as_string,
 		o_string *dest,
@@ -5564,7 +5561,6 @@ static int encode_string(o_string *as_string,
 		o_addchr(dest, SPECIAL_VAR_SYMBOL);
 	}
 	goto again;
-#undef as_string
 }
 
 /*
@@ -5605,8 +5601,7 @@ static struct pipe *parse_stream(char **pstring,
 
 	heredoc_cnt = 0;
 	while (1) {
-		const char *is_blank;
-		const char *is_special;
+		int is_blank;
 		int ch;
 		int next;
 		int redir_fd;
@@ -5623,11 +5618,8 @@ static struct pipe *parse_stream(char **pstring,
 			continue;
 		}
 #endif
-		if (ch == EOF)
-			break;
-
 		/* Handle "'" and "\" first, as they won't play nice with
-		 * i_peek_and_eat_bkslash_nl() anyway:
+		 * i_peek_and_eat_bkslash_nl():
 		 *   echo z\\
 		 * and
 		 *   echo '\
@@ -5660,13 +5652,14 @@ static struct pipe *parse_stream(char **pstring,
 			o_addchr(&ctx.word, ch);
 			continue; /* get next char */
 		}
+		if (ch == EOF)
+			break;
 		nommu_addchr(&ctx.as_string, ch);
 		if (ch == '\'') {
 			ctx.word.has_quoted_part = 1;
 			next = i_getch(input);
 			if (next == '\'' && !ctx.pending_redirect/*why?*/)
 				goto insert_empty_quoted_str_marker;
-
 			ch = next;
 			while (1) {
 				if (ch == EOF) {
@@ -5688,73 +5681,38 @@ static struct pipe *parse_stream(char **pstring,
 		}
 
 		next = '\0';
-		if (ch != '\n')
-			next = i_peek_and_eat_bkslash_nl(input);
+		is_blank = 1;
+		/* If '\n', must not peek (peeking past '\n' provokes line editing) */
+		if (ch == '\n')
+			/* had to test for '\n' anyway, can also jump directly to newline handling */
+			goto ch_is_newline;
+		next = i_peek_and_eat_bkslash_nl(input);
 
-		is_special = "{}<>&|();#" /* special outside of "str" */
-				"$\"" IF_HUSH_TICK("`") /* always special */
-				SPECIAL_VAR_SYMBOL_STR;
-#if defined(CMD_TEST2_SINGLEWORD_NOGLOB)
-		if (ctx.command->cmd_type == CMD_TEST2_SINGLEWORD_NOGLOB) {
-			/* In [[ ]], {}<>&|() are not special */
-			is_special += 8;
-		} else
-#endif
-		/* Are { and } special here? */
-		if (ctx.command->argv /* word [word]{... - non-special */
-		 || !IS_NULL_WORD(ctx.word)  /* word{... ""{... - non-special */
-		 || (next != ';'             /* }; - special */
-		    && next != ')'           /* }) - special */
-		    && next != '('           /* {( - special */
-		    && next != '&'           /* }& and }&& ... - special */
-		    && next != '|'           /* }|| ... - special */
-		    && !strchr(defifs, next) /* {word - non-special */
-		    )
-		) {
-			/* They are not special, skip "{}" */
-			is_special += 2;
-		}
-		is_special = strchr(is_special, ch);
-		is_blank = strchr(defifs, ch);
-
-		if (!is_special && !is_blank) { /* ordinary char */
- ordinary_char:
-			o_addQchr(&ctx.word, ch);
-			if ((ctx.is_assignment == MAYBE_ASSIGNMENT
-			    || ctx.is_assignment == WORD_IS_KEYWORD)
-			 && ch == '='
-			 && endofname(ctx.word.data)[0] == '='
-			) {
-				ctx.is_assignment = DEFINITELY_ASSIGNMENT;
-				debug_printf_parse("ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
-			}
-			continue;
-		}
-
+		is_blank = (ch == ' ' || ch == '\t');
 		if (is_blank) {
 #if ENABLE_HUSH_LINENO_VAR
-/* Case:
- * "while ...; do<whitespace><newline>
- *	cmd ..."
- * would think that "cmd" starts in <whitespace> -
+/* "while ...; do<whitespace><newline>
+ *     CMD"
+ * would think that CMD starts in <whitespace> -
  * i.e., at the previous line.
- * We need to skip all whitespace before newlines.
+ * Need to skip whitespace up to next newline (and eat it)
+ * or not-whitespace (and do not eat it).
  */
-			while (ch != '\n') {
+			do {
 				next = i_peek(input);
 				if (next != ' ' && next != '\t' && next != '\n')
 					break; /* next char is not ws */
 				ch = i_getch(input);
-			}
-			/* ch == last eaten whitespace char */
+			} while (ch != '\n');
 #endif
+ ch_is_newline:
 			if (done_word(&ctx))
 				goto parse_error_exitcode1;
 			if (ch == '\n') {
 				/* Is this a case when newline is simply ignored?
 				 * Some examples:
-				 * "cmd | <newline> cmd ..."
-				 * "case ... in <newline> word) ..."
+				 * "CMD | <newline> CMD ..."
+				 * "case ... in <newline> PATTERN) ..."
 				 */
 				if (IS_NULL_CMD(ctx.command)
 				 && IS_NULL_WORD(ctx.word)
@@ -5764,18 +5722,18 @@ static struct pipe *parse_stream(char **pstring,
 					 * Without check #1, interactive shell
 					 * ignores even bare <newline>,
 					 * and shows the continuation prompt:
-					 * ps1_prompt$ <enter>
+					 * ps1$ <enter>
 					 * ps2> _   <=== wrong, should be ps1
-					 * Without check #2, "cmd & <newline>"
+					 * Without check #2, "CMD & <newline>"
 					 * is similarly mistreated.
-					 * (BTW, this makes "cmd & cmd"
-					 * and "cmd && cmd" non-orthogonal.
+					 * (BTW, this makes "CMD & CMD"
+					 * and "CMD && CMD" non-orthogonal.
 					 * Really, ask yourself, why
-					 * "cmd && <newline>" doesn't start
-					 * cmd but waits for more input?
+					 * "CMD && <newline>" doesn't start
+					 * CMD but waits for more input?
 					 * The only reason is that it might be
-					 * a "cmd1 && <nl> cmd2 &" construct,
-					 * cmd1 may need to run in BG).
+					 * a "CMD1 && <nl> CMD2 &" construct:
+					 * CMD1 may need to run in BG).
 					 */
 					pi = ctx.list_head;
 					if (pi->num_cmds != 0       /* check #1 */
@@ -5797,11 +5755,51 @@ static struct pipe *parse_stream(char **pstring,
 				ch = ';';
 				/* note: if (is_blank) continue;
 				 * will still trigger for us */
+			} /* if ch == '\n */
+		} else {
+			const char *is_special;
+
+			is_special = "{}<>&|();#" /* special outside of "str" */
+				"$\"" IF_HUSH_TICK("`") /* always special */
+				SPECIAL_VAR_SYMBOL_STR;
+#if defined(CMD_TEST2_SINGLEWORD_NOGLOB)
+			if (ctx.command->cmd_type == CMD_TEST2_SINGLEWORD_NOGLOB) {
+				/* In [[ ]], {}<>&|() are not special */
+				is_special += 8;
+			} else
+#endif
+			/* Are { and } special here? */
+			if (ctx.command->argv /* WORD [WORD]{... - non-special */
+			 || !IS_NULL_WORD(ctx.word)  /* WORD{... ""{... - non-special */
+			 || (next != ';'             /* }; - special */
+			    && next != ')'           /* }) - special */
+			    && next != '('           /* {( - special */
+			    && next != '&'           /* }& and }&& ... - special */
+			    && next != '|'           /* }|| ... - special */
+			    && !strchr(defifs, next) /* {WORD - non-special */
+			    )
+			) {
+				/* They are not special, skip "{}" */
+				is_special += 2;
+			}
+			is_special = strchr(is_special, ch);
+			if (!is_special) { /* ordinary char */
+ ordinary_char:
+				o_addQchr(&ctx.word, ch);
+				if ((ctx.is_assignment == MAYBE_ASSIGNMENT
+				    || ctx.is_assignment == WORD_IS_KEYWORD)
+				 && ch == '='
+				 && endofname(ctx.word.data)[0] == '='
+				) {
+					ctx.is_assignment = DEFINITELY_ASSIGNMENT;
+					debug_printf_parse("ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
+				}
+				continue;
 			}
 		}
 
-		/* "cmd}" or "cmd }..." without semicolon or &:
-		 * } is an ordinary char in this case, even inside { cmd; }
+		/* "CMD}" or "CMD }..." without semicolon or &:
+		 * } is an ordinary char in this case, even inside { CMD; }
 		 * Pathological example: { ""}; } should run "}" command.
 		 */
 		if (ch == '}') {
@@ -5809,9 +5807,9 @@ static struct pipe *parse_stream(char **pstring,
 				/* word} or ""} */
 				goto ordinary_char;
 			}
-			if (!IS_NULL_CMD(ctx.command)) { /* cmd } */
-				/* Generally, there should be semicolon: "cmd; }"
-				 * However, bash allows to omit it if "cmd" is
+			if (!IS_NULL_CMD(ctx.command)) { /* CMD } */
+				/* Generally, there should be semicolon: "CMD; }"
+				 * However, bash allows to omit it if "CMD" is
 				 * a group. Examples:
 				 * { { echo 1; } }
 				 * {(echo 1)}
@@ -5823,8 +5821,8 @@ static struct pipe *parse_stream(char **pstring,
 					goto term_group;
 				goto ordinary_char;
 			}
-			if (!IS_NULL_PIPE(ctx.pipe)) /* cmd | } */
-				/* Can't be an end of {cmd}, skip the check */
+			if (!IS_NULL_PIPE(ctx.pipe)) /* CMD | } */
+				/* Can't be an end of {CMD}, skip the check */
 				goto skip_end_trigger;
 			/* else: } does terminate a group */
 		}
@@ -5876,7 +5874,7 @@ static struct pipe *parse_stream(char **pstring,
 			}
 		}
 
-		if (is_blank)
+		if (is_blank) /* space, tab or newline? */
 			continue;
 
 		/* Catch <, > before deciding whether this word is
@@ -5928,7 +5926,7 @@ static struct pipe *parse_stream(char **pstring,
 			continue; /* get next char */
 		case '#':
 			if (IS_NULL_WORD(ctx.word)) {
-				/* skip "#comment" */
+				/* skip "#COMMENT" */
 				/* note: we do not add it to &ctx.as_string */
 /* TODO: in bash:
  * comment inside $() goes to the next \n, even inside quoted string (!):
@@ -6068,7 +6066,7 @@ static struct pipe *parse_stream(char **pstring,
 				goto parse_error_exitcode1;
 #if ENABLE_HUSH_CASE
 			if (ctx.ctx_res_w == RES_MATCH)
-				break; /* we are in case's "word | word)" */
+				break; /* we are in case's "WORD | WORD)" */
 #endif
 			if (next == '|') { /* || */
 				ch = i_getch(input);
@@ -6095,10 +6093,10 @@ static struct pipe *parse_stream(char **pstring,
 			goto new_cmd;
 		case '(':
 #if ENABLE_HUSH_CASE
-			/* "case... in [(]word)..." - skip '(' */
+			/* "case... in [(]PATTERN)..." - skip '(' */
 			if (ctx.ctx_res_w == RES_MATCH
-			 && ctx.command->argv == NULL /* not (word|(... */
-			 && IS_NULL_WORD(ctx.word)    /* not word(... or ""(... */
+			 && ctx.command->argv == NULL /* not (PATTERN|(... */
+			 && IS_NULL_WORD(ctx.word)    /* not PATTERN(... or ""(... */
 			) {
 				continue; /* get next char */
 			}
@@ -6106,9 +6104,8 @@ static struct pipe *parse_stream(char **pstring,
 			/* fall through */
 		case '{': {
 			int n = parse_group(&ctx, input, ch);
-			if (n < 0) {
+			if (n < 0)
 				goto parse_error_exitcode1;
-			}
 			debug_printf_heredoc("parse_group done, needs heredocs:%d\n", n);
 			heredoc_cnt += n;
 			goto new_cmd;
@@ -6123,7 +6120,7 @@ static struct pipe *parse_stream(char **pstring,
 			}
 #endif
 		case '}':
-			/* proper use of this character is caught by end_trigger:
+			/* Proper use of this character is caught by end_trigger:
 			 * if we see {, we call parse_group(..., end_trigger='}')
 			 * and it will match } earlier (not here). */
 			G.last_exitcode = 2;
