@@ -2447,7 +2447,7 @@ static int set_local_var(char *str, unsigned flags)
 		if (cur->flg_read_only) {
 			bb_error_msg("%s: readonly variable", str);
 			free(str);
-//NOTE: in bash, assignment in "export READONLY_VAR=Z" fails, and sets $?=1,
+//NOTE: in bash, assignment in "export READONLY_VAR=Z" fails, and sets $? to 1,
 //but export per se succeeds (does put the var in env). We don't mimic that.
 			return -1;
 		}
@@ -2505,10 +2505,10 @@ static int set_local_var(char *str, unsigned flags)
 
 		/* Replace the value in the found "struct variable" */
 		if (cur->max_len != 0) {
-			if (cur->max_len >= strnlen(str, cur->max_len + 1)) {
-				/* This one is from startup env, reuse space */
-				debug_printf_env("reusing startup env for '%s'\n", str);
-				strcpy(cur->varstr, str);
+			/* This one is from startup env, try to reuse space */
+			int new_len = stpncpy(cur->varstr, str, cur->max_len + 1) - cur->varstr;
+			if (new_len <= cur->max_len) {
+				debug_printf_env("reused startup env for '%s'\n", str);
 				goto free_and_exp;
 			}
 			/* Can't reuse */
@@ -2525,7 +2525,7 @@ static int set_local_var(char *str, unsigned flags)
 		goto set_str_and_exp;
 	}
 
-	/* Not found or shadowed - create new variable struct */
+	/* Not found, or found but shadowed - create new variable struct */
 	debug_printf_env("%s: alloc new var '%s'/%u\n", __func__, str, local_lvl);
 	cur = xzalloc(sizeof(*cur));
 	cur->var_nest_level = local_lvl;
