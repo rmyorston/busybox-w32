@@ -392,6 +392,8 @@
 
 /* Build knobs */
 #define LEAK_HUNTING 0
+#define LEAK_PRINTF(...) fdprintf(__VA_ARGS__)
+//#define LEAK_PRINTF(...) do { if (ptr_to_globals && G.root_pid == getpid()) fdprintf(__VA_ARGS__); } while (0)
 #define BUILD_AS_NOMMU 0
 /* Enable/disable sanity checks. Ok to enable in production,
  * only adds a bit of bloat. Set to >1 to get non-production level verbosity.
@@ -930,6 +932,12 @@ struct globals {
 # define G_flag_return_in_progress 0
 #endif
 	smallint exiting; /* used to prevent EXIT trap recursion */
+#if !BB_MMU
+	smallint reexeced_on_NOMMU;
+# define G_reexeced_on_NOMMU (G.reexeced_on_NOMMU)
+#else
+# define G_reexeced_on_NOMMU 0
+#endif
 	/* These support $? */
 	smalluint last_exitcode;
 	smalluint expand_exitcode;
@@ -1352,30 +1360,67 @@ static void debug_print_strings(const char *prefix, char **vv)
 static void *xxmalloc(int lineno, size_t size)
 {
 	void *ptr = xmalloc((size + 0xff) & ~0xff);
-	fdprintf(2, "line %d: malloc %p\n", lineno, ptr);
+	LEAK_PRINTF(2, "line %d: malloc %p\n", lineno, ptr);
+	return ptr;
+}
+static void *xxzalloc(int lineno, size_t size)
+{
+	void *ptr = xzalloc((size + 0xff) & ~0xff);
+	LEAK_PRINTF(2, "line %d: zalloc %p\n", lineno, ptr);
 	return ptr;
 }
 static void *xxrealloc(int lineno, void *ptr, size_t size)
 {
+	char *p = ptr;
 	ptr = xrealloc(ptr, (size + 0xff) & ~0xff);
-	fdprintf(2, "line %d: realloc %p\n", lineno, ptr);
+	if (p != ptr)
+		LEAK_PRINTF(2, "line %d: realloc %p\n", lineno, ptr);
+	return ptr;
+}
+static void *xxrealloc_getcwd_or_warn(int lineno, char *ptr)
+{
+	char *p = ptr;
+	ptr = xrealloc_getcwd_or_warn(ptr);
+	if (p != ptr)
+		LEAK_PRINTF(2, "line %d: xrealloc_getcwd_or_warn %p\n", lineno, ptr);
 	return ptr;
 }
 static char *xxstrdup(int lineno, const char *str)
 {
 	char *ptr = xstrdup(str);
-	fdprintf(2, "line %d: strdup %p\n", lineno, ptr);
+	LEAK_PRINTF(2, "line %d: strdup %p\n", lineno, ptr);
+	return ptr;
+}
+static char *xxstrndup(int lineno, const char *str, size_t n)
+{
+	char *ptr = xstrndup(str, n);
+	LEAK_PRINTF(2, "line %d: strndup %p\n", lineno, ptr);
+	return ptr;
+}
+static char *xxasprintf(int lineno, const char *f, ...)
+{
+	char *ptr;
+	va_list args;
+	va_start(args, f);
+	if (vasprintf(&ptr, f, args) < 0)
+		bb_die_memory_exhausted();
+	va_end(args);
+	LEAK_PRINTF(2, "line %d: xasprintf %p\n", lineno, ptr);
 	return ptr;
 }
 static void xxfree(void *ptr)
 {
-	fdprintf(2, "free %p\n", ptr);
+	LEAK_PRINTF(2, "free %p\n", ptr);
 	free(ptr);
 }
-# define xmalloc(s)     xxmalloc(__LINE__, s)
-# define xrealloc(p, s) xxrealloc(__LINE__, p, s)
-# define xstrdup(s)     xxstrdup(__LINE__, s)
-# define free(p)        xxfree(p)
+# define xmalloc(s)        xxmalloc(__LINE__, s)
+# define xzalloc(s)        xxzalloc(__LINE__, s)
+# define xrealloc(p, s)    xxrealloc(__LINE__, p, s)
+# define xrealloc_getcwd_or_warn(p) xxrealloc_getcwd_or_warn(__LINE__, p)
+# define xstrdup(s)        xxstrdup(__LINE__, s)
+# define xstrndup(s, n)    xxstrndup(__LINE__, s, n)
+# define xasprintf(f, ...) xxasprintf(__LINE__, f, __VA_ARGS__)
+# define free(p)           xxfree(p)
 #endif
 
 /*
@@ -1929,7 +1974,7 @@ static void restore_G_args(save_arg_t *sv, char **argv)
  * "trap - SIGxxx":
  *    if sig is in special_sig_mask, set handler back to:
  *        record_pending_signo, or to IGN if it's a tty stop signal
- *    if sig is in fatal_sig_mask, set handler back to sigexit.
+ *    if sig is in fatal_sig_mask, set handler back to restore_ttypgrp_and_killsig_or__exit.
  *    else: set handler back to SIG_DFL
  * "trap 'cmd' SIGxxx":
  *    set handler to record_pending_signo.
@@ -2002,19 +2047,6 @@ static sighandler_t install_sighandler(int sig, sighandler_t handler)
 	return old_sa.sa_handler;
 }
 
-static void hush_exit(int exitcode) NORETURN;
-
-static void restore_ttypgrp_and__exit(void) NORETURN;
-static void restore_ttypgrp_and__exit(void)
-{
-	/* xfunc has failed! die die die */
-	/* no EXIT traps, this is an escape hatch! */
-	G.exiting = 1;
-	hush_exit(xfunc_error_retval);
-}
-
-#if ENABLE_HUSH_JOB
-
 /* Needed only on some libc:
  * It was observed that on exit(), fgetc'ed buffered data
  * gets "unwound" via lseek(fd, -NUM, SEEK_CUR).
@@ -2028,26 +2060,20 @@ static void restore_ttypgrp_and__exit(void)
  * and in `cmd` handling.
  * If set as die_func(), this makes xfunc_die() exit via _exit(), not exit():
  */
-static void fflush_and__exit(void) NORETURN;
-static void fflush_and__exit(void)
+static NORETURN void fflush_and__exit(void)
 {
 	fflush_all();
 	_exit(xfunc_error_retval);
 }
 
-/* After [v]fork, in child: do not restore tty pgrp on xfunc death */
-# define disable_restore_tty_pgrp_on_exit() (die_func = fflush_and__exit)
-/* After [v]fork, in parent: restore tty pgrp on xfunc death */
-# define enable_restore_tty_pgrp_on_exit()  (die_func = restore_ttypgrp_and__exit)
-
+#if ENABLE_HUSH_JOB
 /* Restores tty foreground process group, and exits.
  * May be called as signal handler for fatal signal
  * (will resend signal to itself, producing correct exit state)
  * or called directly with -EXITCODE.
  * We also call it if xfunc is exiting.
  */
-static void sigexit(int sig) NORETURN;
-static void sigexit(int sig)
+static NORETURN void restore_ttypgrp_and_killsig_or__exit(int sig)
 {
 	/* Careful: we can end up here after [v]fork. Do not restore
 	 * tty pgrp then, only top-level shell process does that */
@@ -2065,6 +2091,19 @@ static void sigexit(int sig)
 
 	kill_myself_with_sig(sig); /* does not return */
 }
+
+static NORETURN void fflush_restore_ttypgrp_and__exit(void)
+{
+	/* xfunc has failed! die die die */
+	fflush_all();
+	restore_ttypgrp_and_killsig_or__exit(- xfunc_error_retval);
+}
+
+/* After [v]fork, in child: do not restore tty pgrp on xfunc death */
+# define disable_restore_tty_pgrp_on_exit() (die_func = fflush_and__exit)
+/* After [v]fork, in parent: restore tty pgrp on xfunc death */
+# define enable_restore_tty_pgrp_on_exit()  (die_func = fflush_restore_ttypgrp_and__exit)
+
 #else
 
 # define disable_restore_tty_pgrp_on_exit() ((void)0)
@@ -2081,7 +2120,7 @@ static sighandler_t pick_sighandler(unsigned sig)
 #if ENABLE_HUSH_JOB
 		/* is sig fatal? */
 		if (G_fatal_sig_mask & sigmask)
-			handler = sigexit;
+			handler = restore_ttypgrp_and_killsig_or__exit;
 		else
 #endif
 		/* sig has special handling? */
@@ -2101,11 +2140,15 @@ static sighandler_t pick_sighandler(unsigned sig)
 
 static const char* FAST_FUNC get_local_var_value(const char *name);
 
-/* Restores tty foreground process group, and exits. */
-static void hush_exit(int exitcode)
+/* Self-explanatory.
+ * Restores tty foreground process group too.
+ */
+static NORETURN void save_history_run_exit_trap_and_exit(int exitcode)
 {
 #if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
-	if (G.line_input_state) {
+	if (G.line_input_state
+	 && getpid() == G.root_pid /* exits in subshells do not save history */
+	) {
 		const char *hp;
 # if ENABLE_FEATURE_SH_HISTFILESIZE
 // in bash:
@@ -2155,7 +2198,7 @@ static void hush_exit(int exitcode)
 
 	fflush_all();
 #if ENABLE_HUSH_JOB
-	sigexit(- (exitcode & 0xff));
+	restore_ttypgrp_and_killsig_or__exit(- (exitcode & 0xff));
 #else
 	_exit(exitcode);
 #endif
@@ -2240,7 +2283,7 @@ static int check_and_run_traps(void)
 				}
 			}
 			/* this restores tty pgrp, then kills us with SIGHUP */
-			sigexit(SIGHUP);
+			restore_ttypgrp_and_killsig_or__exit(SIGHUP);
 		}
 #endif
 #if ENABLE_HUSH_FAST
@@ -7389,11 +7432,6 @@ static void switch_off_special_sigs(unsigned mask)
 }
 
 #if BB_MMU
-/* never called */
-void re_execute_shell(char ***to_free, const char *s,
-		char *g_argv0, char **g_argv,
-		char **builtin_argv) NORETURN;
-
 static void reset_traps_to_defaults(void)
 {
 	/* This function is always called in a child shell
@@ -7443,10 +7481,8 @@ static void reset_traps_to_defaults(void)
 
 #else /* !BB_MMU */
 
-static void re_execute_shell(char ***to_free, const char *s,
-		char *g_argv0, char **g_argv,
-		char **builtin_argv) NORETURN;
-static void re_execute_shell(char ***to_free, const char *s,
+static NORETURN void re_execute_shell(
+		char * *volatile * to_free, const char *s,
 		char *g_argv0, char **g_argv,
 		char **builtin_argv)
 {
@@ -7676,7 +7712,13 @@ static int generate_stream_from_string(const char *s, pid_t *pid_p)
 	pid_t pid;
 	int channel[2];
 # if !BB_MMU
-	char **to_free = NULL;
+	/* _volatile_ pointer to "char*".
+	 * Or else compiler can peek from inside re_execute_shell()
+	 * and see that this pointer is a local var (i.e. not globally visible),
+	 * and decide to optimize out the store to it. Yes,
+	 * it was seen in the wild.
+	 */
+	char * *volatile to_free = NULL;
 # endif
 
 	xpipe(channel);
@@ -7823,7 +7865,7 @@ static void setup_heredoc(struct redir_struct *redir)
 	const char *heredoc = redir->rd_filename;
 	char *expanded;
 #if !BB_MMU
-	char **to_free;
+	char * *volatile to_free;
 #endif
 
 	expanded = NULL;
@@ -8298,7 +8340,7 @@ static const struct built_in_command *find_builtin(const char *name)
 	return find_builtin_helper(name, bltins2, &bltins2[ARRAY_SIZE(bltins2)]);
 }
 
-#if ENABLE_HUSH_JOB && ENABLE_FEATURE_TAB_COMPLETION
+#if ENABLE_HUSH_INTERACTIVE && ENABLE_FEATURE_TAB_COMPLETION
 static const char * FAST_FUNC hush_command_name(int i)
 {
 	if (/*i >= 0 && */ i < ARRAY_SIZE(bltins1)) {
@@ -8464,10 +8506,8 @@ static void unset_func(const char *name)
 #define exec_function(to_free, funcp, argv) \
 	exec_function(funcp, argv)
 # endif
-static void exec_function(char ***to_free,
-		const struct function *funcp,
-		char **argv) NORETURN;
-static void exec_function(char ***to_free,
+static NORETURN void exec_function(
+		char * *volatile *to_free,
 		const struct function *funcp,
 		char **argv)
 {
@@ -8563,10 +8603,8 @@ static int run_function(const struct function *funcp, char **argv)
 #define exec_builtin(to_free, x, argv) \
 	exec_builtin(to_free, argv)
 #endif
-static void exec_builtin(char ***to_free,
-		const struct built_in_command *x,
-		char **argv) NORETURN;
-static void exec_builtin(char ***to_free,
+static NORETURN void exec_builtin(
+		char * *volatile *to_free,
 		const struct built_in_command *x,
 		char **argv)
 {
@@ -8589,8 +8627,7 @@ static void exec_builtin(char ***to_free,
 #endif
 }
 
-static void execvp_or_die(char **argv) NORETURN;
-static void execvp_or_die(char **argv)
+static NORETURN void execvp_or_die(char **argv)
 {
 	int e;
 	debug_printf_exec("execing '%s'\n", argv[0]);
@@ -8711,10 +8748,8 @@ static void if_command_vV_print_and_exit(char opt_vV, char *cmd, const char *exp
  * The at_exit handlers apparently confuse the calling process,
  * in particular stdin handling. Not sure why? -- because of vfork! (vda)
  */
-static void pseudo_exec_argv(nommu_save_t *nommu_save,
-		char **argv, int assignment_cnt,
-		char **argv_expanded) NORETURN;
-static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
+static NORETURN NOINLINE void pseudo_exec_argv(
+		volatile nommu_save_t *nommu_save,
 		char **argv, int assignment_cnt,
 		char **argv_expanded)
 {
@@ -8740,7 +8775,8 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 #if BB_MMU
 	G.shadowed_vars_pp = NULL; /* "don't save, free them instead" */
 #else
-	G.shadowed_vars_pp = &nommu_save->old_vars;
+	/* cast away volatility */
+	G.shadowed_vars_pp = (struct variable **)&nommu_save->old_vars;
 	G.var_nest_level++;
 #endif
 	set_vars_and_save_old(new_env);
@@ -8867,10 +8903,8 @@ static NOINLINE void pseudo_exec_argv(nommu_save_t *nommu_save,
 
 /* Called after [v]fork() in run_pipe
  */
-static void pseudo_exec(nommu_save_t *nommu_save,
-		struct command *command,
-		char **argv_expanded) NORETURN;
-static void pseudo_exec(nommu_save_t *nommu_save,
+static NORETURN void pseudo_exec(
+		volatile nommu_save_t *nommu_save,
 		struct command *command,
 		char **argv_expanded)
 {
@@ -9755,8 +9789,7 @@ static NOINLINE int run_pipe(struct pipe *pi)
 
 			/* Stores to nommu_save list of env vars putenv'ed
 			 * (NOMMU, on MMU we don't need that) */
-			/* cast away volatility... */
-			pseudo_exec((nommu_save_t*) &nommu_save, command, argv_expanded);
+			pseudo_exec(&nommu_save, command, argv_expanded);
 			/* pseudo_exec() does not return */
 		}
 
@@ -10144,7 +10177,7 @@ static int run_list(struct pipe *pi)
 		if (rcode != 0 && G.o_opt[OPT_O_ERREXIT]) {
 			debug_printf_exec("ERREXIT:1 errexit_depth:%d\n", G.errexit_depth);
 			if (G.errexit_depth == 0)
-				hush_exit(rcode);
+				save_history_run_exit_trap_and_exit(rcode);
 		}
 		G.errexit_depth = sv_errexit_depth;
 
@@ -10218,6 +10251,53 @@ static int run_and_free_list(struct pipe *pi)
 /*
  * Initialization and main
  */
+#if ENABLE_HUSH_INTERACTIVE && ENABLE_FEATURE_EDITING
+static void init_line_editing(void)
+{
+	G.line_input_state = new_line_input_t(FOR_SHELL);
+# if ENABLE_FEATURE_TAB_COMPLETION
+	G.line_input_state->get_exe_name = hush_command_name;
+# endif
+# if EDITING_HAS_sh_get_var
+	G.line_input_state->sh_get_var = get_local_var_value;
+# endif
+# if ENABLE_HUSH_SAVEHISTORY && MAX_HISTORY > 0
+	{
+		const char *hp = get_local_var_value("HISTFILE");
+		if (!hp) {
+			hp = get_local_var_value("HOME");
+			if (hp) {
+				hp = concat_path_file(hp, ".hush_history");
+				/* Make HISTFILE set on exit (else history won't be saved) */
+				set_local_var_from_halves("HISTFILE", hp);
+			}
+		} else {
+			hp = xstrdup(hp);
+		}
+		if (hp) {
+			G.line_input_state->hist_file = hp;
+		}
+#  if ENABLE_FEATURE_SH_HISTFILESIZE
+		hp = get_local_var_value("HISTSIZE");
+		/* Using HISTFILESIZE above to limit max_history would be WRONG:
+		 * users may set HISTFILESIZE=0 in their profile scripts
+		 * to prevent _saving_ of history files, but still want to have
+		 * non-zero history limit for in-memory list.
+		 */
+// in bash, runtime history size is controlled by HISTSIZE (0=no history),
+// HISTFILESIZE controls on-disk history file size (in lines, 0=no history):
+		G.line_input_state->max_history = size_from_HISTFILESIZE(hp);
+// HISTFILESIZE: "The shell sets the default value to the value of HISTSIZE after reading any startup files."
+// HISTSIZE: "The shell sets the default value to 500 after reading any startup files."
+// (meaning: if the value wasn't set after startup files, the default value is set as described above)
+#  endif
+	}
+# endif
+}
+#else
+# define init_line_editing() ((void)0)
+#endif
+
 static void install_sighandlers(unsigned mask)
 {
 	sighandler_t old_handler;
@@ -10356,7 +10436,6 @@ static int set_mode(int state, char mode, const char *o_opt)
 int hush_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int hush_main(int argc, char **argv)
 {
-	pid_t cached_getpid;
 	enum {
 		OPT_login = (1 << 0),
 	};
@@ -10369,6 +10448,11 @@ int hush_main(int argc, char **argv)
 	struct variable *shell_ver;
 
 	INIT_G();
+#if ENABLE_HUSH_JOB
+	die_func = fflush_restore_ttypgrp_and__exit;
+#else
+	die_func = fflush_and__exit;
+#endif
 	if (EXIT_SUCCESS != 0) /* if EXIT_SUCCESS == 0, it is already done */
 		G.last_exitcode = EXIT_SUCCESS;
 #if !BB_MMU
@@ -10384,9 +10468,6 @@ int hush_main(int argc, char **argv)
 		_exit(0);
 	}
 	G.argv0_for_re_execing = argv[0];
-	if (G.argv0_for_re_execing[0] == '-')
-		/* reexeced hush should never be a login shell */
-		G.argv0_for_re_execing++;
 #endif
 #if ENABLE_HUSH_TRAP
 # if ENABLE_HUSH_FUNCTIONS
@@ -10399,9 +10480,8 @@ int hush_main(int argc, char **argv)
 	G.count_SIGCHLD++; /* ensure it is != G.handled_SIGCHLD */
 #endif
 
-	cached_getpid = getpid();   /* for tcsetpgrp() during init */
-	G.root_pid = cached_getpid; /* for $PID  (NOMMU can override via -$HEXPID:HEXPPID:...) */
-	G.root_ppid = getppid();    /* for $PPID (NOMMU can override) */
+	G.root_pid = getpid();   /* for $PID  (NOMMU can override via -$HEXPID:HEXPPID:...) */
+	G.root_ppid = getppid(); /* for $PPID (NOMMU can override) */
 
 	/* Deal with HUSH_VERSION */
 	debug_printf_env("unsetenv '%s'\n", "HUSH_VERSION");
@@ -10484,26 +10564,23 @@ int hush_main(int argc, char **argv)
 	 * PS4='+ '
 	 */
 
+	/* Shell is non-interactive at first. We need to call
+	 * install_special_sighandlers() if we are going to execute "sh <script>",
+	 * "sh -c <cmds>" or login shell's /etc/profile and friends.
+	 * If we later decide that we are interactive, we run
+	 * install_special_sighandlers() in order to intercept more signals.
+	 */
+	install_special_sighandlers();
+
 #if NUM_SCRIPTS > 0
 	if (argc < 0) {
 		char *script = get_script_content(-argc - 1);
 		G.global_argv = argv;
 		G.global_argc = string_array_len(argv);
-		//install_special_sighandlers(); - needed?
 		parse_and_run_string(script);
 		goto final_return;
 	}
 #endif
-
-	/* Initialize some more globals to non-zero values */
-	die_func = restore_ttypgrp_and__exit;
-
-	/* Shell is non-interactive at first. We need to call
-	 * install_special_sighandlers() if we are going to execute "sh <script>",
-	 * "sh -c <cmds>" or login shell's /etc/profile and friends.
-	 * If we later decide that we are interactive, we run install_special_sighandlers()
-	 * in order to intercept (more) signals.
-	 */
 
 	/* Parse options */
 	/* http://www.opengroup.org/onlinepubs/9699919799/utilities/sh.html */
@@ -10568,6 +10645,7 @@ int hush_main(int argc, char **argv)
 		case '$': {
 			unsigned long long empty_trap_mask;
 
+			G.reexeced_on_NOMMU = 1;
 			G.root_pid = bb_strtou(optarg, &optarg, 16);
 			optarg++;
 			G.root_ppid = bb_strtou(optarg, &optarg, 16);
@@ -10581,7 +10659,6 @@ int hush_main(int argc, char **argv)
 			empty_trap_mask = bb_strtoull(optarg, &optarg, 16);
 			if (empty_trap_mask != 0) {
 				IF_HUSH_TRAP(int sig;)
-				install_special_sighandlers();
 # if ENABLE_HUSH_TRAP
 				G_traps = xzalloc(sizeof(G_traps[0]) * NSIG);
 				for (sig = 1; sig < NSIG; sig++) {
@@ -10647,7 +10724,9 @@ int hush_main(int argc, char **argv)
 	G.global_argv[0] = argv[0];
 
 	/* If we are login shell... */
-	if (flags & OPT_login) {
+	if (!G_reexeced_on_NOMMU /* reexeced hush should never be a login shell */
+	 && (flags & OPT_login)
+	) {
 		const char *hp = NULL;
 		HFILE *input;
 
@@ -10655,7 +10734,6 @@ int hush_main(int argc, char **argv)
 		input = hfopen("/etc/profile");
  run_profile:
 		if (input != NULL) {
-			install_special_sighandlers();
 			parse_and_run_file(input);
 			hfclose(input);
 		}
@@ -10691,8 +10769,6 @@ int hush_main(int argc, char **argv)
 		 * sh ... -c 'builtin' BARGV... ""
 		 */
 		char *script;
-
-		install_special_sighandlers();
 
 		G.global_argc--;
 		G.global_argv++;
@@ -10744,7 +10820,6 @@ int hush_main(int argc, char **argv)
 			bb_simple_perror_msg_and_die(G.global_argv[0]);
 		}
 		xfunc_error_retval = 1;
-		install_special_sighandlers();
 		parse_and_run_file(input);
 #if ENABLE_FEATURE_CLEAN_UP
 		hfclose(input);
@@ -10760,138 +10835,86 @@ int hush_main(int argc, char **argv)
 
 	/* A shell is interactive if the '-i' flag was given,
 	 * or if all of the following conditions are met:
-	 *    no -c command
-	 *    no arguments remaining or the -s flag given
+	 *    not -c 'CMD'
+	 *    not running a script (no arguments remaining, or -s flag given)
 	 *    standard input is a terminal
 	 *    standard output is a terminal
 	 * Refer to Posix.2, the description of the 'sh' utility.
 	 */
-#if ENABLE_HUSH_JOB
-	if (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)) {
-		G_saved_tty_pgrp = tcgetpgrp(STDIN_FILENO);
-		debug_printf("saved_tty_pgrp:%d\n", G_saved_tty_pgrp);
-		if (G_saved_tty_pgrp < 0)
-			G_saved_tty_pgrp = 0;
-
-		/* try to dup stdin to high fd#, >= 255 */
+#if ENABLE_HUSH_INTERACTIVE
+	if (!G_reexeced_on_NOMMU
+	 && isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)
+	) {
+		/* Try to dup stdin to high fd#, >= 255 */
 		G_interactive_fd = dup_CLOEXEC(STDIN_FILENO, 254);
 		if (G_interactive_fd < 0) {
-			/* try to dup to any fd */
-			G_interactive_fd = dup_CLOEXEC(STDIN_FILENO, -1);
-			if (G_interactive_fd < 0) {
-				/* give up */
-				G_interactive_fd = 0;
-				G_saved_tty_pgrp = 0;
-			}
-		}
-	}
-	debug_printf("interactive_fd:%d\n", G_interactive_fd);
-	if (G_interactive_fd) {
-		if (G_saved_tty_pgrp) {
-			/* If we were run as 'hush &', sleep until we are
-			 * in the foreground (tty pgrp == our pgrp).
-			 * If we get started under a job aware app (like bash),
-			 * make sure we are now in charge so we don't fight over
-			 * who gets the foreground */
-			while (1) {
-				pid_t shell_pgrp = getpgrp();
-				G_saved_tty_pgrp = tcgetpgrp(G_interactive_fd);
-				if (G_saved_tty_pgrp == shell_pgrp)
-					break;
-				/* send TTIN to ourself (should stop us) */
-				kill(- shell_pgrp, SIGTTIN);
-			}
-		}
-
-		/* Install more signal handlers */
-		install_special_sighandlers();
-
-		if (G_saved_tty_pgrp) {
-			/* Set other signals to restore saved_tty_pgrp */
-			install_fatal_sighandlers();
-			/* Put ourselves in our own process group
-			 * (bash, too, does this only if ctty is available) */
-			bb_setpgrp(); /* is the same as setpgid(our_pid, our_pid); */
-			/* Grab control of the terminal */
-			tcsetpgrp(G_interactive_fd, cached_getpid);
-		}
-		enable_restore_tty_pgrp_on_exit();
-
-# if ENABLE_FEATURE_EDITING
-		G.line_input_state = new_line_input_t(FOR_SHELL);
-#  if ENABLE_FEATURE_TAB_COMPLETION
-		G.line_input_state->get_exe_name = hush_command_name;
-#  endif
-#  if EDITING_HAS_sh_get_var
-		G.line_input_state->sh_get_var = get_local_var_value;
-#  endif
-# endif
-# if ENABLE_HUSH_SAVEHISTORY && MAX_HISTORY > 0
-		{
-			const char *hp = get_local_var_value("HISTFILE");
-			if (!hp) {
-				hp = get_local_var_value("HOME");
-				if (hp) {
-					hp = concat_path_file(hp, ".hush_history");
-					/* Make HISTFILE set on exit (else history won't be saved) */
-					set_local_var_from_halves("HISTFILE", hp);
-				}
-			} else {
-				hp = xstrdup(hp);
-			}
-			if (hp) {
-				G.line_input_state->hist_file = hp;
-			}
-#  if ENABLE_FEATURE_SH_HISTFILESIZE
-			hp = get_local_var_value("HISTSIZE");
-			/* Using HISTFILESIZE above to limit max_history would be WRONG:
-			 * users may set HISTFILESIZE=0 in their profile scripts
-			 * to prevent _saving_ of history files, but still want to have
-			 * non-zero history limit for in-memory list.
-			 */
-// in bash, runtime history size is controlled by HISTSIZE (0=no history),
-// HISTFILESIZE controls on-disk history file size (in lines, 0=no history):
-			G.line_input_state->max_history = size_from_HISTFILESIZE(hp);
-// HISTFILESIZE: "The shell sets the default value to the value of HISTSIZE after reading any startup files."
-// HISTSIZE: "The shell sets the default value to 500 after reading any startup files."
-// (meaning: if the value wasn't set after startup files, the default value is set as described above)
-#  endif
-		}
-# endif
-	} else {
-		install_special_sighandlers();
-	}
-#elif ENABLE_HUSH_INTERACTIVE
-	/* No job control compiled in, only prompt/line editing */
-	if (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO)) {
-		G_interactive_fd = dup_CLOEXEC(STDIN_FILENO, 254);
-		if (G_interactive_fd < 0) {
-			/* try to dup to any fd */
+			/* Try to dup to any fd */
 			G_interactive_fd = dup_CLOEXEC(STDIN_FILENO, -1);
 			if (G_interactive_fd < 0)
-				/* give up */
+				/* Give up */
 				G_interactive_fd = 0;
 		}
-	}
-	install_special_sighandlers();
-#else
-	/* We have interactiveness code disabled */
-	install_special_sighandlers();
-#endif
-	/* bash:
-	 * if interactive but not a login shell, sources ~/.bashrc
-	 * (--norc turns this off, --rcfile <file> overrides)
-	 */
+		debug_printf("interactive_fd:%d\n", G_interactive_fd);
+		if (G_interactive_fd) {
+// TODO? bash:
+// if interactive but not a login shell, sources ~/.bashrc
+// (--norc turns this off, --rcfile <file> overrides)
+# if ENABLE_HUSH_JOB
+			/* Can we do job control? */
+			G_saved_tty_pgrp = tcgetpgrp(G_interactive_fd);
+			debug_printf("saved_tty_pgrp:%d\n", G_saved_tty_pgrp);
+			if (G_saved_tty_pgrp < 0)
+				G_saved_tty_pgrp = 0; /* no */
+			if (G_saved_tty_pgrp) {
+				/* If we were run as 'hush &', sleep until we are
+				 * in the foreground (tty pgrp == our pgrp).
+				 * If we get started under a job aware app (like bash),
+				 * make sure we are now in charge so we don't fight over
+				 * who gets the foreground */
+				while (1) {
+					pid_t shell_pgrp = getpgrp();
+					if (G_saved_tty_pgrp == shell_pgrp) {
+/* Often both pgrps here are set to our pid - but not always!
+ * Example: sh -c 'echo $$; hush; echo FIN'
+ * Here, the parent shell is not interactive, so it does NOT set up
+ * a separate process group for its children, and we (hush) initially
+ * run in parent's process group (until we set up our own a few lines down).
+ */
+						//bb_error_msg("process groups tty:%d hush:%d", G_saved_tty_pgrp, shell_pgrp);
+						break;
+					}
+					/* Send TTIN to ourself (should stop us) */
+					kill(- shell_pgrp, SIGTTIN);
+					G_saved_tty_pgrp = tcgetpgrp(G_interactive_fd);
+				}
+			}
+# endif
+			/* Install more signal handlers */
+			install_special_sighandlers();
+# if ENABLE_HUSH_JOB
+			if (G_saved_tty_pgrp) {
+				/* Set fatal signals to restore saved_tty_pgrp */
+				install_fatal_sighandlers();
+				/* (The if() is an optimization: can avoid two redundant syscalls) */
+				if (G_saved_tty_pgrp != G.root_pid) {
+					/* Put ourselves in our own process group
+					 * (bash, too, does this only if ctty is available) */
+					bb_setpgrp(); /* is the same as setpgid(our_pid, our_pid); */
+					/* Grab control of the terminal */
+					tcsetpgrp(G_interactive_fd, G.root_pid);
+				}
+			}
+# endif
+# if ENABLE_FEATURE_EDITING_FANCY_PROMPT
+			/* Set (but not export) PS1/2 unless already set */
+			if (!get_local_var_value("PS1"))
+				set_local_var_from_halves("PS1", "\\w \\$ ");
+			if (!get_local_var_value("PS2"))
+				set_local_var_from_halves("PS2", "> ");
+# endif
+			init_line_editing();
 
-	if (G_interactive_fd) {
-#if ENABLE_HUSH_INTERACTIVE && ENABLE_FEATURE_EDITING_FANCY_PROMPT
-		/* Set (but not export) PS1/2 unless already set */
-		if (!get_local_var_value("PS1"))
-			set_local_var_from_halves("PS1", "\\w \\$ ");
-		if (!get_local_var_value("PS2"))
-			set_local_var_from_halves("PS2", "> ");
-#endif
-		if (!ENABLE_FEATURE_SH_EXTRA_QUIET) {
+# if !ENABLE_FEATURE_SH_EXTRA_QUIET
 			/* note: ash and hush share this string */
 			printf("\n\n%s %s\n"
 				IF_HUSH_HELP("Enter 'help' for a list of built-in commands.\n")
@@ -10899,13 +10922,15 @@ int hush_main(int argc, char **argv)
 				bb_banner,
 				"hush - the humble shell"
 			);
-		}
-	}
+# endif
+		} /* if become interactive */
+	} /* if on tty */
+#endif /* if INTERACTIVE is allowed by build config */
 
 	parse_and_run_file(hfopen(NULL)); /* stdin */
 
  final_return:
-	hush_exit(G.last_exitcode);
+	save_history_run_exit_trap_and_exit(G.last_exitcode);
 }
 
 /*
@@ -11091,19 +11116,19 @@ static int FAST_FUNC builtin_exit(char **argv)
 	 * TODO: we can use G.exiting = -1 as indicator "last cmd was exit"
 	 */
 
-	/* note: EXIT trap is run by hush_exit */
+	/* note: EXIT trap is run by save_history_run_exit_trap_and_exit */
 	argv = skip_dash_dash(argv);
 	if (argv[0] == NULL) {
 #if ENABLE_HUSH_TRAP
 		if (G.pre_trap_exitcode >= 0) /* "exit" in trap uses $? from before the trap */
-			hush_exit(G.pre_trap_exitcode);
+			save_history_run_exit_trap_and_exit(G.pre_trap_exitcode);
 #endif
-		hush_exit(G.last_exitcode);
+		save_history_run_exit_trap_and_exit(G.last_exitcode);
 	}
 	/* mimic bash: exit 123abc == exit 255 + error msg */
 	xfunc_error_retval = 255;
 	/* bash: exit -2 == exit 254, no error msg */
-	hush_exit(xatoi(argv[0]) & 0xff);
+	save_history_run_exit_trap_and_exit(xatoi(argv[0]) & 0xff);
 }
 
 #if ENABLE_HUSH_TYPE

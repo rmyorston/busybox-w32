@@ -795,7 +795,7 @@ UNUSED_PARAM
 	return sp;
 }
 
-void FAST_FUNC read_cmdline(char *buf, int col, unsigned pid, const char *comm)
+int FAST_FUNC read_cmdline(char *buf, int col, unsigned pid, const char *comm)
 {
 	const char *str, *cmdline;
 
@@ -807,6 +807,7 @@ void FAST_FUNC read_cmdline(char *buf, int col, unsigned pid, const char *comm)
 	else
 		cmdline = comm;
 	safe_strncpy(buf, cmdline, col);
+	return 0;
 }
 
 /**

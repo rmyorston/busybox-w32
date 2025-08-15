@@ -1754,7 +1754,7 @@ void FAST_FUNC save_history(line_input_t *st)
 	FILE *fp;
 
 	/* bash compat: HISTFILE="" disables history saving */
-	if (!st || !st->hist_file || !state->hist_file[0])
+	if (!st || !st->hist_file || !st->hist_file[0])
 		return;
 	if (st->cnt_history <= st->cnt_history_in_file)
 		return; /* no new entries were added */

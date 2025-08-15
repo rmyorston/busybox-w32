@@ -1224,6 +1224,22 @@ char *bin2hex(char *dst, const char *src, int count) FAST_FUNC;
 /* Reverse */
 char* hex2bin(char *dst, const char *src, int count) FAST_FUNC;
 
+/* Returns strlen as a bonus */
+//size_t replace_char(char *s, char what, char with) FAST_FUNC;
+static inline size_t replace_char(char *str, char from, char to)
+{
+	char *p = str;
+	while (*p) {
+		if (*p == from)
+			*p = to;
+		p++;
+	}
+	return p - str;
+}
+
+extern const char c_escape_conv_str00[];
+#define c_escape_conv_str07 (c_escape_conv_str00+3)
+
 void FAST_FUNC xorbuf_3(void *dst, const void *src1, const void *src2, unsigned count);
 void FAST_FUNC xorbuf(void* buf, const void* mask, unsigned count);
 void FAST_FUNC xorbuf16_aligned_long(void* buf, const void* mask);
@@ -2225,33 +2241,6 @@ enum { COMM_LEN = 16 };
 # endif
 #endif
 
-struct smaprec {
-	unsigned long mapped_rw;
-	unsigned long mapped_ro;
-	unsigned long shared_clean;
-	unsigned long shared_dirty;
-	unsigned long private_clean;
-	unsigned long private_dirty;
-	unsigned long stack;
-	unsigned long smap_pss, smap_swap;
-	unsigned long smap_size;
-	// For mixed 32/64 userspace, 32-bit pmap still needs
-	// 64-bit field here to correctly show 64-bit processes:
-	unsigned long long smap_start;
-	// (strictly speaking, other fields need to be wider too,
-	// but they are in kbytes, not bytes, and they hold sizes,
-	// not start addresses, sizes tend to be less than 4 terabytes)
-	char smap_mode[5];
-	char *smap_name;
-};
-
-#if !ENABLE_PMAP
-#define procps_read_smaps(pid, total, cb, data) \
-	procps_read_smaps(pid, total)
-#endif
-int FAST_FUNC procps_read_smaps(pid_t pid, struct smaprec *total,
-		void (*cb)(struct smaprec *, void *), void *data);
-
 typedef struct procps_status_t {
 #if !ENABLE_PLATFORM_MINGW32
 	DIR *dir;
@@ -2287,7 +2276,13 @@ typedef struct procps_status_t {
 #endif
 	unsigned tty_major,tty_minor;
 #if ENABLE_FEATURE_TOPMEM
-	struct smaprec smaps;
+	unsigned long mapped_rw;
+	unsigned long mapped_ro;
+	unsigned long shared_clean;
+	unsigned long shared_dirty;
+	unsigned long private_clean;
+	unsigned long private_dirty;
+	unsigned long stack;
 #endif
 	char state[4];
 	/* basename of executable in exec(2), read from /proc/N/stat
@@ -2336,11 +2331,15 @@ void free_procps_scan(procps_status_t* sp) FAST_FUNC;
 procps_status_t* procps_scan(procps_status_t* sp, int flags) FAST_FUNC;
 /* Format cmdline (up to col chars) into char buf[size] */
 /* Puts [comm] if cmdline is empty (-> process is a kernel thread) */
-void read_cmdline(char *buf, int size, unsigned pid, const char *comm) FAST_FUNC;
+int read_cmdline(char *buf, int size, unsigned pid, const char *comm) FAST_FUNC;
 pid_t *find_pid_by_name(const char* procName) FAST_FUNC;
 pid_t *pidlist_reverse(pid_t *pidList) FAST_FUNC;
 int starts_with_cpu(const char *str) FAST_FUNC;
 unsigned get_cpu_count(void) FAST_FUNC;
+/* Some internals reused by pmap: */
+unsigned long FAST_FUNC fast_strtoul_10(char **endptr);
+unsigned long long FAST_FUNC fast_strtoull_16(char **endptr);
+char* FAST_FUNC skip_fields(char *str, int count);
 
 
 /* Use strict=1 if you process input from untrusted source:
@@ -2375,8 +2374,9 @@ enum {
 	MD5_OUTSIZE    = 16,
 	SHA1_OUTSIZE   = 20,
 	SHA256_OUTSIZE = 32,
+	SHA384_OUTSIZE = 48,
 	SHA512_OUTSIZE = 64,
-	SHA3_OUTSIZE   = 28,
+	//SHA3-224_OUTSIZE = 28,
 	/* size of input block */
 	SHA2_INSIZE     = 64,
 };
@@ -2390,6 +2390,7 @@ struct bcrypt_hash_ctx_t {
 typedef struct bcrypt_hash_ctx_t md5_ctx_t;
 typedef struct bcrypt_hash_ctx_t sha1_ctx_t;
 typedef struct bcrypt_hash_ctx_t sha256_ctx_t;
+typedef struct bcrypt_hash_ctx_t sha384_ctx_t;
 typedef struct bcrypt_hash_ctx_t sha512_ctx_t;
 typedef struct sha3_ctx_t {
 	uint64_t state[25];
@@ -2399,16 +2400,19 @@ typedef struct sha3_ctx_t {
 void md5_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
 void sha1_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
 void sha256_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
+void sha384_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
 void sha512_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
 void generic_hash(struct bcrypt_hash_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
 unsigned generic_end(struct bcrypt_hash_ctx_t *ctx, void *resbuf) FAST_FUNC;
 # define md5_hash generic_hash
 # define sha1_hash generic_hash
 # define sha256_hash generic_hash
+# define sha384_hash generic_hash
 # define sha512_hash generic_hash
 # define md5_end generic_end
 # define sha1_end generic_end
 # define sha256_end generic_end
+# define sha384_end generic_end
 # define sha512_end generic_end
 #else
 typedef struct md5_ctx_t {
@@ -2424,6 +2428,7 @@ typedef struct sha512_ctx_t {
 	uint64_t hash[8];
 	uint8_t wbuffer[128]; /* always correctly aligned for uint64_t */
 } sha512_ctx_t;
+typedef struct sha512_ctx_t sha384_ctx_t;
 typedef struct sha3_ctx_t {
 	uint64_t state[25];
 	unsigned bytes_queued;
@@ -2441,6 +2446,9 @@ void sha256_begin(sha256_ctx_t *ctx) FAST_FUNC;
 void sha512_begin(sha512_ctx_t *ctx) FAST_FUNC;
 void sha512_hash(sha512_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
 unsigned sha512_end(sha512_ctx_t *ctx, void *resbuf) FAST_FUNC;
+void sha384_begin(sha384_ctx_t *ctx) FAST_FUNC;
+#define sha384_hash sha512_hash
+unsigned sha384_end(sha384_ctx_t *ctx, void *resbuf) FAST_FUNC;
 #endif
 void sha3_begin(sha3_ctx_t *ctx) FAST_FUNC;
 void sha3_hash(sha3_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;

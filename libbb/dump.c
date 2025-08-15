@@ -514,37 +514,52 @@ static void bpad(PR *pr)
 		continue;
 }
 
-static const char conv_str[] ALIGN1 =
-	"\0"  "\\""0""\0"
-	"\007""\\""a""\0"
-	"\b"  "\\""b""\0"
-	"\f"  "\\""f""\0"
-	"\n"  "\\""n""\0"
-	"\r"  "\\""r""\0"
-	"\t"  "\\""t""\0"
-	"\v"  "\\""v""\0"
-	;
-
 static void conv_c(PR *pr, unsigned char *p)
 {
-	const char *str = conv_str;
+	const char *str;
+	unsigned char ch;
 
-	do {
-		if (*p == *str) {
-			++str;
-			goto strpr; /* map e.g. '\n' to "\\n" */
-		}
-		str += 4;
-	} while (*str);
+	ch = *p;
+	if (ch == 0 || (ch -= 6, (signed char)ch > 0 && ch <= 7)) {
+		/* map chars 0,7..13 to "\0","\{a,b,t,n,v,f,r}" */
+		str = c_escape_conv_str00 + 3 * ch;
+		goto strpr;
+	}
 
 	if (isprint_asciionly(*p)) {
 		*pr->cchar = 'c';
 		printf(pr->fmt, *p);
 	} else {
+#if defined(__i386__) || defined(__x86_64__)
+		/* Abuse partial register operations */
+		uint32_t buf;
+		unsigned n = *p;
+		asm (           //00000000 00000000 00000000 aabbbccc
+"\n		shll $10,%%eax" //00000000 000000aa bbbccc00 00000000
+"\n		shrw $5,%%ax"   //00000000 000000aa 00000bbb ccc00000
+"\n		shrb $5,%%al"   //00000000 000000aa 00000bbb 00000ccc
+"\n		shll $8,%%eax"  //000000aa 00000bbb 00000ccc 00000000
+"\n		bswapl %%eax"   //00000000 00000ccc 00000bbb 000000aa
+"\n		addl $0x303030,%%eax"
+"\n"		: "=a" (n)
+		: "0" (n)
+		);
+		buf = n;
+		str = (void*)&buf;
+#elif 1
 		char buf[4];
 		/* gcc-8.0.1 needs lots of casts to shut up */
 		sprintf(buf, "%03o", (unsigned)(uint8_t)*p);
 		str = buf;
+#else // use faster version? +20 bytes of code relative to sprintf() method
+		char buf[4];
+		buf[3] = '\0';
+		ch = *p;
+		buf[2] = '0' + (ch & 7); ch >>= 3;
+		buf[1] = '0' + (ch & 7); ch >>= 3;
+		buf[0] = '0' + ch;
+		str = buf;
+#endif
  strpr:
 		*pr->cchar = 's';
 		printf(pr->fmt, str);

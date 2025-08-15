@@ -530,6 +530,7 @@ vgetopt32(char **argv, const char *applet_opts, const char *applet_long_options,
 	 * "fake" short options, like this one:
 	 * wget $'-\203' "Test: test" http://kernel.org/
 	 * (supposed to act as --header, but doesn't) */
+ next_opt:
 #if ENABLE_LONG_OPTS
 	while ((c = getopt_long(argc, argv, applet_opts,
 			long_options, NULL)) != -1) {
@@ -544,8 +545,16 @@ vgetopt32(char **argv, const char *applet_opts, const char *applet_long_options,
 			 * but we construct long opts so that flag
 			 * is always NULL (see above) */
 			if (on_off->opt_char == '\0' /* && c != '\0' */) {
-				/* c is probably '?' - "bad option" */
-				goto error;
+				/* We reached the end of complementary[] and did not find -c */
+				if (c == '?') /* getopt says: "bad option, or option has no required argument" */
+					goto error;
+				/* if there were options beyond 32 bits (example: ls),
+				 * they got no complementary[] slot, and no result bit.
+				 * IOW: they must be "accept but ignore" options.
+				 * For them, we end up here.
+				 */
+				//bb_error_msg("ignored option '%c', skipping", c);
+				goto next_opt;
 			}
 		}
 		if (flags & on_off->incongruously)

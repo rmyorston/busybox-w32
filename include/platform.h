@@ -208,7 +208,7 @@
 #elif defined(BYTE_ORDER) && BYTE_ORDER == LITTLE_ENDIAN
 # define BB_BIG_ENDIAN 0
 # define BB_LITTLE_ENDIAN 1
-#elif defined(__386__)
+#elif defined(__i386__)
 # define BB_BIG_ENDIAN 0
 # define BB_LITTLE_ENDIAN 1
 #else
