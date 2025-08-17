@@ -5963,7 +5963,6 @@ static struct pipe *parse_stream(char **pstring,
 			 * "case ... in <newline> PATTERN) ..."
 			 */
 			if (IS_NULL_CMD(ctx.command)
-			 && IS_NULL_WORD(ctx.word)
 			 && heredoc_cnt == 0
 			) {
 				/* This newline can be ignored. But...
