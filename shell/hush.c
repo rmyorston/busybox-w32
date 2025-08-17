@@ -205,6 +205,13 @@
 //config:	help
 //config:	Enable support for shell functions. +800 bytes.
 //config:
+//config:config HUSH_FUNCTION_KEYWORD
+//config:	bool "Support function keyword"
+//config:	default y
+//config:	depends on HUSH_FUNCTIONS
+//config:	help
+//config:	Support "function FUNCNAME { CMD; }" syntax.
+//config:
 //config:config HUSH_LOCAL
 //config:	bool "local builtin"
 //config:	default y
@@ -671,7 +678,9 @@ struct command {
 # define CMD_SINGLEWORD_NOGLOB 3
 #endif
 #if ENABLE_HUSH_FUNCTIONS
-# define CMD_FUNCTION_KWORD 4
+# if ENABLE_HUSH_FUNCTION_KEYWORD
+#  define CMD_FUNCTION_KWORD 4
+# endif
 # define CMD_FUNCDEF 5
 #endif
 
@@ -710,7 +719,7 @@ struct command {
 /* Is there anything in this command at all? */
 #define IS_NULL_CMD(cmd) \
 	(!(cmd)->group && !(cmd)->argv && !(cmd)->redirects \
-		/* maybe? IF_HUSH_FUNCTIONS(&& !(cmd)->cmd_type) */ \
+		/* maybe? IF_HUSH_FUNCTION_KEYWORD(&& !(cmd)->cmd_type) */ \
 	)
 
 struct pipe {
@@ -4200,7 +4209,7 @@ static void initialize_context(struct parse_context *ctx)
  */
 #if HAS_KEYWORDS
 struct reserved_combo {
-	char literal[ENABLE_HUSH_FUNCTIONS ? 9 : 6];
+	char literal[ENABLE_HUSH_FUNCTION_KEYWORD ? 9 : 6];
 	unsigned char res;
 	unsigned char assignment_flag;
 	uint32_t flag;
@@ -4235,7 +4244,7 @@ enum {
  * FLAG_START means the word must start a new compound list.
  */
 static const struct reserved_combo reserved_list[] ALIGN4 = {
-# if ENABLE_HUSH_FUNCTIONS
+# if ENABLE_HUSH_FUNCTION_KEYWORD
 	{ "function", RES_NONE, NOT_ASSIGNMENT, 0 },
 # endif
 # if ENABLE_HUSH_IF
@@ -4294,7 +4303,7 @@ static const struct reserved_combo* reserved_word(struct parse_context *ctx)
 	} else
 # endif
 	if (r->flag == 0) { /* 'function' or '!' */
-# if ENABLE_HUSH_FUNCTIONS
+# if ENABLE_HUSH_FUNCTION_KEYWORD
 		if (r == &reserved_list[0]) {
 			ctx->command->cmd_type = CMD_FUNCTION_KWORD;
 			return r;
@@ -4922,7 +4931,9 @@ static int parse_group(struct parse_context *ctx,
 	debug_printf_parse("parse_group entered\n");
 #if ENABLE_HUSH_FUNCTIONS
 	if ((ch == '('
+# if ENABLE_HUSH_FUNCTION_KEYWORD
 	    || command->cmd_type == CMD_FUNCTION_KWORD /* "function WORD" */
+# endif
 	    )
 	 && !ctx->word.has_quoted_part
 	) {
@@ -5964,7 +5975,7 @@ static struct pipe *parse_stream(char **pstring,
 #endif
 			if (done_word(&ctx))
 				goto parse_error_exitcode1;
-#if ENABLE_HUSH_FUNCTIONS
+#if ENABLE_HUSH_FUNCTION_KEYWORD
 			if (ctx.command->cmd_type == CMD_FUNCTION_KWORD
 			 && ctx.command->argv /* "function WORD" */
 			)
@@ -6018,7 +6029,7 @@ static struct pipe *parse_stream(char **pstring,
 					continue; /* ignore newline */
 				}
 			}
-#if ENABLE_HUSH_FUNCTIONS
+#if ENABLE_HUSH_FUNCTION_KEYWORD
 			if (ctx.command->cmd_type == CMD_FUNCTION_KWORD) {
 				if (!ctx.command->argv) {
 					/* Testcase: sh -c $'function\n' */
@@ -6134,7 +6145,7 @@ static struct pipe *parse_stream(char **pstring,
 #endif
 			if (done_word(&ctx))
 				goto parse_error_exitcode1;
-#if ENABLE_HUSH_FUNCTIONS
+#if ENABLE_HUSH_FUNCTION_KEYWORD
 			if (ctx.command->cmd_type == CMD_FUNCTION_KWORD) {
 				/* Testcase: sh -c '(function)' */
 				syntax_error("expected funcdef");
@@ -6333,7 +6344,7 @@ static struct pipe *parse_stream(char **pstring,
 #endif
 			if (done_word(&ctx))
 				goto parse_error_exitcode1;
-#if ENABLE_HUSH_FUNCTIONS
+#if ENABLE_HUSH_FUNCTION_KEYWORD
 			if (ctx.command->cmd_type == CMD_FUNCTION_KWORD) {
 				/* Testcase: sh -c '{ function; }'; sh -c '{ function f; }' */
 				syntax_error("expected funcdef");
@@ -6451,7 +6462,7 @@ static struct pipe *parse_stream(char **pstring,
 		case '{': {
 			int n;
  /* "function WORD" -> */
- parse_group:
+ IF_HUSH_FUNCTION_KEYWORD(parse_group:)
 			/* Try to parse as { CMDS; } or (CMDS) */
 			n = parse_group(&ctx, input, ch);
 			if (n < 0)
@@ -6507,7 +6518,7 @@ static struct pipe *parse_stream(char **pstring,
 
 	if (done_word(&ctx))
 		goto parse_error_exitcode1;
-#if ENABLE_HUSH_FUNCTIONS
+#if ENABLE_HUSH_FUNCTION_KEYWORD
 	if (ctx.command->cmd_type == CMD_FUNCTION_KWORD) {
 		/* Testcase: sh -c 'function'; sh -c 'function f' */
 		syntax_error("expected funcdef");
