@@ -1182,7 +1182,7 @@ char *winansi_fgets(char *s, int size, FILE *stream)
 /* Ensure that isatty(fd) returns 0 for the NUL device */
 int mingw_isatty(int fd)
 {
-	int result = _isatty(fd);
+	int result = _isatty(fd) != 0;
 
 	if (result) {
 		HANDLE handle = (HANDLE) _get_osfhandle(fd);
