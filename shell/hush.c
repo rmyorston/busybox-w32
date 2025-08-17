@@ -44,7 +44,6 @@
  *      make complex ${var%...} constructs support optional
  *      make here documents optional
  *      special variables (done: PWD, PPID, RANDOM)
- *      follow IFS rules more precisely, including update semantics
  *      tilde expansion
  *      "command" missing features:
  *          command -p CMD: run CMD using default $PATH
@@ -52,14 +51,13 @@
  *          command BLTIN: disables special-ness (e.g. errors do not abort)
  *          command -V CMD1 CMD2 CMD3 (multiple args) (not in standard)
  *      builtins mandated by standards we don't support:
- *          [un]alias, fc:
  *          fc -l[nr] [BEG] [END]: list range of commands in history
  *          fc [-e EDITOR] [BEG] [END]: edit/rerun range of commands
  *          fc -s [PAT=REP] [CMD]: rerun CMD, replacing PAT with REP
  *
  * Bash compat TODO:
  *      redirection of stdout+stderr: &> and >&
- *      reserved words: function select
+ *      reserved words: select
  *      advanced test: [[ ]]
  *      process substitution: <(list) and >(list)
  *      let EXPR [EXPR...]
@@ -673,7 +671,8 @@ struct command {
 # define CMD_SINGLEWORD_NOGLOB 3
 #endif
 #if ENABLE_HUSH_FUNCTIONS
-# define CMD_FUNCDEF 4
+# define CMD_FUNCTION_KWORD 4
+# define CMD_FUNCDEF 5
 #endif
 
 	smalluint cmd_exitcode;
@@ -710,7 +709,9 @@ struct command {
 };
 /* Is there anything in this command at all? */
 #define IS_NULL_CMD(cmd) \
-	(!(cmd)->group && !(cmd)->argv && !(cmd)->redirects)
+	(!(cmd)->group && !(cmd)->argv && !(cmd)->redirects \
+		/* maybe? IF_HUSH_FUNCTIONS(&& !(cmd)->cmd_type) */ \
+	)
 
 struct pipe {
 	struct pipe *next;
@@ -4196,7 +4197,7 @@ static void initialize_context(struct parse_context *ctx)
  */
 #if HAS_KEYWORDS
 struct reserved_combo {
-	char literal[6];
+	char literal[ENABLE_HUSH_FUNCTIONS ? 9 : 6];
 	unsigned char res;
 	unsigned char assignment_flag;
 	uint32_t flag;
@@ -4225,39 +4226,42 @@ enum {
 	FLAG_START = (1 << RES_XXXX ),
 };
 
-static const struct reserved_combo* match_reserved_word(o_string *word)
-{
-	/* Mostly a list of accepted follow-up reserved words.
-	 * FLAG_END means we are done with the sequence, and are ready
-	 * to turn the compound list into a command.
-	 * FLAG_START means the word must start a new compound list.
-	 */
-	static const struct reserved_combo reserved_list[] ALIGN4 = {
+/* Mostly a list of accepted follow-up reserved words.
+ * FLAG_END means we are done with the sequence, and are ready
+ * to turn the compound list into a command.
+ * FLAG_START means the word must start a new compound list.
+ */
+static const struct reserved_combo reserved_list[] ALIGN4 = {
+# if ENABLE_HUSH_FUNCTIONS
+	{ "function", RES_NONE, NOT_ASSIGNMENT, 0 },
+# endif
 # if ENABLE_HUSH_IF
-		{ "!",     RES_NONE,  NOT_ASSIGNMENT  , 0 },
-		{ "if",    RES_IF,    MAYBE_ASSIGNMENT, FLAG_THEN | FLAG_START },
-		{ "then",  RES_THEN,  MAYBE_ASSIGNMENT, FLAG_ELIF | FLAG_ELSE | FLAG_FI },
-		{ "elif",  RES_ELIF,  MAYBE_ASSIGNMENT, FLAG_THEN },
-		{ "else",  RES_ELSE,  MAYBE_ASSIGNMENT, FLAG_FI   },
-		{ "fi",    RES_FI,    NOT_ASSIGNMENT  , FLAG_END  },
+	{ "!",     RES_NONE,  NOT_ASSIGNMENT  , 0 },
+	{ "if",    RES_IF,    MAYBE_ASSIGNMENT, FLAG_THEN | FLAG_START },
+	{ "then",  RES_THEN,  MAYBE_ASSIGNMENT, FLAG_ELIF | FLAG_ELSE | FLAG_FI },
+	{ "elif",  RES_ELIF,  MAYBE_ASSIGNMENT, FLAG_THEN },
+	{ "else",  RES_ELSE,  MAYBE_ASSIGNMENT, FLAG_FI   },
+	{ "fi",    RES_FI,    NOT_ASSIGNMENT  , FLAG_END  },
 # endif
 # if ENABLE_HUSH_LOOPS
-		{ "for",   RES_FOR,   NOT_ASSIGNMENT  , FLAG_IN | FLAG_DO | FLAG_START },
-		{ "while", RES_WHILE, MAYBE_ASSIGNMENT, FLAG_DO | FLAG_START },
-		{ "until", RES_UNTIL, MAYBE_ASSIGNMENT, FLAG_DO | FLAG_START },
-		{ "in",    RES_IN,    NOT_ASSIGNMENT  , FLAG_DO   },
-		{ "do",    RES_DO,    MAYBE_ASSIGNMENT, FLAG_DONE },
-		{ "done",  RES_DONE,  NOT_ASSIGNMENT  , FLAG_END  },
+	{ "for",   RES_FOR,   NOT_ASSIGNMENT  , FLAG_IN | FLAG_DO | FLAG_START },
+	{ "while", RES_WHILE, MAYBE_ASSIGNMENT, FLAG_DO | FLAG_START },
+	{ "until", RES_UNTIL, MAYBE_ASSIGNMENT, FLAG_DO | FLAG_START },
+	{ "in",    RES_IN,    NOT_ASSIGNMENT  , FLAG_DO   },
+	{ "do",    RES_DO,    MAYBE_ASSIGNMENT, FLAG_DONE },
+	{ "done",  RES_DONE,  NOT_ASSIGNMENT  , FLAG_END  },
 # endif
 # if ENABLE_HUSH_CASE
-		{ "case",  RES_CASE,  NOT_ASSIGNMENT  , FLAG_MATCH | FLAG_START },
-		{ "esac",  RES_ESAC,  NOT_ASSIGNMENT  , FLAG_END  },
+	{ "case",  RES_CASE,  NOT_ASSIGNMENT  , FLAG_MATCH | FLAG_START },
+	{ "esac",  RES_ESAC,  NOT_ASSIGNMENT  , FLAG_END  },
 # endif
-	};
+};
+static const struct reserved_combo* match_reserved_word(const char *word)
+{
 	const struct reserved_combo *r;
 
 	for (r = reserved_list; r < reserved_list + ARRAY_SIZE(reserved_list); r++) {
-		if (strcmp(word->data, r->literal) == 0)
+		if (strcmp(word, r->literal) == 0)
 			return r;
 	}
 	return NULL;
@@ -4275,7 +4279,7 @@ static const struct reserved_combo* reserved_word(struct parse_context *ctx)
 
 	if (ctx->word.has_quoted_part)
 		return 0;
-	r = match_reserved_word(&ctx->word);
+	r = match_reserved_word(ctx->word.data);
 	if (!r)
 		return r; /* NULL */
 
@@ -4286,7 +4290,13 @@ static const struct reserved_combo* reserved_word(struct parse_context *ctx)
 		r = &reserved_match;
 	} else
 # endif
-	if (r->flag == 0) { /* '!' */
+	if (r->flag == 0) { /* 'function' or '!' */
+# if ENABLE_HUSH_FUNCTIONS
+		if (r == &reserved_list[0]) {
+			ctx->command->cmd_type = CMD_FUNCTION_KWORD;
+			return r;
+		}
+# endif
 		if (ctx->pipe->cmds != ctx->command /* bash disallows: nice | ! cat */
 		/* || ctx->pipe->pi_inverted - bash used to disallow "! ! true" bash 5.2.15 allows it */
 		) {
@@ -4908,25 +4918,34 @@ static int parse_group(struct parse_context *ctx,
 
 	debug_printf_parse("parse_group entered\n");
 #if ENABLE_HUSH_FUNCTIONS
-	if (ch == '(' && !ctx->word.has_quoted_part) {
+	if ((ch == '('
+	    || command->cmd_type == CMD_FUNCTION_KWORD /* "function WORD" */
+	    )
+	 && !ctx->word.has_quoted_part
+	) {
 		if (ctx->word.length)
 			if (done_word(ctx))
 				return -1;
 		if (!command->argv)
 			goto skip; /* (... */
 		if (command->argv[1]) { /* word word ... (... */
-			syntax_error_unexpected_ch('(');
+			if (ch == '(')
+				syntax_error_unexpected_ch('(');
+			else
+				syntax_error("expected funcdef");
 			return -1;
 		}
-		/* it is "word(..." or "word (..." */
-		do
-			ch = i_getch(input);
-		while (ch == ' ' || ch == '\t');
-		if (ch != ')') {
-			syntax_error_unexpected_ch(ch);
-			return -1;
+		if (ch == '(') {
+			/* it is "word(..." or "word (..." */
+			do
+				ch = i_getch(input);
+			while (ch == ' ' || ch == '\t');
+			if (ch != ')') {
+				syntax_error_unexpected_ch(ch);
+				return -1;
+			}
+			nommu_addchr(&ctx->as_string, ch);
 		}
-		nommu_addchr(&ctx->as_string, ch);
 		do
 			ch = i_getch(input);
 		while (ch == ' ' || ch == '\t' || ch == '\n');
@@ -5942,6 +5961,12 @@ static struct pipe *parse_stream(char **pstring,
 #endif
 			if (done_word(&ctx))
 				goto parse_error_exitcode1;
+#if ENABLE_HUSH_FUNCTIONS
+			if (ctx.command->cmd_type == CMD_FUNCTION_KWORD
+			 && ctx.command->argv /* "function WORD" */
+			)
+				 goto parse_group;
+#endif
 			continue;  /* get next char */
 		}
 
@@ -5990,6 +6015,17 @@ static struct pipe *parse_stream(char **pstring,
 					continue; /* ignore newline */
 				}
 			}
+#if ENABLE_HUSH_FUNCTIONS
+			if (ctx.command->cmd_type == CMD_FUNCTION_KWORD) {
+				if (!ctx.command->argv) {
+					/* Testcase: sh -c $'function\n' */
+					syntax_error("expected funcdef");
+					goto parse_error_exitcode1;
+				}
+				/* "function WORD" */
+				goto parse_group;
+			}
+#endif
 			/* Treat newline as a command separator */
 			done_pipe(&ctx, PIPE_SEQ);
 			debug_printf_heredoc("heredoc_cnt:%d\n", heredoc_cnt);
@@ -6095,6 +6131,13 @@ static struct pipe *parse_stream(char **pstring,
 #endif
 			if (done_word(&ctx))
 				goto parse_error_exitcode1;
+#if ENABLE_HUSH_FUNCTIONS
+			if (ctx.command->cmd_type == CMD_FUNCTION_KWORD) {
+				/* Testcase: sh -c '(function)' */
+				syntax_error("expected funcdef");
+				goto parse_error_exitcode1;
+			}
+#endif
 			if (done_pipe(&ctx, PIPE_SEQ)) {
 				/* Testcase: sh -c 'date|;not_reached' */
 				syntax_error_unterm_ch('|');
@@ -6287,6 +6330,13 @@ static struct pipe *parse_stream(char **pstring,
 #endif
 			if (done_word(&ctx))
 				goto parse_error_exitcode1;
+#if ENABLE_HUSH_FUNCTIONS
+			if (ctx.command->cmd_type == CMD_FUNCTION_KWORD) {
+				/* Testcase: sh -c '{ function; }'; sh -c '{ function f; }' */
+				syntax_error("expected funcdef");
+				goto parse_error_exitcode1;
+			}
+#endif
 			done_pipe(&ctx, PIPE_SEQ);
 #if ENABLE_HUSH_CASE
 			if (ctx.ctx_res_w == RES_CASE_BODY
@@ -6396,8 +6446,11 @@ static struct pipe *parse_stream(char **pstring,
 #endif
 			/* fall through */
 		case '{': {
+			int n;
+ /* "function WORD" -> */
+ parse_group:
 			/* Try to parse as { CMDS; } or (CMDS) */
-			int n = parse_group(&ctx, input, ch);
+			n = parse_group(&ctx, input, ch);
 			if (n < 0)
 				goto parse_error_exitcode1;
 			debug_printf_heredoc("parse_group done, needs heredocs:%d\n", n);
@@ -6451,6 +6504,13 @@ static struct pipe *parse_stream(char **pstring,
 
 	if (done_word(&ctx))
 		goto parse_error_exitcode1;
+#if ENABLE_HUSH_FUNCTIONS
+	if (ctx.command->cmd_type == CMD_FUNCTION_KWORD) {
+		/* Testcase: sh -c 'function'; sh -c 'function f' */
+		syntax_error("expected funcdef");
+		goto parse_error_exitcode1;
+	}
+#endif
 	o_free_and_set_NULL(&ctx.word);
 	if (done_pipe(&ctx, PIPE_SEQ)) {
 		/* Testcase: sh -c 'date |' */
