@@ -943,6 +943,7 @@ struct globals {
 #endif
 	/* set by signal handler if SIGINT is received _and_ its trap is not set */
 	smallint flag_SIGINT;
+	smallint flag_startup_done;
 #if ENABLE_HUSH_LOOPS
 	smallint flag_break_continue;
 #endif
@@ -1479,7 +1480,9 @@ static void xxfree(void *ptr)
 
 static void die_if_script(void)
 {
-	if (!G_interactive_fd) {
+	if (G.flag_startup_done /* when not yet set, allows "hush -l" to not die on errors in /etc/profile */
+	 && !G_interactive_fd
+	) {
 		if (G.last_exitcode) /* sometines it's 2, not 1 (bash compat) */
 			xfunc_error_retval = G.last_exitcode;
 		xfunc_die();
@@ -10970,11 +10973,9 @@ int hush_main(int argc, char **argv)
 # endif
 	G.pre_trap_exitcode = -1;
 #endif
-
 #if ENABLE_HUSH_FAST
 	G.count_SIGCHLD++; /* ensure it is != G.handled_SIGCHLD */
 #endif
-
 	G.root_pid = getpid();   /* for $PID  (NOMMU can override via -$HEXPID:HEXPPID:...) */
 	G.root_ppid = getppid(); /* for $PPID (NOMMU can override) */
 
@@ -11250,6 +11251,10 @@ int hush_main(int argc, char **argv)
 			}
 		}
 	}
+	/* "hush -l" doesn't die in startup scripts, but after -l is processed,
+	 * it can die if scripts. Set the flag to achieve this behavior.
+	 */
+	G.flag_startup_done = 1;
 
 	/* -c takes effect *after* -l */
 	if (G.opt_c) {
