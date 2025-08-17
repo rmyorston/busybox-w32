@@ -2937,14 +2937,29 @@ static void i_prepend_to_alias_buffer(struct in_str *i, char *prepend, char ch)
 	}
 	i->saved_ibuf = i->p;
 	i->p = i->albuf = xasprintf("%s%c", prepend, ch);
+	//bb_error_msg("albuf'%s'", i->albuf);
 }
 static void i_free_alias_buffer(struct in_str *i)
 {
 	if (i->saved_ibuf) {
-		/* We are here if there was an alias expansion and it has ended just now */
+		/* We are here if alias expansion has ended just now */
 		free(i->albuf);
 		i->p = i->saved_ibuf;
 		i->saved_ibuf = NULL;
+/* We re-enable aliases only if expansion has finished, not on command boundaries.
+ * Example:
+ * alias a="nice&&a"
+ * a;a
+ * This should run "nice" and then "can't execute 'a': No such file or directory",
+ * then should run "nice" again and then "can't execute 'a': No such file or directory" again
+ * because the second "a" in alias definition must not expand (to prevent infinite expansion),
+ * but the "a" after ; must expand (there is no danger of infinite expansion).
+ * alias a="nice&&nice"
+ * a;a&&a
+ * should execute "nice" six times.
+ */
+		debug_printf_parse("end of alias\n");
+		enable_all_aliases();
 	}
 }
 #else
@@ -3015,6 +3030,16 @@ static int i_peek(struct in_str *i)
 
 	if (i->p) {
 		/* string-based in_str, or line editing buffer, or alias buffer */
+#if ENABLE_HUSH_ALIAS
+		if (*i->p == '\0' && i->saved_ibuf) {
+			/* corner case: "an_alias&&..." expansion will have
+			 * i->p = "<alias_expansion>&", i->saved_ibuf = "&..."
+			 * and at the end of it, we must not return NUL,
+			 * this would logically split && into & & during parsing.
+			 */
+			return (unsigned char)*i->saved_ibuf;
+		}
+#endif
 		return (unsigned char)*i->p;
 	}
 
@@ -6273,8 +6298,6 @@ static struct pipe *parse_stream(char **pstring,
 				ctx.ctx_res_w = RES_MATCH; /* "we are in PATTERN)" */
 			}
 #endif
- finished_cmd_reenable_aliases:
-			enable_all_aliases(); /* try: { an_alias; an_alias; } */
  finished_cmd:
 			/* We just finished a cmd. New one may start
 			 * with an assignment */
@@ -6282,6 +6305,14 @@ static struct pipe *parse_stream(char **pstring,
 			debug_printf_parse("ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
 			continue; /* get next char */
 		case '&':
+#if ENABLE_HUSH_ALIAS
+			/* Check for alias expansion (only for first word of command) */
+			if (G_interactive_fd && !ctx.command->argv) {
+				alias = word_matches_alias(&ctx);
+				if (alias)
+					goto add_to_albuf_and_get_next_char;
+			}
+#endif
 			if (done_word(&ctx))
 				goto parse_error_exitcode1;
 			if (ctx.pipe->num_cmds == 0 && IS_NULL_CMD(ctx.command)) {
@@ -6305,7 +6336,7 @@ static struct pipe *parse_stream(char **pstring,
 					goto parse_error_exitcode1;
 				}
 			}
-			goto finished_cmd_reenable_aliases; /* try: an_alias &[&] an_alias */
+			goto finished_cmd;
 		case '|':
 #if ENABLE_HUSH_CASE
 			if (ctx.ctx_res_w == RES_MATCH) {
@@ -6319,6 +6350,14 @@ static struct pipe *parse_stream(char **pstring,
 				if (done_word(&ctx))
 					goto parse_error_exitcode1;
 				continue; /* get next char */
+			}
+#endif
+#if ENABLE_HUSH_ALIAS
+			/* Check for alias expansion (only for first word of command) */
+			if (G_interactive_fd && !ctx.command->argv) {
+				alias = word_matches_alias(&ctx);
+				if (alias)
+					goto add_to_albuf_and_get_next_char;
 			}
 #endif
 			if (done_word(&ctx))
@@ -6345,7 +6384,7 @@ static struct pipe *parse_stream(char **pstring,
 				}
 				done_command(&ctx);
 			}
-			goto finished_cmd_reenable_aliases; /* try: an_alias |[|] an_alias */
+			goto finished_cmd;
 		case '(':
 #if ENABLE_HUSH_CASE
 			/* "case... in (PATTERNS)..."? */
@@ -6364,7 +6403,7 @@ static struct pipe *parse_stream(char **pstring,
 				goto parse_error_exitcode1;
 			debug_printf_heredoc("parse_group done, needs heredocs:%d\n", n);
 			heredoc_cnt += n;
-			goto finished_cmd_reenable_aliases;
+			goto finished_cmd;
 		}
 		case ')':
 #if ENABLE_HUSH_CASE
