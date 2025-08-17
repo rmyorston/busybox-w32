@@ -194,6 +194,13 @@
 //config:	help
 //config:	Enable case ... esac statement. +400 bytes.
 //config:
+//config:config HUSH_ALIAS
+//config:	bool "Support aliases"
+//config:	default y
+//config:	depends on SHELL_HUSH
+//config:	help
+//config:	Enable aliases.
+//config:
 //config:config HUSH_FUNCTIONS
 //config:	bool "Support funcname() { commands; } syntax"
 //config:	default y
@@ -591,6 +598,11 @@ typedef struct HFILE {
 
 typedef struct in_str {
 	const char *p;
+#if ENABLE_HUSH_ALIAS
+	/* During alias expansion, p is saved in saved_ibuf, and replaced by alias expansion */
+	const char *saved_ibuf;
+	char *albuf; /* malloced */
+#endif
 	int peek_buf[2];
 	int last_char;
 	HFILE *file;
@@ -802,6 +814,14 @@ struct function {
 };
 #endif
 
+#if ENABLE_HUSH_ALIAS
+struct alias {
+	struct alias *next;
+	char *str;
+	smallint dont_recurse;
+};
+#endif
+
 /* set -/+o OPT support. (TODO: make it optional)
  * bash supports the following opts:
  * allexport       off
@@ -983,6 +1003,9 @@ struct globals {
 # endif
 	struct function *top_func;
 #endif
+#if ENABLE_HUSH_ALIAS
+	struct alias *top_alias;
+#endif
 	/* Signal and trap handling */
 #if ENABLE_HUSH_FAST
 	unsigned count_SIGCHLD;
@@ -1085,6 +1108,10 @@ static int builtin_jobs(char **argv) FAST_FUNC;
 #if ENABLE_HUSH_GETOPTS
 static int builtin_getopts(char **argv) FAST_FUNC;
 #endif
+#if ENABLE_HUSH_ALIAS
+static int builtin_alias(char **argv) FAST_FUNC;
+static int builtin_unalias(char **argv) FAST_FUNC;
+#endif
 #if ENABLE_HUSH_HELP
 static int builtin_help(char **argv) FAST_FUNC;
 #endif
@@ -1162,6 +1189,9 @@ struct built_in_command {
 static const struct built_in_command bltins1[] ALIGN_PTR = {
 	BLTIN("."        , builtin_source  , "Run commands in file"),
 	BLTIN(":"        , builtin_true    , NULL),
+#if ENABLE_HUSH_ALIAS
+	BLTIN("alias"    , builtin_alias   , "Define or display aliases"),
+#endif
 #if ENABLE_HUSH_JOB
 	BLTIN("bg"       , builtin_fg_bg   , "Resume job in background"),
 #endif
@@ -1213,7 +1243,7 @@ static const struct built_in_command bltins1[] ALIGN_PTR = {
 	BLTIN("return"   , builtin_return  , "Return from function"),
 #endif
 #if ENABLE_HUSH_SET
-	BLTIN("set"      , builtin_set     , "Set positional parameters"),
+	BLTIN("set"      , builtin_set     , "Set options or positional parameters"),
 #endif
 	BLTIN("shift"    , builtin_shift   , "Shift positional parameters"),
 #if BASH_SOURCE
@@ -1223,7 +1253,7 @@ static const struct built_in_command bltins1[] ALIGN_PTR = {
 	BLTIN("times"    , builtin_times   , NULL),
 #endif
 #if ENABLE_HUSH_TRAP
-	BLTIN("trap"     , builtin_trap    , "Trap signals"),
+	BLTIN("trap"     , builtin_trap    , "Define or display signal handlers"),
 #endif
 	BLTIN("true"     , builtin_true    , NULL),
 #if ENABLE_HUSH_TYPE
@@ -1234,6 +1264,9 @@ static const struct built_in_command bltins1[] ALIGN_PTR = {
 #endif
 #if ENABLE_HUSH_UMASK
 	BLTIN("umask"    , builtin_umask   , "Set file creation mask"),
+#endif
+#if ENABLE_HUSH_ALIAS
+	BLTIN("unalias"  , builtin_unalias , "Delete aliases"),
 #endif
 #if ENABLE_HUSH_UNSET
 	BLTIN("unset"    , builtin_unset   , "Unset variables"),
@@ -1674,6 +1707,21 @@ static int xdup_CLOEXEC_and_close(int fd, int avoid_fd)
 	close(fd);
 	return newfd;
 }
+
+#if ENABLE_HUSH_ALIAS
+static void enable_all_aliases(void)
+{
+	if (G_interactive_fd) {
+		struct alias *alias = G.top_alias;
+		while (alias) {
+			alias->dont_recurse = 0;
+			alias = alias->next;
+		}
+	}
+}
+#else
+#define enable_all_aliases() ((void)0)
+#endif
 
 /*
  * Manipulating HFILEs
@@ -2867,17 +2915,56 @@ static ALWAYS_INLINE int i_getch_interactive(struct in_str *i)
 }
 #endif  /* !INTERACTIVE */
 
+#if ENABLE_HUSH_ALIAS
+static ALWAYS_INLINE int i_has_alias_buffer(struct in_str *i)
+{
+	return i->saved_ibuf && i->p && *i->p;
+}
+static void i_prepend_to_alias_buffer(struct in_str *i, char *prepend, char ch)
+{
+	if (i->saved_ibuf) {
+		size_t ofs = i->p - i->albuf;
+		char *old = i->albuf;
+		i->albuf = xasprintf("%s%c%s", prepend, ch, old);
+		i->p = i->albuf + ofs;
+		free(old);
+		return;
+	}
+	i->saved_ibuf = i->p;
+	i->p = i->albuf = xasprintf("%s%c", prepend, ch);
+}
+static void i_free_alias_buffer(struct in_str *i)
+{
+	if (i->saved_ibuf) {
+		/* We are here if there was an alias expansion and it has ended just now */
+		free(i->albuf);
+		i->p = i->saved_ibuf;
+		i->saved_ibuf = NULL;
+	}
+}
+#else
+# define i_has_alias_buffer(i)  0
+# define i_free_alias_buffer(i) ((void)0)
+#endif
+
 static int i_getch(struct in_str *i)
 {
 	int ch;
 
+ IF_HUSH_ALIAS(again:)
 	if (i->p) {
-		/* string-based in_str, or line editing buffer */
+		/* string-based in_str, or line editing buffer, or alias buffer */
 		ch = (unsigned char)*i->p;
 		if (ch != '\0') {
 			i->p++;
 			goto out;
 		}
+#if ENABLE_HUSH_ALIAS
+		if (i->saved_ibuf) {
+			i_free_alias_buffer(i);
+			goto again;
+		}
+#endif
 		/* If string-based in_str, end-of-string is EOF */
 		if (!i->file) {
 			debug_printf("i_getch: got EOF from string\n");
@@ -2912,57 +2999,48 @@ static int i_getch(struct in_str *i)
 	return ch;
 }
 
+/* Called often, has optimizations to make it faster:
+ * = May return NUL instead of EOF.
+ *   It's ok because use cases are "we got '&', peek nexh ch and see whether it's '&'"
+ * = Must not be called after '\n' (it would cause unexpected line editing prompt).
+ */
 static int i_peek(struct in_str *i)
 {
 	int ch;
 
-	if (!i->file) {
-		/* string-based in_str */
-		/* Doesn't report EOF on NUL. None of the callers care. */
+	if (i->p) {
+		/* string-based in_str, or line editing buffer, or alias buffer */
 		return (unsigned char)*i->p;
 	}
 
-	/* FILE-based in_str */
+	/* Now we know it is a file-based in_str. */
 
-#if ENABLE_FEATURE_EDITING && ENABLE_HUSH_INTERACTIVE
-	/* This can be stdin, check line editing char[] buffer */
-	if (i->p && *i->p != '\0')
-		return (unsigned char)*i->p;
-#endif
 	/* peek_buf[] is an int array, not char. Can contain EOF. */
 	ch = i->peek_buf[0];
-	if (ch != 0)
-		return ch;
-
-	/* Need to get a new char */
-	ch = i_getch_interactive(i);
-	debug_printf("file_peek: got '%c' %d\n", ch, ch);
-
-	/* Save it by either rolling back line editing buffer, or in i->peek_buf[0] */
-#if ENABLE_FEATURE_EDITING && ENABLE_HUSH_INTERACTIVE
-	if (i->p) {
-		i->p -= 1;
-		return ch;
+	if (ch == 0) {
+		/* We did not read it yet, get it now */
+		do ch = hfgetc(i->file); while (ch == '\0');
+		i->peek_buf[0] = ch;
 	}
-#endif
-	i->peek_buf[0] = ch;
-	/*i->peek_buf[1] = 0; - already is */
+
+	debug_printf("file_peek: got '%c' %d\n", ch, ch);
 	return ch;
 }
 
-/* Only ever called if i_peek() was called, and did not return EOF.
- * IOW: we know the previous peek saw an ordinary char, not EOF, not NUL,
- * not end-of-line. Therefore we never need to read a new editing line here.
+/* Called if i_peek() was called, and saw an ordinary char
+ * (not EOF, not NUL, not end-of-line).
+ * Therefore we never need to read a new editing line here.
  */
 static int i_peek2(struct in_str *i)
 {
 	int ch;
 
-	/* There are two cases when i->p[] buffer exists.
+	/* There are three cases when i->p[] buffer exists.
+	 * (0) alias expansion in progress.
 	 * (1) it's a string in_str.
 	 * (2) It's a file, and we have a saved line editing buffer.
-	 * In both cases, we know that i->p[0] exists and not NUL, and
-	 * the peek2 result is in i->p[1].
+	 * In all cases, we know that i->p[0] exists and not NUL.
+	 * The peek2 result is in i->p[1].
 	 */
 	if (i->p)
 		return (unsigned char)i->p[1];
@@ -4423,6 +4501,7 @@ static int done_word(struct parse_context *ctx)
 		ctx->is_assignment = MAYBE_ASSIGNMENT;
 	}
 	debug_printf_parse("ctx->is_assignment='%s'\n", assignment_flag[ctx->is_assignment]);
+
 	command->argv = add_string_to_strings(command->argv, xstrdup(ctx->word.data));
 	debug_print_strings("word appended to argv", command->argv);
 
@@ -4488,7 +4567,7 @@ static int parse_redir_right_fd(o_string *as_string, struct in_str *input)
 	}
 	d = 0;
 	ok = 0;
-	while (ch != EOF && isdigit(ch)) {
+	while (/*ch != EOF &&*/ isdigit(ch)) {
 		d = d*10 + (ch-'0');
 		ok = 1;
 		ch = i_getch(input);
@@ -5563,6 +5642,111 @@ static int encode_string(o_string *as_string,
 	goto again;
 }
 
+#if ENABLE_HUSH_ALIAS
+static char* end_of_alias_name(const char *name)
+{
+	while (*name) {
+		if (!isalnum(*name)
+// Uncommented chars are allowed in alias names.
+// Commented out with // are disallowed in bash: space, "$&'();<=>\`|
+// Commented out with //bb are allowed in bash, but disallowed in hush: !#*-/?[]{}~
+// (do you really want alias named '?' to be allowed?)
+//		 && *name != ' '  // 20
+//bb		 && *name != '!'  // 21
+//		 && *name != '"'  // 22
+//bb		 && *name != '#'  // 23
+//		 && *name != '$'  // 24
+		 && *name != '%'  // 25
+//		 && *name != '&'  // 26
+//		 && *name != '\'' // 27
+//		 && *name != '('  // 28
+//		 && *name != ')'  // 29
+//bb		 && *name != '*'  // 2a
+		 && *name != '+'  // 2b
+		 && *name != ','  // 2c
+//bb		 && *name != '-'  // 2d bash _can_ set it: "alias -- -=STR" (and it lists it as "alias -- -='STR'" in "alias" output!)
+		 && *name != '.'  // 2e seen Fedora defining alias "l."
+//bb		 && *name != '/'  // 2f
+		 && *name != ':'  // 3a
+//		 && *name != ';'  // 3b
+//		 && *name != '<'  // 3c
+//		 && *name != '='  // 3d
+//		 && *name != '>'  // 3e
+//bb		 && *name != '?'  // 3f
+		 && *name != '@'  // 40
+//bb		 && *name != '['  // 5b
+//		 && *name != '\\' // 5c
+//bb		 && *name != ']'  // 5d
+		 && *name != '^'  // 5e
+		 && *name != '_'  // 5f
+//		 && *name != '`'  // 60
+//bb		 && *name != '{'  // 7b
+//		 && *name != '|'  // 7c
+//bb		 && *name != '}'  // 7d
+//bb		 && *name != '~'  // 7e
+		) {
+			break; /* disallowed char, stop */
+		}
+		name++;
+	}
+	return (char*)name;
+}
+#define is_name(c)      ((c) == '_' || isalpha((unsigned char)(c)))
+#define is_in_name(c)   ((c) == '_' || isalnum((unsigned char)(c)))
+
+static struct alias **find_alias_slot(const char *name, const char *eq)
+{
+	unsigned len;
+	struct alias *alias;
+	struct alias **aliaspp;
+
+	len = eq - name;
+	aliaspp = &G.top_alias;
+	while ((alias = *aliaspp) != NULL) {
+		//bb_error_msg("alias->str'%s' name'%.*s'", alias->str, len, name);
+		if (strncmp(name, alias->str, len) == 0
+		 && alias->str[len] == '='
+		) {
+			//bb_error_msg("match!");
+			break;
+		}
+		aliaspp = &alias->next;
+	}
+	return aliaspp;
+}
+
+static ALWAYS_INLINE const struct alias *find_alias(const char *name)
+{
+	//bb_error_msg("%s:%d: -> find_alias_slot", __func__, __LINE__);
+	return *find_alias_slot(name, strchr(name, '\0'));
+}
+
+static const struct alias *word_matches_alias(struct parse_context *ctx)
+{
+	if (ctx->ctx_res_w != RES_CASE_BODY
+/*	 && !ctx.command->argv - caller checked this */
+	 && !ctx->word.has_quoted_part
+	 && ctx->word.data[0] != '\0' /* optimization */
+	) {
+		const char *word = ctx->word.data;
+		const char *end = end_of_alias_name(word);
+		if (*end == '\0') {
+			struct alias *alias;
+
+			//bb_error_msg("%s:%d: -> find_alias_slot", __func__, __LINE__);
+			alias = *find_alias_slot(word, end);
+			if (alias && !alias->dont_recurse) {
+				alias->dont_recurse = 1;
+				o_reset_to_empty_unquoted(&ctx->word);
+				return alias;
+			}
+		}
+	}
+	return NULL;
+}
+
+#endif /* ENABLE_HUSH_ALIAS */
+
 /*
  * Scan input until EOF or end_trigger char.
  * Return a list of pipes to execute, or NULL on EOF
@@ -5576,6 +5760,7 @@ static struct pipe *parse_stream(char **pstring,
 		struct in_str *input,
 		int end_trigger)
 {
+	IF_HUSH_ALIAS(const struct alias *alias;)
 	struct pipe *pi;
 	struct parse_context ctx;
 	int heredoc_cnt;
@@ -5587,6 +5772,7 @@ static struct pipe *parse_stream(char **pstring,
 			end_trigger ? end_trigger : 'X');
 	debug_enter();
 
+	enable_all_aliases();
 	initialize_context(&ctx);
 
 	/* If very first arg is "" or '', ctx.word.data may end up NULL.
@@ -5695,6 +5881,18 @@ static struct pipe *parse_stream(char **pstring,
 		}
 
 		if (ch == ' ' || ch == '\t') {
+#if ENABLE_HUSH_ALIAS
+			/* Check for alias expansion (only for first word of command) */
+			if (G_interactive_fd && !ctx.command->argv) {
+				alias = word_matches_alias(&ctx);
+				if (alias) {
+ add_to_albuf_and_get_next_char:
+					i_prepend_to_alias_buffer(input, strchr(alias->str, '=') + 1, ch);
+					continue; /* get next char (which will be from albuf) */
+				}
+			}
+#endif
+
 #if ENABLE_HUSH_LINENO_VAR
 /* "while ...; do<whitespace><newline>
  *     CMD"
@@ -5719,6 +5917,14 @@ static struct pipe *parse_stream(char **pstring,
 
 		if (ch == '\n') {
  IF_HUSH_LINENO_VAR(ch_is_newline:)
+#if ENABLE_HUSH_ALIAS
+			/* Check for alias expansion (only for first word of command) */
+			if (G_interactive_fd && !ctx.command->argv) {
+				alias = word_matches_alias(&ctx);
+				if (alias)
+					goto add_to_albuf_and_get_next_char;
+			}
+#endif
 			if (done_word(&ctx))
 				goto parse_error_exitcode1;
 			/* Is this a case when newline is simply ignored?
@@ -5751,6 +5957,7 @@ static struct pipe *parse_stream(char **pstring,
 				if (pi->num_cmds != 0       /* check #1 */
 				 && pi->followup != PIPE_BG /* check #2 */
 				) {
+					debug_printf_parse("newline is treated as ws\n");
 					continue; /* ignore newline */
 				}
 			}
@@ -5763,7 +5970,7 @@ static struct pipe *parse_stream(char **pstring,
 					goto parse_error_exitcode1;
 			}
 			ctx.is_assignment = MAYBE_ASSIGNMENT;
-			debug_printf_parse("ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
+			debug_printf_parse("newline is treated as ';', ctx.is_assignment='%s'\n", assignment_flag[ctx.is_assignment]);
 			next = '\0';
 			ch = ';';
 		} else {
@@ -5838,7 +6045,10 @@ static struct pipe *parse_stream(char **pstring,
 		}
  term_group:
 		if (end_trigger && end_trigger == ch
-		 && (ch != ';' || heredoc_cnt == 0)
+		 && (ch != ';'
+		    /* it's ";". Can exit parse_stream() only if have no heredocs to consume, and alias buffer is empty */
+		    || (heredoc_cnt == 0 && !i_has_alias_buffer(input))
+		    )
 #if ENABLE_HUSH_CASE
 		 && (ch != ')'
 		    || ctx.ctx_res_w != RES_MATCH
@@ -5846,6 +6056,14 @@ static struct pipe *parse_stream(char **pstring,
 		    )
 #endif
 		) {
+#if ENABLE_HUSH_ALIAS
+			/* Check for alias expansion (only for first word of command) */
+			if (G_interactive_fd && !ctx.command->argv) {
+				alias = word_matches_alias(&ctx);
+				if (alias)
+					goto add_to_albuf_and_get_next_char;
+			}
+#endif
 			if (done_word(&ctx))
 				goto parse_error_exitcode1;
 			if (done_pipe(&ctx, PIPE_SEQ)) {
@@ -5881,6 +6099,7 @@ static struct pipe *parse_stream(char **pstring,
 						"end_trigger char found\n",
 						ctx.list_head);
 				debug_leave();
+				i_free_alias_buffer(input);
 				return ctx.list_head;
 			}
 		}
@@ -6029,6 +6248,14 @@ static struct pipe *parse_stream(char **pstring,
 		}
 #endif
 		case ';':
+#if ENABLE_HUSH_ALIAS
+			/* Check for alias expansion (only for first word of command) */
+			if (G_interactive_fd && !ctx.command->argv) {
+				alias = word_matches_alias(&ctx);
+				if (alias)
+					goto add_to_albuf_and_get_next_char;
+			}
+#endif
 			if (done_word(&ctx))
 				goto parse_error_exitcode1;
 			done_pipe(&ctx, PIPE_SEQ);
@@ -6041,6 +6268,8 @@ static struct pipe *parse_stream(char **pstring,
 				ctx.ctx_res_w = RES_MATCH; /* "we are in PATTERN)" */
 			}
 #endif
+ finished_cmd_reenable_aliases:
+			enable_all_aliases(); /* try: { an_alias; an_alias; } */
  finished_cmd:
 			/* We just finished a cmd. New one may start
 			 * with an assignment */
@@ -6071,7 +6300,7 @@ static struct pipe *parse_stream(char **pstring,
 					goto parse_error_exitcode1;
 				}
 			}
-			goto finished_cmd;
+			goto finished_cmd_reenable_aliases; /* try: an_alias &[&] an_alias */
 		case '|':
 #if ENABLE_HUSH_CASE
 			if (ctx.ctx_res_w == RES_MATCH) {
@@ -6111,7 +6340,7 @@ static struct pipe *parse_stream(char **pstring,
 				}
 				done_command(&ctx);
 			}
-			goto finished_cmd;
+			goto finished_cmd_reenable_aliases; /* try: an_alias |[|] an_alias */
 		case '(':
 #if ENABLE_HUSH_CASE
 			/* "case... in (PATTERNS)..."? */
@@ -6130,7 +6359,7 @@ static struct pipe *parse_stream(char **pstring,
 				goto parse_error_exitcode1;
 			debug_printf_heredoc("parse_group done, needs heredocs:%d\n", n);
 			heredoc_cnt += n;
-			goto finished_cmd;
+			goto finished_cmd_reenable_aliases;
 		}
 		case ')':
 #if ENABLE_HUSH_CASE
@@ -6215,6 +6444,7 @@ static struct pipe *parse_stream(char **pstring,
 	debug_leave();
 	debug_printf_heredoc("parse_stream return heredoc_cnt:%d\n", heredoc_cnt);
 	debug_printf_parse("parse_stream return %p: EOF\n", pi);
+	i_free_alias_buffer(input);
 	return pi;
 
  parse_error_exitcode1:
@@ -6254,6 +6484,7 @@ static struct pipe *parse_stream(char **pstring,
 		*pstring = NULL;
 #endif
 	debug_leave();
+	i_free_alias_buffer(input);
 	return ERR_PTR;
 }
 
@@ -9082,13 +9313,14 @@ static NORETURN void pseudo_exec(
 		 */
 #if BB_MMU
 		int rcode;
-		debug_printf_exec("pseudo_exec: run_list\n");
+		debug_printf_exec("pseudo_exec: run_list(command->group)\n");
 		reset_traps_to_defaults();
 		rcode = run_list(command->group);
 		/* OK to leak memory by not calling free_pipe_list,
 		 * since this process is about to exit */
 		_exit(rcode);
 #else
+		debug_printf_exec("pseudo_exec: re_exec(command->group_as_string)\n");
 		re_execute_shell(&nommu_save->argv_from_re_execing,
 				command->group_as_string,
 				G.global_argv[0],
@@ -9886,13 +10118,20 @@ static NOINLINE int run_pipe(struct pipe *pi)
 #if ENABLE_HUSH_LINENO_VAR
 		G.execute_lineno = command->lineno;
 #endif
-
 		command->pid = BB_MMU ? fork() : vfork();
 		if (!command->pid) { /* child */
-#if ENABLE_HUSH_JOB
 			disable_restore_tty_pgrp_on_exit();
-			CLEAR_RANDOM_T(&G.random_gen); /* or else $RANDOM repeats in child */
 
+#if ENABLE_HUSH_INTERACTIVE
+			if (BB_MMU && pi->followup == PIPE_BG) {
+				/* This disables alias expansion in . FILE & */
+				/* (bash does it only for (. FILE)& */
+				G.interactive_fd = 0;
+			}
+#endif
+			if (BB_MMU)
+				CLEAR_RANDOM_T(&G.random_gen); /* or else $RANDOM repeats in child */
+#if ENABLE_HUSH_JOB
 			/* Every child adds itself to new process group
 			 * with pgid == pid_of_first_child_in_pipe */
 			if (G.run_list_level == 1 && G_interactive_fd) {
@@ -11295,11 +11534,13 @@ static int FAST_FUNC builtin_type(char **argv)
 		char *path = NULL;
 
 		if (0) {} /* make conditional compile easier below */
-		/*else if (find_alias(*argv))
-			type = "an alias";*/
 # if ENABLE_HUSH_FUNCTIONS
 		else if (find_function(*argv))
 			type = "a function";
+# endif
+# if ENABLE_HUSH_ALIAS
+		else if (find_alias(*argv))
+			type = "an alias";
 # endif
 		else if (find_builtin(*argv))
 			type = "a shell builtin";
@@ -12592,5 +12833,108 @@ static int FAST_FUNC builtin_memleak(char **argv UNUSED_PARAM)
 
 	/* Exitcode is "how many kilobytes we leaked since 1st call" */
 	return l;
+}
+#endif
+
+#if ENABLE_HUSH_ALIAS
+static void new_alias(char *str, char *eq)
+{
+	struct alias *alias, **aliaspp;
+
+	//bb_error_msg("%s:%d: -> find_alias_slot", __func__, __LINE__);
+	aliaspp = find_alias_slot(str, eq);
+	str = xstrdup(str);
+	alias = *aliaspp;
+	if (alias) {
+		/* Replace existing alias */
+		free(alias->str);
+		alias->str = str;
+	} else {
+		/* Create new alias */
+		alias = xzalloc(sizeof(*alias));
+		alias->str = str;
+		*aliaspp = alias;
+	}
+}
+static int FAST_FUNC builtin_alias(char **argv)
+{
+	const struct alias *alias;
+
+	if (!argv[1]) {
+		alias = G.top_alias;
+		while (alias) {
+//todo: use NAME='VALUE' format, not NAME=VALUE
+			printf("alias %s\n", alias->str);
+			alias = alias->next;
+		}
+		return 0;
+	}
+
+	while (*++argv) {
+		/* The characters /, $, `, = and any of the shell
+		 * metacharacters or quoting characters
+		 * may not appear in an alias name */
+		char *eq = end_of_alias_name(*argv);
+		if (*eq == '=') {
+			/* alias NAME=VALUE */
+			new_alias(*argv, eq);
+		} else {
+			eq = strchrnul(eq, '=');
+			if (*eq == '=') {
+				bb_error_msg("alias: '%.*s': invalid alias name", (int)(eq - *argv), *argv);
+				continue; /* continue processing argv (bash compat)  */
+			}
+			//bb_error_msg("%s:%d: -> find_alias_slot", __func__, __LINE__);
+			alias = *find_alias_slot(*argv, eq);
+			if (alias) {
+//todo: use NAME='VALUE' format, not NAME=VALUE
+				printf("alias %s\n", alias->str);
+			} else {
+				bb_error_msg("unalias: '%s': not found" + 2, *argv);
+				/* return 1; - no, continue processing argv (bash compat) */
+			}
+		}
+	}
+	return 0;
+}
+
+static void unset_alias(struct alias **aliaspp)
+{
+	struct alias *alias = *aliaspp;
+
+	*aliaspp = alias->next;
+	free(alias->str);
+	free(alias);
+}
+static int FAST_FUNC builtin_unalias(char **argv)
+{
+	int ret = 0;
+
+	if (!argv[1]) {
+		bb_simple_error_msg("usage: unalias -a | NAME...");
+		return EXIT_FAILURE;
+	}
+
+	while (*++argv) {
+		struct alias **aliaspp;
+
+		if (strcmp(*argv, "-a") == 0) {
+			/* Remove all aliases */
+			while (G.top_alias) {
+				unset_alias(&G.top_alias);
+			}
+			/* bash: "unalias -a NO_SUCH_ALIAS" says nothing (won't try to unalias NO_SUCH_ALIAS): */
+			break;
+		}
+		//bb_error_msg("%s:%d: -> find_alias_slot", __func__, __LINE__);
+		aliaspp = find_alias_slot(*argv, strchr(*argv, '\0')); /* think of "unalias a=b" case! */
+		if (*aliaspp) {
+			unset_alias(aliaspp);
+		} else {
+			bb_error_msg("unalias: '%s': not found", *argv);
+			ret = EXIT_FAILURE;
+		}
+	}
+	return ret;
 }
 #endif
