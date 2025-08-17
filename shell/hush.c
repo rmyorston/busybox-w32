@@ -46,7 +46,6 @@
  *      special variables (done: PWD, PPID, RANDOM)
  *      follow IFS rules more precisely, including update semantics
  *      tilde expansion
- *      aliases
  *      "command" missing features:
  *          command -p CMD: run CMD using default $PATH
  *              (can use this to override standalone shell as well?)
@@ -102,7 +101,7 @@
 //config:
 //config:	It will compile and work on no-mmu systems.
 //config:
-//config:	It does not handle select, aliases, tilde expansion,
+//config:	It does not handle select, tilde expansion,
 //config:	&>file and >&file redirection of stdout+stderr.
 //config:
 // This option is visible (has a description) to make it possible to select
@@ -2923,10 +2922,16 @@ static ALWAYS_INLINE int i_has_alias_buffer(struct in_str *i)
 static void i_prepend_to_alias_buffer(struct in_str *i, char *prepend, char ch)
 {
 	if (i->saved_ibuf) {
-		size_t ofs = i->p - i->albuf;
+		/* Nested alias expansion example:
+		 * alias a='b c'; alias b='echo A:'
+		 * a
+		 * ^^^ runs "echo A: c"
+		 */
 		char *old = i->albuf;
-		i->albuf = xasprintf("%s%c%s", prepend, ch, old);
-		i->p = i->albuf + ofs;
+		//bb_error_msg("before'%s' p'%s'", i->albuf, i->p);
+		i->albuf = xasprintf("%s%c%s", prepend, ch, i->p);
+		i->p = i->albuf;
+		//bb_error_msg("after'%s' p'%s'", i->albuf, i->p);
 		free(old);
 		return;
 	}
