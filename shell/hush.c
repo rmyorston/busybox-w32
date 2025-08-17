@@ -3006,7 +3006,7 @@ static int i_getch(struct in_str *i)
 
 /* Called often, has optimizations to make it faster:
  * = May return NUL instead of EOF.
- *   It's ok because use cases are "we got '&', peek nexh ch and see whether it's '&'"
+ *   It's ok because use cases are "got '&', peek next ch to see whether it is '&'"
  * = Must not be called after '\n' (it would cause unexpected line editing prompt).
  */
 static int i_peek(struct in_str *i)
@@ -12882,7 +12882,6 @@ static int FAST_FUNC builtin_alias(char **argv)
 			//bb_error_msg("%s:%d: -> find_alias_slot", __func__, __LINE__);
 			alias = *find_alias_slot(*argv, eq);
 			if (alias) {
-//todo: use NAME='VALUE' format, not NAME=VALUE
 				print_pfx_escaped_nl("alias", alias->str);
 			} else {
 				bb_error_msg("unalias: '%s': not found" + 2, *argv);
