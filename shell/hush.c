@@ -11686,7 +11686,7 @@ static int FAST_FUNC builtin_umask(char **argv)
 }
 #endif
 
-#if ENABLE_HUSH_EXPORT || ENABLE_HUSH_READONLY || ENABLE_HUSH_SET || ENABLE_HUSH_TRAP
+#if ENABLE_HUSH_EXPORT || ENABLE_HUSH_READONLY || ENABLE_HUSH_SET || ENABLE_HUSH_TRAP || ENABLE_HUSH_ALIAS
 static void print_escaped(const char *s)
 {
 //TODO? bash "set" does not quote variables which contain only alnums and "%+,-./:=@_~",
@@ -11710,6 +11710,18 @@ static void print_escaped(const char *s)
 		do putchar('\''); while (*++s == '\'');
 		putchar('"');
 	} while (*s);
+}
+static void print_pfx_escaped_nl(const char *pfx, const char *s)
+{
+	const char *p = strchr(s, '=');
+	if (p) {
+		if (pfx)
+			printf("%s %.*s", pfx, (int)(p - s) + 1, s);
+		else
+			printf("%.*s", (int)(p - s) + 1, s);
+		print_escaped(p + 1);
+		putchar('\n');
+	}
 }
 #endif
 
@@ -11821,14 +11833,7 @@ static int FAST_FUNC builtin_export(char **argv)
 				 * bash: declare -x VAR="VAL"
 				 * we follow ash example */
 				const char *s = *e++;
-				const char *p = strchr(s, '=');
-
-				if (!p) /* wtf? take next variable */
-					continue;
-				/* "export VAR=" */
-				printf("%s %.*s", "export", (int)(p - s) + 1, s);
-				print_escaped(p + 1);
-				putchar('\n');
+				print_pfx_escaped_nl("export", s);
 # endif
 			}
 			/*fflush_all(); - done after each builtin anyway */
@@ -11870,15 +11875,7 @@ static int FAST_FUNC builtin_readonly(char **argv)
 		struct variable *e;
 		for (e = G.top_var; e; e = e->next) {
 			if (e->flg_read_only) {
-				const char *s = e->varstr;
-				const char *p = strchr(s, '=');
-
-				if (!p) /* wtf? take next variable */
-					continue;
-				/* "readonly VAR=" */
-				printf("%s %.*s", "readonly", (int)(p - s) + 1, s);
-				print_escaped(p + 1);
-				putchar('\n');
+				print_pfx_escaped_nl("readonly", e->varstr);
 			}
 		}
 		return EXIT_SUCCESS;
@@ -11957,15 +11954,7 @@ static int FAST_FUNC builtin_set(char **argv)
 	if (arg == NULL) {
 		struct variable *e;
 		for (e = G.top_var; e; e = e->next) {
-			const char *s = e->varstr;
-			const char *p = strchr(s, '=');
-
-			if (!p) /* wtf? take next variable */
-				continue;
-			/* var= */
-			printf("%.*s", (int)(p - s) + 1, s);
-			print_escaped(p + 1);
-			putchar('\n');
+			print_pfx_escaped_nl(NULL, e->varstr);
 		}
 		return EXIT_SUCCESS;
 	}
@@ -12868,8 +12857,7 @@ static int FAST_FUNC builtin_alias(char **argv)
 	if (!argv[1]) {
 		alias = G.top_alias;
 		while (alias) {
-//todo: use NAME='VALUE' format, not NAME=VALUE
-			printf("alias %s\n", alias->str);
+			print_pfx_escaped_nl("alias", alias->str);
 			alias = alias->next;
 		}
 		return 0;
@@ -12880,20 +12868,22 @@ static int FAST_FUNC builtin_alias(char **argv)
 		 * metacharacters or quoting characters
 		 * may not appear in an alias name */
 		char *eq = end_of_alias_name(*argv);
-		if (*eq == '=') {
+		if (*eq == '=' && eq != *argv) {
 			/* alias NAME=VALUE */
 			new_alias(*argv, eq);
 		} else {
 			eq = strchrnul(eq, '=');
 			if (*eq == '=') {
+				/* alias 'NA&ME=VALUE' (invalid chars in name) */
 				bb_error_msg("alias: '%.*s': invalid alias name", (int)(eq - *argv), *argv);
 				continue; /* continue processing argv (bash compat)  */
 			}
+			/* alias SOMETHING_WITHOUT_EQUAL_SIGN */
 			//bb_error_msg("%s:%d: -> find_alias_slot", __func__, __LINE__);
 			alias = *find_alias_slot(*argv, eq);
 			if (alias) {
 //todo: use NAME='VALUE' format, not NAME=VALUE
-				printf("alias %s\n", alias->str);
+				print_pfx_escaped_nl("alias", alias->str);
 			} else {
 				bb_error_msg("unalias: '%s': not found" + 2, *argv);
 				/* return 1; - no, continue processing argv (bash compat) */
