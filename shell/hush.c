@@ -4469,7 +4469,12 @@ static int done_word(struct parse_context *ctx)
 	} else
 # endif
 	/* Is it a place where keyword can appear? */
-	if (!command->argv             /* if it's the first word of command... */
+//FIXME: this is wrong, it allows invalid syntax: { echo t; } if true; then echo YES; fi
+	if ((!command->argv             /* if it's the first word of command... */
+# if ENABLE_HUSH_FUNCTIONS
+	    || command->cmd_type == CMD_FUNCDEF /* ^^^ or after FUNC() {} */
+# endif
+	    )
 	 && !ctx->word.has_quoted_part /* ""WORD never matches any keywords */
 	 && !command->redirects        /* no redirects yet... disallows: </dev/null if true; then... */
 # if ENABLE_HUSH_LOOPS
@@ -6067,7 +6072,11 @@ static struct pipe *parse_stream(char **pstring,
 			} else
 #endif
 			/* Are { and } special here? */
-			if (ctx.command->argv /* WORD [WORD]{... - non-special */
+			if ((ctx.command->argv /* WORD [WORD]{... - non-special */
+#if ENABLE_HUSH_FUNCTIONS
+			    && ctx.command->cmd_type != CMD_FUNCDEF /* ^^^ unless FUNC() {} */
+#endif
+			    )
 			 || !IS_NULL_WORD(ctx.word)  /* WORD{... ""{... - non-special */
 			 || (next != ';'             /* }; - special */
 			    && next != ')'           /* }) - special */
