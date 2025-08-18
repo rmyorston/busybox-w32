@@ -4213,7 +4213,7 @@ static void initialize_context(struct parse_context *ctx)
  */
 #if HAS_KEYWORDS
 struct reserved_combo {
-	char literal[ENABLE_HUSH_FUNCTION_KEYWORD ? 9 : 6];
+	char literal[6];
 	unsigned char res;
 	unsigned char assignment_flag;
 	uint32_t flag;
@@ -4248,9 +4248,6 @@ enum {
  * FLAG_START means the word must start a new compound list.
  */
 static const struct reserved_combo reserved_list[] ALIGN4 = {
-# if ENABLE_HUSH_FUNCTION_KEYWORD
-	{ "function", RES_NONE, NOT_ASSIGNMENT, 0 },
-# endif
 # if ENABLE_HUSH_IF
 	{ "!",     RES_NONE,  NOT_ASSIGNMENT  , 0 },
 	{ "if",    RES_IF,    MAYBE_ASSIGNMENT, FLAG_THEN | FLAG_START },
@@ -4293,6 +4290,15 @@ static const struct reserved_combo* reserved_word(struct parse_context *ctx)
 # endif
 	const struct reserved_combo *r;
 
+# if ENABLE_HUSH_FUNCTION_KEYWORD
+	/* This is ~60 bytes smaller than adding "function" to reserved_list[] */
+	if (strcmp(ctx->word.data, "function") == 0) {
+		ctx->command->cmd_type = CMD_FUNCTION_KWORD;
+		/* Return something harmless !NULL */
+		return &reserved_list[0];
+	}
+# endif
+
 	r = match_reserved_word(ctx->word.data);
 	if (!r)
 		return r; /* NULL */
@@ -4317,13 +4323,7 @@ static const struct reserved_combo* reserved_word(struct parse_context *ctx)
 		r = &reserved_match;
 	} else
 # endif
-	if (r->flag == 0) { /* 'function' or '!' */
-# if ENABLE_HUSH_FUNCTION_KEYWORD
-		if (r == &reserved_list[0]) {
-			ctx->command->cmd_type = CMD_FUNCTION_KWORD;
-			return r;
-		}
-# endif
+	if (r->flag == 0) { /* '!' */
 		if (ctx->pipe->num_cmds != 0 /* bash disallows: nice | ! cat */
 		/* || ctx->pipe->pi_inverted - bash used to disallow "! ! true" bash 5.2.15 allows it */
 		) {
