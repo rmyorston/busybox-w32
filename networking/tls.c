@@ -2389,6 +2389,22 @@ static char *hresult_to_error_string(HRESULT result) {
 	return output;
 }
 
+static void init_sec_buffer(SecBuffer *buffer, void *pvBuffer, unsigned long cbBuffer, unsigned long BufferType) {
+    buffer->BufferType = BufferType;
+    buffer->cbBuffer = cbBuffer;
+    buffer->pvBuffer = pvBuffer;
+}
+
+static void init_sec_buffer_empty(SecBuffer *buffer, unsigned long BufferType) {
+    init_sec_buffer(buffer, NULL, 0, BufferType);
+}
+
+static void init_sec_buffer_desc(SecBufferDesc *desc, SecBuffer *buffers, unsigned long buffer_count) {
+    desc->ulVersion = SECBUFFER_VERSION;
+    desc->cBuffers = buffer_count;
+    desc->pBuffers = buffers;
+}
+
 static ssize_t tls_read(struct tls_state *state, char *buf, ssize_t len) {
 	ssize_t amount_read = 0;
 
@@ -2423,32 +2439,17 @@ static ssize_t tls_read(struct tls_state *state, char *buf, ssize_t len) {
 			}
 		} else {
 			SECURITY_STATUS status;
-
 			int received;
 
-			SecBuffer buffers[4];
+            SecBuffer buffers[4];
+            SecBufferDesc desc;
+            
+            init_sec_buffer(&buffers[0], state->in_buffer, state->in_buffer_size, SECBUFFER_DATA);
+            init_sec_buffer_empty(&buffers[1], SECBUFFER_EMPTY);
+            init_sec_buffer_empty(&buffers[2], SECBUFFER_EMPTY);
+            init_sec_buffer_empty(&buffers[3], SECBUFFER_EMPTY);
 
-			SecBufferDesc desc;
-
-			buffers[0].BufferType = SECBUFFER_DATA;
-			buffers[0].pvBuffer = state->in_buffer;
-			buffers[0].cbBuffer = state->in_buffer_size;
-
-			buffers[1].BufferType = SECBUFFER_EMPTY;
-			buffers[1].pvBuffer = NULL;
-			buffers[1].cbBuffer = 0;
-
-			buffers[2].BufferType = SECBUFFER_EMPTY;
-			buffers[2].pvBuffer = NULL;
-			buffers[2].cbBuffer = 0;
-
-			buffers[3].BufferType = SECBUFFER_EMPTY;
-			buffers[3].pvBuffer = NULL;
-			buffers[3].cbBuffer = 0;
-
-			desc.ulVersion = SECBUFFER_VERSION;
-			desc.pBuffers = buffers;
-			desc.cBuffers = _countof(buffers);
+            init_sec_buffer_desc(&desc, buffers, _countof(buffers));
 
 			status = DecryptMessage(&state->ctx_handle, &desc, 0, NULL);
 
@@ -2473,48 +2474,27 @@ static ssize_t tls_read(struct tls_state *state, char *buf, ssize_t len) {
 				// Microsoft repurposed this flag
 				// for TLS 1.3 support.
 				int i;
+				DWORD flags = BB_SCHANNEL_ISC_FLAGS;
 
-				DWORD flags;
+                SecBuffer in_buffers[2];
+                SecBuffer out_buffers[2];
 
-				SecBuffer in_buffers[2];
-
-				SecBuffer out_buffers[2];
-
-				SecBufferDesc in_desc;
-
-				SecBufferDesc out_desc;
-
+                SecBufferDesc in_desc;
+                SecBufferDesc out_desc;
 
 				for (i = 0; i < 4; i++) {
 					if (buffers[i].BufferType == SECBUFFER_EXTRA)
 						break;
 				}
+				
+                init_sec_buffer(&in_buffers[0], buffers[i].pvBuffer, buffers[i].cbBuffer, SECBUFFER_TOKEN);
+                init_sec_buffer_empty(&in_buffers[1], SECBUFFER_EMPTY);
 
-				flags = BB_SCHANNEL_ISC_FLAGS;
+                init_sec_buffer_empty(&out_buffers[0], SECBUFFER_TOKEN);
+                init_sec_buffer_empty(&out_buffers[1], SECBUFFER_ALERT);
 
-				in_buffers[0].BufferType = SECBUFFER_TOKEN;
-				in_buffers[0].pvBuffer = buffers[i].pvBuffer;
-				in_buffers[0].cbBuffer = buffers[i].cbBuffer;
-
-				in_buffers[1].BufferType = SECBUFFER_EMPTY;
-				in_buffers[1].pvBuffer = NULL;
-				in_buffers[1].cbBuffer = 0;
-
-				out_buffers[0].BufferType = SECBUFFER_TOKEN;
-				out_buffers[0].pvBuffer = NULL;
-				out_buffers[0].cbBuffer = 0;
-
-				out_buffers[1].BufferType = SECBUFFER_ALERT;
-				out_buffers[1].pvBuffer = NULL;
-				out_buffers[1].cbBuffer = 0;
-
-				in_desc.ulVersion = SECBUFFER_VERSION;
-				in_desc.pBuffers = in_buffers;
-				in_desc.cBuffers = _countof(in_buffers);
-
-				out_desc.ulVersion = SECBUFFER_VERSION;
-				out_desc.pBuffers = out_buffers;
-				out_desc.cBuffers = _countof(out_buffers);
+                init_sec_buffer_desc(&in_desc, in_buffers, _countof(in_buffers));
+                init_sec_buffer_desc(&out_desc, out_buffers, _countof(out_buffers));
 
 				status = InitializeSecurityContext(&state->cred_handle,
 												   state->initialized ?
@@ -2524,7 +2504,6 @@ static ssize_t tls_read(struct tls_state *state, char *buf, ssize_t len) {
 												   0,
 												   state->initialized ?
 												   &in_desc : NULL, 0,
-												   state->initialized ? NULL :
 												   &state->ctx_handle,
 												   &out_desc, &flags, 0);
 
@@ -2586,32 +2565,17 @@ static void tls_write(struct tls_state *state, char *buf, size_t len) {
 
 		SECURITY_STATUS status;
 
-		SecBuffer buffers[4];
+        SecBuffer buffers[4];
+        SecBufferDesc desc;
 
-		SecBufferDesc desc;
+        init_sec_buffer(&buffers[0], write_buffer, state->stream_sizes.cbHeader, SECBUFFER_STREAM_HEADER);
+        init_sec_buffer(&buffers[1], write_buffer + state->stream_sizes.cbHeader, copy_amount, SECBUFFER_DATA);
+        init_sec_buffer(&buffers[2], write_buffer + state->stream_sizes.cbHeader + copy_amount, state->stream_sizes.cbTrailer, SECBUFFER_STREAM_TRAILER);
+        init_sec_buffer_empty(&buffers[3], SECBUFFER_EMPTY);
 
-		buffers[0].BufferType = SECBUFFER_STREAM_HEADER;
-		buffers[0].pvBuffer = write_buffer;
-		buffers[0].cbBuffer = state->stream_sizes.cbHeader;
+        init_sec_buffer_desc(&desc, buffers, _countof(buffers));
 
-		buffers[1].BufferType = SECBUFFER_DATA;
-		buffers[1].pvBuffer = write_buffer + state->stream_sizes.cbHeader;
-		buffers[1].cbBuffer = copy_amount;
-
-		buffers[2].BufferType = SECBUFFER_STREAM_TRAILER;
-		buffers[2].pvBuffer =
-			write_buffer + state->stream_sizes.cbHeader + copy_amount;
-		buffers[2].cbBuffer = state->stream_sizes.cbTrailer;
-
-		buffers[3].BufferType = SECBUFFER_EMPTY;
-		buffers[3].pvBuffer = NULL;
-		buffers[3].cbBuffer = 0;
-
-		memcpy(buffers[1].pvBuffer, buf, copy_amount);
-
-		desc.ulVersion = SECBUFFER_VERSION;
-		desc.pBuffers = buffers;
-		desc.cBuffers = _countof(buffers);
+        memcpy(buffers[1].pvBuffer,  buf, copy_amount);
 
 		status = EncryptMessage(&state->ctx_handle, 0, &desc, 0);
 		if (status != SEC_E_OK) {
@@ -2642,41 +2606,20 @@ static void tls_disconnect(tls_state_t * state) {
 	SecBufferDesc in_desc;
 	SecBufferDesc out_desc;
 
-	buf_token.BufferType = SECBUFFER_TOKEN;
-	buf_token.pvBuffer = &token;
-	buf_token.cbBuffer = sizeof(token);
-
-	buf_token_desc.ulVersion = SECBUFFER_VERSION;
-	buf_token_desc.pBuffers = &buf_token;
-	buf_token_desc.cBuffers = 1;
+    init_sec_buffer(&buf_token, &token, sizeof(token), SECBUFFER_TOKEN);
+    init_sec_buffer_desc(&buf_token_desc, &buf_token, 1);
 
 	ApplyControlToken(&state->ctx_handle, &buf_token_desc);
 
 	// attempt to send any final data
+    init_sec_buffer(&in_buffers[0], state->in_buffer, state->in_buffer_size, SECBUFFER_TOKEN);
+    init_sec_buffer_empty(&in_buffers[1], SECBUFFER_EMPTY);
 
-	in_buffers[0].BufferType = SECBUFFER_TOKEN;
-	in_buffers[0].pvBuffer = state->in_buffer;
-	in_buffers[0].cbBuffer = state->in_buffer_size;
+    init_sec_buffer_empty(&out_buffers[0], SECBUFFER_TOKEN);
+    init_sec_buffer_empty(&out_buffers[1], SECBUFFER_ALERT);
 
-	in_buffers[1].BufferType = SECBUFFER_EMPTY;
-	in_buffers[1].pvBuffer = NULL;
-	in_buffers[1].cbBuffer = 0;
-
-	out_buffers[0].BufferType = SECBUFFER_TOKEN;
-	out_buffers[0].pvBuffer = NULL;
-	out_buffers[0].cbBuffer = 0;
-
-	out_buffers[1].BufferType = SECBUFFER_ALERT;
-	out_buffers[1].pvBuffer = NULL;
-	out_buffers[1].cbBuffer = 0;
-
-	in_desc.ulVersion = SECBUFFER_VERSION;
-	in_desc.pBuffers = in_buffers;
-	in_desc.cBuffers = _countof(in_buffers);
-
-	out_desc.ulVersion = SECBUFFER_VERSION;
-	out_desc.pBuffers = out_buffers;
-	out_desc.cBuffers = _countof(out_buffers);
+    init_sec_buffer_desc(&in_desc, in_buffers, _countof(in_buffers));
+    init_sec_buffer_desc(&out_desc, out_buffers, _countof(out_buffers));
 
 	status = InitializeSecurityContext(&state->cred_handle,
 									   state->
@@ -2687,14 +2630,13 @@ static void tls_disconnect(tls_state_t * state) {
 									   flags, 0, 0,
 									   state->initialized ? &in_desc : NULL,
 									   0,
-									   state->
-									   initialized ? NULL :
 									   &state->ctx_handle, &out_desc, &flags,
 									   0);
 
-	if (status == SEC_E_OK) {
-		// attempt to write any extra data
+	if ((status == SEC_E_OK) || (status == SEC_I_CONTEXT_EXPIRED)) {
+		// send the final shutdown message
 		write(state->ofd, out_buffers[0].pvBuffer, out_buffers[0].cbBuffer);
+		FreeContextBuffer(out_buffers[0].pvBuffer);
 	}
 
 	DeleteSecurityContext(&state->ctx_handle);
@@ -2773,29 +2715,14 @@ void FAST_FUNC tls_handshake(tls_state_t * state, const char *hostname) {
 		SecBufferDesc in_desc;
 		SecBufferDesc out_desc;
 
-		in_buffers[0].BufferType = SECBUFFER_TOKEN;
-		in_buffers[0].pvBuffer = state->in_buffer;
-		in_buffers[0].cbBuffer = state->in_buffer_size;
+		init_sec_buffer(&in_buffers[0], state->in_buffer, state->in_buffer_size, SECBUFFER_TOKEN);
+		init_sec_buffer_empty(&in_buffers[1], SECBUFFER_EMPTY);
 
-		in_buffers[1].BufferType = SECBUFFER_EMPTY;
-		in_buffers[1].pvBuffer = NULL;
-		in_buffers[1].cbBuffer = 0;
+		init_sec_buffer_empty(&out_buffers[0], SECBUFFER_TOKEN);
+		init_sec_buffer_empty(&out_buffers[1], SECBUFFER_ALERT);
 
-		out_buffers[0].BufferType = SECBUFFER_TOKEN;
-		out_buffers[0].pvBuffer = NULL;
-		out_buffers[0].cbBuffer = 0;
-
-		out_buffers[1].BufferType = SECBUFFER_ALERT;
-		out_buffers[1].pvBuffer = NULL;
-		out_buffers[1].cbBuffer = 0;
-
-		in_desc.ulVersion = SECBUFFER_VERSION;
-		in_desc.pBuffers = in_buffers;
-		in_desc.cBuffers = _countof(in_buffers);
-
-		out_desc.ulVersion = SECBUFFER_VERSION;
-		out_desc.pBuffers = out_buffers;
-		out_desc.cBuffers = _countof(out_buffers);
+		init_sec_buffer_desc(&in_desc, in_buffers, _countof(in_buffers));
+		init_sec_buffer_desc(&out_desc, out_buffers, _countof(out_buffers));
 
 		status = InitializeSecurityContext(&state->cred_handle,
 										   state->
@@ -2806,7 +2733,6 @@ void FAST_FUNC tls_handshake(tls_state_t * state, const char *hostname) {
 										   state->hostname, flags, 0, 0,
 										   state->initialized ? &in_desc :
 										   NULL, 0,
-										   state->initialized ? NULL :
 										   &state->ctx_handle, &out_desc,
 										   &flags, 0);
 
