@@ -4202,6 +4202,10 @@ static void initialize_context(struct parse_context *ctx)
 	 * ctx->command = &ctx->pipe->cmds[0];
 	 */
 	done_command(ctx);
+	/* If very first arg is "" or '', ctx.word.data may end up NULL.
+	 * Prevent this:
+	 */
+	ctx->word.data = xzalloc(1); /* start as "", not as NULL */
 }
 
 /* If a reserved word is found and processed, parse context is modified
@@ -5839,11 +5843,6 @@ static struct pipe *parse_stream(char **pstring,
 
 	enable_all_aliases();
 	initialize_context(&ctx);
-
-	/* If very first arg is "" or '', ctx.word.data may end up NULL.
-	 * Preventing this:
-	 */
-	ctx.word.data = xzalloc(1); /* start as "", not as NULL */
 
 	/* We used to separate words on $IFS here. This was wrong.
 	 * $IFS is used only for word splitting when $var is expanded,
