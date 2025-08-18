@@ -3947,7 +3947,7 @@ static void debug_print_tree(struct pipe *pi, int lvl)
 # endif
 # if ENABLE_HUSH_CASE
 		[RES_CASE ] = "CASE" ,
-		[RES_CASE_IN ] = "CASE_IN" ,
+		[RES_CASE_IN] = "CASE_IN" ,
 		[RES_MATCH] = "MATCH",
 		[RES_CASE_BODY] = "CASE_BODY",
 		[RES_ESAC ] = "ESAC" ,
@@ -4289,11 +4289,22 @@ static const struct reserved_combo* reserved_word(struct parse_context *ctx)
 # endif
 	const struct reserved_combo *r;
 
-	if (ctx->word.has_quoted_part)
-		return 0;
 	r = match_reserved_word(ctx->word.data);
 	if (!r)
 		return r; /* NULL */
+# if ENABLE_HUSH_CASE /* "case" syntax has a curveball */
+	if (ctx->ctx_res_w == RES_MATCH
+	 && r->res != RES_ESAC
+	) {
+		/* We are at WORD in ";; WORD" or "case .. in WORD".
+		 * Here, only "esac" is a keyword.
+		 * Else WORD is a case pattern, can be keyword-like:
+		 *  if) echo got_if;;
+		 * is allowed.
+		 */
+		return NULL;
+	}
+# endif
 
 	debug_printf("found reserved word %s, res %d\n", r->literal, r->res);
 # if ENABLE_HUSH_CASE
@@ -4309,7 +4320,7 @@ static const struct reserved_combo* reserved_word(struct parse_context *ctx)
 			return r;
 		}
 # endif
-		if (ctx->pipe->cmds != ctx->command /* bash disallows: nice | ! cat */
+		if (ctx->pipe->num_cmds != 0 /* bash disallows: nice | ! cat */
 		/* || ctx->pipe->pi_inverted - bash used to disallow "! ! true" bash 5.2.15 allows it */
 		) {
 			syntax_error_unexpected_ch('!');
@@ -4443,36 +4454,26 @@ static int done_word(struct parse_context *ctx)
 	}
 
 #if HAS_KEYWORDS
-# if ENABLE_HUSH_CASE
-	if (ctx->ctx_res_w == RES_MATCH
-	 && (ctx->word.has_quoted_part
-	    || strcmp(ctx->word.data, "esac") != 0
-	    )
-	) { /* ";; WORD" but not ";; esac" */
-		/* Do not match WORD as keyword:
-		 * the WORD is a case match, can be keyword-like:
-		 *  if) echo got_if;;
-		 * is allowed.
-		 */
-	} else
-# endif
 # if defined(CMD_TEST2_SINGLEWORD_NOGLOB)
 	if (command->cmd_type == CMD_TEST2_SINGLEWORD_NOGLOB
 	 && !ctx->word.has_quoted_part
 	 && strcmp(ctx->word.data, "]]") == 0
 	) {
-		/* allow "[[ ]] >file" etc */
+		/* End test2-specific parsing rules */
+		/* Allow "[[ ]] >file" etc (> is a redirect symbol again) */
 		command->cmd_type = CMD_SINGLEWORD_NOGLOB;
 	} else
 # endif
-	if (!command->argv      /* if it's the first word of command... */
-	 && !command->redirects /* no redirects yet... disallows: </dev/null if true; then... */
+	/* Is it a place where keyword can appear? */
+	if (!command->argv             /* if it's the first word of command... */
+	 && !ctx->word.has_quoted_part /* ""WORD never matches any keywords */
+	 && !command->redirects        /* no redirects yet... disallows: </dev/null if true; then... */
 # if ENABLE_HUSH_LOOPS
-	 && ctx->ctx_res_w != RES_FOR /* not after FOR or IN */
+	 && ctx->ctx_res_w != RES_FOR  /* not after "for" or "in" */
 	 && ctx->ctx_res_w != RES_IN
 # endif
 # if ENABLE_HUSH_CASE
-	 && ctx->ctx_res_w != RES_CASE  /* not after CASE */
+	 && ctx->ctx_res_w != RES_CASE /* not after "case" */
 # endif
 	) {
 		const struct reserved_combo *reserved;
@@ -4481,10 +4482,10 @@ static int done_word(struct parse_context *ctx)
 		if (reserved) {
 # if ENABLE_HUSH_LINENO_VAR
 /* Case:
- * "while ...; do
- *	cmd ..."
+ * while ...; do
+ *     CMD
  * If we don't close the pipe _now_, immediately after "do", lineno logic
- * sees "cmd" as starting at "do" - i.e., at the previous line.
+ * sees CMD as starting at "do" - i.e., at the previous line.
  */
 			if (0
 			 IF_HUSH_IF(|| reserved->res == RES_THEN)
@@ -4502,6 +4503,7 @@ static int done_word(struct parse_context *ctx)
 		}
 # if defined(CMD_TEST2_SINGLEWORD_NOGLOB)
 		if (strcmp(ctx->word.data, "[[") == 0) {
+			/* Inside [[ ]], parsing rules are different */
 			command->cmd_type = CMD_TEST2_SINGLEWORD_NOGLOB;
 		} else
 # endif
