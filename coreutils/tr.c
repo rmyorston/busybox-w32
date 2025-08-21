@@ -117,6 +117,13 @@ static unsigned expand(char *arg, char **buffer_p)
 			arg++;
 			z = arg;
 			ac = bb_process_escape_sequence(&z);
+#if ENABLE_PLATFORM_MINGW32
+			if (ac == '\\' && *z == '-') {
+				/* An escaped dash isn't a range, don't fall through */
+				buffer[pos++] = *z;
+				continue;
+			}
+#endif
 			arg = (char *)z;
 			arg--;
 			*arg = ac;
