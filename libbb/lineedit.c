@@ -2273,7 +2273,7 @@ static void parse_and_put_prompt(const char *prmt_ptr)
 					if (c == 'w')
 						break;
 					cp = strrchr(pbuf, '/');
-					if (cp)
+					if (cp IF_PLATFORM_MINGW32(&& cp[1]))
 						pbuf = (char*)cp + 1;
 					break;
 // bb_process_escape_sequence does this now:
