@@ -920,33 +920,33 @@ struct hostent *xgethostbyname(const char *name) FAST_FUNC;
 // + inet_common.c has additional IPv4-only stuff
 
 #if defined CONFIG_FEATURE_TLS_SCHANNEL
+enum schannel_connection_state {
+	BB_SCHANNEL_OPEN = 0,
+	BB_SCHANNEL_CLOSED = 1,
+	BB_SCHANNEL_CLOSED_AND_FREED = 2
+};
+
 typedef struct tls_state {
 	int ofd;
 	int ifd;
 
-    // handles
-    CredHandle cred_handle;
-    CtxtHandle ctx_handle;
+	// handles
+	CredHandle cred_handle;
+	CtxtHandle ctx_handle;
 
-    // buffers
-    char in_buffer[16384 + 256]; // input buffer (to read from server)
-    unsigned long in_buffer_size; // amount of data currently in input buffer
+	// buffers
+	char in_buffer[16384 + 256]; // input buffer (to read from server), length is maximum TLS packet size
+	unsigned long in_buffer_offset;
 
-    char *out_buffer; // output buffer (for decrypted data), this is essentially the same as input buffer as data is decrypted in place
-    unsigned long out_buffer_size; // amount of data currently in output buffer
-    unsigned long out_buffer_used; // amount of extra data currently in output buffer
+	char *out_buffer; // output buffer (for decrypted data, offset from in_buffer)
+	unsigned long out_buffer_length;
+	unsigned long out_buffer_extra;
 
-    // data
-    char *hostname;
-    SecPkgContext_StreamSizes stream_sizes;
-
-	// booleans
-
-	// context initialized
-    int initialized;
-
-	// closed by remote peer
-	int closed;
+	// data
+	char *hostname;
+	SecPkgContext_StreamSizes stream_sizes;
+	bool initialized;
+	enum schannel_connection_state connection_state;
 } tls_state_t;
 #else
 struct tls_aes {
