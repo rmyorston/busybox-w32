@@ -2363,6 +2363,7 @@ void FAST_FUNC tls_run_copy_loop(tls_state_t *tls, unsigned flags)
 	}
 }
 #else
+#include <stdbool.h>
 
 #if ENABLE_FEATURE_TLS_SCHANNEL_1_3
 #include <subauth.h>
@@ -2377,6 +2378,8 @@ void FAST_FUNC tls_run_copy_loop(tls_state_t *tls, unsigned flags)
 #define BB_SCHANNEL_ISC_FLAGS                                                                                             \
     (ISC_REQ_ALLOCATE_MEMORY | ISC_REQ_CONFIDENTIALITY | ISC_REQ_INTEGRITY | ISC_REQ_REPLAY_DETECT |                   \
      ISC_REQ_SEQUENCE_DETECT | ISC_REQ_STREAM | ISC_REQ_USE_SUPPLIED_CREDS)
+
+#define SEC_STATUS_FAIL(status) ((status) != SEC_E_OK)
 
 static char *hresult_to_error_string(HRESULT result) {
 	char *output = NULL;
@@ -2395,9 +2398,7 @@ static void init_sec_buffer(SecBuffer *buffer, void *pvBuffer, unsigned long cbB
     buffer->pvBuffer = pvBuffer;
 }
 
-static void init_sec_buffer_empty(SecBuffer *buffer, unsigned long BufferType) {
-    init_sec_buffer(buffer, NULL, 0, BufferType);
-}
+#define init_sec_buffer_empty(buffer, BufferType) init_sec_buffer(buffer, NULL, 0, BufferType)
 
 static void init_sec_buffer_desc(SecBufferDesc *desc, SecBuffer *buffers, unsigned long buffer_count) {
     desc->ulVersion = SECBUFFER_VERSION;
@@ -2405,182 +2406,196 @@ static void init_sec_buffer_desc(SecBufferDesc *desc, SecBuffer *buffers, unsign
     desc->pBuffers = buffers;
 }
 
-static ssize_t tls_read(struct tls_state *state, char *buf, ssize_t len) {
+static ssize_t tls_read(tls_state_t *state, char *buf, ssize_t len) {
 	ssize_t amount_read = 0;
 
-	if (state->closed) {
-		return 0;
+	if (state->connection_state > BB_SCHANNEL_OPEN) {
+		goto Success;
 	}
 
 	while (len > 0) {
-		if (state->out_buffer && (state->out_buffer_size > 0)) {
+		if (state->out_buffer) {
 			unsigned long copy_amount =
-				min(len, (ssize_t) state->out_buffer_size);
+			    min(len, (ssize_t)state->out_buffer_length);
 			memcpy(buf, state->out_buffer, copy_amount);
 
 			amount_read += copy_amount;
 			buf += copy_amount;
 			len -= copy_amount;
 
-			if (copy_amount == state->out_buffer_size) {
-				// We've used all the decrypted data
-				// Move extra data to the front
-				memmove(state->in_buffer,
-						state->in_buffer + state->out_buffer_used,
-						state->in_buffer_size - state->out_buffer_used);
-				state->in_buffer_size -= state->out_buffer_used;
+			if (copy_amount == state->out_buffer_length) {
+				if (state->out_buffer_extra > 0) {
+					memmove(
+					    state->in_buffer,
+					    state->in_buffer +
+					        (state->in_buffer_offset - state->out_buffer_extra),
+					    state->in_buffer_offset - (state->in_buffer_offset -
+					                               state->out_buffer_extra));
+					state->in_buffer_offset = state->out_buffer_extra;
+				} else {
+					state->in_buffer_offset = 0;
+				}
 
 				state->out_buffer = NULL;
-				state->out_buffer_used = 0;
-				state->out_buffer_size = 0;
+				state->out_buffer_length = 0;
+				state->out_buffer_extra = 0;
+
 			} else {
-				state->out_buffer_size -= copy_amount;
+				state->out_buffer_length -= copy_amount;
 				state->out_buffer += copy_amount;
 			}
 		} else {
+			SecBuffer buffers[4];
+			SecBufferDesc desc;
 			SECURITY_STATUS status;
-			int received;
 
-            SecBuffer buffers[4];
-            SecBufferDesc desc;
-            
-            init_sec_buffer(&buffers[0], state->in_buffer, state->in_buffer_size, SECBUFFER_DATA);
-            init_sec_buffer_empty(&buffers[1], SECBUFFER_EMPTY);
-            init_sec_buffer_empty(&buffers[2], SECBUFFER_EMPTY);
-            init_sec_buffer_empty(&buffers[3], SECBUFFER_EMPTY);
+			init_sec_buffer(&buffers[0],
+			                state->in_buffer,
+			                state->in_buffer_offset,
+			                SECBUFFER_DATA);
+			init_sec_buffer_empty(&buffers[1], SECBUFFER_EMPTY);
+			init_sec_buffer_empty(&buffers[2], SECBUFFER_EMPTY);
+			init_sec_buffer_empty(&buffers[3], SECBUFFER_EMPTY);
 
-            init_sec_buffer_desc(&desc, buffers, _countof(buffers));
+			init_sec_buffer_desc(&desc, buffers, _countof(buffers));
 
 			status = DecryptMessage(&state->ctx_handle, &desc, 0, NULL);
 
 			switch (status) {
-			case SEC_E_OK:{
-				state->out_buffer = buffers[1].pvBuffer;
-				state->out_buffer_size = buffers[1].cbBuffer;
+				case SEC_E_OK: {
+					state->out_buffer = buffers[1].pvBuffer;
+					state->out_buffer_length = buffers[1].cbBuffer;
+					state->out_buffer_extra = state->in_buffer_offset;
 
-				state->out_buffer_used = state->in_buffer_size;
-				if (buffers[3].BufferType == SECBUFFER_EXTRA) {
-					state->out_buffer_used -= buffers[3].cbBuffer;
+					if (buffers[3].BufferType == SECBUFFER_EXTRA) {
+						state->out_buffer_extra = buffers[3].cbBuffer;
+					} else {
+						state->out_buffer_extra = 0;
+					}
+
+					continue;
 				}
-
-				continue;
-			}
-			case SEC_I_CONTEXT_EXPIRED:{
-				state->closed = 1;
-				goto Success;
-			}
-			case SEC_I_RENEGOTIATE:{
-				// Renegotiate the TLS connection.
-				// Microsoft repurposed this flag
-				// for TLS 1.3 support.
-				int i;
-				DWORD flags = BB_SCHANNEL_ISC_FLAGS;
-
-                SecBuffer in_buffers[2];
-                SecBuffer out_buffers[2];
-
-                SecBufferDesc in_desc;
-                SecBufferDesc out_desc;
-
-				for (i = 0; i < 4; i++) {
-					if (buffers[i].BufferType == SECBUFFER_EXTRA)
-						break;
+				case SEC_I_CONTEXT_EXPIRED: {
+					// Shut down the connection
+					state->connection_state = BB_SCHANNEL_CLOSED;
+					goto Success;
 				}
-				
-                init_sec_buffer(&in_buffers[0], buffers[i].pvBuffer, buffers[i].cbBuffer, SECBUFFER_TOKEN);
-                init_sec_buffer_empty(&in_buffers[1], SECBUFFER_EMPTY);
+				case SEC_E_INCOMPLETE_MESSAGE: {
+					int result = safe_read(state->ifd,
+						state->in_buffer + state->in_buffer_offset,
+						sizeof(state->in_buffer) - state->in_buffer_offset);
+					if (result == 0) {
+						state->connection_state = BB_SCHANNEL_CLOSED;
+						goto Success;
+					} else if (result < 0) {
+						bb_error_msg_and_die("schannel: read() failed");
+					}
 
-                init_sec_buffer_empty(&out_buffers[0], SECBUFFER_TOKEN);
-                init_sec_buffer_empty(&out_buffers[1], SECBUFFER_ALERT);
-
-                init_sec_buffer_desc(&in_desc, in_buffers, _countof(in_buffers));
-                init_sec_buffer_desc(&out_desc, out_buffers, _countof(out_buffers));
-
-				status = InitializeSecurityContext(&state->cred_handle,
-												   state->initialized ?
-												   &state->ctx_handle : NULL,
-												   state->initialized ? NULL :
-												   state->hostname, flags, 0,
-												   0,
-												   state->initialized ?
-												   &in_desc : NULL, 0,
-												   &state->ctx_handle,
-												   &out_desc, &flags, 0);
-
-				if (status != SEC_E_OK) {
-					bb_error_msg_and_die("schannel: renegotiate failed: (0x%08lx): %s",
-						 status, hresult_to_error_string(status));
+					state->in_buffer_offset += result;
+					continue;
 				}
+				case SEC_I_RENEGOTIATE: {
+					DWORD flags = BB_SCHANNEL_ISC_FLAGS;
 
-				if (in_buffers[1].BufferType == SECBUFFER_EXTRA) {
-					memmove(state->in_buffer,
-							state->in_buffer + (state->in_buffer_size -
-												in_buffers[1].cbBuffer),
-							in_buffers[1].cbBuffer);
+					SecBuffer in_buffers[2];
+					SecBufferDesc in_buffers_desc;
+
+					SecBuffer out_buffers[2];
+					SecBufferDesc out_buffers_desc;
+
+					init_sec_buffer(&in_buffers[0],
+									buffers[3].pvBuffer,
+									buffers[3].cbBuffer,
+									SECBUFFER_TOKEN);
+					init_sec_buffer_empty(&in_buffers[1], SECBUFFER_EMPTY);
+
+					init_sec_buffer_empty(&out_buffers[0], SECBUFFER_TOKEN);
+					init_sec_buffer_empty(&out_buffers[1], SECBUFFER_ALERT);
+
+					init_sec_buffer_desc(
+						&in_buffers_desc, in_buffers, _countof(in_buffers));
+					init_sec_buffer_desc(
+						&out_buffers_desc, out_buffers, _countof(out_buffers));
+
+					status = InitializeSecurityContextA(&state->cred_handle,
+														&state->ctx_handle,
+														state->hostname,
+														flags,
+														0,
+														0,
+														&in_buffers_desc,
+														0,
+														&state->ctx_handle,
+														&out_buffers_desc,
+														&flags,
+														0);
+
+					if (SEC_STATUS_FAIL(status)) {
+						bb_error_msg_and_die("schannel: renegotiate failed: (0x%08lx): %s",
+							status, hresult_to_error_string(status));
+					}
+
+					if (in_buffers[1].BufferType == SECBUFFER_EXTRA) {
+						memmove(state->in_buffer,
+								state->in_buffer + (state->in_buffer_offset -
+													in_buffers[1].cbBuffer),
+								in_buffers[1].cbBuffer);
+						state->in_buffer_offset = in_buffers[1].cbBuffer;
+					} else {
+						state->in_buffer_offset = 0;
+					}
+
+					continue;
 				}
-
-				state->out_buffer_used =
-					state->in_buffer_size - in_buffers[1].cbBuffer;
-				state->in_buffer_size = in_buffers[1].cbBuffer;
-
-				continue;
+				default: {
+					bb_error_msg_and_die("schannel: DecryptMessage failed: (0x%08lx): %s", 
+						status, hresult_to_error_string(status));
+				}
 			}
-			case SEC_E_INCOMPLETE_MESSAGE:{
-				break;
-			}
-			default:{
-				bb_error_msg_and_die("schannel: DecryptMessage failed: (0x%08lx): %s", status,
-					 hresult_to_error_string(status));
-			}
-			}
-
-			received =
-				safe_read(state->ifd,
-						  state->in_buffer + state->in_buffer_size,
-						  sizeof(state->in_buffer) - state->in_buffer_size);
-			if (received == 0) {
-				state->closed = 1;
-				goto Success;
-			} else if (received < 0) {
-				bb_error_msg_and_die("schannel: read() failed");
-			}
-
-			state->in_buffer_size += received;
 		}
 	}
 
-  Success:
+Success:
 	return amount_read;
 }
 
-static void tls_write(struct tls_state *state, char *buf, size_t len) {
-	if (state->closed) {
+static void tls_write(tls_state_t *state, char *buf, size_t len) {
+	if (state->connection_state > BB_SCHANNEL_OPEN) {
 		bb_error_msg_and_die("schannel: attempted to write to a closed connection");
 	}
 
 	while (len > 0) {
+		SECURITY_STATUS status;
 		unsigned long copy_amount =
-			min(len, (size_t) state->stream_sizes.cbMaximumMessage);
+		    min(len, (size_t)state->stream_sizes.cbMaximumMessage);
 		char *write_buffer = _alloca(sizeof(state->in_buffer));
 
-		SECURITY_STATUS status;
+		SecBuffer buffers[4];
+		SecBufferDesc desc;
 
-        SecBuffer buffers[4];
-        SecBufferDesc desc;
+		init_sec_buffer(&buffers[0],
+		                write_buffer,
+		                state->stream_sizes.cbHeader,
+		                SECBUFFER_STREAM_HEADER);
+		init_sec_buffer(&buffers[1],
+		                write_buffer + state->stream_sizes.cbHeader,
+		                copy_amount,
+		                SECBUFFER_DATA);
+		init_sec_buffer(&buffers[2],
+		                write_buffer + state->stream_sizes.cbHeader +
+		                    copy_amount,
+		                state->stream_sizes.cbTrailer,
+		                SECBUFFER_STREAM_TRAILER);
+		init_sec_buffer_empty(&buffers[3], SECBUFFER_EMPTY);
 
-        init_sec_buffer(&buffers[0], write_buffer, state->stream_sizes.cbHeader, SECBUFFER_STREAM_HEADER);
-        init_sec_buffer(&buffers[1], write_buffer + state->stream_sizes.cbHeader, copy_amount, SECBUFFER_DATA);
-        init_sec_buffer(&buffers[2], write_buffer + state->stream_sizes.cbHeader + copy_amount, state->stream_sizes.cbTrailer, SECBUFFER_STREAM_TRAILER);
-        init_sec_buffer_empty(&buffers[3], SECBUFFER_EMPTY);
+		init_sec_buffer_desc(&desc, buffers, _countof(buffers));
 
-        init_sec_buffer_desc(&desc, buffers, _countof(buffers));
-
-        memcpy(buffers[1].pvBuffer,  buf, copy_amount);
+		memcpy(buffers[1].pvBuffer, buf, copy_amount);
 
 		status = EncryptMessage(&state->ctx_handle, 0, &desc, 0);
-		if (status != SEC_E_OK) {
-			bb_error_msg_and_die("schannel: EncryptMessage failed: (0x%08lx): %s", status,
-				 hresult_to_error_string(status));
+		if (SEC_STATUS_FAIL(status)) {
+			bb_error_msg_and_die("schannel: EncryptMessage failed: (0x%08lx): %s", 
+				status, hresult_to_error_string(status));
 		}
 
 		xwrite(state->ofd, write_buffer,
@@ -2593,50 +2608,44 @@ static void tls_write(struct tls_state *state, char *buf, size_t len) {
 
 static void tls_disconnect(tls_state_t * state) {
 	SECURITY_STATUS status;
+
 	DWORD token = SCHANNEL_SHUTDOWN;
 	DWORD flags = BB_SCHANNEL_ISC_FLAGS;
 
 	SecBuffer buf_token;
-
 	SecBufferDesc buf_token_desc;
 
-	SecBuffer in_buffers[2];
-	SecBuffer out_buffers[2];
+	SecBuffer out_buffer;
+	SecBufferDesc out_buffer_desc;
 
-	SecBufferDesc in_desc;
-	SecBufferDesc out_desc;
+	if (state->connection_state == BB_SCHANNEL_CLOSED_AND_FREED)
+		return;
+	state->connection_state = BB_SCHANNEL_CLOSED_AND_FREED;
 
-    init_sec_buffer(&buf_token, &token, sizeof(token), SECBUFFER_TOKEN);
-    init_sec_buffer_desc(&buf_token_desc, &buf_token, 1);
+	init_sec_buffer(&buf_token, &token, sizeof(token), SECBUFFER_TOKEN);
+	init_sec_buffer_desc(&buf_token_desc, &buf_token, 1);
 
 	ApplyControlToken(&state->ctx_handle, &buf_token_desc);
 
-	// attempt to send any final data
-    init_sec_buffer(&in_buffers[0], state->in_buffer, state->in_buffer_size, SECBUFFER_TOKEN);
-    init_sec_buffer_empty(&in_buffers[1], SECBUFFER_EMPTY);
+	init_sec_buffer_empty(&out_buffer, SECBUFFER_TOKEN);
+	init_sec_buffer_desc(&out_buffer_desc, &out_buffer, 1);
 
-    init_sec_buffer_empty(&out_buffers[0], SECBUFFER_TOKEN);
-    init_sec_buffer_empty(&out_buffers[1], SECBUFFER_ALERT);
-
-    init_sec_buffer_desc(&in_desc, in_buffers, _countof(in_buffers));
-    init_sec_buffer_desc(&out_desc, out_buffers, _countof(out_buffers));
-
-	status = InitializeSecurityContext(&state->cred_handle,
-									   state->
-									   initialized ? &state->ctx_handle :
-									   NULL,
-									   state->
-									   initialized ? NULL : state->hostname,
-									   flags, 0, 0,
-									   state->initialized ? &in_desc : NULL,
-									   0,
-									   &state->ctx_handle, &out_desc, &flags,
-									   0);
+	status = InitializeSecurityContextA(&state->cred_handle,
+	                                    &state->ctx_handle,
+	                                    state->hostname,
+	                                    flags,
+	                                    0,
+	                                    0,
+	                                    NULL,
+	                                    0,
+	                                    &state->ctx_handle,
+	                                    &out_buffer_desc,
+	                                    &flags,
+	                                    0);
 
 	if ((status == SEC_E_OK) || (status == SEC_I_CONTEXT_EXPIRED)) {
-		// send the final shutdown message
-		write(state->ofd, out_buffers[0].pvBuffer, out_buffers[0].cbBuffer);
-		FreeContextBuffer(out_buffers[0].pvBuffer);
+		write(state->ofd, out_buffer.pvBuffer, out_buffer.cbBuffer);
+		FreeContextBuffer(out_buffer.pvBuffer);
 	}
 
 	DeleteSecurityContext(&state->ctx_handle);
@@ -2645,9 +2654,8 @@ static void tls_disconnect(tls_state_t * state) {
 }
 
 
-void FAST_FUNC tls_handshake(tls_state_t * state, const char *hostname) {
+void FAST_FUNC tls_handshake(tls_state_t *state, const char *hostname) {
 	SECURITY_STATUS status;
-	int received;
 
 #if ENABLE_FEATURE_TLS_SCHANNEL_1_3
 	SCH_CREDENTIALS credential = {.dwVersion = SCH_CREDENTIALS_VERSION,
@@ -2686,117 +2694,124 @@ void FAST_FUNC tls_handshake(tls_state_t * state, const char *hostname) {
 	};
 #endif
 
-	if ((status = AcquireCredentialsHandleA(NULL, (SEC_CHAR *) UNISP_NAME_A,
-											SECPKG_CRED_OUTBOUND, NULL,
-											&credential,
-											NULL, NULL, &state->cred_handle,
-											NULL)) != SEC_E_OK) {
-		bb_error_msg_and_die("schannel: AcquireCredentialsHandleA failed: (0x%08lx): %s",
-			 status, hresult_to_error_string(status));
-	}
-
-	state->in_buffer_size = 0;
-	state->out_buffer_size = 0;
-	state->out_buffer_used = 0;
+	state->in_buffer_offset = 0;
 
 	state->out_buffer = NULL;
+	state->out_buffer_length = 0;
+	state->out_buffer_extra = 0;
 
-	state->hostname = strdup(hostname);
+	state->hostname = xstrdup(hostname);
+	state->initialized = false;
+	state->connection_state = BB_SCHANNEL_OPEN;
 
-	state->initialized = 0;
-	state->closed = 0;
+	if (SEC_STATUS_FAIL(status = AcquireCredentialsHandleA(NULL,
+	                                                       (SEC_CHAR *)UNISP_NAME_A,
+	                                                       SECPKG_CRED_OUTBOUND,
+	                                                       NULL,
+	                                                       &credential,
+	                                                       NULL,
+	                                                       NULL,
+	                                                       &state->cred_handle,
+	                                                       NULL))) {
+		bb_error_msg_and_die("schannel: AcquireCredentialsHandleA failed: (0x%08lx): %s",
+			status, hresult_to_error_string(status));
+	}
 
-	while (1) {
+	// InitializeSecurityContext loop
+	while (true) {
 		DWORD flags = BB_SCHANNEL_ISC_FLAGS;
 
 		SecBuffer in_buffers[2];
+		SecBufferDesc in_buffers_desc;
+
 		SecBuffer out_buffers[2];
+		SecBufferDesc out_buffers_desc;
 
-		SecBufferDesc in_desc;
-		SecBufferDesc out_desc;
-
-		init_sec_buffer(&in_buffers[0], state->in_buffer, state->in_buffer_size, SECBUFFER_TOKEN);
+		init_sec_buffer(&in_buffers[0],
+		                state->in_buffer,
+		                state->in_buffer_offset,
+		                SECBUFFER_TOKEN);
 		init_sec_buffer_empty(&in_buffers[1], SECBUFFER_EMPTY);
 
 		init_sec_buffer_empty(&out_buffers[0], SECBUFFER_TOKEN);
 		init_sec_buffer_empty(&out_buffers[1], SECBUFFER_ALERT);
 
-		init_sec_buffer_desc(&in_desc, in_buffers, _countof(in_buffers));
-		init_sec_buffer_desc(&out_desc, out_buffers, _countof(out_buffers));
+		init_sec_buffer_desc(
+		    &in_buffers_desc, in_buffers, _countof(in_buffers));
+		init_sec_buffer_desc(
+		    &out_buffers_desc, out_buffers, _countof(out_buffers));
 
-		status = InitializeSecurityContext(&state->cred_handle,
-										   state->
-										   initialized ? &state->ctx_handle :
-										   NULL,
-										   state->
-										   initialized ? NULL :
-										   state->hostname, flags, 0, 0,
-										   state->initialized ? &in_desc :
-										   NULL, 0,
-										   &state->ctx_handle, &out_desc,
-										   &flags, 0);
+		status = InitializeSecurityContextA(
+		    &state->cred_handle,
+		    state->initialized ? &state->ctx_handle : NULL,
+		    state->hostname,
+		    flags,
+		    0,
+		    0,
+		    state->initialized ? &in_buffers_desc : NULL,
+		    0,
+		    &state->ctx_handle,
+		    &out_buffers_desc,
+		    &flags,
+		    0);
 
-		state->initialized = 1;
+		state->initialized = true;
 
 		if (in_buffers[1].BufferType == SECBUFFER_EXTRA) {
 			memmove(state->in_buffer,
-					state->in_buffer + (state->in_buffer_size -
-										in_buffers[1].cbBuffer),
-					in_buffers[1].cbBuffer);
-			state->in_buffer_size = in_buffers[1].cbBuffer;
-		} else if (status != SEC_E_INCOMPLETE_MESSAGE) {
-			state->in_buffer_size = 0;
+			        state->in_buffer +
+			            (state->in_buffer_offset - in_buffers[1].cbBuffer),
+			        in_buffers[1].cbBuffer);
+			state->in_buffer_offset = in_buffers[1].cbBuffer;
 		}
 
 		switch (status) {
-		case SEC_E_OK:{
-			if (out_buffers[0].cbBuffer > 0) {
-				xwrite(state->ofd, out_buffers[0].pvBuffer,
-					   out_buffers[0].cbBuffer);
-				FreeContextBuffer(out_buffers[0].pvBuffer);
-			}
-			goto Success;
-		}
-		case SEC_I_CONTINUE_NEEDED:{
-			xwrite(state->ofd, out_buffers[0].pvBuffer,
-				   out_buffers[0].cbBuffer);
-			FreeContextBuffer(out_buffers[0].pvBuffer);
-			break;
-		}
-		case SEC_I_INCOMPLETE_CREDENTIALS:{
-			// we don't support this
-			bb_error_msg_and_die("schannel: client certificates not supported");
-		}
-		case SEC_E_INCOMPLETE_MESSAGE:{
-			break;
-		}
-		default:{
-			bb_error_msg_and_die("schannel: handshake failed: (0x%08lx): %s",
-								 status, hresult_to_error_string(status));
-		}
-		}
+			case SEC_E_OK: {
+				state->in_buffer_offset =
+					(in_buffers[1].BufferType == SECBUFFER_EXTRA)
+						? in_buffers[1].cbBuffer
+						: 0;
 
-		received =
-			safe_read(state->ifd, state->in_buffer + state->in_buffer_size,
-					  sizeof(state->in_buffer) - state->in_buffer_size);
-		if (received <= 0) {
-			bb_error_msg_and_die("schannel: handshake read() failed");
+				if (out_buffers[0].cbBuffer > 0) {
+					xwrite(state->ifd, out_buffers[0].pvBuffer, out_buffers[0].cbBuffer);
+					FreeContextBuffer(out_buffers[0].pvBuffer);
+				}
+
+				goto Success;
+			}
+			case SEC_I_CONTINUE_NEEDED: {
+				xwrite(state->ofd, out_buffers[0].pvBuffer, out_buffers[0].cbBuffer);
+				FreeContextBuffer(out_buffers[0].pvBuffer);
+				if (in_buffers[1].BufferType != SECBUFFER_EXTRA) {
+					state->in_buffer_offset = 0;
+				}
+				break;
+			}
+			case SEC_E_INCOMPLETE_MESSAGE: {
+				int amount_read =
+					safe_read(state->ifd, state->in_buffer + state->in_buffer_offset,
+								sizeof(state->in_buffer) - state->in_buffer_offset);
+				if (amount_read <= 0) {
+					bb_error_msg_and_die("schannel: handshake read() failed");
+				}
+
+				state->in_buffer_offset += amount_read;
+				continue;
+			}
+			default: {
+				bb_error_msg_and_die("schannel: handshake failed: (0x%08lx): %s",
+					status, hresult_to_error_string(status));
+			}
 		}
-		state->in_buffer_size += received;
 	}
 
-  Success:
-	QueryContextAttributes(&state->ctx_handle, SECPKG_ATTR_STREAM_SIZES,
-						   &state->stream_sizes);
-
-	//SecPkgContext_ConnectionInfo info;
-	//QueryContextAttributes(&state->ctx_handle, SECPKG_ATTR_CONNECTION_INFO,
-	//					   &info);
-    //
-	//fprintf(stderr, "TLS 1.%d\n", (((uint32_t)(8 * sizeof(unsigned long long) - __builtin_clzll((info.dwProtocol)) - 1)) - 7)/2);
+Success:
+	QueryContextAttributes(
+	    &state->ctx_handle, SECPKG_ATTR_STREAM_SIZES, &state->stream_sizes);
+	return;
 }
 
-void FAST_FUNC tls_run_copy_loop(tls_state_t * tls, unsigned flags) {
+void FAST_FUNC tls_run_copy_loop(tls_state_t *tls, unsigned flags) {
 	char buffer[65536];
 
 	struct pollfd pfds[2];
