@@ -98,6 +98,7 @@
 
 //usage:#define ls_trivial_usage
 //usage:	"[-1AaCxd"
+//usage:	IF_PLATFORM_MINGW32("g")
 //usage:	IF_FEATURE_LS_FOLLOWLINKS("LH")
 //usage:	IF_FEATURE_LS_RECURSIVE("R")
 //usage:	IF_FEATURE_LS_FILETYPES("Fp") "lins"
@@ -113,6 +114,7 @@
 //usage:     "\n	-A	Like -a, but exclude . and .."
 //usage:	IF_PLATFORM_MINGW32(
 //usage:     "\n	-aa,-AA	Like -a,-A but omit hidden system files"
+//usage:     "\n	-C	List by columns"
 //usage:	)
 ////usage:     "\n	-C	List by columns" - don't show, this is a default anyway
 //usage:     "\n	-x	List by lines"
@@ -129,6 +131,9 @@
 //usage:     "\n	-F	Append indicator (one of */=@|) to names"
 //usage:	)
 //usage:     "\n	-l	Long format"
+//usage:	IF_PLATFORM_MINGW32(
+//usage:     "\n	-g	Long format without group column"
+//usage:	)
 ////usage:     "\n	-g	Long format without group column"
 ////TODO: support -G too ("suppress owner column", GNUism)
 //usage:     "\n	-i	List inode numbers"
