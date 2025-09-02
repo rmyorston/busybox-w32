@@ -950,14 +950,15 @@ static const char dolatstr[] ALIGN1 = {
 #endif
 #define NCLOBBER 18
 #define NFROM    19
-#define NFROMTO  20
-#define NAPPEND  21
-#define NTOFD    22
-#define NFROMFD  23
-#define NHERE    24
-#define NXHERE   25
-#define NNOT     26
-#define N_NUMBER 27
+#define NFROMSTR 20
+#define NFROMTO  21
+#define NAPPEND  22
+#define NTOFD    23
+#define NFROMFD  24
+#define NHERE    25
+#define NXHERE   26
+#define NNOT     27
+#define N_NUMBER 28
 
 union node;
 
@@ -1388,6 +1389,7 @@ shcmd(union node *cmd, FILE *fp)
 #endif
 		case NTOFD:    s = ">&"; dftfd = 1; break;
 		case NFROM:    s = "<"; break;
+		case NFROMSTR: s = "<<<"; break;
 		case NFROMFD:  s = "<&"; break;
 		case NFROMTO:  s = "<>"; break;
 		default:       s = "*error*"; break;
@@ -5180,6 +5182,9 @@ cmdtxt(union node *n)
 	case NXHERE:
 		p = "<<...";
 		goto dotail2;
+	case NFROMSTR:
+		p = "<<<";
+		goto dotail2;
 	case NCASE:
 		cmdputs("case ");
 		cmdputs(n->ncase.expr->narg.text);
@@ -5633,25 +5638,9 @@ stoppedjobs(void)
  * data to a pipe.  If the document is short, we can stuff the data in
  * the pipe without forking.
  */
-/* openhere needs this forward reference */
-static void expandhere(union node *arg);
 static int
-openhere(union node *redir)
+write2pipe(int pip[2], const char *p, size_t len)
 {
-	char *p;
-	int pip[2];
-	size_t len = 0;
-
-	if (pipe(pip) < 0)
-		ash_msg_and_raise_perror("can't create pipe");
-
-	p = redir->nhere.doc->narg.text;
-	if (redir->type == NXHERE) {
-		expandhere(redir->nhere.doc);
-		p = stackblock();
-	}
-
-	len = strlen(p);
 	if (len <= PIPE_BUF) {
 		xwrite(pip[1], p, len);
 		goto out;
@@ -5673,6 +5662,42 @@ openhere(union node *redir)
 	return pip[0];
 }
 
+/* openhere needs this forward reference */
+static void expandhere(union node *arg);
+static int
+openhere(union node *redir)
+{
+	char *p;
+	int pip[2];
+
+	if (pipe(pip) < 0)
+		ash_msg_and_raise_perror("can't create pipe");
+
+	p = redir->nhere.doc->narg.text;
+	if (redir->type == NXHERE) {
+		expandhere(redir->nhere.doc);
+		p = stackblock();
+	}
+
+	return write2pipe(pip, p, strlen(p));
+}
+
+static int
+openherestr(char *str)
+{
+	int pip[2];
+	size_t len;
+
+	if (pipe(pip) < 0)
+		ash_msg_and_raise_perror("can't create pipe");
+
+	len = strlen(str);
+	str[len] = '\n';
+	write2pipe(pip, str, len + 1);
+	str[len] = '\0';
+	return pip[0];
+}
+
 static int
 openredirect(union node *redir)
 {
@@ -5686,6 +5711,9 @@ openredirect(union node *redir)
 		flags = O_RDONLY;
  do_open:
 		f = sh_open(redir->nfile.expfname, flags, 0);
+		break;
+	case NFROMSTR:
+		f = openherestr(redir->nfile.expfname);
 		break;
 	case NFROMTO:
 		flags = O_RDWR|O_CREAT;
@@ -9188,6 +9216,7 @@ calcsize(int funcblocksize, union node *n)
 #endif
 	case NCLOBBER:
 	case NFROM:
+	case NFROMSTR:
 	case NFROMTO:
 	case NAPPEND:
 		funcblocksize = calcsize(funcblocksize, n->nfile.fname);
@@ -9310,6 +9339,7 @@ copynode(union node *n)
 #endif
 	case NCLOBBER:
 	case NFROM:
+	case NFROMSTR:
 	case NFROMTO:
 	case NAPPEND:
 		new->nfile.fname = copynode(n->nfile.fname);
@@ -9778,6 +9808,7 @@ expredir(union node *n)
 		switch (redir->type) {
 		case NFROMTO:
 		case NFROM:
+		case NFROMSTR:
 		case NTO:
 #if BASH_REDIR_OUTPUT
 		case NTO2:
@@ -12970,6 +13001,11 @@ parseredir: {
 		c = pgetc_eatbnl();
 		switch (c) {
 		case '<':
+			c = pgetc_eatbnl();
+			if (c == '<') {
+				np->type = NFROMSTR;
+				break;
+			}
 			if (sizeof(struct nfile) != sizeof(struct nhere)) {
 				np = stzalloc(sizeof(struct nhere));
 				/*np->nfile.fd = 0; - stzalloc did it */
@@ -12977,7 +13013,6 @@ parseredir: {
 			np->type = NHERE;
 			heredoc = stzalloc(sizeof(struct heredoc));
 			heredoc->here = np;
-			c = pgetc_eatbnl();
 			if (c == '-') {
 				heredoc->striptabs = 1;
 			} else {
