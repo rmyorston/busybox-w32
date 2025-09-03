@@ -276,6 +276,7 @@ struct globals {
 	time_t ar_mtime;
 	int lineno;	// Physical line number in file
 	int dispno;	// Line number for display purposes
+	struct cmd *curr_cmd;
 	const char *rulepos;
 	int rule_idx;
 #define IF_MAX 10
@@ -307,6 +308,7 @@ struct globals {
 #define ar_mtime	(G.ar_mtime)
 #define lineno		(G.lineno)
 #define dispno		(G.dispno)
+#define curr_cmd	(G.curr_cmd)
 #define rulepos		(G.rulepos)
 #define rule_idx	(G.rule_idx)
 #define clevel		(G.clevel)
@@ -338,9 +340,20 @@ static struct name *dyndep(struct name *np, struct rule *infrule,
 static void
 vwarning(FILE *stream, const char *msg, va_list list)
 {
+	const char *m = NULL;
+	int d = 0;
+
+	if (curr_cmd) {
+		m = curr_cmd->c_makefile;
+		d = curr_cmd->c_dispno;
+	} else if (makefile) {
+		m = makefile;
+		d = dispno;
+	}
+
 	fprintf(stream, "%s: ", applet_name);
-	if (makefile)
-		fprintf(stream, "(%s:%d): ", makefile, dispno);
+	if (m)
+		fprintf(stream, "(%s:%d): ", m, d);
 	vfprintf(stream, msg, list);
 	fputc('\n', stream);
 }
@@ -726,6 +739,7 @@ addrule(struct name *np, struct depend *dp, struct cmd *cp, int flag)
 {
 	struct rule *rp;
 	struct rule **rpp;
+	struct cmd *old_cp;
 
 	// Can't mix single-colon and double-colon rules
 	if (!posix && (np->n_flag & N_TARGET)) {
@@ -742,7 +756,7 @@ addrule(struct name *np, struct depend *dp, struct cmd *cp, int flag)
 		return;
 	}
 
-	if (cp && !(np->n_flag & N_DOUBLE) && getcmd(np)) {
+	if (cp && !(np->n_flag & N_DOUBLE) && (old_cp = getcmd(np))) {
 		// Handle the inference rule redefinition case
 		// .DEFAULT rule can also be redefined (as an extension).
 		if ((np->n_flag & N_INFERENCE)
@@ -751,7 +765,17 @@ addrule(struct name *np, struct depend *dp, struct cmd *cp, int flag)
 			freerules(np->n_rule);
 			np->n_rule = NULL;
 		} else {
-			error("commands defined twice for target %s", np->n_name);
+			// We're adding commands to a single colon rule which
+			// already has some.  Clear the old ones first.
+			warning("overriding rule for target %s", np->n_name);
+			curr_cmd = old_cp;
+			warning("previous rule for target %s", np->n_name);
+			curr_cmd = NULL;
+
+			for (rp = np->n_rule; rp; rp = rp->r_next) {
+				freecmds(rp->r_cmd);
+				rp->r_cmd = NULL;
+			}
 		}
 	}
 
@@ -2602,8 +2626,7 @@ docmds(struct name *np, struct cmd *cp)
 		uint32_t ssilent, signore, sdomake;
 
 		// Location of command in makefile (for use in error messages)
-		makefile = cp->c_makefile;
-		dispno = cp->c_dispno;
+		curr_cmd = cp;
 		opts &= ~OPT_make;	// We want to know if $(MAKE) is expanded
 		q = command = expand_macros(cp->c_cmd, FALSE);
 		ssilent = silent || (np->n_flag & N_SILENT) || dotouch;
@@ -2697,7 +2720,7 @@ docmds(struct name *np, struct cmd *cp)
 		estat = MAKE_DIDSOMETHING;
 	}
 
-	makefile = NULL;
+	curr_cmd = NULL;
 	return estat;
 }
 
