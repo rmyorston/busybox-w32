@@ -109,18 +109,33 @@ static int read_smaps(pid_t pid, char buf[PMAP_BUFSZ], struct smaprec *total)
 
 		char *tp, *p;
 
-		if (buf[0] == 'S' || buf[0] == 'P') {
+#define bytes4 *(uint32_t*)buf
+#define Pss_   PACK32_BYTES('P','s','s',':')
+#define Swap   PACK32_BYTES('S','w','a','p')
+#define Priv   PACK32_BYTES('P','r','i','v')
+#define FETCH(X, N) \
+	tp = skip_whitespace(buf+4 + (N)); \
+	total->X += currec.X = fast_strtoul_10(&tp); \
+	continue
 #define SCAN(S, X) \
-			if (memcmp(buf, S, sizeof(S)-1) == 0) { \
-				tp = skip_whitespace(buf + sizeof(S)-1); \
-				total->X += currec.X = fast_strtoul_10(&tp); \
-				continue; \
-			}
-			SCAN("Pss:"          , smap_pss     );
-			SCAN("Swap:"         , smap_swap    );
-			SCAN("Private_Dirty:", private_dirty);
-#undef SCAN
+if (memcmp(buf+4, S, sizeof(S)-1) == 0) { \
+	FETCH(X, sizeof(S)-1); \
+}
+		if (bytes4 == Pss_) {
+			FETCH(smap_pss, 0);
 		}
+		if (bytes4 == Swap && buf[4] == ':') {
+			FETCH(smap_swap, 1);
+		}
+		if (bytes4 == Priv) {
+			SCAN("ate_Dirty:", private_dirty);
+		}
+#undef bytes4
+#undef Pss_
+#undef Swap
+#undef Priv
+#undef FETCH
+#undef SCAN
 		tp = strchr(buf, '-');
 		if (tp) {
 			// We reached next mapping - the line of this form:
@@ -162,7 +177,7 @@ static int procps_get_maps(pid_t pid, unsigned opt)
 {
 	struct smaprec total;
 	int ret;
-	char buf[PMAP_BUFSZ];
+	char buf[PMAP_BUFSZ] ALIGN4;
 
 	ret = read_cmdline(buf, sizeof(buf), pid, NULL);
 	if (ret < 0)

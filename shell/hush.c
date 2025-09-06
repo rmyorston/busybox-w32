@@ -115,6 +115,11 @@
 //config:# It's only needed to get "nice" menuconfig indenting.
 //config:if SHELL_HUSH || HUSH || SH_IS_HUSH || BASH_IS_HUSH
 //config:
+//config:config HUSH_NEED_FOR_SPEED
+//config:	bool "Faster, but larger code"
+//config:	default y
+//config:	depends on SHELL_HUSH
+//config:
 //config:config HUSH_BASH_COMPAT
 //config:	bool "bash-compatible extensions"
 //config:	default y
@@ -3388,7 +3393,19 @@ static int glob_needed(const char *s)
 			s += 2;
 			continue;
 		}
-		if (*s == '*' || *s == '[' || *s == '?' || *s == '{')
+		if (*s == '*' || *s == '?')
+			return 1;
+		/* Only force glob if "..[..].." detected.
+		 * Not merely "[", "[[", "][" etc.
+		 * Optimization to avoid glob()
+		 * on "[ COND ]" and "[[ COND ]]":
+		 *  strace hush -c 'i=0; while [ $((++i)) != 50000 ]; do :; done'
+		 * shouldn't be doing 50000 stat("[").
+		 * (Can do it for "{" too, but it's not a common case).
+		 */
+		if (*s == '[' && strchr(s+1, ']'))
+			return 1;
+		if (*s == '{' /* && strchr(s+1, '}')*/)
 			return 1;
 		s++;
 	}
@@ -3579,7 +3596,16 @@ static int glob_needed(const char *s)
 			s += 2;
 			continue;
 		}
-		if (*s == '*' || *s == '[' || *s == '?')
+		if (*s == '*' || *s == '?')
+			return 1;
+		/* Only force glob if "..[..].." detected.
+		 * Not merely "[", "[[", "][" etc.
+		 * Optimization to avoid glob()
+		 * on "[ COND ]" and "[[ COND ]]":
+		 *  strace hush -c 'i=0; while [ $((++i)) != 50000 ]; do :; done'
+		 * shouldn't be doing 50000 stat("[").
+		 */
+		if (*s == '[' && strchr(s+1, ']'))
 			return 1;
 		s++;
 	}
@@ -4599,7 +4625,15 @@ static char *fetch_till_str(o_string *as_string,
 					past_EOL = heredoc.length;
 					/* Get 1st char of next line, possibly skipping leading tabs */
 					do {
-						ch = i_getch(input);
+						if (heredoc_flags & HEREDOC_QUOTED)
+							ch = i_getch(input);
+						else { /* see heredoc_bkslash_newline3a.tests:
+							 * cat <<-EOF
+							 * <tab>\
+							 * <tab>EOF
+							 */
+							ch = i_getch_and_eat_bkslash_nl(input);
+						}
 						if (ch != EOF)
 							nommu_addchr(as_string, ch);
 					} while ((heredoc_flags & HEREDOC_SKIPTABS) && ch == '\t');
@@ -4625,7 +4659,7 @@ static char *fetch_till_str(o_string *as_string,
 				prev = 0; /* not '\' */
 				continue;
 			}
-		}
+		} /* if (\n or EOF) */
 		if (ch == EOF) {
 			o_free(&heredoc);
 			return NULL; /* error */

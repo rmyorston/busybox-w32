@@ -166,7 +166,7 @@ struct globals {
 	top_status_t *top;
 	int ntop;
 	smallint inverted;
-	smallint not_first_line;
+	smallint first_line_printed;
 #if ENABLE_FEATURE_TOPMEM
 	smallint sort_field;
 #endif
@@ -420,8 +420,8 @@ static void print_line_buf(void)
 
 	G.lines_remaining--;
 	fmt = OPT_BATCH_MODE ? "\n""%.*s" : "\n""%.*s"CLREOL;
-	if (!G.not_first_line) {
-		G.not_first_line = 1;
+	if (!G.first_line_printed) {
+		G.first_line_printed = 1;
 		/* Go to top */
 		fmt = OPT_BATCH_MODE ? "%.*s" : HOME"%.*s"CLREOL;
 	}
@@ -432,9 +432,9 @@ static void print_line_bold(void)
 {
 	G.lines_remaining--;
 //we never print first line in bold
-//	if (!G.not_first_line) {
+//	if (!G.first_line_printed) {
 //		printf(OPT_BATCH_MODE ? "%.*s" : HOME"%.*s"CLREOL, G.scr_width - 1, G.line_buf);
-//		G.not_first_line = 1;
+//		G.first_line_printed = 1;
 //	} else {
 		printf(OPT_BATCH_MODE ? "\n""%.*s" : "\n"REVERSE"%.*s"NORMAL CLREOL, G.scr_width - 1, G.line_buf);
 //	}
@@ -443,7 +443,8 @@ static void print_line_bold(void)
 static void print_end(void)
 {
 	fputs_stdout(OPT_BATCH_MODE ? "\n" : CLREOS"\r");
-	G.not_first_line = 0; /* next print will be "first line" (will clear the screen) */
+	/* next print will be "first line" (will clear the screen) */
+	G.first_line_printed = 0;
 }
 
 #if ENABLE_FEATURE_TOP_CPU_GLOBAL_PERCENTS && ENABLE_FEATURE_TOP_DECIMALS
@@ -1203,6 +1204,9 @@ int top_main(int argc UNUSED_PARAM, char **argv)
 	unsigned scan_mask = TOP_MASK;
 
 	INIT_G();
+
+//worth it?
+//	setvbuf(stdout, /*buf*/ NULL, _IOFBF, /*size*/ 0);
 
 	interval = 5; /* default update interval is 5 seconds */
 	iterations = 0; /* infinite */

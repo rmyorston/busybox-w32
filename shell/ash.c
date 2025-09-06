@@ -1078,28 +1078,47 @@ out2str(const char *p)
 # define CTL_LAST CTLFROMPROC
 #endif
 
-/* variable substitution byte (follows CTLVAR) */
-#define VSTYPE  0x0f            /* type of variable substitution */
-#define VSNUL   0x10            /* colon--treat the empty string as unset */
-
-/* values of VSTYPE field */
-#define VSNORMAL        0x1     /* normal variable:  $var or ${var} */
-#define VSMINUS         0x2     /* ${var-text} */
-#define VSPLUS          0x3     /* ${var+text} */
-#define VSQUESTION      0x4     /* ${var?message} */
-#define VSASSIGN        0x5     /* ${var=text} */
+/* ${VAR[ops]} encoding is CTLVAR,<type_byte>,"VARNAME=",<ops_encoded(details?)>,CTLENDVAR */
+/* variable type byte (follows CTLVAR) */
+#define VSTYPE         0x0f     /* type of variable substitution */
+#define VSNUL          0x10     /* colon: the op is one of :- :+ :? := */
+/* values of VSTYPE field. The first 5 must be in this order, "}-+?=" string is used elsewhere to index into them */
+#define VSNORMAL        0x1     /* $var or ${var} */
+#define VSMINUS         0x2     /* ${var[:]-text} */
+#define VSPLUS          0x3     /* ${var[:]+text} */
+#define VSQUESTION      0x4     /* ${var[:]?message} */
+#define VSASSIGN        0x5     /* ${var[:]=text} */
 #define VSTRIMRIGHT     0x6     /* ${var%pattern} */
 #define VSTRIMRIGHTMAX  0x7     /* ${var%%pattern} */
 #define VSTRIMLEFT      0x8     /* ${var#pattern} */
 #define VSTRIMLEFTMAX   0x9     /* ${var##pattern} */
 #define VSLENGTH        0xa     /* ${#var} */
 #if BASH_SUBSTR
-#define VSSUBSTR        0xc     /* ${var:position:length} */
+#define VSSUBSTR        0xb     /* ${var:position:length} */
 #endif
 #if BASH_PATTERN_SUBST
-#define VSREPLACE       0xd     /* ${var/pattern/replacement} */
-#define VSREPLACEALL    0xe     /* ${var//pattern/replacement} */
+#define VSREPLACE       0xc     /* ${var/pattern/replacement} */
+#define VSREPLACEALL    0xd     /* ${var//pattern/replacement} */
 #endif
+static const char vstype_suffix[][3] ALIGN1 = {
+	[VSNORMAL       - VSNORMAL] = "}", // $var or ${var}
+	[VSMINUS        - VSNORMAL] = "-", // ${var-text}
+	[VSPLUS         - VSNORMAL] = "+", // ${var+text}
+	[VSQUESTION     - VSNORMAL] = "?", // ${var?message}
+	[VSASSIGN       - VSNORMAL] = "=", // ${var=text}
+	[VSTRIMRIGHT    - VSNORMAL] = "%", // ${var%pattern}
+	[VSTRIMRIGHTMAX - VSNORMAL] = "%%",// ${var%%pattern}
+	[VSTRIMLEFT     - VSNORMAL] = "#", // ${var#pattern}
+	[VSTRIMLEFTMAX  - VSNORMAL] = "##",// ${var##pattern}
+	[VSLENGTH       - VSNORMAL] = "",  // ${#var}
+#if BASH_SUBSTR
+	[VSSUBSTR       - VSNORMAL] = ":", // ${var:position:length}
+#endif
+#if BASH_PATTERN_SUBST
+	[VSREPLACE      - VSNORMAL] = "/", // ${var/pattern/replacement}
+	[VSREPLACEALL   - VSNORMAL] = "//",// ${var//pattern/replacement}
+#endif
+};
 
 static const char dolatstr[] ALIGN1 = {
 	CTLQUOTEMARK, CTLVAR, VSNORMAL, '@', '=', CTLQUOTEMARK, '\0'
@@ -1473,7 +1492,9 @@ sharg(union node *arg, FILE *fp)
 
 			if (subtype & VSNUL)
 				putc(':', fp);
-
+#if 1
+			fputs(vstype_suffix[(subtype & VSTYPE) - VSNORMAL], fp);
+#else
 			switch (subtype & VSTYPE) {
 			case VSNORMAL:
 				putc('}', fp);
@@ -1509,6 +1530,7 @@ sharg(union node *arg, FILE *fp)
 			default:
 				out1fmt("<subtype %d>", subtype);
 			}
+#endif
 			break;
 		case CTLENDVAR:
 			putc('}', fp);
@@ -1649,13 +1671,14 @@ showtree(union node *n)
 static void
 ash_vmsg(const char *msg, va_list ap)
 {
+//In dash, the order/format is different:
+// arg0: LINENO: [commandname:] MSG
+//If you fix it, change testsuite to match
 	fprintf(stderr, "%s: ", arg0);
-	if (commandname) {
-		if (strcmp(arg0, commandname))
-			fprintf(stderr, "%s: ", commandname);
-		if (!iflag || g_parsefile->pf_fd > 0)
-			fprintf(stderr, "line %d: ", errlinno);
-	}
+	if (commandname && strcmp(arg0, commandname) != 0)
+		fprintf(stderr, "%s: ", commandname);
+	if (!iflag || g_parsefile->pf_fd > 0)
+		fprintf(stderr, "line %d: ", errlinno);
 	vfprintf(stderr, msg, ap);
 	newline_and_flush(stderr);
 }
@@ -4224,7 +4247,7 @@ struct job {
 	struct job *prev_job;   /* previous job */
 };
 
-static struct job *makejob(/*union node *,*/ int);
+static struct job *makejob(int);
 #if !ENABLE_PLATFORM_MINGW32
 static int forkshell(struct job *, union node *, int);
 #endif
@@ -5475,7 +5498,7 @@ growjobtab(void)
  * Called with interrupts off.
  */
 static struct job *
-makejob(/*union node *node,*/ int nprocs)
+makejob(int nprocs)
 {
 	int i;
 	struct job *jp;
@@ -5525,13 +5548,6 @@ static char *cmdnextc;
 static void
 cmdputs(const char *s)
 {
-	static const char vstype[VSTYPE + 1][3] ALIGN1 = {
-		"", "}", "-", "+", "?", "=",
-		"%", "%%", "#", "##"
-		IF_BASH_SUBSTR(, ":")
-		IF_BASH_PATTERN_SUBST(, "/", "//")
-	};
-
 	const char *p, *str;
 	char cc[2];
 	char *nextc;
@@ -5594,32 +5610,34 @@ cmdputs(const char *s)
 		case '=':
 			if (subtype == 0)
 				break;
+			/* We are in variable name */
 			if ((subtype & VSTYPE) != VSNORMAL)
 				quoted <<= 1;
-			str = vstype[subtype & VSTYPE];
-			if (subtype & VSNUL)
-				c = ':';
-			else
-				goto checkstr;
+			str = vstype_suffix[(subtype & VSTYPE) - VSNORMAL];
+			if (!(subtype & VSNUL))
+				goto dostr;
+			c = ':';
 			break;
-		case '\'':
+		case '$':
+			/* Can happen inside quotes, or in variable name $$ */
+			if (subtype != 0)
+				// Testcase:
+				// $ true $$ &
+				// $ <cr>
+				// [1]+ Done  true ${$} // shows ${\$} without "if (subtype)" check
+				break;
+			/* Not in variable name - show as \$ */
+		case '\'': /* These can only happen inside quotes */
 		case '\\':
 		case '"':
-		case '$':
-			/* These can only happen inside quotes */
 			cc[0] = c;
 			str = cc;
-//FIXME:
-// $ true $$ &
-// $ <cr>
-// [1]+  Done    true ${\$}   <<=== BUG: ${\$} is not a valid way to write $$ (${$} would be ok)
 			c = '\\';
 			break;
 		default:
 			break;
 		}
 		USTPUTC(c, nextc);
- checkstr:
 		if (!str)
 			continue;
  dostr:
@@ -5631,7 +5649,7 @@ cmdputs(const char *s)
 	if (quoted & 1) {
 		USTPUTC('"', nextc);
 	}
-	*nextc = 0;
+	*nextc = '\0';
 	cmdnextc = nextc;
 }
 
@@ -7392,7 +7410,7 @@ evalbackcmd(union node *n, struct backcmd *result
 	if (pipe(pip) < 0)
 		ash_msg_and_raise_perror("can't create pipe");
 	/* process substitution uses NULL job, like openhere() */
-	jp = (ctl == CTLBACKQ) ? makejob(/*n,*/ 1) : NULL;
+	jp = (ctl == CTLBACKQ) ? makejob(1) : NULL;
 #if ENABLE_PLATFORM_MINGW32
 	memset(&fs, 0, sizeof(fs));
 	fs.fpid = FS_EVALBACKCMD;
@@ -10462,7 +10480,7 @@ evaltree(union node *n, int flags)
 #endif
 	case NNOT:
 		status = !evaltree(n->nnot.com, EV_TESTED);
-		goto setstatus;
+		break;
 	case NREDIR:
 		errlinno = lineno = n->nredir.linno;
 		expredir(n->nredir.redirect);
@@ -10473,7 +10491,7 @@ evaltree(union node *n, int flags)
 		}
 		if (n->nredir.redirect)
 			popredir(/*drop:*/ 0);
-		goto setstatus;
+		break;
 	case NCMD:
 		evalfn = evalcommand;
  checkexit:
@@ -10517,7 +10535,7 @@ evaltree(union node *n, int flags)
 		evalfn = evaltree;
  calleval:
 		status = evalfn(n, flags);
-		goto setstatus;
+		break;
 	}
 	case NIF:
 		status = evaltree(n->nif.test, EV_TESTED);
@@ -10531,17 +10549,18 @@ evaltree(union node *n, int flags)
 			goto evaln;
 		}
 		status = 0;
-		goto setstatus;
+		break;
 	case NDEFUN:
 		defun(n);
 		/* Not necessary. To test it:
 		 * "false; f() { qwerty; }; echo $?" should print 0.
 		 */
 		/* status = 0; */
- setstatus:
-		exitstatus = status;
 		break;
 	}
+
+	exitstatus = status;
+
  out:
 	/* Order of checks below is important:
 	 * signal handlers trigger before exit caused by "set -e".
@@ -10723,7 +10742,7 @@ evalsubshell(union node *n, int flags)
 	INT_OFF;
 	if (backgnd == FORK_FG)
 		get_tty_state();
-	jp = makejob(/*n,*/ 1);
+	jp = makejob(1);
 #if ENABLE_PLATFORM_MINGW32
 	memset(&fs, 0, sizeof(fs));
 	fs.fpid = FS_EVALSUBSHELL;
@@ -10839,7 +10858,7 @@ evalpipe(union node *n, int flags)
 	INT_OFF;
 	if (n->npipe.pipe_backgnd == 0)
 		get_tty_state();
-	jp = makejob(/*n,*/ pipelen);
+	jp = makejob(pipelen);
 	prevfd = -1;
 	for (lp = n->npipe.cmdlist; lp; lp = lp->next) {
 		prehash(lp->n);
@@ -11822,7 +11841,7 @@ evalcommand(union node *cmd, int flags)
 			/* No, forking off a child is necessary */
 			INT_OFF;
 			get_tty_state();
-			jp = makejob(/*cmd,*/ 1);
+			jp = makejob(1);
 			if (forkshell(jp, cmd, FORK_FG) != 0) {
 				/* parent */
 				break;
@@ -13779,12 +13798,12 @@ decode_dollar_squote(void)
 #endif
 
 /* Used by expandstr to get here-doc like behaviour. */
-#define FAKEEOFMARK ((char*)(uintptr_t)1)
+#define FAKEEOFMARK ((struct heredoc*)(uintptr_t)1)
 
 static ALWAYS_INLINE int
-realeofmark(const char *eofmark)
+realeofmark(struct heredoc *here)
 {
-	return eofmark && eofmark != FAKEEOFMARK;
+	return here && here != FAKEEOFMARK;
 }
 
 /*
@@ -13806,7 +13825,7 @@ realeofmark(const char *eofmark)
 #define PARSEPROCSUB()  {style = PSUB; goto parsebackq; parsebackq_psreturn:;}
 #define PARSEARITH()    {goto parsearith; parsearith_return:;}
 static int
-readtoken1(int c, int syntax, char *eofmark, int striptabs)
+readtoken1(int c, int syntax, struct heredoc *eofmark)
 {
 	/* NB: syntax parameter fits into smallint */
 	/* c parameter is an unsigned char or PEOF */
@@ -14058,23 +14077,30 @@ checkend: {
 		int markloc;
 		char *p;
 
-		if (striptabs) {
+		if (eofmark->striptabs) {
 			while (c == '\t')
-				c = pgetc();
+				if (eofmark->here->type == NHERE)
+					c = pgetc();  /* dash always does pgetc() */
+				else /* NXHERE */
+					c = pgetc_eatbnl();
+				/* (see heredoc_bkslash_newline3a.tests) */
 		}
 
 		markloc = out - (char *)stackblock();
-		for (p = eofmark; STPUTC(c, out), *p; p++) {
+		for (p = eofmark->eofmark; STPUTC(c, out), *p; p++) {
 			if (c != *p)
 				goto more_heredoc;
-			/* FIXME: fails for backslash-newlined terminator:
+			/* dash still has this not fixed (as of 2025-08)
 			 * cat <<EOF
 			 * ...
 			 * EO\
 			 * F
 			 * (see heredoc_bkslash_newline2.tests)
 			 */
-			c = pgetc();
+			if (eofmark->here->type == NHERE)
+				c = pgetc(); /* dash always does pgetc() */
+			else /* NXHERE */
+				c = pgetc_eatbnl();
 		}
 
 		if (c == '\n' || c == PEOF) {
@@ -14084,7 +14110,6 @@ checkend: {
 			needprompt = doprompt;
 		} else {
 			int len_here;
-
  more_heredoc:
 			p = (char *)stackblock() + markloc + 1;
 			len_here = out - p;
@@ -14593,7 +14618,7 @@ xxreadtoken(void)
 		}
 	} /* for (;;) */
 
-	return readtoken1(c, BASESYNTAX, (char *) NULL, 0);
+	return readtoken1(c, BASESYNTAX, NULL);
 }
 #else /* old xxreadtoken */
 #define RETURN(token)   return lasttoken = token
@@ -14644,7 +14669,7 @@ xxreadtoken(void)
 		}
 		break;
 	}
-	return readtoken1(c, BASESYNTAX, (char *)NULL, 0);
+	return readtoken1(c, BASESYNTAX, NULL);
 #undef RETURN
 }
 #endif /* old xxreadtoken */
@@ -14750,9 +14775,9 @@ parseheredoc(void)
 		tokpushback = 0;
 		setprompt_if(needprompt, 2);
 		if (here->here->type == NHERE)
-			readtoken1(pgetc(), SQSYNTAX, here->eofmark, here->striptabs);
+			readtoken1(pgetc(), SQSYNTAX, here);
 		else
-			readtoken1(pgetc_eatbnl(), DQSYNTAX, here->eofmark, here->striptabs);
+			readtoken1(pgetc_eatbnl(), DQSYNTAX, here);
 		n = stzalloc(sizeof(struct narg));
 		n->narg.type = NARG;
 		/*n->narg.next = NULL; - stzalloc did it */
@@ -14795,8 +14820,7 @@ expandstr(const char *ps, int syntax_type)
 	 * PS1='$(date "+%H:%M:%S) > '
 	 */
 	exception_handler = &jmploc;
-	readtoken1(pgetc_eatbnl(), syntax_type, FAKEEOFMARK, 0);
-
+	readtoken1(pgetc_eatbnl(), syntax_type, FAKEEOFMARK);
 	n.narg.type = NARG;
 	n.narg.next = NULL;
 	n.narg.text = wordtext;
@@ -16179,7 +16203,7 @@ procargs(char **argv)
 #if ENABLE_PLATFORM_MINGW32
 	login_sh = applet_name[0] == 'l';
 #else
-	login_sh = xargv[0] && xargv[0][0] == '-';
+	login_sh = /*xargv[0] &&*/ xargv[0][0] == '-';
 #endif
 #if NUM_SCRIPTS > 0
 	if (minusc)
@@ -16231,7 +16255,6 @@ procargs(char **argv)
 #endif
  setarg0:
 		arg0 = *xargv++;
-		commandname = arg0;
 	}
 
 	shellparam.p = xargv;
