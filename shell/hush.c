@@ -12160,8 +12160,7 @@ static int wait_for_child_or_signal(struct pipe *waitfor_pipe, pid_t waitfor_pid
 		 * Or else we may race with SIGCHLD, lose it,
 		 * and get stuck in sigsuspend...
 		 */
-		sigfillset(&oldset); /* block all signals, remember old set */
-		sigprocmask2(SIG_SETMASK, &oldset);
+		sigblockall(&oldset); /* block all signals, remember old set */
 
 		if (!sigisemptyset(&G.pending_set)) {
 			/* Crap! we raced with some signal! */

@@ -41,7 +41,19 @@ int FAST_FUNC sigprocmask2(int how, sigset_t *set)
 	oset = set;
 	return sigprocmask(how, set, oset);
 }
+
+int FAST_FUNC sigblockall(sigset_t *set)
+{
+#if 0 /* nope. set can be NULL */
+	sigfillset(set);
+	return sigprocmask2(SIG_SETMASK, set);
+#else
+	sigset_t mask;
+	sigfillset(&mask);
+	return sigprocmask(SIG_SETMASK, &mask, set);
 #endif
+}
+#endif /* !ENABLE_PLATFORM_MINGW32 */
 
 void FAST_FUNC bb_signals(int sigs, void (*f)(int))
 {

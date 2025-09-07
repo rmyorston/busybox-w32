@@ -558,6 +558,9 @@ struct globals_misc {
 	smallint job_warning;   /* user was warned about stopped jobs (can be 2, 1 or 0). */
 #endif
 	smallint inps4;		/* Prevent PS4 nesting. */
+#if !ENABLE_PLATFORM_MINGW32
+	smallint vforked;
+#endif
 	int savestatus;         /* exit status of last command outside traps */
 	int rootpid;            /* pid of main shell */
 	/* shell level: 0 for the main shell, 1 for its children, and so on */
@@ -595,7 +598,7 @@ struct globals_misc {
 	 */
 	volatile /*sig_atomic_t*/ smallint pending_int; /* 1 = got SIGINT */
 #if !ENABLE_PLATFORM_MINGW32
-	volatile /*sig_atomic_t*/ smallint gotsigchld; /* 1 = got SIGCHLD */
+	volatile /*sig_atomic_t*/ smallint gotsigchld;  /* 1 = got SIGCHLD */
 	volatile /*sig_atomic_t*/ smallint pending_sig;	/* last pending signal */
 #endif
 	smallint exception_type; /* kind of exception: */
@@ -685,6 +688,11 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define back_exitstatus   (G_misc.back_exitstatus )
 #define job_warning       (G_misc.job_warning)
 #define inps4       (G_misc.inps4      )
+#if !ENABLE_PLATFORM_MINGW32
+#define vforked     (G_misc.vforked    )
+#else
+#define vforked     0
+#endif
 #define savestatus  (G_misc.savestatus )
 #define rootpid     (G_misc.rootpid    )
 #define shlvl       (G_misc.shlvl      )
@@ -780,6 +788,19 @@ var_end(const char *var)
 	return var;
 }
 
+#if !ENABLE_PLATFORM_MINGW32
+/* Our signal logic never blocks individual signals
+ * using signal mask - only by setting SIG_IGN handler.
+ * Therefore just unmasking all of them instead of "restore old mask"
+ * approach is safe, modulo a case where the shell itself inherited
+ * a _masked_ signal.
+ */
+static void
+sigclearmask(void)
+{
+	sigprocmask_allsigs(SIG_UNBLOCK);
+}
+#endif
 
 /* ============ Parser data */
 
@@ -885,6 +906,10 @@ raise_exception(int e)
 	if (exception_handler == NULL)
 		abort();
 #endif
+
+	if (vforked)
+		_exit(exitstatus);
+
 	INTOFF;
 	exception_type = e;
 	longjmp(exception_handler->loc, 1);
@@ -1707,6 +1732,7 @@ ash_vmsg_and_raise(int cond, const char *msg, va_list ap)
 	/* NOTREACHED */
 }
 
+/* This function is called sh_error() in dash */
 static void ash_msg_and_raise_error(const char *, ...) NORETURN;
 static void
 ash_msg_and_raise_error(const char *msg, ...)
@@ -4247,7 +4273,6 @@ struct job {
 	struct job *prev_job;   /* previous job */
 };
 
-static struct job *makejob(int);
 #if !ENABLE_PLATFORM_MINGW32
 static int forkshell(struct job *, union node *, int);
 #endif
@@ -4276,15 +4301,23 @@ ignoresig(int signo)
 		/* No, need to do it */
 		signal(signo, SIG_IGN);
 	}
-	sigmode[signo - 1] = S_HARD_IGN;
+	if (!vforked)
+		sigmode[signo - 1] = S_HARD_IGN;
 }
 
 /*
  * Only one usage site - in setsignal()
+ * This function is called onsig() in dash
  */
 static void
 signal_handler(int signo)
 {
+	// parent momentarily has vforked == 1 too, but it masks
+	// all signals until after it resets vforked to 0.
+	if (vforked)
+		/* We are vfork child, DO NOT MODIFY ANY VARIABLES! */
+		return;
+
 	if (signo == SIGCHLD) {
 		gotsigchld = 1;
 		if (!trap[SIGCHLD])
@@ -4312,9 +4345,12 @@ signal_handler(int signo)
 static void
 setsignal(int signo)
 {
+	int lvforked;
 	char *t;
 	char cur_act, new_act;
 	struct sigaction act;
+
+	lvforked = vforked;
 
 	t = trap[signo];
 	new_act = S_DFL;
@@ -4324,7 +4360,7 @@ setsignal(int signo)
 			new_act = S_IGN;
 	}
 
-	if (rootshell && new_act == S_DFL) {
+	if (rootshell && new_act == S_DFL && !lvforked) {
 		switch (signo) {
 		case SIGINT:
 			if (iflag || minusc || sflag == 0)
@@ -4394,8 +4430,8 @@ setsignal(int signo)
 	if (cur_act == S_HARD_IGN || cur_act == new_act)
 		return;
 
-	*t = new_act;
-
+	if (!lvforked)
+		*t = new_act;
 	act.sa_handler = SIG_DFL;
 	switch (new_act) {
 	case S_CATCH:
@@ -5014,15 +5050,16 @@ waitproc(int block, int *status)
 		if (err || (err = -!block))
 			break;
 
-		sigfillset(&oldmask);
-		sigprocmask2(SIG_SETMASK, &oldmask); /* mask is updated */
-		while (!gotsigchld && !pending_sig)
-			sigsuspend(&oldmask);
-		sigprocmask(SIG_SETMASK, &oldmask, NULL);
 		//simpler, but unsafe: a signal can set pending_sig after check, but before pause():
 		//while (!gotsigchld && !pending_sig)
 		//	pause();
 
+		sigblockall(&oldmask);
+
+		while (!gotsigchld && !pending_sig)
+			sigsuspend(&oldmask);
+
+		sigclearmask();
 	} while (gotsigchld);
 
 	return err;
@@ -5884,17 +5921,27 @@ static void closescript(void);
 static NOINLINE void
 forkchild(struct job *jp, union node *n, int mode)
 {
+	int lvforked;
 	int oldlvl;
 
 	TRACE(("Child shell %d\n", getpid()));
 	oldlvl = shlvl;
-	shlvl++;
+	lvforked = vforked;
+
+	if (!lvforked) {
+		shlvl++;
+
+		closescript();
+
+#if JOBS
+		/* do job control only in root shell */
+		jobctl = 0;
+#endif
+	}
 
 	/* man bash: "Non-builtin commands run by bash have signal handlers
 	 * set to the values inherited by the shell from its parent".
 	 * Do we do it correctly? */
-
-	closescript();
 
 	if (n && n->type == NCMD        /* is it single cmd? */
 	/* && n->ncmd.args->type == NARG - always true? */
@@ -5941,10 +5988,9 @@ forkchild(struct job *jp, union node *n, int mode)
 		trap_ptr = xmemdup(trap, sizeof(trap));
 		/* Fall through into clearing traps */
 	}
-	clear_traps();
+	if (!lvforked)
+		clear_traps();
 #if JOBS
-	/* do job control only in root shell */
-	jobctl = 0;
 	if (mode != FORK_NOJOB && jp->jobctl && oldlvl == 0) {
 		pid_t pgrp;
 
@@ -5999,6 +6045,10 @@ forkchild(struct job *jp, union node *n, int mode)
 		return;
 	}
 #endif
+
+	if (lvforked)
+		return;
+
 	for (jp = curjob; jp; jp = jp->prev_job)
 		freejob(jp);
 }
@@ -6017,8 +6067,17 @@ forkparent(struct job *jp, union node *n, int mode, HANDLE proc)
 {
 #if ENABLE_PLATFORM_MINGW32
 	pid_t pid = GetProcessId(proc);
+#else
+	if (pid < 0) {
+		TRACE(("Fork failed, errno=%d", errno));
+		if (jp)
+			freejob(jp);
+		ash_msg_and_raise_perror("can't fork");
+		/* NOTREACHED */
+	}
 #endif
-	TRACE(("In parent shell: child = %d\n", pid));
+
+	TRACE(("In parent shell:  child = %d\n", pid));
 	if (!jp) /* jp is NULL when called by openhere() for heredoc support */
 		return;
 #if JOBS
@@ -6067,19 +6126,42 @@ forkshell(struct job *jp, union node *n, int mode)
 
 	TRACE(("forkshell(%%%d, %p, %d) called\n", jobno(jp), n, mode));
 	pid = fork();
-	if (pid < 0) {
-		TRACE(("Fork failed, errno=%d", errno));
-		if (jp)
-			freejob(jp);
-		ash_msg_and_raise_perror("can't fork");
-	}
 	if (pid == 0) {
 		CLEAR_RANDOM_T(&random_gen); /* or else $RANDOM repeats in child */
 		forkchild(jp, n, mode);
-	} else {
+	} else
 		forkparent(jp, n, mode, pid);
-	}
+
 	return pid;
+}
+
+static void shellexec(char *prog, char **argv, const char *path, int idx) NORETURN;
+
+static struct job*
+vforkexec(union node *n, char **argv, const char *path, int idx)
+{
+	struct job *jp;
+	int pid;
+
+	jp = makejob(1);
+
+	sigblockall(NULL);
+	vforked = 1;
+
+	pid = vfork();
+
+	if (!pid) {
+		forkchild(jp, n, FORK_FG);
+		sigclearmask();
+		shellexec(argv[0], argv, path, idx);
+		/* NOTREACHED */
+	}
+
+	vforked = 0;
+	sigclearmask();
+	forkparent(jp, n, FORK_FG, pid);
+
+	return jp;
 }
 #endif
 
@@ -9243,9 +9325,11 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
  * have to change the find_command routine as well.
  * argv[-1] must exist and be writable! See tryexec() for why.
  */
+#if ENABLE_PLATFORM_MINGW32
 static struct builtincmd *find_builtin(const char *name);
 static void shellexec(char *prog, char **argv, const char *path, int idx,
 						int noexec) NORETURN;
+#endif
 static void shellexec(char *prog, char **argv, const char *path, int idx,
 						int noexec)
 {
@@ -11817,6 +11901,7 @@ evalcommand(union node *cmd, int flags)
 			break;
 		}
 #endif
+		/* Fork off a child process if necessary. */
 		/* Can we avoid forking? For example, very last command
 		 * in a script or a subshell does not need forking,
 		 * we can just exec it.
@@ -11841,14 +11926,8 @@ evalcommand(union node *cmd, int flags)
 			/* No, forking off a child is necessary */
 			INTOFF;
 			get_tty_state();
-			jp = makejob(1);
-			if (forkshell(jp, cmd, FORK_FG) != 0) {
-				/* parent */
-				break;
-			}
-			/* child */
-			FORCEINTON;
-			/* fall through to exec'ing external program */
+			jp = vforkexec(cmd, argv, path, cmdentry.u.index);
+			break;
 		}
 #endif
 		shellexec(argv[0], argv, path, cmdentry.u.index, FALSE);

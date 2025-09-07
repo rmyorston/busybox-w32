@@ -719,6 +719,8 @@ int sigaction_set(int sig, const struct sigaction *act) FAST_FUNC;
 int sigprocmask_allsigs(int how) FAST_FUNC;
 /* Return old set in the same set: */
 int sigprocmask2(int how, sigset_t *set) FAST_FUNC;
+/* SIG_BLOCK all signals, return old set: */
+int sigblockall(sigset_t *set) FAST_FUNC;
 #else
 #define bb_signals(s, f)
 #define kill_myself_with_sig(s)
