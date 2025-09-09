@@ -384,10 +384,16 @@ union node;
 struct strlist;
 struct job;
 
+#if defined(_WIN64)
+# define ALIGN64 ALIGNED(16)
+#else
+# define ALIGN64
+#endif
+
 struct forkshell {
 	/* filled by forkshell_copy() */
-	struct globals_var *gvp;
 	struct globals_misc *gmp;
+	struct globals_var *gvp;
 	struct tblentry **cmdtable;
 #if ENABLE_ASH_ALIAS
 	struct alias **atab;
@@ -427,7 +433,7 @@ struct forkshell {
 	union node *n;
 	char **argv;
 	char *path;
-};
+} ALIGN64;
 
 enum {
 	FS_OPENHERE,
@@ -674,6 +680,8 @@ struct globals_misc {
 
 	/* Rarely referenced stuff */
 
+	struct jmploc main_handler;
+
 	/* Cached supplementary group array (for testing executable'ity of files) */
 	struct cached_groupinfo groupinfo;
 
@@ -725,6 +733,7 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define may_have_traps    (G_misc.may_have_traps   )
 #define trap        (G_misc.trap       )
 #define trap_ptr    (G_misc.trap_ptr   )
+#define main_handler      (G_misc.main_handler     )
 #define groupinfo   (G_misc.groupinfo  )
 #define random_gen  (G_misc.random_gen )
 #define backgndpid  (G_misc.backgndpid )
@@ -801,6 +810,14 @@ sigclearmask(void)
 	sigprocmask_allsigs(SIG_UNBLOCK);
 }
 #endif
+
+/* Reset handler when entering a subshell */
+static void
+reset_exception_handler(void)
+{
+	exception_handler = &main_handler;
+}
+
 
 /* ============ Parser data */
 
@@ -7519,6 +7536,7 @@ evalbackcmd(union node *n, struct backcmd *result
 #else
 	if (forkshell(jp, n, FORK_NOJOB) == 0) {
 		/* child */
+		reset_exception_handler();
 		FORCEINTON;
 		close(pip[ip]);
 		/* ic is index of child end of pipe *and* fd to connect it to */
@@ -10828,6 +10846,7 @@ evalsubshell(union node *n, int flags)
 
 #if ENABLE_PLATFORM_MINGW32
 	if (!backgnd && (flags & EV_EXIT) && !may_have_traps) {
+		reset_exception_handler();
 		expredir(n->nredir.redirect);
 		redirect(n->nredir.redirect, 0);
 		evaltreenr(n->nredir.n, flags);
@@ -10856,6 +10875,7 @@ evalsubshell(union node *n, int flags)
 		if (backgnd)
 			flags &= ~EV_TESTED;
  nofork:
+		reset_exception_handler();
 		redirect(n->nredir.redirect, 0);
 		evaltreenr(n->nredir.n, flags);
 		/* never returns */
@@ -10980,6 +11000,7 @@ evalpipe(union node *n, int flags)
 #else
 		if (forkshell(jp, lp->n, n->npipe.pipe_backgnd) == 0) {
 			/* child */
+			reset_exception_handler();
 			INTON;
 			if (pip[1] >= 0) {
 				close(pip[0]);
@@ -16413,7 +16434,6 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 /* note: 'argc' is used only if embedded scripts are enabled */
 {
 	volatile smallint state;
-	struct jmploc jmploc;
 	struct stackmark smark;
 	int login_sh;
 
@@ -16447,7 +16467,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	state = 0;
-	if (setjmp(jmploc.loc)) {
+	if (setjmp(main_handler.loc)) {
 		smallint e;
 		smallint s;
 
@@ -16475,7 +16495,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 			goto state3;
 		goto state4;
 	}
-	exception_handler = &jmploc;
+	exception_handler = &main_handler;
 	rootpid = getpid();
 
 	init();
@@ -17323,8 +17343,8 @@ forkshell_size(struct forkshell *fs)
 	if (fs->fpid == FS_OPENHERE)
 		return ds;
 
-	ds = globals_var_size(ds);
 	ds = globals_misc_size(ds);
+	ds = globals_var_size(ds);
 	ds = cmdtable_size(ds);
 
 	ds.funcblocksize = calcsize(ds.funcblocksize, fs->n);
@@ -17356,11 +17376,11 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 	if (fs->fpid == FS_OPENHERE)
 		return;
 
-	new->gvp = globals_var_copy();
 	new->gmp = globals_misc_copy();
+	new->gvp = globals_var_copy();
 	new->cmdtable = cmdtable_copy();
-	SAVE_PTR(new->gvp, "gvp", NO_FREE);
 	SAVE_PTR(new->gmp, "gmp", NO_FREE);
+	SAVE_PTR(new->gvp, "gvp", NO_FREE);
 	SAVE_PTR(new->cmdtable, "cmdtable", NO_FREE);
 
 	new->n = copynode(fs->n);
@@ -17397,7 +17417,7 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 
 #if FORKSHELL_DEBUG
 #define NUM_BLOCKS FUNCSTRING
-enum {GVP, GMP, CMDTABLE, NODE, ARGV, ATAB, HISTORY, JOBTAB, FUNCSTRING};
+enum {GMP, GVP, CMDTABLE, NODE, ARGV, ATAB, HISTORY, JOBTAB, FUNCSTRING};
 
 /* fp0 and notes can each be NULL */
 static void
@@ -17462,8 +17482,8 @@ forkshell_print(FILE *fp0, struct forkshell *fs, const char **notes)
 		lptr[ARGV] = fs->argv ? (char *)fs->argv : lptr[ATAB];
 		lptr[NODE] = fs->n ? (char *)fs->n : lptr[ARGV];
 		lptr[CMDTABLE] = (char *)fs->cmdtable;
-		lptr[GMP] = (char *)fs->gmp;
 		lptr[GVP] = (char *)fs->gvp;
+		lptr[GMP] = (char *)fs->gmp;
 
 		fprintf(fp, "funcblocksize %6d = ", fs->funcblocksize);
 		total = 0;
@@ -17605,7 +17625,6 @@ forkshell_init(const char *idstr)
 	int i;
 	char **ptr;
 	char *lrelocate;
-	struct jmploc jmploc;
 
 	if (sscanf(idstr, "%p", &map_handle) != 1)
 		return;
@@ -17644,8 +17663,8 @@ forkshell_init(const char *idstr)
 	fs->gmp->trap_ptr = fs->gmp->trap;
 
 	/* Set global variables */
-	ASSIGN_CONST_PTR(&ash_ptr_to_globals_var, fs->gvp);
 	ASSIGN_CONST_PTR(&ash_ptr_to_globals_misc, fs->gmp);
+	ASSIGN_CONST_PTR(&ash_ptr_to_globals_var, fs->gvp);
 	cmdtable = fs->cmdtable;
 #if ENABLE_ASH_ALIAS
 	atab = fs->atab;	/* will be NULL for FS_SHELLEXEC */
@@ -17668,11 +17687,11 @@ forkshell_init(const char *idstr)
 
 	reinitvar();
 
-	if (setjmp(jmploc.loc)) {
+	if (setjmp(main_handler.loc)) {
 		exitreset();
 		exitshell();
 	}
-	exception_handler = &jmploc;
+	exception_handler = &main_handler;
 
 	shlvl++;
 	if (fs->mode == FORK_BG) {
