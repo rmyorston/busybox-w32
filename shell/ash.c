@@ -407,7 +407,6 @@ struct forkshell {
 	unsigned njobs;
 	struct job *curjob;
 #endif
-	/* struct parsefile *g_parsefile; */
 	HANDLE hMapFile;
 	char *old_base;
 	int size;
@@ -540,6 +539,65 @@ static const char *const optletters_optnames[] ALIGN_PTR = {
 enum { NOPTS = ARRAY_SIZE(optletters_optnames) };
 
 
+/* ============ Parser data */
+
+struct strlist {
+	struct strlist *next;
+	char *text;
+};
+
+struct alias;
+
+struct strpush {
+	struct strpush *prev;   /* preceding string on stack */
+	char *prev_string;
+	int prev_left_in_line;
+#if ENABLE_ASH_ALIAS
+	struct alias *ap;       /* if push was associated with an alias */
+#endif
+	char *string;           /* remember the string since it may change */
+
+	/* Delay freeing so we can stop nested aliases. */
+	struct strpush *spfree;
+
+	/* Remember last two characters for pungetc. */
+	int lastc[2];
+
+	/* Number of outstanding calls to pungetc. */
+	int unget;
+};
+
+/*
+ * The parsefile structure pointed to by the global variable parsefile
+ * contains information about the current file being read.
+ */
+struct parsefile {
+	struct parsefile *prev; /* preceding file on stack */
+	int linno;              /* current line */
+	int pf_fd;              /* file descriptor (or -1 if string) */
+	int left_in_line;       /* number of chars left in this line */
+	int left_in_buffer;     /* number of chars left in this buffer past the line */
+	char *next_to_pgetc;    /* next char in buffer */
+	char *buf;              /* input buffer */
+	struct strpush *strpush; /* for pushing strings at this level */
+	struct strpush basestrpush; /* so pushing one is fast */
+
+	/* Delay freeing so we can stop nested aliases. */
+	struct strpush *spfree;
+
+	/* Remember last two characters for pungetc. */
+	int lastc[2];
+
+	/* Number of outstanding calls to pungetc. */
+	int unget;
+
+#if ENABLE_PLATFORM_MINGW32
+	/* True if a trailing CR from a previous read was left unprocessed. */
+	int cr;
+#endif
+};
+
+
 /* ============ Misc data */
 
 #define msg_illnum "Illegal number: %s"
@@ -590,9 +648,6 @@ struct globals_misc {
 	char *physdir; // = nullstr;    /* physical working directory */
 
 	char *arg0; /* value of $0 */
-#if ENABLE_PLATFORM_MINGW32
-	char *commandname;
-#endif
 
 	struct jmploc *exception_handler;
 
@@ -678,6 +733,10 @@ struct globals_misc {
 
 	char **trap_ptr;        /* used only by "trap hack" */
 
+	char *commandname;             /* currently executing command */
+	struct parsefile *g_parsefile; /* = &basepf, current input file */
+	struct parsefile basepf;       /* top level input file */
+
 	/* Rarely referenced stuff */
 
 	struct jmploc main_handler;
@@ -717,9 +776,6 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define curdir      (G_misc.curdir     )
 #define physdir     (G_misc.physdir    )
 #define arg0        (G_misc.arg0       )
-#if ENABLE_PLATFORM_MINGW32
-#define commandname (G_misc.commandname)
-#endif
 #define exception_handler (G_misc.exception_handler)
 #define exception_type    (G_misc.exception_type   )
 #define suppress_int      (G_misc.suppress_int     )
@@ -733,6 +789,9 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define may_have_traps    (G_misc.may_have_traps   )
 #define trap        (G_misc.trap       )
 #define trap_ptr    (G_misc.trap_ptr   )
+#define commandname (G_misc.commandname)
+#define g_parsefile (G_misc.g_parsefile  )
+#define basepf      (G_misc.basepf     )
 #define main_handler      (G_misc.main_handler     )
 #define groupinfo   (G_misc.groupinfo  )
 #define random_gen  (G_misc.random_gen )
@@ -750,6 +809,7 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 	curdir = nullstr; \
 	physdir = nullstr; \
 	trap_ptr = trap; \
+	g_parsefile = &basepf; \
 	groupinfo.euid = -1; \
 	groupinfo.egid = -1; \
 } while (0)
@@ -817,74 +877,6 @@ reset_exception_handler(void)
 {
 	exception_handler = &main_handler;
 }
-
-
-/* ============ Parser data */
-
-/*
- * ash_vmsg() needs parsefile->fd, hence parsefile definition is moved up.
- */
-struct strlist {
-	struct strlist *next;
-	char *text;
-};
-
-struct alias;
-
-struct strpush {
-	struct strpush *prev;   /* preceding string on stack */
-	char *prev_string;
-	int prev_left_in_line;
-#if ENABLE_ASH_ALIAS
-	struct alias *ap;       /* if push was associated with an alias */
-#endif
-	char *string;           /* remember the string since it may change */
-
-	/* Delay freeing so we can stop nested aliases. */
-	struct strpush *spfree;
-
-	/* Remember last two characters for pungetc. */
-	int lastc[2];
-
-	/* Number of outstanding calls to pungetc. */
-	int unget;
-};
-
-/*
- * The parsefile structure pointed to by the global variable parsefile
- * contains information about the current file being read.
- */
-struct parsefile {
-	struct parsefile *prev; /* preceding file on stack */
-	int linno;              /* current line */
-	int pf_fd;              /* file descriptor (or -1 if string) */
-	int left_in_line;       /* number of chars left in this line */
-	int left_in_buffer;     /* number of chars left in this buffer past the line */
-	char *next_to_pgetc;    /* next char in buffer */
-	char *buf;              /* input buffer */
-	struct strpush *strpush; /* for pushing strings at this level */
-	struct strpush basestrpush; /* so pushing one is fast */
-
-	/* Delay freeing so we can stop nested aliases. */
-	struct strpush *spfree;
-
-	/* Remember last two characters for pungetc. */
-	int lastc[2];
-
-	/* Number of outstanding calls to pungetc. */
-	int unget;
-
-#if ENABLE_PLATFORM_MINGW32
-	/* True if a trailing CR from a previous read was left unprocessed. */
-	int cr;
-#endif
-};
-
-static struct parsefile basepf;        /* top level input file */
-static struct parsefile *g_parsefile = &basepf;  /* current input file */
-#if ENABLE_PLATFORM_POSIX
-static char *commandname;              /* currently executing command */
-#endif
 
 
 /* ============ Interrupts / exceptions */
@@ -16196,11 +16188,13 @@ init(void)
 {
 #if ENABLE_PLATFORM_MINGW32
 	int import = 0;
-#else
+#endif
+
 	/* we will never free this */
 	basepf.next_to_pgetc = basepf.buf = ckzalloc(IBUFSIZ);
 	basepf.linno = 1;
 
+#if !ENABLE_PLATFORM_MINGW32
 	sigmode[SIGCHLD - 1] = S_DFL; /* ensure we install handler even if it is SIG_IGNed */
 	setsignal(SIGCHLD);
 #endif
@@ -16462,10 +16456,6 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 
 #if ENABLE_PLATFORM_MINGW32
 	INIT_G_memstack();
-
-	/* from init() */
-	basepf.next_to_pgetc = basepf.buf = ckzalloc(IBUFSIZ);
-	basepf.linno = 1;
 
 	if (argc == 3 && !strcmp(argv[1], "--fs")) {
 		forkshell_init(argv[2]);
@@ -17326,6 +17316,8 @@ globals_misc_size(struct datasize ds)
 #undef physdir
 #undef arg0
 #undef commandname
+#undef g_parsefile
+#undef basepf
 #undef nullstr
 #undef trap
 static struct globals_misc *
@@ -17354,6 +17346,8 @@ globals_misc_copy(void)
 		new->trap[i] = nodeckstrdup(p->trap[i]);
 		SAVE_PTR(new->trap[i], xasprintf("trap[%d]", i), FREE);
 	}
+	new->g_parsefile = NULL;
+	memset(&new->basepf, 0, sizeof(struct parsefile));
 	return new;
 }
 
@@ -17684,6 +17678,11 @@ forkshell_init(const char *idstr)
 		}
 	}
 	fs->gmp->trap_ptr = fs->gmp->trap;
+
+	/* from init() */
+	fs->gmp->basepf.next_to_pgetc = fs->gmp->basepf.buf = ckzalloc(IBUFSIZ);
+	fs->gmp->basepf.linno = 1;
+	fs->gmp->g_parsefile = &fs->gmp->basepf;
 
 	/* Set global variables */
 	ASSIGN_CONST_PTR(&ash_ptr_to_globals_misc, fs->gmp);
