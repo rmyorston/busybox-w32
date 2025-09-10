@@ -1804,17 +1804,60 @@ ash_msg(const char *fmt, ...)
 }
 
 /*
+ * Types of operations (passed to the errmsg routine).
+ */
+#define E_OPEN 01	/* opening a file */
+#define E_CREAT 02	/* creating a file */
+#define E_EXEC 04	/* executing a program */
+/*
  * Return a string describing an error.  The returned string may be a
  * pointer to a static buffer that will be overwritten on the next call.
  * Action describes the operation that got the error.
  */
 static const char *
-errmsg(int e, const char *em)
+errmsg(int e, int action)
 {
-	if (e == ENOENT || e == ENOTDIR) {
-		return em;
+	if (e != ENOENT && e != ENOTDIR)
+		return strerror(e);
+
+	if (action & E_OPEN)
+		return "no such file";
+	else if (action & E_CREAT)
+		return "nonexistent directory";
+	else
+		return "not found";
+}
+
+static int sh_open_fail(const char *, int, int) NORETURN;
+static int sh_open_fail(const char *pathname, int flags, int e)
+{
+	const char *word;
+	int action;
+
+	word = "open";
+	action = E_OPEN;
+	if (flags & O_CREAT) {
+		word = "create";
+		action = E_CREAT;
 	}
-	return strerror(e);
+
+	ash_msg_and_raise_error("can't %s %s: %s", word, pathname, errmsg(e, action));
+}
+
+static int sh_open(const char *pathname, int flags, int mayfail)
+{
+	int fd;
+	int e;
+
+	do {
+		fd = open(pathname, flags, 0666);
+		e = errno;
+	} while (fd < 0 && e == EINTR && !pending_sig);
+
+	if (mayfail || fd >= 0)
+		return fd;
+
+	sh_open_fail(pathname, flags, e);
 }
 
 
@@ -4767,7 +4810,7 @@ setjobctl(int on)
 		return;
 	if (on) {
 		int ofd;
-		ofd = fd = open(_PATH_TTY, O_RDWR);
+		ofd = fd = sh_open(_PATH_TTY, O_RDWR, 1);
 		if (fd < 0) {
 	/* BTW, bash will try to open(ttyname(0)) if open("/dev/tty") fails.
 	 * That sometimes helps to acquire controlling tty.
@@ -6045,8 +6088,7 @@ forkchild(struct job *jp, union node *n, int mode)
 		ignoresig(SIGQUIT);
 		if (jp->nprocs == 0) {
 			close(0);
-			if (open(bb_dev_null, O_RDONLY) != 0)
-				ash_msg_and_raise_perror("can't open '%s'", bb_dev_null);
+			sh_open(_PATH_DEVNULL, O_RDONLY, 0);
 		}
 	}
 	if (oldlvl == 0) {
@@ -6388,84 +6430,69 @@ openredirect(union node *redir)
 {
 	struct stat sb;
 	char *fname;
+	int flags;
 	int f;
 
 	switch (redir->nfile.type) {
-/* Can't happen, our single caller does this itself */
-//	case NTOFD:
-//	case NFROMFD:
-//		return -1;
-	case NHERE:
-	case NXHERE:
-		return openhere(redir);
-	}
-
-	/* For N[X]HERE, reading redir->nfile.expfname would touch beyond
-	 * allocated space. Do it only when we know it is safe.
-	 */
-	fname = redir->nfile.expfname;
-
-	switch (redir->nfile.type) {
-	default:
-#if DEBUG
-		abort();
-#endif
 	case NFROM:
-		f = open(fname, O_RDONLY);
-		if (f < 0)
-			goto eopen;
+		flags = O_RDONLY;
+ do_open:
+		f = sh_open(redir->nfile.expfname, flags, 0);
+#if ENABLE_PLATFORM_MINGW32
+		if (redir->nfile.type == NAPPEND)
+			lseek(f, 0, SEEK_END);
+#endif
 		break;
 	case NFROMTO:
-		f = open(fname, O_RDWR|O_CREAT, 0666);
-		if (f < 0)
-			goto ecreate;
-		break;
+		flags = O_RDWR|O_CREAT;
+		goto do_open;
 	case NTO:
 #if BASH_REDIR_OUTPUT
 	case NTO2:
 #endif
 		/* Take care of noclobber mode. */
 		if (Cflag) {
+			fname = redir->nfile.expfname;
 			if (stat(fname, &sb) < 0) {
-				f = open(fname, O_WRONLY|O_CREAT|O_EXCL, 0666);
-				if (f < 0)
-					goto ecreate;
-			} else if (!S_ISREG(sb.st_mode)) {
-				f = open(fname, O_WRONLY, 0666);
-				if (f < 0)
-					goto ecreate;
-				if (!fstat(f, &sb) && S_ISREG(sb.st_mode)) {
-					close(f);
-					errno = EEXIST;
-					goto ecreate;
-				}
-			} else {
-				errno = EEXIST;
+				flags = O_WRONLY|O_CREAT|O_EXCL;
+				goto do_open;
+			}
+
+			if (S_ISREG(sb.st_mode))
+				goto ecreate;
+
+			f = sh_open(fname, O_WRONLY, 0);
+			if (!fstat(f, &sb) && S_ISREG(sb.st_mode)) {
+				close(f);
 				goto ecreate;
 			}
 			break;
 		}
 		/* FALLTHROUGH */
 	case NCLOBBER:
-		f = open(fname, O_WRONLY|O_CREAT|O_TRUNC, 0666);
-		if (f < 0)
-			goto ecreate;
-		break;
+		flags = O_WRONLY|O_CREAT|O_TRUNC;
+		goto do_open;
 	case NAPPEND:
-		f = open(fname, O_WRONLY|O_CREAT|O_APPEND, 0666);
-		if (f < 0)
-			goto ecreate;
-#if ENABLE_PLATFORM_MINGW32
-		lseek(f, 0, SEEK_END);
+		flags = O_WRONLY|O_CREAT|O_APPEND;
+		goto do_open;
+/* Can't happen, our single caller does this itself */
+//	case NTOFD:
+//	case NFROMFD:
+//		return -1;
+	default:
+#ifdef DEBUG
+		abort();
 #endif
+		/* Fall through to eliminate warning. */
+	case NHERE:
+	case NXHERE:
+		f = openhere(redir);
 		break;
 	}
 
 	return f;
  ecreate:
-	ash_msg_and_raise_error("can't create %s: %s", fname, errmsg(errno, "nonexistent directory"));
- eopen:
-	ash_msg_and_raise_error("can't open %s: %s", fname, errmsg(errno, "no such file"));
+	sh_open_fail(fname, O_CREAT, EEXIST);
 }
 
 /*
@@ -9254,7 +9281,7 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 				argv[0] = (char *)"Which";
 			}
 # else
-		if (APPLET_IS_NOEXEC(applet_no)) {
+		if (!vforked && APPLET_IS_NOEXEC(applet_no)) {
 # endif
 #if !ENABLE_PLATFORM_MINGW32 || !defined(_UCRT)
 			/* If building for UCRT move this up into shellexec() to
@@ -9453,7 +9480,7 @@ static void shellexec(char *prog, char **argv, const char *path, int idx,
 	exitstatus = exerrno;
 	TRACE(("shellexec failed for %s, errno %d, suppress_int %d\n",
 		prog, e, suppress_int));
-	ash_msg_and_raise(EXEND, "%s: %s", prog, errmsg(e, "not found"));
+	ash_msg_and_raise(EXEND, "%s: %s", prog, errmsg(e, E_EXEC));
 	/* NOTREACHED */
 }
 
@@ -12669,13 +12696,9 @@ setinputfile(const char *fname, int flags)
 	int fd;
 
 	INTOFF;
-	fd = open(fname, O_RDONLY | O_CLOEXEC);
-	if (fd < 0) {
-		if (flags & INPUT_NOFILE_OK)
-			goto out;
-		exitstatus = 127;
-		ash_msg_and_raise_perror("can't open '%s'", fname);
-	}
+	fd = sh_open(fname, O_RDONLY, flags & INPUT_NOFILE_OK);
+	if (fd < 0)
+		goto out;
 	if (fd < 10)
 		fd = savefd(fd);
 	else if (O_CLOEXEC == 0) /* old libc */
@@ -15508,7 +15531,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 			return;
 		}
 #endif
-		ash_msg("%s: %s", name, errmsg(e, "not found"));
+		ash_msg("%s: %s", name, errmsg(e, E_EXEC));
 	}
  fail:
 	entry->cmdtype = CMDUNKNOWN;
