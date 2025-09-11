@@ -683,6 +683,7 @@ struct command {
 # endif
 # define CMD_FUNCDEF 5
 #endif
+/* ^^^ if you change this, update CMDTYPE[] array too */
 
 	smalluint cmd_exitcode;
 	/* if non-NULL, this "command" is { list }, ( list ), or a compound statement */
@@ -3947,7 +3948,7 @@ static void debug_print_tree(struct pipe *pi, int lvl)
 # endif
 # if ENABLE_HUSH_CASE
 		[RES_CASE ] = "CASE" ,
-		[RES_CASE_IN] = "CASE_IN" ,
+		[RES_CASE_IN] = "CASE_IN",
 		[RES_MATCH] = "MATCH",
 		[RES_CASE_BODY] = "CASE_BODY",
 		[RES_ESAC ] = "ESAC" ,
@@ -3956,11 +3957,13 @@ static void debug_print_tree(struct pipe *pi, int lvl)
 		[RES_SNTX ] = "SNTX" ,
 	};
 	static const char *const CMDTYPE[] ALIGN_PTR = {
-		"{}",
-		"()",
-		"[noglob]",
+		"{}",       //CMD_NORMAL
+		"()",       //CMD_SUBSHELL
+		"[test2]",  //CMD_TEST2_SINGLEWORD_NOGLOB
+		"[noglob]", //CMD_SINGLEWORD_NOGLOB
 # if ENABLE_HUSH_FUNCTIONS
-		"func()",
+		"func()",   //CMD_FUNCTION_KWORD
+		"funcdef",  //CMD_FUNCDEF
 # endif
 	};
 
@@ -12988,9 +12991,6 @@ static int FAST_FUNC builtin_alias(char **argv)
 	}
 
 	while (*++argv) {
-		/* The characters /, $, `, = and any of the shell
-		 * metacharacters or quoting characters
-		 * may not appear in an alias name */
 		char *eq = end_of_alias_name(*argv);
 		if (*eq == '=' && eq != *argv) {
 			/* alias NAME=VALUE */
