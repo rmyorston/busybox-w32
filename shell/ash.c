@@ -5088,11 +5088,12 @@ waitpid_child(int *status, int wait_flags)
 #define waitpid(p, s, f) waitpid_child(s, f)
 #endif
 
-#define DOWAIT_NONBLOCK 0
-#define DOWAIT_BLOCK    1
-#define DOWAIT_BLOCK_OR_SIG 2
+/* Inside dowait(): */
+#define DOWAIT_NONBLOCK 0	/* waitpid() will use WNOHANG and won't wait for signals */
+#define DOWAIT_BLOCK    1	/* waitpid() will NOT use WNOHANG */
+#define DOWAIT_CHILD_OR_SIG 2	/* waitpid() will use WNOHANG and if got 0, will wait for signals, then loop back */
 #if BASH_WAIT_N
-# define DOWAIT_JOBSTATUS 0x10   /* OR this to get job's exitstatus instead of pid */
+# define DOWAIT_JOBSTATUS 0x10  /* OR this to get job's exitstatus instead of pid */
 #endif
 
 static int
@@ -5114,8 +5115,15 @@ waitproc(int block, int *status)
 			err = waitpid(-1, status, flags);
 		while (err < 0 && errno == EINTR);
 
+		/* Return if error (for example, ECHILD); or if pid found;
+		 * or if "block" is DOWAIT_NONBLOCK (=0), in this case return -1.
+		 */
 		if (err || (err = -!block))
 			break;
+
+		/* "block" is DOWAIT_CHILD_OR_SIG. All children are running
+		 * (waitpid(WNOHAG) above returned 0), wait for signals:
+		 */
 
 		//simpler, but unsafe: a signal can set pending_sig after check, but before pause():
 		//while (!gotsigchld && !pending_sig)
@@ -5128,6 +5136,7 @@ waitproc(int block, int *status)
 
 		sigclearmask();
 	} while (gotsigchld);
+	/* If we fall off the loop, err is 0, which means we got a !SIGCHLD signal */
 
 	return err;
 #else
@@ -5137,8 +5146,7 @@ waitproc(int block, int *status)
 #endif
 }
 
-static int
-waitone(int block, struct job *job)
+static int waitone(int block, struct job *job)
 {
 	int pid;
 	int status;
@@ -5177,36 +5185,34 @@ waitone(int block, struct job *job)
 
 	for (jp = curjob; jp; jp = jp->prev_job) {
 		int jobstate;
-		struct procstat *ps;
-		struct procstat *psend;
+		struct procstat *sp;
+		struct procstat *spend;
 		if (jp->state == JOBDONE)
 			continue;
 		jobstate = JOBDONE;
-		ps = jp->ps;
-		psend = ps + jp->nprocs;
+		spend = jp->ps + jp->nprocs;
+		sp = jp->ps;
 		do {
-			if (ps->ps_pid == pid) {
-				TRACE(("Job %d: changing status of proc %d "
-					"from 0x%x to 0x%x\n",
-					jobno(jp), pid, ps->ps_status, status));
-				ps->ps_status = status;
+			if (sp->ps_pid == pid) {
+				TRACE(("Job %d: changing status of proc %d from 0x%x to 0x%x\n", jobno(jp), pid, sp->ps_status, status));
+				sp->ps_status = status;
 				thisjob = jp;
 #if ENABLE_PLATFORM_MINGW32
-				CloseHandle(ps->ps_proc);
-				ps->ps_proc = NULL;
+				CloseHandle(sp->ps_proc);
+				sp->ps_proc = NULL;
 #endif
 			}
-			if (ps->ps_status == -1)
+			if (sp->ps_status == -1)
 				jobstate = JOBRUNNING;
 #if JOBS
 			if (jobstate == JOBRUNNING)
 				continue;
-			if (WIFSTOPPED(ps->ps_status)) {
-				jp->stopstatus = ps->ps_status;
+			if (WIFSTOPPED(sp->ps_status)) {
+				jp->stopstatus = sp->ps_status;
 				jobstate = JOBSTOPPED;
 			}
 #endif
-		} while (++ps < psend);
+		} while (++sp < spend);
 		if (!thisjob)
 			continue;
 
@@ -5218,8 +5224,7 @@ waitone(int block, struct job *job)
 			 */
 			thisjob->changed = 1;
 			if (thisjob->state != jobstate) {
-				TRACE(("Job %d: changing state from %d to %d\n",
-					jobno(thisjob), thisjob->state, jobstate));
+				TRACE(("Job %d: changing state from %d to %d\n", jobno(thisjob), thisjob->state, jobstate));
 				thisjob->state = jobstate;
 #if JOBS
 				if (jobstate == JOBSTOPPED)
@@ -5254,8 +5259,7 @@ waitone(int block, struct job *job)
 	return pid;
 }
 
-static int
-dowait(int block, struct job *jp)
+static int dowait(int block, struct job *jp)
 {
 #if !ENABLE_PLATFORM_MINGW32
 	smallint gotchld = *(volatile smallint *)&gotsigchld;
@@ -5496,9 +5500,9 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 	 * the trap is executed."
 	 */
 #if BASH_WAIT_N
-			status = dowait(DOWAIT_BLOCK_OR_SIG | DOWAIT_JOBSTATUS, NULL);
+			status = dowait(DOWAIT_CHILD_OR_SIG | DOWAIT_JOBSTATUS, NULL);
 #else
-			dowait(DOWAIT_BLOCK_OR_SIG, NULL);
+			dowait(DOWAIT_CHILD_OR_SIG, NULL);
 #endif
 			/* if child sends us a signal *and immediately exits*,
 			 * dowait() returns pid > 0. Check this case,
@@ -5539,7 +5543,7 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 			job = getjob(*argv, 0);
 		}
 		/* loop until process terminated or stopped */
-		dowait(DOWAIT_BLOCK_OR_SIG, job);
+		dowait(DOWAIT_CHILD_OR_SIG, job);
 		if (pending_sig)
 			goto sigout;
 		job->waited = 1;
@@ -13495,7 +13499,7 @@ fixredir(union node *n, const char *text, int err)
 		 * silently truncate results to word width.
 		 */
 		if (err)
-			raise_error_syntax("bad fd number");
+			ash_msg_and_raise_error("bad fd number");
 		n->ndup.vname = makename();
 	}
 }
