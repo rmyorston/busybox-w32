@@ -239,7 +239,8 @@ SPLIT_SUBDIR    = 2,
 	IF_FEATURE_LS_WIDTH("T:w:")      /* 2, 28 */ \
 	IF_LONG_OPTS("\xff")             /* 1, 29 */ \
 	IF_LONG_OPTS("\xfe")             /* 1, 30 */ \
-	IF_LONG_OPTS("\xfd")             /* 1, 31 */ \
+IF_PLATFORM_MINGW32(IF_LONG_OPTS("\xfd:"))    /* 1, 31 */ \
+IF_NOT_PLATFORM_MINGW32(IF_LONG_OPTS("\xfd")) \
 	"qk"                             /* 2, 33 */
 
 #if ENABLE_LONG_OPTS
