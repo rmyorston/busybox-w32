@@ -284,12 +284,17 @@ ssize_t FAST_FUNC mingw_open_read_close(const char *fn, void *buf, size_t size)
 FILE *mingw_fopen (const char *filename, const char *otype)
 {
 	int fd;
+	FILE *stream;
 
 	if (get_dev_type(filename) == DEV_NULL)
 		filename = "nul";
 	else if ((fd=get_dev_fd(filename)) >= 0)
 		return fdopen(fd, otype);
-	return fopen(filename, otype);
+	stream = fopen(filename, otype);
+	if (stream == NULL && errno == EACCES && strcmp(otype, "r") == 0 &&
+			mingw_is_directory(filename))
+		errno = EISDIR;
+	return stream;
 }
 
 #undef read
