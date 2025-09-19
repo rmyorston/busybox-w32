@@ -3108,6 +3108,12 @@ static void colon(char *buf)
 	else if (cmd[0] == '!') {	// run a cmd
 		int retcode;
 		// :!ls   run the <cmd>
+#  if ENABLE_PLATFORM_MINGW32
+		if (GOT_ADDRESS) {
+			status_line_bold("Range not allowed");
+			goto ret;
+		}
+#  endif
 		exp = expand_args(buf + 1);
 		if (exp == NULL)
 			goto ret;
