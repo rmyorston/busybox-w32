@@ -14811,14 +14811,11 @@ init(void)
  * Process the shell command line arguments.
  */
 static int
-procargs(char **argv)
+procargs(char **xargv)
 {
 	int i;
-	const char *xminusc;
-	char **xargv;
 	int login_sh;
 
-	xargv = argv;
 	login_sh = /*xargv[0] &&*/ xargv[0][0] == '-';
 #if NUM_SCRIPTS > 0
 	if (minusc)
@@ -14835,9 +14832,8 @@ procargs(char **argv)
 		raise_exception(EXERROR); /* does not return */
 	}
 	xargv = argptr;
-	xminusc = minusc;
 	if (*xargv == NULL) {
-		if (xminusc)
+		if (minusc)
 			ash_msg_and_raise_error(bb_msg_requires_arg, "-c");
 		sflag = 1;
 	}
@@ -14857,7 +14853,7 @@ procargs(char **argv)
 	debug = 1;
 #endif
 	/* POSIX 1003.2: first arg after "-c CMD" is $0, remainder $1... */
-	if (xminusc) {
+	if (minusc) {
 		minusc = *xargv++;
 		if (*xargv)
 			goto setarg0;
