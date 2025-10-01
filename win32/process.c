@@ -4,6 +4,10 @@
 #include "lazyload.h"
 #include "NUM_APPLETS.h"
 
+#ifndef ERROR_ELEVATION_REQUIRED
+# define ERROR_ELEVATION_REQUIRED __MSABI_LONG(740)
+#endif
+
 pid_t waitpid(pid_t pid, int *status, int options)
 #if ENABLE_TIME
 {

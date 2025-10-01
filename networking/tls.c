@@ -2374,6 +2374,9 @@ void FAST_FUNC tls_run_copy_loop(tls_state_t *tls, unsigned flags)
 #include <security.h>
 #include <schannel.h>
 
+#ifndef SECBUFFER_ALERT
+# define SECBUFFER_ALERT 17
+#endif
 
 #define BB_SCHANNEL_ISC_FLAGS                                                                                             \
     (ISC_REQ_ALLOCATE_MEMORY | ISC_REQ_CONFIDENTIALITY | ISC_REQ_INTEGRITY | ISC_REQ_REPLAY_DETECT |                   \

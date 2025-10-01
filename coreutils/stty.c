@@ -1632,9 +1632,7 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 			set_speed_or_die(output_speed, argnext, &mode);
 			stty_state |= (STTY_require_set_attr | STTY_speed_was_set);
 			break;
-#endif
 		default:
-#if !ENABLE_PLATFORM_MINGW32
 			if (recover_mode(arg, &mode) == 1)
 				stty_state |= STTY_require_set_attr;
 			else /* true: if (tty_value_to_baud(xatou(arg)) != (speed_t) -1) */{
