@@ -5142,7 +5142,7 @@ waitproc(int block, int *status)
 
 	return err;
 #else
-	int flags = block == DOWAIT_BLOCK ? 0 : WNOHANG;
+	int flags = block == DOWAIT_NONBLOCK ? WNOHANG : 0;
 	*status = 0;
 	return waitpid(-1, status, flags);
 #endif
