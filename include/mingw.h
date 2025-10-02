@@ -3,7 +3,7 @@
 #define IMPL(name,ret,retval,...) static inline ret name(__VA_ARGS__) { return retval; }
 
 /* Use 64-bit time on 32-bit platforms. */
-#if !defined(_WIN64)
+#if !defined(_WIN64) && __MINGW64_VERSION_MAJOR >= 10
 # define time_t __time64_t
 # define ctime(t) _ctime64(t)
 # define localtime(t) _localtime64(t)

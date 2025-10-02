@@ -2378,6 +2378,13 @@ void FAST_FUNC tls_run_copy_loop(tls_state_t *tls, unsigned flags)
 # define SECBUFFER_ALERT 17
 #endif
 
+#ifndef SP_PROT_TLS1_0_CLIENT
+# define SP_PROT_TLS1_0_CLIENT 0x00000080
+# define SP_PROT_TLS1_1_CLIENT 0x00000200
+# define SP_PROT_TLS1_2_CLIENT 0x00000800
+# define SCH_USE_STRONG_CRYPTO 0x00400000
+#endif
+
 #define BB_SCHANNEL_ISC_FLAGS                                                                                             \
     (ISC_REQ_ALLOCATE_MEMORY | ISC_REQ_CONFIDENTIALITY | ISC_REQ_INTEGRITY | ISC_REQ_REPLAY_DETECT |                   \
      ISC_REQ_SEQUENCE_DETECT | ISC_REQ_STREAM | ISC_REQ_USE_SUPPLIED_CREDS)
