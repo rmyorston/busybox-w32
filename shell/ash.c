@@ -5051,7 +5051,7 @@ static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
  * They don't support waitpid(-1)
  */
 static pid_t
-waitpid_child(int *status, int wait_flags)
+waitpid_child(int *status, DWORD blocking)
 {
 	struct job *jb;
 	int pid_nr = 0;
@@ -5077,17 +5077,18 @@ waitpid_child(int *status, int wait_flags)
 	}
 
 	if (pid_nr) {
-		idx = WaitForMultipleObjects(pid_nr, proclist, FALSE,
-					wait_flags & WNOHANG ? 0 : INFINITE);
-		if (idx < pid_nr) {
-			GetExitCodeProcess(proclist[idx], &win_status);
-			*status = exit_code_to_wait_status(win_status);
-			pid = GetProcessId(proclist[idx]);
-		}
+		do {
+			idx = WaitForMultipleObjects(pid_nr, proclist, FALSE, blocking);
+			if (idx < pid_nr) {
+				GetExitCodeProcess(proclist[idx], &win_status);
+				*status = exit_code_to_wait_status(win_status);
+				pid = GetProcessId(proclist[idx]);
+				break;
+			}
+		} while (blocking && !pending_int);
 	}
 	return pid;
 }
-#define waitpid(p, s, f) waitpid_child(s, f)
 #endif
 
 /* Inside dowait(): */
@@ -5142,9 +5143,9 @@ waitproc(int block, int *status)
 
 	return err;
 #else
-	int flags = block == DOWAIT_NONBLOCK ? WNOHANG : 0;
+	// Only DOWAIT_NONBLOCK is non-blocking, other values block.
 	*status = 0;
-	return waitpid(-1, status, flags);
+	return waitpid_child(status, block != DOWAIT_NONBLOCK);
 #endif
 }
 
