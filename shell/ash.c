@@ -937,17 +937,10 @@ raise_exception(int e)
  * are held using the INTOFF macro.  (The test for iflag is just
  * defensive programming.)
  */
-static void raise_interrupt(void) IF_NOT_PLATFORM_MINGW32(NORETURN);
+static void raise_interrupt(void) NORETURN;
 static void
 raise_interrupt(void)
 {
-#if ENABLE_PLATFORM_MINGW32
-	/* Contrary to the comment above on Windows raise_interrupt() is
-	 * called when SIGINT is trapped or ignored.  We detect this here
-	 * and return without doing anything. */
-	if (trap[SIGINT])
-		return;
-#endif
 	pending_int = 0;
 #if !ENABLE_PLATFORM_MINGW32
 	/* Signal is not automatically unmasked after it is raised,
@@ -5038,9 +5031,11 @@ static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
 # if ENABLE_FEATURE_EDITING
 		bb_got_signal = SIGINT; /* for read_line_input: "we got a signal" */
 # endif
-		if (!suppress_int && !(rootshell && iflag))
-			raise_interrupt();
-		pending_int = 1;
+		if (!trap[SIGINT]) {
+			if (!suppress_int && !(rootshell && iflag))
+				raise_interrupt();
+			pending_int = 1;
+		}
 		return TRUE;
 	}
 	return FALSE;
@@ -12341,7 +12336,6 @@ preadfd(void)
 			 * is SIG_IGNed on startup, it stays SIG_IGNed)
 			 */
 # else
-			raise_interrupt();
 			write(STDOUT_FILENO, "^C\n", 3);
 # endif
 			if (trap[SIGINT]) {
@@ -12354,6 +12348,10 @@ preadfd(void)
 				buf[1] = '\0';
 				return 1;
 			}
+# if ENABLE_PLATFORM_MINGW32
+			else
+				raise_interrupt();
+# endif
 			exitstatus = 128 + SIGINT;
 			/* bash behavior on ^C + ignored SIGINT: */
 			goto again;
