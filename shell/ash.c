@@ -661,6 +661,8 @@ struct globals_misc {
 #if !ENABLE_PLATFORM_MINGW32
 	volatile /*sig_atomic_t*/ smallint gotsigchld;  /* 1 = got SIGCHLD */
 	volatile /*sig_atomic_t*/ smallint pending_sig;	/* last pending signal */
+#else
+	volatile /*sig_atomic_t*/ smallint waitcmd_int;	/* SIGINT in wait */
 #endif
 	smallint exception_type; /* kind of exception: */
 #define EXINT 0         /* SIGINT received */
@@ -780,6 +782,9 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define exception_type    (G_misc.exception_type   )
 #define suppress_int      (G_misc.suppress_int     )
 #define pending_int       (G_misc.pending_int      )
+#if ENABLE_PLATFORM_MINGW32
+#define waitcmd_int       (G_misc.waitcmd_int      )
+#endif
 #define gotsigchld        (G_misc.gotsigchld       )
 #define pending_sig       (G_misc.pending_sig      )
 #define nullstr     (G_misc.nullstr    )
@@ -5031,6 +5036,7 @@ static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
 # if ENABLE_FEATURE_EDITING
 		bb_got_signal = SIGINT; /* for read_line_input: "we got a signal" */
 # endif
+		waitcmd_int = -waitcmd_int;
 		if (!trap[SIGINT]) {
 			if (!suppress_int && !(rootshell && iflag))
 				raise_interrupt();
@@ -5080,7 +5086,7 @@ waitpid_child(int *status, DWORD blocking)
 				pid = GetProcessId(proclist[idx]);
 				break;
 			}
-		} while (blocking && !pending_int);
+		} while (blocking && !pending_int && waitcmd_int != 1);
 	}
 	return pid;
 }
@@ -5284,7 +5290,7 @@ static int dowait(int block, struct job *jp)
 #else
 	int pid = 1;
 
-	while (jp ? jp->state == JOBRUNNING : pid > 0)
+	while ((jp ? jp->state == JOBRUNNING : pid > 0) && waitcmd_int != 1)
 		pid = waitone(block, jp);
 
 	return pid;
@@ -5497,6 +5503,9 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 	 * with an exit status greater than 128, immediately after which
 	 * the trap is executed."
 	 */
+#if ENABLE_PLATFORM_MINGW32
+			waitcmd_int = -1;
+#endif
 #if BASH_WAIT_N
 			status = dowait(DOWAIT_CHILD_OR_SIG | DOWAIT_JOBSTATUS, NULL);
 #else
@@ -5506,8 +5515,14 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 			 * dowait() returns pid > 0. Check this case,
 			 * not "if (dowait() < 0)"!
 			 */
+#if ENABLE_PLATFORM_MINGW32
+			if (waitcmd_int == 1)
+				return 128 | SIGINT;
+			waitcmd_int = 0;
+#else
 			if (pending_sig)
 				goto sigout;
+#endif
 #if BASH_WAIT_N
 			if (one) {
 				/* wait -n waits for one _job_, not one _process_.
@@ -10569,8 +10584,10 @@ dotrap(void)
 	int status, last_status;
 	char *p;
 
-	if (!pending_int)
+	if (!pending_int && waitcmd_int != 1) {
+		waitcmd_int = 0;
 		return;
+	}
 
 	status = savestatus;
 	last_status = status;
@@ -10578,7 +10595,7 @@ dotrap(void)
 		status = exitstatus;
 		savestatus = status;
 	}
-	pending_int = 0;
+	pending_int = waitcmd_int = 0;
 	barrier();
 
 	TRACE(("dotrap entered\n"));
