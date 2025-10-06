@@ -935,6 +935,14 @@ raise_exception(int e)
 } while (0)
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+static void
+write_ctrl_c(void)
+{
+	write(STDOUT_FILENO, "^C", 2);
+}
+#endif
+
 /*
  * Called when a SIGINT is received.  (If the user specifies
  * that SIGINT is to be trapped or ignored using the trap builtin, then
@@ -967,7 +975,7 @@ raise_interrupt(void)
 	}
 #if ENABLE_PLATFORM_MINGW32
 	if (iflag)
-		write(STDOUT_FILENO, "^C", 2);
+		write_ctrl_c();
 #endif
 	/* bash: ^C even on empty command line sets $? */
 	exitstatus = SIGINT + 128;
@@ -5516,8 +5524,10 @@ waitcmd(int argc UNUSED_PARAM, char **argv)
 			 * not "if (dowait() < 0)"!
 			 */
 #if ENABLE_PLATFORM_MINGW32
-			if (waitcmd_int == 1)
+			if (waitcmd_int == 1) {
+				write_ctrl_c();
 				return 128 | SIGINT;
+			}
 			waitcmd_int = 0;
 #else
 			if (pending_sig)
@@ -16031,7 +16041,7 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	} else if ((uintptr_t)r == 3) {
 		/* ^C pressed, propagate event */
 		if (trap[SIGINT]) {
-			write(STDOUT_FILENO, "^C", 2);
+			write_ctrl_c();
 			pending_int = 1;
 			dotrap();
 			if (!(rootshell && iflag))
