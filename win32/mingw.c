@@ -729,6 +729,7 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 			if (S_ISREG(buf->st_mode) &&
 					(has_exe_suffix(file_name) ||
 					(!(buf->st_attr & FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS) &&
+					 !(buf->st_attr & FILE_ATTRIBUTE_HIDDEN) &&
 						has_exec_format(file_name))))
 				buf->st_mode |= S_IXUSR|S_IXGRP|S_IXOTH;
 			buf->st_size = fdata.nFileSizeLow |
