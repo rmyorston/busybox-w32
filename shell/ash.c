@@ -939,7 +939,7 @@ raise_exception(int e)
 static void
 write_ctrl_c(void)
 {
-	write(STDOUT_FILENO, "^C", 2);
+	console_write("^C", 2);
 }
 #endif
 
