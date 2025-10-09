@@ -7,6 +7,7 @@ lib-y:=
 lib-$(CONFIG_PLATFORM_MINGW32) += dirent.o
 lib-$(CONFIG_PLATFORM_MINGW32) += dirname.o
 lib-$(CONFIG_PLATFORM_MINGW32) += env.o
+lib-$(CONFIG_PLATFORM_MINGW32) += flock.o
 lib-$(CONFIG_PLATFORM_MINGW32) += fnmatch.o
 lib-$(CONFIG_PLATFORM_MINGW32) += fsync.o
 lib-$(CONFIG_PLATFORM_MINGW32) += glob.o
