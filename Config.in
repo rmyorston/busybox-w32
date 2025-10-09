@@ -396,27 +396,6 @@ config GLOBBING
 	  use BusyBox applets from the Windows Command Prompt you can stop
 	  busybox.exe from expanding wildcards by setting this to 'N'.
 
-choice
-	prompt "Random number generator"
-	default FEATURE_PRNG_SHELL
-	depends on PLATFORM_MINGW32
-	help
-	BusyBox on Microsoft Windows uses a pseudo-random number
-	generator to emulate the Linux /dev/urandom device.  There
-	are two options:
-	- The shell's built-in PRNG.
-	- Bob Jenkins' ISAAC.  This is intended to be a secure PRNG.  It's
-	slightly faster than the shell's PRNG but is larger both in terms
-	of code and runtime memory.
-
-config FEATURE_PRNG_SHELL
-	bool "Use shell PRNG"
-
-config FEATURE_PRNG_ISAAC
-	bool "Use ISAAC PRNG"
-
-endchoice
-
 config FEATURE_RESOURCES
 	bool "Include resources in binary"
 	default y

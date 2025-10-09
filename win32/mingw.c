@@ -6,6 +6,7 @@
 #endif
 #include <ntdef.h>
 #include <psapi.h>
+#include <ntsecapi.h>
 
 #if defined(__MINGW64_VERSION_MAJOR)
 #if ENABLE_GLOBBING
@@ -295,6 +296,22 @@ FILE *mingw_fopen (const char *filename, const char *otype)
 			mingw_is_directory(filename))
 		errno = EISDIR;
 	return stream;
+}
+
+static ssize_t get_random_bytes(void *buf, ssize_t count)
+{
+	// 32-bit mingw-w64 didn't support RtlGenRandom until 7.0.0
+#if !defined(__MINGW64_VERSION_MAJOR) || \
+				(__MINGW64_VERSION_MAJOR < 7 && !defined(__MINGW64__))
+	DECLARE_PROC_ADDR(BOOLEAN, SystemFunction036, PVOID, ULONG);
+
+	if (!INIT_PROC_ADDR(advapi32.dll, SystemFunction036))
+		return -1;
+# define RtlGenRandom SystemFunction036
+#endif
+	if (count < 0 || !RtlGenRandom(buf, count))
+		return -1;
+	return count;
 }
 
 #undef read

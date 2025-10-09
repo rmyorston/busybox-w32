@@ -640,7 +640,6 @@ int err_win_to_posix(void);
 ULONGLONG CompatGetTickCount64(void);
 #define GetTickCount64 CompatGetTickCount64
 
-ssize_t get_random_bytes(void *buf, ssize_t count);
 int enumerate_links(const char *file, char *name);
 
 int unc_root_len(const char *dir) FAST_FUNC;
