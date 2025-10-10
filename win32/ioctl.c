@@ -25,7 +25,7 @@ static int mingw_get_terminal_width_height(struct winsize *win)
 }
 #endif
 
-#if ENABLE_STTY
+#if ENABLE_STTY && 0
 static int mingw_set_terminal_width_height(struct winsize *win)
 {
 	BOOL ret;
@@ -78,7 +78,7 @@ int ioctl(int fd UNUSED_PARAM, int code, ...)
 		ret = mingw_get_terminal_width_height((struct winsize *)arg);
 		break;
 #endif
-#if ENABLE_STTY
+#if ENABLE_STTY && 0
 	case TIOCSWINSZ:
 		arg = va_arg(ap, void *);
 		ret = mingw_set_terminal_width_height((struct winsize *)arg);

@@ -41,8 +41,7 @@
 //usage:     "\n	[SETTING]	See manpage"
 //usage:     )
 //usage:     IF_PLATFORM_MINGW32(
-//usage:     "\n	[SETTING]	[-]echo [-]cooked [-]raw sane"
-//usage:     "\n	         	cols N  rows N    size"
+//usage:     "\n	[SETTING]	[-]echo [-]cooked [-]raw sane size"
 //usage:     )
 
 /* If no args are given, write to stdout the baud rate and settings that
@@ -908,6 +907,7 @@ static void newline(void)
 		wrapf("\n");
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 #ifdef TIOCGWINSZ
 static void set_window_size(int rows, int cols)
 {
@@ -929,6 +929,7 @@ static void set_window_size(int rows, int cols)
 bail:
 		perror_on_device("%s");
 }
+#endif
 #endif
 
 static void display_window_size(int fancy)
@@ -1468,11 +1469,13 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 		param = find_param(arg);
+#if !ENABLE_PLATFORM_MINGW32
 		if (param & param_need_arg) {
 			if (!argnext)
 				bb_error_msg_and_die(bb_msg_requires_arg, arg);
 			++k;
 		}
+#endif
 
 		switch (param) {
 #ifdef __linux__
@@ -1566,7 +1569,9 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 		const struct control_info *cp;
 #endif
 		const char *arg = argv[k];
+#if !ENABLE_PLATFORM_MINGW32
 		const char *argnext = argv[k+1];
+#endif
 		int param;
 
 		if (arg[0] == '-') {
@@ -1608,6 +1613,7 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 			stty_state |= STTY_require_set_attr;
 			break;
 #endif
+#if !ENABLE_PLATFORM_MINGW32
 #ifdef TIOCGWINSZ
 		case param_cols:
 		case param_columns:
@@ -1620,7 +1626,6 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 			set_window_size(xatoul_sfx(argnext, stty_suffixes), -1);
 			break;
 #endif
-#if !ENABLE_PLATFORM_MINGW32
 		case param_speed:
 			display_speed(&mode, 0);
 			break;
