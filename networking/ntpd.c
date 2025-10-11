@@ -1645,7 +1645,7 @@ update_local_clock(peer_t *p)
 	/* 65536 is one ppm */
 	tmx.freq = G.discipline_freq_drift * 65536e6;
 #endif
-	tmx.modes = ADJ_OFFSET | ADJ_STATUS | ADJ_TIMECONST;// | ADJ_MAXERROR | ADJ_ESTERROR;
+	tmx.modes = ADJ_OFFSET | ADJ_STATUS | ADJ_TIMECONST | ADJ_MAXERROR | ADJ_ESTERROR;
 
 	tmx.offset = (long)(offset * 1000000); /* usec */
 	if (SLEW_THRESHOLD < STEP_THRESHOLD) {
@@ -1738,16 +1738,23 @@ update_local_clock(peer_t *p)
 	if (tmx.constant < 0)
 		tmx.constant = 0;
 
-	//tmx.esterror = (uint32_t)(clock_jitter * 1e6);
-	//tmx.maxerror = (uint32_t)((sys_rootdelay / 2 + sys_rootdisp) * 1e6);
+	/* For ADJ_MAXERROR and ADJ_ESTERROR: */
+	/* kernel increments this by 500us each second, sets STA_UNSYNC if exceeds 16 seconds: */
+	tmx.maxerror = (uint32_t)((G.rootdelay / 2 + G.rootdisp) * 1000000.0);
+	/* (without ADJ_MAXERROR, time adjustment still works, but kernel uses
+	 * conservative maxerror value and quickly sets STA_UNSYNC)
+	 */
+	/* esterror is not used by kernel, presumably may be used by other programs reading adjtimex result: */
+	tmx.esterror = (uint32_t)(G.discipline_jitter * 1000000.0);
+
 	rc = adjtimex(&tmx);
 	if (rc < 0)
 		bb_simple_perror_msg_and_die("adjtimex");
 	/* NB: here kernel returns constant == G.poll_exp, not == G.poll_exp - 4.
 	 * Not sure why. Perhaps it is normal.
 	 */
-	VERB4 bb_error_msg("adjtimex:%d freq:%ld offset:%+ld status:0x%x",
-				rc, (long)tmx.freq, (long)tmx.offset, tmx.status);
+	VERB4 bb_error_msg("adjtimex:%d freq:%ld offset:%+ld esterror:%ld maxerror:%ld status:0x%x",
+				rc, (long)tmx.freq, (long)tmx.offset, (long)tmx.esterror, (long)tmx.maxerror, tmx.status);
 	G.kernel_freq_drift = tmx.freq / 65536;
 	VERB2 bb_error_msg("update from:%s offset:%+f delay:%f jitter:%f clock drift:%+.3fppm tc:%d",
 			p->p_dotted,
