@@ -31,6 +31,15 @@ done
 allno="`echo "$allno" | sed "s/^CONFIG_BUSYBOX=y\$/# CONFIG_BUSYBOX is not set/"`"
 # disable any CONFIG_script_DEPENDENCIES as well
 allno="`echo "$allno" | sed "s/^\(CONFIG_.*_DEPENDENCIES\)=y\$/# \1 is not set/"`"
+# Select platform
+if grep -q CONFIG_PLATFORM_MINGW32=y .config
+then
+	allno="`echo "$allno" | sed "s/^# CONFIG_PLATFORM_MINGW32 is not set\$/CONFIG_PLATFORM_MINGW32=y/"`"
+	EXE=".exe"
+else
+	allno="`echo "$allno" | sed "s/^# CONFIG_PLATFORM_POSIX is not set\$/CONFIG_PLATFORM_POSIX=y/"`"
+	EXE=""
+fi
 #echo "$allno" >.config_allno
 
 trap 'test -f .config.SV && mv .config.SV .config && touch .config' EXIT
@@ -69,7 +78,7 @@ for app; do
 		mv .config busybox_config_${app}
 	elif ! grep -q '^#define NUM_APPLETS 1$' include/NUM_APPLETS.h; then
 		grep -i -e error: -e warning: busybox_make_${app}.log
-		mv busybox busybox_${app}
+		mv busybox${EXE} busybox_${app}${EXE}
 		fail=$((fail+1))
 		echo "NUM_APPLETS != 1 for ${app}: `cat include/NUM_APPLETS.h`"
 		mv .config busybox_config_${app}
@@ -86,7 +95,7 @@ for app; do
 		fi
 		grep -i -e error: -e warning: busybox_make_${app}.log \
 		|| rm busybox_make_${app}.log
-		mv busybox busybox_${app}
+		mv busybox${EXE} busybox_${app}${EXE}
 		#mv .config busybox_config_${app}
 	fi
 	mv .config.SV .config
