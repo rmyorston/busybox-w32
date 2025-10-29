@@ -17,8 +17,12 @@
 // NOTE: For WIN32 this applet is NOFORK so we can change the screen
 //       buffer for the current process.
 
-//applet:IF_PLATFORM_MINGW32(IF_RESET(APPLET_NOFORK(reset, reset, BB_DIR_USR_BIN, BB_SUID_DROP, reset)))
-//applet:IF_PLATFORM_POSIX(IF_RESET(APPLET_NOEXEC(reset, reset, BB_DIR_USR_BIN, BB_SUID_DROP, reset)))
+//applet:IF_PLATFORM_MINGW32(
+//applet:IF_RESET(APPLET_NOFORK(reset, reset, BB_DIR_USR_BIN, BB_SUID_DROP, reset))
+//applet:)
+//applet:IF_PLATFORM_POSIX(
+//applet:IF_RESET(APPLET_NOEXEC(reset, reset, BB_DIR_USR_BIN, BB_SUID_DROP, reset))
+//applet:)
 
 //kbuild:lib-$(CONFIG_RESET) += reset.o
 

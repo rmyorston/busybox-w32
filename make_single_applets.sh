@@ -15,6 +15,7 @@ grep ^IF_ include/applets.h \
 | grep -v '^IF_FEATURE_' \
 | sed 's/IF_\([A-Z0-9._-]*\)(.*/\1/' \
 | grep -v '^BUSYBOX$' \
+| grep -v '^PLATFORM_' \
 | sort | uniq
 `"
 

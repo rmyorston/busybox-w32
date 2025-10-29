@@ -15,8 +15,12 @@
 // NOTE: For WIN32 this applet is NOEXEC as file_is_win32_exe() and
 //       find_executable() both allocate memory.
 
-//applet:IF_PLATFORM_MINGW32(IF_WHICH(APPLET_NOEXEC(which, which, BB_DIR_USR_BIN, BB_SUID_DROP, which)))
-//applet:IF_PLATFORM_POSIX(IF_WHICH(APPLET_NOFORK(which, which, BB_DIR_USR_BIN, BB_SUID_DROP, which)))
+//applet:IF_PLATFORM_MINGW32(
+//applet:IF_WHICH(APPLET_NOEXEC(which, which, BB_DIR_USR_BIN, BB_SUID_DROP, which))
+//applet:)
+//applet:IF_PLATFORM_POSIX(
+//applet:IF_WHICH(APPLET_NOFORK(which, which, BB_DIR_USR_BIN, BB_SUID_DROP, which))
+//applet:)
 
 //kbuild:lib-$(CONFIG_WHICH) += which.o
 
