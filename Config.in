@@ -447,8 +447,10 @@ config FEATURE_ICON
 	depends on FEATURE_RESOURCES
 	help
 	Microsoft Windows applications can contain icons which are used in
-	various places in the user interface.  Each icon adds 15 Kbytes to
-	the size of the binary.
+	various places in the user interface.  Two icons are provided in
+	two formats.  ICO icons are 15KB and are supported in all versions
+	of Windows.  PNG icons are 1-2KB and are supported since Windows
+	Vista.
 
 choice
 	prompt "Application icon"
@@ -456,13 +458,22 @@ choice
 	depends on FEATURE_ICON
 
 config FEATURE_ICON_ATERM
-	bool "Adwaita terminal"
+	bool "ICO Adwaita terminal"
 
 config FEATURE_ICON_STERM
-	bool "Adwaita terminal (symbolic)"
+	bool "ICO Adwaita terminal (symbolic)"
 
 config FEATURE_ICON_ALL
-	bool "All available icons"
+	bool "All available ICO icons"
+
+config FEATURE_PNG_ATERM
+	bool "PNG Adwaita terminal"
+
+config FEATURE_PNG_STERM
+	bool "PNG Adwaita terminal (symbolic)"
+
+config FEATURE_PNG_ALL
+	bool "All available PNG icons"
 
 endchoice
 
