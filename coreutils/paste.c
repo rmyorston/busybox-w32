@@ -34,15 +34,46 @@
 
 static void paste_files(FILE** files, int file_cnt, char* delims, int del_cnt)
 {
+#if ENABLE_PLATFORM_MINGW32
+	char **line = xmalloc(file_cnt * sizeof(char *));
+#else
 	char *line;
+#endif
 	char delim;
 	int active_files = file_cnt;
 	int i;
 
 	while (active_files > 0) {
 		int del_idx = 0;
+#if ENABLE_PLATFORM_MINGW32
+		int got_line = FALSE;
+#endif
 
 		for (i = 0; i < file_cnt; ++i) {
+#if ENABLE_PLATFORM_MINGW32
+			if (files[i]) {
+				line[i] = xmalloc_fgetline(files[i]);
+				if (!line[i]) {
+					fclose_if_not_stdin(files[i]);
+					files[i] = NULL;
+					--active_files;
+				} else {
+					got_line = TRUE;
+				}
+			} else {
+				line[i] = NULL;
+			}
+		}
+
+		if (!got_line)
+			break;
+
+		for (i = 0; i < file_cnt; ++i) {
+			if (line[i]) {
+				fputs_stdout(line[i]);
+				free(line[i]);
+			}
+#else
 			if (files[i] == NULL)
 				continue;
 
@@ -55,6 +86,7 @@ static void paste_files(FILE** files, int file_cnt, char* delims, int del_cnt)
 			}
 			fputs_stdout(line);
 			free(line);
+#endif
 			delim = '\n';
 			if (i != file_cnt - 1) {
 				delim = delims[del_idx++];
@@ -65,6 +97,9 @@ static void paste_files(FILE** files, int file_cnt, char* delims, int del_cnt)
 				fputc(delim, stdout);
 		}
 	}
+#if ENABLE_PLATFORM_MINGW32
+	free(line);
+#endif
 }
 
 static void paste_files_separate(FILE** files, char* delims, int del_cnt)
