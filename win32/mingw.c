@@ -195,7 +195,7 @@ static int rand_fd = -1;
 int get_dev_type(const char *filename)
 {
 	if (filename && is_prefixed_with(filename, "/dev/"))
-		return index_in_strings("null\0zero\0urandom\0", filename+5);
+		return index_in_strings("null\0tty\0zero\0urandom\0", filename+5);
 
 	return NOT_DEVICE;
 }
@@ -231,14 +231,15 @@ int mingw_open (const char *filename, int oflags, ...)
 	int special = (oflags & O_SPECIAL);
 	int dev = get_dev_type(filename);
 
-	/* /dev/null is always allowed, others only if O_SPECIAL is set */
-	if (dev == DEV_NULL || (special && dev != NOT_DEVICE)) {
+	/* /dev/zero and /dev/urandom are only allowed if O_SPECIAL is set */
+	if (dev == DEV_NULL)
 		filename = "nul";
-		oflags = O_RDWR;
-	}
-	else if ((fd=get_dev_fd(filename)) >= 0) {
+	else if (dev == DEV_TTY)
+		filename = "con";
+	else if (special && dev != NOT_DEVICE)
+		filename = "nul";
+	else if ((fd=get_dev_fd(filename)) >= 0)
 		return fd;
-	}
 
 	if ((oflags & O_CREAT)) {
 		va_start(args, oflags);
@@ -286,9 +287,12 @@ FILE *mingw_fopen (const char *filename, const char *otype)
 {
 	int fd;
 	FILE *stream;
+	int dev = get_dev_type(filename);
 
-	if (get_dev_type(filename) == DEV_NULL)
+	if (dev == DEV_NULL)
 		filename = "nul";
+	else if (dev == DEV_TTY)
+		filename = "con";
 	else if ((fd=get_dev_fd(filename)) >= 0)
 		return fdopen(fd, otype);
 	stream = fopen(filename, otype);
@@ -385,8 +389,9 @@ static inline mode_t file_attr_to_st_mode(DWORD attr)
 static int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
 {
 	char *want_dir;
+	int dev = get_dev_type(fname);
 
-	if (get_dev_type(fname) == DEV_NULL || get_dev_fd(fname) >= 0) {
+	if (dev == DEV_NULL || dev == DEV_TTY || get_dev_fd(fname) >= 0) {
 		/* Fake attributes for special devices */
 		/* Though not /dev/zero or /dev/urandom */
 		FILETIME epoch = {0xd53e8000, 0x019db1de};	// Unix epoch as FILETIME
