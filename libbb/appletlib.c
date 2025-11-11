@@ -1122,14 +1122,14 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	if (strcmp(argv[1], "--help") == 0) {
-		/* "busybox --help [<applet>]" */
+		/* "busybox --help [APPLET]" */
 		if (!argv[2]
 #  if ENABLE_FEATURE_SH_STANDALONE && ENABLE_FEATURE_TAB_COMPLETION
 		 || strcmp(argv[2], "busybox") == 0 /* prevent getting "No help available" */
 #  endif
 		)
 			goto help;
-		/* convert to "<applet> --help" */
+		/* convert to "APPLET --help" */
 		applet_name = argv[0] = argv[2];
 		argv[2] = NULL;
 		if (find_applet_by_name_internal(applet_name) >= 0) {
@@ -1137,8 +1137,16 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 			xfunc_error_retval = 0;
 			bb_show_usage();
 		} /* else: unknown applet, fall through (causes "applet not found" later) */
-	} else {
-		/* "busybox <applet> arg1 arg2 ..." */
+	}
+#  if ENABLE_FEATURE_VERSION
+	else if (!argv[2] && strcmp(argv[1], "--version") == 0) {
+		full_write1_str(bb_banner); /* reuse const string */
+		full_write1_str("\n");
+		return 0;
+	}
+#  endif
+	else {
+		/* "busybox APPLET arg1 arg2 ..." */
 		argv++;
 		/* We support "busybox /a/path/to/applet args..." too. Allows for
 		 * "#!/bin/busybox"-style wrappers
