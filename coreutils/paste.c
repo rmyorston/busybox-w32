@@ -34,27 +34,38 @@
 
 static void paste_files(FILE** files, int file_cnt, char* delims, int del_cnt)
 {
-	char *line;
+	char **line = xmalloc(file_cnt * sizeof(char *));
 	char delim;
 	int active_files = file_cnt;
 	int i;
 
 	while (active_files > 0) {
 		int del_idx = 0;
+		int got_line = FALSE;
 
 		for (i = 0; i < file_cnt; ++i) {
-			if (files[i] == NULL)
-				continue;
-
-			line = xmalloc_fgetline(files[i]);
-			if (!line) {
-				fclose_if_not_stdin(files[i]);
-				files[i] = NULL;
-				--active_files;
-				continue;
+			if (files[i]) {
+				line[i] = xmalloc_fgetline(files[i]);
+				if (!line[i]) {
+					fclose_if_not_stdin(files[i]);
+					files[i] = NULL;
+					--active_files;
+				} else {
+					got_line = TRUE;
+				}
+			} else {
+				line[i] = NULL;
 			}
-			fputs_stdout(line);
-			free(line);
+		}
+
+		if (!got_line)
+			break;
+
+		for (i = 0; i < file_cnt; ++i) {
+			if (line[i]) {
+				fputs_stdout(line[i]);
+				free(line[i]);
+			}
 			delim = '\n';
 			if (i != file_cnt - 1) {
 				delim = delims[del_idx++];
@@ -65,6 +76,7 @@ static void paste_files(FILE** files, int file_cnt, char* delims, int del_cnt)
 				fputc(delim, stdout);
 		}
 	}
+	free(line);
 }
 
 static void paste_files_separate(FILE** files, char* delims, int del_cnt)
