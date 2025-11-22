@@ -1781,8 +1781,7 @@ int mingw_mkdir(const char *path, int mode UNUSED_PARAM)
 	if ( (ret=mkdir(path)) < 0 ) {
 		lerrno = errno;
 		if ( lerrno == EACCES && stat(path, &st) == 0 ) {
-			ret = 0;
-			lerrno = 0;
+			lerrno = EEXIST;
 		}
 	}
 
