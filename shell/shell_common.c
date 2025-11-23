@@ -222,24 +222,6 @@ shell_builtin_read(struct builtin_read_params *params)
 		pfd->events = POLLIN;
 
 #if ENABLE_PLATFORM_MINGW32
-		/* Don't poll if timeout is -1, it hurts performance.  The
-		 * caution above about interrupts isn't relevant on Windows
-		 * where Ctrl-C causes an event, not a signal.
-		 */
-		if (timeout >= 0)
-#endif
-		/* test bb_got_signal, then poll(), atomically wrt signals */
-		if (check_got_signal_and_poll(pfd, timeout) <= 0) {
-			/* timed out, or some error */
-			err = errno;
-			if (!err) { /* timed out */
-				retval = (const char *)(uintptr_t)2;
-				break;
-			}
-			retval = (const char *)(uintptr_t)1;
-			goto ret;
-		}
-#if ENABLE_PLATFORM_MINGW32
 		if (isatty(fd)) {
 			int64_t key;
 
@@ -272,13 +254,32 @@ shell_builtin_read(struct builtin_read_params *params)
 				/* echo input if not in silent mode */
 				console_write(buffer + bufpos, 1);
 			}
-		} else
+		} else {
+			/* Don't poll if timeout is -1, it hurts performance.  The
+			 * caution above about interrupts isn't relevant on Windows
+			 * where Ctrl-C causes an event, not a signal.
+			 */
+			if (timeout >= 0)
 #endif
+		/* test bb_got_signal, then poll(), atomically wrt signals */
+		if (check_got_signal_and_poll(pfd, timeout) <= 0) {
+			/* timed out, or some error */
+			err = errno;
+			if (!err) { /* timed out */
+				retval = (const char *)(uintptr_t)2;
+				break;
+			}
+			retval = (const char *)(uintptr_t)1;
+			goto ret;
+		}
 		if (read(fd, &buffer[bufpos], 1) != 1) {
 			err = errno;
 			retval = (const char *)(uintptr_t)1;
 			break;
 		}
+#if ENABLE_PLATFORM_MINGW32
+		}
+#endif
 
 		c = buffer[bufpos];
 #if ENABLE_PLATFORM_MINGW32
