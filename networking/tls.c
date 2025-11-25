@@ -971,7 +971,10 @@ static int tls_xread_record(tls_state_t *tls, const char *expected)
 				tls->buffered_size = 0;
 				goto end;
 			}
-			bb_perror_msg_and_die("short read, have only %d", total);
+			/* Used to say "wget: short read, have only 186" here. More informative: */
+			if (total < RECHDR_LEN)
+				bb_perror_msg_and_die("%s header: got %d bytes", "truncated TLS record", total);
+			bb_perror_msg_and_die("%s: expected %d, got %d bytes", "truncated TLS record", target, total);
 		}
 		dump_raw_in("<< %s\n", tls->inbuf + total, sz);
 		total += sz;
