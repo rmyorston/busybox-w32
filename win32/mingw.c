@@ -1100,10 +1100,25 @@ struct tm *gmtime_r(const time_t *timep, struct tm *result)
 	return result;
 }
 
+#undef localtime
+#if !defined(_WIN64) && __MINGW64_VERSION_MAJOR >= 10
+# define localtime(t) _localtime64(t)
+#endif
+struct tm *mingw_localtime(const time_t *timep)
+{
+	struct tm *tm = localtime(timep);
+	time_t epoch = 0;
+
+	if (tm == NULL) {
+		tm = localtime(&epoch);
+	}
+	return tm;
+}
+
 struct tm *localtime_r(const time_t *timep, struct tm *result)
 {
 	/* localtime() in MSVCRT.DLL is thread-safe, but not reentrant */
-	memcpy(result, localtime(timep), sizeof(struct tm));
+	memcpy(result, mingw_localtime(timep), sizeof(struct tm));
 	return result;
 }
 

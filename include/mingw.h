@@ -6,7 +6,7 @@
 #if !defined(_WIN64) && __MINGW64_VERSION_MAJOR >= 10
 # define time_t __time64_t
 # define ctime(t) _ctime64(t)
-# define localtime(t) _localtime64(t)
+// localtime is handled in mingw_localtime()
 # define time(t) _time64(t)
 # define gmtime(t) _gmtime64(t)
 # define mktime(t) _mktime64(t)
@@ -328,6 +328,9 @@ time_t timegm(struct tm *tm);
 int nanosleep(const struct timespec *req, struct timespec *rem);
 int clock_gettime(clockid_t clockid, struct timespec *tp);
 int clock_settime(clockid_t clockid, const struct timespec *tp);
+struct tm *mingw_localtime(const time_t *timep);
+
+#define localtime mingw_localtime
 
 /*
  * sys/stat.h
