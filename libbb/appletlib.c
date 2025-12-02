@@ -1346,7 +1346,7 @@ int main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 #if ENABLE_PLATFORM_MINGW32
-# if ENABLE_FEATURE_UTF8_MANIFEST
+# if ENABLE_FEATURE_FAIL_IF_UTF8_MANIFEST_UNSUPPORTED
 	if (GetACP() != CP_UTF8) {
 		full_write2_str(bb_basename(argv[0]));
 		full_write2_str(": UTF8 manifest not supported\n");

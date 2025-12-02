@@ -448,6 +448,16 @@ config FEATURE_UTF8_MANIFEST
 
 endchoice
 
+config FEATURE_FAIL_IF_UTF8_MANIFEST_UNSUPPORTED
+	bool "Disallow UTF-8 manifest on legacy systems"
+	default y
+	depends on FEATURE_UTF8_MANIFEST
+	help
+	The UTF-8 manifest is only supported on Microsoft Windows 10+.
+	To avoid giving users misleading expectations, this option
+	prevents binaries with the manifest from running on legacy
+	systems.
+
 config FEATURE_ICON
 	bool "Include application icon in binary"
 	default y
