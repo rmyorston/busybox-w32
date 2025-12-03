@@ -11967,7 +11967,7 @@ evalcommand(union node *cmd, int flags)
 #if ENABLE_FEATURE_SH_STANDALONE \
  && ENABLE_FEATURE_SH_NOFORK \
  && NUM_APPLETS > 1 \
- && !(defined(_ARM64_) && !defined(_UCRT) && ENABLE_PLATFORM_MINGW32)
+ && !((defined(_ARM64_) || defined(_ARM_)) && !defined(_UCRT) && ENABLE_PLATFORM_MINGW32)
 /* (1) BUG: if variables are set, we need to fork, or save/restore them
  *     around run_nofork_applet() call.
  * (2) Should this check also be done in forkshell()?
