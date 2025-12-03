@@ -33,6 +33,11 @@ int uname(struct utsname *name)
 			name->machine[1] = '3';
 		}
 		break;
+#if defined(PROCESSOR_ARCHITECTURE_ARM)
+	case PROCESSOR_ARCHITECTURE_ARM:
+		strcpy(name->machine, "armv7");
+		break;
+#endif
 #if defined(PROCESSOR_ARCHITECTURE_ARM64)
 	case PROCESSOR_ARCHITECTURE_ARM64:
 		strcpy(name->machine, "aarch64");
