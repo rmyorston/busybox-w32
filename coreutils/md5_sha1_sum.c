@@ -159,6 +159,7 @@ enum {
 #define FLAG_SILENT  1
 #define FLAG_CHECK   2
 #define FLAG_WARN    4
+#define FLAG_BINARY  8
 
 /* This might be useful elsewhere */
 static unsigned char *hash_bin_to_hex(unsigned char *hash_value,
@@ -281,16 +282,21 @@ int md5_sha1_sum_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_SHA3SUM
 	unsigned sha3_width = 224;
 #endif
+	const char *fmt = "%s  %s\n";
 
 	if (ENABLE_FEATURE_MD5_SHA1_SUM_CHECK) {
-		/* -b "binary", -t "text" are ignored (shaNNNsum compat) */
+		/* -t per se is a no-op (it means "text mode").
+		 * -b sets the '*' binary mode indicator in the output.
+		 * -t unsets -b (-bt is the same as -t, which is the same as no option) */
 		/* -s and -w require -c */
 #if ENABLE_SHA3SUM
 		if (applet_name[3] == HASH_SHA3 && (!ENABLE_SHA384SUM || applet_name[4] != '8'))
-			flags = getopt32(argv, "^" "scwbta:+" "\0" "s?c:w?c", &sha3_width);
+			flags = getopt32(argv, "^" "scwbta:+" "\0" "t-b:s?c:w?c", &sha3_width);
 		else
 #endif
-			flags = getopt32(argv, "^" "scwbt" "\0" "s?c:w?c");
+			flags = getopt32(argv, "^" "scwbt" "\0" "t-b:s?c:w?c");
+		if (flags & FLAG_BINARY)
+			fmt = "%s *%s\n";
 	} else {
 #if ENABLE_SHA3SUM
 		if (applet_name[3] == HASH_SHA3 && (!ENABLE_SHA384SUM || applet_name[4] != '8'))
@@ -375,7 +381,7 @@ int md5_sha1_sum_main(int argc UNUSED_PARAM, char **argv)
 			if (hash_value == NULL) {
 				return_value = EXIT_FAILURE;
 			} else {
-				printf("%s  %s\n", hash_value, *argv);
+				printf(fmt, hash_value, *argv);
 				free(hash_value);
 			}
 		}
