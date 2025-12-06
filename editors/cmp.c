@@ -113,8 +113,8 @@ int cmp_main(int argc UNUSED_PARAM, char **argv)
 		fmt = fmt_differ;
 
 	if (ENABLE_DESKTOP) {
-		while (skip1) { getc(fp1); skip1--; }
-		while (skip2) { getc(fp2); skip2--; }
+		while (skip1) { if (getc(fp1) == EOF) break; skip1--; }
+		while (skip2) { if (getc(fp2) == EOF) break; skip2--; }
 	}
 	do {
 		if (max_count >= 0 && --max_count < 0)
