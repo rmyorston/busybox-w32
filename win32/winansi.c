@@ -1415,6 +1415,15 @@ BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
  * code page of CP_UTF8 can crash the console/terminal.  Avoid this by
  * using ReadConsoleInputW() in that case.
  */
+/* FIXME: the behavior is correct, but the name (..._utf8) is not.
+ *        this is a plain ReadConsoleInputA, with breaking workaround when
+ *        the console input CP is UTF8 (i.e. if the user did "chcp 65001").
+ *        The other implementation of this name (with FEATURE_UTF8_INPUT)
+ *        does match the name correctly.
+ *        For best behavior when unicode is disabled (utf8 manifest is not
+ *        in effect) the user should set the console CP to the system ACP,
+ *        e.g. on en-US system, run "chcp 1252" (default with en-US is 437).
+ */
 BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
 {
 	if (GetConsoleCP() != CP_UTF8)
@@ -1582,10 +1591,13 @@ static int conv_fwriteCon(FILE *stream, char *buf, size_t siz)
 {
 	if (conout_conv_enabled()) {
 #if ENABLE_FEATURE_UTF8_OUTPUT
-		if (GetConsoleOutputCP() != CP_UTF8) {
+		int acp = GetACP();
+		if (acp == CP_UTF8 && GetConsoleOutputCP() != CP_UTF8) {
 			fflush(stream);  // writeCon_utf8 is unbuffered
 			return writeCon_utf8(fileno(stream), buf, siz) ? EOF : 0;
 		}
+		if (acp != CP_UTF8)
+			charToConBuffA(buf, siz);
 #else
 		charToConBuffA(buf, siz);
 #endif
@@ -1599,8 +1611,11 @@ static int conv_writeCon(int fd, char *buf, size_t siz)
 {
 	if (conout_conv_enabled()) {
 #if ENABLE_FEATURE_UTF8_OUTPUT
-		if (GetConsoleOutputCP() != CP_UTF8)
+		int acp = GetACP();
+		if (acp == CP_UTF8 && GetConsoleOutputCP() != CP_UTF8)
 			return writeCon_utf8(fd, buf, siz) ? -1 : siz;
+		if (acp != CP_UTF8)
+			charToConBuffA(buf, siz);
 #else
 		charToConBuffA(buf, siz);
 #endif
