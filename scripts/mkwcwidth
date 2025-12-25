@@ -1,11 +1,10 @@
 #!/bin/sh
 #
-# Generate a C implementation of wcwidth, with latest unicode data
-# from a local clone of https://github.com/jquast/wcwidth
+# Generate a wcwidth C implementation from Unicode data (tested v7 - v17)
 #
 # The MIT License (MIT)
 #
-# Copyright (C) 2024 Avi Halachmi <avihpit at yahoo.com>
+# Copyright (C) 2025 Avi Halachmi <avihpit at yahoo.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -25,117 +24,284 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+
+# Latest Unicode data source files:
+#   https://www.unicode.org/Public/UCD/latest/ucd/UnicodeData.txt
+#   https://www.unicode.org/Public/UCD/latest/ucd/EastAsianWidth.txt
+#
+# License and term of use in either URL:
+#   http://www.unicode.org/copyright.html
+#   http://www.unicode.org/terms_of_use.html
+
+
 export LC_ALL=C
 self=${0##*/}
+awk=${AWK:-awk} sed=${SED:-sed}
 
-# c-types (bigger types work but waste memory. uintN_t need <stdint.h>)
-u32=uint32_t  # "unsigned" is also typically 32 bit
-u16=uint16_t  # "unsigned short" is also typically 16 bits
-FUNC_ATTR=FAST_FUNC # delete this line if not generating a busybox function
+URL_base=https://www.unicode.org/Public/UCD/latest/ucd
+URL_verbase=https://www.unicode.org/Public/%s/ucd
+ud_file=UnicodeData.txt
+eaw_file=EastAsianWidth.txt
 
+# int by default (int is 32 bit and short is 16 on unix/linux/osx/windows, and
+# doesn't require stdint.h - https://en.cppreference.com/w/cpp/language/types)
+u32=${U32:-unsigned}        # or uint32_t
+u16=${U16:-unsigned short}  # or uint16_t
 
 err() { >&2 printf %s\\n "$self: $*"; exit 1; }
 
 case ${1-} in -h | --help)
-	echo "Usage: $self [path/to/python-wcwidth]   (default path is '.')"
-	echo "Prints a wcwidth C implementation, with latest Unicode data"
-	echo "imported from a local https://github.com/jquast/wcwidth repo."
-	echo "Assumptions about table_zero.py and table_wide.py at the repo:"
-	echo "- Each range is in one Unicode plane (a>>16 == b>>16) (enforced)."
-	echo "- Commit 04d6d90c (2023-10-30) or later, where table_zero.py"
-	echo "  includes zero-width Cf chars (else need to add manual tests)."
+	echo "Usage: $self [DL=VERSION] [FATTR]"
+	echo "Print a wcwidth C implementation to stdout."
+	echo
+	echo "Uses the files ./$ud_file and ./$eaw_file ."
+	echo "If the files are missing, the latest will be downloaded."
+	echo
+	echo "If DL=XXX is provided, force-download + overwrite, where XXX is:"
+	echo "- 'latest' -> $URL_base/..."
+	echo "- 'draft', '16.0.0' etc -> $(printf "$URL_verbase" XXX)/..."
+	echo
+	echo "If given, FATTR will be inserted as 'int FATTR wcwidth(...) {...}'."
+	echo "Optional env vars:"
+	echo '  $FN           Function name to generate. Default: wcwidth.'
+	echo '  $U32, $U16    unsigned codepoint, u16 C-types. Default: int/short.'
+	echo '  $AWK, $SED    used programs (word-split, e.g. AWK="busybox awk").'
+	echo
+	echo 'Requires: sh, curl/wget, sed, awk, and few more POSIX utilities.'
+	exit
 esac
+[ "${1-}" = -- ] && shift
 
-[ "${1-}" != -- ] || shift
+DL=
+case ${1-} in DL=*) DL=${1#DL=}; shift; esac
+[ "${DL-}" ] && [ "$DL" != latest ] && URL_base=$(printf "$URL_verbase" "$DL")
 
-pwc_root=${1:-.}
-pwc_git() { git -C "$pwc_root" "$@"; }
+FUNC_ATTR=${1:+$1 }
 
-zerowidth_py=$pwc_root/wcwidth/table_zero.py
-widewidth_py=$pwc_root/wcwidth/table_wide.py
-
-[ -r "$zerowidth_py" ] && [ -r "$widewidth_py" ] \
-	|| err "missing $zerowidth_py or $widewidth_py. abort."
-
-# latest unicode version from table_wide.py (e.g. from "    '10.0.0': (")
-ver=$(grep "^\s*'[0-9]" < "$widewidth_py" | tail -n1 | sed "s/.*'\(.*\)'.*/\1/")
-
-# stdin -> stdout: extract the data of the last table (latest spec) from
-# wcwidth/table_{wide,zero}.py (from https://github.com/jquast/wcwidth)
-last_table() {
-	awk "/^\s*'[0-9]/ { i=0 }             # new table -> reset
-	     /^\s*\(0x/   { arr[++i] = \$0 }  # range (first, last)
-	     END          { for (j=1; j <= i; ++j) print arr[j] }"
+url2file() {  # wget errors on 404-not-found etc, curl requires -f for that
+	>&2 echo "[$1  ->  $2]"
+	rm -f -- "$2.tmp"
+	{ { [ "$(which wget)" ] && wget    -O "$2.tmp" "$1"; } ||
+	  { [ "$(which curl)" ] && curl -f -o "$2.tmp" "$1"; }
+	} && mv -- "$2.tmp" "$2"
 }
 
-# stdin -> stdout, $1 is the range's (wc)width (0 or 2), e.g.
-#   from: (0x0123a, 0x0123c,), # comment
-#   to  : R(0x00123a, 0x00123c, 2),  /* comment */
-# ranges bigger than half-plane (32769+ codepoints) are split to two.
-py_data_to_c() {
-	sed -e 's/[(),]/ /g' -e 's|#\(.*\)|/*\1 */|' | while read a b c; do
-		# to support cross-plane ranges, we'd need to split them here,
-		# but unlikely required, as all planes end in non-characters.
-		[ $(($a>>16)) = $(($b>>16)) ] || err "not same plane -- $a $b"
+[ -r "$ud_file" ] && [ -r "$eaw_file" ] && [ -z "$DL" ] || {
+	url2file "$URL_base/$ud_file"  "$ud_file"  &&
+	url2file "$URL_base/$eaw_file" "$eaw_file" ||
+		err "can't download $ud_file and/or $eaw_file. abort."
+}
 
-		a=$(($a)) b=$(($b))  # some shells want decimal vars in $(())
-		if [ "$((b-a))" -ge 32768 ]; then  # split to 15 bit ranges
-			printf "R(0x%06x, 0x%06x, $1),  %s\n" $a $((a+32767)) "$c"
-			a=$((a+32768)) c="/* (continued...) */"
-		fi
-		printf "R(0x%06x, 0x%06x, $1),  %s\n" $a $b "$c"
+
+# extractors of zero-width and wide-width ranges from the Unicode data files.
+#
+# At https://www.cl.cam.ac.uk/~mgk25/ucs/wcwidth.c - the mother of most current
+# wcwidth implementations, by Markus Kuhn (Unicode 5.0) - the width is:
+# - 0 for codepoint 0.
+# - -1 for control ranges C0/C1, and DEL (1-31, 128-159, 127)
+# - 0 if U+200B, cat is Me|Mn|Cf but not U+00AD, Hangul Jamo U+1160..U+11FF.
+# - else 2 if East_Asian_Width property is F|W (fullwidth, wide).
+# - else 1.
+#
+# We add as 0-width:
+# - Category Mc (combining, diacritics[-like])
+# - Hangul Jamo Extended-B U+D7B0..U+D7FF (combining, wasn't in Unicode 5.0)
+# - Emoji modifiers U+1F3FB..U+1F3FF (wasn't in Unicode 5.0)
+#
+# Hangul Jamo, Emoji mods are identified at the data automatically by name.
+# U+200B is category Cf since at least 5.0.0 - no need for manual override.
+#
+# Python wcwidth https://github.com/jquast/wcwidth is like us, plus 0-width:
+# - Cat Zl,Zp (2 codepoints: line/para. sep.), but terminals disagree on them.
+# - Few unassigned codepoints at Hangul Jamo Extended-B - it adds the range
+#   manually (includes unassigned), we get (assigned) codepoints at the data.
+# - (U+00AD was 0, fixed to 1 after https://github.com/jquast/wcwidth/issues/8)
+#
+#
+# UnicodeData.txt is lines of:
+#   CODEPOINT;NAME;CATEGORY;(...more) where CODEPOINT is 4-6 hex digits
+# or pairs of:
+#   CODEPOINT;<XNAME, First>;CATEGORY;(...more)  where XNAME is group-ish name
+#   CODEPOINT;<XNAME, Last>;CATEGORY;(...more)
+#
+# EastAsianWidth.txt is lines of:
+#   #... (comment)
+# or
+#   CODEPOINT[..LAST];EAW # <stuff>  (4-6 hex digits, maybe spaces around ";")
+# where EAW is East_Asian_Width property ("F", "W", "A", "N", etc)
+
+# replace First/Last pairs in UnicodeData with one line of FIRST..LAST range.
+# assume that First/Last are at consecutive lines, and XNAME/CAT don't change.
+# (no-op for us at Unicode v16 - doesn't add new wide/zero width codepoints)
+ud_file_ranges() {
+	$awk -F\; '$2 ~ /, First>$/ { printf $1 ".."; next }; 1' < "$ud_file"
+}
+
+# output unsorted/overlapping lines of hex "CODEPOINT[..LAST] WIDTH" (0/1/2)
+raw_ranges() {
+	# wide ranges according to the EAW property
+	$sed -e '/^#/d' -e 's/;/ /' < "$eaw_file" |  # comment lines, ';'
+	$awk '$2 ~ /^[FW]$/ { print $1, 2 }'
+
+	# wide by name (older Unicode had EAW==N for some FULLWIDTH names)
+	ud_file_ranges | $awk -F\; '$2 ~ /FULLWIDTH/ { print $1, 2 }'
+
+	# zero-width ranges (override wide-width)
+	ud_file_ranges | $awk -F\; '
+		$3 ~ /^(Me|Mn|Mc|Cf)$/ ||
+		$2 ~ /EMOJI MODIFIER|HANGUL J[OU]NGSEONG/ { print $1, 0 }'
+
+	# override soft-hyphen as width 1
+	echo 00AD 1
+}
+
+# lines of hex "CODEPOINT[..LAST] WIDTH"  ->  decimal "FIRST LAST WIDTH"
+as_decimal_ranges() {
+	while read range width; do
+		echo $((0x${range%%.*})) $((0x${range##*.})) $width
 	done
 }
 
-data=$(last_table < "$zerowidth_py" | py_data_to_c 0 &&
-       last_table < "$widewidth_py" | py_data_to_c 2) || err abort
-data=$(printf %s\\n "$data" | sort)  # lexicographic here is also numeric
+# to generate the final ranges list, we need to sort the raw ranges list,
+# ensure zero-width overrides wide-width, join adjacent/overlap ranges,
+# and split big ranges - our C structure uses 15 bits to store LAST-FIRST of
+# each range, and ranges are not allowed to cross plane boundary.
+#
+# we use simple (and slow) approach: codepoint-bucket-store all the individual
+# widths at the input ranges as they come, then scan the whole Unicode range
+# (~ 1M buckets) and output continuous ranges of width 0/2. Therefore, later
+# inputs of codepoint X override earlier, so width 2 should arrive before W 0.
+#
+# there's ~3K input ranges of ~200K codepoints, and the output is 450+ ranges.
+# depending on sys/awk performance, it's 200ms - 2s, up to ~7s on low-end ARM.
+# MERGE_RANGES_C (bottom of this file) is drop-in replacement, runs in few ms.
 
-# sorted hex ranges and their (wc)width: R(first, last, {0|2}),[  /* ... */]
-data() { printf %s\\n "$data"; }
+# sorted lines of "FIRST LAST WIDTH" (FIRST/LAST: hex digits, WIDTH: 0 or 2)
+ranges=$(raw_ranges | as_decimal_ranges | $awk '
 
-repeat() { R=$2; while [ "$R" -gt 0 ]; do printf %s "$1"; R=$((R-1)); done; }
+    # The final ~ 1M codepoints scan can take few secs, up to 30+s on low end.
+    # so use a simple optimization: divide the unicode range to segments which
+    # do not cross plane boundary (some 2^X, tuned for speed), mark segments
+    # where an input range can change the width at the final scan (its egdes),
+    # then skip unmarked segments at the final output scan, as these segs are
+    # guaranteed to not have any width change. this is effective (x5 speedup)
+    # because most segments are empty or dense. If the input was spread evenly
+    # then it would be more effective to store, sort and iterate exactly these
+    # edges. Currently though, both are same speed, and mark/skip is less code.
 
-# data -> stdout: array such that a[p], a[p+1] are [from, to) of plane p data
-mkplanes() {
-	i=0 lastp=-1
-	while read a b c; do
-		p=$((${b%?} >> 16))  # plane (last >> 16)
-		repeat "$i, " $((p-lastp))
-		i=$((i+1)) lastp=$p
+    BEGIN { SEG = 128 }  # 128 or 256 seem fastest
+    function mark(i) { segs[int(i/SEG)] = 1 }
+    function skip(i) { return !(int(i/SEG) in segs) }
+
+    # input range $1..$2: width may differ at $1 vs $1-1, and at $2+1 vs $2
+    { mark($1); mark($2+1) }
+
+    # store/overwrite width-1 (1 -> 0) for every codepoint in this range
+    { v=$3-1; for (i=$1; i<=$2; w[i++]=v); }
+
+    function min(a,b) { return a<b ? a : b }
+    END {
+        # scan the full unicode range, print continuous ranges of width 0/2
+        # the SEG skip is SEG-aligned. to disable: use unconditional i++
+        for (i = 0; i <= 1114112; skip(i) ? i+=SEG : i++) {  # 0x110000
+            if (w[i] == wprev && i%65536)  # no change of width or plane
+                continue
+            if (wprev)  # range i0..i-1 is width 0 or 2 - print
+                for (; i0 < i; i0 += 32768)  # split (once) if too big
+                    printf "%06x %06x %d\n", i0, min(i0+32767, i-1), 1+wprev
+            i0 = i
+            wprev = w[i]
+        }
+    }
+')
+
+ranges() { printf %s\\n "$ranges"; }
+
+verify_ranges() {(
+	errv()  { err "verify: bad range: $* -- (0x$ha, 0x$hb, $w)"; }
+	ishex() { case $1 in '' | *[!0-9A-Fa-f]* ) false; esac; }  # LC_ALL=C
+
+	pa=-2 pb=-2 pw=x  # previous range values
+	while read ha hb w; do
+		[ "$w" = 0 ] || [ "$w" = 2 ]  || errv WIDTH is not 0 or 2
+		ishex "$ha" && ishex "$hb"    || errv not hex values
+
+		a=$((0x$ha)) b=$((0x$hb))     #  decimal
+		[ $a -le $b ]                 || errv "FIRST > LAST"
+		[ $b -le 1114111 ]            || errv out of bounds
+		[ $((a>>16)) = $((b>>16)) ]   || errv not same plane
+		[ $((b-a)) -lt 32768 ]        || errv more than 0x8000 values
+		[ $a -gt $pb ]                || errv overlap or not sorted
+
+		# detect adjacent ranges which combined are <= 0x8000 values.
+		# not detecting 3 adjacent 0x5000 ranges, but shouldn't happen
+		[ $w != $pw ] || [ $a != $((pb+1)) ] || [ $((b-pa)) -ge 32768 ] ||
+		     errv small same-width adjacent ranges not combined
+
+		pa=$a pb=$b pw=$w
 	done
-	repeat "$i, " $((17-lastp))
+)}
+
+
+as_c_ranges() {
+	while read a b w; do
+		echo "R(0x$a, 0x$b, $w),"
+	done
 }
 
-indent() { sed -e 's/^/\t\t/' -e 's/\s*$//'; }  # also trim trailing spaces
+# ranges -> stdout: array such that a[p], a[p+1] are [from, to) of plane p data
+# (inclusive, exclussive. arr of 18 items - last plane (16) is a[16]..a[17])
+extract_plane_indices() {
+	# for each plane (0..16) print the 1st index at ranges where it appears
+	# or, if missing, index of the next found plane (ranges are same-plane)
+	i=0 pdone=-1  # index at ranges, plane whose index was last printed
+	while read a dummy; do  # a: ranges[i].first (hex, plane(a) == a>>16)
+		while [ $pdone -lt $((0x$a >> 16)) ]; do
+			printf "$i, "
+			pdone=$((pdone+1))
+		done  # pdone == plane(a)
+		i=$((i+1))
+	done
+	printf $i  # one past last range. the rest are implicit-init as 0
+}
+
+indent() { $sed -e '2,$s/^/\t\t/' -e 's/\s*$//'; }  # also trim trailing spaces
+
+# only EastAsianWidth.txt has version/date
+ver=$(head -n 1 < "$eaw_file" | $sed -e 's/.*-//' -e 's/.txt//')
+udate=$(head -n 2 < "$eaw_file" | tail -n 1 | $sed -e 's/.*Date: //')
+
+ranges | verify_ranges || exit
+
+# at the C code, p/bot/top/mid can be $idx_t, but faster as 32 bit types
+[ "$(ranges | wc -l)" -lt 65536 ] && idx_t=$u16 || idx_t=$u32
 
 cat << CFUNCTION
-/* wcwidth - Unicode $ver, generated by $0.
- * Copyright (C) 2024 Avi Halachmi <avihpit at yahoo.com>
+/* wcwidth - Unicode $ver
+ * Copyright (C) 2025 Avi Halachmi <avihpit at yahoo.com>
  * License: MIT
  *
- * Data imported on $(date -u -I) from https://github.com/jquast/wcwidth
- * commit $(pwc_git describe --tags) ($(pwc_git show --no-patch --format=%ci))
+ * Generated by $self on $(date -u -I) using the Unicode files
+ * $ud_file and $eaw_file ($udate)
  */
-int ${FUNC_ATTR-} wcwidth($u32 ucs)
+int ${FUNC_ATTR}${FN:-wcwidth}($u32 ucs)
 {
 	/* sorted ranges, "first" is clipped to 16 bit, and its high bits
 	 * (plane) are deduced from the "planes" array below.
-	 * (imported from ${zerowidth_py##*/} and ${widewidth_py##*/})
 	 */
-	static const struct range {
-		uint16_t first;
-		uint16_t iswide: 1;  /* bitfield order empirically faster */
-		uint16_t difflast: 15;
+	static const struct range {  /* bitfield order empirically fast */
+		$u16 first:  16;
+		$u16 iswide:  1;
+		$u16 delta:  15;
 	} ranges[] = {
 	#define R(first, last, width) {first & 0xffff, width/2, last-first}
-$(data | indent)
+		$(ranges | as_c_ranges | indent)
 	#undef  R
 	};
 
 	/* planes[p], planes[p+1] are [from, to) at "ranges" for plane p */
-	static const $u16 planes[/* 18 */] = {
-$(data | mkplanes | fold -s -w 60 | indent)
+	static const $idx_t planes[18] = {
+		$(ranges | extract_plane_indices | fold -s -w 60 | indent)
 	};
 
 	/******* END OF STATIC DATA *******/
@@ -158,7 +324,7 @@ $(data | mkplanes | fold -s -w 60 | indent)
 		$u32 mid = (bot + top) / 2;
 		if (ucs < ranges[mid].first)
 			top = mid;
-		else if (ucs > ranges[mid].first + ranges[mid].difflast)
+		else if (ucs > ranges[mid].first + ranges[mid].delta)
 			bot = mid + 1;
 		else
 			return 2 * ranges[mid].iswide;
@@ -167,3 +333,28 @@ $(data | mkplanes | fold -s -w 60 | indent)
 	return 1;
 }  /* wcwidth - Unicode $ver */
 CFUNCTION
+
+
+# C drop-in replacement to the awk script which outputs the final ranges list
+: << \MERGE_RANGES_C
+#include <stdio.h>
+int main(void)
+{
+    static char w[0x110000 + 1]; /* = {0} which is width==1 */
+    unsigned a, b, c, i, first;  /* assume 32bit (need 21) */
+
+    while (3 == scanf("%u%u%u", &a, &b, &c))  /* FIRST LAST WIDTH (W:0/1/2) */
+        if (b < 0x110000 && c < 3) while (a <= b) w[a++] = (char)c + 1;
+
+    /* HEXFIRST HEXLAST WIDTH  (W: 0/2, not cross-plane, LAST-FIRST<0x8000) */
+    for (first = 0, i = 1; i <= 0x110000; ++i) {
+        if (w[i] == w[i-1] && i % 0x10000 && i - first < 0x8000)
+            continue;
+        if (w[i-1] & 1)  /* 1 or 3 -> width is 0 or 2 for first..i-1 */
+            printf("%06x %06x %d\n", first, i-1, w[i-1]-1);
+        first = i;
+    }
+
+    return 0;
+}
+MERGE_RANGES_C
