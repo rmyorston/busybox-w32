@@ -1028,6 +1028,15 @@ static char* FAST_FUNC unicode_conv_to_printable2(uni_stat_t *stats, const char 
 	unsigned uni_count;
 	unsigned uni_width;
 
+#if ENABLE_PLATFORM_MINGW32
+	static int acp;  /* =0 */
+	if (!acp)
+		acp = GetACP();
+/* without unicode ACP, >127 are also printable */
+#define isprint_no_unicode_mingw(c) (((c) >= ' ' && (c) < 0x7f) || \
+                                     (acp != CP_UTF8 && (c) > 0x7f))
+#endif
+
 	if (unicode_status != UNICODE_ON) {
 		char *d;
 		if (flags & UNI_FLAG_PAD) {
@@ -1040,7 +1049,11 @@ static char* FAST_FUNC unicode_conv_to_printable2(uni_stat_t *stats, const char 
 					while ((int)--width >= 0);
 					break;
 				}
+#if ENABLE_PLATFORM_MINGW32
+				*d++ = isprint_no_unicode_mingw(c) ? c : '?';
+#else
 				*d++ = (c >= ' ' && c < 0x7f) ? c : '?';
+#endif
 				src++;
 			}
 			*d = '\0';
@@ -1048,8 +1061,13 @@ static char* FAST_FUNC unicode_conv_to_printable2(uni_stat_t *stats, const char 
 			d = dst = xstrndup(src, width);
 			while (*d) {
 				unsigned char c = *d;
+#if ENABLE_PLATFORM_MINGW32
+				if (!isprint_no_unicode_mingw(c))
+					*d = '?';
+#else
 				if (c < ' ' || c >= 0x7f)
 					*d = '?';
+#endif
 				d++;
 			}
 		}
