@@ -284,6 +284,7 @@ CONFIG_FEATURE_FANCY_ECHO=y
 # CONFIG_GROUPS is not set
 # CONFIG_INSTALL is not set
 # CONFIG_FEATURE_INSTALL_LONG_OPTIONS is not set
+# CONFIG_JOIN is not set
 # CONFIG_LINK is not set
 # CONFIG_LN is not set
 # CONFIG_LOGNAME is not set
