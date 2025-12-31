@@ -11,7 +11,7 @@
 //config:	bool "join (3 kb)"
 //config:	default y
 //config:	help
-//config:	Join two field files
+//config:	Equality join on two files
 
 //applet:IF_JOIN(APPLET_NOEXEC(join, join, BB_DIR_USR_BIN, BB_SUID_DROP, join))
 
@@ -20,16 +20,16 @@
 //usage:#define join_trivial_usage
 //usage:       "[-a file_number | -v file_number] [-e empty] [-o list] [-t sep] [-1 field] [-2 field] file1 file2"
 //usage:#define join_full_usage "\n\n"
-//usage:       "Perform a join on files file1 and file2, writing to stdout\n"
+//usage:       "Perform a join on file1 and file2, writing to stdout\n"
 //usage:     "\n	-a FNUM	Also write unpaired lines from file FNUM"
 //usage:     "\n	-v FNUM	Only write unpaired lines from file FNUM"
-//usage:     "\n	-e STR	Replace empty fields from LIST with STR"
+//usage:     "\n	-e STR	Replace empty fields with STR"
 //usage:     "\n	-o LIST	Write the fields in LIST"
 //usage:     "\n	-t SEP	Use a different field separator"
 //usage:     "\n	-1 N	Join on field N from file1"
 //usage:     "\n	-2 N	Join on field N from file2"
 //usage:     "\n"
-//usage:     "\nLIST is a set of FNUM.FIELD or 0 (meaning the join field), space or comma separated"
+//usage:     "\nLIST is a space or comma separated list of FNUM.FIELD or 0 (the join field)"
 
 #include "libbb.h"
 #include "unicode.h"
@@ -89,13 +89,13 @@ static int field_split(const char *s, char sep, char ***fields)
 	/* default split: skip the initial whitespace and then any run
 	   of non-whitespace characters is a field */
 	while (*s) {
-		/* s = skip_whitespace(s); -- WRONG (also skips \v \f \r) */
-		while (*s == ' ' || *s == '\t' || *s == '\n')
+		/* blanks are space and tab in the POSIX locale */
+		while (*s == ' ' || *s == '\t')
 			s++;
 		if (!*s)
 			break;
 
-		s1 = strpbrk(s, " \t\n");
+		s1 = strpbrk(s, " \t");
 		if (s1 == NULL)
 			/* last field */
 			sn = strlen(s);
@@ -304,13 +304,13 @@ static void parsejformat(int **format_p, const char *format_str)
 	/* default split: skip the initial whitespace and then any run
 	   of non-whitespace characters is a field */
 	while (*format_str) {
-		/* format_str = skip_whitespace(format_str); -- WRONG (also skips \v \f \r) */
-		while (*format_str == ' ' || *format_str == '\t' || *format_str == '\n' || *format_str == ',')
+		/* blanks are space and tab in the POSIX locale */
+		while (*format_str == ' ' || *format_str == '\t' || *format_str == ',')
 			format_str++;
 		if (!*format_str)
 			break;
 
-		s1 = strpbrk(format_str, " \t\n,");
+		s1 = strpbrk(format_str, " \t,");
 		if (s1 == NULL)
 			/* last field */
 			sn = strlen(format_str);
@@ -319,7 +319,7 @@ static void parsejformat(int **format_p, const char *format_str)
 
 		if (sn == 1 && *format_str == '0') {
 			format[n * 2] = 3;
-		} else if (sn >= 3 && *format_str == '1' && *(format_str + 1) == '.') {
+		} else if (sn >= 3 && (*format_str == '1' || *format_str == '2') && *(format_str + 1) == '.') {
 			if (sn > 21) /* res_str > 19 */
 				bb_simple_error_msg_and_die("field specifier too large");
 			memcpy(scache, format_str + 2, sn - 2);
@@ -327,18 +327,10 @@ static void parsejformat(int **format_p, const char *format_str)
 			field_no = xatoi_positive(scache);
 			if (field_no <= 0)
 				bb_simple_error_msg_and_die("field number can't be 0");
-			format[n * 2] = 1;
+			format[n * 2] = *format_str - '0';
 			format[n * 2 + 1] = field_no;
-		} else if (sn >= 3 && *format_str == '2' && *(format_str + 1) == '.') {
-			if (sn > 21) /* res_str > 19 */
-				bb_simple_error_msg_and_die("field specifier too large");
-			memcpy(scache, format_str + 2, sn - 2);
-			scache[sn - 2] = '\0';
-			field_no = xatoi_positive(scache);
-			if (field_no <= 0)
-				bb_simple_error_msg_and_die("field number can't be 0");
-			format[n * 2] = 2;
-			format[n * 2 + 1] = field_no;
+		} else {
+			bb_simple_error_msg_and_die("field specifier must be 0, 1.x or 2.x");
 		}
 
 		n++;
@@ -570,14 +562,8 @@ int join_main(int argc, char **argv)
 	if (format)
 		free(format);
 
-	if (fclose_if_not_stdin(f1.fp)) {
-		bb_simple_perror_msg(filename1);
-		exitcode = EXIT_FAILURE;
-	}
-	if (fclose_if_not_stdin(f2.fp)) {
-		bb_simple_perror_msg(filename2);
-		exitcode = EXIT_FAILURE;
-	}
+	fclose_if_not_stdin(f1.fp);
+	fclose_if_not_stdin(f2.fp);
 
 	fflush_stdout_and_exit(exitcode);
 }
