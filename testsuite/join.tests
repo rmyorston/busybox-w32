@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# Copyright 2026 by R M Yorston <rmy@pobox.com>
+# Licensed under GPLv2, see file LICENSE in this source tree.
+
+. ./testing.sh
+
+# testing "description" "command" "result" "infile" "stdin"
+
+testing "join duplicate keys give combinatorial results" "join input -" \
+	"a b c w x\na b c y z\na b c o p\na d e w x\na d e y z\na d e o p\n" \
+	"a b c\na d e\n" \
+	"a w x\na y z\na o p\n"
+
+exit $FAILCOUNT

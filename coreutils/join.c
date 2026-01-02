@@ -8,8 +8,8 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config JOIN
-//config:	bool "join (3 kb)"
-//config:	default y
+//config:	bool "join (8.7 kb)"
+//config:	default n
 //config:	help
 //config:	Equality join on two files
 
