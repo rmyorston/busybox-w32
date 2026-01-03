@@ -1645,6 +1645,12 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 				stty_state |= (STTY_require_set_attr | STTY_speed_was_set);
 			} /* else - impossible (caught in the first pass):
 				bb_error_msg_and_die("invalid argument '%s'", arg); */
+#else /* ENABLE_PLATFORM_MINGW32 */
+#ifdef TIOCGWINSZ
+		case param_size:
+			display_window_size(0);
+			break;
+#endif
 #endif
 		}
 	}
