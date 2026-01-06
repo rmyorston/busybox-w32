@@ -278,7 +278,7 @@ int md5_sha1_sum_main(int argc UNUSED_PARAM, char **argv)
 {
 	unsigned char *in_buf;
 	int return_value = EXIT_SUCCESS;
-	unsigned flags = 0;
+	unsigned flags IF_PLATFORM_MINGW32(= 0);
 #if ENABLE_SHA3SUM
 	unsigned sha3_width = 224;
 #endif
@@ -378,7 +378,11 @@ int md5_sha1_sum_main(int argc UNUSED_PARAM, char **argv)
 			if (hash_value == NULL) {
 				return_value = EXIT_FAILURE;
 			} else {
+#if ENABLE_PLATFORM_MINGW32
 				printf("%s %c%s\n", hash_value, flags & FLAG_BINARY ? '*' : ' ', *argv);
+#else
+				printf("%s  %s\n", hash_value, *argv);
+#endif
 				free(hash_value);
 			}
 		}
