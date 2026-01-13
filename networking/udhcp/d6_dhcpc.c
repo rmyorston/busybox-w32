@@ -1403,7 +1403,7 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 				if (errno == EINTR) {
 					continue;
 				}
-				/* Else: an error occured, panic! */
+				/* Else: an error occurred, panic! */
 				bb_simple_perror_msg_and_die("poll");
 			}
 		}
