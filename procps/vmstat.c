@@ -34,40 +34,48 @@ enum {
 #define PSEUDO_SWPD             "_1"    /* SwapTotal - SwapFree */
 #define PSEUDO_CACHE            "_2"    /* Cached + SReclaimable */
 
+#if 1
+#define FIXED_HEADER 1
+#define L(a) /*nothing*/
+#else
+#define FIXED_HEADER 0
+#define L(a) a
+#endif
+
 /* Column descriptors */
 static const char coldescs[] =
-/* [grplabel\0] \width label\0 from              [m_mod]     fromspec\0 */
-"procs\0"      "\2"   "r\0"    FROM_PROC_STAT    M_DECREMENT "procs_running\0"
-               "\2"   "b\0"    FROM_PROC_STAT                "procs_blocked\0"
-"memory\0"     "\6"   "swpd\0" FROM_PROC_MEMINFO             PSEUDO_SWPD "\0"
-               "\6"   "free\0" FROM_PROC_MEMINFO             "MemFree\0"
-               "\6"   "buff\0" FROM_PROC_MEMINFO             "Buffers\0"
-               "\6"   "cache\0"FROM_PROC_MEMINFO             PSEUDO_CACHE "\0"
-"swap\0"       "\4"   "si\0"   FROM_PROC_VMSTAT   M_DELTA    "pswpin\0"
-               "\4"   "so\0"   FROM_PROC_VMSTAT   M_DELTA    "pswpout\0"
-"io\0"         "\5"   "bi\0"   FROM_PROC_VMSTAT   M_DELTA    "pgpgin\0"
-               "\5"   "bo\0"   FROM_PROC_VMSTAT   M_DELTA    "pgpgout\0"
-"system\0"     "\4"   "in\0"   FROM_PROC_STAT     M_DELTA    "intr\0"
-               "\4"   "cs\0"   FROM_PROC_STAT     M_DELTA    "ctxt\0"
-"cpu\0"        "\2"   "us\0"   FROM_PROC_STAT_CPU M_DPERCENT "\x0d" /* user */
-               "\2"   "sy\0"   FROM_PROC_STAT_CPU M_DPERCENT "\x0b" /* system */
-               "\2"   "id\0"   FROM_PROC_STAT_CPU M_DPERCENT "\x04" /* idle */
-               "\2"   "wa\0"   FROM_PROC_STAT_CPU M_DPERCENT "\x05" /* iowait */
-               "\2"   "st\0"   FROM_PROC_STAT_CPU M_DPERCENT "\x08" /* steal */
+/* [grplabel\0] \width   label\0  from              [m_mod]      fromspec\0 */
+L("procs\0")   "\2"   L("r\0"    )FROM_PROC_STAT     M_DECREMENT "procs_running\0"
+               "\2"   L("b\0"    )FROM_PROC_STAT                 "procs_blocked\0"
+L("memory\0")  "\6"   L("swpd\0" )FROM_PROC_MEMINFO              PSEUDO_SWPD "\0"
+               "\6"   L("free\0" )FROM_PROC_MEMINFO              "MemFree\0"
+               "\6"   L("buff\0" )FROM_PROC_MEMINFO              "Buffers\0"
+               "\6"   L("cache\0")FROM_PROC_MEMINFO              PSEUDO_CACHE "\0"
+L("swap\0")    "\4"   L("si\0"   )FROM_PROC_VMSTAT   M_DELTA     "pswpin\0"
+               "\4"   L("so\0"   )FROM_PROC_VMSTAT   M_DELTA     "pswpout\0"
+L("io\0")      "\5"   L("bi\0"   )FROM_PROC_VMSTAT   M_DELTA     "pgpgin\0"
+               "\5"   L("bo\0"   )FROM_PROC_VMSTAT   M_DELTA     "pgpgout\0"
+L("system\0")  "\4"   L("in\0"   )FROM_PROC_STAT     M_DELTA     "intr\0"
+               "\4"   L("cs\0"   )FROM_PROC_STAT     M_DELTA     "ctxt\0"
+L("cpu\0")     "\2"   L("us\0"   )FROM_PROC_STAT_CPU M_DPERCENT  "\x0d" /* user */
+               "\2"   L("sy\0"   )FROM_PROC_STAT_CPU M_DPERCENT  "\x0b" /* system */
+               "\2"   L("id\0"   )FROM_PROC_STAT_CPU M_DPERCENT  "\x04" /* idle */
+               "\2"   L("wa\0"   )FROM_PROC_STAT_CPU M_DPERCENT  "\x05" /* iowait */
+               "\2"   L("st\0"   )FROM_PROC_STAT_CPU M_DPERCENT  "\x08" /* steal */
 // "gu"est columnt seems to be added in procps-ng 4.x.x (it makes the output not 80, but 83 chars):
-               "\2"   "gu\0"   FROM_PROC_STAT_CPU M_DPERCENT "\x0c" /* guest */
+               "\2"   L("gu\0"   )FROM_PROC_STAT_CPU M_DPERCENT  "\x0c" /* guest */
 ;
 /* Packed row data from coldescs[] is decoded into this structure */
 struct col {
-	const char *grplabel;
-	const char *label;
+	L(const char *grplabel;)
+	L(const char *label;)
 	const char *fromspec;
 	unsigned char from;
 	unsigned char width;
 	unsigned char mod;
-#define		MOD_DELTA	0x01
-#define		MOD_PERCENT	0x02
-#define		MOD_DECREMENT	0x04
+#define MOD_DELTA     0x01
+#define MOD_PERCENT   0x02
+#define MOD_DECREMENT 0x04
 };
 
 /* Number of columns defined in coldescs[] */
@@ -114,21 +122,25 @@ struct globals {
 static bool next_col(struct col *col_return, const char **cpp)
 {
 	const char *cp = *cpp;
-	col_return->grplabel = NULL;
+	L(col_return->grplabel = NULL;)
 	if (*cp == '\0') {
-		col_return->label = NULL;
+		L(col_return->label = NULL;)
 		return 0;
 	}
+#if !FIXED_HEADER
 	if (*cp > ' ') {
 		/* Only the first column of a group gets the grplabel */
 		col_return->grplabel = cp;
 		while (*cp++)
 			continue;	/* Skip over the grplabel */
 	}
+#endif
 	col_return->width = *cp++;
+#if !FIXED_HEADER
 	col_return->label = cp;
 	while (*cp++)
 		continue;	/* Skip over the label */
+#endif
 	col_return->from = *cp++;
 	col_return->mod = 0;
 	if (*cp & 0x80)
@@ -152,7 +164,6 @@ static bool fromspec_equal(const char *fs1, const char *fs2)
 		fs2++;
 	}
 	return 0;
-
 }
 
 /*
@@ -371,7 +382,7 @@ static void print_row(const unsigned data[NCOLS],
 /* Print column header rows */
 static void print_header(void)
 {
-#if 1
+#if FIXED_HEADER
 	/* The header is constant yet and can be hardcoded instead,
 	 * but adding options such as -wtd to match upstream will change that */
 //TODO: remove grplabel/label from coldescs[], they are unused
