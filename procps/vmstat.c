@@ -372,25 +372,41 @@ static void print_row(const unsigned data[NCOLS],
 		if ((col.mod & MOD_DECREMENT) && value)
 			value--;
 
+		if (!is_first)
+			bb_putchar(' ');
+		is_first = 0;
 		/* memory can easily overflow the columns:
 		 * r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st gu
 		 * 3  0      0 2019152 1029788 8602060 0    0    29   211 5699   13  9  5 86  0  0  0
-		 *                     ^       ^       ^ shortened width was here
-		 * To improve this, shorten the requested field width if previous field overflowed.
+		 *                     ^-------^-------^-attempt to shorten width here
+		 * To improve this, shorten the next field width if previous field overflowed.
 		 */
-		{
-			int digits_printed, width;
-			width = (col.width - overrun >= 0 ? col.width - overrun : 0);
-			digits_printed = printf(" %*u" + is_first, width, value) - 1 + is_first;
-			overrun += (digits_printed - col.width);
-			is_first = 0;
 //TODO: more improvements:
-//Shift left entire set of memory fields if it is space-padded at the left and overruns at the right,
-//as in the example above (zero bytes in swap).
-//For large intervals such as "vmstat 60" (one minute),
-//can use smart_ulltoa4() to format "si", "so", "in" and "cs";
-//smart_ulltoa5() to format "bi" and "bo":
-//this way, we can show arbitrarily large accumucated counts for these.
+//Shift left entire set of memory fields if it has space padding and overruns at the right,
+//as in the example above (zero bytes in swap: can replace "   0" with "0" to make data fit).
+		{
+			int chars_printed, width;
+			width = (col.width - overrun >= 0 ? col.width - overrun : 0);
+			/* For large intervals such as "vmstat 60" (one minute), or
+			 * for cases with a lot of block I/O (try 'grep -rF noT_eXisting /usr'),
+			 * can use smart_ulltoa4() to format "si", "so", "in" and "cs";
+			 * smart_ulltoa5() to format "bi" and "bo".
+			 * This way, we can show arbitrarily large accumulated counts for these. Example:
+			 *  r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st gu
+			 *  1  0      0 947636  76548 15373248  0    0  657k 23284 2.3m 4.1m 24  9 65  0  0  0
+			 * Downside: incompatible output format. Do we need to make this conditional on an option?
+			 */
+			if ((col.width>>1) == 4/2) {
+				char buf45[6];
+				if (col.width == 4)
+					smart_ulltoa4(value, buf45, " kmgtpezy")[0] = '\0';
+				else
+					smart_ulltoa5(value, buf45, " kmgtpezy")[0] = '\0';
+				chars_printed = printf("%*s", width, skip_whitespace(buf45));
+			} else {
+				chars_printed = printf("%*u", width, value);
+			}
+			overrun += (chars_printed - col.width);
 		}
 	}
 
