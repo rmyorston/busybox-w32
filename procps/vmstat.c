@@ -337,8 +337,9 @@ static void print_row(const unsigned data[NCOLS],
 	unsigned i;
 	bool is_first;
 	unsigned percent_sum = 0;
+	int overrun;
 
-	for (coli = coldescs, i = 0; next_col(&col, &coli); i++)
+	for (coli = coldescs, i = 0; next_col(&col, &coli); i++) {
 		if (col.mod & MOD_PERCENT) {
 			unsigned value = data[i];
 			if (col.mod & MOD_DELTA) {
@@ -351,7 +352,9 @@ static void print_row(const unsigned data[NCOLS],
 			}
 			percent_sum += value;
 		}
+	}
 
+	overrun = 0;
 	is_first = 1;
 	for (coli = coldescs, i = 0; next_col(&col, &coli); i++) {
 		unsigned value = data[i];
@@ -368,14 +371,29 @@ static void print_row(const unsigned data[NCOLS],
 		}
 		if ((col.mod & MOD_DECREMENT) && value)
 			value--;
-//FIXME: memory can easily overflow the columns:
-// r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st gu
-// 3  0      0 2019152 1029788 8602060    0    0    29   211 5699   13  9  5 86  0  0  0 //CURRENT CODE:BAD
-// 3  0   0 2019152 1029788 8602060    0    0    29   211 5699   13  9  5 86  0  0  0 //SMARTER
-//FIXME: cs (context switches) easily overflow too
-		printf(" %*u" + is_first, col.width, value);
-		is_first = 0;
+
+		/* memory can easily overflow the columns:
+		 * r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st gu
+		 * 3  0      0 2019152 1029788 8602060 0    0    29   211 5699   13  9  5 86  0  0  0
+		 *                     ^       ^       ^ shortened width was here
+		 * To improve this, shorten the requested field width if previous field overflowed.
+		 */
+		{
+			int digits_printed, width;
+			width = (col.width - overrun >= 0 ? col.width - overrun : 0);
+			digits_printed = printf(" %*u" + is_first, width, value) - 1 + is_first;
+			overrun += (digits_printed - col.width);
+			is_first = 0;
+//TODO: more improvements:
+//Shift left entire set of memory fields if it is space-padded at the left and overruns at the right,
+//as in the example above (zero bytes in swap).
+//For large intervals such as "vmstat 60" (one minute),
+//can use smart_ulltoa4() to format "si", "so", "in" and "cs";
+//smart_ulltoa5() to format "bi" and "bo":
+//this way, we can show arbitrarily large accumucated counts for these.
+		}
 	}
+
 	bb_putchar('\n');
 }
 
