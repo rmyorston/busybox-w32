@@ -50,11 +50,11 @@ if test $FLAG_USER_EXISTS = "yes"; then
 	exit 1
 fi
 
-adduser -s /bin/true -g "" -H -D "$TEST_USER" || exit 1
+$BUSYBOX adduser -s /bin/true -g "" -H -D "$TEST_USER" || exit 1
 
-chown $TEST_USER.$TEST_USER $BUSYBOX
+chown $TEST_USER:$TEST_USER $BUSYBOX
 chmod u+s $BUSYBOX 2>&1 /dev/null
-chown $TEST_USER.$TEST_USER $ID
+chown $TEST_USER:$TEST_USER $ID
 chmod u+s $ID 2>&1 /dev/null
 
 echo "test 3 setuid, existing user: id [options] no username"
@@ -90,9 +90,9 @@ do
 	done
 done
 
-chown $TEST_USER.$TEST_USER $BUSYBOX
+chown $TEST_USER:$TEST_USER $BUSYBOX
 chmod g+s $BUSYBOX 2>&1 /dev/null
-chown $TEST_USER.$TEST_USER $ID
+chown $TEST_USER:$TEST_USER $ID
 chmod g+s $ID 2>&1 /dev/null
 
 echo "test 5 setgid, existing user: id [options] no username"
@@ -128,9 +128,9 @@ do
 	done
 done
 
-chown $TEST_USER.$TEST_USER $BUSYBOX
+chown $TEST_USER:$TEST_USER $BUSYBOX
 chmod u+s,g+s $BUSYBOX 2>&1 /dev/null
-chown $TEST_USER.$TEST_USER $ID
+chown $TEST_USER:$TEST_USER $ID
 chmod u+s,g+s $ID 2>&1 /dev/null
 
 echo "test 7 setuid, setgid, existing user: id [options] no username"
@@ -200,8 +200,8 @@ do
 	done
 done
 
-chown .root $BUSYBOX 2>&1 /dev/null
-chown .root $ID 2>&1 /dev/null
+chown :root $BUSYBOX 2>&1 /dev/null
+chown :root $ID 2>&1 /dev/null
 chmod g+s $BUSYBOX 2>&1 /dev/null
 chmod g+s $ID 2>&1 /dev/null
 
@@ -238,7 +238,7 @@ do
 	done
 done
 
-chown root.root $BUSYBOX 2>&1 /dev/null
-chown root.root $ID 2>&1 /dev/null
+chown root:root $BUSYBOX 2>&1 /dev/null
+chown root:root $ID 2>&1 /dev/null
 rm -f $ID
 rm -f foo bar
