@@ -1,0 +1,54 @@
+#!/bin/sh
+# Copyright 2026 by Denys Vlasenko
+# Licensed under GPLv2, see file LICENSE in this source tree.
+
+. ./testing.sh
+
+# testing "test name" "commands" "expected result" "file input" "stdin"
+
+testing "cmp -s" \
+	'cmp -s - input; echo $?' \
+"1
+" \
+	"foo" \
+	"bar"
+
+testing "cmp" \
+	'cmp - input; echo $?' \
+"- input differ: byte 1, line 1
+1
+" \
+	"foo" \
+	"bar"
+
+testing "cmp -n2" \
+	'cmp -n2 - input; echo $?' \
+"- input differ: byte 1, line 1
+1
+" \
+	"foo" \
+	"bar"
+
+testing "cmp -ln2" \
+	'cmp -ln2 - input; echo $?' \
+"\
+1 142 146
+2 141 157
+1
+" \
+	"foo" \
+	"bar"
+
+optional DESKTOP
+testing "cmp -ln2 SKIP1 SKIP2 " \
+	'cmp -ln2 - input 1 1; echo $?' \
+"\
+1 141 157
+2 162 157
+1
+" \
+	"foo" \
+	"bar"
+SKIP=
+
+exit $FAILCOUNT
