@@ -472,7 +472,9 @@ typedef unsigned smalluint;
 # undef HAVE_DPRINTF
 # undef HAVE_GETLINE
 # undef HAVE_MEMRCHR
+# if !defined(__MINGW64_VERSION_MAJOR) || __MINGW64_VERSION_MAJOR < 14
 # undef HAVE_MKDTEMP
+# endif
 # undef HAVE_SETBIT
 # undef HAVE_STPCPY
 # undef HAVE_STPNCPY
