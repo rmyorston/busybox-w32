@@ -82,9 +82,22 @@ struct col {
 #define MOD_DECREMENT 0x04
 };
 
+/* There is no "support huge memory" option, use "large file support" as proxy */
+#if ENABLE_LFS
+typedef unsigned long long data_t;
+# define SPU " %llu"
+# define U   "llu"
+#else
+/* this mishandles memory sizes if >4TB of RAM */
+typedef unsigned data_t;
+# define SPU " %u"
+# define U   "u"
+#endif
+#define DEBUG_SHOW_5T_MEMFREE 0
+
 struct globals {
-	unsigned data[NCOLS];
-	unsigned prev[NCOLS];
+	data_t data[NCOLS];
+	data_t prev[NCOLS];
 };
 #define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { \
@@ -191,16 +204,16 @@ static int find_col(unsigned char from, const char *fromspec)
  * Reads current system state into the data array elements corresponding
  * to coldescs[] columns.
  */
-static void load_row(unsigned data[NCOLS])
+static void load_row(data_t data[NCOLS])
 {
 	FILE *fp;
 	char label[32];
 	char line[256];
 	int colnum;
-	unsigned SwapFree = 0;
-	unsigned SwapTotal = 0;
-	unsigned Cached = 0;
-	unsigned SReclaimable = 0;
+	data_t SwapFree = 0;
+	data_t SwapTotal = 0;
+	data_t Cached = 0;
+	data_t SReclaimable = 0;
 
 	memset(data, 0, NCOLS * sizeof(data[0]));
 
@@ -231,9 +244,9 @@ static void load_row(unsigned data[NCOLS])
 			STAT_CPU_pseudo_us = 0xd, /* user + nice - pseudo_gu */
 			_STAT_CPU_max
 		};
-		unsigned num[_STAT_CPU_max];
+		data_t num[_STAT_CPU_max];
 		int n = sscanf(line,
-			"%31s %u %u %u %u %u %u %u %u %u %u",
+			"%31s"SPU SPU SPU SPU SPU SPU SPU SPU SPU SPU,
 			label,
 			&num[STAT_CPU_user],
 # define _STAT_CPU_first STAT_CPU_user
@@ -277,9 +290,9 @@ static void load_row(unsigned data[NCOLS])
 	/* FROM_PROC_VMSTAT */
 	fp = xfopen_for_read("/proc/vmstat");
 	while (fgets(line, sizeof(line), fp)) {
-		unsigned num;
+		data_t num;
 
-		if (sscanf(line, "%31s %u", label, &num) == 2) {
+		if (sscanf(line, "%31s"SPU, label, &num) == 2) {
 			colnum = find_col(*FROM_PROC_VMSTAT, label);
 			if (colnum != -1)
 				data[colnum] = num;
@@ -289,11 +302,13 @@ static void load_row(unsigned data[NCOLS])
 
 	/* FROM_PROC_MEMINFO */
 	fp = xfopen_for_read("/proc/meminfo");
-//FIXME: unsigned is way too narrow (>4TB of RAM machines are not that rare these days)
 	while (fgets(line, sizeof(line), fp)) {
-		unsigned num;
-
-		if (sscanf(line, "%31[^:]: %u", label, &num) == 2) {
+		data_t num;
+#if DEBUG_SHOW_5T_MEMFREE
+		if (is_prefixed_with(line, "MemFree:"))
+			strcpy(line, "MemFree:      4444444444 kB\n"); /* overflows 32-bit unsigned */
+#endif
+		if (sscanf(line, "%31[^:]:"SPU, label, &num) == 2) {
 			/* Store some values for computed (pseudo) values */
 			if (strcmp(label, "SwapTotal") == 0)
 				SwapTotal = num;
@@ -330,48 +345,69 @@ static void load_row(unsigned data[NCOLS])
 }
 
 /* Modify, format and print a row of data values */
-static void print_row(const unsigned data[NCOLS],
-		      const unsigned old_data[NCOLS])
+static void print_row(const data_t data[NCOLS],
+		      const data_t old_data[NCOLS])
 {
 	const char *coli;
 	struct col col;
 	unsigned i;
 	bool is_first;
-	unsigned percent_sum = 0;
 	int overrun;
+	/* Note: all DELTA counters are truncated to 32 bits here.
+	 * Imagine small embedded arch. Kernel does not _need_
+	 * to maintain 64-bit cpu stats, they work perfectly fine
+	 * when they overflow: userspace is expected to only use diffs anyway.
+	 * Therefore we must not assume they are wider than 32 bits
+	 * (doing so would cause bugs at the moment a counter overflows).
+	 */
+	uint32_t percent_sum = 0;
+	uint32_t delta32[NCOLS];
+	unsigned vshift;
 
+	vshift = 0;
 	for (coli = coldescs, i = 0; next_col(&col, &coli); i++) {
-		if (col.mod & MOD_PERCENT) {
-			unsigned value = data[i];
-			if (col.mod & MOD_DELTA) {
-				value -= old_data[i];
+		if (col.mod & MOD_DELTA) {
+			uint32_t value = data[i];
+			value -= old_data[i];
 //For some counters, kernel does not guarantee that they never go backwards.
-//Either due to bugs, or sometimes it's just too hard to 100.00% guarantee that
+//Either due to bugs, or sometimes it's just too hard to 100.00% guarantee it
 //(imagine the horrors of reliably and locklessly collecting per-CPU counters).
 //The idea is that _userspace_ can semi-trivially work around rare small backward steps:
-				if ((int)value < 0) value = 0;
+			if ((int32_t)value < 0)
+				value = 0;
+			delta32[i] = value;
+			if (col.mod & MOD_PERCENT) {
+				/* Ensure deltas < 2^32 / 128 (0x2000000) and percent_sum can't overflow */
+//If we don't do this, if running "vmstat MANY_SECS", percent_sum is ~MANY_SECS*1000*NUM_CPUS,
+//on 100-cpu machine, at ~400 second-long vmstat periods, counters may be > 0x2000000 here.
+				while ((value >> vshift) >= 0x2000000) {
+					percent_sum >>= 1;
+					vshift++;
+				}
+				percent_sum += (value >> vshift);
 			}
-			percent_sum += value;
 		}
 	}
+//debug: reduce 0x2000000 to 0x2000 and try "vmstat 60" or so:
+//bb_error_msg("percent_sum:%u vshift:%u", (unsigned)percent_sum, vshift);
 
 	overrun = 0;
 	is_first = 1;
 	for (coli = coldescs, i = 0; next_col(&col, &coli); i++) {
-		unsigned value = data[i];
+		data_t value = (col.mod & MOD_DELTA) ? delta32[i] : data[i];
 
-		if (col.mod & MOD_DELTA) {
-			value -= old_data[i];
-//For some counters, kernel does not guarantee that they never go backwards
-			if ((int)value < 0) value = 0;
+		/* the !0 check is needed in MOD_DECREMENT, might as well do it sooner */
+		if (value != 0) {
+			if ((col.mod & MOD_PERCENT) && percent_sum != 0) {
+				value = 100 * ((uint32_t)value >> vshift) / percent_sum;
+				/* narrow 32x32->32 multiply is ok since (value >> vshift) is < 2^32 / 128 */
+				if (value >= 100) /* sanity check + show "99" for 100% to not overflow col width */
+					value = 99;
+			} /* else: if percent_sum = 0, all values are 0 too, no need to calculate % */
+
+			if (col.mod & MOD_DECREMENT)
+				value--;
 		}
-		if (col.mod & MOD_PERCENT) {
-			value = percent_sum ? 100 * value / percent_sum : 0;
-			if (value >= 100) /* sanity check + show "99" for 100% to not overflow col width */
-				value = 99;
-		}
-		if ((col.mod & MOD_DECREMENT) && value)
-			value--;
 
 		if (!is_first)
 			bb_putchar(' ');
@@ -405,7 +441,7 @@ static void print_row(const unsigned data[NCOLS],
 					smart_ulltoa5(value, buf45, " kmgtpezy")[0] = '\0';
 				chars_printed = printf("%*s", width, skip_whitespace(buf45));
 			} else {
-				chars_printed = printf("%*u", width, value);
+				chars_printed = printf("%*"U, width, value);
 			}
 			overrun += (chars_printed - col.width);
 		}
