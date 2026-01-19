@@ -7,7 +7,7 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //config:config VMSTAT
-//config:	bool "vmstat (3 kb)"
+//config:	bool "vmstat (2 kb)"
 //config:	default y
 //config:	help
 //config:	Report virtual memory statistics
@@ -49,6 +49,8 @@ L("procs\0")   "\2"   L("r\0"    )FROM_PROC_STAT     M_DECREMENT "procs_running\
                "\2"   L("b\0"    )FROM_PROC_STAT                 "procs_blocked\0"
 L("memory\0")  "\6"   L("swpd\0" )FROM_PROC_MEMINFO              PSEUDO_SWPD "\0"
                "\6"   L("free\0" )FROM_PROC_MEMINFO              "MemFree\0"
+//TODO? "MemAvailable" in newer kernels may be a more useful indicator how much memory is "free"
+//in the sense of being immediately availabe if allocation demand arises (e.g. by dropping cached filesystem data)
                "\6"   L("buff\0" )FROM_PROC_MEMINFO              "Buffers\0"
                "\6"   L("cache\0")FROM_PROC_MEMINFO              PSEUDO_CACHE "\0"
 L("swap\0")    "\4"   L("si\0"   )FROM_PROC_VMSTAT   M_DELTA     "pswpin\0"
@@ -65,6 +67,8 @@ L("cpu\0")     "\2"   L("us\0"   )FROM_PROC_STAT_CPU M_DPERCENT  "\x0d" /* user 
 // "gu"est columnt seems to be added in procps-ng 4.x.x (it makes the output not 80, but 83 chars):
                "\2"   L("gu\0"   )FROM_PROC_STAT_CPU M_DPERCENT  "\x0c" /* guest */
 ;
+/* Number of columns defined in coldescs[] */
+#define NCOLS (2+4+2+2+2+6)
 /* Packed row data from coldescs[] is decoded into this structure */
 struct col {
 	L(const char *grplabel;)
@@ -78,13 +82,9 @@ struct col {
 #define MOD_DECREMENT 0x04
 };
 
-/* Number of columns defined in coldescs[] */
-#define NCOLS (2+4+2+2+2+6)
-
-/* Globals. Sort by size and access frequency. */
 struct globals {
-	unsigned data1[NCOLS];
-	unsigned data2[NCOLS];
+	unsigned data[NCOLS];
+	unsigned prev[NCOLS];
 };
 #define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { \
@@ -419,7 +419,6 @@ static void print_header(void)
 #if FIXED_HEADER
 	/* The header is constant yet and can be hardcoded instead,
 	 * but adding options such as -wtd to match upstream will change that */
-//TODO: remove grplabel/label from coldescs[], they are unused
 	puts(
 "procs -----------memory---------- ---swap-- -----io---- -system-- -------cpu-------""\n"
 " r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st gu"
@@ -480,16 +479,18 @@ int vmstat_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int vmstat_main(int argc UNUSED_PARAM, char **argv)
 {
 	int opt;
-	unsigned interval = 0;
-	int count = 1;
+	unsigned interval;
+	int count;
 	unsigned height;
-	unsigned rows;
+	int row;
 
 	INIT_G();
 
 	/* Parse and process arguments */
 	opt = getopt32(argv, "n");
 	argv += optind;
+	interval = 0;
+	count = 1;
 	if (*argv) {
 		interval = xatoi_positive(*argv);
 		count = (interval != 0 ? -1 : 1);
@@ -500,23 +501,29 @@ int vmstat_main(int argc UNUSED_PARAM, char **argv)
 
 	/* Prepare to re-print the header row after it scrolls off */
 	height = 0;
-	if (!(opt & OPT_n))
+	if (!(opt & OPT_n)) {
 		get_terminal_width_height(STDOUT_FILENO, NULL, &height);
+		/* match 4.0.4 behavior: re-print header if terminal has 4 or more lines */
+		height -= 3; /* can become zero or negative */
+	}
 
+	load_row(G.prev); /* prevents incorrect deltas in 1st sample */
+	row = 0;
 	/* Main loop */
-	load_row(G.data1); /* prevents incorrect deltas in 1st sample */
-	for (rows = 0;; rows++) {
-		if (rows == 0 || (height > 5 && (rows % (height - 3)) == 0))
+	for (;;) {
+		if (row == 0) {
 			print_header();
-
-		/* Flip between using data1/2 and data2/1 for old/new */
-		if (rows & 1) {
-			load_row(G.data1);
-			print_row(G.data1, G.data2);
-		} else {
-			load_row(G.data2);
-			print_row(G.data2, G.data1);
+			row = (int)height;
 		}
+		row--;
+		//if (row < 0) /* height <= 0: -n, or 3 or fewer lines in terminal */
+		//	row = -1; /* do not count down, never become zero */
+		/* equivalent to above: */
+		row |= (row >> (sizeof(row)*8 - 1));
+
+		load_row(G.data);
+		print_row(G.data, G.prev);
+		memcpy(G.prev, G.data, sizeof(G.prev));
 
 		if (count > 0 && --count == 0)
 			break;
