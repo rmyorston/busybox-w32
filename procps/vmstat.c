@@ -109,6 +109,7 @@ struct globals {
 // -t, --timestamp      Append timestamp to each line
 // -w, --wide           Wide output mode (useful for systems with higher amount of memory, where the default output mode suffers from unwanted column breakage). The output is wider than 80 characters per line.
 // -y, --no-first       Omits first report with statistics since system boot.
+// "since system boot" is false: 4.0.4 has code to read initial counts before calculating deltas, which prevents showing data "since system boot" which is often wrapped-around anyway (bogus)
 
 /*
  * Advance an iterator over the coldescs[] packed descriptors.
@@ -489,14 +490,18 @@ int vmstat_main(int argc UNUSED_PARAM, char **argv)
 	/* Parse and process arguments */
 	opt = getopt32(argv, "n");
 	argv += optind;
+
 	interval = 0;
 	count = 1;
 	if (*argv) {
-		interval = xatoi_positive(*argv);
-		count = (interval != 0 ? -1 : 1);
+		interval = xatoi_positive(*argv); /* 4.0.4 requires nonzero, we don't care */
+		count = 0; /* "infinity" */
 		argv++;
-		if (*argv)
+		if (*argv) {
 			count = xatoi_positive(*argv);
+			/* 4.0.4 (unless -y) treats explicit count of zero as if it's 1 */
+			count += (count == 0);
+		}
 	}
 
 	/* Prepare to re-print the header row after it scrolls off */
@@ -523,11 +528,13 @@ int vmstat_main(int argc UNUSED_PARAM, char **argv)
 
 		load_row(G.data);
 		print_row(G.data, G.prev);
-		memcpy(G.prev, G.data, sizeof(G.prev));
 
-		if (count > 0 && --count == 0)
+		count--;
+		count |= (count >> (sizeof(count)*8 - 1));
+		if (count == 0) /* count was >0 and become zero? */
 			break;
 
+		memcpy(G.prev, G.data, sizeof(G.prev));
 		sleep(interval);
 	}
 
