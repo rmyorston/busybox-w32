@@ -974,7 +974,7 @@ raise_interrupt(void)
 #endif
 	}
 #if ENABLE_PLATFORM_MINGW32
-	if (iflag)
+	if (iflag && trap[SIGINT])
 		write_ctrl_c();
 #endif
 	/* bash: ^C even on empty command line sets $? */
