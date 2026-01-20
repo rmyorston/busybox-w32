@@ -98,10 +98,11 @@ typedef unsigned data_t;
 struct globals {
 	data_t data[NCOLS];
 	data_t prev[NCOLS];
+	unsigned interval;
 };
 #define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { \
-	/* memset(&G, 0, sizeof G); */ \
+	memset(&G, 0, sizeof G); \
 } while (0)
 
 
@@ -435,6 +436,9 @@ static void print_row(const data_t data[NCOLS],
 			 */
 			if ((col.width>>1) == 4/2) {
 				char buf45[6];
+				/* si/so/bi/bo/in/cs display rate per second (checked on 4.0.4): */
+				if (G.interval != 0)
+					value /= G.interval;
 				if (col.width == 4)
 					smart_ulltoa4(value, buf45, " kmgtpezy")[0] = '\0';
 				else
@@ -516,7 +520,6 @@ int vmstat_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int vmstat_main(int argc UNUSED_PARAM, char **argv)
 {
 	int opt;
-	unsigned interval;
 	int count;
 	unsigned height;
 	int row;
@@ -527,10 +530,10 @@ int vmstat_main(int argc UNUSED_PARAM, char **argv)
 	opt = getopt32(argv, "n");
 	argv += optind;
 
-	interval = 0;
+	/*G.interval = 0;*/
 	count = 1;
 	if (*argv) {
-		interval = xatoi_positive(*argv); /* 4.0.4 requires nonzero, we don't care */
+		G.interval = xatoi_positive(*argv); /* 4.0.4 requires nonzero, we don't care */
 		count = 0; /* "infinity" */
 		argv++;
 		if (*argv) {
@@ -571,7 +574,7 @@ int vmstat_main(int argc UNUSED_PARAM, char **argv)
 			break;
 
 		memcpy(G.prev, G.data, sizeof(G.prev));
-		sleep(interval);
+		sleep(G.interval);
 	}
 
 	return EXIT_SUCCESS;
