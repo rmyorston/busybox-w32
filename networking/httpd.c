@@ -478,6 +478,8 @@ struct globals {
 	IF_FEATURE_HTTPD_BASIC_AUTH(const char *g_realm;)
 	IF_FEATURE_HTTPD_BASIC_AUTH(char *remoteuser;)
 
+	pid_t parent_pid;
+
 	off_t file_size;        /* -1 - unknown */
 #if ENABLE_FEATURE_HTTPD_RANGES
 	off_t range_start;
@@ -1712,7 +1714,7 @@ static void send_cgi_and_exit(
 		bb_signals(0
 			| (1 << SIGCHLD)
 			| (1 << SIGPIPE)
-			| (1 << SIGHUP)
+			/*| (1 << SIGHUP) - not needed, we have a handler, and exec resets signals with handlers to DFL */
 			, SIG_DFL);
 		/* User seeing stderr output can be a security problem.
 		 * If CGI really wants that, it can always do dup itself. */
@@ -2680,8 +2682,7 @@ static void mini_httpd(int server_socket)
 		if (fork() == 0) {
 			/* child */
 			/* Do not reload config on HUP */
-//TODO: can make reload handler check the pid and do nothing in children?
-			signal(SIGHUP, SIG_IGN);
+			/*signal(SIGHUP, SIG_IGN); - not needed, handler is a NOP in children (checks pid) */
 			/* close(0); - server socket. The next line does this for free */
 			xmove_fd(n, 0);
 			xdup2(0, 1);
@@ -2723,7 +2724,7 @@ static void mini_httpd_nommu(int server_socket, int argc, char **argv)
 		if (vfork() == 0) {
 			/* child */
 			/* Do not reload config on HUP */
-			signal(SIGHUP, SIG_IGN);
+			/*signal(SIGHUP, SIG_IGN); - not needed, handler is a NOP in children (checks pid) */
 			/* close(0); - server socket. The next line does this for free */
 			xmove_fd(n, 0);
 			xdup2(0, 1);
@@ -2757,9 +2758,11 @@ static void mini_httpd_inetd(void)
 
 static void sighup_handler(int sig UNUSED_PARAM)
 {
-	int sv = errno;
-	parse_conf(DEFAULT_PATH_HTTPD_CONF, SIGNALED_PARSE);
-	errno = sv;
+	if (G.parent_pid == getpid()) {
+		int sv = errno;
+		parse_conf(DEFAULT_PATH_HTTPD_CONF, SIGNALED_PARSE);
+		errno = sv;
+	}
 }
 
 enum {
@@ -2904,8 +2907,10 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	parse_conf(DEFAULT_PATH_HTTPD_CONF, FIRST_PARSE);
-	if (!(opt & OPT_INETD))
+	if (!(opt & OPT_INETD)) {
+		G.parent_pid = getpid();
 		signal(SIGHUP, sighup_handler);
+	}
 
 	xfunc_error_retval = 0;
 	if (opt & OPT_INETD)
