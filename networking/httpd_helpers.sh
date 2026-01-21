@@ -1,6 +1,6 @@
 #!/bin/sh
 
-PREFIX="i486-linux-uclibc-"
+PREFIX="i686-linux-musl-"
 OPTS="-static -static-libgcc \
 -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 \
 -Wall -Wshadow -Wwrite-strings -Wundef -Wstrict-prototypes -Werror \
@@ -22,3 +22,8 @@ ${PREFIX}gcc \
 ${OPTS} \
 -Wl,-Map -Wl,httpd_ssi.map \
 httpd_ssi.c -o httpd_ssi && strip httpd_ssi
+
+${PREFIX}gcc \
+${OPTS} \
+-Wl,-Map -Wl,httpd_ssi.map \
+httpd_ratelimit_cgi.c -o httpd_ratelimit_cgi && strip httpd_ratelimit_cgi
