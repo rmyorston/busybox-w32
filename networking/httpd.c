@@ -2651,6 +2651,7 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 static void mini_httpd(int server_socket) NORETURN;
 static void mini_httpd(int server_socket)
 {
+	xmove_fd(server_socket, 0);
 	/* NB: it's best to not use xfuncs in this loop before fork().
 	 * Otherwise server may die on transient errors (temporary
 	 * out-of-memory condition, etc), which is Bad(tm).
@@ -2662,7 +2663,7 @@ static void mini_httpd(int server_socket)
 
 		/* Wait for connections... */
 		fromAddr.len = LSA_SIZEOF_SA;
-		n = accept(server_socket, &fromAddr.u.sa, &fromAddr.len);
+		n = accept(0, &fromAddr.u.sa, &fromAddr.len);
 		if (n < 0)
 			continue;
 //TODO: we can reject connects from denied IPs right away;
@@ -2681,8 +2682,7 @@ static void mini_httpd(int server_socket)
 			/* Do not reload config on HUP */
 //TODO: can make reload handler check the pid and do nothing in children?
 			signal(SIGHUP, SIG_IGN);
-//TODO: can move server_socket to fd 0, making the close here unnecessary?
-			close(server_socket);
+			/* close(0); - server socket. The next line does this for free */
 			xmove_fd(n, 0);
 			xdup2(0, 1);
 
@@ -2703,6 +2703,7 @@ static void mini_httpd_nommu(int server_socket, int argc, char **argv)
 	argv_copy[1] = (char*)"-i";
 	memcpy(&argv_copy[2], &argv[1], argc * sizeof(argv[0]));
 
+	xmove_fd(server_socket, 0);
 	/* NB: it's best to not use xfuncs in this loop before vfork().
 	 * Otherwise server may die on transient errors (temporary
 	 * out-of-memory condition, etc), which is Bad(tm).
@@ -2712,7 +2713,7 @@ static void mini_httpd_nommu(int server_socket, int argc, char **argv)
 		int n;
 
 		/* Wait for connections... */
-		n = accept(server_socket, NULL, NULL);
+		n = accept(0, NULL, NULL);
 		if (n < 0)
 			continue;
 
@@ -2723,7 +2724,7 @@ static void mini_httpd_nommu(int server_socket, int argc, char **argv)
 			/* child */
 			/* Do not reload config on HUP */
 			signal(SIGHUP, SIG_IGN);
-			close(server_socket);
+			/* close(0); - server socket. The next line does this for free */
 			xmove_fd(n, 0);
 			xdup2(0, 1);
 
