@@ -2210,6 +2210,7 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 #endif
 #if ENABLE_FEATURE_HTTPD_CGI
 	unsigned total_headers_len;
+	unsigned un;
 #endif
 	const char *prequest;
 	static const char request_GET[]  ALIGN1 = "GET";
@@ -2280,14 +2281,12 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 
 	/* Find URL */
 	// rfc2616: method and URI is separated by exactly one space
-	//urlp = strpbrk(iobuf, " \t"); - no, tab isn't allowed
+	// no tabs, no double spaces, no empty methods, URIs, etc:
+	// should be "METHOD /URI HTTP/xyz" ("\r\n" stripped by get_line)
 	urlp = strchr(iobuf, ' ');
 	if (urlp == NULL)
 		send_headers_and_exit(HTTP_BAD_REQUEST);
 	*urlp++ = '\0';
-	//urlp = skip_whitespace(urlp); - should not be necessary
-	if (urlp[0] != '/')
-		send_headers_and_exit(HTTP_BAD_REQUEST);
 	/* Find end of URL */
 	HTTP_slash = strchr(urlp, ' ');
 	/* Is it " HTTP/"? */
@@ -2324,26 +2323,34 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 				urlp + strlen(proxy_entry->url_from), /* "SFX" */
 				HTTP_slash /* "HTTP/xyz" */
 		);
+		/* The above also allows http2 which starts with a fixed
+		 * "PRI * HTTP/2.0" line
+		 */
 		cgi_io_loop_and_exit(proxy_fd, proxy_fd, /*max POST length:*/ INT_MAX);
 	}
 #endif
+	/* We don't support http2 "*" URI, enforce "/URI" form */
+	if (urlp[0] != '/')
+		send_headers_and_exit(HTTP_BAD_REQUEST);
 
-	/* Determine type of request (GET/POST/...) */
+	/* Determine METHOD of request (GET/POST/...). Case-sensitive (rfc7230,rfc9110) */
 	prequest = request_GET;
-	if (strcasecmp(iobuf, prequest) == 0)
+	if (strcmp(iobuf, prequest) == 0)
 		goto found;
 	prequest = request_HEAD;
-	if (strcasecmp(iobuf, prequest) == 0)
+	if (strcmp(iobuf, prequest) == 0)
 		goto found;
 #if !ENABLE_FEATURE_HTTPD_CGI
 	send_headers_and_exit(HTTP_NOT_IMPLEMENTED);
 #else
 	prequest = request_POST;
-	if (strcasecmp(iobuf, prequest) == 0)
+	if (strcmp(iobuf, prequest) == 0)
 		goto found;
 	/* For CGI, allow DELETE, PUT, OPTIONS, etc too */
 	prequest = alloca(16);
-	safe_strncpy((char*)prequest, iobuf, 16);
+	un = safe_strncpy((char*)prequest, iobuf, 16) - prequest;
+	if (un < 1 || un >= 15)
+		send_headers_and_exit(HTTP_BAD_REQUEST);
 #endif
  found:
 	/* Copy URL to stack-allocated char[] */
