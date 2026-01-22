@@ -196,7 +196,7 @@ int adduser_main(int argc UNUSED_PARAM, char **argv)
 		bb_simple_error_msg_and_die(bb_msg_perm_denied_are_you_root);
 	}
 
-	pw.pw_gecos = (char *)"Linux User,,,";
+	pw.pw_gecos = (char *)"";
 	/* We assume that newly created users "inherit" root's shell setting */
 	pw.pw_shell = xstrdup(get_shell_name()); /* might come from getpwnam(), need to make a copy */
 	pw.pw_dir = NULL;

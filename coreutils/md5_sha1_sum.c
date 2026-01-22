@@ -278,22 +278,25 @@ int md5_sha1_sum_main(int argc UNUSED_PARAM, char **argv)
 {
 	unsigned char *in_buf;
 	int return_value = EXIT_SUCCESS;
-	unsigned flags IF_PLATFORM_MINGW32(= 0);
+	unsigned flags;
 #if ENABLE_SHA3SUM
 	unsigned sha3_width = 224;
 #endif
+	const char *fmt = "%s  %s\n";
 
 	if (ENABLE_FEATURE_MD5_SHA1_SUM_CHECK) {
-		/* -b "binary", -t "text" are mostly ignored (shaNNNsum compat);
-		 * the -b flag does set the '*' mode char in the output though, but
-		 * the -t flag doesn't override it. */
+		/* -t per se is a no-op (it means "text mode").
+		 * -b sets the '*' binary mode indicator in the output.
+		 * -t unsets -b (-bt is the same as -t, which is the same as no option) */
 		/* -s and -w require -c */
 #if ENABLE_SHA3SUM
 		if (applet_name[3] == HASH_SHA3 && (!ENABLE_SHA384SUM || applet_name[4] != '8'))
-			flags = getopt32(argv, "^" "scwbta:+" "\0" "s?c:w?c", &sha3_width);
+			flags = getopt32(argv, "^" "scwbta:+" "\0" "t-b:s?c:w?c", &sha3_width);
 		else
 #endif
-			flags = getopt32(argv, "^" "scwbt" "\0" "s?c:w?c");
+			flags = getopt32(argv, "^" "scwbt" "\0" "t-b:s?c:w?c");
+		if (flags & FLAG_BINARY)
+			fmt = "%s *%s\n";
 	} else {
 #if ENABLE_SHA3SUM
 		if (applet_name[3] == HASH_SHA3 && (!ENABLE_SHA384SUM || applet_name[4] != '8'))
@@ -378,11 +381,7 @@ int md5_sha1_sum_main(int argc UNUSED_PARAM, char **argv)
 			if (hash_value == NULL) {
 				return_value = EXIT_FAILURE;
 			} else {
-#if ENABLE_PLATFORM_MINGW32
-				printf("%s %c%s\n", hash_value, flags & FLAG_BINARY ? '*' : ' ', *argv);
-#else
-				printf("%s  %s\n", hash_value, *argv);
-#endif
+				printf(fmt, hash_value, *argv);
 				free(hash_value);
 			}
 		}

@@ -13,6 +13,14 @@ testing "sha1sum: -b flag in output" \
 	'sha1sum -b EMPTY' \
 	"da39a3ee5e6b4b0d3255bfef95601890afd80709 *EMPTY\n" \
 	"" ""
+testing "sha1sum: -tb flag in output" \
+	'sha1sum -tb EMPTY' \
+	"da39a3ee5e6b4b0d3255bfef95601890afd80709 *EMPTY\n" \
+	"" ""
+testing "sha1sum: -bt flag in output" \
+	'sha1sum -bt EMPTY' \
+	"da39a3ee5e6b4b0d3255bfef95601890afd80709  EMPTY\n" \
+	"" ""
 SKIP=
 rm EMPTY
 

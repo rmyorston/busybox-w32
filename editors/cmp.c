@@ -18,13 +18,21 @@
 //kbuild:lib-$(CONFIG_CMP) += cmp.o
 
 //usage:#define cmp_trivial_usage
-//usage:       "[-ls] [-n NUM] FILE1 [FILE2" IF_DESKTOP(" [SKIP1 [SKIP2]]") "]"
+//usage:       "[-l|s] [-n NUM] FILE1 [FILE2" IF_DESKTOP(" [SKIP1 [SKIP2]]") "]"
 //usage:#define cmp_full_usage "\n\n"
 //usage:       "Compare FILE1 with FILE2 (or stdin)\n"
-//usage:     "\n	-l	Write the byte numbers (decimal) and values (octal)"
-//usage:     "\n		for all differing bytes"
+//usage:     "\n	-l	Show decimal offset and octal byte value for differing bytes,"
+//usage:     "\n		don't stop on first mismatch"
 //usage:     "\n	-s	Quiet"
 //usage:     "\n	-n NUM	Compare at most NUM bytes"
+//TODO?
+// -b, --print-bytes              print differing bytes
+//Prints the first difference:
+//FILE1 FILE2 differ: byte 5, line 2 is <OCTAL1> <char1> <OCTAL2> <char2>
+//                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ -b adds this
+//and exits with exitcode 1.
+// -i, --ignore-initial=SKIP1[:SKIP2]
+//Same as SKIP1 [SKIP2] in argv, but here SKIP2 defaults to SKIP1, not to zero.
 
 /* BB_AUDIT SUSv3 (virtually) compliant -- uses nicer GNU format for -l. */
 /* http://www.opengroup.org/onlinepubs/007904975/utilities/cmp.html */
@@ -32,9 +40,9 @@
 #include "libbb.h"
 
 static const char fmt_eof[] ALIGN1 = "cmp: EOF on %s\n";
-static const char fmt_differ[] ALIGN1 = "%s %s differ: char %"OFF_FMT"u, line %u\n";
-// This fmt_l_opt uses gnu-isms.  SUSv3 would be "%.0s%.0s%"OFF_FMT"u %o %o\n"
-static const char fmt_l_opt[] ALIGN1 = "%.0s%.0s%"OFF_FMT"u %3o %3o\n";
+static const char fmt_differ[] ALIGN1 = "%s %s differ: byte %llu, line %u\n";
+// This fmt_l_opt is gnu-ism. SUSv3 is "%.0s%.0s%llu %o %o\n"
+static const char fmt_l_opt[] ALIGN1 = "%.0s%.0s%llu %3o %3o\n";
 
 #define OPT_STR "sln:+"
 #define CMP_OPT_s (1<<0)
@@ -46,7 +54,7 @@ int cmp_main(int argc UNUSED_PARAM, char **argv)
 {
 	FILE *fp1, *fp2, *outfile = stdout;
 	const char *filename1, *filename2 = "-";
-	off_t skip1 = 0, skip2 = 0, char_pos = 0;
+	unsigned long long skip1 = 0, skip2 = 0, char_pos = 0;
 	int line_pos = 1; /* Hopefully won't overflow... */
 	const char *fmt;
 	int c1, c2;
@@ -61,6 +69,7 @@ int cmp_main(int argc UNUSED_PARAM, char **argv)
 			IF_DESKTOP(":?4")
 			IF_NOT_DESKTOP(":?2")
 			":l--s:s--l",
+//TODO: -n MAXCOUNT should allow KMG suffixes
 			&max_count
 	);
 #else
@@ -86,9 +95,9 @@ int cmp_main(int argc UNUSED_PARAM, char **argv)
 	if (*++argv) {
 		filename2 = *argv;
 		if (ENABLE_DESKTOP && *++argv) {
-			skip1 = XATOOFF(*argv);
+			skip1 = xatoull_sfx(*argv, kmg_i_suffixes);
 			if (*++argv) {
-				skip2 = XATOOFF(*argv);
+				skip2 = xatoull_sfx(*argv, kmg_i_suffixes);
 			}
 		}
 	}
@@ -113,8 +122,8 @@ int cmp_main(int argc UNUSED_PARAM, char **argv)
 		fmt = fmt_differ;
 
 	if (ENABLE_DESKTOP) {
-		while (skip1) { getc(fp1); skip1--; }
-		while (skip2) { getc(fp2); skip2--; }
+		while (skip1) { if (getc(fp1) == EOF) break; skip1--; }
+		while (skip2) { if (getc(fp2) == EOF) break; skip2--; }
 	}
 	do {
 		if (max_count >= 0 && --max_count < 0)
@@ -146,8 +155,9 @@ int cmp_main(int argc UNUSED_PARAM, char **argv)
 					line_pos = c1;	/* line_pos is unused in the -l case. */
 				}
 				fprintf(outfile, fmt, filename1, filename2, char_pos, line_pos, c2);
-				if (opt) {	/* This must be -l since not -s. */
-					/* If we encountered an EOF,
+				if (opt & CMP_OPT_l) {
+					/* -l: do not stop on first mismatch.
+					 * If we encountered an EOF,
 					 * the while check will catch it. */
 					continue;
 				}
