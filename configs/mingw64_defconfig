@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.38.0.git
-# Tue Dec  2 09:04:43 2025
+# Thu Jan 22 09:32:45 2026
 #
 CONFIG_HAVE_DOT_CONFIG=y
 # CONFIG_PLATFORM_POSIX is not set
@@ -1135,6 +1135,7 @@ CONFIG_FEATURE_PS_TIME=y
 # CONFIG_FEATURE_TOPMEM is not set
 CONFIG_UPTIME=y
 # CONFIG_FEATURE_UPTIME_UTMP_SUPPORT is not set
+# CONFIG_VMSTAT is not set
 CONFIG_WATCH=y
 
 #
