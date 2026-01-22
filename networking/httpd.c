@@ -290,7 +290,29 @@
 //usage:     "\n	-e STRING	HTML encode STRING"
 //usage:     "\n	-d STRING	URL decode STRING"
 
-/* TODO: use TCP_CORK, parse_config() */
+/* Robustness
+ *
+ * Even though the design is geared towards simplicity, it is meant to
+ * survive in a mildly adversarial environment:
+ * - it does not accept unlimited number of connections (-M MAXCONN)
+ * - it requires clients to send their incoming requests quickly
+ *   (HEADER_READ_TIMEOUT)
+ * - if client stops consuming its result ("stalled receiver" attack),
+ *   the server will drop the connection (DATA_WRITE_TIMEOUT)
+ *
+ * To limit the number of simultaneously running CGI children,
+ * you may use the helper tool, httpd_ratelimit_cgi.c:
+ * it replies with "429 Too Many Requests" and exits when limit is exceeded.
+ * The limit can be set per CGI type: "I accept up to 256 connections,
+ * but only up to 100 of them may be to /cgi-bin/simple_cgi,
+ * and 20 to /cgi-bin/HEAVY_cgi".
+ *
+ * TODO:
+ * - do not allow all MAXCONN connections be taken up by the same remote IP.
+ */
+#define HEADER_READ_TIMEOUT 30
+#define DATA_WRITE_TIMEOUT  60
+
 
 #include "libbb.h"
 #include "common_bufsiz.h"
@@ -321,9 +343,6 @@
 
 #define IOBUF_SIZE 8192
 #define MAX_HTTP_HEADERS_SIZE (32*1024)
-
-#define HEADER_READ_TIMEOUT 30
-#define DATA_WRITE_TIMEOUT 60
 
 #define STR1(s) #s
 #define STR(s) STR1(s)
@@ -699,6 +718,7 @@ static int scan_ip_mask(const char *str, unsigned *ipp, unsigned *maskp)
  * path   Path where to look for httpd.conf (without filename).
  * flag   Type of the parse request.
  */
+//TODO: use parse_config() from libbb?
 /* flag param: */
 enum {
 	FIRST_PARSE    = 0, /* path will be "/etc" */
@@ -1062,23 +1082,23 @@ static int openServer(void)
 
 /*
  * Log the connection closure and exit.
+ * Two variants: one signals EOF (clean termination),
+ * the other might signal that connection is reset, not closed normally
+ * (usually RST is sent if there is unsent buffered data in the socket buffer).
  */
 static void log_and_exit(void) NORETURN;
 static void log_and_exit(void)
 {
-	/* Paranoia. IE said to be buggy. It may send some extra data
-	 * or be confused by us just exiting without SHUT_WR. Oh well. */
-	shutdown(STDOUT_FILENO, SHUT_WR);
-	/* Why??
-	(this also messes up stdin when user runs httpd -i from terminal)
-	ndelay_on(0);
-	while (read(STDIN_FILENO, iobuf, IOBUF_SIZE) > 0)
-		continue;
-	*/
-
 	if (VERBOSE_3)
 		bb_simple_error_msg("closed");
 	_exit(xfunc_error_retval);
+}
+static void send_EOF_and_exit(void) NORETURN;
+static void send_EOF_and_exit(void)
+{
+	/* This makes sure on TCP level, the connection is closed with FIN, not RST */
+	shutdown(STDOUT_FILENO, SHUT_WR);
+	log_and_exit();
 }
 
 /*
@@ -1304,7 +1324,7 @@ static void send_headers_and_exit(int responseNum)
 	IF_FEATURE_HTTPD_GZIP(content_gzip = 0;)
 	file_size = -1; /* no Last-Modified:, ETag:, Content-Length: */
 	send_headers(responseNum);
-	log_and_exit();
+	send_EOF_and_exit();
 }
 
 /*
@@ -1436,7 +1456,7 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 					bb_error_msg("CGI killed, signal=%u", WTERMSIG(status));
 			}
 #endif
-			break;
+			send_EOF_and_exit();
 		}
 
 		if (pfd[TO_CGI].revents) {
@@ -1500,7 +1520,7 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 						full_write(STDOUT_FILENO, HTTP_200, sizeof(HTTP_200)-1);
 						full_write(STDOUT_FILENO, rbuf, out_cnt);
 					}
-					break; /* CGI stdout is closed, exiting */
+					send_EOF_and_exit(); /* CGI stdout is closed, exiting */
 				}
 				out_cnt += count;
 				count = 0;
@@ -1535,7 +1555,7 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 			} else {
 				count = safe_read(fromCgi_rd, rbuf, IOBUF_SIZE);
 				if (count <= 0)
-					break;  /* eof (or error) */
+					send_EOF_and_exit();  /* eof (or error) */
 			}
 			if (full_write(STDOUT_FILENO, rbuf, count) != count)
 				break;
@@ -1794,10 +1814,10 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 		dbg("can't open '%s'\n", url);
 		/* Error pages are sent by using send_file_and_exit(SEND_BODY).
 		 * IOW: it is unsafe to call send_headers_and_exit
-		 * if what is SEND_BODY! Can recurse! */
+		 * if "what" is SEND_BODY! Can recurse! */
 		if (what != SEND_BODY)
 			send_headers_and_exit(HTTP_NOT_FOUND);
-		log_and_exit();
+		send_EOF_and_exit();
 	}
 #if ENABLE_FEATURE_HTTPD_ETAG
 	/* ETag is "hex(last_mod)-hex(file_size)" e.g. "5e132e20-417" */
@@ -1925,17 +1945,17 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 				if (offset == range_start) /* was it the very 1st sendfile? */
 					break; /* fall back to read/write loop */
 				if (VERBOSE_1) {
-					if (errno == EAGAIN)
-						errno = ETIMEDOUT;
 // SO_SNDTIME on our socket causes write timeouts manifest as EAGAIN "Resource temporarily unavailable".
 // Not the best error message (when reading the log: "Er... what resource?!")
+					if (errno == EAGAIN)
+						errno = ETIMEDOUT;
 					bb_simple_perror_msg("sendfile error");
 				}
 				log_and_exit();
 			}
 			IF_FEATURE_HTTPD_RANGES(range_len -= count;)
 			if (count == 0 || range_len == 0)
-				log_and_exit();
+				send_EOF_and_exit();
 		}
 	}
 #endif
@@ -1948,6 +1968,7 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 				if (errno == EAGAIN)
 					errno = ETIMEDOUT;
 				bb_simple_perror_msg("write error");
+				log_and_exit();
 			}
 			break;
 		}
@@ -1959,7 +1980,7 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 		if (VERBOSE_1)
 			bb_simple_perror_msg("read error");
 	}
-	log_and_exit();
+	send_EOF_and_exit();
 }
 
 #if ENABLE_FEATURE_HTTPD_ACL_IP
