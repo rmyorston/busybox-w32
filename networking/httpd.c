@@ -322,7 +322,7 @@
 #define IOBUF_SIZE 8192
 #define MAX_HTTP_HEADERS_SIZE (32*1024)
 
-#define HEADER_READ_TIMEOUT 60
+#define HEADER_READ_TIMEOUT 30
 
 #define STR1(s) #s
 #define STR(s) STR1(s)
@@ -1325,7 +1325,6 @@ static unsigned get_line(void)
 		unsigned char c;
 
 		if (hdr_cnt <= 0) {
-			alarm(HEADER_READ_TIMEOUT);
 			hdr_cnt = safe_read(STDIN_FILENO, hdr_buf, sizeof_hdr_buf);
 			if (hdr_cnt <= 0)
 				goto ret;
@@ -2273,8 +2272,8 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 	if_ip_denied_send_HTTP_FORBIDDEN_and_exit(remote_ip);
 #endif
 
-	/* Install timeout handler. get_line() needs it. */
-	signal(SIGALRM, send_REQUEST_TIMEOUT_and_exit);
+	/* Limit how long we expect clients to be sending headers */
+	alarm(HEADER_READ_TIMEOUT);
 
 	if (!get_line()) { /* EOF or error or empty line */
 		/* Observed Firefox to "speculatively" open
@@ -2728,6 +2727,8 @@ static void mini_httpd(int server_socket)
 {
 	int countdown;
 
+	signal(SIGALRM, send_REQUEST_TIMEOUT_and_exit);
+
 	xmove_fd(server_socket, 0);
 	/* NB: it's best to not use xfuncs in this loop before fork().
 	 * Otherwise server may die on transient errors (temporary
@@ -2784,6 +2785,9 @@ static void mini_httpd_nommu(int server_socket, int argc, char **argv)
 	argv_copy[1] = (char*)"-i";
 	memcpy(&argv_copy[2], &argv[1], argc * sizeof(argv[0]));
 
+	/*signal(SIGALRM, send_REQUEST_TIMEOUT_and_exit);*/
+	/* ^^^ WRONG. mini_httpd_inetd() does this */
+
 	xmove_fd(server_socket, 0);
 	/* NB: it's best to not use xfuncs in this loop before vfork().
 	 * Otherwise server may die on transient errors (temporary
@@ -2832,6 +2836,8 @@ static void mini_httpd_inetd(void) NORETURN;
 static void mini_httpd_inetd(void)
 {
 	len_and_sockaddr fromAddr;
+
+	signal(SIGALRM, send_REQUEST_TIMEOUT_and_exit);
 
 	memset(&fromAddr, 0, sizeof(fromAddr));
 	fromAddr.len = LSA_SIZEOF_SA;
