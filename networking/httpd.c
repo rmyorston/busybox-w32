@@ -267,6 +267,7 @@
 //usage:       "[-ifv[v]]"
 //usage:       " [-c CONFFILE]"
 //usage:       " [-p [IP:]PORT]"
+//usage:       " [-M MAXCONN]"
 //usage:	IF_FEATURE_HTTPD_SETUID(" [-u USER[:GRP]]")
 //usage:	IF_FEATURE_HTTPD_BASIC_AUTH(" [-r REALM]")
 //usage:       " [-h HOME]\n"
@@ -277,6 +278,7 @@
 //usage:     "\n	-f		Run in foreground"
 //usage:     "\n	-v[v]		Verbose"
 //usage:     "\n	-p [IP:]PORT	Bind to IP:PORT (default *:"STR(CONFIG_FEATURE_HTTPD_PORT_DEFAULT)")"
+//usage:     "\n	-M NUM		Pause if NUM connections are open (default 256)"
 //usage:	IF_FEATURE_HTTPD_SETUID(
 //usage:     "\n	-u USER[:GRP]	Set uid/gid after binding to port")
 //usage:	IF_FEATURE_HTTPD_BASIC_AUTH(
@@ -479,6 +481,8 @@ struct globals {
 	IF_FEATURE_HTTPD_BASIC_AUTH(char *remoteuser;)
 
 	pid_t parent_pid;
+	int children_fd;
+	int conn_limit;
 
 	off_t file_size;        /* -1 - unknown */
 #if ENABLE_FEATURE_HTTPD_RANGES
@@ -494,7 +498,6 @@ struct globals {
 #if ENABLE_FEATURE_HTTPD_CONFIG_WITH_SCRIPT_INTERPR
 	Htaccess *script_i;     /* config script interpreters */
 #endif
-	char *iobuf;            /* [IOBUF_SIZE] */
 #define        hdr_buf bb_common_bufsiz1
 #define sizeof_hdr_buf COMMON_BUFSIZE
 	char *hdr_ptr;
@@ -508,6 +511,7 @@ struct globals {
 #if ENABLE_FEATURE_HTTPD_PROXY
 	Htaccess_Proxy *proxy;
 #endif
+	char iobuf[IOBUF_SIZE];
 };
 #define G (*ptr_to_globals)
 #define verbose           (G.verbose          )
@@ -543,11 +547,11 @@ enum {
 #define g_auth            (G.g_auth           )
 #define mime_a            (G.mime_a           )
 #define script_i          (G.script_i         )
-#define iobuf             (G.iobuf            )
 #define hdr_ptr           (G.hdr_ptr          )
 #define hdr_cnt           (G.hdr_cnt          )
 #define http_error_page   (G.http_error_page  )
 #define proxy             (G.proxy            )
+#define iobuf             (G.iobuf            )
 #define INIT_G() do { \
 	setup_common_bufsiz(); \
 	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
@@ -1045,7 +1049,8 @@ static void decodeBase64(char *data)
  */
 static int openServer(void)
 {
-	unsigned n = bb_strtou(bind_addr_or_port, NULL, 10);
+	unsigned n;
+	n = bb_strtou(bind_addr_or_port, NULL, 10);
 	if (!errno && n && n <= 0xffff)
 		n = create_and_bind_stream_or_die(NULL, n);
 	else
@@ -2227,10 +2232,6 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 #endif
 	char *HTTP_slash;
 
-	/* Allocation of iobuf is postponed until now
-	 * (IOW, server process doesn't need to waste 8k) */
-	iobuf = xmalloc(IOBUF_SIZE);
-
 	if (ENABLE_FEATURE_HTTPD_CGI || DEBUG || verbose) {
 		/* NB: can be NULL (user runs httpd -i by hand?) */
 		rmt_ip_str = xmalloc_sockaddr2dotted(&fromAddr->u.sa);
@@ -2643,6 +2644,57 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 	);
 }
 
+static int count_children(void)
+{
+	int count;
+	int sz = pread(G.children_fd, iobuf, IOBUF_SIZE - 1, 0);
+	if (sz < 0)
+		return -1;
+	/* The actual format is "NUM NUM ", but future-proof for lack of last space, and for '\n' */
+	count = 0;
+	if (sz > 0) {
+		char *p = iobuf;
+		iobuf[sz] = '\n';
+		do {
+			if (*++p == ' ')
+				count++, p++;
+		} while (*p != '\n');
+		if (p[-1] != ' ') /* it was "NUM NUM\n" (not "NUM NUM \n")? */
+			count++; /* there were (NUMSPACES + 1) pids */
+	}
+	return count;
+}
+
+static int throttle_if_conn_limit(void)
+{
+	unsigned usec = 0xffff; /* 0.065535 seconds */
+	int countdown, c;
+	for (;;) {
+		countdown = G.conn_limit;
+		c = count_children();
+		if (c < 0)
+			break; /* can't count them */
+		countdown -= c;
+		if (countdown <= 0) { /* we are at MAXCONN, pause until we are below */
+			bb_error_msg("pausing, children:%u", c);
+			//bb_error_msg("pausing %ums, children:%u", usec/1000, c);
+			usleep(usec);
+			usec = ((usec << 1) | 1) & 0x1fffff; /* x2, up to 2.097151 seconds */
+			continue; /* loop: count them again */
+		}
+		if (VERBOSE_3) /* -vvv periodically shows # of children */
+			bb_error_msg("children:%u", c ? c - 1 : c);
+// "Why minus one?!" you ask. We _just now_ forked (see the caller)
+// and immediately checked the # of children.
+// Of course, the just-forked child did not have time to complete.
+// Without "minus one" hack, this causes above statement to always show
+// at least one child, gives wrong impression to the log's reader
+// (looks like one child is stuck).
+		break;
+	}
+	return countdown;
+}
+
 /*
  * The main http server function.
  * Given a socket, listen for new connections and farm out
@@ -2653,15 +2705,21 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 static void mini_httpd(int server_socket) NORETURN;
 static void mini_httpd(int server_socket)
 {
+	int countdown;
+
 	xmove_fd(server_socket, 0);
 	/* NB: it's best to not use xfuncs in this loop before fork().
 	 * Otherwise server may die on transient errors (temporary
 	 * out-of-memory condition, etc), which is Bad(tm).
 	 * Try to do any dangerous calls after fork.
 	 */
+	countdown = G.conn_limit;
 	while (1) {
 		int n;
 		len_and_sockaddr fromAddr;
+
+		if (G.children_fd > 0 && --countdown < 0)
+			countdown = throttle_if_conn_limit();
 
 		/* Wait for connections... */
 		fromAddr.len = LSA_SIZEOF_SA;
@@ -2698,6 +2756,7 @@ static void mini_httpd(int server_socket)
 static void mini_httpd_nommu(int server_socket, int argc, char **argv) NORETURN;
 static void mini_httpd_nommu(int server_socket, int argc, char **argv)
 {
+	int countdown;
 	char *argv_copy[argc + 2];
 
 	argv_copy[0] = argv[0];
@@ -2710,8 +2769,12 @@ static void mini_httpd_nommu(int server_socket, int argc, char **argv)
 	 * out-of-memory condition, etc), which is Bad(tm).
 	 * Try to do any dangerous calls after fork.
 	 */
+	countdown = G.conn_limit;
 	while (1) {
 		int n;
+
+		if (G.children_fd > 0 && --countdown < 0)
+			countdown = throttle_if_conn_limit();
 
 		/* Wait for connections... */
 		n = accept(0, NULL, NULL);
@@ -2774,9 +2837,10 @@ enum {
 	IF_FEATURE_HTTPD_AUTH_MD5(      m_opt_md5       ,)
 	IF_FEATURE_HTTPD_SETUID(        u_opt_setuid    ,)
 	p_opt_port      ,
-	p_opt_inetd     ,
-	p_opt_foreground,
-	p_opt_verbose   ,
+	M_opt_maxconn   ,
+	i_opt_inetd     ,
+	f_opt_foreground,
+	v_opt_verbose   ,
 	OPT_CONFIG_FILE = 1 << c_opt_config_file,
 	OPT_DECODE_URL  = 1 << d_opt_decode_url,
 	OPT_HOME_HTTPD  = 1 << h_opt_home_httpd,
@@ -2785,9 +2849,9 @@ enum {
 	OPT_MD5         = IF_FEATURE_HTTPD_AUTH_MD5(      (1 << m_opt_md5       )) + 0,
 	OPT_SETUID      = IF_FEATURE_HTTPD_SETUID(        (1 << u_opt_setuid    )) + 0,
 	OPT_PORT        = 1 << p_opt_port,
-	OPT_INETD       = 1 << p_opt_inetd,
-	OPT_FOREGROUND  = 1 << p_opt_foreground,
-	OPT_VERBOSE     = 1 << p_opt_verbose,
+	OPT_INETD       = 1 << i_opt_inetd,
+	OPT_FOREGROUND  = 1 << f_opt_foreground,
+	OPT_VERBOSE     = 1 << v_opt_verbose,
 };
 
 
@@ -2809,6 +2873,7 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 	setlocale(LC_TIME, "C");
 #endif
 
+	G.conn_limit = 256;
 	home_httpd = xrealloc_getcwd_or_warn(NULL);
 	/* We do not "absolutize" path given by -h (home) opt.
 	 * If user gives relative path in -h,
@@ -2819,7 +2884,7 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 			IF_FEATURE_HTTPD_BASIC_AUTH("r:")
 			IF_FEATURE_HTTPD_AUTH_MD5("m:")
 			IF_FEATURE_HTTPD_SETUID("u:")
-			"p:ifv"
+			"p:M:+ifv"
 			"\0"
 			/* -v counts, -i implies -f */
 			"vv:if",
@@ -2829,6 +2894,7 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 			IF_FEATURE_HTTPD_AUTH_MD5(, &pass)
 			IF_FEATURE_HTTPD_SETUID(, &s_ugid)
 			, &bind_addr_or_port
+			, &G.conn_limit
 			, &verbose
 		);
 	if (opt & OPT_DECODE_URL) {
@@ -2871,6 +2937,10 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 		xchdir(home_httpd);
 
 	if (!(opt & OPT_INETD)) {
+		G.parent_pid = getpid();
+		sprintf(iobuf, "/proc/self/task/%u/children", (unsigned)G.parent_pid);
+		G.children_fd = open(iobuf, O_RDONLY | O_CLOEXEC);
+
 		/* Make it unnecessary to wait for children */
 		signal(SIGCHLD, SIG_IGN);
 
@@ -2905,16 +2975,13 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 //			setenv_long("SERVER_PORT", ???);
 	}
 #endif
-
 	parse_conf(DEFAULT_PATH_HTTPD_CONF, FIRST_PARSE);
-	if (!(opt & OPT_INETD)) {
-		G.parent_pid = getpid();
-		signal(SIGHUP, sighup_handler);
-	}
 
 	xfunc_error_retval = 0;
 	if (opt & OPT_INETD)
 		mini_httpd_inetd(); /* never returns */
+
+	signal(SIGHUP, sighup_handler);
 #if BB_MMU
 	if (!(opt & OPT_FOREGROUND))
 		bb_daemonize(0); /* don't change current directory */
