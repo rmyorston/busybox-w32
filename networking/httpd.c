@@ -1308,20 +1308,22 @@ static void send_headers_and_exit(int responseNum)
 
 /*
  * Read from the socket until '\n' or EOF.
+ * Data is returned in iobuf[].
  * '\r' chars are removed.
  * '\n' is replaced with NUL.
- * Control chars and > 0x7e cause HTTP_BAD_REQUEST abort.
+ * Control chars and 0x7f cause HTTP_BAD_REQUEST abort.
+ * iobuf[] overflow causes HTTP_BAD_REQUEST abort.
  * Return number of characters read or 0 if nothing is read
  * ('\r' and '\n' are not counted).
- * Data is returned in iobuf.
  */
 static unsigned get_line(void)
 {
 	unsigned count;
-	char c;
 
 	count = 0;
 	while (1) {
+		unsigned char c;
+
 		if (hdr_cnt <= 0) {
 			alarm(HEADER_READ_TIMEOUT);
 			hdr_cnt = safe_read(STDIN_FILENO, hdr_buf, sizeof_hdr_buf);
@@ -1342,13 +1344,13 @@ static unsigned get_line(void)
 		/* rfc7230 allows tabs for header line continuation and as whitespace in values */
 		if (c != '\t') {
 			/* Control chars aren't allowed in headers */
-			if ((unsigned char)c < ' ' || (unsigned char)c == 0x7f)
+			if (c < ' ' || c == 0x7f)
 				send_headers_and_exit(HTTP_BAD_REQUEST);
 			/* hign bytes above 0x7f are heavily discouraged, but historically allowed */
 		}
-		iobuf[count] = c;
-		if (count < (IOBUF_SIZE - 1))      /* check overflow */
-			count++;
+		iobuf[count++] = c;
+		if (count >= IOBUF_SIZE)
+			send_headers_and_exit(HTTP_BAD_REQUEST);
 	}
  ret:
 	iobuf[count] = '\0';
