@@ -1924,11 +1924,13 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 			if (count < 0) {
 				if (offset == range_start) /* was it the very 1st sendfile? */
 					break; /* fall back to read/write loop */
-				if (VERBOSE_1)
-					bb_simple_perror_msg("sendfile error");
+				if (VERBOSE_1) {
+					if (errno == EAGAIN)
+						errno = ETIMEDOUT;
 // SO_SNDTIME on our socket causes write timeouts manifest as EAGAIN "Resource temporarily unavailable".
-// Not the best error message (when reading the log: "what resource?!")
-// "timeout" is better - special-case it?
+// Not the best error message (when reading the log: "Er... what resource?!")
+					bb_simple_perror_msg("sendfile error");
+				}
 				log_and_exit();
 			}
 			IF_FEATURE_HTTPD_RANGES(range_len -= count;)
@@ -1942,9 +1944,11 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 		IF_FEATURE_HTTPD_RANGES(if (count > range_len) count = range_len;)
 		n = full_write(STDOUT_FILENO, iobuf, count);
 		if (count != n) {
-			if (VERBOSE_1 && n < 0)
+			if (VERBOSE_1 && n < 0) {
+				if (errno == EAGAIN)
+					errno = ETIMEDOUT;
 				bb_simple_perror_msg("write error");
-// see above about SO_SNDTIME
+			}
 			break;
 		}
 		IF_FEATURE_HTTPD_RANGES(range_len -= count;)
