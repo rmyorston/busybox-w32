@@ -1310,6 +1310,7 @@ static void send_headers_and_exit(int responseNum)
  * Read from the socket until '\n' or EOF.
  * '\r' chars are removed.
  * '\n' is replaced with NUL.
+ * Control chars and > 0x7e cause HTTP_BAD_REQUEST abort.
  * Return number of characters read or 0 if nothing is read
  * ('\r' and '\n' are not counted).
  * Data is returned in iobuf.
@@ -1330,10 +1331,21 @@ static unsigned get_line(void)
 		}
 		hdr_cnt--;
 		c = *hdr_ptr++;
+
+		/* We really should only accept \n (for people debugging via telnet)
+		 * and \r\n, but... \r\n can split across read(), harder to check. */
 		if (c == '\r')
 			continue;
 		if (c == '\n')
 			break;
+
+		/* rfc7230 allows tabs for header line continuation and as whitespace in values */
+		if (c != '\t') {
+			/* Control chars aren't allowed in headers */
+			if ((unsigned char)c < ' ' || (unsigned char)c == 0x7f)
+				send_headers_and_exit(HTTP_BAD_REQUEST);
+			/* hign bytes above 0x7f are heavily discouraged, but historically allowed */
+		}
 		iobuf[count] = c;
 		if (count < (IOBUF_SIZE - 1))      /* check overflow */
 			count++;
