@@ -323,6 +323,7 @@
 #define MAX_HTTP_HEADERS_SIZE (32*1024)
 
 #define HEADER_READ_TIMEOUT 30
+#define DATA_WRITE_TIMEOUT 60
 
 #define STR1(s) #s
 #define STR(s) STR1(s)
@@ -1067,7 +1068,7 @@ static void log_and_exit(void)
 {
 	/* Paranoia. IE said to be buggy. It may send some extra data
 	 * or be confused by us just exiting without SHUT_WR. Oh well. */
-	shutdown(1, SHUT_WR);
+	shutdown(STDOUT_FILENO, SHUT_WR);
 	/* Why??
 	(this also messes up stdin when user runs httpd -i from terminal)
 	ndelay_on(0);
@@ -1369,10 +1370,6 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 
 	/* iobuf is used for CGI -> network data,
 	 * hdr_buf is for network -> CGI data (POSTDATA) */
-
-	/* If CGI dies, we still want to correctly finish reading its output
-	 * and send it to the peer. So please no SIGPIPEs! */
-	signal(SIGPIPE, SIG_IGN);
 
 	// We inconsistently handle a case when more POSTDATA from network
 	// is coming than we expected. We may give *some part* of that
@@ -1814,9 +1811,6 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 			send_headers_and_exit(HTTP_NOT_MODIFIED);
 	}
 #endif
-	/* If you want to know about EPIPE below
-	 * (happens if you abort downloads from local httpd): */
-	signal(SIGPIPE, SIG_IGN);
 
 	/* If not found, default is to not send "Content-type:" */
 	/*found_mime_type = NULL; - already is */
@@ -1910,6 +1904,8 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 #endif
 	if (what & SEND_HEADERS)
 		send_headers(HTTP_OK);
+
+	/* Sending BODY */
 #if ENABLE_FEATURE_USE_SENDFILE
 	{
 		off_t offset;
@@ -1930,6 +1926,9 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 					break; /* fall back to read/write loop */
 				if (VERBOSE_1)
 					bb_simple_perror_msg("sendfile error");
+// SO_SNDTIME on our socket causes write timeouts manifest as EAGAIN "Resource temporarily unavailable".
+// Not the best error message (when reading the log: "what resource?!")
+// "timeout" is better - special-case it?
 				log_and_exit();
 			}
 			IF_FEATURE_HTTPD_RANGES(range_len -= count;)
@@ -1942,8 +1941,12 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 		ssize_t n;
 		IF_FEATURE_HTTPD_RANGES(if (count > range_len) count = range_len;)
 		n = full_write(STDOUT_FILENO, iobuf, count);
-		if (count != n)
+		if (count != n) {
+			if (VERBOSE_1 && n < 0)
+				bb_simple_perror_msg("write error");
+// see above about SO_SNDTIME
 			break;
+		}
 		IF_FEATURE_HTTPD_RANGES(range_len -= count;)
 		if (range_len == 0)
 			break;
@@ -2205,7 +2208,25 @@ static Htaccess_Proxy *find_proxy_entry(const char *url)
 static void send_REQUEST_TIMEOUT_and_exit(int sig) NORETURN;
 static void send_REQUEST_TIMEOUT_and_exit(int sig UNUSED_PARAM)
 {
+	/* timed out reading headers */
 	send_headers_and_exit(HTTP_REQUEST_TIMEOUT);
+//If we'd use alarm() for write timeouts too:
+//	/* writing timed out: exit without writing anything */
+//	if (VERBOSE_3)
+//		bb_simple_error_msg("write timeout");
+//	_exit(xfunc_error_retval);
+}
+
+static void prepare_write_timeout(void)
+{
+	static const struct timeval tv = { .tv_sec = DATA_WRITE_TIMEOUT, .tv_usec = 0 };
+
+	/* stop header read timeout */
+	alarm(0);
+
+	/* make write() calls exit with error after DATA_WRITE_TIMEOUT */
+	setsockopt(STDOUT_FILENO, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+	/* this is less expensive than arming alarm() before every write */
 }
 
 /*
@@ -2323,8 +2344,10 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 			send_headers_and_exit(HTTP_INTERNAL_SERVER_ERROR);
 		if (connect(proxy_fd, &lsa->u.sa, lsa->len) < 0)
 			send_headers_and_exit(HTTP_INTERNAL_SERVER_ERROR);
-		/* Disable peer header reading timeout */
-		alarm(0);
+
+		/* Disable header reading timeout */
+		prepare_write_timeout();
+
 		/* Config directive was of the form:
 		 *   P:/url:[http://]hostname[:port]/new/path
 		 * When /urlSFX is requested, reverse proxy it
@@ -2615,8 +2638,8 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 #endif
 	} /* while extra header reading */
 
-	/* We are done reading headers, disable peer timeout */
-	alarm(0);
+	/* We are done reading headers, disable header timeout */
+	prepare_write_timeout();
 
 	if (strcmp(bb_basename(urlcopy), HTTPD_CONF) == 0) {
 		/* protect listing [/path]/httpd.conf or IP deny */
@@ -3003,6 +3026,15 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 	parse_conf(DEFAULT_PATH_HTTPD_CONF, FIRST_PARSE);
+
+	/* If CGI dies, we still want to correctly finish reading its output
+	 * and send it to the peer. So please no SIGPIPEs! */
+	signal(SIGPIPE, SIG_IGN);
+	/* If a _local_ simple file download (not CGI) from local httpd
+	 * is aborted, you also can get SIGPIPE.
+	 * Disabling it converts SIGPIPE into EPIPE error from sendfile/write.
+	 * We handle that correctly. Hopefully. Maybe.
+	 */
 
 	xfunc_error_retval = 0;
 	if (opt & OPT_INETD)
