@@ -2679,7 +2679,7 @@ static int throttle_if_conn_limit(void)
 			bb_error_msg("pausing, children:%u", c);
 			//bb_error_msg("pausing %ums, children:%u", usec/1000, c);
 			usleep(usec);
-			usec = ((usec << 1) | 1) & 0x1fffff; /* x2, up to 2.097151 seconds */
+			usec = ((usec << 1) + 1) & 0x1fffff; /* x2, up to 2.097151 seconds */
 			continue; /* loop: count them again */
 		}
 		if (VERBOSE_3) /* -vvv periodically shows # of children */

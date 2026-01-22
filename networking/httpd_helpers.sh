@@ -25,5 +25,7 @@ httpd_ssi.c -o httpd_ssi && strip httpd_ssi
 
 ${PREFIX}gcc \
 ${OPTS} \
--Wl,-Map -Wl,httpd_ssi.map \
+-Wl,-Map -Wl,httpd_ratelimit_cgi.map \
 httpd_ratelimit_cgi.c -o httpd_ratelimit_cgi && strip httpd_ratelimit_cgi
+
+size index.cgi httpd_ssi httpd_ratelimit_cgi
