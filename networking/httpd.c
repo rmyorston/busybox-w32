@@ -1521,7 +1521,8 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 				 * CGI may output a few first bytes and then wait
 				 * for POSTDATA without closing stdout.
 				 * With full_read we may wait here forever. */
-				count = safe_read(fromCgi_rd, iobuf + out_cnt, IOBUF_SIZE);
+				count = safe_read(fromCgi_rd, iobuf + out_cnt, IOBUF_SIZE - 8);
+// "- 8" is important, out_cnt can be up to 7
 				if (count <= 0) {
 					/* EOF (or error, and out_cnt=0..7
 					 * send "HTTP/1.1 200 OK\r\n", then send received 0..7 bytes */
@@ -1534,19 +1535,21 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 				if (out_cnt >= 8) {
 //FIXME: "Status: " is not required to be the first header! It can be anywhere!
 //FIXME: many servers also check "Location: ". If it exists but "Status: " does _not_, "302 Found" is assumed instead of "200 OK".
+					uint64_t str8 = *(uint64_t*)iobuf;
 					/* "Status" header format is: "Status: 302 Redirected\r\n" */
 					//if (memcmp(iobuf, "Status: ", 8) == 0)
-					if (*(uint64_t*)iobuf == PACK64_LITERAL_STR("Status: ")) {
-						/* send "HTTP/1.1 " */
-						if (full_write(STDOUT_FILENO, HTTP_200, 9) != 9)
-							break;
-						/* skip "Status: " (including space, sending "HTTP/1.1  NNN" is wrong) */
-						out_cnt -= 8;
-						memmove(iobuf, iobuf + 8, out_cnt);
+					if (str8 == PACK64_LITERAL_STR("Status: ")) {
+						/* Replace "Status: " */
+						/* with    "HTTP/1.1 " */
+						memmove(iobuf + 1, iobuf, out_cnt);
+						out_cnt += 1;
+						memcpy(iobuf, HTTP_200, 9);
 					}
 //NB: Apache has no such autodetection. It always adds its own HTTP/1.x header,
 //unless the CGI name starts with "nph-", in which case it passes its output verbatim to network.
-					else if (memcmp(iobuf, HTTP_200, 8) != 0) { /* Did CGI send "HTTP/1.1"? */
+					else /* Did CGI send "HTTP/1.1"? */
+					//if (memcmp(iobuf, HTTP_200, 8) != 0)
+					if (str8 == PACK64_LITERAL_STR(HTTP_200)) {
  write_HTTP_200_OK:
 						/* no, send "HTTP/1.1 200 OK\r\n" ourself */
 						if (full_write(STDOUT_FILENO, HTTP_200, sizeof(HTTP_200)-1) != sizeof(HTTP_200)-1)
@@ -2475,7 +2478,7 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 
 	/* Log it */
 	if (VERBOSE_2)
-		bb_error_msg("url:%s", urlcopy);
+		bb_error_msg("%s %s", prequest, urlcopy);
 
 	tptr = urlcopy;
 	while ((tptr = strchr(tptr + 1, '/')) != NULL) {
