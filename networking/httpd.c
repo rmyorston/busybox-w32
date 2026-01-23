@@ -1536,6 +1536,8 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 //FIXME: "Status: " is not required to be the first header! It can be anywhere!
 //FIXME: many servers also check "Location: ". If it exists but "Status: " does _not_, "302 Found" is assumed instead of "200 OK".
 					uint64_t str8 = *(uint64_t*)iobuf;
+					//bb_error_msg("from cgi:'%.*s'", out_cnt, iobuf);
+
 					/* "Status" header format is: "Status: 302 Redirected\r\n" */
 					//if (memcmp(iobuf, "Status: ", 8) == 0)
 					if (str8 == PACK64_LITERAL_STR("Status: ")) {
@@ -1549,7 +1551,7 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 //unless the CGI name starts with "nph-", in which case it passes its output verbatim to network.
 					else /* Did CGI send "HTTP/1.1"? */
 					//if (memcmp(iobuf, HTTP_200, 8) != 0)
-					if (str8 == PACK64_LITERAL_STR(HTTP_200)) {
+					if (str8 != PACK64_LITERAL_STR(HTTP_200)) {
  write_HTTP_200_OK:
 						/* no, send "HTTP/1.1 200 OK\r\n" ourself */
 						if (full_write(STDOUT_FILENO, HTTP_200, sizeof(HTTP_200)-1) != sizeof(HTTP_200)-1)
