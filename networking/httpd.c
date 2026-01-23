@@ -309,6 +309,12 @@
  *
  * TODO:
  * - do not allow all MAXCONN connections be taken up by the same remote IP.
+ * - CGI I/O loop lacks full timeout protection (may be abused by slow POST client?),
+ *   see cgi_io_loop_and_exit()
+ * - sanity: add a limit how big POSTDATA can be? (-P 1024: "megabyte+ of POSTDATA is insanity")
+ *   currently we only do: if (POST_length > INT_MAX) HTTP_BAD_REQUEST
+ * - sanity: kill CGIs which are obviously stuck? (-K 60: "if CGI isn't done in 1 minute, it's fishy. SIGTERM+SIGKILL")
+ * - sanity: measure CGI memory consumption (how?), kill when way too big?
  */
 #define HEADER_READ_TIMEOUT 30
 #define DATA_WRITE_TIMEOUT  60
@@ -1091,7 +1097,7 @@ static void log_and_exit(void)
 {
 	if (VERBOSE_3)
 		bb_simple_error_msg("closed");
-	_exit(xfunc_error_retval);
+	_exit_SUCCESS();
 }
 static void send_EOF_and_exit(void) NORETURN;
 static void send_EOF_and_exit(void)
@@ -1440,7 +1446,12 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 		}
 
 		/* Now wait on the set of sockets */
+		/* Poll whether TO_CGI is ready to accept writes *only* if we have some POSTDATA to give to it */
 		count = safe_poll(pfd, hdr_cnt > 0 ? TO_CGI+1 : FROM_CGI+1, -1);
+//FIXME:do not allow the client to stall POSTDATA:
+//the timeout must not be infinite, should be similar to DATA_WRITE_TIMEOUT
+//("give some data at least once a minute", better "give >=N bytes once minute")
+
 		if (count <= 0) {
 #if 0 /* This doesn't work since we SIG_IGNed SIGCHLD (which means kernel auto-reaps our children) */
 			if (VERBOSE_3) {
@@ -1479,15 +1490,15 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 		if (pfd[0].revents) {
 			/* post_len > 0 && hdr_cnt == 0 here */
 			/* We expect data, prev data portion is eaten by CGI
-			 * and there *is* data to read from the peer
-			 * (POSTDATA) */
+			 * and there *is* POSTDATA to read from the peer
+			 */
 			//count = post_len > (int)sizeof_hdr_buf ? (int)sizeof_hdr_buf : post_len;
 			//count = safe_read(STDIN_FILENO, hdr_buf, count);
 			count = safe_read(STDIN_FILENO, hdr_buf, sizeof_hdr_buf);
 			if (count > 0) {
 				hdr_cnt = count;
 				hdr_ptr = hdr_buf;
-				post_len -= count;
+				post_len -= count; /* can go negative (peer wrote more than expected POSTDATA) */
 			} else {
 				/* no more POST data can be read */
 				post_len = 0;
@@ -1498,34 +1509,34 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 			/* There is something to read from CGI */
 			char *rbuf = iobuf;
 
-			/* Are we still buffering CGI output? */
+			/* Still buffering CGI output? */
 			if (out_cnt >= 0) {
 				/* HTTP_200[] has single "\r\n" at the end.
 				 * According to http://hoohoo.ncsa.uiuc.edu/cgi/out.html,
 				 * CGI scripts MUST send their own header terminated by
 				 * empty line, then data. That's why we have only one
 				 * <cr><lf> pair here. We will output "200 OK" line
-				 * if needed, but CGI still has to provide blank line
+				 * if needed, but CGI still has to provide the blank line
 				 * between header and body */
 
 				/* Must use safe_read, not full_read, because
 				 * CGI may output a few first bytes and then wait
 				 * for POSTDATA without closing stdout.
 				 * With full_read we may wait here forever. */
-				count = safe_read(fromCgi_rd, rbuf + out_cnt, IOBUF_SIZE - 8);
+				count = safe_read(fromCgi_rd, rbuf + out_cnt, IOBUF_SIZE);
 				if (count <= 0) {
-					/* eof (or error) and there was no "HTTP",
-					 * send "HTTP/1.1 200 OK\r\n", then send received data */
-					if (out_cnt) {
-						full_write(STDOUT_FILENO, HTTP_200, sizeof(HTTP_200)-1);
-						full_write(STDOUT_FILENO, rbuf, out_cnt);
-					}
-					send_EOF_and_exit(); /* CGI stdout is closed, exiting */
+					/* eof (or error) and there was no "HTTP" (tiny 0..3 bytes output),
+					 * send "HTTP/1.1 200 OK\r\n", then send received 0..3 bytes */
+					goto write_HTTP_200_OK;
+					/* we'll read once more later, in "no longer buffering"
+					 * code path, get another EOF there and exit */
 				}
 				out_cnt += count;
 				count = 0;
 				/* "Status" header format is: "Status: 302 Redirected\r\n" */
 				if (out_cnt >= 8 && memcmp(rbuf, "Status: ", 8) == 0) {
+//FIXME: "Status: " is not required to be the first header! It can be anywhere!
+//FIXME: many servers also check "Location: ". If it exists but "Status: " does _not_, "302 Found" is assumed instead of "200 OK".
 					/* send "HTTP/1.1 " */
 					if (full_write(STDOUT_FILENO, HTTP_200, 9) != 9)
 						break;
@@ -1534,29 +1545,31 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 					count = out_cnt - 8;
 					out_cnt = -1; /* buffering off */
 				} else if (out_cnt >= 4) {
+//NB: Apache has no such autodetection. It always adds its own HTTP/ header,
+//unless the CGI name starts with "nph-", in which case it passes its output verbatim to network.
 					/* Did CGI add "HTTP"? */
 					if (memcmp(rbuf, HTTP_200, 4) != 0) {
-						/* there is no "HTTP", do it ourself */
+ write_HTTP_200_OK:
+						/* there is no "HTTP", send "HTTP/1.1 200 OK\r\n" ourself */
 						if (full_write(STDOUT_FILENO, HTTP_200, sizeof(HTTP_200)-1) != sizeof(HTTP_200)-1)
 							break;
 					}
-					/* Commented out:
-					if (!strstr(rbuf, "ontent-")) {
-						full_write(s, "Content-type: text/plain\r\n\r\n", 28);
-					}
-					 * Counter-example of valid CGI without Content-type:
+					/* Used to add "Content-type: text/plain\r\n\r\n" here if CGI didn't,
+					 * but it's wrong. Counter-example of valid CGI without Content-type:
 					 * echo -en "HTTP/1.1 302 Found\r\n"
 					 * echo -en "Location: http://www.busybox.net\r\n"
 					 * echo -en "\r\n"
 					 */
 					count = out_cnt;
 					out_cnt = -1; /* buffering off */
+					/* NB: we mishandle CGI writing "Stat","us..." in two separate writes */
 				}
 			} else {
 				count = safe_read(fromCgi_rd, rbuf, IOBUF_SIZE);
 				if (count <= 0)
 					send_EOF_and_exit();  /* eof (or error) */
 			}
+//FIXME: many (most?) servers translate bare "\n" to "\r\n", often only in the headers, not body (the part after empty line)
 			if (full_write(STDOUT_FILENO, rbuf, count) != count)
 				break;
 			dbg("cgi read %d bytes: '%.*s'\n", count, count, rbuf);
@@ -1697,8 +1710,6 @@ static void send_cgi_and_exit(
 		/* Child process */
 		char *argv[3];
 
-		xfunc_error_retval = 242;
-
 		/* NB: close _first_, then move fds! */
 		close(toCgi.wr);
 		close(fromCgi.rd);
@@ -1767,9 +1778,6 @@ static void send_cgi_and_exit(
 	} /* end child */
 
 	/* Parent process */
-
-	/* Restore variables possibly changed by child */
-	xfunc_error_retval = 0;
 
 	/* Pump data */
 	close(fromCgi.wr);
@@ -2239,7 +2247,7 @@ static void send_REQUEST_TIMEOUT_and_exit(int sig UNUSED_PARAM)
 //	/* writing timed out: exit without writing anything */
 //	if (VERBOSE_3)
 //		bb_simple_error_msg("write timeout");
-//	_exit(xfunc_error_retval);
+//	_exit_SUCCESS();
 }
 
 static void prepare_write_timeout(void)
@@ -2334,7 +2342,7 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 		 * just close the socket.
 		 */
 		//send_headers_and_exit(HTTP_BAD_REQUEST);
-		_exit(xfunc_error_retval);
+		_exit_SUCCESS();
 	}
 	dbg("Request:'%s'\n", iobuf);
 
