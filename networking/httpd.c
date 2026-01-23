@@ -537,7 +537,7 @@ struct globals {
 #if ENABLE_FEATURE_HTTPD_PROXY
 	Htaccess_Proxy *proxy;
 #endif
-	char iobuf[IOBUF_SIZE];
+	char iobuf[IOBUF_SIZE] ALIGN8;
 };
 #define G (*ptr_to_globals)
 #define verbose           (G.verbose          )
@@ -1425,7 +1425,7 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 		/*pfd[FROM_CGI].events = POLLIN; - moved out of loop */
 		/*pfd[FROM_CGI].revents = 0; - not needed */
 
-		/* gcc-4.8.0 still doesnt fill two shorts with one insn :( */
+		/* gcc-4.8.0 still doesn't fill two shorts with one insn :( */
 		/* http://gcc.gnu.org/bugzilla/show_bug.cgi?id=47059 */
 		/* hopefully one day it will... */
 		pfd[TO_CGI].events = POLLOUT;
@@ -1507,8 +1507,6 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 
 		if (pfd[FROM_CGI].revents) {
 			/* There is something to read from CGI */
-			char *rbuf = iobuf;
-
 			/* Still buffering CGI output? */
 			if (out_cnt >= 0) {
 				/* HTTP_200[] has single "\r\n" at the end.
@@ -1523,34 +1521,34 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 				 * CGI may output a few first bytes and then wait
 				 * for POSTDATA without closing stdout.
 				 * With full_read we may wait here forever. */
-				count = safe_read(fromCgi_rd, rbuf + out_cnt, IOBUF_SIZE);
+				count = safe_read(fromCgi_rd, iobuf + out_cnt, IOBUF_SIZE);
 				if (count <= 0) {
-					/* eof (or error) and there was no "HTTP" (tiny 0..3 bytes output),
-					 * send "HTTP/1.1 200 OK\r\n", then send received 0..3 bytes */
+					/* EOF (or error, and out_cnt=0..7
+					 * send "HTTP/1.1 200 OK\r\n", then send received 0..7 bytes */
 					goto write_HTTP_200_OK;
 					/* we'll read once more later, in "no longer buffering"
 					 * code path, get another EOF there and exit */
 				}
 				out_cnt += count;
 				count = 0;
-				/* "Status" header format is: "Status: 302 Redirected\r\n" */
-				if (out_cnt >= 8 && memcmp(rbuf, "Status: ", 8) == 0) {
+				if (out_cnt >= 8) {
 //FIXME: "Status: " is not required to be the first header! It can be anywhere!
 //FIXME: many servers also check "Location: ". If it exists but "Status: " does _not_, "302 Found" is assumed instead of "200 OK".
-					/* send "HTTP/1.1 " */
-					if (full_write(STDOUT_FILENO, HTTP_200, 9) != 9)
-						break;
-					/* skip "Status: " (including space, sending "HTTP/1.1  NNN" is wrong) */
-					rbuf += 8;
-					count = out_cnt - 8;
-					out_cnt = -1; /* buffering off */
-				} else if (out_cnt >= 4) {
-//NB: Apache has no such autodetection. It always adds its own HTTP/ header,
+					/* "Status" header format is: "Status: 302 Redirected\r\n" */
+					//if (memcmp(iobuf, "Status: ", 8) == 0)
+					if (*(uint64_t*)iobuf == PACK64_LITERAL_STR("Status: ")) {
+						/* send "HTTP/1.1 " */
+						if (full_write(STDOUT_FILENO, HTTP_200, 9) != 9)
+							break;
+						/* skip "Status: " (including space, sending "HTTP/1.1  NNN" is wrong) */
+						out_cnt -= 8;
+						memmove(iobuf, iobuf + 8, out_cnt);
+					}
+//NB: Apache has no such autodetection. It always adds its own HTTP/1.x header,
 //unless the CGI name starts with "nph-", in which case it passes its output verbatim to network.
-					/* Did CGI add "HTTP"? */
-					if (memcmp(rbuf, HTTP_200, 4) != 0) {
+					else if (memcmp(iobuf, HTTP_200, 8) != 0) { /* Did CGI send "HTTP/1.1"? */
  write_HTTP_200_OK:
-						/* there is no "HTTP", send "HTTP/1.1 200 OK\r\n" ourself */
+						/* no, send "HTTP/1.1 200 OK\r\n" ourself */
 						if (full_write(STDOUT_FILENO, HTTP_200, sizeof(HTTP_200)-1) != sizeof(HTTP_200)-1)
 							break;
 					}
@@ -1562,17 +1560,16 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr, int post
 					 */
 					count = out_cnt;
 					out_cnt = -1; /* buffering off */
-					/* NB: we mishandle CGI writing "Stat","us..." in two separate writes */
 				}
 			} else {
-				count = safe_read(fromCgi_rd, rbuf, IOBUF_SIZE);
+				count = safe_read(fromCgi_rd, iobuf, IOBUF_SIZE);
 				if (count <= 0)
-					send_EOF_and_exit();  /* eof (or error) */
+					send_EOF_and_exit();  /* EOF (or error) */
 			}
-//FIXME: many (most?) servers translate bare "\n" to "\r\n", often only in the headers, not body (the part after empty line)
-			if (full_write(STDOUT_FILENO, rbuf, count) != count)
+//FIXME: many (most?) servers translate bare "\n" to "\r\n", only in the headers, not body (the part after empty line)
+			if (full_write(STDOUT_FILENO, iobuf, count) != count)
 				break;
-			dbg("cgi read %d bytes: '%.*s'\n", count, count, rbuf);
+			dbg("cgi read %d bytes: '%.*s'\n", count, count, iobuf);
 		} /* if (pfd[FROM_CGI].revents) */
 	} /* while (1) */
 	log_and_exit();
@@ -2948,7 +2945,12 @@ int httpd_main(int argc UNUSED_PARAM, char **argv)
 	IF_FEATURE_HTTPD_SETUID(const char *s_ugid = NULL;)
 	IF_FEATURE_HTTPD_SETUID(struct bb_uidgid_t ugid;)
 	IF_FEATURE_HTTPD_AUTH_MD5(const char *pass;)
-
+#if 0 // PACK64_LITERAL_STR test
+	char testing[16] = "Status: ";
+	printf("0x%08llx\n", PACK64_LITERAL_STR("Status: "));
+	printf("0x%08llx\n", *(uint64_t*)testing);
+	exit(1);
+#endif
 	INIT_G();
 
 #if ENABLE_LOCALE_SUPPORT
