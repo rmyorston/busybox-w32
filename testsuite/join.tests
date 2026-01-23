@@ -7,9 +7,39 @@
 
 # testing "description" "command" "result" "infile" "stdin"
 
+testing "join common lines and unpaired from first file" \
+	"join -a 1 input -" \
+	"a 1 A\nb 2\n" "a 1\nb 2\n" "a A\nc C\n"
+
+testing "join common lines and unpaired from second file" \
+	"join -a 2 input -" \
+	"a 1 A\nc C\n" "a 1\nb 2\n" "a A\nc C\n"
+
+testing "join paired and unpaired lines from both files (union)" \
+	"join -a 1 -a 2 input -" \
+	"a 1 A\nb 2\nc C\n" "a 1\nb 2\n" "a A\nc C\n"
+
+testing "join unpaired lines from first file (difference)" \
+	"join -v 1 input -" \
+	"b 2\n" "a 1\nb 2\n" "a A\nc C\n"
+
+testing "join unpaired lines from second file (difference)" \
+	"join -v 2 input -" \
+	"c C\n" "a 1\nb 2\n" "a A\nc C\n"
+
+testing "join unpaired lines from both file (symmetric difference)" \
+	"join -v 1 -v 2 input -" \
+	"b 2\nc C\n" "a 1\nb 2\n" "a A\nc C\n"
+
 testing "join duplicate keys give combinatorial results" "join input -" \
 	"a b c w x\na b c y z\na b c o p\na d e w x\na d e y z\na d e o p\n" \
 	"a b c\na d e\n" \
 	"a w x\na y z\na o p\n"
+
+testing "join -o for fields to print, -e for empty fields" \
+	"join -a 1 -a 2 -e --- -o 0,1.2,2.2 input -" \
+	"a 123 abc\nb 456 ---\nc 789 def\nd --- ghi\n" \
+	"a 123\nb 456\nc 789\n" \
+	"a abc\nc def\nd ghi\n"
 
 exit $FAILCOUNT
