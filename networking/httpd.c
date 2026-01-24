@@ -512,9 +512,6 @@ struct globals {
 	Htaccess_IP *ip_a_d;    /* config allow/deny lines */
 #endif
 
-	IF_FEATURE_HTTPD_BASIC_AUTH(const char *g_realm;)
-	IF_FEATURE_HTTPD_BASIC_AUTH(char *remoteuser;)
-
 	pid_t parent_pid;
 	int children_fd;
 	int conn_limit;
@@ -527,14 +524,14 @@ struct globals {
 #endif
 
 #if ENABLE_FEATURE_HTTPD_BASIC_AUTH
+	const char *g_realm;
+	char *remoteuser;
 	Htaccess *g_auth;       /* config user:password lines */
 #endif
 	Htaccess *mime_a;       /* config mime types */
 #if ENABLE_FEATURE_HTTPD_CONFIG_WITH_SCRIPT_INTERPR
 	Htaccess *script_i;     /* config script interpreters */
 #endif
-#define        hdr_buf bb_common_bufsiz1
-#define sizeof_hdr_buf COMMON_BUFSIZE
 	char *hdr_ptr;
 	int hdr_cnt;
 #if ENABLE_FEATURE_HTTPD_CGI || ENABLE_FEATURE_HTTPD_PROXY
@@ -544,9 +541,6 @@ struct globals {
 	unsigned cgi_kill_timeout;
 	pid_t cgi_pid;
 #endif
-#if ENABLE_FEATURE_HTTPD_ETAG
-	char etag[sizeof("'%llx-%llx'") + 2 * sizeof(long long)*3];
-#endif
 #if ENABLE_FEATURE_HTTPD_ERROR_PAGES
 	const char *http_error_page[ARRAY_SIZE(http_response_type)];
 #endif
@@ -554,6 +548,16 @@ struct globals {
 	Htaccess_Proxy *proxy;
 #endif
 	char iobuf[IOBUF_SIZE] ALIGN8;
+
+/* We also use the common buffer as a global buffer:
+ * = as input buffer for request line, headers, and POSTDATA
+ * = when retrieving ordinary file (not CGI, proxy, etc), we generate and store file's etag
+ */
+#define        hdr_buf bb_common_bufsiz1
+#define sizeof_hdr_buf COMMON_BUFSIZE
+#if ENABLE_FEATURE_HTTPD_ETAG
+#define        etag    bb_common_bufsiz1
+#endif
 };
 #define G (*OFFSET_PTR_TO_GLOBALS)
 #define verbose           (G.verbose          )
@@ -1300,7 +1304,7 @@ static void send_headers(unsigned responseNum)
 				date_str,
 #endif
 #if ENABLE_FEATURE_HTTPD_ETAG
-				G.etag,
+				etag,
 #endif
 				file_size
 		);
@@ -1712,19 +1716,19 @@ static void send_cgi_and_exit(
 		setenv1("REMOTE_ADDR", p);
 		if (cp) {
 			*cp = ':';
-#if ENABLE_FEATURE_HTTPD_SET_REMOTE_PORT_TO_ENV
+# if ENABLE_FEATURE_HTTPD_SET_REMOTE_PORT_TO_ENV
 			setenv1("REMOTE_PORT", cp + 1);
-#endif
+# endif
 		}
 	}
 	if (G.POST_len > 0)
 		putenv(xasprintf("CONTENT_LENGTH=%u", G.POST_len));
-#if ENABLE_FEATURE_HTTPD_BASIC_AUTH
+# if ENABLE_FEATURE_HTTPD_BASIC_AUTH
 	if (remoteuser) {
 		setenv1("REMOTE_USER", remoteuser);
 		putenv((char*)"AUTH_TYPE=Basic");
 	}
-#endif
+# endif
 	/* setenv1("SERVER_NAME", safe_gethostname()); - don't do this,
 	 * just run "env SERVER_NAME=xyz httpd ..." instead */
 
@@ -1768,7 +1772,7 @@ static void send_cgi_and_exit(
 		argv[0] = script;
 		argv[1] = NULL;
 
-#if ENABLE_FEATURE_HTTPD_CONFIG_WITH_SCRIPT_INTERPR
+# if ENABLE_FEATURE_HTTPD_CONFIG_WITH_SCRIPT_INTERPR
 		{
 			char *suffix = strrchr(script, '.');
 
@@ -1785,7 +1789,7 @@ static void send_cgi_and_exit(
 				}
 			}
 		}
-#endif
+# endif
 		if (VERBOSE_2)
 			bb_error_msg("exec:%s"IF_FEATURE_HTTPD_CONFIG_WITH_SCRIPT_INTERPR(" %s"),
 				argv[0]
@@ -1870,13 +1874,13 @@ static NOINLINE void send_file_and_exit(const char *url, int what)
 	}
 #if ENABLE_FEATURE_HTTPD_ETAG
 	/* ETag is "hex(last_mod)-hex(file_size)" e.g. "5e132e20-417" */
-	sprintf(G.etag, "\"%llx-%llx\"", (unsigned long long)last_mod, (unsigned long long)file_size);
+	sprintf(etag, "\"%llx-%llx\"", (unsigned long long)last_mod, (unsigned long long)file_size);
 
 	if (G.if_none_match) {
-		dbg("If-None-Match:'%s' file's ETag:'%s'\n", G.if_none_match, G.etag);
+		dbg("If-None-Match:'%s' file's ETag:'%s'\n", G.if_none_match, etag);
 		/* Weak ETag comparision.
 		 * If-None-Match may have many ETags but they are quoted so we can use simple substring search */
-		if (strstr(G.if_none_match, G.etag))
+		if (strstr(G.if_none_match, etag))
 			send_headers_and_exit(HTTP_NOT_MODIFIED);
 	}
 #endif
