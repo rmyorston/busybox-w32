@@ -484,7 +484,6 @@ static const struct {
 };
 
 struct globals {
-	int verbose;            /* must be int (used by getopt32) */
 	smallint flg_deny_all;
 #if ENABLE_FEATURE_HTTPD_GZIP
 	/* client can handle gzip / we are going to send gzip */
@@ -494,6 +493,7 @@ struct globals {
 #if ENABLE_FEATURE_HTTPD_CGI
 	smallint cgi_output;
 #endif
+	int verbose;            /* must be int (used by getopt32) */
 	time_t last_mod;
 #if ENABLE_FEATURE_HTTPD_ETAG
 	char *if_none_match;
@@ -555,7 +555,7 @@ struct globals {
 #endif
 	char iobuf[IOBUF_SIZE] ALIGN8;
 };
-#define G (*ptr_to_globals)
+#define G (*OFFSET_PTR_TO_GLOBALS)
 #define verbose           (G.verbose          )
 #define flg_deny_all      (G.flg_deny_all     )
 #if ENABLE_FEATURE_HTTPD_GZIP
@@ -598,7 +598,7 @@ enum {
 #define iobuf             (G.iobuf            )
 #define INIT_G() do { \
 	setup_common_bufsiz(); \
-	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
+	SET_OFFSET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
 	IF_FEATURE_HTTPD_BASIC_AUTH(g_realm = "Web Server Authentication";) \
 	IF_FEATURE_HTTPD_RANGES(range_start = -1;) \
 	bind_addr_or_port = STR(CONFIG_FEATURE_HTTPD_PORT_DEFAULT); \

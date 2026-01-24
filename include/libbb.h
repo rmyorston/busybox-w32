@@ -457,6 +457,11 @@ void *xmmap_anon(size_t size) FAST_FUNC;
 //sparc64,alpha,openrisc: fixed 8k pages
 #endif
 
+#if defined(__x86_64__) || defined(i386)
+/* 0x7f would be better, but it causes alignment problems */
+# define ARCH_GLOBAL_PTR_OFF 0x80
+#endif
+
 #if defined BB_ARCH_FIXED_PAGESIZE
 # define IF_VARIABLE_ARCH_PAGESIZE(...) /*nothing*/
 # define bb_getpagesize()     BB_ARCH_FIXED_PAGESIZE
@@ -2422,6 +2427,16 @@ void XZALLOC_CONST_PTR(const void *pptr, size_t size) FAST_FUNC;
 		free(ptr_to_globals); \
 	} \
 } while (0)
+
+#if defined(ARCH_GLOBAL_PTR_OFF)
+# define SET_OFFSET_PTR_TO_GLOBALS(x) \
+	ASSIGN_CONST_PTR(&ptr_to_globals, (char*)(x) + ARCH_GLOBAL_PTR_OFF)
+# define OFFSET_PTR_TO_GLOBALS \
+	((struct globals*)((char*)ptr_to_globals - ARCH_GLOBAL_PTR_OFF))
+#else
+# define SET_OFFSET_PTR_TO_GLOBALS(x) SET_PTR_TO_GLOBALS(x)
+# define OFFSET_PTR_TO_GLOBALS ptr_to_globals
+#endif
 
 
 /* You can change LIBBB_DEFAULT_LOGIN_SHELL, but don't use it,
