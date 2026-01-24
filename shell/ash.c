@@ -201,6 +201,10 @@
 #include <sys/times.h>
 #include <sys/utsname.h> /* for setting $HOSTNAME */
 #include "busybox.h" /* for applet_names */
+/* smaller code: avoid linking killpg() from libc */
+#undef  killpg
+#define killpg(pgrp,sig) kill(-(pgrp),sig)
+
 #if ENABLE_FEATURE_SH_EMBEDDED_SCRIPTS
 # include "embedded_scripts.h"
 #else
