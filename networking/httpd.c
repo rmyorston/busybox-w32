@@ -319,6 +319,9 @@
  * - sanity: add a limit how big POSTDATA can be? (-P 1024: "megabyte+ of POSTDATA is insanity")
  *   currently we only do: if (POST_length > INT_MAX) HTTP_BAD_REQUEST
  * - sanity: measure CGI memory consumption (how?), kill when way too big?
+ * - set SO_LINGER {1,0} when aborting a download, this forces RST rather than FIN
+ *   connection termination ("Connection reset by peer" read error on the other end).
+ *   Thus, they can detect that the download is incomplete.
  */
 #define HEADER_READ_TIMEOUT 30
 #define DATA_WRITE_TIMEOUT  60
