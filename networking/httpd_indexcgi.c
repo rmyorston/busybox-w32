@@ -71,6 +71,19 @@ struct linux_dirent64 {
 	char           d_name[];
 };
 
+static void full_write(int fd, const void *buf, size_t len)
+{
+	ssize_t cc;
+
+	while (len) {
+		cc = write(fd, buf, len);
+		if (cc < 0)
+			return;
+		buf = ((const char *)buf) + cc;
+		len -= cc;
+	}
+}
+
 /* Appearance of the table is controlled by style sheet *ONLY*,
  * formatting code uses <TAG class=CLASS> to apply style
  * to elements. Edit stylesheet to your liking and recompile. */
@@ -144,7 +157,6 @@ enum {
 	BUFFER_SIZE = 8 * 1024*1024,
 //one dirent is typically <= 100 bytes, 1M is enough for ~10k files
 //FIXME: change code to *iterate* getdents64 if need to support giant file lists
-	HEADROOM = 64,
 };
 
 static char *buffer;
@@ -168,33 +180,19 @@ static char *dst;
 # define RETURN_DST return dst
 #endif
 
-/* After this call, you have at least size + HEADROOM bytes available
- * ahead of dst */
-static CHARP guarantee(CHARP_DST int size)
-{
-	if (buffer + (BUFFER_SIZE-HEADROOM) - dst < size) {
-		write(STDOUT_FILENO, buffer, dst - buffer);
-		dst = buffer;
-	}
-	RETURN_DST;
-}
-
 /* NB: formatters do not store terminating NUL! */
 
 static CHARP fmt_str(CHARP_DST const char *src)
 {
 	unsigned len = strlen(src);
-	SET_DST guarantee(DST len);
 	dst = mempcpy(dst, src, len);
 	RETURN_DST;
 }
 
-/* HEADROOM bytes after dst are available after this call */
 static CHARP fmt_url(CHARP_DST const char *name)
 {
 	while (*name) {
 		unsigned c = (unsigned char)*name++;
-		SET_DST guarantee(DST 3);
 		if ((c - '0') > 9 /* not a digit */
 		 && ((c|0x20) - 'a') > ('z' - 'a') /* not A-Z or a-z */
 		 && !strchr("._-+@", c)
@@ -208,7 +206,6 @@ static CHARP fmt_url(CHARP_DST const char *name)
 	RETURN_DST;
 }
 
-/* HEADROOM bytes are available after dst after this call */
 static CHARP fmt_html(CHARP_DST const char *name)
 {
 	while (*name) {
@@ -220,7 +217,6 @@ static CHARP fmt_html(CHARP_DST const char *name)
 		else if (c == '&') {
 			SET_DST fmt_str(DST "&amp;");
 		} else {
-			SET_DST guarantee(DST 1);
 			*dst++ = c;
 			continue;
 		}
@@ -244,7 +240,6 @@ static CHARP fmt_ull(CHARP_DST unsigned long long n)
 	RETURN_DST;
 }
 
-/* Does not call guarantee - eats into headroom instead */
 static CHARP fmt_02u(CHARP_DST unsigned n)
 {
 	/* n %= 100; - not needed, callers don't pass big n */
@@ -254,7 +249,6 @@ static CHARP fmt_02u(CHARP_DST unsigned n)
 	RETURN_DST;
 }
 
-/* Does not call guarantee - eats into headroom instead */
 static CHARP fmt_04u(CHARP_DST unsigned n)
 {
 	/* n %= 10000; - not needed, callers don't pass big n */
@@ -401,7 +395,7 @@ int main(int argc, char **argv)
 			SET_DST fmt_ull(DST cdir->D_SIZE);
 		SET_DST fmt_str(DST "<td class=dt>");
 		if (sizeof(cdir->D_MTIME) == sizeof(tt))
-			ptm = gmtime(&cdir->D_MTIME);
+			ptm = gmtime((time_t*)&cdir->D_MTIME);
 		else {
 			tt = cdir->D_MTIME;
 			ptm = gmtime(&tt);
@@ -413,6 +407,12 @@ int main(int argc, char **argv)
 		SET_DST fmt_02u(DST ptm->tm_min); *dst++ = ':';
 		SET_DST fmt_02u(DST ptm->tm_sec);
 		*dst++ = '\n';
+
+		/* Flush after every 256 files (typically around 50k of output) */
+		if ((dir_list_count & 0xff) == 0) {
+			full_write(STDOUT_FILENO, buffer, dst - buffer);
+			dst = buffer;
+		}
 	}
 
 	SET_DST fmt_str(DST "<tr class=foot><th class=cnt>Files: ");
@@ -424,7 +424,8 @@ int main(int argc, char **argv)
 	SET_DST fmt_ull(DST size_total);
 	SET_DST fmt_str(DST "<th class=dt>\n");
 	/* "</table></body></html>" - why bother? */
-	SET_DST guarantee(DST BUFFER_SIZE * 2); /* flush */
+
+	full_write(STDOUT_FILENO, buffer, dst - buffer);
 
 	return 0;
     }
