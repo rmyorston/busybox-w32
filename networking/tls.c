@@ -440,6 +440,7 @@ static void prf_hmac_sha256(/*tls_state_t *tls,*/
 		/* A(2) = HMAC_hash(secret, A(1)) */
 		hmac_peek_hash(&ctx, a, A, NULL);
 	}
+	hmac_uninit(&ctx);
 #undef A
 #undef SECRET
 #undef SEED

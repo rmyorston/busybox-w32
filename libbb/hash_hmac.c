@@ -91,34 +91,65 @@ void FAST_FUNC hmac_hash_v(
 	}
 }
 #else
+
+// Clones an HMAC context from src to dst
+static void hmac_clone(hmac_ctx_t *src, hmac_ctx_t *dst) {
+	DWORD hash_object_length = 0;
+	ULONG _unused;
+	NTSTATUS status;
+
+	status = BCryptGetProperty(src->alg_handle, BCRYPT_OBJECT_LENGTH,
+			(PUCHAR)&hash_object_length, sizeof(DWORD), &_unused, 0);
+	mingw_die_if_error(status, "BCryptGetProperty");
+
+	dst->hash_ctx.hash_obj = xmalloc(hash_object_length);
+
+	status = BCryptDuplicateHash(src->hash_ctx.handle, &dst->hash_ctx.handle, dst->hash_ctx.hash_obj,
+				hash_object_length, 0);
+	mingw_die_if_error(status, "BCryptDuplicateHash");
+
+	dst->alg_handle = src->alg_handle;
+	dst->hash_ctx.output_size = src->hash_ctx.output_size;
+}
+
 void _hmac_begin(hmac_ctx_t *ctx, uint8_t *key, unsigned key_size,
 					BCRYPT_ALG_HANDLE alg_handle) {
 	DWORD hash_object_length = 0;
 	ULONG _unused;
 	NTSTATUS status;
 
+	ctx->alg_handle = alg_handle;
+
 	status = BCryptGetProperty(alg_handle, BCRYPT_OBJECT_LENGTH,
 				(PUCHAR)&hash_object_length, sizeof(DWORD), &_unused, 0);
 	mingw_die_if_error(status, "BCryptGetProperty");
 	status = BCryptGetProperty(alg_handle, BCRYPT_HASH_LENGTH,
-				(PUCHAR)&ctx->output_size, sizeof(DWORD), &_unused, 0);
+				(PUCHAR)&ctx->hash_ctx.output_size, sizeof(DWORD), &_unused, 0);
 	mingw_die_if_error(status, "BCryptGetProperty");
 
-	ctx->hash_obj = xmalloc(hash_object_length);
+	ctx->hash_ctx.hash_obj = xmalloc(hash_object_length);
 
-	status = BCryptCreateHash(alg_handle, &ctx->handle, ctx->hash_obj,
-				hash_object_length, key, key_size, BCRYPT_HASH_REUSABLE_FLAG);
+	status = BCryptCreateHash(alg_handle, &ctx->hash_ctx.handle, ctx->hash_ctx.hash_obj,
+				hash_object_length, key, key_size, 0);
 	mingw_die_if_error(status, "BCryptCreateHash");
+
+}
+
+void hmac_uninit(hmac_ctx_t *ctx) {
+	BCryptDestroyHash(ctx->hash_ctx.handle);
+	free(ctx->hash_ctx.hash_obj);
 }
 
 unsigned FAST_FUNC hmac_end(hmac_ctx_t *ctx, uint8_t *out)
 {
 	NTSTATUS status;
 
-	status = BCryptFinishHash(ctx->handle, out, ctx->output_size, 0);
+	status = BCryptFinishHash(ctx->hash_ctx.handle, out, ctx->hash_ctx.output_size, 0);
 	mingw_die_if_error(status, "BCryptFinishHash");
 
-	return ctx->output_size;
+	hmac_uninit(ctx);
+
+	return ctx->hash_ctx.output_size;
 }
 
 void FAST_FUNC hmac_hash_v(hmac_ctx_t *ctx, va_list va)
@@ -127,13 +158,8 @@ void FAST_FUNC hmac_hash_v(hmac_ctx_t *ctx, va_list va)
 
 	while ((in = va_arg(va, uint8_t*)) != NULL) {
 		unsigned size = va_arg(va, unsigned);
-		BCryptHashData(ctx->handle, in, size, 0);
+		BCryptHashData(ctx->hash_ctx.handle, in, size, 0);
 	}
-}
-
-void hmac_uninit(hmac_ctx_t *ctx) {
-	BCryptDestroyHash(ctx->handle);
-	free(ctx->hash_obj);
 }
 #endif
 
@@ -143,7 +169,12 @@ void hmac_uninit(hmac_ctx_t *ctx) {
  */
 unsigned hmac_peek_hash(hmac_ctx_t *ctx, uint8_t *out, ...)
 {
+#if !ENABLE_FEATURE_USE_CNG_API
 	hmac_ctx_t tmpctx = *ctx; /* struct copy */
+#else
+	hmac_ctx_t tmpctx;
+	hmac_clone(ctx, &tmpctx);
+#endif
 	va_list va;
 
 	va_start(va, out);
