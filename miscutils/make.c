@@ -2089,7 +2089,7 @@ run_command(const char *cmd)
 	pclose(fd);
 
 	if (val == NULL)
-		return NULL;
+		return val;
 
 	// Strip leading whitespace in POSIX 2024 mode
 	if (posix) {
@@ -2713,6 +2713,7 @@ docmds(struct name *np, struct cmd *cp)
 					exit(2);
 				}
 			}
+			target = NULL;
 		}
 		if (sdomake || dryrun)
 			estat = MAKE_DIDSOMETHING;
@@ -3504,7 +3505,7 @@ int make_main(int argc UNUSED_PARAM, char **argv)
 #endif
 		else
 			error("no makefile found");
-       goto read_makefile;
+		goto read_makefile;
 	}
 
 	while ((file = llist_pop(&makefiles))) {
