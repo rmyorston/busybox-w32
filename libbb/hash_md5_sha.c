@@ -17,18 +17,40 @@
 # include <windows.h>
 # include <bcrypt.h>
 
-// these work on Windows >= 10
-# define BCRYPT_MD5_ALG_HANDLE    ((BCRYPT_ALG_HANDLE) 0x00000021)
-# define BCRYPT_SHA1_ALG_HANDLE   ((BCRYPT_ALG_HANDLE) 0x00000031)
-# define BCRYPT_SHA256_ALG_HANDLE ((BCRYPT_ALG_HANDLE) 0x00000041)
-# define BCRYPT_SHA384_ALG_HANDLE ((BCRYPT_ALG_HANDLE) 0x00000051)
-# define BCRYPT_SHA512_ALG_HANDLE ((BCRYPT_ALG_HANDLE) 0x00000061)
+
+static wchar_t *alg_id_mappings[] = {
+	BCRYPT_MD5_ALGORITHM,
+	BCRYPT_SHA1_ALGORITHM,
+	BCRYPT_SHA256_ALGORITHM,
+	BCRYPT_SHA384_ALGORITHM,
+	BCRYPT_SHA512_ALGORITHM
+};
+
+static BCRYPT_ALG_HANDLE algorithm_provider_cache[5] = { INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE };
+static BCRYPT_ALG_HANDLE algorithm_provider_hmac_cache[5] = { INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE };
+
+/*
+ * Requests an algorithm handle from the store,
+ * or creates it if it does not exist.
+ */
+
+BCRYPT_ALG_HANDLE get_alg_handle(enum cng_algorithm_identifier algorithm_identifier, bool hmac) {
+	BCRYPT_ALG_HANDLE *cache = hmac ? algorithm_provider_hmac_cache : algorithm_provider_cache;
+
+	if (cache[algorithm_identifier] != INVALID_HANDLE_VALUE) {
+		return cache[algorithm_identifier];
+	}
+	NTSTATUS status = BCryptOpenAlgorithmProvider(&cache[algorithm_identifier], alg_id_mappings[algorithm_identifier], NULL, hmac ? BCRYPT_ALG_HANDLE_HMAC_FLAG : 0);
+	mingw_die_if_error(status, "BCryptOpenAlgorithmProvider");
+
+	return cache[algorithm_identifier];
+}
 
 /* Initialize structure containing state of computation.
  * (RFC 1321, 3.3: Step 3)
  */
 
-static void generic_init(struct bcrypt_hash_ctx_t *ctx, BCRYPT_ALG_HANDLE alg_handle) {
+static void generic_init(bcrypt_hash_ctx_t *ctx, BCRYPT_ALG_HANDLE alg_handle) {
 	DWORD hash_object_length = 0;
 	ULONG _unused;
 	NTSTATUS status;
@@ -47,19 +69,19 @@ static void generic_init(struct bcrypt_hash_ctx_t *ctx, BCRYPT_ALG_HANDLE alg_ha
 
 void FAST_FUNC md5_begin(md5_ctx_t *ctx)
 {
-	generic_init(ctx, BCRYPT_MD5_ALG_HANDLE);
+	generic_init(ctx, get_alg_handle(CNG_ALG_ID_MD5, false));
 }
 
 void FAST_FUNC sha1_begin(sha1_ctx_t *ctx)
 {
-	generic_init(ctx, BCRYPT_SHA1_ALG_HANDLE);
+	generic_init(ctx, get_alg_handle(CNG_ALG_ID_SHA1, false));
 }
 
 /* Initialize structure containing state of computation.
    (FIPS 180-2:5.3.2)  */
 void FAST_FUNC sha256_begin(sha256_ctx_t *ctx)
 {
-	generic_init(ctx, BCRYPT_SHA256_ALG_HANDLE);
+	generic_init(ctx, get_alg_handle(CNG_ALG_ID_SHA256, false));
 }
 
 #if ENABLE_SHA384SUM
@@ -67,7 +89,7 @@ void FAST_FUNC sha256_begin(sha256_ctx_t *ctx)
    (FIPS 180-2:5.3.3)  */
 void FAST_FUNC sha384_begin(sha384_ctx_t *ctx)
 {
-	generic_init(ctx, BCRYPT_SHA384_ALG_HANDLE);
+	generic_init(ctx, get_alg_handle(CNG_ALG_ID_SHA384, false));
 }
 #endif /* ENABLE_SHA384SUM */
 
@@ -76,11 +98,11 @@ void FAST_FUNC sha384_begin(sha384_ctx_t *ctx)
    (FIPS 180-2:5.3.4)  */
 void FAST_FUNC sha512_begin(sha512_ctx_t *ctx)
 {
-	generic_init(ctx, BCRYPT_SHA512_ALG_HANDLE);
+	generic_init(ctx, get_alg_handle(CNG_ALG_ID_SHA512, false));
 }
 #endif /* NEED_SHA512 */
 
-void FAST_FUNC generic_hash(struct bcrypt_hash_ctx_t *ctx, const void *buffer, size_t len)
+void FAST_FUNC generic_hash(bcrypt_hash_ctx_t *ctx, const void *buffer, size_t len)
 {
 	/*
 		for perf, no error checking here
@@ -89,7 +111,7 @@ void FAST_FUNC generic_hash(struct bcrypt_hash_ctx_t *ctx, const void *buffer, s
 	// mingw_die_if_error(status, "BCryptHashData");
 }
 
-unsigned FAST_FUNC generic_end(struct bcrypt_hash_ctx_t *ctx, void *resbuf)
+unsigned FAST_FUNC generic_end(bcrypt_hash_ctx_t *ctx, void *resbuf)
 {
 	NTSTATUS status = BCryptFinishHash(ctx->handle, resbuf, ctx->output_size, 0);
 	mingw_die_if_error(status, "BCryptFinishHash");

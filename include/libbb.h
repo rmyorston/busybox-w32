@@ -290,11 +290,8 @@ PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 #if ENABLE_FEATURE_USE_CNG_API
 # include <bcrypt.h>
 
-// these work on Windows >= 10
-# define BCRYPT_HMAC_SHA1_ALG_HANDLE   ((BCRYPT_ALG_HANDLE) 0x000000a1)
-# define BCRYPT_HMAC_SHA256_ALG_HANDLE ((BCRYPT_ALG_HANDLE) 0x000000b1)
-# define sha1_begin_hmac BCRYPT_HMAC_SHA1_ALG_HANDLE
-# define sha256_begin_hmac BCRYPT_HMAC_SHA256_ALG_HANDLE
+# define sha1_begin_hmac (get_alg_handle(CNG_ALG_ID_SHA1, true))
+# define sha256_begin_hmac (get_alg_handle(CNG_ALG_ID_SHA256, true))
 #else
 # define sha1_begin_hmac sha1_begin
 # define sha256_begin_hmac sha256_begin
@@ -2388,28 +2385,37 @@ enum {
 };
 
 #if defined CONFIG_FEATURE_USE_CNG_API
-struct bcrypt_hash_ctx_t {
+enum cng_algorithm_identifier {
+	CNG_ALG_ID_MD5 = 0,
+	CNG_ALG_ID_SHA1 = 1,
+	CNG_ALG_ID_SHA256 = 2,
+	CNG_ALG_ID_SHA384 = 3,
+	CNG_ALG_ID_SHA512 = 4
+};
+BCRYPT_ALG_HANDLE get_alg_handle(enum cng_algorithm_identifier algorithm_identifier, bool hmac);
+
+typedef struct bcrypt_hash_ctx {
 	void *handle;
 	void *hash_obj;
 	unsigned int output_size;
-};
-typedef struct bcrypt_hash_ctx_t md5_ctx_t;
-typedef struct bcrypt_hash_ctx_t sha1_ctx_t;
-typedef struct bcrypt_hash_ctx_t sha256_ctx_t;
-typedef struct bcrypt_hash_ctx_t sha384_ctx_t;
-typedef struct bcrypt_hash_ctx_t sha512_ctx_t;
+} bcrypt_hash_ctx_t;
+typedef struct bcrypt_hash_ctx md5_ctx_t;
+typedef struct bcrypt_hash_ctx sha1_ctx_t;
+typedef struct bcrypt_hash_ctx sha256_ctx_t;
+typedef struct bcrypt_hash_ctx sha384_ctx_t;
+typedef struct bcrypt_hash_ctx sha512_ctx_t;
 typedef struct sha3_ctx_t {
 	uint64_t state[25];
 	unsigned bytes_queued;
 	unsigned input_block_bytes;
 } sha3_ctx_t;
-void md5_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
-void sha1_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
-void sha256_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
-void sha384_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
-void sha512_begin(struct bcrypt_hash_ctx_t *ctx) FAST_FUNC;
-void generic_hash(struct bcrypt_hash_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
-unsigned generic_end(struct bcrypt_hash_ctx_t *ctx, void *resbuf) FAST_FUNC;
+void md5_begin(struct bcrypt_hash_ctx *ctx) FAST_FUNC;
+void sha1_begin(struct bcrypt_hash_ctx *ctx) FAST_FUNC;
+void sha256_begin(struct bcrypt_hash_ctx *ctx) FAST_FUNC;
+void sha384_begin(struct bcrypt_hash_ctx *ctx) FAST_FUNC;
+void sha512_begin(struct bcrypt_hash_ctx *ctx) FAST_FUNC;
+void generic_hash(struct bcrypt_hash_ctx *ctx, const void *buffer, size_t len) FAST_FUNC;
+unsigned generic_end(struct bcrypt_hash_ctx *ctx, void *resbuf) FAST_FUNC;
 # define md5_hash generic_hash
 # define sha1_hash generic_hash
 # define sha256_hash generic_hash
@@ -2462,7 +2468,7 @@ unsigned sha3_end(sha3_ctx_t *ctx, void *resbuf) FAST_FUNC;
 void FAST_FUNC sha256_block(const void *in, size_t len, uint8_t hash[32]);
 /* TLS benefits from knowing that sha1 and sha256 share these. Give them "agnostic" names too */
 #if defined CONFIG_FEATURE_USE_CNG_API
-typedef struct bcrypt_hash_ctx_t md5sha_ctx_t;
+typedef struct bcrypt_hash_ctx md5sha_ctx_t;
 #define md5sha_hash generic_hash
 #define sha_end generic_end
 #else
@@ -2478,7 +2484,10 @@ typedef struct hmac_ctx {
 	md5sha_ctx_t hashed_key_xor_opad;
 } hmac_ctx_t;
 #else
-typedef struct bcrypt_hash_ctx_t hmac_ctx_t;
+typedef struct hmac_ctx {
+	BCRYPT_ALG_HANDLE alg_handle;
+	bcrypt_hash_ctx_t hash_ctx;
+} hmac_ctx_t;
 #endif
 #define HMAC_ONLY_SHA256 (!ENABLE_FEATURE_TLS_SHA1)
 typedef void md5sha_begin_func(md5sha_ctx_t *ctx) FAST_FUNC;
