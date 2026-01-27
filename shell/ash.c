@@ -3029,118 +3029,6 @@ setpwd(const char *val, int setold)
 	setvar("PWD", dir, VEXPORT);
 }
 
-static void hashcd(void);
-
-/*
- * Actually do the chdir.  We also call hashcd to let other routines
- * know that the current directory has changed.
- */
-static int
-docd(const char *dest, int flags)
-{
-	const char *dir = NULL;
-	int err;
-
-	TRACE(("docd(\"%s\", %d) called\n", dest, flags));
-
-	INTOFF;
-	if (!(flags & CD_PHYSICAL)) {
-		dir = updatepwd(dest);
-		if (dir)
-			dest = dir;
-	}
-	err = chdir(dest);
-	if (err)
-		goto out;
-	setpwd(dir, 1);
-	hashcd();
- out:
-	INTON;
-	return err;
-}
-
-static int FAST_FUNC
-cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
-{
-	const char *dest;
-	const char *path;
-	const char *p;
-	char c;
-	struct stat statb;
-	int flags;
-	int len;
-
-	flags = cdopt();
-	dest = *argptr;
-	if (!dest)
-		dest = bltinlookup("HOME");
-	else if (LONE_DASH(dest)) {
-		dest = bltinlookup("OLDPWD");
-		flags |= CD_PRINT;
-	}
-	if (!dest)
-		dest = nullstr;
-	if (*dest == '/')
-		goto step6;
-	if (*dest == '.') {
-		c = dest[1];
- dotdot:
-		switch (c) {
-		case '\0':
-		case '/':
-			goto step6;
-		case '.':
-			c = dest[2];
-			if (c != '.')
-				goto dotdot;
-		}
-	}
-	if (!*dest)
-		dest = ".";
-	path = bltinlookup("CDPATH");
-	while (p = path, (len = padvance_magic(&path, dest, 0)) >= 0) {
-		c = *p;
-		p = stalloc(len);
-
-		if (stat(p, &statb) >= 0 && S_ISDIR(statb.st_mode)) {
-			if (c && c != ':')
-				flags |= CD_PRINT;
- docd:
-			if (!docd(p, flags))
-				goto out;
-			goto err;
-		}
-	}
-
- step6:
-	p = dest;
-	goto docd;
-
- err:
-	ash_msg_and_raise_perror("can't cd to %s", dest);
-	/* NOTREACHED */
- out:
-	if (flags & CD_PRINT)
-		out1fmt("%s\n", curdir);
-	return 0;
-}
-
-static int FAST_FUNC
-pwdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
-{
-	int flags;
-	const char *dir = curdir;
-
-	flags = cdopt();
-	if (flags) {
-		if (physdir == nullstr)
-			setpwd(dir, 0);
-		dir = physdir;
-	}
-	out1fmt("%s\n", dir);
-	return 0;
-}
-
 
 /* ============ ... */
 
@@ -10239,6 +10127,9 @@ evalfun(struct funcnode *func, int argc, char **argv, int flags)
 }
 
 /*
+ * Built-ins.
+ */
+/*
  * Make a variable a local variable.  When a variable is made local, it's
  * value and flags are saved in a localvar structure.  The saved values
  * will be restored when the shell function returns.  We handle the name
@@ -10306,9 +10197,6 @@ mklocal(char *name, int flags)
 	INTON;
 }
 
-/*
- * The "local" command.
- */
 static int FAST_FUNC
 localcmd(int argc UNUSED_PARAM, char **argv)
 {
@@ -10396,8 +10284,143 @@ returncmd(int argc UNUSED_PARAM, char **argv)
 	return status;
 }
 
+/*
+ * Actually do the chdir.  We also call hashcd to let other routines
+ * know that the current directory has changed.
+ */
+static int
+docd(const char *dest, int flags)
+{
+	const char *dir = NULL;
+	int err;
+
+	TRACE(("docd(\"%s\", %d) called\n", dest, flags));
+
+	INTOFF;
+	if (!(flags & CD_PHYSICAL)) {
+		dir = updatepwd(dest);
+		if (dir)
+			dest = dir;
+	}
+	err = chdir(dest);
+	if (err)
+		goto out;
+	setpwd(dir, 1);
+	hashcd();
+ out:
+	INTON;
+	return err;
+}
+
+static int FAST_FUNC
+cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+{
+	const char *dest;
+	const char *path;
+	const char *p;
+	char c;
+	struct stat statb;
+	int flags;
+	int len;
+
+	flags = cdopt();
+	dest = *argptr;
+	if (!dest)
+		dest = bltinlookup("HOME");
+	else if (LONE_DASH(dest)) {
+		dest = bltinlookup("OLDPWD");
+		flags |= CD_PRINT;
+	}
+	if (!dest)
+		dest = nullstr;
+	if (*dest == '/')
+		goto step6;
+	if (*dest == '.') {
+		c = dest[1];
+ dotdot:
+		switch (c) {
+		case '\0':
+		case '/':
+			goto step6;
+		case '.':
+			c = dest[2];
+			if (c != '.')
+				goto dotdot;
+		}
+	}
+	if (!*dest)
+		dest = ".";
+	path = bltinlookup("CDPATH");
+	while (p = path, (len = padvance_magic(&path, dest, 0)) >= 0) {
+		c = *p;
+		p = stalloc(len);
+
+		if (stat(p, &statb) >= 0 && S_ISDIR(statb.st_mode)) {
+			if (c && c != ':')
+				flags |= CD_PRINT;
+ docd:
+			if (!docd(p, flags))
+				goto out;
+			goto err;
+		}
+	}
+
+ step6:
+	p = dest;
+	goto docd;
+
+ err:
+	ash_msg_and_raise_perror("can't cd to %s", dest);
+	/* NOTREACHED */
+ out:
+	if (flags & CD_PRINT)
+		out1fmt("%s\n", curdir);
+	return 0;
+}
+
+static int FAST_FUNC
+pwdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+{
+	int flags;
+	const char *dir = curdir;
+
+	flags = cdopt();
+	if (flags) {
+		if (physdir == nullstr)
+			setpwd(dir, 0);
+		dir = physdir;
+	}
+	out1fmt("%s\n", dir);
+	return 0;
+}
+
+/*
+ * Handle break and continue commands.  Break, continue, and return are
+ * all handled by setting the evalskip flag.  The evaluation routines
+ * above all check this flag, and if it is set they start skipping
+ * commands rather than executing them.  The variable skipcount is
+ * the number of loops to break/continue, or the number of function
+ * levels to return.  (The latter is always 1.)  It should probably
+ * be an error to break out of more loops than exist, but it isn't
+ * in the standard shell so we don't make it one here.
+ */
+static int FAST_FUNC
+breakcmd(int argc UNUSED_PARAM, char **argv)
+{
+	int n = argv[1] ? number(argv[1]) : 1;
+
+	if (n <= 0)
+		ash_msg_and_raise_error(msg_illnum, argv[1]);
+	if (n > loopnest)
+		n = loopnest;
+	if (n > 0) {
+		evalskip = (**argv == 'c') ? SKIPCONT : SKIPBREAK;
+		skipcount = n;
+	}
+	return 0;
+}
+
 /* Forward declarations for builtintab[] */
-static int breakcmd(int, char **) FAST_FUNC;
 static int dotcmd(int, char **) FAST_FUNC;
 static int evalcmd(int, char **, int) FAST_FUNC;
 static int exitcmd(int, char **) FAST_FUNC;
@@ -10976,43 +10999,9 @@ prehash(union node *n)
 }
 
 
-/* ============ Builtin commands
- *
- * Builtin commands whose functions are closely tied to evaluation
- * are implemented here.
- */
-
-/*
- * Handle break and continue commands.  Break, continue, and return are
- * all handled by setting the evalskip flag.  The evaluation routines
- * above all check this flag, and if it is set they start skipping
- * commands rather than executing them.  The variable skipcount is
- * the number of loops to break/continue, or the number of function
- * levels to return.  (The latter is always 1.)  It should probably
- * be an error to break out of more loops than exist, but it isn't
- * in the standard shell so we don't make it one here.
- */
-static int FAST_FUNC
-breakcmd(int argc UNUSED_PARAM, char **argv)
-{
-	int n = argv[1] ? number(argv[1]) : 1;
-
-	if (n <= 0)
-		ash_msg_and_raise_error(msg_illnum, argv[1]);
-	if (n > loopnest)
-		n = loopnest;
-	if (n > 0) {
-		evalskip = (**argv == 'c') ? SKIPCONT : SKIPBREAK;
-		skipcount = n;
-	}
-	return 0;
-}
-
-
 /*
  * This implements the input routines used by the parser.
  */
-
 enum {
 	INPUT_PUSH_FILE = 1,
 	INPUT_NOFILE_OK = 2,
@@ -11550,7 +11539,6 @@ setinputstring(char *string)
 /*
  * Routines to check for mail.
  */
-
 #if ENABLE_ASH_MAIL
 
 /* Hash of mtimes of mailboxes */
@@ -13931,6 +13919,21 @@ cmdloop(int top)
 }
 
 /*
+ * Read a file containing shell functions.
+ */
+static void
+readcmdfile(char *name)
+{
+	setinputfile(name, INPUT_PUSH_FILE);
+	cmdloop(0);
+	popfile();
+}
+
+
+/*
+ * Built-ins.
+ */
+/*
  * Take commands from a file.  To be compatible we should do a path
  * search for the file, which is necessary to find sub-commands.
  */
@@ -14039,17 +14042,6 @@ exitcmd(int argc UNUSED_PARAM, char **argv)
 //For now, keeping dash code:
 	raise_exception(EXEXIT);
 	/* NOTREACHED */
-}
-
-/*
- * Read a file containing shell functions.
- */
-static void
-readcmdfile(char *name)
-{
-	setinputfile(name, INPUT_PUSH_FILE);
-	cmdloop(0);
-	popfile();
 }
 
 
@@ -14303,8 +14295,9 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	entry->u = cmdp->param;
 }
 
+
 /*
- * The trap builtin.
+ * Built-ins.
  */
 static int FAST_FUNC
 trapcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
@@ -14379,8 +14372,6 @@ trapcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	return exitcode;
 }
 
-
-/* ============ Builtins */
 
 #if ENABLE_ASH_HELP
 static int FAST_FUNC
