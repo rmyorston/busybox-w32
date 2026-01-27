@@ -38,12 +38,13 @@ config PASSWORD_MINLEN
 	Minimum allowable password length.
 
 config FEATURE_USE_CNG_API
-	bool "Use the Windows CNG API for checksums (Windows 10+ only)"
+	bool "Use the Windows CNG API for checksums"
 	default n
 	depends on PLATFORM_MINGW32
 	help
 	Use the in-built Windows CNG API for checksums.
-	This reduces code size, but is only supported on Windows 10+.
+	This reduces code size, but is only supported
+	on Windows Vista and above.
 
 config MD5_SMALL
 	int "MD5: Trade bytes for speed (0:fast, 3:slow)"
