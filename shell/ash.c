@@ -470,7 +470,9 @@ struct jmploc {
 struct globals_misc {
 	uint8_t exitstatus;     /* exit status of last command */
 	uint8_t back_exitstatus;/* exit status of backquoted command */
+#if JOBS
 	smallint job_warning;   /* user was warned about stopped jobs (can be 2, 1 or 0). */
+#endif
 	smallint inps4;		/* Prevent PS4 nesting. */
 	smallint vforked;
 	int savestatus;         /* exit status of last command outside traps */
@@ -575,7 +577,11 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define G_misc (*ash_ptr_to_globals_misc)
 #define exitstatus        (G_misc.exitstatus )
 #define back_exitstatus   (G_misc.back_exitstatus )
+#if JOBS
 #define job_warning       (G_misc.job_warning)
+#else
+#define job_warning       0
+#endif
 #define inps4       (G_misc.inps4      )
 #define vforked     (G_misc.vforked    )
 #define savestatus  (G_misc.savestatus )
@@ -3935,7 +3941,9 @@ struct job {
 	unsigned nprocs;        /* number of processes */
 
 #define JOBRUNNING      0       /* at least one proc running */
+#if JOBS
 #define JOBSTOPPED      1       /* all procs are stopped */
+#endif
 #define JOBDONE         2       /* all procs are completed */
 	unsigned
 		state: 8,
@@ -4880,7 +4888,6 @@ fg_bgcmd(int argc UNUSED_PARAM, char **argv)
 	} while (*argv && *++argv);
 	return retval;
 }
-#endif
 
 /*
  * return 1 if there are stopped jobs, otherwise 0
@@ -4903,6 +4910,9 @@ stoppedjobs(void)
  out:
 	return retval;
 }
+#else
+#define stoppedjobs() 0
+#endif
 
 static int FAST_FUNC
 waitcmd(int argc UNUSED_PARAM, char **argv)
@@ -13900,9 +13910,10 @@ cmdloop(int top)
 			numeof++;
 		} else {
 			int i;
-
+#if JOBS
 			/* job_warning can only be 2,1,0. Here 2->1, 1/0->0 */
 			job_warning >>= 1;
+#endif
 			numeof = 0;
 			i = evaltree(n, 0);
 			if (n)
