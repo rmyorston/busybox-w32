@@ -8476,67 +8476,71 @@ static struct tblentry **cmdtable;
 static int builtinloc = -1;     /* index in path of %builtin, or -1 */
 
 
-static void
-tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, char **envp)
-{
 #if ENABLE_FEATURE_SH_STANDALONE
-	if (applet_no >= 0) {
-		if (!vforked && APPLET_IS_NOEXEC(applet_no)) {
-			dbg_show_dirtymem("dirtymem in NOEXEC tryexec");
-			clearenv();
-			while (*envp)
-				putenv(*envp++);
-			popredir(/*drop:*/ 1);
+static void
+tryexec_applet(int applet_no, const char *cmd, char **argv, char **envp)
+{
+	if (!vforked && APPLET_IS_NOEXEC(applet_no)) {
+		dbg_show_dirtymem("dirtymem in NOEXEC tryexec");
+		clearenv();
+		while (*envp)
+			putenv(*envp++);
+		popredir(/*drop:*/ 1);
 //FIXME: exec resets all non-DFL, non-IGN signal handlers to DFL,
 //but we _don't_ exec, such signals will reach ash's handler instead!
 //Maybe add code there to set the handler to DFL, and signal itself?
 // This works for "CMD [| CMD]..." pipes:
-//vforkexec()
-//    vfork();
-//    forkchild(jp, n, FORK_FG); // this resets TSTP,TTOU,INT,TERM,QUIT to DFL
-//    shellexec(argv[0], argv, path, idx)
-//        tryexec()
-//            we are here
+//vforkexec():
+//  vfork();
+//  forkchild(jp, n, FORK_FG); // this resets TSTP,TTOU,INT,TERM,QUIT to DFL
+//  shellexec(argv[0], argv, path, idx)
+//      tryexec_applet()
+//          we are here
 // And for "exec CMD":
-//execcmd()
-//    iflag = 0;
-//    mflag = 0;
-//    optschanged(); // this resets TSTP,TTOU,INT,TERM to DFL
-//    shlvl++;
-//    setsignal(SIGQUIT); // this resets QUIT to DFL
-//    shellexec()
-//        tryexec()
-//            we are here
-// But ash -c 'LAST_CMD_DOESNT_FORK' does not work!
-//evalcommand()
-//    if (!(flags & EV_EXIT) || may_have_traps)
-//        // we don't use this branch
-//    //else:
-//    shellexec()
-//        tryexec()
-//            we are here
+//execcmd():
+//  iflag = 0;
+//  mflag = 0;
+//  optschanged(); // this resets TSTP,TTOU,INT,TERM to DFL
+//  shlvl++;
+//  setsignal(SIGQUIT); // this resets QUIT to DFL
+//  shellexec() ->
+//      tryexec_applet() ->
+//          we are here
+// But ash -c 'LAST_CMD_WONT_FORK' does not work!
+//evalcommand():
+//  if (!(flags & EV_EXIT) || may_have_traps)
+//      // we don't use this branch
+//  //else:
+//  shellexec() ->
+//      tryexec_applet() ->
+//          we are here
 //SIGINT works 'by accident' (sets DFL+signals itself)
 //SIGQUIT is IGNORED!
-//Fixed by adding in the evalcommand() before the shown shellexec():
-//    shlvl++;
-//    setsignal(SIGQUIT);
-//    //TODO: setsignal(TSTP,TTOU,INT,TERM) too?
+//Fixed by adding in the evalcommand() before that shellexec():
+//  shlvl++;
+//  setsignal(SIGQUIT);
+//  //TODO: setsignal(TSTP,TTOU,INT,TERM) too?
 //
 // With traps set, this:
 // ash -c 'trap "echo HERE!" INT; exec xargs'
 // didn't work: ^C sets a "run trap later" flag and _returns_,
-// which is not expected by the NOFORK'ed xargs!
+// which is not expected by the NOEXEC'ed xargs applet! (It gets EINTR on read).
 // clear_traps() helps with this:
-			clear_traps();
-			run_noexec_applet_and_exit(applet_no, cmd, argv);
-		}
-		/* re-exec ourselves with the new arguments */
-		execve(bb_busybox_exec_path, argv, envp);
-		/* If they called chroot or otherwise made the binary no longer
-		 * executable, fall through */
+		clear_traps();
+		run_noexec_applet_and_exit(applet_no, cmd, argv);
+		/* does not return */
 	}
+	/* re-exec ourselves with the new arguments */
+	execve(bb_busybox_exec_path, argv, envp);
+	/* If they called chroot or otherwise made the binary
+	 * no longer executable, return.
+	 */
+}
 #endif
 
+static void
+tryexec(const char *cmd, char **argv, char **envp)
+{
  repeat:
 #ifdef SYSV
 	do {
@@ -8545,7 +8549,6 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 #else
 	execve(cmd, argv, envp);
 #endif
-
 	if (cmd != bb_busybox_exec_path && errno == ENOEXEC) {
 		/* Run "cmd" as a shell script:
 		 * http://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
@@ -8585,30 +8588,25 @@ static void shellexec(char *prog, char **argv, const char *path, int idx)
 	int e;
 	char **envp;
 	int exerrno;
-	int applet_no = -1; /* used only by FEATURE_SH_STANDALONE */
 
 	envp = listvars(VEXPORT, VUNSET, /*strlist:*/ NULL, /*end:*/ NULL);
-	if (strchr(prog, '/') != NULL
-#if ENABLE_FEATURE_SH_STANDALONE
-	 || (applet_no = find_applet_by_name(prog)) >= 0
-#endif
-	) {
-		tryexec(IF_FEATURE_SH_STANDALONE(applet_no,) prog, argv, envp);
-		if (applet_no >= 0) {
-			/* We tried execing ourself, but it didn't work.
-			 * Maybe /proc/self/exe doesn't exist?
-			 * Try $PATH search.
-			 */
-			goto try_PATH;
-		}
+	if (strchr(prog, '/') != NULL) {
+		tryexec(prog, argv, envp);
 		e = errno;
 	} else {
- try_PATH:
+#if ENABLE_FEATURE_SH_STANDALONE
+		int applet_no = find_applet_by_name(prog);
+		if (applet_no >= 0)
+			tryexec_applet(applet_no, prog, argv, envp);
+		/* We tried execing ourself, but it didn't work.
+		 * Maybe /proc/self/exe doesn't exist?
+		 */
+#endif
 		e = ENOENT;
 		while (padvance(&path, argv[0]) >= 0) {
 			cmdname = stackblock();
 			if (--idx < 0 && pathopt == NULL) {
-				tryexec(IF_FEATURE_SH_STANDALONE(-1,) cmdname, argv, envp);
+				tryexec(cmdname, argv, envp);
 				if (errno != ENOENT && errno != ENOTDIR)
 					e = errno;
 			}
@@ -10869,6 +10867,7 @@ evalcommand(union node *cmd, int flags)
 		/* Testcase: ash -c 'ONE_CMD' will use EV_EXIT for ONE_CMD */
 		shlvl++;            /* dash does not need it because it doesn't ignore SIGQUIT */
 		setsignal(SIGQUIT); /* we do (bash compat) */
+		//TODO: setsignal(TSTP,TTOU,INT,TERM) too?
 		shellexec(argv[0], argv, path, cmdentry.u.index);
 		/* NOTREACHED */
 	} /* default */
