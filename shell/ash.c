@@ -8434,8 +8434,17 @@ expandhere(union node *arg)
 }
 
 
-/* ============ find_command */
-
+/*
+ * Hashing commands
+ */
+/*
+ * When commands are first encountered, they are entered in a hash table.
+ * This ensures that a full path search will not have to be done for them
+ * on each invocation.
+ *
+ * We should investigate converting to a linear search, even though that
+ * would make the command name "hash" a misnomer.
+ */
 struct builtincmd {
 	const char *name;
 	int (*builtin)(int, char **) FAST_FUNC;
@@ -8447,44 +8456,15 @@ struct builtincmd {
 #define IS_BUILTIN_REGULAR(b) ((b)->name[0] & 2)
 #define IS_BUILTIN_ASSIGN(b)  ((b)->name[0] & 4)
 
-struct cmdentry {
-	smallint cmdtype;       /* CMDxxx */
-	union param {
-		int index;
-		/* index >= 0 for commands without path (slashes) */
-		/* (TODO: what exactly does the value mean? PATH position?) */
-		/* index == -1 for commands with slashes */
-		/* index == (-2 - applet_no) for NOFORK applets */
-		const struct builtincmd *cmd;
-		struct funcnode *func;
-	} u;
+union param {
+	int index;
+	/* index >= 0 for commands without path (slashes) */
+	/* (TODO: what exactly does the value mean? PATH position?) */
+	/* index == -1 for commands with slashes */
+	/* index == (-2 - applet_no) for NOFORK applets */
+	const struct builtincmd *cmd;
+	struct funcnode *func;
 };
-/* values of cmdtype */
-#define CMDUNKNOWN      -1      /* no entry in table for command */
-#define CMDNORMAL       0       /* command is an executable program */
-#define CMDFUNCTION     1       /* command is a shell function */
-#define CMDBUILTIN      2       /* command is a shell builtin */
-
-/* action to find_command() */
-#define DO_ERR          0x01    /* prints errors */
-#define DO_ABS          0x02    /* checks absolute paths */
-#define DO_NOFUNC       0x04    /* don't return shell functions, for command */
-#define DO_ALTPATH      0x08    /* using alternate path */
-#define DO_REGBLTIN     0x10    /* regular built-ins and functions only */
-
-static void find_command(char *, struct cmdentry *, int, const char *);
-
-
-/* ============ Hashing commands */
-
-/*
- * When commands are first encountered, they are entered in a hash table.
- * This ensures that a full path search will not have to be done for them
- * on each invocation.
- *
- * We should investigate converting to a linear search, even though that
- * would make the command name "hash" a misnomer.
- */
 
 struct tblentry {
 	struct tblentry *next;  /* next entry in hash chain */
@@ -8493,6 +8473,16 @@ struct tblentry {
 	char rehash;            /* if set, cd done since entry created */
 	char cmdname[1];        /* name of command */
 };
+/* values of cmdtype */
+#define CMDUNKNOWN      -1      /* no entry in table for command */
+#define CMDNORMAL       0       /* command is an executable program */
+#define CMDFUNCTION     1       /* command is a shell function */
+#define CMDBUILTIN      2       /* command is a shell builtin */
+
+struct cmdentry {
+	smallint cmdtype;       /* CMDxxx */
+	union param u;
+};
 
 static struct tblentry **cmdtable;
 #define INIT_G_cmdtable() do { \
@@ -8500,7 +8490,6 @@ static struct tblentry **cmdtable;
 } while (0)
 
 static int builtinloc = -1;     /* index in path of %builtin, or -1 */
-
 
 static void
 printentry(struct tblentry *cmdp)
@@ -8626,51 +8615,6 @@ addcmdentry(char *name, struct cmdentry *entry)
 	cmdp->rehash = 0;
 }
 
-static int FAST_FUNC
-hashcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
-{
-	struct tblentry **pp;
-	struct tblentry *cmdp;
-	int c;
-	struct cmdentry entry;
-	char *name;
-
-	if (nextopt("r") != '\0') {
-		clearcmdentry();
-		return 0;
-	}
-
-	if (*argptr == NULL) {
-		for (pp = cmdtable; pp < &cmdtable[CMDTABLESIZE]; pp++) {
-			for (cmdp = *pp; cmdp; cmdp = cmdp->next) {
-				if (cmdp->cmdtype == CMDNORMAL)
-					printentry(cmdp);
-			}
-		}
-		return 0;
-	}
-
-	c = 0;
-	while ((name = *argptr) != NULL) {
-		cmdp = cmdlookup(name, 0);
-		if (cmdp != NULL
-		 && (cmdp->cmdtype == CMDNORMAL
-		    || (cmdp->cmdtype == CMDBUILTIN
-			&& !IS_BUILTIN_REGULAR(cmdp->param.cmd)
-			&& builtinloc > 0
-			)
-		    )
-		) {
-			delete_cmd_entry();
-		}
-		find_command(name, &entry, DO_ERR, pathval());
-		if (entry.cmdtype == CMDUNKNOWN)
-			c = 1;
-		argptr++;
-	}
-	return c;
-}
-
 /*
  * Called when a cd is done.  Marks all commands so the next time they
  * are executed they will be rehashed.
@@ -8723,6 +8667,272 @@ changepath(const char *newval)
 	}
 	builtinloc = bltin;
 	clearcmdentry();
+}
+
+
+/*
+ * find_command()
+ */
+/* action to find_command() */
+#define DO_ERR          0x01    /* prints errors */
+#define DO_ABS          0x02    /* checks absolute paths */
+#define DO_NOFUNC       0x04    /* don't return shell functions, for command */
+#define DO_ALTPATH      0x08    /* using alternate path */
+#define DO_REGBLTIN     0x10    /* regular built-ins and functions only */
+
+static int
+test_exec(/*const char *fullname,*/ struct stat *statb)
+{
+	/*
+	 * TODO: use faccessat(AT_FDCWD, fullname, X_OK, AT_EACCESS)
+	 * instead: executability may depend on ACLs, capabilities
+	 * and who knows what else, not just mode bits.
+	 * (faccessat2 syscall was added to Linux in May 14 2020)
+	 */
+	mode_t stmode;
+	uid_t euid;
+	enum { ANY_IX = S_IXUSR | S_IXGRP | S_IXOTH };
+
+	/* Do we already know with no extra syscalls? */
+	if (!S_ISREG(statb->st_mode))
+		return 0; /* not a regular file */
+	if ((statb->st_mode & ANY_IX) == 0)
+		return 0; /* no one can execute */
+	if ((statb->st_mode & ANY_IX) == ANY_IX)
+		return 1; /* anyone can execute */
+
+	/* Executability depends on our euid/egid/supplementary groups */
+	stmode = S_IXOTH;
+	euid = get_cached_euid(&groupinfo.euid);
+	if (euid == 0)
+		/* for root user, any X bit is good enough */
+		stmode = ANY_IX;
+	else if (statb->st_uid == euid)
+		stmode = S_IXUSR;
+	else if (statb->st_gid == get_cached_egid(&groupinfo.egid))
+		stmode = S_IXGRP;
+	else if (is_in_supplementary_groups(&groupinfo, statb->st_gid))
+		stmode = S_IXGRP;
+
+	return statb->st_mode & stmode;
+}
+
+/* Circular dep: find_command->find_builtin->builtintab[]->hashcmd->find_command */
+static struct builtincmd *find_builtin(const char *name);
+#if ENABLE_ASH_BASH_NOT_FOUND_HOOK
+static int evalfun(struct funcnode *func, int argc, char **argv, int flags);
+#endif
+static void readcmdfile(char *name);
+
+/*
+ * Resolve a command name.  If you change this routine, you may have to
+ * change the shellexec routine as well.
+ */
+static void
+find_command(char *name, struct cmdentry *entry, int act, const char *path)
+{
+	struct tblentry *cmdp;
+	int idx;
+	int prev;
+	char *fullname;
+	struct stat statb;
+	int e;
+	int updatetbl;
+	struct builtincmd *bcmd;
+	int len;
+
+	/* If name contains a slash, don't use PATH or hash table */
+	if (strchr(name, '/') != NULL) {
+		entry->u.index = -1;
+		if (act & DO_ABS) {
+			while (stat(name, &statb) < 0) {
+#ifdef SYSV
+				if (errno == EINTR)
+					continue;
+#endif
+ absfail:
+				entry->cmdtype = CMDUNKNOWN;
+				return;
+			}
+			if (!test_exec(/*name,*/ &statb))
+				goto absfail;
+		}
+		entry->cmdtype = CMDNORMAL;
+		return;
+	}
+
+/* #if ENABLE_FEATURE_SH_STANDALONE... moved after builtin check */
+
+	updatetbl = (path == pathval());
+	if (!updatetbl)
+		act |= DO_ALTPATH;
+
+	/* If name is in the table, check answer will be ok */
+	cmdp = cmdlookup(name, 0);
+	if (cmdp != NULL) {
+		int bit;
+
+		switch (cmdp->cmdtype) {
+		default:
+#if DEBUG
+			abort();
+#endif
+		case CMDNORMAL:
+			bit = DO_ALTPATH | DO_REGBLTIN;
+			break;
+		case CMDFUNCTION:
+			bit = DO_NOFUNC;
+			break;
+		case CMDBUILTIN:
+			bit = IS_BUILTIN_REGULAR(cmdp->param.cmd) ? 0 : DO_REGBLTIN;
+			break;
+		}
+		if (act & bit) {
+			if (act & bit & DO_REGBLTIN)
+				goto fail;
+
+			updatetbl = 0;
+			cmdp = NULL;
+		} else if (cmdp->rehash == 0)
+			/* if not invalidated by cd, we're done */
+			goto success;
+	}
+
+	/* If %builtin not in path, check for builtin next */
+	bcmd = find_builtin(name);
+	if (bcmd) {
+		if (IS_BUILTIN_REGULAR(bcmd))
+			goto builtin_success;
+		if (act & DO_ALTPATH)
+			goto builtin_success;
+		if (builtinloc <= 0)
+			goto builtin_success;
+	}
+
+	if (act & DO_REGBLTIN)
+		goto fail;
+
+#if ENABLE_FEATURE_SH_STANDALONE
+	{
+		int applet_no = find_applet_by_name(name);
+		if (applet_no >= 0) {
+			entry->cmdtype = CMDNORMAL;
+			entry->u.index = -2 - applet_no;
+			return;
+		}
+	}
+#endif
+	/* We have to search path. */
+	prev = -1;              /* where to start */
+	if (cmdp && cmdp->rehash) {     /* doing a rehash */
+		if (cmdp->cmdtype == CMDBUILTIN)
+			prev = builtinloc;
+		else
+			prev = cmdp->param.index;
+	}
+
+	e = ENOENT;
+	idx = -1;
+ loop:
+	while ((len = padvance(&path, name)) >= 0) {
+		const char *lpathopt = pathopt;
+
+		fullname = stackblock();
+		idx++;
+		if (lpathopt) {
+			if (*lpathopt == 'b') {
+				if (bcmd)
+					goto builtin_success;
+				continue;
+			} else if (!(act & DO_NOFUNC)) {
+				/* handled below */
+			} else {
+				/* ignore unimplemented options */
+				continue;
+			}
+		}
+		/* if rehash, don't redo absolute path names */
+		if (fullname[0] == '/' && idx <= prev) {
+			if (idx < prev)
+				continue;
+			TRACE(("searchexec \"%s\": no change\n", name));
+			goto success;
+		}
+		while (stat(fullname, &statb) < 0) {
+#ifdef SYSV
+			if (errno == EINTR)
+				continue;
+#endif
+			if (errno != ENOENT && errno != ENOTDIR)
+				e = errno;
+			goto loop;
+		}
+		if (lpathopt) {          /* this is a %func directory */
+			stalloc(len);
+			/* NB: stalloc will return space pointed by fullname
+			 * (because we don't have any intervening allocations
+			 * between stunalloc above and this stalloc) */
+			readcmdfile(fullname);
+			cmdp = cmdlookup(name, 0);
+			if (cmdp == NULL || cmdp->cmdtype != CMDFUNCTION)
+				ash_msg_and_raise_error("%s not defined in %s", name, fullname);
+			stunalloc(fullname);
+			goto success;
+		}
+		e = EACCES;     /* if we fail, this will be the error */
+		if (!test_exec(/*fullname,*/ &statb))
+			continue;
+		TRACE(("searchexec \"%s\" returns \"%s\"\n", name, fullname));
+		if (!updatetbl) {
+			entry->cmdtype = CMDNORMAL;
+			entry->u.index = idx;
+			return;
+		}
+		INTOFF;
+		cmdp = cmdlookup(name, 1);
+		cmdp->cmdtype = CMDNORMAL;
+		cmdp->param.index = idx;
+		INTON;
+		goto success;
+	}
+
+	/* We failed.  If there was an entry for this command, delete it */
+	if (cmdp && updatetbl)
+		delete_cmd_entry();
+	if (act & DO_ERR) {
+#if ENABLE_ASH_BASH_NOT_FOUND_HOOK
+		struct tblentry *hookp = cmdlookup("command_not_found_handle", 0);
+		if (hookp && hookp->cmdtype == CMDFUNCTION) {
+			char *argv[3];
+			argv[0] = (char*) "command_not_found_handle";
+			argv[1] = name;
+			argv[2] = NULL;
+			evalfun(hookp->param.func, 2, argv, 0);
+			entry->cmdtype = CMDUNKNOWN;
+			return;
+		}
+#endif
+		ash_msg("%s: %s", name, errmsg(e, E_EXEC));
+	}
+ fail:
+	entry->cmdtype = CMDUNKNOWN;
+	return;
+
+ builtin_success:
+	if (!updatetbl) {
+		entry->cmdtype = CMDBUILTIN;
+		entry->u.cmd = bcmd;
+		return;
+	}
+	INTOFF;
+	cmdp = cmdlookup(name, 1);
+	cmdp->cmdtype = CMDBUILTIN;
+	cmdp->param.cmd = bcmd;
+	INTON;
+ success:
+	cmdp->rehash = 0;
+	entry->cmdtype = cmdp->cmdtype;
+	entry->u = cmdp->param;
 }
 
 
@@ -10134,6 +10344,18 @@ evalfun(struct funcnode *func, int argc, char **argv, int flags)
 /*
  * Built-ins.
  */
+static int FAST_FUNC
+falsecmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+{
+	return 1;
+}
+
+static int FAST_FUNC
+truecmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+{
+	return 0;
+}
+
 /*
  * Make a variable a local variable.  When a variable is made local, it's
  * value and flags are saved in a localvar structure.  The saved values
@@ -10214,18 +10436,6 @@ localcmd(int argc UNUSED_PARAM, char **argv)
 	while ((name = *argv++) != NULL) {
 		mklocal(name, 0);
 	}
-	return 0;
-}
-
-static int FAST_FUNC
-falsecmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
-{
-	return 1;
-}
-
-static int FAST_FUNC
-truecmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
-{
 	return 0;
 }
 
@@ -10397,6 +10607,51 @@ pwdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	}
 	out1fmt("%s\n", dir);
 	return 0;
+}
+
+static int FAST_FUNC
+hashcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+{
+	struct tblentry **pp;
+	struct tblentry *cmdp;
+	int c;
+	struct cmdentry entry;
+	char *name;
+
+	if (nextopt("r") != '\0') {
+		clearcmdentry();
+		return 0;
+	}
+
+	if (*argptr == NULL) {
+		for (pp = cmdtable; pp < &cmdtable[CMDTABLESIZE]; pp++) {
+			for (cmdp = *pp; cmdp; cmdp = cmdp->next) {
+				if (cmdp->cmdtype == CMDNORMAL)
+					printentry(cmdp);
+			}
+		}
+		return 0;
+	}
+
+	c = 0;
+	while ((name = *argptr) != NULL) {
+		cmdp = cmdlookup(name, 0);
+		if (cmdp != NULL
+		 && (cmdp->cmdtype == CMDNORMAL
+		    || (cmdp->cmdtype == CMDBUILTIN
+			&& !IS_BUILTIN_REGULAR(cmdp->param.cmd)
+			&& builtinloc > 0
+			)
+		    )
+		) {
+			delete_cmd_entry();
+		}
+		find_command(name, &entry, DO_ERR, pathval());
+		if (entry.cmdtype == CMDUNKNOWN)
+			c = 1;
+		argptr++;
+	}
+	return c;
 }
 
 /*
@@ -14049,256 +14304,6 @@ exitcmd(int argc UNUSED_PARAM, char **argv)
 	/* NOTREACHED */
 }
 
-
-/* ============ find_command inplementation */
-
-static int test_exec(/*const char *fullname,*/ struct stat *statb)
-{
-	/*
-	 * TODO: use faccessat(AT_FDCWD, fullname, X_OK, AT_EACCESS)
-	 * instead: executability may depend on ACLs, capabilities
-	 * and who knows what else, not just mode bits.
-	 * (faccessat2 syscall was added to Linux in May 14 2020)
-	 */
-	mode_t stmode;
-	uid_t euid;
-	enum { ANY_IX = S_IXUSR | S_IXGRP | S_IXOTH };
-
-	/* Do we already know with no extra syscalls? */
-	if (!S_ISREG(statb->st_mode))
-		return 0; /* not a regular file */
-	if ((statb->st_mode & ANY_IX) == 0)
-		return 0; /* no one can execute */
-	if ((statb->st_mode & ANY_IX) == ANY_IX)
-		return 1; /* anyone can execute */
-
-	/* Executability depends on our euid/egid/supplementary groups */
-	stmode = S_IXOTH;
-	euid = get_cached_euid(&groupinfo.euid);
-	if (euid == 0)
-		/* for root user, any X bit is good enough */
-		stmode = ANY_IX;
-	else if (statb->st_uid == euid)
-		stmode = S_IXUSR;
-	else if (statb->st_gid == get_cached_egid(&groupinfo.egid))
-		stmode = S_IXGRP;
-	else if (is_in_supplementary_groups(&groupinfo, statb->st_gid))
-		stmode = S_IXGRP;
-
-	return statb->st_mode & stmode;
-}
-
-/*
- * Resolve a command name.  If you change this routine, you may have to
- * change the shellexec routine as well.
- */
-static void
-find_command(char *name, struct cmdentry *entry, int act, const char *path)
-{
-	struct tblentry *cmdp;
-	int idx;
-	int prev;
-	char *fullname;
-	struct stat statb;
-	int e;
-	int updatetbl;
-	struct builtincmd *bcmd;
-	int len;
-
-	/* If name contains a slash, don't use PATH or hash table */
-	if (strchr(name, '/') != NULL) {
-		entry->u.index = -1;
-		if (act & DO_ABS) {
-			while (stat(name, &statb) < 0) {
-#ifdef SYSV
-				if (errno == EINTR)
-					continue;
-#endif
- absfail:
-				entry->cmdtype = CMDUNKNOWN;
-				return;
-			}
-			if (!test_exec(/*name,*/ &statb))
-				goto absfail;
-		}
-		entry->cmdtype = CMDNORMAL;
-		return;
-	}
-
-/* #if ENABLE_FEATURE_SH_STANDALONE... moved after builtin check */
-
-	updatetbl = (path == pathval());
-	if (!updatetbl)
-		act |= DO_ALTPATH;
-
-	/* If name is in the table, check answer will be ok */
-	cmdp = cmdlookup(name, 0);
-	if (cmdp != NULL) {
-		int bit;
-
-		switch (cmdp->cmdtype) {
-		default:
-#if DEBUG
-			abort();
-#endif
-		case CMDNORMAL:
-			bit = DO_ALTPATH | DO_REGBLTIN;
-			break;
-		case CMDFUNCTION:
-			bit = DO_NOFUNC;
-			break;
-		case CMDBUILTIN:
-			bit = IS_BUILTIN_REGULAR(cmdp->param.cmd) ? 0 : DO_REGBLTIN;
-			break;
-		}
-		if (act & bit) {
-			if (act & bit & DO_REGBLTIN)
-				goto fail;
-
-			updatetbl = 0;
-			cmdp = NULL;
-		} else if (cmdp->rehash == 0)
-			/* if not invalidated by cd, we're done */
-			goto success;
-	}
-
-	/* If %builtin not in path, check for builtin next */
-	bcmd = find_builtin(name);
-	if (bcmd) {
-		if (IS_BUILTIN_REGULAR(bcmd))
-			goto builtin_success;
-		if (act & DO_ALTPATH)
-			goto builtin_success;
-		if (builtinloc <= 0)
-			goto builtin_success;
-	}
-
-	if (act & DO_REGBLTIN)
-		goto fail;
-
-#if ENABLE_FEATURE_SH_STANDALONE
-	{
-		int applet_no = find_applet_by_name(name);
-		if (applet_no >= 0) {
-			entry->cmdtype = CMDNORMAL;
-			entry->u.index = -2 - applet_no;
-			return;
-		}
-	}
-#endif
-
-	/* We have to search path. */
-	prev = -1;              /* where to start */
-	if (cmdp && cmdp->rehash) {     /* doing a rehash */
-		if (cmdp->cmdtype == CMDBUILTIN)
-			prev = builtinloc;
-		else
-			prev = cmdp->param.index;
-	}
-
-	e = ENOENT;
-	idx = -1;
- loop:
-	while ((len = padvance(&path, name)) >= 0) {
-		const char *lpathopt = pathopt;
-
-		fullname = stackblock();
-		idx++;
-		if (lpathopt) {
-			if (*lpathopt == 'b') {
-				if (bcmd)
-					goto builtin_success;
-				continue;
-			} else if (!(act & DO_NOFUNC)) {
-				/* handled below */
-			} else {
-				/* ignore unimplemented options */
-				continue;
-			}
-		}
-		/* if rehash, don't redo absolute path names */
-		if (fullname[0] == '/' && idx <= prev) {
-			if (idx < prev)
-				continue;
-			TRACE(("searchexec \"%s\": no change\n", name));
-			goto success;
-		}
-		while (stat(fullname, &statb) < 0) {
-#ifdef SYSV
-			if (errno == EINTR)
-				continue;
-#endif
-			if (errno != ENOENT && errno != ENOTDIR)
-				e = errno;
-			goto loop;
-		}
-		if (lpathopt) {          /* this is a %func directory */
-			stalloc(len);
-			/* NB: stalloc will return space pointed by fullname
-			 * (because we don't have any intervening allocations
-			 * between stunalloc above and this stalloc) */
-			readcmdfile(fullname);
-			cmdp = cmdlookup(name, 0);
-			if (cmdp == NULL || cmdp->cmdtype != CMDFUNCTION)
-				ash_msg_and_raise_error("%s not defined in %s", name, fullname);
-			stunalloc(fullname);
-			goto success;
-		}
-		e = EACCES;     /* if we fail, this will be the error */
-		if (!test_exec(/*fullname,*/ &statb))
-			continue;
-		TRACE(("searchexec \"%s\" returns \"%s\"\n", name, fullname));
-		if (!updatetbl) {
-			entry->cmdtype = CMDNORMAL;
-			entry->u.index = idx;
-			return;
-		}
-		INTOFF;
-		cmdp = cmdlookup(name, 1);
-		cmdp->cmdtype = CMDNORMAL;
-		cmdp->param.index = idx;
-		INTON;
-		goto success;
-	}
-
-	/* We failed.  If there was an entry for this command, delete it */
-	if (cmdp && updatetbl)
-		delete_cmd_entry();
-	if (act & DO_ERR) {
-#if ENABLE_ASH_BASH_NOT_FOUND_HOOK
-		struct tblentry *hookp = cmdlookup("command_not_found_handle", 0);
-		if (hookp && hookp->cmdtype == CMDFUNCTION) {
-			char *argv[3];
-			argv[0] = (char*) "command_not_found_handle";
-			argv[1] = name;
-			argv[2] = NULL;
-			evalfun(hookp->param.func, 2, argv, 0);
-			entry->cmdtype = CMDUNKNOWN;
-			return;
-		}
-#endif
-		ash_msg("%s: %s", name, errmsg(e, E_EXEC));
-	}
- fail:
-	entry->cmdtype = CMDUNKNOWN;
-	return;
-
- builtin_success:
-	if (!updatetbl) {
-		entry->cmdtype = CMDBUILTIN;
-		entry->u.cmd = bcmd;
-		return;
-	}
-	INTOFF;
-	cmdp = cmdlookup(name, 1);
-	cmdp->cmdtype = CMDBUILTIN;
-	cmdp->param.cmd = bcmd;
-	INTON;
- success:
-	cmdp->rehash = 0;
-	entry->cmdtype = cmdp->cmdtype;
-	entry->u = cmdp->param;
-}
 
 
 /*
