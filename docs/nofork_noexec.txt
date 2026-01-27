@@ -56,6 +56,11 @@ roughly are:
   (although usually xfunc_error_retval's state is not a problem).
 * do not expect that stdio wasn't used before. Calling set[v]buf()
   can be disastrous.
+* the parent program's signal handlers will not be reset to SIG_DFL
+  (on exec, they are, but we avoid exactly that).
+  This means that signals will cause a part of _parent's code_
+  to execute, and may cause EINTR returns from syscalls
+  in the NOEXEC applet code.
 * ...
 
 NOEXEC applets save only one half of fork+exec overhead.
@@ -76,7 +81,7 @@ This poses much more serious limitations on what applet can do:
   hush shell only handles signals (like ^C) after you return
   from APPLET_main().
 * do not ever exit() or exec().
-  - xfuncs are okay. They are using special trick to return
+  - xfuncs are okay. They use special trick to return
     to the caller applet instead of dying when they detect "x" condition.
   - you may "exit" to caller applet by calling xfunc_die(). Return value
     is taken from xfunc_error_retval.
