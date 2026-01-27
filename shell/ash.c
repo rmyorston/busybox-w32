@@ -192,6 +192,7 @@
 #define DEBUG_PID 1
 #define DEBUG_SIG 1
 #define DEBUG_INTONOFF 0
+#define DEBUG_SHOW_MEMUSE 0
 
 #define PROFILE 0
 
@@ -1116,6 +1117,30 @@ freefunc(struct funcnode *f)
 
 
 /* ============ Debugging output */
+
+#if DEBUG_SHOW_MEMUSE
+static void dbg_show_dirtymem(const char *msg)
+{
+	char *p, buf[2*1024];
+	int sz = open_read_close("/proc/self/smaps_rollup", buf, sizeof(buf)-1);
+	if (sz <= 0)
+		return;
+	buf[sz] = '\0';
+	p = buf;
+	for (;;) {
+		char *e = strchrnul(p, '\n');
+		if (strncmp(p, "Private_Dirty:", 14) == 0) {
+			p = skip_whitespace(p + 14);
+			bb_error_msg("%s:%.*s", msg, (int)(e - p), p);
+			break;
+		}
+		if (!*e) break;
+		p = e + 1;
+	}
+}
+#else
+# define dbg_show_dirtymem(msg) ((void)0)
+#endif
 
 #if DEBUG
 
@@ -3773,6 +3798,10 @@ ignoresig(int signo)
 /*
  * Only one usage site - in setsignal()
  * This function is called onsig() in dash
+ *
+ * The handler is called only for SIGINT, SIGCHLD, signals with not-"" traps
+ * (grep for S_CATCH handling to see that).
+ * All other signals are either SIG_DFL or SIG_IGN.
  */
 static void
 signal_handler(int signo)
@@ -3789,9 +3818,10 @@ signal_handler(int signo)
 			return;
 	}
 #if ENABLE_FEATURE_EDITING
+//TODO: don't do it if it's SIGCHLD?
 	bb_got_signal = signo; /* for read_line_input / read builtin: "we got a signal" */
 #endif
-	gotsig[signo - 1] = 1;
+	gotsig[signo - 1] = 1; /* "run a trap for this later" */
 	pending_sig = signo;
 
 	if (signo == SIGINT && !trap[SIGINT]) {
@@ -3819,13 +3849,13 @@ setsignal(int signo)
 
 	t = trap[signo];
 	new_act = S_DFL;
-	if (t != NULL) { /* trap for this sig is set */
+	if (t != NULL) {
+		/* Trap for this sig is set */
 		new_act = S_CATCH;
 		if (t[0] == '\0') /* trap is "": ignore this sig */
 			new_act = S_IGN;
-	}
-
-	if (rootshell && new_act == S_DFL && !lvforked) {
+	} else
+	if (rootshell && /*TRUE: new_act == S_DFL &&*/ !lvforked) {
 		switch (signo) {
 		case SIGINT:
 			if (iflag || minusc || sflag == 0)
@@ -3840,7 +3870,10 @@ setsignal(int signo)
 			 * "In all cases, bash ignores SIGQUIT. Non-builtin
 			 * commands run by bash have signal handlers
 			 * set to the values inherited by the shell
-			 * from its parent". */
+			 * from its parent".
+			 * This is not POSIX, but it avoids additional
+			 * core files from shells when users press ^\
+			 */
 			new_act = S_IGN;
 			break;
 		case SIGTERM:
@@ -5395,7 +5428,7 @@ forkchild(struct job *jp, union node *n, int mode)
 		}
 	}
 	if (oldlvl == 0) {
-		if (iflag) { /* why if iflag only? */
+		if (iflag) { /* -i ignores INT/TERM, un-ignore them */
 			setsignal(SIGINT);
 			setsignal(SIGTERM);
 		}
@@ -8449,10 +8482,52 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 #if ENABLE_FEATURE_SH_STANDALONE
 	if (applet_no >= 0) {
 		if (!vforked && APPLET_IS_NOEXEC(applet_no)) {
+			dbg_show_dirtymem("dirtymem in NOEXEC tryexec");
 			clearenv();
 			while (*envp)
 				putenv(*envp++);
 			popredir(/*drop:*/ 1);
+//FIXME: exec resets all non-DFL, non-IGN signal handlers to DFL,
+//but we _don't_ exec, such signals will reach ash's handler instead!
+//Maybe add code there to set the handler to DFL, and signal itself?
+// This works for "CMD [| CMD]..." pipes:
+//vforkexec()
+//    vfork();
+//    forkchild(jp, n, FORK_FG); // this resets TSTP,TTOU,INT,TERM,QUIT to DFL
+//    shellexec(argv[0], argv, path, idx)
+//        tryexec()
+//            we are here
+// And for "exec CMD":
+//execcmd()
+//    iflag = 0;
+//    mflag = 0;
+//    optschanged(); // this resets TSTP,TTOU,INT,TERM to DFL
+//    shlvl++;
+//    setsignal(SIGQUIT); // this resets QUIT to DFL
+//    shellexec()
+//        tryexec()
+//            we are here
+// But ash -c 'LAST_CMD_DOESNT_FORK' does not work!
+//evalcommand()
+//    if (!(flags & EV_EXIT) || may_have_traps)
+//        // we don't use this branch
+//    //else:
+//    shellexec()
+//        tryexec()
+//            we are here
+//SIGINT works 'by accident' (sets DFL+signals itself)
+//SIGQUIT is IGNORED!
+//Fixed by adding in the evalcommand() before the shown shellexec():
+//    shlvl++;
+//    setsignal(SIGQUIT);
+//    //TODO: setsignal(TSTP,TTOU,INT,TERM) too?
+//
+// With traps set, this:
+// ash -c 'trap "echo HERE!" INT; exec xargs'
+// didn't work: ^C sets a "run trap later" flag and _returns_,
+// which is not expected by the NOFORK'ed xargs!
+// clear_traps() helps with this:
+			clear_traps();
 			run_noexec_applet_and_exit(applet_no, cmd, argv);
 		}
 		/* re-exec ourselves with the new arguments */
@@ -10791,6 +10866,9 @@ evalcommand(union node *cmd, int flags)
 			jp = vforkexec(cmd, argv, path, cmdentry.u.index);
 			break;
 		}
+		/* Testcase: ash -c 'ONE_CMD' will use EV_EXIT for ONE_CMD */
+		shlvl++;            /* dash does not need it because it doesn't ignore SIGQUIT */
+		setsignal(SIGQUIT); /* we do (bash compat) */
 		shellexec(argv[0], argv, path, cmdentry.u.index);
 		/* NOTREACHED */
 	} /* default */
@@ -14930,6 +15008,8 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 	struct stackmark smark;
 	int login_sh;
 
+	dbg_show_dirtymem("dirtymem at main start");
+
 	/* Initialize global data */
 	INIT_G_misc();
 	INIT_G_memstack();
@@ -15030,6 +15110,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		//  ash -sc 'echo $-'
 		// continue reading input from stdin after running 'echo'.
 		// bash does not do this: it prints "hBcs" and exits.
+		dbg_show_dirtymem("dirtymem before -c CMD");
 		evalstring(minusc, EV_EXIT);
 	}
 
@@ -15062,6 +15143,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		}
 #endif
  state4: /* XXX ??? - why isn't this before the "if" statement */
+		dbg_show_dirtymem("dirtymem at cmdloop");
 		cmdloop(1);
 	}
 #if PROFILE
