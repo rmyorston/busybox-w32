@@ -76,6 +76,11 @@
 //config:	bool "Job control"
 //config:	default y
 //config:	depends on SHELL_ASH
+//config:	help
+//config:	Enable 'fg', 'bg', 'jobs' and 'kill' builtins.
+//config:	Shell will track whether backgrounded pipes are stopped
+//config:	by signals, and allow to restart them by 'fg' or 'bg'.
+//config:	Otherwise, it will only track whether they have terminated.
 //config:
 //config:config ASH_ALIAS
 //config:	bool "Alias support"
@@ -908,6 +913,7 @@ out2str(const char *p)
 #define VSREPLACE       0xc     /* ${var/pattern/replacement} */
 #define VSREPLACEALL    0xd     /* ${var//pattern/replacement} */
 #endif
+#if DEBUG || JOBS
 static const char vstype_suffix[][3] ALIGN1 = {
 	[VSNORMAL       - VSNORMAL] = "}", // $var or ${var}
 	[VSMINUS        - VSNORMAL] = "-", // ${var-text}
@@ -919,14 +925,15 @@ static const char vstype_suffix[][3] ALIGN1 = {
 	[VSTRIMLEFT     - VSNORMAL] = "#", // ${var#pattern}
 	[VSTRIMLEFTMAX  - VSNORMAL] = "##",// ${var##pattern}
 	[VSLENGTH       - VSNORMAL] = "",  // ${#var}
-#if BASH_SUBSTR
+# if BASH_SUBSTR
 	[VSSUBSTR       - VSNORMAL] = ":", // ${var:position:length}
-#endif
-#if BASH_PATTERN_SUBST
+# endif
+# if BASH_PATTERN_SUBST
 	[VSREPLACE      - VSNORMAL] = "/", // ${var/pattern/replacement}
 	[VSREPLACEALL   - VSNORMAL] = "//",// ${var//pattern/replacement}
-#endif
+# endif
 };
+#endif
 
 static const char dolatstr[] ALIGN1 = {
 	CTLQUOTEMARK, CTLVAR, VSNORMAL, '@', '=', CTLQUOTEMARK, '\0'
@@ -3723,63 +3730,6 @@ unaliascmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 
 #endif /* ASH_ALIAS */
 
-/* Mode argument to forkshell.  Don't change FORK_FG or FORK_BG. */
-#define FORK_FG    0
-#define FORK_BG    1
-#define FORK_NOJOB 2
-
-/* mode flags for showjob(s) */
-#define SHOW_ONLY_PGID  0x01    /* show only pgid (jobs -p) */
-#define SHOW_PIDS       0x02    /* show individual pids, not just one line per job */
-#define SHOW_CHANGED    0x04    /* only jobs whose state has changed */
-#define SHOW_STDERR     0x08    /* print to stderr (else stdout) */
-
-/*
- * A job structure contains information about a job.  A job is either a
- * single process or a set of processes contained in a pipeline.  In the
- * latter case, pidlist will be non-NULL, and will point to a -1 terminated
- * array of pids.
- */
-struct procstat {
-	pid_t   ps_pid;         /* process id */
-	int     ps_status;      /* last process status from wait() */
-	char    *ps_cmd;        /* text of command being run */
-};
-
-struct job {
-	struct procstat ps0;    /* status of process */
-	struct procstat *ps;    /* status of processes when more than one */
-#if JOBS
-	int stopstatus;         /* status of a stopped job */
-#endif
-	unsigned nprocs;        /* number of processes */
-
-#define JOBRUNNING      0       /* at least one proc running */
-#define JOBSTOPPED      1       /* all procs are stopped */
-#define JOBDONE         2       /* all procs are completed */
-	unsigned
-		state: 8,
-#if JOBS
-		sigint: 1,      /* job was killed by SIGINT */
-		jobctl: 1,      /* job running under job control */
-#endif
-		waited: 1,      /* true if this entry has been waited for */
-		used: 1,        /* true if this entry is in used */
-		changed: 1;     /* true if status has changed */
-	struct job *prev_job;   /* previous job */
-};
-
-static int forkshell(struct job *, union node *, int);
-static int waitforjob(struct job *);
-
-#if !JOBS
-enum { jobctl = 0 };
-#define setjobctl(on) do {} while (0)
-#else
-static smallint jobctl; //references:8
-static void setjobctl(int);
-#endif
-
 /*
  * Ignore a signal.
  */
@@ -3948,12 +3898,61 @@ setsignal(int signo)
 	sigaction_set(signo, &act);
 }
 
-/* mode flags for set_curjob */
+/* Mode flags for set_curjob */
 #define CUR_DELETE 2
 #define CUR_RUNNING 1
 #define CUR_STOPPED 0
 
+/* Mode argument to forkshell.  Don't change FORK_FG or FORK_BG. */
+#define FORK_FG    0
+#define FORK_BG    1
+#define FORK_NOJOB 2
+
+/* Mode flags for showjob(s) */
+#define SHOW_ONLY_PGID  0x01    /* show only pgid (jobs -p) */
+#define SHOW_PIDS       0x02    /* show individual pids, not just one line per job */
+#define SHOW_CHANGED    0x04    /* only jobs whose state has changed */
+#define SHOW_STDERR     0x08    /* print to stderr (else stdout) */
+
+/*
+ * A job structure contains information about a job.  A job is either a
+ * single process or a set of processes contained in a pipeline.  In the
+ * latter case, pidlist will be non-NULL, and will point to a -1 terminated
+ * array of pids.
+ */
+struct procstat {
+	pid_t   ps_pid;         /* process id */
+	int     ps_status;      /* last process status from wait() */
+	char    *ps_cmd;        /* text of command being run */
+};
+
+struct job {
+	struct procstat ps0;    /* status of process */
+	struct procstat *ps;    /* status of processes when more than one */
 #if JOBS
+	int stopstatus;         /* status of a stopped job */
+#endif
+	unsigned nprocs;        /* number of processes */
+
+#define JOBRUNNING      0       /* at least one proc running */
+#define JOBSTOPPED      1       /* all procs are stopped */
+#define JOBDONE         2       /* all procs are completed */
+	unsigned
+		state: 8,
+#if JOBS
+		sigint: 1,      /* job was killed by SIGINT */
+		jobctl: 1,      /* job running under job control */
+#endif
+		waited: 1,      /* true if this entry has been waited for */
+		used: 1,        /* true if this entry is in used */
+		changed: 1;     /* true if status has changed */
+	struct job *prev_job;   /* previous job */
+};
+
+#if !JOBS
+enum { jobctl = 0 };
+#else
+static smallint jobctl; //references:8
 /* pgrp of shell on invocation */
 static int initialpgrp; //references:2
 static int ttyfd = -1; //5
@@ -4192,7 +4191,9 @@ freejob(struct job *jp)
 	INTON;
 }
 
-#if JOBS
+#if !JOBS
+# define setjobctl(on) ((void)0)
+#else
 static void
 xtcsetpgrp(int fd, pid_t pgrp)
 {
@@ -4346,75 +4347,6 @@ killcmd(int argc, char **argv)
 	}
 	return kill_main(argc, argv);
 }
-
-static void
-showpipe(struct job *jp /*, FILE *out*/)
-{
-	struct procstat *ps;
-	struct procstat *psend;
-
-	psend = jp->ps + jp->nprocs;
-	for (ps = jp->ps + 1; ps < psend; ps++)
-		printf(" | %s", ps->ps_cmd);
-	newline_and_flush(stdout);
-	flush_stdout_stderr();
-}
-
-
-static int
-restartjob(struct job *jp, int mode)
-{
-	struct procstat *ps;
-	int i;
-	int status;
-	pid_t pgid;
-
-	INTOFF;
-	if (jp->state == JOBDONE)
-		goto out;
-	jp->state = JOBRUNNING;
-	pgid = jp->ps[0].ps_pid;
-	if (mode == FORK_FG) {
-		get_tty_state();
-		xtcsetpgrp(ttyfd, pgid);
-	}
-	killpg(pgid, SIGCONT);
-	ps = jp->ps;
-	i = jp->nprocs;
-	do {
-		if (WIFSTOPPED(ps->ps_status)) {
-			ps->ps_status = -1;
-		}
-		ps++;
-	} while (--i);
- out:
-	status = (mode == FORK_FG) ? waitforjob(jp) : 0;
-	INTON;
-	return status;
-}
-
-static int FAST_FUNC
-fg_bgcmd(int argc UNUSED_PARAM, char **argv)
-{
-	struct job *jp;
-	int mode;
-	int retval;
-
-	mode = (**argv == 'f') ? FORK_FG : FORK_BG;
-	nextopt(nullstr);
-	argv = argptr;
-	do {
-		jp = getjob(*argv, 1);
-		if (mode == FORK_BG) {
-			set_curjob(jp, CUR_RUNNING);
-			printf("[%d] ", jobno(jp));
-		}
-		out1str(jp->ps[0].ps_cmd);
-		showpipe(jp /*, stdout*/);
-		retval = restartjob(jp, mode);
-	} while (*argv && *++argv);
-	return retval;
-}
 #endif
 
 static int
@@ -4449,6 +4381,44 @@ sprint_status48(char *os, int status, int sigonly)
 	}
  out:
 	return s - os;
+}
+
+/* Called only on finished or stopped jobs (no members are running) */
+static int
+getstatus(struct job *job)
+{
+	int status;
+	int retval;
+	struct procstat *ps;
+
+	/* Fetch last member's status */
+	ps = job->ps + job->nprocs - 1;
+	status = ps->ps_status;
+	if (pipefail) {
+		/* "set -o pipefail" mode: use last _nonzero_ status */
+		while (status == 0 && --ps >= job->ps)
+			status = ps->ps_status;
+	}
+
+	retval = WEXITSTATUS(status);
+	if (!WIFEXITED(status)) {
+#if JOBS
+		retval = WSTOPSIG(status);
+		if (!WIFSTOPPED(status))
+#endif
+		{
+			/* XXX: limits number of signals */
+			retval = WTERMSIG(status);
+#if JOBS
+			if (retval == SIGINT)
+				job->sigint = 1;
+#endif
+		}
+		retval |= 128;
+	}
+	TRACE(("getstatus: job %d, nproc %d, status 0x%x, retval 0x%x\n",
+		jobno(job), job->nprocs, status, retval));
+	return retval;
 }
 
 /* Inside dowait(): */
@@ -4637,6 +4607,90 @@ static int dowait(int block, struct job *jp)
 	return rpid;
 }
 
+/*
+ * Wait for job to finish.
+ *
+ * Under job control we have the problem that while a child process
+ * is running interrupts generated by the user are sent to the child
+ * but not to the shell.  This means that an infinite loop started by
+ * an interactive user may be hard to kill.  With job control turned off,
+ * an interactive user may place an interactive program inside a loop.
+ * If the interactive program catches interrupts, the user doesn't want
+ * these interrupts to also abort the loop.  The approach we take here
+ * is to have the shell ignore interrupt signals while waiting for a
+ * foreground process to terminate, and then send itself an interrupt
+ * signal if the child process was terminated by an interrupt signal.
+ * Unfortunately, some programs want to do a bit of cleanup and then
+ * exit on interrupt; unless these processes terminate themselves by
+ * sending a signal to themselves (instead of calling exit) they will
+ * confuse this approach.
+ *
+ * Called with interrupts off.
+ */
+static int
+waitforjob(struct job *jp)
+{
+	int st;
+
+	TRACE(("waitforjob(%%%d) called\n", jp ? jobno(jp) : 0));
+
+	/* In non-interactive shells, we _can_ get
+	 * a keyboard signal here and be EINTRed, but we just loop
+	 * inside dowait(), waiting for command to complete.
+	 *
+	 * man bash:
+	 * "If bash is waiting for a command to complete and receives
+	 * a signal for which a trap has been set, the trap
+	 * will not be executed until the command completes."
+	 *
+	 * Reality is that even if trap is not set, bash
+	 * will not act on the signal until command completes.
+	 * Try this. sleep5intoff.c:
+	 * #include <signal.h>
+	 * #include <unistd.h>
+	 * int main() {
+	 *         sigset_t set;
+	 *         sigemptyset(&set);
+	 *         sigaddset(&set, SIGINT);
+	 *         sigaddset(&set, SIGQUIT);
+	 *         sigprocmask(SIG_BLOCK, &set, NULL);
+	 *         sleep(5);
+	 *         return 0;
+	 * }
+	 * $ bash -c './sleep5intoff; echo hi'
+	 * ^C^C^C^C <--- pressing ^C once a second
+	 * $ _
+	 * $ bash -c './sleep5intoff; echo hi'
+	 * ^\^\^\^\hi <--- pressing ^\ (SIGQUIT)
+	 * $ _
+	 */
+	dowait(jp ? DOWAIT_BLOCK : DOWAIT_NONBLOCK, jp);
+	if (!jp)
+		return exitstatus;
+
+	st = getstatus(jp);
+#if JOBS
+	if (jp->jobctl) {
+		xtcsetpgrp(ttyfd, rootpid);
+		restore_tty_if_stopped_or_signaled(jp);
+
+		/*
+		 * This is truly gross.
+		 * If we're doing job control, then we did a TIOCSPGRP which
+		 * caused us (the shell) to no longer be in the controlling
+		 * session -- so we wouldn't have seen any ^C/SIGINT.  So, we
+		 * intuit from the subprocess exit status whether a SIGINT
+		 * occurred, and if so interrupt ourselves.  Yuck.  - mycroft
+		 */
+		if (jp->sigint) /* TODO: do the same with all signals */
+			raise(SIGINT); /* ... by raise(jp->sig) instead? */
+	}
+	if (jp->state == JOBDONE)
+#endif
+		freejob(jp);
+	return st;
+}
+
 #if JOBS
 static void
 showjob(struct job *jp, int mode)
@@ -4758,43 +4812,95 @@ jobscmd(int argc UNUSED_PARAM, char **argv)
 
 	return 0;
 }
-#endif /* JOBS */
 
-/* Called only on finished or stopped jobs (no members are running) */
 static int
-getstatus(struct job *job)
+restartjob(struct job *jp, int mode)
 {
-	int status;
-	int retval;
 	struct procstat *ps;
+	int i;
+	int status;
+	pid_t pgid;
 
-	/* Fetch last member's status */
-	ps = job->ps + job->nprocs - 1;
-	status = ps->ps_status;
-	if (pipefail) {
-		/* "set -o pipefail" mode: use last _nonzero_ status */
-		while (status == 0 && --ps >= job->ps)
-			status = ps->ps_status;
+	INTOFF;
+	if (jp->state == JOBDONE)
+		goto out;
+	jp->state = JOBRUNNING;
+	pgid = jp->ps[0].ps_pid;
+	if (mode == FORK_FG) {
+		get_tty_state();
+		xtcsetpgrp(ttyfd, pgid);
 	}
-
-	retval = WEXITSTATUS(status);
-	if (!WIFEXITED(status)) {
-#if JOBS
-		retval = WSTOPSIG(status);
-		if (!WIFSTOPPED(status))
-#endif
-		{
-			/* XXX: limits number of signals */
-			retval = WTERMSIG(status);
-#if JOBS
-			if (retval == SIGINT)
-				job->sigint = 1;
-#endif
+	killpg(pgid, SIGCONT);
+	ps = jp->ps;
+	i = jp->nprocs;
+	do {
+		if (WIFSTOPPED(ps->ps_status)) {
+			ps->ps_status = -1;
 		}
-		retval |= 128;
+		ps++;
+	} while (--i);
+ out:
+	status = (mode == FORK_FG) ? waitforjob(jp) : 0;
+	INTON;
+	return status;
+}
+
+static void
+showpipe(struct job *jp /*, FILE *out*/)
+{
+	struct procstat *ps;
+	struct procstat *psend;
+
+	psend = jp->ps + jp->nprocs;
+	for (ps = jp->ps + 1; ps < psend; ps++)
+		printf(" | %s", ps->ps_cmd);
+	newline_and_flush(stdout);
+	flush_stdout_stderr();
+}
+
+static int FAST_FUNC
+fg_bgcmd(int argc UNUSED_PARAM, char **argv)
+{
+	struct job *jp;
+	int mode;
+	int retval;
+
+	mode = (**argv == 'f') ? FORK_FG : FORK_BG;
+	nextopt(nullstr);
+	argv = argptr;
+	do {
+		jp = getjob(*argv, 1);
+		if (mode == FORK_BG) {
+			set_curjob(jp, CUR_RUNNING);
+			printf("[%d] ", jobno(jp));
+		}
+		out1str(jp->ps[0].ps_cmd);
+		showpipe(jp /*, stdout*/);
+		retval = restartjob(jp, mode);
+	} while (*argv && *++argv);
+	return retval;
+}
+#endif
+
+/*
+ * return 1 if there are stopped jobs, otherwise 0
+ */
+static int
+stoppedjobs(void)
+{
+	struct job *jp;
+	int retval;
+
+	retval = 0;
+	if (!iflag || job_warning)
+		goto out;
+	jp = curjob;
+	if (jp && jp->state == JOBSTOPPED) {
+		out2str("You have stopped jobs.\n");
+		job_warning = 2;
+		retval++;
 	}
-	TRACE(("getstatus: job %d, nproc %d, status 0x%x, retval 0x%x\n",
-		jobno(job), job->nprocs, status, retval));
+ out:
 	return retval;
 }
 
@@ -5526,140 +5632,6 @@ forkshell(struct job *jp, union node *n, int mode)
 	return pid;
 }
 
-static void shellexec(char *prog, char **argv, const char *path, int idx) NORETURN;
-
-static struct job*
-vforkexec(union node *n, char **argv, const char *path, int idx)
-{
-	struct job *jp;
-	int pid;
-
-	jp = makejob(1);
-
-	sigblockall(NULL);
-	vforked = 1;
-
-	pid = vfork();
-
-	if (!pid) {
-		forkchild(jp, n, FORK_FG);
-		sigclearmask();
-		shellexec(argv[0], argv, path, idx);
-		/* NOTREACHED */
-	}
-
-	vforked = 0;
-	sigclearmask();
-	forkparent(jp, n, FORK_FG, pid);
-
-	return jp;
-}
-
-/*
- * Wait for job to finish.
- *
- * Under job control we have the problem that while a child process
- * is running interrupts generated by the user are sent to the child
- * but not to the shell.  This means that an infinite loop started by
- * an interactive user may be hard to kill.  With job control turned off,
- * an interactive user may place an interactive program inside a loop.
- * If the interactive program catches interrupts, the user doesn't want
- * these interrupts to also abort the loop.  The approach we take here
- * is to have the shell ignore interrupt signals while waiting for a
- * foreground process to terminate, and then send itself an interrupt
- * signal if the child process was terminated by an interrupt signal.
- * Unfortunately, some programs want to do a bit of cleanup and then
- * exit on interrupt; unless these processes terminate themselves by
- * sending a signal to themselves (instead of calling exit) they will
- * confuse this approach.
- *
- * Called with interrupts off.
- */
-static int
-waitforjob(struct job *jp)
-{
-	int st;
-
-	TRACE(("waitforjob(%%%d) called\n", jp ? jobno(jp) : 0));
-
-	/* In non-interactive shells, we _can_ get
-	 * a keyboard signal here and be EINTRed, but we just loop
-	 * inside dowait(), waiting for command to complete.
-	 *
-	 * man bash:
-	 * "If bash is waiting for a command to complete and receives
-	 * a signal for which a trap has been set, the trap
-	 * will not be executed until the command completes."
-	 *
-	 * Reality is that even if trap is not set, bash
-	 * will not act on the signal until command completes.
-	 * Try this. sleep5intoff.c:
-	 * #include <signal.h>
-	 * #include <unistd.h>
-	 * int main() {
-	 *         sigset_t set;
-	 *         sigemptyset(&set);
-	 *         sigaddset(&set, SIGINT);
-	 *         sigaddset(&set, SIGQUIT);
-	 *         sigprocmask(SIG_BLOCK, &set, NULL);
-	 *         sleep(5);
-	 *         return 0;
-	 * }
-	 * $ bash -c './sleep5intoff; echo hi'
-	 * ^C^C^C^C <--- pressing ^C once a second
-	 * $ _
-	 * $ bash -c './sleep5intoff; echo hi'
-	 * ^\^\^\^\hi <--- pressing ^\ (SIGQUIT)
-	 * $ _
-	 */
-	dowait(jp ? DOWAIT_BLOCK : DOWAIT_NONBLOCK, jp);
-	if (!jp)
-		return exitstatus;
-
-	st = getstatus(jp);
-#if JOBS
-	if (jp->jobctl) {
-		xtcsetpgrp(ttyfd, rootpid);
-		restore_tty_if_stopped_or_signaled(jp);
-
-		/*
-		 * This is truly gross.
-		 * If we're doing job control, then we did a TIOCSPGRP which
-		 * caused us (the shell) to no longer be in the controlling
-		 * session -- so we wouldn't have seen any ^C/SIGINT.  So, we
-		 * intuit from the subprocess exit status whether a SIGINT
-		 * occurred, and if so interrupt ourselves.  Yuck.  - mycroft
-		 */
-		if (jp->sigint) /* TODO: do the same with all signals */
-			raise(SIGINT); /* ... by raise(jp->sig) instead? */
-	}
-	if (jp->state == JOBDONE)
-#endif
-		freejob(jp);
-	return st;
-}
-
-/*
- * return 1 if there are stopped jobs, otherwise 0
- */
-static int
-stoppedjobs(void)
-{
-	struct job *jp;
-	int retval;
-
-	retval = 0;
-	if (!iflag || job_warning)
-		goto out;
-	jp = curjob;
-	if (jp && jp->state == JOBSTOPPED) {
-		out2str("You have stopped jobs.\n");
-		job_warning = 2;
-		retval++;
-	}
- out:
-	return retval;
-}
 
 /*
  * Code for dealing with input/output redirection.
@@ -6229,6 +6201,193 @@ unwindredir(struct redirtab *stop)
 {
 	while (redirlist != stop)
 		popredir(/*drop:*/ 0);
+}
+
+
+/*
+ * execve wrappers
+ */
+#if ENABLE_FEATURE_SH_STANDALONE
+static void
+tryexec_applet(int applet_no, const char *cmd, char **argv, char **envp)
+{
+	if (!vforked && APPLET_IS_NOEXEC(applet_no)) {
+		dbg_show_dirtymem("dirtymem in NOEXEC tryexec");
+		clearenv();
+		while (*envp)
+			putenv(*envp++);
+		popredir(/*drop:*/ 1);
+//FIXME: exec resets all non-DFL, non-IGN signal handlers to DFL,
+//but we _don't_ exec, such signals will reach ash's handler instead!
+//Maybe add code there to set the handler to DFL, and signal itself?
+// This works for "CMD [| CMD]..." pipes:
+//vforkexec():
+//  vfork();
+//  forkchild(jp, n, FORK_FG); // this resets TSTP,TTOU,INT,TERM,QUIT to DFL
+//  shellexec(argv[0], argv, path, idx)
+//      tryexec_applet()
+//          we are here
+// And for "exec CMD":
+//execcmd():
+//  iflag = 0;
+//  mflag = 0;
+//  optschanged(); // this resets TSTP,TTOU,INT,TERM to DFL
+//  shlvl++;
+//  setsignal(SIGQUIT); // this resets QUIT to DFL
+//  shellexec() ->
+//      tryexec_applet() ->
+//          we are here
+// But ash -c 'LAST_CMD_WONT_FORK' does not work!
+//evalcommand():
+//  if (!(flags & EV_EXIT) || may_have_traps)
+//      // we don't use this branch
+//  //else:
+//  shellexec() ->
+//      tryexec_applet() ->
+//          we are here
+//SIGINT works 'by accident' (sets DFL+signals itself)
+//SIGQUIT is IGNORED!
+//Fixed by adding in the evalcommand() before that shellexec():
+//  shlvl++;
+//  setsignal(SIGQUIT);
+//  //TODO: setsignal(TSTP,TTOU,INT,TERM) too?
+//
+// With traps set, this:
+// ash -c 'trap "echo HERE!" INT; exec xargs'
+// didn't work: ^C sets a "run trap later" flag and _returns_,
+// which is not expected by the NOEXEC'ed xargs applet! (It gets EINTR on read).
+// clear_traps() helps with this:
+		clear_traps();
+		run_noexec_applet_and_exit(applet_no, cmd, argv);
+		/* does not return */
+	}
+	/* re-exec ourselves with the new arguments */
+	execve(bb_busybox_exec_path, argv, envp);
+	/* If they called chroot or otherwise made the binary
+	 * no longer executable, return.
+	 */
+}
+#endif
+
+static void
+tryexec(const char *cmd, char **argv, char **envp)
+{
+ repeat:
+#ifdef SYSV
+	do {
+		execve(cmd, argv, envp);
+	} while (errno == EINTR);
+#else
+	execve(cmd, argv, envp);
+#endif
+	if (cmd != bb_busybox_exec_path && errno == ENOEXEC) {
+		/* Run "cmd" as a shell script:
+		 * http://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
+		 * "If the execve() function fails with ENOEXEC, the shell
+		 * shall execute a command equivalent to having a shell invoked
+		 * with the command name as its first operand,
+		 * with any remaining arguments passed to the new shell"
+		 *
+		 * That is, do not use $SHELL, user's shell, or /bin/sh;
+		 * just call ourselves.
+		 *
+		 * Note that bash reads ~80 chars of the file, and if it sees
+		 * a zero byte before it sees newline, it doesn't try to
+		 * interpret it, but fails with "cannot execute binary file"
+		 * message and exit code 126. For one, this prevents attempts
+		 * to interpret foreign ELF binaries as shell scripts.
+		 */
+		argv[0] = (char*) cmd;
+		cmd = bb_busybox_exec_path;
+		/* NB: this is only possible because all callers of shellexec()
+		 * ensure that the argv[-1] slot exists!
+		 */
+		argv--;
+		argv[0] = (char*) "ash";
+		goto repeat;
+	}
+}
+
+/*
+ * Exec a program.  Never returns.  If you change this routine, you may
+ * have to change the find_command routine as well.
+ * argv[-1] must exist and be writable! See tryexec() for why.
+ */
+static void shellexec(char *prog, char **argv, const char *path, int idx)
+{
+	char *cmdname;
+	int e;
+	char **envp;
+	int exerrno;
+
+	envp = listvars(VEXPORT, VUNSET, /*strlist:*/ NULL, /*end:*/ NULL);
+	if (strchr(prog, '/') != NULL) {
+		tryexec(prog, argv, envp);
+		e = errno;
+	} else {
+#if ENABLE_FEATURE_SH_STANDALONE
+		int applet_no = find_applet_by_name(prog);
+		if (applet_no >= 0)
+			tryexec_applet(applet_no, prog, argv, envp);
+		/* We tried execing ourself, but it didn't work.
+		 * Maybe /proc/self/exe doesn't exist?
+		 */
+#endif
+		e = ENOENT;
+		while (padvance(&path, argv[0]) >= 0) {
+			cmdname = stackblock();
+			if (--idx < 0 && pathopt == NULL) {
+				tryexec(cmdname, argv, envp);
+				if (errno != ENOENT && errno != ENOTDIR)
+					e = errno;
+			}
+		}
+	}
+
+	/* Map to POSIX errors */
+	switch (e) {
+	default:
+		exerrno = 126;
+		break;
+	case ELOOP:
+	case ENAMETOOLONG:
+	case ENOENT:
+	case ENOTDIR:
+		exerrno = 127;
+		break;
+	}
+	exitstatus = exerrno;
+	TRACE(("shellexec failed for %s, errno %d, suppress_int %d\n",
+		prog, e, suppress_int));
+	ash_msg_and_raise(EXEND, "%s: %s", prog, errmsg(e, E_EXEC));
+	/* NOTREACHED */
+}
+
+static struct job*
+vforkexec(union node *n, char **argv, const char *path, int idx)
+{
+	struct job *jp;
+	int pid;
+
+	jp = makejob(1);
+
+	sigblockall(NULL);
+	vforked = 1;
+
+	pid = vfork();
+
+	if (!pid) {
+		forkchild(jp, n, FORK_FG);
+		sigclearmask();
+		shellexec(argv[0], argv, path, idx);
+		/* NOTREACHED */
+	}
+
+	vforked = 0;
+	sigclearmask();
+	forkparent(jp, n, FORK_FG, pid);
+
+	return jp;
 }
 
 
@@ -8475,162 +8634,6 @@ static struct tblentry **cmdtable;
 
 static int builtinloc = -1;     /* index in path of %builtin, or -1 */
 
-
-#if ENABLE_FEATURE_SH_STANDALONE
-static void
-tryexec_applet(int applet_no, const char *cmd, char **argv, char **envp)
-{
-	if (!vforked && APPLET_IS_NOEXEC(applet_no)) {
-		dbg_show_dirtymem("dirtymem in NOEXEC tryexec");
-		clearenv();
-		while (*envp)
-			putenv(*envp++);
-		popredir(/*drop:*/ 1);
-//FIXME: exec resets all non-DFL, non-IGN signal handlers to DFL,
-//but we _don't_ exec, such signals will reach ash's handler instead!
-//Maybe add code there to set the handler to DFL, and signal itself?
-// This works for "CMD [| CMD]..." pipes:
-//vforkexec():
-//  vfork();
-//  forkchild(jp, n, FORK_FG); // this resets TSTP,TTOU,INT,TERM,QUIT to DFL
-//  shellexec(argv[0], argv, path, idx)
-//      tryexec_applet()
-//          we are here
-// And for "exec CMD":
-//execcmd():
-//  iflag = 0;
-//  mflag = 0;
-//  optschanged(); // this resets TSTP,TTOU,INT,TERM to DFL
-//  shlvl++;
-//  setsignal(SIGQUIT); // this resets QUIT to DFL
-//  shellexec() ->
-//      tryexec_applet() ->
-//          we are here
-// But ash -c 'LAST_CMD_WONT_FORK' does not work!
-//evalcommand():
-//  if (!(flags & EV_EXIT) || may_have_traps)
-//      // we don't use this branch
-//  //else:
-//  shellexec() ->
-//      tryexec_applet() ->
-//          we are here
-//SIGINT works 'by accident' (sets DFL+signals itself)
-//SIGQUIT is IGNORED!
-//Fixed by adding in the evalcommand() before that shellexec():
-//  shlvl++;
-//  setsignal(SIGQUIT);
-//  //TODO: setsignal(TSTP,TTOU,INT,TERM) too?
-//
-// With traps set, this:
-// ash -c 'trap "echo HERE!" INT; exec xargs'
-// didn't work: ^C sets a "run trap later" flag and _returns_,
-// which is not expected by the NOEXEC'ed xargs applet! (It gets EINTR on read).
-// clear_traps() helps with this:
-		clear_traps();
-		run_noexec_applet_and_exit(applet_no, cmd, argv);
-		/* does not return */
-	}
-	/* re-exec ourselves with the new arguments */
-	execve(bb_busybox_exec_path, argv, envp);
-	/* If they called chroot or otherwise made the binary
-	 * no longer executable, return.
-	 */
-}
-#endif
-
-static void
-tryexec(const char *cmd, char **argv, char **envp)
-{
- repeat:
-#ifdef SYSV
-	do {
-		execve(cmd, argv, envp);
-	} while (errno == EINTR);
-#else
-	execve(cmd, argv, envp);
-#endif
-	if (cmd != bb_busybox_exec_path && errno == ENOEXEC) {
-		/* Run "cmd" as a shell script:
-		 * http://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
-		 * "If the execve() function fails with ENOEXEC, the shell
-		 * shall execute a command equivalent to having a shell invoked
-		 * with the command name as its first operand,
-		 * with any remaining arguments passed to the new shell"
-		 *
-		 * That is, do not use $SHELL, user's shell, or /bin/sh;
-		 * just call ourselves.
-		 *
-		 * Note that bash reads ~80 chars of the file, and if it sees
-		 * a zero byte before it sees newline, it doesn't try to
-		 * interpret it, but fails with "cannot execute binary file"
-		 * message and exit code 126. For one, this prevents attempts
-		 * to interpret foreign ELF binaries as shell scripts.
-		 */
-		argv[0] = (char*) cmd;
-		cmd = bb_busybox_exec_path;
-		/* NB: this is only possible because all callers of shellexec()
-		 * ensure that the argv[-1] slot exists!
-		 */
-		argv--;
-		argv[0] = (char*) "ash";
-		goto repeat;
-	}
-}
-
-/*
- * Exec a program.  Never returns.  If you change this routine, you may
- * have to change the find_command routine as well.
- * argv[-1] must exist and be writable! See tryexec() for why.
- */
-static void shellexec(char *prog, char **argv, const char *path, int idx)
-{
-	char *cmdname;
-	int e;
-	char **envp;
-	int exerrno;
-
-	envp = listvars(VEXPORT, VUNSET, /*strlist:*/ NULL, /*end:*/ NULL);
-	if (strchr(prog, '/') != NULL) {
-		tryexec(prog, argv, envp);
-		e = errno;
-	} else {
-#if ENABLE_FEATURE_SH_STANDALONE
-		int applet_no = find_applet_by_name(prog);
-		if (applet_no >= 0)
-			tryexec_applet(applet_no, prog, argv, envp);
-		/* We tried execing ourself, but it didn't work.
-		 * Maybe /proc/self/exe doesn't exist?
-		 */
-#endif
-		e = ENOENT;
-		while (padvance(&path, argv[0]) >= 0) {
-			cmdname = stackblock();
-			if (--idx < 0 && pathopt == NULL) {
-				tryexec(cmdname, argv, envp);
-				if (errno != ENOENT && errno != ENOTDIR)
-					e = errno;
-			}
-		}
-	}
-
-	/* Map to POSIX errors */
-	switch (e) {
-	default:
-		exerrno = 126;
-		break;
-	case ELOOP:
-	case ENAMETOOLONG:
-	case ENOENT:
-	case ENOTDIR:
-		exerrno = 127;
-		break;
-	}
-	exitstatus = exerrno;
-	TRACE(("shellexec failed for %s, errno %d, suppress_int %d\n",
-		prog, e, suppress_int));
-	ash_msg_and_raise(EXEND, "%s: %s", prog, errmsg(e, E_EXEC));
-	/* NOTREACHED */
-}
 
 static void
 printentry(struct tblentry *cmdp)
