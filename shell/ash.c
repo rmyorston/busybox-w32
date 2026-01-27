@@ -8433,37 +8433,6 @@ expandhere(union node *arg)
 	expandarg(arg, (struct arglist *)NULL, EXP_QUOTED);
 }
 
-/*
- * Returns true if the pattern matches the string.
- */
-static int
-patmatch(char *pattern, const char *string)
-{
-	char *p = preglob(pattern, 0);
-	int r = pmatch(p, string);
-	//bb_error_msg("!fnmatch(pattern:'%s',str:'%s',0):%d", p, string, r);
-	return r;
-}
-
-/*
- * See if a pattern matches in a case statement.
- */
-static int
-casematch(union node *pattern, char *val)
-{
-	struct stackmark smark;
-	int result;
-
-	setstackmark(&smark);
-	argbackq = pattern->narg.backquote;
-	STARTSTACKSTR(expdest);
-	argstr(pattern->narg.text, EXP_TILDE | EXP_CASE);
-	ifsfree();
-	result = patmatch(stackblock(), val);
-	popstackmark(&smark);
-	return result;
-}
-
 
 /* ============ find_command */
 
@@ -8755,6 +8724,11 @@ changepath(const char *newval)
 	builtinloc = bltin;
 	clearcmdentry();
 }
+
+
+/*
+ * Parsing.
+ */
 enum {
 	TEOF,
 	TNL,
@@ -9697,6 +9671,37 @@ evalfor(union node *n, int flags)
 	loopnest--;
 
 	return status;
+}
+
+/*
+ * Returns true if the pattern matches the string.
+ */
+static int
+patmatch(char *pattern, const char *string)
+{
+	char *p = preglob(pattern, 0);
+	int r = pmatch(p, string);
+	//bb_error_msg("!fnmatch(pattern:'%s',str:'%s',0):%d", p, string, r);
+	return r;
+}
+
+/*
+ * See if a pattern matches in a case statement.
+ */
+static int
+casematch(union node *pattern, char *val)
+{
+	struct stackmark smark;
+	int result;
+
+	setstackmark(&smark);
+	argbackq = pattern->narg.backquote;
+	STARTSTACKSTR(expdest);
+	argstr(pattern->narg.text, EXP_TILDE | EXP_CASE);
+	ifsfree();
+	result = patmatch(stackblock(), val);
+	popstackmark(&smark);
+	return result;
 }
 
 static int
