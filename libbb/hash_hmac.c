@@ -169,13 +169,13 @@ void FAST_FUNC hmac_hash_v(hmac_ctx_t *ctx, va_list va)
  */
 unsigned hmac_peek_hash(hmac_ctx_t *ctx, uint8_t *out, ...)
 {
+	va_list va;
 #if !ENABLE_FEATURE_USE_CNG_API
 	hmac_ctx_t tmpctx = *ctx; /* struct copy */
 #else
 	hmac_ctx_t tmpctx;
 	hmac_clone(ctx, &tmpctx);
 #endif
-	va_list va;
 
 	va_start(va, out);
 	hmac_hash_v(&tmpctx, va);

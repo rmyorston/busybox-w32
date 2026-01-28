@@ -17,30 +17,44 @@
 # include <windows.h>
 # include <bcrypt.h>
 
-
-static wchar_t *alg_id_mappings[] = {
-	BCRYPT_MD5_ALGORITHM,
-	BCRYPT_SHA1_ALGORITHM,
-	BCRYPT_SHA256_ALGORITHM,
-	BCRYPT_SHA384_ALGORITHM,
-	BCRYPT_SHA512_ALGORITHM
-};
-
-static BCRYPT_ALG_HANDLE algorithm_provider_cache[5] = { INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE };
-static BCRYPT_ALG_HANDLE algorithm_provider_hmac_cache[5] = { INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE, INVALID_HANDLE_VALUE };
-
 /*
  * Requests an algorithm handle from the store,
  * or creates it if it does not exist.
  */
 
-BCRYPT_ALG_HANDLE get_alg_handle(enum cng_algorithm_identifier algorithm_identifier, bool hmac) {
-	BCRYPT_ALG_HANDLE *cache = hmac ? algorithm_provider_hmac_cache : algorithm_provider_cache;
+BCRYPT_ALG_HANDLE get_alg_handle(enum cng_algorithm_identifier algorithm_identifier, bool hmac)
+{
+	const wchar_t *alg_id_mappings[] = {
+		BCRYPT_MD5_ALGORITHM,
+		BCRYPT_SHA1_ALGORITHM,
+		BCRYPT_SHA256_ALGORITHM,
+		BCRYPT_SHA384_ALGORITHM,
+		BCRYPT_SHA512_ALGORITHM
+	};
+	static BCRYPT_ALG_HANDLE algorithm_provider_cache[5] = {
+		INVALID_HANDLE_VALUE,
+		INVALID_HANDLE_VALUE,
+		INVALID_HANDLE_VALUE,
+		INVALID_HANDLE_VALUE,
+		INVALID_HANDLE_VALUE
+	};
+	static BCRYPT_ALG_HANDLE algorithm_provider_hmac_cache[5] = {
+		INVALID_HANDLE_VALUE,
+		INVALID_HANDLE_VALUE,
+		INVALID_HANDLE_VALUE,
+		INVALID_HANDLE_VALUE,
+		INVALID_HANDLE_VALUE
+		};
+	BCRYPT_ALG_HANDLE *cache;
+	NTSTATUS status;
 
+	cache = hmac ? algorithm_provider_hmac_cache : algorithm_provider_cache;
 	if (cache[algorithm_identifier] != INVALID_HANDLE_VALUE) {
 		return cache[algorithm_identifier];
 	}
-	NTSTATUS status = BCryptOpenAlgorithmProvider(&cache[algorithm_identifier], alg_id_mappings[algorithm_identifier], NULL, hmac ? BCRYPT_ALG_HANDLE_HMAC_FLAG : 0);
+	status = BCryptOpenAlgorithmProvider(&cache[algorithm_identifier],
+		alg_id_mappings[algorithm_identifier], NULL,
+		hmac ? BCRYPT_ALG_HANDLE_HMAC_FLAG : 0);
 	mingw_die_if_error(status, "BCryptOpenAlgorithmProvider");
 
 	return cache[algorithm_identifier];
