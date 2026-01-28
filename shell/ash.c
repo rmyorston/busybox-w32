@@ -1190,7 +1190,7 @@ trace_vprintf(const char *fmt, va_list va)
 	if (debug != 1)
 		return;
 	vfprintf(tracefile, fmt, va);
-	fprintf(tracefile, "\n");
+	putc('\n', tracefile);
 }
 
 static void
@@ -1202,21 +1202,17 @@ trace_puts(const char *s)
 }
 
 static void
-trace_puts_quoted(char *s)
+trace_puts_quoted(char *p)
 {
-	char *p;
-	char c;
-
 	if (debug != 1)
 		return;
 	putc('"', tracefile);
-	for (p = s; *p; p++) {
-		switch ((unsigned char)*p) {
+	for (; *p; p++) {
+		unsigned char c = *p;
+		switch (c) {
 		case '\n': c = 'n'; goto backslash;
 		case '\t': c = 't'; goto backslash;
 		case '\r': c = 'r'; goto backslash;
-		case '\"': c = '\"'; goto backslash;
-		case '\\': c = '\\'; goto backslash;
 		case CTLESC: c = 'e'; goto backslash;
 		case CTLVAR: c = 'v'; goto backslash;
 		case CTLBACKQ: c = 'q'; goto backslash;
@@ -1224,21 +1220,21 @@ trace_puts_quoted(char *s)
 		case CTLTOPROC: c = 'p'; goto backslash;
 		case CTLFROMPROC: c = 'P'; goto backslash;
 #endif
+		case '"':
+		case '\\':
  backslash:
 			putc('\\', tracefile);
-			putc(c, tracefile);
 			break;
 		default:
-			if (*p >= ' ' && *p <= '~')
-				putc(*p, tracefile);
-			else {
+			if (c < ' ' || c > 0x7e) {
 				putc('\\', tracefile);
-				putc((*p >> 6) & 03, tracefile);
-				putc((*p >> 3) & 07, tracefile);
-				putc(*p & 07, tracefile);
+				putc((c >> 6) + '0', tracefile);
+				putc(((c >> 3) & 07) + '0', tracefile);
+				c = (c & 07) + '0';
 			}
 			break;
 		}
+		putc(c, tracefile);
 	}
 	putc('"', tracefile);
 }
