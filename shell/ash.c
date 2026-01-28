@@ -663,6 +663,13 @@ var_end(const char *var)
 	return var;
 }
 
+/* Wrapper around strcmp for bsearch */
+static int
+pstrcmp(const void *a, const void *b)
+{
+	return strcmp((char*)a, *(char**)b);
+}
+
 /* Our signal logic never blocks individual signals
  * using signal mask - only by setting SIG_IGN handler.
  * Therefore just unmasking all of them instead of "restore old mask"
@@ -8450,11 +8457,11 @@ struct builtincmd {
 	int (*builtin)(int, char **) FAST_FUNC;
 	/* unsigned flags; */
 };
-#define IS_BUILTIN_SPECIAL(b) ((b)->name[0] & 1)
+#define IS_BUILTIN_SPECIAL(b) ((b)->name[-1] & 1)
 /* "regular" builtins always take precedence over commands,
  * regardless of PATH=....%builtin... position */
-#define IS_BUILTIN_REGULAR(b) ((b)->name[0] & 2)
-#define IS_BUILTIN_ASSIGN(b)  ((b)->name[0] & 4)
+#define IS_BUILTIN_REGULAR(b) ((b)->name[-1] & 2)
+#define IS_BUILTIN_ASSIGN(b)  ((b)->name[-1] & 4)
 
 union param {
 	int index;
@@ -9059,19 +9066,14 @@ static const char *const tokname_array[] ALIGN_PTR = {
 	"}",
 };
 
-/* Wrapper around strcmp for qsort/bsearch/... */
-static int
-pstrcmp(const void *a, const void *b)
-{
-	return strcmp((char*)a, *(char**)b);
-}
-
 static const char *const *
 findkwd(const char *s)
 {
-	return bsearch(s, tokname_array + KWDOFFSET,
-			ARRAY_SIZE(tokname_array) - KWDOFFSET,
-			sizeof(tokname_array[0]), pstrcmp);
+	return bsearch(
+		s, tokname_array + KWDOFFSET, ARRAY_SIZE(tokname_array) - KWDOFFSET,
+		sizeof(tokname_array[0]),
+		pstrcmp
+	);
 }
 
 /*
@@ -10741,22 +10743,22 @@ static int FAST_FUNC sleepcmd(int argc, char **argv)  { return sleep_main(argc, 
 
 /* Keep these in proper order since it is searched via bsearch() */
 static const struct builtincmd builtintab[] = {
-	{ BUILTIN_SPEC_REG      "."       , dotcmd     },
-	{ BUILTIN_SPEC_REG      ":"       , truecmd    },
+	{ BUILTIN_SPEC_REG      "."       +1, dotcmd     },
+	{ BUILTIN_SPEC_REG      ":"       +1, truecmd    },
 #if ENABLE_ASH_TEST
-	{ BUILTIN_REGULAR       "["       , testcmd    },
+	{ BUILTIN_REGULAR       "["       +1, testcmd    },
 #endif
 #if BASH_TEST2
-	{ BUILTIN_REGULAR       "[["      , testcmd    },
+	{ BUILTIN_REGULAR       "[["      +1, testcmd    },
 #endif
 #if ENABLE_ASH_ALIAS
-	{ BUILTIN_REG_ASSG      "alias"   , aliascmd   },
+	{ BUILTIN_REG_ASSG      "alias"   +1, aliascmd   },
 #endif
 #if JOBS
-	{ BUILTIN_REGULAR       "bg"      , fg_bgcmd   },
+	{ BUILTIN_REGULAR       "bg"      +1, fg_bgcmd   },
 #endif
-	{ BUILTIN_SPEC_REG      "break"   , breakcmd   },
-	{ BUILTIN_REGULAR       "cd"      , cdcmd      },
+	{ BUILTIN_SPEC_REG      "break"   +1, breakcmd   },
+	{ BUILTIN_REGULAR       "cd"      +1, cdcmd      },
 #define COMMANDCMD (builtintab + \
 				/* . : */	2 + \
 				/* [ */		1 * ENABLE_ASH_TEST + \
@@ -10765,84 +10767,79 @@ static const struct builtincmd builtintab[] = {
 				/* bg */	1 * JOBS + \
 				/* break cd */	2)
 #if ENABLE_ASH_CMDCMD
-	{ BUILTIN_REGULAR       "command" , commandcmd },
+	{ BUILTIN_REGULAR       "command" +1, commandcmd },
 #endif
-	{ BUILTIN_SPEC_REG      "continue", breakcmd   },
+	{ BUILTIN_SPEC_REG      "continue"+1, breakcmd   },
 #if ENABLE_ASH_ECHO
-	{ BUILTIN_REGULAR       "echo"    , echocmd    },
+	{ BUILTIN_REGULAR       "echo"    +1, echocmd    },
 #endif
 #define EVALCMD (COMMANDCMD + \
 				/* command */	1 * ENABLE_ASH_CMDCMD + \
 				/* continue */	1 + \
 				/* echo */	1 * ENABLE_ASH_ECHO + \
 				0)
-	{ BUILTIN_SPEC_REG      "eval"    , NULL       }, /*evalcmd() has a differing prototype*/
+	{ BUILTIN_SPEC_REG      "eval"    +1, NULL       }, /*evalcmd() has a differing prototype*/
 #define EXECCMD (EVALCMD + \
 				/* eval */	1)
-	{ BUILTIN_SPEC_REG      "exec"    , execcmd    },
-	{ BUILTIN_SPEC_REG      "exit"    , exitcmd    },
-	{ BUILTIN_SPEC_REG_ASSG "export"  , exportcmd  },
-	{ BUILTIN_REGULAR       "false"   , falsecmd   },
+	{ BUILTIN_SPEC_REG      "exec"    +1, execcmd    },
+	{ BUILTIN_SPEC_REG      "exit"    +1, exitcmd    },
+	{ BUILTIN_SPEC_REG_ASSG "export"  +1, exportcmd  },
+	{ BUILTIN_REGULAR       "false"   +1, falsecmd   },
 #if JOBS
-	{ BUILTIN_REGULAR       "fg"      , fg_bgcmd   },
+	{ BUILTIN_REGULAR       "fg"      +1, fg_bgcmd   },
 #endif
 #if ENABLE_ASH_GETOPTS
-	{ BUILTIN_REGULAR       "getopts" , getoptscmd },
+	{ BUILTIN_REGULAR       "getopts" +1, getoptscmd },
 #endif
-	{ BUILTIN_REGULAR       "hash"    , hashcmd    },
+	{ BUILTIN_REGULAR       "hash"    +1, hashcmd    },
 #if ENABLE_ASH_HELP
-	{ BUILTIN_NOSPEC        "help"    , helpcmd    },
+	{ BUILTIN_NOSPEC        "help"    +1, helpcmd    },
 #endif
 #if MAX_HISTORY
-	{ BUILTIN_NOSPEC        "history" , historycmd },
+	{ BUILTIN_NOSPEC        "history" +1, historycmd },
 #endif
 #if JOBS
-	{ BUILTIN_REGULAR       "jobs"    , jobscmd    },
-	{ BUILTIN_REGULAR       "kill"    , killcmd    },
+	{ BUILTIN_REGULAR       "jobs"    +1, jobscmd    },
+	{ BUILTIN_REGULAR       "kill"    +1, killcmd    },
 #endif
 #if ENABLE_FEATURE_SH_MATH
-	{ BUILTIN_NOSPEC        "let"     , letcmd     },
+	{ BUILTIN_NOSPEC        "let"     +1, letcmd     },
 #endif
-	{ BUILTIN_SPEC_REG_ASSG "local"   , localcmd   },
+	{ BUILTIN_SPEC_REG_ASSG "local"   +1, localcmd   },
 #if ENABLE_ASH_PRINTF
-	{ BUILTIN_REGULAR       "printf"  , printfcmd  },
+	{ BUILTIN_REGULAR       "printf"  +1, printfcmd  },
 #endif
-	{ BUILTIN_REGULAR       "pwd"     , pwdcmd     },
-	{ BUILTIN_REGULAR       "read"    , readcmd    },
-	{ BUILTIN_SPEC_REG_ASSG "readonly", exportcmd  },
-	{ BUILTIN_SPEC_REG      "return"  , returncmd  },
-	{ BUILTIN_SPEC_REG      "set"     , setcmd     },
-	{ BUILTIN_SPEC_REG      "shift"   , shiftcmd   },
+	{ BUILTIN_REGULAR       "pwd"     +1, pwdcmd     },
+	{ BUILTIN_REGULAR       "read"    +1, readcmd    },
+	{ BUILTIN_SPEC_REG_ASSG "readonly"+1, exportcmd  },
+	{ BUILTIN_SPEC_REG      "return"  +1, returncmd  },
+	{ BUILTIN_SPEC_REG      "set"     +1, setcmd     },
+	{ BUILTIN_SPEC_REG      "shift"   +1, shiftcmd   },
 #if ENABLE_ASH_SLEEP
-	{ BUILTIN_REGULAR       "sleep"   , sleepcmd   },
+	{ BUILTIN_REGULAR       "sleep"   +1, sleepcmd   },
 #endif
 #if BASH_SOURCE
-	{ BUILTIN_SPEC_REG      "source"  , dotcmd     },
+	{ BUILTIN_SPEC_REG      "source"  +1, dotcmd     },
 #endif
 #if ENABLE_ASH_TEST
-	{ BUILTIN_REGULAR       "test"    , testcmd    },
+	{ BUILTIN_REGULAR       "test"    +1, testcmd    },
 #endif
-	{ BUILTIN_SPEC_REG      "times"   , timescmd   },
-	{ BUILTIN_SPEC_REG      "trap"    , trapcmd    },
-	{ BUILTIN_REGULAR       "true"    , truecmd    },
-	{ BUILTIN_REGULAR       "type"    , typecmd    },
-	{ BUILTIN_REGULAR       "ulimit"  , ulimitcmd  },
-	{ BUILTIN_REGULAR       "umask"   , umaskcmd   },
+	{ BUILTIN_SPEC_REG      "times"   +1, timescmd   },
+	{ BUILTIN_SPEC_REG      "trap"    +1, trapcmd    },
+	{ BUILTIN_REGULAR       "true"    +1, truecmd    },
+	{ BUILTIN_REGULAR       "type"    +1, typecmd    },
+	{ BUILTIN_REGULAR       "ulimit"  +1, ulimitcmd  },
+	{ BUILTIN_REGULAR       "umask"   +1, umaskcmd   },
 #if ENABLE_ASH_ALIAS
-	{ BUILTIN_REGULAR       "unalias" , unaliascmd },
+	{ BUILTIN_REGULAR       "unalias" +1, unaliascmd },
 #endif
-	{ BUILTIN_SPEC_REG      "unset"   , unsetcmd   },
-	{ BUILTIN_REGULAR       "wait"    , waitcmd    },
+	{ BUILTIN_SPEC_REG      "unset"   +1, unsetcmd   },
+	{ BUILTIN_REGULAR       "wait"    +1, waitcmd    },
 };
 
 /*
  * Search the table of builtin commands.
  */
-static int
-pstrcmp1(const void *a, const void *b)
-{
-	return strcmp((char*)a, *(char**)b + 1);
-}
 static struct builtincmd *
 find_builtin(const char *name)
 {
@@ -10850,7 +10847,7 @@ find_builtin(const char *name)
 
 	bp = bsearch(
 		name, builtintab, ARRAY_SIZE(builtintab), sizeof(builtintab[0]),
-		pstrcmp1
+		pstrcmp
 	);
 	return bp;
 }
@@ -10910,7 +10907,7 @@ static int
 evalcommand(union node *cmd, int flags)
 {
 	static const struct builtincmd null_bltin = {
-		BUILTIN_REGULAR "", bltincmd
+		BUILTIN_REGULAR ""+1, bltincmd
 	};
 	struct localvar_list *localvar_stop;
 	struct parsefile *file_stop;
