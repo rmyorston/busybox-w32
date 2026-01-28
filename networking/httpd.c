@@ -1409,6 +1409,13 @@ static unsigned get_line(void)
 }
 
 #if ENABLE_FEATURE_HTTPD_CGI || ENABLE_FEATURE_HTTPD_PROXY
+static void log_cgi_status(const char *pfx, const char *st, unsigned len)
+{
+	unsigned char *end = (void*)st;
+	while (*end >= ' ' && *end < 0x7f && len > 0)
+		end++, len--;
+	bb_error_msg("cgi %s:'%.*s'", pfx, (int)((char *)end - st), st);
+}
 
 /* gcc 4.2.1 fares better with NOINLINE */
 static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr) NORETURN;
@@ -1416,7 +1423,7 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr)
 {
 	enum { FROM_CGI = 1, TO_CGI = 2 }; /* indexes in pfd[] */
 	struct pollfd pfd[3];
-	int out_cnt; /* we buffer a bit of initial CGI output */
+	int out_cnt;
 	int count;
 
 	/* iobuf is used for CGI -> network data,
@@ -1435,8 +1442,15 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr)
 	G.POST_len -= hdr_cnt;
 	//bb_error_msg("G.POST_len:%d", G.POST_len);
 
-	/* NB: breaking out of this loop jumps to log_and_exit() */
+	/* If it's really CGI, we buffer a bit of initial CGI output and handle "Status:" etc */
+	/* If it's proxying, then no buffering/conversion is needed (out_cnt set to -1)*/
+#if ENABLE_FEATURE_HTTPD_PROXY
+	out_cnt = - (fromCgi_rd == toCgi_wr);
+#else
 	out_cnt = 0;
+#endif
+
+	/* NB: breaking out of this loop jumps to log_and_exit() */
 	pfd[FROM_CGI].fd = fromCgi_rd;
 	pfd[FROM_CGI].events = POLLIN;
 	pfd[TO_CGI].fd = toCgi_wr;
@@ -1552,8 +1566,8 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr)
 				 * CGI may output a few first bytes and then wait
 				 * for POSTDATA without closing stdout.
 				 * With full_read we may wait here forever. */
-				count = safe_read(fromCgi_rd, iobuf + out_cnt, IOBUF_SIZE - 8);
-// "- 8" is important, out_cnt can be up to 7
+				count = safe_read(fromCgi_rd, iobuf + out_cnt, IOBUF_SIZE - 16);
+// "- 16" is important, out_cnt can be up to 9
 				if (count <= 0) {
 					/* EOF (or error, and out_cnt=0..7
 					 * send "HTTP/1.1 200 OK\r\n", then send received 0..7 bytes */
@@ -1563,9 +1577,8 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr)
 				}
 				out_cnt += count;
 				count = 0;
-				if (out_cnt >= 8) {
+				if (out_cnt >= 10) {
 //FIXME: "Status: " is not required to be the first header! It can be anywhere!
-//FIXME: many servers also check "Location: ". If it exists but "Status: " does _not_, "302 Found" is assumed instead of "200 OK".
 					uint64_t str8 = *(uint64_t*)iobuf;
 					//bb_error_msg("from cgi:'%.*s'", out_cnt, iobuf);
 
@@ -1577,18 +1590,20 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr)
 						memmove(iobuf + 1, iobuf, out_cnt);
 						out_cnt += 1;
 						memcpy(iobuf, HTTP_200, 9);
-						if (verbose) {
-							char *end = iobuf + 9;
-							int cnt = out_cnt - 9;
-							while ((unsigned char)*end >= ' ' && (unsigned char)*end < 0x7f && cnt > 0)
-								end++, cnt--;
-							bb_error_msg("cgi response:'%.*s'", (int)(end - (iobuf + 9)), iobuf + 9);
-						}
+						if (verbose)
+							log_cgi_status("response", iobuf + 9, out_cnt - 9);
+					}
+					else
+					if (str8 == PACK64_LITERAL_STR("Location") && iobuf[8] == ':' && iobuf[9] == ' ') {
+#define HTTP_302 "HTTP/1.1 302 Found\r\n"
+						if (full_write(STDOUT_FILENO, HTTP_302, sizeof(HTTP_302)-1) != sizeof(HTTP_302)-1)
+							break;
+						if (verbose)
+							log_cgi_status("redirect", iobuf + 10, out_cnt - 10);
 					}
 //NB: Apache has no such autodetection. It always adds its own HTTP/1.x header,
 //unless the CGI name starts with "nph-", in which case it passes its output verbatim to network.
 					else /* Did CGI send "HTTP/1.1"? */
-					//if (memcmp(iobuf, HTTP_200, 8) != 0)
 					if (str8 != PACK64_LITERAL_STR(HTTP_200)) {
  write_HTTP_200_OK:
 						/* no, send "HTTP/1.1 200 OK\r\n" ourself */
