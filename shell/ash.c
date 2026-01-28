@@ -8539,17 +8539,12 @@ clearcmdentry(void)
 
 /*
  * Locate a command in the command hash table.  If "add" is nonzero,
- * add the command to the table if it is not already present.  The
- * variable "lastcmdentry" is set to point to the address of the link
- * pointing to the entry, so that delete_cmd_entry can delete the
- * entry.
+ * add the command to the table if it is not already present.
  *
  * Interrupts must be off if called with add != 0.
  */
-static struct tblentry **lastcmdentry;
-
-static struct tblentry *
-cmdlookup(const char *name, int add)
+static struct tblentry **
+cmdlookup_pp(const char *name, int add)
 {
 	unsigned int hashval;
 	const char *p;
@@ -8562,12 +8557,15 @@ cmdlookup(const char *name, int add)
 		hashval += (unsigned char)*p++;
 	hashval &= 0x7FFF;
 	pp = &cmdtable[hashval % CMDTABLESIZE];
-	for (cmdp = *pp; cmdp; cmdp = cmdp->next) {
-		if (strcmp(cmdp->cmdname, name) == 0)
+	for (;;) {
+		cmdp = *pp;
+		if (!cmdp)
 			break;
+		if (strcmp(cmdp->cmdname, name) == 0)
+			goto ret;
 		pp = &cmdp->next;
 	}
-	if (add && cmdp == NULL) {
+	if (add) {
 		cmdp = *pp = ckzalloc(sizeof(struct tblentry)
 				+ strlen(name)
 				/* + 1 - already done because
@@ -8576,21 +8574,27 @@ cmdlookup(const char *name, int add)
 		cmdp->cmdtype = CMDUNKNOWN;
 		strcpy(cmdp->cmdname, name);
 	}
-	lastcmdentry = pp;
-	return cmdp;
+ ret:
+	return pp;
+}
+
+static struct tblentry *
+cmdlookup(const char *name, int add)
+{
+	return *cmdlookup_pp(name, add);
 }
 
 /*
- * Delete the command entry returned on the last lookup.
+ * Delete the command entry (should be one returned by cmdlookup_pp).
  */
 static void
-delete_cmd_entry(void)
+delete_cmd_entry(struct tblentry **pp)
 {
 	struct tblentry *cmdp;
 
 	INTOFF;
-	cmdp = *lastcmdentry;
-	*lastcmdentry = cmdp->next;
+	cmdp = *pp;
+	*pp = cmdp->next;
 	if (cmdp->cmdtype == CMDFUNCTION)
 		freefunc(cmdp->param.func);
 	free(cmdp);
@@ -8731,6 +8735,7 @@ static void readcmdfile(char *name);
 static void
 find_command(char *name, struct cmdentry *entry, int act, const char *path)
 {
+	struct tblentry **cmdpp;
 	struct tblentry *cmdp;
 	int idx;
 	int prev;
@@ -8768,7 +8773,8 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 		act |= DO_ALTPATH;
 
 	/* If name is in the table, check answer will be ok */
-	cmdp = cmdlookup(name, 0);
+	cmdpp = cmdlookup_pp(name, 0);
+	cmdp = *cmdpp;
 	if (cmdp != NULL) {
 		int bit;
 
@@ -8790,13 +8796,14 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 		if (act & bit) {
 			if (act & bit & DO_REGBLTIN)
 				goto fail;
-
 			updatetbl = 0;
 			cmdp = NULL;
 		} else if (cmdp->rehash == 0)
 			/* if not invalidated by cd, we're done */
-			goto success;
+			goto success1;
+		/* else: cmdp->rehash is set: check/possibly delete later */
 	}
+	/* either !cmdp, or cmdp->rehash is set */
 
 	/* If %builtin not in path, check for builtin next */
 	bcmd = find_builtin(name);
@@ -8824,7 +8831,8 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 #endif
 	/* We have to search path. */
 	prev = -1;              /* where to start */
-	if (cmdp && cmdp->rehash) {     /* doing a rehash */
+	if (cmdp /*TRUE: && cmdp->rehash*/) {
+		/* doing a rehash */
 		if (cmdp->cmdtype == CMDBUILTIN)
 			prev = builtinloc;
 		else
@@ -8898,7 +8906,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 
 	/* We failed.  If there was an entry for this command, delete it */
 	if (cmdp && updatetbl)
-		delete_cmd_entry();
+		delete_cmd_entry(cmdpp);
 	if (act & DO_ERR) {
 #if ENABLE_ASH_BASH_NOT_FOUND_HOOK
 		struct tblentry *hookp = cmdlookup("command_not_found_handle", 0);
@@ -8931,6 +8939,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	INTON;
  success:
 	cmdp->rehash = 0;
+ success1:
 	entry->cmdtype = cmdp->cmdtype;
 	entry->u = cmdp->param;
 }
@@ -10635,7 +10644,8 @@ hashcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 
 	c = 0;
 	while ((name = *argptr) != NULL) {
-		cmdp = cmdlookup(name, 0);
+		pp = cmdlookup_pp(name, 0);
+		cmdp = *pp;
 		if (cmdp != NULL
 		 && (cmdp->cmdtype == CMDNORMAL
 		    || (cmdp->cmdtype == CMDBUILTIN
@@ -10644,7 +10654,7 @@ hashcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 			)
 		    )
 		) {
-			delete_cmd_entry();
+			delete_cmd_entry(pp);
 		}
 		find_command(name, &entry, DO_ERR, pathval());
 		if (entry.cmdtype == CMDUNKNOWN)
@@ -14493,11 +14503,13 @@ exportcmd(int argc UNUSED_PARAM, char **argv)
 static void
 unsetfunc(const char *name)
 {
+	struct tblentry **cmdpp;
 	struct tblentry *cmdp;
 
-	cmdp = cmdlookup(name, 0);
+	cmdpp = cmdlookup_pp(name, 0);
+	cmdp = *cmdpp;
 	if (cmdp != NULL && cmdp->cmdtype == CMDFUNCTION)
-		delete_cmd_entry();
+		delete_cmd_entry(cmdpp);
 }
 
 /*
