@@ -10757,7 +10757,13 @@ static const struct builtincmd builtintab[] = {
 #endif
 	{ BUILTIN_SPEC_REG      "break"   , breakcmd   },
 	{ BUILTIN_REGULAR       "cd"      , cdcmd      },
-	{ BUILTIN_NOSPEC        "chdir"   , cdcmd      },
+#define COMMANDCMD (builtintab + \
+				/* . : */	2 + \
+				/* [ */		1 * ENABLE_ASH_TEST + \
+				/* [[ */	1 * BASH_TEST2 + \
+				/* alias */	1 * ENABLE_ASH_ALIAS + \
+				/* bg */	1 * JOBS + \
+				/* break cd */	2)
 #if ENABLE_ASH_CMDCMD
 	{ BUILTIN_REGULAR       "command" , commandcmd },
 #endif
@@ -10765,7 +10771,14 @@ static const struct builtincmd builtintab[] = {
 #if ENABLE_ASH_ECHO
 	{ BUILTIN_REGULAR       "echo"    , echocmd    },
 #endif
+#define EVALCMD (COMMANDCMD + \
+				/* command */	1 * ENABLE_ASH_CMDCMD + \
+				/* continue */	1 + \
+				/* echo */	1 * ENABLE_ASH_ECHO + \
+				0)
 	{ BUILTIN_SPEC_REG      "eval"    , NULL       }, /*evalcmd() has a differing prototype*/
+#define EXECCMD (EVALCMD + \
+				/* eval */	1)
 	{ BUILTIN_SPEC_REG      "exec"    , execcmd    },
 	{ BUILTIN_SPEC_REG      "exit"    , exitcmd    },
 	{ BUILTIN_SPEC_REG_ASSG "export"  , exportcmd  },
@@ -10821,22 +10834,6 @@ static const struct builtincmd builtintab[] = {
 	{ BUILTIN_SPEC_REG      "unset"   , unsetcmd   },
 	{ BUILTIN_REGULAR       "wait"    , waitcmd    },
 };
-
-/* Should match the above table! */
-#define COMMANDCMD (builtintab + \
-	/* . : */	2 + \
-	/* [ */		1 * ENABLE_ASH_TEST + \
-	/* [[ */	1 * BASH_TEST2 + \
-	/* alias */	1 * ENABLE_ASH_ALIAS + \
-	/* bg */	1 * ENABLE_ASH_JOB_CONTROL + \
-	/* break cd cddir  */	3)
-#define EVALCMD (COMMANDCMD + \
-	/* command */	1 * ENABLE_ASH_CMDCMD + \
-	/* continue */	1 + \
-	/* echo */	1 * ENABLE_ASH_ECHO + \
-	0)
-#define EXECCMD (EVALCMD + \
-	/* eval */	1)
 
 /*
  * Search the table of builtin commands.
