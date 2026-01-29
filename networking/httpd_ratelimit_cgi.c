@@ -213,7 +213,8 @@ int main(int argc, char **argv)
 	write_and_die(1, "Status: 429 Too Many Requests\r\n"
 	"Content-Type: text/plain\r\n"
 	"Retry-After: 60\r\n"
-	"Connection: close\r\n\r\n"
+	"Connection: close\r\n"
+	"\r\n"
 	"Too many concurrent requests\n"
 	);
 	return 0;
@@ -223,7 +224,9 @@ exec:
 	execv(argv[0], argv);
 	full_write2(2, "can't execute", argv[0]);
 	write_and_die(1, "Status: 500 Internal Server Error\r\n"
-	"Content-Type: text/plain\r\n\r\n"
-	"Failed to execute binary\n");
+	"Content-Type: text/plain\r\n"
+	"\r\n"
+	"Can't execute binary\n"
+	);
 	return 1;
 }

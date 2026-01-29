@@ -860,7 +860,7 @@ int unzip_main(int argc, char **argv)
 
 		/* Guard against "/abspath", "/../" and similar attacks */
 // NB: UnZip 6.00 has option -: to disable this
-		overlapping_strcpy(dst_fn, strip_unsafe_prefix(dst_fn));
+		strip_unsafe_prefix(dst_fn);
 
 		/* Filter zip entries */
 		if (find_list_entry(zreject, dst_fn)

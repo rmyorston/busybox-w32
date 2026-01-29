@@ -202,7 +202,8 @@ char get_header_tar_xz(archive_handle_t *archive_handle) FAST_FUNC;
 void seek_by_jump(int fd, off_t amount) FAST_FUNC;
 void seek_by_read(int fd, off_t amount) FAST_FUNC;
 
-const char *strip_unsafe_prefix(const char *str) FAST_FUNC;
+const char *skip_unsafe_prefix(const char *str) FAST_FUNC;
+void strip_unsafe_prefix(char *str) FAST_FUNC;
 void create_or_remember_link(llist_t **link_placeholders,
 		const char *target,
 		const char *linkname,

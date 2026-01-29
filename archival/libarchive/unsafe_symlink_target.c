@@ -36,6 +36,7 @@ void FAST_FUNC create_links_from_list(llist_t *list)
 				*list->data ? "hard" : "sym",
 				list->data + 1, target
 			);
+			/* Note: GNU tar 1.34 errors out only _after_ all links are (attempted to be) created */
 		}
 		list = list->link;
 	}
