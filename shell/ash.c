@@ -9318,7 +9318,9 @@ tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, c
 		/* Treat all applets as NOEXEC, including the shell itself
 		 * if we were called from forkshell_shellexec(). */
  run_noexec:
-		if (applet_main[applet_no] != ash_main || noexec) {
+		if ((applet_main[applet_no] != ash_main || noexec) &&
+				fileno(stdin) != -2 && fileno(stdout) != -2 &&
+				fileno(stderr) != -2) {
 			/* mingw-w64's getopt() uses __argv[0] as the program name */
 			__argv[0] = (char *)cmd;
 			/* 'which' wants to know if it was invoked from a standalone
