@@ -67,11 +67,12 @@ struct blockdev_info {
 	unsigned long long size;
 	const char *type;
 	const char *majmin;
-	const char *mountpoint;
+	//const char *mountpoint;
 };
 
 struct globals {
 	struct blockdev_info *list;
+	char *mountinfo;
 	unsigned count;
 	unsigned exitcode;
 };
@@ -93,27 +94,47 @@ static struct blockdev_info *get_or_create_info(const char *devname)
 	return &G.list[G.count++];
 }
 
-static char *get_mountpoint(const char *devname)
+static char *get_mountpoints(const char *majmin)
 {
-	char devpath[256];
-	struct mntent *mnt;
-	FILE *mtab;
-	char *mountpoint = NULL;
+	unsigned len;
+	char *p, *mountpoints;
 
-	snprintf(devpath, sizeof(devpath), "/dev/%s", devname);
-//TODO: use /proc/self/mountinfo instead, it has MAJ:MIN column which is unambiguous
-	mtab = setmntent(bb_path_mtab_file, "r");
-	if (mtab) {
-		while ((mnt = getmntent(mtab)) != NULL) {
-			if (strcmp(mnt->mnt_fsname, devpath) == 0) {
-				mountpoint = xstrdup(mnt->mnt_dir);
+	mountpoints = NULL;
+	len = strlen(majmin);
+	p = G.mountinfo; // "/proc/self/mountinfo"
+	/* lines a-la "63 1 259:3 / /MNTPOINT per-mount_options - ext4 /dev/NAME per-superblock_options" */
+	while (*p) {
+		char *e, *f;
+
+		p = skip_non_whitespace(p);
+		if (*p != ' ') break;
+		// at " 1 259:3"
+		p = skip_non_whitespace(p + 1);
+		if (*p != ' ') break;
+		p++;
+		// at "259:3 / /MNTPOINT"
+		if (strncmp(p, majmin, len) != 0 || (p+=len)[0] != ' ') {
+			p = strchr(p, '\n');
+			if (!p)
 				break;
-			}
+			p++;
+			continue;
 		}
-		endmntent(mtab);
-	}
+		// at " / /MNTPOINT"
+		p = skip_non_whitespace(p + 1);
+		if (*p != ' ') break;
 
-	return mountpoint;
+		// at " /MNTPOINT"
+		e = skip_non_whitespace(p + 1);
+		// e is at the end of " /MNTPOINT"
+		f = mountpoints;
+// NO. We return " /MNT1 /MNT2 /MNT3" _with_ leading space!
+//		if (!f)
+//			p++;
+		mountpoints = xasprintf("%s%.*s", f ? f : "", (int)(e - p), p);
+		free(f);
+	}
+	return mountpoints;
 }
 
 static char *get_majmin_from_stat(const char *filename)
@@ -209,7 +230,7 @@ static void process__sys_dev_block_MAJMIN(const char *path, char *majmin, const 
 	info->majmin = majmin;
 	//info->rm = ...;
 	//info->ro = ...;
-	info->mountpoint = get_mountpoint(devname);
+	//info->mountpoint = get_mountpoint(majmin);
 
 	/* Scan for partititons */
 	dir = xopendir(path);
@@ -253,6 +274,8 @@ int lsblk_main(int argc UNUSED_PARAM, char **argv)
 	/* support/ignore -a ("all") */
 	getopt32(argv, "a");
 	argv += optind;
+
+	G.mountinfo = xmalloc_xopen_read_close("/proc/self/mountinfo", NULL);
 
 	/* If specific devices are requested, process them */
 	if (*argv) {
@@ -326,21 +349,34 @@ int lsblk_main(int argc UNUSED_PARAM, char **argv)
 	qsort(G.list, G.count, sizeof(G.list[0]), compare_devices);
 
 	/* Print header */
-	printf("%-15s MAJ:MIN  SIZE TYPE MOUNTPOINT\n", "NAME");
+	printf("%-15s MAJ:MIN  SIZE TYPE MOUNTPOINTS\n", "NAME");
 	//util-linux 2.41.1 default set of fields:
 	//"NAME        MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS"
 
 	/* Print devices */
 	for (i = 0; i < G.count; i++) {
 		char buf6[6];
+		char *mnt, *e;
+
+		mnt = (get_mountpoints(G.list[i].majmin) ? : (char*)"");
+		e = strchrnul(mnt[0] ? mnt + 1 : "", ' ');
 		smart_ulltoa5(G.list[i].size * 512, buf6, " KMGTPEZY");
-		printf("%-15s %-7s %.5s %4s %s\n",
+		printf("%-15s %-7s %.5s %4s%.*s\n",
 			G.list[i].name,
 			G.list[i].majmin,
 			buf6,
 			G.list[i].type,
-			(G.list[i].mountpoint ? G.list[i].mountpoint : "")
+			(int)(e - mnt), mnt
 		);
+		while (*mnt == ' ') {
+//util-linux prints multiple mountpoints on separate lines:
+//DEVNAME     259:3    0 475.4G  0 part /MNT1
+//                                      /MNT2
+			mnt = skip_non_whitespace(mnt + 1);
+			if (!mnt[0]) break;
+			e = strchrnul(mnt + 1, ' ');
+			printf("%34s%.*s\n", "", (int)(e - mnt), mnt);
+		}
 	}
 
 	fflush_stdout_and_exit(G.exitcode);
