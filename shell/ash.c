@@ -5366,16 +5366,12 @@ showjob(struct job *jp, int mode)
 		if (mode & SHOW_PIDS)
 			col = fmtstr(s, 48, "\n%*c%"PID_FMT"d ", indent_col, ' ', ps->ps_pid) - 1;
  start:
-#if ENABLE_PLATFORM_POSIX || JOBS_WIN32
 		fprintf(out, "%s%*c%s%s",
 				s,
 				33 - col >= 0 ? 33 - col : 0, ' ',
 				ps == jp->ps ? "" : "| ",
 				ps->ps_cmd
 		);
-#else
-		fprintf(out, "%s", s);
-#endif
 	} while (++ps != psend);
 	newline_and_flush(out);
 
