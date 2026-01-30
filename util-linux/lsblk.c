@@ -71,8 +71,9 @@ struct blockdev_info {
 };
 
 struct globals {
-	unsigned count;
 	struct blockdev_info *list;
+	unsigned count;
+	unsigned exitcode;
 };
 #define G (*ptr_to_globals)
 #define INIT_G() do { \
@@ -124,6 +125,8 @@ static char *get_majmin_from_stat(const char *filename)
 			(unsigned)minor(st.st_rdev)
 		);
 	}
+	bb_error_msg("%s: not a block device", filename);
+	G.exitcode |= 64; /* util-linux compat */
 	return NULL;
 }
 
@@ -159,9 +162,7 @@ static char *read_str(const char *path, const char *name)
 
 	filename = concat_path_file(path, name);
 	res = xmalloc_open_read_close(filename, NULL);
-#if 0
-bb_error_msg("open_read_close('%s'):'%s'", filename, res);
-#endif
+//bb_error_msg("open_read_close('%s'):'%s'", filename, res);
 	free(filename);
 
 	if (res)
@@ -184,10 +185,10 @@ bb_error_msg("open_read_close('%s'):'%s'", filename, res);
  *       MAJMIN1=open("/sys/block/DEV/PART/dev")+read
  *       recurse into handling MAJMIN1 for this partition
  */
-static void process_SYS_BLOCK_entry(const char *path, const char *devname);
+static void process__sys_block_NAME(const char *path, const char *devname);
 
 /* Note: consumes malloc'ed majmin */
-static void process_SYS_DEV_BLOCK_entry(const char *path, char *majmin, const char *devname)
+static void process__sys_dev_block_MAJMIN(const char *path, char *majmin, const char *devname)
 {
 	DIR *dir;
 	struct dirent *entry;
@@ -215,22 +216,24 @@ static void process_SYS_DEV_BLOCK_entry(const char *path, char *majmin, const ch
 	while ((entry = readdir(dir)) != NULL) {
 		if (is_prefixed_with(entry->d_name, devname)) {
 			char *part = xasprintf("/sys/block/%s/%s", devname, entry->d_name);
-			process_SYS_BLOCK_entry(part, entry->d_name);
+			process__sys_block_NAME(part, entry->d_name);
 			free(part);
 		}
 	}
 	closedir(dir);
 }
-static void process_SYS_BLOCK_entry(const char *path, const char *devname)
+static void process__sys_block_NAME(const char *path, const char *devname)
 {
 	char *majmin = read_str(path, "dev");
+//bb_error_msg("%s/dev:'%s'", path, majmin);
 	if (majmin /*&& majmin[0]*/) {
 		char *sys_dev_block_MAJMIN = concat_path_file("/sys/dev/block", majmin);
-		process_SYS_DEV_BLOCK_entry(sys_dev_block_MAJMIN, majmin, devname);
+		process__sys_dev_block_MAJMIN(sys_dev_block_MAJMIN, majmin, devname);
 		/* ^^^ consumes malloc'ed majmin */
 		free(sys_dev_block_MAJMIN);
 	}
 	/* WRONG: free(majmin); */
+//	return !majmin; /* 1 if no PATH/dev was seen */
 }
 
 static int compare_devices(const void *a, const void *b)
@@ -254,7 +257,6 @@ int lsblk_main(int argc UNUSED_PARAM, char **argv)
 	/* If specific devices are requested, process them */
 	if (*argv) {
 		while (*argv) {
-			char *devname = *argv++;
 			char *majmin;
 			char *sys_dev_block_MAJMIN;
 			char *target;
@@ -264,19 +266,36 @@ int lsblk_main(int argc UNUSED_PARAM, char **argv)
 			 * cp -a /dev/DISK /tmp/bogusname; lsblk /tmp/bogusname
 			 * ^^^^ should still show "DISK" as the name of blockdev, and show its partitions if any
 			 */
-			majmin = get_majmin_from_stat(devname);
+			majmin = get_majmin_from_stat(*argv++);
+//bb_error_msg("get_majmin_from_stat('%s'):'%s'", argv[-1], majmin);
 			if (!majmin)
 				continue;
 
 			sys_dev_block_MAJMIN = concat_path_file("/sys/dev/block", majmin);
 			/* util-linux 2.41.1 gets the "real name" from the symlink's last component */
 			target = xmalloc_readlink(sys_dev_block_MAJMIN);
+//bb_error_msg("target:'%s'", target);
 			if (target) {
 				name = strrchr(target, '/');
-				if (name && name[1]) {
-					char *sys_block_NAME = concat_path_file("/sys/block", ++name);
-					process_SYS_BLOCK_entry(sys_block_NAME, name);
-					free(sys_block_NAME);
+				if (name && *++name) {
+					char *sys_block_NAME;
+// Maybe there's a reason why util-linux tries /sys/block/NAME first.
+// In which case uncomment this, and explain.
+//					int err;
+//
+//					sys_block_NAME = concat_path_file("/sys/block", name);
+//					err = process__sys_block_NAME(sys_block_NAME, name);
+//					free(sys_block_NAME);
+//					/* "/sys/block/NAME/dev" wasn't found? (Happens for "lsblk /dev/PARTITION") */
+//					if (err) {
+						/* util-linux seems to test for existence of /sys/dev/block/MAJMIN/partition,
+						 * if that exists, it *guesses* parent disk name (!!!).
+						 * We just try /sys/class/block/NAME, which exists for partitions too.
+						 */
+						sys_block_NAME = concat_path_file("/sys/class/block", name);
+						process__sys_block_NAME(sys_block_NAME, name);
+						free(sys_block_NAME);
+//					}
 				}
 				free(target);
 			}
@@ -294,11 +313,14 @@ int lsblk_main(int argc UNUSED_PARAM, char **argv)
 			if (DOT_OR_DOTDOT(entry->d_name))
 				continue;
 			sys_block_NAME = concat_path_file("/sys/block", entry->d_name);
-			process_SYS_BLOCK_entry(sys_block_NAME, entry->d_name);
+			process__sys_block_NAME(sys_block_NAME, entry->d_name);
 			free(sys_block_NAME);
 		}
 		closedir(dir);
 	}
+
+	if (G.count == 0)
+		return 32; /* try "lsblk /dev/null DOES_NOT_EXIST" */
 
 	/* Sort devices by name */
 	qsort(G.list, G.count, sizeof(G.list[0]), compare_devices);
@@ -321,5 +343,5 @@ int lsblk_main(int argc UNUSED_PARAM, char **argv)
 		);
 	}
 
-	fflush_stdout_and_exit_SUCCESS();
+	fflush_stdout_and_exit(G.exitcode);
 }
