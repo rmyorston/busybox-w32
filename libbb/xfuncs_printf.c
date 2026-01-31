@@ -642,14 +642,14 @@ void FAST_FUNC generate_uuid(uint8_t *buf)
 	 * uint32_t time_low (big endian)
 	 * uint16_t time_mid (big endian)
 	 * uint16_t time_hi_and_version (big endian)
-	 *  version is a 4-bit field:
+	 *  version is a 4-bit field (most significant 4 bits):
 	 *   1 Time-based
 	 *   2 DCE Security, with embedded POSIX UIDs
 	 *   3 Name-based (MD5)
 	 *   4 Randomly generated
 	 *   5 Name-based (SHA-1)
 	 * uint16_t clk_seq_and_variant (big endian)
-	 *  variant is a 3-bit field:
+	 *  variant is a 3-bit field (most significant 3 bits):
 	 *   0xx Reserved, NCS backward compatibility
 	 *   10x The variant specified in rfc4122
 	 *   110 Reserved, Microsoft backward compatibility
@@ -681,7 +681,7 @@ void FAST_FUNC generate_uuid(uint8_t *buf)
 
 	/* version = 4 */
 	buf[4 + 2    ] = (buf[4 + 2    ] & 0x0f) | 0x40;
-	/* variant = 10x */
+	/* variant = 10x binary (uppermost 3 bits) */
 	buf[4 + 2 + 2] = (buf[4 + 2 + 2] & 0x3f) | 0x80;
 }
 
