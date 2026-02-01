@@ -414,40 +414,42 @@ verify_sun(void)
 {
 	start_and_len_t sl[8];
 	unsigned start, stop;
-	int i,j,k;
+	int i, j, k;
 
 	fetch_sun(sl, &start, &stop);
 	for (k = 0; k < 7; k++) {
 		for (i = 0; i < 8; i++) {
-			if (k && (sl[i].len % (g_heads * g_sectors))) {
+			if (k != 0
+			 && (sl[i].len % (g_heads * g_sectors)) != 0
+			) {
 				printf("Partition %u doesn't end on cylinder boundary\n", i+1);
 			}
-			if (sl[i].len) {
-				for (j = 0; j < i; j++)
-					if (sl[j].len) {
-						if (sl[j].start == sl[i].start + sl[i].len) {
-							sl[j].start = sl[i].start;
-							sl[j].len += sl[i].len;
-							sl[i].len = 0;
-						} else if (sl[i].start == sl[j].start + sl[j].len) {
-							sl[j].len += sl[i].len;
-							sl[i].len = 0;
-						} else if (!k) {
-							if (sl[i].start < sl[j].start + sl[j].len
-							 && sl[j].start < sl[i].start + sl[i].len
-							) {
-								unsigned starto, endo;
-								starto = sl[i].start;
-								if (sl[j].start > starto)
-									starto = sl[j].start;
-								endo = sl[i].start + sl[i].len;
-								if (sl[j].start + sl[j].len < endo)
-									endo = sl[j].start + sl[j].len;
-								printf("Partition %u overlaps with others in "
-									"sectors %u-%u\n", i+1, starto, endo);
-							}
-						}
-					}
+			if (sl[i].len == 0)
+				continue;
+			for (j = 0; j < i; j++) {
+				if (sl[j].len == 0)
+					continue;
+				if (sl[j].start == sl[i].start + sl[i].len) {
+					sl[j].start = sl[i].start;
+					sl[j].len += sl[i].len;
+					sl[i].len = 0;
+				} else if (sl[i].start == sl[j].start + sl[j].len) {
+					sl[j].len += sl[i].len;
+					sl[i].len = 0;
+				} else if (k == 0
+				 && sl[i].start < sl[j].start + sl[j].len
+				 && sl[j].start < sl[i].start + sl[i].len
+				) {
+					unsigned starto, endo;
+					starto = sl[i].start;
+					if (sl[j].start > starto)
+						starto = sl[j].start;
+					endo = sl[i].start + sl[i].len;
+					if (sl[j].start + sl[j].len < endo)
+						endo = sl[j].start + sl[j].len;
+					printf("Partition %u overlaps with others in "
+						"sectors %u-%u\n", i+1, starto, endo);
+				}
 			}
 		}
 	}
@@ -457,13 +459,15 @@ verify_sun(void)
 		printf("No partitions defined\n");
 		return;
 	}
-	stop = g_cylinders * g_heads * g_sectors;
 	if (sl[0].start != 0)
 		printf("Unused gap - sectors %u-%u\n", 0, sl[0].start);
 	for (i = 0; i < 7 && sl[i+1].len != 0; i++) {
-		printf("Unused gap - sectors %u-%u\n", sl[i].start + sl[i].len, sl[i+1].start);
+		if (sl[i].start + sl[i].len < sl[i+1].start)
+			printf("Unused gap - sectors %u-%u\n",
+				sl[i].start + sl[i].len, sl[i+1].start);
 	}
 	start = sl[i].start + sl[i].len;
+	stop = g_cylinders * g_heads * g_sectors;
 	if (start < stop)
 		printf("Unused gap - sectors %u-%u\n", start, stop);
 }
