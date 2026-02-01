@@ -19,17 +19,13 @@
 
 #define SUN_LABEL_MAGIC          0xDABE
 #define SUN_LABEL_MAGIC_SWAPPED  0xBEDA
-#define SUN_SSWAP16(x) (sun_other_endian ? fdisk_swap16(x) : (uint16_t)(x))
-#define SUN_SSWAP32(x) (sun_other_endian ? fdisk_swap32(x) : (uint32_t)(x))
+#define SUN_SSWAP16(x) (G.sun_other_endian ? fdisk_swap16(x) : (uint16_t)(x))
+#define SUN_SSWAP32(x) (G.sun_other_endian ? fdisk_swap32(x) : (uint32_t)(x))
 
 /* Copied from linux/major.h */
 #define FLOPPY_MAJOR    2
 
 #define SCSI_IOCTL_GET_IDLUN 0x5382
-
-static smallint sun_other_endian;
-static smallint scsi_disk;
-static smallint floppy;
 
 #ifndef IDE0_MAJOR
 #define IDE0_MAJOR 3
@@ -39,25 +35,28 @@ static smallint floppy;
 #endif
 
 static void
-guess_device_type(void)
+sun_guess_device_type(void)
 {
 	struct stat bootstat;
 
-	if (fstat(dev_fd, &bootstat) < 0) {
-		scsi_disk = 0;
-		floppy = 0;
-	} else if (S_ISBLK(bootstat.st_mode)
-		&& (major(bootstat.st_rdev) == IDE0_MAJOR ||
-		    major(bootstat.st_rdev) == IDE1_MAJOR)) {
-		scsi_disk = 0;
-		floppy = 0;
-	} else if (S_ISBLK(bootstat.st_mode)
-		&& major(bootstat.st_rdev) == FLOPPY_MAJOR) {
-		scsi_disk = 0;
-		floppy = 1;
+	G.sun_scsi_disk = 0;
+	G.sun_floppy = 0;
+	if (fstat(dev_fd, &bootstat) < 0)
+		return;
+	if (S_ISBLK(bootstat.st_mode)) {
+		//if (major(bootstat.st_rdev) == IDE0_MAJOR
+		// || major(bootstat.st_rdev) == IDE1_MAJOR
+		//) {
+		//	G.sun_scsi_disk = 0;
+		//	G.sun_floppy = 0;
+		//}
+		if (major(bootstat.st_rdev) == FLOPPY_MAJOR) {
+			//G.sun_scsi_disk = 0;
+			G.sun_floppy = 1;
+		}
 	} else {
-		scsi_disk = 1;
-		floppy = 0;
+		G.sun_scsi_disk = 1;
+		//G.sun_floppy = 0;
 	}
 }
 
@@ -101,10 +100,10 @@ check_sun_label(void)
 	 && sunlabel->magic != SUN_LABEL_MAGIC_SWAPPED
 	) {
 		current_label_type = LABEL_DOS;
-		sun_other_endian = 0;
+		G.sun_other_endian = 0;
 		return 0;
 	}
-	sun_other_endian = (sunlabel->magic == SUN_LABEL_MAGIC_SWAPPED);
+	G.sun_other_endian = (sunlabel->magic == SUN_LABEL_MAGIC_SWAPPED);
 	ush = ((unsigned short *) (sunlabel + 1)) - 1;
 	for (csum = 0; ush >= (unsigned short *)sunlabel;) csum ^= *ush--;
 	if (csum) {
@@ -238,10 +237,10 @@ create_sunlabel(void)
 
 	printf(msg_building_new_label, "sun disklabel");
 
-	sun_other_endian = BB_LITTLE_ENDIAN;
+	G.sun_other_endian = BB_LITTLE_ENDIAN;
 	memset(MBRbuffer, 0, sizeof(MBRbuffer));
 	sunlabel->magic = SUN_SSWAP16(SUN_LABEL_MAGIC);
-	if (!floppy) {
+	if (!G.sun_floppy) {
 		unsigned i;
 		puts("Drive type\n"
 		 "   ?   auto configure\n"
@@ -265,7 +264,7 @@ create_sunlabel(void)
 				p = sun_drives + c - 'A';
 				break;
 			}
-			if (c == '?' && scsi_disk) {
+			if (c == '?' && G.sun_scsi_disk) {
 				p = sun_autoconfigure_scsi();
 				if (p)
 					break;
@@ -273,7 +272,7 @@ create_sunlabel(void)
 			}
 		}
 	}
-	if (!p || floppy) {
+	if (!p || G.sun_floppy) {
 		if (!ioctl(dev_fd, HDIO_GETGEO, &geometry)) {
 			g_heads = geometry.heads;
 			g_sectors = geometry.sectors;
@@ -283,7 +282,7 @@ create_sunlabel(void)
 			g_sectors = 0;
 			g_cylinders = 0;
 		}
-		if (floppy) {
+		if (G.sun_floppy) {
 			sunlabel->nacyl = 0;
 			sunlabel->pcylcount = SUN_SSWAP16(g_cylinders);
 			sunlabel->rspeed = SUN_SSWAP16(300);
@@ -320,13 +319,13 @@ create_sunlabel(void)
 	snprintf((char *)(sunlabel->info), sizeof(sunlabel->info),
 		"%s%s%s cyl %u alt %u hd %u sec %u",
 		p ? p->vendor : "", (p && *p->vendor) ? " " : "",
-		p ? p->model : (floppy ? "3,5\" floppy" : "Linux custom"),
+		p ? p->model : (G.sun_floppy ? "3,5\" floppy" : "Linux custom"),
 		g_cylinders, SUN_SSWAP16(sunlabel->nacyl), g_heads, g_sectors);
 
 	sunlabel->ntrks = SUN_SSWAP16(g_heads);
 	sunlabel->nsect = SUN_SSWAP16(g_sectors);
 	sunlabel->ncyl = SUN_SSWAP16(g_cylinders);
-	if (floppy)
+	if (G.sun_floppy)
 		set_sun_partition(0, 0, g_cylinders * g_heads * g_sectors, LINUX_NATIVE);
 	else {
 		if (g_cylinders * g_heads * g_sectors >= 150 * 2048) {
@@ -392,14 +391,15 @@ fetch_sun(unsigned *starts, unsigned *lens, unsigned *start, unsigned *stop)
 	}
 }
 
-static unsigned *verify_sun_starts;
-
 static int
-verify_sun_cmp(int *a, int *b)
+verify_sun_cmp(const void *aa, const void *bb)
 {
+	const int *a = aa;
+	const int *b = bb;
 	if (*a == -1) return 1;
 	if (*b == -1) return -1;
-	if (verify_sun_starts[*a] > verify_sun_starts[*b]) return 1;
+	if (G.verify_sun_starts[*a] > G.verify_sun_starts[*b])
+		return 1;
 	return -1;
 }
 
@@ -410,7 +410,6 @@ verify_sun(void)
 	int i,j,k,starto,endo;
 	int array[8];
 
-	verify_sun_starts = starts;
 	fetch_sun(starts, lens, &start, &stop);
 	for (k = 0; k < 7; k++) {
 		for (i = 0; i < 8; i++) {
@@ -449,8 +448,11 @@ verify_sun(void)
 		else
 			array[i] = -1;
 	}
-	qsort(array, ARRAY_SIZE(array), sizeof(array[0]),
-		(int (*)(const void *,const void *)) verify_sun_cmp);
+//TODO: probably can eliminate the need in G.verify_sun_starts
+//if merge starts[] and lens[] in a single array?
+	G.verify_sun_starts = starts;
+	qsort(array, ARRAY_SIZE(array), sizeof(array[0]), verify_sun_cmp);
+
 	if (array[0] == -1) {
 		printf("No partitions defined\n");
 		return;

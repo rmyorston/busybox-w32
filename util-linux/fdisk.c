@@ -170,8 +170,10 @@ typedef unsigned long long ullong;
 typedef uint32_t sector_t;
 #if UINT_MAX == 0xffffffff
 # define SECT_FMT ""
+# define SECT_TYPE unsigned
 #elif ULONG_MAX == 0xffffffff
 # define SECT_FMT "l"
+# define SECT_TYPE unsigned long
 #else
 # error Cant detect sizeof(uint32_t)
 #endif
@@ -412,6 +414,10 @@ enum {
 	dev_fd = 3                  /* the disk */
 };
 
+#if ENABLE_FEATURE_GPT_LABEL
+	struct gpt_header;
+#endif
+
 /* Globals */
 struct globals {
 	char *line_ptr;
@@ -435,12 +441,31 @@ struct globals {
 	//int dos_changed;
 	smallint nowarn;                /* no warnings for fdisk -l/-s */
 #endif
+#if ENABLE_FEATURE_SUN_LABEL
+	smallint sun_other_endian;
+	smallint sun_scsi_disk;
+	smallint sun_floppy;
+	unsigned *verify_sun_starts;
+#endif
+#if ENABLE_FEATURE_OSF_LABEL
+# if !defined(__alpha__)
+	struct partition *xbsd_part;
+	unsigned xbsd_part_index;
+# endif
+#endif
 	int ext_index;                  /* the prime extended partition */
 	unsigned user_cylinders, user_heads, user_sectors;
 	unsigned pt_heads, pt_sectors;
 	unsigned kern_heads, kern_sectors;
 	sector_t extended_offset;       /* offset of link pointers */
 	sector_t total_number_of_sectors;
+
+#if ENABLE_FEATURE_GPT_LABEL
+	struct gpt_header *gpt_hdr;
+	char *gpt_part_array;
+	unsigned gpt_n_parts;
+	unsigned gpt_part_entry_len;
+#endif
 
 	jmp_buf listingbuf;
 	char line_buffer[80];
@@ -1391,7 +1416,7 @@ get_geometry(void)
 	get_sectorsize();
 	sec_fac = sector_size / 512;
 #if ENABLE_FEATURE_SUN_LABEL
-	guess_device_type();
+	sun_guess_device_type();
 #endif
 	g_heads = g_cylinders = g_sectors = 0;
 	kern_heads = kern_sectors = 0;

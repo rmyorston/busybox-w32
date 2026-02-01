@@ -13,7 +13,7 @@ enum {
 	GUID_LEN        = 16,
 };
 
-typedef struct {
+typedef struct gpt_header {
 	uint64_t magic;
 	uint32_t revision;
 	uint32_t hdr_size;
@@ -30,7 +30,7 @@ typedef struct {
 	uint32_t part_array_crc32;
 } gpt_header;
 
-typedef struct {
+typedef struct gpt_partition {
 	uint8_t  type_guid[GUID_LEN];
 	uint8_t  part_guid[GUID_LEN];
 	uint64_t lba_start;
@@ -39,19 +39,13 @@ typedef struct {
 	uint16_t name36[36];
 } gpt_partition;
 
-static gpt_header *gpt_hdr;
-
-static char *part_array;
-static unsigned int n_parts;
-static unsigned int part_entry_len;
-
-static inline gpt_partition *
+static gpt_partition *
 gpt_part(int i)
 {
-	if (i >= n_parts) {
+	if (i >= G.gpt_n_parts) {
 		return NULL;
 	}
-	return (gpt_partition *)&part_array[i * part_entry_len];
+	return (gpt_partition *)&G.gpt_part_array[i * G.gpt_part_entry_len];
 }
 
 static uint32_t
@@ -107,19 +101,27 @@ gpt_list_table(int xtra UNUSED_PARAM)
 {
 	int i;
 	char numstr6[6];
+	unsigned long long total_bytes;
 
-	smart_ulltoa5(total_number_of_sectors * sector_size, numstr6, " KMGTPEZY")[0] = '\0';
-	printf("Disk %s: %llu sectors, %s\n", disk_device,
-		(unsigned long long)total_number_of_sectors,
-		numstr6);
+	total_bytes = (unsigned long long)total_number_of_sectors * sector_size;
+	smart_ulltoa5(total_bytes, numstr6, " KMGTPEZY")[0] = '\0';
+
+	printf("Disk %s: %s, %llu bytes, %"SECT_FMT"u sectors\n", disk_device,
+		skip_whitespace(numstr6),
+		total_bytes,
+		(SECT_TYPE)total_number_of_sectors
+	);
 	printf("Logical sector size: %u\n", sector_size);
 	printf("Disk identifier (GUID): ");
-	gpt_print_guid(gpt_hdr->disk_guid);
+//util-linux 2.41.1 does not print " (GUID)" in above line,
+//we do: keep users less confused what kind of identifier is meant.
+	gpt_print_guid(G.gpt_hdr->disk_guid);
 	printf("\nPartition table holds up to %u entries\n",
-		(int)SWAP_LE32(gpt_hdr->n_parts));
+		(int)SWAP_LE32(G.gpt_hdr->n_parts));
 	printf("First usable sector is %llu, last usable sector is %llu\n\n",
-		(unsigned long long)SWAP_LE64(gpt_hdr->first_usable_lba),
-		(unsigned long long)SWAP_LE64(gpt_hdr->last_usable_lba));
+		(unsigned long long)SWAP_LE64(G.gpt_hdr->first_usable_lba),
+		(unsigned long long)SWAP_LE64(G.gpt_hdr->last_usable_lba)
+	);
 
 /* "GPT fdisk" has a concept of 16-bit extension of the original MBR 8-bit type codes,
  * which it displays here: its output columns are ... Size Code Name
@@ -131,7 +133,7 @@ gpt_list_table(int xtra UNUSED_PARAM)
  */
 	puts("Number  Start (sector)    End (sector)  Size Name");
 	//    123456 123456789012345 123456789012345 12345 abc
-	for (i = 0; i < n_parts; i++) {
+	for (i = 0; i < G.gpt_n_parts; i++) {
 		gpt_partition *p = gpt_part(i);
 		if (p->lba_start) {
 			smart_ulltoa5((1 + SWAP_LE64(p->lba_end) - SWAP_LE64(p->lba_start)) * sector_size,
@@ -168,9 +170,9 @@ check_gpt_label(void)
 	/* LBA 1 contains the GPT header */
 
 	read_pte(&pe, 1);
-	gpt_hdr = (void *)pe.sectorbuffer;
+	G.gpt_hdr = (void *)pe.sectorbuffer;
 
-	if (gpt_hdr->magic != SWAP_LE64(GPT_MAGIC)) {
+	if (G.gpt_hdr->magic != SWAP_LE64(GPT_MAGIC)) {
 		current_label_type = LABEL_DOS;
 		return 0;
 	}
@@ -180,32 +182,32 @@ check_gpt_label(void)
 		global_crc32_new_table_le();
 	}
 
-	crc = SWAP_LE32(gpt_hdr->hdr_crc32);
-	gpt_hdr->hdr_crc32 = 0;
-	if (gpt_crc32(gpt_hdr, SWAP_LE32(gpt_hdr->hdr_size)) != crc) {
+	crc = SWAP_LE32(G.gpt_hdr->hdr_crc32);
+	G.gpt_hdr->hdr_crc32 = 0;
+	if (gpt_crc32(G.gpt_hdr, SWAP_LE32(G.gpt_hdr->hdr_size)) != crc) {
 		/* FIXME: read the backup table */
 		puts("\nwarning: GPT header CRC is invalid\n");
 	}
 
-	n_parts = SWAP_LE32(gpt_hdr->n_parts);
-	part_entry_len = SWAP_LE32(gpt_hdr->part_entry_len);
-	if (n_parts > GPT_MAX_PARTS
-	 || part_entry_len > GPT_MAX_PART_ENTRY_LEN
-	 || SWAP_LE32(gpt_hdr->hdr_size) > sector_size
+	G.gpt_n_parts = SWAP_LE32(G.gpt_hdr->n_parts);
+	G.gpt_part_entry_len = SWAP_LE32(G.gpt_hdr->part_entry_len);
+	if (G.gpt_n_parts > GPT_MAX_PARTS
+	 || G.gpt_part_entry_len > GPT_MAX_PART_ENTRY_LEN
+	 || SWAP_LE32(G.gpt_hdr->hdr_size) > sector_size
 	) {
-		puts("\nwarning: unable to parse GPT disklabel\n");
+		puts("\nwarning: can't parse GPT disklabel\n");
 		current_label_type = LABEL_DOS;
 		return 0;
 	}
 
-	part_array_len = n_parts * part_entry_len;
-	part_array = xmalloc(part_array_len);
-	seek_sector(SWAP_LE64(gpt_hdr->first_part_lba));
-	if (full_read(dev_fd, part_array, part_array_len) != part_array_len) {
+	part_array_len = G.gpt_n_parts * G.gpt_part_entry_len;
+	G.gpt_part_array = xmalloc(part_array_len);
+	seek_sector(SWAP_LE64(G.gpt_hdr->first_part_lba));
+	if (full_read(dev_fd, G.gpt_part_array, part_array_len) != part_array_len) {
 		fdisk_fatal(unable_to_read);
 	}
 
-	if (gpt_crc32(part_array, part_array_len) != gpt_hdr->part_array_crc32) {
+	if (gpt_crc32(G.gpt_part_array, part_array_len) != G.gpt_hdr->part_array_crc32) {
 		/* FIXME: read the backup table */
 		puts("\nwarning: GPT array CRC is invalid\n");
 	}
