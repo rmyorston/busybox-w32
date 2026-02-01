@@ -105,7 +105,8 @@ check_sun_label(void)
 	}
 	G.sun_other_endian = (sunlabel->magic == SUN_LABEL_MAGIC_SWAPPED);
 	ush = ((unsigned short *) (sunlabel + 1)) - 1;
-	for (csum = 0; ush >= (unsigned short *)sunlabel;) csum ^= *ush--;
+	for (csum = 0; ush >= (unsigned short *)sunlabel;)
+		csum ^= *ush--;
 	if (csum) {
 		printf("Detected sun disklabel with wrong checksum.\n"
 "Probably you'll have to set all the values,\n"
@@ -361,32 +362,37 @@ toggle_sunflags(int i, unsigned char mask)
 	set_changed(i);
 }
 
+typedef struct start_and_len {
+	unsigned start;
+	unsigned len;
+} start_and_len_t;
+
 static void
-fetch_sun(unsigned *starts, unsigned *lens, unsigned *start, unsigned *stop)
+fetch_sun(start_and_len_t *sl, unsigned *start, unsigned *stop)
 {
 	int i, continuous = 1;
 
 	*start = 0;
 	*stop = g_cylinders * g_heads * g_sectors;
 	for (i = 0; i < g_partitions; i++) {
-		if (sunlabel->partitions[i].num_sectors
-		 && sunlabel->infos[i].id
-		 && sunlabel->infos[i].id != SUN_WHOLE_DISK) {
-			starts[i] = SUN_SSWAP32(sunlabel->partitions[i].start_cylinder) * g_heads * g_sectors;
-			lens[i] = SUN_SSWAP32(sunlabel->partitions[i].num_sectors);
+		sl[i].start = 0;
+		sl[i].len = 0;
+		if (sunlabel->partitions[i].num_sectors != 0
+		 && sunlabel->infos[i].id != 0
+		 && sunlabel->infos[i].id != SUN_WHOLE_DISK
+		) {
+			sl[i].start = SUN_SSWAP32(sunlabel->partitions[i].start_cylinder) * g_heads * g_sectors;
+			sl[i].len = SUN_SSWAP32(sunlabel->partitions[i].num_sectors);
 			if (continuous) {
-				if (starts[i] == *start)
-					*start += lens[i];
-				else if (starts[i] + lens[i] >= *stop)
-					*stop = starts[i];
+				if (sl[i].start == *start)
+					*start += sl[i].len;
+				else if (sl[i].start + sl[i].len >= *stop)
+					*stop = sl[i].start;
 				else
 					continuous = 0;
 					/* There will be probably more gaps
 					  than one, so lets check afterwards */
 			}
-		} else {
-			starts[i] = 0;
-			lens[i] = 0;
 		}
 	}
 }
@@ -394,11 +400,11 @@ fetch_sun(unsigned *starts, unsigned *lens, unsigned *start, unsigned *stop)
 static int
 verify_sun_cmp(const void *aa, const void *bb)
 {
-	const int *a = aa;
-	const int *b = bb;
-	if (*a == -1) return 1;
-	if (*b == -1) return -1;
-	if (G.verify_sun_starts[*a] > G.verify_sun_starts[*b])
+	const start_and_len_t *a = aa;
+	const start_and_len_t *b = bb;
+	if (a->len == 0) return 1;
+	if (b->len == 0) return -1;
+	if (a->start > b->start)
 		return 1;
 	return -1;
 }
@@ -406,34 +412,37 @@ verify_sun_cmp(const void *aa, const void *bb)
 static NOINLINE void
 verify_sun(void)
 {
-	unsigned starts[8], lens[8], start, stop;
-	int i,j,k,starto,endo;
-	int array[8];
+	start_and_len_t sl[8];
+	unsigned start, stop;
+	int i,j,k;
 
-	fetch_sun(starts, lens, &start, &stop);
+	fetch_sun(sl, &start, &stop);
 	for (k = 0; k < 7; k++) {
 		for (i = 0; i < 8; i++) {
-			if (k && (lens[i] % (g_heads * g_sectors))) {
+			if (k && (sl[i].len % (g_heads * g_sectors))) {
 				printf("Partition %u doesn't end on cylinder boundary\n", i+1);
 			}
-			if (lens[i]) {
+			if (sl[i].len) {
 				for (j = 0; j < i; j++)
-					if (lens[j]) {
-						if (starts[j] == starts[i]+lens[i]) {
-							starts[j] = starts[i]; lens[j] += lens[i];
-							lens[i] = 0;
-						} else if (starts[i] == starts[j]+lens[j]){
-							lens[j] += lens[i];
-							lens[i] = 0;
+					if (sl[j].len) {
+						if (sl[j].start == sl[i].start + sl[i].len) {
+							sl[j].start = sl[i].start;
+							sl[j].len += sl[i].len;
+							sl[i].len = 0;
+						} else if (sl[i].start == sl[j].start + sl[j].len) {
+							sl[j].len += sl[i].len;
+							sl[i].len = 0;
 						} else if (!k) {
-							if (starts[i] < starts[j]+lens[j]
-							 && starts[j] < starts[i]+lens[i]) {
-								starto = starts[i];
-								if (starts[j] > starto)
-									starto = starts[j];
-								endo = starts[i]+lens[i];
-								if (starts[j]+lens[j] < endo)
-									endo = starts[j]+lens[j];
+							if (sl[i].start < sl[j].start + sl[j].len
+							 && sl[j].start < sl[i].start + sl[i].len
+							) {
+								unsigned starto, endo;
+								starto = sl[i].start;
+								if (sl[j].start > starto)
+									starto = sl[j].start;
+								endo = sl[i].start + sl[i].len;
+								if (sl[j].start + sl[j].len < endo)
+									endo = sl[j].start + sl[j].len;
 								printf("Partition %u overlaps with others in "
 									"sectors %u-%u\n", i+1, starto, endo);
 							}
@@ -442,28 +451,19 @@ verify_sun(void)
 			}
 		}
 	}
-	for (i = 0; i < 8; i++) {
-		if (lens[i])
-			array[i] = i;
-		else
-			array[i] = -1;
-	}
-//TODO: probably can eliminate the need in G.verify_sun_starts
-//if merge starts[] and lens[] in a single array?
-	G.verify_sun_starts = starts;
-	qsort(array, ARRAY_SIZE(array), sizeof(array[0]), verify_sun_cmp);
+	qsort(sl, ARRAY_SIZE(sl), sizeof(sl[0]), verify_sun_cmp);
 
-	if (array[0] == -1) {
+	if (sl[0].len == 0) {
 		printf("No partitions defined\n");
 		return;
 	}
 	stop = g_cylinders * g_heads * g_sectors;
-	if (starts[array[0]])
-		printf("Unused gap - sectors %u-%u\n", 0, starts[array[0]]);
-	for (i = 0; i < 7 && array[i+1] != -1; i++) {
-		printf("Unused gap - sectors %u-%u\n", starts[array[i]]+lens[array[i]], starts[array[i+1]]);
+	if (sl[0].start != 0)
+		printf("Unused gap - sectors %u-%u\n", 0, sl[0].start);
+	for (i = 0; i < 7 && sl[i+1].len != 0; i++) {
+		printf("Unused gap - sectors %u-%u\n", sl[i].start + sl[i].len, sl[i+1].start);
 	}
-	start = starts[array[i]] + lens[array[i]];
+	start = sl[i].start + sl[i].len;
 	if (start < stop)
 		printf("Unused gap - sectors %u-%u\n", start, stop);
 }
@@ -472,7 +472,7 @@ static void
 add_sun_partition(int n, int sys)
 {
 	unsigned start, stop, stop2;
-	unsigned starts[8], lens[8];
+	start_and_len_t sl[8];
 	int whole_disk = 0;
 
 	char mesg[256];
@@ -483,7 +483,7 @@ add_sun_partition(int n, int sys)
 		return;
 	}
 
-	fetch_sun(starts, lens, &start, &stop);
+	fetch_sun(sl, &start, &stop);
 	if (stop <= start) {
 		if (n == 2)
 			whole_disk = 1;
@@ -529,7 +529,7 @@ and is of type 'Whole disk'\n");
 		   starting at block 0 in an md, or the label will
 		   be trashed. */
 		for (i = 0; i < g_partitions; i++)
-			if (lens[i] && starts[i] <= first && starts[i] + lens[i] > first)
+			if (sl[i].len && sl[i].start <= first && sl[i].start + sl[i].len > first)
 				break;
 		if (i < g_partitions && !whole_disk) {
 			if (n == 2 && !first) {
@@ -543,8 +543,8 @@ and is of type 'Whole disk'\n");
 	stop = g_cylinders * g_heads * g_sectors;
 	stop2 = stop;
 	for (i = 0; i < g_partitions; i++) {
-		if (starts[i] > first && starts[i] < stop)
-			stop = starts[i];
+		if (sl[i].start > first && sl[i].start < stop)
+			stop = sl[i].start;
 	}
 	snprintf(mesg, sizeof(mesg),
 		"Last %s or +size or +sizeM or +sizeK",

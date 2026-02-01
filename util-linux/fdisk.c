@@ -445,7 +445,6 @@ struct globals {
 	smallint sun_other_endian;
 	smallint sun_scsi_disk;
 	smallint sun_floppy;
-	unsigned *verify_sun_starts;
 #endif
 #if ENABLE_FEATURE_OSF_LABEL
 # if !defined(__alpha__)
