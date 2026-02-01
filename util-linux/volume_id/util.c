@@ -233,11 +233,10 @@ void *volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t len)
  err:
 		/* No filesystem can be this tiny. It's most likely
 		 * non-associated loop device, empty drive and so on.
-		 * Flag it, making it possible to short circuit future
-		 * accesses. Rationale:
+		 * Flag it, avoiding future accesses. Rationale:
 		 * users complained of slow blkid due to empty floppy drives.
 		 */
-		if (off < 64*1024)
+		if (off <= 1024)
 			id->error = 1;
 		/* id->seekbuf_len or id->sbbuf_len is wrong now! Fixing. */
 		volume_id_free_buffer(id);
