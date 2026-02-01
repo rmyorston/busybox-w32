@@ -50,6 +50,14 @@ char* FAST_FUNC find_executable(const char *name, const char **PATHp)
 		int ex;
 
 		if (sz != 0) {
+#if ENABLE_PLATFORM_MINGW32
+			// Strip trailing slash from path
+			if (is_dir_sep(end[-1]))
+				--sz;
+			if (sz == 0)	// "/" in PATH, unlikely but not impossible
+				p = xasprintf("%.*s/%s" + 4, name);
+			else
+#endif
 			p = xasprintf("%.*s/%s", sz, p, name);
 		} else {
 			/* We have xxx::yyy in $PATH,
