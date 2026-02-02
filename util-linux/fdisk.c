@@ -22,6 +22,11 @@
 //config:	depends on FDISK
 //config:	depends on !LFS   # with LFS no special code is needed
 //config:
+//config:config FEATURE_FDISK_BLKSIZE
+//config:	bool "Support -s option to list sizes"
+//config:	default y
+//config:	depends on FDISK
+//config:
 //config:config FEATURE_FDISK_WRITABLE
 //config:	bool "Write support"
 //config:	default y
@@ -85,12 +90,6 @@
 
 //kbuild:lib-$(CONFIG_FDISK) += fdisk.o
 
-/* Looks like someone forgot to add this to config system */
-//usage:#ifndef ENABLE_FEATURE_FDISK_BLKSIZE
-//usage:# define ENABLE_FEATURE_FDISK_BLKSIZE 0
-//usage:# define IF_FEATURE_FDISK_BLKSIZE(a)
-//usage:#endif
-//usage:
 //usage:#define fdisk_trivial_usage
 //usage:       "[-ul" IF_FEATURE_FDISK_BLKSIZE("s") "] "
 //usage:       "[-C CYLINDERS] [-H HEADS] [-S SECTORS] [-b SSZ] DISK"
@@ -99,7 +98,9 @@
 //usage:     "\n	-u		Start and End are in sectors (instead of cylinders)"
 //usage:     "\n	-l		Show partition table for each DISK, then exit"
 //usage:	IF_FEATURE_FDISK_BLKSIZE(
-//usage:     "\n	-s		Show partition sizes in kb for each DISK, then exit"
+//usage:     "\n	-s		Show sizes in kb for each DISK, then exit"
+//NB: util-linux 2.41.1 says: "-s,--getsz: display device size in 512-byte sectors"
+//but in fact, util-linux 2.41.1 shows the size in KILOBYTES!
 //usage:	)
 //usage:     "\n	-b 2048		(for certain MO disks) use 2048-byte sectors"
 //usage:     "\n	-C CYLINDERS	Set number of cylinders/heads/sectors"
@@ -125,13 +126,6 @@
 # define inline_if_little_endian ALWAYS_INLINE
 #else
 # define inline_if_little_endian /* nothing */
-#endif
-
-
-/* Looks like someone forgot to add this to config system */
-#ifndef ENABLE_FEATURE_FDISK_BLKSIZE
-# define ENABLE_FEATURE_FDISK_BLKSIZE 0
-# define IF_FEATURE_FDISK_BLKSIZE(a)
 #endif
 
 #define DEFAULT_SECTOR_SIZE      512
@@ -527,6 +521,7 @@ static sector_t bb_BLKGETSIZE_sectors(int fd)
 	if (ioctl(fd, BLKGETSIZE64, &v64) == 0) {
 		/* Got bytes, convert to 512 byte sectors */
 		v64 >>= 9;
+//FIXME: should be "v64 /= sector_size" instead?
 		if (v64 != (sector_t)v64) {
  ret_trunc:
 			/* Not only DOS, but all other partition tables
@@ -534,12 +529,12 @@ static sector_t bb_BLKGETSIZE_sectors(int fd)
 			 * sector counts or offsets
 			 */
 			bb_simple_error_msg("device has more than 2^32 sectors, can't use all of them");
-			v64 = (uint32_t)-1L;
+			v64 = (sector_t)-1L;
 		}
 		return v64;
 	}
 	/* Needs temp of type long */
-	if (ioctl(fd, BLKGETSIZE, &longsectors)) {
+	if (ioctl(fd, BLKGETSIZE, &longsectors) != 0) {
 		/* Perhaps this is a disk image */
 		off_t sz = lseek(fd, 0, SEEK_END);
 		longsectors = 0;
@@ -3062,9 +3057,37 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 
 	close_dev_fd(); /* needed: fd 3 must not stay closed */
 
-	opt = getopt32(argv, "b:+C:+H:+lS:+u" IF_FEATURE_FDISK_BLKSIZE("s"),
-				&sector_size, &user_cylinders, &user_heads, &user_sectors);
+	opt = getopt32(argv, "^" "b:+C:+H:+lS:+u"IF_FEATURE_FDISK_BLKSIZE("s")"\0"
+		/* among -s and -l, the last one takes preference */
+		IF_FEATURE_FDISK_BLKSIZE("s-l:l-s"),
+		&sector_size, &user_cylinders, &user_heads, &user_sectors);
 	argv += optind;
+
+#if ENABLE_FEATURE_FDISK_BLKSIZE
+	/* -s ignores -b SECTSIZE, has to be before OPT_b check */
+	if (opt & OPT_s) {
+		int j;
+
+		sector_size = 512;
+		nowarn = 1;
+		if (!argv[0])
+			bb_show_usage();
+		for (j = 0; argv[j]; j++) {
+			unsigned long long size;
+			int fd = xopen(argv[j], O_RDONLY);
+			size = bb_BLKGETSIZE_sectors(fd) / 2;
+//NB: util-linux 2.41.1 says: "-s,--getsz: display device size in 512-byte sectors"
+//but in fact, util-linux 2.41.1 shows the size in KILOBYTES!
+			close(fd);
+			if (!argv[1])
+				printf("%llu\n", size);
+			else
+				printf("%s: %llu\n", argv[j], size);
+		}
+		return 0;
+	}
+#endif
+
 	if (opt & OPT_b) {
 		/* Ugly: this sector size is really per device,
 		 * so cannot be combined with multiple disks,
@@ -3084,7 +3107,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 	if (user_sectors <= 0 || user_sectors >= 64)
 		user_sectors = 0;
 	if (opt & OPT_u)
-		display_in_cyl_units = 0; // -u
+		display_in_cyl_units = 0;
 
 #if ENABLE_FEATURE_FDISK_WRITABLE
 	if (opt & OPT_l) {
@@ -3103,30 +3126,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 		return 0;
 #if ENABLE_FEATURE_FDISK_WRITABLE
 	}
-#endif
 
-#if ENABLE_FEATURE_FDISK_BLKSIZE
-	if (opt & OPT_s) {
-		int j;
-
-		nowarn = 1;
-		if (!argv[0])
-			bb_show_usage();
-		for (j = 0; argv[j]; j++) {
-			unsigned long long size;
-			fd = xopen(argv[j], O_RDONLY);
-			size = bb_BLKGETSIZE_sectors(fd) / 2;
-			close(fd);
-			if (argv[1])
-				printf("%llu\n", size);
-			else
-				printf("%s: %llu\n", argv[j], size);
-		}
-		return 0;
-	}
-#endif
-
-#if ENABLE_FEATURE_FDISK_WRITABLE
 	if (!argv[0] || argv[1])
 		bb_show_usage();
 
@@ -3170,10 +3170,10 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 				else
 					sgi_set_bootfile(line_ptr);
 			}
-#if ENABLE_FEATURE_OSF_LABEL
+# if ENABLE_FEATURE_OSF_LABEL
 			else
 				bsd_select();
-#endif
+# endif
 			break;
 		case 'c':
 			if (LABEL_IS_DOS)
@@ -3229,9 +3229,9 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 			bb_putchar('\n');
 			return 0;
 		case 's':
-#if ENABLE_FEATURE_SUN_LABEL
+# if ENABLE_FEATURE_SUN_LABEL
 			create_sunlabel();
-#endif
+# endif
 			break;
 		case 't':
 			change_sysid();
@@ -3245,7 +3245,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 		case 'w':
 			write_table();  /* does not return */
 			break;
-#if ENABLE_FEATURE_FDISK_ADVANCED
+# if ENABLE_FEATURE_FDISK_ADVANCED
 		case 'x':
 			if (LABEL_IS_SGI) {
 				puts("\n\tSorry, no experts menu for SGI "
@@ -3253,7 +3253,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 			} else
 				xselect();
 			break;
-#endif
+# endif
 		default:
 			unknown_command(c);
 			menu();
