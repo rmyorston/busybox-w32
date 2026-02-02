@@ -307,7 +307,7 @@ sgi_list_table(int xtra)
 			"%u heads, %u sectors, %u cylinders\n"
 			"Units = %ss of %u * 512 bytes\n\n",
 			disk_device, g_heads, g_sectors, g_cylinders,
-			str_units(), units_per_sector );
+			str_units(), units_per_sector);
 	}
 
 	w = strlen(disk_device);
@@ -658,7 +658,7 @@ sgi_set_entire(void)
 	int n;
 
 	for (n = 10; n < g_partitions; n++) {
-		if (!sgi_get_num_sectors(n) ) {
+		if (!sgi_get_num_sectors(n)) {
 			sgi_set_partition(n, 0, sgi_get_lastblock(), SGI_VOLUME);
 			break;
 		}
@@ -739,7 +739,7 @@ sgi_add_partition(int n, int sys)
 			first *= units_per_sector;
 		else
 			first = first; /* align to cylinder if you know how ... */
-		if (!last )
+		if (!last)
 			last = isinfreelist(first);
 		if (last != 0)
 			break;
@@ -753,7 +753,7 @@ sgi_add_partition(int n, int sys)
 		last *= units_per_sector;
 	else
 		last = last; /* align to cylinder if You know how ... */
-	if ( (sys == SGI_VOLUME) && (first != 0 || last != sgi_get_lastblock() ) )
+	if ((sys == SGI_VOLUME) && (first != 0 || last != sgi_get_lastblock()))
 		printf("It is highly recommended that eleventh partition\n"
 			"covers the entire disk and is of type 'SGI volume'\n");
 	sgi_set_partition(n, first, last-first, sys);
@@ -805,7 +805,7 @@ create_sgilabel(void)
 				printf("Trying to keep parameters of partition %u\n", i);
 				if (SGI_DEBUG)
 					printf("ID=%02x\tSTART=%u\tLENGTH=%u\n",
-				old[i].sysid, old[i].start, old[i].nsect);
+					old[i].sysid, old[i].start, old[i].nsect);
 			}
 		}
 	}
@@ -846,8 +846,8 @@ create_sgilabel(void)
 	//sgilabel->devparam.xylogics_gap2            = SGI_SSWAP16(0);
 	//sgilabel->devparam.xylogics_readgate        = SGI_SSWAP16(0);
 	//sgilabel->devparam.xylogics_writecont       = SGI_SSWAP16(0);
-	//memset( &(sgilabel->directory), 0, sizeof(struct volume_directory)*15 );
-	//memset( &(sgilabel->partitions), 0, sizeof(struct sgi_partinfo)*16 );
+	//memset(&(sgilabel->directory), 0, sizeof(struct volume_directory)*15);
+	//memset(&(sgilabel->partitions), 0, sizeof(struct sgi_partinfo)*16);
 	current_label_type = LABEL_SGI;
 	g_partitions = 16;
 	sgi_volumes = 15;
@@ -880,10 +880,10 @@ fill_sgiinfo(void)
 	info->b2 = SGI_SSWAP16(-1);
 	info->b3 = SGI_SSWAP16(1);
 	/* You may want to replace this string !!!!!!! */
-	strcpy( (char*)info->scsi_string, "IBM OEM 0662S12         3 30" );
-	strcpy( (char*)info->serial, "0000" );
-	info->check1816 = SGI_SSWAP16(18*256 +16 );
-	strcpy( (char*)info->installer, "Sfx version 5.3, Oct 18, 1994" );
+	strcpy((char*)info->scsi_string, "IBM OEM 0662S12         3 30");
+	strcpy((char*)info->serial, "0000");
+	info->check1816 = SGI_SSWAP16(18*256 +16);
+	strcpy((char*)info->installer, "Sfx version 5.3, Oct 18, 1994");
 	return info;
 }
 #endif /* SGI_LABEL */
