@@ -306,7 +306,7 @@ static struct config_entry_struct *last_config = NULL;
 static char *mount_point = NULL;
 static volatile int caught_signal = FALSE;
 static volatile int caught_sighup = FALSE;
-static struct initial_symlink_struct {
+static const struct initial_symlink_struct {
 	const char *dest;
 	const char *name;
 } initial_symlinks[] = {
@@ -413,7 +413,7 @@ int devfsd_main(int argc, char **argv)
 	int fd, proto_rev, count;
 	unsigned long event_mask = 0;
 	struct sigaction new_action;
-	struct initial_symlink_struct *curr;
+	const struct initial_symlink_struct *curr;
 
 	if (argc < 2)
 		bb_show_usage();
@@ -1072,8 +1072,8 @@ static int copy_inode(const char *destpath, const struct stat *dest_stat,
 			if (fd < 0)
 				break;
 			un_addr.sun_family = AF_UNIX;
-			snprintf(un_addr.sun_path, sizeof(un_addr.sun_path), "%s", destpath);
-			val = bind(fd, (struct sockaddr *) &un_addr, (int) sizeof un_addr);
+			strncpy(un_addr.sun_path, destpath, sizeof(un_addr.sun_path));
+			val = bind(fd, (struct sockaddr *) &un_addr, (int)sizeof(un_addr));
 			close(fd);
 			if (val != 0 || chmod(destpath, new_mode & ~S_IFMT) != 0)
 				break;
