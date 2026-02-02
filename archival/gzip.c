@@ -2215,6 +2215,9 @@ int gzip_main(int argc UNUSED_PARAM, char **argv)
 	};
 #endif
 
+// TODO: use less ugly "split-globals" trick via SET_OFFSET_PTR_TO_GLOBALS().
+// The problem is, the current method strategically places G2.heap[]
+// (~24 references) so that it has zero offset.
 	SET_PTR_TO_GLOBALS((char *)xzalloc(sizeof(struct globals)+sizeof(struct globals2))
 			+ sizeof(struct globals));
 

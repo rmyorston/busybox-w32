@@ -583,14 +583,10 @@ static const char vValues[] ALIGN1 =
 static const uint16_t PRIMES[] ALIGN2 = { 251, 1021, 4093, 16381, 65521 };
 
 
-/* Globals. Split in two parts so that first one is addressed
- * with (mostly short) negative offsets.
- * NB: it's unsafe to put members of type "double"
- * into globals2 (gcc may fail to align them).
- */
 struct globals {
-	double t_double;
 	chain beginseq, mainseq, endseq;
+
+	double t_double;
 	chain *seq;
 	node *break_ptr, *continue_ptr;
 	xhash *ahash;  /* argument names, used only while parsing function bodies */
@@ -618,9 +614,8 @@ struct globals {
 	smallint next_token__concat_inserted;
 	uint32_t next_token__save_tclass;
 	uint32_t next_token__save_info;
-};
-struct globals2 {
-	uint32_t t_info; /* often used */
+
+	uint32_t t_info;
 	uint32_t t_tclass;
 	char *t_string;
 	int t_lineno;
@@ -654,41 +649,40 @@ struct globals2 {
 
 	char g_buf[MAXVARFMT + 1];
 };
-#define G1 (ptr_to_globals[-1])
-#define G (*(struct globals2 *)ptr_to_globals)
+#define G (*OFFSET_PTR_TO_GLOBALS)
 /* For debug. nm --size-sort awk.o | grep -vi ' [tr] ' */
 //char G1size[sizeof(G1)]; // 0x70
 //char Gsize[sizeof(G)]; // 0x2f8
 /* Trying to keep most of members accessible with short offsets: */
 //char Gofs_seed[offsetof(struct globals2, evaluate__seed)]; // 0x7c
-#define t_double     (G1.t_double    )
-#define beginseq     (G1.beginseq    )
-#define mainseq      (G1.mainseq     )
-#define endseq       (G1.endseq      )
-#define seq          (G1.seq         )
-#define break_ptr    (G1.break_ptr   )
-#define continue_ptr (G1.continue_ptr)
-#define ahash        (G1.ahash       )
-#define fnhash       (G1.fnhash      )
-#define vhash        (G1.vhash       )
+#define t_double     (G.t_double    )
+#define beginseq     (G.beginseq    )
+#define mainseq      (G.mainseq     )
+#define endseq       (G.endseq      )
+#define seq          (G.seq         )
+#define break_ptr    (G.break_ptr   )
+#define continue_ptr (G.continue_ptr)
+#define ahash        (G.ahash       )
+#define fnhash       (G.fnhash      )
+#define vhash        (G.vhash       )
 #define fdhash       ahash
 //^^^^^^^^^^^^^^^^^^ ahash is cleared after every function parsing,
 // and ends up empty after parsing phase. Thus, we can simply reuse it
 // for fdhash in execution stage.
-#define g_progname   (G1.g_progname  )
-#define g_lineno     (G1.g_lineno    )
-#define num_fields   (G1.num_fields  )
-#define num_alloc_fields (G1.num_alloc_fields)
-#define Fields       (G1.Fields      )
-#define g_pos        (G1.g_pos       )
-#define g_saved_ch   (G1.g_saved_ch  )
-#define got_program  (G1.got_program )
-#define icase        (G1.icase       )
-#define exiting      (G1.exiting     )
-#define nextrec      (G1.nextrec     )
-#define nextfile     (G1.nextfile    )
-#define is_f0_split  (G1.is_f0_split )
-#define t_rollback   (G1.t_rollback  )
+#define g_progname   (G.g_progname  )
+#define g_lineno     (G.g_lineno    )
+#define num_fields   (G.num_fields  )
+#define num_alloc_fields (G.num_alloc_fields)
+#define Fields       (G.Fields      )
+#define g_pos        (G.g_pos       )
+#define g_saved_ch   (G.g_saved_ch  )
+#define got_program  (G.got_program )
+#define icase        (G.icase       )
+#define exiting      (G.exiting     )
+#define nextrec      (G.nextrec     )
+#define nextfile     (G.nextfile    )
+#define is_f0_split  (G.is_f0_split )
+#define t_rollback   (G.t_rollback  )
 #define t_info       (G.t_info      )
 #define t_tclass     (G.t_tclass    )
 #define t_string     (G.t_string    )
@@ -699,7 +693,7 @@ struct globals2 {
 #define rsplitter    (G.rsplitter   )
 #define g_buf        (G.g_buf       )
 #define INIT_G() do { \
-	SET_PTR_TO_GLOBALS((char*)xzalloc(sizeof(G1)+sizeof(G)) + sizeof(G1)); \
+	SET_OFFSET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
 	t_tclass = TC_NEWLINE; \
 	G.evaluate__seed = 1; \
 } while (0)
@@ -1168,9 +1162,9 @@ static int istrue(var *v)
  */
 static uint32_t next_token(uint32_t expected)
 {
-#define concat_inserted (G1.next_token__concat_inserted)
-#define save_tclass     (G1.next_token__save_tclass)
-#define save_info       (G1.next_token__save_info)
+#define concat_inserted (G.next_token__concat_inserted)
+#define save_tclass     (G.next_token__save_tclass)
+#define save_info       (G.next_token__save_info)
 
 	char *p;
 	const char *tl;
