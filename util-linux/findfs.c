@@ -20,9 +20,9 @@
 //kbuild:lib-$(CONFIG_FINDFS) += findfs.o
 
 //usage:#define findfs_trivial_usage
-//usage:       "LABEL=label or UUID=uuid"
+//usage:       "LABEL=label | UUID=uuid"
 //usage:#define findfs_full_usage "\n\n"
-//usage:       "Find a filesystem device based on a label or UUID"
+//usage:       "Find filesystem device based on label or UUID"
 //usage:
 //usage:#define findfs_example_usage
 //usage:       "$ findfs LABEL=MyDevice"
