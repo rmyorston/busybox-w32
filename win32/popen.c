@@ -146,6 +146,7 @@ FILE *mingw_popen(const char *cmd, const char *mode)
  *
  * - mode may be "r", "w" or "b" for read-only, write-only or
  *   bidirectional (from the perspective of the parent).
+ *   Or it could be "W" to redirect both stdout and stderr to fd0.
  * - if fd0 is a valid file descriptor it's used as input to the
  *   command ("r") or as the destination of the output from the
  *   command ("w").  Otherwise (and if not "b") use stdin or stdout.
@@ -169,7 +170,7 @@ static int mingw_popen_internal(pipe_data *p, const char *exe,
 		ip = 0;
 		flags = _O_RDONLY|_O_BINARY;
 		break;
-	case 'w':
+	case 'w': case 'W':
 		ip = 1;
 		flags = _O_WRONLY|_O_BINARY;
 		break;
@@ -220,11 +221,15 @@ static int mingw_popen_internal(pipe_data *p, const char *exe,
 		siStartInfo.hStdInput = fd0 >= 0 ? (HANDLE)_get_osfhandle(fd0) :
 											GetStdHandle(STD_INPUT_HANDLE);
 	}
-	else if ( *mode == 'w' ) {
+	else if ( *mode == 'w' || *mode == 'W' ) {
 		siStartInfo.hStdOutput = fd0 >= 0 ? (HANDLE)_get_osfhandle(fd0) :
 											GetStdHandle(STD_OUTPUT_HANDLE);
 	}
-	siStartInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+	if ( *mode == 'W' )
+		siStartInfo.hStdError = siStartInfo.hStdOutput;
+	else
+		siStartInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+
 	siStartInfo.wShowWindow = SW_HIDE;
 	siStartInfo.dwFlags = STARTF_USESTDHANDLES|STARTF_USESHOWWINDOW;
 
