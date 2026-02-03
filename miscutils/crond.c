@@ -432,12 +432,27 @@ static void load_crontab(const char *fileName)
 	char *shell = NULL;
 	char *path = NULL;
 
+#if ENABLE_PLATFORM_MINGW32
+	struct passwd *p;
+#endif
+
 	delete_cronfile(fileName);
 
-	if (!getpwnam(fileName)) {
+	if (!(
+#if ENABLE_PLATFORM_MINGW32
+	p =
+#endif
+	getpwnam(fileName))) {
 		log7("ignoring file '%s' (no such user)", fileName);
 		return;
 	}
+
+#if ENABLE_PLATFORM_MINGW32
+	if (p->pw_uid != getuid()) {
+		log7("ignoring file '%s' (not current user)", fileName);
+		return;
+	}
+#endif
 
 	parser = config_open(fileName);
 	if (!parser)
