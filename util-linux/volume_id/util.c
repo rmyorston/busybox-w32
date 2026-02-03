@@ -158,13 +158,7 @@ set:
 			buf[3], buf[2], buf[1], buf[0]);
 		break;
 	case UUID_DCE:
-		sprintf(id->uuid,
-			"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-			buf[0], buf[1], buf[2], buf[3],
-			buf[4], buf[5],
-			buf[6], buf[7],
-			buf[8], buf[9],
-			buf[10], buf[11], buf[12], buf[13], buf[14], buf[15]);
+		format_uuid_DCE_37_chars(id->uuid, buf);
 		break;
 	case UUID_DCE_STRING:
 		memcpy(id->uuid, buf, count);

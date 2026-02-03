@@ -91,7 +91,7 @@ struct swap_header_v1 {
 	uint32_t version;        /* second kbyte, word 0 */
 	uint32_t last_page;      /* 1 */
 	uint32_t nr_badpages;    /* 2 */
-	char     sws_uuid[16];   /* 3,4,5,6 */
+	uint8_t  sws_uuid[16];   /* 3,4,5,6 */
 	char     sws_volume[16]; /* 7,8,9,10 */
 	uint32_t padding[117];   /* 11..127 */
 	uint32_t badpages[1];    /* 128 */
@@ -148,17 +148,11 @@ int mkswap_main(int argc UNUSED_PARAM, char **argv)
 	hdr->last_page = (uoff_t)len / pagesize;
 
 	if (ENABLE_FEATURE_MKSWAP_UUID) {
-		char uuid_string[32];
-		generate_uuid((void*)hdr->sws_uuid);
-		bin2hex(uuid_string, hdr->sws_uuid, 16);
+		char uuid_string37[37];
 		/* f.e. UUID=dfd9c173-be52-4d27-99a5-c34c6c2ff55f */
-		printf("UUID=%.8s"  "-%.4s-%.4s-%.4s-%.12s\n",
-			uuid_string,
-			uuid_string+8,
-			uuid_string+8+4,
-			uuid_string+8+4+4,
-			uuid_string+8+4+4+4
-		);
+		generate_uuid(hdr->sws_uuid);
+		format_uuid_DCE_37_chars(uuid_string37, hdr->sws_uuid);
+		printf("UUID=%s\n", uuid_string37);
 	}
 	safe_strncpy(hdr->sws_volume, label, 16);
 

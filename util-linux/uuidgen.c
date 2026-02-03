@@ -36,22 +36,21 @@
  * Otherwise, it will choose a time-based UUID."
  */
 #include "libbb.h"
-#include "volume_id/volume_id_internal.h"
 
 /* This is a NOFORK applet. Be very careful! */
 
 int uuidgen_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int uuidgen_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 {
-	struct volume_id id;
+	char str37[37];
 	uint8_t uuid[16];
 
 	/* support/ignore -r (--random) */
 	getopt32(argv, "^" "r" "\0" "=0"/* no args!*/);
 
 	generate_uuid(uuid);
-	volume_id_set_uuid(&id, uuid, UUID_DCE);
-	puts(id.uuid);
+	format_uuid_DCE_37_chars(str37, uuid);
+	puts(str37);
 
-	return 0;
+	fflush_stdout_and_exit_SUCCESS();
 }

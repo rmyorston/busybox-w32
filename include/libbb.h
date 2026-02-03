@@ -1152,6 +1152,7 @@ void FAST_FUNC xorbuf16(void* buf, const void* mask);
 
 /* Generate a UUID */
 void generate_uuid(uint8_t *buf) FAST_FUNC;
+void FAST_FUNC format_uuid_DCE_37_chars(char *dst37, const uint8_t *buf16);
 
 /* Last element is marked by mult == 0 */
 struct suffix_mult {
