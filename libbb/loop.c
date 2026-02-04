@@ -158,7 +158,7 @@ static int set_loopdev_params(int lfd,
 		if (rc == 0)
 			return rc; /* SUCCESS! */
 # if ENABLE_TRY_LOOP_CONFIGURE
-		if (errno != EINVAL)
+		if (errno != EINVAL && errno != ENOTTY)
 			return rc; /* error other than old kernel */
 		/* Old kernel, fall through into old way to do it: */
 # endif

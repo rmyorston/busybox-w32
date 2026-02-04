@@ -585,12 +585,21 @@ static arith_t parse_with_base(const char *nptr, char **endptr, unsigned base)
 		nptr++;
 	}
 	*endptr = (char*)nptr;
+
 	/* "64#" and "64#+1" used to be valid expressions, but bash 5.2.15
-	 * no longer allow such, detect this:
+	 * no longer allows such, detect this:
 	 */
-// NB: bash allows $((0x)), this is probably a bug...
-	if (nptr == start)
-		*endptr = NULL; /* there weren't any digits, bad */
+	if (nptr == start) {
+		/* There weren't any digits */
+		/* Excluding the case of "0x"
+		 * (bash allows 0x: supports 0x$hexdigits when $hexdigits is empty)
+		 */
+		if (base != 16 /* why check 16? for base 10, start[-1] is undefined */
+		 || (start[-1] | 0x20) != 'x'
+		)
+			*endptr = NULL; /* error indicator */
+	}
+
 	return n;
 }
 
@@ -611,7 +620,6 @@ static arith_t strto_arith_t(const char *nptr, char **endptr)
 			base = 16;
 			nptr += 2;
 		}
-// NB: bash allows $((0x)), this is probably a bug...
 		return parse_with_base(nptr, endptr, base);
 	}
 

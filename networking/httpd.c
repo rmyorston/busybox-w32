@@ -330,6 +330,9 @@
  * - sanity: add a limit how big POSTDATA can be? (-P 1024: "megabyte+ of POSTDATA is insanity")
  *   currently we only do: if (POST_length > INT_MAX) HTTP_BAD_REQUEST
  * - sanity: measure CGI memory consumption (how?), kill when way too big?
+ * - set SO_LINGER {1,0} when aborting a download, this forces RST rather than FIN
+ *   connection termination ("Connection reset by peer" read error on the other end).
+ *   Thus, they can detect that the download is incomplete.
  */
 #define HEADER_READ_TIMEOUT 30
 #define DATA_WRITE_TIMEOUT  60
@@ -1932,21 +1935,11 @@ static void send_cgi_and_exit(
 		argv[1] = NULL;
 
 # if ENABLE_FEATURE_HTTPD_CONFIG_WITH_SCRIPT_INTERPR
-		{
-			char *suffix = strrchr(script, '.');
-
-			if (suffix) {
-				Htaccess *cur;
-				for (cur = script_i; cur; cur = cur->next) {
-					if (strcmp(cur->before_colon + 1, suffix) == 0) {
-						/* found interpreter name */
-						argv[0] = cur->after_colon;
-						argv[1] = script;
-						argv[2] = NULL;
-						break;
-					}
-				}
-			}
+		if (script_i != NULL) {
+			/* found interpreter name */
+			argv[0] = script_i->after_colon;
+			argv[1] = script;
+			argv[2] = NULL;
 		}
 # endif
 		if (VERBOSE_2)
@@ -2747,13 +2740,22 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 
 #if ENABLE_FEATURE_HTTPD_CGI
 	if (is_prefixed_with(tptr, "cgi-bin/")) {
-		if (tptr[8] == '\0') {
-			/* protect listing "cgi-bin/" */
-			send_headers_and_exit(HTTP_FORBIDDEN);
-		}
+		script_i = NULL; /* no interpreter */
 		cgi_type = CGI_NORMAL;
-	} /* why "else": do not check "cgi-bin/SCRIPT/something" for cases below: */
-	else
+		if (stat(tptr, &sb) == 0) {
+			/* disallow anything but ordinary files in cgi-bin/ */
+			if (!S_ISREG(sb.st_mode))
+				send_headers_and_exit(HTTP_FORBIDDEN);
+			/* If non-executable, send it as a file:
+			 * apache compat: not every /cgi-bin/XYZ must be a script,
+			 * _can_ be just a data file */
+			if (!(sb.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH))) {
+				cgi_type = CGI_NONE;
+				goto exists;
+			} /* else: CGI_NORMAL, will attempt executing */
+		} /* else: CGI_NORMAL, will attempt executing */
+	}
+	else /* why "else": do not check "cgi-bin/SCRIPT/something" for cases below: */
 #endif
 	{
 		if (urlp[-1] == '/') {
@@ -2775,15 +2777,17 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 #if ENABLE_FEATURE_HTTPD_CONFIG_WITH_SCRIPT_INTERPR
 				char *suffix = strrchr(tptr, '.');
 				if (suffix) {
-					Htaccess *cur;
-					for (cur = script_i; cur; cur = cur->next) {
-						if (strcmp(cur->before_colon + 1, suffix) == 0) {
+					for (; script_i; script_i = script_i->next) {
+						if (strcmp(script_i->before_colon + 1, suffix) == 0) {
 							cgi_type = CGI_INTERPRETER;
 							break;
 						}
 					}
+				} else {
+					script_i = NULL;
 				}
 #endif
+ exists:
 				file_size = sb.st_size;
 				last_mod = sb.st_mtime;
 			}
