@@ -136,7 +136,7 @@ static void factorize(wide_t N);
 
 static half_t isqrt_odd(wide_t N)
 {
-	half_t s = isqrt(N);
+	half_t s = isqrt_ull(N);
 	/* s^2 is <= N, (s+1)^2 > N */
 
 	/* If s^2 in fact is EQUAL to N, it's very lucky.

@@ -408,7 +408,12 @@ unsigned FAST_FUNC bb_popcnt_long(unsigned long m);
 #define bb_popcnt_long(m) bb_popcnt_32(m)
 #endif
 
-unsigned long FAST_FUNC isqrt(unsigned long long N);
+unsigned FAST_FUNC isqrt(unsigned long N);
+#if LLONG_MAX > LONG_MAX
+unsigned long FAST_FUNC isqrt_ull(unsigned long long N);
+#else
+# define isqrt_ull(N) isqrt(N)
+#endif
 
 unsigned long long monotonic_ns(void) FAST_FUNC;
 unsigned long long monotonic_us(void) FAST_FUNC;
