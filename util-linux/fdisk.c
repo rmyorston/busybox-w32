@@ -114,15 +114,25 @@
 #endif
 #include <assert.h>             /* assert */
 #include <sys/mount.h>
+#include "libbb.h"
+#include "unicode.h"
 #if !defined(BLKSSZGET)
 # define BLKSSZGET _IO(0x12, 104)
 #endif
 #if !defined(BLKGETSIZE64)
 # define BLKGETSIZE64 _IOR(0x12,114,size_t)
 #endif
-#include "libbb.h"
-#include "unicode.h"
-#define HDIO_GETGEO     0x0301  /* get device geometry */
+
+/* Get device geometry in this struct: */
+#define HDIO_GETGEO 0x0301
+struct hd_geometry {
+	unsigned char heads;
+	unsigned char sectors;
+	unsigned short cylinders;
+	unsigned long start;
+};
+
+typedef unsigned long long ullong;
 
 #if BB_LITTLE_ENDIAN
 # define inline_if_little_endian ALWAYS_INLINE
@@ -155,19 +165,8 @@
 #define LINUX_LVM               0x8e
 #define LINUX_RAID              0xfd
 
-enum {
-	OPT_b = 1 << 0,
-	OPT_C = 1 << 1,
-	OPT_H = 1 << 2,
-	OPT_l = 1 << 3,
-	OPT_S = 1 << 4,
-	OPT_u = 1 << 5,
-	OPT_s = (1 << 6) * ENABLE_FEATURE_FDISK_BLKSIZE,
-};
-
-typedef unsigned long long ullong;
 /* Used for sector numbers. Partition formats we know
- * do not support more than 2^32 sectors
+ * (except GPT!) do not support more than 2^32 sectors.
  */
 typedef uint32_t sector_t;
 #if UINT_MAX == 0xffffffff
@@ -180,12 +179,19 @@ typedef uint32_t sector_t;
 # error Cant detect sizeof(uint32_t)
 #endif
 
-struct hd_geometry {
-	unsigned char heads;
-	unsigned char sectors;
-	unsigned short cylinders;
-	unsigned long start;
+enum {
+	OPT_b = 1 << 0,
+	OPT_C = 1 << 1,
+	OPT_H = 1 << 2,
+	OPT_l = 1 << 3,
+	OPT_S = 1 << 4,
+	OPT_u = 1 << 5,
+	OPT_s = (1 << 6) * ENABLE_FEATURE_FDISK_BLKSIZE,
 };
+#define USER_SET_SECTOR_SIZE (option_mask32 & OPT_b)
+#define NOWARN_OPT_ls        (!ENABLE_FEATURE_FDISK_WRITABLE || (option_mask32 & (OPT_l|OPT_s)))
+#define DISPLAY_IN_CYL_UNITS (!(option_mask32 & OPT_u))
+#define TOGGLE_DISPLAY_IN_CYL_UNITS (option_mask32 ^= OPT_u)
 
 /* TODO: just #if ENABLE_FEATURE_FDISK_WRITABLE */
 /* (currently fdisk_sun/sgi.c do not have proper WRITABLE #ifs) */
@@ -421,7 +427,7 @@ enum {
 };
 
 #if ENABLE_FEATURE_GPT_LABEL
-	struct gpt_header;
+struct gpt_header;
 #endif
 
 /* Globals */
@@ -434,19 +440,12 @@ struct globals {
 	unsigned sector_size; // = DEFAULT_SECTOR_SIZE;
 	unsigned sector_offset; // = 1;
 	unsigned g_heads, g_sectors, g_cylinders;
-	smallint user_set_sector_size;
 	smallint /* enum label_type */ current_label_type;
-	smallint display_in_cyl_units;
 #if ENABLE_FEATURE_OSF_LABEL
 	smallint possibly_osf_label;
 #endif
 
-	smallint listing;               /* no aborts for fdisk -l */
 	smallint dos_compatible_flag; // = 1;
-#if ENABLE_FEATURE_FDISK_WRITABLE
-	//int dos_changed;
-	smallint nowarn;                /* no warnings for fdisk -l/-s */
-#endif
 #if ENABLE_FEATURE_SUN_LABEL
 	smallint sun_other_endian;
 	smallint sun_scsi_disk;
@@ -486,17 +485,13 @@ struct globals {
 #define g_partitions         (G.g_partitions        )
 #define units_per_sector     (G.units_per_sector    )
 #define sector_size          (G.sector_size         )
-#define user_set_sector_size (G.user_set_sector_size)
 #define sector_offset        (G.sector_offset       )
 #define g_heads              (G.g_heads             )
 #define g_sectors            (G.g_sectors           )
 #define g_cylinders          (G.g_cylinders         )
 #define current_label_type   (G.current_label_type  )
-#define display_in_cyl_units (G.display_in_cyl_units)
 #define possibly_osf_label   (G.possibly_osf_label  )
-#define listing                 (G.listing                )
 #define dos_compatible_flag     (G.dos_compatible_flag    )
-#define nowarn                  (G.nowarn                 )
 #define ext_index               (G.ext_index              )
 #define user_cylinders          (G.user_cylinders         )
 #define user_heads              (G.user_heads             )
@@ -592,7 +587,7 @@ static sector_t bb_getsize_in_sectors(int fd)
 #define IS_EXTENDED(i) \
 	((i) == EXTENDED || (i) == WIN98_EXTENDED || (i) == LINUX_EXTENDED)
 
-#define cround(n)       (display_in_cyl_units ? ((n)/units_per_sector)+1 : (n))
+#define cround(n)       (DISPLAY_IN_CYL_UNITS ? ((n)/units_per_sector)+1 : (n))
 
 #define scround(x)      (((x)+units_per_sector-1)/units_per_sector)
 
@@ -657,7 +652,7 @@ get_part_table(int i)
 static ALWAYS_INLINE const char *
 str_units(void)
 {
-	return display_in_cyl_units ? "cylinder" : "sector";
+	return DISPLAY_IN_CYL_UNITS ? "cylinder" : "sector";
 }
 
 static int
@@ -668,7 +663,9 @@ valid_part_table_flag(const char *mbuffer)
 
 static void fdisk_fatal(const char *why)
 {
-	if (listing) {
+	if (!ENABLE_FEATURE_FDISK_WRITABLE /* this assumes -l */
+	 || (option_mask32 & OPT_l)
+	) {
 		close_dev_fd();
 		longjmp(listingbuf, 1);
 	}
@@ -937,24 +934,6 @@ get_partition_start_from_dev_start(const struct pte *pe)
 }
 
 #if ENABLE_FEATURE_FDISK_WRITABLE
-/*
- * Avoid warning about DOS partitions when no DOS partition was changed.
- * Here a heuristic "is probably dos partition".
- * We might also do the opposite and warn in all cases except
- * for "is probably nondos partition".
- */
-#ifdef UNUSED
-static int
-is_dos_partition(int t)
-{
-	return (t == 1 || t == 4 || t == 6 ||
-		t == 0x0b || t == 0x0c || t == 0x0e ||
-		t == 0x11 || t == 0x12 || t == 0x14 || t == 0x16 ||
-		t == 0x1b || t == 0x1c || t == 0x1e || t == 0x24 ||
-		t == 0xc1 || t == 0xc4 || t == 0xc6);
-}
-#endif
-
 static void
 menu(void)
 {
@@ -1023,70 +1002,44 @@ menu(void)
 }
 #endif /* FEATURE_FDISK_WRITABLE */
 
-
 #if ENABLE_FEATURE_FDISK_ADVANCED
 static void
 xmenu(void)
 {
 	puts("Command Action");
+	puts("c\tchange number of cylinders");
+	puts("h\tchange number of heads");
+	puts("s\tchange number of sectors/track");
 	if (LABEL_IS_SUN) {
 		puts("a\tchange number of alternate cylinders");      /*sun*/
-		puts("c\tchange number of cylinders");
-		puts("d\tprint the raw data in the partition table");
+		puts("y\tchange number of physical cylinders");       /*sun*/
 		puts("e\tchange number of extra sectors per cylinder");/*sun*/
-		puts("h\tchange number of heads");
 		puts("i\tchange interleave factor");                  /*sun*/
 		puts("o\tchange rotation speed (rpm)");               /*sun*/
-		puts("p\tprint the partition table");
-		puts("q\tquit without saving changes");
-		puts("r\treturn to main menu");
-		puts("s\tchange number of sectors/track");
-		puts("v\tverify the partition table");
-		puts("w\twrite table to disk and exit");
-		puts("y\tchange number of physical cylinders");       /*sun*/
 	} else if (LABEL_IS_SGI) {
 		puts("b\tmove beginning of data in a partition"); /* !sun */
-		puts("c\tchange number of cylinders");
-		puts("d\tprint the raw data in the partition table");
-		puts("e\tlist extended partitions");          /* !sun */
 		puts("g\tcreate an IRIX (SGI) partition table");/* sgi */
-		puts("h\tchange number of heads");
-		puts("p\tprint the partition table");
-		puts("q\tquit without saving changes");
-		puts("r\treturn to main menu");
-		puts("s\tchange number of sectors/track");
-		puts("v\tverify the partition table");
-		puts("w\twrite table to disk and exit");
+		puts("e\tlist extended partitions");          /* !sun */
 	} else if (LABEL_IS_AIX) {
 		puts("b\tmove beginning of data in a partition"); /* !sun */
-		puts("c\tchange number of cylinders");
-		puts("d\tprint the raw data in the partition table");
+# if ENABLE_FEATURE_SGI_LABEL
+		puts("g\tcreate an IRIX (SGI) partition table");
+# endif
 		puts("e\tlist extended partitions");          /* !sun */
-		puts("g\tcreate an IRIX (SGI) partition table");/* sgi */
-		puts("h\tchange number of heads");
-		puts("p\tprint the partition table");
-		puts("q\tquit without saving changes");
-		puts("r\treturn to main menu");
-		puts("s\tchange number of sectors/track");
-		puts("v\tverify the partition table");
-		puts("w\twrite table to disk and exit");
 	} else {
-		puts("b\tmove beginning of data in a partition"); /* !sun */
-		puts("c\tchange number of cylinders");
-		puts("d\tprint the raw data in the partition table");
-		puts("e\tlist extended partitions");          /* !sun */
 		puts("f\tfix partition order");               /* !sun, !aix, !sgi */
-#if ENABLE_FEATURE_SGI_LABEL
-		puts("g\tcreate an IRIX (SGI) partition table");/* sgi */
-#endif
-		puts("h\tchange number of heads");
-		puts("p\tprint the partition table");
-		puts("q\tquit without saving changes");
-		puts("r\treturn to main menu");
-		puts("s\tchange number of sectors/track");
-		puts("v\tverify the partition table");
-		puts("w\twrite table to disk and exit");
+		puts("b\tmove beginning of data in a partition"); /* !sun */
+# if ENABLE_FEATURE_SGI_LABEL
+		puts("g\tcreate an IRIX (SGI) partition table");
+# endif
+		puts("e\tlist extended partitions");          /* !sun */
 	}
+	puts("d\tprint the raw data in the partition table");
+	puts("p\tprint the partition table");
+	puts("v\tverify the partition table");
+	puts("w\twrite table to disk and exit");
+	puts("q\tquit without saving changes");
+	puts("r\treturn to main menu");
 }
 #endif /* ADVANCED mode */
 
@@ -1245,7 +1198,7 @@ update_units(void)
 {
 	int cyl_units = g_heads * g_sectors;
 
-	if (display_in_cyl_units && cyl_units)
+	if (DISPLAY_IN_CYL_UNITS && cyl_units)
 		units_per_sector = cyl_units;
 	else
 		units_per_sector = 1;   /* in sectors */
@@ -1255,7 +1208,7 @@ update_units(void)
 static void
 warn_cylinders(void)
 {
-	if (LABEL_IS_DOS && g_cylinders > 1024 && !nowarn)
+	if (LABEL_IS_DOS && g_cylinders > 1024 && !NOWARN_OPT_ls)
 		printf("\n"
 "The number of cylinders for this disk is set to %u.\n"
 "There is nothing wrong with that, but this is larger than 1024,\n"
@@ -1384,7 +1337,7 @@ create_doslabel(void)
 static void
 get_sectorsize(void)
 {
-	if (!user_set_sector_size) {
+	if (!USER_SET_SECTOR_SIZE) {
 		int arg;
 		if (ioctl(dev_fd, BLKSSZGET, &arg) == 0 && arg >= 512)
 			sector_size = arg;
@@ -1839,7 +1792,7 @@ get_nonexisting_partition(void)
 static void
 change_units(void)
 {
-	display_in_cyl_units = !display_in_cyl_units;
+	TOGGLE_DISPLAY_IN_CYL_UNITS;
 	update_units();
 	printf("Changing display/entry units to %ss\n",
 		str_units());
@@ -2540,7 +2493,7 @@ add_partition(int n, int sys)
 	fill_bounds(first, last);
 	if (n < 4) {
 		start = sector_offset;
-		if (display_in_cyl_units || !total_number_of_sectors)
+		if (DISPLAY_IN_CYL_UNITS || !total_number_of_sectors)
 			limit = (sector_t) g_heads * g_sectors * g_cylinders - 1;
 		else
 			limit = total_number_of_sectors - 1;
@@ -2553,7 +2506,7 @@ add_partition(int n, int sys)
 		start = extended_offset + sector_offset;
 		limit = get_start_sect(q) + get_nr_sects(q) - 1;
 	}
-	if (display_in_cyl_units)
+	if (DISPLAY_IN_CYL_UNITS)
 		for (i = 0; i < g_partitions; i++)
 			first[i] = (cround(first[i]) - 1) * units_per_sector;
 
@@ -2581,7 +2534,7 @@ add_partition(int n, int sys)
 
 			saved_start = start;
 			start = read_int(cround(saved_start), cround(saved_start), cround(limit), 0, mesg);
-			if (display_in_cyl_units) {
+			if (DISPLAY_IN_CYL_UNITS) {
 				start = (start - 1) * units_per_sector;
 				if (start < saved_start)
 					start = saved_start;
@@ -2622,7 +2575,7 @@ add_partition(int n, int sys)
 			 str_units()
 		);
 		stop = read_int(cround(start), cround(limit), cround(limit), cround(start), mesg);
-		if (display_in_cyl_units) {
+		if (DISPLAY_IN_CYL_UNITS) {
 			stop = stop * units_per_sector - 1;
 			if (stop >limit)
 				stop = limit;
@@ -3112,7 +3065,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 	close_dev_fd(); /* needed: fd 3 must not stay closed */
 
 	opt = getopt32(argv, "^" "b:+C:+H:+lS:+u"IF_FEATURE_FDISK_BLKSIZE("s")"\0"
-		/* among -s and -l, the last one takes preference */
+		/* among -s and -l, the last one takes precedence */
 		IF_FEATURE_FDISK_BLKSIZE("s-l:l-s"),
 		&sector_size, &user_cylinders, &user_heads, &user_sectors);
 	argv += optind;
@@ -3122,7 +3075,6 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 	if (opt & OPT_s) {
 		int j;
 
-		nowarn = 1;
 		if (!argv[0])
 			bb_show_usage();
 		for (j = 0; argv[j]; j++) {
@@ -3141,7 +3093,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 	}
 #endif
 
-	if (opt & OPT_b) {
+	//if (opt & OPT_b) {
 		/* Ugly: this sector size is really per device,
 		 * so cannot be combined with multiple disks,
 		 * and the same goes for the C/H/S options.
@@ -3152,22 +3104,18 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 		) {
 			bb_show_usage();
 		}
-		sector_offset = 2;
-		user_set_sector_size = 1;
-	}
+	//}
 	if (user_heads <= 0 || user_heads >= 256)
 		user_heads = 0;
 	if (user_sectors <= 0 || user_sectors >= 64)
 		user_sectors = 0;
-	if (opt & OPT_u)
-		display_in_cyl_units = 0;
+	//if (opt & OPT_u)
+	//	DISPLAY_IN_CYL_UNITS = 0;
 
 #if ENABLE_FEATURE_FDISK_WRITABLE
 	if (opt & OPT_l) {
-		nowarn = 1;
 #endif
 		if (*argv) {
-			listing = 1;
 			do {
 				open_list_and_close(*argv, 1);
 			} while (*++argv);

@@ -735,7 +735,7 @@ sgi_add_partition(int n, int sys)
 			first = read_int(scround(first), scround(first), scround(last)-1,
 				0, mesg);
 		}
-		if (display_in_cyl_units)
+		if (DISPLAY_IN_CYL_UNITS)
 			first *= units_per_sector;
 		else
 			first = first; /* align to cylinder if you know how ... */
@@ -749,7 +749,7 @@ sgi_add_partition(int n, int sys)
 	snprintf(mesg, sizeof(mesg), " Last %s", str_units());
 	last = read_int(scround(first), scround(last)-1, scround(last)-1,
 			scround(first), mesg)+1;
-	if (display_in_cyl_units)
+	if (DISPLAY_IN_CYL_UNITS)
 		last *= units_per_sector;
 	else
 		last = last; /* align to cylinder if You know how ... */

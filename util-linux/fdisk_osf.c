@@ -280,7 +280,7 @@ static struct bsd_globals *bsd_globals_ptr;
 /* Code */
 
 #define bsd_cround(n) \
-	(display_in_cyl_units ? ((n)/xbsd_dlabel.d_secpercyl) + 1 : (n))
+	(DISPLAY_IN_CYL_UNITS ? ((n)/xbsd_dlabel.d_secpercyl) + 1 : (n))
 
 /*
  * Test whether the whole disk has BSD disk label magic.
@@ -472,7 +472,7 @@ xbsd_new_part(void)
 	begin = read_int(bsd_cround(begin), bsd_cround(begin), bsd_cround(end),
 		0, mesg);
 
-	if (display_in_cyl_units)
+	if (DISPLAY_IN_CYL_UNITS)
 		begin = (begin - 1) * xbsd_dlabel.d_secpercyl;
 
 	snprintf(mesg, sizeof(mesg), "Last %s or +size or +sizeM or +sizeK",
@@ -480,7 +480,7 @@ xbsd_new_part(void)
 	end = read_int(bsd_cround(begin), bsd_cround(end), bsd_cround(end),
 		bsd_cround(begin), mesg);
 
-	if (display_in_cyl_units)
+	if (DISPLAY_IN_CYL_UNITS)
 		end = end * xbsd_dlabel.d_secpercyl - 1;
 
 	xbsd_dlabel.d_partitions[i].p_size   = end - begin + 1;
@@ -541,7 +541,7 @@ xbsd_print_disklabel(int show_all)
 	pp = lp->d_partitions;
 	for (i = 0; i < lp->d_npartitions; i++, pp++) {
 		if (pp->p_size) {
-			if (display_in_cyl_units && lp->d_secpercyl) {
+			if (DISPLAY_IN_CYL_UNITS && lp->d_secpercyl) {
 				printf("  %c: %8lu%c %8lu%c %8lu%c  ",
 					'a' + i,
 					(unsigned long) pp->p_offset / lp->d_secpercyl + 1,

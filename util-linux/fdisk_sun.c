@@ -504,7 +504,7 @@ add_sun_partition(int n, int sys)
 		else
 			first = read_int(scround(start), scround(stop)+1,
 					 scround(stop), 0, mesg);
-		if (display_in_cyl_units) {
+		if (DISPLAY_IN_CYL_UNITS) {
 			first *= units_per_sector;
 		} else {
 			/* Starting sector has to be properly aligned */
@@ -562,7 +562,7 @@ and is of type 'Whole disk'\n");
 	else
 		last = read_int(scround(first), scround(stop), scround(stop),
 				scround(first), mesg);
-	if (display_in_cyl_units)
+	if (DISPLAY_IN_CYL_UNITS)
 		last *= units_per_sector;
 	if (n == 2 && !first) {
 		if (last >= stop2) {

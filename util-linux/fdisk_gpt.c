@@ -178,7 +178,7 @@ check_gpt_label(void)
 	G.gpt_hdr->hdr_crc32 = 0;
 	if (gpt_crc32(G.gpt_hdr, SWAP_LE32(G.gpt_hdr->hdr_size)) != crc) {
 		/* FIXME: read the backup table */
-		puts("\nwarning: GPT header CRC is invalid\n");
+		puts("\nwarning: GPT header CRC is invalid");
 	}
 
 	G.gpt_n_parts = SWAP_LE32(G.gpt_hdr->n_parts);
@@ -187,7 +187,7 @@ check_gpt_label(void)
 	 || G.gpt_part_entry_len > GPT_MAX_PART_ENTRY_LEN
 	 || SWAP_LE32(G.gpt_hdr->hdr_size) > sector_size
 	) {
-		puts("\nwarning: can't parse GPT disklabel\n");
+		puts("\nwarning: can't parse GPT disklabel");
 		current_label_type = LABEL_DOS;
 		return 0;
 	}
@@ -201,10 +201,10 @@ check_gpt_label(void)
 
 	if (gpt_crc32(G.gpt_part_array, part_array_len) != G.gpt_hdr->part_array_crc32) {
 		/* FIXME: read the backup table */
-		puts("\nwarning: GPT array CRC is invalid\n");
+		puts("\nwarning: GPT array CRC is invalid");
 	}
 
-	puts("Found valid GPT with protective MBR; using GPT\n");
+	puts("Found valid GPT with protective MBR; using GPT");
 
 	current_label_type = LABEL_GPT;
 	return 1;
