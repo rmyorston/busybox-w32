@@ -3,7 +3,7 @@
 
 LONGPATH="c:/temp/nonexistent_path/longdirname_12345/longdirname_12345/longdirname_12345/longdirname_12345/longdirname_12345/longdirname_12345/longdirname_12345/longdirname_12345/longdirname_12345/longdirname_12345/longdirname_12345/longdirname_12345"
 
-output=$(busybox ls "$LONGPATH" 2>&1) && exit 1
+output=$("$d/busybox" ls "$LONGPATH" 2>&1) && exit 1
 echo "$output" | grep -q "$LONGPATH" || { echo "path not in error: $output"; exit 1; }
 echo "$output" | grep -q '\\\\?\\\|\\?\' && { echo "internal path leaked: $output"; exit 1; }
 true

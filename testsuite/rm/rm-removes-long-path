@@ -13,5 +13,5 @@ New-Item -Path (Join-Path \$path 'testfile.txt') -ItemType File -Force | Out-Nul
 "
 
 test -d "$BASEDIR" || { echo "directory creation failed"; exit 1; }
-busybox rm -rf "$BASEDIR"
+"$d/busybox" rm -rf "$BASEDIR"
 test ! -d "$BASEDIR"

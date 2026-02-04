@@ -15,7 +15,7 @@ Write-Host \$path
 DEEPPATH=$(cat deeppath.txt | tr '\\' '/' | tr -d '\r')
 
 test -d "$BASEDIR" || { echo "directory creation failed"; exit 1; }
-output=$(busybox ls -la "$DEEPPATH" 2>&1)
+output=$("$d/busybox" ls -la "$DEEPPATH" 2>&1)
 echo "$output" | grep -q testfile.txt || { echo "ls failed: $output"; exit 1; }
-busybox rm -rf "$BASEDIR"
+"$d/busybox" rm -rf "$BASEDIR"
 rm -f deeppath.txt
