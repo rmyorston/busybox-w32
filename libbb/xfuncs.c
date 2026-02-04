@@ -176,47 +176,6 @@ char* FAST_FUNC hex2bin(char *dst, const char *str, int count)
 	return dst;
 }
 
-/* Return how long the file at fd is, if there's any way to determine it. */
-#ifdef UNUSED
-off_t FAST_FUNC fdlength(int fd)
-{
-	off_t bottom = 0, top = 0, pos;
-	long size;
-
-	// If the ioctl works for this, return it.
-
-	if (ioctl(fd, BLKGETSIZE, &size) >= 0) return size*512;
-
-	// FIXME: explain why lseek(SEEK_END) is not used here!
-
-	// If not, do a binary search for the last location we can read.  (Some
-	// block devices don't do BLKGETSIZE right.)
-
-	do {
-		char temp;
-
-		pos = bottom + (top - bottom) / 2;
-
-		// If we can read from the current location, it's bigger.
-
-		if (lseek(fd, pos, SEEK_SET)>=0 && safe_read(fd, &temp, 1)==1) {
-			if (bottom == top) bottom = top = (top+1) * 2;
-			else bottom = pos;
-
-		// If we can't, it's smaller.
-		} else {
-			if (bottom == top) {
-				if (!top) return 0;
-				bottom = top/2;
-			}
-			else top = pos;
-		}
-	} while (bottom + 1 != top);
-
-	return pos + 1;
-}
-#endif
-
 int FAST_FUNC bb_putchar_stderr(char ch)
 {
 	return write(STDERR_FILENO, &ch, 1);

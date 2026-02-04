@@ -60,6 +60,7 @@
 //config:	Enabling this option allows you to create or change SUN disklabels.
 //config:	Most people can safely leave this option disabled.
 //config:
+//TODO: retain only support for GPT and maybe OSF (BSD), the rest is dead for 20+ years.
 //config:config FEATURE_OSF_LABEL
 //config:	bool "Support BSD disklabels"
 //config:	default n
@@ -121,12 +122,21 @@
 #endif
 #include "libbb.h"
 #include "unicode.h"
+#define HDIO_GETGEO     0x0301  /* get device geometry */
 
 #if BB_LITTLE_ENDIAN
 # define inline_if_little_endian ALWAYS_INLINE
 #else
 # define inline_if_little_endian /* nothing */
 #endif
+
+/* You can test 4K sector size in QEMU a-la:
+ * qemu-img create -f qcow2 disk.qcow2 1g
+ * qemu-system-x86_64 -enable-kvm \
+ *   -device virtio-scsi-pci,id=scsi0 \
+ *   -drive file=disk.qcow2,if=none,id=drv0,format=qcow2 \
+ *   -device scsi-hd,drive=drv0,logical_block_size=4096,physical_block_size=4096
+ */
 
 #define DEFAULT_SECTOR_SIZE      512
 #define DEFAULT_SECTOR_SIZE_STR "512"
@@ -145,7 +155,6 @@
 #define LINUX_LVM               0x8e
 #define LINUX_RAID              0xfd
 
-
 enum {
 	OPT_b = 1 << 0,
 	OPT_C = 1 << 1,
@@ -155,7 +164,6 @@ enum {
 	OPT_u = 1 << 5,
 	OPT_s = (1 << 6) * ENABLE_FEATURE_FDISK_BLKSIZE,
 };
-
 
 typedef unsigned long long ullong;
 /* Used for sector numbers. Partition formats we know
@@ -179,8 +187,6 @@ struct hd_geometry {
 	unsigned long start;
 };
 
-#define HDIO_GETGEO     0x0301  /* get device geometry */
-
 /* TODO: just #if ENABLE_FEATURE_FDISK_WRITABLE */
 /* (currently fdisk_sun/sgi.c do not have proper WRITABLE #ifs) */
 #if ENABLE_FEATURE_FDISK_WRITABLE \
@@ -189,12 +195,18 @@ struct hd_geometry {
 static const char msg_building_new_label[] ALIGN1 =
 "Building a new %s. Changes will remain in memory only,\n"
 "until you decide to write them. After that the previous content\n"
-"won't be recoverable.\n\n";
+"won't be recoverable.\n";
 
 static const char msg_part_already_defined[] ALIGN1 =
 "Partition %u is already defined, delete it before re-adding\n";
 #endif
 
+#define SUPPORT_DISKLABELS (0 \
+	| ENABLE_FEATURE_AIX_LABEL \
+	| ENABLE_FEATURE_SGI_LABEL \
+	| ENABLE_FEATURE_OSF_LABEL \
+	| ENABLE_FEATURE_GPT_LABEL \
+)
 
 struct partition {
 	unsigned char boot_ind;         /* 0x80 - active */
@@ -296,9 +308,9 @@ static int get_boot(enum action what);
 #else
 static int get_boot(void);
 #endif
-
 static sector_t get_start_sect(const struct partition *p);
 static sector_t get_nr_sects(const struct partition *p);
+static void list_disk_name_and_sizes(void);
 
 /* DOS partition types */
 
@@ -420,9 +432,9 @@ struct globals {
 	int g_partitions; // = 4;       /* maximum partition + 1 */
 	unsigned units_per_sector; // = 1;
 	unsigned sector_size; // = DEFAULT_SECTOR_SIZE;
-	unsigned user_set_sector_size;
 	unsigned sector_offset; // = 1;
 	unsigned g_heads, g_sectors, g_cylinders;
+	smallint user_set_sector_size;
 	smallint /* enum label_type */ current_label_type;
 	smallint display_in_cyl_units;
 #if ENABLE_FEATURE_OSF_LABEL
@@ -508,48 +520,73 @@ struct globals {
 	dos_compatible_flag = 1; \
 } while (0)
 
-
 /* TODO: move to libbb? */
-/* TODO: return unsigned long long, FEATURE_FDISK_BLKSIZE _can_ handle
- * disks > 2^32 sectors
- */
-static sector_t bb_BLKGETSIZE_sectors(int fd)
+static uint64_t bb_getsize_in_512sect(int fd)
 {
-	uint64_t v64;
+	const char *how;
+	uint64_t sz64;
+	/* BLKGETSIZE64 takes pointer to uint64_t, not ullong: */
+	uint64_t sz_get64;
+	/* BLKGETSIZE takes pointer to ulong: */
 	unsigned long longsectors;
 
-	if (ioctl(fd, BLKGETSIZE64, &v64) == 0) {
-		/* Got bytes, convert to 512 byte sectors */
-		v64 >>= 9;
-//FIXME: should be "v64 /= sector_size" instead?
-		if (v64 != (sector_t)v64) {
- ret_trunc:
-			/* Not only DOS, but all other partition tables
-			 * we support can't record more than 32 bit
-			 * sector counts or offsets
-			 */
-			bb_simple_error_msg("device has more than 2^32 sectors, can't use all of them");
-			v64 = (sector_t)-1L;
-		}
-		return v64;
-	}
-	/* Needs temp of type long */
-	if (ioctl(fd, BLKGETSIZE, &longsectors) != 0) {
-		/* Perhaps this is a disk image */
-		off_t sz = lseek(fd, 0, SEEK_END);
-		longsectors = 0;
-		if (sz > 0)
-			longsectors = (uoff_t)sz / sector_size;
-		lseek(fd, 0, SEEK_SET);
-	}
-	if (sizeof(long) > sizeof(sector_t)
-	 && longsectors != (sector_t)longsectors
+	if (ioctl(fd, BLKGETSIZE, &longsectors) == 0
 	) {
-		goto ret_trunc;
+		/* If in "fdisk -b 4096 /dev/512byte_sect_dev" scenario,
+		 * IOW: sector size is OVERRIDDEN by user,
+		 * the user tries to create 4K sector layout on a 512 sector
+		 * device (presumably because the device can't operate
+		 * in 4k mode on this machine, but can on another one?):
+		 * __do NOT assume BLKGETSIZE returns 4K sectors__ -
+		 * it always returns 512-sized "sectors"!
+		 */
+		sz64 = (uint64_t)longsectors * 512;
+		how = "BLKGETSIZE";
+	} else {
+		/* BLKGETSIZE failed, assume this is a disk image */
+#if ENABLE_FDISK_SUPPORT_LARGE_DISKS
+		off64_t sz = xlseek64(fd, 0, SEEK_END);
+#else
+		off_t sz = xlseek(fd, 0, SEEK_END);
+#endif
+		xlseek(fd, 0, SEEK_SET);
+		sz64 = sz;
+		how = "seek";
 	}
-	return longsectors;
+	/* We did the above in case BLKGETSIZE64 is not available.
+	 * If it is, double-check:
+	 */
+	if (ioctl(fd, BLKGETSIZE64, &sz_get64) == 0
+	 && sz_get64 != sz64
+	) {
+		/* Something is very fishy. Abort. */
+		bb_error_msg_and_die(
+			"bad sizes: BLKGETSIZE64:%llu %s:%llu",
+			(ullong)sz_get64,
+			how, (ullong)sz64
+		);
+	}
+	if ((sz64 & 0x1ff) != 0)
+		bb_error_msg("size %llu not a multiple of 512 bytes", (ullong)sz64);
+//bb_error_msg("%s: %llu", how, (ullong)sz64);
+
+	/* Got bytes, convert to 512 byte blocks */
+	return sz64 >> 9;
 }
 
+static sector_t bb_getsize_in_sectors(int fd)
+{
+	uint64_t sz64 = bb_getsize_in_512sect(fd) / (sector_size >> 9);
+	if (sz64 != (sector_t)sz64) {
+		/* Most partition tables we support can't record
+		 * more than 32 bit sector counts or offsets.
+		 * (GPT can)
+		 */
+		bb_simple_error_msg("device has more than 2^32 sectors, can't use all of them");
+		sz64 = (sector_t)-1LL;
+	}
+	return (sector_t)sz64;
+}
 
 #define IS_EXTENDED(i) \
 	((i) == EXTENDED || (i) == WIN98_EXTENDED || (i) == LINUX_EXTENDED)
@@ -1348,7 +1385,7 @@ get_sectorsize(void)
 {
 	if (!user_set_sector_size) {
 		int arg;
-		if (ioctl(dev_fd, BLKSSZGET, &arg) == 0)
+		if (ioctl(dev_fd, BLKSSZGET, &arg) == 0 && arg >= 512)
 			sector_size = arg;
 		if (sector_size != DEFAULT_SECTOR_SIZE)
 			printf("Note: sector size is %u "
@@ -1405,10 +1442,7 @@ get_partition_table_geometry(void)
 static void
 get_geometry(void)
 {
-	int sec_fac;
-
 	get_sectorsize();
-	sec_fac = sector_size / 512;
 #if ENABLE_FEATURE_SUN_LABEL
 	sun_guess_device_type();
 #endif
@@ -1425,13 +1459,14 @@ get_geometry(void)
 	g_sectors = user_sectors ? user_sectors :
 		pt_sectors ? pt_sectors :
 		kern_sectors ? kern_sectors : 63;
-	total_number_of_sectors = bb_BLKGETSIZE_sectors(dev_fd);
+	total_number_of_sectors = bb_getsize_in_sectors(dev_fd);
 
 	sector_offset = 1;
 	if (dos_compatible_flag)
 		sector_offset = g_sectors;
 
-	g_cylinders = total_number_of_sectors / (g_heads * g_sectors * sec_fac);
+	g_cylinders = total_number_of_sectors / (g_heads * g_sectors);
+//TODO? if (total_number_of_sectors % (g_heads * g_sectors) != 0) g_cylinders++;
 	if (!g_cylinders)
 		g_cylinders = user_cylinders;
 }
@@ -1553,9 +1588,19 @@ static int get_boot(void)
 #else
 	if (!valid_part_table_flag(MBRbuffer)) {
 		if (what == OPEN_MAIN) {
-			puts("Device contains neither a valid DOS "
-			     "partition table, nor Sun, SGI, OSF or GPT "
-			     "disklabel");
+			puts("Device has no valid DOS partition table"
+#if SUPPORT_DISKLABELS
+				", nor "
+				IF_FEATURE_SUN_LABEL("Sun, ")
+				IF_FEATURE_SGI_LABEL("SGI, ")
+				IF_FEATURE_OSF_LABEL("OSF, ")
+				IF_FEATURE_AIX_LABEL("AIX, ")
+				IF_FEATURE_GPT_LABEL("GPT ")
+				"disklabel."
+#else
+				"."
+#endif
+			);
 #ifdef __sparc__
 			IF_FEATURE_SUN_LABEL(create_sunlabel();)
 #else
@@ -2045,22 +2090,30 @@ check_consistency(const struct partition *p, int partition)
 }
 
 static void
+list_disk_name_and_sizes(void)
+{
+	char numstr6[6];
+	ullong total_bytes;
+
+	total_bytes = (ullong)total_number_of_sectors * sector_size;
+	smart_ulltoa5(total_bytes, numstr6, " KMGTPEZY")[0] = '\0';
+
+	printf("Disk %s: %s, %llu bytes, %"SECT_FMT"u sectors\n",
+		disk_device,
+		skip_whitespace(numstr6),
+		total_bytes,
+		(SECT_TYPE)total_number_of_sectors
+	);
+}
+
+static void
 list_disk_geometry(void)
 {
-	ullong xbytes = total_number_of_sectors / (1024*1024 / 512);
-	char x = 'M';
-
-	if (xbytes >= 10000) {
-		xbytes += 512; /* fdisk util-linux 2.28 does this */
-		xbytes /= 1024;
-		x = 'G';
-	}
-	printf("Disk %s: %llu %cB, %llu bytes, %"SECT_FMT"u sectors\n"
+	list_disk_name_and_sizes();
+	printf(
 		"%u cylinders, %u heads, %u sectors/track\n"
 		"Units: %ss of %u * %u = %u bytes\n"
 		"\n",
-		disk_device, xbytes, x,
-		((ullong)total_number_of_sectors * 512), total_number_of_sectors,
 		g_cylinders, g_heads, g_sectors,
 		str_units(),
 		units_per_sector, sector_size, units_per_sector * sector_size
@@ -3068,14 +3121,13 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 	if (opt & OPT_s) {
 		int j;
 
-		sector_size = 512;
 		nowarn = 1;
 		if (!argv[0])
 			bb_show_usage();
 		for (j = 0; argv[j]; j++) {
-			unsigned long long size;
+			ullong size;
 			int fd = xopen(argv[j], O_RDONLY);
-			size = bb_BLKGETSIZE_sectors(fd) / 2;
+			size = bb_getsize_in_512sect(fd) / 2;
 //NB: util-linux 2.41.1 says: "-s,--getsz: display device size in 512-byte sectors"
 //but in fact, util-linux 2.41.1 shows the size in KILOBYTES!
 			close(fd);
