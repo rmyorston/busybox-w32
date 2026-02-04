@@ -1,0 +1,17 @@
+# FEATURE: CONFIG_PLATFORM_MINGW32
+
+BASEDIR=c:/temp/rm_longpath_test$$
+D=longdirname_12345
+
+# create deep directory with PowerShell
+powershell.exe -Command "
+\$d = '$D'
+\$path = '$BASEDIR'
+for (\$i = 0; \$i -lt 15; \$i++) { \$path = Join-Path \$path \$d }
+New-Item -Path \$path -ItemType Directory -Force | Out-Null
+New-Item -Path (Join-Path \$path 'testfile.txt') -ItemType File -Force | Out-Null
+"
+
+test -d "$BASEDIR" || { echo "directory creation failed"; exit 1; }
+busybox rm -rf "$BASEDIR"
+test ! -d "$BASEDIR"
