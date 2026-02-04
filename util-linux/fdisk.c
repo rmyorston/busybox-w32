@@ -528,19 +528,19 @@ static uint64_t bb_getsize_in_512sect(int fd)
 	/* BLKGETSIZE64 takes pointer to uint64_t, not ullong: */
 	uint64_t sz_get64;
 	/* BLKGETSIZE takes pointer to ulong: */
-	unsigned long longsectors;
+	unsigned long sectors_long;
 
-	if (ioctl(fd, BLKGETSIZE, &longsectors) == 0
+	if (ioctl(fd, BLKGETSIZE, &sectors_long) == 0
 	) {
 		/* If in "fdisk -b 4096 /dev/512byte_sect_dev" scenario,
 		 * IOW: sector size is OVERRIDDEN by user,
 		 * the user tries to create 4K sector layout on a 512 sector
 		 * device (presumably because the device can't operate
-		 * in 4k mode on this machine, but can on another one?):
+		 * in 4K mode on this machine, but can on another one?):
 		 * __do NOT assume BLKGETSIZE returns 4K sectors__ -
 		 * it always returns 512-sized "sectors"!
 		 */
-		sz64 = (uint64_t)longsectors * 512;
+		sz64 = (uint64_t)sectors_long * 512;
 		how = "BLKGETSIZE";
 	} else {
 		/* BLKGETSIZE failed, assume this is a disk image */
@@ -566,9 +566,10 @@ static uint64_t bb_getsize_in_512sect(int fd)
 			how, (ullong)sz64
 		);
 	}
+#if 0 /* this breaks "fdisk -s FILE" (util-linux 2.41.1 silently rounds down) */
 	if ((sz64 & 0x1ff) != 0)
 		bb_error_msg("size %llu not a multiple of 512 bytes", (ullong)sz64);
-//bb_error_msg("%s: %llu", how, (ullong)sz64);
+#endif
 
 	/* Got bytes, convert to 512 byte blocks */
 	return sz64 >> 9;
