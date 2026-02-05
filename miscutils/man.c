@@ -73,7 +73,7 @@ struct globals {
 
 static int show_manpage(char *man_filename, int man, int level);
 
-static int run_pipe(char *man_filename, int man, int level)
+static int run_man_pipe(char *man_filename, int man, int level)
 {
 	char *cmd;
 
@@ -115,24 +115,36 @@ static int run_pipe(char *man_filename, int man, int level)
 		 * ".so man7/path_resolution.7\n<junk>"
 		 */
 		*strchrnul(line, '\n') = '\0';
-		linkname = skip_whitespace(&line[4]);
-
-		/* If link has no slashes, we just replace man page name.
-		 * If link has slashes (however many), we go back *once*.
-		 * ".so zzz/ggg/page.3" does NOT go back two levels. */
+		linkname = skip_whitespace(line + 4);
+//testcase:
+// cd /usr/share/man/man2
+// man ./path_resolution.2.gz
+		while (man_filename[0] == '.' && man_filename[1] == '/')
+			man_filename += 2;
 		p = strrchr(man_filename, '/');
 		if (!p)
-			goto ordinary_manpage;
-		*p = '\0';
+			man_filename = (char*)".." + 1; /* "NAME.N" -> "." */
+		else
+			*p = '\0'; /* "PFX/manN/NAME.N" -> "PFX/manN" */
+
+		/* If link has slashes (however many), we go back *once*.
+		 * ".so zzz/ggg/page.3" does NOT go back two levels.
+		 */
 		if (strchr(linkname, '/')) {
+			if (!p) { /* man_filename had no path */
+				man_filename--; /* ".." */
+				goto append_link;
+			}
 			p = strrchr(man_filename, '/');
 			if (!p)
-				goto ordinary_manpage;
-			*p = '\0';
-		}
+				man_filename = (char*)".." + 1; /* "manN" -> "." */
+			else
+				*p = '\0'; /* "PFX/manN" -> "PFX" */
+		} /* else (link has no slashes): will do "PFX/manN" -> "PFX/manN/link" */
 
 		/* Links do not have .gz extensions, even if manpage
 		 * is compressed */
+ append_link:
 		man_filename = xasprintf("%s/%s", man_filename, linkname);
 		free(line);
 		/* Note: we leak "new" man_filename string as well... */
@@ -172,26 +184,26 @@ static int show_manpage(char *man_filename, int man, int level)
 #endif
 
 #if ENABLE_FEATURE_SEAMLESS_LZMA
-	if (run_pipe(filename_with_zext, man, level))
+	if (run_man_pipe(filename_with_zext, man, level))
 		return 1;
 #endif
 #if ENABLE_FEATURE_SEAMLESS_XZ
 	strcpy(ext, "xz");
-	if (run_pipe(filename_with_zext, man, level))
+	if (run_man_pipe(filename_with_zext, man, level))
 		return 1;
 #endif
 #if ENABLE_FEATURE_SEAMLESS_BZ2
 	strcpy(ext, "bz2");
-	if (run_pipe(filename_with_zext, man, level))
+	if (run_man_pipe(filename_with_zext, man, level))
 		return 1;
 #endif
 #if ENABLE_FEATURE_SEAMLESS_GZ
 	strcpy(ext, "gz");
-	if (run_pipe(filename_with_zext, man, level))
+	if (run_man_pipe(filename_with_zext, man, level))
 		return 1;
 #endif
 
-	return run_pipe(man_filename, man, level);
+	return run_man_pipe(man_filename, man, level);
 }
 
 static char **add_MANPATH(char **man_path_list, int *count_mp, char *path)
