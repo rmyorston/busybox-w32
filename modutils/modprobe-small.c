@@ -1010,9 +1010,7 @@ int modprobe_main(int argc UNUSED_PARAM, char **argv)
 		char **arg = argv;
 		while (*++arg) {
 			/* Enclose options in quotes */
-			char *s = options;
-			options = xasprintf("%s \"%s\"", s ? s : "", *arg);
-			free(s);
+			xasprintf_inplace(options, "%s \"%s\"", options ? options : "", *arg);
 			*arg = NULL;
 		}
 # else

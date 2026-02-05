@@ -391,7 +391,7 @@ static const char *get_sname(int port, const char *proto, int numeric)
 
 static char *ip_port_str(struct sockaddr *addr, int port, const char *proto, int numeric)
 {
-	char *host, *host_port;
+	char *host;
 
 	/* Code which used "*" for INADDR_ANY is removed: it's ambiguous
 	 * in IPv6, while "0.0.0.0" is not. */
@@ -402,9 +402,8 @@ static char *ip_port_str(struct sockaddr *addr, int port, const char *proto, int
 	if (!host)
 		host = xmalloc_sockaddr2dotted_noport(addr);
 
-	host_port = xasprintf("%s:%s", host, get_sname(htons(port), proto, numeric));
-	free(host);
-	return host_port;
+	xasprintf_inplace(host, "%s:%s", host, get_sname(htons(port), proto, numeric));
+	return host;
 }
 
 struct inet_params {

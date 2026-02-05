@@ -349,6 +349,22 @@ char* FAST_FUNC xasprintf(const char *format, ...)
 	return string_ptr;
 }
 
+char* FAST_FUNC xasprintf_and_free(char *allocated, const char *format, ...)
+{
+	va_list p;
+	int r;
+	char *string_ptr;
+
+	va_start(p, format);
+	r = vasprintf(&string_ptr, format, p);
+	va_end(p);
+
+	if (r < 0)
+		bb_die_memory_exhausted();
+	free(allocated);
+	return string_ptr;
+}
+
 void FAST_FUNC xsetenv(const char *key, const char *value)
 {
 	if (setenv(key, value, 1))

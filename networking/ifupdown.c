@@ -895,16 +895,15 @@ static struct interfaces_file_t *read_interfaces(const char *filename, struct in
 	while ((buf = xmalloc_fgetline(f)) != NULL) {
 #if ENABLE_DESKTOP
 		/* Trailing "\" concatenates lines */
+//TODO: check how to handle "line\\" (double backslashes)
 		char *p;
 		while ((p = last_char_is(buf, '\\')) != NULL) {
 			*p = '\0';
 			rest_of_line = xmalloc_fgetline(f);
 			if (!rest_of_line)
 				break;
-			p = xasprintf("%s%s", buf, rest_of_line);
-			free(buf);
+			xasprintf_inplace(buf, "%s%s", buf, rest_of_line);
 			free(rest_of_line);
-			buf = p;
 		}
 #endif
 		rest_of_line = buf;

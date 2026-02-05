@@ -657,9 +657,8 @@ static void add_cmd(const char *cmdstr)
 
 	/* Append this line to any unfinished line from last time. */
 	if (G.add_cmd_line) {
-		char *tp = xasprintf("%s\n%s", G.add_cmd_line, cmdstr);
-		free(G.add_cmd_line);
-		cmdstr = G.add_cmd_line = tp;
+		cmdstr = xasprintf_inplace(G.add_cmd_line,
+			"%s\n%s", G.add_cmd_line, cmdstr);
 	}
 
 	/* If this line ends with unescaped backslash, request next line. */

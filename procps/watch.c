@@ -76,12 +76,9 @@ int watch_main(int argc UNUSED_PARAM, char **argv)
 	// watch ls -l "a /tmp" "2>&1" - ls won't see "a /tmp" as one param.
 	argv0 = argv;
 	// If -x, cmd is only used for printing header
-	cmd = *argv;
+	cmd = xstrdup(*argv);
 	while (*++argv)
-		cmd = xasprintf("%s %s", cmd, *argv);
-//leaks cmd ^^^
-//TODO: create and use xasprintf_inplace(DST, fmt, args_one_of_which_is_DST)
-//which frees old DST?
+		xasprintf_inplace(cmd, "%s %s", cmd, *argv);
 	if (opt & (1 << 3))
 		argv = argv0; // If -x, restore argv[0] to !NULL
 
