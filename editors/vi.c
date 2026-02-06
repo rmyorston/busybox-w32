@@ -2682,19 +2682,23 @@ static void setops(char *args, int flg_no)
 # if ENABLE_FEATURE_VI_COLON_EXPAND
 static char *expand_args(char *args)
 {
-	char *s, *t;
+	char *s;
 	const char *replace;
 
 	args = xstrdup(args);
 	for (s = args; *s; s++) {
+		unsigned n;
+
 		if (*s == '%') {
 			replace = current_filename;
 		} else if (*s == '#') {
 			replace = alt_filename;
 		} else {
 			if (*s == '\\' && s[1] != '\0') {
-				for (t = s++; *t; t++)
+				char *t;
+				for (t = s; *t; t++)
 					*t = t[1];
+				s++;
 			}
 			continue;
 		}
@@ -2705,11 +2709,9 @@ static char *expand_args(char *args)
 			return NULL;
 		}
 
-		*s = '\0';
-		t = xasprintf("%s%s%s", args, replace, s+1);
-		s = t + (s - args) + strlen(replace);
-		free(args);
-		args = t;
+		n = (s - args);
+		xasprintf_inplace(args, "%.*s%s%s", n, args, replace, s+1);
+		s = args + n + strlen(replace);
 	}
 	return args;
 }

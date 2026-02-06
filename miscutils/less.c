@@ -839,13 +839,13 @@ static void print_found(const char *line)
 	goto start;
 
 	while (match_status == 0) {
-		char *new = xasprintf("%s%.*s"HIGHLIGHT"%.*s"NORMAL,
-				growline ? growline : "",
-				(int)match_structs.rm_so, str,
-				(int)(match_structs.rm_eo - match_structs.rm_so),
-						str + match_structs.rm_so);
-		free(growline);
-		growline = new;
+		xasprintf_inplace(growline,
+			"%s%.*s"HIGHLIGHT"%.*s"NORMAL,
+			growline ? growline : "",
+			(int)match_structs.rm_so,
+				str,
+			(int)(match_structs.rm_eo - match_structs.rm_so),
+				str + match_structs.rm_so);
 		str += match_structs.rm_eo;
 		line += match_structs.rm_eo;
 		eflags = REG_NOTBOL;
