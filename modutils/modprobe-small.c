@@ -723,7 +723,7 @@ static int process_module(char *name, const char *cmdline_options)
 
 	options = NULL;
 	if (!is_remove) {
-		char *opt_filename = xasprintf("/etc/modules/%s", name);
+		char *opt_filename = concat_path_file("/etc/modules", name);
 		options = xmalloc_open_read_close(opt_filename, NULL);
 		if (options)
 			replace_char(options, '\n', ' ');
@@ -731,10 +731,8 @@ static int process_module(char *name, const char *cmdline_options)
 		if (cmdline_options) {
 			/* NB: cmdline_options always have one leading ' '
 			 * (see main()), we remove it here */
-			char *op = xasprintf(options ? "%s %s" : "%s %s" + 3,
+			xasprintf_inplace(options, options ? "%s %s" : "%s %s" + 3,
 						cmdline_options + 1, options);
-			free(options);
-			options = op;
 		}
 #endif
 		free(opt_filename);

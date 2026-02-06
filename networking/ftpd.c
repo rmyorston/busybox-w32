@@ -491,19 +491,18 @@ static void
 handle_pasv(void)
 {
 	unsigned port;
-	char *addr, *response;
+	char *response;
 
 	port = bind_for_passive_mode();
 
 	if (G.local_addr->u.sa.sa_family == AF_INET)
-		addr = xmalloc_sockaddr2dotted_noport(&G.local_addr->u.sa);
+		response = xmalloc_sockaddr2dotted_noport(&G.local_addr->u.sa);
 	else /* seen this in the wild done by other ftp servers: */
-		addr = xstrdup("0.0.0.0");
-	replace_char(addr, '.', ',');
+		response = xstrdup("0.0.0.0");
+	replace_char(response, '.', ',');
 
-	response = xasprintf(STR(FTP_PASVOK)" PASV ok (%s,%u,%u)\r\n",
-			addr, (int)(port >> 8), (int)(port & 255));
-	free(addr);
+	xasprintf_inplace(response, STR(FTP_PASVOK)" PASV ok (%s,%u,%u)\r\n",
+			response, (int)(port >> 8), (int)(port & 255));
 	cmdio_write_raw(response);
 	free(response);
 }

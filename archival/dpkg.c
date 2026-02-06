@@ -1689,7 +1689,7 @@ static void unpack_package(deb_file_t *deb_file)
 	accept_list = NULL;
 	i = 0;
 	while (i < ARRAY_SIZE(all_control_files)) {
-		char *c = xasprintf("./%s", all_control_files[i]);
+		char *c = concat_path_file(".", all_control_files[i]);
 		llist_add_to(&accept_list, c);
 		i++;
 	}

@@ -213,7 +213,7 @@ static void open_tty(void)
 	/* Set up new standard input, unless we are given an already opened port */
 	if (NOT_LONE_DASH(G.tty_name)) {
 		if (G.tty_name[0] != '/')
-			G.tty_name = xasprintf("/dev/%s", G.tty_name); /* will leak it */
+			G.tty_name = concat_path_file("/dev", G.tty_name); /* will leak it */
 
 		/* Open the tty as standard input */
 		debug("open(2)\n");

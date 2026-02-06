@@ -59,7 +59,7 @@ static dev_t name_to_dev_t(const char *devname)
 				return res;
 		}
 
-		devname = xasprintf("/dev/%s", devname);
+		devname = concat_path_file("/dev", devname);
 	}
 	/* Now devname is always "/dev/FOO" */
 
