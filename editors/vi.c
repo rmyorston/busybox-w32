@@ -2849,16 +2849,16 @@ static void colon(char *buf)
 	}
 	not_implemented(p);
 #else
-	char c, *q, *r;
-	char *fn, cmd[MAX_INPUT_LEN], *args;
-	char *exp = NULL;
-	char *useforce;
+	char cmd[MAX_INPUT_LEN], *args;
 	int cmdlen;
+	char *useforce;
+	char *q, *r;
 	int b, e;
 // check how many addresses we got
 # define GOT_ADDRESS (got & 1)
 # define GOT_RANGE   ((got & 3) == 3)
 	unsigned got;
+	char *exp = NULL; // may hold expand_args() result: if VI_COLON_EXPAND, needs freeing!
 
 	// :3154	// if (-e line 3154) goto it  else stay put
 	// :4,33w! foo	// write a portion of buffer to file "foo"
@@ -2880,8 +2880,6 @@ static void colon(char *buf)
 	if (!*buf || *buf == '"')
 		goto ret;		// ignore empty lines or those starting with '"'
 
-	fn = current_filename;
-
 	// look for optional address(es)  ":." ":1" ":1,9" ":'q,'a" ":%"
 	b = e = -1;
 	got = 0;
@@ -2901,11 +2899,9 @@ static void colon(char *buf)
 
 	// assume the command will want a range, certain commands
 	// (read, substitute) need to adjust these assumptions
-	if (!GOT_ADDRESS) {
-		q = text;			// no addr, use 1,$ for the range
-		r = end - 1;
-	} else {
-		// at least one addr was given, get its details
+	q = text;          // if no addr, use 1,$ for the range
+	r = end - 1;
+	if (GOT_ADDRESS) { // at least one addr was given, get its details
 		int lines;
 		if (e < 0
 		 || e > (lines = count_lines(text, end - 1))
@@ -2971,16 +2967,18 @@ static void colon(char *buf)
 		dot_skip_over_ws();
 	} else if (strncmp(cmd, "edit", cmdlen) == 0) {	// Edit a file
 		int size;
+		char *fn;
 
 		// don't edit, if the current file has been modified
 		if (modified_count && !useforce) {
 			status_line_bold("No write since last change (:%s! overrides)", cmd);
 			goto ret;
 		}
+		fn = current_filename;
 		if (args[0]) {
 			// the user supplied a file name
-			fn = exp = expand_args(args);
-			if (exp == NULL)
+			fn = expand_args(args);
+			if (fn == NULL)
 				goto ret;
 		} else if (current_filename == NULL) {
 			// no user file name, no current name- punt
@@ -3041,6 +3039,7 @@ static void colon(char *buf)
 		go_bottom_and_clear_to_eol();
 		puts("\r");
 		for (; q <= r; q++) {
+			char c;
 			int c_is_no_print;
 
 			c = *q;
@@ -3102,11 +3101,12 @@ static void colon(char *buf)
 		editing = 0;
 	} else if (strncmp(cmd, "read", cmdlen) == 0) {	// read file into text[]
 		int size, num;
+		char *fn = current_filename;
 
 		if (args[0]) {
 			// the user supplied a file name
-			fn = exp = expand_args(args);
-			if (exp == NULL)
+			fn = expand_args(args);
+			if (fn == NULL)
 				goto ret;
 			init_filename(fn);
 		} else if (current_filename == NULL) {
@@ -3195,6 +3195,7 @@ static void colon(char *buf)
 
 # if ENABLE_FEATURE_VI_SEARCH
 	} else if (cmd[0] == 's') {	// substitute a pattern with a replacement pattern
+		char c;
 		char *F, *R, *flags;
 		size_t len_F, len_R;
 		int i;
@@ -3341,6 +3342,7 @@ static void colon(char *buf)
 	) {
 		int size, l;
 		//int forced = FALSE;
+		char *fn = current_filename;
 
 		// is there a file name to write to?
 		if (args[0]) {
