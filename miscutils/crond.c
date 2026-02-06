@@ -1068,12 +1068,13 @@ static void start_jobs(int wants_start)
 
 			pid = start_one_job(file->cf_username, line);
 #if ENABLE_PLATFORM_MINGW32
-			log8("USER %s pid %3d tail %u cmd %s",
-				file->cf_username, (int)pid, line->randomint, line->cl_cmd);
-#else
-			log8("USER %s pid %3d cmd %s",
-				file->cf_username, (int)pid, line->cl_cmd);
+			if (line->cl_mailto)
+				log8("USER %s pid %3d tail %u cmd %s",
+					file->cf_username, (int)pid, line->randomint, line->cl_cmd);
+			else
 #endif
+				log8("USER %s pid %3d cmd %s",
+					file->cf_username, (int)pid, line->cl_cmd);
 			if (pid < 0) {
 				file->cf_wants_starting = 1;
 			}
