@@ -555,7 +555,6 @@ static int crashme = 0;
 #endif
 
 static void show_status_line(void);	// put a message on the bottom line
-static void status_line_bold(const char *, ...);
 
 static void show_help(void)
 {
@@ -1336,11 +1335,10 @@ static void show_status_line(void)
 		go_bottom_and_clear_to_eol();
 		write1(status_buffer);
 		if (have_status_msg) {
-			if (((int)strlen(status_buffer) - (have_status_msg - 1)) >
-					(columns - 1) ) {
-				have_status_msg = 0;
+			int n = (int)strlen(status_buffer) - (have_status_msg - 1);
+			// careful with int->unsigned promotion in comparison!
+			if (n >= 0 && n >= columns)
 				Hit_Return();
-			}
 			have_status_msg = 0;
 		}
 		place_cursor(crow, ccol);  // put cursor back in correct place
@@ -2849,7 +2847,8 @@ static void colon(char *buf)
 	}
 	not_implemented(p);
 #else
-	char cmd[MAX_INPUT_LEN], *args;
+	char cmd[sizeof("features!")]; // longest known command + NUL
+	char *args;
 	int cmdlen;
 	char *useforce;
 	char *q, *r;
@@ -2888,14 +2887,12 @@ static void colon(char *buf)
 		goto ret;
 
 	// get the COMMAND into cmd[]
-	args = skip_non_whitespace(buf);
-	safe_strncpy(cmd, buf, (args - buf) + 1);
-//NB: in "s/find/repl" and "!CMD" cases, we copy unnecessary data into buf[]
+	safe_strncpy(cmd, buf, sizeof(cmd));
 	useforce = last_char_is(cmd, '!');
 	if (useforce && useforce > cmd)
 		*useforce = '\0';   // "CMD!" -> "CMD" (unless single "!")
 	// find ARGuments
-	args = skip_whitespace(args);
+	args = skip_whitespace(skip_non_whitespace(buf));
 
 	// assume the command will want a range, certain commands
 	// (read, substitute) need to adjust these assumptions
@@ -3032,36 +3029,41 @@ static void colon(char *buf)
 		rawmode();
 		Hit_Return();
 	} else if (strncmp(cmd, "list", cmdlen) == 0) {	// literal print line
+		char *dst;
 		if (!GOT_ADDRESS) {	// no addr given- use defaults
 			q = begin_line(dot);	// assume .,. for the range
 			r = end_line(dot);
 		}
-		go_bottom_and_clear_to_eol();
-		puts("\r");
-		for (; q <= r; q++) {
+		have_status_msg = 1;
+		dst = status_buffer;
+#define MAXPRINT (sizeof(ESC_BOLD_TEXT "^?" ESC_NORM_TEXT) + 1)
+		while (q <= r && dst < status_buffer + STATUS_BUFFER_LEN - MAXPRINT) {
 			char c;
 			int c_is_no_print;
 
-			c = *q;
+			c = *q++;
+			if (c == '\n') {
+				*dst++ = '$';
+				break;
+			}
 			c_is_no_print = (c & 0x80) && !Isprint(c);
 			if (c_is_no_print) {
-				c = '.';
-				standout_start();
+//TODO: print fewer ESC if more than one ctrl char
+				dst = stpcpy(dst, ESC_BOLD_TEXT);
+				*dst++ = '.';
+				dst = stpcpy(dst, ESC_NORM_TEXT);
+				continue;
 			}
-			if (c == '\n') {
-				write1("$\r");
-			} else if (c < ' ' || c == 127) {
-				bb_putchar('^');
+			if (c < ' ' || c == 127) {
+				*dst++ = '^';
 				if (c == 127)
 					c = '?';
 				else
 					c += '@';
 			}
-			bb_putchar(c);
-			if (c_is_no_print)
-				standout_end();
+			*dst++ = c;
 		}
-		Hit_Return();
+		*dst = '\0';
 	} else if (strncmp(cmd, "quit", cmdlen) == 0 // quit
 	        || strncmp(cmd, "next", cmdlen) == 0 // edit next file
 	        || strncmp(cmd, "prev", cmdlen) == 0 // edit previous file
@@ -3156,7 +3158,6 @@ static void colon(char *buf)
 #  if ENABLE_FEATURE_VI_SETOPTS
 		char *argp, *argn, oldch;
 #  endif
-		// only blank is regarded as args delimiter. What about tab '\t'?
 		if (!args[0] || strcmp(args, "all") == 0) {
 			// print out values of all options
 #  if ENABLE_FEATURE_VI_SETOPTS
@@ -3402,13 +3403,12 @@ static void colon(char *buf)
 					// are there other files to edit?
 					int n = cmdline_filecnt - optind - 1;
 					if (n > 0) {
-						if (useforce) {
-							// force end of argv list
-							optind = cmdline_filecnt;
-						} else {
+						if (!useforce) {
 							status_line_bold("%u more file(s) to edit", n);
 							goto ret;
 						}
+						// force end of argv list
+						optind = cmdline_filecnt;
 					}
 					editing = 0;
 				}
@@ -3431,9 +3431,7 @@ static void colon(char *buf)
 		not_implemented(cmd);
 	}
  ret:
-# if ENABLE_FEATURE_VI_COLON_EXPAND
-	free(exp);
-# endif
+	IF_FEATURE_VI_COLON_EXPAND(free(exp);)
 	dot = bound_dot(dot);	// make sure "dot" is valid
 	return;
 # if ENABLE_FEATURE_VI_SEARCH
