@@ -2850,7 +2850,7 @@ static void colon(char *buf)
 	not_implemented(p);
 #else
 	char c, *q, *r;
-	char *fn, cmd[MAX_INPUT_LEN], *cmdend, *args;
+	char *fn, cmd[MAX_INPUT_LEN], *args;
 	char *exp = NULL;
 	char *useforce;
 	int cmdlen;
@@ -2890,15 +2890,14 @@ static void colon(char *buf)
 		goto ret;
 
 	// get the COMMAND into cmd[]
-	strcpy(cmd, buf);
-	cmdend = skip_non_whitespace(cmd);
-	// get any ARGuments
-	args = skip_whitespace(cmdend);
-//NB: arguments can be accessed in buf[] as well, there is no need to copy them into cmd[]?
-	*cmdend = '\0';
+	args = skip_non_whitespace(buf);
+	safe_strncpy(cmd, buf, (args - buf) + 1);
+//NB: in "s/find/repl" and "!CMD" cases, we copy unnecessary data into buf[]
 	useforce = last_char_is(cmd, '!');
 	if (useforce && useforce > cmd)
 		*useforce = '\0';   // "CMD!" -> "CMD" (unless single "!")
+	// find ARGuments
+	args = skip_whitespace(args);
 
 	// assume the command will want a range, certain commands
 	// (read, substitute) need to adjust these assumptions
@@ -3151,7 +3150,9 @@ static void colon(char *buf)
 			editing = 0;
 		}
 # if ENABLE_FEATURE_VI_SET
-	} else if (strncmp(cmd, "set", cmdlen) == 0) {	// set or clear features
+	} else if (strncmp(cmd, "set", cmdlen) == 0	// set or clear features
+		IF_FEATURE_VI_SEARCH(&& cmdlen > 1)	// (do not confuse with "s /find/repl/")
+	) {
 #  if ENABLE_FEATURE_VI_SETOPTS
 		char *argp, *argn, oldch;
 #  endif
@@ -3210,12 +3211,12 @@ static void colon(char *buf)
 		int undo = 0;
 #   endif
 #  endif
-
+		buf = skip_whitespace(buf + 1); // spaces allowed: "s  /find/repl/"
 		// F points to the "find" pattern
 		// R points to the "replace" pattern
 		// replace the cmd line delimiters "/" with NULs
-		c = buf[1];	// what is the delimiter
-		F = buf + 2;	// start of "find"
+		c = buf[0];	// what is the delimiter
+		F = buf + 1;	// start of "find"
 		R = strchr_backslash(F, c);	// middle delimiter
 		if (!R)
 			goto colon_s_fail;

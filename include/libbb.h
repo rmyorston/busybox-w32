@@ -939,6 +939,8 @@ int parse_pasv_epsv(char *buf) FAST_FUNC;
 /* 0 if argv[0] is NULL: */
 unsigned string_array_len(char **argv) FAST_FUNC;
 void overlapping_strcpy(char *dst, const char *src) FAST_FUNC;
+/* Like strncpy but make sure the resulting string is always 0 terminated: */
+/* writes SIZE chars, the [SIZE-1] char is always NUL (unless SIZE==0). */
 char *safe_strncpy(char *dst, const char *src, size_t size) FAST_FUNC;
 char *strncpy_IFNAMSIZ(char *dst, const char *src) FAST_FUNC;
 unsigned count_strstr(const char *str, const char *sub) FAST_FUNC;
