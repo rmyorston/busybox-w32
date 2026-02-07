@@ -74,7 +74,6 @@ int FAST_FUNC volume_id_probe_lvm2(struct volume_id *id, uint64_t off)
 	if (buf == NULL)
 		return -1;
 
-
 	for (soff = 0; soff < LVM2LABEL_SCAN_SECTORS * 0x200; soff += 0x200) {
 		lvm = (struct lvm2_super_block *) &buf[soff];
 

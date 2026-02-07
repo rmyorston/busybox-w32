@@ -64,7 +64,6 @@ int add_remove_shell_main(int argc UNUSED_PARAM, char **argv)
 	if (orig_fp)
 		xfstat(fileno(orig_fp), &sb, orig_fn);
 
-
 	new_fn = xasprintf("%s.tmp", orig_fn);
 	/*
 	 * O_TRUNC or O_EXCL? At the first glance, O_EXCL looks better,

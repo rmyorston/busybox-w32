@@ -81,7 +81,6 @@ static int FAST_FUNC fileAction(struct recursive_state *state UNUSED_PARAM,
 	}
 	config_close(parser);
 
-
 	if (option_mask32 & OPT_m) {
 		printf("%s \"Class %04x\" \"%04x\" \"%04x\" \"%04x\" \"%04x\"",
 			pci_slot_name, pci_class, pci_vid, pci_did,
