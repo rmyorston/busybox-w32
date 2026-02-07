@@ -2888,6 +2888,7 @@ static void colon(char *buf)
 
 	// get the COMMAND into cmd[]
 	safe_strncpy(cmd, buf, sizeof(cmd));
+	skip_non_whitespace(cmd)[0] = '\0';
 	useforce = last_char_is(cmd, '!');
 	if (useforce && useforce > cmd)
 		*useforce = '\0';   // "CMD!" -> "CMD" (unless single "!")
