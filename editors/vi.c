@@ -1096,11 +1096,15 @@ static void redraw(int full_screen)
 //----- Flash the screen  --------------------------------------
 static void flash(int h)
 {
-	standout_start();
-	redraw(TRUE);
+	//standout_start();
+	//redraw(TRUE);
+	write1(ESC"[?5h"); // "reverse screen on"
+
 	mysleep(h);
-	standout_end();
-	redraw(TRUE);
+
+	//standout_end();
+	//redraw(TRUE);
+	write1(ESC"[?5l"); // "reverse screen off"
 }
 
 static void indicate_error(void)
@@ -2787,7 +2791,6 @@ static char *regex_search(char *q, regex_t *preg, const char *Rorig,
 # define strchr_backslash(s, c) strchr(s, c)
 #endif /* ENABLE_FEATURE_VI_REGEX_SEARCH */
 
-// buf must be no longer than MAX_INPUT_LEN!
 static void colon(char *buf)
 {
 #if !ENABLE_FEATURE_VI_COLON
@@ -4789,8 +4792,7 @@ static void run_cmds(char *p)
 		if (p)
 			while (*p == '\n')
 				*p++ = '\0';
-		if (strlen(q) < MAX_INPUT_LEN)
-			colon(q);
+		colon(q);
 	}
 }
 #endif
