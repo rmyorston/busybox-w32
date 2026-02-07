@@ -1149,7 +1149,7 @@ static void dbg_show_dirtymem(const char *msg)
 	p = buf;
 	for (;;) {
 		char *e = strchrnul(p, '\n');
-		if (strncmp(p, "Private_Dirty:", 14) == 0) {
+		if (is_prefixed_with(p, "Private_Dirty:")) {
 			p = skip_whitespace(p + 14);
 			bb_error_msg("%s:%.*s", msg, (int)(e - p), p);
 			break;

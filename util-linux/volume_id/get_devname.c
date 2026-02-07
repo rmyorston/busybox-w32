@@ -110,7 +110,7 @@ uuidcache_check_device(struct recursive_state *state UNUSED_PARAM,
 	/* note: this check rejects links to devices, among other nodes */
 	if (!S_ISBLK(statbuf->st_mode)
 #if ENABLE_FEATURE_VOLUMEID_UBIFS
-	 && !(S_ISCHR(statbuf->st_mode) && strncmp(bb_basename(device), "ubi", 3) == 0)
+	 && !(S_ISCHR(statbuf->st_mode) && is_prefixed_with(bb_basename(device), "ubi"))
 #endif
 	)
 		return TRUE;

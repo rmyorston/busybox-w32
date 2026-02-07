@@ -39,7 +39,7 @@ static dev_t name_to_dev_t(const char *devname)
 	struct stat st;
 	int r;
 
-	if (strncmp(devname, "/dev/", 5) != 0) {
+	if (!is_prefixed_with(devname, "/dev/")) {
 		char *cptr;
 
 		cptr = strchr(devname, ':');

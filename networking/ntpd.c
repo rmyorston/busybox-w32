@@ -2395,7 +2395,7 @@ static NOINLINE void ntp_init(char **argv)
 		while (peers) {
 			char *peer = llist_pop(&peers);
 			key_entry_t *key_entry = NULL;
-			if (strncmp(peer, "keyno:", 6) == 0) {
+			if (is_prefixed_with(peer, "keyno:")) {
 				char *end;
 				int key_id;
 				peer += 6;
