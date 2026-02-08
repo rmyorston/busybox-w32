@@ -10855,7 +10855,7 @@ ash_command_name(int i)
 	int n;
 
 	if (/*i >= 0 &&*/ i < ARRAY_SIZE(builtintab))
-		return builtintab[i].name + 1;
+		return builtintab[i].name;
 	i -= ARRAY_SIZE(builtintab);
 
 	for (n = 0; n < CMDTABLESIZE; n++) {
@@ -14395,7 +14395,7 @@ helpcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		"------------------\n");
 	for (col = 0, i = 0; i < ARRAY_SIZE(builtintab); i++) {
 		col += out1fmt("%c%s", ((col == 0) ? '\t' : ' '),
-					builtintab[i].name + 1);
+					builtintab[i].name);
 		if (col > 60) {
 			out1fmt("\n");
 			col = 0;
