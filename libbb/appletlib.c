@@ -1111,8 +1111,11 @@ int main(int argc UNUSED_PARAM, char **argv)
 
 	lbb_prepare("busybox" IF_FEATURE_INDIVIDUAL(, argv));
 # if !ENABLE_BUSYBOX
-	if (argv[1] && is_prefixed_with(bb_basename(argv[0]), "busybox"))
+	if (argv[1] && argv[1][0] != '-' /* do not match "busybox --OPT" */
+	 && is_prefixed_with(bb_basename(argv[0]), "busybox")
+	) {
 		argv++;
+	}
 # endif
 	applet_name = argv[0];
 	if (applet_name[0] == '-')
