@@ -10,7 +10,6 @@
  */
 #include "libbb.h"
 
-
 /* Config tweaks */
 #define HAVE_NATIVE_INT64
 #undef  USE_1024_KEY_SPEED_OPTIMIZATIONS
@@ -31,15 +30,17 @@
 # define PSTM_32BIT
 # define PSTM_X86
 #endif
-//#if defined(__GNUC__) && defined(__x86_64__)
-//  /* PSTM_X86_64 works correctly, but +782 bytes. */
-//  /* Looks like most of the growth is because of PSTM_64BIT. */
+#if defined(__GNUC__) && defined(__x86_64__)
+  /* PSTM_64BIT + PSTM_X86_64 works correctly, but:
+   * +928 bytes if PSTM_64BIT but !PSTM_X86_64
+   * +1003 bytes with INNERMUL8 (loop unrolling in pstm_montgomery_reduce())
+   * +664 bytes without INNERMUL8
+   */
 //# define PSTM_64BIT
 //# define PSTM_X86_64
-//#endif
+#endif
 //#if SOME_COND #define PSTM_MIPS, #define PSTM_32BIT
 //#if SOME_COND #define PSTM_ARM,  #define PSTM_32BIT
-
 
 #define PS_SUCCESS              0
 #define PS_FAILURE              -1
@@ -51,14 +52,14 @@
 #define PS_TRUE         1
 #define PS_FALSE        0
 
+#undef ENDIAN_BIG
+#undef ENDIAN_LITTLE
 #if BB_BIG_ENDIAN
 # define ENDIAN_BIG     1
-# undef  ENDIAN_LITTLE
 //#????  ENDIAN_32BITWORD
 // controls only STORE32L, which we don't use
 #else
 # define ENDIAN_LITTLE  1
-# undef  ENDIAN_BIG
 #endif
 
 typedef uint64_t uint64;
@@ -97,7 +98,6 @@ void tls_get_random(void *buf, unsigned len) FAST_FUNC;
 #define memcmpct(s1, s2, len) memcmp((s1), (s2), (len))
 #undef  min
 #define min(x, y) ((x) < (y) ? (x) : (y))
-
 
 #include "tls_pstm.h"
 #include "tls_aes.h"
