@@ -12093,7 +12093,11 @@ ash_command_name(int i)
 	int n;
 
 	if (/*i >= 0 &&*/ i < ARRAY_SIZE(builtintab))
+#if ENABLE_PLATFORM_MINGW32
+		return builtintab[i].name;
+#else
 		return builtintab[i].name + 1;
+#endif
 	i -= ARRAY_SIZE(builtintab);
 
 	for (n = 0; n < CMDTABLESIZE; n++) {
@@ -15811,7 +15815,11 @@ helpcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		"------------------\n");
 	for (col = 0, i = 0; i < ARRAY_SIZE(builtintab); i++) {
 		col += out1fmt("%c%s", ((col == 0) ? '\t' : ' '),
+#if ENABLE_PLATFORM_MINGW32
+					builtintab[i].name);
+#else
 					builtintab[i].name + 1);
+#endif
 		if (col > 60) {
 			out1fmt("\n");
 			col = 0;
