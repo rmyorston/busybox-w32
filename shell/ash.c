@@ -90,6 +90,11 @@
 //config:	bool "Job control"
 //config:	default y
 //config:	depends on SHELL_ASH
+//config:	help
+//config:	Enable 'fg', 'bg', 'jobs' and 'kill' builtins.
+//config:	Shell will track whether backgrounded pipes are stopped
+//config:	by signals, and allow to restart them by 'fg' or 'bg'.
+//config:	Otherwise, it will only track whether they have terminated.
 //config:
 //config:config ASH_ALIAS
 //config:	bool "Alias support"
@@ -231,6 +236,7 @@
 #define DEBUG_PID 1
 #define DEBUG_SIG 1
 #define DEBUG_INTONOFF 0
+#define DEBUG_SHOW_MEMUSE 0
 
 #define PROFILE 0
 
@@ -622,7 +628,7 @@ struct jmploc {
 struct globals_misc {
 	uint8_t exitstatus;     /* exit status of last command */
 	uint8_t back_exitstatus;/* exit status of backquoted command */
-#if !ENABLE_PLATFORM_MINGW32
+#if JOBS
 	smallint job_warning;   /* user was warned about stopped jobs (can be 2, 1 or 0). */
 #endif
 	smallint inps4;		/* Prevent PS4 nesting. */
@@ -759,7 +765,11 @@ extern struct globals_misc *BB_GLOBAL_CONST ash_ptr_to_globals_misc;
 #define G_misc (*ash_ptr_to_globals_misc)
 #define exitstatus        (G_misc.exitstatus )
 #define back_exitstatus   (G_misc.back_exitstatus )
+#if JOBS
 #define job_warning       (G_misc.job_warning)
+#else
+#define job_warning       0
+#endif
 #define inps4       (G_misc.inps4      )
 #if !ENABLE_PLATFORM_MINGW32
 #define vforked     (G_misc.vforked    )
@@ -864,6 +874,13 @@ var_end(const char *var)
 		if (*var++ == '=')
 			break;
 	return var;
+}
+
+/* Wrapper around strcmp for bsearch */
+static int
+pstrcmp(const void *a, const void *b)
+{
+	return strcmp((char*)a, *(char**)b);
 }
 
 #if !ENABLE_PLATFORM_MINGW32
@@ -1144,6 +1161,7 @@ out2str(const char *p)
 #define VSREPLACE       0xc     /* ${var/pattern/replacement} */
 #define VSREPLACEALL    0xd     /* ${var//pattern/replacement} */
 #endif
+#if DEBUG || JOBS || JOBS_WIN32
 static const char vstype_suffix[][3] ALIGN1 = {
 	[VSNORMAL       - VSNORMAL] = "}", // $var or ${var}
 	[VSMINUS        - VSNORMAL] = "-", // ${var-text}
@@ -1155,14 +1173,15 @@ static const char vstype_suffix[][3] ALIGN1 = {
 	[VSTRIMLEFT     - VSNORMAL] = "#", // ${var#pattern}
 	[VSTRIMLEFTMAX  - VSNORMAL] = "##",// ${var##pattern}
 	[VSLENGTH       - VSNORMAL] = "",  // ${#var}
-#if BASH_SUBSTR
+# if BASH_SUBSTR
 	[VSSUBSTR       - VSNORMAL] = ":", // ${var:position:length}
-#endif
-#if BASH_PATTERN_SUBST
+# endif
+# if BASH_PATTERN_SUBST
 	[VSREPLACE      - VSNORMAL] = "/", // ${var/pattern/replacement}
 	[VSREPLACEALL   - VSNORMAL] = "//",// ${var//pattern/replacement}
-#endif
+# endif
 };
+#endif
 
 static const char dolatstr[] ALIGN1 = {
 	CTLQUOTEMARK, CTLVAR, VSNORMAL, '@', '=', CTLQUOTEMARK, '\0'
@@ -1354,6 +1373,30 @@ freefunc(struct funcnode *f)
 
 /* ============ Debugging output */
 
+#if DEBUG_SHOW_MEMUSE
+static void dbg_show_dirtymem(const char *msg)
+{
+	char *p, buf[2*1024];
+	int sz = open_read_close("/proc/self/smaps_rollup", buf, sizeof(buf)-1);
+	if (sz <= 0)
+		return;
+	buf[sz] = '\0';
+	p = buf;
+	for (;;) {
+		char *e = strchrnul(p, '\n');
+		if (strncmp(p, "Private_Dirty:", 14) == 0) {
+			p = skip_whitespace(p + 14);
+			bb_error_msg("%s:%.*s", msg, (int)(e - p), p);
+			break;
+		}
+		if (!*e) break;
+		p = e + 1;
+	}
+}
+#else
+# define dbg_show_dirtymem(msg) ((void)0)
+#endif
+
 #if DEBUG
 
 static FILE *tracefile;
@@ -1382,7 +1425,7 @@ trace_vprintf(const char *fmt, va_list va)
 	if (debug != 1)
 		return;
 	vfprintf(tracefile, fmt, va);
-	fprintf(tracefile, "\n");
+	putc('\n', tracefile);
 }
 
 static void
@@ -1394,21 +1437,17 @@ trace_puts(const char *s)
 }
 
 static void
-trace_puts_quoted(char *s)
+trace_puts_quoted(char *p)
 {
-	char *p;
-	char c;
-
 	if (debug != 1)
 		return;
 	putc('"', tracefile);
-	for (p = s; *p; p++) {
-		switch ((unsigned char)*p) {
+	for (; *p; p++) {
+		unsigned char c = *p;
+		switch (c) {
 		case '\n': c = 'n'; goto backslash;
 		case '\t': c = 't'; goto backslash;
 		case '\r': c = 'r'; goto backslash;
-		case '\"': c = '\"'; goto backslash;
-		case '\\': c = '\\'; goto backslash;
 		case CTLESC: c = 'e'; goto backslash;
 		case CTLVAR: c = 'v'; goto backslash;
 		case CTLBACKQ: c = 'q'; goto backslash;
@@ -1416,21 +1455,21 @@ trace_puts_quoted(char *s)
 		case CTLTOPROC: c = 'p'; goto backslash;
 		case CTLFROMPROC: c = 'P'; goto backslash;
 #endif
+		case '"':
+		case '\\':
  backslash:
 			putc('\\', tracefile);
-			putc(c, tracefile);
 			break;
 		default:
-			if (*p >= ' ' && *p <= '~')
-				putc(*p, tracefile);
-			else {
+			if (c < ' ' || c > 0x7e) {
 				putc('\\', tracefile);
-				putc((*p >> 6) & 03, tracefile);
-				putc((*p >> 3) & 07, tracefile);
-				putc(*p & 07, tracefile);
+				putc((c >> 6) + '0', tracefile);
+				putc(((c >> 3) & 07) + '0', tracefile);
+				c = (c & 07) + '0';
 			}
 			break;
 		}
+		putc(c, tracefile);
 	}
 	putc('"', tracefile);
 }
@@ -3551,144 +3590,6 @@ setpwd(const char *val, int setold)
 	setvar("PWD", dir, VEXPORT);
 }
 
-static void hashcd(void);
-
-/*
- * Actually do the chdir.  We also call hashcd to let other routines
- * know that the current directory has changed.
- */
-static int
-docd(const char *dest, int flags)
-{
-	const char *dir = NULL;
-	int err;
-
-	TRACE(("docd(\"%s\", %d) called\n", dest, flags));
-
-	INTOFF;
-	if (!(flags & CD_PHYSICAL)) {
-		dir = updatepwd(dest);
-		if (dir)
-			dest = dir;
-	}
-	err = chdir(dest);
-	if (err)
-		goto out;
-	setpwd(dir, 1);
-	hashcd();
- out:
-	INTON;
-	return err;
-}
-
-static int FAST_FUNC
-cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
-{
-	const char *dest;
-	const char *path;
-	const char *p;
-	char c;
-	struct stat statb;
-	int flags;
-	int len;
-
-	flags = cdopt();
-	dest = *argptr;
-	if (!dest)
-		dest = bltinlookup("HOME");
-	else if (LONE_DASH(dest)) {
-		dest = bltinlookup("OLDPWD");
-		flags |= CD_PRINT;
-	}
-	if (!dest)
-		dest = nullstr;
-	if (!is_relative_path(dest))
-		goto step6;
-	if (*dest == '.') {
-		c = dest[1];
- dotdot:
-		switch (c) {
-		case '\0':
-		case '/':
-			goto step6;
-		case '.':
-			c = dest[2];
-			if (c != '.')
-				goto dotdot;
-		}
-	}
-	if (!*dest)
-		dest = ".";
-	path = bltinlookup("CDPATH");
-	while (p = path, (len = padvance_magic(&path, dest, 0)) >= 0) {
-		c = *p;
-		p = stalloc(len);
-
-		if (stat(p, &statb) >= 0 && S_ISDIR(statb.st_mode)) {
-			if (c && c != PATH_SEP)
-				flags |= CD_PRINT;
- docd:
-			if (!docd(p, flags))
-				goto out;
-			goto err;
-		}
-	}
-
- step6:
-	p = dest;
-	goto docd;
-
- err:
-	ash_msg_and_raise_perror("can't cd to %s", dest);
-	/* NOTREACHED */
- out:
-	if (flags & CD_PRINT)
-		out1fmt("%s\n", curdir);
-	return 0;
-}
-
-#if ENABLE_PLATFORM_MINGW32
-static void
-print_all_cwd(void)
-{
-	FILE *mnt;
-	struct mntent *entry;
-	char buffer[PATH_MAX];
-
-	mnt = setmntent(bb_path_mtab_file, "r");
-	if (mnt) {
-		while ((entry=getmntent(mnt)) != NULL) {
-			entry->mnt_dir[2] = '\0';
-			if (get_drive_cwd(entry->mnt_dir, buffer, PATH_MAX) != NULL)
-				out1fmt("%s\n", buffer);
-		}
-		endmntent(mnt);
-	}
-}
-#endif
-
-static int FAST_FUNC
-pwdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
-{
-	int flags;
-	const char *dir = curdir;
-
-	flags = cdopt();
-#if ENABLE_PLATFORM_MINGW32
-	if (flags & CD_PRINT_ALL) {
-		print_all_cwd();
-		return 0;
-	}
-#endif
-	if (flags) {
-		if (physdir == nullstr)
-			setpwd(dir, 0);
-		dir = physdir;
-	}
-	out1fmt("%s\n", dir);
-	return 0;
-}
-
 
 /* ============ ... */
 
@@ -4284,75 +4185,6 @@ unaliascmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 
 #endif /* ASH_ALIAS */
 
-/* Mode argument to forkshell.  Don't change FORK_FG or FORK_BG. */
-#define FORK_FG    0
-#define FORK_BG    1
-#define FORK_NOJOB 2
-
-/* mode flags for showjob(s) */
-#define SHOW_ONLY_PGID  0x01    /* show only pgid (jobs -p) */
-#define SHOW_PIDS       0x02    /* show individual pids, not just one line per job */
-#define SHOW_CHANGED    0x04    /* only jobs whose state has changed */
-#define SHOW_STDERR     0x08    /* print to stderr (else stdout) */
-
-/*
- * A job structure contains information about a job.  A job is either a
- * single process or a set of processes contained in a pipeline.  In the
- * latter case, pidlist will be non-NULL, and will point to a -1 terminated
- * array of pids.
- */
-struct procstat {
-	pid_t   ps_pid;         /* process id */
-	int     ps_status;      /* last process status from wait() */
-#if ENABLE_PLATFORM_POSIX || JOBS_WIN32
-	char    *ps_cmd;        /* text of command being run */
-#endif
-#if ENABLE_PLATFORM_MINGW32
-	HANDLE  ps_proc;
-#endif
-};
-
-struct job {
-	struct procstat ps0;    /* status of process */
-	struct procstat *ps;    /* status of processes when more than one */
-#if JOBS
-	int stopstatus;         /* status of a stopped job */
-#endif
-	unsigned nprocs;        /* number of processes */
-
-#define JOBRUNNING      0       /* at least one proc running */
-#define JOBSTOPPED      1       /* all procs are stopped */
-#define JOBDONE         2       /* all procs are completed */
-	unsigned
-		state: 8,
-#if JOBS || ENABLE_PLATFORM_MINGW32
-		sigint: 1,      /* job was killed by SIGINT */
-#endif
-#if JOBS
-		jobctl: 1,      /* job running under job control */
-#endif
-		waited: 1,      /* true if this entry has been waited for */
-		used: 1,        /* true if this entry is in used */
-		changed: 1;     /* true if status has changed */
-	struct job *prev_job;   /* previous job */
-};
-
-#if !ENABLE_PLATFORM_MINGW32
-static int forkshell(struct job *, union node *, int);
-#endif
-static int waitforjob(struct job *);
-
-#if !JOBS && !JOBS_WIN32
-enum { jobctl = 0 };
-#define setjobctl(on) do {} while (0)
-#elif JOBS_WIN32
-static smallint jobctl; //references:8
-#define setjobctl(on) do { if (rootshell) jobctl = on; } while (0)
-#else /* JOBS */
-static smallint jobctl; //references:8
-static void setjobctl(int);
-#endif
-
 #if !ENABLE_PLATFORM_MINGW32
 /*
  * Ignore a signal.
@@ -4372,6 +4204,10 @@ ignoresig(int signo)
 /*
  * Only one usage site - in setsignal()
  * This function is called onsig() in dash
+ *
+ * The handler is called only for SIGINT, SIGCHLD, signals with not-"" traps
+ * (grep for S_CATCH handling to see that).
+ * All other signals are either SIG_DFL or SIG_IGN.
  */
 static void
 signal_handler(int signo)
@@ -4388,9 +4224,10 @@ signal_handler(int signo)
 			return;
 	}
 #if ENABLE_FEATURE_EDITING
+//TODO: don't do it if it's SIGCHLD?
 	bb_got_signal = signo; /* for read_line_input / read builtin: "we got a signal" */
 #endif
-	gotsig[signo - 1] = 1;
+	gotsig[signo - 1] = 1; /* "run a trap for this later" */
 	pending_sig = signo;
 
 	if (signo == SIGINT && !trap[SIGINT]) {
@@ -4418,13 +4255,13 @@ setsignal(int signo)
 
 	t = trap[signo];
 	new_act = S_DFL;
-	if (t != NULL) { /* trap for this sig is set */
+	if (t != NULL) {
+		/* Trap for this sig is set */
 		new_act = S_CATCH;
 		if (t[0] == '\0') /* trap is "": ignore this sig */
 			new_act = S_IGN;
-	}
-
-	if (rootshell && new_act == S_DFL && !lvforked) {
+	} else
+	if (rootshell && /*TRUE: new_act == S_DFL &&*/ !lvforked) {
 		switch (signo) {
 		case SIGINT:
 			if (iflag || minusc || sflag == 0)
@@ -4439,7 +4276,10 @@ setsignal(int signo)
 			 * "In all cases, bash ignores SIGQUIT. Non-builtin
 			 * commands run by bash have signal handlers
 			 * set to the values inherited by the shell
-			 * from its parent". */
+			 * from its parent".
+			 * This is not POSIX, but it avoids additional
+			 * core files from shells when users press ^\
+			 */
 			new_act = S_IGN;
 			break;
 		case SIGTERM:
@@ -4518,15 +4358,75 @@ setsignal(int signo)
 #define ignoresig(s)
 #endif
 
-/* mode flags for set_curjob */
+/* Mode flags for set_curjob */
 #define CUR_DELETE 2
 #define CUR_RUNNING 1
 #define CUR_STOPPED 0
 
+/* Mode argument to forkshell.  Don't change FORK_FG or FORK_BG. */
+#define FORK_FG    0
+#define FORK_BG    1
+#define FORK_NOJOB 2
+
+/* Mode flags for showjob(s) */
+#define SHOW_ONLY_PGID  0x01    /* show only pgid (jobs -p) */
+#define SHOW_PIDS       0x02    /* show individual pids, not just one line per job */
+#define SHOW_CHANGED    0x04    /* only jobs whose state has changed */
+#define SHOW_STDERR     0x08    /* print to stderr (else stdout) */
+
+/*
+ * A job structure contains information about a job.  A job is either a
+ * single process or a set of processes contained in a pipeline.  In the
+ * latter case, pidlist will be non-NULL, and will point to a -1 terminated
+ * array of pids.
+ */
+struct procstat {
+	pid_t   ps_pid;         /* process id */
+	int     ps_status;      /* last process status from wait() */
+#if ENABLE_PLATFORM_POSIX || JOBS_WIN32
+	char    *ps_cmd;        /* text of command being run */
+#endif
+#if ENABLE_PLATFORM_MINGW32
+	HANDLE  ps_proc;
+#endif
+};
+
+struct job {
+	struct procstat ps0;    /* status of process */
+	struct procstat *ps;    /* status of processes when more than one */
 #if JOBS
+	int stopstatus;         /* status of a stopped job */
+#endif
+	unsigned nprocs;        /* number of processes */
+
+#define JOBRUNNING      0       /* at least one proc running */
+#if JOBS
+#define JOBSTOPPED      1       /* all procs are stopped */
+#endif
+#define JOBDONE         2       /* all procs are completed */
+	unsigned
+		state: 8,
+#if JOBS || ENABLE_PLATFORM_MINGW32
+		sigint: 1,      /* job was killed by SIGINT */
+#endif
+#if JOBS
+		jobctl: 1,      /* job running under job control */
+#endif
+		waited: 1,      /* true if this entry has been waited for */
+		used: 1,        /* true if this entry is in used */
+		changed: 1;     /* true if status has changed */
+	struct job *prev_job;   /* previous job */
+};
+
+#if !JOBS && !JOBS_WIN32
+enum { jobctl = 0 };
+#else
+static smallint jobctl; //references:8
+# if JOBS
 /* pgrp of shell on invocation */
 static int initialpgrp; //references:2
 static int ttyfd = -1; //5
+# endif
 #endif
 /* array of jobs */
 static struct job *jobtab; //5
@@ -4772,7 +4672,11 @@ freejob(struct job *jp)
 	INTON;
 }
 
-#if JOBS
+#if JOBS_WIN32
+# define setjobctl(on) do { if (rootshell) jobctl = on; } while (0)
+#elif !JOBS
+# define setjobctl(on) ((void)0)
+#else
 static void
 xtcsetpgrp(int fd, pid_t pgrp)
 {
@@ -4936,77 +4840,6 @@ killcmd(int argc, char **argv)
 }
 #endif
 
-#if JOBS
-static void
-showpipe(struct job *jp /*, FILE *out*/)
-{
-	struct procstat *ps;
-	struct procstat *psend;
-
-	psend = jp->ps + jp->nprocs;
-	for (ps = jp->ps + 1; ps < psend; ps++)
-		printf(" | %s", ps->ps_cmd);
-	newline_and_flush(stdout);
-	flush_stdout_stderr();
-}
-
-
-static int
-restartjob(struct job *jp, int mode)
-{
-	struct procstat *ps;
-	int i;
-	int status;
-	pid_t pgid;
-
-	INTOFF;
-	if (jp->state == JOBDONE)
-		goto out;
-	jp->state = JOBRUNNING;
-	pgid = jp->ps[0].ps_pid;
-	if (mode == FORK_FG) {
-		get_tty_state();
-		xtcsetpgrp(ttyfd, pgid);
-	}
-	killpg(pgid, SIGCONT);
-	ps = jp->ps;
-	i = jp->nprocs;
-	do {
-		if (WIFSTOPPED(ps->ps_status)) {
-			ps->ps_status = -1;
-		}
-		ps++;
-	} while (--i);
- out:
-	status = (mode == FORK_FG) ? waitforjob(jp) : 0;
-	INTON;
-	return status;
-}
-
-static int FAST_FUNC
-fg_bgcmd(int argc UNUSED_PARAM, char **argv)
-{
-	struct job *jp;
-	int mode;
-	int retval;
-
-	mode = (**argv == 'f') ? FORK_FG : FORK_BG;
-	nextopt(nullstr);
-	argv = argptr;
-	do {
-		jp = getjob(*argv, 1);
-		if (mode == FORK_BG) {
-			set_curjob(jp, CUR_RUNNING);
-			printf("[%d] ", jobno(jp));
-		}
-		out1str(jp->ps[0].ps_cmd);
-		showpipe(jp /*, stdout*/);
-		retval = restartjob(jp, mode);
-	} while (*argv && *++argv);
-	return retval;
-}
-#endif
-
 static int
 sprint_status48(char *os, int status, int sigonly)
 {
@@ -5103,6 +4936,44 @@ waitpid_child(int *status, DWORD blocking)
 	return pid;
 }
 #endif
+
+/* Called only on finished or stopped jobs (no members are running) */
+static int
+getstatus(struct job *job)
+{
+	int status;
+	int retval;
+	struct procstat *ps;
+
+	/* Fetch last member's status */
+	ps = job->ps + job->nprocs - 1;
+	status = ps->ps_status;
+	if (pipefail) {
+		/* "set -o pipefail" mode: use last _nonzero_ status */
+		while (status == 0 && --ps >= job->ps)
+			status = ps->ps_status;
+	}
+
+	retval = WEXITSTATUS(status);
+	if (!WIFEXITED(status)) {
+#if JOBS
+		retval = WSTOPSIG(status);
+		if (!WIFSTOPPED(status))
+#endif
+		{
+			/* XXX: limits number of signals */
+			retval = WTERMSIG(status);
+#if JOBS || ENABLE_PLATFORM_MINGW32
+			if (retval == SIGINT)
+				job->sigint = 1;
+#endif
+		}
+		retval |= 128;
+	}
+	TRACE(("getstatus: job %d, nproc %d, status 0x%x, retval 0x%x\n",
+		jobno(job), job->nprocs, status, retval));
+	return retval;
+}
 
 /* Inside dowait(): */
 #define DOWAIT_NONBLOCK 0	/* waitpid() will use WNOHANG and won't wait for signals */
@@ -5309,6 +5180,94 @@ static int dowait(int block, struct job *jp)
 #endif
 }
 
+/*
+ * Wait for job to finish.
+ *
+ * Under job control we have the problem that while a child process
+ * is running interrupts generated by the user are sent to the child
+ * but not to the shell.  This means that an infinite loop started by
+ * an interactive user may be hard to kill.  With job control turned off,
+ * an interactive user may place an interactive program inside a loop.
+ * If the interactive program catches interrupts, the user doesn't want
+ * these interrupts to also abort the loop.  The approach we take here
+ * is to have the shell ignore interrupt signals while waiting for a
+ * foreground process to terminate, and then send itself an interrupt
+ * signal if the child process was terminated by an interrupt signal.
+ * Unfortunately, some programs want to do a bit of cleanup and then
+ * exit on interrupt; unless these processes terminate themselves by
+ * sending a signal to themselves (instead of calling exit) they will
+ * confuse this approach.
+ *
+ * Called with interrupts off.
+ */
+static int
+waitforjob(struct job *jp)
+{
+	int st;
+
+	TRACE(("waitforjob(%%%d) called\n", jp ? jobno(jp) : 0));
+
+	/* In non-interactive shells, we _can_ get
+	 * a keyboard signal here and be EINTRed, but we just loop
+	 * inside dowait(), waiting for command to complete.
+	 *
+	 * man bash:
+	 * "If bash is waiting for a command to complete and receives
+	 * a signal for which a trap has been set, the trap
+	 * will not be executed until the command completes."
+	 *
+	 * Reality is that even if trap is not set, bash
+	 * will not act on the signal until command completes.
+	 * Try this. sleep5intoff.c:
+	 * #include <signal.h>
+	 * #include <unistd.h>
+	 * int main() {
+	 *         sigset_t set;
+	 *         sigemptyset(&set);
+	 *         sigaddset(&set, SIGINT);
+	 *         sigaddset(&set, SIGQUIT);
+	 *         sigprocmask(SIG_BLOCK, &set, NULL);
+	 *         sleep(5);
+	 *         return 0;
+	 * }
+	 * $ bash -c './sleep5intoff; echo hi'
+	 * ^C^C^C^C <--- pressing ^C once a second
+	 * $ _
+	 * $ bash -c './sleep5intoff; echo hi'
+	 * ^\^\^\^\hi <--- pressing ^\ (SIGQUIT)
+	 * $ _
+	 */
+	dowait(jp ? DOWAIT_BLOCK : DOWAIT_NONBLOCK, jp);
+	if (!jp)
+		return exitstatus;
+
+	st = getstatus(jp);
+#if ENABLE_PLATFORM_MINGW32
+	if (!jp->sigint && iflag && rootshell)
+		pending_int = 0;
+#endif
+#if JOBS
+	if (jp->jobctl) {
+		xtcsetpgrp(ttyfd, rootpid);
+		restore_tty_if_stopped_or_signaled(jp);
+
+		/*
+		 * This is truly gross.
+		 * If we're doing job control, then we did a TIOCSPGRP which
+		 * caused us (the shell) to no longer be in the controlling
+		 * session -- so we wouldn't have seen any ^C/SIGINT.  So, we
+		 * intuit from the subprocess exit status whether a SIGINT
+		 * occurred, and if so interrupt ourselves.  Yuck.  - mycroft
+		 */
+		if (jp->sigint) /* TODO: do the same with all signals */
+			raise(SIGINT); /* ... by raise(jp->sig) instead? */
+	}
+	if (jp->state == JOBDONE)
+#endif
+		freejob(jp);
+	return st;
+}
+
 #if JOBS || JOBS_WIN32
 static void
 showjob(struct job *jp, int mode)
@@ -5432,45 +5391,111 @@ jobscmd(int argc UNUSED_PARAM, char **argv)
 
 	return 0;
 }
-#endif /* JOBS */
+#endif
 
-/* Called only on finished or stopped jobs (no members are running) */
-static int
-getstatus(struct job *job)
-{
-	int status;
-	int retval;
-	struct procstat *ps;
-
-	/* Fetch last member's status */
-	ps = job->ps + job->nprocs - 1;
-	status = ps->ps_status;
-	if (pipefail) {
-		/* "set -o pipefail" mode: use last _nonzero_ status */
-		while (status == 0 && --ps >= job->ps)
-			status = ps->ps_status;
-	}
-
-	retval = WEXITSTATUS(status);
-	if (!WIFEXITED(status)) {
 #if JOBS
-		retval = WSTOPSIG(status);
-		if (!WIFSTOPPED(status))
-#endif
-		{
-			/* XXX: limits number of signals */
-			retval = WTERMSIG(status);
-#if JOBS || ENABLE_PLATFORM_MINGW32
-			if (retval == SIGINT)
-				job->sigint = 1;
-#endif
-		}
-		retval |= 128;
+static int
+restartjob(struct job *jp, int mode)
+{
+	struct procstat *ps;
+	int i;
+	int status;
+	pid_t pgid;
+
+	INTOFF;
+	if (jp->state == JOBDONE)
+		goto out;
+	jp->state = JOBRUNNING;
+	pgid = jp->ps[0].ps_pid;
+	if (mode == FORK_FG) {
+		get_tty_state();
+		xtcsetpgrp(ttyfd, pgid);
 	}
-	TRACE(("getstatus: job %d, nproc %d, status 0x%x, retval 0x%x\n",
-		jobno(job), job->nprocs, status, retval));
+	killpg(pgid, SIGCONT);
+	ps = jp->ps;
+	i = jp->nprocs;
+	do {
+		if (WIFSTOPPED(ps->ps_status)) {
+			ps->ps_status = -1;
+		}
+		ps++;
+	} while (--i);
+ out:
+	status = (mode == FORK_FG) ? waitforjob(jp) : 0;
+	INTON;
+	return status;
+}
+
+static void
+showpipe(struct job *jp /*, FILE *out*/)
+{
+	struct procstat *ps;
+	struct procstat *psend;
+
+	psend = jp->ps + jp->nprocs;
+	for (ps = jp->ps + 1; ps < psend; ps++)
+		printf(" | %s", ps->ps_cmd);
+	newline_and_flush(stdout);
+	flush_stdout_stderr();
+}
+
+static int FAST_FUNC
+fg_bgcmd(int argc UNUSED_PARAM, char **argv)
+{
+	struct job *jp;
+	int mode;
+	int retval;
+
+	mode = (**argv == 'f') ? FORK_FG : FORK_BG;
+	nextopt(nullstr);
+	argv = argptr;
+	do {
+		jp = getjob(*argv, 1);
+		if (mode == FORK_BG) {
+			set_curjob(jp, CUR_RUNNING);
+			printf("[%d] ", jobno(jp));
+		}
+		out1str(jp->ps[0].ps_cmd);
+		showpipe(jp /*, stdout*/);
+		retval = restartjob(jp, mode);
+	} while (*argv && *++argv);
 	return retval;
 }
+
+/*
+ * return 1 if there are stopped jobs, otherwise 0
+ */
+static int
+stoppedjobs(void)
+{
+	struct job *jp;
+	int retval;
+
+	retval = 0;
+	if (!iflag || job_warning)
+		goto out;
+	jp = curjob;
+	if (jp && jp->state == JOBSTOPPED) {
+		out2str("You have stopped jobs.\n");
+		job_warning = 2;
+		retval++;
+	}
+ out:
+	return retval;
+}
+#elif ENABLE_PLATFORM_MINGW32
+static int
+stoppedjobs(void)
+{
+    if (iflag && curjob) {
+		out2str("You have background jobs.\n");
+		return 1;
+	}
+	return 0;
+}
+#else
+#define stoppedjobs() 0
+#endif
 
 static int FAST_FUNC
 waitcmd(int argc UNUSED_PARAM, char **argv)
@@ -6114,7 +6139,7 @@ forkchild(struct job *jp, union node *n, int mode)
 		}
 	}
 	if (oldlvl == 0) {
-		if (iflag) { /* why if iflag only? */
+		if (iflag) { /* -i ignores INT/TERM, un-ignore them */
 			setsignal(SIGINT);
 			setsignal(SIGTERM);
 		}
@@ -6230,158 +6255,8 @@ forkshell(struct job *jp, union node *n, int mode)
 
 	return pid;
 }
-
-static void shellexec(char *prog, char **argv, const char *path, int idx) NORETURN;
-
-static struct job*
-vforkexec(union node *n, char **argv, const char *path, int idx)
-{
-	struct job *jp;
-	int pid;
-
-	jp = makejob(1);
-
-	sigblockall(NULL);
-	vforked = 1;
-
-	pid = vfork();
-
-	if (!pid) {
-		forkchild(jp, n, FORK_FG);
-		sigclearmask();
-		shellexec(argv[0], argv, path, idx);
-		/* NOTREACHED */
-	}
-
-	vforked = 0;
-	sigclearmask();
-	forkparent(jp, n, FORK_FG, pid);
-
-	return jp;
-}
 #endif
 
-/*
- * Wait for job to finish.
- *
- * Under job control we have the problem that while a child process
- * is running interrupts generated by the user are sent to the child
- * but not to the shell.  This means that an infinite loop started by
- * an interactive user may be hard to kill.  With job control turned off,
- * an interactive user may place an interactive program inside a loop.
- * If the interactive program catches interrupts, the user doesn't want
- * these interrupts to also abort the loop.  The approach we take here
- * is to have the shell ignore interrupt signals while waiting for a
- * foreground process to terminate, and then send itself an interrupt
- * signal if the child process was terminated by an interrupt signal.
- * Unfortunately, some programs want to do a bit of cleanup and then
- * exit on interrupt; unless these processes terminate themselves by
- * sending a signal to themselves (instead of calling exit) they will
- * confuse this approach.
- *
- * Called with interrupts off.
- */
-static int
-waitforjob(struct job *jp)
-{
-	int st;
-
-	TRACE(("waitforjob(%%%d) called\n", jp ? jobno(jp) : 0));
-
-	/* In non-interactive shells, we _can_ get
-	 * a keyboard signal here and be EINTRed, but we just loop
-	 * inside dowait(), waiting for command to complete.
-	 *
-	 * man bash:
-	 * "If bash is waiting for a command to complete and receives
-	 * a signal for which a trap has been set, the trap
-	 * will not be executed until the command completes."
-	 *
-	 * Reality is that even if trap is not set, bash
-	 * will not act on the signal until command completes.
-	 * Try this. sleep5intoff.c:
-	 * #include <signal.h>
-	 * #include <unistd.h>
-	 * int main() {
-	 *         sigset_t set;
-	 *         sigemptyset(&set);
-	 *         sigaddset(&set, SIGINT);
-	 *         sigaddset(&set, SIGQUIT);
-	 *         sigprocmask(SIG_BLOCK, &set, NULL);
-	 *         sleep(5);
-	 *         return 0;
-	 * }
-	 * $ bash -c './sleep5intoff; echo hi'
-	 * ^C^C^C^C <--- pressing ^C once a second
-	 * $ _
-	 * $ bash -c './sleep5intoff; echo hi'
-	 * ^\^\^\^\hi <--- pressing ^\ (SIGQUIT)
-	 * $ _
-	 */
-	dowait(jp ? DOWAIT_BLOCK : DOWAIT_NONBLOCK, jp);
-	if (!jp)
-		return exitstatus;
-
-	st = getstatus(jp);
-#if ENABLE_PLATFORM_MINGW32
-	if (!jp->sigint && iflag && rootshell)
-		pending_int = 0;
-#endif
-#if JOBS
-	if (jp->jobctl) {
-		xtcsetpgrp(ttyfd, rootpid);
-		restore_tty_if_stopped_or_signaled(jp);
-
-		/*
-		 * This is truly gross.
-		 * If we're doing job control, then we did a TIOCSPGRP which
-		 * caused us (the shell) to no longer be in the controlling
-		 * session -- so we wouldn't have seen any ^C/SIGINT.  So, we
-		 * intuit from the subprocess exit status whether a SIGINT
-		 * occurred, and if so interrupt ourselves.  Yuck.  - mycroft
-		 */
-		if (jp->sigint) /* TODO: do the same with all signals */
-			raise(SIGINT); /* ... by raise(jp->sig) instead? */
-	}
-	if (jp->state == JOBDONE)
-#endif
-		freejob(jp);
-	return st;
-}
-
-/*
- * return 1 if there are stopped jobs, otherwise 0
- */
-#if !ENABLE_PLATFORM_MINGW32
-static int
-stoppedjobs(void)
-{
-	struct job *jp;
-	int retval;
-
-	retval = 0;
-	if (!iflag || job_warning)
-		goto out;
-	jp = curjob;
-	if (jp && jp->state == JOBSTOPPED) {
-		out2str("You have stopped jobs.\n");
-		job_warning = 2;
-		retval++;
-	}
- out:
-	return retval;
-}
-#else
-static int
-stoppedjobs(void)
-{
-	if (iflag && curjob) {
-		out2str("You have background jobs.\n");
-		return 1;
-	}
-	return 0;
-}
-#endif
 
 /*
  * Code for dealing with input/output redirection.
@@ -6973,6 +6848,304 @@ unwindredir(struct redirtab *stop)
 	while (redirlist != stop)
 		popredir(/*drop:*/ 0);
 }
+
+
+/*
+ * execve wrappers
+ */
+#if ENABLE_FEATURE_SH_STANDALONE
+# if !ENABLE_PLATFORM_MINGW32
+#  define tryexec_applet(i, n, c, a, e) tryexec_applet(i, c, a, e)
+# endif
+
+static void
+tryexec_applet(int applet_no, int noexec, const char *cmd, char **argv, char **envp)
+{
+# if ENABLE_PLATFORM_MINGW32
+	/* Treat all applets as NOEXEC, including the shell itself
+	 * if we were called from forkshell_shellexec(). */
+	if ((applet_main[applet_no] != ash_main || noexec) &&
+			fileno(stdin) != -2 && fileno(stdout) != -2 &&
+			fileno(stderr) != -2) {
+		/* mingw-w64's getopt() uses __argv[0] as the program name */
+		__argv[0] = (char *)cmd;
+		/* 'which' wants to know if it was invoked from a standalone
+		 * shell.  'Which' in argv[0] indicates this. */
+		if (strcmp(argv[0], "which") == 0) {
+			argv[0] = (char *)"Which";
+		}
+# else
+	if (!vforked && APPLET_IS_NOEXEC(applet_no)) {
+# endif
+		dbg_show_dirtymem("dirtymem in NOEXEC tryexec");
+#if !ENABLE_PLATFORM_MINGW32 || !defined(_UCRT)
+		/* If building for UCRT move this up into shellexec() to
+		 * work around a bug. */
+		clearenv();
+		while (*envp)
+			putenv(*envp++);
+		popredir(/*drop:*/ 1);
+#endif
+//FIXME: exec resets all non-DFL, non-IGN signal handlers to DFL,
+//but we _don't_ exec, such signals will reach ash's handler instead!
+//Maybe add code there to set the handler to DFL, and signal itself?
+// This works for "CMD [| CMD]..." pipes:
+//vforkexec():
+//  vfork();
+//  forkchild(jp, n, FORK_FG); // this resets TSTP,TTOU,INT,TERM,QUIT to DFL
+//  shellexec(argv[0], argv, path, idx)
+//      tryexec_applet()
+//          we are here
+// And for "exec CMD":
+//execcmd():
+//  iflag = 0;
+//  mflag = 0;
+//  optschanged(); // this resets TSTP,TTOU,INT,TERM to DFL
+//  shlvl++;
+//  setsignal(SIGQUIT); // this resets QUIT to DFL
+//  shellexec() ->
+//      tryexec_applet() ->
+//          we are here
+// But ash -c 'LAST_CMD_WONT_FORK' does not work!
+//evalcommand():
+//  if (!(flags & EV_EXIT) || may_have_traps)
+//      // we don't use this branch
+//  //else:
+//  shellexec() ->
+//      tryexec_applet() ->
+//          we are here
+//SIGINT works 'by accident' (sets DFL+signals itself)
+//SIGQUIT is IGNORED!
+//Fixed by adding in the evalcommand() before that shellexec():
+//  shlvl++;
+//  setsignal(SIGQUIT);
+//  //TODO: setsignal(TSTP,TTOU,INT,TERM) too?
+//
+// With traps set, this:
+// ash -c 'trap "echo HERE!" INT; exec xargs'
+// didn't work: ^C sets a "run trap later" flag and _returns_,
+// which is not expected by the NOEXEC'ed xargs applet! (It gets EINTR on read).
+// clear_traps() helps with this:
+		clear_traps();
+		run_noexec_applet_and_exit(applet_no, cmd, argv);
+		/* does not return */
+	}
+	/* re-exec ourselves with the new arguments */
+	execve(bb_busybox_exec_path, argv, envp);
+	/* If they called chroot or otherwise made the binary
+	 * no longer executable, return.
+	 */
+}
+#endif
+
+#if ENABLE_PLATFORM_MINGW32
+static void
+tryexec(const char *cmd, const char *path, int noexec, char **argv, char **envp)
+{
+#if ENABLE_FEATURE_SH_STANDALONE
+    interp_t interp;
+#endif
+
+	/* Workaround for libtool, which assumes the host is an MSYS2
+	 * environment and requires special-case escaping for cmd.exe.
+	 * https://github.com/skeeto/w64devkit/issues/50 */
+	if (string_array_len(argv) >= 3 &&
+			strcmp(argv[0], "cmd") == 0 &&
+			strcmp(argv[1], "//c") == 0 &&
+			strcmp(argv[2], "echo") == 0) {
+		argv[1]++;	/* drop extra slash */
+	}
+
+	/* cmd was allocated on the stack with room for an extension */
+	add_win32_extension((char *)cmd);
+
+# if ENABLE_FEATURE_SH_STANDALONE
+	/* If the command is a script with an interpreter which is an
+	 * applet, we can run it as if it were a noexec applet. */
+	if (parse_interpreter(cmd, &interp)) {
+		int applet_no = find_applet_by_name_for_sh(interp.name, path);
+
+		if (applet_no >= 0) {
+			argv[0] = (char *)cmd;
+			/* evalcommand()/spawn_forkshell() add two elements before argv */
+			if (interp.opts) {
+				argv--;
+				argv[0] = (char *)interp.opts;
+			}
+			argv--;
+			cmd = argv[0] = (char *)interp.name;
+			/* Identify the index of the script file in argv */
+			set_interp(1 + (interp.opts != NULL));
+			tryexec_applet(applet_no, noexec, cmd, argv, envp);
+		}
+	}
+# endif
+
+	execve(cmd, argv, envp);
+	/* skip POSIX-mandated retry on ENOEXEC */
+}
+#else /* !ENABLE_PLATFORM_MINGW32 */
+static void
+tryexec(const char *cmd, char **argv, char **envp)
+{
+ repeat:
+#ifdef SYSV
+	do {
+		execve(cmd, argv, envp);
+	} while (errno == EINTR);
+#else
+	execve(cmd, argv, envp);
+#endif
+	if (cmd != bb_busybox_exec_path && errno == ENOEXEC) {
+		/* Run "cmd" as a shell script:
+		 * http://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
+		 * "If the execve() function fails with ENOEXEC, the shell
+		 * shall execute a command equivalent to having a shell invoked
+		 * with the command name as its first operand,
+		 * with any remaining arguments passed to the new shell"
+		 *
+		 * That is, do not use $SHELL, user's shell, or /bin/sh;
+		 * just call ourselves.
+		 *
+		 * Note that bash reads ~80 chars of the file, and if it sees
+		 * a zero byte before it sees newline, it doesn't try to
+		 * interpret it, but fails with "cannot execute binary file"
+		 * message and exit code 126. For one, this prevents attempts
+		 * to interpret foreign ELF binaries as shell scripts.
+		 */
+		argv[0] = (char*) cmd;
+		cmd = bb_busybox_exec_path;
+		/* NB: this is only possible because all callers of shellexec()
+		 * ensure that the argv[-1] slot exists!
+		 */
+		argv--;
+		argv[0] = (char*) "ash";
+		goto repeat;
+	}
+}
+#endif
+
+#if !ENABLE_PLATFORM_MINGW32 || !ENABLE_FEATURE_SH_STANDALONE
+# define shellexec(prg, a, pth, i, n) shellexec(prg, a, pth, i)
+#endif
+
+/*
+ * Exec a program.  Never returns.  If you change this routine, you may
+ * have to change the find_command routine as well.
+ * argv[-1] must exist and be writable! See tryexec() for why.
+ */
+#if ENABLE_PLATFORM_MINGW32
+static struct builtincmd *find_builtin(const char *name);
+#endif
+static void shellexec(char *prog, char **argv, const char *path, int idx, int noexec)
+{
+	char *cmdname;
+	int e;
+	char **envp;
+	int exerrno;
+
+	envp = listvars(VEXPORT, VUNSET, /*strlist:*/ NULL, /*end:*/ NULL);
+#if ENABLE_FEATURE_SH_STANDALONE && ENABLE_PLATFORM_MINGW32 && defined(_UCRT)
+	/* Avoid UCRT bug by updating parent's environment and passing a
+	 * NULL environment pointer to execve(). */
+	clearenv();
+	while (*envp)
+		putenv(*envp++);
+	envp = NULL;
+#endif
+#if ENABLE_PLATFORM_MINGW32
+	if (has_path(prog)) {
+		tryexec(stack_add_ext_space(prog), path, noexec, argv, envp);
+#else
+	if (strchr(prog, '/') != NULL) {
+		tryexec(prog, argv, envp);
+#endif
+		e = errno;
+	} else {
+#if ENABLE_FEATURE_SH_STANDALONE
+		int applet_no = find_applet_by_name(prog);
+		if (applet_no >= 0)
+			tryexec_applet(applet_no, noexec, prog, argv, envp);
+		/* We tried execing ourself, but it didn't work.
+		 * Maybe /proc/self/exe doesn't exist?
+		 */
+#endif
+#if ENABLE_PLATFORM_MINGW32
+		if (unix_path(prog)) {
+			const char *name = bb_basename(prog);
+# if ENABLE_FEATURE_SH_STANDALONE
+			if ((applet_no = find_applet_by_name_for_sh(name, path)) >= 0) {
+				tryexec_applet(applet_no, noexec, name, argv, envp);
+				e = errno;
+			}
+# endif
+			if (!find_builtin(name)) {
+				argv[0] = (char *)name;
+			}
+		}
+#endif
+		e = ENOENT;
+		while (padvance(&path, argv[0]) >= 0) {
+			cmdname = stackblock();
+			if (--idx < 0 && pathopt == NULL) {
+#if ENABLE_PLATFORM_MINGW32
+				tryexec(cmdname, path, noexec, argv, envp);
+#else
+				tryexec(cmdname, argv, envp);
+#endif
+				if (errno != ENOENT && errno != ENOTDIR)
+					e = errno;
+			}
+		}
+	}
+
+	/* Map to POSIX errors */
+	switch (e) {
+	default:
+		exerrno = 126;
+		break;
+	case ELOOP:
+	case ENAMETOOLONG:
+	case ENOENT:
+	case ENOTDIR:
+		exerrno = 127;
+		break;
+	}
+	exitstatus = exerrno;
+	TRACE(("shellexec failed for %s, errno %d, suppress_int %d\n",
+		prog, e, suppress_int));
+	ash_msg_and_raise(EXEND, "%s: %s", prog, errmsg(e, E_EXEC));
+	/* NOTREACHED */
+}
+
+#if !ENABLE_PLATFORM_MINGW32
+static struct job*
+vforkexec(union node *n, char **argv, const char *path, int idx)
+{
+	struct job *jp;
+	int pid;
+
+	jp = makejob(1);
+
+	sigblockall(NULL);
+	vforked = 1;
+
+	pid = vfork();
+
+	if (!pid) {
+		forkchild(jp, n, FORK_FG);
+		sigclearmask();
+		shellexec(argv[0], argv, path, idx, FALSE);
+		/* NOTREACHED */
+	}
+
+	vforked = 0;
+	sigclearmask();
+	forkparent(jp, n, FORK_FG, pid);
+
+	return jp;
+}
+#endif
 
 
 /* ============ Routines to expand arguments to commands
@@ -9201,81 +9374,10 @@ expandhere(union node *arg)
 	expandarg(arg, (struct arglist *)NULL, EXP_QUOTED);
 }
 
-/*
- * Returns true if the pattern matches the string.
- */
-static int
-patmatch(char *pattern, const char *string)
-{
-	char *p = preglob(pattern, 0);
-	int r = pmatch(p, string);
-	//bb_error_msg("!fnmatch(pattern:'%s',str:'%s',0):%d", p, string, r);
-	return r;
-}
 
 /*
- * See if a pattern matches in a case statement.
+ * Hashing commands
  */
-static int
-casematch(union node *pattern, char *val)
-{
-	struct stackmark smark;
-	int result;
-
-	setstackmark(&smark);
-	argbackq = pattern->narg.backquote;
-	STARTSTACKSTR(expdest);
-	argstr(pattern->narg.text, EXP_TILDE | EXP_CASE);
-	ifsfree();
-	result = patmatch(stackblock(), val);
-	popstackmark(&smark);
-	return result;
-}
-
-
-/* ============ find_command */
-
-struct builtincmd {
-	const char *name;
-	int (*builtin)(int, char **) FAST_FUNC;
-	/* unsigned flags; */
-};
-#define IS_BUILTIN_SPECIAL(b) ((b)->name[0] & 1)
-/* "regular" builtins always take precedence over commands,
- * regardless of PATH=....%builtin... position */
-#define IS_BUILTIN_REGULAR(b) ((b)->name[0] & 2)
-#define IS_BUILTIN_ASSIGN(b)  ((b)->name[0] & 4)
-
-struct cmdentry {
-	smallint cmdtype;       /* CMDxxx */
-	union param {
-		int index;
-		/* index >= 0 for commands without path (slashes) */
-		/* (TODO: what exactly does the value mean? PATH position?) */
-		/* index == -1 for commands with slashes */
-		/* index == (-2 - applet_no) for NOFORK applets */
-		const struct builtincmd *cmd;
-		struct funcnode *func;
-	} u;
-};
-/* values of cmdtype */
-#define CMDUNKNOWN      -1      /* no entry in table for command */
-#define CMDNORMAL       0       /* command is an executable program */
-#define CMDFUNCTION     1       /* command is a shell function */
-#define CMDBUILTIN      2       /* command is a shell builtin */
-
-/* action to find_command() */
-#define DO_ERR          0x01    /* prints errors */
-#define DO_ABS          0x02    /* checks absolute paths */
-#define DO_NOFUNC       0x04    /* don't return shell functions, for command */
-#define DO_ALTPATH      0x08    /* using alternate path */
-#define DO_REGBLTIN     0x10    /* regular built-ins and functions only */
-
-static void find_command(char *, struct cmdentry *, int, const char *);
-
-
-/* ============ Hashing commands */
-
 /*
  * When commands are first encountered, they are entered in a hash table.
  * This ensures that a full path search will not have to be done for them
@@ -9284,6 +9386,26 @@ static void find_command(char *, struct cmdentry *, int, const char *);
  * We should investigate converting to a linear search, even though that
  * would make the command name "hash" a misnomer.
  */
+struct builtincmd {
+	const char *name;
+	int (*builtin)(int, char **) FAST_FUNC;
+	/* unsigned flags; */
+};
+#define IS_BUILTIN_SPECIAL(b) ((b)->name[-1] & 1)
+/* "regular" builtins always take precedence over commands,
+ * regardless of PATH=....%builtin... position */
+#define IS_BUILTIN_REGULAR(b) ((b)->name[-1] & 2)
+#define IS_BUILTIN_ASSIGN(b)  ((b)->name[-1] & 4)
+
+union param {
+	int index;
+	/* index >= 0 for commands without path (slashes) */
+	/* (TODO: what exactly does the value mean? PATH position?) */
+	/* index == -1 for commands with slashes */
+	/* index == (-2 - applet_no) for NOFORK applets */
+	const struct builtincmd *cmd;
+	struct funcnode *func;
+};
 
 struct tblentry {
 	struct tblentry *next;  /* next entry in hash chain */
@@ -9292,6 +9414,16 @@ struct tblentry {
 	char rehash;            /* if set, cd done since entry created */
 	char cmdname[1];        /* name of command */
 };
+/* values of cmdtype */
+#define CMDUNKNOWN      -1      /* no entry in table for command */
+#define CMDNORMAL       0       /* command is an executable program */
+#define CMDFUNCTION     1       /* command is a shell function */
+#define CMDBUILTIN      2       /* command is a shell builtin */
+
+struct cmdentry {
+	smallint cmdtype;       /* CMDxxx */
+	union param u;
+};
 
 static struct tblentry **cmdtable;
 #define INIT_G_cmdtable() do { \
@@ -9299,238 +9431,6 @@ static struct tblentry **cmdtable;
 } while (0)
 
 static int builtinloc = -1;     /* index in path of %builtin, or -1 */
-
-
-static void
-#if ENABLE_PLATFORM_MINGW32
-tryexec(IF_FEATURE_SH_STANDALONE(int applet_no, const char *path, int noexec,)
-			const char *cmd, char **argv, char **envp)
-#else
-tryexec(IF_FEATURE_SH_STANDALONE(int applet_no,) const char *cmd, char **argv, char **envp)
-#endif
-{
-#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_SH_STANDALONE
-	interp_t interp;
-#endif
-#if ENABLE_FEATURE_SH_STANDALONE
-	if (applet_no >= 0) {
-# if ENABLE_PLATFORM_MINGW32
-		/* Treat all applets as NOEXEC, including the shell itself
-		 * if we were called from forkshell_shellexec(). */
- run_noexec:
-		if ((applet_main[applet_no] != ash_main || noexec) &&
-				fileno(stdin) != -2 && fileno(stdout) != -2 &&
-				fileno(stderr) != -2) {
-			/* mingw-w64's getopt() uses __argv[0] as the program name */
-			__argv[0] = (char *)cmd;
-			/* 'which' wants to know if it was invoked from a standalone
-			 * shell.  'Which' in argv[0] indicates this. */
-			if (strcmp(argv[0], "which") == 0) {
-				argv[0] = (char *)"Which";
-			}
-# else
-		if (!vforked && APPLET_IS_NOEXEC(applet_no)) {
-# endif
-#if !ENABLE_PLATFORM_MINGW32 || !defined(_UCRT)
-			/* If building for UCRT move this up into shellexec() to
-			 * work around a bug. */
-			clearenv();
-			while (*envp)
-				putenv(*envp++);
-#endif
-			popredir(/*drop:*/ 1);
-			run_noexec_applet_and_exit(applet_no, cmd, argv);
-		}
-		/* re-exec ourselves with the new arguments */
-		execve(bb_busybox_exec_path, argv, envp);
-		/* If they called chroot or otherwise made the binary no longer
-		 * executable, fall through */
-	}
-#endif
-
-#if ENABLE_PLATFORM_MINGW32
-	/* Workaround for libtool, which assumes the host is an MSYS2
-	 * environment and requires special-case escaping for cmd.exe.
-	 * https://github.com/skeeto/w64devkit/issues/50 */
-	if (string_array_len(argv) >= 3 &&
-			strcmp(argv[0], "cmd") == 0 &&
-			strcmp(argv[1], "//c") == 0 &&
-			strcmp(argv[2], "echo") == 0) {
-		argv[1]++;	/* drop extra slash */
-	}
-
-	/* cmd was allocated on the stack with room for an extension */
-	add_win32_extension((char *)cmd);
-
-# if ENABLE_FEATURE_SH_STANDALONE
-	/* If the command is a script with an interpreter which is an
-	 * applet, we can run it as if it were a noexec applet. */
-	if (parse_interpreter(cmd, &interp)) {
-		applet_no = find_applet_by_name_for_sh(interp.name, path);
-		if (applet_no >= 0) {
-			argv[0] = (char *)cmd;
-			/* evalcommand()/spawn_forkshell() add two elements before argv */
-			if (interp.opts) {
-				argv--;
-				argv[0] = (char *)interp.opts;
-			}
-			argv--;
-			cmd = argv[0] = (char *)interp.name;
-			/* Identify the index of the script file in argv */
-			set_interp(1 + (interp.opts != NULL));
-			goto run_noexec;
-		}
-	}
-# endif
-
-	execve(cmd, argv, envp);
-	/* skip POSIX-mandated retry on ENOEXEC */
-#else /* !ENABLE_PLATFORM_MINGW32 */
- repeat:
-#ifdef SYSV
-	do {
-		execve(cmd, argv, envp);
-	} while (errno == EINTR);
-#else
-	execve(cmd, argv, envp);
-#endif
-
-	if (cmd != bb_busybox_exec_path && errno == ENOEXEC) {
-		/* Run "cmd" as a shell script:
-		 * http://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
-		 * "If the execve() function fails with ENOEXEC, the shell
-		 * shall execute a command equivalent to having a shell invoked
-		 * with the command name as its first operand,
-		 * with any remaining arguments passed to the new shell"
-		 *
-		 * That is, do not use $SHELL, user's shell, or /bin/sh;
-		 * just call ourselves.
-		 *
-		 * Note that bash reads ~80 chars of the file, and if it sees
-		 * a zero byte before it sees newline, it doesn't try to
-		 * interpret it, but fails with "cannot execute binary file"
-		 * message and exit code 126. For one, this prevents attempts
-		 * to interpret foreign ELF binaries as shell scripts.
-		 */
-		argv[0] = (char*) cmd;
-		cmd = bb_busybox_exec_path;
-		/* NB: this is only possible because all callers of shellexec()
-		 * ensure that the argv[-1] slot exists!
-		 */
-		argv--;
-		argv[0] = (char*) "ash";
-		goto repeat;
-	}
-#endif /* !ENABLE_PLATFORM_MINGW32 */
-}
-
-#if !ENABLE_PLATFORM_MINGW32 || !ENABLE_FEATURE_SH_STANDALONE
-# define shellexec(prg, a, pth, i, n) shellexec(prg, a, pth, i)
-#endif
-
-/*
- * Exec a program.  Never returns.  If you change this routine, you may
- * have to change the find_command routine as well.
- * argv[-1] must exist and be writable! See tryexec() for why.
- */
-#if ENABLE_PLATFORM_MINGW32
-static struct builtincmd *find_builtin(const char *name);
-static void shellexec(char *prog, char **argv, const char *path, int idx,
-						int noexec) NORETURN;
-#endif
-static void shellexec(char *prog, char **argv, const char *path, int idx,
-						int noexec)
-{
-	char *cmdname;
-	int e;
-	char **envp;
-	int exerrno;
-	int applet_no = -1; /* used only by FEATURE_SH_STANDALONE */
-
-	envp = listvars(VEXPORT, VUNSET, /*strlist:*/ NULL, /*end:*/ NULL);
-#if ENABLE_FEATURE_SH_STANDALONE && ENABLE_PLATFORM_MINGW32 && defined(_UCRT)
-	/* Avoid UCRT bug by updating parent's environment and passing a
-	 * NULL environment pointer to execve(). */
-	clearenv();
-	while (*envp)
-		putenv(*envp++);
-	envp = NULL;
-#endif
-#if !ENABLE_PLATFORM_MINGW32
-	if (strchr(prog, '/') != NULL
-#else
-	if (has_path(prog)
-#endif
-#if ENABLE_FEATURE_SH_STANDALONE
-	 || (applet_no = find_applet_by_name_for_sh(prog, path)) >= 0
-#endif
-	) {
-#if ENABLE_PLATFORM_MINGW32
-		char *progext = stack_add_ext_space(prog);
-		tryexec(IF_FEATURE_SH_STANDALONE(applet_no, path, noexec,)
-				progext, argv, envp);
-#else
-		tryexec(IF_FEATURE_SH_STANDALONE(applet_no,) prog, argv, envp);
-#endif
-		if (applet_no >= 0) {
-			/* We tried execing ourself, but it didn't work.
-			 * Maybe /proc/self/exe doesn't exist?
-			 * Try $PATH search.
-			 */
-			goto try_PATH;
-		}
-		e = errno;
-#if ENABLE_PLATFORM_MINGW32
-		if (unix_path(prog)) {
-			const char *name = bb_basename(prog);
-# if ENABLE_FEATURE_SH_STANDALONE
-			if ((applet_no = find_applet_by_name_for_sh(name, path)) >= 0) {
-				tryexec(applet_no, path, noexec, name, argv, envp);
-				e = errno;
-			}
-# endif
-			if (!find_builtin(name)) {
-				argv[0] = (char *)name;
-				goto try_PATH;
-			}
-		}
-#endif
-	} else {
- try_PATH:
-		e = ENOENT;
-		while (padvance(&path, argv[0]) >= 0) {
-			cmdname = stackblock();
-			if (--idx < 0 && pathopt == NULL) {
-#if ENABLE_PLATFORM_MINGW32
-				tryexec(IF_FEATURE_SH_STANDALONE(-1, path, noexec,)
-						cmdname, argv, envp);
-#else
-				tryexec(IF_FEATURE_SH_STANDALONE(-1,) cmdname, argv, envp);
-#endif
-				if (errno != ENOENT && errno != ENOTDIR)
-					e = errno;
-			}
-		}
-	}
-
-	/* Map to POSIX errors */
-	switch (e) {
-	default:
-		exerrno = 126;
-		break;
-	case ELOOP:
-	case ENAMETOOLONG:
-	case ENOENT:
-	case ENOTDIR:
-		exerrno = 127;
-		break;
-	}
-	exitstatus = exerrno;
-	TRACE(("shellexec failed for %s, errno %d, suppress_int %d\n",
-		prog, e, suppress_int));
-	ash_msg_and_raise(EXEND, "%s: %s", prog, errmsg(e, E_EXEC));
-	/* NOTREACHED */
-}
 
 static void
 printentry(struct tblentry *cmdp)
@@ -9583,17 +9483,12 @@ clearcmdentry(void)
 
 /*
  * Locate a command in the command hash table.  If "add" is nonzero,
- * add the command to the table if it is not already present.  The
- * variable "lastcmdentry" is set to point to the address of the link
- * pointing to the entry, so that delete_cmd_entry can delete the
- * entry.
+ * add the command to the table if it is not already present.
  *
  * Interrupts must be off if called with add != 0.
  */
-static struct tblentry **lastcmdentry;
-
-static struct tblentry *
-cmdlookup(const char *name, int add)
+static struct tblentry **
+cmdlookup_pp(const char *name, int add)
 {
 	unsigned int hashval;
 	const char *p;
@@ -9606,12 +9501,15 @@ cmdlookup(const char *name, int add)
 		hashval += (unsigned char)*p++;
 	hashval &= 0x7FFF;
 	pp = &cmdtable[hashval % CMDTABLESIZE];
-	for (cmdp = *pp; cmdp; cmdp = cmdp->next) {
-		if (strcmp(cmdp->cmdname, name) == 0)
+	for (;;) {
+		cmdp = *pp;
+		if (!cmdp)
 			break;
+		if (strcmp(cmdp->cmdname, name) == 0)
+			goto ret;
 		pp = &cmdp->next;
 	}
-	if (add && cmdp == NULL) {
+	if (add) {
 		cmdp = *pp = ckzalloc(sizeof(struct tblentry)
 				+ strlen(name)
 				/* + 1 - already done because
@@ -9620,21 +9518,27 @@ cmdlookup(const char *name, int add)
 		cmdp->cmdtype = CMDUNKNOWN;
 		strcpy(cmdp->cmdname, name);
 	}
-	lastcmdentry = pp;
-	return cmdp;
+ ret:
+	return pp;
+}
+
+static struct tblentry *
+cmdlookup(const char *name, int add)
+{
+	return *cmdlookup_pp(name, add);
 }
 
 /*
- * Delete the command entry returned on the last lookup.
+ * Delete the command entry (should be one returned by cmdlookup_pp).
  */
 static void
-delete_cmd_entry(void)
+delete_cmd_entry(struct tblentry **pp)
 {
 	struct tblentry *cmdp;
 
 	INTOFF;
-	cmdp = *lastcmdentry;
-	*lastcmdentry = cmdp->next;
+	cmdp = *pp;
+	*pp = cmdp->next;
 	if (cmdp->cmdtype == CMDFUNCTION)
 		freefunc(cmdp->param.func);
 	free(cmdp);
@@ -9657,51 +9561,6 @@ addcmdentry(char *name, struct cmdentry *entry)
 	cmdp->cmdtype = entry->cmdtype;
 	cmdp->param = entry->u;
 	cmdp->rehash = 0;
-}
-
-static int FAST_FUNC
-hashcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
-{
-	struct tblentry **pp;
-	struct tblentry *cmdp;
-	int c;
-	struct cmdentry entry;
-	char *name;
-
-	if (nextopt("r") != '\0') {
-		clearcmdentry();
-		return 0;
-	}
-
-	if (*argptr == NULL) {
-		for (pp = cmdtable; pp < &cmdtable[CMDTABLESIZE]; pp++) {
-			for (cmdp = *pp; cmdp; cmdp = cmdp->next) {
-				if (cmdp->cmdtype == CMDNORMAL)
-					printentry(cmdp);
-			}
-		}
-		return 0;
-	}
-
-	c = 0;
-	while ((name = *argptr) != NULL) {
-		cmdp = cmdlookup(name, 0);
-		if (cmdp != NULL
-		 && (cmdp->cmdtype == CMDNORMAL
-		    || (cmdp->cmdtype == CMDBUILTIN
-			&& !IS_BUILTIN_REGULAR(cmdp->param.cmd)
-			&& builtinloc > 0
-			)
-		    )
-		) {
-			delete_cmd_entry();
-		}
-		find_command(name, &entry, DO_ERR, pathval());
-		if (entry.cmdtype == CMDUNKNOWN)
-			c = 1;
-		argptr++;
-	}
-	return c;
 }
 
 /*
@@ -9757,6 +9616,315 @@ changepath(const char *newval)
 	builtinloc = bltin;
 	clearcmdentry();
 }
+
+
+/*
+ * find_command()
+ */
+/* action to find_command() */
+#define DO_ERR          0x01    /* prints errors */
+#define DO_ABS          0x02    /* checks absolute paths */
+#define DO_NOFUNC       0x04    /* don't return shell functions, for command */
+#define DO_ALTPATH      0x08    /* using alternate path */
+#define DO_REGBLTIN     0x10    /* regular built-ins and functions only */
+
+static int
+test_exec(/*const char *fullname,*/ struct stat *statb)
+{
+	/*
+	 * TODO: use faccessat(AT_FDCWD, fullname, X_OK, AT_EACCESS)
+	 * instead: executability may depend on ACLs, capabilities
+	 * and who knows what else, not just mode bits.
+	 * (faccessat2 syscall was added to Linux in May 14 2020)
+	 */
+	mode_t stmode;
+	uid_t euid;
+	enum { ANY_IX = S_IXUSR | S_IXGRP | S_IXOTH };
+
+	/* Do we already know with no extra syscalls? */
+	if (!S_ISREG(statb->st_mode))
+		return 0; /* not a regular file */
+	if ((statb->st_mode & ANY_IX) == 0)
+		return 0; /* no one can execute */
+	if ((statb->st_mode & ANY_IX) == ANY_IX)
+		return 1; /* anyone can execute */
+
+	/* Executability depends on our euid/egid/supplementary groups */
+	stmode = S_IXOTH;
+	euid = get_cached_euid(&groupinfo.euid);
+	if (euid == 0)
+		/* for root user, any X bit is good enough */
+		stmode = ANY_IX;
+	else if (statb->st_uid == euid)
+		stmode = S_IXUSR;
+	else if (statb->st_gid == get_cached_egid(&groupinfo.egid))
+		stmode = S_IXGRP;
+	else if (is_in_supplementary_groups(&groupinfo, statb->st_gid))
+		stmode = S_IXGRP;
+
+	return statb->st_mode & stmode;
+}
+
+/* Circular dep: find_command->find_builtin->builtintab[]->hashcmd->find_command */
+static struct builtincmd *find_builtin(const char *name);
+#if ENABLE_ASH_BASH_NOT_FOUND_HOOK
+static int evalfun(struct funcnode *func, int argc, char **argv, int flags);
+#endif
+static void readcmdfile(char *name);
+
+/*
+ * Resolve a command name.  If you change this routine, you may have to
+ * change the shellexec routine as well.
+ */
+static void
+find_command(char *name, struct cmdentry *entry, int act, const char *path)
+{
+	struct tblentry **cmdpp;
+	struct tblentry *cmdp;
+	int idx;
+	int prev;
+	char *fullname;
+	struct stat statb;
+	int e;
+	int updatetbl;
+	struct builtincmd *bcmd;
+	int len;
+
+#if !ENABLE_PLATFORM_MINGW32
+	/* If name contains a slash, don't use PATH or hash table */
+	if (strchr(name, '/') != NULL) {
+		entry->u.index = -1;
+		if (act & DO_ABS) {
+			while (stat(name, &statb) < 0) {
+#ifdef SYSV
+				if (errno == EINTR)
+					continue;
+#endif
+ absfail:
+				entry->cmdtype = CMDUNKNOWN;
+				return;
+			}
+			if (!test_exec(/*name,*/ &statb))
+				goto absfail;
+		}
+		entry->cmdtype = CMDNORMAL;
+		return;
+	}
+#else /* ENABLE_PLATFORM_MINGW32 */
+	/* If name contains a slash or drive prefix, don't use PATH or hash table */
+	if (has_path(name)) {
+		entry->u.index = -1;
+		entry->cmdtype = CMDNORMAL;
+		fullname = stack_add_ext_space(name);
+		if (add_win32_extension(fullname)) {
+			return;
+		} else if (unix_path(name)) {
+			name = (char *)bb_basename(name);
+			if (
+# if ENABLE_FEATURE_SH_STANDALONE
+					find_applet_by_name_for_sh(name, path) >= 0 ||
+# endif
+					!find_builtin(bb_basename(name))
+			) {
+				act |= DO_NOFUNC;
+			} else if (act & DO_ABS) {
+				entry->cmdtype = CMDUNKNOWN;
+				return;
+			}
+		} else if (act & DO_ABS) {
+			entry->cmdtype = CMDUNKNOWN;
+			return;
+		} else {
+			return;
+		}
+	}
+#endif /* ENABLE_PLATFORM_MINGW32 */
+
+/* #if ENABLE_FEATURE_SH_STANDALONE... moved after builtin check */
+
+	updatetbl = (path == pathval());
+	if (!updatetbl)
+		act |= DO_ALTPATH;
+
+	/* If name is in the table, check answer will be ok */
+	cmdpp = cmdlookup_pp(name, 0);
+	cmdp = *cmdpp;
+	if (cmdp != NULL) {
+		int bit;
+
+		switch (cmdp->cmdtype) {
+		default:
+#if DEBUG
+			abort();
+#endif
+		case CMDNORMAL:
+			bit = DO_ALTPATH | DO_REGBLTIN;
+			break;
+		case CMDFUNCTION:
+			bit = DO_NOFUNC;
+			break;
+		case CMDBUILTIN:
+			bit = IS_BUILTIN_REGULAR(cmdp->param.cmd) ? 0 : DO_REGBLTIN;
+			break;
+		}
+		if (act & bit) {
+			if (act & bit & DO_REGBLTIN)
+				goto fail;
+			updatetbl = 0;
+			cmdp = NULL;
+		} else if (cmdp->rehash == 0)
+			/* if not invalidated by cd, we're done */
+			goto success1;
+		/* else: cmdp->rehash is set: check/possibly delete later */
+	}
+	/* either !cmdp, or cmdp->rehash is set */
+
+	/* If %builtin not in path, check for builtin next */
+	bcmd = find_builtin(name);
+	if (bcmd) {
+		if (IS_BUILTIN_REGULAR(bcmd))
+			goto builtin_success;
+		if (act & DO_ALTPATH)
+			goto builtin_success;
+		if (builtinloc <= 0)
+			goto builtin_success;
+	}
+
+	if (act & DO_REGBLTIN)
+		goto fail;
+
+#if ENABLE_FEATURE_SH_STANDALONE
+	{
+		int applet_no = find_applet_by_name_for_sh(name, path);
+		if (applet_no >= 0) {
+			entry->cmdtype = CMDNORMAL;
+			entry->u.index = -2 - applet_no;
+			return;
+		}
+	}
+#endif
+	/* We have to search path. */
+	prev = -1;              /* where to start */
+	if (cmdp /*TRUE: && cmdp->rehash*/) {
+		/* doing a rehash */
+		if (cmdp->cmdtype == CMDBUILTIN)
+			prev = builtinloc;
+		else
+			prev = cmdp->param.index;
+	}
+
+	e = ENOENT;
+	idx = -1;
+ loop:
+	while ((len = padvance(&path, name)) >= 0) {
+		const char *lpathopt = pathopt;
+
+		fullname = stackblock();
+		idx++;
+		if (lpathopt) {
+			if (*lpathopt == 'b') {
+				if (bcmd)
+					goto builtin_success;
+				continue;
+			} else if (!(act & DO_NOFUNC)) {
+				/* handled below */
+			} else {
+				/* ignore unimplemented options */
+				continue;
+			}
+		}
+		/* if rehash, don't redo absolute path names */
+		if (!is_relative_path(fullname) && idx <= prev) {
+			if (idx < prev)
+				continue;
+			TRACE(("searchexec \"%s\": no change\n", name));
+			goto success;
+		}
+#if ENABLE_PLATFORM_MINGW32
+		add_win32_extension(fullname);
+#endif
+		while (stat(fullname, &statb) < 0) {
+#ifdef SYSV
+			if (errno == EINTR)
+				continue;
+#endif
+			if (errno != ENOENT && errno != ENOTDIR)
+				e = errno;
+			goto loop;
+		}
+		if (lpathopt) {          /* this is a %func directory */
+			stalloc(len);
+			/* NB: stalloc will return space pointed by fullname
+			 * (because we don't have any intervening allocations
+			 * between stunalloc above and this stalloc) */
+			readcmdfile(fullname);
+			cmdp = cmdlookup(name, 0);
+			if (cmdp == NULL || cmdp->cmdtype != CMDFUNCTION)
+				ash_msg_and_raise_error("%s not defined in %s", name, fullname);
+			stunalloc(fullname);
+			goto success;
+		}
+		e = EACCES;     /* if we fail, this will be the error */
+		if (!test_exec(/*fullname,*/ &statb))
+			continue;
+		TRACE(("searchexec \"%s\" returns \"%s\"\n", name, fullname));
+		if (!updatetbl) {
+			entry->cmdtype = CMDNORMAL;
+			entry->u.index = idx;
+			return;
+		}
+		INTOFF;
+		cmdp = cmdlookup(name, 1);
+		cmdp->cmdtype = CMDNORMAL;
+		cmdp->param.index = idx;
+		INTON;
+		goto success;
+	}
+
+	/* We failed.  If there was an entry for this command, delete it */
+	if (cmdp && updatetbl)
+		delete_cmd_entry(cmdpp);
+	if (act & DO_ERR) {
+#if ENABLE_ASH_BASH_NOT_FOUND_HOOK
+		struct tblentry *hookp = cmdlookup("command_not_found_handle", 0);
+		if (hookp && hookp->cmdtype == CMDFUNCTION) {
+			char *argv[3];
+			argv[0] = (char*) "command_not_found_handle";
+			argv[1] = name;
+			argv[2] = NULL;
+			evalfun(hookp->param.func, 2, argv, 0);
+			entry->cmdtype = CMDUNKNOWN;
+			return;
+		}
+#endif
+		ash_msg("%s: %s", name, errmsg(e, E_EXEC));
+	}
+ fail:
+	entry->cmdtype = CMDUNKNOWN;
+	return;
+
+ builtin_success:
+	if (!updatetbl) {
+		entry->cmdtype = CMDBUILTIN;
+		entry->u.cmd = bcmd;
+		return;
+	}
+	INTOFF;
+	cmdp = cmdlookup(name, 1);
+	cmdp->cmdtype = CMDBUILTIN;
+	cmdp->param.cmd = bcmd;
+	INTON;
+ success:
+	cmdp->rehash = 0;
+ success1:
+	entry->cmdtype = cmdp->cmdtype;
+	entry->u = cmdp->param;
+}
+
+
+/*
+ * Parsing.
+ */
 enum {
 	TEOF,
 	TNL,
@@ -9868,19 +10036,14 @@ static const char *const tokname_array[] ALIGN_PTR = {
 	"}",
 };
 
-/* Wrapper around strcmp for qsort/bsearch/... */
-static int
-pstrcmp(const void *a, const void *b)
-{
-	return strcmp((char*)a, *(char**)b);
-}
-
 static const char *const *
 findkwd(const char *s)
 {
-	return bsearch(s, tokname_array + KWDOFFSET,
-			ARRAY_SIZE(tokname_array) - KWDOFFSET,
-			sizeof(tokname_array[0]), pstrcmp);
+	return bsearch(
+		s, tokname_array + KWDOFFSET, ARRAY_SIZE(tokname_array) - KWDOFFSET,
+		sizeof(tokname_array[0]),
+		pstrcmp
+	);
 }
 
 /*
@@ -10879,6 +11042,37 @@ evalfor(union node *n, int flags)
 	return status;
 }
 
+/*
+ * Returns true if the pattern matches the string.
+ */
+static int
+patmatch(char *pattern, const char *string)
+{
+	char *p = preglob(pattern, 0);
+	int r = pmatch(p, string);
+	//bb_error_msg("!fnmatch(pattern:'%s',str:'%s',0):%d", p, string, r);
+	return r;
+}
+
+/*
+ * See if a pattern matches in a case statement.
+ */
+static int
+casematch(union node *pattern, char *val)
+{
+	struct stackmark smark;
+	int result;
+
+	setstackmark(&smark);
+	argbackq = pattern->narg.backquote;
+	STARTSTACKSTR(expdest);
+	argstr(pattern->narg.text, EXP_TILDE | EXP_CASE);
+	ifsfree();
+	result = patmatch(stackblock(), val);
+	popstackmark(&smark);
+	return result;
+}
+
 static int
 evalcase(union node *n, int flags)
 {
@@ -11361,6 +11555,21 @@ evalfun(struct funcnode *func, int argc, char **argv, int flags)
 }
 
 /*
+ * Built-ins.
+ */
+static int FAST_FUNC
+falsecmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+{
+	return 1;
+}
+
+static int FAST_FUNC
+truecmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+{
+	return 0;
+}
+
+/*
  * Make a variable a local variable.  When a variable is made local, it's
  * value and flags are saved in a localvar structure.  The saved values
  * will be restored when the shell function returns.  We handle the name
@@ -11428,9 +11637,6 @@ mklocal(char *name, int flags)
 	INTON;
 }
 
-/*
- * The "local" command.
- */
 static int FAST_FUNC
 localcmd(int argc UNUSED_PARAM, char **argv)
 {
@@ -11443,18 +11649,6 @@ localcmd(int argc UNUSED_PARAM, char **argv)
 	while ((name = *argv++) != NULL) {
 		mklocal(name, 0);
 	}
-	return 0;
-}
-
-static int FAST_FUNC
-falsecmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
-{
-	return 1;
-}
-
-static int FAST_FUNC
-truecmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
-{
 	return 0;
 }
 
@@ -11518,8 +11712,215 @@ returncmd(int argc UNUSED_PARAM, char **argv)
 	return status;
 }
 
+/*
+ * Actually do the chdir.  We also call hashcd to let other routines
+ * know that the current directory has changed.
+ */
+static int
+docd(const char *dest, int flags)
+{
+	const char *dir = NULL;
+	int err;
+
+	TRACE(("docd(\"%s\", %d) called\n", dest, flags));
+
+	INTOFF;
+	if (!(flags & CD_PHYSICAL)) {
+		dir = updatepwd(dest);
+		if (dir)
+			dest = dir;
+	}
+	err = chdir(dest);
+	if (err)
+		goto out;
+	setpwd(dir, 1);
+	hashcd();
+ out:
+	INTON;
+	return err;
+}
+
+static int FAST_FUNC
+cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+{
+	const char *dest;
+	const char *path;
+	const char *p;
+	char c;
+	struct stat statb;
+	int flags;
+	int len;
+
+	flags = cdopt();
+	dest = *argptr;
+	if (!dest)
+		dest = bltinlookup("HOME");
+	else if (LONE_DASH(dest)) {
+		dest = bltinlookup("OLDPWD");
+		flags |= CD_PRINT;
+	}
+	if (!dest)
+		dest = nullstr;
+	if (!is_relative_path(dest))
+		goto step6;
+	if (*dest == '.') {
+		c = dest[1];
+ dotdot:
+		switch (c) {
+		case '\0':
+		case '/':
+			goto step6;
+		case '.':
+			c = dest[2];
+			if (c != '.')
+				goto dotdot;
+		}
+	}
+	if (!*dest)
+		dest = ".";
+	path = bltinlookup("CDPATH");
+	while (p = path, (len = padvance_magic(&path, dest, 0)) >= 0) {
+		c = *p;
+		p = stalloc(len);
+
+		if (stat(p, &statb) >= 0 && S_ISDIR(statb.st_mode)) {
+			if (c && c != PATH_SEP)
+				flags |= CD_PRINT;
+ docd:
+			if (!docd(p, flags))
+				goto out;
+			goto err;
+		}
+	}
+
+ step6:
+	p = dest;
+	goto docd;
+
+ err:
+	ash_msg_and_raise_perror("can't cd to %s", dest);
+	/* NOTREACHED */
+ out:
+	if (flags & CD_PRINT)
+		out1fmt("%s\n", curdir);
+	return 0;
+}
+
+#if ENABLE_PLATFORM_MINGW32
+static void
+print_all_cwd(void)
+{
+	FILE *mnt;
+	struct mntent *entry;
+	char buffer[PATH_MAX];
+
+	mnt = setmntent(bb_path_mtab_file, "r");
+	if (mnt) {
+		while ((entry=getmntent(mnt)) != NULL) {
+			entry->mnt_dir[2] = '\0';
+			if (get_drive_cwd(entry->mnt_dir, buffer, PATH_MAX) != NULL)
+				out1fmt("%s\n", buffer);
+		}
+		endmntent(mnt);
+	}
+}
+#endif
+
+static int FAST_FUNC
+pwdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+{
+	int flags;
+	const char *dir = curdir;
+
+	flags = cdopt();
+#if ENABLE_PLATFORM_MINGW32
+	if (flags & CD_PRINT_ALL) {
+		print_all_cwd();
+		return 0;
+	}
+#endif
+	if (flags) {
+		if (physdir == nullstr)
+			setpwd(dir, 0);
+		dir = physdir;
+	}
+	out1fmt("%s\n", dir);
+	return 0;
+}
+
+static int FAST_FUNC
+hashcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+{
+	struct tblentry **pp;
+	struct tblentry *cmdp;
+	int c;
+	struct cmdentry entry;
+	char *name;
+
+	if (nextopt("r") != '\0') {
+		clearcmdentry();
+		return 0;
+	}
+
+	if (*argptr == NULL) {
+		for (pp = cmdtable; pp < &cmdtable[CMDTABLESIZE]; pp++) {
+			for (cmdp = *pp; cmdp; cmdp = cmdp->next) {
+				if (cmdp->cmdtype == CMDNORMAL)
+					printentry(cmdp);
+			}
+		}
+		return 0;
+	}
+
+	c = 0;
+	while ((name = *argptr) != NULL) {
+		pp = cmdlookup_pp(name, 0);
+		cmdp = *pp;
+		if (cmdp != NULL
+		 && (cmdp->cmdtype == CMDNORMAL
+		    || (cmdp->cmdtype == CMDBUILTIN
+			&& !IS_BUILTIN_REGULAR(cmdp->param.cmd)
+			&& builtinloc > 0
+			)
+		    )
+		) {
+			delete_cmd_entry(pp);
+		}
+		find_command(name, &entry, DO_ERR, pathval());
+		if (entry.cmdtype == CMDUNKNOWN)
+			c = 1;
+		argptr++;
+	}
+	return c;
+}
+
+/*
+ * Handle break and continue commands.  Break, continue, and return are
+ * all handled by setting the evalskip flag.  The evaluation routines
+ * above all check this flag, and if it is set they start skipping
+ * commands rather than executing them.  The variable skipcount is
+ * the number of loops to break/continue, or the number of function
+ * levels to return.  (The latter is always 1.)  It should probably
+ * be an error to break out of more loops than exist, but it isn't
+ * in the standard shell so we don't make it one here.
+ */
+static int FAST_FUNC
+breakcmd(int argc UNUSED_PARAM, char **argv)
+{
+	int n = argv[1] ? number(argv[1]) : 1;
+
+	if (n <= 0)
+		ash_msg_and_raise_error(msg_illnum, argv[1]);
+	if (n > loopnest)
+		n = loopnest;
+	if (n > 0) {
+		evalskip = (**argv == 'c') ? SKIPCONT : SKIPBREAK;
+		skipcount = n;
+	}
+	return 0;
+}
+
 /* Forward declarations for builtintab[] */
-static int breakcmd(int, char **) FAST_FUNC;
 static int dotcmd(int, char **) FAST_FUNC;
 static int evalcmd(int, char **, int) FAST_FUNC;
 static int exitcmd(int, char **) FAST_FUNC;
@@ -11573,114 +11974,106 @@ static int FAST_FUNC sleepcmd(int argc, char **argv)  { return sleep_main(argc, 
 
 /* Keep these in proper order since it is searched via bsearch() */
 static const struct builtincmd builtintab[] = {
-	{ BUILTIN_SPEC_REG      "."       , dotcmd     },
-	{ BUILTIN_SPEC_REG      ":"       , truecmd    },
+	{ BUILTIN_SPEC_REG      "."       +1, dotcmd     },
+	{ BUILTIN_SPEC_REG      ":"       +1, truecmd    },
 #if ENABLE_ASH_TEST
-	{ BUILTIN_REGULAR       "["       , testcmd    },
+	{ BUILTIN_REGULAR       "["       +1, testcmd    },
 #endif
 #if BASH_TEST2
-	{ BUILTIN_REGULAR       "[["      , testcmd    },
+	{ BUILTIN_REGULAR       "[["      +1, testcmd    },
 #endif
 #if ENABLE_ASH_ALIAS
-	{ BUILTIN_REG_ASSG      "alias"   , aliascmd   },
+	{ BUILTIN_REG_ASSG      "alias"   +1, aliascmd   },
 #endif
 #if JOBS
-	{ BUILTIN_REGULAR       "bg"      , fg_bgcmd   },
+	{ BUILTIN_REGULAR       "bg"      +1, fg_bgcmd   },
 #endif
-	{ BUILTIN_SPEC_REG      "break"   , breakcmd   },
-	{ BUILTIN_REGULAR       "cd"      , cdcmd      },
-	{ BUILTIN_NOSPEC        "chdir"   , cdcmd      },
+	{ BUILTIN_SPEC_REG      "break"   +1, breakcmd   },
+	{ BUILTIN_REGULAR       "cd"      +1, cdcmd      },
+#define COMMANDCMD (builtintab + \
+				/* . : */	2 + \
+				/* [ */		1 * ENABLE_ASH_TEST + \
+				/* [[ */	1 * BASH_TEST2 + \
+				/* alias */	1 * ENABLE_ASH_ALIAS + \
+				/* bg */	1 * JOBS + \
+				/* break cd */	2)
 #if ENABLE_ASH_CMDCMD
-	{ BUILTIN_REGULAR       "command" , commandcmd },
+	{ BUILTIN_REGULAR       "command" +1, commandcmd },
 #endif
-	{ BUILTIN_SPEC_REG      "continue", breakcmd   },
+	{ BUILTIN_SPEC_REG      "continue"+1, breakcmd   },
 #if ENABLE_ASH_ECHO
-	{ BUILTIN_REGULAR       "echo"    , echocmd    },
+	{ BUILTIN_REGULAR       "echo"    +1, echocmd    },
 #endif
-	{ BUILTIN_SPEC_REG      "eval"    , NULL       }, /*evalcmd() has a differing prototype*/
-	{ BUILTIN_SPEC_REG      "exec"    , execcmd    },
-	{ BUILTIN_SPEC_REG      "exit"    , exitcmd    },
-	{ BUILTIN_SPEC_REG_ASSG "export"  , exportcmd  },
-	{ BUILTIN_REGULAR       "false"   , falsecmd   },
+#define EVALCMD (COMMANDCMD + \
+				/* command */	1 * ENABLE_ASH_CMDCMD + \
+				/* continue */	1 + \
+				/* echo */	1 * ENABLE_ASH_ECHO + \
+				0)
+	{ BUILTIN_SPEC_REG      "eval"    +1, NULL       }, /*evalcmd() has a differing prototype*/
+#define EXECCMD (EVALCMD + \
+				/* eval */	1)
+	{ BUILTIN_SPEC_REG      "exec"    +1, execcmd    },
+	{ BUILTIN_SPEC_REG      "exit"    +1, exitcmd    },
+	{ BUILTIN_SPEC_REG_ASSG "export"  +1, exportcmd  },
+	{ BUILTIN_REGULAR       "false"   +1, falsecmd   },
 #if JOBS
-	{ BUILTIN_REGULAR       "fg"      , fg_bgcmd   },
+	{ BUILTIN_REGULAR       "fg"      +1, fg_bgcmd   },
 #endif
 #if ENABLE_ASH_GETOPTS
-	{ BUILTIN_REGULAR       "getopts" , getoptscmd },
+	{ BUILTIN_REGULAR       "getopts" +1, getoptscmd },
 #endif
-	{ BUILTIN_REGULAR       "hash"    , hashcmd    },
+	{ BUILTIN_REGULAR       "hash"    +1, hashcmd    },
 #if ENABLE_ASH_HELP
-	{ BUILTIN_NOSPEC        "help"    , helpcmd    },
+	{ BUILTIN_NOSPEC        "help"    +1, helpcmd    },
 #endif
 #if MAX_HISTORY
-	{ BUILTIN_NOSPEC        "history" , historycmd },
+	{ BUILTIN_NOSPEC        "history" +1, historycmd },
 #endif
 #if JOBS || JOBS_WIN32
-	{ BUILTIN_REGULAR       "jobs"    , jobscmd    },
-	{ BUILTIN_REGULAR       "kill"    , killcmd    },
+	{ BUILTIN_REGULAR       "jobs"    +1, jobscmd    },
+	{ BUILTIN_REGULAR       "kill"    +1, killcmd    },
 #endif
 #if ENABLE_FEATURE_SH_MATH
-	{ BUILTIN_NOSPEC        "let"     , letcmd     },
+	{ BUILTIN_NOSPEC        "let"     +1, letcmd     },
 #endif
-	{ BUILTIN_SPEC_REG_ASSG "local"   , localcmd   },
+	{ BUILTIN_SPEC_REG_ASSG "local"   +1, localcmd   },
 #if ENABLE_ASH_PRINTF
-	{ BUILTIN_REGULAR       "printf"  , printfcmd  },
+	{ BUILTIN_REGULAR       "printf"  +1, printfcmd  },
 #endif
-	{ BUILTIN_REGULAR       "pwd"     , pwdcmd     },
-	{ BUILTIN_REGULAR       "read"    , readcmd    },
-	{ BUILTIN_SPEC_REG_ASSG "readonly", exportcmd  },
-	{ BUILTIN_SPEC_REG      "return"  , returncmd  },
-	{ BUILTIN_SPEC_REG      "set"     , setcmd     },
-	{ BUILTIN_SPEC_REG      "shift"   , shiftcmd   },
+	{ BUILTIN_REGULAR       "pwd"     +1, pwdcmd     },
+	{ BUILTIN_REGULAR       "read"    +1, readcmd    },
+	{ BUILTIN_SPEC_REG_ASSG "readonly"+1, exportcmd  },
+	{ BUILTIN_SPEC_REG      "return"  +1, returncmd  },
+	{ BUILTIN_SPEC_REG      "set"     +1, setcmd     },
+	{ BUILTIN_SPEC_REG      "shift"   +1, shiftcmd   },
 #if ENABLE_ASH_SLEEP
-	{ BUILTIN_REGULAR       "sleep"   , sleepcmd   },
+	{ BUILTIN_REGULAR       "sleep"   +1, sleepcmd   },
 #endif
 #if BASH_SOURCE
-	{ BUILTIN_SPEC_REG      "source"  , dotcmd     },
+	{ BUILTIN_SPEC_REG      "source"  +1, dotcmd     },
 #endif
 #if ENABLE_ASH_TEST
-	{ BUILTIN_REGULAR       "test"    , testcmd    },
+	{ BUILTIN_REGULAR       "test"    +1, testcmd    },
 #endif
-	{ BUILTIN_SPEC_REG      "times"   , timescmd   },
+	{ BUILTIN_SPEC_REG      "times"   +1, timescmd   },
 #if ENABLE_PLATFORM_MINGW32
-	{ BUILTIN_REGULAR       "title"   , titlecmd   },
+	{ BUILTIN_REGULAR       "title"   +1, titlecmd   },
 #endif
-	{ BUILTIN_SPEC_REG      "trap"    , trapcmd    },
-	{ BUILTIN_REGULAR       "true"    , truecmd    },
-	{ BUILTIN_REGULAR       "type"    , typecmd    },
-	{ BUILTIN_REGULAR       "ulimit"  , ulimitcmd  },
-	{ BUILTIN_REGULAR       "umask"   , umaskcmd   },
+	{ BUILTIN_SPEC_REG      "trap"    +1, trapcmd    },
+	{ BUILTIN_REGULAR       "true"    +1, truecmd    },
+	{ BUILTIN_REGULAR       "type"    +1, typecmd    },
+	{ BUILTIN_REGULAR       "ulimit"  +1, ulimitcmd  },
+	{ BUILTIN_REGULAR       "umask"   +1, umaskcmd   },
 #if ENABLE_ASH_ALIAS
-	{ BUILTIN_REGULAR       "unalias" , unaliascmd },
+	{ BUILTIN_REGULAR       "unalias" +1, unaliascmd },
 #endif
-	{ BUILTIN_SPEC_REG      "unset"   , unsetcmd   },
-	{ BUILTIN_REGULAR       "wait"    , waitcmd    },
+	{ BUILTIN_SPEC_REG      "unset"   +1, unsetcmd   },
+	{ BUILTIN_REGULAR       "wait"    +1, waitcmd    },
 };
-
-/* Should match the above table! */
-#define COMMANDCMD (builtintab + \
-	/* . : */	2 + \
-	/* [ */		1 * ENABLE_ASH_TEST + \
-	/* [[ */	1 * BASH_TEST2 + \
-	/* alias */	1 * ENABLE_ASH_ALIAS + \
-	/* bg */	1 * JOBS + \
-	/* break cd cddir  */	3)
-#define EVALCMD (COMMANDCMD + \
-	/* command */	1 * ENABLE_ASH_CMDCMD + \
-	/* continue */	1 + \
-	/* echo */	1 * ENABLE_ASH_ECHO + \
-	0)
-#define EXECCMD (EVALCMD + \
-	/* eval */	1)
 
 /*
  * Search the table of builtin commands.
  */
-static int
-pstrcmp1(const void *a, const void *b)
-{
-	return strcmp((char*)a, *(char**)b + 1);
-}
 static struct builtincmd *
 find_builtin(const char *name)
 {
@@ -11688,7 +12081,7 @@ find_builtin(const char *name)
 
 	bp = bsearch(
 		name, builtintab, ARRAY_SIZE(builtintab), sizeof(builtintab[0]),
-		pstrcmp1
+		pstrcmp
 	);
 	return bp;
 }
@@ -11749,7 +12142,7 @@ static int
 evalcommand(union node *cmd, int flags)
 {
 	static const struct builtincmd null_bltin = {
-		BUILTIN_REGULAR "", bltincmd
+		BUILTIN_REGULAR ""+1, bltincmd
 	};
 	struct localvar_list *localvar_stop;
 	struct parsefile *file_stop;
@@ -12045,6 +12438,10 @@ evalcommand(union node *cmd, int flags)
 			jp = vforkexec(cmd, argv, path, cmdentry.u.index);
 			break;
 		}
+		/* Testcase: ash -c 'ONE_CMD' will use EV_EXIT for ONE_CMD */
+		shlvl++;            /* dash does not need it because it doesn't ignore SIGQUIT */
+		setsignal(SIGQUIT); /* we do (bash compat) */
+		//TODO: setsignal(TSTP,TTOU,INT,TERM) too?
 #endif
 		shellexec(argv[0], argv, path, cmdentry.u.index, FALSE);
 		/* NOTREACHED */
@@ -12141,43 +12538,9 @@ prehash(union node *n)
 }
 
 
-/* ============ Builtin commands
- *
- * Builtin commands whose functions are closely tied to evaluation
- * are implemented here.
- */
-
-/*
- * Handle break and continue commands.  Break, continue, and return are
- * all handled by setting the evalskip flag.  The evaluation routines
- * above all check this flag, and if it is set they start skipping
- * commands rather than executing them.  The variable skipcount is
- * the number of loops to break/continue, or the number of function
- * levels to return.  (The latter is always 1.)  It should probably
- * be an error to break out of more loops than exist, but it isn't
- * in the standard shell so we don't make it one here.
- */
-static int FAST_FUNC
-breakcmd(int argc UNUSED_PARAM, char **argv)
-{
-	int n = argv[1] ? number(argv[1]) : 1;
-
-	if (n <= 0)
-		ash_msg_and_raise_error(msg_illnum, argv[1]);
-	if (n > loopnest)
-		n = loopnest;
-	if (n > 0) {
-		evalskip = (**argv == 'c') ? SKIPCONT : SKIPBREAK;
-		skipcount = n;
-	}
-	return 0;
-}
-
-
 /*
  * This implements the input routines used by the parser.
  */
-
 enum {
 	INPUT_PUSH_FILE = 1,
 	INPUT_NOFILE_OK = 2,
@@ -12785,7 +13148,6 @@ setinputstring(char *string)
 /*
  * Routines to check for mail.
  */
-
 #if ENABLE_ASH_MAIL
 
 /* Hash of mtimes of mailboxes */
@@ -15187,8 +15549,7 @@ cmdloop(int top)
 			numeof++;
 		} else {
 			int i;
-
-#if !ENABLE_PLATFORM_MINGW32
+#if JOBS
 			/* job_warning can only be 2,1,0. Here 2->1, 1/0->0 */
 			job_warning >>= 1;
 #endif
@@ -15208,6 +15569,21 @@ cmdloop(int top)
 	return status;
 }
 
+/*
+ * Read a file containing shell functions.
+ */
+static void
+readcmdfile(char *name)
+{
+	setinputfile(name, INPUT_PUSH_FILE);
+	cmdloop(0);
+	popfile();
+}
+
+
+/*
+ * Built-ins.
+ */
 /*
  * Take commands from a file.  To be compatible we should do a path
  * search for the file, which is necessary to find sub-commands.
@@ -15319,303 +15695,9 @@ exitcmd(int argc UNUSED_PARAM, char **argv)
 	/* NOTREACHED */
 }
 
-/*
- * Read a file containing shell functions.
- */
-static void
-readcmdfile(char *name)
-{
-	setinputfile(name, INPUT_PUSH_FILE);
-	cmdloop(0);
-	popfile();
-}
-
-
-/* ============ find_command inplementation */
-
-static int test_exec(/*const char *fullname,*/ struct stat *statb)
-{
-	/*
-	 * TODO: use faccessat(AT_FDCWD, fullname, X_OK, AT_EACCESS)
-	 * instead: executability may depend on ACLs, capabilities
-	 * and who knows what else, not just mode bits.
-	 * (faccessat2 syscall was added to Linux in May 14 2020)
-	 */
-	mode_t stmode;
-	uid_t euid;
-	enum { ANY_IX = S_IXUSR | S_IXGRP | S_IXOTH };
-
-	/* Do we already know with no extra syscalls? */
-	if (!S_ISREG(statb->st_mode))
-		return 0; /* not a regular file */
-	if ((statb->st_mode & ANY_IX) == 0)
-		return 0; /* no one can execute */
-	if ((statb->st_mode & ANY_IX) == ANY_IX)
-		return 1; /* anyone can execute */
-
-	/* Executability depends on our euid/egid/supplementary groups */
-	stmode = S_IXOTH;
-	euid = get_cached_euid(&groupinfo.euid);
-	if (euid == 0)
-		/* for root user, any X bit is good enough */
-		stmode = ANY_IX;
-	else if (statb->st_uid == euid)
-		stmode = S_IXUSR;
-	else if (statb->st_gid == get_cached_egid(&groupinfo.egid))
-		stmode = S_IXGRP;
-	else if (is_in_supplementary_groups(&groupinfo, statb->st_gid))
-		stmode = S_IXGRP;
-
-	return statb->st_mode & stmode;
-}
 
 /*
- * Resolve a command name.  If you change this routine, you may have to
- * change the shellexec routine as well.
- */
-static void
-find_command(char *name, struct cmdentry *entry, int act, const char *path)
-{
-	struct tblentry *cmdp;
-	int idx;
-	int prev;
-	char *fullname;
-	struct stat statb;
-	int e;
-	int updatetbl;
-	struct builtincmd *bcmd;
-	int len;
-
-#if !ENABLE_PLATFORM_MINGW32
-	/* If name contains a slash, don't use PATH or hash table */
-	if (strchr(name, '/') != NULL) {
-		entry->u.index = -1;
-		if (act & DO_ABS) {
-			while (stat(name, &statb) < 0) {
-#ifdef SYSV
-				if (errno == EINTR)
-					continue;
-#endif
- absfail:
-				entry->cmdtype = CMDUNKNOWN;
-				return;
-			}
-			if (!test_exec(/*name,*/ &statb))
-				goto absfail;
-		}
-		entry->cmdtype = CMDNORMAL;
-		return;
-	}
-#else /* ENABLE_PLATFORM_MINGW32 */
-	/* If name contains a slash or drive prefix, don't use PATH or hash table */
-	if (has_path(name)) {
-		entry->u.index = -1;
-		entry->cmdtype = CMDNORMAL;
-		fullname = stack_add_ext_space(name);
-		if (add_win32_extension(fullname)) {
-			return;
-		} else if (unix_path(name)) {
-			name = (char *)bb_basename(name);
-			if (
-# if ENABLE_FEATURE_SH_STANDALONE
-					find_applet_by_name_for_sh(name, path) >= 0 ||
-# endif
-					!find_builtin(bb_basename(name))
-			) {
-				act |= DO_NOFUNC;
-			} else if (act & DO_ABS) {
-				entry->cmdtype = CMDUNKNOWN;
-				return;
-			}
-		} else if (act & DO_ABS) {
-			entry->cmdtype = CMDUNKNOWN;
-			return;
-		} else {
-			return;
-		}
-	}
-#endif /* ENABLE_PLATFORM_MINGW32 */
-
-/* #if ENABLE_FEATURE_SH_STANDALONE... moved after builtin check */
-
-	updatetbl = (path == pathval());
-	if (!updatetbl)
-		act |= DO_ALTPATH;
-
-	/* If name is in the table, check answer will be ok */
-	cmdp = cmdlookup(name, 0);
-	if (cmdp != NULL) {
-		int bit;
-
-		switch (cmdp->cmdtype) {
-		default:
-#if DEBUG
-			abort();
-#endif
-		case CMDNORMAL:
-			bit = DO_ALTPATH | DO_REGBLTIN;
-			break;
-		case CMDFUNCTION:
-			bit = DO_NOFUNC;
-			break;
-		case CMDBUILTIN:
-			bit = IS_BUILTIN_REGULAR(cmdp->param.cmd) ? 0 : DO_REGBLTIN;
-			break;
-		}
-		if (act & bit) {
-			if (act & bit & DO_REGBLTIN)
-				goto fail;
-
-			updatetbl = 0;
-			cmdp = NULL;
-		} else if (cmdp->rehash == 0)
-			/* if not invalidated by cd, we're done */
-			goto success;
-	}
-
-	/* If %builtin not in path, check for builtin next */
-	bcmd = find_builtin(name);
-	if (bcmd) {
-		if (IS_BUILTIN_REGULAR(bcmd))
-			goto builtin_success;
-		if (act & DO_ALTPATH)
-			goto builtin_success;
-		if (builtinloc <= 0)
-			goto builtin_success;
-	}
-
-	if (act & DO_REGBLTIN)
-		goto fail;
-
-#if ENABLE_FEATURE_SH_STANDALONE
-	{
-		int applet_no = find_applet_by_name_for_sh(name, path);
-		if (applet_no >= 0) {
-			entry->cmdtype = CMDNORMAL;
-			entry->u.index = -2 - applet_no;
-			return;
-		}
-	}
-#endif
-
-	/* We have to search path. */
-	prev = -1;              /* where to start */
-	if (cmdp && cmdp->rehash) {     /* doing a rehash */
-		if (cmdp->cmdtype == CMDBUILTIN)
-			prev = builtinloc;
-		else
-			prev = cmdp->param.index;
-	}
-
-	e = ENOENT;
-	idx = -1;
- loop:
-	while ((len = padvance(&path, name)) >= 0) {
-		const char *lpathopt = pathopt;
-
-		fullname = stackblock();
-		idx++;
-		if (lpathopt) {
-			if (*lpathopt == 'b') {
-				if (bcmd)
-					goto builtin_success;
-				continue;
-			} else if (!(act & DO_NOFUNC)) {
-				/* handled below */
-			} else {
-				/* ignore unimplemented options */
-				continue;
-			}
-		}
-		/* if rehash, don't redo absolute path names */
-		if (!is_relative_path(fullname) && idx <= prev) {
-			if (idx < prev)
-				continue;
-			TRACE(("searchexec \"%s\": no change\n", name));
-			goto success;
-		}
-#if ENABLE_PLATFORM_MINGW32
-		add_win32_extension(fullname);
-#endif
-		while (stat(fullname, &statb) < 0) {
-#ifdef SYSV
-			if (errno == EINTR)
-				continue;
-#endif
-			if (errno != ENOENT && errno != ENOTDIR)
-				e = errno;
-			goto loop;
-		}
-		if (lpathopt) {          /* this is a %func directory */
-			stalloc(len);
-			/* NB: stalloc will return space pointed by fullname
-			 * (because we don't have any intervening allocations
-			 * between stunalloc above and this stalloc) */
-			readcmdfile(fullname);
-			cmdp = cmdlookup(name, 0);
-			if (cmdp == NULL || cmdp->cmdtype != CMDFUNCTION)
-				ash_msg_and_raise_error("%s not defined in %s", name, fullname);
-			stunalloc(fullname);
-			goto success;
-		}
-		e = EACCES;     /* if we fail, this will be the error */
-		if (!test_exec(/*fullname,*/ &statb))
-			continue;
-		TRACE(("searchexec \"%s\" returns \"%s\"\n", name, fullname));
-		if (!updatetbl) {
-			entry->cmdtype = CMDNORMAL;
-			entry->u.index = idx;
-			return;
-		}
-		INTOFF;
-		cmdp = cmdlookup(name, 1);
-		cmdp->cmdtype = CMDNORMAL;
-		cmdp->param.index = idx;
-		INTON;
-		goto success;
-	}
-
-	/* We failed.  If there was an entry for this command, delete it */
-	if (cmdp && updatetbl)
-		delete_cmd_entry();
-	if (act & DO_ERR) {
-#if ENABLE_ASH_BASH_NOT_FOUND_HOOK
-		struct tblentry *hookp = cmdlookup("command_not_found_handle", 0);
-		if (hookp && hookp->cmdtype == CMDFUNCTION) {
-			char *argv[3];
-			argv[0] = (char*) "command_not_found_handle";
-			argv[1] = name;
-			argv[2] = NULL;
-			evalfun(hookp->param.func, 2, argv, 0);
-			entry->cmdtype = CMDUNKNOWN;
-			return;
-		}
-#endif
-		ash_msg("%s: %s", name, errmsg(e, E_EXEC));
-	}
- fail:
-	entry->cmdtype = CMDUNKNOWN;
-	return;
-
- builtin_success:
-	if (!updatetbl) {
-		entry->cmdtype = CMDBUILTIN;
-		entry->u.cmd = bcmd;
-		return;
-	}
-	INTOFF;
-	cmdp = cmdlookup(name, 1);
-	cmdp->cmdtype = CMDBUILTIN;
-	cmdp->param.cmd = bcmd;
-	INTON;
- success:
-	cmdp->rehash = 0;
-	entry->cmdtype = cmdp->cmdtype;
-	entry->u = cmdp->param;
-}
-
-/*
- * The trap builtin.
+ * Built-ins.
  */
 static int FAST_FUNC
 trapcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
@@ -15716,8 +15798,6 @@ trapcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	return exitcode;
 }
 
-
-/* ============ Builtins */
 
 #if ENABLE_ASH_HELP
 static int FAST_FUNC
@@ -15848,11 +15928,13 @@ exportcmd(int argc UNUSED_PARAM, char **argv)
 static void
 unsetfunc(const char *name)
 {
+	struct tblentry **cmdpp;
 	struct tblentry *cmdp;
 
-	cmdp = cmdlookup(name, 0);
+	cmdpp = cmdlookup_pp(name, 0);
+	cmdp = *cmdpp;
 	if (cmdp != NULL && cmdp->cmdtype == CMDFUNCTION)
-		delete_cmd_entry();
+		delete_cmd_entry(cmdpp);
 }
 
 /*
@@ -16527,6 +16609,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		bb_error_msg_and_die("forkshell failed");
 	}
 #endif
+	dbg_show_dirtymem("dirtymem at main start");
 
 	/* Initialize global data */
 	INIT_G_misc();
@@ -16676,6 +16759,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		//  ash -sc 'echo $-'
 		// continue reading input from stdin after running 'echo'.
 		// bash does not do this: it prints "hBcs" and exits.
+		dbg_show_dirtymem("dirtymem before -c CMD");
 #if !ENABLE_PLATFORM_MINGW32
 		evalstring(minusc, EV_EXIT);
 #else
@@ -16712,6 +16796,7 @@ int ash_main(int argc UNUSED_PARAM, char **argv)
 		}
 #endif
  state4: /* XXX ??? - why isn't this before the "if" statement */
+		dbg_show_dirtymem("dirtymem at cmdloop");
 		cmdloop(1);
 	}
 #if PROFILE
