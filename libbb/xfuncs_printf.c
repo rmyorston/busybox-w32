@@ -629,6 +629,7 @@ char* FAST_FUNC xmalloc_ttyname(int fd)
 		return NULL;
 	return xstrdup(buf);
 }
+#endif /* !ENABLE_PLATFORM_MINGW32 */
 
 void FAST_FUNC generate_uuid(uint8_t *buf)
 {
@@ -667,8 +668,7 @@ void FAST_FUNC generate_uuid(uint8_t *buf)
 	 */
 	pid_t pid;
 	int i;
-
-	open_read_close("/dev/urandom", buf, 16);
+	MINGW_SPECIAL(open_read_close)("/dev/urandom", buf, 16);
 	/* Paranoia. /dev/urandom may be missing.
 	 * rand() is guaranteed to generate at least [0, 2^15) range,
 	 * but lowest bits in some libc are not so "random".
@@ -703,6 +703,7 @@ void FAST_FUNC format_uuid_DCE_37_chars(char *dst37, const uint8_t *buf)
 	);
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 #if BB_MMU
 pid_t FAST_FUNC xfork(void)
 {
