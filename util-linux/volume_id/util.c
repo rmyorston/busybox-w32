@@ -158,13 +158,7 @@ set:
 			buf[3], buf[2], buf[1], buf[0]);
 		break;
 	case UUID_DCE:
-		sprintf(id->uuid,
-			"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-			buf[0], buf[1], buf[2], buf[3],
-			buf[4], buf[5],
-			buf[6], buf[7],
-			buf[8], buf[9],
-			buf[10], buf[11], buf[12], buf[13], buf[14], buf[15]);
+		format_uuid_DCE_37_chars(id->uuid, buf);
 		break;
 	case UUID_DCE_STRING:
 		memcpy(id->uuid, buf, count);
@@ -181,6 +175,12 @@ void *volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t len)
 	uint8_t *dst;
 	unsigned small_off;
 	ssize_t read_len;
+
+	if (id->known_size != UNKNOWN_SIZE
+	 && id->known_size < off + len
+	) {
+		return NULL;
+	}
 
 	dbg("get buffer off 0x%llx(%llu), len 0x%zx",
 		(unsigned long long) off, (unsigned long long) off, len);
@@ -230,21 +230,29 @@ void *volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t len)
  do_read:
 	if (lseek(id->fd, off, SEEK_SET) != off) {
 		dbg("seek(0x%llx) failed", (unsigned long long) off);
+		off = lseek(id->fd, 0, SEEK_END);
+		if (off < 0)
+			off = 0;
 		goto err;
 	}
 	read_len = full_read(id->fd, dst, len);
 	if (read_len != len) {
 		dbg("requested 0x%x bytes, got 0x%x bytes",
 				(unsigned) len, (unsigned) read_len);
+		if (read_len > 0)
+			off += read_len;
  err:
-		/* No filesystem can be this tiny. It's most likely
-		 * non-associated loop device, empty drive and so on.
-		 * Flag it, making it possible to short circuit future
-		 * accesses. Rationale:
-		 * users complained of slow blkid due to empty floppy drives.
-		 */
-		if (off < 64*1024)
-			id->error = 1;
+		/* The image is definitely only OFF bytes large */
+		if (off < UNKNOWN_SIZE) {
+			/* ...and OFF is small, we can use
+			 * that knowledge to skip future probes:
+			 * cases such as non-associated loop devices,
+			 * empty (floppy) drives and so on.
+			 * Record it, avoiding future accesses. Users
+			 * complained of slow blkid due to empty floppys.
+			 */
+			id->known_size = off;
+		}
 		/* id->seekbuf_len or id->sbbuf_len is wrong now! Fixing. */
 		volume_id_free_buffer(id);
 		return NULL;

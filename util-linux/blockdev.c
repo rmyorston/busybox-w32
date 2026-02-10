@@ -25,8 +25,11 @@
 //usage:     "\n	--getbsz	Get block size"
 //usage:     "\n	--setbsz BYTES	Set block size"
 //usage:     "\n	--getsz		Get device size in 512-byte sectors"
-///////:     "\n	--getsize	Get device size in sectors (deprecated)"
+///////:     "\n	--getsize	Get device size in 512-byte sectors (deprecated)"
 ///////^^^^^ supported, but not shown in help ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/////// --getsz is BLKGETSIZE64 / 512
+/////// --getsize is BLKGETSIZE which returns size in 512 blocks (not ioctl(BLKSSZ) sized blocks!)
+/////// they should be the same, modulo BLKGETSIZE not fitting its result into unsigned long (32 bit longs + >2TB disk)
 //usage:     "\n	--getsize64	Get device size in bytes"
 //usage:     "\n	--getra		Get readahead in 512-byte sectors"
 //usage:     "\n	--setra SECTORS	Set readahead"

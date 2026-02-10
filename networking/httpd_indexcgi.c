@@ -152,44 +152,16 @@ static int compare_dl(dir_list_t **aa, dir_list_t **bb)
 	return strcmp(a->d_name, b->d_name);
 }
 
-enum {
-	/* Must be >= 64k (all Linux arches have pages <= 64k) */
-	BUFFER_SIZE = 8 * 1024*1024,
-//one dirent is typically <= 100 bytes, 1M is enough for ~10k files
-//FIXME: change code to *iterate* getdents64 if need to support giant file lists
-};
-
-static char *buffer;
-#if 0
-/* Use global "dst" pointer */
-static char *dst;
-# define INIT_DST   dst = buffer;
-# define CHARP      void
-# define CHARP_DST  /*nothing*/
-# define DST        /*nothing*/
-# define SET_DST    /*nothing*/
-# define RETURN_DST ((void)0)
-#else
-/* Propagate "dst" pointer as parameter */
-/* This is usually more efficient (uses a register for it) */
-# define INIT_DST   char *dst = buffer;
-# define CHARP      char*
-# define CHARP_DST  char *dst,
-# define DST        dst,
-# define SET_DST    dst =
-# define RETURN_DST return dst
-#endif
-
 /* NB: formatters do not store terminating NUL! */
 
-static CHARP fmt_str(CHARP_DST const char *src)
+static char *fmt_str(char *dst, const char *src)
 {
 	unsigned len = strlen(src);
 	dst = mempcpy(dst, src, len);
-	RETURN_DST;
+	return dst;
 }
 
-static CHARP fmt_url(CHARP_DST const char *name)
+static char *fmt_url(char *dst, const char *name)
 {
 	while (*name) {
 		unsigned c = (unsigned char)*name++;
@@ -203,29 +175,29 @@ static CHARP fmt_url(CHARP_DST const char *name)
 		}
 		*dst++ = c;
 	}
-	RETURN_DST;
+	return dst;
 }
 
-static CHARP fmt_html(CHARP_DST const char *name)
+static char *fmt_html(char *dst, const char *name)
 {
 	while (*name) {
 		char c = *name++;
 		if (c == '<')
-			SET_DST fmt_str(DST "&lt;");
+			dst = fmt_str(dst, "&lt;");
 		else if (c == '>')
-			SET_DST fmt_str(DST "&gt;");
+			dst = fmt_str(dst, "&gt;");
 		else if (c == '&') {
-			SET_DST fmt_str(DST "&amp;");
+			dst = fmt_str(dst, "&amp;");
 		} else {
 			*dst++ = c;
 			continue;
 		}
 	}
-	RETURN_DST;
+	return dst;
 }
 
 /* HEADROOM bytes are available after dst after this call */
-static CHARP fmt_ull(CHARP_DST unsigned long long n)
+static char *fmt_ull(char *dst, unsigned long long n)
 {
 	char buf[sizeof(n)*3 + 2];
 	char *p;
@@ -236,29 +208,37 @@ static CHARP fmt_ull(CHARP_DST unsigned long long n)
 		*--p = (n % 10) + '0';
 		n /= 10;
 	} while (n);
-	SET_DST fmt_str(DST  p);
-	RETURN_DST;
+	dst = fmt_str(dst,  p);
+	return dst;
 }
 
-static CHARP fmt_02u(CHARP_DST unsigned n)
+static char *fmt_02u(char *dst, unsigned n)
 {
 	/* n %= 100; - not needed, callers don't pass big n */
 	dst[0] = (n / 10) + '0';
 	dst[1] = (n % 10) + '0';
 	dst += 2;
-	RETURN_DST;
+	return dst;
 }
 
-static CHARP fmt_04u(CHARP_DST unsigned n)
+static char *fmt_04u(char *dst, unsigned n)
 {
 	/* n %= 10000; - not needed, callers don't pass big n */
-	SET_DST fmt_02u(DST n / 100);
-	SET_DST fmt_02u(DST n % 100);
-	RETURN_DST;
+	dst = fmt_02u(dst, n / 100);
+	dst = fmt_02u(dst, n % 100);
+	return dst;
 }
+
+enum {
+	/* Must be >= 64k (all Linux arches have pages <= 64k) */
+	BUFFER_SIZE = 8 * 1024*1024,
+//one dirent is typically <= 100 bytes, 1M is enough for ~10k files
+//FIXME: change code to *iterate* getdents64 if need to support giant file lists
+};
 
 int main(int argc, char **argv)
 {
+	char *buffer, *dst;
 	char *location;
 	dir_list_t **dir_list;
 	dir_list_t *cdir;
@@ -343,22 +323,22 @@ int main(int argc, char **argv)
 	qsort(dir_list, dir_list_count, sizeof(dir_list[0]), (void*)compare_dl);
 
 	buffer += 2*BUFFER_SIZE;
-    {
-	INIT_DST
-	SET_DST fmt_str(DST
+	dst = buffer;
+
+	dst = fmt_str(dst,
 		"" /* Additional headers (currently none) */
 		"\r\n" /* Mandatory empty line after headers */
 		"<html><head><title>Index of ");
 	/* Guard against directories with &, > etc */
-	SET_DST fmt_html(DST location);
-	SET_DST fmt_str(DST
+	dst = fmt_html(dst, location);
+	dst = fmt_str(dst,
 		"</title>\n"
 		STYLE_STR
 		"</head>" "\n"
 		"<body>" "\n"
 		"<h1>Index of ");
-	SET_DST fmt_html(DST location);
-	SET_DST fmt_str(DST
+	dst = fmt_html(dst, location);
+	dst = fmt_str(dst,
 		"</h1>" "\n"
 		"<table>" "\n"
 		"<col class=nm><col class=sz><col class=dt>" "\n"
@@ -382,30 +362,30 @@ int main(int argc, char **argv)
 			continue;
 //fprintf(stderr, "%d '%s'\n", dir_list_count, cdir->d_name);
 
-		SET_DST fmt_str(DST "<tr><td class=nm><a href='");
-		SET_DST fmt_url(DST cdir->d_name); /* %20 etc */
+		dst = fmt_str(dst, "<tr><td class=nm><a href='");
+		dst = fmt_url(dst, cdir->d_name); /* %20 etc */
 		if (S_ISDIR(cdir->D_MODE))
 			*dst++ = '/';
-		SET_DST fmt_str(DST "'>");
-		SET_DST fmt_html(DST cdir->d_name); /* &lt; etc */
+		dst = fmt_str(dst, "'>");
+		dst = fmt_html(dst, cdir->d_name); /* &lt; etc */
 		if (S_ISDIR(cdir->D_MODE))
 			*dst++ = '/';
-		SET_DST fmt_str(DST "</a><td class=sz>");
+		dst = fmt_str(dst, "</a><td class=sz>");
 		if (S_ISREG(cdir->D_MODE))
-			SET_DST fmt_ull(DST cdir->D_SIZE);
-		SET_DST fmt_str(DST "<td class=dt>");
+			dst = fmt_ull(dst, cdir->D_SIZE);
+		dst = fmt_str(dst, "<td class=dt>");
 		if (sizeof(cdir->D_MTIME) == sizeof(tt))
 			ptm = gmtime((time_t*)&cdir->D_MTIME);
 		else {
 			tt = cdir->D_MTIME;
 			ptm = gmtime(&tt);
 		}
-		SET_DST fmt_04u(DST 1900 + ptm->tm_year); *dst++ = '-';
-		SET_DST fmt_02u(DST ptm->tm_mon + 1); *dst++ = '-';
-		SET_DST fmt_02u(DST ptm->tm_mday); *dst++ = ' ';
-		SET_DST fmt_02u(DST ptm->tm_hour); *dst++ = ':';
-		SET_DST fmt_02u(DST ptm->tm_min); *dst++ = ':';
-		SET_DST fmt_02u(DST ptm->tm_sec);
+		dst = fmt_04u(dst, 1900 + ptm->tm_year); *dst++ = '-';
+		dst = fmt_02u(dst, ptm->tm_mon + 1); *dst++ = '-';
+		dst = fmt_02u(dst, ptm->tm_mday); *dst++ = ' ';
+		dst = fmt_02u(dst, ptm->tm_hour); *dst++ = ':';
+		dst = fmt_02u(dst, ptm->tm_min); *dst++ = ':';
+		dst = fmt_02u(dst, ptm->tm_sec);
 		*dst++ = '\n';
 
 		/* Flush after every 256 files (typically around 50k of output) */
@@ -415,18 +395,17 @@ int main(int argc, char **argv)
 		}
 	}
 
-	SET_DST fmt_str(DST "<tr class=foot><th class=cnt>Files: ");
-	SET_DST fmt_ull(DST count_files);
+	dst = fmt_str(dst, "<tr class=foot><th class=cnt>Files: ");
+	dst = fmt_ull(dst, count_files);
 	/* count_dirs - 1: we don't want to count ".." */
-	SET_DST fmt_str(DST ", directories: ");
-	SET_DST fmt_ull(DST count_dirs - 1);
-	SET_DST fmt_str(DST "<th class=sz>");
-	SET_DST fmt_ull(DST size_total);
-	SET_DST fmt_str(DST "<th class=dt>\n");
+	dst = fmt_str(dst, ", directories: ");
+	dst = fmt_ull(dst, count_dirs - 1);
+	dst = fmt_str(dst, "<th class=sz>");
+	dst = fmt_ull(dst, size_total);
+	dst = fmt_str(dst, "<th class=dt>\n");
 	/* "</table></body></html>" - why bother? */
 
 	full_write(STDOUT_FILENO, buffer, dst - buffer);
 
 	return 0;
-    }
 }

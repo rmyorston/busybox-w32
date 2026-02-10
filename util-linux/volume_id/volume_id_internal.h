@@ -60,7 +60,9 @@ struct volume_id_partition {
 struct volume_id {
 	int		fd;
 //	int		fd_close:1;
-	int		error;
+	/* UNKNOWN_SIZE: unknown, N: seek+read stopped at N prematurely */
+	unsigned	known_size;
+#define UNKNOWN_SIZE UINT_MAX
 	size_t		sbbuf_len;
 	size_t		seekbuf_len;
 	uint8_t		*sbbuf;
@@ -84,6 +86,18 @@ struct volume_id {
 //	smallint	usage_id;
 //	const char	*usage;
 };
+
+// Technically, the tiniest possible linux FS image (romfs) with only "." and ".." is:
+//00000000 2D 72 6F 6D 31 66 73 2D 00 00 00 60 A1 27 1D 06 -rom1fs-...`.'..
+//00000010 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................
+//00000020 00 00 00 49 00 00 00 20 00 00 00 00 D1 FF FF 97 ...I... ........
+//00000030 2E 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................
+//00000040 00 00 00 00 00 00 00 20 00 00 00 00 D1 D1 FF E0 ....... ........
+//00000050 2E 2E 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ................
+// but kernel won't mount it unless it's padded to 1K.
+// Stop trying new FS types in volume_id_probe_all() outright
+// if a previous probe had a read which stopped before 1K:
+#define MIN_VALID_FS_SIZE 1024
 
 struct volume_id* FAST_FUNC volume_id_open_node(int fd);
 int FAST_FUNC volume_id_probe_all(struct volume_id *id, /*uint64_t off,*/ uint64_t size);

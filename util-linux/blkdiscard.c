@@ -70,6 +70,7 @@ int blkdiscard_main(int argc UNUSED_PARAM, char **argv)
 	if (opts & OPT_LENGTH)
 		length = xatoull_sfx(length_str, kMG_suffixes);
 	else {
+		/* BLKGETSIZE64 takes pointer to uint64_t, not ullong */
 		xioctl(fd, BLKGETSIZE64, &length);
 		length -= offset;
 	}

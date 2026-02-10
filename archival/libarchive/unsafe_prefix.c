@@ -5,11 +5,11 @@
 #include "libbb.h"
 #include "bb_archive.h"
 
-const char* FAST_FUNC strip_unsafe_prefix(const char *str)
+const char* FAST_FUNC skip_unsafe_prefix(const char *str)
 {
 	const char *cp = str;
 	while (1) {
-		char *cp2;
+		const char *cp2;
 		if (*cp == '/') {
 			cp++;
 			continue;
@@ -22,10 +22,25 @@ const char* FAST_FUNC strip_unsafe_prefix(const char *str)
 			cp += 3;
 			continue;
 		}
-		cp2 = strstr(cp, "/../");
+		cp2 = cp;
+ find_dotdot:
+		cp2 = strstr(cp2, "/..");
 		if (!cp2)
-			break;
-		cp = cp2 + 4;
+			break; /* No (more) malicious components */
+
+		/* We found "/..something" */
+		cp2 += 3;
+		if (*cp2 != '/') {
+			if (*cp2 == '\0') {
+				/* Trailing "/..": malicious, return "" */
+				/* (causes harmless errors trying to create or hardlink a file named "") */
+				return cp2;
+			}
+			/* "/..name" is not malicious, look for next "/.." */
+			goto find_dotdot;
+		}
+		/* Found "/../": malicious, advance past it */
+		cp = cp2 + 1;
 	}
 	if (cp != str) {
 		static smallint warned = 0;
@@ -36,4 +51,9 @@ const char* FAST_FUNC strip_unsafe_prefix(const char *str)
 		}
 	}
 	return cp;
+}
+
+void FAST_FUNC strip_unsafe_prefix(char *str)
+{
+	overlapping_strcpy(str, skip_unsafe_prefix(str));
 }

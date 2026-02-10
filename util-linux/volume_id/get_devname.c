@@ -43,6 +43,7 @@ static int
 get_label_uuid(int fd, char **label, char **uuid, const char **type)
 {
 	int rv = 1;
+	/* BLKGETSIZE64 takes pointer to uint64_t, not ullong */
 	uint64_t size;
 	struct volume_id *vid;
 

@@ -180,6 +180,7 @@ static const probe_fptr fs2[] ALIGN_PTR = {
 
 int FAST_FUNC volume_id_probe_all(struct volume_id *id, /*uint64_t off,*/ uint64_t size)
 {
+	int retval = 0;
 	unsigned i;
 
 	/* probe for raid first, cause fs probes may be successful on raid members */
@@ -187,24 +188,26 @@ int FAST_FUNC volume_id_probe_all(struct volume_id *id, /*uint64_t off,*/ uint64
 		for (i = 0; i < ARRAY_SIZE(raid1); i++) {
 			if (raid1[i](id, /*off,*/ size) == 0)
 				goto ret;
-			if (id->error)
-				goto ret;
+			//if (id->known_size < MIN_VALID_FS_SIZE)
+			//	goto ret_bad;
+//Redundant? none of the subsequent probers will succeed
+//(or even attempt reads) if the above is true.
 		}
 	}
 
 	for (i = 0; i < ARRAY_SIZE(raid2); i++) {
 		if (raid2[i](id /*,off*/) == 0)
 			goto ret;
-		if (id->error)
-			goto ret;
+		//if (id->known_size < MIN_VALID_FS_SIZE)
+		//	goto ret_bad;
 	}
 
 	/* signature in the first block, only small buffer needed */
 	for (i = 0; i < ARRAY_SIZE(fs1); i++) {
 		if (fs1[i](id /*,off*/) == 0)
 			goto ret;
-		if (id->error)
-			goto ret;
+		//if (id->known_size < MIN_VALID_FS_SIZE)
+		//	goto ret_bad;
 	}
 
 	/* fill buffer with maximum */
@@ -213,13 +216,14 @@ int FAST_FUNC volume_id_probe_all(struct volume_id *id, /*uint64_t off,*/ uint64
 	for (i = 0; i < ARRAY_SIZE(fs2); i++) {
 		if (fs2[i](id /*,off*/) == 0)
 			goto ret;
-		if (id->error)
-			goto ret;
+		//if (id->known_size < MIN_VALID_FS_SIZE)
+		//	goto ret_bad;
 	}
-
+ //ret_bad:
+	retval = -1; /* "not found" */
  ret:
 	volume_id_free_buffer(id);
-	return (- id->error); /* 0 or -1 */
+	return retval;
 }
 
 /* open volume by device node */
@@ -229,6 +233,7 @@ struct volume_id* FAST_FUNC volume_id_open_node(int fd)
 
 	id = xzalloc(sizeof(struct volume_id));
 	id->fd = fd;
+	id->known_size = UNKNOWN_SIZE;
 	///* close fd on device close */
 	//id->fd_close = 1;
 	return id;

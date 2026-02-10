@@ -66,8 +66,8 @@ void FAST_FUNC data_extract_all(archive_handle_t *archive_handle)
 	}
 #endif
 #if ENABLE_FEATURE_PATH_TRAVERSAL_PROTECTION
-	/* Strip leading "/" and up to last "/../" path component */
-	dst_name = (char *)strip_unsafe_prefix(dst_name);
+	/* Skip leading "/" and past last ".." path component */
+	dst_name = (char *)skip_unsafe_prefix(dst_name);
 #endif
 // ^^^ This may be a problem if some applets do need to extract absolute names.
 // (Probably will need to invent ARCHIVE_ALLOW_UNSAFE_NAME flag).
@@ -185,8 +185,7 @@ void FAST_FUNC data_extract_all(archive_handle_t *archive_handle)
 
 		/* To avoid a directory traversal attack via symlinks,
 		 * do not restore symlinks with ".." components
-		 * or symlinks starting with "/", unless a magic
-		 * envvar is set.
+		 * or symlinks starting with "/"
 		 *
 		 * For example, consider a .tar created via:
 		 *  $ tar cvf bug.tar anything.txt
