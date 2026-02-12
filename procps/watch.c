@@ -19,11 +19,12 @@
 //kbuild:lib-$(CONFIG_WATCH) += watch.o
 
 //usage:#define watch_trivial_usage
-//usage:       "[-n SEC] [-t] PROG ARGS"
+//usage:       "[-n SEC] [-tx] PROG ARGS"
 //usage:#define watch_full_usage "\n\n"
 //usage:       "Run PROG periodically\n"
 //usage:     "\n	-n SEC	Period (default 2)"
 //usage:     "\n	-t	Don't print header"
+//usage:     "\n	-x	exec(PROG,ARGS) instead of sh -c 'PROG ARGS'"
 //usage:
 //usage:#define watch_example_usage
 //usage:       "$ watch date\n"
@@ -56,6 +57,7 @@ int watch_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opt;
 	unsigned width, new_width;
 	char *header;
+	char **argv0;
 	char *cmd;
 
 #if 0 // maybe ENABLE_DESKTOP?
@@ -66,27 +68,32 @@ int watch_main(int argc UNUSED_PARAM, char **argv)
 
 	// "+": stop at first non-option (procps 3.x only); -n NUM
 	// at least one param
-	opt = getopt32(argv, "^+" "dtn:" "\0" "-1", &period_str);
+	opt = getopt32(argv, "^+" "dtn:x" "\0" "-1", &period_str);
 	argv += optind;
 
-	// watch from both procps 2.x and 3.x does concatenation. Example:
-	// watch ls -l "a /tmp" "2>&1" - ls won't see "a /tmp" as one param
+	// watch from both procps 2.x and 3.x concatenates (unless -x).
+	// Example:
+	// watch ls -l "a /tmp" "2>&1" - ls won't see "a /tmp" as one param.
+	argv0 = argv;
+	// If -x, cmd is only used for printing header
 #if ENABLE_PLATFORM_MINGW32
 	cmd = NULL;
 	do {
 		cmd = xappendword(cmd, *argv);
 	} while (*++argv);
 #else
-	cmd = *argv;
+	cmd = xstrdup(*argv);
 	while (*++argv)
-		cmd = xasprintf("%s %s", cmd, *argv); // leaks cmd
+		xasprintf_inplace(cmd, "%s %s", cmd, *argv);
 #endif
+	if (opt & (1 << 3))
+		argv = argv0; // If -x, restore argv[0] to !NULL
 
 	period = parse_duration_str(period_str);
 	width = (unsigned)-1; // make sure first time new_width != width
 	header = NULL;
 	while (1) {
-		/* home; clear to the end of screen */
+		// home; clear to the end of screen
 		printf(ESC"[H" ESC"[J");
 		if (!(opt & 0x2)) { // no -t
 			const unsigned time_len = sizeof("1234-67-90 23:56:89");
@@ -119,7 +126,10 @@ int watch_main(int argc UNUSED_PARAM, char **argv)
 		// TODO: 'real' watch pipes cmd's output to itself
 		// and does not allow it to overflow the screen
 		// (taking into account linewrap!)
-		system(cmd);
+		if (argv[0]) // -x?
+			spawn_and_wait(argv); // yes
+		else
+			system(cmd);
 		sleep_for_duration(period);
 	}
 	return 0; // gcc thinks we can reach this :)

@@ -101,10 +101,10 @@ static char *get_mountpoints(const char *majmin)
 
 	mountpoints = NULL;
 	len = strlen(majmin);
-	p = G.mountinfo; // "/proc/self/mountinfo"
+	p = G.mountinfo; // contents of "/proc/self/mountinfo"
 	/* lines a-la "63 1 259:3 / /MNTPOINT per-mount_options - ext4 /dev/NAME per-superblock_options" */
 	while (*p) {
-		char *e, *f;
+		char *e;
 
 		p = skip_non_whitespace(p);
 		if (*p != ' ') break;
@@ -127,12 +127,11 @@ static char *get_mountpoints(const char *majmin)
 		// at " /MNTPOINT"
 		e = skip_non_whitespace(p + 1);
 		// e is at the end of " /MNTPOINT"
-		f = mountpoints;
 // NO. We return " /MNT1 /MNT2 /MNT3" _with_ leading space!
-//		if (!f)
+//		if (!mountpoints)
 //			p++;
-		mountpoints = xasprintf("%s%.*s", f ? f : "", (int)(e - p), p);
-		free(f);
+		xasprintf_inplace(mountpoints, "%s%.*s",
+			mountpoints ? mountpoints : "", (int)(e - p), p);
 	}
 	return mountpoints;
 }

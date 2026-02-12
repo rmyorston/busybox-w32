@@ -797,7 +797,6 @@ static int lzo1x_999_compress_internal(const uint8_t *in, unsigned in_len,
 		if (swd->use_best_off)
 			better_match(swd, &m_len, &m_off);
 #endif
-
 		/* shall we try a lazy match ? */
 		ahead = 0;
 		if (m_len >= max_lazy) {
@@ -810,7 +809,6 @@ static int lzo1x_999_compress_internal(const uint8_t *in, unsigned in_len,
 			assert(l1 > 0);
 			max_ahead = LZO_MIN(2, (unsigned)l1 - 1);
 		}
-
 
 		while (ahead < max_ahead && c->look > m_len) {
 			int lazy_match_min_gain;

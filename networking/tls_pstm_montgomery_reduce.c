@@ -135,7 +135,7 @@ asm(                                                       \
 	:"0"(_c[LO]), "1"(cy), "r"(mu), "r"(*tmpm++)           \
 	: "%rax", "%rdx", "cc")
 
-#define INNERMUL8				\
+#define INNERMUL8_disabled_for_bbox				\
 asm(							\
 	"movq 0(%5),%%rax    \n\t"  \
 	"movq 0(%2),%%r10    \n\t"  \
@@ -398,7 +398,7 @@ int32 FAST_FUNC pstm_montgomery_reduce(psPool_t *pool, pstm_int *a, pstm_int *m,
 		_c   = c + x;
 		tmpm = m->dp;
 		y = 0;
-#ifdef PSTM_X86_64
+#ifdef INNERMUL8 //bbox: PSTM_X86_64
 		for (; y < (pa & ~7); y += 8) {
 			INNERMUL8;
 			_c   += 8;

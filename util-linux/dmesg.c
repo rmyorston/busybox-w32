@@ -91,7 +91,6 @@ int dmesg_main(int argc UNUSED_PARAM, char **argv)
 	if (len == 0)
 		return EXIT_SUCCESS;
 
-
 	if (ENABLE_FEATURE_DMESG_PRETTY && !(opts & OPT_r)) {
 		int last = '\n';
 		int in = 0;

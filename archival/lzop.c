@@ -208,7 +208,6 @@ static NOINLINE int lzo1x_optimize(uint8_t *in, unsigned in_len,
 		lit = 0;
 		goto match_done;
 
-
 		/* handle matches */
 		do {
 			if (t < 16) { /* a M1 match */

@@ -962,7 +962,6 @@ static void action_compat(const struct devfsd_notify_struct *info, unsigned int 
 			dest_name = dest_buf;
 			compat_name = compat_buf;
 
-
 			/* 1 == scsi/generic  2 == scsi/disc 3 == scsi/cd 6 == ide/host/disc 7 == ide/host/cd */
 			if (i == 1 || i == 2 || i == 3 || i == 6 || i ==7)
 				sprintf(compat_buf, fmt[i], host, bus, target, lun);

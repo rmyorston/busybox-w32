@@ -2941,12 +2941,9 @@ static void i_prepend_to_alias_buffer(struct in_str *i, char *prepend, char ch)
 		 * a
 		 * ^^^ runs "echo A: c"
 		 */
-		char *old = i->albuf;
 		//bb_error_msg("before'%s' p'%s'", i->albuf, i->p);
-		i->albuf = xasprintf("%s%c%s", prepend, ch, i->p);
-		i->p = i->albuf;
+		i->p = xasprintf_inplace(i->albuf, "%s%c%s", prepend, ch, i->p);
 		//bb_error_msg("after'%s' p'%s'", i->albuf, i->p);
-		free(old);
 		return;
 	}
 	i->saved_ibuf = i->p;
