@@ -6939,12 +6939,26 @@ tryexec_applet(int applet_no, int noexec, const char *cmd, char **argv, char **e
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
+static struct builtincmd *find_builtin(const char *name);
 static void
 tryexec(const char *cmd, const char *path, int noexec, char **argv, char **envp)
 {
 #if ENABLE_FEATURE_SH_STANDALONE
     interp_t interp;
+	int applet_no;
 #endif
+
+	if (unix_path(cmd)) {
+		const char *name = bb_basename(cmd);
+# if ENABLE_FEATURE_SH_STANDALONE
+		if ((applet_no = find_applet_by_name_for_sh(name, path)) >= 0) {
+			tryexec_applet(applet_no, noexec, name, argv, envp);
+		}
+# endif
+		if (!find_builtin(name)) {
+			argv[0] = (char *)name;
+		}
+	}
 
 	/* Workaround for libtool, which assumes the host is an MSYS2
 	 * environment and requires special-case escaping for cmd.exe.
@@ -6963,7 +6977,7 @@ tryexec(const char *cmd, const char *path, int noexec, char **argv, char **envp)
 	/* If the command is a script with an interpreter which is an
 	 * applet, we can run it as if it were a noexec applet. */
 	if (parse_interpreter(cmd, &interp)) {
-		int applet_no = find_applet_by_name_for_sh(interp.name, path);
+		applet_no = find_applet_by_name_for_sh(interp.name, path);
 
 		if (applet_no >= 0) {
 			argv[0] = (char *)cmd;
@@ -7034,9 +7048,6 @@ tryexec(const char *cmd, char **argv, char **envp)
  * have to change the find_command routine as well.
  * argv[-1] must exist and be writable! See tryexec() for why.
  */
-#if ENABLE_PLATFORM_MINGW32
-static struct builtincmd *find_builtin(const char *name);
-#endif
 static void shellexec(char *prog, char **argv, const char *path, int idx, int noexec)
 {
 	char *cmdname;
@@ -7069,20 +7080,6 @@ static void shellexec(char *prog, char **argv, const char *path, int idx, int no
 		/* We tried execing ourself, but it didn't work.
 		 * Maybe /proc/self/exe doesn't exist?
 		 */
-#endif
-#if ENABLE_PLATFORM_MINGW32
-		if (unix_path(prog)) {
-			const char *name = bb_basename(prog);
-# if ENABLE_FEATURE_SH_STANDALONE
-			if ((applet_no = find_applet_by_name_for_sh(name, path)) >= 0) {
-				tryexec_applet(applet_no, noexec, name, argv, envp);
-				e = errno;
-			}
-# endif
-			if (!find_builtin(name)) {
-				argv[0] = (char *)name;
-			}
-		}
 #endif
 		e = ENOENT;
 		while (padvance(&path, argv[0]) >= 0) {
