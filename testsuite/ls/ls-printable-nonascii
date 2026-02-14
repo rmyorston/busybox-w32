@@ -1,0 +1,25 @@
+# FEATURE: CONFIG_PLATFORM_MINGW32
+# Test that non-ASCII chars in filenames are displayed, not replaced with '?'
+# Related: commit 8bd8100 - printable chars handling for non-UTF8 code pages
+
+BASEDIR=c:/temp/ls_printable_test$$
+
+# Create file with accented character using PowerShell [char] syntax
+# e-acute = U+00E9, valid in UTF-8 and CP1252
+powershell.exe -Command "
+New-Item -Path '$BASEDIR' -ItemType Directory -Force | Out-Null
+\$e = [char]0x00e9
+New-Item -Path \"$BASEDIR/caf\`\${e}.txt\" -ItemType File -Force | Out-Null
+"
+
+test -d "$BASEDIR" || { echo "directory creation failed"; exit 1; }
+
+# ls should show the actual filename, not 'caf?.txt'
+output=$(busybox ls "$BASEDIR" 2>&1)
+
+# Check that we see something like 'café.txt' and not 'caf?.txt'
+# The filename should contain 'caf' followed by something and '.txt'
+echo "$output" | grep -q 'caf..*\.txt' || { echo "filename not found: $output"; exit 1; }
+echo "$output" | grep -q 'caf?\.txt' && { echo "char replaced with ?: $output"; exit 1; }
+
+busybox rm -rf "$BASEDIR"

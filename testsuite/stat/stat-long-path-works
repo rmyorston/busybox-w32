@@ -1,0 +1,21 @@
+# FEATURE: CONFIG_PLATFORM_MINGW32
+
+BASEDIR=c:/temp/stat_longpath_test$$
+D=longdirname_12345
+
+powershell.exe -Command "
+\$d = '$D'
+\$path = '$BASEDIR'
+for (\$i = 0; \$i -lt 15; \$i++) { \$path = Join-Path \$path \$d }
+New-Item -Path \$path -ItemType Directory -Force | Out-Null
+New-Item -Path (Join-Path \$path 'testfile.txt') -ItemType File -Force | Out-Null
+Write-Host \$path
+" > deeppath.txt
+
+DEEPPATH=$(cat deeppath.txt | tr '\\' '/' | tr -d '\r')
+
+test -d "$BASEDIR" || { echo "directory creation failed"; exit 1; }
+"$d/busybox" stat "$DEEPPATH/testfile.txt" > /dev/null 2>&1 || { echo "stat failed"; exit 1; }
+"$d/busybox" stat "$DEEPPATH" > /dev/null 2>&1 || { echo "stat failed on dir"; exit 1; }
+"$d/busybox" rm -rf "$BASEDIR"
+rm -f deeppath.txt

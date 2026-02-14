@@ -1,0 +1,29 @@
+# FEATURE: CONFIG_PLATFORM_MINGW32
+# Setup script for ANSI mode testing - downloads perc and creates manifest-stripped binary
+# This tests code page handling when UTF-8 manifest is not in effect (Win XP/7/8 behavior)
+
+PERC_URL="https://github.com/avih/perc/releases/download/v0.1/perc64.exe"
+PERC_PATH="c:/temp/perc.exe"
+ANSI_BUSYBOX="$bindir/busybox-ansi.exe"
+
+# Download perc if not present
+if [ ! -f "$PERC_PATH" ]; then
+	echo "Downloading perc..."
+	powershell.exe -Command "Invoke-WebRequest -Uri '$PERC_URL' -OutFile '$PERC_PATH'" || {
+		echo "Failed to download perc"
+		exit 1
+	}
+fi
+
+# Create ANSI-mode busybox by stripping the UTF-8 manifest
+if [ ! -f "$ANSI_BUSYBOX" ] || [ "$bindir/busybox.exe" -nt "$ANSI_BUSYBOX" ]; then
+	echo "Creating ANSI-mode busybox (stripping UTF-8 manifest)..."
+	cp "$bindir/busybox.exe" "$ANSI_BUSYBOX"
+	"$PERC_PATH" -D -t MANIFEST "$ANSI_BUSYBOX" || {
+		echo "Failed to strip manifest"
+		rm -f "$ANSI_BUSYBOX"
+		exit 1
+	}
+fi
+
+echo "ANSI test setup complete: $ANSI_BUSYBOX"
