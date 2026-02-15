@@ -21,13 +21,15 @@ pid_t mingw_wait3(pid_t pid, int *status, int options, struct rusage *rusage)
 {
 	HANDLE proc;
 	DWORD code;
+	DWORD waitcode;
 
 	/* Windows does not understand parent-child */
-	if (pid > 0 && options == 0) {
+	if (pid > 0 && (options == 0 || options == WNOHANG)) {
 		if ( (proc=OpenProcess(SYNCHRONIZE|PROCESS_QUERY_INFORMATION,
 						FALSE, pid)) != NULL ) {
-			WaitForSingleObject(proc, INFINITE);
-			GetExitCodeProcess(proc, &code);
+			waitcode = WaitForSingleObject(proc, options == WNOHANG ? 0 : INFINITE);
+			if (status)
+				GetExitCodeProcess(proc, &code);
 #if ENABLE_TIME
 			if (rusage != NULL) {
 				FILETIME crTime, exTime, keTime, usTime;
@@ -49,7 +51,10 @@ pid_t mingw_wait3(pid_t pid, int *status, int options, struct rusage *rusage)
 			}
 #endif
 			CloseHandle(proc);
-			*status = exit_code_to_wait_status(code);
+			if (status)
+				*status = exit_code_to_wait_status(code);
+			if (waitcode == WAIT_TIMEOUT)
+				return 0;
 			return pid;
 		}
 	}
