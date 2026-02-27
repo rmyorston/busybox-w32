@@ -1,0 +1,15 @@
+# FEATURE: CONFIG_FEATURE_LONG_PATHS
+
+BASEDIR=c:/temp/rm_longpath_test$$
+D=longdirname_12345
+
+# create deep directory
+DEEPPATH=$BASEDIR
+for i in $(seq 15)
+do
+	DEEPPATH=$DEEPPATH/$D
+done
+mkdir -p $DEEPPATH && touch $DEEPPATH/testfile.txt || \
+	{ echo "directory creation failed"; rm -rf "$BASEDIR"; exit 1; }
+busybox rm -rf "$BASEDIR"
+test ! -d "$BASEDIR"

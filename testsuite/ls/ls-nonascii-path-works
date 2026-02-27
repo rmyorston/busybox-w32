@@ -1,0 +1,14 @@
+# FEATURE: CONFIG_FEATURE_UTF8_MANIFEST
+# Test non-ASCII characters in paths
+
+BASEDIR=c:/temp/ls_nonascii_test$$
+
+# Create directory with accented character
+# e-acute = U+00E9
+mkdir -p $BASEDIR/café_test
+
+test -d "$BASEDIR" || { echo "directory creation failed"; exit 1; }
+output=$(busybox ls "$BASEDIR" 2>&1)
+# Check that we see the directory name with something after 'caf'
+echo "$output" | grep -q "caf.*_test" || { echo "ls failed: $output"; exit 1; }
+busybox rm -rf "$BASEDIR"

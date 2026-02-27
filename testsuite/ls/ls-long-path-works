@@ -1,0 +1,18 @@
+# FEATURE: CONFIG_FEATURE_LONG_PATHS
+
+BASEDIR=c:/temp/ls_longpath_test$$
+D=longdirname_12345
+
+DEEPPATH=$BASEDIR
+for i in $(seq 15)
+do
+    DEEPPATH=$DEEPPATH/$D
+done
+
+mkdir -p $DEEPPATH && touch $DEEPPATH/testfile.txt || \
+	{ echo "directory creation failed"; rm -rf "$BASEDIR"; exit 1; }
+
+output=$(busybox ls -la "$DEEPPATH" 2>&1)
+echo "$output" | grep -q testfile.txt || \
+	{ echo "ls failed: $output"; rm -rf "$BASEDIR"; exit 1; }
+busybox rm -rf "$BASEDIR"

@@ -1,0 +1,20 @@
+# FEATURE: CONFIG_FEATURE_LONG_PATHS CONFIG_FEATURE_UTF8_MANIFEST
+# Test long paths with non-ASCII characters
+
+BASEDIR=c:/temp/ls_long_nonascii_test$$
+D=café_dir_1234
+
+# Create deep path with accented directory names
+# e-acute = U+00E9
+DEEPPATH=$BASEDIR
+for i in $(seq 20)
+do
+	DEEPPATH=$DEEPPATH/$D
+done
+
+mkdir -p $DEEPPATH && touch $DEEPPATH/testfile.txt || \
+	{ echo "directory creation failed"; rm -rf "$BASEDIR"; exit 1; }
+
+output=$(busybox ls -la "$DEEPPATH" 2>&1)
+echo "$output" | grep -q testfile.txt || { echo "ls failed: $output"; rm -rf "$BASEDIR"; exit 1; }
+busybox rm -rf "$BASEDIR"

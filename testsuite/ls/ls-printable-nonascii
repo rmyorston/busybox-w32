@@ -1,0 +1,22 @@
+# FEATURE: CONFIG_FEATURE_UTF8_MANIFEST
+# Test that non-ASCII chars in filenames are displayed, not replaced with '?'
+# Related: commit 8bd8100 - printable chars handling for non-UTF8 code pages
+
+BASEDIR=c:/temp/ls_printable_test$$
+
+# Create file with accented character
+# e-acute = U+00E9
+mkdir -p $BASEDIR
+touch $BASEDIR/café.txt
+
+test -d "$BASEDIR" || { echo "directory creation failed"; exit 1; }
+
+# ls should show the actual filename, not 'caf?.txt'
+output=$(busybox ls "$BASEDIR" 2>&1)
+
+# Check that we see something like 'café.txt' and not 'caf?.txt'
+# The filename should contain 'caf' followed by something and '.txt'
+echo "$output" | grep -q 'caf..*\.txt' || { echo "filename not found: $output"; exit 1; }
+echo "$output" | grep -q 'caf?\.txt' && { echo "char replaced with ?: $output"; exit 1; }
+
+busybox rm -rf "$BASEDIR"

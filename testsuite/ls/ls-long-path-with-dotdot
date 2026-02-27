@@ -1,0 +1,24 @@
+# FEATURE: CONFIG_FEATURE_LONG_PATHS
+# Test long paths with .. components are resolved correctly
+
+BASEDIR=c:/temp/ls_longdotdot_test$$
+D=longdirname_12345
+
+# Create deep directory structure
+DEEPPATH=$BASEDIR
+for i in $(seq 14)
+do
+	DEEPPATH=$DEEPPATH/$D
+done
+mkdir -p $DEEPPATH/$D && touch $DEEPPATH/$D/target.txt || \
+	{ echo "directory creation failed"; rm -rf "$BASEDIR"; exit 1; }
+
+# Create a sibling directory at depth 14
+mkdir $DEEPPATH/sibling || \
+	{ echo "directory creation failed"; rm -rf "$BASEDIR"; exit 1; }
+
+# Access the deep directory via sibling/../$D which should resolve the .. component
+output=$(busybox ls "$DEEPPATH/sibling/../$D" 2>&1)
+echo "$output" | grep -q "target.txt" || { echo "long path with .. failed: $output"; rm -rf "$BASEDIR"; exit 1; }
+
+busybox rm -rf "$BASEDIR"
