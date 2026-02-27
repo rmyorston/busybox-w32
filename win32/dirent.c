@@ -8,26 +8,44 @@ struct DIR {
 	int got_dotdot;
 };
 
+static inline unsigned char get_dtype(DWORD attr, DWORD reserved0)
+{
+	if ((attr & FILE_ATTRIBUTE_REPARSE_POINT) &&
+			(reserved0 == IO_REPARSE_TAG_SYMLINK ||
+			reserved0 == IO_REPARSE_TAG_MOUNT_POINT ||
+			reserved0 == IO_REPARSE_TAG_APPEXECLINK))
+		return DT_LNK;
+	if (attr & FILE_ATTRIBUTE_DIRECTORY)
+		return DT_DIR;
+	return DT_REG;
+}
+
+#if !ENABLE_FEATURE_LONG_PATHS
 static inline void finddata2dirent(struct dirent *ent, WIN32_FIND_DATAA *fdata)
 {
-	/* copy file name from WIN32_FIND_DATA to dirent */
+    /* copy file name from WIN32_FIND_DATA to dirent */
 	strcpy(ent->d_name, fdata->cFileName);
-
-	if ((fdata->dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
-			(fdata->dwReserved0 == IO_REPARSE_TAG_SYMLINK ||
-			fdata->dwReserved0 ==  IO_REPARSE_TAG_MOUNT_POINT ||
-			fdata->dwReserved0 ==  IO_REPARSE_TAG_APPEXECLINK))
-		ent->d_type = DT_LNK;
-	else if (fdata->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-		ent->d_type = DT_DIR;
-	else
-		ent->d_type = DT_REG;
+	ent->d_type = get_dtype(fdata->dwFileAttributes, fdata->dwReserved0);
 }
+#else
+static inline void finddata2dirent(struct dirent *ent, WIN32_FIND_DATAW *fdata)
+{
+	/* copy file name from WIN32_FIND_DATAW to dirent */
+	WideCharToMultiByte(CP_ACP, 0, fdata->cFileName, -1,
+			ent->d_name, PATH_MAX, NULL, NULL);
+	ent->d_type = get_dtype(fdata->dwFileAttributes, fdata->dwReserved0);
+}
+#endif
 
 DIR *opendir(const char *name)
 {
+#if !ENABLE_FEATURE_LONG_PATHS
 	char pattern[MAX_PATH];
 	WIN32_FIND_DATAA fdata;
+#else
+	wchar_t wpattern[32768];
+	WIN32_FIND_DATAW fdata;
+#endif
 	HANDLE h;
 	int len;
 	DIR *dir;
@@ -37,6 +55,8 @@ DIR *opendir(const char *name)
 		errno = EINVAL;
 		return NULL;
 	}
+
+#if !ENABLE_FEATURE_LONG_PATHS
 	/* check that the pattern won't be too long for FindFirstFileA */
 	len = strlen(name);
 	if (len + 2 >= MAX_PATH) {
@@ -59,6 +79,30 @@ DIR *opendir(const char *name)
 		errno = (err == ERROR_DIRECTORY) ? ENOTDIR : err_win_to_posix();
 		return NULL;
 	}
+#else /* ENABLE_FEATURE_LONG_PATHS */
+	/* Convert to wide string.  CP_ACP is CP_UTF8 when the UTF-8 manifest
+	 * is active, else the system ANSI code page. */
+	len = MultiByteToWideChar(CP_ACP, 0, name, -1, wpattern, 32760);
+	if (len == 0) {
+		errno = EINVAL;
+		return NULL;
+	}
+	len--;  /* exclude null terminator from length */
+
+	/* append optional '\' and wildcard '*' */
+	if (len && wpattern[len - 1] != L'\\' && wpattern[len - 1] != L'/')
+		wpattern[len++] = L'\\';
+	wpattern[len++] = L'*';
+	wpattern[len] = 0;
+
+	/* open find handle using wide API */
+	h = FindFirstFileW(wpattern, &fdata);
+	if (h == INVALID_HANDLE_VALUE) {
+		DWORD err = GetLastError();
+		errno = (err == ERROR_DIRECTORY) ? ENOTDIR : err_win_to_posix();
+		return NULL;
+	}
+#endif
 
 	/* initialize DIR structure and copy first dir entry */
 	dir = xzalloc(sizeof(DIR));
@@ -80,8 +124,14 @@ struct dirent *readdir(DIR *dir)
 	/* if first entry, dirent has already been set up by opendir */
 	if (dir->not_first) {
 		/* get next entry and convert from WIN32_FIND_DATA to dirent */
+#if !ENABLE_FEATURE_LONG_PATHS
 		WIN32_FIND_DATAA fdata;
-		if (FindNextFileA(dir->dd_handle, &fdata)) {
+		if (FindNextFileA(dir->dd_handle, &fdata))
+#else
+		WIN32_FIND_DATAW fdata;
+		if (FindNextFileW(dir->dd_handle, &fdata))
+#endif
+		{
 			finddata2dirent(&dir->dd_dir, &fdata);
 		} else if (!dir->got_dot) {
 			strcpy(dir->dd_dir.d_name, ".");

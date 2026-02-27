@@ -494,6 +494,15 @@ config FEATURE_PNG_ALL
 
 endchoice
 
+config FEATURE_LONG_PATHS
+	bool "Support for long paths"
+	default n
+	depends on FEATURE_RESOURCES
+	help
+	Allow paths longer than 260 characters. This is only supported
+	on Windows 10+. The registry key LongPathsEnabled must be set
+	to 1.
+
 config FEATURE_EURO
 	bool "Support the euro currency symbol"
 	default y

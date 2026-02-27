@@ -928,6 +928,9 @@ int busybox_main(int argc UNUSED_PARAM, char **argv)
 #   if ENABLE_FEATURE_UTF8_MANIFEST
 		full_write1_str("; Unicode");
 #   endif
+#   if ENABLE_FEATURE_LONG_PATHS
+		full_write1_str("; long paths");
+#   endif
 		full_write1_str(")\n\n");
 #  else
 		full_write1_str(" multi-call binary.\n"); /* reuse */

@@ -52,6 +52,9 @@ BEGIN
     "<asmv3:application>"
       "<asmv3:windowsSettings>"
         "<activeCodePage xmlns=""http://schemas.microsoft.com/SMI/2019/WindowsSettings"">UTF-8</activeCodePage>"
+# if ENABLE_FEATURE_LONG_PATHS
+        "<longPathAware xmlns=""http://schemas.microsoft.com/SMI/2016/WindowsSettings"">true</longPathAware>"
+# endif
       "</asmv3:windowsSettings>"
     "</asmv3:application>"
     "<trustInfo xmlns=""urn:schemas-microsoft-com:asm.v3"">"
@@ -78,7 +81,16 @@ END
 1 24
 BEGIN
   "<?xml version=""1.0"" encoding=""UTF-8"" standalone=""yes""?>"
+# if !ENABLE_FEATURE_LONG_PATHS
   "<assembly xmlns=""urn:schemas-microsoft-com:asm.v1"" manifestVersion=""1.0"">"
+# else
+  "<assembly xmlns=""urn:schemas-microsoft-com:asm.v1"" xmlns:asmv3=""urn:schemas-microsoft-com:asm.v3"" manifestVersion=""1.0"">"
+    "<asmv3:application>"
+      "<asmv3:windowsSettings>"
+        "<longPathAware xmlns=""http://schemas.microsoft.com/SMI/2016/WindowsSettings"">true</longPathAware>"
+      "</asmv3:windowsSettings>"
+    "</asmv3:application>"
+# endif
     "<trustInfo xmlns=""urn:schemas-microsoft-com:asm.v3"">"
       "<security>"
         "<requestedPrivileges>"
