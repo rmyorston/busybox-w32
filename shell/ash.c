@@ -10303,6 +10303,9 @@ static const uint8_t nodesize[N_NUMBER] ALIGN1 = {
 #endif
 	[NCLOBBER ] = SHELL_ALIGN(sizeof(struct nfile)),
 	[NFROM    ] = SHELL_ALIGN(sizeof(struct nfile)),
+#if ENABLE_PLATFORM_MINGW32
+	[NFROMSTR ] = SHELL_ALIGN(sizeof(struct nfile)),
+#endif
 	[NFROMTO  ] = SHELL_ALIGN(sizeof(struct nfile)),
 	[NAPPEND  ] = SHELL_ALIGN(sizeof(struct nfile)),
 	[NTOFD    ] = SHELL_ALIGN(sizeof(struct ndup)),
