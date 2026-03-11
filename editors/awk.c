@@ -2841,7 +2841,7 @@ static NOINLINE var *exec_builtin(node *op, var *res)
 		l = strlen(as[0]) - ll;
 		if (ll > 0 && l >= 0) {
 			if (!icase) {
-				char *s = strstr(as[0], as[1]);
+				const char *s = strstr(as[0], as[1]);
 				if (s)
 					n = (s - as[0]) + 1;
 			} else {

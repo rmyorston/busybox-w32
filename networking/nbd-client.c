@@ -260,7 +260,7 @@ int nbdclient_main(int argc, char **argv)
 		// needs some other process to sit in ioctl(nbd, NBD_DO_IT).
 		if (fork() == 0) {
 			/* child */
-			char *s = strrchr(device, '/');
+			const char *s = strrchr(device, '/');
 			sprintf(data, "/sys/block/%.32s/pid", s ? s + 1 : device);
 			// Is it up yet?
 			for (;;) {

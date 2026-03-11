@@ -179,7 +179,7 @@ static NOINLINE void INET_setroute(int action, char **args)
 	memset(rt, 0, sizeof(*rt));
 
 	{
-		const char *target = *args++;
+		char *target = *args++;
 		char *prefix;
 
 		/* recognize x.x.x.x/mask format. */
@@ -353,25 +353,25 @@ static NOINLINE void INET6_setroute(int action, char **args)
 	int prefix_len, skfd;
 	const char *devname;
 
-		/* We know args isn't NULL from the check in route_main. */
-		const char *target = *args++;
+	/* We know args isn't NULL from the check in route_main. */
+	char *target = *args++;
 
-		if (strcmp(target, "default") == 0) {
-			prefix_len = 0;
-			memset(&sa6, 0, sizeof(sa6));
+	if (strcmp(target, "default") == 0) {
+		prefix_len = 0;
+		memset(&sa6, 0, sizeof(sa6));
+	} else {
+		char *cp;
+		cp = strchr(target, '/'); /* Yes... const to non is ok. */
+		if (cp) {
+			*cp = '\0';
+			prefix_len = xatoul_range(cp + 1, 0, 128);
 		} else {
-			char *cp;
-			cp = strchr(target, '/'); /* Yes... const to non is ok. */
-			if (cp) {
-				*cp = '\0';
-				prefix_len = xatoul_range(cp + 1, 0, 128);
-			} else {
-				prefix_len = 128;
-			}
-			if (INET6_resolve(target, (struct sockaddr_in6 *) &sa6) < 0) {
-				bb_error_msg_and_die("resolving %s", target);
-			}
+			prefix_len = 128;
 		}
+		if (INET6_resolve(target, (struct sockaddr_in6 *) &sa6) < 0) {
+			bb_error_msg_and_die("resolving %s", target);
+		}
+	}
 
 	/* Clean out the RTREQ structure. */
 	memset(&rt, 0, sizeof(rt));

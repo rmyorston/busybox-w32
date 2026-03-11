@@ -1,0 +1,53 @@
+// 2-byte sequences:
+// IAC SE (240) End of subnegotiation parameters
+// IAC NOP (241) No operation
+// IAC DM (242) Data Mark (used with TCP urgent pointer)
+// IAC BRK (243) Break (simulate serial line break) - perhaps tcsendbreak(master_ptyfd)? [untested]
+// IAC IP (244) Interrupt Process ("send SIGINT to foreground process group a-la ^C")
+// IAC AO (245) Abort Output
+// IAC AYT (246) Are You There
+// IAC EC (247) Erase Character
+// IAC EL (248) Erase Line
+// IAC GA (249) Go Ahead
+// IAC IAC (255) I'm sending literal byte 255
+// 3-byte sequences:
+// IAC WILL <option> (251) sender declares willingness to enable option
+// IAC WONT <option> (252) sender refuses / disables option
+// IAC DO <option> (253) sender requests peer to send option, or enable option on peer's side
+// IAC DONT <option> (254) sender requests peer to NOT send option, or disable option on peer's side
+// Example:
+// IAC DO 31 (request NAWS)
+// IAC WILL 24 (offer TERMINAL-TYPE)
+//
+// Variable length: subnegotiation (250)
+// IAC SB <option> <data...> IAC SE
+// option = single byte
+// data = zero or more bytes
+// Subnegotiation can not be nested, and can not have 2- and 3-byte commands inside.
+// Inside subnegotiation data, IAC IAC represents literal 255.
+// An IAC byte inside SB:
+//  IAC IAC: literal byte 255
+//  IAC SE: end of subnegotiation
+//  IAC <anything else>: protocol error
+// Common options that use subnegotiation:
+// TERMINAL-TYPE (24)
+//  IAC SB 24 SEND(1) IAC SE
+//  IAC SB 24 IS(0) "xterm-256color" IAC SE
+// NAWS - Negotiate About Window Size (31)
+//  IAC SB 31 <width_hi> <width_lo> <height_hi> <height_lo> IAC SE
+//  width and height are 16-bit big endian. HOWTO:
+//  Server: IAC DO NAWS
+//  Client: IAC WILL NAWS
+//  Client: IAC SB NAWS <w> <h> IAC SE
+//  ...sometime later: client's window is resized by user...
+//  Client: IAC SB NAWS <w> <h> IAC SE
+// TERMINAL-SPEED (32)
+//  IAC SB 32 IS(0) "rx,tx" IAC SE
+// REMOTE-FLOW-CONTROL (33)
+// LINEMODE (34)
+// X-DISPLAY-LOCATION (35)
+// ENVIRON (36)
+// AUTHENTICATION (37)
+// ENCRYPT (38)
+// NEW-ENVIRON (39)
+// COM-PORT-OPTION (44)

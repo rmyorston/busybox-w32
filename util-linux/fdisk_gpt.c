@@ -150,12 +150,13 @@ check_gpt_label(void)
 	struct pte pe;
 	uint32_t crc;
 
+	current_label_type = LABEL_DOS;
+
 	/* LBA 0 contains the legacy MBR */
 
 	if (!valid_part_table_flag(MBRbuffer)
 	 || first->sys_ind != LEGACY_GPT_TYPE
 	) {
-		current_label_type = LABEL_DOS;
 		return 0;
 	}
 
@@ -165,7 +166,6 @@ check_gpt_label(void)
 	G.gpt_hdr = (void *)pe.sectorbuffer;
 
 	if (G.gpt_hdr->magic != SWAP_LE64(GPT_MAGIC)) {
-		current_label_type = LABEL_DOS;
 		return 0;
 	}
 
@@ -188,7 +188,6 @@ check_gpt_label(void)
 	 || SWAP_LE32(G.gpt_hdr->hdr_size) > sector_size
 	) {
 		puts("\nwarning: can't parse GPT disklabel");
-		current_label_type = LABEL_DOS;
 		return 0;
 	}
 
@@ -204,10 +203,15 @@ check_gpt_label(void)
 		puts("\nwarning: GPT array CRC is invalid");
 	}
 
-	puts("Found valid GPT with protective MBR; using GPT");
+	fputs_stdout("Found valid GPT with protective MBR; ");
 
-	current_label_type = LABEL_GPT;
-	return 1;
+	if (!G.opt_t || strcasecmp(G.opt_t, "gpt") == 0) {
+		puts("using GPT (-t dos to override)");
+		current_label_type = LABEL_GPT;
+		return 1;
+	}
+	puts("NOT using it (-t specified)");
+	return 0;
 }
 
 #endif /* GPT_LABEL */

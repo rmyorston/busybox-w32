@@ -501,6 +501,11 @@ void *mmap_anon(size_t size) FAST_FUNC;
 void *xmmap_anon(size_t size) FAST_FUNC;
 
 #if defined(__x86_64__) || defined(i386)
+/* 0x7f would be better, but it causes alignment problems */
+# define ARCH_GLOBAL_PTR_OFF 0x80
+#endif
+
+#if defined(__x86_64__) || defined(i386)
 # define BB_ARCH_FIXED_PAGESIZE 4096
 #elif defined(__arm__) /* only 32bit, 64bit ARM has variable page size */
 # define BB_ARCH_FIXED_PAGESIZE 4096
@@ -509,11 +514,6 @@ void *xmmap_anon(size_t size) FAST_FUNC;
 //From Linux kernel inspection:
 //xtenza,s390[x],riscv,nios2,csky,sparc32: fixed 4k pages
 //sparc64,alpha,openrisc: fixed 8k pages
-#endif
-
-#if defined(__x86_64__) || defined(i386)
-/* 0x7f would be better, but it causes alignment problems */
-# define ARCH_GLOBAL_PTR_OFF 0x80
 #endif
 
 #if defined BB_ARCH_FIXED_PAGESIZE
@@ -780,6 +780,76 @@ struct fd_pair { int rd; int wr; };
 #define piped_pair(pair)  pipe(&((pair).rd))
 #define xpiped_pair(pair) xpipe(&((pair).rd))
 
+
+int parse_datestr(const char *date_str, struct tm *ptm) FAST_FUNC;
+time_t validate_tm_time(const char *date_str, struct tm *ptm) FAST_FUNC;
+char *strftime_HHMMSS(char *buf, unsigned len, time_t *tp) FAST_FUNC;
+char *strftime_YYYYMMDDHHMMSS(char *buf, unsigned len, time_t *tp) FAST_FUNC;
+void xgettimeofday(struct timeval *tv) FAST_FUNC;
+void xsettimeofday(const struct timeval *tv) FAST_FUNC;
+
+
+/* Generic I/O loop */
+struct connection;
+typedef struct ioloop_state {
+	struct connection *conns;
+	unsigned flags;
+	unsigned max_timeout;
+	unsigned current_iteration_timeout;
+	unsigned last_timeout;
+	int (*pre_poll_callback)(struct ioloop_state*);
+} ioloop_state_t;
+
+#define STRUCT_CONNECTION \
+	struct connection *next; \
+	ioloop_state_t *io; \
+	int read_fd; \
+	int write_fd; \
+	int (*have_buffer_to_read_into)(void *this); \
+	int (*have_data_to_write)(void *this); \
+	int (*read)(void *this); \
+	int (*write)(void *this); \
+
+typedef struct connection {
+	STRUCT_CONNECTION
+} connection_t;
+
+static ALWAYS_INLINE void free_connection(connection_t *conn)
+{
+	free(conn);
+}
+
+void FAST_FUNC conn_close_fds(connection_t *conn);
+void FAST_FUNC conn_close_fds_remove_and_free(connection_t *conn);
+static ALWAYS_INLINE ioloop_state_t *new_ioloop_state(void)
+{
+	ioloop_state_t *io = xzalloc(sizeof(*io));
+	return io;
+}
+static ALWAYS_INLINE void free_ioloop_state(ioloop_state_t *io)
+{
+	free(io);
+}
+static ALWAYS_INLINE void ioloop_decrease_current_timeout(ioloop_state_t *io, unsigned n)
+{
+	if (io->current_iteration_timeout > n)
+		io->current_iteration_timeout = n;
+}
+
+void FAST_FUNC ioloop_insert_conn(ioloop_state_t *io, connection_t *conn);
+void FAST_FUNC ioloop_remove_conn(ioloop_state_t *io, connection_t *conn);
+enum {
+	IOLOOP_FLAG_EXIT_IF_TIMEOUT = (1 << 0),
+	IOLOOP_FLAG_EXIT_IF_EINTR   = (1 << 1),
+	//IOLOOP_FLAG_EXIT_IF_ALL_NOT_READY = (1 << 1),
+	/* ioloop_run return values */
+	IOLOOP_NO_CONNS = 0,
+	IOLOOP_TIMEOUT  = 1,
+	IOLOOP_EINTR    = 2,
+};
+int FAST_FUNC ioloop_run(ioloop_state_t *io);
+
+
 /* Useful for having small structure members/global variables */
 typedef int8_t socktype_t;
 typedef int8_t family_t;
@@ -806,14 +876,6 @@ struct BUG_too_small {
 			/* | AF_IPX */
 			) <= 127 ? 1 : -1];
 };
-
-
-int parse_datestr(const char *date_str, struct tm *ptm) FAST_FUNC;
-time_t validate_tm_time(const char *date_str, struct tm *ptm) FAST_FUNC;
-char *strftime_HHMMSS(char *buf, unsigned len, time_t *tp) FAST_FUNC;
-char *strftime_YYYYMMDDHHMMSS(char *buf, unsigned len, time_t *tp) FAST_FUNC;
-void xgettimeofday(struct timeval *tv) FAST_FUNC;
-void xsettimeofday(const struct timeval *tv) FAST_FUNC;
 
 
 int xsocket(int domain, int type, int protocol) FAST_FUNC;
@@ -926,6 +988,11 @@ char* xmalloc_sockaddr2hostonly_noport(const struct sockaddr *sa) FAST_FUNC RETU
 /* inet_[ap]ton on steroids */
 char* xmalloc_sockaddr2dotted(const struct sockaddr *sa) FAST_FUNC RETURNS_MALLOC;
 char* xmalloc_sockaddr2dotted_noport(const struct sockaddr *sa) FAST_FUNC RETURNS_MALLOC;
+// NB: unlike getservbyport, port parameter/retval are in host, NOT network order!
+#define getservbyport dont_use_getservbyport_uses_global_buffer
+char* bb_get_servname_by_port(char **p_etc_services, int port, const char *type) FAST_FUNC RETURNS_MALLOC;
+#define getservbyname dont_use_getservbyname_uses_global_buffer
+int bb_get_servport_by_name(char **p_etc_services, const char *name, const char *type) FAST_FUNC;
 // "old" (ipv4 only) API
 // users: traceroute.c hostname.c - use _list_ of all IPs
 struct hostent *xgethostbyname(const char *name) FAST_FUNC;
@@ -976,8 +1043,11 @@ typedef struct tls_state {
 	int ofd;
 	int ifd;
 
-	unsigned min_encrypted_len_on_read;
+#if ENABLE_SSL_SERVER // || ENABLE_FEATURE_HTTPD_SSL
+	smallint expecting_first_packet;
+#endif
 	uint16_t cipher_id;
+	unsigned min_encrypted_len_on_read;
 	unsigned MAC_size;
 	unsigned key_size;
 	unsigned IV_size;
@@ -1002,21 +1072,27 @@ typedef struct tls_state {
 	/*uint64_t read_seq64_be;*/
 	uint64_t write_seq64_be;
 
-	/*uint8_t *server_write_MAC_key;*/
-	uint8_t *client_write_key;
-	uint8_t *server_write_key;
-	uint8_t *client_write_IV;
-	uint8_t *server_write_IV;
-	uint8_t client_write_MAC_key[TLS_MAX_MAC_SIZE];
-	uint8_t server_write_MAC_k__[TLS_MAX_MAC_SIZE];
-	uint8_t client_write_k__[TLS_MAX_KEY_SIZE];
-	uint8_t server_write_k__[TLS_MAX_KEY_SIZE];
-	uint8_t client_write_I_[TLS_MAX_IV_SIZE];
-	uint8_t server_write_I_[TLS_MAX_IV_SIZE];
+	uint8_t *our_write_MAC_key;
+	uint8_t *peer_write_MAC_key;
+	uint8_t *our_write_key;
+	uint8_t *peer_write_key;
+	uint8_t *our_write_IV;
+	uint8_t *peer_write_IV;
+	uint8_t key_block[TLS_MAX_MAC_SIZE];
+	uint8_t key_block2[TLS_MAX_MAC_SIZE];
+	uint8_t key_block3[TLS_MAX_KEY_SIZE];
+	uint8_t key_block4[TLS_MAX_KEY_SIZE];
+	uint8_t key_block5[TLS_MAX_IV_SIZE];
+	uint8_t key_block6[TLS_MAX_IV_SIZE];
 
 	struct tls_aes aes_encrypt;
 	struct tls_aes aes_decrypt;
 	uint8_t H[16]; //used by AES_GCM
+
+#if ENABLE_SSL_SERVER // || ENABLE_FEATURE_HTTPD_SSL
+	/* For ECDHE: server's ephemeral EC private key */
+	//uint8_t ecc_priv_key32[32];
+#endif
 } tls_state_t;
 #endif
 
@@ -1025,8 +1101,9 @@ static inline tls_state_t *new_tls_state(void)
 	tls_state_t *tls = xzalloc(sizeof(*tls));
 	return tls;
 }
-
-void tls_handshake(tls_state_t *tls, const char *sni) FAST_FUNC;
+void FAST_FUNC tls_handshake(tls_state_t *tls, const char *sni);
+void FAST_FUNC tls_handshake_as_server(tls_state_t *tls,
+	const char *pem_filename);
 #define TLSLOOP_EXIT_ON_LOCAL_EOF (1 << 0)
 void tls_run_copy_loop(tls_state_t *tls, unsigned flags) FAST_FUNC;
 

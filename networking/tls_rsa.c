@@ -211,3 +211,176 @@ int32 FAST_FUNC psRsaEncryptPub(psPool_t *pool, psRsaKey_t *key,
 	}
 	return size;
 }
+
+#if ENABLE_SSL_SERVER // || ENABLE_FEATURE_HTTPD_SSL
+
+#define psRsaEncryptPriv(pool, key, in, inlen, out, outlen, data) \
+        psRsaEncryptPriv(      key, in, inlen, out, outlen)
+static //bbox
+int32 psRsaEncryptPriv(psPool_t *pool, psRsaKey_t *key,
+					 unsigned char *in, uint32 inlen,
+					 unsigned char *out, uint32 outlen, void *data)
+{
+	int32	err;
+	uint32	size;
+
+	size = key->size;
+	if (outlen < size) {
+		psTraceCrypto("Error on bad outlen parameter to psRsaEncryptPriv\n");
+		return PS_ARG_FAIL;
+	}
+	if ((err = pkcs1Pad(in, inlen, out, size, PUBKEY_TYPE, data)) < PS_SUCCESS){
+		psTraceCrypto("Error padding psRsaEncryptPriv. Likely data too long\n");
+		return err;
+	}
+	if ((err = psRsaCrypt(pool, out, size, out, (uint32*)&outlen, key,
+			PRIVKEY_TYPE, data)) < PS_SUCCESS) {
+		psTraceCrypto("Error performing psRsaEncryptPriv\n");
+		return err;
+	}
+	if (outlen != size) {
+		psTraceCrypto("Encrypted size error in psRsaEncryptPriv\n");
+		return PS_FAILURE;
+	}
+	return size;
+}
+
+#define ASN_OVERHEAD_LEN_RSA_SHA2	19
+//#define ASN_OVERHEAD_LEN_RSA_SHA1	15
+
+/* ASN.1 DigestInfo wrappers for hash algorithms */
+static const unsigned char asn256dsWrap[] = {0x30, 0x31, 0x30, 0x0D, 0x06, 0x09, 0x60,
+	0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20};
+//#ifdef USE_SHA384
+//static const unsigned char asn384dsWrap[] = {0x30, 0x41, 0x30, 0x0D, 0x06, 0x09, 0x60,
+//	0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05, 0x00, 0x04, 0x30};
+//#endif
+//static const unsigned char asn1dsWrap[] = {0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2B,
+//	0x0E, 0x03, 0x02, 0x1A, 0x05, 0x00, 0x04, 0x14};
+
+int32 FAST_FUNC privRsaEncryptSignedElement(psPool_t *pool, psRsaKey_t *key, //bbox: was psPubKey_t
+		unsigned char *in, uint32 inlen, unsigned char *out, uint32 outlen,
+		void *data)
+{
+	unsigned char	*c;
+	uint32			inlenWithAsn;
+	int32			rc;
+
+	if (inlen == 32) { //SHA256_HASH_SIZE
+		inlenWithAsn = inlen + ASN_OVERHEAD_LEN_RSA_SHA2;
+		c = psMalloc(pool, inlenWithAsn);
+		memcpy(c, asn256dsWrap, ASN_OVERHEAD_LEN_RSA_SHA2);
+		memcpy(c + ASN_OVERHEAD_LEN_RSA_SHA2, in, inlen);
+//	} else if (inlen == SHA1_HASH_SIZE) {
+//		inlenWithAsn = inlen + ASN_OVERHEAD_LEN_RSA_SHA1;
+//		c = psMalloc(pool, inlenWithAsn);
+//		memcpy(c, asn1dsWrap, ASN_OVERHEAD_LEN_RSA_SHA1);
+//		memcpy(c + ASN_OVERHEAD_LEN_RSA_SHA1, in, inlen);
+//#ifdef USE_SHA384
+//	} else if (inlen == SHA384_HASH_SIZE) {
+//		inlenWithAsn = inlen + ASN_OVERHEAD_LEN_RSA_SHA2;
+//		c = psMalloc(pool, inlenWithAsn);
+//		memcpy(c, asn384dsWrap, ASN_OVERHEAD_LEN_RSA_SHA2);
+//		memcpy(c + ASN_OVERHEAD_LEN_RSA_SHA2, in, inlen);
+//#endif
+	} else {
+		return PS_UNSUPPORTED_FAIL;
+	}
+
+	rc = psRsaEncryptPriv(pool, key, c, inlenWithAsn, //bbox: was (psRsaKey_t*)key->key
+		out, outlen, data);
+
+	psFree(c, pool);
+	return rc;
+}
+
+/* Remove PKCS#1 padding (Type 2) from decrypted data
+ * Format: 00 || 02 || PS || 00 || M
+ * Returns length of unpadded message, or negative on error
+ */
+#define pkcs1Unpad(in, inlen, out, outlen) \
+        pkcs1Unpad(in, inlen, out, outlen)
+static //bbox
+int32 pkcs1Unpad(unsigned char *in, uint32 inlen, unsigned char *out,
+			uint32 outlen)
+{
+	unsigned char *c, *end;
+	uint32 msglen;
+
+	if (inlen < 11) {  /* Minimum: 00 02 [8 bytes PS] 00 */
+		psTraceCrypto("pkcs1Unpad: input too short\n");
+		return PS_FAILURE;
+	}
+
+	c = in;
+	end = in + inlen;
+
+	/* Check padding type byte */
+	if (*c++ != 0x00) {
+		psTraceCrypto("pkcs1Unpad: bad first byte\n");
+		return PS_FAILURE;
+	}
+	if (*c++ != 0x02) {
+		psTraceCrypto("pkcs1Unpad: bad padding type\n");
+		return PS_FAILURE;
+	}
+
+	/* Skip padding string (non-zero bytes) until we find 0x00 */
+	while (c < end && *c != 0x00) {
+		c++;
+	}
+
+	if (c >= end) {
+		psTraceCrypto("pkcs1Unpad: no 0x00 separator found\n");
+		return PS_FAILURE;
+	}
+
+	/* Skip the 0x00 separator */
+	c++;
+
+	/* Calculate message length */
+	msglen = (uint32)(end - c);
+
+	if (msglen > outlen) {
+		psTraceCrypto("pkcs1Unpad: output buffer too small\n");
+		return PS_FAILURE;
+	}
+
+	/* Copy message to output */
+	memcpy(out, c, msglen);
+
+	return msglen;
+}
+
+/* RSA private key decryption (PKCS#1 v1.5)
+ * Decrypts with private key and removes PKCS#1 padding
+ */
+#define psRsaDecryptPriv(pool, key, in, inlen, out, outlen, data) \
+        psRsaDecryptPriv(      key, in, inlen, out, outlen)
+int32 FAST_FUNC psRsaDecryptPriv(psPool_t *pool, psRsaKey_t *key,
+						unsigned char *in, uint32 inlen,
+						unsigned char *out, uint32 outlen, void *data)
+{
+	int32 err;
+	uint32 ptLen;
+
+	if (inlen != key->size) {
+		psTraceCrypto("Error on bad inlen parameter to psRsaDecryptPriv\n");
+		return PS_ARG_FAIL;
+	}
+	ptLen = inlen;
+	if ((err = psRsaCrypt(pool, in, inlen, in, &ptLen, key,
+			PRIVKEY_TYPE, data)) < PS_SUCCESS) {
+		psTraceCrypto("Error performing psRsaDecryptPriv\n");
+		return err;
+	}
+	if (ptLen != inlen) {
+		psTraceCrypto("Decrypted size error in psRsaDecryptPriv\n");
+		return PS_FAILURE;
+	}
+	err = pkcs1Unpad(in, inlen, out, outlen);
+	memset(in, 0x0, inlen);
+	return err;
+}
+
+#endif /* server */

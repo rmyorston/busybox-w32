@@ -115,28 +115,7 @@ void FAST_FUNC xconnect(int s, const struct sockaddr *saddr, socklen_t addrlen)
 	}
 }
 
-/* Return port number for a service.
- * If "port" is a number use it as the port.
- * If "port" is a name it is looked up in /etc/services.
- * if NULL, return default_port
- */
-unsigned FAST_FUNC bb_lookup_port(const char *port, const char *protocol, unsigned port_nr)
-{
-	if (port) {
-		port_nr = bb_strtou(port, NULL, 10);
-		if (errno || port_nr > 65535) {
-			struct servent *tserv = getservbyname(port, protocol);
-			if (!tserv)
-				bb_error_msg_and_die("bad port '%s'", port);
-			port_nr = ntohs(tserv->s_port);
-		}
-	}
-	return (uint16_t)port_nr;
-}
-
-
 /* "New" networking API */
-
 
 int FAST_FUNC get_nport(const struct sockaddr *sa)
 {

@@ -30,3 +30,15 @@ static ALWAYS_INLINE void psRsaKey_clear(psRsaKey_t *key)
 int32 psRsaEncryptPub(psPool_t *pool, psRsaKey_t *key,
                                                 unsigned char *in, uint32 inlen,
                                                 unsigned char *out, uint32 outlen, void *data) FAST_FUNC;
+
+#define psRsaDecryptPriv(pool, key, in, inlen, out, outlen, data) \
+        psRsaDecryptPriv(      key, in, inlen, out, outlen)
+int32 psRsaDecryptPriv(psPool_t *pool, psRsaKey_t *key,
+                                                unsigned char *in, uint32 inlen,
+                                                unsigned char *out, uint32 outlen, void *data) FAST_FUNC;
+
+#define privRsaEncryptSignedElement(pool, key, in, inlen, out, outlen, data) \
+        privRsaEncryptSignedElement(      key, in, inlen, out, outlen)
+int32 privRsaEncryptSignedElement(psPool_t *pool, psRsaKey_t *key,
+                                                unsigned char *in, uint32 inlen,
+                                                unsigned char *out, uint32 outlen, void *data) FAST_FUNC;

@@ -336,7 +336,7 @@ int ifconfig_main(int argc UNUSED_PARAM, char **argv)
 #endif
 	char *p;
 	/*char host[128];*/
-	const char *host = NULL; /* make gcc happy */
+	char *host = NULL; /* make gcc happy */
 	IF_FEATURE_IFCONFIG_STATUS(char *show_all_param;)
 
 	did_flags = 0;

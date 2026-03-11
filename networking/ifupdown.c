@@ -363,7 +363,7 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 			break;
 		case '%':
 			{
-				char *nextpercent;
+				const char *nextpercent;
 				char *varvalue;
 
 				command++;

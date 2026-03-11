@@ -1162,7 +1162,7 @@ dump_strings(off_t address, off_t end_offset)
    leading '+' return nonzero and set *OFFSET to the offset it denotes.  */
 
 static int
-parse_old_offset(const char *s, off_t *offset)
+parse_old_offset(char *s, off_t *offset)
 {
 	static const struct suffix_mult Bb[] ALIGN_SUFFIX = {
 		{ "B", 1024 },
@@ -1188,7 +1188,8 @@ parse_old_offset(const char *s, off_t *offset)
 		radix = 16;
 
 	*offset = xstrtooff_sfx(s, radix, Bb);
-	if (p) p[0] = '.';
+	if (p)
+		p[0] = '.'; /* undo cheating */
 
 	return (*offset >= 0);
 }
@@ -1241,7 +1242,7 @@ int od_main(int argc UNUSED_PARAM, char **argv)
 		static const uint8_t doxn_address_pad_len_char[] ALIGN1 = {
 			'7', '7', '6', /* '?' */
 		};
-		char *p;
+		const char *p;
 		int pos;
 		p = strchr(doxn, str_A[0]);
 		if (!p)

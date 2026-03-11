@@ -122,7 +122,7 @@ int lpqr_main(int argc UNUSED_PARAM, char **argv)
 
 	{
 		// queue name is to the left of '@'
-		char *s = strchr(queue, '@');
+		char *s = (char *)strchr(queue, '@');
 		if (s) {
 			// server name is to the right of '@'
 			*s = '\0';

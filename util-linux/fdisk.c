@@ -93,7 +93,7 @@
 
 //usage:#define fdisk_trivial_usage
 //usage:       "[-ul" IF_FEATURE_FDISK_BLKSIZE("s") "] "
-//usage:       "[-C CYLINDERS] [-H HEADS] [-S SECTORS] [-b SSZ] DISK"
+//usage:       "[-C CYLINDERS] [-H HEADS] [-S SECTORS] [-b SSZ] [-t PARTTYPE] DISK"
 //usage:#define fdisk_full_usage "\n\n"
 //usage:       "Change partition table\n"
 //usage:     "\n	-u		Start and End are in sectors (instead of cylinders)"
@@ -104,6 +104,7 @@
 //but in fact, util-linux 2.41.1 shows the size in KILOBYTES!
 //usage:	)
 //usage:     "\n	-b 2048		(for certain MO disks) use 2048-byte sectors"
+//usage:     "\n	-T PARTTYPE	Force 'dos' partition if 'gpt' also present"
 //usage:     "\n	-C CYLINDERS	Set number of cylinders/heads/sectors"
 //usage:     "\n	-H HEADS	Typically 255"
 //usage:     "\n	-S SECTORS	Typically 63"
@@ -186,7 +187,8 @@ enum {
 	OPT_l = 1 << 3,
 	OPT_S = 1 << 4,
 	OPT_u = 1 << 5,
-	OPT_s = (1 << 6) * ENABLE_FEATURE_FDISK_BLKSIZE,
+	OPT_t = 1 << 6,
+	OPT_s = (1 << 7) * ENABLE_FEATURE_FDISK_BLKSIZE,
 };
 #define USER_SET_SECTOR_SIZE (option_mask32 & OPT_b)
 #define NOWARN_OPT_ls        (!ENABLE_FEATURE_FDISK_WRITABLE || (option_mask32 & (OPT_l|OPT_s)))
@@ -464,6 +466,7 @@ struct globals {
 	sector_t extended_offset;       /* offset of link pointers */
 	sector_t total_number_of_sectors;
 
+	const char *opt_t;
 #if ENABLE_FEATURE_GPT_LABEL
 	struct gpt_header *gpt_hdr;
 	char *gpt_part_array;
@@ -1209,7 +1212,7 @@ static void
 warn_cylinders(void)
 {
 	if (LABEL_IS_DOS && g_cylinders > 1024 && !NOWARN_OPT_ls)
-		printf("\n"
+		printf(
 "The number of cylinders for this disk is set to %u.\n"
 "There is nothing wrong with that, but this is larger than 1024,\n"
 "and could in certain setups cause problems with:\n"
@@ -3064,10 +3067,14 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 
 	close_dev_fd(); /* needed: fd 3 must not stay closed */
 
-	opt = getopt32(argv, "^" "b:+C:+H:+lS:+u"IF_FEATURE_FDISK_BLKSIZE("s")"\0"
+	//G.opt_t = NULL;
+	opt = getopt32(argv, "^" "b:+C:+H:+lS:+ut:"IF_FEATURE_FDISK_BLKSIZE("s")"\0"
 		/* among -s and -l, the last one takes precedence */
 		IF_FEATURE_FDISK_BLKSIZE("s-l:l-s"),
-		&sector_size, &user_cylinders, &user_heads, &user_sectors);
+		&sector_size, // -b
+		&user_cylinders, &user_heads, &user_sectors, //-CHS
+		&G.opt_t
+	);
 	argv += optind;
 
 #if ENABLE_FEATURE_FDISK_BLKSIZE

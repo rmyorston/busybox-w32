@@ -31,7 +31,7 @@
  * - /dev/ram (alias to /dev/ram0)
  * - /dev/mtd
  */
-static dev_t name_to_dev_t(const char *devname)
+static dev_t name_to_dev_t(char *devname)
 {
 	char devfile[sizeof(int)*3 * 2 + 4];
 	char *sysname;

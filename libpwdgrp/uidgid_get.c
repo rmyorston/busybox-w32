@@ -32,7 +32,8 @@ int FAST_FUNC get_uidgid(struct bb_uidgid_t *u, const char *ug)
 {
 	struct passwd *pwd;
 	struct group *gr;
-	char *user, *group;
+	char *user;
+	const char *group;
 	unsigned n;
 
 	user = (char*)ug;

@@ -381,7 +381,7 @@ void FAST_FUNC bb_unsetenv(const char *var)
 	char onstack[128 - 16]; /* smaller stack setup code on x86 */
 	char *tp;
 
-	tp = strchr(var, '=');
+	tp = (char*)strchr(var, '=');
 	if (tp) {
 		/* In case var was putenv'ed, we can't replace '='
 		 * with NUL and unsetenv(var) - it won't work,

@@ -607,22 +607,47 @@ static void curve25519(byte *result, const byte *e, const byte *q)
 	fe_normalize(result);
 }
 
-/* interface to bbox's TLS code: */
+/* interface to bbox's TLS code:
+ *
+ * Wire format for elliptic curve points differs between curves:
+ * - P256: point is (x,y) where each coordinate is a 256-bit (32-byte) big-endian integer.
+ *   Wire format: 64 bytes total (plus 0x04 prefix byte for "uncompressed point").
+ * - x25519: point is a single 256-bit (32-byte) little-endian integer.
+ *   Wire format: 32 bytes.
+ *
+ * The interface functions below accept and generate EC points in their respective
+ * wire formats. Internal calculations may use different representations, but all
+ * conversions are handled internally within these functions.
+ * (Note: x25519 implementation in this file uses wire format internally as well)
+ */
 
+/* Generate x25519 keypair: random private key + corresponding public key */
+void FAST_FUNC curve_x25519_generate_keypair(uint8_t *privkey32, uint8_t *pubkey32)
+{
+	/* Generate random private key, see RFC 7748 */
+	tls_get_random(privkey32, CURVE25519_KEYSIZE);
+	privkey32[0] &= 0xf8;
+	privkey32[CURVE25519_KEYSIZE-1] = ((privkey32[CURVE25519_KEYSIZE-1] & 0x7f) | 0x40);
+
+	/* Compute public key from private key */
+	curve25519(pubkey32, privkey32, NULL /* "use base point of x25519" */);
+}
+
+/* Compute shared secret (premaster) from our private key and peer's public key */
+void FAST_FUNC curve_x25519_compute_premaster(
+		const uint8_t *privkey32, const uint8_t *peerkey32,
+		uint8_t *premaster32)
+{
+	curve25519(premaster32, privkey32, peerkey32);
+}
+
+/* Combined operation: generate keypair and compute premaster in one call */
 void FAST_FUNC curve_x25519_compute_pubkey_and_premaster(
 		uint8_t *pubkey, uint8_t *premaster,
 		const uint8_t *peerkey32)
 {
 	uint8_t privkey[CURVE25519_KEYSIZE]; //[32]
 
-	/* Generate random private key, see RFC 7748 */
-	tls_get_random(privkey, sizeof(privkey));
-	privkey[0] &= 0xf8;
-	privkey[CURVE25519_KEYSIZE-1] = ((privkey[CURVE25519_KEYSIZE-1] & 0x7f) | 0x40);
-
-	/* Compute public key */
-	curve25519(pubkey, privkey, NULL /* "use base point of x25519" */);
-
-	/* Compute premaster using peer's public key */
-	curve25519(premaster, privkey, peerkey32);
+	curve_x25519_generate_keypair(privkey, pubkey);
+	curve_x25519_compute_premaster(privkey, peerkey32, premaster);
 }

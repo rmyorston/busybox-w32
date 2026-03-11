@@ -471,8 +471,10 @@ static char *get_logname(void)
 	do {
 		/* Write issue file and prompt */
 #ifdef ISSUE
-		if (!(option_mask32 & F_NOISSUE))
+		if (!(option_mask32 & F_NOISSUE)) {
+			puts("\r");  /* start a new line */
 			print_login_issue(G.issue, G.tty_name);
+		}
 #endif
 		print_login_prompt();
 

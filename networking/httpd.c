@@ -2006,7 +2006,7 @@ static void send_cgi_and_exit(
  */
 static NOINLINE void send_file_and_exit(const char *url, int what)
 {
-	char *suffix;
+	const char *suffix;
 	int fd;
 	ssize_t count;
 

@@ -460,7 +460,7 @@ char FAST_FUNC get_header_tar(archive_handle_t *archive_handle)
 
 	/* Everything up to and including last ".." component is stripped */
 	strip_unsafe_prefix(file_header->name);
-	if (file_header->link_target) {
+	if (file_header->link_target && !S_ISLNK(file_header->mode)) {
 		/* GNU tar 1.34 examples:
 		 * tar: Removing leading '/' from hard link targets
 		 * tar: Removing leading '../' from hard link targets

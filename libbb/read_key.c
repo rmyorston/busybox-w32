@@ -26,7 +26,7 @@ int64_t FAST_FUNC read_key(int fd, char *buffer, int timeout)
 		'd'            |0x80,KEYCODE_ALT_D   ,
 	/* lineedit mimics bash: Alt-f and Alt-b are forward/backward
 	 * word jumps. We cheat here and make them return ALT_LEFT/RIGHT
-	 * keycodes. This way, lineedit need no special code to handle them.
+	 * keycodes. This way, lineedit needs no special code to handle them.
 	 * If we'll need to distinguish them, introduce new ALT_F/B keycodes,
 	 * and update lineedit to react to them.
 	 */
@@ -40,12 +40,12 @@ int64_t FAST_FUNC read_key(int fd, char *buffer, int timeout)
 		'O','F'        |0x80,KEYCODE_END     ,
 #if 0
 		'O','P'        |0x80,KEYCODE_FUN1    ,
-		/* [ESC] ESC O [2] P - [Alt-][Shift-]F1 */
-		/* ESC [ O 1 ; 2 P - Shift-F1 */
-		/* ESC [ O 1 ; 3 P - Alt-F1 */
-		/* ESC [ O 1 ; 4 P - Alt-Shift-F1 */
-		/* ESC [ O 1 ; 5 P - Ctrl-F1 */
-		/* ESC [ O 1 ; 6 P - Ctrl-Shift-F1 */
+	//	[ESC] ESC O [2] P - [Alt-][Shift-]F1
+	//	ESC [ O 1 ; 2 P - Shift-F1
+	//	ESC [ O 1 ; 3 P - Alt-F1
+	//	ESC [ O 1 ; 4 P - Alt-Shift-F1
+	//	ESC [ O 1 ; 5 P - Ctrl-F1
+	//	ESC [ O 1 ; 6 P - Ctrl-Shift-F1
 		'O','Q'        |0x80,KEYCODE_FUN2    ,
 		'O','R'        |0x80,KEYCODE_FUN3    ,
 		'O','S'        |0x80,KEYCODE_FUN4    ,
@@ -54,29 +54,29 @@ int64_t FAST_FUNC read_key(int fd, char *buffer, int timeout)
 		'[','B'        |0x80,KEYCODE_DOWN    ,
 		'[','C'        |0x80,KEYCODE_RIGHT   ,
 		'[','D'        |0x80,KEYCODE_LEFT    ,
-		/* ESC [ 1 ; 2 x, where x = A/B/C/D: Shift-<arrow> */
-		/* ESC [ 1 ; 3 x, where x = A/B/C/D: Alt-<arrow> - implemented below */
-		/* ESC [ 1 ; 4 x, where x = A/B/C/D: Alt-Shift-<arrow> */
-		/* ESC [ 1 ; 5 x, where x = A/B/C/D: Ctrl-<arrow> - implemented below */
-		/* ESC [ 1 ; 6 x, where x = A/B/C/D: Ctrl-Shift-<arrow> */
-		/* ESC [ 1 ; 7 x, where x = A/B/C/D: Ctrl-Alt-<arrow> */
-		/* ESC [ 1 ; 8 x, where x = A/B/C/D: Ctrl-Alt-Shift-<arrow> */
+	//	ESC [ 1 ; 2 x, where x = A/B/C/D: Shift-<arrow>
+	//	ESC [ 1 ; 3 x, where x = A/B/C/D: Alt-<arrow> - implemented below
+	//	ESC [ 1 ; 4 x, where x = A/B/C/D: Alt-Shift-<arrow>
+	//	ESC [ 1 ; 5 x, where x = A/B/C/D: Ctrl-<arrow> - implemented below
+	//	ESC [ 1 ; 6 x, where x = A/B/C/D: Ctrl-Shift-<arrow>
+	//	ESC [ 1 ; 7 x, where x = A/B/C/D: Ctrl-Alt-<arrow>
+	//	ESC [ 1 ; 8 x, where x = A/B/C/D: Ctrl-Alt-Shift-<arrow>
 		'[','H'        |0x80,KEYCODE_HOME    , /* xterm */
 		'[','F'        |0x80,KEYCODE_END     , /* xterm */
-		/* [ESC] ESC [ [2] H - [Alt-][Shift-]Home (End similarly?) */
-		/* '[','Z'        |0x80,KEYCODE_SHIFT_TAB, */
+	//	[ESC] ESC [ [2] H - [Alt-][Shift-]Home (End similarly?)
+	//	'[','Z'        |0x80,KEYCODE_SHIFT_TAB,
 		'[','1','~'    |0x80,KEYCODE_HOME    , /* vt100? linux vt? or what? */
 		'[','2','~'    |0x80,KEYCODE_INSERT  ,
-		/* ESC [ 2 ; 3 ~ - Alt-Insert */
+	//	ESC [ 2 ; 3 ~ - Alt-Insert
 		'[','3','~'    |0x80,KEYCODE_DELETE  ,
-		/* [ESC] ESC [ 3 [;2] ~ - [Alt-][Shift-]Delete */
-		/* ESC [ 3 ; 3 ~ - Alt-Delete */
-		/* ESC [ 3 ; 5 ~ - Ctrl-Delete */
+	//	[ESC] ESC [ 3 [;2] ~ - [Alt-][Shift-]Delete
+	//	ESC [ 3 ; 3 ~ - Alt-Delete
+	//	ESC [ 3 ; 5 ~ - Ctrl-Delete
 		'[','4','~'    |0x80,KEYCODE_END     , /* vt100? linux vt? or what? */
 		'[','5','~'    |0x80,KEYCODE_PAGEUP  ,
-		/* ESC [ 5 ; 3 ~ - Alt-PgUp */
-		/* ESC [ 5 ; 5 ~ - Ctrl-PgUp */
-		/* ESC [ 5 ; 7 ~ - Ctrl-Alt-PgUp */
+	//	ESC [ 5 ; 3 ~ - Alt-PgUp
+	//	ESC [ 5 ; 5 ~ - Ctrl-PgUp
+	//	ESC [ 5 ; 7 ~ - Ctrl-Alt-PgUp
 		'[','6','~'    |0x80,KEYCODE_PAGEDOWN,
 		'[','7','~'    |0x80,KEYCODE_HOME    , /* vt100? linux vt? or what? */
 		'[','8','~'    |0x80,KEYCODE_END     , /* vt100? linux vt? or what? */
@@ -86,7 +86,7 @@ int64_t FAST_FUNC read_key(int fd, char *buffer, int timeout)
 		'[','1','3','~'|0x80,KEYCODE_FUN3    , /* old xterm... */
 		'[','1','4','~'|0x80,KEYCODE_FUN4    , /* old xterm... */
 		'[','1','5','~'|0x80,KEYCODE_FUN5    ,
-		/* [ESC] ESC [ 1 5 [;2] ~ - [Alt-][Shift-]F5 */
+	//	[ESC] ESC [ 1 5 [;2] ~ - [Alt-][Shift-]F5
 		'[','1','7','~'|0x80,KEYCODE_FUN6    ,
 		'[','1','8','~'|0x80,KEYCODE_FUN7    ,
 		'[','1','9','~'|0x80,KEYCODE_FUN8    ,
@@ -94,21 +94,21 @@ int64_t FAST_FUNC read_key(int fd, char *buffer, int timeout)
 		'[','2','1','~'|0x80,KEYCODE_FUN10   ,
 		'[','2','3','~'|0x80,KEYCODE_FUN11   ,
 		'[','2','4','~'|0x80,KEYCODE_FUN12   ,
-		/* ESC [ 2 4 ; 2 ~ - Shift-F12 */
-		/* ESC [ 2 4 ; 3 ~ - Alt-F12 */
-		/* ESC [ 2 4 ; 4 ~ - Alt-Shift-F12 */
-		/* ESC [ 2 4 ; 5 ~ - Ctrl-F12 */
-		/* ESC [ 2 4 ; 6 ~ - Ctrl-Shift-F12 */
+	//	ESC [ 2 4 ; 2 ~ - Shift-F12
+	//	ESC [ 2 4 ; 3 ~ - Alt-F12
+	//	ESC [ 2 4 ; 4 ~ - Alt-Shift-F12
+	//	ESC [ 2 4 ; 5 ~ - Ctrl-F12
+	//	ESC [ 2 4 ; 6 ~ - Ctrl-Shift-F12
 #endif
-		/* '[','1',';','5','A' |0x80,KEYCODE_CTRL_UP   , - unused */
-		/* '[','1',';','5','B' |0x80,KEYCODE_CTRL_DOWN , - unused */
-		'[','1',';','5','C' |0x80,KEYCODE_CTRL_RIGHT,
-		'[','1',';','5','D' |0x80,KEYCODE_CTRL_LEFT ,
-		/* '[','1',';','3','A' |0x80,KEYCODE_ALT_UP    , - unused */
-		/* '[','1',';','3','B' |0x80,KEYCODE_ALT_DOWN  , - unused */
+	//	'[','1',';','3','A' |0x80,KEYCODE_ALT_UP    , - unused
+	//	'[','1',';','3','B' |0x80,KEYCODE_ALT_DOWN  , - unused
 		'[','1',';','3','C' |0x80,KEYCODE_ALT_RIGHT,
 		'[','1',';','3','D' |0x80,KEYCODE_ALT_LEFT ,
-		/* '[','3',';','3','~' |0x80,KEYCODE_ALT_DELETE, - unused */
+	//	'[','1',';','5','A' |0x80,KEYCODE_CTRL_UP   , - unused
+	//	'[','1',';','5','B' |0x80,KEYCODE_CTRL_DOWN , - unused
+		'[','1',';','5','C' |0x80,KEYCODE_CTRL_RIGHT,
+		'[','1',';','5','D' |0x80,KEYCODE_CTRL_LEFT ,
+	//	'[','3',';','3','~' |0x80,KEYCODE_ALT_DELETE, - unused
 		0
 	};
 
@@ -210,7 +210,7 @@ int64_t FAST_FUNC read_key(int fd, char *buffer, int timeout)
 				/* Forward to last char */
 				while (!(*seq & 0x80))
 					seq++;
-				/* Skip it and the keycode which follows */
+				/* Skip seq terminating byte, and KEYCODE_xyz byte that follows */
 				seq += 2;
 				break;
 			}
@@ -222,6 +222,7 @@ int64_t FAST_FUNC read_key(int fd, char *buffer, int timeout)
 				 * but we never read ahead that much,
 				 * and n == i here. */
 				buffer[-1] = 0;
+				/* Return KEYCODE_xyz (always negative) */
 				return (signed char)seq[i+1];
 			}
 			i++;

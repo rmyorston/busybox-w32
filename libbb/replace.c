@@ -28,7 +28,8 @@ unsigned FAST_FUNC count_strstr(const char *str, const char *sub)
 
 char* FAST_FUNC xmalloc_substitute_string(const char *src, int count, const char *sub, const char *repl)
 {
-	char *buf, *dst, *end;
+	char *buf, *dst;
+	const char *end;
 	size_t sub_len = strlen(sub);
 	size_t repl_len = strlen(repl);
 

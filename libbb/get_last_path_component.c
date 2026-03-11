@@ -48,20 +48,20 @@ char* FAST_FUNC bb_get_last_path_component_nostrip(const char *path)
 {
 #if ENABLE_PLATFORM_MINGW32
 	const char *start = path + root_len(path);
-	char *slash = get_last_slash(path);
+	const char *slash = get_last_slash(path);
 
 	if (!slash && has_dos_drive_prefix(path) && path[2] != '\0')
 		return (char *)path + 2;
 	if (!slash || (slash == start && !slash[1]))
 		return (char*)path;
 #else
-	char *slash = strrchr(path, '/');
+	const char *slash = strrchr(path, '/');
 
 	if (!slash || (slash == path && !slash[1]))
 		return (char*)path;
 #endif
 
-	return slash + 1;
+	return (char*)slash + 1;
 }
 
 /*

@@ -6939,7 +6939,7 @@ tryexec_applet(int applet_no, int noexec, const char *cmd, char **argv, char **e
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
-static struct builtincmd *find_builtin(const char *name);
+static const struct builtincmd *find_builtin(const char *name);
 static void
 tryexec(const char *cmd, const char *path, int noexec, char **argv, char **envp)
 {
@@ -9663,7 +9663,7 @@ test_exec(/*const char *fullname,*/ struct stat *statb)
 }
 
 /* Circular dep: find_command->find_builtin->builtintab[]->hashcmd->find_command */
-static struct builtincmd *find_builtin(const char *name);
+static const struct builtincmd *find_builtin(const char *name);
 #if ENABLE_ASH_BASH_NOT_FOUND_HOOK
 static int evalfun(struct funcnode *func, int argc, char **argv, int flags);
 #endif
@@ -9684,7 +9684,7 @@ find_command(char *name, struct cmdentry *entry, int act, const char *path)
 	struct stat statb;
 	int e;
 	int updatetbl;
-	struct builtincmd *bcmd;
+	const struct builtincmd *bcmd;
 	int len;
 
 #if !ENABLE_PLATFORM_MINGW32
@@ -10303,9 +10303,7 @@ static const uint8_t nodesize[N_NUMBER] ALIGN1 = {
 #endif
 	[NCLOBBER ] = SHELL_ALIGN(sizeof(struct nfile)),
 	[NFROM    ] = SHELL_ALIGN(sizeof(struct nfile)),
-#if ENABLE_PLATFORM_MINGW32
 	[NFROMSTR ] = SHELL_ALIGN(sizeof(struct nfile)),
-#endif
 	[NFROMTO  ] = SHELL_ALIGN(sizeof(struct nfile)),
 	[NAPPEND  ] = SHELL_ALIGN(sizeof(struct nfile)),
 	[NTOFD    ] = SHELL_ALIGN(sizeof(struct ndup)),
@@ -12074,10 +12072,10 @@ static const struct builtincmd builtintab[] = {
 /*
  * Search the table of builtin commands.
  */
-static struct builtincmd *
+static const struct builtincmd *
 find_builtin(const char *name)
 {
-	struct builtincmd *bp;
+	const struct builtincmd *bp;
 
 	bp = bsearch(
 		name, builtintab, ARRAY_SIZE(builtintab), sizeof(builtintab[0]),
@@ -12093,11 +12091,7 @@ ash_command_name(int i)
 	int n;
 
 	if (/*i >= 0 &&*/ i < ARRAY_SIZE(builtintab))
-#if ENABLE_PLATFORM_MINGW32
 		return builtintab[i].name;
-#else
-		return builtintab[i].name + 1;
-#endif
 	i -= ARRAY_SIZE(builtintab);
 
 	for (n = 0; n < CMDTABLESIZE; n++) {
@@ -14316,12 +14310,12 @@ decode_dollar_squote(void)
 {
 	static const char C_escapes[] ALIGN1 = "nrbtfav""x\\01234567";
 	int c, cnt;
-	char *p;
 	char buf[4];
 
 	c = pgetc();
-	p = strchr(C_escapes, c);
-	if (p) {
+	if (strchr(C_escapes, c)) {
+		char *p;
+
 		buf[0] = c;
 		p = buf;
 		cnt = 3;
@@ -15815,11 +15809,7 @@ helpcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		"------------------\n");
 	for (col = 0, i = 0; i < ARRAY_SIZE(builtintab); i++) {
 		col += out1fmt("%c%s", ((col == 0) ? '\t' : ' '),
-#if ENABLE_PLATFORM_MINGW32
 					builtintab[i].name);
-#else
-					builtintab[i].name + 1);
-#endif
 		if (col > 60) {
 			out1fmt("\n");
 			col = 0;

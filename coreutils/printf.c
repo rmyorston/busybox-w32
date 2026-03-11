@@ -419,7 +419,7 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 			/* Add "ll" if integer modifier, then print */
 			{
 				static const char format_chars[] ALIGN1 = "diouxXfeEgGcs";
-				char *p = strchr(format_chars, *f);
+				char *p = (char*)strchr(format_chars, *f);
 				/* needed - try "printf %" without it */
 				if (p == NULL || *f == '\0') {
 					bb_error_msg("%s: invalid format", direc_start);

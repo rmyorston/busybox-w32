@@ -348,7 +348,7 @@ int conf_write(const char *name)
 	dirname[0] = 0;
 	if (name && name[0]) {
 		struct stat st;
-		char *slash;
+		const char *slash;
 
 		if (!stat(name, &st) && S_ISDIR(st.st_mode)) {
 			strcpy(dirname, name);

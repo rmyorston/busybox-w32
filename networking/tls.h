@@ -49,6 +49,7 @@
 #define PS_PLATFORM_FAIL        -7      /* Failure as a result of system call error */
 #define PS_MEM_FAIL             -8      /* Failure to allocate requested memory */
 #define PS_LIMIT_FAIL           -9      /* Failure on sanity/limit tests */
+#define PS_UNSUPPORTED_FAIL     -10     /* Unsupported algorithm or operation */
 
 #define PS_TRUE         1
 #define PS_FALSE        0
@@ -90,6 +91,7 @@ void tls_get_random(void *buf, unsigned len) FAST_FUNC;
 
 #define matrixCryptoGetPrngData(buf, len, userPtr) (tls_get_random(buf, len), PS_SUCCESS)
 
+#define psMalloc(pool, size) xmalloc(size)
 #define psFree(p, pool)    free(p)
 #define psTraceCrypto(msg) bb_simple_error_msg_and_die(msg)
 
@@ -109,6 +111,22 @@ void tls_get_random(void *buf, unsigned len) FAST_FUNC;
 #define P256_KEYSIZE       32
 #define CURVE25519_KEYSIZE 32
 
+/* Separate keypair generation and premaster computation functions */
+void curve_x25519_generate_keypair(
+		uint8_t *privkey32, uint8_t *pubkey32) FAST_FUNC;
+void curve_x25519_compute_premaster(
+		const uint8_t *privkey32, const uint8_t *peerkey32,
+		uint8_t *premaster32) FAST_FUNC;
+
+#if ENABLE_SSL_SERVER
+void curve_P256_generate_keypair(
+		uint8_t *privkey32, uint8_t *pubkey2x32) FAST_FUNC;
+void curve_P256_compute_premaster(
+		const uint8_t *privkey32, const uint8_t *peerkey2x32,
+		uint8_t *premaster32) FAST_FUNC;
+#endif
+
+/* Combined operations (for client-side use) */
 void curve_x25519_compute_pubkey_and_premaster(
 		uint8_t *pubkey32, uint8_t *premaster32,
 		const uint8_t *peerkey32) FAST_FUNC;
