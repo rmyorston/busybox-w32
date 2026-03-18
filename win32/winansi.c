@@ -1468,6 +1468,8 @@ static int writeCon_utf8(int fd, const char *u8buf, size_t u8siz)
 
 	HANDLE h = (HANDLE)_get_osfhandle(fd);
 	int wlen = 0;
+
+	// unused. XP requires non-NULL arg, if we ever support Unicode on XP
 	DWORD nwritten = 0;
 
 	if (!wbuf)
@@ -1523,13 +1525,13 @@ static int writeCon_utf8(int fd, const char *u8buf, size_t u8siz)
 
 		// flush if we have less than two empty spaces
 		if (wlen > wbufwsiz - 2) {
-			if (!WriteConsoleW(h, wbuf, wlen, &nwritten, 0) || nwritten != wlen)
+			if (!WriteConsoleW(h, wbuf, wlen, &nwritten, 0))
 				return -1;
 			wlen = 0;
 		}
 	}
 
-	if (wlen && (!WriteConsoleW(h, wbuf, wlen, &nwritten, 0) || nwritten != wlen))
+	if (wlen && (!WriteConsoleW(h, wbuf, wlen, &nwritten, 0)))
 		return -1;
 	return 0;
 }
