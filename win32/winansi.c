@@ -1456,11 +1456,14 @@ BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
 //       if streams are multiplexed mid-codepoint (same as elsewhere?)
 static int writeCon_utf8(int fd, const char *u8buf, size_t u8siz)
 {
-	static int state = 0;  // -1: bad, 0-3: remaining cp bytes (0: done/new)
+	// state during/between calls
+	static int state = 0;  // 0-3: remaining cp bytes (0: done/new)
 	static uint32_t codepoint = 0;  // accumulated from up to 4 UTF8 bytes
 
-	// not a state, only avoids re-alloc on every call
-	static const int wbufwsiz = 4096;
+	// wbuf is not a state, but it's kept between calls to avoid repeated
+	// malloc/free. 4096 was chosen empirically to reach diminishing
+	// returns at the size/speed curve. 8192 is still slightly faster.
+	static const int wbufwsiz = 4096;  // at least 2
 	static wchar_t *wbuf = 0;
 
 	HANDLE h = (HANDLE)_get_osfhandle(fd);
@@ -1495,25 +1498,16 @@ static int writeCon_utf8(int fd, const char *u8buf, size_t u8siz)
 			continue;
 
 		} else {
-			// already bad (state<0), or unexpected c at state 0-3.
-			// placeholder is added only at the 1st (state>=0).
-			// regardless, c may be valid to reprocess as state 0
-			// (even when it's the 1st unexpected in state 1/2/3)
-			int placeholder_done = state < 0;
+			// invalid in this state: print '?', reset decoding.
+			codepoint = CONFIG_SUBST_WCHAR;  // '?' or '�'
+			state = 0;
 
+			// and if this byte is valid for state 0 (can happen
+			// at state!=0), then reprocess it from scratch.
 			if (topbits < 5 && topbits != 1) {
-				--u8buf;  // valid for state 0, reprocess
+				--u8buf;
 				++u8siz;
-				state = 0;
-			} else {
-				state = -1;  // set/keep bad state
 			}
-
-			if (placeholder_done)
-				continue;
-
-			// 1st unexpected char, add placeholder
-			codepoint = CONFIG_SUBST_WCHAR;
 		}
 
 		// codepoint is complete
