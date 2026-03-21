@@ -54,7 +54,11 @@ ifneq ($(lastword $(subst -, ,$(CC))),clang)
 CFLAGS += $(call cc-option,-finline-limit=0,)
 endif
 
+ifneq ($(CONFIG_STATICS_IN_BSS),y)
 CFLAGS += $(call cc-option,-fno-builtin-strlen -fomit-frame-pointer -ffunction-sections -fdata-sections,)
+else
+CFLAGS += $(call cc-option,-fno-builtin-strlen -fomit-frame-pointer -ffunction-sections,)
+endif
 # -fno-guess-branch-probability: prohibit pseudo-random guessing
 # of branch probabilities (hopefully makes bloatcheck more stable):
 CFLAGS += $(call cc-option,-fno-guess-branch-probability,)

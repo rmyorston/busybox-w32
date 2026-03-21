@@ -582,6 +582,16 @@ config UNWIND_TABLES
 	normally required in BusyBox, but Windows' Control Flow Guard
 	needs it.  Disabling this reduces the size of the binaries.
 
+config STATICS_IN_BSS
+	bool "Place static variables in .bss"
+	default y
+	depends on PLATFORM_MINGW32
+	help
+	Upstream BusyBox sets a compiler flag which results in static
+	variables being placed in the .data section on Windows, thus
+	increasing the size of the binary. Disable this setting to use
+	the upstream default, probably only for diagnostic purposes.
+
 comment 'Build Options'
 
 config STATIC
