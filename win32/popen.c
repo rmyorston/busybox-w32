@@ -300,10 +300,13 @@ pid_t mingw_fork_compressor(int fd, const char *compressor, const char *mode)
 	pid_t pid;
 
 	cmd = xasprintf("%s -cf -", compressor);
-#if ENABLE_FEATURE_SEAMLESS_XZ || ENABLE_FEATURE_SEAMLESS_LZMA
-	// xz and lzma applets don't support compression, we must use
+#if ENABLE_FEATURE_SEAMLESS_XZ || ENABLE_FEATURE_SEAMLESS_LZMA || ENABLE_FEATURE_SEAMLESS_ZSTD
+	// xz, lzma and zstd don't support compression, we must use
 	// an external command.
-	if (mode[0] == 'w' && index_in_strings("lzma\0xz\0", compressor) >= 0)
+	if (mode[0] == 'w' && index_in_strings(
+			IF_FEATURE_SEAMLESS_LZMA("lzma\0")
+			IF_FEATURE_SEAMLESS_XZ("xz\0")
+			IF_FEATURE_SEAMLESS_ZSTD("zstd\0"), compressor) >= 0)
 		mode = "w+";
 #endif
 

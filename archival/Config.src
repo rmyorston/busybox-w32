@@ -25,6 +25,10 @@ config FEATURE_SEAMLESS_Z
 	bool "Make tar, rpm, modprobe etc understand .Z data"
 	default n  # it is ancient
 
+config FEATURE_SEAMLESS_ZSTD
+	bool "Make tar, rpm, modprobe etc understand .zst data"
+	default y
+
 INSERT
 
 config FEATURE_LZMA_FAST
