@@ -1458,6 +1458,7 @@ static int writeCon_utf8(int fd, const char *u8buf, size_t u8siz)
 {
 	// state during/between calls
 	static int state = 0;  // 0-3: remaining cp bytes (0: done/new)
+	static int tail = 0;  // init like state, used for overlong rejection
 	static uint32_t codepoint = 0;  // accumulated from up to 4 UTF8 bytes
 
 	// wbuf is not a state, but it's kept between calls to avoid repeated
@@ -1488,15 +1489,25 @@ static int writeCon_utf8(int fd, const char *u8buf, size_t u8siz)
 			codepoint = c;
 
 		} else if (state > 0 && topbits == 1) {
-			// valid continuation byte
+			// valid continuation/final byte (2/3/4 bytes UTF8)
+			// min value for 1/2/3/4 bytes UTF-8 (cpmin[0] is unused)
+			static const uint32_t cpmin[] = {0, 0x80, 0x800, 0x10000};
+
 			codepoint = (codepoint << 6) | (c & 0x3f);
 			if (--state)
 				continue;
 
+			// done. ensure codepoint is not too small (overlong
+			// with 2/3/4 bytes), and not too big (with 4 bytes).
+			// can be optimized further, with longer explanation:
+			//   if ((codepoint - cpmin[tail]) & ~0xfffffu) ...
+			if (codepoint < cpmin[tail] || codepoint > 0x10ffff)
+				codepoint = CONFIG_SUBST_WCHAR;
+
 		} else if (state == 0 && topbits >= 2 && topbits <= 4) {
 			// valid UTF8 lead of 2/3/4 bytes codepoint
 			codepoint = c & (0x7f >> topbits);
-			state = topbits - 1;  // remaining bytes after lead
+			tail = state = topbits - 1; // expected bytes after lead
 			continue;
 
 		} else {
