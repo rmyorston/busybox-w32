@@ -77,6 +77,10 @@ int dpkg_deb_main(int argc UNUSED_PARAM, char **argv)
 	llist_add_to(&ar_archive->accept, (char*)"data.tar.xz");
 	llist_add_to(&control_tar_llist, (char*)"control.tar.xz");
 #endif
+#if ENABLE_FEATURE_SEAMLESS_ZSTD
+	llist_add_to(&ar_archive->accept, (char*)"data.tar.zst");
+	llist_add_to(&control_tar_llist, (char*)"control.tar.zst");
+#endif
 
 	/* Must have 1 or 2 args */
 	opt = getopt32(argv, "^" "cefXx"

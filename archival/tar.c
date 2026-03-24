@@ -856,8 +856,8 @@ enum {
 	IF_FEATURE_TAR_NOPRESERVE_TIME(OPTBIT_NOPRESERVE_TIME,)
 #if ENABLE_FEATURE_TAR_LONG_OPTIONS
 	OPTBIT_STRIP_COMPONENTS,
-	IF_FEATURE_SEAMLESS_LZMA(OPTBIT_LZMA        ,)
 	IF_FEATURE_SEAMLESS_ZSTD(OPTBIT_ZSTD        ,)
+	IF_FEATURE_SEAMLESS_LZMA(OPTBIT_LZMA        ,)
 	OPTBIT_NORECURSION,
 	IF_FEATURE_TAR_TO_COMMAND(OPTBIT_2COMMAND   ,)
 	OPTBIT_NUMERIC_OWNER,
@@ -884,8 +884,8 @@ enum {
 	OPT_AUTOCOMPRESS_BY_EXT = 1 << OPTBIT_AUTOCOMPRESS_BY_EXT,                   // a
 	OPT_NOPRESERVE_TIME  = IF_FEATURE_TAR_NOPRESERVE_TIME((1 << OPTBIT_NOPRESERVE_TIME)) + 0, // m
 	OPT_STRIP_COMPONENTS = IF_FEATURE_TAR_LONG_OPTIONS((1 << OPTBIT_STRIP_COMPONENTS)) + 0, // strip-components
-	OPT_LZMA             = IF_FEATURE_TAR_LONG_OPTIONS(IF_FEATURE_SEAMLESS_LZMA((1 << OPTBIT_LZMA))) + 0, // lzma
 	OPT_ZSTD             = IF_FEATURE_TAR_LONG_OPTIONS(IF_FEATURE_SEAMLESS_ZSTD((1 << OPTBIT_ZSTD))) + 0, // zstd
+	OPT_LZMA             = IF_FEATURE_TAR_LONG_OPTIONS(IF_FEATURE_SEAMLESS_LZMA((1 << OPTBIT_LZMA))) + 0, // lzma
 	OPT_NORECURSION      = IF_FEATURE_TAR_LONG_OPTIONS((1 << OPTBIT_NORECURSION    )) + 0, // no-recursion
 	OPT_2COMMAND         = IF_FEATURE_TAR_TO_COMMAND(  (1 << OPTBIT_2COMMAND       )) + 0, // to-command
 	OPT_NUMERIC_OWNER    = IF_FEATURE_TAR_LONG_OPTIONS((1 << OPTBIT_NUMERIC_OWNER  )) + 0, // numeric-owner
@@ -932,12 +932,12 @@ static const char tar_longopts[] ALIGN1 =
 # if ENABLE_FEATURE_TAR_NOPRESERVE_TIME
 	"touch\0"               No_argument       "m"
 # endif
-	"strip-components\0"	Required_argument "\xf8"
+	"strip-components\0"	Required_argument "\xf7"
+# if ENABLE_FEATURE_SEAMLESS_ZSTD
+	"zstd\0"                No_argument       "\xf8"
+# endif
 # if ENABLE_FEATURE_SEAMLESS_LZMA
 	"lzma\0"                No_argument       "\xf9"
-# endif
-# if ENABLE_FEATURE_SEAMLESS_ZSTD
-	"zstd\0"                No_argument       "\xf7"
 # endif
 	"no-recursion\0"	No_argument       "\xfa"
 # if ENABLE_FEATURE_TAR_TO_COMMAND
@@ -1033,7 +1033,7 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 		IF_FEATURE_SEAMLESS_Z(   "Z"     )
 		"a"
 		IF_FEATURE_TAR_NOPRESERVE_TIME("m")
-		IF_FEATURE_TAR_LONG_OPTIONS("\xf8:") // --strip-components
+		IF_FEATURE_TAR_LONG_OPTIONS("\xf7:") // --strip-components
 		"\0"
 		"tt:vv:" // count -t,-v
 #if ENABLE_FEATURE_TAR_LONG_OPTIONS && ENABLE_FEATURE_TAR_FROM
@@ -1043,7 +1043,7 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 		IF_FEATURE_TAR_CREATE("c--tx:t--cx:x--ct") // mutually exclusive
 		IF_NOT_FEATURE_TAR_CREATE("t--x:x--t") // mutually exclusive
 #if ENABLE_FEATURE_TAR_LONG_OPTIONS
-		":\xf8+" // --strip-components=NUM
+		":\xf7+" // --strip-components=NUM
 #endif
 		LONGOPTS
 		, &base_dir // -C dir
@@ -1083,8 +1083,8 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 	showopt(OPT_AUTOCOMPRESS_BY_EXT);
 	showopt(OPT_NOPRESERVE_TIME );
 	showopt(OPT_STRIP_COMPONENTS);
-	showopt(OPT_LZMA            );
 	showopt(OPT_ZSTD            );
+	showopt(OPT_LZMA            );
 	showopt(OPT_NORECURSION     );
 	showopt(OPT_2COMMAND        );
 	showopt(OPT_NUMERIC_OWNER   );

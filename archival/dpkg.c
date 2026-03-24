@@ -1510,6 +1510,9 @@ static void init_archive_deb_control(archive_handle_t *ar_handle)
 #if ENABLE_FEATURE_SEAMLESS_XZ
 	llist_add_to(&(ar_handle->accept), (char*)"control.tar.xz");
 #endif
+#if ENABLE_FEATURE_SEAMLESS_ZSTD
+	llist_add_to(&(ar_handle->accept), (char*)"control.tar.zst");
+#endif
 
 	/* Assign the tar handle as a subarchive of the ar handle */
 	ar_handle->dpkg__sub_archive = tar_handle;
@@ -1536,6 +1539,9 @@ static void init_archive_deb_data(archive_handle_t *ar_handle)
 #endif
 #if ENABLE_FEATURE_SEAMLESS_XZ
 	llist_add_to(&(ar_handle->accept), (char*)"data.tar.xz");
+#endif
+#if ENABLE_FEATURE_SEAMLESS_ZSTD
+	llist_add_to(&(ar_handle->accept), (char*)"data.tar.zst");
 #endif
 
 	/* Assign the tar handle as a subarchive of the ar handle */

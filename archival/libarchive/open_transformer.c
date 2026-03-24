@@ -211,11 +211,14 @@ static transformer_state_t *setup_transformer_on_fd(int fd, int die_if_not_compr
 	}
 
 	if (ENABLE_FEATURE_SEAMLESS_ZSTD && xstate->magic.b16[0] == ZSTD_MAGIC1) {
-		xstate->signature_skipped = 4;
 		xread(fd, &xstate->magic.b16[1], 2);
 		if (xstate->magic.b16[1] == ZSTD_MAGIC2) {
 			xstate->xformer = unpack_zstd_stream;
 			USE_FOR_NOMMU(xstate->xformer_prog = "unzstd";)
+			// FIXME We execute an external decompressor even on MMU.
+			// Force a seek back to the signature.
+			xstate->signature_skipped = 0;
+			xlseek(xstate->src_fd, -4, SEEK_CUR);
 			goto found_magic;
 		}
 	}

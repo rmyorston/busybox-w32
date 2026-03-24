@@ -39,6 +39,7 @@ DPKG_FILES:= \
 	get_header_tar_bz2.o \
 	get_header_tar_lzma.o \
 	get_header_tar_xz.o \
+	get_header_tar_zstd.o \
 
 INSERT
 
