@@ -1,0 +1,28 @@
+# FEATURE: CONFIG_PLATFORM_MINGW32
+# Test non-ASCII paths work in ANSI mode (no UTF-8 manifest)
+
+ANSI_BUSYBOX="$bindir/busybox-ansi.exe"
+BASEDIR=c:/temp/ansi_path_test$$
+
+# Ensure ANSI busybox exists (run setup-ansi-test first)
+test -f "$ANSI_BUSYBOX" || { echo "Run setup-ansi-test first"; exit 1; }
+
+# Create directory with CP1252-compatible accented character
+# e-acute = U+00E9
+powershell.exe -Command "
+\$e = [char]0x00e9
+New-Item -Path \"$BASEDIR/caf\`\${e}_dir\" -ItemType Directory -Force | Out-Null
+New-Item -Path \"$BASEDIR/caf\`\${e}_dir/file.txt\" -ItemType File -Force | Out-Null
+"
+
+test -d "$BASEDIR" || { echo "directory creation failed"; exit 1; }
+
+# Test ls with ANSI-mode busybox
+output=$("$ANSI_BUSYBOX" ls "$BASEDIR" 2>&1)
+echo "$output" | grep -q "caf.*_dir" || { echo "ls failed: $output"; exit 1; }
+
+# Test stat
+"$ANSI_BUSYBOX" stat "$BASEDIR" > /dev/null 2>&1 || { echo "stat failed"; exit 1; }
+
+# Cleanup
+"$ANSI_BUSYBOX" rm -rf "$BASEDIR"

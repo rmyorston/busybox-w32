@@ -1,0 +1,18 @@
+# FEATURE: CONFIG_PLATFORM_MINGW32
+# Test paths with mixed forward and backslashes
+
+BASEDIR=c:/temp/ls_mixslash_test$$
+
+powershell.exe -Command "
+New-Item -Path '$BASEDIR/a/b/c/d' -ItemType Directory -Force | Out-Null
+New-Item -Path '$BASEDIR/a/b/c/d/file.txt' -ItemType File -Force | Out-Null
+"
+
+test -d "$BASEDIR" || { echo "setup failed"; exit 1; }
+
+# Various mixed slash combinations
+busybox ls "$BASEDIR\\a/b\\c/d" | grep -q file.txt || { echo "mix1 failed"; exit 1; }
+busybox ls "$BASEDIR/a\\b/c\\d" | grep -q file.txt || { echo "mix2 failed"; exit 1; }
+busybox ls "c:\\temp\\ls_mixslash_test$$/a/b/c/d" | grep -q file.txt || { echo "mix3 failed"; exit 1; }
+
+busybox rm -rf "$BASEDIR"

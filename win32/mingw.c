@@ -8,6 +8,8 @@
 #include <psapi.h>
 #include <ntsecapi.h>
 
+#define LONG_PATH_MAX 32800
+
 #if defined(__MINGW64_VERSION_MAJOR)
 #if ENABLE_GLOBBING
 extern int _setargv(void);
@@ -394,6 +396,8 @@ static inline mode_t file_attr_to_st_mode(DWORD attr)
 	return fMode;
 }
 
+static wchar_t *get_long_path_w(const char *path);
+
 static int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
 {
 	char *want_dir;
@@ -412,12 +416,8 @@ static int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
 	}
 
 	want_dir = last_char_is_dir_sep(fname);
-	if (GetFileAttributesExA(fname, GetFileExInfoStandard, fdata)) {
-		if (!(fdata->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && want_dir)
-			return ENOTDIR;
-		fdata->dwFileAttributes &= ~FILE_ATTRIBUTE_DEVICE;
-		return 0;
-	}
+	if (GetFileAttributesExA(fname, GetFileExInfoStandard, fdata))
+		goto got_attr;
 
 	if (GetLastError() == ERROR_SHARING_VIOLATION) {
 		HANDLE hnd;
@@ -436,6 +436,13 @@ static int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
 		}
 	}
 
+	/* failed, try wide path for long paths */
+	{
+		wchar_t *wpath = get_long_path_w(fname);
+		if (wpath && GetFileAttributesExW(wpath, GetFileExInfoStandard, fdata))
+			goto got_attr;
+	}
+
 	switch (GetLastError()) {
 	case ERROR_ACCESS_DENIED:
 	case ERROR_SHARING_VIOLATION:
@@ -452,6 +459,34 @@ static int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
 	default:
 		return ENOENT;
 	}
+
+ got_attr:
+	if (!(fdata->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && want_dir)
+		return ENOTDIR;
+	fdata->dwFileAttributes &= ~FILE_ATTRIBUTE_DEVICE;
+	return 0;
+}
+
+static wchar_t *get_long_path_w(const char *path)
+{
+	/* convert path to wide with \\?\ prefix; returns static buffer */
+	static wchar_t *wpath = NULL;
+	static wchar_t *wlong = NULL;
+	DWORD len;
+
+	if (!wpath) {
+		wpath = xmalloc(LONG_PATH_MAX * sizeof(wchar_t));
+		wlong = xmalloc(LONG_PATH_MAX * sizeof(wchar_t));
+	}
+
+	if (MultiByteToWideChar(CP_ACP, 0, path, -1, wpath, LONG_PATH_MAX) == 0)
+		return NULL;
+
+	memcpy(wlong, L"\\\\?\\", 4 * sizeof(wchar_t));
+	len = GetFullPathNameW(wpath, LONG_PATH_MAX - 4, wlong + 4, NULL);
+	if (len == 0 || len >= LONG_PATH_MAX - 4)
+		return NULL;
+	return wlong;
 }
 
 #undef umask
@@ -1890,19 +1925,34 @@ int fcntl(int fd, int cmd, ...)
 int mingw_unlink(const char *pathname)
 {
 	int ret;
+	wchar_t *wpath;
 
 	/* read-only files cannot be removed */
 	chmod(pathname, 0666);
 
 	ret = unlink(pathname);
-	if (ret == -1 && errno == EACCES) {
+	if (ret == 0)
+		return 0;
+
+	if (errno == EACCES) {
 		/* a symlink to a directory needs to be removed by calling rmdir */
 		/* (the *real* Windows rmdir, not mingw_rmdir) */
 		if (is_symlink(pathname)) {
 			return rmdir(pathname);
 		}
 	}
-	return ret;
+
+	/* failed, try wide path for long paths */
+	wpath = get_long_path_w(pathname);
+	if (wpath) {
+		if (DeleteFileW(wpath))
+			return 0;
+		/* symlink to directory? */
+		if (GetLastError() == ERROR_ACCESS_DENIED && RemoveDirectoryW(wpath))
+			return 0;
+		errno = err_win_to_posix();
+	}
+	return -1;
 }
 
 struct pagefile_info {
@@ -2074,6 +2124,8 @@ int mingw_access(const char *name, int mode)
 
 int mingw_rmdir(const char *path)
 {
+	wchar_t *wpath;
+
 	/* On Linux rmdir(2) doesn't remove symlinks */
 	if (is_symlink(path)) {
 		errno = ENOTDIR;
@@ -2082,7 +2134,16 @@ int mingw_rmdir(const char *path)
 
 	/* read-only directories cannot be removed */
 	chmod(path, 0666);
-	return rmdir(path);
+
+	if (rmdir(path) == 0)
+		return 0;
+
+	/* failed, try wide path for long paths */
+	wpath = get_long_path_w(path);
+	if (wpath && RemoveDirectoryW(wpath))
+		return 0;
+	errno = err_win_to_posix();
+	return -1;
 }
 
 void mingw_sync(void)
