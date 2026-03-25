@@ -17,7 +17,7 @@
    Boston, MA 02111-1307, USA.  */
 
 #include <platform.h>
-#include "match_class.h"
+#include "actype.h"
 
 #if HAVE_CONFIG_H
 # include <config.h>
@@ -373,7 +373,7 @@ internal_fnmatch (const char *pattern, const char *string,
 		    if (__iswctype (__btowc ((unsigned char) *n), wt))
 		      goto matched;
 # else
-			switch (match_class(str)) {
+			switch (actype(str)) {
 		    case CCLASS_ALNUM:
 				if (ISALNUM ((unsigned char) *n))
 					goto matched;

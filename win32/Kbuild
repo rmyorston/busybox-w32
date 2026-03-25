@@ -4,6 +4,7 @@
 
 lib-y:=
 
+lib-$(CONFIG_PLATFORM_MINGW32) += actype.o
 lib-$(CONFIG_PLATFORM_MINGW32) += dirent.o
 lib-$(CONFIG_PLATFORM_MINGW32) += dirname.o
 lib-$(CONFIG_PLATFORM_MINGW32) += env.o
@@ -15,7 +16,6 @@ lib-$(CONFIG_PLATFORM_MINGW32) += inet_pton.o
 lib-$(CONFIG_PLATFORM_MINGW32) += ioctl.o
 lib-$(CONFIG_PLATFORM_MINGW32) += mingw.o
 lib-$(CONFIG_PLATFORM_MINGW32) += process.o
-lib-$(CONFIG_PLATFORM_MINGW32) += match_class.o
 lib-$(CONFIG_PLATFORM_MINGW32) += mntent.o
 lib-$(CONFIG_PLATFORM_MINGW32) += net.o
 lib-$(CONFIG_PLATFORM_MINGW32) += poll.o

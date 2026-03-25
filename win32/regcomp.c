@@ -18,7 +18,7 @@
    Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301 USA.  */
 
-#include "match_class.h"
+#include "actype.h"
 
 #define UNUSED_PARAM __attribute__ ((__unused__))
 
@@ -3606,7 +3606,7 @@ build_charclass (RE_TRANSLATE_TYPE trans, bitset_t sbcset,
   else
     return REG_ECTYPE;
 #else
-	switch (match_class(class_name)) {
+	switch (actype(class_name)) {
 	case CCLASS_ALNUM:
 		BUILD_CHARCLASS_LOOP (isalnum);
 		break;
