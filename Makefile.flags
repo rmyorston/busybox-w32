@@ -110,6 +110,7 @@ endif
 ARCH_FPIC ?= -fpic
 ARCH_FPIE ?= -fpie
 ARCH_PIE ?= -pie
+ARCH_SPIE ?= -static-pie
 
 # Usage: $(eval $(call pkg_check_modules,VARIABLE-PREFIX,MODULES))
 define pkg_check_modules
@@ -127,13 +128,20 @@ CFLAGS += $(call cc-option,-fvisibility=hidden)
 endif
 
 ifeq ($(CONFIG_STATIC),y)
-CFLAGS_busybox += -static
 PKG_CONFIG_FLAGS += --static
 endif
 
 ifeq ($(CONFIG_PIE),y)
+ifeq ($(CONFIG_STATIC),y)
+CFLAGS_busybox += $(ARCH_SPIE)
+else
 CFLAGS_busybox += $(ARCH_PIE)
+endif
 CFLAGS += $(ARCH_FPIE)
+else
+ifeq ($(CONFIG_STATIC),y)
+CFLAGS_busybox += -static
+endif
 endif
 
 ifneq ($(CONFIG_EXTRA_CFLAGS),)
