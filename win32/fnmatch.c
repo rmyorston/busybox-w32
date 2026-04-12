@@ -373,57 +373,15 @@ internal_fnmatch (const char *pattern, const char *string,
 		    if (__iswctype (__btowc ((unsigned char) *n), wt))
 		      goto matched;
 # else
-			switch (actype(str)) {
-		    case CCLASS_ALNUM:
-				if (ISALNUM ((unsigned char) *n))
-					goto matched;
-				break;
-			case CCLASS_ALPHA:
-				if (ISALPHA ((unsigned char) *n))
-					goto matched;
-				break;
-			case CCLASS_BLANK:
-				if (ISBLANK ((unsigned char) *n))
-					goto matched;
-				break;
-			case CCLASS_CNTRL:
-				if (ISCNTRL ((unsigned char) *n))
-					goto matched;
-				break;
-			case CCLASS_DIGIT:
-				if (ISDIGIT ((unsigned char) *n))
-					goto matched;
-				break;
-			case CCLASS_GRAPH:
-				if (ISGRAPH ((unsigned char) *n))
-					goto matched;
-				break;
-			case CCLASS_LOWER:
-				if (ISLOWER ((unsigned char) *n))
-					goto matched;
-				break;
-			case CCLASS_PRINT:
-				if (ISPRINT ((unsigned char) *n))
-					goto matched;
-				break;
-			case CCLASS_PUNCT:
-				if (ISPUNCT ((unsigned char) *n))
-					goto matched;
-				break;
-			case CCLASS_SPACE:
-				if (ISSPACE ((unsigned char) *n))
-					goto matched;
-				break;
-			case CCLASS_UPPER:
-				if (ISUPPER ((unsigned char) *n))
-					goto matched;
-				break;
-			case CCLASS_XDIGIT:
-				if (ISXDIGIT ((unsigned char) *n))
-					goto matched;
-				break;
-			}
-			c = *p++;
+		    /* note: the equivalent wctype code above returns
+		     * FNM_NOMATCH for unknown name, while here we consider
+		     * it as simply non-matched class (and only if ASCII).
+		     */
+		    if (ISASCII((unsigned char) *n))
+		      if (isactype((unsigned char) *n, actype(str)))
+		        goto matched;
+
+		    c = *p++;
 # endif
 		  }
 		else if (c == '\0')
