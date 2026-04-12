@@ -10,16 +10,38 @@
  * valid c is EOF or unsigned char. valid t is any value from actype/actail.
  */
 
-#define CHAR_CLASSES \
-			"alnum\0alpha\0blank\0cntrl\0digit\0graph\0" \
-			"lower\0print\0punct\0space\0upper\0xdigit\0"
+/* config options:
+ *
+ * ACTYPE_ENUM (0 or 1) decides whether actype_t is enum which can be used
+ * to test match of specific classes, or a slightly more efficient uintptr_t
+ * which is a direct function pointer to isalnum, etc, and without a way to
+ * test match of specific classes (just like wctype/iswctype).
+ *
+ * Both modes return 0 for actype("UNKNOWN-NAME"), and isactype(c, 0),
+ * and both should be compliant if POSIX had actype/isactype/actype_t.
+ *
+ * The implementation is O(1) function table access either way, where with
+ * enum this happens at isactype, while without enum the function is chosen
+ * at actype/actail, so isactype and especially isactype_not0 are very quick.
+ */
+#define ACTYPE_ENUM 0
 
-typedef enum {
-	CCLASS_NONE = 0,
-	CCLASS_ALNUM, CCLASS_ALPHA, CCLASS_BLANK, CCLASS_CNTRL,
-	CCLASS_DIGIT, CCLASS_GRAPH, CCLASS_LOWER, CCLASS_PRINT,
-	CCLASS_PUNCT, CCLASS_SPACE, CCLASS_UPPER, CCLASS_XDIGIT
-} actype_t;
+
+typedef int (*_isactype_t)(int);  /* isalpha et-al prototype */
+
+#if ACTYPE_ENUM
+  typedef enum {
+	AC_NONE = 0,
+	AC_ALNUM, AC_ALPHA, AC_BLANK, AC_CNTRL, AC_DIGIT, AC_GRAPH,
+	AC_LOWER, AC_PRINT, AC_PUNCT, AC_SPACE, AC_UPPER, AC_XDIGIT
+  } actype_t;
+  extern const _isactype_t _actype_fns[];
+  #define _isactype_not0(c, t) (_actype_fns[t](c))
+#else
+  #include <stdint.h>  /* uintptr_t */
+  typedef uintptr_t actype_t;
+  #define _isactype_not0(c, t) (((_isactype_t)t)(c))
+#endif
 
 extern actype_t actype(const char *name);
 extern int isactype(int c, actype_t t);
@@ -27,10 +49,10 @@ extern int isactype(int c, actype_t t);
 
 /* extensions */
 
-/* same as isactype but faster, and may crash if t==0.
+/* same as isactype but faster, and will crash if t==0.
  * useful if isactype is needed multiple times with the same non-0 t.
  */
-#define isactype_not0(c, t) (isactype((c), (t)))
+#define isactype_not0(c, t) _isactype_not0((c), (t))
 
 /* if str starts with NAME:]... and actype("NAME") != 0:
  *   set *len=strlen("NAME:]") and return non-0 actype("NAME").
