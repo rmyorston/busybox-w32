@@ -31,10 +31,8 @@ along with this program; if not, see https://www.gnu.org/licenses/ .
 #endif
 
 #if ACTYPE_OPTIMIZE_FOR_SIZE
-  #include <string.h>  /* strcmp */
   char *is_prefixed_with(const char*, const char*);  /* libbb */
   #define IS_PREFIXED_WITH_CLASS is_prefixed_with
-  #define IS_CLASS(s, c)         (!strcmp((s), (c)))
 #else
   /* c[0]-c[4] are not 0, so we can skip these 0-tests, and do it inline.
    * in x64 this adds ~ 40 bytes, and actype/actail are almost x2 faster.
@@ -44,9 +42,6 @@ along with this program; if not, see https://www.gnu.org/licenses/ .
          ? c[5] ? /* xdigit */ s[5] == 't' ? s+6 : 0 \
                 : s+5 \
          : 0)
-
-  /* modifies s */
-  #define IS_CLASS(s, c) ((s = IS_PREFIXED_WITH_CLASS(s, c)) && !*s)
 #endif
 
 
@@ -107,27 +102,23 @@ const _isactype_t _actype_fns[] = {
         "alnum\0alpha\0blank\0cntrl\0digit\0graph\0" \
         "lower\0print\0punct\0space\0upper\0xdigit"
 
-actype_t actype(const char *s)
-{
-	int i = POTENTIAL_CLASS_IDX(s);
-	const char *c = CHAR_CLASSES + i * 6;
-
-	if (!IS_CLASS(s, c))
-		return 0;
-	return ACTYPE_FROM_IDX(i);
-}
-
 actype_t actail(const char *s, int *len)
 {
 	int i = POTENTIAL_CLASS_IDX(s);
 	const char *c = CHAR_CLASSES + i * 6;
 
 	s = IS_PREFIXED_WITH_CLASS(s, c);
-
-	if (!s || *s++ != ':' || *s != ']')
+	if (!s)
 		return 0;
 
-	*len = 7 + (i == 11);  /* xdigit is 6, others are 5 */
+	/* done: s is just past the matched name, verify tail based on len */
+	if (len) {
+		if (*s++ != ':' || *s != ']')
+			return 0;
+		*len = 7 + (i == 11);  /* xdigit is 6, others are 5 */
+	} else if (*s) {
+		return 0;
+	}
 	return ACTYPE_FROM_IDX(i);
 }
 
