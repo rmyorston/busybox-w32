@@ -61,6 +61,9 @@
 //usage:       "hello world\n"
 
 #include "libbb.h"
+#if ENABLE_PLATFORM_MINGW32
+  #include "actype.h"
+#endif
 
 enum {
 	ASCII = 256,
@@ -157,6 +160,17 @@ static unsigned expand(char *arg, char **buffer_p)
 			i = (unsigned char) *arg++;
 			/* "[xyz...". i=x, arg points to y */
 			if (ENABLE_FEATURE_TR_CLASSES && i == ':') { /* [:class:] */
+#if ENABLE_PLATFORM_MINGW32
+				int len;
+				actype_t t = actail(arg, &len);
+				if (!t)
+					goto skip_bracket;
+
+				arg += len;
+				for (i = '\0'; i < ASCII; ++i)
+					if (isactype_not0(i, t))
+						buffer[pos++] = i;
+#else
 #define CLO ":]\0"
 				static const char classes[] ALIGN1 =
 					"alpha"CLO "alnum"CLO "digit"CLO
@@ -229,6 +243,7 @@ static unsigned expand(char *arg, char **buffer_p)
 					}
 					pos += 6;
 				}
+#endif /* ! ENABLE_PLATFORM_MINGW32 */
 				continue;
 			}
 			/* "[xyz...", i=x, arg points to y */
