@@ -46,6 +46,9 @@ typedef int (*_isactype_t)(int);  /* isalpha et-al prototype */
 extern actype_t actype(const char *name);
 extern int isactype(int c, actype_t t);
 
+/* actype above is the official prototype, but in practice we invoke actail */
+#define actype(name) (actail((name), NULL))
+
 
 /* extensions */
 
@@ -58,6 +61,7 @@ extern int isactype(int c, actype_t t);
  *   set *len=strlen("NAME:]") and return non-0 actype("NAME").
  * else return 0.
  * useful in typical char-class parsing scenarios.
+ * if len is NULL: identical to actype.
  */
 extern actype_t actail(const char *str, int *len);
 
