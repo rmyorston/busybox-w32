@@ -689,6 +689,30 @@ pid_t getppid(void)
 
 #define NPIDS 128
 
+void get_process_times(DWORD pid, procps_status_t* sp)
+{
+	HANDLE proc;
+	FILETIME crTime, exTime, keTime, usTime;
+
+	if ((proc=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
+				FALSE, pid))) {
+		if (GetProcessTimes(proc, &crTime, &exTime, &keTime, &usTime)) {
+			long long ticks_since_boot, boot_time, create_time;
+			FILETIME now;
+
+			ticks_since_boot = GetTickCount64()/MS_PER_TICK;
+			GetSystemTimeAsFileTime(&now);
+			boot_time = filetime_to_ticks(&now) - ticks_since_boot;
+			create_time = filetime_to_ticks(&crTime);
+
+			sp->start_time = (unsigned long)(create_time - boot_time);
+			sp->stime = (unsigned long)filetime_to_ticks(&keTime);
+			sp->utime = (unsigned long)filetime_to_ticks(&usTime);
+		}
+		CloseHandle(proc);
+	}
+}
+
 /* POSIX version in libbb/procps.c */
 procps_status_t* FAST_FUNC procps_scan(procps_status_t* sp, int flags
 #if !ENABLE_FEATURE_PS_TIME && !ENABLE_FEATURE_PS_LONG
@@ -739,25 +763,8 @@ UNUSED_PARAM
 
 #if ENABLE_FEATURE_PS_TIME || ENABLE_FEATURE_PS_LONG
 	if (flags & (PSSCAN_STIME|PSSCAN_UTIME|PSSCAN_START_TIME)) {
-		FILETIME crTime, exTime, keTime, usTime;
-
-		if ((proc=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
-					FALSE, pe.th32ProcessID))) {
-			if (GetProcessTimes(proc, &crTime, &exTime, &keTime, &usTime)) {
-				long long ticks_since_boot, boot_time, create_time;
-				FILETIME now;
-
-				ticks_since_boot = GetTickCount64()/MS_PER_TICK;
-				GetSystemTimeAsFileTime(&now);
-				boot_time = filetime_to_ticks(&now) - ticks_since_boot;
-				create_time = filetime_to_ticks(&crTime);
-
-				sp->start_time = (unsigned long)(create_time - boot_time);
-				sp->stime = (unsigned long)filetime_to_ticks(&keTime);
-				sp->utime = (unsigned long)filetime_to_ticks(&usTime);
-			}
-			CloseHandle(proc);
-		}
+		/* populate start_time, stime and utime members of sp */
+		get_process_times(pe.th32ProcessID, sp);
 	}
 #endif
 

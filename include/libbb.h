@@ -2435,6 +2435,9 @@ unsigned get_cpu_count(void) FAST_FUNC;
 unsigned long FAST_FUNC fast_strtoul_10(char **endptr);
 unsigned long long FAST_FUNC fast_strtoull_16(char **endptr);
 char* FAST_FUNC skip_fields(char *str, int count);
+#if ENABLE_PLATFORM_MINGW32
+void get_process_times(DWORD pid, procps_status_t* sp);
+#endif
 
 
 /* Use strict=1 if you process input from untrusted source:

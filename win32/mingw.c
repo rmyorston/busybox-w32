@@ -1377,7 +1377,13 @@ long sysconf(int name)
 
 clock_t times(struct tms *buf)
 {
+	procps_status_t ps;
+
 	memset(buf, 0, sizeof(*buf));
+	memset(&ps, 0, sizeof(ps));
+	get_process_times(getpid(), &ps);
+	buf->tms_stime = ps.stime;
+	buf->tms_utime = ps.utime;
 	return 0;
 }
 
