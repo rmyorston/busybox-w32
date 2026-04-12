@@ -69,11 +69,13 @@
  * dfa.c's book.
  */
 
+#ifndef CONFIG_BUSYBOX
 static int
 is_blank (int c)
 {
    return (c == ' ' || c == '\t');
 }
+#endif
 #endif /* GAWK */
 
 #ifdef _LIBC
