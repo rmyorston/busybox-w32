@@ -3532,6 +3532,9 @@ build_charclass (RE_TRANSLATE_TYPE trans, bitset_t sbcset,
 #endif /* not RE_ENABLE_I18N */
 {
   int i;
+#ifdef CONFIG_BUSYBOX
+  actype_t t;
+#endif
 
   /* In case of REG_ICASE "upper" and "lower" match the both of
      upper and lower cases.  */
@@ -3573,7 +3576,7 @@ build_charclass (RE_TRANSLATE_TYPE trans, bitset_t sbcset,
       }						\
   } while (0)
 
-#if 0
+#ifndef CONFIG_BUSYBOX
   if (strcmp (class_name, "alnum") == 0)
     BUILD_CHARCLASS_LOOP (isalnum);
   else if (strcmp (class_name, "cntrl") == 0)
@@ -3605,53 +3608,25 @@ build_charclass (RE_TRANSLATE_TYPE trans, bitset_t sbcset,
     BUILD_CHARCLASS_LOOP (isxdigit);
   else
     return REG_ECTYPE;
-#else
-	switch (actype(class_name)) {
-	case CCLASS_ALNUM:
-		BUILD_CHARCLASS_LOOP (isalnum);
-		break;
-	case CCLASS_CNTRL:
-		BUILD_CHARCLASS_LOOP (iscntrl);
-		break;
-	case CCLASS_LOWER:
-		BUILD_CHARCLASS_LOOP (islower);
-		break;
-	case CCLASS_SPACE:
-		BUILD_CHARCLASS_LOOP (isspace);
-		break;
-	case CCLASS_ALPHA:
-		BUILD_CHARCLASS_LOOP (isalpha);
-		break;
-	case CCLASS_DIGIT:
-		BUILD_CHARCLASS_LOOP (isdigit);
-		break;
-	case CCLASS_PRINT:
-		BUILD_CHARCLASS_LOOP (isprint);
-		break;
-	case CCLASS_UPPER:
-		BUILD_CHARCLASS_LOOP (isupper);
-		break;
-	case CCLASS_BLANK:
-#ifndef GAWK
-		BUILD_CHARCLASS_LOOP (isblank);
-#else
-		/* see comments above */
-		BUILD_CHARCLASS_LOOP (is_blank);
-#endif
-		break;
-	case CCLASS_GRAPH:
-		BUILD_CHARCLASS_LOOP (isgraph);
-		break;
-	case CCLASS_PUNCT:
-		BUILD_CHARCLASS_LOOP (ispunct);
-		break;
-	case CCLASS_XDIGIT:
-		BUILD_CHARCLASS_LOOP (isxdigit);
-		break;
-	default:
-		return REG_ECTYPE;
-	}
-#endif
+#else  /* CONFIG_BUSYBOX */
+  t = actype(class_name);
+  if (!t)
+    return REG_ECTYPE;
+
+  /* this is BUILD_CHARCLASS_LOOP expanded once - with isactype */
+  if (BE (trans != NULL, 0))
+    {
+      for (i = 0; i < SBC_MAX; ++i)
+        if (isactype_not0(i, t))
+          bitset_set (sbcset, trans[i]);
+    }
+  else
+    {
+      for (i = 0; i < SBC_MAX; ++i)
+        if (isactype_not0(i, t))
+          bitset_set (sbcset, i);
+    }
+#endif  /* CONFIG_BUSYBOX */
 
   return REG_NOERROR;
 }
