@@ -21,29 +21,6 @@ along with this program; if not, see https://www.gnu.org/licenses/ .
 /* don't include libbb.h which redefines isalpha etc - we use the platform's */
 #include "actype.h"
 
-/* no generic busybox size/speed optimization option, so piggyback ash */
-#ifndef ACTYPE_OPTIMIZE_FOR_SIZE
-  #if defined(ASH_OPTIMIZE_FOR_SIZE) && ASH_OPTIMIZE_FOR_SIZE
-    #define ACTYPE_OPTIMIZE_FOR_SIZE 1
-  #else
-    #define ACTYPE_OPTIMIZE_FOR_SIZE 0
-  #endif
-#endif
-
-#if ACTYPE_OPTIMIZE_FOR_SIZE
-  char *is_prefixed_with(const char*, const char*);  /* libbb */
-  #define IS_PREFIXED_WITH_CLASS is_prefixed_with
-#else
-  /* c[0]-c[4] are not 0, so we can skip these 0-tests, and do it inline.
-   * in x64 this adds ~ 40 bytes, and actype/actail are almost x2 faster.
-   */
-  #define IS_PREFIXED_WITH_CLASS(s, c) \
-        (s[0]==c[0] && s[1]==c[1] && s[2]==c[2] && s[3]==c[3] && s[4]==c[4] \
-         ? c[5] ? /* xdigit */ s[5] == 't' ? s+6 : 0 \
-                : s+5 \
-         : 0)
-#endif
-
 
 /* isblank is c99 and not always available. just provide our own. */
 #define isblank ac_isblank
@@ -101,6 +78,15 @@ const _isactype_t _actype_fns[] = {
 #define CHAR_CLASSES \
         "alnum\0alpha\0blank\0cntrl\0digit\0graph\0" \
         "lower\0print\0punct\0space\0upper\0xdigit"
+
+/* c[0]-c[4] are not 0, so we can skip these 0-tests, and do that inline.
+ * we could drop-in libbb is_prefixed_with, but actail would be x2 slower.
+ */
+#define IS_PREFIXED_WITH_CLASS(s, c) \
+	(s[0]==c[0] && s[1]==c[1] && s[2]==c[2] && s[3]==c[3] && s[4]==c[4] \
+	 ? c[5] ? /* xdigit */ s[5] == 't' ? s+6 : 0 \
+	        : s+5 \
+	 : 0)
 
 actype_t actail(const char *s, int *len)
 {
