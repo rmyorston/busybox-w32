@@ -57,6 +57,9 @@ struct double_list {
 	struct double_list *next;
 	struct double_list *prev;
 	char *data;
+#if ENABLE_PLATFORM_MINGW32
+	int no_newline;
+#endif
 };
 
 // Free all the elements of a linked list
@@ -76,7 +79,11 @@ static void dlist_free(struct double_list *list, void (*freeit)(void *data))
 static struct double_list *dlist_add(struct double_list **list, char *data)
 {
 	struct double_list *llist;
+#if ENABLE_PLATFORM_MINGW32
+	struct double_list *line = xzalloc(sizeof(*line));
+#else
 	struct double_list *line = xmalloc(sizeof(*line));
+#endif
 
 	line->data = data;
 	llist = *list;
@@ -140,6 +147,9 @@ static void do_line(void *data)
 
 	if (TT.state > 1 && *dlist->data != TT.state)
 		fdprintf(TT.state == 2 ? 2 : TT.fileout,
+#if ENABLE_PLATFORM_MINGW32
+			dlist->no_newline && TT.state != 2 ? "%s" :
+#endif
 			"%s\n", dlist->data + (TT.state > 3 ? 1 : 0));
 
 	if (PATCH_DEBUG) fdprintf(2, "DO %d: %s\n", TT.state, dlist->data);
@@ -448,6 +458,14 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 				if (!oldlen && !newlen) state = apply_one_hunk();
 				continue;
 			}
+#if ENABLE_PLATFORM_MINGW32
+			else if (*patchline == '\\' && TT.current_hunk->prev) {
+				// detect '\ No newline at end of file' and mark previous
+				// line, if it exists.
+				TT.current_hunk->prev->no_newline = TRUE;
+				continue;
+			}
+#endif
 			fail_hunk();
 			state = 0;
 			continue;
