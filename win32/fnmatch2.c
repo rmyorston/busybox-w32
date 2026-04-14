@@ -45,6 +45,56 @@
  *   https://research.swtch.com/glob
  *
  *
+ * Optimizations (notation: LPAT is len(pat), LSTR is len(str)):
+ *
+ * We have two relatively simple optimizations, and neither changes the worst
+ * case complexity, but in practice it can speed up some patterns considerably.
+ * Both optimizations are tested at most once after each '*' at the pattern.
+ *
+ * First optimization is trivial: if the pattern ends in '*', there's no need
+ * to test the rest of str. This has resonable return, and very cheap to test.
+ * A common scenario for this optimization is the trivial pattern "*", where
+ * we don't look at str at all. But it also helps with foo* or *foo*bar*, etc.
+ * Biggest save: O(LSTR) (advancing to the end of str in steps of O(1)).
+ *
+ * Second optimization is a bit more involved: if we've reached the last '*'
+ * (which we need to test by looking ahead in pattern), and know that the
+ * rest of pattern expects exactly N chars, then advance str to last N chars.
+ * Biggest save: O(LPAT*LSTR), e.g. pat *aaa and str aaaaaaaaaaaaaXYZ would
+ * have matched the whole pattern in every char of str (sans the end), but kept
+ * failing because str didn't end yet. Instead, it compares aaa only to XYZ.
+ *
+ * This lookahead can also end up as work-for-nothing. For instance with *foo*
+ * we lookahead after the 1st '*', realize that it was not the last '*', and
+ * then we end up at the 1st optimization - without value from the lookahead.
+ *
+ * However, it's still quite cheap because at most we lookahead the pattern
+ * once, i.e. worst case cost of O(LPAT), which is typically negligible.
+ * When it's not negligible (very short strings - not enough combos to save)
+ * it still typically ends up only barely worse than without it - not too bad.
+ *
+ * And the return on this optimization is very high. Most patterns with
+ * anything after the last '*' end up x2-x3... faster. So quite worth it.
+ * For instance, *foo is tested in O(LPAT+LSTR), which is very fast.
+ *
+ * Note aboute the conditions for the optimizations tests:
+ * While we could apply these optimizations with any combination of flags,
+ * we limit them only to cases where we don't need to do additional work due
+ * to the flags. For instance with FNM_PATHNAME, if the pattern ends in '*',
+ * we still need to test that there are no '/' in the rest of str. It's easy
+ * but we don't do that. Instead, we simply don't optimize with FNM_PATHNAME.
+ * Similarly with the lookahead, we disable the optimization with flags which
+ * would require extra work at the lookahead, to keep it simple - and fast.
+ * For reference, when used for shell pattern matching - no flag is set.
+ *
+ * Other optimizations: there are more cases which could complete faster,
+ * e.g. *x* could be tested as strchr(s,'x'), *foo* as strstr(s,"foo"), etc,
+ * but each case requires to identify it and maybe some setup - which won't
+ * always pay off, and each case adds code complexity and risk. Also, unlike
+ * regcomp, we don't have the luxury of spending much time on pre-processing
+ * the pattern - which will pay off when reused by regexec. So keep it simple.
+ *
+ *
  * Flags:
  *
  * FNM_NOESCAPE     Backslash doesn't quote the next char.
@@ -65,6 +115,7 @@
 #if 1
 
 #include <ctype.h>  /* to{lower,upper} */
+#include <stdio.h>  /* size_t */
 
 #include "actype.h"
 #include "fnmatch.h"
@@ -98,7 +149,7 @@ static int bracket_matched(const char **pat, char testchar, const int flags)
 	const uchar *p = (const uchar*)(*pat) + 1;
 	int c = (uchar)testchar, cfold = c;
 	int inv = 0, len;
-	int found = 0;
+	int found = !c;  /* only when testing last '*': testchar==0 */
 	actype_t t;
 
 	if (FLAG(CASEFOLD)) {
@@ -188,8 +239,20 @@ int fnmatch(const char *pat, const char *str, int flags)
 		if (*pat == '*') {  /* skip, setup retry (max once per '*') */
 			while (*++pat == '*');  /* all consecutive '*' */
 
+			/* optimization - pat ends in '*': O(str) -> O(1) */
+			if (!*pat && !FLAG(PATHNAME))
+				return 0;  /* success */
+
 			p_star = pat - 1;
 			s_head = str;  /* on failure -> p_star eats s_head */
+
+			/* Optimization - last '*': O(pat*str) -> O(str)
+			 * See optimization comment above. the "goto" is only
+			 * for readability - avoid adding big code block here.
+			 */
+			if (!(flags & (FNM_PATHNAME|FNM_NOESCAPE|FNM_LEADING_DIR)))
+				goto tailopt;  /* continues at tailcont */
+		tailcont:;
 		}
 
 		if (!*pat) {
@@ -220,6 +283,29 @@ int fnmatch(const char *pat, const char *str, int flags)
 
 		pat = p_star;
 		str = s_head++;  /* pat/str increased by the loop */
+	}
+
+/* unreachable - except with goto */
+tailopt:
+	{
+		/* test whether there are more '*', and if not, advance str */
+		size_t n = 0;  /* exact number of chars expected by pat */
+		const char *p = pat;
+		for (; *p; ++p, ++n) {
+			if (*p == '*')  /* not last '*' */
+				goto tailcont;
+			if (!str[n])  /* str is too short */
+				return FNM_NOMATCH;
+			/* *p can be [ or ? or [escaped] literal */
+			if (*p == '[')
+				(void)bracket_matched(&p, 0, 0);
+			else if (*p == '\\' && !*++p)
+				return FNM_NOMATCH;  /* trailing '\' */
+		}
+		/* no more '*' - advance str to last n chars, no retries */
+		for (; str[n]; ++str);  /* same as: str += strlen(str+n) */
+		s_head = 0;
+		goto tailcont;
 	}
 }
 
