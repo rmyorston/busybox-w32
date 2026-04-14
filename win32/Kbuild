@@ -10,6 +10,7 @@ lib-$(CONFIG_PLATFORM_MINGW32) += dirname.o
 lib-$(CONFIG_PLATFORM_MINGW32) += env.o
 lib-$(CONFIG_PLATFORM_MINGW32) += flock.o
 lib-$(CONFIG_PLATFORM_MINGW32) += fnmatch.o
+lib-$(CONFIG_PLATFORM_MINGW32) += fnmatch2.o
 lib-$(CONFIG_PLATFORM_MINGW32) += fsync.o
 lib-$(CONFIG_PLATFORM_MINGW32) += glob.o
 lib-$(CONFIG_PLATFORM_MINGW32) += inet_pton.o
