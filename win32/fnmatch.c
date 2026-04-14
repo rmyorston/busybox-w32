@@ -16,6 +16,11 @@
    write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
    Boston, MA 02111-1307, USA.  */
 
+/* enable/disable the whole file.
+ * only one of win32/fnmatch.c and win32/fnmatch2.c should be enabled.
+ */
+#if 0
+
 #include <platform.h>
 #include "actype.h"
 
@@ -481,3 +486,4 @@ fnmatch (const char *pattern, const char *string, int flags)
 }
 
 #endif	/* _LIBC or not __GNU_LIBRARY__.  */
+#endif /* whole file */
