@@ -13,18 +13,25 @@ Usage: $SELF [OPTIONS]
 Measure duration of shell pattern matches with 5 text lines.
 Lines are ~ 80 chars each. There are ~ 50 builtin patterns.
 
-The builtin patterns are with increasing number of '*'. This will
+Matched-lines are printed as e.g. '(M:1-34-)' (lines 1,3,4).
+The builtin patterns know which of the default lines should match,
+and print 'OK', or e.g. 'E:--3-5' (expected: 3,5), or 'unknown'
+for other combos. Exit code is 0 if there are no 'E:.....' prints.
+
+The builtin patterns have increasing number of '*'. This will
 blow with exponential implementations. Just abort it manuallly.
 
   -s      Use short input lines (3-10 chars each) instead of ~ 80 chars.
   -i      Use the first 5 lines from stdin instead of builtin lines.
   -p PAT  Use [newline-separated] PAT instead of the builtin patterns.
   -n N    Iterate the 5-lines N x 1000 times. Default: 10 (50K matches).
-  -d      Don't benchmark. Same output but quick, and no measurements.
+  -d      Don't benchmark. Report matched lines, and errors if possible.
   -o      Print matched lines after each pettern result.
   -m MODE Measurement mode:
           'c': Use print-ms cmd. Tries \$NOWCMD, date +%s%3N, few more.
           't': Use shell (user) 'times' - typically 10 ms resolution.
+          'n': Don't measure internally and reduce overhead (print only
+               progress). Overall duration can be measured externally.
           Default: try 'c', and if no usable command is found, use 't'.
 "
 
@@ -32,10 +39,10 @@ blow with exponential implementations. Just abort it manuallly.
 # input lines
 
 DEFLINES="\
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
-incididunt ut [labore et dolore magna aliqua]. Ut enim ad minim veniam, quis
-nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodoa-z] consequat.
-Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore
+Lorem	ipsum dolor sit amet, consectetur adipiscing elit, [] do eiusmod tempor
+incididunt ut labore_et dolore magna aliqua. Ut enim ad minim veniam, xyzquis
+nostrud exercitation ullamco laboris nisi [!] aliquip ex commodoxyz] consequat.
+Duis aute irure dolor - reprehenderit in voluptate velit esse cillum dolore
 eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt
 "
 
@@ -66,46 +73,66 @@ e='[[:lower:]]'  # 6th in char-classes list
 f='[0-9A-Fa-ef]'
 g='[[:xdigit:]]'  # 12th in char-classes list - worst-case
 
+# the test patterns starts at the 7th char of the line. char 6 is space.
+# chars 1-5 are either space if this pattern is not tested for correctness,
+# else the expected matched line numbers with the long builtin lines,
+# e.g. all lines: 12345, lines 2 and 5: -2--5, no line: -----, etc.
 PATTERNS="\
-
-*
-@
-Lorem*
-*quis
-*nisi*
-*[*
-*[foobarfoobarfoobarfoobar]a-z*
-*[!foobarfoobarfoobarfoobar]a-z*
-*[hello world, this is a test]*
-*[!hello world, this is a test]*
-*$a$a
-*$b$b
-*$c$c
-*$d$d
-*$e$e
-*$f$f
-*$g$g
-*$a*$a
-*$b*$b
-*$c*$c
-*$d*$d
-*$e*$e
-*$f*$f
-*$g*$g
-*$a*$a*$a
-*$b*$b*$b
-*$c*$c*$c
-*$d*$d*$d
-*$e*$e*$e
-*$f*$f*$f
-*$g*$g*$g
-*$a*$a*$a*$a
-*$b*$b*$b*$b
-*$c*$c*$c*$c
-*$d*$d*$d*$d
-*$e*$e*$e*$e
-*$f*$f*$f*$f
-*$g*$g*$g*$g
+----- 
+12345 *
+----- @
+1---- Lorem*
+-2--- *quis
+--3-- *nisi*
+--3-- *[fobar]xyz*
+--3-- *[foobarfoobarfoobarfoobar]xyz*
+-2--- *[!foobarfoobarfoobarfoobar]xyz*
+12345 *[hello world, this is a test]*
+12345 *[!hello world, this is a test]*
+1-3-- *[*
+1---- *[]*
+--3-- *[!]*
+-23-5 *[!]].*
+1---- *[![:print:]]*
+-23-- *z*
+---4- *-*
+---4- *[-]*
+-234- *[-z]*
+-234- *[z-]*
+-234- *[-z-]*
+1-3-- *]*
+1-3-- *[]]*
+1-34- *[]-]*
+123-- *[]-_]*
+1234- *[]-_-]*
+12-45 *$a$a
+12-45 *$b$b
+12-45 *$c$c
+12-45 *$d$d
+12-45 *$e$e
+----- *$f$f
+----- *$g$g
+12-45 *$a*$a
+12-45 *$b*$b
+12-45 *$c*$c
+12-45 *$d*$d
+12-45 *$e*$e
+---4- *$f*$f
+---4- *$g*$g
+12-45 *$a*$a*$a
+12-45 *$b*$b*$b
+12-45 *$c*$c*$c
+12-45 *$d*$d*$d
+12-45 *$e*$e*$e
+---4- *$f*$f*$f
+---4- *$g*$g*$g
+12-45 *$a*$a*$a*$a
+12-45 *$b*$b*$b*$b
+12-45 *$c*$c*$c*$c
+12-45 *$d*$d*$d*$d
+12-45 *$e*$e*$e*$e
+---4- *$f*$f*$f*$f
+---4- *$g*$g*$g*$g
 "
 
 
@@ -196,7 +223,7 @@ benchmark() {
 
 # main
 
-N=10 D= O= measure= input_lines=deflines
+N=10 D= O= measure= input_lines=deflines cpat=
 opts=hidm:n:sp:o
 while getopts $opts o; do
     case $o in
@@ -205,10 +232,11 @@ while getopts $opts o; do
     n)  N=$OPTARG ;;
     o)  O=yes ;;
     d)  D=yes ;;
-    p)  PATTERNS=$OPTARG ;;
+    p)  PATTERNS=$OPTARG cpat=yes ;;  # custom patterns
     m)  case $OPTARG in
         c) measure=xtime_mscmd ;;
         t) measure=xtime_times ;;
+        n) measure=xtime_none  ;;
         *) >&2 echo "$SELF: invalid -m MODE value    (try -h)"
            exit 1
         esac
@@ -257,18 +285,44 @@ pmatches() {
 
 # let's go
 
-npat=0
+npat=0 err=
 printf %s "$PATTERNS" |
-while IFS= read -r p || [ "$p" ]; do
+while IFS= read -r x || [ "$x" ]; do
     npat=$((npat+1))
+    [ "$cpat" ] && p=$x || p=${x#??????}
 
-    PIN | {
-        [ "$D" ] && dt=0 || $measure benchmark "$p"
-        printf "[%2s] %9s  (M:%s)  %s\n" $npat "$dt" "$(pmatches "$p")" "'$p'"
-    }
+    if [ "$measure" = xtime_none ]; then
+        # remove overheads. the user will measure overall time on their own.
+        benchmark "$p"
+        echo $npat
+        continue
+    fi
+
+    res=$(pmatches "$p")
+    if [ "$input_lines" = deflines ] && ! [ "$cpat" ]; then
+        expect=${x%" $p"}
+        case x$expect in
+            x"     ") r="unknown" ;;
+             x"$res") r="OK     " ;;
+                  x*) r=E:$expect err=yes ;;
+        esac
+    else
+        r=unknown
+    fi
+
+
+    if [ "$D" ]; then
+        printf "[%2s] %s (M:%s)  %s\n" $npat "$r" "$res" "'$p'"
+    else
+        $measure benchmark "$p"
+        printf "[%2s] %9s  %s (M:%s)  %s\n" $npat "$dt" "$r" "$res" "'$p'"
+    fi
+
 
     if [ "$O" ]; then
         PIN | print_matches "$p"
         echo
     fi
+
+    [ -z "$err" ]
 done
