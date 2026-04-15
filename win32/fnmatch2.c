@@ -129,11 +129,11 @@ typedef unsigned char uchar;
 #define INRANGE(c, bot, top) \
 	((unsigned)(c) - (unsigned)(bot) <= (unsigned)((top) - (bot)))
 
-/* evaluates to non-0 actype_t if p is known "[:CLASS:]...", else 0.
+/* evaluates to non-0 actype_t if p+1 is known ":CLASS:]...", else 0.
  * if not-0, *plen is set to the length of "CLASS:]".
  */
-#define CCLASS2(p, plen) \
-	((p)[0] == '[' && (p)[1] == ':' \
+#define CCLASS1(p, plen) \
+	((p)[1] == ':' \
 	 ? actail((const char*)(p)+2, plen) \
 	 : 0)
 
@@ -148,7 +148,7 @@ static int bracket_matched(const char **pat, char testchar, const int flags)
 {
 	const uchar *p = (const uchar*)(*pat) + 1;
 	int c = (uchar)testchar, cfold = c;
-	int inv = 0, len;
+	int inv = 0, len, r0;
 	int found = !c;  /* only when testing last '*': testchar==0 */
 	actype_t t;
 
@@ -170,45 +170,56 @@ static int bracket_matched(const char **pat, char testchar, const int flags)
 	}
 
 	for (; *p; ++p) {
-		if (*p == ']') {
+		switch (*p) {
+		case ']':
 			*pat = (const char*)p;
 			return inv ^ found;
-		}
 
-		if (*p == '-' && p[1] != ']') {  /* range, or invalid */
+		case '-':
+			if (p[1] == ']')
+				goto plainchar;
+
+			/* range, or invalid */
 			/* we should test *p != 0 after (both) ++p, but both
 			 * are covered by the final r0>*p (r0 is never 0) */
-			int r0 = p[-1];
+			r0 = p[-1];
 			++p;
-			if (CCLASS2(p, &len))
-				break;  /* ...-[:NAME:] */
+			if (*p == '[' && CCLASS1(p, &len))  /* <r0>-[:NAME:] */
+				goto badpat;
 			if (*p == '\\' && !FLAG(NOESCAPE))
 				++p;
 			if (r0 > *p)  /* negative or unterminated */
-				break;
+				goto badpat;
 
 			if (!found)
 				if (INRANGE(c, r0, *p) || INRANGE(cfold, r0, *p))
 					found = 1;
+			continue;
 
-		} else if ((t = CCLASS2(p, &len))) {  /* [:NAME:] */
+		case '[':
+			t = CCLASS1(p, &len);
+			if (!t)
+				goto plainchar;
+
+			/* [:NAME: ] */
 			p += len + 1;  /* ']' (len is of "NAME:]") */
 			if (p[1] == '-' && p[2] != ']')
-				break;  /* [:NAME:]-... */
+				goto badpat;  /* [:NAME:]-... */
 
 			if (!found)
 				if (isactype_not0(c, t) || isactype_not0(cfold, t))
 					found = 1;
+			continue;
 
-		} else {  /* [escaped] literal */
+		default:
 			if (*p == '\\' && !FLAG(NOESCAPE) && !*++p)
-				break;
-
+				goto badpat;
+	plainchar:
 			if (c == *p || cfold == *p)
 				found = 1;
 		}
 	}
-
+badpat:
 	/* invalid: pat is unmodified, only compare with the literal '[' */
 	return c == '[';
 }
