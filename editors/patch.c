@@ -443,7 +443,21 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 
 		// Are we assembling a hunk?
 		if (state >= 2) {
-			if (*patchline == ' ' || *patchline == '+' || *patchline == '-') {
+#if ENABLE_PLATFORM_MINGW32
+			switch (*patchline) {
+			case '\\':
+				// '\ No newline at end of file' detected, mark
+				// previous line, if it exists.
+				if (TT.current_hunk->prev)
+					TT.current_hunk->prev->no_newline = TRUE;
+				free(patchline);
+				continue;
+			case ' ':
+			case '+':
+			case '-':
+#else
+		if (*patchline == ' ' || *patchline == '+' || *patchline == '-') {
+#endif
 				dlist_add(&TT.current_hunk, patchline);
 
 				if (*patchline != '+') oldlen--;
@@ -455,17 +469,25 @@ int patch_main(int argc UNUSED_PARAM, char **argv)
 
 				// If we've consumed all expected hunk lines, apply the hunk.
 
-				if (!oldlen && !newlen) state = apply_one_hunk();
-				continue;
-			}
 #if ENABLE_PLATFORM_MINGW32
-			else if (*patchline == '\\' && TT.current_hunk->prev) {
-				// detect '\ No newline at end of file' and mark previous
-				// line, if it exists.
-				TT.current_hunk->prev->no_newline = TRUE;
+				if (!oldlen && !newlen) {
+					// Peek ahead for '\ No newline at end of file'
+					int c = getchar();
+					ungetc(c, stdin);
+					if (c == '\\') {
+						if (TT.current_hunk->prev)
+							TT.current_hunk->prev->no_newline = TRUE;
+						do {
+							c = getchar();
+						} while (c != EOF && c != '\n');
+					}
+					state = apply_one_hunk();
+				}
+#else
+				if (!oldlen && !newlen) state = apply_one_hunk();
+#endif
 				continue;
 			}
-#endif
 			fail_hunk();
 			state = 0;
 			continue;

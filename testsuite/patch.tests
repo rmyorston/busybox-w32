@@ -287,6 +287,69 @@ bar
 2.9.2
 " \
 
+# testing "test name" "command(s)" "expected result" "file input" "stdin"
+testing "patch file with no last newline" \
+	'patch 2>&1; cat input' \
+"\
+patching file input
+first line
+last line with newline
+" \
+"\
+first line
+last line with no newline" \
+"\
+--- input
++++ input
+@@ -1,2 +1,2 @@
+ first line
+-last line with no newline
+\ No newline at end of file
++last line with newline
+" \
+
+# testing "test name" "command(s)" "expected result" "file input" "stdin"
+testing "patch -R to revert previous test" \
+	'patch -R 2>&1; cat input' \
+"\
+patching file input
+first line
+last line with no newline" \
+"\
+first line
+last line with newline
+" \
+"\
+--- input
++++ input
+@@ -1,2 +1,2 @@
+ first line
+-last line with no newline
+\ No newline at end of file
++last line with newline
+" \
+
+# testing "test name" "command(s)" "expected result" "file input" "stdin"
+testing "patch file so it has no last newline" \
+	'patch 2>&1; cat input' \
+"\
+patching file input
+first line
+last line with no newline" \
+"\
+first line
+last line with newline
+" \
+"\
+--- input
++++ input
+@@ -1,2 +1,2 @@
+ first line
+-last line with newline
++last line with no newline
+\ No newline at end of file
+" \
+
 rm input.orig 2>/dev/null
 
 exit $FAILCOUNT
