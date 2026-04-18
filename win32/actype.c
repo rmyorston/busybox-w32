@@ -16,7 +16,6 @@ along with this program; if not, see https://www.gnu.org/licenses/ .
 */
 
 #include <ctype.h>
-#include <string.h>
 
 /* don't include libbb.h which redefines isalpha etc - we use the platform's */
 #include "actype.h"

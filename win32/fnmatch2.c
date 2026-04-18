@@ -201,7 +201,7 @@ static int bracket_matched(const char **pat, char testchar, const int flags)
 			if (!t)
 				goto plainchar;
 
-			/* [:NAME: ] */
+			/* [:NAME:] */
 			p += len + 1;  /* ']' (len is of "NAME:]") */
 			if (p[1] == '-' && p[2] != ']')
 				goto badpat;  /* [:NAME:]-... */
@@ -211,10 +211,12 @@ static int bracket_matched(const char **pat, char testchar, const int flags)
 					found = 1;
 			continue;
 
-		default:
-			if (*p == '\\' && !FLAG(NOESCAPE) && !*++p)
+		case '\\':
+			if (!FLAG(NOESCAPE) && !*++p)
 				goto badpat;
-	plainchar:
+			/* fallthrough */
+		default:
+		plainchar:
 			if (c == *p || cfold == *p)
 				found = 1;
 		}
@@ -226,21 +228,22 @@ badpat:
 
 
 #define FOLD_EQ(a, b) \
-	(a == b || \
-	 (FLAG(CASEFOLD) && (tolower((uchar)(a)) == tolower((uchar)(b)))))
+	(flag_icase ? tolower((uchar)(a)) == tolower((uchar)(b)) : a == b)
 
 /* tests whether *s cannot be matched by meta-pattern (* or ? or [...])
  * PERIOD without PATHNAME applies only to str[0] - which we exclude on init
  */
 #define BAD_META(s) \
-	(FLAG(PATHNAME) && (*s == '/' || \
-	                    (FLAG(PERIOD) && *s == '.' && s[-1] == '/')))
+	(flag_path && (*s == '/' || \
+	               (FLAG(PERIOD) && *s == '.' && s[-1] == '/')))
 
 
 int fnmatch(const char *pat, const char *str, int flags)
 {
 	/* backtracking state. s_head==0 means no prior '*' to backtrack-to */
 	const char *p_star = 0, *s_head = 0;
+	int flag_icase = FLAG(CASEFOLD);
+	int flag_path = FLAG(PATHNAME);
 
 	if (FLAG(PERIOD) && *str == '.' && *pat != '.')
 		return FNM_NOMATCH;
@@ -251,7 +254,7 @@ int fnmatch(const char *pat, const char *str, int flags)
 			while (*++pat == '*');  /* all consecutive '*' */
 
 			/* optimization - pat ends in '*': O(str) -> O(1) */
-			if (!*pat && !FLAG(PATHNAME))
+			if (!*pat && !flag_path)
 				return 0;  /* success */
 
 			p_star = pat - 1;

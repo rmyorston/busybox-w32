@@ -47,7 +47,7 @@ extern actype_t actype(const char *name);
 extern int isactype(int c, actype_t t);
 
 /* actype above is the official prototype, but in practice we invoke actail */
-#define actype(name) (actail((name), NULL))
+#define actype(name) (actail((name), (int*)0))
 
 
 /* extensions */
