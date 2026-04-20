@@ -161,6 +161,9 @@ struct globals {
 	time_t crontab_dir_mtime;
 	const char *log_filename;
 	const char *crontab_dir_name; /* = CRONTABS; */
+#if ENABLE_PLATFORM_MINGW32
+	const char *crondir_name; /* = CRON_DIR; */
+#endif
 	CronFile *cron_files;
 	char *default_shell;
 #if SETENV_LEAKS
@@ -171,6 +174,8 @@ struct globals {
 #endif
 } FIX_ALIASING;
 #define G (*(struct globals*)bb_common_bufsiz1)
+
+/* crondir_name and crontab_dir_name are initialised outside this in mingw */
 #define INIT_G() do { \
 	setup_common_bufsiz(); \
 	G.log_level = 8; \
@@ -836,7 +841,7 @@ static pid_t start_one_job(const char *user, CronLine *line)
 		/* Open mail file (owner is root so nobody can screw with it) */
 #if ENABLE_PLATFORM_MINGW32
 		MINGW_SPECIAL(open_read_close)("/dev/urandom", (char *)(&line->randomint), sizeof(int));
-		snprintf(mailFile, sizeof(mailFile), "%s/cron.%s.%d.%u", CRON_DIR, user, getpid(), line->randomint);
+		snprintf(mailFile, sizeof(mailFile), "%s/cron.%s.%d.%u", G.crondir_name, user, getpid(), line->randomint);
 #else
 		snprintf(mailFile, sizeof(mailFile), "%s/cron.%s.%d", CRON_DIR, user, getpid());
 #endif
@@ -897,7 +902,7 @@ static void process_finished_job(const char *user, CronLine *line)
 	 */
 #if ENABLE_PLATFORM_MINGW32
 	/* on Windows, the files are all just named with the pid of the parent and a random id */
-	snprintf(mailFile, sizeof(mailFile), "%s/cron.%s.%d.%u", CRON_DIR, user, getpid(), line->randomint);
+	snprintf(mailFile, sizeof(mailFile), "%s/cron.%s.%d.%u", G.crondir_name, user, getpid(), line->randomint);
 #else
 	snprintf(mailFile, sizeof(mailFile), "%s/cron.%s.%d", CRON_DIR, user, (int)pid);
 #endif
@@ -1174,6 +1179,12 @@ int crond_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opts;
 
 	INIT_G();
+
+#if ENABLE_PLATFORM_MINGW32
+	/* crontab dirname should be different */
+	G.crontab_dir_name = concat_path_file(get_system_drive(), CRONTABS);
+	G.crondir_name = concat_path_file(get_system_drive(), CRON_DIR);
+#endif
 
 	opts = getopt32(argv, "^"
 			"l:L:fbSc:" IF_FEATURE_CROND_D("d:")

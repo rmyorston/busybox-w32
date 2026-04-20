@@ -115,6 +115,10 @@ int crontab_main(int argc UNUSED_PARAM, char **argv)
 		OPT_ler = OPT_l + OPT_e + OPT_r,
 	};
 
+#if ENABLE_PLATFORM_MINGW32
+	crontab_dir = concat_path_file(get_system_drive(), CRONTABS);
+#endif
+
 	opt_ler = getopt32(argv, "^" "u:c:lerd" "\0" "?1:dr"/*max one arg; -d implies -r*/,
 				&user_name, &crontab_dir
 	);
