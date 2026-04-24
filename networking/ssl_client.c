@@ -19,6 +19,7 @@
 //usage:       "[-n SNI] { -s FD [-r FD] | HOST | -e PROG ARGS }"
 //usage:    )
 //usage:    IF_PLATFORM_MINGW32(
+//usage:    IF_FEATURE_TLS_SCHANNEL("[-c] ")
 //usage:       "[-e] -h handle [-n SNI]"
 //usage:    )
 //usage:#define ssl_client_full_usage ""
@@ -40,6 +41,9 @@ int ssl_client_main(int argc UNUSED_PARAM, char **argv)
 		OPT_s = (1 << 0),
 		OPT_h = (1 << 1),
 		OPT_n = (1 << 2),
+# if ENABLE_FEATURE_TLS_SCHANNEL
+		OPT_c = (1 << 3),
+# endif
 	};
 #else
 	enum {
@@ -53,12 +57,15 @@ int ssl_client_main(int argc UNUSED_PARAM, char **argv)
 	// INIT_G();
 	tls = new_tls_state();
 #if ENABLE_PLATFORM_MINGW32
-	opt = getopt32(argv, "eh:n:", &hstr, &sni);
+	opt = getopt32(argv, "eh:n:"IF_FEATURE_TLS_SCHANNEL("c"), &hstr, &sni);
 
 	if (!hstr || sscanf(hstr, "%p", &h) != 1)
 		bb_error_msg_and_die("invalid handle");
 	init_winsock();
 	tls->ifd = tls->ofd = _open_osfhandle((intptr_t)h, _O_RDWR|_O_BINARY);
+# if ENABLE_FEATURE_TLS_SCHANNEL
+	tls->no_check_cert = (opt & OPT_c) != 0;
+# endif
 #else
 	/* "+": stop on first non-option */
 	opt = getopt32(argv, "^+" "s:+r:+n:e" "\0"

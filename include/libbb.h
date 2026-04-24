@@ -1026,6 +1026,7 @@ typedef struct tls_state {
 	char *hostname;
 	SecPkgContext_StreamSizes stream_sizes;
 	bool initialized;
+	bool no_check_cert;
 	enum schannel_connection_state connection_state;
 } tls_state_t;
 #else
@@ -1105,6 +1106,7 @@ void FAST_FUNC tls_handshake(tls_state_t *tls, const char *sni);
 void FAST_FUNC tls_handshake_as_server(tls_state_t *tls,
 	const char *pem_filename);
 #define TLSLOOP_EXIT_ON_LOCAL_EOF (1 << 0)
+#define TLS_NO_CHECK_CERTIFICATE (1 << 1)
 void tls_run_copy_loop(tls_state_t *tls, unsigned flags) FAST_FUNC;
 
 

@@ -140,7 +140,12 @@
 /* Since we ignore these opts, we don't show them in --help */
 /* //usage:    "	[--no-cache] [--passive-ftp] [-t TRIES]" */
 /* //usage:    "	[-nv] [-nc] [-nH] [-np]" */
+//usage:	IF_PLATFORM_MINGW32(
+//usage:       "	"IF_FEATURE_TLS_SCHANNEL("[--no-check-certificate] ")"[-P DIR] [-U AGENT]"IF_FEATURE_WGET_TIMEOUT(" [-T SEC]")" URL..."
+//usage:	)
+//usage:	IF_PLATFORM_POSIX(
 //usage:       "	"IF_FEATURE_WGET_OPENSSL("[--no-check-certificate] ")"[-P DIR] [-U AGENT]"IF_FEATURE_WGET_TIMEOUT(" [-T SEC]")" URL..."
+//usage:	)
 //usage:	)
 //usage:	IF_NOT_FEATURE_WGET_LONG_OPTIONS(
 //usage:       "[-cqS] [-O FILE] [-o LOGFILE] [-Y on/off] [-P DIR] [-U AGENT]"IF_FEATURE_WGET_TIMEOUT(" [-T SEC]")" URL..."
@@ -153,6 +158,9 @@
 //usage:     "\n	--post-data STR	Send STR using POST method"
 //usage:     "\n	--post-file FILE	Send FILE using POST method"
 //usage:	IF_FEATURE_WGET_OPENSSL(
+//usage:     "\n	--no-check-certificate	Don't validate the server's certificate"
+//usage:	)
+//usage:	IF_FEATURE_TLS_SCHANNEL(
 //usage:     "\n	--no-check-certificate	Don't validate the server's certificate"
 //usage:	)
 //usage:	)
@@ -847,9 +855,16 @@ static void spawn_ssl_client(const char *host, int network_fd, int flags)
 
 	fflush_all();
 
+#  if !ENABLE_FEATURE_TLS_SCHANNEL
 	cmd = xasprintf("ssl_client -h %p -n %s%s",
 					(void *)_get_osfhandle(network_fd), servername,
 					flags & TLSLOOP_EXIT_ON_LOCAL_EOF ? " -e" : "");
+#  else
+	cmd = xasprintf("ssl_client -h %p -n %s%s%s",
+					(void *)_get_osfhandle(network_fd), servername,
+					flags & TLSLOOP_EXIT_ON_LOCAL_EOF ? " -e" : "",
+					flags & TLS_NO_CHECK_CERTIFICATE ? " -c" : "");
+#  endif
 
 	if ((fd1=mingw_popen_fd("ssl_client", cmd, "b", -1, NULL)) == -1) {
 		bb_perror_msg_and_die("can't execute ssl_client");
@@ -1255,7 +1270,12 @@ static void download_one_url(const char *url)
 		/* Only internal TLS support is configured */
 		sfp = open_socket(lsa);
 		if (server.protocol == P_HTTPS)
-			spawn_ssl_client(server.host, fileno(sfp), /*flags*/ 0);
+			spawn_ssl_client(server.host, fileno(sfp), /*flags*/
+#  if ENABLE_FEATURE_TLS_SCHANNEL
+				(option_mask32 & WGET_OPT_NO_CHECK_CERT) ?
+					TLS_NO_CHECK_CERTIFICATE :
+#  endif
+					0);
 #else
 		/* ssl (https) support is not configured */
 		sfp = open_socket(lsa);

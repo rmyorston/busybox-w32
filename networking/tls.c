@@ -3544,6 +3544,11 @@ void FAST_FUNC tls_handshake(tls_state_t *state, const char *hostname) {
 	};
 #endif
 
+	if (state->no_check_cert) {
+		credential.dwFlags &= ~SCH_CRED_AUTO_CRED_VALIDATION;
+		credential.dwFlags |= SCH_CRED_MANUAL_CRED_VALIDATION;
+	}
+
 	state->in_buffer_offset = 0;
 
 	state->out_buffer = NULL;
