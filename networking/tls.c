@@ -683,7 +683,6 @@ static unsigned hmac_blocks(tls_state_t *tls, uint8_t *out, uint8_t *key, unsign
 {
 	hmac_ctx_t ctx;
 	va_list va;
-	unsigned len;
 
 	hmac_begin(&ctx, key, key_size,
 			(ENABLE_FEATURE_TLS_SHA1 && tls->MAC_size == SHA1_OUTSIZE)
@@ -695,9 +694,7 @@ static unsigned hmac_blocks(tls_state_t *tls, uint8_t *out, uint8_t *key, unsign
 	hmac_hash_v(&ctx, va);
 	va_end(va);
 
-	len = hmac_end(&ctx, out);
-	hmac_uninit(&ctx);
-	return len;
+	return hmac_end(&ctx, out);
 }
 
 static void xwrite_encrypted_and_hmac_signed(tls_state_t *tls, unsigned size, unsigned type)
