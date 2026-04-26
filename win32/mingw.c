@@ -210,15 +210,6 @@ void update_special_fd(int dev, int fd)
 		rand_fd = fd;
 }
 
-// Only called for /dev/urandom and /dev/zero
-static FILE *popen_special_dev(const char *device)
-{
-	char cmd[32];
-
-	strcat(strcpy(cmd, "dd if="), device);
-	return popen(cmd, "r");
-}
-
 #define PREFIX_LEN (sizeof(DEV_FD_PREFIX)-1)
 static int get_dev_fd(const char *filename)
 {
@@ -253,10 +244,7 @@ int mingw_open (const char *filename, int oflags, ...)
 		if (special || (oflags & _O_WRONLY)) {
 			filename = "nul";
 		} else {
-			FILE *fp = popen_special_dev(filename);
-			if (fp)
-				return fileno(fp);
-			return -1;
+			return mingw_popen_special(filename);
 		}
 	} else if ((fd=get_dev_fd(filename)) >= 0)
 		return fd;
@@ -318,7 +306,8 @@ FILE *mingw_fopen (const char *filename, const char *otype)
 			return NULL;
 		return fdopen(fd, otype);
 	} else if (dev == DEV_URANDOM || dev == DEV_ZERO) {
-		return popen_special_dev(filename);
+		fd = mingw_popen_special(filename);
+		return fd == -1 ? NULL : fdopen(fd, "rb");
 	} else if ((fd=get_dev_fd(filename)) >= 0)
 		return fdopen(fd, otype);
 	stream = fopen(filename, otype);
