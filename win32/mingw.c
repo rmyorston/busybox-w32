@@ -210,6 +210,15 @@ void update_special_fd(int dev, int fd)
 		rand_fd = fd;
 }
 
+// Only called for /dev/urandom and /dev/zero
+static FILE *popen_special_dev(const char *device)
+{
+	char cmd[32];
+
+	strcat(strcpy(cmd, "dd if="), device);
+	return popen(cmd, "r");
+}
+
 #define PREFIX_LEN (sizeof(DEV_FD_PREFIX)-1)
 static int get_dev_fd(const char *filename)
 {
@@ -230,19 +239,26 @@ int mingw_open (const char *filename, int oflags, ...)
 	va_list args;
 	int pmode, mode = 0666;
 	int fd;
+	// Special case: /dev/urandom and /dev/zero for internal use
 	int special = (oflags & O_SPECIAL);
 	int dev = get_dev_type(filename);
 
-	/* /dev/zero and /dev/urandom are only allowed if O_SPECIAL is set */
 	if (dev == DEV_NULL)
 		filename = "nul";
 	else if (dev == DEV_TTY)
 		filename = "con";
 	else if (dev == DEV_STDIN || dev == DEV_STDOUT || dev == DEV_STDERR)
 		return dup(dev);
-	else if (special && dev != NOT_DEVICE)
-		filename = "nul";
-	else if ((fd=get_dev_fd(filename)) >= 0)
+	else if (dev == DEV_URANDOM || dev == DEV_ZERO) {
+		if (special || (oflags & _O_WRONLY)) {
+			filename = "nul";
+		} else {
+			FILE *fp = popen_special_dev(filename);
+			if (fp)
+				return fileno(fp);
+			return -1;
+		}
+	} else if ((fd=get_dev_fd(filename)) >= 0)
 		return fd;
 
 	if ((oflags & O_CREAT)) {
@@ -301,6 +317,8 @@ FILE *mingw_fopen (const char *filename, const char *otype)
 		if ((fd = dup(dev)) < 0)
 			return NULL;
 		return fdopen(fd, otype);
+	} else if (dev == DEV_URANDOM || dev == DEV_ZERO) {
+		return popen_special_dev(filename);
 	} else if ((fd=get_dev_fd(filename)) >= 0)
 		return fdopen(fd, otype);
 	stream = fopen(filename, otype);
@@ -397,12 +415,9 @@ static inline mode_t file_attr_to_st_mode(DWORD attr)
 static int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
 {
 	char *want_dir;
-	int dev = get_dev_type(fname);
 
-	if (dev == DEV_STDIN || dev == DEV_STDOUT || dev == DEV_STDERR ||
-			dev == DEV_NULL || dev == DEV_TTY || get_dev_fd(fname) >= 0) {
+	if (get_dev_type(fname) != NOT_DEVICE || get_dev_fd(fname) >= 0) {
 		/* Fake attributes for special devices */
-		/* Though not /dev/zero or /dev/urandom */
 		FILETIME epoch = {0xd53e8000, 0x019db1de};	// Unix epoch as FILETIME
 		fdata->dwFileAttributes = FILE_ATTRIBUTE_DEVICE;
 		fdata->ftCreationTime = fdata->ftLastAccessTime =
