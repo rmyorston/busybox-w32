@@ -11,7 +11,7 @@
 //config:config CROND
 //config:	bool "crond (15 kb)"
 //config:	default y
-//config:	select FEATURE_SYSLOG
+//config:   depends on FEATURE_SYSLOG || PLATFORM_MINGW32
 //config:	help
 //config:	Crond is a background daemon that parses individual crontab
 //config:	files and executes commands on behalf of the users in question.
@@ -77,7 +77,12 @@
 
 #include "libbb.h"
 #include "common_bufsiz.h"
+#if ENABLE_PLATFORM_MINGW32
+#include <unistd.h>
+#include "BB_VER.h"
+#else
 #include <syslog.h>
+#endif
 
 #if 0
 /* If libc tracks and reuses setenv()-allocated memory, ok to set this to 0 */
@@ -123,6 +128,9 @@ typedef struct CronLine {
 #if ENABLE_FEATURE_CROND_CALL_SENDMAIL
 	int cl_empty_mail_size;         /* size of mail header only, 0 if no mailfile */
 	char *cl_mailto;                /* whom to mail results, may be NULL */
+#if ENABLE_PLATFORM_MINGW32
+	int randomint;                  /* appended to the file rather than the child's pid */
+#endif
 #endif
 	char *cl_shell;
 	char *cl_path;
@@ -153,6 +161,9 @@ struct globals {
 	time_t crontab_dir_mtime;
 	const char *log_filename;
 	const char *crontab_dir_name; /* = CRONTABS; */
+#if ENABLE_PLATFORM_MINGW32
+	const char *crondir_name; /* = CRON_DIR; */
+#endif
 	CronFile *cron_files;
 	char *default_shell;
 #if SETENV_LEAKS
@@ -163,6 +174,8 @@ struct globals {
 #endif
 } FIX_ALIASING;
 #define G (*(struct globals*)bb_common_bufsiz1)
+
+/* crondir_name and crontab_dir_name are initialised outside this in mingw */
 #define INIT_G() do { \
 	setup_common_bufsiz(); \
 	G.log_level = 8; \
@@ -424,12 +437,27 @@ static void load_crontab(const char *fileName)
 	char *shell = NULL;
 	char *path = NULL;
 
+#if ENABLE_PLATFORM_MINGW32
+	struct passwd *p;
+#endif
+
 	delete_cronfile(fileName);
 
-	if (!getpwnam(fileName)) {
+	if (!(
+#if ENABLE_PLATFORM_MINGW32
+	p =
+#endif
+	getpwnam(fileName))) {
 		log7("ignoring file '%s' (no such user)", fileName);
 		return;
 	}
+
+#if ENABLE_PLATFORM_MINGW32
+	if (p->pw_uid != getuid()) {
+		log7("ignoring file '%s' (not current user)", fileName);
+		return;
+	}
+#endif
 
 	parser = config_open(fileName);
 	if (!parser)
@@ -437,7 +465,11 @@ static void load_crontab(const char *fileName)
 
 	maxLines = (strcmp(fileName, "root") == 0) ? 65535 : MAXLINES;
 
-	if (fstat(fileno(parser->fp), &sbuf) == 0 && sbuf.st_uid == DAEMON_UID) {
+	if (fstat(fileno(parser->fp), &sbuf) == 0
+#if !ENABLE_PLATFORM_MINGW32
+	&& sbuf.st_uid == DAEMON_UID
+#endif
+	) {
 		CronFile *file = xzalloc(sizeof(CronFile));
 		CronLine **pline;
 		int n;
@@ -680,6 +712,7 @@ static void set_env_vars(struct passwd *pas, const char *shell, const char *path
 #endif
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 static void change_user(struct passwd *pas)
 {
 	/* careful: we're after vfork! */
@@ -688,6 +721,7 @@ static void change_user(struct passwd *pas)
 		xchdir(CRON_DIR);
 	}
 }
+#endif
 
 // TODO: sendmail should be _run-time_ option, not compile-time!
 #if ENABLE_FEATURE_CROND_CALL_SENDMAIL
@@ -697,8 +731,16 @@ fork_job(const char *user, int mailFd, CronLine *line, bool run_sendmail)
 {
 	struct passwd *pas;
 	const char *shell, *prog;
+#if !ENABLE_PLATFORM_MINGW32
 	smallint sv_logmode;
+#endif
 	pid_t pid;
+#if ENABLE_PLATFORM_MINGW32
+	char *args[4];
+	char *cl_cmd_quoted;
+	char *shell_arg;
+	int fdpipe;
+#endif
 
 	/* prepare things before vfork */
 	pas = getpwnam(user);
@@ -712,6 +754,36 @@ fork_job(const char *user, int mailFd, CronLine *line, bool run_sendmail)
 
 	set_env_vars(pas, shell, NULL); /* don't use crontab's PATH for sendmail */
 
+#if ENABLE_PLATFORM_MINGW32
+	args[0] = (char *)prog;
+	if (run_sendmail) {
+		/* mailFd >= 0 */
+		/* Using the fd as input doesn't appear to work with external programs */
+		shell_arg = (char *)"sh -c \""SENDMAIL" "SENDMAIL_ARGS"\"";
+		if ((fdpipe = mingw_popen_fd("sh", shell_arg, "w", -1, &pid)) == -1)
+			bb_perror_msg("can't execute '%s'", "sh");
+
+		bb_copyfd_eof(mailFd, fdpipe);
+		close(fdpipe);
+	} else if (mailFd >= 0) {
+		/* run and pipe stdout and stderr */
+		cl_cmd_quoted = quote_arg(line->cl_cmd);
+		shell_arg = xasprintf("sh -c %s", cl_cmd_quoted);
+
+		if ((fdpipe = mingw_popen_fd("sh", shell_arg, "W", mailFd, &pid)) == -1)
+			bb_perror_msg("can't execute '%s'", "sh");
+
+		close(fdpipe);
+		free(shell_arg);
+		free(cl_cmd_quoted);
+	} else {
+		/* no redirection = we can just spawn it */
+		args[1] = (char *)"-c";
+		args[2] = line->cl_cmd;
+		args[3] = NULL;
+		pid = mingw_spawn(args);
+	}
+#else
 	sv_logmode = logmode;
 	pid = vfork();
 	if (pid == 0) {
@@ -737,6 +809,7 @@ fork_job(const char *user, int mailFd, CronLine *line, bool run_sendmail)
 		bb_error_msg_and_die("can't execute '%s' for user %s", prog, user);
 	}
 	logmode = sv_logmode;
+#endif
 
 	if (pid < 0) {
 		bb_simple_perror_msg("vfork");
@@ -758,13 +831,20 @@ static pid_t start_one_job(const char *user, CronLine *line)
 {
 	char mailFile[128];
 	int mailFd = -1;
-
+#if ENABLE_PLATFORM_MINGW32
+	line->randomint = 0;
+#endif
 	line->cl_pid = 0;
 	line->cl_empty_mail_size = 0;
 
 	if (line->cl_mailto) {
 		/* Open mail file (owner is root so nobody can screw with it) */
+#if ENABLE_PLATFORM_MINGW32
+		MINGW_SPECIAL(open_read_close)("/dev/urandom", (char *)(&line->randomint), sizeof(int));
+		snprintf(mailFile, sizeof(mailFile), "%s/cron.%s.%d.%u", G.crondir_name, user, getpid(), line->randomint);
+#else
 		snprintf(mailFile, sizeof(mailFile), "%s/cron.%s.%d", CRON_DIR, user, getpid());
+#endif
 		mailFd = open(mailFile, O_CREAT | O_TRUNC | O_WRONLY | O_EXCL | O_APPEND, 0600);
 
 		if (mailFd >= 0) {
@@ -782,10 +862,13 @@ static pid_t start_one_job(const char *user, CronLine *line)
 		if (line->cl_pid <= 0) {
 			unlink(mailFile);
 		} else {
+			/* on Windows open files can't be renamed */
+#if !ENABLE_PLATFORM_MINGW32
 			/* rename mail-file based on pid of process */
 			char *mailFile2 = xasprintf("%s/cron.%s.%d", CRON_DIR, user, (int)line->cl_pid);
 			rename(mailFile, mailFile2); // TODO: xrename?
 			free(mailFile2);
+#endif
 		}
 	}
 
@@ -817,25 +900,45 @@ static void process_finished_job(const char *user, CronLine *line)
 	 * End of primary job - check for mail file.
 	 * If size has changed and the file is still valid, we send it.
 	 */
+#if ENABLE_PLATFORM_MINGW32
+	/* on Windows, the files are all just named with the pid of the parent and a random id */
+	snprintf(mailFile, sizeof(mailFile), "%s/cron.%s.%d.%u", G.crondir_name, user, getpid(), line->randomint);
+#else
 	snprintf(mailFile, sizeof(mailFile), "%s/cron.%s.%d", CRON_DIR, user, (int)pid);
-	mailFd = open(mailFile, O_RDONLY);
+#endif
+	mailFd = open(mailFile, O_RDONLY
+#if ENABLE_PLATFORM_MINGW32
+	| O_BINARY | _O_NOINHERIT
+#endif
+	);
+#if !ENABLE_PLATFORM_MINGW32
 	unlink(mailFile);
+#endif
 	if (mailFd < 0) {
 		return;
 	}
 
 	if (fstat(mailFd, &sbuf) < 0
+#if !ENABLE_PLATFORM_MINGW32
 	 || sbuf.st_uid != DAEMON_UID
 	 || sbuf.st_nlink != 0
+#endif
 	 || sbuf.st_size == line->cl_empty_mail_size
 	 || !S_ISREG(sbuf.st_mode)
 	) {
 		close(mailFd);
+#if ENABLE_PLATFORM_MINGW32
+		unlink(mailFile);
+#endif
 		return;
 	}
 	line->cl_empty_mail_size = 0;
 	/* if (line->cl_mailto) - always true if cl_empty_mail_size was nonzero */
 		line->cl_pid = fork_job(user, mailFd, line, /*sendmail?*/ 1);
+#if ENABLE_PLATFORM_MINGW32
+	/* delay until here, when we have the mailFd closed again */
+	unlink(mailFile);
+#endif
 }
 
 #else /* !ENABLE_FEATURE_CROND_CALL_SENDMAIL */
@@ -845,6 +948,9 @@ static pid_t start_one_job(const char *user, CronLine *line)
 	const char *shell;
 	struct passwd *pas;
 	pid_t pid;
+#if ENABLE_PLATFORM_MINGW32
+	char *args[4];
+#endif
 
 	pas = getpwnam(user);
 	if (!pas) {
@@ -856,6 +962,15 @@ static pid_t start_one_job(const char *user, CronLine *line)
 	shell = line->cl_shell ? line->cl_shell : G.default_shell;
 	set_env_vars(pas, shell, line->cl_path);
 
+#if ENABLE_PLATFORM_MINGW32
+	args[0] = (char *)shell;
+	args[1] = (char *)"-c";
+	args[2] = line->cl_cmd;
+	args[3] = NULL;
+	pid = mingw_spawn(args);
+	if (pid < 0)
+		bb_error_msg("can't execute '%s' for user %s", shell, user);
+#else
 	/* Fork as the user in question and run program */
 	pid = vfork();
 	if (pid == 0) {
@@ -868,6 +983,7 @@ static pid_t start_one_job(const char *user, CronLine *line)
 		execl(shell, shell, "-c", line->cl_cmd, (char *) NULL);
 		bb_error_msg_and_die("can't execute '%s' for user %s", shell, user);
 	}
+#endif
 	if (pid < 0) {
 		bb_simple_perror_msg("vfork");
  err:
@@ -956,8 +1072,14 @@ static void start_jobs(int wants_start)
 				continue;
 
 			pid = start_one_job(file->cf_username, line);
-			log8("USER %s pid %3d cmd %s",
-				file->cf_username, (int)pid, line->cl_cmd);
+#if ENABLE_PLATFORM_MINGW32
+			if (line->cl_mailto)
+				log8("USER %s pid %3d tail %u cmd %s",
+					file->cf_username, (int)pid, line->randomint, line->cl_cmd);
+			else
+#endif
+				log8("USER %s pid %3d cmd %s",
+					file->cf_username, (int)pid, line->cl_cmd);
 			if (pid < 0) {
 				file->cf_wants_starting = 1;
 			}
@@ -1025,6 +1147,29 @@ static void reopen_logfile_to_stderr(void)
 	}
 }
 
+#if ENABLE_PLATFORM_MINGW32
+/* see similar function in networking/httpd.c */
+static void mingw_daemonize(char **argv)
+{
+	char **new_argv;
+	int fd;
+
+	new_argv = grow_argv(argv + 1, 3);
+	new_argv[0] = (char *)bb_busybox_exec_path;
+	new_argv[1] = (char *)"--busybox";
+	// don't daemonise in main(), we explicitly detach below
+	new_argv[2] = (char *)"-crond";
+
+	fd = xopen(bb_dev_null, O_RDWR);
+	xdup2(fd, 0);
+	xdup2(fd, 1);
+	xdup2(fd, 2);
+	close(fd);
+
+	exit(mingw_spawn_detach(new_argv) == -1 ? EXIT_FAILURE : EXIT_SUCCESS);
+}
+#endif
+
 int crond_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int crond_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -1034,6 +1179,12 @@ int crond_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opts;
 
 	INIT_G();
+
+#if ENABLE_PLATFORM_MINGW32
+	/* crontab dirname should be different */
+	G.crontab_dir_name = concat_path_file(get_system_drive(), CRONTABS);
+	G.crondir_name = concat_path_file(get_system_drive(), CRON_DIR);
+#endif
 
 	opts = getopt32(argv, "^"
 			"l:L:fbSc:" IF_FEATURE_CROND_D("d:")
@@ -1048,17 +1199,30 @@ int crond_main(int argc UNUSED_PARAM, char **argv)
 	);
 	/* both -d N and -l N set the same variable: G.log_level */
 
+#if ENABLE_PLATFORM_MINGW32
+	if (!(opts & OPT_d) && G.log_filename == NULL) {
+		bb_error_msg_and_die("syslog isn't supported on Windows");
+	}
+#endif
+
 	if (!(opts & OPT_f)) {
 		/* close stdin, stdout, stderr.
 		 * close unused descriptors - don't need them. */
+#if ENABLE_PLATFORM_MINGW32
+		if (argv[0][0] != '-')
+			mingw_daemonize(argv);
+#else
 		bb_daemonize_or_rexec(DAEMON_CLOSE_EXTRA_FDS, argv);
+#endif
 	}
 
+#if !ENABLE_PLATFORM_MINGW32
 	if (!(opts & OPT_d) && G.log_filename == NULL) {
 		/* logging to syslog */
 		openlog(applet_name, LOG_CONS | LOG_PID, LOG_CRON);
 		logmode = LOGMODE_SYSLOG;
 	}
+#endif
 
 	//signal(SIGHUP, SIG_IGN); /* ? original crond dies on HUP... */
 
@@ -1069,6 +1233,9 @@ int crond_main(int argc UNUSED_PARAM, char **argv)
 	G.default_shell = xstrdup(get_shell_name());
 
 	log8("crond (busybox "BB_VER") started, log level %d", G.log_level);
+#if ENABLE_PLATFORM_MINGW32
+	log5("crond pid %3d", getpid());
+#endif
 	rescan_crontab_dir();
 	write_pidfile_std_path_and_ext("crond");
 #if ENABLE_FEATURE_CROND_SPECIAL_TIMES

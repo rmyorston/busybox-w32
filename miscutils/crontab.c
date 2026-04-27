@@ -44,6 +44,10 @@ static void edit_file(const struct passwd *pas, const char *file)
 {
 	const char *ptr;
 	pid_t pid;
+#if ENABLE_PLATFORM_MINGW32
+	char *args[3];
+	(void) pas;
+#else
 
 	pid = xvfork();
 	if (pid) { /* parent */
@@ -57,6 +61,7 @@ static void edit_file(const struct passwd *pas, const char *file)
 	setup_environment(pas->pw_shell,
 		SETUP_ENV_CHANGEENV | SETUP_ENV_TO_TMP | SETUP_ENV_CHDIR,
 		pas);
+#endif
 	ptr = getenv("VISUAL");
 	if (!ptr) {
 		ptr = getenv("EDITOR");
@@ -64,7 +69,18 @@ static void edit_file(const struct passwd *pas, const char *file)
 			ptr = "vi";
 	}
 
+#if !ENABLE_PLATFORM_MINGW32
 	BB_EXECLP(ptr, ptr, file, NULL);
+#else
+	args[0] = (char *)ptr;
+	args[1] = (char *)file;
+	args[2] = NULL;
+	pid = mingw_spawn(args);
+	if (pid == -1)
+		bb_perror_msg_and_die("can't execute '%s'", ptr);
+	wait4pid(pid);
+	return;
+#endif
 	bb_perror_msg_and_die("can't execute '%s'", ptr);
 }
 
@@ -99,16 +115,22 @@ int crontab_main(int argc UNUSED_PARAM, char **argv)
 		OPT_ler = OPT_l + OPT_e + OPT_r,
 	};
 
+#if ENABLE_PLATFORM_MINGW32
+	crontab_dir = concat_path_file(get_system_drive(), CRONTABS);
+#endif
+
 	opt_ler = getopt32(argv, "^" "u:c:lerd" "\0" "?1:dr"/*max one arg; -d implies -r*/,
 				&user_name, &crontab_dir
 	);
 	argv += optind;
 
+#if !ENABLE_PLATFORM_MINGW32
 	if (sanitize_env_if_suid()) { /* Clears dangerous stuff, sets PATH */
 		/* Run by non-root */
 		if (opt_ler & (OPT_u|OPT_c))
 			bb_simple_error_msg_and_die(bb_msg_you_must_be_root);
 	}
+#endif
 
 	if (opt_ler & OPT_u) {
 		pas = xgetpwnam(user_name);
@@ -184,8 +206,13 @@ int crontab_main(int argc UNUSED_PARAM, char **argv)
 			bb_error_msg("can't create %s/%s",
 					crontab_dir, new_fname);
 		}
-		if (tmp_fname)
+		if (tmp_fname) {
+#if ENABLE_PLATFORM_MINGW32
+			/* can't delete open files on Windows */
+			close(src_fd);
+#endif
 			unlink(tmp_fname);
+		}
 		/*free(tmp_fname);*/
 		/*free(new_fname);*/
 	} /* switch */
