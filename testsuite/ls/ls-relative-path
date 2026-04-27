@@ -1,0 +1,27 @@
+# FEATURE: CONFIG_PLATFORM_MINGW32
+# Test relative paths work correctly
+
+BASEDIR=c:/temp/ls_relative_test$$
+
+powershell.exe -Command "
+New-Item -Path '$BASEDIR/a/b/c' -ItemType Directory -Force | Out-Null
+New-Item -Path '$BASEDIR/a/b/c/file.txt' -ItemType File -Force | Out-Null
+"
+
+test -d "$BASEDIR" || { echo "setup failed"; exit 1; }
+
+# Save current directory and change to test directory
+ORIGDIR=$(pwd)
+cd "$BASEDIR"
+
+# Test relative path from BASEDIR
+output=$(busybox ls "a/b/c" 2>&1)
+echo "$output" | grep -q "file.txt" || { cd "$ORIGDIR"; echo "relative path failed: $output"; exit 1; }
+
+# Test relative path with ..
+cd "$BASEDIR/a/b"
+output=$(busybox ls "../b/c" 2>&1)
+echo "$output" | grep -q "file.txt" || { cd "$ORIGDIR"; echo "relative with .. failed: $output"; exit 1; }
+
+cd "$ORIGDIR"
+busybox rm -rf "$BASEDIR"

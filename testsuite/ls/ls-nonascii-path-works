@@ -1,0 +1,19 @@
+# FEATURE: CONFIG_PLATFORM_MINGW32
+# Test non-ASCII characters in paths (common to CP1252 and UTF-8)
+
+BASEDIR=c:/temp/ls_nonascii_test$$
+
+# Use PowerShell to create directory with accented characters
+# e-acute = U+00E9, valid in both UTF-8 and common ANSI code pages (CP1252)
+powershell.exe -Command "
+\$e = [char]0x00e9
+\$path = \"$BASEDIR/caf\`\${e}_test\"
+New-Item -Path \$path -ItemType Directory -Force | Out-Null
+New-Item -Path (Join-Path \$path 'file.txt') -ItemType File -Force | Out-Null
+"
+
+test -d "$BASEDIR" || { echo "directory creation failed"; exit 1; }
+output=$(busybox ls "$BASEDIR" 2>&1)
+# Check that we see the directory name with something after 'caf'
+echo "$output" | grep -q "caf.*_test" || { echo "ls failed: $output"; exit 1; }
+busybox rm -rf "$BASEDIR"
