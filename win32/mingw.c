@@ -404,8 +404,13 @@ static inline mode_t file_attr_to_st_mode(DWORD attr)
 static int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
 {
 	char *want_dir;
+	int dev = get_dev_type(fname);
 
-	if (get_dev_type(fname) != NOT_DEVICE || get_dev_fd(fname) >= 0) {
+#if !ENABLE_DD
+	// /dev/urandom and /dev/zero aren't supported without dd
+	if (dev != DEV_URANDOM && dev != DEV_ZERO)
+#endif
+	if (dev != NOT_DEVICE || get_dev_fd(fname) >= 0) {
 		/* Fake attributes for special devices */
 		FILETIME epoch = {0xd53e8000, 0x019db1de};	// Unix epoch as FILETIME
 		fdata->dwFileAttributes = FILE_ATTRIBUTE_DEVICE;

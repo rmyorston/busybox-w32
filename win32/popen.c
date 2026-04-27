@@ -142,13 +142,18 @@ FILE *mingw_popen(const char *cmd, const char *mode)
 }
 
 // Only called for /dev/urandom and /dev/zero
-int mingw_popen_special(const char *device)
+int mingw_popen_special(const char *device IF_NOT_DD(UNUSED_PARAM))
 {
+#if ENABLE_DD
 	char cmd[32];
 
 	/* Create the pipe */
 	strcat(strcpy(cmd, "dd if="), device);
 	return mingw_popen_internal(NULL, "dd", cmd, "r", -1, NULL);
+#else
+	errno = ENOSYS;
+	return -1;
+#endif
 }
 
 /*
