@@ -1072,7 +1072,7 @@ static void start_jobs(int wants_start)
 				continue;
 
 			pid = start_one_job(file->cf_username, line);
-#if ENABLE_PLATFORM_MINGW32
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_CROND_CALL_SENDMAIL
 			if (line->cl_mailto)
 				log8("USER %s pid %3d tail %u cmd %s",
 					file->cf_username, (int)pid, line->randomint, line->cl_cmd);
