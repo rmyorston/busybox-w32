@@ -781,7 +781,8 @@ fork_job(const char *user, int mailFd, CronLine *line, bool run_sendmail)
 		args[1] = (char *)"-c";
 		args[2] = line->cl_cmd;
 		args[3] = NULL;
-		pid = mingw_spawn(args);
+		pid = !(option_mask32 & OPT_f) ?
+					mingw_spawn_detach(args) : mingw_spawn(args);
 	}
 #else
 	sv_logmode = logmode;
@@ -967,7 +968,8 @@ static pid_t start_one_job(const char *user, CronLine *line)
 	args[1] = (char *)"-c";
 	args[2] = line->cl_cmd;
 	args[3] = NULL;
-	pid = mingw_spawn(args);
+	pid = !(option_mask32 & OPT_f) ?
+				mingw_spawn_detach(args) : mingw_spawn(args);
 	if (pid < 0)
 		bb_error_msg("can't execute '%s' for user %s", shell, user);
 #else
