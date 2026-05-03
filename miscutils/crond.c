@@ -11,7 +11,7 @@
 //config:config CROND
 //config:	bool "crond (15 kb)"
 //config:	default y
-//config:   depends on FEATURE_SYSLOG || PLATFORM_MINGW32
+//config:   select FEATURE_SYSLOG
 //config:	help
 //config:	Crond is a background daemon that parses individual crontab
 //config:	files and executes commands on behalf of the users in question.
@@ -761,7 +761,7 @@ fork_job(const char *user, int mailFd, CronLine *line, bool run_sendmail)
 		/* Using the fd as input doesn't appear to work with external programs */
 		shell_arg = (char *)"sh -c \""SENDMAIL" "SENDMAIL_ARGS"\"";
 		if ((fdpipe = mingw_popen_fd("sh", shell_arg, "w", -1, &pid)) == -1)
-			bb_perror_msg("can't execute '%s'", "sh");
+			bb_perror_msg("can't execute '%s'", SENDMAIL);
 
 		bb_copyfd_eof(mailFd, fdpipe);
 		close(fdpipe);

@@ -1730,7 +1730,7 @@ void bb_logenv_override(void) FAST_FUNC;
  */
 typedef smalluint exitcode_t;
 
-#if ENABLE_FEATURE_SYSLOG_INFO
+#if ENABLE_FEATURE_SYSLOG_INFO && ENABLE_PLATFORM_POSIX
 void bb_info_msg(const char *s, ...) __attribute__ ((format (printf, 1, 2)));
 void bb_simple_info_msg(const char *s) FAST_FUNC;
 void bb_vinfo_msg(const char *s, va_list p) FAST_FUNC;

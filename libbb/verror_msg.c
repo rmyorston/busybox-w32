@@ -7,11 +7,11 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 #include "libbb.h"
-#if ENABLE_FEATURE_SYSLOG
+#if ENABLE_FEATURE_SYSLOG && ENABLE_PLATFORM_POSIX
 # include <syslog.h>
 #endif
 
-#if ENABLE_FEATURE_SYSLOG
+#if ENABLE_FEATURE_SYSLOG && ENABLE_PLATFORM_POSIX
 static smallint syslog_level = LOG_ERR;
 #endif
 smallint logmode = LOGMODE_STDIO;
@@ -88,7 +88,7 @@ void FAST_FUNC bb_verror_msg(const char *s, va_list p, const char* strerr)
 		fflush_all();
 		full_write(STDERR_FILENO, msg, used);
 	}
-#if ENABLE_FEATURE_SYSLOG
+#if ENABLE_FEATURE_SYSLOG && ENABLE_PLATFORM_POSIX
 	if (logmode & LOGMODE_SYSLOG) {
 		syslog(syslog_level, "%s", msg + applet_len);
 	}
@@ -146,7 +146,7 @@ void FAST_FUNC bb_verror_msg(const char *s, va_list p, const char* strerr)
 		fflush_all();
 		writev(STDERR_FILENO, iov, 3);
 	}
-# if ENABLE_FEATURE_SYSLOG
+# if ENABLE_FEATURE_SYSLOG && ENABLE_PLATFORM_POSIX
 	if (logmode & LOGMODE_SYSLOG) {
 		syslog(syslog_level, "%s", msgc);
 	}
@@ -175,7 +175,7 @@ void bb_error_msg(const char *s, ...)
 	va_end(p);
 }
 
-#if ENABLE_FEATURE_SYSLOG_INFO
+#if ENABLE_FEATURE_SYSLOG_INFO && ENABLE_PLATFORM_POSIX
 void FAST_FUNC bb_vinfo_msg(const char *s, va_list p)
 {
 	syslog_level = LOG_INFO;
