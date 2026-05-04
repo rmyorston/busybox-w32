@@ -22,7 +22,7 @@
 
 #include <stdlib.h>
 
-char *
+char * FAST_FUNC
 strndup (char const *s, size_t n)
 {
   size_t len = strnlen (s, n);

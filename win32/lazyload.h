@@ -21,7 +21,7 @@ struct proc_addr {
 #define INIT_PROC_ADDR(dll, function) \
 	(function = get_proc_addr(#dll, #function, &proc_addr_##function))
 
-void *get_proc_addr(const char *dll, const char *function,
+void * FAST_FUNC get_proc_addr(const char *dll, const char *function,
 					struct proc_addr *proc);
 
 #endif

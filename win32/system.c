@@ -1,6 +1,6 @@
 #include "libbb.h"
 
-int mingw_system(const char *cmd)
+int FAST_FUNC mingw_system(const char *cmd)
 {
 	const char *argv[4] = { "sh", "-c", cmd, NULL };
 	intptr_t proc;

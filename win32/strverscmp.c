@@ -30,7 +30,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <ctype.h>
 #include <string.h>
 
-int strverscmp(const char *l0, const char *r0)
+int FAST_FUNC strverscmp(const char *l0, const char *r0)
 {
 	const unsigned char *l = (const void *)l0;
 	const unsigned char *r = (const void *)r0;

@@ -24,7 +24,7 @@ static inline void finddata2dirent(struct dirent *ent, WIN32_FIND_DATAA *fdata)
 		ent->d_type = DT_REG;
 }
 
-DIR *opendir(const char *name)
+DIR * FAST_FUNC opendir(const char *name)
 {
 	char pattern[MAX_PATH];
 	WIN32_FIND_DATAA fdata;
@@ -70,7 +70,7 @@ DIR *opendir(const char *name)
 	return dir;
 }
 
-struct dirent *readdir(DIR *dir)
+struct dirent * FAST_FUNC readdir(DIR *dir)
 {
 	if (!dir) {
 		errno = EBADF; /* No set_errno for mingw */
@@ -111,7 +111,7 @@ struct dirent *readdir(DIR *dir)
 	return &dir->dd_dir;
 }
 
-int closedir(DIR *dir)
+int FAST_FUNC closedir(DIR *dir)
 {
 	if (!dir) {
 		errno = EBADF;

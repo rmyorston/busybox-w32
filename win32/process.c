@@ -8,7 +8,7 @@
 # define ERROR_ELEVATION_REQUIRED __MSABI_LONG(740)
 #endif
 
-pid_t waitpid(pid_t pid, int *status, int options)
+pid_t FAST_FUNC waitpid(pid_t pid, int *status, int options)
 #if ENABLE_TIME
 {
 	return mingw_wait3(pid, status, options, NULL);
@@ -16,7 +16,8 @@ pid_t waitpid(pid_t pid, int *status, int options)
 #endif
 
 #if ENABLE_TIME
-pid_t mingw_wait3(pid_t pid, int *status, int options, struct rusage *rusage)
+pid_t FAST_FUNC
+mingw_wait3(pid_t pid, int *status, int options, struct rusage *rusage)
 #endif
 {
 	HANDLE proc;
@@ -223,7 +224,7 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 	return ret;
 }
 
-intptr_t
+intptr_t FAST_FUNC
 mingw_spawn_applet(int mode,
 		   char *const *argv,
 		   char *const *envp)
@@ -540,7 +541,7 @@ shell_execute(const char *path, char *const *argv)
 	return info.hProcess ? (intptr_t)info.hProcess : -1;
 }
 
-int
+int FAST_FUNC
 mingw_execvp(const char *cmd, char *const *argv)
 {
 	intptr_t ret = mingw_spawnvp(P_NOWAIT, cmd, argv);
@@ -549,7 +550,7 @@ mingw_execvp(const char *cmd, char *const *argv)
 	return ret;
 }
 
-int
+int FAST_FUNC
 mingw_execve(const char *cmd, char *const *argv, char *const *envp)
 {
 	intptr_t ret = mingw_spawn_interpreter(P_NOWAIT, cmd, argv, envp, 0);
@@ -568,14 +569,15 @@ mingw_execve(const char *cmd, char *const *argv, char *const *envp)
 	return ret;
 }
 
-int
+int FAST_FUNC
 mingw_execv(const char *cmd, char *const *argv)
 {
 	return mingw_execve(cmd, argv, NULL);
 }
 
 #if ENABLE_FEATURE_HTTPD_CGI
-int httpd_execv_detach(const char *script, char *const *argv)
+int FAST_FUNC
+httpd_execv_detach(const char *script, char *const *argv)
 {
 	intptr_t ret = mingw_spawn_interpreter(HTTPD_DETACH, script,
 							(char *const *)argv, NULL, 0);
@@ -679,7 +681,7 @@ static char *get_bb_string(DWORD pid, const char *exe, char *string)
 	return name;
 }
 
-pid_t getppid(void)
+pid_t FAST_FUNC getppid(void)
 {
 	procps_status_t *sp = NULL;
 	int my_pid = getpid();
@@ -917,7 +919,7 @@ static int kill_signal(pid_t pid, int sig)
  * indicates the current process; negative indicates the process with
  * process ID -pid.
  */
-int kill(pid_t pid, int sig)
+int FAST_FUNC kill(pid_t pid, int sig)
 {
 	DWORD *pids;
 	int max_len, i, len, ret = 0;
@@ -999,12 +1001,12 @@ int FAST_FUNC is_valid_signal(int number)
 	return isalpha(*get_signame(number));
 }
 
-int exit_code_to_wait_status(DWORD exit_code)
+int FAST_FUNC exit_code_to_wait_status(DWORD exit_code)
 {
 	return exit_code_to_wait_status_cmd(exit_code, NULL);
 }
 
-int exit_code_to_posix(DWORD exit_code)
+int FAST_FUNC exit_code_to_posix(DWORD exit_code)
 {
 	int status = exit_code_to_wait_status(exit_code);
 

@@ -1,6 +1,7 @@
 #include "libbb.h"
 
-int tcsetattr(int fd, int mode UNUSED_PARAM, const struct termios *t)
+int FAST_FUNC
+tcsetattr(int fd, int mode UNUSED_PARAM, const struct termios *t)
 {
 	HANDLE h = (HANDLE)_get_osfhandle(fd);
 	if (!SetConsoleMode(h, t->w_mode)) {
@@ -11,7 +12,7 @@ int tcsetattr(int fd, int mode UNUSED_PARAM, const struct termios *t)
 	return 0;
 }
 
-int tcgetattr(int fd, struct termios *t)
+int FAST_FUNC tcgetattr(int fd, struct termios *t)
 {
 	HANDLE h = (HANDLE)_get_osfhandle(fd);
 	if (!GetConsoleMode(h, &t->w_mode)) {

@@ -25,7 +25,7 @@ struct mntdata {
 	char mnt_opts[4];
 };
 
-extern int fill_mntdata(struct mntdata *data, int index);
+extern int fill_mntdata(struct mntdata *data, int index) FAST_FUNC;
 # endif
 
 #define setmntent(f, m) mingw_setmntent()

@@ -10,7 +10,7 @@ struct mntstate {
 	int index;
 };
 
-int fill_mntdata(struct mntdata *data, int index)
+int FAST_FUNC fill_mntdata(struct mntdata *data, int index)
 {
 	UINT drive_type;
 	char buf[PATH_MAX];

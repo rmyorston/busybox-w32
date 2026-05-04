@@ -87,7 +87,7 @@ do_unlock (HANDLE h)
 }
 
 /* Now our BSD-like flock operation. */
-int
+int FAST_FUNC
 flock (int fd, int operation)
 {
   HANDLE h = (HANDLE) _get_osfhandle (fd);

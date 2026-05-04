@@ -177,12 +177,12 @@ int FAST_FUNC terminal_mode(int reset)
 	return mode;
 }
 
-void set_title(const char *str)
+void FAST_FUNC set_title(const char *str)
 {
 	SetConsoleTitle(str);
 }
 
-int get_title(char *buf, int len)
+int FAST_FUNC get_title(char *buf, int len)
 {
 	return GetConsoleTitle(buf, len);
 }
@@ -277,7 +277,7 @@ static void erase_till_end_of_screen(void)
 	clear_buffer(len, sbi.dwCursorPosition);
 }
 
-void reset_screen(void)
+void FAST_FUNC reset_screen(void)
 {
 	HANDLE console = get_console();
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
@@ -290,7 +290,7 @@ void reset_screen(void)
 	clear_buffer(sbi.dwSize.X * sbi.dwSize.Y, pos);
 }
 
-void move_cursor_row(int n)
+void FAST_FUNC move_cursor_row(int n)
 {
 	HANDLE console = get_console();
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
@@ -747,7 +747,7 @@ static BOOL charToConA(LPSTR s)
 	return charToConBuffA(s, strlen(s)+1);
 }
 
-BOOL conToCharBuffA(LPSTR s, DWORD len)
+BOOL FAST_FUNC conToCharBuffA(LPSTR s, DWORD len)
 {
 	UINT acp = GetACP(), conicp = GetConsoleCP();
 	CPINFO acp_info, con_info;
@@ -845,12 +845,12 @@ static int ansi_emulate(const char *s, FILE *stream)
 	return rv;
 }
 
-int winansi_putchar(int c)
+int FAST_FUNC winansi_putchar(int c)
 {
 	return winansi_fputc(c, stdout);
 }
 
-int winansi_puts(const char *s)
+int FAST_FUNC winansi_puts(const char *s)
 {
 	return (winansi_fputs(s, stdout) == EOF || putchar('\n') == EOF) ? EOF : 0;
 }
@@ -893,7 +893,8 @@ static void check_pipe(FILE *stream)
 	}
 }
 
-size_t winansi_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
+size_t FAST_FUNC
+winansi_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
 {
 	size_t lsize, lmemb, ret;
 	char *str;
@@ -918,7 +919,7 @@ size_t winansi_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
 	return rv == EOF ? 0 : nmemb;
 }
 
-int winansi_fputs(const char *str, FILE *stream)
+int FAST_FUNC winansi_fputs(const char *str, FILE *stream)
 {
 	int ret;
 
@@ -932,7 +933,7 @@ int winansi_fputs(const char *str, FILE *stream)
 	return ansi_emulate(str, stream) == EOF ? EOF : 0;
 }
 
-int winansi_fputc(int c, FILE *stream)
+int FAST_FUNC winansi_fputc(int c, FILE *stream)
 {
 	int ret;
 	char t = c;
@@ -953,7 +954,8 @@ int winansi_fputc(int c, FILE *stream)
  * Prior to Windows 10 vsnprintf was incompatible with the C99 standard.
  * Implement a replacement using _vsnprintf.
  */
-int winansi_vsnprintf(char *buf, size_t size, const char *format, va_list list)
+int FAST_FUNC
+winansi_vsnprintf(char *buf, size_t size, const char *format, va_list list)
 {
 	size_t len;
 	va_list list2;
@@ -970,7 +972,7 @@ int winansi_vsnprintf(char *buf, size_t size, const char *format, va_list list)
 }
 #endif
 
-int winansi_vfprintf(FILE *stream, const char *format, va_list list)
+int FAST_FUNC winansi_vfprintf(FILE *stream, const char *format, va_list list)
 {
 	int len, rv;
 	char small_buf[256];
@@ -1098,7 +1100,7 @@ static int ansi_emulate_write(int fd, const void *buf, size_t count)
 	return rv;
 }
 
-int winansi_write(int fd, const void *buf, size_t count)
+int FAST_FUNC winansi_write(int fd, const void *buf, size_t count)
 {
 	if (!is_console(fd)) {
 		int ret;
@@ -1113,7 +1115,7 @@ int winansi_write(int fd, const void *buf, size_t count)
 	return ansi_emulate_write(fd, buf, count);
 }
 
-int winansi_read(int fd, void *buf, size_t count)
+int FAST_FUNC winansi_read(int fd, void *buf, size_t count)
 {
 	int rv;
 
@@ -1128,7 +1130,8 @@ int winansi_read(int fd, void *buf, size_t count)
 	return rv;
 }
 
-size_t winansi_fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
+size_t FAST_FUNC
+winansi_fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
 {
 	int rv;
 
@@ -1142,7 +1145,7 @@ size_t winansi_fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
 	return rv;
 }
 
-int winansi_getc(FILE *stream)
+int FAST_FUNC winansi_getc(FILE *stream)
 {
 	int rv;
 
@@ -1165,7 +1168,7 @@ int winansi_getchar(void)
 	return winansi_getc(stdin);
 }
 
-char *winansi_fgets(char *s, int size, FILE *stream)
+char * FAST_FUNC winansi_fgets(char *s, int size, FILE *stream)
 {
 	char *rv;
 
@@ -1180,7 +1183,7 @@ char *winansi_fgets(char *s, int size, FILE *stream)
 }
 
 /* Ensure that isatty(fd) returns 0 for the NUL device */
-int mingw_isatty(int fd)
+int FAST_FUNC mingw_isatty(int fd)
 {
 	int result = _isatty(fd) != 0;
 
@@ -1352,7 +1355,8 @@ static void maybe_change_up_to_down(wchar_t key, BOOL *isdown)
  * - We don't deliver key-up events in some cases: when working around
  *   the "missing key-down" issue, and with combined surrogate halfs value.
  */
-BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
+BOOL FAST_FUNC
+readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
 {
 	static unsigned char u8buf[4];  // any single codepoint in UTF8
 	static int u8pos = 0, u8len = 0;
@@ -1424,7 +1428,8 @@ BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
  *        in effect) the user should set the console CP to the system ACP,
  *        e.g. on en-US system, run "chcp 1252" (default with en-US is 437).
  */
-BOOL readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
+BOOL FAST_FUNC
+readConsoleInput_utf8(HANDLE h, INPUT_RECORD *r, DWORD len, DWORD *got)
 {
 	if (GetConsoleCP() != CP_UTF8)
 		return ReadConsoleInput(h, r, len, got);
@@ -1548,7 +1553,7 @@ static int writeCon_utf8(int fd, const char *u8buf, size_t u8siz)
 }
 #endif
 
-void console_write(const char *str, int len)
+void FAST_FUNC console_write(const char *str, int len)
 {
 	char *buf = xmemdup(str, len);
 	int fd = _open("CONOUT$", _O_WRONLY);

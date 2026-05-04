@@ -168,14 +168,14 @@ int err_win_to_posix(void)
 #pragma GCC reset_options
 
 #undef strerror
-char *mingw_strerror(int errnum)
+char * FAST_FUNC mingw_strerror(int errnum)
 {
 	if (errnum == ELOOP)
 		return (char *)"Too many levels of symbolic links";
 	return strerror(errnum);
 }
 
-char *strsignal(int sig)
+char * FAST_FUNC strsignal(int sig)
 {
 	if (sig == SIGTERM)
 		return (char *)"Terminated";
@@ -192,7 +192,7 @@ static int rand_fd = -1;
  * device files.  Constants for these are defined as an enum
  * in mingw.h.
  */
-int get_dev_type(const char *filename)
+int FAST_FUNC get_dev_type(const char *filename)
 {
 	if (filename && is_prefixed_with(filename, "/dev/"))
 		return index_in_strings(
@@ -202,7 +202,7 @@ int get_dev_type(const char *filename)
 	return NOT_DEVICE;
 }
 
-void update_special_fd(int dev, int fd)
+void FAST_FUNC update_special_fd(int dev, int fd)
 {
 	if (dev == DEV_ZERO)
 		zero_fd = fd;
@@ -269,7 +269,7 @@ int mingw_open (const char *filename, int oflags, ...)
 	return fd;
 }
 
-int mingw_xopen(const char *pathname, int flags)
+int FAST_FUNC mingw_xopen(const char *pathname, int flags)
 {
 	int ret;
 
@@ -291,7 +291,7 @@ ssize_t FAST_FUNC mingw_open_read_close(const char *fn, void *buf, size_t size)
 }
 
 #undef fopen
-FILE *mingw_fopen (const char *filename, const char *otype)
+FILE * FAST_FUNC mingw_fopen (const char *filename, const char *otype)
 {
 	int fd;
 	FILE *stream;
@@ -334,7 +334,7 @@ static ssize_t get_random_bytes(void *buf, ssize_t count)
 }
 
 #undef read
-ssize_t mingw_read(int fd, void *buf, size_t count)
+ssize_t FAST_FUNC mingw_read(int fd, void *buf, size_t count)
 {
 	if (fd == zero_fd) {
 		memset(buf, 0, count);
@@ -347,7 +347,7 @@ ssize_t mingw_read(int fd, void *buf, size_t count)
 }
 
 #undef close
-int mingw_close(int fd)
+int FAST_FUNC mingw_close(int fd)
 {
 	if (fd == zero_fd) {
 		zero_fd = -1;
@@ -359,7 +359,7 @@ int mingw_close(int fd)
 }
 
 #undef dup2
-int mingw_dup2 (int fd, int fdto)
+int FAST_FUNC mingw_dup2(int fd, int fdto)
 {
 	int ret = dup2(fd, fdto);
 	return ret != -1 ? fdto : -1;
@@ -464,7 +464,7 @@ static int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
 }
 
 #undef umask
-mode_t mingw_umask(mode_t new_mode)
+mode_t FAST_FUNC mingw_umask(mode_t new_mode)
 {
 	mode_t tmp_mode;
 
@@ -693,7 +693,7 @@ static int mingw_is_directory(const char *path)
  * any calls to stat(2) or lstat(2) that require accurate values of
  * st_nlink for directories.
  */
-int count_subdirs(const char *pathname)
+int FAST_FUNC count_subdirs(const char *pathname)
 {
 	int count = 0;
 	DIR *dirp;
@@ -845,7 +845,7 @@ int mingw_stat(const char *file_name, struct mingw_stat *buf)
 #undef st_atime
 #undef st_mtime
 #undef st_ctime
-int mingw_fstat(int fd, struct mingw_stat *buf)
+int FAST_FUNC mingw_fstat(int fd, struct mingw_stat *buf)
 {
 	HANDLE fh = (HANDLE)_get_osfhandle(fd);
 	BY_HANDLE_FILE_INFORMATION fdata;
@@ -952,7 +952,7 @@ static int hutimens(HANDLE fh, const struct timespec times[2])
 	return 0;
 }
 
-int futimens(int fd, const struct timespec times[2])
+int FAST_FUNC futimens(int fd, const struct timespec times[2])
 {
 	HANDLE fh;
 
@@ -965,8 +965,8 @@ int futimens(int fd, const struct timespec times[2])
 	return hutimens(fh, times);
 }
 
-int utimensat(int fd, const char *path, const struct timespec times[2],
-                int flags)
+int FAST_FUNC utimensat(int fd, const char *path,
+					const struct timespec times[2], int flags)
 {
 	int rc = -1;
 	HANDLE fh;
@@ -992,7 +992,7 @@ int utimensat(int fd, const char *path, const struct timespec times[2],
 	return rc;
 }
 
-int utimes(const char *file_name, const struct timeval tv[2])
+int FAST_FUNC utimes(const char *file_name, const struct timeval tv[2])
 {
 	struct timespec ts[2];
 
@@ -1016,7 +1016,7 @@ unsigned int sleep (unsigned int seconds)
 	return 0;
 }
 
-int nanosleep(const struct timespec *req, struct timespec *rem)
+int FAST_FUNC nanosleep(const struct timespec *req, struct timespec *rem)
 {
 	if (req->tv_nsec < 0 || 1000000000 <= req->tv_nsec) {
 		errno = EINVAL;
@@ -1039,7 +1039,7 @@ int nanosleep(const struct timespec *req, struct timespec *rem)
  * template and signals an error by making it an empty string.
  */
 #undef mktemp
-char *mingw_mktemp(char *template)
+char * FAST_FUNC mingw_mktemp(char *template)
 {
 	if ( mktemp(template) == NULL ) {
 		template[0] = '\0';
@@ -1068,7 +1068,7 @@ int gettimeofday(struct timeval *tv, void *tz UNUSED_PARAM)
 	return 0;
 }
 
-int clock_gettime(clockid_t clockid, struct timespec *tp)
+int FAST_FUNC clock_gettime(clockid_t clockid, struct timespec *tp)
 {
 	FILETIME ft;
 
@@ -1081,7 +1081,7 @@ int clock_gettime(clockid_t clockid, struct timespec *tp)
 	return 0;
 }
 
-int clock_settime(clockid_t clockid, const struct timespec *tp)
+int FAST_FUNC clock_settime(clockid_t clockid, const struct timespec *tp)
 {
 	SYSTEMTIME st;
 	FILETIME ft;
@@ -1104,14 +1104,14 @@ int clock_settime(clockid_t clockid, const struct timespec *tp)
 	return 0;
 }
 
-int pipe(int filedes[2])
+int FAST_FUNC pipe(int filedes[2])
 {
 	if (_pipe(filedes, PIPE_BUF, 0) < 0)
 		return -1;
 	return 0;
 }
 
-struct tm *gmtime_r(const time_t *timep, struct tm *result)
+struct tm * FAST_FUNC gmtime_r(const time_t *timep, struct tm *result)
 {
 	/* gmtime() in MSVCRT.DLL is thread-safe, but not reentrant */
 	memcpy(result, gmtime(timep), sizeof(struct tm));
@@ -1122,7 +1122,7 @@ struct tm *gmtime_r(const time_t *timep, struct tm *result)
 #if !defined(_WIN64) && __MINGW64_VERSION_MAJOR >= 10
 # define localtime(t) _localtime64(t)
 #endif
-struct tm *mingw_localtime(const time_t *timep)
+struct tm * FAST_FUNC mingw_localtime(const time_t *timep)
 {
 	struct tm *tm = localtime(timep);
 	time_t epoch = 0;
@@ -1133,7 +1133,7 @@ struct tm *mingw_localtime(const time_t *timep)
 	return tm;
 }
 
-struct tm *localtime_r(const time_t *timep, struct tm *result)
+struct tm * FAST_FUNC localtime_r(const time_t *timep, struct tm *result)
 {
 	/* localtime() in MSVCRT.DLL is thread-safe, but not reentrant */
 	memcpy(result, mingw_localtime(timep), sizeof(struct tm));
@@ -1141,7 +1141,7 @@ struct tm *localtime_r(const time_t *timep, struct tm *result)
 }
 
 #undef getcwd
-char *mingw_getcwd(char *pointer, int len)
+char * FAST_FUNC mingw_getcwd(char *pointer, int len)
 {
 	char *ret = getcwd(pointer, len);
 	if (!ret)
@@ -1150,7 +1150,7 @@ char *mingw_getcwd(char *pointer, int len)
 }
 
 #undef rename
-int mingw_rename(const char *pold, const char *pnew)
+int FAST_FUNC mingw_rename(const char *pold, const char *pnew)
 {
 	DWORD attrs;
 
@@ -1280,7 +1280,7 @@ int getuid(void)
 				0 : DEFAULT_UID;
 }
 
-struct passwd *getpwnam(const char *name)
+struct passwd * FAST_FUNC getpwnam(const char *name)
 {
 	const char *myname;
 
@@ -1295,7 +1295,7 @@ struct passwd *getpwnam(const char *name)
 	return NULL;
 }
 
-struct passwd *getpwuid(uid_t uid)
+struct passwd * FAST_FUNC getpwuid(uid_t uid)
 {
 	static struct passwd p;
 
@@ -1314,7 +1314,7 @@ struct passwd *getpwuid(uid_t uid)
 	return &p;
 }
 
-struct group *getgrgid(gid_t gid)
+struct group * FAST_FUNC getgrgid(gid_t gid)
 {
 	static char *members[2] = { NULL, NULL };
 	static struct group g;
@@ -1334,7 +1334,7 @@ struct group *getgrgid(gid_t gid)
 }
 
 #if 0
-int getgrouplist(const char *user UNUSED_PARAM, gid_t group,
+int FAST_FUNC getgrouplist(const char *user UNUSED_PARAM, gid_t group,
 					gid_t *groups, int *ngroups)
 {
 	if ( *ngroups == 0 ) {
@@ -1347,7 +1347,7 @@ int getgrouplist(const char *user UNUSED_PARAM, gid_t group,
 	return 1;
 }
 
-int getgroups(int n, gid_t *groups)
+int FAST_FUNC getgroups(int n, gid_t *groups)
 {
 	if ( n == 0 ) {
 		return 1;
@@ -1358,7 +1358,7 @@ int getgroups(int n, gid_t *groups)
 }
 #endif
 
-int getlogin_r(char *buf, size_t len)
+int FAST_FUNC getlogin_r(char *buf, size_t len)
 {
 	char *name;
 
@@ -1375,7 +1375,7 @@ int getlogin_r(char *buf, size_t len)
 	return 0;
 }
 
-long sysconf(int name)
+long FAST_FUNC sysconf(int name)
 {
 	if ( name == _SC_CLK_TCK ) {
 		return TICKS_PER_SECOND;
@@ -1384,7 +1384,7 @@ long sysconf(int name)
 	return -1;
 }
 
-clock_t times(struct tms *buf)
+clock_t FAST_FUNC times(struct tms *buf)
 {
 	procps_status_t ps;
 
@@ -1541,7 +1541,7 @@ static REPARSE_DATA_BUFFER *make_junction_data_buffer(char *rpath)
 	return rptr;
 }
 
-int create_junction(const char *oldpath, const char *newpath)
+int FAST_FUNC create_junction(const char *oldpath, const char *newpath)
 {
 	char rpath[PATH_MAX];
 	struct stat statbuf;
@@ -1670,7 +1670,7 @@ static char *resolve_symlinks(char *path)
  * - resolve_symlinks checks that the file exists (by opening it) and
  *   resolves symlinks by calling GetFinalPathNameByHandleA.
  */
-char *realpath(const char *path, char *resolved_path)
+char * FAST_FUNC realpath(const char *path, char *resolved_path)
 {
 	char buffer[MAX_PATH];
 	char *real_path, *p;
@@ -1811,7 +1811,7 @@ const char *get_busybox_exec_path(void)
 }
 
 #undef mkdir
-int mingw_mkdir(const char *path, int mode UNUSED_PARAM)
+int FAST_FUNC mingw_mkdir(const char *path, int mode UNUSED_PARAM)
 {
 	int ret;
 	struct stat st;
@@ -1829,7 +1829,7 @@ int mingw_mkdir(const char *path, int mode UNUSED_PARAM)
 }
 
 #undef chdir
-int mingw_chdir(const char *dirname)
+int FAST_FUNC mingw_chdir(const char *dirname)
 {
 	int ret = -1;
 	char *realdir;
@@ -1849,7 +1849,7 @@ int mingw_chdir(const char *dirname)
 }
 
 #undef chmod
-int mingw_chmod(const char *path, int mode)
+int FAST_FUNC mingw_chmod(const char *path, int mode)
 {
 	if (mingw_is_directory(path))
 		mode |= 0222;
@@ -1902,7 +1902,7 @@ int fcntl(int fd, int cmd, ...)
 
 #undef unlink
 #undef rmdir
-int mingw_unlink(const char *pathname)
+int FAST_FUNC mingw_unlink(const char *pathname)
 {
 	int ret;
 
@@ -1936,7 +1936,7 @@ pagefile_cb(LPVOID context, PENUM_PAGE_FILE_INFORMATION info,
 	return TRUE;
 }
 
-int sysinfo(struct sysinfo *info)
+int FAST_FUNC sysinfo(struct sysinfo *info)
 {
 	PERFORMANCE_INFORMATION perf;
 	struct pagefile_info pfinfo;
@@ -1973,7 +1973,8 @@ int sysinfo(struct sysinfo *info)
 }
 
 #undef strftime
-size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm *tm)
+size_t FAST_FUNC
+mingw_strftime(char *buf, size_t max, const char *format, const struct tm *tm)
 {
 	size_t ret;
 	char buffer[64];
@@ -2064,7 +2065,7 @@ size_t mingw_strftime(char *buf, size_t max, const char *format, const struct tm
 }
 
 #undef access
-int mingw_access(const char *name, int mode)
+int FAST_FUNC mingw_access(const char *name, int mode)
 {
 	int ret;
 	struct stat s;
@@ -2087,7 +2088,7 @@ int mingw_access(const char *name, int mode)
 	return -1;
 }
 
-int mingw_rmdir(const char *path)
+int FAST_FUNC mingw_rmdir(const char *path)
 {
 	/* On Linux rmdir(2) doesn't remove symlinks */
 	if (is_symlink(path)) {
@@ -2141,24 +2142,24 @@ static int has_win_suffix(const char *name, int start)
 	return 0;
 }
 
-int has_bat_suffix(const char *name)
+int FAST_FUNC has_bat_suffix(const char *name)
 {
 	return has_win_suffix(name, 3);
 }
 
-int has_exe_suffix(const char *name)
+int FAST_FUNC has_exe_suffix(const char *name)
 {
 	return has_win_suffix(name, 0);
 }
 
-int has_exe_suffix_or_dot(const char *name)
+int FAST_FUNC has_exe_suffix_or_dot(const char *name)
 {
 	return last_char_is(name, '.') || has_win_suffix(name, 0);
 }
 
 /* Copy path to an allocated string long enough to allow a file extension
  * to be added. */
-char *alloc_ext_space(const char *path)
+char * FAST_FUNC alloc_ext_space(const char *path)
 {
 	char *s = xmalloc(strlen(path) + 5);
 	strcpy(s, path);
@@ -2172,7 +2173,7 @@ char *alloc_ext_space(const char *path)
  * If the return value is TRUE the argument contains the new path,
  * if FALSE the argument is unchanged.
  */
-int
+int FAST_FUNC
 add_win32_extension(char *p)
 {
 	if (file_is_executable(p))
@@ -2196,7 +2197,7 @@ add_win32_extension(char *p)
  * Determine if a path represents a WIN32 executable, adding a suffix
  * if necessary.  Returns an allocated string if it does, NULL if not.
  */
-char *
+char * FAST_FUNC
 file_is_win32_exe(const char *name)
 {
 	char *path = alloc_ext_space(name);
@@ -2273,7 +2274,7 @@ size_t FAST_FUNC remove_cr(char *p, size_t len)
 	return j;
 }
 
-off_t mingw_lseek(int fd, off_t offset, int whence)
+off_t FAST_FUNC mingw_lseek(int fd, off_t offset, int whence)
 {
 	DWORD ftype;
 	HANDLE h = (HANDLE)_get_osfhandle(fd);
@@ -2308,7 +2309,7 @@ ULONGLONG CompatGetTickCount64(void)
  * set the first argument to NULL.  Returns 0 on error or when there are
  * no more links.
  */
-int enumerate_links(const char *file, char *name)
+int FAST_FUNC enumerate_links(const char *file, char *name)
 {
 	static HANDLE h = INVALID_HANDLE_VALUE;
 	char aname[PATH_MAX];
@@ -2469,7 +2470,7 @@ void FAST_FUNC make_sparse(int fd, off_t start, off_t end)
 					 NULL, 0, &dwTemp, NULL);
 }
 
-void *get_proc_addr(const char *dll, const char *function,
+void * FAST_FUNC get_proc_addr(const char *dll, const char *function,
 					struct proc_addr *proc)
 {
 	/* only do this once */
@@ -2604,7 +2605,7 @@ char * FAST_FUNC exe_relative_path(const char *tail)
 	return relpath;
 }
 
-int mingw_shell_execute(SHELLEXECUTEINFO *info)
+int FAST_FUNC mingw_shell_execute(SHELLEXECUTEINFO *info)
 {
 	DECLARE_PROC_ADDR(BOOL, ShellExecuteExA, SHELLEXECUTEINFOA *);
 	char *lpath;
@@ -2627,7 +2628,8 @@ int mingw_shell_execute(SHELLEXECUTEINFO *info)
 }
 
 #if ENABLE_FEATURE_USE_CNG_API
-void mingw_die_if_error(NTSTATUS status, const char *function_name) {
+void FAST_FUNC mingw_die_if_error(NTSTATUS status, const char *function_name)
+{
 	if (!NT_SUCCESS(status)) {
 		bb_error_msg_and_die("call to %s failed: 0x%08lX",
 								function_name, (unsigned long)status);

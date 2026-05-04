@@ -13,8 +13,8 @@ struct dirent {
 	char d_name[PATH_MAX];	// file name
 };
 
-DIR *opendir(const char *dirname);
-struct dirent *readdir(DIR *dir);
-int closedir(DIR *dir);
+DIR *opendir(const char *dirname) FAST_FUNC;
+struct dirent *readdir(DIR *dir) FAST_FUNC;
+int closedir(DIR *dir) FAST_FUNC;
 
 #endif /* DIRENT_H */

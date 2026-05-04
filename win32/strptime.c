@@ -582,7 +582,7 @@ __strptime_internal (const char *rp, const char *fmt, struct tm *tm,
 }
 
 
-char *
+char * FAST_FUNC
 strptime (const char *buf, const char *format, struct tm *tm)
 {
   enum ptime_locale_status decided;
@@ -591,7 +591,7 @@ strptime (const char *buf, const char *format, struct tm *tm)
   return __strptime_internal (buf, format, tm, &decided, -1, NULL);
 }
 
-char *
+char * FAST_FUNC
 mingw_strptime (const char *buf, const char *format, struct tm *tm,
                 long *gmtoff)
 {

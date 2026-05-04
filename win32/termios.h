@@ -34,7 +34,7 @@ struct winsize {
 	unsigned short ws_xpixel, ws_ypixel;
 };
 
-int tcgetattr(int fd, struct termios *t);
-int tcsetattr(int fd, int mode, const struct termios *t);
+int tcgetattr(int fd, struct termios *t) FAST_FUNC;
+int tcsetattr(int fd, int mode, const struct termios *t) FAST_FUNC;
 
 #endif /* TERMIOS_H */

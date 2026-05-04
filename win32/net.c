@@ -1,6 +1,6 @@
 #include "libbb.h"
 
-int inet_aton(const char *cp, struct in_addr *inp)
+int FAST_FUNC inet_aton(const char *cp, struct in_addr *inp)
 {
 	unsigned long val = inet_addr(cp);
 
@@ -26,28 +26,29 @@ void init_winsock(void)
 }
 
 #undef gethostname
-int mingw_gethostname(char *name, int namelen)
+int FAST_FUNC mingw_gethostname(char *name, int namelen)
 {
 	init_winsock();
 	return gethostname(name, namelen);
 }
 
 #undef gethostbyaddr
-struct hostent *mingw_gethostbyaddr(const void *addr, socklen_t len, int type)
+struct hostent * FAST_FUNC
+mingw_gethostbyaddr(const void *addr, socklen_t len, int type)
 {
 	init_winsock();
 	return gethostbyaddr(addr, len, type);
 }
 
 #undef getaddrinfo
-int mingw_getaddrinfo(const char *node, const char *service,
+int FAST_FUNC mingw_getaddrinfo(const char *node, const char *service,
 				const struct addrinfo *hints, struct addrinfo **res)
 {
 	init_winsock();
 	return getaddrinfo(node, service, hints, res);
 }
 
-int mingw_socket(int domain, int type, int protocol)
+int FAST_FUNC mingw_socket(int domain, int type, int protocol)
 {
 	int sockfd;
 	SOCKET s;
@@ -78,42 +79,43 @@ int mingw_socket(int domain, int type, int protocol)
 }
 
 #undef connect
-int mingw_connect(int sockfd, const struct sockaddr *sa, size_t sz)
+int FAST_FUNC mingw_connect(int sockfd, const struct sockaddr *sa, size_t sz)
 {
 	SOCKET s = (SOCKET)_get_osfhandle(sockfd);
 	return connect(s, sa, sz);
 }
 
 #undef bind
-int mingw_bind(int sockfd, struct sockaddr *sa, size_t sz)
+int FAST_FUNC mingw_bind(int sockfd, struct sockaddr *sa, size_t sz)
 {
 	SOCKET s = (SOCKET)_get_osfhandle(sockfd);
 	return bind(s, sa, sz);
 }
 
 #undef setsockopt
-int mingw_setsockopt(int sockfd, int lvl, int optname, void *optval, int optlen)
+int FAST_FUNC
+mingw_setsockopt(int sockfd, int lvl, int optname, void *optval, int optlen)
 {
 	SOCKET s = (SOCKET)_get_osfhandle(sockfd);
 	return setsockopt(s, lvl, optname, (const char*)optval, optlen);
 }
 
 #undef shutdown
-int mingw_shutdown(int sockfd, int how)
+int FAST_FUNC mingw_shutdown(int sockfd, int how)
 {
 	SOCKET s = (SOCKET)_get_osfhandle(sockfd);
 	return shutdown(s, how);
 }
 
 #undef listen
-int mingw_listen(int sockfd, int backlog)
+int FAST_FUNC mingw_listen(int sockfd, int backlog)
 {
 	SOCKET s = (SOCKET)_get_osfhandle(sockfd);
 	return listen(s, backlog);
 }
 
 #undef accept
-int mingw_accept(int sockfd1, struct sockaddr *sa, socklen_t *sz)
+int FAST_FUNC mingw_accept(int sockfd1, struct sockaddr *sa, socklen_t *sz)
 {
 	int sockfd2;
 
@@ -132,7 +134,7 @@ int mingw_accept(int sockfd1, struct sockaddr *sa, socklen_t *sz)
 }
 
 #undef getpeername
-int mingw_getpeername(int fd, struct sockaddr *sa, socklen_t *sz)
+int FAST_FUNC mingw_getpeername(int fd, struct sockaddr *sa, socklen_t *sz)
 {
 	SOCKET sock;
 

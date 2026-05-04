@@ -34,7 +34,7 @@
 /* Get _get_osfhandle.  */
 # include <io.h>
 
-int
+int FAST_FUNC
 fsync (int fd)
 {
   HANDLE h = (HANDLE) _get_osfhandle (fd);

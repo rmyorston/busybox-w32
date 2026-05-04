@@ -375,7 +375,7 @@ compute_revents (int fd, int sought, fd_set *rfds, fd_set *wfds, fd_set *efds)
 }
 #endif /* !MinGW */
 
-int
+int FAST_FUNC
 poll (struct pollfd *pfd, nfds_t nfd, int timeout)
 {
 #ifndef WINDOWS_NATIVE
