@@ -1,0 +1,32 @@
+# FEATURE: CONFIG_PLATFORM_MINGW32
+# Test long paths work in ANSI mode (no UTF-8 manifest)
+
+ANSI_BUSYBOX="$bindir/busybox-ansi.exe"
+BASEDIR=c:/temp/ansi_long_test$$
+D=longdirname_12345
+
+test -f "$ANSI_BUSYBOX" || { echo "Run setup-ansi-test first"; exit 1; }
+
+# Create deep directory
+powershell.exe -Command "
+\$d = '$D'
+\$path = '$BASEDIR'
+for (\$i = 0; \$i -lt 15; \$i++) { \$path = Join-Path \$path \$d }
+New-Item -Path \$path -ItemType Directory -Force | Out-Null
+New-Item -Path (Join-Path \$path 'testfile.txt') -ItemType File -Force | Out-Null
+Write-Host \$path
+" > deeppath.txt
+
+DEEPPATH=$(cat deeppath.txt | tr '\\' '/' | tr -d '\r')
+
+test -d "$BASEDIR" || { echo "directory creation failed"; exit 1; }
+
+# Test ls with ANSI-mode busybox
+output=$("$ANSI_BUSYBOX" ls -la "$DEEPPATH" 2>&1)
+echo "$output" | grep -q testfile.txt || { echo "ls failed: $output"; exit 1; }
+
+# Test rm
+"$ANSI_BUSYBOX" rm -rf "$BASEDIR"
+test ! -d "$BASEDIR" || { echo "rm -rf failed"; exit 1; }
+
+rm -f deeppath.txt
