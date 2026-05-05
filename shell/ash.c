@@ -6939,6 +6939,10 @@ tryexec_applet(int applet_no, int noexec, const char *cmd, char **argv, char **e
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
+# if !ENABLE_FEATURE_SH_STANDALONE
+#  define tryexec(c, p, n, a, e) tryexec(c, a, e)
+# endif
+
 static const struct builtincmd *find_builtin(const char *name);
 static void
 tryexec(const char *cmd, const char *path, int noexec, char **argv, char **envp)
