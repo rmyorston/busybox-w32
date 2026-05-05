@@ -66,7 +66,9 @@ static int mingw_set_terminal_width_height(struct winsize *win)
 int ioctl(int fd UNUSED_PARAM, int code, ...)
 {
 	va_list ap;
+#if ENABLE_STTY || ENABLE_TTYSIZE
 	void *arg;
+#endif
 	int ret = -1;
 
 	va_start(ap, code);
