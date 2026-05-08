@@ -22,6 +22,13 @@
  */
 #define SENDFILE_BIGBUF (16*1024*1024)
 
+#if ENABLE_PLATFORM_MINGW32
+static NOINLINE void sleepms(void)
+{
+	Sleep(0);
+}
+#endif
+
 /* Used by NOFORK applets (e.g. cat) - must not use xmalloc.
  * size < 0 means "ignore write errors", used by tar --to-command
  * size = 0 means "copy till EOF"
@@ -98,6 +105,10 @@ static off_t bb_full_fd_action(int src_fd, int dst_fd, off_t size)
 		/* dst_fd == -1 is a fake, else... */
 		if (dst_fd >= 0 && !sendfile_sz) {
 			ssize_t wr = full_write(dst_fd, buffer, rd);
+#if ENABLE_PLATFORM_MINGW32
+			if (isatty(dst_fd))
+				sleepms();
+#endif
 			if (wr < rd) {
 				if (!continue_on_write_error) {
 					bb_simple_perror_msg(bb_msg_write_error);
