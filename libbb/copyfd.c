@@ -46,6 +46,9 @@ static off_t bb_full_fd_action(int src_fd, int dst_fd, off_t size)
 	char buffer[CONFIG_FEATURE_COPYBUF_KB * 1024];
 	enum { buffer_size = sizeof(buffer) };
 #endif
+#if ENABLE_PLATFORM_MINGW32
+	int dst_is_tty = isatty(dst_fd);
+#endif
 
 	if (size < 0) {
 		size = -size;
@@ -106,7 +109,7 @@ static off_t bb_full_fd_action(int src_fd, int dst_fd, off_t size)
 		if (dst_fd >= 0 && !sendfile_sz) {
 			ssize_t wr = full_write(dst_fd, buffer, rd);
 #if ENABLE_PLATFORM_MINGW32
-			if (isatty(dst_fd))
+			if (dst_is_tty)
 				sleepms();
 #endif
 			if (wr < rd) {
