@@ -264,30 +264,29 @@ static void erase_in_line(void)
 	clear_buffer(sbi.dwSize.X - sbi.dwCursorPosition.X, sbi.dwCursorPosition);
 }
 
-static void erase_till_end_of_screen(void)
+static void erase_till_end_of_screen(int flag)
 {
 	HANDLE console = get_console();
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 	DWORD len;
+	COORD pos = { 0, 0 };
 
 	if(!GetConsoleScreenBufferInfo(console, &sbi))
 		return;
-	len = sbi.dwSize.X - sbi.dwCursorPosition.X +
+
+	if (flag == 0) {
+		len = sbi.dwSize.X - sbi.dwCursorPosition.X +
 			sbi.dwSize.X * (sbi.srWindow.Bottom - sbi.dwCursorPosition.Y);
-	clear_buffer(len, sbi.dwCursorPosition);
+		clear_buffer(len, sbi.dwCursorPosition);
+	} else if (flag == 3) {
+		SetConsoleCursorPosition(console, pos);
+		clear_buffer(sbi.dwSize.X * sbi.dwSize.Y, pos);
+	}
 }
 
 void FAST_FUNC reset_screen(void)
 {
-	HANDLE console = get_console();
-	CONSOLE_SCREEN_BUFFER_INFO sbi;
-	COORD pos = { 0, 0 };
-
-	/* move to start of screen buffer and clear it all */
-	if (!GetConsoleScreenBufferInfo(console, &sbi))
-		return;
-	SetConsoleCursorPosition(console, pos);
-	clear_buffer(sbi.dwSize.X * sbi.dwSize.Y, pos);
+	erase_till_end_of_screen(3);
 }
 
 void FAST_FUNC move_cursor_row(int n)
@@ -697,7 +696,7 @@ static char *process_escape(char *pos)
 		}
 		break;
 	case 'J':
-		erase_till_end_of_screen();
+		erase_till_end_of_screen(strtol(str, (char **)&str, 10));
 		break;
 	case 'K':
 		erase_in_line();

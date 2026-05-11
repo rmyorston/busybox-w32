@@ -44,7 +44,6 @@ int stty_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int reset_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int reset_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 {
-#if !ENABLE_PLATFORM_MINGW32
 	static const char *const args[] ALIGN_PTR = {
 		"stty", "sane", NULL
 	};
@@ -52,6 +51,7 @@ int reset_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 	/* no options, no getopt */
 
 	if (/*isatty(STDIN_FILENO) &&*/ isatty(STDOUT_FILENO)) {
+#if !ENABLE_PLATFORM_MINGW32
 		/* See 'man 4 console_codes' for details:
 		 * "ESC c"        -- Reset
 		 * "ESC ( B"      -- Select G0 Character Set (B = US)
@@ -60,6 +60,15 @@ int reset_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		 * "ESC [ ? 25 h" -- Make cursor visible
 		 */
 		printf(ESC"c" ESC"(B" ESC"[m" ESC"[J" ESC"[?25h");
+#else
+		// "ESC [ m"        -- Reset all display attributes
+		// "ESC [ ? 1049 l" -- Use normal screen buffer
+		// "ESC [ J"        -- Erase to the end of screen
+		// "ESC [ 3 J"      -- Clear screen buffer
+		// reset_screen     -- Clear screen buffer fallback (Win 10 console?)
+		full_write1_str(ESC"[m" ESC"[?1049l" ESC"[J" ESC"[3J");
+		reset_screen();
+#endif
 		/* http://bugs.busybox.net/view.php?id=1414:
 		 * people want it to reset echo etc: */
 #if ENABLE_STTY
@@ -70,14 +79,5 @@ int reset_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 		execvp("stty", (char**)args);
 #endif
 	}
-#else
-	if (isatty(STDOUT_FILENO)) {
-		// "ESC [ m"        -- Reset all display attributes
-		// "ESC [ ? 1049 l" -- Use normal screen buffer
-		// reset_screen     -- Reset cursor and clear screen buffer
-		full_write1_str(ESC"[m" ESC"[?1049l");
-		reset_screen();
-	}
-#endif
 	return EXIT_SUCCESS;
 }
