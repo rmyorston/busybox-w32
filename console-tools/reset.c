@@ -63,10 +63,9 @@ int reset_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 #else
 		// "ESC [ m"        -- Reset all display attributes
 		// "ESC [ ? 1049 l" -- Use normal screen buffer
-		// "ESC [ J"        -- Erase to the end of screen
-		// "ESC [ 3 J"      -- Clear screen buffer
-		// reset_screen     -- Clear screen buffer fallback (Win 10 console?)
-		full_write1_str(ESC"[m" ESC"[?1049l" ESC"[J" ESC"[3J");
+		// "ESC [ 3 J"      -- Clear screen buffer (Win 10/11 terminal)
+		// reset_screen     -- Clear screen buffer (Win 10 console)
+		full_write1_str(ESC"[m" ESC"[?1049l" ESC"[3J");
 		reset_screen();
 #endif
 		/* http://bugs.busybox.net/view.php?id=1414:
