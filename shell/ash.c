@@ -6275,7 +6275,7 @@ forkshell(struct job *jp, union node *n, int mode)
 static int
 write2pipe(int pip[2], const char *p, size_t len)
 {
-	IF_PLATFORM_MINGW32(struct forkshell fs);
+	IF_PLATFORM_MINGW32(struct forkshell fs;)
 
 	if (len <= PIPE_BUF) {
 		xwrite(pip[1], p, len);
@@ -6288,7 +6288,8 @@ write2pipe(int pip[2], const char *p, size_t len)
 	fs.fd[0] = pip[0];
 	fs.fd[1] = pip[1];
 	fs.path = p;
-	spawn_forkshell(&fs, NULL, NULL, FORK_NOJOB);
+	// We need a job to track the process handle.
+	spawn_forkshell(&fs, makejob(1), NULL, FORK_NOJOB);
 #else
 	if (forkshell((struct job *)NULL, (union node *)NULL, FORK_NOJOB) == 0) {
 		/* child */
@@ -7806,9 +7807,9 @@ evalbackcmd(union node *n, struct backcmd *result
 
 	if (pipe(pip) < 0)
 		ash_msg_and_raise_perror("can't create pipe");
-	/* process substitution uses NULL job, like openhere() */
-	jp = (ctl == CTLBACKQ) ? makejob(1) : NULL;
 #if ENABLE_PLATFORM_MINGW32
+	// We need a job to track the process handle.
+	jp = makejob(1);
 	memset(&fs, 0, sizeof(fs));
 	fs.fpid = FS_EVALBACKCMD;
 	fs.n = n;
@@ -7817,6 +7818,8 @@ evalbackcmd(union node *n, struct backcmd *result
 	fs.fd[2] = ctl;
 	spawn_forkshell(&fs, jp, n, FORK_NOJOB);
 #else
+	/* process substitution uses NULL job, like openhere() */
+	jp = (ctl == CTLBACKQ) ? makejob(1) : NULL;
 	if (forkshell(jp, n, FORK_NOJOB) == 0) {
 		/* child */
 		reset_exception_handler();
