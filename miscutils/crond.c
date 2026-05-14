@@ -103,7 +103,11 @@
 
 #define CRON_DIR        CONFIG_FEATURE_CROND_DIR
 #define CRONTABS        CONFIG_FEATURE_CROND_DIR "/crontabs"
+#if ENABLE_PLATFORM_MINGW32
+#define CRON_REBOOT     "crond.reboot"
+#else
 #define CRON_REBOOT     CONFIG_PID_FILE_PATH "/crond.reboot"
+#endif
 #ifndef SENDMAIL
 # define SENDMAIL       "sendmail"
 #endif
@@ -176,6 +180,7 @@ struct globals {
 	const char *crontab_dir_name; /* = CRONTABS; */
 #if ENABLE_PLATFORM_MINGW32
 	const char *crondir_name; /* = CRON_DIR; */
+	const char *reboot_name;
 #endif
 	CronFile *cron_files;
 	char *default_shell;
@@ -1061,6 +1066,30 @@ static void flag_starting_jobs(time_t t1, time_t t2)
 #if ENABLE_FEATURE_CROND_SPECIAL_TIMES
 static int touch_reboot_file(void)
 {
+#if ENABLE_PLATFORM_MINGW32
+	struct stat st;
+	struct timespec now;
+	long long ms_since_boot;
+	const struct timespec ts[2] = {{0, UTIME_NOW}, {0, UTIME_NOW}};
+	int fd, ret = 0;
+
+	if (stat(G.reboot_name, &st) == 0) {
+		clock_gettime(CLOCK_REALTIME, &now);
+		ms_since_boot = GetTickCount64();
+
+		if (st.st_mtim.tv_sec < now.tv_sec - ms_since_boot/1000) {
+			// crond.reboot predates boot time, update it and run job
+			utimensat(AT_FDCWD, G.reboot_name, ts, 0);
+			ret = 1;
+		}
+	} else {
+		// crond.reboot doesn't exist, create it, but don't run job
+		fd = open(G.reboot_name, O_WRONLY | O_CREAT | O_EXCL | O_TRUNC, 0000);
+		if (fd >= 0)
+			close(fd);
+	}
+	return ret;
+#else
 	int fd = open(CRON_REBOOT, O_WRONLY | O_CREAT | O_EXCL | O_TRUNC, 0000);
 	if (fd >= 0) {
 		close(fd);
@@ -1068,6 +1097,7 @@ static int touch_reboot_file(void)
 	}
 	/* File (presumably) exists - this is not the first run after reboot */
 	return 0;
+#endif
 }
 #endif
 
@@ -1242,6 +1272,7 @@ int crond_main(int argc UNUSED_PARAM, char **argv)
 		free((void *)G.crondir_name);
 		G.crondir_name = dirname(xstrdup(G.crontab_dir_name));
 	}
+	G.reboot_name = concat_path_file(G.crondir_name, CRON_REBOOT);
 #endif
 
 	if (!(opts & OPT_f)) {
