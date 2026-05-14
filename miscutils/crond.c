@@ -1179,13 +1179,26 @@ int crond_main(int argc UNUSED_PARAM, char **argv)
 	unsigned rescan;
 	unsigned sleep_time;
 	unsigned opts;
+#if ENABLE_PLATFORM_MINGW32
+	const char *dir;
+#endif
 
 	INIT_G();
 
 #if ENABLE_PLATFORM_MINGW32
-	/* crontab dirname should be different */
-	G.crontab_dir_name = concat_path_file(get_system_drive(), CRONTABS);
-	G.crondir_name = concat_path_file(get_system_drive(), CRON_DIR);
+	// Upstream hardcodes the directories, we need to modify them.
+	// First look for them relative to the executable.
+	dir = exe_relative_path(CRONTABS);
+	if (is_directory(dir, FALSE)) {
+		G.crontab_dir_name = dir;
+		G.crondir_name = exe_relative_path(CRON_DIR);
+	} else {
+		// Otherwise prefix them with the system drive.
+		free((void *)dir);
+		dir = concat_path_file(get_system_drive(), CRONTABS);
+		G.crontab_dir_name = dir;
+		G.crondir_name = concat_path_file(get_system_drive(), CRON_DIR);
+	}
 #endif
 
 	opts = getopt32(argv, "^"
@@ -1204,6 +1217,13 @@ int crond_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_PLATFORM_MINGW32
 	if (!(opts & OPT_d) && G.log_filename == NULL) {
 		bb_error_msg_and_die("syslog isn't supported on Windows");
+	}
+
+	if (G.crontab_dir_name != dir) {
+		// User supplied crontabs directory, update cron directory too.
+		free((void *)dir);
+		free((void *)G.crondir_name);
+		G.crondir_name = dirname(xstrdup(G.crontab_dir_name));
 	}
 #endif
 
