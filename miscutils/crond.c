@@ -63,14 +63,22 @@
 //kbuild:lib-$(CONFIG_CROND) += crond.o
 
 //usage:#define crond_trivial_usage
-//usage:       "[-fbS] [-l N] " IF_FEATURE_CROND_D("[-d N] ") "[-L LOGFILE] [-c DIR]"
+//usage:       "[-fb" IF_NOT_PLATFORM_MINGW32("S") "] [-l N] " IF_FEATURE_CROND_D("[-d N] ") "[-L LOGFILE] [-c DIR]"
 //usage:#define crond_full_usage "\n\n"
 //usage:       "	-f	Foreground"
 //usage:     "\n	-b	Background (default)"
+//usage:	IF_NOT_PLATFORM_MINGW32(
 //usage:     "\n	-S	Log to syslog (default)"
 //usage:     "\n	-l N	Set log level. Most verbose 0, default 8"
 //usage:	IF_FEATURE_CROND_D(
 //usage:     "\n	-d N	Set log level, log to stderr"
+//usage:	)
+//usage:	)
+//usage:	IF_PLATFORM_MINGW32(
+//usage:     "\n	-l N	Set log level. Most verbose 0, default 8"
+//usage:	IF_FEATURE_CROND_D(
+//usage:     "\n	-d N	Set log level, log to stderr (default)"
+//usage:	)
 //usage:	)
 //usage:     "\n	-L FILE	Log to FILE"
 //usage:     "\n	-c DIR	Cron dir. Default:"CONFIG_FEATURE_CROND_DIR"/crontabs"
@@ -151,9 +159,14 @@ enum {
 	OPT_L = (1 << 1),
 	OPT_f = (1 << 2),
 	OPT_b = (1 << 3),
+#if ENABLE_PLATFORM_MINGW32
+	OPT_c = (1 << 4),
+	OPT_d = (1 << 5) * ENABLE_FEATURE_CROND_D,
+#else
 	OPT_S = (1 << 4),
 	OPT_c = (1 << 5),
 	OPT_d = (1 << 6) * ENABLE_FEATURE_CROND_D,
+#endif
 };
 
 struct globals {
@@ -1202,10 +1215,18 @@ int crond_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 	opts = getopt32(argv, "^"
+#if ENABLE_PLATFORM_MINGW32
+			"l:L:fbc:" IF_FEATURE_CROND_D("d:")
+#else
 			"l:L:fbSc:" IF_FEATURE_CROND_D("d:")
+#endif
 			"\0"
 			/* "-b after -f is ignored", and so on for every pair a-b */
+#if ENABLE_PLATFORM_MINGW32
+			"f-b:b-f" IF_FEATURE_CROND_D(":d-l")
+#else
 			"f-b:b-f:S-L:L-S" IF_FEATURE_CROND_D(":d-l")
+#endif
 			/* -l and -d have numeric param */
 			":l+" IF_FEATURE_CROND_D(":d+")
 			,
@@ -1215,10 +1236,6 @@ int crond_main(int argc UNUSED_PARAM, char **argv)
 	/* both -d N and -l N set the same variable: G.log_level */
 
 #if ENABLE_PLATFORM_MINGW32
-	if (!(opts & OPT_d) && G.log_filename == NULL) {
-		bb_error_msg_and_die("syslog isn't supported on Windows");
-	}
-
 	if (G.crontab_dir_name != dir) {
 		// User supplied crontabs directory, update cron directory too.
 		free((void *)dir);
