@@ -88,7 +88,12 @@ int crontab_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int crontab_main(int argc UNUSED_PARAM, char **argv)
 {
 	const struct passwd *pas;
+#if !ENABLE_PLATFORM_MINGW32
 	const char *crontab_dir = CRONTABS;
+#else
+	const char *crontab_dir;
+	char *dir;
+#endif
 	char *tmp_fname;
 	char *new_fname;
 	char *user_name;  /* -u USER */
@@ -116,13 +121,24 @@ int crontab_main(int argc UNUSED_PARAM, char **argv)
 	};
 
 #if ENABLE_PLATFORM_MINGW32
-	crontab_dir = concat_path_file(get_system_drive(), CRONTABS);
+	// First check for an exe-relative directory
+	dir = exe_relative_path(CRONTABS);
+	if (!is_directory(dir, FALSE)) {
+		free(dir);
+		dir = concat_path_file(get_system_drive(), CRONTABS);
+	}
+	crontab_dir = dir;
 #endif
 
 	opt_ler = getopt32(argv, "^" "u:c:lerd" "\0" "?1:dr"/*max one arg; -d implies -r*/,
 				&user_name, &crontab_dir
 	);
 	argv += optind;
+
+#if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_CLEAN_UP
+	if (crontab_dir != dir)
+		free(dir);
+#endif
 
 #if !ENABLE_PLATFORM_MINGW32
 	if (sanitize_env_if_suid()) { /* Clears dangerous stuff, sets PATH */
