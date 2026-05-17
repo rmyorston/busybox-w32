@@ -262,9 +262,15 @@ test x"$CONFIG_FEATURE_LS_SORTFILES" = x"y" \
 "A\nB\nA\nB\nA\nB\n" \
 "" ""
 
+# These tests for handling of non-printable characters in filenames
+# fail on Windows because most of the characters aren't permitted.
+# The name of the file is then echoed to the terminal, which may
+# cause it to hang awaiting the completion of the escape sequence
+# ESC_.  Skip these tests on Windows.
+optional PLATFORM_POSIX
 rm -rf ls.testdir 2>/dev/null
 mkdir ls.testdir || exit 1
-touch "`printf "ls.testdir/\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f_\x7f\x80\xfe\xff_\x22_\x27_\x5c"`"
+test x"$SKIP" != "x" || touch "`printf "ls.testdir/\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f_\x7f\x80\xfe\xff_\x22_\x27_\x5c"`"
 
 sq="'"
 
@@ -283,6 +289,7 @@ testing "ls -qQ" \
 'ls -qQ ls.testdir' \
 '"\\001\\002\\003\\004\\005\\006\\a\\b\\t\\n\\v\\f\\r\\016\\017\\020\\021\\022\\023\\024\\025\\026\\027\\030\\031\\032\\033\\034\\035\\036\\037_\\177\\200\\376\\377_\\"_'$sq'_\\\\"\n' \
 "" ""
+SKIP=
 
 # Clean up
 rm -rf ls.testdir 2>/dev/null
