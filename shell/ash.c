@@ -4409,6 +4409,9 @@ struct job {
 #if JOBS || ENABLE_PLATFORM_MINGW32
 		sigint: 1,      /* job was killed by SIGINT */
 #endif
+#if ENABLE_PLATFORM_MINGW32
+		ignore: 1,      /* don't report status */
+#endif
 #if JOBS
 		jobctl: 1,      /* job running under job control */
 #endif
@@ -5132,6 +5135,7 @@ static int waitone(int block, struct job *job)
 			pid = thisjob->ps[thisjob->nprocs - 1].ps_status;
 	}
 #endif
+
 	if (thisjob && thisjob == job) {
 		char s[48 + 1];
 		int len;
@@ -5279,6 +5283,11 @@ showjob(struct job *jp, int mode)
 	char s[16 + 16 + 48];
 	FILE *out = (mode & SHOW_STDERR ? stderr : stdout);
 
+#if ENABLE_PLATFORM_MINGW32
+	if (jp->ignore)
+		goto done;
+#endif
+
 	ps = jp->ps;
 
 	if (mode & SHOW_ONLY_PGID) { /* jobs -p */
@@ -5340,6 +5349,9 @@ showjob(struct job *jp, int mode)
 
 	jp->changed = 0;
 
+#if ENABLE_PLATFORM_MINGW32
+ done:
+#endif
 	if (jp->state == JOBDONE) {
 		TRACE(("showjob: freeing job %d\n", jobno(jp)));
 		freejob(jp);
@@ -6275,7 +6287,10 @@ forkshell(struct job *jp, union node *n, int mode)
 static int
 write2pipe(int pip[2], const char *p, size_t len)
 {
-	IF_PLATFORM_MINGW32(struct forkshell fs;)
+#if ENABLE_PLATFORM_MINGW32
+	struct forkshell fs;
+	struct job *jp;
+#endif
 
 	if (len <= PIPE_BUF) {
 		xwrite(pip[1], p, len);
@@ -6289,7 +6304,9 @@ write2pipe(int pip[2], const char *p, size_t len)
 	fs.fd[1] = pip[1];
 	fs.path = p;
 	// We need a job to track the process handle.
-	spawn_forkshell(&fs, makejob(1), NULL, FORK_NOJOB);
+	jp = makejob(1);
+	jp->ignore = TRUE;
+	spawn_forkshell(&fs, jp, NULL, FORK_NOJOB);
 #else
 	if (forkshell((struct job *)NULL, (union node *)NULL, FORK_NOJOB) == 0) {
 		/* child */
@@ -7810,6 +7827,7 @@ evalbackcmd(union node *n, struct backcmd *result
 #if ENABLE_PLATFORM_MINGW32
 	// We need a job to track the process handle.
 	jp = makejob(1);
+	jp->ignore = TRUE;
 	memset(&fs, 0, sizeof(fs));
 	fs.fpid = FS_EVALBACKCMD;
 	fs.n = n;
