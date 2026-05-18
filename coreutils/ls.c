@@ -1236,6 +1236,9 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 	/* need to initialize since --color has _an optional_ argument */
 	const char *color_opt = color_str; /* "always" */
 #endif
+#if ENABLE_PLATFORM_MINGW32
+	char flag;
+#endif
 
 	INIT_G();
 
@@ -1369,10 +1372,19 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 	if (!(opt & OPT_q) && G_isatty())
 		opt = option_mask32 |= OPT_q;
 
-#if ENABLE_FEATURE_EXTRA_FILE_DATA
-	/* Enable accurate link counts for directories */
-	if (opt & OPT_l)
-		count_subdirs(NULL);
+#if ENABLE_PLATFORM_MINGW32
+	/* Make calls to stat(2)/lstat(2) as efficient as possible */
+	flag = 0;
+	if (opt & OPT_l) {
+# if ENABLE_FEATURE_EXTRA_FILE_DATA
+		/* Enable accurate link counts for directories */
+		flag = BB_STAT_COUNT_SUBDIRS;
+# endif
+	} else if (!G_show_color) {
+		/* Avoid costly check for executable format */
+		flag = BB_STAT_NO_HAS_EXEC_FORMAT;
+	}
+	stat(&flag, NULL);
 #endif
 
 	argv += optind;

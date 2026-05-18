@@ -763,6 +763,9 @@ int stat_main(int argc UNUSED_PARAM, char **argv)
 	int i;
 	int ok;
 	statfunc_ptr statfunc = do_stat;
+#if ENABLE_FEATURE_EXTRA_FILE_DATA
+	char flag;
+#endif
 #if ENABLE_FEATURE_STAT_FILESYSTEM || ENABLE_SELINUX
 	unsigned opts;
 
@@ -787,7 +790,8 @@ int stat_main(int argc UNUSED_PARAM, char **argv)
 #endif
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
 	/* Enable accurate link counts for directories */
-	count_subdirs(NULL);
+	flag = BB_STAT_COUNT_SUBDIRS;
+	stat(&flag, NULL);
 #endif
 	ok = 1;
 	argv += optind;

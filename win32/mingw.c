@@ -479,7 +479,8 @@ mode_t FAST_FUNC mingw_umask(mode_t new_mode)
 /*
  * Examine a file's contents to determine if it can be executed.  This
  * should be a last resort:  in most cases it's much more efficient to
- * check the file extension.
+ * check the file extension.  In some cases 'ls' disables calls to this
+ * function with BB_STAT_NO_HAS_EXEC_FORMAT.
  *
  * We look for two types of file:  shell scripts and binary executables.
  */
@@ -689,23 +690,17 @@ static int mingw_is_directory(const char *path)
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
 /*
  * By default we don't count subdirectories.  Counting can be enabled
- * in specific cases by calling 'count_subdirs(NULL)' before making
+ * in specific cases by setting the BB_STAT_COUNT_SUBDIRS before
  * any calls to stat(2) or lstat(2) that require accurate values of
  * st_nlink for directories.
  */
-int FAST_FUNC count_subdirs(const char *pathname)
+static int count_subdirs(const char *pathname)
 {
 	int count = 0;
 	DIR *dirp;
 	struct dirent *dp;
-	static int do_count = FALSE;
 
-	if (pathname == NULL) {
-		do_count = TRUE;
-		return 0;
-	}
-
-	if (do_count && (dirp = opendir(pathname))) {
+	if ((dirp = opendir(pathname))) {
 		while ((dp = readdir(dirp)) != NULL) {
 			if (dp->d_type == DT_DIR)
 				count++;
@@ -733,6 +728,13 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 	DWORD low, high;
 	off64_t size;
 	char *lname = NULL;
+	static char flag = 0;
+
+	if (buf == NULL) {
+		/* NULL buf sets optimisation flags */
+		flag = *file_name;
+		return 0;
+	}
 
 	while (!(err=get_file_attr(file_name, &fdata))) {
 		buf->st_ino = 0;
@@ -769,7 +771,8 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 			if (S_ISREG(buf->st_mode) &&
 					(has_exe_suffix(file_name) ||
 					(!(buf->st_attr & FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS) &&
-						has_exec_format(file_name))))
+						!(flag & BB_STAT_NO_HAS_EXEC_FORMAT) &&
+							has_exec_format(file_name))))
 				buf->st_mode |= S_IXUSR|S_IXGRP|S_IXOTH;
 			buf->st_size = fdata.nFileSizeLow |
 				(((off64_t)fdata.nFileSizeHigh)<<32);
@@ -796,9 +799,11 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 					buf->st_dev = hdata.dwVolumeSerialNumber;
 					buf->st_ino = hdata.nFileIndexLow |
 							(((ino_t)hdata.nFileIndexHigh)<<32);
-					buf->st_nlink = (buf->st_attr & FILE_ATTRIBUTE_DIRECTORY) ?
-								count_subdirs(file_name) :
-								hdata.nNumberOfLinks;
+					buf->st_nlink = hdata.nNumberOfLinks;
+					if ((buf->st_attr & FILE_ATTRIBUTE_DIRECTORY) &&
+							(flag & BB_STAT_COUNT_SUBDIRS)) {
+						buf->st_nlink = count_subdirs(file_name);
+					}
 				}
 				buf->st_uid = buf->st_gid = file_owner(fh, buf);
 				CloseHandle(fh);
