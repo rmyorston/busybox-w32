@@ -941,6 +941,10 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 	unsigned baselen;
 	const char *basecmd;
 	char *dirbuf = NULL;
+#if ENABLE_PLATFORM_MINGW32
+	char stat_flag = type == FIND_EXE_ONLY ? 0 : BB_STAT_NO_HAS_EXEC_FORMAT;
+	stat(&stat_flag, NULL);
+#endif
 
 	npaths = 1;
 	path1[0] = (char*)".";
@@ -1086,6 +1090,10 @@ static NOINLINE unsigned complete_cmd_dir_file(const char *command, int type)
 	}
 	free(dirbuf);
 
+#if ENABLE_PLATFORM_MINGW32
+	stat_flag = 0;
+	stat(&stat_flag, NULL);
+#endif
 	return baselen;
 }
 
