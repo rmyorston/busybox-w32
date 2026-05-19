@@ -1,0 +1,37 @@
+# FEATURE: CONFIG_PLATFORM_MINGW32
+# Test various Windows path formats still work with wide API changes
+# See README.md for path format documentation
+
+BASEDIR=c:/temp/ls_pathfmt_test$$
+
+# Setup test directory structure
+powershell.exe -Command "
+New-Item -Path '$BASEDIR/subdir/nested' -ItemType Directory -Force | Out-Null
+New-Item -Path '$BASEDIR/subdir/file.txt' -ItemType File -Force | Out-Null
+New-Item -Path '$BASEDIR/subdir/nested/deep.txt' -ItemType File -Force | Out-Null
+"
+
+test -d "$BASEDIR" || { echo "setup failed"; exit 1; }
+
+# Test 1: Absolute path with forward slashes
+output=$(busybox ls "$BASEDIR/subdir" 2>&1)
+echo "$output" | grep -q "file.txt" || { echo "absolute path failed: $output"; exit 1; }
+
+# Test 2: Path with .. components
+output=$(busybox ls "$BASEDIR/subdir/nested/../" 2>&1)
+echo "$output" | grep -q "file.txt" || { echo "path with .. failed: $output"; exit 1; }
+
+# Test 3: Path with multiple .. components
+output=$(busybox ls "$BASEDIR/subdir/nested/../../subdir" 2>&1)
+echo "$output" | grep -q "file.txt" || { echo "multiple .. failed: $output"; exit 1; }
+
+# Test 4: Absolute path with backslashes (via variable to avoid shell escaping)
+BSPATH=$(echo "$BASEDIR/subdir" | tr '/' '\\')
+output=$(busybox ls "$BSPATH" 2>&1)
+echo "$output" | grep -q "file.txt" || { echo "backslash path failed: $output"; exit 1; }
+
+# Test 5: Mixed slashes
+output=$(busybox ls "$BASEDIR\\subdir/nested" 2>&1)
+echo "$output" | grep -q "deep.txt" || { echo "mixed slashes failed: $output"; exit 1; }
+
+busybox rm -rf "$BASEDIR"

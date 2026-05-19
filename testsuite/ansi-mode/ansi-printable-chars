@@ -1,0 +1,26 @@
+# FEATURE: CONFIG_PLATFORM_MINGW32
+# Test printable chars handling in ANSI mode (commit 8bd8100)
+# Bytes > 127 should be printable in ANSI code page, not replaced with '?'
+
+ANSI_BUSYBOX="$bindir/busybox-ansi.exe"
+BASEDIR=c:/temp/ansi_print_test$$
+
+test -f "$ANSI_BUSYBOX" || { echo "Run setup-ansi-test first"; exit 1; }
+
+# Create file with accented char (e-acute = 0xE9 in CP1252, valid byte > 127)
+powershell.exe -Command "
+\$e = [char]0x00e9
+New-Item -Path '$BASEDIR' -ItemType Directory -Force | Out-Null
+New-Item -Path \"$BASEDIR/caf\`\${e}.txt\" -ItemType File -Force | Out-Null
+"
+
+test -d "$BASEDIR" || { echo "setup failed"; exit 1; }
+
+# In ANSI mode, ls should NOT replace the accented char with '?'
+output=$("$ANSI_BUSYBOX" ls "$BASEDIR" 2>&1)
+
+# Verify filename appears (with some form of the accented char, not '?')
+echo "$output" | grep -q 'caf..*\.txt' || { echo "filename not found: $output"; exit 1; }
+echo "$output" | grep -q 'caf?\.txt' && { echo "char wrongly replaced with ?: $output"; exit 1; }
+
+"$ANSI_BUSYBOX" rm -rf "$BASEDIR"

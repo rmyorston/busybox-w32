@@ -1,0 +1,24 @@
+# FEATURE: CONFIG_PLATFORM_MINGW32
+# Test long paths with non-ASCII characters
+
+BASEDIR=c:/temp/ls_long_nonascii_test$$
+
+# Create deep path with accented directory names
+# e-acute = U+00E9, valid in both UTF-8 and CP1252
+powershell.exe -Command "
+\$e = [char]0x00e9
+\$d = \"caf\`\${e}_dir_1234\"
+\$path = '$BASEDIR'
+for (\$i = 0; \$i -lt 15; \$i++) { \$path = Join-Path \$path \$d }
+New-Item -Path \$path -ItemType Directory -Force | Out-Null
+New-Item -Path (Join-Path \$path 'testfile.txt') -ItemType File -Force | Out-Null
+Write-Host \$path
+" > deeppath.txt
+
+DEEPPATH=$(cat deeppath.txt | tr '\\' '/' | tr -d '\r')
+
+test -d "$BASEDIR" || { echo "directory creation failed"; exit 1; }
+output=$(busybox ls -la "$DEEPPATH" 2>&1)
+echo "$output" | grep -q testfile.txt || { echo "ls failed: $output"; exit 1; }
+busybox rm -rf "$BASEDIR"
+rm -f deeppath.txt
