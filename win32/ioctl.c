@@ -11,16 +11,18 @@ static int mingw_get_terminal_width_height(struct winsize *win)
 	win->ws_row = 0;
 	win->ws_col = 0;
 
-	for (fd=STDOUT_FILENO; fd<=STDERR_FILENO; ++fd) {
-		handle = (HANDLE)_get_osfhandle(fd);
-		if (handle != INVALID_HANDLE_VALUE &&
-				GetConsoleScreenBufferInfo(handle, &sbi) != 0) {
-			win->ws_row = sbi.srWindow.Bottom - sbi.srWindow.Top + 1;
-			win->ws_col = sbi.srWindow.Right - sbi.srWindow.Left + 1;
-			return 0;
-		}
+	fd = open("CONOUT$", O_RDWR);
+	handle = (HANDLE)_get_osfhandle(fd);
+
+	if (fd != -1 && GetConsoleScreenBufferInfo(handle, &sbi) != 0) {
+		win->ws_row = sbi.srWindow.Bottom - sbi.srWindow.Top + 1;
+		win->ws_col = sbi.srWindow.Right - sbi.srWindow.Left + 1;
+
+		close(fd);
+		return 0;
 	}
 
+	errno = err_win_to_posix();
 	return -1;
 }
 #endif

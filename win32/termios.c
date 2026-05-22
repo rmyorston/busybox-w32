@@ -3,32 +3,40 @@
 int FAST_FUNC
 tcsetattr(int fd, int mode UNUSED_PARAM, const struct termios *t)
 {
-	HANDLE h = (HANDLE)_get_osfhandle(fd);
-	if (!SetConsoleMode(h, t->w_mode)) {
-		errno = err_win_to_posix();
-		return -1;
+	HANDLE h;
+
+	fd = open("CONIN$", O_RDWR);
+	h = (HANDLE)_get_osfhandle(fd);
+	if (fd != -1 && SetConsoleMode(h, t->w_mode) != 0) {
+		close(fd);
+		return 0;
 	}
 
-	return 0;
+	errno = err_win_to_posix();
+	return -1;
 }
 
 int FAST_FUNC tcgetattr(int fd, struct termios *t)
 {
-	HANDLE h = (HANDLE)_get_osfhandle(fd);
-	if (!GetConsoleMode(h, &t->w_mode)) {
-		errno = err_win_to_posix();
-		return -1;
+	HANDLE h;
+
+	fd = open("CONOUT$", O_RDWR);
+	h = (HANDLE)_get_osfhandle(fd);
+	if (fd != -1 && GetConsoleMode(h, &t->w_mode) != 0) {
+		t->c_cc[VINTR] = 3;	// ctrl-c
+		t->c_cc[VEOF] = 4;	// ctrl-d
+
+		if (t->w_mode & ENABLE_ECHO_INPUT)
+			t->c_lflag |= ECHO;
+		else
+			t->c_lflag &= ~ECHO;
+
+		close(fd);
+		return 0;
 	}
 
-	t->c_cc[VINTR] = 3;	// ctrl-c
-	t->c_cc[VEOF] = 4;	// ctrl-d
-
-	if (t->w_mode & ENABLE_ECHO_INPUT)
-		t->c_lflag |= ECHO;
-	else
-		t->c_lflag &= ~ECHO;
-
-	return 0;
+	errno = err_win_to_posix();
+	return -1;
 }
 
 int64_t FAST_FUNC windows_read_key(int fd, char *buf UNUSED_PARAM, int timeout)
