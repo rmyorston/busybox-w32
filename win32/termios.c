@@ -20,7 +20,7 @@ int FAST_FUNC tcgetattr(int fd, struct termios *t)
 {
 	HANDLE h;
 
-	fd = open("CONOUT$", O_RDWR);
+	fd = open("CONIN$", O_RDWR);
 	h = (HANDLE)_get_osfhandle(fd);
 	if (fd != -1 && GetConsoleMode(h, &t->w_mode) != 0) {
 		t->c_cc[VINTR] = 3;	// ctrl-c
