@@ -64,6 +64,9 @@ shell_builtin_read(struct builtin_read_params *params)
 	char delim;
 #if !ENABLE_PLATFORM_MINGW32
 	struct termios tty, old_tty;
+#else
+	struct termios tty;
+	int fd_is_tty;
 #endif
 	const char *retval;
 	int bufpos; /* need to be able to hold -1 */
@@ -183,6 +186,13 @@ shell_builtin_read(struct builtin_read_params *params)
 		 * Ignoring, it's harmless. */
 		tcsetattr(fd, TCSANOW, &tty);
 	}
+#else
+	fd_is_tty = isatty(fd);
+	if (fd_is_tty) {
+		tcgetattr(fd, &tty);
+		if (!(tty.c_lflag & ECHO))
+			read_flags |= BUILTIN_READ_SILENT;
+	}
 #endif
 
 	retval = (const char *)(uintptr_t)0;
@@ -222,7 +232,7 @@ shell_builtin_read(struct builtin_read_params *params)
 		pfd->events = POLLIN;
 
 #if ENABLE_PLATFORM_MINGW32
-		if (isatty(fd)) {
+		if (fd_is_tty) {
 			int64_t key;
 
 			key = windows_read_key(fd, NULL, timeout);
