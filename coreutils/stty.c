@@ -268,10 +268,15 @@ enum speed_setting {
 
 /* Which member(s) of 'struct termios' a mode uses */
 enum {
+#if !ENABLE_PLATFORM_MINGW32
 	control, input, output, local, combination
+#else
+	local, combination
+#endif
 };
 static tcflag_t *get_ptr_to_tcflag(unsigned type, const struct termios *mode)
 {
+#if !ENABLE_PLATFORM_MINGW32
 	static const uint8_t tcflag_offsets[] ALIGN1 = {
 		offsetof(struct termios, c_cflag), /* control */
 		offsetof(struct termios, c_iflag), /* input */
@@ -282,6 +287,9 @@ static tcflag_t *get_ptr_to_tcflag(unsigned type, const struct termios *mode)
 		return (tcflag_t*) (((char*)mode) + tcflag_offsets[type]);
 	}
 	return NULL;
+#else
+	return (type == local) ? (tcflag_t*)&mode->c_lflag : NULL;
+#endif
 }
 
 /* Flags for 'struct mode_info' */
@@ -1090,7 +1098,11 @@ static void do_display(const struct termios *mode, int all)
 	int i;
 	tcflag_t *bitsp;
 	unsigned long mask;
+#if !ENABLE_PLATFORM_MINGW32
 	int prev_type = control;
+#else
+	int prev_type = local;
+#endif
 
 	display_speed(mode, 1);
 	if (all)
