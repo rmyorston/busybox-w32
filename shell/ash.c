@@ -5499,9 +5499,13 @@ stoppedjobs(void)
 static int
 stoppedjobs(void)
 {
-    if (iflag && curjob) {
-		out2str("You have background jobs.\n");
-		return 1;
+	if (iflag) {
+		for (struct job *jp = curjob; jp; jp = jp->prev_job) {
+			if (!jp->ignore) {
+				out2str("You have background jobs.\n");
+				return 1;
+			}
+		}
 	}
 	return 0;
 }
