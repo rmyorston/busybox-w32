@@ -1602,6 +1602,10 @@ int FAST_FUNC create_junction(const char *oldpath, const char *newpath)
 
 static char *normalize_ntpathA(char *buf)
 {
+	/* special case: don't normalise volume */
+	if (is_prefixed_with(buf, "\\??\\Volume{"))
+		return buf;
+
 	/* fix absolute path prefixes */
 	if (buf[0] == '\\') {
 		/* strip NT namespace prefixes */
@@ -1700,6 +1704,11 @@ char * FAST_FUNC realpath(const char *path, char *resolved_path)
 static wchar_t *normalize_ntpath(wchar_t *wbuf)
 {
 	int i;
+
+	/* special case: don't normalise volume */
+	if (!wcsncmp(wbuf, L"\\??\\Volume{", 11))
+		return wbuf;
+
 	/* fix absolute path prefixes */
 	if (wbuf[0] == '\\') {
 		/* strip NT namespace prefixes */
