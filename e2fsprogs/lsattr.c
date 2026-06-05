@@ -45,10 +45,10 @@
 //usage:     )
 //usage:     IF_PLATFORM_MINGW32(
 //usage:     "\n\nAttributes:\n"
-//usage:     "\n	j	Junction"
+//usage:     "\n	m	Mount (junction/volume)"
 //usage:     "\n	l	Symbolic link"
 //usage:     "\n	A	App exec link"
-//usage:     "\n	R	Reparse point"
+//usage:     "\n	R	Unidentified reparse point"
 //usage:     "\n	o	Offline"
 //usage:     "\n	e	Encrypted"
 //usage:     "\n	c	Compressed"
