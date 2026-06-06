@@ -1,0 +1,18 @@
+# FEATURE: CONFIG_PLATFORM_MINGW32
+# Test /path format (relative to current drive root)
+
+BASEDIR=/temp/ls_rootrel_test$$
+
+# Create using absolute path but test with root-relative
+powershell.exe -Command "
+New-Item -Path 'C:$BASEDIR/subdir' -ItemType Directory -Force | Out-Null
+New-Item -Path 'C:$BASEDIR/subdir/file.txt' -ItemType File -Force | Out-Null
+"
+
+test -d "c:$BASEDIR" || { echo "setup failed"; exit 1; }
+
+# Test /path format (should resolve to C:/temp/...)
+output=$(busybox ls "$BASEDIR/subdir" 2>&1)
+echo "$output" | grep -q "file.txt" || { echo "root-relative path failed: $output"; exit 1; }
+
+busybox rm -rf "c:$BASEDIR"

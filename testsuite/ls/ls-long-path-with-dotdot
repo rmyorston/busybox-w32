@@ -1,0 +1,31 @@
+# FEATURE: CONFIG_PLATFORM_MINGW32
+# Test long paths with .. components are resolved correctly
+
+BASEDIR=c:/temp/ls_longdotdot_test$$
+D=longdirname_12345
+
+# Create deep directory structure
+powershell.exe -Command "
+\$d = '$D'
+\$path = '$BASEDIR'
+for (\$i = 0; \$i -lt 15; \$i++) { \$path = Join-Path \$path \$d }
+New-Item -Path \$path -ItemType Directory -Force | Out-Null
+New-Item -Path (Join-Path \$path 'target.txt') -ItemType File -Force | Out-Null
+# Create a sibling directory at depth 14
+\$sibling = '$BASEDIR'
+for (\$i = 0; \$i -lt 14; \$i++) { \$sibling = Join-Path \$sibling \$d }
+\$sibling = Join-Path \$sibling 'sibling'
+New-Item -Path \$sibling -ItemType Directory -Force | Out-Null
+Write-Host \$sibling
+" > siblingpath.txt
+
+SIBLINGPATH=$(cat siblingpath.txt | tr '\\' '/' | tr -d '\r')
+
+test -d "$BASEDIR" || { echo "directory creation failed"; exit 1; }
+
+# Access the deep directory via sibling/../$D which should resolve the .. component
+output=$(busybox ls "$SIBLINGPATH/../$D" 2>&1)
+echo "$output" | grep -q "target.txt" || { echo "long path with .. failed: $output"; exit 1; }
+
+busybox rm -rf "$BASEDIR"
+rm -f siblingpath.txt
