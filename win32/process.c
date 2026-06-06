@@ -189,10 +189,12 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 
 	/* Special case:  spawnve won't execute a batch file if the first
 	 * argument is a relative path containing forward slashes.  Absolute
-	 * paths are fine but there's no harm in converting them too. */
-	if (has_bat_suffix(path)) {
-		slash_to_bs(new_argv[0]);
+	 * paths are fine.  It also produces unexpected results if asked to
+	 * run cmd.exe using a path with forward slashes.  Just convert
+	 * forward slashes to backslashes in all cases. */
+	slash_to_bs(new_argv[0]);
 
+	if (has_bat_suffix(path)) {
 		/* Another special case:  spawnve returns ENOEXEC when passed an
 		 * empty batch file.  Pretend it worked. */
 		if (st.st_size == 0) {
