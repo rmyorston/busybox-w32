@@ -1442,6 +1442,10 @@ int main(int argc UNUSED_PARAM, char **argv)
 			}
 		}
 	}
+
+	/* If the current directory is a symlink (or equivalent) we need
+	 * to update our idea of our current directory to its target. */
+	chdir(".");
 # endif
 	applet_name = bb_basename(applet_name);
 
