@@ -839,7 +839,9 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 
 int mingw_lstat(const char *file_name, struct mingw_stat *buf)
 {
-	return do_lstat(0, file_name, buf);
+	/* A virtual hard disk without a drive letter has its mount
+	 * point as '.'.  Force the link to be resolved. */
+	return do_lstat(strcmp(file_name, ".") == 0, file_name, buf);
 }
 
 int mingw_stat(const char *file_name, struct mingw_stat *buf)

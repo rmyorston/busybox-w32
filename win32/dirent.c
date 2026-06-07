@@ -54,7 +54,10 @@ DIR * FAST_FUNC opendir(const char *name)
 
 	/* open find handle */
 	h = FindFirstFileA(pattern, &fdata);
-	if (h == INVALID_HANDLE_VALUE) {
+	/* An empty virtual hard disk without a drive letter doesn't
+	 * have a '.' directory so FindFirstFileA fails.  Don't return
+	 * an error, instead fake '.' and '..'. */
+	if (h == INVALID_HANDLE_VALUE && strcmp(name, ".") != 0) {
 		DWORD err = GetLastError();
 		errno = (err == ERROR_DIRECTORY) ? ENOTDIR : err_win_to_posix();
 		return NULL;
@@ -66,7 +69,10 @@ DIR * FAST_FUNC opendir(const char *name)
 	/* dir->not_first = 0; */
 	/* dir->got_dot = 0; */
 	/* dir->got_dotdot = 0; */
-	finddata2dirent(&dir->dd_dir, &fdata);
+	if (h == INVALID_HANDLE_VALUE)
+		dir->not_first = 1;
+	else
+		finddata2dirent(&dir->dd_dir, &fdata);
 	return dir;
 }
 
@@ -81,7 +87,9 @@ struct dirent * FAST_FUNC readdir(DIR *dir)
 	if (dir->not_first) {
 		/* get next entry and convert from WIN32_FIND_DATA to dirent */
 		WIN32_FIND_DATAA fdata;
-		if (FindNextFileA(dir->dd_handle, &fdata)) {
+		/* If the handle is invalid we fake '.' and '..' directories. */
+		if (dir->dd_handle != INVALID_HANDLE_VALUE &&
+					FindNextFileA(dir->dd_handle, &fdata)) {
 			finddata2dirent(&dir->dd_dir, &fdata);
 		} else if (!dir->got_dot) {
 			strcpy(dir->dd_dir.d_name, ".");
