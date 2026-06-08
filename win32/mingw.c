@@ -679,6 +679,19 @@ static DWORD is_symlink(const char *pathname)
 	return 0;
 }
 
+int is_volume_mount(const char *path)
+{
+	char *lpath = NULL;
+	int ret;
+
+	if (is_symlink(path))
+		lpath = xmalloc_readlink(path);
+
+	ret = is_prefixed_with(lpath ?: path, "\\??\\Volume{") != NULL;
+	free(lpath);
+	return ret;
+}
+
 static int mingw_is_directory(const char *path)
 {
 	WIN32_FILE_ATTRIBUTE_DATA fdata;
@@ -839,9 +852,9 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 
 int mingw_lstat(const char *file_name, struct mingw_stat *buf)
 {
-	/* A virtual hard disk without a drive letter has its mount
-	 * point as '.'.  Force the link to be resolved. */
-	return do_lstat(strcmp(file_name, ".") == 0, file_name, buf);
+	/* The '.' directory of a reparse point can be a link rather
+	 * than a directory.  Force the link to be resolved. */
+	return do_lstat(strcmp(bb_basename(file_name), ".") == 0, file_name, buf);
 }
 
 int mingw_stat(const char *file_name, struct mingw_stat *buf)

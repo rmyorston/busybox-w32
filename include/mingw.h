@@ -407,6 +407,7 @@ struct mingw_stat {
 #define BB_STAT_COUNT_SUBDIRS 1
 #define BB_STAT_NO_HAS_EXEC_FORMAT 2
 
+int is_volume_mount(const char *path);
 int mingw_lstat(const char *file_name, struct mingw_stat *buf);
 int mingw_stat(const char *file_name, struct mingw_stat *buf);
 int mingw_fstat(int fd, struct mingw_stat *buf) FAST_FUNC;

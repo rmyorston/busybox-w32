@@ -54,10 +54,9 @@ DIR * FAST_FUNC opendir(const char *name)
 
 	/* open find handle */
 	h = FindFirstFileA(pattern, &fdata);
-	/* An empty virtual hard disk without a drive letter doesn't
-	 * have a '.' directory so FindFirstFileA fails.  Don't return
-	 * an error, instead fake '.' and '..'. */
-	if (h == INVALID_HANDLE_VALUE && strcmp(name, ".") != 0) {
+	/* If FindFirstFileA fails on a path that's a volume mount
+	 * don't return an error, instead fake '.' and '..'. */
+	if (h == INVALID_HANDLE_VALUE && !is_volume_mount(name)) {
 		DWORD err = GetLastError();
 		errno = (err == ERROR_DIRECTORY) ? ENOTDIR : err_win_to_posix();
 		return NULL;
