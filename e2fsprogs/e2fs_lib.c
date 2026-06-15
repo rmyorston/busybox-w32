@@ -132,6 +132,9 @@ void print_e2flags_long(struct stat *sb)
 				case IO_REPARSE_TAG_SYMLINK:
 					ln = "Symbolic_Link";
 					break;
+				case BB_REPARSE_TAG_JUNCTION:
+					ln = "Junction";
+					break;
 				case IO_REPARSE_TAG_MOUNT_POINT:
 					ln = "Mount_Point";
 					break;
@@ -173,6 +176,9 @@ void print_e2flags(struct stat *sb)
 			switch (sb->st_tag) {
 			case IO_REPARSE_TAG_SYMLINK:
 				c = 'l';
+				break;
+			case BB_REPARSE_TAG_JUNCTION:
+				c = 'j';
 				break;
 			case IO_REPARSE_TAG_MOUNT_POINT:
 				c = 'm';

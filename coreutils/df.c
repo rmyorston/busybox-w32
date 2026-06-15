@@ -85,6 +85,9 @@
 //usage:	)
 //usage:     "\n	-B SIZE	Blocksize"
 //usage:	)
+//usage:	IF_PLATFORM_MINGW32(
+//usage:     "\n	-w	Show Windows volumes"
+//usage:	)
 //usage:
 //usage:#define df_example_usage
 //usage:       "$ df\n"
@@ -139,6 +142,7 @@ int df_main(int argc UNUSED_PARAM, char **argv)
 		OPT_HUMAN    = (1 << (4 + 2*ENABLE_FEATURE_DF_FANCY + ENABLE_FEATURE_DF_FANCY_POSIX)) * ENABLE_FEATURE_HUMAN_READABLE,
 		OPT_HUMANDEC = (1 << (5 + 2*ENABLE_FEATURE_DF_FANCY + ENABLE_FEATURE_DF_FANCY_POSIX)) * ENABLE_FEATURE_HUMAN_READABLE,
 		OPT_MEGA     = (1 << (6 + 2*ENABLE_FEATURE_DF_FANCY + ENABLE_FEATURE_DF_FANCY_POSIX)) * ENABLE_FEATURE_HUMAN_READABLE,
+		OPT_WINVOL   = (1 << (7 + 2*ENABLE_FEATURE_DF_FANCY + ENABLE_FEATURE_DF_FANCY_POSIX)) * ENABLE_FEATURE_HUMAN_READABLE,
 	};
 	const char *disp_units_hdr = NULL;
 	char *chp, *opt_t;
@@ -160,6 +164,9 @@ int df_main(int argc UNUSED_PARAM, char **argv)
 			IF_FEATURE_DF_FANCY("aB:")
 #endif
 			IF_FEATURE_HUMAN_READABLE("hHm")
+#if ENABLE_PLATFORM_MINGW32
+			"w"
+#endif
 			"\0"
 #if ENABLE_FEATURE_HUMAN_READABLE && ENABLE_FEATURE_DF_FANCY
 			"k-mB:m-Bk:B-km"
@@ -248,7 +255,12 @@ int df_main(int argc UNUSED_PARAM, char **argv)
 			}
 		}
 
+#if ENABLE_PLATFORM_MINGW32
+		device = (opt & OPT_WINVOL) && mount_entry->mnt_volname[0] ?
+					mount_entry->mnt_volname : mount_entry->mnt_fsname;
+#else
 		device = mount_entry->mnt_fsname;
+#endif
 
 		/* GNU coreutils 6.10 skips certain mounts, try to be compatible */
 		if (ENABLE_FEATURE_SKIP_ROOTFS && strcmp(device, "rootfs") == 0)
@@ -266,6 +278,10 @@ int df_main(int argc UNUSED_PARAM, char **argv)
 			bb_simple_perror_msg(mount_point);
 			goto set_error;
 		}
+#if ENABLE_PLATFORM_MINGW32
+		// Trailing slash was needed for statvfs(), strip it for display
+		bs_to_slash_strip_slash(mount_entry->mnt_dir);
+#endif
 		/* Some uclibc versions were seen to lose f_frsize
 		 * (kernel does return it, but then uclibc does not copy it)
 		 */
