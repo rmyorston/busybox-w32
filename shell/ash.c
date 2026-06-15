@@ -11873,18 +11873,16 @@ cdcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
 static void
 print_all_cwd(void)
 {
-	FILE *mnt;
-	struct mntent *entry;
+	DWORD drives = GetLogicalDrives();
+	char drive[3] = "A:";
 	char buffer[PATH_MAX];
 
-	mnt = setmntent(bb_path_mtab_file, "r");
-	if (mnt) {
-		while ((entry=getmntent(mnt)) != NULL) {
-			entry->mnt_dir[2] = '\0';
-			if (get_drive_cwd(entry->mnt_dir, buffer, PATH_MAX) != NULL)
+	for (int i = 0; i < 26; ++i) {
+		if ((drives & 1 << i) != 0) {
+			drive[0] = 'A' + i;
+			if (get_drive_cwd(drive, buffer, PATH_MAX) != NULL)
 				out1fmt("%s\n", buffer);
 		}
-		endmntent(mnt);
 	}
 }
 #endif
