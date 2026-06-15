@@ -383,6 +383,8 @@ typedef off_t blkcnt_t;
 #define ino_t uint64_t
 #endif
 
+#define BB_REPARSE_TAG_JUNCTION (0x20000003L)
+
 struct mingw_stat {
 	dev_t     st_dev;
 	ino_t     st_ino;
@@ -654,6 +656,8 @@ MINGW_BB_WCHAR_T *bs_to_slash_u(MINGW_BB_WCHAR_T *p) FAST_FUNC;
 #endif
 
 char *bs_to_slash(char *p) FAST_FUNC;
+char *bs_to_slash(char *p) FAST_FUNC;
+char *bs_to_slash_strip_slash(char *p) FAST_FUNC;
 void slash_to_bs(char *p) FAST_FUNC;
 void strip_dot_space(char *p) FAST_FUNC;
 size_t remove_cr(char *p, size_t len) FAST_FUNC;

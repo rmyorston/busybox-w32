@@ -22,23 +22,20 @@
 struct mntent* FAST_FUNC find_mount_point(const char *name, int subdir_too)
 {
 	struct stat s;
-#if !ENABLE_PLATFORM_MINGW32
 	FILE *mtab_fp;
 	struct mntent *mountEntry;
 	dev_t devno_of_name;
+#if !ENABLE_PLATFORM_MINGW32
 	bool block_dev;
 #else
-	struct mntent *mountEntry;
 	static struct mntdata *data = NULL;
-	char *current;
-	const char *path;
 #endif
 
 	if (stat(name, &s) != 0)
 		return NULL;
 
-#if !ENABLE_PLATFORM_MINGW32
 	devno_of_name = s.st_dev;
+#if !ENABLE_PLATFORM_MINGW32
 	block_dev = 0;
 	/* Why S_ISCHR? - UBI volumes use char devices, not block */
 	if (S_ISBLK(s.st_mode) || S_ISCHR(s.st_mode)) {
@@ -86,24 +83,41 @@ struct mntent* FAST_FUNC find_mount_point(const char *name, int subdir_too)
 	}
 	endmntent(mtab_fp);
 #else
-	mountEntry = NULL;
-	path = NULL;
-	current = NULL;
+	mtab_fp = setmntent(bb_path_mtab_file, "r");
+	if (!mtab_fp)
+		return NULL;
 
-	if ( isalpha(name[0]) && name[1] == ':' ) {
-		path = name;
-	} else {
-		path = current = xrealloc_getcwd_or_warn(NULL);
+	while ((mountEntry = getmntent(mtab_fp)) != NULL) {
+		if (strcmp(name, mountEntry->mnt_dir) == 0
+		 || strcmp(name, mountEntry->mnt_fsname) == 0
+		) { /* String match. */
+			break;
+		}
+
+		/* Match the directory's mount point. */
+		if (stat(mountEntry->mnt_dir, &s) == 0
+		 && s.st_dev == devno_of_name
+		) {
+			break;
+		}
 	}
 
-	if ( path && isalpha(path[0]) && path[1] == ':' ) {
-		if (data == NULL)
-			data = xmalloc(sizeof(*data));
+	/* We need to return a copy of the 'struct mntent' as it'll
+	 * be freed by endmntent(). */
+	if (mountEntry) {
+		if (data == NULL) {
+			data = xzalloc(sizeof(*data));
+			init_mntdata(data);
+		}
 
-		fill_mntdata(data, toupper(path[0]) - 'A');
+		strcpy(data->mnt_fsname, mountEntry->mnt_fsname);
+		strcpy(data->mnt_volname, mountEntry->mnt_volname);
+		strcpy(data->mnt_dir, mountEntry->mnt_dir);
+		strcpy(data->mnt_type, mountEntry->mnt_type);
+
 		mountEntry = &data->me;
 	}
-	free(current);
+	endmntent(mtab_fp);
 #endif
 
 	return mountEntry;

@@ -5,11 +5,9 @@
 
 struct mntent {
 	char *mnt_fsname;   /* Device or server for filesystem.  */
+	char *mnt_volname;  /* Windows volume name */
 	char *mnt_dir;      /* Directory mounted on.  */
 	char *mnt_type;     /* Type of filesystem: ufs, nfs, etc.  */
-	char *mnt_opts;     /* Comma-separated options for fs.  */
-	int mnt_freq;       /* Dump frequency (in days).  */
-	int mnt_passno;     /* Pass number for `fsck'.  */
 };
 
 extern FILE *mingw_setmntent(void);
@@ -20,12 +18,12 @@ extern int endmntent(FILE *stream);
 struct mntdata {
 	struct mntent me;
 	char mnt_fsname[PATH_MAX];
-	char mnt_dir[4];
+	char mnt_volname[50];
+	char mnt_dir[PATH_MAX];
 	char mnt_type[100];
-	char mnt_opts[4];
 };
 
-extern int fill_mntdata(struct mntdata *data, int index) FAST_FUNC;
+void init_mntdata(struct mntdata *data) FAST_FUNC;
 # endif
 
 #define setmntent(f, m) mingw_setmntent()

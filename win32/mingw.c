@@ -649,7 +649,7 @@ static uid_t file_owner(HANDLE fh, struct mingw_stat *buf)
 }
 #endif
 
-static DWORD get_symlink_data(DWORD attr, const char *pathname,
+static DWORD get_reparse_tag(DWORD attr, const char *pathname,
 					WIN32_FIND_DATAA *fbuf)
 {
 	if (attr & FILE_ATTRIBUTE_REPARSE_POINT) {
@@ -658,8 +658,11 @@ static DWORD get_symlink_data(DWORD attr, const char *pathname,
 			FindClose(handle);
 			if ((fbuf->dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
 				switch (fbuf->dwReserved0) {
-				case IO_REPARSE_TAG_SYMLINK:
 				case IO_REPARSE_TAG_MOUNT_POINT:
+					/* Distinguish between volume mount and junction */
+					if (!is_volume_mount(pathname))
+						fbuf->dwReserved0 = BB_REPARSE_TAG_JUNCTION;
+				case IO_REPARSE_TAG_SYMLINK:
 				case IO_REPARSE_TAG_APPEXECLINK:
 					return fbuf->dwReserved0;
 				}
@@ -673,23 +676,14 @@ static DWORD is_symlink(const char *pathname)
 {
 	WIN32_FILE_ATTRIBUTE_DATA fdata;
 	WIN32_FIND_DATAA fbuf;
+	DWORD tag;
 
-	if (!get_file_attr(pathname, &fdata))
-		return get_symlink_data(fdata.dwFileAttributes, pathname, &fbuf);
+	if (!get_file_attr(pathname, &fdata)) {
+		tag = get_reparse_tag(fdata.dwFileAttributes, pathname, &fbuf);
+		/* Volume mount point is not a symlink */
+		return tag == IO_REPARSE_TAG_MOUNT_POINT ? 0 : tag;
+	}
 	return 0;
-}
-
-int is_volume_mount(const char *path)
-{
-	char *lpath = NULL;
-	int ret;
-
-	if (is_symlink(path))
-		lpath = xmalloc_readlink(path);
-
-	ret = is_prefixed_with(lpath ?: path, "\\??\\Volume{") != NULL;
-	free(lpath);
-	return ret;
 }
 
 static int mingw_is_directory(const char *path)
@@ -755,9 +749,9 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 		buf->st_gid = DEFAULT_GID;
 		buf->st_dev = buf->st_rdev = 0;
 		buf->st_attr = fdata.dwFileAttributes;
-		buf->st_tag = get_symlink_data(buf->st_attr, file_name, &findbuf);
+		buf->st_tag = get_reparse_tag(buf->st_attr, file_name, &findbuf);
 
-		if (buf->st_tag) {
+		if (buf->st_tag && buf->st_tag != IO_REPARSE_TAG_MOUNT_POINT) {
 			char *content;
 
 			if (follow) {
@@ -1697,7 +1691,7 @@ static char *resolve_symlinks(char *path)
 char * FAST_FUNC realpath(const char *path, char *resolved_path)
 {
 	char buffer[MAX_PATH];
-	char *real_path, *p;
+	char *real_path;
 
 	/* enforce glibc pre-2.3 behaviour */
 	if (path == NULL || resolved_path == NULL) {
@@ -1707,11 +1701,7 @@ char * FAST_FUNC realpath(const char *path, char *resolved_path)
 
 	if (_fullpath(buffer, path, MAX_PATH) &&
 			(real_path=resolve_symlinks(buffer))) {
-		bs_to_slash(strcpy(resolved_path, real_path));
-		p = last_char_is(resolved_path, '/');
-		if (p && p > resolved_path && p[-1] != ':')
-			*p = '\0';
-		return resolved_path;
+		return bs_to_slash_strip_slash(strcpy(resolved_path, real_path));
 	}
 	return NULL;
 }
@@ -1719,10 +1709,6 @@ char * FAST_FUNC realpath(const char *path, char *resolved_path)
 static wchar_t *normalize_ntpath(wchar_t *wbuf)
 {
 	int i;
-
-	/* special case: don't normalise volume */
-	if (!wcsncmp(wbuf, L"\\??\\Volume{", 11))
-		return wbuf;
 
 	/* fix absolute path prefixes */
 	if (wbuf[0] == '\\') {
@@ -1763,7 +1749,13 @@ typedef struct {
 } APPEXECLINK_BUFFER;
 
 #define SRPB rptr->SymbolicLinkReparseBuffer
-char * FAST_FUNC xmalloc_readlink(const char *pathname)
+
+/* In normal use xmalloc_readlink() returns an allocated string or
+ * NULL.  As a special case, when the 'test' argument is TRUE it
+ * returns a string constant or NULL to indicate if the path
+ * refers to a volume mount point or not. This allows us to
+ * distinguish between volume mount points and junctions. */
+static char *xmalloc_readlink_test(const char *pathname, int test)
 {
 	HANDLE h;
 	char *buf;
@@ -1809,8 +1801,20 @@ char * FAST_FUNC xmalloc_readlink(const char *pathname)
 		}
 
 		if (name) {
+			int vol;
+
+			/* special case: don't normalise volume */
 			name[len] = 0;
-			name = normalize_ntpath(name);
+			vol = wcsncmp(name, L"\\??\\Volume{", 11) == 0;
+			if (test) {
+				if (rptr->ReparseTag == IO_REPARSE_TAG_MOUNT_POINT && vol)
+					return (char *)"";
+				else
+					return NULL;
+			} else if (!vol) {
+				name = normalize_ntpath(name);
+			}
+
 			bufsiz = WideCharToMultiByte(CP_ACP, 0, name, -1, NULL, 0, 0, 0);
 			if (bufsiz) {
 				buf = xmalloc(bufsiz);
@@ -1822,6 +1826,16 @@ char * FAST_FUNC xmalloc_readlink(const char *pathname)
 	}
 	errno = err_win_to_posix();
 	return NULL;
+}
+
+char * FAST_FUNC xmalloc_readlink(const char *pathname)
+{
+	return xmalloc_readlink_test(pathname, FALSE);
+}
+
+int is_volume_mount(const char *path)
+{
+	return xmalloc_readlink_test(path, TRUE) != NULL;
 }
 
 const char *get_busybox_exec_path(void)
@@ -2247,6 +2261,17 @@ char * FAST_FUNC bs_to_slash(char *str)
 			*p = '/';
 		}
 	}
+	return str;
+}
+
+char * FAST_FUNC bs_to_slash_strip_slash(char *str)
+{
+	char *p;
+
+	bs_to_slash(str);
+	p = last_char_is(str, '/');
+	if (p && p > str && p[-1] != ':')
+		*p = '\0';
 	return str;
 }
 
