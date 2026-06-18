@@ -5574,6 +5574,7 @@ write2pipe(int pip[2], const char *p, size_t len)
 
 /* openhere needs this forward reference */
 static void expandhere(union node *arg);
+static void ifsfree(void);
 static int
 openhere(union node *redir)
 {
@@ -5998,6 +5999,17 @@ redirect(union node *redir, int flags)
 	//	preverrout_fd = copied_fd2;
 }
 
+static void
+restore_handler_expandarg(struct jmploc *savehandler, int err)
+{
+	exception_handler = savehandler;
+	if (err) {
+		if (exception_type != EXERROR)
+			longjmp(exception_handler->loc, 1);
+		ifsfree();
+	}
+}
+
 static int
 redirectsafe(union node *redir, int flags)
 {
@@ -6013,9 +6025,7 @@ redirectsafe(union node *redir, int flags)
 		exception_handler = &jmploc;
 		redirect(redir, flags);
 	}
-	exception_handler = savehandler;
-	if (err && exception_type != EXERROR)
-		longjmp(exception_handler->loc, 1);
+	restore_handler_expandarg(savehandler, err);
 	RESTORE_INT(saveint);
 	return err;
 }
@@ -9792,9 +9802,7 @@ evaltree(union node *n, int flags)
 			trap_depth--;
 			in_trap_ERR = 0;
 
-			exception_handler = savehandler;
-			if (err && exception_type != EXERROR)
-				longjmp(exception_handler->loc, 1);
+			restore_handler_expandarg(savehandler, err);
 
 			exitstatus = savestatus;
 		}
@@ -14009,9 +14017,7 @@ expandstr(const char *ps, int syntax_type)
 	result = stackblock();
 
 out:
-	exception_handler = savehandler;
-	if (err && exception_type != EXERROR)
-		longjmp(exception_handler->loc, 1);
+	restore_handler_expandarg(savehandler, err);
 
 	doprompt = saveprompt;
 	/* Try: PS1='`xxx(`' */
