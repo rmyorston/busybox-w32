@@ -670,7 +670,20 @@ ACTF(type)
 #if ENABLE_FEATURE_FIND_EXECUTABLE
 ACTF(executable)
 {
+#if ENABLE_PLATFORM_MINGW32
+	/* We do actually need to test for executability here */
+	/* This can't be moved inside mingw_access(), since it can't restore the
+	flags to what they were before */
+	int res;
+	char stat_flag = 0;
+	stat(&stat_flag, NULL);
+	res = access(fileName, X_OK) == 0;
+	stat_flag = BB_STAT_NO_HAS_EXEC_FORMAT;
+	stat(&stat_flag, NULL);
+	return res;
+#else
 	return access(fileName, X_OK) == 0;
+#endif
 }
 #endif
 #if ENABLE_FEATURE_FIND_PERM
@@ -1670,6 +1683,9 @@ int find_main(int argc UNUSED_PARAM, char **argv)
 {
 	int i, firstopt;
 	char **past_HLP, *saved;
+#if ENABLE_PLATFORM_MINGW32
+	char stat_flag;
+#endif
 
 	INIT_G();
 
@@ -1738,6 +1754,15 @@ int find_main(int argc UNUSED_PARAM, char **argv)
 			 */
 		}
 	}
+#endif
+
+#if ENABLE_PLATFORM_MINGW32
+	/* Do this all the time. That way we prevent doing double-stats for
+	executable files (the executable check above uses access() which calls stat again)
+	And we don't need to worry about resetting at the end since this isn't a NOFORK applet.
+	*/
+	stat_flag = BB_STAT_NO_HAS_EXEC_FORMAT;
+	stat(&stat_flag, NULL);
 #endif
 
 	for (i = 0; argv[i]; i++) {
