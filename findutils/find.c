@@ -1759,6 +1759,7 @@ int find_main(int argc UNUSED_PARAM, char **argv)
 #if ENABLE_PLATFORM_MINGW32
 	/* Do this all the time. That way we prevent doing double-stats for
 	executable files (the executable check above uses access() which calls stat again)
+	And we don't need to worry about resetting at the end since this isn't a NOFORK applet.
 	*/
 	stat_flag = BB_STAT_NO_HAS_EXEC_FORMAT;
 	stat(&stat_flag, NULL);
@@ -1774,13 +1775,6 @@ int find_main(int argc UNUSED_PARAM, char **argv)
 			G.exitstatus |= EXIT_FAILURE;
 		}
 	}
-
-#if ENABLE_PLATFORM_MINGW32
-	/* Reinstate costly check for executables.  flush_exec_plus() may
-	 * invoke a NOFORK applet */
-	stat_flag = 0;
-	stat(&stat_flag, NULL);
-#endif
 
 	IF_FEATURE_FIND_EXEC_PLUS(G.exitstatus |= flush_exec_plus();)
 	return G.exitstatus;
