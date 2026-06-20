@@ -2113,6 +2113,8 @@ int FAST_FUNC mingw_access(const char *name, int mode)
 {
 	int ret;
 	struct stat s;
+	char oldflag;
+	char newflag = 0;
 
 	/* Windows can only handle test for existence, read or write */
 	if (mode == F_OK || (mode & ~X_OK)) {
@@ -2122,13 +2124,18 @@ int FAST_FUNC mingw_access(const char *name, int mode)
 		}
 	}
 
+	/* If we reach this point, mode has the X_OK flag */
+	oldflag = mingw_stat(&newflag, NULL);
+
 	if (!mingw_stat(name, &s)) {
 		if ((s.st_mode&S_IXUSR)) {
+			mingw_stat(&oldflag, NULL);
 			return 0;
 		}
 		errno = EACCES;
 	}
 
+	mingw_stat(&oldflag, NULL);
 	return -1;
 }
 

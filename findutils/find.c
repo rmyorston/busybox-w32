@@ -670,20 +670,8 @@ ACTF(type)
 #if ENABLE_FEATURE_FIND_EXECUTABLE
 ACTF(executable)
 {
-#if ENABLE_PLATFORM_MINGW32
-	/* We do actually need to test for executability here */
-	/* This can't be moved inside mingw_access(), since it can't restore the
-	flags to what they were before */
-	int res;
-	char stat_flag = 0;
-	stat(&stat_flag, NULL);
-	res = access(fileName, X_OK) == 0;
-	stat_flag = BB_STAT_NO_HAS_EXEC_FORMAT;
-	stat(&stat_flag, NULL);
-	return res;
-#else
+	/* If we are on mingw, mingw_access does proper handling inside it and restores the flags */
 	return access(fileName, X_OK) == 0;
-#endif
 }
 #endif
 #if ENABLE_FEATURE_FIND_PERM
