@@ -886,6 +886,13 @@ int FAST_FUNC test_main2(struct cached_groupinfo *pgroupinfo, int argc, char **a
 	bool bt2 = 0;
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+	/* since this is a NOFORK applet the flags may still be matching a previous call */
+	/* old flags may include BB_STAT_NO_HAS_EXEC_FORMAT and make stat above give a wrong result */
+	char flags = 0;
+	char oldflags = stat(&flags, NULL);
+#endif
+
 	arg0 = bb_basename(argv[0]);
 	if ((ENABLE_TEST1 || ENABLE_TEST2 || ENABLE_ASH_TEST || ENABLE_HUSH_TEST)
 	 && (arg0[0] == '[')
@@ -1012,6 +1019,10 @@ int FAST_FUNC test_main2(struct cached_groupinfo *pgroupinfo, int argc, char **a
 	}
  ret:
 	DEINIT_S();
+#if ENABLE_PLATFORM_MINGW32
+	/* restore to the same flags as before */
+	stat(&oldflags, NULL);
+#endif
 	return res;
 }
 

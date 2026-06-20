@@ -739,8 +739,9 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 
 	if (buf == NULL) {
 		/* NULL buf sets optimisation flags */
+		char oldflag = flag;
 		flag = *file_name;
-		return 0;
+		return oldflag;
 	}
 
 	while (!(err=get_file_attr(file_name, &fdata))) {
