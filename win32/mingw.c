@@ -2124,19 +2124,21 @@ int FAST_FUNC mingw_access(const char *name, int mode)
 		}
 	}
 
-	/* If we reach this point, mode has the X_OK flag */
+	/* If we reach this point, mode has the X_OK flag.  Reset stat()
+	 * to its default behaviour, in case our caller has altered it. */
 	oldflag = mingw_stat(&newflag, NULL);
 
+	ret = -1;
 	if (!mingw_stat(name, &s)) {
 		if ((s.st_mode&S_IXUSR)) {
-			mingw_stat(&oldflag, NULL);
-			return 0;
+			ret = 0;
+		} else {
+			errno = EACCES;
 		}
-		errno = EACCES;
 	}
 
 	mingw_stat(&oldflag, NULL);
-	return -1;
+	return ret;
 }
 
 int FAST_FUNC mingw_rmdir(const char *path)
