@@ -913,9 +913,11 @@ int FAST_FUNC test_main2(struct cached_groupinfo *pgroupinfo, int argc, char **a
 	}
 	/* argc is unused after this point */
 
+#if ENABLE_PLATFORM_MINGW32
 	/* Since this is a NOFORK applet our caller may have altered the stat()
 	 * flags.  Temporarily reset them to the default. */
 	oldflags = stat(&flags, NULL);
+#endif
 
 	/* We must do DEINIT_S() prior to returning */
 	INIT_S();
