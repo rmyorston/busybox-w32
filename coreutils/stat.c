@@ -790,6 +790,7 @@ int stat_main(int argc UNUSED_PARAM, char **argv)
 #endif
 #if ENABLE_FEATURE_EXTRA_FILE_DATA
 	/* Enable accurate link counts for directories */
+	/* this isn't a NOFORK applet so we don't need to restore afterwards */
 	flag = BB_STAT_COUNT_SUBDIRS;
 	stat(&flag, NULL);
 #endif

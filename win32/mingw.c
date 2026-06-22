@@ -739,8 +739,9 @@ static int do_lstat(int follow, const char *file_name, struct mingw_stat *buf)
 
 	if (buf == NULL) {
 		/* NULL buf sets optimisation flags */
+		char oldflag = flag;
 		flag = *file_name;
-		return 0;
+		return oldflag;
 	}
 
 	while (!(err=get_file_attr(file_name, &fdata))) {
@@ -2112,6 +2113,8 @@ int FAST_FUNC mingw_access(const char *name, int mode)
 {
 	int ret;
 	struct stat s;
+	char oldflag;
+	char newflag = 0;
 
 	/* Windows can only handle test for existence, read or write */
 	if (mode == F_OK || (mode & ~X_OK)) {
@@ -2121,14 +2124,21 @@ int FAST_FUNC mingw_access(const char *name, int mode)
 		}
 	}
 
+	/* If we reach this point, mode has the X_OK flag.  Reset stat()
+	 * to its default behaviour, in case our caller has altered it. */
+	oldflag = mingw_stat(&newflag, NULL);
+
+	ret = -1;
 	if (!mingw_stat(name, &s)) {
 		if ((s.st_mode&S_IXUSR)) {
-			return 0;
+			ret = 0;
+		} else {
+			errno = EACCES;
 		}
-		errno = EACCES;
 	}
 
-	return -1;
+	mingw_stat(&oldflag, NULL);
+	return ret;
 }
 
 int FAST_FUNC mingw_rmdir(const char *path)

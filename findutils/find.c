@@ -670,20 +670,7 @@ ACTF(type)
 #if ENABLE_FEATURE_FIND_EXECUTABLE
 ACTF(executable)
 {
-#if ENABLE_PLATFORM_MINGW32
-	/* We do actually need to test for executability here */
-	/* This can't be moved inside mingw_access(), since it can't restore the
-	flags to what they were before */
-	int res;
-	char stat_flag = 0;
-	stat(&stat_flag, NULL);
-	res = access(fileName, X_OK) == 0;
-	stat_flag = BB_STAT_NO_HAS_EXEC_FORMAT;
-	stat(&stat_flag, NULL);
-	return res;
-#else
 	return access(fileName, X_OK) == 0;
-#endif
 }
 #endif
 #if ENABLE_FEATURE_FIND_PERM
@@ -1757,9 +1744,8 @@ int find_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 #if ENABLE_PLATFORM_MINGW32
-	/* Do this all the time. That way we prevent doing double-stats for
-	executable files (the executable check above uses access() which calls stat again)
-	*/
+	/* Avoid expensive checks for executable mode when stat() is called.
+	 * The -executable test uses access() which isn't affected by this. */
 	stat_flag = BB_STAT_NO_HAS_EXEC_FORMAT;
 	stat(&stat_flag, NULL);
 #endif
@@ -1774,13 +1760,6 @@ int find_main(int argc UNUSED_PARAM, char **argv)
 			G.exitstatus |= EXIT_FAILURE;
 		}
 	}
-
-#if ENABLE_PLATFORM_MINGW32
-	/* Reinstate costly check for executables.  flush_exec_plus() may
-	 * invoke a NOFORK applet */
-	stat_flag = 0;
-	stat(&stat_flag, NULL);
-#endif
 
 	IF_FEATURE_FIND_EXEC_PLUS(G.exitstatus |= flush_exec_plus();)
 	return G.exitstatus;

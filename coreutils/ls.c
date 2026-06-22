@@ -1374,6 +1374,7 @@ int ls_main(int argc UNUSED_PARAM, char **argv)
 
 #if ENABLE_PLATFORM_MINGW32
 	/* Make calls to stat(2)/lstat(2) as efficient as possible */
+	/* this isn't a NOFORK applet so we don't need to restore afterwards */
 	flag = 0;
 	if (opt & OPT_l) {
 # if ENABLE_FEATURE_EXTRA_FILE_DATA
