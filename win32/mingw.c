@@ -2160,12 +2160,19 @@ void mingw_sync(void)
 	FILE *mnt;
 	struct mntent *entry;
 	char name[] = "\\\\.\\C:";
+	char *volname;
 
 	mnt = setmntent(bb_path_mtab_file, "r");
 	if (mnt) {
 		while ((entry=getmntent(mnt)) != NULL) {
-			name[4] = entry->mnt_dir[0];
-			h = CreateFile(name, GENERIC_READ | GENERIC_WRITE,
+			if (entry->mnt_volname[0]) {
+				volname = entry->mnt_volname;
+				volname[strlen(volname) - 1] = '\0';
+			} else {
+				name[4] = entry->mnt_dir[0];
+				volname = name;
+			}
+			h = CreateFile(volname, GENERIC_READ | GENERIC_WRITE,
 						FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
 						OPEN_EXISTING, 0, NULL);
 			if (h != INVALID_HANDLE_VALUE) {
