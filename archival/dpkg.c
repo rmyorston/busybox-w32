@@ -170,6 +170,12 @@ typedef struct deb_file_s {
 	unsigned package:16; /* was:14 */
 } deb_file_t;
 
+/* this is here to easily remove / from the start of directories */
+#if ENABLE_PLATFORM_MINGW32
+#define DPKG_DIR "var/lib/dpkg"
+#else
+#define DPKG_DIR "/var/lib/dpkg"
+#endif
 
 static void make_hash(const char *key, unsigned *start, unsigned *decrement, const int hash_prime)
 {
@@ -818,8 +824,8 @@ static void write_buffer_no_status(FILE *new_status_file, const char *control_bu
 /* This could do with a cleanup */
 static void write_status_file(deb_file_t **deb_file)
 {
-	FILE *old_status_file = xfopen_for_read("/var/lib/dpkg/status");
-	FILE *new_status_file = xfopen_for_write("/var/lib/dpkg/status.udeb");
+	FILE *old_status_file = xfopen_for_read(DPKG_DIR "/status");
+	FILE *new_status_file = xfopen_for_write(DPKG_DIR "/status.udeb");
 	char *package_name;
 	char *status_from_file;
 	char *control_buffer = NULL;
@@ -947,7 +953,7 @@ static void write_status_file(deb_file_t **deb_file)
 	fclose(new_status_file);
 
 	/* Create a separate backfile to dpkg */
-	if (rename("/var/lib/dpkg/status", "/var/lib/dpkg/status.udeb.bak") == -1) {
+	if (rename(DPKG_DIR "/status", DPKG_DIR "/status.udeb.bak") == -1) {
 		if (errno != ENOENT)
 			bb_simple_error_msg_and_die("can't create backup status file");
 		/* Its ok if renaming the status file fails because status
@@ -955,7 +961,7 @@ static void write_status_file(deb_file_t **deb_file)
 		bb_simple_error_msg("no status file found, creating new one");
 	}
 
-	xrename("/var/lib/dpkg/status.udeb", "/var/lib/dpkg/status");
+	xrename(DPKG_DIR "/status.udeb", DPKG_DIR "/status");
 }
 
 /* This function returns TRUE if the given package can satisfy a
@@ -1270,7 +1276,7 @@ static void run_package_script_or_die(const char *package_name, const char *scri
 	char *script_path;
 	int result;
 
-	script_path = xasprintf("/var/lib/dpkg/info/%s.%s", package_name, script_type);
+	script_path = xasprintf(DPKG_DIR "/info/%s.%s", package_name, script_type);
 
 	/* If the file doesn't exist it isn't fatal */
 	result = access(script_path, F_OK) ? EXIT_SUCCESS : system(script_path);
@@ -1323,7 +1329,7 @@ static char **all_control_list(const char *package_name)
 	/* Create a list of all /var/lib/dpkg/info/<package> files */
 	remove_files = xzalloc(sizeof(all_control_files) + sizeof(char*));
 	while (i < ARRAY_SIZE(all_control_files)) {
-		remove_files[i] = xasprintf("/var/lib/dpkg/info/%s.%s",
+		remove_files[i] = xasprintf(DPKG_DIR "/info/%s.%s",
 				package_name, all_control_files[i]);
 		i++;
 	}
@@ -1404,10 +1410,10 @@ static void remove_package(const unsigned package_num, int noisy)
 	run_package_script_or_die(package_name, "prerm");
 
 	/* Create a list of files to remove, and a separate list of those to keep */
-	sprintf(list_name, "/var/lib/dpkg/info/%s.%s", package_name, "list");
+	sprintf(list_name, DPKG_DIR "/info/%s.%s", package_name, "list");
 	remove_files = create_list(list_name);
 
-	sprintf(conffile_name, "/var/lib/dpkg/info/%s.%s", package_name, "conffiles");
+	sprintf(conffile_name, DPKG_DIR "/info/%s.%s", package_name, "conffiles");
 	exclude_files = create_list(conffile_name);
 
 	/* Some directories can't be removed straight away, so do multiple passes */
@@ -1419,7 +1425,7 @@ static void remove_package(const unsigned package_num, int noisy)
 	/* Create a list of files in /var/lib/dpkg/info/<package>.* to keep */
 	exclude_files = xzalloc(sizeof(exclude_files[0]) * 3);
 	exclude_files[0] = xstrdup(conffile_name);
-	exclude_files[1] = xasprintf("/var/lib/dpkg/info/%s.%s", package_name, "postrm");
+	exclude_files[1] = xasprintf(DPKG_DIR "/info/%s.%s", package_name, "postrm");
 
 	/* Create a list of all /var/lib/dpkg/info/<package> files */
 	remove_files = all_control_list(package_name);
@@ -1452,7 +1458,7 @@ static void purge_package(const unsigned package_num)
 	run_package_script_or_die(package_name, "prerm");
 
 	/* Create a list of files to remove */
-	sprintf(list_name, "/var/lib/dpkg/info/%s.%s", package_name, "list");
+	sprintf(list_name, DPKG_DIR "/info/%s.%s", package_name, "list");
 	remove_files = create_list(list_name);
 
 	/* Some directories cant be removed straight away, so do multiple passes */
@@ -1465,7 +1471,7 @@ static void purge_package(const unsigned package_num)
 
 	/* Delete all of them except the postrm script */
 	exclude_files = xzalloc(sizeof(exclude_files[0]) * 2);
-	exclude_files[0] = xasprintf("/var/lib/dpkg/info/%s.%s", package_name, "postrm");
+	exclude_files[0] = xasprintf(DPKG_DIR "/info/%s.%s", package_name, "postrm");
 	remove_file_array(remove_files, exclude_files);
 	free_array(exclude_files);
 
@@ -1567,7 +1573,7 @@ static void append_control_file_to_llist(const char *package_name, const char *c
 	FILE *fp;
 	char *filename, *line;
 
-	filename = xasprintf("/var/lib/dpkg/info/%s.%s", package_name, control_name);
+	filename = xasprintf(DPKG_DIR "/info/%s.%s", package_name, control_name);
 	fp = fopen_for_read(filename);
 	free(filename);
 	if (fp != NULL) {
@@ -1687,7 +1693,7 @@ static void unpack_package(deb_file_t *deb_file)
 	}
 
 	/* Extract control.tar.gz to /var/lib/dpkg/info/<package>.filename */
-	info_prefix = xasprintf("/var/lib/dpkg/info/%s.%s", package_name, "");
+	info_prefix = xasprintf(DPKG_DIR "/info/%s.%s", package_name, "");
 	archive_handle = init_archive_deb_ar(deb_file->filename);
 	init_archive_deb_control(archive_handle);
 
@@ -1723,11 +1729,11 @@ static void unpack_package(deb_file_t *deb_file)
 	archive_handle->dpkg__sub_archive->ah_flags |= ARCHIVE_REMEMBER_NAMES | ARCHIVE_UNLINK_OLD;
 	archive_handle->dpkg__sub_archive->filter = filter_rename_config;
 	archive_handle->dpkg__sub_archive->action_data = data_extract_all_prefix;
-	archive_handle->dpkg__sub_archive->dpkg__buffer = (char*)"/"; /* huh? */
+	archive_handle->dpkg__sub_archive->dpkg__buffer = (char*)(ENABLE_PLATFORM_MINGW32 ? "" : "/"); /* huh? */
 	unpack_ar_archive(archive_handle);
 
 	/* Create the list file */
-	list_filename = xasprintf("/var/lib/dpkg/info/%s.%s", package_name, "list");
+	list_filename = xasprintf(DPKG_DIR "/info/%s.%s", package_name, "list");
 	out_stream = xfopen_for_write(list_filename);
 	archive_handle->dpkg__sub_archive->passed = llist_rev(archive_handle->dpkg__sub_archive->passed);
 	while (archive_handle->dpkg__sub_archive->passed) {
@@ -1834,17 +1840,17 @@ int dpkg_main(int argc UNUSED_PARAM, char **argv)
 	chdir_system_drive();
 
 	/* initialise data store */
-	path = xstrdup("/var/lib/dpkg/info");
+	path = xstrdup(DPKG_DIR "/info");
 	bb_make_directory(path, -1, FILEUTILS_RECUR);
 	free(path);
 
-	fd = open("/var/lib/dpkg/status", O_RDWR|O_CREAT, 0666);
+	fd = open(DPKG_DIR "/status", O_RDWR|O_CREAT, 0666);
 	if (fd >= 0)
 		xclose(fd);
 #endif
 
 /*	puts("(Reading database ... xxxxx files and directories installed.)"); */
-	index_status_file("/var/lib/dpkg/status");
+	index_status_file(DPKG_DIR "/status");
 
 	/* if the list action was given print the installed packages and exit */
 	if (opt & OPT_list_installed) {
