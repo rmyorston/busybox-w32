@@ -6234,7 +6234,7 @@ forkparent(struct job *jp, union node *n, int mode, HANDLE proc)
 		backgndpid = pid;               /* set $! */
 		set_curjob(jp, CUR_RUNNING);
 #if ENABLE_PLATFORM_MINGW32
-		if (iflag && jp && jp->nprocs == 0)
+		if (rootshell && iflag && jp && jp->nprocs == 0)
 			fprintf(stderr, "[%d] %"PID_FMT"d\n", jobno(jp), pid);
 #endif
 	}
