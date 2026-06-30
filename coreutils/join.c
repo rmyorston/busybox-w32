@@ -341,21 +341,15 @@ static void parsejformat(int **format_p, const char *format_str)
 int join_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int join_main(int argc, char **argv)
 {
-	exitcode_t exitcode = EXIT_SUCCESS;
-
-	llist_t *unpaired_add = NULL;
-	llist_t *unpaired_only = NULL;
+	llist_t *unpaired_list = NULL;
 	const char *empty_str = "";
 	const char *format_str = NULL;
-	char *separator = NULL;
+	char *separator;
 	uint32_t opts;
 
 	bool print1unpaired = false;
 	bool print2unpaired = false;
 	bool printpaired = true;
-
-	const char *filename1;
-	const char *filename2;
 
 	int *format = NULL;
 
@@ -382,7 +376,6 @@ int join_main(int argc, char **argv)
 
 	/* We can't use \0 as a real separator, so this stands in for the whitespace+ pattern */
 	char sep = 0;
-	int i;
 
 	init_unicode();
 
@@ -392,9 +385,9 @@ int join_main(int argc, char **argv)
 		"o:"
 		"t:"
 		"1:+2:+"
-		"\0""=2",
-		&unpaired_add,
-		&unpaired_only,
+		"\0""=2:a--v:v--a",
+		&unpaired_list,
+		&unpaired_list,
 		&empty_str,
 		&format_str,
 		&separator,
@@ -403,30 +396,22 @@ int join_main(int argc, char **argv)
 	argc -= optind; argv += optind;
 
 	if ((opts & FLAG_UNPAIRED_ADD) || (opts & FLAG_UNPAIRED_ONLY)) {
-		if ((opts & FLAG_UNPAIRED_ADD) && (opts & FLAG_UNPAIRED_ONLY))
-			bb_simple_error_msg_and_die("-a and -v are exclusive");
-
 		printpaired = !(opts & FLAG_UNPAIRED_ONLY);
-
-		while ((unpaired_str =
-				llist_pop((opts & FLAG_UNPAIRED_ONLY) ? &unpaired_only : &unpaired_add)) != NULL) {
-			if (*unpaired_str == '\0' || unpaired_str[1] != '\0')
-				bb_simple_error_msg_and_die("-a and -v take either 1 or 2");
-			else if (*unpaired_str == '1')
+		while ((unpaired_str = llist_pop(&unpaired_list)) != NULL) {
+			if (*unpaired_str == '1')
 				print1unpaired = true;
 			else if (*unpaired_str == '2')
 				print2unpaired = true;
-			else
+			else if (unpaired_str[1] != '\0')
 				bb_simple_error_msg_and_die("-a and -v take either 1 or 2");
 		}
-		unpaired_str = NULL;
 	}
 
 	if (f1.idx < 1 || f2.idx < 1)
 		bb_simple_error_msg_and_die("field 0 doesn't exist");
 
 	if (opts & FLAG_SEP_USED) {
-		if (strlen(separator) != 1)
+		if (separator[1] != '\0')
 			bb_simple_error_msg_and_die("separators are single characters");
 
 		sep = *separator;
@@ -435,11 +420,8 @@ int join_main(int argc, char **argv)
 	if (opts & FLAG_LIST_OUTPUT)
 		parsejformat(&format, format_str);
 
-	filename1 = argv[0];
-	filename2 = argv[1];
-
-	f1.fp = xfopen_stdin(filename1);
-	f2.fp = xfopen_stdin(filename2);
+	f1.fp = xfopen_stdin(argv[0]);
+	f2.fp = xfopen_stdin(argv[1]);
 	if (f1.fp == f2.fp)
 		bb_simple_error_msg_and_die("can't combine stdin with itself");
 
@@ -542,8 +524,9 @@ int join_main(int argc, char **argv)
 		} while (f2.linecount);
 	}
 
+#if ENABLE_FEATURE_CLEAN_UP
 	if (f1.linecap) {
-		for (i = 0; i < f1.linecount; i ++) {
+		for (int i = 0; i < f1.linecount; i ++) {
 			if (f1.lines[i].fields)
 				freefields(f1.lines[i].fields);
 		}
@@ -551,19 +534,18 @@ int join_main(int argc, char **argv)
 	}
 
 	if (f2.linecap) {
-		for (i = 0; i < f2.linecount; i ++) {
+		for (int i = 0; i < f2.linecount; i ++) {
 			if (f2.lines[i].fields)
 				freefields(f2.lines[i].fields);
 		}
 		free(f2.lines);
 	}
 
-
-	if (format)
-		free(format);
+	free(format);
 
 	fclose_if_not_stdin(f1.fp);
 	fclose_if_not_stdin(f2.fp);
+#endif
 
-	fflush_stdout_and_exit(exitcode);
+	fflush_stdout_and_exit_SUCCESS();
 }
