@@ -434,6 +434,7 @@ struct forkshell {
 	int nprocs;
 #if JOBS_WIN32
 	int jpnull;
+	int job_hack;
 #endif
 
 	/* optional data, used by forkshell_child */
@@ -17043,6 +17044,10 @@ spawn_forkshell(struct forkshell *fs, struct job *jp, union node *n, int mode)
 	const char *argv[] = { "sh", "--fs", NULL, NULL };
 	intptr_t ret;
 
+#if JOBS_WIN32
+	fs->job_hack = njobs && fs->n && fs->n->type == NCMD && fs->n->ncmd.args &&
+			strcmp(fs->n->ncmd.args->narg.text, "jobs") == 0;
+#endif
 	new = forkshell_prepare(fs);
 	if (new == NULL)
 		goto fail;
@@ -17587,7 +17592,8 @@ forkshell_size(struct forkshell *fs)
 			ds = history_size(ds);
 #endif
 #if JOBS_WIN32
-		ds = jobtab_size(ds);
+		if (fs->job_hack)
+			ds = jobtab_size(ds);
 #endif
 	}
 	return ds;
@@ -17629,7 +17635,7 @@ forkshell_copy(struct forkshell *fs, struct forkshell *new)
 		}
 #endif
 #if JOBS_WIN32
-		if (njobs) {
+		if (fs->job_hack) {
 			new->jobtab = jobtab_copy();
 			SAVE_PTR(new->jobtab, "jobtab", NO_FREE);
 			new->njobs = njobs;
@@ -17954,15 +17960,12 @@ forkshell_init(const char *idstr)
 	/* do job control only in root shell */
 	jobctl = 0;
 
-	if (fs->n && fs->n->type == NCMD && fs->n->ncmd.args &&
-			strcmp(fs->n->ncmd.args->narg.text, "jobs") == 0) {
+	if (fs->job_hack) {
 		TRACE(("Job hack\n"));
 		if (!fs->jpnull)
 			freejob(curjob);
 		goto end;
 	}
-	for (struct job *jp = curjob; jp; jp = jp->prev_job)
-		freejob(jp);
 #endif
  end:
 	forkshell_child(fs);
