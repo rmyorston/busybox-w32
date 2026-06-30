@@ -87,7 +87,7 @@ def getsizes_pe(file):
     prefix = os.getenv("CROSS_COMPILE", "")
     for l in os.popen(prefix + "objdump -h " + file).readlines():
         x = l.split()
-        if len(x) != 7: continue
+        if len(x) != 7 and len(x) != 5: continue
         sections[x[1]] = 1
         if x[1] not in [".rdata"]: continue
         sym[x[1]] = {"addr" : int(x[3], 16), "size" : int(x[2], 16)}
