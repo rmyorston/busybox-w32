@@ -2432,9 +2432,9 @@ static int awk_getline(rstream *rsm, var *v)
 #endif
 static char *awk_printf(node *n, size_t *len)
 {
-	char *b;
-	char *fmt, *f;
-	size_t i;
+	char *fmt, *fmt_cur;
+	char *res_buf;
+	size_t res_len;
 
 	//tmpvar = nvalloc(1);
 #define TMPVAR (&G.awk_printf__tmpvar)
@@ -2442,73 +2442,75 @@ static char *awk_printf(node *n, size_t *len)
 	// to decrease memory consumption in deeply-recursive awk programs.
 	// The rule to work safely is to never call evaluate() while our static
 	// TMPVAR's value is still needed.
-	fmt = f = xstrdup(getvar_s(evaluate(nextarg(&n), TMPVAR)));
+	fmt = fmt_cur = xstrdup(getvar_s(evaluate(nextarg(&n), TMPVAR)));
 	// ^^^^^^^^^ here we immediately strdup() the value, so the later call
 	// to evaluate() potentially recursing into another awk_printf() can't
 	// mangle the value.
 
-	b = NULL;
-	i = 0;
+	res_buf = NULL;
+	res_len = 0;
 	while (1) { /* "print one format spec" loop */
-		char *s;
 		char c;
 		char sv;
 		var *arg;
+		/* s is the next string to append to res_buf */
+		/* it can be either a literal trailing segment of fmt (if c == NUL), or allocated result of the formatting */
+		char *s;
 		size_t slen;
 		int stars;
 		int width = width;
 		int prec = prec;
 
 		/* Find end of the next format spec, or end of line */
-		s = f;
+		s = fmt_cur;
 		stars = 0;
 		while (1) {
-			c = *f;
+			c = *fmt_cur;
 			if (!c) /* no percent chars found at all */
 				goto nul;
-			f++;
+			fmt_cur++;
 			if (c == '%')
 				break;
 		}
 		/* we are past % in "....%..." */
-		c = *f;
+		c = *fmt_cur;
 		if (!c) /* "....%" */
 			goto nul;
 		if (c == '%') { /* "....%%...." */
-			slen = f - s;
+			slen = fmt_cur - s;
 			s = xstrndup(s, slen);
-			f++;
-			goto append; /* print "....%" part verbatim */
+			fmt_cur++;
+			goto append; /* append "....%" part verbatim */
 		}
 
 		/* flags */
 		while (c && strchr("+- 0#'", c))
-			c = *++f;
+			c = *++fmt_cur;
 
 		/* width */
 		if (c == '*') {
 			stars = 1;
 			width = (int)getvar_i(evaluate(nextarg(&n), TMPVAR));
-			c = *++f;
+			c = *++fmt_cur;
 			//if (isdigit(c)) /* we do not support "%*2$d" format */
 			//	syntax_error("invalid format specifier");
 		}
 		while (isdigit(c))
-			c = *++f;
+			c = *++fmt_cur;
 
 		/* precision? */
 		if (c == '.') {
-			c = *++f;
+			c = *++fmt_cur;
 			if (c == '*') {
 				prec = (int)getvar_i(evaluate(nextarg(&n), TMPVAR));
 				if (++stars == 1)
 					width = prec;
-				c = *++f;
+				c = *++fmt_cur;
 				//if (isdigit(c)) /* we do not support "%5.*2$d" format */
 				//	syntax_error("invalid format specifier");
 			}
 			//while (isdigit(c))
-			//	c = *++f;
+			//	c = *++fmt_cur;
 			//^^^^ unnecessary, the while () below skips everything to format specifier letter
 		}
 
@@ -2530,11 +2532,11 @@ static char *awk_printf(node *n, size_t *len)
 		while (1) {
 			if (isalpha(c))
 				break;
-			c = *++f;
+			c = *++fmt_cur;
 			if (!c) { /* "....%...." and no letter found after % */
 				/* Example: awk 'BEGIN { printf "^^^%^^^\n"; }' */
  nul:
-				slen = f - s;
+				slen = fmt_cur - s;
 				goto tail; /* print remaining string, exit loop */
 			}
 		}
@@ -2545,8 +2547,8 @@ static char *awk_printf(node *n, size_t *len)
 		/* Result can be arbitrarily long. Example:
 		 *  printf "%99999s", "BOOM"
 		 */
-		sv = *++f;
-		*f = '\0';
+		sv = *++fmt_cur;
+		*fmt_cur = '\0';
 
 		if (c == 'c') {
 			char cc = is_numeric(arg) ? getvar_i(arg) : *getvar_s(arg);
@@ -2576,22 +2578,22 @@ static char *awk_printf(node *n, size_t *len)
 					s = xasprintf_width_prec(s, stars, width, prec, d);
 				} else {
 					/* gawk 5.1.1 printf("%W") prints "%W", does not error out */
-					s = xstrndup(s, f - s);
+					s = xstrndup(s, fmt_cur - s);
 				}
 			}
 			slen = strlen(s);
 		}
-		*f = sv;
+		*fmt_cur = sv;
  append:
-		if (i == 0) {
-			b = s;
-			i = slen;
+		if (res_len == 0) {
+			res_buf = s;
+			res_len = slen;
 			continue;
 		}
  tail:
-		b = xrealloc(b, i + slen + 1);
-		strcpy(b + i, s);
-		i += slen;
+		res_buf = xrealloc(res_buf, res_len + slen + 1);
+		strcpy(res_buf + res_len, s);
+		res_len += slen;
 		if (!c) /* s is NOT allocated and this is the last part of string? */
 			break;
 		free(s);
@@ -2603,9 +2605,9 @@ static char *awk_printf(node *n, size_t *len)
 
 #if ENABLE_FEATURE_AWK_GNU_EXTENSIONS
 	if (len)
-		*len = i;
+		*len = res_len;
 #endif
-	return b;
+	return res_buf;
 }
 
 /* Common substitution routine.
