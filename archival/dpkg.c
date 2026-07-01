@@ -1247,16 +1247,42 @@ static int remove_file_array(char **remove_names, char **exclude_names)
 		return 0;
 	}
 	for (i = 0; remove_names[i] != NULL; i++) {
+#if ENABLE_PLATFORM_MINGW32
+		/* under mingw32, because of BB_SYSTEMROOT all these paths should be
+		   relative to PWD. And so items with a / need it removed */
+		char *remove_name;
+#endif
 		if (is_builtin_exclude(remove_names[i]))
 			continue;
+#if ENABLE_PLATFORM_MINGW32
+		remove_name = remove_names[i];
+		if (remove_name[0] == '/') remove_name++;
+#endif
 		if (exclude_names != NULL) {
 			for (j = 0; exclude_names[j] != NULL; j++) {
-				if (strcmp(remove_names[i], exclude_names[j]) == 0) {
+#if ENABLE_PLATFORM_MINGW32
+				char *exclude_name = exclude_names[j];
+				if (exclude_name[0] == '/') exclude_name++;
+				if (strcmp(remove_name, exclude_name) == 0)
+#else
+				if (strcmp(remove_names[i], exclude_names[j]) == 0)
+#endif
+				{
 					goto skip;
 				}
 			}
 		}
 		/* TODO: why we are checking lstat? we can just try rm/rmdir */
+#if ENABLE_PLATFORM_MINGW32
+		if (lstat(remove_name, &path_stat) < 0) {
+			continue;
+		}
+		if (S_ISDIR(path_stat.st_mode)) {
+			remove_flag &= rmdir(remove_name); /* 0 if no error */
+		} else {
+			remove_flag &= unlink(remove_name); /* 0 if no error */
+		}
+#else
 		if (lstat(remove_names[i], &path_stat) < 0) {
 			continue;
 		}
@@ -1265,6 +1291,7 @@ static int remove_file_array(char **remove_names, char **exclude_names)
 		} else {
 			remove_flag &= unlink(remove_names[i]); /* 0 if no error */
 		}
+#endif
  skip:
 		continue;
 	}
@@ -1739,7 +1766,7 @@ static void unpack_package(deb_file_t *deb_file)
 	while (archive_handle->dpkg__sub_archive->passed) {
 		char *filename = llist_pop(&archive_handle->dpkg__sub_archive->passed);
 		/* the leading . has been stripped by data_extract_all_prefix already */
-		fprintf(out_stream, "%s\n", filename);
+		fprintf(out_stream, ENABLE_PLATFORM_MINGW32 ? "/%s\n" : "%s\n", filename);
 		free(filename);
 	}
 	fclose(out_stream);
