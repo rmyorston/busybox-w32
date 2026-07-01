@@ -24,6 +24,43 @@ testing "awk if operator >= "  "awk 'BEGIN{if(23>=23) print \"foo\"}'" "foo\n" "
 testing "awk if operator < "   "awk 'BEGIN{if(2 < 13) print \"foo\"}'" "foo\n" "" ""
 testing "awk if string == "    "awk 'BEGIN{if(\"a\"==\"ab\") print \"bar\"}'" "" "" ""
 
+# width and precision
+testing "awk %* only width" \
+"awk 'BEGIN { printf \"%*d\", 10, -42 }'" "       -42" "" ""
+
+testing "awk %* negative width" \
+"awk 'BEGIN { printf \"%*s\", -10, \"hello\" }'" "hello     " "" ""
+
+testing "awk %.* only precision" \
+"awk 'BEGIN { printf \"%.*f\n\", 2, 3.14159 }'" "3.14\n" "" ""
+
+testing "awk %*.* width and precision" \
+"awk 'BEGIN { printf \"%*.*f\", 10, 2, 3.14159 }'" "      3.14" "" ""
+
+testing "awk %0*.* 0 padding with width and precision" \
+"awk 'BEGIN { printf \"%0*.*f\", 10, 2, 3.14 }'" "0000003.14" "" ""
+
+testing "awk multiple format specifications" \
+"awk 'BEGIN { printf \"%d %*d %d\", 1, 5, 2, 3 }'" "1     2 3" "" ""
+
+testing "awk %*c width with char" \
+"awk 'BEGIN { printf \"%*c\", 5, 65 }'" "    A" "" ""
+
+testing "awk %-*c width with char" \
+"awk 'BEGIN { printf \"%-*c\", 5, 65 }'" "A    " "" ""
+
+# For some reason, this works in GNU Awk 5.3.0
+# (why does it work? does it allow flag chars _after_ width, not only before width?)
+# This is undocumented, and we do not support this.
+## testing "awk %*-c width with char" \
+## "awk 'BEGIN { printf \"%*-c\", 5, 65 }'" "A    " "" ""
+
+testing "awk %*c width with NUL" \
+"awk 'BEGIN { printf \"%*c\", 5, 0 }'" "    \0" "" ""
+
+testing "awk %-*c width with NUL" \
+"awk 'BEGIN { printf \"%-*c\", 5, 0 }'" "\0    " "" ""
+
 # 4294967295 = 0xffffffff
 testing "awk bitwise op"  "awk '{ print or(4294967295,1) }'" "4294967295\n" "" "\n"
 

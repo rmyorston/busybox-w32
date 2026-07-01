@@ -2414,6 +2414,18 @@ static int awk_getline(rstream *rsm, var *v)
 	return retval;
 }
 
+/* xasprintf with support of supplying width and/or precision */
+//TODO: deinline this somehow...
+#define xasprintf_width_prec(format, stars, width, prec, ...) \
+({ \
+	char *xstr; \
+	/*bb_error_msg("stars:%d w:%d p:%d FMT:'%s'", stars, width, prec, format);*/ \
+	if (stars > 1)       xstr = xasprintf(format, width, prec, __VA_ARGS__); \
+	else if (stars == 1) xstr = xasprintf(format, width, __VA_ARGS__); \
+	else                 xstr = xasprintf(format, __VA_ARGS__); \
+	xstr; \
+})
+
 /* formatted output into an allocated buffer, return ptr to buffer */
 #if !ENABLE_FEATURE_AWK_GNU_EXTENSIONS
 # define awk_printf(a, b) awk_printf(a)
@@ -2443,9 +2455,13 @@ static char *awk_printf(node *n, size_t *len)
 		char sv;
 		var *arg;
 		size_t slen;
+		int stars;
+		int width = width;
+		int prec = prec;
 
 		/* Find end of the next format spec, or end of line */
 		s = f;
+		stars = 0;
 		while (1) {
 			c = *f;
 			if (!c) /* no percent chars found at all */
@@ -2464,11 +2480,56 @@ static char *awk_printf(node *n, size_t *len)
 			f++;
 			goto append; /* print "....%" part verbatim */
 		}
+
+		/* flags */
+		while (c && strchr("+- 0#'", c))
+			c = *++f;
+
+		/* width */
+		if (c == '*') {
+			stars = 1;
+			width = (int)getvar_i(evaluate(nextarg(&n), TMPVAR));
+			c = *++f;
+			//if (isdigit(c)) /* we do not support "%*2$d" format */
+			//	syntax_error("invalid format specifier");
+		}
+		while (isdigit(c))
+			c = *++f;
+
+		/* precision? */
+		if (c == '.') {
+			c = *++f;
+			if (c == '*') {
+				prec = (int)getvar_i(evaluate(nextarg(&n), TMPVAR));
+				if (++stars == 1)
+					width = prec;
+				c = *++f;
+				//if (isdigit(c)) /* we do not support "%5.*2$d" format */
+				//	syntax_error("invalid format specifier");
+			}
+			//while (isdigit(c))
+			//	c = *++f;
+			//^^^^ unnecessary, the while () below skips everything to format specifier letter
+		}
+
+		// The fact that we skip everything
+		// until we see a letter could allow
+		// even this format to maybe work: "%*.*2$f"
+		// ... sans the fact that GNU awk 5.3.0
+		// does NOT advance the "next positional param"
+		// internal variable when it sees *N$, and therefore
+		// "%*.*2$f" is printing param #2, not param #3:
+		// awk 'BEGIN { printf "[%*.*f]\n",10,5,44; }'     [  44.00000]
+		// awk 'BEGIN { printf "[%*.*2$f]\n",10,5,44; }'   [   5.00000] <- THIS
+		// awk 'BEGIN { printf "[%*1$.*f]\n",10,5,44; }'   [5.0000000000]
+		// awk 'BEGIN { printf "[%*1$.*2$f]\n",10,5,44; }' [  10.00000]
+		// whereas glibc prints param #3, but forgets to set width (!).
+		//
+		// The behavior is undefined by standards anyway,
+		// let's use minimal valid code.
 		while (1) {
 			if (isalpha(c))
 				break;
-			if (c == '*') /* gawk supports %*d and %*.*f, we don't... */
-				syntax_error("%*x formats are not supported");
 			c = *++f;
 			if (!c) { /* "....%...." and no letter found after % */
 				/* Example: awk 'BEGIN { printf "^^^%^^^\n"; }' */
@@ -2477,8 +2538,8 @@ static char *awk_printf(node *n, size_t *len)
 				goto tail; /* print remaining string, exit loop */
 			}
 		}
-		/* we are at A in "....%...A..." */
 
+		/* we are at A in "....%...A..." */
 		arg = evaluate(nextarg(&n), TMPVAR);
 
 		/* Result can be arbitrarily long. Example:
@@ -2486,16 +2547,20 @@ static char *awk_printf(node *n, size_t *len)
 		 */
 		sv = *++f;
 		*f = '\0';
+
 		if (c == 'c') {
 			char cc = is_numeric(arg) ? getvar_i(arg) : *getvar_s(arg);
-			char *r = xasprintf(s, cc ? cc : '^' /* else strlen will be wrong */);
+			char *r = xasprintf_width_prec(s, stars, width, prec, cc ? cc : '^' /* else strlen will be wrong */);
 			slen = strlen(r);
-			if (cc == '\0') /* if cc is NUL, re-format the string with it */
-				sprintf(r, s, cc);
+			if (cc == '\0') { /* if cc is NUL, re-format the string with it */
+				free(r);
+				r = xasprintf_width_prec(s, stars, width, prec, cc);
+			}
 			s = r;
 		} else {
 			if (c == 's') {
-				s = xasprintf(s, getvar_s(arg));
+				const char *cs = getvar_s(arg);
+				s = xasprintf_width_prec(s, stars, width, prec, cs);
 			} else {
 				double d = getvar_i(arg);
 				if (strchr("diouxX", c)) {
@@ -2506,9 +2571,9 @@ static char *awk_printf(node *n, size_t *len)
 //but some replacements are not equivalent:
 //%09d -> %09s: breaks zero-padding;
 //%+d -> %+s: won't prepend +; etc
-					s = xasprintf(s, (int)d);
+					s = xasprintf_width_prec(s, stars, width, prec, (int)d);
 				} else if (strchr("eEfFgGaA", c)) {
-					s = xasprintf(s, d);
+					s = xasprintf_width_prec(s, stars, width, prec, d);
 				} else {
 					/* gawk 5.1.1 printf("%W") prints "%W", does not error out */
 					s = xstrndup(s, f - s);
