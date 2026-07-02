@@ -61,8 +61,30 @@ testing "awk %*c width with NUL" \
 testing "awk %-*c width with NUL" \
 "awk 'BEGIN { printf \"%-*c\", 5, 0 }'" "\0    " "" ""
 
+testing "awk %W%d - W is unknown format specifier" \
+"awk 'BEGIN { printf \"[%W%d]\n\", 42; }'" "[%W42]\n" "" ""
+
+# do not truncate large integer outout
+# (the ...008 instead of ...000 is due to limited precision of 64-bit floats)
+testing "awk %d 99999999999999000.1234" \
+"awk 'BEGIN { printf \"%d\n\", 99999999999999000.1234; }'" "99999999999999008\n" "" ""
+
+# .precision on integer formatting allowed and ignored
+testing "awk %.3d 99999999999999000.1234" \
+"awk 'BEGIN { printf \"%.3d\n\", 99999999999999000.1234; }'" "99999999999999008\n" "" ""
+testing "awk %.*d 3 99999999999999000.1234" \
+"awk 'BEGIN { printf \"%.*d\n\", 3, 99999999999999000.1234; }'" "99999999999999008\n" "" ""
+
+# fractioals are rounded towards 0
+testing "awk %d -1.9" \
+"awk 'BEGIN { printf \"%d\n\", -1.9; }'" "-1\n" "" ""
+testing "awk %u -1.9" \
+"awk 'BEGIN { printf \"%u\n\", -1.9; }'" "18446744073709551615\n" "" ""
+testing "awk %x -1.9" \
+"awk 'BEGIN { printf \"%x\n\", -1.9; }'" "ffffffffffffffff\n" "" ""
+
 # 4294967295 = 0xffffffff
-testing "awk bitwise op"  "awk '{ print or(4294967295,1) }'" "4294967295\n" "" "\n"
+testing "awk bitwise op" "awk '{ print or(4294967295,1) }'" "4294967295\n" "" "\n"
 
 # we were testing for a non-empty body when deciding if a function was
 # defined or not. The testcase below caused:
