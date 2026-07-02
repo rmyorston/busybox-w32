@@ -672,7 +672,7 @@ int enumerate_links(const char *file, char *name) FAST_FUNC;
 int unc_root_len(const char *dir) FAST_FUNC;
 int root_len(const char *path) FAST_FUNC;
 const char *get_system_drive(void) FAST_FUNC;
-int chdir_system_drive(void);
+void xchdir_system_drive(void);
 char *xabsolute_path(char *path) FAST_FUNC;
 char *get_drive_cwd(const char *path, char *buffer, int size) FAST_FUNC;
 void fix_path_case(char *path) FAST_FUNC;

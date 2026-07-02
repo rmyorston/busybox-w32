@@ -2461,14 +2461,11 @@ const char * FAST_FUNC get_system_drive(void)
 	return getenv(BB_SYSTEMROOT) ?: drive;
 }
 
-int chdir_system_drive(void)
+void xchdir_system_drive(void)
 {
-	const char *sd = get_system_drive();
-	int ret = -1;
-
-	if (*sd)
-		ret = chdir(auto_string(concat_path_file(sd, "")));
-	return ret;
+	char *path = concat_path_file(get_system_drive(), "");
+	xchdir(path);
+	free(path);
 }
 
 /*

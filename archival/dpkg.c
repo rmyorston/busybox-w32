@@ -1864,7 +1864,7 @@ int dpkg_main(int argc UNUSED_PARAM, char **argv)
 		}
 	}
 
-	chdir_system_drive();
+	xchdir_system_drive();
 
 	/* initialise data store */
 	path = xstrdup(DPKG_DIR "/info");

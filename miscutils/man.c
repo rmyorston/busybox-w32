@@ -287,7 +287,7 @@ int man_main(int argc UNUSED_PARAM, char **argv)
 		if (strchr(*ptr, '/') || strchr(*ptr, '\\'))
 			*ptr = xabsolute_path(*ptr);
 	}
-	chdir_system_drive();
+	xchdir_system_drive();
 #endif
 
 	conf_sec_list = xstrdup("0p:1:1p:2:3:3p:4:5:6:7:8:9");
