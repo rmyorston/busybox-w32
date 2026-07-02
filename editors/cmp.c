@@ -44,7 +44,7 @@ static const char fmt_differ[] ALIGN1 = "%s %s differ: byte %llu, line %u\n";
 // This fmt_l_opt is gnu-ism. SUSv3 is "%.0s%.0s%llu %o %o\n"
 static const char fmt_l_opt[] ALIGN1 = "%.0s%.0s%llu %3o %3o\n";
 
-#define OPT_STR "sln:+"
+#define OPT_STR "sln:"
 #define CMP_OPT_s (1<<0)
 #define CMP_OPT_l (1<<1)
 #define CMP_OPT_n (1<<2)
@@ -55,12 +55,13 @@ int cmp_main(int argc UNUSED_PARAM, char **argv)
 	FILE *fp1, *fp2, *outfile = stdout;
 	const char *filename1, *filename2 = "-";
 	unsigned long long skip1 = 0, skip2 = 0, char_pos = 0;
+	unsigned long long max_count = max_count;
 	int line_pos = 1; /* Hopefully won't overflow... */
 	const char *fmt;
 	int c1, c2;
 	unsigned opt;
 	int retval = 0;
-	int max_count = -1;
+	char *max_count_str;
 
 #if !ENABLE_LONG_OPTS
 	opt = getopt32(argv, "^"
@@ -69,8 +70,7 @@ int cmp_main(int argc UNUSED_PARAM, char **argv)
 			IF_DESKTOP(":?4")
 			IF_NOT_DESKTOP(":?2")
 			":l--s:s--l",
-//TODO: -n MAXCOUNT should allow KMG suffixes
-			&max_count
+			&max_count_str
 	);
 #else
 	static const char cmp_longopts[] ALIGN1 =
@@ -86,7 +86,7 @@ int cmp_main(int argc UNUSED_PARAM, char **argv)
 			IF_NOT_DESKTOP(":?2")
 			":l--s:s--l",
 			cmp_longopts,
-			&max_count
+			&max_count_str
 	);
 #endif
 	argv += optind;
@@ -101,6 +101,9 @@ int cmp_main(int argc UNUSED_PARAM, char **argv)
 			}
 		}
 	}
+
+	if (opt & CMP_OPT_n)
+		max_count = xatoull_sfx(max_count_str, kmg_i_suffixes);
 
 	xfunc_error_retval = 2;  /* missing file results in exitcode 2 */
 	if (opt & CMP_OPT_s)
@@ -126,7 +129,7 @@ int cmp_main(int argc UNUSED_PARAM, char **argv)
 		while (skip2) { if (getc(fp2) == EOF) break; skip2--; }
 	}
 	do {
-		if (max_count >= 0 && --max_count < 0)
+		if ((opt & CMP_OPT_n) && max_count-- == 0)
 			break;
 		c1 = getc(fp1);
 		c2 = getc(fp2);

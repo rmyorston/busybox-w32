@@ -29,11 +29,38 @@ testing "cmp -n2" \
 	"foo" \
 	"bar"
 
+testing "cmp -n2k" \
+	'cmp -n2k - input; echo $?' \
+"- input differ: byte 1, line 1
+1
+" \
+	"foo" \
+	"bar"
+
+testing "cmp -n 1g" \
+	'cmp -n 1g - input; echo $?' \
+"- input differ: byte 1, line 1
+1
+" \
+	"foo" \
+	"bar"
+
 testing "cmp -ln2" \
 	'cmp -ln2 - input; echo $?' \
 "\
 1 142 146
 2 141 157
+1
+" \
+	"foo" \
+	"bar"
+
+testing "cmp -ln2M" \
+	'cmp -ln2M - input; echo $?' \
+"\
+1 142 146
+2 141 157
+3 162 157
 1
 " \
 	"foo" \
