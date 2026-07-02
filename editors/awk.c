@@ -2456,18 +2456,15 @@ static char *awk_printf(node *n, size_t *len)
 		char *use_fmt;
 		const char *diouxX;
 
-		/* Find end of the next format spec, or end of line */
+		/* find end of the next format spec, or end of string */
 		s = fmt_cur;
 //bb_error_msg("s:'%s'", s);
-		while (1) {
-			c = *fmt_cur;
-			if (!c) { /* no percent chars found at all */
-				goto nul;
-			}
-			fmt_cur++;
-			if (c == '%')
-				break;
+		fmt_cur = strchrnul(fmt_cur, '%');
+		c = *fmt_cur;
+		if (!c) { /* no more percent chars */
+			goto nul;
 		}
+		fmt_cur++;
 		/* we are past % in "....%..." */
 		c = *fmt_cur;
 		if (c == '%') { /* "....%%...." */
@@ -2476,19 +2473,29 @@ static char *awk_printf(node *n, size_t *len)
 			goto append_slen; /* append "....%" part verbatim */
 		}
 
-		/* find trailing %FMT letter */
+		/* find trailing letter of the %FMT */
 		starred = 0;
 		after_fmt = fmt_cur;
-		while (!isalpha(c) && c != '\0') {
+		while (1) {
+			if (!c) { /* unterminated "....%FMT" */
+				fmt_cur = after_fmt;
+ nul:
+				slen = fmt_cur - s;
+//bb_error_msg("fmt:'%s', res_buf:'%s'", fmt, res_buf);
+				if (!res_buf) { /* the entire fmt had no (valid) %FMTs? */
+					/* optimize this case (avoid xrealloc+free) */
+					res_buf = fmt;
+					res_len = slen;
+					goto ret;
+				}
+				goto tail; /* append remaining string, exit loop */
+			}
+			if (isalpha(c))
+				break;
 			starred |= (c == '*');
 			c = *++after_fmt;
 		}
-		if (!c) { /* unterminated "....%FMT" */
-			fmt_cur = after_fmt;
- nul:
-			slen = fmt_cur - s;
-			goto tail; /* append remaining string, exit loop */
-		}
+
 		diouxX = strchr("diouxX", c);
 		if (!(diouxX || strchr("cs""eEfFgGaA", c))
 		 || (after_fmt - fmt_cur) >= MAX_FMT_LEN
@@ -2504,7 +2511,6 @@ static char *awk_printf(node *n, size_t *len)
 			slen = fmt_cur - s;
 			goto append_slen;
 		}
-
 		if (*s != '%') {
 			/* the %FMT does not start immediately at the beginning of s */
 			if (starred || diouxX) {
@@ -2534,7 +2540,7 @@ static char *awk_printf(node *n, size_t *len)
 			// printf "Number:%d\n" (one extra char between %FMT and EOL)
 			// printf "String:'%s'\n" (two extra chars)
 			// - we can handle a small tail of literals after %FMT in one pass!
-			// (careful: do not overflow baked_format[] array!)
+			// (careful: they are added to baked_format[] array, do not overflow it!)
 			after_fmt++;
 			if (*after_fmt && *after_fmt != '%')
 				after_fmt++;
@@ -2670,7 +2676,7 @@ static char *awk_printf(node *n, size_t *len)
 	free(fmt);
 	//nvfree(tmpvar, 1);
 #undef TMPVAR
-
+ ret:
 #if ENABLE_FEATURE_AWK_GNU_EXTENSIONS
 	if (len)
 		*len = res_len;
