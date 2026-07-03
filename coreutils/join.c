@@ -124,7 +124,7 @@ static void readfields(char sep, FDAT *f)
 	LINE curr = { .fields = NULL, .fieldcount = 0 };
 	char *line;
 	const char *field2;
-	int n;
+	int n, first = TRUE;
 
 	for (n = 0; n < f->linecount; n ++) {
 		if (f->lines[n].fields) {
@@ -135,62 +135,45 @@ static void readfields(char sep, FDAT *f)
 	f->linecount = 0;
 	f->field = "";
 
-	/* read a line and split, checking the pushed back line */
-	if (f->pushback.fields) {
-		memcpy(&curr, &f->pushback, sizeof(LINE));
-		f->pushback.fields = NULL;
-		f->pushback.fieldcount = 0;
-	} else {
-		line = xmalloc_fgetline(f->fp);
-		if (line == NULL) {
-			return;
-		}
-
-		n = field_split(line, sep, &curr.fields);
-		free(line);
-		curr.fieldcount = n;
-	}
-
-	if (f->idx > curr.fieldcount)
-		f->field = "";
-	else
-		f->field = (curr.fields)[f->idx - 1];
-
-	if (f->linecount == f->linecap) {
-		f->linecap = f->linecap ? f->linecap * 2 : 8;
-		f->lines = xrealloc(f->lines, sizeof(LINE) * f->linecap);
-	}
-	memcpy(&f->lines[f->linecount], &curr, sizeof(LINE));
-	f->linecount ++;
-
 	while (true) {
-		/* read a line and split */
-		line = xmalloc_fgetline(f->fp);
-		if (line == NULL) {
-			return;
+		if (first && f->pushback.fields) {
+			/* first check for a pushed back line */
+			curr = f->pushback;
+			f->pushback.fields = NULL;
+			f->pushback.fieldcount = 0;
+		} else {
+			/* read a line and split */
+			line = xmalloc_fgetline(f->fp);
+			if (line == NULL) {
+				return;
+			}
+
+			n = field_split(line, sep, &curr.fields);
+			free(line);
+			curr.fieldcount = n;
 		}
 
-		n = field_split(line, sep, &curr.fields);
-		free(line);
-		curr.fieldcount = n;
-
-		if (f->idx > n)
+		/* Ensure strcmp() matches on first pass through loop */
+		if (f->idx > curr.fieldcount)
 			field2 = "";
 		else
 			field2 = (curr.fields)[f->idx - 1];
 
+		if (first)
+			f->field = field2;
+
 		if (strcmp(f->field, field2) == 0) {
 			/* add to the stack */
 			if (f->linecount == f->linecap) {
-				f->linecap = f->linecap ? 8 : f->linecap * 2;
+				f->linecap = f->linecap ? f->linecap * 2 : 8;
 				f->lines = xrealloc(f->lines, sizeof(LINE) * f->linecap);
 			}
-			memcpy(&f->lines[f->linecount], &curr, sizeof(LINE));
-			f->linecount ++;
+			f->lines[f->linecount++] = curr;
 		} else {
-			memcpy(&f->pushback, &curr, sizeof(LINE));
+			f->pushback = curr;
 			return;
 		}
+		first = FALSE;
 	}
 }
 
