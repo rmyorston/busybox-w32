@@ -46,6 +46,7 @@
 #define FLAG_FIELD_2      64
 
 typedef struct {
+	char *line;
 	char **fields;
 	int fieldcount;
 } LINE;
@@ -60,12 +61,12 @@ typedef struct {
 	int linecap;
 } FDAT;
 
-static int field_split(const char *s, char sep, char ***fields)
+static int field_split(char *s, char sep, char ***fields)
 {
 	/* compare awk_split from editors/awk.c */
 	int n;
-	const char *ps = s;
-	const char *s1 = s;
+	char *ps = s;
+	char *s1 = s;
 
 	char **sl;
 	size_t sn;
@@ -76,13 +77,13 @@ static int field_split(const char *s, char sep, char ***fields)
 	n = 0;
 	if (sep != '\0') {  /* single-character split */
 		while ((s1 = strchr(ps, sep)) != NULL) {
-			size_t count = s1 - ps;
-			sl[n] = xstrndup(ps, count);
+			sl[n] = ps;
+			*s1 = '\0';
 			ps = s1 + 1;
 			n++;
 		}
 		/* Add the last field */
-		sl[n] = xstrdup(ps);
+		sl[n] = ps;
 		n++;
 		return n;
 	}
@@ -96,40 +97,38 @@ static int field_split(const char *s, char sep, char ***fields)
 			break;
 
 		s1 = strpbrk(s, " \t");
-		if (s1 == NULL)
+		if (s1 == NULL) {
 			/* last field */
 			sn = strlen(s);
-		else
+		} else {
 			sn = s1 - s;
+			*s1 = '\0';
+		}
 
-		sl[n] = xstrndup(s, s1 - s);
+		sl[n] = s;
 		n++;
-		s += sn;
+		s += sn + 1;
 	}
 	return n;
 }
 
-static inline void freefields(char **fields)
+static inline void freefields(LINE *lp)
 {
-	char **fieldsiter = fields;
-	while (*fieldsiter) {
-		free(*fieldsiter);
-		fieldsiter++;
-	}
-	free(fields);
+	free(lp->line);
+	free(lp->fields);
 }
 
 static void readfields(char sep, FDAT *f)
 {
-	LINE curr = { .fields = NULL, .fieldcount = 0 };
+	LINE curr = { .line = NULL, .fields = NULL, .fieldcount = 0 };
 	char *line;
 	const char *field2;
 	int n, first = TRUE;
 
 	for (n = 0; n < f->linecount; n ++) {
-		if (f->lines[n].fields) {
-			freefields(f->lines[n].fields);
-			f->lines[n].fields = NULL;
+		if (f->lines[n].line) {
+			freefields(f->lines + n);
+			f->lines[n].line = NULL;
 		}
 	}
 	f->linecount = 0;
@@ -149,7 +148,7 @@ static void readfields(char sep, FDAT *f)
 			}
 
 			n = field_split(line, sep, &curr.fields);
-			free(line);
+			curr.line = line;
 			curr.fieldcount = n;
 		}
 
