@@ -53,12 +53,12 @@ typedef struct {
 
 typedef struct {
 	FILE *fp;
-	int idx;
-	const char *field; /* this is a pointer to lines[0].fields[idx - 1] or "" */
+	int idx;			/* index of join field in fields array */
+	const char *field;	/* pointer to lines[0].fields[idx] or "" */
 	LINE *lines;
 	LINE pushback;
-	int linecount;
-	int linecap;
+	int linecount;		/* number of lines currently cached */
+	int linecap;		/* current capacity of lines array */
 } FDAT;
 
 static int field_split(char *s, char sep, char ***fields)
@@ -153,10 +153,10 @@ static void readfields(char sep, FDAT *f)
 		}
 
 		/* Ensure strcmp() matches on first pass through loop */
-		if (f->idx > curr.fieldcount)
+		if (f->idx >= curr.fieldcount)
 			field2 = "";
 		else
-			field2 = (curr.fields)[f->idx - 1];
+			field2 = (curr.fields)[f->idx];
 
 		if (first)
 			f->field = field2;
@@ -192,7 +192,7 @@ static void printfields(int *format, const char *empty_str, char sep, FDAT *f1, 
 	int linef2;
 	int fn;
 	int format_fl;
-	int format_no;
+	int format_idx;
 	bool first;
 
 	LINE *l1;
@@ -221,16 +221,16 @@ static void printfields(int *format, const char *empty_str, char sep, FDAT *f1, 
 						bb_putchar(sep);
 
 					format_fl = format[0];
-					format_no = format[1];
+					format_idx = format[1];
 
 					if (format_fl == 1) {
-						if (l1 != NULL && l1->fieldcount >= format_no && format_no > 0)
-							fputs_stdout(fieldorempty(l1->fields[format_no - 1], empty_str));
+						if (l1 != NULL && l1->fieldcount > format_idx)
+							fputs_stdout(fieldorempty(l1->fields[format_idx], empty_str));
 						else
 							fputs_stdout(empty_str);
 					} else if (format_fl == 2) {
-						if (l2 != NULL && l2->fieldcount >= format_no && format_no > 0)
-							fputs_stdout(fieldorempty(l2->fields[format_no - 1], empty_str));
+						if (l2 != NULL && l2->fieldcount > format_idx)
+							fputs_stdout(fieldorempty(l2->fields[format_idx], empty_str));
 						else
 							fputs_stdout(empty_str);
 					} else
@@ -241,22 +241,22 @@ static void printfields(int *format, const char *empty_str, char sep, FDAT *f1, 
 			} else {
 				fputs_stdout(fieldorempty(field, empty_str));
 
-				fn = 1;
+				fn = 0;
 				if (l1 != NULL)
-					while (l1->fields[fn - 1]) {
+					while (l1->fields[fn]) {
 						if (fn != f1->idx) {
 							bb_putchar(sep);
-							fputs_stdout(fieldorempty(l1->fields[fn - 1], empty_str));
+							fputs_stdout(fieldorempty(l1->fields[fn], empty_str));
 						}
 						fn++;
 					}
 
-				fn = 1;
+				fn = 0;
 				if (l2 != NULL)
-					while (l2->fields[fn - 1]) {
+					while (l2->fields[fn]) {
 						if (fn != f2->idx) {
 							bb_putchar(sep);
-							fputs_stdout(fieldorempty(l2->fields[fn - 1], empty_str));
+							fputs_stdout(fieldorempty(l2->fields[fn], empty_str));
 						}
 						fn++;
 					}
@@ -269,7 +269,7 @@ static void printfields(int *format, const char *empty_str, char sep, FDAT *f1, 
 static void parsejformat(int **format_p, const char *format_str)
 {
 	int *format;
-	int field_no;
+	int field_idx;
 
 	char scache[20] = { 0 };
 
@@ -306,11 +306,11 @@ static void parsejformat(int **format_p, const char *format_str)
 				bb_simple_error_msg_and_die("field specifier too large");
 			memcpy(scache, format_str + 2, sn - 2);
 			scache[sn - 2] = '\0';
-			field_no = xatoi_positive(scache);
-			if (field_no <= 0)
+			field_idx = xatoi_positive(scache);
+			if (--field_idx < 0)
 				bb_simple_error_msg_and_die("field number can't be 0");
 			format[n * 2] = *format_str - '0';
-			format[n * 2 + 1] = field_no;
+			format[n * 2 + 1] = field_idx;
 		} else {
 			bb_simple_error_msg_and_die("field specifier must be 0, 1.x or 2.x");
 		}
@@ -337,7 +337,7 @@ int join_main(int argc, char **argv)
 
 	FDAT f1 = {
 		.fp = NULL,
-		.idx = 1,
+		.idx = 0,
 		.field = NULL,
 		.lines = NULL,
 		.pushback = { .fields = NULL, .fieldcount = 0 },
@@ -346,7 +346,7 @@ int join_main(int argc, char **argv)
 	};
 	FDAT f2 = {
 		.fp = NULL,
-		.idx = 1,
+		.idx = 0,
 		.field = NULL,
 		.lines = NULL,
 		.pushback = { .fields = NULL, .fieldcount = 0 },
@@ -389,7 +389,8 @@ int join_main(int argc, char **argv)
 		}
 	}
 
-	if (f1.idx < 1 || f2.idx < 1)
+	if (((opts & FLAG_FIELD_1) && --f1.idx < 0) ||
+			((opts & FLAG_FIELD_2) && --f2.idx < 0))
 		bb_simple_error_msg_and_die("field 0 doesn't exist");
 
 	if (opts & FLAG_SEP_USED) {
