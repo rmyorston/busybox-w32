@@ -1000,7 +1000,11 @@ static int hutimens(HANDLE fh, const struct timespec times[2])
 	FILETIME *pft[2] = {&aft, &mft};
 	int i;
 
+#if ENABLE_FEATURE_GETSYSTEMTIME_PRECISE
+	GetSystemTimePreciseAsFileTime(&now);
+#else
 	GetSystemTimeAsFileTime(&now);
+#endif
 
 	if (times) {
 		for (i = 0; i < 2; ++i) {
@@ -1135,7 +1139,11 @@ int gettimeofday(struct timeval *tv, void *tz UNUSED_PARAM)
 	FILETIME ft;
 	long long hnsec;
 
+#if ENABLE_FEATURE_GETSYSTEMTIME_PRECISE
+	GetSystemTimePreciseAsFileTime(&ft);
+#else
 	GetSystemTimeAsFileTime(&ft);
+#endif
 	hnsec = filetime_to_hnsec(&ft);
 	tv->tv_sec = hnsec / 10000000;
 	tv->tv_usec = (hnsec % 10000000) / 10;
@@ -1150,7 +1158,11 @@ int FAST_FUNC clock_gettime(clockid_t clockid, struct timespec *tp)
 		errno = ENOSYS;
 		return -1;
 	}
+#if ENABLE_FEATURE_GETSYSTEMTIME_PRECISE
+	GetSystemTimePreciseAsFileTime(&ft);
+#else
 	GetSystemTimeAsFileTime(&ft);
+#endif
 	*tp = filetime_to_timespec(&ft);
 	return 0;
 }
