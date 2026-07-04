@@ -61,7 +61,8 @@ typedef struct {
 	int linecap;		/* current capacity of lines array */
 } FDAT;
 
-static int field_split(char *s, char sep, char ***fields)
+/* split s by sep, and put the results into *curr */
+static void field_split(char *s, char sep, LINE *curr)
 {
 	/* compare awk_split from editors/awk.c */
 	int n;
@@ -72,7 +73,8 @@ static int field_split(char *s, char sep, char ***fields)
 	size_t sn;
 
 	/* in worst case, every character is a separator */
-	*fields = sl = xzalloc(sizeof(char*) * (strlen(s) + 2));
+	curr->fields = sl = xzalloc(sizeof(char*) * (strlen(s) + 2));
+	curr->line = s;
 
 	n = 0;
 	if (sep != '\0') {  /* single-character split */
@@ -85,7 +87,7 @@ static int field_split(char *s, char sep, char ***fields)
 		/* Add the last field */
 		sl[n] = ps;
 		n++;
-		return n;
+		curr->fieldcount = n;
 	}
 	/* default split: skip the initial whitespace and then any run
 	   of non-whitespace characters is a field */
@@ -109,13 +111,15 @@ static int field_split(char *s, char sep, char ***fields)
 		n++;
 		s += sn + 1;
 	}
-	return n;
+	curr->fieldcount = n;
 }
 
 static inline void freefields(LINE *lp)
 {
 	free(lp->line);
 	free(lp->fields);
+	lp->line = NULL;
+	lp->fields = NULL;
 }
 
 static void readfields(char sep, FDAT *f)
@@ -125,12 +129,8 @@ static void readfields(char sep, FDAT *f)
 	const char *field2;
 	int n, first = TRUE;
 
-	for (n = 0; n < f->linecount; n ++) {
-		if (f->lines[n].line) {
-			freefields(f->lines + n);
-			f->lines[n].line = NULL;
-		}
-	}
+	for (n = 0; n < f->linecount; n ++)
+		freefields(f->lines + n);
 	f->linecount = 0;
 	f->field = "";
 
@@ -138,8 +138,7 @@ static void readfields(char sep, FDAT *f)
 		if (first && f->pushback.fields) {
 			/* first check for a pushed back line */
 			curr = f->pushback;
-			f->pushback.fields = NULL;
-			f->pushback.fieldcount = 0;
+			f->pushback = (LINE) { .line = NULL, .fields = NULL, .fieldcount = 0 };
 		} else {
 			/* read a line and split */
 			line = xmalloc_fgetline(f->fp);
@@ -147,17 +146,15 @@ static void readfields(char sep, FDAT *f)
 				return;
 			}
 
-			n = field_split(line, sep, &curr.fields);
-			curr.line = line;
-			curr.fieldcount = n;
+			field_split(line, sep, &curr);
 		}
 
-		/* Ensure strcmp() matches on first pass through loop */
 		if (f->idx >= curr.fieldcount)
 			field2 = "";
 		else
-			field2 = (curr.fields)[f->idx];
+			field2 = curr.fields[f->idx];
 
+		/* Ensure strcmp() matches on first pass through loop */
 		if (first)
 			f->field = field2;
 
@@ -193,6 +190,7 @@ static void printfields(int *format, const char *empty_str, char sep, FDAT *f1, 
 	int fn;
 	int format_fl;
 	int format_idx;
+	int *formatcurr;
 	bool first;
 
 	LINE *l1;
@@ -214,14 +212,15 @@ static void printfields(int *format, const char *empty_str, char sep, FDAT *f1, 
 				If file number is neither 1 nor 2 then we have the join field.
 				*/
 				first = true;
-				while (format[0]) {
+				formatcurr = format;
+				while (formatcurr[0]) {
 					if (first)
 						first = false;
 					else
 						bb_putchar(sep);
 
-					format_fl = format[0];
-					format_idx = format[1];
+					format_fl = formatcurr[0];
+					format_idx = formatcurr[1];
 
 					if (format_fl == 1) {
 						if (l1 != NULL && l1->fieldcount > format_idx)
@@ -236,7 +235,7 @@ static void printfields(int *format, const char *empty_str, char sep, FDAT *f1, 
 					} else
 						fputs_stdout(fieldorempty(field, empty_str));
 
-					format += 2;
+					formatcurr += 2;
 				}
 			} else {
 				fputs_stdout(fieldorempty(field, empty_str));
@@ -340,7 +339,7 @@ int join_main(int argc, char **argv)
 		.idx = 0,
 		.field = NULL,
 		.lines = NULL,
-		.pushback = { .fields = NULL, .fieldcount = 0 },
+		.pushback = { .line = NULL, .fields = NULL, .fieldcount = 0 },
 		.linecount = 0,
 		.linecap = 0,
 	};
@@ -349,7 +348,7 @@ int join_main(int argc, char **argv)
 		.idx = 0,
 		.field = NULL,
 		.lines = NULL,
-		.pushback = { .fields = NULL, .fieldcount = 0 },
+		.pushback = { .line = NULL, .fields = NULL, .fieldcount = 0 },
 		.linecount = 0,
 		.linecap = 0,
 	};
@@ -412,21 +411,21 @@ int join_main(int argc, char **argv)
 
 	Outline of the program:
 
-	- Read a line from each file into cache
+	- Read a line set from each file into cache
 
 	- While there are cached current lines from both files:
 		- If the two indexing fields are the same:
 			- If no unpaired_only options:
-				- Print joined line formatted with fields
-			- Read lines from both files
+				- Print joined line set formatted with fields
+			- Read line sets from both files
 		- Elseif indexing1 < indexing2 then
 			- If print1unpaired:
-				- Print line from file 1
-			- Read another line from file 1
+				- Print line set from file 1
+			- Read another line set from file 1
 		- Elseif indexing1 > indexing2 then
 			- If print2unpaired:
-				- Print line from file 2
-			- Read another line from file 2
+				- Print line set from file 2
+			- Read another line set from file 2
 
 	- If there are cached lines from file 1 AND print1unpaired:
 		- Print the rest of the lines from file 1
@@ -509,18 +508,14 @@ int join_main(int argc, char **argv)
 
 #if ENABLE_FEATURE_CLEAN_UP
 	if (f1.linecap) {
-		for (int i = 0; i < f1.linecount; i ++) {
-			if (f1.lines[i].fields)
-				freefields(f1.lines[i].fields);
-		}
+		for (int i = 0; i < f1.linecount; i ++)
+			freefields(f1.lines + i);
 		free(f1.lines);
 	}
 
 	if (f2.linecap) {
-		for (int i = 0; i < f2.linecount; i ++) {
-			if (f2.lines[i].fields)
-				freefields(f2.lines[i].fields);
-		}
+		for (int i = 0; i < f2.linecount; i ++)
+			freefields(f2.lines + i);
 		free(f2.lines);
 	}
 

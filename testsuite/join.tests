@@ -42,4 +42,10 @@ testing "join -o for fields to print, -e for empty fields" \
 	"a 123\nb 456\nc 789\n" \
 	"a abc\nc def\nd ghi\n"
 
+testing "join -o works for combinatorial" \
+	"join -o 0,1.2,2.2 input -" \
+	"a 123 abc\na 123 def\na 456 abc\na 456 def\n" \
+	"a 123\na 456\n" \
+	"a abc\na def\n"
+
 exit $FAILCOUNT
