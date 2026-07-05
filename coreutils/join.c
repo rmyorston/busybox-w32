@@ -122,17 +122,23 @@ static inline void freefields(LINE *lp)
 	lp->fields = NULL;
 }
 
+static void freelines(FDAT *f)
+{
+	for (int n = 0; n < f->linecount; n ++) {
+		freefields(f->lines + n);
+	}
+	f->linecount = 0;
+	f->field = "";
+}
+
 static void readfields(char sep, FDAT *f)
 {
 	LINE curr = { .line = NULL, .fields = NULL, .fieldcount = 0 };
 	char *line;
 	const char *field2;
-	int n, first = TRUE;
+	bool first = TRUE;
 
-	for (n = 0; n < f->linecount; n ++)
-		freefields(f->lines + n);
-	f->linecount = 0;
-	f->field = "";
+	freelines(f);
 
 	while (true) {
 		if (first && f->pushback.fields) {
@@ -507,17 +513,11 @@ int join_main(int argc, char **argv)
 	}
 
 #if ENABLE_FEATURE_CLEAN_UP
-	if (f1.linecap) {
-		for (int i = 0; i < f1.linecount; i ++)
-			freefields(f1.lines + i);
-		free(f1.lines);
-	}
+	if (f1.linecap)
+		freelines(&f1);
 
-	if (f2.linecap) {
-		for (int i = 0; i < f2.linecount; i ++)
-			freefields(f2.lines + i);
-		free(f2.lines);
-	}
+	if (f2.linecap)
+		freelines(&f2);
 
 	free(format);
 
