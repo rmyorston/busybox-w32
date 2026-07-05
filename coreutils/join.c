@@ -8,7 +8,7 @@
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
 //config:config JOIN
-//config:	bool "join (8.7 kb)"
+//config:	bool "join (6.6 kb)"
 //config:	default n
 //config:	help
 //config:	Equality join on two files
@@ -513,11 +513,15 @@ int join_main(int argc, char **argv)
 	}
 
 #if ENABLE_FEATURE_CLEAN_UP
-	if (f1.linecap)
+	if (f1.linecap) {
 		freelines(&f1);
+		free(f1.lines);
+	}
 
-	if (f2.linecap)
+	if (f2.linecap) {
 		freelines(&f2);
+		free(f2.lines);
+	}
 
 	free(format);
 
