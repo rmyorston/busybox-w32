@@ -82,6 +82,8 @@ testing "awk %u -1.9" \
 "awk 'BEGIN { printf \"%u\n\", -1.9; }'" "18446744073709551615\n" "" ""
 testing "awk %x -1.9" \
 "awk 'BEGIN { printf \"%x\n\", -1.9; }'" "ffffffffffffffff\n" "" ""
+testing "awk %o -1.9" \
+"awk 'BEGIN { printf \"%o\n\", -1.9; }'" "1777777777777777777777\n" "" ""
 
 # 4294967295 = 0xffffffff
 testing "awk bitwise op" "awk '{ print or(4294967295,1) }'" "4294967295\n" "" "\n"

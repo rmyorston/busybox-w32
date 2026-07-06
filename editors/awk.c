@@ -2522,7 +2522,6 @@ static char *awk_printf(node *n, size_t *len)
 				fmt_cur--;
 				slen = fmt_cur - s;
  append_slen:
-				/* append "....%" part verbatim */
 				//s = xstrndup(s, slen);
 				//goto append;
 				/* a bit bloaty, but avoids dup+free: */
@@ -2607,6 +2606,9 @@ static char *awk_printf(node *n, size_t *len)
 				baked_cur += sprintf(baked_cur, "%d", width);
 			}
 			if (diouxX) {
+				/* print %d, %i, positive %u as floats: */
+				/* this avoids losing most-significant bits, try */
+				/* awk 'BEGIN { printf "%d\n", 2**128 }' */
 				sprintf(baked_cur, ".0f%s", fmt_cur + 1);
 			} else {
 				if (prec >= 0)
@@ -2632,15 +2634,13 @@ static char *awk_printf(node *n, size_t *len)
 				s = xasprintf(use_fmt, cs);
 			} else { /* numeric conversion */
 				double d = getvar_i(arg);
-//bb_error_msg("d0:%f", d);
 				if (diouxX)
 					d = trunc(d);
-//bb_error_msg("d1:%f", d);
-				if ((c|0x20) == 'x' || (c == 'u' && d < 0)) {
+//bb_error_msg("d:%f", d);
+				if ((c|0x20) == 'x' || c == 'o' || (c == 'u' && d < 0)) {
 					sprintf(baked_cur, "ll%s", fmt_cur);
 					// -1.9 => -1 => integer (0xfff..fff)
 					// => interpret as unsigned integer
-					// => convert to double as POSITIVE integer
 					// awk 'BEGIN { printf "%u\n",-1.9; }': 18446744073709551615
 					// awk 'BEGIN { printf "%x\n",-1.9; }': ffffffffffffffff
 					s = xasprintf(use_fmt, (unsigned long long)d);
