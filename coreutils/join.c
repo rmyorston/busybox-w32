@@ -88,6 +88,7 @@ static void field_split(char *s, char sep, LINE *curr)
 		sl[n] = ps;
 		n++;
 		curr->fieldcount = n;
+		return;
 	}
 	/* default split: skip the initial whitespace and then any run
 	   of non-whitespace characters is a field */

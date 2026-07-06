@@ -48,4 +48,10 @@ testing "join -o works for combinatorial" \
 	"a 123\na 456\n" \
 	"a abc\na def\n"
 
+testing "join -t works" \
+	"join -t A input -" \
+	"item 1A123Aabc\nitem 2A456Adef\n" \
+	"item 1A123\nitem 2A456\n" \
+	"item 1Aabc\nitem 2Adef\n"
+
 exit $FAILCOUNT
