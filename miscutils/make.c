@@ -329,6 +329,7 @@ struct globals {
 static int make(struct name *np, int level);
 static struct name *dyndep(struct name *np, struct rule *infrule,
 								const char **ptsuff);
+static void freerules(struct rule *rp);
 
 /*
  * Utility functions.
