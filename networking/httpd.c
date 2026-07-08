@@ -1549,7 +1549,7 @@ static NOINLINE void cgi_io_loop_and_exit(int fromCgi_rd, int toCgi_wr)
 				if (!ENABLE_FEATURE_HTTPD_PROXY || (toCgi_wr != fromCgi_rd)) {
 					close(toCgi_wr);
 #if !ENABLE_PLATFORM_MINGW32
-					alarm(G.cgi_kill_timeout);
+					IF_FEATURE_HTTPD_CGI(alarm(G.cgi_kill_timeout);)
 #endif
 				} else {
 					/* proxying a socket, there is no CGI */
@@ -2755,7 +2755,7 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 
 #if ENABLE_FEATURE_HTTPD_CGI
 	if (is_prefixed_with(tptr, "cgi-bin/")) {
-		script_i = NULL; /* no interpreter */
+		IF_FEATURE_HTTPD_CONFIG_WITH_SCRIPT_INTERPR(script_i = NULL; /* no interpreter */)
 		cgi_type = CGI_NORMAL;
 		if (stat(tptr, &sb) == 0) {
 			/* disallow anything but ordinary files in cgi-bin/ */
@@ -2802,7 +2802,7 @@ static void handle_incoming_and_exit(const len_and_sockaddr *fromAddr)
 					script_i = NULL;
 				}
 #endif
- exists:
+ IF_FEATURE_HTTPD_CGI(exists:)
 				file_size = sb.st_size;
 				last_mod = sb.st_mtime;
 			}

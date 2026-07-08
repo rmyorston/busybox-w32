@@ -12,6 +12,7 @@ COMMON_FILES:= \
 	data_extract_all.o \
 	data_extract_to_stdout.o \
 \
+	unsafe_prefix.o \
 	unsafe_symlink_target.o \
 \
 	filter_accept_all.o \
@@ -32,7 +33,6 @@ COMMON_FILES:= \
 DPKG_FILES:= \
 	unpack_ar_archive.o \
 	filter_accept_list_reassign.o \
-	unsafe_prefix.o \
 	get_header_ar.o \
 	get_header_tar.o \
 	get_header_tar_gz.o \
@@ -49,7 +49,7 @@ lib-$(CONFIG_AR)                        += get_header_ar.o unpack_ar_archive.o
 lib-$(CONFIG_CPIO)                      += get_header_cpio.o
 lib-$(CONFIG_MAKE)                      += get_header_ar.o unpack_ar_archive.o
 lib-$(CONFIG_PDPMAKE)                   += get_header_ar.o unpack_ar_archive.o
-lib-$(CONFIG_TAR)                       += get_header_tar.o unsafe_prefix.o
+lib-$(CONFIG_TAR)                       += get_header_tar.o
 lib-$(CONFIG_FEATURE_TAR_TO_COMMAND)    += data_extract_to_command.o
 lib-$(CONFIG_LZOP)                      += lzo1x_1.o lzo1x_1o.o lzo1x_d.o
 lib-$(CONFIG_UNLZOP)                    += lzo1x_1.o lzo1x_1o.o lzo1x_d.o
@@ -69,7 +69,7 @@ lib-$(CONFIG_FEATURE_UNZIP_XZ)          += open_transformer.o decompress_unxz.o
 # 'gzip -d', gunzip or zcat selects FEATURE_GZIP_DECOMPRESS
 lib-$(CONFIG_FEATURE_GZIP_DECOMPRESS)   += open_transformer.o decompress_gunzip.o
 lib-$(CONFIG_UNCOMPRESS)                += open_transformer.o decompress_uncompress.o
-lib-$(CONFIG_UNZIP)                     += open_transformer.o decompress_gunzip.o unsafe_prefix.o
+lib-$(CONFIG_UNZIP)                     += open_transformer.o decompress_gunzip.o
 lib-$(CONFIG_RPM2CPIO)                  += open_transformer.o decompress_gunzip.o get_header_cpio.o
 lib-$(CONFIG_RPM)                       += open_transformer.o decompress_gunzip.o get_header_cpio.o
 lib-$(CONFIG_GZIP)                      += open_transformer.o

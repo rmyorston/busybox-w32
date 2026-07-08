@@ -805,8 +805,8 @@ typedef struct ioloop_state {
 	ioloop_state_t *io; \
 	int read_fd; \
 	int write_fd; \
-	int (*have_buffer_to_read_into)(void *this); \
-	int (*have_data_to_write)(void *this); \
+	int (*should_poll_read_fd)(void *this); \
+	int (*should_poll_write_fd)(void *this); \
 	int (*read)(void *this); \
 	int (*write)(void *this); \
 
@@ -1704,8 +1704,12 @@ extern smallint logmode;
 extern uint8_t xfunc_error_retval;
 extern void (*die_func)(void);
 void xfunc_die(void) NORETURN FAST_FUNC;
+#if !ENABLE_SHOW_USAGE
+#define bb_show_usage() xfunc_die()
+#else
 void bb_show_usage(void) NORETURN FAST_FUNC;
-void bb_error_msg(const char *s, ...) __attribute__ ((format (printf, 1, 2)));
+#endif
+void bb_error_msg(const char *s, ...) __attribute__ ((format (printf, 1, 2))) FAST_FUNC;
 void bb_simple_error_msg(const char *s) FAST_FUNC;
 void bb_error_msg_and_die(const char *s, ...) __attribute__ ((noreturn, format (printf, 1, 2)));
 void bb_simple_error_msg_and_die(const char *s) NORETURN FAST_FUNC;

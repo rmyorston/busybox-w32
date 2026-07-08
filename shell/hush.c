@@ -5797,10 +5797,10 @@ static ALWAYS_INLINE const struct alias *find_alias(const char *name)
 
 static const struct alias *word_matches_alias(struct parse_context *ctx)
 {
-	if (ctx->ctx_res_w != RES_CASE_BODY
-/*	 && !ctx.command->argv - caller checked this */
-	 && !ctx->word.has_quoted_part
-	 && ctx->word.data[0] != '\0' /* optimization */
+	if (IF_HUSH_CASE(ctx->ctx_res_w != RES_CASE_BODY &&)
+/*	    !ctx.command->argv && - caller checked this */
+	    !ctx->word.has_quoted_part &&
+	    ctx->word.data[0] != '\0' /* optimization */
 	) {
 		const char *word = ctx->word.data;
 		const char *end = end_of_alias_name(word);
@@ -11835,6 +11835,8 @@ static void print_escaped(const char *s)
 		putchar('"');
 	} while (*s);
 }
+#endif
+#if ENABLE_HUSH_EXPORT || ENABLE_HUSH_READONLY || ENABLE_HUSH_SET || ENABLE_HUSH_ALIAS
 static void print_pfx_escaped_nl(const char *pfx, const char *s)
 {
 	const char *p = strchr(s, '=');

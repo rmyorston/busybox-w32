@@ -1366,21 +1366,21 @@ static void remove_current_file(void)
 {
 	unsigned i;
 
-	if (num_files < 2)
-		return;
-
-	if (current_file != 1) {
-		change_file(-1);
-		for (i = 3; i <= num_files; i++)
-			files[i - 2] = files[i - 1];
+	if (num_files >= 2) {
+		if (current_file != 1) {
+			change_file(-1);
+			i = current_file + 1;
+		} else {
+			change_file(1);
+			current_file--;
+			i = 1;
+		}
+		for (; i < num_files; i++)
+			files[i - 1] = files[i];
 		num_files--;
-	} else {
-		change_file(1);
-		for (i = 2; i <= num_files; i++)
-			files[i - 2] = files[i - 1];
-		num_files--;
-		current_file--;
 	}
+	// fix status line: take new num_files into account
+	status_print();
 }
 
 static void colon_process(void)

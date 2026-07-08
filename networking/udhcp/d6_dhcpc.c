@@ -305,8 +305,8 @@ static void option_to_env(const uint8_t *option, const uint8_t *option_end)
  * |                        valid-lifetime                         |
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  */
-			/* Make sure payload contains an address */
-			if (option[3] < 24)
+			/* Make sure payload exists */
+			if (option[3] < (16 + 4 + 4))
 				break;
 
 			sprint_nip6(ipv6str, option + 4);
@@ -350,6 +350,9 @@ static void option_to_env(const uint8_t *option, const uint8_t *option_end)
  * |               |
  * +-+-+-+-+-+-+-+-+
  */
+			/* Make sure payload exists */
+			if (option[3] < (4 + 4 + 1 + 16))
+				break;
 			move_from_unaligned32(v32, option + 4 + 4);
 			v32 = ntohl(v32);
 			*new_env() = xasprintf("ipv6prefix_lease=%u", (unsigned)v32);
@@ -369,15 +372,15 @@ static void option_to_env(const uint8_t *option, const uint8_t *option_end)
 			addrs = option[3] >> 4;
 
 			/* Setup environment variable */
-			*new_env() = dlist = xmalloc(4 + addrs * 40 - 1);
+			*new_env() = dlist = xmalloc(4 + addrs * 40 + 1);
 			dlist = stpcpy(dlist, "dns=");
 			option_offset = 0;
 
-			while (addrs--) {
+			while (addrs-- != 0) {
 				sprint_nip6(dlist, option + 4 + option_offset);
 				dlist += 39;
 				option_offset += 16;
-				if (addrs)
+				if (addrs != 0)
 					*dlist++ = ' ';
 			}
 

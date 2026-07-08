@@ -2420,9 +2420,9 @@ static int awk_getline(rstream *rsm, var *v)
 #endif
 static char *awk_printf(node *n, size_t *len)
 {
-	char *b;
-	char *fmt, *f;
-	size_t i;
+	char *fmt, *fmt_cur;
+	char *res_buf;
+	size_t res_len;
 
 	//tmpvar = nvalloc(1);
 #define TMPVAR (&G.awk_printf__tmpvar)
@@ -2430,103 +2430,244 @@ static char *awk_printf(node *n, size_t *len)
 	// to decrease memory consumption in deeply-recursive awk programs.
 	// The rule to work safely is to never call evaluate() while our static
 	// TMPVAR's value is still needed.
-	fmt = f = xstrdup(getvar_s(evaluate(nextarg(&n), TMPVAR)));
+	fmt = fmt_cur = xstrdup(getvar_s(evaluate(nextarg(&n), TMPVAR)));
 	// ^^^^^^^^^ here we immediately strdup() the value, so the later call
 	// to evaluate() potentially recursing into another awk_printf() can't
 	// mangle the value.
 
-	b = NULL;
-	i = 0;
+	res_buf = NULL;
+	res_len = 0;
 	while (1) { /* "print one format spec" loop */
-		char *s;
 		char c;
 		char sv;
 		var *arg;
+		/* s is the next string to append to res_buf.
+		 * it can be either a literal trailing segment of fmt (then c == NUL),
+		 * or allocated result of the formatting */
+		char *s;
 		size_t slen;
+		char *after_fmt;
+		int starred;
+		int width;
+		int prec;
+		enum { MAX_FMT_LEN = sizeof("%+- 0#'99.99llx plus paranoia") + 2 * sizeof(int)*3 };
+		char baked_format[MAX_FMT_LEN];
+		char *baked_cur;
+		char *use_fmt;
+		const char *diouxX;
 
-		/* Find end of the next format spec, or end of line */
-		s = f;
-		while (1) {
-			c = *f;
-			if (!c) /* no percent chars found at all */
-				goto nul;
-			f++;
-			if (c == '%')
-				break;
-		}
-		/* we are past % in "....%..." */
-		c = *f;
-		if (!c) /* "....%" */
+		/* find end of the next format spec, or end of string */
+		s = fmt_cur;
+//bb_error_msg("s:'%s'", s);
+		fmt_cur = strchrnul(fmt_cur, '%');
+		c = *fmt_cur;
+		if (!c) { /* no more percent chars */
 			goto nul;
-		if (c == '%') { /* "....%%...." */
-			slen = f - s;
-			s = xstrndup(s, slen);
-			f++;
-			goto append; /* print "....%" part verbatim */
 		}
+		fmt_cur++;
+		/* we are past % in "....%..." */
+		c = *fmt_cur;
+		if (c == '%') { /* "....%%...." */
+			slen = fmt_cur - s;
+			fmt_cur++;
+			goto append_slen; /* append "....%" part verbatim */
+		}
+
+		/* find trailing letter of the %FMT */
+		starred = 0;
+		after_fmt = fmt_cur;
 		while (1) {
+			if (!c) { /* unterminated "....%FMT" */
+				fmt_cur = after_fmt;
+ nul:
+				slen = fmt_cur - s;
+//bb_error_msg("fmt:'%s', res_buf:'%s'", fmt, res_buf);
+				if (!res_buf) { /* the entire fmt had no (valid) %FMTs? */
+					/* optimize this case (avoid xrealloc+free) */
+					res_buf = fmt;
+					res_len = slen;
+					goto ret;
+				}
+				goto tail; /* append remaining string, exit loop */
+			}
 			if (isalpha(c))
 				break;
-			if (c == '*') /* gawk supports %*d and %*.*f, we don't... */
-				syntax_error("%*x formats are not supported");
-			c = *++f;
-			if (!c) { /* "....%...." and no letter found after % */
-				/* Example: awk 'BEGIN { printf "^^^%^^^\n"; }' */
- nul:
-				slen = f - s;
-				goto tail; /* print remaining string, exit loop */
+			starred |= (c == '*');
+			c = *++after_fmt;
+		}
+
+		diouxX = strchr("diouxX", c);
+		if (!(diouxX || strchr("cs""eEfFgGaA", c))
+		 || (after_fmt - fmt_cur) >= MAX_FMT_LEN
+		) {
+			/* unknown, or overlong "....%FMT...." */
+			/* append "....%<notletters><letter>" part verbatim */
+//this works (unknown conversion char means "print %FMT verbatim"):
+//  awk 'BEGIN { printf "%W\n"; }
+//since we check for this early, even this works:
+//  awk 'BEGIN { printf "%*W\n"; }
+//whereas GNU awk 5.3.0 says "not enough arguments to satisfy format string"
+			fmt_cur = after_fmt + 1;
+			slen = fmt_cur - s;
+			goto append_slen;
+		}
+		if (*s != '%') {
+			/* the %FMT does not start immediately at the beginning of s */
+			if (starred || diouxX) {
+				/* It is a "%*s"-like starred %FMT, or an integer conversion.
+				 * In this case we will use fixed baked_format[].
+				 * Which means "literal_prefix%FMT" can't be used as one piece.
+				 * Append "literal_prefix" to res_buf.
+				 */
+				fmt_cur--;
+				slen = fmt_cur - s;
+ append_slen:
+				//s = xstrndup(s, slen);
+				//goto append;
+				/* a bit bloaty, but avoids dup+free: */
+				res_buf = xrealloc(res_buf, res_len + slen + 1);
+				strncpy(res_buf + res_len, s, slen); /* s can't contain NULs here */
+				res_len += slen;
+				continue;
 			}
 		}
-		/* we are at A in "....%...A..." */
+
+		/* NUL-terminate "...%FMT" */
+		after_fmt++;
+		if (*after_fmt && *after_fmt != '%') {
+			// optimization for common cases:
+			// printf "Number:%d\n" (one extra char between %FMT and EOL)
+			// printf "String:'%s'\n" (two extra chars)
+			// - we can handle a small tail of literals after %FMT in one pass!
+			// (careful: they are added to baked_format[] array, do not overflow it!)
+			after_fmt++;
+			if (*after_fmt && *after_fmt != '%')
+				after_fmt++;
+		}
+		sv = *after_fmt;
+		*after_fmt = '\0';
+
+		/* flags */
+		baked_cur = baked_format;
+		*baked_cur++ = '%';
+		c = *fmt_cur;
+		while (strchr("+- 0#'", c) && (baked_cur - baked_format) <= 6) {
+			*baked_cur++ = c;
+			c = *++fmt_cur;
+		}
+
+		/* width */
+		width = -1;
+		if (c == '*') {
+			width = (int)getvar_i(evaluate(nextarg(&n), TMPVAR));
+//bb_error_msg("*width=%d", width);
+			c = *++fmt_cur;
+			//if (isdigit(c)) /* we do not support "%*2$d" format */
+			//	syntax_error("invalid format specifier");
+		} else if (isdigit(c)) {
+			width = atoi(fmt_cur);
+			do
+				c = *++fmt_cur;
+			while (isdigit(c));
+		}
+
+		/* precision? */
+		prec = -1;
+		if (c == '.') {
+			c = *++fmt_cur;
+			if (c == '*') {
+				prec = (int)getvar_i(evaluate(nextarg(&n), TMPVAR));
+//bb_error_msg("*prec=%d", prec);
+				c = *++fmt_cur;
+				//if (isdigit(c)) /* we do not support "%5.*2$d" format */
+				//	syntax_error("invalid format specifier");
+			} else if (isdigit(c)) {
+				prec = atoi(fmt_cur);
+				//do
+				//	c = *++fmt_cur;
+				//while (isdigit(c));
+				//^^^^ unnecessary, while () below skips everything to format type letter
+			}
+		}
+
+		while (!isalpha(c))
+			c = *++fmt_cur;
+		/* we are at A in "....%fmtA..." */
 
 		arg = evaluate(nextarg(&n), TMPVAR);
 
-		/* Result can be arbitrarily long. Example:
-		 *  printf "%99999s", "BOOM"
-		 */
-		sv = *++f;
-		*f = '\0';
+		use_fmt = s;
+//bb_error_msg("w:%d p:%d conv:'%c' fmt_cur:%p after_fmt:%p", width, prec, c, fmt_cur, after_fmt);
+		if (starred || diouxX) {
+			if (width >= 0
+			 || (starred && (c == 's' || c == 'c'))
+//GNU awk 5.3.0 compat: "%*s",-10,"A" works like "%-10s","A"
+			) {
+				baked_cur += sprintf(baked_cur, "%d", width);
+			}
+			if (diouxX) {
+				/* print %d, %i, positive %u as floats: */
+				/* this avoids losing most-significant bits, try */
+				/* awk 'BEGIN { printf "%d\n", 2**128 }' */
+				sprintf(baked_cur, ".0f%s", fmt_cur + 1);
+			} else {
+				if (prec >= 0)
+					baked_cur += sprintf(baked_cur, ".%u", prec);
+				sprintf(baked_cur, "%s", fmt_cur);
+			}
+			use_fmt = baked_format;
+//bb_error_msg("baked_format:'%s'", baked_format);
+		}
+
 		if (c == 'c') {
 			char cc = is_numeric(arg) ? getvar_i(arg) : *getvar_s(arg);
-			char *r = xasprintf(s, cc ? cc : '^' /* else strlen will be wrong */);
+			char *r = xasprintf(use_fmt, cc ? cc : '^' /* else strlen will be wrong */);
 			slen = strlen(r);
-			if (cc == '\0') /* if cc is NUL, re-format the string with it */
-				sprintf(r, s, cc);
+			if (cc == '\0') { /* if cc is NUL, re-format the string with it */
+				sprintf(r, use_fmt, cc);
+			}
 			s = r;
 		} else {
 			if (c == 's') {
-				s = xasprintf(s, getvar_s(arg));
-			} else {
+				const char *cs = getvar_s(arg);
+//bb_error_msg("format_s:'%s'", use_fmt);
+				s = xasprintf(use_fmt, cs);
+			} else { /* numeric conversion */
 				double d = getvar_i(arg);
-				if (strchr("diouxX", c)) {
-//TODO: make it wider here (%x -> %llx etc)?
-//Can even print the value into a temp string with %.0f,
-//then replace diouxX with s and print that string.
-//This will correctly print even very large numbers,
-//but some replacements are not equivalent:
-//%09d -> %09s: breaks zero-padding;
-//%+d -> %+s: won't prepend +; etc
-					s = xasprintf(s, (int)d);
-				} else if (strchr("eEfFgGaA", c)) {
-					s = xasprintf(s, d);
+				if (diouxX)
+					d = trunc(d);
+//bb_error_msg("d:%f", d);
+				if ((c|0x20) == 'x' || c == 'o' || (c == 'u' && d < 0)) {
+					sprintf(baked_cur, "ll%s", fmt_cur);
+					// -1.9 => -1 => integer (0xfff..fff)
+					// => interpret as unsigned integer
+					// awk 'BEGIN { printf "%u\n",-1.9; }': 18446744073709551615
+					// awk 'BEGIN { printf "%x\n",-1.9; }': ffffffffffffffff
+					s = xasprintf(use_fmt, (unsigned long long)d);
 				} else {
-					/* gawk 5.1.1 printf("%W") prints "%W", does not error out */
-					s = xstrndup(s, f - s);
+					s = xasprintf(use_fmt, d);
 				}
 			}
 			slen = strlen(s);
 		}
-		*f = sv;
- append:
-		if (i == 0) {
-			b = s;
-			i = slen;
+		*after_fmt = sv;
+		fmt_cur = after_fmt;
+//bb_error_msg("after_fmt:'%s'", after_fmt);
+
+//bb_error_msg("slen:%d", slen);
+		if (res_len == 0) {
+//bb_error_msg("initial:'%.*s'", slen, s);
+			res_buf = s;
+			res_len = slen;
 			continue;
 		}
  tail:
-		b = xrealloc(b, i + slen + 1);
-		strcpy(b + i, s);
-		i += slen;
+		if (slen != 0 || res_len == 0) {
+//bb_error_msg("appending:'%.*s'", slen, s);
+			res_buf = xrealloc(res_buf, res_len + slen + 1);
+			((char*)mempcpy(res_buf + res_len, s, slen))[0] = '\0';
+			res_len += slen;
+		}
 		if (!c) /* s is NOT allocated and this is the last part of string? */
 			break;
 		free(s);
@@ -2535,12 +2676,12 @@ static char *awk_printf(node *n, size_t *len)
 	free(fmt);
 	//nvfree(tmpvar, 1);
 #undef TMPVAR
-
+ ret:
 #if ENABLE_FEATURE_AWK_GNU_EXTENSIONS
 	if (len)
-		*len = i;
+		*len = res_len;
 #endif
-	return b;
+	return res_buf;
 }
 
 /* Common substitution routine.

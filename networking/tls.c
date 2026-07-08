@@ -2732,7 +2732,7 @@ static void send_server_key_exchange(tls_state_t *tls)
 	sig_len = privRsaEncryptSignedElement(NULL, &tls->hsd->rsa_priv_key,
 		hash, 32, p + 2, 512, NULL);
 	if (sig_len < 0) {
-		bb_error_msg_and_die("RSA signature failed");
+		bb_simple_error_msg_and_die("RSA signature failed");
 	}
 
 	/* Signature length (2 bytes, big-endian) */
@@ -2961,7 +2961,7 @@ static char *decode_base64_or_die(char *dst, const char *src)
 {
 	char *dst_end = decode_base64(dst, &src);
 	if (*src != '\0')
-		bb_error_msg_and_die("base64 decode error");
+		bb_simple_error_msg_and_die("base64 decode error");
 	return dst_end;
 }
 

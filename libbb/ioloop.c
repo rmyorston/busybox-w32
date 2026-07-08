@@ -5,6 +5,7 @@
  * Licensed under GPLv2, see file LICENSE in this source tree.
  */
 //kbuild:lib-$(CONFIG_TELNETD) += ioloop.o
+//kbuild:lib-$(CONFIG_TELNET) += ioloop.o
 
 #include "libbb.h"
 
@@ -76,19 +77,19 @@ void FAST_FUNC ioloop_close_fd_in_all_conns(ioloop_state_t *io, int fd)
 }
 #endif
 
-// have_data_to_write() - Do we have data to write?
+// should_poll_write_fd() - Should ioloop poll write_fd for writability?
 // May return error if knows that write side is closed, even if it has free buffer space.
-// > 0: Has data to write (or can generate such data)
+// > 0: Yes, poll write_fd (has data to write, or can generate such data)
 //    In this case, write_fd must be valid! (it's a bug if it is < 0, can crash)
-// 0: No data to write currently
+// 0: No, don't poll write_fd currently
 // < 0: error, I probably freed myself (do not use my structure in this iteration,
 // on next iteration, if I indeed freed myself, you won't find me in the list).
 //
-// have_buffer_to_read_into() - Is there a buffer to read into?
+// should_poll_read_fd() - Should ioloop poll read_fd for readability?
 // May return error if knows that write side is closed, even if it has free buffer space.
-// > 0: Healthy, has buffer space, please poll read_fd
+// > 0: Yes, poll read_fd (has buffer space, healthy)
 //    In this case, read_fd must be valid! (it's a bug if it is < 0)
-// 0: One of:
+// 0: No, don't poll read_fd. One of:
 //    Buffer is full (hopefully write() will free some)
 //    Got error/EOF, want to drain write buffer first
 // < 0: Error/EOF, I probably freed myself (do not use my structure)
@@ -121,26 +122,26 @@ void FAST_FUNC ioloop_close_fd_in_all_conns(ioloop_state_t *io, int fd)
 // Putting "this connection is dead, close+remove+free" code into read function
 // is often inconvenient: if you got EOF/error on read, you still want to poll write side
 // and try to write out the buffered data to it. Which means read() can't "remove+free".
-// Instead, you can remember EOF/error and make future have_buffer_to_read_into() respond 0.
+// Instead, you can remember EOF/error and make future should_poll_read_fd() respond 0.
 // One way is to close (if possible) read_fd, set it to -1 and use as a flag.
 //
 // If need to support one-sided close, such as when HTTP/1.x client sends us
 // "GET / HTTP/1.1\r\n\r\n" and closes its writing side with shutdown(SHUT_WR),
 // the idiom is that when read() sees EOF, it sets conn->read_fd to -1
-// and subsequently have_buffer_to_read_into() always return 0 (no more attempts to read);
+// and subsequently should_poll_read_fd() always return 0 (no more attempts to read);
 // write() flushes all remaining data to conn->write_fd and then signals EOF
 // to write_fd: shutdown(SHUT_WR) for sockets, close() for pipes
 // (how to do this for ptys!?).
-// After this, have_data_to_write() can return 0 if fd has to stay open (socket)
+// After this, should_poll_write_fd() can return 0 if fd has to stay open (socket)
 // or can return -1 and free itself if fd is closed.
 
-static ALWAYS_INLINE int have_data_to_write(connection_t *conn)
+static ALWAYS_INLINE int should_poll_write_fd(connection_t *conn)
 {
-	return conn->have_data_to_write(conn);
+	return conn->should_poll_write_fd(conn);
 }
-static ALWAYS_INLINE int have_buffer_to_read_into(connection_t *conn)
+static ALWAYS_INLINE int should_poll_read_fd(connection_t *conn)
 {
-	return conn->have_buffer_to_read_into(conn);
+	return conn->should_poll_read_fd(conn);
 }
 static ALWAYS_INLINE int write_from_buf(connection_t *conn)
 {
@@ -177,7 +178,7 @@ int FAST_FUNC ioloop_run(ioloop_state_t *io)
 		int rcw, rcr;
 
 		next = conn->next; /* in case conn is freed */
-		rcw = have_data_to_write(conn);
+		rcw = should_poll_write_fd(conn);
 		if (rcw < 0) {
 			/* often indicates that conn is gone (freed), do not use it anymore */
 			goto next;
@@ -186,7 +187,7 @@ int FAST_FUNC ioloop_run(ioloop_state_t *io)
 		 * the *reader* may decide to abort (return rcr < 0)!
 		 * Check it first:
 		 */
-		rcr = have_buffer_to_read_into(conn);
+		rcr = should_poll_read_fd(conn);
 		if (rcr < 0)
 			goto next;
 		if (rcw > 0) {

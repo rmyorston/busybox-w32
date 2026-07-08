@@ -21,10 +21,12 @@ testing "start-stop-daemon -x with -d on existing and check dir" \
 	"/tmp\n" \
 	"" ""
 
+optional FEATURE_START_STOP_DAEMON_LONG_OPTIONS
 testing "start-stop-daemon -x with --chdir on existing and check dir" \
 	'output=$(start-stop-daemon -S --chdir /tmp -x pwd); echo $output' \
 	"/tmp\n" \
 	"" ""
+SKIP=""
 
 testing "start-stop-daemon -a without -x" \
 	'start-stop-daemon -S -a false 2>&1; echo $?' \

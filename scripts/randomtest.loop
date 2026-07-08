@@ -2,9 +2,18 @@
 
 run_testsuite=false
 run_testsuite=true
+# See testsuite/README:
+export SKIP_KNOWN_BUGS=1
+#export SKIP_KNOWN_BUG_AWK_WORDMATCH=1
+#export SKIP_INTERNET_TESTS=1
+# See testsuite/mount.tests:
+export SKIP_MOUNT_MAND_TESTS=1
 
 run_single_test=false
 run_single_test=true
+
+stop_on_failure=false
+stop_on_failure=true
 
 export LIBC="uclibc"
 export CROSS_COMPILER_PREFIX="i686-"
@@ -30,7 +39,7 @@ while sleep 1; do
 	if ! "$1/scripts/randomtest" "$1" "$dir" >/dev/null; then
 		mv -- "$dir" "failed.$dir"
 		echo "Failed build in: failed.$dir"
-		exit 1 # you may comment this out...
+		$stop_on_failure && exit 1
 		let fail++
 		continue
 	fi
@@ -43,7 +52,7 @@ while sleep 1; do
 		if test $? != 0; then
 			echo "Failed runtest in $dir"
 			grep ^FAIL -- "$dir/testsuite/runtest.log"
-			exit 1 # you may comment this out...
+			$stop_on_failure && exit 1
 			let fail++
 			continue
 		fi
@@ -66,7 +75,7 @@ while sleep 1; do
 		)
 		if test $? != 0; then
 			echo "Failed make_single_applets.sh in $dir"
-			exit 1 # you may comment this out...
+			$stop_on_failure && exit 1
 			let fail++
 			continue
 		fi

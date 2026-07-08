@@ -141,61 +141,61 @@ static const char packed_usage[] ALIGN1 = { PACKED_USAGE };
 #endif /* FEATURE_COMPRESS_USAGE */
 
 
+#if ENABLE_SHOW_USAGE
 void FAST_FUNC bb_show_usage(void)
 {
-	if (ENABLE_SHOW_USAGE) {
-		ssize_t FAST_FUNC (*full_write_fn)(const char *) =
-				xfunc_error_retval ? full_write2_str : full_write1_str;
-#ifdef SINGLE_APPLET_STR
-		/* Imagine that this applet is "true". Dont link in printf! */
-		const char *usage_string = unpack_usage_messages();
+	ssize_t FAST_FUNC (*full_write_fn)(const char *) =
+			xfunc_error_retval ? full_write2_str : full_write1_str;
+# ifdef SINGLE_APPLET_STR
+	/* Imagine that this applet is "true". Dont link in printf! */
+	const char *usage_string = unpack_usage_messages();
 
-		if (usage_string) {
-			if (*usage_string == '\b') {
-				full_write_fn("No help available\n");
-			} else {
-				full_write_fn("Usage: "SINGLE_APPLET_STR" ");
-				full_write_fn(usage_string);
-				full_write_fn("\n");
-			}
-			if (ENABLE_FEATURE_CLEAN_UP)
-				dealloc_usage_messages((char*)usage_string);
-		}
-#else
-		const char *p;
-		const char *usage_string = p = unpack_usage_messages();
-		int ap = find_applet_by_name_internal(applet_name);
-
-		if (ap < 0 || usage_string == NULL)
-			xfunc_die();
-		while (ap) {
-			while (*p++) continue;
-			ap--;
-		}
-		full_write_fn(bb_banner);
-#if ENABLE_PLATFORM_MINGW32
-		full_write_fn("\n");
-#else
-		full_write_fn(" multi-call binary.\n"); /* common string */
-#endif
-		if (*p == '\b')
-			full_write_fn("\nNo help available\n");
-		else {
-			full_write_fn("\nUsage: ");
-			full_write_fn(applet_name);
-			if (p[0]) {
-				if (p[0] != '\n')
-					full_write_fn(" ");
-				full_write_fn(p);
-			}
+	if (usage_string) {
+		if (*usage_string == '\b') {
+			full_write_fn("No help available\n");
+		} else {
+			full_write_fn("Usage: "SINGLE_APPLET_STR" ");
+			full_write_fn(usage_string);
 			full_write_fn("\n");
 		}
 		if (ENABLE_FEATURE_CLEAN_UP)
 			dealloc_usage_messages((char*)usage_string);
-#endif
 	}
+# else
+	const char *p;
+	const char *usage_string = p = unpack_usage_messages();
+	int ap = find_applet_by_name_internal(applet_name);
+
+	if (ap < 0 || usage_string == NULL)
+		xfunc_die();
+	while (ap) {
+		while (*p++) continue;
+		ap--;
+	}
+	full_write_fn(bb_banner);
+#if ENABLE_PLATFORM_MINGW32
+	full_write_fn("\n");
+#else
+	full_write_fn(" multi-call binary.\n"); /* common string */
+#endif
+	if (*p == '\b')
+		full_write_fn("\nNo help available\n");
+	else {
+		full_write_fn("\nUsage: ");
+		full_write_fn(applet_name);
+		if (p[0]) {
+			if (p[0] != '\n')
+				full_write_fn(" ");
+			full_write_fn(p);
+		}
+		full_write_fn("\n");
+	}
+	if (ENABLE_FEATURE_CLEAN_UP)
+		dealloc_usage_messages((char*)usage_string);
+# endif
 	xfunc_die();
 }
+#endif
 
 #if ENABLE_PLATFORM_MINGW32 && NUM_APPLETS > 1 && \
 		ENABLE_FEATURE_SH_STANDALONE

@@ -576,7 +576,7 @@ static void show_menu(void)
 		cookmode();
 }
 
-static int have_buffer_to_read_from_stdin(void *this)
+static int should_poll_read_fd_stdin(void *this)
 {
 	stdin_to_net_t *conn = this;
 	if (conn->read_fd < 0)
@@ -656,7 +656,7 @@ static int read_from_stdin(void *this)
 	return count;
 }
 
-static int have_data_to_write_to_net(void *this)
+static int should_poll_write_fd_net(void *this)
 {
 	stdin_to_net_t *conn = this;
 	if (conn->size == 0 && conn->read_fd < 0) {
@@ -700,7 +700,7 @@ static int write_to_net(void *this)
 	return count;
 }
 
-static int have_buffer_to_read_from_net(void *this)
+static int should_poll_read_fd_net(void *this)
 {
 	net_to_stdout_t *conn = this;
 	if (conn->read_fd < 0)
@@ -897,7 +897,7 @@ static int read_from_net(void *this)
 	return count;
 }
 
-static int have_data_to_write_to_stdout(void *this)
+static int should_poll_write_fd_stdout(void *this)
 {
 	net_to_stdout_t *conn = this;
 	if (conn->size == 0 && conn->read_fd < 0) {
@@ -988,16 +988,16 @@ int telnet_main(int argc UNUSED_PARAM, char **argv)
 	signal(SIGPIPE, SIG_IGN);
 
 	// Initialize connections
-	G.conn_stdin2net.have_buffer_to_read_into = have_buffer_to_read_from_stdin;
-	G.conn_stdin2net.have_data_to_write = have_data_to_write_to_net;
+	G.conn_stdin2net.should_poll_read_fd = should_poll_read_fd_stdin;
+	G.conn_stdin2net.should_poll_write_fd = should_poll_write_fd_net;
 	G.conn_stdin2net.read = read_from_stdin;
 	G.conn_stdin2net.write = write_to_net;
 	if (STDIN_FILENO != 0)
 		G.conn_stdin2net.read_fd = STDIN_FILENO;
 	G.conn_stdin2net.write_fd = netfd;
 
-	G.conn_net2stdout.have_buffer_to_read_into = have_buffer_to_read_from_net;
-	G.conn_net2stdout.have_data_to_write = have_data_to_write_to_stdout;
+	G.conn_net2stdout.should_poll_read_fd = should_poll_read_fd_net;
+	G.conn_net2stdout.should_poll_write_fd = should_poll_write_fd_stdout;
 	G.conn_net2stdout.read = read_from_net;
 	G.conn_net2stdout.write = write_to_stdout;
 	G.conn_net2stdout.read_fd = netfd;

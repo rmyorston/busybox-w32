@@ -279,8 +279,8 @@ static void ALWAYS_INLINE remove_and_free_to_net(pty_to_net_t *ts)
 // Theory of operation
 // (AKA "when should I close fds? when should I detach from ioloop?").
 // The fds are named read_fd and write_fd, but for clarity let's call them netfd and ptyfd.
-// net_to_pty::have_data_to_write
-// net_to_pty::have_buffer_to_read_into
+// net_to_pty::should_poll_write_fd
+// net_to_pty::should_poll_read_fd
 //  if ptyfd < 0: //sibling told us ptyfd is down?
 //    if sibling && sibling->netfd >= 0: netfd = -1; //do not close netfd, sibling uses it (if sibling exists)!
 //    close_and_detach;
@@ -308,7 +308,7 @@ static unsigned char read_byte_unescaping_IAC(int *iac_cnt, unsigned char **pp)
 	return c;
 }
 
-static int net_to_pty__have_data_to_write(void *this)
+static int net_to_pty__should_poll_write_fd(void *this)
 {
 	//connection_t *conn = this;
 	net_to_pty_t *ts = this;
@@ -471,7 +471,7 @@ static int net_to_pty__write(void *this)
 	found = memchr(buf, IAC, wr);
 	if (found == buf) {
 		/* The first char is IAC.
-		 * have_data_to_write() ensures we are only called this way
+		 * should_poll_write_fd() ensures we are only called this way
 		 * if there are two IACs.
 		 * It also ensures the buffer is not wrapping within 7 chars.
 		 * Write one IAC. If that works, skip both.
@@ -524,7 +524,7 @@ static int net_to_pty__write(void *this)
 }
 
 /* Check if buffer has space to read into */
-static int net_to_pty__have_buffer_to_read_into(void *this)
+static int net_to_pty__should_poll_read_fd(void *this)
 {
 	//connection_t *conn = this;
 	net_to_pty_t *ts = this;
@@ -619,17 +619,17 @@ static int net_to_pty__read(void *this)
 static net_to_pty_t *new_net_to_pty(int from, int to)
 {
 	net_to_pty_t *this = xzalloc(sizeof(*this) + TO_PTY_BUFSIZE);
-	this->have_buffer_to_read_into = net_to_pty__have_buffer_to_read_into;
-	this->have_data_to_write       = net_to_pty__have_data_to_write;
-	this->read                     = net_to_pty__read;
-	this->write                    = net_to_pty__write;
+	this->should_poll_read_fd  = net_to_pty__should_poll_read_fd;
+	this->should_poll_write_fd = net_to_pty__should_poll_write_fd;
+	this->read                 = net_to_pty__read;
+	this->write                = net_to_pty__write;
 	this->read_fd = from;
 	this->write_fd = to;
 	/* indexes and size are all 0 */
 	return this;
 }
 
-static int pty_to_net__have_buffer_to_read_into(void *this)
+static int pty_to_net__should_poll_read_fd(void *this)
 {
 	//connection_t *conn = this;
 	pty_to_net_t *ts = this;
@@ -725,7 +725,7 @@ static int pty_to_net__read(void *this)
 	return count;
 }
 
-static int pty_to_net__have_data_to_write(void *this)
+static int pty_to_net__should_poll_write_fd(void *this)
 {
 	pty_to_net_t *ts = this;
 	if (ts->size == 0) {
@@ -832,10 +832,10 @@ static int pty_to_net__write(void *this)
 static pty_to_net_t *new_pty_to_net(int from, int to)
 {
 	pty_to_net_t *this = xzalloc(sizeof(*this) + TO_NET_BUFSIZE);
-	this->have_buffer_to_read_into = pty_to_net__have_buffer_to_read_into;
-	this->have_data_to_write       = pty_to_net__have_data_to_write;
-	this->read                     = pty_to_net__read;
-	this->write                    = pty_to_net__write;
+	this->should_poll_read_fd  = pty_to_net__should_poll_read_fd;
+	this->should_poll_write_fd = pty_to_net__should_poll_write_fd;
+	this->read                 = pty_to_net__read;
+	this->write                = pty_to_net__write;
 	this->read_fd = from;
 	this->write_fd = to;
 	/* indexes and size are all 0 */
@@ -1013,10 +1013,10 @@ static int accept_conn__return_zero(void *this UNUSED_PARAM)
 static struct accept_conn *new_accept_conn(int fd)
 {
 	struct accept_conn *this = xzalloc(sizeof(*this));
-	this->have_buffer_to_read_into = accept_conn__can_accept;
-	this->have_data_to_write       = accept_conn__return_zero;
-	this->read                     = accept_conn__accept;
-	//this->write                    = accept_conn__return_zero; //never called
+	this->should_poll_read_fd  = accept_conn__can_accept;
+	this->should_poll_write_fd = accept_conn__return_zero;
+	this->read                 = accept_conn__accept;
+	//this->write                = accept_conn__return_zero; //never called
 	this->read_fd = fd;
 	this->write_fd = -1;
 	return this;

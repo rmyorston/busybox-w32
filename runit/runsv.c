@@ -210,7 +210,7 @@ static void update_status(struct svdir *s)
 
 	/* stat */
 	fd = open_trunc_or_warn(fstatnew);
-	if (fd < -1)
+	if (fd < 0)
 		return;
 
 	{

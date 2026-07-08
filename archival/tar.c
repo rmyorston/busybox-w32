@@ -119,6 +119,7 @@
 #include "libbb.h"
 #include "common_bufsiz.h"
 #include "bb_archive.h"
+#include "unicode.h"
 #if ENABLE_PLATFORM_MINGW32
 # include "BB_VER.h"
 #endif
@@ -1156,6 +1157,9 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 
 	if (tar_handle->accept || tar_handle->reject)
 		tar_handle->filter = filter_accept_reject_list;
+
+	/* For "tar xvf/tvf" output and Unicode in names */
+	init_unicode();
 
 	/* Open the tar file */
 	{

@@ -36,6 +36,7 @@ cat .config \
 | grep -v CONFIG_SELINUX \
 | grep -v CONFIG_EFENCE \
 | grep -v CONFIG_DMALLOC \
+| grep -v CONFIG_FEATURE_TELNETD_SELFTEST_DEBUG \
 \
 | grep -v CONFIG_RFKILL \
 >.config.new
@@ -46,6 +47,7 @@ echo "CONFIG_CROSS_COMPILER_PREFIX=\"${CROSS_COMPILER_PREFIX}\"" >>.config
 echo '# CONFIG_SELINUX is not set' >>.config
 echo '# CONFIG_EFENCE is not set' >>.config
 echo '# CONFIG_DMALLOC is not set' >>.config
+echo '# CONFIG_FEATURE_TELNETD_SELFTEST_DEBUG is not set' >>.config
 echo '# CONFIG_RFKILL is not set' >>.config
 
 # If glibc, don't build static
@@ -53,6 +55,7 @@ if test x"$LIBC" = x"glibc"; then
 	cat .config \
 	| grep -v CONFIG_STATIC \
 	| grep -v CONFIG_FEATURE_LIBBUSYBOX_STATIC \
+	| grep -v CONFIG_TC \
 	\
 	| grep -v CONFIG_FEATURE_2_4_MODULES \
 	| grep -v CONFIG_FEATURE_USE_BSS_TAIL \
@@ -63,6 +66,7 @@ if test x"$LIBC" = x"glibc"; then
 	mv .config.new .config
 	echo '# CONFIG_STATIC is not set' >>.config
 	echo '# CONFIG_FEATURE_LIBBUSYBOX_STATIC is not set' >>.config
+	echo '# CONFIG_TC is not set' >>.config
 	# newer glibc (at least 2.23) no longer supply query_module() ABI.
 	# People who target 2.4 kernels would likely use older glibc (and older bbox).
 	echo '# CONFIG_FEATURE_2_4_MODULES is not set' >>.config

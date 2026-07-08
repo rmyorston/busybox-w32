@@ -6,7 +6,7 @@
 # All other options which chose general bbox config, applet features, etc,
 # are not modified for the builds.
 
-makeopts="-j9"
+test "$MAKEOPS" || export MAKEOPTS="-j`nproc`"
 
 # The list of all applet config symbols
 test -f include/applets.h || { echo "No include/applets.h file"; exit 1; }
@@ -72,7 +72,7 @@ for app; do
 		fail=$((fail+1))
 		echo "Config error for ${app}"
 		mv .config busybox_config_${app}
-	elif ! make $makeopts >>busybox_make_${app}.log 2>&1; then
+	elif ! make $MAKEOPTS >>busybox_make_${app}.log 2>&1; then
 		fail=$((fail+1))
 		grep -i -e error: -e warning: busybox_make_${app}.log
 		echo "Build error for ${app}"

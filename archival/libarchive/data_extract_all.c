@@ -67,7 +67,11 @@ void FAST_FUNC data_extract_all(archive_handle_t *archive_handle)
 #endif
 #if ENABLE_FEATURE_PATH_TRAVERSAL_PROTECTION
 	/* Skip leading "/" and past last ".." path component */
+# if ENABLE_FEATURE_TAR_LONG_OPTIONS
 	dst_name = (char *)skip_unsafe_prefix(dst_name);
+# else /* dst_name is file_header->name, which is free()d by e.g. cpio - must copy, can't just advance the ptr */
+	strip_unsafe_prefix(dst_name);
+# endif
 #endif
 // ^^^ This may be a problem if some applets do need to extract absolute names.
 // (Probably will need to invent ARCHIVE_ALLOW_UNSAFE_NAME flag).
