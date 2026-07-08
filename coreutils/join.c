@@ -33,6 +33,7 @@
 
 #include "libbb.h"
 #include "unicode.h"
+#include "common_bufsiz.h"
 
 /* This is a NOEXEC applet. Be very careful! */
 
@@ -52,8 +53,24 @@ typedef struct {
 	int linecap;		/* current capacity of lines array */
 } FDAT;
 
+/* "globals" can be made local to main(), but then passing them
+   down the callchains as parameters requires ~90 bytes of code (on x86).
+ */
+struct globals {
+	int *format; // = NULL;
+	const char *empty_str;
+	/* \0 can't be separator, 0 means: "whitespace+" pattern */
+	char sep; // = 0;
+} FIX_ALIASING;
+#define G (*(struct globals*)bb_common_bufsiz1)
+#define INIT_G() do { \
+	setup_common_bufsiz(); \
+	/* we have to zero it out because of NOEXEC */ \
+	memset(&G, 0, sizeof(G)); \
+} while (0)
+
 /* split s by sep, and put the results into *curr */
-static void field_split(char *s, char sep, LINE *curr)
+static void field_split(char *s, LINE *curr)
 {
 	/* compare awk_split from editors/awk.c */
 	int n;
@@ -68,8 +85,8 @@ static void field_split(char *s, char sep, LINE *curr)
 	curr->line = s;
 
 	n = 0;
-	if (sep != '\0') {  /* single-character split */
-		while ((s1 = strchr(ps, sep)) != NULL) {
+	if (G.sep != '\0') {  /* single-character split */
+		while ((s1 = strchr(ps, G.sep)) != NULL) {
 			sl[n] = ps;
 			*s1 = '\0';
 			ps = s1 + 1;
@@ -123,7 +140,7 @@ static void freelines(FDAT *f)
 	f->field = "";
 }
 
-static void readfields(char sep, FDAT *f)
+static void readfields(FDAT *f)
 {
 	LINE curr = { .line = NULL, .fields = NULL, .fieldcount = 0 };
 	char *line;
@@ -144,7 +161,7 @@ static void readfields(char sep, FDAT *f)
 				return;
 			}
 
-			field_split(line, sep, &curr);
+			field_split(line, &curr);
 		}
 
 		if (f->idx >= curr.fieldcount)
@@ -171,14 +188,14 @@ static void readfields(char sep, FDAT *f)
 	}
 }
 
-static inline const char *fieldorempty(const char *field, const char *empty_str)
+static inline const char *fieldorempty(const char *field)
 {
 	if (*field == '\0')
-		return empty_str;
+		return G.empty_str;
 	return field;
 }
 
-static void printfields(int *format, const char *empty_str, char sep, FDAT *f1, FDAT *f2)
+static void printfields(FDAT *f1, FDAT *f2)
 {
 	const char *field = (f1 == NULL) ? f2->field : f1->field;
 
@@ -189,19 +206,19 @@ static void printfields(int *format, const char *empty_str, char sep, FDAT *f1, 
 	int format_idx;
 	int *formatcurr;
 	bool first;
+	char sep;
 
 	LINE *l1;
 	LINE *l2;
 
-	if (sep == '\0')
-		sep = ' ';
+	sep = (G.sep == '\0') ? ' ' : G.sep;
 
 	for (linef1 = 0; linef1 < (f1 ? f1->linecount : 1); linef1++) {
 		l1 = f1 ? &f1->lines[linef1] : NULL;
 		for (linef2 = 0; linef2 < (f2 ? f2->linecount : 1); linef2++) {
 			l2 = f2 ? &f2->lines[linef2] : NULL;
 
-			if (format) {
+			if (G.format) {
 				/*
 				Format is a sort of null-terminated array:
 				They are indexed by [n] for file number and [n + 1] for field number.
@@ -209,7 +226,7 @@ static void printfields(int *format, const char *empty_str, char sep, FDAT *f1, 
 				If file number is neither 1 nor 2 then we have the join field.
 				*/
 				first = true;
-				formatcurr = format;
+				formatcurr = G.format;
 				while (formatcurr[0]) {
 					if (first)
 						first = false;
@@ -221,28 +238,28 @@ static void printfields(int *format, const char *empty_str, char sep, FDAT *f1, 
 
 					if (format_fl == 1) {
 						if (l1 != NULL && l1->fieldcount > format_idx)
-							fputs_stdout(fieldorempty(l1->fields[format_idx], empty_str));
+							fputs_stdout(fieldorempty(l1->fields[format_idx]));
 						else
-							fputs_stdout(empty_str);
+							fputs_stdout(G.empty_str);
 					} else if (format_fl == 2) {
 						if (l2 != NULL && l2->fieldcount > format_idx)
-							fputs_stdout(fieldorempty(l2->fields[format_idx], empty_str));
+							fputs_stdout(fieldorempty(l2->fields[format_idx]));
 						else
-							fputs_stdout(empty_str);
+							fputs_stdout(G.empty_str);
 					} else
-						fputs_stdout(fieldorempty(field, empty_str));
+						fputs_stdout(fieldorempty(field));
 
 					formatcurr += 2;
 				}
 			} else {
-				fputs_stdout(fieldorempty(field, empty_str));
+				fputs_stdout(fieldorempty(field));
 
 				fn = 0;
 				if (l1 != NULL)
 					while (l1->fields[fn]) {
 						if (fn != f1->idx) {
 							bb_putchar(sep);
-							fputs_stdout(fieldorempty(l1->fields[fn], empty_str));
+							fputs_stdout(fieldorempty(l1->fields[fn]));
 						}
 						fn++;
 					}
@@ -252,7 +269,7 @@ static void printfields(int *format, const char *empty_str, char sep, FDAT *f1, 
 					while (l2->fields[fn]) {
 						if (fn != f2->idx) {
 							bb_putchar(sep);
-							fputs_stdout(fieldorempty(l2->fields[fn], empty_str));
+							fputs_stdout(fieldorempty(l2->fields[fn]));
 						}
 						fn++;
 					}
@@ -262,7 +279,7 @@ static void printfields(int *format, const char *empty_str, char sep, FDAT *f1, 
 	}
 }
 
-static void parsejformat(int **format_p, const char *format_str)
+static void parsejformat(const char *format_str)
 {
 	int *format;
 	int field_idx;
@@ -278,7 +295,7 @@ static void parsejformat(int **format_p, const char *format_str)
 	   which ends up being (strlen + 1) / 2
 	   and then we need to have two for each entry plus one for the terminator.
 	   ( (strlen+1) / 2 * 2 is optimized out in the alloc) */
-	*format_p = format = xzalloc(sizeof(format[0]) * ((strlen(format_str) + 1) + 1));
+	G.format = format = xzalloc(sizeof(format[0]) * ((strlen(format_str) + 1) + 1));
 
 	/* default split: skip the initial whitespace and then any run
 	   of non-whitespace characters is a field */
@@ -328,25 +345,17 @@ int join_main(int argc UNUSED_PARAM, char **argv)
 		bool print2unpaired; // = false;
 		bool printpaired;
 
-		int *format; // = NULL;
-
 		FDAT f1; // = { };
 		FDAT f2; // = { };
-
-		/* We can't use \0 as a real separator, so this stands in for the whitespace+ pattern */
-		char sep; // = 0;
 	} L;
 #define unpaired_list  L.unpaired_list
 #define format_str     L.format_str
 #define print1unpaired L.print1unpaired
 #define print2unpaired L.print2unpaired
 #define printpaired    L.printpaired
-#define format         L.format
 #define f1             L.f1
 #define f2             L.f2
-#define sep            L.sep
 
-	const char *empty_str;
 	char *separator;
 	uint32_t opts;
 	/* Must match getopt32 call */
@@ -360,10 +369,9 @@ int join_main(int argc UNUSED_PARAM, char **argv)
 		FLAG_FIELD_2       = (1 << 6),
 	};
 
+	INIT_G();
+	G.empty_str = "";
 	memset(&L, 0, sizeof(L));
-
-	empty_str = "";
-
 	init_unicode();
 
 	opts = getopt32(argv,
@@ -375,7 +383,7 @@ int join_main(int argc UNUSED_PARAM, char **argv)
 		"\0""=2:a--v:v--a",
 		&unpaired_list,
 		&unpaired_list,
-		&empty_str,
+		&G.empty_str,
 		&format_str,
 		&separator,
 		&f1.idx,
@@ -407,11 +415,11 @@ int join_main(int argc UNUSED_PARAM, char **argv)
 		if (separator[0] && separator[1])
 			bb_simple_error_msg_and_die("separators are single characters");
 
-		sep = *separator;
+		G.sep = *separator;
 	}
 
 	if (opts & FLAG_LIST_OUTPUT)
-		parsejformat(&format, format_str);
+		parsejformat(format_str);
 
 	f1.fp = xfopen_stdin(argv[0]);
 	f2.fp = xfopen_stdin(argv[1]);
@@ -478,42 +486,42 @@ int join_main(int argc UNUSED_PARAM, char **argv)
 
 	*/
 
-	readfields(sep, &f1);
-	readfields(sep, &f2);
+	readfields(&f1);
+	readfields(&f2);
 
 	while (f1.linecount != 0 && f2.linecount != 0) {
 		int res = strcmp(f1.field, f2.field);
 
 		if (res == 0) {
 			if (printpaired)
-				printfields(format, empty_str, sep, &f1, &f2);
+				printfields(&f1, &f2);
 
-			readfields(sep, &f1);
-			readfields(sep, &f2);
+			readfields(&f1);
+			readfields(&f2);
 		} else if (res < 0) {
 			if (print1unpaired)
-				printfields(format, empty_str, sep, &f1, NULL);
+				printfields(&f1, NULL);
 
-			readfields(sep, &f1);
+			readfields(&f1);
 		} else {
 			if (print2unpaired)
-				printfields(format, empty_str, sep, NULL, &f2);
+				printfields(NULL, &f2);
 
-			readfields(sep, &f2);
+			readfields(&f2);
 		}
 	}
 
 	if (print1unpaired) {
 		while (f1.linecount != 0) {
-			printfields(format, empty_str, sep, &f1, NULL);
-			readfields(sep, &f1);
+			printfields(&f1, NULL);
+			readfields(&f1);
 		}
 	}
 
 	if (print2unpaired) {
 		while (f2.linecount != 0) {
-			printfields(format, empty_str, sep, NULL, &f2);
-			readfields(sep, &f2);
+			printfields(NULL, &f2);
+			readfields(&f2);
 		}
 	}
 
@@ -528,7 +536,7 @@ int join_main(int argc UNUSED_PARAM, char **argv)
 		free(f2.lines);
 	}
 
-	free(format);
+	free(G.format);
 
 	fclose_if_not_stdin(f1.fp);
 	fclose_if_not_stdin(f2.fp);
