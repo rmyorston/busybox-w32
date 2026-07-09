@@ -824,10 +824,10 @@ UNUSED_PARAM
 			break;
 		}
 	}
-	if (parent_start_time != ULONG_MAX) {
-		if (parent_start_time > curr_start_time || curr_start_time == ULONG_MAX) {
-			sp->ppid = pe.th32ProcessID != 0;
-		}
+	if (parent_start_time == ULONG_MAX ||
+			curr_start_time == ULONG_MAX ||
+			parent_start_time > curr_start_time) {
+		sp->ppid = pe.th32ProcessID != 0;
 	}
 	sp->pid = pe.th32ProcessID;
 
