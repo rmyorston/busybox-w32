@@ -1405,7 +1405,7 @@ clock_t FAST_FUNC times(struct tms *buf)
 
 	memset(buf, 0, sizeof(*buf));
 	memset(&ps, 0, sizeof(ps));
-	get_process_times(getpid(), &ps);
+	get_process_times(getpid(), &ps.start_time, &ps.stime, &ps.utime);
 	buf->tms_stime = ps.stime;
 	buf->tms_utime = ps.utime;
 	return 0;
