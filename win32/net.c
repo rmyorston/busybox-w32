@@ -119,6 +119,16 @@ int FAST_FUNC mingw_recv(int sockfd, char *buf, int len, int flags)
 	return res;
 }
 
+#undef recvfrom
+int FAST_FUNC mingw_recvfrom(int sockfd, char *buf, int len, int flags, struct sockaddr *from, int *fromlen)
+{
+	SOCKET s = (SOCKET)_get_osfhandle(sockfd);
+	int res = recvfrom(s, buf, len, flags, from, fromlen);
+	if (res < 0)
+		errno = WSAGetLastError();
+	return res;
+}
+
 #undef setsockopt
 int FAST_FUNC
 mingw_setsockopt(int sockfd, int lvl, int optname, void *optval, int optlen)
