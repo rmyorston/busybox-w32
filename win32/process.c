@@ -698,7 +698,9 @@ pid_t FAST_FUNC getppid(void)
 
 #define NPIDS 128
 
-void get_process_times(DWORD pid, procps_status_t* sp)
+void get_process_times(DWORD pid, unsigned long* start_time,
+		unsigned long *stime,
+		unsigned long *utime)
 {
 	HANDLE proc;
 	FILETIME crTime, exTime, keTime, usTime;
@@ -714,9 +716,9 @@ void get_process_times(DWORD pid, procps_status_t* sp)
 			boot_time = filetime_to_ticks(&now) - ticks_since_boot;
 			create_time = filetime_to_ticks(&crTime);
 
-			sp->start_time = (unsigned long)(create_time - boot_time);
-			sp->stime = (unsigned long)filetime_to_ticks(&keTime);
-			sp->utime = (unsigned long)filetime_to_ticks(&usTime);
+			*start_time = (unsigned long)(create_time - boot_time);
+			*stime = (unsigned long)filetime_to_ticks(&keTime);
+			*utime = (unsigned long)filetime_to_ticks(&usTime);
 		}
 		CloseHandle(proc);
 	}
@@ -733,6 +735,10 @@ UNUSED_PARAM
 	HANDLE proc;
 	const char *comm, *name;
 	BOOL ret;
+	int curr_pid_hit;
+	int parent_pid_hit;
+	unsigned long curr_start_time;
+	unsigned long parent_start_time;
 
 	pe.dwSize = sizeof(pe);
 	if (!sp) {
@@ -748,8 +754,16 @@ UNUSED_PARAM
 				if (sp->npids == maxpids) {
 					maxpids += NPIDS;
 					sp->pids = xrealloc(sp->pids, sizeof(DWORD) * maxpids);
+					sp->start_times = xrealloc(sp->start_times, sizeof(unsigned long) * maxpids);
+					sp->stimes = xrealloc(sp->stimes, sizeof(unsigned long) * maxpids);
+					sp->utimes = xrealloc(sp->utimes, sizeof(unsigned long) * maxpids);
 				}
-				sp->pids[sp->npids++] = pe.th32ProcessID;
+				sp->pids[sp->npids] = pe.th32ProcessID;
+				get_process_times(pe.th32ProcessID,
+						&sp->start_times[sp->npids],
+						&sp->stimes[sp->npids],
+						&sp->utimes[sp->npids]);
+				sp->npids++;
 			} while (Process32Next(sp->snapshot, &pe));
 		}
 		ret = Process32First(sp->snapshot, &pe);
@@ -761,6 +775,9 @@ UNUSED_PARAM
 	if (!ret) {
 		CloseHandle(sp->snapshot);
 		free(sp->pids);
+		free(sp->start_times);
+		free(sp->stimes);
+		free(sp->utimes);
 		free(sp);
 		return NULL;
 	}
@@ -768,13 +785,6 @@ UNUSED_PARAM
 	memset(&sp->vsz, 0, sizeof(*sp) - offsetof(procps_status_t, vsz));
 #if !ENABLE_DESKTOP
 	strcpy(sp->state, "   ");
-#endif
-
-#if ENABLE_FEATURE_PS_TIME || ENABLE_FEATURE_PS_LONG
-	if (flags & (PSSCAN_STIME|PSSCAN_UTIME|PSSCAN_START_TIME)) {
-		/* populate start_time, stime and utime members of sp */
-		get_process_times(pe.th32ProcessID, sp);
-	}
 #endif
 
 	if (flags & PSSCAN_UIDGID) {
@@ -787,12 +797,36 @@ UNUSED_PARAM
 	}
 
 	/* The parent of PID 0 is 0.  If the parent is a PID we haven't
-	 * seen set PPID to 1. */
+	 * seen, or a younger PID, set PPID to 1. */
 	sp->ppid = pe.th32ProcessID != 0;
+	curr_pid_hit = 0;
+	parent_pid_hit = 0;
+	curr_start_time = ULONG_MAX;
+	parent_start_time = ULONG_MAX;
 	for (int i = 0; i < sp->npids; ++i) {
-		if (sp->pids[i] == pe.th32ParentProcessID) {
+		if (sp->pids[i] == pe.th32ProcessID) {
+			curr_pid_hit = 1;
+			curr_start_time = sp->start_times[i];
+#if ENABLE_FEATURE_PS_TIME || ENABLE_FEATURE_PS_LONG
+			if (flags & (PSSCAN_STIME|PSSCAN_UTIME|PSSCAN_START_TIME)) {
+				/* populate start_time, stime and utime members of sp */
+				sp->start_time = curr_start_time;
+				sp->stime = sp->stimes[i];
+				sp->utime = sp->utimes[i];
+			}
+#endif
+		} else if (sp->pids[i] == pe.th32ParentProcessID) {
+			parent_pid_hit = 1;
+			parent_start_time = sp->start_times[i];
 			sp->ppid = pe.th32ParentProcessID;
+		}
+		if (curr_pid_hit && parent_pid_hit) {
 			break;
+		}
+	}
+	if (parent_start_time != ULONG_MAX) {
+		if (parent_start_time > curr_start_time || curr_start_time == ULONG_MAX) {
+			sp->ppid = pe.th32ProcessID != 0;
 		}
 	}
 	sp->pid = pe.th32ProcessID;
