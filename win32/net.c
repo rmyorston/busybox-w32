@@ -50,11 +50,18 @@ int FAST_FUNC mingw_getaddrinfo(const char *node, const char *service,
 
 int FAST_FUNC mingw_socket(int domain, int type, int protocol)
 {
+	static char include_overlapped = 0;
 	int sockfd;
 	SOCKET s;
 
+	if (domain == MINGW_INCLUDE_OVERLAPPED_ONCE) {
+		include_overlapped = 1;
+		return 0;
+	}
+
 	init_winsock();
-	s = WSASocket(domain, type, protocol, NULL, 0, 0);
+	s = WSASocket(domain, type, protocol, NULL, 0, include_overlapped ? WSA_FLAG_OVERLAPPED : 0);
+	include_overlapped = 0;
 	if (s == INVALID_SOCKET) {
 		/*
 		 * WSAGetLastError() values are regular BSD error codes
@@ -90,6 +97,26 @@ int FAST_FUNC mingw_bind(int sockfd, struct sockaddr *sa, size_t sz)
 {
 	SOCKET s = (SOCKET)_get_osfhandle(sockfd);
 	return bind(s, sa, sz);
+}
+
+#undef sendto
+int FAST_FUNC mingw_sendto(int sockfd, const char *buf, int len, int flags, const struct sockaddr *to, int tolen)
+{
+	SOCKET s = (SOCKET)_get_osfhandle(sockfd);
+	int res = sendto(s, buf, len, flags, to, tolen);
+	if (res < 0)
+		errno = WSAGetLastError();
+	return res;
+}
+
+#undef recv
+int FAST_FUNC mingw_recv(int sockfd, char *buf, int len, int flags)
+{
+	SOCKET s = (SOCKET)_get_osfhandle(sockfd);
+	int res = recv(s, buf, len, flags);
+	if (res < 0)
+		errno = WSAGetLastError();
+	return res;
 }
 
 #undef setsockopt

@@ -126,9 +126,15 @@
 # include <netinet/in.h> /* struct ip and friends */
 # include <netinet/ip.h>
 #endif
+#if !ENABLE_PLATFORM_MINGW32
 #include <netinet/ip_icmp.h>
+#endif
 #include "libbb.h"
 #include "common_bufsiz.h"
+
+#if ENABLE_PLATFORM_MINGW32
+#include "mingw_ip.h"
+#endif
 
 #ifdef __BIONIC__
 /* should be in netinet/ip_icmp.h */
@@ -217,6 +223,9 @@ create_icmp_socket(void)
 #endif
 {
 	int sock;
+#if ENABLE_PLATFORM_MINGW32
+	mingw_socket(MINGW_INCLUDE_OVERLAPPED_ONCE, 0, 0);
+#endif
 #if ENABLE_PING6
 	if (lsa->u.sa.sa_family == AF_INET6)
 		sock = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
@@ -230,6 +239,11 @@ create_icmp_socket(void)
 	}
 
 	xmove_fd(sock, pingsock);
+
+#if ENABLE_PLATFORM_MINGW32
+	setsockopt_SOL_SOCKET_int(pingsock, SO_RCVTIMEO, 5000);
+	setsockopt_SOL_SOCKET_int(pingsock, SO_SNDTIMEO, 5000);
+#endif
 }
 
 #if !ENABLE_FEATURE_FANCY_PING
@@ -275,6 +289,10 @@ static void ping4(len_and_sockaddr *lsa)
 		c = recv(pingsock, G.packet, sizeof(G.packet), 0);
 #endif
 		if (c < 0) {
+#if ENABLE_PLATFORM_MINGW32
+			if (errno == WSAETIMEDOUT)
+				return noresp(0);
+#endif
 			if (errno != EINTR)
 				bb_simple_perror_msg("recvfrom");
 			continue;
@@ -369,8 +387,10 @@ static int common_ping_main(sa_family_t af, char **argv)
 	lsa = xhost_and_af2sockaddr(G.hostname, 0, AF_INET);
 #endif
 	/* Set timer _after_ DNS resolution */
+#if !ENABLE_PLATFORM_MINGW32
 	signal(SIGALRM, noresp);
 	alarm(5); /* give the host 5000ms to respond */
+#endif
 
 	create_icmp_socket(lsa);
 	G.myid = (uint16_t) getpid();
