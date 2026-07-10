@@ -448,13 +448,6 @@ config FEATURE_UTF8_MANIFEST
 
 endchoice
 
-config FEATURE_GETSYSTEMTIME_PRECISE
-	bool "Use precise time"
-	help
-	Use GetSystemTimePreciseAsFileTime instead of GetSystemTimeAsFileTime.
-	GetSystemTimeAsFileTime has a resolution of multiple milliseconds, but
-	is supported before Windows 8.
-
 config FEATURE_FAIL_IF_UTF8_MANIFEST_UNSUPPORTED
 	bool "Disallow UTF-8 manifest on legacy systems"
 	default y
