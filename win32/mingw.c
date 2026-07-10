@@ -1,3 +1,6 @@
+/* we want to have a symbol with this name but not link against it */
+#define GetSystemTimePreciseAsFileTime __UNUSED__GetSystemTimePreciseAsFileTime
+
 #include "libbb.h"
 #include <userenv.h>
 #include "lazyload.h"
@@ -7,6 +10,8 @@
 #include <ntdef.h>
 #include <psapi.h>
 #include <ntsecapi.h>
+
+#undef GetSystemTimePreciseAsFileTime
 
 #if defined(__MINGW64_VERSION_MAJOR)
 #if ENABLE_GLOBBING
@@ -935,17 +940,23 @@ static inline void timespec_to_filetime(const struct timespec tv, FILETIME *ft)
 	ft->dwHighDateTime = winTime >> 32;
 }
 
+DECLARE_PROC_ADDR(VOID, GetSystemTimePreciseAsFileTime, FILETIME *);
+
+/* precise time is only supported since win8 */
+static void GetSystemTimeMaybePreciseAsFileTime(FILETIME *ft) {
+	if (INIT_PROC_ADDR(kernel32.dll, GetSystemTimePreciseAsFileTime))
+		return GetSystemTimePreciseAsFileTime(ft);
+	else
+		return GetSystemTimeAsFileTime(ft);
+}
+
 static int hutimens(HANDLE fh, const struct timespec times[2])
 {
 	FILETIME now, aft, mft;
 	FILETIME *pft[2] = {&aft, &mft};
 	int i;
 
-#if ENABLE_FEATURE_GETSYSTEMTIME_PRECISE
-	GetSystemTimePreciseAsFileTime(&now);
-#else
-	GetSystemTimeAsFileTime(&now);
-#endif
+	GetSystemTimeMaybePreciseAsFileTime(&now);
 
 	if (times) {
 		for (i = 0; i < 2; ++i) {
@@ -1080,11 +1091,7 @@ int gettimeofday(struct timeval *tv, void *tz UNUSED_PARAM)
 	FILETIME ft;
 	long long hnsec;
 
-#if ENABLE_FEATURE_GETSYSTEMTIME_PRECISE
-	GetSystemTimePreciseAsFileTime(&ft);
-#else
-	GetSystemTimeAsFileTime(&ft);
-#endif
+	GetSystemTimeMaybePreciseAsFileTime(&ft);
 	hnsec = filetime_to_hnsec(&ft);
 	tv->tv_sec = hnsec / 10000000;
 	tv->tv_usec = (hnsec % 10000000) / 10;
@@ -1099,11 +1106,7 @@ int FAST_FUNC clock_gettime(clockid_t clockid, struct timespec *tp)
 		errno = ENOSYS;
 		return -1;
 	}
-#if ENABLE_FEATURE_GETSYSTEMTIME_PRECISE
-	GetSystemTimePreciseAsFileTime(&ft);
-#else
-	GetSystemTimeAsFileTime(&ft);
-#endif
+	GetSystemTimeMaybePreciseAsFileTime(&ft);
 	*tp = filetime_to_timespec(&ft);
 	return 0;
 }
