@@ -79,4 +79,12 @@ testing 'xxd -p -r ignores the nibble with 2nd char bad' \
 36
 "
 
+testing 'xxd -p -c0 outputs a single line' \
+	'xxd -p -c0' \
+	"\
+68656c6c6f20776f726c640a68656c6c6f20776f726c640a68656c6c6f20776f726c640a
+" \
+	'' \
+	'hello world\nhello world\nhello world\n'
+
 exit $FAILCOUNT
