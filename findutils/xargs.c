@@ -256,13 +256,13 @@ check_exit_codes:
 		/* Fall back to polling */
 		for (;;) {
 			DWORD nr = i + MAXIMUM_WAIT_OBJECTS > G.running_procs ?
-				MAXIMUM_WAIT_OBJECTS : (DWORD)(G.running_procs - i);
+				(DWORD)(G.running_procs - i) : MAXIMUM_WAIT_OBJECTS;
 			DWORD ret = WaitForMultipleObjects(nr, G.procs + i, FALSE, 100);
 
 			if (ret != WAIT_TIMEOUT)
 				break;
 			i += MAXIMUM_WAIT_OBJECTS;
-			if (i > G.running_procs)
+			if (i >= G.running_procs)
 				i = 0;
 		}
 	}
