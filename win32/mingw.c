@@ -401,6 +401,34 @@ static inline mode_t file_attr_to_st_mode(DWORD attr)
 	return fMode;
 }
 
+#if ENABLE_FEATURE_UTF8_MANIFEST
+HANDLE mingw_find_first_file(LPCSTR lpFileName, LPVOID lpFindFileData)
+{
+# if !ENABLE_FEATURE_FAIL_IF_UTF8_MANIFEST_UNSUPPORTED
+	// UTF8 manifest is present but we may be running on Windows 8
+	// or below.  We need to check if FindExInfoBasic is supported.
+	HANDLE h;
+	FINDEX_INFO_LEVELS level = FindExInfoBasic;
+
+ retry:
+	h = FindFirstFileExA(lpFileName, level, lpFindFileData,
+							FindExSearchNameMatch, NULL, 0);
+	if (h == INVALID_HANDLE_VALUE &&
+			GetLastError() == ERROR_INVALID_PARAMETER &&
+			level == FindExInfoBasic) {
+		level = FindExInfoStandard;
+		SetLastError(0);
+		goto retry;
+	}
+	return h;
+# else
+	// FindExInfoBasic is definitely supported.
+	return FindFirstFileExA(lpFileName, FindExInfoBasic, lpFindFileData,
+							FindExSearchNameMatch, NULL, 0);
+# endif
+}
+#endif
+
 static int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
 {
 	char *want_dir;
@@ -432,7 +460,7 @@ static int get_file_attr(const char *fname, WIN32_FILE_ATTRIBUTE_DATA *fdata)
 		HANDLE hnd;
 		WIN32_FIND_DATA fd;
 
-		if ((hnd=FindFirstFile(fname, &fd)) != INVALID_HANDLE_VALUE) {
+		if ((hnd=mingw_find_first_file(fname, &fd)) != INVALID_HANDLE_VALUE) {
 			fdata->dwFileAttributes =
 					fd.dwFileAttributes & ~FILE_ATTRIBUTE_DEVICE;
 			fdata->ftCreationTime = fd.ftCreationTime;

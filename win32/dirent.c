@@ -53,7 +53,7 @@ DIR * FAST_FUNC opendir(const char *name)
 	pattern[len] = 0;
 
 	/* open find handle */
-	h = FindFirstFileA(pattern, &fdata);
+	h = mingw_find_first_file(pattern, &fdata);
 	/* If FindFirstFileA fails on a path that's a volume mount
 	 * don't return an error, instead fake '.' and '..'. */
 	if (h == INVALID_HANDLE_VALUE && !is_volume_mount(name)) {

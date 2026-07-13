@@ -698,3 +698,9 @@ int elevation_state(void);
 void set_interp(int i) FAST_FUNC;
 int mingw_shell_execute(SHELLEXECUTEINFO *info) FAST_FUNC;
 void mingw_die_if_error(NTSTATUS status, const char *function_name) FAST_FUNC;
+
+#if ENABLE_FEATURE_UTF8_MANIFEST
+HANDLE mingw_find_first_file(LPCSTR lpFileName, LPVOID lpFindFileData);
+#else
+# define mingw_find_first_file FindFirstFileA
+#endif
