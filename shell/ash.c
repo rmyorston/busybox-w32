@@ -4928,7 +4928,31 @@ waitpid_child(int *status, DWORD blocking)
 
 	if (pid_nr) {
 		do {
-			idx = WaitForMultipleObjects(pid_nr, proclist, FALSE, blocking);
+			if (pid_nr < MAXIMUM_WAIT_OBJECTS)
+				idx = WaitForMultipleObjects(pid_nr, proclist, FALSE, blocking);
+			else {
+				/* compare similar code in findutils/xargs.c */
+				/* Fall back to polling */
+				i = 0;
+				for (;;) {
+					DWORD nr;
+					TRACE(("poll many: i %d, pidnr: %d, maxwait: %d, blocking: %d\n", i, pid_nr, MAXIMUM_WAIT_OBJECTS, blocking));
+					nr = i + MAXIMUM_WAIT_OBJECTS > pid_nr ? (DWORD)(pid_nr - i) : MAXIMUM_WAIT_OBJECTS;
+					idx = WaitForMultipleObjects(nr, proclist + i, FALSE, blocking ? 100 : 0);
+					TRACE(("poll result: %d\n", idx));
+					if (idx != WAIT_TIMEOUT) {
+						idx += i;
+						break;
+					}
+					i += MAXIMUM_WAIT_OBJECTS;
+					if (i >= pid_nr) {
+						/* we have done one full scan */
+						if (!blocking)
+							break;
+						i = 0;
+					}
+				}
+			}
 			if (idx < pid_nr) {
 				GetExitCodeProcess(proclist[idx], &win_status);
 				*status = exit_code_to_wait_status(win_status);
