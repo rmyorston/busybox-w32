@@ -681,7 +681,7 @@ static DWORD get_reparse_tag(DWORD attr, const char *pathname,
 					WIN32_FIND_DATAA *fbuf)
 {
 	if (attr & FILE_ATTRIBUTE_REPARSE_POINT) {
-		HANDLE handle = FindFirstFileA(pathname, fbuf);
+		HANDLE handle = mingw_find_first_file(pathname, fbuf);
 		if (handle != INVALID_HANDLE_VALUE) {
 			FindClose(handle);
 			if ((fbuf->dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
