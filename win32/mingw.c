@@ -1429,13 +1429,12 @@ long FAST_FUNC sysconf(int name)
 
 clock_t FAST_FUNC times(struct tms *buf)
 {
-	procps_status_t ps;
+	unsigned long start_time, stime, utime;
 
 	memset(buf, 0, sizeof(*buf));
-	memset(&ps, 0, sizeof(ps));
-	get_process_times(getpid(), &ps.start_time, &ps.stime, &ps.utime);
-	buf->tms_stime = ps.stime;
-	buf->tms_utime = ps.utime;
+	get_process_times(getpid(), &start_time, &stime, &utime);
+	buf->tms_stime = stime;
+	buf->tms_utime = utime;
 	return 0;
 }
 

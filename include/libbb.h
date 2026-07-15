@@ -2342,15 +2342,21 @@ enum { COMM_LEN = 16 };
 # endif
 #endif
 
+#if ENABLE_PLATFORM_MINGW32
+typedef struct pid_data_t {
+	DWORD pid;
+	unsigned long start_time;
+	unsigned long stime;
+	unsigned long utime;
+} pid_data_t;
+#endif
+
 typedef struct procps_status_t {
 #if !ENABLE_PLATFORM_MINGW32
 	DIR *dir;
 #else
 	HANDLE snapshot;
-	DWORD *pids;
-	unsigned long *start_times;
-	unsigned long *stimes;
-	unsigned long *utimes;
+	pid_data_t *pids;
 	int npids;
 #endif
 	IF_FEATURE_SHOW_THREADS(DIR *task_dir;)

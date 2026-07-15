@@ -705,6 +705,7 @@ void get_process_times(DWORD pid, unsigned long* start_time,
 	HANDLE proc;
 	FILETIME crTime, exTime, keTime, usTime;
 
+	*start_time = *stime = *utime = 0;
 	if ((proc=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
 				FALSE, pid))) {
 		if (GetProcessTimes(proc, &crTime, &exTime, &keTime, &usTime)) {
@@ -748,21 +749,19 @@ UNUSED_PARAM
 			free(sp);
 			return NULL;
 		}
+		// Read all pids into memory then rewind to the first process
 		if (Process32First(sp->snapshot, &pe)) {
 			int maxpids = 0;
 			do {
 				if (sp->npids == maxpids) {
 					maxpids += NPIDS;
-					sp->pids = xrealloc(sp->pids, sizeof(DWORD) * maxpids);
-					sp->start_times = xrealloc(sp->start_times, sizeof(unsigned long) * maxpids);
-					sp->stimes = xrealloc(sp->stimes, sizeof(unsigned long) * maxpids);
-					sp->utimes = xrealloc(sp->utimes, sizeof(unsigned long) * maxpids);
+					sp->pids = xrealloc(sp->pids, sizeof(pid_data_t) * maxpids);
 				}
-				sp->pids[sp->npids] = pe.th32ProcessID;
+				sp->pids[sp->npids].pid = pe.th32ProcessID;
 				get_process_times(pe.th32ProcessID,
-						&sp->start_times[sp->npids],
-						&sp->stimes[sp->npids],
-						&sp->utimes[sp->npids]);
+						&sp->pids[sp->npids].start_time,
+						&sp->pids[sp->npids].stime,
+						&sp->pids[sp->npids].utime);
 				sp->npids++;
 			} while (Process32Next(sp->snapshot, &pe));
 		}
@@ -775,9 +774,6 @@ UNUSED_PARAM
 	if (!ret) {
 		CloseHandle(sp->snapshot);
 		free(sp->pids);
-		free(sp->start_times);
-		free(sp->stimes);
-		free(sp->utimes);
 		free(sp);
 		return NULL;
 	}
@@ -804,20 +800,20 @@ UNUSED_PARAM
 	curr_start_time = ULONG_MAX;
 	parent_start_time = ULONG_MAX;
 	for (int i = 0; i < sp->npids; ++i) {
-		if (sp->pids[i] == pe.th32ProcessID) {
-			curr_pid_hit = 1;
-			curr_start_time = sp->start_times[i];
+		if (sp->pids[i].pid == pe.th32ProcessID) {
+			++curr_pid_hit;
+			curr_start_time = sp->pids[i].start_time;
 #if ENABLE_FEATURE_PS_TIME || ENABLE_FEATURE_PS_LONG
 			if (flags & (PSSCAN_STIME|PSSCAN_UTIME|PSSCAN_START_TIME)) {
 				/* populate start_time, stime and utime members of sp */
 				sp->start_time = curr_start_time;
-				sp->stime = sp->stimes[i];
-				sp->utime = sp->utimes[i];
+				sp->stime = sp->pids[i].stime;
+				sp->utime = sp->pids[i].utime;
 			}
 #endif
-		} else if (sp->pids[i] == pe.th32ParentProcessID) {
-			parent_pid_hit = 1;
-			parent_start_time = sp->start_times[i];
+		} else if (sp->pids[i].pid == pe.th32ParentProcessID) {
+			++parent_pid_hit;
+			parent_start_time = sp->pids[i].start_time;
 			sp->ppid = pe.th32ParentProcessID;
 		}
 		if (curr_pid_hit && parent_pid_hit) {
