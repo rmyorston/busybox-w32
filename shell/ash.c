@@ -4928,7 +4928,18 @@ waitpid_child(int *status, DWORD blocking)
 
 	if (pid_nr) {
 		do {
-			idx = WaitForMultipleObjects(pid_nr, proclist, FALSE, blocking);
+			for (i = 0; i < pid_nr; i += MAXIMUM_WAIT_OBJECTS) {
+				DWORD nr;
+				TRACE(("poll many: i %d, pidnr: %d, maxwait: %d, blocking: %d\n", i, pid_nr, MAXIMUM_WAIT_OBJECTS, blocking));
+				nr = i + MAXIMUM_WAIT_OBJECTS > pid_nr ?
+						(DWORD)(pid_nr - i) : MAXIMUM_WAIT_OBJECTS;
+				idx = WaitForMultipleObjects(nr, proclist + i, FALSE, blocking);
+				TRACE(("poll result: %d\n", idx));
+				if (idx != WAIT_TIMEOUT) {
+					idx += i;
+					break;
+				}
+			}
 			if (idx < pid_nr) {
 				GetExitCodeProcess(proclist[idx], &win_status);
 				*status = exit_code_to_wait_status(win_status);
