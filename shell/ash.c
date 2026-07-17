@@ -4907,7 +4907,6 @@ waitpid_child(int *status, DWORD blocking)
 	int pid_nr = 0;
 	static HANDLE *proclist = NULL;
 	static int pid_max = 0;
-	pid_t pid = -1;
 	DWORD win_status, idx;
 	int i;
 
@@ -4928,40 +4927,24 @@ waitpid_child(int *status, DWORD blocking)
 
 	if (pid_nr) {
 		do {
-			if (pid_nr < MAXIMUM_WAIT_OBJECTS)
-				idx = WaitForMultipleObjects(pid_nr, proclist, FALSE, blocking);
-			else {
-				/* compare similar code in findutils/xargs.c */
-				/* Fall back to polling */
-				i = 0;
-				for (;;) {
-					DWORD nr;
-					TRACE(("poll many: i %d, pidnr: %d, maxwait: %d, blocking: %d\n", i, pid_nr, MAXIMUM_WAIT_OBJECTS, blocking));
-					nr = i + MAXIMUM_WAIT_OBJECTS > pid_nr ? (DWORD)(pid_nr - i) : MAXIMUM_WAIT_OBJECTS;
-					idx = WaitForMultipleObjects(nr, proclist + i, FALSE, blocking ? 100 : 0);
-					TRACE(("poll result: %d\n", idx));
-					if (idx != WAIT_TIMEOUT) {
-						idx += i;
-						break;
-					}
-					i += MAXIMUM_WAIT_OBJECTS;
-					if (i >= pid_nr) {
-						/* we have done one full scan */
-						if (!blocking)
-							break;
-						i = 0;
-					}
+			for (i = 0; i < pid_nr; i += MAXIMUM_WAIT_OBJECTS) {
+				DWORD nr;
+				TRACE(("poll many: i %d, pidnr: %d, maxwait: %d, blocking: %d\n", i, pid_nr, MAXIMUM_WAIT_OBJECTS, blocking));
+				nr = i + MAXIMUM_WAIT_OBJECTS > pid_nr ?
+						(DWORD)(pid_nr - i) : MAXIMUM_WAIT_OBJECTS;
+				/* wait for 1ms when blocking */
+				idx = WaitForMultipleObjects(nr, proclist + i, FALSE, blocking);
+				TRACE(("poll result: %d\n", idx));
+				if (idx < MAXIMUM_WAIT_OBJECTS) {
+					idx += i;
+					GetExitCodeProcess(proclist[idx], &win_status);
+					*status = exit_code_to_wait_status(win_status);
+					return GetProcessId(proclist[idx]);
 				}
-			}
-			if (idx < pid_nr) {
-				GetExitCodeProcess(proclist[idx], &win_status);
-				*status = exit_code_to_wait_status(win_status);
-				pid = GetProcessId(proclist[idx]);
-				break;
 			}
 		} while (blocking && !pending_int && waitcmd_int != 1);
 	}
-	return pid;
+	return -1;
 }
 #endif
 
