@@ -249,23 +249,8 @@ check_exit_codes:
 		}
 	}
 
-	if (G.running_procs < MAXIMUM_WAIT_OBJECTS)
-		WaitForMultipleObjects((DWORD)G.running_procs, G.procs, FALSE,
-				INFINITE);
-	else {
-		/* Fall back to polling */
-		for (;;) {
-			DWORD nr = i + MAXIMUM_WAIT_OBJECTS > G.running_procs ?
-				(DWORD)(G.running_procs - i) : MAXIMUM_WAIT_OBJECTS;
-			DWORD ret = WaitForMultipleObjects(nr, G.procs + i, FALSE, 100);
-
-			if (ret != WAIT_TIMEOUT)
-				break;
-			i += MAXIMUM_WAIT_OBJECTS;
-			if (i >= G.running_procs)
-				i = 0;
-		}
-	}
+	/* This call is OK:  G.running_procs <= MAXIMUM_WAIT_OBJECTS */
+	WaitForMultipleObjects((DWORD)G.running_procs, G.procs, FALSE, INFINITE);
 
 	goto check_exit_codes;
 }
@@ -808,10 +793,11 @@ int xargs_main(int argc UNUSED_PARAM, char **argv)
 	);
 
 #if ENABLE_FEATURE_XARGS_SUPPORT_PARALLEL
-	if (G.max_procs <= 0) /* -P0 means "run lots of them" */
 #if !ENABLE_PLATFORM_MINGW32
+	if (G.max_procs <= 0) /* -P0 means "run lots of them" */
 		G.max_procs = 100; /* let's not go crazy high */
 #else
+	if (G.max_procs <= 0 || G.max_procs > MAXIMUM_WAIT_OBJECTS)
 		G.max_procs = MAXIMUM_WAIT_OBJECTS;
 	G.procs = xmalloc(sizeof(G.procs[0]) * G.max_procs);
 #endif
