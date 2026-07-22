@@ -18,8 +18,13 @@ int FAST_FUNC file_is_executable(const char *name)
 #if !ENABLE_PLATFORM_MINGW32
 	return (!access(name, X_OK) && !stat(name, &s) && S_ISREG(s.st_mode));
 #else
+	int ret;
+	char newflag = 0; /* reset to default */
+	char oldflag = mingw_stat(&newflag, NULL);
 	/* expand WIN32 implementation of access(2) */
-	return (!stat(name, &s) && S_ISREG(s.st_mode) && (s.st_mode & S_IXUSR));
+	ret = !stat(name, &s) && S_ISREG(s.st_mode) && (s.st_mode & S_IXUSR);
+	mingw_stat(&oldflag, NULL);
+	return ret;
 #endif
 }
 
