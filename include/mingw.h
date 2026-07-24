@@ -296,6 +296,9 @@ int mingw_gethostname(char *host, int namelen) FAST_FUNC;
 int mingw_getaddrinfo(const char *node, const char *service,
 			const struct addrinfo *hints, struct addrinfo **res) FAST_FUNC;
 struct hostent *mingw_gethostbyaddr(const void *addr, socklen_t len, int type) FAST_FUNC;
+int mingw_sendto(int sockfd, const char *buf, int len, int flags, const struct sockaddr *to, int tolen) FAST_FUNC;
+int mingw_recv(int sockfd, char *buf, int len, int flags) FAST_FUNC;
+int mingw_recvfrom(int sockfd, char *buf, int len, int flags, struct sockaddr *from, int *fromlen) FAST_FUNC;
 
 #define socket mingw_socket
 #define connect mingw_connect
@@ -309,6 +312,14 @@ struct hostent *mingw_gethostbyaddr(const void *addr, socklen_t len, int type) F
 #define gethostname mingw_gethostname
 #define getaddrinfo mingw_getaddrinfo
 #define gethostbyaddr mingw_gethostbyaddr
+#define sendto mingw_sendto
+#define recv mingw_recv
+#define recvfrom mingw_recvfrom
+
+/* this is a constant that doesn't collide with AF_* */
+/* Used to add WSA_FLAG_OVERLAPPED to the next call to WSASocket */
+/* Use: mingw_socket(MINGW_INCLUDE_OVERLAPPED_ONCE, 0, 0); */
+#define MINGW_INCLUDE_OVERLAPPED_ONCE 0x512
 
 /*
  * sys/time.h
