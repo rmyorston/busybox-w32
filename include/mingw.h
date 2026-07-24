@@ -412,6 +412,7 @@ struct mingw_stat {
 int is_volume_mount(const char *path);
 int mingw_lstat(const char *file_name, struct mingw_stat *buf);
 int mingw_stat(const char *file_name, struct mingw_stat *buf);
+int mingw_reset_stat(const char *file_name, struct mingw_stat *buf);
 int mingw_fstat(int fd, struct mingw_stat *buf) FAST_FUNC;
 #undef lstat
 #undef stat

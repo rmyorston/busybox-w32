@@ -885,6 +885,22 @@ int mingw_stat(const char *file_name, struct mingw_stat *buf)
 	return do_lstat(1, file_name, buf);
 }
 
+/* Reset the flags which control expensive stat() operations and
+ * call mingw_stat().  This is needed when a previous call has
+ * changed the flags from their default values but the current call
+ * needs that setting. */
+int mingw_reset_stat(const char *file_name, struct mingw_stat *buf)
+{
+	char newflag = 0;
+	char oldflag;
+	int ret;
+
+	oldflag = mingw_stat(&newflag, NULL);
+	ret = mingw_stat(file_name, buf);
+	mingw_stat(&oldflag, NULL);
+	return ret;
+}
+
 #undef st_atime
 #undef st_mtime
 #undef st_ctime
@@ -2140,8 +2156,6 @@ int FAST_FUNC mingw_access(const char *name, int mode)
 {
 	int ret;
 	struct stat s;
-	char oldflag;
-	char newflag = 0;
 
 	/* Windows can only handle test for existence, read or write */
 	if (mode == F_OK || (mode & ~X_OK)) {
@@ -2153,18 +2167,14 @@ int FAST_FUNC mingw_access(const char *name, int mode)
 
 	/* If we reach this point, mode has the X_OK flag.  Reset stat()
 	 * to its default behaviour, in case our caller has altered it. */
-	oldflag = mingw_stat(&newflag, NULL);
-
 	ret = -1;
-	if (!mingw_stat(name, &s)) {
+	if (!mingw_reset_stat(name, &s)) {
 		if ((s.st_mode&S_IXUSR)) {
 			ret = 0;
 		} else {
 			errno = EACCES;
 		}
 	}
-
-	mingw_stat(&oldflag, NULL);
 	return ret;
 }
 

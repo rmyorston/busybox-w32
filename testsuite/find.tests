@@ -75,6 +75,22 @@ testing "find ./// -name .///" \
 	"" \
 	"" ""
 
+optional PLATFORM_MINGW32 FEATURE_FIND_EXEC
+echo -e '#!/bin/sh\necho "$@"' >find.tempdir/echo_sh
+testing "find and run executable script" \
+	"cd find.tempdir && find -name echo_sh -exec ./echo_sh {} \\;" \
+	"./echo_sh\n" \
+	"" ""
+rm find.tempdir/echo_sh
+
+cp $bindir/busybox.exe find.tempdir/busybox_noext
+testing "find and run executable without extension" \
+	"cd find.tempdir && find -name busybox_noext -exec ./busybox_noext echo {} \\;" \
+	"./busybox_noext\n" \
+	"" ""
+rm find.tempdir/busybox_noext
+SKIP=
+
 # testing "description" "command" "result" "infile" "stdin"
 
 rm -rf find.tempdir

@@ -165,19 +165,12 @@ spawnveq(int mode, const char *path, char *const *argv, char *const *env)
 	intptr_t ret;
 	struct stat st;
 	size_t len = 0;
-	char newflag = 0;
-	/* we can be called from applets that have adjusted flags */
-	char oldflag = mingw_stat(&newflag, NULL);
 
 	/*
 	 * Require that the file exists, is a regular file and is executable.
 	 * It may still contain garbage but we let spawnve deal with that.
 	 */
-	newflag = stat(path, &st) == 0;
-	/* reset it back */
-	mingw_stat(&oldflag, NULL);
-
-	if (newflag) {
+	if (mingw_reset_stat(path, &st) == 0) {
 		if (!S_ISREG(st.st_mode) || !(st.st_mode&S_IXUSR)) {
 			errno = EACCES;
 			return -1;
