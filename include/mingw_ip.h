@@ -429,3 +429,34 @@ struct icmp {
 
 #define	ICMP_TIMXCEED_INTRANS	0
 #define	ICMP_TIMXCEED_REASS	1
+
+
+/*  ===================== additions ===================  */
+
+#include <mswsock.h>
+
+/* compat for various options to use Windows structures instead */
+#undef CMSG_DATA
+
+#define CMSG_SPACE     WSA_CMSG_SPACE
+#define CMSG_FIRSTHDR  WSA_CMSG_FIRSTHDR
+#define CMSG_NXTHDR    WSA_CMSG_NXTHDR
+#define CMSG_DATA      WSA_CMSG_DATA
+
+#define iovec _WSABUF
+#define msghdr _WSAMSG
+#define cmsghdr _WSACMSGHDR
+
+#define msg_name       name
+#define msg_namelen    namelen
+#define msg_iov        lpBuffers
+#define msg_iovlen     dwBufferCount
+#define msg_control    Control.buf
+#define msg_controllen Control.len
+#define msg_flags      dwFlags
+#define iov_base buf
+#define iov_len  len
+
+# ifndef SOL_IPV6
+#  define SOL_IPV6 IPPROTO_IPV6
+# endif

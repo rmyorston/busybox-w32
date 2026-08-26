@@ -1,4 +1,5 @@
 #include "libbb.h"
+#include "mingw_ip.h"
 
 int FAST_FUNC inet_aton(const char *cp, struct in_addr *inp)
 {
@@ -127,6 +128,34 @@ int FAST_FUNC mingw_recvfrom(int sockfd, char *buf, int len, int flags, struct s
 	if (res < 0)
 		errno = WSAGetLastError();
 	return res;
+}
+
+int recvmsg(int fd, LPWSAMSG msg, int flags) {
+	DWORD recv_length;
+	LPFN_WSARECVMSG lpWSARecvMsg = NULL;
+	GUID g = WSAID_WSARECVMSG;
+	SOCKET s = (SOCKET)_get_osfhandle(fd);
+
+	/* Look up the WSARecvMsg function for the socket */
+	if (WSAIoctl(s, SIO_GET_EXTENSION_FUNCTION_POINTER,
+			&g, sizeof(g),
+			&lpWSARecvMsg, sizeof(lpWSARecvMsg),
+			&recv_length, NULL, NULL) != 0) {
+		/* WSARecvMsg is not available. Don't do any control messages */
+		msg->msg_controllen = 0;
+		return mingw_recvfrom(fd,
+			msg->msg_iov->iov_base, msg->msg_iov->iov_len,
+			flags,
+			msg->msg_name, &msg->msg_namelen);
+	}
+
+	msg->msg_flags = flags;
+
+	if (lpWSARecvMsg(s, msg, &recv_length, NULL, NULL) != 0) {
+		errno = WSAGetLastError();
+		return -1;
+	}
+	return recv_length;
 }
 
 #undef setsockopt

@@ -891,6 +891,7 @@ static void ping6(len_and_sockaddr *lsa)
 	if (source_lsa)
 		xbind(pingsock, &source_lsa->u.sa, source_lsa->len);
 
+#if !ENABLE_PLATFORM_MINGW32
 #ifdef ICMP6_FILTER
 	{
 		struct icmp6_filter filt;
@@ -905,6 +906,7 @@ static void ping6(len_and_sockaddr *lsa)
 			bb_error_msg_and_die("setsockopt(%s)", "ICMP6_FILTER");
 	}
 #endif /*ICMP6_FILTER*/
+#endif
 
 	/* enable broadcast pings */
 	setsockopt_broadcast(pingsock);
@@ -914,19 +916,27 @@ static void ping6(len_and_sockaddr *lsa)
 	sockopt = (datalen * 2) + 7 * 1024; /* giving it a bit of extra room */
 	setsockopt_SOL_SOCKET_int(pingsock, SO_RCVBUF, sockopt);
 
+#if !ENABLE_PLATFORM_MINGW32
 	sockopt = offsetof(struct icmp6_hdr, icmp6_cksum);
 	BUILD_BUG_ON(offsetof(struct icmp6_hdr, icmp6_cksum) != 2);
 	setsockopt_int(pingsock, SOL_RAW, IPV6_CHECKSUM, sockopt);
+#endif
 
 	/* request ttl info to be returned in ancillary data */
 	setsockopt_1(pingsock, SOL_IPV6, IPV6_HOPLIMIT);
 
+#if !ENABLE_PLATFORM_MINGW32
 	if (if_index)
 		pingaddr.sin6.sin6_scope_id = if_index;
+#endif
 
 	signal(SIGINT, print_stats_and_exit);
 
+#if ENABLE_PLATFORM_MINGW32
+	msg.msg_name = (struct sockaddr *)&from;
+#else
 	msg.msg_name = &from;
+#endif
 	msg.msg_namelen = sizeof(from);
 	msg.msg_iov = &iov;
 	msg.msg_iovlen = 1;
@@ -938,15 +948,36 @@ static void ping6(len_and_sockaddr *lsa)
  send_ping:
 	sendping6(0);
 
+#if ENABLE_PLATFORM_MINGW32
+	/* only let recvfrom delay _roughly_ that long */
+	setsockopt_SOL_SOCKET_int(pingsock, SO_RCVTIMEO, G.interval_us < 1000 ? 1 : G.interval_us / 1000);
+#endif
+
 	/* listen for replies */
 	while (1) {
 		int c;
 		struct cmsghdr *mp;
 		int hoplimit = -1;
 
+#if ENABLE_PLATFORM_MINGW32
+		long long left = G.timeouttill - monotonic_us();
+		if (left <= 0) {
+			G.nextfun(0);
+		} else if (left > G.interval_us && left > 5000) {
+			/* don't busy-wait the last segment */
+			setsockopt_SOL_SOCKET_int(pingsock, SO_RCVTIMEO, left / 1000);
+		}
+#endif
+
 		msg.msg_controllen = sizeof(control_buf);
 		c = recvmsg(pingsock, &msg, 0);
 		if (c < 0) {
+#if ENABLE_PLATFORM_MINGW32
+			if (errno == WSAEINTR) /* we have been interrupted by ^C and that has been handled */
+				exit(G.nreceived == 0 || (G.deadline_us && G.nreceived < pingcount));
+			if (errno == WSAETIMEDOUT)
+				continue;
+#endif
 			if (errno != EINTR)
 				bb_simple_perror_msg("recvfrom");
 			continue;

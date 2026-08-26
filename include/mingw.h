@@ -29,6 +29,7 @@ static inline unsigned int git_ntohl(unsigned int x) { return (unsigned int)ntoh
 #define ntohl git_ntohl
 int inet_aton(const char *cp, struct in_addr *inp) FAST_FUNC;
 int inet_pton(int af, const char *src, void *dst) FAST_FUNC;
+const char *inet_ntop (int, const void *__restrict, char *__restrict, socklen_t);
 
 /*
  * fcntl.h
@@ -299,6 +300,8 @@ struct hostent *mingw_gethostbyaddr(const void *addr, socklen_t len, int type) F
 int mingw_sendto(int sockfd, const char *buf, int len, int flags, const struct sockaddr *to, int tolen) FAST_FUNC;
 int mingw_recv(int sockfd, char *buf, int len, int flags) FAST_FUNC;
 int mingw_recvfrom(int sockfd, char *buf, int len, int flags, struct sockaddr *from, int *fromlen) FAST_FUNC;
+
+int recvmsg(int fd, LPWSAMSG msg, int flags);
 
 #define socket mingw_socket
 #define connect mingw_connect
