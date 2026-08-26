@@ -162,7 +162,7 @@
 # define SOL_RAW IPPROTO_RAW
 #endif
 
-#if ENABLE_PING6
+#if ENABLE_PING6 && !ENABLE_PLATFORM_MINGW32
 # include <netinet/icmp6.h>
 /* I see RENUMBERED constants in bits/in.h - !!?
  * What a fuck is going on with libc? Is it a glibc joke? */
@@ -316,15 +316,19 @@ static void ping6(len_and_sockaddr *lsa)
 {
 	struct icmp6_hdr *pkt;
 	int c;
+#if !ENABLE_PLATFORM_MINGW32
 	int sockopt;
+#endif
 
 	pkt = (struct icmp6_hdr *) G.packet;
 	/*memset(pkt, 0, sizeof(G.packet)); already is */
 	pkt->icmp6_type = ICMP6_ECHO_REQUEST;
 	pkt->icmp6_id = G.myid;
 
+#if !ENABLE_PLATFORM_MINGW32
 	sockopt = offsetof(struct icmp6_hdr, icmp6_cksum);
 	setsockopt_int(pingsock, SOL_RAW, IPV6_CHECKSUM, sockopt);
+#endif
 
 	xsendto(pingsock, G.packet, DEFDATALEN + sizeof(struct icmp6_hdr), &lsa->u.sa, lsa->len);
 
@@ -340,6 +344,10 @@ static void ping6(len_and_sockaddr *lsa)
 		c = recv(pingsock, G.packet, sizeof(G.packet), 0);
 #endif
 		if (c < 0) {
+#if ENABLE_PLATFORM_MINGW32
+			if (errno == WSAETIMEDOUT)
+				return noresp(0);
+#endif
 			if (errno != EINTR)
 				bb_simple_perror_msg("recvfrom");
 			continue;
