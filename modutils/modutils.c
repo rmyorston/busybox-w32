@@ -177,6 +177,11 @@ char* FAST_FUNC parse_cmdline_module_options(char **argv, int quote_spaces)
 }
 #endif
 
+static ALWAYS_INLINE int is_elf_header(uint32_t word)
+{
+	return word == SWAP_BE32(0x7f454c46);
+}
+
 #if ENABLE_FEATURE_INSMOD_TRY_MMAP
 void* FAST_FUNC try_to_mmap_module(const char *filename, size_t *image_size_p)
 {
@@ -197,7 +202,7 @@ void* FAST_FUNC try_to_mmap_module(const char *filename, size_t *image_size_p)
 		image = mmap_read(fd, image_size);
 		if (image == MAP_FAILED) {
 			image = NULL;
-		} else if (*(uint32_t*)image != SWAP_BE32(0x7f454C46)) {
+		} else if (!is_elf_header(*(uint32_t*)image) {
 			/* No ELF signature. Compressed module? */
 			munmap(image, image_size);
 			image = NULL;
@@ -208,6 +213,22 @@ void* FAST_FUNC try_to_mmap_module(const char *filename, size_t *image_size_p)
 	}
 	close(fd);
 	return image;
+}
+#endif
+
+#ifdef __NR_finit_module
+static int has_elf_header(int fd)
+{
+	uint32_t signature;
+	int ret;
+
+	/* use pread(3) here to not change the file offset. in theory,
+	 * a {full,safe}_read() variant for pread would be useful here. */
+	ret = pread(fd, &signature, sizeof(signature), 0);
+	if (ret < sizeof(signature))
+		return 0;
+
+	return is_elf_header(signature);
 }
 #endif
 
@@ -237,19 +258,19 @@ int FAST_FUNC bb_init_module(const char *filename, const char *options)
 	 * to only allow loading of modules off of secure storage (like a read-
 	 * only rootfs) which needs the finit_module call.  If it fails, we fall
 	 * back to normal module loading to support compressed modules.
+	 *
+	 * Note that finit_module()/init_module() only accept ELF image, do some
+	 * basic check before calling finit_module() to prevent the kernel from
+	 * complaining about "invalid ELF header magic" in the kernel ring buffer.
+	 *
+	 * See https://gitlab.alpinelinux.org/alpine/aports/-/work_items/13427
 	 */
 # ifdef __NR_finit_module
 	{
 		int fd = open(filename, O_RDONLY | O_CLOEXEC);
 		if (fd >= 0) {
-			int flags = is_suffixed_with(filename, ".ko") ? 0 : MODULE_INIT_COMPRESSED_FILE;
-			for (;;) {
-				rc = finit_module(fd, options, flags);
-				if (rc == 0 || flags == 0)
-					break;
-				/* Loading non-.ko named uncompressed module? Not likely, but let's try it */
-				flags = 0;
-			}
+			int flags = has_elf_header(fd) ? 0 : MODULE_INIT_COMPRESSED_FILE;
+			rc = finit_module(fd, options, flags);
 			close(fd);
 			if (rc == 0)
 				return rc;
