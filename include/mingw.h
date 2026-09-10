@@ -29,7 +29,8 @@ static inline unsigned int git_ntohl(unsigned int x) { return (unsigned int)ntoh
 #define ntohl git_ntohl
 int inet_aton(const char *cp, struct in_addr *inp) FAST_FUNC;
 int inet_pton(int af, const char *src, void *dst) FAST_FUNC;
-const char *inet_ntop (int, const void *__restrict, char *__restrict, socklen_t);
+const char *mingw_inet_ntop (int, const void *__restrict, char *__restrict, socklen_t);
+#define inet_ntop mingw_inet_ntop
 
 /*
  * fcntl.h

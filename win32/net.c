@@ -26,6 +26,41 @@ void init_winsock(void)
 	initialized = 1;
 }
 
+#undef inet_ntop
+const char *mingw_inet_ntop (int af, const void *__restrict addr, char *__restrict buf, socklen_t buflen) {
+	/* There is an inet_ntop function, but only in Windows Vista */
+	union {
+		struct sockaddr sa;
+		struct sockaddr_in sin;
+#if ENABLE_FEATURE_IPV6
+		struct sockaddr_in6 sin6;
+#endif
+	} u;
+	DWORD buflen_dw = buflen;
+	memset(&u, 0, sizeof(u));
+	u.sa.sa_family = af;
+
+	switch (af) {
+	case AF_INET:
+		memcpy(&u.sin.sin_addr, addr, sizeof(u.sin.sin_addr));
+		break;
+#if ENABLE_FEATURE_IPV6
+	case AF_INET6:
+		memcpy(&u.sin6.sin6_addr, addr, sizeof(u.sin6.sin6_addr));
+		break;
+#endif
+	default:
+		bb_error_msg_and_die("inet_ntop: unsupported family: %d", af);
+	}
+
+	init_winsock();
+	if (WSAAddressToStringA(&u.sa, sizeof(u), NULL, buf, &buflen_dw) != 0) {
+		errno = WSAGetLastError();
+		return NULL;
+	}
+	return buf;
+}
+
 #undef gethostname
 int FAST_FUNC mingw_gethostname(char *name, int namelen)
 {
