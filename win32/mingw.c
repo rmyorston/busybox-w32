@@ -1,6 +1,3 @@
-/* we want to have a symbol with this name but not link against it */
-#define GetSystemTimePreciseAsFileTime __UNUSED__GetSystemTimePreciseAsFileTime
-
 #include "libbb.h"
 #include <userenv.h>
 #include "lazyload.h"
@@ -10,8 +7,6 @@
 #include <ntdef.h>
 #include <psapi.h>
 #include <ntsecapi.h>
-
-#undef GetSystemTimePreciseAsFileTime
 
 #if defined(__MINGW64_VERSION_MAJOR)
 #if ENABLE_GLOBBING
@@ -999,14 +994,15 @@ static inline void timespec_to_filetime(const struct timespec tv, FILETIME *ft)
 	ft->dwHighDateTime = winTime >> 32;
 }
 
-DECLARE_PROC_ADDR(VOID, GetSystemTimePreciseAsFileTime, FILETIME *);
-
 /* precise time is only supported since win8 */
-static void GetSystemTimeMaybePreciseAsFileTime(FILETIME *ft) {
+static void GetSystemTimeMaybePreciseAsFileTime(FILETIME *ft)
+{
+	DECLARE_PROC_ADDR(VOID, GetSystemTimePreciseAsFileTime, FILETIME *);
+
 	if (INIT_PROC_ADDR(kernel32.dll, GetSystemTimePreciseAsFileTime))
-		return GetSystemTimePreciseAsFileTime(ft);
+		GetSystemTimePreciseAsFileTime(ft);
 	else
-		return GetSystemTimeAsFileTime(ft);
+		GetSystemTimeAsFileTime(ft);
 }
 
 static int hutimens(HANDLE fh, const struct timespec times[2])
