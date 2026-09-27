@@ -2271,8 +2271,8 @@ verify(void)
 static void
 add_partition(int n, int sys)
 {
-	char mesg[256];         /* 48 does not suffice in Japanese */
-	int i, num_read = 0;
+	char mesg[64];
+	int i, num_read;
 	struct dos_partition *p = ptes[n].part_table;
 	struct dos_partition *q = ptes[ext_index].part_table;
 	sector_t limit, temp;
@@ -2303,7 +2303,8 @@ add_partition(int n, int sys)
 		for (i = 0; i < g_partitions; i++)
 			first[i] = (cround(first[i]) - 1) * units_per_sector;
 
-	snprintf(mesg, sizeof(mesg), "First %s", str_units());
+	sprintf(mesg, "First %s", str_units());
+	num_read = 0;
 	do {
 		temp = start;
 		for (i = 0; i < g_partitions; i++) {
@@ -2363,7 +2364,7 @@ add_partition(int n, int sys)
 	if (cround(start) == cround(limit)) {
 		stop = limit;
 	} else {
-		snprintf(mesg, sizeof(mesg),
+		sprintf(mesg,
 			 "Last %s or +size{,K,M,G,T}",
 			 str_units()
 		);
