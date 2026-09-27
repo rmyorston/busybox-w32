@@ -730,7 +730,7 @@ write_sector(sector_t secno, const void *buf)
 
 #include "fdisk_aix.c"
 
-STATIC_OSF void bsd_select(void);
+STATIC_OSF void if_osf_label_loop_in_menu_until_r(void);
 STATIC_OSF void xbsd_print_disklabel(int);
 #include "fdisk_osf.c"
 
@@ -2776,12 +2776,8 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 		user_heads = 0;
 	if (user_sectors <= 0 || user_sectors >= 64)
 		user_sectors = 0;
-	//if (opt & OPT_u)
-	//	DISPLAY_IN_CYL_UNITS = 0;
 
-#if ENABLE_FEATURE_FDISK_WRITABLE
-	if (opt & OPT_l) {
-#endif
+	if (!ENABLE_FEATURE_FDISK_WRITABLE || (opt & OPT_l)) {
 		if (*argv) {
 			do {
 				open_list_and_close(*argv, 1);
@@ -2792,9 +2788,9 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 			list_devs_in_proc_partititons();
 		}
 		return 0;
-#if ENABLE_FEATURE_FDISK_WRITABLE
 	}
 
+#if ENABLE_FEATURE_FDISK_WRITABLE
 	if (!argv[0] || argv[1])
 		bb_show_usage();
 
@@ -2809,13 +2805,12 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 	get_boot(OPEN_MAIN);
 
 	if (LABEL_IS_OSF) {
-		/* OSF label, and no DOS label */
+		// OSF label, and no DOS label
 		printf("Detected an OSF/1 disklabel on %s, entering "
 			"disklabel mode\n", disk_device);
-		bsd_select();
-		/*Why do we do this?  It seems to be counter-intuitive*/
-		current_label_type = LABEL_DOS;
-		/* If we return we may want to make an empty DOS label? */
+		if_osf_label_loop_in_menu_until_r();
+		// ^^^ returned: it's not an OSF, or user selected 'return to main menu'
+		current_label_type = LABEL_DOS; // Why do we do this? It seems counter-intuitive
 	}
 
 	while (1) {
@@ -2831,7 +2826,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 			break;
 		case 'b':
 # if ENABLE_FEATURE_OSF_LABEL
-			bsd_select();
+			if_osf_label_loop_in_menu_until_r();
 # endif
 			break;
 		case 'c':
