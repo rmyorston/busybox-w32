@@ -925,7 +925,7 @@ xbsd_link_part(void)
 #endif
 
 static void
-if_osf_label_loop_forever_in_menu(void)
+if_osf_label_loop_in_menu_until_r(void)
 {
 #if !defined(__alpha__)
 	int t, ss;

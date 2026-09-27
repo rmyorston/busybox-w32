@@ -271,7 +271,6 @@ static int get_boot(void);
 #endif
 static sector_t get_start_sect(const struct dos_partition *p);
 static sector_t get_nr_sects(const struct dos_partition *p);
-static void list_disk_name_and_sizes(void);
 
 /* DOS partition types */
 
@@ -734,7 +733,7 @@ STATIC_OSF void if_osf_label_loop_in_menu_until_r(void);
 STATIC_OSF void xbsd_print_disklabel(int);
 #include "fdisk_osf.c"
 
-STATIC_GPT void gpt_list_table(int xtra);
+STATIC_GPT void gpt_print_disklabel(void);
 #include "fdisk_gpt.c"
 
 static inline_if_little_endian uint32_t
@@ -811,7 +810,7 @@ menu(void)
 		//deleted: puts("s\tcreate a new empty Sun disklabel");  /* sun */
 	} else if (LABEL_IS_GPT) {
 		puts("o\tcreate a new empty DOS partition table");
-		puts("p\tprint the partition table");
+		puts("p\tprint partition table");
 		puts("q\tquit without saving changes");
 		//deleted: puts("s\tcreate a new empty Sun disklabel");  /* sun */
 	} else {
@@ -822,12 +821,12 @@ menu(void)
 		puts("l\tlist known partition types");
 		puts("n\tadd a new partition");
 		puts("o\tcreate a new empty DOS partition table");
-		puts("p\tprint the partition table");
+		puts("p\tprint partition table");
 		puts("q\tquit without saving changes");
 		//deleted: puts("s\tcreate a new empty Sun disklabel");  /* sun */
 		puts("t\tchange a partition's system id");
 		puts("u\tchange display/entry units");
-		puts("v\tverify the partition table");
+		puts("v\tverify partition table");
 		puts("w\twrite table to disk and exit");
 #if ENABLE_FEATURE_FDISK_ADVANCED
 		puts("x\textra functionality (experts only)");
@@ -846,15 +845,15 @@ xmenu(void)
 	puts("s\tchange number of sectors/track");
 	if (LABEL_IS_AIX) {
 		puts("b\tmove beginning of data in a partition");
-		puts("e\tlist extended partitions");
+		puts("e\tprint extended partitions");
 	} else {
 		puts("f\tfix partition order");               /* !aix */
 		puts("b\tmove beginning of data in a partition");
-		puts("e\tlist extended partitions");
+		puts("e\tprint extended partitions");
 	}
-	puts("d\tprint the raw data in the partition table");
-	puts("p\tprint the partition table");
-	puts("v\tverify the partition table");
+	puts("d\tprint raw data in partition table");
+	puts("p\tprint partition table");
+	puts("v\tverify partition table");
 	puts("w\twrite table to disk and exit");
 	puts("q\tquit without saving changes");
 	puts("r\treturn to main menu");
@@ -1765,37 +1764,6 @@ check_consistency(const struct dos_partition *p, int partition)
 	}
 }
 
-static void
-list_disk_name_and_sizes(void)
-{
-	char numstr6[6];
-	ullong total_bytes;
-
-	total_bytes = (ullong)total_number_of_sectors * sector_size;
-	smart_ulltoa5(total_bytes, numstr6, " KMGTPEZY")[0] = '\0';
-
-	printf("Disk %s: %s, %llu bytes, %"SECT_FMT"u sectors\n",
-		disk_device,
-		skip_whitespace(numstr6),
-		total_bytes,
-		(SECT_TYPE)total_number_of_sectors
-	);
-}
-
-static void
-list_disk_geometry(void)
-{
-	list_disk_name_and_sizes();
-	printf(
-		"%u cylinders, %u heads, %u sectors/track\n"
-		"Units: %ss of %u * %u = %u bytes\n"
-		"\n",
-		g_cylinders, g_heads, g_sectors,
-		str_units(),
-		units_per_sector, sector_size, units_per_sector * sector_size
-	);
-}
-
 /*
  * Check whether partition entries are ordered by their starting positions.
  * Return 0 if OK. Return i if partition i should have been earlier.
@@ -1945,27 +1913,13 @@ chs_string11(unsigned cyl, unsigned head, unsigned sect)
 	return buf;
 }
 
-static void
-list_table(int xtra)
+static void dos_print_disklabel(void)
 {
 	int i, w;
 
-	if (LABEL_IS_GPT) {
-		gpt_list_table(xtra);
-		return;
-	}
-
-	list_disk_geometry();
-
-	if (LABEL_IS_OSF) {
-		xbsd_print_disklabel(xtra);
-		return;
-	}
-
-	/* Heuristic: we list partition 3 of /dev/foo as /dev/foo3,
-	 * but if the device name ends in a digit, say /dev/foo1,
-	 * then the partition is called /dev/foo1p3.
-	 */
+	// Heuristic: we list partition 3 of /dev/foo as /dev/foo3,
+	// but if the device name ends in a digit, say /dev/foo1,
+	// then the partition is called /dev/foo1p3.
 	w = strlen(disk_device);
 	if (w && isdigit(disk_device[w-1]))
 		w++;
@@ -2006,7 +1960,7 @@ list_table(int xtra)
 
 #define SFMT SECT_FMT
 		//      Boot StartCHS    EndCHS        StartLBA     EndLBA    Sectors  Size Id Type
-		printf("%s%s %-11s"/**/" %-11s"/**/" %10"SFMT"u %10"SFMT"u %10"SFMT"u %s %2x %s\n",
+		printf("%s%s %-11s"/**/" %-11s"/**/" %10"SFMT"u %10"SFMT"u %10"SFMT"u" " %s %2x %s\n",
 			partname(disk_device, i+1, w+2),
 			boot4,
 			chs_string11(p->cyl, p->head, p->sector),
@@ -2033,7 +1987,7 @@ list_table(int xtra)
 
 #if ENABLE_FEATURE_FDISK_ADVANCED
 static void
-x_list_table(int extend)
+x_dos_print_disklabel(int extend)
 {
 	const struct pte *pe;
 	const struct dos_partition *p;
@@ -2064,6 +2018,74 @@ x_list_table(int extend)
 	}
 }
 #endif
+
+static void
+print_disk_name_and_sizes(void)
+{
+	char numstr6[6];
+	ullong total_bytes;
+
+	total_bytes = (ullong)total_number_of_sectors * sector_size;
+	smart_ulltoa5(total_bytes, numstr6, " KMGTPEZY")[0] = '\0';
+
+	printf("Disk %s: %s, %llu bytes, %"SECT_FMT"u sectors\n",
+		disk_device,
+		skip_whitespace(numstr6),
+		total_bytes,
+		(SECT_TYPE)total_number_of_sectors
+	);
+	// util-linux 2.41.1 also says after the above:
+	//Disk model: (string from /sys/dev/block/MAJ:MIN/device/model)
+	//Units: sectors of 1 * 512 = 512 bytes
+	//Sector size (logical/physical): 512 bytes / 512 bytes
+	//I/O size (minimum/optimal): 512 bytes / 512 bytes
+	//Disklabel type: gpt
+	//Disk identifier: FEEDC0DE-BEEF-F00D-FEDC-F0CACC1A1234
+	// or
+	//Disklabel type: dos
+	//Disk identifier: 0xdeafbead
+	//
+	// On a all-zeros image file, these lines reduce to:
+	//Units: sectors of 1 * 512 = 512 bytes
+	//Sector size (logical/physical): 512 bytes / 512 bytes
+	//I/O size (minimum/optimal): 512 bytes / 512 bytes
+	// (yes, with -l, not even "doesn't contain a valid partition table" shown!)
+}
+
+static void
+print_disk_geometry(void)
+{
+	printf(
+		"%u cylinders, %u heads, %u sectors/track\n"
+		"Units: %ss of %u * %u = %u bytes\n"
+		"\n",
+		g_cylinders, g_heads, g_sectors,
+		str_units(),
+		units_per_sector, sector_size, units_per_sector * sector_size
+	);
+}
+
+static void
+print_disklabel(int xtra)
+{
+	// Print common header for all formats
+	print_disk_name_and_sizes();
+
+	if (LABEL_IS_GPT) {
+		gpt_print_disklabel();
+		return;
+	}
+	// GPT does not talk about cylinders/heads/sectors, other formats do
+	print_disk_geometry();
+
+	if (LABEL_IS_OSF) {
+		xbsd_print_disklabel(xtra);
+		return;
+	}
+
+	// So far AIX also goes here - FIXME?
+	dos_print_disklabel();
+}
 
 #if ENABLE_FEATURE_FDISK_WRITABLE
 static void
@@ -2515,9 +2537,9 @@ xselect(void)
 		case 'd':
 			print_raw();
 			break;
-		case 'e':
+		case 'e': // "list extended partitions"
 			if (LABEL_IS_DOS)
-				x_list_table(1);
+				x_dos_print_disklabel(1);
 			break;
 		case 'f':
 			if (LABEL_IS_DOS)
@@ -2539,7 +2561,7 @@ xselect(void)
 		//	if (LABEL_IS_SUN) sun_set_rspeed();
 		//	break;
 		case 'p':
-			x_list_table(0);
+			x_dos_print_disklabel(0);
 			break;
 		case 'q':
 			if (ENABLE_FEATURE_CLEAN_UP)
@@ -2634,7 +2656,8 @@ open_list_and_close(const char *device, int user_specified)
 	}
 
 	if (gb < 0) { /* no DOS signature */
-		list_disk_geometry();
+		print_disk_name_and_sizes();
+		print_disk_geometry();
 		if (LABEL_IS_AIX)
 			goto ret;
 #if ENABLE_FEATURE_OSF_LABEL
@@ -2643,7 +2666,7 @@ open_list_and_close(const char *device, int user_specified)
 			printf("Disk %s doesn't contain a valid "
 				"partition table\n", device);
 	} else {
-		list_table(0);
+		print_disklabel(0);
 #if ENABLE_FEATURE_FDISK_WRITABLE
 		if (g_partitions > 4) {
 			delete_partition(ext_index);
@@ -2859,7 +2882,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 			dos_reset_primary_partition_info();
 			break;
 		case 'p':
-			list_table(0);
+			print_disklabel(0);
 			break;
 		case 'q':
 			if (ENABLE_FEATURE_CLEAN_UP)

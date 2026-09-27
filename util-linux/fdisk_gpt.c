@@ -97,12 +97,11 @@ gpt_print_wide36(uint16_t *s)
 }
 
 static void
-gpt_list_table(int xtra UNUSED_PARAM)
+gpt_print_disklabel(void)
 {
 	int i;
 	char numstr6[6];
 
-	list_disk_name_and_sizes();
 	printf("Logical sector size: %u\n", sector_size);
 	printf("Disk identifier (GUID): ");
 //util-linux 2.41.1 does not print " (GUID)" in above line,
