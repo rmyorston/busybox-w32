@@ -136,7 +136,7 @@ typedef unsigned long long ullong;
 #define DEFAULT_SECTOR_SIZE      512
 #define DEFAULT_SECTOR_SIZE_STR "512"
 #define MAX_SECTOR_SIZE         2048
-#define SECTOR_SIZE              512 /* still used in osf/sgi/sun code */
+#define SECTOR_SIZE              512 /* still used in OSF code */
 #define MAXIMUM_PARTS             60
 
 #define ACTIVE_FLAG             0x80
@@ -179,8 +179,6 @@ enum {
 #define DISPLAY_IN_CYL_UNITS (!(option_mask32 & OPT_u))
 #define TOGGLE_DISPLAY_IN_CYL_UNITS (option_mask32 ^= OPT_u)
 
-/* TODO: just #if ENABLE_FEATURE_FDISK_WRITABLE */
-/* (currently fdisk_sun/sgi.c do not have proper WRITABLE #ifs) */
 #if ENABLE_FEATURE_FDISK_WRITABLE
 static const char msg_building_new_label[] ALIGN1 =
 "Building a new %s. Changes will remain in memory only,\n"
@@ -742,35 +740,6 @@ write_sector(sector_t secno, const void *buf)
 
 #include "fdisk_aix.c"
 
-struct sun_partition {
-	unsigned char info[128];   /* Informative text string */
-	unsigned char spare0[14];
-	struct sun_info {
-		unsigned char spare1;
-		unsigned char id;
-		unsigned char spare2;
-		unsigned char flags;
-	} infos[8];
-	unsigned char spare1[246]; /* Boot information etc. */
-	unsigned short rspeed;     /* Disk rotational speed */
-	unsigned short pcylcount;  /* Physical cylinder count */
-	unsigned short sparecyl;   /* extra sects per cylinder */
-	unsigned char spare2[4];   /* More magic... */
-	unsigned short ilfact;     /* Interleave factor */
-	unsigned short ncyl;       /* Data cylinder count */
-	unsigned short nacyl;      /* Alt. cylinder count */
-	unsigned short ntrks;      /* Tracks per cylinder */
-	unsigned short nsect;      /* Sectors per track */
-	unsigned char spare3[4];   /* Even more magic... */
-	struct sun_partinfo {
-		uint32_t start_cylinder;
-		uint32_t num_sectors;
-	} partitions[8];
-	unsigned short magic;      /* Magic number */
-	unsigned short csum;       /* Label xor'd checksum */
-} FIX_ALIASING;
-typedef struct sun_partition sun_partition;
-#define sunlabel ((sun_partition *)MBRbuffer)
 STATIC_OSF void bsd_select(void);
 STATIC_OSF void xbsd_print_disklabel(int);
 #include "fdisk_osf.c"
@@ -851,12 +820,12 @@ menu(void)
 	if (LABEL_IS_AIX) {
 		puts("o\tcreate a new empty DOS partition table");
 		puts("q\tquit without saving changes");
-		puts("s\tcreate a new empty Sun disklabel");  /* sun */
+		//deleted: puts("s\tcreate a new empty Sun disklabel");  /* sun */
 	} else if (LABEL_IS_GPT) {
 		puts("o\tcreate a new empty DOS partition table");
 		puts("p\tprint the partition table");
 		puts("q\tquit without saving changes");
-		puts("s\tcreate a new empty Sun disklabel");  /* sun */
+		//deleted: puts("s\tcreate a new empty Sun disklabel");  /* sun */
 	} else {
 		puts("a\ttoggle a bootable flag");
 		puts("b\tedit bsd disklabel");
@@ -867,7 +836,7 @@ menu(void)
 		puts("o\tcreate a new empty DOS partition table");
 		puts("p\tprint the partition table");
 		puts("q\tquit without saving changes");
-		puts("s\tcreate a new empty Sun disklabel");  /* sun */
+		//deleted: puts("s\tcreate a new empty Sun disklabel");  /* sun */
 		puts("t\tchange a partition's system id");
 		puts("u\tchange display/entry units");
 		puts("v\tverify the partition table");
@@ -2094,7 +2063,7 @@ list_table(int xtra)
 
 	/* Is partition table in disk order? It need not be, but... */
 	/* partition table entries are not checked for correct order
-	 * if this is a sgi, sun or aix labeled disk... */
+	 * if this is an AIX labeled disk... */
 	if (LABEL_IS_DOS && wrong_p_order(NULL)) {
 		/* FIXME */
 		puts("\nPartition table entries are not in disk order");
