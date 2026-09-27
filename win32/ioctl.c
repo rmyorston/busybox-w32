@@ -4,21 +4,21 @@
 #if ENABLE_STTY || ENABLE_TTYSIZE
 static int mingw_get_terminal_width_height(struct winsize *win)
 {
-	int fd;
-	HANDLE handle;
+	static HANDLE handle = INVALID_HANDLE_VALUE;
 	CONSOLE_SCREEN_BUFFER_INFO sbi;
 
 	win->ws_row = 0;
 	win->ws_col = 0;
 
-	fd = open("CONOUT$", O_RDWR);
-	handle = (HANDLE)_get_osfhandle(fd);
+	handle = CreateFileA("CONOUT$", GENERIC_WRITE,
+						FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
+						FILE_ATTRIBUTE_NORMAL, NULL);
 
-	if (fd != -1 && GetConsoleScreenBufferInfo(handle, &sbi) != 0) {
+	if (handle != INVALID_HANDLE_VALUE &&
+				GetConsoleScreenBufferInfo(handle, &sbi) != 0) {
 		win->ws_row = sbi.srWindow.Bottom - sbi.srWindow.Top + 1;
 		win->ws_col = sbi.srWindow.Right - sbi.srWindow.Left + 1;
 
-		close(fd);
 		return 0;
 	}
 
@@ -68,20 +68,16 @@ static int mingw_set_terminal_width_height(struct winsize *win)
 int ioctl(int fd UNUSED_PARAM, int code, ...)
 {
 	va_list ap;
-#if ENABLE_STTY || ENABLE_TTYSIZE
 	void *arg;
-#endif
 	int ret = -1;
 
 	va_start(ap, code);
 
 	switch (code) {
-#if ENABLE_STTY || ENABLE_TTYSIZE
 	case TIOCGWINSZ:
 		arg = va_arg(ap, void *);
 		ret = mingw_get_terminal_width_height((struct winsize *)arg);
 		break;
-#endif
 #if ENABLE_STTY && 0
 	case TIOCSWINSZ:
 		arg = va_arg(ap, void *);
