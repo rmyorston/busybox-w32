@@ -2422,8 +2422,8 @@ reread_partition_table(int leave)
 	}
 }
 
-static void
-write_table(void)
+static void NORETURN
+write_table_and_exit(void)
 {
 	int i;
 
@@ -2441,7 +2441,8 @@ write_table(void)
 	}
 
 	puts("The partition table has been altered.");
-	reread_partition_table(1);
+	reread_partition_table(1); // 1: exit
+	bb_unreachable(abort());
 }
 #endif /* FEATURE_FDISK_WRITABLE */
 
@@ -2577,7 +2578,7 @@ xselect(void)
 			verify();
 			break;
 		case 'w':
-			write_table();  /* does not return */
+			write_table_and_exit();
 			break;
 		//deleted:
 		//case 'y':
@@ -2894,7 +2895,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 			verify();
 			break;
 		case 'w':
-			write_table();  /* does not return */
+			write_table_and_exit();
 			break;
 # if ENABLE_FEATURE_FDISK_ADVANCED
 		case 'x':
