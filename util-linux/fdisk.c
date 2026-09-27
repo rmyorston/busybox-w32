@@ -179,16 +179,6 @@ enum {
 #define DISPLAY_IN_CYL_UNITS (!(option_mask32 & OPT_u))
 #define TOGGLE_DISPLAY_IN_CYL_UNITS (option_mask32 ^= OPT_u)
 
-#if ENABLE_FEATURE_FDISK_WRITABLE
-static const char msg_building_new_label[] ALIGN1 =
-"Building a new %s. Changes will remain in memory only,\n"
-"until you decide to write them. After that the previous content\n"
-"won't be recoverable.\n";
-
-static const char msg_part_already_defined[] ALIGN1 =
-"Partition %u is already defined, delete it before re-adding\n";
-#endif
-
 #define SUPPORT_DISKLABELS (0 \
 	| ENABLE_FEATURE_AIX_LABEL \
 	| ENABLE_FEATURE_OSF_LABEL \
@@ -1142,7 +1132,9 @@ read_extended(int ext)
 static void
 create_doslabel(void)
 {
-	printf(msg_building_new_label, "DOS disklabel");
+	// util-linux 2.41.1 says:
+	// "Created a new DOS (MBR) disklabel with disk identifier 0xdeafbead."
+	puts("Created a new DOS (MBR) disklabel.");
 
 	current_label_type = LABEL_DOS;
 	IF_FEATURE_OSF_LABEL(possibly_osf_label = 0;)
@@ -1344,7 +1336,8 @@ static int get_boot(void)
 	if (!valid_part_table_flag(MBRbuffer)) {
 		if (what == TRY_ONLY)
 			return -1;
-		/* OPEN_MAIN: */
+		// OPEN_MAIN:
+		// util-linux 2.41.1 says: "Device does not contain a recognized partition table."
 		puts("Device has no valid DOS"
 # if SUPPORT_DISKLABELS
 			IF_FEATURE_OSF_LABEL(", OSF")
@@ -2209,7 +2202,7 @@ add_partition(int n, int sys)
 	sector_t first[g_partitions], last[g_partitions];
 
 	if (p && p->sys_ind) {
-		printf(msg_part_already_defined, n + 1);
+		printf("Partition %u is already defined, delete it before re-adding\n", n + 1);
 		return;
 	}
 	fill_bounds(first, last);
@@ -2814,6 +2807,13 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 
 	if (!argv[0] || argv[1])
 		bb_show_usage();
+
+	// Unless -l or -s, util-linux 2.41.1 prints this message
+	// even before trying to open the device (try "fdisk /dev/bogus").
+	puts( //"Welcome to fdisk (busybox "BB_VER")\n" //should we print this too?
+	"Changes will remain in memory only, until you decide to write them.\n"
+	"Be careful before using the write command."
+	);
 
 	disk_device = argv[0];
 	get_boot(OPEN_MAIN);
