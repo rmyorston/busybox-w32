@@ -209,10 +209,10 @@ struct dos_partition {
 struct pte {
 	struct dos_partition *part_table;   /* points into sectorbuffer */
 	struct dos_partition *ext_pointer;  /* points into sectorbuffer */
-	sector_t offset_from_dev_start; /* disk sector number */
-	char *sectorbuffer;             /* disk sector contents */
+	sector_t offset_from_dev_start;     /* disk sector number */
+	uint8_t *sectorbuffer;              /* disk sector contents */
 #if ENABLE_FEATURE_FDISK_WRITABLE
-	char changed;                   /* boolean */
+	char changed; /* boolean */
 #endif
 };
 
@@ -261,7 +261,7 @@ static unsigned get_partition(int warn, unsigned max);
 static void list_types(const char *const *sys);
 static sector_t read_int(sector_t low, sector_t dflt, sector_t high, sector_t base, const char *mesg);
 #endif
-static const char *partition_type(unsigned char type);
+static const char *partition_type(uint8_t type);
 static void get_geometry(void);
 static void read_pte(struct pte *pe, sector_t offset);
 #if ENABLE_FEATURE_FDISK_WRITABLE
@@ -417,7 +417,7 @@ struct globals {
 	const char *opt_t;
 #if ENABLE_FEATURE_GPT_LABEL
 	struct gpt_header *gpt_hdr;
-	char *gpt_part_array;
+	uint8_t *gpt_part_array;
 	unsigned gpt_n_parts;
 	unsigned gpt_part_entry_len;
 #endif
@@ -426,7 +426,7 @@ struct globals {
 	char line_buffer[80];
 	/* Raw disk label. For DOS-type partition tables the MBR,
 	 * with descriptions of the primary partitions. */
-	char MBRbuffer[MAX_SECTOR_SIZE];
+	uint8_t MBRbuffer[MAX_SECTOR_SIZE];
 	/* Partition tables */
 	struct pte ptes[MAXIMUM_PARTS];
 };
@@ -609,9 +609,9 @@ str_units(void)
 }
 
 static int
-valid_part_table_flag(const char *mbuffer)
+valid_part_table_flag(const uint8_t *mbuffer)
 {
-	return (mbuffer[510] == 0x55 && (uint8_t)mbuffer[511] == 0xaa);
+	return (mbuffer[510] == 0x55 && mbuffer[511] == 0xaa);
 }
 
 static void fdisk_fatal(const char *why)
@@ -659,7 +659,7 @@ set_changed(int i)
 }
 
 static ALWAYS_INLINE void
-write_part_table_flag(char *b)
+write_part_table_flag(uint8_t *b)
 {
 	b[510] = 0x55;
 	b[511] = 0xaa;
@@ -737,8 +737,8 @@ STATIC_OSF void xbsd_print_disklabel(int);
 STATIC_GPT void gpt_list_table(int xtra);
 #include "fdisk_gpt.c"
 
-static inline_if_little_endian unsigned
-read4_little_endian(const unsigned char *cp)
+static inline_if_little_endian uint32_t
+read4_little_endian(const uint8_t *cp)
 {
 	uint32_t v;
 	move_from_unaligned32(v, cp);
@@ -761,7 +761,7 @@ get_nr_sects(const struct dos_partition *p)
 /* start_sect and nr_sects are stored little endian on all machines */
 /* moreover, they are not aligned correctly */
 static inline_if_little_endian void
-store4_little_endian(unsigned char *cp, unsigned val)
+store4_little_endian(uint8_t *cp, uint32_t val)
 {
 	uint32_t v = SWAP_LE32(val);
 	move_to_unaligned32(cp, v);
@@ -790,9 +790,7 @@ read_pte(struct pte *pe, sector_t offset)
 	/* xread would make us abort - bad for fdisk -l */
 	if (full_read(dev_fd, pe->sectorbuffer, sector_size) != sector_size)
 		fdisk_fatal(unable_to_read);
-#if ENABLE_FEATURE_FDISK_WRITABLE
-	pe->changed = 0;
-#endif
+	IF_FEATURE_FDISK_WRITABLE(pe->changed = 0;)
 	pe->part_table = pe->ext_pointer = NULL;
 }
 
@@ -863,24 +861,16 @@ xmenu(void)
 }
 #endif /* ADVANCED mode */
 
-#if ENABLE_FEATURE_FDISK_WRITABLE
-static const char *const *
-get_sys_types(void)
-{
-	return i386_sys_types;
-}
-#else
 #define get_sys_types() i386_sys_types
-#endif
 
 static const char *
-partition_type(unsigned char type)
+partition_type(uint8_t type)
 {
 	int i;
 	const char *const *types = get_sys_types();
 
 	for (i = 0; types[i]; i++)
-		if ((unsigned char)types[i][0] == type)
+		if ((uint8_t)types[i][0] == type)
 			return types[i] + 1;
 
 	return "Unknown";
@@ -890,7 +880,7 @@ static int
 is_cleared_partition(const struct dos_partition *p)
 {
 	/* We consider partition "cleared" only if it has only zeros */
-	const char *cp = (const char *)p;
+	const uint8_t *cp = (const uint8_t *)p;
 	int cnt = sizeof(*p);
 	char bits = 0;
 	while (--cnt >= 0)
@@ -1178,13 +1168,13 @@ get_kernel_geometry(void)
 static void
 get_partition_table_geometry(void)
 {
-	const unsigned char *bufp = (const unsigned char *)MBRbuffer;
+	const uint8_t *bufp = MBRbuffer;
 	struct dos_partition *p;
 	int i, h, s, hh, ss;
 	int first = 1;
 	int bad = 0;
 
-	if (!(valid_part_table_flag((char*)bufp)))
+	if (!(valid_part_table_flag(bufp)))
 		return;
 
 	hh = ss = 0;
@@ -2442,14 +2432,14 @@ write_table_and_exit(void)
 #if ENABLE_FEATURE_FDISK_ADVANCED
 #define MAX_PER_LINE    16
 static void
-print_buffer(char *pbuffer)
+print_buffer(uint8_t *pbuffer)
 {
-	int i,l;
+	int i, l;
 
 	for (i = 0, l = 0; i < sector_size; i++, l++) {
 		if (l == 0)
 			printf("0x%03X:", i);
-		printf(" %02X", (unsigned char) pbuffer[i]);
+		printf(" %02X", pbuffer[i]);
 		if (l == MAX_PER_LINE - 1) {
 			bb_putchar('\n');
 			l = -1;

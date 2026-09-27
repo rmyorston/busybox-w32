@@ -254,7 +254,18 @@ static int xbsd_readlabel(struct dos_partition *p);
 static int xbsd_writelabel(struct dos_partition *p);
 
 #if defined(__alpha__)
-static void alpha_bootblock_checksum(char *boot);
+static void
+alpha_bootblock_checksum(uint8_t *boot)
+{
+	uint64_t *dp, sum;
+	int i;
+
+	dp = (uint64_t *)boot;
+	sum = 0;
+	for (i = 0; i < 63; i++)
+		sum += dp[i];
+	dp[63] = sum;
+}
 #endif
 
 #if !defined(__alpha__)
@@ -267,7 +278,7 @@ static void xbsd_link_part(void);
 struct bsd_globals {
 /* We access this through a uint64_t * when checksumming */
 /* hopefully xmalloc gives us required alignment */
-	char disklabelbuffer[BSD_BBSIZE];
+	uint8_t disklabelbuffer[BSD_BBSIZE];
 	struct xbsd_disklabel xbsd_dlabel;
 };
 
@@ -714,7 +725,7 @@ xbsd_write_bootstrap(void)
 	const char *bootdir = BSD_LINUX_BOOTDIR;
 	const char *dkbasename;
 	struct xbsd_disklabel dl;
-	char *d, *p, *e;
+	uint8_t *d, *p, *e;
 	int sector;
 
 	if (xbsd_dlabel.d_type == BSD_DTYPE_SCSI)
@@ -1027,21 +1038,6 @@ xbsd_link_part(void)
 	xbsd_dlabel.d_partitions[i].p_fstype = xbsd_translate_fstype(p->sys_ind);
 }
 #endif
-
-#if defined(__alpha__)
-static void
-alpha_bootblock_checksum(char *boot)
-{
-	uint64_t *dp, sum;
-	int i;
-
-	dp = (uint64_t *)boot;
-	sum = 0;
-	for (i = 0; i < 63; i++)
-		sum += dp[i];
-	dp[63] = sum;
-}
-#endif /* __alpha__ */
 
 /* Undefine 'global' tricks */
 #undef disklabelbuffer
