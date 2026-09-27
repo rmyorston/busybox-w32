@@ -571,22 +571,13 @@ partname(const char *dev, int pno, int lth)
 
 	w = strlen(dev);
 	p = "";
-
-	if (isdigit(dev[w-1]))
+	if (isdigit(dev[w - 1]))
 		p = "p";
-
-	/* devfs kludge - note: fdisk partition names are not supposed
-	   to equal kernel names, so there is no reason to do this */
-	if (strcmp(dev + w - 4, "disc") == 0) {
-		w -= 4;
-		p = "part";
-	}
-
-	wp = strlen(p);
+	wp = (p[0] != '\0'); //=strlen(p)
 
 	if (lth) {
 		snprintf(bufp, bufsiz, "%*.*s%s%-2u",
-			lth-wp-2, w, dev, p, pno);
+			lth - wp - 2, w, dev, p, pno);
 	} else {
 		snprintf(bufp, bufsiz, "%.*s%s%-2u", w, dev, p, pno);
 	}
