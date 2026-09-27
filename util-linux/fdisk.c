@@ -2071,23 +2071,21 @@ open_list_and_close(const char *device, int user_specified)
 		if (is_ide_cdrom_or_tape(device))
 			return;
 
-	/* Open disk_device, save file descriptor to dev_fd */
+	// Open disk_device, save file descriptor to dev_fd
 	errno = 0;
 	gb = get_boot(TRY_ONLY);
-	if (gb > 0) {   /* I/O error */
-		/* Ignore other errors, since we try IDE
-		   and SCSI hard disks which may not be
-		   installed on the system. */
+	if (gb > 0) {  // I/O error
+		// Ignore other errors, since we try IDE
+		// and SCSI hard disks which may not be
+		// installed on the system.
 		if (user_specified || errno == EACCES)
 			bb_perror_msg("can't open '%s'", device);
 		return;
 	}
 
-	if (gb < 0) { /* no DOS signature */
+	if (gb < 0) { // no DOS/AIX signature
 		print_disk_name_and_sizes();
 		print_disk_geometry();
-		if (LABEL_IS_AIX)
-			goto ret;
 #if ENABLE_FEATURE_OSF_LABEL
 		if (bsd_trydev(device) < 0)
 #endif
@@ -2095,13 +2093,7 @@ open_list_and_close(const char *device, int user_specified)
 				"partition table\n", device);
 	} else {
 		print_disklabel(0);
-#if ENABLE_FEATURE_FDISK_WRITABLE
-		if (g_partitions > 4) {
-			delete_partition(ext_index);
-		}
-#endif
 	}
- ret:
 	close_dev_fd();
 }
 
