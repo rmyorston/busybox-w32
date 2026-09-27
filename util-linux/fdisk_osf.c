@@ -249,9 +249,9 @@ static int xbsd_get_part_index(int max);
 static int xbsd_check_new_partition(int *i);
 static void xbsd_list_types(void);
 static uint16_t xbsd_dkcksum(struct xbsd_disklabel *lp);
-static int xbsd_initlabel(struct partition *p);
-static int xbsd_readlabel(struct partition *p);
-static int xbsd_writelabel(struct partition *p);
+static int xbsd_initlabel(struct dos_partition *p);
+static int xbsd_readlabel(struct dos_partition *p);
+static int xbsd_writelabel(struct dos_partition *p);
 
 #if defined(__alpha__)
 static void alpha_bootblock_checksum(char *boot);
@@ -349,7 +349,7 @@ bsd_select(void)
 {
 #if !defined(__alpha__)
 	int t, ss;
-	struct partition *p;
+	struct dos_partition *p;
 
 	for (t = 0; t < 4; t++) {
 		p = get_part_table(t);
@@ -847,7 +847,7 @@ xbsd_dkcksum(struct xbsd_disklabel *lp)
 }
 
 static int
-xbsd_initlabel(struct partition *p)
+xbsd_initlabel(struct dos_partition *p)
 {
 	struct xbsd_disklabel *d = &xbsd_dlabel;
 	struct xbsd_partition *pp;
@@ -915,7 +915,7 @@ xbsd_initlabel(struct partition *p)
  * If it has the right magic, return 1.
  */
 static int
-xbsd_readlabel(struct partition *p)
+xbsd_readlabel(struct dos_partition *p)
 {
 	struct xbsd_disklabel *d;
 	int t, sector;
@@ -955,7 +955,7 @@ xbsd_readlabel(struct partition *p)
 }
 
 static int
-xbsd_writelabel(struct partition *p)
+xbsd_writelabel(struct dos_partition *p)
 {
 	struct xbsd_disklabel *d = &xbsd_dlabel;
 	unsigned int sector;
@@ -1013,7 +1013,7 @@ static void
 xbsd_link_part(void)
 {
 	int k, i;
-	struct partition *p;
+	struct dos_partition *p;
 
 	k = get_partition(1, g_partitions);
 

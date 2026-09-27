@@ -146,7 +146,7 @@ static int
 check_gpt_label(void)
 {
 	unsigned part_array_len;
-	struct partition *first = pt_offset(MBRbuffer, 0);
+	struct dos_partition *first = pt_offset(MBRbuffer, 0);
 	struct pte pe;
 	uint32_t crc;
 

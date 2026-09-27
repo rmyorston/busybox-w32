@@ -185,17 +185,17 @@ enum {
 	| ENABLE_FEATURE_GPT_LABEL \
 )
 
-struct partition {
-	unsigned char boot_ind;         /* 0x80 - active */
-	unsigned char head;             /* starting head */
-	unsigned char sector;           /* starting sector */
-	unsigned char cyl;              /* starting cylinder */
-	unsigned char sys_ind;          /* what partition type */
-	unsigned char end_head;         /* end head */
-	unsigned char end_sector;       /* end sector */
-	unsigned char end_cyl;          /* end cylinder */
-	unsigned char start4[4];        /* starting sector counting from 0 */
-	unsigned char size4[4];         /* nr of sectors in partition */
+struct dos_partition {
+	uint8_t boot_ind;         /* 0x80 - active */
+	uint8_t head;             /* starting head */
+	uint8_t sector;           /* starting sector */
+	uint8_t cyl;              /* starting cylinder */
+	uint8_t sys_ind;          /* what partition type */
+	uint8_t end_head;         /* end head */
+	uint8_t end_sector;       /* end sector */
+	uint8_t end_cyl;          /* end cylinder */
+	uint8_t start4[4];        /* starting sector counting from 0 */
+	uint8_t size4[4];         /* nr of sectors in partition */
 } PACKED;
 
 /*
@@ -207,8 +207,8 @@ struct partition {
  * partition and one link to the next one.
  */
 struct pte {
-	struct partition *part_table;   /* points into sectorbuffer */
-	struct partition *ext_pointer;  /* points into sectorbuffer */
+	struct dos_partition *part_table;   /* points into sectorbuffer */
+	struct dos_partition *ext_pointer;  /* points into sectorbuffer */
 	sector_t offset_from_dev_start; /* disk sector number */
 	char *sectorbuffer;             /* disk sector contents */
 #if ENABLE_FEATURE_FDISK_WRITABLE
@@ -269,8 +269,8 @@ static int get_boot(enum action what);
 #else
 static int get_boot(void);
 #endif
-static sector_t get_start_sect(const struct partition *p);
-static sector_t get_nr_sects(const struct partition *p);
+static sector_t get_start_sect(const struct dos_partition *p);
+static sector_t get_nr_sects(const struct dos_partition *p);
 static void list_disk_name_and_sizes(void);
 
 /* DOS partition types */
@@ -403,7 +403,7 @@ struct globals {
 	smallint dos_compatible_flag; // = 1;
 #if ENABLE_FEATURE_OSF_LABEL
 # if !defined(__alpha__)
-	struct partition *xbsd_part;
+	struct dos_partition *xbsd_part;
 	unsigned xbsd_part_index;
 # endif
 #endif
@@ -545,7 +545,7 @@ static sector_t bb_getsize_in_sectors(int fd)
 #define scround(x)      (((x)+units_per_sector-1)/units_per_sector)
 
 #define pt_offset(b, n) \
-	((struct partition *)((b) + 0x1be + (n) * sizeof(struct partition)))
+	((struct dos_partition *)((b) + 0x1be + (n) * sizeof(struct dos_partition)))
 
 #define sector(s)       ((s) & 0x3f)
 
@@ -595,7 +595,7 @@ partname(const char *dev, int pno, int lth)
 }
 
 #if ENABLE_FEATURE_OSF_LABEL
-static ALWAYS_INLINE struct partition *
+static ALWAYS_INLINE struct dos_partition *
 get_part_table(int i)
 {
 	return ptes[i].part_table;
@@ -746,13 +746,13 @@ read4_little_endian(const unsigned char *cp)
 }
 
 static sector_t
-get_start_sect(const struct partition *p)
+get_start_sect(const struct dos_partition *p)
 {
 	return read4_little_endian(p->start4);
 }
 
 static sector_t
-get_nr_sects(const struct partition *p)
+get_nr_sects(const struct dos_partition *p)
 {
 	return read4_little_endian(p->size4);
 }
@@ -768,13 +768,13 @@ store4_little_endian(unsigned char *cp, unsigned val)
 }
 
 static void
-set_start_sect(struct partition *p, unsigned start_sect)
+set_start_sect(struct dos_partition *p, unsigned start_sect)
 {
 	store4_little_endian(p->start4, start_sect);
 }
 
 static void
-set_nr_sects(struct partition *p, unsigned nr_sects)
+set_nr_sects(struct dos_partition *p, unsigned nr_sects)
 {
 	store4_little_endian(p->size4, nr_sects);
 }
@@ -887,7 +887,7 @@ partition_type(unsigned char type)
 }
 
 static int
-is_cleared_partition(const struct partition *p)
+is_cleared_partition(const struct dos_partition *p)
 {
 	/* We consider partition "cleared" only if it has only zeros */
 	const char *cp = (const char *)p;
@@ -899,7 +899,7 @@ is_cleared_partition(const struct partition *p)
 }
 
 static void
-clear_partition(struct partition *p)
+clear_partition(struct dos_partition *p)
 {
 	if (p)
 		memset(p, 0, sizeof(*p));
@@ -954,7 +954,7 @@ list_types(const char *const *sys)
 	s |= (sector >> 2) & 0xc0;   \
 } while (0)
 
-static void set_hsc_start_end(struct partition *p, sector_t start, sector_t stop)
+static void set_hsc_start_end(struct dos_partition *p, sector_t start, sector_t stop)
 {
 	if (dos_compatible_flag && (start / (g_sectors * g_heads) > 1023))
 		start = g_heads * g_sectors * 1024 - 1;
@@ -968,7 +968,7 @@ static void set_hsc_start_end(struct partition *p, sector_t start, sector_t stop
 static void
 set_partition(int i, int doext, sector_t start, sector_t stop, int sysid)
 {
-	struct partition *p;
+	struct dos_partition *p;
 	sector_t offset;
 
 	if (doext) {
@@ -1040,7 +1040,7 @@ read_extended(int ext)
 {
 	int i;
 	struct pte *pex;
-	struct partition *p, *q;
+	struct dos_partition *p, *q;
 
 	ext_index = ext;
 	pex = &ptes[ext];
@@ -1179,7 +1179,7 @@ static void
 get_partition_table_geometry(void)
 {
 	const unsigned char *bufp = (const unsigned char *)MBRbuffer;
-	struct partition *p;
+	struct dos_partition *p;
 	int i, h, s, hh, ss;
 	int first = 1;
 	int bad = 0;
@@ -1518,7 +1518,7 @@ get_existing_partition(int warn, unsigned max)
 
 	for (i = 0; i < max; i++) {
 		struct pte *pe = &ptes[i];
-		struct partition *p = pe->part_table;
+		struct dos_partition *p = pe->part_table;
 
 		if (p && !is_cleared_partition(p)) {
 			if (pno >= 0)
@@ -1546,7 +1546,7 @@ get_nonexisting_partition(void)
 
 	for (i = 0; i < max; i++) {
 		struct pte *pe = &ptes[i];
-		struct partition *p = pe->part_table;
+		struct dos_partition *p = pe->part_table;
 
 		if (p && is_cleared_partition(p)) {
 			if (pno >= 0)
@@ -1579,7 +1579,7 @@ static void
 toggle_active(int i)
 {
 	struct pte *pe = &ptes[i];
-	struct partition *p = pe->part_table;
+	struct dos_partition *p = pe->part_table;
 
 	if (IS_EXTENDED(p->sys_ind) && !p->boot_ind)
 		printf("WARNING: Partition %u is an extended partition\n", i + 1);
@@ -1604,8 +1604,8 @@ static void
 delete_partition(int i)
 {
 	struct pte *pe = &ptes[i];
-	struct partition *p = pe->part_table;
-	struct partition *q = pe->ext_pointer;
+	struct dos_partition *p = pe->part_table;
+	struct dos_partition *q = pe->ext_pointer;
 
 /* Note that for the fifth partition (i == 4) we don't actually
  * decrement partitions.
@@ -1669,7 +1669,7 @@ static void
 change_sysid(void)
 {
 	int i, sys, origsys;
-	struct partition *p;
+	struct dos_partition *p;
 
 	i = get_existing_partition(0, g_partitions);
 	if (i == -1)
@@ -1732,7 +1732,7 @@ linear2chs(unsigned ls, unsigned *c, unsigned *h, unsigned *s)
 }
 
 static void
-check_consistency(const struct partition *p, int partition)
+check_consistency(const struct dos_partition *p, int partition)
 {
 	unsigned pbc, pbh, pbs;          /* physical beginning c, h, s */
 	unsigned pec, peh, pes;          /* physical ending c, h, s */
@@ -1815,7 +1815,7 @@ static int
 wrong_p_order(int *prev)
 {
 	const struct pte *pe;
-	const struct partition *p;
+	const struct dos_partition *p;
 	sector_t last_p_start_pos = 0, p_start_pos;
 	unsigned i, last_i = 0;
 
@@ -1860,7 +1860,7 @@ static void
 fix_chain_of_logicals(void)
 {
 	int j, oj, ojj, sj, sjj;
-	struct partition *pj,*pjj,tmp;
+	struct dos_partition *pj,*pjj,tmp;
 
 	/* Stage 1: sort sectors but leave sector of part 4 */
 	/* (Its sector is the global extended_offset.) */
@@ -1922,7 +1922,7 @@ fix_partition_table_order(void)
 	while ((i = wrong_p_order(&k)) != 0 && i < 4) {
 		/* partition i should have come earlier, move it */
 		/* We have to move data in the MBR */
-		struct partition *pi, *pk, *pe, pbuf;
+		struct dos_partition *pi, *pk, *pe, pbuf;
 		pei = &ptes[i];
 		pek = &ptes[k];
 
@@ -1933,9 +1933,9 @@ fix_partition_table_order(void)
 		pi = pei->part_table;
 		pk = pek->part_table;
 
-		memmove(&pbuf, pi, sizeof(struct partition));
-		memmove(pi, pk, sizeof(struct partition));
-		memmove(pk, &pbuf, sizeof(struct partition));
+		memmove(&pbuf, pi, sizeof(struct dos_partition));
+		memmove(pi, pk, sizeof(struct dos_partition));
+		memmove(pk, &pbuf, sizeof(struct dos_partition));
 
 		pei->changed = pek->changed = 1;
 	}
@@ -1986,7 +1986,7 @@ list_table(int xtra)
 		   w-1, "Device");
 
 	for (i = 0; i < g_partitions; i++) {
-		const struct partition *p;
+		const struct dos_partition *p;
 		const struct pte *pe = &ptes[i];
 		char boot4[4];
 		char numstr6[6];
@@ -2046,7 +2046,7 @@ static void
 x_list_table(int extend)
 {
 	const struct pte *pe;
-	const struct partition *p;
+	const struct dos_partition *p;
 	int i;
 
 	printf("\nDisk %s: %u heads, %u sectors, %u cylinders\n\n",
@@ -2081,7 +2081,7 @@ fill_bounds(sector_t *first, sector_t *last)
 {
 	unsigned i;
 	const struct pte *pe = &ptes[0];
-	const struct partition *p;
+	const struct dos_partition *p;
 
 	for (i = 0; i < g_partitions; pe++,i++) {
 		p = pe->part_table;
@@ -2126,7 +2126,7 @@ verify(void)
 	sector_t total = 1;
 	sector_t chs_size;
 	sector_t first[g_partitions], last[g_partitions];
-	struct partition *p;
+	struct dos_partition *p;
 
 	if (warn_geometry())
 		return;
@@ -2195,8 +2195,8 @@ add_partition(int n, int sys)
 {
 	char mesg[256];         /* 48 does not suffice in Japanese */
 	int i, num_read = 0;
-	struct partition *p = ptes[n].part_table;
-	struct partition *q = ptes[ext_index].part_table;
+	struct dos_partition *p = ptes[n].part_table;
+	struct dos_partition *q = ptes[ext_index].part_table;
 	sector_t limit, temp;
 	sector_t start, stop = 0;
 	sector_t first[g_partitions], last[g_partitions];
@@ -2474,7 +2474,7 @@ static void
 move_begin(unsigned i)
 {
 	struct pte *pe = &ptes[i];
-	struct partition *p = pe->part_table;
+	struct dos_partition *p = pe->part_table;
 	sector_t new, first, nr_sects;
 
 	if (warn_geometry())
