@@ -44,23 +44,6 @@
 //config:	Enabling this option allows you to create or change AIX disklabels.
 //config:	Most people can safely leave this option disabled.
 //config:
-//config:config FEATURE_SGI_LABEL
-//config:	bool "Support SGI disklabels"
-//config:	default n
-//config:	depends on FDISK && FEATURE_FDISK_WRITABLE
-//config:	help
-//config:	Enabling this option allows you to create or change SGI disklabels.
-//config:	Most people can safely leave this option disabled.
-//config:
-//config:config FEATURE_SUN_LABEL
-//config:	bool "Support SUN disklabels"
-//config:	default n
-//config:	depends on FDISK && FEATURE_FDISK_WRITABLE
-//config:	help
-//config:	Enabling this option allows you to create or change SUN disklabels.
-//config:	Most people can safely leave this option disabled.
-//config:
-//TODO: retain only support for GPT and maybe OSF (BSD), the rest is dead for 20+ years.
 //config:config FEATURE_OSF_LABEL
 //config:	bool "Support BSD disklabels"
 //config:	default n
@@ -68,6 +51,7 @@
 //config:	help
 //config:	Enabling this option allows you to create or change BSD disklabels
 //config:	and define and edit BSD disk slices.
+//config:	Most people can safely leave this option disabled.
 //config:
 //config:config FEATURE_GPT_LABEL
 //config:	bool "Support GPT disklabels"
@@ -95,16 +79,16 @@
 //usage:       "[-ul" IF_FEATURE_FDISK_BLKSIZE("s") "] "
 //usage:       "[-C CYLINDERS] [-H HEADS] [-S SECTORS] [-b SSZ] [-t PARTTYPE] DISK"
 //usage:#define fdisk_full_usage "\n\n"
-//usage:       "Change partition table\n"
+//usage:	IF_FEATURE_FDISK_WRITABLE("Change")IF_NOT_FEATURE_FDISK_WRITABLE("Show")" partition table\n"
 //usage:     "\n	-u		Start and End are in sectors (instead of cylinders)"
-//usage:     "\n	-l		Show partition table for each DISK, then exit"
+//usage:     "\n	-l		Show partition table for each DISK and exit"
 //usage:	IF_FEATURE_FDISK_BLKSIZE(
-//usage:     "\n	-s		Show sizes in kb for each DISK, then exit"
+//usage:     "\n	-s		Show size in kb for each DISK and exit"
 //NB: util-linux 2.41.1 says: "-s,--getsz: display device size in 512-byte sectors"
 //but in fact, util-linux 2.41.1 shows the size in KILOBYTES!
 //usage:	)
 //usage:     "\n	-b 2048		(for certain MO disks) use 2048-byte sectors"
-//usage:     "\n	-T PARTTYPE	Force 'dos' partition if 'gpt' also present"
+//usage:     "\n	-t PARTTYPE	Force 'dos' partition if 'gpt' also present"
 //usage:     "\n	-C CYLINDERS	Set number of cylinders/heads/sectors"
 //usage:     "\n	-H HEADS	Typically 255"
 //usage:     "\n	-S SECTORS	Typically 63"
@@ -197,9 +181,7 @@ enum {
 
 /* TODO: just #if ENABLE_FEATURE_FDISK_WRITABLE */
 /* (currently fdisk_sun/sgi.c do not have proper WRITABLE #ifs) */
-#if ENABLE_FEATURE_FDISK_WRITABLE \
- || ENABLE_FEATURE_SGI_LABEL \
- || ENABLE_FEATURE_SUN_LABEL
+#if ENABLE_FEATURE_FDISK_WRITABLE
 static const char msg_building_new_label[] ALIGN1 =
 "Building a new %s. Changes will remain in memory only,\n"
 "until you decide to write them. After that the previous content\n"
@@ -211,7 +193,6 @@ static const char msg_part_already_defined[] ALIGN1 =
 
 #define SUPPORT_DISKLABELS (0 \
 	| ENABLE_FEATURE_AIX_LABEL \
-	| ENABLE_FEATURE_SGI_LABEL \
 	| ENABLE_FEATURE_OSF_LABEL \
 	| ENABLE_FEATURE_GPT_LABEL \
 )
@@ -252,26 +233,10 @@ struct pte {
 #define unable_to_seek "can't seek '%s'"
 
 enum label_type {
-	LABEL_DOS, LABEL_SUN, LABEL_SGI, LABEL_AIX, LABEL_OSF, LABEL_GPT
+	LABEL_DOS, LABEL_AIX, LABEL_OSF, LABEL_GPT
 };
 
 #define LABEL_IS_DOS	(LABEL_DOS == current_label_type)
-
-#if ENABLE_FEATURE_SUN_LABEL
-#define LABEL_IS_SUN	(LABEL_SUN == current_label_type)
-#define STATIC_SUN static
-#else
-#define LABEL_IS_SUN	0
-#define STATIC_SUN extern
-#endif
-
-#if ENABLE_FEATURE_SGI_LABEL
-#define LABEL_IS_SGI	(LABEL_SGI == current_label_type)
-#define STATIC_SGI static
-#else
-#define LABEL_IS_SGI	0
-#define STATIC_SGI extern
-#endif
 
 #if ENABLE_FEATURE_AIX_LABEL
 #define LABEL_IS_AIX	(LABEL_AIX == current_label_type)
@@ -297,7 +262,7 @@ enum label_type {
 #define STATIC_GPT extern
 #endif
 
-enum action { OPEN_MAIN, TRY_ONLY, CREATE_EMPTY_DOS, CREATE_EMPTY_SUN };
+enum action { OPEN_MAIN, TRY_ONLY, CREATE_EMPTY_DOS };
 
 static void update_units(void);
 #if ENABLE_FEATURE_FDISK_WRITABLE
@@ -311,7 +276,7 @@ static sector_t read_int(sector_t low, sector_t dflt, sector_t high, sector_t ba
 static const char *partition_type(unsigned char type);
 static void get_geometry(void);
 static void read_pte(struct pte *pe, sector_t offset);
-#if ENABLE_FEATURE_SUN_LABEL || ENABLE_FEATURE_FDISK_WRITABLE
+#if ENABLE_FEATURE_FDISK_WRITABLE
 static int get_boot(enum action what);
 #else
 static int get_boot(void);
@@ -448,11 +413,6 @@ struct globals {
 #endif
 
 	smallint dos_compatible_flag; // = 1;
-#if ENABLE_FEATURE_SUN_LABEL
-	smallint sun_other_endian;
-	smallint sun_scsi_disk;
-	smallint sun_floppy;
-#endif
 #if ENABLE_FEATURE_OSF_LABEL
 # if !defined(__alpha__)
 	struct partition *xbsd_part;
@@ -646,7 +606,7 @@ partname(const char *dev, int pno, int lth)
 	return bufp;
 }
 
-#if ENABLE_FEATURE_SGI_LABEL || ENABLE_FEATURE_OSF_LABEL
+#if ENABLE_FEATURE_OSF_LABEL
 static ALWAYS_INLINE struct partition *
 get_part_table(int i)
 {
@@ -818,61 +778,6 @@ STATIC_OSF void xbsd_print_disklabel(int);
 STATIC_GPT void gpt_list_table(int xtra);
 #include "fdisk_gpt.c"
 
-#if ENABLE_FEATURE_SGI_LABEL || ENABLE_FEATURE_SUN_LABEL
-static uint16_t
-fdisk_swap16(uint16_t x)
-{
-	return (x << 8) | (x >> 8);
-}
-
-static uint32_t
-fdisk_swap32(uint32_t x)
-{
-	return (x << 24) |
-	       ((x & 0xFF00) << 8) |
-	       ((x & 0xFF0000) >> 8) |
-	       (x >> 24);
-}
-#endif
-
-STATIC_SGI const char *const sgi_sys_types[];
-STATIC_SGI unsigned sgi_get_num_sectors(int i);
-STATIC_SGI int sgi_get_sysid(int i);
-STATIC_SGI void sgi_delete_partition(int i);
-STATIC_SGI void sgi_change_sysid(int i, int sys);
-STATIC_SGI void sgi_list_table(int xtra);
-#if ENABLE_FEATURE_FDISK_ADVANCED
-STATIC_SGI void sgi_set_xcyl(void);
-#endif
-STATIC_SGI int verify_sgi(int verbose);
-STATIC_SGI void sgi_add_partition(int n, int sys);
-STATIC_SGI void sgi_set_swappartition(int i);
-STATIC_SGI const char *sgi_get_bootfile(void);
-STATIC_SGI void sgi_set_bootfile(const char* aFile);
-STATIC_SGI void create_sgiinfo(void);
-STATIC_SGI void sgi_write_table(void);
-STATIC_SGI void sgi_set_bootpartition(int i);
-#include "fdisk_sgi.c"
-
-STATIC_SUN const char *const sun_sys_types[];
-STATIC_SUN void sun_delete_partition(int i);
-STATIC_SUN void sun_change_sysid(int i, int sys);
-STATIC_SUN void sun_list_table(int xtra);
-STATIC_SUN void add_sun_partition(int n, int sys);
-#if ENABLE_FEATURE_FDISK_ADVANCED
-STATIC_SUN void sun_set_alt_cyl(void);
-STATIC_SUN void sun_set_ncyl(int cyl);
-STATIC_SUN void sun_set_xcyl(void);
-STATIC_SUN void sun_set_ilfact(void);
-STATIC_SUN void sun_set_rspeed(void);
-STATIC_SUN void sun_set_pcylcount(void);
-#endif
-STATIC_SUN void toggle_sunflags(int i, unsigned char mask);
-STATIC_SUN void verify_sun(void);
-STATIC_SUN void sun_write_table(void);
-#include "fdisk_sun.c"
-
-
 static inline_if_little_endian unsigned
 read4_little_endian(const unsigned char *cp)
 {
@@ -943,40 +848,7 @@ static void
 menu(void)
 {
 	puts("Command Action");
-	if (LABEL_IS_SUN) {
-		puts("a\ttoggle a read only flag");           /* sun */
-		puts("b\tedit bsd disklabel");
-		puts("c\ttoggle the mountable flag");         /* sun */
-		puts("d\tdelete a partition");
-		puts("l\tlist known partition types");
-		puts("n\tadd a new partition");
-		puts("o\tcreate a new empty DOS partition table");
-		puts("p\tprint the partition table");
-		puts("q\tquit without saving changes");
-		puts("s\tcreate a new empty Sun disklabel");  /* sun */
-		puts("t\tchange a partition's system id");
-		puts("u\tchange display/entry units");
-		puts("v\tverify the partition table");
-		puts("w\twrite table to disk and exit");
-#if ENABLE_FEATURE_FDISK_ADVANCED
-		puts("x\textra functionality (experts only)");
-#endif
-	} else if (LABEL_IS_SGI) {
-		puts("a\tselect bootable partition");    /* sgi flavour */
-		puts("b\tedit bootfile entry");          /* sgi */
-		puts("c\tselect sgi swap partition");    /* sgi flavour */
-		puts("d\tdelete a partition");
-		puts("l\tlist known partition types");
-		puts("n\tadd a new partition");
-		puts("o\tcreate a new empty DOS partition table");
-		puts("p\tprint the partition table");
-		puts("q\tquit without saving changes");
-		puts("s\tcreate a new empty Sun disklabel");  /* sun */
-		puts("t\tchange a partition's system id");
-		puts("u\tchange display/entry units");
-		puts("v\tverify the partition table");
-		puts("w\twrite table to disk and exit");
-	} else if (LABEL_IS_AIX) {
+	if (LABEL_IS_AIX) {
 		puts("o\tcreate a new empty DOS partition table");
 		puts("q\tquit without saving changes");
 		puts("s\tcreate a new empty Sun disklabel");  /* sun */
@@ -1015,29 +887,13 @@ xmenu(void)
 	puts("c\tchange number of cylinders");
 	puts("h\tchange number of heads");
 	puts("s\tchange number of sectors/track");
-	if (LABEL_IS_SUN) {
-		puts("a\tchange number of alternate cylinders");      /*sun*/
-		puts("y\tchange number of physical cylinders");       /*sun*/
-		puts("e\tchange number of extra sectors per cylinder");/*sun*/
-		puts("i\tchange interleave factor");                  /*sun*/
-		puts("o\tchange rotation speed (rpm)");               /*sun*/
-	} else if (LABEL_IS_SGI) {
-		puts("b\tmove beginning of data in a partition"); /* !sun */
-		puts("g\tcreate an IRIX (SGI) partition table");/* sgi */
-		puts("e\tlist extended partitions");          /* !sun */
-	} else if (LABEL_IS_AIX) {
-		puts("b\tmove beginning of data in a partition"); /* !sun */
-# if ENABLE_FEATURE_SGI_LABEL
-		puts("g\tcreate an IRIX (SGI) partition table");
-# endif
-		puts("e\tlist extended partitions");          /* !sun */
+	if (LABEL_IS_AIX) {
+		puts("b\tmove beginning of data in a partition");
+		puts("e\tlist extended partitions");
 	} else {
-		puts("f\tfix partition order");               /* !sun, !aix, !sgi */
-		puts("b\tmove beginning of data in a partition"); /* !sun */
-# if ENABLE_FEATURE_SGI_LABEL
-		puts("g\tcreate an IRIX (SGI) partition table");
-# endif
-		puts("e\tlist extended partitions");          /* !sun */
+		puts("f\tfix partition order");               /* !aix */
+		puts("b\tmove beginning of data in a partition");
+		puts("e\tlist extended partitions");
 	}
 	puts("d\tprint the raw data in the partition table");
 	puts("p\tprint the partition table");
@@ -1052,10 +908,7 @@ xmenu(void)
 static const char *const *
 get_sys_types(void)
 {
-	return (
-		LABEL_IS_SUN ? sun_sys_types :
-		LABEL_IS_SGI ? sgi_sys_types :
-		i386_sys_types);
+	return i386_sys_types;
 }
 #else
 #define get_sys_types() i386_sys_types
@@ -1097,9 +950,7 @@ clear_partition(struct partition *p)
 static int
 get_sysid(int i)
 {
-	return LABEL_IS_SUN ? sunlabel->infos[i].id :
-			(LABEL_IS_SGI ? sgi_get_sysid(i) :
-				ptes[i].part_table->sys_ind);
+	return ptes[i].part_table->sys_ind;
 }
 
 static void
@@ -1402,9 +1253,7 @@ static void
 get_geometry(void)
 {
 	get_sectorsize();
-#if ENABLE_FEATURE_SUN_LABEL
-	sun_guess_device_type();
-#endif
+
 	g_heads = g_cylinders = g_sectors = 0;
 	kern_heads = kern_sectors = 0;
 	pt_heads = pt_sectors = 0;
@@ -1449,7 +1298,7 @@ get_geometry(void)
  *    0: found or created label
  *    1: I/O error
  */
-#if ENABLE_FEATURE_SUN_LABEL || ENABLE_FEATURE_FDISK_WRITABLE
+#if ENABLE_FEATURE_FDISK_WRITABLE
 static int get_boot(enum action what)
 #else
 static int get_boot(void)
@@ -1474,10 +1323,9 @@ static int get_boot(void)
 // ALERT! highly idiotic design!
 // We end up here when we call get_boot() recursively
 // via get_boot() [table is bad] -> create_doslabel() -> get_boot(CREATE_EMPTY_DOS).
-// or get_boot() [table is bad] -> create_sunlabel() -> get_boot(CREATE_EMPTY_SUN).
 // (just factor out re-init of ptes[0,1,2,3] in a separate fn instead?)
 // So skip opening device _again_...
-	if (what == CREATE_EMPTY_DOS  IF_FEATURE_SUN_LABEL(|| what == CREATE_EMPTY_SUN))
+	if (what == CREATE_EMPTY_DOS)
 		goto created_table;
 
 	fd = open(disk_device, (option_mask32 & OPT_l) ? O_RDONLY : O_RDWR);
@@ -1513,14 +1361,6 @@ static int get_boot(void)
 	get_geometry();
 	update_units();
 
-#if ENABLE_FEATURE_SUN_LABEL
-	if (check_sun_label())
-		return 0;
-#endif
-#if ENABLE_FEATURE_SGI_LABEL
-	if (check_sgi_label())
-		return 0;
-#endif
 #if ENABLE_FEATURE_AIX_LABEL
 	if (check_aix_label())
 		return 0;
@@ -1547,22 +1387,15 @@ static int get_boot(void)
 #else
 	if (!valid_part_table_flag(MBRbuffer)) {
 		if (what == OPEN_MAIN) {
-			puts("Device has no valid DOS partition table"
+			puts("Device has no valid DOS"
 #if SUPPORT_DISKLABELS
-				", nor "
-				IF_FEATURE_SUN_LABEL("Sun, ")
-				IF_FEATURE_SGI_LABEL("SGI, ")
-				IF_FEATURE_OSF_LABEL("OSF, ")
-				IF_FEATURE_AIX_LABEL("AIX, ")
-				IF_FEATURE_GPT_LABEL("GPT ")
-				"disklabel."
-#else
-				"."
+				IF_FEATURE_OSF_LABEL(", OSF")
+				IF_FEATURE_AIX_LABEL(", AIX")
+				IF_FEATURE_GPT_LABEL(", GPT")
 #endif
+				" partition table."
 			);
-#ifdef __sparc__
-			IF_FEATURE_SUN_LABEL(create_sunlabel();)
-#else
+#ifndef __sparc__
 			create_doslabel();
 #endif
 			return 0;
@@ -1728,11 +1561,8 @@ get_partition(int warn, unsigned max)
 	pe = &ptes[i];
 
 	if (warn) {
-		if ((!LABEL_IS_SUN && !LABEL_IS_SGI && !pe->part_table->sys_ind)
-		 || (LABEL_IS_SUN && (!sunlabel->partitions[i].num_sectors || !sunlabel->infos[i].id))
-		 || (LABEL_IS_SGI && !sgi_get_num_sectors(i))
-		) {
-			printf("Warning: partition %u has empty type\n", i+1);
+		if (pe->part_table->sys_ind == 0) {
+			printf("Warning: partition %u has type 0\n", i+1);
 		}
 	}
 	return i;
@@ -1843,15 +1673,6 @@ delete_partition(int i)
 		return;         /* C/H/S not set */
 	pe->changed = 1;
 
-	if (LABEL_IS_SUN) {
-		sun_delete_partition(i);
-		return;
-	}
-	if (LABEL_IS_SGI) {
-		sgi_delete_partition(i);
-		return;
-	}
-
 	if (i < 4) {
 		if (IS_EXTENDED(p->sys_ind) && i == ext_index) {
 			g_partitions = 4;
@@ -1908,14 +1729,7 @@ change_sysid(void)
 	int i, sys, origsys;
 	struct partition *p;
 
-	/* If sgi_label then don't use get_existing_partition,
-	   let the user select a partition, since get_existing_partition()
-	   only works for Linux like partition tables. */
-	if (!LABEL_IS_SGI) {
-		i = get_existing_partition(0, g_partitions);
-	} else {
-		i = get_partition(0, g_partitions);
-	}
+	i = get_existing_partition(0, g_partitions);
 	if (i == -1)
 		return;
 	p = ptes[i].part_table;
@@ -1923,57 +1737,30 @@ change_sysid(void)
 
 	/* if changing types T to 0 is allowed, then
 	   the reverse change must be allowed, too */
-	if (!sys && !LABEL_IS_SGI && !LABEL_IS_SUN && !get_nr_sects(p))	{
-		printf("Partition %u does not exist yet!\n", i + 1);
+	if (sys == 0 && !get_nr_sects(p))	{
+		printf("Partition %u does not exist yet\n", i + 1);
 		return;
 	}
 	while (1) {
 		sys = read_hex(get_sys_types());
 
-		if (!sys && !LABEL_IS_SGI && !LABEL_IS_SUN) {
+		if (sys == 0) {
 			puts("Type 0 means free space to many systems\n"
 				"(but not to Linux). Having partitions of\n"
-				"type 0 is probably unwise.");
+				"type 0 is unwise.");
 			/* break; */
 		}
 
-		if (!LABEL_IS_SUN && !LABEL_IS_SGI) {
-			if (IS_EXTENDED(sys) != IS_EXTENDED(p->sys_ind)) {
-				puts("You cannot change a partition into"
-					" an extended one or vice versa");
-				break;
-			}
+		if (IS_EXTENDED(sys) != IS_EXTENDED(p->sys_ind)) {
+			puts("You cannot change a partition into"
+				" an extended one or vice versa");
+			break;
 		}
 
 		if (sys < 256) {
-#if ENABLE_FEATURE_SUN_LABEL
-			if (LABEL_IS_SUN && i == 2 && sys != SUN_WHOLE_DISK)
-				puts("Consider leaving partition 3 "
-					"as Whole disk (5),\n"
-					"as SunOS/Solaris expects it and "
-					"even Linux likes it\n");
-#endif
-#if ENABLE_FEATURE_SGI_LABEL
-			if (LABEL_IS_SGI &&
-				(
-					(i == 10 && sys != SGI_ENTIRE_DISK) ||
-					(i == 8 && sys != 0)
-				)
-			) {
-				puts("Consider leaving partition 9 "
-					"as volume header (0),\nand "
-					"partition 11 as entire volume (6)"
-					"as IRIX expects it\n");
-			}
-#endif
 			if (sys == origsys)
 				break;
-			if (LABEL_IS_SUN) {
-				sun_change_sysid(i, sys);
-			} else if (LABEL_IS_SGI) {
-				sgi_change_sysid(i, sys);
-			} else
-				p->sys_ind = sys;
+			p->sys_ind = sys;
 
 			printf("Changed system type of partition %u "
 				"to %x (%s)\n", i + 1, sys,
@@ -2233,14 +2020,6 @@ list_table(int xtra)
 {
 	int i, w;
 
-	if (LABEL_IS_SUN) {
-		sun_list_table(xtra);
-		return;
-	}
-	if (LABEL_IS_SGI) {
-		sgi_list_table(xtra);
-		return;
-	}
 	if (LABEL_IS_GPT) {
 		gpt_list_table(xtra);
 		return;
@@ -2411,15 +2190,6 @@ verify(void)
 
 	if (warn_geometry())
 		return;
-
-	if (LABEL_IS_SUN) {
-		verify_sun();
-		return;
-	}
-	if (LABEL_IS_SGI) {
-		verify_sgi(1);
-		return;
-	}
 
 	fill_bounds(first, last);
 	for (i = 0; i < g_partitions; i++) {
@@ -2630,14 +2400,6 @@ new_partition(void)
 	if (warn_geometry())
 		return;
 
-	if (LABEL_IS_SUN) {
-		add_sun_partition(get_partition(0, g_partitions), LINUX_NATIVE);
-		return;
-	}
-	if (LABEL_IS_SGI) {
-		sgi_add_partition(get_partition(0, g_partitions), LINUX_NATIVE);
-		return;
-	}
 	if (LABEL_IS_AIX) {
 		puts("Sorry - this fdisk cannot handle AIX disk labels.\n"
 "If you want to add DOS-type partitions, create a new empty DOS partition\n"
@@ -2738,18 +2500,6 @@ write_table(void)
 			}
 		}
 	}
-	else if (LABEL_IS_SGI) {
-		/* no test on change? the "altered" msg below might be mistaken */
-		sgi_write_table();
-	}
-	else if (LABEL_IS_SUN) {
-		for (i = 0; i < 8; i++) {
-			if (ptes[i].changed) {
-				sun_write_table();
-				break;
-			}
-		}
-	}
 
 	puts("The partition table has been altered.");
 	reread_partition_table(1);
@@ -2783,12 +2533,8 @@ print_raw(void)
 	int i;
 
 	printf("Device: %s\n", disk_device);
-	if (LABEL_IS_SGI || LABEL_IS_SUN)
-		print_buffer(MBRbuffer);
-	else {
-		for (i = 3; i < g_partitions; i++)
-			print_buffer(ptes[i].sectorbuffer);
-	}
+	for (i = 3; i < g_partitions; i++)
+		print_buffer(ptes[i].sectorbuffer);
 }
 
 static void
@@ -2828,10 +2574,10 @@ xselect(void)
 		bb_putchar('\n');
 		c = 0x20 | read_nonempty("Expert command (m for help): ");
 		switch (c) {
-		case 'a':
-			if (LABEL_IS_SUN)
-				sun_set_alt_cyl();
-			break;
+		//deleted:
+		//case 'a':
+		//	if (LABEL_IS_SUN) sun_set_alt_cyl();
+		//	break;
 		case 'b':
 			if (LABEL_IS_DOS)
 				move_begin(get_partition(0, g_partitions));
@@ -2840,8 +2586,6 @@ xselect(void)
 			user_cylinders = g_cylinders =
 				read_int(1, g_cylinders, 1048576, 0,
 					"Number of cylinders");
-			if (LABEL_IS_SUN)
-				sun_set_ncyl(g_cylinders);
 			if (LABEL_IS_DOS)
 				warn_cylinders();
 			break;
@@ -2849,39 +2593,30 @@ xselect(void)
 			print_raw();
 			break;
 		case 'e':
-			if (LABEL_IS_SGI)
-				sgi_set_xcyl();
-			else if (LABEL_IS_SUN)
-				sun_set_xcyl();
-			else if (LABEL_IS_DOS)
+			if (LABEL_IS_DOS)
 				x_list_table(1);
 			break;
 		case 'f':
 			if (LABEL_IS_DOS)
 				fix_partition_table_order();
 			break;
-		case 'g':
-#if ENABLE_FEATURE_SGI_LABEL
-			create_sgilabel();
-#endif
-			break;
+		//SGI_LABEL code deleted:
+		//case 'g':
+		//	create_sgilabel();
+		//	break;
 		case 'h':
 			user_heads = g_heads = read_int(1, g_heads, 256, 0, "Number of heads");
 			update_units();
 			break;
-		case 'i':
-			if (LABEL_IS_SUN)
-				sun_set_ilfact();
-			break;
-		case 'o':
-			if (LABEL_IS_SUN)
-				sun_set_rspeed();
-			break;
+		//deleted:
+		//case 'i':
+		//	if (LABEL_IS_SUN) sun_set_ilfact();
+		//	break;
+		//case 'o':
+		//	if (LABEL_IS_SUN) sun_set_rspeed();
+		//	break;
 		case 'p':
-			if (LABEL_IS_SUN)
-				list_table(1);
-			else
-				x_list_table(0);
+			x_list_table(0);
 			break;
 		case 'q':
 			if (ENABLE_FEATURE_CLEAN_UP)
@@ -2905,10 +2640,10 @@ xselect(void)
 		case 'w':
 			write_table();  /* does not return */
 			break;
-		case 'y':
-			if (LABEL_IS_SUN)
-				sun_set_pcylcount();
-			break;
+		//deleted:
+		//case 'y':
+		//	if (LABEL_IS_SUN) sun_set_pcylcount();
+		//	break;
 		default:
 			xmenu();
 		}
@@ -2987,7 +2722,7 @@ open_list_and_close(const char *device, int user_specified)
 	} else {
 		list_table(0);
 #if ENABLE_FEATURE_FDISK_WRITABLE
-		if (!LABEL_IS_SUN && g_partitions > 4) {
+		if (g_partitions > 4) {
 			delete_partition(ext_index);
 		}
 #endif
@@ -3161,63 +2896,31 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 		case 'a':
 			if (LABEL_IS_DOS)
 				toggle_active(get_partition(1, g_partitions));
-			else if (LABEL_IS_SUN)
-				toggle_sunflags(get_partition(1, g_partitions),
-						0x01);
-			else if (LABEL_IS_SGI)
-				sgi_set_bootpartition(
-					get_partition(1, g_partitions));
 			else
 				unknown_command(c);
 			break;
 		case 'b':
-			if (LABEL_IS_SGI) {
-				printf("\nThe current boot file is: %s\n",
-					sgi_get_bootfile());
-				if (read_maybe_empty("Please enter the name of the "
-						"new boot file: ") == '\n')
-					puts("Boot file unchanged");
-				else
-					sgi_set_bootfile(line_ptr);
-			}
 # if ENABLE_FEATURE_OSF_LABEL
-			else
-				bsd_select();
+			bsd_select();
 # endif
 			break;
 		case 'c':
 			if (LABEL_IS_DOS)
 				toggle_dos_compatibility_flag();
-			else if (LABEL_IS_SUN)
-				toggle_sunflags(get_partition(1, g_partitions),
-						0x10);
-			else if (LABEL_IS_SGI)
-				sgi_set_swappartition(
-						get_partition(1, g_partitions));
 			else
 				unknown_command(c);
 			break;
 		case 'd':
 			{
-				int j;
-			/* If sgi_label then don't use get_existing_partition,
-			   let the user select a partition, since
-			   get_existing_partition() only works for Linux-like
-			   partition tables */
-				if (!LABEL_IS_SGI) {
-					j = get_existing_partition(1, g_partitions);
-				} else {
-					j = get_partition(1, g_partitions);
-				}
+				int j = get_existing_partition(1, g_partitions);
 				if (j >= 0)
 					delete_partition(j);
 			}
 			break;
-		case 'i':
-			if (LABEL_IS_SGI)
-				create_sgiinfo();
-			else
-				unknown_command(c);
+		//deleted:
+		//case 'i':
+		//	if (LABEL_IS_SGI) create_sgiinfo(); else
+		//	unknown_command(c);
 		case 'l':
 			list_types(get_sys_types());
 			break;
@@ -3238,11 +2941,10 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 				close_dev_fd();
 			bb_putchar('\n');
 			return 0;
-		case 's':
-# if ENABLE_FEATURE_SUN_LABEL
-			create_sunlabel();
-# endif
-			break;
+		//SUN_LABEL code deleted:
+		//case 's':
+		//	create_sunlabel();
+		//	break;
 		case 't':
 			change_sysid();
 			break;
@@ -3257,11 +2959,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 			break;
 # if ENABLE_FEATURE_FDISK_ADVANCED
 		case 'x':
-			if (LABEL_IS_SGI) {
-				puts("\n\tSorry, no experts menu for SGI "
-					"partition tables available\n");
-			} else
-				xselect();
+			xselect();
 			break;
 # endif
 		default:
