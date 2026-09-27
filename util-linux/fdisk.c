@@ -260,7 +260,7 @@ enum label_type {
 #define STATIC_GPT extern
 #endif
 
-enum action { OPEN_MAIN, TRY_ONLY, CREATE_EMPTY_DOS };
+enum action { OPEN_MAIN, TRY_ONLY };
 
 static void update_units(void);
 #if ENABLE_FEATURE_FDISK_WRITABLE
@@ -1145,9 +1145,8 @@ create_doslabel(void)
 	printf(msg_building_new_label, "DOS disklabel");
 
 	current_label_type = LABEL_DOS;
-#if ENABLE_FEATURE_OSF_LABEL
-	possibly_osf_label = 0;
-#endif
+	IF_FEATURE_OSF_LABEL(possibly_osf_label = 0;)
+
 	g_partitions = 4;
 
 	memset(&MBRbuffer[510 - 4*16], 0, 4*16);
@@ -1155,7 +1154,6 @@ create_doslabel(void)
 	extended_offset = 0;
 	set_all_unchanged();
 	set_changed(0);
-	get_boot(CREATE_EMPTY_DOS);
 }
 #endif
 
@@ -1248,25 +1246,33 @@ get_geometry(void)
 		g_cylinders = user_cylinders;
 }
 
-/*
- * Opens disk_device and optionally reads MBR.
- *    If what == OPEN_MAIN:
- *      Open device, read MBR.  Abort program on short read.  Create empty
- *      disklabel if the on-disk structure is invalid (WRITABLE mode).
- *    If what == TRY_ONLY:
- *      Open device, read MBR.  Return an error if anything is out of place.
- *      Do not create an empty disklabel.  This is used for the "list"
- *      operations: "fdisk -l /dev/sda" and "fdisk -l" (all devices).
- *    If what == CREATE_EMPTY_*:
- *      This means that get_boot() was called recursively from create_*label().
- *      Do not re-open the device; just set up the ptes array and print
- *      geometry warnings.
- *
- * Returns:
- *   -1: no 0xaa55 flag present (possibly entire disk BSD)
- *    0: found or created label
- *    1: I/O error
- */
+static void
+dos_reset_primary_partition_info(void)
+{
+	int i;
+	g_partitions = 4;
+	for (i = 0; i < 4; i++) {
+		struct pte *pe = &ptes[i];
+		pe->part_table = pt_offset(MBRbuffer, i);
+		pe->ext_pointer = NULL;
+		pe->offset_from_dev_start = 0;
+		pe->sectorbuffer = MBRbuffer;
+		IF_FEATURE_FDISK_WRITABLE(pe->changed = 0;)
+	}
+}
+
+// Opens disk_device and optionally reads MBR.
+//   If what == OPEN_MAIN:
+//     Open device, read MBR.  Abort program on short read.  Create empty
+//     disklabel if the on-disk structure is invalid (WRITABLE mode).
+//   If what == TRY_ONLY:
+//     Open device, read MBR.  Return an error if anything is out of place.
+//     Do not create an empty disklabel.  This is used for the "list"
+//     operations: "fdisk -l /dev/sda" and "fdisk -l" (all devices).
+// Returns:
+//   -1: no 0xaa55 flag present (possibly entire disk BSD)
+//   0: found or created label
+//   1: I/O error, or can't read 512 bytes.
 #if ENABLE_FEATURE_FDISK_WRITABLE
 static int get_boot(enum action what)
 #else
@@ -1276,29 +1282,10 @@ static int get_boot(void)
 {
 	int i, fd;
 
-	g_partitions = 4;
-	for (i = 0; i < 4; i++) {
-		struct pte *pe = &ptes[i];
-		pe->part_table = pt_offset(MBRbuffer, i);
-		pe->ext_pointer = NULL;
-		pe->offset_from_dev_start = 0;
-		pe->sectorbuffer = MBRbuffer;
-#if ENABLE_FEATURE_FDISK_WRITABLE
-		pe->changed = (what == CREATE_EMPTY_DOS);
-#endif
-	}
+	dos_reset_primary_partition_info();
 
 #if ENABLE_FEATURE_FDISK_WRITABLE
-// ALERT! highly idiotic design!
-// We end up here when we call get_boot() recursively
-// via get_boot() [table is bad] -> create_doslabel() -> get_boot(CREATE_EMPTY_DOS).
-// (just factor out re-init of ptes[0,1,2,3] in a separate fn instead?)
-// So skip opening device _again_...
-	if (what == CREATE_EMPTY_DOS)
-		goto created_table;
-
 	fd = open(disk_device, (option_mask32 & OPT_l) ? O_RDONLY : O_RDWR);
-
 	if (fd < 0) {
 		fd = open(disk_device, O_RDONLY);
 		if (fd < 0) {
@@ -1355,28 +1342,21 @@ static int get_boot(void)
 		return -1;
 #else
 	if (!valid_part_table_flag(MBRbuffer)) {
-		if (what == OPEN_MAIN) {
-			puts("Device has no valid DOS"
-#if SUPPORT_DISKLABELS
-				IF_FEATURE_OSF_LABEL(", OSF")
-				IF_FEATURE_AIX_LABEL(", AIX")
-				IF_FEATURE_GPT_LABEL(", GPT")
-#endif
-				" partition table."
-			);
-#ifndef __sparc__
-			create_doslabel();
-#endif
-			return 0;
-		}
-		/* TRY_ONLY: */
-		return -1;
+		if (what == TRY_ONLY)
+			return -1;
+		/* OPEN_MAIN: */
+		puts("Device has no valid DOS"
+# if SUPPORT_DISKLABELS
+			IF_FEATURE_OSF_LABEL(", OSF")
+			IF_FEATURE_AIX_LABEL(", AIX")
+			IF_FEATURE_GPT_LABEL(", GPT")
+# endif
+			" partition table."
+		);
+		create_doslabel();
 	}
- created_table:
+	warn_cylinders();
 #endif /* FEATURE_FDISK_WRITABLE */
-
-
-	IF_FEATURE_FDISK_WRITABLE(warn_cylinders();)
 	warn_geometry();
 
 	for (i = 0; i < 4; i++) {
@@ -1558,7 +1538,7 @@ get_existing_partition(int warn, unsigned max)
 		return pno;
 	}
 	puts("No partition is defined yet!");
-	return -1;
+	return pno; // -1
 
  not_unique:
 	return get_partition(warn, max);
@@ -1735,8 +1715,6 @@ change_sysid(void)
 				"to %x (%s)\n", i + 1, sys,
 				partition_type(sys));
 			ptes[i].changed = 1;
-			//if (is_dos_partition(origsys) || is_dos_partition(sys))
-			//	dos_changed = 1;
 			break;
 		}
 	}
@@ -2437,14 +2415,6 @@ reread_partition_table(int leave)
 	i = ioctl_or_perror(dev_fd, BLKRRPART, NULL,
 			"WARNING: rereading partition table "
 			"failed, kernel still uses old table");
-#if 0
-	if (dos_changed)
-		puts(
-		"\nWARNING: If you have created or modified any DOS 6.x\n"
-		"partitions, please see the fdisk manual page for additional\n"
-		"information");
-#endif
-
 	if (leave) {
 		if (ENABLE_FEATURE_CLEAN_UP)
 			close_dev_fd();
@@ -2866,7 +2836,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 			if (LABEL_IS_DOS)
 				toggle_active(get_partition(1, g_partitions));
 			else
-				unknown_command(c);
+				goto unknown_cmd;
 			break;
 		case 'b':
 # if ENABLE_FEATURE_OSF_LABEL
@@ -2877,7 +2847,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 			if (LABEL_IS_DOS)
 				toggle_dos_compatibility_flag();
 			else
-				unknown_command(c);
+				goto unknown_cmd;
 			break;
 		case 'd':
 			{
@@ -2888,8 +2858,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 			break;
 		//deleted:
 		//case 'i':
-		//	if (LABEL_IS_SGI) create_sgiinfo(); else
-		//	unknown_command(c);
+		//	if (LABEL_IS_SGI) create_sgiinfo(); else goto unknown_cmd;
 		case 'l':
 			list_types(get_sys_types());
 			break;
@@ -2901,6 +2870,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 			break;
 		case 'o':
 			create_doslabel();
+			dos_reset_primary_partition_info();
 			break;
 		case 'p':
 			list_table(0);
@@ -2932,6 +2902,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 			break;
 # endif
 		default:
+ unknown_cmd:
 			unknown_command(c);
 			menu();
 		}
