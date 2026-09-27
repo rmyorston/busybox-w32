@@ -799,67 +799,6 @@ get_partition_start_from_dev_start(const struct pte *pe)
 	return pe->offset_from_dev_start + get_start_sect(pe->part_table);
 }
 
-#if ENABLE_FEATURE_FDISK_WRITABLE
-static void
-menu(void)
-{
-	puts("Command Action");
-	if (LABEL_IS_AIX) {
-		puts("o\tcreate a new empty DOS partition table");
-		puts("q\tquit without saving changes");
-		//deleted: puts("s\tcreate a new empty Sun disklabel");  /* sun */
-	} else if (LABEL_IS_GPT) {
-		puts("o\tcreate a new empty DOS partition table");
-		puts("p\tprint partition table");
-		puts("q\tquit without saving changes");
-		//deleted: puts("s\tcreate a new empty Sun disklabel");  /* sun */
-	} else {
-		puts("a\ttoggle a bootable flag");
-		puts("b\tedit bsd disklabel");
-		puts("c\ttoggle the dos compatibility flag");
-		puts("d\tdelete a partition");
-		puts("l\tlist known partition types");
-		puts("n\tadd a new partition");
-		puts("o\tcreate a new empty DOS partition table");
-		puts("p\tprint partition table");
-		puts("q\tquit without saving changes");
-		//deleted: puts("s\tcreate a new empty Sun disklabel");  /* sun */
-		puts("t\tchange a partition's system id");
-		puts("u\tchange display/entry units");
-		puts("v\tverify partition table");
-		puts("w\twrite table to disk and exit");
-#if ENABLE_FEATURE_FDISK_ADVANCED
-		puts("x\textra functionality (experts only)");
-#endif
-	}
-}
-#endif /* FEATURE_FDISK_WRITABLE */
-
-#if ENABLE_FEATURE_FDISK_ADVANCED
-static void
-xmenu(void)
-{
-	puts("Command Action");
-	puts("c\tchange number of cylinders");
-	puts("h\tchange number of heads");
-	puts("s\tchange number of sectors/track");
-	if (LABEL_IS_AIX) {
-		puts("b\tmove beginning of data in a partition");
-		puts("e\tprint extended partitions");
-	} else {
-		puts("f\tfix partition order");               /* !aix */
-		puts("b\tmove beginning of data in a partition");
-		puts("e\tprint extended partitions");
-	}
-	puts("d\tprint raw data in partition table");
-	puts("p\tprint partition table");
-	puts("v\tverify partition table");
-	puts("w\twrite table to disk and exit");
-	puts("q\tquit without saving changes");
-	puts("r\treturn to main menu");
-}
-#endif /* ADVANCED mode */
-
 #define get_sys_types() i386_sys_types
 
 static const char *
@@ -1865,7 +1804,6 @@ fix_chain_of_logicals(void)
 		ptes[j].changed = 1;
 }
 
-
 static void
 fix_partition_table_order(void)
 {
@@ -1903,7 +1841,7 @@ fix_partition_table_order(void)
 
 	puts("Done");
 }
-#endif
+#endif // ADVANCED
 
 static const char *
 chs_string11(unsigned cyl, unsigned head, unsigned sect)
@@ -2085,6 +2023,134 @@ print_disklabel(int xtra)
 
 	// So far AIX also goes here - FIXME?
 	dos_print_disklabel();
+}
+
+static int
+is_ide_cdrom_or_tape(const char *device)
+{
+	FILE *procf;
+	char buf[100];
+	struct stat statbuf;
+	int is_ide = 0;
+
+	/* No device was given explicitly, and we are trying some
+	   likely things.  But opening /dev/hdc may produce errors like
+	   "hdc: tray open or drive not ready"
+	   if it happens to be a CD-ROM drive. It even happens that
+	   the process hangs on the attempt to read a music CD.
+	   So try to be careful. This only works since 2.1.73. */
+
+	if (!is_prefixed_with(device, "/dev/hd"))
+		return 0;
+
+	snprintf(buf, sizeof(buf), "/proc/ide/%s/media", device+5);
+	procf = fopen_for_read(buf);
+	if (procf != NULL && fgets(buf, sizeof(buf), procf))
+		is_ide = (is_prefixed_with(buf, "cdrom") ||
+			  is_prefixed_with(buf, "tape"));
+	else
+		/* Now when this proc file does not exist, skip the
+		   device when it is read-only. */
+		if (stat(device, &statbuf) == 0)
+			is_ide = ((statbuf.st_mode & 0222) == 0);
+
+	if (procf)
+		fclose(procf);
+	return is_ide;
+}
+
+static void
+open_list_and_close(const char *device, int user_specified)
+{
+	int gb;
+
+	disk_device = device;
+	if (setjmp(listingbuf))
+		return;
+	if (!user_specified)
+		if (is_ide_cdrom_or_tape(device))
+			return;
+
+	/* Open disk_device, save file descriptor to dev_fd */
+	errno = 0;
+	gb = get_boot(TRY_ONLY);
+	if (gb > 0) {   /* I/O error */
+		/* Ignore other errors, since we try IDE
+		   and SCSI hard disks which may not be
+		   installed on the system. */
+		if (user_specified || errno == EACCES)
+			bb_perror_msg("can't open '%s'", device);
+		return;
+	}
+
+	if (gb < 0) { /* no DOS signature */
+		print_disk_name_and_sizes();
+		print_disk_geometry();
+		if (LABEL_IS_AIX)
+			goto ret;
+#if ENABLE_FEATURE_OSF_LABEL
+		if (bsd_trydev(device) < 0)
+#endif
+			printf("Disk %s doesn't contain a valid "
+				"partition table\n", device);
+	} else {
+		print_disklabel(0);
+#if ENABLE_FEATURE_FDISK_WRITABLE
+		if (g_partitions > 4) {
+			delete_partition(ext_index);
+		}
+#endif
+	}
+ ret:
+	close_dev_fd();
+}
+
+/* Is it a whole disk? The digit check is still useful
+   for Xen devices for example. */
+static int is_whole_disk(const char *disk)
+{
+	unsigned len;
+	int fd = open(disk, O_RDONLY);
+
+	if (fd != -1) {
+		struct hd_geometry geometry;
+		int err = ioctl(fd, HDIO_GETGEO, &geometry);
+		close(fd);
+		if (!err)
+			return (geometry.start == 0);
+	}
+
+	/* Treat "nameN" as a partition name, not whole disk */
+	/* note: mmcblk0 should work from the geometry check above */
+	len = strlen(disk);
+	if (len != 0 && isdigit(disk[len - 1]))
+		return 0;
+
+	return 1;
+}
+
+/* for fdisk -l: try all things in /proc/partitions
+   that look like a partition name (do not end in a digit) */
+static void
+list_devs_in_proc_partititons(void)
+{
+	FILE *procpt;
+	char line[100], ptname[100], devname[120];
+	int ma, mi, sz;
+
+	procpt = fopen_or_warn("/proc/partitions", "r");
+
+	while (fgets(line, sizeof(line), procpt)) {
+		if (sscanf(line, " %u %u %u %[^\n ]",
+				&ma, &mi, &sz, ptname) != 4)
+			continue;
+
+		sprintf(devname, "/dev/%s", ptname);
+		if (is_whole_disk(devname))
+			open_list_and_close(devname, 0);
+	}
+	if (ENABLE_FEATURE_CLEAN_UP)
+		fclose(procpt);
 }
 
 #if ENABLE_FEATURE_FDISK_WRITABLE
@@ -2449,9 +2515,8 @@ write_table_and_exit(void)
 	reread_partition_table(1); // 1: exit
 	bb_unreachable(abort());
 }
-#endif /* FEATURE_FDISK_WRITABLE */
 
-#if ENABLE_FEATURE_FDISK_ADVANCED
+# if ENABLE_FEATURE_FDISK_ADVANCED
 #define MAX_PER_LINE    16
 static void
 print_buffer(uint8_t *pbuffer)
@@ -2508,6 +2573,65 @@ move_begin(unsigned i)
 			set_hsc_start_end(p, new, new + nr_sects - 1);
 		pe->changed = 1;
 	}
+}
+# endif /* ADVANCED mode */
+
+static void
+menu(void)
+{
+	puts("Command Action");
+	if (LABEL_IS_AIX) {
+		puts("o\tcreate a new empty DOS partition table");
+		puts("q\tquit without saving changes");
+		//deleted: puts("s\tcreate a new empty Sun disklabel");  /* sun */
+	} else if (LABEL_IS_GPT) {
+		puts("o\tcreate a new empty DOS partition table");
+		puts("p\tprint partition table");
+		puts("q\tquit without saving changes");
+		//deleted: puts("s\tcreate a new empty Sun disklabel");  /* sun */
+	} else {
+		puts("a\ttoggle a bootable flag");
+		puts("b\tedit bsd disklabel");
+		puts("c\ttoggle the dos compatibility flag");
+		puts("d\tdelete a partition");
+		puts("l\tlist known partition types");
+		puts("n\tadd a new partition");
+		puts("o\tcreate a new empty DOS partition table");
+		puts("p\tprint partition table");
+		puts("q\tquit without saving changes");
+		//deleted: puts("s\tcreate a new empty Sun disklabel");  /* sun */
+		puts("t\tchange a partition's system id");
+		puts("u\tchange display/entry units");
+		puts("v\tverify partition table");
+		puts("w\twrite table to disk and exit");
+# if ENABLE_FEATURE_FDISK_ADVANCED
+		puts("x\textra functionality (experts only)");
+# endif
+	}
+}
+
+# if ENABLE_FEATURE_FDISK_ADVANCED
+static void
+xmenu(void)
+{
+	puts("Command Action");
+	puts("c\tchange number of cylinders");
+	puts("h\tchange number of heads");
+	puts("s\tchange number of sectors/track");
+	if (LABEL_IS_AIX) {
+		puts("b\tmove beginning of data in a partition");
+		puts("e\tprint extended partitions");
+	} else {
+		puts("f\tfix partition order");               /* !aix */
+		puts("b\tmove beginning of data in a partition");
+		puts("e\tprint extended partitions");
+	}
+	puts("d\tprint raw data in partition table");
+	puts("p\tprint partition table");
+	puts("v\tverify partition table");
+	puts("w\twrite table to disk and exit");
+	puts("q\tquit without saving changes");
+	puts("r\treturn to main menu");
 }
 
 static void
@@ -2594,145 +2718,14 @@ xselect(void)
 		}
 	}
 }
-#endif /* ADVANCED mode */
+# endif /* ADVANCED mode */
 
-static int
-is_ide_cdrom_or_tape(const char *device)
-{
-	FILE *procf;
-	char buf[100];
-	struct stat statbuf;
-	int is_ide = 0;
-
-	/* No device was given explicitly, and we are trying some
-	   likely things.  But opening /dev/hdc may produce errors like
-	   "hdc: tray open or drive not ready"
-	   if it happens to be a CD-ROM drive. It even happens that
-	   the process hangs on the attempt to read a music CD.
-	   So try to be careful. This only works since 2.1.73. */
-
-	if (!is_prefixed_with(device, "/dev/hd"))
-		return 0;
-
-	snprintf(buf, sizeof(buf), "/proc/ide/%s/media", device+5);
-	procf = fopen_for_read(buf);
-	if (procf != NULL && fgets(buf, sizeof(buf), procf))
-		is_ide = (is_prefixed_with(buf, "cdrom") ||
-			  is_prefixed_with(buf, "tape"));
-	else
-		/* Now when this proc file does not exist, skip the
-		   device when it is read-only. */
-		if (stat(device, &statbuf) == 0)
-			is_ide = ((statbuf.st_mode & 0222) == 0);
-
-	if (procf)
-		fclose(procf);
-	return is_ide;
-}
-
-
-static void
-open_list_and_close(const char *device, int user_specified)
-{
-	int gb;
-
-	disk_device = device;
-	if (setjmp(listingbuf))
-		return;
-	if (!user_specified)
-		if (is_ide_cdrom_or_tape(device))
-			return;
-
-	/* Open disk_device, save file descriptor to dev_fd */
-	errno = 0;
-	gb = get_boot(TRY_ONLY);
-	if (gb > 0) {   /* I/O error */
-		/* Ignore other errors, since we try IDE
-		   and SCSI hard disks which may not be
-		   installed on the system. */
-		if (user_specified || errno == EACCES)
-			bb_perror_msg("can't open '%s'", device);
-		return;
-	}
-
-	if (gb < 0) { /* no DOS signature */
-		print_disk_name_and_sizes();
-		print_disk_geometry();
-		if (LABEL_IS_AIX)
-			goto ret;
-#if ENABLE_FEATURE_OSF_LABEL
-		if (bsd_trydev(device) < 0)
-#endif
-			printf("Disk %s doesn't contain a valid "
-				"partition table\n", device);
-	} else {
-		print_disklabel(0);
-#if ENABLE_FEATURE_FDISK_WRITABLE
-		if (g_partitions > 4) {
-			delete_partition(ext_index);
-		}
-#endif
-	}
- ret:
-	close_dev_fd();
-}
-
-/* Is it a whole disk? The digit check is still useful
-   for Xen devices for example. */
-static int is_whole_disk(const char *disk)
-{
-	unsigned len;
-	int fd = open(disk, O_RDONLY);
-
-	if (fd != -1) {
-		struct hd_geometry geometry;
-		int err = ioctl(fd, HDIO_GETGEO, &geometry);
-		close(fd);
-		if (!err)
-			return (geometry.start == 0);
-	}
-
-	/* Treat "nameN" as a partition name, not whole disk */
-	/* note: mmcblk0 should work from the geometry check above */
-	len = strlen(disk);
-	if (len != 0 && isdigit(disk[len - 1]))
-		return 0;
-
-	return 1;
-}
-
-/* for fdisk -l: try all things in /proc/partitions
-   that look like a partition name (do not end in a digit) */
-static void
-list_devs_in_proc_partititons(void)
-{
-	FILE *procpt;
-	char line[100], ptname[100], devname[120];
-	int ma, mi, sz;
-
-	procpt = fopen_or_warn("/proc/partitions", "r");
-
-	while (fgets(line, sizeof(line), procpt)) {
-		if (sscanf(line, " %u %u %u %[^\n ]",
-				&ma, &mi, &sz, ptname) != 4)
-			continue;
-
-		sprintf(devname, "/dev/%s", ptname);
-		if (is_whole_disk(devname))
-			open_list_and_close(devname, 0);
-	}
-#if ENABLE_FEATURE_CLEAN_UP
-	fclose(procpt);
-#endif
-}
-
-#if ENABLE_FEATURE_FDISK_WRITABLE
 static void
 unknown_command(int c)
 {
 	printf("%c: unknown command\n", c);
 }
-#endif
+#endif /* FEATURE_FDISK_WRITABLE */
 
 int fdisk_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int fdisk_main(int argc UNUSED_PARAM, char **argv)
