@@ -11,8 +11,8 @@ static int mingw_get_terminal_width_height(struct winsize *win)
 	win->ws_col = 0;
 
 	if (handle == INVALID_HANDLE_VALUE) {
-		handle = CreateFileA("CONOUT$", GENERIC_WRITE,
-						FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
+		handle = CreateFileA("CONOUT$", GENERIC_READ|GENERIC_WRITE,
+						FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
 						FILE_ATTRIBUTE_NORMAL, NULL);
 	}
 
