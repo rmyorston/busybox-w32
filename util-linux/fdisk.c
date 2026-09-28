@@ -404,8 +404,7 @@ struct globals {
 #if ENABLE_FEATURE_OSF_LABEL
 	smallint possibly_osf_label;
 #endif
-
-	smallint dos_compatible_flag; // = 1;
+	smallint dos_compatible_flag;
 #if ENABLE_FEATURE_OSF_LABEL
 # if !defined(__alpha__)
 	struct dos_partition *xbsd_part;
@@ -468,7 +467,8 @@ struct globals {
 	offset_after_MBR_and_ext = 1; \
 	g_partitions = 4; \
 	units_per_sector = 1; \
-	dos_compatible_flag = 1; \
+	/* off by default in util-linux 2.41.1: */ \
+	/* dos_compatible_flag = 1; */ \
 } while (0)
 
 /* TODO: move to libbb? */
@@ -1519,13 +1519,8 @@ static void
 toggle_dos_compatibility_flag(void)
 {
 	dos_compatible_flag = 1 - dos_compatible_flag;
-	if (dos_compatible_flag) {
-		offset_after_MBR_and_ext = g_sectors;
-		printf("DOS Compatibility flag is %sset (sector gap:%d)\n", "", offset_after_MBR_and_ext);
-	} else {
-		offset_after_MBR_and_ext = 1;
-		printf("DOS Compatibility flag is %sset (sector gap:%d)\n", "un", offset_after_MBR_and_ext);
-	}
+	offset_after_MBR_and_ext = dos_compatible_flag ? g_sectors : 1;
+	printf("DOS Compatibility flag is %sset (sector gap:%d)\n", "", offset_after_MBR_and_ext);
 }
 
 static void
@@ -2264,13 +2259,14 @@ static void
 set_hsc_start_end(struct dos_partition *p, sector_t start, sector_t stop)
 {
 #define SET_HEAD_SECT_CYL(h, s, c, sector) do { \
-	s = sector % g_sectors + 1;  \
-	sector /= g_sectors;         \
-	h = sector % g_heads;        \
-	sector /= g_heads;           \
-	c = sector & 0xff;           \
-	s |= (sector >> 2) & 0xc0;   \
-} while (0)
+		s = sector % g_sectors + 1;  \
+		sector /= g_sectors;         \
+		h = sector % g_heads;        \
+		sector /= g_heads;           \
+		c = sector & 0xff;           \
+		s |= (sector >> 2) & 0xc0;   \
+	} while (0)
+
 	if (dos_compatible_flag && (start / (g_sectors * g_heads) > 1023))
 		start = g_heads * g_sectors * 1024 - 1;
 	SET_HEAD_SECT_CYL(p->head, p->sector, p->cyl, start);
