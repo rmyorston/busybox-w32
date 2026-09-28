@@ -1040,13 +1040,15 @@ read_extended_chain(int ext)
  remove:
 	for (i = 4; i < g_partitions; i++) {
 		struct pte *pe = &ptes[i];
-
-		if (get_nr_sects(pe->part_table) == 0
-		 && (g_partitions > 5 || ptes[4].part_table->sys_ind)
-		) {
-			printf("Omitting empty partition (%u)\n", i + 1);
-			delete_partition(i);
-			goto remove;    // numbering changed
+		if (get_nr_sects(pe->part_table) == 0) {
+			if (g_partitions == 5 && is_cleared_partition(pe->part_table)) {
+				// empty extended partition
+				// (need to keep it for its sector buffer?)
+			} else {
+				printf("Omitting empty partition (%u)\n", i + 1);
+				delete_partition(i);
+				goto remove;    // numbering changed
+			}
 		}
 	}
 #endif
