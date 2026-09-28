@@ -1466,7 +1466,7 @@ get_existing_partition(int warn, unsigned max)
 }
 
 static int
-find_free_primary_partition(void)
+choose_free_primary_partition(void)
 {
 	int pno = -1;
 	unsigned i;
@@ -1521,10 +1521,10 @@ toggle_dos_compatibility_flag(void)
 	dos_compatible_flag = 1 - dos_compatible_flag;
 	if (dos_compatible_flag) {
 		offset_after_MBR_and_ext = g_sectors;
-		printf("DOS Compatibility flag (%u sector gap) is %sset\n", offset_after_MBR_and_ext, "");
+		printf("DOS Compatibility flag is %sset (sector gap:%d)\n", "", offset_after_MBR_and_ext);
 	} else {
 		offset_after_MBR_and_ext = 1;
-		printf("DOS Compatibility flag (%u sector gap) is %sset\n", offset_after_MBR_and_ext, "not ");
+		printf("DOS Compatibility flag is %sset (sector gap:%d)\n", "un", offset_after_MBR_and_ext);
 	}
 }
 
@@ -2306,17 +2306,19 @@ add_partition(int n, int sys)
 {
 	char mesg[64];
 	int i, num_read;
-	struct dos_partition *p = ptes[n].part_table;
-	struct dos_partition *q = ptes[ext_index].part_table;
+	struct dos_partition *p;
+	struct dos_partition *main_ext;
 	sector_t limit, temp;
 	sector_t start, stop;
 	sector_t first[g_partitions], last[g_partitions];
 
-	if (p && p->sys_ind) {
+	p = ptes[n].part_table;
+	if (p && !is_cleared_partition(p)) {
 		printf("Partition %u is already defined, delete it before re-adding\n", n + 1);
 		return;
 	}
 	fill_bounds(first, last);
+	main_ext = ptes[ext_index].part_table;
 	if (n < 4) {
 		start = offset_after_MBR_and_ext;
 		if (DISPLAY_IN_CYL_UNITS || !total_number_of_sectors)
@@ -2325,12 +2327,11 @@ add_partition(int n, int sys)
 			limit = total_number_of_sectors - 1;
 		if (extended_offset) {
 			first[ext_index] = extended_offset;
-			last[ext_index] = get_start_sect(q) +
-				get_nr_sects(q) - 1;
+			last[ext_index] = extended_offset + get_nr_sects(main_ext) - 1;
 		}
 	} else {
 		start = extended_offset + offset_after_MBR_and_ext;
-		limit = get_start_sect(q) + get_nr_sects(q) - 1;
+		limit = extended_offset + get_nr_sects(main_ext) - 1;
 	}
 	if (DISPLAY_IN_CYL_UNITS)
 		for (i = 0; i < g_partitions; i++)
@@ -2490,7 +2491,7 @@ new_partition(void)
 	if (c == 'p'
 	 || (c == 'e' && !extended_offset)
 	) {
-		free_primary = find_free_primary_partition();
+		free_primary = choose_free_primary_partition();
 		//if (free_primary >= 0) // cannot fail, we know it exists
 		add_partition(free_primary, c == 'p' ? LINUX_NATIVE : EXTENDED);
 		return;
