@@ -7,11 +7,10 @@
 
 # testing "description" "command" "result" "infile" "stdin"
 
-# We require -u for this test to disable use of incorrectly guessed
+# With -u (use cyinder units) this wouldn't work: incorrectly guessed
 # sectors-per-track (15, should be 16).
-# utili-linux 2.41.1 does not - did they change the default?
-testing 'fdisk -u fdisk_8k_parts1_5-11_ext14.raw add primary' \
-	'fdisk -u fdisk_8k_parts1_5-11_ext14.raw 2>&1' \
+testing 'fdisk fdisk_8k_parts1_5-11_ext14.raw add primary' \
+	'fdisk fdisk_8k_parts1_5-11_ext14.raw 2>&1' \
 	"\
 Changes will remain in memory only, until you decide to write them.
 Be careful before using the write command.

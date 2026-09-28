@@ -80,8 +80,8 @@
 //usage:       "[-C CYLINDERS] [-H HEADS] [-S SECTORS] [-b SSZ] [-t PARTTYPE] DISK"
 //usage:#define fdisk_full_usage "\n\n"
 //usage:	IF_FEATURE_FDISK_WRITABLE("Change")IF_NOT_FEATURE_FDISK_WRITABLE("Show")" partition table\n"
-//usage:     "\n	-u		Start and End are in sectors (instead of cylinders)"
-//usage:     "\n			Also disable rounding of sizes to cylinders"
+//usage:     "\n	-u		Start and End are in cylinders (instead of sectors)"
+//usage:     "\n			Also enable rounding of sizes to cylinders"
 //usage:     "\n	-l		Show partition table for each DISK and exit"
 //usage:	IF_FEATURE_FDISK_BLKSIZE(
 //usage:     "\n	-s		Show size in kb for each DISK and exit"
@@ -183,7 +183,12 @@ enum {
 };
 #define USER_SET_SECTOR_SIZE (option_mask32 & OPT_b)
 #define NOWARN_OPT_ls        (!ENABLE_FEATURE_FDISK_WRITABLE || (option_mask32 & (OPT_l|OPT_s)))
-#define DISPLAY_IN_CYL_UNITS (!(option_mask32 & OPT_u))
+// The meaning of -u was inverted in its meaning in util-linux by:
+//  commit 0b1f769f281ac2feb21b8a52af3fe999922c8833
+//  Date:   Tue Jun 15 13:13:05 2010 +0200
+//      fdisk: disable DOS mode and cylinders by default
+// Now it also takes an optional parameter, "cylinder[s]"/"sector[s]" (we don't do that):
+#define DISPLAY_IN_CYL_UNITS        (option_mask32 & OPT_u)
 #define TOGGLE_DISPLAY_IN_CYL_UNITS (option_mask32 ^= OPT_u)
 
 #define SUPPORT_DISKLABELS (0 \
@@ -1506,7 +1511,6 @@ choose_free_primary_partition(void)
 	return input_partition_number(/*warn*/ 0, 4);
 }
 
-
 static void
 change_units(void)
 {
@@ -2659,7 +2663,7 @@ menu(void)
 		puts("q\tquit without saving changes");
 		//deleted: puts("s\tcreate a new empty Sun disklabel");  /* sun */
 		puts("t\tchange a partition's system id");
-		puts("u\tchange display/entry units");
+		printf("u\tchange display/entry units to %ss\n", DISPLAY_IN_CYL_UNITS ? "sector" : "cylinder");
 		puts("v\tverify partition table");
 		puts("w\twrite table to disk and exit");
 # if ENABLE_FEATURE_FDISK_ADVANCED
