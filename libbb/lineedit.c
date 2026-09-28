@@ -2502,8 +2502,8 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 		 * (example: interactive python ^Z-backgrounded,
 		 * tty is still in "raw mode").
 		 */
-		parse_and_put_prompt(prompt);
 		fflush_all();
+		parse_and_put_prompt(prompt);
 		if (fgets(command, maxsize, stdin) == NULL)
 			len = -1; /* EOF or error */
 		else
@@ -2548,6 +2548,7 @@ int FAST_FUNC read_line_input(line_input_t *st, const char *prompt, char *comman
 #endif
 #define command command_must_not_be_used
 
+	fflush_all();
 	tcsetattr_stdin_TCSANOW(&new_settings);
 
 #if 0

@@ -1,0 +1,26 @@
+This is an example disk image created via:
+	dd bs=1K count=8 </dev/zero >IMAGE
+	fdisk IMAGE
+then creating extended partition on the whole disk,
+then creating one-sector-sized logical partitions,
+up to partition 11.
+Every logical partition was filled by data in QEMU via
+	yes "part 05" >/dev/sda5
+and similar commands.
+
+This image, if mounted by linux, will have extended partition
+visible as 1024-byte /dev/sda1 partition, which also
+includes /dev/sda5 first (and only) sector -
+kernel does not check for overlap!
+
+The last link sector of extended partition chain, one just before
+partition 11, has only data pointer, no "next ext" pointer.
+There is an unused sector at the end. It is meant to be this
+"next ext" pointer if further logical partitions were to be created
+(and if the disk would have space for them).
+
+It is possible to use the last sector for a primary partition.
+The extended partition needs to resized ('e','1') to 14 sectors:
+'7168' in util-linux 2.41.1 works. In fact, you can resize it
+down to 1 sector (0 does not work, kernel will ignore it).
+Then you can create a primary partition in sector 15.

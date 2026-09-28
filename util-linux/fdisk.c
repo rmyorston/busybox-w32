@@ -81,6 +81,7 @@
 //usage:#define fdisk_full_usage "\n\n"
 //usage:	IF_FEATURE_FDISK_WRITABLE("Change")IF_NOT_FEATURE_FDISK_WRITABLE("Show")" partition table\n"
 //usage:     "\n	-u		Start and End are in sectors (instead of cylinders)"
+//usage:     "\n			Also disable rounding of sizes to cylinders"
 //usage:     "\n	-l		Show partition table for each DISK and exit"
 //usage:	IF_FEATURE_FDISK_BLKSIZE(
 //usage:     "\n	-s		Show size in kb for each DISK and exit"
@@ -106,6 +107,12 @@
 #endif
 #if !defined(BLKGETSIZE64)
 # define BLKGETSIZE64 _IOR(0x12,114,size_t)
+#endif
+
+#if 0
+# define dbg(...) bb_error_msg(__VA_ARGS__)
+#else
+# define dbg(...) ((void)0)
 #endif
 
 /* Get device geometry in this struct: */
@@ -1118,7 +1125,7 @@ get_partition_table_geometry(void)
 		p = pt_offset(bufp, i);
 		if (!is_cleared_partition(p)) {
 			h = p->end_head + 1;
-			s = (p->end_sector & 077);
+			s = (p->end_sector & 0x3f);
 			if (first) {
 				hh = h;
 				ss = s;
@@ -1318,14 +1325,18 @@ static sector_t
 read_int(sector_t low, sector_t dflt, sector_t high, sector_t base, const char *mesg)
 {
 	sector_t value;
-	int default_ok = 1;
-	const char *fmt = "%s (%u-%u, default %u): ";
+	int default_ok;
+	const char *fmt;
 
+	if (low == high) // no need to ask
+		return low;
+
+	default_ok = 1;
+	fmt = "%s (%u-%u, default %u): ";
 	if (dflt < low || dflt > high) {
 		fmt = "%s (%u-%u): ";
 		default_ok = 0;
 	}
-
 	while (1) {
 		int use_default = default_ok;
 
@@ -2201,6 +2212,7 @@ verify(void)
 		struct pte *pe = &ptes[i];
 
 		p = pe->part_table;
+//TODO: warn about EXTENDED partitions with nr_sect==0? Kernel will ignore these (requires at least 1)
 		if (!is_cleared_partition(p) && !IS_EXTENDED(p->sys_ind)) {
 			check_consistency(p, i);
 			if (get_partition_start_from_dev_start(pe) < first[i])
@@ -2317,17 +2329,22 @@ add_partition(int n, int sys)
 	main_ext = ptes[ext_index].part_table;
 	if (n < 4) {
 		start = offset_after_MBR_and_ext;
-		if (DISPLAY_IN_CYL_UNITS || !total_number_of_sectors)
+		if (DISPLAY_IN_CYL_UNITS || !total_number_of_sectors) {
 			limit = (sector_t) g_heads * g_sectors * g_cylinders - 1;
-		else
+			dbg("%d: limit:%d", __LINE__, limit);
+		} else {
 			limit = total_number_of_sectors - 1;
+			dbg("%d: limit:%d", __LINE__, limit);
+		}
 		if (extended_offset) {
 			first[ext_index] = extended_offset;
 			last[ext_index] = extended_offset + get_nr_sects(main_ext) - 1;
 		}
+		dbg("%d: start:%d limit:%d", __LINE__, start, limit);
 	} else {
 		start = extended_offset + offset_after_MBR_and_ext;
 		limit = extended_offset + get_nr_sects(main_ext) - 1;
+		dbg("%d: start:%d limit:%d", __LINE__, start, limit);
 	}
 	if (DISPLAY_IN_CYL_UNITS)
 		for (i = 0; i < g_partitions; i++)
@@ -2338,13 +2355,17 @@ add_partition(int n, int sys)
 	do {
 		temp = start;
 		for (i = 0; i < g_partitions; i++) {
-			int lastplusoff;
+			sector_t lastplusoff;
 
-			if (start == ptes[i].offset_from_dev_start)
+			if (start == ptes[i].offset_from_dev_start) {
 				start += offset_after_MBR_and_ext;
+				dbg("%d: start:%d", __LINE__, start);
+			}
 			lastplusoff = last[i] + ((n < 4) ? 0 : offset_after_MBR_and_ext);
-			if (start >= first[i] && start <= lastplusoff)
+			if (start >= first[i] && start <= lastplusoff) {
 				start = lastplusoff + 1;
+				dbg("%d: start:%d", __LINE__, start);
+			}
 		}
 		if (start > limit)
 			break;
@@ -2360,8 +2381,11 @@ add_partition(int n, int sys)
 			start = read_int(cround(saved_start), cround(saved_start), cround(limit), 0, mesg);
 			if (DISPLAY_IN_CYL_UNITS) {
 				start = (start - 1) * units_per_sector;
-				if (start < saved_start)
+				dbg("%d: start:%d", __LINE__, start);
+				if (start < saved_start) {
 					start = saved_start;
+					dbg("%d: start:%d", __LINE__, start);
+				}
 			}
 			num_read = 1;
 		}
@@ -2373,18 +2397,24 @@ add_partition(int n, int sys)
 		pe->offset_from_dev_start = start - offset_after_MBR_and_ext;
 		if (pe->offset_from_dev_start == extended_offset) { /* must be corrected */
 			pe->offset_from_dev_start++;
-			if (offset_after_MBR_and_ext == 1)
+			if (offset_after_MBR_and_ext == 1) {
 				start++;
+				dbg("%d: ++start:%d", __LINE__, start);
+			}
 		}
 	}
 
 	for (i = 0; i < g_partitions; i++) {
 		struct pte *pe = &ptes[i];
 
-		if (start < pe->offset_from_dev_start && limit >= pe->offset_from_dev_start)
+		if (start < pe->offset_from_dev_start && limit >= pe->offset_from_dev_start) {
 			limit = pe->offset_from_dev_start - 1;
-		if (start < first[i] && limit >= first[i])
+			dbg("%d: limit:%d", __LINE__, limit);
+		}
+		if (start < first[i] && limit >= first[i]) {
 			limit = first[i] - 1;
+			dbg("%d: limit:%d", __LINE__, limit);
+		}
 	}
 	if (start > limit) {
 		puts("No free sectors available");
