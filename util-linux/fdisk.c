@@ -1003,7 +1003,7 @@ read_extended_chain(int ext)
 						" %u\n", "link", g_partitions + 1);
 				else
 					pe->ext_pointer = p;
-			} else if (p->sys_ind != 0) {
+			} else if (!is_cleared_partition(p)) {
 				if (pe->part_table)
 					printf("Warning: extra %s "
 						"pointer in ext.partition chain"
@@ -1036,17 +1036,17 @@ read_extended_chain(int ext)
 	}
 
 #if ENABLE_FEATURE_FDISK_WRITABLE
-	/* remove empty links */
+	// Remove empty data partitions in extended chain
  remove:
 	for (i = 4; i < g_partitions; i++) {
 		struct pte *pe = &ptes[i];
 
-		if (!get_nr_sects(pe->part_table)
+		if (get_nr_sects(pe->part_table) == 0
 		 && (g_partitions > 5 || ptes[4].part_table->sys_ind)
 		) {
-			printf("Omitting empty partition (%u)\n", i+1);
+			printf("Omitting empty partition (%u)\n", i + 1);
 			delete_partition(i);
-			goto remove;    /* numbering changed */
+			goto remove;    // numbering changed
 		}
 	}
 #endif
@@ -1114,7 +1114,7 @@ get_partition_table_geometry(void)
 	hh = ss = 0;
 	for (i = 0; i < 4; i++) {
 		p = pt_offset(bufp, i);
-		if (p->sys_ind != 0) {
+		if (!is_cleared_partition(p)) {
 			h = p->end_head + 1;
 			s = (p->end_sector & 077);
 			if (first) {
@@ -1432,7 +1432,7 @@ input_partition_number(int warn, unsigned max)
 
 	if (warn) {
 		if (pe->part_table->sys_ind == 0) {
-			printf("Warning: partition %u has type 0\n", i+1);
+			printf("Warning: partition %u has type 0\n", i + 1);
 		}
 	}
 	return i;
@@ -1548,7 +1548,7 @@ delete_partition(int i)
 		return;
 	}
 
-	if (!q->sys_ind && i > 4) {
+	if (is_cleared_partition(q) && i > 4) {
 		/* the last one in the chain - just delete */
 		--g_partitions;
 		--i;
@@ -1602,7 +1602,7 @@ change_sysid(void)
 
 	/* if changing types T to 0 is allowed, then
 	   the reverse change must be allowed, too */
-	if (sys == 0 && !get_nr_sects(p))	{
+	if (sys == 0 && get_nr_sects(p) == 0) {
 		printf("Partition %u does not exist yet\n", i + 1);
 		return;
 	}
@@ -1718,15 +1718,13 @@ wrong_p_order(int *prev)
 		}
 		pe = &ptes[i];
 		p = pe->part_table;
-		if (p->sys_ind) {
+		if (!is_cleared_partition(p)) {
 			p_start_pos = get_partition_start_from_dev_start(pe);
-
 			if (last_p_start_pos > p_start_pos) {
 				if (prev)
 					*prev = last_i;
 				return i;
 			}
-
 			last_p_start_pos = p_start_pos;
 			last_i = i;
 		}
@@ -1945,7 +1943,7 @@ x_dos_print_disklabel(int extend)
 				get_nr_sects(p),
 				p->sys_ind
 			);
-			if (p->sys_ind)
+			if (!is_cleared_partition(p))
 				check_consistency(p, i);
 		}
 	}
@@ -2150,7 +2148,7 @@ fill_bounds(sector_t *first, sector_t *last)
 
 	for (i = 0; i < g_partitions; pe++,i++) {
 		p = pe->part_table;
-		if (!p->sys_ind || IS_EXTENDED(p->sys_ind)) {
+		if (is_cleared_partition(p) || IS_EXTENDED(p->sys_ind)) {
 			first[i] = 0xffffffff;
 			last[i] = 0;
 		} else {
@@ -2201,7 +2199,7 @@ verify(void)
 		struct pte *pe = &ptes[i];
 
 		p = pe->part_table;
-		if (p->sys_ind && !IS_EXTENDED(p->sys_ind)) {
+		if (!is_cleared_partition(p) && !IS_EXTENDED(p->sys_ind)) {
 			check_consistency(p, i);
 			if (get_partition_start_from_dev_start(pe) < first[i])
 				printf("Warning: bad start-of-data in "
@@ -2231,7 +2229,7 @@ verify(void)
 		for (i = 4; i < g_partitions; i++) {
 			total++;
 			p = ptes[i].part_table;
-			if (!p->sys_ind) {
+			if (is_cleared_partition(p)) {
 				if (i != 4 || i + 1 < g_partitions)
 					printf("Warning: partition %u "
 						"is empty\n", i + 1);
@@ -2429,7 +2427,7 @@ add_partition(int n, int sys)
 static void
 add_logical(void)
 {
-	if (g_partitions > 5 || ptes[4].part_table->sys_ind) {
+	if (g_partitions > 5 || !is_cleared_partition(ptes[4].part_table)) {
 		struct pte *pe = &ptes[g_partitions];
 
 		pe->sectorbuffer = xzalloc(sector_size);
@@ -2585,11 +2583,11 @@ move_begin(unsigned i)
 	if (warn_geometry())
 		return;
 	nr_sects = get_nr_sects(p);
-	if (!p->sys_ind || !nr_sects || IS_EXTENDED(p->sys_ind)) {
+	if (nr_sects == 0 || IS_EXTENDED(p->sys_ind)) {
 		printf("Partition %u has no data area\n", i + 1);
 		return;
 	}
-	first = get_partition_start_from_dev_start(pe); /* == pe->offset_from_dev_start + get_start_sect(p) */
+	first = get_partition_start_from_dev_start(pe); // pe->offset_from_dev_start + get_start_sect(p)
 	new = read_int(0 /*was:first*/, first, first + nr_sects - 1, first, "New beginning of data");
 	if (new != first) {
 		sector_t new_relative = new - pe->offset_from_dev_start;
