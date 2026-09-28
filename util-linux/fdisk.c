@@ -389,10 +389,16 @@ struct globals {
 	char *line_ptr;
 
 	const char *disk_device;
-	int g_partitions; // = 4;       /* maximum partition + 1 */
+	// NB: g_partitions is never less than 4.
+	// If some primary partitions are not populated, they still "exist".
+	int g_partitions; // = 4;       // maximum partition + 1
 	unsigned units_per_sector; // = 1;
 	unsigned sector_size; // = DEFAULT_SECTOR_SIZE;
-	unsigned sector_offset; // = 1;
+	// How much to advance after MBR or extended partition link
+	// before starting next partition? Minimum is 1,
+	// "DOS compatible" way is to skip to the end of track
+	// (set it to g_sectors).
+	unsigned offset_after_MBR_and_ext; // = 1;
 	unsigned g_heads, g_sectors, g_cylinders;
 	smallint /* enum label_type */ current_label_type;
 #if ENABLE_FEATURE_OSF_LABEL
@@ -406,11 +412,11 @@ struct globals {
 	unsigned xbsd_part_index;
 # endif
 #endif
-	int ext_index;                  /* the prime extended partition */
 	unsigned user_cylinders, user_heads, user_sectors;
 	unsigned pt_heads, pt_sectors;
 	unsigned kern_heads, kern_sectors;
-	sector_t extended_offset;       /* offset of link pointers */
+	int ext_index;                  // the prime extended partition (0-3)
+	sector_t extended_offset;       // offset of extended partition start
 	sector_t total_number_of_sectors;
 
 	const char *opt_t;
@@ -435,7 +441,7 @@ struct globals {
 #define g_partitions         (G.g_partitions        )
 #define units_per_sector     (G.units_per_sector    )
 #define sector_size          (G.sector_size         )
-#define sector_offset        (G.sector_offset       )
+#define offset_after_MBR_and_ext (G.offset_after_MBR_and_ext)
 #define g_heads              (G.g_heads             )
 #define g_sectors            (G.g_sectors           )
 #define g_cylinders          (G.g_cylinders         )
@@ -459,7 +465,7 @@ struct globals {
 #define INIT_G() do { \
 	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
 	sector_size = DEFAULT_SECTOR_SIZE; \
-	sector_offset = 1; \
+	offset_after_MBR_and_ext = 1; \
 	g_partitions = 4; \
 	units_per_sector = 1; \
 	dos_compatible_flag = 1; \
@@ -599,7 +605,7 @@ str_units(void)
 }
 
 static int
-valid_part_table_flag(const uint8_t *mbuffer)
+valid_55AA_signature(const uint8_t *mbuffer)
 {
 	return (mbuffer[510] == 0x55 && mbuffer[511] == 0xaa);
 }
@@ -649,7 +655,7 @@ set_changed(int i)
 }
 
 static ALWAYS_INLINE void
-write_part_table_flag(uint8_t *b)
+write_55AA_signature(uint8_t *b)
 {
 	b[510] = 0x55;
 	b[511] = 0xaa;
@@ -862,49 +868,7 @@ list_types(const char *const *sys)
 	} while (done < last[0]);
 	bb_putchar('\n');
 }
-
-#define set_hsc(h, s, c, sector) do \
-{ \
-	s = sector % g_sectors + 1;  \
-	sector /= g_sectors;         \
-	h = sector % g_heads;        \
-	sector /= g_heads;           \
-	c = sector & 0xff;           \
-	s |= (sector >> 2) & 0xc0;   \
-} while (0)
-
-static void set_hsc_start_end(struct dos_partition *p, sector_t start, sector_t stop)
-{
-	if (dos_compatible_flag && (start / (g_sectors * g_heads) > 1023))
-		start = g_heads * g_sectors * 1024 - 1;
-	set_hsc(p->head, p->sector, p->cyl, start);
-
-	if (dos_compatible_flag && (stop / (g_sectors * g_heads) > 1023))
-		stop = g_heads * g_sectors * 1024 - 1;
-	set_hsc(p->end_head, p->end_sector, p->end_cyl, stop);
-}
-
-static void
-set_partition(int i, int doext, sector_t start, sector_t stop, int sysid)
-{
-	struct dos_partition *p;
-	sector_t offset;
-
-	if (doext) {
-		p = ptes[i].ext_pointer;
-		offset = extended_offset;
-	} else {
-		p = ptes[i].part_table;
-		offset = ptes[i].offset_from_dev_start;
-	}
-	p->boot_ind = 0;
-	p->sys_ind = sysid;
-	set_start_sect(p, start - offset);
-	set_nr_sects(p, stop - start + 1);
-	set_hsc_start_end(p, start, stop);
-	ptes[i].changed = 1;
-}
-#endif
+#endif // WRITABLE
 
 static int
 warn_geometry(void)
@@ -954,24 +918,58 @@ warn_cylinders(void)
 }
 #endif
 
+// linux/block/partitions/msdos.c:
+// ...
+// The logical partitions form a linked list, with each entry being
+// a partition table with two entries.  The first entry
+// is the real data partition (with a start relative to the partition
+// table start).  The second is a pointer to the next logical partition
+// (with a start **relative to the entire extended partition**).
+// We do not create a Linux partition for the partition tables, but
+// only for the actual data partitions.
+// ...
+// Usually, the first entry is the real data partition,
+// the 2nd entry is the next extended partition, or empty,
+// and the 3rd and 4th entries are unused.
+// However, DRDOS sometimes has the extended partition as
+// the first entry (when the data partition is empty),
+// and OS/2 **seems to use all four entries**.
+//
+// Due to the above, there can be up to four data partitions
+// in a link of this "extended partition chain".
+// ^^^ we do not handle this case
+//
+// However, kernel code uses only the first "next extended partition" entry
+// it finds in the current link, and ignores any other "extended partitions":
+// "tree of extended partitions" is not a thing.
+//
+// Kernel code requires that the links have nr_sects != 0
+// (otherwise it is not considered to be "extended partition entry").
+// The starting link, visible as one of first 4 partitions,
+// is a real block device (!) but its size is capped to 2 sectors
+// regardless of how large ns_sects field is.
+// Kernel does not complain if this tiny partition intrudes into first sector
+// of the next partition (!!!) which happens to start in the very next sector.
 static void
-read_extended(int ext)
+read_extended_chain(int ext)
 {
 	int i;
 	struct pte *pex;
-	struct dos_partition *p, *q;
+	struct dos_partition *p;
 
 	ext_index = ext;
 	pex = &ptes[ext];
 	pex->ext_pointer = pex->part_table;
 
 	p = pex->part_table;
-	if (!get_start_sect(p)) {
-		puts("Bad offset in primary extended partition");
+	if (get_start_sect(p) == 0) {
+		puts("Zero offset in primary extended partition");
 		return;
 	}
+	//TODO: check nr_sect != 0 too?
 
 	while (IS_EXTENDED(p->sys_ind)) {
+		struct dos_partition *pt0;
 		struct pte *pe = &ptes[g_partitions];
 
 		if (g_partitions >= MAXIMUM_PARTS) {
@@ -989,41 +987,48 @@ read_extended(int ext)
 		}
 
 		read_pte(pe, extended_offset + get_start_sect(p));
+		// ^^^ does not return on failure to seek or read
 
-		if (!extended_offset)
+		if (extended_offset == 0) // remember base ofs of whole extended partition
 			extended_offset = get_start_sect(p);
 
-		q = p = pt_offset(pe->sectorbuffer, 0);
-		for (i = 0; i < 4; i++, p++) if (get_nr_sects(p)) {
+		pt0 = p = pt_offset(pe->sectorbuffer, 0);
+		for (i = 0; i < 4; i++, p++) {
+			if (get_nr_sects(p) == 0)
+				continue;
 			if (IS_EXTENDED(p->sys_ind)) {
 				if (pe->ext_pointer)
-					printf("Warning: extra link "
-						"pointer in partition table"
-						" %u\n", g_partitions + 1);
+					printf("Warning: extra %s "
+						"pointer in ext.partition chain"
+						" %u\n", "link", g_partitions + 1);
 				else
 					pe->ext_pointer = p;
-			} else if (p->sys_ind) {
+			} else if (p->sys_ind != 0) {
 				if (pe->part_table)
-					printf("Warning: ignoring extra "
-						  "data in partition table"
-						  " %u\n", g_partitions + 1);
+					printf("Warning: extra %s "
+						"pointer in ext.partition chain"
+						" %u\n", "data", g_partitions + 1);
 				else
 					pe->part_table = p;
 			}
 		}
 
-		/* very strange code here... */
+		// Make sure that if not found, data/link pointers
+		// do terminate - point them to invalid entries
+		// (hopefully? Imagine a link with 4 "next ext" ptrs:
+		// none of them have manifestly invalid form!!!)
+//FIXME: allow them to dangle?
 		if (!pe->part_table) {
-			if (q != pe->ext_pointer)
-				pe->part_table = q;
+			if (pe->ext_pointer != pt0)
+				pe->part_table = pt0;
 			else
-				pe->part_table = q + 1;
+				pe->part_table = pt0 + 1;
 		}
 		if (!pe->ext_pointer) {
-			if (q != pe->part_table)
-				pe->ext_pointer = q;
+			if (pe->part_table != pt0)
+				pe->ext_pointer = pt0;
 			else
-				pe->ext_pointer = q + 1;
+				pe->ext_pointer = pt0 + 1;
 		}
 
 		p = pe->ext_pointer;
@@ -1061,7 +1066,7 @@ create_doslabel(void)
 	g_partitions = 4;
 
 	memset(&MBRbuffer[510 - 4*16], 0, 4*16);
-	write_part_table_flag(MBRbuffer);
+	write_55AA_signature(MBRbuffer);
 	extended_offset = 0;
 	set_all_unchanged();
 	set_changed(0);
@@ -1103,7 +1108,7 @@ get_partition_table_geometry(void)
 	int first = 1;
 	int bad = 0;
 
-	if (!(valid_part_table_flag(bufp)))
+	if (!(valid_55AA_signature(bufp)))
 		return;
 
 	hh = ss = 0;
@@ -1147,9 +1152,9 @@ get_geometry(void)
 		kern_sectors ? kern_sectors : 63;
 	total_number_of_sectors = bb_getsize_in_sectors(dev_fd);
 
-	sector_offset = 1;
+	offset_after_MBR_and_ext = 1;
 	if (dos_compatible_flag)
-		sector_offset = g_sectors;
+		offset_after_MBR_and_ext = g_sectors;
 
 	g_cylinders = total_number_of_sectors / (g_heads * g_sectors);
 //TODO? if (total_number_of_sectors % (g_heads * g_sectors) != 0) g_cylinders++;
@@ -1218,11 +1223,11 @@ static int get_boot(void)
 	fd = open(disk_device, O_RDONLY);
 	if (fd < 0)
 		return 1;
-	if (512 != full_read(fd, MBRbuffer, 512)) {
-		close(fd);
+	xmove_fd(fd, dev_fd);
+	if (512 != full_read(dev_fd, MBRbuffer, 512)) {
+		close_dev_fd();
 		return 1;
 	}
-	xmove_fd(fd, dev_fd);
 #endif
 
 	get_geometry();
@@ -1239,7 +1244,7 @@ static int get_boot(void)
 #if ENABLE_FEATURE_OSF_LABEL
 	if (check_osf_label()) {
 		possibly_osf_label = 1;
-		if (!valid_part_table_flag(MBRbuffer)) {
+		if (!valid_55AA_signature(MBRbuffer)) {
 			current_label_type = LABEL_OSF;
 			return 0;
 		}
@@ -1249,10 +1254,10 @@ static int get_boot(void)
 #endif
 
 #if !ENABLE_FEATURE_FDISK_WRITABLE
-	if (!valid_part_table_flag(MBRbuffer))
+	if (!valid_55AA_signature(MBRbuffer))
 		return -1;
 #else
-	if (!valid_part_table_flag(MBRbuffer)) {
+	if (!valid_55AA_signature(MBRbuffer)) {
 		if (what == TRY_ONLY)
 			return -1;
 		// OPEN_MAIN:
@@ -1271,19 +1276,22 @@ static int get_boot(void)
 #endif /* FEATURE_FDISK_WRITABLE */
 	warn_geometry();
 
+	// We saw 55AA signature in MBR, this is considered enough to conclude
+	// partition table exists (for fdisk -l. Without -l, the requirement
+	// is that there are at least 512 bytes in this disk, that's all).
 	for (i = 0; i < 4; i++) {
 		if (IS_EXTENDED(ptes[i].part_table->sys_ind)) {
 			if (g_partitions != 4)
 				printf("Ignoring extra extended "
 					"partition %u\n", i + 1);
 			else
-				read_extended(i);
+				read_extended_chain(i);
 		}
 	}
 
 	for (i = 3; i < g_partitions; i++) {
 		struct pte *pe = &ptes[i];
-		if (!valid_part_table_flag(pe->sectorbuffer)) {
+		if (!valid_55AA_signature(pe->sectorbuffer)) {
 			printf("Warning: invalid flag 0x%02x,0x%02x of partition "
 				"table %u will be corrected by w(rite)\n",
 				pe->sectorbuffer[510],
@@ -1511,11 +1519,11 @@ toggle_dos_compatibility_flag(void)
 {
 	dos_compatible_flag = 1 - dos_compatible_flag;
 	if (dos_compatible_flag) {
-		sector_offset = g_sectors;
-		printf("DOS Compatibility flag is %sset\n", "");
+		offset_after_MBR_and_ext = g_sectors;
+		printf("DOS Compatibility flag (%u sector gap) is %sset\n", offset_after_MBR_and_ext, "");
 	} else {
-		sector_offset = 1;
-		printf("DOS Compatibility flag is %sset\n", "not ");
+		offset_after_MBR_and_ext = 1;
+		printf("DOS Compatibility flag (%u sector gap) is %sset\n", offset_after_MBR_and_ext, "not ");
 	}
 }
 
@@ -2252,6 +2260,47 @@ verify(void)
 }
 
 static void
+set_hsc_start_end(struct dos_partition *p, sector_t start, sector_t stop)
+{
+#define SET_HEAD_SECT_CYL(h, s, c, sector) do { \
+	s = sector % g_sectors + 1;  \
+	sector /= g_sectors;         \
+	h = sector % g_heads;        \
+	sector /= g_heads;           \
+	c = sector & 0xff;           \
+	s |= (sector >> 2) & 0xc0;   \
+} while (0)
+	if (dos_compatible_flag && (start / (g_sectors * g_heads) > 1023))
+		start = g_heads * g_sectors * 1024 - 1;
+	SET_HEAD_SECT_CYL(p->head, p->sector, p->cyl, start);
+	if (dos_compatible_flag && (stop / (g_sectors * g_heads) > 1023))
+		stop = g_heads * g_sectors * 1024 - 1;
+	SET_HEAD_SECT_CYL(p->end_head, p->end_sector, p->end_cyl, stop);
+#undef SET_HEAD_SECT_CYL
+}
+
+// add_partition() helper
+static void
+set_partition(int i, int doext, sector_t start, sector_t stop, int sysid)
+{
+	struct dos_partition *p;
+	sector_t offset;
+
+	if (doext) {
+		p = ptes[i].ext_pointer;
+		offset = extended_offset;
+	} else {
+		p = ptes[i].part_table;
+		offset = ptes[i].offset_from_dev_start;
+	}
+	p->boot_ind = 0;
+	p->sys_ind = sysid;
+	set_start_sect(p, start - offset);
+	set_nr_sects(p, stop - start + 1);
+	set_hsc_start_end(p, start, stop);
+	ptes[i].changed = 1;
+}
+static void
 add_partition(int n, int sys)
 {
 	char mesg[64];
@@ -2259,7 +2308,7 @@ add_partition(int n, int sys)
 	struct dos_partition *p = ptes[n].part_table;
 	struct dos_partition *q = ptes[ext_index].part_table;
 	sector_t limit, temp;
-	sector_t start, stop = 0;
+	sector_t start, stop;
 	sector_t first[g_partitions], last[g_partitions];
 
 	if (p && p->sys_ind) {
@@ -2268,7 +2317,7 @@ add_partition(int n, int sys)
 	}
 	fill_bounds(first, last);
 	if (n < 4) {
-		start = sector_offset;
+		start = offset_after_MBR_and_ext;
 		if (DISPLAY_IN_CYL_UNITS || !total_number_of_sectors)
 			limit = (sector_t) g_heads * g_sectors * g_cylinders - 1;
 		else
@@ -2279,7 +2328,7 @@ add_partition(int n, int sys)
 				get_nr_sects(q) - 1;
 		}
 	} else {
-		start = extended_offset + sector_offset;
+		start = extended_offset + offset_after_MBR_and_ext;
 		limit = get_start_sect(q) + get_nr_sects(q) - 1;
 	}
 	if (DISPLAY_IN_CYL_UNITS)
@@ -2294,14 +2343,14 @@ add_partition(int n, int sys)
 			int lastplusoff;
 
 			if (start == ptes[i].offset_from_dev_start)
-				start += sector_offset;
-			lastplusoff = last[i] + ((n < 4) ? 0 : sector_offset);
+				start += offset_after_MBR_and_ext;
+			lastplusoff = last[i] + ((n < 4) ? 0 : offset_after_MBR_and_ext);
 			if (start >= first[i] && start <= lastplusoff)
 				start = lastplusoff + 1;
 		}
 		if (start > limit)
 			break;
-		if (start >= temp+units_per_sector && num_read) {
+		if (start >= temp + units_per_sector && num_read) {
 			printf("Sector %"SECT_FMT"u is already allocated\n", temp);
 			temp = start;
 			num_read = 0;
@@ -2319,13 +2368,14 @@ add_partition(int n, int sys)
 			num_read = 1;
 		}
 	} while (start != temp || !num_read);
+
 	if (n > 4) {                    /* NOT for fifth partition */
 		struct pte *pe = &ptes[n];
 
-		pe->offset_from_dev_start = start - sector_offset;
+		pe->offset_from_dev_start = start - offset_after_MBR_and_ext;
 		if (pe->offset_from_dev_start == extended_offset) { /* must be corrected */
 			pe->offset_from_dev_start++;
-			if (sector_offset == 1)
+			if (offset_after_MBR_and_ext == 1)
 				start++;
 		}
 	}
@@ -2354,14 +2404,14 @@ add_partition(int n, int sys)
 		stop = read_int(cround(start), cround(limit), cround(limit), cround(start), mesg);
 		if (DISPLAY_IN_CYL_UNITS) {
 			stop = stop * units_per_sector - 1;
-			if (stop >limit)
+			if (stop > limit)
 				stop = limit;
 		}
 	}
 
-	set_partition(n, 0, start, stop, sys);
+	set_partition(n, /* ext:*/ 0, start, stop, sys);
 	if (n > 4)
-		set_partition(n - 1, 1, ptes[n].offset_from_dev_start, stop, EXTENDED);
+		set_partition(n - 1, /* ext:*/ 1, ptes[n].offset_from_dev_start, stop, EXTENDED);
 
 	if (IS_EXTENDED(sys)) {
 		struct pte *pe4 = &ptes[4];
@@ -2430,7 +2480,7 @@ new_partition(void)
 			"   p   primary partition (1-4)\n"
 			"   %s\n",
 			(extended_offset ?
-			"l   logical (5 or over)" : "e   extended"));
+			"l   logical (5+)" : "e   extended (1-4)"));
 		while (1) {
 			c = read_nonempty(line);
 			c |= 0x20; /* lowercase */
@@ -2486,10 +2536,11 @@ write_table_and_exit(void)
 		for (i = 0; i < 3; i++)
 			if (ptes[i].changed)
 				ptes[3].changed = 1;
+		// If needed, write MBR and extended partition sectors
 		for (i = 3; i < g_partitions; i++) {
 			struct pte *pe = &ptes[i];
 			if (pe->changed) {
-				write_part_table_flag(pe->sectorbuffer);
+				write_55AA_signature(pe->sectorbuffer);
 				write_sector(pe->offset_from_dev_start, pe->sectorbuffer);
 			}
 		}
@@ -2576,7 +2627,7 @@ menu(void)
 	} else {
 		puts("a\ttoggle a bootable flag");
 		puts("b\tedit bsd disklabel");
-		puts("c\ttoggle the dos compatibility flag");
+		printf("c\tturn o%s DOS sector gap flag\n", dos_compatible_flag ? "ff" : "n");
 		puts("d\tdelete a partition");
 		puts("l\tlist known partition types");
 		puts("n\tadd a new partition");
@@ -2681,9 +2732,9 @@ xselect(void)
 		case 's':
 			user_sectors = g_sectors = read_int(1, g_sectors, 63, 0, "Number of sectors");
 			if (dos_compatible_flag) {
-				sector_offset = g_sectors;
-				puts("Warning: setting sector offset for DOS "
-					"compatibility");
+				offset_after_MBR_and_ext = g_sectors;
+				printf("Warning: setting sector offset %u for DOS "
+					"compatibility\n", g_sectors);
 			}
 			update_units();
 			break;

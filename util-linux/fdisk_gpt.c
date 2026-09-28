@@ -153,7 +153,7 @@ check_gpt_label(void)
 
 	/* LBA 0 contains the legacy MBR */
 
-	if (!valid_part_table_flag(MBRbuffer)
+	if (!valid_55AA_signature(MBRbuffer)
 	 || first->sys_ind != LEGACY_GPT_TYPE
 	) {
 		return 0;
