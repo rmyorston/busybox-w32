@@ -911,7 +911,7 @@ xbsd_link_part(void)
 	int k, i;
 	struct dos_partition *p;
 
-	k = get_partition(1, g_partitions);
+	k = input_partition_number(1, g_partitions);
 
 	if (!xbsd_check_new_partition(&i))
 		return;

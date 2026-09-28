@@ -257,7 +257,7 @@ static void update_units(void);
 static void change_units(void);
 static void reread_partition_table(int leave);
 static void delete_partition(int i);
-static unsigned get_partition(int warn, unsigned max);
+static unsigned input_partition_number(int warn, unsigned max);
 static void list_types(const char *const *sys);
 static sector_t read_int(sector_t low, sector_t dflt, sector_t high, sector_t base, const char *mesg);
 #endif
@@ -1421,11 +1421,12 @@ read_int(sector_t low, sector_t dflt, sector_t high, sector_t base, const char *
 }
 
 static unsigned
-get_partition(int warn, unsigned max)
+input_partition_number(int warn, unsigned max)
 {
 	struct pte *pe;
 	unsigned i;
 
+	// low, default(none), high, base(?), msg
 	i = read_int(1, 0, max, 0, "Partition number") - 1;
 	pe = &ptes[i];
 
@@ -1454,24 +1455,23 @@ get_existing_partition(int warn, unsigned max)
 		}
 	}
 	if (pno >= 0) {
-		printf("Selected partition %u\n", pno+1);
+		printf("Selected partition %u\n", pno + 1);
 		return pno;
 	}
 	puts("No partition is defined yet!");
 	return pno; // -1
 
  not_unique:
-	return get_partition(warn, max);
+	return input_partition_number(warn, max);
 }
 
 static int
-get_nonexisting_partition(void)
+find_free_primary_partition(void)
 {
-	const int max = 4;
 	int pno = -1;
 	unsigned i;
 
-	for (i = 0; i < max; i++) {
+	for (i = 0; i < 4; i++) {
 		struct pte *pe = &ptes[i];
 		struct dos_partition *p = pe->part_table;
 
@@ -1481,15 +1481,16 @@ get_nonexisting_partition(void)
 			pno = i;
 		}
 	}
-	if (pno >= 0) {
-		printf("Selected partition %u\n", pno+1);
+// Caller ensures cleared partition exists
+//	if (pno >= 0) {
+		printf("Selected partition %u\n", pno + 1);
 		return pno;
-	}
-	puts("All primary partitions have been defined already!");
-	return -1;
+//	}
+//	puts("All primary partitions have been defined already!");
+//	return pno; // -1
 
  not_unique:
-	return get_partition(/*warn*/ 0, max);
+	return input_partition_number(/*warn*/ 0, 4);
 }
 
 
@@ -2447,7 +2448,8 @@ add_logical(void)
 static void
 new_partition(void)
 {
-	int i, free_primary = 0;
+	char c, line[80];
+	int free_primary;
 
 	if (warn_geometry())
 		return;
@@ -2459,51 +2461,45 @@ new_partition(void)
 		return;
 	}
 
-	for (i = 0; i < 4; i++)
-		free_primary += !ptes[i].part_table->sys_ind;
+	for (free_primary = 0; free_primary < 4; free_primary++)
+		if (is_cleared_partition(ptes[free_primary].part_table))
+			break;
 
-	if (!free_primary && g_partitions >= MAXIMUM_PARTS) {
-		puts("The maximum number of partitions has been created");
-		return;
-	}
-
-	if (!free_primary) {
+	if (free_primary == 4) {
+		// no free primary partition
+		if (g_partitions >= MAXIMUM_PARTS) {
+			puts("The maximum number of partitions has been created");
+			return;
+		}
 		if (extended_offset)
 			add_logical();
 		else
 			puts("You must delete some partition and add "
 				 "an extended partition first");
-	} else {
-		char c, line[80];
-		snprintf(line, sizeof(line),
-			"Partition type\n"
-			"   p   primary partition (1-4)\n"
-			"   %s\n",
-			(extended_offset ?
-			"l   logical (5+)" : "e   extended (1-4)"));
-		while (1) {
-			c = read_nonempty(line);
-			c |= 0x20; /* lowercase */
-			if (c == 'p') {
-				i = get_nonexisting_partition();
-				if (i >= 0)
-					add_partition(i, LINUX_NATIVE);
-				return;
-			}
-			if (c == 'l' && extended_offset) {
-				add_logical();
-				return;
-			}
-			if (c == 'e' && !extended_offset) {
-				i = get_nonexisting_partition();
-				if (i >= 0)
-					add_partition(i, EXTENDED);
-				return;
-			}
-			printf("Invalid partition number "
-					 "for type '%c'\n", c);
-		}
+		return;
 	}
+
+	snprintf(line, sizeof(line),
+		"Partition type\n"
+		"   p   primary (1-4)\n"
+		"   %s\n",
+		(extended_offset ?
+		"l   logical (5+)" : "e   extended (1-4)"));
+	c = read_nonempty(line);
+	c |= 0x20; /* lowercase */
+	if (c == 'p'
+	 || (c == 'e' && !extended_offset)
+	) {
+		free_primary = find_free_primary_partition();
+		//if (free_primary >= 0) // cannot fail, we know it exists
+		add_partition(free_primary, c == 'p' ? LINUX_NATIVE : EXTENDED);
+		return;
+	}
+	if (c == 'l' && extended_offset) {
+		add_logical();
+		return;
+	}
+	// Bad answer: go back to main menu
 }
 
 static void
@@ -2684,7 +2680,7 @@ xselect(void)
 		//	break;
 		case 'b':
 			if (LABEL_IS_DOS)
-				move_begin(get_partition(0, g_partitions));
+				move_begin(input_partition_number(0, g_partitions));
 			break;
 		case 'c':
 			user_cylinders = g_cylinders =
@@ -2871,7 +2867,7 @@ int fdisk_main(int argc UNUSED_PARAM, char **argv)
 		switch (c) {
 		case 'a':
 			if (LABEL_IS_DOS)
-				toggle_active(get_partition(1, g_partitions));
+				toggle_active(input_partition_number(1, g_partitions));
 			else
 				goto unknown_cmd;
 			break;
