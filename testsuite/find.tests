@@ -83,7 +83,7 @@ testing "find and run executable script" \
 	"" ""
 rm find.tempdir/echo_sh
 
-cp $bindir/busybox.exe find.tempdir/busybox_noext
+cp "$bindir/busybox.exe" find.tempdir/busybox_noext
 testing "find and run executable without extension" \
 	"cd find.tempdir && find -name busybox_noext -exec ./busybox_noext echo {} \\;" \
 	"./busybox_noext\n" \
