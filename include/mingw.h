@@ -297,6 +297,7 @@ int mingw_getpeername(int fd, struct sockaddr *sa, socklen_t *sz) FAST_FUNC;
 int mingw_gethostname(char *host, int namelen) FAST_FUNC;
 int mingw_getaddrinfo(const char *node, const char *service,
 			const struct addrinfo *hints, struct addrinfo **res) FAST_FUNC;
+int mingw_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *host, int hostlen, char *svc, int svclen, int flags) FAST_FUNC;
 struct hostent *mingw_gethostbyaddr(const void *addr, socklen_t len, int type) FAST_FUNC;
 int mingw_sendto(int sockfd, const char *buf, int len, int flags, const struct sockaddr *to, int tolen) FAST_FUNC;
 int mingw_recv(int sockfd, char *buf, int len, int flags) FAST_FUNC;
@@ -319,6 +320,7 @@ int recvmsg(int fd, LPWSAMSG msg, int flags);
 #define sendto mingw_sendto
 #define recv mingw_recv
 #define recvfrom mingw_recvfrom
+#define getnameinfo mingw_getnameinfo
 
 /* this is a constant that doesn't collide with AF_* */
 /* Used to add WSA_FLAG_OVERLAPPED to the next call to WSASocket */

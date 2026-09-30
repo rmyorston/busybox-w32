@@ -84,6 +84,13 @@ int FAST_FUNC mingw_getaddrinfo(const char *node, const char *service,
 	return getaddrinfo(node, service, hints, res);
 }
 
+#undef getnameinfo
+int FAST_FUNC mingw_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *host, int hostsz, char *svc, int svcsz, int flags)
+{
+	init_winsock();
+	return getnameinfo(sa, salen, host, hostsz, svc, svcsz, flags);
+}
+
 int FAST_FUNC mingw_socket(int domain, int type, int protocol)
 {
 	static char include_overlapped = 0;
