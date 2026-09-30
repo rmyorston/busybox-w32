@@ -305,7 +305,7 @@ char* FAST_FUNC strftime_YYYYMMDDHHMMSS(char *buf, unsigned len, time_t *tp)
 }
 
 #if ENABLE_PLATFORM_MINGW32
-static unsigned long long monotonic_res(unsigned long long res)
+static unsigned long long monotonic_res(unsigned res)
 {
 	LARGE_INTEGER freq, count;
 	unsigned long long freq_ull, count_ull;
