@@ -568,6 +568,18 @@ if test "${0##*/}" = "bunzip2.tests"; then
 	echo "FAIL: $unpack: bz2_issue_12.bz2 corrupted example"
 	FAILCOUNT=$((FAILCOUNT + 1))
     fi
+
+# specially crafted file to attack the
+#   runCnt += (runPos << nextSym); /* +runPos if RUNA; +2*runPos if RUNB */
+# code, making (dbufCount + runCnt) overflow 32 bits and become small.
+# (there is a fix now which catches when runCnt reaches 0x80000000)
+    errout="`${bb}bunzip2 <bz2_runcnt_overflow.bz2 2>&1 >/dev/null`"
+    if test x"$errout:$?" = x"bunzip2: bunzip error -5:1"; then
+	echo "PASS: $unpack: bz2_runcnt_overflow.bz2 corrupted example"
+    else
+	echo "FAIL: $unpack: bz2_runcnt_overflow.bz2 corrupted example"
+	FAILCOUNT=$((FAILCOUNT + 1))
+    fi
 fi
 
 exit $((FAILCOUNT <= 255 ? FAILCOUNT : 255))
