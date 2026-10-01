@@ -25,7 +25,7 @@
 //usage:     "\nFormat specifiers:"
 //usage:     "\n %Nc or %[cN]	CPU. N - bar size (default 10)"
 //usage:     "\n		(displays: S:system U:user N:niced D:iowait I:irq i:softirq)"
-//usage:     "\n %[nINTERFACE]	Network INTERFACE"
+//usage:     "\n %[nINTERFACE]	Network INTERFACE (if error counters change, prepends *)"
 //usage:     "\n %m		Allocated memory"
 //usage:     "\n %[md]		Dirty file-backed memory"
 //usage:     "\n %[mw]		Memory being written to storage"
