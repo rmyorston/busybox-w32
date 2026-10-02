@@ -111,6 +111,8 @@ int suw32_main(int argc UNUSED_PARAM, char **argv)
 			args = xappendword(args, q);
 			free(q);
 		}
+	} else if (ENABLE_FEATURE_CLEAN_UP) {
+		cwd = realcwd = NULL;
 	}
 
 	if (opt & OPT_N)
