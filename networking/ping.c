@@ -836,11 +836,6 @@ static void ping4(len_and_sockaddr *lsa)
  send_ping:
 	sendping4(0);
 
-#if ENABLE_PLATFORM_MINGW32
-	/* only let recvfrom delay _roughly_ that long */
-	setsockopt_SOL_SOCKET_int(pingsock, SO_RCVTIMEO, G.interval_us < 1000 ? 1 : G.interval_us / 1000);
-#endif
-
 	/* listen for replies */
 	while (1) {
 		struct sockaddr_in from;
@@ -851,10 +846,10 @@ static void ping4(len_and_sockaddr *lsa)
 		long long left = G.timeouttill - monotonic_us();
 		if (left <= 0) {
 			G.nextfun(0);
-		} else if (left > G.interval_us && left > 5000) {
-			/* don't busy-wait the last segment */
-			setsockopt_SOL_SOCKET_int(pingsock, SO_RCVTIMEO, left / 1000);
+			left = G.timeouttill - monotonic_us();
 		}
+		/* only let recvfrom delay _roughly_ that long */
+		setsockopt_SOL_SOCKET_int(pingsock, SO_RCVTIMEO, left < 1000 ? 1 : left / 1000);
 #endif
 
 		c = recvfrom(pingsock, G.rcv_packet, G.sizeof_rcv_packet, 0,
@@ -948,11 +943,6 @@ static void ping6(len_and_sockaddr *lsa)
  send_ping:
 	sendping6(0);
 
-#if ENABLE_PLATFORM_MINGW32
-	/* only let recvfrom delay _roughly_ that long */
-	setsockopt_SOL_SOCKET_int(pingsock, SO_RCVTIMEO, G.interval_us < 1000 ? 1 : G.interval_us / 1000);
-#endif
-
 	/* listen for replies */
 	while (1) {
 		int c;
@@ -963,10 +953,10 @@ static void ping6(len_and_sockaddr *lsa)
 		long long left = G.timeouttill - monotonic_us();
 		if (left <= 0) {
 			G.nextfun(0);
-		} else if (left > G.interval_us && left > 5000) {
-			/* don't busy-wait the last segment */
-			setsockopt_SOL_SOCKET_int(pingsock, SO_RCVTIMEO, left / 1000);
+			left = G.timeouttill - monotonic_us();
 		}
+		/* only let recvmsg delay _roughly_ that long */
+		setsockopt_SOL_SOCKET_int(pingsock, SO_RCVTIMEO, left < 1000 ? 1 : left / 1000);
 #endif
 
 		msg.msg_controllen = sizeof(control_buf);
