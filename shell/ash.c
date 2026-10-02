@@ -17968,6 +17968,9 @@ forkshell_init(const char *idstr)
 	njobs = fs->njobs;
 	curjob = fs->curjob;
 #endif
+#if ENABLE_SUW32
+	delayexit = 0;
+#endif
 
 	CLEAR_RANDOM_T(&random_gen); /* or else $RANDOM repeats in child */
 
