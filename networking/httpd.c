@@ -1803,6 +1803,17 @@ static void send_cgi_and_exit(
 		/* is directory, find next '/' */
 		last_slash = script;
 	}
+#if ENABLE_PLATFORM_MINGW32
+	/* no PATH_INFO and url ends with / */
+	if (!script && last_slash[1] == '\0') {
+		/* we need to attach the index string to the url */
+		size_t urllen = last_slash - url + 1;
+		size_t indexlen = strlen(index_page);
+		url = xrealloc((char*)url, urllen + indexlen + 1);
+		memcpy((char*)url + urllen, index_page, indexlen + 1);
+		last_slash = (char*)url + urllen - 1;
+	}
+#endif
 	setenv1("PATH_INFO", script);   /* set to /PATH_INFO or "" */
 	setenv1("REQUEST_METHOD", request);
 	if (g_query) {
