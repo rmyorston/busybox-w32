@@ -241,7 +241,7 @@ int unsetenv(const char *env) FAST_FUNC;
 /*
  * string.h
  */
-char *strndup(char const *s, size_t n) FAST_FUNC;
+char *strndup(char const *s, size_t n);
 char *mingw_strerror(int errnum) FAST_FUNC;
 char *strsignal(int sig) FAST_FUNC;
 int strverscmp(const char *s1, const char *s2) FAST_FUNC;
