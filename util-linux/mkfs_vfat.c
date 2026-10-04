@@ -142,7 +142,7 @@ struct msdos_boot_sector {
 	uint16_t dir_entries;        /* 011 root directory entries */
 	uint16_t volume_size_sect;   /* 013 volume size in sectors */
 	uint8_t  media_byte;         /* 015 media code */
-	uint16_t sect_per_fat;       /* 016 sectors/FAT */
+	uint16_t fat16_sect_per_fat; /* 016 sectors/FAT, must be 0 for FAT32 */
 	uint16_t sect_per_track;     /* 018 sectors per track */
 	uint16_t heads;              /* 01a number of heads */
 	uint32_t hidden;             /* 01c hidden sectors (sector offset of volume within physical disk) */
@@ -489,7 +489,7 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 		strcpy(boot_blk->boot_jump_and_sys_id, "\xeb\x58\x90" "mkdosfs");
 		STORE_LE(boot_blk->bytes_per_sect, bytes_per_sect);
 		STORE_LE(boot_blk->sect_per_clust, sect_per_clust);
-		// cast in needed on big endian to suppress a warning
+		// cast is needed on big endian to suppress a warning
 		STORE_LE(boot_blk->reserved_sect, (uint16_t)reserved_sect);
 		STORE_LE(boot_blk->fats, 2);
 		//STORE_LE(boot_blk->dir_entries, 0); // for FAT32, stays 0
@@ -497,10 +497,10 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 			STORE_LE(boot_blk->volume_size_sect, volume_size_sect);
 		STORE_LE(boot_blk->media_byte, media_byte);
 		// wrong: this would make Linux think that it's fat12/16:
-		//if (sect_per_fat <= 0xffff)
-		//	STORE_LE(boot_blk->sect_per_fat, sect_per_fat);
+		//if (fat16_sect_per_fat <= 0xffff)
+		//	STORE_LE(boot_blk->fat16_sect_per_fat, sect_per_fat);
 		// works:
-		//STORE_LE(boot_blk->sect_per_fat, 0);
+		//STORE_LE(boot_blk->fat16_sect_per_fat, 0);
 		STORE_LE(boot_blk->sect_per_track, sect_per_track);
 		STORE_LE(boot_blk->heads, heads);
 		//STORE_LE(boot_blk->hidden, 0);

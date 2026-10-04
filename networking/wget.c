@@ -95,7 +95,7 @@
 //config:	If you still think this is unacceptable, send patches.
 //config:
 //config:	If you still think this is unacceptable, do not want to send
-//config:	patches, but do want to waste bandwidth expaining how wrong
+//config:	patches, but do want to waste bandwidth explaining how wrong
 //config:	it is, you will be ignored.
 //config:
 //config:	FEATURE_WGET_OPENSSL does implement TLS verification
@@ -135,26 +135,31 @@
 
 //usage:#define wget_trivial_usage
 //usage:	IF_FEATURE_WGET_LONG_OPTIONS(
-//usage:       "[-cqS] [--spider] [-O FILE] [-o LOGFILE] [--header STR]\n"
-//usage:       "	[--post-data STR | --post-file FILE] [-Y on/off]\n"
+//usage:       "[-cqS] [--spider] [-O FILE] [-o LOGFILE] [--header STR]...\n"
+//usage:       "	[-U AGENT] [--post-data STR | --post-file FILE] [-Y on/off]\n"
 /* Since we ignore these opts, we don't show them in --help */
-/* //usage:    "	[--no-cache] [--passive-ftp] [-t TRIES]" */
+/* //usage:    "	[--no-cache] [--passive-ftp]" */
 /* //usage:    "	[-nv] [-nc] [-nH] [-np]" */
 //usage:	IF_PLATFORM_MINGW32(
-//usage:       "	"IF_FEATURE_TLS_SCHANNEL("[--no-check-certificate] ")"[-P DIR] [-U AGENT]"IF_FEATURE_WGET_TIMEOUT(" [-T SEC]")" URL..."
+//usage:       "	"IF_FEATURE_TLS_SCHANNEL("[--no-check-certificate] ")"[-P DIR] "IF_FEATURE_WGET_TIMEOUT(" [-T SEC]")"[-t TRIES] URL..."
 //usage:	)
 //usage:	IF_PLATFORM_POSIX(
-//usage:       "	"IF_FEATURE_WGET_OPENSSL("[--no-check-certificate] ")"[-P DIR] [-U AGENT]"IF_FEATURE_WGET_TIMEOUT(" [-T SEC]")" URL..."
+//usage:       "	"IF_FEATURE_WGET_OPENSSL("[--no-check-certificate] ")"[-P DIR] "IF_FEATURE_WGET_TIMEOUT("[-T SEC] ")"[-t TRIES] URL..."
 //usage:	)
 //usage:	)
 //usage:	IF_NOT_FEATURE_WGET_LONG_OPTIONS(
-//usage:       "[-cqS] [-O FILE] [-o LOGFILE] [-Y on/off] [-P DIR] [-U AGENT]"IF_FEATURE_WGET_TIMEOUT(" [-T SEC]")" URL..."
+//usage:       "[-cqS] [-O FILE] [-o LOGFILE] [-P DIR] [-U AGENT] [-Y on/off]\n"
+//usage:       "	"IF_FEATURE_WGET_TIMEOUT("[-T SEC] ")"[-t TRIES] URL..."
+
 //usage:	)
 //usage:#define wget_full_usage "\n\n"
 //usage:       "Retrieve files via HTTP or FTP\n"
 //usage:	IF_FEATURE_WGET_LONG_OPTIONS(
 //usage:     "\n	--spider	Only check URL existence: $? is 0 if exists"
 //usage:     "\n	--header STR	Add STR (of form 'header: value') to headers"
+//usage:	)
+//usage:     "\n	-U AGENT	Use AGENT for User-Agent header"
+//usage:	IF_FEATURE_WGET_LONG_OPTIONS(
 //usage:     "\n	--post-data STR	Send STR using POST method"
 //usage:     "\n	--post-file FILE	Send FILE using POST method"
 //usage:	IF_FEATURE_WGET_OPENSSL(
@@ -164,16 +169,16 @@
 //usage:     "\n	--no-check-certificate	Don't validate the server's certificate"
 //usage:	)
 //usage:	)
-//usage:     "\n	-c		Continue retrieval of aborted transfer"
+//usage:     "\n	-c		Continue retrieval of partial download"
 //usage:     "\n	-q		Quiet"
 //usage:     "\n	-P DIR		Save to DIR (default .)"
 //usage:     "\n	-S    		Show server response"
+//usage:     "\n	-t TRIES	Retry count (default 20)"
 //usage:	IF_FEATURE_WGET_TIMEOUT(
 //usage:     "\n	-T SEC		Network read timeout is SEC seconds"
 //usage:	)
 //usage:     "\n	-O FILE		Save to FILE ('-' for stdout)"
 //usage:     "\n	-o LOGFILE	Log messages to FILE"
-//usage:     "\n	-U STR		Use STR for User-Agent header"
 //usage:     "\n	-Y on/off	Use proxy"
 
 #include "libbb.h"
@@ -260,8 +265,9 @@ static const char wget_user_headers[] ALIGN1 =
 struct globals {
 	off_t content_len;        /* Content-length of the file */
 	off_t beg_range;          /* Range at which continue begins */
-#if ENABLE_FEATURE_WGET_STATUSBAR
 	off_t transferred;        /* Number of bytes transferred so far */
+	off_t reset_pos;          /* Where to seek to if server refuses to continue (usually 0) */
+#if ENABLE_FEATURE_WGET_STATUSBAR
 	const char *curfile;      /* Name of current file being transferred */
 	bb_progress_t pmt;
 #endif
@@ -276,6 +282,7 @@ struct globals {
 	char *fname_log;        /* where to direct log (-o) */
 	const char *proxy_flag; /* Use proxies if env vars are set */
 	const char *user_agent; /* "User-Agent" header field */
+	int tries;		/* -t/--tries NUM */
 	int output_fd;
 	int log_fd;
 	int o_flags;
@@ -302,24 +309,22 @@ struct globals {
 
 /* Must match option string! */
 enum {
-	WGET_OPT_CONTINUE   = (1 << 0),
-	WGET_OPT_QUIET      = (1 << 1),
-	WGET_OPT_SERVER_RESPONSE = (1 << 2),
-	WGET_OPT_OUTNAME    = (1 << 3),
-	WGET_OPT_LOGNAME    = (1 << 4),
-	WGET_OPT_PREFIX     = (1 << 5),
-	WGET_OPT_PROXY      = (1 << 6),
-	WGET_OPT_USER_AGENT = (1 << 7),
-	WGET_OPT_NETWORK_READ_TIMEOUT = (1 << 8),
-	WGET_OPT_RETRIES    = (1 << 9),
+	WGET_OPT_CONTINUE   = (1 << 0),                 // -c
+	WGET_OPT_QUIET      = (1 << 1),                 // -q
+	WGET_OPT_SERVER_RESPONSE = (1 << 2),            // -W
+	WGET_OPT_OUTNAME    = (1 << 3),                 // -O FILE
+	WGET_OPT_LOGNAME    = (1 << 4),                 // -o LOGFILE
+	WGET_OPT_PREFIX     = (1 << 5),                 // -P DIR
+	WGET_OPT_PROXY      = (1 << 6),                 // -Y on/off
+	WGET_OPT_USER_AGENT = (1 << 7),                 // -U USER_AGENT
+	WGET_OPT_NETWORK_READ_TIMEOUT = (1 << 8),       // -T SEC
+	WGET_OPT_RETRIES    = (1 << 9),                 // -t NUM
 	WGET_OPT_nsomething = (1 << 10),
 	WGET_OPT_HEADER     = (1 << 11) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
 	WGET_OPT_POST_DATA  = (1 << 12) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
 	WGET_OPT_SPIDER     = (1 << 13) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
 	WGET_OPT_NO_CHECK_CERT = (1 << 14) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
 	WGET_OPT_POST_FILE  = (1 << 15) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
-	/* hijack this bit for other than opts purposes: */
-	WGET_NO_FTRUNCATE   = (1 << 31)
 };
 
 #define WGET_OPT_POST (WGET_OPT_POST_DATA | WGET_OPT_POST_FILE)
@@ -344,6 +349,9 @@ static void progress_meter(int flag)
 	if (flag == PROGRESS_START)
 		bb_progress_init(&G.pmt, G.curfile);
 
+	if (flag == PROGRESS_END)
+		G.pmt.last_update_sec = 0; /* force update (and correct "notty") */
+
 	notty = bb_progress_update(&G.pmt,
 			G.beg_range,
 			G.transferred,
@@ -354,7 +362,6 @@ static void progress_meter(int flag)
 		bb_progress_free(&G.pmt);
 		if (notty == 0)
 			bb_putchar_stderr('\n'); /* it's tty */
-		G.transferred = 0;
 	}
 }
 #else
@@ -691,7 +698,13 @@ static void reset_beg_range_to_zero(void)
 {
 	bb_simple_error_msg("restart failed");
 	G.beg_range = 0;
-	xlseek(G.output_fd, 0, SEEK_SET);
+	/*
+	 * G.reset_pos is zero except for one corner case:
+	 * "wget -O FILE URL1 URL2". If download of URL2
+	 * was partial, and next retry fails to restart from last position,
+	 * we must rewind FILE to where URL2 data starts, not to 0!
+	 */
+	xlseek(G.output_fd, G.reset_pos, SEEK_SET);
 	/* Done at the end instead: */
 	/* ftruncate(G.output_fd, 0); */
 }
@@ -969,8 +982,10 @@ static FILE* prepare_ftp_session(FILE **dfpp, struct host_info *target, len_and_
 }
 #endif
 
-static void NOINLINE retrieve_file_data(FILE *dfp)
+/* Return 0 if successful, !0 if partial file gotten and then got EOF or error */
+static int NOINLINE retrieve_file_data(FILE *dfp)
 {
+	off_t pos;
 #if ENABLE_FEATURE_WGET_STATUSBAR || ENABLE_FEATURE_WGET_TIMEOUT
 # if ENABLE_FEATURE_WGET_TIMEOUT
 	unsigned second_cnt = G.timeout_seconds;
@@ -986,6 +1001,8 @@ static void NOINLINE retrieve_file_data(FILE *dfp)
 		else
 			fprintf(stderr, "saving to '%s'\n", G.fname_out);
 	}
+
+	G.transferred = 0;
 	progress_meter(PROGRESS_START);
 
 	if (G.chunked)
@@ -1032,9 +1049,7 @@ static void NOINLINE retrieve_file_data(FILE *dfp)
 
 			if (n > 0) {
 				xwrite(G.output_fd, G.wget_buf, n);
-#if ENABLE_FEATURE_WGET_STATUSBAR
 				G.transferred += n;
-#endif
 				if (G.got_clen) {
 					G.content_len -= n;
 					if (G.content_len == 0)
@@ -1053,11 +1068,12 @@ static void NOINLINE retrieve_file_data(FILE *dfp)
 			 * fread does not distinguish between EOF and error.
 			 */
 			if (errno != EAGAIN) {
+				progress_meter(PROGRESS_END);
 				if (ferror(dfp)) {
-					progress_meter(PROGRESS_END);
-					bb_simple_perror_msg_and_die(bb_msg_read_error);
+					bb_simple_perror_msg(bb_msg_read_error);
 				}
-				break; /* EOF, not error */
+				G.content_len = 1; /* treat end as error, not EOF */
+				goto EOF_err; /* EOF / error */
 			}
 
 #if ENABLE_FEATURE_WGET_STATUSBAR || ENABLE_FEATURE_WGET_TIMEOUT
@@ -1068,7 +1084,9 @@ static void NOINLINE retrieve_file_data(FILE *dfp)
 # if ENABLE_FEATURE_WGET_TIMEOUT
 				if (second_cnt != 0 && --second_cnt == 0) {
 					progress_meter(PROGRESS_END);
-					bb_simple_error_msg_and_die("download timed out");
+					bb_simple_error_msg("download timed out");
+					G.content_len = 1; /* treat end as error, not EOF */
+					goto EOF_err;
 				}
 # endif
 				/* We used to loop back to poll here,
@@ -1120,25 +1138,25 @@ static void NOINLINE retrieve_file_data(FILE *dfp)
 	G.chunked = 0;  /* makes it show 100% even for chunked download */
 	G.got_clen = 1; /* makes it show 100% even for download of (formerly) unknown size */
 	progress_meter(PROGRESS_END);
+ EOF_err:
 	if (G.content_len != 0) {
-		bb_simple_perror_msg_and_die("connection closed prematurely");
 		/* GNU wget says "DATE TIME (NN MB/s) - Connection closed at byte NNN. Retrying." */
+		bb_error_msg("connection closed at byte %llu", (unsigned long long)G.transferred);
+		return 1; /* "partial download" */
 	}
 
-	/* If -c failed, we restart from the beginning,
+	/* If partial restart failed, we restarted from the beginning,
 	 * but we do not truncate file then, we do it only now, at the end.
 	 * This lets user to ^C if his 99% complete 10 GB file download
 	 * failed to restart *without* losing the almost complete file.
 	 */
-	{
-		off_t pos = lseek(G.output_fd, 0, SEEK_CUR);
-		if (pos != (off_t)-1) {
-			/* do not truncate if -O- is in use, a user complained about
-			 * "wget -qO- 'http://example.com/empty' >>FILE" truncating FILE.
-			 */
-			if (!(option_mask32 & WGET_NO_FTRUNCATE))
-				ftruncate(G.output_fd, pos);
-		}
+	pos = lseek(G.output_fd, 0, SEEK_CUR);
+	if (pos != (off_t)-1) {
+		/* do not truncate if -O- >>FILE is in use, a user complained about
+		 * "wget -O- 'http://host.com/empty' >>FILE" truncating FILE.
+		 */
+		if (!(fcntl(G.output_fd, F_GETFL) & O_APPEND))
+			ftruncate(G.output_fd, pos);
 	}
 
 	if (!(option_mask32 & WGET_OPT_QUIET)) {
@@ -1147,12 +1165,14 @@ static void NOINLINE retrieve_file_data(FILE *dfp)
 		else
 			fprintf(stderr, "'%s' saved\n", G.fname_out);
 	}
+	return 0; /* "full download" */
 }
 
 static void download_one_url(const char *url)
 {
 	bool use_proxy;                 /* Use proxies if env vars are set  */
 	int redir_limit;
+	int retry_cnt = G.tries;
 	len_and_sockaddr *lsa;
 	FILE *sfp;                      /* socket to web/ftp server         */
 	FILE *dfp;                      /* socket to ftp server (data)      */
@@ -1221,6 +1241,7 @@ static void download_one_url(const char *url)
 		 * We are not sure it exists on remote side */
 	}
 
+ restart:
 	redir_limit = 16;
  resolve_lsa:
 	lsa = xhost2sockaddr(server.host, server.port);
@@ -1383,8 +1404,8 @@ static void download_one_url(const char *url)
 		str = G.wget_buf;
 		str = skip_non_whitespace(str);
 		str = skip_whitespace(str);
-		// FIXME: no error check
-		// xatou wouldn't work: "200 OK"
+// FIXME: no error check
+// xatou wouldn't work: "200 OK"
 		status = atoi(str);
 		switch (status) {
 		case 0:
@@ -1537,10 +1558,23 @@ However, in real world it was observed that some web servers
 	if (!(option_mask32 & WGET_OPT_SPIDER)) {
 		if (G.output_fd < 0)
 			G.output_fd = xopen(G.fname_out, G.o_flags);
-		retrieve_file_data(dfp);
+		if (retrieve_file_data(dfp) != 0) {
+			/* Partial download */
+			if (G.tries == 0 || retry_cnt-- != 0) {
+				G.beg_range += G.transferred;
+				goto restart;
+			}
+			/* else: -t TRIES exceeded */
+//FIXME: should we abort instead of continuing with next URL?
+		}
 		if (!(option_mask32 & WGET_OPT_OUTNAME)) {
 			xclose(G.output_fd);
 			G.output_fd = -1;
+		} else { /* -O FILE receives _all_ URLs concatenated */
+			/*
+			 * For "wget -O FILE URL1 URL2":
+			 * remember where URL1 data ends in FILE */
+			G.reset_pos += G.beg_range + G.transferred;
 		}
 	} else {
 		if (!(option_mask32 & WGET_OPT_QUIET))
@@ -1582,8 +1616,7 @@ int wget_main(int argc UNUSED_PARAM, char **argv)
 		"user-agent\0"       Required_argument "U"
 IF_FEATURE_WGET_TIMEOUT(
 		"timeout\0"          Required_argument "T")
-		/* Ignored: */
-IF_DESKTOP(	"tries\0"            Required_argument "t")
+		"tries\0"            Required_argument "t"
 		"header\0"           Required_argument "\xff"
 		"post-data\0"        Required_argument "\xfe"
 		"spider\0"           No_argument       "\xfd"
@@ -1611,6 +1644,7 @@ IF_DESKTOP(	"no-parent\0"        No_argument       "\xf0")
 
 	INIT_G();
 
+	G.tries = 20;
 #if ENABLE_FEATURE_WGET_TIMEOUT
 	G.timeout_seconds = 900;
 	signal(SIGALRM, alarm_handler);
@@ -1620,7 +1654,7 @@ IF_DESKTOP(	"no-parent\0"        No_argument       "\xf0")
 
 	GETOPT32(argv, "^"
 		"cqSO:o:P:Y:U:T:+"
-		/*ignored:*/ "t:"
+		"t:+"
 		/*ignored:*/ "n::"
 		/* wget has exactly four -n<letter> opts, all of which we can ignore:
 		 * -nv --no-verbose: be moderately quiet (-q is full quiet)
@@ -1640,7 +1674,7 @@ IF_DESKTOP(	"no-parent\0"        No_argument       "\xf0")
 		, &G.fname_out, &G.fname_log, &G.dir_prefix,
 		&G.proxy_flag, &G.user_agent,
 		IF_FEATURE_WGET_TIMEOUT(&G.timeout_seconds) IF_NOT_FEATURE_WGET_TIMEOUT(NULL),
-		NULL, /* -t RETRIES */
+		&G.tries, /* -t RETRIES */
 		NULL  /* -n[ARG] */
 		IF_FEATURE_WGET_LONG_OPTIONS(, &headers_llist)
 		IF_FEATURE_WGET_LONG_OPTIONS(, &G.post_data)
@@ -1695,7 +1729,7 @@ IF_DESKTOP(	"no-parent\0"        No_argument       "\xf0")
 	if (G.fname_out) { /* -O FILE ? */
 		if (LONE_DASH(G.fname_out)) { /* -O - ? */
 			G.output_fd = 1;
-			option_mask32 = (option_mask32 & (~WGET_OPT_CONTINUE)) | WGET_NO_FTRUNCATE;
+			option_mask32 = (option_mask32 & (~WGET_OPT_CONTINUE));
 		}
 		/* compat with wget: -O FILE can overwrite */
 		G.o_flags = O_WRONLY | O_CREAT | O_TRUNC;

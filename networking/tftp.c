@@ -832,7 +832,7 @@ int tftp_main(int argc UNUSED_PARAM, char **argv)
 # if ENABLE_FEATURE_TFTP_BLOCKSIZE
 	/* Check if the blksize is valid:
 	 * RFC2348 says between 8 and 65464 */
-	blksize = tftp_blksize_check(blksize_str, 65564);
+	blksize = tftp_blksize_check(blksize_str, 65464);
 	if (blksize < 0) {
 		//bb_error_msg("bad block size");
 		return EXIT_FAILURE;
@@ -962,7 +962,7 @@ int tftpd_main(int argc UNUSED_PARAM, char **argv)
 		if (opt_len > 0) {
 			res = tftp_get_option("blksize", opt_str, opt_len);
 			if (res) {
-				blksize = tftp_blksize_check(res, 65564);
+				blksize = tftp_blksize_check(res, 65464);
 				if (blksize < 0) {
 					G_error_pkt_reason = ERR_BAD_OPT;
 					/* will just send error pkt */

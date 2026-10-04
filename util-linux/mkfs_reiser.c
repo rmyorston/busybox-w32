@@ -168,7 +168,7 @@ int mkfs_reiser_main(int argc UNUSED_PARAM, char **argv)
 	argv += optind; // argv[0] -- device
 
 	// check the device is a block device
-	fd = xopen(argv[0], O_WRONLY | O_EXCL);
+	fd = xopen(argv[0], O_RDWR | O_EXCL);
 	xfstat(fd, &st, argv[0]);
 	if (!S_ISBLK(st.st_mode) && !(option_mask32 & OPT_f))
 		bb_error_msg_and_die("%s: not a block device", argv[0]);

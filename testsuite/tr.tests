@@ -16,8 +16,8 @@ testing "tr understands 0-9A-F" \
 	"19AF" "" "19AFH\n"
 
 testing "tr does not treat [p\\-r] as a range" \
-	"tr '[p\-r]' '+'" \
-	"o+q+s+" "" "opqrs-"
+	"tr '[p\\-r]' '+'" \
+	"o+q+s+\n" "" "opqrs-\n"
 
 optional FEATURE_TR_CLASSES
 testing "tr understands [:xdigit:]" \

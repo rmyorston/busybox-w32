@@ -88,11 +88,18 @@ testing "awk %o -1.9" \
 # OFMT can contain literals before and after %SPEC:
 testing "awk OFMT='R%%:%f!' -1.9" \
 "awk -v OFMT='R%%:%f!' 'BEGIN { print -1.9; }'" "R%:-1.900000!\n" "" ""
+testing "awk OFMT='R%%:%f!%%!!' -1.9" \
+"awk -v OFMT='R%%:%f!%%!!' 'BEGIN { print -1.9; }'" "R%:-1.900000!%!!\n" "" ""
+# In our code, whether trailing lone % prints "%" or "" depends on what libc's sprintf does.
+# GNU Awk 5.3.0 prints "%", I do not know whether it is libc-dependent in their code.
+# Let's not test this:
+#testing "awk OFMT='R%%:%f!%' -1.9" \
+#"awk -v OFMT='R%%:%f!%' 'BEGIN { print -1.9; }'" "R%:-1.900000!%\n" "" ""
 
 # OFMT is ignored if the value has no fractionals (even if it does not fit into uint64)
 testing "awk OFMT='R%%:%f!' 2**128" \
 "awk -v OFMT='R%%:%f!' 'BEGIN { print 2**128; }'" "340282366920938463463374607431768211456\n" "" ""
-testing "awk OFMT='R%%:%f!' 2**128" \
+testing "awk OFMT='R%%:%f!' -2**129" \
 "awk -v OFMT='R%%:%f!' 'BEGIN { print -2**129; }'" "-680564733841876926926749214863536422912\n" "" ""
 
 # OFMT can contain no %SPEC (be a literal):

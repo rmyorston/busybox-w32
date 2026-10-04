@@ -15,6 +15,12 @@
 #undef _tolower
 #define _tolower(X) ((X)|((char) 0x20))
 
+/* (*ptr) points to string directly after '\'.
+ * Analyze it, if it's special (n, 003, etc) return
+ * corresponding char ('\n', 0x03, etc) and advance
+ * (*ptr) to point after the special part of the string.
+ * Otherwise: return '\' and do not advance (*ptr).
+ */
 char FAST_FUNC bb_process_escape_sequence(const char **ptr)
 {
 	const char *q;

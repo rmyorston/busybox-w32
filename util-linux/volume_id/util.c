@@ -20,7 +20,7 @@
 
 #include "volume_id_internal.h"
 
-void volume_id_set_unicode16(char *str, size_t len, const uint8_t *buf, enum endian endianess, size_t count)
+void FAST_FUNC volume_id_set_unicode16(char *str, size_t len, const uint8_t *buf, enum endian endianess, size_t count)
 {
 	unsigned i, j;
 	unsigned c;
@@ -82,19 +82,19 @@ static const char *usage_to_string(enum volume_id_usage usage_id)
 	return NULL;
 }
 
-void volume_id_set_usage_part(struct volume_id_partition *part, enum volume_id_usage usage_id)
+void FAST_FUNC volume_id_set_usage_part(struct volume_id_partition *part, enum volume_id_usage usage_id)
 {
 	part->usage_id = usage_id;
 	part->usage = usage_to_string(usage_id);
 }
 
-void volume_id_set_usage(struct volume_id *id, enum volume_id_usage usage_id)
+void FAST_FUNC volume_id_set_usage(struct volume_id *id, enum volume_id_usage usage_id)
 {
 	id->usage_id = usage_id;
 	id->usage = usage_to_string(usage_id);
 }
 
-void volume_id_set_label_raw(struct volume_id *id, const uint8_t *buf, size_t count)
+void FAST_FUNC volume_id_set_label_raw(struct volume_id *id, const uint8_t *buf, size_t count)
 {
 	memcpy(id->label_raw, buf, count);
 	id->label_raw_len = count;
@@ -112,9 +112,13 @@ static size_t strnlen(const char *s, size_t maxlen)
 }
 #endif
 
-void volume_id_set_label_string(struct volume_id *id, const uint8_t *buf, size_t count)
+void FAST_FUNC volume_id_set_label_string(struct volume_id *id, const uint8_t *buf, size_t count)
 {
 	unsigned i;
+
+	/* Do not overflow label[VOLUME_ID_LABEL_SIZE+1] */
+	if (count > VOLUME_ID_LABEL_SIZE)
+		count = VOLUME_ID_LABEL_SIZE;
 
 	memcpy(id->label, buf, count);
 
@@ -127,12 +131,12 @@ void volume_id_set_label_string(struct volume_id *id, const uint8_t *buf, size_t
 	id->label[i+1] = '\0';
 }
 
-void volume_id_set_label_unicode16(struct volume_id *id, const uint8_t *buf, enum endian endianess, size_t count)
+void FAST_FUNC volume_id_set_label_unicode16(struct volume_id *id, const uint8_t *buf, enum endian endianess, size_t count)
 {
 	volume_id_set_unicode16(id->label, sizeof(id->label), buf, endianess, count);
 }
 
-void volume_id_set_uuid(struct volume_id *id, const uint8_t *buf, enum uuid_format format)
+void FAST_FUNC volume_id_set_uuid(struct volume_id *id, const uint8_t *buf, enum uuid_format format)
 {
 	unsigned i;
 	unsigned count = (format == UUID_DCE_STRING ? VOLUME_ID_UUID_SIZE : 4 << format);
@@ -170,7 +174,7 @@ set:
 /* Do not use xlseek here. With it, single corrupted filesystem
  * may result in attempt to seek past device -> exit.
  * It's better to ignore such fs and continue.  */
-void *volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t len)
+void* FAST_FUNC volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t len)
 {
 	uint8_t *dst;
 	unsigned small_off;
@@ -261,7 +265,7 @@ void *volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t len)
 	return dst + small_off;
 }
 
-void volume_id_free_buffer(struct volume_id *id)
+void FAST_FUNC volume_id_free_buffer(struct volume_id *id)
 {
 	free(id->sbbuf);
 	id->sbbuf = NULL;

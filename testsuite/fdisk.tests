@@ -1,0 +1,42 @@
+#!/bin/sh
+
+# Copyright 2026 by Denys Vlasenko <vda.linux@googlemail.com>
+# Licensed under GPLv2, see file LICENSE in this source tree.
+
+. ./testing.sh
+
+# testing "description" "command" "result" "infile" "stdin"
+
+# With -u (use cyinder units) this wouldn't work: incorrectly guessed
+# sectors-per-track (15, should be 16).
+testing 'fdisk fdisk_8k_parts1_5-11_ext14.raw add primary' \
+	'fdisk fdisk_8k_parts1_5-11_ext14.raw 2>&1' \
+	"\
+Changes will remain in memory only, until you decide to write them.
+Be careful before using the write command.
+
+Command (m for help): Partition type
+   p   primary (1-4)
+   l   logical (5+)
+Partition number (1-4): 
+Command (m for help): Command (m for help): Disk fdisk_8k_parts1_5-11_ext14.raw: 8192, 8192 bytes, 16 sectors
+1 cylinders, 1 heads, 15 sectors/track
+Units: sectors of 1 * 512 = 512 bytes
+
+Device                        Boot StartCHS    EndCHS        StartLBA     EndLBA    Sectors  Size Id Type
+fdisk_8k_parts1_5-11_ext14.raw1    0,0,2       0,0,15               1         14         14  7168  5 Extended
+fdisk_8k_parts1_5-11_ext14.raw2    1,0,1       1,0,1               15         15          1   512 83 Linux
+fdisk_8k_parts1_5-11_ext14.raw5    0,0,3       0,0,3                2          2          1   512 83 Linux
+fdisk_8k_parts1_5-11_ext14.raw6    0,0,5       0,0,5                4          4          1   512 83 Linux
+fdisk_8k_parts1_5-11_ext14.raw7    0,0,7       0,0,7                6          6          1   512 83 Linux
+fdisk_8k_parts1_5-11_ext14.raw8    0,0,9       0,0,9                8          8          1   512 83 Linux
+fdisk_8k_parts1_5-11_ext14.raw9    0,0,11      0,0,11              10         10          1   512 83 Linux
+fdisk_8k_parts1_5-11_ext14.raw10   0,0,13      0,0,13              12         12          1   512 83 Linux
+fdisk_8k_parts1_5-11_ext14.raw11   0,0,15      0,0,15              14         14          1   512 83 Linux
+
+Command (m for help): " \
+	'' \
+	'n''\n''p''\n''2''\n''\n''p''\n'
+# n(create),p(primary),2,(agree to default start sector [this could be suppressed, since there is ony one choice:15]),p(print)
+
+exit $FAILCOUNT

@@ -1222,11 +1222,11 @@ static int test_net_to_pty_data_integrity(void)
 	expected_data = xmalloc(TESTDATA_SIZE);
 
 	/* Process input_data simulating net_to_pty transformations:
-	 * - IAC IAC → single IAC
-	 * - IAC SB TELOPT_NAWS [4 bytes] IAC SE → stripped
-	 * - Other IAC sequences → stripped
-	 * - \r\n → \r (skip the \n)
-	 * - \r\0 → \r (skip the \0)
+	 * - IAC IAC -> single IAC
+	 * - IAC SB TELOPT_NAWS [4 bytes] IAC SE -> stripped
+	 * - Other IAC sequences -> stripped
+	 * - \r\n -> \r (skip the \n)
+	 * - \r\0 -> \r (skip the \0)
 	 */
 	memset(input_data + input_size, 0, 64);
 	expected_size = 0;
@@ -1235,7 +1235,7 @@ static int test_net_to_pty_data_integrity(void)
 		/* Tail of 64 extra zero bytes allows to safely read beyond the end */
 		if (input_data[i] == IAC) {
 			if (input_data[i + 1] == IAC) {
-				/* IAC IAC → single IAC */
+				/* IAC IAC -> single IAC */
 				expected_data[expected_size++] = IAC;
 				i += 2;
 				continue;
@@ -1450,7 +1450,7 @@ static int test_pty_to_net_data_integrity(void)
 	input_data = xzalloc(TESTDATA_SIZE);
 
 	/* Generate random data - this time we want lots of 0xFF (IAC) bytes
-	 * to test IAC escaping (IAC → IAC IAC)
+	 * to test IAC escaping (IAC -> IAC IAC)
 	 */
 	randbits = 0;
 	for (i = 0; i < TESTDATA_SIZE;) {
@@ -1483,7 +1483,7 @@ static int test_pty_to_net_data_integrity(void)
 	expected_data = xmalloc(TESTDATA_SIZE * 2);
 
 	/* Process input_data simulating pty_to_net transformations:
-	 * - IAC (0xFF) → IAC IAC (doubled)
+	 * - IAC (0xFF) -> IAC IAC (doubled)
 	 * - All other bytes pass through unchanged
 	 */
 	expected_size = 0;

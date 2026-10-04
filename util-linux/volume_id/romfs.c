@@ -44,8 +44,8 @@ int FAST_FUNC volume_id_probe_romfs(struct volume_id *id /*,uint64_t off*/)
 	if (rfs == NULL)
 		return -1;
 
-	if (memcmp(rfs->magic, "-rom1fs-", 4) == 0) {
-		size_t len = strlen((char *)rfs->name);
+	if (memcmp(rfs->magic, "-rom1fs-", 8) == 0) {
+		size_t len = strnlen((char *)rfs->name, VOLUME_ID_LABEL_SIZE);
 
 		if (len) {
 //			volume_id_set_label_raw(id, rfs->name, len);

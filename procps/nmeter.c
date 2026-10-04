@@ -25,7 +25,7 @@
 //usage:     "\nFormat specifiers:"
 //usage:     "\n %Nc or %[cN]	CPU. N - bar size (default 10)"
 //usage:     "\n		(displays: S:system U:user N:niced D:iowait I:irq i:softirq)"
-//usage:     "\n %[nINTERFACE]	Network INTERFACE"
+//usage:     "\n %[nINTERFACE]	Network INTERFACE (if error counters change, prepends *)"
 //usage:     "\n %m		Allocated memory"
 //usage:     "\n %[md]		Dirty file-backed memory"
 //usage:     "\n %[mw]		Memory being written to storage"
@@ -86,10 +86,11 @@ struct globals {
 	smallint is26;
 	// 1 if sample delay is not an integer fraction of a second
 	smallint need_seconds;
+	smallint continuous_updates;
 	char final_char;
 	char *cur_outbuf;
-	int delta;
-	unsigned deltanz;
+	ullong delta;
+	ullong deltanz;
 	struct timeval tv;
 	struct timeval start;
 #define first_proc_file proc_stat
@@ -900,9 +901,14 @@ int nmeter_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	if (getopt32(argv, "d:", &opt_d)) {
-		G.delta = xatoi(opt_d) * 1000;
-		G.deltanz = G.delta > 0 ? G.delta : 1;
-		need_seconds = (1000000 % G.deltanz) != 0;
+		if (opt_d[0] != '-') {
+			G.delta = xatou(opt_d) * 1000ULL;
+			G.deltanz = G.delta > 0 ? G.delta : 1;
+			need_seconds = (1000000 % G.deltanz) != 0;
+		} else {
+			G.continuous_updates = 1;
+		}
+
 	}
 	argv += optind;
 
@@ -979,7 +985,7 @@ int nmeter_main(int argc UNUSED_PARAM, char **argv)
 	collect_info(first);
 	reset_outbuf();
 
-	if (G.delta >= 0) {
+	if (!G.continuous_updates) {
 		xgettimeofday(&G.tv);
 		usleep(G.delta > 1000000 ? 1000000 : G.delta - G.tv.tv_usec % G.deltanz);
 	}
@@ -992,8 +998,8 @@ int nmeter_main(int argc UNUSED_PARAM, char **argv)
 	// 00:00:00.000161 12:32:07.500161
 	// 00:00:00.500282 12:32:08.000282
 	// 00:00:01.000286 12:32:08.500286
-	if (G.delta > 0)
-		G.start.tv_usec -= (G.start.tv_usec % (unsigned)G.delta);
+	if (!G.continuous_updates)
+		G.start.tv_usec -= (G.start.tv_usec % G.delta);
 
 	while (1) {
 		collect_info(first);
@@ -1005,10 +1011,10 @@ int nmeter_main(int argc UNUSED_PARAM, char **argv)
 		// time resolution ;)
 		// TODO: detect and avoid useless updates
 		// (like: nothing happens except time)
-		if (G.delta >= 0) {
-			int rem;
-			// can be commented out, will sacrifice sleep time precision a bit
-			xgettimeofday(&G.tv);
+		if (!G.continuous_updates) {
+			ullong rem;
+			for (;;) {
+				xgettimeofday(&G.tv);
 
 	// TODO: nmeter -d10000 '%6T %6t'
 	// 00:00:00.770333 12:34:44.770333
@@ -1018,16 +1024,23 @@ int nmeter_main(int argc UNUSED_PARAM, char **argv)
 	// we can't syncronize interval to start close to 10 seconds for both
 	// %T and %t (as shown above), but what if there is only %T
 	// in format string? Maybe sync _it_ instead of %t in this case?
-			if (need_seconds)
-				rem = G.delta - ((ullong)G.tv.tv_sec*1000000 + G.tv.tv_usec) % G.deltanz;
-			else
-				rem = G.delta - (unsigned)G.tv.tv_usec % G.deltanz;
-			// Sometimes kernel wakes us up just a tiny bit earlier than asked
-			// Do not go to very short sleep in this case
-			if (rem < (unsigned)G.delta / 128) {
-				rem += G.delta;
+				if (need_seconds)
+					rem = G.delta - ((ullong)G.tv.tv_sec*1000000 + G.tv.tv_usec) % G.deltanz;
+				else
+					rem = G.delta - (ullong)G.tv.tv_usec % G.deltanz;
+				// Sometimes kernel wakes us up just a tiny bit earlier than asked
+				// Do not go to very short sleep in this case
+				if (rem < 100) { // less than 0.1ms to sleep?
+					if (rem < G.delta / 128) // why: cater for tiny cases like -d10: do not skip every update for these
+						rem += G.delta;
+				}
+				if (rem <= 10*1000*1000)
+					break;
+//bb_error_msg("sleep %u", (unsigned)(rem / (1000*1000)) - 1);
+				sleep((unsigned)(rem / (1000*1000)) - 1);
 			}
-			usleep(rem);
+//bb_error_msg("usleep %u", (unsigned)rem);
+			usleep((unsigned)rem);
 		}
 		xgettimeofday(&G.tv);
 	}

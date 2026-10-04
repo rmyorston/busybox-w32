@@ -255,7 +255,7 @@ int mkfs_ext2_main(int argc UNUSED_PARAM, char **argv)
 	argv += optind; // argv[0] -- device
 
 	// open the device, check the device is a block device
-	xmove_fd(xopen(argv[0], O_WRONLY), fd);
+	xmove_fd(xopen(argv[0], O_RDWR), fd);
 	xfstat(fd, &st, argv[0]);
 	if (!S_ISBLK(st.st_mode) && !(option_mask32 & OPT_F))
 		bb_error_msg_and_die("%s: not a block device", argv[0]);

@@ -30,7 +30,14 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
+/*
+   Changes:
+   19990319 - Arnaldo Carvalho de Melo <acme@conectiva.com.br> - i18n/nls
 
+   20000101 - David Huggins-Daines <dhuggins@linuxcare.com> - Better
+   support for OSF/1 disklabels on Alpha.
+   Also fixed unaligned accesses in alpha_bootblock_checksum()
+*/
 #if ENABLE_FEATURE_OSF_LABEL
 
 #ifndef BSD_DISKMAGIC
@@ -159,7 +166,6 @@ static const char *const xbsd_dktypenames[] ALIGN_PTR = {
 	0
 };
 
-
 /*
  * Filesystem type and version.
  * Used to interpret other filesystem-specific
@@ -215,7 +221,6 @@ static const char *const xbsd_fstypes[] ALIGN_PTR = {
 	NULL
 };
 
-
 /*
  * flags shared by various drives:
  */
@@ -226,35 +231,25 @@ static const char *const xbsd_fstypes[] ALIGN_PTR = {
 #define BSD_D_CHAIN     0x10            /* can do back-back transfers */
 #define BSD_D_DOSPART   0x20            /* within MSDOS partition */
 
-/*
-   Changes:
-   19990319 - Arnaldo Carvalho de Melo <acme@conectiva.com.br> - i18n/nls
-
-   20000101 - David Huggins-Daines <dhuggins@linuxcare.com> - Better
-   support for OSF/1 disklabels on Alpha.
-   Also fixed unaligned accesses in alpha_bootblock_checksum()
-*/
-
 #define FREEBSD_PARTITION       0xa5
 #define NETBSD_PARTITION        0xa9
 
-static void xbsd_delete_part(void);
-static void xbsd_new_part(void);
-static void xbsd_write_disklabel(void);
-static int xbsd_create_disklabel(void);
-static void xbsd_edit_disklabel(void);
-static void xbsd_write_bootstrap(void);
-static void xbsd_change_fstype(void);
-static int xbsd_get_part_index(int max);
 static int xbsd_check_new_partition(int *i);
-static void xbsd_list_types(void);
-static uint16_t xbsd_dkcksum(struct xbsd_disklabel *lp);
-static int xbsd_initlabel(struct partition *p);
-static int xbsd_readlabel(struct partition *p);
-static int xbsd_writelabel(struct partition *p);
+static int xbsd_writelabel(struct dos_partition *p);
 
 #if defined(__alpha__)
-static void alpha_bootblock_checksum(char *boot);
+static void
+alpha_bootblock_checksum(uint8_t *boot)
+{
+	uint64_t *dp, sum;
+	int i;
+
+	dp = (uint64_t *)boot;
+	sum = 0;
+	for (i = 0; i < 63; i++)
+		sum += dp[i];
+	dp[63] = sum;
+}
 #endif
 
 #if !defined(__alpha__)
@@ -262,12 +257,11 @@ static int xbsd_translate_fstype(int linux_type);
 static void xbsd_link_part(void);
 #endif
 
-
 /* Group big globals data and allocate it in one go */
 struct bsd_globals {
 /* We access this through a uint64_t * when checksumming */
 /* hopefully xmalloc gives us required alignment */
-	char disklabelbuffer[BSD_BBSIZE];
+	uint8_t disklabelbuffer[BSD_BBSIZE];
 	struct xbsd_disklabel xbsd_dlabel;
 };
 
@@ -276,35 +270,10 @@ static struct bsd_globals *bsd_globals_ptr;
 #define disklabelbuffer (bsd_globals_ptr->disklabelbuffer)
 #define xbsd_dlabel     (bsd_globals_ptr->xbsd_dlabel)
 
-
 /* Code */
 
 #define bsd_cround(n) \
 	(DISPLAY_IN_CYL_UNITS ? ((n)/xbsd_dlabel.d_secpercyl) + 1 : (n))
-
-/*
- * Test whether the whole disk has BSD disk label magic.
- *
- * Note: often reformatting with DOS-type label leaves the BSD magic,
- * so this does not mean that there is a BSD disk label.
- */
-static int
-check_osf_label(void)
-{
-	if (xbsd_readlabel(NULL) == 0)
-		return 0;
-	return 1;
-}
-
-static int
-bsd_trydev(const char * dev)
-{
-	if (xbsd_readlabel(NULL) == 0)
-		return -1;
-	printf("\nBSD label for device: %s\n", dev);
-	xbsd_print_disklabel(0);
-	return 0;
-}
 
 static void
 bsd_menu(void)
@@ -327,6 +296,19 @@ bsd_menu(void)
 #endif
 }
 
+static int
+xbsd_get_part_index(int max)
+{
+	char prompt[sizeof("Partition (a-%c): ") + 16];
+	char l;
+
+	sprintf(prompt, "Partition (a-%c): ", 'a' + max - 1);
+	do
+		l = tolower(read_nonempty(prompt));
+	while (l < 'a' || l > 'a' + max - 1);
+	return l - 'a';
+}
+
 #if !defined(__alpha__)
 static int
 hidden(int type)
@@ -345,95 +327,65 @@ is_bsd_partition_type(int type)
 #endif
 
 static void
-bsd_select(void)
+xbsd_initlabel(struct dos_partition *p)
 {
+	struct xbsd_disklabel *d = &xbsd_dlabel;
+	struct xbsd_partition *pp;
+
+	get_geometry();
+	memset(d, 0, sizeof(struct xbsd_disklabel));
+
+	d->d_magic = BSD_DISKMAGIC;
+
+	if (is_prefixed_with(disk_device, "/dev/sd"))
+		d->d_type = BSD_DTYPE_SCSI;
+	else
+		d->d_type = BSD_DTYPE_ST506;
+
 #if !defined(__alpha__)
-	int t, ss;
-	struct partition *p;
-
-	for (t = 0; t < 4; t++) {
-		p = get_part_table(t);
-		if (p && is_bsd_partition_type(p->sys_ind)) {
-			G.xbsd_part = p;
-			G.xbsd_part_index = t;
-			ss = get_start_sect(G.xbsd_part);
-			if (ss == 0) {
-				printf("Partition %s has invalid starting sector 0\n",
-					partname(disk_device, t+1, 0));
-				return;
-			}
-				printf("Reading disklabel of %s at sector %u\n",
-					partname(disk_device, t+1, 0), ss + BSD_LABELSECTOR);
-			if (xbsd_readlabel(G.xbsd_part) == 0) {
-				if (xbsd_create_disklabel() == 0)
-					return;
-				break;
-			}
-		}
-	}
-
-	if (t == 4) {
-		printf("There is no *BSD partition on %s\n", disk_device);
-		return;
-	}
-
-#elif defined(__alpha__)
-
-	if (xbsd_readlabel(NULL) == 0)
-		if (xbsd_create_disklabel() == 0)
-			exit_SUCCESS();
-
+	d->d_flags = BSD_D_DOSPART;
+#else
+	d->d_flags = 0;
 #endif
+	d->d_secsize = SECTOR_SIZE;           /* bytes/sector  */
+	d->d_nsectors = g_sectors;            /* sectors/track */
+	d->d_ntracks = g_heads;               /* tracks/cylinder (heads) */
+	d->d_ncylinders = g_cylinders;
+	d->d_secpercyl  = g_sectors * g_heads;/* sectors/cylinder */
+	if (d->d_secpercyl == 0)
+		d->d_secpercyl = 1;           /* avoid segfaults */
+	d->d_secperunit = d->d_secpercyl * d->d_ncylinders;
 
-	while (1) {
-		bb_putchar('\n');
-		switch (tolower(read_nonempty("BSD disklabel command (m for help): "))) {
-		case 'd':
-			xbsd_delete_part();
-			break;
-		case 'e':
-			xbsd_edit_disklabel();
-			break;
-		case 'i':
-			xbsd_write_bootstrap();
-			break;
-		case 'l':
-			xbsd_list_types();
-			break;
-		case 'n':
-			xbsd_new_part();
-			break;
-		case 'p':
-			xbsd_print_disklabel(0);
-			break;
-		case 'q':
-			if (ENABLE_FEATURE_CLEAN_UP)
-				close_dev_fd();
-			exit_SUCCESS();
-		case 'r':
-			return;
-		case 's':
-			xbsd_print_disklabel(1);
-			break;
-		case 't':
-			xbsd_change_fstype();
-			break;
-		case 'u':
-			change_units();
-			break;
-		case 'w':
-			xbsd_write_disklabel();
-			break;
+	d->d_rpm = 3600;
+	d->d_interleave = 1;
+	d->d_trackskew = 0;
+	d->d_cylskew = 0;
+	d->d_headswitch = 0;
+	d->d_trkseek = 0;
+
+	d->d_magic2 = BSD_DISKMAGIC;
+	d->d_bbsize = BSD_BBSIZE;
+	d->d_sbsize = BSD_SBSIZE;
+
 #if !defined(__alpha__)
-		case 'x':
-			xbsd_link_part();
-			break;
+	d->d_npartitions = 4;
+	pp = &d->d_partitions[2]; /* Partition C should be NetBSD partition */
+
+	pp->p_offset = get_start_sect(p);
+	pp->p_size   = get_nr_sects(p);
+	pp->p_fstype = BSD_FS_UNUSED;
+	pp = &d->d_partitions[3]; /* Partition D should be whole disk */
+
+	pp->p_offset = 0;
+	pp->p_size   = d->d_secperunit;
+	pp->p_fstype = BSD_FS_UNUSED;
+#else
+	d->d_npartitions = 3;
+	pp = &d->d_partitions[2]; /* Partition C should be the whole disk */
+	pp->p_offset = 0;
+	pp->p_size   = d->d_secperunit;
+	pp->p_fstype = BSD_FS_UNUSED;
 #endif
-		default:
-			bsd_menu();
-			break;
-		}
-	}
 }
 
 static void
@@ -612,18 +564,16 @@ xbsd_create_disklabel(void)
 	while (1) {
 		c = read_nonempty("Do you want to create a disklabel? (y/n) ");
 		if ((c|0x20) == 'y') {
-			if (xbsd_initlabel(
+			xbsd_initlabel(
 #if defined(__alpha__) || defined(__powerpc__) || defined(__hppa__) || \
 	defined(__s390__) || defined(__s390x__)
 				NULL
 #else
 				G.xbsd_part
 #endif
-			) == 1) {
-				xbsd_print_disklabel(1);
-				return 1;
-			}
-			return 0;
+			);
+			xbsd_print_disklabel(1);
+			return 1;
 		}
 		if ((c|0x20) == 'n')
 			return 0;
@@ -714,7 +664,7 @@ xbsd_write_bootstrap(void)
 	const char *bootdir = BSD_LINUX_BOOTDIR;
 	const char *dkbasename;
 	struct xbsd_disklabel dl;
-	char *d, *p, *e;
+	uint8_t *d, *p, *e;
 	int sector;
 
 	if (xbsd_dlabel.d_type == BSD_DTYPE_SCSI)
@@ -785,19 +735,6 @@ xbsd_change_fstype(void)
 }
 
 static int
-xbsd_get_part_index(int max)
-{
-	char prompt[sizeof("Partition (a-%c): ") + 16];
-	char l;
-
-	snprintf(prompt, sizeof(prompt), "Partition (a-%c): ", 'a' + max - 1);
-	do
-		l = tolower(read_nonempty(prompt));
-	while (l < 'a' || l > 'a' + max - 1);
-	return l - 'a';
-}
-
-static int
 xbsd_check_new_partition(int *i)
 {
 	/* room for more? various BSD flavours have different maxima */
@@ -846,76 +783,12 @@ xbsd_dkcksum(struct xbsd_disklabel *lp)
 	return sum;
 }
 
-static int
-xbsd_initlabel(struct partition *p)
-{
-	struct xbsd_disklabel *d = &xbsd_dlabel;
-	struct xbsd_partition *pp;
-
-	get_geometry();
-	memset(d, 0, sizeof(struct xbsd_disklabel));
-
-	d->d_magic = BSD_DISKMAGIC;
-
-	if (is_prefixed_with(disk_device, "/dev/sd"))
-		d->d_type = BSD_DTYPE_SCSI;
-	else
-		d->d_type = BSD_DTYPE_ST506;
-
-#if !defined(__alpha__)
-	d->d_flags = BSD_D_DOSPART;
-#else
-	d->d_flags = 0;
-#endif
-	d->d_secsize = SECTOR_SIZE;           /* bytes/sector  */
-	d->d_nsectors = g_sectors;            /* sectors/track */
-	d->d_ntracks = g_heads;               /* tracks/cylinder (heads) */
-	d->d_ncylinders = g_cylinders;
-	d->d_secpercyl  = g_sectors * g_heads;/* sectors/cylinder */
-	if (d->d_secpercyl == 0)
-		d->d_secpercyl = 1;           /* avoid segfaults */
-	d->d_secperunit = d->d_secpercyl * d->d_ncylinders;
-
-	d->d_rpm = 3600;
-	d->d_interleave = 1;
-	d->d_trackskew = 0;
-	d->d_cylskew = 0;
-	d->d_headswitch = 0;
-	d->d_trkseek = 0;
-
-	d->d_magic2 = BSD_DISKMAGIC;
-	d->d_bbsize = BSD_BBSIZE;
-	d->d_sbsize = BSD_SBSIZE;
-
-#if !defined(__alpha__)
-	d->d_npartitions = 4;
-	pp = &d->d_partitions[2]; /* Partition C should be NetBSD partition */
-
-	pp->p_offset = get_start_sect(p);
-	pp->p_size   = get_nr_sects(p);
-	pp->p_fstype = BSD_FS_UNUSED;
-	pp = &d->d_partitions[3]; /* Partition D should be whole disk */
-
-	pp->p_offset = 0;
-	pp->p_size   = d->d_secperunit;
-	pp->p_fstype = BSD_FS_UNUSED;
-#else
-	d->d_npartitions = 3;
-	pp = &d->d_partitions[2]; /* Partition C should be the whole disk */
-	pp->p_offset = 0;
-	pp->p_size   = d->d_secperunit;
-	pp->p_fstype = BSD_FS_UNUSED;
-#endif
-
-	return 1;
-}
-
 /*
  * Read a xbsd_disklabel from sector 0 or from the starting sector of p.
  * If it has the right magic, return 1.
  */
 static int
-xbsd_readlabel(struct partition *p)
+xbsd_readlabel(struct dos_partition *p)
 {
 	struct xbsd_disklabel *d;
 	int t, sector;
@@ -955,7 +828,7 @@ xbsd_readlabel(struct partition *p)
 }
 
 static int
-xbsd_writelabel(struct partition *p)
+xbsd_writelabel(struct dos_partition *p)
 {
 	struct xbsd_disklabel *d = &xbsd_dlabel;
 	unsigned int sector;
@@ -989,6 +862,29 @@ xbsd_writelabel(struct partition *p)
 	return 1;
 }
 
+/*
+ * Test whether the whole disk has BSD disk label magic.
+ *
+ * Note: often reformatting with DOS-type label leaves the BSD magic,
+ * so this does not mean that there is a BSD disk label.
+ */
+static int
+check_osf_label(void)
+{
+	if (xbsd_readlabel(NULL) == 0)
+		return 0;
+	return 1;
+}
+
+static int
+bsd_trydev(const char * dev)
+{
+	if (xbsd_readlabel(NULL) == 0)
+		return -1;
+	printf("\nBSD label for device: %s\n", dev);
+	xbsd_print_disklabel(0);
+	return 0;
+}
 
 #if !defined(__alpha__)
 static int
@@ -1013,9 +909,9 @@ static void
 xbsd_link_part(void)
 {
 	int k, i;
-	struct partition *p;
+	struct dos_partition *p;
 
-	k = get_partition(1, g_partitions);
+	k = input_partition_number(1, g_partitions);
 
 	if (!xbsd_check_new_partition(&i))
 		return;
@@ -1028,20 +924,97 @@ xbsd_link_part(void)
 }
 #endif
 
-#if defined(__alpha__)
 static void
-alpha_bootblock_checksum(char *boot)
+if_osf_label_loop_in_menu_until_r(void)
 {
-	uint64_t *dp, sum;
-	int i;
+#if !defined(__alpha__)
+	int t, ss;
+	struct dos_partition *p;
 
-	dp = (uint64_t *)boot;
-	sum = 0;
-	for (i = 0; i < 63; i++)
-		sum += dp[i];
-	dp[63] = sum;
+	for (t = 0; t < 4; t++) {
+		p = get_part_table(t);
+		if (p && is_bsd_partition_type(p->sys_ind)) {
+			G.xbsd_part = p;
+			G.xbsd_part_index = t;
+			ss = get_start_sect(G.xbsd_part);
+			if (ss == 0) {
+				printf("Partition %s has invalid starting sector 0\n",
+					partname(disk_device, t+1, 0));
+				return;
+			}
+				printf("Reading disklabel of %s at sector %u\n",
+					partname(disk_device, t+1, 0), ss + BSD_LABELSECTOR);
+			if (xbsd_readlabel(G.xbsd_part) == 0) {
+				if (xbsd_create_disklabel() == 0)
+					return;
+				break;
+			}
+		}
+	}
+
+	if (t == 4) {
+		printf("There is no *BSD partition on %s\n", disk_device);
+		return;
+	}
+
+#elif defined(__alpha__)
+
+	if (xbsd_readlabel(NULL) == 0)
+		if (xbsd_create_disklabel() == 0)
+			exit_SUCCESS();
+
+#endif
+
+	while (1) {
+		bb_putchar('\n');
+		switch (tolower(read_nonempty("BSD disklabel command (m for help): "))) {
+		case 'd':
+			xbsd_delete_part();
+			break;
+		case 'e':
+			xbsd_edit_disklabel();
+			break;
+		case 'i':
+			xbsd_write_bootstrap();
+			break;
+		case 'l':
+			xbsd_list_types();
+			break;
+		case 'n':
+			xbsd_new_part();
+			break;
+		case 'p':
+			xbsd_print_disklabel(0);
+			break;
+		case 'q':
+			if (ENABLE_FEATURE_CLEAN_UP)
+				close_dev_fd();
+			exit_SUCCESS();
+		case 'r':
+			return;
+		case 's':
+			xbsd_print_disklabel(1);
+			break;
+		case 't':
+			xbsd_change_fstype();
+			break;
+		case 'u':
+			change_units();
+			break;
+		case 'w':
+			xbsd_write_disklabel();
+			break;
+#if !defined(__alpha__)
+		case 'x':
+			xbsd_link_part();
+			break;
+#endif
+		default:
+			bsd_menu();
+			break;
+		}
+	}
 }
-#endif /* __alpha__ */
 
 /* Undefine 'global' tricks */
 #undef disklabelbuffer

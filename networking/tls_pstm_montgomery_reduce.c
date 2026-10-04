@@ -370,6 +370,7 @@ int32 FAST_FUNC pstm_montgomery_reduce(psPool_t *pool, pstm_int *a, pstm_int *m,
 	pstm_digit	*c, *_c, *tmpm, mu;
 	int32		oldused, x, y;
 	int		pa; //bbox: was int16
+	uint32          cSize;
 
 	pa = m->used;
 	if (pa > a->alloc) {
@@ -377,11 +378,13 @@ int32 FAST_FUNC pstm_montgomery_reduce(psPool_t *pool, pstm_int *a, pstm_int *m,
 		return PS_LIMIT_FAIL;
 	}
 
-	if (paD && paDlen >= (uint32)2*pa+1) {
+	cSize = (2 * pa + 1) * sizeof(pstm_digit);
+	if (paD && paDlen >= cSize) {
 		c = paD;
 		memset(c, 0x0, paDlen);
 	} else {
-		c = xzalloc(2*pa+1);//bbox
+		//bbox: dead code, all callers always pass paD:
+		c = xzalloc(cSize); //bbox
 	}
 	/* copy the input */
 	oldused = a->used;
@@ -441,7 +444,8 @@ int32 FAST_FUNC pstm_montgomery_reduce(psPool_t *pool, pstm_int *a, pstm_int *m,
 			x = PS_MEM_FAIL;
 		}
 	}
-	if (paDlen < (uint32)2*pa+1) {
+	//bbox: dead code, all callers always pass paD:
+	if (c != paD) {
 		psFree(c, pool);
 	}
 	return x;

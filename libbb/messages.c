@@ -55,6 +55,11 @@ const char bb_default_login_shell[] ALIGN1 = LIBBB_DEFAULT_LOGIN_SHELL;
  * but I want to save a few bytes here. Check libbb.h before changing! */
 const char bb_PATH_root_path[] ALIGN1 = BB_PATH_ROOT_PATH;
 
+#if ENABLE_MKSWAP || ENABLE_SWAPLABEL
+/* Stored without terminating NUL */
+const char bb_SWAPSPACE2[sizeof("SWAPSPACE2")-1] ALIGN1 = "SWAPSPACE2";
+#endif
+
 
 //const int const_int_1 = 1;
 /* explicitly = 0, otherwise gcc may make it a common variable

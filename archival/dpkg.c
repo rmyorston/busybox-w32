@@ -41,30 +41,30 @@
 //kbuild:lib-$(CONFIG_DPKG) += dpkg.o
 
 //usage:#define dpkg_trivial_usage
-//usage:       "[-ilCPru] [-F OPT] PACKAGE"
+//usage:       IF_LONG_OPTS("-i|P|r|--unpack|--configure [--force-OPT]")IF_NOT_LONG_OPTS("-i|P|r|u|C [-F OPT]")" PACKAGE | -l [PATTERN]"
 //usage:#define dpkg_full_usage "\n\n"
-//usage:       "Install, remove and manage Debian packages\n"
+//usage:       "Manage Debian packages\n"
 //usage:	IF_LONG_OPTS(
-//usage:     "\n	-i,--install	Install the package"
-//usage:     "\n	-l,--list	List of installed packages"
-//usage:     "\n	--configure	Configure an unpackaged package"
-//usage:     "\n	-P,--purge	Purge all files of a package"
-//usage:     "\n	-r,--remove	Remove all but the configuration files for a package"
-//usage:     "\n	--unpack	Unpack a package, but don't configure it"
+//usage:     "\n	-i,--install	Install PACKAGE.deb"
+//usage:     "\n	-P,--purge	Purge all files of PACKAGE"
+//usage:     "\n	-r,--remove	Remove all but configuration files of PACKAGE"
+//usage:     "\n	--unpack	Unpack PACKAGE.deb relative to /, don't configure"
+//usage:     "\n	--configure	Configure unpacked PACKAGE"
 //usage:     "\n	--force-depends	Ignore dependency problems"
 //usage:     "\n	--force-confnew	Overwrite existing config files when installing"
 //usage:     "\n	--force-confold	Keep old config files when installing"
+//usage:     "\n	-l,--list	List installed packages"
 //usage:	)
 //usage:	IF_NOT_LONG_OPTS(
-//usage:     "\n	-i		Install the package"
-//usage:     "\n	-l		List of installed packages"
-//usage:     "\n	-C		Configure an unpackaged package"
-//usage:     "\n	-P		Purge all files of a package"
-//usage:     "\n	-r		Remove all but the configuration files for a package"
-//usage:     "\n	-u		Unpack a package, but don't configure it"
+//usage:     "\n	-i		Install PACKAGE.deb"
+//usage:     "\n	-P		Purge all files of PACKAGE"
+//usage:     "\n	-r		Remove all but configuration files of PACKAGE"
+//usage:     "\n	-u		Unpack PACKAGE.deb relative to /, don't configure"
+//usage:     "\n	-C		Configure unpacked PACKAGE"
 //usage:     "\n	-F depends	Ignore dependency problems"
 //usage:     "\n	-F confnew	Overwrite existing config files when installing"
 //usage:     "\n	-F confold	Keep old config files when installing"
+//usage:     "\n	-l		List installed packages"
 //usage:	)
 
 #include "libbb.h"
@@ -177,8 +177,9 @@ typedef struct deb_file_s {
 #define DPKG_DIR "/var/lib/dpkg"
 #endif
 
-static void make_hash(const char *key, unsigned *start, unsigned *decrement, const int hash_prime)
+static unsigned make_hash(const char *key, unsigned *decrement, int hash_prime)
 {
+	unsigned start;
 	unsigned long hash_num = key[0];
 	int len = strlen(key);
 	int i;
@@ -192,8 +193,9 @@ static void make_hash(const char *key, unsigned *start, unsigned *decrement, con
 		 * no effect */
 		hash_num += (key[i] + key[i-1]) << ((key[i] * i) % 24);
 	}
-	*start = (unsigned) hash_num % hash_prime;
+	start = (unsigned) hash_num % hash_prime;
 	*decrement = (unsigned) 1 + (hash_num % (hash_prime - 1));
+	return start;
 }
 
 /* this adds the key to the hash table */
@@ -202,7 +204,7 @@ static int search_name_hashtable(const char *key)
 	unsigned probe_address;
 	unsigned probe_decrement;
 
-	make_hash(key, &probe_address, &probe_decrement, NAME_HASH_PRIME);
+	probe_address = make_hash(key, &probe_decrement, NAME_HASH_PRIME);
 	while (name_hashtable[probe_address] != NULL) {
 		if (strcmp(name_hashtable[probe_address], key) == 0) {
 			return probe_address;
@@ -224,7 +226,7 @@ static unsigned search_status_hashtable(const char *key)
 	unsigned probe_address;
 	unsigned probe_decrement;
 
-	make_hash(key, &probe_address, &probe_decrement, STATUS_HASH_PRIME);
+	probe_address = make_hash(key, &probe_decrement, STATUS_HASH_PRIME);
 	while (status_hashtable[probe_address] != NULL) {
 		if (strcmp(key, name_hashtable[package_hashtable[status_hashtable[probe_address]->package]->name]) == 0) {
 			break;
@@ -291,7 +293,7 @@ static int version_compare_part(const char *val, const char *ref)
  * if ver1 = ver2 return 0,
  * if ver1 > ver2 return 1,
  */
-static int version_compare(const unsigned ver1, const unsigned ver2)
+static int version_compare(unsigned ver1, unsigned ver2)
 {
 	char *ch_ver1 = name_hashtable[ver1];
 	char *ch_ver2 = name_hashtable[ver2];
@@ -344,9 +346,9 @@ static int version_compare(const unsigned ver1, const unsigned ver2)
 	return result;
 }
 
-static int test_version(const unsigned version1, const unsigned version2, const unsigned operator)
+static int test_version(unsigned version1, unsigned version2, unsigned operator)
 {
-	const int version_result = version_compare(version1, version2);
+	int version_result = version_compare(version1, version2);
 	switch (operator) {
 	case VER_ANY:
 		return TRUE;
@@ -364,12 +366,12 @@ static int test_version(const unsigned version1, const unsigned version2, const 
 	return FALSE;
 }
 
-static int search_package_hashtable(const unsigned name, const unsigned version, const unsigned operator)
+static int search_package_hashtable(unsigned name, unsigned version, unsigned operator)
 {
 	unsigned probe_address;
 	unsigned probe_decrement;
 
-	make_hash(name_hashtable[name], &probe_address, &probe_decrement, PACKAGE_HASH_PRIME);
+	probe_address = make_hash(name_hashtable[name], &probe_decrement, PACKAGE_HASH_PRIME);
 	while (package_hashtable[probe_address] != NULL) {
 		if (package_hashtable[probe_address]->name == name) {
 			if (operator == VER_ANY) {
@@ -542,90 +544,98 @@ static void free_package(common_node_t *node)
 }
 
 /*
- * Gets the next package field from package_buffer, separated into the field name
- * and field value, it returns the int offset to the first character of the next field
+ * Gets the next package field from pkg_buf:
+ * "NAME:<spaces|tabs>VALUE{\n|NUL}"
+ * "NAME:<spaces|tabs>VALUE\n
+ * " VALUE_LINE2{\n|NUL}"
+ * separated into "NAME" and "VALUE", both strdup()ed.
+ * (Debian does not allow whitespace before/after NAME).
+ * Returns offset to the first character of the next field (or to NUL).
+ * The pkg_buf parameter is NUL-terminated.
+ *
+ * https://manpages.debian.org/testing/dpkg-dev/deb-control.5.en.html
+ * """
+ * This file contains a number of fields. Each field begins with a tag,
+ * such as Package or Version (case insensitive), followed by a colon,
+ * and the body of the field (case sensitive unless stated otherwise).
+ * Fields are delimited only by field tags. In other words, field text
+ * may be multiple lines in length, but the installation tools will
+ * generally join lines when processing the body of the field (except
+ * in the case of the Description field, see below).
+ * ...
+ * Description: short-description (recommended)
+ *  long-description
+ * The format for the package description is a short brief summary
+ * on the first line (after the Description field). The following lines
+ * should be used as a longer, more detailed description. Each line
+ * of the long description must be preceded by a space, and blank
+ * lines in the long description must contain a single '.' following
+ * the preceding space."""
+ *
+ * Seen in libgtk-3-0t64_3.24.52: source package's control:
+ * Recommends: ibus-gtk3,
+ *             libgtk-3-bin,
+ *             librsvg2-common
+ * gets translated to this in binary package's control:
+ * Recommends: ibus-gtk3, libgtk-3-bin, librsvg2-common
  */
-static int read_package_field(const char *package_buffer, char **field_name, char **field_value)
+static int read_package_field(const char *pkg_buf, char **pname, char **pvalue)
 {
-	int offset_name_start = 0;
-	int offset_name_end = 0;
-	int offset_value_start = 0;
-	int offset_value_end = 0;
-	int offset = 0;
-	int next_offset;
-	int name_length;
-	int value_length;
-	int exit_flag = FALSE;
+	int name_start;
+	int name_end;
+	int value_start = value_start;
+	int offset;
 
-	if (package_buffer == NULL) {
-		*field_name = NULL;
-		*field_value = NULL;
-		return -1;
-	}
+	*pname = NULL;
+	*pvalue = NULL;
+
+	offset = 0;
+	name_start = 0;
+	name_end = 0; /* "we did not see ':' yet" */
 	while (1) {
-		next_offset = offset + 1;
-		switch (package_buffer[offset]) {
-			case '\0':
-				exit_flag = TRUE;
-				break;
-			case ':':
-				if (offset_name_end == 0) {
-					offset_name_end = offset;
-					offset_value_start = next_offset;
-				}
-				/* TODO: Name might still have trailing spaces if ':' isn't
-				 * immediately after name */
-				break;
-			case '\n':
-				/* TODO: The char next_offset may be out of bounds */
-				if (package_buffer[next_offset] != ' ') {
-					exit_flag = TRUE;
-					break;
-				}
-			case '\t':
-			case ' ':
-				/* increment the value start point if its a just filler */
-				if (offset_name_start == offset) {
-					offset_name_start++;
-				}
-				if (offset_value_start == offset) {
-					offset_value_start++;
-				}
-				break;
-		}
-		if (exit_flag) {
-			/* Check that the names are valid */
-			offset_value_end = offset;
-			name_length = offset_name_end - offset_name_start;
-			value_length = offset_value_end - offset_value_start;
-			if (name_length == 0) {
-				break;
+		char ch = pkg_buf[offset];
+		switch (ch) {
+		case ':':
+			if (name_end == 0) {
+				offset++;
+				name_end = offset; /* points AFTER ':' - think of empty NAME case */
+				while (isblank(pkg_buf[offset])) /* skip spaces/tabs (not newlines!) */
+					offset++;
+				value_start = offset;
+				continue; /* check next char */
 			}
-			if ((name_length > 0) && (value_length > 0)) {
+			break;
+		case '\n':
+			if (pkg_buf[offset + 1] == ' ')
 				break;
+			/* end of VALUE - fall through */
+		case '\0':
+			/* Did we see the ':'? */
+			if (name_end != 0) {
+				/* Yes. Check that NAME is not empty */
+				int nlen = (name_end - 1) - name_start;
+				if (nlen > 0) {
+//TODO: why do we disallow empty NAME? Imagine a ": VALUE\n" line
+					*pname = xstrndup(&pkg_buf[name_start], nlen);
+					*pvalue = xstrndup(&pkg_buf[value_start], offset - value_start); /* could be "" */
+					if (ch)
+						offset++; /* skip '\n' */
+					return offset;
+				}
 			}
+			if (!ch)
+				return offset; /* stop at NUL */
 
-			/* If not valid, start fresh with next field */
-			exit_flag = FALSE;
-			offset_name_start = offset + 1;
-			offset_name_end = 0;
-			offset_value_start = offset + 1;
-			offset_value_end = offset + 1;
-			offset++;
+			/* Not valid: skip '\n', start fresh with next field */
+			name_start = offset + 1;
+			name_end = 0; /* "we did not see ':' yet" */
+			break;
 		}
 		offset++;
-	}
-	*field_name = NULL;
-	if (name_length) {
-		*field_name = xstrndup(&package_buffer[offset_name_start], name_length);
-	}
-	*field_value = NULL;
-	if (value_length > 0) {
-		*field_value = xstrndup(&package_buffer[offset_value_start], value_length);
-	}
-	return next_offset;
+	} /* while (1) */
 }
 
+/* The parameter is NUL-terminated */
 static unsigned fill_package_struct(char *control_buffer)
 {
 	static const char field_names[] ALIGN1 =
@@ -634,14 +644,13 @@ static unsigned fill_package_struct(char *control_buffer)
 		"Conflicts\0""Suggests\0""Recommends\0""Enhances\0";
 
 	common_node_t *new_node = xzalloc(sizeof(common_node_t));
-	char *field_name;
-	char *field_value;
 	int field_start = 0;
-	int num = -1;
-	int buffer_length = strlen(control_buffer);
+	int num;
 
 	new_node->version = search_name_hashtable("unknown");
-	while (field_start < buffer_length) {
+	while (control_buffer[field_start]) {
+		char *field_name;
+		char *field_value;
 		unsigned field_num;
 
 		field_start += read_package_field(&control_buffer[field_start],
@@ -700,7 +709,7 @@ static unsigned fill_package_struct(char *control_buffer)
 }
 
 /* if num = 1, it returns the want status, 2 returns flag, 3 returns status */
-static unsigned get_status(const unsigned status_node, const int num)
+static unsigned get_status(unsigned status_node, int num)
 {
 	char *status_string = name_hashtable[status_hashtable[status_node]->status];
 	char *state_sub_string;
@@ -722,9 +731,9 @@ static unsigned get_status(const unsigned status_node, const int num)
 	return state_sub_num;
 }
 
-static void set_status(const unsigned status_node_num, const char *new_value, const int position)
+static void set_status(unsigned status_node_num, const char *new_value, int position)
 {
-	const unsigned new_value_num = search_name_hashtable(new_value);
+	unsigned new_value_num = search_name_hashtable(new_value);
 	unsigned want = get_status(status_node_num, 1);
 	unsigned flag = get_status(status_node_num, 2);
 	unsigned status = get_status(status_node_num, 3);
@@ -782,9 +791,10 @@ static void index_status_file(const char *filename)
 	status_node_t *status_node = NULL;
 	unsigned status_num;
 
+//FIXME: dpkg 1.22.22 recreates empty /var/lib/dpkg/status if it's missing - does not fail
 	status_file = xfopen_for_read(filename);
 	while ((control_buffer = xmalloc_fgetline_str(status_file, "\n\n")) != NULL) {
-		const unsigned package_num = fill_package_struct(control_buffer);
+		unsigned package_num = fill_package_struct(control_buffer);
 		if (package_num != -1) {
 			status_node = xmalloc(sizeof(status_node_t));
 			/* fill_package_struct doesn't handle the status field */
@@ -810,7 +820,7 @@ static void write_buffer_no_status(FILE *new_status_file, const char *control_bu
 	char *name;
 	char *value;
 	int start = 0;
-	while (1) {
+	while (control_buffer[start]) {
 		start += read_package_field(&control_buffer[start], &name, &value);
 		if (name == NULL) {
 			break;
@@ -818,42 +828,42 @@ static void write_buffer_no_status(FILE *new_status_file, const char *control_bu
 		if (strcmp(name, "Status") != 0) {
 			fprintf(new_status_file, "%s: %s\n", name, value);
 		}
+		free(name);
+		free(value);
 	}
 }
 
 /* This could do with a cleanup */
 static void write_status_file(deb_file_t **deb_file)
 {
+//FIXME: dpkg 1.22.22 recreates empty /var/lib/dpkg/status if it's missing - does not fail
 	FILE *old_status_file = xfopen_for_read(DPKG_DIR "/status");
 	FILE *new_status_file = xfopen_for_write(DPKG_DIR "/status.udeb");
-	char *package_name;
-	char *status_from_file;
-	char *control_buffer = NULL;
-	char *tmp_string;
+	char *control_buffer;
 	int status_num;
-	int field_start = 0;
-	int write_flag;
-	int i = 0;
+	int i;
 
 	/* Update previously known packages */
 	while ((control_buffer = xmalloc_fgetline_str(old_status_file, "\n\n")) != NULL) {
+		char *package_name;
+		char *status_from_file;
+		char *tmp_string;
+		int write_flag;
+
 		tmp_string = strstr(control_buffer, "Package:");
 		if (tmp_string == NULL) {
+			free(control_buffer);
 			continue;
 		}
-
-		tmp_string += 8;
-		tmp_string += strspn(tmp_string, " \n\t");
+		tmp_string = skip_whitespace(tmp_string + 8);
 		package_name = xstrndup(tmp_string, strcspn(tmp_string, "\n"));
+
 		write_flag = FALSE;
+		status_from_file = NULL;
 		tmp_string = strstr(control_buffer, "Status:");
 		if (tmp_string != NULL) {
-			/* Separate the status value from the control buffer */
-			tmp_string += 7;
-			tmp_string += strspn(tmp_string, " \n\t");
+			tmp_string = skip_whitespace(tmp_string + 7);
 			status_from_file = xstrndup(tmp_string, strcspn(tmp_string, "\n"));
-		} else {
-			status_from_file = NULL;
 		}
 
 		/* Find this package in the status hashtable */
@@ -862,7 +872,7 @@ static void write_status_file(deb_file_t **deb_file)
 			const char *status_from_hashtable = name_hashtable[status_hashtable[status_num]->status];
 			if (strcmp(status_from_file, status_from_hashtable) != 0) {
 				/* New status isn't exactly the same as old status */
-				const int state_status = get_status(status_num, 3);
+				int state_status = get_status(status_num, 3);
 				if ((strcmp("installed", name_hashtable[state_status]) == 0)
 				 || (strcmp("unpacked", name_hashtable[state_status]) == 0)
 				) {
@@ -881,7 +891,7 @@ static void write_status_file(deb_file_t **deb_file)
 						}
 						i++;
 					}
-					/* This is temperary, debugging only */
+					/* This is temporary, debugging only */
 					if (deb_file[i] == NULL) {
 						bb_error_msg_and_die("ALERT: cannot find a control file, "
 							"your status file may be broken, status may be "
@@ -889,14 +899,18 @@ static void write_status_file(deb_file_t **deb_file)
 					}
 				}
 				else if (strcmp("not-installed", name_hashtable[state_status]) == 0) {
+					int field_start = 0;
+
 					/* Only write the Package, Status, Priority and Section lines */
 					fprintf(new_status_file, "Package: %s\n", package_name);
 					fprintf(new_status_file, "Status: %s\n", status_from_hashtable);
 
-					while (1) {
+					while (control_buffer[field_start]) {
 						char *field_name;
 						char *field_value;
 						field_start += read_package_field(&control_buffer[field_start], &field_name, &field_value);
+//FIXME: the questionable ": VALUE" lines (empty NAME)
+//probably should not stop parsing of the entire file?
 						if (field_name == NULL) {
 							break;
 						}
@@ -905,13 +919,17 @@ static void write_status_file(deb_file_t **deb_file)
 						) {
 							fprintf(new_status_file, "%s: %s\n", field_name, field_value);
 						}
+						free(field_name);
+						free(field_value);
 					}
 					write_flag = TRUE;
 					fputs("\n", new_status_file);
 				}
 				else if (strcmp("config-files", name_hashtable[state_status]) == 0) {
+					int field_start = 0;
+
 					/* only change the status line */
-					while (1) {
+					while (control_buffer[field_start]) {
 						char *field_name;
 						char *field_value;
 						field_start += read_package_field(&control_buffer[field_start], &field_name, &field_value);
@@ -924,13 +942,15 @@ static void write_status_file(deb_file_t **deb_file)
 						} else {
 							fprintf(new_status_file, "%s: %s\n", field_name, field_value);
 						}
+						free(field_name);
+						free(field_value);
 					}
 					write_flag = TRUE;
 					fputs("\n", new_status_file);
 				}
 			}
 		}
-		/* If the package from the status file wasn't handle above, do it now*/
+		/* If the package from the status file wasn't handled above, do it now */
 		if (!write_flag) {
 			fprintf(new_status_file, "%s\n\n", control_buffer);
 		}
@@ -938,7 +958,7 @@ static void write_status_file(deb_file_t **deb_file)
 		free(status_from_file);
 		free(package_name);
 		free(control_buffer);
-	}
+	} /* while (control_buffer) */
 
 	/* Write any new packages */
 	for (i = 0; deb_file[i] != NULL; i++) {
@@ -1005,14 +1025,14 @@ static int check_deps(deb_file_t **deb_file, int deb_start /*, int dep_max_count
 	/* Create array of package numbers to check against
 	 * installed package for conflicts*/
 	while (deb_file[i] != NULL) {
-		const unsigned package_num = deb_file[i]->package;
+		unsigned package_num = deb_file[i]->package;
 		conflicts = xrealloc_vector(conflicts, 2, conflicts_num);
 		conflicts[conflicts_num] = package_num;
 		conflicts_num++;
 		/* add provides to conflicts list */
 		for (j = 0; j < package_hashtable[package_num]->num_of_edges; j++) {
 			if (package_hashtable[package_num]->edge[j]->type == EDGE_PROVIDES) {
-				const int conflicts_package_num = search_package_hashtable(
+				int conflicts_package_num = search_package_hashtable(
 					package_hashtable[package_num]->edge[j]->name,
 					package_hashtable[package_num]->edge[j]->version,
 					package_hashtable[package_num]->edge[j]->operator);
@@ -1047,7 +1067,7 @@ static int check_deps(deb_file_t **deb_file, int deb_start /*, int dep_max_count
 			const edge_t *package_edge = package_node->edge[j];
 
 			if (package_edge->type == EDGE_CONFLICTS) {
-				const unsigned package_num =
+				unsigned package_num =
 					search_package_hashtable(package_edge->name,
 								package_edge->version,
 								package_edge->operator);
@@ -1076,7 +1096,7 @@ static int check_deps(deb_file_t **deb_file, int deb_start /*, int dep_max_count
 	for (i = 0; i < PACKAGE_HASH_PRIME; i++) {
 		int status_num = 0;
 		int number_of_alternatives = 0;
-		const edge_t * root_of_alternatives = NULL;
+		const edge_t *root_of_alternatives = NULL;
 		const common_node_t *package_node = package_hashtable[i];
 
 		/* If the package node does not exist then this
@@ -1419,12 +1439,12 @@ static void list_packages(const char *pattern)
 	}
 }
 
-static void remove_package(const unsigned package_num, int noisy)
+static void remove_package(unsigned package_num, int noisy)
 {
 	const char *package_name = name_hashtable[package_hashtable[package_num]->name];
 	const char *package_version = name_hashtable[package_hashtable[package_num]->version];
-	const unsigned status_num = search_status_hashtable(package_name);
-	const int package_name_length = strlen(package_name);
+	unsigned status_num = search_status_hashtable(package_name);
+	int package_name_length = strlen(package_name);
 	char **remove_files;
 	char **exclude_files;
 	char list_name[package_name_length + 25];
@@ -1470,11 +1490,11 @@ static void remove_package(const unsigned package_num, int noisy)
 	set_status(status_num, "config-files", 3);
 }
 
-static void purge_package(const unsigned package_num)
+static void purge_package(unsigned package_num)
 {
 	const char *package_name = name_hashtable[package_hashtable[package_num]->name];
 	const char *package_version = name_hashtable[package_hashtable[package_num]->version];
-	const unsigned status_num = search_status_hashtable(package_name);
+	unsigned status_num = search_status_hashtable(package_name);
 	char **remove_files;
 	char **exclude_files;
 	char list_name[strlen(package_name) + 25];
@@ -1692,8 +1712,8 @@ enum {
 static void unpack_package(deb_file_t *deb_file)
 {
 	const char *package_name = name_hashtable[package_hashtable[deb_file->package]->name];
-	const unsigned status_num = search_status_hashtable(package_name);
-	const unsigned status_package_num = status_hashtable[status_num]->package;
+	unsigned status_num = search_status_hashtable(package_name);
+	unsigned status_package_num = status_hashtable[status_num]->package;
 	char *info_prefix;
 	char *list_filename;
 	archive_handle_t *archive_handle;
@@ -1783,7 +1803,7 @@ static void configure_package(deb_file_t *deb_file)
 {
 	const char *package_name = name_hashtable[package_hashtable[deb_file->package]->name];
 	const char *package_version = name_hashtable[package_hashtable[deb_file->package]->version];
-	const int status_num = search_status_hashtable(package_name);
+	int status_num = search_status_hashtable(package_name);
 
 	printf("Setting up %s (%s)...\n", package_name, package_version);
 
@@ -1828,6 +1848,24 @@ int dpkg_main(int argc UNUSED_PARAM, char **argv)
 		"force-confold\0"  No_argument        "\xfd"
 		;
 #endif
+//--admindir=DIR
+//    Set the administrative directory to DIR.  This directory
+//    contains many files that give information about status of
+//    installed or uninstalled packages, etc.  Defaults to
+//    /var/lib/dpkg if DPKG_ADMINDIR has not been set.
+//--instdir=DIR
+//    Set the installation directory, which refers to the directory
+//    where packages are to be installed.  DIR is also the
+//    directory passed to chroot(2) before running package's
+//    installation scripts, which means that the scripts see DIR
+//    as a root directory.  Defaults to / if DPKG_ROOT has not
+//    been set (since dpkg 1.21.10).
+//--root=DIR
+//    Set the root directory to DIR, which sets the
+//    installation directory to DIR and the administrative
+//    directory to DIR/var/lib/dpkg if DPKG_ROOT
+//    has not been set (since dpkg 1.21.10).
+//TODO: implement --root=DIR? necessary for testing
 
 	INIT_G();
 

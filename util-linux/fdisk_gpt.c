@@ -97,12 +97,11 @@ gpt_print_wide36(uint16_t *s)
 }
 
 static void
-gpt_list_table(int xtra UNUSED_PARAM)
+gpt_print_disklabel(void)
 {
 	int i;
 	char numstr6[6];
 
-	list_disk_name_and_sizes();
 	printf("Logical sector size: %u\n", sector_size);
 	printf("Disk identifier (GUID): ");
 //util-linux 2.41.1 does not print " (GUID)" in above line,
@@ -146,7 +145,7 @@ static int
 check_gpt_label(void)
 {
 	unsigned part_array_len;
-	struct partition *first = pt_offset(MBRbuffer, 0);
+	struct dos_partition *first = pt_offset(MBRbuffer, 0);
 	struct pte pe;
 	uint32_t crc;
 
@@ -154,7 +153,7 @@ check_gpt_label(void)
 
 	/* LBA 0 contains the legacy MBR */
 
-	if (!valid_part_table_flag(MBRbuffer)
+	if (!valid_55AA_signature(MBRbuffer)
 	 || first->sys_ind != LEGACY_GPT_TYPE
 	) {
 		return 0;

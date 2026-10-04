@@ -86,7 +86,7 @@ static unsigned long get_netmask(unsigned long ipaddr)
 # if ENABLE_FEATURE_IPCALC_FANCY
 		"prefix\0"    No_argument "p" // prefix from IP[/prefix] [netmask]
 		"hostname\0"  No_argument "h" // hostname from IP
-		"silent\0"    No_argument "s" // don’t ever display error messages
+		"silent\0"    No_argument "s" // don't ever display error messages
 # endif
 		;
 # define GETOPT32 getopt32long

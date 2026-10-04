@@ -321,8 +321,8 @@ enum {
 // TODO: more "user" flag compatibility.
 // "user" option (from mount manpage):
 // Only the user that mounted a filesystem can unmount it again.
-// If any user should be able to unmount, then use users instead of user
-// in the fstab line.  The owner option is similar to the user option,
+// If any user should be able to unmount, then use "users" instead of "user"
+// in the fstab line.  The "owner" option is similar to the "user" option,
 // with the restriction that the user must be the owner of the special file.
 // This may be useful e.g. for /dev/fd if a login script makes
 // the console user owner of this device.
@@ -595,7 +595,7 @@ static void append_mount_options(char **oldopts, const char *newopts)
 
 // Use the mount_options list to parse options into flags.
 // Also update list of unrecognized options if unrecognized != NULL
-static unsigned long parse_mount_options(char *options, char **unrecognized, uint32_t *opt)
+static unsigned long parse_mount_options(char *options, char **unrecognized, uint32_t *optmask32)
 {
 	unsigned long flags = MS_SILENT;
 
@@ -626,8 +626,8 @@ static unsigned long parse_mount_options(char *options, char **unrecognized, uin
 				/* If we see "-o rw" on command line, it's the same as -w:
 				 * "do not try to fall back to RO mounts"
 				 */
-				if (fl == ~MS_RDONLY && opt)
-					(*opt) |= OPT_w;
+				if (fl == ~MS_RDONLY && optmask32)
+					(*optmask32) |= OPT_w;
 				goto found;
 			}
 			option_str += opt_len + 1;
@@ -2368,6 +2368,23 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 	cmdopt_flags = parse_mount_options(cmdopts, NULL, &option_mask32);
 	if (nonroot && (cmdopt_flags & ~MS_SILENT)) // Non-root users cannot specify flags
 		bb_simple_error_msg_and_die(bb_msg_you_must_be_root);
+	// NB: parse_mount_options() starts with just MS_SILENT and adds bits as it sees options.
+	// Some options clear a flag, not set it:
+	// suid          ~MS_NOSUID
+	// dev           ~MS_NODEV
+	// exec          ~MS_NOEXEC
+	// async         ~MS_SYNCHRONOUS
+	// atime         ~MS_NOATIME
+	// diratime      ~MS_NODIRATIME
+	// norelatime    ~MS_RELATIME
+	// nostrictatime ~MS_STRICTATIME
+	// nolazytime    ~MS_LAZYTIME
+	// nomand        ~MS_MANDLOCK
+	// rw            ~MS_RDONLY
+	// therefore the above check does not catch them,
+	// they are allowed for non-root (and ignored): they essentially request a default behavior.
+	// Is it a bug?
+	// Should they be disallowed for non-root, and override fstab options for "mount -o OPTS ONE_PARAM" form for root?
 
 	// If we have a shared subtree flag, don't worry about fstab or mtab.
 	if (ENABLE_FEATURE_MOUNT_FLAGS

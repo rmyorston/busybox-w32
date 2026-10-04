@@ -2470,7 +2470,9 @@ static void get_client_hello(tls_state_t *tls)
 	p += 2;
 	len -= 2;
 
-	if (len < cipher_list_len) {
+	if (len <= cipher_list_len) {
+		/* The "<=" is subtle: it aborts even if we do have cipher list,
+		 * but have no compression size byte after it */
 		bb_simple_error_msg_and_die("malformed ClientHello");
 	}
 
@@ -2525,7 +2527,7 @@ static void get_client_hello(tls_state_t *tls)
 	len -= cipher_list_len;
 
 	/* Skip compression methods */
-	len -= 1 + p[0];
+	len -= 1 + p[0]; /* touching p[0] is allowed: len was > cipher_list_len */
 	p += 1 + p[0];
 
 	/* Parse extensions if present */

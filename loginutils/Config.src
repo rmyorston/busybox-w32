@@ -96,7 +96,7 @@ config USE_BB_CRYPT_YES
 	default y
 	depends on USE_BB_CRYPT
 	help
-	Enable this if you have passwords starting with "$y$" or
+	Enable this if you have passwords starting with "$y$"
 	in your /etc/passwd or /etc/shadow files. These passwords
 	are hashed using yescrypt algorithms.
 	With this option off, login will fail password check for any

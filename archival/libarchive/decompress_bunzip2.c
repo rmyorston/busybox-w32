@@ -463,13 +463,12 @@ static int get_next_block(bunzip_data *bd)
 			   symbols, but a run of length 0 doesn't mean anything in this
 			   context).  Thus space is saved. */
 			runCnt += (runPos << nextSym); /* +runPos if RUNA; +2*runPos if RUNB */
-//The 32-bit overflow of runCnt wasn't yet seen, but probably can happen.
-//This would be the fix (catches too large count way before it can overflow):
-//			if (runCnt > bd->dbufSize) {
-//				dbg("runCnt:%u > dbufSize:%u RETVAL_DATA_ERROR",
-//						runCnt, bd->dbufSize);
-//				return RETVAL_DATA_ERROR;
-//			}
+			/* Catch 32-bit overflow (we have an example .bz2 file) */
+			if ((int)runCnt < 0) {
+				dbg("runCnt:%u > dbufSize:%u RETVAL_DATA_ERROR",
+						runCnt, bd->dbufSize);
+				return RETVAL_DATA_ERROR;
+			}
 			if (runPos < bd->dbufSize) runPos <<= 1;
 			goto end_of_huffman_loop;
 		}

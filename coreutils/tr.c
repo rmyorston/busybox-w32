@@ -116,22 +116,20 @@ static unsigned expand(char *arg, char **buffer_p)
 			*buffer_p = buffer = xrealloc(buffer, size);
 		}
 		if (*arg == '\\') {
-			const char *z;
-			arg++;
-			z = arg;
-			ac = bb_process_escape_sequence(&z);
-#if ENABLE_PLATFORM_MINGW32
-			if (ac == '\\' && *z == '-') {
-				/* An escaped dash isn't a range, don't fall through */
-				buffer[pos++] = *z;
+			char *z = ++arg;
+			if (*z == '-') {
+				/* "\-X" isn't a range, but a literal dash and X */
+				buffer[pos++] = '-';
 				continue;
 			}
-#endif
-			arg = (char *)z;
-			arg--;
+			ac = bb_process_escape_sequence((void*)&z);
+			// if unknown seq "\k": ac='\', z->k: store '\' before 'k'
+			// if known seq "\n": ac='\n', z->past n: store '\n' into 'n'
+			// if known seq "\041": ac='!', z->past 1: store '!' into '1'
+			arg = z - 1;
 			*arg = ac;
 			/*
-			 * fall through, there may be a range.
+			 * fall through, there may be a range. Example: "\n-@"
 			 * If not, current char will be treated anyway.
 			 */
 		}
@@ -144,10 +142,9 @@ static unsigned expand(char *arg, char **buffer_p)
 			i = (unsigned char) *arg;
 			arg += 3; /* skip 0-9 or 0-\ */
 			if (ac == '\\') {
-				const char *z;
-				z = arg;
-				ac = bb_process_escape_sequence(&z);
-				arg = (char *)z;
+				char *z = arg;
+				ac = bb_process_escape_sequence((void*)&z);
+				arg = z;
 			}
 			while (i <= ac) /* ok: i is unsigned _int_ */
 				buffer[pos++] = i++;

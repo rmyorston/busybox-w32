@@ -747,6 +747,11 @@ int nc_main(int argc UNUSED_PARAM, char **argv)
 	int x;
 	unsigned cnt_l = 0;
 	unsigned o_lport = 0;
+	//bbox: always Single=1
+	//nc-1.10 allows "nc HOST PORT1 PORT2..."
+	//and "nc HOST PORT1-PORT2..." forms, in which cases
+	//it unsets this flag:
+	const int Single = 1;
 
 	INIT_G();
 
@@ -912,7 +917,7 @@ int nc_main(int argc UNUSED_PARAM, char **argv)
 			x = 1;                                /* exit status */
 			/* if we're scanning at a "one -v" verbosity level, don't print refusals.
 			 Give it another -v if you want to see everything. */
-			if (o_verbose > 1 || (o_verbose && errno != ECONNREFUSED))
+			if (Single || (o_verbose > 1) || (errno != ECONNREFUSED))
 				bb_perror_msg("%s (%s)", argv[0], themdotted);
 		}
 	}

@@ -286,21 +286,19 @@ static void put_iac3_IAC_x_y_merged(unsigned wwdd_and_c)
 	put_iac3_IAC_x_y_merged(((wwdd)<<8) + (c))
 
 #if ENABLE_FEATURE_TELNET_TTYPE
-static void put_iac_subopt(byte c, const char *str)
+static void put_iac_subopt_TTYPE(const char *p)
 {
-	put_iac4_x_y_z_t(IAC, SB, c, 0);
+	put_iac4_x_y_z_t(IAC, SB, TELOPT_TTYPE, 0);
 
-	while (*str) {
-		put_iac_byte_escaped(*str);
-		str++;
-	}
+	while (*p)
+		put_iac_byte_escaped(*p++);
 
 	put_iac2_x_y(IAC, SE);
 }
 #endif
 
 #if ENABLE_FEATURE_TELNET_AUTOLOGIN
-static void put_iac_subopt_autologin(const char *p)
+static void put_iac_subopt_NEW_ENVIRON(const char *p)
 {
 	put_iac4_x_y_z_t(IAC, SB, TELOPT_NEW_ENVIRON, TELQUAL_IS);
 	put_iac4_x_y_z_t(NEW_ENV_VAR, 'U', 'S', 'E'); /* "USER" */
@@ -433,7 +431,6 @@ static void handle_changes_in_options(stdin_to_net_t *conn)
 			log1("C:DO SGA");
 			put_iac3_IAC_x_y(DO, TELOPT_SGA);
 			G.flags |= FLAGS_SGA_SEEN; // remember we did it
-			G.changes_seen -= CHANGED_SGA;
 		}
 		G.changes_seen &= ~(CHANGED_ECHO|CHANGED_SGA);
 
@@ -491,7 +488,7 @@ static void handle_changes_in_options(stdin_to_net_t *conn)
 	 && remaining_free_bytes(conn->size) > 6 + 2 * strlen(G.ttype)
 	) {
 		log1("C:SB %s '%s'", "TTYPE", G.ttype);
-		put_iac_subopt(TELOPT_TTYPE, G.ttype);
+		put_iac_subopt_TTYPE(G.ttype);
 		G.ttype = NULL; // remember we did it
 		G.changes_seen -= CHANGED_TTYPE;
 	}
@@ -501,7 +498,7 @@ static void handle_changes_in_options(stdin_to_net_t *conn)
 	 && remaining_free_bytes(conn->size) > 12 + 2 * strlen(G.autologin)
 	) {
 		log1("C:SB %s '%s'", "NEW_ENVIRON", G.autologin);
-		put_iac_subopt_autologin(G.autologin);
+		put_iac_subopt_NEW_ENVIRON(G.autologin);
 		G.autologin = NULL; // remember we did it
 		G.changes_seen -= CHANGED_NEW_ENVIRON;
 	}

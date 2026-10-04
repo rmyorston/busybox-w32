@@ -900,7 +900,12 @@ static NOINLINE int d4_recv_raw_packet(struct dhcp_packet *dhcp_pkt, int fd)
 		break;
 	}
 
-	if (bytes < (int) (sizeof(packet.ip) + sizeof(packet.udp))) {
+	if (bytes < (int) (
+			sizeof(packet.ip) + sizeof(packet.udp)
+			+ offsetof(struct dhcp_packet, options)
+			/* DHCP requires option 255 is always present, IOW: at least one byte in options[]: */
+			+ 1
+	)) {
 		log1s("packet is too short, ignoring");
 		return -2;
 	}
@@ -954,7 +959,7 @@ static NOINLINE int d4_recv_raw_packet(struct dhcp_packet *dhcp_pkt, int fd)
 	packet.ip.tot_len = packet.udp.len; /* yes, this is needed */
 	check = packet.udp.check;
 	packet.udp.check = 0;
-	if (check && check != inet_cksum(&packet, bytes)) {
+	if (check != 0 && check != inet_cksum(&packet, bytes)) {
 		log1s("packet with bad UDP checksum, ignoring");
 		return -2;
 	}

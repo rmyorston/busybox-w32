@@ -53,7 +53,7 @@
  *   New implementation contributed by Richard Henderson <rth@tamu.edu>
  *   Based on original work by Bjorn Ekwall <bj0rn@blox.se>
  *   Restructured (and partly rewritten) by:
- *   Björn Ekwall <bj0rn@blox.se> February 1999
+ *   BjÃ¶rn Ekwall <bj0rn@blox.se> February 1999
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */

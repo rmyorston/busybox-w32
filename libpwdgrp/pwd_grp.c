@@ -171,7 +171,7 @@ static int tokenize(char *buffer, int ch)
 			if (p != end)
 				overlapping_strcpy(p, end);
 			num_fields++;
-			if (*end == '\0') {
+			if (*p == '\0') {
 				S.tokenize_end = p + 1;
 				return num_fields;
 			}

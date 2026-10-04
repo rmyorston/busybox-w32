@@ -127,9 +127,9 @@ static uint32_t Subword(uint32_t x)
 // The round keys are used in each round to decrypt the states.
 static int KeyExpansion(uint32_t *RoundKey, const void *key, unsigned key_len)
 {
-	// The round constant word array, Rcon[i], contains the values given by
-	// x to th e power (i-1) being powers of x (x is denoted as {02}) in the field GF(2^8).
-	// Note that i starts at 2, not 0.
+	// Rcon[i] is x^i in GF(2^8), where x^i is represented by (1<<i).
+	// AES uses reduction polynomial x^8 + x^4 + x^3 + x + 1,
+	// thus x^8 = x^4 + x^3 + x + 1, represented as 00011011 (0x1b).
 	static const uint8_t Rcon[] ALIGN1 = {
 		0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36
 	//..... 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6,...
@@ -169,14 +169,21 @@ static int KeyExpansion(uint32_t *RoundKey, const void *key, unsigned key_len)
 		if (j == words_key) {
 			j = 0;
 			k++;
+//TODO: we can eliminate k and Rcon[] and just generate Rcon[k]?
+//instead of k++, do: Rcon = (Rcon << 1) & ^ ((Rcon & 0x80) ? 0x1b : 0)
 		}
 	}
 	return rounds;
 }
 
+// The code might be smaller on some arch if astate[16] arrays'
+// elements are wider (e.g. 32-bit words rather than bytes).
+// If so, make this typedef conditional for such arch:
+typedef uint8_t state_t;
+
 // This function adds the round key to state.
 // The round key is added to the state by an XOR function.
-static void AddRoundKey(unsigned astate[16], const uint32_t *RoundKeys)
+static void AddRoundKey(state_t astate[16], const uint32_t *RoundKeys)
 {
 	int i;
 
@@ -191,7 +198,7 @@ static void AddRoundKey(unsigned astate[16], const uint32_t *RoundKeys)
 
 // The SubBytes Function Substitutes the values in the
 // state matrix with values in an S-box.
-static void SubBytes(unsigned astate[16])
+static void SubBytes(state_t astate[16])
 {
 	int i;
 
@@ -208,7 +215,7 @@ static void SubBytes(unsigned astate[16])
 // The ShiftRows() function shifts the rows in the state to the left.
 // Each row is shifted with different offset.
 // Offset = Row number. So the first row is not shifted.
-static void ShiftRows(unsigned astate[16])
+static void ShiftRows(state_t astate[16])
 {
 	unsigned v;
 
@@ -232,7 +239,7 @@ static void ShiftRows(unsigned astate[16])
 }
 
 // MixColumns function mixes the columns of the state matrix
-static void MixColumns(unsigned astate[16])
+static void MixColumns(state_t astate[16])
 {
 	int i;
 
@@ -257,7 +264,7 @@ static void MixColumns(unsigned astate[16])
 
 // The SubBytes Function Substitutes the values in the
 // state matrix with values in an S-box.
-static void InvSubBytes(unsigned astate[16])
+static void InvSubBytes(state_t astate[16])
 {
 	int i;
 
@@ -265,7 +272,7 @@ static void InvSubBytes(unsigned astate[16])
 		astate[i] = rsbox[astate[i]];
 }
 
-static void InvShiftRows(unsigned astate[16])
+static void InvShiftRows(state_t astate[16])
 {
 	unsigned v;
 
@@ -299,7 +306,7 @@ static ALWAYS_INLINE unsigned Multiply(unsigned x)
 // MixColumns function mixes the columns of the state matrix.
 // The method used to multiply may be difficult to understand for the inexperienced.
 // Please use the references to gain more information.
-static void InvMixColumns(unsigned astate[16])
+static void InvMixColumns(state_t astate[16])
 {
 	int i;
 
@@ -326,7 +333,7 @@ static void InvMixColumns(unsigned astate[16])
 	}
 }
 
-static void aes_encrypt_1(struct tls_aes *aes, unsigned astate[16])
+static void aes_encrypt_1(struct tls_aes *aes, state_t astate[16])
 {
 	unsigned rounds = aes->rounds;
 	const uint32_t *RoundKey = aes->key;
@@ -350,7 +357,7 @@ void FAST_FUNC aes_setkey(struct tls_aes *aes, const void *key, unsigned key_len
 
 void FAST_FUNC aes_encrypt_one_block(struct tls_aes *aes, const void *data, void *dst)
 {
-	unsigned astate[16];
+	state_t astate[16];
 	unsigned i;
 
 	const uint8_t *pt = data;
@@ -373,12 +380,12 @@ void FAST_FUNC aes_cbc_encrypt(struct tls_aes *aes, void *iv, const void *data, 
 	memcpy(iv2, iv, 16);
 	while (len > 0) {
 		{
-			/* almost aes_encrypt_one_block(rounds, RoundKey, pt, ct);
+			/* almost aes_encrypt_one_block(aes, pt, ct);
 			 * but xor'ing of IV with plaintext[] is combined
 			 * with plaintext[] -> astate[]
 			 */
 			int i;
-			unsigned astate[16];
+			state_t astate[16];
 			for (i = 0; i < 16; i++)
 				astate[i] = pt[i] ^ iv2[i];
 			aes_encrypt_1(aes, astate);
@@ -391,7 +398,7 @@ void FAST_FUNC aes_cbc_encrypt(struct tls_aes *aes, void *iv, const void *data, 
 	}
 }
 
-static void aes_decrypt_1(struct tls_aes *aes, unsigned astate[16])
+static void aes_decrypt_1(struct tls_aes *aes, state_t astate[16])
 {
 	unsigned rounds = aes->rounds;
 	const uint32_t *RoundKey = aes->key;
@@ -414,7 +421,7 @@ static void aes_decrypt_one_block(struct tls_aes *aes, const void *data, void *d
 {
 	unsigned rounds = aes->rounds;
 	const uint32_t *RoundKey = aes->key;
-	unsigned astate[16];
+	state_t astate[16];
 	unsigned i;
 
 	const uint8_t *ct = data;
@@ -442,11 +449,11 @@ void FAST_FUNC aes_cbc_decrypt(struct tls_aes *aes, void *iv, const void *data, 
 	while (len) {
 		ivnext = (ivbuf==iv2) ? iv3 : iv2;
 		{
-			/* almost aes_decrypt_one_block(rounds, RoundKey, ct, pt)
+			/* almost aes_decrypt_one_block(aes, ct, pt)
 			 * but xor'ing of ivbuf is combined with astate[] -> plaintext[]
 			 */
 			int i;
-			unsigned astate[16];
+			state_t astate[16];
 			for (i = 0; i < 16; i++)
 				ivnext[i] = astate[i] = ct[i];
 			aes_decrypt_1(aes, astate);

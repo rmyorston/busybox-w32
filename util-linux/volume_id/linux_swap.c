@@ -58,7 +58,7 @@ int FAST_FUNC volume_id_probe_linux_swap(struct volume_id *id /*,uint64_t off*/)
 				goto found;
 			}
 
-			if (memcmp(buf, "SWAPSPACE2", 10) == 0
+			if (memcmp(buf, bb_SWAPSPACE2, 10) == 0
 			 || memcmp(buf, "S1SUSPEND", 9) == 0
 			 || memcmp(buf, "S2SUSPEND", 9) == 0
 			 || memcmp(buf, "ULSUSPEND", 9) == 0

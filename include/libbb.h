@@ -2757,6 +2757,10 @@ extern const char bbvar[] ALIGN1;
 #define BB_CRITICAL_ERROR_DIALOGS bbafter(BB_SYSTEMROOT)
 #endif
 
+/* Stored without terminating NUL */
+extern const char bb_SWAPSPACE2[sizeof("SWAPSPACE2")-1];
+
+
 extern const int const_int_0;
 //extern const int const_int_1;
 
@@ -2877,6 +2881,8 @@ do { \
 		BUG_wrong_field_size(); \
 } while (0)
 
+#define FETCH_LE16(field) \
+	(sizeof(field) == 2 ? SWAP_LE16(field) : BUG_wrong_field_size())
 #define FETCH_LE32(field) \
 	(sizeof(field) == 4 ? SWAP_LE32(field) : BUG_wrong_field_size())
 

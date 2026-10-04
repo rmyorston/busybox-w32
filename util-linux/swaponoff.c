@@ -323,6 +323,11 @@ int swap_on_off_main(int argc UNUSED_PARAM, char **argv)
 			ret = do_all_in_proc_swaps();
 		ret |= do_em_all_in_fstab();
 	} else if (!*argv) {
+		if (!do_swapoff) {
+			/* bare "swapon" shows current swap usage */
+			*--argv = (char*)"/proc/swaps";
+			return bb_cat(argv);
+		}
 		/* if not -a we need at least one arg */
 		bb_show_usage();
 	}

@@ -982,6 +982,7 @@ static const char *fmt_num(const char *format, double n)
 		snprintf(g_buf, MAXVARFMT, "%.0f", n);
 	} else {
 		const char *s = format;
+		const char *p2;
 		char c;
 
 		/* Find %SPEC in format string */
@@ -993,9 +994,15 @@ static const char *fmt_num(const char *format, double n)
 				break;
 			s += 2;  /* skip "%%" */
 		}
-		if (strchr(s + 1, '%') != NULL)
-//TODO: allow "%%"s in the suffix too?
-			goto INV_FMT; /* more than one %SPEC */
+		/* We are at %SPEC. Is there a second %SPEC? (%% and trailing % aren't %SPEC) */
+		p2 = s;
+		for (;;) {
+			p2 = strchr(p2 + 1, '%');
+			if (!p2) break; /* no more %SPEC: ok */
+			if (*++p2 == '\0') break; /* trailing lone %: ok */
+			if (*p2 != '%') goto INV_FMT; /* more than one %SPEC: error */
+			/* else: %% - ok, look for %SPEC past it by iterating once more */
+		}
 
 //TODO: factor out awk_printf machinery to make %d print large numbers too. Example:
 // awk -v OFMT='R:%d!' 'BEGIN { print 184467440737095.1 }'

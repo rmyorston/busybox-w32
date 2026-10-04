@@ -1,0 +1,79 @@
+#!/bin/sh
+# Copyright 2026 by Denys Vlasenko
+# Licensed under GPLv2, see file LICENSE in this source tree.
+
+. ./testing.sh
+
+rm -rf dpkg.testdir
+mkdir -p dpkg.testdir
+cd dpkg.testdir || exit 1
+
+mk_hello_deb()
+{
+	mkdir mkdeb
+	cd mkdeb || exit 1
+
+	mkdir bin
+	printf '#!/bin/sh''\n''echo Hello world''\n' >bin/hello
+	chmod 755 bin/hello
+	tar czf data.tar.gz bin
+
+	printf "\
+Package: hello
+Version: 1.2-3
+Architecture: amd64
+Maintainer: Random Hacker <random@hacker.net>
+Depends: libc6 (>= 2.34)
+Conflicts: hello-traditional
+Breaks: hello-debhelper (<< 2.9)
+Replaces: hello-debhelper (<< 2.9), hello-traditional
+Section: devel
+Priority: optional
+Homepage: https://hacker.net/hello/
+Description: example package not based on GNU hello.
+ Seriously, though: this is an example of how to do a Debian package.
+ Multi-line description is here!
+" >control
+	md5sum bin/hello >md5sums
+	tar czf control.tar.gz control md5sums
+
+	# The file which identifies AR archive as a .deb verison 2.0
+	printf '2.0\n' >debian-binary
+
+	ar rc ../hello.deb debian-binary control.tar.gz data.tar.gz
+	cd .. || exit 1
+	rm -rf mkdeb
+}
+
+# testing "test name" "command" "expected result" "file input" "stdin"
+
+(set -e; mk_hello_deb) && {
+
+testing "dpkg-deb -e" \
+	'dpkg-deb -e hello.deb; echo $?; find DEBIAN; rm -rf DEBIAN' \
+	"\
+0
+DEBIAN
+DEBIAN/control
+DEBIAN/md5sums
+" \
+	"" ""
+
+testing "dpkg-deb -X" \
+	'dpkg-deb -X hello.deb PKG; echo $?; find PKG; rm -rf PKG' \
+	"\
+bin/
+bin/hello
+0
+PKG
+PKG/bin
+PKG/bin/hello
+" \
+	"" ""
+
+}
+
+cd .. || exit 1
+rm -rf dpkg.testdir
+
+exit $FAILCOUNT

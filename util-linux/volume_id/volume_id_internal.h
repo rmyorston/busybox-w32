@@ -146,15 +146,15 @@ enum endian {
 	BE = 1
 };
 
-void volume_id_set_unicode16(char *str, size_t len, const uint8_t *buf, enum endian endianess, size_t count);
-//void volume_id_set_usage(struct volume_id *id, enum volume_id_usage usage_id);
-//void volume_id_set_usage_part(struct volume_id_partition *part, enum volume_id_usage usage_id);
-//void volume_id_set_label_raw(struct volume_id *id, const uint8_t *buf, size_t count);
-void volume_id_set_label_string(struct volume_id *id, const uint8_t *buf, size_t count);
-void volume_id_set_label_unicode16(struct volume_id *id, const uint8_t *buf, enum endian endianess, size_t count);
-void volume_id_set_uuid(struct volume_id *id, const uint8_t *buf, enum uuid_format format);
-void *volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t len);
-void volume_id_free_buffer(struct volume_id *id);
+void FAST_FUNC volume_id_set_unicode16(char *str, size_t len, const uint8_t *buf, enum endian endianess, size_t count);
+//void FAST_FUNC volume_id_set_usage(struct volume_id *id, enum volume_id_usage usage_id);
+//void FAST_FUNC volume_id_set_usage_part(struct volume_id_partition *part, enum volume_id_usage usage_id);
+//void FAST_FUNC volume_id_set_label_raw(struct volume_id *id, const uint8_t *buf, size_t count);
+void FAST_FUNC volume_id_set_label_string(struct volume_id *id, const uint8_t *buf, size_t count);
+void FAST_FUNC volume_id_set_label_unicode16(struct volume_id *id, const uint8_t *buf, enum endian endianess, size_t count);
+void FAST_FUNC volume_id_set_uuid(struct volume_id *id, const uint8_t *buf, enum uuid_format format);
+void* FAST_FUNC volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t len);
+void FAST_FUNC volume_id_free_buffer(struct volume_id *id);
 
 
 /* Probe routines */
