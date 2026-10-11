@@ -67,8 +67,7 @@ testing "tar hardlinks and repeated files" '\
 ln input_hard1 input_hard2
 mkdir input_dir
 >input_dir/file
-chmod -R 644 *
-chmod    755 input_dir
+chmod -R a-x,u+rwX,go+rX *
 tar cf test.tar input input_dir/ input_hard1 input_hard2 input_hard1 input_dir/ input
 tar tvf test.tar | sed "s/.*[0-9] input/input/"
 rm -rf input_dir
