@@ -11563,21 +11563,21 @@ preadfd(void)
 			goto again;
 		}
 		if (nr < 0) {
-			if (errno == 0) {
-				/* ^D pressed */
-				nr = 0;
-			}
-			else if (errno == EINTR) { /* got signal? */
+			if (errno == EINTR) { /* got signal? */
 				if (bb_got_signal != SIGINT)
 					write(STDERR_FILENO, "\n", 1);
 				goto empty_line_input;
 			}
 # if ENABLE_ASH_IDLE_TIMEOUT
-			else if (errno == EAGAIN && timeout > 0) {
+			if (errno == EAGAIN && timeout > 0) { /* bash 5.3.9 writes thsi to stdout, not stderr */
 				puts("\007timed out waiting for input: auto-logout");
 				exitshell();
 			}
 # endif
+			if (errno == 0) {
+				/* ^D pressed */
+				nr = 0;
+			}
 		}
 	}
 #else
