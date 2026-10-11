@@ -1364,11 +1364,14 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 	/* Goes to stdout (unless NOMMU) and possibly syslog */
 	bb_simple_info_msg("started, v"BB_VER);
 
-	client_data.state = INIT_SELECTING;
+ deconfig_and_set_INIT_SELECTING:
 	d6_run_script_no_option("deconfig");
+ set_INIT_SELECTING:
+	client_data.state = INIT_SELECTING;
 	packet_num = 0;
 	timeout = 0;
 	lease_remaining = 0;
+	client_data.first_secs = 0;
 
 	/* Main event loop. select() waits on signal pipe and possibly
 	 * on sockfd.
@@ -1553,12 +1556,9 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 				/* Timed out, enter init state */
 				change_listen_mode(LISTEN_NONE);
 				bb_simple_info_msg("lease lost, entering init state");
-				d6_run_script_no_option("deconfig");
-				client_data.state = INIT_SELECTING;
-				client_data.first_secs = 0; /* make secs field count from 0 */
-				timeout = 0;
-				packet_num = 0;
-				continue;
+				/* will set timeout = packet_num = lease_remaining = 0 */
+				/* also makes secs count from 0: client_data.first_secs = 0 */
+				goto deconfig_and_set_INIT_SELECTING;
 			/* case RELEASED: */
 			}
 			/* RELEASED state (when we got SIGUSR2) ends up here.
@@ -1777,15 +1777,15 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 						/* return to init state */
 						bb_info_msg("received DHCP NAK: %u '%.*s'", status, len - 2, option->data + 2);
 						d6_run_script(packet.d6_options, packet_end, "nak");
-						if (client_data.state != REQUESTING)
+						if (client_data.state != REQUESTING) {
+  deconfig_pause_and_set_INIT_SELECTING:
 							d6_run_script_no_option("deconfig");
+						}
 						sleep(3); /* avoid excessive network traffic */
-						client_data.state = INIT_SELECTING;
-						client_data.first_secs = 0; /* make secs field count from 0 */
 						requested_ipv6 = NULL;
-						timeout = 0;
-						packet_num = 0;
-						continue;
+						/* will set timeout = packet_num = lease_remaining = 0 */
+						/* also makes secs count from 0: client_data.first_secs = 0 */
+						goto set_INIT_SELECTING;
 					}
 				}
 				option = d6_copy_option(packet.d6_options, packet_end, D6_OPT_SERVERID);
@@ -1844,8 +1844,11 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 						"IPv6", /*inet_ntoa(temp_addr),*/ (unsigned)lease_seconds);
 					address_timeout = lease_seconds;
 					/* A zero valid lifetime revokes the address */
-					if (address_timeout == 0)
-						goto lease_revoked;
+					if (address_timeout == 0) {
+ lease_revoked:
+						bb_simple_info_msg("lease revoked, entering init state");
+						goto deconfig_pause_and_set_INIT_SELECTING;
+					}
 				}
 				if (option_mask32 & OPT_d) {
 					struct d6_option *iaprefix;
@@ -1896,16 +1899,7 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 					prefix_timeout = lease_seconds;
 					/* A zero valid lifetime revokes the prefix */
 					if (prefix_timeout == 0) {
- lease_revoked:
-						bb_simple_info_msg("lease revoked, entering init state");
-						d6_run_script_no_option("deconfig");
-						client_data.state = INIT_SELECTING;
-						client_data.first_secs = 0;
-						requested_ipv6 = NULL;
-						lease_remaining = 0;
-						timeout = 3; /* avoid excessive network traffic */
-						packet_num = 0;
-						continue;
+						goto lease_revoked;
 					}
 				}
 				if (!address_timeout)
