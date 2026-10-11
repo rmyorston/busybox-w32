@@ -2844,7 +2844,7 @@ static int show_prompt_and_get_stdin(struct in_str *i)
 		 * both on keyboard ^C and on real SIGINT (non-kbd generated).
 		 */
 		if (sigismember(&G.pending_set, SIGINT)) {
-			write(STDOUT_FILENO, "^C\n", 3);
+			write(STDERR_FILENO, "^C\n", 3);
 			G.last_exitcode = 128 | SIGINT;
 		}
 		check_and_run_traps();
@@ -2855,7 +2855,7 @@ static int show_prompt_and_get_stdin(struct in_str *i)
 		if (!bb_got_signal) {
 			/* r < 0: ^D/EOF/error detected (but not signal) */
 			/* ^D on interactive input goes to next line before exiting: */
-			write(STDOUT_FILENO, "\n", 1);
+			write(STDERR_FILENO, "\n", 1);
 			i->p = NULL;
 			i->peek_buf[0] = r = EOF;
 			return r;
@@ -2895,7 +2895,7 @@ static int show_prompt_and_get_stdin(struct in_str *i)
 			/* ^C or SIGINT: repeat */
 			/* bash prints ^C even on real SIGINT (non-kbd generated) */
 			/* kernel prints "^C" itself, just print newline: */
-			write(STDOUT_FILENO, "\n", 1);
+			write(STDERR_FILENO, "\n", 1);
 			G.last_exitcode = 128 | SIGINT;
 		}
 	}

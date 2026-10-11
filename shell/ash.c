@@ -11543,11 +11543,11 @@ preadfd(void)
 		INTOFF; /* no longjmp'ing out of read_line_input please */
 		nr = read_line_input(line_input_state, cmdedit_prompt, buf, IBUFSIZ);
 		if (bb_got_signal == SIGINT)
-			write(STDOUT_FILENO, "^C\n", 3);
+			write(STDERR_FILENO, "^C\n", 3);
 		INTON; /* here non-blocked SIGINT will longjmp */
 		if (nr == 0) {
 			/* ^C pressed, "convert" to SIGINT */
-			write(STDOUT_FILENO, "^C\n", 3);
+			write(STDERR_FILENO, "^C\n", 3);
 			raise(SIGINT); /* here non-blocked SIGINT will longjmp */
 			/* raise(SIGINT) did not work! (e.g. if SIGINT
 			 * is SIG_IGNed on startup, it stays SIG_IGNed)
@@ -11569,7 +11569,7 @@ preadfd(void)
 			}
 			else if (errno == EINTR) { /* got signal? */
 				if (bb_got_signal != SIGINT)
-					write(STDOUT_FILENO, "\n", 1);
+					write(STDERR_FILENO, "\n", 1);
 				goto empty_line_input;
 			}
 # if ENABLE_ASH_IDLE_TIMEOUT
