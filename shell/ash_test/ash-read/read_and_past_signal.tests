@@ -1,0 +1,2 @@
+echo INPUT | $THIS_SH -c 'trap "echo I" int; (sleep 1;kill -int $$)& sleep 2; read -pP: v;echo Input:$v'
+echo Ok:$?

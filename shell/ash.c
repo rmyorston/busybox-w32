@@ -3668,7 +3668,7 @@ signal_handler(int signo)
 		if (!trap[SIGCHLD])
 			return;
 	}
-#if ENABLE_FEATURE_EDITING
+#if 1 // ENABLE_FEATURE_EDITING || IF_READ_WHICH_WE_ALWAYS_SUPPORT
 //TODO: don't do it if it's SIGCHLD?
 	bb_got_signal = signo; /* for read_line_input / read builtin: "we got a signal" */
 #endif
@@ -9743,8 +9743,7 @@ static int funcline;            /* starting line number of current function, or 
 static int evalstring(char *s, int flags);
 
 /* Called to execute a trap.
- * Single callsite - at the end of evaltree().
- * If we return non-zero, evaltree raises EXEXIT exception.
+ * Called in at the beginning and end of evaltree(), and in readcmd() if signal is trapped.
  *
  * Perhaps we should avoid entering new trap handlers
  * while we are executing a trap handler. [is it a TODO?]
@@ -9765,6 +9764,7 @@ dotrap(void)
 		status = exitstatus;
 		savestatus = status;
 	}
+	bb_got_signal = 0; /* or else read builtin gets immediately "interrupted" by already handled past signal */
 	pending_sig = 0;
 	barrier();
 
@@ -11540,6 +11540,8 @@ preadfd(void)
 		 * #(bash 5.0.17 exits after first "T", looks like a bug)
 		 */
 		bb_got_signal = 0;
+		if (pending_sig)
+			goto got_signal;
 		INTOFF; /* no longjmp'ing out of read_line_input please */
 		nr = read_line_input(line_input_state, cmdedit_prompt, buf, IBUFSIZ);
 		if (bb_got_signal == SIGINT)
@@ -11564,6 +11566,7 @@ preadfd(void)
 		}
 		if (nr < 0) {
 			if (errno == EINTR) { /* got signal? */
+ got_signal:
 				if (bb_got_signal != SIGINT)
 					write(STDERR_FILENO, "\n", 1);
 				goto empty_line_input;
@@ -14807,14 +14810,14 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
  again:
 	INTOFF;
 	r = shell_builtin_read(&params);
-	INTON;
+	INTON; /* here non-blocked SIGINT will longjmp */
 
 	if ((uintptr_t)r == 1 && errno == EINTR) {
 		/* To get SIGCHLD: sleep 1 & read x; echo $x
 		 * Correct behavior is to not exit "read"
 		 */
-		if (pending_sig == 0)
-			goto again;
+		dotrap(); /* NOP if pending_sig == 0 */
+		goto again;
 	}
 
 	if ((uintptr_t)r == 2) /* -t SEC timeout? */

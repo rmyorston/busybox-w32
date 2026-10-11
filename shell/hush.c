@@ -2085,7 +2085,7 @@ enum {
 static void record_pending_signo(int sig)
 {
 	sigaddset(&G.pending_set, sig);
-#if ENABLE_FEATURE_EDITING
+#if ENABLE_FEATURE_EDITING || ENABLE_HUSH_READ
 	if (sig != SIGCHLD
 	 || (G_traps && G_traps[SIGCHLD] && G_traps[SIGCHLD][0])
 	 /* ^^^ if SIGCHLD, interrupt line reading only if it has a trap */
@@ -2280,7 +2280,9 @@ static NORETURN void save_history_run_exit_trap_and_exit(int exitcode)
 static int check_and_run_traps(void)
 {
 	int last_sig = 0;
-
+#if ENABLE_HUSH_READ
+	bb_got_signal = 0; /* or else read builtin gets immediately "interrupted" by already handled past signal */
+#endif
 	while (1) {
 		int sig;
 
@@ -11753,8 +11755,12 @@ static int FAST_FUNC builtin_read(char **argv)
 
 	if ((uintptr_t)r == 1 && errno == EINTR) {
 		unsigned sig = check_and_run_traps();
-		if (sig != SIGINT)
+		if (sig != SIGINT
+		 || (G_traps && G_traps[SIGINT] && G_traps[SIGINT][0])
+		) {
+			/* Redo the read after signals other than untrapped SIGINT */
 			goto again;
+		}
 	}
 
 	if ((uintptr_t)r == 2) /* -t SEC timeout? */

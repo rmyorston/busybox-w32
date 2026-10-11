@@ -224,6 +224,24 @@ shell_builtin_read(struct builtin_read_params *params)
 				retval = (const char *)(uintptr_t)2;
 				break;
 			}
+			// Both ash and hush set bb_got_signal in their signal handlers.
+// This can be handled cleaner via:
+// bb_got_signal = 0;
+// if (shell_already_knows_it_has_pending_signal())
+//	return -1 + EINTR;
+// check_got_signal_and_poll()
+// ...
+// but shell_already_knows_it_has_pending_signal() check is shell-specific!
+// Therefore we can't clear bb_got_signal here - we depend on trap processing
+// clearing it every time traps are run (not leaving it stuck in a set state).
+			if (errno == EINTR) {
+				// We got a signal and our caller will act on it after seeing EINTR.
+				// Clear its indicator (if any) so that we do not "get signal" ad infinitum.
+				// Testcases:
+				// ash -c 'trap "echo I" int; (sleep 1;kill -int $$)& read -pP: v'
+				// ash -c 'trap "echo I" int; (sleep 1;kill -int $$)& sleep 2; read -pP: v'
+				bb_got_signal = 0;
+			}
 			retval = (const char *)(uintptr_t)1;
 			break;
 		}
