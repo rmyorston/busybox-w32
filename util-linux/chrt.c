@@ -17,7 +17,7 @@
 //kbuild:lib-$(CONFIG_CHRT) += chrt.o
 
 //usage:#define chrt_trivial_usage
-//usage:       "-m | [-rfobi] { -p [PRIO] PID | PRIO PROG ARGS }"
+//usage:       "-m | [-rfobiR] { -p [PRIO] PID | PRIO PROG ARGS }"
 //usage:#define chrt_full_usage "\n\n"
 //usage:       "Change scheduling priority and class (default RR) for a process\n"
 //usage:     "\n	-m	Show min/max priorities"
@@ -27,6 +27,7 @@
 //usage:     "\n	-o	Set SCHED_OTHER class"
 //usage:     "\n	-b	Set SCHED_BATCH class"
 //usage:     "\n	-i	Set SCHED_IDLE class"
+//usage:     "\n	-R	Set SCHED_RESET_ON_FORK"
 //usage:
 //usage:#define chrt_example_usage
 //usage:       "$ chrt -r 4 sleep 900; x=$!\n"
@@ -37,6 +38,9 @@
 #include "libbb.h"
 #ifndef SCHED_IDLE
 # define SCHED_IDLE 5
+#endif
+#ifndef SCHED_RESET_ON_FORK
+# define SCHED_RESET_ON_FORK 0x40000000
 #endif
 
 //musl has no __MUSL__ or similar define to check for,
@@ -85,6 +89,7 @@ static void show_min_max(int pol)
 #define OPT_o (1<<4)
 #define OPT_b (1<<5)
 #define OPT_i (1<<6)
+#define OPT_R (1<<7)
 
 int chrt_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int chrt_main(int argc UNUSED_PARAM, char **argv)
@@ -99,7 +104,7 @@ int chrt_main(int argc UNUSED_PARAM, char **argv)
 	int ret;
 
 	opt = getopt32(argv, "^"
-			"+" "mprfobi"
+			"+" "mprfobiR"
 			"\0"
 			/* only one policy accepted: */
 			"r--fobi:f--robi:o--rfbi:b--rfoi:i--rfob"
@@ -162,7 +167,6 @@ int chrt_main(int argc UNUSED_PARAM, char **argv)
 #endif
 		if (pol < 0)
 			bb_perror_msg_and_die("can't %cet pid %u's policy", 'g', (int)pid);
-#ifdef SCHED_RESET_ON_FORK
 		/* "Since Linux 2.6.32, the SCHED_RESET_ON_FORK flag
 		 * can be ORed in policy when calling sched_setscheduler().
 		 * As a result of including this flag, children created by
@@ -172,7 +176,6 @@ int chrt_main(int argc UNUSED_PARAM, char **argv)
 		 * (TODO: do we want to show it?)
 		 */
 		pol &= ~SCHED_RESET_ON_FORK;
-#endif
 		printf("pid %u's %s scheduling policy: SCHED_%s\n",
 			pid, current_new, policy_name(pol)
 		);
@@ -199,6 +202,8 @@ int chrt_main(int argc UNUSED_PARAM, char **argv)
 	sp.sched_priority = xstrtou_range(priority, 0,
 		sched_get_priority_min(policy), sched_get_priority_max(policy)
 	);
+	if (opt & OPT_R)
+		policy |= SCHED_RESET_ON_FORK;
 
 #if LIBC_IS_MUSL
 	ret = syscall(SYS_sched_setscheduler, pid, policy, &sp);

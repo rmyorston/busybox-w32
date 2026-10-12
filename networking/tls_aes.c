@@ -170,7 +170,7 @@ static int KeyExpansion(uint32_t *RoundKey, const void *key, unsigned key_len)
 			j = 0;
 			k++;
 //TODO: we can eliminate k and Rcon[] and just generate Rcon[k]?
-//instead of k++, do: Rcon = (Rcon << 1) & ^ ((Rcon & 0x80) ? 0x1b : 0)
+//instead of k++, do: Rcon = (Rcon << 1) ^ ((Rcon & 0x80) ? 0x1b : 0)
 		}
 	}
 	return rounds;

@@ -509,10 +509,12 @@ void *xmmap_anon(size_t size) FAST_FUNC;
 # define BB_ARCH_FIXED_PAGESIZE 4096
 #elif defined(__arm__) /* only 32bit, 64bit ARM has variable page size */
 # define BB_ARCH_FIXED_PAGESIZE 4096
+#elif defined(__riscv) /* both rv32 and rv64 have fixed page size of 4KiB */
+# define BB_ARCH_FIXED_PAGESIZE 4096
 #else /* if defined(ARCH) */
 /* add you favorite arch today! */
 //From Linux kernel inspection:
-//xtenza,s390[x],riscv,nios2,csky,sparc32: fixed 4k pages
+//xtenza,s390[x],nios2,csky,sparc32: fixed 4k pages
 //sparc64,alpha,openrisc: fixed 8k pages
 #endif
 

@@ -2573,7 +2573,11 @@ static const struct {
 	{ VSTRFIXED|VTEXTFIXED|VUNSET, "MAILPATH"  , changemail      },
 #endif
 	{ VSTRFIXED|VTEXTFIXED       , bb_PATH_root_path, changepath },
+#if ENABLE_FEATURE_EDITING_FANCY_PROMPT
+	{ VSTRFIXED|VTEXTFIXED       , "PS1=\\w \\$ ", NULL          },
+#else
 	{ VSTRFIXED|VTEXTFIXED       , "PS1=$ "    , NULL            },
+#endif
 	{ VSTRFIXED|VTEXTFIXED       , "PS2=> "    , NULL            },
 	{ VSTRFIXED|VTEXTFIXED       , "PS4=+ "    , NULL            },
 #if ENABLE_ASH_GETOPTS
@@ -2730,14 +2734,13 @@ initvar(void)
 	struct var *end;
 	struct var **vpp;
 
-	/*
-	 * PS1 depends on uid
-	 */
-#if ENABLE_FEATURE_EDITING && ENABLE_FEATURE_EDITING_FANCY_PROMPT
-	vps1.var_text = "PS1=\\w \\$ ";
-#else
-	if (!get_cached_euid(&groupinfo.euid));
+	/* PS1 depends on uid */
+#if !ENABLE_FEATURE_EDITING_FANCY_PROMPT
+	if (get_cached_euid(&groupinfo.euid) == 0)
 		vps1.var_text = "PS1=# ";
+	/* else: the default "$ " is already set */
+#else
+	/* default "\\w \\$ " prompt already takes care of #/$ */
 #endif
 	vp = varinit;
 	end = vp + ARRAY_SIZE(varinit);

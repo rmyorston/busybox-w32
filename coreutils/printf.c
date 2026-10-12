@@ -420,6 +420,7 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 			{
 				static const char format_chars[] ALIGN1 = "diouxXfeEgGcs";
 				char *p = (char*)strchr(format_chars, *f);
+				const char *arg = "0";
 				/* needed - try "printf %" without it */
 				if (p == NULL || *f == '\0') {
 					bb_error_msg("%s: invalid format", direc_start);
@@ -438,15 +439,14 @@ static char **print_formatted(char *f, char **argv, int *conv_err)
 					direc_length += 2;
 					direc_start = p;
 				} else {
+					if (p - format_chars >= 11) /* %c or %s? */
+						++arg; /* "" */
 					p = NULL;
 				}
-				if (*argv) {
-					print_direc(direc_start, direc_length, field_width,
-								precision, *argv++);
-				} else {
-					print_direc(direc_start, direc_length, field_width,
-								precision, "");
-				}
+				if (*argv)
+					arg = *argv++;
+				print_direc(direc_start, direc_length, field_width,
+							precision, arg);
 				*conv_err |= errno;
 				free(p);
 			}

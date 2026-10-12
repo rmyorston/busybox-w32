@@ -8,7 +8,7 @@
 //config:	bool "fatlabel (1 kb)"
 //config:	default y
 //config:	help
-//config:	fatlabel shows or sets FAT33 label.
+//config:	fatlabel shows or sets FAT32 label.
 
 //applet:IF_FATLABEL(APPLET(fatlabel, BB_DIR_SBIN, BB_SUID_DROP))
 
@@ -75,17 +75,24 @@ struct msdos_dir_entry {
 */
 struct msdos_volume_info { // (offsets are relative to start of boot sector)
 	uint8_t  drive_number;    // 040 BIOS drive number
-	uint8_t  reserved;        // 041 unused
-	uint8_t  ext_boot_sign;	  // 042 0x29 if fields below exist (DOS 3.3+)
+	uint8_t  reserved;        // 041 'unused'. Linux uses this for 0x01 'mounted now' bit, some WinNT too?
+	uint8_t  ext_boot_sign;	  // 042 0x28 (40) if volume_id32 exists, 0x29 (41) if all three fields below exist (0x29 is 'standard' since DOS 4.0).
 	uint32_t volume_id32;     // 043 volume ID number
 	char     volume_label[11];// 047 volume label
-	char     fs_type[8];      // 052 typically "FATnn"
+	char     fs_type[8];      // 052 typically "FATnn   "
+// Wikipedia: "If both total logical sectors entries at offset 0x020 and 0x013
+// are 0 on volumes using a FAT32 EBPB with signature 0x29, volumes with more
+// than 4,294,967,295 (232-1) sectors (f.e. some DR-DOS volumes with 32-bit
+// cluster entries) can use this entry as 64-bit total logical sectors entry
+// instead. In this case, the OEM label at sector offset 0x003 may be retrieved
+// as new-style file system type instead."
 } PACKED;                         // 05a end. Total size 26 (0x1a) bytes
 
 struct msdos_boot_sector {
 	// We use strcpy to fill both, and gcc-4.4.x complains if they are separate
 	char     boot_jump_and_sys_id[3+8]; //000 short or near jump instruction
-	/*char   system_id[8];*/     // 003 name - can be used to special case partition manager volumes
+	/*char   system_id[8];*/     // 003 usually formatting util's id: "MSDOSn.n", "MSWINn.n", "mkfs.fat", "mkdosfs\0" (ours).
+	// "EXFAT   " and "NTFS    " are required signatures for those filesystems at this offset
 	uint16_t bytes_per_sect;     // 00b bytes per logical sector
 	uint8_t  sect_per_clust;     // 00d sectors/cluster
 	uint16_t reserved_sect;      // 00e reserved sectors (sector offset of 1st FAT relative to volume start)
@@ -104,12 +111,32 @@ struct msdos_boot_sector {
 	uint32_t fat32_root_cluster; // 02c first cluster in root directory
 	uint16_t fat32_info_sector;  // 030 filesystem info sector (usually 1)
 	uint16_t fat32_backup_boot;  // 032 backup boot sector (usually 6)
-	uint32_t reserved2[3];       // 034 unused
+	uint32_t reserved2[3];       // 034 'unused'. 12 bytes of 'boot file name'?
 	struct msdos_volume_info vi; // 040
 	char     boot_code[0x200 - 0x5a - 2]; // 05a
 #define BOOT_SIGN 0xAA55
-	uint16_t boot_sign;          // 1fe
+	uint16_t boot_sign;          // 1fe 55,aa here means "bootable". Offset is the same even for sectors > 512 bytes
 } PACKED;
+
+// Microsoft's EFI FAT32 specification states that any FAT file system with
+// less than 4085 clusters is FAT12, else any FAT file system with less than
+// 65525 clusters is FAT16, and otherwise it is FAT32. The entry for cluster
+// 0 at the beginning of the FAT must be identical to the media descriptor byte
+// found in the BPB, whereas the entry for cluster 1 reflects the end-of-chain
+// value used by the formatter for cluster chains (0xFFF, 0xFFFF or 0x0FFFFFFF).
+// The entries for cluster numbers 0 and 1 end at a byte boundary even
+// for FAT12, e.g., 0xF9FFFF for media descriptor 0xF9.
+//
+// In practice, FAT12/16 has to have nonzero fat16_sect_per_fat field.
+// (it never needs more than 16 bits for this value, unlike FAT32).
+// If it is zero, it is either not a FAT fs at all, or it is FAT32.
+// Unknown whether converse is true (can small FAT32 fs exist with
+// fat16_sect_per_fat field set to nonzero?).
+//
+// A better field for FAT32 discrimination is dir_entries.
+// By necessity, it has to be nonzero for FAT12/16 (you have to have
+// a non-empty root dir). It does not make sense for FAT32 whose root dir
+// is not fixed size, thus presumably always 0.
 
 #define FAT_FSINFO_SIG1 0x41615252
 #define FAT_FSINFO_SIG2 0x61417272
@@ -151,12 +178,15 @@ static int bad_fat32(const struct msdos_boot_sector *boot_blk)
 	move_from_unaligned16(bytes_per_sect16, &boot_blk->bytes_per_sect);
 	return ((uint8_t)(boot_blk->fats - 1) > 1 // 0 or >2
 	 || boot_blk->fat16_sect_per_fat != 0
-	// maybe also check boot_blk->dir_entries == 0? It's only for FAT16/12
-	 || boot_blk->vi.ext_boot_sign != 0x29
-	 || boot_blk->boot_sign != SWAP_LE16(BOOT_SIGN)
+	 || boot_blk->dir_entries != 0
+	 || boot_blk->vi.ext_boot_sign != 0x29 // can be 0x28 in valid FAT32, but then it has no volume_label[] at offset 0x47
 	 || bytes_per_sect16 != SWAP_LE16(SECTOR_SIZE)
 	 || boot_blk->fat32_info_sector != SWAP_LE16(0x0001)
+	//maybe? || boot_blk->fat32_root_cluster < 2
 	//WRONG: || boot_blk->fat32_backup_boot != SWAP_LE16(0x0006)
+	//WRONG: || boot_blk->boot_sign != SWAP_LE16(BOOT_SIGN)
+	// ^^^^ non-bootable FAT32 partitions may well NOT have this signature.
+	// Linux does not check it on mount.
 	);
 }
 
@@ -179,12 +209,12 @@ int fatlabel_main(int argc UNUSED_PARAM, char **argv)
 #if 0
 	fprintf(stderr,
 		"0x003: sys_id:'%.8s'\n"
-		"0x00b: bytes_per_sect: 0x%04x\n" // 0
-		"0x00d: sect_per_clust: 0x%02x\n" // 0
+		"0x00b: bytes_per_sect: 0x%04x\n" // 0x200
+		"0x00d: sect_per_clust: 0x%02x\n"
 		"0x010: fats: 0x%02x\n" // 1 or 2
-		"0x011: dir_entries: 0x%04x\n" // always 0 for FAT32?
+		"0x011: dir_entries: 0x%04x\n" // always !0 for FAT12/16! Always 0 for FAT32?
 		"0x015: media_byte: 0x%02x\n" // 0xf8 for "hard disk"
-		"0x016: fat16_sect_per_fat: 0x%04x\n" // 0
+		"0x016: fat16_sect_per_fat: 0x%04x\n" // Always 0 for FAT32?
 		"0x028: fat32_flags: 0x%04x\n" // 0,0
 		"0x02a: fat32_version: 0x%02x,0x%02x\n" // 0,0
 		"0x030: fat32_info_sector: 0x%04x\n" // always 1?
@@ -206,7 +236,7 @@ int fatlabel_main(int argc UNUSED_PARAM, char **argv)
 		, boot_blk->fat32_version[0], boot_blk->fat32_version[1]
 		, FETCH_LE16(boot_blk->fat32_info_sector)
 		, backup_boot_sect
-		, boot_blk->vi.reserved // Linux uses this as "mounted now" bit, some WinNT too?
+		, boot_blk->vi.reserved // Linux uses this for 0x01 "mounted now" bit, some WinNT too?
 		, boot_blk->vi.ext_boot_sign
 		, FETCH_LE32(boot_blk->vi.volume_id32) // FIXME: unaligned fetch
 		, boot_blk->vi.volume_label
@@ -238,7 +268,7 @@ int fatlabel_main(int argc UNUSED_PARAM, char **argv)
 		sprintf(boot_blk->vi.volume_label, "%-11.11s", argv[1]);
 		xlseek(fd, 0x047, SEEK_SET);
 		xwrite(fd, boot_blk->vi.volume_label, 11);
-		// Redundant is backup_boot_sect == 0, but no harm done:
+		// Redundant if backup_boot_sect == 0, but no harm done:
 		xlseek(fd, 0x047 + backup_boot_sect * SECTOR_SIZE, SEEK_SET);
 		xwrite(fd, boot_blk->vi.volume_label, 11);
 	} else {

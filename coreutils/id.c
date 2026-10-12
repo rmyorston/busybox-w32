@@ -248,6 +248,7 @@ int id_main(int argc UNUSED_PARAM, char **argv)
 				prefix = ",";
 			}
 		} else if (n < 0) { /* error in get_groups() */
+			bb_putchar('\n');
 			if (ENABLE_DESKTOP)
 				bb_simple_error_msg_and_die("can't get groups");
 			return EXIT_FAILURE;

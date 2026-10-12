@@ -116,6 +116,11 @@ testing "printf handles positive numbers for %f" \
 "0.420\n""0\n" \
 	"" ""
 
+testing "printf accepts missing arguments as empty or 0" \
+	"${bb}printf '%d %i %o %u %x %X %f %e %E %g %G %c %b %s' | ${bb}cat -v" \
+	"0 0 0 0 0 0 0.000000 0.000000e+00 0.000000E+00 0 0 ^@  " \
+	"" ""
+
 
 # "FIXED" now to act compatibly
 ## We are "more correct" here than bash/coreutils: they happily print -2
@@ -126,11 +131,12 @@ testing "printf handles positive numbers for %f" \
 #	"" ""
 
 testing "printf handles %d bad_input" \
-	"${bb}printf '%d\n' 1 - 2 bad 3 123bad 4 2>&1; echo \$?" \
+	"${bb}printf '%d\n' 1 - 2 bad 3 123bad 4 '' 5 2>&1; echo \$?" \
 "1\n""printf: invalid number '-'\n""0\n"\
 "2\n""printf: invalid number 'bad'\n""0\n"\
 "3\n""printf: invalid number '123bad'\n""0\n"\
-"4\n""1\n" \
+"4\n""printf: invalid number ''\n""0\n"\
+"5\n""1\n" \
 	"" ""
 
 testing "printf aborts on bare %" \
