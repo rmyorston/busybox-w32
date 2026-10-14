@@ -1,0 +1,6 @@
+wait -n
+from USR1
+prints after USR1
+wait
+from USR1
+prints after USR1 (2)

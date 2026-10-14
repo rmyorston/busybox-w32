@@ -1,0 +1,7 @@
+(sleep 3;exit 3) &
+(sleep 2;echo 'This should happen before wait -n #1 returns' >&2;exit 2) | (sleep 1;exit 1) &
+# the exit code of pipe is the last member's exitcode: 1
+wait -n; echo 1:$?
+# next wait -n should wait for the remaining job
+wait -n; echo 3:$?
+echo Ok:$?

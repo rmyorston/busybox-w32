@@ -1,0 +1,15 @@
+sleep 1 && echo 'Should not be reached' &
+bg=$!
+
+kill $bg
+echo "Sent SIGTERM:$?"
+
+# The internal state depends on whether shell manages to see the death of $bg before entering "wait -n":
+# will the job be already "dead and waited-for"? In the latter case, the correctness is harder to achieve.
+echo "Test: wait -n exit code for sigkilled (and possibly already waited-for) pipe"
+wait -n
+echo "wait -n #1: $? (should be 143 = 128+SIGTERM)"
+echo "Test: wait -n exits 127 if nothing to wait for"
+wait -n
+echo "wait -n #1: $? (should be 127)"
+

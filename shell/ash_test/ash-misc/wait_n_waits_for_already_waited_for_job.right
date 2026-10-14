@@ -1,0 +1,5 @@
+Sent SIGTERM:0
+Test: wait -n exit code for sigkilled (and possibly already waited-for) pipe
+wait -n #1: 143 (should be 143 = 128+SIGTERM)
+Test: wait -n exits 127 if nothing to wait for
+wait -n #1: 127 (should be 127)

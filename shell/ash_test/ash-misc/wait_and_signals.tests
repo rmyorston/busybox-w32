@@ -1,0 +1,21 @@
+# tests wait and signals
+
+trap 'echo from USR1' USR1
+
+echo "wait -n"
+{ sleep 1; kill -USR1 $$; sleep 1; echo prints after USR1; } &
+wait -n
+rc=$?
+[ "$rc" = 138 ] || echo "rc not 138: $?"
+wait -n
+rc=$?
+[ "$rc" = 0 ] || echo "rc not 0: $?"
+
+echo "wait"
+{ sleep 1; kill -USR1 $$; sleep 1; echo "prints after USR1 (2)"; } &
+wait
+rc=$?
+[ "$rc" = 138 ] || echo "rc not 138: $?"
+wait
+rc=$?
+[ "$rc" = 0 ] || echo "rc not 0: $?"
