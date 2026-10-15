@@ -53,7 +53,7 @@
 //config:	help
 //config:	Optionally renumber inodes when creating archives.
 
-//applet:IF_CPIO(APPLET(cpio, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_CPIO(APPLET(cpio, BB_DIR_USR_BIN, BB_SUID_DROP))
 
 //kbuild:lib-$(CONFIG_CPIO) += cpio.o
 

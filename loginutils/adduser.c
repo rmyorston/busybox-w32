@@ -235,7 +235,7 @@ int adduser_main(int argc UNUSED_PARAM, char **argv)
 			usegroup = "nogroup";
 		}
 		if (!(opts & OPT_SHELL)) {
-			pw.pw_shell = (char *) "/bin/false";
+			pw.pw_shell = (char *) "/sbin/nologin";
 		}
 	}
 	pw.pw_gid = usegroup ? xgroup2gid(usegroup) : -1; /* exits on failure */

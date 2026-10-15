@@ -95,5 +95,18 @@ testing "test '!' '(' = '(': should be false (1)" \
 	"busybox test '!' '(' = '('; echo \$?" \
 	"1\n" \
 	"" ""
+mkdir -p test.tempdir
+touch test.tempdir/exists
+
+testing "test exists -nt nonexistent should be true (0)" \
+	"busybox test test.tempdir/exists -nt test.tempdir/nonexistent; echo \$?" \
+	"0\n" \
+	"" ""
+
+testing "test nonexistent -ot exists should be true (0)" \
+	"busybox test test.tempdir/nonexistent -ot test.tempdir/exists; echo \$?" \
+	"0\n" \
+	"" ""
+rm -rf test.tempdir
 
 exit $FAILCOUNT

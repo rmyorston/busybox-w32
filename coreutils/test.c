@@ -621,15 +621,15 @@ static int binop(void)
 /*	if (is_file_op(op->op_num)) */
 	{
 		struct stat b1, b2;
+		int sb1 = stat(opnd1, &b1);
+		int sb2 = stat(opnd2, &b2);
 
-		if (stat(opnd1, &b1) || stat(opnd2, &b2))
-			return 0; /* false, since at least one stat failed */
 		if (op->op_num == FILNT)
-			return b1.st_mtime > b2.st_mtime;
+			return !sb1 && (sb2 || b1.st_mtime > b2.st_mtime);
 		if (op->op_num == FILOT)
-			return b1.st_mtime < b2.st_mtime;
+			return !sb2 && (sb1 || b1.st_mtime < b2.st_mtime);
 		/*if (op->op_num == FILEQ)*/
-		return b1.st_dev == b2.st_dev && b1.st_ino == b2.st_ino;
+		return !sb1 && !sb2 && b1.st_dev == b2.st_dev && b1.st_ino == b2.st_ino;
 	}
 	/*return 1; - NOTREACHED */
 }

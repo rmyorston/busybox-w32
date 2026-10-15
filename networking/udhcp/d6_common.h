@@ -61,6 +61,7 @@ struct d6_option {
 	uint8_t data[1];
 } PACKED;
 
+/* Defined in RFC 3315 "DHCP for IPv6": 1-9,11-20 */
 #define D6_OPT_CLIENTID       1
 #define D6_OPT_SERVERID       2
 /* "Identity Association for Non-temporary Addresses",
@@ -95,6 +96,7 @@ struct d6_option {
 //#define D6_OPT_RECONF_MSG    19
 //#define D6_OPT_RECONF_ACCEPT 20
 
+/* RFC 3646 "DNS Configuration options for DHCPv6": */
 #define D6_OPT_DNS_SERVERS   23
 #define D6_OPT_DOMAIN_LIST   24
 

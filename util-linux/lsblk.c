@@ -10,7 +10,7 @@
 //config:	help
 //config:	List information about all available or specified block devices.
 
-//applet:IF_LSBLK(APPLET(lsblk, BB_DIR_USR_BIN, BB_SUID_DROP))
+//applet:IF_LSBLK(APPLET(lsblk, BB_DIR_BIN, BB_SUID_DROP))
 
 //kbuild:lib-$(CONFIG_LSBLK) += lsblk.o
 

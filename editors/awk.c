@@ -2758,9 +2758,8 @@ static char *awk_printf(node *n, size_t *len)
  * store result into (dest), return number of substitutions.
  * If nm = 0, replace all matches.
  * If src or dst is NULL, use $0.
- * If subexp != 0, enable subexpression matching (\0-\9).
  */
-static int awk_sub(node *rn, const char *repl, int nm, var *src, var *dest /*,int subexp*/)
+static int awk_sub(node *rn, const char *repl, int nm, var *src, var *dest /*,int in_gensub*/)
 {
 	char *resbuf;
 	const char *sp;
@@ -2769,7 +2768,7 @@ static int awk_sub(node *rn, const char *repl, int nm, var *src, var *dest /*,in
 	regmatch_t pmatch[10];
 	regex_t sreg, *regex;
 	/* True only if called to implement gensub(): */
-	int subexp = (src != dest);
+	int in_gensub = (src != dest);
 #if defined(REG_STARTEND)
 	const char *src_string;
 	size_t src_strlen;
@@ -2817,32 +2816,74 @@ static int awk_sub(node *rn, const char *repl, int nm, var *src, var *dest /*,in
 		residx += eo;
 		if (++match_no >= nm) {
 			const char *s;
-			int bslash;
 
 			/* replace */
 			residx -= (eo - so);
-			bslash = 0;
-			for (s = repl; *s; s++) {
-				char c = *s;
-				if (c == '\\' && s[1]) {
-					bslash ^= 1;
-					if (bslash)
-						continue;
+			s = repl;
+			while (*s) {
+// https://www.gnu.org/software/gawk/manual/html_node/Gory-Details.html
+// Table 9.2: gawk rules for sub() and backslash:
+// You type	sub() sees	sub() generates
+//     \\q	  \q		A literal ‘\q’      <<-- THIS IS DIFFERENT
+//       &	   &		The matched text
+//     \\&	  \&		A literal ‘&’
+//    \\\\	  \\		Two literal ‘\’s    <<-- THIS IS DIFFERENT
+//   \\\\&	 \\&		A literal ‘\’, then the matched text
+// \\\\\\&	\\\&		A literal ‘\&’
+// \\\\\\q	\\\q		Two literal ‘\’s and literal ‘\q’ <<-- THIS IS DIFFERENT
+// (^^^ non-POSIX special-casing of two backslashes by gawk)
+// Table 9.4: Escape sequence processing for gensub():
+// You type	gensub() sees	gensub() generates
+//     \\q	  \q		A literal ‘q’       <<-- THIS IS DIFFERENT
+//       &	   &		The matched text
+//     \\&	  \&		A literal ‘&’
+//    \\\\	  \\		A literal ‘\’       <<-- THIS IS DIFFERENT
+//   \\\\&	 \\&		A literal ‘\’, then the matched text
+// \\\\\\&	\\\&		A literal ‘\&’
+// \\\\\\q	\\\q		A literal ‘\’ and literal ‘q’     <<-- THIS IS DIFFERENT
+				char c;
+				unsigned bslash = 0;
+				while ((c = *s++) == '\\' && *s) {
+					bslash++;
 				}
-				if ((!bslash && c == '&')
-				 || (subexp && bslash && c >= '0' && c <= '9')
+				if ((!(bslash & 1) && c == '&')
+				 || (in_gensub && (bslash & 1) && c >= '0' && c <= '9')
 				) {
 					int n, j = 0;
 					if (c != '&') {
 						j = c - '0';
 					}
+					bslash /= 2;
+					while (bslash) {
+						resbuf[residx++] = '\\';
+						bslash--;
+					}
 					n = pmatch[j].rm_eo - pmatch[j].rm_so;
 					resbuf = qrealloc(resbuf, residx + replen + n, &resbufsize);
 					memcpy(resbuf + residx, sp + pmatch[j].rm_so - start_ofs, n);
 					residx += n;
-				} else
-					resbuf[residx++] = c;
-				bslash = 0;
+					continue;
+				}
+				// We saw N backslashes, and we are at a "normal char", not special one.
+				// The "normal char" can be a "&" or backslash, examples:
+				// "\\\\\\&..." (in awk program) -> (what we process here) "\\\&...": escaped "&" become "normal".
+				// "\\\\\\"     (in awk program) -> (what we process here) "\\\": last unpaired backslash is "normal".
+//bb_error_msg("in_gensub:%d bslash:%d c:'%c'",in_gensub,bslash,c);
+				if (!in_gensub) {
+					// for non-gensub:
+					// special-case "two backslashes" case, including "\\\q" case which is logically "\\"+"\q"
+				//	if (c != '&' && (bslash == 2 || bslash == 3)) // what doc claims
+					if (c != '&' && (bslash & 2)) // the actual logic in gawk-5.3.0 special-cases NOT ONLY 2,3 - but every two out of four!
+						bslash += 2;
+					if (c != '&') // gensub removes backslash from \q, sub does not:
+						bslash++; // if odd no.of backslashes, print one more, if even: no change
+				}
+				bslash /= 2;
+				while (bslash) {
+					resbuf[residx++] = '\\';
+					bslash--;
+				}
+				resbuf[residx++] = c;
 			}
 		}
 

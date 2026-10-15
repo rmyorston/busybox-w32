@@ -113,6 +113,9 @@
 //usage:     "\n	-N	Treat absent files as empty"
 //usage:     "\n	-q	Output only whether files differ"
 //usage:     "\n	-r	Recurse"
+//usage:        IF_LONG_OPTS(
+//usage:     "\n        --no-dereference Don't follow symlinks"
+//usage:        )
 //usage:     "\n	-S	Start with FILE when comparing directories"
 //usage:     "\n	-T	Make tabs line up by prefixing a tab when necessary"
 //usage:     "\n	-s	Report when two files are the same"
@@ -157,6 +160,7 @@ enum {                  /* Commandline flags */
 	FLAG_p,         /* not implemented */
 	FLAG_B,
 	FLAG_E,         /* not implemented */
+	FLAG_no_deref,
 #if ENABLE_PLATFORM_MINGW32 && ENABLE_FEATURE_DIFF_LONG_OPTIONS
 	FLAG_binary,
 #endif
@@ -907,7 +911,8 @@ static void diffdir(char *p[2], const char *s_start)
 		 * Using list.len to specify its length,
 		 * add_to_dirlist will remove it. */
 		list[i].len = strlen(p[i]);
-		recursive_action(p[i], ACTION_RECURSE | ACTION_FOLLOWLINKS,
+		recursive_action(p[i], ACTION_RECURSE |
+			((option_mask32 & FLAG(no_deref)) ? 0 : ACTION_FOLLOWLINKS),
 				add_to_dirlist, skip_dir, &list[i]);
 		/* Sort dl alphabetically.
 		 * GNU diff does this ignoring any number of trailing dots.
@@ -1004,8 +1009,9 @@ static const char diff_longopts[] ALIGN1 =
 	"report-identical-files\0"   No_argument       "s"
 	"starting-file\0"            Required_argument "S"
 	"minimal\0"                  No_argument       "d"
+	"no-dereference\0"           No_argument       "\xff"
 #if ENABLE_PLATFORM_MINGW32
-	"binary\0"                   No_argument       "\xff"
+	"binary\0"                   No_argument       "\xfe"
 #endif
 	;
 # define GETOPT32 getopt32long

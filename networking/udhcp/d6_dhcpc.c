@@ -312,6 +312,10 @@ static void option_to_env(const uint8_t *option, const uint8_t *option_end)
 			sprint_nip6(ipv6str, option + 4);
 			*new_env() = xasprintf("ipv6=%s", ipv6str);
 
+			move_from_unaligned32(v32, option + 4 + 16);
+			v32 = ntohl(v32);
+			*new_env() = xasprintf("preferred_lifetime=%u", (unsigned)v32);
+
 			move_from_unaligned32(v32, option + 4 + 16 + 4);
 			v32 = ntohl(v32);
 			*new_env() = xasprintf("lease=%u", (unsigned)v32);
@@ -837,7 +841,7 @@ static NOINLINE int send_d6_select(void)
 	return d6_mcast_from_client_data_ifindex(&packet, opt_ptr);
 }
 
-/* Unicast or broadcast a DHCP renew message
+/* Send a DHCPv6 Renew or Rebind message
  *
  * RFC 3315 18.1.3. Creation and Transmission of Renew Messages
  *
@@ -884,16 +888,19 @@ static NOINLINE int send_d6_select(void)
  * about parameter values the client would like to have returned.
  */
 /* NOINLINE: limit stack usage in caller */
-static NOINLINE int send_d6_renew(struct in6_addr *server_ipv6, struct in6_addr *our_cur_ipv6)
+static NOINLINE int send_d6_renew(int msg_type,
+		struct in6_addr *server_ipv6, struct in6_addr *our_cur_ipv6)
 {
 	struct d6_packet packet;
 	uint8_t *opt_ptr;
 
 	/* Fill in: msg type, xid, ELAPSED_TIME */
-	opt_ptr = init_d6_packet(&packet, D6_MSG_RENEW);
+	opt_ptr = init_d6_packet(&packet, msg_type);
 
-	/* server id */
-	opt_ptr = mempcpy(opt_ptr, client6_data.server_id, client6_data.server_id->len + 2+2);
+	/* Rebind must not contain a server ID */
+	if (msg_type == D6_MSG_RENEW) {
+		opt_ptr = mempcpy(opt_ptr, client6_data.server_id, client6_data.server_id->len + 2+2);
+	}
 	/* IA NA (contains requested IP) */
 	if (client6_data.ia_na)
 		opt_ptr = mempcpy(opt_ptr, client6_data.ia_na, client6_data.ia_na->len + 2+2);
@@ -906,7 +913,7 @@ static NOINLINE int send_d6_renew(struct in6_addr *server_ipv6, struct in6_addr 
 	 */
 	opt_ptr = add_d6_client_options(opt_ptr);
 
-	bb_info_msg("sending %s", "renew");
+	bb_info_msg("sending %s", msg_type == D6_MSG_RENEW ? "renew" : "rebind");
 	if (server_ipv6)
 		return d6_send_kernel_packet_from_client_data_ifindex(
 			&packet, (opt_ptr - (uint8_t*) &packet),
@@ -1357,11 +1364,14 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 	/* Goes to stdout (unless NOMMU) and possibly syslog */
 	bb_simple_info_msg("started, v"BB_VER);
 
-	client_data.state = INIT_SELECTING;
+ deconfig_and_set_INIT_SELECTING:
 	d6_run_script_no_option("deconfig");
+ set_INIT_SELECTING:
+	client_data.state = INIT_SELECTING;
 	packet_num = 0;
 	timeout = 0;
 	lease_remaining = 0;
+	client_data.first_secs = 0;
 
 	/* Main event loop. select() waits on signal pipe and possibly
 	 * on sockfd.
@@ -1510,7 +1520,8 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 					if (opt & OPT_l)
 						send_d6_info_request();
 					else
-						send_d6_renew(OPT_m ? NULL : &srv6_buf, requested_ipv6);
+						send_d6_renew(D6_MSG_RENEW,
+								OPT_m ? NULL : &srv6_buf, requested_ipv6);
 					timeout = discover_timeout;
 					packet_num++;
 					continue;
@@ -1527,6 +1538,8 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 				/* Switch to bcast receive */
 				change_listen_mode(LISTEN_RAW);
 				packet_num = 0;
+				client_data.xid = random_xid();
+				client_data.first_secs = 0;
 				/* fall right through */
 			case REBINDING:
 				/* Lease is *really* about to run out,
@@ -1534,9 +1547,8 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 				if (lease_remaining > 0 && packet_num < 3) {
 					if (opt & OPT_l)
 						send_d6_info_request();
-					else /* send a broadcast renew request */
-//TODO: send_d6_renew uses D6_MSG_RENEW message, should we use D6_MSG_REBIND here instead?
-						send_d6_renew(/*server_ipv6:*/ NULL, requested_ipv6);
+					else /* send a multicast rebind request */
+						send_d6_renew(D6_MSG_REBIND, /*server_ipv6:*/ NULL, requested_ipv6);
 					timeout = discover_timeout;
 					packet_num++;
 					continue;
@@ -1544,12 +1556,9 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 				/* Timed out, enter init state */
 				change_listen_mode(LISTEN_NONE);
 				bb_simple_info_msg("lease lost, entering init state");
-				d6_run_script_no_option("deconfig");
-				client_data.state = INIT_SELECTING;
-				client_data.first_secs = 0; /* make secs field count from 0 */
-				timeout = 0;
-				packet_num = 0;
-				continue;
+				/* will set timeout = packet_num = lease_remaining = 0 */
+				/* also makes secs count from 0: client_data.first_secs = 0 */
+				goto deconfig_and_set_INIT_SELECTING;
 			/* case RELEASED: */
 			}
 			/* RELEASED state (when we got SIGUSR2) ends up here.
@@ -1768,15 +1777,15 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 						/* return to init state */
 						bb_info_msg("received DHCP NAK: %u '%.*s'", status, len - 2, option->data + 2);
 						d6_run_script(packet.d6_options, packet_end, "nak");
-						if (client_data.state != REQUESTING)
+						if (client_data.state != REQUESTING) {
+  deconfig_pause_and_set_INIT_SELECTING:
 							d6_run_script_no_option("deconfig");
+						}
 						sleep(3); /* avoid excessive network traffic */
-						client_data.state = INIT_SELECTING;
-						client_data.first_secs = 0; /* make secs field count from 0 */
 						requested_ipv6 = NULL;
-						timeout = 0;
-						packet_num = 0;
-						continue;
+						/* will set timeout = packet_num = lease_remaining = 0 */
+						/* also makes secs count from 0: client_data.first_secs = 0 */
+						goto set_INIT_SELECTING;
 					}
 				}
 				option = d6_copy_option(packet.d6_options, packet_end, D6_OPT_SERVERID);
@@ -1831,10 +1840,15 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 					requested_ipv6 = (struct in6_addr*) iaaddr->data;
 					move_from_unaligned32(lease_seconds, iaaddr->data + 16 + 4);
 					lease_seconds = ntohl(lease_seconds);
-/// TODO: check for 0 lease time?
 					bb_info_msg("%s obtained, lease time %u",
 						"IPv6", /*inet_ntoa(temp_addr),*/ (unsigned)lease_seconds);
 					address_timeout = lease_seconds;
+					/* A zero valid lifetime revokes the address */
+					if (address_timeout == 0) {
+ lease_revoked:
+						bb_simple_info_msg("lease revoked, entering init state");
+						goto deconfig_pause_and_set_INIT_SELECTING;
+					}
 				}
 				if (option_mask32 & OPT_d) {
 					struct d6_option *iaprefix;
@@ -1883,6 +1897,10 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 					bb_info_msg("%s obtained, lease time %u",
 						"prefix", /*inet_ntoa(temp_addr),*/ (unsigned)lease_seconds);
 					prefix_timeout = lease_seconds;
+					/* A zero valid lifetime revokes the prefix */
+					if (prefix_timeout == 0) {
+						goto lease_revoked;
+					}
 				}
 				if (!address_timeout)
 					address_timeout = prefix_timeout;

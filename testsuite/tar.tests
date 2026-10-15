@@ -67,8 +67,7 @@ testing "tar hardlinks and repeated files" '\
 ln input_hard1 input_hard2
 mkdir input_dir
 >input_dir/file
-chmod -R 644 *
-chmod    755 input_dir
+chmod -R a-x,u+rwX,go+rX *
 tar cf test.tar input input_dir/ input_hard1 input_hard2 input_hard1 input_dir/ input
 tar tvf test.tar | sed "s/.*[0-9] input/input/"
 rm -rf input_dir
@@ -304,7 +303,7 @@ optional UUDECODE FEATURE_TAR_AUTODETECT FEATURE_SEAMLESS_BZ2
 testing "tar does not extract into symlinks" "\
 >>/tmp/passwd && uudecode -o input && tar xf input 2>&1 && rm passwd; cat /tmp/passwd; echo \$?
 " "\
-tar: can't create symlink 'passwd' to '/tmp/passwd'
+tar: can't create symlink 'passwd' to '/tmp/passwd': File exists
 0
 " \
 "" "\
@@ -324,7 +323,7 @@ optional UUDECODE FEATURE_TAR_AUTODETECT FEATURE_SEAMLESS_BZ2
 testing "tar -k does not extract into symlinks" "\
 >>/tmp/passwd && uudecode -o input && tar xf input -k 2>&1 && rm passwd; cat /tmp/passwd; echo \$?
 " "\
-tar: can't create symlink 'passwd' to '/tmp/passwd'
+tar: can't create symlink 'passwd' to '/tmp/passwd': File exists
 0
 " \
 "" "\
@@ -374,7 +373,7 @@ ls symlink/bb_test_evilfile
 anything.txt
 symlink
 symlink/bb_test_evilfile
-tar: can't create symlink 'symlink' to '/tmp'
+tar: can't create symlink 'symlink' to '/tmp': File exists
 1
 ls: /tmp/bb_test_evilfile: No such file or directory
 ls: bb_test_evilfile: No such file or directory
@@ -400,7 +399,7 @@ mkdir dir
 ln -s ../dir/a dir/b
 ln dir/b dir/c
 mkdir new
-tar cf - dir/* | tar -C new -xvf - 2>&1
+tar cf - dir/a dir/b dir/c | tar -C new -xvf - 2>&1
 ' "\
 dir/a
 dir/b
@@ -408,6 +407,37 @@ dir/c
 " \
 "" ""
 SKIP=
+cd .. || exit 1; rm -rf tar.tempdir 2>/dev/null
+
+mkdir tar.tempdir && cd tar.tempdir || exit 1
+testing "tar Symlink+Hardlink attack: create symlink-to-outside and then create a hardlink in it" '\
+exec 2>&1
+mkdir 2tar || exit 1
+(
+cd 2tar || exit 1
+ln -s ..    gate
+ln -s gate  alias
+ln -s alias portal
+          > seed
+ln     seed portal/ESCAPED
+#^^^ the ESCAPED file is actually in ..!
+tar cf 2tar.tar \
+        alias \
+        gate \
+        portal \
+        seed \
+        portal/ESCAPED
+rm portal/ESCAPED alias gate portal seed
+tar xf 2tar.tar
+echo $?
+)
+test -e ESCAPED && echo "ESCAPED!"
+' "\
+tar: can't create directory 'portal': No such file or directory
+tar: can't create hardlink 'portal/ESCAPED' to 'seed': Not a directory
+1
+" \
+"" ""
 cd .. || exit 1; rm -rf tar.tempdir 2>/dev/null
 
 exit $FAILCOUNT

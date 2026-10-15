@@ -8,6 +8,12 @@
 const char* FAST_FUNC skip_unsafe_prefix(const char *str)
 {
 	const char *cp = str;
+
+	/* if "..": malicious, return "" */
+	/* (causes harmless errors trying to create or hardlink a file named "") */
+	if (cp[0] == '.' && cp[1] == '.' && cp[2] == '\0')
+		return cp + 2;
+
 	while (1) {
 		const char *cp2;
 		if (*cp == '/') {

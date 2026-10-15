@@ -1363,11 +1363,14 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 	/* We want random_xid to be random... */
 	srand(monotonic_us());
 
-	client_data.state = INIT_SELECTING;
+ deconfig_and_set_INIT_SELECTING:
 	d4_run_script_deconfig();
+ set_INIT_SELECTING:
+	client_data.state = INIT_SELECTING;
 	packet_num = 0;
 	timeout = 0;
 	lease_remaining = 0;
+	client_data.first_secs = 0;
 
 	/* Main event loop. select() waits on signal pipe and possibly
 	 * on sockfd.
@@ -1545,12 +1548,9 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 				/* Timed out, enter init state */
 				change_listen_mode(LISTEN_NONE);
 				bb_simple_info_msg("lease lost, entering init state");
-				d4_run_script_deconfig();
-				client_data.state = INIT_SELECTING;
-				client_data.first_secs = 0; /* make secs field count from 0 */
-				timeout = 0;
-				packet_num = 0;
-				continue;
+				/* sets packet_num = timeout = lease_remaining = 0 */
+				/* also makes secs count from 0: client_data.first_secs = 0 */
+				goto deconfig_and_set_INIT_SELECTING;
 			/* case RELEASED: */
 			}
 			/* RELEASED state (when we got SIGUSR2) ends up here.
@@ -1763,15 +1763,14 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 							"(got ARP reply), declining");
 						client_data.xid = random_xid(); //TODO: can omit?
 						send_decline(server_id, packet.yiaddr);
-
+ bad_ip_back_to_INIT_SELECTING:
 						if (client_data.state != REQUESTING)
 							d4_run_script_deconfig();
-						client_data.state = INIT_SELECTING;
-						client_data.first_secs = 0; /* make secs field count from 0 */
+						sleep(3); /* avoid excessive network traffic */
 						requested_ip = 0;
-						timeout = tryagain_timeout;
-						packet_num = 0;
-						continue; /* back to main loop */
+						/* sets packet_num = timeout = lease_remaining = 0 */
+						/* also makes secs count from 0: client_data.first_secs = 0 */
+						goto set_INIT_SELECTING;
 					}
 				}
 #endif
@@ -1819,14 +1818,7 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 				change_listen_mode(LISTEN_NONE);
 				bb_info_msg("received %s", "DHCP NAK");
 				d4_run_script(&packet, "nak");
-				if (client_data.state != REQUESTING)
-					d4_run_script_deconfig();
-				sleep(3); /* avoid excessive network traffic */
-				client_data.state = INIT_SELECTING;
-				client_data.first_secs = 0; /* make secs field count from 0 */
-				requested_ip = 0;
-				timeout = 0;
-				packet_num = 0;
+				goto bad_ip_back_to_INIT_SELECTING;
 			}
 			continue;
 		/* case BOUND: - ignore all packets */

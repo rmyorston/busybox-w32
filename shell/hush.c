@@ -2085,7 +2085,7 @@ enum {
 static void record_pending_signo(int sig)
 {
 	sigaddset(&G.pending_set, sig);
-#if ENABLE_FEATURE_EDITING
+#if ENABLE_FEATURE_EDITING || ENABLE_HUSH_READ
 	if (sig != SIGCHLD
 	 || (G_traps && G_traps[SIGCHLD] && G_traps[SIGCHLD][0])
 	 /* ^^^ if SIGCHLD, interrupt line reading only if it has a trap */
@@ -2280,7 +2280,9 @@ static NORETURN void save_history_run_exit_trap_and_exit(int exitcode)
 static int check_and_run_traps(void)
 {
 	int last_sig = 0;
-
+#if ENABLE_HUSH_READ
+	bb_got_signal = 0; /* or else read builtin gets immediately "interrupted" by already handled past signal */
+#endif
 	while (1) {
 		int sig;
 
@@ -2844,7 +2846,7 @@ static int show_prompt_and_get_stdin(struct in_str *i)
 		 * both on keyboard ^C and on real SIGINT (non-kbd generated).
 		 */
 		if (sigismember(&G.pending_set, SIGINT)) {
-			write(STDOUT_FILENO, "^C\n", 3);
+			write(STDERR_FILENO, "^C\n", 3);
 			G.last_exitcode = 128 | SIGINT;
 		}
 		check_and_run_traps();
@@ -2855,7 +2857,7 @@ static int show_prompt_and_get_stdin(struct in_str *i)
 		if (!bb_got_signal) {
 			/* r < 0: ^D/EOF/error detected (but not signal) */
 			/* ^D on interactive input goes to next line before exiting: */
-			write(STDOUT_FILENO, "\n", 1);
+			write(STDERR_FILENO, "\n", 1);
 			i->p = NULL;
 			i->peek_buf[0] = r = EOF;
 			return r;
@@ -2895,7 +2897,7 @@ static int show_prompt_and_get_stdin(struct in_str *i)
 			/* ^C or SIGINT: repeat */
 			/* bash prints ^C even on real SIGINT (non-kbd generated) */
 			/* kernel prints "^C" itself, just print newline: */
-			write(STDOUT_FILENO, "\n", 1);
+			write(STDERR_FILENO, "\n", 1);
 			G.last_exitcode = 128 | SIGINT;
 		}
 	}
@@ -11753,8 +11755,12 @@ static int FAST_FUNC builtin_read(char **argv)
 
 	if ((uintptr_t)r == 1 && errno == EINTR) {
 		unsigned sig = check_and_run_traps();
-		if (sig != SIGINT)
+		if (sig != SIGINT
+		 || (G_traps && G_traps[SIGINT] && G_traps[SIGINT][0])
+		) {
+			/* Redo the read after signals other than untrapped SIGINT */
 			goto again;
+		}
 	}
 
 	if ((uintptr_t)r == 2) /* -t SEC timeout? */

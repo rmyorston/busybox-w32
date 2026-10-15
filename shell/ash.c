@@ -3299,7 +3299,8 @@ static const char *expandstr(const char *ps, int syntax_type);
 #if ENABLE_ASH_EXPAND_PRMT
 # define PSSYNTAX  4    /* prompt. never passed to SIT() */
 #endif
-/* PSSYNTAX expansion is identical to DQSYNTAX, except keeping '\$' as '\$' */
+/* PSSYNTAX expansion is identical to DQSYNTAX, except keeping '\$' as '\$'
+ * and '\\' as '\\' */
 
 /*
  * called by editline -- any expansions to the prompt should be added here.
@@ -4227,7 +4228,7 @@ signal_handler(int signo)
 		if (!trap[SIGCHLD])
 			return;
 	}
-#if ENABLE_FEATURE_EDITING
+#if 1 // ENABLE_FEATURE_EDITING || IF_READ_WHICH_WE_ALWAYS_SUPPORT
 //TODO: don't do it if it's SIGCHLD?
 	bb_got_signal = signo; /* for read_line_input / read builtin: "we got a signal" */
 #endif
@@ -10924,8 +10925,7 @@ static int evalstring(char *s, int flags);
 
 #if !ENABLE_PLATFORM_MINGW32
 /* Called to execute a trap.
- * Single callsite - at the end of evaltree().
- * If we return non-zero, evaltree raises EXEXIT exception.
+ * Called in at the beginning and end of evaltree(), and in readcmd() if signal is trapped.
  *
  * Perhaps we should avoid entering new trap handlers
  * while we are executing a trap handler. [is it a TODO?]
@@ -10946,6 +10946,7 @@ dotrap(void)
 		status = exitstatus;
 		savestatus = status;
 	}
+	bb_got_signal = 0; /* or else read builtin gets immediately "interrupted" by already handled past signal */
 	pending_sig = 0;
 	barrier();
 
@@ -12939,19 +12940,21 @@ preadfd(void)
 		 * #(bash 5.0.17 exits after first "T", looks like a bug)
 		 */
 		bb_got_signal = 0;
+		if (pending_sig)
+			goto got_signal;
 		INTOFF; /* no longjmp'ing out of read_line_input please */
 		nr = read_line_input(line_input_state, cmdedit_prompt, buf, IBUFSIZ);
 		if (bb_got_signal == SIGINT)
 # if ENABLE_PLATFORM_MINGW32
 			write_ctrl_c();
 # else
-			write(STDOUT_FILENO, "^C\n", 3);
+			write(STDERR_FILENO, "^C\n", 3);
 # endif
 		INTON; /* here non-blocked SIGINT will longjmp */
 		if (nr == 0) {
 			/* ^C pressed, "convert" to SIGINT */
 # if !ENABLE_PLATFORM_MINGW32
-			write(STDOUT_FILENO, "^C\n", 3);
+			write(STDERR_FILENO, "^C\n", 3);
 			raise(SIGINT); /* here non-blocked SIGINT will longjmp */
 			/* raise(SIGINT) did not work! (e.g. if SIGINT
 			 * is SIG_IGNed on startup, it stays SIG_IGNed)
@@ -12978,21 +12981,22 @@ preadfd(void)
 			goto again;
 		}
 		if (nr < 0) {
-			if (errno == 0) {
-				/* ^D pressed */
-				nr = 0;
-			}
-			else if (errno == EINTR) { /* got signal? */
+			if (errno == EINTR) { /* got signal? */
+ got_signal:
 				if (bb_got_signal != SIGINT)
-					write(STDOUT_FILENO, "\n", 1);
+					write(STDERR_FILENO, "\n", 1);
 				goto empty_line_input;
 			}
 # if ENABLE_ASH_IDLE_TIMEOUT
-			else if (errno == EAGAIN && timeout > 0) {
+			if (errno == EAGAIN && timeout > 0) { /* bash 5.3.9 writes thsi to stdout, not stderr */
 				puts("\007timed out waiting for input: auto-logout");
 				exitshell();
 			}
 # endif
+			if (errno == 0) {
+				/* ^D pressed */
+				nr = 0;
+			}
 		}
 	}
 #else
@@ -14691,7 +14695,7 @@ readtoken1(int c, int syntax, struct heredoc *eofmark)
 				USTPUTC('\\', out);
 				pungetc();
 			} else {
-				if (pssyntax && c == '$') {
+				if (pssyntax && (c == '$' || c == '\\')) {
 					USTPUTC(CTLESC, out);
 					USTPUTC('\\', out);
 				}
@@ -16360,15 +16364,15 @@ readcmd(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
  again:
 	INTOFF;
 	r = shell_builtin_read(&params);
-	INTON;
+	INTON; /* here non-blocked SIGINT will longjmp */
 
 #if !ENABLE_PLATFORM_MINGW32
 	if ((uintptr_t)r == 1 && errno == EINTR) {
 		/* To get SIGCHLD: sleep 1 & read x; echo $x
 		 * Correct behavior is to not exit "read"
 		 */
-		if (pending_sig == 0)
-			goto again;
+		dotrap(); /* NOP if pending_sig == 0 */
+		goto again;
 	}
 
 	if ((uintptr_t)r == 2) /* -t SEC timeout? */

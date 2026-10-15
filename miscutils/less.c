@@ -1941,7 +1941,9 @@ int less_main(int argc, char **argv)
 	getopt32(argv, "EMmN~IF"
 		IF_FEATURE_LESS_TRUNCATE("S")
 		IF_FEATURE_LESS_RAW("R")
-		/*ignored:*/"sX"
+		/*-T TAGFILE: ignored, for compatibility with mandoc*/ "T:"
+		/*ignored:*/"sX",
+		NULL
 	);
 	argv += optind;
 	num_files = argc - optind;
