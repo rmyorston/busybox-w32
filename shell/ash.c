@@ -5561,8 +5561,15 @@ static int
 stoppedjobs(void)
 {
 	if (iflag) {
+#if JOBS_WIN32
+		if (jobctl)
+			showjobs(SHOW_CHANGED|SHOW_STDERR);
+		else
+#endif
+			dowait(DOWAIT_NONBLOCK, /*job:*/ NULL);
+
 		for (struct job *jp = curjob; jp; jp = jp->prev_job) {
-			if (!jp->ignore) {
+			if (!jp->ignore && jp->state == JOBRUNNING) {
 				out2str("You have background jobs.\n");
 				return 1;
 			}
