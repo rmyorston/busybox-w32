@@ -1,0 +1,9 @@
+trap 'echo INT' INT
+(sleep 2;sh -c 'kill -sstop $$') &
+bg=$!
+(sleep 1;kill -INT $$;sleep 2;kill -INT $$) &
+echo wait1; wait; echo w1:$?
+echo wait2; wait; echo w2:$?
+kill -cont $bg
+kill $bg
+echo Ok:$?

@@ -1,0 +1,9 @@
+#(sleep 0.2;exit 2) &
+#^^^ bash will report jobs in order of them exiting, we do the reverse order. fix?
+(sleep 0.4;exit 4) &
+(sleep 0.8;exit 8) &
+sleep 0.6
+#wait -n; echo 2:$?
+wait -n; echo 4:$?
+wait -n; echo 8:$?
+wait -n; echo 127:$?

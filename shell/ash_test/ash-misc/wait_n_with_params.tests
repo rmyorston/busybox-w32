@@ -1,0 +1,25 @@
+# Wait for any of p1, p2. p2 finishes first. p3 should not interfere in waits for p1/p2
+(sleep 2; exit 41) & p1=$!
+(sleep 1; exit 42) & p2=$!
+(sleep 3; exit 43) &
+
+wait -n $p1 $p2
+echo 'wait -n $p1 $p2'": $? (should be 42)"
+kill -0 $p1 2>/dev/null; echo "p1 active: $? (should be 0)"
+kill -0 $p2 2>/dev/null; echo "p2 active: $? (should be 1)"
+
+wait $p1
+echo 'wait $p1'": $? (should be 41)"
+
+# wait -n $p1 again.
+# bash as script returns 41 while command (-c) returns 127
+wait -n $p1
+echo 'wait -n $p1'": $? (should be 41)"
+
+# wait -n (no args) should pick up 43
+wait -n
+echo 'wait -n'": $? (should be 43)"
+
+# wait -n (no args) with only already-waited jobs should return 127
+wait -n
+echo 'wait -n'": $? (should be 127)"

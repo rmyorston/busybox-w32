@@ -193,8 +193,11 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 	if (!is_killall5 && arg[0] == '-' && arg[1] == '\0')
 		goto do_it_sooner;
 
-	if (argv[1] && arg[0] == 's' && arg[1] == '\0') { /* -s SIG? */
-		arg = *++argv;
+	if (arg[0] == 's') {
+		arg++;
+		if (!*arg && argv[1]) /* -s SIG? */
+			arg = *++argv;
+		/* else -sSIG */
 	} /* else it must be -SIG */
 	signo = get_signum(arg);
 	if (signo < 0) {

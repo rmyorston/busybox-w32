@@ -50,12 +50,7 @@
 //usage:       "Hex dump FILE (or stdin)\n"
 //usage:     "\n	-g N		Bytes per group (default 2)"
 //usage:     "\n	-c N		Bytes per line (default:16, -ps:30, -i:12)"
-//usage:     IF_PLATFORM_POSIX(
-//usage:     "\n	-ps		Show only hex bytes (no offset/spaces)"
-//usage:     )
-//usage:     IF_PLATFORM_MINGW32(
 //usage:     "\n	-ps		Show only hex bytes (-c 0: output as one line)"
-//usage:     )
 //usage:     "\n	-i		C include file style"
 // exactly the same help text lines in hexdump and xxd:
 //usage:     "\n	-l LENGTH	Show only first LENGTH bytes"
@@ -243,9 +238,7 @@ int xxd_main(int argc UNUSED_PARAM, char **argv)
 	unsigned bytes = 2;
 	unsigned cols = 0;
 	unsigned opt;
-#if ENABLE_PLATFORM_MINGW32
 	int omit_newline = FALSE;
-#endif
 	int r;
 
 	setup_common_bufsiz();
@@ -288,9 +281,7 @@ int xxd_main(int argc UNUSED_PARAM, char **argv)
 	if (opt & OPT_p) {
 		if (cols == 0) {
 			// '-p -c 0' prints as a single line
-#if ENABLE_PLATFORM_MINGW32
 			omit_newline = opt & OPT_c;
-#endif
 			cols = 30;
 		}
 		bytes = cols; /* -p ignores -gN */
@@ -342,9 +333,7 @@ int xxd_main(int argc UNUSED_PARAM, char **argv)
 		sprintf(buf, "\"  \"%u/1 \"%%_p\"\"\n\"", cols); // "  ASCII\n"
 		bb_dump_add(dumper, buf);
 	} else {
-#if ENABLE_PLATFORM_MINGW32
 		if (!omit_newline)
-#endif
 			bb_dump_add(dumper, "\"\n\"");
 		dumper->xxd_eofstring = "\n";
 	}

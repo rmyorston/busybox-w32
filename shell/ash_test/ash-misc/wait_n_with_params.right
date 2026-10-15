@@ -1,0 +1,7 @@
+wait -n $p1 $p2: 42 (should be 42)
+p1 active: 0 (should be 0)
+p2 active: 1 (should be 1)
+wait $p1: 41 (should be 41)
+wait -n $p1: 41 (should be 41)
+wait -n: 43 (should be 43)
+wait -n: 127 (should be 127)
