@@ -996,8 +996,9 @@ raise_interrupt(void)
 #endif
 	}
 #if ENABLE_PLATFORM_MINGW32
-	if (iflag && trap[SIGINT])
+	if (iflag) {
 		write_ctrl_c();
+	}
 #endif
 	/* bash: ^C even on empty command line sets $? */
 	exitstatus = SIGINT + 128;
@@ -4882,76 +4883,6 @@ sprint_status48(char *os, int status, int sigonly)
 	return s - os;
 }
 
-#if ENABLE_PLATFORM_MINGW32
-static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
-{
-	if (dwCtrlType == CTRL_C_EVENT || dwCtrlType == CTRL_BREAK_EVENT) {
-# if ENABLE_FEATURE_EDITING
-		bb_got_signal = SIGINT; /* for read_line_input: "we got a signal" */
-# endif
-		waitcmd_int = -waitcmd_int;
-		if (!trap[SIGINT]) {
-			if (!suppress_int && !(rootshell && iflag))
-				raise_interrupt();
-			pending_int = 1;
-		}
-		return TRUE;
-	}
-	return FALSE;
-}
-
-/*
- * Windows does not know about parent-child relationship
- * They don't support waitpid(-1)
- */
-static pid_t
-waitpid_child(int *status, DWORD blocking)
-{
-	struct job *jb;
-	int pid_nr = 0;
-	static HANDLE *proclist = NULL;
-	static int pid_max = 0;
-	DWORD win_status, idx;
-	int i;
-
-	for (jb = curjob; jb; jb = jb->prev_job) {
-		if (jb->state != JOBDONE) {
-			if (pid_nr + jb->nprocs > pid_max) {
-				pid_max = pid_nr + jb->nprocs;
-				proclist = ckrealloc(proclist, sizeof(*proclist) * pid_max);
-			}
-
-			for (i = 0; i < jb->nprocs; ++i) {
-				if (jb->ps[i].ps_proc) {
-					proclist[pid_nr++] = jb->ps[i].ps_proc;
-				}
-			}
-		}
-	}
-
-	if (pid_nr) {
-		do {
-			for (i = 0; i < pid_nr; i += MAXIMUM_WAIT_OBJECTS) {
-				DWORD nr;
-				TRACE(("poll many: i %d, pidnr: %d, maxwait: %d, blocking: %d\n", i, pid_nr, MAXIMUM_WAIT_OBJECTS, blocking));
-				nr = i + MAXIMUM_WAIT_OBJECTS > pid_nr ?
-						(DWORD)(pid_nr - i) : MAXIMUM_WAIT_OBJECTS;
-				/* wait for 1ms when blocking */
-				idx = WaitForMultipleObjects(nr, proclist + i, FALSE, blocking);
-				TRACE(("poll result: %d\n", idx));
-				if (idx < MAXIMUM_WAIT_OBJECTS) {
-					idx += i;
-					GetExitCodeProcess(proclist[idx], &win_status);
-					*status = exit_code_to_wait_status(win_status);
-					return GetProcessId(proclist[idx]);
-				}
-			}
-		} while (blocking && !pending_int && waitcmd_int != 1);
-	}
-	return -1;
-}
-#endif
-
 /* Called only on finished or stopped jobs (no members are running) */
 static int
 getstatus(struct job *job)
@@ -4996,6 +4927,80 @@ getstatus(struct job *job)
 #define DOWAIT_CHILD_OR_SIG 2	/* waitpid() will use WNOHANG and if got 0, will wait for signals, then loop back */
 #if BASH_WAIT_N
 # define DOWAIT_JOBSTATUS 0x10  /* OR this to get job's exitstatus instead of pid */
+#endif
+
+#if ENABLE_PLATFORM_MINGW32
+static BOOL WINAPI ctrl_handler(DWORD dwCtrlType)
+{
+	if (dwCtrlType == CTRL_C_EVENT || dwCtrlType == CTRL_BREAK_EVENT) {
+# if ENABLE_FEATURE_EDITING
+		bb_got_signal = SIGINT; /* for read_line_input: "we got a signal" */
+# endif
+		waitcmd_int = -waitcmd_int;
+		if (!trap[SIGINT]) {
+			if (!suppress_int && !(rootshell && iflag))
+				raise_interrupt();
+			pending_int = 1;
+		}
+		return TRUE;
+	}
+	return FALSE;
+}
+
+/*
+ * Windows does not know about parent-child relationship
+ * They don't support waitpid(-1)
+ */
+static pid_t
+waitpid_child(int *status, int flags)
+{
+	struct job *jb;
+	int pid_nr = 0;
+	static HANDLE *proclist = NULL;
+	static int pid_max = 0;
+	DWORD blocking, win_status, idx;
+	int i;
+
+	blocking = flags != DOWAIT_NONBLOCK;
+	for (jb = curjob; jb; jb = jb->prev_job) {
+		if (jb->state != JOBDONE) {
+			if (pid_nr + jb->nprocs > pid_max) {
+				pid_max = pid_nr + jb->nprocs;
+				proclist = ckrealloc(proclist, sizeof(*proclist) * pid_max);
+			}
+
+			for (i = 0; i < jb->nprocs; ++i) {
+				if (jb->ps[i].ps_proc) {
+					proclist[pid_nr++] = jb->ps[i].ps_proc;
+				}
+			}
+		}
+	}
+
+	if (pid_nr) {
+		do {
+			for (i = 0; i < pid_nr; i += MAXIMUM_WAIT_OBJECTS) {
+				DWORD nr;
+				TRACE(("poll many: i %d, pidnr: %d, maxwait: %d, blocking: %d\n", i, pid_nr, MAXIMUM_WAIT_OBJECTS, blocking));
+				nr = i + MAXIMUM_WAIT_OBJECTS > pid_nr ?
+						(DWORD)(pid_nr - i) : MAXIMUM_WAIT_OBJECTS;
+				/* wait for 1ms when blocking */
+				idx = WaitForMultipleObjects(nr, proclist + i, FALSE, blocking);
+				TRACE(("poll result: %d\n", idx));
+				if (idx < MAXIMUM_WAIT_OBJECTS) {
+					idx += i;
+					GetExitCodeProcess(proclist[idx], &win_status);
+					*status = exit_code_to_wait_status(win_status);
+					return GetProcessId(proclist[idx]);
+				}
+			}
+			if (flags == DOWAIT_CHILD_OR_SIG &&
+					(pending_int || waitcmd_int == 1))
+				return 0;
+		} while (blocking);
+	}
+	return -1;
+}
 #endif
 
 static int
@@ -5049,9 +5054,8 @@ waitproc(int block, int *status)
 	 */
 	return pid;
 #else
-	// Only DOWAIT_NONBLOCK is non-blocking, other values block.
 	*status = 0;
-	return waitpid_child(status, block != DOWAIT_NONBLOCK);
+	return waitpid_child(status, block);
 #endif
 }
 
@@ -5219,13 +5223,8 @@ static int dowait_n(int block, struct job *jp, int *pstatus, struct job **done_j
 			/* on signals, unknown pids, or not-fully completed jobs we get -1 */
 			/* it is always DOWAIT_CHILD_OR_SIG in this case */
 #endif
-#if !ENABLE_PLATFORM_MINGW32
 		if (pid == 0)
 			break; /* return 0: got a signal */
-#else
-		if (waitcmd_int == 1)
-			return 0; /* return 0: got a signal */
-#endif
 		if (jp && jp->state != JOBRUNNING) {
 			/* no more running procs in this job, stop waiting */
 			break; /* return pid != 0: did not get a signal */
@@ -12966,11 +12965,10 @@ preadfd(void)
 			/* raise(SIGINT) did not work! (e.g. if SIGINT
 			 * is SIG_IGNed on startup, it stays SIG_IGNed)
 			 */
-# else
-			write_ctrl_c();
 # endif
 			if (trap[SIGINT]) {
 # if ENABLE_PLATFORM_MINGW32
+				write_ctrl_c();
 				pending_int = 1;
 				dotrap();
 # endif
