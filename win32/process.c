@@ -719,7 +719,7 @@ void get_process_times(DWORD pid, unsigned long* start_time,
 			if (crTime.dwHighDateTime == 0 && crTime.dwLowDateTime == 0)
 				return;
 
-			ticks_since_boot = GetTickCount64()/MS_PER_TICK;
+			ticks_since_boot = monotonic_ms()/MS_PER_TICK;
 			GetSystemTimePreciseAsFileTime(&now);
 			boot_time = filetime_to_ticks(&now) - ticks_since_boot;
 			create_time = filetime_to_ticks(&crTime);

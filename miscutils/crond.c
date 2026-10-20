@@ -1075,7 +1075,7 @@ static int touch_reboot_file(void)
 
 	if (stat(G.reboot_name, &st) == 0) {
 		clock_gettime(CLOCK_REALTIME, &now);
-		ms_since_boot = GetTickCount64();
+		ms_since_boot = monotonic_ms();
 
 		if (st.st_mtim.tv_sec < now.tv_sec - ms_since_boot/1000) {
 			// crond.reboot predates boot time, update it and run job

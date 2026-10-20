@@ -2068,7 +2068,7 @@ int FAST_FUNC sysinfo(struct sysinfo *info)
 	info->totalswap = pfinfo.total * perf.PageSize / 4096;
 	info->freeswap = (pfinfo.total - pfinfo.in_use) * perf.PageSize / 4096;
 
-	info->uptime = GetTickCount64() / 1000;
+	info->uptime = monotonic_ms() / 1000;
 	info->procs = perf.ProcessCount;
 
 	return 0;
@@ -2411,18 +2411,6 @@ off_t FAST_FUNC mingw_lseek(int fd, off_t offset, int whence)
 		return -1;
 	}
 	return _lseeki64(fd, offset, whence);
-}
-
-#undef GetTickCount64
-ULONGLONG CompatGetTickCount64(void)
-{
-	DECLARE_PROC_ADDR(ULONGLONG, GetTickCount64, void);
-
-	if (!INIT_PROC_ADDR(kernel32.dll, GetTickCount64)) {
-		return (ULONGLONG)GetTickCount();
-	}
-
-	return GetTickCount64();
 }
 
 /* precise time is only supported since win8 */

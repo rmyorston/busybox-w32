@@ -682,8 +682,6 @@ size_t remove_cr(char *p, size_t len) FAST_FUNC;
 
 int err_win_to_posix(void);
 
-ULONGLONG CompatGetTickCount64(void);
-#define GetTickCount64 CompatGetTickCount64
 void CompatGetSystemTimePreciseAsFileTime(FILETIME *ft);
 #define GetSystemTimePreciseAsFileTime CompatGetSystemTimePreciseAsFileTime
 
