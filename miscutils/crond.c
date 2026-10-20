@@ -1069,15 +1069,12 @@ static int touch_reboot_file(void)
 #if ENABLE_PLATFORM_MINGW32
 	struct stat st;
 	struct timespec now;
-	long long ms_since_boot;
 	const struct timespec ts[2] = {{0, UTIME_NOW}, {0, UTIME_NOW}};
 	int fd, ret = 0;
 
 	if (stat(G.reboot_name, &st) == 0) {
 		clock_gettime(CLOCK_REALTIME, &now);
-		ms_since_boot = monotonic_ms();
-
-		if (st.st_mtim.tv_sec < now.tv_sec - ms_since_boot/1000) {
+		if (st.st_mtim.tv_sec < now.tv_sec - monotonic_sec()) {
 			// crond.reboot predates boot time, update it and run job
 			utimensat(AT_FDCWD, G.reboot_name, ts, 0);
 			ret = 1;

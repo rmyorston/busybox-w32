@@ -2068,7 +2068,7 @@ int FAST_FUNC sysinfo(struct sysinfo *info)
 	info->totalswap = pfinfo.total * perf.PageSize / 4096;
 	info->freeswap = (pfinfo.total - pfinfo.in_use) * perf.PageSize / 4096;
 
-	info->uptime = monotonic_ms() / 1000;
+	info->uptime = monotonic_sec();
 	info->procs = perf.ProcessCount;
 
 	return 0;
