@@ -27,14 +27,14 @@
 //config:	requires no special support.
 //config:
 //config:config FEATURE_USE_INITTAB
-//config:	bool "Support reading an inittab file"
+//config:	bool "Read /etc/inittab file"
 //config:	default y
 //config:	depends on INIT || LINUXRC
 //config:	help
-//config:	Allow init to read an inittab file when the system boot.
+//config:	init will read /etc/inittab.
 //config:
 //config:config FEATURE_KILL_REMOVED
-//config:	bool "Support killing processes that have been removed from inittab"
+//config:	bool "Kill processes that have been removed from inittab"
 //config:	default n
 //config:	depends on FEATURE_USE_INITTAB
 //config:	help
@@ -113,10 +113,10 @@
 //config:	wipes all the arguments but argv[0] and rewrites argv[0] to
 //config:	contain only "init", so that its command line appears solely as
 //config:	"init" in tools such as ps.
-//config:	If this option is set to Y, init will keep its original behavior,
-//config:	otherwise, all the arguments including argv[0] will be preserved,
+//config:	If this option is set to Y, init clears its command line.
+//config:	Otherwise, all arguments including argv[0] will be preserved,
 //config:	be they parsed or ignored by init.
-//config:	The original command-line used to launch init can then be
+//config:	The original command line used to launch init can then be
 //config:	retrieved in /proc/1/cmdline on Linux, for example.
 
 //applet:IF_INIT(APPLET(init, BB_DIR_SBIN, BB_SUID_DROP))
@@ -766,6 +766,7 @@ static void run_shutdown_and_kill_processes(void)
 
 	/* Send signals to every process _except_ pid 1 */
 	kill(-1, SIGTERM);
+//TODO: also send SIGCONT?
 	message(L_CONSOLE, "Sent SIG%s to all processes", "TERM");
 	sync();
 	sleep1();
@@ -821,17 +822,23 @@ static void halt_reboot_pwoff(int sig)
 	 */
 	reset_sighandlers_and_unblock_sigs();
 
-	run_shutdown_and_kill_processes();
-
-	m = "halt";
+	m = "halt";	// SIGPWR/SIGUSR1 case
 	rb = RB_HALT_SYSTEM;
 	if (sig == SIGTERM) {
 		m = "reboot";
 		rb = RB_AUTOBOOT;
+		// Some users want to be able to know whether they reboot or shut down the machine: e.g.
+		// "I want to be notified on unattended shutdowns signaled by UPS discharge,
+		// but I don't want to get 42 'SHUTDOWN!' text messages while I debug my server."
+		// Setting RC_REBOOT=YES only on reboot mimics openrc's behavior:
+		putenv((char*)"RC_REBOOT=YES");
 	} else if (sig == SIGUSR2) {
 		m = "poweroff";
 		rb = RB_POWER_OFF;
 	}
+
+	run_shutdown_and_kill_processes();
+
 	message(L_CONSOLE, "Requesting system %s", m);
 	pause_and_low_level_reboot(rb);
 	/* not reached */
