@@ -92,6 +92,11 @@ int FAST_FUNC volume_id_probe_exfat(struct volume_id *id /*,uint64_t off*/)
 	if (memcmp(sb->fs_name, "EXFAT   ", 8) != 0)
 		return -1;
 
+	/* spec: 512..4096 byte sectors, clusters up to 32M */
+	if (sb->bytes_per_sector < 9 || sb->bytes_per_sector > 12
+	 || sb->sectors_per_cluster > 25 - sb->bytes_per_sector
+	)
+		return -1;
 	sector_sz = 1 << sb->bytes_per_sector;
 	cluster_sz = sector_sz << sb->sectors_per_cluster;
 	// There are no clusters 0 and 1, so the first cluster is 2.
@@ -122,8 +127,12 @@ int FAST_FUNC volume_id_probe_exfat(struct volume_id *id /*,uint64_t off*/)
 		}
 		if (de->entry_type == 0x83) {
 			// Volume Label Directory Entry
+			unsigned char_count = de->type.label.char_count;
+			// at most 11 chars; more would read past the 32-byte entry
+			if (char_count > ARRAY_SIZE(de->type.label.vol_label))
+				char_count = ARRAY_SIZE(de->type.label.vol_label);
 			volume_id_set_label_unicode16(id, (uint8_t *)de->type.label.vol_label,
-						LE, 2 * de->type.label.char_count);
+						LE, 2 * char_count);
 			need_lbl_guid &= ~(1 << 0);
 		}
 		if (de->entry_type == 0xA0) {
