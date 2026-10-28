@@ -955,12 +955,14 @@ static void display_window_size(int fancy)
 	}
 }
 
+#if !ENABLE_PLATFORM_MINGW32
 static const struct suffix_mult stty_suffixes[] ALIGN_SUFFIX = {
 	{ "b",  512 },
 	{ "k", 1024 },
 	{ "B", 1024 },
 	{ "", 0 }
 };
+#endif
 
 static const struct mode_info *find_mode(const char *name)
 {
@@ -1007,26 +1009,12 @@ static int find_param(const char *name)
 }
 #else
 enum {
-	param_need_arg = 0x80,
-	param_rows    = 1 | 0x80,
-	param_cols    = 2 | 0x80,
-	param_columns = 3 | 0x80,
-	param_size    = 4,
+	param_size    = 1,
 };
 
 static int find_param(const char *name)
 {
-	static const char params[] ALIGN1 =
-		"rows\0"    /* 1 */
-		"cols\0"    /* 2 */
-		"columns\0" /* 3 */
-		"size\0";    /* 4 */
-	int i = index_in_strings(params, name) + 1;
-	if (i == 0)
-		return 0;
-	if (i != 4)
-		i |= 0x80;
-	return i;
+	return strcmp(name, "size") == 0 ? param_size : 0;
 }
 #endif
 
@@ -1408,7 +1396,9 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 		const struct control_info *cp;
 #endif
 		const char *arg = argv[k];
+#if !ENABLE_PLATFORM_MINGW32
 		const char *argnext = argv[k+1];
+#endif
 		int param;
 
 		if (arg[0] == '-') {
@@ -1496,13 +1486,13 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 			xatoul_range_sfx(argnext, 1, INT_MAX, stty_suffixes);
 			break;
 # endif /* else fall-through */
-#endif
 #ifdef TIOCGWINSZ
 		case param_rows:
 		case param_cols:
 		case param_columns:
 			xatoul_range_sfx(argnext, 1, INT_MAX, stty_suffixes);
 			break;
+#endif
 		case param_size:
 # if ENABLE_PLATFORM_MINGW32
 			break;
@@ -1614,9 +1604,11 @@ int stty_main(int argc UNUSED_PARAM, char **argv)
 #endif
 
 		param = find_param(arg);
+#if !ENABLE_PLATFORM_MINGW32
 		if (param & param_need_arg) {
 			++k;
 		}
+#endif
 
 		switch (param) {
 #ifdef __linux__
