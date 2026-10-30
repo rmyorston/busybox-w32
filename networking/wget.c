@@ -1072,8 +1072,19 @@ static int NOINLINE retrieve_file_data(FILE *dfp)
 			 * fread does not distinguish between EOF and error.
 			 */
 			if (errno != EAGAIN) {
+#if ENABLE_PLATFORM_MINGW32
+				int err = ferror(dfp);
+				if (!G.got_clen && !err) {
+					/* No 'Content-length' and no error is OK */
+					break;
+				}
+#endif
 				progress_meter(PROGRESS_END);
+#if ENABLE_PLATFORM_MINGW32
+				if (err) {
+#else
 				if (ferror(dfp)) {
+#endif
 					bb_simple_perror_msg(bb_msg_read_error);
 				}
 				G.content_len = 1; /* treat end as error, not EOF */
