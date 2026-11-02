@@ -85,6 +85,10 @@ testing "awk %x -1.9" \
 testing "awk %o -1.9" \
 "awk 'BEGIN { printf \"%o\n\", -1.9; }'" "1777777777777777777777\n" "" ""
 
+# negative zero is printed as 0
+testing "awk print negative zero as 0" \
+"awk 'BEGIN { print -0; printf \"%d\n\", -0.5; }'" "0\n0\n" "" ""
+
 # OFMT can contain literals before and after %SPEC:
 testing "awk OFMT='R%%:%f!' -1.9" \
 "awk -v OFMT='R%%:%f!' 'BEGIN { print -1.9; }'" "R%:-1.900000!\n" "" ""

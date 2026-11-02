@@ -979,6 +979,8 @@ static const char *fmt_num(const char *format, double n)
 {
 	if (n == trunc(n)) {
 		/* No fractionals? Try: awk -v OFMT='R:%d!' 'BEGIN { print 2**128 }' */
+		if (n == 0)
+			n = 0;	/* not "-0" */
 		snprintf(g_buf, MAXVARFMT, "%.0f", n);
 	} else {
 		const char *s = format;
@@ -2703,9 +2705,12 @@ static char *awk_printf(node *n, size_t *len)
 				s = xasprintf(use_fmt, cs);
 			} else { /* numeric conversion */
 				double d = getvar_i(arg);
-				if (diouxX)
+				if (diouxX) {
 					d = trunc(d);
+					if (d == 0)
+						d = 0;	/* not "-0" */
 //bb_error_msg("d:%f", d);
+				}
 				if ((c|0x20) == 'x' || c == 'o' || (c == 'u' && d < 0)) {
 					sprintf(baked_cur, "ll%s", fmt_cur);
 					// -1.9 => -1 => integer (0xfff..fff)
