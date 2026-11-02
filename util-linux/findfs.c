@@ -47,12 +47,13 @@ int findfs_main(int argc UNUSED_PARAM, char **argv)
 		/* Otherwise, handle LABEL=xxx and UUID=xxx,
 		 * fail on anything else */
 		if (!resolve_mount_spec(argv))
-			bb_show_usage();
+			bb_show_usage(); /* not in LABEL= or UUID= form */
 	}
 
 	if (*argv != dev) {
 		puts(*argv);
 		return 0;
 	}
+	// util-linux 2.41.1 says: "findfs: unable to resolve 'LABEL=bogus'"
 	return 1;
 }

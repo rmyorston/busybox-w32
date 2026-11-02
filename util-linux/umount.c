@@ -94,7 +94,6 @@ int umount_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int umount_main(int argc UNUSED_PARAM, char **argv)
 {
 	int doForce;
-	struct mntent me;
 	FILE *fp;
 	char *fstype = NULL;
 	exitcode_t status = EXIT_SUCCESS;
@@ -128,6 +127,8 @@ int umount_main(int argc UNUSED_PARAM, char **argv)
 		if (opt & OPT_ALL)
 			bb_error_msg_and_die("can't open '%s'", bb_path_mtab_file);
 	} else {
+		struct mntent me;
+
 		setup_common_bufsiz();
 		while (getmntent_r(fp, &me, bb_common_bufsiz1, COMMON_BUFSIZE)) {
 			/* Match fstype (fstype==NULL matches always) */

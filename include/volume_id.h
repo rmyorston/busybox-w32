@@ -17,15 +17,16 @@
  *	License along with this library; if not, write to the Free Software
  *	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
+int FAST_FUNC add_to_uuid_cache(const char *device);
+void FAST_FUNC display_uuid_cache(int scan_devices);
 
-char *get_devname_from_label(const char *spec);
-char *get_devname_from_uuid(const char *spec);
-void display_uuid_cache(int scan_devices);
-
+//static: char *get_devname_from_label(const char *spec);
+//static: char *get_devname_from_uuid(const char *spec);
 /* Returns:
  * 0: no UUID= or LABEL= prefix found
  * 1: UUID= or LABEL= prefix found. In this case,
- *    *fsname is replaced if device with such UUID or LABEL is found
+ *    *fsname is replaced if device with such UUID or LABEL is found.
+ *    The new string is malloced. The old string is NOT freed!
+ *    *fsname is NOT replaced in "LABEL=notfound" case! [FIXME: return 2 in this case to make distinguishable?]
  */
-int resolve_mount_spec(char **fsname);
-int add_to_uuid_cache(const char *device);
+int FAST_FUNC resolve_mount_spec(char **fsname);

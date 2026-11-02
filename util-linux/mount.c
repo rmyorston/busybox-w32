@@ -233,7 +233,6 @@
 #define BB_MS_INVERTED_VALUE (1u << 31)
 
 #include "libbb.h"
-#include "common_bufsiz.h"
 #if ENABLE_FEATURE_MOUNT_LABEL
 # include "volume_id.h"
 #else
@@ -457,7 +456,8 @@ static const char mount_option_str[] ALIGN1 =
 	"remount\0"   // action flag
 ;
 
-
+// On Fedora 43, there was a reported case when 512-byte buffers are insufficient
+enum { GETMNTENT_BUFSIZE = 2 * 1024 };
 struct globals {
 #if ENABLE_FEATURE_MOUNT_NFS
 	smalluint nfs_mount_version;
@@ -466,10 +466,14 @@ struct globals {
 	unsigned verbose;
 #endif
 	llist_t *fslist;
-	char getmntent_buf[1];
-} FIX_ALIASING;
-enum { GETMNTENT_BUFSIZE = COMMON_BUFSIZE - offsetof(struct globals, getmntent_buf) };
-#define G (*(struct globals*)bb_common_bufsiz1)
+	char getmntent_buf[GETMNTENT_BUFSIZE];
+};
+
+#define G (*ptr_to_globals)
+#define INIT_G() do { \
+	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
+} while (0)
+
 #define nfs_mount_version (G.nfs_mount_version)
 #if ENABLE_FEATURE_MOUNT_VERBOSE
 #define verbose           (G.verbose          )
@@ -478,7 +482,6 @@ enum { GETMNTENT_BUFSIZE = COMMON_BUFSIZE - offsetof(struct globals, getmntent_b
 #endif
 #define fslist            (G.fslist           )
 #define getmntent_buf     (G.getmntent_buf    )
-#define INIT_G() do { setup_common_bufsiz(); } while (0)
 
 #if ENABLE_FEATURE_MTAB_SUPPORT
 /*
@@ -563,7 +566,7 @@ static void append_mount_options(char **oldopts, const char *newopts)
 //TODO: do this unconditionally?
 //this way, newopts of "opt1,opt2,opt1"
 //will be de-duped into "opt1,opt2" in _both_ cases
-//(whether or now old opts are empty)
+//(whether or not old opts are empty)
 //the only modification needed is to not prepend extra comma
 //when old opts is "".
 		// Do not insert options which are already there

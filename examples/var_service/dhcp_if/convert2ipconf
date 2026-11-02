@@ -50,9 +50,17 @@ if ! test "$mask"; then
 fi
 
 # some servers do not return router option.
-# assume DHCP server is the router.
+# assume either DHCP relay or DHCP server is the router.
 if ! test "$router"; then
-	if test "$serverid"; then
+	# serverid is:
+	# = not necessarily an IP addr at all (but usually is).
+	# = can be NOT on our network (can use relays).
+	# If giaddr is set, the relay is in use and that's its IP address -
+	# will try using that.
+	if test "$giaddr"; then
+		router="$giaddr"
+		echo "No 'router' from the server, assuming 'giaddr' is the router: $giaddr"
+	elif test "$serverid"; then
 		router="$serverid"
 		echo "No 'router' from the server, assuming 'serverid' is the router: $serverid"
 	fi
@@ -66,6 +74,7 @@ test "$ip" && test "$mask" \
 			&& echo "ipmask[\$cfg]='$ip/$mask'"
 test "$router"		&& echo "gw[\$cfg]='$router'"
 test "$dns"		&& echo "dns[\$cfg]='$dns'"
+
 # TODO: I never saw a dhcp server which correctly announces
 # which subnet(s) is/are available thru advertised router
 # Assume 0/0

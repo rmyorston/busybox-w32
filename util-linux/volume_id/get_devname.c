@@ -230,7 +230,8 @@ get_spec_by_volume_label(const char *s, int *major, int *minor)
 #endif // UNUSED
 
 /* Used by blkid */
-void display_uuid_cache(int scan_devices)
+
+void FAST_FUNC display_uuid_cache(int scan_devices)
 {
 	struct uuidCache_s *uc;
 
@@ -250,7 +251,7 @@ void display_uuid_cache(int scan_devices)
 	}
 }
 
-int add_to_uuid_cache(const char *device)
+int FAST_FUNC add_to_uuid_cache(const char *device)
 {
 	char *uuid = uuid; /* for compiler */
 	char *label = label;
@@ -272,10 +273,8 @@ int add_to_uuid_cache(const char *device)
 	return 0;
 }
 
-
-/* Used by mount and findfs */
-
-char *get_devname_from_label(const char *spec)
+/* Used by mount, findfs, swapon, fsck */
+static char *get_devname_from_label(const char *spec)
 {
 	struct uuidCache_s *uc;
 
@@ -288,8 +287,7 @@ char *get_devname_from_label(const char *spec)
 	}
 	return NULL;
 }
-
-char *get_devname_from_uuid(const char *spec)
+static char *get_devname_from_uuid(const char *spec)
 {
 	struct uuidCache_s *uc;
 
@@ -303,15 +301,14 @@ char *get_devname_from_uuid(const char *spec)
 	}
 	return NULL;
 }
-
-int resolve_mount_spec(char **fsname)
+int FAST_FUNC resolve_mount_spec(char **fsname)
 {
 	char *tmp = *fsname;
 
-	if (is_prefixed_with(*fsname, "UUID="))
-		tmp = get_devname_from_uuid(*fsname + 5);
-	else if (is_prefixed_with(*fsname, "LABEL="))
-		tmp = get_devname_from_label(*fsname + 6);
+	if (is_prefixed_with(tmp, "UUID="))
+		tmp = get_devname_from_uuid(tmp + 5);
+	else if (is_prefixed_with(tmp, "LABEL="))
+		tmp = get_devname_from_label(tmp + 6);
 
 	if (tmp == *fsname)
 		return 0; /* no UUID= or LABEL= prefix found */

@@ -40,6 +40,15 @@
 //config:	fsck is used to check and optionally repair one or more filesystems.
 //config:	In actuality, fsck is simply a front-end for the various file system
 //config:	checkers (fsck.fstype) available under Linux.
+//config:
+//config:config FEATURE_FSCK_LABEL
+//config:	bool "Support specifying devices by label or UUID"
+//config:	default y
+//config:	depends on FSCK
+//config:	select VOLUMEID
+//config:	help
+//config:	This allows for specifying a device by label or uuid, rather than by
+//config:	name. This feature utilizes the same functionality as blkid/findfs.
 
 //applet:IF_FSCK(APPLET(fsck, BB_DIR_SBIN, BB_SUID_DROP))
 
@@ -60,6 +69,11 @@
 //usage:     "\n	-t TYPE	List of filesystem types to check"
 
 #include "libbb.h"
+#if ENABLE_FEATURE_FSCK_LABEL
+# include "volume_id.h"
+#else
+# define resolve_mount_spec(fsname) ((void)0)
+#endif
 #include "common_bufsiz.h"
 
 /* "progress indicator" code is somewhat buggy and ext[23] specific.
@@ -318,7 +332,7 @@ static struct fs_info *create_fs_device(const char *device, const char *mntpnt,
 	if (strchr(type, ','))
 		type = (char *)"auto";
 	fs->type = xstrdup(type);
-	fs->opts = xstrdup(opts ? opts : "");
+	fs->opts = xstrdup(opts); /* can be NULL */
 	fs->passno = passno < 0 ? 1 : passno;
 	/*fs->flags = 0; */
 	/*fs->next = NULL; */
@@ -358,7 +372,7 @@ static void load_fs_info(const char *filename)
 }
 
 /* Lookup filesys in /etc/fstab and return the corresponding entry. */
-static struct fs_info *lookup(char *filesys)
+static struct fs_info *lookup_in_fs_info(const char *filesys)
 {
 	struct fs_info *fs;
 
@@ -522,7 +536,7 @@ static int wait_many(int flags)
  * Execute a particular fsck program, and link it into the list of
  * child processes we are waiting for.
  */
-static void execute(const char *type, const char *device,
+static void execute(const char *type, char *device,
 		const char *mntpt /*, int interactive */)
 {
 	int i;
@@ -542,7 +556,10 @@ static void execute(const char *type, const char *device,
 	}
 #endif
 
-	G.args[G.num_args - 2] = (char*)device;
+	/* int free_the_pointer = */ resolve_mount_spec(&device);
+	/* NB: the possible new pointer is malloced, we leak it */
+
+	G.args[G.num_args - 2] = device;
 	/* G.args[G.num_args - 1] = NULL; - already is */
 
 	if (G.verbose || G.noexecute) {
@@ -630,7 +647,7 @@ static void fsck_device(struct fs_info *fs /*, int interactive */)
  * Returns TRUE if a partition on the same disk is already being
  * checked.
  */
-static int device_already_active(char *device)
+static int device_already_active(const char *device)
 {
 	struct fsck_instance *inst;
 	char *base;
@@ -971,9 +988,6 @@ int fsck_main(int argc UNUSED_PARAM, char **argv)
 
 		/* "/dev/blk" or "/path" or "UUID=xxx" or "LABEL=xxx" */
 		if ((arg[0] == '/' && !opts_for_fsck) || strchr(arg, '=')) {
-// FIXME: must check that arg is a blkdev, or resolve
-// "/path", "UUID=xxx" or "LABEL=xxx" into block device name
-// ("UUID=xxx"/"LABEL=xxx" can probably shifted to fsck.auto duties)
 			devices = xrealloc_vector(devices, 2, num_devices);
 			devices[num_devices++] = arg;
 			continue;
@@ -1093,7 +1107,7 @@ int fsck_main(int argc UNUSED_PARAM, char **argv)
 			break;
 		}
 
-		fs = lookup(devices[i]);
+		fs = lookup_in_fs_info(devices[i]);
 		if (!fs)
 			fs = create_fs_device(devices[i], "", "auto", NULL, -1);
 		fsck_device(fs /*, interactive */);
