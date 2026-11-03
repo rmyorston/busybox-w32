@@ -608,6 +608,9 @@ static void sendping4(int junk UNUSED_PARAM)
 	memset(pkt, G.pattern, datalen + ICMP_MINLEN + 4);
 	pkt->icmp_type = ICMP_ECHO;
 	/*pkt->icmp_code = 0;*/
+#if ENABLE_PLATFORM_MINGW32
+	pkt->icmp_code = 0;
+#endif
 	pkt->icmp_cksum = 0; /* cksum is calculated with this field set to 0 */
 	pkt->icmp_seq = htons(G.ntransmitted); /* don't ++ here, it can be a macro */
 	pkt->icmp_id = myid;
@@ -632,6 +635,10 @@ static void sendping6(int junk UNUSED_PARAM)
 	pkt->icmp6_type = ICMP6_ECHO_REQUEST;
 	/*pkt->icmp6_code = 0;*/
 	/*pkt->icmp6_cksum = 0;*/
+#if ENABLE_PLATFORM_MINGW32
+	pkt->icmp6_code = 0;
+	pkt->icmp6_cksum = 0;
+#endif
 	pkt->icmp6_seq = htons(G.ntransmitted); /* don't ++ here, it can be a macro */
 	pkt->icmp6_id = myid;
 
