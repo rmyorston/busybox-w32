@@ -977,11 +977,19 @@ static double my_strtod_or_hexoct(char **pp)
  */
 static const char *fmt_num(const char *format, double n)
 {
-	if (n == trunc(n)) {
-		/* No fractionals? Try: awk -v OFMT='R:%d!' 'BEGIN { print 2**128 }' */
 #if ENABLE_PLATFORM_MINGW32
+# if !defined(_UCRT)
+	/* Avoid MSVCRT truncating infinity */
+	if (n == trunc(n) && !isinf(n)) {
+# else
+	if (n == trunc(n)) {
+# endif
+		/* No fractionals? Try: awk -v OFMT='R:%d!' 'BEGIN { print 2**128 }' */
 		if (n == 0)
 			n = 0;	/* not "-0" */
+#else
+	if (n == trunc(n)) {
+		/* No fractionals? Try: awk -v OFMT='R:%d!' 'BEGIN { print 2**128 }' */
 #endif
 		snprintf(g_buf, MAXVARFMT, "%.0f", n);
 	} else {
@@ -2718,6 +2726,13 @@ static char *awk_printf(node *n, size_t *len)
 				if (diouxX)
 					d = trunc(d);
 //bb_error_msg("d:%f", d);
+#endif
+#if ENABLE_PLATFORM_MINGW32 && !defined(_UCRT)
+				if (diouxX && !isfinite(d)) {
+					/* Avoid MSVCRT truncating infinity or NaN */
+					sprintf(baked_cur, "g%s", fmt_cur + 1);
+					s = xasprintf(use_fmt, d);
+				} else
 #endif
 				if ((c|0x20) == 'x' || c == 'o' || (c == 'u' && d < 0)) {
 					sprintf(baked_cur, "ll%s", fmt_cur);
