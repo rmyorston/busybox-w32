@@ -193,12 +193,21 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 	if (!is_killall5 && arg[0] == '-' && arg[1] == '\0')
 		goto do_it_sooner;
 
+#if ENABLE_PLATFORM_MINGW32
+	if (arg[0] == 's') {
+		if (!arg[1] && argv[1]) /* -s SIG? */
+			arg = *++argv;
+		else if (get_signum(arg) < 0)
+			arg++; /* not -SIG, try -sSIG */
+	}
+#else
 	if (arg[0] == 's') {
 		arg++;
 		if (!*arg && argv[1]) /* -s SIG? */
 			arg = *++argv;
 		/* else -sSIG */
 	} /* else it must be -SIG */
+#endif
 	signo = get_signum(arg);
 	if (signo < 0) {
 		bb_error_msg("bad signal name '%s'", arg);
