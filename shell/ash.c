@@ -5002,6 +5002,8 @@ waitpid_child(int *status, int flags)
 					(pending_int || waitcmd_int == 1))
 				return 0;
 		} while (blocking);
+	} else {
+		errno = ECHILD;
 	}
 	return -1;
 }
