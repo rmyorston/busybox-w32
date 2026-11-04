@@ -194,11 +194,15 @@ int kill_main(int argc UNUSED_PARAM, char **argv)
 		goto do_it_sooner;
 
 	if (arg[0] == 's') {
-		arg++;
-		if (!*arg && argv[1]) /* -s SIG? */
+		if (!arg[1] && argv[1]) /* -s SIG? */
 			arg = *++argv;
-		/* else -sSIG */
-	} /* else it must be -SIG */
+		else { /* -something */
+			signo = get_signum(arg);
+			if (signo >= 0) /* example: -segv is interpreted as -SIG, not -sSIG */
+				goto do_it_sooner;
+			arg++; /* try -sSIG */
+		}
+	}
 	signo = get_signum(arg);
 	if (signo < 0) {
 		bb_error_msg("bad signal name '%s'", arg);
