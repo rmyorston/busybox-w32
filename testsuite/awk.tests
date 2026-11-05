@@ -828,4 +828,11 @@ testing 'awk gensub backslash*8 + & in replacement'  'awk '$sq'{ print gensub(/b
 testing 'awk gensub backslash*10 + & in replacement' 'awk '$sq'{ print gensub(/b/, "_\\\\\\\\\\&_", 1) }'$sq   'a_\\\\&_c\n' 	'' 'abc\n'
 testing 'awk gensub backslash*12 + & in replacement' 'awk '$sq'{ print gensub(/b/, "_\\\\\\\\\\\\&_", 1) }'$sq 'a_\\\\\\b_c\n' 	'' 'abc\n'
 
+optional TIME64
+testing "awk mktime() beyond 2038" \
+	"TZ=UTC awk 'BEGIN { printf \"%.0f %.0f\\n\", mktime(\"2038 01 19 03 14 08\"), mktime(\"2040 01 01 00 00 00\") }'" \
+	"2147483648 2208988800\n" \
+	"" ""
+SKIP=
+
 exit $FAILCOUNT

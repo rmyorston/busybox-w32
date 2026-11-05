@@ -2914,7 +2914,7 @@ static int awk_sub(node *rn, const char *repl, int nm, var *src, var *dest /*,in
 	return match_no;
 }
 
-static NOINLINE int do_mktime(const char *ds)
+static NOINLINE time_t do_mktime(const char *ds)
 {
 	struct tm then;
 	int count;
