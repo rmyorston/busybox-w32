@@ -185,6 +185,17 @@ enum {
  * CMD_GET(cmd) and CMD_PUT(cmd) are mutually exclusive
  */
 
+/* RFC2348 says 'blksize' must be between 8 and 65464.
+ * If we also support 'tsize' protocol option,
+ * tftpd code sends "OP""blksize\0""NNNNN\0""tsize\0""OFF_T-sized-file-size\0"
+ * in its first response packet.
+ * To be able to do this without size checks, we have larger minimum.
+ * In real world, people do not rely on ridiculously small buffers anyway,
+ * probably can just require 512 byte minimum...
+ */
+enum {
+	MIN_BLKSIZE = 2 + sizeof("blksize\0""NNNNN\0""tsize\0") + sizeof(off_t)*3 + 16/*paranoia*/
+};
 
 struct globals {
 	/* u16 TFTP_ERROR; u16 reason; both network-endian, then error text: */
@@ -244,7 +255,7 @@ static int tftp_blksize_check(const char *blksize_str, int maxsize)
 	 * to use blksizes smaller than 22 octets. */
 	unsigned blksize = bb_strtou(blksize_str, NULL, 10);
 	if (errno
-	 || (blksize < 24) || (blksize > maxsize)
+	 || (blksize < MIN_BLKSIZE) || (blksize > maxsize)
 	) {
 		/* Careful: the string is from remove machine */
 		bb_error_msg("bad blocksize '%s'", printable_string(blksize_str));
@@ -473,7 +484,7 @@ static int tftp_protocol(
 #endif /* ENABLE_TFTP */
 
 #if ENABLE_FEATURE_TFTP_BLOCKSIZE
- add_blksize_opt:
+ add_blksize_opt: /* tftp or tftpd */
 		if (blksize != TFTP_BLKSIZE_DEFAULT) {
 			/* add "blksize", <nul> */
 			cp = stpcpy(cp, "blksize") + 1;
@@ -488,11 +499,11 @@ static int tftp_protocol(
 			/* if tftpd and downloading, we are answering to client's request */
 			/* if tftpd and uploading: !want_transfer_size, this code is not executed */
 			struct stat st;
-			strcpy(cp, "tsize");
-			cp += sizeof("tsize");
+			cp = stpcpy(cp, "tsize") + 1;
 			st.st_size = 0;
 			if (local_fd >= 0)
 				fstat(local_fd, &st);
+//FIXME: the st.st_size will be bogus if this is not a regular file? E.g. a block device.
 			cp += sprintf(cp, "%"OFF_FMT"u", (off_t)st.st_size) + 1;
 # if ENABLE_FEATURE_TFTP_PROGRESS_BAR
 			/* Save for progress bar. If 0 (tftp downloading),
