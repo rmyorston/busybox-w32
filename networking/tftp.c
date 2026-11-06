@@ -249,15 +249,12 @@ static void tftp_progress_done(void)
 
 static int tftp_blksize_check(const char *blksize_str, int maxsize)
 {
-	/* Check if the blksize is valid:
-	 * RFC2348 says between 8 and 65464,
-	 * but our implementation makes it impossible
-	 * to use blksizes smaller than 22 octets. */
+	/* Check if the blksize is valid */
 	unsigned blksize = bb_strtou(blksize_str, NULL, 10);
 	if (errno
 	 || (blksize < MIN_BLKSIZE) || (blksize > maxsize)
 	) {
-		/* Careful: the string is from remove machine */
+		/* Careful: the string is from remote machine */
 		bb_error_msg("bad blocksize '%s'", printable_string(blksize_str));
 		return -1;
 	}
