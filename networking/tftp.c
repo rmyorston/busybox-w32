@@ -246,7 +246,8 @@ static int tftp_blksize_check(const char *blksize_str, int maxsize)
 	if (errno
 	 || (blksize < 24) || (blksize > maxsize)
 	) {
-		bb_error_msg("bad blocksize '%s'", blksize_str);
+		/* Careful: the string is from remove machine */
+		bb_error_msg("bad blocksize '%s'", printable_string(blksize_str));
 		return -1;
 	}
 # if ENABLE_TFTP_DEBUG
@@ -397,13 +398,7 @@ static int tftp_protocol(
 		local_fd = open(local_file, open_mode, 0666);
 		if (local_fd < 0) {
 			/* sanitize name, it came from untrusted remote side */
-			unsigned char *p = (void *) local_file;
-			while (*p) {
-				if (*p < ' ')
-					*p = '?';
-				p++;
-			}
-			bb_perror_msg("can't open '%s'", local_file);
+			bb_perror_msg("can't open '%s'", printable_string(local_file));
 			G_error_pkt_reason = ERR_NOFILE;
 			strcpy(G_error_pkt_str, "can't open file");
 			goto send_err_pkt_nomsg;
@@ -480,9 +475,9 @@ static int tftp_protocol(
 #if ENABLE_FEATURE_TFTP_BLOCKSIZE
  add_blksize_opt:
 		if (blksize != TFTP_BLKSIZE_DEFAULT) {
-			/* add "blksize", <nul>, blksize, <nul> */
-			strcpy(cp, "blksize");
-			cp += sizeof("blksize");
+			/* add "blksize", <nul> */
+			cp = stpcpy(cp, "blksize") + 1;
+			/* add blksize, <nul> */
 			cp += snprintf(cp, 6, "%d", blksize) + 1;
 		}
 		if (want_transfer_size) {
@@ -630,8 +625,8 @@ static int tftp_protocol(
 			const char *msg = "";
 
 			if (len > 4 && rbuf[4] != '\0') {
-				msg = &rbuf[4];
 				rbuf[io_bufsize - 1] = '\0'; /* paranoia */
+				msg = printable_string(&rbuf[4]);
 			} else if (recv_blk <= 8) {
 				msg = nth_string(errcode_str, recv_blk);
 			}
