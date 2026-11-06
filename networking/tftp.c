@@ -92,17 +92,21 @@
 //kbuild:lib-$(CONFIG_TFTPD) += tftp.o
 
 //usage:#define tftp_trivial_usage
-//usage:       "[OPTIONS] HOST [PORT]"
+//usage:       "-"
+//usage:       IF_FEATURE_TFTP_GET("g")
+//usage:       IF_FEATURE_TFTP_GET(IF_FEATURE_TFTP_PUT("|"))
+//usage:       IF_FEATURE_TFTP_PUT("p")
+//usage:       " [OPTIONS] HOST [PORT]"
 //usage:#define tftp_full_usage "\n\n"
 //usage:       "Transfer a file from/to tftp server\n"
-//usage:     "\n	-l FILE	Local FILE"
-//usage:     "\n	-r FILE	Remote FILE"
 //usage:	IF_FEATURE_TFTP_GET(
 //usage:     "\n	-g	Get file"
 //usage:	)
 //usage:	IF_FEATURE_TFTP_PUT(
 //usage:     "\n	-p	Put file"
 //usage:	)
+//usage:     "\n	-l FILE	Local FILE"
+//usage:     "\n	-r FILE	Remote FILE"
 //usage:	IF_FEATURE_TFTP_BLOCKSIZE(
 //usage:     "\n	-b SIZE	Transfer blocks in bytes"
 //usage:	)
@@ -266,37 +270,23 @@ static int tftp_blksize_check(const char *blksize_str, int maxsize)
 
 static char *tftp_get_option(const char *option, char *buf, int len)
 {
-	int opt_val = 0;
-	int opt_found = 0;
-	int k;
-
 	/* buf points to:
 	 * "opt_name<NUL>opt_val<NUL>opt_name2<NUL>opt_val2<NUL>..." */
-
-	while (len > 0) {
-		/* Make sure options are terminated correctly */
-		for (k = 0; k < len; k++) {
-			if (buf[k] == '\0') {
-				goto nul_found;
-			}
-		}
-		return NULL;
- nul_found:
-		if (opt_val == 0) { /* it's "name" part */
-			if (strcasecmp(buf, option) == 0) {
-				opt_found = 1;
-			}
-		} else if (opt_found) {
+	while (1) {
+		char *cur_opt = buf;
+		char *nul = memchr(buf, '\0', len);
+		if (!nul)
+			return NULL;
+		len -= (++nul) - buf;
+		buf = nul;
+		nul = memchr(buf, '\0', len);
+		if (!nul)
+			return NULL;
+		if (strcasecmp(cur_opt, option) == 0)
 			return buf;
-		}
-
-		k++;
-		buf += k;
-		len -= k;
-		opt_val ^= 1;
+		len -= (++nul) - buf;
+		buf = nul;
 	}
-
-	return NULL;
 }
 
 #endif

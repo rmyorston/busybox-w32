@@ -1,0 +1,29 @@
+#!/bin/sh
+# This needs containerization to be safely runnable automatically
+
+PATH="$PWD/../runtest-tempdir-links:$PATH"
+which tftpd
+which tftp
+
+rm -rf tftp.testdir
+mkdir -p tftp.testdir
+cd tftp.testdir || exit 1
+dd bs=1 seek=$((400*1024*1024 - 1)) count=1 of=BIGFILE </dev/zero
+
+(
+	udpsvd -vE 0.0.0.0 6969 tftpd . &
+	pid=$!
+	sleep 2
+	kill $pid
+	rm BIGFILE
+) >server.log 2>&1 &
+
+tftp -g -l /dev/null -r BIGFILE 127.0.0.1 6969
+#tftp -g -l /dev/null -r BIGFILE -b $((14*1024)) 127.0.0.1 6969
+
+echo "Waiting for server to exit"
+wait
+echo "Server exited"
+
+cd .. || exit 1
+rm -rf tftp.testdir
