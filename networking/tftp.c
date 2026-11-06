@@ -362,8 +362,8 @@ static int tftp_protocol(
 	 * tftp -> "\0\4\0\1"
 	 * ...
 	 * Download with option of blksize 16384:
-	 * tftp -> "\0\1FILENAME\0octet\0blksize\00016384\0"
-	 *         "\0\6blksize\00016384\0" <- tftpd
+	 * tftp -> "\0\1FILENAME\0octet\0blksize\0""16384\0"
+	 *         "\0\6blksize\0""16384\0" <- tftpd
 	 * tftp -> "\0\4\0\0"
 	 *         "\0\3\0\1FILEDATA..." <- tftpd
 	 * tftp -> "\0\4\0\1"
@@ -375,8 +375,8 @@ static int tftp_protocol(
 	 *         "\0\4\0\1" <- tftpd
 	 * ...
 	 * Upload with option of blksize 16384:
-	 * tftp -> "\0\2FILENAME\0octet\0blksize\00016384\0"
-	 *         "\0\6blksize\00016384\0" <- tftpd
+	 * tftp -> "\0\2FILENAME\0octet\0blksize\0""16384\0"
+	 *         "\0\6blksize\0""16384\0" <- tftpd
 	 * tftp -> "\0\3\0\1FILEDATA..."
 	 *         "\0\4\0\1" <- tftpd
 	 * ...
@@ -911,7 +911,15 @@ int tftpd_main(int argc UNUSED_PARAM, char **argv)
 		G.pw = xgetpwnam(user_opt);
 	}
 	if (argv[0]) {
-		xchroot(argv[0]);
+		const char *DIR = argv[0];
+		if (chroot(DIR) == 0)
+			DIR = "/";
+		/*
+		 * If chroot failed, assume that we aren't root,
+		 * and at least chdir to the specified DIR.
+		 * If chroot worked, move current dir to new "/":
+		 */
+		xchdir(DIR);
 	}
 
 	result = recv_from_to(STDIN_FILENO,
@@ -939,12 +947,21 @@ int tftpd_main(int argc UNUSED_PARAM, char **argv)
 	G.block_buf_tail[0] = '\0';
 
 	local_file = G.block_buf + 2;
+
+	/* If someone really wants to expose their entire filesystem, "tftpd /" is the way to do it.
+	 * Most people don't want that.
+	 * Prevent escape via absolute paths or /../:
+	 */
+	while (local_file[0] == '/')
+		local_file++;
 	if (local_file[0] == '.' || strstr(local_file, "/.")) {
+//TODO: disallow only ".."?
 		error_msg = "dot in file name";
 		goto err;
 	}
+
 	mode = local_file + strlen(local_file) + 1;
-	/* RFC 1350 says mode string is case independent */
+	/* RFC 1350 says mode string is case insensitive */
 	if (mode >= G.block_buf + result || strcasecmp(mode, "octet") != 0) {
 		error_msg = "mode is not 'octet'";
 		goto err;
