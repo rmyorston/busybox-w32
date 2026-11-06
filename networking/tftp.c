@@ -314,7 +314,6 @@ static int tftp_protocol(
 	int send_len;
 	IF_FEATURE_TFTP_BLOCKSIZE(smallint expect_OACK = 0;)
 	smallint finished = 0;
-	uint16_t opcode;
 	uint16_t block_nr;
 	uint16_t recv_blk;
 	int local_fd = -1;
@@ -329,6 +328,8 @@ static int tftp_protocol(
 	 */
 	char *xbuf = xmalloc(io_bufsize);
 	char *rbuf = xmalloc(io_bufsize);
+#define SET_OPCODE(opc) (*((uint16_t*)(xbuf)) = htons(opc))
+#define GET_OPCODE(b)   *((uint16_t*)(b))
 
 	socket_fd = xsocket(peer_lsa->u.sa.sa_family, SOCK_DGRAM, 0);
 	setsockopt_reuseaddr(socket_fd);
@@ -409,7 +410,7 @@ static int tftp_protocol(
 			/* For the download case, block_nr is still 1 -
 			 * we expect 1st ACK from peer to be for (block_nr-1),
 			 * that is, for "block 0" which is our OACK pkt */
-			opcode = TFTP_OACK;
+			SET_OPCODE(TFTP_OACK);
 			goto add_blksize_opt;
 		}
 #endif
@@ -442,10 +443,7 @@ static int tftp_protocol(
 		 * first reply. */
 
 		/* build opcode */
-		opcode = TFTP_WRQ;
-		if (CMD_GET(option_mask32)) {
-			opcode = TFTP_RRQ;
-		}
+		SET_OPCODE(CMD_GET(option_mask32) ? TFTP_RRQ : TFTP_WRQ);
 		/* add filename and mode */
 		/* fill in packet if the filename fits into xbuf */
 		len = strlen(remote_file);
@@ -508,14 +506,16 @@ static int tftp_protocol(
 	/* Using mostly goto's - continue/break will be less clear
 	 * in where we actually jump to */
 	while (1) {
+		uint16_t opcode;
+
 		/* Build ACK or DATA */
 		cp = xbuf + 2;
 		*((uint16_t*)cp) = htons(block_nr);
 		cp += 2;
 		block_nr++;
-		opcode = TFTP_ACK;
-		if (CMD_PUT(option_mask32)) {
-			opcode = TFTP_DATA;
+		if (!CMD_PUT(option_mask32)) {
+			SET_OPCODE(TFTP_ACK);
+		} else {
 			len = full_read(local_fd, cp, blksize);
 			if (len < 0) {
 				goto send_read_err_pkt;
@@ -525,10 +525,10 @@ static int tftp_protocol(
 			}
 			cp += len;
 			IF_FEATURE_TFTP_PROGRESS_BAR(G.pos += len;)
+			SET_OPCODE(TFTP_DATA);
 		}
  send_pkt:
 		/* Send packet */
-		*((uint16_t*)xbuf) = htons(opcode); /* fill in opcode part */
 		send_len = cp - xbuf;
 		/* NB: send_len value is preserved in code below
 		 * for potential resend */
@@ -550,7 +550,7 @@ static int tftp_protocol(
 			tftp_progress_update();
 #endif
 		/* Was it final ACK? then exit */
-		if (finished && (opcode == TFTP_ACK))
+		if (finished && GET_OPCODE(xbuf) == htons(TFTP_ACK))
 			goto ret;
 
  recv_again:
@@ -603,12 +603,12 @@ static int tftp_protocol(
 		}
 
 		/* Process recv'ed packet */
-		opcode = ntohs( ((uint16_t*)rbuf)[0] );
+		opcode = GET_OPCODE(rbuf);
 		recv_blk = ntohs( ((uint16_t*)rbuf)[1] );
 #if ENABLE_TFTP_DEBUG
 		fprintf(stderr, "received %d bytes: %04x %04x\n", len, opcode, recv_blk);
 #endif
-		if (opcode == TFTP_ERROR) {
+		if (opcode == htons(TFTP_ERROR)) {
 			static const char errcode_str[] ALIGN1 =
 				"\0"
 				"file not found\0"
@@ -635,7 +635,7 @@ static int tftp_protocol(
 #if ENABLE_FEATURE_TFTP_BLOCKSIZE
 		if (expect_OACK) {
 			expect_OACK = 0;
-			if (opcode == TFTP_OACK) {
+			if (opcode == htons(TFTP_OACK)) {
 				/* server seems to support options */
 				char *res;
 
@@ -678,7 +678,7 @@ static int tftp_protocol(
 		/* block_nr is already advanced to next block# we expect
 		 * to get / block# we are about to send next time */
 
-		if (CMD_GET(option_mask32) && (opcode == TFTP_DATA)) {
+		if (CMD_GET(option_mask32) && (opcode == htons(TFTP_DATA))) {
 			if (recv_blk == block_nr) {
 				int sz;
 				if (local_fd == -1) {
@@ -708,7 +708,7 @@ static int tftp_protocol(
 #endif
 		}
 
-		if (CMD_PUT(option_mask32) && (opcode == TFTP_ACK)) {
+		if (CMD_PUT(option_mask32) && (opcode == htons(TFTP_ACK))) {
 			/* did peer ACK our last DATA pkt? */
 			if (recv_blk == (uint16_t) (block_nr - 1)) {
 				if (finished)
@@ -752,6 +752,8 @@ static int tftp_protocol(
 	if (local_fd >= 0 && CMD_GET(option_mask32) && local_file)
 		unlink(local_file);
 	return EXIT_FAILURE;
+#undef GET_OPCODE
+#undef SET_OPCODE
 #undef remote_file
 }
 
