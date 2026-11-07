@@ -9,6 +9,7 @@ rm -rf tftp.testdir
 mkdir -p tftp.testdir
 cd tftp.testdir || exit 1
 dd bs=1 seek=$((400*1024*1024 - 1)) count=1 of=BIGFILE </dev/zero
+md5sum BIGFILE
 
 (
 	udpsvd -vE 0.0.0.0 6969 tftpd -r . &
@@ -17,7 +18,7 @@ dd bs=1 seek=$((400*1024*1024 - 1)) count=1 of=BIGFILE </dev/zero
 	kill $pid
 ) >server.log 2>&1 &
 sleep 0.1
-tftp -g -l /dev/null -r BIGFILE 127.0.0.1 6969
+tftp -g -l - -r BIGFILE 127.0.0.1 6969 | md5sum
 echo "Waiting for server to exit"
 wait
 echo "Server exited"

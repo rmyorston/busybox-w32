@@ -295,6 +295,8 @@ static int tftp_protocol(
 		/* NULL if tftp, !NULL if tftpd: */
 		len_and_sockaddr *our_lsa,
 		len_and_sockaddr *peer_lsa,
+		/* tftp: can be NULL if "-l -". If no -l FILE, not NULL: inferred from -r FILE instead */
+		/* tftpd: known from client's first packet: */
 		const char *local_file
 		IF_TFTP(, const char *remote_file)
 #if !ENABLE_TFTP
@@ -477,24 +479,29 @@ static int tftp_protocol(
 			cp += snprintf(cp, 6, "%d", blksize) + 1;
 		}
 		if (want_transfer_size) {
-			/* add "tsize", <nul>, size, <nul> (see RFC2349) */
-			/* if tftp and downloading, we send "0" (local_fd is not open yet)
-			 * and this makes server to send "tsize" option with the size */
-			/* if tftp and uploading, we send file size (maybe dont, to not confuse old servers???) */
-			/* if tftpd and downloading, we are answering to client's request */
-			/* if tftpd and uploading: !want_transfer_size, this code is not executed */
+			/* add "tsize", <nul>, size, <nul> (see RFC2349)
+			 * if tftp and downloading, we send "0" (local_fd is not open yet)
+			 * - this makes server send "tsize" option with size back to us.
+			 * if tftp and uploading, we send file size (maybe dont, to not confuse old servers???)
+			 * if tftpd and downloading, we are answering to client's request
+			 * if tftpd and uploading: !want_transfer_size, this code is not executed */
 			struct stat st;
-			cp = stpcpy(cp, "tsize") + 1;
 			st.st_size = 0;
 			if (local_fd >= 0)
 				fstat(local_fd, &st);
-//FIXME: the st.st_size will be bogus if this is not a regular file? E.g. a block device.
+//Do we need this instead? Example?
+			//if (local_fd >= 0 && (!ENABLE_TFTP || local_file)) {
+			//	xfstat(local_fd, &st, local_file);
+			//	if (!S_ISREG(st.st_mode))
+			//		bb_error_msg_and_die("'%s' is not a regular file", local_file);
+			//}
+			cp = stpcpy(cp, "tsize") + 1;
 			cp += sprintf(cp, "%"OFF_FMT"u", (off_t)st.st_size) + 1;
 # if ENABLE_FEATURE_TFTP_PROGRESS_BAR
 			/* Save for progress bar. If 0 (tftp downloading),
 			 * we look at server's reply later */
 			G.size = st.st_size;
-			if (remote_file && st.st_size)
+			if (remote_file && st.st_size != 0)
 				tftp_progress_init();
 # endif
 		}
