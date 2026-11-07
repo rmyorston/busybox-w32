@@ -721,7 +721,7 @@ static NOINLINE int parse_reply(const unsigned char *msg, size_t len)
 	int i, n, rdlen;
 	const char *format = NULL;
 	char astr[INET6_ADDRSTRLEN], dname[MAXDNAME];
-	const unsigned char *cp;
+	const unsigned char *start, *cp;
 
 	header = (HEADER *)msg;
 	if (!header->aa)
@@ -809,6 +809,10 @@ static NOINLINE int parse_reply(const unsigned char *msg, size_t len)
 			}
 			n = *(unsigned char *)ns_rr_rdata(rr);
 			if (n > 0) {
+				if (rdlen <= n) {
+					//printf("TXT record too short\n");
+					return -1;
+				}
 				memset(dname, 0, sizeof(dname));
 				memcpy(dname, ns_rr_rdata(rr) + 1, n);
 				printf("%s\ttext = \"%s\"\n", ns_rr_name(rr), dname);
@@ -839,10 +843,9 @@ static NOINLINE int parse_reply(const unsigned char *msg, size_t len)
 				dbg("SOA record too short:%d\n", rdlen);
 				return -1;
 			}
-
 			printf("%s\n", ns_rr_name(rr));
 
-			cp = ns_rr_rdata(rr);
+			start = cp = ns_rr_rdata(rr);
 			n = ns_name_uncompress(ns_msg_base(handle), ns_msg_end(handle),
 			                       cp, dname, sizeof(dname));
 			if (n < 0) {
@@ -863,18 +866,18 @@ static NOINLINE int parse_reply(const unsigned char *msg, size_t len)
 			printf("\tmail addr = %s\n", dname);
 			cp += n;
 
+			if (rdlen < (cp - start) + 20) {
+				dbg("SOA record too short:%d\n", rdlen);
+				return -1;
+			}
 			printf("\tserial = %lu\n", ns_get32(cp));
 			cp += 4;
-
 			printf("\trefresh = %lu\n", ns_get32(cp));
 			cp += 4;
-
 			printf("\tretry = %lu\n", ns_get32(cp));
 			cp += 4;
-
 			printf("\texpire = %lu\n", ns_get32(cp));
 			cp += 4;
-
 			printf("\tminimum = %lu\n", ns_get32(cp));
 			break;
 
