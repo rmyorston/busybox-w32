@@ -54,28 +54,30 @@ struct vfat_super_block {
 	uint32_t	total_sect;          /* 020 volume size in sectors (if sectors == 0 at offset 013) */
 	union {
 		struct fat_super_block {
-			uint8_t		unknown[3];      /* 024 drive number,flags,ext_boot_sign(0x28/0x29)*/
-			uint8_t		serno[4];        /* 027 volume serial number */
-			uint8_t		label[11];       /* 02b volume label (exists if ext_boot_sign=0x29) */
-			uint8_t		magic[8];        /* 036 typically "FATnn" (exists if ext_boot_sign=0x29) */
-			uint8_t		dummy2[192];
+			uint8_t		drive_number;           /* 024 */
+			uint8_t		boot_flags;             /* 025 */
+			uint8_t		ext_boot_sign;          /* 026 0x28 - DOS 3.4 EBPB; 0x29 - DOS 4.0 EBPB */
+			uint8_t		serno[4];               /* 027 volume serial number */
+			uint8_t		label[11];              /* 02b volume label (exists if ext_boot_sign=0x29) */
+			uint8_t		magic[8];               /* 036 typically "FATnn" (exists if ext_boot_sign=0x29) */
+			uint8_t		dummy2[0x1fe - 0x3e];   /* 03e */
 			uint8_t		pmagic[2];
 		} PACKED fat;
 		struct fat32_super_block {
-			uint32_t	fat32_length;    /* 024 sectors/FAT */
-			uint16_t	flags;           /* 028 bit 8: fat mirroring, low 4: active fat */
-			uint8_t		version[2];      /* 02a major, minor filesystem version (I see 0,0) */
-			uint32_t	root_cluster;    /* 02c first cluster in root directory */
-			uint16_t	insfo_sector;    /* 030 filesystem info sector (usually 1) */
-			uint16_t	backup_boot;     /* 032 backup boot sector (usually 6) */
-			uint16_t	reserved2[6];    /* 034 unused */
-			uint8_t		drive_number;    /* 040 BIOS drive number */
-			uint8_t		reserved3;       /* 041 unused */
-			uint8_t		ext_boot_sign;   /* 042 0x29 if fields below exist (DOS 3.3+) */
-			uint8_t		serno[4];        /* 043 volume serial number */
-			uint8_t		label[11];       /* 047 volume label */
-			uint8_t		magic[8];        /* 052 typically "FATnn" */
-			uint8_t		dummy2[164];     /* 05a */
+			uint32_t	fat32_length;           /* 024 sectors/FAT */
+			uint16_t	flags;                  /* 028 bit 8: fat mirroring, low 4: active fat */
+			uint8_t		version[2];             /* 02a major, minor filesystem version (I see 0,0) */
+			uint32_t	root_cluster;           /* 02c first cluster in root directory */
+			uint16_t	insfo_sector;           /* 030 filesystem info sector (usually 1) */
+			uint16_t	backup_boot;            /* 032 backup boot sector (usually 6) */
+			uint16_t	reserved2[6];           /* 034 unused */
+			uint8_t		drive_number;           /* 040 BIOS drive number */
+			uint8_t		reserved3;              /* 041 unused */
+			uint8_t		ext_boot_sign;          /* 042 0x29 if fields below exist (DOS 3.3+) */
+			uint8_t		serno[4];               /* 043 volume serial number */
+			uint8_t		label[11];              /* 047 volume label */
+			uint8_t		magic[8];               /* 052 typically "FATnn" */
+			uint8_t		dummy2[0x1fe - 0x5a];   /* 05a */
 			uint8_t		pmagic[2];
 		} PACKED fat32;
 	} PACKED type;
@@ -154,6 +156,9 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 	if (vs == NULL)
 		return -1;
 
+	/* fat count */
+	if (vs->fats != 2 && vs->fats != 1)
+		return -1;
 	/* cluster size check */
 	if (vs->sectors_per_cluster == 0
 	 || (vs->sectors_per_cluster & (vs->sectors_per_cluster-1))
@@ -190,15 +195,8 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 		return -1;
 	}
 //TODO: the above check is bogus, FAT partitions are not required to contain boot code
-	/* heads check */
-	if (vs->heads == 0)
-		return -1;
-//TODO: the heads value is meaningless (and unused) on most modern storage
 	/* media check */
 	if (vs->media < 0xf8 && vs->media != 0xf0)
-		return -1;
-	/* fat count */
-	if (vs->fats != 2)
 		return -1;
 
  valid:
