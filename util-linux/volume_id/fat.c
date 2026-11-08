@@ -219,7 +219,7 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 	if (reserved_sct == 0) /* FAT start sector can't be 0 */
 		return -1;
 
-	fat_size_sct = le16_to_cpu(vs->fat_length);
+	fat_size_sct = le16_to_cpu(vs->fat_length); /* not unaligned */
 	if (fat_size_sct == 0)
 		fat_size_sct = le32_to_cpu(vs->type.fat32.fat32_length); /* not unaligned */
 	/* Zero here means it's not a FAT volume (FAT table can't have zero sectors). > 0x3fffffff bogus too */
@@ -262,6 +262,13 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 //TODO: check "dir_entries != 0"? It can't be zero for FAT12/16
 //TODO: check "vs->fat_length != 0"? FAT12/16 must use this 16-bit field for FAT sector count, only FAT32 can fall back to vs->type.fat32.fat32_length
 
+	/* String "NO NAME" has a special meaning (empty label) only for label stored in boot sector */
+	if (memcmp(vs->type.fat.label, "NO NAME    ", 11) != 0) {
+//		volume_id_set_label_raw(id, vs->type.fat.label, 11);
+		volume_id_set_label_string(id, vs->type.fat.label, 11);
+	}
+	volume_id_set_uuid(id, vs->type.fat.serno, UUID_DOS);
+
 	/* the label may be an attribute in the root directory */
 	root_start_off = after_fat_sct * sector_size_bytes;
 	dbg("root dir start 0x%llx", (unsigned long long) root_start_off);
@@ -273,24 +280,16 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 		goto ret;
 
 	label = get_attr_volume_id((struct vfat_dir_entry*) buf, dir_entries);
-
-	vs = volume_id_get_buffer(id, fat_partition_off, 0x200);
-	if (vs == NULL)
-		return -1;
-
-	if (label != NULL /* do not reject "NO NAME" here! */) {
-//		volume_id_set_label_raw(id, label, 11);
-		volume_id_set_label_string(id, label, 11);
-	} else
-	/* String "NO NAME" has a special meaning (empty label) only for label stored in boot sector */
-	if (memcmp(vs->type.fat.label, "NO NAME    ", 11) != 0) {
-//		volume_id_set_label_raw(id, vs->type.fat.label, 11);
-		volume_id_set_label_string(id, vs->type.fat.label, 11);
-	}
-	volume_id_set_uuid(id, vs->type.fat.serno, UUID_DOS);
 	goto ret;
 
  fat32:
+	/* String "NO NAME" has a special meaning (empty label) only for label stored in boot sector */
+	if (memcmp(vs->type.fat32.label, "NO NAME    ", 11) != 0) {
+//		volume_id_set_label_raw(id, vs->type.fat32.label, 11);
+		volume_id_set_label_string(id, vs->type.fat32.label, 11);
+	}
+	volume_id_set_uuid(id, vs->type.fat32.serno, UUID_DOS);
+
 	/* FAT32 root dir is a cluster chain like any other directory */
 	buf_size = vs->sectors_per_cluster * sector_size_bytes;
 	root_cluster = le32_to_cpu(vs->type.fat32.root_cluster);
@@ -323,8 +322,9 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 
 		/* get FAT entry */
 		fat_entry_off = (reserved_sct * sector_size_bytes) + (next_cluster * sizeof(uint32_t));
+//FIXME: this can go beyond FAT table end if next_cluster is bogus
 		dbg("fat_entry_off 0x%llx", (unsigned long long)fat_entry_off);
-		buf = volume_id_get_buffer(id, fat_partition_off + fat_entry_off, buf_size);
+		buf = volume_id_get_buffer(id, fat_partition_off + fat_entry_off, sizeof(uint32_t));
 		if (buf == NULL)
 			goto ret;
 
@@ -336,20 +336,12 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 	if (maxloop == 0)
 		dbg("reached maximum follow count of root cluster chain, give up");
 
-	vs = volume_id_get_buffer(id, fat_partition_off, 0x200);
-	if (vs == NULL)
-		return -1;
-
-	if (label != NULL && memcmp(label, "NO NAME    ", 11) != 0) {
+ ret:
+	if (label /* do not reject "NO NAME" here! This string a valid volume label if specified in the root dir */) {
 //		volume_id_set_label_raw(id, label, 11);
 		volume_id_set_label_string(id, label, 11);
-	} else if (memcmp(vs->type.fat32.label, "NO NAME    ", 11) != 0) {
-//		volume_id_set_label_raw(id, vs->type.fat32.label, 11);
-		volume_id_set_label_string(id, vs->type.fat32.label, 11);
 	}
-	volume_id_set_uuid(id, vs->type.fat32.serno, UUID_DOS);
 
- ret:
 //	volume_id_set_usage(id, VOLUME_ID_FILESYSTEM);
 	IF_FEATURE_BLKID_TYPE(id->type = "vfat";)
 
