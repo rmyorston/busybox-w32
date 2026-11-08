@@ -229,8 +229,16 @@
 # define MS_LAZYTIME    (1 << 25)
 #endif
 
-/* Any ~MS_FOO value has this bit set: */
+// Any ~MS_FOO value has this bit set:
 #define BB_MS_INVERTED_VALUE (1u << 31)
+// Not real mount() syscall flags, we hijack them for fstab-specific options
+#define MOUNT_USERS     ((1 << 28) * ENABLE_DESKTOP)
+#define MOUNT_NOFAIL    ((1 << 29) * ENABLE_DESKTOP)
+#define MOUNT_NOAUTO    (1 << 30)
+#define MOUNT_FAKEFLAGS (MOUNT_USERS | MOUNT_NOFAIL | MOUNT_NOAUTO)
+// (As of 2026, kernel uses bits 30 and 31 internally -
+// MS_ACTIVE and MS_NOUSER bits, so we are safe to use these.
+// Just do not pass them to kernel).
 
 #include "libbb.h"
 #if ENABLE_FEATURE_MOUNT_LABEL
@@ -270,18 +278,6 @@ static struct mntent *getmntent_r(FILE* stream, struct mntent* result,
 	return memcpy(result, ment, sizeof(*ment));
 }
 #endif
-
-
-// Not real flags, but we want to be able to check for this.
-enum {
-	MOUNT_USERS  = (1 << 27) * ENABLE_DESKTOP,
-	MOUNT_NOFAIL = (1 << 28) * ENABLE_DESKTOP,
-	MOUNT_NOAUTO = (1 << 29),
-//FIXME: we seem to support "swap" and "sw" _options_, whereas /etc/fstab manpage documents that "swap" is a (fictitious) filesystem _type_, not _option_!
-//If util-linux's mount do not support these as options, we should probably remove this.
-	MOUNT_SWAP   = (1 << 30),
-	MOUNT_FAKEFLAGS = MOUNT_USERS | MOUNT_NOFAIL | MOUNT_NOAUTO | MOUNT_SWAP
-};
 
 
 #define OPTION_STR "o:*t:rwanfvsiO:" IF_FEATURE_MOUNT_OTHERTAB("T:")
@@ -343,8 +339,6 @@ static const int32_t mount_options[] ALIGN4 = {
 		/* "defaults" */ 0,
 		/* "quiet" 0 - do not filter out, vfat wants to see it */
 		/* "noauto" */ MOUNT_NOAUTO,
-		/* "sw"     */ MOUNT_SWAP,
-		/* "swap"   */ MOUNT_SWAP,
 		IF_DESKTOP(/* "user"  */ MOUNT_USERS,)
 		IF_DESKTOP(/* "users" */ MOUNT_USERS,)
 		IF_DESKTOP(/* "nofail" */ MOUNT_NOFAIL,)
@@ -405,9 +399,8 @@ static const char mount_option_str[] ALIGN1 =
 	IF_FEATURE_MOUNT_FSTAB(
 		"defaults\0"
 		// "quiet\0" - do not filter out, vfat wants to see it
+		// "swap\0" - WRONG, fstab uses "swap" _fstype_, not _option_, to indicate a swap partition
 		"noauto\0"
-		"sw\0"
-		"swap\0"
 		IF_DESKTOP("user\0")
 		IF_DESKTOP("users\0")
 		IF_DESKTOP("nofail\0")
@@ -2512,9 +2505,9 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 				continue;
 
 			// Skip noauto and swap anyway
-			if ((parse_mount_options(mtcur->mnt_opts, NULL, NULL) & (MOUNT_NOAUTO | MOUNT_SWAP))
+			if ((parse_mount_options(mtcur->mnt_opts, NULL, NULL) & MOUNT_NOAUTO)
 			// swap is bogus "fstype", parse_mount_options can't check fstypes
-			 || strcasecmp(mtcur->mnt_type, "swap") == 0
+			 || strcmp(mtcur->mnt_type, "swap") == 0 // case-sensitive compare
 			) {
 				continue;
 			}
@@ -2556,8 +2549,6 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 	// End of fstab/mtab is reached.
 	// Were we looking for something specific?
 	if (argv[0]) { // yes
-		unsigned long l;
-
 		// If we didn't find anything, complain
 		if (!mtcur->mnt_fsname)
 			bb_error_msg_and_die("can't find %s in %s",
@@ -2573,17 +2564,12 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 		// exit_group(32)                          = ?
 #if 0
 		// In case we want to simply skip swap partitions:
-		l = parse_mount_options(mtcur->mnt_opts, NULL, NULL);
-		if ((l & MOUNT_SWAP)
-		// swap is bogus "fstype", parse_mount_options can't check fstypes
-		 || strcasecmp(mtcur->mnt_type, "swap") == 0
-		) {
+		if (strcmp(mtcur->mnt_type, "swap") == 0) // case-sensitive compare
 			goto ret;
-		}
 #endif
 		if (nonroot) {
 			// fstab must have "users" or "user"
-			l = parse_mount_options(mtcur->mnt_opts, NULL, NULL);
+			unsigned long l = parse_mount_options(mtcur->mnt_opts, NULL, NULL);
 			if (!(l & MOUNT_USERS))
 				bb_simple_error_msg_and_die(bb_msg_you_must_be_root);
 		}
