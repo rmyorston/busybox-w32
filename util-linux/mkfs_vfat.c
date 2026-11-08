@@ -152,8 +152,8 @@ struct msdos_boot_sector {
 	uint8_t  fat32_version[2];   /* 02a major, minor filesystem version (I see 0,0) */
 	uint32_t fat32_root_cluster; /* 02c first cluster in root directory */
 	uint16_t fat32_info_sector;  /* 030 filesystem info sector (usually 1) */
-	uint16_t fat32_backup_boot;  /* 032 backup boot sector (usually 6) */
-	uint32_t reserved2[3];       /* 034 unused */
+	uint16_t fat32_backup_boot;  /* 032 backup boot sector (usually 6, 0: none) */
+	uint8_t	 boot_file[12];      /* 034 Boot file name (boot code may search root dir for this name) */
 	struct msdos_volume_info vi; /* 040 */
 	char     boot_code[0x200 - 0x5a - 2]; /* 05a */
 #define BOOT_SIGN 0xAA55
@@ -235,7 +235,7 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 	unsigned opts;
 	uint16_t sect_per_track;
 	uint8_t media_byte;
-	uint8_t sect_per_clust;
+	uint8_t sect_per_clust; // must be 8-bit (code expects that 256 won't fit)
 	uint8_t heads;
 	enum {
 		OPT_A = 1 << 0,  // [IGNORED] atari format
@@ -443,9 +443,9 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 			sect_per_fat += ((unsigned)spf_adj / 2) | 1;
 		}
  next:
-		if (sect_per_clust == 128)
-			bb_simple_error_msg_and_die("can't make FAT32 with >128 sectors/cluster");
 		sect_per_clust *= 2;
+		if (sect_per_clust == 0) // uint8_t overflowed: 128*2 = 0
+			bb_simple_error_msg_and_die("can't make FAT32 with >128 sectors/cluster");
 		sect_per_fat = (sect_per_fat / 2) | 1;
 	}
  found_total_clust:
