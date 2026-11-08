@@ -277,6 +277,8 @@ enum {
 	MOUNT_USERS  = (1 << 27) * ENABLE_DESKTOP,
 	MOUNT_NOFAIL = (1 << 28) * ENABLE_DESKTOP,
 	MOUNT_NOAUTO = (1 << 29),
+//FIXME: we seem to support "swap" and "sw" _options_, whereas /etc/fstab manpage documents that "swap" is a (fictitious) filesystem _type_, not _option_!
+//If util-linux's mount do not support these as options, we should probably remove this.
 	MOUNT_SWAP   = (1 << 30),
 	MOUNT_FAKEFLAGS = MOUNT_USERS | MOUNT_NOFAIL | MOUNT_NOAUTO | MOUNT_SWAP
 };
@@ -284,18 +286,20 @@ enum {
 
 #define OPTION_STR "o:*t:rwanfvsiO:" IF_FEATURE_MOUNT_OTHERTAB("T:")
 enum {
-	OPT_o = (1 << 0),
-	OPT_t = (1 << 1),
-	OPT_r = (1 << 2),
-	OPT_w = (1 << 3),
-	OPT_a = (1 << 4),
-	OPT_n = (1 << 5),
-	OPT_f = (1 << 6),
-	OPT_v = (1 << 7),
-	OPT_s = (1 << 8),
-	OPT_i = (1 << 9),
-	OPT_O = (1 << 10),
-	OPT_T = (1 << 11),
+	OPT_o = (1 << 0),	// -o option1[,option2...]
+	OPT_t = (1 << 1),	// limit mounts to set of filesystem types
+	OPT_r = (1 << 2),	// read-only
+	OPT_w = (1 << 3),	// read-write (unlike having neither -r nor -w, this disallows auto-downgrading to RO)
+	OPT_a = (1 << 4),	// mount all in /etc/fstab
+	OPT_n = (1 << 5),	// don't write to /etc/mtab
+	OPT_f = (1 << 6),	// dry run; skip the mount(2) syscall (but maybe update /etc/mtab)
+	OPT_v = (1 << 7),	// verbose
+	OPT_s = (1 << 8),	// sloppy mount options: ignore mount options not supported by filesystem type. NOP in busybox
+	OPT_i = (1 << 9),	// don't call the mount.<type> helpers
+	OPT_O = (1 << 10),	// -O [no]option1[,[no]option2...]: limit mounts to set of options (use with -a)
+	OPT_T = (1 << 11),	// alternative file to /etc/fstab
+	OPTs_for_root_only = OPT_o | OPT_r | OPT_w | OPT_a | OPT_n | OPT_f | OPT_i | OPT_T
+	// non-root is allowed to use: -t FSTYPES -v -s -O OPTS
 };
 
 #if ENABLE_FEATURE_MTAB_SUPPORT
@@ -617,7 +621,7 @@ static unsigned long parse_mount_options(char *options, char **unrecognized, uin
 
 			if (strncasecmp(option_str, options, opt_len) == 0
 			 && (options[opt_len] == '\0'
-			    /* or is it "comment=" thingy in fstab? */
+			    // or is it "comment=" thingy in fstab?
 			    IF_FEATURE_MOUNT_FSTAB(IF_DESKTOP( || option_str[opt_len-1] == '=' ))
 			    )
 			) {
@@ -626,9 +630,8 @@ static unsigned long parse_mount_options(char *options, char **unrecognized, uin
 					flags &= fl;
 				else
 					flags |= fl;
-				/* If we see "-o rw" on command line, it's the same as -w:
-				 * "do not try to fall back to RO mounts"
-				 */
+				// If we see "-o rw" on command line, it's the same as -w:
+				// "do not try to fall back to RO mounts"
 				if (fl == ~MS_RDONLY && optmask32)
 					(*optmask32) |= OPT_w;
 				goto found;
@@ -2119,6 +2122,7 @@ static int singlemount(struct mntent *mp, int ignore_busy)
 	 && !(vfsflags & (MS_REMOUNT | MS_BIND | MS_MOVE))
 	) {
 		// Do we need to allocate a loopback device for it?
+//FIXME: "automatic -o loop mount" behavior is not compatible with util-linux?
 		if (ENABLE_FEATURE_MOUNT_LOOP && S_ISREG(st.st_mode)) {
 			unsigned long long offset;
 			unsigned long long sizelimit;
@@ -2152,6 +2156,7 @@ static int singlemount(struct mntent *mp, int ignore_busy)
 			}
 
 		// Autodetect bind mounts
+//FIXME: not compatible with util-linux?
 		} else if (S_ISDIR(st.st_mode) && !mp->mnt_type)
 			vfsflags |= MS_BIND;
 	}
@@ -2297,8 +2302,65 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 
 	INIT_G();
 
+// util-linux 2.41.1 --help:
+// mount [-l]
+// mount -a [options]
+// mount [options] [--source] <source> | [--target] <directory>
+// mount [options] <source> <directory>
+// mount <operation> <mountpoint> [<target>]
+// -a, --all				mount all filesystems mentioned in fstab
+// -c, --no-canonicalize		don't canonicalize paths
+// -f, --fake				dry run; skip the mount(2) syscall
+// -F, --fork				fork off for each device (use with -a)
+// -T, --fstab <path>			alternative file to /etc/fstab
+// -i, --internal-only			don't call the mount.<type> helpers
+// -l, --show-labels			show also filesystem labels
+//     --map-groups <inner>:<outer>:<count>	add the specified GID map to an ID-mapped mount
+//     --map-users <inner>:<outer>:<count>	add the specified UID map to an ID-mapped mount
+//     --map-users /proc/<pid>/ns/user		specify the user namespace for an ID-mapped mount
+// -m, --mkdir[=<mode>]			alias to '-o X-mount.mkdir[=<mode>]'
+// -n, --no-mtab			don't write to /etc/mtab
+//     --options-mode <mode>		what to do with options loaded from fstab
+//     --options-source <source>	mount options source
+//     --options-source-force		force use of options from fstab/mtab
+//     --onlyonce			check if filesystem is already mounted
+// -o, --options <list>			comma-separated list of mount options
+// -O, --test-opts <list>		limit the set of filesystems (use with -a)
+// -r, --read-only			mount the filesystem read-only (same as -o ro)
+// -t, --types <list>			limit the set of filesystem types
+//     --source <src>			explicitly specifies source (path, label, uuid)
+//     --target <target>		explicitly specifies mountpoint
+//     --target-prefix <path>		specifies path used for all mountpoints
+// -v, --verbose			say what is being done
+// -w, --rw, --read-write		mount the filesystem read-write (default)
+// -N, --namespace <ns>			perform mount in another namespace
+//Source:
+// -L, --label <label>			synonym for LABEL=<label>
+// -U, --uuid <uuid>			synonym for UUID=<uuid>
+// LABEL=<label>			specifies device by filesystem label
+// UUID=<uuid>				specifies device by filesystem UUID
+// PARTLABEL=<label>			specifies device by partition label
+// PARTUUID=<uuid>			specifies device by partition UUID
+// ID=<id>				specifies device by udev hardware ID
+// <device>				specifies device by path
+// <directory>				mountpoint for bind mounts (see --bind/rbind)
+// <file>				regular file for loopdev setup
+//Operations:
+// -B, --bind				mount a subtree somewhere else (same as -o bind)
+// -M, --move				move a subtree to some other place
+// -R, --rbind				mount a subtree and all submounts somewhere else
+// --make-shared			mark a subtree as shared
+// --make-slave				mark a subtree as slave
+// --make-private			mark a subtree as private
+// --make-unbindable			mark a subtree as unbindable
+// --make-rshared			recursively mark a whole subtree as shared
+// --make-rslave			recursively mark a whole subtree as slave
+// --make-rprivate			recursively mark a whole subtree as private
+// --make-runbindable			recursively mark a whole subtree as unbindable
+
 	// Parse long options, like --bind and --move.  Note that -o option
 	// and --option are synonymous.  Yes, this means --remount,rw works.
+//this is not compatible with util-linux (it has no --remount option, for example)!
 	for (i = j = 1; argv[i]; i++) {
 		if (argv[i][0] == '-' && argv[i][1] == '-')
 			append_mount_options(&cmdopts, argv[i] + 2);
@@ -2368,26 +2430,20 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 	// Past this point, we are handling either "mount -a [opts]"
 	// or "mount [opts] single_param"
 
+	if (nonroot) {
+		if (cmdopts[0]    // Non-root users cannot specify -o OPTS or -r/-w/--bind and such.
+		// "mount -a" won't mount anything, even user mounts, for mere humans. Many other opts are disallowed too:
+		 || (opt & OPTs_for_root_only)
+		) {
+			bb_simple_error_msg_and_die(bb_msg_you_must_be_root);
+//TODO: from "man mount":
+// Since util-linux 2.35, mount does not exit when user permissions are inadequate according to libmount’s internal security rules.
+// Instead, it drops suid permissions and continues as regular non-root user. This behavior supports
+// use-cases where root permissions are not necessary (e.g., fuse filesystems, user namespaces, etc).
+		}
+	}
+
 	cmdopt_flags = parse_mount_options(cmdopts, NULL, &option_mask32);
-	if (nonroot && (cmdopt_flags & ~MS_SILENT)) // Non-root users cannot specify flags
-		bb_simple_error_msg_and_die(bb_msg_you_must_be_root);
-	// NB: parse_mount_options() starts with just MS_SILENT and adds bits as it sees options.
-	// Some options clear a flag, not set it:
-	// suid          ~MS_NOSUID
-	// dev           ~MS_NODEV
-	// exec          ~MS_NOEXEC
-	// async         ~MS_SYNCHRONOUS
-	// atime         ~MS_NOATIME
-	// diratime      ~MS_NODIRATIME
-	// norelatime    ~MS_RELATIME
-	// nostrictatime ~MS_STRICTATIME
-	// nolazytime    ~MS_LAZYTIME
-	// nomand        ~MS_MANDLOCK
-	// rw            ~MS_RDONLY
-	// therefore the above check does not catch them,
-	// they are allowed for non-root (and ignored): they essentially request a default behavior.
-	// Is it a bug?
-	// Should they be disallowed for non-root, and override fstab options for "mount -o OPTS ONE_PARAM" form for root?
 
 	// If we have a shared subtree flag, don't worry about fstab or mtab.
 	if (ENABLE_FEATURE_MOUNT_FLAGS
@@ -2400,9 +2456,10 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 		return rc;
 	}
 
-	// A malicious user could overmount /usr without this.
-	if (ENABLE_FEATURE_MOUNT_OTHERTAB && nonroot)
-		fstabname = "/etc/fstab";
+// Prevented by (opt & OPTs_for_root_only) check above: disallows -T ALT_FSTAB
+//	// A malicious user could overmount /usr without this.
+//	if (ENABLE_FEATURE_MOUNT_OTHERTAB && nonroot)
+//		fstabname = "/etc/fstab";
 	// Open either fstab or mtab
 	if (cmdopt_flags & MS_REMOUNT) {
 		// WARNING. I am not sure this matches util-linux's
@@ -2449,10 +2506,6 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 		// If we're mounting all
 		} else {
 			struct mntent *mp;
-			// No, mount -a won't mount anything,
-			// even user mounts, for mere humans
-			if (nonroot)
-				bb_simple_error_msg_and_die(bb_msg_you_must_be_root);
 
 			// Does type match? (NULL matches always)
 			if (!fstype_matches(mtcur->mnt_type, fstype))
