@@ -82,7 +82,7 @@ struct msdos_volume_info { // (offsets are relative to start of boot sector)
 	char     fs_type[8];      // 052 typically "FATnn   "
 // Wikipedia: "If both total logical sectors entries at offset 0x020 and 0x013
 // are 0 on volumes using a FAT32 EBPB with signature 0x29, volumes with more
-// than 4,294,967,295 (232-1) sectors (f.e. some DR-DOS volumes with 32-bit
+// than 4,294,967,295 (2^32-1) sectors (f.e. some DR-DOS volumes with 32-bit
 // cluster entries) can use this entry as 64-bit total logical sectors entry
 // instead. In this case, the OEM label at sector offset 0x003 may be retrieved
 // as new-style file system type instead."

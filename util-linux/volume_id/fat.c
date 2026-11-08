@@ -45,13 +45,13 @@ struct vfat_super_block {
 	uint16_t	reserved_sct;        /* 00e reserved sectors (sector offset of 1st FAT relative to volume start) */
 	uint8_t		fats;                /* 010 number of FATs */
 	uint16_t	dir_entries;         /* 011 root directory entries */
-	uint16_t	sectors;             /* 013 volume size in sectors */
+	uint16_t	volume_size_sect16;  /* 013 volume size in sectors */
 	uint8_t		media;               /* 015 media code */
 	uint16_t	fat_length;          /* 016 sectors/FAT, must be 0 for FAT32 */
 	uint16_t	secs_track;          /* 018 sectors per track */
 	uint16_t	heads;               /* 01a number of heads */
 	uint32_t	hidden;              /* 01c hidden sectors (sector offset of volume within physical disk) */
-	uint32_t	total_sect;          /* 020 volume size in sectors (if sectors == 0 at offset 013) */
+	uint32_t	volume_size_sect32;  /* 020 volume size in sectors (if volume_size_sect16 == 0) */
 	union {
 		struct fat_super_block {
 			uint8_t		drive_number;           /* 024 */
@@ -77,6 +77,12 @@ struct vfat_super_block {
 			uint8_t		serno[4];               /* 043 volume serial number */
 			uint8_t		label[11];              /* 047 volume label */
 			uint8_t		magic[8];               /* 052 typically "FATnn" */
+// Wikipedia: "If both total logical sectors entries at offset 0x020 and 0x013
+// are 0 on volumes using a FAT32 EBPB with signature 0x29, volumes with more
+// than 4,294,967,295 (2^32-1) sectors (f.e. some DR-DOS volumes with 32-bit
+// cluster entries) can use this entry as 64-bit total logical sectors entry
+// instead. In this case, the OEM label at sector offset 0x003 may be retrieved
+// as new-style file system type instead."
 			uint8_t		dummy2[0x1fe - 0x5a];   /* 05a */
 			uint8_t		pmagic[2];
 		} PACKED fat32;
@@ -137,13 +143,13 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 	uint16_t sector_size_bytes;
 	uint16_t dir_entries;
 	uint32_t sect_count;
-	uint16_t reserved_sct;
+	uint32_t reserved_sct; /* 16 bits really, but wider type works better */
 	uint32_t fat_size_sct;
 	uint32_t root_cluster;
 	uint32_t dir_size_sct;
 	uint32_t cluster_count;
 	uint64_t root_start_off;
-	uint32_t start_data_sct;
+	uint32_t after_fat_sct;
 	uint8_t *buf;
 	uint32_t buf_size;
 	uint8_t *label = NULL;
@@ -156,19 +162,8 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 	if (vs == NULL)
 		return -1;
 
-	/* fat count */
-	if (vs->fats != 2 && vs->fats != 1)
-		return -1;
-	/* cluster size check */
-	if (vs->sectors_per_cluster == 0
-	 || (vs->sectors_per_cluster & (vs->sectors_per_cluster-1))
-	) {
-		return -1;
-	}
-	/* ^^^ ensuring nonzero _before_ "goto valid"s below, or else DIV/0 later */
-
-	/* believe only that's fat, don't trust the version
-	 * the cluster_count will tell us
+	/* believe only that it is FAT, don't trust the version -
+	 * the cluster count will tell us
 	 */
 	if (memcmp(vs->sysid, "NTFS", 4) == 0)
 		return -1;
@@ -200,39 +195,57 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 		return -1;
 
  valid:
+	/* fat count */
+	if (vs->fats != 2 && vs->fats != 1)
+		return -1;
 	/* sector size check */
-	sector_size_bytes = le16_to_cpu(vs->sector_size_bytes);
+	sector_size_bytes = get_unaligned_le16(&vs->sector_size_bytes);
+	dbg("sector_size_bytes 0x%x", sector_size_bytes);
 	if (sector_size_bytes != 0x200 && sector_size_bytes != 0x400
 	 && sector_size_bytes != 0x800 && sector_size_bytes != 0x1000
 	) {
 		return -1;
 	}
-
-	dbg("sector_size_bytes 0x%x", sector_size_bytes);
+	/* sectors_per_cluster check */
 	dbg("sectors_per_cluster 0x%x", vs->sectors_per_cluster);
+	if (vs->sectors_per_cluster == 0
+	 || (vs->sectors_per_cluster & (vs->sectors_per_cluster-1))
+	) {
+		return -1;
+	}
 
-	reserved_sct = le16_to_cpu(vs->reserved_sct);
+	reserved_sct = le16_to_cpu(vs->reserved_sct); /* not unaligned */
 	dbg("reserved_sct 0x%x", reserved_sct);
-
-	sect_count = le16_to_cpu(vs->sectors);
-	if (sect_count == 0)
-		sect_count = le32_to_cpu(vs->total_sect);
-	dbg("sect_count 0x%x", sect_count);
+	if (reserved_sct == 0) /* FAT start sector can't be 0 */
+		return -1;
 
 	fat_size_sct = le16_to_cpu(vs->fat_length);
 	if (fat_size_sct == 0)
-		fat_size_sct = le32_to_cpu(vs->type.fat32.fat32_length);
-//TODO: zero here means it's not a FAT volume (FAT table can't have zero sectors). > 0x7fffffff bogus too
+		fat_size_sct = le32_to_cpu(vs->type.fat32.fat32_length); /* not unaligned */
+	/* Zero here means it's not a FAT volume (FAT table can't have zero sectors). > 0x3fffffff bogus too */
+	if (fat_size_sct == 0 || (fat_size_sct & 0xC0000000u))
+		return -1;
 	fat_size_sct *= vs->fats;
 	dbg("fat_size_sct 0x%x", fat_size_sct);
 
-	dir_entries = le16_to_cpu(vs->dir_entries);
+	dir_entries = get_unaligned_le16(&vs->dir_entries);
 	dir_size_sct = ((dir_entries * sizeof(struct vfat_dir_entry)) +
 			(sector_size_bytes-1)) / sector_size_bytes;
-	dbg("dir_size_sct 0x%x", dir_size_sct);
+	dbg("dir_size_sct 0x%x", dir_size_sct); /* zero on FAT32 */
 
-	cluster_count = sect_count - (reserved_sct + fat_size_sct + dir_size_sct);
+	sect_count = get_unaligned_le16(&vs->volume_size_sect16);
+	if (sect_count == 0)
+		sect_count = le32_to_cpu(vs->volume_size_sect32); /* not unaligned */
+	dbg("sect_count 0x%x", sect_count);
+
+	after_fat_sct = reserved_sct + fat_size_sct;
+
+	cluster_count = sect_count - (after_fat_sct + dir_size_sct);
+	if (cluster_count > sect_count) /* subtraction underflowed? */
+		return -1; /* data area can't be missing */
 	cluster_count /= vs->sectors_per_cluster;
+	if (cluster_count == 0)
+		return -1; /* data area can't be missing */
 	dbg("cluster_count 0x%x", cluster_count);
 
 //	if (cluster_count < FAT12_MAX) {
@@ -250,7 +263,7 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 //TODO: check "vs->fat_length != 0"? FAT12/16 must use this 16-bit field for FAT sector count, only FAT32 can fall back to vs->type.fat32.fat32_length
 
 	/* the label may be an attribute in the root directory */
-	root_start_off = (reserved_sct + fat_size_sct) * sector_size_bytes;
+	root_start_off = after_fat_sct * sector_size_bytes;
 	dbg("root dir start 0x%llx", (unsigned long long) root_start_off);
 	dbg("expected entries 0x%x", dir_entries);
 
@@ -265,10 +278,12 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 	if (vs == NULL)
 		return -1;
 
-	if (label != NULL && memcmp(label, "NO NAME    ", 11) != 0) {
+	if (label != NULL /* do not reject "NO NAME" here! */) {
 //		volume_id_set_label_raw(id, label, 11);
 		volume_id_set_label_string(id, label, 11);
-	} else if (memcmp(vs->type.fat.label, "NO NAME    ", 11) != 0) {
+	} else
+	/* String "NO NAME" has a special meaning (empty label) only for label stored in boot sector */
+	if (memcmp(vs->type.fat.label, "NO NAME    ", 11) != 0) {
 //		volume_id_set_label_raw(id, vs->type.fat.label, 11);
 		volume_id_set_label_string(id, vs->type.fat.label, 11);
 	}
@@ -279,7 +294,6 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 	/* FAT32 root dir is a cluster chain like any other directory */
 	buf_size = vs->sectors_per_cluster * sector_size_bytes;
 	root_cluster = le32_to_cpu(vs->type.fat32.root_cluster);
-	start_data_sct = reserved_sct + fat_size_sct;
 
 	next_cluster = root_cluster;
 	maxloop = 100;
@@ -291,7 +305,7 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 
 		dbg("next_cluster 0x%x", (unsigned)next_cluster);
 		next_off_sct = (uint64_t)(next_cluster - 2) * vs->sectors_per_cluster;
-		next_off = (start_data_sct + next_off_sct) * sector_size_bytes;
+		next_off = (after_fat_sct + next_off_sct) * sector_size_bytes;
 		dbg("cluster offset 0x%llx", (unsigned long long) next_off);
 
 		/* get cluster */
