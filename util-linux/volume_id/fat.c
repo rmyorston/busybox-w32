@@ -232,10 +232,9 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 	fat_size_sct = le16_to_cpu(vs->fat_sct16); /* not unaligned */
 	if (fat_size_sct == 0)
 		fat_size_sct = le32_to_cpu(vs->type.fat32.fat_sct32); /* not unaligned */
-	/* Zero here means it's not a FAT volume (FAT table can't have zero sectors).
-	 * 0x40000000+ is bogus too: data area size is fat_size_sct*0x10000 (for 512-byte sectors and 1-sector clusters),
-	 * fat_size_sct=0x40000000 corresponds to at least 64TB filesystem, which needs 64-bit total sector count.
-	 */
+	// Zero here means it's not a FAT volume (FAT table can't have zero sectors).
+	// 0x40000000+ is bogus too: data area size is fat_size_sct*0x10000 (for 512-byte sectors and 1-sector clusters),
+	// fat_size_sct=0x40000000 corresponds to at least 64TB filesystem, which needs 64-bit total sector count.
 	if (fat_size_sct == 0 || (fat_size_sct & 0xC0000000u))
 		return -1;
 	fat_size_sct *= vs->fats;
@@ -272,6 +271,7 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 //		goto fat32;
 //	}
 	if (cluster_count > FAT16_MAX)
+//FIXME: what if cluster_count > FAT32_MAX too? return -1?
 		goto fat32;
 
 	if (rootdir_entries == 0)
@@ -327,8 +327,7 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 		int count;
 
 		dbg("next_cluster 0x%x", (unsigned)next_cluster);
-		if (next_cluster < 2 || next_cluster > FAT32_MAX)
-//FIXME: should FAT32_MAX be FAT32_MAX+1 instead?
+		if (next_cluster < 2 || next_cluster > cluster_count + 1)
 			break;
 
 		next_off_sct = (uint64_t)(next_cluster - 2) * vs->sectors_per_cluster;
@@ -350,7 +349,6 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 
 		/* get FAT entry */
 		fat_entry_off = (reserved_sct * sector_size_bytes) + (next_cluster * sizeof(uint32_t));
-//FIXME: this can go beyond FAT table end if next_cluster is bogus
 		dbg("fat_entry_off 0x%llx", (unsigned long long)fat_entry_off);
 		buf = volume_id_get_buffer(id, fat_partition_off + fat_entry_off, sizeof(uint32_t));
 		if (buf == NULL)
