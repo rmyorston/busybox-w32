@@ -237,7 +237,7 @@ static void message(int where, const char *fmt, ...)
 {
 	va_list arguments;
 	unsigned l;
-	char msg[128];
+	char msg[256];
 
 	msg[0] = '\r';
 	va_start(arguments, fmt);
