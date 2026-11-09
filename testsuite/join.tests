@@ -54,4 +54,8 @@ testing "join -t works" \
 	"item 1A123\nitem 2A456\n" \
 	"item 1Aabc\nitem 2Adef\n"
 
+testing "join with default separators and unterminated files" \
+	"join input -" \
+	"a 1 A\nb 2 B\n" "a 1\nb 2" "a A\nb B"
+
 exit $FAILCOUNT
