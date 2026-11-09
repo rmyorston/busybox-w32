@@ -2489,7 +2489,8 @@ extern const char bb_PATH_root_path[] ALIGN1; /* BB_PATH_ROOT_PATH */
 
 /* Stored without terminating NUL */
 extern const char bb_SWAPSPACE2[sizeof("SWAPSPACE2")-1];
-
+/* Stored with terminating NUL */
+extern const char bb_NO_NAME_11[sizeof("NO NAME    ")];
 
 extern const int const_int_0;
 //extern const int const_int_1;

@@ -280,7 +280,7 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 		return -1; /* FAT12/16 uses 16-bit field for FAT sector count, FAT32 uses vs->type.fat32.fat_sct32 */
 
 	/* String "NO NAME" has a special meaning (empty label) only for label stored in boot sector */
-	if (memcmp(vs->type.fat.label, "NO NAME    ", 11) != 0) {
+	if (memcmp(vs->type.fat.label, bb_NO_NAME_11, 11) != 0) {
 //		volume_id_set_label_raw(id, vs->type.fat.label, 11);
 		volume_id_set_label_string(id, vs->type.fat.label, 11);
 	}
@@ -310,7 +310,7 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 //		return -1;
 
 	/* String "NO NAME" has a special meaning (empty label) only for label stored in boot sector */
-	if (memcmp(vs->type.fat32.label, "NO NAME    ", 11) != 0) {
+	if (memcmp(vs->type.fat32.label, bb_NO_NAME_11, 11) != 0) {
 //		volume_id_set_label_raw(id, vs->type.fat32.label, 11);
 		volume_id_set_label_string(id, vs->type.fat32.label, 11);
 	}

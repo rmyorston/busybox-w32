@@ -218,10 +218,8 @@ static const char boot_code[] ALIGN1 =
 int mkfs_vfat_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 {
-	static const char NO_NAME_11[] = "NO NAME    ";
-
 	struct stat st;
-	const char *arg_volume_label = NO_NAME_11; //default
+	const char *arg_volume_label = bb_NO_NAME_11; //default
 	char volume_label11[12];
 	char *buf;
 	char *device_name;
@@ -555,7 +553,7 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 	// not "NO NAME", "NO NAME  " etc?
 	// (mkfs.fat 4.1 won't create dir entry even with explicit -n 'NO NAME',
 	// but will create one with e.g. -n '', -n '  zZz')
-	if (strcmp(volume_label11, NO_NAME_11) != 0) {
+	if (strcmp(volume_label11, bb_NO_NAME_11) != 0) {
 		// create dir entry for volume label
 		struct msdos_dir_entry *de;
 #if 0
