@@ -233,9 +233,12 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 	if (fat_size_sct == 0)
 		fat_size_sct = le32_to_cpu(vs->type.fat32.fat_sct32); /* not unaligned */
 	// Zero here means it's not a FAT volume (FAT table can't have zero sectors).
-	// 0x40000000+ is bogus too: data area size is fat_size_sct*0x10000 (for 512-byte sectors and 1-sector clusters),
-	// fat_size_sct=0x40000000 corresponds to at least 64TB filesystem, which needs 64-bit total sector count.
-	if (fat_size_sct == 0 || (fat_size_sct & 0xC0000000u))
+	// Maximum size of FAT32 table is fewer than 0x100000000 32-bit elements
+	// (if we imagine a version of FAT32 which does *not* clear top 4 bits
+	// of cluster#, otherwise it is 16 times fewer still). 512-byte sector
+	// contains 0x200/4=0x80 32-bit elements. 0x100000000/0x80=0x2000000 sectors.
+	// A real FAT32 filesystem should not have more than that sectors per FAT.
+	if (fat_size_sct == 0 || fat_size_sct > 0x02000000)
 		return -1;
 	fat_size_sct *= vs->fats;
 	dbg("fat_size_sct 0x%x", fat_size_sct);
