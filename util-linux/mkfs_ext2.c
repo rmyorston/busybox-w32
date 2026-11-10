@@ -268,7 +268,9 @@ int mkfs_ext2_main(int argc UNUSED_PARAM, char **argv)
 		bb_simple_error_msg_and_die("can't format mounted filesystem");
 
 	// get size in kbytes
-	kilobytes = get_volume_size_in_bytes(fd, argv[1], 1024, /*extend:*/ !(option_mask32 & OPT_n)) / 1024;
+	kilobytes = get_volume_size_in_bytes(fd, argv[1], 1024,
+			/*minsize:*/ 16*1024 | /*extend:*/ !(option_mask32 & OPT_n)
+		) / 1024;
 
 	bytes_per_inode = 16384;
 	if (kilobytes < 512*1024)

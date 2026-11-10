@@ -124,8 +124,9 @@ int mkswap_main(int argc UNUSED_PARAM, char **argv)
 	fd = xopen(argv[0], O_RDWR);
 
 	/* Figure out how big the device is */
-	len = get_volume_size_in_bytes(fd, argv[1], 1024, /*extend:*/ 1);
 	pagesize = bb_getpagesize();
+	len = get_volume_size_in_bytes(fd, argv[1], 1024,
+			/*minsize:*/ 2*pagesize | /*extend:*/ 1);
 	len -= pagesize;
 
 	/* Announce our intentions */

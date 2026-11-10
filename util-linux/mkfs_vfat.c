@@ -340,7 +340,9 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 			bb_error_msg("for this device sector size is %u", min_bytes_per_sect);
 		}
 	}
-	volume_size_bytes = get_volume_size_in_bytes(dev, argv[1], 1024, /*extend:*/ 1);
+	volume_size_bytes = get_volume_size_in_bytes(dev, argv[1], 1024,
+			/*minsize:*/ 6 * bytes_per_sect | /*extend:*/ 1
+		);
 	volume_size_sect = volume_size_bytes / bytes_per_sect;
 
 	//
@@ -436,10 +438,15 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 	// Calculate number of clusters, sectors/cluster, sectors/FAT
 	// (an initial guess for sect_per_clust should already be set)
 	//
-	// "mkdosfs -v -F 32 image5k 5" is the minimum:
+	// "mkdosfs -v -F 32 image5k 5" is the minimum for now:
 	// 2 sectors for FATs and 2 data sectors
+	// and Linux can successfully mount it.
+//TODO: would 3 kbyte image mount? 1 boot, 1 fsinfo, 1*2 FAT, 1*2 data area
+//needs support for -b0 -R2
 	if ((off_t)(volume_size_sect - reserved_sect) < 4)
-		bb_simple_error_msg_and_die("the image is too small for FAT32");
+		/* common message */
+		bb_error_msg_and_die("image is too small: %lld bytes",
+			(unsigned long long)volume_size_sect * bytes_per_sect);
 
 // From now on we know it fits 32 bits
 #define volume_size_sect ((uint32_t)volume_size_sect)
