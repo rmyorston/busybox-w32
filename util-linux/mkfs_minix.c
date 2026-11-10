@@ -87,7 +87,7 @@
 //usage:#define mkfs_minix_trivial_usage
 //usage:       "[-c | -l FILE] [-nXX] [-iXX] BLOCKDEV [KBYTES]"
 //usage:#define mkfs_minix_full_usage "\n\n"
-//usage:       "Make a MINIX filesystem\n"
+//usage:       "Make MINIX filesystem\n"
 //usage:     "\n	-c		Check device for bad blocks"
 //usage:     "\n	-n [14|30]	Maximum length of filenames"
 //usage:     "\n	-i INODES	Number of inodes for the filesystem"

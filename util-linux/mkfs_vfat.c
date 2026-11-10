@@ -214,7 +214,7 @@ static const char boot_code[] ALIGN1 =
 //     "[-h hidden-sectors] [-F fat-size] [-r root-dir-entries] [-R reserved-sectors] "
 //
 //usage:#define mkfs_vfat_full_usage "\n\n"
-//usage:       "Make a FAT32 filesystem\n"
+//usage:       "Make FAT32 filesystem\n"
 /* //usage:  "\n	-c	Check BLOCKDEV for bad blocks" */
 //usage:     "\n	-C	Create new FILE"
 //usage:     "\n	-v	Verbose"
