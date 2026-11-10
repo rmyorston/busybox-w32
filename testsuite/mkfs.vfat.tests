@@ -1,0 +1,21 @@
+#!/bin/sh
+# mkfs.vfat tests.
+# Copyright 2026 by Denys Vlasenko
+# Licensed under GPLv2, see file LICENSE in this source tree.
+
+. ./testing.sh
+
+# testing "test name" "options" "expected result" "file input" "stdin"
+
+# This creates 32MB FAT32 image, and tests that blkid does recognize it.
+# This is technically incorrect: at this size, image should be FAT16
+# according to Microsoft rules (it says that FAT12/16/32-ness of the volume
+# is _solely_ determined by cluster count).
+# But Linux kernel happily mounts these small FAT32 images.
+testing "mkfs.vfat 32MB image" \
+	"dd if=/dev/zero of=input bs=512 count=65536 2>/dev/null; mkfs.vfat input; blkid input | sed 's/\"....-....\"/\"xxxx-xxxx\"/' " \
+'input: UUID="xxxx-xxxx" TYPE="vfat"
+' \
+	"" ""
+
+exit $FAILCOUNT

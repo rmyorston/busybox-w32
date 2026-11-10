@@ -1,0 +1,42 @@
+#!/bin/sh
+# blkid tests.
+# Copyright 2026 by Denys Vlasenko
+# Licensed under GPLv2, see file LICENSE in this source tree.
+
+. ./testing.sh
+
+# testing "test name" "options" "expected result" "file input" "stdin"
+
+# mkfs_vfat_image_fat12_34k.bin was created by
+# $ mkfs.vfat --version
+# mkfs.fat 4.2 (2021-01-31)
+# using this command:
+# $ mkfs.vfat -C -r16 -n FSLABEL --invariant mkfs_vfat_image_fat12_34k.bin 34
+# This is the smallest image it did not refuse to make
+# (even though even smaller FAT12 are probably technically allowed:
+# 1 boot sector + 2*1 FAT sectors + 1 root dir sector + 1 data sector,
+# 5 sectors in total).
+# -n FSLABEL is used to make rootdir easily visible in the file.
+testing "blkid minimal FAT12 image (34k)" \
+	"blkid mkfs_vfat_image_fat12_34k.bin; echo \$?" \
+'mkfs_vfat_image_fat12_34k.bin: LABEL="FSLABEL" UUID="1234-ABCD" TYPE="vfat"
+0
+' \
+	"" ""
+
+# $ mkfs.vfat -C -r16 -F16 --invariant mkfs_vfat_image_fat16_34k.bin 34
+# mkfs.fat 4.2 (2021-01-31)
+# mkfs.vfat: Attempting to create a too small or a too large filesystem
+# ^^^ this is rejected because such fs would be misdetected as FAT12
+
+# $ mkfs.vfat -C -F32 -n FSLABEL -b0 -R2 --invariant mkfs_vfat_image_fat32_34k.bin 32
+# -b0 only omits backup boot sectors, but reserves the same amount of space
+# (32 sectors before FAT). Need -R2 to reduce that to absolute minimum (boot+fsinfo sectors).
+testing "blkid minimal FAT32 image (34k)" \
+	"blkid mkfs_vfat_image_fat32_34k.bin; echo \$?" \
+'mkfs_vfat_image_fat32_34k.bin: LABEL="FSLABEL" UUID="1234-ABCD" TYPE="vfat"
+0
+' \
+	"" ""
+
+exit $FAILCOUNT
