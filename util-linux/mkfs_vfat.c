@@ -26,21 +26,6 @@
 //kbuild:lib-$(CONFIG_MKDOSFS) += mkfs_vfat.o
 //kbuild:lib-$(CONFIG_MKFS_VFAT) += mkfs_vfat.o
 
-//usage:#define mkfs_vfat_trivial_usage
-//usage:       "[-v] [-n LABEL] BLOCKDEV [KBYTES]"
-/* Accepted but ignored:
-       "[-c] [-C] [-I] [-l bad-block-file] [-b backup-boot-sector] "
-       "[-m boot-msg-file] [-i volume-id] "
-       "[-s sectors-per-cluster] [-S logical-sector-size] [-f number-of-FATs] "
-       "[-h hidden-sectors] [-F fat-size] [-r root-dir-entries] [-R reserved-sectors] "
-*/
-//usage:#define mkfs_vfat_full_usage "\n\n"
-//usage:       "Make a FAT32 filesystem\n"
-/* //usage:  "\n	-c	Check device for bad blocks" */
-//usage:     "\n	-v	Verbose"
-/* //usage:  "\n	-I	Allow to use entire disk device (e.g. /dev/hda)" */
-//usage:     "\n	-n LBL	Volume label"
-
 #include "libbb.h"
 
 #include <linux/hdreg.h> /* HDIO_GETGEO */
@@ -49,13 +34,14 @@
 #if !defined(BLKSSZGET)
 # define BLKSSZGET _IO(0x12, 104)
 #endif
-//#include <linux/msdos_fs.h>
 
-#define SECTOR_SIZE             512
+// sys/mount.h and linux/fs.h define these, but let's not depend on that
+#undef BLOCK_SIZE_BITS
+#undef BLOCK_SIZE
+#define BLOCK_SIZE_BITS 10
+#define BLOCK_SIZE      (1<<BLOCK_SIZE_BITS)
 
-#define SECTORS_PER_BLOCK	(BLOCK_SIZE / SECTOR_SIZE)
-
-// M$ says the high 4 bits of a FAT32 FAT entry are reserved
+// M$ says the high 4 bits of FAT32 FAT entries are reserved
 #define EOF_FAT32       0x0FFFFFF8
 #define BAD_FAT32       0x0FFFFFF7
 #define MAX_CLUST_32    0x0FFFFFF0
@@ -63,6 +49,10 @@
 #define ATTR_VOLUME     8
 
 #define NUM_FATS        2
+
+#define SECTOR_SIZE     512
+
+#define SECTORS_PER_BLOCK	(BLOCK_SIZE / SECTOR_SIZE)
 
 /* FAT32 filesystem looks like this:
  * sector -nn...-1: "hidden" sectors, all sectors before this partition
@@ -215,6 +205,22 @@ static const char boot_code[] ALIGN1 =
  *        [-R reserved-sectors]
  *        /dev/name [blocks]
  */
+//usage:#define mkfs_vfat_trivial_usage
+//usage:       "[-Cv] [-n LABEL] FILE|BLOCKDEV [KBYTES]"
+// Accepted but ignored:
+//     "[-c] [-I] [-l bad-block-file] [-b backup-boot-sector] "
+//     "[-m boot-msg-file] [-i volume-id] "
+//     "[-s sectors-per-cluster] [-S logical-sector-size] [-f number-of-FATs] "
+//     "[-h hidden-sectors] [-F fat-size] [-r root-dir-entries] [-R reserved-sectors] "
+//
+//usage:#define mkfs_vfat_full_usage "\n\n"
+//usage:       "Make a FAT32 filesystem\n"
+/* //usage:  "\n	-c	Check BLOCKDEV for bad blocks" */
+//usage:     "\n	-C	Create new FILE"
+//usage:     "\n	-v	Verbose"
+/* //usage:  "\n	-I	Allow to use entire disk device (e.g. /dev/hda)" */
+//usage:     "\n	-n LBL	Volume label"
+
 int mkfs_vfat_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -236,27 +242,28 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 	uint8_t sect_per_clust; // must be 8-bit (code expects that 256 won't fit)
 	uint8_t heads;
 	enum {
-		OPT_A = 1 << 0,  // [IGNORED] atari format
-		OPT_b = 1 << 1,	 // [IGNORED] location of backup boot sector
-		OPT_c = 1 << 2,	 // [IGNORED] check filesystem
-		OPT_C = 1 << 3,	 // [IGNORED] create a new file
-		OPT_f = 1 << 4,	 // [IGNORED] number of FATs
-		OPT_F = 1 << 5,	 // [IGNORED, implied 32] choose FAT size
-		OPT_h = 1 << 6,	 // [IGNORED] number of hidden sectors
-		OPT_I = 1 << 7,	 // [IGNORED] don't bark at entire disk devices
-		OPT_i = 1 << 8,	 // [IGNORED] volume ID
-		OPT_l = 1 << 9,	 // [IGNORED] bad block filename
-		OPT_m = 1 << 10, // [IGNORED] message file
-		OPT_n = 1 << 11, // volume label
-		OPT_r = 1 << 12, // [IGNORED] root directory entries
-		OPT_R = 1 << 13, // [IGNORED] number of reserved sectors
-		OPT_s = 1 << 14, // [IGNORED] sectors per cluster
-		OPT_S = 1 << 15, // [IGNORED] sector size
-		OPT_v = 1 << 16, // verbose
+		//-A "make Atari variant": won't be supported - obsolete (early 1990s)
+		//TODO: implement these as needed:
+		//OPT_b = 1 << 0,  // [IGNORED] location of backup boot sector, 0: none
+		//OPT_c = 1 << 1,  // [IGNORED] check filesystem
+		OPT_C = 1 << 2,    // create new file (fail if exists)
+		//OPT_f = 1 << 3,  // [IGNORED] number of FATs
+		//OPT_F = 1 << 4,  // [IGNORED, implied 32] choose FAT size
+		//OPT_h = 1 << 5,  // [IGNORED] number of hidden sectors
+		//OPT_I = 1 << 6,  // [IGNORED] don't bark at entire disk devices
+		//OPT_i = 1 << 7,  // [IGNORED] volume ID
+		//OPT_l = 1 << 8,  // [IGNORED] bad block filename
+		//OPT_m = 1 << 9,  // [IGNORED] message file
+		//OPT_n = 1 << 10, // volume label
+		//OPT_r = 1 << 11, // [IGNORED] root directory entries
+		//OPT_R = 1 << 12, // [IGNORED] number of reserved sectors
+		//OPT_s = 1 << 13, // [IGNORED] sectors per cluster
+		//OPT_S = 1 << 14, // [IGNORED] sector size
+		OPT_v = 1 << 15,   // verbose
 	};
 
 	opts = getopt32(argv, "^"
-		"Ab:cCf:F:h:Ii:l:m:n:r:R:s:S:v"
+		"b:cCf:F:h:Ii:l:m:n:r:R:s:S:v"
 		"\0" "-1", //:b+:f+:F+:h+:r+:R+:s+:S+:vv:c--l:l--c
 		/*b*/NULL, /*f*/NULL, /*F*/NULL, /*h*/NULL, /*i*/NULL,
 		/*l*/NULL, /*m*/NULL, /*n*/&arg_volume_label,
@@ -271,7 +278,7 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 	// truncate to exactly 11 chars, pad with spaces
 	sprintf(volume_label11, "%-11.11s", arg_volume_label);
 
-	dev = xopen(device_name, O_RDWR);
+	dev = xopen(device_name, (opts & OPT_C) ? (O_CREAT|O_EXCL|O_RDWR) : O_RDWR);
 	xfstat(dev, &st, device_name);
 
 	//
@@ -284,7 +291,7 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 				bb_simple_error_msg_and_die("image size must be specified");
 		}
 		// not a block device, skip bad sectors check
-		opts &= ~OPT_c;
+//		opts &= ~OPT_c;
 	} else {
 		int min_bytes_per_sect;
 #if 0
@@ -395,7 +402,6 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 		}
 	}
 
-	//
 	// Calculate number of clusters, sectors/cluster, sectors/FAT
 	// (an initial guess for sect_per_clust should already be set)
 	//

@@ -97,7 +97,7 @@
 #include "libbb.h"
 #include <mntent.h>
 
-#include "minix.h"
+#include "minix.h"   // BLOCK_SIZE
 
 /* Store the very same times/uids/gids for image consistency */
 #if 1
