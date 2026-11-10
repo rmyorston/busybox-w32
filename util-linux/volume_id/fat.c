@@ -158,6 +158,7 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 	uint32_t reserved_sct; /* 16 bits really, but wider type works better */
 	uint32_t fat_size_sct;
 	uint32_t cluster_count;
+	uint64_t max_cluster_count_in_fat;
 	uint64_t root_start_off;
 	uint32_t after_fat_sct;
 	uint32_t next_cluster;
@@ -240,7 +241,6 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 	// A real FAT32 filesystem should not have more than that sectors per FAT.
 	if (fat_size_sct == 0 || fat_size_sct > 0x02000000)
 		return -1;
-	fat_size_sct *= vs->fats;
 	dbg("fat_size_sct 0x%x", fat_size_sct);
 
 	rootdir_entries = get_unaligned_le16(&vs->dir_entries);
@@ -252,7 +252,7 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 		sect_count = le32_to_cpu(vs->volume_size_sct32); /* not unaligned */
 	dbg("sect_count 0x%x", sect_count);
 
-	after_fat_sct = reserved_sct + fat_size_sct;
+	after_fat_sct = reserved_sct + fat_size_sct * vs->fats;
 
 	cluster_count = sect_count - (after_fat_sct + rootdir_size_sct);
 	if (cluster_count > sect_count) /* subtraction underflowed? */
@@ -265,22 +265,26 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 	// Microsoft insists that FAT type (12/16/32) is determined solely by cluster_count.
 	// It's funny, because one of the steps to calculate it uses dir_entries (offset 0x11)
 	// which _just by itself_ already determines whether FS is FAT12/16 or FAT32.
-//	if (cluster_count <= FAT12_MAX) {
-//		strcpy(id->type_version, "FAT12");
-//	} else if (cluster_count <= FAT16_MAX) {
-//		strcpy(id->type_version, "FAT16");
-//	} else {
-//		strcpy(id->type_version, "FAT32");
+////	if (cluster_count <= FAT12_MAX) {
+////		strcpy(id->type_version, "FAT12");
+////	} else if (cluster_count <= FAT16_MAX) {
+////		strcpy(id->type_version, "FAT16");
+////	} else {
+////		strcpy(id->type_version, "FAT32");
+////		goto fat32;
+////	}
+//	if (cluster_count > FAT16_MAX)
+////FIXME: what if cluster_count > FAT32_MAX too? return -1?
 //		goto fat32;
-//	}
-	if (cluster_count > FAT16_MAX)
-//FIXME: what if cluster_count > FAT32_MAX too? return -1?
-		goto fat32;
+	// HOWEVER! Linux kernel does not do this. It simply looks at vs->fat_sct16,
+	// and if it is zero, then it considers the fs to be FAT32. This means that
+	// Linux supports arbitrarily tiny FAT32! Let's detect them the same way,
+	// to avoid being discrepant wrt what kernel does.
+	if (vs->fat_sct16 == 0) /* not unaligned */
+		goto fat32; /* FAT12/16 uses 16-bit field for FAT sector count, FAT32 uses fat_sct32 */
 
 	if (rootdir_entries == 0)
 		return -1; /* can't be zero for FAT12/16 */
-	if (vs->fat_sct16 == 0) /* not unaligned */
-		return -1; /* FAT12/16 uses 16-bit field for FAT sector count, FAT32 uses vs->type.fat32.fat_sct32 */
 
 	/* String "NO NAME" has a special meaning (empty label) only for label stored in boot sector */
 	if (memcmp(vs->type.fat.label, bb_NO_NAME_11, 11) != 0) {
@@ -304,13 +308,19 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 
  fat32:
 	// fatgen103.doc, Microsoft's FAT32 File System Specification version 1.03:
-//	if (rootdir_entries != 0) // "For FAT32 volumes, this field must be set to 0"
-//		return -1;
 //	if (get_unaligned16(&vs->volume_size_sct16) != 0) // "On FAT32 volumes this field must be 0"
 //		return -1;
-//^^^ can be combined as get_unaligned32(&vs->dir_entries), they are adjacent
-//	if (vs->fat_sct16 != 0) // "On FAT32 volumes this field must be 0"
+	// ^^^Linux kernel does not care whether volume size came from 16-bit or 32-bit field
+//	if (rootdir_entries != 0) // "For FAT32 volumes, this field must be set to 0"
 //		return -1;
+	// ^^^Linux kernel allows non-zero here! Meaning, there can be a rootdir area
+	// after FAT tables even on FAT32 - it will be ignored by Linux.
+
+	// FATs can be too small to address the entire data area -
+	// in this case decrease cluster_count
+	max_cluster_count_in_fat = (uint64_t)fat_size_sct * (sector_size_bytes/4) - 2;
+	if (cluster_count > max_cluster_count_in_fat)
+		cluster_count = max_cluster_count_in_fat;
 
 	/* String "NO NAME" has a special meaning (empty label) only for label stored in boot sector */
 	if (memcmp(vs->type.fat32.label, bb_NO_NAME_11, 11) != 0) {
