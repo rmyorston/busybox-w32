@@ -160,10 +160,17 @@ char* FAST_FUNC pw_encrypt(const char *clear, const char *salt, int cleanup)
 
 	encrypted = crypt(clear, salt);
 	/*
-	 * glibc used to return "" on malformed salts (for example, ""),
-	 * but since 2.17 it returns NULL.
+	 * glibc used to return "" on malformed salts (for example, "" salt),
+	 * but since 2.17 it may return NULL.
+	 * musl returns "*" on bad "$2" salts, and a 13-char DES hash
+	 * for unknown "$id$" (e.g. "$y$"): essentially, musl
+	 * uses "$y" as a *DES* salt, even though it is invalid
+	 * (contains chars not in "./0-9A-Za-z" set).
 	 */
-	if (!encrypted || !encrypted[0])
+	if (!encrypted || !encrypted[0]
+	/* '$' salt and 13-char DES result? not ok, should be longer, non-DES result */
+	 || (salt[0] == '$' && strlen(encrypted) <= 13)
+	)
 		bb_simple_error_msg_and_die("bad salt");
 	return xstrdup(encrypted);
 }
