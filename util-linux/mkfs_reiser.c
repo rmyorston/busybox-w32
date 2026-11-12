@@ -20,7 +20,7 @@
 //usage:#define mkfs_reiser_trivial_usage
 //usage:       "[-f] [-l LABEL] BLOCKDEV [4K-BLOCKS]"
 //usage:#define mkfs_reiser_full_usage "\n\n"
-//usage:       "Make a ReiserFS V3 filesystem\n"
+//usage:       "Make ReiserFS V3 filesystem\n"
 //usage:     "\n	-f	Force"
 //usage:     "\n	-l LBL	Volume label"
 
@@ -180,7 +180,9 @@ int mkfs_reiser_main(int argc UNUSED_PARAM, char **argv)
 		bb_simple_error_msg_and_die("can't format mounted filesystem");
 
 	// open the device, get size in blocks
-	blocks = get_volume_size_in_bytes(fd, argv[1], blocksize, /*extend:*/ 1) / blocksize;
+	blocks = get_volume_size_in_bytes(fd, argv[1], blocksize,
+			/*minsize:*/ 16*1024 | /*extend:*/ 1
+		) / blocksize;
 
 	// block number sanity check
 	// we have a limit: skipped area, super block, journal and root block

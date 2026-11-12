@@ -111,6 +111,7 @@ void* FAST_FUNC xmemdup(const void *s, size_t n)
 #if !ENABLE_PLATFORM_MINGW32
 void* FAST_FUNC mmap_read(int fd, size_t size)
 {
+	/* some NOMMU systems prefer MAP_PRIVATE over MAP_SHARED */
 	return mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
 }
 

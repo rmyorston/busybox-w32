@@ -116,8 +116,13 @@ static int rpm_gettags(const char *filename)
 		xread(fd, &header, sizeof(header));
 		if (header.magic_and_ver != htonl(RPM_HEADER_MAGICnVER))
 			bb_error_msg_and_die("invalid RPM header magic in '%s'", filename);
+#if BB_LITTLE_ENDIAN
 		header.size = ntohl(header.size);
+#endif
 		cnt = ntohl(header.entries);
+		/* Prevent multiplication overflow leading to undersized allocations */
+		if (sizeof(cnt) <= 4 && cnt >= 0x00400000) /* ~4 million */
+			bb_error_msg_and_die("bad RPM header.entries:%u", cnt);
 		storepos += sizeof(header) + cnt * 16;
 
 		G.tagcount += cnt;
@@ -125,9 +130,11 @@ static int rpm_gettags(const char *filename)
 		xread(fd, &tags[idx], sizeof(tags[0]) * cnt);
 		while (cnt--) {
 			rpm_index *tag = &tags[idx];
+#if BB_LITTLE_ENDIAN
 			tag->tag = ntohl(tag->tag);
 			tag->type = ntohl(tag->type);
 			tag->count = ntohl(tag->count);
+#endif
 			tag->offset = storepos + ntohl(tag->offset);
 			if (pass == 0)
 				tag->tag -= 743;
@@ -147,7 +154,6 @@ static int rpm_gettags(const char *filename)
 	storepos = (storepos + G_pagesize) & -(int)G_pagesize;
 	/* remember size for munmap */
 	G.mapsize = storepos;
-	/* some NOMMU systems prefer MAP_PRIVATE over MAP_SHARED */
 	G.map = mmap_read(fd, storepos);
 	if (G.map == MAP_FAILED)
 		bb_perror_msg_and_die("mmap '%s'", filename);

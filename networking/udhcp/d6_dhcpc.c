@@ -969,11 +969,6 @@ static NOINLINE int d6_recv_raw_packet(struct in6_addr *peer_ipv6, struct d6_pac
 		return bytes; /* returns -1 */
 	}
 
-	if (bytes < (int) (sizeof(packet.ip6) + sizeof(packet.udp))) {
-		log1s("packet is too short, ignoring");
-		return -2;
-	}
-
 	if (bytes < sizeof(packet.ip6) + ntohs(packet.ip6.ip6_plen)) {
 		/* packet is bigger than sizeof(packet), we did partial read */
 		log1s("oversized packet, ignoring");
@@ -982,6 +977,15 @@ static NOINLINE int d6_recv_raw_packet(struct in6_addr *peer_ipv6, struct d6_pac
 
 	/* ignore any extra garbage bytes */
 	bytes = sizeof(packet.ip6) + ntohs(packet.ip6.ip6_plen);
+
+	if (bytes < (int) (
+			sizeof(packet.ip6) + sizeof(packet.udp)
+			+ offsetof(struct d6_packet, d6_options)
+			/* + 4 - does DHCPv6 require that at least one option is present? */
+	)) {
+		log1s("packet is too short, ignoring");
+		return -2;
+	}
 
 	/* make sure its the right packet for us, and that it passes sanity checks */
 	if (packet.ip6.ip6_nxt != IPPROTO_UDP

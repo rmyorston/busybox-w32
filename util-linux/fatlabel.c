@@ -82,7 +82,7 @@ struct msdos_volume_info { // (offsets are relative to start of boot sector)
 	char     fs_type[8];      // 052 typically "FATnn   "
 // Wikipedia: "If both total logical sectors entries at offset 0x020 and 0x013
 // are 0 on volumes using a FAT32 EBPB with signature 0x29, volumes with more
-// than 4,294,967,295 (232-1) sectors (f.e. some DR-DOS volumes with 32-bit
+// than 4,294,967,295 (2^32-1) sectors (f.e. some DR-DOS volumes with 32-bit
 // cluster entries) can use this entry as 64-bit total logical sectors entry
 // instead. In this case, the OEM label at sector offset 0x003 may be retrieved
 // as new-style file system type instead."
@@ -110,8 +110,8 @@ struct msdos_boot_sector {
 	uint8_t  fat32_version[2];   // 02a major, minor filesystem version (I see 0,0)
 	uint32_t fat32_root_cluster; // 02c first cluster in root directory
 	uint16_t fat32_info_sector;  // 030 filesystem info sector (usually 1)
-	uint16_t fat32_backup_boot;  // 032 backup boot sector (usually 6)
-	uint32_t reserved2[3];       // 034 'unused'. 12 bytes of 'boot file name'?
+	uint16_t fat32_backup_boot;  // 032 backup boot sector (usually 6, 0: none)
+	uint8_t	 boot_file[12];      // 034 Boot file name (boot code may search root dir for this name)
 	struct msdos_volume_info vi; // 040
 	char     boot_code[0x200 - 0x5a - 2]; // 05a
 #define BOOT_SIGN 0xAA55

@@ -661,12 +661,20 @@ evaluate_string(arith_state_t *math_state, const char *expr)
 	/* To insert implicit () in ?: ternary op: */
 	operator insert_op = 0xff;
 	unsigned ternary_level = 0;
+	unsigned expr_len;
 	const char *errmsg;
-	const char *start_expr = expr = skip_whitespace(expr);
 
-	{
-		unsigned expr_len = strlen(expr);
-		/* If LOTS of whitespace, do not blow up the estimation */
+	expr = skip_whitespace(expr);
+	if (!expr[0]) {
+		/* $(( )) is allowed and has value 0 */
+		return 0;
+	}
+
+	/* Allocate temp storage */
+	expr_len = strlen(expr);
+	if (expr_len > 127) {
+		/* This will require kbytes of allocation, try to reduce it */
+		/* If LOTS of whitespace, do not blow up estimated size */
 		const char *p = expr;
 		while (*p) {
 			/* in a run of whitespace, count only 1st char */
@@ -676,24 +684,28 @@ evaluate_string(arith_state_t *math_state, const char *expr)
 			} else {
 				p++;
 			}
+//TODO: can also be smarter with lots of leading zeros in numbers: think "00000000", "0x00000000"
 		}
-		dbg("expr:'%s' expr_len:%u", expr, expr_len);
-		/* expr_len deep opstack is needed. Think "------------7".
-		 * Only "?" operator temporarily needs two opstack slots
-		 * (IOW: more than one slot), but its second slot (LPAREN)
-		 * is popped off when ":" is reached.
-		 */
-		expr_len++; /* +1 for 1st LPAREN. See what $((1?)) pushes to opstack */
-		opstackptr = opstack = alloca(expr_len * sizeof(opstack[0]));
-		/* There can be no more than (expr_len/2 + 1)
-		 * integers/names in any given correct or incorrect expression.
-		 * (modulo "09", "0v" cases where 2 chars are 2 ints/names,
-		 * but we have code to detect that early)
-		 */
-		expr_len = (expr_len / 2)
-			+ 1 /* "1+2" has two nums, 2 = len/2+1, NOT len/2 */;
-		numstackptr = numstack = alloca(expr_len * sizeof(numstack[0]));
-	}
+	} /* else: the expr string is short, do not bother with the above */
+	dbg("expr:'%s' expr_len:%u", expr, expr_len);
+	/* expr_len deep opstack is needed. Think "------------7".
+	 * Only "?" operator temporarily needs two opstack slots
+	 * (IOW: more than one slot), but its second slot (LPAREN)
+	 * is popped off when ":" is reached.
+	 */
+	expr_len++; /* +1 for 1st LPAREN. See what $((1?)) pushes to opstack */
+	opstackptr = opstack = alloca(expr_len * sizeof(opstack[0]));
+	/* There can be no more than (expr_len/2 + 1)
+	 * integers/names in any given correct or incorrect expression.
+	 * (modulo "09", "0v" cases where 2 chars are 2 numbers/names,
+	 * but we have code to detect that early)
+	 */
+	expr_len = (expr_len / 2)
+		+ 1 /* "1+2" has two numbers, 2 = len/2+1, NOT len/2 */;
+	numstackptr = numstack = alloca(expr_len * sizeof(numstack[0]));
+//FIXME: for large sizes (think megabyte+), alloca is worse: touching a lot of stack makes it stay dirty and in use forever afterwards,
+//whereas xmalloc + free does get freed and returned to OS for reuse.
+//xmalloc also can handle much larger sizes, and theoretically fails more gracefully (error msg rather than crash).
 
 	/* Start with a left paren */
 	dbg("(%d) op:TOK_LPAREN", (int)(opstackptr - opstack));
@@ -704,13 +716,7 @@ evaluate_string(arith_state_t *math_state, const char *expr)
 		operator op;
 		operator prec;
 
-		expr = skip_whitespace(expr);
 		if (*expr == '\0') {
-			if (expr == start_expr) {
-				/* Null expression */
-				return 0;
-			}
-
 			/* This is only reached after all tokens have been extracted from the
 			 * input stream. If there are still tokens on the operator stack, they
 			 * are to be applied in order. At the end, there should be a final
@@ -759,7 +765,7 @@ evaluate_string(arith_state_t *math_state, const char *expr)
  push_value:
 			numstackptr++;
 			lasttok = TOK_VALUE;
-			continue;
+			goto next_char_in_expr;
 		}
 
 		if (isdigit(*expr)) {
@@ -864,7 +870,7 @@ evaluate_string(arith_state_t *math_state, const char *expr)
 				//op = TOK_UPLUS;
 				//break;
 				/* Unary plus does nothing, do not even push it to opstack */
-				continue;
+				goto next_char_in_expr;
 			case TOK_SUB:
 				op = TOK_UMINUS;
 				break;
@@ -923,7 +929,7 @@ evaluate_string(arith_state_t *math_state, const char *expr)
 						 * close paren should be considered binary
 						 */
 						lasttok = TOK_VALUE;
-						goto next;
+						goto next_op;
 					}
 					/* Not (y), but ...x~y). Fall through to evaluate x~y */
 				} else {
@@ -983,7 +989,7 @@ dbg("    numstack:%d val:%lld '%s'", (int)(numstackptr - numstack), numstackptr[
 		/* Push this operator to opstack */
 		dbg("(%d) op:%02x insert_op:%02x", (int)(opstackptr - opstack), op, insert_op);
 		*opstackptr++ = lasttok = op;
- next:
+ next_op:
 		if (insert_op != 0xff) {
 			op = insert_op;
 			insert_op = 0xff;
@@ -1002,6 +1008,8 @@ dbg("    numstack:%d val:%lld '%s'", (int)(numstackptr - numstack), numstackptr[
 			}
 			goto tok_found1;
 		}
+ next_char_in_expr:
+		expr = skip_whitespace(expr);
 	} /* while (1) */
 
  syntax_err:

@@ -87,7 +87,7 @@
 //usage:#define mkfs_minix_trivial_usage
 //usage:       "[-c | -l FILE] [-nXX] [-iXX] BLOCKDEV [KBYTES]"
 //usage:#define mkfs_minix_full_usage "\n\n"
-//usage:       "Make a MINIX filesystem\n"
+//usage:       "Make MINIX filesystem\n"
 //usage:     "\n	-c		Check device for bad blocks"
 //usage:     "\n	-n [14|30]	Maximum length of filenames"
 //usage:     "\n	-i INODES	Number of inodes for the filesystem"
@@ -97,7 +97,7 @@
 #include "libbb.h"
 #include <mntent.h>
 
-#include "minix.h"
+#include "minix.h"   // BLOCK_SIZE
 
 /* Store the very same times/uids/gids for image consistency */
 #if 1
@@ -657,7 +657,9 @@ int mkfs_minix_main(int argc UNUSED_PARAM, char **argv)
 
 	xmove_fd(xopen(G.device_name, O_RDWR), dev_fd);
 
-	G.total_blocks = get_volume_size_in_bytes(dev_fd, argv[1], 1024, /*extend:*/ 1) / 1024;
+	G.total_blocks = get_volume_size_in_bytes(dev_fd, argv[1], 1024,
+			/*minsize:*/ 16*1024 | /*extend:*/ 1
+		) / 1024;
 
 	if (G.total_blocks < 10)
 		bb_simple_error_msg_and_die("must have at least 10 blocks");

@@ -246,7 +246,8 @@ int mkfs_ext2_main(int argc UNUSED_PARAM, char **argv)
 
 	// using global "option_mask32" instead of local "opts":
 	// we are register starved here
-	/*opts =*/ getopt32(argv, "cl:b:+f:i:+I:+J:G:N:m:+o:g:L:M:O:r:E:T:U:jnqvFS",
+	/*opts =*/ getopt32(argv, "^" "cl:b:+f:i:+I:+J:G:N:m:+o:g:L:M:O:r:E:T:U:jnqvFS"
+		"\0" "-1",
 		/*lbfi:*/ NULL, &bs, NULL, &bpi,
 		/*IJGN:*/ &user_inodesize, NULL, NULL, NULL,
 		/*mogL:*/ &reserved_percent, NULL, NULL, &label,
@@ -267,7 +268,9 @@ int mkfs_ext2_main(int argc UNUSED_PARAM, char **argv)
 		bb_simple_error_msg_and_die("can't format mounted filesystem");
 
 	// get size in kbytes
-	kilobytes = get_volume_size_in_bytes(fd, argv[1], 1024, /*extend:*/ !(option_mask32 & OPT_n)) / 1024;
+	kilobytes = get_volume_size_in_bytes(fd, argv[1], 1024,
+			/*minsize:*/ 16*1024 | /*extend:*/ !(option_mask32 & OPT_n)
+		) / 1024;
 
 	bytes_per_inode = 16384;
 	if (kilobytes < 512*1024)

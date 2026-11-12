@@ -900,6 +900,15 @@ static NOINLINE int d4_recv_raw_packet(struct dhcp_packet *dhcp_pkt, int fd)
 		break;
 	}
 
+	if (bytes < ntohs(packet.ip.tot_len)) {
+		/* packet is bigger than sizeof(packet), we did partial read */
+		log1s("oversized packet, ignoring");
+		return -2;
+	}
+
+	/* ignore any extra garbage bytes */
+	bytes = ntohs(packet.ip.tot_len);
+
 	if (bytes < (int) (
 			sizeof(packet.ip) + sizeof(packet.udp)
 			+ offsetof(struct dhcp_packet, options)
@@ -909,15 +918,6 @@ static NOINLINE int d4_recv_raw_packet(struct dhcp_packet *dhcp_pkt, int fd)
 		log1s("packet is too short, ignoring");
 		return -2;
 	}
-
-	if (bytes < ntohs(packet.ip.tot_len)) {
-		/* packet is bigger than sizeof(packet), we did partial read */
-		log1s("oversized packet, ignoring");
-		return -2;
-	}
-
-	/* ignore any extra garbage bytes */
-	bytes = ntohs(packet.ip.tot_len);
 
 	/* make sure its the right packet for us, and that it passes sanity checks */
 	if (packet.ip.protocol != IPPROTO_UDP

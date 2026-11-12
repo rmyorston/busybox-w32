@@ -11,10 +11,12 @@
 uoff_t FAST_FUNC get_volume_size_in_bytes(int fd,
 		const char *override,
 		unsigned override_units,
-		int extend)
+		unsigned minsize_extend)
 {
-	uoff_t result;
 #define ULL(x) ((unsigned long long)(x))
+	uoff_t result;
+#define extend  ((minsize_extend) & 1)
+#define minsize ((minsize_extend) & ~1u)
 
 	if (override) {
 		result = XATOOFF(override);
@@ -47,10 +49,9 @@ uoff_t FAST_FUNC get_volume_size_in_bytes(int fd,
 	// $ dd if=/dev/zero of=foo count=1 bs=1024
 	// $ mkswap foo
 	// Setting up swapspace version 1, size = 18446744073709548544 bytes
-	//
-	// Picked 16k arbitrarily:
-	if (result < 16*1024) {
+	if (result < minsize) {
  insane:
+		/* common message */
 		bb_error_msg_and_die("image is too small: %lld bytes", ULL(result));
 	}
 

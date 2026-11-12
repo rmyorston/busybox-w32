@@ -154,7 +154,7 @@ static NOINLINE int lzo1x_optimize(uint8_t *in, unsigned in_len,
 	unsigned lit = 0;
 	unsigned next_lit = NO_LIT;
 	unsigned nl;
-	unsigned long o_m1_a = 0, o_m1_b = 0, o_m2 = 0, o_m3_a = 0, o_m3_b = 0;
+//	unsigned long o_m1_a = 0, o_m1_b = 0, o_m2 = 0, o_m3_a = 0, o_m3_b = 0;
 
 //	LZO_UNUSED(wrkmem);
 
@@ -227,7 +227,7 @@ static NOINLINE int lzo1x_optimize(uint8_t *in, unsigned in_len,
 					*litp = (unsigned char)((*litp & ~3) | lit);
 					/* copy over the 2 literals that replace the match */
 					copy2(ip-2, m_pos, pd(op, m_pos));
-					o_m1_a++;
+//					o_m1_a++;
 				}
 				/* test if a literal run follows */
 				else
@@ -249,7 +249,7 @@ static NOINLINE int lzo1x_optimize(uint8_t *in, unsigned in_len,
 					lit += 2 + t + 3;
 					*litp = (unsigned char)(lit - 3);
 
-					o_m1_b++;
+//					o_m1_b++;
 					*op++ = *m_pos++;
 					*op++ = *m_pos++;
 					goto copy_literal_run;
@@ -284,7 +284,7 @@ static NOINLINE int lzo1x_optimize(uint8_t *in, unsigned in_len,
 						/* set new length of previous literal run */
 						lit += 3 + t + 3;
 						*litp = (unsigned char)(lit - 3);
-						o_m2++;
+//						o_m2++;
 						*op++ = *m_pos++;
 						*op++ = *m_pos++;
 						*op++ = *m_pos++;
@@ -330,7 +330,7 @@ static NOINLINE int lzo1x_optimize(uint8_t *in, unsigned in_len,
 						*litp = (unsigned char)((*litp & ~3) | lit);
 						/* copy over the 3 literals that replace the match */
 						copy3(ip-3, m_pos, pd(op, m_pos));
-						o_m3_a++;
+//						o_m3_a++;
 					}
 					/* test if a literal run follows */
 					else if (t == 1 && lit <= 3 && nl == 0
@@ -349,7 +349,7 @@ static NOINLINE int lzo1x_optimize(uint8_t *in, unsigned in_len,
 						lit += 3 + t + 3;
 						*litp = (unsigned char)(lit - 3);
 
-						o_m3_b++;
+//						o_m3_b++;
 						*op++ = *m_pos++;
 						*op++ = *m_pos++;
 						*op++ = *m_pos++;

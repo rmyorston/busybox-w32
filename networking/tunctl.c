@@ -54,7 +54,7 @@
 #define TUNSETGROUP _IOW('T', 206, int)
 #endif
 
-#define IOCTL(a, b, c) ioctl_or_perror_and_die(a, b, c, NULL)
+#define IOCTL(a, b, c) ioctl_or_perror_and_die(a, b, c, "")
 
 #if 1
 

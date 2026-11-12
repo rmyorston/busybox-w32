@@ -114,7 +114,7 @@
 
 #include <mntent.h>
 #include "libbb.h"
-#include "minix.h"
+#include "minix.h"   // BLOCK_SIZE
 
 #ifndef BLKGETSIZE
 #define BLKGETSIZE _IO(0x12,96)    /* return device size */
@@ -859,7 +859,7 @@ static void add_zone_ind2(uint32_t *znr, smallint *corrected)
 	if (!block)
 		return;
 	read_block(block, add_zone_ind_blk);
-	for (i = 0; i < BLOCK_SIZE >> 2; i++)
+	for (i = 0; i < (BLOCK_SIZE >> 2); i++)
 		add_zone2(i + (uint32_t *) add_zone_ind_blk, &chg_blk);
 	if (chg_blk)
 		write_block(block, add_zone_ind_blk);
@@ -893,7 +893,7 @@ static void add_zone_dind2(uint32_t *znr, smallint *corrected)
 	if (!block)
 		return;
 	read_block(block, add_zone_dind_blk);
-	for (i = 0; i < BLOCK_SIZE >> 2; i++)
+	for (i = 0; i < (BLOCK_SIZE >> 2); i++)
 		add_zone_ind2(i + (uint32_t *) add_zone_dind_blk, &chg_blk);
 	if (chg_blk)
 		write_block(block, add_zone_dind_blk);
@@ -909,7 +909,7 @@ static void add_zone_tind2(uint32_t *znr, smallint *corrected)
 	if (!block)
 		return;
 	read_block(block, add_zone_tind_blk);
-	for (i = 0; i < BLOCK_SIZE >> 2; i++)
+	for (i = 0; i < (BLOCK_SIZE >> 2); i++)
 		add_zone_dind2(i + (uint32_t *) add_zone_tind_blk, &chg_blk);
 	if (chg_blk)
 		write_block(block, add_zone_tind_blk);

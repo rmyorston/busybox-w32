@@ -775,7 +775,7 @@ off_t fdlength(int fd) FAST_FUNC;
 uoff_t FAST_FUNC get_volume_size_in_bytes(int fd,
 		const char *override,
 		unsigned override_units,
-		int extend);
+		unsigned minsize_extend);
 
 void xpipe(int *filedes) FAST_FUNC;
 /* In this form code with pipes is much more readable */
@@ -2761,7 +2761,8 @@ extern const char bbvar[] ALIGN1;
 
 /* Stored without terminating NUL */
 extern const char bb_SWAPSPACE2[sizeof("SWAPSPACE2")-1];
-
+/* Stored with terminating NUL */
+extern const char bb_NO_NAME_11[sizeof("NO NAME    ")];
 
 extern const int const_int_0;
 //extern const int const_int_1;

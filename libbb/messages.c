@@ -59,7 +59,10 @@ const char bb_PATH_root_path[] ALIGN1 = BB_PATH_ROOT_PATH;
 /* Stored without terminating NUL */
 const char bb_SWAPSPACE2[sizeof("SWAPSPACE2")-1] ALIGN1 = "SWAPSPACE2";
 #endif
-
+#if ENABLE_MKDOSFS || ENABLE_MKFS_VFAT || ENABLE_FEATURE_VOLUMEID_FAT
+/* Stored with terminating NUL */
+const char bb_NO_NAME_11[] = "NO NAME    ";
+#endif
 
 //const int const_int_1 = 1;
 /* explicitly = 0, otherwise gcc may make it a common variable
