@@ -414,7 +414,6 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 			// fs size <=   8G: 4k clusters
 			// fs size <=  16G: 8k clusters
 			// fs size >   16G: 16k clusters
-			sect_per_clust = 1;
 			if (volume_size_bytes >= 260*1024*1024) {
 				sect_per_clust = 8;
 				// fight gcc:
@@ -506,9 +505,9 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 
 	// Calculate number of clusters, sectors/cluster, sectors/FAT
 	// (an initial guess for sect_per_clust should already be set)
-	sect_per_fat = 1;
 	while (1) {
 		dbg("sect_per_clust:%d", sect_per_clust);
+		sect_per_fat = 1;
 		while (1) {
 			int spf_adj;
 			total_clust = (volume_size_sect - reserved_sct - NUM_FATS * sect_per_fat) / sect_per_clust;
@@ -529,6 +528,10 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 			//spf_adj = ((total_clust+2) * 4 + bytes_per_sect-1) / bytes_per_sect - sect_per_fat;
 			//Same in the more obscure, non-overflowing form:
 			spf_adj = ((total_clust+2) + (bytes_per_sect/4)-1) / (bytes_per_sect/4) - sect_per_fat;
+//FAT12/16 support:
+//spf_adj = ((total_clust+2)*fat_entry_nibbles + (bytes_per_sect*2)-1) // number of half-bytes needed, rounded up to full sector
+//		/ (bytes_per_sect*2) // divide by the number of half-bytes in one sector
+//	- sect_per_fat;
 #if 0
 			bb_error_msg("sect_per_clust:%u sect_per_fat:%u total_clust:%u 0x%08x",
 					sect_per_clust, sect_per_fat, (unsigned)total_clust, (unsigned)total_clust);
@@ -555,9 +558,27 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 		sect_per_clust *= 2;
 		if (sect_per_clust == 0) // uint8_t overflowed: 128*2 = 0
 			bb_simple_error_msg_and_die("can't make FAT32 with >128 sectors/cluster");
-		sect_per_fat = (sect_per_fat / 2) | 1;
+		// loop back and restart with initial 1-sector FAT size estimate
 	} // while (1)
  found_total_clust:
+
+// Possible logic to support FAT12/16:
+//#define FAT12_MAX 0xff4
+//#define FAT16_MAX 0xfff4
+//// These are the maximum allowed counts of clusters, *not* the maximum cluster#!
+//// Example: the cluster numbers on largest possible FAT12 fs are 2..FAT12_MAX+1
+//if (fat_entry_nibbles == 8 && !(opts & OPT_F)) { // FAT32 but not explicit -F32
+//	if (total_clust < 0xfff5) {
+//		fat_entry_nibbles = 4;
+//		if (total_clust < 0x0ff5)
+//			fat_entry_nibbles = 3;
+//		goto recalc_sect_per_fat;
+//	}
+//}
+// NB: FATs shrink when you go 32->16, increasing new total_clust - this could
+// make attempt to go to FAT16 invalid (too many clusters). In this case FAT
+// size calc loop should go back to FAT32 but set OPT_F, preventing another
+// attempt of going FAT16.
 
 	//
 	// Print info
