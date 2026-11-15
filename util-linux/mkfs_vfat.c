@@ -295,26 +295,27 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 	enum {
 		//-A "make Atari variant": won't be supported - obsolete (early 1990s)
 		//TODO: implement these as needed:
-		//OPT_b = 1 << 0,  // location of backup boot sector, 0: none
-		//OPT_c = 1 << 1,  // [IGNORED] check filesystem
-		OPT_C = 1 << 2,    // create new file (fail if exists)
-		//OPT_f = 1 << 3,  // [IGNORED] number of FATs
-		OPT_F = 1 << 4,    // choose FAT size: 12/16/32
-		//OPT_h = 1 << 5,  // [IGNORED] number of hidden sectors
-		//OPT_I = 1 << 6,  // [IGNORED] don't bark at entire disk devices
-		//OPT_i = 1 << 7,  // [IGNORED] volume ID
-		//OPT_l = 1 << 8,  // [IGNORED] bad block filename
-		//OPT_m = 1 << 9,  // [IGNORED] message file
-		//OPT_n = 1 << 10, // volume label
-		//OPT_r = 1 << 11, // [IGNORED] root directory entries
-		OPT_R = 1 << 12,   // number of reserved sectors
-		OPT_s = 1 << 13,   // sectors per cluster
-		OPT_S = 1 << 14,   // sector size
-		OPT_v = 1 << 15,   // verbose
+		//OPT_a = 1 << 0,  // [IGNORED] disable alignment of data structures
+		//OPT_b = 1 << 1,  // location of backup boot sector, 0: none
+		//OPT_c = 1 << 2,  // [IGNORED] check filesystem
+		OPT_C = 1 << 3,    // create new file (fail if exists)
+		//OPT_f = 1 << 4,  // [IGNORED] number of FATs
+		OPT_F = 1 << 5,    // choose FAT size: 12/16/32
+		//OPT_h = 1 << 6,  // [IGNORED] number of hidden sectors
+		//OPT_I = 1 << 7,  // [IGNORED] don't bark at entire disk devices
+		//OPT_i = 1 << 8,  // [IGNORED] volume ID
+		//OPT_l = 1 << 9,  // [IGNORED] bad block filename
+		//OPT_m = 1 << 10,  // [IGNORED] message file
+		//OPT_n = 1 << 11, // volume label
+		//OPT_r = 1 << 12, // [IGNORED] root directory entries
+		OPT_R = 1 << 13,   // number of reserved sectors
+		OPT_s = 1 << 14,   // sectors per cluster
+		OPT_S = 1 << 15,   // sector size
+		OPT_v = 1 << 16,   // verbose
 	};
 
 	opts = getopt32(argv, "^"
-		"b:+cCf:F:h:Ii:l:m:n:r:R:+s:S:v"
+		"ab:+cCf:F:h:Ii:l:m:n:r:R:+s:S:v"
 		"\0" "-1", //:b+:f+:F+:h+:r+:R+:s+:S+:vv:c--l:l--c
 		/*b*/&backup_boot_sct,
 		/*f*/NULL,
@@ -534,6 +535,15 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 			fat_entry_nibbles = 4;
 			max_clust_cnt = MAX_CLUST_CNT16;
 		}
+		// mkfs.fat 4.2 simply sets rootdir_ent = 512. For small images,
+		// we use rootdir size which is close to what "standard floppy" has.
+		// The formula generates rootdirs as follows:
+		//  360k floppy: 112 entries (standard, see code above)
+		//  361k image:   96 entries (this formula)
+		//  720k floppy: 112 entries (standard)
+		//  721k image:  192 entries (this formula)
+		// 1200k floppy: 224 entries (standard)
+		// 1201k image:  304 entries (this formula)
 		if (!rootdir_ent)
 			rootdir_ent = volume_size_sect / 8 ? : 1;
 		if (rootdir_ent > 512)
@@ -615,11 +625,10 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 	} // while (1)
  found_total_clust:
 
-	if (fat_entry_nibbles == 8) {
-		// Can it fit into FAT16?
+	if (fat_entry_nibbles == 8) { // FAT32?
 		if (total_clust <= MAX_CLUST_CNT16) { // maybe fits FAT12/16?
 			if (!(opts & OPT_F)) // not explicit -F32?
-				goto make_fat12; /// go try fitting into FAT12
+				goto make_fat12; // go try to fit into FAT12
 // NB: FATs shrink when you go 32->12/16, increasing new total_clust - this could
 // make attempt to go to FAT16 invalid (too many clusters). In this case
 // FAT size calc loop goes back to FAT32 but sets OPT_F, preventing another
@@ -641,8 +650,7 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 	//
 	if (opts & OPT_v) {
 		fprintf(stderr,
-			"Device '%s':\n"
-			"heads:%u, sectors/track:%u, bytes/sector:%u\n"
+			"%s has %u heads and %u sectors/track, bytes/sector:%u\n"
 			"media descriptor:%02x\n"
 			"total sectors:%u, clusters:%u, sectors/cluster:%u\n"
 			"FATs:2, sectors/FAT:%u\n"
@@ -657,6 +665,7 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 //filesystem has 2 32-bit FATs and 64 sectors per cluster.
 //FAT size is 8192 sectors, and provides 8388350 clusters.
 //There are 64 reserved sectors.
+//Root directory contains 512 slots and uses 32 sectors. <--FAT12/16 adds this line
 //Volume ID is bd24d78e, no volume label.
 			argv[0],
 			heads_8bit, sect_per_track, bytes_per_sect,
@@ -665,6 +674,10 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 			sect_per_fat,
 			(unsigned)volume_id, volume_label11
 		);
+		//fprintf(stderr,
+		//	"root directory:%u slots\n",
+		//	rootdir_ent
+		//);
 	}
 
 	//
