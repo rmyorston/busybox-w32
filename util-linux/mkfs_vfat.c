@@ -305,7 +305,7 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 		//OPT_I = 1 << 7,  // [IGNORED] don't bark at entire disk devices
 		//OPT_i = 1 << 8,  // [IGNORED] volume ID
 		//OPT_l = 1 << 9,  // [IGNORED] bad block filename
-		//OPT_m = 1 << 10,  // [IGNORED] message file
+		//OPT_m = 1 << 10, // [IGNORED] message file
 		//OPT_n = 1 << 11, // volume label
 		//OPT_r = 1 << 12, // [IGNORED] root directory entries
 		OPT_R = 1 << 13,   // number of reserved sectors
@@ -688,6 +688,7 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 		// (a | b) is poor man's max(a, b)
 		bufsize |= sect_per_clust;
 		bufsize |= rootdir_sct;
+		bufsize |= 2; // FAT writing code uses 2 sectors
 		buf = xzalloc(bufsize * bytes_per_sect);
 	}
 
