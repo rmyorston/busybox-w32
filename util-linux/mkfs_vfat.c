@@ -228,6 +228,20 @@ static const char boot_code[] ALIGN1 =
 	// 077: message_txt:
 	"This is not a bootable disk\r\n";
 
+// -S, -s accept hex too, require power-of-2
+static unsigned parse_power2(const char *str, unsigned min_max)
+{
+	unsigned n;
+	unsigned min = min_max & 0x3ff;
+	unsigned max = min_max >> 12;
+	n = bb_strtou(str, NULL, 0);
+	if (n < min || n > max || (n & (n-1)))
+		return 0;
+	return n;
+}
+#define parse_power2(str, min, max) \
+	parse_power2((str), ((min) | ((max) << 12)))
+
 //compat:
 //mkdosfs 2.11 (12 Mar 2005)
 //Usage: mkdosfs [-A] [-c] [-C] [-v] [-I] [-l bad-block-file]
@@ -261,7 +275,6 @@ static const char boot_code[] ALIGN1 =
 ////usage:   "\n	-I	Allow to use entire disk device (e.g. /dev/hda)"
 //usage:     "\n	-n LBL	Volume label"
 //usage:     "\n	-v	Verbose"
-
 int mkfs_vfat_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 {
@@ -342,7 +355,7 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 	if (!S_ISBLK(st_mode)) {
 		if (!S_ISREG(st_mode)) {
 			if (!argv[1])
-				bb_simple_error_msg_and_die("image size must be specified");
+				bb_simple_error_msg_and_die("size must be given");
 		}
 		// not a block device, skip bad sectors check
 //		opts &= ~OPT_c;
@@ -369,24 +382,21 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 		xioctl(dev, BLKSSZGET, &min_bytes_per_sect);
 		if (min_bytes_per_sect > SECTOR_SIZE) {
 			bytes_per_sect = min_bytes_per_sect;
-			bb_error_msg("for this device sector size is %u", min_bytes_per_sect);
+			bb_error_msg("sector size: %u", min_bytes_per_sect);
 		}
 	}
 
 	if (opts & OPT_S) {
-		// -S: upstream accepts hex too, accepts any power-of-2 from 512 to 0x8000, but sectors >4k
-		// emit "Warning: sector size N > 4096 is non-standard, filesystem may not be usable"
+		// -S must be from 512 to 0x8000, but sectors >4k emit
+		// "Warning: sector size N > 4096 is non-standard, filesystem may not be usable"
 		// and it's correct: Linux kernel does not support >4k
-		bytes_per_sect = bb_strtou(arg_sector_size, NULL, 0);
-		if (bytes_per_sect < 0x200 || bytes_per_sect > 0x8000
-		 || (bytes_per_sect & (bytes_per_sect-1))
-		) {
-			bb_error_msg_and_die("bad -S '%s'", arg_sector_size);
-		}
+		bytes_per_sect = parse_power2(arg_sector_size, 0x200, 0x8000);
+		if (!bytes_per_sect)
+			bb_error_msg_and_die("bad -%c '%s'", 'S', arg_sector_size);
 	}
 
 	volume_size_bytes = get_volume_size_in_bytes(dev, argv[1], 1024,
-			/*minsize:*/ 6 * bytes_per_sect | /*extend:*/ 1
+			/*minsize:*/ 4 * bytes_per_sect | /*extend:*/ 1
 		);
 	volume_size_sect = volume_size_bytes / bytes_per_sect;
 	dbg("volume_size_sect:%llu", ULL(volume_size_sect));
@@ -493,7 +503,7 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 	}
 
 	if (reserved_sct < 1 || reserved_sct > 0xffff /* won't fit in header field */)
-		bb_error_msg_and_die("-R %u is invalid", reserved_sct);
+		bb_error_msg_and_die("bad -R %u", reserved_sct);
 
 	if (volume_size_sect > 0xFFFFFFFFu) {
 		// FAT32 can't store this (modulo sparsely supported DR-DOS extension).
@@ -511,11 +521,10 @@ int mkfs_vfat_main(int argc UNUSED_PARAM, char **argv)
 #define volume_size_sect ((uint32_t)volume_size_sect)
 
 	if (opts & OPT_s) {
-		// -s: upstream accepts hex too, accepts any power-of-2 from 1 to 0x80
-		unsigned n = bb_strtou(arg_sect_per_clust, NULL, 0);
-		if (n == 0 || n > 0x80 || (n & (n-1)))
-			bb_error_msg_and_die("bad -s '%s'", arg_sect_per_clust);
-		sect_per_clust = n; // uint8_t
+		// -s must be from 1 to 0x80
+		sect_per_clust = parse_power2(arg_sect_per_clust, 1, 0x80);
+		if (!sect_per_clust)
+			bb_error_msg_and_die("bad -%c '%s'", 's', arg_sect_per_clust);
 	}
 
 	if (opts & OPT_F) {
