@@ -727,6 +727,11 @@ typedef struct ioloop_state {
 	unsigned current_iteration_timeout;
 	unsigned last_timeout;
 	int (*pre_poll_callback)(struct ioloop_state*);
+	/* select() fd sets, sized to fit the largest fd seen so far.
+	 * One allocation: [rdbits: N longs][wrbits: N longs], N = wrbits - rdbits.
+	 * Both NULL initially (N = 0).
+	 */
+	unsigned long *rdbits, *wrbits;
 } ioloop_state_t;
 
 #define STRUCT_CONNECTION \
@@ -757,6 +762,7 @@ static ALWAYS_INLINE ioloop_state_t *new_ioloop_state(void)
 }
 static ALWAYS_INLINE void free_ioloop_state(ioloop_state_t *io)
 {
+	free(io->rdbits); /* frees wrbits too */
 	free(io);
 }
 static ALWAYS_INLINE void ioloop_decrease_current_timeout(ioloop_state_t *io, unsigned n)
