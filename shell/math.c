@@ -352,6 +352,8 @@ arith_apply(arith_state_t *math_state, operator op, var_or_num_t *numstack, var_
 	rez = top_of_stack->val;
 	if (op == TOK_UMINUS)
 		rez = -rez;
+	else if (op == TOK_UPLUS)
+		; /* do nothing... but do erase var name later. testcase: $((+a=2)) should complain */
 	else if (op == TOK_NOT)
 		rez = !rez;
 	else if (op == TOK_BNOT)
@@ -360,7 +362,7 @@ arith_apply(arith_state_t *math_state, operator op, var_or_num_t *numstack, var_
 		rez++;
 	else if (op == TOK_POST_DEC || op == TOK_PRE_DEC)
 		rez--;
-	else /*if (op != TOK_UPLUS) - always true, we drop TOK_UPLUS earlier */ {
+	else {
 		/* Binary operators */
 		arith_t right_side_val;
 
@@ -716,7 +718,7 @@ evaluate_string(arith_state_t *math_state, const char *expr)
 	 * a longer (300000-deep) version of this SIGSEGVs for me on 32-bit x86:
 	 * $(( 1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1))))))))))))))) ))
 	 * Shorter version can be used to see how stack is permanently enlarged
-	 * and has megabytes of allocated modofied data even after $(( )) is evaluated.
+	 * and has megabytes of allocated modified data even after $(( )) is evaluated.
 	 */
 
 	/* Start with a left paren */
@@ -880,10 +882,11 @@ evaluate_string(arith_state_t *math_state, const char *expr)
 		if (lasttok != TOK_VALUE) {
 			switch (op) {
 			case TOK_ADD:
-				//op = TOK_UPLUS;
-				//break;
-				/* Unary plus does nothing, do not even push it to opstack */
-				goto next_char_in_expr;
+				// Unary plus does nothing, do not even push it to opstack
+				//goto next_char_in_expr;
+				// ^^^ WRONG: $((+a=2)) is not the same as $((a=2))
+				op = TOK_UPLUS;
+				break;
 			case TOK_SUB:
 				op = TOK_UMINUS;
 				break;

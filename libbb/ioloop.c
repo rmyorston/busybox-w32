@@ -112,7 +112,7 @@ void FAST_FUNC ioloop_close_fd_in_all_conns(ioloop_state_t *io, int fd)
 // Write function, if it performs some processing, needs to account for the possibility
 // that any "incomplete data, can't write, wait for more" logic should also check whether
 // "more" is even possible: your other code may know that the read side is at EOF,
-// and arrange for it to not be polled. Thus a hang: read not reading, write waits for more date.
+// and arrange for it to not be polled. Thus a hang: read not reading, write waits for more data.
 //
 // read() - Perform read
 // Will not be called if read_fd become < 0.
