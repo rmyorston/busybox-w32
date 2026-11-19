@@ -79,9 +79,25 @@ static const uint8_t key_perm[56] ALIGN1 = {
 	14,  6, 61, 53, 45, 37, 29, 21, 13,  5, 28, 20, 12,  4
 };
 
-static const uint8_t key_shifts[16] ALIGN1 = {
-	1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1
+//static const uint8_t key_shifts[16] ALIGN1 = {
+//	/* 1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 */
+//	1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1
+//};
+enum { key_shifts_bitmask = 0
+	| (1<<2)
+	| (1<<3)
+	| (1<<4)
+	| (1<<5)
+	| (1<<6)
+	| (1<<7)
+	| (1<<9)
+	| (1<<10)
+	| (1<<11)
+	| (1<<12)
+	| (1<<13)
+	| (1<<14)
 };
+#define KEY_SHIFTS(i) (((key_shifts_bitmask >> i) & 1) + 1)
 
 static const uint8_t comp_perm[48] ALIGN1 = {
 	14, 17, 11, 24,  1,  5,  3, 28, 15,  6, 21, 10,
@@ -533,7 +549,7 @@ des_setkey(struct des_ctx *ctx, const char *key)
 	for (round = 0; round < 16; round++) {
 		uint32_t t0, t1;
 
-		shifts += key_shifts[round];
+		shifts += KEY_SHIFTS(round);
 
 		t0 = (k0 << shifts) | (k0 >> (28 - shifts));
 		t1 = (k1 << shifts) | (k1 >> (28 - shifts));
