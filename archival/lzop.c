@@ -96,7 +96,7 @@
 #include "liblzo_interface.h"
 
 /* lzo-2.03/src/lzo_ptr.h */
-#define pd(a,b)	 ((unsigned)((a)-(b)))
+#define pd(a, b) ((unsigned)((a)-(b)))
 
 #define lzo_version()			LZO_VERSION
 #define lzo_sizeof_dict_t		(sizeof(uint8_t*))
@@ -153,12 +153,11 @@ static NOINLINE int lzo1x_optimize(uint8_t *in, unsigned in_len,
 	uint8_t* litp = NULL;
 	unsigned lit = 0;
 	unsigned next_lit = NO_LIT;
-	unsigned nl;
 //	unsigned long o_m1_a = 0, o_m1_b = 0, o_m2 = 0, o_m3_a = 0, o_m3_b = 0;
 
 //	LZO_UNUSED(wrkmem);
 
-	*out_len = 0;
+	//*out_len = 0; // all "return" paths set it anyway
 
 	op = out;
 	ip = in;
@@ -210,6 +209,8 @@ static NOINLINE int lzo1x_optimize(uint8_t *in, unsigned in_len,
 
 		/* handle matches */
 		do {
+			unsigned nl;
+
 			if (t < 16) { /* a M1 match */
 				m_pos = op - 1;
 				m_pos -= t >> 2;
@@ -525,7 +526,7 @@ lzo_adler32(uint32_t adler, const uint8_t* buf, unsigned len)
 	while (len > 0) {
 		k = len < LZO_NMAX ? (unsigned) len : LZO_NMAX;
 		len -= k;
-		if (k != 0) do {
+		do {
 			s1 += *buf++;
 			s2 += s1;
 		} while (--k > 0);
@@ -535,13 +536,28 @@ lzo_adler32(uint32_t adler, const uint8_t* buf, unsigned len)
 	return (s2 << 16) | s1;
 }
 
-static FAST_FUNC uint32_t
+static NOINLINE FAST_FUNC uint32_t
 lzo_crc32(uint32_t c, const uint8_t* buf, unsigned len)
 {
 	//if (buf == NULL) - impossible
 	//	return 0;
 
 	return ~crc32_block_endian0(~c, buf, len, global_crc32_table);
+}
+
+static ALWAYS_INLINE FAST_FUNC void lzo_check(
+		uint32_t init,
+		uint8_t* buf, unsigned len,
+		uint32_t FAST_FUNC (*fn)(uint32_t, const uint8_t*, unsigned),
+		uint32_t ref)
+{
+	/* This function, by having the same order of parameters
+	 * as fn, and by being marked FAST_FUNC (same as fn),
+	 * saves a dozen bytes of code.
+	 */
+	uint32_t c = fn(init, buf, len);
+	if (c != ref)
+		bb_simple_error_msg_and_die("checksum error");
 }
 
 /**********************************************************************/
@@ -634,12 +650,9 @@ static void f_write(const void* buf, int cnt)
 static NOINLINE int lzo_compress(const header_t *h)
 {
 	unsigned block_size = LZO_BLOCK_SIZE;
-	int r = 0; /* LZO_E_OK */
 	uint8_t *const b1 = xzalloc(block_size);
 	uint8_t *const b2 = xzalloc(MAX_COMPRESSED_SIZE(block_size));
-	uint32_t d_adler32 = ADLER32_INIT_VALUE;
-	uint32_t d_crc32 = CRC32_INIT_VALUE;
-	uint8_t *wrk_mem = NULL;
+	uint8_t *wrk_mem;
 
 	/* Only these methods are possible, see lzo_set_method():
 	 * -1:    M_LZO1X_1_15
@@ -648,15 +661,20 @@ static NOINLINE int lzo_compress(const header_t *h)
 	 */
 	if (h->method == M_LZO1X_1)
 		wrk_mem = xzalloc(LZO1X_1_MEM_COMPRESS);
-	else /* check only if it's not the only possibility */
+	else {
+		/* check only if it's not the only possibility */
 		IF_LZOP_COMPR_HIGH(if (h->method == M_LZO1X_1_15))
 			wrk_mem = xzalloc(LZO1X_1_15_MEM_COMPRESS);
 #if ENABLE_LZOP_COMPR_HIGH
-	else /* must be h->method == M_LZO1X_999 */
-		wrk_mem = xzalloc(LZO1X_999_MEM_COMPRESS);
+		else /* must be h->method == M_LZO1X_999 */
+			wrk_mem = xzalloc(LZO1X_999_MEM_COMPRESS);
 #endif
+	}
 
 	for (;;) {
+		int r;
+		uint32_t d_adler32 = d_adler32;
+//		uint32_t d_crc32 = d_crc32;
 		unsigned src_len, dst_len;
 		int l;
 		uint32_t wordbuf[6];
@@ -677,8 +695,9 @@ static NOINLINE int lzo_compress(const header_t *h)
 		/* compute checksum of uncompressed block */
 		if (h->flags32 & F_ADLER32_D)
 			d_adler32 = lzo_adler32(ADLER32_INIT_VALUE, b1, src_len);
-		if (h->flags32 & F_CRC32_D)
-			d_crc32 = lzo_crc32(CRC32_INIT_VALUE, b1, src_len);
+//CRC32 on compress is requested by --crc32 option which we don't yet support
+//		if (h->flags32 & F_CRC32_D)
+//			d_crc32 = lzo_crc32(CRC32_INIT_VALUE, b1, src_len);
 
 		/* compress */
 		if (h->method == M_LZO1X_1)
@@ -711,17 +730,21 @@ static NOINLINE int lzo_compress(const header_t *h)
 		/* write checksum of uncompressed block */
 		if (h->flags32 & F_ADLER32_D)
 			*wordptr++ = htonl(d_adler32);
-		if (h->flags32 & F_CRC32_D)
-			*wordptr++ = htonl(d_crc32);
+//		if (h->flags32 & F_CRC32_D)
+//			*wordptr++ = htonl(d_crc32);
 
 		if (dst_len < src_len) {
 			/* write checksum of compressed block */
-			if (h->flags32 & F_ADLER32_C)
-				*wordptr++ = htonl(lzo_adler32(ADLER32_INIT_VALUE, b2, dst_len));
-			if (h->flags32 & F_CRC32_C)
-				*wordptr++ = htonl(lzo_crc32(CRC32_INIT_VALUE, b2, dst_len));
+			if (h->flags32 & F_ADLER32_C) {
+				uint32_t v32 = lzo_adler32(ADLER32_INIT_VALUE, b2, dst_len);
+				*wordptr++ = htonl(v32);
+			}
+//			if (h->flags32 & F_CRC32_C) {
+//				uint32_t v32 = lzo_crc32(CRC32_INIT_VALUE, b2, dst_len);
+//				*wordptr++ = htonl(v32);
+//			}
 		}
-		xwrite(1, wordbuf, ((char*)wordptr) - ((char*)wordbuf));
+		xwrite(1, wordbuf, (char*)wordptr - (char*)wordbuf);
 		if (dst_len < src_len) {
 			/* write compressed block data */
 			xwrite(1, b2, dst_len);
@@ -738,21 +761,6 @@ static NOINLINE int lzo_compress(const header_t *h)
 	free(b1);
 	free(b2);
 	return 1;
-}
-
-static ALWAYS_INLINE void lzo_check(
-		uint32_t init,
-		uint8_t* buf, unsigned len,
-		uint32_t FAST_FUNC (*fn)(uint32_t, const uint8_t*, unsigned),
-		uint32_t ref)
-{
-	/* This function, by having the same order of parameters
-	 * as fn, and by being marked FAST_FUNC (same as fn),
-	 * saves a dozen bytes of code.
-	 */
-	uint32_t c = fn(init, buf, len);
-	if (c != ref)
-		bb_simple_error_msg_and_die("checksum error");
 }
 
 /**********************************************************************/
@@ -1074,6 +1082,7 @@ static int do_lzo_compress(void)
 		h->flags32 |= htonl(F_ADLER32_D);
 		if (option_mask32 & OPT_C)
 			h->flags32 |= htonl(F_ADLER32_C);
+//TODO? if specified, --crc32 should set F_CRC32_D/C instead of ADLER bits
 	}
 
 	/* write_header() also converts h->flags32 to native endianness */
