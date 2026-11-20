@@ -80,12 +80,12 @@ typedef struct {
 } rpm_index;
 
 struct globals {
-	void *map;
+	char *map;
 	rpm_index *mytags;
 	int tagcount;
 	unsigned mapsize;
-	IF_VARIABLE_ARCH_PAGESIZE(unsigned pagesize;)
-#define G_pagesize cached_pagesize(G.pagesize)
+//	IF_VARIABLE_ARCH_PAGESIZE(unsigned pagesize;)
+//#define G_pagesize cached_pagesize(G.pagesize)
 } FIX_ALIASING;
 #define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { setup_common_bufsiz(); } while (0)
@@ -105,6 +105,17 @@ static int rpm_gettags(const char *filename)
 	}
 
 	storepos = xlseek(fd, 96, SEEK_CUR); /* Seek past the unused lead */
+	//TODO: check at least magic?
+	// 0-3   4   Magic: ED AB EE DB
+	// 4     1   Format major version (I see 3)
+	// 5     1   Format minor version (I see 0)
+	// 6-7   2   Package type (historically 0 = binary, 1 = source)
+	// 8-9   2   Architecture number
+	// 10-75 66  NUL-terminated package name, padded with NUL bytes
+	// 76-77 2   Operating-system number
+	// 78-79 2   Signature type (I see 5)
+	// 80-95 16  Reserved
+	// The architecture, OS, and signature-type fields are largely historical
 	G.tagcount = 0;
 	tags = NULL;
 	idx = 0;
@@ -116,13 +127,10 @@ static int rpm_gettags(const char *filename)
 		xread(fd, &header, sizeof(header));
 		if (header.magic_and_ver != htonl(RPM_HEADER_MAGICnVER))
 			bb_error_msg_and_die("invalid RPM header magic in '%s'", filename);
-#if BB_LITTLE_ENDIAN
-		header.size = ntohl(header.size);
-#endif
 		cnt = ntohl(header.entries);
 		/* Prevent multiplication overflow leading to undersized allocations */
-		if (sizeof(cnt) <= 4 && cnt >= 0x00400000) /* ~4 million */
-			bb_error_msg_and_die("bad RPM header.entries:%u", cnt);
+		if (cnt >= 0x00400000) /* ~4 million */
+			bb_simple_error_msg_and_die("corrupted data");
 		storepos += sizeof(header) + cnt * 16;
 
 		G.tagcount += cnt;
@@ -134,23 +142,29 @@ static int rpm_gettags(const char *filename)
 			tag->tag = ntohl(tag->tag);
 			tag->type = ntohl(tag->type);
 			tag->count = ntohl(tag->count);
+//NB: we do not check here that count is not close to overflow - this is done on access
 #endif
 			tag->offset = storepos + ntohl(tag->offset);
+//NB: we do not check here that offset fits into G.map - this is done on access
 			if (pass == 0)
 				tag->tag -= 743;
 			idx++;
 		}
+
+		storepos = ntohl(header.size);
 		/* Skip padding to 8 byte boundary after reading signature headers */
 		if (pass == 0)
-			while (header.size & 7)
-				header.size++;
+			while (storepos & 7)
+				storepos++;
+		if (storepos >= 0x04000000) /* sanity check: 64mbytes */
+			bb_simple_error_msg_and_die("corrupted data");
 		/* Seek past store */
-		storepos = xlseek(fd, header.size, SEEK_CUR);
+		storepos = xlseek(fd, storepos, SEEK_CUR);
 	}
 	G.mytags = tags;
 
 	/* Map the store */
-	storepos = (storepos + G_pagesize) & -(int)G_pagesize;
+	//storepos = (storepos + G_pagesize) & -(int)G_pagesize; // mmap() does not require size to be page-aligned
 	/* remember size for munmap */
 	G.mapsize = storepos;
 	G.map = mmap_read(fd, storepos);
@@ -178,9 +192,24 @@ static char *rpm_getstr(int tag, int itemindex)
 	 || found->type == RPM_STRING_ARRAY_TYPE
 	) {
 		int n;
-		char *tmpstr = (char *) G.map + found->offset;
-		for (n = 0; n < itemindex; n++)
-			tmpstr = tmpstr + strlen(tmpstr) + 1;
+		unsigned to_end;
+		char *tmpstr;
+
+		to_end = G.mapsize - found->offset;
+		if (to_end > G.mapsize) /* offset overflows mapsize */
+			bb_simple_error_msg_and_die("corrupted data");
+		tmpstr = G.map + found->offset;
+
+		for (n = 0; n < itemindex; n++) {
+			char *nul = memchr(tmpstr, '\0', to_end);
+			if (!nul)
+				bb_simple_error_msg_and_die("corrupted data");
+			nul++;
+			to_end -= nul - tmpstr;
+			tmpstr = nul;
+		}
+		if (!memchr(tmpstr, '\0', to_end))
+			bb_simple_error_msg_and_die("corrupted data");
 		return tmpstr;
 	}
 	return NULL;
@@ -195,6 +224,7 @@ static char *rpm_getstr0(int tag)
 static int rpm_getint(int tag, int itemindex)
 {
 	rpm_index *found;
+	unsigned to_end, width;
 	char *tmpint;
 
 	/* gcc throws warnings here when sizeof(void*)!=sizeof(int) ...
@@ -203,20 +233,34 @@ static int rpm_getint(int tag, int itemindex)
 	if (!found || itemindex >= found->count)
 		return -1;
 
-	tmpint = (char *) G.map + found->offset;
-	if (found->type == RPM_INT32_TYPE) {
-		tmpint += itemindex*4;
+	to_end = G.mapsize - found->offset;
+	if (to_end > G.mapsize) /* offset overflows mapsize */
+		bb_simple_error_msg_and_die("corrupted data");
+	tmpint = G.map + found->offset;
+
+	width = found->type;
+	switch (found->type) {
+	default:
+		return -1;
+	case RPM_INT8_TYPE:  // 2 -> 1
+	case RPM_INT16_TYPE: // 3 -> 2
+		width--;
+	case RPM_INT32_TYPE: // 4 -> 4
+		break;
+	}
+	itemindex *= width;
+	if (itemindex + width > to_end)
+		bb_simple_error_msg_and_die("corrupted data");
+	tmpint += itemindex;
+
+	if (width == 4) {
 		return ntohl(*(int32_t*)tmpint);
 	}
-	if (found->type == RPM_INT16_TYPE) {
-		tmpint += itemindex*2;
+	if (width == 2) {
 		return ntohs(*(int16_t*)tmpint);
 	}
-	if (found->type == RPM_INT8_TYPE) {
-		tmpint += itemindex;
-		return *(int8_t*)tmpint;
-	}
-	return -1;
+	// width == 1
+	return *(int8_t*)tmpint;
 }
 
 static int rpm_getcount(int tag)
@@ -225,6 +269,9 @@ static int rpm_getcount(int tag)
 	found = bsearch(&tag, G.mytags, G.tagcount, sizeof(G.mytags[0]), bsearch_rpmtag);
 	if (!found)
 		return 0;
+	// make rpm_getcount() callers not worry about getting clearly bogus values
+	if (found->count >= G.mapsize)
+		bb_simple_error_msg_and_die("corrupted data");
 	return found->count;
 }
 
@@ -279,7 +326,8 @@ static void print_all_tags(void)
 		 || tag->type == RPM_STRING_ARRAY_TYPE
 		) {
 			unsigned n;
-			char *str = (char *) G.map + tag->offset;
+			char *str = G.map + tag->offset;
+//TODO: check that offset fits G.map
 
 			printf("tag[%u] %08x type %08x offset %08x count %d '%s'\n",
 				i, tag->tag, tag->type, tag->offset, tag->count, str
