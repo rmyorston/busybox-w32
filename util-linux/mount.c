@@ -338,6 +338,7 @@ static const int32_t mount_options[] ALIGN4 = {
 	IF_FEATURE_MOUNT_FSTAB(
 		/* "defaults" */ 0,
 		/* "quiet" 0 - do not filter out, vfat wants to see it */
+		/* "auto" */   ~MOUNT_NOAUTO,
 		/* "noauto" */ MOUNT_NOAUTO,
 		IF_DESKTOP(/* "user"  */ MOUNT_USERS,)
 		IF_DESKTOP(/* "users" */ MOUNT_USERS,)
@@ -400,6 +401,7 @@ static const char mount_option_str[] ALIGN1 =
 		"defaults\0"
 		// "quiet\0" - do not filter out, vfat wants to see it
 		// "swap\0" - WRONG, fstab uses "swap" _fstype_, not _option_, to indicate a swap partition
+		"auto\0"
 		"noauto\0"
 		IF_DESKTOP("user\0")
 		IF_DESKTOP("users\0")
