@@ -740,7 +740,7 @@ static NOINLINE int lzo_compress(const header_t *h)
 	return 1;
 }
 
-static FAST_FUNC void lzo_check(
+static ALWAYS_INLINE void lzo_check(
 		uint32_t init,
 		uint8_t* buf, unsigned len,
 		uint32_t FAST_FUNC (*fn)(uint32_t, const uint8_t*, unsigned),
@@ -763,16 +763,14 @@ static FAST_FUNC void lzo_check(
 static NOINLINE int lzo_decompress(uint32_t h_flags32)
 {
 	unsigned block_size = LZO_BLOCK_SIZE;
-	int r;
-	uint32_t src_len, dst_len;
-	uint32_t c_adler32 = ADLER32_INIT_VALUE;
-	uint32_t d_adler32 = ADLER32_INIT_VALUE;
-	uint32_t c_crc32 = CRC32_INIT_VALUE, d_crc32 = CRC32_INIT_VALUE;
-	uint8_t *b1;
 	uint32_t mcs_block_size = MAX_COMPRESSED_SIZE(block_size);
 	uint8_t *b2 = NULL;
 
 	for (;;) {
+		uint8_t *b1;
+		uint32_t src_len, dst_len;
+		uint32_t c_adler32, d_adler32;
+		uint32_t c_crc32, d_crc32;
 		uint8_t *dst;
 
 		/* read uncompressed block size */
@@ -782,10 +780,10 @@ static NOINLINE int lzo_decompress(uint32_t h_flags32)
 		if (dst_len == 0)
 			break;
 
-		/* error if split file */
-		if (dst_len == 0xffffffffL)
-			/* should not happen - not yet implemented */
-			bb_simple_error_msg_and_die("this file is a split lzop file");
+//		/* error if split file */
+//		if (dst_len == 0xffffffffL)
+//			/* should not happen - not yet implemented */
+//			bb_simple_error_msg_and_die("this file is a split lzop file");
 
 		if (dst_len > MAX_BLOCK_SIZE)
 			bb_simple_error_msg_and_die("corrupted data");
@@ -825,6 +823,7 @@ static NOINLINE int lzo_decompress(uint32_t h_flags32)
 		xread(0, b1, src_len);
 
 		if (src_len < dst_len) {
+			int r;
 			unsigned d = dst_len;
 
 			if (!(option_mask32 & OPT_F)) {

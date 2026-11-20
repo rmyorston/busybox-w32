@@ -61,8 +61,7 @@ int blkdiscard_main(int argc UNUSED_PARAM, char **argv)
 
 	fd = xopen(argv[0], O_RDWR|O_EXCL);
 //Why bother, BLK[SEC]DISCARD will fail on non-blockdevs anyway?
-//	xfstat(fd, &st);
-//	if (!S_ISBLK(st.st_mode))
+//	if (!S_ISBLK(xfstat_mode(fd)))
 //		bb_error_msg_and_die("%s: not a block device", argv[0]);
 
 	offset = xatoull_sfx(offset_str, kMG_suffixes);

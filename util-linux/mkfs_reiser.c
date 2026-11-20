@@ -154,7 +154,6 @@ int mkfs_reiser_main(int argc UNUSED_PARAM, char **argv)
 	unsigned blocks, bitmap_blocks, i, block;
 	time_t timestamp;
 	const char *label = "";
-	struct stat st;
 	int fd;
 	uint8_t *buf;
 	struct reiserfs_super_block *sb;
@@ -169,9 +168,11 @@ int mkfs_reiser_main(int argc UNUSED_PARAM, char **argv)
 
 	// check the device is a block device
 	fd = xopen(argv[0], O_RDWR | O_EXCL);
-	xfstat(fd, &st, argv[0]);
-	if (!S_ISBLK(st.st_mode) && !(option_mask32 & OPT_f))
-		bb_error_msg_and_die("%s: not a block device", argv[0]);
+	if (!(option_mask32 & OPT_f)) {
+		mode_t st_mode = xfstat_mode(fd, argv[0]);
+		if (!S_ISBLK(st_mode))
+			bb_error_msg_and_die("%s: not a block device", argv[0]);
+	}
 
 	// check if it is mounted
 	// N.B. what if we format a file? find_mount_point will return false negative since

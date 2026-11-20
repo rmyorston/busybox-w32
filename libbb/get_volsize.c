@@ -8,12 +8,13 @@
  */
 #include "libbb.h"
 
+#define ULL(x) ((unsigned long long)(x))
+
 uoff_t FAST_FUNC get_volume_size_in_bytes(int fd,
 		const char *override,
 		unsigned override_units,
 		unsigned minsize_extend)
 {
-#define ULL(x) ((unsigned long long)(x))
 	uoff_t result;
 #define extend  ((minsize_extend) & 1)
 #define minsize ((minsize_extend) & ~1u)
@@ -23,7 +24,7 @@ uoff_t FAST_FUNC get_volume_size_in_bytes(int fd,
 		if (result >= (uoff_t)(MAXINT(off_t)) / override_units)
 			bb_error_msg_and_die("image size %lld is too big", ULL(result));
 		result *= override_units;
-		if (result == 0)
+		if (result < minsize) // NB: we expect caller to pass nonzero minsize
 			goto insane;
 		// Do we need to extend the file?
 		// Seek past end fails on block devices but works on files!
@@ -34,10 +35,12 @@ uoff_t FAST_FUNC get_volume_size_in_bytes(int fd,
 				// the file is shorter
 				xwrite(fd, "", 1); // grow it
 			}
+		} else {
+// we use %lld instead of %llu in order for small negative offsets
+// (which are often results of underflow in some buggy math)
+// to be easily seen as such: show -1, not 18446744073709551615.
+			bb_error_msg("warning, block device is smaller than %lld bytes", ULL(result));
 		}
-		//else {
-		//	bb_error_msg("warning, block device is smaller");
-		//}
 	} else {
 		// more portable than BLKGETSIZE[64]
 		result = xlseek(fd, 0, SEEK_END);

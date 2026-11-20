@@ -51,18 +51,17 @@ int add_remove_shell_main(int argc UNUSED_PARAM, char **argv)
 	FILE *orig_fp;
 	char *orig_fn;
 	char *new_fn;
-	struct stat sb;
-
-	sb.st_mode = 0666;
+	mode_t st_mode;
 
 	argv++;
 
 	orig_fn = xmalloc_follow_symlinks(SHELLS_FILE);
 	if (!orig_fn)
 		return EXIT_FAILURE;
+	st_mode = 0666;
 	orig_fp = fopen_for_read(orig_fn);
 	if (orig_fp)
-		xfstat(fileno(orig_fp), &sb, orig_fn);
+		st_mode = xfstat_mode(fileno(orig_fp), orig_fn);
 
 	new_fn = xasprintf("%s.tmp", orig_fn);
 	/*
@@ -73,7 +72,7 @@ int add_remove_shell_main(int argc UNUSED_PARAM, char **argv)
 	 * after which it should revert to O_TRUNC.
 	 * For now, I settle for O_TRUNC instead.
 	 */
-	xmove_fd(xopen3(new_fn, O_WRONLY | O_CREAT | O_TRUNC, sb.st_mode), STDOUT_FILENO);
+	xmove_fd(xopen3(new_fn, O_WRONLY | O_CREAT | O_TRUNC, st_mode), STDOUT_FILENO);
 	/* TODO?
 	xfchown(STDOUT_FILENO, sb.st_uid, sb.st_gid);
 	*/

@@ -42,13 +42,13 @@
 #if ENABLE_SELINUX
 static void mkswap_selinux_setcontext(int fd, const char *path)
 {
-	struct stat stbuf;
+	mode_t st_mode;
 
 	if (!is_selinux_enabled())
 		return;
 
-	xfstat(fd, &stbuf, path);
-	if (S_ISREG(stbuf.st_mode)) {
+	st_mode = xfstat_mode(fd, path);
+	if (S_ISREG(st_mode)) {
 		const char *newcon;
 		char *oldcon = NULL;
 		context_t context;
@@ -56,7 +56,7 @@ static void mkswap_selinux_setcontext(int fd, const char *path)
 		if (fgetfilecon(fd, &oldcon) < 0) {
 			if (errno != ENODATA)
 				goto error;
-			if (matchpathcon(path, stbuf.st_mode, &oldcon) < 0)
+			if (matchpathcon(path, st_mode, &oldcon) < 0)
 				goto error;
 		}
 		context = context_new(oldcon);

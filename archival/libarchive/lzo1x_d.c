@@ -155,6 +155,7 @@ int lzo1x_decompress_safe(const uint8_t* in, unsigned in_len,
 #else
 		m_pos = op - (1 + M2_MAX_OFFSET);
 		m_pos -= t >> 2;
+		NEED_IP(1);
 		m_pos -= *ip++ << 2;
 #endif
 		TEST_LB(m_pos); NEED_OP(3);
@@ -189,6 +190,7 @@ int lzo1x_decompress_safe(const uint8_t* in, unsigned in_len,
 #if defined(LZO1X)
 				m_pos = op - 1;
 				m_pos -= (t >> 2) & 7;
+				NEED_IP(1);
 				m_pos -= *ip++ << 3;
 				t = (t >> 5) - 1;
 #elif defined(LZO1Y)
@@ -235,6 +237,7 @@ int lzo1x_decompress_safe(const uint8_t* in, unsigned in_len,
 				m_off = 1 + (ip[0] >> 2) + (ip[1] << 6);
 #endif
 #else /* !COPY_DICT */
+				NEED_IP(2);
 #if defined(LZO1Z)
 				{
 					unsigned off = 1 + (ip[0] << 6) + (ip[1] >> 2);
@@ -283,6 +286,7 @@ int lzo1x_decompress_safe(const uint8_t* in, unsigned in_len,
 				last_m_off = m_off;
 #endif
 #else /* !COPY_DICT */
+				NEED_IP(2);
 #if defined(LZO1Z)
 				m_pos -= (ip[0] << 6) + (ip[1] >> 2);
 #elif defined(LZO_UNALIGNED_OK_2) && defined(LZO_ABI_LITTLE_ENDIAN)
@@ -317,6 +321,7 @@ int lzo1x_decompress_safe(const uint8_t* in, unsigned in_len,
 #else
 				m_pos = op - 1;
 				m_pos -= t >> 2;
+				NEED_IP(1);
 				m_pos -= *ip++ << 2;
 #endif
 				TEST_LB(m_pos); NEED_OP(2);

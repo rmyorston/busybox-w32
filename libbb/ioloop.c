@@ -112,7 +112,7 @@ void FAST_FUNC ioloop_close_fd_in_all_conns(ioloop_state_t *io, int fd)
 // Write function, if it performs some processing, needs to account for the possibility
 // that any "incomplete data, can't write, wait for more" logic should also check whether
 // "more" is even possible: your other code may know that the read side is at EOF,
-// and arrange for it to not be polled. Thus a hang: read not reading, write waits for more date.
+// and arrange for it to not be polled. Thus a hang: read not reading, write waits for more data.
 //
 // read() - Perform read
 // Will not be called if read_fd become < 0.
@@ -152,6 +152,49 @@ static ALWAYS_INLINE int read_to_buf(connection_t *conn)
 	return conn->read(conn);
 }
 
+/* Linux select() is not limited to FD_SETSIZE fds, but FD_SET/FD_ISSET are
+ * (with _FORTIFY_SOURCE, glibc aborts on fd >= FD_SETSIZE).
+ * Use our own bit ops on variable-sized sets.
+ */
+#define BPL (sizeof(long) * 8)
+#define FDBIT_SET(set, fd)   ((set)[(unsigned)(fd) / BPL] |= 1UL << ((unsigned)(fd) % BPL))
+#define FDBIT_ISSET(set, fd) (((set)[(unsigned)(fd) / BPL] >> ((unsigned)(fd) % BPL)) & 1)
+/* NB: bit ops must stay on longs: on big-endian, fd_set bit order
+ * within bytes differs from "byte fd/8, bit fd%8" */
+
+#define IO_FDBYTES(io) ((uint8_t*)((io)->wrbits) - (uint8_t*)((io)->rdbits))
+#define IO_FDBITS(io)  (IO_FDBYTES(io) * 8)
+
+static NOINLINE void grow_fdsets(ioloop_state_t *io, unsigned fd)
+{
+	uint8_t *p;
+	/* Kernel reads fd_sets in longs: size must be a multiple of sizeof(long)
+	 * (this also keeps wrbits aligned) */
+	unsigned new = (fd / BPL + 1) * sizeof(long);
+	unsigned old = IO_FDBYTES(io);
+
+	if (new <= old) return; /* paranoia */
+
+	/* Must preserve bits: we are called in the middle of filling the sets */
+	p = xrealloc(io->rdbits, 2 * new);
+	io->rdbits = (void*)p;
+	io->wrbits = (void*)(p + new);
+	/* [old, 2*old) -> [new, new+old) may overlap if new < 2*old */
+	memmove(p + new, p + old, old);           /* move wrbits */
+	memset(p + new + old, 0, new - old);      /* wrbits tail */
+	memset(p + old, 0, new - old);            /* rdbits tail */
+}
+
+static ALWAYS_INLINE int track_maxfd(ioloop_state_t *io, int fd, int maxfd)
+{
+	if (fd > maxfd) {
+		if ((unsigned)fd >= IO_FDBITS(io))
+			grow_fdsets(io, fd);
+		maxfd = fd;
+	}
+	return maxfd;
+}
+
 int FAST_FUNC ioloop_run(ioloop_state_t *io)
 {
 	connection_t *conn;
@@ -160,13 +203,16 @@ int FAST_FUNC ioloop_run(ioloop_state_t *io)
 	int count;
 	struct timeval tv;
 	struct timeval *tv_ptr;
-	fd_set rdfdset, wrfdset;
 
 	io->current_iteration_timeout = io->max_timeout ? io->max_timeout : UINT_MAX;
 //bb_error_msg("io->current_iteration_timeout:%d", io->current_iteration_timeout);
  again:
-	FD_ZERO(&rdfdset);
-	FD_ZERO(&wrfdset);
+	/* The sets are contiguous: one memset clears both.
+	 * (Guard is needed: memset's arg is declared nonnull,
+	 * the compiler may assume rdbits != NULL afterwards).
+	 */
+	if (io->rdbits)
+		memset(io->rdbits, 0, 2 * IO_FDBYTES(io));
 
 	conn = io->conns;
 	if (!conn)
@@ -190,16 +236,14 @@ int FAST_FUNC ioloop_run(ioloop_state_t *io)
 		rcr = should_poll_read_fd(conn);
 		if (rcr < 0)
 			goto next;
+		/* track_maxfd() before FDBIT_SET(): it may grow the sets */
 		if (rcw > 0) {
-			FD_SET(conn->write_fd, &wrfdset);
-//FIXME: what if fd > 1023
-			if (conn->write_fd > maxfd)
-				maxfd = conn->write_fd;
+			maxfd = track_maxfd(io, conn->write_fd, maxfd);
+			FDBIT_SET(io->wrbits, conn->write_fd);
 		}
 		if (rcr > 0) {
-			FD_SET(conn->read_fd, &rdfdset);
-			if (conn->read_fd > maxfd)
-				maxfd = conn->read_fd;
+			maxfd = track_maxfd(io, conn->read_fd, maxfd);
+			FDBIT_SET(io->rdbits, conn->read_fd);
 		}
  next:
 		conn = next;
@@ -218,8 +262,9 @@ int FAST_FUNC ioloop_run(ioloop_state_t *io)
 		tv.tv_usec = poll_timeout_us % 1000000;
 		tv_ptr = &tv;
 	}
-	maxfd++;
-	count = select(maxfd, maxfd ? &rdfdset : NULL, maxfd ? &wrfdset : NULL, NULL, tv_ptr);
+	maxfd++; /* now: highest fd + 1, or 0 if no fds to wait on */
+	/* If maxfd == 0, sets are not accessed (they may be NULL) */
+	count = select(maxfd, (fd_set*)io->rdbits, (fd_set*)io->wrbits, NULL, tv_ptr);
 	dbg("select:%d", count);
 
 	/* Any function in the loop can change it, modifying next select() timeout */
@@ -240,22 +285,27 @@ int FAST_FUNC ioloop_run(ioloop_state_t *io)
 	while (conn) {
 		connection_t *next = conn->next; /* in case conn freed */
 		int rcw;
+		int fd;
 
 		/* We do check for valid fd >=0: this means that conns
 		 * may prevent I/O of other conns by setting fds to -1.
+		 * fd < maxfd check: conns inserted (or fds changed) after
+		 * the sets were filled may have fds beyond the sets' size.
 		 */
-		dbg("conn->write_fd:%d ?", conn->write_fd);
-		if (conn->write_fd >= 0 && FD_ISSET(conn->write_fd, &wrfdset)) {
-			dbg("conn->write_fd:%d ready", conn->write_fd);
+		fd = conn->write_fd;
+		dbg("conn->write_fd:%d ?", fd);
+		if (fd >= 0 && fd < maxfd && FDBIT_ISSET(io->wrbits, fd)) {
+			dbg("conn->write_fd:%d ready", fd);
 			rcw = write_from_buf(conn);
 			if (rcw < 0) {
 				/* often indicates that conn is gone (freed), do not use it anymore */
 				goto next1;
 			}
 		}
-		dbg("conn->read_fd:%d ?", conn->read_fd);
-		if (conn->read_fd >= 0 && FD_ISSET(conn->read_fd, &rdfdset)) {
-			dbg("conn->read_fd:%d ready", conn->read_fd);
+		fd = conn->read_fd;
+		dbg("conn->read_fd:%d ?", fd);
+		if (fd >= 0 && fd < maxfd && FDBIT_ISSET(io->rdbits, fd)) {
+			dbg("conn->read_fd:%d ready", fd);
 			read_to_buf(conn);
 		}
  next1:

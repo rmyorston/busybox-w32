@@ -47,7 +47,7 @@
 int mesg_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int mesg_main(int argc UNUSED_PARAM, char **argv)
 {
-	struct stat sb;
+	mode_t st_mode;
 	mode_t m;
 	char c = 0;
 
@@ -67,13 +67,13 @@ int mesg_main(int argc UNUSED_PARAM, char **argv)
 	if (!isatty(STDIN_FILENO))
 		bb_simple_error_msg_and_die("not a tty");
 
-	xfstat(STDIN_FILENO, &sb, "stdin");
+	st_mode = xfstat_mode(STDIN_FILENO, "stdin");
 	if (c == 0) {
-		puts((sb.st_mode & (S_IWGRP|S_IWOTH)) ? "is y" : "is n");
+		puts((st_mode & (S_IWGRP|S_IWOTH)) ? "is y" : "is n");
 		return EXIT_SUCCESS;
 	}
-	m = (c == 'y') ? sb.st_mode | S_IWGRP_OR_S_IWOTH
-	               : sb.st_mode & ~(S_IWGRP|S_IWOTH);
+	m = (c == 'y') ? st_mode | S_IWGRP_OR_S_IWOTH
+	               : st_mode & ~(S_IWGRP|S_IWOTH);
 	if (fchmod(STDIN_FILENO, m) != 0)
 		bb_perror_nomsg_and_die();
 	return EXIT_SUCCESS;

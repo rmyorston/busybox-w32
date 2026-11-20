@@ -671,10 +671,8 @@ int mkfs_minix_main(int argc UNUSED_PARAM, char **argv)
 	} else if (G.total_blocks > 65535)
 		G.total_blocks = 65535;
 #if 0
-	struct stat statbuf;
-	xfstat(dev_fd, &statbuf, G.device_name);
 /* why? */
-	if (!S_ISBLK(statbuf.st_mode))
+	if (!S_ISBLK(xfstat_mode(dev_fd, G.device_name)))
 		opt &= ~1; // clear -c (check)
 #if 0
 /* I don't know why someone has special code to prevent mkfs.minix

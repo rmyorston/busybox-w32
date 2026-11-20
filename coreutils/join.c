@@ -110,7 +110,7 @@ static void field_split(char *s, LINE *curr)
 		s1 = strpbrk(s, " \t");
 		if (s1 == NULL) {
 			/* last field, skip to NUL not non-existent next field */
-			sn = strlen(s) IF_PLATFORM_MINGW32(- 1);
+			sn = strlen(s) - 1;
 		} else {
 			sn = s1 - s;
 			*s1 = '\0';

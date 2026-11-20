@@ -326,9 +326,7 @@ int ubi_tools_main(int argc UNUSED_PARAM, char **argv)
 				xmove_fd(xopen(*argv, O_RDONLY), STDIN_FILENO);
 
 			if (!(opts & OPTION_s)) {
-				struct stat st;
-				xfstat(STDIN_FILENO, &st, *argv);
-				size_bytes = st.st_size;
+				size_bytes = xfstat_size(STDIN_FILENO, *argv);
 			}
 
 			bytes64 = size_bytes;

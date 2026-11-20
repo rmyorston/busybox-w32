@@ -758,6 +758,8 @@ void bb_unsetenv_and_free(char *key) FAST_FUNC;
 void xunlink(const char *pathname) FAST_FUNC;
 void xstat(const char *pathname, struct stat *buf) FAST_FUNC;
 void xfstat(int fd, struct stat *buf, const char *errmsg) FAST_FUNC;
+mode_t FAST_FUNC xfstat_mode(int fd, const char *file_name);
+off_t FAST_FUNC xfstat_size(int fd, const char *file_name);
 int open3_or_warn(const char *pathname, int flags, int mode) FAST_FUNC;
 int open_or_warn(const char *pathname, int flags) FAST_FUNC;
 int xopen3(const char *pathname, int flags, int mode) FAST_FUNC;
@@ -772,6 +774,7 @@ off_t xlseek(int fd, off_t offset, int whence) FAST_FUNC;
 int xmkstemp(char *template) FAST_FUNC;
 off_t fdlength(int fd) FAST_FUNC;
 
+/* NB: code requires that minsize is 2 bytes or larger */
 uoff_t FAST_FUNC get_volume_size_in_bytes(int fd,
 		const char *override,
 		unsigned override_units,
@@ -801,6 +804,11 @@ typedef struct ioloop_state {
 	unsigned current_iteration_timeout;
 	unsigned last_timeout;
 	int (*pre_poll_callback)(struct ioloop_state*);
+	/* select() fd sets, sized to fit the largest fd seen so far.
+	 * One allocation: [rdbits: N longs][wrbits: N longs], N = wrbits - rdbits.
+	 * Both NULL initially (N = 0).
+	 */
+	unsigned long *rdbits, *wrbits;
 } ioloop_state_t;
 
 #define STRUCT_CONNECTION \
@@ -831,6 +839,7 @@ static ALWAYS_INLINE ioloop_state_t *new_ioloop_state(void)
 }
 static ALWAYS_INLINE void free_ioloop_state(ioloop_state_t *io)
 {
+	free(io->rdbits); /* frees wrbits too */
 	free(io);
 }
 static ALWAYS_INLINE void ioloop_decrease_current_timeout(ioloop_state_t *io, unsigned n)

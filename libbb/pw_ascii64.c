@@ -60,6 +60,7 @@ num2str64_lsb_first(char *s, unsigned v, int n)
 	return s;
 }
 
+#if ENABLE_USE_BB_CRYPT
 static void
 num2str64_4chars_msb_first(char *s, unsigned v)
 {
@@ -68,6 +69,7 @@ num2str64_4chars_msb_first(char *s, unsigned v)
 	*s++ = i2a64(v >> 6); /* bits 11..6 */
 	*s   = i2a64(v); /* bits 5..0 */
 }
+#endif
 
 int FAST_FUNC crypt_make_rand64encoded(char *p, int cnt /*, int x */)
 {

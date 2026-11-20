@@ -237,7 +237,6 @@ int mkfs_ext2_main(int argc UNUSED_PARAM, char **argv)
 	uint32_t lost_and_found_blocks;
 	time_t timestamp;
 	const char *label = "";
-	struct stat st;
 	struct ext2_super_block *sb; // superblock
 	struct ext2_group_desc *gd; // group descriptors
 	struct ext2_inode *inode;
@@ -257,9 +256,11 @@ int mkfs_ext2_main(int argc UNUSED_PARAM, char **argv)
 
 	// open the device, check the device is a block device
 	xmove_fd(xopen(argv[0], O_RDWR), fd);
-	xfstat(fd, &st, argv[0]);
-	if (!S_ISBLK(st.st_mode) && !(option_mask32 & OPT_F))
-		bb_error_msg_and_die("%s: not a block device", argv[0]);
+	if (!(option_mask32 & OPT_F)) {
+		mode_t st_mode = xfstat_mode(fd, argv[0]);
+		if (!S_ISBLK(st_mode))
+			bb_error_msg_and_die("%s: not a block device", argv[0]);
+	}
 
 	// check if it is mounted
 	// N.B. what if we format a file? find_mount_point will return false negative since

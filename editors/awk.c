@@ -977,8 +977,7 @@ static double my_strtod_or_hexoct(char **pp)
  */
 static const char *fmt_num(const char *format, double n)
 {
-#if ENABLE_PLATFORM_MINGW32
-# if !defined(_UCRT)
+#if ENABLE_PLATFORM_MINGW32 && !defined(_UCRT)
 	/* Avoid MSVCRT truncating infinity */
 	if (n == trunc(n) && !isinf(n)) {
 # else
@@ -987,10 +986,6 @@ static const char *fmt_num(const char *format, double n)
 		/* No fractionals? Try: awk -v OFMT='R:%d!' 'BEGIN { print 2**128 }' */
 		if (n == 0)
 			n = 0;	/* not "-0" */
-#else
-	if (n == trunc(n)) {
-		/* No fractionals? Try: awk -v OFMT='R:%d!' 'BEGIN { print 2**128 }' */
-#endif
 		snprintf(g_buf, MAXVARFMT, "%.0f", n);
 	} else {
 		const char *s = format;
@@ -2715,18 +2710,12 @@ static char *awk_printf(node *n, size_t *len)
 				s = xasprintf(use_fmt, cs);
 			} else { /* numeric conversion */
 				double d = getvar_i(arg);
-#if ENABLE_PLATFORM_MINGW32
 				if (diouxX) {
 					d = trunc(d);
 					if (d == 0)
 						d = 0;	/* not "-0" */
 //bb_error_msg("d:%f", d);
 				}
-#else
-				if (diouxX)
-					d = trunc(d);
-//bb_error_msg("d:%f", d);
-#endif
 #if ENABLE_PLATFORM_MINGW32 && !defined(_UCRT)
 				if (diouxX && !isfinite(d)) {
 					/* Avoid MSVCRT truncating infinity or NaN */

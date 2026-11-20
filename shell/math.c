@@ -352,6 +352,8 @@ arith_apply(arith_state_t *math_state, operator op, var_or_num_t *numstack, var_
 	rez = top_of_stack->val;
 	if (op == TOK_UMINUS)
 		rez = -rez;
+	else if (op == TOK_UPLUS)
+		; /* do nothing... but do erase var name later. testcase: $((+a=2)) should complain */
 	else if (op == TOK_NOT)
 		rez = !rez;
 	else if (op == TOK_BNOT)
@@ -360,7 +362,7 @@ arith_apply(arith_state_t *math_state, operator op, var_or_num_t *numstack, var_
 		rez++;
 	else if (op == TOK_POST_DEC || op == TOK_PRE_DEC)
 		rez--;
-	else /*if (op != TOK_UPLUS) - always true, we drop TOK_UPLUS earlier */ {
+	else {
 		/* Binary operators */
 		arith_t right_side_val;
 
@@ -652,6 +654,7 @@ static arith_t strto_arith_t(const char *nptr, char **endptr)
 static arith_t
 evaluate_string(arith_state_t *math_state, const char *expr)
 {
+	enum { LLONG_SIZE = sizeof(long long) };
 	/* Stack of integers/names */
 	var_or_num_t *numstack, *numstackptr;
 	/* Stack of operator tokens */
@@ -660,6 +663,7 @@ evaluate_string(arith_state_t *math_state, const char *expr)
 	operator lasttok;
 	/* To insert implicit () in ?: ternary op: */
 	operator insert_op = 0xff;
+	arith_t val;
 	unsigned ternary_level = 0;
 	unsigned expr_len;
 	const char *errmsg;
@@ -694,18 +698,28 @@ evaluate_string(arith_state_t *math_state, const char *expr)
 	 * is popped off when ":" is reached.
 	 */
 	expr_len++; /* +1 for 1st LPAREN. See what $((1?)) pushes to opstack */
-	opstackptr = opstack = alloca(expr_len * sizeof(opstack[0]));
+	opstackptr = opstack = xmalloc(expr_len * sizeof(opstack[0])
 	/* There can be no more than (expr_len/2 + 1)
 	 * integers/names in any given correct or incorrect expression.
 	 * (modulo "09", "0v" cases where 2 chars are 2 numbers/names,
 	 * but we have code to detect that early)
 	 */
-	expr_len = (expr_len / 2)
-		+ 1 /* "1+2" has two numbers, 2 = len/2+1, NOT len/2 */;
-	numstackptr = numstack = alloca(expr_len * sizeof(numstack[0]));
-//FIXME: for large sizes (think megabyte+), alloca is worse: touching a lot of stack makes it stay dirty and in use forever afterwards,
-//whereas xmalloc + free does get freed and returned to OS for reuse.
-//xmalloc also can handle much larger sizes, and theoretically fails more gracefully (error msg rather than crash).
+		+ (sizeof(numstack[0]) * ((expr_len / 2) + 1)) /* "1+2" has two numbers, 2 = len/2+1, NOT len/2 */
+		+ LLONG_SIZE - 1 /* keep numstack aligned */
+	);
+	expr_len = (expr_len + LLONG_SIZE - 1) & ~(unsigned)(LLONG_SIZE - 1); /* keep numstack aligned */
+	numstack = (void*)(opstack + expr_len);
+	numstackptr = numstack;
+	/* Why malloc, not alloca? For large sizes (think megabyte+), alloca is worse:
+	 * touching a lot of stack makes it stay dirty and in use forever afterwards,
+	 * whereas malloc + free does get freed and returned to OS for reuse.
+	 * malloc also can handle much larger sizes, and theoretically fails more
+	 * gracefully (error msg rather than crash). Testcase for alloca exhaustion:
+	 * a longer (300000-deep) version of this SIGSEGVs for me on 32-bit x86:
+	 * $(( 1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1))))))))))))))) ))
+	 * Shorter version can be used to see how stack is permanently enlarged
+	 * and has megabytes of allocated modified data even after $(( )) is evaluated.
+	 */
 
 	/* Start with a left paren */
 	dbg("(%d) op:TOK_LPAREN", (int)(opstackptr - opstack));
@@ -736,7 +750,8 @@ evaluate_string(arith_state_t *math_state, const char *expr)
 				/* Example: $((1 2)) */
 				goto syntax_err;
 			}
-			return numstack->val;
+			val = numstack->val;
+			goto return_val;
 		}
 
 		p = endofname(expr);
@@ -751,9 +766,9 @@ evaluate_string(arith_state_t *math_state, const char *expr)
 				 || expr[1] == '=' /* or "==..." */
 				) {
 					/* Evaluate variable to value */
-					arith_t val = arith_lookup_val(math_state, numstackptr->var_name, (char*)p);
+					val = arith_lookup_val(math_state, numstackptr->var_name, (char*)p);
 					if (math_state->errmsg)
-						return val; /* -1 */
+						goto return_val; /* -1 */
 					numstackptr->val = val;
 				}
 			} else {
@@ -867,10 +882,11 @@ evaluate_string(arith_state_t *math_state, const char *expr)
 		if (lasttok != TOK_VALUE) {
 			switch (op) {
 			case TOK_ADD:
-				//op = TOK_UPLUS;
-				//break;
-				/* Unary plus does nothing, do not even push it to opstack */
-				goto next_char_in_expr;
+				// Unary plus does nothing, do not even push it to opstack
+				//goto next_char_in_expr;
+				// ^^^ WRONG: $((+a=2)) is not the same as $((a=2))
+				op = TOK_UPLUS;
+				break;
 			case TOK_SUB:
 				op = TOK_UMINUS;
 				break;
@@ -1016,7 +1032,10 @@ dbg("    numstack:%d val:%lld '%s'", (int)(numstackptr - numstack), numstackptr[
 	errmsg = "arithmetic syntax error";
  err_with_custom_msg:
 	math_state->errmsg = errmsg;
-	return -1;
+	val = -1;
+ return_val:
+	free(opstack);
+	return val;
 }
 
 arith_t FAST_FUNC

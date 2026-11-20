@@ -39,4 +39,13 @@ testing "blkid minimal FAT32 image (34k)" \
 ' \
 	"" ""
 
+# $ mkfs.vfat -b0 -R2 -v -F32 -C mkfs_vfat_image_fat32_3k.bin 3
+# (bbox's mkfs.vfat can do this, not mkfs.fat 4.2)
+testing "blkid minimal FAT32 image (3k)" \
+	"blkid mkfs_vfat_image_fat32_3k.bin | sed 's/\"....-....\"/\"xxxx-xxxx\"/'; echo \$?" \
+'mkfs_vfat_image_fat32_3k.bin: LABEL="FSLABEL" UUID="xxxx-xxxx" TYPE="vfat"
+0
+' \
+	"" ""
+
 exit $FAILCOUNT

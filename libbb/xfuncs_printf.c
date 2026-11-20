@@ -551,6 +551,19 @@ void FAST_FUNC xfstat(int fd, struct stat *stat_buf, const char *errmsg)
 		bb_simple_perror_msg_and_die(errmsg);
 }
 
+mode_t FAST_FUNC xfstat_mode(int fd, const char *file_name)
+{
+	struct stat st;
+	xfstat(fd, &st, file_name);
+	return st.st_mode;
+}
+off_t FAST_FUNC xfstat_size(int fd, const char *file_name)
+{
+	struct stat st;
+	xfstat(fd, &st, file_name);
+	return st.st_size;
+}
+
 #if ENABLE_SELINUX
 // selinux_or_die() - die if SELinux is disabled.
 void FAST_FUNC selinux_or_die(void)

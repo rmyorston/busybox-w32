@@ -491,8 +491,8 @@ static int tftp_protocol(
 				fstat(local_fd, &st);
 //Do we need this instead? Example?
 			//if (local_fd >= 0 && (!ENABLE_TFTP || local_file)) {
-			//	xfstat(local_fd, &st, local_file);
-			//	if (!S_ISREG(st.st_mode))
+			//	mode_t m = xfstat_mode(local_fd, local_file);
+			//	if (!S_ISREG(m))
 			//		bb_error_msg_and_die("'%s' is not a regular file", local_file);
 			//}
 			cp = stpcpy(cp, "tsize") + 1;
