@@ -117,9 +117,10 @@ typedef struct common_node_s {
  * likely to be installed at any one time, so there is a bit of leeway here */
 #define STATUS_HASH_PRIME 8191
 typedef struct status_node_s {
-	unsigned package:16; /* was:14 */       /* has to fit PACKAGE_HASH_PRIME */
-	unsigned status:16;  /* was:14 */       /* has to fit STATUS_HASH_PRIME */
+	unsigned package:16; /* was:14 */  /* has to fit PACKAGE_HASH_PRIME */
+	unsigned status:16;  /* was:14 */  /* has to fit STATUS_HASH_PRIME */
 } status_node_t;
+/* gcc makes it 4 bytes long */
 
 /* Globals */
 struct globals {
@@ -134,7 +135,6 @@ struct globals {
 #define INIT_G() do { \
 	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
 } while (0)
-
 
 /* Even numbers are for 'extras', like ored dependencies or null */
 enum edge_type_e {
@@ -163,27 +163,28 @@ enum operator_e {
 typedef struct deb_file_s {
 	char *control_file;
 	char *filename;
-	unsigned package:16; /* was:14 */
+	unsigned package; /* was:14 */
 } deb_file_t;
+/* gcc makes it 12 bytes long (if pointers are 32-bit) even if "package" field is only 16 bits, increasing it to full "unsigned" does not make it grow */
 
-
-static unsigned make_hash(const char *key, unsigned *decrement, int hash_prime)
+static unsigned make_hash(const char *skey, unsigned *decrement, unsigned hash_prime)
 {
+	const unsigned char *key = (void*)skey;
 	unsigned start;
-	unsigned long hash_num = key[0];
-	int len = strlen(key);
-	int i;
+	unsigned long hash_num;
+	unsigned i;
 
-	/* Maybe i should have uses a "proper" hashing algorithm here instead
+	/* Maybe I should have used a "proper" hashing algorithm here instead
 	 * of making one up myself, seems to be working ok though. */
-	for (i = 1; i < len; i++) {
-		/* shifts the ascii based value and adds it to previous value
-		 * shift amount is mod 24 because long int is 32 bit and data
+	hash_num = *key++;
+	for (i = 1; *key; i++) {
+		/* Shifts the ascii based value and adds it to previous value.
+		 * Shift amount is mod 24 because long int is 32 bit and data
 		 * to be shifted is 8, don't want to shift data to where it has
 		 * no effect */
-		hash_num += (key[i] + key[i-1]) << ((key[i] * i) % 24);
+		hash_num += (*key + key[-1]) << ((*key * i) % 24);
 	}
-	start = (unsigned) hash_num % hash_prime;
+	start = hash_num % hash_prime;
 	*decrement = (unsigned) 1 + (hash_num % (hash_prime - 1));
 	return start;
 }
@@ -1829,8 +1830,8 @@ int dpkg_main(int argc UNUSED_PARAM, char **argv)
 	INIT_G();
 
 	//bb_error_msg_and_die("sizeof:\n"
-	//"edge_t:%u\ncommon_node_t:%u\nstatus_node_t:%u",
-	//sizeof(edge_t), sizeof(common_node_t), sizeof(status_node_t));
+	//"edge_t:%u\ncommon_node_t:%u\nstatus_node_t:%u\ndeb_file_t:%u",
+	//sizeof(edge_t), sizeof(common_node_t), sizeof(status_node_t), sizeof(deb_file_t));
 
 	opt = getopt32long(argv, "CilPruF:", dpkg_longopts, &str_f);
 	argv += optind;
