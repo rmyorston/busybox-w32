@@ -194,6 +194,7 @@ static int search_name_hashtable(const char *key)
 {
 	unsigned probe_address;
 	unsigned probe_decrement;
+	unsigned probes = ARRAY_SIZE(name_hashtable);
 
 	probe_address = make_hash(key, &probe_decrement, NAME_HASH_PRIME);
 	while (name_hashtable[probe_address] != NULL) {
@@ -204,6 +205,8 @@ static int search_name_hashtable(const char *key)
 		if ((int)probe_address < 0) {
 			probe_address += NAME_HASH_PRIME;
 		}
+		if (--probes == 0)
+			bb_simple_error_msg_and_die("hashtable full");
 	}
 	name_hashtable[probe_address] = xstrdup(key);
 	return probe_address;
@@ -418,6 +421,9 @@ static void add_edge_to_node(common_node_t *node, edge_t *edge)
 {
 	node->edge = xrealloc_vector(node->edge, 2, node->num_of_edges);
 	node->edge[node->num_of_edges++] = edge;
+	/* NB: num_of_edges is 16-bit field */
+	if (node->num_of_edges == 0) /* someone tries to be funny? */
+		bb_simple_error_msg_and_die("corrupted data");
 }
 
 /*
@@ -508,8 +514,11 @@ static void add_split_dependencies(common_node_t *parent_node, const char *whole
 			field2[strcspn(field2, " (")] = '\0';
 			edge->name = search_name_hashtable(field2);
 
-			if (or_edge)
+			if (or_edge) {
 				or_edge->version++;
+				if (or_edge->version == 0) /* someone tries to be funny? */
+					bb_simple_error_msg_and_die("corrupted data");
+			}
 
 			add_edge_to_node(parent_node, edge);
 			field2 = strtok_r(NULL, "|", &line_ptr2);
@@ -1990,20 +1999,13 @@ int dpkg_main(int argc UNUSED_PARAM, char **argv)
 			free(deb_file[i]->filename);
 			free(deb_file[i]);
 		}
-
 		free(deb_file);
-
-		for (i = 0; i < NAME_HASH_PRIME; i++) {
+		for (i = 0; i < NAME_HASH_PRIME; i++)
 			free(name_hashtable[i]);
-		}
-
-		for (i = 0; i < PACKAGE_HASH_PRIME; i++) {
+		for (i = 0; i < PACKAGE_HASH_PRIME; i++)
 			free_package(package_hashtable[i]);
-		}
-
-		for (i = 0; i < STATUS_HASH_PRIME; i++) {
+		for (i = 0; i < STATUS_HASH_PRIME; i++)
 			free(status_hashtable[i]);
-		}
 	}
 
 	return EXIT_SUCCESS;
