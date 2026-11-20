@@ -22,7 +22,7 @@
 //usage:       "[-rP] [-o OFS] {-f|LOOPDEV} FILE: associate loop devices\n"
 //usage:       "	losetup -c LOOPDEV: reread file size\n"
 //usage:       "	losetup -d LOOPDEV: disassociate\n"
-//usage:       "	losetup -a: show status\n"
+//usage:       "	losetup -a|LOOPDEV: show status\n"
 //usage:       "	losetup -f: show next free loop device"
 //usage:#define losetup_full_usage "\n\n"
 //usage:       "	-o OFS	Start OFS bytes into FILE"
@@ -61,41 +61,12 @@ int losetup_main(int argc UNUSED_PARAM, char **argv)
 		OPT_r = (1 << 6),
 	};
 
-	opt = getopt32(argv, "^" "cdPo:far" "\0" "?2:d--Pofar:a--Pofr", &opt_o);
+	opt = getopt32(argv, "^" "cdPo:far" "\0" "?2:d--cPofar:a--cdPofr:f--cda", &opt_o);
 	argv += optind;
-
-	/* LOOPDEV */
-	if (!opt && argv[0] && !argv[1]) {
-		char *s;
-
-		s = query_loop(argv[0]);
-		if (!s)
-			bb_simple_perror_msg_and_die(argv[0]);
-		printf("%s: %s\n", argv[0], s);
-		if (ENABLE_FEATURE_CLEAN_UP)
-			free(s);
-		return EXIT_SUCCESS;
-	}
-
-	/* -c LOOPDEV */
-	if (opt == OPT_c && argv[0]) {
-		int fd = xopen(argv[0], O_RDONLY);
-#ifndef LOOP_SET_CAPACITY
-# define LOOP_SET_CAPACITY 0x4C07
-#endif
-		xioctl(fd, LOOP_SET_CAPACITY, /*ignored:*/0);
-		return EXIT_SUCCESS;
-	}
-
-	/* -d LOOPDEV */
-	if (opt == OPT_d && argv[0]) {
-		if (del_loop(argv[0]))
-			bb_simple_perror_msg_and_die(argv[0]);
-		return EXIT_SUCCESS;
-	}
 
 	/* -a */
 	if (opt == OPT_a) {
+		/* util-linux 2.41.1: -a ignores argv[] */
 		int n;
 		for (n = 0; n < MAX_LOOP_NUM; n++) {
 			char *s;
@@ -110,35 +81,71 @@ int losetup_main(int argc UNUSED_PARAM, char **argv)
 		return EXIT_SUCCESS;
 	}
 
-	/* contains -f */
-	if (opt & OPT_f) {
-		char *s;
-		int n;
+	if (argv[0] && !argv[1]) {
+		/* LOOPDEV */
+		if (!opt) {
+			char *s;
 
-		n = get_free_loop();
-		if (n == -1)
-			bb_simple_error_msg_and_die("no free loop devices");
-		if (n < 0) /* n == -2: no /dev/loop-control, use legacy method */
-			n = 0;
-		/* or: n >= 0: the number of next free loopdev, just verify it */
-		do {
-			if (n > MAX_LOOP_NUM)
+			s = query_loop(argv[0]);
+			if (!s)
+				bb_simple_perror_msg_and_die(argv[0]);
+			printf("%s: %s\n", argv[0], s);
+			if (ENABLE_FEATURE_CLEAN_UP)
+				free(s);
+			return EXIT_SUCCESS;
+		}
+		/* -c LOOPDEV */
+		if (opt == OPT_c) {
+			int fd = xopen(argv[0], O_RDONLY);
+#ifndef LOOP_SET_CAPACITY
+# define LOOP_SET_CAPACITY 0x4C07
+#endif
+			xioctl(fd, LOOP_SET_CAPACITY, /*ignored:*/0);
+			return EXIT_SUCCESS;
+		}
+		/* -d LOOPDEV */
+		if (opt == OPT_d) {
+			if (del_loop(argv[0]))
+				bb_simple_perror_msg_and_die(argv[0]);
+			return EXIT_SUCCESS;
+		}
+	}
+
+	/* [OPTS] -f [FILE] */
+	if (opt & OPT_f) {
+		if (!argv[0]) { /* -f */
+			char *s;
+			int n;
+
+			if (opt != OPT_f) /* no other opts allowed */
+				bb_show_usage();
+
+			n = get_free_loop();
+			if (n == -1)
 				bb_simple_error_msg_and_die("no free loop devices");
-			sprintf(dev, LOOP_FORMAT, n++);
-			s = query_loop(dev);
-			free(s);
-		} while (s);
-		/* now: dev is next free "/dev/loopN" */
-		if ((opt == OPT_f) && !argv[0]) {
+			if (n < 0) /* n == -2: no /dev/loop-control, use legacy method */
+				n = 0;
+			/* or: n >= 0: the number of next free loopdev, just verify it */
+			do {
+				if (n > MAX_LOOP_NUM)
+					bb_simple_error_msg_and_die("no free loop devices");
+				sprintf(dev, LOOP_FORMAT, n++);
+				s = query_loop(dev);
+				free(s);
+			} while (s);
+			/* now: dev is next free "/dev/loopN" */
 			puts(dev);
 			return EXIT_SUCCESS;
 		}
+		if (argv[1]) /* -f FILE can't have more params */
+			bb_show_usage();
+		/* -f FILE: fall through, let set_loop(&NULL, ...) find free loopdev */
 	}
 
 	/* [-rP] [-o OFS] {-f|LOOPDEV} FILE */
 	if (argv[0] && ((opt & OPT_f) || argv[1])) {
 		unsigned long long offset = 0;
-		char *d = dev;
+		char *d = NULL;
 
 		if (opt & OPT_o)
 			offset = xatoull(opt_o);
@@ -146,12 +153,14 @@ int losetup_main(int argc UNUSED_PARAM, char **argv)
 			d = *argv++;
 
 		if (argv[0]) {
+			int r;
 			unsigned flags = (opt & OPT_r) ? BB_LO_FLAGS_READ_ONLY : 0;
 			if (opt & OPT_P) {
 				flags |= BB_LO_FLAGS_PARTSCAN;
 			}
-			if (set_loop(&d, argv[0], offset, 0, flags) < 0)
-				bb_simple_perror_msg_and_die(argv[0]);
+			r = set_loop(&d, argv[0], offset, 0, flags);
+			if (r < 0) /* -1: loopdev error, -2 and less: file error */
+				bb_simple_perror_msg_and_die((r == -1 && d) ? d : argv[0]);
 			return EXIT_SUCCESS;
 		}
 	}
