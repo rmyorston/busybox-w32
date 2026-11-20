@@ -97,18 +97,20 @@
  *      and available file */
 #define PACKAGE_HASH_PRIME 10007
 typedef struct edge_s {
-	unsigned operator:4; /* was:3 */
-	unsigned type:4;
-	unsigned name:16; /* was:14 */
+	unsigned operator:8; /* was:3 */
+	unsigned type:8;     /* was:4 */
+	unsigned name:16;    /* was:14 */
 	unsigned version:16; /* was:14 */
 } edge_t;
+/* gcc makes it 8-byte even with smaller original bitfield widths, increased widths do not grow it */
 
 typedef struct common_node_s {
-	unsigned name:16; /* was:14 */
-	unsigned version:16; /* was:14 */
+	unsigned name:16;         /* was:14 */
+	unsigned version:16;      /* was:14 */
 	unsigned num_of_edges:16; /* was:14 */
 	edge_t **edge;
 } common_node_t;
+/* gcc makes it 12 bytes long (if pointers are 32-bit) */
 
 /* Currently it doesn't store packages that have state-status of not-installed
  * So it only really has to be the size of the maximum number of packages
@@ -116,9 +118,8 @@ typedef struct common_node_s {
 #define STATUS_HASH_PRIME 8191
 typedef struct status_node_s {
 	unsigned package:16; /* was:14 */       /* has to fit PACKAGE_HASH_PRIME */
-	unsigned status:16; /* was:14 */        /* has to fit STATUS_HASH_PRIME */
+	unsigned status:16;  /* was:14 */       /* has to fit STATUS_HASH_PRIME */
 } status_node_t;
-
 
 /* Globals */
 struct globals {
@@ -1826,6 +1827,10 @@ int dpkg_main(int argc UNUSED_PARAM, char **argv)
 //TODO: implement --root=DIR? necessary for testing
 
 	INIT_G();
+
+	//bb_error_msg_and_die("sizeof:\n"
+	//"edge_t:%u\ncommon_node_t:%u\nstatus_node_t:%u",
+	//sizeof(edge_t), sizeof(common_node_t), sizeof(status_node_t));
 
 	opt = getopt32long(argv, "CilPruF:", dpkg_longopts, &str_f);
 	argv += optind;
