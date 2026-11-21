@@ -1284,7 +1284,8 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 	int discover_timeout = 3;
 	int discover_retries = 3;
 	struct in6_addr srv6_buf;
-	struct in6_addr *requested_ipv6; /* NULL or alloced */
+	struct in6_addr ipv6_buf;
+	struct in6_addr *requested_ipv6; /* either NULL or -> ipv6_buf */
 	int packet_num;
 	int timeout; /* must be signed */
 	int lease_remaining; /* must be signed */
@@ -1334,9 +1335,9 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 		if (strcmp(str_r, "no") == 0) {
 			option_mask32 &= ~OPT_r;
 		} else {
-			requested_ipv6 = xzalloc(sizeof(*requested_ipv6));
-			if (inet_pton(AF_INET6, str_r, requested_ipv6) <= 0)
+			if (inet_pton(AF_INET6, str_r, &ipv6_buf) <= 0)
 				bb_error_msg_and_die("bad IPv6 address '%s'", str_r);
+			requested_ipv6 = &ipv6_buf;
 		}
 	}
 
@@ -1828,7 +1829,6 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 							d6_run_script_no_option("deconfig");
 						}
 						sleep(3); /* avoid excessive network traffic */
-						free(requested_ipv6);
 						requested_ipv6 = NULL;
 						/* will set timeout = packet_num = lease_remaining = 0 */
 						/* also makes secs count from 0: client_data.first_secs = 0 */
@@ -1881,8 +1881,8 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 							"IAADDR", iaaddr->len);
 						continue;
 					}
-					free(requested_ipv6);
-					requested_ipv6 = xmemdup(iaaddr->data, sizeof(*requested_ipv6));
+					memcpy(&ipv6_buf, iaaddr->data, sizeof(ipv6_buf));
+					requested_ipv6 = &ipv6_buf;
 					move_from_unaligned32(lease_seconds, iaaddr->data + 16 + 4);
 					lease_seconds = ntohl(lease_seconds);
 					bb_info_msg("%s obtained, lease time %u",
