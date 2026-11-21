@@ -151,7 +151,7 @@ static void process_pax_hdr(archive_handle_t *archive_handle, unsigned sz, int g
 static void die_if_bad_fnamesize(off_t sz)
 {
 	if ((uoff_t)sz > 0xfff) /* more than 4k?! no funny business please */
-		bb_simple_error_msg_and_die("bad archive");
+		bb_simple_error_msg_and_die("corrupted data");
 }
 #endif
 

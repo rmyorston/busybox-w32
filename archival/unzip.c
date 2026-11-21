@@ -299,6 +299,7 @@ static uint32_t find_cdf_offset(void)
 
 static uint32_t read_next_cdf(uint32_t cdf_offset, cdf_header_t *cdf)
 {
+	uint32_t next_offset, inc;
 	uint32_t magic;
 
 	if (cdf_offset == BAD_CDF_OFFSET)
@@ -329,20 +330,23 @@ static uint32_t read_next_cdf(uint32_t cdf_offset, cdf_header_t *cdf)
 	);
 //TODO: require that magic == ZIP_CDF_MAGIC?
 
-	cdf_offset += 4 + CDF_HEADER_LEN
+	inc = (4 + CDF_HEADER_LEN)
 		+ cdf->fmt.filename_len
 		+ cdf->fmt.extra_len
-		+ cdf->fmt.file_comment_length;
+		+ cdf->fmt.file_comment_length; // can't overflow: 16-bit fields
+	next_offset = cdf_offset + inc;
+	if (next_offset < cdf_offset) // overflow?
+		bb_simple_error_msg_and_die("corrupted data");
 
-	dbg("Next cdf_offset 0x%x", cdf_offset);
-	return cdf_offset;
+	dbg("Next cdf_offset 0x%x", next_offset);
+	return next_offset;
 };
 #endif
 
 static void die_if_bad_fnamesize(unsigned sz)
 {
 	if (sz > 0xfff) /* more than 4k?! no funny business please */
-		bb_simple_error_msg_and_die("bad archive");
+		bb_simple_error_msg_and_die("corrupted data");
 }
 
 static void unzip_skip(off_t skip)
