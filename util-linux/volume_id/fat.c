@@ -212,11 +212,8 @@ int FAST_FUNC volume_id_probe_vfat(struct volume_id *id /*,uint64_t fat_partitio
 	/* sector size check */
 	sector_size_bytes = get_unaligned_le16(&vs->sector_size_bytes);
 	dbg("sector_size_bytes 0x%x", sector_size_bytes);
-	if (sector_size_bytes != 0x200 && sector_size_bytes != 0x400
-	 && sector_size_bytes != 0x800 && sector_size_bytes != 0x1000
-	) {
+	if (!good_blocksize_512_to_4k(sector_size_bytes))
 		return -1;
-	}
 	/* sectors_per_cluster check */
 	dbg("sectors_per_cluster 0x%x", vs->sectors_per_cluster);
 	if (vs->sectors_per_cluster == 0

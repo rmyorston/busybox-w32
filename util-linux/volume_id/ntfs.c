@@ -130,7 +130,7 @@ int FAST_FUNC volume_id_probe_ntfs(struct volume_id *id /*,uint64_t off*/)
 
 	// Calculate and validate some parameters
 	sector_size = le16_to_cpu(ns->bytes_per_sector);
-	if (sector_size < 512 || (sector_size & (sector_size-1)))
+	if (!good_blocksize_512(sector_size))
 		return -1; // too small, or not power-of-2
 	n = ns->sectors_per_cluster;
 	if (n > 0x80) { // (yes, >, not >=)
@@ -140,14 +140,12 @@ int FAST_FUNC volume_id_probe_ntfs(struct volume_id *id /*,uint64_t off*/)
 		n = 1 << n;
 	}
 	cluster_size = n * sector_size; // 0x8000 * 0x8000 maximum
-	if (cluster_size == 0)
-		return -1; // sectors_per_cluster == 0 is bogus
-	if (cluster_size > 2*1024*1024)
-		return -1; // > 0x1000000
-	if (cluster_size & (cluster_size-1))
-		return -1; // not power-of-2
+	n = good_blocksize_512(cluster_size); // cluster_size_shift
+	if (n == 0)
+		return -1; // < 512 or not power-of-2
+	if (n > 21)
+		return -1; // > 2*1024*1024
 
-	n = bb_popcnt_32(cluster_size - 1); // cluster_size_shift
 	mft_cluster = le64_to_cpu(ns->mft_cluster_location);
 	mft_off = mft_cluster << n;
 	if ((int64_t)mft_off <= 0) // if 0: mft_cluster == 0, or overflow in multiplication
