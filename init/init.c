@@ -209,6 +209,7 @@ struct globals {
 	struct init_action *init_action_list;
 #if !ENABLE_FEATURE_INIT_SYSLOG
 	const char *log_console;
+	int log_fd;
 #endif
 	sigset_t delayed_sigset;
 	struct timespec zero_ts;
@@ -217,6 +218,7 @@ struct globals {
 #define INIT_G() do { \
 	setup_common_bufsiz(); \
 	IF_NOT_FEATURE_INIT_SYSLOG(G.log_console = VC_5;) \
+	IF_NOT_FEATURE_INIT_SYSLOG(G.log_fd = -1;) \
 } while (0)
 
 enum {
@@ -261,22 +263,20 @@ static void message(int where, const char *fmt, ...)
 	if (where & L_LOG) {
 		/* Take full control of the log tty, and never close it.
 		 * It's mine, all mine!  Muhahahaha! */
-		static int log_fd = -1;
-
-		if (log_fd < 0) {
-			log_fd = STDERR_FILENO;
+		if (G.log_fd < 0) {
+			G.log_fd = STDERR_FILENO;
 			if (G.log_console) {
-				log_fd = device_open(G.log_console, O_WRONLY | O_NONBLOCK | O_NOCTTY);
-				if (log_fd < 0) {
+				G.log_fd = device_open(G.log_console, O_WRONLY | O_NONBLOCK | O_NOCTTY);
+				if (G.log_fd < 0) {
 					bb_error_msg("can't log to %s", G.log_console);
 					where = L_CONSOLE;
 				} else {
-					close_on_exec_on(log_fd);
+					close_on_exec_on(G.log_fd);
 				}
 			}
 		}
-		full_write(log_fd, msg, l);
-		if (log_fd == STDERR_FILENO)
+		full_write(G.log_fd, msg, l);
+		if (G.log_fd == STDERR_FILENO)
 			return; /* don't print dup messages */
 	}
 #endif
