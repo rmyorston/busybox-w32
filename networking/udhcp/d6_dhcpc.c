@@ -532,16 +532,22 @@ static uint8_t *init_d6_packet(struct d6_packet *packet, char type)
 	return ptr;
 }
 
-static uint8_t *add_d6_client_options(uint8_t *ptr)
+static uint8_t *add_d6_client_options(uint8_t *ptr, uint8_t *end)
 {
 	struct option_set *curr;
 	uint8_t *start = ptr;
 	unsigned option;
-	uint16_t len;
+	int rem = end - ptr;
 
+	rem -= 4;
+	if (rem < 0)
+		return NULL;
 	ptr += 4;
 	for (option = 1; option < 256; option++) {
 		if (client_data.opt_mask[option >> 3] & (1 << (option & 7))) {
+			rem -= 2;
+			if (rem < 0)
+				return NULL;
 			ptr[0] = (option >> 8);
 			ptr[1] = option;
 			ptr += 2;
@@ -557,13 +563,19 @@ static uint8_t *add_d6_client_options(uint8_t *ptr)
 		ptr = start;
 
 #if ENABLE_FEATURE_UDHCPC6_RFC4704
+	rem -= sizeof(opt_fqdn_req);
+	if (rem < 0)
+		return NULL;
 	ptr = mempcpy(ptr, &opt_fqdn_req, sizeof(opt_fqdn_req));
 #endif
 	/* Add -x options if any */
 	curr = client_data.options;
 	while (curr) {
-		len = (curr->data[D6_OPT_LEN] << 8) | curr->data[D6_OPT_LEN + 1];
-		ptr = mempcpy(ptr, curr->data, D6_OPT_DATA + len);
+		uint16_t len16 = (curr->data[D6_OPT_LEN] << 8) | curr->data[D6_OPT_LEN + 1];
+		rem -= D6_OPT_DATA + len16;
+		if (rem < 0)
+			return NULL;
+		ptr = mempcpy(ptr, curr->data, D6_OPT_DATA + len16);
 		curr = curr->next;
 	}
 
@@ -623,7 +635,9 @@ static NOINLINE int send_d6_info_request(void)
 	/* Add options: client-id,
 	 * "param req" option according to -O, options specified with -x
 	 */
-	opt_ptr = add_d6_client_options(opt_ptr);
+	opt_ptr = add_d6_client_options(opt_ptr, packet.d6_options + sizeof(packet.d6_options));
+	if (!opt_ptr)
+		return -1;
 
 	bb_error_msg("sending %s", "info request");
 	return d6_mcast_from_client_data_ifindex(&packet, opt_ptr);
@@ -778,7 +792,9 @@ static NOINLINE int send_d6_discover(struct in6_addr *requested_ipv6)
 	/* Add options: client-id,
 	 * "param req" option according to -O, options specified with -x
 	 */
-	opt_ptr = add_d6_client_options(opt_ptr);
+	opt_ptr = add_d6_client_options(opt_ptr, packet.d6_options + sizeof(packet.d6_options));
+	if (!opt_ptr)
+		return -1;
 
 	bb_info_msg("sending %s", "discover");
 	return d6_mcast_from_client_data_ifindex(&packet, opt_ptr);
@@ -818,10 +834,21 @@ static NOINLINE int send_d6_discover(struct in6_addr *requested_ipv6)
 static NOINLINE int send_d6_select(void)
 {
 	struct d6_packet packet;
+	uint8_t *end = packet.d6_options + sizeof(packet.d6_options);
 	uint8_t *opt_ptr;
+	int rem;
 
 	/* Fill in: msg type, xid, ELAPSED_TIME */
 	opt_ptr = init_d6_packet(&packet, D6_MSG_REQUEST);
+
+	rem = end - opt_ptr;
+	rem -= client6_data.server_id->len + 2+2;
+	if (client6_data.ia_na)
+		rem -= client6_data.ia_na->len + 2+2;
+	if (client6_data.ia_pd)
+		rem -= client6_data.ia_pd->len + 2+2;
+	if (rem < 0)
+		return -1;
 
 	/* server id */
 	opt_ptr = mempcpy(opt_ptr, client6_data.server_id, client6_data.server_id->len + 2+2);
@@ -835,7 +862,9 @@ static NOINLINE int send_d6_select(void)
 	/* Add options: client-id,
 	 * "param req" option according to -O, options specified with -x
 	 */
-	opt_ptr = add_d6_client_options(opt_ptr);
+	opt_ptr = add_d6_client_options(opt_ptr, end);
+	if (!opt_ptr)
+		return -1;
 
 	bb_info_msg("sending %s", "select");
 	return d6_mcast_from_client_data_ifindex(&packet, opt_ptr);
@@ -892,15 +921,26 @@ static NOINLINE int send_d6_renew(int msg_type,
 		struct in6_addr *server_ipv6, struct in6_addr *our_cur_ipv6)
 {
 	struct d6_packet packet;
+	uint8_t *end = packet.d6_options + sizeof(packet.d6_options);
 	uint8_t *opt_ptr;
+	int rem;
 
 	/* Fill in: msg type, xid, ELAPSED_TIME */
 	opt_ptr = init_d6_packet(&packet, msg_type);
 
+	rem = end - opt_ptr;
+	if (msg_type == D6_MSG_RENEW)
+		rem -= client6_data.server_id->len + 2+2;
+	if (client6_data.ia_na)
+		rem -= client6_data.ia_na->len + 2+2;
+	if (client6_data.ia_pd)
+		rem -= client6_data.ia_pd->len + 2+2;
+	if (rem < 0)
+		return -1;
+
 	/* Rebind must not contain a server ID */
-	if (msg_type == D6_MSG_RENEW) {
+	if (msg_type == D6_MSG_RENEW)
 		opt_ptr = mempcpy(opt_ptr, client6_data.server_id, client6_data.server_id->len + 2+2);
-	}
 	/* IA NA (contains requested IP) */
 	if (client6_data.ia_na)
 		opt_ptr = mempcpy(opt_ptr, client6_data.ia_na, client6_data.ia_na->len + 2+2);
@@ -911,7 +951,9 @@ static NOINLINE int send_d6_renew(int msg_type,
 	/* Add options: client-id,
 	 * "param req" option according to -O, options specified with -x
 	 */
-	opt_ptr = add_d6_client_options(opt_ptr);
+	opt_ptr = add_d6_client_options(opt_ptr, end);
+	if (!opt_ptr)
+		return -1;
 
 	bb_info_msg("sending %s", msg_type == D6_MSG_RENEW ? "renew" : "rebind");
 	if (server_ipv6)

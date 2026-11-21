@@ -34,8 +34,7 @@ struct d6_packet {
 		uint8_t d6_msg_type;
 		uint32_t d6_xid32;
 	} d6_u;
-	uint8_t d6_options[576 - sizeof(struct ip6_hdr) - sizeof(struct udphdr) - 4
-			+ CONFIG_UDHCPC_SLACK_FOR_BUGGY_SERVERS];
+	uint8_t d6_options[/*IPv6 minimum MTU*/1280 - sizeof(struct ip6_hdr) - sizeof(struct udphdr) - 4];
 } PACKED;
 #define d6_msg_type d6_u.d6_msg_type
 #define d6_xid32    d6_u.d6_xid32
