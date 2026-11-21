@@ -180,6 +180,8 @@ void* FAST_FUNC volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t 
 	unsigned small_off;
 	ssize_t read_len;
 
+	if (off + len < off)
+		return NULL; /* overflow!! */
 	if (id->known_size != UNKNOWN_SIZE
 	 && id->known_size < off + len
 	) {
@@ -190,9 +192,7 @@ void* FAST_FUNC volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t 
 		(unsigned long long) off, (unsigned long long) off, len);
 
 	/* check if requested area fits in superblock buffer */
-	if (off + len <= SB_BUFFER_SIZE
-	 /* && off <= SB_BUFFER_SIZE - want this paranoid overflow check? */
-	) {
+	if (off + len <= SB_BUFFER_SIZE) {
 		if (id->sbbuf == NULL) {
 			id->sbbuf = xmalloc(SB_BUFFER_SIZE);
 		}
