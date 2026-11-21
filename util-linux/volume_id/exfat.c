@@ -48,8 +48,8 @@ struct exfat_super_block {
 /* 0x64 */	uint8_t		vol_serial_nr[4];	// Volume ID
 /* 0x68 */	uint16_t	fs_revision;		// VV.MM
 /* 0x6A */	uint16_t	vol_flags;
-/* 0x6C */	uint8_t		bytes_per_sector;	// Power of 2: 9 => 512, 12 => 4096
-/* 0x6D */	uint8_t		sectors_per_cluster;	// Power of 2
+/* 0x6C */	uint8_t		sector_size_shift;	// Power of 2: 9 => 512, 12 => 4096
+/* 0x6D */	uint8_t		cluster_sct_shift;	// Power of 2
 /* 0x6E */	uint8_t		nr_of_fats;		// 2 for TexFAT
 /* 0x6F */	// ...
 } PACKED;
@@ -76,53 +76,48 @@ int FAST_FUNC volume_id_probe_exfat(struct volume_id *id /*,uint64_t off*/)
 {
 	struct exfat_super_block *sb;
 	struct exfat_dir_entry *de;
-	unsigned	sector_sz;
-	unsigned	cluster_sz;
-	uint64_t	root_dir_off;
-	unsigned	count;
-	unsigned	need_lbl_guid;
+	uint64_t root_dir_off;
+	unsigned cluster_sz;
+	unsigned dirpos;
+	unsigned need_lbl_guid;
 
 	// Primary super block
 	dbg("exFAT: probing at offset 0x%x", EXFAT_SB_OFFSET);
 	sb = volume_id_get_buffer(id, EXFAT_SB_OFFSET, sizeof(*sb));
-
 	if (!sb)
 		return -1;
-
 	if (memcmp(sb->fs_name, "EXFAT   ", 8) != 0)
 		return -1;
-
-	/* spec: 512..4096 byte sectors, clusters up to 32M */
-	if (sb->bytes_per_sector < 9 || sb->bytes_per_sector > 12
-	 || sb->sectors_per_cluster > 25 - sb->bytes_per_sector
+	// spec: 512..4096 byte sectors, clusters up to 32M
+	if (sb->sector_size_shift < 9
+	 || sb->sector_size_shift > 12
+	 || sb->cluster_sct_shift > (25 - sb->sector_size_shift)
 	)
 		return -1;
-	sector_sz = 1 << sb->bytes_per_sector;
-	cluster_sz = sector_sz << sb->sectors_per_cluster;
-	// There are no clusters 0 and 1, so the first cluster is 2.
-	root_dir_off = (uint64_t)EXFAT_SB_OFFSET +
-		// Hmm... should we cast sector_sz/cluster_sz to uint64_t?
-		(le32_to_cpu(sb->cluster_heap_offset)) * sector_sz +
-		(le32_to_cpu(sb->root_dir) - 2) * cluster_sz;
-	dbg("exFAT: sector size 0x%x bytes", sector_sz);
-	dbg("exFAT: cluster size 0x%x bytes", cluster_sz);
-	dbg("exFAT: root dir is at 0x%llx", (long long)root_dir_off);
 
 	// Use DOS uuid as fallback, if no GUID set
 	volume_id_set_uuid(id, sb->vol_serial_nr, UUID_DOS);
 
-	// EXFAT_MAX_DIR_ENTRIES is used as a safety belt.
-	// The Root Directory may hold an unlimited number of entries,
-	// so we do not want to check all. Usually label and GUID
-	// are in the beginning, but there are no guarantees.
+	if (le32_to_cpu(sb->root_dir) < 2)
+		return -1;
+	root_dir_off = (((uint64_t)(le32_to_cpu(sb->root_dir) - 2) << sb->cluster_sct_shift) // which sector (relative to cluster_heap) rootdir starts?
+			+ le32_to_cpu(sb->cluster_heap_offset))                              // + which sector cluster_heap starts
+			<< sb->sector_size_shift;                                            // ^^^ multiply the above by sector size
+	dbg("exFAT: sector size 0x%x bytes", 1 << sb->sector_size_shift);
+	dbg("exFAT: root dir is at 0x%llx", (long long)root_dir_off);
+// TODO: we scan only first cluster of rootdir (128 entries if cluster is 4K)
+// fat.c has code to walk FAT table, do the same here
+// NB: unlike FAT32, exFAT uses full 32 bits in FAT entries. 0xFFFFFFF7 is bad cluster, EOF is 0xFFFFFFFF
+	cluster_sz = (1 << sb->sector_size_shift) << sb->cluster_sct_shift;
+	dbg("exFAT: cluster size 0x%x bytes", cluster_sz);
 	need_lbl_guid = (1 << 0) | (1 << 1);
-	for (count = 0; count < EXFAT_MAX_DIR_ENTRIES; count++) {
-		de = volume_id_get_buffer(id, root_dir_off + (count * EXFAT_DIR_ENTRY_SZ), EXFAT_DIR_ENTRY_SZ);
+	for (dirpos = 0; dirpos < cluster_sz; dirpos += EXFAT_DIR_ENTRY_SZ) {
+		de = volume_id_get_buffer(id, root_dir_off + dirpos, EXFAT_DIR_ENTRY_SZ);
 		if (de == NULL)
 			break;
 		if (de->entry_type == 0x00) {
 			// End of Directory Marker
-			dbg("exFAT: End of root directory reached after %u entries", count);
+			dbg("exFAT: End of root directory reached after %u entries", dirpos / EXFAT_DIR_ENTRY_SZ);
 			break;
 		}
 		if (de->entry_type == 0x83) {
