@@ -173,7 +173,7 @@ int FAST_FUNC d6_read_interface(
 int FAST_FUNC d6_listen_socket(int port, const char *inf);
 
 int FAST_FUNC d6_recv_kernel_packet(
-		struct in6_addr *peer_ipv6,
+		/*struct in6_addr *peer_ipv6,*/
 		struct d6_packet *packet, int fd
 );
 
