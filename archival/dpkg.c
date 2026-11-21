@@ -423,7 +423,7 @@ static void add_edge_to_node(common_node_t *node, edge_t *edge)
 	node->edge[node->num_of_edges++] = edge;
 	/* NB: num_of_edges is 16-bit field */
 	if (node->num_of_edges == 0) /* someone tries to be funny? */
-		bb_simple_error_msg_and_die("corrupted data");
+		bb_die_corrupted_data();
 }
 
 /*
@@ -517,7 +517,7 @@ static void add_split_dependencies(common_node_t *parent_node, const char *whole
 			if (or_edge) {
 				or_edge->version++;
 				if (or_edge->version == 0) /* someone tries to be funny? */
-					bb_simple_error_msg_and_die("corrupted data");
+					bb_die_corrupted_data();
 			}
 
 			add_edge_to_node(parent_node, edge);

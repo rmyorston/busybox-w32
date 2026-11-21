@@ -794,12 +794,12 @@ static NOINLINE int lzo_decompress(uint32_t h_flags32)
 //			bb_simple_error_msg_and_die("this file is a split lzop file");
 
 		if (dst_len > MAX_BLOCK_SIZE)
-			bb_simple_error_msg_and_die("corrupted data");
+			bb_die_corrupted_data();
 
 		/* read compressed block size */
 		src_len = read32();
 		if (src_len <= 0 || src_len > dst_len)
-			bb_simple_error_msg_and_die("corrupted data");
+			bb_die_corrupted_data();
 
 		if (dst_len > block_size) {
 			if (b2) {
@@ -853,7 +853,7 @@ static NOINLINE int lzo_decompress(uint32_t h_flags32)
 				r = lzo1x_decompress_safe(b1, src_len, b2, &d /*, NULL*/);
 
 			if (r != 0 /*LZO_E_OK*/ || dst_len != d) {
-				bb_simple_error_msg_and_die("corrupted data");
+				bb_die_corrupted_data();
 			}
 			dst = b2;
 		} else {

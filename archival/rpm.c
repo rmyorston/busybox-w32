@@ -130,7 +130,7 @@ static int rpm_gettags(const char *filename)
 		cnt = ntohl(header.entries);
 		/* Prevent multiplication overflow leading to undersized allocations */
 		if (cnt >= 0x00400000) /* ~4 million */
-			bb_simple_error_msg_and_die("corrupted data");
+			bb_die_corrupted_data();
 		storepos += sizeof(header) + cnt * 16;
 
 		G.tagcount += cnt;
@@ -157,7 +157,7 @@ static int rpm_gettags(const char *filename)
 			while (storepos & 7)
 				storepos++;
 		if (storepos >= 0x04000000) /* sanity check: 64mbytes */
-			bb_simple_error_msg_and_die("corrupted data");
+			bb_die_corrupted_data();
 		/* Seek past store */
 		storepos = xlseek(fd, storepos, SEEK_CUR);
 	}
@@ -197,19 +197,19 @@ static char *rpm_getstr(int tag, int itemindex)
 
 		to_end = G.mapsize - found->offset;
 		if (to_end > G.mapsize) /* offset overflows mapsize */
-			bb_simple_error_msg_and_die("corrupted data");
+			bb_die_corrupted_data();
 		tmpstr = G.map + found->offset;
 
 		for (n = 0; n < itemindex; n++) {
 			char *nul = memchr(tmpstr, '\0', to_end);
 			if (!nul)
-				bb_simple_error_msg_and_die("corrupted data");
+				bb_die_corrupted_data();
 			nul++;
 			to_end -= nul - tmpstr;
 			tmpstr = nul;
 		}
 		if (!memchr(tmpstr, '\0', to_end))
-			bb_simple_error_msg_and_die("corrupted data");
+			bb_die_corrupted_data();
 		return tmpstr;
 	}
 	return NULL;
@@ -235,7 +235,7 @@ static int rpm_getint(int tag, int itemindex)
 
 	to_end = G.mapsize - found->offset;
 	if (to_end > G.mapsize) /* offset overflows mapsize */
-		bb_simple_error_msg_and_die("corrupted data");
+		bb_die_corrupted_data();
 	tmpint = G.map + found->offset;
 
 	width = found->type;
@@ -250,7 +250,7 @@ static int rpm_getint(int tag, int itemindex)
 	}
 	itemindex *= width;
 	if (itemindex + width > to_end)
-		bb_simple_error_msg_and_die("corrupted data");
+		bb_die_corrupted_data();
 	tmpint += itemindex;
 
 	if (width == 4) {
@@ -271,7 +271,7 @@ static int rpm_getcount(int tag)
 		return 0;
 	// make rpm_getcount() callers not worry about getting clearly bogus values
 	if (found->count >= G.mapsize)
-		bb_simple_error_msg_and_die("corrupted data");
+		bb_die_corrupted_data();
 	return found->count;
 }
 

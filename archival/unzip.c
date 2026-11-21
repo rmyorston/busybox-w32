@@ -336,7 +336,7 @@ static uint32_t read_next_cdf(uint32_t cdf_offset, cdf_header_t *cdf)
 		+ cdf->fmt.file_comment_length; // can't overflow: 16-bit fields
 	next_offset = cdf_offset + inc;
 	if (next_offset < cdf_offset) // overflow?
-		bb_simple_error_msg_and_die("corrupted data");
+		bb_die_corrupted_data();
 
 	dbg("Next cdf_offset 0x%x", next_offset);
 	return next_offset;
@@ -346,7 +346,7 @@ static uint32_t read_next_cdf(uint32_t cdf_offset, cdf_header_t *cdf)
 static void die_if_bad_fnamesize(unsigned sz)
 {
 	if (sz > 0xfff) /* more than 4k?! no funny business please */
-		bb_simple_error_msg_and_die("corrupted data");
+		bb_die_corrupted_data();
 }
 
 static void unzip_skip(off_t skip)
