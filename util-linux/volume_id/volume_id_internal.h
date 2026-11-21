@@ -23,8 +23,11 @@
 
 PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 
-#define dbg(...) ((void)0)
-/* #define dbg(...) bb_error_msg(__VA_ARGS__) */
+#if 1
+# define dbg(...) ((void)0)
+#else
+# define dbg(...) bb_error_msg(__VA_ARGS__)
+#endif
 
 /* volume_id.h */
 

@@ -48,7 +48,7 @@ int FAST_FUNC volume_id_probe_erofs(struct volume_id *id /*,uint64_t off*/)
 
 	BUILD_BUG_ON(sizeof(struct erofs_super_block) != 128);
 
-	dbg("erofs: probing at offset 0x%llx", EROFS_SUPER_OFFSET);
+	dbg("erofs: probing at offset 0x%llx", (unsigned long long)EROFS_SUPER_OFFSET);
 	sb = volume_id_get_buffer(id, EROFS_SUPER_OFFSET, sizeof(*sb));
 	if (!sb)
 		return -1;

@@ -177,7 +177,6 @@ set:
 void* FAST_FUNC volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t len)
 {
 	uint8_t *dst;
-	unsigned small_off;
 	ssize_t read_len;
 
 	if (off + len < off)
@@ -185,7 +184,7 @@ void* FAST_FUNC volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t 
 	if (id->known_size != UNKNOWN_SIZE
 	 && id->known_size < off + len
 	) {
-		return NULL;
+		return NULL; /* the image is known to be smaller, do not bother */
 	}
 
 	dbg("get buffer off 0x%llx(%llu), len 0x%zx",
@@ -193,19 +192,17 @@ void* FAST_FUNC volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t 
 
 	/* check if requested area fits in superblock buffer */
 	if (off + len <= SB_BUFFER_SIZE) {
-		if (id->sbbuf == NULL) {
+		if (id->sbbuf == NULL)
 			id->sbbuf = xmalloc(SB_BUFFER_SIZE);
-		}
-		small_off = off;
-		dst = id->sbbuf;
 
 		/* check if we need to read */
 		len += off;
 		if (len <= id->sbbuf_len)
-			goto ret; /* we already have it */
+			return id->sbbuf + off; /* we already have it */
 
-		dbg("read sbbuf len:0x%x", (unsigned) len);
+		dbg("read sbbuf len:0x%zx", len);
 		id->sbbuf_len = len;
+		dst = id->sbbuf;
 		off = 0;
 		goto do_read;
 	}
@@ -214,20 +211,18 @@ void* FAST_FUNC volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t 
 		dbg("seek buffer too small %d", SEEK_BUFFER_SIZE);
 		return NULL;
 	}
-	dst = id->seekbuf;
 
 	/* check if we need to read */
-	if ((off >= id->seekbuf_off)
-	 && ((off + len) <= (id->seekbuf_off + id->seekbuf_len))
+	if (off >= id->seekbuf_off
+	 && (off + len) <= (id->seekbuf_off + id->seekbuf_len)
 	) {
-		small_off = off - id->seekbuf_off; /* can't overflow */
-		goto ret; /* we already have it */
+		unsigned small_off = off - id->seekbuf_off; /* can't overflow */
+		return id->seekbuf + small_off; /* we already have it */
 	}
 
 	id->seekbuf_off = off;
 	id->seekbuf_len = len;
 	id->seekbuf = xrealloc(id->seekbuf, len);
-	small_off = 0;
 	dst = id->seekbuf;
 	dbg("read seekbuf off:0x%llx len:0x%zx",
 				(unsigned long long) off, len);
@@ -237,16 +232,17 @@ void* FAST_FUNC volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t 
 		off = lseek(id->fd, 0, SEEK_END);
 		if (off < 0)
 			off = 0;
+		read_len = 0;
 		goto err;
 	}
 	read_len = full_read(id->fd, dst, len);
 	if (read_len != len) {
-		dbg("requested 0x%x bytes, got 0x%x bytes",
-				(unsigned) len, (unsigned) read_len);
-		if (read_len > 0)
-			off += read_len;
+		dbg("requested 0x%zx bytes, got 0x%zx bytes", len, read_len);
+		if (read_len < 0)
+			read_len = 0;
+		off += read_len;
  err:
-		/* The image is definitely only OFF bytes large */
+		/* The image is definitely no more than OFF bytes large */
 		if (off < UNKNOWN_SIZE) {
 			/* ...and OFF is small, we can use
 			 * that knowledge to skip future probes:
@@ -258,11 +254,14 @@ void* FAST_FUNC volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t 
 			id->known_size = off;
 		}
 		/* id->seekbuf_len or id->sbbuf_len is wrong now! Fixing. */
-		volume_id_free_buffer(id);
-		return NULL;
+		if (dst == id->sbbuf)
+			id->sbbuf_len = read_len;
+		else
+			id->seekbuf_len = read_len;
+		return NULL; /* "we can't read what you asked for" */
 	}
- ret:
-	return dst + small_off;
+
+	return dst;
 }
 
 void FAST_FUNC volume_id_free_buffer(struct volume_id *id)
