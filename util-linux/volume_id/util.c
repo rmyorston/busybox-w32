@@ -17,8 +17,23 @@
  *	License along with this library; if not, write to the Free Software
  *	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
-
 #include "volume_id_internal.h"
+
+int FAST_FUNC good_blocksize_512(unsigned blksz)
+{
+	unsigned bitshift;
+	if (blksz < 512)
+		return 0;
+	if (blksz & (blksz-1))
+		return 0;
+	bitshift = bb_popcnt_32(blksz - 1);
+	return bitshift;
+}
+int FAST_FUNC good_blocksize_512_to_4k(unsigned blksz)
+{
+	unsigned bitshift = good_blocksize_512(blksz);
+	return bitshift <= 12 ? bitshift : 0;
+}
 
 void FAST_FUNC volume_id_set_unicode16(char *str, size_t len, const uint8_t *buf, enum endian endianess, size_t count)
 {

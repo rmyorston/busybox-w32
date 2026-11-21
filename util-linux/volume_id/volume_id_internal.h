@@ -159,6 +159,8 @@ void FAST_FUNC volume_id_set_uuid(struct volume_id *id, const uint8_t *buf, enum
 void* FAST_FUNC volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t len);
 void FAST_FUNC volume_id_free_buffer(struct volume_id *id);
 
+int FAST_FUNC good_blocksize_512(unsigned blksz);
+int FAST_FUNC good_blocksize_512_to_4k(unsigned blksz);
 
 /* Probe routines */
 
