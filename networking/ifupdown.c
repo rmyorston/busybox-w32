@@ -78,15 +78,6 @@
 //config:	help
 //config:	If you need support for IPv6, turn this option on.
 //config:
-//UNUSED:
-////////:config FEATURE_IFUPDOWN_IPX
-////////:	bool "Support IPX"
-////////:	default y
-////////:	depends on IFUP || IFDOWN
-////////:	help
-////////:	  If this option is selected you can use busybox to work with IPX
-////////:	  networks.
-//config:
 //config:config FEATURE_IFUPDOWN_MAPPING
 //config:	bool "Enable mapping support"
 //config:	default y
@@ -156,6 +147,131 @@
 
 #define debug_noise(args...) /*fprintf(stderr, args)*/
 
+//	Mini-doc: how Debian does it
+//
+// "ifup IFACE" brings up interface using its matching "iface" definition.
+// "ifdown IFACE" deconfigures it.
+// "ifup -a" brings up interfaces marked auto, in configuration order.
+// "ifdown -a" takes down defined interfaces recorded as active, using the state file's order.
+// "ifup --allow=hotplug IFACE" acts only if that interface is listed in an "allow-hotplug" line.
+// A hotplug service such as udev typically invokes this when a device appears;
+// ifup itself does not watch for hardware changes.
+// "ifquery IFACE" examines the configuration, "ifquery --list" lists configured interfaces, and "ifquery --state" reports the tool's recorded state.
+// Options:
+// -i FILE to read a different configuration file, -n for a no-action run,
+// -v for verbose output, -f to force configuration or deconfiguration,
+// and --no-scripts to skip scripts in the hook directories.
+// auto means "include this interface when ifup -a is run" - commonly during boot.
+// allow-hotplug marks interfaces eligible for a caller's --allow=hotplug request.
+//
+//	Configuration: /etc/network/interfaces
+//
+// Debian installations commonly include /etc/network/interfaces.d through a 'source'
+// or 'source-directory' line.
+// Syntax:
+//	iface IFACE FAMILY METHOD
+//	FAMILY = inet, inet6
+//	METHOD = dhcp, static, manual, loopback, auto (for IPv6)
+// There can be separate stanzas for IPv4 and IPv6: "iface eth0 inet dhcp" and "iface eth0 inet6 auto".
+// Indented lines below the iface line are options for that definition.
+// Option names and valid values depend on the family, method, and installed extensions.
+// Among options, there are commands such as pre-up, up, down, and post-down.
+// Those commands run at different points in the interface lifecycle.
+//
+// Example file:
+//auto lo
+//iface lo inet loopback
+//auto eth0
+//iface eth0 inet dhcp
+//iface eth1 inet static
+//	address 192.0.2.10/24
+//	gateway 192.0.2.1
+//
+// Hook scripts can also be placed in /etc/network/if-pre-up.d/, if-up.d/, if-down.d/, and if-post-down.d/
+// Commands inside an iface stanza are shell commands run at particular points.
+// For bringing an interface up, the rough order is:
+// 1. pre-up commands
+// 2. Scripts in /etc/network/if-pre-up.d/
+// 3. The selected method configures the interface - for example, the DHCP method runs a DHCP client
+// 4. up commands (also called post-up)
+// 5. Scripts in /etc/network/if-up.d/
+//
+// For taking an interface down, the rough order is:
+// 1. down commands (also called pre-down)
+// 2. Scripts in /etc/network/if-down.d/
+// 3. The method deconfigures the interface
+// 4. post-down commands
+// 5. Scripts in /etc/network/if-post-down.d/
+//
+// Commands in the stanza run in the order they appear. The names "post-up"
+// and "pre-down" are aliases, not separate hook phases. Hook-directory
+// scripts are run with no command-line arguments, after the corresponding
+// stanza commands. The scripts are executed using "run-parts /etc/network/DIRNAME"
+// command (for one, this means they are ASCII sorted).
+//
+// Example:
+//iface eth0 inet dhcp
+//	pre-up /usr/local/sbin/check-link eth0
+//	up /usr/local/sbin/record-address eth0
+//	down /usr/local/sbin/remove-route eth0
+//	post-down /usr/local/sbin/record-disconnect eth0
+//
+// The four hook directories are for scripts that should run for interfaces generally, rather than commands tied to one stanza:
+// /etc/network/if-pre-up.d: before configuration
+// /etc/network/if-up.d: after configuration
+// /etc/network/if-down.d: before deconfiguration
+// /etc/network/if-post-down.d: after deconfiguration
+//
+// Scripts and stanza commands receive environment variables. The most useful are:
+//
+// IFACE: physical interface name
+// LOGICAL: logical configuration name; often the same as IFACE, but it can differ with logical interfaces or mapping
+// ADDRFAM: address family, typically "inet" or "inet6"
+// METHOD: method from the stanza, such as "dhcp" or "static"
+// MODE: "start" for ifup, "stop" for ifdown
+// PHASE: more specific lifecycle phase, such as "pre-up", "post-up", "pre-down", or "post-down"
+// CLASS: class selected with --allow, or "auto" for --all
+// VERBOSITY: 1 if --verbose was used, otherwise 0
+//
+// Stanza options are exported too: their names are uppercased, prefixed with IF_, and have hyphens converted to underscores.
+// For instance, "dns-nameservers 192.0.2.53" becomes available as IF_DNS_NAMESERVERS.
+//
+//	allow-* lines
+//
+// An allow-* line assigns interfaces to a named class; it doesn't configure the interface by itself. For example:
+//
+//allow-hotplug eth0
+//iface eth0 inet dhcp
+//
+// A user can select that class with "ifup --allow=hotplug"
+//
+//	mapping stanzas
+//
+// A mapping stanza translates a name supplied to ifup into a logical name used by an iface definition.
+// This is handy when you want a script to choose among named configurations. A mapping stanza has a glob pattern,
+// a script, and optional map lines. The script receives the matched interface name as an argument,
+// receives the map lines on standard input, and must print the mapped logical name.
+//
+// For example, the configuration might contain:
+//￼
+//mapping en*
+//	script /usr/local/sbin/select-network
+//	map HOME
+//	map WORK
+//iface home-office inet dhcp
+//iface work-lab inet static
+//	address 192.0.2.20/24
+//
+// If you run "ifup enp3s0", the matching script can choose home-office or work-lab; that output must correspond
+// to an iface definition. IFACE remains the actual interface name, while LOGICAL identifies the selected configuration.
+//
+// TODO: document other directives:
+// rename, which renames interfaces
+// no-auto-down, which excludes an interface from ifdown -a
+// no-scripts, which suppresses the /etc/network/if-*.d/ hooks for selected interfaces
+//
+// The state of active interfaces is recorded in /run/network/ifstate/ (or a different directory if --state-dir is specified).
+
 /* Forward declaration */
 struct interface_defn_t;
 
@@ -206,7 +322,6 @@ struct interfaces_file_t {
 	struct mapping_defn_t *mappings;
 };
 
-
 #define OPTION_STR "anvf" IF_FEATURE_IFUPDOWN_MAPPING("m") "i:"
 enum {
 	OPT_do_all      = 0x1,
@@ -221,7 +336,6 @@ enum {
 #define FORCE       (option_mask32 & OPT_force)
 #define NO_MAPPINGS (option_mask32 & OPT_no_mappings)
 
-
 struct globals {
 	char **my_environ;
 	const char *startup_PATH;
@@ -230,14 +344,12 @@ struct globals {
 #define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { setup_common_bufsiz(); } while (0)
 
-
 static const char keywords_up_down[] ALIGN1 =
 	"up\0"
 	"down\0"
 	"pre-up\0"
 	"post-down\0"
 ;
-
 
 #if ENABLE_FEATURE_IFUPDOWN_IPV4 || ENABLE_FEATURE_IFUPDOWN_IPV6
 
@@ -312,12 +424,18 @@ static int count_netmask_bits(const char *dotted_quad)
 	if (inet_aton(dotted_quad, &ip) == 0)
 		return -1; /* malformed dotted IP */
 	d = ntohl(ip.s_addr); /* IP in host order */
+	if (d == 0) /* special-case 0.0.0.0 mask, it'll erroneously fail d&(d+1) check */
+		return 0; /* the mask is /0 */
 	d = ~d; /* 11110000 -> 00001111 */
-	if (d & (d+1)) /* check that it is in 00001111 form */
-		return -1; /* no it is not */
+	if (d & (d+1)) /* is it in 00001111 form? */
+		return -1; /* no */
 	return bb_popcnt_32(~d);
 }
 # endif
+
+// Note: the mini-language we use here is our own invention,
+// it is not user-visible: user can't supply commands to be parsed through this,
+// only strings defined in this file go into parse().
 
 static char *parse(const char *command, struct interface_defn_t *ifd)
 {
@@ -370,6 +488,7 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 				nextpercent = strchr(command, '%');
 				if (!nextpercent) {
 					/* Unterminated %var% */
+//TODO: can just abort: it's a bug in our code
 					free(result);
 					return NULL;
 				}
@@ -395,7 +514,7 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 						varvalue = get_var("netmask", 7, ifd);
 						if (varvalue) {
 							res = count_netmask_bits(varvalue);
-							if (res > 0) {
+							if (res >= 0) { /* >=, not >: netmask "0.0.0.0" is valid */
 								const char *argument = utoa(res);
 								addstr(&result, argument, strlen(argument));
 								command = nextpercent + 1;
@@ -408,12 +527,13 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 				}
 
 				command = nextpercent + 1;
-			}
+			} /* case '%' */
 			break;
-		}
-	}
+		} /* switch */
+	} /* while */
 
 	if (opt_depth > 1) {
+//TODO: can just abort: it's a bug in our code
 		/* Unbalanced bracket */
 		free(result);
 		return NULL;
@@ -422,35 +542,35 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 	if (!okay[0]) {
 		/* Undefined variable and we aren't in a bracket */
 		free(result);
-		return NULL;
+		return NULL; /* "do not perform the action: we don't have enough config data" */
 	}
 
 	return result;
 }
 
-/* execute() returns 1 for success and 0 for failure */
+/* Returns 1 for success (exec() returned 1) and 0 for failure.
+ * Empty command "" is success.
+ * "command with %vars%" where %var% is not set is failure.
+ */
 static int execute(const char *command, struct interface_defn_t *ifd, execfn *exec)
 {
 	char *out;
 	int ret;
 
 	out = parse(command, ifd);
-	if (!out) {
-		/* parse error? */
-		return 0;
-	}
+	if (!out)
+		return 0; /* "Failure: no value for %var%" */
+
 	/* out == "": parsed ok but not all needed variables known, skip */
 	ret = out[0] ? (*exec)(out) : 1;
 
 	free(out);
-	if (ret != 1) {
+	if (ret != 1)
 		return 0;
-	}
 	return 1;
 }
 
 #endif /* FEATURE_IFUPDOWN_IPV4 || FEATURE_IFUPDOWN_IPV6 */
-
 
 #if ENABLE_FEATURE_IFUPDOWN_IPV6
 
@@ -491,6 +611,7 @@ static int FAST_FUNC static_up6(struct interface_defn_t *ifd, execfn *exec)
 # else
 	result = execute("ifconfig %iface%[[ media %media%]][[ hw %hwaddress%]][[ mtu %mtu%]] up", ifd, exec);
 	result += execute("ifconfig %iface% add %address%/%netmask%", ifd, exec);
+	/* Entire command in brackets means "do not treat absense of variables as failure" */
 	result += execute("[[route -A inet6 add ::/0 gw %gateway%[[ metric %metric%]]]]", ifd, exec);
 # endif
 	return ((result == 3) ? 3 : 0);
@@ -543,7 +664,6 @@ static const struct address_family_t addr_inet6 = {
 
 #endif /* FEATURE_IFUPDOWN_IPV6 */
 
-
 #if ENABLE_FEATURE_IFUPDOWN_IPV4
 
 static int FAST_FUNC loopback_up(struct interface_defn_t *ifd, execfn *exec)
@@ -577,6 +697,7 @@ static int FAST_FUNC static_up(struct interface_defn_t *ifd, execfn *exec)
 	result = execute("ip addr add %address%/%bnmask%[[ broadcast %broadcast%]] "
 			"dev %iface%[[ peer %pointopoint%]][[ label %label%]]", ifd, exec);
 	result += execute("ip link set[[ mtu %mtu%]][[ addr %hwaddress%]] %iface% up", ifd, exec);
+	/* Entire command in brackets means "do not treat absense of variables as failure" */
 	result += execute("[[ip route add default via %gateway% dev %iface%[[ metric %metric%]]]]", ifd, exec);
 	return ((result == 3) ? 3 : 0);
 # else
@@ -640,9 +761,7 @@ static const struct dhcp_client_t ext_dhcp_clients[] ALIGN_PTR = {
 		"kill `cat /var/run/udhcpc.%iface%.pid` 2>/dev/null",
 	},
 };
-# endif /* FEATURE_IFUPDOWN_EXTERNAL_DHCPC */
 
-# if ENABLE_FEATURE_IFUPDOWN_EXTERNAL_DHCP
 static int FAST_FUNC dhcp_up(struct interface_defn_t *ifd, execfn *exec)
 {
 	unsigned i;
@@ -704,7 +823,7 @@ static int FAST_FUNC dhcp_down(struct interface_defn_t *ifd, execfn *exec)
 		bb_simple_error_msg("warning: no dhcp clients found and stopped");
 
 	/* Sleep a bit, otherwise static_down tries to bring down interface too soon,
-	   and it may come back up because udhcpc is still shutting down */
+	 * and it may come back up because udhcpc is still shutting down */
 	usleep(100000);
 	result += static_down(ifd, exec);
 	return ((result == 3) ? 3 : 0);
@@ -1168,7 +1287,7 @@ static int doit(char *str)
 	return 1;
 }
 
-static int execute_all(struct interface_defn_t *ifd, const char *opt)
+static int execute_etc_network_if_STAGE_d_scripts(struct interface_defn_t *ifd, const char *opt)
 {
 	/* 'opt' is always short, the longest value is "post-down".
 	 * Can use on-stack buffer instead of xasprintf'ed one.
@@ -1198,28 +1317,38 @@ static int execute_all(struct interface_defn_t *ifd, const char *opt)
 
 static int check(char *str)
 {
+//FIXME: execute(..., check) will never pass us NULL: it returns 0
+//if parse() returned NULL, without calling us. IOW: we always return 1 here:
 	return str != NULL;
 }
 
 static int iface_up(struct interface_defn_t *iface)
 {
-	if (!iface->method->up(iface, check)) return -1;
+	if (!iface->method->up(iface, check)) /* up would not execute the expected number of commands? */
+		return -1;
 	set_environ(iface, "start", "pre-up");
-	if (!execute_all(iface, "pre-up")) return 0;
-	if (!iface->method->up(iface, doit)) return 0;
+	if (!execute_etc_network_if_STAGE_d_scripts(iface, "pre-up"))
+		return 0;
+	if (!iface->method->up(iface, doit))
+		return 0;
 	set_environ(iface, "start", "post-up");
-	if (!execute_all(iface, "up")) return 0;
+	if (!execute_etc_network_if_STAGE_d_scripts(iface, "up"))
+		return 0;
 	return 1;
 }
 
 static int iface_down(struct interface_defn_t *iface)
 {
-	if (!iface->method->down(iface, check)) return -1;
+	if (!iface->method->down(iface, check)) /* down would execute the expected number of commands? */
+		return -1;
 	set_environ(iface, "stop", "pre-down");
-	if (!execute_all(iface, "down")) return 0;
-	if (!iface->method->down(iface, doit)) return 0;
+	if (!execute_etc_network_if_STAGE_d_scripts(iface, "down"))
+		return 0;
+	if (!iface->method->down(iface, doit))
+		return 0;
 	set_environ(iface, "stop", "post-down");
-	if (!execute_all(iface, "post-down")) return 0;
+	if (!execute_etc_network_if_STAGE_d_scripts(iface, "post-down"))
+		return 0;
 	return 1;
 }
 
@@ -1367,7 +1496,7 @@ static FILE *open_new_state_file(void)
 int ifupdown_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int ifupdown_main(int argc UNUSED_PARAM, char **argv)
 {
-	int (*cmds)(struct interface_defn_t *);
+	int (*up_or_down_func)(struct interface_defn_t *);
 	struct interfaces_file_t *defn;
 	llist_t *target_list = NULL;
 	const char *interfaces = "/etc/network/interfaces";
@@ -1382,9 +1511,9 @@ int ifupdown_main(int argc UNUSED_PARAM, char **argv)
 	 && (!ENABLE_IFDOWN || applet_name[2] == 'u')
 	) {
 		/* ifup command */
-		cmds = iface_up;
+		up_or_down_func = iface_up;
 	} else {
-		cmds = iface_down;
+		up_or_down_func = iface_down;
 	}
 
 	getopt32(argv, OPTION_STR, &interfaces);
@@ -1411,8 +1540,7 @@ int ifupdown_main(int argc UNUSED_PARAM, char **argv)
 		char *iface;
 		char *liface;
 		char *pch;
-		bool okay = 0;
-		int cmds_ret;
+		bool ran_up_or_down = 0;
 		bool curr_failure = 0;
 
 		iface = xstrdup(target_list->data);
@@ -1430,7 +1558,7 @@ int ifupdown_main(int argc UNUSED_PARAM, char **argv)
 			llist_t *state_list = read_iface_state();
 			const llist_t *iface_state = find_iface_state(state_list, iface);
 
-			if (cmds == iface_up) {
+			if (up_or_down_func == iface_up) {
 				/* ifup */
 				if (iface_state) {
 					bb_error_msg("interface %s already configured", iface);
@@ -1447,7 +1575,7 @@ int ifupdown_main(int argc UNUSED_PARAM, char **argv)
 		}
 
 #if ENABLE_FEATURE_IFUPDOWN_MAPPING
-		if ((cmds == iface_up) && !NO_MAPPINGS) {
+		if ((up_or_down_func == iface_up) && !NO_MAPPINGS) {
 			struct mapping_defn_t *currmap;
 
 			for (currmap = defn->mappings; currmap; currmap = currmap->next) {
@@ -1470,21 +1598,20 @@ int ifupdown_main(int argc UNUSED_PARAM, char **argv)
 			currif = (struct interface_defn_t *) iface_list->data;
 			if (strcmp(liface, currif->iface) == 0) {
 				char *oldiface = currif->iface;
+				int rc;
 
-				okay = 1;
+				ran_up_or_down = 1;
 				currif->iface = iface;
 
 				debug_noise("\nConfiguring interface %s (%s)\n", liface, currif->address_family->name);
 
-				/* Call the cmds function pointer, does either iface_up() or iface_down() */
-				cmds_ret = cmds(currif);
-				if (cmds_ret == -1) {
+				/* Call up_or_down_func (either iface_up() or iface_down()) */
+				rc = up_or_down_func(currif);
+				if (rc == -1)
 					bb_error_msg("don't have all variables for %s/%s",
 							liface, currif->address_family->name);
+				if (rc <= 0)
 					any_failures = curr_failure = 1;
-				} else if (cmds_ret == 0) {
-					any_failures = curr_failure = 1;
-				}
 
 				currif->iface = oldiface;
 			}
@@ -1494,7 +1621,7 @@ int ifupdown_main(int argc UNUSED_PARAM, char **argv)
 			bb_putchar('\n');
 		}
 
-		if (!okay && !FORCE) {
+		if (!ran_up_or_down && !FORCE) {
 			bb_error_msg("ignoring unknown interface %s", liface);
 			any_failures = 1;
 		} else if (!NO_ACT) {
@@ -1504,7 +1631,7 @@ int ifupdown_main(int argc UNUSED_PARAM, char **argv)
 			llist_t *state_list = read_iface_state();
 			llist_t *iface_state = find_iface_state(state_list, iface);
 
-			if (cmds == iface_up && !curr_failure) {
+			if (up_or_down_func == iface_up && !curr_failure) {
 				char *newiface = xasprintf("%s=%s", iface, liface);
 				if (!iface_state) {
 					llist_add_to_end(&state_list, newiface);
