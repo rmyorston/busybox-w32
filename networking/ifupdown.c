@@ -122,7 +122,7 @@
 //usage:     "\n		(note: doesn't disable mappings)"
 //usage:     "\n	-m	Don't run any mappings"
 //usage:	)
-//usage:     "\n	-v	Print out what would happen before doing it"
+//usage:     "\n	-v	Print what would happen before doing it"
 //usage:     "\n	-f	Force"
 //usage:
 //usage:#define ifdown_trivial_usage
@@ -135,7 +135,7 @@
 //usage:     "\n		(note: doesn't disable mappings)"
 //usage:     "\n	-m	Don't run any mappings"
 //usage:	)
-//usage:     "\n	-v	Print out what would happen before doing it"
+//usage:     "\n	-v	Print what would happen before doing it"
 //usage:     "\n	-f	Force"
 
 #include <net/if.h>
