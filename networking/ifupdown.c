@@ -145,7 +145,11 @@
 #define UDHCPC_CMD_OPTIONS CONFIG_IFUPDOWN_UDHCPC_CMD_OPTIONS
 #define IFSTATE_FILE_PATH  CONFIG_IFUPDOWN_IFSTATE_PATH
 
-#define debug_noise(args...) /*fprintf(stderr, args)*/
+#if 0
+# define dbg(...) bb_error_msg(__VA_ARGS__)
+#else
+# define dbg(...) ((void)0)
+#endif
 
 //	Mini-doc: how Debian does it
 //
@@ -439,46 +443,42 @@ static int count_netmask_bits(const char *dotted_quad)
 
 static char *parse(const char *command, struct interface_defn_t *ifd)
 {
-	size_t old_pos[MAX_OPT_DEPTH] = { 0 };
-	smallint okay[MAX_OPT_DEPTH] = { 1 };
-	int opt_depth = 1;
+	size_t old_pos[MAX_OPT_DEPTH];
+	smallint undefined_var[MAX_OPT_DEPTH];
+	int opt_depth = 0;
 	char *result = NULL;
 
+	undefined_var[0] = 0;
 	while (*command) {
+		int n;
 		switch (*command) {
-		default:
-			addstr(&result, command, 1);
-			command++;
-			break;
-		case '\\':
-			if (command[1])
-				command++;
-			addstr(&result, command, 1);
-			command++;
-			break;
+		// UNUSED so far
+		//case '\\':
+		//	if (command[1])
+		//		command++;
+		//	break; // add current char
 		case '[':
-			if (command[1] == '[' && opt_depth < MAX_OPT_DEPTH) {
+			if (command[1] == '[') {
+				if (opt_depth == MAX_OPT_DEPTH-2)
+					goto bug;
 				old_pos[opt_depth] = result ? strlen(result) : 0;
-				okay[opt_depth] = 1;
 				opt_depth++;
+				undefined_var[opt_depth] = 0;
 				command += 2;
-			} else {
-				addstr(&result, command, 1);
-				command++;
+				continue;
 			}
-			break;
+			break; // add current char
 		case ']':
-			if (command[1] == ']' && opt_depth > 1) {
+			if (command[1] == ']') {
 				opt_depth--;
-				if (!okay[opt_depth]) {
+				if (opt_depth < 0)
+					goto bug;
+				if (undefined_var[opt_depth + 1])
 					result[old_pos[opt_depth]] = '\0';
-				}
 				command += 2;
-			} else {
-				addstr(&result, command, 1);
-				command++;
+				continue;
 			}
-			break;
+			break; // add current char
 		case '%':
 			{
 				const char *nextpercent;
@@ -486,13 +486,8 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 
 				command++;
 				nextpercent = strchr(command, '%');
-				if (!nextpercent) {
-					/* Unterminated %var% */
-//TODO: can just abort: it's a bug in our code
-					free(result);
-					return NULL;
-				}
-
+				if (!nextpercent) /* Unterminated %var% */
+					goto bug;
 				varvalue = get_var(command, nextpercent - command, ifd);
 
 				if (varvalue) {
@@ -523,23 +518,25 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 						}
 					}
 # endif
-					okay[opt_depth - 1] = 0;
+					dbg("not defined:'%.*s'", (int)(nextpercent - command), command);
+					undefined_var[opt_depth] = 1;
 				}
-
 				command = nextpercent + 1;
+				continue;
 			} /* case '%' */
-			break;
 		} /* switch */
+		n = strcspn(command, "[]%");
+		addstr(&result, command, n);
+		dbg("result:'%s'", result);
+		command += n;
 	} /* while */
 
-	if (opt_depth > 1) {
-//TODO: can just abort: it's a bug in our code
-		/* Unbalanced bracket */
-		free(result);
-		return NULL;
+	if (opt_depth != 0) { /* Unbalanced bracket */
+ bug:
+		bb_simple_error_msg_and_die("BUG");
 	}
 
-	if (!okay[0]) {
+	if (undefined_var[0]) {
 		/* Undefined variable and we aren't in a bracket */
 		free(result);
 		return NULL; /* "do not perform the action: we don't have enough config data" */
@@ -561,7 +558,7 @@ static int execute(const char *command, struct interface_defn_t *ifd, execfn *ex
 	if (!out)
 		return 0; /* "Failure: no value for %var%" */
 
-	/* out == "": parsed ok but not all needed variables known, skip */
+	/* out == "": parsed ok but not all needed variables known, skip as SUCCESS! */
 	ret = out[0] ? (*exec)(out) : 1;
 
 	free(out);
@@ -1008,7 +1005,7 @@ static struct interfaces_file_t *read_interfaces(const char *filename, struct in
 	if (!defn)
 		defn = xzalloc(sizeof(*defn));
 
-	debug_noise("reading %s file:\n", filename);
+	dbg("reading %s file:\n", filename);
 	f = xfopen_for_read(filename);
 
 	while ((buf = xmalloc_fgetline(f)) != NULL) {
@@ -1051,7 +1048,7 @@ static struct interfaces_file_t *read_interfaces(const char *filename, struct in
 				*where = currmap;
 				/*currmap->next = NULL;*/
 			}
-			debug_noise("Added mapping\n");
+			dbg("Added mapping");
 #endif
 			currently_processing = MAPPING;
 		} else if (strcmp(first_word, "iface") == 0) {
@@ -1117,7 +1114,7 @@ static struct interfaces_file_t *read_interfaces(const char *filename, struct in
 #endif
 			llist_add_to_end(&(defn->ifaces), (char*)currif);
 
-			debug_noise("iface %s %s %s\n", currif->iface, address_family_name, method_name);
+			dbg("iface %s %s %s", currif->iface, address_family_name, method_name);
 			currently_processing = IFACE;
 		} else if (strcmp(first_word, "auto") == 0) {
 			while ((first_word = next_word(&rest_of_line)) != NULL) {
@@ -1129,7 +1126,7 @@ static struct interfaces_file_t *read_interfaces(const char *filename, struct in
 
 				/* Add the interface to the list */
 				llist_add_to_end(&(defn->autointerfaces), xstrdup(first_word));
-				debug_noise("\nauto %s\n", first_word);
+				dbg("auto %s", first_word);
 			}
 			currently_processing = NONE;
 		} else if (strcmp(first_word, "source") == 0) {
@@ -1169,7 +1166,7 @@ static struct interfaces_file_t *read_interfaces(const char *filename, struct in
 							bb_error_msg_and_die("duplicate option \"%s\"", buf);
 					}
 				}
-				debug_noise("\t%s=%s\n", first_word, rest_of_line);
+				dbg("%s=%s", first_word, rest_of_line);
 				currif->option = xrealloc_vector(currif->option, 4, currif->n_options);
 				currif->option[currif->n_options].name = xstrdup(first_word);
 				currif->option[currif->n_options].value = xstrdup(rest_of_line);
@@ -1203,7 +1200,7 @@ static struct interfaces_file_t *read_interfaces(const char *filename, struct in
 		bb_error_msg_and_die("%s: I/O error", filename);
 	}
 	fclose(f);
-	debug_noise("\ndone reading %s\n\n", filename);
+	dbg("done reading %s", filename);
 
 	return defn;
 }
@@ -1603,7 +1600,7 @@ int ifupdown_main(int argc UNUSED_PARAM, char **argv)
 				ran_up_or_down = 1;
 				currif->iface = iface;
 
-				debug_noise("\nConfiguring interface %s (%s)\n", liface, currif->address_family->name);
+				dbg("Configuring interface %s (%s)", liface, currif->address_family->name);
 
 				/* Call up_or_down_func (either iface_up() or iface_down()) */
 				rc = up_or_down_func(currif);

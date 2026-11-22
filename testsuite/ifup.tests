@@ -1,0 +1,24 @@
+#!/bin/sh
+# Copyright 2026 by Denys Vlasenko
+# Licensed under GPLv2, see file LICENSE in this source tree.
+
+. ./testing.sh
+
+# testing "test name" "cmd" "expected result" "file input" "stdin"
+
+testing "ifup eth42 -n" \
+	'ifup eth42 -n -i input 2>&1; echo $?' \
+'run-parts /etc/network/if-pre-up.d
+ip addr add 192.0.2.10/24 dev eth42 label eth42
+ip link set eth42 up
+ip route add default via 192.0.2.1 dev eth42
+run-parts /etc/network/if-up.d
+0
+' '
+iface eth42 inet static
+	address 192.0.2.10
+	netmask 255.255.255.0
+	gateway 192.0.2.1
+' ''
+
+exit $FAILCOUNT
