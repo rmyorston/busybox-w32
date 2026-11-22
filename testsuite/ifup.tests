@@ -3,10 +3,13 @@
 # Licensed under GPLv2, see file LICENSE in this source tree.
 
 . ./testing.sh
+test -f "$bindir/.config" && . "$bindir/.config"
+
+sq="'"
 
 # testing "test name" "cmd" "expected result" "file input" "stdin"
 
-testing "ifup eth42 -n" \
+testing "ifup eth42 -n static" \
 	'ifup eth42 -n -i input 2>&1; echo $?' \
 'run-parts /etc/network/if-pre-up.d
 ip addr add 192.0.2.10/24 dev eth42 label eth42
@@ -20,5 +23,31 @@ iface eth42 inet static
 	netmask 255.255.255.0
 	gateway 192.0.2.1
 ' ''
+
+testing "ifup eth42 -n static without address" \
+	'ifup eth42 -n -i input 2>&1; echo $?' \
+"ifup: don't have all variables for eth42/inet
+1
+" '
+iface eth42 inet static
+	netmask 255.255.255.0
+	gateway 192.0.2.1
+' ''
+
+if test "$CONFIG_IFUPDOWN_UDHCPC_CMD_OPTIONS" = ""; then
+optional FEATURE_IFUPDOWN_EXTERNAL_DHCP
+testing "ifup eth42 -n udhcpc_opts" \
+	'ifup eth42 -n -i input 2>&1; echo $?' \
+'run-parts /etc/network/if-pre-up.d
+ip link set eth42 up
+udhcpc -p /var/run/udhcpc.eth42.pid -i eth42 -Z
+run-parts /etc/network/if-up.d
+0
+' '
+iface eth42 inet dhcp
+	udhcpc_opts -Z
+' ''
+SKIP=
+fi
 
 exit $FAILCOUNT
