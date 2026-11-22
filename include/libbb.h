@@ -1764,6 +1764,7 @@ const struct hwtype *get_hwntype(int type) FAST_FUNC;
 
 
 extern int fstype_matches(const char *fstype, const char *comma_list) FAST_FUNC;
+extern int fsopts_matches(const char *fsopts, const char *comma_list) FAST_FUNC;
 #ifdef HAVE_MNTENT_H
 extern struct mntent *find_mount_point(const char *name, int subdir_too) FAST_FUNC;
 #endif

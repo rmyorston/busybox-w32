@@ -41,7 +41,7 @@
 //kbuild:lib-$(CONFIG_UMOUNT) += umount.o
 
 //usage:#define umount_trivial_usage
-//usage:       "[-rlf"IF_FEATURE_MTAB_SUPPORT("m")IF_FEATURE_MOUNT_LOOP("d")IF_FEATURE_UMOUNT_ALL("a")"] [-t FSTYPE] FILESYSTEM|DIRECTORY"
+//usage:       "[-rlf"IF_FEATURE_MTAB_SUPPORT("m")IF_FEATURE_MOUNT_LOOP("d")IF_FEATURE_UMOUNT_ALL("a")"] [-t FSTYPE] [-O FSOPT] FILESYSTEM|DIRECTORY"
 //usage:#define umount_full_usage "\n\n"
 //usage:       "Unmount filesystems\n"
 //usage:	IF_FEATURE_UMOUNT_ALL(
@@ -57,6 +57,7 @@
 //usage:     "\n	-d	Free loop device if it has been used"
 //usage:	)
 //usage:     "\n	-t FSTYPE[,...]	Unmount only these filesystem type(s)"
+//usage:     "\n	-O FSOPT[,...]	Unmount only filesystems mounted with these option(s)"
 //usage:
 //usage:#define umount_example_usage
 //usage:       "$ umount /dev/hdc1\n"
@@ -82,7 +83,7 @@ static struct mntent *getmntent_r(FILE* stream, struct mntent* result,
 #endif
 
 /* ignored: -c -v -i */
-#define OPTION_STRING           "fldnrat:" "cvi"
+#define OPTION_STRING           "fldnrat:O:" "cvi"
 #define OPT_FORCE               (1 << 0) // Same as MNT_FORCE
 #define OPT_LAZY                (1 << 1) // Same as MNT_DETACH
 #define OPT_FREELOOP            (1 << 2)
@@ -95,6 +96,7 @@ int umount_main(int argc UNUSED_PARAM, char **argv)
 {
 	int doForce;
 	FILE *fp;
+	char *opts = NULL;
 	char *fstype = NULL;
 	exitcode_t status = EXIT_SUCCESS;
 	unsigned opt;
@@ -104,7 +106,7 @@ int umount_main(int argc UNUSED_PARAM, char **argv)
 		struct mtab_list *next;
 	} *mtl, *m;
 
-	opt = getopt32(argv, OPTION_STRING, &fstype);
+	opt = getopt32(argv, OPTION_STRING, &fstype, &opts);
 	//argc -= optind;
 	argv += optind;
 
@@ -133,6 +135,9 @@ int umount_main(int argc UNUSED_PARAM, char **argv)
 		while (getmntent_r(fp, &me, bb_common_bufsiz1, COMMON_BUFSIZE)) {
 			/* Match fstype (fstype==NULL matches always) */
 			if (!fstype_matches(me.mnt_type, fstype))
+				continue;
+			/* Match -O OPTS */
+			if (!fsopts_matches(me.mnt_opts, opts))
 				continue;
 			m = xzalloc(sizeof(*m));
 			m->next = mtl;

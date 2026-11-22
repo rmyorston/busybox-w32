@@ -2215,63 +2215,6 @@ static int singlemount(struct mntent *mp, int ignore_busy)
 	return rc;
 }
 
-// -O support
-//    -O interprets a list of filter options which select whether a mount
-// point will be mounted: only mounts with options matching *all* filtering
-// options will be selected.
-//    By default each -O filter option must be present in the list of mount
-// options, but if it is prefixed by "no" then it must be absent.
-// For example,
-//  -O a,nob,c  matches  -o a,c  but fails to match  -o a,b,c
-//              (and also fails to match  -o a  because  -o c  is absent).
-//
-// It is different from -t in that each option is matched exactly; a leading
-// "no" at the beginning of one option does not negate the rest.
-static int match_opt(const char *fs_opt_in, const char *O_opt)
-{
-	if (!O_opt)
-		return 1;
-
-	while (*O_opt) {
-		const char *fs_opt = fs_opt_in;
-		int O_len;
-		int match;
-
-		// If option begins with "no" then treat as an inverted match:
-		// matching is a failure
-		match = 0;
-		if (O_opt[0] == 'n' && O_opt[1] == 'o') {
-			match = 1;
-			O_opt += 2;
-		}
-		// Isolate the current O option
-		O_len = strchrnul(O_opt, ',') - O_opt;
-		// Check for a match against existing options
-		while (1) {
-			if (strncmp(fs_opt, O_opt, O_len) == 0
-			 && (fs_opt[O_len] == '\0' || fs_opt[O_len] == ',')
-			) {
-				if (match)
-					return 0;  // "no" prefix, but option found
-				match = 1;  // current O option found, go check next one
-				break;
-			}
-			fs_opt = strchr(fs_opt, ',');
-			if (!fs_opt)
-				break;
-			fs_opt++;
-		}
-		if (match == 0)
-			return 0;     // match wanted but not found
-		if (O_opt[O_len] == '\0') // end?
-			break;
-		// Step to the next O option
-		O_opt += O_len + 1;
-	}
-	// If we get here then everything matched
-	return 1;
-}
-
 // Parse options, if necessary parse fstab/mtab, and call singlemount for
 // each directory to be mounted.
 int mount_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -2502,7 +2445,7 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 
 			// Does type match? (NULL matches always)
 			if (!fstype_matches(mtcur->mnt_type, fstype))
-				continue;
+				continue; // no
 
 			// Skip noauto and swap anyway
 			if ((parse_mount_options(mtcur->mnt_opts, NULL, NULL) & MOUNT_NOAUTO)
@@ -2512,10 +2455,9 @@ int mount_main(int argc UNUSED_PARAM, char **argv)
 				continue;
 			}
 
-			// Does (at least one) option match?
-			// (NULL matches always)
-			if (!match_opt(mtcur->mnt_opts, O_optmatch))
-				continue;
+			// Do -O OPTS match? (NULL matches always)
+			if (!fsopts_matches(mtcur->mnt_opts, O_optmatch))
+				continue; // no
 
 			resolve_mount_spec(&mtcur->mnt_fsname);
 

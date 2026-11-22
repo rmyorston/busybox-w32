@@ -122,6 +122,7 @@ lib-y += xrealloc_vector.o
 
 lib-$(CONFIG_MOUNT) += match_fstype.o
 lib-$(CONFIG_UMOUNT) += match_fstype.o
+lib-$(CONFIG_UMOUNT) += match_fsopts.o
 
 lib-$(CONFIG_FEATURE_UTMP) += utmp.o
 
