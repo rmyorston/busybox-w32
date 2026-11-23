@@ -345,6 +345,10 @@ struct globals {
 #define G (*(struct globals*)bb_common_bufsiz1)
 #define INIT_G() do { setup_common_bufsiz(); } while (0)
 
+#if ENABLE_FEATURE_IFUPDOWN_IPV4
+static const char str_inet[] ALIGN1 = "inet";
+#endif
+
 static const char keywords_up_down[] ALIGN1 =
 	"up\0"
 	"down\0"
@@ -598,7 +602,7 @@ static int FAST_FUNC static_up6(void)
 	result += execute("[ip route add ::/0 via %gateway% dev %iface%[ metric %metric%]]");
 # else
 	result = execute("ifconfig %iface%[ media %media%][ hw %hwaddress%][ mtu %mtu%] up");
-	result += execute("ifconfig %iface% add %address%/%netmask%");
+	result += execute("ifconfig %iface% add %address%/%bnmask%");
 	/* Entire command in brackets means "do not treat absense of variables as failure" */
 	result += execute("[route -A inet6 add ::/0 gw %gateway%[ metric %metric%]]");
 # endif
@@ -885,7 +889,7 @@ static const struct method_t methods[] ALIGN_PTR = {
 };
 
 static const struct address_family_t addr_inet = {
-	"inet",
+	str_inet,
 	ARRAY_SIZE(methods),
 	methods
 };
@@ -1159,55 +1163,73 @@ static struct interfaces_file_t *read_interfaces(const char *filename, struct in
 				}
 				dbg("%s=%s", first_word, rest_of_line);
 				currif->option = xrealloc_vector(currif->option, 4, currif->n_options);
-				/* Support "address IP/MASK" */
+#if ENABLE_FEATURE_IFUPDOWN_IPV4 || ENABLE_FEATURE_IFUPDOWN_IPV6
+// Support "address IP/MASK"
 				if (strcmp(first_word, "address") == 0) {
 					char *slash = strchr(rest_of_line, '/');
 					if (slash) {
-						uint32_t m = bb_strtou(slash + 1, NULL, 10);
-						if (!errno && m <= 32) {
-							*slash = '\0';
-#if ENABLE_FEATURE_IFUPDOWN_IP /* "ip" uses IP/MASKBITS syntax, with %bnmask% */
-							currif->option[currif->n_options].name = xstrdup("bnmask");
-							currif->option[currif->n_options].value = xstrdup(slash + 1);
-							currif->n_options++;
-							currif->option = xrealloc_vector(currif->option, 4, currif->n_options);
-#else /* "ifconfig" uses "netmask N.N.N.N" syntax, with %netmask% */
-							currif->option[currif->n_options].name = xstrdup("netmask");
-							if (m != 0)
-								m = 0xFFFFFFFFu << (32 - m); /* if m==0, the shift is too wide */
-							currif->option[currif->n_options].value = xasprintf("%u.%u.%u.%u",
-								m >> 24, (uint8_t)(m >> 16), (uint8_t)(m >> 8), (uint8_t)m
-							);
-							currif->n_options++;
-							currif->option = xrealloc_vector(currif->option, 4, currif->n_options);
-#endif
+						*slash++ = '\0';
+# if ENABLE_FEATURE_IFUPDOWN_IP || ENABLE_FEATURE_IFUPDOWN_IPV6
+// "ip" uses IP/MASKBITS syntax, with %bnmask%
+// "ifconfig" uses IP/MASKBITS for ipv6, with %bnmask%
+						currif->option[currif->n_options].name = (char*)"bnmask";
+						currif->option[currif->n_options].value = xstrdup(slash);
+						currif->n_options++;
+						currif->option = xrealloc_vector(currif->option, 4, currif->n_options);
+# endif
+# if ENABLE_FEATURE_IFUPDOWN_IPV4 && !ENABLE_FEATURE_IFUPDOWN_IP
+						/*if (currif->address->name == str_inet)*/ {
+							uint32_t m;
+							m = bb_strtou(slash, NULL, 10);
+							if (!errno && m <= 32) {
+// "ifconfig" uses "netmask N.N.N.N" syntax for ipv4: create %netmask% N.N.N.N from MASKBITS
+								currif->option[currif->n_options].name = (char*)"netmask";
+								if (m != 0)
+									m = 0xFFFFFFFFu << (32 - m); /* if m==0, the shift is too wide */
+								currif->option[currif->n_options].value = xasprintf("%u.%u.%u.%u",
+									m >> 24, (uint8_t)(m >> 16), (uint8_t)(m >> 8), (uint8_t)m
+								);
+								currif->n_options++;
+								currif->option = xrealloc_vector(currif->option, 4, currif->n_options);
+							}
 						}
+# endif
 					}
 				}
+#endif
 				currif->option[currif->n_options].name = xstrdup(first_word);
 #if ENABLE_FEATURE_IFUPDOWN_IP
-				/* "hwaddress CLASS MAC":
-				 * unlike ifconfig, ip doesnt want CLASS
-				 * (usually "ether" keyword). Skip it. */
+// "hwaddress CLASS MAC": unlike ifconfig, ip doesnt want CLASS (usually "ether" keyword). Skip it.
 				if (strcmp(first_word, "hwaddress") == 0) {
 					rest_of_line = skip_whitespace(skip_non_whitespace(rest_of_line));
 				}
 #endif
 				currif->option[currif->n_options].value = xstrdup(rest_of_line);
 				currif->n_options++;
-#if ENABLE_FEATURE_IFUPDOWN_IP
-				/* Special case for 'ip' to convert from
-				 * dotted quad to bit count style netmasks. */
 				if (strcmp(first_word, "netmask") == 0) {
-					int m = count_netmask_bits(rest_of_line);
-					if (m >= 0) { /* >=, not >: netmask "0.0.0.0" is valid */
+					int m;
+// Debian apparently accepts MASKBITS in "netmask NN" (at least for IPv6).
+// Make this work: numeric "netmask NN" also sets "bnmask NN"
+					m = bb_strtou(rest_of_line, NULL, 10);
+					if (!errno && (unsigned)m <= 64) {
 						currif->option = xrealloc_vector(currif->option, 4, currif->n_options);
-						currif->option[currif->n_options].name = xstrdup("bnmask");
+						currif->option[currif->n_options].name = (char*)"bnmask";
 						currif->option[currif->n_options].value = xstrdup(utoa(m));
 						currif->n_options++;
 					}
-				}
+#if ENABLE_FEATURE_IFUPDOWN_IP
+					else /*if (currif->address->name == str_inet)*/ {
+						m = count_netmask_bits(rest_of_line);
+// For "ip", if "netmask N.N.N.N", convert from dotted quad to bit count and set "bnmask NN"
+						if (m >= 0) { /* >=, not >: netmask "0.0.0.0" is valid */
+							currif->option = xrealloc_vector(currif->option, 4, currif->n_options);
+							currif->option[currif->n_options].name = (char*)"bnmask";
+							currif->option[currif->n_options].value = xstrdup(utoa(m));
+							currif->n_options++;
+						}
+					}
 #endif
+				}
 				break;
 			case MAPPING:
 #if ENABLE_FEATURE_IFUPDOWN_MAPPING

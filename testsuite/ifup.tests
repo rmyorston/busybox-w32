@@ -9,7 +9,18 @@ sq="'"
 
 # testing "test name" "cmd" "expected result" "file input" "stdin"
 
-testing "ifup eth42 -n static" \
+testing "ifup eth42 -n static ipv4 without address" \
+	'ifup eth42 -n -i input 2>&1; echo $?' \
+"ifup: don't have all variables for eth42/inet
+1
+" '
+iface eth42 inet static
+	netmask 255.255.255.0
+	gateway 192.0.2.1
+' ''
+
+optional FEATURE_IFUPDOWN_IP
+testing "ifup eth42 -n static ipv4 IP + NETMASK (using ip)" \
 	'ifup eth42 -n -i input 2>&1; echo $?' \
 'run-parts /etc/network/if-pre-up.d
 ip addr add 192.0.2.10/24 dev eth42 label eth42
@@ -23,8 +34,10 @@ iface eth42 inet static
 	netmask 255.255.255.0
 	gateway 192.0.2.1
 ' ''
+SKIP=
 
-testing "ifup eth42 -n static with IP/MASK" \
+optional FEATURE_IFUPDOWN_IP
+testing "ifup eth42 -n static ipv4 IP/MASK (using ip)" \
 	'ifup eth42 -n -i input 2>&1; echo $?' \
 'run-parts /etc/network/if-pre-up.d
 ip addr add 192.0.2.10/24 dev eth42 label eth42
@@ -37,23 +50,129 @@ iface eth42 inet static
 	address 192.0.2.10/24
 	gateway 192.0.2.1
 ' ''
+SKIP=
 
-testing "ifup eth42 -n static without address" \
+optional FEATURE_IFUPDOWN_IP
+testing "ifup eth42 -n static ipv6 IP/BITMASK (using ip)" \
 	'ifup eth42 -n -i input 2>&1; echo $?' \
-"ifup: don't have all variables for eth42/inet
-1
-" '
-iface eth42 inet static
-	netmask 255.255.255.0
-	gateway 192.0.2.1
+'run-parts /etc/network/if-pre-up.d
+ip addr add fd12:3456:789a::dead:beef/64 dev eth42 label eth42
+ip link set eth42 up
+ip route add ::/0 via fe80::1 dev eth42
+run-parts /etc/network/if-up.d
+0
+' '
+iface eth42 inet6 static
+	address fd12:3456:789a::dead:beef/64
+	gateway fe80::1
 ' ''
+SKIP=
+
+optional FEATURE_IFUPDOWN_IP
+testing "ifup eth42 -n static ipv6 IP + NETMASK (using ip)" \
+	'ifup eth42 -n -i input 2>&1; echo $?' \
+'run-parts /etc/network/if-pre-up.d
+ip addr add fd12:3456:789a::dead:beef/64 dev eth42 label eth42
+ip link set eth42 up
+ip route add ::/0 via fe80::1 dev eth42
+run-parts /etc/network/if-up.d
+0
+' '
+iface eth42 inet6 static
+	address fd12:3456:789a::dead:beef
+	netmask 64
+	gateway fe80::1
+' ''
+SKIP=
 
 if test "$CONFIG_IFUPDOWN_UDHCPC_CMD_OPTIONS" = ""; then
-optional FEATURE_IFUPDOWN_EXTERNAL_DHCP
-testing "ifup eth42 -n udhcpc_opts" \
+optional FEATURE_IFUPDOWN_EXTERNAL_DHCP FEATURE_IFUPDOWN_IP
+testing "ifup eth42 -n udhcpc_opts (using ip)" \
 	'ifup eth42 -n -i input 2>&1; echo $?' \
 'run-parts /etc/network/if-pre-up.d
 ip link set eth42 up
+udhcpc -p /var/run/udhcpc.eth42.pid -i eth42 -Z
+run-parts /etc/network/if-up.d
+0
+' '
+iface eth42 inet dhcp
+	udhcpc_opts -Z
+' ''
+SKIP=
+fi
+
+optional FEATURE_IFUPDOWN_IPV4 !FEATURE_IFUPDOWN_IP
+testing "ifup eth42 -n static ipv4 IP + NETMASK (using ifconfig)" \
+	'ifup eth42 -n -i input 2>&1; echo $?' \
+'run-parts /etc/network/if-pre-up.d
+ifconfig eth42 up
+ifconfig eth42 192.0.2.10 netmask 255.255.255.0
+route add default gw 192.0.2.1 eth42
+run-parts /etc/network/if-up.d
+0
+' '
+iface eth42 inet static
+	address 192.0.2.10
+	netmask 255.255.255.0
+	gateway 192.0.2.1
+' ''
+SKIP=
+
+optional FEATURE_IFUPDOWN_IPV4 !FEATURE_IFUPDOWN_IP
+testing "ifup eth42 -n static ipv4 IP/MASK (using ifconfig)" \
+	'ifup eth42 -n -i input 2>&1; echo $?' \
+'run-parts /etc/network/if-pre-up.d
+ifconfig eth42 up
+ifconfig eth42 192.0.2.10 netmask 255.255.255.0
+route add default gw 192.0.2.1 eth42
+run-parts /etc/network/if-up.d
+0
+' '
+iface eth42 inet static
+	address 192.0.2.10/24
+	gateway 192.0.2.1
+' ''
+SKIP=
+
+optional FEATURE_IFUPDOWN_IPV4 !FEATURE_IFUPDOWN_IP
+testing "ifup eth42 -n static ipv6 IP/BITMASK (using ifconfig)" \
+	'ifup eth42 -n -i input 2>&1; echo $?' \
+'run-parts /etc/network/if-pre-up.d
+ifconfig eth42 up
+ifconfig eth42 add fd12:3456:789a::dead:beef/64
+route -A inet6 add ::/0 gw fe80::1
+run-parts /etc/network/if-up.d
+0
+' '
+iface eth42 inet6 static
+	address fd12:3456:789a::dead:beef/64
+	gateway fe80::1
+' ''
+SKIP=
+
+optional FEATURE_IFUPDOWN_IPV4 !FEATURE_IFUPDOWN_IP
+testing "ifup eth42 -n static ipv6 IP + NETMASK (using ifconfig)" \
+	'ifup eth42 -n -i input 2>&1; echo $?' \
+'run-parts /etc/network/if-pre-up.d
+ifconfig eth42 up
+ifconfig eth42 add fd12:3456:789a::dead:beef/64
+route -A inet6 add ::/0 gw fe80::1
+run-parts /etc/network/if-up.d
+0
+' '
+iface eth42 inet6 static
+	address fd12:3456:789a::dead:beef
+	netmask 64
+	gateway fe80::1
+' ''
+SKIP=
+
+if test "$CONFIG_IFUPDOWN_UDHCPC_CMD_OPTIONS" = ""; then
+optional FEATURE_IFUPDOWN_EXTERNAL_DHCP FEATURE_IFUPDOWN_IPV4 !FEATURE_IFUPDOWN_IP
+testing "ifup eth42 -n udhcpc_opts (using ifconfig)" \
+	'ifup eth42 -n -i input 2>&1; echo $?' \
+'run-parts /etc/network/if-pre-up.d
+ifconfig eth42 up
 udhcpc -p /var/run/udhcpc.eth42.pid -i eth42 -Z
 run-parts /etc/network/if-up.d
 0
