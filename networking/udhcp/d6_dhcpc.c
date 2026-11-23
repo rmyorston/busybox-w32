@@ -1315,7 +1315,9 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 		///IF_FEATURE_UDHCPC_ARPING("a")
 		IF_FEATURE_UDHCP_PORT("P:")
 		"v"
-		"\0" IF_UDHCP_VERBOSE("vv") /* -v is a counter */
+		"\0"
+		"b-n:n-b" /* last -b or -n wins */
+		IF_UDHCP_VERBOSE(":vv") /* -v is a counter */
 		, udhcpc6_longopts
 		, &client_data.interface, &client_data.pidfile, &str_r /* i,p */
 		, &client_data.script /* s */
@@ -1511,13 +1513,7 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 					bb_simple_info_msg("no lease, forking to background");
 					client_background();
 					/* do not background again! */
-					opt = ((opt & ~(OPT_b|OPT_n)) | OPT_f);
-					/* ^^^ also disables -n (-b takes priority over -n):
-					 * ifup's default udhcpc options are -R -n,
-					 * and users want to be able to add -b
-					 * (in a config file) to make it background
-					 * _and not exit_.
-					 */
+					opt = ((opt & ~OPT_b) | OPT_f);
 				} else
 #endif
 				if (opt & OPT_n) { /* abort if no lease */

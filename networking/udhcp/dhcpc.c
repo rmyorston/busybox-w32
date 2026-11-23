@@ -1244,7 +1244,17 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 		IF_FEATURE_UDHCPC_ARPING("a::")
 		IF_FEATURE_UDHCP_PORT("P:")
 		"v"
-		"\0" IF_UDHCP_VERBOSE("vv") /* -v is a counter */
+		"\0"
+		"b-n:n-b" /* last -b or -n wins */
+// CONFIG_IFUPDOWN_UDHCPC_CMD_OPTIONS defaults to "-R -n"
+// but users want to be able to add "udhcpc_opts -b"
+// in /etc/network/interfaces to change the behavior to
+// "continue trying in background", in which case -n must not be in effect.
+// OTOH, some people build with "-b" in UDHCPC_CMD_OPTIONS,
+// and the opposite happens: some users want to override it to -n!
+// Since udhcpc_opts is appended at the end, the simple solution is:
+// -b and -n are mutually exclusive, last one wins.
+		IF_UDHCP_VERBOSE(":vv") /* -v is a counter */
 		, udhcpc_longopts
 		, &str_V, &str_F
 		, &client_data.interface, &client_data.pidfile /* i,p */
@@ -1459,13 +1469,7 @@ int udhcpc_main(int argc UNUSED_PARAM, char **argv)
 					bb_simple_info_msg("no lease, forking to background");
 					client_background();
 					/* do not background again! */
-					opt = ((opt & ~(OPT_b|OPT_n)) | OPT_f);
-					/* ^^^ also disables -n (-b takes priority over -n):
-					 * ifup's default udhcpc options are -R -n,
-					 * and users want to be able to add -b
-					 * (in a config file) to make it background
-					 * _and not exit_.
-					 */
+					opt = ((opt & ~OPT_b) | OPT_f);
 				} else
 #endif
 				if (opt & OPT_n) { /* abort if no lease */
