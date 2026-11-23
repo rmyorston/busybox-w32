@@ -24,6 +24,20 @@ iface eth42 inet static
 	gateway 192.0.2.1
 ' ''
 
+testing "ifup eth42 -n static with IP/MASK" \
+	'ifup eth42 -n -i input 2>&1; echo $?' \
+'run-parts /etc/network/if-pre-up.d
+ip addr add 192.0.2.10/24 dev eth42 label eth42
+ip link set eth42 up
+ip route add default via 192.0.2.1 dev eth42
+run-parts /etc/network/if-up.d
+0
+' '
+iface eth42 inet static
+	address 192.0.2.10/24
+	gateway 192.0.2.1
+' ''
+
 testing "ifup eth42 -n static without address" \
 	'ifup eth42 -n -i input 2>&1; echo $?' \
 "ifup: don't have all variables for eth42/inet

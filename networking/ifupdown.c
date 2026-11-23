@@ -481,35 +481,9 @@ static char *parse(const char *command)
 				if (!nextpercent) /* Unterminated %var% */
 					goto bug;
 				varvalue = get_var(command, nextpercent - command);
-
 				if (varvalue) {
-# if ENABLE_FEATURE_IFUPDOWN_IP
-					/* "hwaddress CLASS MAC":
-					 * unlike ifconfig, ip doesnt want <class>
-					 * (usually "ether" keyword). Skip it. */
-					if (is_prefixed_with(command, "hwaddress")) {
-						varvalue = skip_whitespace(skip_non_whitespace(varvalue));
-					}
-# endif
 					addstr(&result, varvalue, strlen(varvalue));
 				} else {
-# if ENABLE_FEATURE_IFUPDOWN_IP
-					/* Sigh...  Add a special case for 'ip' to convert from
-					 * dotted quad to bit count style netmasks.  */
-					if (is_prefixed_with(command, "bnmask")) {
-						unsigned res;
-						varvalue = get_var("netmask", 7);
-						if (varvalue) {
-							res = count_netmask_bits(varvalue);
-							if (res >= 0) { /* >=, not >: netmask "0.0.0.0" is valid */
-								const char *argument = utoa(res);
-								addstr(&result, argument, strlen(argument));
-								command = nextpercent + 1;
-								break;
-							}
-						}
-					}
-# endif
 					dbg("not defined:'%.*s'", (int)(nextpercent - command), command);
 					undefined_var[opt_depth] = 1;
 				}
@@ -1014,8 +988,6 @@ static struct interfaces_file_t *read_interfaces(const char *filename, struct in
 	struct interface_defn_t *currif = NULL;
 	FILE *f;
 	char *buf;
-	char *first_word;
-	char *rest_of_line;
 	enum { NONE, IFACE, MAPPING } currently_processing = NONE;
 
 	if (!defn)
@@ -1025,6 +997,9 @@ static struct interfaces_file_t *read_interfaces(const char *filename, struct in
 	f = xfopen_for_read(filename);
 
 	while ((buf = xmalloc_fgetline(f)) != NULL) {
+		char *rest_of_line;
+		char *first_word;
+
 #if ENABLE_DESKTOP
 		/* Trailing "\" concatenates lines */
 //TODO: check how to handle "line\\" (double backslashes)
@@ -1184,13 +1159,54 @@ static struct interfaces_file_t *read_interfaces(const char *filename, struct in
 				}
 				dbg("%s=%s", first_word, rest_of_line);
 				currif->option = xrealloc_vector(currif->option, 4, currif->n_options);
+				/* Support "address IP/MASK" */
+				if (strcmp(first_word, "address") == 0) {
+					char *slash = strchr(rest_of_line, '/');
+					if (slash) {
+						uint32_t m = bb_strtou(slash + 1, NULL, 10);
+						if (!errno && m <= 32) {
+							*slash = '\0';
+#if ENABLE_FEATURE_IFUPDOWN_IP
+							currif->option[currif->n_options].name = xstrdup("bnmask");
+							currif->option[currif->n_options].value = xstrdup(slash + 1);
+							currif->n_options++;
+							currif->option = xrealloc_vector(currif->option, 4, currif->n_options);
+#endif
+							currif->option[currif->n_options].name = xstrdup("netmask");
+							if (m != 0)
+								m = 0xFFFFFFFFu << (32 - m); /* if m==0, the shift is too wide */
+							currif->option[currif->n_options].value = xasprintf("%u.%u.%u.%u",
+								m >> 24, (uint8_t)(m >> 16), (uint8_t)(m >> 8), (uint8_t)m
+							);
+							currif->n_options++;
+							currif->option = xrealloc_vector(currif->option, 4, currif->n_options);
+						}
+					}
+				}
 				currif->option[currif->n_options].name = xstrdup(first_word);
-//TODO: move all special-case handling here:
-// set "bnmask" from "netmask"
-// convert "hwaddress CLASS MAC" to "hwaddress MAC" if using "ip"
-// support "address IP/MASK" (convert to "address IP" + "netmask N.N.N.N")
+#if ENABLE_FEATURE_IFUPDOWN_IP
+				/* "hwaddress CLASS MAC":
+				 * unlike ifconfig, ip doesnt want CLASS
+				 * (usually "ether" keyword). Skip it. */
+				if (strcmp(first_word, "hwaddress") == 0) {
+					rest_of_line = skip_whitespace(skip_non_whitespace(rest_of_line));
+				}
+#endif
 				currif->option[currif->n_options].value = xstrdup(rest_of_line);
 				currif->n_options++;
+#if ENABLE_FEATURE_IFUPDOWN_IP
+				/* Special case for 'ip' to convert from
+				 * dotted quad to bit count style netmasks. */
+				if (strcmp(first_word, "netmask") == 0) {
+					int m = count_netmask_bits(rest_of_line);
+					if (m >= 0) { /* >=, not >: netmask "0.0.0.0" is valid */
+						currif->option = xrealloc_vector(currif->option, 4, currif->n_options);
+						currif->option[currif->n_options].name = xstrdup("bnmask");
+						currif->option[currif->n_options].value = xstrdup(utoa(m));
+						currif->n_options++;
+					}
+				}
+#endif
 				break;
 			case MAPPING:
 #if ENABLE_FEATURE_IFUPDOWN_MAPPING
