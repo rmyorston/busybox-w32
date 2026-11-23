@@ -592,10 +592,10 @@ static int FAST_FUNC static_up6(void)
 {
 	int result;
 # if ENABLE_FEATURE_IFUPDOWN_IP
-	result = execute("ip addr add %address%/%netmask% dev %iface%[ label %label%]");
+	result = execute("ip addr add %address%/%bnmask% dev %iface%[ label %label%]");
 	result += execute("ip link set[ mtu %mtu%][ addr %hwaddress%] %iface% up");
 	/* Reportedly, IPv6 needs "dev %iface%", but IPv4 does not: */
-	result += execute("[ip route add ::/0 via %gateway% dev %iface%][ metric %metric%]");
+	result += execute("[ip route add ::/0 via %gateway% dev %iface%[ metric %metric%]]");
 # else
 	result = execute("ifconfig %iface%[ media %media%][ hw %hwaddress%][ mtu %mtu%] up");
 	result += execute("ifconfig %iface% add %address%/%netmask%");
@@ -623,7 +623,7 @@ static int FAST_FUNC v4tunnel_up(void)
 	result = execute("ip tunnel add %iface% mode sit remote "
 			"%endpoint%[ local %local%][ ttl %ttl%]");
 	result += execute("ip link set %iface% up");
-	result += execute("ip addr add %address%/%netmask% dev %iface%");
+	result += execute("ip addr add %address%/%bnmask% dev %iface%");
 	/* Reportedly, IPv6 needs "dev %iface%", but IPv4 does not: */
 	result += execute("[ip route add ::/0 via %gateway% dev %iface%]");
 	return ((result == 4) ? 4 : 0);
@@ -1166,12 +1166,12 @@ static struct interfaces_file_t *read_interfaces(const char *filename, struct in
 						uint32_t m = bb_strtou(slash + 1, NULL, 10);
 						if (!errno && m <= 32) {
 							*slash = '\0';
-#if ENABLE_FEATURE_IFUPDOWN_IP
+#if ENABLE_FEATURE_IFUPDOWN_IP /* "ip" uses IP/MASKBITS syntax, with %bnmask% */
 							currif->option[currif->n_options].name = xstrdup("bnmask");
 							currif->option[currif->n_options].value = xstrdup(slash + 1);
 							currif->n_options++;
 							currif->option = xrealloc_vector(currif->option, 4, currif->n_options);
-#endif
+#else /* "ifconfig" uses "netmask N.N.N.N" syntax, with %netmask% */
 							currif->option[currif->n_options].name = xstrdup("netmask");
 							if (m != 0)
 								m = 0xFFFFFFFFu << (32 - m); /* if m==0, the shift is too wide */
@@ -1180,6 +1180,7 @@ static struct interfaces_file_t *read_interfaces(const char *filename, struct in
 							);
 							currif->n_options++;
 							currif->option = xrealloc_vector(currif->option, 4, currif->n_options);
+#endif
 						}
 					}
 				}
