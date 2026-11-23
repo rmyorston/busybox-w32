@@ -49,21 +49,6 @@
 //config:	(debian, for example, uses /etc/network/run/ifstate).
 //config:	This config option defines location of ifstate.
 //config:
-//config:config FEATURE_IFUPDOWN_IP
-//config:	bool "Use ip tool (else ifconfig/route is used)"
-//config:	default y
-//config:	depends on IFUP || IFDOWN
-//config:	help
-//config:	Use the iproute "ip" command to implement "ifup" and "ifdown", rather
-//config:	than the default of using the older "ifconfig" and "route" utilities.
-//config:
-//config:	If Y: you must install either the full-blown iproute2 package
-//config:	or enable "ip" applet in busybox, or the "ifup" and "ifdown" applets
-//config:	will not work.
-//config:
-//config:	If N: you must install either the full-blown ifconfig and route
-//config:	utilities, or enable these applets in busybox.
-//config:
 //config:config FEATURE_IFUPDOWN_IPV4
 //config:	bool "Support IPv4"
 //config:	default y
@@ -78,6 +63,21 @@
 //config:	help
 //config:	If you need support for IPv6, turn this option on.
 //config:
+//config:config FEATURE_IFUPDOWN_IP
+//config:	bool "Use ip tool (else ifconfig/route is used)"
+//config:	default y
+//config:	depends on FEATURE_IFUPDOWN_IPV4 || FEATURE_IFUPDOWN_IPV6
+//config:	help
+//config:	Use the iproute "ip" command to implement "ifup" and "ifdown", rather
+//config:	than the default of using the older "ifconfig" and "route" utilities.
+//config:
+//config:	If Y: you must install either the full-blown iproute2 package
+//config:	or enable "ip" applet in busybox, or the "ifup" and "ifdown" applets
+//config:	will not work.
+//config:
+//config:	If N: you must install either the full-blown ifconfig and route
+//config:	utilities, or enable these applets in busybox.
+//config:
 //config:config FEATURE_IFUPDOWN_MAPPING
 //config:	bool "Enable mapping support"
 //config:	default y
@@ -89,7 +89,7 @@
 //config:config FEATURE_IFUPDOWN_EXTERNAL_DHCP
 //config:	bool "Support external DHCP clients"
 //config:	default n
-//config:	depends on IFUP || IFDOWN
+//config:	depends on FEATURE_IFUPDOWN_IPV4 || FEATURE_IFUPDOWN_IPV6
 //config:	help
 //config:	This enables support for the external dhcp clients. Clients are
 //config:	tried in the following order: dhcpcd, dhclient, pump and udhcpc.
@@ -352,6 +352,31 @@ static const char keywords_up_down[] ALIGN1 =
 	"post-down\0"
 ;
 
+static int doit(char *str)
+{
+	if (option_mask32 & (OPT_no_act|OPT_verbose)) {
+		puts(str);
+	}
+	if (!(option_mask32 & OPT_no_act)) {
+		pid_t child;
+		int status;
+
+		fflush_all();
+		child = vfork();
+		if (child < 0) /* failure */
+			return 0;
+		if (child == 0) { /* child */
+			execle(G.shell, G.shell, "-c", str, (char *) NULL, G.my_environ);
+			_exit(127);
+		}
+		safe_waitpid(child, &status, 0);
+		if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
 #if ENABLE_FEATURE_IFUPDOWN_IPV4 || ENABLE_FEATURE_IFUPDOWN_IPV6
 
 static void addstr(char **bufp, const char *str, size_t str_length)
@@ -509,31 +534,6 @@ static char *parse(const char *command)
 	}
 
 	return result;
-}
-
-static int doit(char *str)
-{
-	if (option_mask32 & (OPT_no_act|OPT_verbose)) {
-		puts(str);
-	}
-	if (!(option_mask32 & OPT_no_act)) {
-		pid_t child;
-		int status;
-
-		fflush_all();
-		child = vfork();
-		if (child < 0) /* failure */
-			return 0;
-		if (child == 0) { /* child */
-			execle(G.shell, G.shell, "-c", str, (char *) NULL, G.my_environ);
-			_exit(127);
-		}
-		safe_waitpid(child, &status, 0);
-		if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-			return 0;
-		}
-	}
-	return 1;
 }
 
 /* Returns 1 for success (doit() returned 1) and 0 for failure.
