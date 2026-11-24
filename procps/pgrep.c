@@ -30,36 +30,35 @@
 //kbuild:lib-$(CONFIG_PKILL) += pgrep.o
 
 //usage:#define pgrep_trivial_usage
-//usage:       "[-flanovx] [-s SID|-P PPID|PATTERN]"
+//usage:       "[-nofxval] -s SID|-P PPID|-u EUID|-U UID|PATTERN"
 //usage:#define pgrep_full_usage "\n\n"
-//usage:       "Display process(es) selected by regex PATTERN\n"
-//usage:     "\n	-l	Show command name too"
-//usage:     "\n	-a	Show command line too"
+//usage:       "Display processes selected by regex PATTERN\n"
+//usage:     "\n	-n	Show newest process only"
+//usage:     "\n	-o	Show oldest process only"
 //usage:     "\n	-f	Match against entire command line"
-//usage:     "\n	-n	Show the newest process only"
-//usage:     "\n	-o	Show the oldest process only"
-//usage:     "\n	-v	Negate the match"
 //usage:     "\n	-x	Match whole name (not substring)"
-//usage:     "\n	-s	Match session ID (0 for current)"
-//usage:     "\n	-P	Match parent process ID"
-//usage:     "\n	-u EUID Match against effective UID"
-//usage:     "\n	-U UID  Match against UID"
-//usage:
-//usage:#define pkill_trivial_usage
-//usage:       "[-l|-SIGNAL] [-xfvnoe] [-s SID|-P PPID|PATTERN]"
-//usage:#define pkill_full_usage "\n\n"
-//usage:       "Send signal to processes selected by regex PATTERN\n"
-//usage:     "\n	-l	List all signals"
-//usage:     "\n	-x	Match whole name (not substring)"
-//usage:     "\n	-f	Match against entire command line"
 //usage:     "\n	-s SID	Match session ID (0 for current)"
 //usage:     "\n	-P PPID	Match parent process ID"
-//usage:     "\n	-v	Negate the match"
-//usage:     "\n	-n	Signal the newest process only"
-//usage:     "\n	-o	Signal the oldest process only"
-//usage:     "\n	-e	Display name and PID of the process being killed"
-//usage:     "\n	-u EUID Match against effective UID"
-//usage:     "\n	-U UID  Match against UID"
+//usage:     "\n	-u EUID Match effective UID"
+//usage:     "\n	-U UID  Match UID"
+//usage:     "\n	-v	Negate match"
+//usage:     "\n	-a	Show command line too"
+//usage:     "\n	-l	Show command name too"
+//usage:
+//usage:#define pkill_trivial_usage
+//usage:       "[-SIGNAL] [-nofxve] -s SID|-P PPID|-u EUID|-U UID|PATTERN"
+//usage:#define pkill_full_usage "\n\n"
+//usage:       "Send signal to processes selected by regex PATTERN\n"
+//usage:     "\n	-n	Signal newest process only"
+//usage:     "\n	-o	Signal oldest process only"
+//usage:     "\n	-f	Match against entire command line"
+//usage:     "\n	-x	Match whole name (not substring)"
+//usage:     "\n	-s SID	Match session ID (0 for current)"
+//usage:     "\n	-P PPID	Match parent process ID"
+//usage:     "\n	-u EUID Match effective UID"
+//usage:     "\n	-U UID  Match UID"
+//usage:     "\n	-v	Negate match"
+//usage:     "\n	-e	Display name and PID of process being killed"
 
 #include "libbb.h"
 #include "xregex.h"
@@ -70,45 +69,44 @@
 
 enum {
 	/* "vlafxoneu:U:s:+P:+" */
-	OPTBIT_V = 0, /* must be first, we need OPT_INVERT = 0/1 */
-	OPTBIT_L,
-	OPTBIT_A,
-	OPTBIT_F,
-	OPTBIT_X,
-	OPTBIT_O,
-	OPTBIT_N,
-	OPTBIT_E, /* should be pkill-only, do we care? */
+	OPTBIT_v = 0, /* must be first, we need OPT_INVERT = 0/1 */
+	OPTBIT_l, /* should be pgrep-only, do we care? */
+	OPTBIT_a, /* should be pgrep-only, do we care? */
+	OPTBIT_f,
+	OPTBIT_x,
+	OPTBIT_o,
+	OPTBIT_n,
+	OPTBIT_e, /* should be pkill-only, do we care? */
+	OPTBIT_u,
 	OPTBIT_U,
-	OPTBIT_UL,
-	OPTBIT_S,
+	OPTBIT_s,
 	OPTBIT_P,
 };
 
-#define OPT_INVERT	(opt & (1 << OPTBIT_V))
-#define OPT_LIST	(opt & (1 << OPTBIT_L))
-#define OPT_LISTFULL	(opt & (1 << OPTBIT_A))
-#define OPT_FULL	(opt & (1 << OPTBIT_F))
-#define OPT_ANCHOR	(opt & (1 << OPTBIT_X))
-#define OPT_FIRST	(opt & (1 << OPTBIT_O))
-#define OPT_LAST	(opt & (1 << OPTBIT_N))
-#define OPT_ECHO	(opt & (1 << OPTBIT_E))
-#define OPT_SID		(opt & (1 << OPTBIT_S))
-#define OPT_PPID	(opt & (1 << OPTBIT_P))
-#define OPT_EUID	(opt & (1 << OPTBIT_UL))
-#define OPT_RUID	(opt & (1 << OPTBIT_U))
+#define OPT_INVERT	(1 << OPTBIT_v)
+#define OPT_LIST	(1 << OPTBIT_l)
+#define OPT_LISTFULL	(1 << OPTBIT_a)
+#define OPT_FULL	(1 << OPTBIT_f)
+#define OPT_ANCHOR	(1 << OPTBIT_x)
+#define OPT_FIRST	(1 << OPTBIT_o)
+#define OPT_LAST	(1 << OPTBIT_n)
+#define OPT_ECHO	(1 << OPTBIT_e)
+#define OPT_EUID	(1 << OPTBIT_u)
+#define OPT_RUID	(1 << OPTBIT_U)
+#define OPT_SID		(1 << OPTBIT_s)
+#define OPT_PPID	(1 << OPTBIT_P)
 
 static void act(unsigned pid, char *cmd, int signo)
 {
 	if (pgrep) {
-		if (option_mask32 & ((1 << OPTBIT_L)|(1 << OPTBIT_A))) /* -l or -a */
+		if (option_mask32 & (OPT_LIST|OPT_LISTFULL)) /* -l or -a */
 			printf("%u %s\n", pid, cmd);
 		else
 			printf("%u\n", pid);
 	} else {
 		kill(pid, signo);
-		if (option_mask32 & (1 << OPTBIT_E)) {
+		if (option_mask32 & OPT_ECHO)
 			printf("%s killed (pid %u)\n", cmd, pid);
-		}
 	}
 }
 
@@ -121,7 +119,7 @@ int pgrep_main(int argc UNUSED_PARAM, char **argv)
 	int scan_mask;
 	int matched_pid;
 	int sid2match, ppid2match, uid2match, euid2match;
-	char *uid_arg = NULL, *euid_arg = NULL;
+	char *uid_arg, *euid_arg;
 	char *cmd_last;
 	procps_status_t *proc;
 	/* These are initialized to 0 */
@@ -149,38 +147,35 @@ int pgrep_main(int argc UNUSED_PARAM, char **argv)
 	sid2match = -1;
 	uid2match = -1;
 	euid2match = -1;
-	opt = getopt32(argv, "vlafxoneu:U:s:+P:+", &euid_arg, &uid_arg, &sid2match, &ppid2match);
+	opt = getopt32(argv, "^" "vlafxoneu:U:s:+P:+" "\0" "?1"/* 1 arg max*/,
+				&euid_arg, &uid_arg, &sid2match, &ppid2match);
 	argv += optind;
-
-	if (pkill && OPT_LIST) { /* -l: print the whole signal list */
-		print_signames();
-		return 0;
-	}
 
 	pid = getpid();
 	if (sid2match == 0)
 		sid2match = getsid(pid);
 
 	scan_mask = PSSCAN_COMM | PSSCAN_ARGV0;
-	if (OPT_FULL)
+	if (opt & OPT_FULL)
 		scan_mask |= PSSCAN_ARGVN;
-
-	if (euid_arg) {
+	if (opt & OPT_EUID) {
 		scan_mask |= PSSCAN_UIDGID;
 		euid2match = get_ug_id(euid_arg, xuname2uid);
 	}
-
-	if (uid_arg) {
+	if (opt & OPT_RUID) {
 		scan_mask |= PSSCAN_RUIDGID;
 		uid2match = get_ug_id(uid_arg, xuname2uid);
 	}
 
-	/* One pattern is required, if no -s and no -P */
-	if ((sid2match & ppid2match) < 0 && uid2match < 0 && euid2match < 0 && (!argv[0] || argv[1]))
+	/* One pattern is required, if no -s/-P/-u/-U */
+	if ((sid2match & ppid2match & euid2match & uid2match) < 0 // -s/-P/-u/-U: all not set
+	 && !argv[0] // no PATTERN
+	) {
 		bb_show_usage();
+	}
 
 	if (argv[0])
-		xregcomp(&re_buffer, argv[0], OPT_ANCHOR ? REG_EXTENDED : (REG_EXTENDED|REG_NOSUB));
+		xregcomp(&re_buffer, argv[0], opt & OPT_ANCHOR ? REG_EXTENDED : (REG_EXTENDED|REG_NOSUB));
 
 	matched_pid = 0;
 	cmd_last = NULL;
@@ -192,8 +187,8 @@ int pgrep_main(int argc UNUSED_PARAM, char **argv)
 		if (proc->pid == pid)
 			continue;
 
-		if (!OPT_INVERT) {
-			/* Quickly reject -sN -PN mismatches... unless -v */
+		if (!opt & OPT_INVERT) {
+			/* Quickly reject -sN -PN -uN -UN mismatches... unless -v */
 			if (ppid2match >= 0 && ppid2match != proc->ppid)
 				continue;
 			if (sid2match >= 0 && sid2match != proc->sid)
@@ -211,7 +206,7 @@ int pgrep_main(int argc UNUSED_PARAM, char **argv)
 		} else {
 			int i = proc->argv_len;
 
-			if (!OPT_LISTFULL)
+			if (!(opt & OPT_LISTFULL))
 				cmdlen = strlen(cmd); /* not -a: find first NUL */
 			/*
 			 * "sleep 11" looks like "sleep""\0""11""\0" in argv0.
@@ -225,7 +220,7 @@ int pgrep_main(int argc UNUSED_PARAM, char **argv)
 			}
 		}
 
-		if (OPT_INVERT) {
+		if (opt & OPT_INVERT) {
 			/* "pgrep -v -P1 firefox" means "not (ppid=1 AND name=firefox)"
 			 * or equivalently "ppid!=1 OR name!=firefox".
 			 * Check the first condition and if true, skip matching.
@@ -244,7 +239,7 @@ int pgrep_main(int argc UNUSED_PARAM, char **argv)
 		if (!match) {
  again:
 			match = (regexec(&re_buffer, cmd, 1, re_match, 0) == 0);
-			if (match && OPT_ANCHOR) {
+			if (match && (opt & OPT_ANCHOR)) {
 				/* -x requires full string match */
 				match = (re_match[0].rm_so == 0 && cmd[re_match[0].rm_eo] == '\0');
 			}
@@ -257,10 +252,10 @@ int pgrep_main(int argc UNUSED_PARAM, char **argv)
 		}
 
 		/* NB: OPT_INVERT is always 0 or 1 */
-		if (match ^ OPT_INVERT) {
+		if (match ^ (opt & OPT_INVERT)) {
  got_it:
 			matched_pid = proc->pid;
-			if (OPT_LAST) {
+			if (opt & OPT_LAST) {
 				free(cmd_last);
 				cmd_last = xstrdup(cmd);
 				continue;
@@ -268,7 +263,7 @@ int pgrep_main(int argc UNUSED_PARAM, char **argv)
 			if (cmdlen >= 0)
 				cmd[cmdlen] = '\0';
 			act(proc->pid, cmd, signo);
-			if (OPT_FIRST)
+			if (opt & OPT_FIRST)
 				break;
 		}
 	}
