@@ -88,8 +88,6 @@ typedef struct state_t {
 	smalluint gunzip_bk; /* bits in bit buffer */
 
 	/* private data of inflate_codes() */
-	unsigned inflate_codes_ml; /* masks for bl and bd bits */
-	unsigned inflate_codes_md; /* masks for bl and bd bits */
 	huft_t *inflate_codes_tl;
 	huft_t *inflate_codes_td;
 	unsigned inflate_codes_bl;
@@ -124,8 +122,6 @@ typedef struct state_t {
 #define gunzip_crc          (S()gunzip_crc         )
 #define gunzip_bb           (S()gunzip_bb          )
 #define gunzip_bk           (S()gunzip_bk          )
-#define inflate_codes_ml    (S()inflate_codes_ml   )
-#define inflate_codes_md    (S()inflate_codes_md   )
 #define inflate_codes_tl    (S()inflate_codes_tl   )
 #define inflate_codes_td    (S()inflate_codes_td   )
 #define inflate_codes_bl    (S()inflate_codes_bl   )
@@ -489,30 +485,17 @@ static huft_t* huft_build(const unsigned *b, unsigned n,
  * inflate (decompress) the codes in a deflated (compressed) block.
  * Return an error code or zero if it all goes ok.
  *
- * tl, td: literal/length and distance decoder tables
+ * inflate_codes_{tl,td}: literal/length and distance decoder tables
  * bl, bd: number of bits decoded by tl[] and td[]
  */
 /* map formerly local static variables to globals */
-#define ml inflate_codes_ml
-#define md inflate_codes_md
-#define tl inflate_codes_tl
-#define td inflate_codes_td
-#define bl inflate_codes_bl
-#define bd inflate_codes_bd
 #define nn inflate_codes_nn
 #define dd inflate_codes_dd
-/* called twice from inflate_block */
-static void inflate_codes_setup(STATE_PARAM unsigned my_bl, unsigned my_bd)
-{
-	bl = my_bl;
-	bd = my_bd;
-	/* inflate the coded data */
-	ml = mask_bits[bl];		/* precompute masks for speed */
-	md = mask_bits[bd];
-}
 /* called once from inflate_get_next_window */
 static NOINLINE int inflate_codes(STATE_PARAM_ONLY)
 {
+	unsigned ml = mask_bits[inflate_codes_bl]; /* precompute masks for speed */
+	unsigned md = mask_bits[inflate_codes_bd];
 	unsigned e;	/* table entry flag/number of extra bits */
 	huft_t *t;	/* pointer to table entry */
 #define w gunzip_outbuf_count
@@ -521,8 +504,8 @@ static NOINLINE int inflate_codes(STATE_PARAM_ONLY)
 		goto do_copy;
 
 	while (1) {			/* do until end of block */
-		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, bl);
-		t = tl + (gunzip_bb & ml);
+		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, inflate_codes_bl);
+		t = inflate_codes_tl + (gunzip_bb & ml);
 		e = t->e;
 		while (e > 16) {
 			if (e == 99)
@@ -546,14 +529,14 @@ static NOINLINE int inflate_codes(STATE_PARAM_ONLY)
 				break;
 
 			/* get length of block to copy */
-			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, e + bd); //
+			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, e + inflate_codes_bd); //
 			nn = t->v.n + (gunzip_bb & mask_bits[e]);
 			gunzip_bb >>= e;
 			gunzip_bk -= e;
 
 			/* decode distance of block to copy */
-//			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, bd);
-			t = td + (gunzip_bb & md);
+//			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, inflate_codes_bd);
+			t = inflate_codes_td + (gunzip_bb & md);
 			e = t->e;
 			while (e > 16) {
 				if (e == 99)
@@ -608,18 +591,12 @@ static NOINLINE int inflate_codes(STATE_PARAM_ONLY)
 #undef w
 
 	/* normally just after call to inflate_codes, but save code by putting it here */
-	/* free the decoding tables (tl and td), return */
+	/* free the decoding tables (inflate_codes_{tl,td}), return */
 	huft_free_all(PASS_STATE_ONLY);
 
 	/* done */
 	return 0;
 }
-#undef ml
-#undef md
-#undef tl
-#undef td
-#undef bl
-#undef bd
 #undef nn
 #undef dd
 
@@ -738,7 +715,8 @@ static int inflate_block(STATE_PARAM_ONLY)
 		inflate_codes_td = (void*)((uintptr_t)inflate_codes_td & ~(uintptr_t)1);
 
 		/* set up data for inflate_codes() */
-		inflate_codes_setup(PASS_STATE bl, bd);
+		inflate_codes_bl = bl;
+		inflate_codes_bd = bd;
 
 		/* huft_free code moved into inflate_codes */
 
@@ -856,7 +834,8 @@ static int inflate_block(STATE_PARAM_ONLY)
 			abort_unzip(PASS_STATE_ONLY);
 
 		/* set up data for inflate_codes() */
-		inflate_codes_setup(PASS_STATE bl, bd);
+		inflate_codes_bl = bl;
+		inflate_codes_bd = bd;
 
 		/* huft_free code moved into inflate_codes */
 
