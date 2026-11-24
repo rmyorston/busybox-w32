@@ -55,8 +55,8 @@ static void ALWAYS_INLINE byte_copy_with_overlap(unsigned char *buf, unsigned to
 "\n""		cmp     $4, %%ecx"
 "\n""		jb	2f"
 "\n""		cmp     %%esi, %%edi"
-"\n""		jbe	2f" // jump if edi <= esi (copy backward: safe - word reads can't fetch too much)
-// ok, we are copying forward (edi > esi). Are we too close? E.g if esi = edi-3, 4-byte fetch will read one byte too many; edi-4 is ok.
+"\n""		jbe	1f" // jump if edi <= esi (copy backward: safe - word reads can't fetch too much)
+// ok, we are copying forward (esi < edi). Are we too close? E.g if esi = edi-3, 4-byte fetch will read one byte too many; edi-4 is ok.
 "\n""		lea	-3(%%edi), %%edi"
 "\n""		cmp	%%edi, %%esi"
 "\n""		lea	3(%%edi), %%edi"
@@ -85,8 +85,8 @@ static void ALWAYS_INLINE byte_copy_with_overlap(unsigned char *buf, unsigned to
 "\n""		cmp     $8, %%ecx"
 "\n""		jb	2f"
 "\n""		cmp     %%rsi, %%rdi"
-"\n""		jbe	2f" // jump if rdi <= rsi (copy backward: safe - word reads can't fetch too much)
-// ok, we are copying forward (rdi > rsi). Are we too close? E.g if rsi = rdi-7, 8-byte fetch will read one byte too many; rdi-8 is ok.
+"\n""		jbe	1f" // jump if rdi <= rsi (copy backward: safe - word reads can't fetch too much)
+// ok, we are copying forward (rsi < rdi). Are we too close? E.g if rsi = rdi-7, 8-byte fetch will read one byte too many; rdi-8 is ok.
 "\n""		lea	-7(%%rdi), %%rdi"
 "\n""		cmp	%%rdi, %%rsi"
 "\n""		lea	7(%%rdi), %%rdi"
