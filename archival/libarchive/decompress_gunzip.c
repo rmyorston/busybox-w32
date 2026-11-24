@@ -97,12 +97,12 @@ typedef struct state_t {
 	unsigned inflate_codes_nn; /* length and index for copy */
 	unsigned inflate_codes_dd;
 
-	smallint resume_copy;
-
 	/* private data of inflate_get_next_window() */
 	smallint method; /* method == -1 for stored, -2 for codes */
-	smallint need_another_block;
 	smallint end_reached;
+	smallint need_another_block;
+
+	smallint resume_copy;
 
 	/* private data of inflate_stored() */
 	unsigned inflate_stored_n;
@@ -273,6 +273,7 @@ static unsigned fill_bitbuffer(STATE_PARAM unsigned bitbuffer, unsigned required
 		bytebuffer_offset++;
 		gunzip_bk += 8;
 	}
+	//if (required > 13) bb_error_msg("required:%u gunzip_bk:%u", required, gunzip_bk);
 	return bitbuffer;
 }
 
@@ -523,11 +524,40 @@ static NOINLINE int inflate_codes(STATE_PARAM_ONLY)
 		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, bl);
 		t = tl + (gunzip_bb & ml);
 		e = t->e;
-		if (e > 16)
-			do {
-				if (e == 99) {
+		while (e > 16) {
+			if (e == 99)
+				abort_unzip(PASS_STATE_ONLY);
+			gunzip_bb >>= t->b;
+			gunzip_bk -= t->b;
+			e -= 16;
+			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, e);
+			t = t->v.t + (gunzip_bb & mask_bits[e]);
+			e = t->e;
+		}
+		gunzip_bb >>= t->b;
+		gunzip_bk -= t->b;
+		if (e == 16) {	/* it's a literal */
+			gunzip_window[w++] = (unsigned char) t->v.n;
+			if (w == GUNZIP_WSIZE)
+				return 1; /* output buffer full */
+		} else { /* it's an EOB or a length */
+			/* exit if end of block */
+			if (e == 15)
+				break;
+
+			/* get length of block to copy */
+			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, e + bd); //
+			nn = t->v.n + (gunzip_bb & mask_bits[e]);
+			gunzip_bb >>= e;
+			gunzip_bk -= e;
+
+			/* decode distance of block to copy */
+//			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, bd);
+			t = td + (gunzip_bb & md);
+			e = t->e;
+			while (e > 16) {
+				if (e == 99)
 					abort_unzip(PASS_STATE_ONLY);
-				}
 				gunzip_bb >>= t->b;
 				gunzip_bk -= t->b;
 				e -= 16;
@@ -535,41 +565,6 @@ static NOINLINE int inflate_codes(STATE_PARAM_ONLY)
 				t = t->v.t + (gunzip_bb & mask_bits[e]);
 				e = t->e;
 			} while (e > 16);
-		gunzip_bb >>= t->b;
-		gunzip_bk -= t->b;
-		if (e == 16) {	/* then it's a literal */
-			gunzip_window[w++] = (unsigned char) t->v.n;
-			if (w == GUNZIP_WSIZE) {
-				return 1; // We have a block to read
-			}
-		} else {		/* it's an EOB or a length */
-			/* exit if end of block */
-			if (e == 15)
-				break;
-
-			/* get length of block to copy */
-			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, e);
-			nn = t->v.n + (gunzip_bb & mask_bits[e]);
-			gunzip_bb >>= e;
-			gunzip_bk -= e;
-
-			/* decode distance of block to copy */
-			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, bd);
-			t = td + (gunzip_bb & md);
-			e = t->e;
-			if (e > 16) {
-				do {
-					if (e == 99) {
-						abort_unzip(PASS_STATE_ONLY);
-					}
-					gunzip_bb >>= t->b;
-					gunzip_bk -= t->b;
-					e -= 16;
-					gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, e);
-					t = t->v.t + (gunzip_bb & mask_bits[e]);
-					e = t->e;
-				} while (e > 16);
-			}
 			gunzip_bb >>= t->b;
 			gunzip_bk -= t->b;
 			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, e);
@@ -665,16 +660,16 @@ static int inflate_block(STATE_PARAM_ONLY)
 	unsigned t;     /* block type */
 
 	/* read in last block bit */
-	gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 1);
+	gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 1 + 2); //
 	end_reached = gunzip_bb & 1;
 	gunzip_bb >>= 1;
-	gunzip_bk -= 1;
+	gunzip_bk -= 1 + 2; //
 
 	/* read in block type */
-	gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 2);
+//	gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 2);
 	t = gunzip_bb & 3;
 	gunzip_bb >>= 2;
-	gunzip_bk -= 2;
+//	gunzip_bk -= 2;
 
 	/* Do we see block type 1 often? Yes!
 	 * TODO: fix performance problem (see below) */
@@ -687,6 +682,7 @@ static int inflate_block(STATE_PARAM_ONLY)
 		unsigned n;	/* number of bytes in block */
 
 		/* go to byte boundary */
+		//bb_error_msg("uncompressed block gunzip_bk:%d", gunzip_bk); // never seen > 7 here...
 		n = gunzip_bk & 7;
 		gunzip_bb >>= n;
 		gunzip_bk -= n;
@@ -698,9 +694,8 @@ static int inflate_block(STATE_PARAM_ONLY)
 		gunzip_bk -= 16;
 
 		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 16);
-		if (n != ((~gunzip_bb) & 0xffff)) {
+		if (n != ((~gunzip_bb) & 0xffff))
 			abort_unzip(PASS_STATE_ONLY);	/* error in compressed data */
-		}
 		gunzip_bb >>= 16;
 		gunzip_bk -= 16;
 
@@ -768,24 +763,23 @@ static int inflate_block(STATE_PARAM_ONLY)
 		//unsigned ll[286 + 30];/* literal/length and distance code lengths */
 
 		/* read in table lengths */
-		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 5);
+		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 5 + 5 + 4); //
 		nl = 257 + (gunzip_bb & 0x1f);	/* number of literal/length codes */
 
 		gunzip_bb >>= 5;
-		gunzip_bk -= 5;
-		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 5);
+		gunzip_bk -= 5 +5 + 4; //
+//		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 5);
 		nd = 1 + (gunzip_bb & 0x1f);	/* number of distance codes */
 
 		gunzip_bb >>= 5;
-		gunzip_bk -= 5;
-		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 4);
+//		gunzip_bk -= 5;
+//		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 4);
 		nb = 4 + (gunzip_bb & 0xf);	/* number of bit length codes */
 
 		gunzip_bb >>= 4;
-		gunzip_bk -= 4;
-		if (nl > 286 || nd > 30) {
+//		gunzip_bk -= 4;
+		if (nl > 286 || nd > 30)
 			abort_unzip(PASS_STATE_ONLY);	/* bad lengths */
-		}
 
 		/* read in bit-length-code lengths */
 		for (j = 0; j < nb; j++) {
@@ -800,9 +794,8 @@ static int inflate_block(STATE_PARAM_ONLY)
 		/* build decoding table for trees - single level, 7 bit lookup */
 		bl = 7;
 		inflate_codes_tl = huft_build(ll, 19, 19, NULL, &bl);
-		if (BAD_HUFT(inflate_codes_tl)) {
+		if (BAD_HUFT(inflate_codes_tl))
 			abort_unzip(PASS_STATE_ONLY);	/* incomplete code set */
-		}
 
 		/* read in literal and distance code lengths */
 		n = nl + nd;
@@ -822,35 +815,29 @@ static int inflate_block(STATE_PARAM_ONLY)
 				j = 3 + (gunzip_bb & 3);
 				gunzip_bb >>= 2;
 				gunzip_bk -= 2;
-				if (i + j > n) {
+				if (i + j > n)
 					abort_unzip(PASS_STATE_ONLY); //return 1;
-				}
-				while (j--) {
+				while (j--)
 					ll[i++] = l;
-				}
 			} else if (j == 17) {	/* 3 to 10 zero length codes */
 				gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 3);
 				j = 3 + (gunzip_bb & 7);
 				gunzip_bb >>= 3;
 				gunzip_bk -= 3;
-				if (i + j > n) {
+				if (i + j > n)
 					abort_unzip(PASS_STATE_ONLY); //return 1;
-				}
-				while (j--) {
+				while (j--)
 					ll[i++] = 0;
-				}
 				l = 0;
 			} else {	/* j == 18: 11 to 138 zero length codes */
 				gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 7);
 				j = 11 + (gunzip_bb & 0x7f);
 				gunzip_bb >>= 7;
 				gunzip_bk -= 7;
-				if (i + j > n) {
+				if (i + j > n)
 					abort_unzip(PASS_STATE_ONLY); //return 1;
-				}
-				while (j--) {
+				while (j--)
 					ll[i++] = 0;
-				}
 				l = 0;
 			}
 		}
@@ -861,14 +848,12 @@ static int inflate_block(STATE_PARAM_ONLY)
 		/* build the decoding tables for literal/length and distance codes */
 		bl = lbits;
 		inflate_codes_tl = huft_build(ll, nl, 257, &lit, &bl);
-		if (BAD_HUFT(inflate_codes_tl)) {
+		if (BAD_HUFT(inflate_codes_tl))
 			abort_unzip(PASS_STATE_ONLY);
-		}
 		bd = dbits;
 		inflate_codes_td = huft_build(ll + nl, nd, 0, &dist, &bd);
-		if (BAD_HUFT(inflate_codes_td)) {
+		if (BAD_HUFT(inflate_codes_td))
 			abort_unzip(PASS_STATE_ONLY);
-		}
 
 		/* set up data for inflate_codes() */
 		inflate_codes_setup(PASS_STATE bl, bd);
@@ -911,11 +896,11 @@ static int inflate_get_next_window(STATE_PARAM_ONLY)
 		case -1:
 			ret = inflate_stored(PASS_STATE_ONLY);
 			break;
-		case -2:
+		default: //case -2:
 			ret = inflate_codes(PASS_STATE_ONLY);
 			break;
-		default: /* cannot happen */
-			abort_unzip(PASS_STATE_ONLY);
+//		default: /* cannot happen */
+//			abort_unzip(PASS_STATE_ONLY);
 		}
 
 		if (ret == 1) {
