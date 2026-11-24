@@ -66,7 +66,6 @@ static void modinfo(const char *path, const char *version,
 	int j;
 	char *ptr, *the_module;
 	char *allocated;
-	int tags = option_mask32;
 
 	allocated = NULL;
 	len = MAXINT(ssize_t);
@@ -87,7 +86,7 @@ static void modinfo(const char *path, const char *version,
 	for (j = 2; (1<<j) & (OPT_TAGS|OPT_F); j++) {
 		const char *pattern;
 
-		if (!((1<<j) & tags))
+		if (!((1<<j) & option_mask32))
 			continue;
 
 		pattern = field;
