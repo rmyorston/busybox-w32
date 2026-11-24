@@ -85,14 +85,11 @@ typedef struct state_t {
 
 	/* bitbuffer */
 	unsigned gunzip_bb; /* bit buffer */
-	unsigned char gunzip_bk; /* bits in bit buffer */
+	smalluint gunzip_bk; /* bits in bit buffer */
 
 	/* private data of inflate_codes() */
 	unsigned inflate_codes_ml; /* masks for bl and bd bits */
 	unsigned inflate_codes_md; /* masks for bl and bd bits */
-	unsigned inflate_codes_bb; /* bit buffer */
-	unsigned inflate_codes_k; /* number of bits in bit buffer */
-	unsigned inflate_codes_w; /* current gunzip_window position */
 	huft_t *inflate_codes_tl;
 	huft_t *inflate_codes_td;
 	unsigned inflate_codes_bl;
@@ -109,9 +106,6 @@ typedef struct state_t {
 
 	/* private data of inflate_stored() */
 	unsigned inflate_stored_n;
-	unsigned inflate_stored_b;
-	unsigned inflate_stored_k;
-	unsigned inflate_stored_w;
 
 	const char *error_msg;
 	jmp_buf error_jmp;
@@ -132,9 +126,6 @@ typedef struct state_t {
 #define gunzip_bk           (S()gunzip_bk          )
 #define inflate_codes_ml    (S()inflate_codes_ml   )
 #define inflate_codes_md    (S()inflate_codes_md   )
-#define inflate_codes_bb    (S()inflate_codes_bb   )
-#define inflate_codes_k     (S()inflate_codes_k    )
-#define inflate_codes_w     (S()inflate_codes_w    )
 #define inflate_codes_tl    (S()inflate_codes_tl   )
 #define inflate_codes_td    (S()inflate_codes_td   )
 #define inflate_codes_bl    (S()inflate_codes_bl   )
@@ -146,9 +137,6 @@ typedef struct state_t {
 #define need_another_block  (S()need_another_block )
 #define end_reached         (S()end_reached        )
 #define inflate_stored_n    (S()inflate_stored_n   )
-#define inflate_stored_b    (S()inflate_stored_b   )
-#define inflate_stored_k    (S()inflate_stored_k   )
-#define inflate_stored_w    (S()inflate_stored_w   )
 #define error_msg           (S()error_msg          )
 #define error_jmp           (S()error_jmp          )
 
@@ -253,9 +241,14 @@ static void abort_unzip(STATE_PARAM_ONLY)
 	longjmp(error_jmp, 1);
 }
 
-static unsigned fill_bitbuffer(STATE_PARAM unsigned bitbuffer, unsigned *current, unsigned required)
+// All uses of this function are of form
+// gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, NUM);
+// We do not store the result to gunzip_bb here, and do not eliminate
+// the parameter, because this way the caller's code gets optimized better
+// (compiler often knows it already has gunzip_bb's value in a register).
+static unsigned fill_bitbuffer(STATE_PARAM unsigned bitbuffer, unsigned required)
 {
-	while (*current < required) {
+	while (gunzip_bk < required) {
 		if (bytebuffer_offset >= bytebuffer_size) {
 			unsigned sz = bytebuffer_max - 4;
 #if ENABLE_UNZIP
@@ -276,9 +269,9 @@ static unsigned fill_bitbuffer(STATE_PARAM unsigned bitbuffer, unsigned *current
 			bytebuffer_size += 4;
 			bytebuffer_offset = 4;
 		}
-		bitbuffer |= ((unsigned) bytebuffer[bytebuffer_offset]) << *current;
+		bitbuffer |= ((unsigned) bytebuffer[bytebuffer_offset]) << gunzip_bk;
 		bytebuffer_offset++;
-		*current += 8;
+		gunzip_bk += 8;
 	}
 	return bitbuffer;
 }
@@ -498,28 +491,20 @@ static huft_t* huft_build(const unsigned *b, unsigned n,
  * tl, td: literal/length and distance decoder tables
  * bl, bd: number of bits decoded by tl[] and td[]
  */
-/* called once from inflate_block */
-
 /* map formerly local static variables to globals */
 #define ml inflate_codes_ml
 #define md inflate_codes_md
-#define bb inflate_codes_bb
-#define k  inflate_codes_k
-#define w  inflate_codes_w
 #define tl inflate_codes_tl
 #define td inflate_codes_td
 #define bl inflate_codes_bl
 #define bd inflate_codes_bd
 #define nn inflate_codes_nn
 #define dd inflate_codes_dd
+/* called twice from inflate_block */
 static void inflate_codes_setup(STATE_PARAM unsigned my_bl, unsigned my_bd)
 {
 	bl = my_bl;
 	bd = my_bd;
-	/* make local copies of globals */
-	bb = gunzip_bb;			/* initialize bit buffer */
-	k = gunzip_bk;
-	w = gunzip_outbuf_count;	/* initialize gunzip_window position */
 	/* inflate the coded data */
 	ml = mask_bits[bl];		/* precompute masks for speed */
 	md = mask_bits[bd];
@@ -529,70 +514,68 @@ static NOINLINE int inflate_codes(STATE_PARAM_ONLY)
 {
 	unsigned e;	/* table entry flag/number of extra bits */
 	huft_t *t;	/* pointer to table entry */
+#define w gunzip_outbuf_count
 
 	if (resume_copy)
 		goto do_copy;
 
 	while (1) {			/* do until end of block */
-		bb = fill_bitbuffer(PASS_STATE bb, &k, bl);
-		t = tl + ((unsigned) bb & ml);
+		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, bl);
+		t = tl + (gunzip_bb & ml);
 		e = t->e;
 		if (e > 16)
 			do {
 				if (e == 99) {
 					abort_unzip(PASS_STATE_ONLY);
 				}
-				bb >>= t->b;
-				k -= t->b;
+				gunzip_bb >>= t->b;
+				gunzip_bk -= t->b;
 				e -= 16;
-				bb = fill_bitbuffer(PASS_STATE bb, &k, e);
-				t = t->v.t + ((unsigned) bb & mask_bits[e]);
+				gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, e);
+				t = t->v.t + (gunzip_bb & mask_bits[e]);
 				e = t->e;
 			} while (e > 16);
-		bb >>= t->b;
-		k -= t->b;
+		gunzip_bb >>= t->b;
+		gunzip_bk -= t->b;
 		if (e == 16) {	/* then it's a literal */
 			gunzip_window[w++] = (unsigned char) t->v.n;
 			if (w == GUNZIP_WSIZE) {
-				gunzip_outbuf_count = w;
-				//flush_gunzip_window();
-				w = 0;
 				return 1; // We have a block to read
 			}
 		} else {		/* it's an EOB or a length */
 			/* exit if end of block */
-			if (e == 15) {
+			if (e == 15)
 				break;
-			}
 
 			/* get length of block to copy */
-			bb = fill_bitbuffer(PASS_STATE bb, &k, e);
-			nn = t->v.n + ((unsigned) bb & mask_bits[e]);
-			bb >>= e;
-			k -= e;
+			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, e);
+			nn = t->v.n + (gunzip_bb & mask_bits[e]);
+			gunzip_bb >>= e;
+			gunzip_bk -= e;
 
 			/* decode distance of block to copy */
-			bb = fill_bitbuffer(PASS_STATE bb, &k, bd);
-			t = td + ((unsigned) bb & md);
+			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, bd);
+			t = td + (gunzip_bb & md);
 			e = t->e;
-			if (e > 16)
+			if (e > 16) {
 				do {
 					if (e == 99) {
 						abort_unzip(PASS_STATE_ONLY);
 					}
-					bb >>= t->b;
-					k -= t->b;
+					gunzip_bb >>= t->b;
+					gunzip_bk -= t->b;
 					e -= 16;
-					bb = fill_bitbuffer(PASS_STATE bb, &k, e);
-					t = t->v.t + ((unsigned) bb & mask_bits[e]);
+					gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, e);
+					t = t->v.t + (gunzip_bb & mask_bits[e]);
 					e = t->e;
 				} while (e > 16);
-			bb >>= t->b;
-			k -= t->b;
-			bb = fill_bitbuffer(PASS_STATE bb, &k, e);
-			dd = w - t->v.n - ((unsigned) bb & mask_bits[e]);
-			bb >>= e;
-			k -= e;
+			}
+			gunzip_bb >>= t->b;
+			gunzip_bk -= t->b;
+			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, e);
+			dd = w - t->v.n - (gunzip_bb & mask_bits[e]);
+			gunzip_bb >>= e;
+			gunzip_bk -= e;
 
 			/* do the copy */
  do_copy:
@@ -604,37 +587,30 @@ static NOINLINE int inflate_codes(STATE_PARAM_ONLY)
 				dd &= GUNZIP_WSIZE - 1;
 				e = GUNZIP_WSIZE - (dd > w ? dd : w);
 				if (e > nn) e = nn;
-				nn -= e;
+				//nn -= e; // moved down
 
 				/* copy to new buffer to prevent possible overwrite */
 				delta = w > dd ? w - dd : dd - w;
 				if (delta >= e) {
 					memcpy(gunzip_window + w, gunzip_window + dd, e);
-					w += e;
-					dd += e;
 				} else {
 					/* do it slow to avoid memcpy() overlap */
-					/* !NOMEMCPY */
-					do {
-						gunzip_window[w++] = gunzip_window[dd++];
-					} while (--e);
+					unsigned char *dst = &gunzip_window[w];
+					unsigned char *src = &gunzip_window[dd];
+					unsigned cnt = e;
+					do *dst++ = *src++; while (--cnt);
 				}
-				if (w == GUNZIP_WSIZE) {
-					gunzip_outbuf_count = w;
-					resume_copy = (nn != 0);
-					//flush_gunzip_window();
-					w = 0;
+				dd += e;
+				w += e;
+				nn -= e; //
+				resume_copy = (nn != 0);
+				if (w == GUNZIP_WSIZE)
 					return 1;
-				}
-			} while (nn);
-			resume_copy = 0;
+			} while (resume_copy != 0);
+			//resume_copy = 0;
 		}
 	}
-
-	/* restore the globals from the locals */
-	gunzip_outbuf_count = w;	/* restore global gunzip_window pointer */
-	gunzip_bb = bb;			/* restore global bit buffer */
-	gunzip_bk = k;
+#undef w
 
 	/* normally just after call to inflate_codes, but save code by putting it here */
 	/* free the decoding tables (tl and td), return */
@@ -645,9 +621,6 @@ static NOINLINE int inflate_codes(STATE_PARAM_ONLY)
 }
 #undef ml
 #undef md
-#undef bb
-#undef k
-#undef w
 #undef tl
 #undef td
 #undef bl
@@ -656,37 +629,25 @@ static NOINLINE int inflate_codes(STATE_PARAM_ONLY)
 #undef dd
 
 /* called once from inflate_block */
-static void inflate_stored_setup(STATE_PARAM int my_n, int my_b, int my_k)
+static void inflate_stored_setup(STATE_PARAM int my_n)
 {
 	inflate_stored_n = my_n;
-	inflate_stored_b = my_b;
-	inflate_stored_k = my_k;
-	/* initialize gunzip_window position */
-	inflate_stored_w = gunzip_outbuf_count;
 }
 /* called once from inflate_get_next_window */
 static int inflate_stored(STATE_PARAM_ONLY)
 {
 	/* read and output the compressed data */
 	while (inflate_stored_n--) {
-		inflate_stored_b = fill_bitbuffer(PASS_STATE inflate_stored_b, &inflate_stored_k, 8);
-		gunzip_window[inflate_stored_w++] = (unsigned char) inflate_stored_b;
-		if (inflate_stored_w == GUNZIP_WSIZE) {
-			gunzip_outbuf_count = inflate_stored_w;
-			//flush_gunzip_window();
-			inflate_stored_w = 0;
-			inflate_stored_b >>= 8;
-			inflate_stored_k -= 8;
+		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 8);
+		gunzip_window[gunzip_outbuf_count++] = (unsigned char) gunzip_bb;
+		if (gunzip_outbuf_count == GUNZIP_WSIZE) {
+			gunzip_bb >>= 8;
+			gunzip_bk -= 8;
 			return 1; /* We have a block */
 		}
-		inflate_stored_b >>= 8;
-		inflate_stored_k -= 8;
+		gunzip_bb >>= 8;
+		gunzip_bk -= 8;
 	}
-
-	/* restore the globals from the locals */
-	gunzip_outbuf_count = inflate_stored_w;		/* restore global gunzip_window pointer */
-	gunzip_bb = inflate_stored_b;	/* restore global bit buffer */
-	gunzip_bk = inflate_stored_k;
 	return 0; /* Finished */
 }
 
@@ -702,28 +663,18 @@ static int inflate_block(STATE_PARAM_ONLY)
 {
 	unsigned ll[286 + 30];  /* literal/length and distance code lengths */
 	unsigned t;     /* block type */
-	unsigned b;     /* bit buffer */
-	unsigned k;     /* number of bits in bit buffer */
-
-	/* make local bit buffer */
-	b = gunzip_bb;
-	k = gunzip_bk;
 
 	/* read in last block bit */
-	b = fill_bitbuffer(PASS_STATE b, &k, 1);
-	end_reached = b & 1;
-	b >>= 1;
-	k -= 1;
+	gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 1);
+	end_reached = gunzip_bb & 1;
+	gunzip_bb >>= 1;
+	gunzip_bk -= 1;
 
 	/* read in block type */
-	b = fill_bitbuffer(PASS_STATE b, &k, 2);
-	t = b & 3;
-	b >>= 2;
-	k -= 2;
-
-	/* restore the global bit buffer */
-	gunzip_bb = b;
-	gunzip_bk = k;
+	gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 2);
+	t = gunzip_bb & 3;
+	gunzip_bb >>= 2;
+	gunzip_bk -= 2;
 
 	/* Do we see block type 1 often? Yes!
 	 * TODO: fix performance problem (see below) */
@@ -734,32 +685,26 @@ static int inflate_block(STATE_PARAM_ONLY)
 	case 0: /* Inflate stored */
 	{
 		unsigned n;	/* number of bytes in block */
-		unsigned b_stored;	/* bit buffer */
-		unsigned k_stored;	/* number of bits in bit buffer */
-
-		/* make local copies of globals */
-		b_stored = gunzip_bb;	/* initialize bit buffer */
-		k_stored = gunzip_bk;
 
 		/* go to byte boundary */
-		n = k_stored & 7;
-		b_stored >>= n;
-		k_stored -= n;
+		n = gunzip_bk & 7;
+		gunzip_bb >>= n;
+		gunzip_bk -= n;
 
-		/* get the length and its complement */
-		b_stored = fill_bitbuffer(PASS_STATE b_stored, &k_stored, 16);
-		n = ((unsigned) b_stored & 0xffff);
-		b_stored >>= 16;
-		k_stored -= 16;
+		/* get length and its complement */
+		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 16);
+		n = (gunzip_bb & 0xffff);
+		gunzip_bb >>= 16;
+		gunzip_bk -= 16;
 
-		b_stored = fill_bitbuffer(PASS_STATE b_stored, &k_stored, 16);
-		if (n != (unsigned) ((~b_stored) & 0xffff)) {
+		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 16);
+		if (n != ((~gunzip_bb) & 0xffff)) {
 			abort_unzip(PASS_STATE_ONLY);	/* error in compressed data */
 		}
-		b_stored >>= 16;
-		k_stored -= 16;
+		gunzip_bb >>= 16;
+		gunzip_bk -= 16;
 
-		inflate_stored_setup(PASS_STATE n, b_stored, k_stored);
+		inflate_stored_setup(PASS_STATE n);
 
 		return -1;
 	}
@@ -820,41 +765,34 @@ static int inflate_block(STATE_PARAM_ONLY)
 		unsigned nb;            /* number of bit length codes */
 		unsigned nl;            /* number of literal/length codes */
 		unsigned nd;            /* number of distance codes */
-
 		//unsigned ll[286 + 30];/* literal/length and distance code lengths */
-		unsigned b_dynamic;     /* bit buffer */
-		unsigned k_dynamic;     /* number of bits in bit buffer */
-
-		/* make local bit buffer */
-		b_dynamic = gunzip_bb;
-		k_dynamic = gunzip_bk;
 
 		/* read in table lengths */
-		b_dynamic = fill_bitbuffer(PASS_STATE b_dynamic, &k_dynamic, 5);
-		nl = 257 + ((unsigned) b_dynamic & 0x1f);	/* number of literal/length codes */
+		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 5);
+		nl = 257 + (gunzip_bb & 0x1f);	/* number of literal/length codes */
 
-		b_dynamic >>= 5;
-		k_dynamic -= 5;
-		b_dynamic = fill_bitbuffer(PASS_STATE b_dynamic, &k_dynamic, 5);
-		nd = 1 + ((unsigned) b_dynamic & 0x1f);	/* number of distance codes */
+		gunzip_bb >>= 5;
+		gunzip_bk -= 5;
+		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 5);
+		nd = 1 + (gunzip_bb & 0x1f);	/* number of distance codes */
 
-		b_dynamic >>= 5;
-		k_dynamic -= 5;
-		b_dynamic = fill_bitbuffer(PASS_STATE b_dynamic, &k_dynamic, 4);
-		nb = 4 + ((unsigned) b_dynamic & 0xf);	/* number of bit length codes */
+		gunzip_bb >>= 5;
+		gunzip_bk -= 5;
+		gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 4);
+		nb = 4 + (gunzip_bb & 0xf);	/* number of bit length codes */
 
-		b_dynamic >>= 4;
-		k_dynamic -= 4;
+		gunzip_bb >>= 4;
+		gunzip_bk -= 4;
 		if (nl > 286 || nd > 30) {
 			abort_unzip(PASS_STATE_ONLY);	/* bad lengths */
 		}
 
 		/* read in bit-length-code lengths */
 		for (j = 0; j < nb; j++) {
-			b_dynamic = fill_bitbuffer(PASS_STATE b_dynamic, &k_dynamic, 3);
-			ll[border[j]] = (unsigned) b_dynamic & 7;
-			b_dynamic >>= 3;
-			k_dynamic -= 3;
+			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 3);
+			ll[border[j]] = gunzip_bb & 7;
+			gunzip_bb >>= 3;
+			gunzip_bk -= 3;
 		}
 		for (; j < 19; j++)
 			ll[border[j]] = 0;
@@ -870,32 +808,32 @@ static int inflate_block(STATE_PARAM_ONLY)
 		n = nl + nd;
 		m = mask_bits[bl];
 		i = l = 0;
-		while ((unsigned) i < n) {
-			b_dynamic = fill_bitbuffer(PASS_STATE b_dynamic, &k_dynamic, (unsigned)bl);
-			td = inflate_codes_tl + ((unsigned) b_dynamic & m);
+		while (i < n) {
+			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, bl);
+			td = inflate_codes_tl + (gunzip_bb & m);
 			j = td->b;
-			b_dynamic >>= j;
-			k_dynamic -= j;
+			gunzip_bb >>= j;
+			gunzip_bk -= j;
 			j = td->v.n;
 			if (j < 16) {	/* length of code in bits (0..15) */
 				ll[i++] = l = j;	/* save last length in l */
 			} else if (j == 16) {	/* repeat last length 3 to 6 times */
-				b_dynamic = fill_bitbuffer(PASS_STATE b_dynamic, &k_dynamic, 2);
-				j = 3 + ((unsigned) b_dynamic & 3);
-				b_dynamic >>= 2;
-				k_dynamic -= 2;
-				if ((unsigned) i + j > n) {
+				gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 2);
+				j = 3 + (gunzip_bb & 3);
+				gunzip_bb >>= 2;
+				gunzip_bk -= 2;
+				if (i + j > n) {
 					abort_unzip(PASS_STATE_ONLY); //return 1;
 				}
 				while (j--) {
 					ll[i++] = l;
 				}
 			} else if (j == 17) {	/* 3 to 10 zero length codes */
-				b_dynamic = fill_bitbuffer(PASS_STATE b_dynamic, &k_dynamic, 3);
-				j = 3 + ((unsigned) b_dynamic & 7);
-				b_dynamic >>= 3;
-				k_dynamic -= 3;
-				if ((unsigned) i + j > n) {
+				gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 3);
+				j = 3 + (gunzip_bb & 7);
+				gunzip_bb >>= 3;
+				gunzip_bk -= 3;
+				if (i + j > n) {
 					abort_unzip(PASS_STATE_ONLY); //return 1;
 				}
 				while (j--) {
@@ -903,11 +841,11 @@ static int inflate_block(STATE_PARAM_ONLY)
 				}
 				l = 0;
 			} else {	/* j == 18: 11 to 138 zero length codes */
-				b_dynamic = fill_bitbuffer(PASS_STATE b_dynamic, &k_dynamic, 7);
-				j = 11 + ((unsigned) b_dynamic & 0x7f);
-				b_dynamic >>= 7;
-				k_dynamic -= 7;
-				if ((unsigned) i + j > n) {
+				gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, 7);
+				j = 11 + (gunzip_bb & 0x7f);
+				gunzip_bb >>= 7;
+				gunzip_bk -= 7;
+				if (i + j > n) {
 					abort_unzip(PASS_STATE_ONLY); //return 1;
 				}
 				while (j--) {
@@ -919,10 +857,6 @@ static int inflate_block(STATE_PARAM_ONLY)
 
 		/* free decoding table for trees */
 		huft_free(inflate_codes_tl);
-
-		/* restore the global bit buffer */
-		gunzip_bb = b_dynamic;
-		gunzip_bk = k_dynamic;
 
 		/* build the decoding tables for literal/length and distance codes */
 		bl = lbits;
@@ -1005,8 +939,8 @@ inflate_unzip_internal(STATE_PARAM transformer_state_t *xstate)
 	gunzip_src_fd = xstate->src_fd;
 
 	/* (re) initialize state */
-	method = -1;
 	need_another_block = 1;
+	//method = -1; // will be set later due to need_another_block=1
 	resume_copy = 0;
 	gunzip_bk = 0;
 	gunzip_bb = 0;
