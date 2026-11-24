@@ -1132,7 +1132,7 @@ static uint32_t buffer_read_le_u32(STATE_PARAM_ONLY)
 
 static int check_header_gzip(STATE_PARAM transformer_state_t *xstate)
 {
-	union {
+	union { /* see RFC 1952 */
 		unsigned char raw[8];
 		struct {
 			uint8_t gz_method;         /* always 8 */
@@ -1168,6 +1168,7 @@ static int check_header_gzip(STATE_PARAM transformer_state_t *xstate)
 
 	if (flags & 0x04) {
 		/* bit 2 set: extra field present */
+		/* Format: (id1,id2,len16_le,bytes)... */
 		unsigned extra_short;
 
 		if (!top_up(PASS_STATE 2))
