@@ -467,7 +467,7 @@ static void add_split_dependencies(common_node_t *parent_node, const char *whole
 		}
 
 		do {
-			edge = xmalloc(sizeof(edge_t));
+			edge = xzalloc(sizeof(edge_t));
 			edge->type = edge_type;
 
 			/* Skip any extra leading spaces */
@@ -499,6 +499,8 @@ static void add_split_dependencies(common_node_t *parent_node, const char *whole
 					} else {
 						bb_simple_error_msg_and_die("illegal operator");
 					}
+				} else {
+					bb_simple_error_msg_and_die("illegal operator");
 				}
 				/* skip to start of version numbers */
 				version += offset_ch;
