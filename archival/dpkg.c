@@ -636,6 +636,8 @@ static int read_package_field(const char *pkg_buf, char **pname, char **pvalue)
 }
 
 /* The parameter is NUL-terminated */
+// None of the callers needs to continue if this fails.
+// Proposal: make it emit error msg and exit on errors?
 static unsigned fill_package_struct(char *control_buffer)
 {
 	static const char field_names[] ALIGN1 =
@@ -647,7 +649,7 @@ static unsigned fill_package_struct(char *control_buffer)
 	int field_start = 0;
 	int num;
 
-	new_node->version = search_name_hashtable("unknown");
+	//?? new_node->version = search_name_hashtable("unknown");
 	while (control_buffer[field_start]) {
 		char *field_name;
 		char *field_value;
@@ -658,6 +660,7 @@ static unsigned fill_package_struct(char *control_buffer)
 
 		if (field_name == NULL) {
 			goto fill_package_struct_cleanup;
+//TODO: maybe fail instead?
 		}
 
 		field_num = index_in_strings(field_names, field_name);
@@ -698,7 +701,8 @@ static unsigned fill_package_struct(char *control_buffer)
 		free(field_value);
 	}
 
-	if (new_node->version == search_name_hashtable("unknown")) {
+	//if (new_node->version == search_name_hashtable("unknown")
+	if (!new_node->version || !new_node->name) {
 		free_package(new_node);
 		return -1;
 	}
