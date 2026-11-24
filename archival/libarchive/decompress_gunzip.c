@@ -54,7 +54,6 @@ enum {
 	N_MAX = 288,	/* maximum number of codes in any set */
 };
 
-
 /* This is somewhat complex-looking arrangement, but it allows
  * to place decompressor state either in bss or in
  * malloc'ed space simply by changing #defines below.
@@ -65,7 +64,6 @@ enum {
  */
 #define STATE_IN_BSS 0
 #define STATE_IN_MALLOC 1
-
 
 typedef struct state_t {
 	/* input (compressed) data */
@@ -78,8 +76,8 @@ typedef struct state_t {
 #endif
 
 	int gunzip_src_fd;
-	unsigned gunzip_outbuf_count; /* bytes in output buffer */
 
+	unsigned gunzip_outbuf_count; /* bytes in output buffer */
 	unsigned char *gunzip_window;
 
 	uint32_t *gunzip_crc_table;
@@ -599,17 +597,17 @@ static NOINLINE int inflate_codes(STATE_PARAM_ONLY)
 			/* do the copy */
  do_copy:
 			do {
-				/* Was: nn -= (e = (e = GUNZIP_WSIZE - ((dd &= GUNZIP_WSIZE - 1) > w ? dd : w)) > nn ? nn : e); */
-				/* Who wrote THAT?? rewritten as: */
 				unsigned delta;
 
+				/* Was: nn -= (e = (e = GUNZIP_WSIZE - ((dd &= GUNZIP_WSIZE - 1) > w ? dd : w)) > nn ? nn : e); */
+				/* Who wrote THAT?? rewritten as: */
 				dd &= GUNZIP_WSIZE - 1;
 				e = GUNZIP_WSIZE - (dd > w ? dd : w);
-				delta = w > dd ? w - dd : dd - w;
 				if (e > nn) e = nn;
 				nn -= e;
 
 				/* copy to new buffer to prevent possible overwrite */
+				delta = w > dd ? w - dd : dd - w;
 				if (delta >= e) {
 					memcpy(gunzip_window + w, gunzip_window + dd, e);
 					w += e;
@@ -700,7 +698,7 @@ static int inflate_stored(STATE_PARAM_ONLY)
  */
 /* Return values: -1 = inflate_stored, -2 = inflate_codes */
 /* One callsite in inflate_get_next_window */
-static int inflate_block(STATE_PARAM smallint *e)
+static int inflate_block(STATE_PARAM_ONLY)
 {
 	unsigned ll[286 + 30];  /* literal/length and distance code lengths */
 	unsigned t;     /* block type */
@@ -713,7 +711,7 @@ static int inflate_block(STATE_PARAM smallint *e)
 
 	/* read in last block bit */
 	b = fill_bitbuffer(PASS_STATE b, &k, 1);
-	*e = b & 1;
+	end_reached = b & 1;
 	b >>= 1;
 	k -= 1;
 
@@ -971,7 +969,7 @@ static int inflate_get_next_window(STATE_PARAM_ONLY)
 				/* NB: need_another_block is still set */
 				return 0; /* Last block */
 			}
-			method = inflate_block(PASS_STATE &end_reached);
+			method = inflate_block(PASS_STATE_ONLY); // can set end_reached
 			need_another_block = 0;
 		}
 
@@ -1036,14 +1034,14 @@ inflate_unzip_internal(STATE_PARAM transformer_state_t *xstate)
 		if (r == 0) break;
 	}
 
-	/* Store unused bytes in a global buffer so calling applets can access it */
+	/* Store unused byte in a global buffer so calling applets can access it */
 	if (gunzip_bk >= 8) {
 		/* Undo too much lookahead. The next read will be byte aligned
 		 * so we can discard unused bits in the last meaningful byte. */
 		bytebuffer_offset--;
 		bytebuffer[bytebuffer_offset] = gunzip_bb & 0xff;
-		gunzip_bb >>= 8;
-		gunzip_bk -= 8;
+		//gunzip_bb >>= 8; // not used anymore
+		//gunzip_bk -= 8;
 	}
  ret:
 	/* Cleanup */
