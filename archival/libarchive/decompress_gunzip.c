@@ -35,6 +35,120 @@
 #include "libbb.h"
 #include "bb_archive.h"
 
+// Copying of bytes in decompression window.
+// The copies are usually very small, and never > ~300 bytes.
+// The size is never 0. The source/destination addresses are never equal.
+// The copy can be backward (destination is lower address than source).
+// The copy can overlap, in this case the copying *must* copy its own results:
+// copying from "abcd....." to the location of "d....."
+// must result in "abcabcabc"
+static void ALWAYS_INLINE byte_copy_with_overlap(unsigned char *buf, unsigned to, unsigned from, unsigned count)
+{
+//For x86 with -Os, compilers often use "rep movsb" to implement memcpy(),
+//but it has ~20 cycle setup cost (it's microcoded),
+//which is rather painful for the small copies we do here.
+#if defined(__GNUC__) && defined(__i386__)
+	unsigned char *esi = buf + from;
+	unsigned char *edi = buf + to;
+	unsigned ecx = count;
+	asm volatile (
+"\n""		cmp     $4, %%ecx"
+"\n""		jb	2f"
+"\n""		cmp     %%esi, %%edi"
+"\n""		jbe	2f" // jump if edi <= esi (copy backward: safe - word reads can't fetch too much)
+// ok, we are copying forward (edi > esi). Are we too close? E.g if esi = edi-3, 4-byte fetch will read one byte too many; edi-4 is ok.
+"\n""		lea	-3(%%edi), %%edi"
+"\n""		cmp	%%edi, %%esi"
+"\n""		lea	3(%%edi), %%edi"
+"\n""		jae	2f" // esi >= edi-3: too close, can't do word copies
+"\n""1:"	// word copy loop
+"\n""		cmp     $8, %%ecx"
+"\n""		movsl"
+"\n""		lea	-4(%%ecx), %%ecx"
+"\n""		jae	1b"
+/////		test	%%ecx, %%ecx; jz 3f" // - if jecxz becomes very slow on some future CPU
+"\n""		jecxz	3f"
+"\n""2:"	// byte copy loop
+"\n""		movsb"
+"\n""		dec 	%%ecx"	// can use "loop 2b", but loop _is_ somewhat slow on some CPUs
+"\n""		jnz	2b"	//
+"\n""3:"
+	/*out*/	: "=S"(esi), "=D"(edi), "=c"(ecx)
+	/*in*/	: "0" (esi), "1" (edi), "2"(ecx)
+		: "memory"
+	);
+#elif defined(__GNUC__) && defined(__x86_64__)
+	unsigned char *rsi = buf + from;
+	unsigned char *rdi = buf + to;
+	unsigned ecx = count;
+	asm volatile (
+"\n""		cmp     $8, %%ecx"
+"\n""		jb	2f"
+"\n""		cmp     %%rsi, %%rdi"
+"\n""		jbe	2f" // jump if rdi <= rsi (copy backward: safe - word reads can't fetch too much)
+// ok, we are copying forward (rdi > rsi). Are we too close? E.g if rsi = rdi-7, 8-byte fetch will read one byte too many; rdi-8 is ok.
+"\n""		lea	-7(%%rdi), %%rdi"
+"\n""		cmp	%%rdi, %%rsi"
+"\n""		lea	7(%%rdi), %%rdi"
+"\n""		jae	2f" // rsi >= rdi-7 too close, can't do word copies
+"\n""1:"	// word copy loop
+"\n""		cmp     $16, %%ecx"
+"\n""		movsq"
+"\n""		lea	-8(%%rcx), %%ecx"
+"\n""		jae	1b"
+/////		test	%%ecx, %%ecx; jz 3f" // - if jrcxz becomes very slow on some future CPU
+"\n""		jrcxz	3f"	// shorter than jecxz
+"\n""2:"	// byte copy loop
+"\n""		movsb"
+"\n""		dec 	%%ecx"	// can use "loop 2b", but loop _is_ somewhat slow on some CPUs
+"\n""		jnz	2b"	//
+"\n""3:"
+	/*out*/	: "=S"(rsi), "=D"(rdi), "=c"(ecx)
+	/*in*/	: "0" (rsi), "1" (rdi), "2"(ecx)
+		: "memory"
+	);
+#else
+	unsigned delta;
+
+	/* "Only for big blocks" count > N check is an optimization.
+	 * Small blocks are most typical. Example:
+	 * copy len:3  5147752
+	 * copy len:4  4127191
+	 * copy len:5  2754650
+	 * copy len:6  2013687
+	 * copy len:7  1839127
+	 * copy len:11 1085559
+	 * copy len:8   933283
+	 * copy len:10  885096
+	 * copy len:9   732387
+	 * copy len:12  395671
+	 * copy len:15  280374
+	 * copy len:13  252366
+	 * copy len:14  244542
+	 * copy len:16  169553
+	 * ....
+	 * and memcpy has setup overhead significant for small blocks.
+	 * IOW: open-coded unconditional byte copy is faster if block is small.
+	 * delta >= count is NOT an optimization!
+	 * Many copies are of the "a,b,c,go back 2 bytes and copy 6 bytes"
+	 * variety to implement "abcbcbc" unpacking. memcpy() can botch this
+	 * (for example, by copying 32 bits at a time).
+	 */
+	//bb_error_msg("copy len:%d", e);
+	if (count > 15
+	 && (delta = to > from ? to - from : from - to,
+	    delta >= count)
+	) {
+		memcpy(buf + to, buf + from, count);
+	} else {
+		/* do it slow to avoid memcpy() overlap */
+		unsigned char *dst = &buf[to];
+		unsigned char *src = &buf[from];
+		do *dst++ = *src++; while (--count);
+	}
+#endif
+}
+
 typedef struct huft_t {
 	unsigned char e;	/* number of extra bits or operation */
 	unsigned char b;	/* number of bits in this code or subcode */
@@ -547,7 +661,7 @@ static NOINLINE int inflate_codes(STATE_PARAM_ONLY)
 				gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, e);
 				t = t->v.t + (gunzip_bb & mask_bits[e]);
 				e = t->e;
-			} while (e > 16);
+			}
 			gunzip_bb >>= t->b;
 			gunzip_bk -= t->b;
 			gunzip_bb = fill_bitbuffer(PASS_STATE gunzip_bb, e);
@@ -558,8 +672,6 @@ static NOINLINE int inflate_codes(STATE_PARAM_ONLY)
 			/* do the copy */
  do_copy:
 			do {
-				unsigned delta;
-
 				/* Was: nn -= (e = (e = GUNZIP_WSIZE - ((dd &= GUNZIP_WSIZE - 1) > w ? dd : w)) > nn ? nn : e); */
 				/* Who wrote THAT?? rewritten as: */
 				dd &= GUNZIP_WSIZE - 1;
@@ -567,17 +679,8 @@ static NOINLINE int inflate_codes(STATE_PARAM_ONLY)
 				if (e > nn) e = nn;
 				//nn -= e; // moved down
 
-				/* copy to new buffer to prevent possible overwrite */
-				delta = w > dd ? w - dd : dd - w;
-				if (delta >= e) {
-					memcpy(gunzip_window + w, gunzip_window + dd, e);
-				} else {
-					/* do it slow to avoid memcpy() overlap */
-					unsigned char *dst = &gunzip_window[w];
-					unsigned char *src = &gunzip_window[dd];
-					unsigned cnt = e;
-					do *dst++ = *src++; while (--cnt);
-				}
+				byte_copy_with_overlap(gunzip_window, w, dd, e);
+
 				dd += e;
 				w += e;
 				nn -= e; //
