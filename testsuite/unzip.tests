@@ -31,7 +31,7 @@ rmdir foo
 rm foo.zip
 
 # File containing some damaged encrypted stream
-optional FEATURE_UNZIP_CDF CONFIG_UNICODE_SUPPORT
+optional FEATURE_UNZIP_CDF UNICODE_SUPPORT !FEATURE_CHECK_UNICODE_IN_ENV
 testing "unzip (bad archive)" "uudecode; unzip bad.zip 2>&1; echo \$?" \
 "Archive:  bad.zip
   inflating: ]3j½r«I??K-%Ix
