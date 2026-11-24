@@ -1135,11 +1135,11 @@ static int check_header_gzip(STATE_PARAM transformer_state_t *xstate)
 	union {
 		unsigned char raw[8];
 		struct {
-			uint8_t gz_method;
-			uint8_t flags;
-			uint32_t mtime;
-			uint8_t xtra_flags_UNUSED;
-			uint8_t os_flags_UNUSED;
+			uint8_t gz_method;         /* always 8 */
+			uint8_t flags;             /* bits: 0:text 1:CRC 2:extra 3:name 4:comment 5..7:reserved */
+			uint32_t mtime;            /* Unix epoch, little endian */
+			uint8_t xtra_flags_UNUSED; /* compr.level: 2:best 4:fast */
+			uint8_t os_flags_UNUSED;   /* 0:FAT(DOS,OS/2,NT,Win32) 3:Unix 7:Macintosh 11:NTFS/NT 255:unknown, etc */
 		} PACKED formatted;
 	} *header;
 	uint8_t flags;
@@ -1202,6 +1202,7 @@ static int check_header_gzip(STATE_PARAM transformer_state_t *xstate)
 
 	/* Read the header checksum */
 	if (flags & 0x02) {
+		/* Low 16 bits of CRC32 of all header bytes up to this field (exclusive) */
 		if (!top_up(PASS_STATE 2))
 			return 0;
 		bytebuffer_offset += 2;

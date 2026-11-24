@@ -2072,7 +2072,23 @@ static void zip(void)
 	/* compression method: 8 (DEFLATED) */
 	/* general flags: 0 */
 	put_32bit(0x00088b1f);
-	put_32bit(0);		/* Unix timestamp */
+	/* Unix timestamp of the file, little-endian. 0:none. GNU gzip does record file's mtime */
+	put_32bit(0);
+
+	deflate_flags = 0x0300; /* extra flags. OS id = 3 (Unix) */
+#if ENABLE_FEATURE_GZIP_LEVELS
+	/* Note that comp_level < 4 do not exist in this version of gzip */
+	if (comp_level_minus4 == 9 - 4) {
+		deflate_flags |= 0x02; /* SLOW flag */
+	}
+//RFC1952 says that the values are 2 "best" and 4 "fast compression", and can be ignored. Why do we bother?
+//Supposedly for this: "GNU gzip and BusyBox gzip now produce identical output (in this byte)":
+//GNU gzip: -1 sets 4, -9 sets 2, else leaves it at 0.
+#endif
+	put_16bit(deflate_flags);
+
+	/* The above 32-bit misaligns outbuf (10 bytes are stored), flush it */
+	flush_outbuf_if_32bit_optimized();
 
 	/* Write deflated file to zip file */
 	G1.crc = ~0;
@@ -2080,18 +2096,6 @@ static void zip(void)
 	bi_init();
 	ct_init();
 	lm_init();
-
-	deflate_flags = 0x300; /* extra flags. OS id = 3 (Unix) */
-#if ENABLE_FEATURE_GZIP_LEVELS
-	/* Note that comp_level < 4 do not exist in this version of gzip */
-	if (comp_level_minus4 == 9 - 4) {
-		deflate_flags |= 0x02; /* SLOW flag */
-	}
-#endif
-	put_16bit(deflate_flags);
-
-	/* The above 32-bit misaligns outbuf (10 bytes are stored), flush it */
-	flush_outbuf_if_32bit_optimized();
 
 	deflate();
 
