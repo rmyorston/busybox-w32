@@ -53,7 +53,7 @@
 //usage:     "\n	-d	Framebuffer device (default /dev/fb0)"
 //usage:     "\n	-i	Config file (var=value):"
 //usage:     "\n			BAR_LEFT,BAR_TOP,BAR_WIDTH,BAR_HEIGHT"
-//usage:     "\n			BAR_R,BAR_G,BAR_B,IMG_LEFT,IMG_TOP"
+//usage:     "\n			BAR_R,BAR_G,BAR_B,IMG_LEFT,IMG_TOP,IMG_ALIGN"
 //usage:     "\n	-f	Control pipe (else exit after drawing image)"
 //usage:     "\n			commands: 'NN' (% for progress bar) or 'exit'"
 //usage:     "\n	-T	Switch to VT# to hide all console messages"
@@ -72,13 +72,39 @@
 
 #define ESC "\033"
 
+enum {
+	bar_width,
+	bar_height,
+	bar_posx,
+	bar_posy,
+	bar_colr,
+	bar_colg,
+	bar_colb,
+	nimg_posx,
+	nimg_posy,
+	nimg_align,
+	num_ns_opts,
+	debug = num_ns_opts,
+};
+
+#define nbar_width	ns[bar_width]
+#define nbar_height	ns[bar_height]
+#define nbar_posx	ns[bar_posx]
+#define nbar_posy	ns[bar_posy]
+#define nbar_colr	ns[bar_colr]
+#define nbar_colg	ns[bar_colg]
+#define nbar_colb	ns[bar_colb]
+#define img_posx	ns[nimg_posx]
+#define img_posy	ns[nimg_posy]
+#define img_align	ns[nimg_align]
+
 struct globals {
 #if DEBUG
 	bool bdebug_messages;	// enable/disable logging
 	FILE *logfile_fd;	// log file
 #endif
 	unsigned char *addr;	// pointer to framebuffer memory
-	unsigned ns[9];		// n-parameters
+	unsigned ns[num_ns_opts];	// n-parameters
 	const char *image_filename;
 	int silent_vt;
 	int fd_vt;
@@ -95,16 +121,6 @@ struct globals {
 #define INIT_G() do { \
 	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
 } while (0)
-
-#define nbar_width	ns[0]	// progress bar width
-#define nbar_height	ns[1]	// progress bar height
-#define nbar_posx	ns[2]	// progress bar horizontal position
-#define nbar_posy	ns[3]	// progress bar vertical position
-#define nbar_colr	ns[4]	// progress bar color red component
-#define nbar_colg	ns[5]	// progress bar color green component
-#define nbar_colb	ns[6]	// progress bar color blue component
-#define img_posx	ns[7]	// image horizontal position
-#define img_posy	ns[8]	// image vertical position
 
 #if DEBUG
 #define DEBUG_MESSAGE(strMessage, args...) \
@@ -381,7 +397,7 @@ static void fb_drawimage(void)
 	FILE *theme_file;
 	char *read_ptr;
 	unsigned char *pixline;
-	unsigned i, j, width, height, line_size;
+	int i, j, width, height, line_size, xoffs, yoffs, xstart;
 
 	if (LONE_DASH(G.image_filename)) {
 		theme_file = stdin;
@@ -431,18 +447,39 @@ static void fb_drawimage(void)
 	line_size = width*3;
 	pixline = xmalloc(line_size);
 
-	if ((width + G.img_posx) > G.scr_var.xres)
-		width = G.scr_var.xres - G.img_posx;
-	if ((height + G.img_posy) > G.scr_var.yres)
-		height = G.scr_var.yres - G.img_posy;
-	for (j = 0; j < height; j++) {
+	xoffs = G.img_posx;
+	switch (G.img_align % 3) {
+	case 1: xoffs += (G.scr_var.xres - width) / 2; break;
+	case 2: xoffs += G.scr_var.xres - width; break;
+	}
+	xstart = 0;
+	if (xoffs < 0) {
+		xstart = -xoffs;
+		xoffs = 0;
+	}
+	if ((width + xoffs) > G.scr_var.xres)
+		width = G.scr_var.xres - xoffs;
+
+	yoffs = G.img_posy;
+	switch (G.img_align / 3) {
+	case 1: yoffs += (G.scr_var.yres - height) / 2; break;
+	case 2: yoffs += G.scr_var.yres - height; break;
+	}
+	if ((height + yoffs) > G.scr_var.yres)
+		height = G.scr_var.yres - yoffs;
+
+	for (j = 0; j < height; j++, yoffs++) {
 		unsigned char *pixel;
 		unsigned char *src;
 
 		if (fread(pixline, 1, line_size, theme_file) != line_size)
 			bb_error_msg_and_die("bad PPM file '%s'", G.image_filename);
-		pixel = pixline;
-		src = G.addr + (G.img_posy + j) * G.scr_fix.line_length + G.img_posx * G.bytes_per_pixel;
+
+		if (yoffs < 0)
+			continue;
+
+		pixel = pixline + xstart * 3;
+		src = G.addr + yoffs * G.scr_fix.line_length + xoffs * G.bytes_per_pixel;
 		for (i = 0; i < width; i++) {
 			unsigned thispix = fb_pixel_value(pixel[0], pixel[1], pixel[2]);
 			fb_write_pixel(src, thispix);
@@ -460,11 +497,15 @@ static void fb_drawimage(void)
  */
 static void init(const char *cfg_filename)
 {
+	static const char align_names[] ALIGN1 =
+		"LT\0" "CT\0" "RT\0"
+		"LM\0" "CM\0" "RM\0"
+		"LB\0" "CB\0" "RB\0";
 	static const char param_names[] ALIGN1 =
 		"BAR_WIDTH\0" "BAR_HEIGHT\0"
 		"BAR_LEFT\0" "BAR_TOP\0"
 		"BAR_R\0" "BAR_G\0" "BAR_B\0"
-		"IMG_LEFT\0" "IMG_TOP\0"
+		"IMG_LEFT\0" "IMG_TOP\0" "IMG_ALIGN\0"
 #if DEBUG
 		"DEBUG\0"
 #endif
@@ -473,14 +514,18 @@ static void init(const char *cfg_filename)
 	parser_t *parser = config_open2(cfg_filename, xfopen_stdin);
 	while (config_read(parser, token, 2, 2, "#=",
 				(PARSE_NORMAL | PARSE_MIN_DIE) & ~(PARSE_TRIM | PARSE_COLLAPSE))) {
-		unsigned val = xatoi_positive(token[1]);
+		unsigned val;
 		int i = index_in_strings(param_names, token[0]);
 		if (i < 0)
 			bb_error_msg_and_die("syntax error: %s", token[0]);
-		if (i >= 0 && i < 9)
+		if (i == nimg_align)
+			val = index_in_strings(align_names, token[1]);
+		else
+			val = xatoi_positive(token[1]);
+		if (i < num_ns_opts)
 			G.ns[i] = val;
 #if DEBUG
-		if (i == 9) {
+		if (i == debug) {
 			G.bdebug_messages = val;
 			if (G.bdebug_messages)
 				G.logfile_fd = xfopen_for_write("/tmp/fbsplash.log");
