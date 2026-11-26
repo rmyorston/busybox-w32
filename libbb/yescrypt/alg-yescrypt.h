@@ -197,6 +197,13 @@ typedef struct {
 	size_t aligned_size;
 } yescrypt_region_t;
 
+#if RESTRICTED_PARAMS
+// "Restricts" N to 1<<31 maximum, which (if r==32) uses buffer size of 8192GB
+typedef uint32_t uintN_t;
+#else
+typedef uint64_t uintN_t;
+#endif
+
 /**
  * yescrypt parameters combined into one struct.  N, r, p are the same as in
  * classic scrypt, except that the meaning of p changes when YESCRYPT_RW is
@@ -205,7 +212,7 @@ typedef struct {
 typedef struct {
 	uint32_t flags;
 	uint32_t r;
-	uint64_t N;
+	uintN_t  N;
 #if !RESTRICTED_PARAMS
 	uint32_t p, t, g;
 	uint64_t NROM;

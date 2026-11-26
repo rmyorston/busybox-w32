@@ -945,7 +945,7 @@ static void free_region(yescrypt_region_t *region)
 static int yescrypt_kdf32_body(
 		yescrypt_ctx_t *yctx,
 		const uint8_t *passwd, size_t passwdlen,
-		uint32_t flags, uint64_t N, uint32_t t,
+		uint32_t flags, uintN_t N, uint32_t t,
 		uint8_t *buf32)
 {
 #if !DISABLE_NROM_CODE
@@ -1162,7 +1162,7 @@ int yescrypt_kdf32(
 		uint8_t *buf32)
 {
 	uint32_t flags = YCTX_param_flags;
-	uint64_t N = YCTX_param_N;
+	uintN_t N = YCTX_param_N;
 	uint32_t r = YCTX_param_r;
 	uint32_t p = YCTX_param_p;
 	uint32_t t = YCTX_param_t;

@@ -337,9 +337,9 @@ char *yescrypt_r(
 	}
 
 	src = decode64_uint32(&u32, src, 1);
-	if (/*!src ||*/ u32 > 63)
+	if (/*!src ||*/ u32 >= 8*sizeof(yctx->param.N))
 		goto fail;
-	yctx->param.N = (uint64_t)1 << u32;
+	yctx->param.N = (uintN_t)1 << u32;
 	/* "j9T" sets to 4096 (1<<12) */
 	dbg("yctx->param.N=%llu (1<<%u)", (unsigned long long)yctx->param.N, (unsigned)u32);
 
