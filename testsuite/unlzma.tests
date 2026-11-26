@@ -9,7 +9,7 @@
 # Damaged encrypted streams
 testing "unlzma (bad archive 1)" \
 	"unlzma <unlzma_issue_1.lzma 2>&1 >/dev/null; echo \$?" \
-"unlzma: corrupted data
+"unlzma: bad lzma header
 1
 " "" ""
 
@@ -23,7 +23,7 @@ testing "unlzma (bad archive 2)" \
 # Damaged encrypted streams
 testing "unlzma (bad archive 3)" \
 	"unlzma <unlzma_issue_3.lzma 2>&1 >/dev/null; echo \$?" \
-"unlzma: corrupted data
+"unlzma: bad lzma header
 1
 " "" ""
 
