@@ -17,7 +17,6 @@
 # define dbg(...) ((void)0)
 #endif
 
-
 #if ENABLE_FEATURE_LZMA_FAST
 #  define speed_inline ALWAYS_INLINE
 #  define size_inline
@@ -25,7 +24,6 @@
 #  define speed_inline
 #  define size_inline ALWAYS_INLINE
 #endif
-
 
 typedef struct {
 	int fd;
@@ -50,7 +48,6 @@ typedef struct {
 #define RC_TOP_BITS 24
 #define RC_MOVE_BITS 5
 #define RC_MODEL_TOTAL_BITS 11
-
 
 /* Called once in rc_do_normalize() */
 static void rc_read(rc_t *rc)
@@ -151,14 +148,6 @@ rc_bit_tree_decode(rc_t *rc, uint16_t *p, int num_levels, int *symbol)
 	*symbol -= 1 << num_levels;
 }
 
-
-typedef struct {
-	uint8_t pos;
-	uint32_t dict_size;
-	uint64_t dst_size;
-} PACKED lzma_header_t;
-
-
 /* #defines will force compiler to compute/optimize each one with each usage.
  * Have heart and use enum instead. */
 enum {
@@ -211,13 +200,20 @@ enum {
 	LZMA_LITERAL        = (LZMA_REP_LEN_CODER + LZMA_NUM_LEN_PROBS),
 };
 
-
 IF_DESKTOP(long long) int FAST_FUNC
 unpack_lzma_stream(transformer_state_t *xstate)
 {
+	typedef struct {
+		uint8_t  properties;
+		uint32_t dict_size;
+		uint64_t dst_size;
+	} PACKED lzma_header_t;
+
 	IF_DESKTOP(long long total_written = 0;)
 	lzma_header_t header;
-	int lc, pb, lp;
+	unsigned lc; // number of literal context bits, 0..8
+	unsigned pb; // number of position bits, 0..4
+	unsigned lp; // number of literal position bits, 0..4
 	uint32_t pos_state_mask;
 	uint32_t literal_pos_mask;
 	uint16_t *p;
@@ -232,27 +228,27 @@ unpack_lzma_stream(transformer_state_t *xstate)
 	uint32_t rep0 = 1, rep1 = 1, rep2 = 1, rep3 = 1;
 
 	if (full_read(xstate->src_fd, &header, sizeof(header)) != sizeof(header)
-	 || header.pos >= (9 * 5 * 5)
+	 || header.properties > (4 * 5 + 4) * 9 + 8
 	) {
 		bb_simple_error_msg("bad lzma header");
 		return -1;
 	}
-
-	i = header.pos / 9;
-	lc = header.pos % 9;
-	pb = i / 5;
-	lp = i % 5;
+	// properties = (pb * 5 + lp) * 9 + lc, pb<=4, lp<=4, lc<=8
+	i = header.properties / 9;
+	lc = header.properties % 9;
+	pb = (unsigned)i / 5;
+	lp = (unsigned)i % 5;
 	pos_state_mask = (1 << pb) - 1;
 	literal_pos_mask = (1 << lp) - 1;
 
-	/* Example values from linux-3.3.4.tar.lzma:
-	 * dict_size: 64M, dst_size: 2^64-1
-	 */
+	// Example values from linux-3.3.4.tar.lzma:
+	// dict_size: 64M, dst_size: 2^64-1
 	header.dict_size = SWAP_LE32(header.dict_size);
-	header.dst_size = SWAP_LE64(header.dst_size);
-
 	if (header.dict_size == 0)
 		header.dict_size++;
+	header.dst_size = SWAP_LE64(header.dst_size);
+	// Note that these values within header are misaligned!
+	// I discovered that gcc _intentinally shifts_ "header" valiable on stack to fix this (!)
 
 	buffer_size = MIN(header.dst_size, header.dict_size);
 	buffer = xmalloc(buffer_size);
