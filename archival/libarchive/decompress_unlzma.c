@@ -117,11 +117,11 @@ static speed_inline int rc_is_bit_1(rc_t *rc, uint16_t *p)
 }
 
 /* Called 4 times in unlzma loop */
-static ALWAYS_INLINE int rc_get_bit(rc_t *rc, uint16_t *p, int *symbol)
+static ALWAYS_INLINE int rc_insert_bit(rc_t *rc, uint16_t *p, int symbol)
 {
 	int ret = rc_is_bit_1(rc, p);
-	*symbol = *symbol * 2 + ret;
-	return ret;
+	symbol = symbol * 2 + ret;
+	return symbol;
 }
 
 /* Called once */
@@ -137,15 +137,17 @@ static ALWAYS_INLINE int rc_direct_bit(rc_t *rc)
 }
 
 /* Called twice */
-static speed_inline void
-rc_bit_tree_decode(rc_t *rc, uint16_t *p, int num_levels, int *symbol)
+static speed_inline int
+rc_bit_tree_decode(rc_t *rc, uint16_t *p, int num_levels)
 {
+	int symbol;
 	int i = num_levels;
 
-	*symbol = 1;
+	symbol = 1;
 	while (i--)
-		rc_get_bit(rc, p + *symbol, symbol);
-	*symbol -= 1 << num_levels;
+		symbol = rc_insert_bit(rc, p + symbol, symbol);
+	symbol -= 1 << num_levels;
+	return symbol;
 }
 
 /* #defines will force compiler to compute/optimize each one with each usage.
@@ -329,13 +331,14 @@ unpack_lzma_stream(transformer_state_t *xstate)
 
 					match_byte <<= 1;
 					bit = match_byte & 0x100;
-					bit ^= (rc_get_bit(rc, prob + 0x100 + bit + mi, &mi) << 8); /* 0x100 or 0 */
+					mi = rc_insert_bit(rc, prob + 0x100 + bit + mi, mi);
+					bit ^= ((mi & 1) << 8); /* 0x100 or 0 */
 					if (bit)
 						break;
 				} while (mi < 0x100);
 			}
 			while (mi < 0x100) {
-				rc_get_bit(rc, prob + mi, &mi);
+				mi = rc_insert_bit(rc, prob + mi, mi);
 			}
 
 			state = next_state[state];
@@ -443,7 +446,7 @@ unpack_lzma_stream(transformer_state_t *xstate)
 					num_bits += LZMA_LEN_NUM_HIGH_BITS - LZMA_LEN_NUM_LOW_BITS;
 				}
 			}
-			rc_bit_tree_decode(rc, prob_len, num_bits, &len);
+			len = rc_bit_tree_decode(rc, prob_len, num_bits);
 			len += offset;
 
 			if (state < 4) {
@@ -455,8 +458,7 @@ unpack_lzma_stream(transformer_state_t *xstate)
 				       ((len < LZMA_NUM_LEN_TO_POS_STATES ? len :
 				         LZMA_NUM_LEN_TO_POS_STATES - 1)
 				         << LZMA_NUM_POS_SLOT_BITS);
-				rc_bit_tree_decode(rc, prob3,
-					LZMA_NUM_POS_SLOT_BITS, &pos_slot);
+				pos_slot = rc_bit_tree_decode(rc, prob3, LZMA_NUM_POS_SLOT_BITS);
 				rep0 = pos_slot;
 				if (pos_slot >= LZMA_START_POS_MODEL_INDEX) {
 					int i2, mi2, num_bits2 = (pos_slot >> 1) - 1;
@@ -476,7 +478,8 @@ unpack_lzma_stream(transformer_state_t *xstate)
 					i2 = 1;
 					mi2 = 1;
 					while (num_bits2--) {
-						if (rc_get_bit(rc, prob3 + mi2, &mi2))
+						mi2 = rc_insert_bit(rc, prob3 + mi2, mi2);
+						if (mi2 & 1)
 							rep0 |= i2;
 						i2 <<= 1;
 					}
@@ -512,14 +515,12 @@ unpack_lzma_stream(transformer_state_t *xstate)
 				uint32_t pos = buffer_pos - rep0;
 				if ((int32_t)pos < 0) {
 					pos += header.dict_size;
-					/* bug 10436 has an example file where this triggers: */
-					//if ((int32_t)pos < 0)
-					//	goto bad;
-					/* more stringent test (see unzip_bad_lzma_1.zip): */
 # if BUFSIZE_CAN_BE_LESS_THAN_DICTSIZE
+					/* more stringent test (see unzip_bad_lzma_1.zip): */
 					if (pos >= buffer_size)
 						goto bad;
 # else
+					/* bug 10436 has an example file where this triggers: */
 					if ((int32_t)pos < 0)
 						goto bad;
 # endif
