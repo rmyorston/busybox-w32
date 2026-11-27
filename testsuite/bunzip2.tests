@@ -481,20 +481,25 @@ $ECHO -ne "\x8d\x40\x20\xc0\x00\x01\x00\x00\x08\x20\x00\x30\xcc\x05\x29\xa6"
 $ECHO -ne "\x4a\x11\xb1\x4a\x11\xe2\xee\x48\xa7\x0a\x12\x19\x36\xa4\x3d\xe0"
 }
 
+passfail() {
+	if test $? = 0; then
+		echo "PASS: $*"
+	else
+		echo "FAIL: $*"
+		FAILCOUNT=$((FAILCOUNT + 1))
+	fi
+}
+
 prep() {
-    rm -f t*
-    hello_$ext >t1.$ext
-    hello_$ext >t2.$ext
+	rm -f t*
+	hello_$ext >t1.$ext
+	hello_$ext >t2.$ext
 }
 
 check() {
-    eval $2 >t_actual 2>&1
-    if $ECHO -ne "$expected" | cmp - t_actual; then
-	echo "PASS: $1"
-    else
-	echo "FAIL: $1"
-	FAILCOUNT=$((FAILCOUNT + 1))
-    fi
+	eval $2 >t_actual 2>&1
+	$ECHO -ne "$expected" | cmp - t_actual
+	passfail "$1"
 }
 
 mkdir testdir 2>/dev/null
@@ -533,53 +538,50 @@ prep; check "$unpack: delete src" "${bb}$unpack t2.$ext; test ! -f t2.$ext && ec
 )
 rm -rf testdir
 
+# This test is only for gunzip
+if test "${0##*/}" = "gunzip.tests"; then
+	if command -v xxd >/dev/null; then
+		# Prepared with "xxd -p reproducer.gz | uniq -c"
+		# extra field subheader 4578fbff = "Ex",0xFFFB long
+		out=`
+		{
+		echo 1f8b08040000000000ffffff4578fbff0000000000000000000000000000
+		yes  000000000000000000000000000000000000000000000000000000000000 | head -n2183
+		echo 0000000000000000000000000000000000000000000000000000000bc9c8
+		echo 2c56708f52c8482c5630a848030285d48a92a24485b4ccd49c142e00f9a9
+		echo db551f000000
+		} | xxd -rp | ${bb}gunzip 2>&1
+		`
+		test x"$?"x"$out" = x"0"x"This GZ has 0xffff extra field"
+		passfail "gunzip: 0xffff extra field"
+	fi
+fi
+
 # This test is only for bunzip2
 if test "${0##*/}" = "bunzip2.tests"; then
-    if test1_bz2 | ${bb}bunzip2 >/dev/null \
-	&& test "`test1_bz2 | ${bb}bunzip2 | md5sum`" = "61bbeee4be9c6f110a71447f584fda7b  -"
-    then
-	echo "PASS: $unpack: test_bz2 file"
-    else
-	echo "FAIL: $unpack: test_bz2 file"
-	FAILCOUNT=$((FAILCOUNT + 1))
-    fi
+	test1_bz2 | ${bb}bunzip2 >/dev/null \
+	&& test x"`test1_bz2 | ${bb}bunzip2 | md5sum`" = x"61bbeee4be9c6f110a71447f584fda7b  -"
+	passfail "$unpack: test_bz2 file"
 
-    if pbzip_4m_zeros | ${bb}bunzip2 >/dev/null \
-	&& test "`pbzip_4m_zeros | ${bb}bunzip2 | md5sum`" = "b5cfa9d6c8febd618f91ac2843d50a1c  -"
-    then
-	echo "PASS: $unpack: pbzip_4m_zeros file"
-    else
-	echo "FAIL: $unpack: pbzip_4m_zeros file"
-	FAILCOUNT=$((FAILCOUNT + 1))
-    fi
+	pbzip_4m_zeros | ${bb}bunzip2 >/dev/null \
+	&& test x"`pbzip_4m_zeros | ${bb}bunzip2 | md5sum`" = x"b5cfa9d6c8febd618f91ac2843d50a1c  -"
+	passfail "$unpack: pbzip_4m_zeros file"
 
-    errout="`${bb}bunzip2 <bz2_issue_11.bz2 2>&1 >/dev/null`"
-    if test x"$errout:$?" = x"bunzip2: bunzip error -5:1"; then
-	echo "PASS: $unpack: bz2_issue_11.bz2 corrupted example"
-    else
-	echo "FAIL: $unpack: bz2_issue_11.bz2 corrupted example"
-	FAILCOUNT=$((FAILCOUNT + 1))
-    fi
+	errout="`${bb}bunzip2 <bz2_issue_11.bz2 2>&1 >/dev/null`"
+	test x"$errout:$?" = x"bunzip2: bunzip error -5:1"
+	passfail "$unpack: bz2_issue_11.bz2 corrupted example"
 
-    errout="`${bb}bunzip2 <bz2_issue_12.bz2 2>&1 >/dev/null`"
-    if test x"$errout:$?" = x"bunzip2: bunzip error -5:1"; then
-	echo "PASS: $unpack: bz2_issue_12.bz2 corrupted example"
-    else
-	echo "FAIL: $unpack: bz2_issue_12.bz2 corrupted example"
-	FAILCOUNT=$((FAILCOUNT + 1))
-    fi
+	errout="`${bb}bunzip2 <bz2_issue_12.bz2 2>&1 >/dev/null`"
+	test x"$errout:$?" = x"bunzip2: bunzip error -5:1"
+	passfail "$unpack: bz2_issue_12.bz2 corrupted example"
 
 # specially crafted file to attack the
 #   runCnt += (runPos << nextSym); /* +runPos if RUNA; +2*runPos if RUNB */
 # code, making (dbufCount + runCnt) overflow 32 bits and become small.
 # (there is a fix now which catches when runCnt reaches 0x80000000)
-    errout="`${bb}bunzip2 <bz2_runcnt_overflow.bz2 2>&1 >/dev/null`"
-    if test x"$errout:$?" = x"bunzip2: bunzip error -5:1"; then
-	echo "PASS: $unpack: bz2_runcnt_overflow.bz2 corrupted example"
-    else
-	echo "FAIL: $unpack: bz2_runcnt_overflow.bz2 corrupted example"
-	FAILCOUNT=$((FAILCOUNT + 1))
-    fi
+	errout="`${bb}bunzip2 <bz2_runcnt_overflow.bz2 2>&1 >/dev/null`"
+	test x"$errout:$?" = x"bunzip2: bunzip error -5:1"
+	passfail "$unpack: bz2_runcnt_overflow.bz2 corrupted example"
 fi
 
 exit $((FAILCOUNT <= 255 ? FAILCOUNT : 255))

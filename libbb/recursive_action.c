@@ -62,13 +62,15 @@ static int FAST_FUNC true_action(struct recursive_state *state UNUSED_PARAM,
  * ACTION_FOLLOWLINKS mainly controls handling of links to dirs.
  * 0: lstat(statbuf). Calls fileAction on link name even if points to dir.
  * 1: stat(statbuf). Calls dirAction and optionally recurse on link to dir.
+ *
+ * If ACTION_XDEV, stop on different filesystem _after_ it has been processed
  */
 
-static int recursive_action1(recursive_state_t *state, const char *fileName)
+static int recursive_action1(recursive_state_t *state, const char *fileName, dev_t parentDev)
 {
 	struct stat statbuf;
 	unsigned follow;
-	int status;
+	int status = TRUE;
 	DIR *dir;
 	struct dirent *next;
 
@@ -76,8 +78,7 @@ static int recursive_action1(recursive_state_t *state, const char *fileName)
 	if (state->depth == 0)
 		follow = ACTION_FOLLOWLINKS | ACTION_FOLLOWLINKS_L0;
 	follow &= state->flags;
-	status = (follow ? stat : lstat)(fileName, &statbuf);
-	if (status < 0) {
+	if ((follow ? stat : lstat)(fileName, &statbuf) < 0) {
 #ifdef DEBUG_RECURS_ACTION
 		bb_error_msg("status=%d flags=%x", status, state->flags);
 #endif
@@ -114,6 +115,10 @@ static int recursive_action1(recursive_state_t *state, const char *fileName)
 			return TRUE;
 	}
 
+	/* skip cross devices -- we still need to process action */
+	if ((state->flags & ACTION_XDEV) && parentDev != 0 && statbuf.st_dev != parentDev)
+		goto skip_recurse;
+
 	dir = opendir(fileName);
 	if (!dir) {
 		/* findutils-4.1.20 reports this */
@@ -121,7 +126,6 @@ static int recursive_action1(recursive_state_t *state, const char *fileName)
 		/* To trigger: "find -exec rm -rf {} \;" */
 		goto done_nak_warn;
 	}
-	status = TRUE;
 	while ((next = readdir(dir)) != NULL) {
 		char *nextFile;
 		int s;
@@ -132,7 +136,7 @@ static int recursive_action1(recursive_state_t *state, const char *fileName)
 
 		/* process every file (NB: ACTION_RECURSE is set in flags) */
 		state->depth++;
-		s = recursive_action1(state, nextFile);
+		s = recursive_action1(state, nextFile, statbuf.st_dev);
 		if (s == FALSE)
 			status = FALSE;
 		free(nextFile);
@@ -146,6 +150,7 @@ static int recursive_action1(recursive_state_t *state, const char *fileName)
 	}
 	closedir(dir);
 
+ skip_recurse:
 	if (state->flags & ACTION_DEPTHFIRST) {
 		if (!state->dirAction(state, fileName, &statbuf))
 			goto done_nak_warn;
@@ -177,5 +182,5 @@ int FAST_FUNC recursive_action(const char *fileName,
 	state.fileAction = fileAction ? fileAction : true_action;
 	state.dirAction  =  dirAction ?  dirAction : true_action;
 
-	return recursive_action1(&state, fileName);
+	return recursive_action1(&state, fileName, 0);
 }

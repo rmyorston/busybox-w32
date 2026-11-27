@@ -18,6 +18,20 @@ PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 #define MODULE_NAME_LEN 256
 #define MODULE_HASH_SIZE 256
 
+/* .bin index format definitions */
+#define INDEX_MAGIC 0xB007F457
+#define INDEX_VERSION_MAJOR 0x0002
+#define INDEX_VERSION_MINOR 0x0001
+#define INDEX_VERSION ((INDEX_VERSION_MAJOR<<16)|INDEX_VERSION_MINOR)
+
+enum node_offset {
+	INDEX_NODE_FLAGS	= 0xF0000000, /* Flags in high nibble */
+	INDEX_NODE_PREFIX	= 0x80000000,
+	INDEX_NODE_VALUES	= 0x40000000,
+	INDEX_NODE_CHILDS	= 0x20000000,
+	INDEX_NODE_MASK		= 0x0FFFFFFF, /* Offset value */
+};
+
 typedef struct module_entry {
 	struct module_entry *next;
 	char *name, *modname;
@@ -47,6 +61,8 @@ module_entry *moddb_get(module_db *db, const char *s) FAST_FUNC;
 module_entry *moddb_get_or_create(module_db *db, const char *s) FAST_FUNC;
 void moddb_free(module_db *db) FAST_FUNC;
 
+char *gather_options_str(char *opts, const char *append) FAST_FUNC;
+char *replace_underscores(char *s) FAST_FUNC;
 int string_to_llist(char *string, llist_t **llist, const char *delim) FAST_FUNC;
 char *filename2modname(const char *filename, char *modname) FAST_FUNC;
 #if ENABLE_FEATURE_CMDLINE_MODULE_OPTIONS

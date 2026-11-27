@@ -30,6 +30,11 @@ void FAST_FUNC bb_die_memory_exhausted(void)
 	bb_simple_error_msg_and_die(bb_msg_memory_exhausted);
 }
 
+void FAST_FUNC bb_die_corrupted_data(void)
+{
+	bb_simple_error_msg_and_die("corrupted data");
+}
+
 #ifndef DMALLOC
 /* dmalloc provides variants of these that do abort() on failure.
  * Since dmalloc's prototypes overwrite the impls here as they are

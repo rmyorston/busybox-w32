@@ -143,7 +143,7 @@ opt_complementary - option modifiers.
         getopt32's return value will be as if "-a -b -c" were
         found.
 
- "ww"   Adjacent double options have a counter associated which indicates
+ "ww"   Adjacent double options have an associated counter which indicates
         the number of occurrences of the option.
         For example the ps applet needs:
         if w is given once, GNU ps sets the width to 132,
@@ -166,13 +166,14 @@ opt_complementary - option modifiers.
         llist_t *my_b = NULL;
         int verbose_level = 0;
         f = getopt32(argv, "^vb:*c"
-			"\0""vv:b-c:c-b"
-			, &my_b, &verbose_level);
+                        "\0""vv:b-c:c-b"
+                        , &my_b, &verbose_level);
         if (f & 2)       // -c after -b unsets -b flag
-                while (my_b) dosomething_with(llist_pop(&my_b));
+                while (my_b) do_something_with(llist_pop(&my_b));
         if (my_b)        // but llist is stored if -b is specified
                 free_llist(my_b);
-        if (verbose_level) printf("verbose level is %d\n", verbose_level);
+        if (verbose_level)
+                printf("verbose level is %d\n", verbose_level);
 
 Special characters:
 

@@ -126,6 +126,7 @@ lib-$(CONFIG_PLATFORM_POSIX) += xgethostbyname.o
 
 lib-$(CONFIG_MOUNT) += match_fstype.o
 lib-$(CONFIG_UMOUNT) += match_fstype.o
+lib-$(CONFIG_UMOUNT) += match_fsopts.o
 
 lib-$(CONFIG_FEATURE_UTMP) += utmp.o
 

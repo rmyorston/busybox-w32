@@ -58,7 +58,7 @@ int setlogcons_main(int argc UNUSED_PARAM, char **argv)
 	 *
 	 * By using "/dev/ttyN", ensure it is activated.
 	 */
-	devname = xasprintf("/dev/tty%u", arg.subarg);
+	devname = xasprintf("/dev/tty%d", arg.subarg);
 	xioctl(xopen(devname, O_RDONLY), TIOCLINUX, &arg);
 
 	return EXIT_SUCCESS;

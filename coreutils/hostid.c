@@ -22,7 +22,7 @@
 //usage:#define hostid_trivial_usage
 //usage:       ""
 //usage:#define hostid_full_usage "\n\n"
-//usage:       "Print out a unique 32-bit identifier for the machine"
+//usage:       "Print unique 32-bit identifier for the machine"
 
 #include "libbb.h"
 

@@ -35,7 +35,6 @@ testing "uniq (stdin) outfile" "uniq - actual" \
 testing "uniq input - (specify stdout)" "uniq input -" \
 	"one\ntwo\nthree\n" "one\ntwo\ntwo\nthree\nthree\nthree\n" ""
 
-
 #-f skip fields
 #-s skip chars
 #-c occurrences
@@ -78,8 +77,8 @@ aaccbb
 bbccaa
 "
 
-# -d is "Suppress the writing fo lines that are not repeated in the input."
-# -u is "Suppress the writing of lines that are repeated in the input."
+# -d is "suppress lines that are not repeated"
+# -u is "suppress lines that are repeated"
 # Therefore, together this means they should produce no output.
 testing "uniq -u and -d produce no output" "uniq -d -u" "" "" \
 	"one\ntwo\ntwo\nthree\nthree\nthree\n"

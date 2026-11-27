@@ -200,7 +200,7 @@ unpack_Z_stream(transformer_state_t *xstate)
 
 			if (oldcode == -1) {
 				if (code >= 256)
-					bb_simple_error_msg_and_die("corrupted data"); /* %ld", code); */
+					bb_die_corrupted_data();
 				oldcode = code;
 				finchar = (int) oldcode;
 				outbuf[outpos++] = (unsigned char) finchar;
@@ -236,8 +236,7 @@ unpack_Z_stream(transformer_state_t *xstate)
 						insize, posbits, p[-1], p[0], p[1], p[2], p[3],
 						(posbits & 07));
 */
-					bb_simple_error_msg("corrupted data");
-					goto err;
+					bb_die_corrupted_data();
 				}
 
 				*--stackp = (unsigned char) finchar;
@@ -247,7 +246,7 @@ unpack_Z_stream(transformer_state_t *xstate)
 			/* Generate output characters in reverse order */
 			while (code >= 256) {
 				if (stackp <= &htabof(0))
-					bb_simple_error_msg_and_die("corrupted data");
+					bb_die_corrupted_data();
 				*--stackp = tab_suffixof(code);
 				code = tab_prefixof(code);
 			}

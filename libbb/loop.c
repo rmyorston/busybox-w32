@@ -183,13 +183,16 @@ static int set_loopdev_params(int lfd,
 		ioctl(lfd, LOOP_CLR_FD, 0); // actually, 0 param is unnecessary
 #endif
 	}
+	errno = EBUSY; /* let caller know that device is busy */
 	return -1;
 #undef loopinfo
 }
 
-/* Returns opened fd to the loop device, <0 on error.
- * *device is loop device to use, or if *device==NULL finds a loop device to
+/* *device is loop device to use, or if *device==NULL finds a loop device to
  * mount it on and sets *device to a strdup of that loop device name.
+ * Returns opened fd to the loop device,
+ * -1 on loop device error.
+ * -(errno+1) on file open error (that is, not -1)
  */
 int FAST_FUNC set_loop(char **device, const char *file, unsigned long long offset,
 		unsigned long long sizelimit, unsigned flags)
@@ -208,13 +211,12 @@ int FAST_FUNC set_loop(char **device, const char *file, unsigned long long offse
 			mode = O_RDONLY;
 			goto open_ffd;
 		}
-		return -errno;
+		return -(errno + 1);
 	}
 
 	try = *device;
-	if (!try) {
+	if (!try)
 		try = dev;
-	}
 
 	/* Find a loop device */
 	/* 0xfffff is a max possible minor number in Linux circa 2010 */
@@ -224,31 +226,33 @@ int FAST_FUNC set_loop(char **device, const char *file, unsigned long long offse
 			if (rc == -1)
 				break; /* no free loop devices (or other error in LOOP_CTL_GET_FREE) */
 			if (rc >= 0)
-				/* /dev/loop-control gave us the next free /dev/loopN */
-				goto open_lfd;
+				goto open_lfd; /* /dev/loop-control gave us the next free /dev/loopN */
 			/* else: sequential /dev/loopN, needs to be tested/maybe_created */
 		}
 
-		IF_FEATURE_MOUNT_LOOP_CREATE(errno = 0;)
-		if (stat(try, &statbuf) != 0 || !S_ISBLK(statbuf.st_mode)) {
+		if (stat(try, &statbuf) != 0) {
 			if (ENABLE_FEATURE_MOUNT_LOOP_CREATE
 			 && errno == ENOENT
-			 && (!*device)
+			 && (!*device) /* don't do this for explicitly named loopdevs: "losetup /dev/lopp0 FILE" (note typo in device name) should NOT try creating it */
 			) {
 				/* Node doesn't exist, try to create it */
-				if (mknod(dev, S_IFBLK|0644, makedev(7, i)) == 0)
+				if (mknod(try, S_IFBLK|0644, makedev(7, i)) == 0)
 					goto open_lfd;
 			}
 			/* Ran out of block devices, return failure */
+			rc = -1;
+			break;
+		} else if (!S_ISBLK(statbuf.st_mode)) { //maybe? || major(statbuf.st_dev) != 7
+			errno = ENOTBLK; /* it is not a loop device!!! */
 			rc = -1;
 			break;
 		}
  open_lfd:
 		/* Open the sucker and check its loopiness */
 		lfd = rc = open(try, mode);
-		if (lfd < 0 && errno == EROFS) {
+		if (lfd < 0 && errno == EROFS && mode != O_RDONLY) {
 			mode = O_RDONLY;
-			lfd = rc = open(try, mode);
+			goto open_lfd;
 		}
 		if (lfd < 0) {
 			if (errno == ENXIO) {

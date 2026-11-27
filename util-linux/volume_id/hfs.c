@@ -18,7 +18,7 @@
  *	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 //config:config FEATURE_VOLUMEID_HFS
-//config:	bool "hfs filesystem"
+//config:	bool "HFS filesystem"
 //config:	default y
 //config:	depends on VOLUMEID
 
@@ -26,7 +26,7 @@
 
 #include "volume_id_internal.h"
 
-struct hfs_finder_info{
+struct hfs_finder_info {
 	uint32_t	boot_folder;
 	uint32_t	start_app;
 	uint32_t	open_folder;
@@ -96,7 +96,7 @@ struct hfsplus_extent {
 	uint32_t	block_count;
 } PACKED;
 
-#define HFSPLUS_EXTENT_COUNT		8
+#define HFSPLUS_EXTENT_COUNT 8
 struct hfsplus_fork {
 	uint64_t	total_size;
 	uint32_t	clump_size;
@@ -162,19 +162,18 @@ int FAST_FUNC volume_id_probe_hfs_hfsplus(struct volume_id *id /*,uint64_t off*/
 {
 	uint64_t off = 0;
 	unsigned blocksize;
+	uint8_t blocksize_shift;
 	unsigned cat_block;
 	unsigned ext_block_start;
 	unsigned ext_block_count;
 	int ext;
 	unsigned leaf_node_head;
-	unsigned leaf_node_count;
 	unsigned leaf_node_size;
 	unsigned leaf_block;
 	uint64_t leaf_off;
 	unsigned alloc_block_size;
 	unsigned alloc_first_block;
 	unsigned embed_first_block;
-	unsigned record_count;
 	struct hfsplus_vol_header *hfsplus;
 	struct hfsplus_bnode_descriptor *descr;
 	struct hfsplus_bheader_record *bnode;
@@ -228,43 +227,54 @@ int FAST_FUNC volume_id_probe_hfs_hfsplus(struct volume_id *id /*,uint64_t off*/
 
  checkplus:
 	hfsplus = (struct hfsplus_vol_header *) buf;
-	if (hfs->signature[0] == 'H')
-		if (hfs->signature[1] == '+' || hfs->signature[1] == 'X')
-			goto hfsplus;
-	return -1;
+	if (hfs->signature[0] != 'H'
+	 || (hfs->signature[1] != '+' && hfs->signature[1] != 'X')
+	) {
+		return -1;
+	}
 
- hfsplus:
 	hfs_set_uuid(id, hfsplus->finder_info.id);
 
 	blocksize = be32_to_cpu(hfsplus->blocksize);
-	dbg("blocksize %u", blocksize);
+	dbg("blocksize %u", blocksize); // usually 4K, can be 512(?) to 1M
+	blocksize_shift = good_blocksize_512(blocksize);
+	if (!blocksize_shift || blocksize_shift > 20)
+		return -1; // invalid blocksize
 
 	memcpy(extents, hfsplus->cat_file.extents, sizeof(extents));
 	cat_block = be32_to_cpu(extents[0].start_block);
 	dbg("catalog start block 0x%x", cat_block);
+	if (cat_block == 0)
+		return -1;
 
-	buf = volume_id_get_buffer(id, off + (cat_block * blocksize), 0x2000);
+	buf = volume_id_get_buffer(id, off + ((off_t)cat_block << blocksize_shift), 0x2000); //can't overflow 64 bits
 	if (buf == NULL)
-		goto found;
+		return -1;
 
 	bnode = (struct hfsplus_bheader_record *)
 		&buf[sizeof(struct hfsplus_bnode_descriptor)];
+
+	dbg("leaf node count 0x%x", be32_to_cpu(bnode->leaf_count));
+	if (bnode->leaf_count == 0)
+		goto found;
 
 	leaf_node_head = be32_to_cpu(bnode->leaf_head);
 	dbg("catalog leaf node 0x%x", leaf_node_head);
 
 	leaf_node_size = be16_to_cpu(bnode->node_size);
 	dbg("leaf node size 0x%x", leaf_node_size);
+	if (!good_blocksize_512(leaf_node_size))
+		goto found; // < 512 or not power-of-2
 
-	leaf_node_count = be32_to_cpu(bnode->leaf_count);
-	dbg("leaf node count 0x%x", leaf_node_count);
-	if (leaf_node_count == 0)
+	leaf_off = ((uint64_t)leaf_node_head * leaf_node_size) >> blocksize_shift; // hijack a 64-bit variable for a sec
+	if (leaf_off > 0xFFFFFFFFu)
+		goto found;
+	leaf_block = leaf_off; // truncate to 32-bit
+	if (leaf_block == 0)
 		goto found;
 
-	leaf_block = (leaf_node_head * leaf_node_size) / blocksize;
-
 	/* get physical location */
-	for (ext = 0; ext < HFSPLUS_EXTENT_COUNT; ext++) {
+	for (ext = 0;;) {
 		ext_block_start = be32_to_cpu(extents[ext].start_block);
 		ext_block_count = be32_to_cpu(extents[ext].block_count);
 		dbg("extent start block 0x%x, count 0x%x", ext_block_start, ext_block_count);
@@ -277,30 +287,27 @@ int FAST_FUNC volume_id_probe_hfs_hfsplus(struct volume_id *id /*,uint64_t off*/
 			break;
 
 		leaf_block -= ext_block_count;
+		if (++ext == HFSPLUS_EXTENT_COUNT)
+			goto found;
 	}
-	if (ext == HFSPLUS_EXTENT_COUNT)
-		goto found;
 	dbg("found block in extent %i", ext);
 
-	leaf_off = (ext_block_start + leaf_block) * blocksize;
+	leaf_off = ((uint64_t)ext_block_start + leaf_block) << blocksize_shift;
 
 	buf = volume_id_get_buffer(id, off + leaf_off, leaf_node_size);
 	if (buf == NULL)
 		goto found;
 
 	descr = (struct hfsplus_bnode_descriptor *) buf;
-	dbg("descriptor type 0x%x", descr->type);
 
-	record_count = be16_to_cpu(descr->num_recs);
-	dbg("number of records %u", record_count);
-	if (record_count == 0)
+	dbg("number of records %u", be16_to_cpu(descr->num_recs));
+	if (descr->num_recs == 0)
 		goto found;
-
+	dbg("descriptor type 0x%x", descr->type);
 	if (descr->type != HFS_NODE_LEAF)
 		goto found;
 
-	key = (struct hfsplus_catalog_key *)
-		&buf[sizeof(struct hfsplus_bnode_descriptor)];
+	key = (struct hfsplus_catalog_key *) (descr + 1);
 
 	dbg("parent id 0x%x", be32_to_cpu(key->parent_id));
 	if (key->parent_id != cpu_to_be32(HFSPLUS_POR_CNID))
@@ -308,6 +315,8 @@ int FAST_FUNC volume_id_probe_hfs_hfsplus(struct volume_id *id /*,uint64_t off*/
 
 	label_len = be16_to_cpu(key->unicode_len) * 2;
 	dbg("label unicode16 len %i", label_len);
+	if (label_len > leaf_node_size - (key->unicode - buf))
+		label_len = leaf_node_size - (key->unicode - buf);
 //	volume_id_set_label_raw(id, key->unicode, label_len);
 	volume_id_set_label_unicode16(id, key->unicode, BE, label_len);
 

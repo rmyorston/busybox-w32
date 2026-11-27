@@ -50,17 +50,17 @@ do_compress(const uint8_t* in, unsigned in_len,
 		unsigned m_len;
 		unsigned dindex;
 
-		D_INDEX1(dindex,ip);
-		GINDEX(m_pos,m_off,dict,dindex,in);
-		if (LZO_CHECK_MPOS_NON_DET(m_pos,m_off,in,ip,M4_MAX_OFFSET))
+		D_INDEX1(dindex, ip);
+		GINDEX(m_pos, m_off, dict, dindex, in);
+		if (LZO_CHECK_MPOS_NON_DET(m_pos, m_off, in, ip, M4_MAX_OFFSET))
 			goto literal;
 #if 1
 		if (m_off <= M2_MAX_OFFSET || m_pos[3] == ip[3])
 			goto try_match;
-		D_INDEX2(dindex,ip);
+		D_INDEX2(dindex, ip);
 #endif
-		GINDEX(m_pos,m_off,dict,dindex,in);
-		if (LZO_CHECK_MPOS_NON_DET(m_pos,m_off,in,ip,M4_MAX_OFFSET))
+		GINDEX(m_pos, m_off, dict, dindex, in);
+		if (LZO_CHECK_MPOS_NON_DET(m_pos, m_off, in, ip, M4_MAX_OFFSET))
 			goto literal;
 		if (m_off <= M2_MAX_OFFSET || m_pos[3] == ip[3])
 			goto try_match;
@@ -68,7 +68,7 @@ do_compress(const uint8_t* in, unsigned in_len,
 
  try_match:
 #if 1 && defined(LZO_UNALIGNED_OK_2)
-		if (* (const lzo_ushortp) m_pos != * (const lzo_ushortp) ip)
+		if (*(const lzo_ushortp)m_pos != *(const lzo_ushortp)ip)
 #else
 		if (m_pos[0] != ip[0] || m_pos[1] != ip[1])
 #endif
@@ -81,8 +81,11 @@ do_compress(const uint8_t* in, unsigned in_len,
 				if (lit <= 3)
 					goto match;
 				if (lit == 3) {			  /* better compression, but slower */
-					assert(op - 2 > out); op[-2] |= (uint8_t)(3);
-					*op++ = *ii++; *op++ = *ii++; *op++ = *ii++;
+					assert(op - 2 > out);
+					op[-2] |= (uint8_t)(3);
+					*op++ = *ii++;
+					*op++ = *ii++;
+					*op++ = *ii++;
 					goto code_match;
 				}
 				if (m_pos[3] == ip[3])
@@ -102,7 +105,8 @@ do_compress(const uint8_t* in, unsigned in_len,
 					register unsigned t;
 
 					t = lit;
-					assert(op - 2 > out); op[-2] |= (uint8_t)(t);
+					assert(op - 2 > out);
+					op[-2] |= (uint8_t)(t);
 					do *op++ = *ii++; while (--t > 0);
 					assert(ii == ip);
 					m_off -= 1;

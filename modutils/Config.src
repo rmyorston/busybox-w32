@@ -152,6 +152,15 @@ config FEATURE_MODUTILS_ALIAS
 
 	Say Y if unsure.
 
+config FEATURE_MODUTILS_BIN
+	bool "Support for the kmod .bin file format"
+	default n
+	depends on DEPMOD && !MODPROBE_SMALL
+	help
+	Generate kmod compatible binary index files for .dep, .alias,
+	.symbols and .builtin files. Allows mixing use of busybox
+	modutils and kmod (binaries and library).
+
 config FEATURE_MODUTILS_SYMBOLS
 	bool "Support module.symbols file"
 	default y

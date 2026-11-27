@@ -131,7 +131,7 @@ uuidcache_check_device(struct recursive_state *state UNUSED_PARAM,
 static struct uuidCache_s*
 uuidcache_init(int scan_devices)
 {
-	dbg("DBG: uuidCache=%x, uuidCache");
+	dbg("DBG: uuidCache=%p", uuidCache);
 	if (uuidCache)
 		return uuidCache;
 

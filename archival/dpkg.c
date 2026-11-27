@@ -97,28 +97,30 @@
  *      and available file */
 #define PACKAGE_HASH_PRIME 10007
 typedef struct edge_s {
-	unsigned operator:4; /* was:3 */
-	unsigned type:4;
-	unsigned name:16; /* was:14 */
+	unsigned operator:8; /* was:3 */
+	unsigned type:8;     /* was:4 */
+	unsigned name:16;    /* was:14 */
 	unsigned version:16; /* was:14 */
 } edge_t;
+/* gcc makes it 8-byte even with smaller original bitfield widths, increased widths do not grow it */
 
 typedef struct common_node_s {
-	unsigned name:16; /* was:14 */
-	unsigned version:16; /* was:14 */
+	unsigned name:16;         /* was:14 */
+	unsigned version:16;      /* was:14 */
 	unsigned num_of_edges:16; /* was:14 */
 	edge_t **edge;
 } common_node_t;
+/* gcc makes it 12 bytes long (if pointers are 32-bit) */
 
 /* Currently it doesn't store packages that have state-status of not-installed
  * So it only really has to be the size of the maximum number of packages
  * likely to be installed at any one time, so there is a bit of leeway here */
 #define STATUS_HASH_PRIME 8191
 typedef struct status_node_s {
-	unsigned package:16; /* was:14 */       /* has to fit PACKAGE_HASH_PRIME */
-	unsigned status:16; /* was:14 */        /* has to fit STATUS_HASH_PRIME */
+	unsigned package:16; /* was:14 */  /* has to fit PACKAGE_HASH_PRIME */
+	unsigned status:16;  /* was:14 */  /* has to fit STATUS_HASH_PRIME */
 } status_node_t;
-
+/* gcc makes it 4 bytes long */
 
 /* Globals */
 struct globals {
@@ -133,7 +135,6 @@ struct globals {
 #define INIT_G() do { \
 	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
 } while (0)
-
 
 /* Even numbers are for 'extras', like ored dependencies or null */
 enum edge_type_e {
@@ -167,8 +168,9 @@ enum operator_e {
 typedef struct deb_file_s {
 	char *control_file;
 	char *filename;
-	unsigned package:16; /* was:14 */
+	unsigned package; /* was:14 */
 } deb_file_t;
+/* gcc makes it 12 bytes long (if pointers are 32-bit) even if "package" field is only 16 bits, increasing it to full "unsigned" does not make it grow */
 
 /* this is here to easily remove / from the start of directories */
 #if ENABLE_PLATFORM_MINGW32
@@ -177,23 +179,24 @@ typedef struct deb_file_s {
 #define DPKG_DIR "/var/lib/dpkg"
 #endif
 
-static unsigned make_hash(const char *key, unsigned *decrement, int hash_prime)
+static unsigned make_hash(const char *skey, unsigned *decrement, unsigned hash_prime)
 {
+	const unsigned char *key = (void*)skey;
 	unsigned start;
-	unsigned long hash_num = key[0];
-	int len = strlen(key);
-	int i;
+	unsigned long hash_num;
+	unsigned i;
 
-	/* Maybe i should have uses a "proper" hashing algorithm here instead
+	/* Maybe I should have used a "proper" hashing algorithm here instead
 	 * of making one up myself, seems to be working ok though. */
-	for (i = 1; i < len; i++) {
-		/* shifts the ascii based value and adds it to previous value
-		 * shift amount is mod 24 because long int is 32 bit and data
+	hash_num = *key++;
+	for (i = 1; *key; i++) {
+		/* Shifts the ascii based value and adds it to previous value.
+		 * Shift amount is mod 24 because long int is 32 bit and data
 		 * to be shifted is 8, don't want to shift data to where it has
 		 * no effect */
-		hash_num += (key[i] + key[i-1]) << ((key[i] * i) % 24);
+		hash_num += (*key + key[-1]) << ((*key * i) % 24);
 	}
-	start = (unsigned) hash_num % hash_prime;
+	start = hash_num % hash_prime;
 	*decrement = (unsigned) 1 + (hash_num % (hash_prime - 1));
 	return start;
 }
@@ -203,6 +206,7 @@ static int search_name_hashtable(const char *key)
 {
 	unsigned probe_address;
 	unsigned probe_decrement;
+	unsigned probes = ARRAY_SIZE(name_hashtable);
 
 	probe_address = make_hash(key, &probe_decrement, NAME_HASH_PRIME);
 	while (name_hashtable[probe_address] != NULL) {
@@ -213,6 +217,8 @@ static int search_name_hashtable(const char *key)
 		if ((int)probe_address < 0) {
 			probe_address += NAME_HASH_PRIME;
 		}
+		if (--probes == 0)
+			bb_simple_error_msg_and_die("hashtable full");
 	}
 	name_hashtable[probe_address] = xstrdup(key);
 	return probe_address;
@@ -427,6 +433,9 @@ static void add_edge_to_node(common_node_t *node, edge_t *edge)
 {
 	node->edge = xrealloc_vector(node->edge, 2, node->num_of_edges);
 	node->edge[node->num_of_edges++] = edge;
+	/* NB: num_of_edges is 16-bit field */
+	if (node->num_of_edges == 0) /* someone tries to be funny? */
+		bb_die_corrupted_data();
 }
 
 /*
@@ -470,7 +479,7 @@ static void add_split_dependencies(common_node_t *parent_node, const char *whole
 		}
 
 		do {
-			edge = xmalloc(sizeof(edge_t));
+			edge = xzalloc(sizeof(edge_t));
 			edge->type = edge_type;
 
 			/* Skip any extra leading spaces */
@@ -502,6 +511,8 @@ static void add_split_dependencies(common_node_t *parent_node, const char *whole
 					} else {
 						bb_simple_error_msg_and_die("illegal operator");
 					}
+				} else {
+					bb_simple_error_msg_and_die("illegal operator");
 				}
 				/* skip to start of version numbers */
 				version += offset_ch;
@@ -517,8 +528,11 @@ static void add_split_dependencies(common_node_t *parent_node, const char *whole
 			field2[strcspn(field2, " (")] = '\0';
 			edge->name = search_name_hashtable(field2);
 
-			if (or_edge)
+			if (or_edge) {
 				or_edge->version++;
+				if (or_edge->version == 0) /* someone tries to be funny? */
+					bb_die_corrupted_data();
+			}
 
 			add_edge_to_node(parent_node, edge);
 			field2 = strtok_r(NULL, "|", &line_ptr2);
@@ -636,6 +650,8 @@ static int read_package_field(const char *pkg_buf, char **pname, char **pvalue)
 }
 
 /* The parameter is NUL-terminated */
+// None of the callers needs to continue if this fails.
+// Proposal: make it emit error msg and exit on errors?
 static unsigned fill_package_struct(char *control_buffer)
 {
 	static const char field_names[] ALIGN1 =
@@ -647,7 +663,7 @@ static unsigned fill_package_struct(char *control_buffer)
 	int field_start = 0;
 	int num;
 
-	new_node->version = search_name_hashtable("unknown");
+	//?? new_node->version = search_name_hashtable("unknown");
 	while (control_buffer[field_start]) {
 		char *field_name;
 		char *field_value;
@@ -658,6 +674,7 @@ static unsigned fill_package_struct(char *control_buffer)
 
 		if (field_name == NULL) {
 			goto fill_package_struct_cleanup;
+//TODO: maybe fail instead?
 		}
 
 		field_num = index_in_strings(field_names, field_name);
@@ -698,7 +715,8 @@ static unsigned fill_package_struct(char *control_buffer)
 		free(field_value);
 	}
 
-	if (new_node->version == search_name_hashtable("unknown")) {
+	//if (new_node->version == search_name_hashtable("unknown")
+	if (!new_node->version || !new_node->name) {
 		free_package(new_node);
 		return -1;
 	}
@@ -1869,6 +1887,10 @@ int dpkg_main(int argc UNUSED_PARAM, char **argv)
 
 	INIT_G();
 
+	//bb_error_msg_and_die("sizeof:\n"
+	//"edge_t:%u\ncommon_node_t:%u\nstatus_node_t:%u\ndeb_file_t:%u",
+	//sizeof(edge_t), sizeof(common_node_t), sizeof(status_node_t), sizeof(deb_file_t));
+
 	opt = getopt32long(argv, "CilPruF:", dpkg_longopts, &str_f);
 	argv += optind;
 	//if (opt & OPT_configure) ... // -C
@@ -2046,20 +2068,13 @@ int dpkg_main(int argc UNUSED_PARAM, char **argv)
 			free(deb_file[i]->filename);
 			free(deb_file[i]);
 		}
-
 		free(deb_file);
-
-		for (i = 0; i < NAME_HASH_PRIME; i++) {
+		for (i = 0; i < NAME_HASH_PRIME; i++)
 			free(name_hashtable[i]);
-		}
-
-		for (i = 0; i < PACKAGE_HASH_PRIME; i++) {
+		for (i = 0; i < PACKAGE_HASH_PRIME; i++)
 			free_package(package_hashtable[i]);
-		}
-
-		for (i = 0; i < STATUS_HASH_PRIME; i++) {
+		for (i = 0; i < STATUS_HASH_PRIME; i++)
 			free(status_hashtable[i]);
-		}
 	}
 
 	return EXIT_SUCCESS;

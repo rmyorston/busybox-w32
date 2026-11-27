@@ -28,80 +28,76 @@
 #define NS_MAXDNSRCH    6	/* max domains in search path */
 #define NS_CMPRSFLGS 0xc0	/* name compression pointer flag */
 
-
 /* Expand a RFC1035-compressed list of domain names "cstr", of length "clen";
  * return a newly allocated string containing the space-separated domains,
  * prefixed with the contents of string pre, or NULL if an error occurs.
  */
 char* FAST_FUNC dname_dec(const uint8_t *cstr, int clen, const char *pre)
 {
-	char *ret, *end;
-	unsigned len, crtpos, retpos, depth;
+	char *result, *end;
+	unsigned len, cpos, retpos, depth;
 
-	crtpos = retpos = depth = 0;
+	cpos = retpos = depth = 0;
 	len = strlen(pre);
-	end = ret = xstrdup(pre);
+	end = result = xstrdup(pre);
 
 	/* Scan the string once, allocating new memory as needed */
-	while (crtpos < clen) {
+	while (cpos < clen) {
 		const uint8_t *c;
-		c = cstr + crtpos;
+		c = cstr + cpos;
 
 		if ((*c & NS_CMPRSFLGS) == NS_CMPRSFLGS) {
 			/* pointer */
-			if (crtpos + 2 > clen) /* no offset to jump to? abort */
+			if (cpos + 2 > clen) /* no offset to jump to? abort */
 				goto error;
 			if (retpos == 0) /* toplevel? save return spot */
-				retpos = crtpos + 2;
+				retpos = cpos + 2;
 			depth++;
-			crtpos = ((c[0] << 8) | c[1]) & 0x3fff; /* jump */
-		} else if (*c) {
-			unsigned label_len;
-			/* label */
-			if (crtpos + *c + 1 > clen) /* label too long? abort */
+			if (depth > NS_MAXDNSRCH) /* too many jumps? abort, it's a loop */
 				goto error;
-			ret = xrealloc(ret, len + *c + 1);
-			/* \3com ---> "com." */
-			end = (char *)mempcpy(ret + len, c + 1, *c);
-			*end = '.';
-
-			label_len = *c + 1;
-			len += label_len;
-			crtpos += label_len;
-		} else {
-			/* NUL: end of current domain name */
-			if (retpos == 0) {
-				/* toplevel? keep going */
-				crtpos++;
-			} else {
-				/* return to toplevel saved spot */
-				crtpos = retpos;
-				retpos = depth = 0;
-			}
-
-			if (len != 0) {
-				/* \4host\3com\0\4host and we are at \0:
-				 * \3com was converted to "com.", change dot to space.
-				 */
-				ret[len - 1] = ' ';
-			}
+			cpos = ((c[0] << 8) | c[1]) & 0x3fff; /* jump */
+			continue;
 		}
-
-		if (depth > NS_MAXDNSRCH /* too many jumps? abort, it's a loop */
-		 || len > NS_MAXDNAME * NS_MAXDNSRCH /* result too long? abort */
-		) {
-			goto error;
+		if (*c != '\0') {
+			unsigned label_len = *c + 1; /* 64 max */
+			/* label */
+			cpos += label_len;
+			if (cpos > clen) /* label too long? abort */
+				goto error;
+			result = xrealloc(result, len + label_len);
+			/* \3com ---> "com." */
+			end = mempcpy(result + len, c + 1, label_len - 1);
+			*end = '.';
+			len += label_len;
+			if (len > NS_MAXDNAME * NS_MAXDNSRCH) /* result too long? abort */
+				goto error;
+			continue;
+		}
+		/* NUL: end of current domain name */
+		if (retpos == 0) {
+			/* toplevel? keep going */
+			cpos++;
+		} else {
+			/* return to toplevel saved spot */
+			cpos = retpos;
+			retpos = depth = 0;
+		}
+		if (end != result) {
+			/* \4host\3com\0\4host and we are at \0:
+			 * \3com was converted to "com.", change dot to space.
+			 */
+			*end = ' ';
 		}
 	}
 
-	if (ret == end) { /* expanded string is empty? abort */
+	if (result == end) { /* nothing was added? abort */
  error:
-		free(ret);
+		free(result);
 		return NULL;
 	}
 
 	*end = '\0';
-	return ret;
+	return result;
 }
 
 /* Convert a domain name (src) from human-readable "foo.BLAH.com" format into
@@ -206,7 +202,7 @@ uint8_t* FAST_FUNC dname_enc(/*const uint8_t *cstr, int clen,*/ const char *src,
 	while (*d) {
 		if (cstr) {
 			int off = find_offset(cstr, clen, d);
-			if (off >= 0) {	/* found a match, add pointer and return */
+			if (off >= 0) { /* found a match, add pointer and return */
 				*d++ = NS_CMPRSFLGS | (off >> 8);
 				*d = off;
 				break;
@@ -222,21 +218,29 @@ uint8_t* FAST_FUNC dname_enc(/*const uint8_t *cstr, int clen,*/ const char *src,
 }
 
 #ifdef DNS_COMPR_TESTING
-/* gcc -Wall -DDNS_COMPR_TESTING domain_codec.c -o domain_codec && ./domain_codec */
+// gcc -Wall -DDNS_COMPR_TESTING domain_codec.c -o domain_codec && ./domain_codec
 int main(int argc, char **argv)
 {
+#define EXPECT(str, expr) do { \
+	char *r = (expr); \
+	if (strcmp((str), r) != 0) \
+		printf("Error at line %d: expected '%s', got '%s'\n", __LINE__, (str), r); \
+} while (0);
+
 	int len;
 	uint8_t *encoded;
 
-        uint8_t str[6] = { 0x00, 0x00, 0x02, 0x65, 0x65, 0x00 };
-        printf("NUL:'%s'\n",   dname_dec(str, 6, ""));
+	uint8_t str[6] = { 0x00, 0x00, 0x02, 0x65, 0x65, 0x00 };
+	EXPECT("ee", dname_dec(str, 6, ""));
 
 #define DNAME_DEC(encoded,pre) dname_dec((uint8_t*)(encoded), sizeof(encoded), (pre))
-	printf("'%s'\n",       DNAME_DEC("\4host\3com\0", "test1:"));
-	printf("test2:'%s'\n", DNAME_DEC("\4host\3com\0\4host\3com\0", ""));
-	printf("test3:'%s'\n", DNAME_DEC("\4host\3com\0\xC0\0", ""));
-	printf("test4:'%s'\n", DNAME_DEC("\4host\3com\0\xC0\5", ""));
-	printf("test5:'%s'\n", DNAME_DEC("\4host\3com\0\xC0\5\1z\xC0\xA", ""));
+	EXPECT("test1:host.com"    , DNAME_DEC("\4host\3com\0",                 "test1:"));
+	EXPECT("host.com host.com" , DNAME_DEC("\4host\3com\0\4host\3com\0",    ""));
+	EXPECT("host.com host.com" , DNAME_DEC("\4host\3com\0\xC0\0",           ""));
+	EXPECT("host.com com"      , DNAME_DEC("\4host\3com\0\xC0\5",           ""));
+	EXPECT("host.com com z.com", DNAME_DEC("\4host\3com\0\xC0\5\1z\xC0\xA", ""));
+	// check that leading \0 does not overwrite ":" in "test6:"
+	EXPECT("test6:host.com"    , DNAME_DEC("\0\4host\3com\0",               "test6:"));
 
 #if 0
 #define DNAME_ENC(cache,source,lenp) dname_enc((uint8_t*)(cache), sizeof(cache), (source), (lenp))

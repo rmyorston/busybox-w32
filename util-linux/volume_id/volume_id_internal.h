@@ -23,8 +23,11 @@
 
 PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 
-#define dbg(...) ((void)0)
-/* #define dbg(...) bb_error_msg(__VA_ARGS__) */
+#if 1
+# define dbg(...) ((void)0)
+#else
+# define dbg(...) bb_error_msg(__VA_ARGS__)
+#endif
 
 /* volume_id.h */
 
@@ -156,6 +159,8 @@ void FAST_FUNC volume_id_set_uuid(struct volume_id *id, const uint8_t *buf, enum
 void* FAST_FUNC volume_id_get_buffer(struct volume_id *id, uint64_t off, size_t len);
 void FAST_FUNC volume_id_free_buffer(struct volume_id *id);
 
+int FAST_FUNC good_blocksize_512(unsigned blksz);
+int FAST_FUNC good_blocksize_512_to_4k(unsigned blksz);
 
 /* Probe routines */
 

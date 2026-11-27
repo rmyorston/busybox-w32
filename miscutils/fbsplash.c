@@ -18,7 +18,7 @@
  *   grep -q "fbsplash=on" </proc/cmdline && setsid fbsplash [params]
  * - commands for fifo:
  *   "NN" (ASCII decimal number) - percentage to show on progress bar.
- *   "exit" (or just close fifo) - well you guessed it.
+ *   "exit" - well you guessed it.
  */
 //config:config FBSPLASH
 //config:	bool "fbsplash (26 kb)"
@@ -46,25 +46,57 @@
 //kbuild:lib-$(CONFIG_FBSPLASH) += fbsplash.o
 
 //usage:#define fbsplash_trivial_usage
-//usage:       "-s IMGFILE [-c] [-d DEV] [-i INIFILE] [-f CMD]"
+//usage:       "-s IMGFILE [-c] [-d DEV] [-i INIFILE] [-f CMD] [-T VT#]"
 //usage:#define fbsplash_full_usage "\n\n"
-//usage:       "	-s	Image"
+//usage:       "	-s	Image in PPM format"
 //usage:     "\n	-c	Hide cursor"
 //usage:     "\n	-d	Framebuffer device (default /dev/fb0)"
 //usage:     "\n	-i	Config file (var=value):"
 //usage:     "\n			BAR_LEFT,BAR_TOP,BAR_WIDTH,BAR_HEIGHT"
-//usage:     "\n			BAR_R,BAR_G,BAR_B,IMG_LEFT,IMG_TOP"
+//usage:     "\n			BAR_R,BAR_G,BAR_B,IMG_LEFT,IMG_TOP,IMG_ALIGN"
 //usage:     "\n	-f	Control pipe (else exit after drawing image)"
 //usage:     "\n			commands: 'NN' (% for progress bar) or 'exit'"
+//usage:     "\n	-T	Switch to VT# to hide all console messages"
 
 #include "libbb.h"
 #include "common_bufsiz.h"
 #include <linux/fb.h>
 
+#include <sys/vt.h>
+#include <sys/ioctl.h>
+#include <linux/tiocl.h>
+#include <linux/kd.h>
+
 /* If you want logging messages on /tmp/fbsplash.log... */
 #define DEBUG 0
 
 #define ESC "\033"
+
+enum {
+	bar_width,
+	bar_height,
+	bar_posx,
+	bar_posy,
+	bar_colr,
+	bar_colg,
+	bar_colb,
+	nimg_posx,
+	nimg_posy,
+	nimg_align,
+	num_ns_opts,
+	debug = num_ns_opts,
+};
+
+#define nbar_width	ns[bar_width]
+#define nbar_height	ns[bar_height]
+#define nbar_posx	ns[bar_posx]
+#define nbar_posy	ns[bar_posy]
+#define nbar_colr	ns[bar_colr]
+#define nbar_colg	ns[bar_colg]
+#define nbar_colb	ns[bar_colb]
+#define img_posx	ns[nimg_posx]
+#define img_posy	ns[nimg_posy]
+#define img_align	ns[nimg_align]
 
 struct globals {
 #if DEBUG
@@ -72,8 +104,11 @@ struct globals {
 	FILE *logfile_fd;	// log file
 #endif
 	unsigned char *addr;	// pointer to framebuffer memory
-	unsigned ns[9];		// n-parameters
+	unsigned ns[num_ns_opts];	// n-parameters
 	const char *image_filename;
+	int silent_vt;
+	int fd_vt;
+	bool do_not_draw;
 	struct fb_var_screeninfo scr_var;
 	struct fb_fix_screeninfo scr_fix;
 	unsigned bytes_per_pixel;
@@ -86,16 +121,6 @@ struct globals {
 #define INIT_G() do { \
 	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
 } while (0)
-
-#define nbar_width	ns[0]	// progress bar width
-#define nbar_height	ns[1]	// progress bar height
-#define nbar_posx	ns[2]	// progress bar horizontal position
-#define nbar_posy	ns[3]	// progress bar vertical position
-#define nbar_colr	ns[4]	// progress bar color red component
-#define nbar_colg	ns[5]	// progress bar color green component
-#define nbar_colb	ns[6]	// progress bar color blue component
-#define img_posx	ns[7]	// image horizontal position
-#define img_posy	ns[8]	// image vertical position
 
 #if DEBUG
 #define DEBUG_MESSAGE(strMessage, args...) \
@@ -189,7 +214,6 @@ static void fb_open(const char *strfb_device)
 	close(fbfd);
 }
 
-
 /**
  * Return pixel value of the passed RGB color.
  * This is performance critical fn.
@@ -243,7 +267,6 @@ static void fb_write_pixel(unsigned char *addr, unsigned pixel)
 	}
 }
 
-
 /**
  * Draw hollow rectangle on framebuffer
  */
@@ -281,7 +304,6 @@ static void fb_drawrectangle(void)
 	} while (--cnt >= 0);
 }
 
-
 /**
  * Draw filled rectangle on framebuffer
  * \param nx1pos,ny1pos upper left position
@@ -310,7 +332,6 @@ static void fb_drawfullrectangle(int nx1pos, int ny1pos, int nx2pos, int ny2pos,
 		nypos++;
 	} while (--cnt1 >= 0);
 }
-
 
 /**
  * Draw a progress bar on framebuffer
@@ -368,7 +389,6 @@ static void fb_drawprogressbar(unsigned percent)
 			G.nbar_colr, G.nbar_colg, G.nbar_colb);
 }
 
-
 /**
  * Draw image from PPM file
  */
@@ -377,7 +397,7 @@ static void fb_drawimage(void)
 	FILE *theme_file;
 	char *read_ptr;
 	unsigned char *pixline;
-	unsigned i, j, width, height, line_size;
+	int i, j, width, height, line_size, xoffs, yoffs, xstart;
 
 	if (LONE_DASH(G.image_filename)) {
 		theme_file = stdin;
@@ -427,18 +447,39 @@ static void fb_drawimage(void)
 	line_size = width*3;
 	pixline = xmalloc(line_size);
 
-	if ((width + G.img_posx) > G.scr_var.xres)
-		width = G.scr_var.xres - G.img_posx;
-	if ((height + G.img_posy) > G.scr_var.yres)
-		height = G.scr_var.yres - G.img_posy;
-	for (j = 0; j < height; j++) {
+	xoffs = G.img_posx;
+	switch (G.img_align % 3) {
+	case 1: xoffs += (G.scr_var.xres - width) / 2; break;
+	case 2: xoffs += G.scr_var.xres - width; break;
+	}
+	xstart = 0;
+	if (xoffs < 0) {
+		xstart = -xoffs;
+		xoffs = 0;
+	}
+	if ((width + xoffs) > G.scr_var.xres)
+		width = G.scr_var.xres - xoffs;
+
+	yoffs = G.img_posy;
+	switch (G.img_align / 3) {
+	case 1: yoffs += (G.scr_var.yres - height) / 2; break;
+	case 2: yoffs += G.scr_var.yres - height; break;
+	}
+	if ((height + yoffs) > G.scr_var.yres)
+		height = G.scr_var.yres - yoffs;
+
+	for (j = 0; j < height; j++, yoffs++) {
 		unsigned char *pixel;
 		unsigned char *src;
 
 		if (fread(pixline, 1, line_size, theme_file) != line_size)
 			bb_error_msg_and_die("bad PPM file '%s'", G.image_filename);
-		pixel = pixline;
-		src = G.addr + (G.img_posy + j) * G.scr_fix.line_length + G.img_posx * G.bytes_per_pixel;
+
+		if (yoffs < 0)
+			continue;
+
+		pixel = pixline + xstart * 3;
+		src = G.addr + yoffs * G.scr_fix.line_length + xoffs * G.bytes_per_pixel;
 		for (i = 0; i < width; i++) {
 			unsigned thispix = fb_pixel_value(pixel[0], pixel[1], pixel[2]);
 			fb_write_pixel(src, thispix);
@@ -450,18 +491,21 @@ static void fb_drawimage(void)
 	fclose(theme_file);
 }
 
-
 /**
  * Parse configuration file
  * \param *cfg_filename name of the configuration file
  */
 static void init(const char *cfg_filename)
 {
+	static const char align_names[] ALIGN1 =
+		"LT\0" "CT\0" "RT\0"
+		"LM\0" "CM\0" "RM\0"
+		"LB\0" "CB\0" "RB\0";
 	static const char param_names[] ALIGN1 =
 		"BAR_WIDTH\0" "BAR_HEIGHT\0"
 		"BAR_LEFT\0" "BAR_TOP\0"
 		"BAR_R\0" "BAR_G\0" "BAR_B\0"
-		"IMG_LEFT\0" "IMG_TOP\0"
+		"IMG_LEFT\0" "IMG_TOP\0" "IMG_ALIGN\0"
 #if DEBUG
 		"DEBUG\0"
 #endif
@@ -470,14 +514,18 @@ static void init(const char *cfg_filename)
 	parser_t *parser = config_open2(cfg_filename, xfopen_stdin);
 	while (config_read(parser, token, 2, 2, "#=",
 				(PARSE_NORMAL | PARSE_MIN_DIE) & ~(PARSE_TRIM | PARSE_COLLAPSE))) {
-		unsigned val = xatoi_positive(token[1]);
+		unsigned val;
 		int i = index_in_strings(param_names, token[0]);
 		if (i < 0)
 			bb_error_msg_and_die("syntax error: %s", token[0]);
-		if (i >= 0 && i < 9)
+		if (i == nimg_align)
+			val = index_in_strings(align_names, token[1]);
+		else
+			val = xatoi_positive(token[1]);
+		if (i < num_ns_opts)
 			G.ns[i] = val;
 #if DEBUG
-		if (i == 9) {
+		if (i == debug) {
 			G.bdebug_messages = val;
 			if (G.bdebug_messages)
 				G.logfile_fd = xfopen_for_write("/tmp/fbsplash.log");
@@ -487,6 +535,14 @@ static void init(const char *cfg_filename)
 	config_close(parser);
 }
 
+static void sighandler_vt_control(int sig)
+{
+	ioctl(G.fd_vt, VT_RELDISP,
+			sig == SIGUSR1 ? 1 // got release signal, telling kernel: "1: pending switch-from OK"
+			: 2	// got acquisition signal, telling kernel: "2: completed switch-to OK"
+	);
+	G.do_not_draw = (sig == SIGUSR1);
+}
 
 int fbsplash_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
 int fbsplash_main(int argc UNUSED_PARAM, char **argv)
@@ -496,6 +552,10 @@ int fbsplash_main(int argc UNUSED_PARAM, char **argv)
 	char *num_buf;
 	unsigned num;
 	bool bCursorOff;
+	int fd_console = fd_console;
+	int saved_active_vt = saved_active_vt;
+	struct vt_stat vtstat;
+	struct vt_mode vt;
 
 	INIT_G();
 
@@ -503,8 +563,9 @@ int fbsplash_main(int argc UNUSED_PARAM, char **argv)
 	fb_device = "/dev/fb0";
 	cfg_filename = NULL;
 	fifo_filename = NULL;
-	bCursorOff = 1 & getopt32(argv, "cs:d:i:f:",
-			&G.image_filename, &fb_device, &cfg_filename, &fifo_filename);
+	bCursorOff = 1 & getopt32(argv, "cs:d:i:f:T:+",
+			&G.image_filename, &fb_device, &cfg_filename, &fifo_filename,
+			&G.silent_vt);
 
 	// parse configuration file
 	if (cfg_filename)
@@ -514,11 +575,49 @@ int fbsplash_main(int argc UNUSED_PARAM, char **argv)
 	if (!G.image_filename)
 		bb_show_usage();
 
+	if (G.silent_vt) {
+		char buf[sizeof("/dev/tty%d") + sizeof(int)*3];
+
+		bb_signals((1LL << SIGUSR1) | (1LL << SIGUSR2), sighandler_vt_control);
+
+		// Open VT and console
+		snprintf(buf, sizeof(buf), "/dev/tty%d", G.silent_vt);
+		G.fd_vt = xopen(buf, O_RDWR | O_NOCTTY);
+		fd_console = get_console_fd_or_die();
+
+		// Remember old active VT, activate new one
+		xioctl(fd_console, VT_GETSTATE, &vtstat);
+		saved_active_vt = vtstat.v_active;
+		console_make_active(fd_console, G.silent_vt);
+
+		// Get notifications on VT changes (we want to draw only when our VT is active)
+		memset(&vt, 0, sizeof(vt));
+		vt.mode   = VT_PROCESS; // process controls switching
+		//vt.waitv  = 0;     // do not hang on writes to non-active tty
+		vt.relsig = SIGUSR1; // release signal
+		vt.acqsig = SIGUSR2; // acquisition signal
+		ioctl(G.fd_vt, VT_SETMODE, &vt);
+
+		// Redirect all kernel messages to VT1 so that they don't get
+		// printed over our splash image.
+		buf[0] = TIOCL_SETKMSGREDIRECT;
+		buf[1] = 1; // VT1 (first VT, 0 would mean "use whichever VT is active")
+		ioctl(G.fd_vt, TIOCLINUX, buf);
+
+		// Send ESC sequences: home; clear to the end of screen
+		full_write(G.fd_vt, ESC"[H"ESC"[J", 6);
+
+		// Disable effects of many text-related ops on the VT (e.g. mouse slection)
+		ioctl(G.fd_vt, KDSETMODE, KD_GRAPHICS);
+	} else {
+		G.fd_vt = STDOUT_FILENO;
+	}
+
 	fb_open(fb_device);
 
 	if (fifo_filename && bCursorOff) {
 		// hide cursor (BEFORE any fb ops)
-		full_write(STDOUT_FILENO, ESC"[?25l", 6);
+		full_write(G.fd_vt, ESC"[?25l", 6);
 	}
 
 	fb_drawimage();
@@ -526,6 +625,7 @@ int fbsplash_main(int argc UNUSED_PARAM, char **argv)
 	if (!fifo_filename)
 		return EXIT_SUCCESS;
 
+	sig_block(SIGUSR1);
 	fp = xfopen_stdin(fifo_filename);
 	if (fp != stdin) {
 		// For named pipes, we want to support this:
@@ -541,8 +641,9 @@ int fbsplash_main(int argc UNUSED_PARAM, char **argv)
 		// and become an additional writer :)
 		open(fifo_filename, O_WRONLY); // errors are ignored
 	}
-
 	fb_drawprogressbar(0);
+	sig_unblock(SIGUSR1);
+
 	// Block on read, waiting for some input.
 	// Use of <stdio.h> style I/O allows to correctly
 	// handle a case when we have many buffered lines
@@ -557,12 +658,38 @@ int fbsplash_main(int argc UNUSED_PARAM, char **argv)
 #if DEBUG
 			DEBUG_MESSAGE(itoa(num));
 #endif
-			fb_drawprogressbar(num);
+			sig_block(SIGUSR1);
+			if (!G.do_not_draw)
+				fb_drawprogressbar(num);
+			sig_unblock(SIGUSR1);
 		}
 		free(num_buf);
 	}
 
-	if (bCursorOff) // restore cursor
+	if (G.silent_vt) {
+		usleep(100*1000); // why?
+
+		// "kernel, it's ok to switch away from this VT" (why do we do this?)
+		ioctl(G.fd_vt, VT_RELDISP, 1);
+
+		// Enable effects of many text-related ops on the VT
+		ioctl(G.fd_vt, KDSETMODE, KD_TEXT);
+
+		memset(&vt, 0, sizeof(vt));
+		vt.mode  = VT_AUTO; // auto vt switching (not controlled by a process)
+		//vt.waitv = 0;     // do not hang on writes to non-active tty
+		ioctl(G.fd_vt, VT_SETMODE, &vt);
+
+		// If silent VT is the active VT, switch to old active VT
+		xioctl(fd_console, VT_GETSTATE, &vtstat);
+		if (vtstat.v_active == G.silent_vt)
+			console_make_active(fd_console, saved_active_vt);
+
+		// Make it as if this VT was never used (free storage)
+		close(G.fd_vt); // we shouldn't hold a reference to it
+		ioctl(fd_console, VT_DISALLOCATE, (void *)(ptrdiff_t)G.silent_vt);
+
+	} else if (bCursorOff) // restore cursor
 		full_write(STDOUT_FILENO, ESC"[?25h", 6);
 
 	return EXIT_SUCCESS;

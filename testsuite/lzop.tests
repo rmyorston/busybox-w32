@@ -1,0 +1,30 @@
+#!/bin/sh
+# Copyright 2026 by Denys Vlasenko
+# Licensed under GPLv2, see file LICENSE in this source tree.
+
+. ./testing.sh
+
+# testing "test name" "command" "expected result" "file input" "stdin"
+
+testing "seq 0 99999 | lzop -1" \
+'{ seq 0 99999 | wc -c; seq 0 99999 | lzop -1 | wc -c; } 2>&1' \
+'588890
+359418
+' \
+"" ""
+
+testing "seq 0 99999 | lzop -6" \
+'{ seq 0 99999 | lzop -6 | wc -c; } 2>&1' \
+'346947
+' \
+"" ""
+
+testing "seq 0 19999 | lzop -6: -C and -F" \
+'{ seq 0 19999 | lzop -6C | wc -c; seq 0 19999 | lzop -6 | wc -c; seq 0 19999 | lzop -6F | wc -c; } 2>&1' \
+'69365
+69361
+69357
+' \
+"" ""
+
+exit $FAILCOUNT
