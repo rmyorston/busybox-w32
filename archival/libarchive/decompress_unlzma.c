@@ -117,10 +117,16 @@ static speed_inline int rc_is_bit_1(rc_t *rc, uint16_t *p)
 }
 
 /* Called 4 times in unlzma loop */
+// I tried to expose the value of inserted bit via
+//rc_insert_bit(int *bit, rc_t *rc, uint16_t *p, int symbol)
+// prototype, provided dedicated variables at callsites
+// to be set by rc_insert_bit(&bit, ...) calls.
+// This allows to eliminate redundant "... & 1" ops we have now.
+// But gcc does not optimize this well - the code size increases.
 static ALWAYS_INLINE int rc_insert_bit(rc_t *rc, uint16_t *p, int symbol)
 {
-	int ret = rc_is_bit_1(rc, p);
-	symbol = symbol * 2 + ret;
+	int bit = rc_is_bit_1(rc, p);
+	symbol = symbol * 2 + bit;
 	return symbol;
 }
 
@@ -268,7 +274,7 @@ unpack_lzma_stream(transformer_state_t *xstate)
 	// Considering that normally dict_size <= dst_size (uncompressed size)
 	// and therefore we _have to_ allocate full buffer in most cases,
 	// and that large malloc is mmap()ed and allocated _on demand_,
-	// let's just use a larger dict_size allocation:
+	// let's just unconditionally use a larger dict_size allocation:
 	buffer_size = header.dict_size;
 	buffer = xmalloc(buffer_size);
 #define BUFSIZE_CAN_BE_LESS_THAN_DICTSIZE 0
